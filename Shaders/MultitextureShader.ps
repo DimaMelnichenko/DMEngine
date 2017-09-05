@@ -1,0 +1,65 @@
+////////////////////////////////////////////////////////////////////////////////
+// Filename: multitexture.ps
+////////////////////////////////////////////////////////////////////////////////
+
+
+/////////////
+// GLOBALS //
+/////////////
+
+Texture2D shaderTextures[3];
+SamplerState SampleType;
+
+
+//////////////
+// TYPEDEFS //
+//////////////
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+    float2 tex : TEXCOORD0;
+};
+
+float3 luminance = float3( 1.0, 1.0, 1.0 );
+
+float3 blend(float4 texture1, float a1, float4 texture2, float a2)
+{
+    float depth = 0.2;
+    float ma = max(texture1.x + a1, texture2.x + a2) - depth;
+
+    float b1 = max(texture1.x + a1 - ma, 0);
+    float b2 = max(texture2.x + a2 - ma, 0);
+
+    return (texture1.rgb * b1 + texture2.rgb * b2) / (b1 + b2);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 MultiTexturePixelShader(PixelInputType input) : SV_TARGET
+{
+    float4 color1;
+    float4 color2;
+    float4 blendColor;
+	float4 alpha;
+
+
+    // Get the pixel color from the first texture.
+    color1 = shaderTextures[0].Sample(SampleType, input.tex);
+    // Get the pixel color from the second texture.
+    color2 = shaderTextures[1].Sample(SampleType, input.tex);
+	
+	alpha = shaderTextures[2].Sample(SampleType, input.tex);
+	
+	//return float4( a1, a1, a1, 1.0f );
+	
+    // Blend the two pixels together and multiply by the gamma value.
+    //blendColor = color1 * color2 * 2.0;
+	
+	blendColor = float4( blend( color1, alpha.x, color2, 1 - alpha.x  ), 1.0f );
+    
+    // Saturate the final color.
+    blendColor = saturate(blendColor);
+
+    return blendColor;
+}

@@ -1,0 +1,59 @@
+
+Texture2D terrainTexture[7];
+SamplerState SampleHM;
+SamplerState SampleColor;
+
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+	float2 main_tex : TEXCOORD0;
+	float2 detail_tex : TEXCOORD1;
+};
+
+cbuffer PSParamBuffer
+{
+	float3 camera_position;
+	float app_time;
+};
+
+static const float detail_multipler = 0.5;
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 main(PixelInputType input) : SV_TARGET
+{
+	float4 color = float4( 0.3, 0.5, 0.8, 1.0 );
+	//float4 color = float4( 1.0, 1.0, 1.0, 1.0 );
+	
+    //float4 color = terrainTexture[2].Sample( SampleHM, input.tex  );
+	
+	float3 lightDirection = normalize( float3( 1.0, 1.0, 0.0 ) );
+	
+	input.main_tex.x += app_time;
+	
+	float3 normal = normalize( terrainTexture[1].Sample( SampleHM, input.main_tex ).rgb );	
+	input.detail_tex.x += app_time * 100.2f;
+	float3 normal_detail = normalize( terrainTexture[2].Sample( SampleHM, input.detail_tex * detail_multipler ).rgb );
+	
+	/////////////////////////////
+	// calc tangent space
+	float3 tangent = float3( 1.0, 0.0, 0.0 );
+	float3 base_normal = float3( 0.0, 1.0, 0.0 );
+	float3 binorm = normalize( cross( tangent, base_normal ) );
+	float3x3 tbnMatrix = float3x3( tangent, binorm, base_normal );
+	/////////////////////////////
+	
+	normal = normalize( mul( normal, tbnMatrix ) );
+	normal_detail = normalize( mul( normal_detail, tbnMatrix ) );
+	
+	float lightIntencity = max( dot( normal, lightDirection ), 0 );
+	
+	lightIntencity *= max( dot( normal_detail, lightDirection ), 0 );
+	
+	color *= lightIntencity;
+	
+	color.a = 1.0f;
+	
+	return color;
+}

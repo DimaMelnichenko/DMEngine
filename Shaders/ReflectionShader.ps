@@ -1,0 +1,69 @@
+////////////////////////////////////////////////////////////////////////////////
+// Filename: reflection.ps
+////////////////////////////////////////////////////////////////////////////////
+
+
+//////////////
+// TEXTURES //
+//////////////
+Texture2D colorTexture : register(t0);
+Texture2D normalTexture : register(t1);
+
+
+//////////////
+// SAMPLERS //
+//////////////
+SamplerState SampleType;
+
+
+//////////////////////
+// CONSTANT BUFFERS //
+//////////////////////
+cbuffer LightBuffer
+{
+    float4 lightDiffuseColor;
+    float3 lightDirection;
+    float colorTextureBrightness;
+};
+
+
+//////////////
+// TYPEDEFS //
+//////////////
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+    float2 tex : TEXCOORD0;
+    float3 normal : NORMAL;
+    float clip : SV_ClipDistance0;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 ReflectionPixelShader(PixelInputType input) : SV_TARGET
+{
+    float3 lightDir;
+    float4 textureColor;
+    float lightIntensity;
+    float4 color;
+
+
+    // Invert the light direction for calculations.
+    lightDir = -lightDirection;
+
+    // Sample the color texture.
+    textureColor = colorTexture.Sample(SampleType, input.tex);
+
+    // Combine the color map value into the texture color.
+    textureColor = saturate(textureColor * colorTextureBrightness);
+    
+    lightIntensity = saturate(dot(input.normal, lightDir));
+    
+    // Calculate the first bump mapped pixel color.
+    color = saturate(lightDiffuseColor * lightIntensity);
+    color = color * textureColor;
+
+    return color;
+}

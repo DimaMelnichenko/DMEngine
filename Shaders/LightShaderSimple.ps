@@ -1,0 +1,111 @@
+////////////////////////////////////////////////////////////////////////////////
+// Filename: light.ps
+////////////////////////////////////////////////////////////////////////////////
+
+#include "BRDF.ps"
+
+/////////////
+// GLOBALS //
+/////////////
+Texture2D g_texAlbedo : register(t0);
+Texture2D g_texNormal : register(t1);
+Texture2D g_texGIM : register(t2); // r - gloss, g - ior, b - metall
+TextureCube g_texCube : register(t5);
+
+
+cbuffer PSParamBuffer : register( b1 )
+{
+	float3 camera_position;
+	float app_time;
+}
+
+//////////////
+// TYPEDEFS //
+//////////////
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+    float2 tex : TEXCOORD0;
+    float3 normal : NORMAL;
+	float3 tangent : TANGENT0;
+	float3 binormal : BINORMAL0;
+	float3 worldPosition : TEXCOORD1;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 main(PixelInputType input) : SV_TARGET
+{
+	float4 FinalLight = (float4)0;
+	
+	return FinalLight;
+	
+	float depthValue = input.position.z / input.position.w;
+	
+	//return float4( clamp_range( 0.06, 0.062, depthValue ), 1.0, 1.0, 1.0 );
+	
+	float3 v = normalize( camera_position - input.worldPosition );
+	
+	//float parallax_range = clamp_range( 0.04, 0.045, depthValue );
+	//if( parallax_range < 1.0 )
+	//{
+	//	float2 tex_with_offset = input.tex + calc_parallax_offset( v, input.normal, input.tangent, input.tex, g_texNormal, g_SamplerLinearWrap );
+	//	input.tex = lerp( tex_with_offset, input.tex, parallax_range );
+	//}
+	
+    // Sample the pixel color from the texture using the sampler at this texture coordinate location.
+    float4 albedo = g_texAlbedo.Sample( g_SamplerAnisotropicClamp, input.tex );
+	float3 gim = g_texGIM.Sample( g_SamplerAnisotropicClamp, input.tex ).rgb;
+	float gloss = gim.r;
+	float ior = gim.g;
+	float metal = gim.b; 	
+	
+	float3 n = normalize( input.normal );
+		
+	// Sample the environment map
+    float3 vReflect = -reflect( v, n );
+	
+    float3 vEnvironment = g_texCube.SampleLevel( g_SamplerAnisotropicClamp, vReflect, 9 - gloss * 0.5 * 9 ).rgb;
+	
+	
+    for( int i = 0; i < cb_light_count; i++ )
+	{
+		float3 l;
+		float fade;
+		
+		if( cb_lightPos[i].w < 1.0 )
+		{
+			l = normalize( cb_lightPos[i].xyz );
+			fade = 1.0;
+		}
+		else
+		{
+			l = ( cb_lightPos[i].xyz - input.worldPosition );
+			float dist = length( l );
+			l = normalize( l );
+			fade = 1.0 / ( dist * dist );			
+		}	
+		
+		if( fade < 0.0001 )
+			continue;
+		
+		float3 h = normalize( l + v );		
+		
+		float3 direct_diffuse = ( max( dot( n, l ), 0.0f ) / PI );
+		FinalLight.rgb += ( direct_diffuse ) * cb_lightColor[i] * fade * 0.8;			
+		
+	}
+	
+	FinalLight.rgb = albedo.rgb * FinalLight.rgb + ( metal * vEnvironment * albedo.rgb );
+		
+	
+	//FinalLight.rgb = saturate( FinalLight.rgb );
+	
+	FinalLight.a = 1.0f;
+	#ifdef TEST
+		FinalLight.rgb = 1.0f;
+	#endif
+	
+	return FinalLight;
+}

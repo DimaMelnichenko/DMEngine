@@ -1,0 +1,64 @@
+////////////////////////////////////////////////////////////////////////////////
+// Filename: texture.ps
+////////////////////////////////////////////////////////////////////////////////
+
+/////////////
+// GLOBALS //
+/////////////
+Texture2D shaderTexture[2];
+SamplerState SampleType;
+
+//////////////
+// TYPEDEFS //
+//////////////
+
+cbuffer PSParamBuffer : register( b1 )
+{
+	float3 camera_position;
+	float2 tex_tiled;
+	float app_time;
+}
+
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+    float2 tex : TEXCOORD0;
+	float3 normal : NORMAL0;
+	float3 tangent : TANGENT0;
+	float3 binormal : BINORMAL0;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 main(PixelInputType input) : SV_TARGET
+{
+    float4 textureColor;
+	
+	float3 lightDirection = normalize( float3( -0.5, 1.0, 0.0 ) );
+	
+	input.tex.x *= tex_tiled;
+	input.tex.y *= tex_tiled;
+	
+	float3 texture_normal = normalize( shaderTexture[1].Sample( SampleType, input.tex ) * 2 - 1 );
+	
+	float3x3 tbn_matrix = float3x3( input.tangent, input.binormal, input.normal );	
+	
+	
+    // Sample the pixel color from the texture using the sampler at this texture coordinate location.
+    textureColor = shaderTexture[0].Sample( SampleType, input.tex );
+	
+	lightDirection = normalize( mul( tbn_matrix, lightDirection ) );
+	
+	float lightIntencity = max( dot( texture_normal, lightDirection ), 0 );
+	
+	textureColor *= lightIntencity;
+	
+	textureColor.a = 1.0f;
+
+    return textureColor;
+}
+
+
+

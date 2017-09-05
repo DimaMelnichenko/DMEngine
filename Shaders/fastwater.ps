@@ -1,0 +1,80 @@
+////////////////////////////////////////////////////////////////////////////////
+// Filename: texture.ps
+////////////////////////////////////////////////////////////////////////////////
+
+#include "samplers.sh"
+#include "noise.sh"
+
+/////////////
+// GLOBALS //
+/////////////
+Texture2D shaderTexture[4] : register(t0);
+
+
+//////////////
+// TYPEDEFS //
+//////////////
+
+cbuffer Application : register(b10)
+{
+	float3 camera_position;
+	float app_time;
+	float elapsed_time;
+};
+
+struct PixelInputType
+{
+    float4 position : SV_POSITION; 
+	float2 uv: TEXCOORD;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 main(PixelInputType input) : SV_TARGET0
+{
+	float4 output = float4( 0.0, 0.0, 0.0, 1.0 );
+	
+	float c = 0.00003;
+	
+	float texel = 1.0 / 1024.0;
+	
+	float left = shaderTexture[0].SampleLevel( g_SamplerPointWrap, input.uv + float2( -1.0, 0.0 ) * texel, 0 ).r;
+	float right = shaderTexture[0].SampleLevel( g_SamplerPointWrap, input.uv + float2( 1.0, 0.0 ) * texel, 0 ).r;
+	float down = shaderTexture[0].SampleLevel( g_SamplerPointWrap, input.uv + float2( 0.0, -1.0 ) * texel, 0 ).r;
+	float up = shaderTexture[0].SampleLevel( g_SamplerPointWrap, input.uv + float2( 0.0, 1.0 ) * texel, 0 ).r;
+	
+	output.rg = shaderTexture[0].SampleLevel( g_SamplerPointWrap, input.uv, 0 ).rg;
+	
+	float f = ( c * c ) * ( left + right + up + down - 4 * output.r ) / ( texel * texel );
+	
+	output.g *= 0.998;
+	output.g += f * min( elapsed_time, texel / c );
+	
+	output.r += output.g * min( elapsed_time, texel / c );
+	//
+    return output;
+}
+
+float4 init(PixelInputType input) : SV_TARGET0
+{
+	float4 output;
+    float4 textureColor;
+	
+	textureColor = float4( 0.1, 0.0, 0.0, 1.0 );
+	
+	textureColor.r = saturate( /*PerlinNoise3D( float3( input.uv * 10.0, app_time * 0.0001 ), 3 ) **/ ( PerlinNoise3D( float3( input.uv * 2.5, app_time * 0.00001 ), 1 ) - 0.5 ) * 2.5 ) * 10;
+	
+	if( input.uv.x <= 0.05 || input.uv.y <= 0.05 || input.uv.x >= 0.95 || input.uv.y >= 0.95 )
+		textureColor.r = 0.0;
+	
+    // Sample the pixel color from the texture using the sampler at this texture coordinate location.
+    //textureColor = shaderTexture.Sample( SampleType, input.tex );
+	
+	//float3 my_height = shaderTexture[0].SampleLevel( g_SamplerPointClamp, input.uv, 0 ).rgb;	
+	//float2 vectors = shaderTexture[1].SampleLevel( g_SamplerPointClamp, input.uv, 0 ).xz;	
+	
+	//output = float4( textureColor, 1.0 );
+		
+    return textureColor;
+}

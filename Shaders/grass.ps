@@ -1,0 +1,58 @@
+////////////////////////////////////////////////////////////////////////////////
+// Filename: texture.ps
+////////////////////////////////////////////////////////////////////////////////
+
+/////////////
+// GLOBALS //
+/////////////
+Texture2D shaderTexture : register(t0);
+SamplerState SampleLinearType : register(s0);
+
+//////////////
+// TYPEDEFS //
+//////////////
+
+cbuffer PSParamBuffer : register( b1 )
+{
+	float3 camera_position;
+	float2 tex_tiled;
+	float app_time;
+}
+
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+    float2 tex : TEXCOORD0;	
+	float3 color : TEXCOORD1;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 main(PixelInputType input) : SV_TARGET
+{
+    float4 textureColor;
+	
+	//input.tex.x *= tex_tiled;
+	//input.tex.y *= tex_tiled;
+	
+	float depth_value = 1.0 - input.position.z / input.position.w;
+	
+    // Sample the pixel color from the texture using the sampler at this texture coordinate location.
+    textureColor = shaderTexture.Sample( SampleLinearType, input.tex );
+	textureColor.rgb = lerp( input.color, textureColor.rgb, 0.3 );
+	
+	
+	if( depth_value > 0.99 )
+	{
+		float fallow = ( depth_value - 0.99 ) * ( 1.0 / ( 0.993 - 0.99 ) );
+		//textureColor.r = 1.0;
+		textureColor.a = lerp( textureColor.a, 0.0, fallow );
+	}
+	
+	
+    return textureColor;
+}
+
+

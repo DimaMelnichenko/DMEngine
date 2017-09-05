@@ -1,0 +1,195 @@
+
+/////////////
+// GLOBALS //
+/////////////
+Texture2D shaderTexture[7];
+SamplerState SampleType;
+
+//////////////
+// TYPEDEFS //
+//////////////
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+    float2 tex : TEXCOORD0;
+	float3 worldPosition : TEXCOORD1;
+};
+
+cbuffer PSParamBuffer : register( b1 )
+{
+	float3 camera_position;
+	float app_time;
+}
+
+static const int ITER_GEOMETRY = 3;
+static const int ITER_FRAGMENT = 5;
+static const float SEA_CHOPPY = 4.0;
+static const float SEA_SPEED = 0.0008;
+static const float SEA_FREQ = 0.16;
+static const float SEA_HEIGHT = 0.6;
+static const float3 SEA_BASE = float3(0.1,0.19,0.22);
+static const float3 SEA_WATER_COLOR = float3(0.8,0.9,0.6);
+
+
+float hash( float2 p )
+{
+	float h = dot( p, float2( 127.1, 311.7 ) );	
+    return frac( sin(h) * 43758.5453123 );
+}
+
+float noise( float2 p )
+{
+    float2 i = floor( p );
+    float2 f = frac( p );	
+	float2 u = f * f * ( 3.0 - 2.0 * f );
+    return -1.0 + 2.0 * lerp( 
+							lerp( hash( i + float2( 0.0,0.0 ) ), hash( i + float2(1.0,0.0) ), u.x), lerp( hash( i + float2(0.0,1.0) ), 
+						hash( i + float2(1.0,1.0) ), u.x), u.y);
+}
+
+float sea_octave( float2 uv, float choppy)
+{
+    uv.xy += noise(uv);        
+    float2 wv = 1.0 - abs( sin( uv ) );
+    float2 swv = abs( cos( uv ) );
+    wv = lerp( wv, swv, wv );
+    return pow( 1.0 - pow( wv.x * wv.y, 0.65f ), choppy );
+}
+
+float map(float3 p)
+{
+	float2x2 octave_m = float2x2(1.6,1.2,-1.2,1.6);
+	float SEA_sumTime = app_time * SEA_SPEED;
+    float freq = SEA_FREQ;
+    float amp = SEA_HEIGHT;
+    float choppy = SEA_CHOPPY;
+    float2 uv = p.xz; 
+	uv.x *= 0.75;
+    
+    float d, h = 0.0;    
+    for( int i = 0; i < ITER_GEOMETRY; i++ )
+	{
+    	d = sea_octave((uv+SEA_sumTime)*freq,choppy);
+    	d += sea_octave((uv-SEA_sumTime)*freq,choppy);
+        h += d * amp;        
+    	uv = mul( octave_m, uv ); 
+		freq *= 1.9; 
+		amp *= 0.22;
+        choppy = lerp( choppy, 1.0, 0.2 );
+    }
+    return p.y + h;
+}
+
+float map_detailed(float3 p)
+{
+	float2x2 octave_m = float2x2(1.6,1.2,-1.2,1.6);
+	float SEA_TIME = app_time * SEA_SPEED;
+    float freq = SEA_FREQ;
+    float amp = SEA_HEIGHT;
+    float choppy = SEA_CHOPPY;
+    float2 uv = p.xz; 
+	uv.x *= 0.75;
+    
+    float d, h = 0.0;    
+    for(int i = 0; i < ITER_FRAGMENT; i++) {        
+    	d = sea_octave((uv+SEA_TIME)*freq,choppy);
+    	d += sea_octave((uv-SEA_TIME)*freq,choppy);
+        h += d * amp;        
+    	uv = mul( octave_m, uv );
+		freq *= 1.9; 
+		amp *= 0.22;
+        choppy = lerp(choppy,1.0,0.2);
+    }
+    return p.y + h;
+}
+
+// tracing
+float3 getNormal(float3 p, float eps)
+{
+    float3 n;
+    n.y = map_detailed(p);    
+    n.x = map_detailed(float3(p.x+eps,p.y,p.z)) - n.y;
+    n.z = map_detailed(float3(p.x,p.y,p.z+eps)) - n.y;
+    n.y = eps;
+    return normalize(n);
+}
+
+// lighting
+float diffuse(float3 n,float3 l,float p) {
+    return pow(dot(n,l) * 0.4 + 0.6,p);
+}
+
+float specular( float3 n, float3 l, float3 e, float s )
+{    
+    float nrm = (s + 8.0) / (3.1415 * 8.0);
+    return pow(max(dot(reflect(e,n),l),0.0),s) * nrm;
+}
+
+// sky
+float3 getSkyColor(float3 e)
+{
+    e.y = max(e.y,0.0);
+    float3 ret;
+    ret.x = pow(1.0-e.y,2.0);
+    ret.y = 1.0-e.y;
+    ret.z = 0.6+(1.0-e.y)*0.4;
+    return ret;
+}
+
+float3 getSeaColor( float3 p, float3 n, float3 l, float3 eye, float3 dist )
+{  
+    float fresnel = 1.0 - max(dot(n,-eye),0.0);
+    fresnel = pow(fresnel,3.0) * 0.65;
+        
+    float3 reflected = getSkyColor(reflect(eye,n));    
+	//float3 reflected = float3( 0.9, 0.9, 1.0f );
+    float3 refracted = SEA_BASE + diffuse(n,l,80.0) * SEA_WATER_COLOR * 0.12; 
+    
+    float3 color = lerp(refracted,reflected,fresnel);
+	
+    float atten = max(1.0 - dot(dist,dist) * 0.001, 0.0);
+    //color += SEA_WATER_COLOR * (p.y - SEA_HEIGHT) * 0.18 * atten;
+    
+    color.xyz += specular( n, l, eye, 60.0 );
+    
+    return color;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 main(PixelInputType input) : SV_TARGET
+{    
+    float4 color;	
+    
+	float2 tex_coord = input.tex;
+	
+	//return float4( 0.7, 0.7, 1.0, 1.0 );
+	
+	///---------------------------------------
+    float3 light = normalize(float3(0.0,1.0,0.8)); 
+	float3 normal = getNormal( input.worldPosition, /*scale ***/ 0.005 );	
+	float3 dist = input.worldPosition - camera_position;
+		
+	//return colorTexture[0].Sample( SampleType, input.tex );
+	
+	float3 dir = normalize( dist );
+	color.xyz = getSeaColor( input.worldPosition, normal, light, dir, dist );
+	
+	return color;
+	color.xyz = lerp( getSkyColor(dir), color.xyz, pow( smoothstep( 0.0, -0.05, dir.y ), 0.3f ) );
+	/*
+	float ground = colorTexture[0].Sample( SampleType, input.tex ).r;
+	ground *= input.worldTex.w;
+	ground += colorTexture[2].Sample( SampleType, input.tex * 512.0 ).r * 0.5f;
+	*/
+	color.a = 1.0f;		
+	/*
+	if( input.worldTex.z - ground > -3.0f )
+	{
+		color.a = log( ( input.worldTex.z - ground ) / 2.5f ) + 0.3f;
+	}
+	*/
+	return color;
+}	
+	

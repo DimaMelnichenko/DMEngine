@@ -1,0 +1,185 @@
+////////////////////////////////////////////////////////////////////////////////
+// Filename: terrain.ps
+////////////////////////////////////////////////////////////////////////////////
+
+
+
+//////////////
+// TEXTURES //
+//////////////
+Texture2D colorTexture[7];
+
+//////////////
+// SAMPLERS //
+//////////////
+SamplerState SampleType;
+
+//////////////////////
+// CONSTANT BUFFERS //
+//////////////////////
+cbuffer LightBuffer
+{
+    float3 lightDirection;
+    float padding;
+};
+
+cbuffer TextureBuffer
+{
+	float texture_repeat;
+	float2 texture_translate;
+	float padding2;
+};
+
+cbuffer TerrainBuffer : register(b2)
+{
+	float4 textureOffset;
+	float4 terrain_params; // terrain_params.x - height multipler, terrain_params.w - scale
+	float4 neighbors;
+};
+
+//////////////
+// TYPEDEFS //
+//////////////
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+    float2 tex : TEXCOORD0;  
+	float4 worldTex : TEXCOORD1;
+	float4 depthPosition : TEXCOORD3;
+};
+
+static const float colorTextureSize = 1024.0f;
+static const float colorTextureMultipler = 50.0f;
+
+static const float heightTextureSize = 512.0f;
+static const float heightTextureTexel = 1.0f / heightTextureSize; //size of one texel;
+static const float normalStrength = 1;
+static const float heightMultipler = 200.0f;
+static const float4 ambientLight = float4( 0.8, 0.8, 0.8, 1.0 );
+
+float3 blend(float4 texture1, float a1, float4 texture2, float a2)
+{
+    float depth = 0.2;
+    float ma = max(texture1.x + a1, texture2.x + a2) - depth;
+
+    float b1 = max(texture1.x + a1 - ma, 0);
+    float b2 = max(texture2.x + a2 - ma, 0);
+
+    return (texture1.rgb * b1 + texture2.rgb * b2) / (b1 + b2);
+}
+
+float4 ComputeNormalsPS( float2 uv )
+{	
+    float tl = abs( colorTexture[0].Sample( SampleType, uv + heightTextureTexel * float2(-1, -1), 0 ).x * heightMultipler );   // top left
+    float  l = abs( colorTexture[0].Sample( SampleType, uv + heightTextureTexel * float2(-1,  0), 0 ).x * heightMultipler );   // left
+    float bl = abs( colorTexture[0].Sample( SampleType, uv + heightTextureTexel * float2(-1,  1), 0 ).x * heightMultipler );   // bottom left
+    float  t = abs( colorTexture[0].Sample( SampleType, uv + heightTextureTexel * float2( 0, -1), 0 ).x * heightMultipler );   // top
+    float  b = abs( colorTexture[0].Sample( SampleType, uv + heightTextureTexel * float2( 0,  1), 0 ).x * heightMultipler );   // bottom
+    float tr = abs( colorTexture[0].Sample( SampleType, uv + heightTextureTexel * float2( 1, -1), 0 ).x * heightMultipler );   // top right
+    float  r = abs( colorTexture[0].Sample( SampleType, uv + heightTextureTexel * float2( 1,  0), 0 ).x * heightMultipler );   // right
+    float br = abs( colorTexture[0].Sample( SampleType, uv + heightTextureTexel * float2( 1,  1), 0 ).x * heightMultipler );   // bottom right
+	
+    // Compute dx using Sobel:
+    //           -1 0 1 
+    //           -2 0 2
+    //           -1 0 1
+
+    float dX = tr + 2 * r + br -tl - 2 * l - bl; 
+
+    // Compute dy using Sobel:
+    //           -1 -2 -1 
+    //            0  0  0
+    //            1  2  1
+	
+    float dY = bl + 2 * b + br -tl - 2 * t - tr;
+
+    // Build the normalized normal
+
+    float4 N = float4( normalize( float3( dX, 1.0f / normalStrength, dY ) ), 1.0f );
+
+    //convert (-1.0 , 1.0) to (0.0 , 1.0), if needed
+	
+	//float tmp = N.z;
+	//N.z = N.y;
+	//N.y = tmp;	
+	
+	//N.x *= -1.0f;
+	
+	//N = N * 0.5f + 0.5f;
+	
+    return N;
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 main(PixelInputType input) : SV_TARGET
+{    
+    float4 color = float4( 0.0, 0.0, 0.0, 0.0 );
+	
+	return float4( input.tex, 0.0, 1.0 );
+	
+	return neighbors;
+	
+	float3 normal = ComputeNormalsPS( input.tex ).xyz;
+	//float3 normal = colorTexture[2].Sample( SampleType, input.tex );
+	
+	//normal.xz = normal.zx;
+	//normal.yz = normal.zy;
+	//normal.z *= -1.0f;
+	normal.x *= -1.0f;
+	//normal.xz = 0.0f;
+	
+	//return float4( normal, 1.0f );
+	
+	//normal.yz = normal.zy;
+	
+    float4 textureColor = colorTexture[1].Sample( SampleType, input.tex * colorTextureMultipler  );
+	
+	float lightIntencity = max( dot( normal, normalize( float3( 1.0, 1.0, 0.0 ) ) ), 0 );	
+	
+	//normal.xy = 0.0f;
+	
+	//return float4( normal, 1.0f );
+	
+	color = ambientLight;
+	
+	color += float4( 1.0, 1.0, 1.0, 1.0 ) * lightIntencity;
+	
+	color = saturate( color );
+	
+	color *= textureColor;
+	
+	return color;
+	
+	return ( ambientLight + float4( 1.0, 1.0, 1.0, 1.0 ) * lightIntencity ) * color;
+	float alpha = colorTexture[1].Sample( SampleType, input.tex );
+	//return float4( 1.0, 1.0, 1.0, 1.0f );
+	//return float4( input.worldTex.z, 0.0, 0.0, 1.0f );
+	
+	return  colorTexture[0].Sample( SampleType, input.tex );	
+	float4 colorGrass = colorTexture[3].Sample( SampleType, input.tex * 128 );
+	float4 colorRock = colorTexture[2].Sample( SampleType, input.tex * 128 );
+	
+	return color;
+	
+	float depthValue = input.depthPosition.z / input.depthPosition.w;	
+	
+	if( depthValue < 1.0 - ( 4.0 / 10000.0 ) )
+	{
+		color = float4( blend( colorGrass, alpha, colorRock, 1 - alpha  ), 1.0f );		
+	}
+	else
+	{
+		color = lerp( colorRock, colorGrass, alpha );		
+	}
+	
+	
+	//color = pow( color, 1.0 / 2.2 );
+	
+    return color;	
+	//return float4( normal, 1.0f );
+	//return float4( 1.0, 1.0, 1.0, 1.0f );
+}	
+	

@@ -1,0 +1,87 @@
+////////////////////////////////////////////////////////////////////////////////
+// Filename: texture.ps
+////////////////////////////////////////////////////////////////////////////////
+
+/////////////
+// GLOBALS //
+/////////////
+Texture2D shaderTexture[4];
+SamplerState SampleType;
+
+//////////////
+// TYPEDEFS //
+//////////////
+
+cbuffer PSParamBuffer : register( b1 )
+{	
+	float elapsed_time;
+}
+
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+    float2 tex : TEXCOORD0;
+};
+
+struct PS_OUTPUT
+{
+  float4 result1 : SV_TARGET0;
+  float result2 : SV_TARGET1;
+};
+
+float4 Bilinear( Texture2D tex, float2 texCoord, int texSize) 
+{
+   float2 trTexCoord = texCoord*texSize;
+   float2 texf = floor(trTexCoord);
+   float2 ratio = trTexCoord - texf;
+   float2 opposite = 1.0 - ratio;
+   float4 result = (tex.SampleLevel( SampleType, texf/texSize, 0 ) * opposite.x  + tex.SampleLevel( SampleType, (texf+float2(1, 0))/texSize, 0 )   * ratio.x) * opposite.y + 
+                   (tex.SampleLevel( SampleType, (texf+float2(0, 1))/texSize, 0 ) * opposite.x + tex.SampleLevel( SampleType, (texf+float2(1, 1))/texSize, 0 ) * ratio.x) * ratio.y;
+   return result;
+ }
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+PS_OUTPUT main(PixelInputType input)
+{
+	PS_OUTPUT output;
+	
+    float4 textureColor = float4( 0.0, 0.0, 0.0, 1.0 );
+	
+	float texel = 1.0 / 1024.0;
+	
+	float2 vectors = 2.0 * shaderTexture[0].SampleLevel( SampleType, input.tex, 0 ).xy - 1.0;
+	//float my_volume = shaderTexture[2].SampleLevel( SampleType, input.tex, 0 ).r;
+	float4 current_data = shaderTexture[1].SampleLevel( SampleType, input.tex, 0 );
+	
+	float2 pos = input.tex - elapsed_time * texel * vectors;
+
+	// interpolate and write to the output fragment
+	//float xNew = Bilinear( shaderTexture[1], pos, 1024.0f ).r;
+	float3 xNew = shaderTexture[1].SampleLevel( SampleType, pos, 0 ).xyz;
+	xNew += shaderTexture[3].SampleLevel( SampleType, pos, 0 ).xyz;
+	
+	
+	output.result1 = float4( xNew, 1.0 );
+	
+    return output;
+}
+
+PS_OUTPUT init(PixelInputType input)
+{
+	PS_OUTPUT output;
+    float4 textureColor;
+	
+	textureColor = float4( 1.1, 0.0, 0.0, 1.0 );
+	
+    // Sample the pixel color from the texture using the sampler at this texture coordinate location.
+    //textureColor = shaderTexture.Sample( SampleType, input.tex );
+	
+	float3 my_height = shaderTexture[0].SampleLevel( SampleType, input.tex, 0 ).rgb;	
+	float2 vectors = shaderTexture[1].SampleLevel( SampleType, input.tex, 0 ).xz;	
+	
+	output.result1 = float4( my_height, 1.0 );
+		
+    return output;
+}

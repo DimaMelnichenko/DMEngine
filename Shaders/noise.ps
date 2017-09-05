@@ -1,0 +1,53 @@
+////////////////////////////////////////////////////////////////////////////////
+// Filename: texture.ps
+////////////////////////////////////////////////////////////////////////////////
+
+#include "samplers.sh"
+#include "noise.sh"
+
+/////////////
+// GLOBALS //
+/////////////
+Texture2D shaderTexture;
+
+//////////////
+// TYPEDEFS //
+//////////////
+
+cbuffer Application : register(b10)
+{
+	float3 camera_position;
+	float app_time;
+};
+
+struct PixelInputType
+{
+    float4 position : SV_POSITION; 
+	float2 uv: TEXCOORD;
+};
+
+float turbulence( float2 p, float f )
+{
+	float t = -.5;
+	for( ; f <= 1024.0 / 12.0 ; f *= 2 ) // W = Image width in pixels
+	{
+		t += abs( PerlinNoise2D( p, f ) / f);
+	}
+	return t;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 main(PixelInputType input) : SV_TARGET
+{
+    float4 color = (float4)0;
+	
+	color.rgb = sin( PerlinNoise2D( input.uv * 10.0, 1 ) );
+	//color.rgb = -0.1 * turbulence( input.uv * 2.0, 1 ); 
+	
+	color.a = 1.0f;
+	
+    return color;
+}

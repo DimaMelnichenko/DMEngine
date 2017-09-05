@@ -1,0 +1,375 @@
+
+#include "samplers.sh"
+
+cbuffer LightBuffer : register( b3 ) //*/ b1 - индекс буфера
+{
+    float4 cb_lightPos[10]; // w = type
+	float4 cb_lightDir[10]; // w = spot angle
+	float4 cb_lightColor[10]; // w = attenuation	
+	matrix cb_lightView[4];
+	matrix cb_lightProject[4];
+	float4 cb_shadow_texel; // shadow map texel size
+	uint cb_light_count; // current light count
+	uint cb_shadow_count; // current light with shadow count
+}
+
+cbuffer SunCSMBuffer : register( b4 ) //*/ b4 - индекс буфера
+{
+	matrix cb_CSM_View[8];
+	matrix cb_CSM_Project[8];
+	int cb_CSM_count; // current light with shadow count
+	float cb_CSM_texel;
+	float3 cb_SunDirection;
+	float4 cb_SunColor;
+	
+}
+
+static const float PI = 3.14159265f;
+
+SamplerComparisonState g_samShadow : register( s7 );
+Texture2D g_txCSMShadow[8] : register( t30 );
+Texture2D g_txSimpleShadow[4] : register( t38 );
+Texture2D g_txProjTexture[4] : register( t42 );
+
+float3 getSimpleShadowCoords( int shadow_index, float4 worldPos )
+{	
+	worldPos = mul( worldPos, cb_lightView[shadow_index] );
+    worldPos = mul( worldPos, cb_lightProject[shadow_index] );
+	
+	worldPos.xy = ( worldPos.xy / worldPos.ww ) * float2( 0.5, -0.5 ) + float2( 0.5, 0.5 );
+	return worldPos.xyz;
+}
+
+float3 getCSMShadowCoords( int shadow_index, float4 worldPos )
+{	
+	worldPos = mul( worldPos, cb_CSM_View[shadow_index] );
+    worldPos = mul( worldPos, cb_CSM_Project[shadow_index] );
+	
+	worldPos.xy = ( worldPos.xy / worldPos.ww ) * float2( 0.5, -0.5 ) + float2( 0.5, 0.5 );
+	return worldPos.xyz;
+}
+
+float sampleShadowMap( Texture2D shadow_texture, float3 coords, float bias, float texel ) 
+{ 
+	if( coords.x < 0 || coords.x > 1 || coords.y < 0 || coords.y > 1 )
+		return 1.0f;
+		
+	
+	float2 uv = coords.xy;
+	float receiver = coords.z;
+
+	float sum = 0.0;
+	const int FILTER_SIZE = 3;
+	const float HALF_FILTER_SIZE = 0.5 * float( FILTER_SIZE );
+	
+	return shadow_texture.SampleCmpLevelZero( g_samShadow, uv.xy, receiver - bias );
+	
+	for( int i = 0; i < FILTER_SIZE; i++ )
+	{
+		for( int j = 0; j < FILTER_SIZE; j++ )
+		{
+			float3 offset = float3( texel * ( float2( i, j ) - HALF_FILTER_SIZE) / HALF_FILTER_SIZE, 0 );
+			sum += shadow_texture.SampleCmpLevelZero( g_samShadow, uv.xy + offset.xy, receiver - bias );
+		}
+	}
+	return sum / (FILTER_SIZE * FILTER_SIZE);
+}
+
+float csm_shadow( float4 worldPos, int shadow_count )
+{
+	float shadowValue = 0;
+
+	/*[unroll(4)]	*/
+	for( int i = 0; i < shadow_count; i++ )
+	{
+		float3 coords = getCSMShadowCoords(i, worldPos);
+		shadowValue += ( 1.0 - sampleShadowMap( g_txCSMShadow[i], coords, 0.000001f, cb_CSM_texel ) );
+	}
+		
+	return 1.0 - saturate( shadowValue );
+}
+
+float2 projectionCoords( float4 position_in_light, int index )
+{
+	position_in_light = mul( position_in_light, cb_lightView[index] );
+    position_in_light = mul( position_in_light, cb_lightProject[index] );
+	
+	// Calculate the projected texture coordinates.
+	float2 coord;
+    coord.x =  position_in_light.x / position_in_light.w / 2.0f + 0.5f;
+    coord.y = -position_in_light.y / position_in_light.w / 2.0f + 0.5f;
+	
+	return coord;
+}
+
+float CalculatePCFPercentLit( int shadow_index, float4 position_in_light, float bias, float texel )
+{
+	// Set the bias value for fixing the floating point precision issues.
+    
+	
+	position_in_light = mul( position_in_light, cb_lightView[shadow_index] );
+    position_in_light = mul( position_in_light, cb_lightProject[shadow_index] );
+	
+	// Calculate the projected texture coordinates.
+	float2 vShadowTexCoord;
+    vShadowTexCoord.x =  position_in_light.x / position_in_light.w / 2.0f + 0.5f;
+    vShadowTexCoord.y = -position_in_light.y / position_in_light.w / 2.0f + 0.5f;
+	
+	if( ( saturate( vShadowTexCoord.x ) != vShadowTexCoord.x ) || ( saturate( vShadowTexCoord.y ) != vShadowTexCoord.y ) )
+    {
+		return 1.0f;
+	}
+	
+    float fPercentLit = 0.0f;
+    // This loop could be unrolled, and texture immediate offsets could be used if the kernel size were fixed.
+    // This would be performance improvment.
+	float m_iPCFBlurForLoopStart = -1.0f;
+	float m_iPCFBlurForLoopEnd = 2.0f;
+	
+	int iBlurRowSize = m_iPCFBlurForLoopEnd - m_iPCFBlurForLoopStart;
+    iBlurRowSize *= iBlurRowSize;
+    float fBlurRowSize = (float)iBlurRowSize;
+	
+	float depthcompare = position_in_light.z / position_in_light.w;
+	depthcompare -= bias;
+	
+	//return g_txShadow.SampleCmpLevelZero( g_samShadow, vShadowTexCoord, depthcompare );	
+	
+    for( int x = m_iPCFBlurForLoopStart; x < m_iPCFBlurForLoopEnd; ++x ) 
+    {
+        for( int y = m_iPCFBlurForLoopStart; y < m_iPCFBlurForLoopEnd; ++y ) 
+        {
+			
+            // Compare the transformed pixel depth to the depth read from the map.			 
+            fPercentLit += g_txSimpleShadow[shadow_index].SampleCmpLevelZero( g_samShadow, 
+                float2( 
+                    vShadowTexCoord.x + ( ( (float) x ) * texel ) , 
+                    vShadowTexCoord.y + ( ( (float) y ) * texel ) 
+                    ), 
+                depthcompare );			
+        }
+    }
+    fPercentLit /= (float)fBlurRowSize;
+	
+	return fPercentLit;
+}
+
+float4 smart_blend(float4 texture1, float a1, float4 texture2, float a2)
+{
+    float depth = 0.2;
+    float ma = max( texture1.x + a1, texture2.x + a2 ) - depth;
+
+    float b1 = max( texture1.x + a1 - ma, 0 );
+    float b2 = max( texture2.x + a2 - ma, 0 );
+
+    return (texture1 * b1 + texture2 * b2) / (b1 + b2);
+}
+
+float clamp_range( float from, float to, float val )
+{
+	return 1.0 - max( 0.0, min( 1.0, ( val - from )/( to - from ) ) );
+}
+
+//функция расчета затухания для источника света
+float GetAttenuation( float distance, float lightInnerR, float invLightOuterR )
+{
+    //float d = max( distance, lightInnerR);
+    //return saturate(1.0 - pow(d * invLightOuterR, 4.0)) / (d * d + 1.0);
+	return 1.0 / ( distance * distance + 1.0 );
+}
+
+float D_BlinnPhong( float roughness, float NdotH )
+{
+   float a = max( 0.001f, roughness * roughness );
+   return ( 1.0f / (PI * a * a) ) * pow( NdotH, 2.0f / (a * a) - 2.0f );
+}
+
+float D_Skyforge( float roughness, float NdotH )
+{
+   float a = pow( 2.0f, 16.0f - 18.0f * roughness );
+   return ( a + 2 ) / ( 2 * PI ) * pow( NdotH, a );
+}
+
+float D_Beckmann( float roughness, float NdotH )
+{
+   float a = max( 0.001f, roughness * roughness );
+   float a2 = a * a;
+   float NdotH2 = NdotH * NdotH;
+
+   return ( 1.0f/ ( PI * a2 * NdotH2 * NdotH2 + 0.001 ) ) * exp( ( NdotH2 - 1.0f ) / ( a2 * NdotH2 ) );
+}
+
+float D_GGX( float roughness, float NdotH ) // Trowbridge-Reitz
+{
+    float a = max( 0.001f, roughness * roughness );
+    float a2 = a * a;
+    float d = ( ( NdotH * NdotH ) * ( a2 - 1.0 ) + 1.0 );
+    return a2 / ( PI * ( d * d ) );
+}
+
+float F( float3 l, float3 h, float f0 )
+{
+	return f0 + ( 1.0 - f0 ) * pow( 1.0 - dot( h, l ), 5.0 ); 
+}
+
+float f0_ior( float ior )
+{	
+	return pow( ( ior - 1.0 )/( ior + 1.0 ), 2.0 );
+}
+
+float F_Schlick(float f0, float HdotV)
+{
+    return ( f0 + ( 1.0f - f0 ) * pow( (1.0f - HdotV), 5.0f ) );
+}
+
+float F_CookTorrance(float f0, float HdotV)
+{
+    float n = (1.0f + sqrt(f0)) / (1.0f - sqrt(f0));
+    float c = HdotV;
+    float g = sqrt(n * n + c * c - 1.0f);
+
+    float part1 = (g - c)/(g + c);
+    float part2 = ((g + c) * c - 1.0f)/((g - c) * c + 1.0f);
+
+    return 0.5f * part1 * part1 * (1.0f + part2 * part2);
+}
+
+float G_Implicit(float NdotV, float NdotL)
+{
+    return NdotL * NdotV;
+}
+
+float G_CookTorrance(float NdotV, float NdotL, float NdotH, float VdotH)
+{
+    return min(1.0f, min((2.0f * NdotH * NdotV)/VdotH, (2.0f * NdotH * NdotL)/ VdotH));
+}
+
+float G_Kelemen(float NdotV, float NdotL, float LdotV)
+{
+    return (2 * NdotL * NdotV) / (1 + LdotV);
+}
+
+float G_Smith( float roughness, float NdotV, float NdotL )
+{
+   float a = max( 0.001f, roughness * roughness );
+   float a2 = a * a;
+   float G_L = ( 2.0f * NdotV ) / ( NdotV + sqrt( a2 + ( (1.0f - a2 ) * ( NdotV * NdotV ) ) ) );
+   float G_V = ( 2.0f * NdotL ) / ( NdotL + sqrt( a2 + ( (1.0f - a2 ) * ( NdotL * NdotL ) ) ) );
+   return G_L * G_V;
+}
+
+float V( float3 n, float3 v, float3 l, float roughness )
+{
+	float ap = pow( 8192, roughness );
+	
+	float k = 2.0 / pow( PI * ( ap + 2.0 ), 0.5 );
+	
+	return 1.0 / ( ( dot( n, l ) * ( 1.0 - k ) + k ) * ( dot( n, v ) * ( 1.0 - k ) + k ) + + 1.0e-7 );
+}
+
+float CookTorrance( float3 _normal, float3 _light, float3 _view, float roughness_val )
+{
+	if( roughness_val <= 0.0 ) 
+		return 0.0;
+		
+	// вычислим средний вектор между положением источника света и вектором взгл¤да
+	float3  half_vec = normalize( _view + _light );
+	
+	// найдем разнообразные скал¤рные произведени¤ :)
+	float NdotL    = max( dot( _normal, _light ), 0.0 );
+	float NdotV    = max( dot( _normal, _view ), 0.0 );
+	float NdotH    = max( dot( _normal, half_vec ), 1.0e-7 );
+	float VdotH    = max( dot( _view,   half_vec ), 0.0 );
+	// NdotH не может быть равным нулю, так как в последствии на него надо будет делить
+
+	// вычислим геометрическую составл¤ющую
+	float geometric = 2.0 * NdotH / VdotH;
+	geometric = min( 1.0, geometric * min( NdotV, NdotL ) );
+
+	// вычислим компонент шероховатости поверхности
+	float r_sq          = roughness_val * roughness_val;
+	float NdotH_sq      = NdotH * NdotH;
+	float NdotH_sq_r    = 1.0 / ( NdotH_sq * r_sq );
+	float roughness_exp = (NdotH_sq - 1.0) * ( NdotH_sq_r );
+	float roughness     = exp( roughness_exp ) * NdotH_sq_r / ( 4.0 * NdotH_sq );
+
+	// вычислим коэффициент ‘ренел¤, не ввод¤ дополнительный параметр
+	float fresnel = 1.0 / (1.0 + NdotV);
+
+	// вычисл¤ем результат, добавл¤¤ к знаменателю малую величину
+	// чтобы не было делени¤ на ноль
+	return min(1.0, (fresnel * geometric * roughness) / (NdotV * NdotL + 1.0e-7));
+}
+
+
+float2 calc_parallax_offset( float3 toEye, float3 Normal, float3 Tangent, float2 TexCoord, Texture2D heightTexture, SamplerState _sampler )
+{
+	//
+	// Parallax Occlusion calculations to find the texture coords to use.
+	//
+	float3 viewDirW = -toEye;
+	
+	// Build orthonormal basis.
+	float3 N = Normal;
+	float3 T = normalize( Tangent - dot( Tangent, N ) * N );
+	float3 B = cross( N, T );
+	float3x3 toTangent = transpose( float3x3(T, B, N) );
+	float3 viewDirTS = mul( viewDirW, toTangent );
+	float2 maxParallaxOffset = -viewDirTS.xy * 0.03f / viewDirTS.z;
+	
+	// Vary number of samples based on view angle between the eye and	
+	// the surface normal. (Head-on angles require less samples than
+	// glancing angles.)
+	
+	int sampleCount = (int)lerp( 24, 8, dot( toEye, Normal ) );
+	
+	float zStep = 1.0f / (float)sampleCount;
+
+	float2 texStep = maxParallaxOffset * zStep;
+	// Precompute texture gradients since we cannot compute texture
+	// gradients in a loop. Texture gradients are used to select the right
+	// mipmap level when sampling textures. Then we use Texture2D.SampleGrad()
+	// instead of Texture2D.Sample().
+	
+	float2 dx = ddx( TexCoord );
+	float2 dy = ddy( TexCoord );
+	int sampleIndex = 0;
+	float2 currTexOffset = 0;
+	float2 prevTexOffset = 0;
+	float2 finalTexOffset = 0;
+	float currRayZ = 1.0f-	zStep;
+	float prevRayZ = 1.0f;
+	float currHeight = 0.0f;
+	float prevHeight = 0.0f;
+	// Ray trace the heightfield.
+	
+	while( sampleIndex < sampleCount + 1 )
+	{
+		currHeight = heightTexture.SampleGrad( _sampler, TexCoord + currTexOffset, dx, dy ).r * 0.8;
+		
+		// Did we cross the height profile?
+		if( currHeight > currRayZ )
+		{
+			// Do ray/line segment intersection and compute final tex offset.
+			float t = (prevHeight - prevRayZ ) / ( prevHeight - currHeight + currRayZ - prevRayZ );
+			finalTexOffset = prevTexOffset + t * texStep;
+			// Exit loop.
+			sampleIndex = sampleCount + 1;
+		}
+		else
+		{
+			++sampleIndex;
+			prevTexOffset = currTexOffset;
+			prevRayZ = currRayZ;
+			prevHeight = currHeight;
+			currTexOffset += texStep;
+			// Negative because we are going "deeper" into the surface.
+			currRayZ -= zStep;
+		}
+	}
+	// Use these texture coordinates for subsequent texture
+	// fetches (color map, normal map, etc.).
+	
+	return finalTexOffset;
+}
+

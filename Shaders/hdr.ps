@@ -1,0 +1,180 @@
+
+#include "samplers.sh"
+
+//------------------------------------------------------------------
+//  GLOBAL VARIABLES
+//------------------------------------------------------------------
+static const float fBrightPassThreshold = 0.998f;  // Values greater than this are accepted for the bright pass
+static const float2 tcDownSampleOffsets[16] = 
+{
+	float2( -2, -2 ), float2( -2, -1 ), float2( -2, 0 ), float2( -2, 1 ),
+	float2( -1, -2 ), float2( -1, -1 ), float2( -1, 0 ), float2( -1, 1 ),
+	float2(  0, -2 ), float2(  0, -1 ), float2(  0, 0 ), float2(  0, 1 ),
+	float2(  1, -2 ), float2(  1, -1 ), float2(  1, 0 ), float2(  1, 1 )
+};    // The sampling offsets used by 'DownSample' and 'BrightPass'
+
+static const float g_BloomWeights[9] = { 0.228311, 0.321342, 0.410201, 0.474913, 0.498678, 0.474913, 0.410201, 0.321342, 0.228311 };
+static const float g_BloomOffsets[9] = { -4, -3, -2, -1, 0, 1, 2, 3, 4 };            
+
+
+
+Texture2D shaderTexture : register(t0);
+Texture2D bloomTexture : register(t1);
+
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+	float2 uv: TEXCOORD0;
+};
+
+static const float texel_main = 1.0 / 1024.0f;
+static const float texel_bright = 1.0 / ( 1024.0f / 2.0 );
+static const float texel_blur = 1.0 / ( 1024.0f / 8.0 );
+
+float4 FinalPass( PixelInputType input ) : SV_TARGET
+{
+	
+	float4 c = shaderTexture.Sample( g_SamplerLinearClamp, input.uv );
+	
+	float xWeight = frac( input.uv.x / texel_blur ) - 0.5;
+	float xDir = xWeight;
+	xWeight = abs( xWeight );
+	xDir /= xWeight;
+	xDir *= texel_blur;
+
+	float yWeight = frac( input.uv.y / texel_blur ) - 0.5;
+	float yDir = yWeight;
+	yWeight = abs( yWeight );
+	yDir /= yWeight;
+	yDir *= texel_blur;
+
+    // sample the blur texture for the 4 relevant pixels, weighted accordingly
+	float4 b = ((1.0f - xWeight) * (1.0f - yWeight))    * bloomTexture.Sample( g_SamplerPointClamp, input.uv );        
+	b +=       (xWeight * (1.0f - yWeight))             * bloomTexture.Sample( g_SamplerPointClamp, input.uv + float2( xDir, 0.0f ) );
+	b +=       (yWeight * (1.0f - xWeight))             * bloomTexture.Sample( g_SamplerPointClamp, input.uv + float2( 0.0f, yDir ) );
+	b +=       (xWeight * yWeight)                      * bloomTexture.Sample( g_SamplerPointClamp, input.uv + float2( xDir, yDir ) );
+            
+    // Compute the actual colour:
+    float4 final = c + 0.25f * b;
+
+	return final;
+		
+}
+
+//------------------------------------------------------------------
+// BRIGHT PASS AND 2x2 DOWN-SAMPLING PIXEL SHADER
+//
+// performs the 2x2 down sample, and then accepts any pixels
+// that are greater or equal to the configured threshold
+//------------------------------------------------------------------
+float4 BrightPass( PixelInputType input ) : SV_TARGET
+{
+    
+    float4 average = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+    // load in and combine the 4 samples from the source HDR texture
+	for( int i = 0; i < 4; i++ )
+	{
+		average += shaderTexture.Sample( g_SamplerLinearClamp, input.uv + float2( tcDownSampleOffsets[i].x, tcDownSampleOffsets[i].y ) * texel_main );
+	}
+		
+	average *= 0.25f;
+
+    // Determine the brightness of this particular pixel. As with the luminance calculations
+    // there are 4 possible variations on this calculation:
+    
+    // 1. Do a very simple mathematical average:
+        //float luminance = dot( average.rgb, float3( 0.33f, 0.33f, 0.33f ) );
+    
+    // 2. Perform a more accurately weighted average:
+        //float luminance = dot( average.rgb, float3( 0.299f, 0.587f, 0.114f ) );
+    
+    // 3. Take the maximum value of the incoming, same as computing the
+    //    brightness/value for an HSV/HSB conversion:
+	float luminance = max( average.r, max( average.g, average.b ) );
+    
+    // 4. Compute the luminance component as per the HSL colour space:
+        //float luminance = 0.5f * ( max( average.r, max( average.g, average.b ) ) + min( average.r, min( average.g, average.b ) ) );
+    
+    // 5. Use the magnitude of the colour
+        //float luminance = length( average.rgb );
+            
+    // Determine whether this pixel passes the test...
+	if( luminance < fBrightPassThreshold )
+		average = float4( 0.0f, 0.0f, 0.0f, 1.0f );
+    
+    // Write the colour to the bright-pass render target
+	return average;
+    
+}
+    
+    
+    
+//------------------------------------------------------------------
+// 4x4 DOWN-SAMPLING PIXEL SHADER
+//
+// Samples the input texture 16x according to the provided offsets
+// and then writes the average to the output texture
+//------------------------------------------------------------------
+float4 DownSample( PixelInputType input ) : SV_TARGET
+{
+    
+    float4 average = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+    for( int i = 0; i < 16; i++ )
+    {
+        average += shaderTexture.Sample( g_SamplerLinearClamp, input.uv + float2(tcDownSampleOffsets[i].x, tcDownSampleOffsets[i].y) * texel_bright );
+    }
+        
+    average *= ( 1.0f / 16.0f );
+
+    return average;
+    
+}
+    
+    
+    
+//------------------------------------------------------------------
+// HORIZONTAL BLUR
+//
+// Takes 9 samples from the down-sampled texture (4 either side and
+// one central) biased by the provided weights. Different weight
+// distributions will give more subtle/pronounced blurring.
+//------------------------------------------------------------------
+float4 HorizontalBlur( PixelInputType input ) : SV_TARGET
+{
+
+    float4 color = { 0.0f, 0.0f, 0.0f, 0.0f };
+    
+    for( int i = 0; i < 9; i++ )
+    {
+        color += shaderTexture.Sample( g_SamplerLinearClamp, input.uv + float2( g_BloomOffsets[i], 0.0f ) * texel_blur ) * g_BloomWeights[i] * 0.3;
+    }
+	
+        
+    return float4( color.rgb, 1.0f );
+    
+}
+    
+    
+    
+//------------------------------------------------------------------
+// VERTICAL BLUR
+//
+// Takes 9 samples from the down-sampled texture (4 above/below and
+// one central) biased by the provided weights. Different weight
+// distributions will give more subtle/pronounced blurring.
+//------------------------------------------------------------------
+float4 VerticalBlur( PixelInputType input ) : SV_TARGET
+{
+
+    float4 color = { 0.0f, 0.0f, 0.0f, 0.0f };
+    
+    for( int i = 0; i < 9; i++ )
+    {
+        color += shaderTexture.Sample( g_SamplerPointClamp, input.uv + float2( 0.0f, g_BloomOffsets[i] ) * texel_blur ) * g_BloomWeights[i] * 0.3;
+    }
+        
+    return float4( color.rgb, 1.0f );
+    
+}
