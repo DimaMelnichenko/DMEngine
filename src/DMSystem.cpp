@@ -20,6 +20,8 @@ bool DMSystem::Initialize( )
 	// Initialize the windows api.
 	InitializeWindows( screenWidth, screenHeight );
 
+	m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd );
+
 	return true;
 }
 
@@ -46,11 +48,11 @@ void DMSystem::Run( )
 		}
 		else
 		{
-			// Otherwise do the frame processing.
-			/*if( !m_graphics->Frame() )
+			// Frame processing.
+			if( !m_graphics.Frame() )
 			{
 				break;
-			}*/
+			}
 		}
 
 	}
@@ -169,8 +171,8 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	else
 	{
 		// If windowed then set it to 1024x1024 resolution.
-		screenWidth = 400;
-		screenHeight = 400;
+		screenWidth = 1027;
+		screenHeight = 768;
 
 		// Place the window in the middle of the screen.
 #ifdef HOME_RUN

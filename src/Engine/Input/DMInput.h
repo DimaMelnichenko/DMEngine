@@ -4,7 +4,7 @@
 // INCLUDES //
 //////////////
 #include <dinput.h>
-#include "DMObject.h"
+#include "..\Graphics\Common\DMObject.h"
 
 ///////////////////////////////
 // PRE-PROCESSING DIRECTIVES //

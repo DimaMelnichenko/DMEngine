@@ -4,6 +4,7 @@
 #include <memory>
 #include "Engine/DMEngineProcessor.h"
 #include "Config/DMConfig.h"
+#include "Engine\Graphics\DMGraphics.h"
 
 
 class DMSystem 
@@ -28,5 +29,6 @@ private:
 	HINSTANCE m_hinstance;
 	HWND m_hwnd;
 	DMEngineProcessor m_engineProcessor;
+	DMGraphics m_graphics;
 	DMConfig m_config;
 };
