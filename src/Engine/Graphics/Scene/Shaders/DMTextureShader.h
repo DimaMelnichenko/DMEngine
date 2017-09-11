@@ -16,11 +16,9 @@ public:
 	DMTextureShader( DMD3D* );
 	~DMTextureShader();
 
-	__declspec( align( 16 ) ) struct PSParamBuffer
+	struct alignas(16) PSParamBuffer
 	{
-		D3DXVECTOR3 camera_position;
 		D3DXVECTOR2 tex_tiled;
-		float app_time;
 	};
 	
 	bool setTexure( ID3D11ShaderResourceView* );

@@ -985,7 +985,7 @@ bool DMGraphics::Render()
 											m_sampler_state->sampler( DMSamplerState::st_point_border ),
 											m_sampler_state->sampler( DMSamplerState::st_linear_clamp ),
 											m_sampler_state->sampler( DMSamplerState::st_linear_wrap ),
-											m_sampler_state->sampler( DMSamplerState::st_anisotrop_wrap ),
+											m_sampler_state->sampler( DMSamplerState::st_anisotrop_clamp ),
 											m_sampler_state->sampler( DMSamplerState::st_anisotrop_wrap ),
 											m_sampler_state->sampler( DMSamplerState::st_cmp_less ) };
 	m_dmd3d->GetDeviceContext()->VSSetSamplers( 0, 8, samplers_sates );
@@ -1039,9 +1039,9 @@ bool DMGraphics::Render()
 		m_dmd3d->BeginScene( 0.4f, 0.4f, 0.4f, 1.0f );
 	}
 	//
-	m_dmd3d->TurnOnWireframe();
+	//m_dmd3d->TurnOnWireframe();
 	RenderBackground( m_Camera.get() );
-	m_dmd3d->TurnOffWireframe();
+	//m_dmd3d->TurnOffWireframe();
 	//
 	///////////////////////////////////////////////////////////////
 	//
@@ -1282,8 +1282,8 @@ void DMGraphics::RenderGUI( )
 
 void DMGraphics::RenderBackground( DMCamera* camera )
 {
-	//m_dmd3d->TurnZBufferOff( );
-	//m_dmd3d->TurnCullingNoneRS();
+	m_dmd3d->TurnZBufferOff( );
+	m_dmd3d->TurnCullingNoneRS();
 
 	m_TextureShader->Prepare( camera, 0 );
 	{
@@ -1292,14 +1292,14 @@ void DMGraphics::RenderBackground( DMCamera* camera )
 			m_sky_sphere->Render( 0.0f );
 
 			D3DXMATRIX worldMatrix;
-			D3DXMatrixIdentity(&worldMatrix );
+			//D3DXMatrixIdentity(&worldMatrix );
 
-			//D3DXMatrixTranslation( &worldMatrix, camera->position().x, camera->position().y, camera->position().z );
+			D3DXMatrixTranslation( &worldMatrix, camera->position().x, camera->position().y, camera->position().z );
 
 			DMTextureShader::PSParamBuffer param;
 			memset( &param, 0, sizeof( DMTextureShader::PSParamBuffer ) );
-			param.tex_tiled.x = 1.0f;
-			param.tex_tiled.y = -1.0f;
+			param.tex_tiled.x = -1.0f;
+			param.tex_tiled.y = 1.0f;
 
 			m_TextureShader->setParameters( &param );
 			m_TextureShader->setTexure( m_texture_pool->texture( m_sky_sphere->texture( DMModel::albedo ) ) );
@@ -1308,8 +1308,8 @@ void DMGraphics::RenderBackground( DMCamera* camera )
 		}
 	}
 
-	//m_dmd3d->TurnDefaultRS();
-	//m_dmd3d->TurnZBufferOn( );
+	m_dmd3d->TurnDefaultRS();
+	m_dmd3d->TurnZBufferOn( );
 }
 
 void DMGraphics::RenderShadowSun()
