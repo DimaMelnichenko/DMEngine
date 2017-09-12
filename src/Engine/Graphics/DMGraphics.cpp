@@ -313,7 +313,7 @@ bool DMGraphics::InitLights()
 
 	//m_light_driver->addLight( std::move( light ) );
 
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
+	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
 	light->setColor( 125.0f, 125.0f, 100.9f );
 	light->attenuation = 300.0f;
 	light->setPosition( 5.0f, 4.0f, 5.5f );
@@ -323,7 +323,7 @@ bool DMGraphics::InitLights()
 	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
 	m_light_driver->addLight( std::move( light ) );	
 
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
+	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
 	light->setColor( 125.0f, 125.0f, 100.9f );
 	light->attenuation = 300.0f;
 	light->setPosition( 20.0, 4.0, 5.5 );
@@ -333,7 +333,7 @@ bool DMGraphics::InitLights()
 	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
 	m_light_driver->addLight( std::move( light ) );
 
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
+	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
 	light->setColor( 125.0f, 125.0f, 100.9f );
 	light->attenuation = 300.0f;
 	light->setPosition( 35.0, 4.0, 5.5 );
@@ -343,7 +343,7 @@ bool DMGraphics::InitLights()
 	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
 	m_light_driver->addLight( std::move( light ) );
 
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
+	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
 	light->setColor( 125.0f, 125.0f, 100.9f );
 	light->attenuation = 300.0f;
 	light->setPosition( 50.0, 4.0, 5.5 );
@@ -515,7 +515,7 @@ bool DMGraphics::InitModels()
 	memset( out, 0, sizeof( wchar_t ) * 500 );
 	DWORD size;
 
-	std::wstring level_file = L"D:\\VS Projects\\DMEngine\\DMEngine\\data\\level01.ini";
+	std::wstring level_file = L"data\\level01.ini";
 
 	GetPrivateProfileSection( L"Models", out, 500, level_file.data() );
 	//GetPrivateProfileSectionNames( out, 500, L"D:\\VS Projects\\DMEngine\\DMEngine\\data\\level01.ini" );
