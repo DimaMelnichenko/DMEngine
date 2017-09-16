@@ -16,7 +16,7 @@ public:
 	unsigned int load_texture( const std::wstring& file );
 	ID3D11ShaderResourceView* texture( unsigned int );
 
-private:
+private:	
 	std::unordered_map<std::wstring, unsigned int> m_path_to_index;
 	std::vector<std::unique_ptr<DMTexture>> m_texure_pool;
 };

@@ -312,8 +312,8 @@ bool DMGraphics::InitLights()
 	light->setPosition( 100.00, 70.0, 100.00 );
 
 	//m_light_driver->addLight( std::move( light ) );
-
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
+	
+	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
 	light->setColor( 125.0f, 125.0f, 100.9f );
 	light->attenuation = 300.0f;
 	light->setPosition( 5.0f, 4.0f, 5.5f );
@@ -323,7 +323,7 @@ bool DMGraphics::InitLights()
 	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
 	m_light_driver->addLight( std::move( light ) );	
 
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
+	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
 	light->setColor( 125.0f, 125.0f, 100.9f );
 	light->attenuation = 300.0f;
 	light->setPosition( 20.0, 4.0, 5.5 );
@@ -333,7 +333,7 @@ bool DMGraphics::InitLights()
 	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
 	m_light_driver->addLight( std::move( light ) );
 
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
+	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
 	light->setColor( 125.0f, 125.0f, 100.9f );
 	light->attenuation = 300.0f;
 	light->setPosition( 35.0, 4.0, 5.5 );
@@ -343,7 +343,7 @@ bool DMGraphics::InitLights()
 	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
 	m_light_driver->addLight( std::move( light ) );
 
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
+	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
 	light->setColor( 125.0f, 125.0f, 100.9f );
 	light->attenuation = 300.0f;
 	light->setPosition( 50.0, 4.0, 5.5 );
@@ -355,7 +355,7 @@ bool DMGraphics::InitLights()
 
 
 
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
+	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
 	light->setColor( 20.0f, 10.0f, 0.0f );
 	light->attenuation = 100.0f;
 	light->setPosition( 500.0, 10.0, 495.0 );
@@ -407,13 +407,13 @@ bool DMGraphics::InitShader()
 		return false;
 	if( !m_light_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\lightshader.ps" ) )
 		return false;
-	if( !m_light_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\lightshadersimple.ps" ) )
+	/*if( !m_light_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\lightshadersimple.ps" ) )
 		return false;
 	if( !m_light_shader->addShaderPass( DMShader::vs, "main", L"Shaders\\lightshader.vs", "INST_POS=1,INST_SCALE=1" ) )
-		return false;
+		return false;*/
 	m_light_shader->createPhase( 0, -1, 0 );
-	m_light_shader->createPhase( 0, -1, 1 );
-	m_light_shader->createPhase( 1, -1, 0 );
+	//m_light_shader->createPhase( 0, -1, 1 );
+	//m_light_shader->createPhase( 1, -1, 0 );
 	m_light_shader->setLights( m_light_driver.get() );
 
 	m_render_queues[L"light"] = std::unique_ptr<DMRenderQueue>( new DMRenderQueue() );
@@ -972,7 +972,7 @@ bool DMGraphics::HandleInput( float frameTime )
 	return true;
 }
 
-const bool use_hdr = false;
+const bool use_hdr = true;
 
 bool DMGraphics::Render()
 {
@@ -1019,7 +1019,7 @@ bool DMGraphics::Render()
 		//first_time = false;
 	}
 	//RenderShadowSun();
-	//RenderShadowLights();
+	RenderShadowLights();
 	/////////////////////////////////////////////////////////////
 	
 	m_light_driver->setShaderBuffer();
@@ -1121,9 +1121,16 @@ bool DMGraphics::Render()
 	ID3D11ShaderResourceView* cube_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"Textures\\uffizi_cross_PBR.dds" ) );
 	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 5, 1, &cube_texture );
 	
-	
+	/*m_TextureShader->Prepare( m_Camera.get(), 0 );
+	model = m_models[L"Box"].get();
+	model->Render( m_Camera.get() );
+	model->resultMatrix( &worldMatrix );
+	m_TextureShader->setTexure( m_texture_pool->texture( model->texture( DMModel::gim ) ) );
+	m_TextureShader->setDrawType( DMShader::by_index );
+	m_TextureShader->Render( model->GetIndexCount(), &worldMatrix );
+	*/
 	DMRenderQueue* current_queue = m_render_queues[L"light"].get();
-	current_queue->shader()->Prepare( m_Camera.get(), current_queue->phase() );
+	current_queue->shader()->Prepare( m_Camera.get(), 0 );
 	for( auto model : current_queue->queue() )
 	{
 		model->Render( m_Camera.get() );
@@ -1189,11 +1196,12 @@ bool DMGraphics::Render()
 	}
 	
 	//m_render_filter->setSRV( 0, m_light_driver->lights()[0]->shadow_rt()->depthShaderResourceView() );
-	//m_render_filter->setSRV( 0, m_hdr->mainTexture() );
-	//m_render_filter->setSRV( 1, m_hdr->brightTexture() );
-	//m_render_filter->selectPass( 6 );
+	//m_render_filter->setSRV( 0, m_texture_pool->texture(4) );
+	m_render_filter->setSRV( 0, m_hdr->mainTexture() );
+	m_render_filter->setSRV( 1, m_hdr->brightTexture() );
+	m_render_filter->selectPass( 6 );
 	//m_render_filter->selectPass( 0 );
-	//m_render_filter->Render( m_CameraOrtho.get(), nullptr );
+	m_render_filter->Render( m_CameraOrtho.get(), nullptr );
 
 	//m_depth_output->Render( 50, 700 );
 	
@@ -1378,8 +1386,8 @@ void DMGraphics::RenderShadowSun()
 		}
 
 
-		m_clipMapShader->selectPhase( 2 );
-		m_terrain->Render( m_cameras_shadow[i].get() );
+		//m_clipMapShader->selectPhase( 2 );
+		//m_terrain->Render( m_cameras_shadow[i].get() );
 
 	}
 

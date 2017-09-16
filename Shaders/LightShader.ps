@@ -104,9 +104,9 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	//v = normalize( mul( v, tbn_matrix ) );
 	
-	float shadow_percent = 1.0;
+	//float shadow_percent = 1.0;
 	//float shadow_percent = CalculatePCFPercentLit ( float4( input.worldPosition, 1.0 ) );
-	//float shadow_percent = csm_shadow( float4( input.worldPosition, 1.0 ), cb_CSM_count );
+	float shadow_percent = csm_shadow( float4( input.worldPosition, 1.0 ), cb_CSM_count );
 	float NdotV = max( 0.0f, dot( n, v ) );	
 	
 	float3 sum_direct_specular = (float3)0;
@@ -124,7 +124,7 @@ float4 main(PixelInputType input) : SV_TARGET
 	float NdotH;
 	float NdotL;
 	float HdotV;
-	shadow_percent = 0.0;
+	//shadow_percent = 0.0;
 	
     for( uint i = 0; i < cb_light_count; i++ )
 	{
