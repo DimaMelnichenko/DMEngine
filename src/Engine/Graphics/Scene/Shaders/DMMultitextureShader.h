@@ -3,14 +3,10 @@
 //////////////
 // INCLUDES //
 //////////////
-#include <d3d11.h>
-#include <d3dx10math.h>
-#include <d3dx11async.h>
+#include "DirectX.h"
 #include <fstream>
 
-#include "..\..\Common\DMObject.h"
-
-class DMMultitextureShader : public DMObject
+class DMMultitextureShader
 {
 private:
 	struct MatrixBufferType

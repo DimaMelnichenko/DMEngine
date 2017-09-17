@@ -10,7 +10,7 @@
 
 
 
-class DMSkyPlaneShader : public DMObject
+class DMSkyPlaneShader
 {
 private:
 	struct MatrixBufferType

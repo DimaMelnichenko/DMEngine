@@ -1,7 +1,7 @@
 #include "DMInput.h"
 
 
-DMInput::DMInput(  ) : DMObject()
+DMInput::DMInput(  )
 {
 	m_directInput = 0;
 	m_keyboard = 0;

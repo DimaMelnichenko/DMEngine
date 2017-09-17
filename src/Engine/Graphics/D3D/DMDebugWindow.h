@@ -6,7 +6,7 @@
 //////////////
 #include "..\Common\DM3DObject.h"
 
-class DMDebugWindow : public DM3DObject
+class DMDebugWindow : DM3DObject
 {
 private:
 	struct VertexType

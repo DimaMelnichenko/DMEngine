@@ -1,6 +1,6 @@
 #pragma once
 
-#include <D3DX10math.h>
+#include "DirectX.h"
 
 class DMBoundingSphere
 {

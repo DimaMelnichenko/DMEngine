@@ -746,7 +746,8 @@ void DMD3D::TurnOffTransparancy()
 	TurnOffAlphaBlending();
 }
 
-bool DMD3D::createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer>& shared_buffer )
+bool DMD3D::createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer>& shared_buffer,
+										const D3D11_SUBRESOURCE_DATA * srData )
 {
 	D3D11_BUFFER_DESC param_buffer_desc;
 	param_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -757,7 +758,7 @@ bool DMD3D::createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11B
 	param_buffer_desc.StructureByteStride = 0;
 	
 	ID3D11Buffer* buffer;
-	HRESULT result = GetDevice()->CreateBuffer( &param_buffer_desc, NULL, &buffer );
+	HRESULT result = GetDevice()->CreateBuffer( &param_buffer_desc, srData, &buffer );
 	if( FAILED( result ) )
 	{
 		return false;

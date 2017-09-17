@@ -13,7 +13,7 @@ public:
 	~DMLightDriver(void);
 	bool Initialize();
 	void Shutdown();
-	void addLight( std::unique_ptr<DMLight> );
+	void addLight( std::unique_ptr<DMLight>&& );
 	void setShaderBuffer();
 	void update( float );
 	void addCSMLayer( DMCamera* );

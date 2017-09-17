@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Common/DM3DObject.h"
+#include "../DMModel.h"
 
 class DMInstance : public DM3DObject
 {

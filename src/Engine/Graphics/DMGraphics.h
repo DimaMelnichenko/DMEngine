@@ -23,7 +23,6 @@
 #include "D3D\DMDebugWindow.h"
 
 #include "Scene\DMQuadTree.h"
-#include "Scene\QuadTreeClass.h"
 
 #include "Scene\Camera\DMCamera.h"
 #include "Scene\Camera\DMPosition.h"
@@ -46,7 +45,6 @@
 
 #include "Scene\Shaders\DMColorShader.h"
 #include "Scene\Shaders\DMTextureShader.h"
-#include "Scene\Shaders\DMMultitextureShader.h"
 #include "Scene\Shaders\DMDepthShader.h"
 #include "Scene\Shaders\DMReflectionShader.h"
 #include "Scene\Shaders\DMNormalmapShader.h"
@@ -92,7 +90,7 @@ const float SCREEN_NEAR = 1.0f;
 const int SHADOWMAP_WIDTH = 1024;
 const int SHADOWMAP_HEIGHT = 1024;
 
-class DMGraphics : public DMObject
+class DMGraphics
 {
 public:
 	DMGraphics( );
@@ -150,8 +148,6 @@ private:
 	std::unique_ptr<DMTexture> m_FirstBlendTexture;
 	std::unique_ptr<DMTexture> m_SecondBlendTexture;
 	std::unique_ptr<DMTexture> m_AlphaBlendTexture;
-	std::unique_ptr<DMMultitextureShader> m_MultitextureShader;
-
 
 	std::unique_ptr<DMDebugWindow> m_DebugWindow;
 
@@ -163,8 +159,6 @@ private:
 
 	std::map<std::string, std::unique_ptr<DMShader>> m_shader_list;
 
-
-	std::unique_ptr<QuadTreeClass> m_QuadTreeClass;
 	std::unique_ptr<TerrainClass> m_TerrainClass;
 	//std::unique_ptr<TerrainShaderClass> m_TerrainShaderClass;
 

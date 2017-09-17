@@ -4,10 +4,10 @@
 // INCLUDES //
 //////////////
 #include <math.h>
-#include "..\..\Common\DMObject.h"
 
 
-class DMPosition : public DMObject
+
+class DMPosition
 {
 public:
 	DMPosition(  );

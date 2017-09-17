@@ -3,12 +3,11 @@
 //////////////
 // INCLUDES //
 //////////////
-#include "..\..\Common\DMObject.h"
 #include "..\..\Common\DMAABB.h"
 #include "DMCamera.h"
 
 
-class DMFrustum : public DMObject
+class DMFrustum
 {
 public:
 	DMFrustum(  );

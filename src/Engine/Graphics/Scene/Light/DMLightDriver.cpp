@@ -29,7 +29,7 @@ void DMLightDriver::Shutdown( )
 	
 }
 
-void DMLightDriver::addLight( std::unique_ptr<DMLight> light )
+void DMLightDriver::addLight( std::unique_ptr<DMLight>&& light )
 {
 	m_light_list.push_back( std::move( light ) );
 }

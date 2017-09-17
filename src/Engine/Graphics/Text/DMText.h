@@ -1,6 +1,5 @@
 #pragma once
 
-#include "..\Common\DMObject.h"
 #include "DMFont.h"
 #include "DMFontShader.h"
 #include <vector>

@@ -4,7 +4,7 @@
 //------------------------------------------------------------------
 //  GLOBAL VARIABLES
 //------------------------------------------------------------------
-static const float fBrightPassThreshold = 0.998f;  // Values greater than this are accepted for the bright pass
+static const float fBrightPassThreshold = 0.9985f;  // Values greater than this are accepted for the bright pass
 static const float2 tcDownSampleOffsets[16] = 
 {
 	float2( -2, -2 ), float2( -2, -1 ), float2( -2, 0 ), float2( -2, 1 ),
@@ -27,26 +27,29 @@ struct PixelInputType
 	float2 uv: TEXCOORD0;
 };
 
-static const float texel_main = 1.0 / 1024.0f;
-static const float texel_bright = 1.0 / ( 1024.0f / 2.0 );
-static const float texel_blur = 1.0 / ( 1024.0f / 8.0 );
+cbuffer PSParamBuffer : register( b1 )
+{
+	float texel_size_main;
+	float texel_size_bright;
+	float texel_size_blur;
+}
 
 float4 FinalPass( PixelInputType input ) : SV_TARGET
 {
 	
 	float4 c = shaderTexture.Sample( g_SamplerLinearClamp, input.uv );
 	
-	float xWeight = frac( input.uv.x / texel_blur ) - 0.5;
+	float xWeight = frac( input.uv.x / texel_size_blur ) - 0.5;
 	float xDir = xWeight;
 	xWeight = abs( xWeight );
 	xDir /= xWeight;
-	xDir *= texel_blur;
+	xDir *= texel_size_blur;
 
-	float yWeight = frac( input.uv.y / texel_blur ) - 0.5;
+	float yWeight = frac( input.uv.y / texel_size_blur ) - 0.5;
 	float yDir = yWeight;
 	yWeight = abs( yWeight );
 	yDir /= yWeight;
-	yDir *= texel_blur;
+	yDir *= texel_size_blur;
 
     // sample the blur texture for the 4 relevant pixels, weighted accordingly
 	float4 b = ((1.0f - xWeight) * (1.0f - yWeight))    * bloomTexture.Sample( g_SamplerPointClamp, input.uv );        
@@ -75,7 +78,7 @@ float4 BrightPass( PixelInputType input ) : SV_TARGET
     // load in and combine the 4 samples from the source HDR texture
 	for( int i = 0; i < 4; i++ )
 	{
-		average += shaderTexture.Sample( g_SamplerLinearClamp, input.uv + float2( tcDownSampleOffsets[i].x, tcDownSampleOffsets[i].y ) * texel_main );
+		average += shaderTexture.Sample( g_SamplerLinearClamp, input.uv + float2( tcDownSampleOffsets[i].x, tcDownSampleOffsets[i].y ) * texel_size_main );
 	}
 		
 	average *= 0.25f;
@@ -123,7 +126,7 @@ float4 DownSample( PixelInputType input ) : SV_TARGET
 
     for( int i = 0; i < 16; i++ )
     {
-        average += shaderTexture.Sample( g_SamplerLinearClamp, input.uv + float2(tcDownSampleOffsets[i].x, tcDownSampleOffsets[i].y) * texel_bright );
+        average += shaderTexture.Sample( g_SamplerLinearClamp, input.uv + float2(tcDownSampleOffsets[i].x, tcDownSampleOffsets[i].y) * texel_size_bright );
     }
         
     average *= ( 1.0f / 16.0f );
@@ -148,7 +151,7 @@ float4 HorizontalBlur( PixelInputType input ) : SV_TARGET
     
     for( int i = 0; i < 9; i++ )
     {
-        color += shaderTexture.Sample( g_SamplerLinearClamp, input.uv + float2( g_BloomOffsets[i], 0.0f ) * texel_blur ) * g_BloomWeights[i] * 0.3;
+        color += shaderTexture.Sample( g_SamplerLinearClamp, input.uv + float2( g_BloomOffsets[i], 0.0f ) * texel_size_blur ) * g_BloomWeights[i] * 0.3;
     }
 	
         
@@ -172,7 +175,7 @@ float4 VerticalBlur( PixelInputType input ) : SV_TARGET
     
     for( int i = 0; i < 9; i++ )
     {
-        color += shaderTexture.Sample( g_SamplerPointClamp, input.uv + float2( 0.0f, g_BloomOffsets[i] ) * texel_blur ) * g_BloomWeights[i] * 0.3;
+        color += shaderTexture.Sample( g_SamplerPointClamp, input.uv + float2( 0.0f, g_BloomOffsets[i] ) * texel_size_blur ) * g_BloomWeights[i] * 0.3;
     }
         
     return float4( color.rgb, 1.0f );

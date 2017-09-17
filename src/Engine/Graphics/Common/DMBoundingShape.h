@@ -1,7 +1,7 @@
 #pragma once
-#include "DMObject.h"
 
-class DMBoundingShape :	public DMObject
+
+class DMBoundingShape
 {
 public:
 	DMBoundingShape(  );

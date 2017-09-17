@@ -4,7 +4,7 @@
 #include <d3d11.h>
 #include <d3dx11tex.h>
 
-class DMTexture2D : public DMObject
+class DMTexture2D
 {
 public:
 	DMTexture2D(  );

@@ -1,10 +1,8 @@
 #pragma once
 
-
-#include "DMObject.h"
 #include "DMBoundingSphere.h"
 
-class DMAABB : public DMObject
+class DMAABB
 {
 public:
 	DMAABB();

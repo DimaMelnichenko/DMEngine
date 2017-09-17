@@ -1,10 +1,9 @@
 #pragma once
 
-#include "DMObject.h"
 #include "..\D3D\DMD3D.h"
 #include "..\..\..\Utils\utilites.h"
 
-class DM3DObject :	public DMObject
+class DM3DObject
 {
 public:
 	DM3DObject( DMD3D* );

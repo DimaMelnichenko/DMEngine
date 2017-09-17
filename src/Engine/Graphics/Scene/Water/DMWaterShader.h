@@ -9,7 +9,7 @@
 #include <fstream>
 
 
-class DMWaterShader : public DMObject
+class DMWaterShader
 {
 private:
 	struct MatrixBufferType

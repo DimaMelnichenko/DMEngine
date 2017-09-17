@@ -5,7 +5,7 @@
 #include <d3dx11async.h>
 #include <fstream>
 
-class DMSkyDomeShader :	public DMObject
+class DMSkyDomeShader
 {
 private:
 	struct MatrixBufferType

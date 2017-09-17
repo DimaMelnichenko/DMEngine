@@ -5,9 +5,8 @@
 #include <memory>
 #include <unordered_map>
 
-#include <d3d11.h>
-#include <d3dx10math.h>
-#include "..\Common\DMObject.h"
+#include "DirectX.h"
+
 #include "Terrain\DMTerrain.h"
 #include "Terrain\DMTerrainShader.h"
 #include "Camera\DMFrustum.h"

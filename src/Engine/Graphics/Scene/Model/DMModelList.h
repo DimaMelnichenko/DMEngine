@@ -3,15 +3,14 @@
 //////////////
 // INCLUDES //
 //////////////
-#include <d3d11.h>
-#include <d3dx10math.h>
+#include "DirectX.h"
 #include <stdlib.h>
 #include <time.h>
 
-#include "..\..\Common\DMObject.h"
 
 
-class DMModelList :	public DMObject
+
+class DMModelList
 {
 private:
 	struct ModelInfoType

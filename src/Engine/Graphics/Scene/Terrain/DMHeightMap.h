@@ -1,7 +1,6 @@
 #pragma once
 
-#include <d3d11.h>
-#include <d3dx10math.h>
+#include "DirectX.h"
 
 #include "..\..\Common\DM3DObject.h"
 #include "..\..\Common\DDS.h"

@@ -1,13 +1,11 @@
 #pragma once
 
-#include <d3d11.h>
-#include <d3dx10math.h>
-#include <d3dx11async.h>
+#include "DirectX.h"
 #include <memory>
 
 #include "DMShader.h"
 
-class DMComputeShader :	public DMObject
+class DMComputeShader
 {
 public:
 	DMComputeShader( DMD3D* );

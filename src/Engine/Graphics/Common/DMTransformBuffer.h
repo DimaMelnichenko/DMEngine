@@ -1,15 +1,12 @@
 #pragma once
 
-#include <d3d11.h>
-#include <d3dx11.h>
-#include <d3dx10math.h>
+#include "DirectX.h"
 #include "DMAABB.h"
-#include "DMObject.h"
 #include <vector>
 #include <memory>
 
 
-class DMTransformBuffer : public DMObject
+class DMTransformBuffer
 {
 	
 

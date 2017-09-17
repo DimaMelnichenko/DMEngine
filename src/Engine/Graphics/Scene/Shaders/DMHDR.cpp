@@ -11,27 +11,27 @@ DMHDR::~DMHDR()
 {
 }
 
-void DMHDR::Initialize( float width, float height )
+void DMHDR::Initialize( float width, float height, float brigthDivider, float blurDivider )
 {
 	m_main_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
 	m_main_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width, height );
 
 	m_bright_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_bright_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width / 2.0f, height / 2.0f, false );
+	m_bright_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width / brigthDivider, height / brigthDivider, false );
 
 	m_blur_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_blur_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width / 8.0f, height / 8.0f, false );
+	m_blur_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width / blurDivider, height / blurDivider, false );
 
 	m_downsample_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_downsample_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width / 8.0f, height / 8.0f, false );
+	m_downsample_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width / blurDivider, height / blurDivider, false );
 
 	m_blur_camera = std::unique_ptr<DMCamera>( new DMCamera() );
-	m_blur_camera->Initialize( DMCamera::CT_ORTHO, width / 8.0f, height / 8.0f, 0.1, 2.0 );
+	m_blur_camera->Initialize( DMCamera::CT_ORTHO, width / blurDivider, height / blurDivider, 0.1, 2.0 );
 
 	m_bright_camera = std::unique_ptr<DMCamera>( new DMCamera() );
-	m_bright_camera->Initialize( DMCamera::CT_ORTHO, width / 2.0f, height / 2.0f, 0.1, 2.0 );
+	m_bright_camera->Initialize( DMCamera::CT_ORTHO, width / brigthDivider, height / brigthDivider, 0.1, 2.0 );
 
-	float down_resolution = 243.0f;
+	/*float down_resolution = 243.0f;
 
 	while( down_resolution > 1.0f )
 	{
@@ -40,7 +40,19 @@ void DMHDR::Initialize( float width, float height )
 		m_luminance_rt.push_back( std::move( rt ) );
 		down_resolution /= 3.0f;
 	}
+	*/
+	PSBuffer buffer;
+	buffer.mainTexelSize = 1.0f / width;
+	buffer.brightTexelSize = 1.0f / width / brigthDivider;
+	buffer.blurTexelSize = 1.0f / width / blurDivider;
 
+	D3D11_SUBRESOURCE_DATA srData;
+	srData.pSysMem = &buffer;
+	srData.SysMemPitch = sizeof( PSBuffer );
+	srData.SysMemSlicePitch = 0;
+
+	m_dmd3d->createShaderConstantBuffer( sizeof( PSBuffer ), m_psBuffer, &srData );
+		
 }
 
 void DMHDR::begin()
@@ -51,6 +63,9 @@ void DMHDR::begin()
 
 void DMHDR::postprocess_and_end( DMCamera* camera, DMRenderFilter* filter )
 {
+	ID3D11Buffer* buffer = m_psBuffer.get();
+	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
+
 	m_dmd3d->TurnZBufferOff();
 	
 	// bright pass
@@ -59,6 +74,8 @@ void DMHDR::postprocess_and_end( DMCamera* camera, DMRenderFilter* filter )
 	filter->setSRV( 0, m_main_rt->GetShaderResourceView() );
 	filter->selectPass( 2 );
 	filter->Render( m_bright_camera.get(), nullptr );
+
+	//m_debug_texture = m_bright_rt->GetShaderResourceView();
 	
 	// downsample
 	m_downsample_rt->SetRenderTarget();

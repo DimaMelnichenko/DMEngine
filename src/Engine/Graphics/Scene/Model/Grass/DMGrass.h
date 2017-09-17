@@ -1,6 +1,6 @@
 #pragma once
 
-
+#include "Scene/DMSceneObject.h"
 
 class DMGrass :	public DMSceneObject
 {

@@ -4,7 +4,6 @@
 // INCLUDES //
 //////////////
 #include <dinput.h>
-#include "..\Graphics\Common\DMObject.h"
 
 ///////////////////////////////
 // PRE-PROCESSING DIRECTIVES //
@@ -17,7 +16,7 @@
 #pragma comment(lib, "dinput8.lib")
 #pragma comment(lib, "dxguid.lib")
 
-class DMInput :	public DMObject
+class DMInput
 {
 public:
 	DMInput();

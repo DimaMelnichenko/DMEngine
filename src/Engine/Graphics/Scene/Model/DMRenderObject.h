@@ -1,8 +1,8 @@
 #pragma once
 
-#include "..\..\Common\DMObject.h"
 
-class DMRenderObject : public DMObject
+
+class DMRenderObject
 {
 public:
 	DMRenderObject(  );

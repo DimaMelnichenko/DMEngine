@@ -18,7 +18,6 @@
     <ClCompile Include="src\Engine\Graphics\Common\DMAABB.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMBoundingShape.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMBoundingSphere.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Common\DMObject.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMTransformBuffer.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMD3D.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMDebugWindow.cpp" />
@@ -38,7 +37,9 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModelList.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMRenderObject.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMRenderQueue.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Grass\DMGrassShader.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Model\Instance\DMInstance.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleEmitter.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.cpp" />
@@ -54,6 +55,8 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMGeoLevel.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMHeightMap.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMTerrain.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\Map\DMMiniMap.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\TerrainClass.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMFullScreen.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMFullScreenShader.cpp" />
@@ -78,11 +81,11 @@
     <ClInclude Include="src\Config\DMConfig.h" />
     <ClInclude Include="src\DMSystem.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DDS.h" />
+    <ClInclude Include="src\Engine\Graphics\Common\DirectX.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DM3DObject.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMAABB.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMBoundingShape.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMBoundingSphere.h" />
-    <ClInclude Include="src\Engine\Graphics\Common\DMObject.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMTransformBuffer.h" />
     <ClInclude Include="src\Engine\Graphics\D3D\DMD3D.h" />
     <ClInclude Include="src\Engine\Graphics\D3D\DMDebugWindow.h" />
@@ -102,7 +105,9 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModelList.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMRenderObject.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMRenderQueue.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Grass\DMGrassShader.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Model\Instance\DMInstance.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleEmitter.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.h" />
@@ -118,6 +123,8 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMGeoLevel.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMHeightMap.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMTerrain.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\Map\DMMiniMap.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\TerrainClass.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMFullScreen.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMFullScreenShader.h" />
@@ -167,7 +174,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>H:\backup\Visual studio 2010\DMEngine\DMEngine\DXUT\Source\Common\DXUT10\Core;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)\src\Engine\Graphics\Common;H:\backup\Visual studio 2010\DMEngine\DMEngine\DXUT\Source\Common\DXUT10\Core;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src\Engine\Graphics;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86\;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

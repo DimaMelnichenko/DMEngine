@@ -5,7 +5,7 @@
 #include "..\Common\DMAABB.h"
 #include "Camera\DMCamera.h"
 
-class DMSceneObject : public DM3DObject, public DMTransformBuffer
+class DMSceneObject : public DMTransformBuffer, public DM3DObject
 {
 public:
 	DMSceneObject( DMD3D* );

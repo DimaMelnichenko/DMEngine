@@ -9,7 +9,7 @@
 #include <fstream>
 
 
-class DMReflectionShader : public DMObject
+class DMReflectionShader
 {
 private:
 	struct MatrixBufferType

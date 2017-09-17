@@ -1,18 +1,16 @@
 #pragma once
 
-#include <d3d11.h>
-#include <d3dx10math.h>
-#include <d3dx11async.h>
+#include "DirectX.h"
 #include <fstream>
 #include <list>
 #include <memory>
 #include <vector>
 
-#include "..\..\Common\DMObject.h"
+#include "../../../../Utils/DMTimer.h"
 #include "..\Camera\DMCamera.h"
 #include "..\..\D3D\DMD3D.h"
 
-class DMShader : public DMObject
+class DMShader
 {
 	struct alignas(16) VPCameraBuffer
 	{		

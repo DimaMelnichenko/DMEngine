@@ -14,16 +14,12 @@
 //////////////
 
 
-#include <dxgi.h>
-#include <d3dcommon.h>
-#include <d3d11.h>
-#include <d3dx10math.h>
-#include "..\Common\DMObject.h"
+#include "DirectX.h"
 #include <list>
 #include <memory>
 #include "..\..\..\Utils\utilites.h"
 
-class DMD3D : public DMObject
+class DMD3D
 {
 public:
 	DMD3D(  );
@@ -61,7 +57,7 @@ public:
 	void TurnOnTransparancy( );
 	void TurnOffTransparancy( );
 
-	bool createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer> & );
+	bool createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer> &, const D3D11_SUBRESOURCE_DATA * = nullptr );
 	bool CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData, com_unique_ptr<ID3D11Buffer>& );
 
 private:
