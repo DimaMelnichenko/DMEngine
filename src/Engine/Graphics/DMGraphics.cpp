@@ -313,43 +313,17 @@ bool DMGraphics::InitLights()
 
 	//m_light_driver->addLight( std::move( light ) );
 
+	for( int i = 0; i < 3; ++i )
+		for( int j = 0; j < 3; ++j )
+		{
+			light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
+			light->setColor( 5.0f, 4.8f, 4.0f );
+			light->attenuation = 400.0f;
+			light->setPosition( i * 20.0f + 2.0f, 1.0f, j * 20.0f + 2.0f );
+			m_light_driver->addLight( std::move( light ) );
+		}
+
 	
-
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
-	light->setColor( 25.0f, 5.0f, 5.0f );
-	light->attenuation = 400.0f;
-	light->setPosition( 10.0f, 2.0f, 5.0f );
-	m_light_driver->addLight( std::move( light ) );
-
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
-	light->setColor( 5.0f, 25.0f, 23.9f );
-	light->attenuation = 400.0f;
-	light->setPosition( 10.0f, 2.0f, 10.0f );
-	m_light_driver->addLight( std::move( light ) );
-
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
-	light->setColor( 25.0f, 5.0f, 23.9f );
-	light->attenuation = 400.0f;
-	light->setPosition( 10.0f, 2.0f, 20.0f );
-	m_light_driver->addLight( std::move( light ) );
-
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
-	light->setColor( 5.0f, 24.0f, 3.9f );
-	light->attenuation = 400.0f;
-	light->setPosition( 10.0f, 2.0f, 30.0f );
-	m_light_driver->addLight( std::move( light ) );
-
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
-	light->setColor( 25.0f, 10.0f, 2.9f );
-	light->attenuation = 400.0f;
-	light->setPosition( 20.0f, 2.0f, 30.0f );
-	m_light_driver->addLight( std::move( light ) );
-
-	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
-	light->setColor( 15.0f, 25.0f, 2.9f );
-	light->attenuation = 400.0f;
-	light->setPosition( 20.0f, 2.0f, 15.0f );
-	m_light_driver->addLight( std::move( light ) );
 
 
 	/*
@@ -784,7 +758,7 @@ bool DMGraphics::InitModels()
 	m_sky_sphere = std::unique_ptr<DMModel>( new DMModel( m_dmd3d.get(), m_texture_pool.get() ) );
 	m_sky_sphere->Initialize( 1000.0f, DMMesh::V_PTN, L"Models\\SkySphere.bin" );
 	//m_sky_sphere->setTexure( DMModel::albedo, m_texture_pool->load_texture( L"Textures\\SkiesLL_4.dds" ) );
-	m_sky_sphere->setTexure( DMModel::albedo, m_texture_pool->load_texture( L"Textures\\Sky3.jpg" ) );
+	m_sky_sphere->setTexure( DMModel::albedo, m_texture_pool->load_texture( L"Textures\\SkiesLL_4.dds" ) );
 
 	m_model_buffer["sky_sphere"] = m_sky_sphere.get();
 

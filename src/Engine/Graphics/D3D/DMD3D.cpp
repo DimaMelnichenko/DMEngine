@@ -140,7 +140,7 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	factory = 0;
 
 	// Initialize the swap chain description.
-	ZeroMemory( &swapChainDesc, sizeof( swapChainDesc ) );
+	ZeroMemory( &swapChainDesc, sizeof( DXGI_SWAP_CHAIN_DESC ) );
 
 	// Set to a single back buffer.
 	swapChainDesc.BufferCount = 1;
@@ -150,7 +150,7 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	swapChainDesc.BufferDesc.Height = screenHeight;
 
 	// Set regular 32-bit surface for the back buffer.
-	swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 
 	// Set the refresh rate of the back buffer.
 	if( m_vsync_enabled )
