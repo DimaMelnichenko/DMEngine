@@ -19,6 +19,10 @@ bool DMTexture::Initialize( const WCHAR* filename )
 {
 	HRESULT result;
 
+	D3DX11_IMAGE_INFO imageInfo;
+	// load image info
+	D3DX11GetImageInfoFromFile( filename, nullptr, &imageInfo, nullptr );
+
 	// Load the texture in.
 	ID3D11ShaderResourceView* texture;
 	result = D3DX11CreateShaderResourceViewFromFile( m_dmd3d->GetDevice(), filename, NULL, NULL, &texture, NULL );

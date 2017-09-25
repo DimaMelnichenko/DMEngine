@@ -3,7 +3,10 @@
 
 
 
-DMModel::DMModel( DMD3D* parent, DMTexturePool* texture_pool ) : DMSceneObject( parent )
+DMModel::DMModel( DMD3D* parent, DMTexturePool* texture_pool, const std::wstring& name ) 
+			: DMSceneObject( parent ), 
+			m_name( name ),
+			m_texture_pool( texture_pool )
 {
 	m_textures = std::move( std::shared_ptr<std::vector<unsigned int>>( new std::vector<unsigned int>() ) );
 	
@@ -14,8 +17,6 @@ DMModel::DMModel( DMD3D* parent, DMTexturePool* texture_pool ) : DMSceneObject( 
 	m_meshes = std::move( std::shared_ptr<std::vector<RangeMeshesContainer>>( new std::vector<RangeMeshesContainer>() ) );
 
 	m_render_queues = std::move( std::shared_ptr<std::vector<DMRenderQueue*>>( new std::vector<DMRenderQueue*>() ) );
-
-	m_texture_pool = texture_pool;
 }
 
 DMModel::~DMModel()
@@ -33,7 +34,11 @@ void DMModel::copy_internal_data( const DMModel* model )
 
 	this->m_meshes = model->m_meshes;
 
+	this->m_texture_pool = model->m_texture_pool;
+
 	this->m_render_queues = model->m_render_queues;
+
+	this->m_name = model->m_name;
 }
 
 DMModel::DMModel( const DMModel* model ) : DMSceneObject( dynamic_cast<const DMSceneObject*>( model ) )

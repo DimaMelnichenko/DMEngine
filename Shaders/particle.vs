@@ -44,16 +44,16 @@ PixelInputType main(VertexInputType input)
 
     Particle particle = Particles[input.vertex_id];
 	
-	//particle.position.x += camera_position.x;
-	//particle.position.z += camera_position.z;
+	//particle.position.x += cb_cameraPosition.x;
+	//particle.position.z += cb_cameraPosition.z;
 	
 	output.position = float4( particle.position.xyz, 1.0f );
 	
     // Calculate the position of the vertex against the world, view, and projection matrices.
-    //output.position = mul(output.position, worldMatrix);
+    //output.position = mul(output.position, cb_worldMatrix);
 	output.world_x_y = output.position.xz;
-    //output.position = mul(output.position, viewMatrix);
-    //output.position = mul(output.position, projectionMatrix);
+    //output.position = mul(output.position, cb_viewMatrix);
+    //output.position = mul(output.position, cb_projectionMatrix);
 
 	output.uv = (float2)0.0;
 		

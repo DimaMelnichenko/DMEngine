@@ -21,6 +21,7 @@
 #include "D3D\DMD3D.h"
 #include "D3D\DMSamplerState.h"
 #include "D3D\DMDebugWindow.h"
+#include "D3D\DMStructuredBuffer.h"
 
 #include "Scene\DMQuadTree.h"
 
@@ -233,7 +234,6 @@ private:
 	std::unique_ptr<DMInstance> m_box_instance;
 	std::unique_ptr<DMInstance> m_sphere_instance;
 	std::unordered_map<std::wstring, std::unique_ptr<DMModel>> m_models;
-
 };
 
 

@@ -37,7 +37,7 @@ struct GS_generate
 PixelInput _offsetNprojected(PixelInput data, float2 offset, float2 uv)
 {
 	data.position.xy += offset;
-	data.position = mul(data.position, projectionMatrix);
+	data.position = mul(data.position, cb_projectionMatrix);
 	data.uv = uv;
 
 	return data;
@@ -60,7 +60,7 @@ void main( point PixelInput input[1], inout TriangleStream<PixelInput> stream )
 	
 	pointOut.position.y = texture_height.SampleLevel( SampleType, float2( ( pointOut.position.x ) * texel , 1.0 - ( pointOut.position.z ) * texel ), 0 ).r * 40.0;
 	
-	pointOut.position = mul( pointOut.position, viewMatrix);
+	pointOut.position = mul( pointOut.position, cb_viewMatrix);
 	
 	const float max_size = 0.3f; // размер конченого квадрата 
 	// описание квадрата

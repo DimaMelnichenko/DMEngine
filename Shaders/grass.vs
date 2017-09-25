@@ -44,9 +44,9 @@ VertexInputType generate(VertexInputGen input)
 {
 	VertexInputType output = (VertexInputType)0;
 	
-	output.position.x = trunc( camera_position.x ) + fmod( input.vertex_id, cb_map_size ) + 1 - cb_map_size / 2;	
+	output.position.x = trunc( cb_cameraPosition.x ) + fmod( input.vertex_id, cb_map_size ) + 1 - cb_map_size / 2;	
 	output.position.y = 0.0f;
-	output.position.z = trunc( camera_position.z ) + trunc( input.vertex_id / cb_map_size ) + 1 - cb_map_size / 2;		
+	output.position.z = trunc( cb_cameraPosition.z ) + trunc( input.vertex_id / cb_map_size ) + 1 - cb_map_size / 2;		
     return output;
 }
 

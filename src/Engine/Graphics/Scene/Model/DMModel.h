@@ -13,7 +13,7 @@
 class DMModel :	public DMSceneObject
 {
 public:
-	DMModel( DMD3D*, DMTexturePool* );
+	DMModel( DMD3D*, DMTexturePool*, const std::wstring& name );
 	~DMModel();
 
 	enum TextureType
@@ -61,8 +61,9 @@ private:
 		std::shared_ptr<DMMesh> mesh;		
 	};
 	// переменные общие
-	std::shared_ptr<std::vector<RangeMeshesContainer>> m_meshes;
+	std::wstring m_name;
 	unsigned int m_current_mesh_index;
+	std::shared_ptr<std::vector<RangeMeshesContainer>> m_meshes;
 	std::shared_ptr<std::vector<unsigned int>> m_textures;
 	std::shared_ptr<std::vector<D3DXVECTOR2>> m_textures_scale;	
 	std::shared_ptr<std::vector<DMRenderQueue*>> m_render_queues;

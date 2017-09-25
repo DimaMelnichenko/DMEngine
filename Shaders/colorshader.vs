@@ -29,9 +29,9 @@ PixelInputType main(VertexInputType input)
 	output.position = float4( input.position, 1.0f );
 
     // Calculate the position of the vertex against the world, view, and projection matrices.
-    output.position = mul(output.position, worldMatrix);
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+    output.position = mul(output.position, cb_worldMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
     
     // Store the input color for the pixel shader to use.
     output.color = input.color;

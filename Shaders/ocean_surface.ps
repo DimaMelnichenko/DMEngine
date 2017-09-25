@@ -17,7 +17,7 @@ struct PixelInputType
 
 cbuffer PSParamBuffer : register( b1 )
 {
-	float3 camera_position;
+	float3 cb_cameraPosition;
 	float app_time;
 }
 
@@ -169,7 +169,7 @@ float4 main(PixelInputType input) : SV_TARGET
 	///---------------------------------------
     float3 light = normalize(float3(0.0,1.0,0.8)); 
 	float3 normal = getNormal( input.worldPosition, /*scale ***/ 0.005 );	
-	float3 dist = input.worldPosition - camera_position;
+	float3 dist = input.worldPosition - cb_cameraPosition;
 		
 	//return colorTexture[0].Sample( SampleType, input.tex );
 	

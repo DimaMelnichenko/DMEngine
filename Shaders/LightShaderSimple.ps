@@ -15,7 +15,7 @@ TextureCube g_texCube : register(t5);
 
 cbuffer PSParamBuffer : register( b1 )
 {
-	float3 camera_position;
+	float3 cb_cameraPosition;
 	float app_time;
 }
 
@@ -45,7 +45,7 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	//return float4( clamp_range( 0.06, 0.062, depthValue ), 1.0, 1.0, 1.0 );
 	
-	float3 v = normalize( camera_position - input.worldPosition );
+	float3 v = normalize( cb_cameraPosition - input.worldPosition );
 	
 	//float parallax_range = clamp_range( 0.04, 0.045, depthValue );
 	//if( parallax_range < 1.0 )

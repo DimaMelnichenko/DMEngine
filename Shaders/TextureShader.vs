@@ -41,9 +41,9 @@ PixelInputType main(VertexInputType input)
     output.position.w = 1.0f;
 
     // Calculate the position of the vertex against the world, view, and projection matrices.
-    output.position = mul(output.position, worldMatrix);
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+    output.position = mul(output.position, cb_worldMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
 	
 	    // Store the texture coordinates for the pixel shader.
     output.tex = input.tex;
@@ -62,9 +62,9 @@ PixelInputType instance_main(InstanceVertexInputType input)
     output.position.w = 1.0f;
 
     // Calculate the position of the vertex against the world, view, and projection matrices.
-    output.position = mul(output.position, worldMatrix);
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+    output.position = mul(output.position, cb_worldMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
 	
 	    // Store the texture coordinates for the pixel shader.
     output.tex = input.tex;

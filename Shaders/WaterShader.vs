@@ -8,9 +8,9 @@
 /////////////
 cbuffer MatrixBuffer
 {
-	matrix worldMatrix;
-	matrix viewMatrix;
-	matrix projectionMatrix;
+	matrix cb_worldMatrix;
+	matrix cb_viewMatrix;
+	matrix cb_projectionMatrix;
 	matrix reflectionMatrix;
 };
 
@@ -58,26 +58,26 @@ PixelInputType WaterVertexShader(VertexInputType input)
     input.position.w = 1.0f;
 
 	// Calculate the position of the vertex against the world, view, and projection matrices.
-    output.position = mul(input.position, worldMatrix);
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+    output.position = mul(input.position, cb_worldMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
     
 	// Create the reflection projection world matrix.
-    reflectProjectWorld = mul(reflectionMatrix, projectionMatrix);
+    reflectProjectWorld = mul(reflectionMatrix, cb_projectionMatrix);
     reflectProjectWorld = mul(worldMatrix, reflectProjectWorld);
 
 	// Calculate the input position against the reflectProjectWorld matrix.
     output.reflectionPosition = mul(input.position, reflectProjectWorld);
 
 	// Create the view projection world matrix for refraction.
-    viewProjectWorld = mul(viewMatrix, projectionMatrix);
+    viewProjectWorld = mul(viewMatrix, cb_projectionMatrix);
     viewProjectWorld = mul(worldMatrix, viewProjectWorld);
    
 	// Calculate the input position against the viewProjectWorld matrix.
     output.refractionPosition = mul(input.position, viewProjectWorld);
 	
 	 // Calculate the position of the vertex in the world.
-    worldPosition = mul(input.position, worldMatrix);
+    worldPosition = mul(input.position, cb_worldMatrix);
 
     // Determine the viewing direction based on the position of the camera and the position of the vertex in the world.
     output.viewDirection = cameraPosition.xyz - worldPosition.xyz;

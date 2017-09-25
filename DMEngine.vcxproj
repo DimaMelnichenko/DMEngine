@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Engine\Graphics\D3D\DMStructuredBuffer.cpp" />
     <ClCompile Include="src\Engine\DMEngineProcessor.cpp" />
     <ClCompile Include="src\Config\DMConfig.cpp" />
     <ClCompile Include="src\DMSystem.cpp" />
@@ -77,6 +78,8 @@
     <ClCompile Include="src\Utils\utilites.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Engine\Graphics\Common\DM3DUtils.h" />
+    <ClInclude Include="src\Engine\Graphics\D3D\DMStructuredBuffer.h" />
     <ClInclude Include="src\Engine\DMEngineProcessor.h" />
     <ClInclude Include="src\Config\DMConfig.h" />
     <ClInclude Include="src\DMSystem.h" />

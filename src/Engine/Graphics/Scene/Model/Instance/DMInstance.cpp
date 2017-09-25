@@ -16,6 +16,12 @@ DMModel* DMInstance::model()
 	return m_model.get();
 }
 
+bool DMInstance::initialize( DMModel&& model, INSTANCE_TYPE type, unsigned int max_count )
+{
+	std::unique_ptr<DMModel> model_ptr( &model );
+	return initialize( model_ptr, type, max_count );
+}
+
 bool DMInstance::initialize( std::unique_ptr<DMModel>& model, INSTANCE_TYPE type, unsigned int max_count )
 {
 	m_model = std::move( model );
@@ -23,40 +29,25 @@ bool DMInstance::initialize( std::unique_ptr<DMModel>& model, INSTANCE_TYPE type
 	m_max_count = max_count;
 	m_current_count = 0;
 
-
-	D3D11_BUFFER_DESC buffer_desc;
-	buffer_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-	buffer_desc.ByteWidth = m_max_count * sizeof( InstanceDataType );
-	buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	buffer_desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	buffer_desc.StructureByteStride = sizeof( InstanceDataType );
-	buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
-
-	ID3D11Buffer* buffer;
-	if( FAILED( m_dmd3d->GetDevice()->CreateBuffer( &buffer_desc, nullptr, &buffer ) ) )
-	{
-		return false;
-	}
-	
-	m_instance_buffer = make_com_ptr<ID3D11Buffer>( buffer );
+	m_vsStrcturedBuffer = std::unique_ptr<DMStructuredBuffer>( new DMStructuredBuffer( m_dmd3d ) );
+	m_vsStrcturedBuffer->CreateBuffer( sizeof( VSInstanceDataType ), m_max_count );
 
 
-	D3D11_SHADER_RESOURCE_VIEW_DESC view_desc;
-	std::memset( &view_desc, 0, sizeof( D3D11_SHADER_RESOURCE_VIEW_DESC ) );
-
-	view_desc.Format = DXGI_FORMAT_UNKNOWN;
-	view_desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-	//view_desc.Buffer.ElementOffset = sizeof( InstanceDataType );
-	view_desc.Buffer.ElementWidth = m_max_count;
-
-	ID3D11ShaderResourceView* view;
-	if( FAILED( m_dmd3d->GetDevice()->CreateShaderResourceView( m_instance_buffer.get(), &view_desc, &view ) ) )
-	{
-		return false;
+	std::vector<PSInstanceDataType> data;
+	for( int i = 0; i < 7; ++i )
+	{	
+		float offset_gloss = i * ( 1.0f / 7.0f ) + ( 1.0f / 7.0f );
+		PSInstanceDataType item;
+		item.albedo = D3DXVECTOR4( 0.856, 0.168, 0.0, 1.0f );
+		item.fresnel_gloss = D3DXVECTOR4( 0.04f, 0.04, 0.04, offset_gloss );
+		data.push_back( item );
 	}
 
-	m_instance_view = make_com_ptr<ID3D11ShaderResourceView>( view );
+	m_psStrcturedBuffer = std::unique_ptr<DMStructuredBuffer>( new DMStructuredBuffer( m_dmd3d ) );
+	m_psStrcturedBuffer->CreateBuffer( sizeof( PSInstanceDataType ), data.size() );
+	m_psStrcturedBuffer->UpdateData( &data[0], sizeof( PSInstanceDataType ) * data.size() );
 
+	return true;
 }
 
 unsigned int DMInstance::count()
@@ -64,35 +55,14 @@ unsigned int DMInstance::count()
 	return m_current_count;
 }
 
-void DMInstance::set_data( const std::vector<DMInstance::InstanceDataType>& new_data )
+void DMInstance::set_data( const std::vector<DMInstance::VSInstanceDataType>& new_data )
 {
-	D3D11_MAPPED_SUBRESOURCE mappedData;
-	std::memset( &mappedData, 0, sizeof( mappedData ) );
-
-	if( new_data.size() > m_max_count )
-	{
-		m_current_count = 0;
-		return;
-	}
-
 	m_current_count = new_data.size();
-
-	if( FAILED( m_dmd3d->GetDeviceContext()->Map( m_instance_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData ) ) )
-	{
-		//handleError( ... ); // insert error handling here
-		return;
-	}
-
-	InstanceDataType* dataPtr = reinterpret_cast<InstanceDataType*>( mappedData.pData );
-	
-	std::memcpy( dataPtr, &new_data[0], sizeof( InstanceDataType ) * new_data.size() );
-
-	m_dmd3d->GetDeviceContext()->Unmap( m_instance_buffer.get(), 0 );
+	m_vsStrcturedBuffer->UpdateData( (void*)&new_data[0], new_data.size() * sizeof( VSInstanceDataType ) );
 }
 
 void DMInstance::set_to_draw()
 {
-	ID3D11ShaderResourceView* view = m_instance_view.get();
-
-	m_dmd3d->GetDeviceContext()->VSSetShaderResources( 16, 1, &view );
+	m_vsStrcturedBuffer->setToSlot( 16, SRVType::vs );
+	m_psStrcturedBuffer->setToSlot( 16, SRVType::ps );
 }

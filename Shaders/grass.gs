@@ -37,7 +37,7 @@ struct PixelInput
 PixelInput _offsetNprojected(PixelInput data, float2 offset, float2 uv, float color_corrector )
 {
 	data.position.xy += offset;
-	data.position = mul(data.position, projectionMatrix);
+	data.position = mul(data.position, cb_projectionMatrix);
 	data.uv = uv;
 	data.color.rgb *= color_corrector;
 
@@ -79,14 +79,14 @@ void generate( point GS_generate input[1], inout PointStream<GS_generate> stream
 	frustum_pos.xyz = pointOut.position;
 	frustum_pos.w = 1.0f;
 	
-	frustum_pos = mul( frustum_pos, viewMatrix );
+	frustum_pos = mul( frustum_pos, cb_viewMatrix );
 	
 	int checks[6] = { 0, 0, 0, 0, 0, 0 };	
 	float4 bilboard[4];	
-	bilboard[0] = mul( float4( frustum_pos.x - 1.0, frustum_pos.y, frustum_pos.zw ), projectionMatrix );
-	bilboard[1] = mul( float4( frustum_pos.x - 1.0, frustum_pos.y + 2.0, frustum_pos.zw ), projectionMatrix );
-	bilboard[2] = mul( float4( frustum_pos.x + 1.0, frustum_pos.y, frustum_pos.zw ), projectionMatrix );
-	bilboard[3] = mul( float4( frustum_pos.x + 1.0, frustum_pos.y + 2.0, frustum_pos.zw ), projectionMatrix );
+	bilboard[0] = mul( float4( frustum_pos.x - 1.0, frustum_pos.y, frustum_pos.zw ), cb_projectionMatrix );
+	bilboard[1] = mul( float4( frustum_pos.x - 1.0, frustum_pos.y + 2.0, frustum_pos.zw ), cb_projectionMatrix );
+	bilboard[2] = mul( float4( frustum_pos.x + 1.0, frustum_pos.y, frustum_pos.zw ), cb_projectionMatrix );
+	bilboard[3] = mul( float4( frustum_pos.x + 1.0, frustum_pos.y + 2.0, frustum_pos.zw ), cb_projectionMatrix );
 	
 	for( int i = 0; i < 4; i++ )
 	{
@@ -108,7 +108,7 @@ void generate( point GS_generate input[1], inout PointStream<GS_generate> stream
 	}
 	
 	if( size < 0.2 || pointOut.position.x >= tex_size - 1 || pointOut.position.x <= 0 || pointOut.position.z >= tex_size - 1 || pointOut.position.z <= 0 || 
-		length( camera_position.xyz - pointOut.position.xyz ) > cb_map_size / 2  )
+		length( cb_cameraPosition.xyz - pointOut.position.xyz ) > cb_map_size / 2  )
 	{
 		stream.RestartStrip();
 		return;
@@ -128,10 +128,10 @@ void main( point PixelInput input[1], inout TriangleStream<PixelInput> stream )
 	float texel2 = 1.0f / 256.0;
 	
 	float size = texture_distribution.SampleLevel( SampleLinearType, float2( ( pointOut.position.x ) * texel, 1.0 - ( pointOut.position.z ) * texel ), 0 ).r;
-	pointOut.color = texture_color.SampleLevel( SampleLinearType, float2( 1.0 - ( camera_position.x - pointOut.position.x - 1 + cb_map_size / 2.0 ) * texel2, 
-																		  ( camera_position.z - pointOut.position.z - 1 + cb_map_size / 2.0 ) * texel2 ), 0 ).rgb * 1.0;
+	pointOut.color = texture_color.SampleLevel( SampleLinearType, float2( 1.0 - ( cb_cameraPosition.x - pointOut.position.x - 1 + cb_map_size / 2.0 ) * texel2, 
+																		  ( cb_cameraPosition.z - pointOut.position.z - 1 + cb_map_size / 2.0 ) * texel2 ), 0 ).rgb * 1.0;
 			
-	pointOut.position = mul( pointOut.position, viewMatrix);
+	pointOut.position = mul( pointOut.position, cb_viewMatrix);
 	
 	CreateBilboard( stream, pointOut, size );
 

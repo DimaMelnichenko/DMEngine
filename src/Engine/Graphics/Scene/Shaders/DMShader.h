@@ -9,15 +9,20 @@
 #include "../../../../Utils/DMTimer.h"
 #include "..\Camera\DMCamera.h"
 #include "..\..\D3D\DMD3D.h"
+#include "DM3DUtils.h"
 
 class DMShader
 {
-	struct alignas(16) VPCameraBuffer
+	struct alignas(16) FrameConstant
 	{		
 		D3DXMATRIX view;
+		D3DXMATRIX viewInverse;
 		D3DXMATRIX projection;
-		D3DXVECTOR3 camera_position;
-		D3DXVECTOR3 view_direction;
+		D3DXMATRIX viewProjection;
+		D3DXVECTOR3 cameraPosition;
+		D3DXVECTOR3 viewDirection;
+		float appTime;
+		float elapsedTime;
 	};
 
 	struct alignas(16) WorldBuffer
@@ -52,14 +57,9 @@ public:
 		skip, by_vertex, by_index, by_index_instance, by_auto
 	};
 
-	enum ShaderType
-	{
-		vs, ps, gs
-	};
-
-	
+		
 	void setDrawType( DrawType );
-	bool addShaderPass( ShaderType, const char* function_name, const WCHAR* file_name, const std::string& defines = "" );	
+	bool addShaderPass( SRVType type, const char* function_name, const WCHAR* file_name, const std::string& defines = "" );	
 
 	void createPhase( int index_vs, int index_gs, int index_ps );
 	bool selectPhase( unsigned int idx );
@@ -105,9 +105,8 @@ private:
 	std::vector<com_unique_ptr<ID3D11PixelShader>> m_pixel_shader;
 	std::vector<com_unique_ptr<ID3D11GeometryShader>> m_geometry_shader;
 	std::vector<com_unique_ptr<ID3D11InputLayout>> m_layout;
-	com_unique_ptr<ID3D11Buffer> m_vpcamera_buffer;
+	com_unique_ptr<ID3D11Buffer> m_frameConstantBuffer;
 	com_unique_ptr<ID3D11Buffer> m_world_buffer;
-	com_unique_ptr<ID3D11Buffer> m_ps_application_buffer;
 	DrawType m_draw_type;
 	int m_phase_idx;
 	bool m_use_strimout_gs;	

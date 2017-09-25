@@ -8,9 +8,9 @@
 /////////////
 cbuffer MatrixBuffer
 {
-    matrix worldMatrix;
-    matrix viewMatrix;
-    matrix projectionMatrix;
+    matrix cb_worldMatrix;
+    matrix cb_viewMatrix;
+    matrix cb_projectionMatrix;
 };
 
 cbuffer TerrainBuffer
@@ -99,11 +99,11 @@ PixelInputType main(VertexInputType input)
 
 	
     // Calculate the position of the vertex against the world, view, and projection matrices.
-	output.position = mul(output.position, worldMatrix);
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+	output.position = mul(output.position, cb_worldMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
 	
-	output.depthPosition = mul( input.position, worldMatrix );
+	output.depthPosition = mul( input.position, cb_worldMatrix );
 	
     return output;
 }

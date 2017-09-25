@@ -44,6 +44,7 @@ struct PixelInputType
 	float3 tangent : TANGENT0;
 	float3 binormal : BINORMAL0;
 	float3 worldPosition : TEXCOORD1;
+	uint instanceIndex : SV_InstanceID;
 };
 
 
@@ -60,6 +61,8 @@ PixelInputType main(VertexInputType input)
 	
 	output.tex = input.tex;
 	
+	output.instanceIndex = input.instance_index;
+	
 	// instance defines block
 #ifdef INST_SCALE
 	output.position.xyz *= instance_vector[input.instance_index].scale;
@@ -75,17 +78,17 @@ PixelInputType main(VertexInputType input)
     
 
     // Calculate the position of the vertex against the world, view, and projection matrices.
-    output.position = mul(output.position, worldMatrix);
+    output.position = mul(output.position, cb_worldMatrix);
 	output.worldPosition = output.position.xyz;
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
     
     
 	
 	    // Calculate the normal vector against the world matrix only.
-    output.normal = normalize( mul(input.normal, (float3x3)worldMatrix) );
-	output.tangent	= normalize( mul( input.tangent, (float3x3)worldMatrix ) );
-	output.binormal = normalize( mul( input.binormal, (float3x3)worldMatrix ) );
+    output.normal = normalize( mul(input.normal, (float3x3)cb_worldMatrix) );
+	output.tangent	= normalize( mul( input.tangent, (float3x3)cb_worldMatrix ) );
+	output.binormal = normalize( mul( input.binormal, (float3x3)cb_worldMatrix ) );
 	
     // Normalize the normal vector.
     output.normal = normalize(output.normal);

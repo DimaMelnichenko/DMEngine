@@ -102,10 +102,10 @@ PixelInputType main(VertexInputType input)
 	output.position.z = min( output.position.z, 2049 );
 	
     // Calculate the position of the vertex against the world, view, and projection matrices.
-	output.position = mul(output.position, worldMatrix);
+	output.position = mul(output.position, cb_worldMatrix);
 	output.world_position = output.position;
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
 		
 	
     return output;

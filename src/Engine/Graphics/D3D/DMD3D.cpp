@@ -589,7 +589,7 @@ void DMD3D::EndScene( )
 	if( m_vsync_enabled )
 	{
 		// Lock to screen refresh rate.
-		m_swapChain->Present( 1, 0 );
+		m_swapChain->Present ( 1, 0 );
 	}
 	else
 	{

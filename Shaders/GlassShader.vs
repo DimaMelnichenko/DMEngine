@@ -8,9 +8,9 @@
 /////////////
 cbuffer MatrixBuffer
 {
-    matrix worldMatrix;
-    matrix viewMatrix;
-    matrix projectionMatrix;
+    matrix cb_worldMatrix;
+    matrix cb_viewMatrix;
+    matrix cb_projectionMatrix;
 };
 
 
@@ -44,15 +44,15 @@ PixelInputType GlassVertexShader(VertexInputType input)
     input.position.w = 1.0f;
 
     // Calculate the position of the vertex against the world, view, and projection matrices.
-    output.position = mul(input.position, worldMatrix);
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+    output.position = mul(input.position, cb_worldMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
     
     // Store the texture coordinates for the pixel shader.
     output.tex = input.tex;
 	
 	  // Create the view projection world matrix for refraction.
-    viewProjectWorld = mul(viewMatrix, projectionMatrix);
+    viewProjectWorld = mul(viewMatrix, cb_projectionMatrix);
     viewProjectWorld = mul(worldMatrix, viewProjectWorld);
 	
 	 // Calculate the input position against the viewProjectWorld matrix.

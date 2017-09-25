@@ -9,9 +9,9 @@
 
 cbuffer MatrixBuffer
 {
-    matrix worldMatrix;
-    matrix viewMatrix;
-    matrix projectionMatrix;
+    matrix cb_worldMatrix;
+    matrix cb_viewMatrix;
+    matrix cb_projectionMatrix;
     matrix lightViewMatrix;
     matrix lightProjectionMatrix;
 };
@@ -57,12 +57,12 @@ PixelInputType ShadowVertexShader(VertexInputType input)
     input.position.w = 1.0f;
 
     // Calculate the position of the vertex against the world, view, and projection matrices.
-    output.position = mul(input.position, worldMatrix);
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+    output.position = mul(input.position, cb_worldMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
 	
 	// Calculate the position of the vertice as viewed by the light source.
-    output.lightViewPosition = mul(input.position, worldMatrix);
+    output.lightViewPosition = mul(input.position, cb_worldMatrix);
     output.lightViewPosition = mul(output.lightViewPosition, lightViewMatrix);
     output.lightViewPosition = mul(output.lightViewPosition, lightProjectionMatrix);
 
@@ -76,7 +76,7 @@ PixelInputType ShadowVertexShader(VertexInputType input)
     output.normal = normalize(output.normal);
 
     // Calculate the position of the vertex in the world.
-    worldPosition = mul(input.position, worldMatrix);
+    worldPosition = mul(input.position, cb_worldMatrix);
 
     // Determine the light position based on the position of the light and the position of the vertex in the world.
     output.lightPos = lightPosition.xyz - worldPosition.xyz;

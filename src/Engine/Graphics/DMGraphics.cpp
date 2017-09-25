@@ -395,20 +395,20 @@ bool DMGraphics::InitShader()
 
 	m_TextureInstanceShader = std::unique_ptr<DMTextureShader>( new DMTextureShader( m_dmd3d.get() ) );
 	m_TextureInstanceShader->Initialize();
-	if( !m_TextureInstanceShader->addShaderPass( DMShader::vs, "instance_main", L"Shaders\\textureshader.vs" ) )
+	if( !m_TextureInstanceShader->addShaderPass( SRVType::vs, "instance_main", L"Shaders\\textureshader.vs" ) )
 		return false;
-	if( !m_TextureInstanceShader->addShaderPass( DMShader::ps, "main", L"Shaders\\textureshader.ps" ) )
+	if( !m_TextureInstanceShader->addShaderPass( SRVType::ps, "main", L"Shaders\\textureshader.ps" ) )
 		return false;
 	m_TextureInstanceShader->createPhase( 0, -1, 0 );
 
 	m_clipMapShader = std::unique_ptr<DMClipMapShader>( new DMClipMapShader( m_dmd3d.get() ) );
 	if( !m_clipMapShader->Initialize( L"Shaders\\clipmap.vs" ) )
 		return false;
-	if( !m_clipMapShader->addShaderPass( DMShader::ps, "main", L"Shaders\\clipmap.ps", "USE_SHADOW" ) )
+	if( !m_clipMapShader->addShaderPass( SRVType::ps, "main", L"Shaders\\clipmap.ps", "USE_SHADOW" ) )
 		return false;
-	if( !m_clipMapShader->addShaderPass( DMShader::ps, "for_grass", L"Shaders\\clipmap.ps" ) )
+	if( !m_clipMapShader->addShaderPass( SRVType::ps, "for_grass", L"Shaders\\clipmap.ps" ) )
 		return false;
-	if( !m_clipMapShader->addShaderPass( DMShader::ps, "for_shadow", L"Shaders\\clipmap.ps" ) )
+	if( !m_clipMapShader->addShaderPass( SRVType::ps, "for_shadow", L"Shaders\\clipmap.ps" ) )
 		return false;
 	m_clipMapShader->createPhase( 0, -1, 0 );
 	m_clipMapShader->createPhase( 0, -1, 1 );
@@ -417,24 +417,31 @@ bool DMGraphics::InitShader()
 	m_light_shader = std::unique_ptr<DMLightShader>( new DMLightShader( m_dmd3d.get() ) );
 	if( !m_light_shader->Initialize() )
 		return false;
-	if( !m_light_shader->addShaderPass( DMShader::vs, "main", L"Shaders\\lightshader.vs" ) )
+	if( !m_light_shader->addShaderPass( SRVType::vs, "main", L"Shaders\\lightshader.vs" ) )
 		return false;
-	if( !m_light_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\lightshader.ps" ) )
+	if( !m_light_shader->addShaderPass( SRVType::vs, "main", L"Shaders\\lightshader.vs", "INST_POS=1,INST_SCALE=1" ) )
 		return false;
-	if( !m_light_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\lightshadersimple.ps" ) )
+	if( !m_light_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\lightshader.ps" ) )
 		return false;
-	if( !m_light_shader->addShaderPass( DMShader::vs, "main", L"Shaders\\lightshader.vs", "INST_POS=1,INST_SCALE=1" ) )
+	if( !m_light_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\lightshadersimple.ps" ) )
+		return false;
+	if( !m_light_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\PBR.ps" ) )
 		return false;
 	m_light_shader->createPhase( 0, -1, 0 );
 	m_light_shader->createPhase( 0, -1, 1 );
 	m_light_shader->createPhase( 1, -1, 0 );
+	m_light_shader->createPhase( 0, -1, 2 );
+	m_light_shader->createPhase( 1, -1, 2 );
 	m_light_shader->setLights( m_light_driver.get() );
 
 	m_render_queues[L"light"] = std::unique_ptr<DMRenderQueue>( new DMRenderQueue() );
 	m_render_queues[L"light"]->inititlise( m_light_shader.get(), 0 );
 
 	m_render_queues[L"light_instance"] = std::unique_ptr<DMRenderQueue>( new DMRenderQueue() );
-	m_render_queues[L"light_instance"]->inititlise( m_light_shader.get(), 2 );
+	m_render_queues[L"light_instance"]->inititlise( m_light_shader.get(), 4 );
+
+	m_render_queues[L"light_PBR"] = std::unique_ptr<DMRenderQueue>( new DMRenderQueue() );
+	m_render_queues[L"light_PBR"]->inititlise( m_light_shader.get(), 3 );
 
 
 	m_color_shader = std::unique_ptr<DMColorShader>( new DMColorShader( m_dmd3d.get() ) );
@@ -445,18 +452,18 @@ bool DMGraphics::InitShader()
 	m_grass_shader = std::unique_ptr<DMGrassShader>( new DMGrassShader( m_dmd3d.get() ) );
 	if( !m_grass_shader->Initialize() )
 		return false;
-	if( !m_grass_shader->addShaderPass( DMShader::vs, "generate", L"Shaders\\grass.vs" ) )
+	if( !m_grass_shader->addShaderPass( SRVType::vs, "generate", L"Shaders\\grass.vs" ) )
 		return false;
 	m_grass_shader->setStreamout( true );
-	if( !m_grass_shader->addShaderPass( DMShader::gs, "generate", L"Shaders\\grass.gs" ) )
+	if( !m_grass_shader->addShaderPass( SRVType::gs, "generate", L"Shaders\\grass.gs" ) )
 		return false;
 	m_grass_shader->setStreamout( false );
 	m_grass_shader->createPhase( 0, 0, -1 );
-	if( !m_grass_shader->addShaderPass( DMShader::vs, "main", L"Shaders\\grass.vs" ) )
+	if( !m_grass_shader->addShaderPass( SRVType::vs, "main", L"Shaders\\grass.vs" ) )
 		return false;
-	if( !m_grass_shader->addShaderPass( DMShader::gs, "main", L"Shaders\\grass.gs" ) )
+	if( !m_grass_shader->addShaderPass( SRVType::gs, "main", L"Shaders\\grass.gs" ) )
 		return false;
-	if( !m_grass_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\grass.ps" ) )
+	if( !m_grass_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\grass.ps" ) )
 		return false;
 	m_grass_shader->createPhase( 1, 1, 0 );
 	
@@ -468,7 +475,7 @@ bool DMGraphics::InitShader()
 	m_particle_shader = std::unique_ptr<DMParticleShader>( new DMParticleShader( m_dmd3d.get() ) );
 	if( !m_particle_shader->Initialize( L"Shaders\\particle.vs", L"Shaders\\particle.ps" ) )
 		return false;
-	if( !m_particle_shader->addShaderPass( DMShader::gs, "main", L"Shaders\\particle.gs" ) )
+	if( !m_particle_shader->addShaderPass( SRVType::gs, "main", L"Shaders\\particle.gs" ) )
 		return false;
 	m_particle_shader->createPhase( 0, 0, 0 );
 	
@@ -477,34 +484,34 @@ bool DMGraphics::InitShader()
 	if( !m_full_screen_shader->Initialize( L"Shaders\\fullscreen.vs", L"Shaders\\fullscreen.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 0 );
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\noise.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\noise.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 1 );
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "BrightPass", L"Shaders\\hdr.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "BrightPass", L"Shaders\\hdr.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 2 );
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "DownSample", L"Shaders\\hdr.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "DownSample", L"Shaders\\hdr.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 3 );
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "HorizontalBlur", L"Shaders\\hdr.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "HorizontalBlur", L"Shaders\\hdr.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 4 );
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "VerticalBlur", L"Shaders\\hdr.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "VerticalBlur", L"Shaders\\hdr.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 5 ); 
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "FinalPass", L"Shaders\\hdr.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "FinalPass", L"Shaders\\hdr.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 6 );
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\calcnormal.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\calcnormal.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 7 );
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\procedure_tex.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\procedure_tex.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 8 );
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "main", L"Shaders\\fastwater.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\fastwater.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 9 );
-	if( !m_full_screen_shader->addShaderPass( DMShader::ps, "init", L"Shaders\\fastwater.ps" ) )
+	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "init", L"Shaders\\fastwater.ps" ) )
 		return false;
 	m_full_screen_shader->createPhase( 0, -1, 10 );
 
@@ -558,7 +565,7 @@ bool DMGraphics::InitModels()
 			{
 				if( !model )
 				{
-					model = std::unique_ptr<DMModel>( new DMModel( m_dmd3d.get(), m_texture_pool.get() ) );
+					model = std::unique_ptr<DMModel>( new DMModel( m_dmd3d.get(), m_texture_pool.get(), model_name ) );
 					model->Initialize( dist, DMMesh::VertexCombination::V_PTNTB, model_lod_path );
 				}
 				else
@@ -755,7 +762,7 @@ bool DMGraphics::InitModels()
 	*/
 	
 	
-	m_sky_sphere = std::unique_ptr<DMModel>( new DMModel( m_dmd3d.get(), m_texture_pool.get() ) );
+	m_sky_sphere = std::unique_ptr<DMModel>( new DMModel( m_dmd3d.get(), m_texture_pool.get(), L"SkySphere" ) );
 	m_sky_sphere->Initialize( 1000.0f, DMMesh::V_PTN, L"Models\\SkySphere.bin" );
 	//m_sky_sphere->setTexure( DMModel::albedo, m_texture_pool->load_texture( L"Textures\\SkiesLL_4.dds" ) );
 	m_sky_sphere->setTexure( DMModel::albedo, m_texture_pool->load_texture( L"Textures\\SkiesLL_4.dds" ) );
@@ -764,32 +771,28 @@ bool DMGraphics::InitModels()
 
 	m_render_filter = std::unique_ptr<DMRenderFilter>( new DMRenderFilter( m_dmd3d.get(), m_full_screen.get(), m_full_screen_shader.get() ) );
 
-
+	
 	m_box_instance = std::unique_ptr<DMInstance>( new DMInstance( m_dmd3d.get() ) );
-	if( !m_box_instance->initialize( m_models[L"Box"], DMInstance::INST_POS, 10000 ) )
+	if( !m_box_instance->initialize( m_models.at( L"Sphere" ), INSTANCE_TYPE::INST_POS, 7 ) )
 		return false;
 	
-	m_models.erase( L"Box" );
+	m_models.erase( L"Sphere" );
 	
-	std::vector<DMInstance::InstanceDataType> instance_data;
+	std::vector<DMInstance::VSInstanceDataType> instance_data;
 	
 	std::uniform_real_distribution<float> scale_uif( 0.5f, 3.1f );
 	std::uniform_real_distribution<float> xyz_uif( -5.0f, 5.0f );
 	
-	for( size_t x = 0; x < 10; x++ )
+	
+
+	for( size_t x = 0; x < 7; x++ )
 	{
-		for( size_t y = 0; y < 10; y++ )
-		{
-			for( size_t z = 0; z < 10; z++ )
-			{
-				DMInstance::InstanceDataType instance;
-				instance.pos.x = x * 10.0 + 10.0 + xyz_uif( gen );
-				instance.pos.y = y * 10.0 + 10.0 + xyz_uif( gen );
-				instance.pos.z = z * 10.0 + 10.0 + xyz_uif( gen );
-				instance.scale = scale_uif( gen );
-				instance_data.push_back( instance );
-			}
-		}
+		DMInstance::VSInstanceDataType instance;
+		instance.pos.x = x * 2.3 + 2.0;
+		instance.pos.y = 0.5f;
+		instance.pos.z = 2.0f;
+		instance.scale = 1.0f;
+		instance_data.push_back( instance );
 	}
 	
 	m_box_instance->set_data( instance_data );
@@ -1144,7 +1147,7 @@ bool DMGraphics::Render()
 	m_TextureShader->Render( model->GetIndexCount(), &worldMatrix );
 	*/
 	DMRenderQueue* current_queue = m_render_queues[L"light"].get();
-	current_queue->shader()->Prepare( m_Camera.get(), 0 );
+	current_queue->shader()->Prepare( m_Camera.get(), current_queue->phase() );
 	for( auto model : current_queue->queue() )
 	{
 		model->Render( m_Camera.get() );
@@ -1161,18 +1164,38 @@ bool DMGraphics::Render()
 		model_draw_count += 1;
 	}
 
+	current_queue = m_render_queues[L"light_PBR"].get();
+	current_queue->shader()->Prepare( m_Camera.get(), current_queue->phase() );
+	for( auto model : current_queue->queue() )
+	{
+		model->Render( m_Camera.get() );
+		model->resultMatrix( &worldMatrix );
+		model->setTexures();
+		//ID3D11ShaderResourceView* srv = m_render_texture2->GetShaderResourceView();
+		//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 1, 1, &srv );
+		//srv = m_render_texture->GetShaderResourceView();
+		//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 2, 1, &srv );
+		//srv = m_texture_pool->texture( 0 );
+		//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 1, &srv );
+		current_queue->shader()->setDrawType( DMShader::by_index );
+		current_queue->shader()->Render( model->GetIndexCount(), &worldMatrix );
+		model_draw_count += 1;
+	}
 	
 	current_queue = m_render_queues[L"light_instance"].get();
 	current_queue->shader()->Prepare( m_Camera.get(), current_queue->phase() );
 	
 	model = m_box_instance->model();
-	model->Render( m_Camera.get() );
-	model->resultMatrix( &worldMatrix );
-	model->setTexures();
-	current_queue->shader()->setDrawType( DMShader::by_index );
-	m_box_instance->set_to_draw();
-	current_queue->shader()->RenderInstanced( model->GetIndexCount(), m_box_instance->count(), &worldMatrix );
-	model_draw_count += m_box_instance->count();
+	if( model )
+	{
+		model->Render( m_Camera.get() );
+		model->resultMatrix( &worldMatrix );
+		model->setTexures();
+		current_queue->shader()->setDrawType( DMShader::by_index );
+		m_box_instance->set_to_draw();
+		current_queue->shader()->RenderInstanced( model->GetIndexCount(), m_box_instance->count(), &worldMatrix );
+		model_draw_count += m_box_instance->count();
+	}
 	//
 	//
 	//model = m_sphere_instance->model();

@@ -8,9 +8,9 @@
 /////////////
 cbuffer MatrixBuffer
 {
-    matrix worldMatrix;
-    matrix viewMatrix;
-    matrix projectionMatrix;
+    matrix cb_worldMatrix;
+    matrix cb_viewMatrix;
+    matrix cb_projectionMatrix;
 	float3 cameraPosition;
 	float mb_padding;
 };
@@ -153,9 +153,9 @@ PixelInputType main(VertexInputType input)
 	
 	/*
 	output.position = pos_local;
-	//output.position = mul(output.position, worldMatrix);
-    output.position = mul(output.position, viewMatrix);
-    output.position = mul(output.position, projectionMatrix);
+	//output.position = mul(output.position, cb_worldMatrix);
+    output.position = mul(output.position, cb_viewMatrix);
+    output.position = mul(output.position, cb_projectionMatrix);
 	*/
 	//output.position = mul(pos_local, g_matWorldViewProj);
 	
@@ -177,7 +177,7 @@ PixelInputType main(VertexInputType input)
 	//position.xz *= scale;
 	
 	// in world space
-	//position = mul( position, worldMatrix );	
+	//position = mul( position, cb_worldMatrix );	
 	
 	//position.y += topology.x; // add waterlevel
 	

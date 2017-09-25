@@ -5,7 +5,7 @@ cbuffer TerrainTexturesParam : register( b0 )
 {	
 	float4 texture_tile[2];
 	float base_normal_multipler;
-	float3 camera_position;
+	float3 cb_cameraPosition;
 	float app_time;
 };
 
@@ -119,7 +119,7 @@ float4 main(PixelInputType input) : SV_TARGET
 
 	//float shadow_percent = csm_shadow( input.world_position, cb_CSM_count );
 
-	float3 v = normalize( camera_position - input.world_position );
+	float3 v = normalize( cb_cameraPosition - input.world_position );
 	
 	float3 n = normalize( result_normal + normal_terrain );
 	

@@ -14,16 +14,16 @@ DMHDR::~DMHDR()
 void DMHDR::Initialize( float width, float height, float brigthDivider, float blurDivider )
 {
 	m_main_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_main_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width, height );
+	m_main_rt->Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width, height );
 
 	m_bright_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_bright_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width / brigthDivider, height / brigthDivider, false );
+	m_bright_rt->Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width / brigthDivider, height / brigthDivider, false );
 
 	m_blur_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_blur_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width / blurDivider, height / blurDivider, false );
+	m_blur_rt->Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width / blurDivider, height / blurDivider, false );
 
 	m_downsample_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_downsample_rt->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, width / blurDivider, height / blurDivider, false );
+	m_downsample_rt->Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width / blurDivider, height / blurDivider, false );
 
 	m_blur_camera = std::unique_ptr<DMCamera>( new DMCamera() );
 	m_blur_camera->Initialize( DMCamera::CT_ORTHO, width / blurDivider, height / blurDivider, 0.1, 2.0 );

@@ -47,9 +47,8 @@ bool DMShader::initialize( )
 {
 	m_dmd3d->createShaderConstantBuffer( sizeof( WorldBuffer ), m_world_buffer );
 
-	m_dmd3d->createShaderConstantBuffer( sizeof( VPCameraBuffer ), m_vpcamera_buffer );
-
-	m_dmd3d->createShaderConstantBuffer( sizeof( PSApplication ), m_ps_application_buffer );
+	m_dmd3d->createShaderConstantBuffer( sizeof( FrameConstant ), m_frameConstantBuffer );
+	
 
 	m_timer = new DMTimer( );
 	m_timer->Initialize();
@@ -94,73 +93,57 @@ void DMShader::setWorldMatrix( D3DXMATRIX* worldMatrix )
 
 void DMShader::setCamera( DMCamera* camera )
 {
+	m_timer->Frame();
+
 	HRESULT result;
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
-	VPCameraBuffer* dataPtr;
+	FrameConstant* dataPtr;
 	unsigned int bufferNumber;
 
 	D3DXMATRIX viewMatrix;
+	D3DXMATRIX viewInverseMatrix;
 	D3DXMATRIX projectionMatrix;
+	D3DXMATRIX viewProjectionMatrix;
 
 	camera->viewMatrix( &viewMatrix );
+	D3DXMatrixInverse( &viewInverseMatrix, nullptr, &viewMatrix );
 	camera->projectionMatrix( &projectionMatrix );
+	D3DXMatrixMultiply( &viewProjectionMatrix, &viewMatrix, &projectionMatrix );
+
 
 	// Transpose the matrices to prepare them for the shader.
 	
 	D3DXMatrixTranspose( &viewMatrix, &viewMatrix );
+	D3DXMatrixTranspose( &viewInverseMatrix, &viewInverseMatrix );
 	D3DXMatrixTranspose( &projectionMatrix, &projectionMatrix );
+	D3DXMatrixTranspose( &viewProjectionMatrix, &viewProjectionMatrix );
 
 	// Lock the constant buffer so it can be written to.
-	result = m_dmd3d->GetDeviceContext()->Map( m_vpcamera_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	result = m_dmd3d->GetDeviceContext()->Map( m_frameConstantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return;
 	}
 
 	// Get a pointer to the data in the constant buffer.
-	dataPtr = (VPCameraBuffer*)mappedResource.pData;
+	dataPtr = (FrameConstant*)mappedResource.pData;
 
 	// Copy the matrices into the constant buffer.
 	memcpy( &dataPtr->view, &viewMatrix, sizeof(D3DXMATRIX) );
 	memcpy( &dataPtr->projection, &projectionMatrix, sizeof( D3DXMATRIX ) );
-	camera->position( &dataPtr->camera_position );
-	camera->viewDirection( &dataPtr->view_direction );
-
-	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( m_vpcamera_buffer.get(), 0 );
-
-	// Set the position of the constant buffer in the vertex shader.
-	bufferNumber = 0;
-
-	// Now set the constant buffer in the vertex shader with the updated values.
-	ID3D11Buffer* buffer = m_vpcamera_buffer.get();
+	memcpy( &dataPtr->viewInverse, &viewInverseMatrix, sizeof( D3DXMATRIX ) );
+	memcpy( &dataPtr->viewProjection, &viewProjectionMatrix, sizeof( D3DXMATRIX ) );
+	dataPtr->appTime = static_cast<float>( m_timer->totalTime() );
+	dataPtr->elapsedTime = static_cast<float>( m_timer->GetTime() );
+	camera->position( &dataPtr->cameraPosition );
+	camera->viewDirection( &dataPtr->viewDirection );
+	
+	m_dmd3d->GetDeviceContext()->Unmap( m_frameConstantBuffer.get(), 0 );
+	
+	ID3D11Buffer* buffer = m_frameConstantBuffer.get();
 	m_dmd3d->GetDeviceContext()->VSSetConstantBuffers( 0, 1, &buffer );
-
-	if( m_geometry_shader.size() )
-	{
-		m_dmd3d->GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
-	}
-
-	PSApplication* ps_data = nullptr;
-
-	result = m_dmd3d->GetDeviceContext()->Map( m_ps_application_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
-	if( FAILED( result ) )
-	{
-		return;
-	}
-
-	ps_data = (PSApplication*)mappedResource.pData;
-
-	m_timer->Frame();
-
-	ps_data->app_time = static_cast<float>( m_timer->totalTime() );
-	ps_data->elapsed_time = static_cast<float>( m_timer->GetTime() );
-	camera->position( &ps_data->camera_position );
-
-	m_dmd3d->GetDeviceContext()->Unmap( m_ps_application_buffer.get(), 0 );
-
-	buffer = m_ps_application_buffer.get();
-	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 10, 1, &buffer );
+	m_dmd3d->GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
+	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 0, 1, &buffer );
 
 	return;
 }
@@ -305,22 +288,22 @@ bool DMShader::prepare()
 	return true;
 }
 
-bool DMShader::addShaderPass( DMShader::ShaderType type, const char* function_name, const WCHAR* file_name, const std::string& defines )
+bool DMShader::addShaderPass( SRVType type, const char* function_name, const WCHAR* file_name, const std::string& defines )
 {
 	ID3D10Blob* errorMessage;
 	ID3D10Blob* shaderBuffer;
 	HRESULT result;
-	std::string shader_version( "_4_0" );
+	std::string shader_version( "_5_0" );
 
 	switch( type )
 	{
-		case DMShader::vs:
+		case SRVType::vs:
 			shader_version = "vs" + shader_version;
 			break;
-		case DMShader::ps:
+		case SRVType::ps:
 			shader_version = "ps" + shader_version;
 			break;
-		case DMShader::gs:
+		case SRVType::gs:
 			shader_version = "gs" + shader_version;
 			break;
 		default:
@@ -359,7 +342,7 @@ bool DMShader::addShaderPass( DMShader::ShaderType type, const char* function_na
 
 	switch( type )
 	{
-		case DMShader::vs:
+		case SRVType::vs:
 			ID3D11VertexShader* vertex_shader;
 			result = m_dmd3d->GetDevice()->CreateVertexShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &vertex_shader );
 			if( FAILED( result ) )
@@ -388,7 +371,7 @@ bool DMShader::addShaderPass( DMShader::ShaderType type, const char* function_na
 			m_layout.push_back( make_com_ptr<ID3D11InputLayout>( layout ) );
 
 			break;
-		case DMShader::ps:
+		case SRVType::ps:
 			// Create the pixel shader from the buffer.
 			ID3D11PixelShader* pixel_shader;
 			result = m_dmd3d->GetDevice()->CreatePixelShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &pixel_shader );
@@ -398,7 +381,7 @@ bool DMShader::addShaderPass( DMShader::ShaderType type, const char* function_na
 			}
 			m_pixel_shader.push_back( make_com_ptr<ID3D11PixelShader>( pixel_shader ) );
 			break;
-		case DMShader::gs:
+		case SRVType::gs:
 			ID3D11GeometryShader* geometry_shader;
 			if( m_use_strimout_gs )
 			{
