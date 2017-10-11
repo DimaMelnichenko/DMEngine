@@ -2,6 +2,25 @@
 #include "..\..\..\Utils\utilites.h"
 
 
+DMD3D* DMD3D::m_instance = nullptr;
+
+void DMD3D::close()
+{
+	if( DMD3D::m_instance )
+		delete DMD3D::m_instance;
+
+	DMD3D::m_instance = nullptr;
+}
+
+DMD3D& DMD3D::instance()
+{
+	if( !m_instance )
+		m_instance = new DMD3D();
+
+	return *m_instance;
+}
+
+
 DMD3D::DMD3D(  )
 {
 	m_swapChain = 0;
@@ -202,10 +221,10 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 											D3D11_SDK_VERSION, &swapChainDesc, &m_swapChain, &m_device, NULL, &m_deviceContext );
 	if( FAILED( result ) )
 	{
-		featureLevel = D3D_FEATURE_LEVEL_10_1;
+		/*featureLevel = D3D_FEATURE_LEVEL_10_1;
 		result = D3D11CreateDeviceAndSwapChain( NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
 												D3D11_SDK_VERSION, &swapChainDesc, &m_swapChain, &m_device, NULL, &m_deviceContext );
-		if( FAILED( result ) )
+		if( FAILED( result ) )*/
 			return false;
 	}
 
@@ -769,6 +788,39 @@ bool DMD3D::createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11B
 	return true;
 }
 
+bool DMD3D::createVertexBuffer( com_unique_ptr<ID3D11Buffer> &buffer, void* data, size_t sizeInByte )
+{
+	D3D11_BUFFER_DESC buffer_desc;
+	memset( &buffer_desc, 0, sizeof( D3D11_BUFFER_DESC ) );
+	buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	buffer_desc.ByteWidth = sizeInByte;
+	buffer_desc.CPUAccessFlags = 0;
+	buffer_desc.MiscFlags = 0;
+	buffer_desc.Usage = D3D11_USAGE_DEFAULT;
+
+	D3D11_SUBRESOURCE_DATA init_data;
+	memset( &init_data, 0, sizeof( D3D11_SUBRESOURCE_DATA ) );
+	init_data.pSysMem = data;
+
+	return CreateBuffer( &buffer_desc, &init_data, buffer );
+}
+
+bool DMD3D::createIndexBuffer( com_unique_ptr<ID3D11Buffer> &buffer, void* data, size_t sizeInByte )
+{
+	D3D11_BUFFER_DESC buffer_desc;
+	memset( &buffer_desc, 0, sizeof( D3D11_BUFFER_DESC ) );
+	buffer_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	buffer_desc.ByteWidth = sizeInByte;
+	buffer_desc.CPUAccessFlags = 0;
+	buffer_desc.MiscFlags = 0;
+	buffer_desc.Usage = D3D11_USAGE_DEFAULT;
+
+	D3D11_SUBRESOURCE_DATA init_data;
+	memset( &init_data, 0, sizeof( D3D11_SUBRESOURCE_DATA ) );
+	init_data.pSysMem = data;
+
+	return CreateBuffer( &buffer_desc, &init_data, buffer );
+}
 
 bool DMD3D::CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData,  com_unique_ptr<ID3D11Buffer>& created_buffer )
 {

@@ -23,7 +23,7 @@ private:
 	};
 
 public:
-	DMBitmap( DMD3D* );
+	DMBitmap();
 	~DMBitmap();
 
 	bool Initialize( int, int, int, int );		

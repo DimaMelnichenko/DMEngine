@@ -13,7 +13,7 @@
 class DMModel :	public DMSceneObject
 {
 public:
-	DMModel( DMD3D*, DMTexturePool*, const std::wstring& name );
+	DMModel( const std::wstring& name = L"" );
 	~DMModel();
 
 	enum TextureType
@@ -21,11 +21,13 @@ public:
 		albedo, normal, height, gim
 	};
 
-
+	
 	bool Initialize( float lod_range, DMMesh::VertexCombination, WCHAR* modelFilename );
+	const std::wstring& name();
 	bool addLODModel( float lod_range, DMMesh::VertexCombination, WCHAR* modelFilename );
+	unsigned int countOfLOD();
 	void Render( float lod_range );
-	void Render( DMCamera* );
+	void Render( const DMCamera& );
 	void addRenderQueue( DMRenderQueue* );
 	
 
@@ -38,7 +40,7 @@ public:
 	void setPos( const D3DXVECTOR3 & );
 	void setScale( float );
 	void setInFrustum( float );
-	void setInFrustum( DMCamera* );
+	void setInFrustum( const DMCamera& );
 
 	unsigned long GetIndexCount();
 
@@ -49,7 +51,6 @@ public:
 	DMModel& operator=( const DMModel& );
 
 private:
-	void Shutdown();
 	ID3D11ShaderResourceView* LoadTexture( const WCHAR* );
 	void copy_internal_data( const DMModel* model );
 	
@@ -58,7 +59,7 @@ private:
 	struct RangeMeshesContainer
 	{
 		float range;
-		std::shared_ptr<DMMesh> mesh;		
+		DMMesh mesh;
 	};
 	// переменные общие
 	std::wstring m_name;
@@ -67,6 +68,5 @@ private:
 	std::shared_ptr<std::vector<unsigned int>> m_textures;
 	std::shared_ptr<std::vector<D3DXVECTOR2>> m_textures_scale;	
 	std::shared_ptr<std::vector<DMRenderQueue*>> m_render_queues;
-	DMTexturePool* m_texture_pool;
 };
 

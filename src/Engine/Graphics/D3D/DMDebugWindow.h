@@ -4,9 +4,9 @@
 //////////////
 // INCLUDES //
 //////////////
-#include "..\Common\DM3DObject.h"
+#include "DirectX.h"
 
-class DMDebugWindow : DM3DObject
+class DMDebugWindow
 {
 private:
 	struct VertexType
@@ -16,7 +16,7 @@ private:
 	};
 
 public:
-	DMDebugWindow( DMD3D* );
+	DMDebugWindow();
 	~DMDebugWindow();
 
 	bool Initialize(ID3D11Device* device, int screenWidth, int screenHeight, int bitmapWidth, int bitmapHeight);

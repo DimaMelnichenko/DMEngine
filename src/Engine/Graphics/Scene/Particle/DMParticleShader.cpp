@@ -2,7 +2,7 @@
 
 
 
-DMParticleShader::DMParticleShader( DMD3D* parent ) : DMShader( parent )
+DMParticleShader::DMParticleShader()
 {
 
 }
@@ -28,17 +28,17 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMParticleShader::initLayouts( )
 
 void DMParticleShader::setTexture( ID3D11ShaderResourceView* texture )
 {
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
 }
 
 void DMParticleShader::setTextureDistributon( ID3D11ShaderResourceView* texture )
 {
-	m_dmd3d->GetDeviceContext()->GSSetShaderResources( 0, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->GSSetShaderResources( 0, 1, &texture );
 }
 
 void DMParticleShader::setTextureHeight( ID3D11ShaderResourceView* texture )
 {
-	m_dmd3d->GetDeviceContext()->GSSetShaderResources( 1, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->GSSetShaderResources( 1, 1, &texture );
 }
 
 void DMParticleShader::StrimOutputDeclaration( D3D11_SO_DECLARATION_ENTRY* entry )

@@ -5,7 +5,7 @@
 class DMFullScreenShader : public DMShader
 {
 public:
-	DMFullScreenShader( DMD3D* );
+	DMFullScreenShader();
 	~DMFullScreenShader();
 
 	void Update( float );

@@ -5,7 +5,7 @@
 class DMFullScreen : public DMSceneObject
 {
 public:
-	DMFullScreen( DMD3D* );
+	DMFullScreen();
 	~DMFullScreen();
 
 	void Render();

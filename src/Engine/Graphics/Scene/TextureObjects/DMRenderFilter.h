@@ -7,12 +7,14 @@
 class DMRenderFilter : public DMSceneObject
 {
 public:
-	DMRenderFilter( DMD3D*, DMFullScreen*, DMFullScreenShader* );
+	DMRenderFilter( );
 	~DMRenderFilter();
+
+	void Initialize( DMFullScreen* full_screen, DMFullScreenShader* shader );
 
 	void selectPass( unsigned int );
 	void setSRV( unsigned int index, ID3D11ShaderResourceView* );
-	void Render( DMCamera*, DMRenderTexture* );
+	void Render( const DMCamera&, DMRenderTexture* );
 	void clearSRV();
 
 private:

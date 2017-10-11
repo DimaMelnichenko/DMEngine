@@ -1,11 +1,13 @@
 #pragma once
 
-#include "..\Common\DM3DObject.h"
+#include "DirectX.h"
+#include <vector>
+#include <Utils\utilites.h>
 
-class DMSamplerState : public DM3DObject
+class DMSamplerState
 {
 public:
-	DMSamplerState( DMD3D* );
+	DMSamplerState();
 	~DMSamplerState();
 
 	bool initialize();

@@ -1,14 +1,14 @@
 #pragma once
 
 #include "..\Common\DMTransformBuffer.h"
-#include "..\Common\DM3DObject.h"
+
 #include "..\Common\DMAABB.h"
 #include "Camera\DMCamera.h"
 
-class DMSceneObject : public DMTransformBuffer, public DM3DObject
+class DMSceneObject : public DMTransformBuffer
 {
 public:
-	DMSceneObject( DMD3D* );
+	DMSceneObject();
 	DMSceneObject( const DMSceneObject& );
 	DMSceneObject( const DMSceneObject* );
 	~DMSceneObject();
@@ -17,7 +17,7 @@ public:
 	void update( float );
 
 	virtual void setInFrustum( float );
-	virtual void setInFrustum( DMCamera* );
+	virtual void setInFrustum( const DMCamera& );
 
 protected:	
 	bool m_in_frustum;

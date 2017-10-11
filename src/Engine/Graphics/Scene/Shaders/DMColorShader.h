@@ -13,7 +13,7 @@ class DMColorShader : public DMShader
 private:	
 
 public:
-	DMColorShader( DMD3D* );
+	DMColorShader();
 	~DMColorShader();
 
 	virtual void Shutdown( );

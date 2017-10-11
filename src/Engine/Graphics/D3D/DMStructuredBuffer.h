@@ -1,12 +1,12 @@
 #pragma once
 
-#include "DM3DObject.h"
+#include "D3D/DMD3D.h"
 #include "DM3DUtils.h"
 
-class DMStructuredBuffer : public DM3DObject
+class DMStructuredBuffer
 {
 public:
-	DMStructuredBuffer( DMD3D* dmd3d );
+	DMStructuredBuffer();
 	~DMStructuredBuffer();
 	
 	void CreateBuffer( size_t sizeOfElement, size_t countElements );

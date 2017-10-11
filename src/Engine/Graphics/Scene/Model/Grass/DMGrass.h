@@ -5,7 +5,7 @@
 class DMGrass :	public DMSceneObject
 {
 public:
-	DMGrass( DMD3D* );
+	DMGrass();
 	~DMGrass();
 
 	bool Initialize( float patch_size );

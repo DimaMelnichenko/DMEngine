@@ -1,7 +1,7 @@
 #include "DMTextureArray.h"
 
 
-DMTextureArray::DMTextureArray( DMD3D* parent ) : DMSceneObject( parent )
+DMTextureArray::DMTextureArray() : DMSceneObject()
 {
 
 }
@@ -9,7 +9,11 @@ DMTextureArray::DMTextureArray( DMD3D* parent ) : DMSceneObject( parent )
 
 DMTextureArray::~DMTextureArray()
 {
-	Shutdown();
+	for( auto p : m_textures )
+	{
+		p->Release();
+		p = nullptr;
+	}
 }
 
 bool DMTextureArray::Initialize( const WCHAR* filename )
@@ -22,7 +26,7 @@ bool DMTextureArray::AddTexture( const WCHAR* filename )
 	HRESULT result;
 	ID3D11ShaderResourceView* texture;
 
-	result = D3DX11CreateShaderResourceViewFromFile( m_dmd3d->GetDevice(), filename, NULL, NULL, &texture, NULL );
+	result = D3DX11CreateShaderResourceViewFromFile( DMD3D::instance().GetDevice(), filename, NULL, NULL, &texture, NULL );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -33,22 +37,12 @@ bool DMTextureArray::AddTexture( const WCHAR* filename )
 	return true;
 }
 
-void DMTextureArray::Shutdown( )
-{
-	for( ID3D11ShaderResourceView* texture : m_textures )
-	{
-		delete_com( texture );
-	}
-
-	return;
-}
-
-ID3D11ShaderResourceView** DMTextureArray::GetTextureArray( )
+ID3D11ShaderResourceView** DMTextureArray::GetTextureArray()
 {
 	return &m_textures[0];
 }
 
-int DMTextureArray::count( )
+int DMTextureArray::count( ) const
 {
 	return m_textures.size();
 }

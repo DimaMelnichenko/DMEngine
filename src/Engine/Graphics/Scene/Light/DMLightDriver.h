@@ -9,19 +9,20 @@
 class DMLightDriver : public DMSceneObject
 {
 public:
-	DMLightDriver( DMD3D* );
-	~DMLightDriver(void);
+	using LightList = std::vector<DMLight>;
+public:
+	DMLightDriver( );
+	~DMLightDriver();
 	bool Initialize();
-	void Shutdown();
-	void addLight( std::unique_ptr<DMLight>&& );
+	void addLight( DMLight&& );
 	void setShaderBuffer();
 	void update( float );
-	void addCSMLayer( DMCamera* );
-	std::vector<std::unique_ptr<DMLight>>& lights();
+	void addCSMLayer( const DMCamera& );
+	LightList& lights();
 	
 
 private:
-	std::vector<std::unique_ptr<DMLight>> m_light_list;
+	LightList m_light_list;
 	com_unique_ptr<ID3D11Buffer> m_light_buffer;
 	com_unique_ptr<ID3D11Buffer> m_CSM_buffer;
 
@@ -45,6 +46,6 @@ private:
 		int cb_CSM_count; // current CSM count
 	};
 
-	std::vector<DMCamera*> m_CSM_layers;
+	std::vector<DMCamera> m_CSM_layers;
 };
 

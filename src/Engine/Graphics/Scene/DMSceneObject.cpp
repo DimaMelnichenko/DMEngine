@@ -2,17 +2,17 @@
 
 
 
-DMSceneObject::DMSceneObject( DMD3D* d3d ) : DM3DObject( d3d )
+DMSceneObject::DMSceneObject()
 {
 	
 }
 
-DMSceneObject::DMSceneObject( const DMSceneObject& source ) : DMTransformBuffer( source ), DM3DObject( source.m_dmd3d )
+DMSceneObject::DMSceneObject( const DMSceneObject& source ) : DMTransformBuffer( source )
 {
 
 }
 
-DMSceneObject::DMSceneObject( const DMSceneObject* source ) : DMTransformBuffer( source ), DM3DObject( source->m_dmd3d )
+DMSceneObject::DMSceneObject( const DMSceneObject* source ) : DMTransformBuffer( source )
 {
 
 }
@@ -34,7 +34,7 @@ void DMSceneObject::setInFrustum( float lod_range )
 	
 }
 
-void DMSceneObject::setInFrustum( DMCamera* )
+void DMSceneObject::setInFrustum( const DMCamera& )
 {
 
 }

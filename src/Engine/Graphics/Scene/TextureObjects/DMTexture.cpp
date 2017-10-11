@@ -3,12 +3,14 @@
 
 
 
-DMTexture::DMTexture( DMD3D* parent ) : DM3DObject( parent )
+DMTexture::DMTexture()
 {
-	m_texture = nullptr;
-
 }
 
+DMTexture::DMTexture( DMTexture&& other )
+{
+	std::swap( other.m_texture, m_texture );
+}
 
 DMTexture::~DMTexture()
 {
@@ -25,7 +27,7 @@ bool DMTexture::Initialize( const WCHAR* filename )
 
 	// Load the texture in.
 	ID3D11ShaderResourceView* texture;
-	result = D3DX11CreateShaderResourceViewFromFile( m_dmd3d->GetDevice(), filename, NULL, NULL, &texture, NULL );
+	result = D3DX11CreateShaderResourceViewFromFile( DMD3D::instance().GetDevice(), filename, NULL, NULL, &texture, NULL );
 	if( FAILED( result ) )
 	{
 		return false;

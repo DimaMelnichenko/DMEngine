@@ -24,22 +24,23 @@ public:
 	void SetRotation( float, float, float );
 	void SetDirection( const D3DXVECTOR3& );
 	void SetDirection( float, float, float );
-
-	D3DXVECTOR3 position( );
-	void position( D3DXVECTOR3* );
-	D3DXVECTOR3 GetRotation( );
-
-	void Render( );
-	void viewMatrix( D3DXMATRIX* );
-	D3DXMATRIX viewMatrix();
-	void projectionMatrix( D3DXMATRIX* );
-	D3DXMATRIX projectionMatrix( );
-
+	void Render();
 	void RenderReflection( float heigh );
-	void GetReflectionViewMatrix( D3DXMATRIX& );
-	void viewDirection( D3DXVECTOR3* );	
 
-	CameraType type();
+	D3DXVECTOR3 position( ) const;
+	void position( D3DXVECTOR3* ) const;
+	D3DXVECTOR3 GetRotation( ) const;
+	
+	void viewMatrix( D3DXMATRIX* ) const;
+	D3DXMATRIX viewMatrix() const;
+
+	void projectionMatrix( D3DXMATRIX* ) const;
+	D3DXMATRIX projectionMatrix( ) const;
+	
+	void GetReflectionViewMatrix( D3DXMATRIX& ) const;
+	void viewDirection( D3DXVECTOR3* ) const;	
+
+	CameraType type() const;
 
 private:
 	CameraType m_type;

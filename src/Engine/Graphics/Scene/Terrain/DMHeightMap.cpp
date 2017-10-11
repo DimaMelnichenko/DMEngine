@@ -1,12 +1,12 @@
 
 #include "DMHeightMap.h"
+#include "D3D\DMD3D.h"
 
 #include <assert.h>
-
 #include <iostream>
 #include <fstream>
 
-DMHeightMap::DMHeightMap( DMD3D* _parent ) : DM3DObject( _parent )
+DMHeightMap::DMHeightMap()
 {
 
 }
@@ -72,12 +72,12 @@ HRESULT DMHeightMap::LoadTextureDataFromFile( const std::wstring& szFileName )
         return E_FAIL;
     }
 
-	m_pHeader = std::unique_ptr<DDS_HEADER>( new DDS_HEADER );
-	memcpy( m_pHeader.get(), m_pHeapData.get() + sizeof( DWORD ), sizeof( DDS_HEADER ) );
+	memset( &m_pHeader, 0, sizeof( DDS_HEADER ) );
+	memcpy( &m_pHeader, m_pHeapData.get() + sizeof( DWORD ), sizeof( DDS_HEADER ) );
 	//reinterpret_cast<DDS_HEADER*>( m_pHeapData.get() + sizeof( DWORD ) );
 
     // Verify header to validate DDS file
-    if( m_pHeader->dwSize != sizeof(DDS_HEADER) || m_pHeader->ddspf.dwSize != sizeof(DDS_PIXELFORMAT) )
+    if( m_pHeader.dwSize != sizeof(DDS_HEADER) || m_pHeader.ddspf.dwSize != sizeof(DDS_PIXELFORMAT) )
     {
         CloseHandle( hFile );        
         return E_FAIL;
@@ -85,8 +85,8 @@ HRESULT DMHeightMap::LoadTextureDataFromFile( const std::wstring& szFileName )
 
     // Check for DX10 extension
     bool bDXT10Header = false;
-    if ( ( m_pHeader->ddspf.dwFlags & DDS_FOURCC )
-        && (MAKEFOURCC( 'D', 'X', '1', '0' ) == m_pHeader->ddspf.dwFourCC) )
+    if ( ( m_pHeader.ddspf.dwFlags & DDS_FOURCC )
+        && (MAKEFOURCC( 'D', 'X', '1', '0' ) == m_pHeader.ddspf.dwFourCC) )
     {
         // Must be long enough for both headers and magic value
         if( FileSize.LowPart < (sizeof(DDS_HEADER)+sizeof(DWORD)+sizeof(DDS_HEADER_DXT10)) )
@@ -448,21 +448,35 @@ DXGI_FORMAT DMHeightMap::GetDXGIFormat( const DDS_PIXELFORMAT& ddpf )
 HRESULT DMHeightMap::CreateDDSTextureFromFile( const std::wstring& file_name )
 {  
 
-    HRESULT hr = LoadTextureDataFromFile( file_name );
+	HRESULT hr;
+	if( FAILED( hr = LoadTextureDataFromFile( file_name ) ) )
+		return S_FALSE;
 
-	m_fmt = GetDXGIFormat( m_pHeader->ddspf );
+	m_fmt = GetDXGIFormat( m_pHeader.ddspf );
 
-	GetSurfaceInfo( m_pHeader->dwWidth, m_pHeader->dwHeight, m_fmt );
+	GetSurfaceInfo( m_pHeader.dwWidth, m_pHeader.dwHeight, m_fmt );
+
+	ID3D11ShaderResourceView* texture;
+	HRESULT result = D3DX11CreateShaderResourceViewFromFile( DMD3D::instance().GetDevice(), file_name.data(), NULL, NULL, &texture, NULL );
+	if( FAILED( result ) )
+	{
+		return S_FALSE;
+	}
+
+	m_heightmap_srv = make_com_ptr<ID3D11ShaderResourceView>( texture );
 
     return hr;
 }
 
-float DMHeightMap::pixel( int x, int y )
+float DMHeightMap::pixel( float x, float y )
 {
-	if( x < 0 || y < 0 || x > m_pHeader->dwWidth || y > m_pHeader->dwHeight )
+	unsigned int intx = (unsigned int)x;
+	unsigned int inty = (unsigned int)y;
+
+	if( intx < 0 || inty < 0 || intx > m_pHeader.dwWidth || inty > m_pHeader.dwHeight )
 		return 0;
 
-	return *reinterpret_cast<float*>( m_data.get() + m_RowBytes * y + ( x * ( BitsPerPixel( m_fmt ) / 8 ) ) );
+	return *reinterpret_cast<float*>( m_data.get() + m_RowBytes * inty + ( intx * ( BitsPerPixel( m_fmt ) / 8 ) ) );
 }
 
 float DMHeightMap::height( float x, float y )
@@ -504,7 +518,7 @@ float DMHeightMap::height( float x, float y )
 
 D3DXVECTOR2 DMHeightMap::size( )
 {
-	return D3DXVECTOR2( m_pHeader->dwWidth, m_pHeader->dwHeight );
+	return D3DXVECTOR2( (float)m_pHeader.dwWidth, (float)m_pHeader.dwHeight );
 }
 
 bool DMHeightMap::in_triangle( D3DXVECTOR2* d, D3DXVECTOR2* abc )
@@ -668,22 +682,22 @@ bool DMHeightMap::checkHeightOfTriangle( D3DXVECTOR3* point, D3DXVECTOR3* abc )
 
 HRESULT DMHeightMap::LoadRaw( const std::wstring& file_name, unsigned int width, unsigned int height, unsigned char bits )
 {
-	int error, i, j, index;
+	int i, j, index;
 	FILE* filePtr;
 	unsigned long long imageSize, count;
 	std::vector<float> rawImage;
 
 	m_fmt = DXGI_FORMAT_R32_FLOAT;
 
-	m_pHeader = std::unique_ptr<DDS_HEADER>( new DDS_HEADER );
+	memset( &m_pHeader, 0, sizeof( DDS_HEADER ) );
 
-	m_pHeader->dwHeight = height;
-	m_pHeader->dwWidth = width;
-	m_RowBytes = m_pHeader->dwWidth * ( (float)m_fmt / 8.0f );
+	m_pHeader.dwHeight = height;
+	m_pHeader.dwWidth = width;
+	m_RowBytes = m_pHeader.dwWidth * ( m_fmt / 8 );
 	
 
 	// Create the float array to hold the height map data.
-	m_data = std::unique_ptr<unsigned char>( new unsigned char[m_pHeader->dwHeight * m_pHeader->dwWidth * ( (float)m_fmt / 8.0f )] );
+	m_data = std::unique_ptr<unsigned char>( new unsigned char[m_pHeader.dwHeight * m_pHeader.dwWidth * ( m_fmt / 8 )] );
 
 	// Open the raw height map file for reading in binary.	
 	std::ifstream fin;
@@ -701,7 +715,7 @@ HRESULT DMHeightMap::LoadRaw( const std::wstring& file_name, unsigned int width,
 	fin.seekg( 0, fin.beg );
 
 	// Calculate the size of the raw image data.
-	imageSize = m_pHeader->dwHeight * m_pHeader->dwWidth * ( bits / 8 );
+	imageSize = m_pHeader.dwHeight * m_pHeader.dwWidth * ( bits / 8 );
 
 	// Allocate memory for the raw image data.
 	rawImage.resize( imageSize );
@@ -723,11 +737,11 @@ HRESULT DMHeightMap::LoadRaw( const std::wstring& file_name, unsigned int width,
 	// Copy the image data into the height map array.
 	//memcpy( m_data.get(), &rawImage[0], imageSize );
 	
-	for( j = 0; j<m_pHeader->dwHeight; j++ )
+	for( j = 0; j<m_pHeader.dwHeight; j++ )
 	{
-		for( i = 0; i<m_pHeader->dwWidth; i++ )
+		for( i = 0; i<m_pHeader.dwWidth; i++ )
 		{
-			index = ( m_pHeader->dwWidth * j ) + i;
+			index = ( m_pHeader.dwWidth * j ) + i;
 	
 			// Store the height at this point in the height map array.
 			unsigned char* raw_pointer = m_data.get() + m_RowBytes * j + ( i * ( BitsPerPixel( m_fmt ) / 8 ) );
@@ -742,8 +756,8 @@ HRESULT DMHeightMap::LoadRaw( const std::wstring& file_name, unsigned int width,
 	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 	desc.CPUAccessFlags = 0;
 	desc.Format = m_fmt;
-	desc.Height = m_pHeader->dwHeight;
-	desc.Width = m_pHeader->dwWidth;
+	desc.Height = m_pHeader.dwHeight;
+	desc.Width = m_pHeader.dwWidth;
 	desc.MipLevels = 1;
 	desc.MiscFlags = 0;
 	desc.SampleDesc.Count = 1;
@@ -754,10 +768,10 @@ HRESULT DMHeightMap::LoadRaw( const std::wstring& file_name, unsigned int width,
 	D3D11_SUBRESOURCE_DATA srd;
 	srd.pSysMem = m_data.get();
 	srd.SysMemPitch = m_RowBytes;
-	srd.SysMemSlicePitch = m_pHeader->dwHeight * m_pHeader->dwWidth * (bits/8);
+	srd.SysMemSlicePitch = m_pHeader.dwHeight * m_pHeader.dwWidth * (bits/8);
 
 	ID3D11Texture2D* texture;
-	HRESULT result = m_dmd3d->GetDevice()->CreateTexture2D( &desc, &srd, &texture );
+	HRESULT result = DMD3D::instance().GetDevice()->CreateTexture2D( &desc, &srd, &texture );
 	if( FAILED(result) )
 	{
 		return result;
@@ -773,7 +787,7 @@ HRESULT DMHeightMap::LoadRaw( const std::wstring& file_name, unsigned int width,
 	srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 
 	ID3D11ShaderResourceView* srv;
-	result = m_dmd3d->GetDevice()->CreateShaderResourceView( m_heightmap_texture.get(), &srv_desc, &srv );
+	result = DMD3D::instance().GetDevice()->CreateShaderResourceView( m_heightmap_texture.get(), &srv_desc, &srv );
 	if( FAILED( result ) )
 	{
 		return result;
@@ -782,6 +796,39 @@ HRESULT DMHeightMap::LoadRaw( const std::wstring& file_name, unsigned int width,
 	m_heightmap_srv = make_com_ptr<ID3D11ShaderResourceView>( srv );
 
 	return true;
+}
+
+HRESULT DMHeightMap::LoadMap( const std::wstring& file_name )
+{
+	HRESULT hr;
+	if( FAILED( hr = CreateDDSTextureFromFile( file_name ) ) )
+		return S_FALSE;
+
+	//return LoadStandartFile( file_name );
+
+	return S_OK;
+}
+
+HRESULT DMHeightMap::LoadStandartFile( const std::wstring& file_name )
+{
+	HRESULT hr;
+
+	D3DX11_IMAGE_INFO info;
+	if( FAILED( hr = D3DX11GetImageInfoFromFile( file_name.data(), nullptr, &info, nullptr ) ) )
+		return hr;
+
+	m_pHeader.dwHeight = info.Height;
+	m_pHeader.dwWidth = info.Width;
+	
+	ID3D11ShaderResourceView* srv;
+	if( FAILED( hr = D3DX11CreateShaderResourceViewFromFile( DMD3D::instance().GetDevice(), file_name.data(),
+															 nullptr, nullptr, &srv, nullptr ) ) )
+	{
+		return S_FALSE;
+	}
+
+	m_heightmap_srv = make_com_ptr<ID3D11ShaderResourceView>( srv );
+
 }
 
 ID3D11ShaderResourceView* DMHeightMap::map()

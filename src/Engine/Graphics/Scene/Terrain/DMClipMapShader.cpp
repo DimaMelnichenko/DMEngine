@@ -1,16 +1,15 @@
 #include "DMClipMapShader.h"
 
 
-DMClipMapShader::DMClipMapShader( DMD3D* _parent ) : DMShader( _parent )
-{
-	m_shader_param = nullptr;
+DMClipMapShader::DMClipMapShader()
+{	
 	m_max_MxM_instance_count = 120;
 }
 
 
 DMClipMapShader::~DMClipMapShader()
 {
-	Shutdown( );
+	
 }
 
 std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
@@ -33,7 +32,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
 	polygonLayout.InstanceDataStepRate = 0;
 
 	vertex_layout.push_back( polygonLayout );
-
+/*
 	polygonLayout.SemanticName = "TEXCOORD";
 	polygonLayout.SemanticIndex = 0;
 	polygonLayout.Format = DXGI_FORMAT_R32G32_FLOAT;
@@ -43,7 +42,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
 	polygonLayout.InstanceDataStepRate = 0;
 
 	vertex_layout.push_back( polygonLayout );
-
+	*/
 	D3D11_BUFFER_DESC param_buffer_desc;
 	param_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
 	param_buffer_desc.ByteWidth = sizeof( ParamBuffer );
@@ -54,7 +53,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
 
 	// Create the constant buffer pointer so we can access the vertex shader constant buffer from within this class.
 	ID3D11Buffer* buffer;
-	result = m_dmd3d->GetDevice()->CreateBuffer( &param_buffer_desc, NULL, &buffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &param_buffer_desc, NULL, &buffer );
 	if( FAILED( result ) )
 	{
 		return std::vector<D3D11_INPUT_ELEMENT_DESC>();
@@ -63,7 +62,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
 	m_shader_param = make_com_ptr<ID3D11Buffer>( buffer );
 
 	param_buffer_desc.ByteWidth = sizeof( PSParamBuffer );
-	result = m_dmd3d->GetDevice()->CreateBuffer( &param_buffer_desc, NULL, &buffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &param_buffer_desc, NULL, &buffer );
 	if( FAILED( result ) )
 	{
 		return std::vector<D3D11_INPUT_ELEMENT_DESC>();
@@ -80,7 +79,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
 	param_buffer_desc.StructureByteStride = sizeof( InstanceOffset );
 
 	// Create the constant buffer pointer so we can access the vertex shader constant buffer from within this class.	
-	result = m_dmd3d->GetDevice()->CreateBuffer( &param_buffer_desc, NULL, &buffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &param_buffer_desc, NULL, &buffer );
 	if( FAILED( result ) )
 	{
 		return std::vector<D3D11_INPUT_ELEMENT_DESC>();
@@ -96,7 +95,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
 	viewDesc.Buffer.ElementWidth = m_max_MxM_instance_count;
 
 	ID3D11ShaderResourceView* srv;
-	if( FAILED( m_dmd3d->GetDevice()->CreateShaderResourceView( m_offset_sbuffer.get(), &viewDesc, &srv ) ) )
+	if( FAILED( DMD3D::instance().GetDevice()->CreateShaderResourceView( m_offset_sbuffer.get(), &viewDesc, &srv ) ) )
 	{
 		return std::vector<D3D11_INPUT_ELEMENT_DESC>();
 	}
@@ -112,7 +111,7 @@ bool DMClipMapShader::setInstanceOffset( std::vector<InstanceOffset>& values )
 
 	ID3D11Buffer* buffer = m_offset_sbuffer.get();
 
-	HRESULT result = m_dmd3d->GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -125,11 +124,11 @@ bool DMClipMapShader::setInstanceOffset( std::vector<InstanceOffset>& values )
 	memcpy( data_ps, &values[0], sizeof( InstanceOffset ) * min( values.size(), m_max_MxM_instance_count ) );
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( buffer, 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
 
 
 	ID3D11ShaderResourceView* srv = m_srv_buffer.get();
-	m_dmd3d->GetDeviceContext()->VSSetShaderResources( 16, 1, &srv );
+	DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 16, 1, &srv );
 
 	return true;
 }
@@ -140,7 +139,7 @@ bool DMClipMapShader::SetPSParameters( PSParamBuffer* ps_param )
 
 	ID3D11Buffer* buffer = m_ps_shader_param.get();
 
-	HRESULT result = m_dmd3d->GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -153,10 +152,10 @@ bool DMClipMapShader::SetPSParameters( PSParamBuffer* ps_param )
 	memcpy( data_ps, ps_param, sizeof( PSParamBuffer ) );
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( buffer, 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
 
 
-	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 0, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
 
 	return true;
 }
@@ -166,7 +165,7 @@ bool DMClipMapShader::SetVSParameters( ParamBuffer* _param_buffer )
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 
 	ID3D11Buffer* buffer = m_shader_param.get();
-	HRESULT result = m_dmd3d->GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -179,9 +178,9 @@ bool DMClipMapShader::SetVSParameters( ParamBuffer* _param_buffer )
 	memcpy( dataPtr, _param_buffer, sizeof( ParamBuffer ) );	
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( buffer, 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
 
-	m_dmd3d->GetDeviceContext()->VSSetConstantBuffers( 2, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 2, 1, &buffer );
 
 	return true;
 }
@@ -201,6 +200,5 @@ void DMClipMapShader::Update( float )
 
 void DMClipMapShader::SetTextures( int count, ID3D11ShaderResourceView** _textures )
 {
-	//m_dmd3d->GetDeviceContext()->VSSetShaderResources( 0, 1, _textures );
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 10, count, _textures );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 10, count, _textures );
 }

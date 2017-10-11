@@ -16,7 +16,7 @@ public:
 	
 
 public:
-	DMLightShader( DMD3D* );
+	DMLightShader();
 	~DMLightShader();
 
 	bool setTexture( DMModel::TextureType, ID3D11ShaderResourceView* );

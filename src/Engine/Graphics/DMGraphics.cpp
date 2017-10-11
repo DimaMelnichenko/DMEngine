@@ -13,11 +13,12 @@ DMGraphics::DMGraphics(  )
 
 DMGraphics::~DMGraphics()
 {
-	Shutdown();
+	DMD3D::close();
+	DMTexturePool::close();
 }
 
 bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd )
-{
+{	
 	bool result = true;
 	char videoCard[128];
 	int videoMemory;
@@ -26,34 +27,25 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	
 	m_screenWidth = static_cast<float>( screenWidth );
 	m_screenHeight = static_cast<float>( screenHeight );
-	
-	// Create the input object.  The input object will be used to handle reading the keyboard and mouse input from the user.
-	m_Input =  std::unique_ptr<DMInput>( new DMInput() );
-	if( !m_Input )
-	{
-		return false;
-	}
 
-	// Initialize the input object.
-	result = m_Input->Initialize( hinstance, hwnd, screenWidth, screenHeight );
-	if( !result )
-	{
-		MessageBox( hwnd, L"Could not initialize the input object.", L"Error", MB_OK );
-		return false;
-	}
-	
-	// Create the Direct3D object.
-	m_dmd3d = std::unique_ptr<DMD3D>( new DMD3D( ) );
-	if( !m_dmd3d )
-	{
-		return false;
-	}
-	
 	// Initialize the Direct3D object.
-	result = m_dmd3d->Initialize( screenWidth, screenHeight, VSYNC_ENABLED, hwnd, FULL_SCREEN, SCREEN_DEPTH, SCREEN_NEAR );
+	result = DMD3D::instance().Initialize( screenWidth, screenHeight, VSYNC_ENABLED, hwnd, FULL_SCREEN, SCREEN_DEPTH, SCREEN_NEAR );
 	if( !result )
 	{
 		MessageBox( hwnd, L"Could not initialize DirectX 11.", L"Error", MB_OK );
+		return false;
+	}
+
+	if( !DMTexturePool::instance().initialize( L"textures\\no_image.dds" ) )
+	{
+		::MessageBox( 0, L"No found default texture: textures\\no_image.dds ", L"Error", MB_OK );
+		return false;
+	}
+
+	result = m_Input.Initialize( hinstance, hwnd, screenWidth, screenHeight );
+	if( !result )
+	{
+		MessageBox( hwnd, L"Could not initialize the input object.", L"Error", MB_OK );
 		return false;
 	}
 	
@@ -63,68 +55,30 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	}
 
-	// Create the timer object.
-	m_Timer = std::unique_ptr<DMTimer>( new DMTimer( ) );
-	if( !m_Timer )
-	{
-		return false;
-	}
-
 	// Initialize the timer object.
-	result = m_Timer->Initialize();
+	result = m_Timer.Initialize();
 	if( !result )
 	{
 		MessageBox( hwnd, L"Could not initialize the timer object.", L"Error", MB_OK );
 		return false;
 	}
 
-	// Create the fps object.
-	m_Fps = std::unique_ptr<DMFps>( new DMFps( ) );
-	if( !m_Fps )
-	{
-		return false;
-	}
-
 	// Initialize the fps object.
-	m_Fps->Initialize();
-
-
-	// Create the cpu object.
-	m_Cpu = std::unique_ptr<DMCpu>( new DMCpu( ) );
-	if( !m_Cpu )
-	{
-		return false;
-	}
+	m_Fps.Initialize();
 
 	// Initialize the cpu object.
-	m_Cpu->Initialize();
-
-
-	// Create the font shader object.
-	m_FontShader = std::unique_ptr<DMFontShader>( new DMFontShader( m_dmd3d.get() ) );
-	if( !m_FontShader )
-	{
-		return false;
-	}
+	m_Cpu.Initialize();
 
 	// Initialize the font shader object.
-	result = m_FontShader->Initialize(  );
+	result = m_FontShader.Initialize(  );
 	if( !result )
 	{
 		MessageBox( hwnd, L"Could not initialize the font shader object.", L"Error", MB_OK );
 		return false;
 	}
-
-
-	// Create the text object.
-	m_Text = std::unique_ptr<DMText>( new DMText( m_dmd3d.get() ) );
-	if( !m_Text )
-	{
-		return false;
-	}
 	
 	// Initialize the text object.
-	result = m_Text->Initialize( screenWidth, screenHeight );
+	result = m_Text.Initialize( screenWidth, screenHeight );
 	if( !result )
 	{
 		MessageBox( hwnd, L"Could not initialize the text object.", L"Error", MB_OK );
@@ -132,20 +86,17 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	}
 
 	// Retrieve the video card information.
-	m_dmd3d->GetVideoCardInfo( videoCard, videoMemory );
+	DMD3D::instance().GetVideoCardInfo( videoCard, videoMemory );
 
 	// Set the video card information in the text object.
-	result = m_Text->SetVideoCardInfo( videoCard, videoMemory );
+	result = m_Text.SetVideoCardInfo( videoCard, videoMemory );
 	if( !result )
 	{
 		MessageBox( hwnd, L"Could not set video card info in the text object.", L"Error", MB_OK );
 		return false;
 	}
 
-	m_Frustum = std::unique_ptr<DMFrustum>( new DMFrustum( )  );
-
-	m_DebugWindow = std::unique_ptr<DMDebugWindow>( new DMDebugWindow( m_dmd3d.get() )  );
-	m_DebugWindow->Initialize( m_dmd3d->GetDevice(), 10, 10, 500, 500 );
+	m_DebugWindow.Initialize( DMD3D::instance().GetDevice(), 10, 10, 500, 500 );
 
 
 	/*
@@ -158,46 +109,31 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	*/
 
 	
-	m_render_texture = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d.get() ) );
-	m_render_texture->Initialize( DXGI_FORMAT_R32G32_FLOAT, 1024, 1024 );
+	m_render_texture.Initialize( DXGI_FORMAT_R32G32_FLOAT, 1024, 1024 );
 
-	m_render_texture2 = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d.get() ) );
-	m_render_texture2->Initialize( DXGI_FORMAT_R32G32_FLOAT, 1024, 1024 );
+	m_render_texture2.Initialize( DXGI_FORMAT_R32G32_FLOAT, 1024, 1024 );
 
 	/////////////////////////////////////////////////////////
 	// shadow parameters
 
 	for( size_t i = 0; i < 1; i++ )
 	{
-		std::unique_ptr<DMRenderTexture> rt_depth( new DMRenderTexture( m_dmd3d.get() ) );
-		rt_depth->Initialize( DXGI_FORMAT_R32_FLOAT, 512, 512 );
+		DMRenderTexture rt_depth;
+		rt_depth.Initialize( DXGI_FORMAT_R32_FLOAT, 512, 512 );
 
-		m_shadow_depth.push_back( std::move( rt_depth ) );
+		m_shadow_depth.emplace_back( std::move( rt_depth ) );
 	}
 
-	m_depth_output = std::unique_ptr<DMBitmap>( new DMBitmap( m_dmd3d.get() ) );
-	m_depth_output->Initialize( screenWidth, screenHeight, 300, 300 );
+	m_depth_output.Initialize( screenWidth, screenHeight, 300, 300 );
 
-
-	m_render_cube_texture = std::unique_ptr<DMRenderCubeTexture>( new DMRenderCubeTexture( m_dmd3d.get() ) );
-	m_render_cube_texture->Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, 512, 512 );
+	m_render_cube_texture.Initialize( DXGI_FORMAT_R32G32B32A32_FLOAT, 512, 512 );
 
 	////////////////////////////////////////////////////////
 
-	m_sampler_state = std::unique_ptr<DMSamplerState>( new DMSamplerState( m_dmd3d.get() ) );
-	if( !m_sampler_state->initialize() )
+	if( !m_sampler_state.initialize() )
 		return false;
-
-	m_texture_pool = std::unique_ptr<DMTexturePool>( new DMTexturePool( m_dmd3d.get() ) );
-	if( !m_texture_pool->initialize( L"textures\\no_image.dds" ) )
-	{
-		::MessageBox( 0, L"No found default texture: textures\\no_image.dds ", L"Error", MB_OK );
-		return false;
-	}
 
 	/////////////////////////////////////////////////////////
-
-	
 
 	if( !InitLights() )
 		return false;
@@ -205,13 +141,13 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	if( !InitShader() )
 		return false;
 	
-	m_hdr = std::unique_ptr<DMHDR>( new DMHDR( m_dmd3d.get() ) );
-	m_hdr->Initialize( 1024, 1024, 2.0f, 2.0f );
+	
+	m_hdr.Initialize( 1024, 1024, 2.0f, 2.0f );
 
 	//m_draw_container = std::unique_ptr<DMDrawContainer>( new DMDrawContainer( m_light_shader.get() ) );
 	
-	m_object_quad_tree = std::unique_ptr<DMQuadTree>( new DMQuadTree( m_dmd3d.get() ) );
-	m_object_quad_tree->Initialize( 1024.0f, 1024.0f );	
+	
+	m_object_quad_tree.Initialize( 1024.0f, 1024.0f );	
 	//m_quad_tree_object = std::unique_ptr< DMQuadTree( m_dmd3d.get() );
 	//m_quad_tree_object->Initialize( 1024.0f, 32.0f );
 		
@@ -225,74 +161,31 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 bool DMGraphics::InitCameras()
 {
 	// Create the main camera object.
-	m_Camera = std::unique_ptr<DMCamera>( new DMCamera  );
-	if( !m_Camera )
-	{
-		return false;
-	}
-
-	m_Camera->Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 1.0f, 10000.0f );
-
-	//float camera_x = 550.0f;
-	//float camera_y = 250.0f;
-	//float camera_z = 540.0f;
+	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 1.0f, 10000.0f );
 	float camera_x = 0.0f;
-	float camera_y = 0.0f;
+	float camera_y = 70.0f;
 	float camera_z = -10.0f;
-
-	m_Camera->SetPosition( camera_x, camera_y, camera_z );
-
-	// Create the position object.
-	m_Position = std::unique_ptr<DMPosition>( new DMPosition() );
-	if( !m_Position )
-	{
-		return false;
-	}
+	m_cameraPool["main"].SetPosition( camera_x, camera_y, camera_z );
 
 	// Set the initial position of the viewer to the same as the initial camera position.
-	m_Position->SetPosition( camera_x, camera_y, camera_z );
+	m_Position.SetPosition( camera_x, camera_y, camera_z );
 
 
+	m_cameraPool["ortho"].Initialize( DMCamera::CT_ORTHO, 1024, 1024, 0.01f, 10.0f );
+	m_cameraPool["ortho"].SetPosition( 0.0f, 0.0f, -1.0f );
+	m_cameraPool["ortho"].Render();
 
-	m_CameraOrtho = std::unique_ptr<DMCamera>( new DMCamera()  );
-	if( !m_CameraOrtho )
-	{
-		return false;
-	}
-	m_CameraOrtho->Initialize( DMCamera::CT_ORTHO, 1024, 1024, 0.01f, 10.0f );
-	m_CameraOrtho->SetPosition( 0.0f, 0.0f, -1.0f );
-	m_CameraOrtho->Render();
+	m_cameraPool["text"].Initialize( DMCamera::CT_ORTHO, m_screenWidth, m_screenHeight, 0.01f, 10.0f );
+	m_cameraPool["text"].SetPosition( 0.0f, 0.0f, -5.0f );
+	m_cameraPool["text"].Render();
 
 
-	m_CameraOrthoText = std::unique_ptr<DMCamera>( new DMCamera()  );
-	if( !m_CameraOrtho )
-	{
-		return false;
-	}
-	m_CameraOrthoText->Initialize( DMCamera::CT_ORTHO, m_screenWidth, m_screenHeight, 0.01f, 10.0f );
-	m_CameraOrthoText->SetPosition( 0.0f, 0.0f, -5.0f );
-	m_CameraOrthoText->Render();
-
-
-
-	m_CameraGrass = std::unique_ptr<DMCamera>( new DMCamera()  );
-	if( !m_CameraGrass )
-	{
-		return false;
-	}
-	m_CameraGrass->Initialize( DMCamera::CT_ORTHO, 1024, 1024, 1.0, 1600.0 );
-
-	
+	m_cameraPool["grass"].Initialize( DMCamera::CT_ORTHO, 1024, 1024, 1.0, 1600.0 );
 
 	for( size_t i = 0; i < 8; i++ )
 	{
-		std::unique_ptr<DMCamera> camera( new DMCamera()  );
-		if( !camera )
-		{
-			return false;
-		}
-		camera->Initialize( DMCamera::CT_ORTHO, 10.0f * ( i + 1.5f ), 10.0f * ( i + 1.5f ), 1.0f, 300.0f );
-
+		DMCamera camera;
+		camera.Initialize( DMCamera::CT_ORTHO, 10.0f * ( i + 1.5f ), 10.0f * ( i + 1.5f ), 1.0f, 300.0f );
 		m_cameras_shadow.push_back( std::move( camera ) );
 	}
 
@@ -300,86 +193,91 @@ bool DMGraphics::InitCameras()
 }
 
 bool DMGraphics::InitLights()
-{
-	m_light_driver = std::unique_ptr<DMLightDriver>( new DMLightDriver( m_dmd3d.get() ) );
-	m_light_driver->Initialize();
+{	
+	m_light_driver.Initialize();
 
 	// Create the light object.
-	std::unique_ptr<DMLight> light( new DMLight( m_dmd3d.get(), DMLight::LightType::Dir ) );
-	m_Sun = light.get();
-	light->setColor( 8.0f, 8.0f, 7.98f );
-	light->attenuation = 100000.0f;
-	light->setPosition( 100.00, 70.0, -100.00 );
+	DMLight light( DMLight::LightType::Dir );
+	//m_Sun = light;
+	light.setColor( 1.0f, 1.0f, 0.98f );
+	light.attenuation = 100000.0f;
+	light.setPosition( 100.00, 100.0, -100.00 );
 
-	//m_light_driver->addLight( std::move( light ) );
+	m_light_driver.addLight( std::move( light ) );
 
-	for( int i = 0; i < 3; ++i )
+	light = DMLight( DMLight::Point );
+	light.setColor( 5.0f, 4.8f, 4.0f );
+	light.attenuation = 10400.0f;
+	light.setPosition( 600.0f, 164.0f, 600.0f );
+	//m_light_driver.addLight( std::move( light ) );
+	
+	/*for( int i = 0; i < 3; ++i )
 		for( int j = 0; j < 3; ++j )
 		{
 			light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Point ) );
-			light->setColor( 5.0f, 4.8f, 4.0f );
-			light->attenuation = 400.0f;
-			light->setPosition( i * 20.0f + 2.0f, 1.0f, j * 20.0f + 2.0f );
-			m_light_driver->addLight( std::move( light ) );
+			light.setColor( 5.0f, 4.8f, 4.0f );
+			light.attenuation = 400.0f;
+			light.setPosition( i * 20.0f + 2.0f, 1.0f, j * 20.0f + 2.0f );
+			m_light_driver.addLight( std::move( light ) );
 		}
 
-	
+	*/
 
 
 	/*
 	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
-	light->setColor( 25.0f, 25.0f, 23.9f );
-	light->attenuation = 300.0f;
-	light->setPosition( 5.0f, 4.0f, 5.5f );
-	light->setDirection( 0.0f, -1.0f, 0.00001f );
-	light->setShadowParam( D3DX_PI / 1.5, 256 );
-	light->setCastShadow( true );
-	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
-	m_light_driver->addLight( std::move( light ) );	
+	light.setColor( 25.0f, 25.0f, 23.9f );
+	light.attenuation = 300.0f;
+	light.setPosition( 5.0f, 4.0f, 5.5f );
+	light.setDirection( 0.0f, -1.0f, 0.00001f );
+	light.setShadowParam( D3DX_PI / 1.5, 256 );
+	light.setCastShadow( true );
+	light.proj_texture = DMTexturePool::instance().texture( DMTexturePool::instance().load_texture( L"textures\\flashlight.jpg" ) );
+	m_light_driver.addLight( std::move( light ) );	
 
 	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
-	light->setColor( 125.0f, 125.0f, 100.9f );
-	light->attenuation = 300.0f;
-	light->setPosition( 20.0, 4.0, 5.5 );
-	light->setDirection( 0.0, -1.0, 0.00001 );
-	light->setShadowParam( D3DX_PI / 1.5, 256 );
-	light->setCastShadow( true );
-	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
-	m_light_driver->addLight( std::move( light ) );
+	light.setColor( 125.0f, 125.0f, 100.9f );
+	light.attenuation = 300.0f;
+	light.setPosition( 20.0, 4.0, 5.5 );
+	light.setDirection( 0.0, -1.0, 0.00001 );
+	light.setShadowParam( D3DX_PI / 1.5, 256 );
+	light.setCastShadow( true );
+	light.proj_texture = DMTexturePool::instance().texture( DMTexturePool::instance().load_texture( L"textures\\flashlight.jpg" ) );
+	m_light_driver.addLight( std::move( light ) );
 
 	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
-	light->setColor( 125.0f, 125.0f, 100.9f );
-	light->attenuation = 300.0f;
-	light->setPosition( 35.0, 4.0, 5.5 );
-	light->setDirection( 0.0, -1.0, 0.00001 );
-	light->setShadowParam( D3DX_PI / 1.5, 256 );
-	light->setCastShadow( true );
-	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
-	m_light_driver->addLight( std::move( light ) );
+	light.setColor( 125.0f, 125.0f, 100.9f );
+	light.attenuation = 300.0f;
+	light.setPosition( 35.0, 4.0, 5.5 );
+	light.setDirection( 0.0, -1.0, 0.00001 );
+	light.setShadowParam( D3DX_PI / 1.5, 256 );
+	light.setCastShadow( true );
+	light.proj_texture = DMTexturePool::instance().texture( DMTexturePool::instance().load_texture( L"textures\\flashlight.jpg" ) );
+	m_light_driver.addLight( std::move( light ) );
 
 	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
-	light->setColor( 125.0f, 125.0f, 100.9f );
-	light->attenuation = 300.0f;
-	light->setPosition( 50.0, 4.0, 5.5 );
-	light->setDirection( 0.0, -1.0, 0.00001 );
-	light->setShadowParam( D3DX_PI / 1.5, 256 );
-	light->setCastShadow( true );
-	light->proj_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"textures\\flashlight.jpg" ) );
-	m_light_driver->addLight( std::move( light ) );
+	light.setColor( 125.0f, 125.0f, 100.9f );
+	light.attenuation = 300.0f;
+	light.setPosition( 50.0, 4.0, 5.5 );
+	light.setDirection( 0.0, -1.0, 0.00001 );
+	light.setShadowParam( D3DX_PI / 1.5, 256 );
+	light.setCastShadow( true );
+	light.proj_texture = DMTexturePool::instance().texture( DMTexturePool::instance().load_texture( L"textures\\flashlight.jpg" ) );
+	m_light_driver.addLight( std::move( light ) );
 
 
 
 	light = std::unique_ptr<DMLight>( new DMLight( m_dmd3d.get(), DMLight::Spot ) );
-	light->setColor( 20.0f, 10.0f, 0.0f );
-	light->attenuation = 100.0f;
-	light->setPosition( 500.0, 10.0, 495.0 );
+	light.setColor( 20.0f, 10.0f, 0.0f );
+	light.attenuation = 100.0f;
+	light.setPosition( 500.0, 10.0, 495.0 );
 	*/
 
-	//m_light_driver->addLight( std::move( light ) );
+	//m_light_driver.addLight( std::move( light ) );
 	
 	for( size_t i = 0; i < m_shadow_depth.size(); i++ )
 	{
-		m_light_driver->addCSMLayer( m_cameras_shadow[i].get() );
+		m_light_driver.addCSMLayer( m_cameras_shadow[i] );
 	}
 
 	return true;
@@ -387,143 +285,131 @@ bool DMGraphics::InitLights()
 
 bool DMGraphics::InitShader()
 {
-	// Create the texture shader object.	
-	m_TextureShader = std::unique_ptr<DMTextureShader>( new DMTextureShader( m_dmd3d.get() ) );
-	if( !m_TextureShader->Initialize( L"Shaders\\textureshader.vs", L"Shaders\\textureshader.ps" ) )
+	// Create the texture shader object.
+	if( !m_TextureShader.Initialize( L"Shaders\\textureshader.vs", L"Shaders\\textureshader.ps" ) )
 		return false;
-	m_TextureShader->createPhase( 0, -1, 0 );
+	m_TextureShader.createPhase( 0, -1, 0 );
 
-	m_TextureInstanceShader = std::unique_ptr<DMTextureShader>( new DMTextureShader( m_dmd3d.get() ) );
-	m_TextureInstanceShader->Initialize();
-	if( !m_TextureInstanceShader->addShaderPass( SRVType::vs, "instance_main", L"Shaders\\textureshader.vs" ) )
+	
+	m_TextureInstanceShader.Initialize();
+	if( !m_TextureInstanceShader.addShaderPass( SRVType::vs, "instance_main", L"Shaders\\textureshader.vs" ) )
 		return false;
-	if( !m_TextureInstanceShader->addShaderPass( SRVType::ps, "main", L"Shaders\\textureshader.ps" ) )
+	if( !m_TextureInstanceShader.addShaderPass( SRVType::ps, "main", L"Shaders\\textureshader.ps" ) )
 		return false;
-	m_TextureInstanceShader->createPhase( 0, -1, 0 );
+	m_TextureInstanceShader.createPhase( 0, -1, 0 );
 
-	m_clipMapShader = std::unique_ptr<DMClipMapShader>( new DMClipMapShader( m_dmd3d.get() ) );
-	if( !m_clipMapShader->Initialize( L"Shaders\\clipmap.vs" ) )
+	
+	if( !m_clipMapShader.Initialize( L"Shaders\\clipmap.vs" ) )
 		return false;
-	if( !m_clipMapShader->addShaderPass( SRVType::ps, "main", L"Shaders\\clipmap.ps", "USE_SHADOW" ) )
+	//if( !m_clipMapShader.addShaderPass( SRVType::ps, "main", L"Shaders\\clipmap.ps", "USE_SHADOW" ) )
+	if( !m_clipMapShader.addShaderPass( SRVType::ps, "main", L"Shaders\\clipmap.ps" ) )
 		return false;
-	if( !m_clipMapShader->addShaderPass( SRVType::ps, "for_grass", L"Shaders\\clipmap.ps" ) )
+	if( !m_clipMapShader.addShaderPass( SRVType::ps, "for_grass", L"Shaders\\clipmap.ps" ) )
 		return false;
-	if( !m_clipMapShader->addShaderPass( SRVType::ps, "for_shadow", L"Shaders\\clipmap.ps" ) )
+	if( !m_clipMapShader.addShaderPass( SRVType::ps, "for_shadow", L"Shaders\\clipmap.ps" ) )
 		return false;
-	m_clipMapShader->createPhase( 0, -1, 0 );
-	m_clipMapShader->createPhase( 0, -1, 1 );
-	m_clipMapShader->createPhase( 0, -1, -1 );
+	m_clipMapShader.createPhase( 0, -1, 0 );
+	m_clipMapShader.createPhase( 0, -1, 1 );
+	m_clipMapShader.createPhase( 0, -1, -1 );
 
-	m_light_shader = std::unique_ptr<DMLightShader>( new DMLightShader( m_dmd3d.get() ) );
-	if( !m_light_shader->Initialize() )
+	
+	if( !m_light_shader.Initialize() )
 		return false;
-	if( !m_light_shader->addShaderPass( SRVType::vs, "main", L"Shaders\\lightshader.vs" ) )
+	if( !m_light_shader.addShaderPass( SRVType::vs, "main", L"Shaders\\lightshader.vs" ) )
 		return false;
-	if( !m_light_shader->addShaderPass( SRVType::vs, "main", L"Shaders\\lightshader.vs", "INST_POS=1,INST_SCALE=1" ) )
+	if( !m_light_shader.addShaderPass( SRVType::vs, "main", L"Shaders\\lightshader.vs", "INST_POS=1,INST_SCALE=1" ) )
 		return false;
-	if( !m_light_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\lightshader.ps" ) )
+	if( !m_light_shader.addShaderPass( SRVType::ps, "main", L"Shaders\\lightshader.ps" ) )
 		return false;
-	if( !m_light_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\lightshadersimple.ps" ) )
+	if( !m_light_shader.addShaderPass( SRVType::ps, "main", L"Shaders\\lightshadersimple.ps" ) )
 		return false;
-	if( !m_light_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\PBR.ps" ) )
+	if( !m_light_shader.addShaderPass( SRVType::ps, "main", L"Shaders\\PBR.ps" ) )
 		return false;
-	m_light_shader->createPhase( 0, -1, 0 );
-	m_light_shader->createPhase( 0, -1, 1 );
-	m_light_shader->createPhase( 1, -1, 0 );
-	m_light_shader->createPhase( 0, -1, 2 );
-	m_light_shader->createPhase( 1, -1, 2 );
-	m_light_shader->setLights( m_light_driver.get() );
+	m_light_shader.createPhase( 0, -1, 0 );
+	m_light_shader.createPhase( 0, -1, 1 );
+	m_light_shader.createPhase( 1, -1, 0 );
+	m_light_shader.createPhase( 0, -1, 2 );
+	m_light_shader.createPhase( 1, -1, 2 );
+	m_light_shader.setLights( &m_light_driver );
 
-	m_render_queues[L"light"] = std::unique_ptr<DMRenderQueue>( new DMRenderQueue() );
-	m_render_queues[L"light"]->inititlise( m_light_shader.get(), 0 );
-
-	m_render_queues[L"light_instance"] = std::unique_ptr<DMRenderQueue>( new DMRenderQueue() );
-	m_render_queues[L"light_instance"]->inititlise( m_light_shader.get(), 4 );
-
-	m_render_queues[L"light_PBR"] = std::unique_ptr<DMRenderQueue>( new DMRenderQueue() );
-	m_render_queues[L"light_PBR"]->inititlise( m_light_shader.get(), 3 );
+	
+	m_render_queues[L"light"].inititlise( &m_light_shader, 0 );
+	m_render_queues[L"light_instance"].inititlise( &m_light_shader, 4 );
+	m_render_queues[L"light_PBR"].inititlise( &m_light_shader, 3 );
 
 
-	m_color_shader = std::unique_ptr<DMColorShader>( new DMColorShader( m_dmd3d.get() ) );
-	if( !m_color_shader->Initialize( L"Shaders\\colorshader.vs", L"Shaders\\colorshader.ps" ) )
+	
+	if( !m_color_shader.Initialize( L"Shaders\\colorshader.vs", L"Shaders\\colorshader.ps" ) )
 		return false;
-	m_color_shader->createPhase( 0, -1, 0 );
+	m_color_shader.createPhase( 0, -1, 0 );
 
-	m_grass_shader = std::unique_ptr<DMGrassShader>( new DMGrassShader( m_dmd3d.get() ) );
-	if( !m_grass_shader->Initialize() )
+	
+	if( !m_grass_shader.Initialize() )
 		return false;
-	if( !m_grass_shader->addShaderPass( SRVType::vs, "generate", L"Shaders\\grass.vs" ) )
+	if( !m_grass_shader.addShaderPass( SRVType::vs, "generate", L"Shaders\\grass.vs" ) )
 		return false;
-	m_grass_shader->setStreamout( true );
-	if( !m_grass_shader->addShaderPass( SRVType::gs, "generate", L"Shaders\\grass.gs" ) )
+	m_grass_shader.setStreamout( true );
+	if( !m_grass_shader.addShaderPass( SRVType::gs, "generate", L"Shaders\\grass.gs" ) )
 		return false;
-	m_grass_shader->setStreamout( false );
-	m_grass_shader->createPhase( 0, 0, -1 );
-	if( !m_grass_shader->addShaderPass( SRVType::vs, "main", L"Shaders\\grass.vs" ) )
+	m_grass_shader.setStreamout( false );
+	m_grass_shader.createPhase( 0, 0, -1 );
+	if( !m_grass_shader.addShaderPass( SRVType::vs, "main", L"Shaders\\grass.vs" ) )
 		return false;
-	if( !m_grass_shader->addShaderPass( SRVType::gs, "main", L"Shaders\\grass.gs" ) )
+	if( !m_grass_shader.addShaderPass( SRVType::gs, "main", L"Shaders\\grass.gs" ) )
 		return false;
-	if( !m_grass_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\grass.ps" ) )
+	if( !m_grass_shader.addShaderPass( SRVType::ps, "main", L"Shaders\\grass.ps" ) )
 		return false;
-	m_grass_shader->createPhase( 1, 1, 0 );
+	m_grass_shader.createPhase( 1, 1, 0 );
 	
 
 	//m_advection_shader = std::unique_ptr< DMAdvectionShader( m_dmd3d.get() );
 	//m_advection_shader->Initialize( L"Shaders\\textureshader.vs", L"Shaders\\advection.ps" );
 	//m_advection_shader->addShaderPass( DMShader::ps, "init", L"Shaders\\advection.ps" );
 
-	m_particle_shader = std::unique_ptr<DMParticleShader>( new DMParticleShader( m_dmd3d.get() ) );
-	if( !m_particle_shader->Initialize( L"Shaders\\particle.vs", L"Shaders\\particle.ps" ) )
-		return false;
-	if( !m_particle_shader->addShaderPass( SRVType::gs, "main", L"Shaders\\particle.gs" ) )
-		return false;
-	m_particle_shader->createPhase( 0, 0, 0 );
-	
 
-	m_full_screen_shader = std::unique_ptr<DMFullScreenShader>( new DMFullScreenShader( m_dmd3d.get() ) );
-	if( !m_full_screen_shader->Initialize( L"Shaders\\fullscreen.vs", L"Shaders\\fullscreen.ps" ) )
+	
+	if( !m_full_screen_shader.Initialize( L"Shaders\\fullscreen.vs", L"Shaders\\fullscreen.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 0 );
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\noise.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 0 );
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "main", L"Shaders\\noise.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 1 );
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "BrightPass", L"Shaders\\hdr.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 1 );
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "BrightPass", L"Shaders\\hdr.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 2 );
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "DownSample", L"Shaders\\hdr.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 2 );
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "DownSample", L"Shaders\\hdr.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 3 );
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "HorizontalBlur", L"Shaders\\hdr.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 3 );
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "HorizontalBlur", L"Shaders\\hdr.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 4 );
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "VerticalBlur", L"Shaders\\hdr.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 4 );
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "VerticalBlur", L"Shaders\\hdr.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 5 ); 
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "FinalPass", L"Shaders\\hdr.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 5 ); 
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "FinalPass", L"Shaders\\hdr.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 6 );
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\calcnormal.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 6 );
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "main", L"Shaders\\calcnormal.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 7 );
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\procedure_tex.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 7 );
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "main", L"Shaders\\procedure_tex.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 8 );
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "main", L"Shaders\\fastwater.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 8 );
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "main", L"Shaders\\fastwater.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 9 );
-	if( !m_full_screen_shader->addShaderPass( SRVType::ps, "init", L"Shaders\\fastwater.ps" ) )
+	m_full_screen_shader.createPhase( 0, -1, 9 );
+	if( !m_full_screen_shader.addShaderPass( SRVType::ps, "init", L"Shaders\\fastwater.ps" ) )
 		return false;
-	m_full_screen_shader->createPhase( 0, -1, 10 );
+	m_full_screen_shader.createPhase( 0, -1, 10 );
 
 	//m_grass_cs = std::unique_ptr< DMComputeShader( m_dmd3d.get() );
 	//m_grass_cs->Initialize( L"Shaders\\grass.cs", "main" );
 
-	m_depth_shader = std::unique_ptr<DMDepthShader>( new DMDepthShader( m_dmd3d.get() ) );
-	if( !m_depth_shader->Initialize( L"Shaders\\depth.vs", L"Shaders\\depth.ps" ) )
+	
+	if( !m_depth_shader.Initialize( L"Shaders\\depth.vs", L"Shaders\\depth.ps" ) )
 		return false;
-	m_depth_shader->createPhase( 0, -1, -1 );
-	m_render_queues[L"shadow"] = std::unique_ptr<DMRenderQueue>( new DMRenderQueue() );
-	m_render_queues[L"shadow"]->inititlise( m_depth_shader.get(), 0 );
+	m_depth_shader.createPhase( 0, -1, -1 );	
+	m_render_queues[L"shadow"].inititlise( &m_depth_shader, 0 );
 
 	//Shaders\\font.vs", L"Shaders\\font.ps
 
@@ -544,12 +430,15 @@ bool DMGraphics::InitModels()
 	
 	size_t offset_start = 0;
 
-	std::unique_ptr<DMModel> model;
+	
 
 	// загружаем все модели
 	while( wcslen( &out[offset_start] ) > 0 )
-	{	
+	{
 		std::wstring model_name = ( &out[offset_start] );
+
+		DMModel model( model_name );
+
 		int lods = GetPrivateProfileInt( model_name.data(), L"LOD", 0, level_file.data() );
 
 		// загружаем все лоды модели
@@ -563,19 +452,18 @@ bool DMGraphics::InitModels()
 			dist = GetPrivateProfileInt( model_name.data(), model_lod.data(), 0, level_file.data() );
 			if( wcslen( model_lod_path ) && dist > 0 )
 			{
-				if( !model )
+				if( model.countOfLOD() == 0 )
 				{
-					model = std::unique_ptr<DMModel>( new DMModel( m_dmd3d.get(), m_texture_pool.get(), model_name ) );
-					model->Initialize( dist, DMMesh::VertexCombination::V_PTNTB, model_lod_path );
+					model.Initialize( dist, DMMesh::VertexCombination::V_PTNTB, model_lod_path );
 				}
 				else
 				{
-					model->addLODModel( dist, DMMesh::VertexCombination::V_PTNTB, model_lod_path );
+					model.addLODModel( dist, DMMesh::VertexCombination::V_PTNTB, model_lod_path );
 				}
 			}
 		}
 
-		if( lods && model )
+		if( lods && model.countOfLOD() )
 		{
 			wchar_t albedo[1024];
 			wchar_t normal[1024];
@@ -586,19 +474,19 @@ bool DMGraphics::InitModels()
 			GetPrivateProfileString( model_name.data(), L"height", L"", height, 1024, level_file.data() );
 			GetPrivateProfileString( model_name.data(), L"gim",	   L"", gim, 1024, level_file.data() );
 			if( wcslen( albedo ) > 0 )
-				model->setTexure( DMModel::albedo, m_texture_pool->load_texture( albedo ) );
+				model.setTexure( DMModel::albedo, DMTexturePool::instance().load_texture( albedo ) );
 			if( wcslen( normal ) > 0 )
-				model->setTexure( DMModel::TextureType::normal, m_texture_pool->load_texture( normal ) );
+				model.setTexure( DMModel::TextureType::normal, DMTexturePool::instance().load_texture( normal ) );
 			if( wcslen( height ) > 0 )
-				model->setTexure( DMModel::TextureType::height, m_texture_pool->load_texture( height ) );
+				model.setTexure( DMModel::TextureType::height, DMTexturePool::instance().load_texture( height ) );
 			if( wcslen( gim ) > 0 )
-				model->setTexure( DMModel::TextureType::gim, m_texture_pool->load_texture( gim ) );
+				model.setTexure( DMModel::TextureType::gim, DMTexturePool::instance().load_texture( gim ) );
 
 			int scale = GetPrivateProfileInt( model_name.data(), L"scale", 0, level_file.data() );
 
 			if( scale )
 			{
-				model->setScale( (float)scale / 100.0f );
+				model.setScale( (float)scale / 100.0f );
 			}
 
 			
@@ -606,17 +494,17 @@ bool DMGraphics::InitModels()
 			int y = GetPrivateProfileInt( model_name.data(), L"pos_y", 0, level_file.data() );
 			int z = GetPrivateProfileInt( model_name.data(), L"pos_z", 0, level_file.data() );
 
-			model->setPos( (float)x / 100.0f, (float)y / 100.0f, (float)z / 100.0f );
+			model.setPos( (float)x / 100.0f, (float)y / 100.0f, (float)z / 100.0f );
 
 			wchar_t shader[200];
 			GetPrivateProfileString( model_name.data(), L"shader", L"", shader, 200, level_file.data() );
 			if( wcslen( shader ) )
 			{
 				//m_render_queues[shader]->append( model.get() );
-				model->addRenderQueue( m_render_queues[shader].get() );
+				model.addRenderQueue( &m_render_queues[shader] );
 			}
 
-			model->addRenderQueue( m_render_queues[L"shadow"].get() );
+			model.addRenderQueue( &m_render_queues[L"shadow"] );
 			
 			m_models[model_name] = std::move( model );
 
@@ -632,67 +520,32 @@ bool DMGraphics::InitModels()
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////			TERRAIN			//////////////////////////////////////////////
 
-	m_terrain = std::unique_ptr<DMTerrain>( new DMTerrain( m_dmd3d.get(), m_clipMapShader ) );
-	m_terrain->Initialize();
-	//m_terrain->loadHeightMap( L"Textures\\terrain\\heightmap.dds",  1, 250.0f );
-	//m_terrain->addBaseTextures( L"Textures\\terrain\\normalmap.dds", L"Textures\\terrain\\diffuse.bmp" );
+	
+	m_terrain.Initialize( &m_clipMapShader );
+	//m_terrain.loadHeightMap( L"Textures\\TerrainHM.png", 1.0, 150.0f );
+	m_terrain.loadHeightMap( L"Textures\\terrain\\heightmap.dds", 1.0, 150.0f );
+	m_terrain.addBaseTextures( L"Textures\\terrain\\NormalMap.png", L"Textures\\materials\\blocksrough_basecolor_2048.png" );
 
 	DMTerrain::TextureSet texture_set;
-	/*2*/texture_set.blend = L"Textures\\terrain\\Layer.png";
-	//texture_set.blend = L"Textures\\alpha001.dds";
-	///*3*/texture_set.albedo[0]	= L"Textures\\materials\\grass1-albedo_2048.png";
-	///*4*/texture_set.normal[0]	= L"Textures\\materials\\grass1-normal2_2048.png";
-	///*5*/texture_set.gim[0]		= L"Textures\\materials\\grass1-GIM_2048.dds";
-	///*6*/texture_set.albedo[1]	= L"Textures\\materials\\rock_sliced_Base_Color_2048.png";
-	///*7*/texture_set.normal[1]	= L"Textures\\materials\\rock_sliced_Normal_2048.png";
-	///*8*/texture_set.gim[1]		= L"Textures\\materials\\rock_sliced_GIM_2048.dds";
-	///*9*/texture_set.albedo[2]	= L"Textures\\materials\\cavefloor2_Base_Color_2048.png";
-	///*10*/texture_set.normal[2]	= L"Textures\\materials\\cavefloor2_Normal_2048.png";
-	///*11*/texture_set.gim[2]	= L"Textures\\materials\\cavefloor2_GIM_2048.dds";
-	///*12*/texture_set.albedo[3]	= L"Textures\\materials\\blocksrough_basecolor_2048.png";
-	///*13*/texture_set.normal[3]	= L"Textures\\materials\\blocksrough_normal_2048.png";
-	///*14*/texture_set.gim[3]	= L"Textures\\materials\\blocksrough_GIM_2048.dds";
-	///*15*/texture_set.albedo[4]	= L"Textures\\materials\\copper-rock1-alb_2048.png";
-	///*16*/texture_set.normal[4]	= L"Textures\\materials\\copper-rock1-NH_2048.dds";
-	///*17*/texture_set.gim[4]	= L"Textures\\materials\\copper-rock1-GIM_2048.dds";
-	//m_terrain->setTexturesFirstBlock( &texture_set );
+	texture_set.blend = L"Textures\\terrain\\Layer.dds";
+	
+	texture_set.albedo[0] = L"Textures\\materials\\rock_sliced_Base_Color_256.png";
+	texture_set.normal[0] = L"Textures\\materials\\rock_sliced_Normal_256.png";
+	texture_set.albedo[1] = L"Textures\\materials\\blocksrough_basecolor_256.png";
+	texture_set.normal[1] = L"Textures\\materials\\blocksrough_normal_alt.png";
+	texture_set.albedo[2] = L"Textures\\materials\\grass1-albedo_256.png";
+	texture_set.normal[2] = L"Textures\\materials\\grass1-normal2_256.png";
+	texture_set.albedo[3] = L"Textures\\materials\\rock_sliced_Base_Color_256.png";
+	texture_set.normal[3] = L"Textures\\materials\\rock_sliced_Normal_256.png";
+	texture_set.albedo[4] = L"Textures\\materials\\rock_sliced_Base_Color_256.png";
+	texture_set.normal[4] = L"Textures\\materials\\rock_sliced_Normal_256.png";
+	m_terrain.setTexturesFirstBlock( &texture_set );
 
-	m_terrain->setTile( 0, 800.0f );
-	m_terrain->setTile( 1, 800.0f );
-	m_terrain->setTile( 2, 800.0f );
-	m_terrain->setTile( 3, 800.0f );
-	m_terrain->setTile( 4, 2000.0f );
-
-	//m_terrain_low_res = std::unique_ptr<DMTerrain>( new DMTerrain( m_dmd3d.get(), m_clipMapShader ) );
-	//m_terrain_low_res->Initialize();
-	//m_terrain_low_res->loadHeightMap( L"Textures\\terrain\\heightmap.dds", L"Textures\\terrain\\normalmap.dds", 1, 300.0f );
-	//
-	/*3*/texture_set.albedo[0] = L"Textures\\materials\\grass1-albedo_256.png";
-	/*4*/texture_set.normal[0] = L"Textures\\materials\\grass1-normal2_256.png";
-	/*5*/texture_set.gim[0] = L"Textures\\materials\\grass1-GIM_256.dds";
-	/*6*/texture_set.albedo[1] = L"Textures\\materials\\rock_sliced_Base_Color_256.png";
-	/*7*/texture_set.normal[1] = L"Textures\\materials\\rock_sliced_Normal_256.png";
-	/*8*/texture_set.gim[1] = L"Textures\\materials\\rock_sliced_GIM_256.dds";
-	/*9*/texture_set.albedo[2] = L"Textures\\materials\\cavefloor2_Base_Color_256.png";
-	/*10*/texture_set.normal[2] = L"Textures\\materials\\cavefloor2_Normal_256.png";
-	/*11*/texture_set.gim[2] = L"Textures\\materials\\cavefloor2_GIM_256.dds";
-	/*15*/texture_set.albedo[3] = L"Textures\\materials\\copper-rock1-alb_256.png";
-	/*16*/texture_set.normal[3] = L"Textures\\materials\\copper-rock1-NH_256.dds";
-	/*17*/texture_set.gim[3] = L"Textures\\materials\\copper-rock1-GIM_256.dds";
-	///*12*/texture_set.albedo[4] = L"Textures\\materials\\blocksrough_basecolor_256.png";
-	///*13*/texture_set.normal[4] = L"Textures\\materials\\blocksrough_normal_256.png";
-	///*14*/texture_set.gim[4] = L"Textures\\materials\\blocksrough_GIM_256.dds";
-	/*12*/texture_set.albedo[4] = L"Textures\\materials\\Snow.dds";
-	/*13*/texture_set.normal[4] = L"Textures\\materials\\Snow_NH.png";
-	/*14*/texture_set.gim[4] = L"Textures\\materials\\Snow_GIM.dds";
-	//m_terrain->setTexturesFirstBlock( &texture_set );
-	//m_terrain_low_res->setTexturesFirstBlock( &texture_set );
-	//
-	//m_terrain_low_res->setTile( 0, 100.0f );
-	//m_terrain_low_res->setTile( 1, 100.0f );
-	//m_terrain_low_res->setTile( 2, 100.0f );
-	//m_terrain_low_res->setTile( 3, 100.0f );
-	//m_terrain_low_res->setTile( 4, 100.0f );
+	m_terrain.setTile( 0, 800.0f );
+	m_terrain.setTile( 1, 800.0f );
+	m_terrain.setTile( 2, 800.0f );
+	m_terrain.setTile( 3, 800.0f );
+	m_terrain.setTile( 4, 800.0f );
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -716,14 +569,14 @@ bool DMGraphics::InitModels()
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	m_full_screen = std::unique_ptr<DMFullScreen>( new DMFullScreen( m_dmd3d.get() ) );
+	
 	
 	//m_grass_model = std::unique_ptr<DMModel>( new DMModel( m_dmd3d.get() ) );
-	//if( m_grass_model->Initialize( 1000.0f, DMMesh::V_PTN, L"Models\\Box.bin" ) )
+	//if( m_grass_model.Initialize( 1000.0f, DMMesh::V_PTN, L"Models\\Box.bin" ) )
 	//{
-	//	m_grass_model->setTexure( DMModel::albedo, L"Textures\\dirt.dds" );
-	//	//m_grass_model->setBasePosition( 2.0f, 0.0f, 2.0f );		
-	//	//m_grass_model->setScale( 0.05f );
+	//	m_grass_model.setTexure( DMModel::albedo, L"Textures\\dirt.dds" );
+	//	//m_grass_model.setBasePosition( 2.0f, 0.0f, 2.0f );		
+	//	//m_grass_model.setScale( 0.05f );
 	//}
 	
 
@@ -762,18 +615,18 @@ bool DMGraphics::InitModels()
 	*/
 	
 	
-	m_sky_sphere = std::unique_ptr<DMModel>( new DMModel( m_dmd3d.get(), m_texture_pool.get(), L"SkySphere" ) );
-	m_sky_sphere->Initialize( 1000.0f, DMMesh::V_PTN, L"Models\\SkySphere.bin" );
-	//m_sky_sphere->setTexure( DMModel::albedo, m_texture_pool->load_texture( L"Textures\\SkiesLL_4.dds" ) );
-	m_sky_sphere->setTexure( DMModel::albedo, m_texture_pool->load_texture( L"Textures\\SkiesLL_4.dds" ) );
-
-	m_model_buffer["sky_sphere"] = m_sky_sphere.get();
-
-	m_render_filter = std::unique_ptr<DMRenderFilter>( new DMRenderFilter( m_dmd3d.get(), m_full_screen.get(), m_full_screen_shader.get() ) );
-
 	
-	m_box_instance = std::unique_ptr<DMInstance>( new DMInstance( m_dmd3d.get() ) );
-	if( !m_box_instance->initialize( m_models.at( L"Sphere" ), INSTANCE_TYPE::INST_POS, 7 ) )
+	m_sky_sphere.Initialize( 1000.0f, DMMesh::V_PTN, L"Models\\SkySphere.bin" );
+	//m_sky_sphere.setTexure( DMModel::albedo, DMTexturePool::instance().load_texture( L"Textures\\SkiesLL_4.dds" ) );
+	m_sky_sphere.setTexure( DMModel::albedo, DMTexturePool::instance().load_texture( L"Textures\\SkiesLL_4.dds" ) );
+
+	m_model_buffer["sky_sphere"] = &m_sky_sphere;
+
+	m_render_filter.Initialize( &m_full_screen, &m_full_screen_shader );
+	
+	
+	
+	if( !m_box_instance.initialize( m_models.at( L"Sphere" ), INSTANCE_TYPE::INST_POS, 7 ) )
 		return false;
 	
 	m_models.erase( L"Sphere" );
@@ -795,7 +648,7 @@ bool DMGraphics::InitModels()
 		instance_data.push_back( instance );
 	}
 	
-	m_box_instance->set_data( instance_data );
+	m_box_instance.set_data( instance_data );
 
 
 	//m_sphere_instance = std::unique_ptr<DMInstance>( new DMInstance( m_dmd3d.get() ) );
@@ -828,16 +681,11 @@ bool DMGraphics::InitModels()
 
 	for( auto& pair : m_models )
 	{
-		m_object_quad_tree->addObject( pair.second.get() );
+		m_object_quad_tree.addObject( &pair.second );
 	}
 	
 
 	return true;
-}
-
-void DMGraphics::Shutdown( )
-{	
-	return;
 }
 
 bool DMGraphics::Frame()
@@ -848,52 +696,52 @@ bool DMGraphics::Frame()
 	
 
 	// Read the user input.
-	result = m_Input->Frame( );
+	result = m_Input.Frame( );
 	if( !result )
 	{
 		return false;
 	}
 
 	// Check if the user pressed escape and wants to exit the application.
-	if( m_Input->IsEscapePressed( ) == true )
+	if( m_Input.IsEscapePressed( ) == true )
 	{
 		return false;
 	}
 	
 	// Update the system stats.
-	m_Timer->Frame( );
-	m_Fps->Frame( );
-	m_Cpu->Frame( );
+	m_Timer.Frame( );
+	m_Fps.Frame( );
+	m_Cpu.Frame( );
 
 	// Update the FPS value in the text object.
-	result = m_Text->SetFps( m_Fps->GetFps( ) );
+	result = m_Text.SetFps( m_Fps.GetFps( ) );
 	if( !result )
 	{
 		return false;
 	}
 
 	// Update the CPU usage value in the text object.
-	result = m_Text->SetCpu( m_Cpu->GetCpuPercentage( ));
+	result = m_Text.SetCpu( m_Cpu.GetCpuPercentage( ));
 	if( !result )
 	{
 		return false;
 	}
 
 	// Do the frame input processing.
-	result = HandleInput( (float)m_Timer->GetTime( ) );
+	result = HandleInput( (float)m_Timer.GetTime( ) );
 	if( !result )
 	{
 		return false;
 	}
 
-//	m_fpsCamera.FrameMove( m_Timer->GetTime( ) );
+//	m_fpsCamera.FrameMove( m_Timer.GetTime( ) );
 
 	for( auto model : m_model_buffer )
 	{
-		model.second->update( (float)m_Timer->GetTime() );
+		model.second->update( (float)m_Timer.GetTime() );
 	}
 
-	//m_draw_container->update( m_Timer->GetTime() );
+	//m_draw_container->update( m_Timer.GetTime() );
 
 	Render();
 	
@@ -913,69 +761,69 @@ bool DMGraphics::HandleInput( float frameTime )
 	float posX, posY, posZ, rotX, rotY, rotZ;
 
 	// Set the frame time for calculating the updated position.
-	m_Position->SetFrameTime( frameTime );
+	m_Position.SetFrameTime( frameTime );
 
-	if( m_Input->isKeyPressed( DIK_Q ) )
+	if( m_Input.isKeyPressed( DIK_Q ) )
 		m_showWireframe = !m_showWireframe;
 
 	// Handle the input.
-	keyDown = m_Input->IsForwarPressed( );
-	m_Position->MoveForward( keyDown );
+	keyDown = m_Input.IsForwarPressed( );
+	m_Position.MoveForward( keyDown );
 
-	keyDown = m_Input->IsBackwardPressed( );
-	m_Position->MoveBackward( keyDown );
+	keyDown = m_Input.IsBackwardPressed( );
+	m_Position.MoveBackward( keyDown );
 
-	keyDown = m_Input->IsUpMove( );
-	m_Position->MoveUpward( keyDown );
+	keyDown = m_Input.IsUpMove( );
+	m_Position.MoveUpward( keyDown );
 
-	keyDown = m_Input->IsDownMove( );
-	m_Position->MoveDownward( keyDown );
+	keyDown = m_Input.IsDownMove( );
+	m_Position.MoveDownward( keyDown );
 
-	keyDown = m_Input->IsLeftStride( );
-	m_Position->MoveLeft( keyDown );
+	keyDown = m_Input.IsLeftStride( );
+	m_Position.MoveLeft( keyDown );
 
-	keyDown = m_Input->IsRightStride( );
-	m_Position->MoveRight( keyDown );
+	keyDown = m_Input.IsRightStride( );
+	m_Position.MoveRight( keyDown );
 
 	/*
-	keyDown = m_Input->IsLookUpPressed( );
-	m_Position->LookUpward( keyDown );
+	keyDown = m_Input.IsLookUpPressed( );
+	m_Position.LookUpward( keyDown );
 
-	keyDown = m_Input->IsLookDownPressed( );
-	m_Position->LookDownward( keyDown );
+	keyDown = m_Input.IsLookDownPressed( );
+	m_Position.LookDownward( keyDown );
 
-	keyDown = m_Input->IsLookLeftPressed( );
-	m_Position->TurnLeft( keyDown );
+	keyDown = m_Input.IsLookLeftPressed( );
+	m_Position.TurnLeft( keyDown );
 
-	keyDown = m_Input->IsLookRightPressed( );
-	m_Position->TurnRight( keyDown );
+	keyDown = m_Input.IsLookRightPressed( );
+	m_Position.TurnRight( keyDown );
 	*/
 	double x, y;
-	m_Input->GetMouseLocation( x, y );
+	m_Input.GetMouseLocation( x, y );
 
 	double speed_factor = 0.1;
 
 	x *= speed_factor;
 	y *= speed_factor;
 
-	m_Position->SetRotation( (float)y, (float)x, 0.0f );
+	m_Position.SetRotation( (float)y, (float)x, 0.0f );
 
 	// Get the view point position/rotation.
-	m_Position->GetPosition( posX, posY, posZ );
-	m_Position->GetRotation( rotX, rotY, rotZ );
+	m_Position.GetPosition( posX, posY, posZ );
+	m_Position.GetRotation( rotX, rotY, rotZ );
 
 	// Set the position of the camera.
-	m_Camera->SetPosition( posX, posY, posZ );
-	m_Camera->SetRotation( rotX, rotY, rotZ );
+	m_cameraPool["main"].SetPosition( posX, posY, posZ );
+	m_cameraPool["main"].SetRotation( rotX, rotY, rotZ );
 	
 	// Update the position values in the text object.
-	if( !m_Text->SetCameraPosition( posX, posY, posZ ) )
+	if( !m_Text.SetCameraPosition( posX, posY, posZ ) )
 	{
 		return false;
 	}
 
 	// Update the rotation values in the text object.
-	if( !m_Text->SetCameraRotation( rotX, rotY, rotZ ) )
+	if( !m_Text.SetCameraRotation( rotX, rotY, rotZ ) )
 	{
 		return false;
 	}
@@ -997,34 +845,34 @@ bool DMGraphics::Render()
 
 	static D3DXMATRIX worldMatrix;
 	
-	static ID3D11SamplerState* samplers_sates[] = { m_sampler_state->sampler( DMSamplerState::st_point_clamp ),
-											m_sampler_state->sampler( DMSamplerState::st_point_wrap ),
-											m_sampler_state->sampler( DMSamplerState::st_point_border ),
-											m_sampler_state->sampler( DMSamplerState::st_linear_clamp ),
-											m_sampler_state->sampler( DMSamplerState::st_linear_wrap ),
-											m_sampler_state->sampler( DMSamplerState::st_anisotrop_clamp ),
-											m_sampler_state->sampler( DMSamplerState::st_anisotrop_wrap ),
-											m_sampler_state->sampler( DMSamplerState::st_cmp_less ) };
-	m_dmd3d->GetDeviceContext()->VSSetSamplers( 0, 8, samplers_sates );
-	m_dmd3d->GetDeviceContext()->GSSetSamplers( 0, 8, samplers_sates );
-	m_dmd3d->GetDeviceContext()->PSSetSamplers( 0, 8, samplers_sates );
+	static ID3D11SamplerState* samplers_sates[] = { m_sampler_state.sampler( DMSamplerState::st_point_clamp ),
+											m_sampler_state.sampler( DMSamplerState::st_point_wrap ),
+											m_sampler_state.sampler( DMSamplerState::st_point_border ),
+											m_sampler_state.sampler( DMSamplerState::st_linear_clamp ),
+											m_sampler_state.sampler( DMSamplerState::st_linear_wrap ),
+											m_sampler_state.sampler( DMSamplerState::st_anisotrop_clamp ),
+											m_sampler_state.sampler( DMSamplerState::st_anisotrop_wrap ),
+											m_sampler_state.sampler( DMSamplerState::st_cmp_less ) };
+	DMD3D::instance().GetDeviceContext()->VSSetSamplers( 0, 8, samplers_sates );
+	DMD3D::instance().GetDeviceContext()->GSSetSamplers( 0, 8, samplers_sates );
+	DMD3D::instance().GetDeviceContext()->PSSetSamplers( 0, 8, samplers_sates );
 
-	D3DXVECTOR3 cam_pos = m_Camera->position();
+	D3DXVECTOR3 cam_pos = m_cameraPool["main"].position();
 	
 	//cam_pos.x = max( cam_pos.x, 5.0f );
 	//cam_pos.z = max( cam_pos.z, 5.0f );
-	//cam_pos.x = min( cam_pos.x, m_terrain->heightmap()->size().x - 5.0f );
-	//cam_pos.z = min( cam_pos.z, m_terrain->heightmap()->size().y - 5.0f );
+	//cam_pos.x = min( cam_pos.x, m_terrain.heightmap()->size().x - 5.0f );
+	//cam_pos.z = min( cam_pos.z, m_terrain.heightmap()->size().y - 5.0f );
 	//
-	//float terrain_height = m_terrain->heightmap()->height( cam_pos.x, cam_pos.z ) * 300 + 2;
-	//m_Camera->SetPosition( cam_pos.x, terrain_height, cam_pos.z );
-	//m_Position->SetPosition( cam_pos.x, terrain_height, cam_pos.z );
+	//float terrain_height = m_terrain.heightmap()->height( cam_pos.x, cam_pos.z ) * 300 + 2;
+	//m_cameraPool["main"].SetPosition( cam_pos.x, terrain_height, cam_pos.z );
+	//m_Position.SetPosition( cam_pos.x, terrain_height, cam_pos.z );
 
-	m_Camera->Render();
+	m_cameraPool["main"].Render();
 
 	for( auto& queue : m_render_queues )
 	{
-		queue.second->clear();
+		queue.second.clear();
 	}	
 	
 	/////////////////////////////////////////////////////////////
@@ -1039,43 +887,43 @@ bool DMGraphics::Render()
 	RenderShadowLights();
 	/////////////////////////////////////////////////////////////
 	
-	m_light_driver->setShaderBuffer();
+	m_light_driver.setShaderBuffer();
 
 	static float app_time = 0;
-	app_time += (float)m_Timer->GetTime( );
+	app_time += (float)m_Timer.GetTime( );
 
 	/////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////	
 	//
 	if( use_hdr )
 	{
-		m_hdr->begin();
+		m_hdr.begin();
 	}
 	else
 	{
-		m_dmd3d->BeginScene( 0.4f, 0.4f, 0.4f, 1.0f );
+		DMD3D::instance().BeginScene( 0.4f, 0.4f, 0.4f, 1.0f );
 	}
 	//
-	//m_dmd3d->TurnOnWireframe();
-	RenderBackground( m_Camera.get() );
-	//m_dmd3d->TurnOffWireframe();
+	//DMD3D::instance().TurnOnWireframe();
+	RenderBackground( m_cameraPool["main"] );
+	//DMD3D::instance().TurnOffWireframe();
 	//
 	///////////////////////////////////////////////////////////////
 	//
 	int model_draw_count = 0;
 	//
-	//float elapsed_time = (float)m_Timer->GetTime();
+	//float elapsed_time = (float)m_Timer.GetTime();
 	//
-	//m_light_driver->update( elapsed_time );
+	//m_light_driver.update( elapsed_time );
 	//
 	//DMLightShader::PSParamBuffer light_ps_buffer;
 	//memset( &light_ps_buffer, 0, sizeof( DMLightShader::PSParamBuffer ) );
 	//
 	////std::swap( m_Camera, m_cameras_shadow[3] );
 	//
-	m_Frustum->ConstructFrustum( m_Camera.get(), 1540.0f );
+	m_Frustum.ConstructFrustum( m_cameraPool["main"], 1540.0f );
 	
-	m_object_quad_tree->checkObjects( m_Frustum.get(), m_Camera.get() );
+	m_object_quad_tree.checkObjects( m_Frustum, m_cameraPool["main"] );
 
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1083,28 +931,28 @@ bool DMGraphics::Render()
 
 	
 	// grass
-	//m_grass_shader->Prepare( m_Camera, 0 );
-	//m_grass_shader->setDrawType( DMShader::by_vertex );
-	//m_grass_shader->setTextureDistribution( m_TerrainTexturesArray->GetTextureArray()[12] );
-	//m_grass_shader->setTextureNoise( m_TerrainTexturesArray->GetTextureArray()[13] );
-	//m_grass_shader->setTextureColor( m_TerrainTexturesArray->GetTextureArray()[11] );
-	//m_grass_shader->setTextureHeight( m_TerrainTexturesArray->GetTextureArray()[0] );	
-	//m_grass_shader->setTerrainColor( m_render_texture->GetShaderResourceView() );
-	//m_grass_shader->setMapSize( m_grass->grassMapSize() );
+	//m_grass_shader.Prepare( m_Camera, 0 );
+	//m_grass_shader.setDrawType( DMShader::by_vertex );
+	//m_grass_shader.setTextureDistribution( m_TerrainTexturesArray->GetTextureArray()[12] );
+	//m_grass_shader.setTextureNoise( m_TerrainTexturesArray->GetTextureArray()[13] );
+	//m_grass_shader.setTextureColor( m_TerrainTexturesArray->GetTextureArray()[11] );
+	//m_grass_shader.setTextureHeight( m_TerrainTexturesArray->GetTextureArray()[0] );	
+	//m_grass_shader.setTerrainColor( m_render_texture.GetShaderResourceView() );
+	//m_grass_shader.setMapSize( m_grass->grassMapSize() );
 	//m_grass->Generate();
 	//
-	//m_dmd3d->TurnZBufferOff();
-	//m_grass_shader->Render( m_grass->grassCount(), nullptr );
-	//m_dmd3d->TurnZBufferOn();
+	//DMD3D::instance().TurnZBufferOff();
+	//m_grass_shader.Render( m_grass->grassCount(), nullptr );
+	//DMD3D::instance().TurnZBufferOn();
 	//m_grass->EndGenerate();
 	//
 	//
 	//m_grass->Render();	
-	//m_grass_shader->Prepare( m_Camera, 1 );
-	//m_grass_shader->setDrawType( DMShader::by_auto );	
-	//m_dmd3d->TurnOnTransparancy();
-	//m_grass_shader->Render( m_grass->grassCount(), nullptr );
-	//m_dmd3d->TurnOffTransparancy();
+	//m_grass_shader.Prepare( m_Camera, 1 );
+	//m_grass_shader.setDrawType( DMShader::by_auto );	
+	//DMD3D::instance().TurnOnTransparancy();
+	//m_grass_shader.Render( m_grass->grassCount(), nullptr );
+	//DMD3D::instance().TurnOffTransparancy();
 	
 
 	
@@ -1114,16 +962,16 @@ bool DMGraphics::Render()
 
 	//m_particle_system->update( m_grass_cs, elapsed_time );
 	//
-	//m_dmd3d->TurnOnTransparancy();
+	//DMD3D::instance().TurnOnTransparancy();
 	////
 	//m_particle_system->Render();
-	//m_particle_shader->Prepare( m_Camera, 0 );
-	//m_particle_shader->setTexture( m_TerrainTexturesArray->GetTextureArray()[11] );
-	//m_particle_shader->setTextureHeight( m_TerrainTexturesArray->GetTextureArray()[0] );
-	//m_particle_shader->setTextureDistributon( m_TerrainTexturesArray->GetTextureArray()[12] );
-	//m_particle_shader->Render( m_particle_system->particleCount(), m_particle_system->resultMatrix() );
+	//m_particle_shader.Prepare( m_Camera, 0 );
+	//m_particle_shader.setTexture( m_TerrainTexturesArray->GetTextureArray()[11] );
+	//m_particle_shader.setTextureHeight( m_TerrainTexturesArray->GetTextureArray()[0] );
+	//m_particle_shader.setTextureDistributon( m_TerrainTexturesArray->GetTextureArray()[12] );
+	//m_particle_shader.Render( m_particle_system->particleCount(), m_particle_system->resultMatrix() );
 	////
-	//m_dmd3d->TurnOffTransparancy();
+	//DMD3D::instance().TurnOffTransparancy();
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -1135,119 +983,102 @@ bool DMGraphics::Render()
 	
 	
 	
-	ID3D11ShaderResourceView* cube_texture = m_texture_pool->texture( m_texture_pool->load_texture( L"Textures\\uffizi_cross_PBR.dds" ) );
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 5, 1, &cube_texture );
-	
-	/*m_TextureShader->Prepare( m_Camera.get(), 0 );
-	model = m_models[L"Box"].get();
-	model->Render( m_Camera.get() );
-	model->resultMatrix( &worldMatrix );
-	m_TextureShader->setTexure( m_texture_pool->texture( model->texture( DMModel::gim ) ) );
-	m_TextureShader->setDrawType( DMShader::by_index );
-	m_TextureShader->Render( model->GetIndexCount(), &worldMatrix );
-	*/
+	ID3D11ShaderResourceView* cube_texture = DMTexturePool::instance().texture( DMTexturePool::instance().load_texture( L"Textures\\uffizi_cross_PBR.dds" ) );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 5, 1, &cube_texture );
+	/*
+
 	DMRenderQueue* current_queue = m_render_queues[L"light"].get();
-	current_queue->shader()->Prepare( m_Camera.get(), current_queue->phase() );
+	current_queue->shader()->Prepare( m_cameraPool["main"], current_queue->phase() );
 	for( auto model : current_queue->queue() )
 	{
-		model->Render( m_Camera.get() );
-		model->resultMatrix( &worldMatrix );
-		model->setTexures();
-		//ID3D11ShaderResourceView* srv = m_render_texture2->GetShaderResourceView();
-		//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 1, 1, &srv );
-		//srv = m_render_texture->GetShaderResourceView();
-		//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 2, 1, &srv );
-		//srv = m_texture_pool->texture( 0 );
-		//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 1, &srv );
+		model.Render( m_cameraPool["main"] );
+		model.resultMatrix( &worldMatrix );
+		model.setTexures();
 		current_queue->shader()->setDrawType( DMShader::by_index );
-		current_queue->shader()->Render( model->GetIndexCount(), &worldMatrix );
+		current_queue->shader()->Render( model.GetIndexCount(), &worldMatrix );
 		model_draw_count += 1;
 	}
 
 	current_queue = m_render_queues[L"light_PBR"].get();
-	current_queue->shader()->Prepare( m_Camera.get(), current_queue->phase() );
+	current_queue->shader()->Prepare( m_cameraPool["main"], current_queue->phase() );
 	for( auto model : current_queue->queue() )
 	{
-		model->Render( m_Camera.get() );
-		model->resultMatrix( &worldMatrix );
-		model->setTexures();
-		//ID3D11ShaderResourceView* srv = m_render_texture2->GetShaderResourceView();
-		//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 1, 1, &srv );
-		//srv = m_render_texture->GetShaderResourceView();
-		//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 2, 1, &srv );
-		//srv = m_texture_pool->texture( 0 );
-		//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 1, &srv );
+		model.Render( m_cameraPool["main"] );
+		model.resultMatrix( &worldMatrix );
+		model.setTexures();
 		current_queue->shader()->setDrawType( DMShader::by_index );
-		current_queue->shader()->Render( model->GetIndexCount(), &worldMatrix );
+		current_queue->shader()->Render( model.GetIndexCount(), &worldMatrix );
 		model_draw_count += 1;
 	}
 	
 	current_queue = m_render_queues[L"light_instance"].get();
-	current_queue->shader()->Prepare( m_Camera.get(), current_queue->phase() );
+	current_queue->shader()->Prepare( m_cameraPool["main"], current_queue->phase() );
 	
-	model = m_box_instance->model();
+	model = m_box_instance.model();
 	if( model )
 	{
-		model->Render( m_Camera.get() );
-		model->resultMatrix( &worldMatrix );
-		model->setTexures();
+		model.Render( m_cameraPool["main"] );
+		model.resultMatrix( &worldMatrix );
+		model.setTexures();
 		current_queue->shader()->setDrawType( DMShader::by_index );
-		m_box_instance->set_to_draw();
-		current_queue->shader()->RenderInstanced( model->GetIndexCount(), m_box_instance->count(), &worldMatrix );
-		model_draw_count += m_box_instance->count();
-	}
+		m_box_instance.set_to_draw();
+		current_queue->shader()->RenderInstanced( model.GetIndexCount(), m_box_instance.count(), &worldMatrix );
+		model_draw_count += m_box_instance.count();
+	}*/
 	//
 	//
 	//model = m_sphere_instance->model();
-	//model->Render( m_Camera.get() );
-	//model->resultMatrix( &worldMatrix );
-	//model->setTexures();
-	//ID3D11ShaderResourceView* srv = m_render_texture2->GetShaderResourceView();
-	//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 1, 1, &srv );
-	//srv = m_render_texture->GetShaderResourceView();
-	//m_dmd3d->GetDeviceContext()->PSSetShaderResources( 2, 1, &srv );
+	//model.Render( m_cameraPool["main"] );
+	//model.resultMatrix( &worldMatrix );
+	//model.setTexures();
+	//ID3D11ShaderResourceView* srv = m_render_texture2.GetShaderResourceView();
+	//DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 1, 1, &srv );
+	//srv = m_render_texture.GetShaderResourceView();
+	//DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 2, 1, &srv );
 	//current_queue->shader()->setDrawType( DMShader::by_index );
 	//m_sphere_instance->set_to_draw();
-	//current_queue->shader()->RenderInstanced( model->GetIndexCount(), m_sphere_instance->count(), &worldMatrix );
+	//current_queue->shader()->RenderInstanced( model.GetIndexCount(), m_sphere_instance->count(), &worldMatrix );
 	//model_draw_count += m_sphere_instance->count();
 		
 
+	//DMD3D::instance().TurnOnWireframe();
 	
-	//m_clipMapShader->selectPhase( 0 );
-	//m_Frustum->ConstructFrustum( m_Camera.get(), 10000 );
-	//m_terrain_low_res->Render( m_Camera.get(), m_Frustum.get() );
-	//m_terrain->Render( m_Camera.get(), m_Frustum.get() );
+	m_clipMapShader.selectPhase( 0 );
+	m_Frustum.ConstructFrustum( m_cameraPool["main"], 10000 );
+	//m_terrain_low_res->Render( m_cameraPool["main"], m_Frustum.get() );
+	m_terrain.Render( m_cameraPool["main"], m_Frustum );
 
+	//DMD3D::instance().TurnOffWireframe();
 	
 	/////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////
 	
-	m_Text->SetRenderCount( model_draw_count );
+	m_Text.SetRenderCount( model_draw_count );
 	//
 	if( use_hdr )
 	{
-		m_hdr->postprocess_and_end( m_CameraOrtho.get(), m_render_filter.get() );
+		m_hdr.postprocess_and_end( m_cameraPool["ortho"], &m_render_filter );
 	
-		m_dmd3d->BeginScene( 0.3f, 0.3f, 0.3f, 1.0f );
+		DMD3D::instance().BeginScene( 0.3f, 0.3f, 0.3f, 1.0f );
 
 		//hdr final pass
-		m_render_filter->setSRV( 0, m_hdr->mainTexture() );
-		m_render_filter->setSRV( 1, m_hdr->brightTexture() );
-		m_render_filter->selectPass( 6 );
+		m_render_filter.setSRV( 0, m_hdr.mainTexture() );
+		m_render_filter.setSRV( 1, m_hdr.brightTexture() );
+		m_render_filter.selectPass( 6 );
 	}
 		
-	//m_render_filter->setSRV( 0, m_light_driver->lights()[0]->shadow_rt()->depthShaderResourceView() );
-	//m_render_filter->setSRV( 0, m_hdr->debugTexture() );
-	//m_render_filter->selectPass( 0 );
-	m_render_filter->Render( m_CameraOrtho.get(), nullptr );
+	//m_render_filter.setSRV( 0, m_light_driver.lights()[0]->shadow_rt()->depthShaderResourceView() );
+	//m_render_filter.setSRV( 0, m_hdr.debugTexture() );
+	//m_render_filter.selectPass( 0 );
+	m_render_filter.Render( m_cameraPool["ortho"], nullptr );
 
-	//m_depth_output->Render( 50, 700 );
+	//m_depth_output.Render( 50, 700 );
 	
 	RenderGUI();
 
 	// Present the rendered scene to the screen.
-	m_dmd3d->EndScene( );
+	DMD3D::instance().EndScene( );
 
 	//std::swap( m_Camera, m_cameras_shadow[3] );
 
@@ -1258,39 +1089,39 @@ void DMGraphics::RenderToTexture()
 {
 	D3DXMATRIX worldMatrix;
 
-	m_dmd3d->TurnZBufferOff();
+	DMD3D::instance().TurnZBufferOff();
 	
-	m_render_texture->SetRenderTarget();
-	m_render_texture->ClearRenderTarget( 0.0f, 0.0f, 0.0f, 1.0f );
+	m_render_texture.SetRenderTarget();
+	m_render_texture.ClearRenderTarget( 0.0f, 0.0f, 0.0f, 1.0f );
 	
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 	
-	m_render_filter->clearSRV();
-	m_render_filter->setSRV( 0, m_render_texture2->GetShaderResourceView() );
-	m_render_filter->setSRV( 1, m_texture_pool->texture( m_texture_pool->load_texture( L"Textures\\TerrainHM.png" ) ) );
-	m_render_filter->setSRV( 2, m_texture_pool->texture( m_texture_pool->load_texture( L"Textures\\TerrainNRM.dds" ) ) );
+	m_render_filter.clearSRV();
+	m_render_filter.setSRV( 0, m_render_texture2.GetShaderResourceView() );
+	m_render_filter.setSRV( 1, DMTexturePool::instance().texture( DMTexturePool::instance().load_texture( L"Textures\\TerrainHM.png" ) ) );
+	m_render_filter.setSRV( 2, DMTexturePool::instance().texture( DMTexturePool::instance().load_texture( L"Textures\\TerrainNRM.dds" ) ) );
 	static bool init = true;
 	if( init )
 	{
-		m_render_filter->selectPass( 10 );
+		m_render_filter.selectPass( 10 );
 		init = false;
 	}
 	else
 	{
-		m_render_filter->selectPass( 9 );
+		m_render_filter.selectPass( 9 );
 	}
 	
-	m_render_filter->Render( m_CameraOrtho.get(), nullptr );
+	m_render_filter.Render( m_cameraPool["ortho"], nullptr );
 	
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 
-	m_render_texture2->SetRenderTarget();
-	m_render_texture2->ClearRenderTarget( 0.0f, 0.0f, 0.0f, 1.0f );
+	m_render_texture2.SetRenderTarget();
+	m_render_texture2.ClearRenderTarget( 0.0f, 0.0f, 0.0f, 1.0f );
 
-	m_dmd3d->TurnZBufferOn();
+	DMD3D::instance().TurnZBufferOn();
 
-	m_dmd3d->SetBackBufferRenderTarget();
-	m_dmd3d->ResetViewport();
+	DMD3D::instance().SetBackBufferRenderTarget();
+	DMD3D::instance().ResetViewport();
 
 	std::swap( m_render_texture, m_render_texture2 );
 
@@ -1298,7 +1129,7 @@ void DMGraphics::RenderToTexture()
 
 	//m_RenderTexture->GetShaderResourceView( )->GetResource( &tempResource );
 
-	//D3DX11SaveTextureToFile( m_dmd3d->GetDeviceContext( ), tempResource, D3DX11_IFF_DDS, L"normal.dds" );
+	//D3DX11SaveTextureToFile( DMD3D::instance().GetDeviceContext( ), tempResource, D3DX11_IFF_DDS, L"normal.dds" );
 }
 
 void DMGraphics::RenderGUI( )
@@ -1307,64 +1138,64 @@ void DMGraphics::RenderGUI( )
 	// Reset the world matrix.
 	D3DXMatrixIdentity( &worldMatrix );
 
-	m_dmd3d->TurnZBufferOff( );
+	DMD3D::instance().TurnZBufferOff( );
 
 	// Turn on the alpha blending before rendering the text.
-	m_dmd3d->TurnOnAlphaBlending( );
+	DMD3D::instance().TurnOnAlphaBlending( );
 
-	m_dmd3d->TurnCullingNoneRS();
+	DMD3D::instance().TurnCullingNoneRS();
 
 	//m_CameraOrthoText->SetPosition( 0.0f, 0.0f, -0.1f );
-	m_CameraOrthoText->Render();
+	m_cameraPool["text"].Render();
 
 	// Render the text user interface elements.
-	m_Text->Render( worldMatrix, m_CameraOrthoText.get() );
+	m_Text.Render( worldMatrix, m_cameraPool["text"] );
 
 	// Turn off alpha blending after rendering the text.
-	m_dmd3d->TurnOffAlphaBlending( );
+	DMD3D::instance().TurnOffAlphaBlending( );
 
 	// Turn the Z buffer back on now that all 2D rendering has completed.
-	m_dmd3d->TurnZBufferOn( );
+	DMD3D::instance().TurnZBufferOn( );
 }
 
-void DMGraphics::RenderBackground( DMCamera* camera )
+void DMGraphics::RenderBackground( const DMCamera& camera )
 {
-	m_dmd3d->TurnZBufferOff( );
-	m_dmd3d->TurnCullingNoneRS();
+	DMD3D::instance().TurnZBufferOff( );
+	DMD3D::instance().TurnCullingNoneRS();
 
-	m_TextureShader->Prepare( camera, 0 );
+	m_TextureShader.Prepare( camera, 0 );
 	{
 		if( m_model_buffer.find( "sky_sphere" ) != m_model_buffer.end() )
 		{	
-			m_sky_sphere->Render( 0.0f );
+			m_sky_sphere.Render( 0.0f );
 
 			D3DXMATRIX worldMatrix;
 			//D3DXMatrixIdentity(&worldMatrix );
 
-			D3DXMatrixTranslation( &worldMatrix, camera->position().x, camera->position().y, camera->position().z );
+			D3DXMatrixTranslation( &worldMatrix, camera.position().x, camera.position().y, camera.position().z );
 
 			DMTextureShader::PSParamBuffer param;
 			memset( &param, 0, sizeof( DMTextureShader::PSParamBuffer ) );
 			param.tex_tiled.x = -1.0f;
 			param.tex_tiled.y = 1.0f;
 
-			m_TextureShader->setParameters( &param );
-			m_TextureShader->setTexure( m_texture_pool->texture( m_sky_sphere->texture( DMModel::albedo ) ) );
-			m_TextureShader->setDrawType( DMShader::by_index );
-			m_TextureShader->Render( m_sky_sphere->GetIndexCount(), &worldMatrix );
+			m_TextureShader.setParameters( &param );
+			m_TextureShader.setTexure( DMTexturePool::instance().texture( m_sky_sphere.texture( DMModel::albedo ) ) );
+			m_TextureShader.setDrawType( DMShader::by_index );
+			m_TextureShader.Render( m_sky_sphere.GetIndexCount(), &worldMatrix );
 		}
 	}
 
-	m_dmd3d->TurnDefaultRS();
-	m_dmd3d->TurnZBufferOn( );
+	DMD3D::instance().TurnDefaultRS();
+	DMD3D::instance().TurnZBufferOn( );
 }
 
 void DMGraphics::RenderShadowSun()
 {
-	m_dmd3d->TurnShadowRS();
+	DMD3D::instance().TurnShadowRS();
 
 	static double app_time = 0;
-	app_time += (double)m_Timer->GetTime();
+	app_time += (double)m_Timer.GetTime();
 
 	D3DXMATRIX worldMatrix;
 
@@ -1377,23 +1208,23 @@ void DMGraphics::RenderShadowSun()
 	vec_view = sun_position;
 	vec_view *= -1.0f;
 	sun_position *= 50.0f;
-	sun_position += m_Camera->position();
+	sun_position += m_cameraPool["main"].position();
 
 	D3DXVECTOR3 offset_direction;
-	m_Camera->viewDirection( &offset_direction );
+	m_cameraPool["main"].viewDirection( &offset_direction );
 
 	if( !m_render_queues.count( L"shadow" ) )
 		return;
 
-	DMRenderQueue* queue = m_render_queues[L"shadow"].get();
+	//DMRenderQueue* queue = m_render_queues[L"shadow"].get();
 
 	for( size_t i = 0; i < m_shadow_depth.size(); i++ )
 	{
-		m_shadow_depth[i]->SetRenderTarget( true );
-		m_shadow_depth[i]->ClearRenderTarget( 0.0, 0.0, 0.0, 0.0 );
+		m_shadow_depth[i].SetRenderTarget( true );
+		m_shadow_depth[i].ClearRenderTarget( 0.0, 0.0, 0.0, 0.0 );
 
 		// calc camera from light		
-		m_cameras_shadow[i]->SetDirection( vec_view );
+		m_cameras_shadow[i].SetDirection( vec_view );
 
 		D3DXVECTOR3 shadow_camera_look_at;
 
@@ -1402,141 +1233,140 @@ void DMGraphics::RenderShadowSun()
 		shadow_camera_look_at.x += offset_direction.x * ( 10.0f / 3.0f * ( i + 1.0f ) );
 		shadow_camera_look_at.z += offset_direction.z * ( 10.0f / 3.0f * ( i + 1.0f ) );
 
-		m_cameras_shadow[i]->SetPosition( shadow_camera_look_at );
+		m_cameras_shadow[i].SetPosition( shadow_camera_look_at );
 
-		m_cameras_shadow[i]->Render();
+		m_cameras_shadow[i].Render();
 
 		//////////////////////////////////////////////////////////////////////////////////////////////////
 
-		m_Frustum->ConstructFrustum( m_cameras_shadow[i].get(), 450.0f );
-		m_object_quad_tree->checkObjects( m_Frustum.get(), m_cameras_shadow[i].get() );
+		m_Frustum.ConstructFrustum( m_cameras_shadow[i], 450.0f );
+		m_object_quad_tree.checkObjects( m_Frustum, m_cameras_shadow[i] );
 
-		//m_Frustum->ConstructFrustum( m_Camera.get(), 450.0f );
-		//m_object_quad_tree->checkObjects( m_Frustum.get(), m_Camera.get() );
+		//m_Frustum.ConstructFrustum( m_cameraPool["main"], 450.0f );
+		//m_object_quad_tree.checkObjects( m_Frustum.get(), m_cameraPool["main"] );
 
-		m_depth_shader->Prepare( m_cameras_shadow[i].get(), 0 );
-		m_depth_shader->setDrawType( DMShader::by_index );
+		m_depth_shader.Prepare( m_cameras_shadow[i], 0 );
+		m_depth_shader.setDrawType( DMShader::by_index );
 
-		for( auto model : queue->queue() )
+		for( auto model : m_render_queues[L"shadow"].queue() )
 		{
-			model->Render( m_cameras_shadow[i].get() );
+			model->Render( m_cameras_shadow[i] );
 			model->resultMatrix( &worldMatrix );
-			m_depth_shader->Render( model->GetIndexCount(), &worldMatrix );
+			m_depth_shader.Render( model->GetIndexCount(), &worldMatrix );
 		}
 
 
-		//m_clipMapShader->selectPhase( 2 );
-		//m_terrain->Render( m_cameras_shadow[i].get() );
+		//m_clipMapShader.selectPhase( 2 );
+		//m_terrain.Render( m_cameras_shadow[i].get() );
 
 	}
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 
 	
-	m_dmd3d->TurnDefaultRS();
+	DMD3D::instance().TurnDefaultRS();
 
-	m_dmd3d->SetBackBufferRenderTarget();
-	m_dmd3d->ResetViewport();
+	DMD3D::instance().SetBackBufferRenderTarget();
+	DMD3D::instance().ResetViewport();
 }
 
 void DMGraphics::RenderShadowLights()
 {
-	m_dmd3d->TurnShadowRS();
+	DMD3D::instance().TurnShadowRS();
 
 	static double app_time = 0;
-	app_time += (double)m_Timer->GetTime();
+	app_time += (double)m_Timer.GetTime();
 
 	D3DXMATRIX worldMatrix;
 
 	if( !m_render_queues.count( L"shadow" ) )
 		return;
 
-	DMRenderQueue* queue = m_render_queues[L"shadow"].get();
+	
 
 	ID3D11ShaderResourceView* shadow_srv[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 38, 6, shadow_srv );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 38, 6, shadow_srv );
 
 
- 	for( auto& light : m_light_driver->lights() )
+ 	for( auto& light : m_light_driver.lights() )
 	{
-		if( !light->castShadow() )
+		if( !light.castShadow() )
 			continue;
 		
-		queue->clear();
+		m_render_queues[L"shadow"].queue().clear();
 
-		DMCamera* shadow_camera = light->shadowCamera();
-		m_Frustum->ConstructFrustum( shadow_camera, light->attenuation );
+		const DMCamera& shadow_camera = light.shadowCamera();
+		m_Frustum.ConstructFrustum( shadow_camera, light.attenuation );
 
-		m_object_quad_tree->checkObjects( m_Frustum.get(), shadow_camera );
+		m_object_quad_tree.checkObjects( m_Frustum, shadow_camera );
 		
-		light->shadow_rt()->SetRenderTarget( true );
-		light->shadow_rt()->ClearRenderTarget( 0.0, 0.0, 0.0, 0.0 );
+		light.shadow_rt().SetRenderTarget( true );
+		light.shadow_rt().ClearRenderTarget( 0.0, 0.0, 0.0, 0.0 );
 			
 		//////////////////////////////////////////////////////////////////////////////////////////////////
 
-		m_depth_shader->Prepare( shadow_camera, 0 );
-		m_depth_shader->setDrawType( DMShader::by_index );
+		m_depth_shader.Prepare( shadow_camera, 0 );
+		m_depth_shader.setDrawType( DMShader::by_index );
 
-		for( auto model : queue->queue() )
+		for( auto model : m_render_queues[L"shadow"].queue() )
 		{
 			model->Render( shadow_camera );
 			model->resultMatrix( &worldMatrix );
-			m_depth_shader->Render( model->GetIndexCount(), &worldMatrix );
+			m_depth_shader.Render( model->GetIndexCount(), &worldMatrix );
 		}	
 
 		//////////////////////////////////////////////////////////////////////////////////////////////////
 	}
 
-	m_dmd3d->TurnDefaultRS();
+	DMD3D::instance().TurnDefaultRS();
 
-	m_dmd3d->SetBackBufferRenderTarget();
-	m_dmd3d->ResetViewport();
+	DMD3D::instance().SetBackBufferRenderTarget();
+	DMD3D::instance().ResetViewport();
 }
 
 void DMGraphics::RenderEnvironment()
 {
-	m_render_cube_texture->initLoop( 509.0f, 11.0f, 490.0f );
+	m_render_cube_texture.initLoop( 509.0f, 11.0f, 490.0f );
 
-	DMCamera* camera;
+	m_light_shader.setLights( &m_light_driver );
 
-	m_light_shader->setLights( m_light_driver.get() );
 
-	while( (camera = m_render_cube_texture->next()) && camera )
+	for( uint8_t camera_index = 0; camera_index < 5; ++camera_index )
 	{
-		RenderBackground( camera );
+		RenderBackground( m_render_cube_texture.camera( camera_index ) );
 
-		//m_clipMapShader->selectPhase( 1 );
+		//m_clipMapShader.selectPhase( 1 );
 		//m_terrain_low_res->Render( camera );
 		/*
-		m_Frustum->ConstructFrustum( camera, 140.0f );
-		m_object_quad_tree->checkObjects( m_Frustum.get() );
+		m_Frustum.ConstructFrustum( camera, 140.0f );
+		m_object_quad_tree.checkObjects( m_Frustum.get() );
 
 		D3DXMATRIX worldMatrix;
-		m_TextureShader->Prepare( camera, 0 );
+		m_TextureShader.Prepare( camera, 0 );
 		DMTextureShader::PSParamBuffer param;
 		memset( &param, 0, sizeof( DMTextureShader::PSParamBuffer ) );
 		param.tex_tiled.x = 1.0f;
 		param.tex_tiled.y = 1.0f;
-		m_TextureShader->setParameters( &param );
+		m_TextureShader.setParameters( &param );
 		
-		m_TextureShader->setDrawType( DMShader::by_index );
+		m_TextureShader.setDrawType( DMShader::by_index );
 		
-		for( size_t i = 0; i < m_object_quad_tree->m_visible_objects.size(); i++ )
+		for( size_t i = 0; i < m_object_quad_tree.m_visible_objects.size(); i++ )
 		{
-			DMModel* model = dynamic_cast<DMModel*>( m_object_quad_tree->m_visible_objects[i] );
-			if( m_Frustum->CheckAABB( &model->aabb() ) )
+			DMModel* model = dynamic_cast<DMModel*>( m_object_quad_tree.m_visible_objects[i] );
+			if( m_Frustum.CheckAABB( &model.aabb() ) )
 			{	
-				model->Render( camera );
-				model->resultMatrix( &worldMatrix );
-				m_TextureShader->setTexure( model->GetTexture( DMModel::albedo ) );
-				m_TextureShader->Render( model->GetIndexCount(), &worldMatrix );
+				model.Render( camera );
+				model.resultMatrix( &worldMatrix );
+				m_TextureShader.setTexure( model.GetTexture( DMModel::albedo ) );
+				m_TextureShader.Render( model.GetIndexCount(), &worldMatrix );
 			}
 		}
 		*/
 	}
 
-	m_dmd3d->SetBackBufferRenderTarget();
-	m_dmd3d->ResetViewport();
+	DMD3D::instance().SetBackBufferRenderTarget();
+	DMD3D::instance().ResetViewport();
 
 	
 	static bool one_time = true;
@@ -1545,9 +1375,9 @@ void DMGraphics::RenderEnvironment()
 	{
 		ID3D11Resource* tempResource;
 
-		m_render_cube_texture->GetShaderResourceView()->GetResource( &tempResource );
+		m_render_cube_texture.GetShaderResourceView()->GetResource( &tempResource );
 
-		D3DX11SaveTextureToFile( m_dmd3d->GetDeviceContext(), tempResource, D3DX11_IFF_DDS, L"SaveCube.dds" );
+		D3DX11SaveTextureToFile( DMD3D::instance().GetDeviceContext(), tempResource, D3DX11_IFF_DDS, L"SaveCube.dds" );
 
 		tempResource->Release();
 	}

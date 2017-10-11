@@ -4,7 +4,7 @@
 class DMPEShape : public DMParticleEmitter
 {
 public:
-	DMPEShape( DMD3D* );
+	DMPEShape();
 	~DMPEShape();
 
 	enum Shape

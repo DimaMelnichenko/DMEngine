@@ -9,7 +9,7 @@
 class DMParticleSystem : public DMSceneObject
 {
 public:
-	DMParticleSystem( DMD3D* );
+	DMParticleSystem();
 	~DMParticleSystem();
 
 	bool Initialize( unsigned int max_count, unsigned int width );

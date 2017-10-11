@@ -2,7 +2,7 @@
 
 
 
-DMRenderTexture::DMRenderTexture( DMD3D* parent ) : DM3DObject( parent )
+DMRenderTexture::DMRenderTexture()
 {	
 
 }
@@ -12,13 +12,46 @@ DMRenderTexture::~DMRenderTexture()
 
 }
 
+DMRenderTexture::DMRenderTexture( DMRenderTexture&& rtexture )
+{
+	std::swap( m_renderTargetTexture, rtexture.m_renderTargetTexture );
+	std::swap( m_renderTargetView, rtexture.m_renderTargetView );
+	std::swap( m_shaderResourceView, rtexture.m_shaderResourceView );
+	std::swap( m_depthStencilBuffer, rtexture.m_depthStencilBuffer );
+	std::swap( m_depthStencilView, rtexture.m_depthStencilView );
+	std::swap( m_depthSRV, rtexture.m_depthSRV );
+	std::swap( m_viewport, rtexture.m_viewport );
+	std::swap( m_use_depth, rtexture.m_use_depth );
+	std::swap( m_width, rtexture.m_width );
+	std::swap( m_height, rtexture.m_height );
+}
+
+DMRenderTexture::DMRenderTexture( const DMRenderTexture& rtexture )
+{
+	m_renderTargetTexture = rtexture.m_renderTargetTexture;
+	m_renderTargetView = rtexture.m_renderTargetView;
+	m_shaderResourceView = rtexture.m_shaderResourceView;
+	m_depthStencilBuffer = rtexture.m_depthStencilBuffer;
+	m_depthStencilView = rtexture.m_depthStencilView;
+	m_depthSRV = rtexture.m_depthSRV;
+	m_viewport = rtexture.m_viewport;
+	m_use_depth = rtexture.m_use_depth;
+	m_width = rtexture.m_width;
+	m_height = rtexture.m_height;
+}
+
+DMRenderTexture& DMRenderTexture::operator=( const DMRenderTexture& other )
+{
+	return *this;
+}
+
 bool DMRenderTexture::Initialize( DXGI_FORMAT _format, unsigned int textureWidth, unsigned int textureHeight, bool use_depth_buffer )
 {
 	m_use_depth = use_depth_buffer;
 	m_width = textureWidth;
 	m_height = textureHeight;
 
-	createRenderTarget( _format, m_renderTargetTexture, m_renderTargetView, m_shaderResourceView );
+	createRenderTarget( _format );
 	
 	if( m_use_depth )
 	{
@@ -54,7 +87,7 @@ bool DMRenderTexture::inintDSV( ID3D11Texture2D* depthStencilBuffer )
 
 	ID3D11DepthStencilView* depth_stencil_view;
 	// Create the depth stencil view.
-	HRESULT result = m_dmd3d->GetDevice()->CreateDepthStencilView( depthStencilBuffer, &depthStencilViewDesc, &depth_stencil_view );
+	HRESULT result = DMD3D::instance().GetDevice()->CreateDepthStencilView( depthStencilBuffer, &depthStencilViewDesc, &depth_stencil_view );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -70,7 +103,7 @@ bool DMRenderTexture::inintDSV( ID3D11Texture2D* depthStencilBuffer )
 
 
 	ID3D11ShaderResourceView* srv;
-	result = m_dmd3d->GetDevice()->CreateShaderResourceView( depthStencilBuffer, &SRVDesc, &srv );
+	result = DMD3D::instance().GetDevice()->CreateShaderResourceView( depthStencilBuffer, &SRVDesc, &srv );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -103,7 +136,7 @@ bool DMRenderTexture::inintDepthStencilBuffer( )
 
 	ID3D11Texture2D* depth_stencil_buffer;
 	// Create the texture for the depth buffer using the filled out description.
-	HRESULT result = m_dmd3d->GetDevice()->CreateTexture2D( &texture_depth_desc, NULL, &depth_stencil_buffer );
+	HRESULT result = DMD3D::instance().GetDevice()->CreateTexture2D( &texture_depth_desc, NULL, &depth_stencil_buffer );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -114,8 +147,7 @@ bool DMRenderTexture::inintDepthStencilBuffer( )
 	return true;
 }
 
-bool DMRenderTexture::createRenderTarget( DXGI_FORMAT format, com_unique_ptr<ID3D11Texture2D>& rt_texture,
-										  com_unique_ptr<ID3D11RenderTargetView>& rtv, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+bool DMRenderTexture::createRenderTarget( DXGI_FORMAT format )
 {
 	HRESULT result;
 	D3D11_TEXTURE2D_DESC textureDesc;
@@ -139,13 +171,13 @@ bool DMRenderTexture::createRenderTarget( DXGI_FORMAT format, com_unique_ptr<ID3
 
 	ID3D11Texture2D* texture;
 	// Create the render target texture.
-	result = m_dmd3d->GetDevice()->CreateTexture2D( &textureDesc, NULL, &texture );
+	result = DMD3D::instance().GetDevice()->CreateTexture2D( &textureDesc, NULL, &texture );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	rt_texture = make_com_ptr<ID3D11Texture2D>( texture );
+	m_renderTargetTexture = make_com_sptr<ID3D11Texture2D>( texture );
 
 	// Setup the description of the render target view.
 	renderTargetViewDesc.Format = textureDesc.Format;
@@ -154,13 +186,13 @@ bool DMRenderTexture::createRenderTarget( DXGI_FORMAT format, com_unique_ptr<ID3
 
 	ID3D11RenderTargetView* target_view;
 	// Create the render target view.
-	result = m_dmd3d->GetDevice()->CreateRenderTargetView( texture, &renderTargetViewDesc, &target_view );
+	result = DMD3D::instance().GetDevice()->CreateRenderTargetView( texture, &renderTargetViewDesc, &target_view );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	rtv =  make_com_ptr<ID3D11RenderTargetView>( target_view );
+	m_renderTargetView =  make_com_sptr<ID3D11RenderTargetView>( target_view );
 
 	// Setup the description of the shader resource view.
 	shaderResourceViewDesc.Format = textureDesc.Format;
@@ -170,47 +202,45 @@ bool DMRenderTexture::createRenderTarget( DXGI_FORMAT format, com_unique_ptr<ID3
 
 	ID3D11ShaderResourceView* resource_view;
 	// Create the shader resource view.
-	result = m_dmd3d->GetDevice()->CreateShaderResourceView( texture, &shaderResourceViewDesc, &resource_view );
+	result = DMD3D::instance().GetDevice()->CreateShaderResourceView( texture, &shaderResourceViewDesc, &resource_view );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	srv = make_com_ptr<ID3D11ShaderResourceView>( resource_view );
+	m_shaderResourceView = make_com_sptr<ID3D11ShaderResourceView>( resource_view );
 
 	return true;
 }
 
-void DMRenderTexture::SetRenderTarget( bool only_depth )
+void DMRenderTexture::SetRenderTarget( bool only_depth ) const
 {
 	ID3D11RenderTargetView* view = m_renderTargetView.get();
 
 	// Bind the render target view and depth stencil buffer to the output render pipeline.
 
-
-
 	if( only_depth && m_use_depth )
 	{
 		ID3D11RenderTargetView* pnullView = NULL;
-		m_dmd3d->GetDeviceContext()->OMSetRenderTargets( 1, &pnullView, m_depthStencilView.get() );
+		DMD3D::instance().GetDeviceContext()->OMSetRenderTargets( 1, &pnullView, m_depthStencilView.get() );
 	}
 	else if( m_use_depth )
 	{
-		m_dmd3d->GetDeviceContext()->OMSetRenderTargets( 1, &view, m_depthStencilView.get() );
+		DMD3D::instance().GetDeviceContext()->OMSetRenderTargets( 1, &view, m_depthStencilView.get() );
 	}
 	else
 	{
-		m_dmd3d->GetDeviceContext()->OMSetRenderTargets( 1, &view, nullptr );
+		DMD3D::instance().GetDeviceContext()->OMSetRenderTargets( 1, &view, nullptr );
 	}
 		
 
 	// Set the viewport.
-	m_dmd3d->GetDeviceContext()->RSSetViewports( 1, &m_viewport );
+	DMD3D::instance().GetDeviceContext()->RSSetViewports( 1, &m_viewport );
 
 	return;
 }
 
-void DMRenderTexture::ClearRenderTarget( float red, float green, float blue, float alpha )
+void DMRenderTexture::ClearRenderTarget( float red, float green, float blue, float alpha ) const
 {
 	float color[4];
 
@@ -221,35 +251,57 @@ void DMRenderTexture::ClearRenderTarget( float red, float green, float blue, flo
 	color[3] = alpha;
 	
 	
-	m_dmd3d->GetDeviceContext()->ClearRenderTargetView( m_renderTargetView.get(), color );
+	DMD3D::instance().GetDeviceContext()->ClearRenderTargetView( m_renderTargetView.get(), color );
 
 	// Clear the depth buffer.
 	if( m_use_depth )
 	{
-		m_dmd3d->GetDeviceContext()->ClearDepthStencilView( m_depthStencilView.get(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
+		DMD3D::instance().GetDeviceContext()->ClearDepthStencilView( m_depthStencilView.get(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
 	}
 
 	return;
-
-
 }
 
-ID3D11ShaderResourceView* DMRenderTexture::GetShaderResourceView()
+ID3D11ShaderResourceView* DMRenderTexture::GetShaderResourceView() const
 {
 	return m_shaderResourceView.get();
 }
 
-ID3D11ShaderResourceView* DMRenderTexture::depthShaderResourceView()
+ID3D11ShaderResourceView* DMRenderTexture::depthShaderResourceView() const
 {
 	return m_depthSRV.get();
 }
 
-unsigned int DMRenderTexture::width()
+unsigned int DMRenderTexture::width() const
 {
 	return m_width;
 }
+void DMRenderTexture::setWidth( float width )
+{
+	m_width = width;
+}
 
-unsigned DMRenderTexture::height()
+void DMRenderTexture::setHeight( float height )
+{
+	m_height = height;
+}
+
+unsigned DMRenderTexture::height() const
 {
 	return m_height;
+}
+
+ID3D11Texture2D* DMRenderTexture::depthStencilBuffer()
+{
+	return m_depthStencilBuffer.get();
+}
+
+D3D11_VIEWPORT* DMRenderTexture::viewport()
+{
+	return &m_viewport;
+}
+
+ID3D11DepthStencilView* DMRenderTexture::depthStencilView()
+{
+	return m_depthStencilView.get();
 }

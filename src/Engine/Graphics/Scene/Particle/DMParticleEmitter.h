@@ -5,7 +5,7 @@
 class DMParticleEmitter : public DMSceneObject
 {
 public:
-	DMParticleEmitter( DMD3D* );
+	DMParticleEmitter();
 	~DMParticleEmitter();
 
 	bool Initialize( unsigned int max_particles );

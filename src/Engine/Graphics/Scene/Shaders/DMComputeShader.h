@@ -3,12 +3,13 @@
 #include "DirectX.h"
 #include <memory>
 
+#include "D3D\DMD3D.h"
 #include "DMShader.h"
 
 class DMComputeShader
 {
 public:
-	DMComputeShader( DMD3D* );
+	DMComputeShader();
 	~DMComputeShader();
 
 	bool Initialize( const std::wstring& file_name, const std::string& function_name );
@@ -27,7 +28,6 @@ private:
 	};
 
 private:
-	DMD3D* m_dmd3d;
 	std::shared_ptr<ID3D11ComputeShader> m_compute_shader;
 	std::shared_ptr<ID3D11Buffer> m_constant_buffer;
 };

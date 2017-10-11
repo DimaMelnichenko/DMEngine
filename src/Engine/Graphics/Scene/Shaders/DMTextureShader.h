@@ -11,7 +11,7 @@
 class DMTextureShader :	public DMShader
 {
 public:
-	DMTextureShader( DMD3D* );
+	DMTextureShader();
 	~DMTextureShader();
 
 	struct alignas(16) PSParamBuffer
@@ -23,7 +23,6 @@ public:
 	bool setParameters( PSParamBuffer* );
 
 private:
-	void Shutdown( );
 	void prepareRender(  );
 	std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts(  );
 	void Update( float );

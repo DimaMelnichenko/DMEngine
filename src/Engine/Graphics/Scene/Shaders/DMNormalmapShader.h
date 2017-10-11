@@ -4,7 +4,7 @@
 class DMNormalmapShader : public DMShader
 {
 public:
-	DMNormalmapShader( DMD3D* );
+	DMNormalmapShader();
 	~DMNormalmapShader();
 
 	__declspec( align( 16 ) ) struct PSParamBuffer
@@ -18,7 +18,6 @@ public:
 	bool setParameters( PSParamBuffer* );
 
 private:
-	void Shutdown( );
 	void prepareRender(  );;
 	std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts(  );
 	void Update( float );

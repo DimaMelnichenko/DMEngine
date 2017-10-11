@@ -17,7 +17,7 @@
 #include "Shaders\DMColorShader.h"
 
 
-class DMQuadTree : public DM3DObject
+class DMQuadTree
 {
 public:
 
@@ -31,14 +31,14 @@ public:
 	};
 
 public:
-	DMQuadTree( DMD3D* );
+	DMQuadTree();
 	~DMQuadTree();
 
 	bool Initialize( float side_length, float min_length );
-	void checkObjects( DMFrustum* frustum, DMCamera* );
+	void checkObjects( const DMFrustum& frustum, const DMCamera& );
 	void addObject( DMSceneObject* );
 	void setDrawBuffers();
-	void Render( DMColorShader*, DMCamera* );
+	void Render( DMColorShader*, const DMCamera& );
 	float sideLength();
 	float minLength();
 	
@@ -46,8 +46,8 @@ public:
 
 private:
 	void addNodes( NodeType*, DMSceneObject* );
-	void drawNode( NodeType*, DMColorShader*, DMCamera* );
-	void checkNode( NodeType*, DMFrustum*, DMCamera* );
+	void drawNode( NodeType*, DMColorShader*, const DMCamera& );
+	void checkNode( NodeType*, const DMFrustum&, const DMCamera& );
 
 	__declspec( align( 16 ) ) struct Vertex
 	{

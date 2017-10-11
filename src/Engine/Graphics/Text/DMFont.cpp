@@ -1,7 +1,7 @@
 #include "DMFont.h"
 
 
-DMFont::DMFont( DMD3D* parent ) : DM3DObject( parent )
+DMFont::DMFont()
 {
 }
 
@@ -80,16 +80,8 @@ bool DMFont::LoadTexture( WCHAR* filename )
 {
 	bool result;
 
-
-	// Create the texture object.
-	m_Texture = std::unique_ptr<DMTexture>( new DMTexture( m_dmd3d ) );
-	if( !m_Texture )
-	{
-		return false;
-	}
-
 	// Initialize the texture object.
-	result = m_Texture->Initialize( filename );
+	result = m_Texture.Initialize( filename );
 	if( !result )
 	{
 		return false;
@@ -100,13 +92,13 @@ bool DMFont::LoadTexture( WCHAR* filename )
 
 ID3D11ShaderResourceView* DMFont::GetTexture( )
 {
-	return m_Texture->GetTexture( );
+	return m_Texture.GetTexture( );
 }
 
 void DMFont::BuildVertexArray( std::vector<VertexType>& vertices, char* sentence, float drawX, float drawY )
 {
 	VertexType vertex_value;
-	int numLetters, letter;
+	unsigned int numLetters, letter;
 
 	// Get the number of letters in the sentence.
 	numLetters = (int)strlen( sentence );

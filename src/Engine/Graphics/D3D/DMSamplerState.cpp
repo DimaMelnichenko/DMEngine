@@ -1,8 +1,8 @@
 #include "DMSamplerState.h"
+#include "D3D\DMD3D.h"
 
 
-
-DMSamplerState::DMSamplerState( DMD3D* dmd3d ) : DM3DObject( dmd3d )
+DMSamplerState::DMSamplerState()
 {	
 }
 
@@ -36,7 +36,7 @@ bool DMSamplerState::initialize()
 	sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
 
 
-	result = m_dmd3d->GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
+	result = DMD3D::instance().GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -62,7 +62,7 @@ bool DMSamplerState::initialize()
 	sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
 
 
-	result = m_dmd3d->GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
+	result = DMD3D::instance().GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -88,7 +88,7 @@ bool DMSamplerState::initialize()
 	sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
 
 
-	result = m_dmd3d->GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
+	result = DMD3D::instance().GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -115,7 +115,7 @@ bool DMSamplerState::initialize()
 	sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
 
 
-	result = m_dmd3d->GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
+	result = DMD3D::instance().GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -141,7 +141,7 @@ bool DMSamplerState::initialize()
 	sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
 
 
-	result = m_dmd3d->GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
+	result = DMD3D::instance().GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -167,7 +167,7 @@ bool DMSamplerState::initialize()
 	sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
 
 
-	result = m_dmd3d->GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
+	result = DMD3D::instance().GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -194,7 +194,7 @@ bool DMSamplerState::initialize()
 	sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
 
 
-	result = m_dmd3d->GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
+	result = DMD3D::instance().GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -221,7 +221,7 @@ bool DMSamplerState::initialize()
 	sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
 
 
-	result = m_dmd3d->GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
+	result = DMD3D::instance().GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -248,7 +248,7 @@ bool DMSamplerState::initialize()
 	sampler_desc.MaxLOD = 0;
 
 
-	result = m_dmd3d->GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
+	result = DMD3D::instance().GetDevice()->CreateSamplerState( &sampler_desc, &sampler_state );
 	if( FAILED( result ) )
 	{
 		return false;

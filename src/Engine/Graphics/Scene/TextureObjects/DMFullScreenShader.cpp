@@ -2,7 +2,7 @@
 
 
 
-DMFullScreenShader::DMFullScreenShader( DMD3D* parent ) : DMShader( parent )
+DMFullScreenShader::DMFullScreenShader()
 {
 }
 

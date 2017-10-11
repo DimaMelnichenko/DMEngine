@@ -6,7 +6,7 @@
 class DMClipMapShader :	public DMShader
 {
 public:
-	DMClipMapShader( DMD3D* );
+	DMClipMapShader();
 	~DMClipMapShader();
 
 	struct alignas( 16 ) ParamBuffer

@@ -2,13 +2,18 @@
 
 #include <unordered_map>
 
-#include "..\..\Common\DM3DObject.h"
+#include "D3D/DMD3D.h"
 #include "DMTexture.h"
 
-class DMTexturePool : public DM3DObject
+class DMTexturePool
 {
+private:
+	DMTexturePool();
+	static DMTexturePool* m_instance;
+
 public:
-	DMTexturePool( DMD3D* );
+	static DMTexturePool& instance();
+	static void close();
 	~DMTexturePool();
 
 	bool initialize( const std::wstring& def_texture_file );
@@ -18,6 +23,6 @@ public:
 
 private:	
 	std::unordered_map<std::wstring, unsigned int> m_path_to_index;
-	std::vector<std::unique_ptr<DMTexture>> m_texure_pool;
+	std::vector<DMTexture> m_texure_pool;
 };
 

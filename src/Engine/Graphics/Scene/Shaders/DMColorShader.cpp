@@ -1,7 +1,7 @@
 #include "DMColorShader.h"
 
 
-DMColorShader::DMColorShader( DMD3D* parent ) : DMShader( parent )
+DMColorShader::DMColorShader()
 {
 
 }

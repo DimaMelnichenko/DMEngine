@@ -2,7 +2,7 @@
 
 
 
-DMHDR::DMHDR( DMD3D* dmd3d ) : DM3DObject( dmd3d )
+DMHDR::DMHDR()
 {
 }
 
@@ -13,23 +13,17 @@ DMHDR::~DMHDR()
 
 void DMHDR::Initialize( float width, float height, float brigthDivider, float blurDivider )
 {
-	m_main_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_main_rt->Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width, height );
+	m_main_rt.Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width, height );
 
-	m_bright_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_bright_rt->Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width / brigthDivider, height / brigthDivider, false );
+	m_bright_rt.Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width / brigthDivider, height / brigthDivider, false );
 
-	m_blur_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_blur_rt->Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width / blurDivider, height / blurDivider, false );
+	m_blur_rt.Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width / blurDivider, height / blurDivider, false );
 
-	m_downsample_rt = std::unique_ptr<DMRenderTexture>( new DMRenderTexture( m_dmd3d ) );
-	m_downsample_rt->Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width / blurDivider, height / blurDivider, false );
+	m_downsample_rt.Initialize( DXGI_FORMAT_R16G16B16A16_UNORM, width / blurDivider, height / blurDivider, false );
 
-	m_blur_camera = std::unique_ptr<DMCamera>( new DMCamera() );
-	m_blur_camera->Initialize( DMCamera::CT_ORTHO, width / blurDivider, height / blurDivider, 0.1, 2.0 );
-
-	m_bright_camera = std::unique_ptr<DMCamera>( new DMCamera() );
-	m_bright_camera->Initialize( DMCamera::CT_ORTHO, width / brigthDivider, height / brigthDivider, 0.1, 2.0 );
+	m_blur_camera.Initialize( DMCamera::CT_ORTHO, width / blurDivider, height / blurDivider, 0.1, 2.0 );
+	
+	m_bright_camera.Initialize( DMCamera::CT_ORTHO, width / brigthDivider, height / brigthDivider, 0.1, 2.0 );
 
 	/*float down_resolution = 243.0f;
 
@@ -51,72 +45,72 @@ void DMHDR::Initialize( float width, float height, float brigthDivider, float bl
 	srData.SysMemPitch = sizeof( PSBuffer );
 	srData.SysMemSlicePitch = 0;
 
-	m_dmd3d->createShaderConstantBuffer( sizeof( PSBuffer ), m_psBuffer, &srData );
+	DMD3D::instance().createShaderConstantBuffer( sizeof( PSBuffer ), m_psBuffer, &srData );
 		
 }
 
 void DMHDR::begin()
 {
-	m_main_rt->SetRenderTarget();
-	m_main_rt->ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
+	m_main_rt.SetRenderTarget();
+	m_main_rt.ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
 }
 
-void DMHDR::postprocess_and_end( DMCamera* camera, DMRenderFilter* filter )
+void DMHDR::postprocess_and_end( const DMCamera& camera, DMRenderFilter* filter )
 {
 	ID3D11Buffer* buffer = m_psBuffer.get();
-	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
 
-	m_dmd3d->TurnZBufferOff();
+	DMD3D::instance().TurnZBufferOff();
 	
 	// bright pass
-	m_bright_rt->SetRenderTarget();
-	m_bright_rt->ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
-	filter->setSRV( 0, m_main_rt->GetShaderResourceView() );
+	m_bright_rt.SetRenderTarget();
+	m_bright_rt.ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
+	filter->setSRV( 0, m_main_rt.GetShaderResourceView() );
 	filter->selectPass( 2 );
-	filter->Render( m_bright_camera.get(), nullptr );
+	filter->Render( m_bright_camera, nullptr );
 
-	//m_debug_texture = m_bright_rt->GetShaderResourceView();
+	//m_debug_texture = m_bright_rt.GetShaderResourceView();
 	
 	// downsample
-	m_downsample_rt->SetRenderTarget();
-	m_downsample_rt->ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
-	filter->setSRV( 0, m_bright_rt->GetShaderResourceView() );
+	m_downsample_rt.SetRenderTarget();
+	m_downsample_rt.ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
+	filter->setSRV( 0, m_bright_rt.GetShaderResourceView() );
 	filter->selectPass( 3 );
-	filter->Render( m_blur_camera.get(), nullptr );
+	filter->Render( m_blur_camera, nullptr );
 
-	//m_debug_texture = m_downsample_rt->GetShaderResourceView();
+	//m_debug_texture = m_downsample_rt.GetShaderResourceView();
 	
 	// horizontal blur
-	m_blur_rt->SetRenderTarget();
-	m_blur_rt->ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
-	filter->setSRV( 0, m_downsample_rt->GetShaderResourceView() );
+	m_blur_rt.SetRenderTarget();
+	m_blur_rt.ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
+	filter->setSRV( 0, m_downsample_rt.GetShaderResourceView() );
 	filter->selectPass( 4 );
-	filter->Render( m_blur_camera.get(), nullptr );
+	filter->Render( m_blur_camera, nullptr );
 
-	//m_debug_texture = m_blur_rt->GetShaderResourceView();
+	//m_debug_texture = m_blur_rt.GetShaderResourceView();
 	
 	// vertical blur
-	m_bright_rt->SetRenderTarget();
-	m_bright_rt->ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
-	filter->setSRV( 0, m_blur_rt->GetShaderResourceView() );
+	m_bright_rt.SetRenderTarget();
+	m_bright_rt.ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
+	filter->setSRV( 0, m_blur_rt.GetShaderResourceView() );
 	filter->selectPass( 5 );
-	filter->Render( m_blur_camera.get(), nullptr );
+	filter->Render( m_blur_camera, nullptr );
 
-	m_debug_texture = m_bright_rt->GetShaderResourceView();
+	m_debug_texture = m_bright_rt.GetShaderResourceView();
 	
-	m_dmd3d->TurnZBufferOn();
-	m_dmd3d->SetBackBufferRenderTarget();
-	m_dmd3d->ResetViewport();
+	DMD3D::instance().TurnZBufferOn();
+	DMD3D::instance().SetBackBufferRenderTarget();
+	DMD3D::instance().ResetViewport();
 }
 
 ID3D11ShaderResourceView* DMHDR::mainTexture()
 {
-	return m_main_rt->GetShaderResourceView();
+	return m_main_rt.GetShaderResourceView();
 }
 
 ID3D11ShaderResourceView* DMHDR::brightTexture()
 {
-	return m_bright_rt->GetShaderResourceView();
+	return m_bright_rt.GetShaderResourceView();
 }
 
 ID3D11ShaderResourceView* DMHDR::debugTexture()

@@ -1,5 +1,6 @@
 #pragma once
 #include "..\DMSceneObject.h"
+#include "Utils\utilites.h"
 
 class DMMesh : public DMSceneObject
 {
@@ -21,8 +22,11 @@ private:
 	};
 
 public:
-	DMMesh( DMD3D* );
+	DMMesh();
+	DMMesh( DMMesh&& mesh );
 	~DMMesh();
+
+	DMMesh& operator=( const DMMesh& mesh );
 
 	enum VertexCombination
 	{
@@ -42,8 +46,8 @@ private:
 
 private:
 	// переменные общие для копий	
-	com_unique_ptr<ID3D11Buffer> m_vertex_buffer;
-	com_unique_ptr<ID3D11Buffer> m_index_buffer;
+	com_shared_ptr<ID3D11Buffer> m_vertex_buffer;
+	com_shared_ptr<ID3D11Buffer> m_index_buffer;
 	unsigned long m_vertex_count;
 	unsigned long m_index_count;
 

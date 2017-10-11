@@ -3,7 +3,7 @@
 #include <random>
 
 
-DMPEShape::DMPEShape( DMD3D* parent ) : DMParticleEmitter( parent )
+DMPEShape::DMPEShape()
 {
 
 }

@@ -2,7 +2,7 @@
 
 
 
-DMRenderCubeTexture::DMRenderCubeTexture( DMD3D* dmd3d ) : DMRenderTexture( dmd3d )
+DMRenderCubeTexture::DMRenderCubeTexture()
 {
 }
 
@@ -13,14 +13,14 @@ DMRenderCubeTexture::~DMRenderCubeTexture()
 
 bool DMRenderCubeTexture::Initialize( DXGI_FORMAT format, unsigned int textureWidth, unsigned int textureHeight )
 {
-	m_width = textureWidth;
-	m_height = textureHeight;
+	setWidth( textureWidth );
+	setHeight( textureHeight );
 
 	createRenderTarget( format );
 
 	inintDepthStencilBuffer();
 
-	inintDSV( m_depthStencilBuffer.get() );
+	inintDSV( depthStencilBuffer() );
 
 	setupViewport();
 
@@ -39,8 +39,8 @@ bool DMRenderCubeTexture::createRenderTarget( DXGI_FORMAT format )
 	ZeroMemory( &textureDesc, sizeof( D3D11_TEXTURE2D_DESC ) );
 
 	// Setup the render target texture description.
-	textureDesc.Width = m_width;
-	textureDesc.Height = m_height;
+	textureDesc.Width = width();
+	textureDesc.Height = height();
 	textureDesc.MipLevels = 1;
 	textureDesc.ArraySize = 6;
 	textureDesc.Format = format;
@@ -52,7 +52,7 @@ bool DMRenderCubeTexture::createRenderTarget( DXGI_FORMAT format )
 
 	ID3D11Texture2D* texture;
 	// Create the render target texture.
-	result = m_dmd3d->GetDevice()->CreateTexture2D( &textureDesc, NULL, &texture );
+	result = DMD3D::instance().GetDevice()->CreateTexture2D( &textureDesc, NULL, &texture );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -75,7 +75,7 @@ bool DMRenderCubeTexture::createRenderTarget( DXGI_FORMAT format )
 
 		ID3D11RenderTargetView* target_view;
 		// Create the render target view.
-		result = m_dmd3d->GetDevice()->CreateRenderTargetView( texture, &renderTargetViewDesc, &target_view );
+		result = DMD3D::instance().GetDevice()->CreateRenderTargetView( texture, &renderTargetViewDesc, &target_view );
 		if( FAILED( result ) )
 		{
 			return false;
@@ -92,7 +92,7 @@ bool DMRenderCubeTexture::createRenderTarget( DXGI_FORMAT format )
 
 	ID3D11ShaderResourceView* resource_view;
 	// Create the shader resource view.
-	result = m_dmd3d->GetDevice()->CreateShaderResourceView( texture, &shaderResourceViewDesc, &resource_view );
+	result = DMD3D::instance().GetDevice()->CreateShaderResourceView( texture, &shaderResourceViewDesc, &resource_view );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -114,25 +114,24 @@ bool DMRenderCubeTexture::initLoop( float x, float y, float z )
 
 	for( auto& camera : m_cameras )
 	{
-		camera->SetPosition( x, y, z );
-		camera->Render();
+		camera.SetPosition( x, y, z );
+		camera.Render();
 	}
 
 	return true;
 }
 
-DMCamera* DMRenderCubeTexture::next()
+const DMCamera& DMRenderCubeTexture::camera( uint8_t index )
 {
-	if( ++m_loop_index < 6 )
+	if( index < 0 || index > 5 )
 	{
-		SetRenderTarget();
-
-		ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
-
-		return m_cameras[m_loop_index].get();
+		throw std::logic_error( "DMRenderCubeTexture: camera index must be in interval 0 - 5" );
 	}
+	SetRenderTarget();
 
-	return nullptr;
+	ClearRenderTarget( 0.0, 0.0, 0.0, 1.0f );
+
+	return m_cameras[index];
 }
 
 void DMRenderCubeTexture::SetRenderTarget( bool only_depth )
@@ -144,60 +143,63 @@ void DMRenderCubeTexture::SetRenderTarget( bool only_depth )
 	if( only_depth )
 	{
 		ID3D11RenderTargetView* pnullView = NULL;
-		m_dmd3d->GetDeviceContext()->OMSetRenderTargets( 1, &pnullView, m_depthStencilView.get() );
+		DMD3D::instance().GetDeviceContext()->OMSetRenderTargets( 1, &pnullView, depthStencilView() );
 	}
 	else
-		m_dmd3d->GetDeviceContext()->OMSetRenderTargets( 1, &view, m_depthStencilView.get() );
+		DMD3D::instance().GetDeviceContext()->OMSetRenderTargets( 1, &view, depthStencilView() );
 
 
 	// Set the viewport.
-	m_dmd3d->GetDeviceContext()->RSSetViewports( 1, &m_viewport );
+	DMD3D::instance().GetDeviceContext()->RSSetViewports( 1, viewport() );
 
 	return;
 }
 
 void DMRenderCubeTexture::initCameras()
 {
-	std::unique_ptr<DMCamera> camera( new DMCamera() );
+	DMCamera camera;
+
+	float width = (float)this->width();
+	float height = (float)this->height();
 
 	// right
-	camera->Initialize( DMCamera::CT_PERSPECTIVE, m_width, m_height, 1.0, 500.0, D3DX_PI/2.0 );
-	camera->SetRotation( 0.0, 90.0, 0.0 ); 
+	camera.Initialize( DMCamera::CT_PERSPECTIVE, width, height, 1.0f, 500.0f, (float)(D3DX_PI/2.0f) );
+	camera.SetRotation( 0.0, 90.0, 0.0 ); 
 
 	m_cameras.push_back( std::move( camera ) );
 
 	// left
-	camera = std::unique_ptr<DMCamera>( new DMCamera() );
-	camera->Initialize( DMCamera::CT_PERSPECTIVE, m_width, m_height, 1.0, 500.0, D3DX_PI / 2.0 );
-	camera->SetRotation( 0.0, -90.0, 0.0 );
+	camera = DMCamera();
+	camera.Initialize( DMCamera::CT_PERSPECTIVE, width, height, 1.0f, 500.0f, (float)(D3DX_PI/2.0f) );
+	camera.SetRotation( 0.0, -90.0, 0.0 );
 
 	m_cameras.push_back( std::move( camera ) );
 
 	// up
-	camera = std::unique_ptr<DMCamera>( new DMCamera() );
-	camera->Initialize( DMCamera::CT_PERSPECTIVE, m_width, m_height, 1.0, 500.0, D3DX_PI / 2.0 );
-	camera->SetRotation( -89.98f, 0.0, 0.0 );
+	camera = DMCamera();
+	camera.Initialize( DMCamera::CT_PERSPECTIVE, width, height, 1.0f, 500.0f, (float)(D3DX_PI/2.0f) );
+	camera.SetRotation( -89.98f, 0.0, 0.0 );
 
 	m_cameras.push_back( std::move( camera ) );
 
 	// down
-	camera = std::unique_ptr<DMCamera>( new DMCamera() );
-	camera->Initialize( DMCamera::CT_PERSPECTIVE, m_width, m_height, 1.0, 500.0, D3DX_PI / 2.0 );
-	camera->SetRotation( 89.98f, 0.0, 0.0 );
+	camera = DMCamera();
+	camera.Initialize( DMCamera::CT_PERSPECTIVE, width, height, 1.0f, 500.0f, (float)(D3DX_PI/2.0f) );
+	camera.SetRotation( 89.98f, 0.0, 0.0 );
 
 	m_cameras.push_back( std::move( camera ) );
 
 	// front
-	camera = std::unique_ptr<DMCamera>( new DMCamera() );
-	camera->Initialize( DMCamera::CT_PERSPECTIVE, m_width, m_height, 1.0, 500.0, D3DX_PI / 2.0 );
-	camera->SetRotation( 0.0, 0.0, 0.0 );
+	camera = DMCamera();
+	camera.Initialize( DMCamera::CT_PERSPECTIVE, width, height, 1.0f, 500.0f, (float)(D3DX_PI/2.0f) );
+	camera.SetRotation( 0.0, 0.0, 0.0 );
 
 	m_cameras.push_back( std::move( camera ) );
 
 	// back
-	camera = std::unique_ptr<DMCamera>( new DMCamera() );
-	camera->Initialize( DMCamera::CT_PERSPECTIVE, m_width, m_height, 1.0, 500.0, D3DX_PI / 2.0 );
-	camera->SetRotation( 0.0, 180.0, 0.0 );
+	camera = DMCamera();
+	camera.Initialize( DMCamera::CT_PERSPECTIVE, width, height, 1.0f, 500.0f, (float)(D3DX_PI/2.0f) );
+	camera.SetRotation( 0.0, 180.0, 0.0 );
 
 	m_cameras.push_back( std::move( camera ) );
 }
@@ -213,10 +215,10 @@ void DMRenderCubeTexture::ClearRenderTarget( float red, float green, float blue,
 	color[3] = alpha;
 
 
-	m_dmd3d->GetDeviceContext()->ClearRenderTargetView( m_renderTargetViews[m_loop_index].get(), color );
+	DMD3D::instance().GetDeviceContext()->ClearRenderTargetView( m_renderTargetViews[m_loop_index].get(), color );
 
 	// Clear the depth buffer.
-	m_dmd3d->GetDeviceContext()->ClearDepthStencilView( m_depthStencilView.get(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
+	DMD3D::instance().GetDeviceContext()->ClearDepthStencilView( depthStencilView(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
 
 	return;
 

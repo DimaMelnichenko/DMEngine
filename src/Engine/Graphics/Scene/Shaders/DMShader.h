@@ -38,7 +38,7 @@ class DMShader
 	};
 
 public:
-	DMShader( DMD3D* );
+	DMShader();
 	virtual ~DMShader();
 	
 	bool Initialize( WCHAR* vsFilename, WCHAR* psFilename, bool use_strimout_gs = false );
@@ -47,7 +47,7 @@ public:
 	void setStreamout( bool use_strimout_gs );
 	bool Render( int indexCount, D3DXMATRIX* worldMatrix );
 	bool RenderInstanced( int indexCount, int instance_count, D3DXMATRIX* worldMatrix );
-	bool Prepare( DMCamera*, int phase );
+	bool Prepare( const DMCamera& camera, int phase );
 	virtual void Shutdown( );
 	virtual void Update( float ) = 0;
 
@@ -91,7 +91,7 @@ private:
 	void OutputShaderErrorMessage( ID3D10Blob*, const WCHAR* );
 	void RenderShader( int, int = 0 );
 	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() = 0;
-	void setCamera( DMCamera* camera );
+	void setCamera( const DMCamera& camera );
 	void setWorldMatrix( D3DXMATRIX* worldMatrix );	
 	virtual void StrimOutputDeclaration( D3D11_SO_DECLARATION_ENTRY* );
 	void parse_defines( std::string, D3D10_SHADER_MACRO** );

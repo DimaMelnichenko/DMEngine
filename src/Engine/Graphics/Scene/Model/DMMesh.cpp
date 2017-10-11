@@ -1,14 +1,34 @@
 #include "DMMesh.h"
 #include <fstream>
+#include "D3D\DMD3D.h"
 
 
-DMMesh::DMMesh( DMD3D* parent ) : DMSceneObject( parent )
+DMMesh::DMMesh()
 {
-	m_indices = nullptr;
-	m_vertices = nullptr;
 	m_vertex_combination = V_PTNTB;
 }
 
+DMMesh::DMMesh( DMMesh&& mesh )
+{
+	std::swap( m_vertex_buffer, mesh.m_vertex_buffer );
+	std::swap( m_index_buffer, mesh.m_index_buffer );
+	m_vertex_count = mesh.m_vertex_count;
+	m_index_count = mesh.m_index_count;
+
+	m_vertex_combination = mesh.m_vertex_combination;
+}
+
+DMMesh& DMMesh::operator=( const DMMesh& mesh )
+{
+	m_vertex_buffer = mesh.m_vertex_buffer;
+	m_index_buffer = mesh.m_index_buffer;
+	m_vertex_count = mesh.m_vertex_count;
+	m_index_count = mesh.m_index_count;
+
+	m_vertex_combination = mesh.m_vertex_combination;
+
+	return *this;
+}
 
 DMMesh::~DMMesh()
 {
@@ -65,7 +85,7 @@ bool DMMesh::InitializeBuffers( WCHAR* modelFilename )
 
 	// Now create the vertex buffer.
 	ID3D11Buffer* buffer;
-	result = m_dmd3d->GetDevice()->CreateBuffer( &vertexBufferDesc, &vertexData, &buffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &vertexBufferDesc, &vertexData, &buffer );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -87,7 +107,7 @@ bool DMMesh::InitializeBuffers( WCHAR* modelFilename )
 	indexData.SysMemSlicePitch = 0;
 
 	// Create the index buffer.
-	result = m_dmd3d->GetDevice()->CreateBuffer( &indexBufferDesc, &indexData, &buffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &indexBufferDesc, &indexData, &buffer );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -214,14 +234,14 @@ void DMMesh::RenderBuffers()
 
 	// Set the vertex buffer to active in the input assembler so it can be rendered.
 	ID3D11Buffer* buffer = m_vertex_buffer.get();
-	m_dmd3d->GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 
 	// Set the index buffer to active in the input assembler so it can be rendered.
 	buffer = m_index_buffer.get();
-	m_dmd3d->GetDeviceContext()->IASetIndexBuffer( buffer, DXGI_FORMAT_R32_UINT, 0 );
+	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( buffer, DXGI_FORMAT_R32_UINT, 0 );
 
 	// Set the type of primitive that should be rendered from this vertex buffer, in this case triangles.
-	m_dmd3d->GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
+	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
 
 	return;
 }

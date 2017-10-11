@@ -5,7 +5,7 @@
 class DMParticleShader : public DMShader
 {
 public:
-	DMParticleShader( DMD3D* );
+	DMParticleShader();
 	~DMParticleShader();
 
 	void Update( float );

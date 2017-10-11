@@ -1,10 +1,9 @@
 #include "TerrainClass.h"
 
 
-TerrainClass::TerrainClass( DMD3D* _parent ) : DM3DObject( _parent )
+TerrainClass::TerrainClass()
 {
 	m_heightMap = 0;
-	m_Texture = 0;
 	m_vertices = 0;
 }
 
@@ -70,7 +69,7 @@ void TerrainClass::Shutdown( )
 
 ID3D11ShaderResourceView* TerrainClass::GetTexture( )
 {
-	return m_Texture->GetTexture( );
+	return m_Texture.GetTexture( );
 }
 
 bool TerrainClass::LoadHeightMap( WCHAR* filename )
@@ -397,16 +396,8 @@ bool TerrainClass::LoadTexture( WCHAR* filename )
 {
 	bool result;
 
-
-	// Create the texture object.
-	m_Texture = std::unique_ptr<DMTexture>( new DMTexture( m_dmd3d ) );
-	if( !m_Texture )
-	{
-		return false;
-	}
-
 	// Initialize the texture object.
-	result = m_Texture->Initialize( filename );
+	result = m_Texture.Initialize( filename );
 	if( !result )
 	{
 		return false;

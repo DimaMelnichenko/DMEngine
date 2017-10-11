@@ -3,10 +3,7 @@
 
 
 
-DMModel::DMModel( DMD3D* parent, DMTexturePool* texture_pool, const std::wstring& name ) 
-			: DMSceneObject( parent ), 
-			m_name( name ),
-			m_texture_pool( texture_pool )
+DMModel::DMModel( const std::wstring& name ) : m_name( name )
 {
 	m_textures = std::move( std::shared_ptr<std::vector<unsigned int>>( new std::vector<unsigned int>() ) );
 	
@@ -21,8 +18,6 @@ DMModel::DMModel( DMD3D* parent, DMTexturePool* texture_pool, const std::wstring
 
 DMModel::~DMModel()
 {
-	// Shutdown the vertex and index buffers.
-	Shutdown();
 	
 }
 
@@ -33,8 +28,6 @@ void DMModel::copy_internal_data( const DMModel* model )
 	this->m_textures_scale = model->m_textures_scale;
 
 	this->m_meshes = model->m_meshes;
-
-	this->m_texture_pool = model->m_texture_pool;
 
 	this->m_render_queues = model->m_render_queues;
 
@@ -69,7 +62,7 @@ bool DMModel::Initialize( float lod_range, DMMesh::VertexCombination combination
 {
 	if( addLODModel( lod_range, combination, modelFilename ) )
 	{
-		aabb() = ( *m_meshes )[0].mesh->aabb();
+		aabb() = (*m_meshes)[0].mesh.aabb();
 		return true;
 	}
 
@@ -78,25 +71,25 @@ bool DMModel::Initialize( float lod_range, DMMesh::VertexCombination combination
 
 bool DMModel::addLODModel( float lod_range, DMMesh::VertexCombination combination, WCHAR* modelFilename )
 {
-	std::unique_ptr<DMMesh> mesh( new DMMesh( m_dmd3d ) );
+	DMMesh mesh;
 
-	if( mesh->loadMesh( combination, modelFilename ) )
+	if( mesh.loadMesh( combination, modelFilename ) )
 	{
 		RangeMeshesContainer container;		
 		container.range = lod_range;
 		container.mesh = std::move( mesh );
-		(*m_meshes).push_back( container );
+		(*m_meshes).push_back( std::move( container ) );
 		return true;
 	}
 
 	return false;
 }
 
-void DMModel::Render( DMCamera* camera )
+void DMModel::Render( const DMCamera& camera )
 {
 	static D3DXVECTOR3 model_to_camera;
 	position( &model_to_camera );
-	model_to_camera -= camera->position();
+	model_to_camera -= camera.position();
 	Render( D3DXVec3Length( &model_to_camera ) );
 }
 
@@ -107,7 +100,7 @@ void DMModel::Render( float lod_range )
 		if( (*m_meshes)[i].range > lod_range )
 		{
 			m_current_mesh_index = i;
-			( *m_meshes )[i].mesh->Render();
+			( *m_meshes )[i].mesh.Render();
 			break;
 		}
 	}
@@ -120,17 +113,11 @@ unsigned int DMModel::texture( DMModel::TextureType type )
 	return ( (*m_textures).size() > static_cast<unsigned int>( type ) ) ? (*m_textures)[type] : 0 ;
 }
 
-
-void DMModel::Shutdown( )
-{
-	return;
-}
-
 ID3D11ShaderResourceView* DMModel::LoadTexture( const WCHAR* filename )
 {
 	ID3D11ShaderResourceView* texture = nullptr;
 
-	D3DX11CreateShaderResourceViewFromFile( m_dmd3d->GetDevice(), filename, NULL, NULL, &texture, NULL );
+	D3DX11CreateShaderResourceViewFromFile( DMD3D::instance().GetDevice(), filename, NULL, NULL, &texture, NULL );
 	if( !texture )
 	{
 		return nullptr;
@@ -141,12 +128,14 @@ ID3D11ShaderResourceView* DMModel::LoadTexture( const WCHAR* filename )
 
 void DMModel::setTexures()
 {
-	ID3D11ShaderResourceView* views[] = { m_texture_pool->texture( texture( DMModel::albedo ) ),
-											m_texture_pool->texture( texture( DMModel::normal ) ),
-											m_texture_pool->texture( texture( DMModel::height ) ),
-											m_texture_pool->texture( texture( DMModel::gim ) ) };
+	DMTexturePool& texturePool = DMTexturePool::instance();
+	ID3D11ShaderResourceView* views[] = { 
+		texturePool.texture( texture( DMModel::albedo ) ),
+		texturePool.texture( texture( DMModel::normal ) ),
+		texturePool.texture( texture( DMModel::height ) ),
+		texturePool.texture( texture( DMModel::gim ) ) };
 
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 4, views );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 4, views );
 }
 
 void DMModel::setTexure( DMModel::TextureType type, unsigned int index, float u_scale, float v_scale )
@@ -178,14 +167,14 @@ void DMModel::setScale( float scale )
 
 unsigned long DMModel::GetIndexCount()
 {
-	return (*m_meshes)[m_current_mesh_index].mesh->GetIndexCount();
+	return (*m_meshes)[m_current_mesh_index].mesh.GetIndexCount();
 }
 
-void DMModel::setInFrustum( DMCamera* camera )
+void DMModel::setInFrustum( const DMCamera& camera )
 {
 	static D3DXVECTOR3 model_to_camera;
 	position( &model_to_camera );
-	model_to_camera -= camera->position();
+	model_to_camera -= camera.position();
 	setInFrustum( D3DXVec3Length( &model_to_camera ) );
 }
 
@@ -201,4 +190,14 @@ void DMModel::addRenderQueue( DMRenderQueue* queue )
 {
 	if( queue )
 		m_render_queues->push_back( queue );
+}
+
+unsigned int DMModel::countOfLOD()
+{
+	return m_meshes->size();
+}
+
+const std::wstring& DMModel::name()
+{
+	return m_name;
 }

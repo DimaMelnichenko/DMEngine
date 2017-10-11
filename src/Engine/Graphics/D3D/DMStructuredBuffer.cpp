@@ -2,7 +2,7 @@
 
 
 
-DMStructuredBuffer::DMStructuredBuffer( DMD3D* dmd3d ) : DM3DObject( dmd3d )
+DMStructuredBuffer::DMStructuredBuffer( )
 {
 }
 
@@ -25,7 +25,7 @@ void DMStructuredBuffer::CreateBuffer( size_t sizeOfElement, size_t countElement
 	buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
 
 	ID3D11Buffer* buffer;
-	if( FAILED( m_dmd3d->GetDevice()->CreateBuffer( &buffer_desc, nullptr, &buffer ) ) )
+	if( FAILED( DMD3D::instance().GetDevice()->CreateBuffer( &buffer_desc, nullptr, &buffer ) ) )
 	{
 		throw std::logic_error( "DMStructuredBuffer can`t create buffer" );
 	}
@@ -41,7 +41,7 @@ void DMStructuredBuffer::CreateBuffer( size_t sizeOfElement, size_t countElement
 	view_desc.Buffer.ElementWidth = m_countElements;
 
 	ID3D11ShaderResourceView* view;
-	if( FAILED( m_dmd3d->GetDevice()->CreateShaderResourceView( m_buffer.get(), &view_desc, &view ) ) )
+	if( FAILED( DMD3D::instance().GetDevice()->CreateShaderResourceView( m_buffer.get(), &view_desc, &view ) ) )
 	{
 		throw std::logic_error( "DMStructuredBuffer can`t create ShaderResourceView" );
 	}
@@ -58,7 +58,7 @@ void DMStructuredBuffer::UpdateData( void* data, size_t sizeInByte )
 	{
 		sizeInByte = m_sizeOfElement * m_countElements;;
 	}
-	if( FAILED( m_dmd3d->GetDeviceContext()->Map( m_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData ) ) )
+	if( FAILED( DMD3D::instance().GetDeviceContext()->Map( m_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData ) ) )
 	{
 		//handleError( ... ); // insert error handling here
 		return;
@@ -66,7 +66,7 @@ void DMStructuredBuffer::UpdateData( void* data, size_t sizeInByte )
 
 	std::memcpy( mappedData.pData, data, sizeInByte );
 
-	m_dmd3d->GetDeviceContext()->Unmap( m_buffer.get(), 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( m_buffer.get(), 0 );
 }
 
 void DMStructuredBuffer::setToSlot( int8_t slot, SRVType type )
@@ -76,16 +76,16 @@ void DMStructuredBuffer::setToSlot( int8_t slot, SRVType type )
 	switch( type )
 	{
 		case vs:
-			m_dmd3d->GetDeviceContext()->VSSetShaderResources( slot, 1, &view );
+			DMD3D::instance().GetDeviceContext()->VSSetShaderResources( slot, 1, &view );
 			break;
 		case ps:
-			m_dmd3d->GetDeviceContext()->PSSetShaderResources( slot, 1, &view );
+			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( slot, 1, &view );
 			break;
 		case gs:
-			m_dmd3d->GetDeviceContext()->GSSetShaderResources( slot, 1, &view );
+			DMD3D::instance().GetDeviceContext()->GSSetShaderResources( slot, 1, &view );
 			break;
 		case cs:
-			m_dmd3d->GetDeviceContext()->CSSetShaderResources( slot, 1, &view );
+			DMD3D::instance().GetDeviceContext()->CSSetShaderResources( slot, 1, &view );
 			break;
 		default:
 			break;

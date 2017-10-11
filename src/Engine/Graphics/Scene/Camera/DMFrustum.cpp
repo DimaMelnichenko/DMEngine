@@ -10,7 +10,7 @@ DMFrustum::~DMFrustum()
 {
 }
 
-void DMFrustum::ConstructFrustum( DMCamera* camera, float screenDepth )
+void DMFrustum::ConstructFrustum( const DMCamera& camera, float screenDepth )
 {
 	
 	float zMinimum, r;
@@ -18,8 +18,8 @@ void DMFrustum::ConstructFrustum( DMCamera* camera, float screenDepth )
 
 	D3DXMATRIX projectionMatrix, viewMatrix;
 
-	camera->projectionMatrix( &projectionMatrix );
-	camera->viewMatrix( &viewMatrix );
+	camera.projectionMatrix( &projectionMatrix );
+	camera.viewMatrix( &viewMatrix );
 
 	D3DXMatrixMultiply( &matrix, &viewMatrix, &projectionMatrix );
 
@@ -82,8 +82,8 @@ void DMFrustum::ConstructFrustum( DMCamera* camera, float screenDepth )
 
 	D3DXMATRIX projectionMatrix, viewMatrix;
 
-	camera->projectionMatrix( &projectionMatrix );
-	camera->viewMatrix( &viewMatrix );
+	camera.projectionMatrix( &projectionMatrix );
+	camera.viewMatrix( &viewMatrix );
 
 
 	// Calculate the minimum Z distance in the frustum.
@@ -140,7 +140,7 @@ void DMFrustum::ConstructFrustum( DMCamera* camera, float screenDepth )
 	return;
 }
 
-bool DMFrustum::CheckPoint( float x, float y, float z )
+bool DMFrustum::CheckPoint( float x, float y, float z ) const
 {
 	int i;
 
@@ -157,7 +157,7 @@ bool DMFrustum::CheckPoint( float x, float y, float z )
 	return true;
 }
 
-bool DMFrustum::CheckQuad( float xCenter, float yCenter, float zCenter, float radius )
+bool DMFrustum::CheckQuad( float xCenter, float yCenter, float zCenter, float radius ) const
 {
 	int i;
 
@@ -211,7 +211,7 @@ bool DMFrustum::CheckQuad( float xCenter, float yCenter, float zCenter, float ra
 	return true;
 }
 
-bool DMFrustum::CheckCube( float xCenter, float yCenter, float zCenter, float radius )
+bool DMFrustum::CheckCube( float xCenter, float yCenter, float zCenter, float radius ) const
 {
 	int i;
 
@@ -265,15 +265,14 @@ bool DMFrustum::CheckCube( float xCenter, float yCenter, float zCenter, float ra
 	return true;
 }
 
-bool DMFrustum::CheckSphere( float xCenter, float yCenter, float zCenter, float radius )
+bool DMFrustum::CheckSphere( float xCenter, float yCenter, float zCenter, float radius ) const
 {
 	int i;
-
-
+	D3DXVECTOR3 sphere_center( xCenter, yCenter, zCenter );
 	// Check if the radius of the sphere is inside the view frustum.
 	for( i = 0; i<6; i++ )
-	{
-		if( D3DXPlaneDotCoord( &m_planes[i], &D3DXVECTOR3( xCenter, yCenter, zCenter ) ) < -radius )
+	{	
+		if( D3DXPlaneDotCoord( &m_planes[i], &sphere_center ) < -radius )
 		{
 			return false;
 		}
@@ -282,7 +281,7 @@ bool DMFrustum::CheckSphere( float xCenter, float yCenter, float zCenter, float 
 	return true;
 }
 
-bool DMFrustum::CheckAABB( DMAABB* aabb )
+bool DMFrustum::CheckAABB( DMAABB* aabb ) const
 {
 	D3DXVECTOR3 pos = aabb->position();
 	D3DXVECTOR3 size = aabb->size();
@@ -290,7 +289,7 @@ bool DMFrustum::CheckAABB( DMAABB* aabb )
 	return CheckRectangle( pos.x, pos.y, pos.z, size.x, size.y, size.z );
 }
 
-bool DMFrustum::CheckRectangle( float xCenter, float yCenter, float zCenter, float xSize, float ySize, float zSize )
+bool DMFrustum::CheckRectangle( float xCenter, float yCenter, float zCenter, float xSize, float ySize, float zSize ) const
 {
 	int i;
 

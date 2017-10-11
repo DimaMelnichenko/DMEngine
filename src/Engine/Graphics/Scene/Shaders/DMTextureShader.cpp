@@ -1,14 +1,14 @@
 #include "DMTextureShader.h"
 
 
-DMTextureShader::DMTextureShader( DMD3D* parent ) : DMShader( parent )
+DMTextureShader::DMTextureShader()
 {	
 
 }
 
 DMTextureShader::~DMTextureShader()
 {
-	Shutdown( );
+
 }
 
 std::vector<D3D11_INPUT_ELEMENT_DESC> DMTextureShader::initLayouts(  )
@@ -48,21 +48,16 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMTextureShader::initLayouts(  )
 	
 	vertex_layout.push_back( polygonLayout );
 
-	if( !m_dmd3d->createShaderConstantBuffer( sizeof( PSParamBuffer ), m_param_buffer ) )
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( PSParamBuffer ), m_param_buffer ) )
 		return std::vector<D3D11_INPUT_ELEMENT_DESC>();
 
 	return vertex_layout;
 }
 
-void DMTextureShader::Shutdown( )
-{	
-	return;
-}
-
 bool DMTextureShader::setTexure( ID3D11ShaderResourceView* texture )
 {
 	// Set shader texture resource in the pixel shader.	
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
 
 	return true;
 }
@@ -72,7 +67,7 @@ bool DMTextureShader::setParameters( PSParamBuffer* param_buffer )
 	// Set shader texture resource in the pixel shader.
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 
-	HRESULT result = m_dmd3d->GetDeviceContext()->Map( m_param_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( m_param_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -85,7 +80,7 @@ bool DMTextureShader::setParameters( PSParamBuffer* param_buffer )
 	memcpy( dataPtr, param_buffer, sizeof( PSParamBuffer ) );
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( m_param_buffer.get(), 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( m_param_buffer.get(), 0 );
 	
 
 	return true;
@@ -94,7 +89,7 @@ bool DMTextureShader::setParameters( PSParamBuffer* param_buffer )
 void DMTextureShader::prepareRender( )
 {	
 	ID3D11Buffer* buffer = m_param_buffer.get();
-	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
 
 	return;
 }

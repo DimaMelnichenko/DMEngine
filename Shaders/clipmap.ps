@@ -1,7 +1,7 @@
 
 #include "BRDF.ps"
 
-cbuffer TerrainTexturesParam : register( b0 )
+cbuffer TerrainTexturesParam : register( b1 )
 {	
 	float4 texture_tile[2];
 	float base_normal_multipler;
@@ -11,6 +11,7 @@ cbuffer TerrainTexturesParam : register( b0 )
 
 TextureCube g_texCube : register(t5);
 Texture2D terrainTexture[20] : register(t10);
+Texture2D heigthTexture : register(t0);
 
 /* terrain textures struct started from t10 slot
 0 - base heightmap
@@ -45,94 +46,51 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	float4 test_color = float4( 0.5, 0.5, 0.5, 1.0 );
 	
-	float4 base_diffuse = terrainTexture[0].Sample( g_SamplerLinearClamp, input.main_tex );
-	
-	//return base_diffuse;
+	float4 base_diffuse = terrainTexture[0].Sample( g_SamplerLinearWrap, input.main_tex );
 	
 	// get heightmap normal
 	float3 normal_terrain;
-	normal_terrain.rg = terrainTexture[1].Sample( g_SamplerLinearWrap, input.main_tex ).gr * 2.0 - 1.0;
-	normal_terrain.b = 1.0f;
-	normal_terrain = normalize( normal_terrain );
-	normal_terrain.y *= -1.0;
-	normal_terrain.zy = normal_terrain.yz;
-	normal_terrain.y *= ( 0.5f );
-	normal_terrain = normalize( normal_terrain );
-	//return float4( normal_terrain, 1.0f );
-	
-	//return test_color * dot( normal_terrain, normalize( float3( 1.0, 1.0, 1.0 ) ) );
+	normal_terrain = terrainTexture[1].Sample( g_SamplerLinearWrap, input.main_tex ) * 2.0 - 1.0;
+	float3x3 terrain_tbn = transpose( float3x3( normalize( float3( -1.0, 0.0, 0.0 ) ), normalize( float3( 0.0, 0.0, 1.0 ) ), normalize( float3( 0.0, 1.0, 0.0 ) ) ) );
 	
 	
-	float3 tangent = float3( 1.0, 0.0, 0.0 );
+	float3 tangent = float3( -1.0, 0.0, 0.0 );
 	float3 binormal = normalize( cross( normal_terrain, tangent ) );
 	tangent = normalize( cross( binormal, normal_terrain ) );
 	float3x3 tbn_matrix = float3x3( normalize( tangent ), normalize( binormal ), normalize( normal_terrain ) );
 	
 	float3 detail_normal[5];
 	float4 detail_albedo[5];
-	float4 detail_gim[5];	
 	
 	for( int i = 0; i < 5; i++ )
 	{
 		float tile = ((float[4])(texture_tile[i/4]))[i%4];
-		detail_albedo[i] = terrainTexture[i * 3 + 3].Sample( g_SamplerLinearWrap, input.main_tex * tile );
+		detail_albedo[i] = terrainTexture[i * 2 + 3].Sample( g_SamplerLinearWrap, input.main_tex * tile );
 		
-		detail_normal[i] = normalize( terrainTexture[i * 3 + 4].Sample( g_SamplerLinearWrap, input.main_tex * tile ).rgb * 2.0 - 1.0 );	
+		detail_normal[i] = normalize( terrainTexture[i * 2 + 4].Sample( g_SamplerLinearWrap, input.main_tex * tile ).rgb * 2.0 - 1.0 );	
 		
-		detail_normal[i] = normalize( mul( detail_normal[i], tbn_matrix ) );
-		
-		detail_gim[i] = terrainTexture[i * 3 + 5].Sample( g_SamplerLinearWrap, input.main_tex * tile );
+		detail_normal[i] = normalize( float3( 0.5, 0.5, 0.1 ) * detail_normal[i] );
 	}
 	
-	// calc blended texure
 	float4 blend = terrainTexture[2].Sample( g_SamplerLinearWrap, input.main_tex );
-	//return float4( blend.rgb, 1.0f );
 	
-	float4 result_albedo = detail_albedo[0];	
+	float4 result_albedo = detail_albedo[0];
 	result_albedo = smart_blend( result_albedo, 1 - blend.r, detail_albedo[1], blend.r  );
 	result_albedo = smart_blend( result_albedo, 1 - blend.g, detail_albedo[2], blend.g  );
 	result_albedo = smart_blend( result_albedo, 1 - blend.b, detail_albedo[3], blend.b  );
-	result_albedo = smart_blend( result_albedo, 1 - blend.a, detail_albedo[4], blend.a  );
-	//result_albedo.rgb = lerp( result_albedo.rgb, base_diffuse.rgb, 0.4 );
-	//return float4( result_albedo.xyz, 1.0 );
-	//result_albedo = test_color;
 	
-	//result_albedo = test_color;
 	float3 result_normal = detail_normal[0];
-	//return float4( result_normal, 1.0 );
 	result_normal = lerp( result_normal, detail_normal[1], blend.r );
 	result_normal = lerp( result_normal, detail_normal[2], blend.g );
 	result_normal = lerp( result_normal, detail_normal[3], blend.b );
-	result_normal = lerp( result_normal, detail_normal[4], blend.a );
-	//result_normal = normal_terrain;
-	float3 result_gim = detail_gim[0];
-	//return float4( result_normal, 1.0 );
-	result_gim = lerp( result_gim, detail_gim[1], blend.r );
-	result_gim = lerp( result_gim, detail_gim[2], blend.g );
-	result_gim = lerp( result_gim, detail_gim[3], blend.b );
-	result_gim = lerp( result_gim, detail_gim[4], blend.a );
-	
-	float gloss = result_gim.r;	
-	float metal = result_gim.b;
-	
-	//float shadow_percent = CalculatePCFPercentLit ( input.world_position );
 
-	//float shadow_percent = csm_shadow( input.world_position, cb_CSM_count );
+	
 
 	float3 v = normalize( cb_cameraPosition - input.world_position );
-	
 	float3 n = normalize( result_normal + normal_terrain );
+	n = normalize( mul( n, terrain_tbn ) );
 	
-	// Sample the environment map
-    float3 vReflect = -reflect( v, n );
 	
-    float3 vEnvironment = g_texCube.SampleLevel( g_SamplerLinearClamp, vReflect, 10 - gloss * 10 ).rgb;
-	
-	float NdotV = max( 0.0f, dot( n, v ) );
-	
-	float3 sum_direct_specular = (float3)0;
-	float3 sum_direct_diffuse = (float3)0;
-	float3 sum_light_color = (float3)0;
 	
     for( int i = 0; i < cb_light_count; i++ )
 	{
@@ -152,39 +110,12 @@ float4 main(PixelInputType input) : SV_TARGET
 			fade = 1.0 / ( dist * dist );			
 		}	
 		
-		if( fade < 0.00001 )
-			continue;
+		/*if( fade < 0.00001 )
+			continue;*/
 		
-		float3 h = normalize( l + v );
-		
-		float NdotH = max( 0.0f, dot( n, h ) );
-		float NdotL = max( 0.0f, dot( n, l ) );
-		float HdotV = max( 0.0f, dot( h, v ) );
-		
-		if( metal > 0.1 )			
-		{
-			sum_direct_specular += max( 0, ( D_GGX( 1.0 - gloss, NdotH ) * G_Smith( 1.0 - gloss, NdotV, NdotL ) * 
-									float3( F_Schlick( result_albedo.r, HdotV ), F_Schlick( result_albedo.g, HdotV ), F_Schlick( result_albedo.b, HdotV ) ) ) / ( 4.0 * NdotL * NdotV ) );			
-			//sum_direct_diffuse += ( max( dot( n, l ), 0.0f ) / PI );
-		}
-		else
-		{
-			sum_direct_specular += max( 0, ( D_GGX( 1.0 - gloss, NdotH ) * G_Smith( 1.0 - gloss, NdotV, NdotL ) * F_Schlick( 0.03, HdotV ) ) / ( 4.0 * NdotL * NdotV ) );
-			sum_direct_diffuse += ( max( dot( n, l ), 0.0f ) / PI );
-		}
-		
-		
-		sum_light_color += cb_lightColor[i].rgb * fade;
-		
+		final_color.rgb += ( max( dot( n, l ), 0.0f ) ) * cb_lightColor[i].rgb * /*fade */result_albedo.rgb;
 		
 	}
-	
-	if( metal > 0.1 )
-		final_color.rgb = ( sum_direct_specular ) * sum_light_color + ( float3( F_Schlick( result_albedo.r, NdotV ), F_Schlick( result_albedo.g, NdotV ), F_Schlick( result_albedo.b, NdotV ) ) * vEnvironment );
-	else
-		final_color.rgb = ( sum_direct_diffuse + sum_direct_specular ) * sum_light_color * result_albedo.rgb + ( F_Schlick( 0.03, NdotV ) * vEnvironment * result_albedo.rgb );
-	
-	final_color.a = 1.0f;
 	
 	return final_color;
 }

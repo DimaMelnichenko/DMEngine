@@ -21,8 +21,15 @@
 
 class DMD3D
 {
-public:
+private:
 	DMD3D(  );
+	DMD3D( const DMD3D& ) = delete;
+	DMD3D& operator=( const DMD3D& ) = delete;
+	static DMD3D* m_instance;
+
+public:
+	static DMD3D& instance();
+	static void close();
 	~DMD3D();
 
 	bool Initialize( int, int, bool, HWND, bool, float, float );
@@ -58,6 +65,8 @@ public:
 	void TurnOffTransparancy( );
 
 	bool createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer> &, const D3D11_SUBRESOURCE_DATA * = nullptr );
+	bool createVertexBuffer( com_unique_ptr<ID3D11Buffer> &, void* data, size_t sizeInByte );
+	bool createIndexBuffer( com_unique_ptr<ID3D11Buffer> &, void* data, size_t sizeInByte );
 	bool CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData, com_unique_ptr<ID3D11Buffer>& );
 
 private:
@@ -89,6 +98,4 @@ private:
 
 	std::list<IUnknown*> m_interfaces;
 };
-
-
 

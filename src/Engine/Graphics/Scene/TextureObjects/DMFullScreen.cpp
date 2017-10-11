@@ -1,8 +1,8 @@
 #include "DMFullScreen.h"
+#include "D3D\DMD3D.h"
 
 
-
-DMFullScreen::DMFullScreen( DMD3D* parent ) : DMSceneObject( parent )
+DMFullScreen::DMFullScreen()
 {
 }
 
@@ -13,9 +13,9 @@ DMFullScreen::~DMFullScreen()
 
 void DMFullScreen::Render()
 {
-	m_dmd3d->GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
-	m_dmd3d->GetDeviceContext()->IASetVertexBuffers( 0, 0, nullptr, nullptr, nullptr );
-	m_dmd3d->GetDeviceContext()->IASetIndexBuffer( nullptr, (DXGI_FORMAT)0, 0 );
+	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 0, nullptr, nullptr, nullptr );
+	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( nullptr, (DXGI_FORMAT)0, 0 );
 }
 
 unsigned int DMFullScreen::vertexCount()

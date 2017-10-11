@@ -1,7 +1,7 @@
 #include "DMNormalmapShader.h"
 
 
-DMNormalmapShader::DMNormalmapShader( DMD3D* parent ) : DMShader( parent )
+DMNormalmapShader::DMNormalmapShader()
 {
 	m_sampleState = 0;
 	m_param_buffer = nullptr;

@@ -9,32 +9,34 @@
 void delete_com( IUnknown* p );
 
 template<typename T>
-std::shared_ptr<T> make_com_sptr( T* p )
+struct com_deleter
 {
-	return std::move( std::shared_ptr<T>( p, []( T* p )
+	void operator()( T* p ) const
 	{
 		if( p )
 		{
 			p->Release();
 			p = nullptr;
 		}
-	} ) );
+	}
+};
+
+template<typename T>
+using com_shared_ptr = std::shared_ptr<T>;
+
+template<typename T>
+com_shared_ptr<T> make_com_sptr( T* p )
+{
+	return std::move( com_shared_ptr<T>( p, com_deleter<T>() ) );
 }
 
 template<typename T>
-using com_unique_ptr = std::unique_ptr<T, std::function<void( T* )>>;
+using com_unique_ptr = std::unique_ptr<T, com_deleter<T>>;
 
 template<typename T>
 com_unique_ptr<T> make_com_ptr( T* p )
 {
-	return std::move( com_unique_ptr<T>( p, []( T* p )
-	{
-		if( p )
-		{
-			p->Release();
-			p = nullptr;
-		}
-	} ) );
+	return std::move( com_unique_ptr<T>( p, com_deleter<T>() ) );
 }
 
 void str_split( const std::string& str, std::vector<std::string>& tokens, const std::string& delimiters = " " );

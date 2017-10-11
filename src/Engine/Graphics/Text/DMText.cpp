@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 
-DMText::DMText( DMD3D* parent ) : DM3DObject( parent )
+DMText::DMText()
 {
 	
 }
@@ -21,31 +21,17 @@ bool DMText::Initialize( unsigned int screenWidth, unsigned int screenHeight )
 	m_screenWidth = screenWidth;
 	m_screenHeight = screenHeight;
 
-	// Create the font object.
-	m_Font = std::unique_ptr<DMFont>( new DMFont( m_dmd3d ) );
-	if( !m_Font )
-	{
-		return false;
-	}
-
 	// Initialize the font object.
-	result = m_Font->Initialize( "src\\Engine\\Graphics\\Text\\fontdata.txt", L"Textures\\font.dds" );
+	result = m_Font.Initialize( "src\\Engine\\Graphics\\Text\\fontdata.txt", L"Textures\\font.dds" );
 	if( !result )
 	{
 		MessageBox( 0, L"Could not initialize the font object.", L"Error", MB_OK );
 		return false;
 	}
 
-	// Create the font shader object.
-	m_FontShader = std::unique_ptr<DMFontShader>( new DMFontShader( m_dmd3d ) );
-	if( !m_FontShader )
-	{
-		return false;
-	}
-
 	// Initialize the font shader object.
-	m_FontShader->Initialize( L"Shaders\\font.vs", L"Shaders\\font.ps" );
-	m_FontShader->createPhase( 0, -1, 0 );
+	m_FontShader.Initialize( L"Shaders\\font.vs", L"Shaders\\font.ps" );
+	m_FontShader.createPhase( 0, -1, 0 );
 	if( !result )
 	{
 		MessageBox( 0, L"Could not initialize the font shader object.", L"Error", MB_OK );
@@ -54,7 +40,7 @@ bool DMText::Initialize( unsigned int screenWidth, unsigned int screenHeight )
 
 	for( size_t i = 0; i < m_sentence_count; i++ )
 	{
-		std::unique_ptr<SentenceType> sentence;
+		SentenceType sentence;
 		// Initialize the first sentence.
 		result = InitializeSentence( sentence, 150 );
 		if( !result )
@@ -64,27 +50,24 @@ bool DMText::Initialize( unsigned int screenWidth, unsigned int screenHeight )
 
 		m_sentences.push_back( std::move( sentence ) );
 	}
-	
-	
-
 	return true;
 }
 
-bool DMText::Render( D3DXMATRIX worldMatrix, DMCamera* camera )
+bool DMText::Render( D3DXMATRIX worldMatrix, const DMCamera& camera )
 {
 	bool result;
 
-	m_FontShader->Prepare( camera, 0 );
-	m_FontShader->setDrawType( DMShader::by_index );
+	m_FontShader.Prepare( camera, 0 );
+	m_FontShader.setDrawType( DMShader::by_index );
 
-	m_FontShader->setTexure( m_Font->GetTexture() );
+	m_FontShader.setTexure( m_Font.GetTexture() );
 
-	m_FontShader->setColor( D3DXVECTOR4( 0.3, 1.0, 0.3, 1.0 ) );
+	m_FontShader.setColor( D3DXVECTOR4( 0.3f, 1.0f, 0.3f, 1.0f ) );
 
 	for( auto& sentence: m_sentences )
 	{
 		// Draw the first sentence.
-		result = RenderSentence( sentence.get(), camera );
+		result = RenderSentence( sentence, camera );
 		if( !result )
 		{
 			return false;
@@ -95,101 +78,92 @@ bool DMText::Render( D3DXMATRIX worldMatrix, DMCamera* camera )
 	return true;
 }
 
-bool DMText::InitializeSentence( std::unique_ptr<SentenceType>& sentence, unsigned int maxLength )
+bool DMText::InitializeSentence( SentenceType& sentence, unsigned int maxLength )
 {	
 	D3D11_BUFFER_DESC vertexBufferDesc, indexBufferDesc;
 	D3D11_SUBRESOURCE_DATA vertexData, indexData;
 	HRESULT result;
-	int i;
-
-
-	// Create a new sentence object.
-	sentence = std::unique_ptr<SentenceType>( new SentenceType );
-	if( !sentence )
-	{
-		return false;
-	}
 
 	// Set the maximum length of the sentence.
-	sentence->max_length = maxLength;
+	sentence.max_length = maxLength;
 
 	// Create the vertex array.
-	sentence->raw_vertices.resize( 6 * maxLength );
+	sentence.raw_vertices.resize( 6 * maxLength );
 
 	// Create the index array.
-	sentence->raw_inices.resize( sentence->raw_vertices.size() );
+	sentence.raw_inices.resize( sentence.raw_vertices.size() );
 
 	// Initialize the index array.
-	for( i = 0; i < sentence->raw_inices.size(); i++ )
+	for( size_t i = 0; i < sentence.raw_inices.size(); i++ )
 	{
-		sentence->raw_inices[i] = i;
+		sentence.raw_inices[i] = i;
 	}
 
 	// Set up the description of the dynamic vertex buffer.
 	vertexBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-	vertexBufferDesc.ByteWidth = sizeof( DMFont::VertexType ) * sentence->raw_vertices.size();
+	vertexBufferDesc.ByteWidth = sizeof( DMFont::VertexType ) * sentence.raw_vertices.size();
 	vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vertexBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	vertexBufferDesc.MiscFlags = 0;
 	vertexBufferDesc.StructureByteStride = 0;
 
 	// Give the subresource structure a pointer to the vertex data.
-	vertexData.pSysMem = &sentence->raw_vertices[0];
+	vertexData.pSysMem = &sentence.raw_vertices[0];
 	vertexData.SysMemPitch = 0;
 	vertexData.SysMemSlicePitch = 0;
 
 	// Create the vertex buffer.
 	ID3D11Buffer* buffer;
-	result = m_dmd3d->GetDevice()->CreateBuffer( &vertexBufferDesc, &vertexData, &buffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &vertexBufferDesc, &vertexData, &buffer );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	sentence->vertexBuffer = make_com_ptr<ID3D11Buffer>( buffer );
+	sentence.vertexBuffer = make_com_ptr<ID3D11Buffer>( buffer );
 
 	// Set up the description of the static index buffer.
 	indexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-	indexBufferDesc.ByteWidth = sizeof(unsigned long)* sentence->raw_vertices.size();
+	indexBufferDesc.ByteWidth = sizeof(unsigned long)* sentence.raw_vertices.size();
 	indexBufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
 	indexBufferDesc.CPUAccessFlags = 0;
 	indexBufferDesc.MiscFlags = 0;
 	indexBufferDesc.StructureByteStride = 0;
 
 	// Give the subresource structure a pointer to the index data.
-	indexData.pSysMem = &sentence->raw_inices[0];
+	indexData.pSysMem = &sentence.raw_inices[0];
 	indexData.SysMemPitch = 0;
 	indexData.SysMemSlicePitch = 0;
 
 	// Create the index buffer.
-	result = m_dmd3d->GetDevice()->CreateBuffer( &indexBufferDesc, &indexData, &buffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &indexBufferDesc, &indexData, &buffer );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	sentence->indexBuffer = make_com_ptr<ID3D11Buffer>( buffer );
+	sentence.indexBuffer = make_com_ptr<ID3D11Buffer>( buffer );
 
 	return true;
 }
 
-bool DMText::UpdateSentence( SentenceType* sentence, char* text, int positionX, int positionY, float red, float green, float blue )
+bool DMText::UpdateSentence( SentenceType& sentence, char* text, int positionX, int positionY, float red, float green, float blue )
 {
-	int numLetters;
+	unsigned int numLetters;
 	float drawX, drawY;
 	HRESULT result;
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 
 	// Store the color of the sentence.
-	sentence->red = red;
-	sentence->green = green;
-	sentence->blue = blue;
+	sentence.red = red;
+	sentence.green = green;
+	sentence.blue = blue;
 
 	// Get the number of letters in the sentence.
 	numLetters = (int)strlen( text );
 
 	// Check for possible buffer overflow.
-	if( numLetters > sentence->max_length )
+	if( numLetters > sentence.max_length )
 	{
 		return false;
 	}
@@ -200,10 +174,10 @@ bool DMText::UpdateSentence( SentenceType* sentence, char* text, int positionX, 
 
 
 	// Use the font class to build the vertex array from the sentence text and sentence draw location.
-	m_Font->BuildVertexArray( sentence->raw_vertices, text, drawX, drawY );
+	m_Font.BuildVertexArray( sentence.raw_vertices, text, drawX, drawY );
 
 	// Lock the vertex buffer so it can be written to.
-	result = m_dmd3d->GetDeviceContext()->Map( sentence->vertexBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	result = DMD3D::instance().GetDeviceContext()->Map( sentence.vertexBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -213,16 +187,16 @@ bool DMText::UpdateSentence( SentenceType* sentence, char* text, int positionX, 
 	DMFont::VertexType* verticesPtr = reinterpret_cast<DMFont::VertexType*>( mappedResource.pData );
 
 	// Copy the data into the vertex buffer.
-	memcpy( verticesPtr, &sentence->raw_vertices[0], ( sizeof(DMFont::VertexType) * sentence->raw_vertices.size() ) );
+	memcpy( verticesPtr, &sentence.raw_vertices[0], ( sizeof(DMFont::VertexType) * sentence.raw_vertices.size() ) );
 
 	// Unlock the vertex buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( sentence->vertexBuffer.get(), 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( sentence.vertexBuffer.get(), 0 );
 	
 
 	return true;
 }
 
-bool DMText::RenderSentence( SentenceType* sentence, DMCamera* camera )
+bool DMText::RenderSentence( const SentenceType& sentence, const DMCamera& camera )
 {
 	unsigned int stride, offset;
 	D3DXVECTOR4 pixelColor;
@@ -234,17 +208,17 @@ bool DMText::RenderSentence( SentenceType* sentence, DMCamera* camera )
 	offset = 0;
 
 	// Set the vertex buffer to active in the input assembler so it can be rendered.
-	ID3D11Buffer* buffer = sentence->vertexBuffer.get();
-	m_dmd3d->GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
+	ID3D11Buffer* buffer = sentence.vertexBuffer.get();
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 
 	// Set the index buffer to active in the input assembler so it can be rendered.
-	m_dmd3d->GetDeviceContext()->IASetIndexBuffer( sentence->indexBuffer.get(), DXGI_FORMAT_R32_UINT, 0 );
+	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( sentence.indexBuffer.get(), DXGI_FORMAT_R32_UINT, 0 );
 
 	// Set the type of primitive that should be rendered from this vertex buffer, in this case triangles.
-	m_dmd3d->GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
+	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
 
 	// Render the text using the font shader.
-	result = m_FontShader->Render( sentence->raw_inices.size(), nullptr );
+	result = m_FontShader.Render( sentence.raw_inices.size(), nullptr );
 	if( !result )
 	{
 		false;
@@ -299,7 +273,7 @@ bool DMText::SetFps( unsigned int fps )
 	}
 
 	// Update the sentence vertex buffer with the new string information.
-	result = UpdateSentence( m_sentences[m_idx_fps].get(), fpsString, 20, 20, red, green, blue );
+	result = UpdateSentence( m_sentences[m_idx_fps], fpsString, 20, 20, red, green, blue );
 	if( !result )
 	{
 		return false;
@@ -316,7 +290,7 @@ bool DMText::SetCpu( unsigned int cpu )
 	sprintf_s( cpuString, "CPU: %d%%", cpu );
 
 	// Update the sentence vertex buffer with the new string information.
-	result = UpdateSentence( m_sentences[m_idx_cpu].get(), cpuString, 20, 40, 0.0f, 1.0f, 0.0f );
+	result = UpdateSentence( m_sentences[m_idx_cpu], cpuString, 20, 40, 0.0f, 1.0f, 0.0f );
 	if( !result )
 	{
 		return false;
@@ -340,7 +314,7 @@ bool DMText::SetVideoCardInfo( char* videoCardName, unsigned int videoCardMemory
 	sprintf_s( dataString, "Video Card: %s, Video Memory: %dMB", videoCardName, videoCardMemory );
 
 	// Update the sentence vertex buffer with the new string information.
-	result = UpdateSentence( m_sentences[m_idx_video].get(), dataString, 80, 20, 1.0f, 1.0f, 1.0f );
+	result = UpdateSentence( m_sentences[m_idx_video], dataString, 80, 20, 1.0f, 1.0f, 1.0f );
 	if( !result )
 	{
 		return false;
@@ -392,7 +366,7 @@ bool DMText::SetCameraPosition( float posX, float posY, float posZ )
 	// Setup the X position string.
 	sprintf_s( dataString, "X: %d, Y: %d, Z: %d", positionX, positionY, positionZ );	
 
-	result = UpdateSentence( m_sentences[m_idx_camera_pos].get(), dataString, 10, 130, 0.0f, 1.0f, 0.0f );
+	result = UpdateSentence( m_sentences[m_idx_camera_pos], dataString, 10, 130, 0.0f, 1.0f, 0.0f );
 	if( !result )
 	{
 		return false;
@@ -416,7 +390,7 @@ bool DMText::SetCameraRotation( float rotX, float rotY, float rotZ )
 
 	sprintf_s( dataString, "rX: %d, rY: %d, rZ: %d", rotationX, rotationY, rotationZ );
 
-	result = UpdateSentence( m_sentences[m_idx_camera_rot].get(), dataString, 10, 210, 0.0f, 1.0f, 0.0f );
+	result = UpdateSentence( m_sentences[m_idx_camera_rot], dataString, 10, 210, 0.0f, 1.0f, 0.0f );
 	if( !result )
 	{
 		return false;
@@ -441,7 +415,7 @@ bool DMText::SetRenderCount( unsigned int count )
 	sprintf_s( renderString, "Model Draw Count: %d", count );
 
 	// Update the sentence vertex buffer with the new string information.
-	result = UpdateSentence( m_sentences[m_idx_vertex_num].get(), renderString, 10, 290, 0.0f, 1.0f, 0.0f );
+	result = UpdateSentence( m_sentences[m_idx_vertex_num], renderString, 10, 290, 0.0f, 1.0f, 0.0f );
 	if( !result )
 	{
 		return false;

@@ -9,10 +9,10 @@
 ///////////////////////
 // MY CLASS INCLUDES //
 ///////////////////////
-#include "..\Common\DM3DObject.h"
+
 #include "..\Scene\TextureObjects\DMTexture.h"
 
-class DMFont : public DM3DObject
+class DMFont
 {
 private:
 	struct FontType
@@ -25,7 +25,7 @@ private:
 	
 
 public:
-	DMFont( DMD3D* );
+	DMFont();
 	~DMFont();
 
 	bool Initialize( char*, WCHAR* );
@@ -48,7 +48,7 @@ private:
 
 private:
 	std::vector<FontType> m_Font;
-	com_unique_ptr<DMTexture> m_Texture;
+	DMTexture m_Texture;
 
 };
 

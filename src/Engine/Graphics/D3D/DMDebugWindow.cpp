@@ -1,7 +1,8 @@
 #include "DMDebugWindow.h"
+#include "D3D\DMD3D.h"
 
 
-DMDebugWindow::DMDebugWindow( DMD3D* parent ) : DM3DObject( parent )
+DMDebugWindow::DMDebugWindow()
 {
 	m_vertexBuffer = 0;
 	m_indexBuffer = 0;
@@ -123,7 +124,7 @@ bool DMDebugWindow::InitializeBuffers( ID3D11Device* device )
 	vertexData.SysMemSlicePitch = 0;
 
 	// Now create the vertex buffer.
-	result = m_dmd3d->GetDevice()->CreateBuffer( &vertexBufferDesc, &vertexData, &m_vertexBuffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &vertexBufferDesc, &vertexData, &m_vertexBuffer );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -143,7 +144,7 @@ bool DMDebugWindow::InitializeBuffers( ID3D11Device* device )
 	indexData.SysMemSlicePitch = 0;
 
 	// Create the index buffer.
-	result = m_dmd3d->GetDevice()->CreateBuffer( &indexBufferDesc, &indexData, &m_indexBuffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &indexBufferDesc, &indexData, &m_indexBuffer );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -241,7 +242,7 @@ bool DMDebugWindow::UpdateBuffers( ID3D11DeviceContext* deviceContext, int posit
 	vertices[5].texture = D3DXVECTOR2( 1.0f, 1.0f );
 
 	// Lock the vertex buffer so it can be written to.
-	result = m_dmd3d->GetDeviceContext()->Map( m_vertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	result = DMD3D::instance().GetDeviceContext()->Map( m_vertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -254,7 +255,7 @@ bool DMDebugWindow::UpdateBuffers( ID3D11DeviceContext* deviceContext, int posit
 	memcpy( verticesPtr, (void*)vertices, ( sizeof(VertexType)* m_vertexCount ) );
 
 	// Unlock the vertex buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( m_vertexBuffer, 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( m_vertexBuffer, 0 );
 
 	// Release the vertex array as it is no longer needed.
 	delete[] vertices;
@@ -274,13 +275,13 @@ void DMDebugWindow::RenderBuffers( ID3D11DeviceContext* deviceContext )
 	offset = 0;
 
 	// Set the vertex buffer to active in the input assembler so it can be rendered.
-	m_dmd3d->GetDeviceContext()->IASetVertexBuffers( 0, 1, &m_vertexBuffer, &stride, &offset );
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &m_vertexBuffer, &stride, &offset );
 
 	// Set the index buffer to active in the input assembler so it can be rendered.
-	m_dmd3d->GetDeviceContext()->IASetIndexBuffer( m_indexBuffer, DXGI_FORMAT_R32_UINT, 0 );
+	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_indexBuffer, DXGI_FORMAT_R32_UINT, 0 );
 
 	// Set the type of primitive that should be rendered from this vertex buffer, in this case triangles.
-	m_dmd3d->GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
+	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
 
 	return;
 }

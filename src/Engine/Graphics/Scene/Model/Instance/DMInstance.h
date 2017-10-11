@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Common/DM3DObject.h"
+#include "D3D/DMD3D.h"
 #include "../DMModel.h"
 #include "D3D/DMStructuredBuffer.h"
 
@@ -9,13 +9,13 @@ enum INSTANCE_TYPE
 	INST_POS, INST_SCALE, INST_TEXW
 };
 
-class DMInstance : public DM3DObject
+class DMInstance
 {
 public:
-	DMInstance( DMD3D* dmd3d );
+	DMInstance();
 	~DMInstance();
 
-	bool initialize( std::unique_ptr<DMModel>& model, INSTANCE_TYPE type, unsigned int max_count );
+	bool initialize( const DMModel& model, INSTANCE_TYPE type, unsigned int max_count );
 	bool initialize( DMModel&& model, INSTANCE_TYPE type, unsigned int max_count );
 
 	struct alignas(16) VSInstanceDataType
@@ -37,17 +37,17 @@ public:
 
 	unsigned int count();
 
-	DMModel* model();
+	const DMModel& model();
 
 private:
-	
+	bool initializeBuffers( INSTANCE_TYPE type, unsigned int max_count );
 
 private:
-	std::unique_ptr<DMModel> m_model;
+	DMModel m_model;
 	INSTANCE_TYPE m_type;
 	unsigned int m_max_count;
 	unsigned int m_current_count;
-	std::unique_ptr<DMStructuredBuffer> m_vsStrcturedBuffer;
-	std::unique_ptr<DMStructuredBuffer> m_psStrcturedBuffer;
+	DMStructuredBuffer m_vsStrcturedBuffer;
+	DMStructuredBuffer m_psStrcturedBuffer;
 };
 

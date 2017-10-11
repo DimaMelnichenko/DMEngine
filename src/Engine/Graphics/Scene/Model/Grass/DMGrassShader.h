@@ -5,7 +5,7 @@
 class DMGrassShader : public DMShader
 {
 public:
-	DMGrassShader( DMD3D* parent );
+	DMGrassShader();
 	~DMGrassShader();
 
 	void StrimOutputDeclaration( D3D11_SO_DECLARATION_ENTRY* );

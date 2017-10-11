@@ -3,6 +3,7 @@
 
 DMCpu::DMCpu(  )
 {
+	m_queryHandle = 0;
 }
 
 
@@ -42,7 +43,7 @@ void DMCpu::Initialize( )
 
 void DMCpu::Shutdown( )
 {
-	if( m_canReadCpu )
+	if( m_canReadCpu && m_queryHandle )
 	{
 		PdhCloseQuery( m_queryHandle );
 	}

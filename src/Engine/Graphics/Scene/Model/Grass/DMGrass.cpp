@@ -1,8 +1,8 @@
 #include "DMGrass.h"
+#include "D3D\DMD3D.h"
 
 
-
-DMGrass::DMGrass( DMD3D* parent ) : DMSceneObject( parent )
+DMGrass::DMGrass()
 {
 	m_max_grass_count = 5000;
 }
@@ -27,7 +27,7 @@ bool DMGrass::Initialize( float patch_size )
 	desc.ByteWidth = m_max_grass_count * sizeof( GrassVertex );
 
 	ID3D11Buffer* buffer;
-	HRESULT hr = m_dmd3d->GetDevice()->CreateBuffer( &desc, nullptr, &buffer );
+	HRESULT hr = DMD3D::instance().GetDevice()->CreateBuffer( &desc, nullptr, &buffer );
 
 	if( FAILED(hr) )
 	{
@@ -43,12 +43,12 @@ void DMGrass::Generate()
 {
 	ID3D11Buffer* buffer[] = { nullptr };
 	unsigned int stride = 0;
-	m_dmd3d->GetDeviceContext()->IASetVertexBuffers( 0, 1, buffer, &stride, &stride );
-	m_dmd3d->GetDeviceContext()->IASetVertexBuffers( 1, 1, buffer, &stride, &stride );
-	m_dmd3d->GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, buffer, &stride, &stride );
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 1, 1, buffer, &stride, &stride );
+	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
 
 	buffer[0] = m_vertex_buffer.get();
-	m_dmd3d->GetDeviceContext()->SOSetTargets( 1, buffer, &stride );
+	DMD3D::instance().GetDeviceContext()->SOSetTargets( 1, buffer, &stride );
 
 }
 
@@ -56,7 +56,7 @@ void DMGrass::EndGenerate()
 {
 	ID3D11Buffer* buffer[] = { nullptr };
 	unsigned int stride = 0;
-	m_dmd3d->GetDeviceContext()->SOSetTargets( 1, buffer, &stride );
+	DMD3D::instance().GetDeviceContext()->SOSetTargets( 1, buffer, &stride );
 }
 
 void DMGrass::Render()
@@ -65,9 +65,9 @@ void DMGrass::Render()
 	unsigned int offset = 0;
 	buffer[0] = m_vertex_buffer.get();
 	unsigned int stride = sizeof( GrassVertex );
-	m_dmd3d->GetDeviceContext()->IASetVertexBuffers( 0, 1, buffer, &stride, &offset );
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, buffer, &stride, &offset );
 
-	m_dmd3d->GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
+	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
 }
 
 unsigned int DMGrass::grassCount()

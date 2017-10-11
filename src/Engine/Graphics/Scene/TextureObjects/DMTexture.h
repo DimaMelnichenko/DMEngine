@@ -3,14 +3,13 @@
 //////////////
 // INCLUDES //
 //////////////
-#include "..\..\Common\DM3DObject.h"
+#include "D3D/DMD3D.h"
 
-class DMTexture : public DM3DObject
-{
-public:	
-		
+class DMTexture
+{		
 public:
-	DMTexture( DMD3D* );
+	DMTexture();
+	DMTexture( DMTexture&& other );
 	~DMTexture();
 
 	bool Initialize( const WCHAR* );

@@ -1,11 +1,10 @@
 #include "DMFontShader.h"
 
 
-DMFontShader::DMFontShader( DMD3D* parent ) : DMShader( parent )
+DMFontShader::DMFontShader()
 {
 	
 }
-
 
 DMFontShader::~DMFontShader()
 {
@@ -22,7 +21,7 @@ bool DMFontShader::setColor( D3DXVECTOR4 color )
 	// Set shader texture resource in the pixel shader.
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 
-	HRESULT result = m_dmd3d->GetDeviceContext()->Map( m_param_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( m_param_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -35,14 +34,14 @@ bool DMFontShader::setColor( D3DXVECTOR4 color )
 	memcpy( dataPtr, color, sizeof( ParameterType ) );
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( m_param_buffer.get(), 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( m_param_buffer.get(), 0 );
 
 	return true;
 }
 
 bool DMFontShader::setTexure( ID3D11ShaderResourceView* texture )
 {	
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
 
 	return true;
 }
@@ -75,7 +74,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMFontShader::initLayouts()
 
 	vertex_layout.push_back( polygonLayout );
 
-	if( !m_dmd3d->createShaderConstantBuffer( sizeof( ParameterType ), m_param_buffer ) )
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( ParameterType ), m_param_buffer ) )
 		return std::vector<D3D11_INPUT_ELEMENT_DESC>();
 
 	return vertex_layout;
@@ -84,7 +83,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMFontShader::initLayouts()
 void DMFontShader::prepareRender()
 {
 	ID3D11Buffer* buffer = m_param_buffer.get();
-	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
 
 	return;
 }

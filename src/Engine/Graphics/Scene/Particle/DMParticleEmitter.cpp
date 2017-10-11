@@ -2,7 +2,7 @@
 
 
 
-DMParticleEmitter::DMParticleEmitter( DMD3D* parent ) : DMSceneObject( parent )
+DMParticleEmitter::DMParticleEmitter()
 {
 }
 

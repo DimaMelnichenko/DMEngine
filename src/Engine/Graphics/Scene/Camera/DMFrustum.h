@@ -13,14 +13,14 @@ public:
 	DMFrustum(  );
 	~DMFrustum();
 
-	void ConstructFrustum( DMCamera* camera, float screenDepth );
+	void ConstructFrustum( const DMCamera& camera, float screenDepth );
 
-	bool CheckPoint( float, float, float );
-	bool CheckQuad( float xCenter, float yCenter, float zCenter, float radius );
-	bool CheckCube( float, float, float, float );
-	bool CheckSphere( float, float, float, float );
-	bool CheckRectangle( float, float, float, float, float, float );
-	bool CheckAABB( DMAABB* );
+	bool CheckPoint( float, float, float ) const;
+	bool CheckQuad( float xCenter, float yCenter, float zCenter, float radius ) const;
+	bool CheckCube( float, float, float, float ) const;
+	bool CheckSphere( float, float, float, float ) const;
+	bool CheckRectangle( float, float, float, float, float, float ) const;
+	bool CheckAABB( DMAABB* ) const;
 
 private:
 	D3DXPLANE m_planes[6];

@@ -40,12 +40,12 @@ void DMCamera::Initialize( CameraType _type, float width, float height, float _n
 	
 }
 
-void DMCamera::projectionMatrix( D3DXMATRIX* _matrix )
+void DMCamera::projectionMatrix( D3DXMATRIX* _matrix ) const
 {
 	memcpy( _matrix, &m_projection_matrix, sizeof( D3DXMATRIX ) );
 }
 
-D3DXMATRIX DMCamera::projectionMatrix()
+D3DXMATRIX DMCamera::projectionMatrix() const
 {
 	return m_projection_matrix;
 }
@@ -97,19 +97,19 @@ void DMCamera::SetRotation( float x, float y, float z )
 	return;
 }
 
-D3DXVECTOR3 DMCamera::position( )
+D3DXVECTOR3 DMCamera::position( ) const
 {
 	return D3DXVECTOR3( m_positionX, m_positionY, m_positionZ );
 }
 
-void DMCamera::position( D3DXVECTOR3* _vec )
+void DMCamera::position( D3DXVECTOR3* _vec ) const
 {
 	_vec->x = m_positionX;
 	_vec->y = m_positionY;
 	_vec->z = m_positionZ;
 }
 
-D3DXVECTOR3 DMCamera::GetRotation( )
+D3DXVECTOR3 DMCamera::GetRotation( ) const
 {
 	return D3DXVECTOR3( m_rotationX, m_rotationY, m_rotationZ );
 }
@@ -158,7 +158,7 @@ void DMCamera::Render( )
 	return;
 }
 
-void DMCamera::viewDirection( D3DXVECTOR3* vec )
+void DMCamera::viewDirection( D3DXVECTOR3* vec ) const
 {
 	memcpy( vec, &m_view_direction, sizeof( D3DXVECTOR3 ) );
 }
@@ -180,7 +180,7 @@ void DMCamera::SetDirection( float x, float y, float z )
 	m_view_direction.z = z;
 }
 
-void DMCamera::viewMatrix( D3DXMATRIX* viewMatrix )
+void DMCamera::viewMatrix( D3DXMATRIX* viewMatrix ) const
 {
 	memcpy( viewMatrix, &m_viewMatrix, sizeof( D3DXMATRIX ) ) ;
 	return;
@@ -229,18 +229,18 @@ void DMCamera::RenderReflection( float height )
 	return;
 }
 
-void DMCamera::GetReflectionViewMatrix( D3DXMATRIX& viewMatrix )
+void DMCamera::GetReflectionViewMatrix( D3DXMATRIX& viewMatrix ) const
 {
 	viewMatrix = m_reflectionViewMatrix;
 	return;
 }
 
-D3DXMATRIX DMCamera::viewMatrix()
+D3DXMATRIX DMCamera::viewMatrix() const
 {
 	return m_viewMatrix;
 }
 
-DMCamera::CameraType DMCamera::type()
+DMCamera::CameraType DMCamera::type() const
 {
 	return m_type;
 }

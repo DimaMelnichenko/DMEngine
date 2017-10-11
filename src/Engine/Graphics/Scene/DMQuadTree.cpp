@@ -1,7 +1,7 @@
 #include "DMQuadTree.h"
 #include <assert.h>
 
-DMQuadTree::DMQuadTree( DMD3D* parent ) : DM3DObject( parent )
+DMQuadTree::DMQuadTree()
 {
 	
 }
@@ -69,9 +69,9 @@ bool DMQuadTree::Initialize( float side_length, float min_length )
 	
 
 	// Now create the vertex buffer.
-	m_dmd3d->CreateBuffer( &vertex_buffer_desc, &vertex_data, m_vertex_buffer );
+	DMD3D::instance().CreateBuffer( &vertex_buffer_desc, &vertex_data, m_vertex_buffer );
 	//ID3D11Buffer* buffer;
-	//HRESULT result = m_dmd3d->GetDevice()->CreateBuffer( &vertex_buffer_desc, &vertex_data, &buffer );
+	//HRESULT result = DMD3D::instance().GetDevice()->CreateBuffer( &vertex_buffer_desc, &vertex_data, &buffer );
 	//if( FAILED( result ) )
 	//{
 	//	return false;
@@ -109,10 +109,10 @@ bool DMQuadTree::Initialize( float side_length, float min_length )
 	index_data.SysMemPitch = 0;
 	index_data.SysMemSlicePitch = 0;
 
-	m_dmd3d->CreateBuffer( &index_buffer_desc, &index_data, m_index_buffer );
+	DMD3D::instance().CreateBuffer( &index_buffer_desc, &index_data, m_index_buffer );
 
 	// Create the index buffer.
-	//HRESULT result = m_dmd3d->GetDevice()->CreateBuffer( &index_buffer_desc, &index_data, &buffer );
+	//HRESULT result = DMD3D::instance().GetDevice()->CreateBuffer( &index_buffer_desc, &index_data, &buffer );
 	//if( FAILED( result ) )
 	//{
 	//	return false;
@@ -185,27 +185,16 @@ void DMQuadTree::addNodes( NodeType* parent_node, DMSceneObject* object )
 
 }
 
-void DMQuadTree::checkObjects( DMFrustum* frustum, DMCamera* camera )
+void DMQuadTree::checkObjects( const DMFrustum& frustum, const DMCamera& camera )
 {
-	/*
-	for( auto vec : m_object_pool )
-	{
-		for( auto object : vec.second )
-		{
-			object->setFrustum( false );
-		}
-	}
-	
-	*/
-
 	m_visible_objects.clear();
 
 	checkNode( m_main_node.get(), frustum, camera );
 }
 
-void DMQuadTree::checkNode( NodeType* node, DMFrustum* frustum, DMCamera* camera )
+void DMQuadTree::checkNode( NodeType* node, const DMFrustum& frustum, const DMCamera& camera )
 {
-	if( frustum->CheckAABB( &node->aabb ) )
+	if( frustum.CheckAABB( &node->aabb ) )
 	{	
 		for( size_t i = 0; i < node->child.size(); i++ )
 		{
@@ -214,7 +203,7 @@ void DMQuadTree::checkNode( NodeType* node, DMFrustum* frustum, DMCamera* camera
 		
 		for( size_t j = 0; j < node->objects.size(); ++j )
 		{
-			if( frustum->CheckAABB( &( node->objects[j]->aabb() ) ) )
+			if( frustum.CheckAABB( &( node->objects[j]->aabb() ) ) )
 			{
 				node->objects[j]->setInFrustum( camera );
 			}
@@ -238,23 +227,23 @@ void DMQuadTree::setDrawBuffers()
 	unsigned int stride = sizeof( Vertex );
 
 	ID3D11Buffer* buffer = m_vertex_buffer.get();
-	m_dmd3d->GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 
 	// Set the index buffer to active in the input assembler so it can be rendered.
 	//buffer = m_index_buffer.get();
-	m_dmd3d->GetDeviceContext()->IASetIndexBuffer( m_index_buffer.get(), DXGI_FORMAT_R32_UINT, 0 );
+	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_index_buffer.get(), DXGI_FORMAT_R32_UINT, 0 );
 
 	// Set the type of primitive that should be rendered from this vertex buffer, in this case triangles.
-	m_dmd3d->GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_LINELIST );
+	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_LINELIST );
 
 }
 
-void DMQuadTree::Render( DMColorShader* shader, DMCamera* camera )
+void DMQuadTree::Render( DMColorShader* shader, const DMCamera& camera )
 {
 	drawNode( m_main_node.get(), shader, camera );
 }
 
-void DMQuadTree::drawNode( NodeType* node, DMColorShader* shader, DMCamera* camera )
+void DMQuadTree::drawNode( NodeType* node, DMColorShader* shader, const DMCamera& camera )
 {
 	for( size_t i = 0; i < 4; i++ )
 	{
@@ -266,7 +255,7 @@ void DMQuadTree::drawNode( NodeType* node, DMColorShader* shader, DMCamera* came
 
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 	
-	HRESULT result = m_dmd3d->GetDeviceContext()->Map( m_vertex_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( m_vertex_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return;
@@ -307,7 +296,7 @@ void DMQuadTree::drawNode( NodeType* node, DMColorShader* shader, DMCamera* came
 	vertex[7].color = D3DXVECTOR3( 1.0, 0.0, 0.0 );
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( m_vertex_buffer.get(), 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( m_vertex_buffer.get(), 0 );
 	
 	//setDrawBuffers();
 

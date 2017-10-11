@@ -20,9 +20,7 @@ bool DMSystem::Initialize( )
 	// Initialize the windows api.
 	InitializeWindows( screenWidth, screenHeight );
 
-	m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd );
-
-	return true;
+	return m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd );
 }
 
 void DMSystem::Run( )

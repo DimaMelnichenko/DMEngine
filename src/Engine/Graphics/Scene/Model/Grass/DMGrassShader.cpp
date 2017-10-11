@@ -1,7 +1,7 @@
 #include "DMGrassShader.h"
 
 
-DMGrassShader::DMGrassShader( DMD3D* parent ) : DMShader( parent )
+DMGrassShader::DMGrassShader()
 {
 
 }
@@ -41,7 +41,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMGrassShader::initLayouts()
 	vertex_layout.push_back( polygonLayout );
 
 	if( !m_param_buffer )
-		m_dmd3d->createShaderConstantBuffer( sizeof( GrassParam ), m_param_buffer );
+		DMD3D::instance().createShaderConstantBuffer( sizeof( GrassParam ), m_param_buffer );
 
 	return vertex_layout;
 }
@@ -49,7 +49,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMGrassShader::initLayouts()
 bool DMGrassShader::prepare()
 {
 	if( phase() == 0 )
-		m_dmd3d->GetDeviceContext()->IASetInputLayout( nullptr );
+		DMD3D::instance().GetDeviceContext()->IASetInputLayout( nullptr );
 
 	return true;
 }
@@ -66,34 +66,34 @@ void DMGrassShader::Update( float )
 
 void DMGrassShader::setTextureDistribution( ID3D11ShaderResourceView* texture )
 {
-	m_dmd3d->GetDeviceContext()->GSSetShaderResources( 0, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->GSSetShaderResources( 0, 1, &texture );
 }
 
 void DMGrassShader::setTextureHeight( ID3D11ShaderResourceView* texture )
 {
-	m_dmd3d->GetDeviceContext()->GSSetShaderResources( 1, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->GSSetShaderResources( 1, 1, &texture );
 }
 
 void DMGrassShader::setTextureColor( ID3D11ShaderResourceView* texture )
 {
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
 }
 
 void DMGrassShader::setTextureNoise( ID3D11ShaderResourceView* texture )
 {
-	m_dmd3d->GetDeviceContext()->GSSetShaderResources( 3, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->GSSetShaderResources( 3, 1, &texture );
 }
 
 void DMGrassShader::setTerrainColor( ID3D11ShaderResourceView* texture )
 {
-	m_dmd3d->GetDeviceContext()->GSSetShaderResources( 2, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->GSSetShaderResources( 2, 1, &texture );
 }
 
 void DMGrassShader::setMapSize( float map_size )
 {
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 	
-	HRESULT result = m_dmd3d->GetDeviceContext()->Map( m_param_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( m_param_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return;
@@ -106,10 +106,10 @@ void DMGrassShader::setMapSize( float map_size )
 	dataPtr->cb_map_size = map_size;
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( m_param_buffer.get(), 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( m_param_buffer.get(), 0 );
 	
 
 	ID3D11Buffer* buffer = m_param_buffer.get();
-	m_dmd3d->GetDeviceContext()->VSSetConstantBuffers( 2, 1, &buffer );
-	m_dmd3d->GetDeviceContext()->GSSetConstantBuffers( 2, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 2, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 2, 1, &buffer );
 }

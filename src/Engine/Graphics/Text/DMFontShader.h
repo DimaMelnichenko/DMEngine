@@ -16,7 +16,7 @@ private:
 	};
 
 public:
-	DMFontShader( DMD3D* );
+	DMFontShader();
 	~DMFontShader();
 	
 	bool setTexure( ID3D11ShaderResourceView* );

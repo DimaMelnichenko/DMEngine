@@ -14,7 +14,7 @@ private:
 	
 
 public:
-	DMDepthShader( DMD3D* );
+	DMDepthShader();
 	~DMDepthShader();
 
 private:

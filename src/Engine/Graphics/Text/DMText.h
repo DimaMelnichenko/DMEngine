@@ -5,7 +5,7 @@
 #include <vector>
 
 
-class DMText : public DM3DObject
+class DMText
 {
 private:
 	struct SentenceType
@@ -25,11 +25,11 @@ private:
 	};*/
 
 public:
-	DMText( DMD3D* );
+	DMText();
 	~DMText();
 
 	bool Initialize( unsigned int, unsigned int );
-	bool Render( D3DXMATRIX worldMatrix, DMCamera* camera );
+	bool Render( D3DXMATRIX worldMatrix, const DMCamera& camera );
 
 	bool SetFps( unsigned int );
 	bool SetCpu( unsigned int );
@@ -40,15 +40,15 @@ public:
 
 
 private:
-	bool InitializeSentence( std::unique_ptr<SentenceType>&, unsigned int );
-	bool UpdateSentence( SentenceType*, char*, int, int, float, float, float );	
-	bool RenderSentence( SentenceType*, DMCamera* );
+	bool InitializeSentence( SentenceType&, unsigned int );
+	bool UpdateSentence( SentenceType&, char*, int, int, float, float, float );
+	bool RenderSentence( const SentenceType&, const DMCamera& );
 
 private:
-	std::unique_ptr<DMFont> m_Font;
-	std::unique_ptr<DMFontShader> m_FontShader;
+	DMFont m_Font;
+	DMFontShader m_FontShader;
 	unsigned int m_screenWidth, m_screenHeight;
-	std::vector<std::unique_ptr<SentenceType>> m_sentences;
+	std::vector<SentenceType> m_sentences;
 	const unsigned char m_idx_fps = 0;
 	const unsigned char m_idx_cpu = 1;
 	const unsigned char m_idx_video = 2;

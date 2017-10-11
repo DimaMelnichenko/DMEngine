@@ -2,8 +2,7 @@
 
 
 
-DMRenderFilter::DMRenderFilter( DMD3D* d3d, DMFullScreen* full_screen, DMFullScreenShader* shader ) :
-		DMSceneObject( d3d ), m_full_screen( full_screen ), m_shader( shader ), m_pass( 0 )
+DMRenderFilter::DMRenderFilter(  ) : m_pass( 0 )
 {
 
 }
@@ -11,6 +10,12 @@ DMRenderFilter::DMRenderFilter( DMD3D* d3d, DMFullScreen* full_screen, DMFullScr
 DMRenderFilter::~DMRenderFilter()
 {
 
+}
+
+void DMRenderFilter::Initialize( DMFullScreen* full_screen, DMFullScreenShader* shader )
+{
+	m_full_screen = full_screen;
+	m_shader = shader;
 }
 
 void DMRenderFilter::selectPass( unsigned int pass )
@@ -39,13 +44,13 @@ void DMRenderFilter::clearSRV()
 {
 	// clear all slots
 	static ID3D11ShaderResourceView* clear_srv[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 15, clear_srv );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 15, clear_srv );
 	m_srv.clear();
 }
 
-void DMRenderFilter::Render( DMCamera* camera, DMRenderTexture* render_target_texture )
+void DMRenderFilter::Render( const DMCamera& camera, DMRenderTexture* render_target_texture )
 {
-	m_dmd3d->TurnZBufferOff();
+	DMD3D::instance().TurnZBufferOff();
 
 	if( render_target_texture )
 	{
@@ -61,7 +66,7 @@ void DMRenderFilter::Render( DMCamera* camera, DMRenderTexture* render_target_te
 	
 	if( m_srv.size() )
 	{
-		m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, m_srv.size(), &m_srv[0] );
+		DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, m_srv.size(), &m_srv[0] );
 	}
 	m_shader->Render( 3, nullptr );
 	
@@ -69,12 +74,12 @@ void DMRenderFilter::Render( DMCamera* camera, DMRenderTexture* render_target_te
 	/////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////
 
-	m_dmd3d->TurnZBufferOn();
+	DMD3D::instance().TurnZBufferOn();
 
 	if( render_target_texture )
 	{
-		m_dmd3d->SetBackBufferRenderTarget();
-		m_dmd3d->ResetViewport();
+		DMD3D::instance().SetBackBufferRenderTarget();
+		DMD3D::instance().ResetViewport();
 	}
 
 

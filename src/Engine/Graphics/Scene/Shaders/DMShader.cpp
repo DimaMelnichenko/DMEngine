@@ -4,7 +4,7 @@
 
 
 
-DMShader::DMShader( DMD3D* _parent ) : m_dmd3d( _parent )
+DMShader::DMShader()
 {	
 	m_use_strimout_gs = false;
 	m_phase_idx = 0;
@@ -45,9 +45,9 @@ bool DMShader::Initialize()
 
 bool DMShader::initialize( )
 {
-	m_dmd3d->createShaderConstantBuffer( sizeof( WorldBuffer ), m_world_buffer );
+	DMD3D::instance().createShaderConstantBuffer( sizeof( WorldBuffer ), m_world_buffer );
 
-	m_dmd3d->createShaderConstantBuffer( sizeof( FrameConstant ), m_frameConstantBuffer );
+	DMD3D::instance().createShaderConstantBuffer( sizeof( FrameConstant ), m_frameConstantBuffer );
 	
 
 	m_timer = new DMTimer( );
@@ -72,7 +72,7 @@ void DMShader::setWorldMatrix( D3DXMATRIX* worldMatrix )
 	}
 
 	// Lock the constant buffer so it can be written to.
-	HRESULT result = m_dmd3d->GetDeviceContext()->Map( m_world_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( m_world_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return;
@@ -85,13 +85,13 @@ void DMShader::setWorldMatrix( D3DXMATRIX* worldMatrix )
 	memcpy( &dataPtr->world, &mat, sizeof( D3DXMATRIX ) );	
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( m_world_buffer.get(), 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( m_world_buffer.get(), 0 );
 
 	ID3D11Buffer* buffer = m_world_buffer.get();
-	m_dmd3d->GetDeviceContext()->VSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 1, 1, &buffer );
 }
 
-void DMShader::setCamera( DMCamera* camera )
+void DMShader::setCamera( const DMCamera& camera )
 {
 	m_timer->Frame();
 
@@ -105,9 +105,9 @@ void DMShader::setCamera( DMCamera* camera )
 	D3DXMATRIX projectionMatrix;
 	D3DXMATRIX viewProjectionMatrix;
 
-	camera->viewMatrix( &viewMatrix );
+	camera.viewMatrix( &viewMatrix );
 	D3DXMatrixInverse( &viewInverseMatrix, nullptr, &viewMatrix );
-	camera->projectionMatrix( &projectionMatrix );
+	camera.projectionMatrix( &projectionMatrix );
 	D3DXMatrixMultiply( &viewProjectionMatrix, &viewMatrix, &projectionMatrix );
 
 
@@ -119,7 +119,7 @@ void DMShader::setCamera( DMCamera* camera )
 	D3DXMatrixTranspose( &viewProjectionMatrix, &viewProjectionMatrix );
 
 	// Lock the constant buffer so it can be written to.
-	result = m_dmd3d->GetDeviceContext()->Map( m_frameConstantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	result = DMD3D::instance().GetDeviceContext()->Map( m_frameConstantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return;
@@ -135,15 +135,15 @@ void DMShader::setCamera( DMCamera* camera )
 	memcpy( &dataPtr->viewProjection, &viewProjectionMatrix, sizeof( D3DXMATRIX ) );
 	dataPtr->appTime = static_cast<float>( m_timer->totalTime() );
 	dataPtr->elapsedTime = static_cast<float>( m_timer->GetTime() );
-	camera->position( &dataPtr->cameraPosition );
-	camera->viewDirection( &dataPtr->viewDirection );
+	camera.position( &dataPtr->cameraPosition );
+	camera.viewDirection( &dataPtr->viewDirection );
 	
-	m_dmd3d->GetDeviceContext()->Unmap( m_frameConstantBuffer.get(), 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( m_frameConstantBuffer.get(), 0 );
 	
 	ID3D11Buffer* buffer = m_frameConstantBuffer.get();
-	m_dmd3d->GetDeviceContext()->VSSetConstantBuffers( 0, 1, &buffer );
-	m_dmd3d->GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
-	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 0, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 0, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 0, 1, &buffer );
 
 	return;
 }
@@ -223,16 +223,16 @@ void DMShader::RenderShader( int indexCount, int instance_count )
 	switch( m_draw_type )
 	{
 		case by_vertex:			
-			m_dmd3d->GetDeviceContext()->Draw( indexCount, 0 );
+			DMD3D::instance().GetDeviceContext()->Draw( indexCount, 0 );
 			break;
 		case by_index:
-			m_dmd3d->GetDeviceContext()->DrawIndexed( indexCount, 0, 0 );
+			DMD3D::instance().GetDeviceContext()->DrawIndexed( indexCount, 0, 0 );
 			break;
 		case by_index_instance:
-			m_dmd3d->GetDeviceContext()->DrawIndexedInstanced( indexCount, instance_count, 0, 0, 0 );
+			DMD3D::instance().GetDeviceContext()->DrawIndexedInstanced( indexCount, instance_count, 0, 0, 0 );
 			break;
 		case by_auto:
-			m_dmd3d->GetDeviceContext()->DrawAuto();
+			DMD3D::instance().GetDeviceContext()->DrawAuto();
 			break;
 		default:
 			break;
@@ -241,7 +241,7 @@ void DMShader::RenderShader( int indexCount, int instance_count )
 	return;
 }
 
-bool DMShader::Prepare( DMCamera* camera, int phase_idx )
+bool DMShader::Prepare( const DMCamera& camera, int phase_idx )
 {
 	if( !selectPhase( phase_idx ) )
 		return false;
@@ -253,29 +253,29 @@ bool DMShader::Prepare( DMCamera* camera, int phase_idx )
 	setCamera( camera );
 
 	// Set the vertex input layout.
-	m_dmd3d->GetDeviceContext()->IASetInputLayout( m_layout[phase.index_vs].get() );
+	DMD3D::instance().GetDeviceContext()->IASetInputLayout( m_layout[phase.index_vs].get() );
 
 	// Set the vertex and pixel shaders that will be used to render this triangle.
 	ID3D11VertexShader* vs = m_vertex_shader[phase.index_vs].get();
-	m_dmd3d->GetDeviceContext()->VSSetShader( vs, NULL, 0 );
+	DMD3D::instance().GetDeviceContext()->VSSetShader( vs, NULL, 0 );
 
 	if( m_pixel_shader.size() && phase.index_ps >= 0 )
 	{
 		ID3D11PixelShader* ps = m_pixel_shader[phase.index_ps].get();
-		m_dmd3d->GetDeviceContext()->PSSetShader( ps, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->PSSetShader( ps, NULL, 0 );
 	}
 	else
 	{
-		m_dmd3d->GetDeviceContext()->PSSetShader( NULL, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->PSSetShader( NULL, NULL, 0 );
 	}
 
 	if( m_geometry_shader.size() )
 	{
 		ID3D11GeometryShader* gs = m_geometry_shader[phase.index_gs].get();
-		m_dmd3d->GetDeviceContext()->GSSetShader( gs, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->GSSetShader( gs, NULL, 0 );
 	}
 	else
-		m_dmd3d->GetDeviceContext()->GSSetShader( NULL, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->GSSetShader( NULL, NULL, 0 );
 
 
 	prepare();
@@ -344,7 +344,7 @@ bool DMShader::addShaderPass( SRVType type, const char* function_name, const WCH
 	{
 		case SRVType::vs:
 			ID3D11VertexShader* vertex_shader;
-			result = m_dmd3d->GetDevice()->CreateVertexShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &vertex_shader );
+			result = DMD3D::instance().GetDevice()->CreateVertexShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &vertex_shader );
 			if( FAILED( result ) )
 			{
 				return false;
@@ -356,7 +356,7 @@ bool DMShader::addShaderPass( SRVType type, const char* function_name, const WCH
 			ID3D11InputLayout* layout;
 			// Create the vertex input layout.
 			if( vertex_layout.size() )
-				result = m_dmd3d->GetDevice()->CreateInputLayout( &vertex_layout[0], vertex_layout.size(), shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), &layout );
+				result = DMD3D::instance().GetDevice()->CreateInputLayout( &vertex_layout[0], vertex_layout.size(), shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), &layout );
 			else
 			{
 				layout = nullptr;
@@ -374,7 +374,7 @@ bool DMShader::addShaderPass( SRVType type, const char* function_name, const WCH
 		case SRVType::ps:
 			// Create the pixel shader from the buffer.
 			ID3D11PixelShader* pixel_shader;
-			result = m_dmd3d->GetDevice()->CreatePixelShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &pixel_shader );
+			result = DMD3D::instance().GetDevice()->CreatePixelShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &pixel_shader );
 			if( FAILED( result ) )
 			{
 				return false;
@@ -388,12 +388,12 @@ bool DMShader::addShaderPass( SRVType type, const char* function_name, const WCH
 				D3D11_SO_DECLARATION_ENTRY decl;
 				StrimOutputDeclaration( &decl );
 				UINT strides = sizeof( D3DXVECTOR4 );
-				result = m_dmd3d->GetDevice()->CreateGeometryShaderWithStreamOutput( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), &decl, 1, 
+				result = DMD3D::instance().GetDevice()->CreateGeometryShaderWithStreamOutput( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), &decl, 1, 
 																							NULL, 0, 0, 0, &geometry_shader );
 			}
 			else
 			{
-				result = m_dmd3d->GetDevice()->CreateGeometryShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &geometry_shader );
+				result = DMD3D::instance().GetDevice()->CreateGeometryShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &geometry_shader );
 			}
 			if( FAILED( result ) )
 			{

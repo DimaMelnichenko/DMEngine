@@ -11,11 +11,12 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMClipMapBlock.cpp" />
+    <ClCompile Include="DMSkyBox.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMStructuredBuffer.cpp" />
     <ClCompile Include="src\Engine\DMEngineProcessor.cpp" />
     <ClCompile Include="src\Config\DMConfig.cpp" />
     <ClCompile Include="src\DMSystem.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Common\DM3DObject.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMAABB.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMBoundingShape.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMBoundingSphere.cpp" />
@@ -78,6 +79,8 @@
     <ClCompile Include="src\Utils\utilites.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMClipMapBlock.h" />
+    <ClInclude Include="DMSkyBox.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DM3DUtils.h" />
     <ClInclude Include="src\Engine\Graphics\D3D\DMStructuredBuffer.h" />
     <ClInclude Include="src\Engine\DMEngineProcessor.h" />
@@ -85,7 +88,6 @@
     <ClInclude Include="src\DMSystem.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DDS.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DirectX.h" />
-    <ClInclude Include="src\Engine\Graphics\Common\DM3DObject.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMAABB.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMBoundingShape.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMBoundingSphere.h" />
@@ -177,7 +179,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)\src\Engine\Graphics\Common;H:\backup\Visual studio 2010\DMEngine\DMEngine\DXUT\Source\Common\DXUT10\Core;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src\Engine\Graphics;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)\src\Engine\Graphics\Common;H:\backup\Visual studio 2010\DMEngine\DMEngine\DXUT\Source\Common\DXUT10\Core;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src;$(ProjectDir)\src\Engine\Graphics;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86\;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

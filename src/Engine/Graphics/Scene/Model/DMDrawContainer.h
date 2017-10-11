@@ -8,10 +8,11 @@
 class DMDrawContainer
 {
 public:
-	DMDrawContainer( DMShader* );
+	DMDrawContainer( DMShader* = nullptr );
 	~DMDrawContainer();	
 	void addModel( DMModel* );
-	DMShader* shader();	
+	void setShader( DMShader* );
+	DMShader* shader() const;	
 	std::vector<DMModel*> m_models;
 	void update( float );
 

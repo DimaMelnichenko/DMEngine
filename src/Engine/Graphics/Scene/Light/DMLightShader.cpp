@@ -1,7 +1,7 @@
 #include "DMLightShader.h"
 
 
-DMLightShader::DMLightShader( DMD3D* parent ) : DMShader( parent )
+DMLightShader::DMLightShader()
 {
 
 }
@@ -83,16 +83,16 @@ bool DMLightShader::setTexture( DMModel::TextureType type, ID3D11ShaderResourceV
 	switch( type )
 	{
 		case DMModel::albedo:
-			m_dmd3d->GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
+			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
 			break;
 		case DMModel::normal:
-			m_dmd3d->GetDeviceContext()->PSSetShaderResources( 1, 1, &texture );
+			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 1, 1, &texture );
 			break;
 		case DMModel::height:
-			m_dmd3d->GetDeviceContext()->PSSetShaderResources( 2, 1, &texture );
+			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 2, 1, &texture );
 			break;
 		case DMModel::gim:
-			m_dmd3d->GetDeviceContext()->PSSetShaderResources( 3, 1, &texture );
+			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 3, 1, &texture );
 			break;
 	}
 
@@ -101,7 +101,7 @@ bool DMLightShader::setTexture( DMModel::TextureType type, ID3D11ShaderResourceV
 
 bool DMLightShader::setCubeTexture( ID3D11ShaderResourceView* texture )
 {
-	m_dmd3d->GetDeviceContext()->PSSetShaderResources( 5, 1, &texture );
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 5, 1, &texture );
 
 	return true;
 }

@@ -1,7 +1,7 @@
 #include "DMDepthShader.h"
 
 
-DMDepthShader::DMDepthShader( DMD3D* parent ) : DMShader( parent )
+DMDepthShader::DMDepthShader()
 {
 	
 }

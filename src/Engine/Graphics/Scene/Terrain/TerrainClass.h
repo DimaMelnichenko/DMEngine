@@ -8,7 +8,7 @@
 const int TEXTURE_REPEAT = 64;
 
 
-class TerrainClass : public DM3DObject
+class TerrainClass
 {
 private:
 	struct VertexType
@@ -31,7 +31,7 @@ private:
 	};
 
 public:
-	TerrainClass( DMD3D* );
+	TerrainClass();
 	~TerrainClass();
 
 
@@ -58,7 +58,7 @@ private:
 private:
 	int m_terrainWidth, m_terrainHeight;
 	HeightMapType* m_heightMap;
-	std::unique_ptr<DMTexture> m_Texture;
+	DMTexture m_Texture;
 	int m_vertexCount;
 	VertexType* m_vertices;
 

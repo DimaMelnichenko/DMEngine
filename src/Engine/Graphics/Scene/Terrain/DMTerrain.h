@@ -13,21 +13,22 @@
 
 class DMTerrain : public DMSceneObject
 {
+private:
+	static const int m_numTexturesinPack = 5;
+
 public:
-	DMTerrain( DMD3D*, std::unique_ptr<DMClipMapShader>& );
-	
+	DMTerrain();
 	~DMTerrain( );
 
-	bool Initialize( );
+	bool Initialize( DMClipMapShader* );
 	bool loadHeightMap( const std::wstring& height_file_name,  float width_multipler, float height_multipler );
-	void Render( DMCamera*, DMFrustum* = nullptr );
+	void Render( const DMCamera&, const DMFrustum& );
 
 	struct TextureSet
 	{
 		std::wstring blend;
-		std::wstring albedo[5];
-		std::wstring normal[5];		
-		std::wstring gim[5];
+		std::wstring albedo[m_numTexturesinPack];
+		std::wstring normal[m_numTexturesinPack];
 	};
 
 	void setTile( int index, float );
@@ -36,17 +37,19 @@ public:
 
 	bool addBaseTextures( const std::wstring& normal_file_name, const std::wstring& diffuse_file_name );
 
-	std::unique_ptr<DMHeightMap>& heightmap();
+	const DMHeightMap& heightmap();
 		  
 private:
 	DMTerrain( const DMTerrain& );
 	
 private:
-	std::unique_ptr<DMFrustum> m_frustum;
-	std::unique_ptr<DMGeoClipMap> m_clip_map;
-	std::unique_ptr<DMClipMapShader>& m_clip_map_shader;
-	std::unique_ptr<DMHeightMap> m_height_map;
-	std::unique_ptr<DMTextureArray> m_terrain_textures;
+	DMClipMapShader* m_clip_map_shader;
+
+	DMFrustum m_frustum;
+	DMGeoClipMap m_clip_map;
+	DMHeightMap m_height_map;
+	DMTextureArray m_terrain_textures;
 	float m_texture_tiles[8];
+	
 };
 

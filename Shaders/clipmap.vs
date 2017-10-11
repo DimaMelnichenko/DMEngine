@@ -24,7 +24,7 @@ struct InstanceParam
 
 StructuredBuffer<InstanceParam> instance_offset: register(t16);
 
-Texture2D terrainTexture[15] : register(t0);
+Texture2D terrainTexture : register(t0);
 
 //////////////
 // TYPEDEFS //
@@ -32,8 +32,6 @@ Texture2D terrainTexture[15] : register(t0);
 struct VertexInputType
 {
     float3 position : POSITION;
-    float2 tex : TEXCOORD0;
-	//float3 normal : NORMAL0;
 	uint instance_index: SV_InstanceID;
 };
 
@@ -48,7 +46,7 @@ struct PixelInputType
 
 float Height( float u, float v )
 {
-	return terrainTexture[0].SampleLevel( g_SamplerPointWrap, float2( u, v ), 0 ).r;
+	return terrainTexture.SampleLevel( g_SamplerLinearClamp, float2( u, v ), 0 ).r;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -82,7 +80,7 @@ PixelInputType main(VertexInputType input)
 	output.main_tex = output.position.xz * map_texture_scale;
 	output.main_tex.y = 1.0f - output.main_tex.y;
 	
-	output.position.y += Height( output.main_tex.x, output.main_tex.y ) * map_height_multippler;
+	output.position.y = Height( output.main_tex.x, output.main_tex.y ) * map_height_multippler;
 	//output.position.y = 0.0f;
 	
 	
@@ -98,8 +96,8 @@ PixelInputType main(VertexInputType input)
 		output.position.y = 0.0;
 	}
 	
-	output.position.x = min( output.position.x, 2049 );
-	output.position.z = min( output.position.z, 2049 );
+	output.position.x = min( output.position.x, 2048 );
+	output.position.z = min( output.position.z, 2048 );
 	
     // Calculate the position of the vertex against the world, view, and projection matrices.
 	output.position = mul(output.position, cb_worldMatrix);

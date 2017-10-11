@@ -2,34 +2,28 @@
 #include "DMLightDriver.h"
 
 
-DMLightDriver::DMLightDriver( DMD3D* parent ) : DMSceneObject( parent )
+DMLightDriver::DMLightDriver()
 {
 	
 }
 
 
 DMLightDriver::~DMLightDriver(void)
-{
-	Shutdown();
+{	
 }
 
 bool DMLightDriver::Initialize()
 {	
-	if( !m_dmd3d->createShaderConstantBuffer( sizeof( LightBuffer ), m_light_buffer ) )
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( LightBuffer ), m_light_buffer ) )
 		return false;
 
-	if( !m_dmd3d->createShaderConstantBuffer( sizeof( SunCSMBuffer ), m_CSM_buffer ) )
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( SunCSMBuffer ), m_CSM_buffer ) )
 		return false;
 
 	return true;
 }
 
-void DMLightDriver::Shutdown( )
-{
-	
-}
-
-void DMLightDriver::addLight( std::unique_ptr<DMLight>&& light )
+void DMLightDriver::addLight( DMLight&& light )
 {
 	m_light_list.push_back( std::move( light ) );
 }
@@ -45,32 +39,32 @@ void DMLightDriver::setShaderBuffer( )
 
 	for( auto& light : m_light_list )
 	{	
-		D3DXMATRIX mat = light->resultMatrix();
-		lb.cb_lightPos[light_count]	= D3DXVECTOR4( mat._41, mat._42, mat._43, (float)light->type() );
-		D3DXVECTOR3 color = light->color();
-		lb.cb_lightColor[light_count] = D3DXVECTOR4( color.x, color.y, color.z, light->attenuation );
-		D3DXVECTOR3 dir = light->direction();
+		D3DXMATRIX mat = light.resultMatrix();
+		lb.cb_lightPos[light_count]	= D3DXVECTOR4( mat._41, mat._42, mat._43, (float)light.type() );
+		D3DXVECTOR3 color = light.color();
+		lb.cb_lightColor[light_count] = D3DXVECTOR4( color.x, color.y, color.z, light.attenuation );
+		D3DXVECTOR3 dir = light.direction();
 		lb.cb_lightDir[light_count].x = dir.x;
 		lb.cb_lightDir[light_count].y = dir.y;
 		lb.cb_lightDir[light_count].z = dir.z;
-		lb.cb_lightDir[light_count].w = light->spotAngle();
+		lb.cb_lightDir[light_count].w = light.spotAngle();
 		++light_count;
 
 
-		if( cast_shadow_count < 4 && light->castShadow() )
+		if( cast_shadow_count < 4 && light.castShadow() )
 		{
-			DMCamera* shadow_camera = light->shadowCamera();
-			shadow_camera->viewMatrix( &(lb.cb_lightView[cast_shadow_count]) );
+			const DMCamera& shadow_camera = light.shadowCamera();
+			shadow_camera.viewMatrix( &(lb.cb_lightView[cast_shadow_count]) );
 			D3DXMatrixTranspose( &( lb.cb_lightView[cast_shadow_count] ), &( lb.cb_lightView[cast_shadow_count] ) );
-			shadow_camera->projectionMatrix( &( lb.cb_lightProject[cast_shadow_count] ) );
+			shadow_camera.projectionMatrix( &( lb.cb_lightProject[cast_shadow_count] ) );
 			D3DXMatrixTranspose( &( lb.cb_lightProject[cast_shadow_count] ), &( lb.cb_lightProject[cast_shadow_count] ) );
-			lb.cb_shadow_texel[cast_shadow_count] = light->texelSize();			
+			lb.cb_shadow_texel[cast_shadow_count] = light.texelSize();			
 			
-			ID3D11ShaderResourceView* shadow_rt = light->shadow_rt()->depthShaderResourceView();
-			m_dmd3d->GetDeviceContext()->PSSetShaderResources( 38 + cast_shadow_count, 1, &shadow_rt );
-			if( light->proj_texture )
+			ID3D11ShaderResourceView* shadow_rt = light.shadow_rt().depthShaderResourceView();
+			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 38 + cast_shadow_count, 1, &shadow_rt );
+			if( light.proj_texture )
 			{	
-				m_dmd3d->GetDeviceContext()->PSSetShaderResources( 42 + cast_shadow_count, 1, &light->proj_texture );
+				DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 42 + cast_shadow_count, 1, &light.proj_texture );
 			}
 
 			++cast_shadow_count;
@@ -96,7 +90,7 @@ void DMLightDriver::setShaderBuffer( )
 
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 
-	HRESULT result = m_dmd3d->GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return;
@@ -109,9 +103,9 @@ void DMLightDriver::setShaderBuffer( )
 	memcpy( dataPtr, &lb, sizeof( LightBuffer ) );
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( buffer, 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
 
-	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 3, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 3, 1, &buffer );
 
 
 	static SunCSMBuffer csm_buffer;
@@ -120,18 +114,18 @@ void DMLightDriver::setShaderBuffer( )
 
 	csm_buffer.cb_CSM_count = m_CSM_layers.size();
 
-	for( DMCamera* camera : m_CSM_layers )
+	for( const DMCamera& camera : m_CSM_layers )
 	{
-		camera->viewMatrix( &( csm_buffer.cb_CSM_View[cast_shadow_count] ) );
+		camera.viewMatrix( &( csm_buffer.cb_CSM_View[cast_shadow_count] ) );
 		D3DXMatrixTranspose( &( csm_buffer.cb_CSM_View[cast_shadow_count] ), &( csm_buffer.cb_CSM_View[cast_shadow_count] ) );
-		camera->projectionMatrix( &( csm_buffer.cb_CSM_Project[cast_shadow_count] ) );
+		camera.projectionMatrix( &( csm_buffer.cb_CSM_Project[cast_shadow_count] ) );
 		D3DXMatrixTranspose( &( csm_buffer.cb_CSM_Project[cast_shadow_count] ), &( csm_buffer.cb_CSM_Project[cast_shadow_count] ) );
 		++cast_shadow_count;
 	}
 
 	buffer = m_CSM_buffer.get();
 
-	result = m_dmd3d->GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
 	if( FAILED( result ) )
 	{
 		return;
@@ -144,25 +138,25 @@ void DMLightDriver::setShaderBuffer( )
 	memcpy( csm_dataPtr, &csm_buffer, sizeof( SunCSMBuffer ) );
 
 	// Unlock the constant buffer.
-	m_dmd3d->GetDeviceContext()->Unmap( buffer, 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
 
-	m_dmd3d->GetDeviceContext()->PSSetConstantBuffers( 4, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 4, 1, &buffer );
  }
 
 void DMLightDriver::update( float time )
 {
 	for( auto& light : m_light_list )
 	{
-		light->update( time );
+		light.update( time );
 	}
 }
 
-void DMLightDriver::addCSMLayer( DMCamera* camera )
+void DMLightDriver::addCSMLayer( const DMCamera& camera )
 {
 	m_CSM_layers.push_back( camera );
 }
 
-std::vector<std::unique_ptr<DMLight>>& DMLightDriver::lights()
+DMLightDriver::LightList& DMLightDriver::lights()
 {
 	return m_light_list;
 }
