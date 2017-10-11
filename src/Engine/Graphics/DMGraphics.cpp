@@ -203,7 +203,7 @@ bool DMGraphics::InitLights()
 	light.attenuation = 100000.0f;
 	light.setPosition( 100.00, 100.0, -100.00 );
 
-	m_light_driver.addLight( std::move( light ) );
+	m_light_driver.addLight( light );
 
 	light = DMLight( DMLight::Point );
 	light.setColor( 5.0f, 4.8f, 4.0f );

@@ -10,7 +10,9 @@ public:
 
 public:
 	DMLight( LightType );
-	DMLight( DMLight& );
+	DMLight( const DMLight& );
+	DMLight( DMLight&& );
+	DMLight& operator=( const DMLight& );
 	~DMLight(void);
 	void update( float );
 

@@ -14,7 +14,7 @@ public:
 	DMLightDriver( );
 	~DMLightDriver();
 	bool Initialize();
-	void addLight( DMLight&& );
+	void addLight( DMLight& );
 	void setShaderBuffer();
 	void update( float );
 	void addCSMLayer( const DMCamera& );

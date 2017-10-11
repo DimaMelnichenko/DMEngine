@@ -11,28 +11,40 @@ DMTransformBuffer::DMTransformBuffer(  )
 	D3DXMatrixIdentity( &m_scale_matrix );
 }
 
+DMTransformBuffer::DMTransformBuffer( DMTransformBuffer&& source )
+{
+	std::swap( m_result_matrix, source.m_result_matrix );
+	std::swap( m_position_matrix, source.m_position_matrix );
+	std::swap( m_rotate_matrix, source.m_rotate_matrix );
+	std::swap( m_scale_matrix, source.m_scale_matrix );
+
+	std::swap( m_aabb, source.m_aabb );
+
+	std::swap( m_transform_link, source.m_transform_link );
+}
+
 DMTransformBuffer::DMTransformBuffer( const DMTransformBuffer* source )
 {
-	memcpy( &this->m_result_matrix, &source->m_result_matrix, sizeof( D3DXMATRIX ) );
-	memcpy( &this->m_position_matrix, &source->m_position_matrix, sizeof( D3DXMATRIX ) );
-	memcpy( &this->m_rotate_matrix, &source->m_rotate_matrix, sizeof( D3DXMATRIX ) );
-	memcpy( &this->m_scale_matrix, &source->m_scale_matrix, sizeof( D3DXMATRIX ) );
+	this->m_result_matrix = source->m_result_matrix;
+	this->m_position_matrix = source->m_position_matrix;
+	this->m_rotate_matrix = source->m_rotate_matrix;
+	this->m_scale_matrix = source->m_scale_matrix;
 
 	m_aabb = source->m_aabb;
 
-	m_transform_link = nullptr;
+	m_transform_link = source->m_transform_link;
 }
 
 DMTransformBuffer::DMTransformBuffer( const DMTransformBuffer& source )
 {
-	memcpy( &this->m_result_matrix, &source.m_result_matrix, sizeof( D3DXMATRIX ) );
-	memcpy( &this->m_position_matrix, &source.m_position_matrix, sizeof( D3DXMATRIX ) );
-	memcpy( &this->m_rotate_matrix, &source.m_rotate_matrix, sizeof( D3DXMATRIX ) );
-	memcpy( &this->m_scale_matrix, &source.m_scale_matrix, sizeof( D3DXMATRIX ) );
+	this->m_result_matrix = source.m_result_matrix;
+	this->m_position_matrix = source.m_position_matrix;
+	this->m_rotate_matrix = source.m_rotate_matrix;
+	this->m_scale_matrix = source.m_scale_matrix;
 
 	m_aabb = source.m_aabb;
 
-	m_transform_link = nullptr;
+	m_transform_link = source.m_transform_link;
 }
 
 

@@ -11,7 +11,8 @@ class DMTransformBuffer
 	
 
 public:
-	DMTransformBuffer(  );
+	DMTransformBuffer();
+	DMTransformBuffer( DMTransformBuffer&& );
 	~DMTransformBuffer(void);
 
 	DMTransformBuffer( const DMTransformBuffer* );

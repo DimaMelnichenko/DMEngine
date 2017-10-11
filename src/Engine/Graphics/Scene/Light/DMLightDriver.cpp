@@ -23,9 +23,9 @@ bool DMLightDriver::Initialize()
 	return true;
 }
 
-void DMLightDriver::addLight( DMLight&& light )
+void DMLightDriver::addLight( DMLight& light )
 {
-	m_light_list.push_back( std::move( light ) );
+	m_light_list.push_back( light );
 }
 
 void DMLightDriver::setShaderBuffer( )

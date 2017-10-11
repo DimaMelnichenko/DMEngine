@@ -46,7 +46,9 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	float4 test_color = float4( 0.5, 0.5, 0.5, 1.0 );
 	
-	float4 base_diffuse = terrainTexture[0].Sample( g_SamplerLinearWrap, input.main_tex );
+	float4 base_diffuse = terrainTexture[3].Sample( g_SamplerLinearWrap, input.main_tex );
+	
+	
 	
 	// get heightmap normal
 	float3 normal_terrain;
@@ -79,13 +81,14 @@ float4 main(PixelInputType input) : SV_TARGET
 	result_albedo = smart_blend( result_albedo, 1 - blend.g, detail_albedo[2], blend.g  );
 	result_albedo = smart_blend( result_albedo, 1 - blend.b, detail_albedo[3], blend.b  );
 	
+	
+	
 	float3 result_normal = detail_normal[0];
 	result_normal = lerp( result_normal, detail_normal[1], blend.r );
 	result_normal = lerp( result_normal, detail_normal[2], blend.g );
 	result_normal = lerp( result_normal, detail_normal[3], blend.b );
-
 	
-
+	
 	float3 v = normalize( cb_cameraPosition - input.world_position );
 	float3 n = normalize( result_normal + normal_terrain );
 	n = normalize( mul( n, terrain_tbn ) );
@@ -113,7 +116,7 @@ float4 main(PixelInputType input) : SV_TARGET
 		/*if( fade < 0.00001 )
 			continue;*/
 		
-		final_color.rgb += ( max( dot( n, l ), 0.0f ) ) * cb_lightColor[i].rgb * /*fade */result_albedo.rgb;
+		final_color.rgb += ( max( dot( n, l ), 0.0f ) ) * cb_lightColor[i].rgb * fade * result_albedo.rgb;
 		
 	}
 	

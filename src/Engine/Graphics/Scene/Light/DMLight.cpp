@@ -14,7 +14,23 @@ DMLight::~DMLight(void)
 
 }
 
-DMLight::DMLight( DMLight& other )
+DMLight& DMLight::operator=( const DMLight& other ) 
+{
+	m_enabled = other.m_enabled;
+	m_cast_shadow = other.m_cast_shadow;
+	m_color = other.m_color;
+	m_type = other.m_type;
+	m_direction = other.m_direction;
+	m_spot_angle = other.m_spot_angle;
+	m_camera_shadow = other.m_camera_shadow;
+	m_mask_srv = other.m_mask_srv;
+	m_texel_size = other.m_texel_size;
+	m_shadow_rt = other.m_shadow_rt;
+
+	return *this;
+}
+
+DMLight::DMLight( const DMLight& other ) : DMSceneObject( other )
 {
 	m_enabled = other.m_enabled;
 	m_cast_shadow =	 other.m_cast_shadow;
@@ -26,6 +42,20 @@ DMLight::DMLight( DMLight& other )
 	m_mask_srv = other.m_mask_srv;
 	m_texel_size = other.m_texel_size;
 	m_shadow_rt = other.m_shadow_rt;
+}
+
+DMLight::DMLight( DMLight&& other ) : DMSceneObject( other )
+{
+	std::swap( m_enabled, other.m_enabled );
+	std::swap( m_cast_shadow, other.m_cast_shadow );
+	std::swap( m_color, other.m_color );
+	std::swap( m_type, other.m_type );
+	std::swap( m_direction, other.m_direction );
+	std::swap( m_spot_angle, other.m_spot_angle );
+	std::swap( m_camera_shadow, other.m_camera_shadow );
+	std::swap( m_mask_srv, other.m_mask_srv );
+	std::swap( m_texel_size, other.m_texel_size );
+	std::swap( m_shadow_rt, other.m_shadow_rt );
 }
 
 void DMLight::setEnabled( bool )
