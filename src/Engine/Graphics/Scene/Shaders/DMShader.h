@@ -10,8 +10,9 @@
 #include "..\Camera\DMCamera.h"
 #include "..\..\D3D\DMD3D.h"
 #include "DM3DUtils.h"
+#include "DMResource.h"
 
-class DMShader
+class DMShader : public DMResource
 {
 	struct alignas(16) FrameConstant
 	{		
@@ -38,7 +39,7 @@ class DMShader
 	};
 
 public:
-	DMShader();
+	DMShader( uint32_t id, const std::string& name );
 	virtual ~DMShader();
 	
 	bool Initialize( WCHAR* vsFilename, WCHAR* psFilename, bool use_strimout_gs = false );

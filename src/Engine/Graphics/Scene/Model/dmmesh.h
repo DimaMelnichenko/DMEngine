@@ -1,8 +1,7 @@
 #pragma once
-#include "..\DMSceneObject.h"
 #include "Utils\utilites.h"
 
-class DMMesh : public DMSceneObject
+class DMMesh
 {
 private:
 	struct VertexPTN
@@ -22,40 +21,39 @@ private:
 	};
 
 public:
-	DMMesh();
-	DMMesh( DMMesh&& mesh );
+	DMMesh(uint32_t id);
 	~DMMesh();
 
-	DMMesh& operator=( const DMMesh& mesh );
+	uint32_t id();
+
+	DMMesh( const DMMesh& mesh ) = delete;
+	DMMesh& operator=( const DMMesh& mesh ) = delete;
 
 	enum VertexCombination
 	{
 		V_PTN, V_PTNTB
 	};
 
-	void Render();
-	bool loadMesh( VertexCombination, WCHAR* );
-	int vertexSize();
-	ID3D11Buffer* vertexBuffer();
-	unsigned long GetIndexCount();
+	bool loadMeshData( VertexCombination, WCHAR* );
+
+	int vertexSize() const;
+	uint32_t GetIndexCount() const;
+	uint32_t GetVertexCount() const;
+	char* getVertices() const;
+	uint32_t* getIndices() const;
 
 private:
-	bool InitializeBuffers( WCHAR* );
-	void RenderBuffers();
 	bool readFile( WCHAR* filename );
 
 private:
-	// переменные общие для копий	
-	com_shared_ptr<ID3D11Buffer> m_vertex_buffer;
-	com_shared_ptr<ID3D11Buffer> m_index_buffer;
-	unsigned long m_vertex_count;
-	unsigned long m_index_count;
+	uint32_t m_id;
+	uint32_t m_vertex_count;
+	uint32_t m_index_count;
 
 	VertexCombination m_vertex_combination;
 
 	// переменные локальные
-	unsigned long* m_indices;
+	uint32_t* m_indices;
 	char* m_vertices;
-
 };
 

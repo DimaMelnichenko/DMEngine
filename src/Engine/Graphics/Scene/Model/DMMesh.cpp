@@ -3,50 +3,36 @@
 #include "D3D\DMD3D.h"
 
 
-DMMesh::DMMesh()
+DMMesh::DMMesh( uint32_t id ) :
+	m_id( id ),
+	m_vertex_count( 0 ),
+	m_index_count( 0 ),
+	m_vertex_combination( V_PTNTB ),
+	m_vertices( nullptr ),
+	m_indices( nullptr )
 {
-	m_vertex_combination = V_PTNTB;
-}
-
-DMMesh::DMMesh( DMMesh&& mesh )
-{
-	std::swap( m_vertex_buffer, mesh.m_vertex_buffer );
-	std::swap( m_index_buffer, mesh.m_index_buffer );
-	m_vertex_count = mesh.m_vertex_count;
-	m_index_count = mesh.m_index_count;
-
-	m_vertex_combination = mesh.m_vertex_combination;
-}
-
-DMMesh& DMMesh::operator=( const DMMesh& mesh )
-{
-	m_vertex_buffer = mesh.m_vertex_buffer;
-	m_index_buffer = mesh.m_index_buffer;
-	m_vertex_count = mesh.m_vertex_count;
-	m_index_count = mesh.m_index_count;
-
-	m_vertex_combination = mesh.m_vertex_combination;
-
-	return *this;
 }
 
 DMMesh::~DMMesh()
 {
+	delete[] m_vertices;
+	delete[] m_indices;
 }
 
-bool DMMesh::loadMesh( VertexCombination combination, WCHAR* file )
+bool DMMesh::loadMeshData( VertexCombination combination, WCHAR* file )
 {
 	m_vertex_combination = combination;
 
-	return InitializeBuffers( file );
+	return readFile( file );
 }
 
-void DMMesh::Render()
+uint32_t DMMesh::id()
 {
-	RenderBuffers();
+	return m_id;
 }
 
-bool DMMesh::InitializeBuffers( WCHAR* modelFilename )
+/*
+bool DMMesh::InitializeBuffers( WCHAR* modelFilename, ID3D11Buffer* vertexBuffer, ID3D11Buffer* indexBuffer )
 {
 	D3D11_BUFFER_DESC vertexBufferDesc, indexBufferDesc;
 	D3D11_SUBRESOURCE_DATA vertexData, indexData;
@@ -84,14 +70,11 @@ bool DMMesh::InitializeBuffers( WCHAR* modelFilename )
 	vertexData.SysMemSlicePitch = 0;
 
 	// Now create the vertex buffer.
-	ID3D11Buffer* buffer;
-	result = DMD3D::instance().GetDevice()->CreateBuffer( &vertexBufferDesc, &vertexData, &buffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &vertexBufferDesc, &vertexData, &vertexBuffer );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
-
-	m_vertex_buffer = make_com_ptr<ID3D11Buffer>( buffer );
 
 	// Set up the description of the static index buffer.
 	indexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -107,13 +90,11 @@ bool DMMesh::InitializeBuffers( WCHAR* modelFilename )
 	indexData.SysMemSlicePitch = 0;
 
 	// Create the index buffer.
-	result = DMD3D::instance().GetDevice()->CreateBuffer( &indexBufferDesc, &indexData, &buffer );
+	result = DMD3D::instance().GetDevice()->CreateBuffer( &indexBufferDesc, &indexData, &indexBuffer );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
-
-	m_index_buffer = make_com_ptr<ID3D11Buffer>( buffer );
 
 	// Release the arrays now that the vertex and index buffers have been created and loaded.
 	delete[] m_vertices;
@@ -124,6 +105,7 @@ bool DMMesh::InitializeBuffers( WCHAR* modelFilename )
 
 	return true;
 }
+*/
 
 bool DMMesh::readFile( WCHAR* filename )
 {
@@ -170,7 +152,7 @@ bool DMMesh::readFile( WCHAR* filename )
 
 
 	m_index_count = file_header.index_count;
-	m_indices = new unsigned long[m_index_count];
+	m_indices = new uint32_t[m_index_count];
 
 	VertexPTN* vertex_PTN;
 	VertexPTNTB* vertex_PTNTB;
@@ -213,7 +195,7 @@ bool DMMesh::readFile( WCHAR* filename )
 
 	return true;
 }
-
+/*
 void DMMesh::RenderBuffers()
 {
 	unsigned int stride = 0;
@@ -245,8 +227,8 @@ void DMMesh::RenderBuffers()
 
 	return;
 }
-
-int DMMesh::vertexSize()
+*/
+int DMMesh::vertexSize() const
 {
 	switch( m_vertex_combination )
 	{
@@ -261,12 +243,22 @@ int DMMesh::vertexSize()
 	return 0;
 }
 
-ID3D11Buffer* DMMesh::vertexBuffer()
-{
-	return m_vertex_buffer.get();
-}
-
-unsigned long DMMesh::GetIndexCount()
+uint32_t DMMesh::GetIndexCount() const
 {
 	return m_index_count;
+}
+
+uint32_t DMMesh::GetVertexCount() const
+{
+	return m_vertex_count;
+}
+
+char* DMMesh::getVertices() const
+{
+	return m_vertices;
+}
+
+uint32_t* DMMesh::getIndices() const
+{
+	return m_indices;
 }

@@ -4,7 +4,7 @@
 
 
 
-DMShader::DMShader()
+DMShader::DMShader( uint32_t id, const std::string& name ) : DMResource(id,name)
 {	
 	m_use_strimout_gs = false;
 	m_phase_idx = 0;

@@ -11,6 +11,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Engine\Graphics\Common\DMResource.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Materials\DMMaterial.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModelStorage.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\DMScene.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMClipMapBlock.cpp" />
     <ClCompile Include="DMSkyBox.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMStructuredBuffer.cpp" />
@@ -79,6 +83,10 @@
     <ClCompile Include="src\Utils\utilites.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Engine\Graphics\Common\DMResource.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Materials\DMMaterial.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModelStorage.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\DMScene.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMClipMapBlock.h" />
     <ClInclude Include="DMSkyBox.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DM3DUtils.h" />

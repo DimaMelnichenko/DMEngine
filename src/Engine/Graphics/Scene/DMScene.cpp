@@ -2,11 +2,16 @@
 
 
 
-DMScene::DMScene( DMD3D* dmd3d ) : DM3DObject( dmd3d )
+DMScene::DMScene()
 {
 }
 
 
 DMScene::~DMScene()
 {
+}
+
+void addObject( DMModel* model )
+{
+
 }

@@ -34,12 +34,12 @@ void DMModel::copy_internal_data( const DMModel* model )
 	this->m_name = model->m_name;
 }
 
-DMModel::DMModel( const DMModel* model ) : DMSceneObject( dynamic_cast<const DMSceneObject*>( model ) )
+DMModel::DMModel( const DMModel* model )
 {
 	copy_internal_data( model );
 }
 
-DMModel::DMModel( const DMModel& model ) : DMSceneObject( model )
+DMModel::DMModel( const DMModel& model )
 {	
 	copy_internal_data( &model );
 }
@@ -108,96 +108,34 @@ void DMModel::Render( float lod_range )
 	return;
 }
 
-unsigned int DMModel::texture( DMModel::TextureType type )
-{
-	return ( (*m_textures).size() > static_cast<unsigned int>( type ) ) ? (*m_textures)[type] : 0 ;
-}
-
-ID3D11ShaderResourceView* DMModel::LoadTexture( const WCHAR* filename )
-{
-	ID3D11ShaderResourceView* texture = nullptr;
-
-	D3DX11CreateShaderResourceViewFromFile( DMD3D::instance().GetDevice(), filename, NULL, NULL, &texture, NULL );
-	if( !texture )
-	{
-		return nullptr;
-	}
-
-	return texture;
-}
-
-void DMModel::setTexures()
-{
-	DMTexturePool& texturePool = DMTexturePool::instance();
-	ID3D11ShaderResourceView* views[] = { 
-		texturePool.texture( texture( DMModel::albedo ) ),
-		texturePool.texture( texture( DMModel::normal ) ),
-		texturePool.texture( texture( DMModel::height ) ),
-		texturePool.texture( texture( DMModel::gim ) ) };
-
-	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 4, views );
-}
-
-void DMModel::setTexure( DMModel::TextureType type, unsigned int index, float u_scale, float v_scale )
-{
- 	(*m_textures)[type] = index;
-
-	m_textures_scale->push_back( D3DXVECTOR2( u_scale, v_scale ) );
-}
-
-void DMModel::textureScale( unsigned int index, D3DXVECTOR2* uv_sacle ) const
-{
-	memcpy( uv_sacle, &(*m_textures_scale)[index], sizeof( D3DXVECTOR2 ) );
-}
-
-void DMModel::setPos( float x, float y, float z ) 
-{
-	DMSceneObject::setPosition( x, y, z );
-}
-
-void DMModel::setPos( const D3DXVECTOR3 & vec )
-{
-	DMSceneObject::setPosition( vec );
-}
-
-void DMModel::setScale( float scale )
-{
-	DMSceneObject::setScale( scale );
-}
-
 unsigned long DMModel::GetIndexCount()
 {
-	return (*m_meshes)[m_current_mesh_index].mesh.GetIndexCount();
-}
-
-void DMModel::setInFrustum( const DMCamera& camera )
-{
-	static D3DXVECTOR3 model_to_camera;
-	position( &model_to_camera );
-	model_to_camera -= camera.position();
-	setInFrustum( D3DXVec3Length( &model_to_camera ) );
+	return m_meshes[m_current_mesh_index]->GetIndexCount();
 }
 
 void DMModel::setInFrustum( float lod_range )
 {
-	for( auto queue : *m_render_queues )
+	for( auto pair : m_meshLodIndex )
 	{
-		queue->append( this );
+		if( pair.first < lod_range )
+		{
+			m_current_mesh_index = pair.second;
+			break;
+		}
 	}
-}
-
-void DMModel::addRenderQueue( DMRenderQueue* queue )
-{
-	if( queue )
-		m_render_queues->push_back( queue );
 }
 
 unsigned int DMModel::countOfLOD()
 {
-	return m_meshes->size();
+	return m_meshes.size();
 }
 
 const std::wstring& DMModel::name()
 {
 	return m_name;
+}
+
+DMSceneObject& DMModel::dceneObject()
+{
+	return m_sceneObject;
 }

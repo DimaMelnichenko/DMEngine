@@ -1,14 +1,16 @@
 #pragma once
-#include "DM3DObject.h"
+#include "Model\DMModel.h"
+#include <string>
 
-class DMScene : public DM3DObject
+class DMScene
 {
 public:
-	DMScene( DMD3D* );
+	DMScene();
 	~DMScene();
 
-	bool loadLevel( const std::wstring& file_name );
+	uint32_t loadModel( const std::wstring& );
 
+private:
 
 };
 
