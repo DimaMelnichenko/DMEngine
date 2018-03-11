@@ -10,6 +10,7 @@ class DMTexture : public DMResource
 {		
 public:
 	DMTexture( uint32_t id );
+	DMTexture( DMTexture&& );
 	~DMTexture();
 
 	bool Initialize( const WCHAR* );

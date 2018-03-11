@@ -16,7 +16,6 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\DMMaterial.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModelStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\DMScene.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMClipMapBlock.cpp" />
     <ClCompile Include="DMSkyBox.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMStructuredBuffer.cpp" />
     <ClCompile Include="src\Engine\DMEngineProcessor.cpp" />
@@ -44,26 +43,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModelList.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMRenderObject.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMRenderQueue.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Model\Grass\DMGrassShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Model\Instance\DMInstance.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleEmitter.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMPEShape.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMClipMapShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMGeoClipMap.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMGeoLevel.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMHeightMap.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMTerrain.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\Map\DMMiniMap.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\TerrainClass.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMFullScreen.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMFullScreenShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMRenderCubeTexture.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMRenderFilter.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMRenderTexture.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureArray.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureStorage.cpp" />
@@ -73,6 +53,7 @@
     <ClCompile Include="src\Utils\DMFps.cpp" />
     <ClCompile Include="src\Utils\DMTimer.cpp" />
     <ClCompile Include="src\Utils\utilites.cpp" />
+    <ClCompile Include="src\Engine\Graphics\System.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Engine\Graphics\Common\DMResourceStorage.h" />
@@ -80,7 +61,6 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\DMMaterial.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModelStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\DMScene.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMClipMapBlock.h" />
     <ClInclude Include="DMSkyBox.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DM3DUtils.h" />
     <ClInclude Include="src\Engine\Graphics\D3D\DMStructuredBuffer.h" />
@@ -111,26 +91,7 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModelList.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMRenderObject.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMRenderQueue.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Model\Grass\DMGrassShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Model\Instance\DMInstance.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleEmitter.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMPEShape.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMClipMapShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMGeoClipMap.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMGeoLevel.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMHeightMap.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMTerrain.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\Map\DMMiniMap.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\TerrainClass.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMFullScreen.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMFullScreenShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMRenderCubeTexture.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMRenderFilter.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMRenderTexture.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureArray.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureStorage.h" />
@@ -139,6 +100,7 @@
     <ClInclude Include="src\Utils\DMFps.h" />
     <ClInclude Include="src\Utils\DMTimer.h" />
     <ClInclude Include="src\Utils\utilites.h" />
+    <ClInclude Include="src\Engine\Graphics\System.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{4CE00D51-6BC5-4158-A3F7-DDE0B71874C5}</ProjectGuid>

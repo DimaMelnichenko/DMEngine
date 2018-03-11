@@ -6,7 +6,10 @@
 #include <algorithm>
 #include <D3DX11tex.h>
 
-DMGraphics::DMGraphics(  )
+namespace GS
+{
+
+DMGraphics::DMGraphics()
 {
 
 }
@@ -14,15 +17,14 @@ DMGraphics::DMGraphics(  )
 DMGraphics::~DMGraphics()
 {
 	DMD3D::close();
-	DMTextureStorage::close();
 }
 
 bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd )
-{	
+{
 	bool result = true;
-	
+
 	m_hwnd = hwnd;
-	
+
 	m_screenWidth = static_cast<float>( screenWidth );
 	m_screenHeight = static_cast<float>( screenHeight );
 
@@ -34,7 +36,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	}
 
-	if( !DMTextureStorage::instance().initialize( L"textures\\no_image.dds" ) )
+	if( System::textures().load( L"1111.png" ) )
 	{
 		::MessageBox( 0, L"No found default texture: textures\\no_image.dds ", L"Error", MB_OK );
 		return false;
@@ -47,7 +49,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 bool DMGraphics::Frame()
 {
 	Render();
-	
+
 	return true;
 }
 
@@ -56,7 +58,9 @@ bool DMGraphics::Render()
 {
 	DMD3D::instance().BeginScene( 0.4f, 0.4f, 0.4f, 1.0f );
 	// Present the rendered scene to the screen.
-	DMD3D::instance().EndScene( );
+	DMD3D::instance().EndScene();
 
 	return true;
+}
+
 }

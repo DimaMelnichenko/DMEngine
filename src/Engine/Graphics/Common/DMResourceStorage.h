@@ -9,7 +9,7 @@ public:
 	virtual ~DMAbstrctStorage();
 };
 
-template<class ResourceType>
+template<typename ResourceType>
 class DMResourceStorage : public DMAbstrctStorage
 {
 public:
@@ -48,7 +48,7 @@ protected:
 		if( !m_name_to_index.count( name ) )
 		{
 			m_name_to_index[name] = m_id_counter;
-			m_storage.insert( std::make_pair( (uint32_t)m_id_counter, std::move(resource) ) );
+			m_storage.insert( std::make_pair( m_id_counter, std::move(resource) ) );
 		}
 
 		return true;

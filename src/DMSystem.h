@@ -29,6 +29,6 @@ private:
 	HINSTANCE m_hinstance;
 	HWND m_hwnd;
 	DMEngineProcessor m_engineProcessor;
-	DMGraphics m_graphics;
+	GS::DMGraphics m_graphics;
 	DMConfig m_config;
 };
