@@ -8,7 +8,7 @@
 #include <unordered_set>
 
 #include "../DMSceneObject.h"
-#include "..\TextureObjects\DMTexturePool.h"
+#include "..\TextureObjects\DMTextureStorage.h"
 #include "..\Model\DMMesh.h"
 #include "..\Model\DMRenderQueue.h"
 

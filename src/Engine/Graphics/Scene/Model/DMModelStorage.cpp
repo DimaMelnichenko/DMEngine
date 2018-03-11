@@ -68,13 +68,13 @@ bool DMModelStorage::initModels()
 			GetPrivateProfileString( model_name.data(), L"height", L"", height, 1024, level_file.data() );
 			GetPrivateProfileString( model_name.data(), L"gim", L"", gim, 1024, level_file.data() );
 			if( wcslen( albedo ) > 0 )
-				model.setTexure( DMModel::albedo, DMTexturePool::instance().load_texture( albedo ) );
+				model.setTexure( DMModel::albedo, DMTextureStorage::instance().load_texture( albedo ) );
 			if( wcslen( normal ) > 0 )
-				model.setTexure( DMModel::TextureType::normal, DMTexturePool::instance().load_texture( normal ) );
+				model.setTexure( DMModel::TextureType::normal, DMTextureStorage::instance().load_texture( normal ) );
 			if( wcslen( height ) > 0 )
-				model.setTexure( DMModel::TextureType::height, DMTexturePool::instance().load_texture( height ) );
+				model.setTexure( DMModel::TextureType::height, DMTextureStorage::instance().load_texture( height ) );
 			if( wcslen( gim ) > 0 )
-				model.setTexure( DMModel::TextureType::gim, DMTexturePool::instance().load_texture( gim ) );
+				model.setTexure( DMModel::TextureType::gim, DMTextureStorage::instance().load_texture( gim ) );
 
 			int scale = GetPrivateProfileInt( model_name.data(), L"scale", 0, level_file.data() );
 

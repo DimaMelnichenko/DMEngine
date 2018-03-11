@@ -6,8 +6,11 @@
 class DMResource
 {
 public:
-	DMResource(uint32_t id, const std::string& name);
-	~DMResource();
+	DMResource(uint32_t id, const std::string& name = "");
+	virtual ~DMResource();
+
+	DMResource( const DMResource& ) = delete;
+	DMResource& operator=( const DMResource& ) = delete;
 
 	const std::string& name();
 	uint32_t id();

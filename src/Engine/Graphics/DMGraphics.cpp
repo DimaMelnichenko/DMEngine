@@ -14,7 +14,7 @@ DMGraphics::DMGraphics(  )
 DMGraphics::~DMGraphics()
 {
 	DMD3D::close();
-	DMTexturePool::close();
+	DMTextureStorage::close();
 }
 
 bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd )
@@ -34,7 +34,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	}
 
-	if( !DMTexturePool::instance().initialize( L"textures\\no_image.dds" ) )
+	if( !DMTextureStorage::instance().initialize( L"textures\\no_image.dds" ) )
 	{
 		::MessageBox( 0, L"No found default texture: textures\\no_image.dds ", L"Error", MB_OK );
 		return false;

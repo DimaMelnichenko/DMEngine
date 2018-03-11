@@ -3,13 +3,8 @@
 
 
 
-DMTexture::DMTexture()
+DMTexture::DMTexture( uint32_t id ) : DMResource(id)
 {
-}
-
-DMTexture::DMTexture( DMTexture&& other )
-{
-	std::swap( other.m_texture, m_texture );
 }
 
 DMTexture::~DMTexture()

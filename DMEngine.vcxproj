@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Engine\Graphics\Common\DMResourceStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMResource.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\DMMaterial.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModelStorage.cpp" />
@@ -50,12 +51,6 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMPEShape.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMColorShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMComputeShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMDepthShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMHDR.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMTextureShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMClipMapShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMGeoClipMap.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMGeoLevel.cpp" />
@@ -71,10 +66,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMRenderTexture.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureArray.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTexturePool.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Text\DMFont.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Text\DMFontShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Text\DMText.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureStorage.cpp" />
     <ClCompile Include="src\Engine\Input\DMInput.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\Utils\DMCpu.cpp" />
@@ -83,6 +75,7 @@
     <ClCompile Include="src\Utils\utilites.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Engine\Graphics\Common\DMResourceStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMResource.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\DMMaterial.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModelStorage.h" />
@@ -125,12 +118,6 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMPEShape.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMColorShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMComputeShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMDepthShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMHDR.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMTextureShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMClipMapShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMGeoClipMap.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMGeoLevel.h" />
@@ -146,10 +133,7 @@
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMRenderTexture.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureArray.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTexturePool.h" />
-    <ClInclude Include="src\Engine\Graphics\Text\DMFont.h" />
-    <ClInclude Include="src\Engine\Graphics\Text\DMFontShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Text\DMText.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureStorage.h" />
     <ClInclude Include="src\Engine\Input\DMInput.h" />
     <ClInclude Include="src\Utils\DMCpu.h" />
     <ClInclude Include="src\Utils\DMFps.h" />
@@ -204,6 +188,8 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>HOME_RUN;WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4005;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <MinimalRebuild>true</MinimalRebuild>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

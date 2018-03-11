@@ -4,12 +4,12 @@
 // INCLUDES //
 //////////////
 #include "D3D/DMD3D.h"
+#include "DMResource.h"
 
-class DMTexture
+class DMTexture : public DMResource
 {		
 public:
-	DMTexture();
-	DMTexture( DMTexture&& other );
+	DMTexture( uint32_t id );
 	~DMTexture();
 
 	bool Initialize( const WCHAR* );
