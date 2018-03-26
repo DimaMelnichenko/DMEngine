@@ -2,12 +2,13 @@
 #include <fstream>
 #include "D3D\DMD3D.h"
 
+namespace GS
+{
 
-DMMesh::DMMesh( uint32_t id ) :
-	m_id( id ),
+DMMesh::DMMesh( uint32_t id ) : DMResource( id ),
 	m_vertex_count( 0 ),
 	m_index_count( 0 ),
-	m_vertex_combination( V_PTNTB ),
+	m_vertex_combination( MeshVertexData::Type::PTNTB ),
 	m_vertices( nullptr ),
 	m_indices( nullptr )
 {
@@ -19,17 +20,14 @@ DMMesh::~DMMesh()
 	delete[] m_indices;
 }
 
-bool DMMesh::loadMeshData( VertexCombination combination, WCHAR* file )
+bool DMMesh::loadMeshData( MeshVertexData::Type combination, WCHAR* file )
 {
 	m_vertex_combination = combination;
 
 	return readFile( file );
 }
 
-uint32_t DMMesh::id()
-{
-	return m_id;
-}
+
 
 /*
 bool DMMesh::InitializeBuffers( WCHAR* modelFilename, ID3D11Buffer* vertexBuffer, ID3D11Buffer* indexBuffer )
@@ -141,21 +139,19 @@ bool DMMesh::readFile( WCHAR* filename )
 
 	switch( m_vertex_combination )
 	{
-		case V_PTN:
-			m_vertices = new char[m_vertex_count * sizeof( VertexPTN )];
+		case MeshVertexData::Type::PTN:
+			m_vertices = new char[m_vertex_count * sizeof( MeshVertexData::PTN )];
 			break;
-		case V_PTNTB:
-			m_vertices = new char[m_vertex_count * sizeof( VertexPTNTB )];
+		case MeshVertexData::Type::PTNTB:
+			m_vertices = new char[m_vertex_count * sizeof( MeshVertexData::PTNTB )];
 			break;
 	}
-
-
 
 	m_index_count = file_header.index_count;
 	m_indices = new uint32_t[m_index_count];
 
-	VertexPTN* vertex_PTN;
-	VertexPTNTB* vertex_PTNTB;
+	MeshVertexData::PTN* vertex_PTN = nullptr;
+	MeshVertexData::PTNTB* vertex_PTNTB = nullptr;
 
 	// Read in the vertex data.
 	for( size_t i = 0; i < file_header.vertex_count; i++ )
@@ -164,14 +160,14 @@ bool DMMesh::readFile( WCHAR* filename )
 
 		switch( m_vertex_combination )
 		{
-			case V_PTN:
-				vertex_PTN = reinterpret_cast<VertexPTN*>( m_vertices + ( sizeof( VertexPTN )* i ) );
+			case MeshVertexData::Type::PTN:
+				vertex_PTN = reinterpret_cast<MeshVertexData::PTN*>( m_vertices + ( sizeof( MeshVertexData::PTN )* i ) );
 				vertex_PTN->position = file_vertex.pos;
 				vertex_PTN->normal = file_vertex.norm;
 				vertex_PTN->texture = file_vertex.texcoord;
 				break;
-			case V_PTNTB:
-				vertex_PTNTB = reinterpret_cast<VertexPTNTB*>( m_vertices + ( sizeof( VertexPTNTB )* i ) );
+			case MeshVertexData::Type::PTNTB:
+				vertex_PTNTB = reinterpret_cast<MeshVertexData::PTNTB*>( m_vertices + ( sizeof( MeshVertexData::PTNTB )* i ) );
 				vertex_PTNTB->position = file_vertex.pos;
 				vertex_PTNTB->normal = file_vertex.norm;
 				vertex_PTNTB->texture = file_vertex.texcoord;
@@ -228,19 +224,9 @@ void DMMesh::RenderBuffers()
 	return;
 }
 */
-int DMMesh::vertexSize() const
+MeshVertexData::Type DMMesh::vertexType() const
 {
-	switch( m_vertex_combination )
-	{
-		case V_PTN:
-			return sizeof( VertexPTN );
-			break;
-		case V_PTNTB:
-			return sizeof( VertexPTNTB );
-			break;
-	}
-
-	return 0;
+	return m_vertex_combination;
 }
 
 uint32_t DMMesh::GetIndexCount() const
@@ -261,4 +247,6 @@ char* DMMesh::getVertices() const
 uint32_t* DMMesh::getIndices() const
 {
 	return m_indices;
+}
+
 }

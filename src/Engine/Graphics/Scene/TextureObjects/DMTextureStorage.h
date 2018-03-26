@@ -4,6 +4,7 @@
 
 #include "DMResourceStorage.h"
 #include "DMTexture.h"
+#include "TextureLoader.h"
 
 class DMTextureStorage : public DMResourceStorage<DMTexture>
 {
@@ -12,5 +13,8 @@ public:
 	~DMTextureStorage();
 
 	bool load( const std::wstring& file );
+
+private:
+	TextureLoader m_textureLoader;
 };
 

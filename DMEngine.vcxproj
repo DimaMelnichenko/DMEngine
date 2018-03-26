@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Engine\Graphics\Scene\Model\MeshVertexData.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMResourceStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMResource.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\DMMaterial.cpp" />
@@ -43,6 +44,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModelList.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMRenderObject.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMRenderQueue.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Model\MeshStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureArray.cpp" />
@@ -54,8 +56,10 @@
     <ClCompile Include="src\Utils\DMTimer.cpp" />
     <ClCompile Include="src\Utils\utilites.cpp" />
     <ClCompile Include="src\Engine\Graphics\System.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Engine\Graphics\Scene\Model\MeshVertexData.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMResourceStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMResource.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\DMMaterial.h" />
@@ -91,6 +95,7 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModelList.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMRenderObject.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMRenderQueue.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Model\MeshStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureArray.h" />
@@ -101,6 +106,7 @@
     <ClInclude Include="src\Utils\DMTimer.h" />
     <ClInclude Include="src\Utils\utilites.h" />
     <ClInclude Include="src\Engine\Graphics\System.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{4CE00D51-6BC5-4158-A3F7-DDE0B71874C5}</ProjectGuid>

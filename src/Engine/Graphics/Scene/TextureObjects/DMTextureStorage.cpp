@@ -12,10 +12,12 @@ DMTextureStorage::~DMTextureStorage()
 
 bool DMTextureStorage::load( const std::wstring& name )
 {
-	DMTexture texture( nextId() );
+	if( exists(name) )
+		return true;
 
 	std::wstring fullPath = path() + L"\\" + name;
-	texture.Initialize( fullPath.data() );
+
+	DMTexture texture( nextId(), m_textureLoader.loadFromFile( fullPath.data() ) );
 
 	insertResource( name, std::move( texture ) );
 

@@ -42,6 +42,16 @@ public:
 		return m_path;
 	}
 
+	bool exists( uint32_t id )
+	{
+		return m_storage.count( id );
+	}
+
+	bool exists( const std::wstring& name )
+	{
+		return m_name_to_index.count( name );
+	}
+
 protected:
 	bool insertResource( const std::wstring& name, ResourceType&& resource )
 	{

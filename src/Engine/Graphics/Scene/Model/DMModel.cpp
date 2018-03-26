@@ -4,16 +4,7 @@
 
 
 DMModel::DMModel( const std::wstring& name ) : m_name( name )
-{
-	m_textures = std::move( std::shared_ptr<std::vector<unsigned int>>( new std::vector<unsigned int>() ) );
-	
-	(*m_textures).resize( 5, 0 );
-
-	m_textures_scale = std::move( std::shared_ptr<std::vector<D3DXVECTOR2>>( new std::vector<D3DXVECTOR2> ) );
-
-	m_meshes = std::move( std::shared_ptr<std::vector<RangeMeshesContainer>>( new std::vector<RangeMeshesContainer>() ) );
-
-	m_render_queues = std::move( std::shared_ptr<std::vector<DMRenderQueue*>>( new std::vector<DMRenderQueue*>() ) );
+{	
 }
 
 DMModel::~DMModel()
@@ -23,13 +14,7 @@ DMModel::~DMModel()
 
 void DMModel::copy_internal_data( const DMModel* model )
 {
-	this->m_textures = model->m_textures;
-
-	this->m_textures_scale = model->m_textures_scale;
-
 	this->m_meshes = model->m_meshes;
-
-	this->m_render_queues = model->m_render_queues;
 
 	this->m_name = model->m_name;
 }
@@ -60,13 +45,7 @@ DMModel& DMModel::operator=( const DMModel& model )
 
 bool DMModel::Initialize( float lod_range, DMMesh::VertexCombination combination, WCHAR* modelFilename )
 {
-	if( addLODModel( lod_range, combination, modelFilename ) )
-	{
-		aabb() = (*m_meshes)[0].mesh.aabb();
-		return true;
-	}
-
-	return false;
+	return addLODModel( lod_range, combination, modelFilename );
 }
 
 bool DMModel::addLODModel( float lod_range, DMMesh::VertexCombination combination, WCHAR* modelFilename )

@@ -2,6 +2,7 @@
 #include <Windows.h>
 #include <string>
 #include "DMModel.h"
+#include "System.h"
 
 
 
@@ -67,42 +68,39 @@ bool DMModelStorage::initModels()
 			GetPrivateProfileString( model_name.data(), L"normal", L"", normal, 1024, level_file.data() );
 			GetPrivateProfileString( model_name.data(), L"height", L"", height, 1024, level_file.data() );
 			GetPrivateProfileString( model_name.data(), L"gim", L"", gim, 1024, level_file.data() );
-			if( wcslen( albedo ) > 0 )
-				model.setTexure( DMModel::albedo, DMTextureStorage::instance().load_texture( albedo ) );
+			if( wcslen( albedo ) > 0 )					
+				model.setTexure( DMModel::albedo, GS::System::textures().id( albedo ) );
 			if( wcslen( normal ) > 0 )
-				model.setTexure( DMModel::TextureType::normal, DMTextureStorage::instance().load_texture( normal ) );
+				model.setTexure( DMModel::TextureType::normal, GS::System::textures().id( normal ) );
 			if( wcslen( height ) > 0 )
-				model.setTexure( DMModel::TextureType::height, DMTextureStorage::instance().load_texture( height ) );
+				model.setTexure( DMModel::TextureType::height, GS::System::textures().id( height ) );
 			if( wcslen( gim ) > 0 )
-				model.setTexure( DMModel::TextureType::gim, DMTextureStorage::instance().load_texture( gim ) );
+				model.setTexure( DMModel::TextureType::gim, GS::System::textures().id( gim ) );
 
 			int scale = GetPrivateProfileInt( model_name.data(), L"scale", 0, level_file.data() );
 
 			if( scale )
 			{
-				model.setScale( (float)scale / 100.0f );
+				//model.setScale( (float)scale / 100.0f );
 			}
-
 
 			int x = GetPrivateProfileInt( model_name.data(), L"pos_x", 0, level_file.data() );
 			int y = GetPrivateProfileInt( model_name.data(), L"pos_y", 0, level_file.data() );
 			int z = GetPrivateProfileInt( model_name.data(), L"pos_z", 0, level_file.data() );
 
-			model.setPos( (float)x / 100.0f, (float)y / 100.0f, (float)z / 100.0f );
+			//model.setPos( (float)x / 100.0f, (float)y / 100.0f, (float)z / 100.0f );
 
 			wchar_t shader[200];
 			GetPrivateProfileString( model_name.data(), L"shader", L"", shader, 200, level_file.data() );
 			if( wcslen( shader ) )
 			{
 				//m_render_queues[shader]->append( model.get() );
-				model.addRenderQueue( &m_render_queues[shader] );
+				//model.addRenderQueue( &m_render_queues[shader] );
 			}
 
-			model.addRenderQueue( &m_render_queues[L"shadow"] );
+			//model.addRenderQueue( &m_render_queues[L"shadow"] );
 
-			m_models[model_name] = std::move( model );
-
-
+			//m_models[model_name] = std::move( model );
 		}
 
 		offset_start += wcslen( &out[offset_start] );
