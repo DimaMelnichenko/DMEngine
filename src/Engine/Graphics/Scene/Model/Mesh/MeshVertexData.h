@@ -31,7 +31,7 @@ public:
 
 	enum Type
 	{
-		PTN = 1, PTNTB = 2
+		V_PTN = 1, V_PTNTB = 2
 	};
 
 	static MeshVertexData::Type type( const std::wstring& name );
@@ -41,6 +41,8 @@ public:
 	static const std::wstring& name( StructType* obj );
 	template<typename StructType>
 	static MeshVertexData::Type type( StructType* obj );
+	template<typename StructType>
+	static MeshVertexData::Type type();
 
 	static uint16_t size( MeshVertexData::Type type );
 

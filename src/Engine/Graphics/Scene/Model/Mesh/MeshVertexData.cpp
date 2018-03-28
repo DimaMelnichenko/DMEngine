@@ -4,8 +4,8 @@ namespace GS
 {
 
 std::unordered_map<MeshVertexData::Type, std::wstring> m_idNameMap = { 
-	{ MeshVertexData::Type::PTN, L"PTN" } ,
-	{ MeshVertexData::Type::PTNTB, L"PTNTB" } };
+	{ MeshVertexData::Type::V_PTN, L"PTN" } ,
+	{ MeshVertexData::Type::V_PTNTB, L"PTNTB" } };
 
 MeshVertexData::Type MeshVertexData::type( const std::wstring& name )
 {
@@ -15,7 +15,7 @@ MeshVertexData::Type MeshVertexData::type( const std::wstring& name )
 			return pair.first;
 	}
 
-	return MeshVertexData::Type::PTN;
+	return MeshVertexData::Type::V_PTN;
 }
 
 template<typename StructType>
@@ -36,6 +36,19 @@ MeshVertexData::Type MeshVertexData::type( StructType* obj )
 {
 	if( std::is_same<PTN, Type>::value )
 	{
+		return Type::V_PTN;
+	}
+	if( std::is_same<PTNTB, Type>::value )
+	{
+		return Type::V_PTNTB;
+	}
+}
+
+template<typename StructType>
+static MeshVertexData::Type MeshVertexData::type()
+{
+	if( std::is_same<PTN, Type>::value )
+	{
 		return Type::PTN;
 	}
 	if( std::is_same<PTNTB, Type>::value )
@@ -53,10 +66,10 @@ uint16_t MeshVertexData::size( MeshVertexData::Type type )
 {
 	switch( type )
 	{
-		case Type::PTN:
+		case Type::V_PTN:
 			return sizeof( PTN );
 			break;
-		case Type::PTNTB:
+		case Type::V_PTNTB:
 			return sizeof( PTNTB );
 			break;
 		default:

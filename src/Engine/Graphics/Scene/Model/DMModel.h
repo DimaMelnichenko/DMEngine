@@ -9,7 +9,7 @@
 
 #include "../DMSceneObject.h"
 #include "..\TextureObjects\DMTextureStorage.h"
-#include "..\Model\DMMesh.h"
+#include "..\Model\Mesh\DMMesh.h"
 #include "..\Model\DMRenderQueue.h"
 
 

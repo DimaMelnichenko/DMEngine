@@ -8,7 +8,7 @@
 namespace GS
 {
 
-class MeshStorage : public DMResourceStorage<DMMesh>
+class MeshStorage : public DMResourceStorage<std::unique_ptr<AbstractMesh>>
 {
 public:
 	MeshStorage( const std::wstring& path );
@@ -17,7 +17,7 @@ public:
 	bool load( const std::wstring& file );
 
 private:
-	MeshLoader m_textureLoader;
+	MeshLoader m_meshLoader;
 };
 
 }
