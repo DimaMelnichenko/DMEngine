@@ -1,120 +1,50 @@
 #include "DMModel.h"
 #include <fstream>
 
+namespace GS
+{
 
-
-DMModel::DMModel( const std::wstring& name ) : m_name( name )
-{	
+DMModel::DMModel( uint32_t id, const std::wstring& name ) : DMResource( id )
+{
 }
 
 DMModel::~DMModel()
 {
-	
+
 }
 
-void DMModel::copy_internal_data( const DMModel* model )
+DMModel::DMModel( DMModel&& other ) : DMResource( std::move(other) )
 {
-	this->m_meshes = model->m_meshes;
-
-	this->m_name = model->m_name;
+	*this = std::move( other );
 }
 
-DMModel::DMModel( const DMModel* model )
+DMModel& DMModel::operator=( DMModel&& other )
 {
-	copy_internal_data( model );
-}
-
-DMModel::DMModel( const DMModel& model )
-{	
-	copy_internal_data( &model );
-}
-
-DMModel* DMModel::operator=( const DMModel* model )
-{
-	copy_internal_data( model );
-
-	return this;
-}
-
-DMModel& DMModel::operator=( const DMModel& model )
-{
-	copy_internal_data( &model );
-
+	if( this != &other )
+	{
+		m_name = other.m_name;
+		m_lods = std::move( other.m_lods );
+	}
 	return *this;
 }
 
-bool DMModel::Initialize( float lod_range, DMMesh::VertexCombination combination, WCHAR* modelFilename )
+void DMModel::addLod( float range, uint32_t meshId, uint32_t materialId )
 {
-	return addLODModel( lod_range, combination, modelFilename );
+	m_lods.insert( { range , { meshId, materialId } } );
 }
 
-bool DMModel::addLODModel( float lod_range, DMMesh::VertexCombination combination, WCHAR* modelFilename )
+bool DMModel::getLod( float range, uint32_t& meshId, uint32_t& materialId )
 {
-	DMMesh mesh;
-
-	if( mesh.loadMesh( combination, modelFilename ) )
+	for( auto& it : m_lods )
 	{
-		RangeMeshesContainer container;		
-		container.range = lod_range;
-		container.mesh = std::move( mesh );
-		(*m_meshes).push_back( std::move( container ) );
-		return true;
+		if( range <= it.first )
+		{
+			meshId = it.second.mesh;
+			materialId = it.second.material;
+			return true;
+		}
 	}
-
 	return false;
 }
 
-void DMModel::Render( const DMCamera& camera )
-{
-	static D3DXVECTOR3 model_to_camera;
-	position( &model_to_camera );
-	model_to_camera -= camera.position();
-	Render( D3DXVec3Length( &model_to_camera ) );
-}
-
-void DMModel::Render( float lod_range )
-{
-	for( size_t i = 0; i < m_meshes->size(); ++i )
-	{
-		if( (*m_meshes)[i].range > lod_range )
-		{
-			m_current_mesh_index = i;
-			( *m_meshes )[i].mesh.Render();
-			break;
-		}
-	}
-
-	return;
-}
-
-unsigned long DMModel::GetIndexCount()
-{
-	return m_meshes[m_current_mesh_index]->GetIndexCount();
-}
-
-void DMModel::setInFrustum( float lod_range )
-{
-	for( auto pair : m_meshLodIndex )
-	{
-		if( pair.first < lod_range )
-		{
-			m_current_mesh_index = pair.second;
-			break;
-		}
-	}
-}
-
-unsigned int DMModel::countOfLOD()
-{
-	return m_meshes.size();
-}
-
-const std::wstring& DMModel::name()
-{
-	return m_name;
-}
-
-DMSceneObject& DMModel::dceneObject()
-{
-	return m_sceneObject;
 }

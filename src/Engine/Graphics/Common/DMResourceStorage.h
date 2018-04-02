@@ -5,8 +5,8 @@
 class DMAbstrctStorage
 {
 public:
-	DMAbstrctStorage();
-	virtual ~DMAbstrctStorage();
+	DMAbstrctStorage(){}
+	virtual ~DMAbstrctStorage(){}
 };
 
 template<typename ResourceType>
@@ -33,7 +33,7 @@ public:
 		{
 			return m_name_to_index[name];
 		}
-
+	
 		return UINT32_MAX;
 	}
 
@@ -59,6 +59,7 @@ protected:
 		{
 			m_name_to_index[name] = m_id_counter;
 			m_storage.insert( std::make_pair( m_id_counter, std::move(resource) ) );
+			m_id_counter++;
 		}
 
 		return true;

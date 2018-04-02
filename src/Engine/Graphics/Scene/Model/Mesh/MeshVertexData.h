@@ -38,16 +38,57 @@ public:
 	static const std::wstring& name( MeshVertexData::Type type );
 
 	template<typename StructType>
-	static const std::wstring& name( StructType* obj );
+	const std::wstring& name( StructType* obj )
+	{
+		if( std::is_same<PTN, Type>::value )
+		{
+			return L"PTN";
+		}
+		if( std::is_same<PTNTB, Type>::value )
+		{
+			return L"PTN";
+		}
+	}
+
 	template<typename StructType>
-	static MeshVertexData::Type type( StructType* obj );
+	MeshVertexData::Type type( StructType* obj )
+	{
+		if( std::is_same<PTN, Type>::value )
+		{
+			return Type::V_PTN;
+		}
+		if( std::is_same<PTNTB, Type>::value )
+		{
+			return Type::V_PTNTB;
+		}
+	}
+
 	template<typename StructType>
-	static MeshVertexData::Type type();
+	static MeshVertexData::Type type()
+	{
+		if( std::is_same<PTN, Type>::value )
+		{
+			return Type::V_PTN;
+		}
+		if( std::is_same<PTNTB, Type>::value )
+		{
+			return Type::V_PTNTB;
+		}
+	}
 
 	static uint16_t size( MeshVertexData::Type type );
 
 private:
-	static std::unordered_map<Type,std::wstring> m_typeNames;
+	struct EnumClassHash
+	{
+		template <typename T>
+		std::size_t operator()( T t ) const
+		{
+			return static_cast<std::size_t>( t );
+		}
+	};
+	static std::unordered_map<Type,std::wstring,EnumClassHash> m_typeNames;
+
 };
 
 }

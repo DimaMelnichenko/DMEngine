@@ -11,11 +11,14 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Model\ModelLoader.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Model\ModelStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Mesh\MeshLoader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Mesh\MeshVertexData.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMResourceStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMResource.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Materials\DMMaterial.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Materials\Material.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModelStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\DMScene.cpp" />
     <ClCompile Include="DMSkyBox.cpp" />
@@ -36,15 +39,9 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Camera\DMPosition.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\DMQuadTree.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\DMSceneObject.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Light\DMLight.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Light\DMLightDriver.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Light\DMLightShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Model\DMDrawContainer.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Mesh\DMMesh.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModel.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModelList.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Model\DMRenderObject.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Model\DMRenderQueue.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Mesh\MeshStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.cpp" />
@@ -60,11 +57,14 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Model\ModelLoader.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Model\ModelStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Mesh\MeshLoader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Mesh\MeshVertexData.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMResourceStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMResource.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Materials\DMMaterial.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Materials\Material.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModelStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\DMScene.h" />
     <ClInclude Include="DMSkyBox.h" />
@@ -88,15 +88,9 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Camera\DMPosition.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\DMQuadTree.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\DMSceneObject.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Light\DMLight.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Light\DMLightDriver.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Light\DMLightShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Model\DMDrawContainer.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Mesh\DMMesh.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModel.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModelList.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Model\DMRenderObject.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Model\DMRenderQueue.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Mesh\MeshStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.h" />

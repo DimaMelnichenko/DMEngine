@@ -1,4 +1,8 @@
 #pragma once
+
+namespace GS
+{
+
 class DMModelStorage
 {
 public:
@@ -8,3 +12,4 @@ public:
 	bool initModels();
 };
 
+}

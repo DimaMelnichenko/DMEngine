@@ -3,7 +3,7 @@
 namespace GS
 {
 
-std::unordered_map<MeshVertexData::Type, std::wstring> m_idNameMap = { 
+static std::unordered_map<MeshVertexData::Type, std::wstring> m_idNameMap = { 
 	{ MeshVertexData::Type::V_PTN, L"PTN" } ,
 	{ MeshVertexData::Type::V_PTNTB, L"PTNTB" } };
 
@@ -18,44 +18,7 @@ MeshVertexData::Type MeshVertexData::type( const std::wstring& name )
 	return MeshVertexData::Type::V_PTN;
 }
 
-template<typename StructType>
-const std::wstring& MeshVertexData::name( StructType* obj )
-{
-	if( std::is_same<PTN, Type>::value )
-	{
-		return L"PTN";
-	}
-	if( std::is_same<PTNTB, Type>::value )
-	{
-		return L"PTN";
-	}
-}
 
-template<typename StructType>
-MeshVertexData::Type MeshVertexData::type( StructType* obj )
-{
-	if( std::is_same<PTN, Type>::value )
-	{
-		return Type::V_PTN;
-	}
-	if( std::is_same<PTNTB, Type>::value )
-	{
-		return Type::V_PTNTB;
-	}
-}
-
-template<typename StructType>
-static MeshVertexData::Type MeshVertexData::type()
-{
-	if( std::is_same<PTN, Type>::value )
-	{
-		return Type::PTN;
-	}
-	if( std::is_same<PTNTB, Type>::value )
-	{
-		return Type::PTNTB;
-	}
-}
 
 const std::wstring& MeshVertexData::name( MeshVertexData::Type type )
 {

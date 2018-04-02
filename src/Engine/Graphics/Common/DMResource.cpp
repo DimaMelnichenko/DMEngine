@@ -8,8 +8,14 @@ DMResource::DMResource( uint32_t id, const std::string& name ) : m_id(id), m_nam
 
 DMResource::DMResource( DMResource&& other )
 {
+	*this = std::move( other );
+}
+
+DMResource& DMResource::operator=( DMResource&& other )
+{
 	m_id = other.m_id;
-	m_name = other.m_name;
+	m_name = std::move(other.m_name);
+	return *this;
 }
 
 DMResource::~DMResource()

@@ -4,7 +4,8 @@
 #include "DMModel.h"
 #include "System.h"
 
-
+namespace GS
+{
 
 DMModelStorage::DMModelStorage()
 {
@@ -17,7 +18,7 @@ DMModelStorage::~DMModelStorage()
 
 bool DMModelStorage::initModels()
 {
-	wchar_t out[500];
+	/*wchar_t out[500];
 	memset( out, 0, sizeof( wchar_t ) * 500 );
 	DWORD size;
 
@@ -68,7 +69,7 @@ bool DMModelStorage::initModels()
 			GetPrivateProfileString( model_name.data(), L"normal", L"", normal, 1024, level_file.data() );
 			GetPrivateProfileString( model_name.data(), L"height", L"", height, 1024, level_file.data() );
 			GetPrivateProfileString( model_name.data(), L"gim", L"", gim, 1024, level_file.data() );
-			if( wcslen( albedo ) > 0 )					
+			if( wcslen( albedo ) > 0 )
 				model.setTexure( DMModel::albedo, GS::System::textures().id( albedo ) );
 			if( wcslen( normal ) > 0 )
 				model.setTexure( DMModel::TextureType::normal, GS::System::textures().id( normal ) );
@@ -105,5 +106,9 @@ bool DMModelStorage::initModels()
 
 		offset_start += wcslen( &out[offset_start] );
 		offset_start += 1;
-	}
+	}*/
+
+	return true;
+}
+
 }

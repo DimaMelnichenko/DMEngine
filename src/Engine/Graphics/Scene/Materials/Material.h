@@ -3,11 +3,14 @@
 #include "DMResource.h"
 #include <unordered_map>
 
-class DMMaterial : public DMResource
+namespace GS
+{
+
+class Material : public DMResource
 {
 public:
-	DMMaterial( uint32_t, const std::string& );
-	~DMMaterial();
+	Material( uint32_t, const std::string& );
+	~Material();
 
 	void addShader( uint32_t id, float range );
 
@@ -17,3 +20,4 @@ private:
 	std::unordered_map<float, uint32_t> m_shaders;
 };
 
+}
