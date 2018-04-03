@@ -9,6 +9,7 @@ namespace GS
 class AbstractMesh : public DMResource
 {
 public:
+	AbstractMesh() = default;
 	AbstractMesh( uint32_t id ) : DMResource( id )
 	{
 

@@ -5,7 +5,7 @@
 class DMAbstrctStorage
 {
 public:
-	DMAbstrctStorage(){}
+	DMAbstrctStorage() = default;
 	virtual ~DMAbstrctStorage(){}
 };
 
@@ -52,7 +52,6 @@ public:
 		return m_name_to_index.count( name );
 	}
 
-protected:
 	bool insertResource( const std::wstring& name, ResourceType&& resource )
 	{
 		if( !m_name_to_index.count( name ) )
@@ -64,7 +63,7 @@ protected:
 
 		return true;
 	}
-
+protected:
 	uint32_t nextId()
 	{
 		return m_id_counter;

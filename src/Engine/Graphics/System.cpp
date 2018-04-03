@@ -3,10 +3,10 @@
 namespace GS
 {
 
-static std::unique_ptr<DMTextureStorage> m_textureStorage = nullptr;
-static std::unique_ptr<MeshStorage> m_meshStorage = nullptr;
-static std::unique_ptr<ModelStorage> m_modelStorage = nullptr;
-static std::unique_ptr<MaterialStorage> m_materialStorage = nullptr;
+std::unique_ptr<DMTextureStorage> System::m_textureStorage = nullptr;
+std::unique_ptr<MeshStorage> System::m_meshStorage = nullptr;
+std::unique_ptr<ModelStorage> System::m_modelStorage = nullptr;
+std::unique_ptr<MaterialStorage> System::m_materialStorage = nullptr;
 
 DMTextureStorage& System::textures()
 {

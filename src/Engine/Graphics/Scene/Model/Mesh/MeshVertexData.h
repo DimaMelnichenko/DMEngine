@@ -79,15 +79,15 @@ public:
 	static uint16_t size( MeshVertexData::Type type );
 
 private:
-	struct EnumClassHash
+	/*struct EnumClassHash
 	{
 		template <typename T>
 		std::size_t operator()( T t ) const
 		{
 			return static_cast<std::size_t>( t );
 		}
-	};
-	static std::unordered_map<Type,std::wstring,EnumClassHash> m_typeNames;
+	};*/
+	static std::unordered_map<Type,std::wstring> m_typeNames;
 
 };
 

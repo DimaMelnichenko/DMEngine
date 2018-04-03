@@ -1,11 +1,11 @@
 #include "DMShader.h"
 #include <assert.h>
 
+namespace GS
+{
 
-
-
-DMShader::DMShader( uint32_t id, const std::string& name ) : DMResource(id,name)
-{	
+DMShader::DMShader( uint32_t id, const std::string& name ) : DMResource( id, name )
+{
 	m_use_strimout_gs = false;
 	m_phase_idx = 0;
 }
@@ -43,14 +43,14 @@ bool DMShader::Initialize()
 	return initialize();
 }
 
-bool DMShader::initialize( )
+bool DMShader::initialize()
 {
 	DMD3D::instance().createShaderConstantBuffer( sizeof( WorldBuffer ), m_world_buffer );
 
 	DMD3D::instance().createShaderConstantBuffer( sizeof( FrameConstant ), m_frameConstantBuffer );
-	
 
-	m_timer = new DMTimer( );
+
+	m_timer = new DMTimer();
 	m_timer->Initialize();
 
 	return true;
@@ -60,7 +60,7 @@ void DMShader::setWorldMatrix( D3DXMATRIX* worldMatrix )
 {
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 	D3DXMATRIX mat;
-	
+
 	if( !worldMatrix )
 	{
 		D3DXMatrixIdentity( &mat );
@@ -82,7 +82,7 @@ void DMShader::setWorldMatrix( D3DXMATRIX* worldMatrix )
 	WorldBuffer* dataPtr = (WorldBuffer*)mappedResource.pData;
 
 	// Copy the matrices into the constant buffer.
-	memcpy( &dataPtr->world, &mat, sizeof( D3DXMATRIX ) );	
+	memcpy( &dataPtr->world, &mat, sizeof( D3DXMATRIX ) );
 
 	// Unlock the constant buffer.
 	DMD3D::instance().GetDeviceContext()->Unmap( m_world_buffer.get(), 0 );
@@ -112,7 +112,7 @@ void DMShader::setCamera( const DMCamera& camera )
 
 
 	// Transpose the matrices to prepare them for the shader.
-	
+
 	D3DXMatrixTranspose( &viewMatrix, &viewMatrix );
 	D3DXMatrixTranspose( &viewInverseMatrix, &viewInverseMatrix );
 	D3DXMatrixTranspose( &projectionMatrix, &projectionMatrix );
@@ -129,7 +129,7 @@ void DMShader::setCamera( const DMCamera& camera )
 	dataPtr = (FrameConstant*)mappedResource.pData;
 
 	// Copy the matrices into the constant buffer.
-	memcpy( &dataPtr->view, &viewMatrix, sizeof(D3DXMATRIX) );
+	memcpy( &dataPtr->view, &viewMatrix, sizeof( D3DXMATRIX ) );
 	memcpy( &dataPtr->projection, &projectionMatrix, sizeof( D3DXMATRIX ) );
 	memcpy( &dataPtr->viewInverse, &viewInverseMatrix, sizeof( D3DXMATRIX ) );
 	memcpy( &dataPtr->viewProjection, &viewProjectionMatrix, sizeof( D3DXMATRIX ) );
@@ -137,9 +137,9 @@ void DMShader::setCamera( const DMCamera& camera )
 	dataPtr->elapsedTime = static_cast<float>( m_timer->GetTime() );
 	camera.position( &dataPtr->cameraPosition );
 	camera.viewDirection( &dataPtr->viewDirection );
-	
+
 	DMD3D::instance().GetDeviceContext()->Unmap( m_frameConstantBuffer.get(), 0 );
-	
+
 	ID3D11Buffer* buffer = m_frameConstantBuffer.get();
 	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 0, 1, &buffer );
 	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
@@ -166,7 +166,7 @@ bool DMShader::RenderInstanced( int indexCount, int instance_count, D3DXMATRIX* 
 
 	setWorldMatrix( worldMatrix );
 
-	prepareRender( );
+	prepareRender();
 
 	RenderShader( indexCount, instance_count );
 
@@ -177,7 +177,7 @@ bool DMShader::RenderInstanced( int indexCount, int instance_count, D3DXMATRIX* 
 
 void DMShader::Shutdown()
 {
-	
+
 }
 
 void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const WCHAR* shaderFilename )
@@ -188,10 +188,10 @@ void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const WCHAR* 
 
 
 	// Get a pointer to the error message text buffer.
-	compileErrors = (char*)( errorMessage->GetBufferPointer( ) );
+	compileErrors = (char*)( errorMessage->GetBufferPointer() );
 
 	// Get the length of the message.
-	bufferSize = errorMessage->GetBufferSize( );
+	bufferSize = errorMessage->GetBufferSize();
 
 	// Open a file to write the error message to.
 	fout.open( "shader-error.txt" );
@@ -199,16 +199,16 @@ void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const WCHAR* 
 	fout << "file :" << shaderFilename << std::endl;
 
 	// Write out the error message.
-	for( i = 0; i<bufferSize; i++ )
+	for( i = 0; i < bufferSize; i++ )
 	{
 		fout << compileErrors[i];
 	}
 
 	// Close the file.
-	fout.close( );
+	fout.close();
 
 	// Release the error message.
-	errorMessage->Release( );
+	errorMessage->Release();
 	errorMessage = 0;
 
 	// Pop a message up on the screen to notify the user to check the text file for compile errors.
@@ -222,7 +222,7 @@ void DMShader::RenderShader( int indexCount, int instance_count )
 	// Render the triangle.
 	switch( m_draw_type )
 	{
-		case by_vertex:			
+		case by_vertex:
 			DMD3D::instance().GetDeviceContext()->Draw( indexCount, 0 );
 			break;
 		case by_index:
@@ -388,8 +388,8 @@ bool DMShader::addShaderPass( SRVType type, const char* function_name, const WCH
 				D3D11_SO_DECLARATION_ENTRY decl;
 				StrimOutputDeclaration( &decl );
 				UINT strides = sizeof( D3DXVECTOR4 );
-				result = DMD3D::instance().GetDevice()->CreateGeometryShaderWithStreamOutput( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), &decl, 1, 
-																							NULL, 0, 0, 0, &geometry_shader );
+				result = DMD3D::instance().GetDevice()->CreateGeometryShaderWithStreamOutput( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), &decl, 1,
+																								NULL, 0, 0, 0, &geometry_shader );
 			}
 			else
 			{
@@ -429,8 +429,8 @@ void DMShader::createPhase( int index_vs, int index_gs, int index_ps )
 	int p_size = m_pixel_shader.size();
 
 	if( !( index_vs < v_size &&
-		index_gs < g_size &&
-		index_ps < p_size ) )
+			index_gs < g_size &&
+			index_ps < p_size ) )
 	{
 		return;
 	}
@@ -438,11 +438,11 @@ void DMShader::createPhase( int index_vs, int index_gs, int index_ps )
 	Phase new_phase;
 	new_phase.index_vs = index_vs;
 	new_phase.index_gs = index_gs;
-	new_phase.index_ps = index_ps;	
+	new_phase.index_ps = index_ps;
 
-	for( auto phase: m_phases )
+	for( auto phase : m_phases )
 	{
-		if( phase == new_phase  )
+		if( phase == new_phase )
 		{
 			return;
 		}
@@ -473,7 +473,7 @@ int DMShader::phase()
 }
 
 void DMShader::parse_defines( std::string defines, D3D10_SHADER_MACRO** macro_result )
-{	
+{
 
 	if( !defines.size() )
 		return;
@@ -482,7 +482,7 @@ void DMShader::parse_defines( std::string defines, D3D10_SHADER_MACRO** macro_re
 
 	str_split( defines, comma_split, "," );
 
-	D3D10_SHADER_MACRO* macro = new D3D10_SHADER_MACRO[ comma_split.size() + 1 ];
+	D3D10_SHADER_MACRO* macro = new D3D10_SHADER_MACRO[comma_split.size() + 1];
 
 	std::vector<std::string> equal_split;
 
@@ -511,4 +511,6 @@ void DMShader::parse_defines( std::string defines, D3D10_SHADER_MACRO** macro_re
 	macro[comma_split.size()].Definition = nullptr;
 
 	*macro_result = macro;
+}
+
 }

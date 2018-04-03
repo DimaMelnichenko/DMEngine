@@ -1,5 +1,8 @@
 #include "DMTextureStorage.h"
 
+namespace GS
+{
+
 DMTextureStorage::DMTextureStorage( const std::wstring& path ) : DMResourceStorage( path )
 {
 
@@ -12,7 +15,7 @@ DMTextureStorage::~DMTextureStorage()
 
 bool DMTextureStorage::load( const std::wstring& name )
 {
-	if( exists(name) )
+	if( exists( name ) )
 		return true;
 
 	std::wstring fullPath = path() + L"\\" + name;
@@ -22,4 +25,6 @@ bool DMTextureStorage::load( const std::wstring& name )
 	insertResource( name, std::move( texture ) );
 
 	return true;
+}
+
 }

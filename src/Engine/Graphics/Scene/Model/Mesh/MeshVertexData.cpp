@@ -3,7 +3,7 @@
 namespace GS
 {
 
-static std::unordered_map<MeshVertexData::Type, std::wstring> m_idNameMap = { 
+std::unordered_map<MeshVertexData::Type, std::wstring> MeshVertexData::m_typeNames = {
 	{ MeshVertexData::Type::V_PTN, L"PTN" } ,
 	{ MeshVertexData::Type::V_PTNTB, L"PTNTB" } };
 

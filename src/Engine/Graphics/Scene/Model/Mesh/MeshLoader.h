@@ -23,7 +23,7 @@ public:
 		// If it could not open the file then exit.
 		if( fin.fail() )
 		{
-			return false;
+			throw std::exception( "Can`t open file" );
 		}
 
 		struct FileHeader

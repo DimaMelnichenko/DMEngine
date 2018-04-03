@@ -3,15 +3,18 @@
 #include <stdint.h>
 #include <string>
 
+namespace GS
+{
+
 class DMResource
 {
 public:
-	DMResource(uint32_t id, const std::string& name = "");
+	DMResource( uint32_t id, const std::string& name = "" );
 	DMResource( DMResource&& );
 	DMResource& operator=( DMResource&& );
 	virtual ~DMResource();
 
-	
+
 	DMResource( const DMResource& ) = delete;
 	DMResource& operator=( const DMResource& ) = delete;
 
@@ -23,3 +26,4 @@ private:
 	std::string m_name;
 };
 
+}

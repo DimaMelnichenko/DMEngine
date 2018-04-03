@@ -6,6 +6,9 @@
 #include "DMTexture.h"
 #include "TextureLoader.h"
 
+namespace GS
+{
+
 class DMTextureStorage : public DMResourceStorage<DMTexture>
 {
 public:
@@ -18,3 +21,4 @@ private:
 	TextureLoader m_textureLoader;
 };
 
+}

@@ -15,8 +15,7 @@ public:
 
 	bool load( const std::wstring& file );
 
-private:
-	//ModelLoader m_modelLoader;
+
 };
 
 }

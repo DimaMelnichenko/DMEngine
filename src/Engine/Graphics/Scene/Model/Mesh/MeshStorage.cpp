@@ -21,7 +21,15 @@ bool MeshStorage::load( const std::wstring& name )
 
 	std::wstring fullPath = path() + L"\\" + name;
 
-	insertResource( name, std::move( m_meshLoader.loadFromFile<MeshVertexData::PTNTB>( fullPath, nextId() ) ) );
+	try
+	{
+		insertResource( name, std::move( m_meshLoader.loadFromFile<MeshVertexData::PTNTB>( fullPath, nextId() ) ) );
+	}
+	catch( std::exception& e )
+	{
+		//TODO log this exception
+		return false;
+	}
 
 	return true;
 }

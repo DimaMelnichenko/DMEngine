@@ -12,10 +12,13 @@
 #include "DM3DUtils.h"
 #include "DMResource.h"
 
+namespace GS
+{
+
 class DMShader : public DMResource
 {
-	struct alignas(16) FrameConstant
-	{		
+	struct alignas( 16 ) FrameConstant
+	{
 		D3DXMATRIX view;
 		D3DXMATRIX viewInverse;
 		D3DXMATRIX projection;
@@ -26,13 +29,13 @@ class DMShader : public DMResource
 		float elapsedTime;
 	};
 
-	struct alignas(16) WorldBuffer
+	struct alignas( 16 ) WorldBuffer
 	{
 		D3DXMATRIX world;
 	};
 
-	struct alignas(16) PSApplication
-	{		
+	struct alignas( 16 ) PSApplication
+	{
 		D3DXVECTOR3 camera_position;
 		float app_time;
 		float elapsed_time;
@@ -41,7 +44,7 @@ class DMShader : public DMResource
 public:
 	DMShader( uint32_t id, const std::string& name );
 	virtual ~DMShader();
-	
+
 	bool Initialize( WCHAR* vsFilename, WCHAR* psFilename, bool use_strimout_gs = false );
 	bool Initialize( WCHAR* vsFilename, bool use_strimout_gs = false );
 	bool Initialize();
@@ -49,7 +52,7 @@ public:
 	bool Render( int indexCount, D3DXMATRIX* worldMatrix );
 	bool RenderInstanced( int indexCount, int instance_count, D3DXMATRIX* worldMatrix );
 	bool Prepare( const DMCamera& camera, int phase );
-	virtual void Shutdown( );
+	virtual void Shutdown();
 	virtual void Update( float ) = 0;
 
 public:
@@ -58,9 +61,9 @@ public:
 		skip, by_vertex, by_index, by_index_instance, by_auto
 	};
 
-		
+
 	void setDrawType( DrawType );
-	bool addShaderPass( SRVType type, const char* function_name, const WCHAR* file_name, const std::string& defines = "" );	
+	bool addShaderPass( SRVType type, const char* function_name, const WCHAR* file_name, const std::string& defines = "" );
 
 	void createPhase( int index_vs, int index_gs, int index_ps );
 	bool selectPhase( unsigned int idx );
@@ -73,7 +76,7 @@ private:
 		int index_vs;
 		int index_ps;
 		int index_gs;
-		
+
 
 		bool operator==( const Phase& obj )
 		{
@@ -93,12 +96,12 @@ private:
 	void RenderShader( int, int = 0 );
 	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() = 0;
 	void setCamera( const DMCamera& camera );
-	void setWorldMatrix( D3DXMATRIX* worldMatrix );	
+	void setWorldMatrix( D3DXMATRIX* worldMatrix );
 	virtual void StrimOutputDeclaration( D3D11_SO_DECLARATION_ENTRY* );
 	void parse_defines( std::string, D3D10_SHADER_MACRO** );
 
 protected:
-	DMD3D* m_dmd3d;	
+	DMD3D* m_dmd3d;
 
 
 private:
@@ -110,7 +113,8 @@ private:
 	com_unique_ptr<ID3D11Buffer> m_world_buffer;
 	DrawType m_draw_type;
 	int m_phase_idx;
-	bool m_use_strimout_gs;	
+	bool m_use_strimout_gs;
 	DMTimer* m_timer;
 };
 
+}
