@@ -1,5 +1,7 @@
 #include "DMColorShader.h"
 
+namespace GS
+{
 
 DMColorShader::DMColorShader()
 {
@@ -9,7 +11,7 @@ DMColorShader::DMColorShader()
 
 DMColorShader::~DMColorShader()
 {
-	Shutdown( );
+	Shutdown();
 }
 
 void DMColorShader::Shutdown()
@@ -22,7 +24,7 @@ void DMColorShader::Update( float )
 
 }
 
-void DMColorShader::prepareRender(  )
+void DMColorShader::prepareRender()
 {
 	return;
 }
@@ -46,15 +48,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMColorShader::initLayouts()
 
 	vertex_layout.push_back( polygonLayout );
 
-	polygonLayout.SemanticName = "COLOR";
-	polygonLayout.SemanticIndex = 0;
-	polygonLayout.Format = DXGI_FORMAT_R32G32B32_FLOAT;
-	polygonLayout.InputSlot = 0;
-	polygonLayout.AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;
-	polygonLayout.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-	polygonLayout.InstanceDataStepRate = 0;	
-
-	vertex_layout.push_back( polygonLayout );
-
 	return vertex_layout;
+}
+
 }

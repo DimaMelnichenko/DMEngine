@@ -25,7 +25,7 @@ private:
 	DMSystem& operator=( const DMSystem& ) = delete;
 
 private:
-	LPCWSTR m_applicationName;
+	LPCSTR m_applicationName;
 	HINSTANCE m_hinstance;
 	HWND m_hwnd;
 	DMEngineProcessor m_engineProcessor;

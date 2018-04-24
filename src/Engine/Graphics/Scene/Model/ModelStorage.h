@@ -8,13 +8,13 @@
 namespace GS
 {
 
-class ModelStorage : public DMResourceStorage<DMModel>
+class ModelStorage : public DMResourceStorage<std::unique_ptr<DMModel>>
 {
 public:
-	ModelStorage( const std::wstring& path );
+	ModelStorage( const std::string& path );
 	~ModelStorage();
 
-	bool load( const std::wstring& file );
+	bool load( const std::string& file );
 
 private:
 	ModelLoader m_modelLoader;

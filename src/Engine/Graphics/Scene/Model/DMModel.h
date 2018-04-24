@@ -18,7 +18,7 @@ namespace GS
 class DMModel : DMResource
 {
 public:
-	DMModel( uint32_t id, const std::wstring& name = L"" );
+	DMModel( uint32_t id, const std::string& name = "" );
 	DMModel( DMModel&& );
 	DMModel& operator=( DMModel&& );
 	~DMModel();
@@ -33,7 +33,6 @@ private:
 		uint32_t material;
 	};
 
-	std::wstring m_name;
 	std::unordered_map<float, LodBlock> m_lods;
 };
 

@@ -9,7 +9,7 @@ TextureLoader::~TextureLoader()
 {
 }
 
-ID3D11ShaderResourceView* TextureLoader::loadFromFile( const WCHAR* filename )
+ID3D11ShaderResourceView* TextureLoader::loadFromFile( const char* filename )
 {
 	HRESULT result;
 

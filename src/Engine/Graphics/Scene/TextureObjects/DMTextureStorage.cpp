@@ -3,7 +3,7 @@
 namespace GS
 {
 
-DMTextureStorage::DMTextureStorage( const std::wstring& path ) : DMResourceStorage( path )
+DMTextureStorage::DMTextureStorage( const std::string& path ) : DMResourceStorage( path )
 {
 
 }
@@ -13,12 +13,12 @@ DMTextureStorage::~DMTextureStorage()
 
 }
 
-bool DMTextureStorage::load( const std::wstring& name )
+bool DMTextureStorage::load( const std::string& name )
 {
 	if( exists( name ) )
 		return true;
 
-	std::wstring fullPath = path() + L"\\" + name;
+	std::string fullPath = path() + "\\" + name;
 
 	DMTexture texture( nextId(), m_textureLoader.loadFromFile( fullPath.data() ) );
 

@@ -15,7 +15,7 @@
 namespace GS
 {
 
-class DMShader : public DMResource
+class DMShader //: public DMResource
 {
 	struct alignas( 16 ) FrameConstant
 	{
@@ -42,11 +42,12 @@ class DMShader : public DMResource
 	};
 
 public:
-	DMShader( uint32_t id, const std::string& name );
+	DMShader();
+	//DMShader( uint32_t id, const std::string& name );
 	virtual ~DMShader();
 
-	bool Initialize( WCHAR* vsFilename, WCHAR* psFilename, bool use_strimout_gs = false );
-	bool Initialize( WCHAR* vsFilename, bool use_strimout_gs = false );
+	bool Initialize( const std::string& vsFilename, const std::string& psFilename, bool use_strimout_gs = false );
+	bool Initialize( const std::string& vsFilename, bool use_strimout_gs = false );
 	bool Initialize();
 	void setStreamout( bool use_strimout_gs );
 	bool Render( int indexCount, D3DXMATRIX* worldMatrix );
@@ -63,7 +64,7 @@ public:
 
 
 	void setDrawType( DrawType );
-	bool addShaderPass( SRVType type, const char* function_name, const WCHAR* file_name, const std::string& defines = "" );
+	bool addShaderPass( SRVType type, const std::string& funcName, const std::string& fileName, const std::string& defines = "" );
 
 	void createPhase( int index_vs, int index_gs, int index_ps );
 	bool selectPhase( unsigned int idx );
@@ -92,7 +93,7 @@ private:
 	virtual void prepareRender() = 0;
 	bool initialize();
 	virtual bool prepare();
-	void OutputShaderErrorMessage( ID3D10Blob*, const WCHAR* );
+	void OutputShaderErrorMessage( ID3D10Blob*, const std::string& );
 	void RenderShader( int, int = 0 );
 	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() = 0;
 	void setCamera( const DMCamera& camera );

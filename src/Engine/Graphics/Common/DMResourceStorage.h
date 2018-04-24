@@ -13,21 +13,21 @@ template<typename ResourceType>
 class DMResourceStorage : public DMAbstrctStorage
 {
 public:
-	DMResourceStorage( const std::wstring& path ) : m_path( path )
+	DMResourceStorage( const std::string& path ) : m_path( path )
 	{
 	}
 	virtual ~DMResourceStorage()
 	{
 	}
 
-	virtual bool load( const std::wstring& ) = 0;
+	virtual bool load( const std::string& ) = 0;
 
 	const ResourceType& get( uint32_t id )
 	{
 		m_storage[id];
 	}
 
-	uint32_t id( const std::wstring& name )
+	uint32_t id( const std::string& name )
 	{
 		if( m_name_to_index.count( name ) )
 		{
@@ -37,7 +37,7 @@ public:
 		return UINT32_MAX;
 	}
 
-	const std::wstring& path()
+	const std::string& path()
 	{
 		return m_path;
 	}
@@ -47,12 +47,12 @@ public:
 		return m_storage.count( id );
 	}
 
-	bool exists( const std::wstring& name )
+	bool exists( const std::string& name )
 	{
 		return m_name_to_index.count( name );
 	}
 
-	bool insertResource( const std::wstring& name, ResourceType&& resource )
+	bool insertResource( const std::string& name, ResourceType&& resource )
 	{
 		if( !m_name_to_index.count( name ) )
 		{
@@ -71,10 +71,10 @@ protected:
 
 protected:
 	std::unordered_map<uint32_t,ResourceType> m_storage;
-	std::unordered_map<std::wstring, uint32_t> m_name_to_index;
+	std::unordered_map<std::string, uint32_t> m_name_to_index;
 
 private:
-	std::wstring m_path;
-	uint32_t m_id_counter;
+	std::string m_path;
+	uint32_t m_id_counter = 0;
 };
 

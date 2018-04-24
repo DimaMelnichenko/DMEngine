@@ -1,5 +1,6 @@
 #include "ModelLoader.h"
 #include <fstream>
+#include "ResourceMetaFile.h"
 #include "../../System.h"
 
 
@@ -17,49 +18,42 @@ ModelLoader::~ModelLoader()
 {
 }
 
-DMModel&& ModelLoader::loadFromFile( const std::wstring& filename, uint32_t id )
+DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 {
+	ResourceMetaFile resourceFile( filename );
 
-	wchar_t buffer[1024];
-	memset( buffer, 0, sizeof( wchar_t ) * 1024 );
-	DWORD size;
+	//GetPrivateProfileSection( "General", out, 500, level_file.data() );
+	int lods = resourceFile.number( "General", "LOD" );
+	std::string model_name = resourceFile.string( "General", "Name" );
 
-	//std::wstring level_file = L"data\\\\level01.ini";
-	std::wstring level_file = filename;
-
-	//GetPrivateProfileSection( L"General", out, 500, level_file.data() );
-	int lods = GetPrivateProfileInt( L"General", L"LOD", 0, level_file.data() );
-	GetPrivateProfileString( L"General", L"Name", L"", buffer, 1024, level_file.data() );
-	std::wstring model_name( buffer );
-
-	DMModel model( id, model_name );
+	std::unique_ptr<DMModel> model( new DMModel( id, model_name ) );
 
 	size_t lod_counter = 0;
-	// загружаем все лоды
-	while( lod_counter <= lods )
+	// загружаем все лоды модели
+	for( size_t i = 0; i < lods; i++ )
 	{
-		int lods = GetPrivateProfileInt( model_name.data(), L"LOD", 0, level_file.data() );
+		std::string currentLOD = "LOD" + std::to_string( i );
 
-		// загружаем все лоды модели
-		for( size_t i = 0; i < lods; i++ )
+		int range = resourceFile.number( currentLOD.data(), "Range" );
+
+		std::string meshName = resourceFile.string( currentLOD, "Mesh" );
+		std::string matName = resourceFile.string( currentLOD, "Material" );
+
+		if( !System::meshes().load( meshName ) )
 		{
-			std::wstring currentLOD = L"LOD" + std::to_wstring( i );
-
-			int range = GetPrivateProfileInt( L"General", L"Range", 0, level_file.data() );
-			
-			memset( buffer, 0, sizeof( wchar_t ) * 1024 );
-			GetPrivateProfileString( currentLOD.data(), L"Mesh", L"", buffer, 1024, level_file.data() );
-			std::wstring meshName( buffer );
-
-			memset( buffer, 0, sizeof( wchar_t ) * 1024 );
-			GetPrivateProfileString( currentLOD.data(), L"Material", L"", buffer, 1024, level_file.data() );
-			std::wstring matName( buffer );
-
-			model.addLod( range, System::meshes().id( meshName ), System::materials().id( matName ) );
+			std::string text = "Can`not load mesh:" + meshName;				
+			throw std::exception( text.data() );
 		}
+		if( !System::materials().load( matName ) )
+		{
+			std::string text = "Can`not load material:" + matName;
+			throw std::exception( text.data() );
+		}
+		model->addLod( range, System::meshes().id( meshName ), System::materials().id( matName ) );
 	}
+	
 
-	return std::move( model );
+	return model.release();
 }
 
 }

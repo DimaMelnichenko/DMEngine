@@ -10,11 +10,15 @@ class AbstractMesh : public DMResource
 {
 public:
 	AbstractMesh() = default;
-	AbstractMesh( uint32_t id ) : DMResource( id )
+	AbstractMesh( uint32_t id, const std::string& name ) : DMResource( id, name )
 	{
 
 	}
 	AbstractMesh( AbstractMesh&& other ) : DMResource( std::move(other) )
+	{
+		*this = std::move( other );
+	}
+	AbstractMesh& operator=( AbstractMesh&& other )
 	{
 		m_vertex_combination = other.m_vertex_combination;
 	}
@@ -36,14 +40,18 @@ template<typename VertexTypeStruct> // MeshVertexData structs
 class DMMesh : public AbstractMesh
 {
 public:
-	DMMesh( uint32_t id, std::vector<uint32_t>&& indices, std::vector<VertexTypeStruct>&& vertices ) :
-		AbstractMesh( id ),
+	DMMesh( uint32_t id, const std::string& name, std::vector<uint32_t>&& indices, std::vector<VertexTypeStruct>&& vertices ) :
+		AbstractMesh( id, name ),
 		m_indices( std::move( indices ) ),
 		m_vertices( std::move( vertices ) )
 	{
 		m_vertex_combination = MeshVertexData::type<VertexTypeStruct>();
 	}
 	DMMesh( DMMesh&& other ) : AbstractMesh( std::move( other ) )
+	{
+		*this = std::move( other );
+	}
+	DMMesh& operator=( DMMesh&& other )
 	{
 		std::swap( m_indices, other.m_indices );
 		std::swap( m_vertices, other.m_vertices );
@@ -61,7 +69,7 @@ public:
 	}
 
 private:
-	bool readFile( WCHAR* filename );
+	bool readFile( char* filename );
 
 private:
 	std::vector<uint32_t> m_indices;

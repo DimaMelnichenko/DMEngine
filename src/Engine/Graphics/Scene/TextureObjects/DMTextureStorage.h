@@ -12,10 +12,10 @@ namespace GS
 class DMTextureStorage : public DMResourceStorage<DMTexture>
 {
 public:
-	DMTextureStorage( const std::wstring& path );
+	DMTextureStorage( const std::string& path );
 	~DMTextureStorage();
 
-	bool load( const std::wstring& file );
+	bool load( const std::string& file );
 
 private:
 	TextureLoader m_textureLoader;

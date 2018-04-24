@@ -16,12 +16,12 @@ DMTextureArray::~DMTextureArray()
 	}
 }
 
-bool DMTextureArray::Initialize( const WCHAR* filename )
+bool DMTextureArray::Initialize( const char* filename )
 {
 	return AddTexture( filename );
 }
 
-bool DMTextureArray::AddTexture( const WCHAR* filename )
+bool DMTextureArray::AddTexture( const char* filename )
 {
 	HRESULT result;
 	ID3D11ShaderResourceView* texture;

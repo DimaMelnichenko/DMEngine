@@ -8,7 +8,7 @@ public:
 	DMScene();
 	~DMScene();
 
-	uint32_t loadModel( const std::wstring& );
+	uint32_t loadModel( const std::string& );
 
 private:
 

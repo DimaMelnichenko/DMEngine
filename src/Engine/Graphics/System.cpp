@@ -12,7 +12,7 @@ DMTextureStorage& System::textures()
 {
 	if( !m_textureStorage )
 	{
-		m_textureStorage = std::make_unique<DMTextureStorage>( L"Textures" );
+		m_textureStorage = std::make_unique<DMTextureStorage>( "Textures" );
 	}
 
 	return *m_textureStorage;
@@ -22,7 +22,7 @@ MeshStorage& System::meshes()
 {
 	if( !m_meshStorage )
 	{
-		m_meshStorage = std::make_unique<MeshStorage>( L"Meshes" );
+		m_meshStorage = std::make_unique<MeshStorage>( "Meshes" );
 	}
 
 	return *m_meshStorage;
@@ -32,7 +32,7 @@ ModelStorage& System::models()
 {
 	if( !m_modelStorage )
 	{
-		m_modelStorage = std::make_unique<ModelStorage>( L"Models" );
+		m_modelStorage = std::make_unique<ModelStorage>( "Models" );
 	}
 
 	return *m_modelStorage;
@@ -42,7 +42,7 @@ MaterialStorage& System::materials()
 {
 	if( !m_materialStorage )
 	{
-		m_materialStorage = std::make_unique<MaterialStorage>( L"Materials" );
+		m_materialStorage = std::make_unique<MaterialStorage>( "Materials" );
 	}
 
 	return *m_materialStorage;

@@ -34,19 +34,19 @@ public:
 		V_PTN = 1, V_PTNTB = 2
 	};
 
-	static MeshVertexData::Type type( const std::wstring& name );
-	static const std::wstring& name( MeshVertexData::Type type );
+	static MeshVertexData::Type type( const std::string& name );
+	static const std::string& name( MeshVertexData::Type type );
 
 	template<typename StructType>
-	const std::wstring& name( StructType* obj )
+	const std::string& name( StructType* obj )
 	{
 		if( std::is_same<PTN, Type>::value )
 		{
-			return L"PTN";
+			return "PTN";
 		}
 		if( std::is_same<PTNTB, Type>::value )
 		{
-			return L"PTN";
+			return "PTN";
 		}
 	}
 
@@ -87,7 +87,7 @@ private:
 			return static_cast<std::size_t>( t );
 		}
 	};*/
-	static std::unordered_map<Type,std::wstring> m_typeNames;
+	static std::unordered_map<Type,std::string> m_typeNames;
 
 };
 

@@ -3,7 +3,7 @@
 namespace GS
 {
 
-ModelStorage::ModelStorage( const std::wstring& path ) : DMResourceStorage( path )
+ModelStorage::ModelStorage( const std::string& path ) : DMResourceStorage( path )
 {
 
 }
@@ -13,14 +13,16 @@ ModelStorage::~ModelStorage()
 
 }
 
-bool ModelStorage::load( const std::wstring& name )
+bool ModelStorage::load( const std::string& name )
 {
 	if( exists( name ) )
 		return true;
 
-	std::wstring fullPath = path() + L"\\" + name;
+	std::string fullPath = path() + "\\" + name;
 
-	insertResource( name, std::move( m_modelLoader.loadFromFile( fullPath, nextId() ) ) );
+	std::unique_ptr<DMModel> model;
+	model.reset( m_modelLoader.loadFromFile( fullPath, nextId() ) );
+	insertResource( name, std::move( model ) );
 
 	return true;
 }

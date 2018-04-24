@@ -4,7 +4,7 @@
 namespace GS
 {
 
-DMModel::DMModel( uint32_t id, const std::wstring& name ) : DMResource( id )
+DMModel::DMModel( uint32_t id, const std::string& name ) : DMResource( id, name )
 {
 }
 
@@ -22,8 +22,7 @@ DMModel& DMModel::operator=( DMModel&& other )
 {
 	if( this != &other )
 	{
-		m_name = other.m_name;
-		m_lods = std::move( other.m_lods );
+		std::swap( m_lods, other.m_lods );
 	}
 	return *this;
 }

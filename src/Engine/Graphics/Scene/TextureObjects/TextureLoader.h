@@ -8,6 +8,6 @@ public:
 	TextureLoader();
 	~TextureLoader();
 
-	ID3D11ShaderResourceView* loadFromFile( const WCHAR* filename );
+	ID3D11ShaderResourceView* loadFromFile( const char* filename );
 };
 

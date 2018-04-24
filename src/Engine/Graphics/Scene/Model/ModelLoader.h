@@ -11,7 +11,7 @@ public:
 	ModelLoader();
 	~ModelLoader();
 
-	DMModel&& loadFromFile( const std::wstring& filename, uint32_t id );
+	DMModel* loadFromFile( const std::string& filename, uint32_t id );
 };
 
 }

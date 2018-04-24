@@ -27,7 +27,7 @@ namespace GS
 // GLOBALS //
 /////////////
 const bool FULL_SCREEN = false;
-const bool VSYNC_ENABLED = false;
+const bool VSYNC_ENABLED = true;
 const float SCREEN_DEPTH = 2000.0f;
 const float SCREEN_NEAR = 1.0f;
 

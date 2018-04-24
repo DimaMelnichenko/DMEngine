@@ -11,12 +11,16 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Common\ResourceMetaFile.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMResourceStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMResource.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\Material.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\DMScene.cpp" />
-    <ClCompile Include="DMSkyBox.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\ConstantBuffers.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMColorShader.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMShader.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Sky\DMSkyBox.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMStructuredBuffer.cpp" />
     <ClCompile Include="src\Engine\DMEngineProcessor.cpp" />
     <ClCompile Include="src\Config\DMConfig.cpp" />
@@ -33,6 +37,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Camera\DMFrustum.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Camera\DMPosition.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\DMSceneObject.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Materials\MaterialLoader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\DMModel.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Mesh\DMMesh.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Mesh\MeshLoader.cpp" />
@@ -54,12 +59,16 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Common\ResourceMetaFile.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMResourceStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMResource.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\Material.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\DMScene.h" />
-    <ClInclude Include="DMSkyBox.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\ConstantBuffers.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMColorShader.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMShader.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Sky\DMSkyBox.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DM3DUtils.h" />
     <ClInclude Include="src\Engine\Graphics\D3D\DMStructuredBuffer.h" />
     <ClInclude Include="src\Engine\DMEngineProcessor.h" />
@@ -79,6 +88,7 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Camera\DMFrustum.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Camera\DMPosition.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\DMSceneObject.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Materials\MaterialLoader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\DMModel.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Mesh\DMMesh.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Mesh\MeshLoader.h" />
@@ -102,13 +112,14 @@
     <ProjectGuid>{4CE00D51-6BC5-4158-A3F7-DDE0B71874C5}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>DMEngine</RootNamespace>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
+    <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -129,7 +140,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)\src\Engine\Graphics\Common;H:\backup\Visual studio 2010\DMEngine\DMEngine\DXUT\Source\Common\DXUT10\Core;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src;$(ProjectDir)\src\Engine\Graphics;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)\src\Engine\Graphics\Common;H:\backup\Visual studio 2010\DMEngine\DMEngine\DXUT\Source\Common\DXUT10\Core;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86\;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

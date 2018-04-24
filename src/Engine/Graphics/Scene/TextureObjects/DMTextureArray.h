@@ -14,8 +14,8 @@ public:
 	DMTextureArray();
 	~DMTextureArray();
 
-	bool Initialize( const WCHAR* );
-	bool AddTexture( const WCHAR* );
+	bool Initialize( const char* );
+	bool AddTexture( const char* );
 
 	ID3D11ShaderResourceView** GetTextureArray();
 	int count( ) const;

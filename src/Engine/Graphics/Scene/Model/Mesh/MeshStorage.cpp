@@ -3,7 +3,7 @@
 namespace GS
 {
 
-MeshStorage::MeshStorage( const std::wstring& path ) : DMResourceStorage( path )
+MeshStorage::MeshStorage( const std::string& path ) : DMResourceStorage( path )
 {
 
 }
@@ -13,17 +13,19 @@ MeshStorage::~MeshStorage()
 
 }
 
-bool MeshStorage::load( const std::wstring& name )
+bool MeshStorage::load( const std::string& name )
 {
 
 	if( exists( name ) )
 		return true;
 
-	std::wstring fullPath = path() + L"\\" + name;
+	std::string fullPath = path() + "\\" + name;
 
 	try
 	{
-		insertResource( name, std::move( m_meshLoader.loadFromFile<MeshVertexData::PTNTB>( fullPath, nextId() ) ) );
+		std::unique_ptr<AbstractMesh> mesh;
+		mesh.reset( m_meshLoader.loadFromFile<MeshVertexData::PTNTB>( fullPath, nextId() ) );
+		insertResource( name, std::move( mesh ) );
 	}
 	catch( std::exception& e )
 	{

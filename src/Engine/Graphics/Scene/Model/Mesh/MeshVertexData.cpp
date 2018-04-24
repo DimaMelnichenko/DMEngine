@@ -3,11 +3,11 @@
 namespace GS
 {
 
-std::unordered_map<MeshVertexData::Type, std::wstring> MeshVertexData::m_typeNames = {
-	{ MeshVertexData::Type::V_PTN, L"PTN" } ,
-	{ MeshVertexData::Type::V_PTNTB, L"PTNTB" } };
+std::unordered_map<MeshVertexData::Type, std::string> MeshVertexData::m_typeNames = {
+	{ MeshVertexData::Type::V_PTN, "PTN" } ,
+	{ MeshVertexData::Type::V_PTNTB, "PTNTB" } };
 
-MeshVertexData::Type MeshVertexData::type( const std::wstring& name )
+MeshVertexData::Type MeshVertexData::type( const std::string& name )
 {
 	for( auto pair : m_typeNames )
 	{
@@ -20,7 +20,7 @@ MeshVertexData::Type MeshVertexData::type( const std::wstring& name )
 
 
 
-const std::wstring& MeshVertexData::name( MeshVertexData::Type type )
+const std::string& MeshVertexData::name( MeshVertexData::Type type )
 {
 	return m_typeNames[type];
 }

@@ -13,7 +13,7 @@ public:
 	~MeshLoader();
 
 	template<typename MeshVertexStruct>
-	std::unique_ptr<AbstractMesh>&& loadFromFile( const std::wstring& filename, uint32_t id )
+	AbstractMesh* loadFromFile( const std::string& filename, uint32_t id )
 	{
 		std::ifstream fin;
 
@@ -62,15 +62,13 @@ public:
 		{
 			unsigned long index;
 			fin.read( reinterpret_cast<char*>( &index ), sizeof( uint32_t ) );
-			indices[i] = index;
+			indices.push_back( index );
 		}
 
 		// Close the model file.
 		fin.close();
 
-		std::unique_ptr<AbstractMesh> mesh( new DMMesh<MeshVertexStruct>( id, std::move( indices ), std::move( vertices ) ) );
-
-		return std::move( mesh );
+		return new DMMesh<MeshVertexStruct>( id, filename, std::move( indices ), std::move( vertices ) ) ;
 	}
 };
 

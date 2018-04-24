@@ -2,20 +2,21 @@
 
 #include <unordered_map>
 #include "DMResourceStorage.h"
-#include "Material.h"
+#include "MaterialLoader.h"
 
 namespace GS
 {
 
-class MaterialStorage : public DMResourceStorage<Material>
+class MaterialStorage : public DMResourceStorage<std::unique_ptr<Material>>
 {
 public:
-	MaterialStorage( const std::wstring& path );
+	MaterialStorage( const std::string& path );
 	~MaterialStorage();
 
-	bool load( const std::wstring& file );
+	bool load( const std::string& file );
 
-
+private:
+	MaterialLoader m_materialLoader;
 };
 
 }

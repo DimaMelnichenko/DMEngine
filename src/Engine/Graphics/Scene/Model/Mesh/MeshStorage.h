@@ -11,10 +11,10 @@ namespace GS
 class MeshStorage : public DMResourceStorage<std::unique_ptr<AbstractMesh>>
 {
 public:
-	MeshStorage( const std::wstring& path );
+	MeshStorage( const std::string& path );
 	~MeshStorage();
 
-	bool load( const std::wstring& file );
+	bool load( const std::string& file );
 
 private:
 	MeshLoader m_meshLoader;

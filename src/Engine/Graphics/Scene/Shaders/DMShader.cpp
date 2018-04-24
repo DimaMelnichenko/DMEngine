@@ -4,18 +4,24 @@
 namespace GS
 {
 
-DMShader::DMShader( uint32_t id, const std::string& name ) : DMResource( id, name )
+DMShader::DMShader()
 {
 	m_use_strimout_gs = false;
 	m_phase_idx = 0;
 }
+
+//DMShader::DMShader( uint32_t id, const std::string& name ) : DMResource( id, name )
+//{
+//	m_use_strimout_gs = false;
+//	m_phase_idx = 0;
+//}
 
 DMShader::~DMShader()
 {
 	Shutdown();
 }
 
-bool DMShader::Initialize( WCHAR* vsFilename, WCHAR* psFilename, bool use_strimout )
+bool DMShader::Initialize( const std::string& vsFilename, const std::string& psFilename, bool use_strimout )
 {
 	Initialize();
 
@@ -27,7 +33,7 @@ bool DMShader::Initialize( WCHAR* vsFilename, WCHAR* psFilename, bool use_strimo
 	return true;
 }
 
-bool DMShader::Initialize( WCHAR* vsFilename, bool use_strimout )
+bool DMShader::Initialize( const std::string& vsFilename, bool use_strimout )
 {
 	Initialize();
 
@@ -180,7 +186,7 @@ void DMShader::Shutdown()
 
 }
 
-void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const WCHAR* shaderFilename )
+void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::string& shaderFilename )
 {
 	char* compileErrors;
 	unsigned long bufferSize, i;
@@ -196,7 +202,7 @@ void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const WCHAR* 
 	// Open a file to write the error message to.
 	fout.open( "shader-error.txt" );
 
-	fout << "file :" << shaderFilename << std::endl;
+	fout << "file :" << shaderFilename.data() << std::endl;
 
 	// Write out the error message.
 	for( i = 0; i < bufferSize; i++ )
@@ -212,7 +218,7 @@ void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const WCHAR* 
 	errorMessage = 0;
 
 	// Pop a message up on the screen to notify the user to check the text file for compile errors.
-	MessageBox( 0, L"Error compiling shader.  Check shader-error.txt for message.", shaderFilename, MB_OK );
+	MessageBox( 0, "Error compiling shader.  Check shader-error.txt for message.", shaderFilename.data(), MB_OK );
 
 	return;
 }
@@ -288,7 +294,10 @@ bool DMShader::prepare()
 	return true;
 }
 
-bool DMShader::addShaderPass( SRVType type, const char* function_name, const WCHAR* file_name, const std::string& defines )
+bool DMShader::addShaderPass( SRVType type, 
+							  const std::string& function_name,
+							  const std::string& file_name, 
+							  const std::string& defines )
 {
 	ID3D10Blob* errorMessage;
 	ID3D10Blob* shaderBuffer;
@@ -314,7 +323,8 @@ bool DMShader::addShaderPass( SRVType type, const char* function_name, const WCH
 
 	parse_defines( defines, &macro );
 
-	result = D3DX11CompileFromFile( file_name, macro, NULL, function_name, shader_version.data(), D3D10_SHADER_ENABLE_STRICTNESS, 0, NULL,
+	result = D3DX11CompileFromFile( file_name.data(), macro, NULL, function_name.data(), 
+									shader_version.data(), D3D10_SHADER_ENABLE_STRICTNESS, 0, NULL,
 									&shaderBuffer, &errorMessage, NULL );
 
 	if( macro )
@@ -332,7 +342,7 @@ bool DMShader::addShaderPass( SRVType type, const char* function_name, const WCH
 		// If there was nothing in the error message then it simply could not find the shader file itself.
 		else
 		{
-			MessageBox( 0, file_name, L"Missing Shader File", MB_OK );
+			MessageBox( 0, file_name.data(), "Missing Shader File", MB_OK );
 		}
 
 		return false;
