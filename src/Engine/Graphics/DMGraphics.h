@@ -13,12 +13,15 @@
 // MY  INCLUDES //
 ///////////////////////
 
-#include "..\..\Utils\DMTimer.h"
-#include "..\..\Utils\dmcpu.h"
-#include "..\..\Utils\dmfps.h"
+#include "Utils\DMTimer.h"
+#include "Utils\dmcpu.h"
+#include "Utils\dmfps.h"
 #include "..\Input\DMInput.h"
 
 #include "System.h"
+
+#include "Scene\VertexPool.h"
+
 
 namespace GS
 {
@@ -53,7 +56,10 @@ private:
 	HWND m_hwnd;
 
 	DMInput m_Input;
-	//std::unordered_map<std::string, DMCamera> m_cameraPool;
+	std::unordered_map<std::string, DMCamera> m_cameraPool;
+	VertexPool m_vertexPool;
+	
+	DMTimer m_timer;
 };
 
 }

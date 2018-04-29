@@ -17,7 +17,7 @@
 #include "DirectX.h"
 #include <list>
 #include <memory>
-#include "..\..\..\Utils\utilites.h"
+#include "Utils\utilites.h"
 
 class DMD3D
 {

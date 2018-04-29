@@ -1,5 +1,5 @@
 #include "DMD3D.h"
-#include "..\..\..\Utils\utilites.h"
+#include "Utils\utilites.h"
 
 
 DMD3D* DMD3D::m_instance = nullptr;
@@ -798,11 +798,16 @@ bool DMD3D::createVertexBuffer( com_unique_ptr<ID3D11Buffer> &buffer, void* data
 	buffer_desc.MiscFlags = 0;
 	buffer_desc.Usage = D3D11_USAGE_DEFAULT;
 
-	D3D11_SUBRESOURCE_DATA init_data;
-	memset( &init_data, 0, sizeof( D3D11_SUBRESOURCE_DATA ) );
-	init_data.pSysMem = data;
+	if( data )
+	{
+		D3D11_SUBRESOURCE_DATA init_data;
+		memset( &init_data, 0, sizeof( D3D11_SUBRESOURCE_DATA ) );
+		init_data.pSysMem = data;
 
-	return CreateBuffer( &buffer_desc, &init_data, buffer );
+		return CreateBuffer( &buffer_desc, &init_data, buffer );
+	}
+
+	return CreateBuffer( &buffer_desc, nullptr, buffer );
 }
 
 bool DMD3D::createIndexBuffer( com_unique_ptr<ID3D11Buffer> &buffer, void* data, size_t sizeInByte )
@@ -815,11 +820,16 @@ bool DMD3D::createIndexBuffer( com_unique_ptr<ID3D11Buffer> &buffer, void* data,
 	buffer_desc.MiscFlags = 0;
 	buffer_desc.Usage = D3D11_USAGE_DEFAULT;
 
-	D3D11_SUBRESOURCE_DATA init_data;
-	memset( &init_data, 0, sizeof( D3D11_SUBRESOURCE_DATA ) );
-	init_data.pSysMem = data;
+	if( data )
+	{
+		D3D11_SUBRESOURCE_DATA init_data;
+		memset( &init_data, 0, sizeof( D3D11_SUBRESOURCE_DATA ) );
+		init_data.pSysMem = data;
 
-	return CreateBuffer( &buffer_desc, &init_data, buffer );
+		return CreateBuffer( &buffer_desc, &init_data, buffer );
+	}
+	
+	return CreateBuffer( &buffer_desc, nullptr, buffer );
 }
 
 bool DMD3D::CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData,  com_unique_ptr<ID3D11Buffer>& created_buffer )

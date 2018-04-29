@@ -7,10 +7,9 @@
 #include <memory>
 #include <unordered_set>
 
-#include "../DMSceneObject.h"
 #include "..\TextureObjects\DMTextureStorage.h"
-#include "..\Model\Mesh\DMMesh.h"
-#include "..\Model\DMRenderQueue.h"
+#include "Mesh\DMMesh.h"
+#include "Common\DMTransformBuffer.h"
 
 namespace GS
 {
@@ -25,15 +24,17 @@ public:
 
 	void addLod( float range, uint32_t meshId, uint32_t materialId );
 	bool getLod( float range, uint32_t& meshId, uint32_t& materialId );
-private:
 
+	DMTransformBuffer& transformBuffer();
+private:
 	struct LodBlock
 	{
 		uint32_t mesh;
 		uint32_t material;
 	};
-
 	std::unordered_map<float, LodBlock> m_lods;
+
+	DMTransformBuffer m_transformBuffer;
 };
 
 }

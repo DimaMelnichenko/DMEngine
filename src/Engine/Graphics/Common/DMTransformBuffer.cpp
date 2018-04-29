@@ -13,6 +13,11 @@ DMTransformBuffer::DMTransformBuffer(  )
 
 DMTransformBuffer::DMTransformBuffer( DMTransformBuffer&& source )
 {
+	*this = std::move( source );
+}
+
+DMTransformBuffer& DMTransformBuffer::operator=( DMTransformBuffer&& source )
+{
 	std::swap( m_result_matrix, source.m_result_matrix );
 	std::swap( m_position_matrix, source.m_position_matrix );
 	std::swap( m_rotate_matrix, source.m_rotate_matrix );
@@ -21,18 +26,8 @@ DMTransformBuffer::DMTransformBuffer( DMTransformBuffer&& source )
 	std::swap( m_aabb, source.m_aabb );
 
 	std::swap( m_transform_link, source.m_transform_link );
-}
 
-DMTransformBuffer::DMTransformBuffer( const DMTransformBuffer* source )
-{
-	this->m_result_matrix = source->m_result_matrix;
-	this->m_position_matrix = source->m_position_matrix;
-	this->m_rotate_matrix = source->m_rotate_matrix;
-	this->m_scale_matrix = source->m_scale_matrix;
-
-	m_aabb = source->m_aabb;
-
-	m_transform_link = source->m_transform_link;
+	return *this;
 }
 
 DMTransformBuffer::DMTransformBuffer( const DMTransformBuffer& source )
@@ -119,18 +114,22 @@ void DMTransformBuffer::resultMatrix( D3DXMATRIX* result )
 	memcpy( result, &m_result_matrix, sizeof( D3DXMATRIX ) );
 }
 
-D3DXMATRIX DMTransformBuffer::resultMatrix()
+const D3DXMATRIX& DMTransformBuffer::resultMatrix()
 {
 	return m_result_matrix;
 }
 
+const D3DXMATRIX* DMTransformBuffer::resultMatrixPtr()
+{
+	return &m_result_matrix;
+}
 
 void DMTransformBuffer::recalcMatrix()
 {	
 	D3DXMatrixMultiply( &m_result_matrix, &m_scale_matrix, &m_rotate_matrix );
 	D3DXMatrixMultiply( &m_result_matrix, &m_result_matrix, &m_position_matrix );
 
-	if( m_transform_link )
+	if( m_transform_link != nullptr )
 	{
 		D3DXMatrixMultiply( &m_result_matrix, &m_transform_link->resultMatrix(), &m_result_matrix );
 	}

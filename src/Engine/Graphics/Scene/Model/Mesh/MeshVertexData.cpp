@@ -3,6 +3,7 @@
 namespace GS
 {
 
+
 std::unordered_map<MeshVertexData::Type, std::string> MeshVertexData::m_typeNames = {
 	{ MeshVertexData::Type::V_PTN, "PTN" } ,
 	{ MeshVertexData::Type::V_PTNTB, "PTNTB" } };
@@ -41,6 +42,7 @@ uint16_t MeshVertexData::size( MeshVertexData::Type type )
 
 	return 0;
 }
+
 
 MeshVertexData::MeshVertexData()
 {

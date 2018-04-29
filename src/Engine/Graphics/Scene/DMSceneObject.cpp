@@ -12,11 +12,6 @@ DMSceneObject::DMSceneObject( const DMSceneObject& source ) : DMTransformBuffer(
 
 }
 
-DMSceneObject::DMSceneObject( const DMSceneObject* source ) : DMTransformBuffer( source )
-{
-
-}
-
 
 DMSceneObject::~DMSceneObject()
 {

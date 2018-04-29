@@ -3,7 +3,9 @@
 namespace GS
 {
 
-MeshStorage::MeshStorage( const std::string& path ) : DMResourceStorage( path )
+MeshStorage::MeshStorage( const std::string& path ) : DMResourceStorage( path ),
+	m_vertexCount(0),
+	m_indexCount(0)
 {
 
 }
@@ -11,6 +13,16 @@ MeshStorage::MeshStorage( const std::string& path ) : DMResourceStorage( path )
 MeshStorage::~MeshStorage()
 {
 
+}
+
+uint32_t MeshStorage::vertexCount() const
+{
+	return m_vertexCount;
+}
+
+uint32_t MeshStorage::indexCount() const
+{
+	return m_indexCount;
 }
 
 bool MeshStorage::load( const std::string& name )
@@ -25,6 +37,8 @@ bool MeshStorage::load( const std::string& name )
 	{
 		std::unique_ptr<AbstractMesh> mesh;
 		mesh.reset( m_meshLoader.loadFromFile<MeshVertexData::PTNTB>( fullPath, nextId() ) );
+		m_vertexCount += mesh->vertexCount();
+		m_indexCount += mesh->indexCount();
 		insertResource( name, std::move( mesh ) );
 	}
 	catch( std::exception& e )

@@ -62,7 +62,7 @@ bool DMShader::initialize()
 	return true;
 }
 
-void DMShader::setWorldMatrix( D3DXMATRIX* worldMatrix )
+void DMShader::setWorldMatrix( const D3DXMATRIX& worldMatrix )
 {
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 	D3DXMATRIX mat;
@@ -74,7 +74,7 @@ void DMShader::setWorldMatrix( D3DXMATRIX* worldMatrix )
 	}
 	else
 	{
-		D3DXMatrixTranspose( &mat, worldMatrix );
+		D3DXMatrixTranspose( &mat, &worldMatrix );
 	}
 
 	// Lock the constant buffer so it can be written to.
@@ -154,18 +154,18 @@ void DMShader::setCamera( const DMCamera& camera )
 	return;
 }
 
-bool DMShader::Render( int indexCount, D3DXMATRIX* worldMatrix )
+bool DMShader::Render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, const D3DXMATRIX& worldMatrix )
 {
 	setWorldMatrix( worldMatrix );
 
 	prepareRender();
 
-	RenderShader( indexCount );
+	RenderShader( indexCount, vertexOffset, indexOffset );
 
 	return true;
 }
 
-bool DMShader::RenderInstanced( int indexCount, int instance_count, D3DXMATRIX* worldMatrix )
+bool DMShader::RenderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count, const D3DXMATRIX& worldMatrix )
 {
 	DrawType prev = m_draw_type;
 	m_draw_type = by_index_instance;
@@ -174,7 +174,7 @@ bool DMShader::RenderInstanced( int indexCount, int instance_count, D3DXMATRIX* 
 
 	prepareRender();
 
-	RenderShader( indexCount, instance_count );
+	RenderShader( indexCount, vertexOffset, indexOffset, instance_count );
 
 	m_draw_type = prev;
 
@@ -223,19 +223,19 @@ void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::st
 	return;
 }
 
-void DMShader::RenderShader( int indexCount, int instance_count )
+void DMShader::RenderShader( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count )
 {
 	// Render the triangle.
 	switch( m_draw_type )
 	{
 		case by_vertex:
-			DMD3D::instance().GetDeviceContext()->Draw( indexCount, 0 );
+			DMD3D::instance().GetDeviceContext()->Draw( indexCount, vertexOffset );
 			break;
 		case by_index:
-			DMD3D::instance().GetDeviceContext()->DrawIndexed( indexCount, 0, 0 );
+			DMD3D::instance().GetDeviceContext()->DrawIndexed( indexCount, indexOffset, vertexOffset );
 			break;
 		case by_index_instance:
-			DMD3D::instance().GetDeviceContext()->DrawIndexedInstanced( indexCount, instance_count, 0, 0, 0 );
+			DMD3D::instance().GetDeviceContext()->DrawIndexedInstanced( indexCount, instance_count, indexOffset, vertexOffset, 0 );
 			break;
 		case by_auto:
 			DMD3D::instance().GetDeviceContext()->DrawAuto();

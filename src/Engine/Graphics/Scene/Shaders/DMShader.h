@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include "../../../../Utils/DMTimer.h"
+#include "Utils/DMTimer.h"
 #include "..\Camera\DMCamera.h"
 #include "..\..\D3D\DMD3D.h"
 #include "DM3DUtils.h"
@@ -50,8 +50,8 @@ public:
 	bool Initialize( const std::string& vsFilename, bool use_strimout_gs = false );
 	bool Initialize();
 	void setStreamout( bool use_strimout_gs );
-	bool Render( int indexCount, D3DXMATRIX* worldMatrix );
-	bool RenderInstanced( int indexCount, int instance_count, D3DXMATRIX* worldMatrix );
+	bool Render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, const D3DXMATRIX& worldMatrix );
+	bool RenderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count, const D3DXMATRIX& worldMatrix );
 	bool Prepare( const DMCamera& camera, int phase );
 	virtual void Shutdown();
 	virtual void Update( float ) = 0;
@@ -94,10 +94,10 @@ private:
 	bool initialize();
 	virtual bool prepare();
 	void OutputShaderErrorMessage( ID3D10Blob*, const std::string& );
-	void RenderShader( int, int = 0 );
+	void RenderShader( int, uint32_t vertexOffset, uint32_t indexOffset, int = 0 );
 	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() = 0;
 	void setCamera( const DMCamera& camera );
-	void setWorldMatrix( D3DXMATRIX* worldMatrix );
+	void setWorldMatrix( const D3DXMATRIX& worldMatrix );
 	virtual void StrimOutputDeclaration( D3D11_SO_DECLARATION_ENTRY* );
 	void parse_defines( std::string, D3D10_SHADER_MACRO** );
 

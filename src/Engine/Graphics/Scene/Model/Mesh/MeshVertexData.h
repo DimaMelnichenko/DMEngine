@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <type_traits>
+#include "Utils\utilites.h"
 
 namespace GS
 {
@@ -77,6 +78,8 @@ public:
 	}
 
 	static uint16_t size( MeshVertexData::Type type );
+
+	static ID3D11InputLayout* layout( MeshVertexData::Type type );
 
 private:
 	/*struct EnumClassHash

@@ -28,6 +28,11 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 
 	std::unique_ptr<DMModel> model( new DMModel( id, model_name ) );
 
+	int x = resourceFile.number( "Position", "x" );
+	int y = resourceFile.number( "Position", "y" );
+	int z = resourceFile.number( "Position", "z" );
+	model->transformBuffer().setPosition( x, y, z );
+
 	size_t lod_counter = 0;
 	// загружаем все лоды модели
 	for( size_t i = 0; i < lods; i++ )

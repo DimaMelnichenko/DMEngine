@@ -11,14 +11,15 @@ class DMTransformBuffer
 	
 
 public:
-	DMTransformBuffer();
+	DMTransformBuffer();	
+	DMTransformBuffer( const DMTransformBuffer& );
 	DMTransformBuffer( DMTransformBuffer&& );
 	~DMTransformBuffer(void);
 
-	DMTransformBuffer( const DMTransformBuffer* );
-	DMTransformBuffer( const DMTransformBuffer& );
+	DMTransformBuffer& operator=( const DMTransformBuffer& right );
+	DMTransformBuffer& operator=( DMTransformBuffer&& );
 	
-
+public:
 	void setPosition( const D3DXVECTOR3& );
 	void setPosition( float, float, float );
 	void position( D3DXVECTOR3* );
@@ -31,10 +32,8 @@ public:
 	void unlink();
 
 	void resultMatrix( D3DXMATRIX* );
-	D3DXMATRIX resultMatrix();
-
-	DMTransformBuffer& operator=(const DMTransformBuffer& right);	
-
+	const D3DXMATRIX& resultMatrix();
+	const D3DXMATRIX* resultMatrixPtr();
 	DMAABB& aabb();
 
 private:
@@ -49,7 +48,5 @@ private:
 	DMTransformBuffer* m_transform_link;
 
 	DMAABB m_aabb;
-
-	
 };
 

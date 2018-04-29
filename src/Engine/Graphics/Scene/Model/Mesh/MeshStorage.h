@@ -16,8 +16,13 @@ public:
 
 	bool load( const std::string& file );
 
+	uint32_t vertexCount() const;
+	uint32_t indexCount() const;
+
 private:
 	MeshLoader m_meshLoader;
+	uint32_t m_vertexCount;
+	uint32_t m_indexCount;
 };
 
 }

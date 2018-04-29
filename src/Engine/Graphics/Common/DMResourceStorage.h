@@ -24,7 +24,7 @@ public:
 
 	const ResourceType& get( uint32_t id )
 	{
-		m_storage[id];
+		return m_storage[id];
 	}
 
 	uint32_t id( const std::string& name )
@@ -63,6 +63,17 @@ public:
 
 		return true;
 	}
+
+	auto begin()
+	{
+		return m_storage.begin();
+	}
+
+	auto end()
+	{
+		return m_storage.end();
+	}
+
 protected:
 	uint32_t nextId()
 	{

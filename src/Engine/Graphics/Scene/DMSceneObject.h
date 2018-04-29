@@ -10,7 +10,6 @@ class DMSceneObject : public DMTransformBuffer
 public:
 	DMSceneObject();
 	DMSceneObject( const DMSceneObject& );
-	DMSceneObject( const DMSceneObject* );
 	~DMSceneObject();
 	virtual void Render();
 
