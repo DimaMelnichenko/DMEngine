@@ -3,8 +3,8 @@
 #include <windows.h>
 #include <memory>
 #include "Engine/DMEngineProcessor.h"
-#include "Config/DMConfig.h"
 #include "Engine\Graphics\DMGraphics.h"
+#include "Config\Config.h"
 
 
 class DMSystem 
@@ -30,5 +30,5 @@ private:
 	HWND m_hwnd;
 	DMEngineProcessor m_engineProcessor;
 	GS::DMGraphics m_graphics;
-	DMConfig m_config;
+	Config m_config;
 };

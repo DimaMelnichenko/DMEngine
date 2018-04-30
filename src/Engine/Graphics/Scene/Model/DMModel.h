@@ -26,6 +26,8 @@ public:
 	bool getLod( float range, uint32_t& meshId, uint32_t& materialId );
 
 	DMTransformBuffer& transformBuffer();
+
+	void copyTo( DMModel& );
 private:
 	struct LodBlock
 	{

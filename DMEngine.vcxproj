@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Config\Config.cpp" />
     <ClCompile Include="src\Common\ResourceMetaFile.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMResourceStorage.cpp" />
@@ -24,7 +25,6 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Sky\DMSkyBox.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMStructuredBuffer.cpp" />
     <ClCompile Include="src\Engine\DMEngineProcessor.cpp" />
-    <ClCompile Include="src\Config\DMConfig.cpp" />
     <ClCompile Include="src\DMSystem.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMAABB.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\DMBoundingShape.cpp" />
@@ -61,6 +61,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Config\Config.h" />
     <ClInclude Include="src\Common\ResourceMetaFile.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMResourceStorage.h" />
@@ -75,7 +76,6 @@
     <ClInclude Include="src\Engine\Graphics\Common\DM3DUtils.h" />
     <ClInclude Include="src\Engine\Graphics\D3D\DMStructuredBuffer.h" />
     <ClInclude Include="src\Engine\DMEngineProcessor.h" />
-    <ClInclude Include="src\Config\DMConfig.h" />
     <ClInclude Include="src\DMSystem.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DDS.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DirectX.h" />

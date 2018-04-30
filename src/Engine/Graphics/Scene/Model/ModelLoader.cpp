@@ -23,14 +23,14 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 	ResourceMetaFile resourceFile( filename );
 
 	//GetPrivateProfileSection( "General", out, 500, level_file.data() );
-	int lods = resourceFile.number( "General", "LOD" );
-	std::string model_name = resourceFile.string( "General", "Name" );
+	int lods = resourceFile.get<int32_t>( "General", "LOD" );
+	std::string model_name = resourceFile.get<std::string>( "General", "Name" );
 
 	std::unique_ptr<DMModel> model( new DMModel( id, model_name ) );
 
-	int x = resourceFile.number( "Position", "x" );
-	int y = resourceFile.number( "Position", "y" );
-	int z = resourceFile.number( "Position", "z" );
+	float x = resourceFile.get<float>( "Position", "x" );
+	float y = resourceFile.get<float>( "Position", "y" );
+	float z = resourceFile.get<float>( "Position", "z" );
 	model->transformBuffer().setPosition( x, y, z );
 
 	size_t lod_counter = 0;
@@ -39,10 +39,10 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 	{
 		std::string currentLOD = "LOD" + std::to_string( i );
 
-		int range = resourceFile.number( currentLOD.data(), "Range" );
+		int range = resourceFile.get<int32_t>( currentLOD.data(), "Range" );
 
-		std::string meshName = resourceFile.string( currentLOD, "Mesh" );
-		std::string matName = resourceFile.string( currentLOD, "Material" );
+		std::string meshName = resourceFile.get<std::string>( currentLOD, "Mesh" );
+		std::string matName = resourceFile.get<std::string>( currentLOD, "Material" );
 
 		if( !System::meshes().load( meshName ) )
 		{

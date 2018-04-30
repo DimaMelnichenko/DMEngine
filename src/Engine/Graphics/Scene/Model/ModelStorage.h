@@ -16,6 +16,8 @@ public:
 
 	bool load( const std::string& file );
 
+	bool clone( const std::string& source, const std::string& newName );
+
 private:
 	ModelLoader m_modelLoader;
 };

@@ -25,8 +25,8 @@ Material* MaterialLoader::loadFromFile( const std::string& filename, uint32_t id
 
 	std::string path = "Shaders\\";
 
-	std::string vsShaderName = metaResource.string( "Shaders", "vs" );
-	std::string psShaderName = metaResource.string( "Shaders", "ps" );
+	std::string vsShaderName = metaResource.get<std::string>( "Shaders", "vs" );
+	std::string psShaderName = metaResource.get<std::string>( "Shaders", "ps" );
 
 	if( !vsShaderName.empty() && !psShaderName.empty() )
 	{

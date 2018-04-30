@@ -23,7 +23,6 @@ DMResource::~DMResource()
 {
 }
 
-
 const std::string& DMResource::name()
 {
 	return m_name;

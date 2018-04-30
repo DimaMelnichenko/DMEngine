@@ -52,4 +52,10 @@ DMTransformBuffer& DMModel::transformBuffer()
 }
 
 
+void DMModel::copyTo( DMModel& other )
+{
+	other.m_lods = m_lods;
+	other.m_transformBuffer = m_transformBuffer;
+}
+
 }

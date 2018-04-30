@@ -14,7 +14,6 @@ public:
 	DMResource& operator=( DMResource&& );
 	virtual ~DMResource();
 
-
 	DMResource( const DMResource& ) = delete;
 	DMResource& operator=( const DMResource& ) = delete;
 

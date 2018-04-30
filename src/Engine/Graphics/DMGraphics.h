@@ -21,6 +21,7 @@
 #include "System.h"
 
 #include "Scene\VertexPool.h"
+#include "Config\Config.h"
 
 
 namespace GS
@@ -29,10 +30,6 @@ namespace GS
 /////////////
 // GLOBALS //
 /////////////
-const bool FULL_SCREEN = false;
-const bool VSYNC_ENABLED = true;
-const float SCREEN_DEPTH = 2000.0f;
-const float SCREEN_NEAR = 1.0f;
 
 class DMGraphics
 {
@@ -40,7 +37,7 @@ public:
 	DMGraphics();
 	~DMGraphics();
 
-	bool Initialize( HINSTANCE hinstance, int, int, HWND );
+	bool Initialize( HINSTANCE hinstance, int, int, HWND, Config );
 
 	bool Frame();
 
@@ -60,6 +57,7 @@ private:
 	VertexPool m_vertexPool;
 	
 	DMTimer m_timer;
+	Config m_config;
 };
 
 }

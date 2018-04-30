@@ -27,4 +27,14 @@ bool ModelStorage::load( const std::string& name )
 	return true;
 }
 
+bool ModelStorage::clone( const std::string& source, const std::string& newName )
+{
+	if( !exists( source ) )
+		return false;
+
+	std::unique_ptr<DMModel> newModel( new DMModel( nextId(), newName ) );
+	get( source )->copyTo( *newModel );
+	return insertResource( newName, std::move( newModel ) );
+}
+
 }

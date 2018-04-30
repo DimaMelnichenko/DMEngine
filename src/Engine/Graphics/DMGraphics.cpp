@@ -20,17 +20,20 @@ DMGraphics::~DMGraphics()
 	DMD3D::close();
 }
 
-bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd )
+bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd, Config config )
 {
 	bool result = true;
-
 	m_hwnd = hwnd;
+	m_config = config;
 
 	m_screenWidth = static_cast<float>( screenWidth );
 	m_screenHeight = static_cast<float>( screenHeight );
 
 	// Initialize the Direct3D object.
-	result = DMD3D::instance().Initialize( screenWidth, screenHeight, VSYNC_ENABLED, hwnd, FULL_SCREEN, SCREEN_DEPTH, SCREEN_NEAR );
+	result = DMD3D::instance().Initialize( 
+		screenWidth, screenHeight, m_config.vSync(), hwnd, m_config.fullScreen(), 
+		m_config.ScreenDepth(), m_config.ScreenNear() );
+
 	if( !result )
 	{
 		MessageBox( hwnd, "Could not initialize DirectX 11.", "Error", MB_OK );
@@ -39,8 +42,13 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	// «агружаем модели
 	System::models().load( "board.ini" );
-	System::models().load( "box.ini" );
+	System::models().load( "box.ini" );	
 	System::models().load( "knot.ini" );
+
+	
+	System::models().get( "knot.ini" )->transformBuffer().setScale( 0.2f );
+	if( System::models().clone( "box.ini", "box_clone" ) )
+		System::models().get("box_clone")->transformBuffer().setPosition( 0.0, 4.0, 0.0 );
 
 	// —оздаем общий буфер вершин и индексов
 	m_vertexPool.prepareMeshes();
@@ -67,7 +75,9 @@ bool DMGraphics::Frame()
 bool DMGraphics::Render()
 {
 	DMD3D::instance().BeginScene( 0.1f, 0.1f, 0.1f, 1.0f );
-	
+
+	DMD3D::instance().TurnOnWireframe();
+
 	// ”становка буфера вершин и индексов
 	m_vertexPool.setBuffers();
 
@@ -91,16 +101,17 @@ bool DMGraphics::Render()
 		uint32_t meshid = 0;
 		uint32_t materialid = 0;
 		// достаем лод меша в зависимости от рассто€ни€ до камеры
-		model->getLod( 10, meshid, materialid );
+		if( model->getLod( 10, meshid, materialid ) )
+		{
+			//примен€ем вращение модели
+			model->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
 
-		//примен€ем вращение модели
-		model->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
-
-		shader->setDrawType( DMShader::by_index );
-		// отрисовка модели согласно смещению вершин и инлесов дл€ главного буфера
-		shader->Render( System::meshes().get( meshid )->indexCount(),
-						System::meshes().get( meshid )->vertexOffset(),
-						System::meshes().get( meshid )->indexOffset(), model->transformBuffer().resultMatrix() );
+			shader->setDrawType( DMShader::by_index );
+			// отрисовка модели согласно смещению вершин и индексов дл€ главного буфера
+			shader->Render( System::meshes().get( meshid )->indexCount(),
+							System::meshes().get( meshid )->vertexOffset(),
+							System::meshes().get( meshid )->indexOffset(), model->transformBuffer().resultMatrix() );
+		}
 	}
 	DMD3D::instance().EndScene();
 

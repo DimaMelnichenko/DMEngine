@@ -27,6 +27,11 @@ public:
 		return m_storage[id];
 	}
 
+	const ResourceType& get( const std::string& name )
+	{
+		return m_storage[id(name)];
+	}
+
 	uint32_t id( const std::string& name )
 	{
 		if( m_name_to_index.count( name ) )
@@ -52,6 +57,11 @@ public:
 		return m_name_to_index.count( name );
 	}
 
+	bool clone( const std::string& name, const std::string& cloneName )
+	{
+		
+	}
+
 	bool insertResource( const std::string& name, ResourceType&& resource )
 	{
 		if( !m_name_to_index.count( name ) )
@@ -74,7 +84,7 @@ public:
 		return m_storage.end();
 	}
 
-protected:
+
 	uint32_t nextId()
 	{
 		return m_id_counter;

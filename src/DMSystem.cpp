@@ -17,10 +17,12 @@ bool DMSystem::Initialize( )
 	int16_t	screenHeight = 0;
 	bool result = true;
 
+	m_config.readConfig(".\\settings.ini");
+
 	// Initialize the windows api.
 	InitializeWindows( screenWidth, screenHeight );
 
-	return m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd );
+	return m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd, m_config );
 }
 
 void DMSystem::Run( )
@@ -150,7 +152,7 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	screenHeight = GetSystemMetrics( SM_CYSCREEN );
 
 	// Setup the screen settings depending on whether it is running in full screen or in windowed mode.
-	if( m_config.isFullScreen() )
+	if( m_config.fullScreen() )
 	{
 		// If full screen set the screen to maximum size of the users desktop and 32bit.
 		memset( &dmScreenSettings, 0, sizeof( dmScreenSettings ) );
@@ -194,7 +196,7 @@ void DMSystem::ShutdownWindows( )
 	ShowCursor( true );
 
 	// Fix the display settings if leaving full screen mode.
-	if( m_config.isFullScreen() )
+	if( m_config.fullScreen() )
 	{
 		ChangeDisplaySettings( NULL, 0 );
 	}
