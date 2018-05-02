@@ -1,6 +1,7 @@
 #pragma once
 
 #include <d3d11.h>
+#include <d3dx10math.h>
 #include <memory>
 #include <vector>
 #include <string>
@@ -40,3 +41,5 @@ com_unique_ptr<T> make_com_ptr( T* p )
 }
 
 void str_split( const std::string& str, std::vector<std::string>& tokens, const std::string& delimiters = " " );
+
+D3DXVECTOR3 strToVec3( const std::string& str );

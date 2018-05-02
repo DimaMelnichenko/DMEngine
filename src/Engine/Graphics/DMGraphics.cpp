@@ -42,8 +42,10 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	// Загружаем модели
 	System::models().load( "board.ini" );
-	System::models().load( "box.ini" );	
+	System::models().load( "barrel.ini" );
+	System::models().load( "box.ini" );
 	System::models().load( "knot.ini" );
+	System::models().load( "tree.ini" );
 
 	
 	System::models().get( "knot.ini" )->transformBuffer().setScale( 0.2f );
@@ -63,14 +65,12 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	return true;
 }
 
-
 bool DMGraphics::Frame()
 {
 	m_timer.Frame();
 	Render();
 	return true;
 }
-
 
 bool DMGraphics::Render()
 {

@@ -28,10 +28,12 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 
 	std::unique_ptr<DMModel> model( new DMModel( id, model_name ) );
 
-	float x = resourceFile.get<float>( "Position", "x" );
-	float y = resourceFile.get<float>( "Position", "y" );
-	float z = resourceFile.get<float>( "Position", "z" );
-	model->transformBuffer().setPosition( x, y, z );
+	D3DXVECTOR3 pos = strToVec3( resourceFile.get<std::string>( "General", "Position" ) );
+	model->transformBuffer().setPosition( pos );
+
+	float scale = resourceFile.get<float>( "General", "Scale" );
+	if( scale != 0.0f )
+		model->transformBuffer().setScale( scale );
 
 	size_t lod_counter = 0;
 	// загружаем все лоды модели
@@ -39,7 +41,7 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 	{
 		std::string currentLOD = "LOD" + std::to_string( i );
 
-		int range = resourceFile.get<int32_t>( currentLOD.data(), "Range" );
+		float range = resourceFile.get<float>( currentLOD.data(), "Range" );
 
 		std::string meshName = resourceFile.get<std::string>( currentLOD, "Mesh" );
 		std::string matName = resourceFile.get<std::string>( currentLOD, "Material" );

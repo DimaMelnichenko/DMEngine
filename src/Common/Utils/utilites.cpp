@@ -23,3 +23,15 @@ void str_split( const std::string& str, std::vector<std::string>& tokens, const 
 		pos = str.find_first_of( delimiters, lastPos );
 	}
 }
+
+
+D3DXVECTOR3 strToVec3( const std::string& str )
+{
+	std::vector<std::string> vec3String;
+	str_split( str, vec3String, "," );
+
+	if( vec3String.size() )
+		return D3DXVECTOR3( ::atof( vec3String[0].c_str() ), ::atof( vec3String[1].c_str() ), ::atof( vec3String[2].c_str() ) );
+
+	return D3DXVECTOR3( 0.0, 0.0, 0.0 );
+}

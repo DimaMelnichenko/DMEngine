@@ -1,4 +1,6 @@
 #pragma once
+#include "DirectX.h"
+#include "Utils\utilites.h"
 #include <string>
 #include <Windows.h>
 
@@ -47,7 +49,7 @@ public:
 		std::string num = get<std::string>( block, param );
 		if( num != "" )
 		{
-			return ::atof( num.c_str() );
+			return static_cast<float>( ::atof( num.c_str() ) );
 		}
 		
 		return 0.0f;
