@@ -12,7 +12,7 @@ public:
 	MaterialLoader();
 	~MaterialLoader();
 
-	Material* loadFromFile( const std::string& filename, uint32_t id );
+	Material* loadFromFile( const std::string& filPath, uint32_t id, const std::string& name );
 };
 
 }

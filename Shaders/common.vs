@@ -9,9 +9,10 @@ cbuffer FrameConstantBuffer : register( b0 )
     matrix cb_projectionMatrix;
 	matrix cb_viewProjectionMatrix;
 	float3 cb_cameraPosition;
-	float3 cb_viewDirection;
 	float  cb_appTime;
+	float3 cb_viewDirection;
 	float  cb_elapsedTime;
+	float  cb_lightCount;
 };
 
 cbuffer WorldBuffer : register( b1 )

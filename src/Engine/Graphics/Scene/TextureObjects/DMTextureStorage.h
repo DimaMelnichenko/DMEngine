@@ -9,7 +9,7 @@
 namespace GS
 {
 
-class DMTextureStorage : public DMResourceStorage<DMTexture>
+class DMTextureStorage : public DMResourceStorage<std::unique_ptr<DMTexture>>
 {
 public:
 	DMTextureStorage( const std::string& path );

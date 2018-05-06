@@ -20,7 +20,10 @@ public:
 
 	ID3D11SamplerState* sampler( SamplerType type );
 
+	void setDefaultSmaplers();
+
 private:
+	std::vector<ID3D11SamplerState*> m_samplerPointers;
 	std::vector<com_unique_ptr<ID3D11SamplerState>> m_sampler_states;
 };
 

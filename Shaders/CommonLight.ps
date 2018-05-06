@@ -1,0 +1,32 @@
+
+#include "samplers.sh"
+static const float PI = 3.14159265f;
+
+struct LightParam
+{
+	float3 lightPos; 
+	int type;
+	float3 lightDir;
+	float angle;
+	float3 lightColor;
+	float attenuation;
+};
+
+StructuredBuffer<LightParam> sb_lightVector: register(t15);
+
+//функция расчета затухания для источника света
+float GetAttenuation( float distance, float lightInnerR, float invLightOuterR )
+{
+    //float d = max( distance, lightInnerR);
+    //return saturate(1.0 - pow(d * invLightOuterR, 4.0)) / (d * d + 1.0);
+	return 1.0 / ( distance * distance + 1.0 );
+}
+
+float D_BlinnPhong( float roughness, float NdotH )
+{
+   float a = max( 0.001f, roughness * roughness );
+   return ( 1.0f / (PI * a * a) ) * pow( NdotH, 2.0f / (a * a) - 2.0f );
+}
+
+
+

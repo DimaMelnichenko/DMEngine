@@ -22,8 +22,8 @@ public:
 public:
 	void setPosition( const D3DXVECTOR3& );
 	void setPosition( float, float, float );
-	void position( D3DXVECTOR3* );
-	D3DXVECTOR3 position();
+	void position( D3DXVECTOR3* ) const;
+	D3DXVECTOR3 position() const;
 	void setRotationAxis( const D3DXVECTOR3&, float degree );	
 	void setRotationAxis( float x, float y, float z, float degree );
 	void setScale( const D3DXVECTOR3& );
@@ -32,8 +32,8 @@ public:
 	void unlink();
 
 	void resultMatrix( D3DXMATRIX* );
-	const D3DXMATRIX& resultMatrix();
-	const D3DXMATRIX* resultMatrixPtr();
+	const D3DXMATRIX& resultMatrix() const;
+	const D3DXMATRIX* resultMatrixPtr() const;
 	DMAABB& aabb();
 
 private:

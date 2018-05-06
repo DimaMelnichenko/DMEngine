@@ -24,7 +24,7 @@ AbstractMesh::~AbstractMesh()
 {
 }
 
-MeshVertexData::Type AbstractMesh::vertexType() const
+VertexData::Type AbstractMesh::vertexType() const
 {
 	return m_vertex_combination;
 }

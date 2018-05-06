@@ -1,0 +1,7 @@
+[Shaders]
+vs=LightShader.vs
+ps=Phong.ps
+
+[Parameters]
+Count=1
+param0=Albedo

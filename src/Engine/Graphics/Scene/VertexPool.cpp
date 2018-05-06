@@ -16,7 +16,7 @@ VertexPool::~VertexPool()
 
 bool VertexPool::prepareMeshes()
 {
-	std::vector<MeshVertexData::PTNTB> vertexes;
+	std::vector<VertexData::PTNTB> vertexes;
 	std::vector<uint32_t> indexes;
 
 	// подготовка бкферов для вершин и индексов
@@ -34,9 +34,9 @@ bool VertexPool::prepareMeshes()
 		char* vertexBuffer = mesh->getVertices();
 
 		// копируем вершины в общий буфер
-		memcpy( (char*)(&vertexes[0]) + vertexOffset * sizeof( MeshVertexData::PTNTB ),
+		memcpy( (char*)(&vertexes[0]) + vertexOffset * sizeof( VertexData::PTNTB ),
 				vertexBuffer, 
-				mesh->vertexCount() * sizeof( MeshVertexData::PTNTB ) );
+				mesh->vertexCount() * sizeof( VertexData::PTNTB ) );
 
 		// копируем индексы в общий буфер
 		memcpy( (char*)(&indexes[0]) + indexOffset * sizeof( uint32_t ),
@@ -52,7 +52,7 @@ bool VertexPool::prepareMeshes()
 	}
 
 	// создание буферов на видюхе с нашими общими буферами
-	DMD3D::instance().createVertexBuffer( m_vertexBuffer, &vertexes[0], System::meshes().vertexCount() * sizeof( MeshVertexData::PTNTB ) );
+	DMD3D::instance().createVertexBuffer( m_vertexBuffer, &vertexes[0], System::meshes().vertexCount() * sizeof( VertexData::PTNTB ) );
 	DMD3D::instance().createIndexBuffer( m_indexBuffer, &indexes[0], System::meshes().indexCount() * sizeof( uint32_t ) );
 
 	return true;
@@ -60,7 +60,7 @@ bool VertexPool::prepareMeshes()
 
 bool VertexPool::setBuffers()
 {	
-	uint32_t strides = sizeof( MeshVertexData::PTNTB );
+	uint32_t strides = sizeof( VertexData::PTNTB );
 	uint32_t offset = 0;
 	ID3D11Buffer* vertexBuffer = m_vertexBuffer.get();
 	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &vertexBuffer, &strides, &offset );

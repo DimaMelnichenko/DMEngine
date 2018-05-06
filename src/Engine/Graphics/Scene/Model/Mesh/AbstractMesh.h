@@ -1,6 +1,6 @@
 #pragma once
 #include "DMResource.h"
-#include "MeshVertexData.h"
+#include "VertexData.h"
 
 namespace GS
 {
@@ -14,7 +14,7 @@ public:
 	AbstractMesh& operator=( AbstractMesh&& other );
 	~AbstractMesh();
 
-	MeshVertexData::Type vertexType() const;
+	VertexData::Type vertexType() const;
 
 	void setOffsets( uint32_t vertexOffset, uint32_t indexoffset );
 	uint32_t vertexOffset() const;
@@ -27,7 +27,7 @@ public:
 
 
 protected:
-	MeshVertexData::Type m_vertex_combination;
+	VertexData::Type m_vertex_combination;
 	std::vector<uint32_t> m_indices;
 	uint32_t m_vertexOffset;
 	uint32_t m_indexOffset;

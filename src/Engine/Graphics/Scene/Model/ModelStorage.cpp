@@ -20,8 +20,12 @@ bool ModelStorage::load( const std::string& name )
 
 	std::string fullPath = path() + "\\" + name;
 
-	std::unique_ptr<DMModel> model;
+	std::unique_ptr<DMModel> model;	
 	model.reset( m_modelLoader.loadFromFile( fullPath, nextId() ) );
+
+	if( !model )
+		return false;
+
 	insertResource( name, std::move( model ) );
 
 	return true;

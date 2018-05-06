@@ -17,6 +17,7 @@ public:
 	
 	
 	std::unique_ptr<DMShader> m_shader;
+	
 };
 
 }

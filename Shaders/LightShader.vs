@@ -19,6 +19,8 @@ struct VertexInputType
 	uint instance_index: SV_InstanceID;
 };
 
+#if defined(INST_POS) || defined(INST_SCALE) || defined(INST_TEX)
+
 struct InstanceParam
 {
 #ifdef INST_POS
@@ -35,6 +37,8 @@ struct InstanceParam
 };
 
 StructuredBuffer<InstanceParam> instance_vector: register(t16);
+
+#endif
 
 struct PixelInputType
 {

@@ -8,11 +8,11 @@
 namespace GS
 {
 
-class MeshVertexData
+class VertexData
 {
 public:
-	MeshVertexData();
-	~MeshVertexData();
+	VertexData();
+	~VertexData();
 
 	struct PTN
 	{
@@ -35,8 +35,8 @@ public:
 		V_PTN = 1, V_PTNTB = 2
 	};
 
-	static MeshVertexData::Type type( const std::string& name );
-	static const std::string& name( MeshVertexData::Type type );
+	static VertexData::Type type( const std::string& name );
+	static const std::string& name( VertexData::Type type );
 
 	template<typename StructType>
 	const std::string& name( StructType* obj )
@@ -52,7 +52,7 @@ public:
 	}
 
 	template<typename StructType>
-	MeshVertexData::Type type( StructType* obj )
+	VertexData::Type type( StructType* obj )
 	{
 		if( std::is_same<PTN, Type>::value )
 		{
@@ -65,7 +65,7 @@ public:
 	}
 
 	template<typename StructType>
-	static MeshVertexData::Type type()
+	static VertexData::Type type()
 	{
 		if( std::is_same<PTN, Type>::value )
 		{
@@ -77,9 +77,9 @@ public:
 		}
 	}
 
-	static uint16_t size( MeshVertexData::Type type );
+	static uint16_t size( VertexData::Type type );
 
-	static ID3D11InputLayout* layout( MeshVertexData::Type type );
+	static ID3D11InputLayout* layout( VertexData::Type type );
 
 private:
 	/*struct EnumClassHash

@@ -4,12 +4,12 @@
 //////////////
 // TYPEDEFS //
 //////////////
-struct VertexInputType
+struct VertexInput
 {
     float3 position : POSITION;
 };
 
-struct PixelInputType
+struct PixelInput
 {
     float4 position : SV_POSITION;
 };
@@ -17,9 +17,9 @@ struct PixelInputType
 ////////////////////////////////////////////////////////////////////////////////
 // Vertex Shader
 ////////////////////////////////////////////////////////////////////////////////
-PixelInputType main(VertexInputType input)
+PixelInput main(VertexInput input)
 {
-    PixelInputType output;
+    PixelInput output;
     
 
     // Change the position vector to be 4 units for proper matrix calculations.

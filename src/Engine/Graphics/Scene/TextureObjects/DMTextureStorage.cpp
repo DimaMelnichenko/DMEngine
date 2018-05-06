@@ -20,7 +20,7 @@ bool DMTextureStorage::load( const std::string& name )
 
 	std::string fullPath = path() + "\\" + name;
 
-	DMTexture texture( nextId(), m_textureLoader.loadFromFile( fullPath.data() ) );
+	std::unique_ptr<DMTexture>  texture( new DMTexture( nextId(), m_textureLoader.loadFromFile( fullPath.data() ) ));
 
 	insertResource( name, std::move( texture ) );
 

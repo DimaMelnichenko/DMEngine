@@ -36,7 +36,7 @@ bool MeshStorage::load( const std::string& name )
 	try
 	{
 		std::unique_ptr<AbstractMesh> mesh;
-		mesh.reset( m_meshLoader.loadFromFile<MeshVertexData::PTNTB>( fullPath, nextId() ) );
+		mesh.reset( m_meshLoader.loadFromFile<VertexData::PTNTB>( fullPath, nextId() ) );
 		m_vertexCount += mesh->vertexCount();
 		m_indexCount += mesh->indexCount();
 		insertResource( name, std::move( mesh ) );

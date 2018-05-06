@@ -2,6 +2,7 @@
 #include "DMResource.h"
 #include <unordered_map>
 
+
 class DMAbstrctStorage
 {
 public:
@@ -22,7 +23,12 @@ public:
 
 	virtual bool load( const std::string& ) = 0;
 
-	const ResourceType& get( uint32_t id )
+	const ResourceType& get( uint32_t id ) const
+	{
+		return m_storage[id];
+	}
+
+	ResourceType& get( uint32_t id )
 	{
 		return m_storage[id];
 	}
@@ -54,7 +60,7 @@ public:
 
 	bool exists( const std::string& name )
 	{
-		return m_name_to_index.count( name );
+		return m_name_to_index.count( name ) > 0;
 	}
 
 	bool clone( const std::string& name, const std::string& cloneName )
@@ -88,6 +94,11 @@ public:
 	uint32_t nextId()
 	{
 		return m_id_counter;
+	}
+
+	uint32_t size()
+	{
+		return m_storage.size();
 	}
 
 protected:

@@ -46,6 +46,11 @@ bool DMModel::getLod( float range, uint32_t& meshId, uint32_t& materialId )
 	return false;
 }
 
+const DMTransformBuffer& DMModel::transformBuffer() const
+{
+	return m_transformBuffer;
+}
+
 DMTransformBuffer& DMModel::transformBuffer()
 {
 	return m_transformBuffer;

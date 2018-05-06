@@ -17,51 +17,23 @@ namespace GS
 
 class DMShader //: public DMResource
 {
-	struct alignas( 16 ) FrameConstant
-	{
-		D3DXMATRIX view;
-		D3DXMATRIX viewInverse;
-		D3DXMATRIX projection;
-		D3DXMATRIX viewProjection;
-		D3DXVECTOR3 cameraPosition;
-		D3DXVECTOR3 viewDirection;
-		float appTime;
-		float elapsedTime;
-	};
-
-	struct alignas( 16 ) WorldBuffer
-	{
-		D3DXMATRIX world;
-	};
-
-	struct alignas( 16 ) PSApplication
-	{
-		D3DXVECTOR3 camera_position;
-		float app_time;
-		float elapsed_time;
-	};
-
 public:
 	DMShader();
-	//DMShader( uint32_t id, const std::string& name );
 	virtual ~DMShader();
 
 	bool Initialize( const std::string& vsFilename, const std::string& psFilename, bool use_strimout_gs = false );
 	bool Initialize( const std::string& vsFilename, bool use_strimout_gs = false );
 	bool Initialize();
 	void setStreamout( bool use_strimout_gs );
-	bool Render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, const D3DXMATRIX& worldMatrix );
-	bool RenderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count, const D3DXMATRIX& worldMatrix );
-	bool Prepare( const DMCamera& camera, int phase );
-	virtual void Shutdown();
-	virtual void Update( float ) = 0;
+	bool Render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset );
+	bool RenderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count );
+	bool setPass( int phase );
 
 public:
 	enum DrawType
 	{
 		skip, by_vertex, by_index, by_index_instance, by_auto
 	};
-
 
 	void setDrawType( DrawType );
 	bool addShaderPass( SRVType type, const std::string& funcName, const std::string& fileName, const std::string& defines = "" );
@@ -90,14 +62,11 @@ private:
 	std::vector<Phase> m_phases;
 
 private:
-	virtual void prepareRender() = 0;
-	bool initialize();
+	virtual bool innerInitialize() = 0;
 	virtual bool prepare();
 	void OutputShaderErrorMessage( ID3D10Blob*, const std::string& );
 	void RenderShader( int, uint32_t vertexOffset, uint32_t indexOffset, int = 0 );
 	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() = 0;
-	void setCamera( const DMCamera& camera );
-	void setWorldMatrix( const D3DXMATRIX& worldMatrix );
 	virtual void StrimOutputDeclaration( D3D11_SO_DECLARATION_ENTRY* );
 	void parse_defines( std::string, D3D10_SHADER_MACRO** );
 
@@ -110,12 +79,9 @@ private:
 	std::vector<com_unique_ptr<ID3D11PixelShader>> m_pixel_shader;
 	std::vector<com_unique_ptr<ID3D11GeometryShader>> m_geometry_shader;
 	std::vector<com_unique_ptr<ID3D11InputLayout>> m_layout;
-	com_unique_ptr<ID3D11Buffer> m_frameConstantBuffer;
-	com_unique_ptr<ID3D11Buffer> m_world_buffer;
 	DrawType m_draw_type;
 	int m_phase_idx;
 	bool m_use_strimout_gs;
-	DMTimer* m_timer;
 };
 
 }

@@ -45,16 +45,30 @@ public:
 		std::vector<uint32_t> indices;
 		indices.reserve( index_count );
 
-		MeshVertexStruct* vertex = nullptr;
+		struct MyFormatVertex
+		{
+			D3DXVECTOR3 position;			
+			D3DXVECTOR3 normal;
+			D3DXVECTOR2 texture;
+			D3DXVECTOR3 tangent;
+			D3DXVECTOR3 binormal;
+		};
 
 		// Read in the vertex data.
 		for( size_t i = 0; i < file_header.vertex_count; i++ )
 		{
-			MeshVertexStruct file_vertex;
+			MyFormatVertex file_vertex;
 
-			fin.read( reinterpret_cast<char*>( &file_vertex ), sizeof( MeshVertexStruct ) );
+			fin.read( reinterpret_cast<char*>( &file_vertex ), sizeof( MyFormatVertex ) );
 
-			vertices.push_back( file_vertex );
+			MeshVertexStruct innerVertex;
+			innerVertex.position = file_vertex.position;
+			innerVertex.normal = file_vertex.normal;
+			innerVertex.texture = file_vertex.texture;
+			innerVertex.tangent = file_vertex.tangent;
+			innerVertex.binormal = file_vertex.binormal;
+
+			vertices.push_back( innerVertex );
 		}
 
 		// Read in the index data.

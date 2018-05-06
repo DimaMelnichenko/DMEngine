@@ -25,6 +25,7 @@ public:
 	void addLod( float range, uint32_t meshId, uint32_t materialId );
 	bool getLod( float range, uint32_t& meshId, uint32_t& materialId );
 
+	const DMTransformBuffer& transformBuffer() const;
 	DMTransformBuffer& transformBuffer();
 
 	void copyTo( DMModel& );

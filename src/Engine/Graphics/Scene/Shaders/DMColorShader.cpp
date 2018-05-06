@@ -8,25 +8,21 @@ DMColorShader::DMColorShader()
 
 }
 
-
 DMColorShader::~DMColorShader()
 {
-	Shutdown();
+	
 }
 
-void DMColorShader::Shutdown()
-{
 
+bool DMColorShader::innerInitialize()
+{
+	createPhase( 0, -1, 0 );
+	return true;
 }
 
-void DMColorShader::Update( float )
+bool DMColorShader::Prepare()
 {
-
-}
-
-void DMColorShader::prepareRender()
-{
-	return;
+	return DMShader::setPass( 0 );
 }
 
 std::vector<D3D11_INPUT_ELEMENT_DESC> DMColorShader::initLayouts()

@@ -18,7 +18,7 @@ DMShader::DMShader()
 
 DMShader::~DMShader()
 {
-	Shutdown();
+	
 }
 
 bool DMShader::Initialize( const std::string& vsFilename, const std::string& psFilename, bool use_strimout )
@@ -46,144 +46,26 @@ bool DMShader::Initialize( const std::string& vsFilename, bool use_strimout )
 
 bool DMShader::Initialize()
 {
-	return initialize();
+	return innerInitialize();
 }
 
-bool DMShader::initialize()
+bool DMShader::Render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset )
 {
-	DMD3D::instance().createShaderConstantBuffer( sizeof( WorldBuffer ), m_world_buffer );
-
-	DMD3D::instance().createShaderConstantBuffer( sizeof( FrameConstant ), m_frameConstantBuffer );
-
-
-	m_timer = new DMTimer();
-	m_timer->Initialize();
-
-	return true;
-}
-
-void DMShader::setWorldMatrix( const D3DXMATRIX& worldMatrix )
-{
-	D3D11_MAPPED_SUBRESOURCE mappedResource;
-	D3DXMATRIX mat;
-
-	if( !worldMatrix )
-	{
-		D3DXMatrixIdentity( &mat );
-		D3DXMatrixTranspose( &mat, &mat );
-	}
-	else
-	{
-		D3DXMatrixTranspose( &mat, &worldMatrix );
-	}
-
-	// Lock the constant buffer so it can be written to.
-	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( m_world_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
-	if( FAILED( result ) )
-	{
-		return;
-	}
-
-	// Get a pointer to the data in the constant buffer.
-	WorldBuffer* dataPtr = (WorldBuffer*)mappedResource.pData;
-
-	// Copy the matrices into the constant buffer.
-	memcpy( &dataPtr->world, &mat, sizeof( D3DXMATRIX ) );
-
-	// Unlock the constant buffer.
-	DMD3D::instance().GetDeviceContext()->Unmap( m_world_buffer.get(), 0 );
-
-	ID3D11Buffer* buffer = m_world_buffer.get();
-	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 1, 1, &buffer );
-}
-
-void DMShader::setCamera( const DMCamera& camera )
-{
-	m_timer->Frame();
-
-	HRESULT result;
-	D3D11_MAPPED_SUBRESOURCE mappedResource;
-	FrameConstant* dataPtr;
-	unsigned int bufferNumber;
-
-	D3DXMATRIX viewMatrix;
-	D3DXMATRIX viewInverseMatrix;
-	D3DXMATRIX projectionMatrix;
-	D3DXMATRIX viewProjectionMatrix;
-
-	camera.viewMatrix( &viewMatrix );
-	D3DXMatrixInverse( &viewInverseMatrix, nullptr, &viewMatrix );
-	camera.projectionMatrix( &projectionMatrix );
-	D3DXMatrixMultiply( &viewProjectionMatrix, &viewMatrix, &projectionMatrix );
-
-
-	// Transpose the matrices to prepare them for the shader.
-
-	D3DXMatrixTranspose( &viewMatrix, &viewMatrix );
-	D3DXMatrixTranspose( &viewInverseMatrix, &viewInverseMatrix );
-	D3DXMatrixTranspose( &projectionMatrix, &projectionMatrix );
-	D3DXMatrixTranspose( &viewProjectionMatrix, &viewProjectionMatrix );
-
-	// Lock the constant buffer so it can be written to.
-	result = DMD3D::instance().GetDeviceContext()->Map( m_frameConstantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
-	if( FAILED( result ) )
-	{
-		return;
-	}
-
-	// Get a pointer to the data in the constant buffer.
-	dataPtr = (FrameConstant*)mappedResource.pData;
-
-	// Copy the matrices into the constant buffer.
-	memcpy( &dataPtr->view, &viewMatrix, sizeof( D3DXMATRIX ) );
-	memcpy( &dataPtr->projection, &projectionMatrix, sizeof( D3DXMATRIX ) );
-	memcpy( &dataPtr->viewInverse, &viewInverseMatrix, sizeof( D3DXMATRIX ) );
-	memcpy( &dataPtr->viewProjection, &viewProjectionMatrix, sizeof( D3DXMATRIX ) );
-	dataPtr->appTime = static_cast<float>( m_timer->totalTime() );
-	dataPtr->elapsedTime = static_cast<float>( m_timer->GetTime() );
-	camera.position( &dataPtr->cameraPosition );
-	camera.viewDirection( &dataPtr->viewDirection );
-
-	DMD3D::instance().GetDeviceContext()->Unmap( m_frameConstantBuffer.get(), 0 );
-
-	ID3D11Buffer* buffer = m_frameConstantBuffer.get();
-	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 0, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 0, 1, &buffer );
-
-	return;
-}
-
-bool DMShader::Render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, const D3DXMATRIX& worldMatrix )
-{
-	setWorldMatrix( worldMatrix );
-
-	prepareRender();
-
 	RenderShader( indexCount, vertexOffset, indexOffset );
 
 	return true;
 }
 
-bool DMShader::RenderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count, const D3DXMATRIX& worldMatrix )
+bool DMShader::RenderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count )
 {
 	DrawType prev = m_draw_type;
 	m_draw_type = by_index_instance;
-
-	setWorldMatrix( worldMatrix );
-
-	prepareRender();
 
 	RenderShader( indexCount, vertexOffset, indexOffset, instance_count );
 
 	m_draw_type = prev;
 
 	return true;
-}
-
-void DMShader::Shutdown()
-{
-
 }
 
 void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::string& shaderFilename )
@@ -247,7 +129,7 @@ void DMShader::RenderShader( int indexCount, uint32_t vertexOffset, uint32_t ind
 	return;
 }
 
-bool DMShader::Prepare( const DMCamera& camera, int phase_idx )
+bool DMShader::setPass( int phase_idx )
 {
 	if( !selectPhase( phase_idx ) )
 		return false;
@@ -255,8 +137,6 @@ bool DMShader::Prepare( const DMCamera& camera, int phase_idx )
 	DMShader::Phase phase = m_phases[m_phase_idx];
 
 	phase.index_vs;
-
-	setCamera( camera );
 
 	// Set the vertex input layout.
 	DMD3D::instance().GetDeviceContext()->IASetInputLayout( m_layout[phase.index_vs].get() );
@@ -299,6 +179,7 @@ bool DMShader::addShaderPass( SRVType type,
 							  const std::string& file_name, 
 							  const std::string& defines )
 {
+
 	ID3D10Blob* errorMessage;
 	ID3D10Blob* shaderBuffer;
 	HRESULT result;

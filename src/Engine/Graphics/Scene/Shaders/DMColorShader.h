@@ -18,11 +18,10 @@ public:
 	DMColorShader();
 	~DMColorShader();
 
-	virtual void Shutdown();
-	virtual void Update( float );
+	bool Prepare();
 
 private:
-	virtual void prepareRender();;
+	bool innerInitialize() override;
 	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts();
 
 };

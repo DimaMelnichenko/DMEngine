@@ -48,13 +48,11 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 
 		if( !System::meshes().load( meshName ) )
 		{
-			std::string text = "Can`not load mesh:" + meshName;				
-			throw std::exception( text.data() );
+			return nullptr;
 		}
 		if( !System::materials().load( matName ) )
 		{
-			std::string text = "Can`not load material:" + matName;
-			throw std::exception( text.data() );
+			return nullptr;
 		}
 		model->addLod( range, System::meshes().id( meshName ), System::materials().id( matName ) );
 	}

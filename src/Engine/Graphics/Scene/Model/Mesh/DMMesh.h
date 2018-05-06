@@ -6,7 +6,7 @@
 namespace GS
 {
 
-template<typename VertexTypeStruct> // MeshVertexData structs
+template<typename VertexTypeStruct> // VertexData structs
 class DMMesh : public AbstractMesh
 {
 public:
@@ -16,7 +16,7 @@ public:
 		AbstractMesh( id, name, std::move(indices) ),
 		m_vertices( std::move( vertices ) )
 	{
-		m_vertex_combination = MeshVertexData::type<VertexTypeStruct>();
+		m_vertex_combination = VertexData::type<VertexTypeStruct>();
 	}
 	DMMesh( DMMesh&& other ) : AbstractMesh( std::move( other ) )
 	{

@@ -32,14 +32,7 @@ DMTransformBuffer& DMTransformBuffer::operator=( DMTransformBuffer&& source )
 
 DMTransformBuffer::DMTransformBuffer( const DMTransformBuffer& source )
 {
-	this->m_result_matrix = source.m_result_matrix;
-	this->m_position_matrix = source.m_position_matrix;
-	this->m_rotate_matrix = source.m_rotate_matrix;
-	this->m_scale_matrix = source.m_scale_matrix;
-
-	m_aabb = source.m_aabb;
-
-	m_transform_link = source.m_transform_link;
+	*this = source;
 }
 
 
@@ -80,14 +73,14 @@ void DMTransformBuffer::setPosition( float x, float y, float z )
 	m_aabb.setPosition( x, y, z );
 }
 
-void DMTransformBuffer::position( D3DXVECTOR3* pos )
+void DMTransformBuffer::position( D3DXVECTOR3* pos ) const
 {
 	pos->x = m_position_matrix._41;
 	pos->y = m_position_matrix._42;
 	pos->z = m_position_matrix._43;
 }
 
-D3DXVECTOR3 DMTransformBuffer::position()
+D3DXVECTOR3 DMTransformBuffer::position() const 
 {
 	return D3DXVECTOR3( m_position_matrix._41, m_position_matrix._42, m_position_matrix._43 );
 }
@@ -114,12 +107,12 @@ void DMTransformBuffer::resultMatrix( D3DXMATRIX* result )
 	memcpy( result, &m_result_matrix, sizeof( D3DXMATRIX ) );
 }
 
-const D3DXMATRIX& DMTransformBuffer::resultMatrix()
+const D3DXMATRIX& DMTransformBuffer::resultMatrix() const
 {
 	return m_result_matrix;
 }
 
-const D3DXMATRIX* DMTransformBuffer::resultMatrixPtr()
+const D3DXMATRIX* DMTransformBuffer::resultMatrixPtr() const
 {
 	return &m_result_matrix;
 }

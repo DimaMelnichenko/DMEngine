@@ -8,7 +8,7 @@
 class DMTimer
 {
 public:
-	DMTimer(  );
+	DMTimer();
 	~DMTimer();
 
 	bool Initialize( );

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "..\DMSceneObject.h"
-#include "..\TextureObjects\DMRenderTexture.h"
+#include "DirectX.h"
+#include "DMTransformBuffer.h"
 
-class DMLight : public DMSceneObject
+class DMLight
 {
 public:
 	enum LightType { Dir, Point, Spot };
@@ -11,14 +11,13 @@ public:
 public:
 	DMLight( LightType );
 	DMLight( const DMLight& );
-	DMLight( DMLight&& );
 	DMLight& operator=( const DMLight& );
+	//DMLight( DMLight&& ) = delete;
+	//DMLight& operator=( DMLight&& ) = delete;
 	~DMLight(void);
 	void update( float );
-
 	
 	float attenuation;
-	ID3D11ShaderResourceView* proj_texture;
 	
 	void setEnabled( bool );
 	bool enabled() const;
@@ -32,33 +31,15 @@ public:
 	void setDirection( D3DXVECTOR3& );
 	void setDirection( float, float, float );
 	D3DXVECTOR3 direction() const;
-
-	void generateMatrices();
-
-	void setCastShadow( bool cast_shadow );
-	float texelSize() const;
-	void setMask( ID3D11ShaderResourceView* );
-	void setShadowParam( float fov_spot_angle, unsigned int texture_size );
-	const DMRenderTexture& shadow_rt() const;
-	ID3D11ShaderResourceView* mask_srv() const;
-	bool castShadow() const;
-	const DMCamera& shadowCamera() const;
-	ID3D11ShaderResourceView* shadow_map() const;
+	
 	float spotAngle() const;
 
-private:
-	void updateCamera();
-
+	DMTransformBuffer m_transformBuffer;
 private:
 	bool m_enabled;
-	bool m_cast_shadow;
 	D3DXVECTOR3 m_color;
 	LightType m_type;
 	D3DXVECTOR3 m_direction;
-	float m_spot_angle;
-	DMCamera m_camera_shadow;
-	ID3D11ShaderResourceView* m_mask_srv;
-	float m_texel_size;
-	DMRenderTexture m_shadow_rt;
+	float m_spot_angle;	
 };
 
