@@ -27,23 +27,21 @@ DMModel& DMModel::operator=( DMModel&& other )
 	return *this;
 }
 
-void DMModel::addLod( float range, uint32_t meshId, uint32_t materialId )
+void DMModel::addLod( float range, const DMModel::LodBlock& block )
 {
-	m_lods.insert( { range , { meshId, materialId } } );
+	m_lods.insert( { range , block } );
 }
 
-bool DMModel::getLod( float range, uint32_t& meshId, uint32_t& materialId )
+const DMModel::LodBlock* DMModel::getLod( float range )
 {
 	for( auto& it : m_lods )
 	{
 		if( range <= it.first )
 		{
-			meshId = it.second.mesh;
-			materialId = it.second.material;
-			return true;
+			return &it.second;
 		}
 	}
-	return false;
+	return nullptr;
 }
 
 const DMTransformBuffer& DMModel::transformBuffer() const

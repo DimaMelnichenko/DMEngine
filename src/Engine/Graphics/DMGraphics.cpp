@@ -44,23 +44,24 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	System::textures().load( "no_image.dds" );
 
 	// Загружаем модели
-	if( !System::models().load( "board.ini" ) )
-		return false;
-	if( !System::models().load( "barrel.ini" ) )
-		return false;
+	//if( !System::models().load( "barrel.ini" ) )
+	//	return false;
 	if( !System::models().load( "box.ini" ) )
 		return false;
 	if( !System::models().load( "knot.ini" ) )
 		return false;
+	if( !System::models().load( "plane.ini" ) )
+		return false;
+	//if( !System::models().load( "venus.ini" ) )
+	//	return false;
 	//System::models().load( "tree.ini" );
 	
-	
-	System::models().get( "knot.ini" )->transformBuffer().setScale( 0.2f );
-	if( System::models().clone( "box.ini", "box_clone" ) )
-		System::models().get("box_clone")->transformBuffer().setPosition( 0.0, 4.0, 0.0 );
 
-	if( System::models().clone( "knot.ini", "knot01" ) )
-		System::models().get( "knot01" )->transformBuffer().setPosition( 6.0, -2.0, -8.0 );
+	//if( System::models().clone( "box.ini", "box_clone" ) )
+	//	System::models().get("box_clone")->transformBuffer().setPosition( 0.0, 4.0, 0.0 );
+
+	if( System::models().clone( "knot.ini", "Knot01" ) )
+		System::models().get( "Knot01" )->transformBuffer().setPosition( 6.0, 4.0, -8.0 );
 
 	// Создаем общий буфер вершин и индексов
 	m_vertexPool.prepareMeshes();
@@ -78,24 +79,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_shaderConstant.initBuffers();
 
 	m_lightDriver.Initialize();
-
-	DMLight light( DMLight::Point );
-	light.setColor( 0.3, 0.3, 0.3 );
-	light.attenuation = 1400.0f;
-	light.m_transformBuffer.setPosition( 0.0, 20.0, -25.0 );
-	m_lightDriver.addLight( light );
-
-	DMLight light2( DMLight::Point );
-	light2.setColor( 0.5, 0.2, 0.0 );
-	light2.attenuation = 1400.0f;
-	light2.m_transformBuffer.setPosition( -25.0, 0.0, 0.0 );
-	m_lightDriver.addLight( light2 );
-
-	DMLight light3( DMLight::Point );
-	light3.setColor( 0.3, 0.3, 0.5 );
-	light3.attenuation = 1400.0f;
-	light3.m_transformBuffer.setPosition( 25.0, 0.0, 0.0 );
-	m_lightDriver.addLight( light3 );
+	m_lightDriver.loadFromFile( "Scene\\Lights.ini" );
 
 	m_samplerState.initialize();
 
@@ -111,7 +95,7 @@ bool DMGraphics::Frame()
 
 bool DMGraphics::Render()
 {
-	DMD3D::instance().BeginScene( 0.1f, 0.1f, 0.1f, 1.0f );
+	DMD3D::instance().BeginScene( 0.0f, 0.0f, 0.0f, 1.0f );
 
 	//DMD3D::instance().TurnOnWireframe();
 
@@ -157,38 +141,35 @@ bool DMGraphics::Render()
 	} );
 
 	// Загружаем материал ( он пока один )
-	DMShader* shader = System::materials().get( 1 )->m_shader.get();
+	DMShader* shader = System::materials().get( "Phong" )->m_shader.get();
 	// заполняем параметры шейдера матрицами
 	shader->setPass( 0 );
+	shader->setDrawType( DMShader::by_index );
 
 	// эта вся хрень для вращения
 	double elapsedTime = m_timer.GetTime();
 	static double counter = 0.0;
 	counter += 0.001 * elapsedTime;
 
-	ID3D11ShaderResourceView* tex = System::textures().get( 0 )->GetTexture();
-	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &tex );
-
 	// Перебираем все модели
 	for( auto model : resultVector )
-	{
-		//DMModel* model = modelPair.second.get();
-		uint32_t meshid = 0;
-		uint32_t materialid = 0;
+	{	
 		// достаем лод меша в зависимости от расстояния до камеры
-		if( model->getLod( 10, meshid, materialid ) )
+		const DMModel::LodBlock* block = model->getLod( 10 );
+		if( block != nullptr )
 		{
 			//применяем вращение модели
-			model->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
+			if( model->name() == "Knot" || model->name() == "Knot01" )
+				model->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
 
 			//установка матрицы маодели в шейдер
 			m_shaderConstant.setPerObjectBuffer( model->transformBuffer().resultMatrixPtr() );
 
-			shader->setDrawType( DMShader::by_index );
+			shader->setParams( block->params );
 			// отрисовка модели согласно смещению вершин и индексов для главного буфера
-			shader->Render( System::meshes().get( meshid )->indexCount(),
-							System::meshes().get( meshid )->vertexOffset(),
-							System::meshes().get( meshid )->indexOffset() );
+			shader->Render( System::meshes().get( block->mesh )->indexCount(),
+							System::meshes().get( block->mesh )->vertexOffset(),
+							System::meshes().get( block->mesh )->indexOffset() );
 		}
 	}
 	DMD3D::instance().EndScene();

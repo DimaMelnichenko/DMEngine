@@ -1,20 +1,20 @@
-#include "DMPhongLight.h"
+#include "PhongLight.h"
 #include "System.h"
 
 namespace GS
 {
 
-DMPhongLight::DMPhongLight()
+PhongLight::PhongLight()
 {
 
 }
 
-DMPhongLight::~DMPhongLight()
+PhongLight::~PhongLight()
 {
 
 }
 
-std::vector<D3D11_INPUT_ELEMENT_DESC> DMPhongLight::initLayouts()
+std::vector<D3D11_INPUT_ELEMENT_DESC> PhongLight::initLayouts()
 {
 	D3D11_INPUT_ELEMENT_DESC polygonLayout;
 
@@ -75,23 +75,21 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMPhongLight::initLayouts()
 	return vertex_layout;
 }
 
-bool DMPhongLight::innerInitialize()
+bool PhongLight::innerInitialize()
 {
 	createPhase( 0, -1, 0 );
 	return true;
 }
 
-bool DMPhongLight::Prepare()
+bool PhongLight::Prepare()
 {
 	return DMShader::setPass(0);
 }
 
-bool DMPhongLight::setTexture( uint32_t albedo, uint32_t normal )
-{	
-	ID3D11ShaderResourceView* albedoTex = System::textures().get( albedo )->GetTexture();
+void PhongLight::setParams( const ParamSet& params )
+{
+	ID3D11ShaderResourceView* albedoTex = System::textures().get( params.at("Albedo").textId() )->GetTexture();
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &albedoTex );
-
-	return true;
 }
 
 }

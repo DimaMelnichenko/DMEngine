@@ -7,10 +7,11 @@
 #include <vector>
 
 #include "Utils/DMTimer.h"
-#include "..\Camera\DMCamera.h"
-#include "..\..\D3D\DMD3D.h"
+#include "Camera\DMCamera.h"
+#include "D3D\DMD3D.h"
 #include "DM3DUtils.h"
 #include "DMResource.h"
+#include "Materials\Parameter\Parameter.h"
 
 namespace GS
 {
@@ -28,6 +29,7 @@ public:
 	bool Render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset );
 	bool RenderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count );
 	bool setPass( int phase );
+	virtual void setParams( const ParamSet& ) = 0;
 
 public:
 	enum DrawType

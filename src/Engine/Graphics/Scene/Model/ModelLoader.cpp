@@ -1,6 +1,5 @@
 #include "ModelLoader.h"
 #include <fstream>
-#include "ResourceMetaFile.h"
 #include "../../System.h"
 
 
@@ -54,11 +53,36 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 		{
 			return nullptr;
 		}
-		model->addLod( range, System::meshes().id( meshName ), System::materials().id( matName ) );
+		DMModel::LodBlock block;
+		block.material = System::materials().id( matName );
+		block.mesh = System::meshes().id( meshName );
+		block.params = loadMaterialParam( resourceFile,
+										  resourceFile.get<std::string>( currentLOD, "MatParam" ),
+										  resourceFile.get<int32_t>( currentLOD, "ParamCount" ) );
+		model->addLod( range, block );
 	}
-	
 
 	return model.release();
+}
+
+ParamSet ModelLoader::loadMaterialParam( ResourceMetaFile& metaResource, const std::string& matSection, int32_t count )
+{
+	ParamSet paramSet;
+	for( int32_t i = 0; i < count; ++i )
+	{
+		std::string paramBlock = "Param" + matSection + std::to_string( i );
+
+		std::string paramName = metaResource.get<std::string>( paramBlock, "Name" );
+		std::string paramType = metaResource.get<std::string>( paramBlock, "Type" );
+		std::string paramValue = metaResource.get<std::string>( paramBlock, "Value" );
+
+		if( System::textures().load( paramValue ) )
+		{
+			paramSet.insert( { paramName, Parameter( System::textures().id( paramValue ) ) } );
+		}
+	}
+
+	return paramSet;
 }
 
 }

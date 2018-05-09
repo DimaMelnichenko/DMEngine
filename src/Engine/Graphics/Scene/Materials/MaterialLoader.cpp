@@ -1,7 +1,8 @@
 #include "MaterialLoader.h"
 #include "ResourceMetaFile.h"
 #include "../Shaders/DMColorShader.h"
-#include "Shaders\DMPhongLight.h"
+#include "Shaders\PhongLight.h"
+#include "System.h"
 
 
 namespace GS
@@ -25,7 +26,7 @@ Material* MaterialLoader::loadFromFile( const std::string& filename, uint32_t id
 	if( name == "Color" )
 		material->m_shader.reset( new DMColorShader() );
 	else if( name == "Phong" )
-		material->m_shader.reset( new DMPhongLight() );
+		material->m_shader.reset( new PhongLight() );
 
 	std::string path = "Shaders\\";
 

@@ -2,7 +2,9 @@
 
 #include "DMResource.h"
 #include <unordered_map>
-#include "../Shaders/DMShader.h"
+#include "Shaders/DMShader.h"
+#include "Parameter\Parameter.h"
+
 
 namespace GS
 {
@@ -14,10 +16,8 @@ public:
 	Material& operator=( Material&& );
 	Material( Material&& );
 	~Material();
-	
-	
 	std::unique_ptr<DMShader> m_shader;
-	
+	ParamSet m_parameters;
 };
 
 }

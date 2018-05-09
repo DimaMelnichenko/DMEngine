@@ -23,9 +23,10 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Mesh\AbstractMesh.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\ConstantBuffers.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMColorShader.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMPhongLight.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\PhongLight.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\Layout.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Materials\Parameter\Parameter.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Sky\DMSkyBox.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMStructuredBuffer.cpp" />
     <ClCompile Include="src\Engine\DMEngineProcessor.cpp" />
@@ -77,9 +78,10 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Mesh\AbstractMesh.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\ConstantBuffers.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMColorShader.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMPhongLight.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\PhongLight.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\Layout.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Materials\Parameter\Parameter.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\ShaderUnit.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Sky\DMSkyBox.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DM3DUtils.h" />

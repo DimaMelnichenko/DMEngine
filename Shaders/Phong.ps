@@ -37,9 +37,12 @@ float4 main(PixelInputType input) : SV_TARGET
 	float3 v = normalize( cb_cameraPosition - input.worldPosition );
 	
     // Sample the pixel color from the texture using the sampler at this texture coordinate location.
-    float4 albedo = g_texAlbedo.Sample( g_SamplerLinearWrap, input.tex );
+    float4 albedo = g_texAlbedo.Sample( g_SamplerAnisotropicWrap, input.tex );
 	
 	float3 n = normalize( input.normal );
+	
+	float specSum = 0;
+	float3 duffuseSum = (float3)0;
 	
 	[loop]
     for( int i = 0; i < cb_lightCount; i++ )
@@ -52,27 +55,31 @@ float4 main(PixelInputType input) : SV_TARGET
 		if( light.type == 0 )
 		{
 			l = normalize( light.lightPos );
-			fade = 1.0;
+			fade = 0.01;
 		}
 		else
 		{
 			l = ( light.lightPos - input.worldPosition );
 			float dist = length( l );
 			l = normalize( l );
-			fade = 1.0 / ( dist * dist );			
+			fade = GetAttenuation( dist, 0.0, light.attenuation );
+			//fade = 1.0 / (dist * light.attenuation);
 		}	
 		
-		if( fade < 0.0001 )
-			continue;
-		
-		float3 h = normalize( l + v );		
-		float spec = max( 0.0, D_BlinnPhong( 0.2, dot( n, h ) ) );
+		//if( fade < 0.0001 )
+		//	continue;
+		float NdotL    = max( dot( n, l ), 0.0 );
+		float NdotV    = max( dot( n, v ), 0.0 );
+		float3 h = normalize(l + v);
+		float rougness = 0.99;
+		specSum += saturate( D_BlinnPhong( rougness, max( dot( n, h ), 0.0 ) ) * ( 4.0 * NdotL * NdotV ) );
 		float3 diffuse = ( max( dot( n, l ), 0.0f ) / PI );
-		FinalLight.rgb += saturate( diffuse  * light.lightColor + spec );
-		
+		duffuseSum += ( diffuse  * light.lightColor ) * fade;
 	}	
 	
-	FinalLight.rgb = ( FinalLight.rgb ) * albedo.rgb;
+	FinalLight.rgb = duffuseSum * albedo.rgb + saturate(specSum)*albedo.rgb;
+	
+	//FinalLight.rgb = pow(FinalLight.rgb, 1.0/2.0 );
 	
 	FinalLight.a = 1.0f;
 	#ifdef TEST

@@ -17,7 +17,7 @@ public:
 	~DMLight(void);
 	void update( float );
 	
-	float attenuation;
+	float m_attenuation;
 	
 	void setEnabled( bool );
 	bool enabled() const;
@@ -35,6 +35,9 @@ public:
 	float spotAngle() const;
 
 	DMTransformBuffer m_transformBuffer;
+
+	static LightType strToType( const std::string& );
+
 private:
 	bool m_enabled;
 	D3DXVECTOR3 m_color;

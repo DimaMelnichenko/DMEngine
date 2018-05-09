@@ -38,7 +38,8 @@ void DMStructuredBuffer::CreateBuffer( size_t sizeOfElement, size_t countElement
 
 	view_desc.Format = DXGI_FORMAT_UNKNOWN;
 	view_desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-	view_desc.Buffer.ElementWidth = m_countElements;
+	view_desc.Buffer.ElementWidth = sizeOfElement;
+	view_desc.Buffer.NumElements = countElements;
 
 	ID3D11ShaderResourceView* view;
 	if( FAILED( DMD3D::instance().GetDevice()->CreateShaderResourceView( m_buffer.get(), &view_desc, &view ) ) )

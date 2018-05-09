@@ -8,16 +8,16 @@
 namespace GS
 {
 
-class DMPhongLight : public DMShader
+class PhongLight : public DMShader
 {
 public:
 
 
 public:
-	DMPhongLight();
-	~DMPhongLight();
+	PhongLight();
+	~PhongLight();
 	bool Prepare();
-	bool setTexture( uint32_t albedo, uint32_t normal );
+	void setParams( const ParamSet& ) override;
 
 private:
 	bool innerInitialize() override;
