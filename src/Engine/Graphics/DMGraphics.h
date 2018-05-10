@@ -64,6 +64,9 @@ private:
 	ConstantBuffers m_shaderConstant;
 	DMLightDriver m_lightDriver;
 	DMSamplerState m_samplerState;
+
+	using RenderQueue = std::vector<const DMModel::LodBlock*>;
+	std::unordered_map<uint32_t, RenderQueue> m_renderQueues;
 };
 
 }

@@ -38,6 +38,7 @@ const DMModel::LodBlock* DMModel::getLod( float range )
 	{
 		if( range <= it.first )
 		{
+			it.second.resultMatrix = m_transformBuffer.resultMatrixPtr();
 			return &it.second;
 		}
 	}

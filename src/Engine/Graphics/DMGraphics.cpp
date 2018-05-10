@@ -52,8 +52,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	if( !System::models().load( "plane.ini" ) )
 		return false;
-	//if( !System::models().load( "venus.ini" ) )
-	//	return false;
+	if( !System::models().load( "venus.ini" ) )
+		return false;
 	//System::models().load( "tree.ini" );
 	
 
@@ -112,19 +112,31 @@ bool DMGraphics::Render()
 	//установка матриц в шейдер константы
 	m_shaderConstant.setPerFrameBuffer( m_cameraPool["main"], lightCount );
 	
-	static bool firstTime = true;
-	static std::vector<DMModel*> resultVector;
-	if( firstTime )
+	for( auto& queue : m_renderQueues )
 	{
-		resultVector.reserve( System::models().size() );
-		for( auto& pair : System::models() )
-		{
-			resultVector.push_back( pair.second.get() );
-		}
-		firstTime = false;
+		queue.second.clear();
 	}
 
-	std::sort( resultVector.begin(), resultVector.end(), [this]( const DMModel* modelLeft, const DMModel* modelRight ){
+	for( const auto& pair : System::models() )
+	{
+		static D3DXVECTOR3 lenVec;
+		static D3DXVECTOR3 camPos = m_cameraPool["main"].position();
+
+		pair.second->transformBuffer().position( &lenVec );
+		D3DXVec3Subtract( &lenVec, &lenVec, &camPos );
+		float distance = D3DXVec3Length( &lenVec );
+
+		// достаем лод меша в зависимости от расстояния до камеры
+		const DMModel::LodBlock* block = pair.second->getLod( distance );
+
+		if( block != nullptr )
+		{
+			m_renderQueues[block->material].push_back( block );
+		}
+	}
+	
+
+	/*std::sort( resultVector.begin(), resultVector.end(), [this]( const DMModel* modelLeft, const DMModel* modelRight ){
 		
 		static D3DXVECTOR3 lenVec;
 		static D3DXVECTOR3 camPos = m_cameraPool["main"].position();
@@ -138,38 +150,35 @@ bool DMGraphics::Render()
 		float lenRight = D3DXVec3Length( &lenVec );
 
 		return lenLeft < lenRight;
-	} );
+	} );*/
 
-	// Загружаем материал ( он пока один )
-	DMShader* shader = System::materials().get( "Phong" )->m_shader.get();
-	// заполняем параметры шейдера матрицами
-	shader->setPass( 0 );
-	shader->setDrawType( DMShader::by_index );
 
 	// эта вся хрень для вращения
 	double elapsedTime = m_timer.GetTime();
 	static double counter = 0.0;
 	counter += 0.001 * elapsedTime;
 
-	// Перебираем все модели
-	for( auto model : resultVector )
+	System::models().get( "knot.ini" )->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
+
+	// Перебираем все очереди
+	for( auto& queuePair : m_renderQueues )
 	{	
-		// достаем лод меша в зависимости от расстояния до камеры
-		const DMModel::LodBlock* block = model->getLod( 10 );
-		if( block != nullptr )
+		RenderQueue& queue = queuePair.second;
+		DMShader* shader = System::materials().get( queuePair.first )->m_shader.get();
+		shader->setPass( 0 );
+		shader->setDrawType( DMShader::by_index );
+		
+		for( const auto LODblock : queue )
 		{
-			//применяем вращение модели
-			if( model->name() == "Knot" || model->name() == "Knot01" )
-				model->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
-
 			//установка матрицы маодели в шейдер
-			m_shaderConstant.setPerObjectBuffer( model->transformBuffer().resultMatrixPtr() );
+			//m_shaderConstant.setPerObjectBuffer( model->transformBuffer().resultMatrixPtr() );
+			m_shaderConstant.setPerObjectBuffer( LODblock->resultMatrix );
 
-			shader->setParams( block->params );
+			shader->setParams( LODblock->params );
 			// отрисовка модели согласно смещению вершин и индексов для главного буфера
-			shader->Render( System::meshes().get( block->mesh )->indexCount(),
-							System::meshes().get( block->mesh )->vertexOffset(),
-							System::meshes().get( block->mesh )->indexOffset() );
+			shader->Render( System::meshes().get( LODblock->mesh )->indexCount(),
+							System::meshes().get( LODblock->mesh )->vertexOffset(),
+							System::meshes().get( LODblock->mesh )->indexOffset() );
 		}
 	}
 	DMD3D::instance().EndScene();
