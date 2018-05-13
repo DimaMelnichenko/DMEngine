@@ -97,9 +97,13 @@ void DMCamera::SetRotation( float x, float y, float z )
 	return;
 }
 
-D3DXVECTOR3 DMCamera::position( ) const
+const D3DXVECTOR3& DMCamera::position( ) const
 {
-	return D3DXVECTOR3( m_positionX, m_positionY, m_positionZ );
+	static D3DXVECTOR3 result;
+	result.x = m_positionX;
+	result.y = m_positionY;
+	result.z = m_positionZ;
+	return result;
 }
 
 void DMCamera::position( D3DXVECTOR3* _vec ) const

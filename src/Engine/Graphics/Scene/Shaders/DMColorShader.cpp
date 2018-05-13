@@ -16,6 +16,9 @@ DMColorShader::~DMColorShader()
 
 bool DMColorShader::innerInitialize()
 {
+	ID3D11Buffer* buffer;
+	DMD3D::instance().createShaderConstantBuffer( sizeof( D3DXVECTOR4 ), m_constantBuffer, nullptr );
+
 	createPhase( 0, -1, 0 );
 	return true;
 }
@@ -45,6 +48,18 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMColorShader::initLayouts()
 	vertex_layout.push_back( polygonLayout );
 
 	return vertex_layout;
+}
+
+void DMColorShader::setParams( const ParamSet& params )
+{
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( m_constantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+
+	memcpy( mappedResource.pData, &params.at("Color").vector() , sizeof( D3DXVECTOR4 ) );
+
+	DMD3D::instance().GetDeviceContext()->Unmap( m_constantBuffer.get(), 0 );
+	ID3D11Buffer* buffer = m_constantBuffer.get();
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 2, 1, &buffer );
 }
 
 }

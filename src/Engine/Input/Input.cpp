@@ -1,22 +1,30 @@
-#include "DMInput.h"
+#include "Input.h"
 
 
-DMInput::DMInput(  )
+Input& getInput()
 {
-	m_directInput = 0;
-	m_keyboard = 0;
-	m_mouse = 0;
+	static std::unique_ptr<Input> inputPtr;
+
+	if( inputPtr == nullptr )
+	{
+		inputPtr.reset( new Input() );
+	}
+
+	return *inputPtr;
 }
 
-DMInput::~DMInput()
+Input::Input(  )
 {
-	Shutdown();
 }
 
-bool DMInput::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeight )
+Input::~Input()
+{
+
+}
+
+bool Input::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeight )
 {
 	HRESULT result;
-
 
 	// Store the screen size which will be used for positioning the mouse cursor.
 	m_screenWidth = screenWidth;
@@ -34,11 +42,14 @@ bool DMInput::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int s
 	}
 
 	// Initialize the direct input interface for the keyboard.
-	result = m_directInput->CreateDevice( GUID_SysKeyboard, &m_keyboard, NULL );
+	IDirectInputDevice8* inputDevice;
+	result = m_directInput->CreateDevice( GUID_SysKeyboard, &inputDevice, NULL );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
+
+	m_keyboard = make_input_ptr<IDirectInputDevice8>( inputDevice );
 
 	// Set the data format.  In this case since it is a keyboard we can use the predefined data format.
 	result = m_keyboard->SetDataFormat( &c_dfDIKeyboard );
@@ -62,11 +73,13 @@ bool DMInput::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int s
 	}
 
 	// Initialize the direct input interface for the mouse.
-	result = m_directInput->CreateDevice( GUID_SysMouse, &m_mouse, NULL );
+	result = m_directInput->CreateDevice( GUID_SysMouse, &inputDevice, NULL );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
+
+	m_mouse = make_input_ptr<IDirectInputDevice8>( inputDevice );
 
 	// Set the data format for the mouse using the pre-defined mouse data format.
 	result = m_mouse->SetDataFormat( &c_dfDIMouse );
@@ -93,35 +106,8 @@ bool DMInput::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int s
 
 }
 
-void DMInput::Shutdown( )
-{
-	// Release the mouse.
-	if( m_mouse )
-	{
-		m_mouse->Unacquire( );
-		m_mouse->Release( );
-		m_mouse = 0;
-	}
 
-	// Release the keyboard.
-	if( m_keyboard )
-	{
-		m_keyboard->Unacquire( );
-		m_keyboard->Release( );
-		m_keyboard = 0;
-	}
-
-	// Release the main interface to direct input.
-	if( m_directInput )
-	{
-		m_directInput->Release( );
-		m_directInput = 0;
-	}
-
-	return;
-}
-
-bool DMInput::Frame( )
+bool Input::Frame( )
 {
 	bool result;
 
@@ -146,7 +132,7 @@ bool DMInput::Frame( )
 	return true;
 }
 
-bool DMInput::ReadKeyboard( )
+bool Input::ReadKeyboard( )
 {
 	HRESULT result;
 
@@ -169,7 +155,7 @@ bool DMInput::ReadKeyboard( )
 	return true;
 }
 
-bool DMInput::ReadMouse( )
+bool Input::ReadMouse( )
 {
 	HRESULT result;
 
@@ -192,7 +178,7 @@ bool DMInput::ReadMouse( )
 	return true;
 }
 
-void DMInput::ProcessInput( )
+void Input::ProcessInput( )
 {
 	// Update the location of the mouse cursor based on the change of the mouse location during the frame.
 	m_mouseX += m_mouseState.lX;
@@ -221,7 +207,7 @@ void DMInput::ProcessInput( )
 
 }
 
-bool DMInput::IsEscapePressed( )
+bool Input::IsEscapePressed( )
 {
 	// Do a bitwise and on the keyboard state to check if the escape key is currently being pressed.
 	if( m_keyboardState[DIK_ESCAPE] & 0x80 )
@@ -232,14 +218,14 @@ bool DMInput::IsEscapePressed( )
 	return false;
 }
 
-void DMInput::GetMouseLocation( double& mouseX, double& mouseY )
+void Input::GetMouseLocation( double& mouseX, double& mouseY )
 {
 	mouseX = m_mouseX;
 	mouseY = m_mouseY;
 	return;
 }
 
-bool DMInput::IsLeftStride( )
+bool Input::IsLeftStride( )
 {
 	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
 	if( m_keyboardState[DIK_A] & 0x80 )
@@ -250,7 +236,7 @@ bool DMInput::IsLeftStride( )
 	return false;
 }
 
-bool DMInput::IsRightStride( )
+bool Input::IsRightStride( )
 {
 	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
 	if( m_keyboardState[DIK_D] & 0x80 )
@@ -261,7 +247,7 @@ bool DMInput::IsRightStride( )
 	return false;
 }
 
-bool DMInput::IsForwarPressed( )
+bool Input::IsForwarPressed( )
 {
 	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
 	if( m_keyboardState[DIK_W] & 0x80 )
@@ -272,7 +258,7 @@ bool DMInput::IsForwarPressed( )
 	return false;
 }
 
-bool DMInput::IsBackwardPressed( )
+bool Input::IsBackwardPressed( )
 {
 	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
 	if( m_keyboardState[DIK_S] & 0x80 )
@@ -283,7 +269,7 @@ bool DMInput::IsBackwardPressed( )
 	return false;
 }
 
-bool DMInput::IsUpMove( )
+bool Input::IsUpMove( )
 {
 	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
 	if( m_keyboardState[DIK_SPACE] & 0x80 )
@@ -294,7 +280,7 @@ bool DMInput::IsUpMove( )
 	return false;
 }
 
-bool DMInput::IsDownMove( )
+bool Input::IsDownMove( )
 {
 	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
 	if( m_keyboardState[DIK_C] & 0x80 )
@@ -305,7 +291,7 @@ bool DMInput::IsDownMove( )
 	return false;
 }
 
-bool DMInput::IsLookUpPressed( )
+bool Input::IsLookUpPressed( )
 {
 	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
 	if( m_keyboardState[DIK_UP] & 0x80 )
@@ -316,7 +302,7 @@ bool DMInput::IsLookUpPressed( )
 	return false;
 }
 
-bool DMInput::IsLookDownPressed( )
+bool Input::IsLookDownPressed( )
 {
 	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
 	if( m_keyboardState[DIK_DOWN] & 0x80 )
@@ -327,7 +313,7 @@ bool DMInput::IsLookDownPressed( )
 	return false;
 }
 
-bool DMInput::IsLookLeftPressed()
+bool Input::IsLookLeftPressed()
 {	
 	if( m_keyboardState[DIK_LEFT] & 0x80 )
 	{
@@ -337,7 +323,7 @@ bool DMInput::IsLookLeftPressed()
 	return false;
 }
 
-bool DMInput::IsLookRightPressed()
+bool Input::IsLookRightPressed()
 {
 	if( m_keyboardState[DIK_RIGHT] & 0x80 )
 	{
@@ -347,7 +333,7 @@ bool DMInput::IsLookRightPressed()
 	return false;
 }
 
-bool DMInput::isKeyPressed( unsigned char _key )
+bool Input::isKeyPressed( unsigned char _key )
 {
 	if( m_keyboardState[_key] & 0x80 )
 	{

@@ -2,6 +2,10 @@
 // Filename: color.ps
 ////////////////////////////////////////////////////////////////////////////////
 
+cbuffer ShaderConstantBuffer : register( b2 )
+{
+	float4 ObjectColor;
+}
 
 //////////////
 // TYPEDEFS //
@@ -16,6 +20,6 @@ struct PixelInputType
 ////////////////////////////////////////////////////////////////////////////////
 float4 main(PixelInputType input) : SV_TARGET
 {
-    return float4( 1.0f, 0.0f, 0.0f, 1.0f );
+    return ObjectColor;
 }
 

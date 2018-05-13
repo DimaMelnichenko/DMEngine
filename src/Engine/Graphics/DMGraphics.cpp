@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <D3DX11tex.h>
 #include "Shaders\Layout.h"
+#include "Engine\Input\Input.h"
 
 
 namespace GS
@@ -68,8 +69,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	// Создаем основную камеру
 	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 1.0f, 500.0f );
-	m_cameraPool["main"].SetPosition( 0.0, 2.0, -30.0 );
-	m_cameraPool["main"].SetDirection( 0.0, -2.0, 30.0 );
+	m_cameraPool["main"].SetPosition( 0.0, 2.0, -3.0 );
+	m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
 	m_timer.Initialize();
 
@@ -89,7 +90,73 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 bool DMGraphics::Frame()
 {
 	m_timer.Frame();
+	
+
+
+	//update main camera position
+	Input& input = getInput();
+	input.Frame();
+
+	if( input.IsEscapePressed() )
+		return false;
+
+	static float cameraX = m_cameraPool["main"].position().x;
+	static float cameraY = m_cameraPool["main"].position().y;
+	static float cameraZ = m_cameraPool["main"].position().z;
+
+	if( input.IsForwarPressed() )
+	{
+		cameraZ += 0.01 * m_timer.GetTime();
+	}
+
+	if( input.IsBackwardPressed() )
+	{
+		cameraZ -= 0.01 * m_timer.GetTime();
+	}
+
+	if( input.IsRightStride() )
+	{
+		cameraX += 0.01 * m_timer.GetTime();
+	}
+
+	if( input.IsLeftStride() )
+	{
+		cameraX -= 0.01 * m_timer.GetTime();
+	}
+
+	if( input.IsUpMove() )
+	{
+		cameraY += 0.01 * m_timer.GetTime();
+	}
+
+	if( input.IsDownMove() )
+	{
+		cameraY -= 0.01 * m_timer.GetTime();
+	}
+
+	static bool keyUp = true;
+	static bool Q_triggered = false;
+
+	if( input.isKeyPressed( DIK_Q ) && keyUp )
+	{
+		keyUp = false;
+		Q_triggered = !Q_triggered;
+
+		if( Q_triggered )
+			DMD3D::instance().TurnOnWireframe();
+		else
+			DMD3D::instance().TurnOffWireframe();
+	}
+
+	if( !input.isKeyPressed( DIK_Q ) && !keyUp )
+	{
+		keyUp = true;
+	}
+
+	m_cameraPool["main"].SetPosition( cameraX, cameraY, cameraZ );
+
 	Render();
+
 	return true;
 }
 
@@ -97,7 +164,7 @@ bool DMGraphics::Render()
 {
 	DMD3D::instance().BeginScene( 0.0f, 0.0f, 0.0f, 1.0f );
 
-	//DMD3D::instance().TurnOnWireframe();
+	
 
 	// Установка буфера вершин и индексов
 	m_vertexPool.setBuffers();
@@ -120,7 +187,7 @@ bool DMGraphics::Render()
 	for( const auto& pair : System::models() )
 	{
 		static D3DXVECTOR3 lenVec;
-		static D3DXVECTOR3 camPos = m_cameraPool["main"].position();
+		const D3DXVECTOR3& camPos = m_cameraPool["main"].position();
 
 		pair.second->transformBuffer().position( &lenVec );
 		D3DXVec3Subtract( &lenVec, &lenVec, &camPos );

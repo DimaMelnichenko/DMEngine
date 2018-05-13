@@ -43,3 +43,4 @@ com_unique_ptr<T> make_com_ptr( T* p )
 void str_split( const std::string& str, std::vector<std::string>& tokens, const std::string& delimiters = " " );
 
 D3DXVECTOR3 strToVec3( const std::string& str );
+D3DXVECTOR4 strToVec4( const std::string& str );

@@ -29,7 +29,7 @@ DMModel& DMModel::operator=( DMModel&& other )
 
 void DMModel::addLod( float range, const DMModel::LodBlock& block )
 {
-	m_lods.insert( { range , block } );
+	m_lods.push_back( { range , block } );
 }
 
 const DMModel::LodBlock* DMModel::getLod( float range )

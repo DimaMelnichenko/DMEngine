@@ -1,4 +1,5 @@
 #include "DMSystem.h"
+#include "Engine\Input\Input.h"
 
 
 DMSystem::DMSystem(  )
@@ -22,7 +23,10 @@ bool DMSystem::Initialize( )
 	// Initialize the windows api.
 	InitializeWindows( screenWidth, screenHeight );
 
-	return m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd, m_config );
+	if( !m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd, m_config ) )
+		return false;
+
+	return getInput().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight );
 }
 
 void DMSystem::Run( )

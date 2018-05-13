@@ -35,3 +35,17 @@ D3DXVECTOR3 strToVec3( const std::string& str )
 
 	return D3DXVECTOR3( 0.0, 0.0, 0.0 );
 }
+
+D3DXVECTOR4 strToVec4( const std::string& str )
+{
+	std::vector<std::string> vecString;
+	str_split( str, vecString, "," );
+
+	if( vecString.size() )
+		return D3DXVECTOR4( ::atof( vecString[0].c_str() ), 
+							::atof( vecString[1].c_str() ), 
+							::atof( vecString[2].c_str() ),
+							::atof( vecString[3].c_str() ) );
+
+	return D3DXVECTOR4( 0.0, 0.0, 0.0, 1.0 );
+}

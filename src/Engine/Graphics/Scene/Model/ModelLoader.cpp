@@ -76,9 +76,13 @@ ParamSet ModelLoader::loadMaterialParam( ResourceMetaFile& metaResource, const s
 		std::string paramType = metaResource.get<std::string>( paramBlock, "Type" );
 		std::string paramValue = metaResource.get<std::string>( paramBlock, "Value" );
 
-		if( System::textures().load( paramValue ) )
+		if( paramType == "texture" && System::textures().load( paramValue ) )
 		{
 			paramSet.insert( { paramName, Parameter( System::textures().id( paramValue ) ) } );
+		}
+		else if( paramType == "vec4" )
+		{
+			paramSet.insert( { paramName, Parameter( strToVec4( paramValue ) ) } );
 		}
 	}
 

@@ -40,7 +40,7 @@ public:
 	void copyTo( DMModel& );
 private:
 	
-	std::unordered_map<float, LodBlock> m_lods;
+	std::vector<std::pair<float, LodBlock>> m_lods;
 
 	DMTransformBuffer m_transformBuffer;
 };

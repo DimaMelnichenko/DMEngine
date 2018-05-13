@@ -27,7 +27,7 @@ public:
 	void Render();
 	void RenderReflection( float heigh );
 
-	D3DXVECTOR3 position( ) const;
+	const D3DXVECTOR3& position( ) const;
 	void position( D3DXVECTOR3* ) const;
 	D3DXVECTOR3 GetRotation( ) const;
 	

@@ -15,15 +15,20 @@
 /////////////
 #pragma comment(lib, "dinput8.lib")
 #pragma comment(lib, "dxguid.lib")
+#include "Utils\utilites.h"
+#include "Utils.h"
 
-class DMInput
+
+
+class Input
 {
+private:
+	friend Input& getInput();
+
 public:
-	DMInput();
-	~DMInput();
+	~Input();
 
 	bool Initialize( HINSTANCE, HWND, int, int );
-	void Shutdown( );
 	bool Frame( );
 
 	void GetMouseLocation( double&, double& );
@@ -46,12 +51,13 @@ private:
 	bool ReadMouse( );
 	void ProcessInput( );
 
-	DMInput( const DMInput& ) = delete;
+	Input( const Input& ) = delete;
+	Input();
 
 private:
-	IDirectInput8* m_directInput;
-	IDirectInputDevice8* m_keyboard;
-	IDirectInputDevice8* m_mouse;
+	com_unique_ptr<IDirectInput8> m_directInput;
+	com_input_ptr<IDirectInputDevice8> m_keyboard;
+	com_input_ptr<IDirectInputDevice8> m_mouse;
 
 	unsigned char m_keyboardState[256];
 	DIMOUSESTATE m_mouseState;
