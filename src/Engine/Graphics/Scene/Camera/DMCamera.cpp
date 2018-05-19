@@ -1,19 +1,15 @@
 #include "DMCamera.h"
+#include "Engine\Input\Input.h"
 
-
-DMCamera::DMCamera(  )
-{
-	m_positionX = 0.0f;
-	m_positionY = 0.0f;
-	m_positionZ = 0.0f;
-
+DMCamera::DMCamera(  ) :
+	m_Eye( D3DXVECTOR3( 0.0, 0.0, 0.0 ) )
+{	
 	m_rotationX = 0.0f;
 	m_rotationY = 0.0f;
 	m_rotationZ = 0.0f;
 
 	m_view_direction = D3DXVECTOR3( 0.0, 0.0, 1.0 );
 }
-
 
 DMCamera::~DMCamera()
 {
@@ -37,7 +33,6 @@ void DMCamera::Initialize( CameraType _type, float width, float height, float _n
 		default:
 			break;
 	}
-	
 }
 
 void DMCamera::projectionMatrix( D3DXMATRIX* _matrix ) const
@@ -45,24 +40,24 @@ void DMCamera::projectionMatrix( D3DXMATRIX* _matrix ) const
 	memcpy( _matrix, &m_projection_matrix, sizeof( D3DXMATRIX ) );
 }
 
-D3DXMATRIX DMCamera::projectionMatrix() const
+const D3DXMATRIX& DMCamera::projectionMatrix() const
 {
 	return m_projection_matrix;
 }
 
 void DMCamera::SetPosition( float x, float y, float z )
 {
-	m_positionX = x;
-	m_positionY = y;
-	m_positionZ = z;
+	m_Eye.x = x;
+	m_Eye.y = y;
+	m_Eye.z = z;
 	return;
 }
 
 void DMCamera::SetPosition( const D3DXVECTOR3 & vec )
 {
-	m_positionX = vec.x;
-	m_positionY = vec.y;
-	m_positionZ = vec.z;
+	m_Eye.x = vec.x;
+	m_Eye.y = vec.y;
+	m_Eye.z = vec.z;
 	return;
 }
 
@@ -100,17 +95,13 @@ void DMCamera::SetRotation( float x, float y, float z )
 const D3DXVECTOR3& DMCamera::position( ) const
 {
 	static D3DXVECTOR3 result;
-	result.x = m_positionX;
-	result.y = m_positionY;
-	result.z = m_positionZ;
+	memcpy( &result, &m_mCameraWorld._41, sizeof( D3DXVECTOR3 ) );
 	return result;
 }
 
-void DMCamera::position( D3DXVECTOR3* _vec ) const
+void DMCamera::position( D3DXVECTOR3* vec ) const
 {
-	_vec->x = m_positionX;
-	_vec->y = m_positionY;
-	_vec->z = m_positionZ;
+	memcpy( vec, &m_mCameraWorld._41, sizeof( D3DXVECTOR3 ) );
 }
 
 D3DXVECTOR3 DMCamera::GetRotation( ) const
@@ -118,30 +109,64 @@ D3DXVECTOR3 DMCamera::GetRotation( ) const
 	return D3DXVECTOR3( m_rotationX, m_rotationY, m_rotationZ );
 }
 
-void DMCamera::Render( )
+void DMCamera::readKeyboard( D3DXVECTOR3& offsetPosition )
 {
-	D3DXVECTOR3 up, position, lookAt;	
+	//update main camera position
+	Input& input = getInput();
+
+	if( input.IsForwarPressed() )
+	{
+		offsetPosition.z += 1.0f;
+	}
+
+	if( input.IsBackwardPressed() )
+	{
+		offsetPosition.z -= 1.0f;
+	}
+
+	if( input.IsRightStride() )
+	{
+		offsetPosition.x += 1.0f;
+	}
+
+	if( input.IsLeftStride() )
+	{
+		offsetPosition.x -= 1.0f;
+	}
+
+	if( input.IsUpMove() )
+	{
+		offsetPosition.y += 1.0f;
+	}
+
+	if( input.IsDownMove() )
+	{
+		offsetPosition.y -= 1.0f;
+	}
+}
+
+void DMCamera::Update( float elapsedTime )
+{	
+	float yaw, pitch, roll;
 	D3DXMATRIX rotationMatrix;
-
-
 	// Setup the vector that points upwards.
-	up.x = 0.0f;
-	up.y = 1.0f;
-	up.z = 0.0f;
-	
-	// Setup the position of the camera in the world.
-	position.x = m_positionX;
-	position.y = m_positionY;
-	position.z = m_positionZ;
-	/*
+	D3DXVECTOR3 up( 0.0, 1.0, 0.0 );
+
 	// Setup where the camera is looking by default.
-	lookAt.x = 0.0f;
-	lookAt.y = 0.0f;
-	lookAt.z = 1.0f;
+	D3DXVECTOR3 lookAt( 0.0, 0.0, 1.0 );
+
+	D3DXVECTOR3 posDirection(0.0, 0.0, 0.0);
+	readKeyboard( posDirection );
+	D3DXVECTOR3 vPosDelta = posDirection * elapsedTime * 0.01;
 
 	// Set the yaw (Y axis), pitch (X axis), and roll (Z axis) rotations in radians.
-	pitch = m_rotationX * 0.0174532925f;
-	yaw = m_rotationY * 0.0174532925f;
+	double mouseX;
+	double mouseY;
+	getInput().GetMouseLocation( mouseX, mouseY );
+
+	float mouseForse = 0.1;
+	pitch = ( m_rotationX + mouseY * mouseForse ) * 0.0174532925f;
+	yaw = ( m_rotationY + mouseX * mouseForse ) * 0.0174532925f;
 	roll = m_rotationZ * 0.0174532925f;
 
 	// Create the rotation matrix from the yaw, pitch, and roll values.
@@ -149,22 +174,25 @@ void DMCamera::Render( )
 
 	// Transform the lookAt and up vector by the rotation matrix so the view is correctly rotated at the origin.
 	D3DXVec3TransformCoord( &lookAt, &lookAt, &rotationMatrix );
-	//D3DXVec3TransformCoord( &up, &up, &rotationMatrix );
+	D3DXVec3TransformCoord( &up, &up, &rotationMatrix );
 
-	m_view_direction = lookAt;
-	*/
+	D3DXVec3TransformCoord( &vPosDelta, &vPosDelta, &rotationMatrix );
+	m_Eye += vPosDelta;
+
 	// Translate the rotated camera position to the location of the viewer.
-	lookAt = position + m_view_direction;
+	lookAt = m_Eye + lookAt;
 
 	// Finally create the view matrix from the three updated vectors.
-	D3DXMatrixLookAtLH( &m_viewMatrix, &position, &lookAt, &up );
+	D3DXMatrixLookAtLH( &m_viewMatrix, &m_Eye, &lookAt, &up );
+
+	D3DXMatrixInverse( &m_mCameraWorld, NULL, &m_viewMatrix );
 
 	return;
 }
 
 void DMCamera::viewDirection( D3DXVECTOR3* vec ) const
 {
-	memcpy( vec, &m_view_direction, sizeof( D3DXVECTOR3 ) );
+	memcpy( vec, &m_mCameraWorld._31, sizeof( D3DXVECTOR3 ) );
 }
 
 void DMCamera::SetDirection( const D3DXVECTOR3& vec )
@@ -203,9 +231,9 @@ void DMCamera::RenderReflection( float height )
 	up.z = 0.0f;
 
 	// Setup the position of the camera in the world.  For planar reflection invert the Y position of the camera.
-	position.x = m_positionX;
-	position.y = -m_positionY + ( height * 2.0f );
-	position.z = m_positionZ;
+	position.x = m_Eye.x;
+	position.y = -m_Eye.y + ( height * 2.0f );
+	position.z = m_Eye.z;
 
 	// Setup where the camera is looking by default.
 	lookAt.x = 0.0f;
@@ -239,7 +267,7 @@ void DMCamera::GetReflectionViewMatrix( D3DXMATRIX& viewMatrix ) const
 	return;
 }
 
-D3DXMATRIX DMCamera::viewMatrix() const
+const D3DXMATRIX& DMCamera::viewMatrix() const
 {
 	return m_viewMatrix;
 }

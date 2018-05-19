@@ -3,6 +3,7 @@
 
 
 DMSystem::DMSystem(  )
+	: m_exit(false)
 {
 
 }
@@ -26,7 +27,15 @@ bool DMSystem::Initialize( )
 	if( !m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd, m_config ) )
 		return false;
 
-	return getInput().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight );
+	if( !getInput().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight ) )
+		return false;
+
+	getInput().notifier().registerTrigger( DIK_ESCAPE, [this]( bool )
+	{
+		m_exit = true;
+	} );
+
+	return true;
 }
 
 void DMSystem::Run( )
@@ -46,12 +55,15 @@ void DMSystem::Run( )
 		}
 
 		// If windows signals to end the application then exit out.
-		if( msg.message == WM_QUIT )
+		if( msg.message == WM_QUIT || m_exit )
 		{
 			break;
 		}
 		else
 		{
+			if( !getInput().Frame() )
+				break;
+
 			// Frame processing.
 			if( !m_graphics.Frame() )
 			{

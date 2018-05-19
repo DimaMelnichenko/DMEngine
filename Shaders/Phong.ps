@@ -10,6 +10,7 @@
 /////////////
 Texture2D g_texAlbedo : register(t0);
 Texture2D g_texNormal : register(t1);
+Texture2D g_texShiness : register(t2);
 
 
 //////////////
@@ -38,6 +39,8 @@ float4 main(PixelInputType input) : SV_TARGET
 	
     // Sample the pixel color from the texture using the sampler at this texture coordinate location.
     float4 albedo = g_texAlbedo.Sample( g_SamplerAnisotropicWrap, input.tex );
+	
+	float kShininess = g_texShiness.Sample( g_SamplerLinearWrap, input.tex ).r * 100.0;
 	
 	float3 n = normalize( input.normal );
 	
@@ -68,16 +71,22 @@ float4 main(PixelInputType input) : SV_TARGET
 		
 		//if( fade < 0.0001 )
 		//	continue;
-		float NdotL    = max( dot( n, l ), 0.0 );
+		/*float NdotL    = max( dot( n, l ), 0.0 );
 		float NdotV    = max( dot( n, v ), 0.0 );
 		float3 h = normalize(l + v);
 		float rougness = 0.99;
 		specSum += saturate( D_BlinnPhong( rougness, max( dot( n, h ), 0.0 ) ) * ( 4.0 * NdotL * NdotV ) );
+		*/
+		
 		float3 diffuse = ( max( dot( n, l ), 0.0f ) / PI );
 		duffuseSum += ( diffuse  * light.lightColor ) * fade;
+		float kEnergyConservation = ( 8.0 + kShininess ) / ( 8.0 * PI ); 
+		float3 h = normalize(l + v);
+		specSum = kEnergyConservation * pow(max(dot(n, h), 0.0), kShininess);
+		FinalLight.rgb += duffuseSum * albedo.rgb + albedo.rgb * saturate( specSum );
 	}	
 	
-	FinalLight.rgb = duffuseSum * albedo.rgb + saturate(specSum)*albedo.rgb;
+	
 	
 	//FinalLight.rgb = pow(FinalLight.rgb, 1.0/2.0 );
 	

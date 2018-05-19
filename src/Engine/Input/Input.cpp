@@ -129,6 +129,8 @@ bool Input::Frame( )
 	// Process the changes in the mouse and keyboard.
 	ProcessInput( );
 
+	m_keyNotifier.process( m_keyboardState );
+
 	return true;
 }
 
@@ -341,4 +343,9 @@ bool Input::isKeyPressed( unsigned char _key )
 	}
 
 	return false;
+}
+
+KeyEventNotifier& Input::notifier()
+{
+	return m_keyNotifier;
 }

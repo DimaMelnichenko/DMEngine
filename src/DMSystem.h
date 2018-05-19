@@ -31,4 +31,5 @@ private:
 	DMEngineProcessor m_engineProcessor;
 	GS::DMGraphics m_graphics;
 	Config m_config;
+	bool m_exit;
 };

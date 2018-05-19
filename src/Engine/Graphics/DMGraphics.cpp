@@ -6,7 +6,8 @@
 #include <algorithm>
 #include <D3DX11tex.h>
 #include "Shaders\Layout.h"
-#include "Engine\Input\Input.h"
+#include "../Input/Input.h"
+
 
 
 namespace GS
@@ -84,6 +85,14 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	m_samplerState.initialize();
 
+	getInput().notifier().registerTrigger( DIK_Q, [](bool value)
+	{
+		if( value )
+			DMD3D::instance().TurnOnWireframe();
+		else
+			DMD3D::instance().TurnOffWireframe();
+	} );
+
 	return true;
 }
 
@@ -91,69 +100,7 @@ bool DMGraphics::Frame()
 {
 	m_timer.Frame();
 	
-
-
-	//update main camera position
-	Input& input = getInput();
-	input.Frame();
-
-	if( input.IsEscapePressed() )
-		return false;
-
-	static float cameraX = m_cameraPool["main"].position().x;
-	static float cameraY = m_cameraPool["main"].position().y;
-	static float cameraZ = m_cameraPool["main"].position().z;
-
-	if( input.IsForwarPressed() )
-	{
-		cameraZ += 0.01 * m_timer.GetTime();
-	}
-
-	if( input.IsBackwardPressed() )
-	{
-		cameraZ -= 0.01 * m_timer.GetTime();
-	}
-
-	if( input.IsRightStride() )
-	{
-		cameraX += 0.01 * m_timer.GetTime();
-	}
-
-	if( input.IsLeftStride() )
-	{
-		cameraX -= 0.01 * m_timer.GetTime();
-	}
-
-	if( input.IsUpMove() )
-	{
-		cameraY += 0.01 * m_timer.GetTime();
-	}
-
-	if( input.IsDownMove() )
-	{
-		cameraY -= 0.01 * m_timer.GetTime();
-	}
-
-	static bool keyUp = true;
-	static bool Q_triggered = false;
-
-	if( input.isKeyPressed( DIK_Q ) && keyUp )
-	{
-		keyUp = false;
-		Q_triggered = !Q_triggered;
-
-		if( Q_triggered )
-			DMD3D::instance().TurnOnWireframe();
-		else
-			DMD3D::instance().TurnOffWireframe();
-	}
-
-	if( !input.isKeyPressed( DIK_Q ) && !keyUp )
-	{
-		keyUp = true;
-	}
-
-	m_cameraPool["main"].SetPosition( cameraX, cameraY, cameraZ );
+	m_cameraController.frame( m_timer.GetTime() );
 
 	Render();
 
@@ -164,15 +111,13 @@ bool DMGraphics::Render()
 {
 	DMD3D::instance().BeginScene( 0.0f, 0.0f, 0.0f, 1.0f );
 
-	
+	// Подготовка view, proj матриц
+	m_cameraPool["main"].Update( m_timer.GetTime() );
 
 	// Установка буфера вершин и индексов
 	m_vertexPool.setBuffers();
 
 	m_samplerState.setDefaultSmaplers();
-
-	// Подготовка view, proj матриц
-	m_cameraPool["main"].Render();
 
 	int lightCount = m_lightDriver.setBuffer( 15, SRVType::ps );
 
@@ -239,6 +184,7 @@ bool DMGraphics::Render()
 		{
 			//установка матрицы маодели в шейдер
 			//m_shaderConstant.setPerObjectBuffer( model->transformBuffer().resultMatrixPtr() );
+			const std::string& meshName = System::meshes().get( LODblock->mesh )->name();
 			m_shaderConstant.setPerObjectBuffer( LODblock->resultMatrix );
 
 			shader->setParams( LODblock->params );

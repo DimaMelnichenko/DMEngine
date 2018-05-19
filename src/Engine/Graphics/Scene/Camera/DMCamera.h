@@ -24,7 +24,7 @@ public:
 	void SetRotation( float, float, float );
 	void SetDirection( const D3DXVECTOR3& );
 	void SetDirection( float, float, float );
-	void Render();
+	void Update( float elapsedTime );
 	void RenderReflection( float heigh );
 
 	const D3DXVECTOR3& position( ) const;
@@ -32,10 +32,10 @@ public:
 	D3DXVECTOR3 GetRotation( ) const;
 	
 	void viewMatrix( D3DXMATRIX* ) const;
-	D3DXMATRIX viewMatrix() const;
+	const D3DXMATRIX& viewMatrix() const;
 
 	void projectionMatrix( D3DXMATRIX* ) const;
-	D3DXMATRIX projectionMatrix( ) const;
+	const D3DXMATRIX& projectionMatrix( ) const;
 	
 	void GetReflectionViewMatrix( D3DXMATRIX& ) const;
 	void viewDirection( D3DXVECTOR3* ) const;	
@@ -43,11 +43,14 @@ public:
 	CameraType type() const;
 
 private:
+	void readKeyboard( D3DXVECTOR3& );
+private:
 	CameraType m_type;
-	float m_positionX, m_positionY, m_positionZ;
+	D3DXVECTOR3 m_Eye;
 	float m_rotationX, m_rotationY, m_rotationZ;
 	D3DXMATRIX m_viewMatrix, m_reflectionViewMatrix;
 	D3DXMATRIX m_projection_matrix;
 	D3DXVECTOR3 m_view_direction;
+	D3DXMATRIX m_mCameraWorld;
 };
 

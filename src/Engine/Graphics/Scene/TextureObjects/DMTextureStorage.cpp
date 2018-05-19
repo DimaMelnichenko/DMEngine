@@ -20,8 +20,12 @@ bool DMTextureStorage::load( const std::string& name )
 
 	std::string fullPath = path() + "\\" + name;
 
-	std::unique_ptr<DMTexture>  texture( new DMTexture( nextId(), m_textureLoader.loadFromFile( fullPath.data() ) ));
+	ID3D11ShaderResourceView* srv = m_textureLoader.loadFromFile( fullPath.data() );
+	if( !srv )
+		return false;
 
+	std::unique_ptr<DMTexture>  texture( new DMTexture( nextId(), srv ));
+	
 	insertResource( name, std::move( texture ) );
 
 	return true;

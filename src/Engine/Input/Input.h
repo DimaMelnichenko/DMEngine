@@ -17,6 +17,7 @@
 #pragma comment(lib, "dxguid.lib")
 #include "Utils\utilites.h"
 #include "Utils.h"
+#include "KeyEventNotifier.h"
 
 
 
@@ -46,6 +47,8 @@ public:
 	bool IsLookLeftPressed( );
 	bool IsLookRightPressed( );
 
+	KeyEventNotifier& notifier();
+
 private:
 	bool ReadKeyboard( );
 	bool ReadMouse( );
@@ -59,10 +62,12 @@ private:
 	com_input_ptr<IDirectInputDevice8> m_keyboard;
 	com_input_ptr<IDirectInputDevice8> m_mouse;
 
-	unsigned char m_keyboardState[256];
+	uint8_t m_keyboardState[256];
 	DIMOUSESTATE m_mouseState;
 
 	double m_screenWidth, m_screenHeight;
 	double m_mouseX, m_mouseY;
+
+	KeyEventNotifier m_keyNotifier;
 };
 

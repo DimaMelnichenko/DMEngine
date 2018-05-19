@@ -21,6 +21,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\Material.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\DMScene.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Mesh\AbstractMesh.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Camera\CameraController.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\ConstantBuffers.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMColorShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\PhongLight.cpp" />
@@ -58,6 +59,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\VertexPool.cpp" />
     <ClCompile Include="src\Engine\Graphics\System.cpp" />
     <ClCompile Include="src\Engine\Input\Input.cpp" />
+    <ClCompile Include="src\Engine\Input\KeyEventNotifier.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\Common\Utils\DMCpu.cpp" />
     <ClCompile Include="src\Common\Utils\DMFps.cpp" />
@@ -76,6 +78,7 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\Material.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\DMScene.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Mesh\AbstractMesh.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Camera\CameraController.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\ConstantBuffers.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMColorShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\PhongLight.h" />
@@ -122,6 +125,7 @@
     <ClInclude Include="src\Common\Utils\DMTimer.h" />
     <ClInclude Include="src\Common\Utils\utilites.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.h" />
+    <ClInclude Include="src\Engine\Input\KeyEventNotifier.h" />
     <ClInclude Include="src\Engine\Input\Utils.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

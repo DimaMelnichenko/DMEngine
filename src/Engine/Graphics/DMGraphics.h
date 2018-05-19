@@ -24,6 +24,7 @@
 #include "Shaders\ConstantBuffers.h"
 #include "Light\DMLightDriver.h"
 #include "D3D\DMSamplerState.h"
+#include "Camera\CameraController.h"
 
 
 namespace GS
@@ -65,6 +66,8 @@ private:
 
 	using RenderQueue = std::vector<const DMModel::LodBlock*>;
 	std::unordered_map<uint32_t, RenderQueue> m_renderQueues;
+
+	CameraController m_cameraController;
 };
 
 }
