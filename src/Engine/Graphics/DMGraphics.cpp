@@ -146,24 +146,6 @@ bool DMGraphics::Render()
 			m_renderQueues[block->material].push_back( block );
 		}
 	}
-	
-
-	/*std::sort( resultVector.begin(), resultVector.end(), [this]( const DMModel* modelLeft, const DMModel* modelRight ){
-		
-		static D3DXVECTOR3 lenVec;
-		static D3DXVECTOR3 camPos = m_cameraPool["main"].position();
-
-		modelLeft->transformBuffer().position( &lenVec );
-		D3DXVec3Subtract( &lenVec, &lenVec, &camPos );
-		float lenLeft = D3DXVec3Length( &lenVec );
-
-		modelRight->transformBuffer().position( &lenVec );
-		D3DXVec3Subtract( &lenVec, &lenVec, &camPos );
-		float lenRight = D3DXVec3Length( &lenVec );
-
-		return lenLeft < lenRight;
-	} );*/
-
 
 	// эта вся хрень для вращения
 	double elapsedTime = m_timer.GetTime();

@@ -187,8 +187,8 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	else
 	{
 		// If windowed then set it to 1024x1024 resolution.
-		screenWidth = 1027;
-		screenHeight = 768;
+		screenWidth = m_config.screenWidth();
+		screenHeight = m_config.screenHeight();
 
 		// Place the window in the middle of the screen.
 #ifdef HOME_RUN

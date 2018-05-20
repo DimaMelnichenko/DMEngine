@@ -1,5 +1,6 @@
 #include "DMLightDriver.h"
 #include "ResourceMetaFile.h"
+#include <algorithm>
 
 
 DMLightDriver::DMLightDriver()
@@ -29,6 +30,12 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 {	
 	LightBuffer lightBuffer;
 	m_lightParamBuffer.clear();
+
+	std::sort( m_light_list.begin(), m_light_list.end(), []( const auto& a, const auto& b )
+	{
+		return (int)a->type() < (int)b->type();
+	} );
+
 	for( auto& light : m_light_list )
 	{	
 		D3DXMATRIX mat = light->m_transformBuffer.resultMatrix();

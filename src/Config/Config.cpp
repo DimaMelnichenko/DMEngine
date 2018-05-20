@@ -22,31 +22,13 @@ bool Config::readConfig( const std::string& file )
 
 		m_FullScreen = configFile.get<bool>( "General", "FullScreen" );
 		m_VSync = configFile.get<bool>( "General", "VSync" );
-		m_ScreenDepth = configFile.get<bool>( "General", "ScreenDepth" );
-		m_ScreenNear = configFile.get<bool>( "General", "ScreenNear" );
+		m_ScreenDepth = configFile.get<float>( "General", "ScreenDepth" );
+		m_ScreenNear = configFile.get<float>( "General", "ScreenNear" );
+		m_screenWidth = configFile.get<float>( "General", "ScreenWidth" );
+		m_screenHeight = configFile.get<float>( "General", "ScreenHeight" );
 
 		return true;
 	}
 
 	return false;
-}
-
-bool Config::fullScreen()
-{
-	return m_FullScreen;
-}
-
-bool Config::vSync()
-{
-	return m_VSync;
-}
-
-float Config::ScreenDepth()
-{
-	return m_ScreenDepth;
-}
-
-float Config::ScreenNear()
-{
-	return m_ScreenNear;
 }
