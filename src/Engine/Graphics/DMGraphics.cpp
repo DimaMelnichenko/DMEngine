@@ -50,19 +50,17 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	//	return false;
 	if( !System::models().load( "box.ini" ) )
 		return false;
-	if( !System::models().load( "knot.ini" ) )
+	if( !System::models().load( "knot.xml" ) )
 		return false;
 	if( !System::models().load( "plane.ini" ) )
 		return false;
 	if( !System::models().load( "venus.ini" ) )
 		return false;
-	//System::models().load( "tree.ini" );
+	if( !System::models().load( "skysphere.xml" ) )
+		return false;
 	
 
-	//if( System::models().clone( "box.ini", "box_clone" ) )
-	//	System::models().get("box_clone")->transformBuffer().setPosition( 0.0, 4.0, 0.0 );
-
-	if( System::models().clone( "knot.ini", "Knot01" ) )
+	if( System::models().clone( "Knot", "Knot01" ) )
 		System::models().get( "Knot01" )->transformBuffer().setPosition( 6.0, 4.0, -8.0 );
 
 	// Создаем общий буфер вершин и индексов
@@ -123,6 +121,10 @@ bool DMGraphics::Render()
 
 	//установка матриц в шейдер константы
 	m_shaderConstant.setPerFrameBuffer( m_cameraPool["main"], lightCount );
+
+	//render sky
+	renderSky();
+
 	
 	for( auto& queue : m_renderQueues )
 	{
@@ -152,7 +154,7 @@ bool DMGraphics::Render()
 	static double counter = 0.0;
 	counter += 0.001 * elapsedTime;
 
-	System::models().get( "knot.ini" )->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
+	System::models().get( "Knot" )->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
 
 	// Перебираем все очереди
 	for( auto& queuePair : m_renderQueues )
@@ -177,6 +179,36 @@ bool DMGraphics::Render()
 		}
 	}
 	DMD3D::instance().EndScene();
+
+	return true;
+}
+
+bool DMGraphics::renderSky()
+{
+
+	DMD3D::instance().TurnZBufferOff();
+	DMD3D::instance().TurnBackFacesRS();
+
+	DMShader* shader = System::materials().get( "Texture" )->m_shader.get();
+	shader->setPass( 0 );
+	shader->setDrawType( DMShader::by_index );
+
+	DMModel* model = System::models().get( "SkySphere" ).get();
+	model->transformBuffer().setPosition( m_cameraPool["main"].position() );
+
+	const DMModel::LodBlock* block = model->getLod( 0.0f );
+	const std::string& meshName = System::meshes().get( block->mesh )->name();
+	m_shaderConstant.setPerObjectBuffer( block->resultMatrix );
+
+	shader->setParams( block->params );
+	// отрисовка модели согласно смещению вершин и индексов для главного буфера
+	shader->Render( System::meshes().get( block->mesh )->indexCount(),
+					System::meshes().get( block->mesh )->vertexOffset(),
+					System::meshes().get( block->mesh )->indexOffset() );
+
+
+	DMD3D::instance().TurnDefaultRS();
+	DMD3D::instance().TurnZBufferOn();
 
 	return true;
 }

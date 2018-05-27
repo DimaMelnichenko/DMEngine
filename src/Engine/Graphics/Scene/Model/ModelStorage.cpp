@@ -26,7 +26,7 @@ bool ModelStorage::load( const std::string& name )
 	if( !model )
 		return false;
 
-	insertResource( name, std::move( model ) );
+	insertResource( model->name(), std::move( model ) );
 
 	return true;
 }

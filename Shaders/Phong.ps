@@ -40,7 +40,7 @@ float4 main(PixelInputType input) : SV_TARGET
     // Sample the pixel color from the texture using the sampler at this texture coordinate location.
     float4 albedo = g_texAlbedo.Sample( g_SamplerAnisotropicWrap, input.tex );
 	
-	float kShininess = g_texShiness.Sample( g_SamplerLinearWrap, input.tex ).r * 1000.0;
+	float kShininess = g_texShiness.Sample( g_SamplerLinearWrap, input.tex ).r * 100.0;
 	
 	float3 n = normalize( input.normal );
 	
@@ -58,7 +58,7 @@ float4 main(PixelInputType input) : SV_TARGET
 		if( light.type == 0 )
 		{
 			l = normalize( light.lightPos );
-			fade = 0.01;
+			fade = 1.00;
 		}
 		else
 		{

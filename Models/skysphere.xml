@@ -1,0 +1,20 @@
+<root>
+	<object Name="SkySphere">
+		<position>-8.0,4.0,0.0</position>
+		<scale>10</scale>
+		<lods>
+			<lod>
+				<mesh>Sphere36.bin</mesh>
+				<range>200</range>
+				<material>Texture</material>
+			</lod>
+		</lods>
+		<materials>
+			<material Name="Texture" Shader="Texture">
+				<params>
+					<param Name="Albedo" Type="texture">sky3.jpg</param>
+				</params>
+			</material>
+		</materials>
+	</object>
+</root>

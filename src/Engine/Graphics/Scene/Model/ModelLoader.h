@@ -3,6 +3,11 @@
 #include "DMModel.h"
 #include "ResourceMetaFile.h"
 
+namespace tinyxml2
+{
+	class XMLElement;
+}
+
 namespace GS
 {
 
@@ -16,6 +21,17 @@ public:
 
 private:
 	ParamSet loadMaterialParam( ResourceMetaFile&, const std::string& matSection, int32_t count );
+
+
+	struct MaterialParam
+	{
+		std::string shaderName;
+		ParamSet param;
+	};
+
+	void loadMaterials( std::unordered_map<std::string, MaterialParam>& mats, tinyxml2::XMLElement* );
+
+	DMModel* loadXMLFile( const std::string& filename, uint32_t id );
 };
 
 }

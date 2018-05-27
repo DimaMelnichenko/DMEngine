@@ -50,6 +50,8 @@ public:
 private:
 	bool Render();
 
+	bool renderSky();
+
 private:
 	float m_screenWidth;
 	float m_screenHeight;

@@ -1,8 +1,9 @@
 #include "ModelLoader.h"
 #include <fstream>
 #include "../../System.h"
+#include "tinyxml2.h"
 
-
+using namespace tinyxml2;
 
 namespace GS
 {
@@ -17,8 +18,107 @@ ModelLoader::~ModelLoader()
 {
 }
 
+DMModel* ModelLoader::loadXMLFile( const std::string& filename, uint32_t id )
+{
+	tinyxml2::XMLDocument xmlDoc;
+
+	XMLError eResult = xmlDoc.LoadFile( filename.data() );
+
+	XMLNode * pRoot = xmlDoc.FirstChild();
+
+	if( pRoot == nullptr )
+		return nullptr;
+
+	XMLElement* pElement = pRoot->FirstChildElement( "object" );
+	if( !pElement )
+		return nullptr;
+
+	std::string modelName = pElement->Attribute( "Name" );
+	std::unique_ptr<DMModel> model( new DMModel( id, modelName ) );
+
+	D3DXVECTOR3 pos = strToVec3( pElement->FirstChildElement("position")->GetText() );
+	model->transformBuffer().setPosition( pos );
+
+	float scale = pElement->FirstChildElement( "scale" )->FloatText();
+	if( scale != 0.0f )
+		model->transformBuffer().setScale( scale );
+
+	std::unordered_map<std::string, MaterialParam> matsSet;
+	XMLElement* xmlMaterials = pElement->FirstChildElement( "materials" );
+	loadMaterials( matsSet, xmlMaterials );
+
+
+	XMLElement* xmlLodElement = pElement->FirstChildElement( "lods" )->FirstChildElement("lod");
+	while( xmlLodElement )
+	{
+		float range = xmlLodElement->FirstChildElement("range")->IntText();
+
+		std::string meshName( xmlLodElement->FirstChildElement( "mesh" )->GetText() );
+		std::string matName( xmlLodElement->FirstChildElement( "material" )->GetText() );
+
+		if( !System::meshes().load( meshName ) )
+		{
+			return nullptr;
+		}
+
+		if( !System::materials().load( matsSet[matName].shaderName ) )
+		{
+			return nullptr;
+		}
+
+		DMModel::LodBlock block;
+		block.material = System::materials().id( matsSet[matName].shaderName );
+		block.mesh = System::meshes().id( meshName );
+		block.params = matsSet[matName].param;
+
+		model->addLod( range, block );
+
+		xmlLodElement = xmlLodElement->NextSiblingElement( "lod" );
+	}
+
+	return model.release();
+}
+
+void ModelLoader::loadMaterials( std::unordered_map<std::string, MaterialParam>& matsSet, XMLElement* xmlMaterials )
+{
+	XMLElement* xmlMaterial = xmlMaterials->FirstChildElement("material");
+	MaterialParam matParam;
+
+	while( xmlMaterial )
+	{
+		XMLElement* xmlParam = xmlMaterial->FirstChildElement("params")->FirstChildElement("param");
+		while( xmlParam )
+		{
+			std::string paramName = xmlParam->Attribute( "Name" );
+			std::string paramType = xmlParam->Attribute( "Type" );
+			std::string paramValue = xmlParam->GetText();
+
+			if( paramType == "texture" && System::textures().load( paramValue ) )
+			{
+				matParam.param.insert( { paramName, Parameter( System::textures().id( paramValue ) ) } );
+			}
+			else if( paramType == "vec4" )
+			{
+				matParam.param.insert( { paramName, Parameter( strToVec4( paramValue ) ) } );
+			}
+
+			xmlParam = xmlParam->NextSiblingElement( "param" );
+		}	
+		
+		matParam.shaderName = xmlMaterial->Attribute( "Shader" );
+
+		matsSet.insert( { xmlMaterial->Attribute( "Name" ), std::move( matParam ) } );
+
+		xmlMaterial = xmlMaterial->NextSiblingElement( "material" );
+	}
+}
+
 DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 {
+	std::size_t found = filename.find( ".xml" );
+	if( found != std::string::npos )
+		return loadXMLFile( filename, id );
+
 	ResourceMetaFile resourceFile( filename );
 
 	//GetPrivateProfileSection( "General", out, 500, level_file.data() );

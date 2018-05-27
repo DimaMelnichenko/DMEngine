@@ -1,6 +1,7 @@
 #include "MaterialLoader.h"
 #include "ResourceMetaFile.h"
-#include "../Shaders/DMColorShader.h"
+#include "Shaders\DMColorShader.h"
+#include "Shaders\TextureShader.h"
 #include "Shaders\PhongLight.h"
 #include "System.h"
 
@@ -27,6 +28,8 @@ Material* MaterialLoader::loadFromFile( const std::string& filename, uint32_t id
 		material->m_shader.reset( new DMColorShader() );
 	else if( name == "Phong" )
 		material->m_shader.reset( new PhongLight() );
+	else if( name == "Texture" )
+		material->m_shader.reset( new TextureShader() );
 
 	std::string path = "Shaders\\";
 

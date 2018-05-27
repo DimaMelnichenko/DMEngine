@@ -1,0 +1,36 @@
+<root>
+	<object Name="Knot">
+		<position>-8.0,4.0,0.0</position>
+		<scale>0.2</scale>
+		<lods>
+			<lod>
+				<mesh>Knot001.bin</mesh>
+				<range>20</range>
+				<material>Phong</material>
+			</lod>
+			<lod>
+				<mesh>Knot002.bin</mesh>
+				<range>35</range>
+				<material>Phong</material>
+			</lod>
+			<lod>
+				<mesh>Knot003.bin</mesh>
+				<range>45</range>
+				<material>Phong</material>
+			</lod>
+			<lod>
+				<mesh>Knot004.bin</mesh>
+				<range>1000</range>
+				<material>Phong</material>
+			</lod>
+		</lods>
+		<materials>
+			<material Name="Phong" Shader="Phong">
+				<params>
+					<param Name="Albedo" Type="texture">materials\blocksrough_basecolor_2048.png</param>
+					<param Name="Shiness" Type="texture">materials\blocksrough_GIM_2048.dds</param>
+				</params>
+			</material>
+		</materials>
+	</object>
+</root>

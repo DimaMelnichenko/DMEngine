@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Common\tinyxml2.cpp" />
     <ClCompile Include="src\Config\Config.cpp" />
     <ClCompile Include="src\Common\ResourceMetaFile.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Light\DMLight.cpp" />
@@ -28,6 +29,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\Layout.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\Parameter\Parameter.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\TextureShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Sky\DMSkyBox.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMStructuredBuffer.cpp" />
     <ClCompile Include="src\Engine\DMEngineProcessor.cpp" />
@@ -68,6 +70,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Common\tinyxml2.h" />
     <ClInclude Include="src\Config\Config.h" />
     <ClInclude Include="src\Common\ResourceMetaFile.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Light\DMLight.h" />
@@ -86,6 +89,7 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\Layout.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\Parameter\Parameter.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\ShaderUnit.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\TextureShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Sky\DMSkyBox.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DM3DUtils.h" />
     <ClInclude Include="src\Engine\Graphics\D3D\DMStructuredBuffer.h" />
