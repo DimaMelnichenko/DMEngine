@@ -19,18 +19,51 @@
 #include <memory>
 #include "Utils\utilites.h"
 
+namespace Device
+{
+
+template<class ResourceType>
+using CopyFunc = std::function<void( ResourceType& )>;
+
+template<class ResourceType>
+void updateResource( ID3D11Buffer* buffer, CopyFunc<ResourceType> func, D3D11_MAP MapFlags = D3D11_MAP_WRITE_DISCARD )
+{
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, MapFlags, 0, &mappedResource );
+
+	ResourceType* data = static_cast<ResourceType*>( mappedResource.pData );
+
+	func( *data );
+
+	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
+}
+
+template<class ResourceType>
+void updateResource( ID3D11Buffer* buffer, ResourceType& data, D3D11_MAP MapFlags = D3D11_MAP_WRITE_DISCARD )
+{
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, MapFlags, 0, &mappedResource );
+
+	memcpy( mappedResource.pData, &data, sizeof( ResourceType ) );
+
+	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
+}
+
+}
+
 class DMD3D
 {
 private:
 	DMD3D(  );
 	DMD3D( const DMD3D& ) = delete;
 	DMD3D& operator=( const DMD3D& ) = delete;
-	static DMD3D* m_instance;
 
 public:
 	static DMD3D& instance();
-	static void close();
 	~DMD3D();
+
+
+	
 
 	bool Initialize( int, int, bool, HWND, bool, float, float );
 	void Shutdown( );
@@ -46,6 +79,8 @@ public:
 	void TurnZBufferOn( );
 	void TurnZBufferOff( );
 
+	ID3D11RasterizerState* currentRS();
+	void setRS( ID3D11RasterizerState* );
 	void TurnDefaultRS( );
 	void TurnBackFacesRS();
 	void TurnShadowRS();
@@ -64,7 +99,7 @@ public:
 	void TurnOnTransparancy( );
 	void TurnOffTransparancy( );
 
-	bool createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer> &, const D3D11_SUBRESOURCE_DATA * = nullptr );
+	bool createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer> &, const D3D11_SUBRESOURCE_DATA* = nullptr );
 	bool createVertexBuffer( com_unique_ptr<ID3D11Buffer> &, void* data, size_t sizeInByte );
 	bool createIndexBuffer( com_unique_ptr<ID3D11Buffer> &, void* data, size_t sizeInByte );
 	bool CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData, com_unique_ptr<ID3D11Buffer>& );

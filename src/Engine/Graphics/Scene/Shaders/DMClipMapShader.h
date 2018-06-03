@@ -3,7 +3,7 @@
 #include "..\Shaders\DMShader.h"
 #include "..\Camera\DMFrustum.h"
 
-class DMClipMapShader :	public DMShader
+class DMClipMapShader :	public GS::DMShader
 {
 public:
 	DMClipMapShader();
@@ -38,17 +38,20 @@ public:
 	bool setInstanceOffset( std::vector<InstanceOffset> & );
 	void SetTextures( int count, ID3D11ShaderResourceView** _textures );
 
+	void setParams( const GS::ParamSet & );
 
 private:
 	void prepareRender(  );
 	std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts(  );
 	void Update( float );
 
+	bool innerInitialize();
+
 private:
-	std::shared_ptr<ID3D11Buffer> m_shader_param;
-	std::shared_ptr<ID3D11Buffer> m_offset_sbuffer;
-	std::shared_ptr<ID3D11Buffer> m_ps_shader_param;
-	std::shared_ptr<ID3D11ShaderResourceView> m_srv_buffer;
+	com_unique_ptr<ID3D11Buffer> m_shader_param;
+	com_unique_ptr<ID3D11Buffer> m_offset_sbuffer;
+	com_unique_ptr<ID3D11Buffer> m_ps_shader_param;
+	com_unique_ptr<ID3D11ShaderResourceView> m_srv_buffer;
 	unsigned int m_max_MxM_instance_count;
 	
 };

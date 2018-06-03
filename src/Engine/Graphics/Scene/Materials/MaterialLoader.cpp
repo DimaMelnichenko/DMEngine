@@ -3,6 +3,7 @@
 #include "Shaders\DMColorShader.h"
 #include "Shaders\TextureShader.h"
 #include "Shaders\PhongLight.h"
+#include "Shaders\DMClipMapShader.h"
 #include "System.h"
 
 
@@ -30,6 +31,8 @@ Material* MaterialLoader::loadFromFile( const std::string& filename, uint32_t id
 		material->m_shader.reset( new PhongLight() );
 	else if( name == "Texture" )
 		material->m_shader.reset( new TextureShader() );
+	else if( name == "GeoClipMap" )
+		material->m_shader.reset( new DMClipMapShader() );
 
 	std::string path = "Shaders\\";
 

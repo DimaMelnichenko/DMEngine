@@ -1,0 +1,23 @@
+{
+	"Name": "Knot",
+	"position": "-8.0,4.0,0.0",
+	"scale": 0.2,
+	"lods" :
+	[
+		{ "mesh" : "Knot001.bin", "range" : 20, "material" : "Phong" },
+		{ "mesh" : "Knot002.bin", "range" : 35, "material" : "Phong" },
+		{ "mesh" : "Knot003.bin", "range" : 45, "material" : "Phong" },
+		{ "mesh" : "Knot004.bin", "range" : 1000, "material" : "Phong" }
+	],
+	"materials" : 
+	[
+		{	"Name" : "Phong", 
+			"Shader" : "Phong",
+			"params" : 
+			[
+				{ "Name" : "Albedo", "Type" : "texture", "Value" : "materials\\blocksrough_basecolor_2048.png" },
+				{ "Name" : "Shiness", "Type" : "texture", "Value" : "materials\\blocksrough_GIM_2048.dds" }
+			]
+		}
+	]
+}

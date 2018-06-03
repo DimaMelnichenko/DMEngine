@@ -52,12 +52,11 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMColorShader::initLayouts()
 
 void DMColorShader::setParams( const ParamSet& params )
 {
-	D3D11_MAPPED_SUBRESOURCE mappedResource;
-	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( m_constantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
+	Device::updateResource<D3DXVECTOR4>( m_constantBuffer.get(), [&]( D3DXVECTOR4& v )
+	{
+		v = params.at( "Color" ).vector();
+	} );
 
-	memcpy( mappedResource.pData, &params.at("Color").vector() , sizeof( D3DXVECTOR4 ) );
-
-	DMD3D::instance().GetDeviceContext()->Unmap( m_constantBuffer.get(), 0 );
 	ID3D11Buffer* buffer = m_constantBuffer.get();
 	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 2, 1, &buffer );
 }

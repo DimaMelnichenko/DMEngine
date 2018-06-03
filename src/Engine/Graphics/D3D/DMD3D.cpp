@@ -2,22 +2,12 @@
 #include "Utils\utilites.h"
 
 
-DMD3D* DMD3D::m_instance = nullptr;
-
-void DMD3D::close()
-{
-	if( DMD3D::m_instance )
-		delete DMD3D::m_instance;
-
-	DMD3D::m_instance = nullptr;
-}
 
 DMD3D& DMD3D::instance()
 {
-	if( !m_instance )
-		m_instance = new DMD3D();
+	static DMD3D instance;
 
-	return *m_instance;
+	return instance;
 }
 
 
@@ -844,4 +834,15 @@ bool DMD3D::CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURC
 	created_buffer = make_com_ptr<ID3D11Buffer>( buffer );
 
 	return true;
+}
+
+ID3D11RasterizerState* DMD3D::currentRS()
+{
+	ID3D11RasterizerState* state = nullptr;
+	m_deviceContext->RSGetState( &state );
+	return state;
+}
+void DMD3D::setRS( ID3D11RasterizerState* state )
+{
+	m_deviceContext->RSSetState( state );
 }

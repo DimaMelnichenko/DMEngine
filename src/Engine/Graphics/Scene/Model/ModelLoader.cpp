@@ -3,6 +3,7 @@
 #include "../../System.h"
 #include "tinyxml2.h"
 
+
 using namespace tinyxml2;
 
 namespace GS
@@ -16,6 +17,65 @@ ModelLoader::ModelLoader()
 
 ModelLoader::~ModelLoader()
 {
+}
+
+DMModel* ModelLoader::loadJSONFile( const std::string& filename, uint32_t id )
+{
+	using json = nlohmann::json;
+	std::unique_ptr<DMModel> model;
+
+	json jsonParser;
+
+	try
+	{
+		std::ifstream jsonFile( filename.data() );
+		jsonFile.is_open();
+		jsonFile >> jsonParser;
+		jsonFile.close();
+	}
+	catch( std::exception& e )
+	{
+		return nullptr;
+	}
+
+
+	model.reset( new DMModel( id, jsonParser["Name"] ) );
+
+	D3DXVECTOR3 pos = strToVec3( jsonParser["position"] );
+	model->transformBuffer().setPosition( pos );
+
+	if( jsonParser.find( "scale" ) != jsonParser.end() )
+	{
+		model->transformBuffer().setScale( (float)jsonParser["scale"] );
+	}
+
+	std::unordered_map<std::string, MaterialParam> matsSet;
+	loadJSONMaterials( matsSet, jsonParser );
+	
+	for( auto& lod : jsonParser["lods"] )
+	{
+		std::string matName = lod["material"];
+
+		if( !System::meshes().load( lod["mesh"] ) )
+		{
+			return nullptr;
+		}
+
+		if( !System::materials().load( matsSet[matName].shaderName ) )
+		{
+			return nullptr;
+		}
+
+		DMModel::LodBlock block;
+		block.material = System::materials().id( matsSet[matName].shaderName );
+		block.mesh = System::meshes().id( lod["mesh"] );
+		block.params = matsSet[matName].param;
+
+		model->addLod( lod["range"], block );
+	}
+
+
+	return model.release();
 }
 
 DMModel* ModelLoader::loadXMLFile( const std::string& filename, uint32_t id )
@@ -119,6 +179,10 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 	if( found != std::string::npos )
 		return loadXMLFile( filename, id );
 
+	found = filename.find( ".json" );
+	if( found != std::string::npos )
+		return loadJSONFile( filename, id );
+
 	ResourceMetaFile resourceFile( filename );
 
 	//GetPrivateProfileSection( "General", out, 500, level_file.data() );
@@ -187,6 +251,34 @@ ParamSet ModelLoader::loadMaterialParam( ResourceMetaFile& metaResource, const s
 	}
 
 	return paramSet;
+}
+
+void ModelLoader::loadJSONMaterials( std::unordered_map<std::string, MaterialParam>& matsSet, nlohmann::json& jsonParser )
+{	
+	MaterialParam matParam;
+
+	for( auto& material : jsonParser["materials"] )
+	{
+		for( auto& param : material["params"] )
+		{
+			std::string paramName = param["Name"];
+			std::string paramType = param["Type"];
+			std::string paramValue = param["Value"];
+
+			if( paramType == "texture" && System::textures().load( paramValue ) )
+			{
+				matParam.param.insert( { paramName, Parameter( System::textures().id( paramValue ) ) } );
+			}
+			else if( paramType == "vec4" )
+			{
+				matParam.param.insert( { paramName, Parameter( strToVec4( paramValue ) ) } );
+			}
+		}
+
+		matParam.shaderName = material["Shader"];
+
+		matsSet.insert( { material["Name"], std::move( matParam ) } );
+	}
 }
 
 }

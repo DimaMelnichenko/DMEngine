@@ -16,7 +16,7 @@ DMHeightMap::~DMHeightMap()
 }
 
 //--------------------------------------------------------------------------------------
-HRESULT DMHeightMap::LoadTextureDataFromFile( const std::wstring& szFileName )
+HRESULT DMHeightMap::LoadTextureDataFromFile( const std::string& szFileName )
 {
     // open the file
     HANDLE hFile = CreateFile( szFileName.data(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
@@ -445,7 +445,7 @@ DXGI_FORMAT DMHeightMap::GetDXGIFormat( const DDS_PIXELFORMAT& ddpf )
 }
 
 //--------------------------------------------------------------------------------------
-HRESULT DMHeightMap::CreateDDSTextureFromFile( const std::wstring& file_name )
+HRESULT DMHeightMap::CreateDDSTextureFromFile( const std::string& file_name )
 {  
 
 	HRESULT hr;
@@ -680,7 +680,7 @@ bool DMHeightMap::checkHeightOfTriangle( D3DXVECTOR3* point, D3DXVECTOR3* abc )
 	return true;
 }
 
-HRESULT DMHeightMap::LoadRaw( const std::wstring& file_name, unsigned int width, unsigned int height, unsigned char bits )
+HRESULT DMHeightMap::LoadRaw( const std::string& file_name, unsigned int width, unsigned int height, unsigned char bits )
 {
 	int i, j, index;
 	FILE* filePtr;
@@ -798,7 +798,7 @@ HRESULT DMHeightMap::LoadRaw( const std::wstring& file_name, unsigned int width,
 	return true;
 }
 
-HRESULT DMHeightMap::LoadMap( const std::wstring& file_name )
+HRESULT DMHeightMap::LoadMap( const std::string& file_name )
 {
 	HRESULT hr;
 	if( FAILED( hr = CreateDDSTextureFromFile( file_name ) ) )
@@ -809,7 +809,7 @@ HRESULT DMHeightMap::LoadMap( const std::wstring& file_name )
 	return S_OK;
 }
 
-HRESULT DMHeightMap::LoadStandartFile( const std::wstring& file_name )
+HRESULT DMHeightMap::LoadStandartFile( const std::string& file_name )
 {
 	HRESULT hr;
 

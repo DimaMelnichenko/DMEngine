@@ -56,24 +56,24 @@ PixelInputType main(VertexInputType input)
 {
     PixelInputType output;
 	
+	InstanceParam instItem = instance_offset[input.instance_index];
+	
 	output.position = float4( input.position, 1.0f );
 	//output.position.xz *= map_scale;
-	output.position.xz *= instance_offset[input.instance_index].scale;
+	output.position.xz *= instItem.scale;
 	
 	//old
 	//output.position.xz += map_offset.xy;
 	//new
-	output.position.xz += instance_offset[input.instance_index].level_pos + instance_offset[input.instance_index].offset * instance_offset[input.instance_index].scale;
-	
-	float2 offset = instance_offset[input.instance_index].offset;
+	output.position.xz += instItem.level_pos + instItem.offset * instItem.scale;
 	
 
 	// сшивание краев разных лодов
-	float modX = max( 0, 1 - round( fmod( input.position.x + offset.x, map_N - 1 ) ) );
-	float modZ = max( 0, 1 - round( fmod( input.position.z + offset.y, map_N - 1 ) ) );
+	float modX = max( 0, 1 - round( fmod( input.position.x + instItem.offset.x, map_N - 1 ) ) );
+	float modZ = max( 0, 1 - round( fmod( input.position.z + instItem.offset.y, map_N - 1 ) ) );
 	
-	output.position.x -= instance_offset[input.instance_index].scale * modZ * round( fmod( input.position.x + offset.x, 2 ) );
-	output.position.z -= instance_offset[input.instance_index].scale * modX * round( fmod( input.position.z + offset.y, 2 ) );
+	output.position.x -= instItem.scale * modZ * round( fmod( input.position.x + instItem.offset.x, 2 ) );
+	output.position.z -= instItem.scale * modX * round( fmod( input.position.z + instItem.offset.y, 2 ) );
 	
 	
 	output.detail_tex = output.position.xz;
@@ -96,8 +96,8 @@ PixelInputType main(VertexInputType input)
 		output.position.y = 0.0;
 	}
 	
-	output.position.x = min( output.position.x, 2048 );
-	output.position.z = min( output.position.z, 2048 );
+	output.position.x = min( output.position.x, 1024 );
+	output.position.z = min( output.position.z, 1024 );
 	
     // Calculate the position of the vertex against the world, view, and projection matrices.
 	output.position = mul(output.position, cb_worldMatrix);

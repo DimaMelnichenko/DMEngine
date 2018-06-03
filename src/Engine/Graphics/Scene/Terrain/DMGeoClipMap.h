@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "DMClipMapShader.h"
+#include "Shaders\DMClipMapShader.h"
 #include "DMGeoLevel.h"
 #include "..\DMSceneObject.h"
 #include "DMClipMapBlock.h"

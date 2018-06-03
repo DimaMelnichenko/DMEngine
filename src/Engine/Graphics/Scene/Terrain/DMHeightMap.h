@@ -17,8 +17,8 @@ public:
 
 	float height( float x, float y );
 
-	HRESULT LoadRaw( const std::wstring& file_name, unsigned int width, unsigned int height, unsigned char bits );
-	HRESULT LoadMap( const std::wstring& szFileName );
+	HRESULT LoadRaw( const std::string& file_name, unsigned int width, unsigned int height, unsigned char bits );
+	HRESULT LoadMap( const std::string& szFileName );
 	D3DXVECTOR2 size();
 	ID3D11ShaderResourceView* map();
 
@@ -33,11 +33,11 @@ private:
 	com_unique_ptr<ID3D11ShaderResourceView> m_heightmap_srv;
 
 private:
-	HRESULT LoadStandartFile( const std::wstring& szFileName );
-	HRESULT CreateDDSTextureFromFile( const std::wstring& szFileName );
+	HRESULT LoadStandartFile( const std::string& szFileName );
+	HRESULT CreateDDSTextureFromFile( const std::string& szFileName );
 	void GetSurfaceInfo( UINT width, UINT height, DXGI_FORMAT fmt );
 	UINT BitsPerPixel( DXGI_FORMAT fmt );
-	HRESULT LoadTextureDataFromFile( const std::wstring& szFileName );
+	HRESULT LoadTextureDataFromFile( const std::string& szFileName );
 	DXGI_FORMAT GetDXGIFormat( const DDS_PIXELFORMAT& ddpf );
 	float pixel( float, float );
 	bool in_triangle( D3DXVECTOR2* d, D3DXVECTOR2* abc );

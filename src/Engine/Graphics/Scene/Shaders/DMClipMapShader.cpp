@@ -102,6 +102,8 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
 
 	m_srv_buffer = make_com_ptr<ID3D11ShaderResourceView>( srv );
 
+	DMD3D::instance().createShaderConstantBuffer( sizeof( PSParamBuffer ), m_ps_shader_param );
+
 	return vertex_layout;
 }
 
@@ -139,23 +141,9 @@ bool DMClipMapShader::SetPSParameters( PSParamBuffer* ps_param )
 
 	ID3D11Buffer* buffer = m_ps_shader_param.get();
 
-	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
+	Device::updateResource<PSParamBuffer>( buffer, *ps_param );
 
-	// Get a pointer to the data in the constant buffer.
-	PSParamBuffer* data_ps = static_cast<PSParamBuffer*>( mappedResource.pData );
-
-	// Copy the matrices into the constant buffer.
-	memcpy( data_ps, ps_param, sizeof( PSParamBuffer ) );
-
-	// Unlock the constant buffer.
-	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
-
-
-	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 2, 1, &buffer );
 
 	return true;
 }
@@ -165,20 +153,8 @@ bool DMClipMapShader::SetVSParameters( ParamBuffer* _param_buffer )
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 
 	ID3D11Buffer* buffer = m_shader_param.get();
-	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
 
-	// Get a pointer to the data in the constant buffer.
-	ParamBuffer* dataPtr = static_cast<ParamBuffer*>( mappedResource.pData );
-
-	// Copy the matrices into the constant buffer.
-	memcpy( dataPtr, _param_buffer, sizeof( ParamBuffer ) );	
-
-	// Unlock the constant buffer.
-	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
+	Device::updateResource<ParamBuffer>( buffer, *_param_buffer );
 
 	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 2, 1, &buffer );
 
@@ -187,9 +163,6 @@ bool DMClipMapShader::SetVSParameters( ParamBuffer* _param_buffer )
 
 void DMClipMapShader::prepareRender( )
 {
-
-	
-
 	return;
 }
 
@@ -201,4 +174,19 @@ void DMClipMapShader::Update( float )
 void DMClipMapShader::SetTextures( int count, ID3D11ShaderResourceView** _textures )
 {
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 10, count, _textures );
+}
+
+void DMClipMapShader::setParams( const GS::ParamSet & )
+{
+	
+}
+
+bool DMClipMapShader::innerInitialize()
+{
+	createPhase( 0, -1, 0 );
+
+	
+	
+
+	return true;
 }

@@ -21,6 +21,11 @@ public:
 	{
 	}
 
+	ResourceType& operator[]( const std::string& name )
+	{
+		return m_storage[id( name )];
+	}
+
 	virtual bool load( const std::string& ) = 0;
 
 	const ResourceType& get( uint32_t id ) const

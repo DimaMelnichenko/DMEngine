@@ -21,10 +21,11 @@
 
 #include "Scene\VertexPool.h"
 #include "Config\Config.h"
-#include "Shaders\ConstantBuffers.h"
 #include "Light\DMLightDriver.h"
 #include "D3D\DMSamplerState.h"
 #include "Camera\CameraController.h"
+#include "Terrain\DMTerrain.h"
+
 
 
 namespace GS
@@ -62,7 +63,6 @@ private:
 	
 	DMTimer m_timer;
 	Config m_config;
-	ConstantBuffers m_shaderConstant;
 	DMLightDriver m_lightDriver;
 	DMSamplerState m_samplerState;
 
@@ -70,6 +70,7 @@ private:
 	std::unordered_map<uint32_t, RenderQueue> m_renderQueues;
 
 	CameraController m_cameraController;
+	//DMTerrain m_terrain;
 };
 
 }

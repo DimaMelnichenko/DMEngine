@@ -11,9 +11,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\Common\tinyxml2.cpp" />
+    <ClCompile Include="src\3rdParty\tinyxml2.cpp" />
     <ClCompile Include="src\Config\Config.cpp" />
     <ClCompile Include="src\Common\ResourceMetaFile.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Pipeline.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Light\DMLight.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Light\DMLightDriver.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.cpp" />
@@ -54,9 +55,14 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Common\VertexData.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\ModelLoader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\ModelStorage.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMClipMapBlock.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMClipMapShader.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMGeoClipMap.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMGeoLevel.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMHeightMap.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Terrain\DMTerrain.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureArray.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureStorage.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\VertexPool.cpp" />
     <ClCompile Include="src\Engine\Graphics\System.cpp" />
@@ -70,9 +76,19 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\Common\tinyxml2.h" />
+    <ClInclude Include="src\3rdParty\DirectXTex\BC.h" />
+    <ClInclude Include="src\3rdParty\DirectXTex\BCDirectCompute.h" />
+    <ClInclude Include="src\3rdParty\DirectXTex\DDS.h" />
+    <ClInclude Include="src\3rdParty\DirectXTex\DDSTextureLoader.h" />
+    <ClInclude Include="src\3rdParty\DirectXTex\DirectXTex.h" />
+    <ClInclude Include="src\3rdParty\DirectXTex\Filters.h" />
+    <ClInclude Include="src\3rdParty\DirectXTex\ScreenGrab.h" />
+    <ClInclude Include="src\3rdParty\DirectXTex\WICTextureLoader.h" />
+    <ClInclude Include="src\3rdParty\json.hpp" />
+    <ClInclude Include="src\3rdParty\tinyxml2.h" />
     <ClInclude Include="src\Config\Config.h" />
     <ClInclude Include="src\Common\ResourceMetaFile.h" />
+    <ClInclude Include="src\Engine\Graphics\Pipeline.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Light\DMLight.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Light\DMLightDriver.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.h" />
@@ -117,9 +133,14 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Common\VertexData.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\ModelLoader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\ModelStorage.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMClipMapBlock.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMClipMapShader.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMGeoClipMap.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMGeoLevel.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMHeightMap.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Terrain\DMTerrain.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMBitmap.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTexture.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureArray.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DMTextureStorage.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\VertexPool.h" />
     <ClInclude Include="src\Engine\Graphics\System.h" />
@@ -164,8 +185,8 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)\src\Engine\Graphics\Common;H:\backup\Visual studio 2010\DMEngine\DMEngine\DXUT\Source\Common\DXUT10\Core;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(ProjectDir)\src\Engine\Graphics\Scene;$(ProjectDir)\src\Engine\Graphics\Scene\Common;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86\;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)\src\Engine\Graphics\Common;H:\backup\Visual studio 2010\DMEngine\DMEngine\DXUT\Source\Common\DXUT10\Core;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src;$(ProjectDir)\src\3rdParty;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(ProjectDir)\src\Engine\Graphics\Scene;$(ProjectDir)\src\Engine\Graphics\Scene\Common;$(IncludePath)</IncludePath>
+    <LibraryPath>E:\backup\Visual studio 2010\DMEngine\DMEngine\src\3rdParty\DirextXTex;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86\;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>

@@ -1,5 +1,6 @@
 
 #include "DMGeoClipMap.h"
+#include "Pipeline.h"
 
 
 
@@ -22,7 +23,7 @@ bool DMGeoClipMap::Initialize( int N, int _levels, float scale, float height )
 
 	m_M = ( m_N + 1 ) / 4;
 
-	_levels = 1024 / m_M;
+	//_levels = 1024 / m_M;
 
 	m_MxM_offsets.push_back( D3DXVECTOR2( 0.0f, 0.0f ) );
 	m_MxM_offsets.push_back( D3DXVECTOR2( 0.0f, (float)m_M - 1.0f ) );
@@ -97,12 +98,10 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	camera_pos.x = camera.position().x;
 	camera_pos.y = camera.position().z;
 
-	shader.Prepare( camera, shader.phase() );
+	shader.setPass( shader.phase() );
 
-	shader.setDrawType( DMShader::by_index );
-
-	//geo_param.map_scale = m_levels[0].scale();
-	//geo_param.map_offset = m_levels[0].calcPos( camera_pos );
+	geo_param.map_scale = m_levels[0].scale();
+	geo_param.map_offset = m_levels[0].calcPos( camera_pos );
 	geo_param.map_N = m_N;
 	geo_param.map_texture_scale = m_scale_multipler;
 	geo_param.map_height_multippler = m_height_multipler;
@@ -137,7 +136,9 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	ID3D11Buffer* buffer = m_NxN.vertexBuffer();
 	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_NxN.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
-	shader.RenderInstanced( m_NxN.indexCount(), 1, &worldMatrix );
+	shader.setDrawType( GS::DMShader::by_index_instance );
+	pipeline().shaderConstant().setPerObjectBuffer( &worldMatrix );
+	shader.RenderInstanced( m_NxN.indexCount(), 0, 0, 1 );
 
 	// draw low levels
 
@@ -279,55 +280,43 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_MxM.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 		shader.setInstanceOffset( offsets );
-		shader.RenderInstanced( m_MxM.indexCount(), offsets.size(), &worldMatrix );
+		shader.RenderInstanced( m_MxM.indexCount(), 0, 0, offsets.size() );
 	}
 	
 	if( Mx3_vertical_offsets.size() )
 	{	
 		buffer = m_Mx3_vert.vertexBuffer();
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
-
 		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_Mx3_vert.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
-
 		shader.setInstanceOffset( Mx3_vertical_offsets );
-
-		shader.RenderInstanced( m_Mx3_vert.indexCount(), Mx3_vertical_offsets.size(), &worldMatrix );
+		shader.RenderInstanced( m_Mx3_vert.indexCount(), 0, 0, Mx3_vertical_offsets.size() );
 	}
 	
 	if( Mx3_horizontal_offsets.size() )
 	{
 		buffer = m_Mx3_horiz.vertexBuffer();
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
-
-		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_Mx3_horiz.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
-
+		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_Mx3_horiz.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );				
 		shader.setInstanceOffset( Mx3_horizontal_offsets );
-
-		shader.RenderInstanced( m_Mx3_horiz.indexCount(), Mx3_horizontal_offsets.size(), &worldMatrix );
+		shader.RenderInstanced( m_Mx3_horiz.indexCount(), 0, 0, Mx3_horizontal_offsets.size() );
 	}
 	
 	if( _2M1_horizontal_offsets.size() )
 	{
 		buffer = m_2M1_horiz.vertexBuffer();
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
-
 		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_2M1_horiz.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
-
 		shader.setInstanceOffset( _2M1_horizontal_offsets );
-
-		shader.RenderInstanced( m_2M1_horiz.indexCount(), _2M1_horizontal_offsets.size(), &worldMatrix );
+		shader.RenderInstanced( m_2M1_horiz.indexCount(), 0, 0, _2M1_horizontal_offsets.size() );
 	}
 
 	if( _2M1_vertical_offsets.size() )
 	{
 		buffer = m_2M1_vert.vertexBuffer();
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
-
 		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_2M1_vert.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
-
 		shader.setInstanceOffset( _2M1_vertical_offsets );
-
-		shader.RenderInstanced( m_2M1_vert.indexCount(), _2M1_vertical_offsets.size(), &worldMatrix );
+		shader.RenderInstanced( m_2M1_vert.indexCount(), 0, 0, _2M1_vertical_offsets.size() );
 	}
 	
 }

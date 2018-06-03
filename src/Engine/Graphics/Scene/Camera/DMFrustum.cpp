@@ -5,6 +5,11 @@ DMFrustum::DMFrustum(  )
 {
 }
 
+DMFrustum::DMFrustum( const DMCamera& camera, float screenDepth )
+{
+	ConstructFrustum( camera, screenDepth );
+}
+
 
 DMFrustum::~DMFrustum()
 {

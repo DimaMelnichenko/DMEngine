@@ -10,7 +10,8 @@
 class DMFrustum
 {
 public:
-	DMFrustum(  );
+	DMFrustum();
+	DMFrustum( const DMCamera& camera, float screenDepth );
 	~DMFrustum();
 
 	void ConstructFrustum( const DMCamera& camera, float screenDepth );

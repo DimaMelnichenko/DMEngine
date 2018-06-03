@@ -7,7 +7,7 @@
 #include <D3DX11tex.h>
 #include "Shaders\Layout.h"
 #include "../Input/Input.h"
-
+#include "Pipeline.h"
 
 
 namespace GS
@@ -20,7 +20,7 @@ DMGraphics::DMGraphics()
 
 DMGraphics::~DMGraphics()
 {
-	DMD3D::close();
+
 }
 
 bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd, Config config )
@@ -50,10 +50,10 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	//	return false;
 	if( !System::models().load( "box.ini" ) )
 		return false;
-	if( !System::models().load( "knot.xml" ) )
+	if( !System::models().load( "knot.json" ) )
 		return false;
-	if( !System::models().load( "plane.ini" ) )
-		return false;
+	//if( !System::models().load( "plane.ini" ) )
+	//	return false;
 	if( !System::models().load( "venus.ini" ) )
 		return false;
 	if( !System::models().load( "skysphere.xml" ) )
@@ -67,7 +67,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_vertexPool.prepareMeshes();
 
 	// Создаем основную камеру
-	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 1.0f, 500.0f );
+	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 1.0f, 1500.0f );
 	m_cameraPool["main"].SetPosition( 0.0, 2.0, -3.0 );
 	m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
@@ -76,7 +76,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	Layout layout;
 	layout.initLayouts();
 
-	m_shaderConstant.initBuffers();
+	pipeline().init();
 
 	m_lightDriver.Initialize();
 	m_lightDriver.loadFromFile( "Scene\\Lights.ini" );
@@ -90,6 +90,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		else
 			DMD3D::instance().TurnOffWireframe();
 	} );
+
+	//m_terrain.Initialize( "Models\\terrain.json" );
 
 	return true;
 }
@@ -120,7 +122,7 @@ bool DMGraphics::Render()
 	int lightCount = m_lightDriver.setBuffer( 15, SRVType::ps );
 
 	//установка матриц в шейдер константы
-	m_shaderConstant.setPerFrameBuffer( m_cameraPool["main"], lightCount );
+	pipeline().shaderConstant().setPerFrameBuffer( m_cameraPool["main"], lightCount );
 
 	//render sky
 	renderSky();
@@ -169,7 +171,7 @@ bool DMGraphics::Render()
 			//установка матрицы маодели в шейдер
 			//m_shaderConstant.setPerObjectBuffer( model->transformBuffer().resultMatrixPtr() );
 			const std::string& meshName = System::meshes().get( LODblock->mesh )->name();
-			m_shaderConstant.setPerObjectBuffer( LODblock->resultMatrix );
+			pipeline().shaderConstant().setPerObjectBuffer( LODblock->resultMatrix );
 
 			shader->setParams( LODblock->params );
 			// отрисовка модели согласно смещению вершин и индексов для главного буфера
@@ -178,6 +180,10 @@ bool DMGraphics::Render()
 							System::meshes().get( LODblock->mesh )->indexOffset() );
 		}
 	}
+
+	DMFrustum frustum( m_cameraPool["main"], 1000.0f );
+	//m_terrain.Render( m_cameraPool["main"], frustum );
+
 	DMD3D::instance().EndScene();
 
 	return true;
@@ -185,20 +191,21 @@ bool DMGraphics::Render()
 
 bool DMGraphics::renderSky()
 {
+	ID3D11RasterizerState* prevRSState = DMD3D::instance().currentRS();
 
 	DMD3D::instance().TurnZBufferOff();
 	DMD3D::instance().TurnBackFacesRS();
 
-	DMShader* shader = System::materials().get( "Texture" )->m_shader.get();
+	DMShader* shader = System::materials()["Texture"]->m_shader.get();
 	shader->setPass( 0 );
 	shader->setDrawType( DMShader::by_index );
 
-	DMModel* model = System::models().get( "SkySphere" ).get();
+	DMModel* model = System::models()["SkySphere"].get();
 	model->transformBuffer().setPosition( m_cameraPool["main"].position() );
 
 	const DMModel::LodBlock* block = model->getLod( 0.0f );
 	const std::string& meshName = System::meshes().get( block->mesh )->name();
-	m_shaderConstant.setPerObjectBuffer( block->resultMatrix );
+	pipeline().shaderConstant().setPerObjectBuffer( block->resultMatrix );
 
 	shader->setParams( block->params );
 	// отрисовка модели согласно смещению вершин и индексов для главного буфера
@@ -207,8 +214,10 @@ bool DMGraphics::renderSky()
 					System::meshes().get( block->mesh )->indexOffset() );
 
 
-	DMD3D::instance().TurnDefaultRS();
+	
 	DMD3D::instance().TurnZBufferOn();
+
+	DMD3D::instance().setRS( prevRSState );
 
 	return true;
 }

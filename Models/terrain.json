@@ -1,0 +1,12 @@
+{
+	"heightmap": "Textures\\TerrainHM.dds",
+	"wireframe_size": 127.0,
+	"steps": 10,
+	"height_multipler": 120.0,
+	"width_multipler" : 1.0,
+	"splatting" : 
+	[
+		{ "Texture" : "texture-of-pebbles-under.jpg", "height" : 0.2 },
+		{ "Texture" : "Moss.jpg", "height" : 1.0 }
+	]
+}
