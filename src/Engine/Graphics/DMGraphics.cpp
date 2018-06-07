@@ -20,7 +20,8 @@ DMGraphics::DMGraphics()
 
 DMGraphics::~DMGraphics()
 {
-
+	pipelineDestroy();
+	System::destroy();
 }
 
 bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd, Config config )
@@ -52,8 +53,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	if( !System::models().load( "knot.json" ) )
 		return false;
-	//if( !System::models().load( "plane.ini" ) )
-	//	return false;
+	if( !System::models().load( "plane.ini" ) )
+		return false;
 	if( !System::models().load( "venus.ini" ) )
 		return false;
 	if( !System::models().load( "skysphere.xml" ) )
@@ -67,9 +68,9 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_vertexPool.prepareMeshes();
 
 	// Создаем основную камеру
-	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 1.0f, 1500.0f );
-	m_cameraPool["main"].SetPosition( 0.0, 2.0, -3.0 );
-	m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
+	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 5000.0f );
+	m_cameraPool["main"].SetPosition( 0.0, 20.0, -3.0 );
+	//m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
 	m_timer.Initialize();
 
@@ -91,7 +92,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 			DMD3D::instance().TurnOffWireframe();
 	} );
 
-	//m_terrain.Initialize( "Models\\terrain.json" );
+	m_terrain.Initialize( "Models\\terrain.json" );
+	m_water.Initialize( "Models\\water.json" );
 
 	return true;
 }
@@ -183,6 +185,7 @@ bool DMGraphics::Render()
 
 	DMFrustum frustum( m_cameraPool["main"], 1000.0f );
 	//m_terrain.Render( m_cameraPool["main"], frustum );
+	m_water.Render( m_cameraPool["main"], frustum );
 
 	DMD3D::instance().EndScene();
 

@@ -1,17 +1,33 @@
 
-#include "BRDF.ps"
+#include "common.vs"
+#include "CommonLight.ps"
 
-cbuffer TerrainTexturesParam : register( b2 )
+cbuffer TerrainBuffer : register( b2 )
+{
+	float2 map_offset;
+	float levelScale;
+	float mapSize;
+	float mapWidthMultipler;	
+	float mapHeightMultippler;
+	float map_N;
+	float hightOffset;
+	float mapScale;
+	float2 mapOffset;
+	float mapOffsetSpeed;
+};
+
+cbuffer TerrainTexturesParam : register( b3 )
 {	
 	float4 texture_tile[2];
 	float base_normal_multipler;
-	float3 cb_cameraPosition;
-	float app_time;
+	float3 cb_cameraPosition2;
+	float app_time2;
 };
 
 TextureCube g_texCube : register(t5);
 Texture2D terrainTexture[20] : register(t10);
 Texture2D heigthTexture : register(t0);
+Texture2D normalTexture : register(t1);
 
 /* terrain textures struct started from t10 slot
 0 - base heightmap
@@ -29,31 +45,100 @@ struct PixelInputType
     float4 position : SV_POSITION;
 	float2 main_tex : TEXCOORD0;
 	float2 detail_tex : TEXCOORD1;
-	float4 world_position : TEXCOORD2;
+	float4 worldPosition : TEXCOORD2;
 };
 
 static const float detail_multipler = 0.2;
 
+static const float epsilon = 1E-4;
+static const int materialsCount = 5;
 
+static const float3 baseColors[materialsCount] = { float3( 0.0, 0.3, 1.0 ),
+									float3( 1.0, 0.8, 0.5 ),
+									float3( 0.2, 1.0, 0.0 ),
+									float3( 0.4, 0.25, 0.0 ),
+									float3( 1.0, 1.0, 1.0 ) };
+
+static const float baseStartHeight[materialsCount] = { 0.0, 0.2, 0.21, 0.3, 0.65 };
+static const float baseBlends[materialsCount] = { 0.0, 0.01, 0.001, 0.07, 0.001 };
+									
 #define TEST_COLOR 1
+
+float inverseLerp( float a, float b, float value )
+{
+	return saturate( (value - a) / ( b - a ) );
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Pixel Shader
 ////////////////////////////////////////////////////////////////////////////////
 float4 main(PixelInputType input) : SV_TARGET
 {	
-	float4 test_color = float4( 1.0, 1.0, 1.0, 1.0 );
+	float3 albedo = float3( 0.0, 0.0, 0.05);
 
 	float rawHight = heigthTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
 	
-	if( rawHight < 0.2 )
-		return float4( 0.2, 0.2, 1.0, 1.0 );
+	float3 n = normalTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb;
 	
-	if( rawHight >= 0.2 && rawHight < 0.5 )
-		return float4( 0.0, 0.5, 0.0, 1.0 );
+	float diffuse = saturate(max( dot( n, normalize(float3( 1.0, 1.0, -1.0 )) ), 0.0f ) + 0.2);
+	
+	float heightPercent = inverseLerp( 0.0, mapHeightMultippler, input.worldPosition.y );
+	for( int i = 0; i < materialsCount; i++ )
+	{
+		float drawStrength = inverseLerp( -baseBlends[i] / 2.0 - epsilon, baseBlends[i] / 2.0, heightPercent - baseStartHeight[i] );
+		albedo = albedo * (1.0 - drawStrength ) + baseColors[i] * drawStrength;
+	}
+	
+	float4 FinalLight = float4(0.0, 0.0, 0.0, 1.0);
+	
+	float3 v = normalize( cb_cameraPosition - input.worldPosition );
+	
+	float kShininess = 10.0f;
+	
+	float specSum = 0;
+	float3 duffuseSum = (float3)0;
+	
+	for( int i = 0; i < cb_lightCount; i++ )
+	{
+		float3 l;
+		float fade;
 		
-	return float4( 1.0, 1.0, 1.0, 1.0 );
+		LightParam light = sb_lightVector[i];
+		
+		if( light.type == 0 )
+		{
+			l = normalize( light.lightPos );
+			fade = 1.00;			
+		}
+		else
+		{
+			l = ( light.lightPos - input.worldPosition );
+			float dist = length( l );
+			l = normalize( l );
+			fade = GetAttenuation( dist, 0.0, light.attenuation );
+			//fade = 1.0 / (dist * light.attenuation);
+		}	
+		
+		//if( fade < 0.00001 )
+		//	continue;
+		/*float NdotL    = max( dot( n, l ), 0.0 );
+		float NdotV    = max( dot( n, v ), 0.0 );
+		float3 h = normalize(l + v);
+		float rougness = 0.99;
+		specSum += saturate( D_BlinnPhong( rougness, max( dot( n, h ), 0.0 ) ) * ( 4.0 * NdotL * NdotV ) );
+		*/
+		
+		float3 diffuse = ( max( dot( n, l ), 0.0f ) );
+		duffuseSum += ( diffuse  * light.lightColor );
+		float3 h = normalize(l + v);
+		specSum += pow(max(dot(n, h), 0.0), kShininess);
+	}
+	
+	FinalLight.rgb = albedo.rgb * ( duffuseSum + specSum );
+	
+	return FinalLight;
 }
+/*
 float4 main_b(PixelInputType input) : SV_TARGET
 {    
     float4 final_color = float4( 0.0, 0.0, 0.0, 1.0 );
@@ -128,7 +213,7 @@ float4 main_b(PixelInputType input) : SV_TARGET
 		}	
 		
 		/*if( fade < 0.00001 )
-			continue;*/
+			continue;*
 		
 		final_color.rgb += ( max( dot( n, l ), 0.0f ) ) * cb_lightColor[i].rgb * fade * result_albedo.rgb;
 		
@@ -181,4 +266,4 @@ float4 for_shadow(PixelInputType input) : SV_TARGET
 	depthValue = input.position.z / input.position.w;
 	
 	return float4( depthValue, depthValue, depthValue, 1.0 );
-}
+}*/

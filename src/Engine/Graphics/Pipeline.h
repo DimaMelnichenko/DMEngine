@@ -23,3 +23,4 @@ private:
 }
 
 GS::Pipeline& pipeline();
+void pipelineDestroy();

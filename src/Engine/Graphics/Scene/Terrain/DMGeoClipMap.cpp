@@ -14,8 +14,13 @@ DMGeoClipMap::~DMGeoClipMap( )
 
 }
 
-bool DMGeoClipMap::Initialize( int N, int _levels, float scale, float height )
+bool DMGeoClipMap::Initialize( int N, int _levels, float mapSize, float widthMultipler, float height )
 {
+	m_mapSize = mapSize;
+	m_widthMultipler = widthMultipler;
+	m_height_multipler = height;
+
+
 	if( N % 2 && N < 15 )
 		return false;
 
@@ -45,9 +50,6 @@ bool DMGeoClipMap::Initialize( int N, int _levels, float scale, float height )
 	m_Mx3_offsets.push_back( D3DXVECTOR2( 3.0f * (float)m_M - 1.0f, 2.0f * (float)m_M - 2.0f ) );
 
 	//--------------------------------------------------------------------
-
-	m_scale_multipler = 1.0f / scale;
-	m_height_multipler = height;
 
 	if( !InitializeBlocks() )
 	{		
@@ -100,11 +102,14 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 
 	shader.setPass( shader.phase() );
 
-	geo_param.map_scale = m_levels[0].scale();
 	geo_param.map_offset = m_levels[0].calcPos( camera_pos );
+	geo_param.levelScale = m_levels[0].scale();
+	geo_param.mapSize = m_mapSize;
+	geo_param.mapWidthMultipler = m_widthMultipler;
+	geo_param.mapHeightMultippler = m_height_multipler;
 	geo_param.map_N = m_N;
-	geo_param.map_texture_scale = m_scale_multipler;
-	geo_param.map_height_multippler = m_height_multipler;
+	geo_param.hightOffset = m_hightOffset;
+	geo_param.mapScale = m_mapScale;
 
 	shader.SetVSParameters( &geo_param );
 
@@ -167,8 +172,8 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 			D3DXVECTOR2 offset = level_pos + m_MxM_offsets[offset_index] * level.scale();
 			aabb_offset.setPosition( offset.x, 0.5, offset.y );
 
-			if( !frustum.CheckAABB( &aabb_offset ) )
-				continue;
+			/*if( !frustum.CheckAABB( &aabb_offset ) )
+				continue;*/
 
 			
 			instance_offset.offset = m_MxM_offsets[offset_index];
@@ -321,12 +326,23 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	
 }
 
-float DMGeoClipMap::scaleMultipler()
+float DMGeoClipMap::widthMultipler()
 {
-	return m_scale_multipler;
+	return m_widthMultipler;
 }
 
 float DMGeoClipMap::heightMultipler()
 {
 	return m_height_multipler;
+}
+
+
+void DMGeoClipMap::setHightOffset( float offset )
+{
+	m_hightOffset = offset;
+}
+
+void DMGeoClipMap::setMapScale( float scale )
+{
+	m_mapScale = scale;
 }

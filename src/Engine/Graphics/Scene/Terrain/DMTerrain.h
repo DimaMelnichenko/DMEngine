@@ -28,7 +28,8 @@ private:
 	DMHeightMap m_height_map;
 	std::vector<std::string> m_textures;
 	std::vector<float> m_texture_tiles;
-	
-	
+	std::string m_normalMapName;
+	float m_widthMultipler;
+	float m_hightOffset;
 };
 

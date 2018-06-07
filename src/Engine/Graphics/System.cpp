@@ -58,4 +58,12 @@ System::~System()
 {
 }
 
+void System::destroy()
+{
+	m_textureStorage.reset();
+	m_meshStorage.reset();
+	m_modelStorage.reset();
+	m_materialStorage.reset();
+}
+
 }

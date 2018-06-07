@@ -9,10 +9,15 @@
 cbuffer TerrainBuffer : register( b2 )
 {
 	float2 map_offset;
-	float map_scale;
+	float levelScale;
+	float mapSize;
+	float mapWidthMultipler;	
+	float mapHeightMultippler;
 	float map_N;
-	float map_height_multippler;
-	float map_texture_scale;
+	float hightOffset;
+	float mapScale;
+	float2 mapOffset;
+	float mapOffsetSpeed;
 };
 
 struct InstanceParam
@@ -44,9 +49,9 @@ struct PixelInputType
 	//float4 depthPosition : TEXCOORD3;
 };
 
-float Height( float u, float v )
+float Height( float2 uv )
 {
-	return terrainTexture.SampleLevel( g_SamplerLinearClamp, float2( u, v ), 0 ).r;
+	return terrainTexture.SampleLevel( g_SamplerLinearWrap, uv, 0 ).r;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -75,12 +80,13 @@ PixelInputType main(VertexInputType input)
 	output.position.x -= instItem.scale * modZ * round( fmod( input.position.x + instItem.offset.x, 2 ) );
 	output.position.z -= instItem.scale * modX * round( fmod( input.position.z + instItem.offset.y, 2 ) );
 	
+	output.position.xz *= 0.1;
 	
 	output.detail_tex = output.position.xz;
-	output.main_tex = output.position.xz * map_texture_scale;
-	output.main_tex.y = 1.0f - output.main_tex.y;
+	output.main_tex = output.position.xz * ( 1.0 / (mapSize * mapWidthMultipler) ) * mapScale;
+	output.main_tex.y = 1.0f - output.main_tex.y + ( cb_appTime * 0.00001 );
 	
-	output.position.y = Height( output.main_tex.x, output.main_tex.y ) * map_height_multippler;
+	output.position.y = Height( output.main_tex ) * mapHeightMultippler + hightOffset;
 	//output.position.y = 0.0f;
 	
 	
@@ -96,14 +102,13 @@ PixelInputType main(VertexInputType input)
 		output.position.y = 0.0;
 	}
 	
-	output.position.x = min( output.position.x, 1024 );
-	output.position.z = min( output.position.z, 1024 );
+	output.position.x = min( output.position.x, mapSize * mapWidthMultipler );
+	output.position.z = min( output.position.z, mapSize * mapWidthMultipler );
 	
     // Calculate the position of the vertex against the world, view, and projection matrices.
 	output.position = mul(output.position, cb_worldMatrix);
 	output.world_position = output.position;
-    output.position = mul(output.position, cb_viewMatrix);
-    output.position = mul(output.position, cb_projectionMatrix);
+    output.position = mul(output.position, cb_viewProjectionMatrix);
 		
 	
     return output;

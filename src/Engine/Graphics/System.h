@@ -18,6 +18,7 @@ public:
 	static MeshStorage& meshes();
 	static ModelStorage& models();
 	static MaterialStorage& materials();
+	static void destroy();
 
 private:
 	static std::unique_ptr<DMTextureStorage> m_textureStorage;

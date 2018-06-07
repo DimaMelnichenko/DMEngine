@@ -41,17 +41,30 @@ bool DMTerrain::Initialize( const std::string& terrainConf )
 						jsonParser["steps"] ) )
 		return false;
 
+	m_normalMapName = jsonParser["normalmap"];
+
+	if( !GS::System::textures().load( m_normalMapName ) )
+		return false;
+
+	m_clip_map.setMapScale( jsonParser["map_scale"] );
+
+	if( jsonParser.count( "hight_offset" ) )
+		m_clip_map.setHightOffset( jsonParser["hight_offset"] );
+	else
+		m_clip_map.setHightOffset( 0.0 );
+
 	return true;
 }
 
 bool DMTerrain::loadHeightMap( const std::string& file_name, float width_multipler, float height_multipler, float wireframeSize, int steps )
 {
+	m_widthMultipler = width_multipler;
 	m_height_map.LoadMap( file_name );
 
 	//int steps = static_cast<int>( max( m_height_map.size().x * width_multipler / wireframeSize, 2 ) );
 	//steps = (int)pow( steps, 0.5f );
 	
-	m_clip_map.Initialize( wireframeSize, steps, m_height_map.size().x * width_multipler, height_multipler );
+	m_clip_map.Initialize( wireframeSize, steps, m_height_map.size().x, width_multipler, height_multipler );
 	//m_clip_map.Initialize( 63, 4, m_height_map.size().x * width_multipler, height_multipler );
 
 	return  true;
@@ -76,10 +89,11 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 	ID3D11ShaderResourceView* height_srv = m_height_map.map();
 	DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 0, 1, &height_srv );
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &height_srv );
+	ID3D11ShaderResourceView* normal_srv = GS::System::textures().get( m_normalMapName )->GetTexture();
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 1, 1, &normal_srv );
 	//m_clip_map_shader.SetTextures( m_terrain_textures.count(), m_terrain_textures.GetTextureArray() );
 
 	m_clip_map.Render( *shader, camera, frustum );
-	
 }
 
 const DMHeightMap& DMTerrain::heightmap()

@@ -70,7 +70,8 @@ private:
 	std::unordered_map<uint32_t, RenderQueue> m_renderQueues;
 
 	CameraController m_cameraController;
-	//DMTerrain m_terrain;
+	DMTerrain m_terrain;
+	DMTerrain m_water;
 };
 
 }

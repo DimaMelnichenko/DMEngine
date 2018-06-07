@@ -1,10 +1,21 @@
 #include "Pipeline.h"
 
+namespace
+{
+static std::unique_ptr<GS::Pipeline> g_pipeline;
+}
+
 GS::Pipeline& pipeline()
 {
-	static GS::Pipeline pipeline;
+	if( !g_pipeline )
+		g_pipeline.reset( new GS::Pipeline() );
 
-	return pipeline;
+	return *g_pipeline;
+}
+
+void pipelineDestroy()
+{
+	g_pipeline.reset();
 }
 
 namespace GS

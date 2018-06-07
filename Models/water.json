@@ -1,11 +1,12 @@
 {
-	"heightmap": "Textures\\TerrainHM.dds",
-	"normalmap": "TerrainNormal.dds",
+	"heightmap": "Textures\\water_hm.dds",
+	"normalmap": "Water_NRM.png",
 	"wireframe_size": 127.0,
 	"steps": 10,
-	"height_multipler": 1000.0,
-	"width_multipler" : 10.0,
-	"map_scale" : 1.0,
+	"height_multipler": 0.5,
+	"width_multipler" : 1.0,
+	"hight_offset" : 2.0,
+	"map_scale" : 10.0,
 	"splatting" : 
 	[
 		{ "Texture" : "texture-of-pebbles-under.jpg", "height" : 0.2 },

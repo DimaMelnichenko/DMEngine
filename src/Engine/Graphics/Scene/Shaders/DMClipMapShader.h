@@ -2,6 +2,7 @@
 
 #include "..\Shaders\DMShader.h"
 #include "..\Camera\DMFrustum.h"
+#include "D3D\DMStructuredBuffer.h"
 
 class DMClipMapShader :	public GS::DMShader
 {
@@ -12,10 +13,14 @@ public:
 	struct alignas( 16 ) ParamBuffer
 	{
 		D3DXVECTOR2 map_offset;		
-		float map_scale;
+		float levelScale;
+		float mapSize;
+		float mapWidthMultipler;
+		float mapHeightMultippler;
 		float map_N;
-		float map_height_multippler;
-		float map_texture_scale;
+		float hightOffset;
+		float mapScale;
+		D3DXVECTOR3 dump;
 	};
 
 	struct  InstanceOffset
@@ -53,6 +58,7 @@ private:
 	com_unique_ptr<ID3D11Buffer> m_ps_shader_param;
 	com_unique_ptr<ID3D11ShaderResourceView> m_srv_buffer;
 	unsigned int m_max_MxM_instance_count;
+	DMStructuredBuffer m_blockOffsets;
 	
 };
 
