@@ -4,12 +4,13 @@
 	"wireframe_size": 127.0,
 	"steps": 10,
 	"height_multipler": 0.5,
-	"width_multipler" : 1.0,
-	"hight_offset" : 2.0,
-	"map_scale" : 10.0,
-	"splatting" : 
+	"width_multipler" : 2.0,
+	"hight_offset" : 12.0,
+	"map_scale" : 300.0,
+	"map_offset" : [1.0, 1.0],
+	"map_offset_speed" : 0.00001,
+	"materials" : 
 	[
-		{ "Texture" : "texture-of-pebbles-under.jpg", "height" : 0.2 },
-		{ "Texture" : "Moss.jpg", "height" : 1.0 }
+		{ "baseColors" : [0.0, 0.6, 1.0], "baseStartHeight" : 0.0, "baseBlends" : 0.0, "Texture" : "WaterPlain.jpg", "textureScale" : 1.0 }
 	]
 }

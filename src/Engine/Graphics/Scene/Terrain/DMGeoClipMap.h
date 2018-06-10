@@ -23,6 +23,8 @@ public:
 
 	void setHightOffset( float offset );
 	void setMapScale( float scale );
+	void setMapOffset( float x, float y );
+	void setMapOffsetSpeed( float speed );
 
 private:
 	bool InitializeBlocks();
@@ -46,6 +48,8 @@ private:
 	float m_height_multipler;
 	float m_hightOffset;
 	float m_mapScale;
+	D3DXVECTOR2 m_mapOffset;
+	float m_mapOffsetSpeed;
 	
 	std::vector<DMGeoLevel> m_levels;
 	std::vector<D3DXVECTOR2> m_MxM_offsets;

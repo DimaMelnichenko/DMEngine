@@ -40,6 +40,9 @@ public:
 
 	const ResourceType& get( const std::string& name )
 	{
+		if( !exists( name ) && !load(name) )
+			return m_storage[0];
+
 		return m_storage[id(name)];
 	}
 

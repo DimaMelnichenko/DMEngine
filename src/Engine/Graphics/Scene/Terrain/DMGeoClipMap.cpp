@@ -102,7 +102,6 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 
 	shader.setPass( shader.phase() );
 
-	geo_param.map_offset = m_levels[0].calcPos( camera_pos );
 	geo_param.levelScale = m_levels[0].scale();
 	geo_param.mapSize = m_mapSize;
 	geo_param.mapWidthMultipler = m_widthMultipler;
@@ -110,6 +109,8 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	geo_param.map_N = m_N;
 	geo_param.hightOffset = m_hightOffset;
 	geo_param.mapScale = m_mapScale;
+	geo_param.mapOffset = m_mapOffset;
+	geo_param.mapOffsetSpeed = m_mapOffsetSpeed;
 
 	shader.SetVSParameters( &geo_param );
 
@@ -345,4 +346,14 @@ void DMGeoClipMap::setHightOffset( float offset )
 void DMGeoClipMap::setMapScale( float scale )
 {
 	m_mapScale = scale;
+}
+
+void DMGeoClipMap::setMapOffset( float x, float y )
+{
+	m_mapOffset = D3DXVECTOR2( x, y );
+}
+
+void DMGeoClipMap::setMapOffsetSpeed( float speed )
+{
+	m_mapOffsetSpeed = speed;
 }

@@ -8,16 +8,16 @@
 
 cbuffer TerrainBuffer : register( b2 )
 {
-	float2 map_offset;
 	float levelScale;
 	float mapSize;
 	float mapWidthMultipler;	
 	float mapHeightMultippler;
 	float map_N;
 	float hightOffset;
-	float mapScale;
-	float2 mapOffset;
+	float mapScale;	
 	float mapOffsetSpeed;
+	float2 mapOffset;
+	float2 dump;
 };
 
 struct InstanceParam
@@ -27,7 +27,7 @@ struct InstanceParam
 	float scale;	
 };
 
-StructuredBuffer<InstanceParam> instance_offset: register(t16);
+StructuredBuffer<InstanceParam> instance_offset: register(t1);
 
 Texture2D terrainTexture : register(t0);
 
@@ -80,30 +80,39 @@ PixelInputType main(VertexInputType input)
 	output.position.x -= instItem.scale * modZ * round( fmod( input.position.x + instItem.offset.x, 2 ) );
 	output.position.z -= instItem.scale * modX * round( fmod( input.position.z + instItem.offset.y, 2 ) );
 	
-	output.position.xz *= 0.1;
-	
 	output.detail_tex = output.position.xz;
 	output.main_tex = output.position.xz * ( 1.0 / (mapSize * mapWidthMultipler) ) * mapScale;
-	output.main_tex.y = 1.0f - output.main_tex.y + ( cb_appTime * 0.00001 );
+	output.main_tex += mapOffset * cb_appTime * mapOffsetSpeed;
+	output.main_tex.y = 1.0f - output.main_tex.y;
 	
 	output.position.y = Height( output.main_tex ) * mapHeightMultippler + hightOffset;
 	//output.position.y = 0.0f;
 	
 	
-	if( output.position.x < 0.0 )
+	if( output.position.x <= 0.0 )
 	{
 		output.position.x = 0.0;
 		output.position.y = 0.0;
 	}
 	
-	if( output.position.z < 0.0 )
+	if( output.position.z <= 0.0 )
 	{
 		output.position.z = 0.0;
 		output.position.y = 0.0;
 	}
 	
-	output.position.x = min( output.position.x, mapSize * mapWidthMultipler );
-	output.position.z = min( output.position.z, mapSize * mapWidthMultipler );
+	if( output.position.x >= ( mapSize * mapWidthMultipler ) )
+	{
+		output.position.x = mapSize * mapWidthMultipler;
+		output.position.y = 0.0;
+	}
+	
+	if( output.position.z >= ( mapSize * mapWidthMultipler ) )
+	{
+		output.position.z = mapSize * mapWidthMultipler;
+		output.position.y = 0.0;
+	}
+	
 	
     // Calculate the position of the vertex against the world, view, and projection matrices.
 	output.position = mul(output.position, cb_worldMatrix);

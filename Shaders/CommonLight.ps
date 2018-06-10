@@ -12,7 +12,7 @@ struct LightParam
 	float attenuation;
 };
 
-StructuredBuffer<LightParam> sb_lightVector: register(t15);
+StructuredBuffer<LightParam> sb_lightVector: register(t100);
 
 //функция расчета затухания для источника света
 float GetAttenuation( float distance, float lightInnerR, float invLightOuterR )

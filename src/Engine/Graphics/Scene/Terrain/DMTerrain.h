@@ -23,13 +23,13 @@ private:
 	bool loadHeightMap( const std::string& height_file_name, float width_multipler, float height_multipler, float wireframeSize, int steps );
 	
 private:
-	DMFrustum m_frustum;
+	DMFrustum* m_frustum;
 	DMGeoClipMap m_clip_map;
 	DMHeightMap m_height_map;
-	std::vector<std::string> m_textures;
-	std::vector<float> m_texture_tiles;
 	std::string m_normalMapName;
 	float m_widthMultipler;
 	float m_hightOffset;
+	std::vector<DMClipMapShader::Material> m_materials;
+	std::vector<ID3D11ShaderResourceView*> m_textures;
 };
 

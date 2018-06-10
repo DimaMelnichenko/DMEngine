@@ -72,6 +72,7 @@ private:
 	CameraController m_cameraController;
 	DMTerrain m_terrain;
 	DMTerrain m_water;
+	std::unordered_map<std::string, bool> m_visible;
 };
 
 }

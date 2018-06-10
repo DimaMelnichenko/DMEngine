@@ -12,7 +12,6 @@ public:
 
 	struct alignas( 16 ) ParamBuffer
 	{
-		D3DXVECTOR2 map_offset;		
 		float levelScale;
 		float mapSize;
 		float mapWidthMultipler;
@@ -20,7 +19,9 @@ public:
 		float map_N;
 		float hightOffset;
 		float mapScale;
-		D3DXVECTOR3 dump;
+		float mapOffsetSpeed;
+		D3DXVECTOR2 mapOffset;
+		D3DXVECTOR2 dump;
 	};
 
 	struct  InstanceOffset
@@ -32,10 +33,15 @@ public:
 
 	struct alignas( 16 ) PSParamBuffer
 	{
-		float texture_tile[8];
-		float base_normal_multipler;
-		D3DXVECTOR3 camera_position;
-		float app_time;
+		int materialsCount;
+	};
+
+	struct Material
+	{
+		D3DXVECTOR3 baseColors;
+		float baseStartHeight;
+		float baseBlends;
+		float textureScale;
 	};
 
 	bool SetVSParameters( ParamBuffer* );
@@ -44,6 +50,7 @@ public:
 	void SetTextures( int count, ID3D11ShaderResourceView** _textures );
 
 	void setParams( const GS::ParamSet & );
+	void updateMaterials( std::vector<Material>& materials );
 
 private:
 	void prepareRender(  );
@@ -59,6 +66,7 @@ private:
 	com_unique_ptr<ID3D11ShaderResourceView> m_srv_buffer;
 	unsigned int m_max_MxM_instance_count;
 	DMStructuredBuffer m_blockOffsets;
+	DMStructuredBuffer m_materials;
 	
 };
 

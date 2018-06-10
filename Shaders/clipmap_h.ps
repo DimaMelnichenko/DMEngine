@@ -4,7 +4,6 @@
 
 cbuffer TerrainBuffer : register( b2 )
 {
-	float2 map_offset;
 	float levelScale;
 	float mapSize;
 	float mapWidthMultipler;	
@@ -18,16 +17,15 @@ cbuffer TerrainBuffer : register( b2 )
 
 cbuffer TerrainTexturesParam : register( b3 )
 {	
-	float4 texture_tile[2];
-	float base_normal_multipler;
-	float3 cb_cameraPosition2;
-	float app_time2;
+	int materialsCount;
 };
 
-TextureCube g_texCube : register(t5);
-Texture2D terrainTexture[20] : register(t10);
+
+
 Texture2D heigthTexture : register(t0);
 Texture2D normalTexture : register(t1);
+TextureCube g_texCube : register(t5);
+Texture2D terrainTexture[10] : register(t10);
 
 /* terrain textures struct started from t10 slot
 0 - base heightmap
@@ -48,19 +46,17 @@ struct PixelInputType
 	float4 worldPosition : TEXCOORD2;
 };
 
-static const float detail_multipler = 0.2;
-
 static const float epsilon = 1E-4;
-static const int materialsCount = 5;
 
-static const float3 baseColors[materialsCount] = { float3( 0.0, 0.3, 1.0 ),
-									float3( 1.0, 0.8, 0.5 ),
-									float3( 0.2, 1.0, 0.0 ),
-									float3( 0.4, 0.25, 0.0 ),
-									float3( 1.0, 1.0, 1.0 ) };
+struct Material
+{
+	float3 baseColors;
+	float baseStartHeight;
+	float baseBlends;
+	float textureScale;
+};
 
-static const float baseStartHeight[materialsCount] = { 0.0, 0.2, 0.21, 0.3, 0.65 };
-static const float baseBlends[materialsCount] = { 0.0, 0.01, 0.001, 0.07, 0.001 };
+StructuredBuffer<Material> materials: register(t3);
 									
 #define TEST_COLOR 1
 
@@ -79,14 +75,17 @@ float4 main(PixelInputType input) : SV_TARGET
 	float rawHight = heigthTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
 	
 	float3 n = normalTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb;
+	n = normalize(n);
 	
 	float diffuse = saturate(max( dot( n, normalize(float3( 1.0, 1.0, -1.0 )) ), 0.0f ) + 0.2);
 	
 	float heightPercent = inverseLerp( 0.0, mapHeightMultippler, input.worldPosition.y );
 	for( int i = 0; i < materialsCount; i++ )
 	{
-		float drawStrength = inverseLerp( -baseBlends[i] / 2.0 - epsilon, baseBlends[i] / 2.0, heightPercent - baseStartHeight[i] );
-		albedo = albedo * (1.0 - drawStrength ) + baseColors[i] * drawStrength;
+		Material material = materials[i];
+		float drawStrength = inverseLerp( -material.baseBlends / 2.0 - epsilon, material.baseBlends / 2.0, heightPercent - material.baseStartHeight );
+		float3 textureColor = terrainTexture[i].Sample( g_SamplerAnisotropicWrap, input.worldPosition.xz / material.textureScale );
+		albedo = albedo * (1.0 - drawStrength ) + textureColor/* + material.baseColors*/ * drawStrength;
 	}
 	
 	float4 FinalLight = float4(0.0, 0.0, 0.0, 1.0);

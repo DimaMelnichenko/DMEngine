@@ -45,6 +45,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	}
 
 	System::textures().load( "no_image.dds" );
+	System::textures().load( "grass.jpg" );
+	System::textures().load( "WaterPlain.jpg" );
 
 	// «агружаем модели
 	//if( !System::models().load( "barrel.ini" ) )
@@ -69,7 +71,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	// —оздаем основную камеру
 	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 5000.0f );
-	m_cameraPool["main"].SetPosition( 0.0, 20.0, -3.0 );
+	m_cameraPool["main"].SetPosition( 0.0, 20.0, 0.0 );
 	//m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
 	m_timer.Initialize();
@@ -92,8 +94,22 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 			DMD3D::instance().TurnOffWireframe();
 	} );
 
-	m_terrain.Initialize( "Models\\terrain.json" );
-	m_water.Initialize( "Models\\water.json" );
+	m_visible["terrain"] = true;
+	m_visible["water"] = true;
+	getInput().notifier().registerTrigger( DIK_1, [this]( bool value )
+	{
+		m_visible["terrain"] = value;
+	} );
+	getInput().notifier().registerTrigger( DIK_2, [this]( bool value )
+	{
+		m_visible["water"] = value;
+	} );
+
+	if( !m_terrain.Initialize( "Models\\terrain.json" ) )
+		return false;
+
+	if( !m_water.Initialize( "Models\\water.json" ) )
+		return false;
 
 	return true;
 }
@@ -121,7 +137,7 @@ bool DMGraphics::Render()
 
 	m_samplerState.setDefaultSmaplers();
 
-	int lightCount = m_lightDriver.setBuffer( 15, SRVType::ps );
+	int lightCount = m_lightDriver.setBuffer( 100, SRVType::ps );
 
 	//установка матриц в шейдер константы
 	pipeline().shaderConstant().setPerFrameBuffer( m_cameraPool["main"], lightCount );
@@ -184,8 +200,14 @@ bool DMGraphics::Render()
 	}
 
 	DMFrustum frustum( m_cameraPool["main"], 1000.0f );
-	//m_terrain.Render( m_cameraPool["main"], frustum );
-	m_water.Render( m_cameraPool["main"], frustum );
+	if( m_visible["terrain"] )
+	{
+		m_terrain.Render( m_cameraPool["main"], frustum );
+	}
+	if( m_visible["water"] )
+	{
+		m_water.Render( m_cameraPool["main"], frustum );
+	}
 
 	DMD3D::instance().EndScene();
 

@@ -46,6 +46,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
 
 
 	m_blockOffsets.CreateBuffer( sizeof( InstanceOffset ), m_max_MxM_instance_count );
+	m_materials.CreateBuffer( sizeof( Material ), 20 );
 
 	DMD3D::instance().createShaderConstantBuffer( sizeof( ParamBuffer ), m_shader_param );
 
@@ -58,7 +59,7 @@ bool DMClipMapShader::setInstanceOffset( std::vector<InstanceOffset>& values )
 {
 	m_blockOffsets.UpdateData( &values[0], sizeof( InstanceOffset ) * values.size() );
 
-	m_blockOffsets.setToSlot( 16, SRVType::vs );
+	m_blockOffsets.setToSlot( 1, SRVType::vs );
 
 	return true;
 }
@@ -88,6 +89,13 @@ bool DMClipMapShader::SetVSParameters( ParamBuffer* _param_buffer )
 	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 2, 1, &buffer );
 
 	return true;
+}
+
+void DMClipMapShader::updateMaterials( std::vector<Material>& materials )
+{
+	m_materials.UpdateData( &materials[0], sizeof( Material ) * materials.size() );
+
+	m_materials.setToSlot( 3, SRVType::ps );
 }
 
 void DMClipMapShader::prepareRender( )
