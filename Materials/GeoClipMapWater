@@ -1,0 +1,3 @@
+[Shaders]
+vs=clipmap.vs
+ps=clipmap_water.ps

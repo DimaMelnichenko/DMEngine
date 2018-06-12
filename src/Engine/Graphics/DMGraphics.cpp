@@ -105,10 +105,10 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		m_visible["water"] = value;
 	} );
 
-	if( !m_terrain.Initialize( "Models\\terrain.json" ) )
+	if( !m_terrain.Initialize( "Models\\terrain.json", "GeoClipMap" ) )
 		return false;
 
-	if( !m_water.Initialize( "Models\\water.json" ) )
+	if( !m_water.Initialize( "Models\\water.json", "GeoClipMapWater" ) )
 		return false;
 
 	return true;
@@ -206,7 +206,9 @@ bool DMGraphics::Render()
 	}
 	if( m_visible["water"] )
 	{
+		DMD3D::instance().TurnOnAlphaBlending();
 		m_water.Render( m_cameraPool["main"], frustum );
+		DMD3D::instance().TurnOffAlphaBlending();
 	}
 
 	DMD3D::instance().EndScene();

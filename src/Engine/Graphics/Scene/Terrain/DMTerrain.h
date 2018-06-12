@@ -14,7 +14,7 @@ public:
 	DMTerrain();
 	~DMTerrain();
 
-	bool Initialize( const std::string& terrainConf );
+	bool Initialize( const std::string& terrainConf, const std::string& shaderName );
 	void Render( const DMCamera&, const DMFrustum& );
 	const DMHeightMap& heightmap();
 		  
@@ -31,5 +31,6 @@ private:
 	float m_hightOffset;
 	std::vector<DMClipMapShader::Material> m_materials;
 	std::vector<ID3D11ShaderResourceView*> m_textures;
+	std::string m_shaderName;
 };
 

@@ -65,6 +65,11 @@ float inverseLerp( float a, float b, float value )
 	return saturate( (value - a) / ( b - a ) );
 }
 
+float FresnelSchlick(float F0, float cosTheta) 
+{
+    return F0 + (1.0 - F0) * pow(1.0 - saturate(cosTheta), 5.0);
+}
+
 float3 normalToTerrain( float3 vec )
 {
 	vec.yz = vec.zy;
@@ -82,6 +87,8 @@ float4 main(PixelInputType input) : SV_TARGET
 	float rawHight = heigthTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
 	
 	float3 n = normalToTerrain( normalTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb * 2.0 - 1.0 );
+	
+	float diffuse = saturate(max( dot( n, normalize(float3( 1.0, 1.0, -1.0 )) ), 0.0f ) + 0.2);
 	
 	float heightPercent = inverseLerp( 0.0, mapHeightMultippler, input.worldPosition.y );
 	for( int i = 0; i < materialsCount; i++ )
@@ -138,7 +145,15 @@ float4 main(PixelInputType input) : SV_TARGET
 		specSum += pow(max(dot(n, h), 0.0), kShininess);
 	}
 	
+	
+	
 	FinalLight.rgb = albedo.rgb * ( duffuseSum + specSum );
+	
+	float opaque = lerp( 0.0, 0.5, max( dot( n, v ), 0.0 ) );
+	
+	FinalLight.rgb += float3( 0.0, 0.5, 1.0 ) * opaque;
+	
+	FinalLight.a = ( 1.0 - opaque );
 	
 	return FinalLight;
 }

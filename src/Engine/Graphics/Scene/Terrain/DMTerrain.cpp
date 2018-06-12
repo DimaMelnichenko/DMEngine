@@ -13,9 +13,11 @@ DMTerrain::~DMTerrain( )
 	
 }
 
-bool DMTerrain::Initialize( const std::string& terrainConf )
+bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& shaderName )
 {
-	GS::System::materials().load( "GeoClipMap" );
+	m_shaderName = shaderName;
+
+	GS::System::materials().load( m_shaderName );
 
 	using json = nlohmann::json;
 
@@ -94,7 +96,7 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 	ps_param.materialsCount = m_materials.size();
 	
 	
-	DMClipMapShader* shader = dynamic_cast<DMClipMapShader*>( GS::System::materials().get( "GeoClipMap" )->m_shader.get() );
+	DMClipMapShader* shader = dynamic_cast<DMClipMapShader*>( GS::System::materials().get( m_shaderName )->m_shader.get() );
 	shader->updateMaterials( m_materials );
 	shader->SetPSParameters( &ps_param );
 	shader->selectPhase( 0 );

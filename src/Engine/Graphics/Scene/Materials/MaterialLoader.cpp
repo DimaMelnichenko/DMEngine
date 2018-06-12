@@ -31,7 +31,7 @@ Material* MaterialLoader::loadFromFile( const std::string& filename, uint32_t id
 		material->m_shader.reset( new PhongLight() );
 	else if( name == "Texture" )
 		material->m_shader.reset( new TextureShader() );
-	else if( name == "GeoClipMap" )
+	else if( name == "GeoClipMap" || name == "GeoClipMapWater" )
 		material->m_shader.reset( new DMClipMapShader() );
 
 	std::string path = "Shaders\\";

@@ -4,7 +4,7 @@
 	"wireframe_size": 127.0,
 	"steps": 10,
 	"height_multipler": 0.5,
-	"width_multipler" : 2.0,
+	"width_multipler" : 1.5,
 	"hight_offset" : 12.0,
 	"map_scale" : 300.0,
 	"map_offset" : [1.0, 1.0],
