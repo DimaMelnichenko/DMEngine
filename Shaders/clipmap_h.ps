@@ -72,6 +72,15 @@ float3 normalToTerrain( float3 vec )
 	return normalize( vec );
 }
 
+float3 triplanar( float3 worldPos, float scale, float3 blendAxes, int textureIndex )
+{
+	float3 scaleWorldPos = worldPos / scale;
+	float3 xProjection = terrainTexture[textureIndex].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.zy * float2( 1.0, -1.0 ) ) * blendAxes.x;
+	float3 yProjection = terrainTexture[textureIndex].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xz * float2( 1.0, -1.0 ) ) * blendAxes.y;
+	float3 zProjection = terrainTexture[textureIndex].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xy * float2( 1.0, -1.0 ) ) * blendAxes.z;
+	return xProjection + yProjection + zProjection;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Pixel Shader
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,12 +93,15 @@ float4 main(PixelInputType input) : SV_TARGET
 	float3 n = normalToTerrain( normalTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb * 2.0 - 1.0 );
 	
 	float heightPercent = inverseLerp( 0.0, mapHeightMultippler, input.worldPosition.y );
+	n = normalize( n * float3( 1.0, 1.0, 1.0 ) );
+	float3 blendAxes = abs(n);
+	blendAxes /= blendAxes.x + blendAxes.y + blendAxes.z;
 	for( int i = 0; i < materialsCount; i++ )
 	{
 		Material material = materials[i];
 		float drawStrength = inverseLerp( -material.baseBlends / 2.0 - epsilon, material.baseBlends / 2.0, heightPercent - material.baseStartHeight );
 		float2 texCoordRestored = input.worldPosition.xz * float2(  1.0, -1.0 );
-		float3 textureColor = terrainTexture[i].Sample( g_SamplerAnisotropicWrap, texCoordRestored / material.textureScale );
+		float3 textureColor = triplanar( input.worldPosition, material.textureScale, blendAxes, i );
 		albedo = albedo * (1.0 - drawStrength ) + textureColor/* + material.baseColors*/ * drawStrength;
 	}
 	
@@ -97,7 +109,7 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	float3 v = normalize( cb_cameraPosition - input.worldPosition );
 	
-	float kShininess = 10.0f;
+	float kShininess = 50.0f;
 	
 	float specSum = 0;
 	float3 duffuseSum = (float3)0;

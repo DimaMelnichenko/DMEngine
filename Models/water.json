@@ -3,12 +3,12 @@
 	"normalmap": "Water_NRM.png",
 	"wireframe_size": 127.0,
 	"steps": 10,
-	"height_multipler": 0.5,
+	"height_multipler": 0.0,
 	"width_multipler" : 1.5,
 	"hight_offset" : 12.0,
-	"map_scale" : 300.0,
+	"map_scale" : 500.0,
 	"map_offset" : [1.0, 1.0],
-	"map_offset_speed" : 0.00001,
+	"map_offset_speed" : 0.0000,
 	"materials" : 
 	[
 		{ "baseColors" : [0.0, 0.6, 1.0], "baseStartHeight" : 0.0, "baseBlends" : 0.0, "Texture" : "WaterPlain.jpg", "textureScale" : 1.0 }
