@@ -4,7 +4,7 @@
 
 DMGeoLevel::DMGeoLevel( int _dimension, int _level )
 {
-	m_current_pos = D3DXVECTOR2( 0.0, 0.0 );
+	m_current_pos = XMFLOAT2( 0.0, 0.0 );
 	m_dimension = _dimension;
 	setLevel( _level );
 }
@@ -14,14 +14,14 @@ DMGeoLevel::~DMGeoLevel( )
 {
 }
 
-D3DXVECTOR2 DMGeoLevel::calcPos( D3DXVECTOR2 _pos )
+XMFLOAT2 DMGeoLevel::calcPos( XMFLOAT2 _pos )
 {
 	return calcPos( _pos.x, _pos.y );
 }
 
-D3DXVECTOR2 DMGeoLevel::calcPos( float _x, float _y )
+XMFLOAT2 DMGeoLevel::calcPos( float _x, float _y )
 {
-	D3DXVECTOR2 result;
+	XMFLOAT2 result;
 
 	// Store the old position to be able to recover it if needed 
 	int oldX = m_current_pos.x;

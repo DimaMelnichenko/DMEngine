@@ -13,7 +13,7 @@ public:
 private:
 	struct alignas( 16 ) Vertex
 	{
-		D3DXVECTOR3 position;
+		XMFLOAT3 position;
 	};
 
 	com_unique_ptr<ID3D11Buffer> m_vertex_buffer;

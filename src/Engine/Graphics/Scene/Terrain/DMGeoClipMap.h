@@ -14,7 +14,7 @@ public:
 	DMGeoClipMap();
 	virtual ~DMGeoClipMap();
 
-	bool Initialize( int N, int levels, float mapSize, float widthMultipler, float height );
+	bool Initialize( int N, uint16_t levels, float mapSize, float widthMultipler, float height );
 
 	void Render( DMClipMapShader& shader, const DMCamera&, const DMFrustum& );
 
@@ -31,7 +31,7 @@ private:
 
 	struct vertex
 	{
-		D3DXVECTOR3 pos;
+		XMFLOAT3 pos;
 	};
 	
 	DMClipMapBlock m_NxN;
@@ -48,11 +48,11 @@ private:
 	float m_height_multipler;
 	float m_hightOffset;
 	float m_mapScale;
-	D3DXVECTOR2 m_mapOffset;
+	XMFLOAT2 m_mapOffset;
 	float m_mapOffsetSpeed;
 	
 	std::vector<DMGeoLevel> m_levels;
-	std::vector<D3DXVECTOR2> m_MxM_offsets;
-	std::vector<D3DXVECTOR2> m_Mx3_offsets;
+	std::vector<XMFLOAT2> m_MxM_offsets;
+	std::vector<XMFLOAT2> m_Mx3_offsets;
 };
 

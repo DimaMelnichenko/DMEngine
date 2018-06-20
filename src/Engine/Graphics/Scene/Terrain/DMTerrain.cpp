@@ -30,7 +30,7 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 		jsonFile >> jsonParser;
 		jsonFile.close();
 	}
-	catch( std::exception& e )
+	catch( std::exception& )
 	{
 		return false;
 	}
@@ -63,7 +63,7 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 	for( auto jsonMaterial : jsonParser["materials"] )
 	{
 		DMClipMapShader::Material material;
-		material.baseColors = D3DXVECTOR3( jsonMaterial["baseColors"][0], jsonMaterial["baseColors"][1], jsonMaterial["baseColors"][2] );
+		material.baseColors = XMFLOAT3( jsonMaterial["baseColors"][0], jsonMaterial["baseColors"][1], jsonMaterial["baseColors"][2] );
 		material.baseStartHeight = jsonMaterial["baseStartHeight"];
 		material.baseBlends = jsonMaterial["baseBlends"];
 		material.baseBlends = jsonMaterial["baseBlends"];
@@ -84,7 +84,7 @@ bool DMTerrain::loadHeightMap( const std::string& file_name, float width_multipl
 	//int steps = static_cast<int>( max( m_height_map.size().x * width_multipler / wireframeSize, 2 ) );
 	//steps = (int)pow( steps, 0.5f );
 	
-	m_clip_map.Initialize( wireframeSize, steps, m_height_map.size().x, width_multipler, height_multipler );
+	m_clip_map.Initialize( (int)wireframeSize, steps, m_height_map.size().x, width_multipler, height_multipler );
 	//m_clip_map.Initialize( 63, 4, m_height_map.size().x * width_multipler, height_multipler );
 
 	return  true;
@@ -107,7 +107,7 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 	ID3D11ShaderResourceView* normal_srv = GS::System::textures().get( m_normalMapName )->GetTexture();
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 1, 1, &normal_srv );
 
-	for( int i = 0; i < m_textures.size(); ++i )
+	for( size_t i = 0; i < m_textures.size(); ++i )
 	{
 		DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 10 + i, 1, &m_textures[i] );
 	}

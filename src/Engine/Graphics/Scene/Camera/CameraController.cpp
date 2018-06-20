@@ -28,7 +28,7 @@ void CameraController::frame( float elapsedTime )
 	static float cameraY = m_camera->position().y;
 	static float cameraZ = m_camera->position().z;
 
-	float offset = 0.01 * elapsedTime;
+	float offset = 0.01f * elapsedTime;
 
 	if( input.IsForwarPressed() )
 	{
@@ -67,5 +67,5 @@ void CameraController::frame( float elapsedTime )
 
 	input.GetMouseLocation( mouseX, mouseY );
 
-	m_camera->SetRotation( mouseY * 0.1, mouseX * 0.1, 0.0 );
+	m_camera->SetRotation( mouseY * 0.1f, mouseX * 0.1f, 0.0f );
 }

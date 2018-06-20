@@ -25,27 +25,27 @@ void str_split( const std::string& str, std::vector<std::string>& tokens, const 
 }
 
 
-D3DXVECTOR3 strToVec3( const std::string& str )
+XMFLOAT3 strToVec3( const std::string& str )
 {
 	std::vector<std::string> vec3String;
 	str_split( str, vec3String, "," );
 
 	if( vec3String.size() )
-		return D3DXVECTOR3( ::atof( vec3String[0].c_str() ), ::atof( vec3String[1].c_str() ), ::atof( vec3String[2].c_str() ) );
+		return XMFLOAT3( ::atof( vec3String[0].c_str() ), ::atof( vec3String[1].c_str() ), ::atof( vec3String[2].c_str() ) );
 
-	return D3DXVECTOR3( 0.0, 0.0, 0.0 );
+	return XMFLOAT3( 0.0, 0.0, 0.0 );
 }
 
-D3DXVECTOR4 strToVec4( const std::string& str )
+XMFLOAT4 strToVec4( const std::string& str )
 {
 	std::vector<std::string> vecString;
 	str_split( str, vecString, "," );
 
 	if( vecString.size() )
-		return D3DXVECTOR4( ::atof( vecString[0].c_str() ), 
+		return XMFLOAT4( ::atof( vecString[0].c_str() ), 
 							::atof( vecString[1].c_str() ), 
 							::atof( vecString[2].c_str() ),
 							::atof( vecString[3].c_str() ) );
 
-	return D3DXVECTOR4( 0.0, 0.0, 0.0, 1.0 );
+	return XMFLOAT4( 0.0, 0.0, 0.0, 1.0 );
 }

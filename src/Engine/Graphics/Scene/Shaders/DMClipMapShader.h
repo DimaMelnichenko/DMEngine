@@ -20,14 +20,14 @@ public:
 		float hightOffset;
 		float mapScale;
 		float mapOffsetSpeed;
-		D3DXVECTOR2 mapOffset;
-		D3DXVECTOR2 dump;
+		XMFLOAT2 mapOffset;
+		XMFLOAT2 dump;
 	};
 
 	struct  InstanceOffset
 	{
-		D3DXVECTOR2 level_pos;
-		D3DXVECTOR2 offset;
+		XMFLOAT2 level_pos;
+		XMFLOAT2 offset;
 		float scale;
 	};
 
@@ -38,7 +38,7 @@ public:
 
 	struct Material
 	{
-		D3DXVECTOR3 baseColors;
+		XMFLOAT3 baseColors;
 		float baseStartHeight;
 		float baseBlends;
 		float textureScale;

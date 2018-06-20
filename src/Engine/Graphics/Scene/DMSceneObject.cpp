@@ -19,7 +19,7 @@ DMSceneObject::~DMSceneObject()
 
 void DMSceneObject::update( float time )
 {
-	D3DXMATRIX matrix = this->resultMatrix();
+	XMMATRIX matrix = this->resultMatrix();
 
 //	setPosition( matrix._41, matrix._42, matrix._43 );
 }

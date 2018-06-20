@@ -23,7 +23,7 @@ public:
 		uint32_t mesh;
 		uint32_t material;
 		ParamSet params;
-		const D3DXMATRIX* resultMatrix;
+		const XMMATRIX* resultMatrix;
 	};
 public:
 	DMModel( uint32_t id, const std::string& name = "" );

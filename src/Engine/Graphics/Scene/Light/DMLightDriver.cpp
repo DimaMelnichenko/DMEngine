@@ -38,8 +38,10 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 
 	for( auto& light : m_light_list )
 	{	
-		D3DXMATRIX mat = light->m_transformBuffer.resultMatrix();
-		lightBuffer.lightPos = D3DXVECTOR3( mat._41, mat._42, mat._43 );
+		XMMATRIX mat = light->m_transformBuffer.resultMatrix();
+		XMFLOAT4 pos;
+		XMStoreFloat4( &pos, mat.r[3] );
+		lightBuffer.lightPos = XMFLOAT3( pos.x, pos.y, pos.z );
 		lightBuffer.lightType = (int)light->type();
 		lightBuffer.lightColor = light->color();
 		lightBuffer.attenuation = light->m_attenuation;
@@ -49,9 +51,9 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 
 	if( m_lightParamBuffer.empty() )
 	{	
-		lightBuffer.lightPos = D3DXVECTOR3( 1.0f, 1.0f, -1.0f );
+		lightBuffer.lightPos = XMFLOAT3( 1.0f, 1.0f, -1.0f );
 		lightBuffer.lightType = 0;
-		lightBuffer.lightColor = D3DXVECTOR3( 1.0f, 1.0f, 1.0f );
+		lightBuffer.lightColor = XMFLOAT3( 1.0f, 1.0f, 1.0f );
 		lightBuffer.attenuation = 1000.0f;
 		m_lightParamBuffer.push_back( lightBuffer );
 	}
@@ -85,7 +87,7 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 
 			std::unique_ptr<DMLight> light( new DMLight( type ) );
 
-			D3DXVECTOR3 vec = strToVec3( lightFile.get<std::string>( section, "Color" ) );
+			XMFLOAT3 vec = strToVec3( lightFile.get<std::string>( section, "Color" ) );
 			light->setColor( vec );
 
 			vec = strToVec3( lightFile.get<std::string>( section, "Position" ) );

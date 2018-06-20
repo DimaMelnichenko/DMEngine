@@ -19,7 +19,7 @@ public:
 
 	HRESULT LoadRaw( const std::string& file_name, unsigned int width, unsigned int height, unsigned char bits );
 	HRESULT LoadMap( const std::string& szFileName );
-	D3DXVECTOR2 size();
+	XMFLOAT2 size();
 	ID3D11ShaderResourceView* map();
 
 private:
@@ -40,8 +40,8 @@ private:
 	HRESULT LoadTextureDataFromFile( const std::string& szFileName );
 	DXGI_FORMAT GetDXGIFormat( const DDS_PIXELFORMAT& ddpf );
 	float pixel( float, float );
-	bool in_triangle( D3DXVECTOR2* d, D3DXVECTOR2* abc );
-	bool checkHeightOfTriangle( D3DXVECTOR3* point, D3DXVECTOR3* abc );
+	bool in_triangle( XMFLOAT2* d, XMFLOAT2* abc );
+	bool checkHeightOfTriangle( XMFLOAT3* point, XMFLOAT3* abc );
 
 };
 

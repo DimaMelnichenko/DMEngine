@@ -20,37 +20,39 @@ public:
 	void Initialize( CameraType, float width, float height, float _near, float depth, float fieldOfView = 0.7853981f/*PI/4*/ );
 
 	void SetPosition( float, float, float );
-	void SetPosition( const D3DXVECTOR3& );
+	void SetPosition( const XMFLOAT3& );
 	void SetRotation( float, float, float );
-	void SetDirection( const D3DXVECTOR3& );
+	void SetDirection( const XMFLOAT3& );
 	void SetDirection( float, float, float );
 	void Update( float elapsedTime );
 	void RenderReflection( float heigh );
 
-	const D3DXVECTOR3& position( ) const;
-	void position( D3DXVECTOR3* ) const;
-	D3DXVECTOR3 GetRotation( ) const;
+	const XMFLOAT3& position( ) const;
+	void position( XMFLOAT3* ) const;
+	void position( XMVECTOR& ) const;
+	XMFLOAT3 GetRotation( ) const;
 	
-	void viewMatrix( D3DXMATRIX* ) const;
-	const D3DXMATRIX& viewMatrix() const;
+	void viewMatrix( XMMATRIX* ) const;
+	const XMMATRIX& viewMatrix() const;
 
-	void projectionMatrix( D3DXMATRIX* ) const;
-	const D3DXMATRIX& projectionMatrix( ) const;
+	void projectionMatrix( XMMATRIX* ) const;
+	const XMMATRIX& projectionMatrix( ) const;
 	
-	void GetReflectionViewMatrix( D3DXMATRIX& ) const;
-	void viewDirection( D3DXVECTOR3* ) const;	
+	void GetReflectionViewMatrix( XMMATRIX& ) const;
+	void viewDirection( XMFLOAT3* ) const;	
 
 	CameraType type() const;
 
 private:
-	void readKeyboard( D3DXVECTOR3& );
+	void readKeyboard( XMFLOAT3& );
 private:
 	CameraType m_type;
-	D3DXVECTOR3 m_Eye;
+	XMFLOAT3 m_Eye;
+	XMVECTOR m_eyeVector;
 	float m_rotationX, m_rotationY, m_rotationZ;
-	D3DXMATRIX m_viewMatrix, m_reflectionViewMatrix;
-	D3DXMATRIX m_projection_matrix;
-	D3DXVECTOR3 m_view_direction;
-	D3DXMATRIX m_mCameraWorld;
+	XMMATRIX m_viewMatrix, m_reflectionViewMatrix;
+	XMMATRIX m_projection_matrix;
+	XMFLOAT3 m_view_direction;
+	XMMATRIX m_mCameraWorld;
 };
 

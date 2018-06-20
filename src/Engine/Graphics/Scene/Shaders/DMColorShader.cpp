@@ -17,7 +17,7 @@ DMColorShader::~DMColorShader()
 bool DMColorShader::innerInitialize()
 {
 	ID3D11Buffer* buffer;
-	DMD3D::instance().createShaderConstantBuffer( sizeof( D3DXVECTOR4 ), m_constantBuffer, nullptr );
+	DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer, nullptr );
 
 	createPhase( 0, -1, 0 );
 	return true;
@@ -52,7 +52,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMColorShader::initLayouts()
 
 void DMColorShader::setParams( const ParamSet& params )
 {
-	Device::updateResource<D3DXVECTOR4>( m_constantBuffer.get(), [&]( D3DXVECTOR4& v )
+	Device::updateResource<XMFLOAT4>( m_constantBuffer.get(), [&]( XMFLOAT4& v )
 	{
 		v = params.at( "Color" ).vector();
 	} );

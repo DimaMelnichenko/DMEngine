@@ -5,10 +5,10 @@
 DMTransformBuffer::DMTransformBuffer(  )
 {
 	m_transform_link = nullptr;
-	D3DXMatrixIdentity( &m_result_matrix );	
-	D3DXMatrixIdentity( &m_position_matrix );
-	D3DXMatrixIdentity( &m_rotate_matrix );
-	D3DXMatrixIdentity( &m_scale_matrix );
+	m_result_matrix = XMMatrixIdentity();
+	m_position_matrix = XMMatrixIdentity();
+	m_rotate_matrix = XMMatrixIdentity();
+	m_scale_matrix = XMMatrixIdentity();
 }
 
 DMTransformBuffer::DMTransformBuffer( DMTransformBuffer&& source )
@@ -49,52 +49,51 @@ DMTransformBuffer& DMTransformBuffer::operator=(const DMTransformBuffer& right)
         return *this;
     }
 	
-	memcpy( &this->m_result_matrix, &right.m_result_matrix, sizeof( D3DXMATRIX ) );	
-	memcpy( &this->m_position_matrix, &right.m_position_matrix, sizeof( D3DXMATRIX ) );
-	memcpy( &this->m_rotate_matrix, &right.m_rotate_matrix, sizeof( D3DXMATRIX ) );
-	memcpy( &this->m_scale_matrix, &right.m_scale_matrix, sizeof( D3DXMATRIX ) );
+	memcpy( &this->m_result_matrix, &right.m_result_matrix, sizeof( XMMATRIX ) );	
+	memcpy( &this->m_position_matrix, &right.m_position_matrix, sizeof( XMMATRIX ) );
+	memcpy( &this->m_rotate_matrix, &right.m_rotate_matrix, sizeof( XMMATRIX ) );
+	memcpy( &this->m_scale_matrix, &right.m_scale_matrix, sizeof( XMMATRIX ) );
 	
 	m_aabb = right.m_aabb;
 
     return *this;
 }
 
-void DMTransformBuffer::setPosition( const D3DXVECTOR3& vec )
+void DMTransformBuffer::setPosition( const XMFLOAT3& vec )
 {
 	setPosition( vec.x, vec.y, vec.z );
 }
 
 void DMTransformBuffer::setPosition( float x, float y, float z )
 {
-	D3DXMatrixTranslation( &m_position_matrix, x, y, z );
+	m_position_matrix = XMMatrixTranslation( x, y, z );
 
 	recalcMatrix();
 
 	m_aabb.setPosition( x, y, z );
 }
 
-void DMTransformBuffer::position( D3DXVECTOR3* pos ) const
+void DMTransformBuffer::position( XMVECTOR& pos ) const
 {
-	pos->x = m_position_matrix._41;
-	pos->y = m_position_matrix._42;
-	pos->z = m_position_matrix._43;
+	pos = m_position_matrix.r[3];
 }
 
-D3DXVECTOR3 DMTransformBuffer::position() const 
+XMVECTOR DMTransformBuffer::position() const
 {
-	return D3DXVECTOR3( m_position_matrix._41, m_position_matrix._42, m_position_matrix._43 );
+	return m_position_matrix.r[3];
 }
 
-void DMTransformBuffer::setRotationAxis( const D3DXVECTOR3& vec, float degree )
+void DMTransformBuffer::setRotationAxis( const XMFLOAT3& vec, float degree )
 {
-	D3DXMatrixRotationAxis( &m_rotate_matrix, &vec, degree );
+	XMVECTOR axis = XMLoadFloat3( &vec );
+	m_rotate_matrix = XMMatrixRotationAxis( axis, degree );
 
 	recalcMatrix();
 }
 
 void DMTransformBuffer::setRotationAxis( float x, float y, float z, float degree )
 {
-	static D3DXVECTOR3 rot;
+	static XMFLOAT3 rot;
 	rot.x = x;
 	rot.y = y;
 	rot.z = z;
@@ -102,38 +101,38 @@ void DMTransformBuffer::setRotationAxis( float x, float y, float z, float degree
 }
 
 
-void DMTransformBuffer::resultMatrix( D3DXMATRIX* result )
+void DMTransformBuffer::resultMatrix( XMMATRIX* result )
 {
-	memcpy( result, &m_result_matrix, sizeof( D3DXMATRIX ) );
+	memcpy( result, &m_result_matrix, sizeof( XMMATRIX ) );
 }
 
-const D3DXMATRIX& DMTransformBuffer::resultMatrix() const
+const XMMATRIX& DMTransformBuffer::resultMatrix() const
 {
 	return m_result_matrix;
 }
 
-const D3DXMATRIX* DMTransformBuffer::resultMatrixPtr() const
+const XMMATRIX* DMTransformBuffer::resultMatrixPtr() const
 {
 	return &m_result_matrix;
 }
 
 void DMTransformBuffer::recalcMatrix()
 {	
-	D3DXMatrixMultiply( &m_result_matrix, &m_scale_matrix, &m_rotate_matrix );
-	D3DXMatrixMultiply( &m_result_matrix, &m_result_matrix, &m_position_matrix );
+	m_result_matrix = XMMatrixMultiply( m_scale_matrix, m_rotate_matrix );
+	m_result_matrix = XMMatrixMultiply( m_result_matrix, m_position_matrix );
 
 	if( m_transform_link != nullptr )
 	{
-		D3DXMatrixMultiply( &m_result_matrix, &m_transform_link->resultMatrix(), &m_result_matrix );
+		m_result_matrix = XMMatrixMultiply( m_transform_link->resultMatrix(), m_result_matrix );
 	}
 }
 
 
-void DMTransformBuffer::setScale( const D3DXVECTOR3& vec )
+void DMTransformBuffer::setScale( const XMFLOAT3& vec )
 {
-	D3DXMATRIX mat;
+	XMMATRIX mat;
 
-	D3DXMatrixScaling( &m_scale_matrix, vec.x, vec.y, vec.z );
+	m_scale_matrix = XMMatrixScaling( vec.x, vec.y, vec.z );
 
 	recalcMatrix();
 
@@ -143,7 +142,7 @@ void DMTransformBuffer::setScale( const D3DXVECTOR3& vec )
 
 void DMTransformBuffer::setScale( float x )
 {
-	setScale( D3DXVECTOR3( x, x, x )  );
+	setScale( XMFLOAT3( x, x, x )  );
 }
 
 void DMTransformBuffer::setLink( DMTransformBuffer* dest )

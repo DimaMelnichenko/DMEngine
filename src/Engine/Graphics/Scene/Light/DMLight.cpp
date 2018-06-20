@@ -3,7 +3,7 @@
 
 DMLight::DMLight( LightType type ) :
 	m_type( type ),
-	m_color( D3DXVECTOR3( 1.0, 1.0, 1.0 ) ),
+	m_color( XMFLOAT3( 1.0, 1.0, 1.0 ) ),
 	m_enabled( true ),
 	m_attenuation( 0 )
 {
@@ -67,19 +67,19 @@ void DMLight::setColor( float r, float g, float b )
 	m_color.z = b;
 }
 
-void DMLight::setColor( D3DXVECTOR3& _color )
+void DMLight::setColor( XMFLOAT3& _color )
 {
-	memcpy( &m_color, &_color, sizeof( D3DXVECTOR3 ) );
+	memcpy( &m_color, &_color, sizeof( XMFLOAT3 ) );
 }
 
-D3DXVECTOR3 DMLight::color( ) const
+XMFLOAT3 DMLight::color( ) const
 {
 	return m_color;
 }
 
-void DMLight::setDirection( D3DXVECTOR3& _direction )
+void DMLight::setDirection( XMFLOAT3& _direction )
 {
-	memcpy( &m_direction, &_direction, sizeof( D3DXVECTOR3 ) );
+	memcpy( &m_direction, &_direction, sizeof( XMFLOAT3 ) );
 }
 
 void DMLight::setDirection( float x, float y, float z )
@@ -89,7 +89,7 @@ void DMLight::setDirection( float x, float y, float z )
 	m_direction.z = z;
 }
 
-D3DXVECTOR3 DMLight::direction() const
+XMFLOAT3 DMLight::direction() const
 {
 	return m_direction;
 }

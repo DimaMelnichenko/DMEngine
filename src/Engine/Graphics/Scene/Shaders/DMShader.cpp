@@ -278,7 +278,7 @@ bool DMShader::addShaderPass( SRVType type,
 			{
 				D3D11_SO_DECLARATION_ENTRY decl;
 				StrimOutputDeclaration( &decl );
-				UINT strides = sizeof( D3DXVECTOR4 );
+				UINT strides = sizeof( XMFLOAT4 );
 				result = DMD3D::instance().GetDevice()->CreateGeometryShaderWithStreamOutput( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), &decl, 1,
 																								NULL, 0, 0, 0, &geometry_shader );
 			}

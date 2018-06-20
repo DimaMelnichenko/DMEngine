@@ -153,15 +153,16 @@ bool DMGraphics::Render()
 
 	for( const auto& pair : System::models() )
 	{
-		static D3DXVECTOR3 lenVec;
-		const D3DXVECTOR3& camPos = m_cameraPool["main"].position();
+		static XMVECTOR lenVec;
+		XMFLOAT3 camPos = m_cameraPool["main"].position();
+		XMVECTOR camPosVector = XMLoadFloat3( &camPos );
 
-		pair.second->transformBuffer().position( &lenVec );
-		D3DXVec3Subtract( &lenVec, &lenVec, &camPos );
-		float distance = D3DXVec3Length( &lenVec );
+		lenVec = pair.second->transformBuffer().position();
+		lenVec = XMVectorSubtract( lenVec, camPosVector );
+		XMVECTOR distance = XMVector3Length( lenVec );
 
 		// достаем лод меша в зависимости от расстояния до камеры
-		const DMModel::LodBlock* block = pair.second->getLod( distance );
+		const DMModel::LodBlock* block = pair.second->getLod( distance.m128_f32[0] );
 
 		if( block != nullptr )
 		{

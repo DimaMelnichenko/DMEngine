@@ -47,11 +47,11 @@ public:
 
 		struct MyFormatVertex
 		{
-			D3DXVECTOR3 position;			
-			D3DXVECTOR3 normal;
-			D3DXVECTOR2 texture;
-			D3DXVECTOR3 tangent;
-			D3DXVECTOR3 binormal;
+			XMFLOAT3 position;			
+			XMFLOAT3 normal;
+			XMFLOAT2 texture;
+			XMFLOAT3 tangent;
+			XMFLOAT3 binormal;
 		};
 
 		// Read in the vertex data.

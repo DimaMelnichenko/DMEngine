@@ -23,11 +23,11 @@ private:
 	LightList m_light_list;
 	struct alignas( 16 ) LightBuffer
 	{
-		D3DXVECTOR3 lightPos;
+		XMFLOAT3 lightPos;
 		int lightType;
-		D3DXVECTOR3 lightDir;
+		XMFLOAT3 lightDir;
 		float spotAngle;
-		D3DXVECTOR3 lightColor;
+		XMFLOAT3 lightColor;
 		float attenuation;
 	};
 	DMStructuredBuffer m_structBuffer;

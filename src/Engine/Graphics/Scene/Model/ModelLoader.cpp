@@ -41,7 +41,7 @@ DMModel* ModelLoader::loadJSONFile( const std::string& filename, uint32_t id )
 
 	model.reset( new DMModel( id, jsonParser["Name"] ) );
 
-	D3DXVECTOR3 pos = strToVec3( jsonParser["position"] );
+	XMFLOAT3 pos = strToVec3( jsonParser["position"] );
 	model->transformBuffer().setPosition( pos );
 
 	if( jsonParser.find( "scale" ) != jsonParser.end() )
@@ -96,7 +96,7 @@ DMModel* ModelLoader::loadXMLFile( const std::string& filename, uint32_t id )
 	std::string modelName = pElement->Attribute( "Name" );
 	std::unique_ptr<DMModel> model( new DMModel( id, modelName ) );
 
-	D3DXVECTOR3 pos = strToVec3( pElement->FirstChildElement("position")->GetText() );
+	XMFLOAT3 pos = strToVec3( pElement->FirstChildElement("position")->GetText() );
 	model->transformBuffer().setPosition( pos );
 
 	float scale = pElement->FirstChildElement( "scale" )->FloatText();
@@ -191,7 +191,7 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 
 	std::unique_ptr<DMModel> model( new DMModel( id, model_name ) );
 
-	D3DXVECTOR3 pos = strToVec3( resourceFile.get<std::string>( "General", "Position" ) );
+	XMFLOAT3 pos = strToVec3( resourceFile.get<std::string>( "General", "Position" ) );
 	model->transformBuffer().setPosition( pos );
 
 	float scale = resourceFile.get<float>( "General", "Scale" );

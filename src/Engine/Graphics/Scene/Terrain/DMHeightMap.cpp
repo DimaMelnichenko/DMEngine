@@ -486,9 +486,9 @@ float DMHeightMap::height( float x, float y )
 
 	y = size().y - y;
 
-	D3DXVECTOR3 abc_1[3];
-	D3DXVECTOR3 abc_2[3];
-	D3DXVECTOR3 point;
+	XMFLOAT3 abc_1[3];
+	XMFLOAT3 abc_2[3];
+	XMFLOAT3 point;
 	
 	point.x = x;
 	point.z = y;
@@ -496,13 +496,13 @@ float DMHeightMap::height( float x, float y )
 	float control_x = floor( x );
 	float control_z = floor( y );
 	
-	abc_1[0] = D3DXVECTOR3( control_x, pixel( control_x, control_z ), control_z );
-	abc_1[1] = D3DXVECTOR3( control_x + 1, pixel( control_x + 1, control_z ), control_z );
-	abc_1[2] = D3DXVECTOR3( control_x + 1, pixel( control_x + 1, control_z + 1 ), control_z + 1 );
+	abc_1[0] = XMFLOAT3( control_x, pixel( control_x, control_z ), control_z );
+	abc_1[1] = XMFLOAT3( control_x + 1, pixel( control_x + 1, control_z ), control_z );
+	abc_1[2] = XMFLOAT3( control_x + 1, pixel( control_x + 1, control_z + 1 ), control_z + 1 );
 
-	abc_2[0] = D3DXVECTOR3( control_x, pixel( control_x, control_z ), control_z );
-	abc_2[1] = D3DXVECTOR3( control_x + 1, pixel( control_x + 1, control_z + 1 ), control_z + 1 );
-	abc_2[2] = D3DXVECTOR3( control_x, pixel( control_x, control_z + 1 ), control_z + 1 );
+	abc_2[0] = XMFLOAT3( control_x, pixel( control_x, control_z ), control_z );
+	abc_2[1] = XMFLOAT3( control_x + 1, pixel( control_x + 1, control_z + 1 ), control_z + 1 );
+	abc_2[2] = XMFLOAT3( control_x, pixel( control_x, control_z + 1 ), control_z + 1 );
 
 	if( checkHeightOfTriangle( &point, abc_1 ) )
 	{
@@ -516,12 +516,12 @@ float DMHeightMap::height( float x, float y )
 	return 0.0;
 }
 
-D3DXVECTOR2 DMHeightMap::size( )
+XMFLOAT2 DMHeightMap::size( )
 {
-	return D3DXVECTOR2( (float)m_pHeader.dwWidth, (float)m_pHeader.dwHeight );
+	return XMFLOAT2( (float)m_pHeader.dwWidth, (float)m_pHeader.dwHeight );
 }
 
-bool DMHeightMap::in_triangle( D3DXVECTOR2* d, D3DXVECTOR2* abc )
+bool DMHeightMap::in_triangle( XMFLOAT2* d, XMFLOAT2* abc )
 {
 	double xa, ya, xb, yb, xc, yc, xd, yd;
 
@@ -539,7 +539,7 @@ bool DMHeightMap::in_triangle( D3DXVECTOR2* d, D3DXVECTOR2* abc )
 		( ( ( xd - xc )*( ya - yc ) - ( yd - yc )*( xa - xc ) )*( ( xb - xc )*( ya - yc ) - ( yb - yc )*( xa - xc ) ) >= 0 );
 }
 
-bool DMHeightMap::checkHeightOfTriangle( D3DXVECTOR3* point, D3DXVECTOR3* abc )
+bool DMHeightMap::checkHeightOfTriangle( XMFLOAT3* point, XMFLOAT3* abc )
 {
 	float startVector[3], directionVector[3], edge1[3], edge2[3], normal[3];
 	float Q[3], e1[3], e2[3], e3[3], edgeNormal[3], temp[3];

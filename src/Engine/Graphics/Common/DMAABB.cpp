@@ -4,7 +4,7 @@
 
 DMAABB::DMAABB(  )
 {
-	CreateAABB( D3DXVECTOR3( 0.0, 0.5, 0.0 ), D3DXVECTOR3( 1.0, 0.5, 1.0 ) );
+	CreateAABB( XMFLOAT3( 0.0, 0.5, 0.0 ), XMFLOAT3( 1.0, 0.5, 1.0 ) );
 }
 
 DMAABB::~DMAABB()
@@ -30,16 +30,23 @@ DMAABB& DMAABB::operator=( const DMAABB& right )
 
 const bool DMAABB::OverlapsAABB( const DMAABB& aabb )
 {
-	const D3DXVECTOR3 t = aabb.m_position - m_position;
-	return fabs( t.x ) <= ( m_size.x + aabb.m_size.x ) &&
-		fabs( t.y ) <= ( m_size.y + aabb.m_size.y ) &&
-		fabs( t.z ) <= ( m_size.z + aabb.m_size.z );
+	XMVECTOR vecSub = XMVectorSubtract( aabb.m_position, m_position );
+	vecSub = XMVectorAbs( vecSub );
+
+	XMVECTOR sum = XMVectorAdd( m_size, aabb.m_size );
+
+	vecSub = _mm_cmple_ps( vecSub, sum );
+
+	XMFLOAT3 result;
+	XMStoreFloat3( &result, vecSub );
+
+	return	result.x && result.y && result.z;
 }
 
 const bool DMAABB::OverlapsSphere( const DMBoundingSphere& sphere )
 {
 	float d = 0, a;
-
+/*
 	// проходим по осям X,Y,Z
 	for( int i = 0; i < 3; i++ )
 	{
@@ -61,17 +68,19 @@ const bool DMAABB::OverlapsSphere( const DMBoundingSphere& sphere )
 	}
 
 	return d <= ( sphere.m_radius * sphere.m_radius );
+	*/
+	return true;
 }
 
 void DMAABB::CreateAABBFromVertex( void* data, size_t offset, size_t size )
 {
-	D3DXVECTOR3* vertex = reinterpret_cast<D3DXVECTOR3*>( data );
+	/*XMFLOAT3* vertex = reinterpret_cast<XMFLOAT3*>( data );
 	m_min = m_max = *vertex;
 
 	// ищем минимальную/максимальную точки
 	for( size_t i = 0; i < size; i++ )
 	{
-		vertex = reinterpret_cast<D3DXVECTOR3*>( (char*)data + i * offset );
+		vertex = reinterpret_cast<XMFLOAT3*>( (char*)data + i * offset );
 		// проходим по x,y,z
 		
 		m_max.x = max( m_max.x, vertex->x );
@@ -88,64 +97,65 @@ void DMAABB::CreateAABBFromVertex( void* data, size_t offset, size_t size )
 	// и положение в пространстве
 	m_base_position = m_min + m_size;
 	m_position = m_base_position;
+	*/
 }
 
-void DMAABB::CreateAABB( D3DXVECTOR3& position, D3DXVECTOR3& size )
+void DMAABB::CreateAABB( XMFLOAT3& position, XMFLOAT3& size )
 {
-	m_position = position;
+	/*m_position = position;
 	m_base_position = m_position;
 	m_size = size;
 
 	m_min = m_position - m_size;
-	m_max = m_position + m_size;
+	m_max = m_position + m_size;*/
 }
 
-const D3DXVECTOR3 DMAABB::position()
+const XMVECTOR DMAABB::position()
 {
 	return m_position;
 }
 
-const D3DXVECTOR3 DMAABB::size()
+const XMVECTOR DMAABB::size()
 {
 	return m_size;
 }
 
 void DMAABB::setSize( float x, float y, float z )
 {
-	m_size.x = x;
-	m_size.y = y;
-	m_size.z = z;
+	//m_size.x = x;
+	//m_size.y = y;
+	//m_size.z = z;
 
-	m_min = m_position - m_size;
-	m_max = m_position + m_size;
+	m_min = XMVectorSubtract( m_position, m_size );
+	m_max = XMVectorAdd( m_position, m_size );
 }
 
 void DMAABB::setPosition( float x, float y, float z )
 {
-	m_position.x = m_base_position.x + x;
-	m_position.y = m_base_position.y + y;
-	m_position.z = m_base_position.z + z;
+	//m_position.x = m_base_position.x + x;
+	//m_position.y = m_base_position.y + y;
+	//m_position.z = m_base_position.z + z;
 
-	m_min = m_position - m_size;
-	m_max = m_position + m_size;
+	m_min = XMVectorSubtract( m_position, m_size );
+	m_max = XMVectorAdd( m_position, m_size );
  }
 
-void DMAABB::setScale( const D3DXVECTOR3& vec )
+void DMAABB::setScale( const XMFLOAT3& vec )
 {
 	setScale( vec.x, vec.y, vec.z );
 }
 
 void DMAABB::setScale( float x, float y, float z )
 {
-	m_size.x *= x;
-	m_size.y *= y;
-	m_size.z *= z;
-	m_position.x *= x;
-	m_position.y *= y;
-	m_position.z *= z;
-
-	m_base_position = m_position;
-
-	m_min = m_position - m_size;
-	m_max = m_position + m_size;
+	//m_size.x *= x;
+	//m_size.y *= y;
+	//m_size.z *= z;
+	//m_position.x *= x;
+	//m_position.y *= y;
+	//m_position.z *= z;
+	//
+	//m_base_position = m_position;
+	//
+	//m_min = m_position - m_size;
+	//m_max = m_position + m_size;
 }

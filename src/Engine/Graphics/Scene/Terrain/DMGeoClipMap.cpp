@@ -14,7 +14,7 @@ DMGeoClipMap::~DMGeoClipMap( )
 
 }
 
-bool DMGeoClipMap::Initialize( int N, int _levels, float mapSize, float widthMultipler, float height )
+bool DMGeoClipMap::Initialize( int N, uint16_t _levels, float mapSize, float widthMultipler, float height )
 {
 	m_mapSize = mapSize;
 	m_widthMultipler = widthMultipler;
@@ -30,24 +30,24 @@ bool DMGeoClipMap::Initialize( int N, int _levels, float mapSize, float widthMul
 
 	//_levels = 1024 / m_M;
 
-	m_MxM_offsets.push_back( D3DXVECTOR2( 0.0f, 0.0f ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( 0.0f, (float)m_M - 1.0f ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( 0.0f, 2.0f * (float)m_M  ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( 0.0f, 3.0f * (float)m_M - 1.0f ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( (float)m_M - 1.0f, 0.0f ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( 2.0f * (float)m_M, 0.0f ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( 3.0f * (float)m_M - 1.0f, 0.0f ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( 3.0f * (float)m_M - 1.0f, (float)m_M - 1.0f ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( 3.0f * (float)m_M - 1.0f, 2.0f * m_M ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( 3.0f * (float)m_M - 1.0f, 3.0f * m_M - 1.0f ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( (float)m_M - 1.0f, 3.0f * (float)m_M - 1.0f ) );
-	m_MxM_offsets.push_back( D3DXVECTOR2( 2.0f * (float)m_M, 3.0f * (float)m_M - 1.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 0.0f, 0.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 0.0f, (float)m_M - 1.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 0.0f, 2.0f * (float)m_M  ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 0.0f, 3.0f * (float)m_M - 1.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( (float)m_M - 1.0f, 0.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 2.0f * (float)m_M, 0.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 3.0f * (float)m_M - 1.0f, 0.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 3.0f * (float)m_M - 1.0f, (float)m_M - 1.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 3.0f * (float)m_M - 1.0f, 2.0f * m_M ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 3.0f * (float)m_M - 1.0f, 3.0f * m_M - 1.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( (float)m_M - 1.0f, 3.0f * (float)m_M - 1.0f ) );
+	m_MxM_offsets.push_back( XMFLOAT2( 2.0f * (float)m_M, 3.0f * (float)m_M - 1.0f ) );
 
 
-	m_Mx3_offsets.push_back( D3DXVECTOR2( 2.0f * (float)m_M - 2.0f, 0.0f ) );
-	m_Mx3_offsets.push_back( D3DXVECTOR2( 2.0f * (float)m_M - 2.0f, 3.0f * (float)m_M - 1.0f ) );
-	m_Mx3_offsets.push_back( D3DXVECTOR2( 0.0f, 2.0f * (float)m_M - 2.0f ) );
-	m_Mx3_offsets.push_back( D3DXVECTOR2( 3.0f * (float)m_M - 1.0f, 2.0f * (float)m_M - 2.0f ) );
+	m_Mx3_offsets.push_back( XMFLOAT2( 2.0f * (float)m_M - 2.0f, 0.0f ) );
+	m_Mx3_offsets.push_back( XMFLOAT2( 2.0f * (float)m_M - 2.0f, 3.0f * (float)m_M - 1.0f ) );
+	m_Mx3_offsets.push_back( XMFLOAT2( 0.0f, 2.0f * (float)m_M - 2.0f ) );
+	m_Mx3_offsets.push_back( XMFLOAT2( 3.0f * (float)m_M - 1.0f, 2.0f * (float)m_M - 2.0f ) );
 
 	//--------------------------------------------------------------------
 
@@ -90,13 +90,13 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 
 	// new clipmap
 
-	D3DXMATRIX worldMatrix;
-	D3DXMatrixIdentity( &worldMatrix );
+	XMMATRIX worldMatrix;
+	worldMatrix = XMMatrixIdentity();
 
 	DMClipMapShader::ParamBuffer geo_param;
 	memset( &geo_param, 0, sizeof( DMClipMapShader::ParamBuffer ) );
 
-	static D3DXVECTOR2 camera_pos( 0.0, 0.0 );
+	static XMFLOAT2 camera_pos( 0.0, 0.0 );
 	camera_pos.x = camera.position().x;
 	camera_pos.y = camera.position().z;
 
@@ -106,7 +106,7 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	geo_param.mapSize = m_mapSize;
 	geo_param.mapWidthMultipler = m_widthMultipler;
 	geo_param.mapHeightMultippler = m_height_multipler;
-	geo_param.map_N = m_N;
+	geo_param.map_N = (float)m_N;
 	geo_param.hightOffset = m_hightOffset;
 	geo_param.mapScale = m_mapScale;
 	geo_param.mapOffset = m_mapOffset;
@@ -133,7 +133,7 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 
 	instance_offset.level_pos = m_levels[0].calcPos( camera_pos );
 	instance_offset.scale = m_levels[0].scale();	
-	instance_offset.offset = D3DXVECTOR2( 0.0f, 0.0f );
+	instance_offset.offset = XMFLOAT2( 0.0f, 0.0f );
 
 	offsets.push_back( instance_offset );
 
@@ -151,11 +151,11 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	offsets.clear();
 
 	
-	for( int level_index = 1; level_index < m_levels.size(); ++level_index )
+	for( size_t level_index = 1; level_index < m_levels.size(); ++level_index )
 	{
 		DMGeoLevel& level = m_levels[level_index];
 
-		D3DXVECTOR2 level_pos = level.calcPos( camera_pos );
+		XMFLOAT2 level_pos = level.calcPos( camera_pos );
 
 		instance_offset.level_pos = level_pos;
 
@@ -167,10 +167,12 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 			static DMAABB aabb_original;
 			static DMAABB aabb_offset;
 
-			aabb_original.CreateAABB( D3DXVECTOR3( m_M, 100, m_M ), D3DXVECTOR3( m_M, 100, m_M ) );
+			aabb_original.CreateAABB( XMFLOAT3( (float)m_M, 100, (float)m_M ), XMFLOAT3( (float)m_M, 100, (float)m_M ) );
 			aabb_offset = aabb_original;
 			aabb_offset.setScale( level.scale(), level.scale(), level.scale() );
-			D3DXVECTOR2 offset = level_pos + m_MxM_offsets[offset_index] * level.scale();
+			XMFLOAT2 offset;
+			offset.x = level_pos.x + m_MxM_offsets[offset_index].x * level.scale();
+			offset.y = level_pos.y + m_MxM_offsets[offset_index].y * level.scale();
 			aabb_offset.setPosition( offset.x, 0.5, offset.y );
 
 			/*if( !frustum.CheckAABB( &aabb_offset ) )
@@ -187,7 +189,9 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 		// Mx3 vertical offsets
 		for( int Mx3_offset_index = 0; Mx3_offset_index < 2; ++Mx3_offset_index )
 		{
-			D3DXVECTOR2 offset = level_pos + m_Mx3_offsets[Mx3_offset_index] * level.scale();
+			XMFLOAT2 offset;
+			offset.x = level_pos.x + m_Mx3_offsets[Mx3_offset_index].x * level.scale();
+			offset.y = level_pos.y + m_Mx3_offsets[Mx3_offset_index].y * level.scale();
 
 			instance_offset.offset = m_Mx3_offsets[Mx3_offset_index];
 			instance_offset.scale = level.scale();
@@ -196,9 +200,11 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 		}
 
 		// Mx3 horizontal offsets
-		for( int Mx3_offset_index = 2; Mx3_offset_index < m_Mx3_offsets.size(); ++Mx3_offset_index )
+		for( size_t Mx3_offset_index = 2; Mx3_offset_index < m_Mx3_offsets.size(); ++Mx3_offset_index )
 		{
-			D3DXVECTOR2 offset = level_pos + m_Mx3_offsets[Mx3_offset_index] * level.scale();
+			XMFLOAT2 offset;
+			offset.x = level_pos.x + m_Mx3_offsets[Mx3_offset_index].x * level.scale();
+			offset.y = level_pos.y + m_Mx3_offsets[Mx3_offset_index].y * level.scale();
 
 			instance_offset.offset = m_Mx3_offsets[Mx3_offset_index];
 			instance_offset.scale = level.scale();
@@ -212,35 +218,35 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 		int calc_M_x = static_cast<int>( abs( floor( dx / level.scale() ) ) );
 		int calc_M_y = static_cast<int>( abs( floor( dy / level.scale() ) ) );
 
-		D3DXVECTOR2 offset;
+		XMFLOAT2 offset;
 
-		instance_offset.offset = D3DXVECTOR2( 0.0f, 0.0f );
+		instance_offset.offset = XMFLOAT2( 0.0f, 0.0f );
 		
 		if( calc_M_x == m_M )
 		{
 			if( calc_M_y == m_M )
 			{
 				// Lower Left L Shape
-				//instance_offset.offset = level_pos + D3DXVECTOR2( m_M - 1, m_M - 1 ) * level.scale();
-				instance_offset.offset = D3DXVECTOR2( m_M - 1, m_M - 1 );
+				//instance_offset.offset = level_pos + XMFLOAT2( m_M - 1, m_M - 1 ) * level.scale();
+				instance_offset.offset = XMFLOAT2( (float)m_M - 1, (float)m_M - 1 );
 				instance_offset.scale = level.scale();
 				_2M1_horizontal_offsets.push_back( instance_offset );
 
-				//instance_offset.offset = level_pos + D3DXVECTOR2( m_M - 1, m_M - 1 ) * level.scale();
-				instance_offset.offset = D3DXVECTOR2( m_M - 1, m_M - 1 );
+				//instance_offset.offset = level_pos + XMFLOAT2( m_M - 1, m_M - 1 ) * level.scale();
+				instance_offset.offset = XMFLOAT2( (float)m_M - 1, (float)m_M - 1 );
 				instance_offset.scale = level.scale();
 				_2M1_vertical_offsets.push_back( instance_offset );
 			}
 			else
 			{
 				// Upper Left L Shape
-				//instance_offset.offset = level_pos + D3DXVECTOR2( m_M - 1, 3 * m_M - 2 ) * level.scale();
-				instance_offset.offset = D3DXVECTOR2( m_M - 1, 3 * m_M - 2 );
+				//instance_offset.offset = level_pos + XMFLOAT2( m_M - 1, 3 * m_M - 2 ) * level.scale();
+				instance_offset.offset = XMFLOAT2( (float)m_M - 1, 3 * (float)m_M - 2 );
 				instance_offset.scale = level.scale();
 				_2M1_horizontal_offsets.push_back( instance_offset );
 
-				//instance_offset.offset = level_pos + D3DXVECTOR2( m_M - 1, m_M - 1 ) * level.scale();
-				instance_offset.offset = D3DXVECTOR2( m_M - 1, m_M - 1 );
+				//instance_offset.offset = level_pos + XMFLOAT2( m_M - 1, m_M - 1 ) * level.scale();
+				instance_offset.offset = XMFLOAT2( (float)m_M - 1, (float)m_M - 1 );
 				instance_offset.scale = level.scale();
 				_2M1_vertical_offsets.push_back( instance_offset );
 			}
@@ -250,27 +256,27 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 			if( calc_M_y == m_M )
 			{
 				// Lower Right L Shape
-				//instance_offset.offset = level_pos + D3DXVECTOR2( m_M - 1, m_M - 1 ) * level.scale();
-				instance_offset.offset = D3DXVECTOR2( m_M - 1, m_M - 1 );
+				//instance_offset.offset = level_pos + XMFLOAT2( m_M - 1, m_M - 1 ) * level.scale();
+				instance_offset.offset = XMFLOAT2( (float)m_M - 1, (float)m_M - 1 );
 				instance_offset.scale = level.scale();
 				_2M1_horizontal_offsets.push_back( instance_offset );
 				
 
-				//instance_offset.offset = level_pos + D3DXVECTOR2( 3 * m_M - 2, m_M - 1 ) * level.scale();
-				instance_offset.offset = D3DXVECTOR2( 3 * m_M - 2, m_M - 1 );
+				//instance_offset.offset = level_pos + XMFLOAT2( 3 * m_M - 2, m_M - 1 ) * level.scale();
+				instance_offset.offset = XMFLOAT2( 3 * (float)m_M - 2, (float)m_M - 1 );
 				instance_offset.scale = level.scale();
 				_2M1_vertical_offsets.push_back( instance_offset );
 			}
 			else
 			{
 				// Upper Right L Shape 
-				//instance_offset.offset = level_pos + D3DXVECTOR2( m_M - 1, 3 * m_M - 2 ) * level.scale();
-				instance_offset.offset = D3DXVECTOR2( m_M - 1, 3 * m_M - 2 );
+				//instance_offset.offset = level_pos + XMFLOAT2( m_M - 1, 3 * m_M - 2 ) * level.scale();
+				instance_offset.offset = XMFLOAT2( (float)m_M - 1, 3 * (float)m_M - 2 );
 				instance_offset.scale = level.scale();
 				_2M1_horizontal_offsets.push_back( instance_offset );
 
-				//instance_offset.offset = level_pos + D3DXVECTOR2( 3 * m_M - 2, m_M - 1 ) * level.scale();
-				instance_offset.offset = D3DXVECTOR2( 3 * m_M - 2, m_M - 1 );
+				//instance_offset.offset = level_pos + XMFLOAT2( 3 * m_M - 2, m_M - 1 ) * level.scale();
+				instance_offset.offset = XMFLOAT2( 3 * (float)m_M - 2, (float)m_M - 1 );
 				instance_offset.scale = level.scale();
 				_2M1_vertical_offsets.push_back( instance_offset );
 				
@@ -350,7 +356,7 @@ void DMGeoClipMap::setMapScale( float scale )
 
 void DMGeoClipMap::setMapOffset( float x, float y )
 {
-	m_mapOffset = D3DXVECTOR2( x, y );
+	m_mapOffset = XMFLOAT2( x, y );
 }
 
 void DMGeoClipMap::setMapOffsetSpeed( float speed )

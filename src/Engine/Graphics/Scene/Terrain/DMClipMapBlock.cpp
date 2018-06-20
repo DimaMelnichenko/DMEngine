@@ -11,7 +11,7 @@ DMClipMapBlock::~DMClipMapBlock()
 
 void DMClipMapBlock::Initialize( uint16_t width, uint16_t height )
 {
-	std::vector<D3DXVECTOR3> vertices;
+	std::vector<XMFLOAT3> vertices;
 
 	for( uint16_t j = 0; j < height; j++ )
 	{
@@ -46,7 +46,7 @@ void DMClipMapBlock::Initialize( uint16_t width, uint16_t height )
 	}
 
 	m_vertexCount = vertices.size();
-	DMD3D::instance().createVertexBuffer( m_vertexBuffer, &vertices[0], sizeof( D3DXVECTOR3 ) * m_vertexCount );
+	DMD3D::instance().createVertexBuffer( m_vertexBuffer, &vertices[0], sizeof( XMFLOAT3 ) * m_vertexCount );
 
 	m_indexCount = indexes.size();
 	DMD3D::instance().createIndexBuffer( m_indexBuffer, &indexes[0], sizeof( unsigned long ) * m_indexCount );

@@ -24,6 +24,8 @@ public:
 	bool CheckAABB( DMAABB* ) const;
 
 private:
-	D3DXPLANE m_planes[6];
+	float planeDot( uint8_t index, float x, float y, float z ) const;
+private:
+	XMVECTOR m_planes[6];
 };
 

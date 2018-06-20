@@ -14,7 +14,6 @@ DMClipMapShader::~DMClipMapShader()
 
 std::vector<D3D11_INPUT_ELEMENT_DESC> DMClipMapShader::initLayouts()
 {
-	HRESULT result;
 	D3D11_INPUT_ELEMENT_DESC polygonLayout;
 
 	std::vector<D3D11_INPUT_ELEMENT_DESC> vertex_layout;
@@ -66,8 +65,6 @@ bool DMClipMapShader::setInstanceOffset( std::vector<InstanceOffset>& values )
 
 bool DMClipMapShader::SetPSParameters( PSParamBuffer* ps_param )
 {
-	D3D11_MAPPED_SUBRESOURCE mappedResource;
-
 	ID3D11Buffer* buffer = m_ps_shader_param.get();
 
 	Device::updateResource<PSParamBuffer>( buffer, *ps_param );
@@ -79,8 +76,6 @@ bool DMClipMapShader::SetPSParameters( PSParamBuffer* ps_param )
 
 bool DMClipMapShader::SetVSParameters( ParamBuffer* _param_buffer )
 {
-	D3D11_MAPPED_SUBRESOURCE mappedResource;
-
 	ID3D11Buffer* buffer = m_shader_param.get();
 
 	Device::updateResource<ParamBuffer>( buffer, *_param_buffer );

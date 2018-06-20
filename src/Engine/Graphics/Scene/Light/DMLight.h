@@ -25,12 +25,12 @@ public:
 	LightType type( ) const;
 
 	void setColor( float r, float g, float b );
-	void setColor( D3DXVECTOR3& );
-	D3DXVECTOR3 color() const;
+	void setColor( XMFLOAT3& );
+	XMFLOAT3 color() const;
 
-	void setDirection( D3DXVECTOR3& );
+	void setDirection( XMFLOAT3& );
 	void setDirection( float, float, float );
-	D3DXVECTOR3 direction() const;
+	XMFLOAT3 direction() const;
 	
 	float spotAngle() const;
 
@@ -40,9 +40,9 @@ public:
 
 private:
 	bool m_enabled;
-	D3DXVECTOR3 m_color;
+	XMFLOAT3 m_color;
 	LightType m_type;
-	D3DXVECTOR3 m_direction;
+	XMFLOAT3 m_direction;
 	float m_spot_angle;	
 };
 

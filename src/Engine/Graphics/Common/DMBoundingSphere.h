@@ -8,7 +8,7 @@ public:
 	DMBoundingSphere();
 	~DMBoundingSphere();
 
-	D3DXVECTOR3 m_center;
+	XMFLOAT3 m_center;
 	float m_radius;
 };
 

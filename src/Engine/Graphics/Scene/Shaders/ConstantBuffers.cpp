@@ -25,30 +25,30 @@ void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount
 {
 	m_timer.Frame();
 
-	D3DXMATRIX viewMatrix;
-	D3DXMATRIX viewInverseMatrix;
-	D3DXMATRIX projectionMatrix;
-	D3DXMATRIX viewProjectionMatrix;
+	XMMATRIX viewMatrix;
+	XMMATRIX viewInverseMatrix;
+	XMMATRIX projectionMatrix;
+	XMMATRIX viewProjectionMatrix;
 
 	camera.viewMatrix( &viewMatrix );
-	D3DXMatrixInverse( &viewInverseMatrix, nullptr, &viewMatrix );
+	viewInverseMatrix = XMMatrixInverse( nullptr, viewMatrix );
 	camera.projectionMatrix( &projectionMatrix );
-	D3DXMatrixMultiply( &viewProjectionMatrix, &viewMatrix, &projectionMatrix );
+	viewProjectionMatrix = XMMatrixMultiply( viewMatrix, projectionMatrix );
 
 
 	// Transpose the matrices to prepare them for the shader.
-
-	D3DXMatrixTranspose( &viewMatrix, &viewMatrix );
-	D3DXMatrixTranspose( &viewInverseMatrix, &viewInverseMatrix );
-	D3DXMatrixTranspose( &projectionMatrix, &projectionMatrix );
-	D3DXMatrixTranspose( &viewProjectionMatrix, &viewProjectionMatrix );
+	
+	viewMatrix = XMMatrixTranspose( viewMatrix );
+	viewInverseMatrix = XMMatrixTranspose( viewInverseMatrix );
+	projectionMatrix = XMMatrixTranspose( projectionMatrix );
+	viewProjectionMatrix = XMMatrixTranspose( viewProjectionMatrix );
 	
 	Device::updateResource<ShaderFrameConstant>( m_frameConstant.get(), [&]( ShaderFrameConstant& data )
 	{
-		memcpy( &data.view, &viewMatrix, sizeof( D3DXMATRIX ) );
-		memcpy( &data.projection, &projectionMatrix, sizeof( D3DXMATRIX ) );
-		memcpy( &data.viewInverse, &viewInverseMatrix, sizeof( D3DXMATRIX ) );
-		memcpy( &data.viewProjection, &viewProjectionMatrix, sizeof( D3DXMATRIX ) );
+		data.view = viewMatrix;
+		data.projection = projectionMatrix;
+		data.viewInverse = viewInverseMatrix;
+		data.viewProjection = viewProjectionMatrix;
 		camera.position( &data.cameraPosition );
 		camera.viewDirection( &data.viewDirection );
 		data.appTime = static_cast<float>( m_timer.totalTime() );
@@ -62,19 +62,19 @@ void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount
 	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 0, 1, &buffer );
 }
 
-void ConstantBuffers::setPerObjectBuffer( const D3DXMATRIX* matrix )
+void ConstantBuffers::setPerObjectBuffer( const XMMATRIX* matrix )
 {
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
-	D3DXMATRIX mat;
+	XMMATRIX mat;
 
 	if( !matrix )
 	{
-		D3DXMatrixIdentity( &mat );
-		D3DXMatrixTranspose( &mat, &mat );
+		mat = XMMatrixIdentity();
+		mat = XMMatrixTranspose( mat );
 	}
 	else
 	{
-		D3DXMatrixTranspose( &mat, matrix );
+		mat = XMMatrixTranspose( *matrix );
 	}
 
 	Device::updateResource<ShaderModelConstant>( m_modelConstant.get(), [&]( ShaderModelConstant& data )
