@@ -57,7 +57,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> TextureShader::initLayouts()
 
 void TextureShader::setParams( const ParamSet& params )
 {
-	ID3D11ShaderResourceView* texture = System::textures().get( params.at( "Albedo" ).textId() )->GetTexture();
+	ID3D11ShaderResourceView* texture = System::textures().get( params.at( "Albedo" ).textId() )->srv();
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
 }
 

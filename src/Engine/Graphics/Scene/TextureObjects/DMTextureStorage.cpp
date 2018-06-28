@@ -20,11 +20,27 @@ bool DMTextureStorage::load( const std::string& name )
 
 	std::string fullPath = path() + "\\" + name;
 
-	ID3D11ShaderResourceView* srv = m_textureLoader.loadFromFile( fullPath.data() );
-	if( !srv )
+	ScratchImage baseImage;
+	if( !m_textureLoader.loadFromFile( fullPath.data(), baseImage ) )
 		return false;
 
-	std::unique_ptr<DMTexture>  texture( new DMTexture( nextId(), srv ));
+	ScratchImage mipmapImage;
+	HRESULT hr = GenerateMipMaps( baseImage.GetImages(), baseImage.GetImageCount(),
+					 baseImage.GetMetadata(), TEX_FILTER_DEFAULT, 0, mipmapImage );
+
+	std::unique_ptr<DMTexture> texture;
+
+	if( FAILED( hr ) )
+	{ 
+		texture.reset( new DMTexture( nextId(), std::move( baseImage ) ) );
+	}
+	else
+	{
+		texture.reset( new DMTexture( nextId(), std::move( mipmapImage ) ) );
+	}
+
+	if( !texture->createSRV() )
+		return false;
 	
 	insertResource( name, std::move( texture ) );
 

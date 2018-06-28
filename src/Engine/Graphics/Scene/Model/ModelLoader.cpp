@@ -232,7 +232,7 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 ParamSet ModelLoader::loadMaterialParam( ResourceMetaFile& metaResource, const std::string& matSection, int32_t count )
 {
 	ParamSet paramSet;
-	for( int32_t i = 0; i < count; ++i )
+	for( uint32_t i = 0; i < count; ++i )
 	{
 		std::string paramBlock = "Param" + matSection + std::to_string( i );
 

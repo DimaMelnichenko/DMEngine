@@ -1,4 +1,6 @@
 #include "TextureLoader.h"
+#include <locale>
+#include <codecvt>
 
 
 TextureLoader::TextureLoader()
@@ -10,27 +12,40 @@ TextureLoader::~TextureLoader()
 {
 }
 
-ID3D11ShaderResourceView* TextureLoader::loadFromFile( const char* filename )
+bool TextureLoader::loadFromFile( const char* filename, ScratchImage& image )
 {
 	HRESULT result;
 
-	D3DX11_IMAGE_INFO imageInfo;
-	ID3D11ShaderResourceView* texture;
+	std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+	//std::string narrow = converter.to_bytes( wide_utf16_source_string );
+	std::wstring wideFilename = converter.from_bytes( filename );
+
+	wchar_t ext[_MAX_EXT];
+	_wsplitpath_s( wideFilename.data(), nullptr, 0, nullptr, 0, nullptr, 0, ext, _MAX_EXT );
+
 	
-	// load image info
-	D3DX11GetImageInfoFromFile( filename, nullptr, &imageInfo, &result );
-	if( FAILED( result ) )
+	HRESULT hr;
+	if( _wcsicmp( ext, L".dds" ) == 0 )
 	{
-		return nullptr;
+		hr = LoadFromDDSFile( wideFilename.data(), DDS_FLAGS_NONE, nullptr, image );
+	}
+	else if( _wcsicmp( ext, L".tga" ) == 0 )
+	{
+		hr = LoadFromTGAFile( wideFilename.data(), nullptr, image );
+	}
+	else if( _wcsicmp( ext, L".hdr" ) == 0 )
+	{
+		hr = LoadFromHDRFile( wideFilename.data(), nullptr, image );
+	}
+	else
+	{
+		hr = LoadFromWICFile( wideFilename.data(), WIC_FLAGS_NONE, nullptr, image );
 	}
 
-	// Load the texture in.
-	
-	result = D3DX11CreateShaderResourceViewFromFile( DMD3D::instance().GetDevice(), filename, NULL, NULL, &texture, NULL );
-	if( FAILED( result ) )
+	if( FAILED( hr ) )
 	{
-		return nullptr;
+		true;
 	}
 
-	return texture;
+	return true;
 }

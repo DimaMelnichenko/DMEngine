@@ -1,0 +1,285 @@
+
+#include "common.vs"
+#include "CommonLight.ps"
+
+cbuffer TerrainBuffer : register( b2 )
+{
+	float levelScale;
+	float mapSize;
+	float mapWidthMultipler;	
+	float mapHeightMultippler;
+	float map_N;
+	float hightOffset;
+	float mapScale;
+	float2 mapOffset;
+	float mapOffsetSpeed;
+};
+
+cbuffer TerrainTexturesParam : register( b3 )
+{	
+	int materialsCount;
+};
+
+
+
+Texture2D heigthTexture : register(t0);
+Texture2D normalTexture : register(t1);
+TextureCube g_texCube : register(t5);
+Texture2D terrainTexture[10] : register(t10);
+
+/* terrain textures struct started from t10 slot
+0 - base heightmap
+1 - base normalmap
+2 - texture blending1, each channel blended first detail texture set
+albedo[5];
+normal[5];
+gim[5];
+*/
+
+
+
+struct PixelInputType
+{
+    float4 position : SV_POSITION;
+	float2 main_tex : TEXCOORD0;
+	float2 detail_tex : TEXCOORD1;
+	float3 worldPosition : TEXCOORD2;
+};
+
+static const float epsilon = 1E-4;
+
+struct Material
+{
+	float3 baseColors;
+	float baseStartHeight;
+	float baseBlends;
+	float textureScale;
+};
+
+StructuredBuffer<Material> materials: register(t3);
+									
+#define TEST_COLOR 1
+
+float inverseLerp( float a, float b, float value )
+{
+	return saturate( (value - a) / ( b - a ) );
+}
+
+float3 normalToTerrain( float3 vec )
+{
+	vec.yz = vec.zy;
+	vec.z *= -1.0f;
+	return normalize( vec );
+}
+
+float3 triplanar( float3 worldPos, float scale, float3 blendAxes, int textureIndex )
+{
+	float3 scaleWorldPos = worldPos / scale;
+	float3 xProjection = terrainTexture[textureIndex].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.zy * float2( 1.0, -1.0 ) ) * blendAxes.x;
+	float3 yProjection = terrainTexture[textureIndex].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xz * float2( 1.0, -1.0 ) ) * blendAxes.y;
+	float3 zProjection = terrainTexture[textureIndex].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xy * float2( 1.0, -1.0 ) ) * blendAxes.z;
+	return xProjection + yProjection + zProjection;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Pixel Shader
+////////////////////////////////////////////////////////////////////////////////
+float4 main(PixelInputType input) : SV_TARGET
+{	
+	float3 albedo = float3( 0.0, 0.0, 0.05);
+
+	float rawHight = heigthTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
+	
+	float3 n = normalToTerrain( normalTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb * 2.0 - 1.0 );
+	
+	float heightPercent = inverseLerp( 0.0, mapHeightMultippler, input.worldPosition.y );
+	n = normalize( n * float3( 1.0, 1.0, 1.0 ) );
+	float3 blendAxes = abs(n);
+	blendAxes /= blendAxes.x + blendAxes.y + blendAxes.z;
+	for( int i = 0; i < materialsCount; i++ )
+	{
+		Material material = materials[i];
+		float drawStrength = inverseLerp( -material.baseBlends / 2.0 - epsilon, material.baseBlends / 2.0, heightPercent - material.baseStartHeight );
+		float2 texCoordRestored = input.worldPosition.xz * float2(  1.0, -1.0 );
+		float3 textureColor = triplanar( input.worldPosition, material.textureScale, blendAxes, i );
+		albedo = albedo * (1.0 - drawStrength ) + textureColor/* + material.baseColors*/ * drawStrength;
+	}
+	
+	float4 FinalLight = float4(0.0, 0.0, 0.0, 1.0);
+	
+	float3 v = normalize( cb_cameraPosition - input.worldPosition );
+	
+	float kShininess = 50.0f;
+	
+	float specSum = 0;
+	float3 duffuseSum = (float3)0;
+	
+	for( int i = 0; i < cb_lightCount; i++ )
+	{
+		float3 l;
+		float fade;
+		
+		LightParam light = sb_lightVector[i];
+		
+		if( light.type == 0 )
+		{
+			l = normalize( light.lightPos );
+			fade = 1.00;			
+		}
+		else
+		{
+			l = ( light.lightPos - input.worldPosition );
+			float dist = length( l );
+			l = normalize( l );
+			fade = GetAttenuation( dist, 0.0, light.attenuation );
+			//fade = 1.0 / (dist * light.attenuation);
+		}	
+		
+		//if( fade < 0.00001 )
+		//	continue;
+		/*float NdotL    = max( dot( n, l ), 0.0 );
+		float NdotV    = max( dot( n, v ), 0.0 );
+		float3 h = normalize(l + v);
+		float rougness = 0.99;
+		specSum += saturate( D_BlinnPhong( rougness, max( dot( n, h ), 0.0 ) ) * ( 4.0 * NdotL * NdotV ) );
+		*/
+		
+		float3 diffuse = ( max( dot( n, l ), 0.0f ) );
+		duffuseSum += ( diffuse  * light.lightColor );
+		float3 h = normalize(l + v);
+		specSum += pow(max(dot(n, h), 0.0), kShininess);
+	}
+	
+	FinalLight.rgb = albedo.rgb * ( duffuseSum + specSum );
+	
+	return FinalLight;
+}
+/*
+float4 main_b(PixelInputType input) : SV_TARGET
+{    
+    float4 final_color = float4( 0.0, 0.0, 0.0, 1.0 );
+	
+	float4 test_color = float4( 0.5, 0.5, 0.5, 1.0 );
+	
+	float4 base_diffuse = terrainTexture[3].Sample( g_SamplerLinearWrap, input.main_tex );
+	
+	
+	
+	// get heightmap normal
+	float3 normal_terrain;
+	normal_terrain = terrainTexture[1].Sample( g_SamplerLinearWrap, input.main_tex ) * 2.0 - 1.0;
+	float3x3 terrain_tbn = transpose( float3x3( normalize( float3( -1.0, 0.0, 0.0 ) ), normalize( float3( 0.0, 0.0, 1.0 ) ), normalize( float3( 0.0, 1.0, 0.0 ) ) ) );
+	
+	
+	float3 tangent = float3( -1.0, 0.0, 0.0 );
+	float3 binormal = normalize( cross( normal_terrain, tangent ) );
+	tangent = normalize( cross( binormal, normal_terrain ) );
+	float3x3 tbn_matrix = float3x3( normalize( tangent ), normalize( binormal ), normalize( normal_terrain ) );
+	
+	float3 detail_normal[5];
+	float4 detail_albedo[5];
+	
+	for( int i = 0; i < 5; i++ )
+	{
+		float tile = ((float[4])(texture_tile[i/4]))[i%4];
+		detail_albedo[i] = terrainTexture[i * 2 + 3].Sample( g_SamplerLinearWrap, input.main_tex * tile );
+		
+		detail_normal[i] = normalize( terrainTexture[i * 2 + 4].Sample( g_SamplerLinearWrap, input.main_tex * tile ).rgb * 2.0 - 1.0 );	
+		
+		detail_normal[i] = normalize( float3( 0.5, 0.5, 0.1 ) * detail_normal[i] );
+	}
+	
+	float4 blend = terrainTexture[2].Sample( g_SamplerLinearWrap, input.main_tex );
+	
+	float4 result_albedo = detail_albedo[0];
+	result_albedo = smart_blend( result_albedo, 1 - blend.r, detail_albedo[1], blend.r  );
+	result_albedo = smart_blend( result_albedo, 1 - blend.g, detail_albedo[2], blend.g  );
+	result_albedo = smart_blend( result_albedo, 1 - blend.b, detail_albedo[3], blend.b  );
+	
+	
+	
+	float3 result_normal = detail_normal[0];
+	result_normal = lerp( result_normal, detail_normal[1], blend.r );
+	result_normal = lerp( result_normal, detail_normal[2], blend.g );
+	result_normal = lerp( result_normal, detail_normal[3], blend.b );
+	
+	
+	float3 v = normalize( cb_cameraPosition - input.world_position );
+	float3 n = normalize( result_normal + normal_terrain );
+	n = normalize( mul( n, terrain_tbn ) );
+	
+	
+	
+    for( int i = 0; i < cb_light_count; i++ )
+	{
+		float3 l;
+		float fade;
+		
+		if( cb_lightPos[i].w < 1.0 )
+		{
+			l = normalize( cb_lightPos[i].xyz );
+			fade = 1.0;
+		}
+		else
+		{
+			l = ( cb_lightPos[i].xyz - input.world_position );
+			float dist = length( l );
+			l = normalize( l );
+			fade = 1.0 / ( dist * dist );			
+		}	
+		
+		/*if( fade < 0.00001 )
+			continue;*
+		
+		final_color.rgb += ( max( dot( n, l ), 0.0f ) ) * cb_lightColor[i].rgb * fade * result_albedo.rgb;
+		
+	}
+	
+	return final_color;
+}
+
+float4 for_grass(PixelInputType input) : SV_TARGET
+{
+	float4 final_color = float4( 1.0, 1.0, 1.0, 1.0 );
+	
+	float4 detail_albedo[5];
+	
+	for( int i = 0; i < 5; i++ )
+	{
+		float tile = ((float[4])(texture_tile[i/4]))[i%4];
+		detail_albedo[i] = terrainTexture[i * 3 + 3].Sample( g_SamplerLinearWrap, input.main_tex * tile );
+	}
+	
+	// calc blended texure
+	float4 blend_1 = terrainTexture[2].Sample( g_SamplerLinearWrap, input.main_tex );		
+	final_color = detail_albedo[0];
+	final_color = lerp( final_color, detail_albedo[1], blend_1.r );
+	final_color = lerp( final_color, detail_albedo[2], blend_1.g );
+	final_color = lerp( final_color, detail_albedo[3], blend_1.b );
+	final_color = lerp( final_color, detail_albedo[4], blend_1.a );
+	
+	float3 normal_terrain = normalize( terrainTexture[1].Sample( g_SamplerLinearWrap, input.main_tex ).rgb * 2.0 - 1.0 );		
+	normal_terrain.y *= -1.0;	
+	normal_terrain.zy = normal_terrain.yz;
+	normal_terrain.y *= ( 1.0f / 1.5f );
+	normal_terrain = normalize( normal_terrain );
+	
+	float3 l = ( cb_lightPos[0].xyz - input.world_position );
+	l = normalize( l );
+	
+	final_color *= ( max( dot( normal_terrain, l ), 0.0f ) / PI ) * cb_lightColor[0];
+	
+	final_color.a = 1.0f;
+	
+	return final_color;
+}
+
+float4 for_shadow(PixelInputType input) : SV_TARGET
+{
+	float depthValue;	
+	
+	// Get the depth value of the pixel by dividing the Z pixel depth by the homogeneous W coordinate.
+	depthValue = input.position.z / input.position.w;
+	
+	return float4( depthValue, depthValue, depthValue, 1.0 );
+}*/

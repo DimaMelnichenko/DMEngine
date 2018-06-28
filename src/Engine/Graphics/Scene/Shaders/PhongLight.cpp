@@ -88,10 +88,10 @@ bool PhongLight::Prepare()
 
 void PhongLight::setParams( const ParamSet& params )
 {
-	ID3D11ShaderResourceView* texture = System::textures().get( params.at("Albedo").textId() )->GetTexture();
+	ID3D11ShaderResourceView* texture = System::textures().get( params.at("Albedo").textId() )->srv();
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
 
-	texture = System::textures().get( params.at( "Shiness" ).textId() )->GetTexture();
+	texture = System::textures().get( params.at( "Shiness" ).textId() )->srv();
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 2, 1, &texture );
 }
 

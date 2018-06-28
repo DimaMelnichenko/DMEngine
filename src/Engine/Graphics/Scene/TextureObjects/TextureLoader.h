@@ -1,6 +1,6 @@
 #pragma once
 #include "D3D/DMD3D.h"
-#include <D3DX11tex.h>
+#include <DirectXTex.h>
 
 class TextureLoader
 {
@@ -8,6 +8,6 @@ public:
 	TextureLoader();
 	~TextureLoader();
 
-	ID3D11ShaderResourceView* loadFromFile( const char* filename );
+	bool loadFromFile( const char* filename, ScratchImage& image );
 };
 

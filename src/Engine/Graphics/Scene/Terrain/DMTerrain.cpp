@@ -69,7 +69,7 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 		material.baseBlends = jsonMaterial["baseBlends"];
 		material.textureScale = jsonMaterial["textureScale"];
 		std::string textureName = jsonMaterial["Texture"];
-		m_textures.push_back( GS::System::textures().get( textureName )->GetTexture() );
+		m_textures.push_back( GS::System::textures().get( textureName )->srv() );
 		m_materials.push_back( material );
 	}
 
@@ -104,7 +104,7 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 	ID3D11ShaderResourceView* height_srv = m_height_map.map();
 	DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 0, 1, &height_srv );
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &height_srv );
-	ID3D11ShaderResourceView* normal_srv = GS::System::textures().get( m_normalMapName )->GetTexture();
+	ID3D11ShaderResourceView* normal_srv = GS::System::textures().get( m_normalMapName )->srv();
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 1, 1, &normal_srv );
 
 	for( size_t i = 0; i < m_textures.size(); ++i )

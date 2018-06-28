@@ -84,14 +84,6 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\3rdParty\DirectXTex\BC.h" />
-    <ClInclude Include="src\3rdParty\DirectXTex\BCDirectCompute.h" />
-    <ClInclude Include="src\3rdParty\DirectXTex\DDS.h" />
-    <ClInclude Include="src\3rdParty\DirectXTex\DDSTextureLoader.h" />
-    <ClInclude Include="src\3rdParty\DirectXTex\DirectXTex.h" />
-    <ClInclude Include="src\3rdParty\DirectXTex\Filters.h" />
-    <ClInclude Include="src\3rdParty\DirectXTex\ScreenGrab.h" />
-    <ClInclude Include="src\3rdParty\DirectXTex\WICTextureLoader.h" />
     <ClInclude Include="src\3rdParty\json.hpp" />
     <ClInclude Include="src\3rdParty\tinyxml2.h" />
     <ClInclude Include="src\Config\Config.h" />
@@ -217,8 +209,8 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)\src\Engine\Graphics\Common;H:\backup\Visual studio 2010\DMEngine\DMEngine\DXUT\Source\Common\DXUT10\Core;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src;$(ProjectDir)\src\3rdParty;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(ProjectDir)\src\Engine\Graphics\Scene;$(ProjectDir)\src\Engine\Graphics\Scene\Common;$(IncludePath)</IncludePath>
-    <LibraryPath>E:\backup\Visual studio 2010\DMEngine\DMEngine\src\3rdParty\DirextXTex;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x64;$(LibraryPath)</LibraryPath>
+    <IncludePath>E:\DMEngine\DirectXTex\DirectXTex;$(ProjectDir)\src\Engine\Graphics\Common;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src;$(ProjectDir)\src\3rdParty;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(ProjectDir)\src\Engine\Graphics\Scene;$(ProjectDir)\src\Engine\Graphics\Scene\Common;$(IncludePath)</IncludePath>
+    <LibraryPath>E:\DMEngine\DirectXTex\DirectXTex;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x64;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -264,7 +256,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>dxgi.lib;d3d11.lib;d3dx11.lib;d3dx10.lib;Winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>directxtex.lib;dxgi.lib;d3d11.lib;d3dx11.lib;Winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
