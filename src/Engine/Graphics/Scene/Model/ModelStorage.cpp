@@ -15,30 +15,34 @@ ModelStorage::~ModelStorage()
 
 bool ModelStorage::load( const std::string& name )
 {
+	uint32_t id = nextId();
+
 	if( exists( name ) )
 		return true;
 
 	std::string fullPath = path() + "\\" + name;
 
 	std::unique_ptr<DMModel> model;	
-	model.reset( m_modelLoader.loadFromFile( fullPath, nextId() ) );
+	model.reset( m_modelLoader.loadFromFile( fullPath, id ) );
 
 	if( !model )
 		return false;
 
-	insertResource( model->name(), std::move( model ) );
+	insertResource( std::move( model ) );
 
 	return true;
 }
 
 bool ModelStorage::clone( const std::string& source, const std::string& newName )
 {
+	uint32_t id = nextId();
+
 	if( !exists( source ) )
 		return false;
 
-	std::unique_ptr<DMModel> newModel( new DMModel( nextId(), newName ) );
+	std::unique_ptr<DMModel> newModel( new DMModel( id, newName ) );
 	get( source )->copyTo( *newModel );
-	return insertResource( newName, std::move( newModel ) );
+	return insertResource( std::move( newModel ) );
 }
 
 }

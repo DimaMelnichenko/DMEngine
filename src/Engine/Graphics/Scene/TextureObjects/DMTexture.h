@@ -13,7 +13,7 @@ namespace GS
 class DMTexture : public DMResource
 {
 public:
-	DMTexture( uint32_t id, ScratchImage&& image );
+	DMTexture( uint32_t id, const std::string& name, ScratchImage&& image );
 	DMTexture( DMTexture&& );
 	~DMTexture();
 

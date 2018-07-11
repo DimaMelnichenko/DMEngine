@@ -25,7 +25,7 @@
 #include "D3D\DMSamplerState.h"
 #include "Camera\CameraController.h"
 #include "Terrain\DMTerrain.h"
-
+#include "ObjectLibrary\LibraryLoader.h"
 
 
 namespace GS
@@ -73,6 +73,7 @@ private:
 	DMTerrain m_terrain;
 	DMTerrain m_water;
 	std::unordered_map<std::string, bool> m_visible;
+	LibraryLoader m_library;
 };
 
 }

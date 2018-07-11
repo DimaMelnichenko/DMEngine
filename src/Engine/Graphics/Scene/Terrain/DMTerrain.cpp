@@ -4,7 +4,8 @@
 #include <fstream>
 #include "Shaders\DMClipMapShader.h"
 
-DMTerrain::DMTerrain( ) 
+DMTerrain::DMTerrain( ) :
+	m_isInited(false)
 {
 }
 
@@ -73,6 +74,8 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 		m_materials.push_back( material );
 	}
 
+	m_isInited = true;
+
 	return true;
 }
 
@@ -92,6 +95,9 @@ bool DMTerrain::loadHeightMap( const std::string& file_name, float width_multipl
 
 void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 {
+	if( !m_isInited )
+		return;
+
 	static DMClipMapShader::PSParamBuffer ps_param;
 	ps_param.materialsCount = m_materials.size();
 	

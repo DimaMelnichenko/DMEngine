@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\ObjectLibrary\LibraryLoader.cpp" />
     <ClCompile Include="src\3rdParty\tinyxml2.cpp" />
     <ClCompile Include="src\Config\Config.cpp" />
     <ClCompile Include="src\Common\ResourceMetaFile.cpp" />
@@ -84,6 +85,17 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="SQLiteCpp\Assertion.h" />
+    <ClInclude Include="SQLiteCpp\Backup.h" />
+    <ClInclude Include="SQLiteCpp\Column.h" />
+    <ClInclude Include="SQLiteCpp\Database.h" />
+    <ClInclude Include="SQLiteCpp\Exception.h" />
+    <ClInclude Include="SQLiteCpp\SQLiteCpp.h" />
+    <ClInclude Include="SQLiteCpp\Statement.h" />
+    <ClInclude Include="SQLiteCpp\Transaction.h" />
+    <ClInclude Include="SQLiteCpp\Utils.h" />
+    <ClInclude Include="SQLiteCpp\VariadicBind.h" />
+    <ClInclude Include="src\ObjectLibrary\LibraryLoader.h" />
     <ClInclude Include="src\3rdParty\json.hpp" />
     <ClInclude Include="src\3rdParty\tinyxml2.h" />
     <ClInclude Include="src\Config\Config.h" />
@@ -153,6 +165,9 @@
     <ClInclude Include="src\Engine\Input\KeyEventNotifier.h" />
     <ClInclude Include="src\Engine\Input\Utils.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Library Include="SQLiteCpp\SQLiteCpp.lib" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{4CE00D51-6BC5-4158-A3F7-DDE0B71874C5}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
@@ -209,8 +224,8 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>E:\DMEngine\DirectXTex\DirectXTex;$(ProjectDir)\src\Engine\Graphics\Common;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir)\src;$(ProjectDir)\src\3rdParty;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(ProjectDir)\src\Engine\Graphics\Scene;$(ProjectDir)\src\Engine\Graphics\Scene\Common;$(IncludePath)</IncludePath>
-    <LibraryPath>E:\DMEngine\DirectXTex\DirectXTex;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x64;$(LibraryPath)</LibraryPath>
+    <IncludePath>E:\DMEngine\DirectXTex\DirectXTex;$(ProjectDir)\src\Engine\Graphics\Common;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir);$(ProjectDir)\src;$(ProjectDir)\src\3rdParty;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(ProjectDir)\src\Engine\Graphics\Scene;$(ProjectDir)\src\Engine\Graphics\Scene\Common;$(IncludePath)</IncludePath>
+    <LibraryPath>E:\DMEngine\DirectXTex\DirectXTex;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x64;$(ProjectDir)/SQLiteCpp;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -256,7 +271,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>directxtex.lib;dxgi.lib;d3d11.lib;d3dx11.lib;Winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>sqlite3.lib;SQLiteCpp.lib;directxtex.lib;dxgi.lib;d3d11.lib;d3dx11.lib;Winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

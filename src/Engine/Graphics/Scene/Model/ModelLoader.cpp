@@ -33,7 +33,7 @@ DMModel* ModelLoader::loadJSONFile( const std::string& filename, uint32_t id )
 		jsonFile >> jsonParser;
 		jsonFile.close();
 	}
-	catch( std::exception& e )
+	catch( std::exception& )
 	{
 		return nullptr;
 	}
@@ -153,9 +153,9 @@ void ModelLoader::loadMaterials( std::unordered_map<std::string, MaterialParam>&
 			std::string paramType = xmlParam->Attribute( "Type" );
 			std::string paramValue = xmlParam->GetText();
 
-			if( paramType == "texture" && System::textures().load( paramValue ) )
+			if( paramType == "texture" )
 			{
-				matParam.param.insert( { paramName, Parameter( System::textures().id( paramValue ) ) } );
+				matParam.param.insert( { paramName, Parameter( static_cast<uint32_t>( std::stol( paramValue ) ) ) } );
 			}
 			else if( paramType == "vec4" )
 			{
@@ -240,9 +240,9 @@ ParamSet ModelLoader::loadMaterialParam( ResourceMetaFile& metaResource, const s
 		std::string paramType = metaResource.get<std::string>( paramBlock, "Type" );
 		std::string paramValue = metaResource.get<std::string>( paramBlock, "Value" );
 
-		if( paramType == "texture" && System::textures().load( paramValue ) )
+		if( paramType == "texture" )
 		{
-			paramSet.insert( { paramName, Parameter( System::textures().id( paramValue ) ) } );
+			paramSet.insert( { paramName, Parameter( static_cast<uint32_t>( std::stol( paramValue ) ) ) } );
 		}
 		else if( paramType == "vec4" )
 		{
@@ -265,9 +265,9 @@ void ModelLoader::loadJSONMaterials( std::unordered_map<std::string, MaterialPar
 			std::string paramType = param["Type"];
 			std::string paramValue = param["Value"];
 
-			if( paramType == "texture" && System::textures().load( paramValue ) )
+			if( paramType == "texture" )
 			{
-				matParam.param.insert( { paramName, Parameter( System::textures().id( paramValue ) ) } );
+				matParam.param.insert( { paramName, Parameter( static_cast<uint32_t>( std::stol( paramValue ) ) ) } );
 			}
 			else if( paramType == "vec4" )
 			{

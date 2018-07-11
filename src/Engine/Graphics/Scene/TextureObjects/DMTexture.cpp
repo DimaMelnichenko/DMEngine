@@ -4,13 +4,13 @@
 namespace GS
 {
 
-DMTexture::DMTexture( uint32_t id, ScratchImage&& image ) :
-	DMResource( id ),
+DMTexture::DMTexture( uint32_t id, const std::string& name, ScratchImage&& image ) :
+	DMResource( id, name ),
 	m_image( std::move(image) )
 {
 }
 
-DMTexture::DMTexture( DMTexture&& obj ) : DMResource( obj.id() ), m_srv( nullptr )
+DMTexture::DMTexture( DMTexture&& obj ) : DMResource( obj.id(), obj.name() ), m_srv( nullptr )
 {
 	std::swap( this->m_srv, obj.m_srv );
 }

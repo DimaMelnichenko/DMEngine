@@ -32,5 +32,6 @@ private:
 	std::vector<DMClipMapShader::Material> m_materials;
 	std::vector<ID3D11ShaderResourceView*> m_textures;
 	std::string m_shaderName;
+	bool m_isInited;
 };
 

@@ -44,27 +44,25 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	}
 
-	System::textures().load( "no_image.dds" );
-	System::textures().load( "grass.jpg" );
-	System::textures().load( "WaterPlain.jpg" );
+	m_library.load();
 
 	// Загружаем модели
 	//if( !System::models().load( "barrel.ini" ) )
 	//	return false;
 	if( !System::models().load( "box.ini" ) )
 		return false;
-	if( !System::models().load( "knot.json" ) )
+	/*if( !System::models().load( "knot.json" ) )
 		return false;
 	if( !System::models().load( "plane.ini" ) )
 		return false;
 	if( !System::models().load( "venus.ini" ) )
 		return false;
 	if( !System::models().load( "skysphere.xml" ) )
-		return false;
+		return false;*/
 	
 
-	if( System::models().clone( "Knot", "Knot01" ) )
-		System::models().get( "Knot01" )->transformBuffer().setPosition( 6.0, 4.0, -8.0 );
+	//if( System::models().clone( "Knot", "Knot01" ) )
+	//	System::models().get( "Knot01" )->transformBuffer().setPosition( 6.0, 4.0, -8.0 );
 
 	// Создаем общий буфер вершин и индексов
 	m_vertexPool.prepareMeshes();
@@ -100,16 +98,17 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	{
 		m_visible["terrain"] = value;
 	} );
+
 	getInput().notifier().registerTrigger( DIK_2, [this]( bool value )
 	{
 		m_visible["water"] = value;
 	} );
 
-	if( !m_terrain.Initialize( "Models\\terrain.json", "GeoClipMap" ) )
-		return false;
+	//if( !m_terrain.Initialize( "Models\\terrain.json", "GeoClipMap" ) )
+	//	return false;
 
-	if( !m_water.Initialize( "Models\\water.json", "GeoClipMapWater" ) )
-		return false;
+	//if( !m_water.Initialize( "Models\\water.json", "GeoClipMapWater" ) )
+	//	return false;
 
 	return true;
 }

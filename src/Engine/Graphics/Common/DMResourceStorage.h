@@ -26,7 +26,15 @@ public:
 		return m_storage[id( name )];
 	}
 
-	virtual bool load( const std::string& ) = 0;
+	virtual bool load( const std::string& )
+	{
+		return false;
+	};
+	template<typename ... Args>
+	bool load( uint32_t id, const std::string& name, Args ... )
+	{
+		return false;
+	}
 
 	const ResourceType& get( uint32_t id ) const
 	{
@@ -63,7 +71,7 @@ public:
 
 	bool exists( uint32_t id )
 	{
-		return m_storage.count( id );
+		return m_storage.count( id ) > 0;
 	}
 
 	bool exists( const std::string& name )
@@ -76,13 +84,12 @@ public:
 		
 	}
 
-	bool insertResource( const std::string& name, ResourceType&& resource )
+	bool insertResource( ResourceType&& resource )
 	{
-		if( !m_name_to_index.count( name ) )
+		if( !m_name_to_index.count( resource->name() ) )
 		{
-			m_name_to_index[name] = m_id_counter;
-			m_storage.insert( std::make_pair( m_id_counter, std::move(resource) ) );
-			m_id_counter++;
+			m_name_to_index[resource->name()] = resource->id();
+			m_storage.insert( std::make_pair( resource->id(), std::move(resource) ) );
 		}
 
 		return true;
@@ -101,7 +108,7 @@ public:
 
 	uint32_t nextId()
 	{
-		return m_id_counter;
+		return m_id_counter++;
 	}
 
 	uint32_t size()
