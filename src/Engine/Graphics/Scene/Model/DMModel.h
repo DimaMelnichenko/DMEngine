@@ -23,6 +23,7 @@ public:
 		uint32_t mesh;
 		uint32_t material;
 		ParamSet params;
+		bool isRender;
 		const XMMATRIX* resultMatrix;
 	};
 public:

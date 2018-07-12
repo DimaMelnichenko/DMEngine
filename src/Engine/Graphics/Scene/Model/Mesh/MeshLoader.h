@@ -13,7 +13,7 @@ public:
 	~MeshLoader();
 
 	template<typename MeshVertexStruct>
-	AbstractMesh* loadFromFile( const std::string& filename, uint32_t id )
+	AbstractMesh* loadFromFile( uint32_t id, const std::string& name, const std::string& filename )
 	{
 		std::ifstream fin;
 
@@ -82,7 +82,7 @@ public:
 		// Close the model file.
 		fin.close();
 
-		return new DMMesh<MeshVertexStruct>( id, filename, std::move( indices ), std::move( vertices ) ) ;
+		return new DMMesh<MeshVertexStruct>( id, name, std::move( indices ), std::move( vertices ) ) ;
 	}
 };
 

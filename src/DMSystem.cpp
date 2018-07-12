@@ -10,6 +10,7 @@ DMSystem::DMSystem(  )
 
 DMSystem::~DMSystem()
 {
+	destroyInput();
 	ShutdownWindows( );
 }
 
@@ -24,10 +25,10 @@ bool DMSystem::Initialize( )
 	// Initialize the windows api.
 	InitializeWindows( screenWidth, screenHeight );
 
-	if( !m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd, m_config ) )
+	if( !getInput().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight ) )
 		return false;
 
-	if( !getInput().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight ) )
+	if( !m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd, m_config ) )
 		return false;
 
 	getInput().notifier().registerTrigger( DIK_ESCAPE, [this]( bool )

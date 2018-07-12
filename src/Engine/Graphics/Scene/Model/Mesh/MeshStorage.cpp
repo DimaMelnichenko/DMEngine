@@ -25,18 +25,18 @@ uint32_t MeshStorage::indexCount() const
 	return m_indexCount;
 }
 
-bool MeshStorage::load( const std::string& name )
+bool MeshStorage::load( uint32_t id, const std::string& name, const std::string& file )
 {
 
-	if( exists( name ) )
+	if( exists( name ) || exists( id ) )
 		return true;
 
-	std::string fullPath = path() + "\\" + name;
+	std::string fullPath = path() + "\\" + file;
 
 	try
 	{
 		std::unique_ptr<AbstractMesh> mesh;
-		mesh.reset( m_meshLoader.loadFromFile<VertexData::PTNTB>( fullPath, nextId() ) );
+		mesh.reset( m_meshLoader.loadFromFile<VertexData::PTNTB>( id, name, fullPath ) );
 		m_vertexCount += mesh->vertexCount();
 		m_indexCount += mesh->indexCount();
 		insertResource( std::move( mesh ) );

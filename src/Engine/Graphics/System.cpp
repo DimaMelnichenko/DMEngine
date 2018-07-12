@@ -42,7 +42,7 @@ MaterialStorage& System::materials()
 {
 	if( !m_materialStorage )
 	{
-		m_materialStorage = std::make_unique<MaterialStorage>( "Materials" );
+		m_materialStorage = std::make_unique<MaterialStorage>( "Shaders" );
 	}
 
 	return *m_materialStorage;

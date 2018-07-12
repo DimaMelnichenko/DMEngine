@@ -1,10 +1,17 @@
 #include "Input.h"
 
+namespace
+{
+	static std::unique_ptr<Input> inputPtr;
+}
+
+void destroyInput()
+{
+	inputPtr.reset();
+}
 
 Input& getInput()
 {
-	static std::unique_ptr<Input> inputPtr;
-
 	if( inputPtr == nullptr )
 	{
 		inputPtr.reset( new Input() );
@@ -105,7 +112,6 @@ bool Input::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int scr
 	return true;
 
 }
-
 
 bool Input::Frame( )
 {

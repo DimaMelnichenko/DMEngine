@@ -13,7 +13,7 @@ public:
 	MaterialStorage( const std::string& path );
 	~MaterialStorage();
 
-	bool load( const std::string& file );
+	bool load( uint32_t id, const std::string& name, const std::string& vs, const std::string& gs, const std::string& ps );
 
 private:
 	MaterialLoader m_materialLoader;

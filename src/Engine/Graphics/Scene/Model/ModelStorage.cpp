@@ -12,7 +12,7 @@ ModelStorage::~ModelStorage()
 {
 
 }
-
+/*
 bool ModelStorage::load( const std::string& name )
 {
 	uint32_t id = nextId();
@@ -24,6 +24,21 @@ bool ModelStorage::load( const std::string& name )
 
 	std::unique_ptr<DMModel> model;	
 	model.reset( m_modelLoader.loadFromFile( fullPath, id ) );
+
+	if( !model )
+		return false;
+
+	insertResource( std::move( model ) );
+
+	return true;
+}*/
+
+bool ModelStorage::createModel( uint32_t id, const std::string& name )
+{
+	if( exists( id ) )
+		return true;
+
+	std::unique_ptr<DMModel> model( new DMModel( id, name ) );
 
 	if( !model )
 		return false;

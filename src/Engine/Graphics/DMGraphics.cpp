@@ -22,6 +22,7 @@ DMGraphics::~DMGraphics()
 {
 	pipelineDestroy();
 	System::destroy();
+	DMD3D::destroy();
 }
 
 bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd, Config config )
@@ -33,10 +34,10 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_screenWidth = static_cast<float>( screenWidth );
 	m_screenHeight = static_cast<float>( screenHeight );
 
+	
+
 	// Initialize the Direct3D object.
-	result = DMD3D::instance().Initialize( 
-		screenWidth, screenHeight, m_config.vSync(), hwnd, m_config.fullScreen(), 
-		m_config.ScreenDepth(), m_config.ScreenNear() );
+	result = DMD3D::instance().Initialize( m_config, hwnd );	
 
 	if( !result )
 	{
@@ -44,32 +45,23 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	}
 
-	m_library.load();
+	if( !m_library.init() )
+		return false;
 
-	// Загружаем модели
-	//if( !System::models().load( "barrel.ini" ) )
-	//	return false;
-	if( !System::models().load( "box.ini" ) )
+	if( !m_library.loadModelWithLOD( 1 ) )
 		return false;
-	/*if( !System::models().load( "knot.json" ) )
+
+	if( !m_library.loadModelWithLOD( 2 ) )
 		return false;
-	if( !System::models().load( "plane.ini" ) )
-		return false;
-	if( !System::models().load( "venus.ini" ) )
-		return false;
-	if( !System::models().load( "skysphere.xml" ) )
-		return false;*/
+
 	
-
-	//if( System::models().clone( "Knot", "Knot01" ) )
-	//	System::models().get( "Knot01" )->transformBuffer().setPosition( 6.0, 4.0, -8.0 );
 
 	// Создаем общий буфер вершин и индексов
 	m_vertexPool.prepareMeshes();
 
 	// Создаем основную камеру
 	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 5000.0f );
-	m_cameraPool["main"].SetPosition( 0.0, 20.0, 0.0 );
+	m_cameraPool["main"].SetPosition( 0.0, 0.0, -5.0 );
 	//m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
 	m_timer.Initialize();
@@ -119,7 +111,8 @@ bool DMGraphics::Frame()
 	
 	m_cameraController.frame( m_timer.GetTime() );
 
-	Render();
+	if( !Render() )
+		return false;
 
 	return true;
 }
@@ -143,13 +136,12 @@ bool DMGraphics::Render()
 
 	//render sky
 	renderSky();
-
 	
 	for( auto& queue : m_renderQueues )
 	{
 		queue.second.clear();
 	}
-
+	
 	for( const auto& pair : System::models() )
 	{
 		static XMVECTOR lenVec;
@@ -163,7 +155,7 @@ bool DMGraphics::Render()
 		// достаем лод меша в зависимости от расстояния до камеры
 		const DMModel::LodBlock* block = pair.second->getLod( distance.m128_f32[0] );
 
-		if( block != nullptr )
+		if( block != nullptr && block->isRender )
 		{
 			m_renderQueues[block->material].push_back( block );
 		}
@@ -174,7 +166,7 @@ bool DMGraphics::Render()
 	static double counter = 0.0;
 	counter += 0.001 * elapsedTime;
 
-	System::models().get( "Knot" )->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
+//	System::models().get( "Knot" )->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
 
 	// Перебираем все очереди
 	for( auto& queuePair : m_renderQueues )
@@ -210,7 +202,7 @@ bool DMGraphics::Render()
 		m_water.Render( m_cameraPool["main"], frustum );
 		DMD3D::instance().TurnOffAlphaBlending();
 	}
-
+	
 	DMD3D::instance().EndScene();
 
 	return true;
@@ -218,14 +210,20 @@ bool DMGraphics::Render()
 
 bool DMGraphics::renderSky()
 {
-	ID3D11RasterizerState* prevRSState = DMD3D::instance().currentRS();
+	com_unique_ptr<ID3D11RasterizerState> prevRSState = make_com_ptr<ID3D11RasterizerState>( DMD3D::instance().currentRS() );
 
 	DMD3D::instance().TurnZBufferOff();
 	DMD3D::instance().TurnBackFacesRS();
 
+	if( !System::materials().exists( "Texture" ) )
+		return false;
+
 	DMShader* shader = System::materials()["Texture"]->m_shader.get();
 	shader->setPass( 0 );
 	shader->setDrawType( DMShader::by_index );
+
+	if( !System::models().exists( "SkySphere" ) )
+		return false;
 
 	DMModel* model = System::models()["SkySphere"].get();
 	model->transformBuffer().setPosition( m_cameraPool["main"].position() );
@@ -239,13 +237,11 @@ bool DMGraphics::renderSky()
 	shader->Render( System::meshes().get( block->mesh )->indexCount(),
 					System::meshes().get( block->mesh )->vertexOffset(),
 					System::meshes().get( block->mesh )->indexOffset() );
-
-
 	
 	DMD3D::instance().TurnZBufferOn();
 
-	DMD3D::instance().setRS( prevRSState );
-
+	DMD3D::instance().setRS( prevRSState.get() );
+	
 	return true;
 }
 

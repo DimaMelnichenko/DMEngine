@@ -18,7 +18,7 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 {
 	m_shaderName = shaderName;
 
-	GS::System::materials().load( m_shaderName );
+	GS::System::materials().get( m_shaderName );
 
 	using json = nlohmann::json;
 
@@ -46,7 +46,7 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 
 	m_normalMapName = jsonParser["normalmap"];
 
-	if( !GS::System::textures().load( m_normalMapName ) )
+	if( !GS::System::textures().get( m_normalMapName ) )
 		return false;
 
 	m_clip_map.setMapScale( jsonParser["map_scale"] );

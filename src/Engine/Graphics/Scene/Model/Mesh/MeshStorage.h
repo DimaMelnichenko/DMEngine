@@ -14,7 +14,7 @@ public:
 	MeshStorage( const std::string& path );
 	~MeshStorage();
 
-	bool load( const std::string& file );
+	bool load( uint32_t id, const std::string& name, const std::string& file );
 
 	uint32_t vertexCount() const;
 	uint32_t indexCount() const;

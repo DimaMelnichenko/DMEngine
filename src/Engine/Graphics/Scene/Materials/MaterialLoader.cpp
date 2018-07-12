@@ -19,10 +19,8 @@ MaterialLoader::~MaterialLoader()
 {
 }
 
-Material* MaterialLoader::loadFromFile( const std::string& filename, uint32_t id, const std::string& name )
+Material* MaterialLoader::loadFromFile( uint32_t id, const std::string& name, const std::string& vsShaderFile, const std::string& gsShaderFile, const std::string& psShaderFile )
 {
-	ResourceMetaFile metaResource( filename );
-
 	std::unique_ptr<Material> material( new Material( id, name ) );
 
 	if( name == "Color" )
@@ -34,20 +32,21 @@ Material* MaterialLoader::loadFromFile( const std::string& filename, uint32_t id
 	else if( name == "GeoClipMap" || name == "GeoClipMapWater" )
 		material->m_shader.reset( new DMClipMapShader() );
 
-	std::string path = "Shaders\\";
-
-	std::string vsShaderName = metaResource.get<std::string>( "Shaders", "vs" );
-	std::string psShaderName = metaResource.get<std::string>( "Shaders", "ps" );
-
-	if( !vsShaderName.empty() )
+	if( !vsShaderFile.empty() )
 	{
-		if( !material->m_shader->addShaderPass( SRVType::vs, "main", path + vsShaderName ) )
+		if( !material->m_shader->addShaderPass( SRVType::vs, "main", vsShaderFile ) )
 			return nullptr;
 	}
 
-	if( !psShaderName.empty() )
+	if( !gsShaderFile.empty() )
 	{
-		if( !material->m_shader->addShaderPass( SRVType::ps, "main", path + psShaderName ) )
+		if( !material->m_shader->addShaderPass( SRVType::gs, "main", gsShaderFile ) )
+			return nullptr;
+	}
+
+	if( !psShaderFile.empty() )
+	{
+		if( !material->m_shader->addShaderPass( SRVType::ps, "main", psShaderFile ) )
 			return nullptr;
 	}
 

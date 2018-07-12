@@ -1,33 +1,25 @@
 #include "DMD3D.h"
 #include "Utils\utilites.h"
 
-
+std::unique_ptr<DMD3D> DMD3D::m_instance;
 
 DMD3D& DMD3D::instance()
 {
-	static DMD3D instance;
+	if( !m_instance )
+		m_instance.reset( new DMD3D() );
 
-	return instance;
+	return *m_instance;
+}
+
+void DMD3D::destroy()
+{
+	m_instance.reset();
 }
 
 
 DMD3D::DMD3D(  )
 {
-	m_swapChain = 0;
-	m_device = 0;
-	m_deviceContext = 0;
-	m_renderTargetView = 0;
-	m_depthStencilBuffer = 0;
-	m_depthStencilState = 0;
-	m_depthStencilView = 0;
-	m_rasterState = 0;
-	m_rasterStateNoCulling = 0;
-
-	m_depthDisabledStencilState = 0;
-
-	m_alphaEnableBlendingState = 0;
-	m_alphaDisableBlendingState = 0;
-	m_blendStateTransparency = 0;
+	
 }
 
 DMD3D::~DMD3D()
@@ -35,29 +27,21 @@ DMD3D::~DMD3D()
 	Shutdown();
 }
 
-bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd, bool fullscreen, float screenDepth, float screenNear )
+bool DMD3D::Initialize( const Config& config, HWND hwnd )
 {
+	m_screenHeight = (uint32_t)config.screenHeight();
+	m_screenWidth = (uint32_t)config.screenWidth();
+	m_hWnd = hwnd;
+	m_vsync_enabled = config.vSync();
+
 	HRESULT result;
 	IDXGIFactory* factory;
 	IDXGIAdapter* adapter;
 	IDXGIOutput* adapterOutput;
-	unsigned int numModes, i, numerator, denominator;
-	numModes = i = numerator = denominator = 0;
+	unsigned int numModes = 0;
 	DXGI_MODE_DESC* displayModeList;
 	DXGI_ADAPTER_DESC adapterDesc;
 	int error;
-	DXGI_SWAP_CHAIN_DESC swapChainDesc;
-	D3D_FEATURE_LEVEL featureLevel;
-	ID3D11Texture2D* backBufferPtr;
-	D3D11_TEXTURE2D_DESC depthBufferDesc;
-	D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
-	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
-	D3D11_RASTERIZER_DESC rasterDesc;	
-	D3D11_DEPTH_STENCIL_DESC depthDisabledStencilDesc;
-	D3D11_BLEND_DESC blendStateDescription;
-
-	// Store the vsync setting.
-	m_vsync_enabled = vsync;
 
 	// Create a DirectX graphics interface factory.
 	result = CreateDXGIFactory( __uuidof( IDXGIFactory ), (void**)&factory );
@@ -103,14 +87,14 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 
 	// Now go through all the display modes and find the one that matches the screen width and height.
 	// When a match is found store the numerator and denominator of the refresh rate for that monitor.
-	for( i = 0; i < numModes; i++ )
+	for( uint16_t i = 0; i < numModes; i++ )
 	{
-		if( displayModeList[i].Width == (unsigned int)screenWidth )
+		if( displayModeList[i].Width == m_screenWidth )
 		{
-			if( displayModeList[i].Height == (unsigned int)screenHeight )
+			if( displayModeList[i].Height == m_screenHeight )
 			{
-				numerator = displayModeList[i].RefreshRate.Numerator;
-				denominator = displayModeList[i].RefreshRate.Denominator;
+				m_numerator = displayModeList[i].RefreshRate.Numerator;
+				m_denominator = displayModeList[i].RefreshRate.Denominator;
 			}
 		}
 	}
@@ -138,16 +122,42 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	displayModeList = 0;
 
 	// Release the adapter output.
-	adapterOutput->Release( );
+	adapterOutput->Release();
 	adapterOutput = 0;
 
 	// Release the adapter.
-	adapter->Release( );
+	adapter->Release();
 	adapter = 0;
 
 	// Release the factory.
-	factory->Release( );
+	factory->Release();
 	factory = 0;
+
+	if( !createDeviceSwapChain( hwnd, config.fullScreen() ) )
+		return false;
+
+	if( !createRenderTargetView() )
+		return false;
+
+	if( !createDepthStencilBufferAndView() )
+		return false;
+
+	if( !createRasterDescs() )
+		return false;
+
+	if( !createViewport() )
+		return false;
+
+	if( !createBlendStates() )
+		return false;
+
+	return true;
+}
+
+bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
+{
+	DXGI_SWAP_CHAIN_DESC swapChainDesc;
+	D3D_FEATURE_LEVEL featureLevel;
 
 	// Initialize the swap chain description.
 	ZeroMemory( &swapChainDesc, sizeof( DXGI_SWAP_CHAIN_DESC ) );
@@ -156,8 +166,8 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	swapChainDesc.BufferCount = 1;
 
 	// Set the width and height of the back buffer.
-	swapChainDesc.BufferDesc.Width = screenWidth;
-	swapChainDesc.BufferDesc.Height = screenHeight;
+	swapChainDesc.BufferDesc.Width = m_screenWidth;
+	swapChainDesc.BufferDesc.Height = m_screenHeight;
 
 	// Set regular 32-bit surface for the back buffer.
 	swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
@@ -165,8 +175,8 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	// Set the refresh rate of the back buffer.
 	if( m_vsync_enabled )
 	{
-		swapChainDesc.BufferDesc.RefreshRate.Numerator = numerator;
-		swapChainDesc.BufferDesc.RefreshRate.Denominator = denominator;
+		swapChainDesc.BufferDesc.RefreshRate.Numerator = m_numerator;
+		swapChainDesc.BufferDesc.RefreshRate.Denominator = m_denominator;
 	}
 	else
 	{
@@ -205,52 +215,68 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	swapChainDesc.Flags = 0;
 
 	// Set the feature level to DirectX 11.
-	featureLevel = D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0;
+	featureLevel = D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_1;
 
 	// Create the swap chain, Direct3D device, and Direct3D device context.
-	result = D3D11CreateDeviceAndSwapChain( NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
-											D3D11_SDK_VERSION, &swapChainDesc, &m_swapChain, &m_device, NULL, &m_deviceContext );
+	IDXGISwapChain* swapChain;
+	ID3D11Device* device;
+	ID3D11DeviceContext* deviceContext;
+	HRESULT result = D3D11CreateDeviceAndSwapChain( NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
+													D3D11_SDK_VERSION, &swapChainDesc, &swapChain, &device, NULL, &deviceContext );
 	if( FAILED( result ) )
 	{
-		/*featureLevel = D3D_FEATURE_LEVEL_10_1;
+		featureLevel = D3D_FEATURE_LEVEL_11_0;
 		result = D3D11CreateDeviceAndSwapChain( NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
-												D3D11_SDK_VERSION, &swapChainDesc, &m_swapChain, &m_device, NULL, &m_deviceContext );
-		if( FAILED( result ) )*/
+												D3D11_SDK_VERSION, &swapChainDesc, &swapChain, &device, NULL, &deviceContext );
+		if( FAILED( result ) )
 			return false;
 	}
 
-	m_interfaces.push_front( m_swapChain );
-	m_interfaces.push_front( m_device );
-	m_interfaces.push_front( m_deviceContext );
+	m_swapChain = make_com_ptr<IDXGISwapChain>( swapChain );
+	m_device = make_com_ptr<ID3D11Device>( device );
+	m_deviceContext = make_com_ptr<ID3D11DeviceContext>( deviceContext );
 
-	D3D_FEATURE_LEVEL lvl = m_device->GetFeatureLevel();
+	return true;
+}
+
+bool DMD3D::createRenderTargetView()
+{
+	ID3D11Texture2D* backBufferPtr;
 
 	// Get the pointer to the back buffer.
-	result = m_swapChain->GetBuffer( 0, __uuidof( ID3D11Texture2D ), (LPVOID*)&backBufferPtr );
+	HRESULT result = m_swapChain->GetBuffer( 0, __uuidof( ID3D11Texture2D ), (LPVOID*)&backBufferPtr );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
 	// Create the render target view with the back buffer pointer.
-	result = m_device->CreateRenderTargetView( backBufferPtr, NULL, &m_renderTargetView );
+	ID3D11RenderTargetView* renderTargetView;
+	result = m_device->CreateRenderTargetView( backBufferPtr, NULL, &renderTargetView );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	m_interfaces.push_front( m_renderTargetView  );
+	m_renderTargetView = make_com_ptr<ID3D11RenderTargetView>( renderTargetView );
 
 	// Release pointer to the back buffer as we no longer need it.
-	backBufferPtr->Release( );
+	backBufferPtr->Release();
 	backBufferPtr = 0;
+
+	return true;
+}
+
+bool DMD3D::createDepthStencilBufferAndView()
+{
+	D3D11_TEXTURE2D_DESC depthBufferDesc;
 
 	// Initialize the description of the depth buffer.
 	ZeroMemory( &depthBufferDesc, sizeof( depthBufferDesc ) );
 
 	// Set up the description of the depth buffer.
-	depthBufferDesc.Width = screenWidth;
-	depthBufferDesc.Height = screenHeight;
+	depthBufferDesc.Width = m_screenWidth;
+	depthBufferDesc.Height = m_screenHeight;
 	depthBufferDesc.MipLevels = 1;
 	depthBufferDesc.ArraySize = 1;
 	depthBufferDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -262,15 +288,20 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	depthBufferDesc.MiscFlags = 0;
 
 	// Create the texture for the depth buffer using the filled out description.
-	result = m_device->CreateTexture2D( &depthBufferDesc, NULL, &m_depthStencilBuffer );
+	ID3D11Texture2D* depthStencilBuffer;
+	HRESULT result = m_device->CreateTexture2D( &depthBufferDesc, NULL, &depthStencilBuffer );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	m_interfaces.push_front( m_depthStencilBuffer );
+	m_depthStencilBuffer = make_com_ptr<ID3D11Texture2D>( depthStencilBuffer );
+
+
+
 
 	// Initialize the description of the stencil state.
+	D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
 	ZeroMemory( &depthStencilDesc, sizeof( depthStencilDesc ) );
 
 	// Set up the description of the stencil state.
@@ -295,20 +326,32 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	depthStencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
 
 	// Create the depth stencil state.
-	result = m_device->CreateDepthStencilState( &depthStencilDesc, &m_depthStencilState );
+	ID3D11DepthStencilState* depthStencilState;
+	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	m_interfaces.push_front( m_depthStencilState );
+	m_depthStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
+
+	// depth disable state
+	depthStencilDesc.DepthEnable = false;
+	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
+	if( FAILED( result ) )
+	{
+		return false;
+	}
+
+	m_depthDisabledStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
 
 	// Set the depth stencil state.
-	m_deviceContext->OMSetDepthStencilState( m_depthStencilState, 1 );
+	m_deviceContext->OMSetDepthStencilState( m_depthStencilState.get(), 1 );
 	//m_deviceContext->OMSetDepthStencilState( nullptr, 0 );
 
 
 	// Initailze the depth stencil view.
+	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
 	ZeroMemory( &depthStencilViewDesc, sizeof( depthStencilViewDesc ) );
 
 	// Set up the depth stencil view description.
@@ -317,19 +360,40 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	depthStencilViewDesc.Texture2D.MipSlice = 0;
 
 	// Create the depth stencil view.
-	result = m_device->CreateDepthStencilView( m_depthStencilBuffer, &depthStencilViewDesc, &m_depthStencilView );
+	ID3D11DepthStencilView* depthStencilView;
+	result = m_device->CreateDepthStencilView( m_depthStencilBuffer.get(), &depthStencilViewDesc, &depthStencilView );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	m_interfaces.push_front( m_depthStencilView );
+	m_depthStencilView = make_com_ptr<ID3D11DepthStencilView>( depthStencilView );
 
 	// Bind the render target view and depth stencil buffer to the output render pipeline.
-	m_deviceContext->OMSetRenderTargets( 1, &m_renderTargetView, m_depthStencilView );
+	ID3D11RenderTargetView* rtv = m_renderTargetView.get();
+	m_deviceContext->OMSetRenderTargets( 1, &rtv, m_depthStencilView.get() );
 
+	return true;
+}
 
+bool DMD3D::createRasterizerState( D3D11_RASTERIZER_DESC& desc, com_unique_ptr<ID3D11RasterizerState>& state )
+{
+	ID3D11RasterizerState* rasterState;
+	HRESULT result = m_device->CreateRasterizerState( &desc, &rasterState );
+	if( FAILED( result ) )
+	{
+		return false;
+	}
+
+	state = make_com_ptr<ID3D11RasterizerState>( rasterState );
+
+	return true;
+}
+
+bool DMD3D::createRasterDescs()
+{
 	// Setup the raster description which will determine how and what polygons will be drawn.
+	D3D11_RASTERIZER_DESC rasterDesc;
 	rasterDesc.AntialiasedLineEnable = false;
 	rasterDesc.CullMode = D3D11_CULL_BACK;
 	rasterDesc.DepthBias = 0;
@@ -342,42 +406,24 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	rasterDesc.SlopeScaledDepthBias = 0.0f;
 
 
-	// Create the rasterizer state from the description we just filled out.
-	result = m_device->CreateRasterizerState( &rasterDesc, &m_rasterState );
-	if( FAILED( result ) )
-	{
+	if( !createRasterizerState( rasterDesc, m_rasterState ) )
 		return false;
-	}
-
-	m_interfaces.push_front( m_rasterState );
 
 	// Now set the rasterizer state.
-	m_deviceContext->RSSetState( m_rasterState );
+	m_deviceContext->RSSetState( m_rasterState.get() );
 
 
 	// create back face culling state
 	rasterDesc.CullMode = D3D11_CULL_FRONT;
-	// Create the rasterizer state from the description we just filled out.
-	result = m_device->CreateRasterizerState( &rasterDesc, &m_raster_state_front_culling );
-	if( FAILED( result ) )
-	{
+	if( !createRasterizerState( rasterDesc, m_rasterStateFrontCulling ) )
 		return false;
-	}
-
-	m_interfaces.push_front( m_raster_state_front_culling );
 
 	// create shadow render state
 	rasterDesc.CullMode = D3D11_CULL_BACK;
 	rasterDesc.DepthBias = 0;
 	rasterDesc.SlopeScaledDepthBias = 5.5f;
-	// Create the rasterizer state from the description we just filled out.
-	result = m_device->CreateRasterizerState( &rasterDesc, &m_raster_state_shadow );
-	if( FAILED( result ) )
-	{
+	if( !createRasterizerState( rasterDesc, m_rasterStateShadow ) )
 		return false;
-	}
-
-	m_interfaces.push_front( m_raster_state_shadow );
 
 
 	// Setup a raster description which turns off back face culling.
@@ -391,15 +437,8 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	rasterDesc.ScissorEnable = FALSE;
 	rasterDesc.MultisampleEnable = TRUE;
 	rasterDesc.AntialiasedLineEnable = FALSE;
-
-	// Create the no culling rasterizer state.
-	result = m_device->CreateRasterizerState( &rasterDesc, &m_rasterStateNoCulling );
-	if( FAILED( result ) )
-	{
+	if( !createRasterizerState( rasterDesc, m_rasterStateNoCulling ) )
 		return false;
-	}
-
-	m_interfaces.push_front( m_rasterStateNoCulling );
 
 	// Setup a raster description which turns off back face culling.
 	rasterDesc.AntialiasedLineEnable = false;
@@ -412,19 +451,17 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	rasterDesc.MultisampleEnable = false;
 	rasterDesc.ScissorEnable = false;
 	rasterDesc.SlopeScaledDepthBias = 0.0f;
-
-	// Create the no culling rasterizer state.
-	result = m_device->CreateRasterizerState( &rasterDesc, &m_rasterStateWireframe );
-	if( FAILED( result ) )
-	{
+	if( !createRasterizerState( rasterDesc, m_rasterStateWireframe ) )
 		return false;
-	}
 
-	m_interfaces.push_front( m_rasterStateWireframe );
+	return true;
+}
 
+bool DMD3D::createViewport()
+{
 	// Setup the viewport for rendering.
-	m_viewport.Width = (float)screenWidth;
-	m_viewport.Height = (float)screenHeight;
+	m_viewport.Width = (float)m_screenWidth;
+	m_viewport.Height = (float)m_screenHeight;
 	m_viewport.MinDepth = 0.0f;
 	m_viewport.MaxDepth = 1.0f;
 	m_viewport.TopLeftX = 0.0f;
@@ -433,36 +470,28 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	// Create the viewport.
 	m_deviceContext->RSSetViewports( 1, &m_viewport );
 
-	// Clear the second depth stencil state before setting the parameters.
-	ZeroMemory( &depthDisabledStencilDesc, sizeof( depthDisabledStencilDesc ) );
+	return true;
+}
 
-	// Now create a second depth stencil state which turns off the Z buffer for 2D rendering.  The only difference is 
-	// that DepthEnable is set to false, all other parameters are the same as the other depth stencil state.
-	depthDisabledStencilDesc.DepthEnable = false;
-	depthDisabledStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-	depthDisabledStencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
-	depthDisabledStencilDesc.StencilEnable = true;
-	depthDisabledStencilDesc.StencilReadMask = 0xFF;
-	depthDisabledStencilDesc.StencilWriteMask = 0xFF;
-	depthDisabledStencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-	depthDisabledStencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
-	depthDisabledStencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-	depthDisabledStencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-	depthDisabledStencilDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-	depthDisabledStencilDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
-	depthDisabledStencilDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-	depthDisabledStencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-
-	// Create the state using the device.
-	result = m_device->CreateDepthStencilState( &depthDisabledStencilDesc, &m_depthDisabledStencilState );
+bool DMD3D::createBlendState( D3D11_BLEND_DESC& desc, com_unique_ptr<ID3D11BlendState>& state )
+{
+	ID3D11BlendState* blendState;
+	HRESULT result = m_device->CreateBlendState( &desc, &blendState );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	m_interfaces.push_front( m_depthDisabledStencilState );
+	state = make_com_ptr<ID3D11BlendState>( blendState );
+
+	return true;
+}
+
+bool DMD3D::createBlendStates()
+{
 
 	// Clear the blend state description.
+	D3D11_BLEND_DESC blendStateDescription;
 	ZeroMemory( &blendStateDescription, sizeof( D3D11_BLEND_DESC ) );
 
 	// Create an alpha enabled blend state description.
@@ -477,27 +506,14 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	blendStateDescription.RenderTarget[0].RenderTargetWriteMask = 0X0f;
 	
 
-	// Create the blend state using the description.
-	result = m_device->CreateBlendState( &blendStateDescription, &m_alphaEnableBlendingState );
-	if( FAILED( result ) )
-	{
+	if( !createBlendState( blendStateDescription, m_alphaEnableBlendingState ) )
 		return false;
-	}
-
-	m_interfaces.push_front( m_alphaEnableBlendingState );
 
 	// Modify the description to create an alpha disabled blend state description.
 	blendStateDescription.AlphaToCoverageEnable = false;
 	blendStateDescription.RenderTarget[0].BlendEnable = FALSE;
-
-	// Create the blend state using the description.
-	result = m_device->CreateBlendState( &blendStateDescription, &m_alphaDisableBlendingState );
-	if( FAILED( result ) )
-	{
+	if( !createBlendState( blendStateDescription, m_alphaDisableBlendingState ) )
 		return false;
-	}
-
-	m_interfaces.push_front( m_alphaDisableBlendingState );
 
 	// Create a secondary alpha blend state description.
 	blendStateDescription.AlphaToCoverageEnable = true;
@@ -509,15 +525,8 @@ bool DMD3D::Initialize( int screenWidth, int screenHeight, bool vsync, HWND hwnd
 	blendStateDescription.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
 	blendStateDescription.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
 	blendStateDescription.RenderTarget[0].RenderTargetWriteMask = 0x0f;
-
-	// Create the blend state using the description.
-	result = m_device->CreateBlendState( &blendStateDescription, &m_blendStateTransparency );
-	if( FAILED( result ) )
-	{
+	if( !createBlendState( blendStateDescription, m_blendStateTransparency ) )
 		return false;
-	}
-
-	m_interfaces.push_front( m_blendStateTransparency );
 
 	return true;
 }
@@ -530,13 +539,6 @@ void DMD3D::Shutdown( )
 	{
 		m_swapChain->SetFullscreenState( false, NULL );		
 	}
-
-	for( IUnknown* object : m_interfaces )
-	{
-		object->Release();
-	}
-
-	return;
 }
 
 void DMD3D::TurnOnAlphaBlending( )
@@ -551,7 +553,7 @@ void DMD3D::TurnOnAlphaBlending( )
 	blendFactor[3] = 0.0f;
 
 	// Turn on the alpha blending.
-	m_deviceContext->OMSetBlendState( m_alphaEnableBlendingState, blendFactor, 0xffffffff );
+	m_deviceContext->OMSetBlendState( m_alphaEnableBlendingState.get(), blendFactor, 0xffffffff );
 
 	return;
 }
@@ -568,7 +570,7 @@ void DMD3D::TurnOffAlphaBlending( )
 	blendFactor[3] = 0.0f;
 
 	// Turn off the alpha blending.
-	m_deviceContext->OMSetBlendState( m_alphaDisableBlendingState, blendFactor, 0xffffffff );
+	m_deviceContext->OMSetBlendState( m_alphaDisableBlendingState.get(), blendFactor, 0xffffffff );
 
 	return;
 }
@@ -585,10 +587,10 @@ void DMD3D::BeginScene( float red, float green, float blue, float alpha )
 	color[3] = alpha;
 
 	// Clear the back buffer.
-	m_deviceContext->ClearRenderTargetView( m_renderTargetView, color );
+	m_deviceContext->ClearRenderTargetView( m_renderTargetView.get(), color );
 
 	// Clear the depth buffer.
-	m_deviceContext->ClearDepthStencilView( m_depthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0 );
+	m_deviceContext->ClearDepthStencilView( m_depthStencilView.get(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
 
 	return;
 }
@@ -644,12 +646,12 @@ void DMD3D::EndScene( )
 
 ID3D11Device* DMD3D::GetDevice( )
 {
-	return m_device;
+	return m_device.get();
 }
 
 ID3D11DeviceContext* DMD3D::GetDeviceContext( )
 {
-	return m_deviceContext;
+	return m_deviceContext.get();
 }
 
 void DMD3D::GetVideoCardInfo( char* cardName, int& memory )
@@ -661,25 +663,26 @@ void DMD3D::GetVideoCardInfo( char* cardName, int& memory )
 
 void DMD3D::TurnZBufferOn( )
 {
-	m_deviceContext->OMSetDepthStencilState( m_depthStencilState, 1 );
+	m_deviceContext->OMSetDepthStencilState( m_depthStencilState.get(), 1 );
 	return;
 }
 
 void DMD3D::TurnZBufferOff( )
 {
-	m_deviceContext->OMSetDepthStencilState( m_depthDisabledStencilState, 1 );
+	m_deviceContext->OMSetDepthStencilState( m_depthDisabledStencilState.get(), 1 );
 	return;
 }
 
 ID3D11DepthStencilView* DMD3D::GetDepthStencilView( )
 {
-	return m_depthStencilView;
+	return m_depthStencilView.get();
 }
 
 void DMD3D::SetBackBufferRenderTarget( )
 {
 	// Bind the render target view and depth stencil buffer to the output render pipeline.
-	m_deviceContext->OMSetRenderTargets( 1, &m_renderTargetView, m_depthStencilView );
+	ID3D11RenderTargetView* renderTargetView = m_renderTargetView.get();
+	m_deviceContext->OMSetRenderTargets( 1, &renderTargetView, m_depthStencilView.get() );
 
 	return;
 }
@@ -695,7 +698,7 @@ void DMD3D::ResetViewport( )
 void DMD3D::TurnDefaultRS( )
 {
 	// Set the culling rasterizer state.
-	m_deviceContext->RSSetState( m_rasterState );
+	m_deviceContext->RSSetState( m_rasterState.get() );
 
 	return;
 }
@@ -703,7 +706,7 @@ void DMD3D::TurnDefaultRS( )
 void DMD3D::TurnShadowRS()
 {
 	// Set the culling rasterizer state.
-	m_deviceContext->RSSetState( m_raster_state_shadow );
+	m_deviceContext->RSSetState( m_rasterStateShadow.get() );
 
 	return;
 }
@@ -711,7 +714,7 @@ void DMD3D::TurnShadowRS()
 void DMD3D::TurnBackFacesRS()
 {
 	// Set the culling rasterizer state.
-	m_deviceContext->RSSetState( m_raster_state_front_culling );
+	m_deviceContext->RSSetState( m_rasterStateFrontCulling.get());
 
 	return;
 }
@@ -719,19 +722,19 @@ void DMD3D::TurnBackFacesRS()
 void DMD3D::TurnCullingNoneRS( )
 {
 	// Set the no back face culling rasterizer state.
-	m_deviceContext->RSSetState( m_rasterStateNoCulling );
+	m_deviceContext->RSSetState( m_rasterStateNoCulling.get() );
 
 	return;
 }
 
 void DMD3D::TurnOnWireframe()
 {
-	m_deviceContext->RSSetState( m_rasterStateWireframe );
+	m_deviceContext->RSSetState( m_rasterStateWireframe.get() );
 }
 
 void DMD3D::TurnOffWireframe()
 {
-	m_deviceContext->RSSetState( m_rasterState );
+	m_deviceContext->RSSetState( m_rasterState.get() );
 }
 
 void DMD3D::TurnOnTransparancy( )
@@ -746,7 +749,7 @@ void DMD3D::TurnOnTransparancy( )
 	blendFactor[3] = 0.0f;
 
 	// Turn on the alpha blending.
-	m_deviceContext->OMSetBlendState( m_blendStateTransparency, blendFactor, 0xffffffff );
+	m_deviceContext->OMSetBlendState( m_blendStateTransparency.get(), blendFactor, 0xffffffff );
 
 	return;
 }
@@ -761,7 +764,7 @@ bool DMD3D::createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11B
 {
 	D3D11_BUFFER_DESC param_buffer_desc;
 	param_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
-	param_buffer_desc.ByteWidth = byte_size;
+	param_buffer_desc.ByteWidth = (UINT)byte_size;
 	param_buffer_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	param_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	param_buffer_desc.MiscFlags = 0;
@@ -784,7 +787,7 @@ bool DMD3D::createVertexBuffer( com_unique_ptr<ID3D11Buffer> &buffer, void* data
 	D3D11_BUFFER_DESC buffer_desc;
 	memset( &buffer_desc, 0, sizeof( D3D11_BUFFER_DESC ) );
 	buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-	buffer_desc.ByteWidth = sizeInByte;
+	buffer_desc.ByteWidth = (UINT)sizeInByte;
 	buffer_desc.CPUAccessFlags = 0;
 	buffer_desc.MiscFlags = 0;
 	buffer_desc.Usage = D3D11_USAGE_DEFAULT;
@@ -806,7 +809,7 @@ bool DMD3D::createIndexBuffer( com_unique_ptr<ID3D11Buffer> &buffer, void* data,
 	D3D11_BUFFER_DESC buffer_desc;
 	memset( &buffer_desc, 0, sizeof( D3D11_BUFFER_DESC ) );
 	buffer_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	buffer_desc.ByteWidth = sizeInByte;
+	buffer_desc.ByteWidth = (UINT)sizeInByte;
 	buffer_desc.CPUAccessFlags = 0;
 	buffer_desc.MiscFlags = 0;
 	buffer_desc.Usage = D3D11_USAGE_DEFAULT;
@@ -843,6 +846,7 @@ ID3D11RasterizerState* DMD3D::currentRS()
 	m_deviceContext->RSGetState( &state );
 	return state;
 }
+
 void DMD3D::setRS( ID3D11RasterizerState* state )
 {
 	m_deviceContext->RSSetState( state );

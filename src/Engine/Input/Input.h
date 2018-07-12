@@ -25,6 +25,7 @@ class Input
 {
 private:
 	friend Input& getInput();
+	friend void destroyInput();
 
 public:
 	~Input();

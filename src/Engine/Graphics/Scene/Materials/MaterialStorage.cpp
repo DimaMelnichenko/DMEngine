@@ -13,17 +13,18 @@ MaterialStorage::~MaterialStorage()
 
 }
 
-bool MaterialStorage::load( const std::string& name )
+bool MaterialStorage::load( uint32_t id, const std::string& name, const std::string& vs, const std::string& gs, const std::string& ps )
 {
-	uint32_t id = nextId();
-
-	if( exists( name ) )
+	if( exists( id ) )
 		return true;
 
-	std::string fullPath = path() + "\\" + name;
+	std::string fullPath = path() + "\\";
 
 	std::unique_ptr<Material> material;
-	material.reset( m_materialLoader.loadFromFile( fullPath, id, name ) );
+	material.reset( m_materialLoader.loadFromFile( id, name, 
+												   vs.empty() ? "" : fullPath + vs, 
+												   gs.empty() ? "" : fullPath + gs,
+												   ps.empty() ? "" : fullPath + ps ) );
 	if( material == nullptr )
 		return false;
 	insertResource( std::move( material ) );

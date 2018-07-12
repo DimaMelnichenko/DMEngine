@@ -9,11 +9,9 @@ using namespace tinyxml2;
 namespace GS
 {
 
-
 ModelLoader::ModelLoader()
 {
 }
-
 
 ModelLoader::~ModelLoader()
 {
@@ -55,16 +53,6 @@ DMModel* ModelLoader::loadJSONFile( const std::string& filename, uint32_t id )
 	for( auto& lod : jsonParser["lods"] )
 	{
 		std::string matName = lod["material"];
-
-		if( !System::meshes().load( lod["mesh"] ) )
-		{
-			return nullptr;
-		}
-
-		if( !System::materials().load( matsSet[matName].shaderName ) )
-		{
-			return nullptr;
-		}
 
 		DMModel::LodBlock block;
 		block.material = System::materials().id( matsSet[matName].shaderName );
@@ -115,16 +103,6 @@ DMModel* ModelLoader::loadXMLFile( const std::string& filename, uint32_t id )
 
 		std::string meshName( xmlLodElement->FirstChildElement( "mesh" )->GetText() );
 		std::string matName( xmlLodElement->FirstChildElement( "material" )->GetText() );
-
-		if( !System::meshes().load( meshName ) )
-		{
-			return nullptr;
-		}
-
-		if( !System::materials().load( matsSet[matName].shaderName ) )
-		{
-			return nullptr;
-		}
 
 		DMModel::LodBlock block;
 		block.material = System::materials().id( matsSet[matName].shaderName );
@@ -209,14 +187,7 @@ DMModel* ModelLoader::loadFromFile( const std::string& filename, uint32_t id )
 		std::string meshName = resourceFile.get<std::string>( currentLOD, "Mesh" );
 		std::string matName = resourceFile.get<std::string>( currentLOD, "Material" );
 
-		if( !System::meshes().load( meshName ) )
-		{
-			return nullptr;
-		}
-		if( !System::materials().load( matName ) )
-		{
-			return nullptr;
-		}
+
 		DMModel::LodBlock block;
 		block.material = System::materials().id( matName );
 		block.mesh = System::meshes().id( meshName );

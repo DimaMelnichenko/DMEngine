@@ -14,7 +14,9 @@ public:
 	ModelStorage( const std::string& path );
 	~ModelStorage();
 
-	bool load( const std::string& file );
+	//bool load( const std::string& file );
+
+	bool createModel( uint32_t id, const std::string& name );
 
 	bool clone( const std::string& source, const std::string& newName );
 
