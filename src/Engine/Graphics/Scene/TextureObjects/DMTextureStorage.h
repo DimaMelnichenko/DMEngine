@@ -15,7 +15,7 @@ public:
 	DMTextureStorage( const std::string& path );
 	~DMTextureStorage();
 
-	bool load( uint32_t id, const std::string& name, const std::string& file );
+	bool load( uint32_t id, const std::string& name, const std::string& file, bool generateMipMap );
 
 private:
 	TextureLoader m_textureLoader;

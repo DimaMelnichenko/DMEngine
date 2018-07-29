@@ -3,10 +3,9 @@
 
 #include <memory>
 
-#include "..\DMSceneObject.h"
 #include "..\Shaders\DMComputeShader.h"
 
-class DMParticleSystem : public DMSceneObject
+class DMParticleSystem
 {
 public:
 	DMParticleSystem();
@@ -17,9 +16,9 @@ public:
 	unsigned int particleCount();
 	
 
-	D3DXMATRIX* resultMatrix();
+	XMMATRIX* resultMatrix();
 
-	void update( std::unique_ptr<DMComputeShader>&, float );
+	void update( float elapsedTime );
 
 	void generate();
 	void after_generate();
@@ -27,21 +26,18 @@ public:
 private:
 	struct ParticleData
 	{
-		D3DXVECTOR4 position;
-		D3DXVECTOR4 velocity;
+		XMFLOAT4 position;
+		XMFLOAT4 velocity;
 	};
-
-	HRESULT createBufferUAV();
 
 private:
 	unsigned int m_max_count;	
-	com_unique_ptr<ID3D11Buffer> m_structured_buffer_0;
-	com_unique_ptr<ID3D11Buffer> m_structured_buffer_1;
-	com_unique_ptr<ID3D11ShaderResourceView> m_SRV_0;
-	com_unique_ptr<ID3D11ShaderResourceView> m_SRV_1;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_UAV_0;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_UAV_1;
-	D3DXMATRIX m_world_matrix;
+	com_unique_ptr<ID3D11Buffer> m_structuredBuffer;
+	com_unique_ptr<ID3D11ShaderResourceView> m_srvParticles;
+	com_unique_ptr<ID3D11UnorderedAccessView> m_uavParticles;
+	XMMATRIX m_world_matrix;
+
+	DMComputeShader m_computeShader;
 
 };
 

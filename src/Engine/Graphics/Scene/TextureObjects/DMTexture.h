@@ -21,6 +21,8 @@ public:
 
 	bool createSRV();
 
+	const ScratchImage& image() const;
+
 private:
 	com_unique_ptr<ID3D11ShaderResourceView> m_srv;
 	ScratchImage m_image;

@@ -18,6 +18,7 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 	std::uniform_real_distribution<> urd_x( 0, 100 );
 	std::uniform_real_distribution<> urd_y( 0, 100 );
 	std::uniform_real_distribution<> urd_z( 0, 100 );
+	std::uniform_real_distribution<> vel_y( 0.01, 0.07 );
 
 	m_max_count = max_count;
 
@@ -40,10 +41,10 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 		{
 			for( size_t i = 0; i < max_count; i++ )
 			{
-				data[counter].position.x = static_cast<float>( x + urd( gen ) );
-				data[counter].position.z = static_cast<float>( y + urd( gen ) );
-				data[counter].position.y = 0.0f;
-				data[counter].velocity = D3DXVECTOR4( 1.0, 0.0, 0.0, 0.0 );
+				data[counter].position.x = static_cast<float>( x + urd( gen ) ) * 10;
+				data[counter].position.z = static_cast<float>( y + urd( gen ) ) * 10;
+				data[counter].position.y = static_cast<float>( urd( gen ) ) * 300;
+				data[counter].velocity = XMFLOAT4( 0.0, -vel_y(gen), 0.0, 0.0 );
 				counter++;
 			}	
 		}
@@ -55,28 +56,17 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 	buffer_desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
 	buffer_desc.ByteWidth = sizeof( ParticleData ) * m_max_count;	
 	buffer_desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+	buffer_desc.CPUAccessFlags = 0;
 	buffer_desc.StructureByteStride = sizeof( ParticleData );	
 
 	D3D11_SUBRESOURCE_DATA sub_data;
 	memset( &sub_data, 0, sizeof( D3D11_SUBRESOURCE_DATA ) );
 	sub_data.pSysMem = data;
 	
-	ID3D11Buffer* buffer;
-	HRESULT hr = DMD3D::instance().GetDevice()->CreateBuffer( &buffer_desc, &sub_data, &buffer );
-	if( FAILED( hr ) )
-	{		
+	if( !DMD3D::instance().CreateBuffer( &buffer_desc, &sub_data, m_structuredBuffer ) )
 		return false;
-	}
-	
-	m_structured_buffer_0 = make_com_ptr<ID3D11Buffer>( buffer );
 
-	hr = DMD3D::instance().GetDevice()->CreateBuffer( &buffer_desc, &sub_data, &buffer );
-	if( FAILED( hr ) )
-	{
-		return false;
-	}
 
-	m_structured_buffer_1 = make_com_ptr<ID3D11Buffer>( buffer );
 
 	D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
 	memset( &srv_desc, 0, sizeof( D3D11_SHADER_RESOURCE_VIEW_DESC ) );
@@ -85,50 +75,47 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 	srv_desc.Buffer.FirstElement = 0;
 	srv_desc.Buffer.NumElements = m_max_count;
 
-	ID3D11ShaderResourceView* srv;
-	hr = DMD3D::instance().GetDevice()->CreateShaderResourceView( m_structured_buffer_0.get(), &srv_desc, &srv );
-
-	if( FAILED( hr ) )
-	{
+	
+	if( !DMD3D::instance().createSRV( m_structuredBuffer, srv_desc, m_srvParticles ) )
 		return false;
-	}
 
-	m_SRV_0 = make_com_ptr<ID3D11ShaderResourceView>( srv );
+	
 
-	hr = DMD3D::instance().GetDevice()->CreateShaderResourceView( m_structured_buffer_1.get(), &srv_desc, &srv );
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+	memset( &uavDesc, 0, sizeof( uavDesc ) );
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+	uavDesc.Buffer.FirstElement = 0;
+	//desc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_APPEND;
+	uavDesc.Format = DXGI_FORMAT_UNKNOWN;      // Format must be must be DXGI_FORMAT_UNKNOWN, when creating a View of a Structured Buffer
+	uavDesc.Buffer.NumElements = m_max_count;
 
-	if( FAILED( hr ) )
-	{
+	if( !DMD3D::instance().createUAV( m_structuredBuffer, uavDesc, m_uavParticles ) )
 		return false;
-	}
-
-	m_SRV_1 = make_com_ptr<ID3D11ShaderResourceView>( srv );
 
 
-	createBufferUAV();
-
+	m_computeShader.Initialize( "Shaders\\particle.cs", "main" );
 
 	return true;
 }
 
-void DMParticleSystem::update( std::unique_ptr<DMComputeShader>& shader, float elapsed_time )
+void DMParticleSystem::update( float elapsedTime )
 {
 	ID3D11ShaderResourceView* srv[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 10, srv );
 
-	shader->setStructuredBuffer( 0, m_SRV_0.get() );
-	shader->setUAVBuffer( 0, m_UAV_1.get() );
+	//m_computeShader.setStructuredBuffer( 0, m_srvParticles.get() );
+	m_computeShader.setUAVBuffer( 0, m_uavParticles.get() );
 
-	shader->Dispatch( m_max_count, elapsed_time );
+	m_computeShader.Dispatch( m_max_count, elapsedTime );
 
-	std::swap( m_structured_buffer_0, m_structured_buffer_1 );
-	std::swap( m_SRV_0, m_SRV_1 );
-	std::swap( m_UAV_0, m_UAV_1 );
+	m_computeShader.setUAVBuffer( 0, nullptr );
+	
+	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 10, srv );
 }
 
 void DMParticleSystem::Render()
 {	
-	ID3D11ShaderResourceView* srv = m_SRV_0.get();
+	ID3D11ShaderResourceView* srv = m_srvParticles.get();
 	DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 5, 1, &srv );
 
 	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
@@ -148,7 +135,7 @@ void DMParticleSystem::generate()
 	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( NULL, DXGI_FORMAT_R32_UINT, 0 );
 
 	unsigned int offset = 0;
-	ID3D11Buffer* buffers[] = { m_structured_buffer_0.get() };
+	ID3D11Buffer* buffers[] = { m_structuredBuffer.get() };
 	DMD3D::instance().GetDeviceContext()->SOSetTargets( 1, buffers, &offset );
 }
 
@@ -164,42 +151,8 @@ unsigned int DMParticleSystem::particleCount()
 	return  m_max_count;
 }
 
-D3DXMATRIX* DMParticleSystem::resultMatrix()
+XMMATRIX* DMParticleSystem::resultMatrix()
 {
-	D3DXMatrixIdentity( &m_world_matrix );
-	return  &m_world_matrix;
-}
-
-HRESULT DMParticleSystem::createBufferUAV()
-{
-	D3D11_BUFFER_DESC descBuf;
-	ZeroMemory( &descBuf, sizeof( descBuf ) );
-	m_structured_buffer_0->GetDesc( &descBuf );
-
-	D3D11_UNORDERED_ACCESS_VIEW_DESC desc;
-	ZeroMemory( &desc, sizeof( desc ) );
-	desc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	desc.Buffer.FirstElement = 0;
-	//desc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_APPEND;
-	
-	desc.Format = DXGI_FORMAT_UNKNOWN;      // Format must be must be DXGI_FORMAT_UNKNOWN, when creating a View of a Structured Buffer
-	desc.Buffer.NumElements = descBuf.ByteWidth / descBuf.StructureByteStride;
-		
-
-	ID3D11UnorderedAccessView* uav;
-	HRESULT hr = DMD3D::instance().GetDevice()->CreateUnorderedAccessView( m_structured_buffer_0.get(), &desc, &uav );
-
-	if( SUCCEEDED( hr ) )
-	{
-		m_UAV_0 = make_com_ptr<ID3D11UnorderedAccessView>( uav );
-	}
-
-	hr = DMD3D::instance().GetDevice()->CreateUnorderedAccessView( m_structured_buffer_1.get(), &desc, &uav );
-
-	if( SUCCEEDED( hr ) )
-	{
-		m_UAV_1 = make_com_ptr<ID3D11UnorderedAccessView>( uav );
-	}
-
-	return hr;
+	m_world_matrix = XMMatrixIdentity();
+	return &m_world_matrix;
 }

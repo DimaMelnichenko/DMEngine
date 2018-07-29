@@ -19,6 +19,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMParticleShader.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMComputeShader.cpp" />
     <ClCompile Include="src\ObjectLibrary\LibraryLoader.cpp" />
     <ClCompile Include="src\3rdParty\tinyxml2.cpp" />
     <ClCompile Include="src\Config\Config.cpp" />
@@ -95,6 +99,10 @@
     <ClInclude Include="SQLiteCpp\Transaction.h" />
     <ClInclude Include="SQLiteCpp\Utils.h" />
     <ClInclude Include="SQLiteCpp\VariadicBind.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMParticleShader.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMComputeShader.h" />
     <ClInclude Include="src\ObjectLibrary\LibraryLoader.h" />
     <ClInclude Include="src\3rdParty\json.hpp" />
     <ClInclude Include="src\3rdParty\tinyxml2.h" />
@@ -123,7 +131,6 @@
     <ClInclude Include="src\Engine\Graphics\D3D\DMStructuredBuffer.h" />
     <ClInclude Include="src\Engine\DMEngineProcessor.h" />
     <ClInclude Include="src\DMSystem.h" />
-    <ClInclude Include="src\Engine\Graphics\Common\DDS.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DirectX.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMAABB.h" />
     <ClInclude Include="src\Engine\Graphics\Common\DMBoundingShape.h" />

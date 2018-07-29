@@ -81,7 +81,7 @@ public:
 	void TurnZBufferOn( );
 	void TurnZBufferOff( );
 
-	ID3D11RasterizerState* currentRS();
+	void currentRS( com_unique_ptr<ID3D11RasterizerState>& );
 	void setRS( ID3D11RasterizerState* );
 	void TurnDefaultRS( );
 	void TurnBackFacesRS();
@@ -102,6 +102,8 @@ public:
 	void TurnOffTransparancy( );
 
 	bool createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer> &, const D3D11_SUBRESOURCE_DATA* = nullptr );
+	bool createSRV( const com_unique_ptr<ID3D11Buffer>& buffer, D3D11_SHADER_RESOURCE_VIEW_DESC& desc, com_unique_ptr<ID3D11ShaderResourceView>& srv );
+	bool createUAV( const com_unique_ptr<ID3D11Buffer>& buffer, D3D11_UNORDERED_ACCESS_VIEW_DESC& desc, com_unique_ptr<ID3D11UnorderedAccessView>& uav );
 	bool createVertexBuffer( com_unique_ptr<ID3D11Buffer> &, void* data, size_t sizeInByte );
 	bool createIndexBuffer( com_unique_ptr<ID3D11Buffer> &, void* data, size_t sizeInByte );
 	bool CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData, com_unique_ptr<ID3D11Buffer>& );

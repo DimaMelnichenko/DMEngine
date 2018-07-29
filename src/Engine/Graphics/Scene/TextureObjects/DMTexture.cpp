@@ -20,6 +20,11 @@ DMTexture::~DMTexture()
 
 }
 
+const ScratchImage& DMTexture::image() const
+{
+	return m_image;
+}
+
 ID3D11ShaderResourceView* DMTexture::srv()
 {
 	return m_srv.get();

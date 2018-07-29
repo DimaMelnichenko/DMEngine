@@ -4,6 +4,7 @@
 
 
 #include "common.vs"
+#include "samplers.sh"
 
 //////////////
 // TYPEDEFS //
@@ -16,7 +17,7 @@ struct Particle // описание структуры на GPU
 
 StructuredBuffer<Particle> Particles : register(t5); // буфер частиц
 
-SamplerState SampleType;
+
 
 struct VertexInputType
 {

@@ -72,13 +72,23 @@ float3 normalToTerrain( float3 vec )
 	return normalize( vec );
 }
 
-float3 triplanar( float3 worldPos, float scale, float3 blendAxes, int textureIndex )
+float3 triplanar( float3 worldPos, float scale, float3 blendAxes, int textureIndexVecrtical, int textureIndexHorizontal )
 {
 	float3 scaleWorldPos = worldPos / scale;
-	float3 xProjection = terrainTexture[textureIndex].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.zy * float2( 1.0, -1.0 ) ) * blendAxes.x;
-	float3 yProjection = terrainTexture[textureIndex].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xz * float2( 1.0, -1.0 ) ) * blendAxes.y;
-	float3 zProjection = terrainTexture[textureIndex].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xy * float2( 1.0, -1.0 ) ) * blendAxes.z;
+	float3 xProjection = terrainTexture[textureIndexVecrtical].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.zy * float2( 1.0, -1.0 ) ) * blendAxes.x;
+	float3 yProjection = terrainTexture[textureIndexHorizontal].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xz * float2( 1.0, -1.0 ) ) * blendAxes.y;
+	float3 zProjection = terrainTexture[textureIndexVecrtical].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xy * float2( 1.0, -1.0 ) ) * blendAxes.z;
 	return xProjection + yProjection + zProjection;
+}
+
+float3 blendVector( float3 normal )
+{
+	float3 blend = 0;
+	
+	blend = pow(normal,16);
+	blend /= dot( blend, float3(1.0,1.0,1.0) );
+	
+	return blend;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -86,7 +96,7 @@ float3 triplanar( float3 worldPos, float scale, float3 blendAxes, int textureInd
 ////////////////////////////////////////////////////////////////////////////////
 float4 main(PixelInputType input) : SV_TARGET
 {	
-	float3 albedo = float3( 0.0, 0.0, 0.05);
+	float3 albedo = (float3)0;
 
 	float rawHight = heigthTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
 	
@@ -94,16 +104,21 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	float heightPercent = inverseLerp( 0.0, mapHeightMultippler, input.worldPosition.y );
 	n = normalize( n * float3( 1.0, 1.0, 1.0 ) );
-	float3 blendAxes = abs(n);
-	blendAxes /= blendAxes.x + blendAxes.y + blendAxes.z;
-	for( int i = 0; i < materialsCount; i++ )
-	{
-		Material material = materials[i];
-		float drawStrength = inverseLerp( -material.baseBlends / 2.0 - epsilon, material.baseBlends / 2.0, heightPercent - material.baseStartHeight );
-		float2 texCoordRestored = input.worldPosition.xz * float2(  1.0, -1.0 );
-		float3 textureColor = triplanar( input.worldPosition, material.textureScale, blendAxes, i );
-		albedo = albedo * (1.0 - drawStrength ) + textureColor/* + material.baseColors*/ * drawStrength;
-	}
+	float3 blendAxes = blendVector(n);
+	//for( int i = 0; i < materialsCount; i++ )
+	
+	//return float4( terrainTexture[1].Sample( g_SamplerAnisotropicWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) ) );
+	
+	
+		//Material material = materials[i];
+		//float drawStrength = inverseLerp( -material.baseBlends / 2.0 - epsilon, material.baseBlends / 2.0, heightPercent - material.baseStartHeight );
+		//float2 texCoordRestored = input.worldPosition.xz * float2(  1.0, -1.0 );
+		//float3 textureColor = triplanar( input.worldPosition, material.textureScale, blendAxes, 1, 0 );
+		//albedo = albedo * (1.0 - drawStrength ) + textureColor/* + material.baseColors*/ * drawStrength;
+		float3 textureColor = triplanar( input.worldPosition, 10.0f, blendAxes, 1, 0 );
+		albedo = albedo + textureColor;
+		
+	
 	
 	float4 FinalLight = float4(0.0, 0.0, 0.0, 1.0);
 	
@@ -150,7 +165,7 @@ float4 main(PixelInputType input) : SV_TARGET
 		specSum += pow(max(dot(n, h), 0.0), kShininess);
 	}
 	
-	FinalLight.rgb = albedo.rgb * ( duffuseSum + specSum );
+	FinalLight.rgb = albedo.rgb * ( duffuseSum + float3( 0.07, 0.07, 0.1 ) + specSum );
 	
 	return FinalLight;
 }

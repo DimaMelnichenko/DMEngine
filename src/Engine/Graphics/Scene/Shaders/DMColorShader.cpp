@@ -17,7 +17,8 @@ DMColorShader::~DMColorShader()
 bool DMColorShader::innerInitialize()
 {
 	ID3D11Buffer* buffer;
-	DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer, nullptr );
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer, nullptr ) )
+		return false;
 
 	createPhase( 0, -1, 0 );
 	return true;

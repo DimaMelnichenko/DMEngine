@@ -12,7 +12,7 @@ public:
 	MaterialLoader();
 	~MaterialLoader();
 
-	Material* loadFromFile( uint32_t id, const std::string& name, const std::string& vsShaderName, const std::string& gsShaderName, const std::string& psShaderName );
+	Material* createMaterial( uint32_t id, const std::string& name, const std::string& matClass );
 };
 
 }

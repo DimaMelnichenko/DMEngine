@@ -3,6 +3,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
+#include "samplers.sh"
 
 /////////////
 // GLOBALS //
@@ -11,7 +12,6 @@
 Texture2D texture_distribution : register(t0);
 Texture2D texture_height : register(t1);
 Texture2D texture_color : register(t2);
-SamplerState SampleType;
 
 //////////////
 // TYPEDEFS //
@@ -34,7 +34,7 @@ struct GS_generate
 // Geometry Shader
 ////////////////////////////////////////////////////////////////////////////////
 
-PixelInput _offsetNprojected(PixelInput data, float2 offset, float2 uv)
+PixelInput offsetNprojected(PixelInput data, float2 offset, float2 uv)
 {
 	data.position.xy += offset;
 	data.position = mul(data.position, cb_projectionMatrix);
@@ -50,24 +50,25 @@ void main( point PixelInput input[1], inout TriangleStream<PixelInput> stream )
 	
 	float texel = 1.0f / ( 1024.0 * 0.175 );
 	
-	float size = texture_distribution.SampleLevel( SampleType, float2( ( pointOut.world_x_y.x ) * texel, 1.0 - ( pointOut.world_x_y.y ) * texel ), 0 ).r;
+	float size = 0.3f;
+	/*float size = texture_distribution.SampleLevel( g_SamplerLinearWrap, float2( ( pointOut.world_x_y.x ) * texel, 1.0 - ( pointOut.world_x_y.y ) * texel ), 0 ).r;
 	
 	if( size < 0.4 )
 	{
 		//stream.RestartStrip();
 		return;
-	}	
+	}	*/
 	
-	pointOut.position.y = texture_height.SampleLevel( SampleType, float2( ( pointOut.position.x ) * texel , 1.0 - ( pointOut.position.z ) * texel ), 0 ).r * 40.0;
+	//pointOut.position.y = texture_height.SampleLevel( g_SamplerLinearWrap, float2( ( pointOut.position.x ) * texel , 1.0 - ( pointOut.position.z ) * texel ), 0 ).r * 40.0;
 	
 	pointOut.position = mul( pointOut.position, cb_viewMatrix);
 	
 	const float max_size = 0.3f; // размер конченого квадрата 
 	// описание квадрата
-	stream.Append( _offsetNprojected(pointOut, float2(-1, 0) * size, float2(0, 1)) );
-	stream.Append( _offsetNprojected(pointOut, float2(-1, 2) * size, float2(0, 0)) );
-	stream.Append( _offsetNprojected(pointOut, float2( 1, 0) * size, float2(1, 1)) );
-	stream.Append( _offsetNprojected(pointOut, float2( 1, 2) * size, float2(1, 0)) );
+	stream.Append( offsetNprojected(pointOut, float2(-1, 0) * size, float2(0, 1)) );
+	stream.Append( offsetNprojected(pointOut, float2(-1, 2) * size, float2(0, 0)) );
+	stream.Append( offsetNprojected(pointOut, float2( 1, 0) * size, float2(1, 1)) );
+	stream.Append( offsetNprojected(pointOut, float2( 1, 2) * size, float2(1, 0)) );
 
 	// создать TriangleStrip
 	stream.RestartStrip();

@@ -1,10 +1,12 @@
 #include "DMGrass.h"
 #include "D3D\DMD3D.h"
 
+namespace GS
+{
 
 DMGrass::DMGrass()
 {
-	m_max_grass_count = 5000;
+
 }
 
 
@@ -13,74 +15,86 @@ DMGrass::~DMGrass()
 
 }
 
-bool DMGrass::Initialize( float patch_size )
+bool DMGrass::Initialize()
 {
-
-	m_max_grass_count = floor( patch_size * patch_size );
-
-	m_patch_width_size = patch_size;
-
 	D3D11_BUFFER_DESC desc;
 	memset( &desc, 0, sizeof( D3D11_BUFFER_DESC ) );
-	desc.BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_STREAM_OUTPUT;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
 	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.ByteWidth = m_max_grass_count * sizeof( GrassVertex );
+	desc.ByteWidth = sizeof( GrassVertex ) * m_maxVertexNum;
+	desc.StructureByteStride = sizeof( GrassVertex );
+	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+	desc.CPUAccessFlags = 0;
 
-	ID3D11Buffer* buffer;
-	HRESULT hr = DMD3D::instance().GetDevice()->CreateBuffer( &desc, nullptr, &buffer );
+	
+	if( !DMD3D::instance().CreateBuffer( &desc, nullptr, m_vertexBuffer ) )
+		return false;
 
-	if( FAILED(hr) )
+	D3D11_SHADER_RESOURCE_VIEW_DESC viewDesc;
+	viewDesc.Format = DXGI_FORMAT_UNKNOWN;
+	viewDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+	viewDesc.Buffer.FirstElement = 0;
+	viewDesc.Buffer.NumElements = m_maxVertexNum;
+
+	ID3D11ShaderResourceView* view;
+	if( FAILED( DMD3D::instance().GetDevice()->CreateShaderResourceView( m_vertexBuffer.get(), &viewDesc, &view ) ) )
 	{
 		return false;
 	}
 
-	m_vertex_buffer = make_com_ptr<ID3D11Buffer>( buffer );
+	m_srvVertex = make_com_ptr<ID3D11ShaderResourceView>( view );
+
+
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+	uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_APPEND;
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+	uavDesc.Buffer.FirstElement = 0;
+	uavDesc.Buffer.NumElements = m_maxVertexNum;
+
+	ID3D11UnorderedAccessView* uavView;
+	if( FAILED( DMD3D::instance().GetDevice()->CreateUnorderedAccessView( m_vertexBuffer.get(), &uavDesc, &uavView ) ) )
+	{
+		return false;
+	}
+
+	m_uavVertex = make_com_ptr<ID3D11UnorderedAccessView>( uavView );
+
+
+
+	memset( &desc, 0, sizeof( D3D11_BUFFER_DESC ) );
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.ByteWidth = sizeof( ArgsBuffer );
+	desc.StructureByteStride = sizeof( ArgsBuffer );
+	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+	if( !DMD3D::instance().CreateBuffer( &desc, nullptr, m_indirectBuffer ) )
+		return false;
 
 	return true;
 }
 
-void DMGrass::Generate()
+void DMGrass::Populate()
 {
-	ID3D11Buffer* buffer[] = { nullptr };
-	unsigned int stride = 0;
-	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, buffer, &stride, &stride );
-	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 1, 1, buffer, &stride, &stride );
-	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
 
-	buffer[0] = m_vertex_buffer.get();
-	DMD3D::instance().GetDeviceContext()->SOSetTargets( 1, buffer, &stride );
-
-}
-
-void DMGrass::EndGenerate()
-{
-	ID3D11Buffer* buffer[] = { nullptr };
-	unsigned int stride = 0;
-	DMD3D::instance().GetDeviceContext()->SOSetTargets( 1, buffer, &stride );
 }
 
 void DMGrass::Render()
 {
-	ID3D11Buffer* buffer[] = { nullptr };	
+	/*ID3D11Buffer* buffer[] = { nullptr };
 	unsigned int offset = 0;
 	buffer[0] = m_vertex_buffer.get();
 	unsigned int stride = sizeof( GrassVertex );
 	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, buffer, &stride, &offset );
 
 	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
+	*/
 }
 
-unsigned int DMGrass::grassCount()
+
+ID3D11ShaderResourceView* DMGrass::vertexBuffer()
 {
-	return m_max_grass_count;
+	return m_srvVertex.get();
 }
 
-ID3D11Buffer* DMGrass::vertexBuffer()
-{
-	return m_vertex_buffer.get();
-}
-
-float DMGrass::grassMapSize()
-{
-	return m_patch_width_size;
 }

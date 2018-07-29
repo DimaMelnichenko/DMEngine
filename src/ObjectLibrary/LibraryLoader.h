@@ -2,6 +2,7 @@
 #include <memory>
 #include "SQLiteCpp\SQLiteCpp.h"
 #include "Materials\Parameter\Parameter.h"
+#include "Shaders\DMShader.h"
 
 
 class LibraryLoader
@@ -16,6 +17,7 @@ public:
 	bool loadMesh( uint32_t idMesh );
 	bool loadModelWithLOD( uint32_t idModel );
 	bool loadMaterialParams( uint32_t idLod, GS::ParamSet& paramSet );
+	bool loadShader( uint32_t idMaterial, GS::DMShader* );
 
 private:
 	SQLite::Database* m_db;

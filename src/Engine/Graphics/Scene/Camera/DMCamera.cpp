@@ -158,7 +158,7 @@ void DMCamera::Update( float elapsedTime )
 	readKeyboard( posDirection );
 	XMVECTOR vPosDelta = XMLoadFloat3( &posDirection );
 	vPosDelta = XMVectorScale( vPosDelta, elapsedTime );
-	vPosDelta = XMVectorScale( vPosDelta, 0.01f );
+	vPosDelta = XMVectorScale( vPosDelta, 0.1f );
 
 	// Set the yaw (Y axis), pitch (X axis), and roll (Z axis) rotations in radians.
 	double mouseX;

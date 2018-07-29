@@ -1,19 +1,16 @@
 {
-	"heightmap": "Textures\\TerrainHM.dds",
-	"normalmap": "TerrainNormal.dds",
+	"heightmap": 7,
+	"normalmap": 9,
 	"wireframe_size": 127.0,
 	"steps": 10,
-	"height_multipler": 100.0,
+	"height_multipler": 300.0,
 	"width_multipler" : 1.0,
 	"map_scale" : 1.0,
 	"map_offset" : [0.0, 0.0],
 	"map_offset_speed" : 0.0,
 	"materials" : 
 	[
-		{ "baseColors" : [0.0, 0.3, 1.0], "baseStartHeight" : 0.0,  "baseBlends" : 0.0,   "Texture" : "sea_ground.jpg", "textureScale" : 0.5 },
-		{ "baseColors" : [1.0, 0.8, 0.5], "baseStartHeight" : 0.12, "baseBlends" : 0.01,  "Texture" : "sand.jpg", 		"textureScale" : 1.0 },
-		{ "baseColors" : [0.2, 1.0, 0.0], "baseStartHeight" : 0.13, "baseBlends" : 0.001, "Texture" : "grass.jpg", 		"textureScale" : 3.0 },
-		{ "baseColors" : [0.4, 0.25, 0.0],"baseStartHeight" : 0.3,  "baseBlends" : 0.02,  "Texture" : "Cliffs.jpg", 	"textureScale" : 5.0 },
-		{ "baseColors" : [1.0, 1.0, 1.0], "baseStartHeight" : 0.65, "baseBlends" : 0.0007,"Texture" : "snow.jpg",		"textureScale" : 2.0 }
+		{ "baseColors" : [0.0, 0.3, 1.0], "baseStartHeight" : 0.0,  "baseBlends" : 0.0,   "Texture" : 2,	"textureScale" : 0.5 },
+		{ "baseColors" : [1.0, 0.8, 0.5], "baseStartHeight" : 0.12, "baseBlends" : 0.01,  "Texture" : 10,	"textureScale" : 1.0 }
 	]
 }

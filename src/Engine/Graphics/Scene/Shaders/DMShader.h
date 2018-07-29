@@ -16,18 +16,18 @@
 namespace GS
 {
 
-class DMShader //: public DMResource
+class DMShader
 {
 public:
 	DMShader();
 	virtual ~DMShader();
 
-	bool Initialize( const std::string& vsFilename, const std::string& psFilename, bool use_strimout_gs = false );
-	bool Initialize( const std::string& vsFilename, bool use_strimout_gs = false );
-	bool Initialize();
+	bool initialize( const std::string& vsFilename, const std::string& psFilename, bool use_strimout_gs = false );
+	bool initialize( const std::string& vsFilename, bool use_strimout_gs = false );
+	bool initialize();
 	void setStreamout( bool use_strimout_gs );
-	bool Render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset );
-	bool RenderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count );
+	bool render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset );
+	bool renderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count );
 	bool setPass( int phase );
 	virtual void setParams( const ParamSet& ) = 0;
 
@@ -70,20 +70,16 @@ private:
 	void RenderShader( int, uint32_t vertexOffset, uint32_t indexOffset, int = 0 );
 	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() = 0;
 	virtual void StrimOutputDeclaration( D3D11_SO_DECLARATION_ENTRY* );
-	void parse_defines( std::string, D3D10_SHADER_MACRO** );
-
-protected:
-	DMD3D* m_dmd3d;
-
+	void parseDefines( std::string, D3D10_SHADER_MACRO** );
 
 private:
-	std::vector<com_unique_ptr<ID3D11VertexShader>> m_vertex_shader;
-	std::vector<com_unique_ptr<ID3D11PixelShader>> m_pixel_shader;
-	std::vector<com_unique_ptr<ID3D11GeometryShader>> m_geometry_shader;
+	std::vector<com_unique_ptr<ID3D11VertexShader>> m_vertexShader;
+	std::vector<com_unique_ptr<ID3D11PixelShader>> m_pixelShader;
+	std::vector<com_unique_ptr<ID3D11GeometryShader>> m_geometryShader;
 	std::vector<com_unique_ptr<ID3D11InputLayout>> m_layout;
-	DrawType m_draw_type;
-	int m_phase_idx;
-	bool m_use_strimout_gs;
+	DrawType m_drawType;
+	int m_phaseIdx;
+	bool m_useStrimoutGS;
 };
 
 }

@@ -3,5 +3,5 @@
 
 enum SRVType
 {
-	vs, ps, gs, cs
+	vs = 1, ps = 3, gs = 2, cs = 10
 };

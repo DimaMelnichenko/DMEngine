@@ -24,6 +24,7 @@ public:
 	void setHightOffset( float offset );
 	void setMapScale( float scale );
 	void setMapOffset( float x, float y );
+	void setMapOffset( const XMFLOAT2& );
 	void setMapOffsetSpeed( float speed );
 
 private:

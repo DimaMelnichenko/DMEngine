@@ -28,6 +28,8 @@
 #include "ObjectLibrary\LibraryLoader.h"
 
 
+#include "Particle\DMParticleSystem.h"
+
 namespace GS
 {
 
@@ -74,6 +76,9 @@ private:
 	DMTerrain m_water;
 	std::unordered_map<std::string, bool> m_visible;
 	LibraryLoader m_library;
+
+private:
+	DMParticleSystem m_particleSystem;
 };
 
 }

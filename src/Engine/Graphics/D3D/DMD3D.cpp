@@ -157,7 +157,7 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 {
 	DXGI_SWAP_CHAIN_DESC swapChainDesc;
-	D3D_FEATURE_LEVEL featureLevel;
+	
 
 	// Initialize the swap chain description.
 	ZeroMemory( &swapChainDesc, sizeof( DXGI_SWAP_CHAIN_DESC ) );
@@ -215,7 +215,7 @@ bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 	swapChainDesc.Flags = 0;
 
 	// Set the feature level to DirectX 11.
-	featureLevel = D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_1;
+	D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_1;
 
 	// Create the swap chain, Direct3D device, and Direct3D device context.
 	IDXGISwapChain* swapChain;
@@ -495,7 +495,7 @@ bool DMD3D::createBlendStates()
 	ZeroMemory( &blendStateDescription, sizeof( D3D11_BLEND_DESC ) );
 
 	// Create an alpha enabled blend state description.
-	//blendStateDescription.AlphaToCoverageEnable = true;	
+	blendStateDescription.AlphaToCoverageEnable = true;	
 	blendStateDescription.RenderTarget[0].BlendEnable = TRUE;
 	blendStateDescription.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
 	blendStateDescription.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;	
@@ -782,6 +782,31 @@ bool DMD3D::createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11B
 	return true;
 }
 
+bool DMD3D::createSRV( const com_unique_ptr<ID3D11Buffer>& buffer, D3D11_SHADER_RESOURCE_VIEW_DESC& desc, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+{
+	ID3D11ShaderResourceView* raw_srv;
+	if( FAILED( m_device->CreateShaderResourceView( buffer.get(), &desc, &raw_srv ) ) )
+	{
+		return false;
+	}
+
+	srv.reset( raw_srv );
+
+	return true;
+}
+
+bool DMD3D::createUAV( const com_unique_ptr<ID3D11Buffer>& buffer, D3D11_UNORDERED_ACCESS_VIEW_DESC& desc, com_unique_ptr<ID3D11UnorderedAccessView>& uav )
+{
+	ID3D11UnorderedAccessView* raw_uav;
+	if( FAILED( m_device->CreateUnorderedAccessView( buffer.get(), &desc, &raw_uav ) ) )
+	{
+		return false;
+	}
+
+	uav.reset( raw_uav );
+	return true;
+}
+
 bool DMD3D::createVertexBuffer( com_unique_ptr<ID3D11Buffer> &buffer, void* data, size_t sizeInByte )
 {
 	D3D11_BUFFER_DESC buffer_desc;
@@ -840,11 +865,11 @@ bool DMD3D::CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURC
 	return true;
 }
 
-ID3D11RasterizerState* DMD3D::currentRS()
+void DMD3D::currentRS( com_unique_ptr<ID3D11RasterizerState>& state )
 {
-	ID3D11RasterizerState* state = nullptr;
-	m_deviceContext->RSGetState( &state );
-	return state;
+	ID3D11RasterizerState* rs = nullptr;
+	m_deviceContext->RSGetState( &rs );
+	state = make_com_ptr<ID3D11RasterizerState>( rs );
 }
 
 void DMD3D::setRS( ID3D11RasterizerState* state )

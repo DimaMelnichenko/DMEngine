@@ -8,6 +8,7 @@
 #include "Shaders\Layout.h"
 #include "../Input/Input.h"
 #include "Pipeline.h"
+#include "Scene\Model\Grass\DMGrass.h"
 
 
 namespace GS
@@ -34,10 +35,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_screenWidth = static_cast<float>( screenWidth );
 	m_screenHeight = static_cast<float>( screenHeight );
 
-	
-
 	// Initialize the Direct3D object.
-	result = DMD3D::instance().Initialize( m_config, hwnd );	
+	result = DMD3D::instance().Initialize( m_config, hwnd );
 
 	if( !result )
 	{
@@ -48,19 +47,19 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	if( !m_library.init() )
 		return false;
 
+	
 	if( !m_library.loadModelWithLOD( 1 ) )
 		return false;
-
 	if( !m_library.loadModelWithLOD( 2 ) )
 		return false;
-
-	
+	if( !m_library.loadModelWithLOD( 3 ) )
+		return false;
 
 	// Создаем общий буфер вершин и индексов
 	m_vertexPool.prepareMeshes();
 
 	// Создаем основную камеру
-	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 5000.0f );
+	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 10000.0f );
 	m_cameraPool["main"].SetPosition( 0.0, 0.0, -5.0 );
 	//m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
@@ -96,11 +95,20 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		m_visible["water"] = value;
 	} );
 
-	//if( !m_terrain.Initialize( "Models\\terrain.json", "GeoClipMap" ) )
-	//	return false;
+	if( !m_terrain.Initialize( "Models\\terrain.json", "GeoClipMap", m_library ) )
+		return false;
 
 	//if( !m_water.Initialize( "Models\\water.json", "GeoClipMapWater" ) )
 	//	return false;
+
+	DMGrass grass;
+	grass.Initialize();
+
+	if( !m_library.loadMaterial( 5 ) )
+		return false;
+	if( !m_library.loadTexture( 14 ) )
+		return false;
+	m_particleSystem.Initialize( 20, 200 );
 
 	return true;
 }
@@ -110,6 +118,8 @@ bool DMGraphics::Frame()
 	m_timer.Frame();
 	
 	m_cameraController.frame( m_timer.GetTime() );
+
+	m_particleSystem.update( m_timer.GetTime() );
 
 	if( !Render() )
 		return false;
@@ -185,7 +195,7 @@ bool DMGraphics::Render()
 
 			shader->setParams( LODblock->params );
 			// отрисовка модели согласно смещению вершин и индексов для главного буфера
-			shader->Render( System::meshes().get( LODblock->mesh )->indexCount(),
+			shader->render( System::meshes().get( LODblock->mesh )->indexCount(),
 							System::meshes().get( LODblock->mesh )->vertexOffset(),
 							System::meshes().get( LODblock->mesh )->indexOffset() );
 		}
@@ -202,6 +212,19 @@ bool DMGraphics::Render()
 		m_water.Render( m_cameraPool["main"], frustum );
 		DMD3D::instance().TurnOffAlphaBlending();
 	}
+
+	DMD3D::instance().TurnOnAlphaBlending();
+	{
+		DMShader* shader = System::materials().get( 5 )->m_shader.get();
+		shader->setPass( 0 );
+		shader->setDrawType( DMShader::by_vertex );
+
+		m_particleSystem.Render();
+		ID3D11ShaderResourceView* texture = System::textures().get( 14 )->srv();
+		DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
+		shader->render( m_particleSystem.particleCount(), 0, 0 );
+	}
+	DMD3D::instance().TurnOffAlphaBlending();
 	
 	DMD3D::instance().EndScene();
 
@@ -210,7 +233,8 @@ bool DMGraphics::Render()
 
 bool DMGraphics::renderSky()
 {
-	com_unique_ptr<ID3D11RasterizerState> prevRSState = make_com_ptr<ID3D11RasterizerState>( DMD3D::instance().currentRS() );
+	com_unique_ptr<ID3D11RasterizerState> prevRSState;
+	DMD3D::instance().currentRS( prevRSState );
 
 	DMD3D::instance().TurnZBufferOff();
 	DMD3D::instance().TurnBackFacesRS();
@@ -234,7 +258,7 @@ bool DMGraphics::renderSky()
 
 	shader->setParams( block->params );
 	// отрисовка модели согласно смещению вершин и индексов для главного буфера
-	shader->Render( System::meshes().get( block->mesh )->indexCount(),
+	shader->render( System::meshes().get( block->mesh )->indexCount(),
 					System::meshes().get( block->mesh )->vertexOffset(),
 					System::meshes().get( block->mesh )->indexOffset() );
 	

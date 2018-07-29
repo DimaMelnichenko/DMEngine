@@ -4,28 +4,23 @@
 namespace GS
 {
 
-DMShader::DMShader()
+DMShader::DMShader() :
+	m_useStrimoutGS( false ),
+	m_phaseIdx( 0 )
 {
-	m_use_strimout_gs = false;
-	m_phase_idx = 0;
+	
 }
-
-//DMShader::DMShader( uint32_t id, const std::string& name ) : DMResource( id, name )
-//{
-//	m_use_strimout_gs = false;
-//	m_phase_idx = 0;
-//}
 
 DMShader::~DMShader()
 {
 	
 }
 
-bool DMShader::Initialize( const std::string& vsFilename, const std::string& psFilename, bool use_strimout )
+bool DMShader::initialize( const std::string& vsFilename, const std::string& psFilename, bool use_strimout )
 {
-	Initialize();
+	initialize();
 
-	m_use_strimout_gs = use_strimout;
+	m_useStrimoutGS = use_strimout;
 
 	addShaderPass( vs, "main", vsFilename );
 	addShaderPass( ps, "main", psFilename );
@@ -33,37 +28,37 @@ bool DMShader::Initialize( const std::string& vsFilename, const std::string& psF
 	return true;
 }
 
-bool DMShader::Initialize( const std::string& vsFilename, bool use_strimout )
+bool DMShader::initialize( const std::string& vsFilename, bool use_strimout )
 {
-	Initialize();
+	initialize();
 
-	m_use_strimout_gs = use_strimout;
+	m_useStrimoutGS = use_strimout;
 
 	addShaderPass( vs, "main", vsFilename );
 
 	return true;
 }
 
-bool DMShader::Initialize()
+bool DMShader::initialize()
 {
 	return innerInitialize();
 }
 
-bool DMShader::Render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset )
+bool DMShader::render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset )
 {
 	RenderShader( indexCount, vertexOffset, indexOffset );
 
 	return true;
 }
 
-bool DMShader::RenderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count )
+bool DMShader::renderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count )
 {
-	DrawType prev = m_draw_type;
-	m_draw_type = by_index_instance;
+	DrawType prev = m_drawType;
+	m_drawType = by_index_instance;
 
 	RenderShader( indexCount, vertexOffset, indexOffset, instance_count );
 
-	m_draw_type = prev;
+	m_drawType = prev;
 
 	return true;
 }
@@ -108,7 +103,7 @@ void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::st
 void DMShader::RenderShader( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count )
 {
 	// Render the triangle.
-	switch( m_draw_type )
+	switch( m_drawType )
 	{
 		case by_vertex:
 			DMD3D::instance().GetDeviceContext()->Draw( indexCount, vertexOffset );
@@ -134,20 +129,18 @@ bool DMShader::setPass( int phase_idx )
 	if( !selectPhase( phase_idx ) )
 		return false;
 
-	DMShader::Phase phase = m_phases[m_phase_idx];
-
-	phase.index_vs;
+	DMShader::Phase phase = m_phases[m_phaseIdx];
 
 	// Set the vertex input layout.
 	DMD3D::instance().GetDeviceContext()->IASetInputLayout( m_layout[phase.index_vs].get() );
 
 	// Set the vertex and pixel shaders that will be used to render this triangle.
-	ID3D11VertexShader* vs = m_vertex_shader[phase.index_vs].get();
+	ID3D11VertexShader* vs = m_vertexShader[phase.index_vs].get();
 	DMD3D::instance().GetDeviceContext()->VSSetShader( vs, NULL, 0 );
 
-	if( m_pixel_shader.size() && phase.index_ps >= 0 )
+	if( m_pixelShader.size() && phase.index_ps >= 0 )
 	{
-		ID3D11PixelShader* ps = m_pixel_shader[phase.index_ps].get();
+		ID3D11PixelShader* ps = m_pixelShader[phase.index_ps].get();
 		DMD3D::instance().GetDeviceContext()->PSSetShader( ps, NULL, 0 );
 	}
 	else
@@ -155,9 +148,9 @@ bool DMShader::setPass( int phase_idx )
 		DMD3D::instance().GetDeviceContext()->PSSetShader( NULL, NULL, 0 );
 	}
 
-	if( m_geometry_shader.size() )
+	if( m_geometryShader.size() )
 	{
-		ID3D11GeometryShader* gs = m_geometry_shader[phase.index_gs].get();
+		ID3D11GeometryShader* gs = m_geometryShader[phase.index_gs].get();
 		DMD3D::instance().GetDeviceContext()->GSSetShader( gs, NULL, 0 );
 	}
 	else
@@ -202,7 +195,7 @@ bool DMShader::addShaderPass( SRVType type,
 
 	D3D10_SHADER_MACRO* macro = nullptr;
 
-	parse_defines( defines, &macro );
+	parseDefines( defines, &macro );
 
 	result = D3DX11CompileFromFile( file_name.data(), macro, NULL, function_name.data(), 
 									shader_version.data(), D3D10_SHADER_ENABLE_STRICTNESS, 0, NULL,
@@ -240,7 +233,7 @@ bool DMShader::addShaderPass( SRVType type,
 			{
 				return false;
 			}
-			m_vertex_shader.push_back( make_com_ptr<ID3D11VertexShader>( vertex_shader ) );
+			m_vertexShader.push_back( make_com_ptr<ID3D11VertexShader>( vertex_shader ) );
 
 			vertex_layout = initLayouts();
 
@@ -270,11 +263,11 @@ bool DMShader::addShaderPass( SRVType type,
 			{
 				return false;
 			}
-			m_pixel_shader.push_back( make_com_ptr<ID3D11PixelShader>( pixel_shader ) );
+			m_pixelShader.push_back( make_com_ptr<ID3D11PixelShader>( pixel_shader ) );
 			break;
 		case SRVType::gs:
 			ID3D11GeometryShader* geometry_shader;
-			if( m_use_strimout_gs )
+			if( m_useStrimoutGS )
 			{
 				D3D11_SO_DECLARATION_ENTRY decl;
 				StrimOutputDeclaration( &decl );
@@ -290,7 +283,7 @@ bool DMShader::addShaderPass( SRVType type,
 			{
 				return false;
 			}
-			m_geometry_shader.push_back( make_com_ptr<ID3D11GeometryShader>( geometry_shader ) );
+			m_geometryShader.push_back( make_com_ptr<ID3D11GeometryShader>( geometry_shader ) );
 			break;
 		default:
 			break;
@@ -310,14 +303,14 @@ void DMShader::StrimOutputDeclaration( D3D11_SO_DECLARATION_ENTRY* decl )
 
 void DMShader::setStreamout( bool use_strimout_gs )
 {
-	m_use_strimout_gs = use_strimout_gs;
+	m_useStrimoutGS = use_strimout_gs;
 }
 
 void DMShader::createPhase( int index_vs, int index_gs, int index_ps )
 {
-	int v_size = m_vertex_shader.size();
-	int g_size = m_geometry_shader.size();
-	int p_size = m_pixel_shader.size();
+	int v_size = m_vertexShader.size();
+	int g_size = m_geometryShader.size();
+	int p_size = m_pixelShader.size();
 
 	if( !( index_vs < v_size &&
 			index_gs < g_size &&
@@ -346,7 +339,7 @@ bool DMShader::selectPhase( unsigned int idx )
 {
 	if( idx < m_phases.size() )
 	{
-		m_phase_idx = idx;
+		m_phaseIdx = idx;
 		return true;
 	}
 
@@ -355,15 +348,15 @@ bool DMShader::selectPhase( unsigned int idx )
 
 void DMShader::setDrawType( DrawType type )
 {
-	m_draw_type = type;
+	m_drawType = type;
 }
 
 int DMShader::phase()
 {
-	return m_phase_idx;
+	return m_phaseIdx;
 }
 
-void DMShader::parse_defines( std::string defines, D3D10_SHADER_MACRO** macro_result )
+void DMShader::parseDefines( std::string defines, D3D10_SHADER_MACRO** macro_result )
 {
 
 	if( !defines.size() )

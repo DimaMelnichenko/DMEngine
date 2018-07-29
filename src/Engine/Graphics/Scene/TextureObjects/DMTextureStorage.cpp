@@ -13,7 +13,7 @@ DMTextureStorage::~DMTextureStorage()
 
 }
 
-bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::string& file )
+bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::string& file, bool generateMipMap )
 {
 	if( exists( id ) || exists( name ) )
 		return true;
@@ -24,20 +24,23 @@ bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::st
 	if( !m_textureLoader.loadFromFile( fullPath.data(), baseImage ) )
 		return false;
 
-	ScratchImage mipmapImage;
-	HRESULT hr = GenerateMipMaps( baseImage.GetImages(), baseImage.GetImageCount(),
-					 baseImage.GetMetadata(), TEX_FILTER_DEFAULT, 0, mipmapImage );
-
 	std::unique_ptr<DMTexture> texture;
 
-	if( FAILED( hr ) )
-	{ 
-		texture.reset( new DMTexture( id, name, std::move( baseImage ) ) );
-	}
-	else
+	
+	HRESULT hr;
+	if( generateMipMap )
 	{
-		texture.reset( new DMTexture( id, name, std::move( mipmapImage ) ) );
+		ScratchImage mipmapImage;
+		hr = GenerateMipMaps( baseImage.GetImages(), baseImage.GetImageCount(),
+							  baseImage.GetMetadata(), TEX_FILTER_DEFAULT, 0, mipmapImage );
+
+		if( SUCCEEDED( hr ) )
+		{	
+			std::swap( mipmapImage, baseImage );
+		}
 	}
+
+	texture.reset( new DMTexture( id, name, std::move( baseImage ) ) );
 
 	if( !texture->createSRV() )
 		return false;

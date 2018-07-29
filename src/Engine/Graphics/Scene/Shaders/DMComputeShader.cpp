@@ -11,12 +11,12 @@ DMComputeShader::~DMComputeShader()
 {
 }
 
-bool DMComputeShader::Initialize( const std::wstring& file_name, const std::string& function_name )
+bool DMComputeShader::Initialize( const std::string& file_name, const std::string& function_name )
 {
 	ID3D10Blob* error_message;
 	ID3D10Blob* shader_buffer;
 	
-	HRESULT result = D3DX11CompileFromFile( file_name.data(), NULL, NULL, function_name.data(), "cs_4_0", D3D10_SHADER_ENABLE_STRICTNESS, 0, NULL,
+	HRESULT result = D3DX11CompileFromFile( file_name.data(), NULL, NULL, function_name.data(), "cs_5_0", D3D10_SHADER_ENABLE_STRICTNESS, 0, NULL,
 									&shader_buffer, &error_message, NULL );
 
 	if( FAILED( result ) )
@@ -29,7 +29,7 @@ bool DMComputeShader::Initialize( const std::wstring& file_name, const std::stri
 		// If there was nothing in the error message then it simply could not find the shader file itself.
 		else
 		{
-			MessageBox( 0, file_name.data(), L"Missing Shader File", MB_OK );
+			MessageBox( 0, file_name.data(), "Missing Shader File", MB_OK );
 		}
 
 		return false;
@@ -46,46 +46,27 @@ bool DMComputeShader::Initialize( const std::wstring& file_name, const std::stri
 		return false;
 	}
 
-	m_compute_shader = make_com_ptr<ID3D11ComputeShader>( compute_shader );
+	m_computeShader = make_com_ptr<ID3D11ComputeShader>( compute_shader );
 
-	D3D11_BUFFER_DESC desc;
-	memset( &desc, 0, sizeof( D3D11_BUFFER_DESC ) );
-	desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	desc.ByteWidth = sizeof( ConstantType );
-	desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	desc.Usage = D3D11_USAGE_DYNAMIC;
-	
-	ID3D11Buffer* buffer;
-	result = DMD3D::instance().GetDevice()->CreateBuffer( &desc, nullptr, &buffer );
-
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	m_constant_buffer = make_com_ptr<ID3D11Buffer>( buffer );
+	DMD3D::instance().createShaderConstantBuffer( sizeof( ConstantType ), m_constantBuffer );
 
 	return true;
 }
 
-void DMComputeShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const WCHAR* shaderFilename )
+void DMComputeShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::string& shaderFilename )
 {
-	char* compileErrors;
-	unsigned long bufferSize, i;
-	std::ofstream fout;
-
-
 	// Get a pointer to the error message text buffer.
-	compileErrors = (char*)( errorMessage->GetBufferPointer() );
+	char* compileErrors = (char*)( errorMessage->GetBufferPointer() );
 
 	// Get the length of the message.
-	bufferSize = errorMessage->GetBufferSize();
+	unsigned long bufferSize = errorMessage->GetBufferSize();
 
 	// Open a file to write the error message to.
+	std::ofstream fout;
 	fout.open( "shader-error.txt" );
 
 	// Write out the error message.
-	for( i = 0; i<bufferSize; i++ )
+	for( size_t i = 0; i < bufferSize; i++ )
 	{
 		fout << compileErrors[i];
 	}
@@ -98,7 +79,7 @@ void DMComputeShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const 
 	errorMessage = 0;
 
 	// Pop a message up on the screen to notify the user to check the text file for compile errors.
-	MessageBox( 0, L"Error compiling shader.  Check shader-error.txt for message.", shaderFilename, MB_OK );
+	MessageBox( 0, "Error compiling shader.  Check shader-error.txt for message.", shaderFilename.data(), MB_OK );
 
 	return;
 }
@@ -116,7 +97,7 @@ void DMComputeShader::setUAVBuffer( int index, ID3D11UnorderedAccessView* resour
 
 void DMComputeShader::Dispatch( int num_elements, float elapsed_time )
 {
-	DMD3D::instance().GetDeviceContext()->CSSetShader( m_compute_shader.get(), nullptr, 0 );
+	DMD3D::instance().GetDeviceContext()->CSSetShader( m_computeShader.get(), nullptr, 0 );
 
 	//////////////////////////////////////
 	//	calc
@@ -124,28 +105,24 @@ void DMComputeShader::Dispatch( int num_elements, float elapsed_time )
 	int group_size_X;
 	int group_size_Y;
 
-	int numGroups = ( num_elements % 768 != 0 ) ? ( ( num_elements / 768 ) + 1 ) : ( num_elements / 768 );
+	int numGroups = ( num_elements % 1024 != 0 ) ? ( ( num_elements / 1024 ) + 1 ) : ( num_elements / 1024 );
 	double secondRoot = pow( (double)numGroups, (double)( 1.0 / 2.0 ) );
 	secondRoot = ceilf( secondRoot );
 	group_size_X = group_size_Y = (int)secondRoot;
 
-	///////////////////////////////////
+	///////////////////////////////////	
 	// set contant
 
-	D3D11_MAPPED_SUBRESOURCE mapped_resource;
+	static ConstantType constantType;
+	constantType.group_dim = group_size_X;
+	constantType.max_particles = num_elements;
+	constantType.elapsed_time = elapsed_time;
 
-	DMD3D::instance().GetDeviceContext()->Map( m_constant_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped_resource );
 
-	ConstantType* data = static_cast<ConstantType*>( mapped_resource.pData );
+	Device::updateResource( m_constantBuffer.get(), constantType );
 
-	data->group_dim = group_size_X;
-	data->max_particles = num_elements;
-	data->elapsed_time = elapsed_time;
-
-	DMD3D::instance().GetDeviceContext()->Unmap( m_constant_buffer.get(), 0 );
-
-	ID3D11Buffer* buff[] = { m_constant_buffer.get() };
-	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( 0, 1, buff );
+	ID3D11Buffer* buff[] = { m_constantBuffer.get() };
+	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( 4, 1, buff );
 
 	//////////////////////////////////////
 	//////////	DISPATCH	///////////////

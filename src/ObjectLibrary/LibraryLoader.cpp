@@ -38,11 +38,11 @@ bool LibraryLoader::loadTexture( uint32_t idTexture )
 	if( GS::System::textures().exists( idTexture ) )
 		return true;
 
-	SQLite::Statement queryTexture( *m_db, "SELECT id, name, file FROM Textures where id = :id" );
+	SQLite::Statement queryTexture( *m_db, "SELECT id, name, file, generate_mipmap FROM Textures where id = :id" );
 	queryTexture.bind( ":id", idTexture );
 	while( queryTexture.executeStep() )
 	{
-		GS::System::textures().load( queryTexture.getColumn( 0 ), queryTexture.getColumn( 1 ), queryTexture.getColumn( 2 ) );
+		GS::System::textures().load( queryTexture.getColumn( 0 ), queryTexture.getColumn( 1 ), queryTexture.getColumn( 2 ), queryTexture.getColumn( 3 ).getInt() );
 	}
 
 	return true;
@@ -53,11 +53,37 @@ bool LibraryLoader::loadMaterial( uint32_t idMaterial )
 	if( GS::System::materials().exists( idMaterial ) )
 		return true;
 
-	SQLite::Statement query( *m_db, "SELECT id, name, vs, gs, ps file FROM Materials where id = :id" );
+	SQLite::Statement query( *m_db, "SELECT id, name, class file FROM Materials where id = :id" );
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{
-		GS::System::materials().load( query.getColumn( 0 ), query.getColumn( 1 ), query.getColumn( 2 ), query.getColumn( 3 ), query.getColumn( 4 ) );
+		if( !GS::System::materials().createMaterial( query.getColumn( 0 ), query.getColumn( 1 ), query.getColumn( 2 ) ) )
+			return false;
+	}
+
+	if( !GS::System::materials().exists( idMaterial ) )
+		return false;
+
+	GS::DMShader* shader = GS::System::materials().get( idMaterial )->m_shader.get();
+
+	if( !loadShader( idMaterial, shader ) )
+		return false;
+
+	if( !shader->initialize() )
+		return false;
+
+	return true;
+}
+
+bool LibraryLoader::loadShader( uint32_t idMaterial, GS::DMShader* shader )
+{
+	SQLite::Statement query( *m_db, "SELECT material_id, file, type FROM MateialShaderView where material_id = :id" );
+	query.bind( ":id", idMaterial );
+	while( query.executeStep() )
+	{
+		std::string fullPath = GS::System::materials().path() + "\\" + query.getColumn( 1 ).getString();
+		if( !shader->addShaderPass( static_cast<SRVType>( query.getColumn( 2 ).getInt() ), "main", fullPath ) )
+			return false;
 	}
 
 	return true;
@@ -91,11 +117,14 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 			return false;
 	}
 
+	if( !GS::System::models().exists( idModel ) )
+		return false;
+
 	GS::DMModel* model = GS::System::models().get( idModel ).get();
 	if( !model )
 		return false;
 	
-	SQLite::Statement queryLOD( *m_db, "SELECT id, lod, range, material_id, mesh_id, render FROM ModelLOD where model_id = :id order by lod" );
+	SQLite::Statement queryLOD( *m_db, "SELECT id, lod, range, material_id, mesh_id, render, mat_param_id FROM ModelLOD where model_id = :id order by lod" );
 	queryLOD.bind( ":id", idModel );
 	while( queryLOD.executeStep() )
 	{
@@ -109,7 +138,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		block.material = queryLOD.getColumn( "material_id" );
 		block.mesh = queryLOD.getColumn( "mesh_id" );
 		block.isRender = queryLOD.getColumn( "render" ).getInt();
-		if( !loadMaterialParams( queryLOD.getColumn( "id" ), block.params ) )
+		if( !loadMaterialParams( queryLOD.getColumn( "mat_param_id" ), block.params ) )
 			return false;
 
 		model->addLod( queryLOD.getColumn("range").getDouble(), block );
@@ -118,10 +147,10 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	return true;
 }
 
-bool LibraryLoader::loadMaterialParams( uint32_t idLod, GS::ParamSet& paramSet )
+bool LibraryLoader::loadMaterialParams( uint32_t idValue, GS::ParamSet& paramSet )
 {
-	SQLite::Statement query( *m_db, "SELECT name, type, value FROM MaterialParamsView where lod_id = :id" );
-	query.bind( ":id", idLod );
+	SQLite::Statement query( *m_db, "SELECT name, type, value FROM MaterialParamsView where value_id = :id" );
+	query.bind( ":id", idValue );
 	while( query.executeStep() )
 	{
 		std::string paramName = query.getColumn( "name" );
