@@ -28,6 +28,7 @@ public:
 	void setStreamout( bool use_strimout_gs );
 	bool render( int indexCount, uint32_t vertexOffset, uint32_t indexOffset );
 	bool renderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count );
+	void renderInstancedIndirect( ID3D11Buffer* args );
 	bool setPass( int phase );
 	virtual void setParams( const ParamSet& ) = 0;
 

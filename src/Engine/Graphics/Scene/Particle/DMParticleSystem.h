@@ -26,8 +26,9 @@ public:
 private:
 	struct ParticleData
 	{
-		XMFLOAT4 position;
-		XMFLOAT4 velocity;
+		XMFLOAT3 position;
+		XMFLOAT3 velocity;
+		XMFLOAT2 dummy;
 	};
 
 private:

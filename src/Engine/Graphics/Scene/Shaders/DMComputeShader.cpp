@@ -48,7 +48,8 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 
 	m_computeShader = make_com_ptr<ID3D11ComputeShader>( compute_shader );
 
-	DMD3D::instance().createShaderConstantBuffer( sizeof( ConstantType ), m_constantBuffer );
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( ConstantType ), m_constantBuffer ) )
+		return false;
 
 	return true;
 }
@@ -91,11 +92,15 @@ void DMComputeShader::setStructuredBuffer( int index, ID3D11ShaderResourceView* 
 
 void DMComputeShader::setUAVBuffer( int index, ID3D11UnorderedAccessView* resource )
 {
+	if( index < 0 || index > 7 )
+		return;
+
 	ID3D11UnorderedAccessView* aUAViews[1] = { resource };
-	DMD3D::instance().GetDeviceContext()->CSSetUnorderedAccessViews( index, 1, aUAViews, (UINT*)(&aUAViews) );
+	UINT counters[1] = { 0 };
+	DMD3D::instance().GetDeviceContext()->CSSetUnorderedAccessViews( index, 1, aUAViews, counters );
 }
 
-void DMComputeShader::Dispatch( int num_elements, float elapsed_time )
+void DMComputeShader::Dispatch( uint32_t numElements, float elapsed_time )
 {
 	DMD3D::instance().GetDeviceContext()->CSSetShader( m_computeShader.get(), nullptr, 0 );
 
@@ -105,7 +110,7 @@ void DMComputeShader::Dispatch( int num_elements, float elapsed_time )
 	int group_size_X;
 	int group_size_Y;
 
-	int numGroups = ( num_elements % 1024 != 0 ) ? ( ( num_elements / 1024 ) + 1 ) : ( num_elements / 1024 );
+	int numGroups = ( numElements % 1024 ) ? ( numElements / 1024 + 1 ) : ( numElements / 1024 );
 	double secondRoot = pow( (double)numGroups, (double)( 1.0 / 2.0 ) );
 	secondRoot = ceilf( secondRoot );
 	group_size_X = group_size_Y = (int)secondRoot;
@@ -114,27 +119,63 @@ void DMComputeShader::Dispatch( int num_elements, float elapsed_time )
 	// set contant
 
 	static ConstantType constantType;
-	constantType.group_dim = group_size_X;
-	constantType.max_particles = num_elements;
-	constantType.elapsed_time = elapsed_time;
+	constantType.groupDim = group_size_X;
+	constantType.rect.x = numElements;
+	constantType.elapsedTime = elapsed_time;
 
-
-	Device::updateResource( m_constantBuffer.get(), constantType );
-
-	ID3D11Buffer* buff[] = { m_constantBuffer.get() };
-	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( 4, 1, buff );
+	setConstants( constantType );
 
 	//////////////////////////////////////
 	//////////	DISPATCH	///////////////
 
 	DMD3D::instance().GetDeviceContext()->Dispatch( group_size_X, group_size_Y, 1 );
 
+	clear();
+}
+
+
+void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_time )
+{
+	DMD3D::instance().GetDeviceContext()->CSSetShader( m_computeShader.get(), nullptr, 0 );
+
 	//////////////////////////////////////
-	//	and clear
+	//	calc
+	int group_size_X = ( width % 32 != 0 ) ? ( ( width / 32 ) + 1 ) : ( width / 32 );
+	int group_size_Y = ( height % 32 != 0 ) ? ( ( height / 32 ) + 1 ) : ( height / 32 );
+
+	///////////////////////////////////	
+	// set contant
+
+	static ConstantType constantType;
+	constantType.groupDim = group_size_X;
+	constantType.rect.x = width;
+	constantType.rect.y = height;
+	constantType.elapsedTime = elapsed_time;
+
+	setConstants( constantType );
+
+	//////////////////////////////////////
+	//////////	DISPATCH /////////////////
+
+	DMD3D::instance().GetDeviceContext()->Dispatch( group_size_X, group_size_Y, 1 );
+
+	clear();
+}
+
+void DMComputeShader::setConstants( ConstantType& constantType )
+{
+	Device::updateResource( m_constantBuffer.get(), constantType );
+
+	ID3D11Buffer* buff[] = { m_constantBuffer.get() };
+	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( 0, 1, buff );
+}
+
+void DMComputeShader::clear()
+{
 	DMD3D::instance().GetDeviceContext()->CSSetShader( nullptr, nullptr, 0 );
 
-	ID3D11UnorderedAccessView* uav[] = { nullptr };
-	DMD3D::instance().GetDeviceContext()->CSSetUnorderedAccessViews( 0, 1, uav, (UINT*)(&uav) );
+	ID3D11UnorderedAccessView* uav[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+	DMD3D::instance().GetDeviceContext()->CSSetUnorderedAccessViews( 0, 8, uav, (UINT*)( &uav ) );
 
 	ID3D11ShaderResourceView* srv[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 10, srv );

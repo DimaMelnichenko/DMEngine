@@ -8,7 +8,7 @@
 #include "Shaders\Layout.h"
 #include "../Input/Input.h"
 #include "Pipeline.h"
-#include "Scene\Model\Grass\DMGrass.h"
+
 
 
 namespace GS
@@ -101,14 +101,21 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	//if( !m_water.Initialize( "Models\\water.json", "GeoClipMapWater" ) )
 	//	return false;
 
-	DMGrass grass;
-	grass.Initialize();
+	
+	if( !m_grass.Initialize() )
+		return false;
+
+	if( !m_library.loadMaterial( "ColorInstance" ) )
+		return false;
 
 	if( !m_library.loadMaterial( 5 ) )
 		return false;
 	if( !m_library.loadTexture( 14 ) )
 		return false;
 	m_particleSystem.Initialize( 20, 200 );
+
+	if( !m_library.loadTexture( 15 ) )
+		return false;
 
 	return true;
 }
@@ -120,6 +127,15 @@ bool DMGraphics::Frame()
 	m_cameraController.frame( m_timer.GetTime() );
 
 	m_particleSystem.update( m_timer.GetTime() );
+
+
+	const DMModel::LodBlock* block = System::models().get( "Box" )->getLod( 0.0 );
+	AbstractMesh* mesh = System::meshes().get( block->mesh ).get();
+	
+	auto heightTex = System::textures().get( 15 )->srv();
+	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 1, &heightTex );
+	m_grass.setInstanceParameters( mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
+	m_grass.Populate();
 
 	if( !Render() )
 		return false;
@@ -201,6 +217,20 @@ bool DMGraphics::Render()
 		}
 	}
 
+	///////////// Grass Section //////////////
+	
+	DMShader* shader = System::materials().get( "ColorInstance" )->m_shader.get();
+
+	const DMModel::LodBlock* block = System::models().get( "Box" )->getLod( 0.0 );
+	shader->setParams( block->params );
+	shader->setPass( 0 );
+	ID3D11ShaderResourceView* srv = m_grass.vertexBuffer();
+	DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 16, 1, &srv );
+	shader->renderInstancedIndirect( m_grass.indirectArgsBuffer() );
+
+	//////////////////////////////////////////
+
+
 	DMFrustum frustum( m_cameraPool["main"], 1000.0f );
 	if( m_visible["terrain"] )
 	{
@@ -225,6 +255,9 @@ bool DMGraphics::Render()
 		shader->render( m_particleSystem.particleCount(), 0, 0 );
 	}
 	DMD3D::instance().TurnOffAlphaBlending();
+
+
+
 	
 	DMD3D::instance().EndScene();
 

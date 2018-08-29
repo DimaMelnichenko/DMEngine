@@ -14,6 +14,7 @@ public:
 	bool init();
 	bool loadTexture( uint32_t idTexture );
 	bool loadMaterial( uint32_t idMaterial );
+	bool loadMaterial( const std::string& materialName );
 	bool loadMesh( uint32_t idMesh );
 	bool loadModelWithLOD( uint32_t idModel );
 	bool loadMaterialParams( uint32_t idLod, GS::ParamSet& paramSet );

@@ -42,6 +42,8 @@ bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::st
 
 	texture.reset( new DMTexture( id, name, std::move( baseImage ) ) );
 
+	DXGI_FORMAT format = baseImage.GetMetadata().format;
+
 	if( !texture->createSRV() )
 		return false;
 	

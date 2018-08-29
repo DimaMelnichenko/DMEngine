@@ -16,7 +16,6 @@ DMColorShader::~DMColorShader()
 
 bool DMColorShader::innerInitialize()
 {
-	ID3D11Buffer* buffer;
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer, nullptr ) )
 		return false;
 

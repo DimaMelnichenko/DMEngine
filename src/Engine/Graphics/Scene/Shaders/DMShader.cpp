@@ -124,6 +124,11 @@ void DMShader::RenderShader( int indexCount, uint32_t vertexOffset, uint32_t ind
 	return;
 }
 
+void DMShader::renderInstancedIndirect( ID3D11Buffer* args )
+{
+	DMD3D::instance().GetDeviceContext()->DrawIndexedInstancedIndirect( args, 0 );
+}
+
 bool DMShader::setPass( int phase_idx )
 {
 	if( !selectPhase( phase_idx ) )

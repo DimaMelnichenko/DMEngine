@@ -11,8 +11,9 @@
 //////////////
 struct Particle // описание структуры на GPU
 {
-    float4 position;
-	float4 velocity;
+    float3 position;
+	float3 velocity;
+	float2 dummy;
 };
 
 StructuredBuffer<Particle> Particles : register(t5); // буфер частиц

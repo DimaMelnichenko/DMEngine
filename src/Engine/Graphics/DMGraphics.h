@@ -29,6 +29,7 @@
 
 
 #include "Particle\DMParticleSystem.h"
+#include "Scene\Model\Grass\DMGrass.h"
 
 namespace GS
 {
@@ -79,6 +80,7 @@ private:
 
 private:
 	DMParticleSystem m_particleSystem;
+	DMGrass m_grass;
 };
 
 }

@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMGrassShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMParticleShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMComputeShader.cpp" />
@@ -100,6 +101,7 @@
     <ClInclude Include="SQLiteCpp\Utils.h" />
     <ClInclude Include="SQLiteCpp\VariadicBind.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMGrassShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMParticleShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMComputeShader.h" />

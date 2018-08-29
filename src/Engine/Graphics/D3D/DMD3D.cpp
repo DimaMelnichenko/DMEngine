@@ -876,3 +876,29 @@ void DMD3D::setRS( ID3D11RasterizerState* state )
 {
 	m_deviceContext->RSSetState( state );
 }
+
+bool DMD3D::setConstantBuffer( SRVType type, uint16_t slot, com_unique_ptr<ID3D11Buffer>& buffer )
+{
+	ID3D11Buffer* cbuffer = buffer.get();
+
+	switch( type )
+	{
+		case vs:
+			GetDeviceContext()->VSSetConstantBuffers( slot, 1, &cbuffer );
+			break;
+		case ps:
+			GetDeviceContext()->PSSetConstantBuffers( slot, 1, &cbuffer );
+			break;
+		case gs:
+			GetDeviceContext()->GSSetConstantBuffers( slot, 1, &cbuffer );
+			break;
+		case cs:
+			GetDeviceContext()->CSSetConstantBuffers( slot, 1, &cbuffer );
+			break;
+		default:
+			return false;
+			break;
+	}
+
+	return true;
+}

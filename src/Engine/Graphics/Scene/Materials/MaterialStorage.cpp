@@ -4,6 +4,7 @@
 #include "Shaders\PhongLight.h"
 #include "Shaders\DMClipMapShader.h"
 #include "Shaders\DMParticleShader.h"
+#include "Shaders\DMGrassShader.h"
 
 namespace GS
 {
@@ -39,6 +40,8 @@ bool MaterialStorage::createMaterial( uint32_t id, const std::string& name, cons
 		material->m_shader.reset( new DMParticleShader() );
 	else if( matClass == "GeoClipMap" )
 		material->m_shader.reset( new DMClipMapShader() );
+	else if( matClass == "Grass" )
+		material->m_shader.reset( new DMGrassShader() );
 	if( material == nullptr )
 		return false;
 

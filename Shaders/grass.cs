@@ -1,49 +1,63 @@
 
-cbuffer ContantData : register(b0)
+cbuffer ConstantData : register(b0)
 {
-	float group_dim;
-	float max_particles;
-	float elapsed_time;
+	float b_groupDim;
+	float2 b_rect;
+	float b_elapsedTime;
 };
 
-struct BufferType
+cbuffer ArgsBuffer : register(b1)
 {
-    float4 position;
-	float4 velocity;
+	int indexCountPerInstance;
+	int instanceCount;
+	int startIndexLocation;
+	int baseVertexLocation;
+	int startInstanceLocation;
+	float3 padding;
 };
 
-StructuredBuffer<BufferType> Buffer0 : register(t0);
-RWStructuredBuffer<BufferType> BufferOut : register(u0);
-
-#define THREAD_GROUP_X 32
-#define THREAD_GROUP_Y 24
-#define THREAD_GROUP_TOTAL 768
-
-float3 _calculate(float3 anchor, float3 position)
+struct GrassItem
 {
-	float3 direction = anchor - position;
-	float distance = length(direction);
-	direction /= distance;
+    float3 position;
+	float size;
+};
 
-	return direction * max( 0.001, ( 1 / ( distance * distance ) ) );
+RWByteAddressBuffer drawArgsBuffer : register(u0);
+AppendStructuredBuffer<GrassItem> grassBuffer : register(u1);
+Texture2D<float> terrainTexture : register(t0);
+
+[numthreads(1, 1, 1)]
+void init()
+{
+    drawArgsBuffer.Store4(0, uint4(indexCountPerInstance, instanceCount, startIndexLocation, baseVertexLocation));
+    drawArgsBuffer.Store(16, startInstanceLocation);
 }
 
+#define THREAD_GROUP_X 32
+#define THREAD_GROUP_Y 32
+#define THREAD_GROUP_TOTAL 1024
+
 [numthreads(THREAD_GROUP_X, THREAD_GROUP_Y, 1)]
-void main( uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex )
+void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex )
 {
-	uint index = groupID.x * THREAD_GROUP_TOTAL + groupID.y * group_dim * THREAD_GROUP_TOTAL + groupIndex;
+	GrassItem grassItem = (GrassItem)0;
 	
-	if( index >= max_particles )
+	//const uint index = groupID.x * THREAD_GROUP_TOTAL + groupID.y * b_groupDim * THREAD_GROUP_TOTAL + groupIndex;
+	
+    /*if(index >= ( b_rect.x * b_rect.y ) )
+		return;
+	*/
+	if( b_rect.x < dispatchThreadId.x || b_rect.y < dispatchThreadId.y )
 		return;
 	
-	//BufferOut[index].position = Buffer0[index].position;
+	float2 texCoord = dispatchThreadId.xy;
+	float4 height = terrainTexture[dispatchThreadId.xy] * 300.0;
 	
-    BufferType data = Buffer0[index];
+	grassItem.position = float3( dispatchThreadId.x, height.x, dispatchThreadId.y );
+	//grassItem.position = float3( groupID.x, 1.0f, groupID.y * 32 ) );
+	grassItem.size = 0.3f;
 	
-	//data.velocity.xyz += _calculate( float3(20.0, 0.0, 20.0), data.position.xyz ).xyz;
-	//data.velocity.xyz += _calculate(-float3(20.0, 0.0, 20.0), data.position.xyz ).xyz;
+	grassBuffer.Append(grassItem);
 	
-	data.position += data.velocity * elapsed_time * 0.001;
-	
-	BufferOut[index] = data;
+	drawArgsBuffer.InterlockedAdd(4, 1);
 }

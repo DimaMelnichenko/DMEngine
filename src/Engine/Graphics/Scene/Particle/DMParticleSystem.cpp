@@ -44,7 +44,8 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 				data[counter].position.x = static_cast<float>( x + urd( gen ) ) * 10;
 				data[counter].position.z = static_cast<float>( y + urd( gen ) ) * 10;
 				data[counter].position.y = static_cast<float>( urd( gen ) ) * 300;
-				data[counter].velocity = XMFLOAT4( 0.0, -vel_y(gen), 0.0, 0.0 );
+				//data[counter].velocity = XMFLOAT4( 0.0, -vel_y(gen), 0.0, 0.0 );
+				data[counter].velocity = XMFLOAT3( 0.0, 0.0, 0.0 );
 				counter++;
 			}	
 		}
@@ -100,17 +101,9 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 
 void DMParticleSystem::update( float elapsedTime )
 {
-	ID3D11ShaderResourceView* srv[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 10, srv );
-
-	//m_computeShader.setStructuredBuffer( 0, m_srvParticles.get() );
 	m_computeShader.setUAVBuffer( 0, m_uavParticles.get() );
 
 	m_computeShader.Dispatch( m_max_count, elapsedTime );
-
-	m_computeShader.setUAVBuffer( 0, nullptr );
-	
-	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 10, srv );
 }
 
 void DMParticleSystem::Render()
