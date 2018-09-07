@@ -25,9 +25,9 @@ const ScratchImage& DMTexture::image() const
 	return m_image;
 }
 
-ID3D11ShaderResourceView* DMTexture::srv()
+com_unique_ptr<ID3D11ShaderResourceView>& DMTexture::srv()
 {
-	return m_srv.get();
+	return m_srv;
 }
 
 bool DMTexture::createSRV()

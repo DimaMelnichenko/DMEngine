@@ -24,6 +24,7 @@ cbuffer TerrainTexturesParam : register( b3 )
 
 Texture2D heigthTexture : register(t0);
 Texture2D normalTexture : register(t1);
+Texture2D foilageTexture : register(t2);
 TextureCube g_texCube : register(t5);
 Texture2D terrainTexture[10] : register(t10);
 
@@ -76,7 +77,7 @@ float3 triplanar( float3 worldPos, float scale, float3 blendAxes, int textureInd
 {
 	float3 scaleWorldPos = worldPos / scale;
 	float3 xProjection = terrainTexture[textureIndexVecrtical].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.zy * float2( 1.0, -1.0 ) ) * blendAxes.x;
-	float3 yProjection = terrainTexture[textureIndexHorizontal].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xz * float2( 1.0, -1.0 ) ) * blendAxes.y;
+	float3 yProjection = terrainTexture[textureIndexHorizontal].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xz * float2( 4.0, -4.0 ) ) * blendAxes.y;
 	float3 zProjection = terrainTexture[textureIndexVecrtical].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xy * float2( 1.0, -1.0 ) ) * blendAxes.z;
 	return xProjection + yProjection + zProjection;
 }
@@ -101,6 +102,8 @@ float4 main(PixelInputType input) : SV_TARGET
 	float rawHight = heigthTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
 	
 	float3 n = normalToTerrain( normalTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb * 2.0 - 1.0 );
+	
+	float foilageDark = foilageTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
 	
 	float heightPercent = inverseLerp( 0.0, mapHeightMultippler, input.worldPosition.y );
 	n = normalize( n * float3( 1.0, 1.0, 1.0 ) );
@@ -165,7 +168,7 @@ float4 main(PixelInputType input) : SV_TARGET
 		specSum += pow(max(dot(n, h), 0.0), kShininess);
 	}
 	
-	FinalLight.rgb = albedo.rgb * ( duffuseSum + float3( 0.07, 0.07, 0.1 ) + specSum );
+	FinalLight.rgb = albedo.rgb * ( duffuseSum + float3( 0.07, 0.07, 0.1 ) + specSum ) * ( 1.0 - foilageDark );
 	
 	return FinalLight;
 }

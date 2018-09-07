@@ -17,7 +17,7 @@ void DMD3D::destroy()
 }
 
 
-DMD3D::DMD3D(  )
+DMD3D::DMD3D()
 {
 	
 }
@@ -33,6 +33,7 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 	m_screenWidth = (uint32_t)config.screenWidth();
 	m_hWnd = hwnd;
 	m_vsync_enabled = config.vSync();
+	m_MSAAQuality = config.MSAAQuality();
 
 	HRESULT result;
 	IDXGIFactory* factory;
@@ -191,7 +192,7 @@ bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 	swapChainDesc.OutputWindow = hwnd;
 
 	// Turn multisampling off.
-	swapChainDesc.SampleDesc.Count = 1;
+	swapChainDesc.SampleDesc.Count = m_MSAAQuality;
 	swapChainDesc.SampleDesc.Quality = 0;
 
 	// Set to full screen or windowed mode.
@@ -280,7 +281,7 @@ bool DMD3D::createDepthStencilBufferAndView()
 	depthBufferDesc.MipLevels = 1;
 	depthBufferDesc.ArraySize = 1;
 	depthBufferDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	depthBufferDesc.SampleDesc.Count = 1;
+	depthBufferDesc.SampleDesc.Count = m_MSAAQuality;
 	depthBufferDesc.SampleDesc.Quality = 0;
 	depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
 	depthBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
@@ -296,9 +297,6 @@ bool DMD3D::createDepthStencilBufferAndView()
 	}
 
 	m_depthStencilBuffer = make_com_ptr<ID3D11Texture2D>( depthStencilBuffer );
-
-
-
 
 	// Initialize the description of the stencil state.
 	D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
@@ -356,7 +354,10 @@ bool DMD3D::createDepthStencilBufferAndView()
 
 	// Set up the depth stencil view description.
 	depthStencilViewDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+	if( m_MSAAQuality )
+		depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
+	else
+		depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 	depthStencilViewDesc.Texture2D.MipSlice = 0;
 
 	// Create the depth stencil view.
@@ -711,7 +712,7 @@ void DMD3D::TurnShadowRS()
 	return;
 }
 
-void DMD3D::TurnBackFacesRS()
+void DMD3D::TurnFrontFacesRS()
 {
 	// Set the culling rasterizer state.
 	m_deviceContext->RSSetState( m_rasterStateFrontCulling.get());
@@ -901,4 +902,27 @@ bool DMD3D::setConstantBuffer( SRVType type, uint16_t slot, com_unique_ptr<ID3D1
 	}
 
 	return true;
+}
+
+void DMD3D::setSRV( SRVType type, uint16_t slot, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+{
+	ID3D11ShaderResourceView* rawSRV = srv.get();
+	switch( type )
+	{
+		case vs:
+			DMD3D::instance().GetDeviceContext()->VSSetShaderResources( slot, 1, &rawSRV );
+			break;
+		case ps:
+			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( slot, 1, &rawSRV );
+			break;
+		case gs:
+			DMD3D::instance().GetDeviceContext()->GSSetShaderResources( slot, 1, &rawSRV );
+			break;
+		case cs:
+			DMD3D::instance().GetDeviceContext()->CSSetShaderResources( slot, 1, &rawSRV );
+			break;
+		default:
+			break;
+	}
+	
 }

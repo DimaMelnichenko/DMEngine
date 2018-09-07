@@ -28,7 +28,7 @@ void CameraController::frame( float elapsedTime )
 	static float cameraY = m_camera->position().y;
 	static float cameraZ = m_camera->position().z;
 
-	float offset = 0.01f * elapsedTime;
+	float offset = 0.00001f * elapsedTime;
 
 	if( input.IsForwarPressed() )
 	{

@@ -17,7 +17,7 @@ public:
 	DMTexture( DMTexture&& );
 	~DMTexture();
 
-	ID3D11ShaderResourceView* srv();
+	com_unique_ptr<ID3D11ShaderResourceView>& srv();
 
 	bool createSRV();
 

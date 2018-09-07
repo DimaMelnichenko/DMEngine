@@ -290,4 +290,5 @@ void DMSamplerState::setDefaultSmaplers()
 
 	DMD3D::instance().GetDeviceContext()->PSSetSamplers( 0, 8, &m_samplerPointers[0] );
 	DMD3D::instance().GetDeviceContext()->VSSetSamplers( 0, 8, &m_samplerPointers[0] );
+	DMD3D::instance().GetDeviceContext()->CSSetSamplers( 0, 8, &m_samplerPointers[0] );
 }

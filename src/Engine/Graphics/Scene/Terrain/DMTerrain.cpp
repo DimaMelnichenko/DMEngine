@@ -113,19 +113,16 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 	shader->updateMaterials( m_materials );
 	shader->SetPSParameters( &ps_param );
 	shader->selectPhase( 0 );
-
-	ID3D11ShaderResourceView* height_srv = GS::System::textures().get( m_settings.idHeightmap )->srv();
-	DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 0, 1, &height_srv );
-	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &height_srv );
-	ID3D11ShaderResourceView* normal_srv = GS::System::textures().get( m_settings.idNormalmap )->srv();
-	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 1, 1, &normal_srv );
+	
+	DMD3D::instance().setSRV( SRVType::vs, 0, GS::System::textures().get( m_settings.idHeightmap )->srv() );
+	DMD3D::instance().setSRV( SRVType::ps, 0, GS::System::textures().get( m_settings.idHeightmap )->srv() );
+	DMD3D::instance().setSRV( SRVType::ps, 1, GS::System::textures().get( m_settings.idNormalmap )->srv() );
+	DMD3D::instance().setSRV( SRVType::ps, 2, GS::System::textures().get( 19 )->srv() );
 
 	for( size_t i = 0; i < m_textures.size(); ++i )
-	{
-		ID3D11ShaderResourceView* tex = GS::System::textures().get( m_textures[i] )->srv();
-		DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 10 + i, 1, &tex );
+	{	
+		DMD3D::instance().setSRV( SRVType::ps, 10 + i, GS::System::textures().get( m_textures[i] )->srv() );
 	}
-	
 
 	m_clip_map.Render( *shader, camera, frustum );
 }

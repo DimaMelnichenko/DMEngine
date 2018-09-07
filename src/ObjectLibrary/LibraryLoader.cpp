@@ -113,7 +113,8 @@ bool LibraryLoader::loadMesh( uint32_t idMesh )
 	query.bind( ":id", idMesh );
 	while( query.executeStep() )
 	{
-		GS::System::meshes().load( query.getColumn( 0 ), query.getColumn( 1 ), query.getColumn( 2 ) );
+		if( !GS::System::meshes().load( query.getColumn( 0 ), query.getColumn( 1 ), query.getColumn( 2 ) ) )
+			return false;
 	}
 
 	return true;

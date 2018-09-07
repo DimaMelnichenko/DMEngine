@@ -1,20 +1,20 @@
-#include "PhongLight.h"
+#include "VertexLight.h"
 #include "System.h"
 
 namespace GS
 {
 
-PhongLight::PhongLight()
+VertexLight::VertexLight()
 {
 
 }
 
-PhongLight::~PhongLight()
+VertexLight::~VertexLight()
 {
 
 }
 
-std::vector<D3D11_INPUT_ELEMENT_DESC> PhongLight::initLayouts()
+std::vector<D3D11_INPUT_ELEMENT_DESC> VertexLight::initLayouts()
 {
 	D3D11_INPUT_ELEMENT_DESC polygonLayout;
 
@@ -75,21 +75,20 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> PhongLight::initLayouts()
 	return vertex_layout;
 }
 
-bool PhongLight::innerInitialize()
+bool VertexLight::innerInitialize()
 {
 	createPhase( 0, -1, 0 );
 	return true;
 }
 
-bool PhongLight::Prepare()
+bool VertexLight::Prepare()
 {
 	return DMShader::setPass(0);
 }
 
-void PhongLight::setParams( const ParamSet& params )
+void VertexLight::setParams( const ParamSet& params )
 {
 	DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( params.at( "Albedo" ).textId() )->srv() );
-	DMD3D::instance().setSRV( SRVType::ps, 2, System::textures().get( params.at( "Shiness" ).textId() )->srv() );
 }
 
 }

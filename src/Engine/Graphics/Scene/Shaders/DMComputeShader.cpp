@@ -165,9 +165,8 @@ void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_t
 void DMComputeShader::setConstants( ConstantType& constantType )
 {
 	Device::updateResource( m_constantBuffer.get(), constantType );
-
-	ID3D11Buffer* buff[] = { m_constantBuffer.get() };
-	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( 0, 1, buff );
+	
+	DMD3D::instance().setConstantBuffer( SRVType::cs, 2, m_constantBuffer );
 }
 
 void DMComputeShader::clear()
@@ -177,6 +176,6 @@ void DMComputeShader::clear()
 	ID3D11UnorderedAccessView* uav[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	DMD3D::instance().GetDeviceContext()->CSSetUnorderedAccessViews( 0, 8, uav, (UINT*)( &uav ) );
 
-	ID3D11ShaderResourceView* srv[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 10, srv );
+	//ID3D11ShaderResourceView* srv[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+	//DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 10, srv );
 }

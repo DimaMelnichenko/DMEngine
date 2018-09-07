@@ -114,34 +114,36 @@ void DMCamera::readKeyboard( XMFLOAT3& offsetPosition )
 	//update main camera position
 	Input& input = getInput();
 
+	float speedMultipler = 0.1;
+
 	if( input.IsForwarPressed() )
 	{
-		offsetPosition.z += 1.0f;
+		offsetPosition.z += 1.0f * speedMultipler;
 	}
 
 	if( input.IsBackwardPressed() )
 	{
-		offsetPosition.z -= 1.0f;
+		offsetPosition.z -= 1.0f * speedMultipler;
 	}
 
 	if( input.IsRightStride() )
 	{
-		offsetPosition.x += 1.0f;
+		offsetPosition.x += 1.0f * speedMultipler;
 	}
 
 	if( input.IsLeftStride() )
 	{
-		offsetPosition.x -= 1.0f;
+		offsetPosition.x -= 1.0f * speedMultipler;
 	}
 
 	if( input.IsUpMove() )
 	{
-		offsetPosition.y += 1.0f;
+		offsetPosition.y += 1.0f * speedMultipler;
 	}
 
 	if( input.IsDownMove() )
 	{
-		offsetPosition.y -= 1.0f;
+		offsetPosition.y -= 1.0f * speedMultipler;
 	}
 }
 
@@ -176,6 +178,9 @@ void DMCamera::Update( float elapsedTime )
 	// Transform the lookAt and up vector by the rotation matrix so the view is correctly rotated at the origin.
 	XMVECTOR lookAtVector = XMLoadFloat3( &lookAt );
 	lookAtVector = XMVector3TransformCoord( lookAtVector, rotationMatrix );
+	XMVECTOR viewDirection = XMVector3Normalize( lookAtVector );
+	XMStoreFloat3( &m_view_direction, viewDirection );
+
 	XMVECTOR upVector = XMLoadFloat3( &up );
 	upVector = XMVector3TransformCoord( upVector, rotationMatrix );
 
@@ -192,7 +197,7 @@ void DMCamera::Update( float elapsedTime )
 	m_mCameraWorld = XMMatrixInverse( nullptr, m_viewMatrix );
 
 	XMStoreFloat3( &m_Eye, eyeVector );
-	XMStoreFloat3( &m_view_direction, lookAtVector );
+	
 
 	return;
 }

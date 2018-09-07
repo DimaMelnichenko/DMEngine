@@ -10,7 +10,7 @@
 	"map_offset_speed" : 0.0,
 	"materials" : 
 	[
-		{ "baseColors" : [0.0, 0.3, 1.0], "baseStartHeight" : 0.0,  "baseBlends" : 0.0,   "Texture" : 2,	"textureScale" : 0.5 },
+		{ "baseColors" : [0.0, 0.3, 1.0], "baseStartHeight" : 0.0,  "baseBlends" : 0.0,   "Texture" : 2,	"textureScale" : 2.0 },
 		{ "baseColors" : [1.0, 0.8, 0.5], "baseStartHeight" : 0.12, "baseBlends" : 0.01,  "Texture" : 10,	"textureScale" : 1.0 }
 	]
 }

@@ -60,6 +60,7 @@ void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount
 	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 0, 1, &buffer );
 	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
 	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 0, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( 0, 1, &buffer );
 }
 
 void ConstantBuffers::setPerObjectBuffer( const XMMATRIX* matrix )

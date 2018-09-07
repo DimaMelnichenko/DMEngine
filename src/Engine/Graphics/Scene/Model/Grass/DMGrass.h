@@ -3,6 +3,7 @@
 #include "DirectX.h"
 #include "Utils\utilites.h"
 #include "Shaders\DMComputeShader.h"
+#include "../DMModel.h"
 
 namespace GS
 {
@@ -13,21 +14,37 @@ public:
 	DMGrass();
 	~DMGrass();
 
-	bool Initialize();
-	void Render();
+	bool Initialize( uint32_t modelId );
+	void Render( uint16_t lod, uint16_t instanceSlot );
+	uint16_t lodCount();
 
-	void Populate();
+	void prerender();
 
-	ID3D11ShaderResourceView* vertexBuffer();
-	ID3D11Buffer* indirectArgsBuffer();
+	ID3D11ShaderResourceView* vertexBuffer( uint16_t lod );
+	ID3D11Buffer* indirectArgsBuffer( uint16_t lod );
 
-	void setInstanceParameters( uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
+	const DMModel::LodBlock* lodBlock( uint16_t );
 
 private:
+	void Populate();
+	void setInstanceParameters( uint16_t lod, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
+
+private:
+	struct ModelBuffers
+	{
+		com_unique_ptr<ID3D11Buffer> m_vertexBuffer;
+		com_unique_ptr<ID3D11Buffer> m_argsBuffer;
+		com_unique_ptr<ID3D11ShaderResourceView> m_srvVertex;
+		com_unique_ptr<ID3D11ShaderResourceView> m_srvArgs;
+		com_unique_ptr<ID3D11UnorderedAccessView> m_uavVertex;
+		com_unique_ptr<ID3D11UnorderedAccessView> m_uavArgs;
+	};
+
 	struct GrassVertex
 	{
 		XMFLOAT3 position;
 		float size;
+		XMFLOAT4 rotation;
 	};
 
 	struct ArgsBuffer
@@ -39,16 +56,16 @@ private:
 		uint32_t startInstanceLocation;
 		XMFLOAT3 padding;
 	};
+private:
+	bool createBuffers( ModelBuffers& modelBuffer );
 
 private:
-	uint64_t m_maxVertexNum = 1048576;
+	std::unordered_map<uint16_t, const DMModel::LodBlock*> m_modelLODs;
+	uint64_t m_maxVertexNum = 4194304;
 	com_unique_ptr<ID3D11Buffer> m_initArgsBuffer;
-	com_unique_ptr<ID3D11Buffer> m_vertexBuffer;
-	com_unique_ptr<ID3D11Buffer> m_argsBuffer;
-	com_unique_ptr<ID3D11ShaderResourceView> m_srvVertex;
-	com_unique_ptr<ID3D11ShaderResourceView> m_srvArgs;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_uavVertex;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_uavArgs;
+	
+
+	std::unordered_map<uint16_t, ModelBuffers> m_LODBuffer;
 	DMComputeShader m_computeShader;
 	DMComputeShader m_initShader;
 };

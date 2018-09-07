@@ -45,6 +45,22 @@ const DMModel::LodBlock* DMModel::getLod( float range )
 	return nullptr;
 }
 
+const DMModel::LodBlock* DMModel::getLodById( uint16_t index )
+{
+	if( index < m_lods.size() )
+	{
+		auto& it = m_lods[index];		
+		it.second.resultMatrix = m_transformBuffer.resultMatrixPtr();
+		return &it.second;
+	}
+	return nullptr;
+}
+
+uint16_t DMModel::lodCount()
+{
+	return m_lods.size();
+}
+
 const DMTransformBuffer& DMModel::transformBuffer() const
 {
 	return m_transformBuffer;

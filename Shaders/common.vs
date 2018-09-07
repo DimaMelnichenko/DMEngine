@@ -13,6 +13,7 @@ cbuffer FrameConstantBuffer : register( b0 )
 	float3 cb_viewDirection;
 	float  cb_elapsedTime;
 	float  cb_lightCount;
+	float3 fcb_dump;
 };
 
 cbuffer WorldBuffer : register( b1 )

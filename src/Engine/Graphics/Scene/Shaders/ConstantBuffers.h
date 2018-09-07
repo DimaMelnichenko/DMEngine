@@ -30,6 +30,7 @@ private:
 		XMFLOAT3 viewDirection;
 		float elapsedTime;
 		float lightsCount;
+		XMFLOAT3 dump;
 	};
 
 	struct alignas( 16 ) ShaderModelConstant

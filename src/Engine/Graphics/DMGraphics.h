@@ -56,6 +56,8 @@ private:
 
 	bool renderSky();
 
+	void ComputePass();
+
 private:
 	float m_screenWidth;
 	float m_screenHeight;

@@ -48,12 +48,23 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 
 	
-	if( !m_library.loadModelWithLOD( 1 ) )
-		return false;
-	if( !m_library.loadModelWithLOD( 2 ) )
-		return false;
-	if( !m_library.loadModelWithLOD( 3 ) )
-		return false;
+	for( uint16_t i = 6; i > 0; --i )
+	{
+		if( !m_library.loadModelWithLOD( i ) )
+			return false;
+	}
+
+	for( uint16_t i = 19; i > 0; --i )
+	{
+		if( !m_library.loadTexture( i ) )
+			return false;
+	}
+
+	for( uint16_t i = 10; i > 0; --i )
+	{
+		if( !m_library.loadMaterial( i ) )
+			return false;
+	}
 
 	// Создаем общий буфер вершин и индексов
 	m_vertexPool.prepareMeshes();
@@ -100,22 +111,11 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	//if( !m_water.Initialize( "Models\\water.json", "GeoClipMapWater" ) )
 	//	return false;
-
 	
-	if( !m_grass.Initialize() )
+	if( !m_grass.Initialize( 6 ) )
 		return false;
 
-	if( !m_library.loadMaterial( "ColorInstance" ) )
-		return false;
-
-	if( !m_library.loadMaterial( 5 ) )
-		return false;
-	if( !m_library.loadTexture( 14 ) )
-		return false;
 	m_particleSystem.Initialize( 20, 200 );
-
-	if( !m_library.loadTexture( 15 ) )
-		return false;
 
 	return true;
 }
@@ -126,39 +126,36 @@ bool DMGraphics::Frame()
 	
 	m_cameraController.frame( m_timer.GetTime() );
 
-	m_particleSystem.update( m_timer.GetTime() );
-
-
-	const DMModel::LodBlock* block = System::models().get( "Box" )->getLod( 0.0 );
-	AbstractMesh* mesh = System::meshes().get( block->mesh ).get();
-	
-	auto heightTex = System::textures().get( 15 )->srv();
-	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 1, &heightTex );
-	m_grass.setInstanceParameters( mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
-	m_grass.Populate();
-
 	if( !Render() )
 		return false;
 
 	return true;
 }
 
-bool DMGraphics::Render()
+void DMGraphics::ComputePass()
 {
-	DMD3D::instance().BeginScene( 0.0f, 0.0f, 0.0f, 1.0f );
-
 	// Подготовка view, proj матриц
 	m_cameraPool["main"].Update( m_timer.GetTime() );
-
-	// Установка буфера вершин и индексов
-	m_vertexPool.setBuffers();
 
 	m_samplerState.setDefaultSmaplers();
 
 	int lightCount = m_lightDriver.setBuffer( 100, SRVType::ps );
-
 	//установка матриц в шейдер константы
 	pipeline().shaderConstant().setPerFrameBuffer( m_cameraPool["main"], lightCount );
+
+	m_particleSystem.update( m_timer.GetTime() );
+
+	m_grass.prerender();
+}
+
+bool DMGraphics::Render()
+{
+	ComputePass();
+
+	DMD3D::instance().BeginScene( 0.0f, 0.0f, 0.0f, 1.0f );
+
+	// Установка буфера вершин и индексов
+	m_vertexPool.setBuffers();
 
 	//render sky
 	renderSky();
@@ -204,7 +201,7 @@ bool DMGraphics::Render()
 		
 		for( const auto LODblock : queue )
 		{
-			//установка матрицы маодели в шейдер
+			//установка матрицы модели в шейдер
 			//m_shaderConstant.setPerObjectBuffer( model->transformBuffer().resultMatrixPtr() );
 			const std::string& meshName = System::meshes().get( LODblock->mesh )->name();
 			pipeline().shaderConstant().setPerObjectBuffer( LODblock->resultMatrix );
@@ -219,14 +216,22 @@ bool DMGraphics::Render()
 
 	///////////// Grass Section //////////////
 	
-	DMShader* shader = System::materials().get( "ColorInstance" )->m_shader.get();
+	//DMD3D::instance().TurnOnAlphaBlending();
+	DMD3D::instance().TurnCullingNoneRS();
 
-	const DMModel::LodBlock* block = System::models().get( "Box" )->getLod( 0.0 );
-	shader->setParams( block->params );
-	shader->setPass( 0 );
-	ID3D11ShaderResourceView* srv = m_grass.vertexBuffer();
-	DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 16, 1, &srv );
-	shader->renderInstancedIndirect( m_grass.indirectArgsBuffer() );
+	DMShader* shader = System::materials().get( "VertLightInstance" )->m_shader.get();
+
+	for( uint16_t i = 0; i < m_grass.lodCount(); ++i )
+	{
+		const DMModel::LodBlock* block = m_grass.lodBlock( i );
+		shader->setParams( block->params );
+		shader->setPass( 0 );
+		m_grass.Render( i, 16 );
+		shader->renderInstancedIndirect( m_grass.indirectArgsBuffer( i ) );
+	}
+
+	DMD3D::instance().TurnDefaultRS();
+	//DMD3D::instance().TurnOffAlphaBlending();
 
 	//////////////////////////////////////////
 
@@ -242,7 +247,7 @@ bool DMGraphics::Render()
 		m_water.Render( m_cameraPool["main"], frustum );
 		DMD3D::instance().TurnOffAlphaBlending();
 	}
-
+	/*
 	DMD3D::instance().TurnOnAlphaBlending();
 	{
 		DMShader* shader = System::materials().get( 5 )->m_shader.get();
@@ -256,7 +261,7 @@ bool DMGraphics::Render()
 	}
 	DMD3D::instance().TurnOffAlphaBlending();
 
-
+	*/
 
 	
 	DMD3D::instance().EndScene();
@@ -270,7 +275,7 @@ bool DMGraphics::renderSky()
 	DMD3D::instance().currentRS( prevRSState );
 
 	DMD3D::instance().TurnZBufferOff();
-	DMD3D::instance().TurnBackFacesRS();
+	DMD3D::instance().TurnFrontFacesRS();
 
 	if( !System::materials().exists( "Texture" ) )
 		return false;

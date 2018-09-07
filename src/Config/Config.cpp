@@ -26,6 +26,7 @@ bool Config::readConfig( const std::string& file )
 		m_ScreenNear = configFile.get<float>( "General", "ScreenNear" );
 		m_screenWidth = configFile.get<float>( "General", "ScreenWidth" );
 		m_screenHeight = configFile.get<float>( "General", "ScreenHeight" );
+		m_MSAAQuality = configFile.get<int32_t>( "General", "MSAAQuality" );
 
 		return true;
 	}

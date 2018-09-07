@@ -5,6 +5,7 @@
 #include "Shaders\DMClipMapShader.h"
 #include "Shaders\DMParticleShader.h"
 #include "Shaders\DMGrassShader.h"
+#include "Shaders\VertexLight.h"
 
 namespace GS
 {
@@ -42,6 +43,8 @@ bool MaterialStorage::createMaterial( uint32_t id, const std::string& name, cons
 		material->m_shader.reset( new DMClipMapShader() );
 	else if( matClass == "Grass" )
 		material->m_shader.reset( new DMGrassShader() );
+	else if( matClass == "VertexLight" )
+		material->m_shader.reset( new VertexLight() );
 	if( material == nullptr )
 		return false;
 

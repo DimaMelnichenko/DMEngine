@@ -62,8 +62,7 @@ void TextureShader::setParams( const ParamSet& params )
 		uint32_t idTexture = params.at( "Albedo" ).textId();
 		if( System::textures().exists( idTexture ) )
 		{
-			ID3D11ShaderResourceView* texture = System::textures().get( idTexture )->srv();
-			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
+			DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( idTexture )->srv() );
 		}
 	}
 }
