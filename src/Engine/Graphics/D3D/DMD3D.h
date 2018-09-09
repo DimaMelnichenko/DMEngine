@@ -111,6 +111,8 @@ public:
 	bool createIndexBuffer( com_unique_ptr<ID3D11Buffer> &, void* data, size_t sizeInByte );
 	bool CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData, com_unique_ptr<ID3D11Buffer>& );
 
+	bool createScreenshot();
+
 private:
 	bool createDeviceSwapChain( HWND, bool fullscreen );
 	bool createRenderTargetView();
@@ -121,7 +123,7 @@ private:
 
 	bool createRasterizerState( D3D11_RASTERIZER_DESC& desc, com_unique_ptr<ID3D11RasterizerState>& state );
 	bool createBlendState( D3D11_BLEND_DESC& desc, com_unique_ptr<ID3D11BlendState>& state );
-
+	
 private:
 	bool m_vsync_enabled;
 	int m_videoCardMemory;

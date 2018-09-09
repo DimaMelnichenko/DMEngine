@@ -24,7 +24,7 @@ public:
 	void SetRotation( float, float, float );
 	void SetDirection( const XMFLOAT3& );
 	void SetDirection( float, float, float );
-	void Update( float elapsedTime );
+	void Update( float elapsedTime, bool cursorMode = false );
 	void RenderReflection( float heigh );
 
 	const XMFLOAT3& position( ) const;

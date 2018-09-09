@@ -8,7 +8,17 @@
 #include "Shaders\Layout.h"
 #include "../Input/Input.h"
 #include "Pipeline.h"
+#include <chrono>
 
+#define TIME_POINT() std::chrono::high_resolution_clock::now()
+
+#define TIME_DIFF( start, end ) std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count()
+
+#define TIME_CHECK( CHECKED_FUNC, INFO_TEXT ) { \
+	std::chrono::high_resolution_clock::time_point start##__LINE__ = std::chrono::high_resolution_clock::now(); \
+	CHECKED_FUNC; \
+	std::chrono::high_resolution_clock::time_point end##__LINE__ = std::chrono::high_resolution_clock::now(); \
+	m_GUI.addCounterInfo( (INFO_TEXT), std::chrono::duration_cast<std::chrono::microseconds>( end##__LINE__ - start##__LINE__ ).count() / 1000.0f ); }
 
 
 namespace GS
@@ -94,6 +104,15 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 			DMD3D::instance().TurnOffWireframe();
 	} );
 
+	getInput().notifier().registerTrigger( DIK_P, []( bool value )
+	{
+		if( value )
+		{
+			DMD3D::instance().createScreenshot();
+		}
+			
+	} );
+
 	m_visible["terrain"] = true;
 	m_visible["water"] = true;
 	getInput().notifier().registerTrigger( DIK_1, [this]( bool value )
@@ -106,6 +125,14 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		m_visible["water"] = value;
 	} );
 
+	getInput().notifier().registerTrigger( DIK_I, [this]( bool value )
+	{
+		m_cursorMode = value;
+		ShowCursor( value );
+	} );
+
+	
+
 	if( !m_terrain.Initialize( "Models\\terrain.json", "GeoClipMap", m_library ) )
 		return false;
 
@@ -116,6 +143,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 
 	m_particleSystem.Initialize( 20, 200 );
+
+	m_GUI.Initialize( m_hwnd );
 
 	return true;
 }
@@ -134,23 +163,31 @@ bool DMGraphics::Frame()
 
 void DMGraphics::ComputePass()
 {
-	// Подготовка view, proj матриц
-	m_cameraPool["main"].Update( m_timer.GetTime() );
+	TIME_CHECK( m_particleSystem.update( m_timer.GetTime() ), "Particle Update = = %.3f ms" );
+	
+	//std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+	//m_grass.prerender();
+	//std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
+	TIME_CHECK( m_grass.prerender(), "m_grass.prerender() = %.3f ms" );
+}
 
-	m_samplerState.setDefaultSmaplers();
+void DMGraphics::preparePipeline()
+{
+	// Подготовка view, proj матриц
+	TIME_CHECK( m_cameraPool["main"].Update( m_timer.GetTime(), m_cursorMode ), "Camera Update = = %.3f ms" );
+
+	TIME_CHECK( m_samplerState.setDefaultSmaplers(), "setDefaultSmaplers = = %.3f ms" );
 
 	int lightCount = m_lightDriver.setBuffer( 100, SRVType::ps );
 	//установка матриц в шейдер константы
-	pipeline().shaderConstant().setPerFrameBuffer( m_cameraPool["main"], lightCount );
-
-	m_particleSystem.update( m_timer.GetTime() );
-
-	m_grass.prerender();
+	TIME_CHECK( pipeline().shaderConstant().setPerFrameBuffer( m_cameraPool["main"], lightCount ), "setPerFrameBuffer = = %.3f ms" );
 }
 
 bool DMGraphics::Render()
 {
-	ComputePass();
+	TIME_CHECK( preparePipeline(), "preparePipeline = %.3f ms" );
+
+	TIME_CHECK( ComputePass(), "Compute Pass = %.3f ms" );
 
 	DMD3D::instance().BeginScene( 0.0f, 0.0f, 0.0f, 1.0f );
 
@@ -158,8 +195,9 @@ bool DMGraphics::Render()
 	m_vertexPool.setBuffers();
 
 	//render sky
-	renderSky();
+	TIME_CHECK( renderSky(), "Render Sky = %.3f ms" );
 	
+	auto objectCullStart = TIME_POINT();
 	for( auto& queue : m_renderQueues )
 	{
 		queue.second.clear();
@@ -183,6 +221,8 @@ bool DMGraphics::Render()
 			m_renderQueues[block->material].push_back( block );
 		}
 	}
+	auto objectCullEnd = TIME_POINT();
+	m_GUI.addCounterInfo( "Object Prepare = %.3f ms", TIME_DIFF( objectCullStart, objectCullEnd ) / 1000.0f );
 
 	// эта вся хрень для вращения
 	double elapsedTime = m_timer.GetTime();
@@ -191,6 +231,7 @@ bool DMGraphics::Render()
 
 //	System::models().get( "Knot" )->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
 
+	auto objectStart = TIME_POINT();
 	// Перебираем все очереди
 	for( auto& queuePair : m_renderQueues )
 	{	
@@ -213,17 +254,32 @@ bool DMGraphics::Render()
 							System::meshes().get( LODblock->mesh )->indexOffset() );
 		}
 	}
+	auto objectEnd = TIME_POINT();
+	m_GUI.addCounterInfo( "Object Rendering = %.3f ms", TIME_DIFF( objectStart, objectEnd ) / 1000.0f );
 
 	///////////// Grass Section //////////////
 	
+	auto grassStart = TIME_POINT();
 	//DMD3D::instance().TurnOnAlphaBlending();
 	DMD3D::instance().TurnCullingNoneRS();
 
 	DMShader* shader = System::materials().get( "VertLightInstance" )->m_shader.get();
 
+	static bool grassParamBinding = false;
+
 	for( uint16_t i = 0; i < m_grass.lodCount(); ++i )
 	{
-		const DMModel::LodBlock* block = m_grass.lodBlock( i );
+		DMModel::LodBlock* block = m_grass.lodBlock( i );
+		if( !grassParamBinding )
+		{	
+			grassParamBinding = true;
+			m_GUI.colorGrass = block->params.at( "Color" ).vector();
+			m_GUI.ambientGrass = block->params.at( "AmbientColor" ).vector();
+		}
+
+		block->params.at( "Color" ).setValue( m_GUI.colorGrass );
+		block->params.at( "AmbientColor" ).setValue( m_GUI.ambientGrass );
+
 		shader->setParams( block->params );
 		shader->setPass( 0 );
 		m_grass.Render( i, 16 );
@@ -232,22 +288,24 @@ bool DMGraphics::Render()
 
 	DMD3D::instance().TurnDefaultRS();
 	//DMD3D::instance().TurnOffAlphaBlending();
-
+	auto grassEnd = TIME_POINT();
+	m_GUI.addCounterInfo( "Grass Rendering = %.3f ms", TIME_DIFF( grassStart, grassEnd ) / 1000.0f );
+	
 	//////////////////////////////////////////
 
 
 	DMFrustum frustum( m_cameraPool["main"], 1000.0f );
 	if( m_visible["terrain"] )
 	{
-		m_terrain.Render( m_cameraPool["main"], frustum );
+		TIME_CHECK( m_terrain.Render( m_cameraPool["main"], frustum ), "Terrain Render = %.3f ms" );
 	}
-	if( m_visible["water"] )
+	/*if( m_visible["water"] )
 	{
 		DMD3D::instance().TurnOnAlphaBlending();
 		m_water.Render( m_cameraPool["main"], frustum );
 		DMD3D::instance().TurnOffAlphaBlending();
 	}
-	/*
+
 	DMD3D::instance().TurnOnAlphaBlending();
 	{
 		DMShader* shader = System::materials().get( 5 )->m_shader.get();
@@ -263,6 +321,8 @@ bool DMGraphics::Render()
 
 	*/
 
+	m_GUI.Frame();
+	m_GUI.Render();
 	
 	DMD3D::instance().EndScene();
 
@@ -271,8 +331,8 @@ bool DMGraphics::Render()
 
 bool DMGraphics::renderSky()
 {
-	com_unique_ptr<ID3D11RasterizerState> prevRSState;
-	DMD3D::instance().currentRS( prevRSState );
+	//com_unique_ptr<ID3D11RasterizerState> prevRSState;
+	//DMD3D::instance().currentRS( prevRSState );
 
 	DMD3D::instance().TurnZBufferOff();
 	DMD3D::instance().TurnFrontFacesRS();
@@ -301,8 +361,9 @@ bool DMGraphics::renderSky()
 					System::meshes().get( block->mesh )->indexOffset() );
 	
 	DMD3D::instance().TurnZBufferOn();
+	DMD3D::instance().TurnDefaultRS();
 
-	DMD3D::instance().setRS( prevRSState.get() );
+	//DMD3D::instance().setRS( prevRSState.get() );
 	
 	return true;
 }

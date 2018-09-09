@@ -78,7 +78,8 @@ void DMSystem::Run( )
 
 }
 
-LRESULT CALLBACK DMSystem::proxyWndProc( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
+
+LRESULT CALLBACK DMSystem::proxyWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 {
 	DMSystem* dmSystem;
 
@@ -87,31 +88,35 @@ LRESULT CALLBACK DMSystem::proxyWndProc( HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		LPCREATESTRUCT lpcs = reinterpret_cast<LPCREATESTRUCT>( lParam );
 		dmSystem = static_cast<DMSystem*>( lpcs->lpCreateParams );
 		// Put the value in a safe place for future use
-		SetWindowLongPtr( hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>( dmSystem ) );
+		SetWindowLongPtr( hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>( dmSystem ) );
 
 	}
 	else
 	{
-		dmSystem = reinterpret_cast<DMSystem*>( GetWindowLongPtr( hwnd, GWLP_USERDATA ) );
+		dmSystem = reinterpret_cast<DMSystem*>( GetWindowLongPtr( hWnd, GWLP_USERDATA ) );
 	}
 
 	if( dmSystem )
 	{
-		return dmSystem->wndProc( hwnd, uMsg, wParam, lParam );
+		return dmSystem->wndProc( hWnd, uMsg, wParam, lParam );
 	}
 
-	return DefWindowProc( hwnd, uMsg, wParam, lParam );
+	return DefWindowProc( hWnd, uMsg, wParam, lParam );
 }
 
-LRESULT DMSystem::wndProc( HWND hwnd, UINT umsg, WPARAM wparam, LPARAM lparam )
+extern LRESULT ImGui_ImplWin32_WndProcHandler( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
+LRESULT DMSystem::wndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 {
-	switch( umsg )
+	if( ImGui_ImplWin32_WndProcHandler( hWnd, uMsg, wParam, lParam ) )
+		return true;
+
+	switch( uMsg )
 	{
 		case WM_KEYDOWN:
 		{
-			if( wparam == VK_ESCAPE )
+			if( wParam == VK_ESCAPE )
 			{
-				DestroyWindow( hwnd );
+				DestroyWindow( hWnd );
 				return 0;
 			}
 		}
@@ -124,15 +129,15 @@ LRESULT DMSystem::wndProc( HWND hwnd, UINT umsg, WPARAM wparam, LPARAM lparam )
 			return 0;
 		case WM_CREATE:
 		{
-			ShowWindow( hwnd, SW_SHOW );
-			SetFocus( hwnd );
-			SetForegroundWindow( hwnd );
+			ShowWindow( hWnd, SW_SHOW );
+			SetFocus( hWnd );
+			SetForegroundWindow( hWnd );
 			ShowCursor( false );
 			break;
 		}
 	}
 
-	return DefWindowProc( hwnd, umsg, wparam, lparam );
+	return DefWindowProc( hWnd, uMsg, wParam, lParam );
 }
 
 void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )

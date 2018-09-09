@@ -113,7 +113,7 @@ void DMGrass::Populate()
 	m_computeShader.setUAVBuffer( 2, m_LODBuffer[0].m_uavVertex.get() );
 	m_computeShader.setUAVBuffer( 3, m_LODBuffer[1].m_uavVertex.get() );
 
-	m_computeShader.Dispatch( 2048, 2048, 0.0 );
+	m_computeShader.Dispatch( 1024, 1024, 0.0 );
 	//m_computeShader.Dispatch( 50, 50, 0.0 );
 }
 
@@ -166,7 +166,7 @@ ID3D11Buffer* DMGrass::indirectArgsBuffer( uint16_t lod )
 	return m_LODBuffer[lod].m_argsBuffer.get();
 }
 
-const DMModel::LodBlock* DMGrass::lodBlock( uint16_t lod )
+DMModel::LodBlock* DMGrass::lodBlock( uint16_t lod )
 {
 	return m_modelLODs[lod];
 }

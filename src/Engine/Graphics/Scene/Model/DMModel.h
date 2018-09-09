@@ -34,7 +34,7 @@ public:
 
 	void addLod( float range, const LodBlock& );
 	const LodBlock* getLod( float range );
-	const LodBlock* getLodById( uint16_t index );
+	LodBlock* getLodById( uint16_t index );
 	uint16_t lodCount();
 
 	const DMTransformBuffer& transformBuffer() const;

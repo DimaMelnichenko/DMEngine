@@ -926,3 +926,26 @@ void DMD3D::setSRV( SRVType type, uint16_t slot, com_unique_ptr<ID3D11ShaderReso
 	}
 	
 }
+
+#include "ScreenGrab.h"
+#include <wincodecsdk.h>
+
+bool DMD3D::createScreenshot()
+{
+	static uint16_t counter = 0;
+	ID3D11Texture2D* backBuffer = nullptr;
+	HRESULT hr = m_swapChain->GetBuffer( 0, __uuidof( ID3D11Texture2D ), (void**)&backBuffer );
+	if( SUCCEEDED( hr ) )
+	{
+		std::wstring fileName = L"screenshot" + std::to_wstring( counter++ ) + L".jpg";
+		hr = SaveWICTextureToFile( m_deviceContext.get(), backBuffer, GUID_ContainerFormatJpeg, fileName.data() );
+	}
+
+	if( backBuffer )
+	{
+		backBuffer->Release();
+		backBuffer = nullptr;
+	}
+
+	return true;
+}

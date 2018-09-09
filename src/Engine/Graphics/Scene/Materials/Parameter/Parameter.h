@@ -39,6 +39,16 @@ public:
 	{
 		return m_vec4;
 	}
+
+	XMFLOAT4& vector()
+	{
+		return m_vec4;
+	}
+
+	void setValue( const XMFLOAT4& value )
+	{
+		m_vec4 = value;
+	}
 	
 private:
 	uint32_t m_textId;

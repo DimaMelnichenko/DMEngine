@@ -26,6 +26,7 @@
 #include "Camera\CameraController.h"
 #include "Terrain\DMTerrain.h"
 #include "ObjectLibrary\LibraryLoader.h"
+#include "GUI\GUI.h"
 
 
 #include "Particle\DMParticleSystem.h"
@@ -53,10 +54,9 @@ public:
 
 private:
 	bool Render();
-
 	bool renderSky();
-
 	void ComputePass();
+	void preparePipeline();
 
 private:
 	float m_screenWidth;
@@ -83,6 +83,8 @@ private:
 private:
 	DMParticleSystem m_particleSystem;
 	DMGrass m_grass;
+	GUI m_GUI;
+	bool m_cursorMode = false;
 };
 
 }

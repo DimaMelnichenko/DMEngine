@@ -23,7 +23,7 @@ public:
 	ID3D11ShaderResourceView* vertexBuffer( uint16_t lod );
 	ID3D11Buffer* indirectArgsBuffer( uint16_t lod );
 
-	const DMModel::LodBlock* lodBlock( uint16_t );
+	DMModel::LodBlock* lodBlock( uint16_t );
 
 private:
 	void Populate();
@@ -60,8 +60,8 @@ private:
 	bool createBuffers( ModelBuffers& modelBuffer );
 
 private:
-	std::unordered_map<uint16_t, const DMModel::LodBlock*> m_modelLODs;
-	uint64_t m_maxVertexNum = 4194304;
+	std::unordered_map<uint16_t,DMModel::LodBlock*> m_modelLODs;
+	uint64_t m_maxVertexNum = 1048576;
 	com_unique_ptr<ID3D11Buffer> m_initArgsBuffer;
 	
 

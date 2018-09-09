@@ -9,6 +9,13 @@
 /////////////
 // GLOBALS //
 /////////////
+
+cbuffer ConstantVertexLightPS: register( b2 )
+{
+	float4 cb_TintColor;
+	float4 cb_AmbientColor;
+}
+
 Texture2D g_texAlbedo : register(t0);
 
 //////////////
@@ -31,7 +38,8 @@ float4 main(PixelInputType input) : SV_TARGET
     // Sample the pixel color from the texture using the sampler at this texture coordinate location.
     float4 albedo = g_texAlbedo.Sample( g_SamplerLinearClamp, input.tex ) * float4( 0.70, 1.0, 0.1, 1.0 );	
 	
-	finalLight = float4( albedo * saturate( (input.color + 0.7) * 1.0 ) ) + float4( 0.1, 0.1, 0.11, 0.0 );
+	finalLight = float4( albedo * input.color + cb_TintColor );
+	finalLight.rgb += cb_AmbientColor.rgb;
 	
 	return finalLight;
 }

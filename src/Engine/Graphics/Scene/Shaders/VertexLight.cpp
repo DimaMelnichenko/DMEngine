@@ -78,6 +78,9 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> VertexLight::initLayouts()
 bool VertexLight::innerInitialize()
 {
 	createPhase( 0, -1, 0 );
+
+	DMD3D::instance().createShaderConstantBuffer( sizeof( PSParam ), m_psCB );
+
 	return true;
 }
 
@@ -89,6 +92,21 @@ bool VertexLight::Prepare()
 void VertexLight::setParams( const ParamSet& params )
 {
 	DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( params.at( "Albedo" ).textId() )->srv() );
+
+	PSParam param;
+
+	if( params.count( "Color" ) )
+	{	
+		param.tintColor = params.at( "Color" ).vector();
+	}
+	if( params.count( "AmbientColor" ) )
+	{
+		param.ambientColor = params.at( "AmbientColor" ).vector();
+	}
+
+	Device::updateResource<PSParam>( m_psCB.get(), param );
+	DMD3D::instance().setConstantBuffer( SRVType::ps, 2, m_psCB );
+	
 }
 
 }

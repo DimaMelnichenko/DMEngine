@@ -147,8 +147,8 @@ void DMCamera::readKeyboard( XMFLOAT3& offsetPosition )
 	}
 }
 
-void DMCamera::Update( float elapsedTime )
-{	
+void DMCamera::Update( float elapsedTime, bool cursorMode )
+{
 	XMMATRIX rotationMatrix;
 	// Setup the vector that points upwards.
 	XMFLOAT3 up( 0.0, 1.0, 0.0 );
@@ -156,16 +156,20 @@ void DMCamera::Update( float elapsedTime )
 	// Setup where the camera is looking by default.
 	XMFLOAT3 lookAt( 0.0, 0.0, 1.0 );
 
-	XMFLOAT3 posDirection(0.0, 0.0, 0.0);
+	XMFLOAT3 posDirection( 0.0, 0.0, 0.0 );
 	readKeyboard( posDirection );
 	XMVECTOR vPosDelta = XMLoadFloat3( &posDirection );
 	vPosDelta = XMVectorScale( vPosDelta, elapsedTime );
 	vPosDelta = XMVectorScale( vPosDelta, 0.1f );
 
 	// Set the yaw (Y axis), pitch (X axis), and roll (Z axis) rotations in radians.
-	double mouseX;
-	double mouseY;
-	getInput().GetMouseLocation( mouseX, mouseY );
+	static double mouseX = 0.0;
+	static double mouseY = 0.0;
+	if( !cursorMode )
+	{
+		getInput().GetMouseLocation( mouseX, mouseY );
+		SetCursorPos( 600, 600 );
+	}	
 
 	float mouseForse = 0.1f;
 	float pitch = ( m_rotationX + mouseY * mouseForse ) * 0.0174532925f;

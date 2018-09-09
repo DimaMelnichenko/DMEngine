@@ -58,6 +58,7 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	if(index >= ( b_rect.x * b_rect.y ) )
 		return;
 	*/
+	[flatten]
 	if( b_rect.x < dispatchThreadId.x || b_rect.y < dispatchThreadId.y )
 		return;
 	
@@ -86,14 +87,17 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	
 	float sizeMultipler = foilageMap.SampleLevel( g_SamplerLinearClamp, texCoord, 0.0 ).r;
 	
-	if( sizeMultipler < 0.01 )
+	[flatten]
+	if( sizeMultipler < 0.1 )
 		return;
 	
 	float4 height = terrainTexture.SampleLevel( g_SamplerLinearClamp, texCoord, 0.0 ).r * 300.0;
 	
 	float3 grassPosition = { offsetPosition.x, height.x, offsetPosition.y };
 	
-	if( max( dot( cb_viewDirection, normalize( grassPosition - cb_cameraPosition ) ), 0.0 ) < 0.81 )
+	[flatten] 
+	if( max( dot( cb_viewDirection, normalize( grassPosition - cb_cameraPosition ) ), 0.0 ) < 0.81
+		|| distance( cb_cameraPosition, grassPosition ) > b_rect.x * step )
 		return;
 	
 	grassItem.position = grassPosition;
@@ -101,6 +105,7 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	//grassItem.position = float3( groupID.x, 1.0f, groupID.y * 32 ) );
 	grassItem.size = 0.0025f * sizeMultipler;//lerp( 0.001, 0.005f, clamp( noise.x, 0.0 , 1.0 ) );
 	
+	[branch]
 	if( distance( cb_cameraPosition, grassPosition ) < 10 )
 	{
 		grassBuffer.Append(grassItem);	
