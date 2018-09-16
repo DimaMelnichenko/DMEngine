@@ -46,8 +46,8 @@ public:
 	~DMGraphics();
 
 	bool Initialize( HINSTANCE hinstance, int, int, HWND, Config );
-
 	bool Frame();
+	void beforeExit();
 
 
 	LRESULT HandleMsg( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
@@ -57,6 +57,7 @@ private:
 	bool renderSky();
 	void ComputePass();
 	void preparePipeline();
+	void grassRendering();
 
 private:
 	float m_screenWidth;

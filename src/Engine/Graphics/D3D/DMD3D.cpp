@@ -195,15 +195,7 @@ bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 	swapChainDesc.SampleDesc.Count = m_MSAAQuality;
 	swapChainDesc.SampleDesc.Quality = 0;
 
-	// Set to full screen or windowed mode.
-	if( fullscreen )
-	{
-		swapChainDesc.Windowed = false;
-	}
-	else
-	{
-		swapChainDesc.Windowed = true;
-	}
+	swapChainDesc.Windowed = !fullscreen;
 
 	// Set the scan line ordering and scaling to unspecified.
 	swapChainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
@@ -904,9 +896,9 @@ bool DMD3D::setConstantBuffer( SRVType type, uint16_t slot, com_unique_ptr<ID3D1
 	return true;
 }
 
-void DMD3D::setSRV( SRVType type, uint16_t slot, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+void DMD3D::setSRV( SRVType type, uint16_t slot, const com_unique_ptr<ID3D11ShaderResourceView>& srv )
 {
-	ID3D11ShaderResourceView* rawSRV = srv.get();
+	ID3D11ShaderResourceView* const rawSRV = srv.get();
 	switch( type )
 	{
 		case vs:

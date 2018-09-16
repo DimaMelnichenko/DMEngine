@@ -42,7 +42,8 @@ bool LibraryLoader::loadTexture( uint32_t idTexture )
 	queryTexture.bind( ":id", idTexture );
 	while( queryTexture.executeStep() )
 	{
-		GS::System::textures().load( queryTexture.getColumn( 0 ), queryTexture.getColumn( 1 ), queryTexture.getColumn( 2 ), queryTexture.getColumn( 3 ).getInt() );
+		if( !GS::System::textures().load( queryTexture.getColumn( 0 ), queryTexture.getColumn( 1 ), queryTexture.getColumn( 2 ), queryTexture.getColumn( 3 ).getInt() ) )
+			return false;
 	}
 
 	return true;
@@ -79,6 +80,8 @@ bool LibraryLoader::loadMaterial( uint32_t idMaterial )
 	if( !GS::System::materials().exists( idMaterial ) )
 		return false;
 
+	loadMaterialParamDef( idMaterial, GS::System::materials().get( idMaterial )->m_parameters );
+
 	GS::DMShader* shader = GS::System::materials().get( idMaterial )->m_shader.get();
 
 	if( !loadShader( idMaterial, shader ) )
@@ -86,6 +89,26 @@ bool LibraryLoader::loadMaterial( uint32_t idMaterial )
 
 	if( !shader->initialize() )
 		return false;
+
+	return true;
+}
+
+bool LibraryLoader::loadMaterialParamDef( uint32_t idMaterial, GS::ParamSet& paramSet )
+{
+	SQLite::Statement query( *m_db, "SELECT material_id, name, type_id FROM MaterialParameterDefView where material_id = :id" );
+	query.bind( ":id", idMaterial );
+	while( query.executeStep() )
+	{
+		switch( query.getColumn( 2 ).getInt() )
+		{
+			case 1: // vec4
+				paramSet.insert( { query.getColumn( 1 ).getString(), GS::Parameter( XMFLOAT4() ) } );
+				break;
+			case 2: // texture id
+				paramSet.insert( { query.getColumn( 1 ).getString(), GS::Parameter( uint32_t(0) ) } );
+				break;
+		}
+	}
 
 	return true;
 }
@@ -144,7 +167,8 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	queryLOD.bind( ":id", idModel );
 	while( queryLOD.executeStep() )
 	{
-		if( !loadMaterial( queryLOD.getColumn( "material_id" ).getInt() ) )
+		uint32_t id_material = queryLOD.getColumn( "material_id" ).getInt();
+		if( !loadMaterial( id_material ) )
 			return false;
 
 		if( !loadMesh( queryLOD.getColumn( "mesh_id" ) ) )
@@ -154,7 +178,8 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		block.material = queryLOD.getColumn( "material_id" );
 		block.mesh = queryLOD.getColumn( "mesh_id" );
 		block.isRender = queryLOD.getColumn( "render" ).getInt();
-		if( !loadMaterialParams( queryLOD.getColumn( "mat_param_id" ), block.params ) )
+		block.params = GS::System::materials().get( id_material )->m_parameters;
+		if( !loadMaterialParams( queryLOD.getColumn( "mat_param_id" ).getInt(), block.params ) )
 			return false;
 
 		model->addLod( queryLOD.getColumn("range").getDouble(), block );
@@ -165,26 +190,68 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 
 bool LibraryLoader::loadMaterialParams( uint32_t idValue, GS::ParamSet& paramSet )
 {
-	SQLite::Statement query( *m_db, "SELECT name, type, value FROM MaterialParamsView where value_id = :id" );
-	query.bind( ":id", idValue );
+	SQLite::Statement query( *m_db, "SELECT id, name, type, value FROM MaterialParamsValueView where group_id = :group" );
+	query.bind( ":group", idValue );
 	while( query.executeStep() )
 	{
 		std::string paramName = query.getColumn( "name" );
 		std::string paramType = query.getColumn( "type" );
 		std::string paramValue = query.getColumn( "value" );
+		paramSet[paramName].m_id = query.getColumn( "id" ).getInt();
 
-		if( paramType == "texture" )
+		switch( paramSet[paramName].valueType() )
 		{
-			uint32_t texture_id = static_cast<uint32_t>( std::stol( paramValue ) );
-			if( !loadTexture( texture_id ) )
+			case GS::Parameter::float4: // vec4
+				paramSet[paramName].setValue( strToVec4( paramValue ) );
+				break;
+			case GS::Parameter::textureId: // texture id
+				paramSet[paramName].setValue( static_cast<uint32_t>( std::stol( paramValue ) ) );
+				break;
+			default:
 				return false;
-			paramSet.insert( { paramName, GS::Parameter( texture_id ) } );
-		}
-		else if( paramType == "vec4" )
-		{
-			paramSet.insert( { paramName, GS::Parameter( strToVec4( paramValue ) ) } );
 		}
 	}
 
 	return true;
+}
+
+void LibraryLoader::save()
+{	
+	std::string insertedValue;
+
+	for( auto& pair : GS::System::models() )
+	{
+		GS::DMModel* model = pair.second.get();
+		for( uint32_t i = 0; i < model->lodCount(); ++i )
+		{
+			GS::DMModel::LodBlock* lodBlock = model->getLodById( i );
+			for( auto& paramItem : lodBlock->params )
+			{
+				switch( paramItem.second.valueType() )
+				{
+					case GS::Parameter::ValueType::float4:
+						insertedValue = vec4ToStr( paramItem.second.vector() );
+						break;
+					case GS::Parameter::ValueType::textureId:
+						insertedValue = std::to_string( paramItem.second.textId() );
+						break;
+				}
+
+				uint32_t idValue = paramItem.second.m_id;				
+				try
+				{
+					SQLite::Statement query( *m_db, "UPDATE MaterialParameterValue SET value = :value WHERE id = :id" );
+					query.bind( ":value", insertedValue );
+					query.bind( ":id", idValue );
+					query.exec();
+				}
+				catch( std::exception e )
+				{
+					std::cout << e.what() << std::endl;
+				}
+			}
+		}
+
+		
+	}
 }

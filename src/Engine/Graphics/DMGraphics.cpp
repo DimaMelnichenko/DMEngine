@@ -58,13 +58,13 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 
 	
-	for( uint16_t i = 6; i > 0; --i )
+	for( uint16_t i = 7; i > 0; --i )
 	{
 		if( !m_library.loadModelWithLOD( i ) )
 			return false;
 	}
 
-	for( uint16_t i = 19; i > 0; --i )
+	for( uint16_t i = 20; i > 0; --i )
 	{
 		if( !m_library.loadTexture( i ) )
 			return false;
@@ -125,6 +125,16 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		m_visible["water"] = value;
 	} );
 
+	getInput().notifier().registerTrigger( DIK_3, [this]( bool value )
+	{
+		m_visible["grass calc"] = value;
+	} );
+
+	getInput().notifier().registerTrigger( DIK_4, [this]( bool value )
+	{
+		m_visible["grass render"] = value;
+	} );
+
 	getInput().notifier().registerTrigger( DIK_I, [this]( bool value )
 	{
 		m_cursorMode = value;
@@ -139,8 +149,11 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	//if( !m_water.Initialize( "Models\\water.json", "GeoClipMapWater" ) )
 	//	return false;
 	
-	if( !m_grass.Initialize( 6 ) )
+	if( !m_grass.Initialize() )
 		return false;
+	m_grass.addMesh( GS::System::models().get( "GrassBlade" )->getLodById( 1 ) );
+	m_grass.addMesh( GS::System::models().get( "GrassCross" )->getLodById( 0 ) );
+	m_grass.addMesh( GS::System::models().get( "Romashka" )->getLodById( 0 ) );
 
 	m_particleSystem.Initialize( 20, 200 );
 
@@ -168,7 +181,8 @@ void DMGraphics::ComputePass()
 	//std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
 	//m_grass.prerender();
 	//std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
-	TIME_CHECK( m_grass.prerender(), "m_grass.prerender() = %.3f ms" );
+	if( m_visible.count("grass calc") && m_visible["grass calc"] )
+		TIME_CHECK( m_grass.prerender(), "m_grass.prerender() = %.3f ms" );
 }
 
 void DMGraphics::preparePipeline()
@@ -196,13 +210,13 @@ bool DMGraphics::Render()
 
 	//render sky
 	TIME_CHECK( renderSky(), "Render Sky = %.3f ms" );
-	
+
 	auto objectCullStart = TIME_POINT();
 	for( auto& queue : m_renderQueues )
 	{
 		queue.second.clear();
 	}
-	
+
 	for( const auto& pair : System::models() )
 	{
 		static XMVECTOR lenVec;
@@ -229,17 +243,17 @@ bool DMGraphics::Render()
 	static double counter = 0.0;
 	counter += 0.001 * elapsedTime;
 
-//	System::models().get( "Knot" )->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
+	//	System::models().get( "Knot" )->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
 
 	auto objectStart = TIME_POINT();
 	// Перебираем все очереди
 	for( auto& queuePair : m_renderQueues )
-	{	
+	{
 		RenderQueue& queue = queuePair.second;
 		DMShader* shader = System::materials().get( queuePair.first )->m_shader.get();
 		shader->setPass( 0 );
 		shader->setDrawType( DMShader::by_index );
-		
+
 		for( const auto LODblock : queue )
 		{
 			//установка матрицы модели в шейдер
@@ -258,39 +272,10 @@ bool DMGraphics::Render()
 	m_GUI.addCounterInfo( "Object Rendering = %.3f ms", TIME_DIFF( objectStart, objectEnd ) / 1000.0f );
 
 	///////////// Grass Section //////////////
-	
-	auto grassStart = TIME_POINT();
-	//DMD3D::instance().TurnOnAlphaBlending();
-	DMD3D::instance().TurnCullingNoneRS();
-
-	DMShader* shader = System::materials().get( "VertLightInstance" )->m_shader.get();
-
-	static bool grassParamBinding = false;
-
-	for( uint16_t i = 0; i < m_grass.lodCount(); ++i )
+	if( m_visible.count( "grass render" ) && m_visible["grass render"] )
 	{
-		DMModel::LodBlock* block = m_grass.lodBlock( i );
-		if( !grassParamBinding )
-		{	
-			grassParamBinding = true;
-			m_GUI.colorGrass = block->params.at( "Color" ).vector();
-			m_GUI.ambientGrass = block->params.at( "AmbientColor" ).vector();
-		}
-
-		block->params.at( "Color" ).setValue( m_GUI.colorGrass );
-		block->params.at( "AmbientColor" ).setValue( m_GUI.ambientGrass );
-
-		shader->setParams( block->params );
-		shader->setPass( 0 );
-		m_grass.Render( i, 16 );
-		shader->renderInstancedIndirect( m_grass.indirectArgsBuffer( i ) );
+		TIME_CHECK ( grassRendering(), "Grass Rendering = %.3f ms" );
 	}
-
-	DMD3D::instance().TurnDefaultRS();
-	//DMD3D::instance().TurnOffAlphaBlending();
-	auto grassEnd = TIME_POINT();
-	m_GUI.addCounterInfo( "Grass Rendering = %.3f ms", TIME_DIFF( grassStart, grassEnd ) / 1000.0f );
-	
 	//////////////////////////////////////////
 
 
@@ -320,9 +305,16 @@ bool DMGraphics::Render()
 	DMD3D::instance().TurnOffAlphaBlending();
 
 	*/
+	static uint64_t guiResult = 0;
 
+	m_GUI.addCounterInfo( "GUI Rendering = %.3f ms", guiResult / 1000.0f );
+
+	auto guiStart = TIME_POINT();
 	m_GUI.Frame();
 	m_GUI.Render();
+	auto guiFinish = TIME_POINT();
+	guiResult = TIME_DIFF( guiStart, guiFinish );
+
 	
 	DMD3D::instance().EndScene();
 
@@ -366,6 +358,33 @@ bool DMGraphics::renderSky()
 	//DMD3D::instance().setRS( prevRSState.get() );
 	
 	return true;
+}
+
+void DMGraphics::beforeExit()
+{
+	m_library.save();
+}
+
+void DMGraphics::grassRendering()
+{
+	DMD3D::instance().TurnOnAlphaBlending();
+	DMD3D::instance().TurnCullingNoneRS();
+	DMShader* shader = System::materials().get( "VertLightInstance" )->m_shader.get();
+
+	XMMATRIX worldMatrix = XMMatrixIdentity();
+
+	for( uint16_t i = 0; i < m_grass.lodCount(); ++i )
+	{
+		DMModel::LodBlock* block = m_grass.lodBlock( i );
+		shader->setParams( block->params );
+		shader->setPass( 0 );
+		m_grass.Render( i, 16 );
+		
+		pipeline().shaderConstant().setPerObjectBuffer( &worldMatrix );
+		shader->renderInstancedIndirect( m_grass.indirectArgsBuffer( i ) );
+	}
+	DMD3D::instance().TurnDefaultRS();
+	DMD3D::instance().TurnOffAlphaBlending();
 }
 
 }

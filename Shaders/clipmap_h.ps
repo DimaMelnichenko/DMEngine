@@ -168,7 +168,7 @@ float4 main(PixelInputType input) : SV_TARGET
 		specSum += pow(max(dot(n, h), 0.0), kShininess);
 	}
 	
-	FinalLight.rgb = albedo.rgb * ( duffuseSum + float3( 0.07, 0.07, 0.1 ) + specSum ) * ( 1.0 - foilageDark );
+	FinalLight.rgb = albedo.rgb * ( duffuseSum + float3( 0.07, 0.07, 0.1 ) + specSum ) * ( 1.0 - foilageDark * 0.5 );
 	
 	return FinalLight;
 }

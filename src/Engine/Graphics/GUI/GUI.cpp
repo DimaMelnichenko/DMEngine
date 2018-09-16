@@ -3,6 +3,7 @@
 #include "imGUI\imgui_impl_dx11.h"
 #include "imGUI\imgui_impl_win32.h"
 #include "D3D\DMD3D.h"
+#include "System.h"
 
 
 GUI::GUI()
@@ -12,9 +13,12 @@ GUI::GUI()
 
 GUI::~GUI()
 {
-	ImGui_ImplDX11_Shutdown();
-	ImGui_ImplWin32_Shutdown();
-	ImGui::DestroyContext();
+	if( m_isInited )
+	{
+		ImGui_ImplDX11_Shutdown();
+		ImGui_ImplWin32_Shutdown();
+		ImGui::DestroyContext();
+	}
 }
 
 void GUI::Initialize( HWND hwnd )
@@ -30,6 +34,7 @@ void GUI::Initialize( HWND hwnd )
 	// Setup style
 	ImGui::StyleColorsDark();
 	//ImGui::StyleColorsClassic();
+	m_isInited = true;
 }
 
 void GUI::Frame()
@@ -72,10 +77,13 @@ void GUI::Frame()
 			ImGui::Text( pair.first.data(), pair.second );
 		}
 
+		
+
 		ImGui::End();
 	}
-
-	grassParam();
+	renderTextureLibrary();
+	//renderMaterialLibrary();
+	renderSceneObject();
 
 	// 3. Show another simple window.
 	/*if( show_another_window )
@@ -108,10 +116,83 @@ void GUI::clearAfterRender()
 	m_counterInfoList.clear();
 }
 
-void GUI::grassParam()
+void GUI::renderTextureLibrary()
 {
-	ImGui::Begin( "Grass Parameters" );
-	ImGui::ColorEdit4( "Tint Color", (float*)&colorGrass );
-	ImGui::ColorEdit4( "Tint Ambient", (float*)&ambientGrass );
+	//static bool isOpen = false;
+	static float alphaOverride = 1.0;
+	ImGui::Begin( "Texture Library", nullptr, ImVec2( 256, 300 ), alphaOverride );
+	ImGui::BeginChild( "Scrolling" );
+	for( auto& item : GS::System::textures() )
+	{
+		ImGui::Image( item.second->srv().get(), ImVec2( 256, 256 ) );
+		ImGui::Text( "id:%d name:%s", item.first, item.second->name().data() );
+	}
+	ImGui::EndChild();
+	ImGui::End();
+}
+
+void GUI::renderMaterialLibrary()
+{
+	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+	ImGui::Begin( "Material Library", nullptr, ImVec2( 256, 300 ), 1.0 );
+	if( ImGui::TreeNode( "Material Tree" ) )
+	{
+		for( auto& pair : GS::System::materials() )
+		{
+			GS::Material* material = pair.second.get();
+			ImGui::TreeNodeEx( (void*)(intptr_t)pair.first, node_flags, material->name().data() );
+		}
+		ImGui::TreePop();
+	}
+	ImGui::End();
+}
+
+void GUI::renderSceneObject()
+{
+	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+	ImGui::Begin( "Scene Objects", nullptr, ImVec2( 256, 300 ), 1.0 );
+	int counter = 0;
+	if( ImGui::TreeNode( "Scene Objects Tree" ) )
+	{
+		for( auto& pair : GS::System::models() )
+		{
+			GS::DMModel* model = pair.second.get();
+			if( ImGui::TreeNode( (void*)(intptr_t)pair.first, model->name().data() ) )
+			{
+				for( int lodIdx = 0; lodIdx < model->lodCount(); ++lodIdx )
+				{
+					GS::DMModel::LodBlock* lodBlock = model->getLodById( lodIdx );
+					GS::Material* material = GS::System::materials().get( lodBlock->material ).get();
+					if( ImGui::TreeNode( (void*)(intptr_t)(material->id() + lodIdx), material->name().data() ) )
+					{					
+						for( auto& pair : lodBlock->params )
+						{
+							counter++;
+							std::string label = std::to_string( counter ) + ":" + pair.first;
+							//ImGui::Separator();
+							switch( pair.second.valueType() )
+							{	
+								case GS::Parameter::ValueType::float4:
+								{
+									//XMFLOAT4 vec4 = pair.second.vector();
+									ImGui::ColorEdit4( label.data(), (float*)pair.second.vectorPtr() );
+									break;
+								}
+								case GS::Parameter::ValueType::textureId:
+								{
+									//int texId = pair.second.textId();
+									ImGui::DragInt( label.data(), (int*)pair.second.textIdPtr(), 1.0, 1, GS::System::textures().size() );
+									break;
+								}
+							}
+						}
+						ImGui::TreePop();
+					}
+				}
+				ImGui::TreePop();
+			}
+		}
+		ImGui::TreePop();
+	}
 	ImGui::End();
 }

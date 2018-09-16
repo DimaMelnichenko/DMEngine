@@ -36,10 +36,12 @@ float4 main(PixelInputType input) : SV_TARGET
 	float4 finalLight = (float4)0;
 	
     // Sample the pixel color from the texture using the sampler at this texture coordinate location.
-    float4 albedo = g_texAlbedo.Sample( g_SamplerLinearClamp, input.tex ) * float4( 0.70, 1.0, 0.1, 1.0 );	
+    float4 albedo = g_texAlbedo.Sample( g_SamplerLinearWrap, input.tex * float2(1.0,1.0) ) * cb_TintColor;
 	
-	finalLight = float4( albedo * input.color + cb_TintColor );
-	finalLight.rgb += cb_AmbientColor.rgb;
+	float4 light = input.color;
+	light += cb_AmbientColor;
+	finalLight = albedo * light;
+	finalLight.a = step( 0.9, albedo.a );
 	
 	return finalLight;
 }

@@ -17,15 +17,15 @@ public:
 	void Render();
 	void addCounterInfo( const std::string&, float );
 
-	XMFLOAT4 colorGrass;
-	XMFLOAT4 ambientGrass;
-
 private:
 	void clearAfterRender();
-	void grassParam();
+	void renderTextureLibrary();
+	void renderMaterialLibrary();
+	void renderSceneObject();
 
 private:
 	std::vector<std::pair<std::string,float>> m_counterInfoList;
+	bool m_isInited = false;
 	
 };
 

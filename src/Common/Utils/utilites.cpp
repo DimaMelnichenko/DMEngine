@@ -49,3 +49,8 @@ XMFLOAT4 strToVec4( const std::string& str )
 
 	return XMFLOAT4( 0.0, 0.0, 0.0, 1.0 );
 }
+
+std::string vec4ToStr( const XMFLOAT4& vec )
+{
+	return std::to_string( vec.x ) + "," + std::to_string( vec.y ) + "," + std::to_string( vec.z ) + "," + std::to_string( vec.w );
+}

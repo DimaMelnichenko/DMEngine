@@ -21,6 +21,17 @@ cbuffer ArgsBuffer : register(b3)
 	float3 padding;
 };
 
+cbuffer PopulateParametersBuffer : register(b4)
+{
+	float nearBorderPopulate;
+	float farBorderPopulate;
+	float sizeMultiplerPopulate;
+	float densityPopulate;
+	float nearFallowPopulate;
+	float farFallowPopulate;
+	float2 dumbPopulateParametersBuffer;
+};
+
 struct GrassItem
 {
     float3 position;
@@ -28,10 +39,11 @@ struct GrassItem
 	float4 rotation;
 };
 
+#define LOD_COUNT=1
+
 RWByteAddressBuffer drawArgsBuffer : register(u0);
-RWByteAddressBuffer drawArgsBuffer2 : register(u1);
-AppendStructuredBuffer<GrassItem> grassBuffer : register(u2);
-AppendStructuredBuffer<GrassItem> grassBuffer2 : register(u3);
+AppendStructuredBuffer<GrassItem> grassBuffer : register(u1);
+
 Texture2D terrainTexture : register(t0);
 Texture2D noiseTexture : register(t1);
 Texture2D foilageMap : register(t2);
@@ -62,8 +74,7 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	if( b_rect.x < dispatchThreadId.x || b_rect.y < dispatchThreadId.y )
 		return;
 	
-	
-	float step = 0.0625f * 0.5;
+	float step = densityPopulate * 0.5;
 	float2 texCoord = (float2)dispatchThreadId * step;
 	
 	float2 steppedCamPos = cb_cameraPosition.xz + ( normalize( cb_viewDirection.xz ) * b_rect * 0.5f * step );
@@ -103,17 +114,20 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	grassItem.position = grassPosition;
 	
 	//grassItem.position = float3( groupID.x, 1.0f, groupID.y * 32 ) );
-	grassItem.size = 0.0025f * sizeMultipler;//lerp( 0.001, 0.005f, clamp( noise.x, 0.0 , 1.0 ) );
+	grassItem.size = sizeMultiplerPopulate * sizeMultipler;//lerp( 0.001, 0.005f, clamp( noise.x, 0.0 , 1.0 ) );
 	
-	[branch]
-	if( distance( cb_cameraPosition, grassPosition ) < 10 )
+	float distanceToGrass = distance( cb_cameraPosition, grassPosition );
+	
+	float farFallow = clamp( ( farBorderPopulate - distanceToGrass ) / farFallowPopulate, 0.0, 1.0 );
+	float nearFallow = clamp( ( distanceToGrass - nearBorderPopulate ) / nearFallowPopulate, 0.0, 1.0 );
+	grassItem.size *= farFallow * nearFallow;
+	
+	[flatten]
+	if( distanceToGrass < nearBorderPopulate || distanceToGrass > farBorderPopulate )
 	{
-		grassBuffer.Append(grassItem);	
-		drawArgsBuffer.InterlockedAdd(4, 1);
+		return;
 	}
-	else
-	{
-		grassBuffer2.Append(grassItem);	
-		drawArgsBuffer2.InterlockedAdd(4, 1);
-	}
+	
+	grassBuffer.Append(grassItem);	
+	drawArgsBuffer.InterlockedAdd(4, 1);
 }

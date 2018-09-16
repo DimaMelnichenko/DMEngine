@@ -105,7 +105,7 @@ public:
 	bool createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer> &, const D3D11_SUBRESOURCE_DATA* = nullptr );
 	bool setConstantBuffer( SRVType type, uint16_t slot, com_unique_ptr<ID3D11Buffer>& );
 	bool createSRV( const com_unique_ptr<ID3D11Buffer>& buffer, D3D11_SHADER_RESOURCE_VIEW_DESC& desc, com_unique_ptr<ID3D11ShaderResourceView>& srv );
-	void setSRV( SRVType type, uint16_t slot, com_unique_ptr<ID3D11ShaderResourceView>& srv );
+	void setSRV( SRVType type, uint16_t slot, const com_unique_ptr<ID3D11ShaderResourceView>& srv );
 	bool createUAV( const com_unique_ptr<ID3D11Buffer>& buffer, D3D11_UNORDERED_ACCESS_VIEW_DESC& desc, com_unique_ptr<ID3D11UnorderedAccessView>& uav );
 	bool createVertexBuffer( com_unique_ptr<ID3D11Buffer> &, void* data, size_t sizeInByte );
 	bool createIndexBuffer( com_unique_ptr<ID3D11Buffer> &, void* data, size_t sizeInByte );

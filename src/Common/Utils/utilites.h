@@ -43,3 +43,4 @@ void str_split( const std::string& str, std::vector<std::string>& tokens, const 
 
 XMFLOAT3 strToVec3( const std::string& str );
 XMFLOAT4 strToVec4( const std::string& str );
+std::string vec4ToStr( const XMFLOAT4& vec );

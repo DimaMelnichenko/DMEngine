@@ -44,7 +44,7 @@ bool TextureLoader::loadFromFile( const char* filename, ScratchImage& image )
 
 	if( FAILED( hr ) )
 	{
-		true;
+		return false;
 	}
 
 	return true;
