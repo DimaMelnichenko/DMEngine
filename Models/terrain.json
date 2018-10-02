@@ -1,9 +1,9 @@
 {
-	"heightmap": 7,
-	"normalmap": 9,
+	"heightmap": 25,
+	"normalmap": 24,
 	"wireframe_size": 127.0,
 	"steps": 10,
-	"height_multipler": 300.0,
+	"height_multipler": 100.0,
 	"width_multipler" : 1.0,
 	"map_scale" : 1.0,
 	"map_offset" : [0.0, 0.0],

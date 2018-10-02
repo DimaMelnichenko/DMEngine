@@ -64,7 +64,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 			return false;
 	}
 
-	for( uint16_t i = 20; i > 0; --i )
+	for( uint16_t i = 29; i > 0; --i )
 	{
 		if( !m_library.loadTexture( i ) )
 			return false;
@@ -176,6 +176,7 @@ bool DMGraphics::Frame()
 
 void DMGraphics::ComputePass()
 {
+	DMD3D::instance().setSRV( SRVType::cs, 0, System::textures().get( 25 )->srv() );
 	TIME_CHECK( m_particleSystem.update( m_timer.GetTime() ), "Particle Update = = %.3f ms" );
 	
 	//std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
@@ -271,12 +272,18 @@ bool DMGraphics::Render()
 	auto objectEnd = TIME_POINT();
 	m_GUI.addCounterInfo( "Object Rendering = %.3f ms", TIME_DIFF( objectStart, objectEnd ) / 1000.0f );
 
-	///////////// Grass Section //////////////
+
+	DMD3D::instance().TurnOnAlphaBlending();
 	if( m_visible.count( "grass render" ) && m_visible["grass render"] )
 	{
-		TIME_CHECK ( grassRendering(), "Grass Rendering = %.3f ms" );
+		TIME_CHECK( grassRendering(), "Grass Rendering = %.3f ms" );
 	}
-	//////////////////////////////////////////
+	//if( m_visible.count( "grass render" ) && m_visible["grass render"] )
+	{
+		TIME_CHECK( particleRendering(), "Particle Rendering = %.3f ms" );
+	}
+	DMD3D::instance().TurnOffAlphaBlending();
+
 
 
 	DMFrustum frustum( m_cameraPool["main"], 1000.0f );
@@ -290,21 +297,11 @@ bool DMGraphics::Render()
 		m_water.Render( m_cameraPool["main"], frustum );
 		DMD3D::instance().TurnOffAlphaBlending();
 	}
-
-	DMD3D::instance().TurnOnAlphaBlending();
-	{
-		DMShader* shader = System::materials().get( 5 )->m_shader.get();
-		shader->setPass( 0 );
-		shader->setDrawType( DMShader::by_vertex );
-
-		m_particleSystem.Render();
-		ID3D11ShaderResourceView* texture = System::textures().get( 14 )->srv();
-		DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 1, &texture );
-		shader->render( m_particleSystem.particleCount(), 0, 0 );
-	}
-	DMD3D::instance().TurnOffAlphaBlending();
-
 	*/
+
+	
+
+	
 	static uint64_t guiResult = 0;
 
 	m_GUI.addCounterInfo( "GUI Rendering = %.3f ms", guiResult / 1000.0f );
@@ -366,25 +363,37 @@ void DMGraphics::beforeExit()
 }
 
 void DMGraphics::grassRendering()
-{
-	DMD3D::instance().TurnOnAlphaBlending();
+{	
 	DMD3D::instance().TurnCullingNoneRS();
-	DMShader* shader = System::materials().get( "VertLightInstance" )->m_shader.get();
 
 	XMMATRIX worldMatrix = XMMatrixIdentity();
 
 	for( uint16_t i = 0; i < m_grass.lodCount(); ++i )
 	{
 		DMModel::LodBlock* block = m_grass.lodBlock( i );
+		//DMShader* shader = System::materials().get( "VertLightInstance" )->m_shader.get();
+		DMShader* shader = System::materials().get( block->material )->m_shader.get();
 		shader->setParams( block->params );
 		shader->setPass( 0 );
+		shader->setDrawType( DMShader::by_index );
 		m_grass.Render( i, 16 );
 		
 		pipeline().shaderConstant().setPerObjectBuffer( &worldMatrix );
 		shader->renderInstancedIndirect( m_grass.indirectArgsBuffer( i ) );
 	}
 	DMD3D::instance().TurnDefaultRS();
-	DMD3D::instance().TurnOffAlphaBlending();
+}
+
+void DMGraphics::particleRendering()
+{
+	DMShader* shader = System::materials().get( "Particle" )->m_shader.get();
+	shader->setPass( 0 );
+	shader->setDrawType( DMShader::by_vertex );
+
+	m_particleSystem.Render();
+	DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( "oduvanchik" )->srv() );
+	shader->render( m_particleSystem.particleCount(), 0, 0 );
+	DMD3D::instance().GetDeviceContext()->GSSetShader( nullptr, nullptr, 0 );
 }
 
 }

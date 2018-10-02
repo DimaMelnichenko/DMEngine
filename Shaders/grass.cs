@@ -44,9 +44,9 @@ struct GrassItem
 RWByteAddressBuffer drawArgsBuffer : register(u0);
 AppendStructuredBuffer<GrassItem> grassBuffer : register(u1);
 
-Texture2D terrainTexture : register(t0);
+Texture2D heightTexture : register(t0);
 Texture2D noiseTexture : register(t1);
-Texture2D foilageMap : register(t2);
+Texture2D densityTexture : register(t2);
 
 [numthreads(1, 1, 1)]
 void init()
@@ -91,18 +91,18 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	float4 noise = noiseTexture.SampleLevel( g_SamplerLinearWrap, noiseTexCoord, 0.0 );// * 2.0 - 1.0;
 	grassItem.rotation.y = noise.z * 100.0;
 	
-	texCoord += noise.xy * 0.5;
+	//texCoord += noise.xy * 0.5;
 	float2 offsetPosition = texCoord;
 	texCoord = texCoord / 2048.0;
 	texCoord.y = 1.0 - texCoord.y;
 	
-	float sizeMultipler = foilageMap.SampleLevel( g_SamplerLinearClamp, texCoord, 0.0 ).r;
+	float sizeMultipler = densityTexture.SampleLevel( g_SamplerLinearBorder, texCoord, 0.0 ).r;
 	
 	[flatten]
 	if( sizeMultipler < 0.1 )
 		return;
 	
-	float4 height = terrainTexture.SampleLevel( g_SamplerLinearClamp, texCoord, 0.0 ).r * 300.0;
+	float4 height = heightTexture.SampleLevel( g_SamplerLinearBorder, texCoord, 0.0 ).r * 100.0;
 	
 	float3 grassPosition = { offsetPosition.x, height.x, offsetPosition.y };
 	

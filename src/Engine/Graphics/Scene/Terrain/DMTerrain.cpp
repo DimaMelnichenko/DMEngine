@@ -118,6 +118,7 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 	DMD3D::instance().setSRV( SRVType::ps, 0, GS::System::textures().get( m_settings.idHeightmap )->srv() );
 	DMD3D::instance().setSRV( SRVType::ps, 1, GS::System::textures().get( m_settings.idNormalmap )->srv() );
 	DMD3D::instance().setSRV( SRVType::ps, 2, GS::System::textures().get( 13 )->srv() );
+	DMD3D::instance().setSRV( SRVType::ps, 3, GS::System::textures().get( "diffuseTerrain" )->srv() );
 
 	for( size_t i = 0; i < m_textures.size(); ++i )
 	{	

@@ -33,67 +33,36 @@ float4 main(PixelInputType input) : SV_TARGET
 {
 	//return float4( cb_lightCount, 0.0, 0.0, 0.0 );
 	
-	float4 FinalLight = (float4)0;
+	float4 finalLight = (float4)0;
 	
 	float3 v = normalize( cb_cameraPosition - input.worldPosition );
 	
     // Sample the pixel color from the texture using the sampler at this texture coordinate location.
     float4 albedo = g_texAlbedo.Sample( g_SamplerAnisotropicWrap, input.tex );
 	
-	float kShininess = g_texShiness.Sample( g_SamplerLinearWrap, input.tex ).r * 100.0;
-	
+	float kShininess = g_texShiness.Sample( g_SamplerLinearWrap, input.tex ).b * 1.0;
+
+#ifndef NO_NORMAL	
+	float3 n = normalize( 2.0 * g_texNormal.Sample( g_SamplerLinearWrap, input.tex ).rgb - 1.0 );	
+	float3x3 tbn_matrix = float3x3( normalize( input.tangent ), normalize( input.binormal ), normalize( input.normal ) );	
+	n = normalize( mul( n, tbn_matrix ) );
+#else	
 	float3 n = normalize( input.normal );
-	
-	float specSum = 0;
-	float3 duffuseSum = (float3)0;
-	
-	[loop]
-    for( int i = 0; i < cb_lightCount; i++ )
-	{
-		float3 l;
-		float fade;
-		
-		LightParam light = sb_lightVector[i];
-		
-		if( light.type == 0 )
-		{
-			l = normalize( light.lightPos );
-			fade = 1.00;
-		}
-		else
-		{
-			l = ( light.lightPos - input.worldPosition );
-			float dist = length( l );
-			l = normalize( l );
-			fade = GetAttenuation( dist, 0.0, light.attenuation );
-			//fade = 1.0 / (dist * light.attenuation);
-		}	
-		
-		//if( fade < 0.00001 )
-		//	continue;
-		/*float NdotL    = max( dot( n, l ), 0.0 );
-		float NdotV    = max( dot( n, v ), 0.0 );
-		float3 h = normalize(l + v);
-		float rougness = 0.99;
-		specSum += saturate( D_BlinnPhong( rougness, max( dot( n, h ), 0.0 ) ) * ( 4.0 * NdotL * NdotV ) );
-		*/
-		
-		float3 diffuse = ( max( dot( n, l ), 0.0f ) / PI );
-		duffuseSum += ( diffuse  * light.lightColor );
-		float kEnergyConservation = ( 8.0 + kShininess ) / ( 8.0 * PI ); 
-		float3 h = normalize(l + v);
-		specSum = kEnergyConservation * pow(max(dot(n, h), 0.0), kShininess) * 2.0;
-		FinalLight.rgb += (duffuseSum * albedo.rgb + albedo.rgb * specSum ) * fade;
-	}	
+#endif	
 	
 	
 	
-	//FinalLight.rgb = pow(FinalLight.rgb, 1.0/2.0 );
+	finalLight.rgb = albedo.rgb *  D_BlinnPhongAllLights( n, v, input.worldPosition );
 	
-	FinalLight.a = 1.0f;
-	#ifdef TEST
-		FinalLight.rgb = 1.0f;
-	#endif
+	finalLight.a = albedo.a;
 	
-	return FinalLight;
+#ifdef ALPHA_TO_COVERAGE
+	finalLight.a = step( 0.9, albedo.a );
+#endif
+
+#ifdef TEST
+	finalLight.rgb = 1.0f;
+#endif
+	
+	return finalLight;
 }

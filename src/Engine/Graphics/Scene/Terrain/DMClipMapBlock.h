@@ -11,7 +11,7 @@ public:
 	~DMClipMapBlock();
 
 	void Initialize( uint16_t width, uint16_t height );
-	ID3D11Buffer* vertexBuffer();
+	ID3D11Buffer* structuredBuffer();
 	ID3D11Buffer* indexBuffer();
 	uint32_t vertexCount();
 	uint32_t indexCount();

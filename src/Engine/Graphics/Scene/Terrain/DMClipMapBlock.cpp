@@ -52,7 +52,7 @@ void DMClipMapBlock::Initialize( uint16_t width, uint16_t height )
 	DMD3D::instance().createIndexBuffer( m_indexBuffer, &indexes[0], sizeof( unsigned long ) * m_indexCount );
 }
 
-ID3D11Buffer* DMClipMapBlock::vertexBuffer()
+ID3D11Buffer* DMClipMapBlock::structuredBuffer()
 {
 	return m_vertexBuffer.get();
 }

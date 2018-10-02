@@ -18,7 +18,9 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 	std::uniform_real_distribution<> urd_x( 0, 100 );
 	std::uniform_real_distribution<> urd_y( 0, 100 );
 	std::uniform_real_distribution<> urd_z( 0, 100 );
-	std::uniform_real_distribution<> vel_y( 0.01, 0.07 );
+	std::uniform_real_distribution<> vel_x( 0.0000, 0.0006 );
+	std::uniform_real_distribution<> vel_y( 0.0001, 0.0004 );
+	std::uniform_real_distribution<> vel_z( 0.0000, 0.0006 );
 
 	m_max_count = max_count;
 
@@ -41,11 +43,12 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 		{
 			for( size_t i = 0; i < max_count; i++ )
 			{
-				data[counter].position.x = static_cast<float>( x + urd( gen ) ) * 10;
-				data[counter].position.z = static_cast<float>( y + urd( gen ) ) * 10;
-				data[counter].position.y = static_cast<float>( urd( gen ) ) * 300;
-				//data[counter].velocity = XMFLOAT4( 0.0, -vel_y(gen), 0.0, 0.0 );
-				data[counter].velocity = XMFLOAT3( 0.0, 0.0, 0.0 );
+				data[counter].position.x = static_cast<float>( x + urd( gen ) ) * 1.0;
+				data[counter].position.z = static_cast<float>( y + urd( gen ) ) * 1.0;
+				data[counter].position.y = static_cast<float>( urd( gen ) ) + 3000.0;
+
+				data[counter].velocity = XMFLOAT3( (vel_x( gen )-0.0003) * 0.5, vel_y(gen) * 0.3, (vel_z( gen ) - 0.0003) * 0.5 );
+				//data[counter].velocity = XMFLOAT3( 0.0, 0.0, 0.0 );
 				counter++;
 			}	
 		}

@@ -92,10 +92,15 @@ void PhongLight::setParams( const ParamSet& params )
 	{
 		DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( params.at( "Albedo" ).textId() )->srv() );
 	}
+	if( params.count( "Normal" ) )
+	{
+		DMD3D::instance().setSRV( SRVType::ps, 1, System::textures().get( params.at( "Normal" ).textId() )->srv() );
+	}
 	if( params.count( "Shiness" ) )
 	{
 		DMD3D::instance().setSRV( SRVType::ps, 2, System::textures().get( params.at( "Shiness" ).textId() )->srv() );
 	}
+	
 }
 
 }

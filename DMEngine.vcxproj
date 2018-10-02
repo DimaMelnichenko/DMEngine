@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\Engine\Graphics\Scene\Model\Grass\GrassLod.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Scatterer\ScattererPass.cpp" />
     <ClCompile Include="imGUI\imgui.cpp" />
     <ClCompile Include="imGUI\imgui_demo.cpp" />
     <ClCompile Include="imGUI\imgui_draw.cpp" />
@@ -28,7 +28,7 @@
     <ClCompile Include="imGUI\imgui_widgets.cpp" />
     <ClCompile Include="src\3rdParty\ScreenGrab.cpp" />
     <ClCompile Include="src\Engine\Graphics\GUI\GUI.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Scatterer\Scatterer.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMGrassShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMParticleShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.cpp" />
@@ -100,7 +100,7 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\Engine\Graphics\Scene\Model\Grass\GrassLod.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Scatterer\ScattererPass.h" />
     <ClInclude Include="imGUI\imconfig.h" />
     <ClInclude Include="imGUI\imgui.h" />
     <ClInclude Include="imGUI\imgui_impl_dx11.h" />
@@ -121,7 +121,7 @@
     <ClInclude Include="SQLiteCpp\Transaction.h" />
     <ClInclude Include="SQLiteCpp\Utils.h" />
     <ClInclude Include="SQLiteCpp\VariadicBind.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Model\Grass\DMGrass.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Scatterer\Scatterer.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMGrassShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMParticleShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Particle\DMParticleSystem.h" />

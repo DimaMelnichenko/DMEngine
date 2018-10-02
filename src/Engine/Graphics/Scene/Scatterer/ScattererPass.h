@@ -6,19 +6,19 @@
 namespace GS
 {
 
-class GrassLod
+class ScatterPass
 {
 public:
-	GrassLod();
-	GrassLod( const GrassLod& ) = delete;
-	~GrassLod();
+	ScatterPass();
+	ScatterPass( const ScatterPass& ) = delete;
+	~ScatterPass();
 
 	
 	void setInstanceParameters( DMComputeShader& shader, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
 	void populate( DMComputeShader& shader );
 	bool createBuffers();
 
-	const com_unique_ptr<ID3D11ShaderResourceView>& vertexBuffer();
+	const com_unique_ptr<ID3D11ShaderResourceView>& structuredBuffer();
 	ID3D11Buffer* args();
 
 public:
@@ -37,7 +37,7 @@ public:
 
 private:
 
-	struct GrassInstanceItem
+	struct ScatterItem
 	{
 		XMFLOAT3 position;
 		float size;

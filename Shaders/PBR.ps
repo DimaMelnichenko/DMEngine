@@ -112,12 +112,12 @@ float ComputeLOD(float AParam, float pdf, float3 l)
 
 float3x3 GetSampleTransform(float3 Normal) 
 {
-  float3x3 w;
-  float3 up = abs(Normal.y) < 0.999 ? float3(0,1,0) : float3(1,0,0);
-  w[0] = normalize ( cross( up, Normal ) );
-  w[1] = cross( Normal, w[0] );
-  w[2] = Normal;
-  return w;
+	float3x3 w;
+	float3 up = abs(Normal.y) < 0.999 ? float3(0,1,0) : float3(1,0,0);
+	w[0] = normalize ( cross( up, Normal ) );
+	w[1] = cross( Normal, w[0] );
+	w[2] = Normal;
+	return w;
 }
 
 float3 GGX_Sample(float2 E, float alpha) 
@@ -145,7 +145,7 @@ float3 CookTorrance_GGX_sample(float3 n, float3 l, float3 v, float3 h, float3 f0
     float HV = dot(h, v);
     
     //precompute roughness square
-    float roug_sqr = roughness*roughness;
+    float roug_sqr = roughness * roughness;
     
     //calc coefficients
     float G = GGX_PartialGeometry(NV, roug_sqr) * GGX_PartialGeometry(NL, roug_sqr);
@@ -203,9 +203,9 @@ float4 main(PixelInputType input) : SV_Target
 	
 	FinalLight.rgb = CookTorrance_GGX( N, L, V, instanceParams[input.instaceIndex] );
 	
-	FinalLight.rgb += CookTorrance_GGX_sampled( N, V, instanceParams[input.instaceIndex].fresnel_gloss.xyz, instanceParams[input.instaceIndex].albedo.xyz,	
+	/*FinalLight.rgb += CookTorrance_GGX_sampled( N, V, instanceParams[input.instaceIndex].fresnel_gloss.xyz, instanceParams[input.instaceIndex].albedo.xyz,	
 										instanceParams[input.instaceIndex].fresnel_gloss.w );
-	
+	*/
 	//if( FinalLight.r > 1.000003 ) 
 	//	FinalLight.gb = 0.0;
 	

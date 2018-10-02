@@ -30,7 +30,7 @@
 
 
 #include "Particle\DMParticleSystem.h"
-#include "Scene\Model\Grass\DMGrass.h"
+#include "Scene\Scatterer\Scatterer.h"
 
 namespace GS
 {
@@ -58,6 +58,7 @@ private:
 	void ComputePass();
 	void preparePipeline();
 	void grassRendering();
+	void particleRendering();
 
 private:
 	float m_screenWidth;
@@ -83,7 +84,7 @@ private:
 
 private:
 	DMParticleSystem m_particleSystem;
-	DMGrass m_grass;
+	Scatterer m_grass;
 	GUI m_GUI;
 	bool m_cursorMode = false;
 };

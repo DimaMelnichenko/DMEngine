@@ -25,6 +25,7 @@ cbuffer TerrainTexturesParam : register( b3 )
 Texture2D heigthTexture : register(t0);
 Texture2D normalTexture : register(t1);
 Texture2D foilageTexture : register(t2);
+Texture2D diffuseTexture : register(t3);
 TextureCube g_texCube : register(t5);
 Texture2D terrainTexture[10] : register(t10);
 
@@ -69,7 +70,7 @@ float inverseLerp( float a, float b, float value )
 float3 normalToTerrain( float3 vec )
 {
 	vec.yz = vec.zy;
-	vec.z *= -1.0f;
+	//vec.z *= -1.0f;
 	return normalize( vec );
 }
 
@@ -103,6 +104,8 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	float3 n = normalToTerrain( normalTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb * 2.0 - 1.0 );
 	
+	float3 diffuse = diffuseTexture.Sample( g_SamplerAnisotropicWrap, input.main_tex ).rgb;
+	
 	float foilageDark = foilageTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
 	
 	float heightPercent = inverseLerp( 0.0, mapHeightMultippler, input.worldPosition.y );
@@ -113,62 +116,26 @@ float4 main(PixelInputType input) : SV_TARGET
 	//return float4( terrainTexture[1].Sample( g_SamplerAnisotropicWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) ) );
 	
 	
-		//Material material = materials[i];
-		//float drawStrength = inverseLerp( -material.baseBlends / 2.0 - epsilon, material.baseBlends / 2.0, heightPercent - material.baseStartHeight );
-		//float2 texCoordRestored = input.worldPosition.xz * float2(  1.0, -1.0 );
-		//float3 textureColor = triplanar( input.worldPosition, material.textureScale, blendAxes, 1, 0 );
-		//albedo = albedo * (1.0 - drawStrength ) + textureColor/* + material.baseColors*/ * drawStrength;
-		float3 textureColor = triplanar( input.worldPosition, 10.0f, blendAxes, 1, 0 );
-		albedo = albedo + textureColor;
-		
+	//Material material = materials[i];
+	//float drawStrength = inverseLerp( -material.baseBlends / 2.0 - epsilon, material.baseBlends / 2.0, heightPercent - material.baseStartHeight );
+	//float2 texCoordRestored = input.worldPosition.xz * float2(  1.0, -1.0 );
+	//float3 textureColor = triplanar( input.worldPosition, material.textureScale, blendAxes, 1, 0 );
+	//albedo = albedo * (1.0 - drawStrength ) + textureColor/* + material.baseColors*/ * drawStrength;
+	float3 textureColor = triplanar( input.worldPosition, 10.0f, blendAxes, 1, 0 );
+	albedo = albedo + textureColor;
+	
+	float3 cliffTexture = terrainTexture[0].Sample( g_SamplerAnisotropicWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) );
+	float3 grassTexture = terrainTexture[1].Sample( g_SamplerAnisotropicWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) );
+	albedo = lerp( grassTexture, cliffTexture, clamp( (n.y - 0.7) * 10.0, 0.0, 1.0 ) );
+	albedo = lerp( albedo, diffuse, 0.7 );
 	
 	
 	float4 FinalLight = float4(0.0, 0.0, 0.0, 1.0);
 	
 	float3 v = normalize( cb_cameraPosition - input.worldPosition );
 	
-	float kShininess = 50.0f;
-	
-	float specSum = 0;
-	float3 duffuseSum = (float3)0;
-	
-	for( int i = 0; i < cb_lightCount; i++ )
-	{
-		float3 l;
-		float fade;
 		
-		LightParam light = sb_lightVector[i];
-		
-		if( light.type == 0 )
-		{
-			l = normalize( light.lightPos );
-			fade = 1.00;			
-		}
-		else
-		{
-			l = ( light.lightPos - input.worldPosition );
-			float dist = length( l );
-			l = normalize( l );
-			fade = GetAttenuation( dist, 0.0, light.attenuation );
-			//fade = 1.0 / (dist * light.attenuation);
-		}	
-		
-		//if( fade < 0.00001 )
-		//	continue;
-		/*float NdotL    = max( dot( n, l ), 0.0 );
-		float NdotV    = max( dot( n, v ), 0.0 );
-		float3 h = normalize(l + v);
-		float rougness = 0.99;
-		specSum += saturate( D_BlinnPhong( rougness, max( dot( n, h ), 0.0 ) ) * ( 4.0 * NdotL * NdotV ) );
-		*/
-		
-		float3 diffuse = ( max( dot( n, l ), 0.0f ) );
-		duffuseSum += ( diffuse  * light.lightColor );
-		float3 h = normalize(l + v);
-		specSum += pow(max(dot(n, h), 0.0), kShininess);
-	}
-	
-	FinalLight.rgb = albedo.rgb * ( duffuseSum + float3( 0.07, 0.07, 0.1 ) + specSum ) * ( 1.0 - foilageDark * 0.5 );
+	FinalLight.rgb = albedo.rgb * D_BlinnPhongAllLights( n, v, input.worldPosition );
 	
 	return FinalLight;
 }

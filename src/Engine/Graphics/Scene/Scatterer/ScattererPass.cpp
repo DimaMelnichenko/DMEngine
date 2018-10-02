@@ -1,19 +1,19 @@
-#include "GrassLod.h"
+#include "ScattererPass.h"
 #include "D3D\DMD3D.h"
 
 namespace GS
 {
 
-GrassLod::GrassLod()
+ScatterPass::ScatterPass()
 {
 }
 
 
-GrassLod::~GrassLod()
+ScatterPass::~ScatterPass()
 {
 }
 
-bool GrassLod::createBuffers()
+bool ScatterPass::createBuffers()
 {
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( PopulateParams ), m_populateParamsBuffer, nullptr ) )
 		return false;
@@ -25,8 +25,8 @@ bool GrassLod::createBuffers()
 	memset( &desc, 0, sizeof( D3D11_BUFFER_DESC ) );
 	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
 	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.ByteWidth = sizeof( GrassInstanceItem ) * m_maxVertexNum;
-	desc.StructureByteStride = sizeof( GrassInstanceItem );
+	desc.ByteWidth = sizeof( ScatterItem ) * m_maxVertexNum;
+	desc.StructureByteStride = sizeof( ScatterItem );
 	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
 	desc.CPUAccessFlags = 0;
 	if( !DMD3D::instance().CreateBuffer( &desc, nullptr, m_populateBuffers.m_vertexBuffer ) )
@@ -85,7 +85,7 @@ bool GrassLod::createBuffers()
 	}
 }
 
-void GrassLod::setInstanceParameters( DMComputeShader& shader, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset )
+void ScatterPass::setInstanceParameters( DMComputeShader& shader, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset )
 {
 	Device::updateResource<ArgsBuffer>( m_initArgsBuffer.get(), [&]( ArgsBuffer& v )
 	{
@@ -103,7 +103,7 @@ void GrassLod::setInstanceParameters( DMComputeShader& shader, uint32_t indexCou
 	shader.Dispatch( 1, 1, 0.0 );
 }
 
-void GrassLod::populate( DMComputeShader& shader )
+void ScatterPass::populate( DMComputeShader& shader )
 {
 	Device::updateResource<PopulateParams>( m_populateParamsBuffer.get(), m_populateParams );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
@@ -115,17 +115,17 @@ void GrassLod::populate( DMComputeShader& shader )
 	//m_computeShader.Dispatch( 50, 50, 0.0 );
 }
 
-const com_unique_ptr<ID3D11ShaderResourceView>& GrassLod::vertexBuffer()
+const com_unique_ptr<ID3D11ShaderResourceView>& ScatterPass::structuredBuffer()
 {
 	return m_populateBuffers.m_srvVertex;
 }
 
-ID3D11Buffer* GrassLod::args()
+ID3D11Buffer* ScatterPass::args()
 {
 	return m_populateBuffers.m_argsBuffer.get();
 }
 
-GrassLod::PopulateParams& GrassLod::populateParams()
+ScatterPass::PopulateParams& ScatterPass::populateParams()
 {
 	return m_populateParams;
 }

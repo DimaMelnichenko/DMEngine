@@ -3,17 +3,17 @@
 #include "DirectX.h"
 #include "Utils\utilites.h"
 #include "Shaders\DMComputeShader.h"
-#include "../DMModel.h"
-#include "GrassLod.h"
+#include "Model/DMModel.h"
+#include "ScattererPass.h"
 
 namespace GS
 {
 
-class DMGrass
+class Scatterer
 {
 public:
-	DMGrass();
-	~DMGrass();
+	Scatterer();
+	~Scatterer();
 
 	bool Initialize();
 	bool addMesh( DMModel::LodBlock* );
@@ -23,14 +23,14 @@ public:
 	
 	uint16_t lodCount();
 	DMModel::LodBlock* lodBlock( uint16_t );
-	ID3D11ShaderResourceView* vertexBuffer( uint16_t lod );
+	ID3D11ShaderResourceView* structuredBuffer( uint16_t lod );
 	ID3D11Buffer* indirectArgsBuffer( uint16_t lod );
 	
 private:
 	struct LodStruct
 	{
 		DMModel::LodBlock* lodBlock;
-		GrassLod grassLod;
+		ScatterPass scatterPass;
 	};
 	std::unordered_map<uint16_t, LodStruct> m_lods;
 	DMComputeShader m_computeShader;

@@ -181,7 +181,14 @@ void GUI::renderSceneObject()
 								case GS::Parameter::ValueType::textureId:
 								{
 									//int texId = pair.second.textId();
-									ImGui::DragInt( label.data(), (int*)pair.second.textIdPtr(), 1.0, 1, GS::System::textures().size() );
+									//ImGui::SliderInt( label.data(), (int*)pair.second.textIdPtr(), 1, GS::System::textures().size() );
+									if( ImGui::BeginCombo( label.data(), GS::System::textures().get( pair.second.textId() )->name().data() ) )
+									{
+										for( auto& texturesPair : GS::System::textures() )
+											if( ImGui::Selectable( texturesPair.second->name().data(), texturesPair.first == pair.second.textId() ) )
+												pair.second.setValue( texturesPair.first );
+										ImGui::EndCombo();
+									}
 									break;
 								}
 							}

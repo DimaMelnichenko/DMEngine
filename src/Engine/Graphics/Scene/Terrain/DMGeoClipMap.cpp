@@ -139,7 +139,7 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 
 	shader.setInstanceOffset( offsets );
 
-	ID3D11Buffer* buffer = m_NxN.vertexBuffer();
+	ID3D11Buffer* buffer = m_NxN.structuredBuffer();
 	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_NxN.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 	shader.setDrawType( GS::DMShader::by_index_instance );
@@ -288,7 +288,7 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	
 	if( offsets.size() )
 	{
-		buffer = m_MxM.vertexBuffer();
+		buffer = m_MxM.structuredBuffer();
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_MxM.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 		shader.setInstanceOffset( offsets );
@@ -297,7 +297,7 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	
 	if( Mx3_vertical_offsets.size() )
 	{	
-		buffer = m_Mx3_vert.vertexBuffer();
+		buffer = m_Mx3_vert.structuredBuffer();
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_Mx3_vert.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 		shader.setInstanceOffset( Mx3_vertical_offsets );
@@ -306,7 +306,7 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	
 	if( Mx3_horizontal_offsets.size() )
 	{
-		buffer = m_Mx3_horiz.vertexBuffer();
+		buffer = m_Mx3_horiz.structuredBuffer();
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_Mx3_horiz.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );				
 		shader.setInstanceOffset( Mx3_horizontal_offsets );
@@ -315,7 +315,7 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 	
 	if( _2M1_horizontal_offsets.size() )
 	{
-		buffer = m_2M1_horiz.vertexBuffer();
+		buffer = m_2M1_horiz.structuredBuffer();
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_2M1_horiz.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 		shader.setInstanceOffset( _2M1_horizontal_offsets );
@@ -324,7 +324,7 @@ void DMGeoClipMap::Render( DMClipMapShader& shader, const DMCamera& camera, cons
 
 	if( _2M1_vertical_offsets.size() )
 	{
-		buffer = m_2M1_vert.vertexBuffer();
+		buffer = m_2M1_vert.structuredBuffer();
 		DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &buffer, &stride, &offset );
 		DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_2M1_vert.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 		shader.setInstanceOffset( _2M1_vertical_offsets );

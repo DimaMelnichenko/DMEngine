@@ -5,6 +5,7 @@
 
 #include "common.vs"
 #include "samplers.sh"
+#include "instance.sh"
 
 //////////////
 // TYPEDEFS //
@@ -16,29 +17,8 @@ struct VertexInputType
     float3 normal : NORMAL0;
 	float3 tangent : TANGENT0;
 	float3 binormal : BINORMAL0;
-	uint instance_index: SV_InstanceID;
+	uint instanceIndex: SV_InstanceID;
 };
-
-#if defined(INST_POS) || defined(INST_SCALE) || defined(INST_TEX)
-
-struct InstanceParam
-{
-#ifdef INST_POS
-	float3 pos;
-#else	
-	float dummy;
-#endif
-#ifdef INST_SCALE
-	float scale;
-#endif
-#ifdef INST_TEX
-	float2 tex;
-#endif
-};
-
-StructuredBuffer<InstanceParam> instance_vector: register(t16);
-
-#endif
 
 struct PixelInputType
 {
@@ -65,19 +45,12 @@ PixelInputType main(VertexInputType input)
 	
 	output.tex = input.tex;
 	
-	output.instanceIndex = input.instance_index;
+	output.instanceIndex = input.instanceIndex;
 	
 	// instance defines block
-#ifdef INST_SCALE
-	output.position.xyz *= instance_vector[input.instance_index].scale;
-#endif
-	
-#ifdef INST_POS
-	output.position.xyz += instance_vector[input.instance_index].pos;
-#endif
-#ifdef INST_TEX
-	output.tex += instance_vector[input.instance_index].tex;
-#endif
+	#if defined(INSTANCE_INCLUDE)
+		output.position.xyz = calcInstance( output.position.xyz, input.instanceIndex );
+	#endif	
     
     
 

@@ -29,6 +29,50 @@ float D_BlinnPhong( float roughness, float NdotH )
 }
 
 
+float3 D_BlinnPhongAllLights( float3 n, float3 v, float3 worldPosition )
+{
+	float specSum = 0;
+	float3 duffuseSum = (float3)0;
+	
+	[loop]
+	for( int i = 0; i < cb_lightCount; i++ )
+	{
+		float3 l;
+		float fade;
+		
+		LightParam light = sb_lightVector[i];
+		
+		if( light.type == 0 )
+		{
+			l = normalize( light.lightPos );
+			fade = 1.00;
+		}
+		else
+		{
+			l = ( light.lightPos - worldPosition );
+			float dist = length( l );
+			l = normalize( l );
+			fade = GetAttenuation( dist, 0.0, light.attenuation );
+			//fade = 1.0 / (dist * light.attenuation);
+		}	
+		
+		//if( fade < 0.00001 )
+		//	continue;
+		float NdotL    = max( dot( n, l ), 0.0 );
+		float NdotV    = max( dot( n, v ), 0.0 );
+		float3 h = normalize(l + v);
+		float rougness = 0.999;
+		specSum += ( D_BlinnPhong( rougness, max( dot( n, h ), 0.0 ) ) * ( 4.0 * NdotL * NdotV ) );
+		
+		
+		float3 diffuse = ( max( dot( n, l ), 0.0f ) / PI );
+		duffuseSum += ( diffuse  * light.lightColor );
+	}
+	
+	return duffuseSum + specSum;
+}
+
+
 float specByPhong( float3 N, float3 L, float3 V, float roughness) 
 {
   float3 H = normalize(L + V);

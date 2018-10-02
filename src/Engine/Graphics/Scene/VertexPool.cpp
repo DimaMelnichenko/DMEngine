@@ -31,11 +31,11 @@ bool VertexPool::prepareMeshes()
 	for( auto& pair : System::meshes() )
 	{
 		AbstractMesh* mesh = pair.second.get();
-		char* vertexBuffer = mesh->getVertices();
+		char* structuredBuffer = mesh->getVertices();
 
 		// копируем вершины в общий буфер
 		memcpy( (char*)(&vertexes[0]) + vertexOffset * sizeof( VertexData::PTNTB ),
-				vertexBuffer, 
+				structuredBuffer, 
 				mesh->vertexCount() * sizeof( VertexData::PTNTB ) );
 
 		// копируем индексы в общий буфер
@@ -62,8 +62,8 @@ bool VertexPool::setBuffers()
 {	
 	uint32_t strides = sizeof( VertexData::PTNTB );
 	uint32_t offset = 0;
-	ID3D11Buffer* vertexBuffer = m_vertexBuffer.get();
-	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &vertexBuffer, &strides, &offset );
+	ID3D11Buffer* structuredBuffer = m_vertexBuffer.get();
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &structuredBuffer, &strides, &offset );
 	
 	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_indexBuffer.get(), DXGI_FORMAT_R32_UINT, 0 );
 
