@@ -8,13 +8,13 @@
 class DMLightDriver
 {
 public:
-	using LightList = std::vector<std::unique_ptr<DMLight>>;
+	using LightList = std::vector<DMLight>;
 public:
 	DMLightDriver( );
 	~DMLightDriver();
 	bool loadFromFile( const std::string& file );
 	bool Initialize();
-	void addLight( std::unique_ptr<DMLight>&& );
+	void addLight( DMLight&& );
 	uint32_t setBuffer( int8_t slot, SRVType type );
 	LightList& lights();
 	

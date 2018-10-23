@@ -2,6 +2,7 @@
 #include "DirectX.h"
 #include <stdint.h>
 #include <unordered_map>
+#include "Dictionaries\ParameterType.h"
 
 namespace GS
 {
@@ -9,10 +10,7 @@ namespace GS
 class Parameter
 {
 public:
-	enum ValueType
-	{
-		textureId, float4, scalarValue, none
-	};
+	
 public:
 	Parameter() : m_valueType( none )
 	{
@@ -78,7 +76,7 @@ public:
 		m_vec4 = value;
 	}
 	
-	ValueType valueType() const
+	ParameterType valueType() const
 	{
 		return m_valueType;
 	}
@@ -89,7 +87,7 @@ private:
 	uint32_t m_textId;
 	float m_scalar;
 	XMFLOAT4 m_vec4;
-	ValueType m_valueType;
+	ParameterType m_valueType;
 	
 };
 

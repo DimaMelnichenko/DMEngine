@@ -1,5 +1,5 @@
 #pragma once
-#include "DMResource.h"
+#include "Storage\DMResource.h"
 #include "VertexData.h"
 
 namespace GS

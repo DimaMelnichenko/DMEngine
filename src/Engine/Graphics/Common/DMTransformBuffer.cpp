@@ -2,7 +2,9 @@
 #include "DMTransformBuffer.h"
 
 
-DMTransformBuffer::DMTransformBuffer(  )
+DMTransformBuffer::DMTransformBuffer(  ) : 
+	m_position(0.0, 0.0, 0.0),
+	m_scale( 1.0, 1.0, 1.0 )
 {
 	m_transform_link = nullptr;
 	m_result_matrix = XMMatrixIdentity();
@@ -64,8 +66,18 @@ void DMTransformBuffer::setPosition( const XMFLOAT3& vec )
 	setPosition( vec.x, vec.y, vec.z );
 }
 
+const XMFLOAT3& DMTransformBuffer::scale() const
+{
+	return m_scale;
+}
+
 void DMTransformBuffer::setPosition( float x, float y, float z )
 {
+	m_position.x = x;
+	m_position.y = y;
+	m_position.z = z;
+
+
 	m_position_matrix = XMMatrixTranslation( x, y, z );
 
 	recalcMatrix();
@@ -76,6 +88,11 @@ void DMTransformBuffer::setPosition( float x, float y, float z )
 void DMTransformBuffer::position( XMVECTOR& pos ) const
 {
 	pos = m_position_matrix.r[3];
+}
+
+const XMFLOAT3& DMTransformBuffer::posf3() const
+{
+	return m_position;
 }
 
 XMVECTOR DMTransformBuffer::position() const
@@ -130,6 +147,7 @@ void DMTransformBuffer::recalcMatrix()
 
 void DMTransformBuffer::setScale( const XMFLOAT3& vec )
 {
+	m_scale = vec;
 	XMMATRIX mat;
 
 	m_scale_matrix = XMMatrixScaling( vec.x, vec.y, vec.z );

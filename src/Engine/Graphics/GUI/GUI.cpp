@@ -37,7 +37,8 @@ void GUI::Initialize( HWND hwnd )
 	m_isInited = true;
 }
 
-void GUI::Frame()
+
+void GUI::Begin()
 {
 	//static bool show_demo_window = true;
 	//static bool show_another_window = false;
@@ -46,6 +47,23 @@ void GUI::Frame()
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
+
+
+	Frame();
+}
+
+void GUI::End()
+{
+	// Rendering
+	ImGui::Render();
+
+	ImGui_ImplDX11_RenderDrawData( ImGui::GetDrawData() );
+	clearAfterRender();
+}
+
+void GUI::Frame()
+{
+	
 
 	// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
 	//if( show_demo_window )
@@ -84,6 +102,7 @@ void GUI::Frame()
 	renderTextureLibrary();
 	//renderMaterialLibrary();
 	renderSceneObject();
+	materialParameterKind();
 
 	// 3. Show another simple window.
 	/*if( show_another_window )
@@ -95,15 +114,6 @@ void GUI::Frame()
 		ImGui::End();
 	}
 	*/
-
-	// Rendering
-	ImGui::Render();
-}
-
-void GUI::Render()
-{
-	ImGui_ImplDX11_RenderDrawData( ImGui::GetDrawData() );
-	clearAfterRender();
 }
 
 void GUI::addCounterInfo( const std::string& text, float value )
@@ -149,6 +159,25 @@ void GUI::renderMaterialLibrary()
 
 void GUI::renderSceneObject()
 {
+	struct ModelParam
+	{
+		XMFLOAT3 pos;
+		XMFLOAT3 scale;
+
+		void posReset()
+		{
+			pos.x = 0;
+			pos.y = 0;
+			pos.z = 0;
+		}
+		void scaleReset()
+		{
+			scale.x = 1.0;
+			scale.y = 1.0;
+			scale.z = 1.0;
+		}
+	};
+	static std::unordered_map<uint32_t, ModelParam> modelsPos;
 	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 	ImGui::Begin( "Scene Objects", nullptr, ImVec2( 256, 300 ), 1.0 );
 	int counter = 0;
@@ -156,9 +185,25 @@ void GUI::renderSceneObject()
 	{
 		for( auto& pair : GS::System::models() )
 		{
-			GS::DMModel* model = pair.second.get();
+			GS::DMModel* model = pair.second.get();			
 			if( ImGui::TreeNode( (void*)(intptr_t)pair.first, model->name().data() ) )
 			{
+				modelsPos[model->id()].pos = pair.second->transformBuffer().posf3();
+				ImGui::DragFloat3( "Position:", (float*)&modelsPos[model->id()].pos, 0.01, -10000.0, 10000.0 );
+				if( ImGui::Button( "reset pos" ) )
+				{
+					modelsPos[model->id()].posReset();
+				}
+				pair.second->transformBuffer().setPosition( modelsPos[model->id()].pos );
+
+				modelsPos[model->id()].scale = pair.second->transformBuffer().scale();
+				ImGui::DragFloat3( "Scale:", (float*)&modelsPos[model->id()].scale, 0.001, 0.0, 10000.0 );
+				if( ImGui::Button( "reset scale" ) )
+				{
+					modelsPos[model->id()].scaleReset();
+				}
+				pair.second->transformBuffer().setScale( modelsPos[model->id()].scale );
+
 				for( int lodIdx = 0; lodIdx < model->lodCount(); ++lodIdx )
 				{
 					GS::DMModel::LodBlock* lodBlock = model->getLodById( lodIdx );
@@ -172,13 +217,13 @@ void GUI::renderSceneObject()
 							//ImGui::Separator();
 							switch( pair.second.valueType() )
 							{	
-								case GS::Parameter::ValueType::float4:
+								case ParameterType::float4:
 								{
 									//XMFLOAT4 vec4 = pair.second.vector();
 									ImGui::ColorEdit4( label.data(), (float*)pair.second.vectorPtr() );
 									break;
 								}
-								case GS::Parameter::ValueType::textureId:
+								case ParameterType::textureId:
 								{
 									//int texId = pair.second.textId();
 									//ImGui::SliderInt( label.data(), (int*)pair.second.textIdPtr(), 1, GS::System::textures().size() );
@@ -201,5 +246,27 @@ void GUI::renderSceneObject()
 		}
 		ImGui::TreePop();
 	}
+	ImGui::End();
+}
+
+
+void GUI::materialParameterKind()
+{
+	ImGui::Begin( "MaterialKind", nullptr, ImVec2( 256, 300 ), 1.0 );
+	ImGui::BeginChild( "MaterialKindItem" );
+	for( auto& item : GS::System::materialParameterKind().dictionary() )
+	{	
+		ImGui::Text( "id:%d \t name:%s \t\t value:%s", item.first, item.second.name.data(), convertParamTypeToString(item.second.type).data() );
+	}
+	ImGui::EndChild();
+	ImGui::End();
+}
+
+void GUI::printCamera( const DMCamera& camera )
+{
+	ImGui::Begin( "Camera", nullptr, ImVec2( 256, 300 ), 1.0 );
+
+	ImGui::Text( "Position:\nx:%f\ny:%f\nz:%f", camera.position().x, camera.position().y, camera.position().z );
+
 	ImGui::End();
 }

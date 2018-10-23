@@ -36,8 +36,10 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 		return false;
 	}
 
-	m_settings.idHeightmap = jsonParser["heightmap"];
-	m_settings.idNormalmap = jsonParser["normalmap"];
+	//m_settings.idHeightmap = jsonParser["heightmap"];
+	//m_settings.idNormalmap = jsonParser["normalmap"];
+	m_settings.idHeightmap = GS::System::textures().id( "t_heightmap" );
+	m_settings.idNormalmap = GS::System::textures().id( "t_normalmap" );
 	m_settings.heightMultipler = jsonParser["height_multipler"];
 	m_settings.widthMultipler = jsonParser["width_multipler"];
 	m_settings.wireframeSize = jsonParser["wireframe_size"];
@@ -65,23 +67,6 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 	else
 		m_clip_map.setHightOffset( 0.0 );
 
-	
-	m_materials.reserve( jsonParser.count("materials") );
-	m_textures.reserve( jsonParser.count( "materials" ) );
-	for( auto jsonMaterial : jsonParser["materials"] )
-	{
-		DMClipMapShader::Material material;
-		material.baseColors = XMFLOAT3( jsonMaterial["baseColors"][0], jsonMaterial["baseColors"][1], jsonMaterial["baseColors"][2] );
-		material.baseStartHeight = jsonMaterial["baseStartHeight"];
-		material.baseBlends = jsonMaterial["baseBlends"];
-		material.baseBlends = jsonMaterial["baseBlends"];
-		material.textureScale = jsonMaterial["textureScale"];
-		if( !libLoader.loadTexture( jsonMaterial["Texture"] ) )
-			return false;
-		m_textures.push_back( jsonMaterial["Texture"] );
-		m_materials.push_back( material );
-	}
-
 	m_isInited = true;
 
 	return true;
@@ -106,24 +91,33 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 		return;
 
 	static DMClipMapShader::PSParamBuffer ps_param;
-	ps_param.materialsCount = m_materials.size();
+	
 	
 	
 	DMClipMapShader* shader = dynamic_cast<DMClipMapShader*>( GS::System::materials().get( m_shaderName )->m_shader.get() );
-	shader->updateMaterials( m_materials );
-	shader->SetPSParameters( &ps_param );
+	//shader->updateMaterials( m_materials );
+	//shader->SetPSParameters( &ps_param );
 	shader->selectPhase( 0 );
 	
-	DMD3D::instance().setSRV( SRVType::vs, 0, GS::System::textures().get( m_settings.idHeightmap )->srv() );
-	DMD3D::instance().setSRV( SRVType::ps, 0, GS::System::textures().get( m_settings.idHeightmap )->srv() );
-	DMD3D::instance().setSRV( SRVType::ps, 1, GS::System::textures().get( m_settings.idNormalmap )->srv() );
-	DMD3D::instance().setSRV( SRVType::ps, 2, GS::System::textures().get( 13 )->srv() );
-	DMD3D::instance().setSRV( SRVType::ps, 3, GS::System::textures().get( "diffuseTerrain" )->srv() );
+	DMD3D::instance().setSRV( SRVType::vs, 0, GS::System::textures().get( "t_heightmap" )->srv() );
 
-	for( size_t i = 0; i < m_textures.size(); ++i )
-	{	
-		DMD3D::instance().setSRV( SRVType::ps, 10 + i, GS::System::textures().get( m_textures[i] )->srv() );
-	}
+	DMD3D::instance().setSRV( SRVType::ps, 0, GS::System::textures().get( "t_heightmap" )->srv() );
+	DMD3D::instance().setSRV( SRVType::ps, 1, GS::System::textures().get( "t_normalmap" )->srv() ) ;
+	DMD3D::instance().setSRV( SRVType::ps, 2, GS::System::textures().get( "t_diffuse" )->srv() );
+
+	DMD3D::instance().setSRV( SRVType::ps, 10, GS::System::textures().get( "mask_grass" )->srv() );			//Texture2D maskGrass : register( t10 );
+	DMD3D::instance().setSRV( SRVType::ps, 11, GS::System::textures().get( "t_grass" )->srv() );			//Texture2D textureGrass : register( t11 );
+	DMD3D::instance().setSRV( SRVType::ps, 12, GS::System::textures().get( "mask_rock" )->srv() );			//Texture2D maskRock : register( t12 );
+	DMD3D::instance().setSRV( SRVType::ps, 13, GS::System::textures().get( "t_rock" )->srv() );				//Texture2D textureRock : register( t13 );
+	DMD3D::instance().setSRV( SRVType::ps, 14, GS::System::textures().get( "mask_boulders" )->srv() );		//Texture2D maskBoulders : register( t14 );
+	DMD3D::instance().setSRV( SRVType::ps, 15, GS::System::textures().get( "t_boulders" )->srv() );			//Texture2D textureBoulders : register( t15 );
+	DMD3D::instance().setSRV( SRVType::ps, 16, GS::System::textures().get( "mask_snow" )->srv() );			//Texture2D maskSnow : register( t16 );
+	DMD3D::instance().setSRV( SRVType::ps, 17, GS::System::textures().get( "t_snow" )->srv() );				//Texture2D textureSnow : register( t17 );
+	DMD3D::instance().setSRV( SRVType::ps, 18, GS::System::textures().get( "t_grass_normal" )->srv() );		//Texture2D g_grassNormal : register( t18 );
+	DMD3D::instance().setSRV( SRVType::ps, 19, GS::System::textures().get( "t_rock_normal" )->srv() );		//Texture2D g_rockNormal : register( t19 );
+	DMD3D::instance().setSRV( SRVType::ps, 20, GS::System::textures().get( "t_boulders_normal" )->srv() );	//Texture2D g_bouldersNormal : register( t20 );
+	DMD3D::instance().setSRV( SRVType::ps, 21, GS::System::textures().get( "t_snow_normal" )->srv() );		//Texture2D g_snowNormal : register( t21 );
+
 
 	m_clip_map.Render( *shader, camera, frustum );
 }

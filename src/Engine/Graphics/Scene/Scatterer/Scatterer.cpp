@@ -45,8 +45,8 @@ void Scatterer::prerender()
 		m_lods[i].scatterPass.setInstanceParameters( m_initShader, mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
 	}
 	
-	DMD3D::instance().setSRV( SRVType::cs, 0, System::textures().get( 25 )->srv() );
-	DMD3D::instance().setSRV( SRVType::cs, 1, System::textures().get( 17 )->srv() );
+	DMD3D::instance().setSRV( SRVType::cs, 0, System::textures().get( "t_heightmap" )->srv() );
+	DMD3D::instance().setSRV( SRVType::cs, 1, System::textures().get( "noise2d" )->srv() );
 	
 
 	for( uint16_t i = 0; i < m_lods.size(); ++i )
@@ -55,21 +55,21 @@ void Scatterer::prerender()
 		{
 			case 0:
 				m_lods[i].scatterPass.populateParams().nearBorder = 0.0;
-				m_lods[i].scatterPass.populateParams().farBorder = 20.0;
+				m_lods[i].scatterPass.populateParams().farBorder = 10.0;
 				m_lods[i].scatterPass.populateParams().sizeMultipler = 0.003;
-				m_lods[i].scatterPass.populateParams().density = 1.0 / 8;
+				m_lods[i].scatterPass.populateParams().density = 1.0 / 16.0;
 				m_lods[i].scatterPass.populateParams().nearFallow = 0.0;
 				m_lods[i].scatterPass.populateParams().farFallow = 2.0;
-				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "VereskDensity" )->srv() );
+				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_grass" )->srv() );
 				break;
 			case 1:
-				m_lods[i].scatterPass.populateParams().nearBorder = 10.0;
-				m_lods[i].scatterPass.populateParams().farBorder = 100.0;
+				m_lods[i].scatterPass.populateParams().nearBorder = 5.0;
+				m_lods[i].scatterPass.populateParams().farBorder = 60.0;
 				m_lods[i].scatterPass.populateParams().sizeMultipler = 1.05;
-				m_lods[i].scatterPass.populateParams().density = 1.0 / 1.0;
-				m_lods[i].scatterPass.populateParams().nearFallow = 10.0;
-				m_lods[i].scatterPass.populateParams().farFallow = 10.0;
-				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "VereskDensity" )->srv() );
+				m_lods[i].scatterPass.populateParams().density = 1.0 / 2.0;
+				m_lods[i].scatterPass.populateParams().nearFallow = 2.0;
+				m_lods[i].scatterPass.populateParams().farFallow = 40.0;
+				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_grass" )->srv() );
 				break;
 			case 2:
 				m_lods[i].scatterPass.populateParams().nearBorder = 0.0;
@@ -78,7 +78,7 @@ void Scatterer::prerender()
 				m_lods[i].scatterPass.populateParams().density = 2.0;
 				m_lods[i].scatterPass.populateParams().nearFallow = 0.0;
 				m_lods[i].scatterPass.populateParams().farFallow = 5.0;
-				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "RomashkaDensity" )->srv() );
+				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_camomile" )->srv() );
 				break;
 		}
 

@@ -42,8 +42,6 @@ private:
 	std::string m_normalMapName;
 	float m_widthMultipler;
 	float m_hightOffset;
-	std::vector<DMClipMapShader::Material> m_materials;
-	std::vector<uint64_t> m_textures;
 	std::string m_shaderName;
 	bool m_isInited;
 	Settings m_settings;

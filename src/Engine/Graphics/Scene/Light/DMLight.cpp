@@ -10,6 +10,11 @@ DMLight::DMLight( LightType type ) :
 	
 }
 
+DMLight::DMLight() : DMLight( LightType::Point )
+{
+
+}
+
 DMLight::~DMLight(void)
 {
 
@@ -49,6 +54,11 @@ DMLight& DMLight::operator=( DMLight&& other )
 	std::swap( m_spot_angle, other.m_spot_angle );
 	return *this;
 }*/
+
+void DMLight::setType( LightType type )
+{
+	m_type = type;
+}
 
 void DMLight::setEnabled( bool )
 {

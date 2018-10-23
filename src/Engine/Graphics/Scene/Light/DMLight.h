@@ -9,6 +9,7 @@ public:
 	enum LightType { Dir, Point, Spot };
 
 public:
+	DMLight();
 	DMLight( LightType );
 	DMLight( const DMLight& );
 	DMLight& operator=( const DMLight& );
@@ -23,6 +24,7 @@ public:
 	bool enabled() const;
 
 	LightType type( ) const;
+	void setType( LightType type );
 
 	void setColor( float r, float g, float b );
 	void setColor( XMFLOAT3& );

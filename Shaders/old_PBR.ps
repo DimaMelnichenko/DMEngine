@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Filename: light.ps
 ////////////////////////////////////////////////////////////////////////////////
-/*
+
 #include "samplers.sh"
 #include "common.vs"
 
@@ -15,6 +15,14 @@ Texture2D g_texGIM : register(t3); // r - gloss, g - ior, b - metall
 TextureCube g_texCube : register(t5);
 
 static const float PI = 3.1415926535897932384626433832795;
+
+struct Material
+{
+	float4 albedo;
+	float4 fresnel_gloss;
+};
+
+StructuredBuffer<Material> instanceParams: register(t16);
 
 
 //////////////
@@ -52,7 +60,7 @@ float3 FresnelSchlick(float3 F0, float cosTheta)
     return F0 + (1.0 - F0) * pow(1.0 - saturate(cosTheta), 5.0);
 }
 
-float3 CookTorrance_GGX(float3 n, float3 l, float3 v, float3 albedo, float3 f0, float roughness ) 
+float3 CookTorrance_GGX(float3 n, float3 l, float3 v, Material m) 
 {
     n = normalize(n);
     v = normalize(v);
@@ -67,7 +75,7 @@ float3 CookTorrance_GGX(float3 n, float3 l, float3 v, float3 albedo, float3 f0, 
     float NV = dot(n, v);	
     if( NV <= 0.0 )
 		return 0.0;
-	, 
+	
     float NH = dot( n, h );
     float HV = dot( h, v );
     
@@ -197,11 +205,11 @@ float4 main(PixelInputType input) : SV_Target
 	
 	/*FinalLight.rgb += CookTorrance_GGX_sampled( N, V, instanceParams[input.instaceIndex].fresnel_gloss.xyz, instanceParams[input.instaceIndex].albedo.xyz,	
 										instanceParams[input.instaceIndex].fresnel_gloss.w );
-	*
+	*/
 	//if( FinalLight.r > 1.000003 ) 
 	//	FinalLight.gb = 0.0;
 	
 	return FinalLight;
 }
 
-*/
+

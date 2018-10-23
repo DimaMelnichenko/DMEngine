@@ -14,7 +14,6 @@ DMParticleShader::~DMParticleShader()
 
 bool DMParticleShader::innerInitialize()
 {
-	ID3D11Buffer* buffer;
 	createPhase( 0, 0, 0 );
 	return true;
 }

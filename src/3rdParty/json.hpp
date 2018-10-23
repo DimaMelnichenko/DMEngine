@@ -10787,8 +10787,8 @@ struct adl_serializer
     @param[in] j         JSON value to read from
     @param[in,out] val  value to write to
     */
-    template<typename BasicJsonType, typename ValueType>
-    static void from_json(BasicJsonType&& j, ValueType& val) noexcept(
+    template<typename BasicJsonType, typename ParameterType>
+    static void from_json(BasicJsonType&& j, ParameterType& val) noexcept(
         noexcept(::nlohmann::from_json(std::forward<BasicJsonType>(j), val)))
     {
         ::nlohmann::from_json(std::forward<BasicJsonType>(j), val);
@@ -10803,11 +10803,11 @@ struct adl_serializer
     @param[in,out] j  JSON value to write to
     @param[in] val     value to read from
     */
-    template<typename BasicJsonType, typename ValueType>
-    static void to_json(BasicJsonType& j, ValueType&& val) noexcept(
-        noexcept(::nlohmann::to_json(j, std::forward<ValueType>(val))))
+    template<typename BasicJsonType, typename ParameterType>
+    static void to_json(BasicJsonType& j, ParameterType&& val) noexcept(
+        noexcept(::nlohmann::to_json(j, std::forward<ParameterType>(val))))
     {
-        ::nlohmann::to_json(j, std::forward<ValueType>(val));
+        ::nlohmann::to_json(j, std::forward<ParameterType>(val));
     }
 };
 }
@@ -13301,25 +13301,25 @@ class basic_json
 
     @since version 2.1.0
     */
-    template<typename ValueTypeCV, typename ValueType = detail::uncvref_t<ValueTypeCV>,
+    template<typename ValueTypeCV, typename ParameterType = detail::uncvref_t<ValueTypeCV>,
              detail::enable_if_t <
-                 not detail::is_basic_json<ValueType>::value and
-                 detail::has_from_json<basic_json_t, ValueType>::value and
-                 not detail::has_non_default_from_json<basic_json_t, ValueType>::value,
+                 not detail::is_basic_json<ParameterType>::value and
+                 detail::has_from_json<basic_json_t, ParameterType>::value and
+                 not detail::has_non_default_from_json<basic_json_t, ParameterType>::value,
                  int> = 0>
-    ValueType get() const noexcept(noexcept(
-                                       JSONSerializer<ValueType>::from_json(std::declval<const basic_json_t&>(), std::declval<ValueType&>())))
+    ParameterType get() const noexcept(noexcept(
+                                       JSONSerializer<ParameterType>::from_json(std::declval<const basic_json_t&>(), std::declval<ParameterType&>())))
     {
         // we cannot static_assert on ValueTypeCV being non-const, because
         // there is support for get<const basic_json_t>(), which is why we
         // still need the uncvref
         static_assert(not std::is_reference<ValueTypeCV>::value,
                       "get() cannot be used with reference types, you might want to use get_ref()");
-        static_assert(std::is_default_constructible<ValueType>::value,
+        static_assert(std::is_default_constructible<ParameterType>::value,
                       "types must be DefaultConstructible when used with get()");
 
-        ValueType ret;
-        JSONSerializer<ValueType>::from_json(*this, ret);
+        ParameterType ret;
+        JSONSerializer<ParameterType>::from_json(*this, ret);
         return ret;
     }
 
@@ -13354,11 +13354,11 @@ class basic_json
 
     @since version 2.1.0
     */
-    template<typename ValueTypeCV, typename ValueType = detail::uncvref_t<ValueTypeCV>,
-             detail::enable_if_t<not std::is_same<basic_json_t, ValueType>::value and
-                                 detail::has_non_default_from_json<basic_json_t, ValueType>::value,
+    template<typename ValueTypeCV, typename ParameterType = detail::uncvref_t<ValueTypeCV>,
+             detail::enable_if_t<not std::is_same<basic_json_t, ParameterType>::value and
+                                 detail::has_non_default_from_json<basic_json_t, ParameterType>::value,
                                  int> = 0>
-    ValueType get() const noexcept(noexcept(
+    ParameterType get() const noexcept(noexcept(
                                        JSONSerializer<ValueTypeCV>::from_json(std::declval<const basic_json_t&>())))
     {
         static_assert(not std::is_reference<ValueTypeCV>::value,
@@ -13566,11 +13566,11 @@ class basic_json
 
     @since version 1.0.0
     */
-    template < typename ValueType, typename std::enable_if <
-                   not std::is_pointer<ValueType>::value and
-                   not std::is_same<ValueType, detail::json_ref<basic_json>>::value and
-                   not std::is_same<ValueType, typename string_t::value_type>::value and
-                   not detail::is_basic_json<ValueType>::value
+    template < typename ParameterType, typename std::enable_if <
+                   not std::is_pointer<ParameterType>::value and
+                   not std::is_same<ParameterType, detail::json_ref<basic_json>>::value and
+                   not std::is_same<ParameterType, typename string_t::value_type>::value and
+                   not detail::is_basic_json<ParameterType>::value
 #ifndef _MSC_VER  // fix for issue #167 operator<< ambiguity under VS2015
                    and not std::is_same<ValueType, std::initializer_list<typename string_t::value_type>>::value
 #endif
@@ -13578,10 +13578,10 @@ class basic_json
                    and not std::is_same<ValueType, typename std::string_view>::value
 #endif
                    , int >::type = 0 >
-    operator ValueType() const
+    operator ParameterType() const
     {
         // delegate the call to get<>() const
-        return get<ValueType>();
+        return get<ParameterType>();
     }
 
     /// @}
@@ -14099,9 +14099,9 @@ class basic_json
 
     @since version 1.0.0
     */
-    template<class ValueType, typename std::enable_if<
-                 std::is_convertible<basic_json_t, ValueType>::value, int>::type = 0>
-    ValueType value(const typename object_t::key_type& key, const ValueType& default_value) const
+    template<class ParameterType, typename std::enable_if<
+                 std::is_convertible<basic_json_t, ParameterType>::value, int>::type = 0>
+    ParameterType value(const typename object_t::key_type& key, const ParameterType& default_value) const
     {
         // at only works for objects
         if (JSON_LIKELY(is_object()))
@@ -14169,9 +14169,9 @@ class basic_json
 
     @since version 2.0.2
     */
-    template<class ValueType, typename std::enable_if<
-                 std::is_convertible<basic_json_t, ValueType>::value, int>::type = 0>
-    ValueType value(const json_pointer& ptr, const ValueType& default_value) const
+    template<class ParameterType, typename std::enable_if<
+                 std::is_convertible<basic_json_t, ParameterType>::value, int>::type = 0>
+    ParameterType value(const json_pointer& ptr, const ParameterType& default_value) const
     {
         // at only works for objects
         if (JSON_LIKELY(is_object()))

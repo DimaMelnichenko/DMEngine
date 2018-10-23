@@ -15,13 +15,13 @@ DMLightDriver::~DMLightDriver(void)
 
 bool DMLightDriver::Initialize()
 {	
-	m_structBuffer.CreateBuffer( sizeof( LightBuffer ), 32 );
+	m_structBuffer.createBuffer( sizeof( LightBuffer ), 32 );
 	m_lightParamBuffer.reserve( 32 );
 
 	return true;
 }
 
-void DMLightDriver::addLight( std::unique_ptr<DMLight>&& light )
+void DMLightDriver::addLight( DMLight&& light )
 {
 	m_light_list.push_back( std::move(light) );
 }
@@ -33,19 +33,22 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 
 	std::sort( m_light_list.begin(), m_light_list.end(), []( const auto& a, const auto& b )
 	{
-		return (int)a->type() < (int)b->type();
+		return (int)a.type() < (int)b.type();
 	} );
 
 	for( auto& light : m_light_list )
 	{	
-		XMMATRIX mat = light->m_transformBuffer.resultMatrix();
+		if( !light.enabled() )
+			continue;
+
+		XMMATRIX mat = light.m_transformBuffer.resultMatrix();
 		XMFLOAT4 pos;
 		XMStoreFloat4( &pos, mat.r[3] );
 		lightBuffer.lightPos = XMFLOAT3( pos.x, pos.y, pos.z );
-		lightBuffer.lightType = (int)light->type();
-		lightBuffer.lightColor = light->color();
-		lightBuffer.attenuation = light->m_attenuation;
-		lightBuffer.lightDir = light->direction();
+		lightBuffer.lightType = (int)light.type();
+		lightBuffer.lightColor = light.color();
+		lightBuffer.attenuation = light.m_attenuation;
+		lightBuffer.lightDir = light.direction();
 		m_lightParamBuffer.push_back( lightBuffer );
 	}
 
@@ -58,7 +61,7 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 		m_lightParamBuffer.push_back( lightBuffer );
 	}
 
-	m_structBuffer.UpdateData( &m_lightParamBuffer[0], m_lightParamBuffer.size() * sizeof( LightBuffer ) );
+	m_structBuffer.updateData( &m_lightParamBuffer[0], m_lightParamBuffer.size() * sizeof( LightBuffer ) );
 
 	m_structBuffer.setToSlot( slot, type );
 
@@ -85,15 +88,15 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 
 			DMLight::LightType type = DMLight::strToType( lightFile.get<std::string>( section, "Type" ) );
 
-			std::unique_ptr<DMLight> light( new DMLight( type ) );
+			DMLight light( type );
 
 			XMFLOAT3 vec = strToVec3( lightFile.get<std::string>( section, "Color" ) );
-			light->setColor( vec );
+			light.setColor( vec );
 
 			vec = strToVec3( lightFile.get<std::string>( section, "Position" ) );
-			light->m_transformBuffer.setPosition( vec );
+			light.m_transformBuffer.setPosition( vec );
 
-			light->m_attenuation = lightFile.get<float>( section, "Fade" );
+			light.m_attenuation = lightFile.get<float>( section, "Fade" );
 
 			m_light_list.push_back( std::move( light ) );
 		}

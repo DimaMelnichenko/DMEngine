@@ -3,10 +3,16 @@
 namespace GS
 {
 
-std::unique_ptr<DMTextureStorage> System::m_textureStorage = nullptr;
-std::unique_ptr<MeshStorage> System::m_meshStorage = nullptr;
-std::unique_ptr<ModelStorage> System::m_modelStorage = nullptr;
-std::unique_ptr<MaterialStorage> System::m_materialStorage = nullptr;
+namespace
+{
+	static std::unique_ptr<DMTextureStorage> m_textureStorage;
+	static std::unique_ptr<MeshStorage> m_meshStorage;
+	static std::unique_ptr<ModelStorage> m_modelStorage;
+	static std::unique_ptr<MaterialStorage> m_materialStorage;
+
+	
+	static std::unique_ptr<MaterialParameterKind> m_materialParameterKind;
+}
 
 DMTextureStorage& System::textures()
 {
@@ -17,7 +23,7 @@ DMTextureStorage& System::textures()
 
 	return *m_textureStorage;
 }
-
+ 
 MeshStorage& System::meshes()
 {
 	if( !m_meshStorage )
@@ -48,6 +54,15 @@ MaterialStorage& System::materials()
 	return *m_materialStorage;
 }
 
+MaterialParameterKind& System::materialParameterKind()
+{
+	if( !m_materialParameterKind )
+	{
+		m_materialParameterKind = std::make_unique<MaterialParameterKind>();
+	}
+
+	return *m_materialParameterKind;
+}
 
 System::System()
 {

@@ -54,23 +54,18 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	}
 
-	if( !m_library.init() )
-		return false;
-
+	System::materialParameterKind().load();
 	
-	for( uint16_t i = 7; i > 0; --i )
+	for( uint16_t i = 8; i > 0; --i )
 	{
 		if( !m_library.loadModelWithLOD( i ) )
 			return false;
 	}
 
-	for( uint16_t i = 29; i > 0; --i )
-	{
-		if( !m_library.loadTexture( i ) )
-			return false;
-	}
+	if( !m_library.loadTexture( -1 ) )
+		return false;
 
-	for( uint16_t i = 10; i > 0; --i )
+	for( uint16_t i = 11; i > 0; --i )
 	{
 		if( !m_library.loadMaterial( i ) )
 			return false;
@@ -81,7 +76,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	// Создаем основную камеру
 	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 10000.0f );
-	m_cameraPool["main"].SetPosition( 0.0, 0.0, -5.0 );
+	m_cameraPool["main"].SetPosition( 110.0, 90.0, 100.0 );
+	//m_cameraPool["main"].SetPosition( 10.0, 0.0, -10.0 );
 	//m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
 	m_timer.Initialize();
@@ -176,7 +172,7 @@ bool DMGraphics::Frame()
 
 void DMGraphics::ComputePass()
 {
-	DMD3D::instance().setSRV( SRVType::cs, 0, System::textures().get( 25 )->srv() );
+	DMD3D::instance().setSRV( SRVType::cs, 0, System::textures().get( "t_heightmap" )->srv() );
 	TIME_CHECK( m_particleSystem.update( m_timer.GetTime() ), "Particle Update = = %.3f ms" );
 	
 	//std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
@@ -307,8 +303,9 @@ bool DMGraphics::Render()
 	m_GUI.addCounterInfo( "GUI Rendering = %.3f ms", guiResult / 1000.0f );
 
 	auto guiStart = TIME_POINT();
-	m_GUI.Frame();
-	m_GUI.Render();
+	m_GUI.Begin();
+	m_GUI.printCamera( m_cameraPool["main"] );
+	m_GUI.End();
 	auto guiFinish = TIME_POINT();
 	guiResult = TIME_DIFF( guiStart, guiFinish );
 
@@ -367,6 +364,9 @@ void DMGraphics::grassRendering()
 	DMD3D::instance().TurnCullingNoneRS();
 
 	XMMATRIX worldMatrix = XMMatrixIdentity();
+
+	DMD3D::instance().setSRV( SRVType::ps, 1, System::textures().get( "t_grass_color" )->srv() );
+	
 
 	for( uint16_t i = 0; i < m_grass.lodCount(); ++i )
 	{

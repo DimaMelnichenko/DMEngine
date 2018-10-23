@@ -1,6 +1,5 @@
 #pragma once
 #include <memory>
-#include "SQLiteCpp\SQLiteCpp.h"
 #include "Materials\Parameter\Parameter.h"
 #include "Shaders\DMShader.h"
 
@@ -10,8 +9,7 @@ class LibraryLoader
 public:
 	LibraryLoader();
 	~LibraryLoader();
-	
-	bool init();
+
 	bool loadTexture( uint32_t idTexture );
 	bool loadMaterial( uint32_t idMaterial );
 	bool loadMaterial( const std::string& materialName );
@@ -23,7 +21,5 @@ public:
 
 
 	void save();
-private:
-	SQLite::Database* m_db;
 };
 

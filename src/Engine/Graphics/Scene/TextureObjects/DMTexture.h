@@ -4,7 +4,7 @@
 // INCLUDES //
 //////////////
 #include "D3D/DMD3D.h"
-#include "DMResource.h"
+#include "Storage\DMResource.h"
 #include <DirectXTex.h>
 
 namespace GS

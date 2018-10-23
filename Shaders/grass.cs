@@ -1,8 +1,9 @@
 
 #include "samplers.sh"
 #include "common.vs"
+#include "noise.sh"
 
-static const float PI = 3.14159265f;
+static const float PI = 3.1415926535897932384626433832795;
 
 cbuffer ConstantData : register(b2)
 {
@@ -85,24 +86,26 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	steppedCamPos += float2( scale2, scale2 ) - mod;
 	
 	texCoord = texCoord - b_rect * 0.5f * step + steppedCamPos;
+	texCoord.x += noise3( float3( texCoord * 9.0, 0.0 ) ) * densityPopulate * 10.0;
+	texCoord.y += noise3( float3( texCoord * 9.0, 1.0 ) ) * densityPopulate * 10.0;
 	//texCoord = texCoord + steppedCamPos;
 	
-	float2 noiseTexCoord = texCoord / 64.0;
-	float4 noise = noiseTexture.SampleLevel( g_SamplerLinearWrap, noiseTexCoord, 0.0 );// * 2.0 - 1.0;
-	grassItem.rotation.y = noise.z * 100.0;
+	//float2 noiseTexCoord = texCoord / 64.0;
+	//float noise = noise( noiseTexCoord )
+	grassItem.rotation.y = noise( texCoord * 10.0 ) * 40.0;
 	
 	//texCoord += noise.xy * 0.5;
 	float2 offsetPosition = texCoord;
 	texCoord = texCoord / 2048.0;
 	texCoord.y = 1.0 - texCoord.y;
 	
-	float sizeMultipler = densityTexture.SampleLevel( g_SamplerLinearBorder, texCoord, 0.0 ).r;
+	float sizeMultipler = densityTexture.SampleLevel( g_SamplerLinearBorder, texCoord, 0.0 ).r * 0.5;
 	
 	[flatten]
-	if( sizeMultipler < 0.1 )
+	if( sizeMultipler < 0.2 )
 		return;
 	
-	float4 height = heightTexture.SampleLevel( g_SamplerLinearBorder, texCoord, 0.0 ).r * 100.0;
+	float4 height = heightTexture.SampleLevel( g_SamplerLinearBorder, texCoord, 0.0 ).r * 200.0;
 	
 	float3 grassPosition = { offsetPosition.x, height.x, offsetPosition.y };
 	
@@ -114,7 +117,7 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	grassItem.position = grassPosition;
 	
 	//grassItem.position = float3( groupID.x, 1.0f, groupID.y * 32 ) );
-	grassItem.size = sizeMultiplerPopulate * sizeMultipler;//lerp( 0.001, 0.005f, clamp( noise.x, 0.0 , 1.0 ) );
+	grassItem.size = sizeMultiplerPopulate * sizeMultipler * lerp( 0.7, 1.5f, noise3( float3( texCoord * 5.0, 2.0 ) ) * 0.5 + 0.5 );
 	
 	float distanceToGrass = distance( cb_cameraPosition, grassPosition );
 	

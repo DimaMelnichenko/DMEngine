@@ -19,6 +19,9 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Common\DBConnector.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Common\Dictionaries\MaterialParameterKind.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Common\Dictionaries\ParameterType.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Scatterer\ScattererPass.cpp" />
     <ClCompile Include="imGUI\imgui.cpp" />
     <ClCompile Include="imGUI\imgui_demo.cpp" />
@@ -42,8 +45,8 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Light\DMLight.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Light\DMLightDriver.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Common\DMResourceStorage.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Common\DMResource.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Common\Storage\DMResourceStorage.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Common\Storage\DMResource.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Materials\Material.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\DMScene.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Model\Mesh\AbstractMesh.cpp" />
@@ -100,6 +103,9 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Common\DBConnector.h" />
+    <ClInclude Include="src\Engine\Graphics\Common\Dictionaries\MaterialParameterKind.h" />
+    <ClInclude Include="src\Engine\Graphics\Common\Dictionaries\ParameterType.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Scatterer\ScattererPass.h" />
     <ClInclude Include="imGUI\imconfig.h" />
     <ClInclude Include="imGUI\imgui.h" />
@@ -136,8 +142,8 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Light\DMLight.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Light\DMLightDriver.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\MaterialStorage.h" />
-    <ClInclude Include="src\Engine\Graphics\Common\DMResourceStorage.h" />
-    <ClInclude Include="src\Engine\Graphics\Common\DMResource.h" />
+    <ClInclude Include="src\Engine\Graphics\Common\Storage\DMResourceStorage.h" />
+    <ClInclude Include="src\Engine\Graphics\Common\Storage\DMResource.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Materials\Material.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\DMScene.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Model\Mesh\AbstractMesh.h" />

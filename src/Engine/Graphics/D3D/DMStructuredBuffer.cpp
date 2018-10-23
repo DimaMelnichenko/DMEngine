@@ -11,7 +11,7 @@ DMStructuredBuffer::~DMStructuredBuffer()
 {
 }
 
-void DMStructuredBuffer::CreateBuffer( size_t sizeOfElement, size_t countElements )
+void DMStructuredBuffer::createBuffer( size_t sizeOfElement, size_t countElements )
 {
 	m_sizeOfElement = sizeOfElement;
 	m_countElements = countElements;
@@ -50,7 +50,7 @@ void DMStructuredBuffer::CreateBuffer( size_t sizeOfElement, size_t countElement
 	m_SRV = make_com_ptr<ID3D11ShaderResourceView>( view );
 }
 
-void DMStructuredBuffer::UpdateData( void* data, size_t sizeInByte )
+void DMStructuredBuffer::updateData( void* data, size_t sizeInByte )
 {
 	D3D11_MAPPED_SUBRESOURCE mappedData;
 	std::memset( &mappedData, 0, sizeof( mappedData ) );
@@ -59,6 +59,7 @@ void DMStructuredBuffer::UpdateData( void* data, size_t sizeInByte )
 	{
 		sizeInByte = m_sizeOfElement * m_countElements;;
 	}
+
 	if( FAILED( DMD3D::instance().GetDeviceContext()->Map( m_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData ) ) )
 	{
 		//handleError( ... ); // insert error handling here
@@ -93,4 +94,14 @@ void DMStructuredBuffer::setToSlot( int8_t slot, SRVType type )
 	}
 
 	
+}
+
+uint32_t DMStructuredBuffer::sizeofElement() const
+{
+	return m_sizeOfElement;
+}
+
+uint32_t DMStructuredBuffer::numElements() const
+{
+	return m_countElements;
 }

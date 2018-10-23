@@ -104,7 +104,7 @@ float PerlinNoise2D( float2 p, uint octaves )
 	return f;
 }
 /*
-static const float PI = 3.14159265f;
+static const float PI = 3.1415926535897932384626433832795;
 
 double stripes(double x, double f) {
 	double t = .5 + .5 * sin( f * 2 * PI * x );

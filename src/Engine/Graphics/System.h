@@ -5,6 +5,8 @@
 #include "Scene\Model\ModelStorage.h"
 #include "Scene\Materials\MaterialStorage.h"
 
+#include "Common\Dictionaries\MaterialParameterKind.h"
+
 namespace GS
 {
 
@@ -18,13 +20,12 @@ public:
 	static MeshStorage& meshes();
 	static ModelStorage& models();
 	static MaterialStorage& materials();
+
+	static MaterialParameterKind& materialParameterKind();
+
 	static void destroy();
 
-private:
-	static std::unique_ptr<DMTextureStorage> m_textureStorage;
-	static std::unique_ptr<MeshStorage> m_meshStorage;
-	static std::unique_ptr<ModelStorage> m_modelStorage;
-	static std::unique_ptr<MaterialStorage> m_materialStorage;
+
 };
 
 }

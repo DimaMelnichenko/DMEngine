@@ -24,10 +24,12 @@ public:
 	void setPosition( float, float, float );
 	void position( XMVECTOR& ) const;
 	XMVECTOR position() const;
+	const XMFLOAT3& posf3() const;
 	void setRotationAxis( const XMFLOAT3&, float degree );	
 	void setRotationAxis( float x, float y, float z, float degree );
 	void setScale( const XMFLOAT3& );
 	void setScale( float );
+	const XMFLOAT3& scale() const;
 	void setLink( DMTransformBuffer* );
 	void unlink();
 
@@ -46,6 +48,8 @@ private:
 	XMMATRIX m_scale_matrix;
 
 	DMTransformBuffer* m_transform_link;
+	XMFLOAT3 m_position;
+	XMFLOAT3 m_scale;
 
 	DMAABB m_aabb;
 };

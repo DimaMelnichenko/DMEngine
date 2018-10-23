@@ -1,6 +1,7 @@
 
 #include "common.vs"
 #include "CommonLight.ps"
+#include "noise.sh"
 
 cbuffer TerrainBuffer : register( b2 )
 {
@@ -24,20 +25,21 @@ cbuffer TerrainTexturesParam : register( b3 )
 
 Texture2D heigthTexture : register(t0);
 Texture2D normalTexture : register(t1);
-Texture2D foilageTexture : register(t2);
-Texture2D diffuseTexture : register(t3);
+Texture2D diffuseTexture : register(t2);
 TextureCube g_texCube : register(t5);
-Texture2D terrainTexture[10] : register(t10);
 
-/* terrain textures struct started from t10 slot
-0 - base heightmap
-1 - base normalmap
-2 - texture blending1, each channel blended first detail texture set
-albedo[5];
-normal[5];
-gim[5];
-*/
-
+Texture2D g_maskGrass : register(t10);
+Texture2D g_textureGrass : register(t11);
+Texture2D g_maskRock : register(t12);
+Texture2D g_textureRock : register(t13);
+Texture2D g_maskBoulders : register(t14);
+Texture2D g_textureBoulders : register(t15);
+Texture2D g_maskSnow : register(t16);
+Texture2D g_textureSnow : register(t17);
+Texture2D g_grassNormal : register(t18);
+Texture2D g_rockNormal : register(t19);
+Texture2D g_bouldersNormal : register(t20);
+Texture2D g_snowNormal : register(t21);
 
 
 struct PixelInputType
@@ -45,7 +47,8 @@ struct PixelInputType
     float4 position : SV_POSITION;
 	float2 main_tex : TEXCOORD0;
 	float2 detail_tex : TEXCOORD1;
-	float3 worldPosition : TEXCOORD2;
+	float3 worldPosition : WORLDPOS0;
+	float3 viewDir : VIEWDIR0;
 };
 
 static const float epsilon = 1E-4;
@@ -70,19 +73,20 @@ float inverseLerp( float a, float b, float value )
 float3 normalToTerrain( float3 vec )
 {
 	vec.yz = vec.zy;
-	//vec.z *= -1.0f;
+	vec.z *= -1.0f;
+	vec.y *= ( 1.0 / 16.0 );
 	return normalize( vec );
 }
-
+/*
 float3 triplanar( float3 worldPos, float scale, float3 blendAxes, int textureIndexVecrtical, int textureIndexHorizontal )
 {
 	float3 scaleWorldPos = worldPos / scale;
-	float3 xProjection = terrainTexture[textureIndexVecrtical].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.zy * float2( 1.0, -1.0 ) ) * blendAxes.x;
-	float3 yProjection = terrainTexture[textureIndexHorizontal].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xz * float2( 4.0, -4.0 ) ) * blendAxes.y;
-	float3 zProjection = terrainTexture[textureIndexVecrtical].Sample( g_SamplerAnisotropicWrap, scaleWorldPos.xy * float2( 1.0, -1.0 ) ) * blendAxes.z;
+	float3 xProjection = terrainTexture[textureIndexVecrtical].Sample( g_SamplerLinearWrap, scaleWorldPos.zy * float2( 1.0, -1.0 ) ) * blendAxes.x;
+	float3 yProjection = terrainTexture[textureIndexHorizontal].Sample( g_SamplerLinearWrap, scaleWorldPos.xz * float2( 4.0, -4.0 ) ) * blendAxes.y;
+	float3 zProjection = terrainTexture[textureIndexVecrtical].Sample( g_SamplerLinearWrap, scaleWorldPos.xy * float2( 1.0, -1.0 ) ) * blendAxes.z;
 	return xProjection + yProjection + zProjection;
 }
-
+*/
 float3 blendVector( float3 normal )
 {
 	float3 blend = 0;
@@ -93,27 +97,128 @@ float3 blendVector( float3 normal )
 	return blend;
 }
 
+float grayScale( float3 tex )
+{
+	return 0.2126 * tex.r + 0.7152 * tex.g + 0.0722 * tex.b;
+}
+
+float4 smart_blend(float3 texture1, float3 texture2, float blend, float h1, float h2 )
+{
+	float a1 = 1.0 - blend;
+	float a2 = blend;
+    float depth = 0.2;
+    float ma = max( h1 + a1, h2 + a2 ) - depth;
+
+    float b1 = max( h1 + a1 - ma, 0 );
+    float b2 = max( h2 + a2 - ma, 0 );
+	
+    return ( float4( texture1.rgb, h1 ) * b1 + float4( texture2.rgb, h2 ) * b2) / (b1 + b2);
+}
+
+float4 height_blend(float3 texture1, float3 texture2, float h1, float h2 )
+{
+    float depth = 0.01;
+    float ma = max( h1, h2 ) - depth;
+
+    float b1 = max( h1 - ma, 0 );
+    float b2 = max( h2 - ma, 0 );
+	
+    return ( float4( texture1.rgb, h1 ) * b1 + float4( texture2.rgb, h2 ) * b2) / (b1 + b2);
+}
+
+float4 smart_blend(float3 texture1, float3 texture2, float blend )
+{
+	return smart_blend( texture1, texture2, blend, grayScale(texture1), grayScale(texture2) );
+}
+
+float3 smart_blend4(float4 texture1, float blend1, float4 texture2, float blend2, float4 texture3, float blend3, float4 texture4, float blend4 )
+{
+    float depth = 0.005;
+    //float ma = max(max(max( texture1.a + blend1, texture2.a + blend2 ), texture3.a + blend3 ), texture4.a + blend4 ) - depth;
+	float ma = max( texture1.a + blend1, texture2.a + blend2 );
+
+    float b1 = max( texture1.a + blend1 - ma, 0 );
+    float b2 = max( texture2.a + blend2 - ma, 0 );
+	float b3 = max( texture3.a + blend3 - ma, 0 );
+	float b4 = max( texture4.a + blend4 - ma, 0 );
+
+    return (texture1.rgb * b1 + texture2.rgb * b2) / (b1 + b2);
+}
+
+float3x3 CalcTBN(float3 vPos, float3 vNorm, float2 vTex)
+{
+    float3 dPos1 = ddx(vPos);
+    float3 dPos2 = ddy(vPos);
+    float2 dTex1 = ddx(vTex);
+    float2 dTex2 = ddy(vTex);
+ 
+    float3 v2 = cross(dPos2, vNorm);
+    float3 v1 = cross(vNorm, dPos1);
+    float3 T = v2 * dTex1.x + v1 * dTex2.x;
+    float3 B = v2 * dTex1.y + v1 * dTex2.y;
+ 
+    float invdet = 1.0/sqrt(max( dot(T,T), dot(B,B) ));
+    
+    return float3x3( T * invdet, B * invdet, vNorm );
+}
+
+float3x3 createTBNMatrix(float3 Normal) 
+{
+	/*float3x3 w;
+	float3 up = abs(Normal.y) < 0.999 ? float3(0,1,0) : float3(1,0,0);
+	w[0] = normalize ( cross( up, Normal ) );
+	w[1] = cross( Normal, w[0] );
+	w[2] = Normal;
+	return w;*/
+	
+	float3x3 w;
+	float3 binrom = float3(0,0,1);
+	w[0] = normalize( cross( binrom, Normal ) );
+	w[1] = normalize( cross( w[0], Normal ) );
+	w[2] = Normal;
+	/*
+	w[0] = float3(1.0,0.0,0.0);
+	w[1] = float3(0.0,1.0,0.0);
+	w[2] = Normal;*/
+	return w;
+}
+
+float3 distanceBaseTextureBlend( Texture2D textureObject, float2 texCoord, float farMultipler, float destBlend )
+{
+	float3 farTex  = textureObject.Sample( g_SamplerLinearWrap, texCoord * farMultipler ).rgb;
+	float3 nearTex = textureObject.Sample( g_SamplerLinearWrap, texCoord ).rgb;
+	return lerp( farTex, nearTex, destBlend );
+}
+
+float4 distanceBaseNormalBlend( Texture2D textureObject, float2 texCoord, float farMultipler, float destBlend )
+{
+	float4 farNormal = textureObject.Sample( g_SamplerLinearWrap, texCoord * farMultipler );
+	farNormal.rgb = farNormal.rgb * 2.0 - 1.0;
+	float4 nearNormal = textureObject.Sample( g_SamplerLinearWrap, texCoord );
+	nearNormal.rgb = nearNormal.rgb * 2.0 - 1.0;
+	return lerp( farNormal, nearNormal, destBlend );
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Pixel Shader
 ////////////////////////////////////////////////////////////////////////////////
 float4 main(PixelInputType input) : SV_TARGET
-{	
+{
 	float3 albedo = (float3)0;
-
-	float rawHight = heigthTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
 	
 	float3 n = normalToTerrain( normalTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb * 2.0 - 1.0 );
 	
-	float3 diffuse = diffuseTexture.Sample( g_SamplerAnisotropicWrap, input.main_tex ).rgb;
+	float3 diffuse = diffuseTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb;
 	
-	float foilageDark = foilageTexture.Sample( g_SamplerLinearClamp, input.main_tex ).r;
 	
-	float heightPercent = inverseLerp( 0.0, mapHeightMultippler, input.worldPosition.y );
-	n = normalize( n * float3( 1.0, 1.0, 1.0 ) );
-	float3 blendAxes = blendVector(n);
+	
+	float3x3 btnMatrix = CalcTBN( input.worldPosition, n * float3(1.0,1.0,1.0), input.main_tex );
+	//float3x3 btnMatrix = createTBNMatrix( n );
+	//return float4( btnMatrix[1], 1.0 );
+	//float3 blendAxes = blendVector(n);
 	//for( int i = 0; i < materialsCount; i++ )
 	
-	//return float4( terrainTexture[1].Sample( g_SamplerAnisotropicWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) ) );
+	//return float4( terrainTexture[1].Sample( g_SamplerLinearWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) ) );
 	
 	
 	//Material material = materials[i];
@@ -121,24 +226,92 @@ float4 main(PixelInputType input) : SV_TARGET
 	//float2 texCoordRestored = input.worldPosition.xz * float2(  1.0, -1.0 );
 	//float3 textureColor = triplanar( input.worldPosition, material.textureScale, blendAxes, 1, 0 );
 	//albedo = albedo * (1.0 - drawStrength ) + textureColor/* + material.baseColors*/ * drawStrength;
-	float3 textureColor = triplanar( input.worldPosition, 10.0f, blendAxes, 1, 0 );
-	albedo = albedo + textureColor;
+	//float3 textureColor = triplanar( input.worldPosition, 10.0f, blendAxes, 1, 0 );
+	//albedo = albedo + textureColor;
 	
-	float3 cliffTexture = terrainTexture[0].Sample( g_SamplerAnisotropicWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) );
-	float3 grassTexture = terrainTexture[1].Sample( g_SamplerAnisotropicWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) );
-	albedo = lerp( grassTexture, cliffTexture, clamp( (n.y - 0.7) * 10.0, 0.0, 1.0 ) );
-	albedo = lerp( albedo, diffuse, 0.7 );
+	float distanceToPixel = distance( cb_cameraPosition, input.worldPosition );
 	
+	float2 flipY = float2( 1.0, -1.0 );
+	
+	
+	
+	
+	float distanceBlend = clamp( ( 50.0 - distanceToPixel ) / 10.0, 0.0, 1.0 );
+	
+	float2 grassTexCoord = input.worldPosition.xz * flipY * 1.5;
+	float2 bouldersTexCoord = input.worldPosition.xz * flipY * ( 1.0 / 1.0 );
+	float2 rockTexCoord = input.worldPosition.xz * flipY * 0.25;
+	
+	float3 grassTex = distanceBaseTextureBlend( g_textureGrass, grassTexCoord, 1.0 / 4.0, distanceBlend );
+	float3 bouldersTex = distanceBaseTextureBlend( g_textureBoulders, bouldersTexCoord, 1.0 / 8.0, distanceBlend );
+	float3 rockTex = distanceBaseTextureBlend( g_textureRock, rockTexCoord, 1.0 / 16.0, distanceBlend );
+	float3 snowTex = g_textureSnow.Sample( g_SamplerLinearWrap, input.worldPosition.xz * flipY ).rgb;
+	
+	
+	
+	float grassMask = g_maskGrass.Sample( g_SamplerLinearWrap, input.main_tex );
+	float rockMask = g_maskRock.Sample( g_SamplerLinearWrap, input.main_tex );
+	float bouldersMask = g_maskBoulders.Sample( g_SamplerLinearWrap, input.main_tex );
+	float snowMask = g_maskSnow.Sample( g_SamplerLinearWrap, input.main_tex );
+	
+	float4 grassNormal = g_grassNormal.Sample( g_SamplerLinearWrap, grassTexCoord );
+	grassNormal.rgb = grassNormal.rgb * 2.0 - 1.0;
+	float4 bouldersNormal = distanceBaseNormalBlend( g_bouldersNormal, bouldersTexCoord, 1.0 / 8.0, distanceBlend );
+	//bouldersNormal.rgb = bouldersNormal * 2.0 - 1.0;
+	float4 rockNormal = distanceBaseNormalBlend( g_rockNormal, rockTexCoord, 1.0 / 16.0, distanceBlend );
+	//rockNormal.rgb = rockNormal.rgb * 2.0 - 1.0;
+	float4 snowNormal = g_snowNormal.Sample( g_SamplerLinearWrap, input.worldPosition.xz * flipY );
+	snowNormal.rgb = snowNormal * 2.0 - 1.0;
+	
+	
+	//float3 cliffTexture = terrainTexture[0].Sample( g_SamplerLinearWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) );	
+	float3 diffuseTex = diffuseTexture.Sample( g_SamplerLinearWrap, input.main_tex );
+	//albedo = lerp( grassTexture, cliffTexture, clamp( (n.y - 0.7) * 10.0, 0.0, 1.0 ) );
+	//albedo = lerp( albedo, diffuse, 0.7 );
+	float4 resultNormal = (float4)0;
+	//resultNormal = smart_blend4(float4( grassNormal.rgb, 0.0 ), grassMask, bouldersNormal, bouldersMask, float4( rockNormal.rgb, 0.5 ), rockMask, float4( snowNormal.rgb, 0.8 ), snowMask );
+	float blendOut = 0.0;
+	resultNormal = height_blend( resultNormal, grassNormal, 0.0, grassNormal.a * grassMask );
+	resultNormal = height_blend( resultNormal, bouldersNormal, resultNormal.a, bouldersNormal.a * bouldersMask );
+	resultNormal = height_blend( resultNormal, rockNormal, resultNormal.a, rockNormal.a * rockMask );
+	resultNormal = height_blend( resultNormal, snowNormal, resultNormal.a, snowNormal.a * snowMask );
+	n = normalize( mul( normalize(resultNormal.rgb), btnMatrix ) );
+	//return float4( n , 1.0 );
+	//n = normalize( normalToTerrain(resultNormal.rgb) );
+	
+	//albedo = smart_blend4(float4( grassTex.rgb, 0.1 ), grassMask, float4( bouldersTex,bouldersNormal.a), bouldersMask, float4( rockTex.rgb, 0.5 ), rockMask, float4( snowTex.rgb, 0.8 ), snowMask );
+	
+	float4 blendAlbedo = (float4)0;
+	/*
+	blendAlbedo = smart_blend( blendAlbedo, grassTex, grassMask, 0.0, grassNormal.a );
+	blendAlbedo = smart_blend( blendAlbedo, bouldersTex, bouldersMask, blendAlbedo.a, bouldersNormal.a );
+	blendAlbedo = smart_blend( blendAlbedo, rockTex, rockMask , blendAlbedo.a, rockNormal.a );
+	blendAlbedo = smart_blend( blendAlbedo, snowTex, snowMask, step( blendAlbedo.a, 0.95 ), snowNormal.a );
+	*/
+	blendAlbedo = height_blend( blendAlbedo, grassTex, 0.0, grassNormal.a * grassMask );
+	blendAlbedo = height_blend( blendAlbedo, bouldersTex, blendAlbedo.a, bouldersNormal.a * bouldersMask );
+	blendAlbedo = height_blend( blendAlbedo, rockTex, blendAlbedo.a, rockNormal.a * rockMask );
+	blendAlbedo = height_blend( blendAlbedo, snowTex, blendAlbedo.a, snowNormal.a * snowMask );
+	
+	//return float4( n.rgb, 1.0 );
+	
+	//albedo.rgb = float3( 0.5, 0.5, 0.5 );
+	albedo.rgb = blendAlbedo.rgb + diffuseTex.rgb * 0.2;
 	
 	float4 FinalLight = float4(0.0, 0.0, 0.0, 1.0);
 	
 	float3 v = normalize( cb_cameraPosition - input.worldPosition );
 	
-		
-	FinalLight.rgb = albedo.rgb * D_BlinnPhongAllLights( n, v, input.worldPosition );
+	float metallic = 0.0;	
+	float3 F0;
+    F0 = albedo.xyz * metallic;
+    albedo.xyz *= (1.0 - metallic);
+	
+	FinalLight.rgb = CookTorrance_GGX_all_light( n, v, F0, albedo, 0.98, input.worldPosition ) + albedo * 0.2;
 	
 	return FinalLight;
 }
+
 /*
 float4 main_b(PixelInputType input) : SV_TARGET
 {    

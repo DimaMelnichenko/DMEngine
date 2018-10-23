@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "DirectX.h"
+#include "Camera\DMCamera.h"
 
 
 
@@ -13,15 +14,20 @@ public:
 	~GUI();
 
 	void Initialize( HWND hwnd );
-	void Frame();
-	void Render();
+	void Begin();
+	void End();
 	void addCounterInfo( const std::string&, float );
+	void printCamera( const DMCamera& camera );
 
 private:
+	void Frame();
 	void clearAfterRender();
 	void renderTextureLibrary();
 	void renderMaterialLibrary();
 	void renderSceneObject();
+
+private:
+	void materialParameterKind();
 
 private:
 	std::vector<std::pair<std::string,float>> m_counterInfoList;

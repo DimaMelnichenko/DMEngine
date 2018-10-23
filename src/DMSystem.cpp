@@ -1,5 +1,6 @@
 #include "DMSystem.h"
 #include "Engine\Input\Input.h"
+#include "Common\DBConnector.h"
 
 
 DMSystem::DMSystem(  )
@@ -24,6 +25,9 @@ bool DMSystem::Initialize( )
 
 	// Initialize the windows api.
 	InitializeWindows( screenWidth, screenHeight );
+
+	if( !dbConnect().init() )
+		return false;
 
 	if( !getInput().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight ) )
 		return false;

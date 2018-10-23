@@ -1,6 +1,6 @@
 
 #include "samplers.sh"
-static const float PI = 3.14159265f;
+#include "PBR_common.hlsl"
 
 struct LightParam
 {
@@ -42,11 +42,11 @@ float3 D_BlinnPhongAllLights( float3 n, float3 v, float3 worldPosition )
 		
 		LightParam light = sb_lightVector[i];
 		
-		if( light.type == 0 )
-		{
+		//if( light.type == 0 )
+		//{
 			l = normalize( light.lightPos );
 			fade = 1.00;
-		}
+		/*}
 		else
 		{
 			l = ( light.lightPos - worldPosition );
@@ -54,7 +54,7 @@ float3 D_BlinnPhongAllLights( float3 n, float3 v, float3 worldPosition )
 			l = normalize( l );
 			fade = GetAttenuation( dist, 0.0, light.attenuation );
 			//fade = 1.0 / (dist * light.attenuation);
-		}	
+		}	*/
 		
 		//if( fade < 0.00001 )
 		//	continue;
@@ -70,6 +70,41 @@ float3 D_BlinnPhongAllLights( float3 n, float3 v, float3 worldPosition )
 	}
 	
 	return duffuseSum + specSum;
+}
+
+
+float3 CookTorrance_GGX_all_light( float3 n, float3 v, float3 F0, float3 albedo, float roughness, float3 worldPosition )
+{
+	float3 result = (float3)0;
+	
+	[loop]
+	for( int i = 0; i < cb_lightCount; i++ )
+	{
+		float3 l;
+		float fade;
+		
+		LightParam light = sb_lightVector[i];
+		
+		if( light.type == 0 )
+		{
+			l = normalize( light.lightPos );
+			fade = 1.00;
+		}
+		else
+		{
+			l = ( light.lightPos - worldPosition );
+			float dist = length( l );
+			l = normalize( l );
+			//fade = GetAttenuation( dist, 0.0, light.attenuation );
+			//fade = 1.0 / (dist * light.attenuation);
+		}
+		
+		//if( fade < 0.00001 )
+		//	continue;
+		result += CookTorrance_GGX( n, l, v, F0, roughness, albedo );
+	}
+	
+	return result;
 }
 
 
@@ -107,3 +142,12 @@ float specByPhong( float3 N, float3 L, float3 V, float roughness)
   return max( D/( 4.0 * NdotL * NdotV ), 0.0 );
 }
 
+float3 tonemapReinhard(float3 x)
+{
+    float exposure = 1.425;
+    float lum = dot(x, float3(0.2126f, 0.7152f, 0.0722f));
+    float L = exposure*lum;//(scale / averageLum) * lum;
+    //float Ld = (L * (1.0 + L / lumwhite2)) / (1.0 + L);
+    float Ld = (L * (1.0 + L)) / (1.0 + L);
+    return (x / lum) * Ld;
+}

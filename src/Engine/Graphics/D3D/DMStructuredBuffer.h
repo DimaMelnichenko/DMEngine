@@ -9,9 +9,17 @@ public:
 	DMStructuredBuffer();
 	~DMStructuredBuffer();
 	
-	void CreateBuffer( size_t sizeOfElement, size_t countElements );
-	void UpdateData( void* data, size_t sizeInByte );
+	void createBuffer( size_t sizeOfElement, size_t countElements );
+	void updateData( void* data, size_t sizeInByte );
 	void setToSlot( int8_t slot, SRVType type );
+	uint32_t sizeofElement() const;
+	uint32_t numElements() const;
+
+	template<class ResourceType>
+	void updateData( Device::CopyFunc<ResourceType> function )
+	{
+		Device::updateResource<ResourceType>( m_buffer.get(), function );
+	}
 
 private:
 	com_unique_ptr<ID3D11Buffer> m_buffer;

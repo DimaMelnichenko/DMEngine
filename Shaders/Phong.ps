@@ -46,13 +46,18 @@ float4 main(PixelInputType input) : SV_TARGET
 	float3 n = normalize( 2.0 * g_texNormal.Sample( g_SamplerLinearWrap, input.tex ).rgb - 1.0 );	
 	float3x3 tbn_matrix = float3x3( normalize( input.tangent ), normalize( input.binormal ), normalize( input.normal ) );	
 	n = normalize( mul( n, tbn_matrix ) );
-#else	
+#else
 	float3 n = normalize( input.normal );
 #endif	
 	
 	
+	float metallic = 0.1;
+	float3 F0;
+    F0 = albedo.xyz * metallic;
+    albedo.xyz *= (1.0 - metallic);
 	
-	finalLight.rgb = albedo.rgb *  D_BlinnPhongAllLights( n, v, input.worldPosition );
+	//finalLight.rgb = albedo.rgb *  D_BlinnPhongAllLights( n, v, input.worldPosition );
+	finalLight.rgb = CookTorrance_GGX_all_light( n, v, F0, albedo.rgb, 1.0, input.worldPosition );
 	
 	finalLight.a = albedo.a;
 	

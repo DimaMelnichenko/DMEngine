@@ -2,6 +2,10 @@
 /////////////
 // GLOBALS //
 /////////////
+
+#ifndef COMMON_VS
+#define COMMON_VS
+
 cbuffer FrameConstantBuffer : register( b0 )
 {
     matrix cb_viewMatrix;
@@ -20,3 +24,6 @@ cbuffer WorldBuffer : register( b1 )
 {
     matrix cb_worldMatrix; 
 };
+
+
+#endif

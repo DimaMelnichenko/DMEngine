@@ -24,6 +24,7 @@ private:
 	{
 		XMFLOAT4 tintColor;
 		XMFLOAT4 ambientColor;
+		XMFLOAT4 blendFactor;
 	};
 
 private:

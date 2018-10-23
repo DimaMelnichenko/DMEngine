@@ -1,11 +1,12 @@
 #include "LibraryLoader.h"
 #include "System.h"
 #include <iostream>
+#include "Dictionaries\ParameterType.h"
+#include "DBConnector.h"
 
 
 
 LibraryLoader::LibraryLoader()
-	: m_db(0)
 {
 }
 
@@ -14,35 +15,29 @@ LibraryLoader::~LibraryLoader()
 {
 }
 
-bool LibraryLoader::init()
-{
-	try
-	{
-		if( m_db == nullptr )
-			m_db = new SQLite::Database( "base.db3", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE );
-	}
-	catch( std::exception e )
-	{
-		std::cout << e.what();
-		return false;
-	}
-
-	
-	std::string msg( m_db->getErrorMsg() );
-	
-	return true;
-}
-
 bool LibraryLoader::loadTexture( uint32_t idTexture )
-{
+{	
 	if( GS::System::textures().exists( idTexture ) )
 		return true;
 
-	SQLite::Statement queryTexture( *m_db, "SELECT id, name, file, generate_mipmap FROM Textures where id = :id" );
-	queryTexture.bind( ":id", idTexture );
+	std::string queryText;
+	if( idTexture == -1 )
+	{
+		queryText = "SELECT id, name, file, generate_mipmap, sRGB FROM Textures";
+	}
+	else
+	{
+		queryText = "SELECT id, name, file, generate_mipmap, sRGB FROM Textures where id = :id";
+	}
+
+	SQLite::Statement queryTexture( dbConnect().db(), queryText );
+	if( idTexture != -1 )
+		queryTexture.bind( ":id", idTexture );
+
 	while( queryTexture.executeStep() )
 	{
-		if( !GS::System::textures().load( queryTexture.getColumn( 0 ), queryTexture.getColumn( 1 ), queryTexture.getColumn( 2 ), queryTexture.getColumn( 3 ).getInt() ) )
+		uint32_t id = queryTexture.getColumn( 0 );
+		if( !GS::System::textures().load( id, queryTexture.getColumn( 1 ), queryTexture.getColumn( 2 ), queryTexture.getColumn( 3 ).getInt(), queryTexture.getColumn( 4 ).getInt() ) )
 			return false;
 	}
 
@@ -54,7 +49,7 @@ bool LibraryLoader::loadMaterial( const std::string& materialName )
 	if( GS::System::materials().exists( materialName ) )
 		return true;
 
-	SQLite::Statement query( *m_db, "SELECT id, name FROM Materials where name = :name" );
+	SQLite::Statement query( dbConnect().db(), "SELECT id, name FROM Materials where name = :name" );
 	query.bind( ":name", materialName );
 	while( query.executeStep() )
 	{
@@ -69,7 +64,7 @@ bool LibraryLoader::loadMaterial( uint32_t idMaterial )
 	if( GS::System::materials().exists( idMaterial ) )
 		return true;
 
-	SQLite::Statement query( *m_db, "SELECT id, name, class file FROM Materials where id = :id" );
+	SQLite::Statement query( dbConnect().db(), "SELECT id, name, class file FROM Materials where id = :id" );
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{
@@ -95,7 +90,7 @@ bool LibraryLoader::loadMaterial( uint32_t idMaterial )
 
 bool LibraryLoader::loadMaterialParamDef( uint32_t idMaterial, GS::ParamSet& paramSet )
 {
-	SQLite::Statement query( *m_db, "SELECT material_id, name, type_id FROM MaterialParameterDefView where material_id = :id" );
+	SQLite::Statement query( dbConnect().db(), "SELECT material_id, name, type_id FROM MaterialParameterDefView where material_id = :id" );
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{
@@ -115,7 +110,7 @@ bool LibraryLoader::loadMaterialParamDef( uint32_t idMaterial, GS::ParamSet& par
 
 bool LibraryLoader::loadShader( uint32_t idMaterial, GS::DMShader* shader )
 {
-	SQLite::Statement query( *m_db, "SELECT material_id, file, type, define FROM MaterialShaderView where material_id = :id" );
+	SQLite::Statement query( dbConnect().db(), "SELECT material_id, file, type, define FROM MaterialShaderView where material_id = :id" );
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{
@@ -132,7 +127,7 @@ bool LibraryLoader::loadMesh( uint32_t idMesh )
 	if( GS::System::meshes().exists( idMesh ) )
 		return true;
 
-	SQLite::Statement query( *m_db, "SELECT id, name, file FROM Meshes where id = :id" );
+	SQLite::Statement query( dbConnect().db(), "SELECT id, name, file FROM Meshes where id = :id" );
 	query.bind( ":id", idMesh );
 	while( query.executeStep() )
 	{
@@ -148,7 +143,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	if( GS::System::models().exists( idModel ) )
 		return true;
 
-	SQLite::Statement query( *m_db, "SELECT id, name FROM Models where id = :id" );
+	SQLite::Statement query( dbConnect().db(), "SELECT id, name FROM Models where id = :id" );
 	query.bind( ":id", idModel );
 	while( query.executeStep() )
 	{	
@@ -163,7 +158,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	if( !model )
 		return false;
 	
-	SQLite::Statement queryLOD( *m_db, "SELECT id, lod, range, material_id, mesh_id, render, mat_param_id FROM ModelLOD where model_id = :id order by lod" );
+	SQLite::Statement queryLOD( dbConnect().db(), "SELECT id, lod, range, material_id, mesh_id, render, mat_param_id FROM ModelLOD where model_id = :id order by lod" );
 	queryLOD.bind( ":id", idModel );
 	while( queryLOD.executeStep() )
 	{
@@ -190,7 +185,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 
 bool LibraryLoader::loadMaterialParams( uint32_t idValue, GS::ParamSet& paramSet )
 {
-	SQLite::Statement query( *m_db, "SELECT id, name, type, value FROM MaterialParamsValueView where group_id = :group" );
+	SQLite::Statement query( dbConnect().db(), "SELECT id, name, type, value FROM MaterialParamsValueView where group_id = :group" );
 	query.bind( ":group", idValue );
 	while( query.executeStep() )
 	{
@@ -201,10 +196,10 @@ bool LibraryLoader::loadMaterialParams( uint32_t idValue, GS::ParamSet& paramSet
 
 		switch( paramSet[paramName].valueType() )
 		{
-			case GS::Parameter::float4: // vec4
+			case ParameterType::float4: // vec4
 				paramSet[paramName].setValue( strToVec4( paramValue ) );
 				break;
-			case GS::Parameter::textureId: // texture id
+			case ParameterType::textureId: // texture id
 				paramSet[paramName].setValue( static_cast<uint32_t>( std::stol( paramValue ) ) );
 				break;
 			default:
@@ -229,10 +224,10 @@ void LibraryLoader::save()
 			{
 				switch( paramItem.second.valueType() )
 				{
-					case GS::Parameter::ValueType::float4:
+					case ParameterType::float4:
 						insertedValue = vec4ToStr( paramItem.second.vector() );
 						break;
-					case GS::Parameter::ValueType::textureId:
+					case ParameterType::textureId:
 						insertedValue = std::to_string( paramItem.second.textId() );
 						break;
 				}
@@ -240,7 +235,7 @@ void LibraryLoader::save()
 				uint32_t idValue = paramItem.second.m_id;				
 				try
 				{
-					SQLite::Statement query( *m_db, "UPDATE MaterialParameterValue SET value = :value WHERE id = :id" );
+					SQLite::Statement query( dbConnect().db(), "UPDATE MaterialParameterValue SET value = :value WHERE id = :id" );
 					query.bind( ":value", insertedValue );
 					query.bind( ":id", idValue );
 					query.exec();

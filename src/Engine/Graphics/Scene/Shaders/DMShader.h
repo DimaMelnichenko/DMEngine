@@ -10,7 +10,7 @@
 #include "Camera\DMCamera.h"
 #include "D3D\DMD3D.h"
 #include "DM3DUtils.h"
-#include "DMResource.h"
+#include "Storage\DMResource.h"
 #include "Materials\Parameter\Parameter.h"
 
 namespace GS

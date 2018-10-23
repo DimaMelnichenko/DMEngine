@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DMResource.h"
+#include "Storage\DMResource.h"
 #include <unordered_map>
 #include "Shaders/DMShader.h"
 #include "Parameter\Parameter.h"

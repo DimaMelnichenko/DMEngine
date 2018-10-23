@@ -13,7 +13,7 @@ DMTextureStorage::~DMTextureStorage()
 
 }
 
-bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::string& file, bool generateMipMap )
+bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::string& file, bool generateMipMap, bool sRGB )
 {
 	if( exists( id ) || exists( name ) )
 		return true;
@@ -28,6 +28,19 @@ bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::st
 
 	
 	HRESULT hr;
+	/*if( sRGB )
+	{
+		ScratchImage convertedImage;
+		hr = Convert( baseImage.GetImages(), baseImage.GetImageCount(),
+					  baseImage.GetMetadata(),
+					  DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT,
+					  convertedImage );
+		if( SUCCEEDED( hr ) )
+		{
+			std::swap( convertedImage, baseImage );
+		}
+	}*/
+
 	if( generateMipMap )
 	{
 		ScratchImage mipmapImage;

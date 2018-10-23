@@ -103,6 +103,10 @@ void VertexLight::setParams( const ParamSet& params )
 	{
 		param.ambientColor = params.at( "AmbientColor" ).vector();
 	}
+	if( params.count( "blendFactor" ) )
+	{
+		param.blendFactor = params.at( "blendFactor" ).vector();
+	}
 
 	Device::updateResource<PSParam>( m_psCB.get(), param );
 	DMD3D::instance().setConstantBuffer( SRVType::ps, 2, m_psCB );
