@@ -1,11 +1,21 @@
 #include "DMShader.h"
 #include <assert.h>
+#include "Logger\Logger.h"
+#include <d3dcompiler.h>
+#include "ShaderUtils.h"
+
+#define RETFALSE_IF_FAILED(x) \
+{ \
+	if(FAILED(x)) \
+	{ \
+		return false; \
+	} \
+} \
 
 namespace GS
 {
 
 DMShader::DMShader() :
-	m_useStrimoutGS( false ),
 	m_phaseIdx( 0 )
 {
 	
@@ -20,10 +30,8 @@ bool DMShader::initialize( const std::string& vsFilename, const std::string& psF
 {
 	initialize();
 
-	m_useStrimoutGS = use_strimout;
-
-	addShaderPass( vs, "main", vsFilename );
-	addShaderPass( ps, "main", psFilename );
+	addShaderPassFromFile( vs, "main", vsFilename );
+	addShaderPassFromFile( ps, "main", psFilename );
 
 	return true;
 }
@@ -32,9 +40,7 @@ bool DMShader::initialize( const std::string& vsFilename, bool use_strimout )
 {
 	initialize();
 
-	m_useStrimoutGS = use_strimout;
-
-	addShaderPass( vs, "main", vsFilename );
+	addShaderPassFromFile( vs, "main", vsFilename );
 
 	return true;
 }
@@ -63,7 +69,7 @@ bool DMShader::renderInstanced( int indexCount, uint32_t vertexOffset, uint32_t 
 	return true;
 }
 
-void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::string& shaderFilename )
+void DMShader::OutputShaderErrorMessage( com_unique_ptr<ID3DBlob>& errorMessage, const std::string& shaderFilename )
 {
 	char* compileErrors;
 	unsigned long bufferSize, i;
@@ -90,12 +96,8 @@ void DMShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::st
 	// Close the file.
 	fout.close();
 
-	// Release the error message.
-	errorMessage->Release();
-	errorMessage = 0;
-
 	// Pop a message up on the screen to notify the user to check the text file for compile errors.
-	MessageBox( 0, "Error compiling shader.  Check shader-error.txt for message.", shaderFilename.data(), MB_OK );
+	LOG( "Error compiling shader. " + shaderFilename );
 
 	return;
 }
@@ -137,11 +139,39 @@ bool DMShader::setPass( int phase_idx )
 	DMShader::Phase phase = m_phases[m_phaseIdx];
 
 	// Set the vertex input layout.
-	DMD3D::instance().GetDeviceContext()->IASetInputLayout( m_layout[phase.index_vs].get() );
+	DMD3D::instance().GetDeviceContext()->IASetInputLayout( m_layout.get() );
 
 	// Set the vertex and pixel shaders that will be used to render this triangle.
 	ID3D11VertexShader* vs = m_vertexShader[phase.index_vs].get();
 	DMD3D::instance().GetDeviceContext()->VSSetShader( vs, NULL, 0 );
+
+	if( m_geometryShader.size() )
+	{
+		ID3D11GeometryShader* shader = m_geometryShader[phase.index_gs].get();
+		DMD3D::instance().GetDeviceContext()->GSSetShader( shader, NULL, 0 );
+	}
+	else
+		DMD3D::instance().GetDeviceContext()->GSSetShader( NULL, NULL, 0 );
+
+	if( m_hullShader.size() && phase.index_hs >= 0 )
+	{
+		ID3D11HullShader* shader = m_hullShader[phase.index_hs].get();
+		DMD3D::instance().GetDeviceContext()->HSSetShader( shader, NULL, 0 );
+	}
+	else
+	{
+		DMD3D::instance().GetDeviceContext()->HSSetShader( NULL, NULL, 0 );
+	}
+
+	if( m_domainShader.size() && phase.index_ds >= 0 )
+	{
+		ID3D11DomainShader* shader = m_domainShader[phase.index_ds].get();
+		DMD3D::instance().GetDeviceContext()->DSSetShader( shader, NULL, 0 );
+	}
+	else
+	{
+		DMD3D::instance().GetDeviceContext()->DSSetShader( NULL, NULL, 0 );
+	}
 
 	if( m_pixelShader.size() && phase.index_ps >= 0 )
 	{
@@ -153,15 +183,6 @@ bool DMShader::setPass( int phase_idx )
 		DMD3D::instance().GetDeviceContext()->PSSetShader( NULL, NULL, 0 );
 	}
 
-	if( m_geometryShader.size() )
-	{
-		ID3D11GeometryShader* gs = m_geometryShader[phase.index_gs].get();
-		DMD3D::instance().GetDeviceContext()->GSSetShader( gs, NULL, 0 );
-	}
-	else
-		DMD3D::instance().GetDeviceContext()->GSSetShader( NULL, NULL, 0 );
-
-
 	prepare();
 
 	return true;
@@ -172,44 +193,92 @@ bool DMShader::prepare()
 	return true;
 }
 
-bool DMShader::addShaderPass( SRVType type, 
-							  const std::string& function_name,
-							  const std::string& file_name, 
-							  const std::string& defines )
+std::string DMShader::version( SRVType type )
 {
-
-	ID3D10Blob* errorMessage;
-	ID3D10Blob* shaderBuffer;
-	HRESULT result;
-	std::string shader_version( "_5_0" );
+	std::string shaderVersion( "_5_0" );
 
 	switch( type )
 	{
 		case SRVType::vs:
-			shader_version = "vs" + shader_version;
+			shaderVersion = "vs" + shaderVersion;
 			break;
 		case SRVType::ps:
-			shader_version = "ps" + shader_version;
+			shaderVersion = "ps" + shaderVersion;
 			break;
 		case SRVType::gs:
-			shader_version = "gs" + shader_version;
+			shaderVersion = "gs" + shaderVersion;
+			break;
+		case SRVType::hs:
+			shaderVersion = "hs" + shaderVersion;
+			break;
+		case SRVType::ds:
+			shaderVersion = "ds" + shaderVersion;
 			break;
 		default:
 			break;
 	}
 
-	D3D10_SHADER_MACRO* macro = nullptr;
+	return shaderVersion;
+}
 
-	parseDefines( defines, &macro );
+void DMShader::setLayoutDesc( std::vector<D3D11_INPUT_ELEMENT_DESC>&& layoutDesc )
+{
+	m_layoutDesc = std::move( layoutDesc );
+}
 
-	result = D3DX11CompileFromFile( file_name.data(), macro, NULL, function_name.data(), 
-									shader_version.data(), D3D10_SHADER_ENABLE_STRICTNESS, 0, NULL,
-									&shaderBuffer, &errorMessage, NULL );
+bool DMShader::addShaderPassFromMem( SRVType type, const std::string& funcName, const std::string& shaderCode, const std::string& defines )
+{	
+	std::vector<D3D_SHADER_MACRO> macros;
+	parseDefines( defines, macros );
 
-	if( macro )
+	ID3DBlob* buffer = nullptr;
+	ID3DBlob* error = nullptr;
+	HRESULT result = D3DCompile( shaderCode.data(), sizeof( std::string::value_type ) * shaderCode.size(), nullptr, 
+								 macros.empty() ? nullptr : &macros[0], 
+								 D3D_COMPILE_STANDARD_FILE_INCLUDE, funcName.data(),
+								 version( type ).data(), D3D10_SHADER_ENABLE_STRICTNESS, 0, &buffer, &error );
+
+	com_unique_ptr<ID3DBlob> errorMessage( error );
+	com_unique_ptr<ID3DBlob> shaderBuffer( buffer );
+
+	if( FAILED( result ) )
 	{
-		delete[] macro;
+		// If the shader failed to compile it should have writen something to the error message.
+		if( errorMessage )
+		{
+			OutputShaderErrorMessage( errorMessage, "shaderCode" );
+		}
+		// If there was nothing in the error message then it simply could not find the shader file itself.
+		else
+		{
+			LOG( std::string("Missing Shader File: ") + "shaderCode" );
+		}
+
+		return false;
 	}
+
+	return createShaderPass( type, shaderBuffer );
+}
+
+bool DMShader::addShaderPassFromFile( SRVType type,
+									  const std::string& function_name,
+									  const std::string& file_name,
+									  const std::string& defines )
+{
+	std::vector<D3D_SHADER_MACRO> macros;
+
+	parseDefines( defines, macros );
+
+	std::wstring fileName( file_name.begin(), file_name.end() );
+
+	ID3DBlob* buffer = nullptr;
+	ID3DBlob* error = nullptr;
+	HRESULT result = D3DCompileFromFile( fileName.data(), 
+										 macros.empty() ? nullptr : &macros[0], 
+										 D3D_COMPILE_STANDARD_FILE_INCLUDE, function_name.data(),
+										 version( type ).data(), D3D10_SHADER_ENABLE_STRICTNESS, 0, &buffer, &error );
+	com_unique_ptr<ID3DBlob> errorMessage( error );
+	com_unique_ptr<ID3DBlob> shaderBuffer( buffer );
 
 	if( FAILED( result ) )
 	{
@@ -221,123 +290,107 @@ bool DMShader::addShaderPass( SRVType type,
 		// If there was nothing in the error message then it simply could not find the shader file itself.
 		else
 		{
-			MessageBox( 0, file_name.data(), "Missing Shader File", MB_OK );
+			LOG( "Missing Shader File: " + file_name );
 		}
 
 		return false;
 	}
 
-	std::vector<D3D11_INPUT_ELEMENT_DESC> vertex_layout;
+	return createShaderPass( type, shaderBuffer );
+}
+
+bool DMShader::createShaderPass( SRVType type, com_unique_ptr<ID3DBlob>& shaderBuffer )
+{
+	HRESULT result = S_OK;
 
 	switch( type )
 	{
 		case SRVType::vs:
-			ID3D11VertexShader* vertex_shader;
-			result = DMD3D::instance().GetDevice()->CreateVertexShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &vertex_shader );
-			if( FAILED( result ) )
+		{
+			com_unique_ptr<ID3D11VertexShader> vertexShader;
+
+			RETFALSE_IF_FAILED( createShader( shaderBuffer, vertexShader ) );
+
+			m_vertexShader.push_back( std::move( vertexShader ) );
+
+			result = S_OK;
+			if( m_layoutDesc.size() )
 			{
-				return false;
+				RETFALSE_IF_FAILED( createInputLayout( m_layoutDesc, shaderBuffer, m_layout ) );
 			}
-			m_vertexShader.push_back( make_com_ptr<ID3D11VertexShader>( vertex_shader ) );
-
-			vertex_layout = initLayouts();
-
-			ID3D11InputLayout* layout;
-			// Create the vertex input layout.
-			if( vertex_layout.size() )
-				result = DMD3D::instance().GetDevice()->CreateInputLayout( &vertex_layout[0], vertex_layout.size(), shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), &layout );
-			else
-			{
-				layout = nullptr;
-				result = S_OK;
-			}
-
-			if( FAILED( result ) )
-			{
-				return false;
-			}
-
-			m_layout.push_back( make_com_ptr<ID3D11InputLayout>( layout ) );
-
+			
 			break;
+		}
 		case SRVType::ps:
-			// Create the pixel shader from the buffer.
-			ID3D11PixelShader* pixel_shader;
-			result = DMD3D::instance().GetDevice()->CreatePixelShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &pixel_shader );
-			if( FAILED( result ) )
-			{
-				return false;
-			}
-			m_pixelShader.push_back( make_com_ptr<ID3D11PixelShader>( pixel_shader ) );
+		{
+			com_unique_ptr<ID3D11PixelShader> pixelShader;
+			RETFALSE_IF_FAILED( createShader( shaderBuffer, pixelShader ) );
+			m_pixelShader.push_back( std::move( pixelShader ) );
 			break;
+		}
 		case SRVType::gs:
-			ID3D11GeometryShader* geometry_shader;
-			if( m_useStrimoutGS )
-			{
-				D3D11_SO_DECLARATION_ENTRY decl;
-				StrimOutputDeclaration( &decl );
-				UINT strides = sizeof( XMFLOAT4 );
-				result = DMD3D::instance().GetDevice()->CreateGeometryShaderWithStreamOutput( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), &decl, 1,
-																								NULL, 0, 0, 0, &geometry_shader );
-			}
-			else
-			{
-				result = DMD3D::instance().GetDevice()->CreateGeometryShader( shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), NULL, &geometry_shader );
-			}
-			if( FAILED( result ) )
-			{
-				return false;
-			}
-			m_geometryShader.push_back( make_com_ptr<ID3D11GeometryShader>( geometry_shader ) );
+		{
+			com_unique_ptr<ID3D11GeometryShader> geometryShader;
+			RETFALSE_IF_FAILED( createShader( shaderBuffer, geometryShader ) );
+			m_geometryShader.push_back( std::move( geometryShader ) );
 			break;
+		}
+		case SRVType::hs:
+		{
+			com_unique_ptr<ID3D11HullShader> hullShader;
+			RETFALSE_IF_FAILED( createShader( shaderBuffer, hullShader ) );
+			m_hullShader.push_back( std::move( hullShader ) );
+			break;
+		}
+		case SRVType::ds:
+		{
+			com_unique_ptr<ID3D11DomainShader> domainShader;
+			RETFALSE_IF_FAILED( createShader( shaderBuffer, domainShader ) );
+			m_domainShader.push_back( std::move( domainShader ) );
+			break;
+		}
 		default:
 			break;
 	}
 
-	shaderBuffer->Release();
-	shaderBuffer = 0;
-
 	return true;
 }
 
-void DMShader::StrimOutputDeclaration( D3D11_SO_DECLARATION_ENTRY* decl )
-{
-	decl = nullptr;
-	assert( "DMShader::StrimOutputDeclaration - use default, need to reimplement!" );
-}
-
-void DMShader::setStreamout( bool use_strimout_gs )
-{
-	m_useStrimoutGS = use_strimout_gs;
-}
-
-void DMShader::createPhase( int index_vs, int index_gs, int index_ps )
+bool DMShader::createPhase( int index_vs, int index_ps, int index_gs, int index_hs, int index_ds )
 {
 	int v_size = m_vertexShader.size();
 	int g_size = m_geometryShader.size();
 	int p_size = m_pixelShader.size();
+	int h_size = m_hullShader.size();
+	int d_size = m_domainShader.size();
 
 	if( !( index_vs < v_size &&
 			index_gs < g_size &&
-			index_ps < p_size ) )
+			index_ps < p_size &&
+			index_hs < h_size &&
+			index_ds < d_size ) )
 	{
-		return;
+		return false;
 	}
 
 	Phase new_phase;
 	new_phase.index_vs = index_vs;
 	new_phase.index_gs = index_gs;
 	new_phase.index_ps = index_ps;
+	new_phase.index_hs = index_hs;
+	new_phase.index_ds = index_ds;
 
 	for( auto phase : m_phases )
 	{
 		if( phase == new_phase )
 		{
-			return;
+			return true;
 		}
 	}
 
 	m_phases.push_back( new_phase );
+
+	return true;
 }
 
 bool DMShader::selectPhase( unsigned int idx )
@@ -361,9 +414,8 @@ int DMShader::phase()
 	return m_phaseIdx;
 }
 
-void DMShader::parseDefines( std::string defines, D3D10_SHADER_MACRO** macro_result )
+void DMShader::parseDefines( std::string defines, std::vector<D3D_SHADER_MACRO>& macros )
 {
-
 	if( !defines.size() )
 		return;
 
@@ -371,35 +423,53 @@ void DMShader::parseDefines( std::string defines, D3D10_SHADER_MACRO** macro_res
 
 	str_split( defines, comma_split, "," );
 
-	D3D10_SHADER_MACRO* macro = new D3D10_SHADER_MACRO[comma_split.size() + 1];
+	macros.reserve( comma_split.size() + 1 );
 
 	std::vector<std::string> equal_split;
 
+	D3D_SHADER_MACRO macrosItem;
 	for( int i = 0; i < comma_split.size(); ++i )
 	{
 		str_split( comma_split[i], equal_split, "=" );
 
 		if( equal_split.size() == 2 )
 		{
-			macro[i].Name = new char[equal_split[0].size() + 1];
-			memset( (void*)macro[i].Name, 0, sizeof( char ) * ( equal_split[0].size() + 1 ) );
-			memcpy( (void*)macro[i].Name, equal_split[0].data(), sizeof( char ) * equal_split[0].size() );
-			macro[i].Definition = new char[equal_split[1].size() + 1];
-			memset( (void*)macro[i].Definition, 0, sizeof( char ) * ( equal_split[1].size() + 1 ) );
-			memcpy( (void*)macro[i].Definition, equal_split[1].data(), sizeof( char ) * equal_split[1].size() );
+			
+			macrosItem.Name = new char[equal_split[0].size() + 1];
+			memset( (void*)macrosItem.Name, 0, sizeof( char ) * ( equal_split[0].size() + 1 ) );
+			memcpy( (void*)macrosItem.Name, equal_split[0].data(), sizeof( char ) * equal_split[0].size() );
+			macrosItem.Definition = new char[equal_split[1].size() + 1];
+			memset( (void*)macrosItem.Definition, 0, sizeof( char ) * ( equal_split[1].size() + 1 ) );
+			memcpy( (void*)macrosItem.Definition, equal_split[1].data(), sizeof( char ) * equal_split[1].size() );
 		}
 		else
 		{
-			macro[i].Name = nullptr;
-			macro[i].Definition = nullptr;
+			macrosItem.Name = nullptr;
+			macrosItem.Definition = nullptr;
 		}
 		equal_split.clear();
+
+		macros.push_back( macrosItem );
 	}
 
-	macro[comma_split.size()].Name = nullptr;
-	macro[comma_split.size()].Definition = nullptr;
+	macrosItem.Name = nullptr;
+	macrosItem.Definition = nullptr;
+	macros.push_back( macrosItem );
+}
 
-	*macro_result = macro;
+void DMShader::setParams( const ParamSet& )
+{
+	
+}
+
+bool DMShader::innerInitialize()
+{
+	return true;
+}
+
+std::vector<D3D11_INPUT_ELEMENT_DESC> DMShader::initLayouts()
+{
+	return std::vector<D3D11_INPUT_ELEMENT_DESC>();
 }
 
 }

@@ -26,6 +26,7 @@ cbuffer TerrainTexturesParam : register( b3 )
 Texture2D heigthTexture : register(t0);
 Texture2D normalTexture : register(t1);
 Texture2D diffuseTexture : register(t2);
+Texture2D monohromNoise : register(t3);
 TextureCube g_texCube : register(t5);
 
 Texture2D g_maskGrass : register(t10);
@@ -40,6 +41,10 @@ Texture2D g_grassNormal : register(t18);
 Texture2D g_rockNormal : register(t19);
 Texture2D g_bouldersNormal : register(t20);
 Texture2D g_snowNormal : register(t21);
+Texture2D g_grassHMR : register(t22);
+Texture2D g_rockHMR : register(t23);
+Texture2D g_bouldersHMR : register(t24);
+Texture2D g_snowHMR : register(t25);
 
 
 struct PixelInputType
@@ -74,7 +79,7 @@ float3 normalToTerrain( float3 vec )
 {
 	vec.yz = vec.zy;
 	vec.z *= -1.0f;
-	vec.y *= ( 1.0 / 16.0 );
+	//vec.y *= ( 1.0 / 4.0 );
 	return normalize( vec );
 }
 /*
@@ -183,20 +188,58 @@ float3x3 createTBNMatrix(float3 Normal)
 	return w;
 }
 
+float4 textureNoTile( Texture2D textureObject, float2 x, float v )
+{
+    float k = monohromNoise.Sample( g_SamplerLinearWrap, 0.005 * x ).x; // cheap (cache friendly) lookup
+    
+    float2 duvdx = ddx( x );
+    float2 duvdy = ddy( x );
+    
+    float l = k * 8.0;
+    float i = floor( l );
+    float f = frac( l );
+    
+    float2 offa = sin( float2( 3.0, 7.0 ) * ( i + 0.0 ) ); // can replace with any other hash
+    float2 offb = sin( float2( 3.0, 7.0 ) * ( i + 1.0 ) ); // can replace with any other hash
+
+    float4 cola = textureObject.SampleGrad( g_SamplerLinearWrap, x + v * offa, duvdx, duvdy );
+    float4 colb = textureObject.SampleGrad( g_SamplerLinearWrap, x + v * offb, duvdx, duvdy );
+    
+	float3 sum_diff = cola - colb;
+    return lerp( cola, colb, smoothstep( 0.2, 0.8, f - 0.1 * ( sum_diff.x + sum_diff.y + sum_diff.z ) ) );
+}
+
 float3 distanceBaseTextureBlend( Texture2D textureObject, float2 texCoord, float farMultipler, float destBlend )
 {
-	float3 farTex  = textureObject.Sample( g_SamplerLinearWrap, texCoord * farMultipler ).rgb;
-	float3 nearTex = textureObject.Sample( g_SamplerLinearWrap, texCoord ).rgb;
+	float3 farTex  = textureNoTile( textureObject, texCoord * farMultipler, 0.6 ).rgb;
+	//float3 nearTex = textureObject.Sample( g_SamplerLinearWrap, texCoord ).rgb;
+	float3 nearTex = textureNoTile( textureObject, texCoord, 0.6 ).rgb;
+	//return saturate( farTex * lerp( float3(1.0,1.0,1.0), nearTex, destBlend ) );
 	return lerp( farTex, nearTex, destBlend );
+}
+
+float3 NormalBlend_UnpackedRNM(float3 n1, float3 n2)
+{
+	n1 += float3(0, 0, 1);
+	n2 *= float3(-1, -1, 1);
+	
+    return n1 * dot( n1, n2 ) / n1.z - n2;
 }
 
 float4 distanceBaseNormalBlend( Texture2D textureObject, float2 texCoord, float farMultipler, float destBlend )
 {
-	float4 farNormal = textureObject.Sample( g_SamplerLinearWrap, texCoord * farMultipler );
+	//float4 farNormal = textureObject.Sample( g_SamplerLinearWrap, texCoord * farMultipler );
+	float4 farNormal = textureNoTile( textureObject, texCoord * farMultipler, 0.6 );
 	farNormal.rgb = farNormal.rgb * 2.0 - 1.0;
-	float4 nearNormal = textureObject.Sample( g_SamplerLinearWrap, texCoord );
+	farNormal.rgb = normalize( farNormal.rgb );
+	//float4 nearNormal = textureObject.Sample( g_SamplerLinearWrap, texCoord );
+	float4 nearNormal = textureNoTile( textureObject, texCoord, 0.6 );
 	nearNormal.rgb = nearNormal.rgb * 2.0 - 1.0;
-	return lerp( farNormal, nearNormal, destBlend );
+	nearNormal.rgb = normalize( nearNormal.rgb );
+	//float3 normal = normalize( mul( lerp( float3(0.0,1.0,0.0), normalize( nearNormal.xyz ), destBlend ), createTBNMatrix(normalize(farNormal.xyz)) ) );
+	//return float4( normalize( normal * float3(-1.0,1.0,1.0)), lerp( farNormal.a, nearNormal.a, destBlend ) );
+	nearNormal.xyz  = normalize( NormalBlend_UnpackedRNM( nearNormal.xyz, farNormal.xyz ) );
+	return float4( lerp( farNormal.xyz, nearNormal.xyz, destBlend ), nearNormal.a );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,12 +251,14 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	float3 n = normalToTerrain( normalTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb * 2.0 - 1.0 );
 	
+	n = normalize( n * float3( 1.0, 1.0 / 72.0, 1.0 ) );
+	
 	float3 diffuse = diffuseTexture.Sample( g_SamplerLinearWrap, input.main_tex ).rgb;
 	
 	
 	
-	float3x3 btnMatrix = CalcTBN( input.worldPosition, n * float3(1.0,1.0,1.0), input.main_tex );
-	//float3x3 btnMatrix = createTBNMatrix( n );
+	//float3x3 btnMatrix = CalcTBN( input.worldPosition, n * float3(1.0,1.0,1.0), input.main_tex );
+	float3x3 btnMatrix = createTBNMatrix( n );
 	//return float4( btnMatrix[1], 1.0 );
 	//float3 blendAxes = blendVector(n);
 	//for( int i = 0; i < materialsCount; i++ )
@@ -231,21 +276,24 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	float distanceToPixel = distance( cb_cameraPosition, input.worldPosition );
 	
-	float2 flipY = float2( 1.0, -1.0 );
+	float2 flipY = float2( 1.0, 1.0 );
 	
-	
-	
-	
-	float distanceBlend = clamp( ( 50.0 - distanceToPixel ) / 10.0, 0.0, 1.0 );
+	float distanceBlend = clamp( ( 20.0 - distanceToPixel ) / 10.0, 0.0, 1.0 );
 	
 	float2 grassTexCoord = input.worldPosition.xz * flipY * 1.5;
 	float2 bouldersTexCoord = input.worldPosition.xz * flipY * ( 1.0 / 1.0 );
 	float2 rockTexCoord = input.worldPosition.xz * flipY * 0.25;
+	float2 snowTexCoord = input.worldPosition.xz * flipY * 0.25;
 	
 	float3 grassTex = distanceBaseTextureBlend( g_textureGrass, grassTexCoord, 1.0 / 4.0, distanceBlend );
 	float3 bouldersTex = distanceBaseTextureBlend( g_textureBoulders, bouldersTexCoord, 1.0 / 8.0, distanceBlend );
 	float3 rockTex = distanceBaseTextureBlend( g_textureRock, rockTexCoord, 1.0 / 16.0, distanceBlend );
-	float3 snowTex = g_textureSnow.Sample( g_SamplerLinearWrap, input.worldPosition.xz * flipY ).rgb;
+	float3 snowTex = distanceBaseTextureBlend( g_textureSnow, snowTexCoord, 1.0 / 16.0, distanceBlend );
+	
+	float3 grassHMR = distanceBaseTextureBlend( g_grassHMR, grassTexCoord, 1.0 / 4.0, distanceBlend );
+	float3 bouldersHMR = distanceBaseTextureBlend( g_bouldersHMR, bouldersTexCoord, 1.0 / 8.0, distanceBlend );
+	float3 rockHMR = distanceBaseTextureBlend( g_rockHMR, rockTexCoord, 1.0 / 16.0, distanceBlend );
+	float3 snowHMR = distanceBaseTextureBlend( g_snowHMR, snowTexCoord, 1.0 / 16.0, distanceBlend );
 	
 	
 	
@@ -254,27 +302,28 @@ float4 main(PixelInputType input) : SV_TARGET
 	float bouldersMask = g_maskBoulders.Sample( g_SamplerLinearWrap, input.main_tex );
 	float snowMask = g_maskSnow.Sample( g_SamplerLinearWrap, input.main_tex );
 	
-	float4 grassNormal = g_grassNormal.Sample( g_SamplerLinearWrap, grassTexCoord );
-	grassNormal.rgb = grassNormal.rgb * 2.0 - 1.0;
+	float4 grassNormal = distanceBaseNormalBlend( g_grassNormal, grassTexCoord, 1.0 / 4.0, distanceBlend );
 	float4 bouldersNormal = distanceBaseNormalBlend( g_bouldersNormal, bouldersTexCoord, 1.0 / 8.0, distanceBlend );
-	//bouldersNormal.rgb = bouldersNormal * 2.0 - 1.0;
 	float4 rockNormal = distanceBaseNormalBlend( g_rockNormal, rockTexCoord, 1.0 / 16.0, distanceBlend );
-	//rockNormal.rgb = rockNormal.rgb * 2.0 - 1.0;
-	float4 snowNormal = g_snowNormal.Sample( g_SamplerLinearWrap, input.worldPosition.xz * flipY );
-	snowNormal.rgb = snowNormal * 2.0 - 1.0;
+	float4 snowNormal = distanceBaseNormalBlend( g_snowNormal, snowTexCoord, 1.0 / 16.0, distanceBlend );
 	
+	
+	float4 resultHMR = (float4)0;
+	resultHMR = height_blend( resultHMR, grassHMR, 0.0, grassNormal.a * grassMask );
+	resultHMR = height_blend( resultHMR, bouldersHMR, resultHMR.a, bouldersNormal.a * bouldersMask );
+	resultHMR = height_blend( resultHMR, rockHMR, resultHMR.a, rockNormal.a * rockMask );
+	resultHMR = height_blend( resultHMR, snowHMR, resultHMR.a, snowNormal.a * snowMask );
 	
 	//float3 cliffTexture = terrainTexture[0].Sample( g_SamplerLinearWrap, input.worldPosition.xz * float2( 1.0, -1.0 ) );	
 	float3 diffuseTex = diffuseTexture.Sample( g_SamplerLinearWrap, input.main_tex );
 	//albedo = lerp( grassTexture, cliffTexture, clamp( (n.y - 0.7) * 10.0, 0.0, 1.0 ) );
 	//albedo = lerp( albedo, diffuse, 0.7 );
 	float4 resultNormal = (float4)0;
-	//resultNormal = smart_blend4(float4( grassNormal.rgb, 0.0 ), grassMask, bouldersNormal, bouldersMask, float4( rockNormal.rgb, 0.5 ), rockMask, float4( snowNormal.rgb, 0.8 ), snowMask );
-	float blendOut = 0.0;
 	resultNormal = height_blend( resultNormal, grassNormal, 0.0, grassNormal.a * grassMask );
 	resultNormal = height_blend( resultNormal, bouldersNormal, resultNormal.a, bouldersNormal.a * bouldersMask );
 	resultNormal = height_blend( resultNormal, rockNormal, resultNormal.a, rockNormal.a * rockMask );
 	resultNormal = height_blend( resultNormal, snowNormal, resultNormal.a, snowNormal.a * snowMask );
+	//return float4( resultNormal.rgb, 1.0 );
 	n = normalize( mul( normalize(resultNormal.rgb), btnMatrix ) );
 	//return float4( n , 1.0 );
 	//n = normalize( normalToTerrain(resultNormal.rgb) );
@@ -282,12 +331,6 @@ float4 main(PixelInputType input) : SV_TARGET
 	//albedo = smart_blend4(float4( grassTex.rgb, 0.1 ), grassMask, float4( bouldersTex,bouldersNormal.a), bouldersMask, float4( rockTex.rgb, 0.5 ), rockMask, float4( snowTex.rgb, 0.8 ), snowMask );
 	
 	float4 blendAlbedo = (float4)0;
-	/*
-	blendAlbedo = smart_blend( blendAlbedo, grassTex, grassMask, 0.0, grassNormal.a );
-	blendAlbedo = smart_blend( blendAlbedo, bouldersTex, bouldersMask, blendAlbedo.a, bouldersNormal.a );
-	blendAlbedo = smart_blend( blendAlbedo, rockTex, rockMask , blendAlbedo.a, rockNormal.a );
-	blendAlbedo = smart_blend( blendAlbedo, snowTex, snowMask, step( blendAlbedo.a, 0.95 ), snowNormal.a );
-	*/
 	blendAlbedo = height_blend( blendAlbedo, grassTex, 0.0, grassNormal.a * grassMask );
 	blendAlbedo = height_blend( blendAlbedo, bouldersTex, blendAlbedo.a, bouldersNormal.a * bouldersMask );
 	blendAlbedo = height_blend( blendAlbedo, rockTex, blendAlbedo.a, rockNormal.a * rockMask );
@@ -296,18 +339,25 @@ float4 main(PixelInputType input) : SV_TARGET
 	//return float4( n.rgb, 1.0 );
 	
 	//albedo.rgb = float3( 0.5, 0.5, 0.5 );
-	albedo.rgb = blendAlbedo.rgb + diffuseTex.rgb * 0.2;
+	
+	albedo.rgb = lerp( blendAlbedo.rgb, diffuseTex.rgb, 0.3 );
+	albedo.rgb *= clamp( 1.0 - pow( PerlinNoise2D( input.main_tex * 100.0, 6 ), 3.0 ), 0.0, 1.0 );
+	
 	
 	float4 FinalLight = float4(0.0, 0.0, 0.0, 1.0);
 	
 	float3 v = normalize( cb_cameraPosition - input.worldPosition );
 	
-	float metallic = 0.0;	
+	float metallic = resultHMR.g;	
 	float3 F0;
     F0 = albedo.xyz * metallic;
     albedo.xyz *= (1.0 - metallic);
 	
-	FinalLight.rgb = CookTorrance_GGX_all_light( n, v, F0, albedo, 0.98, input.worldPosition ) + albedo * 0.2;
+	//return (float4)(dot( n,normalize( float3(110.0,90.0,100.0) - input.worldPosition ) ));
+	
+	FinalLight.rgb = CookTorrance_GGX_all_light( n, v, F0, albedo, resultHMR.b, input.worldPosition ) + albedo * float3( 0.5,0.5,0.52 );
+	//FinalLight.rgb = CookTorrance_GGX( n, normalize(float3(1.0,1.0,-1.0)), v, F0, 0.9, albedo );
+	FinalLight.rgb = tonemapReinhard( FinalLight.rgb, 0.3 );	
 	
 	return FinalLight;
 }

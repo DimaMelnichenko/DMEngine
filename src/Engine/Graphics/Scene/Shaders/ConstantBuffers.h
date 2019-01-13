@@ -17,6 +17,7 @@ public:
 	void initBuffers();
 	void setPerFrameBuffer( const DMCamera&, int lightsCount );
 	void setPerObjectBuffer( const XMMATRIX* );
+	void setPerObjectBuffer( const XMMATRIX& );
 
 private:
 	struct alignas( 16 ) ShaderFrameConstant

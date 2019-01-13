@@ -1,5 +1,6 @@
 #include "DMComputeShader.h"
 #include <fstream>
+#include <d3dcompiler.h>
 
 
 DMComputeShader::DMComputeShader()
@@ -16,8 +17,10 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 	ID3D10Blob* error_message;
 	ID3D10Blob* shader_buffer;
 	
-	HRESULT result = D3DX11CompileFromFile( file_name.data(), NULL, NULL, function_name.data(), "cs_5_0", D3D10_SHADER_ENABLE_STRICTNESS, 0, NULL,
-									&shader_buffer, &error_message, NULL );
+	std::wstring fileName( file_name.begin(), file_name.end() );
+
+	HRESULT result = D3DCompileFromFile( fileName.data(), NULL, D3D_COMPILE_STANDARD_FILE_INCLUDE, 
+										 function_name.data(), "cs_5_0", D3D10_SHADER_ENABLE_STRICTNESS, 0, &shader_buffer, &error_message );
 
 	if( FAILED( result ) )
 	{

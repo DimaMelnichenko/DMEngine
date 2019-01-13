@@ -23,6 +23,7 @@ struct PixelInputType
     float4 position : SV_POSITION;
     float2 tex : TEXCOORD0;
 	float4 color : COLOR0;
+	float3 worldPosition : WORLDPOS0;
 };
 
 
@@ -42,6 +43,7 @@ PixelInputType main(VertexInputType input)
 	
     // Calculate the position of the vertex against the world, view, and projection matrices.
     output.position = mul(output.position, cb_worldMatrix);
+	output.worldPosition = output.position.xyz;
     output.position = mul(output.position, cb_viewMatrix);
     output.position = mul(output.position, cb_projectionMatrix);
 	

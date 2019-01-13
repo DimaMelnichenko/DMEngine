@@ -5,7 +5,6 @@
 //////////////
 #include "D3D/DMD3D.h"
 #include "Storage\DMResource.h"
-#include <DirectXTex.h>
 
 namespace GS
 {
@@ -13,19 +12,17 @@ namespace GS
 class DMTexture : public DMResource
 {
 public:
-	DMTexture( uint32_t id, const std::string& name, ScratchImage&& image );
+	DMTexture( uint32_t id, const std::string& name );
 	DMTexture( DMTexture&& );
 	~DMTexture();
 
-	com_unique_ptr<ID3D11ShaderResourceView>& srv();
+	virtual const com_unique_ptr<ID3D11ShaderResourceView>& srv() const = 0;
 
-	bool createSRV();
+	virtual uint32_t height() const = 0;
+	virtual uint32_t width() const = 0;
 
-	const ScratchImage& image() const;
 
-private:
-	com_unique_ptr<ID3D11ShaderResourceView> m_srv;
-	ScratchImage m_image;
+
 
 };
 

@@ -4,15 +4,19 @@
 #include <random>
 #include <ctime>
 #include <algorithm>
-#include <D3DX11tex.h>
+//#include <D3DX11tex.h>
 #include "Shaders\Layout.h"
 #include "../Input/Input.h"
 #include "Pipeline.h"
 #include <chrono>
+#include "Logger\Logger.h"
+#include "Scene\TextureObjects\CustomTexture.h"
 
 #define TIME_POINT() std::chrono::high_resolution_clock::now()
 
 #define TIME_DIFF( start, end ) std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count()
+
+#define TIME_PRINT( start ) std::to_string( std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::high_resolution_clock::now() - start ).count() / 1000.0 )
 
 #define TIME_CHECK( CHECKED_FUNC, INFO_TEXT ) { \
 	std::chrono::high_resolution_clock::time_point start##__LINE__ = std::chrono::high_resolution_clock::now(); \
@@ -20,6 +24,14 @@
 	std::chrono::high_resolution_clock::time_point end##__LINE__ = std::chrono::high_resolution_clock::now(); \
 	m_GUI.addCounterInfo( (INFO_TEXT), std::chrono::duration_cast<std::chrono::microseconds>( end##__LINE__ - start##__LINE__ ).count() / 1000.0f ); }
 
+#define RET_FALSE(x) \
+{\
+	if( !(x) ) \
+	{\
+		LOG( "Fail!" ); \
+		return false; \
+	}\
+}\
 
 namespace GS
 {
@@ -38,15 +50,19 @@ DMGraphics::~DMGraphics()
 
 bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd, Config config )
 {
+	auto timeStartInit = TIME_POINT();
+	std::chrono::time_point<std::chrono::high_resolution_clock> timeStart;
+
 	bool result = true;
 	m_hwnd = hwnd;
 	m_config = config;
 
 	m_screenWidth = static_cast<float>( screenWidth );
 	m_screenHeight = static_cast<float>( screenHeight );
-
-	// Initialize the Direct3D object.
+	
+	timeStart = TIME_POINT();
 	result = DMD3D::instance().Initialize( m_config, hwnd );
+	LOG( "Initialize the Direct3D object ms: " + TIME_PRINT( timeStart ) );
 
 	if( !result )
 	{
@@ -55,28 +71,60 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	}
 
 	System::materialParameterKind().load();
-	
-	for( uint16_t i = 8; i > 0; --i )
+
+	std::unique_ptr<CustomTexture> custTexture( new CustomTexture( 1000000, "monohromeNoise" ) );
+	if( !custTexture->generateTexture() )
 	{
-		if( !m_library.loadModelWithLOD( i ) )
-			return false;
-	}
-
-	if( !m_library.loadTexture( -1 ) )
+		LOG( "Failed gen texture" );
 		return false;
+	}
+	System::textures().insertResource( std::move( custTexture ) );
 
-	for( uint16_t i = 11; i > 0; --i )
+	RET_FALSE( m_tessTerrain.initialize() );
+
+	LOG( "Load materials" );
+	timeStart = TIME_POINT();
+	for( uint16_t i = 1; i > 0; --i )
 	{
 		if( !m_library.loadMaterial( i ) )
 			return false;
 	}
+	LOG( "Load material for ms: " + TIME_PRINT( timeStart ) );
+	
+	LOG( "Load models" );
+	timeStart = TIME_POINT();
+	for( uint16_t i = 1; i > 0; --i )
+	{
+		if( !m_library.loadModelWithLOD( i ) )
+			return false;
+	}
+	LOG( "Load models for ms: " + TIME_PRINT( timeStart ) );
+
+
+
+	LOG( "Load textures" );
+	timeStart = TIME_POINT();
+	try
+	{
+		//if( !m_library.loadTexture( -1 ) )
+		//	return false;
+	}
+	catch( const std::exception& e )
+	{
+		LOG( e.what() );
+		return false;
+	}
+	LOG( "Load textures for ms: " + TIME_PRINT( timeStart ) );
+
+	
 
 	// Создаем общий буфер вершин и индексов
 	m_vertexPool.prepareMeshes();
 
+	LOG( "Create main camera" )
 	// Создаем основную камеру
 	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 10000.0f );
-	m_cameraPool["main"].SetPosition( 110.0, 90.0, 100.0 );
+	m_cameraPool["main"].SetPosition( 0.0, 0.0, -10.0 );
 	//m_cameraPool["main"].SetPosition( 10.0, 0.0, -10.0 );
 	//m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
@@ -87,6 +135,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	pipeline().init();
 
+	LOG( "Create light driver" )
 	m_lightDriver.Initialize();
 	m_lightDriver.loadFromFile( "Scene\\Lights.ini" );
 
@@ -102,7 +151,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	getInput().notifier().registerTrigger( DIK_P, []( bool value )
 	{
-		if( value )
+		//if( value )
 		{
 			DMD3D::instance().createScreenshot();
 		}
@@ -137,23 +186,28 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		ShowCursor( value );
 	} );
 
-	
-
+	timeStart = TIME_POINT();
 	if( !m_terrain.Initialize( "Models\\terrain.json", "GeoClipMap", m_library ) )
 		return false;
-
+	LOG( "Terrain init ms: " + TIME_PRINT( timeStart ) );
 	//if( !m_water.Initialize( "Models\\water.json", "GeoClipMapWater" ) )
 	//	return false;
 	
+	timeStart = TIME_POINT();
 	if( !m_grass.Initialize() )
 		return false;
-	m_grass.addMesh( GS::System::models().get( "GrassBlade" )->getLodById( 1 ) );
-	m_grass.addMesh( GS::System::models().get( "GrassCross" )->getLodById( 0 ) );
-	m_grass.addMesh( GS::System::models().get( "Romashka" )->getLodById( 0 ) );
+	//m_grass.addMesh( GS::System::models().get( "GrassBlade" )->getLodById( 1 ) );
+	//m_grass.addMesh( GS::System::models().get( "GrassCross" )->getLodById( 0 ) );
+	//m_grass.addMesh( GS::System::models().get( "Romashka" )->getLodById( 0 ) );
+	LOG( "Grass init ms: " + TIME_PRINT( timeStart ) );
 
 	m_particleSystem.Initialize( 20, 200 );
 
 	m_GUI.Initialize( m_hwnd );
+
+	LOG( "Total init ms: " + TIME_PRINT( timeStartInit ) );
+
+	
 
 	return true;
 }
@@ -198,15 +252,15 @@ bool DMGraphics::Render()
 {
 	TIME_CHECK( preparePipeline(), "preparePipeline = %.3f ms" );
 
-	TIME_CHECK( ComputePass(), "Compute Pass = %.3f ms" );
+	//TIME_CHECK( ComputePass(), "Compute Pass = %.3f ms" );
 
-	DMD3D::instance().BeginScene( 0.0f, 0.0f, 0.0f, 1.0f );
+	DMD3D::instance().BeginScene( 0.4f, 0.4f, 0.4f, 1.0f );
 
 	// Установка буфера вершин и индексов
 	m_vertexPool.setBuffers();
 
 	//render sky
-	TIME_CHECK( renderSky(), "Render Sky = %.3f ms" );
+	//TIME_CHECK( renderSky(), "Render Sky = %.3f ms" );
 
 	auto objectCullStart = TIME_POINT();
 	for( auto& queue : m_renderQueues )
@@ -276,7 +330,7 @@ bool DMGraphics::Render()
 	}
 	//if( m_visible.count( "grass render" ) && m_visible["grass render"] )
 	{
-		TIME_CHECK( particleRendering(), "Particle Rendering = %.3f ms" );
+		//TIME_CHECK( particleRendering(), "Particle Rendering = %.3f ms" );
 	}
 	DMD3D::instance().TurnOffAlphaBlending();
 
@@ -285,7 +339,7 @@ bool DMGraphics::Render()
 	DMFrustum frustum( m_cameraPool["main"], 1000.0f );
 	if( m_visible["terrain"] )
 	{
-		TIME_CHECK( m_terrain.Render( m_cameraPool["main"], frustum ), "Terrain Render = %.3f ms" );
+		//TIME_CHECK( m_terrain.Render( m_cameraPool["main"], frustum ), "Terrain Render = %.3f ms" );
 	}
 	/*if( m_visible["water"] )
 	{
@@ -295,7 +349,10 @@ bool DMGraphics::Render()
 	}
 	*/
 
-	
+	DMD3D::instance().TurnOnWireframe();
+	pipeline().shaderConstant().setPerObjectBuffer( XMMatrixIdentity() );
+	m_tessTerrain.render();
+	DMD3D::instance().TurnOffWireframe();
 
 	
 	static uint64_t guiResult = 0;

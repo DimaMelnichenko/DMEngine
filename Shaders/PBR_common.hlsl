@@ -20,7 +20,6 @@ float GGX_Distribution( float cosThetaNH, float alpha )
     float alpha2 = alpha * alpha;
     float NH_sqr = saturate(cosThetaNH * cosThetaNH);
     float den = NH_sqr * alpha2 + (1.0 - NH_sqr);
-	//return PI * den * den;
     return alpha2 / ( PI * den * den );
 }
 
@@ -43,8 +42,8 @@ float3 CookTorrance_GGX(float3 n, float3 l, float3 v, float3 f0, float roughness
 		
     float NV = dot(n, v);
 	
-    if (NV <= 0.0) 
-		return 0.0;
+   /* if (NV <= 0.0) 
+		return float3( 0.0,0.0,1.0 );*/
     float NH = dot(n, h);
     float HV = dot(h, v);
     
@@ -52,8 +51,8 @@ float3 CookTorrance_GGX(float3 n, float3 l, float3 v, float3 f0, float roughness
     float roug_sqr = roughness * roughness;
     
     //calc coefficients
-    float G = GGX_PartialGeometry( NV, roug_sqr ) * GGX_PartialGeometry( NL, roug_sqr );
-    float D = GGX_Distribution( NH, roug_sqr );
+    float G = GGX_PartialGeometry( NV, roug_sqr ) * GGX_PartialGeometry( NL, roug_sqr );	
+    float D = GGX_Distribution( NH, roug_sqr );	
     float3 F = FresnelSchlick( f0, HV );
     
     //mix

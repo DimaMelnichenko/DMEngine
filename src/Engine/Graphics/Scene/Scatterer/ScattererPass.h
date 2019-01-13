@@ -30,7 +30,8 @@ public:
 		float density;
 		float nearFallow;
 		float farFallow;
-		float dumb[2];
+		float noiseCoordMultipler;
+		float noisePower;
 	} m_populateParams;
 
 	PopulateParams& populateParams();

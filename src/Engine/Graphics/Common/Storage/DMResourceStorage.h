@@ -1,17 +1,18 @@
 #pragma once
 #include "DMResource.h"
 #include <unordered_map>
+#include <type_traits>
 
 
-class DMAbstrctStorage
+class DMAbstractStorage
 {
 public:
-	DMAbstrctStorage() = default;
-	virtual ~DMAbstrctStorage(){}
+	DMAbstractStorage() = default;
+	virtual ~DMAbstractStorage(){}
 };
 
 template<typename ResourceType>
-class DMResourceStorage : public DMAbstrctStorage
+class DMResourceStorage : public DMAbstractStorage
 {
 public:
 	DMResourceStorage( const std::string& path ) : m_path( path )
@@ -89,9 +90,8 @@ public:
 		if( !m_name_to_index.count( resource->name() ) )
 		{
 			m_name_to_index[resource->name()] = resource->id();
-			m_storage.insert( std::make_pair( resource->id(), std::move(resource) ) );
+			m_storage.insert( std::make_pair( resource->id(), std::move( resource ) ) );
 		}
-
 		return true;
 	}
 

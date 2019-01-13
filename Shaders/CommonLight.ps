@@ -101,7 +101,7 @@ float3 CookTorrance_GGX_all_light( float3 n, float3 v, float3 F0, float3 albedo,
 		
 		//if( fade < 0.00001 )
 		//	continue;
-		result += CookTorrance_GGX( n, l, v, F0, roughness, albedo );
+		result += CookTorrance_GGX( n, l, v, F0, roughness, albedo ) * light.lightColor.rgb;
 	}
 	
 	return result;
@@ -142,9 +142,8 @@ float specByPhong( float3 N, float3 L, float3 V, float roughness)
   return max( D/( 4.0 * NdotL * NdotV ), 0.0 );
 }
 
-float3 tonemapReinhard(float3 x)
+float3 tonemapReinhard(float3 x, float exposure )
 {
-    float exposure = 1.425;
     float lum = dot(x, float3(0.2126f, 0.7152f, 0.0722f));
     float L = exposure*lum;//(scale / averageLum) * lum;
     //float Ld = (L * (1.0 + L / lumwhite2)) / (1.0 + L);

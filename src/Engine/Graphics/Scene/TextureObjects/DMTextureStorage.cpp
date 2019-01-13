@@ -1,4 +1,5 @@
 #include "DMTextureStorage.h"
+#include "DDSTexture.h"
 
 namespace GS
 {
@@ -24,7 +25,7 @@ bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::st
 	if( !m_textureLoader.loadFromFile( fullPath.data(), baseImage ) )
 		return false;
 
-	std::unique_ptr<DMTexture> texture;
+	std::unique_ptr<DDSTexture> texture;
 
 	
 	HRESULT hr;
@@ -53,13 +54,13 @@ bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::st
 		}
 	}
 
-	texture.reset( new DMTexture( id, name, std::move( baseImage ) ) );
+	texture.reset( new DDSTexture( id, name, std::move( baseImage ) ) );
 
 	DXGI_FORMAT format = baseImage.GetMetadata().format;
 
 	if( !texture->createSRV() )
 		return false;
-	
+
 	insertResource( std::move( texture ) );
 
 	return true;

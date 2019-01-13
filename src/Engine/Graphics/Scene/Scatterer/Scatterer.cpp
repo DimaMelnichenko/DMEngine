@@ -60,7 +60,10 @@ void Scatterer::prerender()
 				m_lods[i].scatterPass.populateParams().density = 1.0 / 16.0;
 				m_lods[i].scatterPass.populateParams().nearFallow = 0.0;
 				m_lods[i].scatterPass.populateParams().farFallow = 2.0;
+				m_lods[i].scatterPass.populateParams().noiseCoordMultipler = 10.0f;
+				m_lods[i].scatterPass.populateParams().noisePower = 1.0f;
 				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_grass" )->srv() );
+				//DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_camomile" )->srv() );
 				break;
 			case 1:
 				m_lods[i].scatterPass.populateParams().nearBorder = 5.0;
@@ -68,17 +71,22 @@ void Scatterer::prerender()
 				m_lods[i].scatterPass.populateParams().sizeMultipler = 1.05;
 				m_lods[i].scatterPass.populateParams().density = 1.0 / 2.0;
 				m_lods[i].scatterPass.populateParams().nearFallow = 2.0;
-				m_lods[i].scatterPass.populateParams().farFallow = 40.0;
+				m_lods[i].scatterPass.populateParams().farFallow = 30.0;
+				m_lods[i].scatterPass.populateParams().noiseCoordMultipler = 1.0f;
+				m_lods[i].scatterPass.populateParams().noisePower = 1.0f;
 				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_grass" )->srv() );
 				break;
 			case 2:
 				m_lods[i].scatterPass.populateParams().nearBorder = 0.0;
-				m_lods[i].scatterPass.populateParams().farBorder = 40.0;
+				m_lods[i].scatterPass.populateParams().farBorder = 10.0;
 				m_lods[i].scatterPass.populateParams().sizeMultipler = 1.0;
-				m_lods[i].scatterPass.populateParams().density = 2.0;
+				m_lods[i].scatterPass.populateParams().density = 1.0;
 				m_lods[i].scatterPass.populateParams().nearFallow = 0.0;
 				m_lods[i].scatterPass.populateParams().farFallow = 5.0;
+				m_lods[i].scatterPass.populateParams().noiseCoordMultipler = 1.0f;
+				m_lods[i].scatterPass.populateParams().noisePower = 0.4f;
 				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_camomile" )->srv() );
+				//DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_grass" )->srv() );
 				break;
 		}
 

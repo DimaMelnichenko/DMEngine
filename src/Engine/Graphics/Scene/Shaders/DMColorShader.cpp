@@ -19,7 +19,7 @@ bool DMColorShader::innerInitialize()
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer, nullptr ) )
 		return false;
 
-	createPhase( 0, -1, 0 );
+	createPhase( 0, 0 );
 	return true;
 }
 

@@ -77,16 +77,22 @@ void DMStructuredBuffer::setToSlot( int8_t slot, SRVType type )
 
 	switch( type )
 	{
-		case vs:
+		case SRVType::vs:
 			DMD3D::instance().GetDeviceContext()->VSSetShaderResources( slot, 1, &view );
 			break;
-		case ps:
+		case SRVType::ps:
 			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( slot, 1, &view );
 			break;
-		case gs:
+		case SRVType::hs:
+			DMD3D::instance().GetDeviceContext()->HSSetShaderResources( slot, 1, &view );
+			break;
+		case SRVType::ds:
+			DMD3D::instance().GetDeviceContext()->DSSetShaderResources( slot, 1, &view );
+			break;
+		case SRVType::gs:
 			DMD3D::instance().GetDeviceContext()->GSSetShaderResources( slot, 1, &view );
 			break;
-		case cs:
+		case SRVType::cs:
 			DMD3D::instance().GetDeviceContext()->CSSetShaderResources( slot, 1, &view );
 			break;
 		default:

@@ -154,7 +154,7 @@ private:
 	uint32_t m_screenHeight;
 	uint32_t m_numerator;
 	uint32_t m_denominator;
-	uint32_t m_MSAAQuality = 1;
+	uint32_t m_MSAACount = 1;
 	HWND m_hWnd;
 };
 

@@ -2,7 +2,7 @@
 #include "DirectX.h"
 #include "DMModel.h"
 #include "ResourceMetaFile.h"
-#include "json.hpp"
+//#include "json.hpp"
 
 namespace tinyxml2
 {
@@ -32,10 +32,6 @@ private:
 
 	void loadMaterials( std::unordered_map<std::string, MaterialParam>& mats, tinyxml2::XMLElement* );
 
-	void loadJSONMaterials( std::unordered_map<std::string, MaterialParam>& mats, nlohmann::json& );
-
-	DMModel* loadXMLFile( const std::string& filename, uint32_t id );
-	DMModel* loadJSONFile( const std::string& filename, uint32_t id );
 };
 
 }

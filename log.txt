@@ -1,0 +1,32 @@
+
+
+----------------------------------------------------------
+				Initialize logger
+
+
+func:GS::DMGraphics::Initialize, line:65|Initialize the Direct3D object ms: 151.555000
+func:GS::CustomTexture::generateTexture, line:64|Inputs correct
+func:GS::DMGraphics::Initialize, line:85|Load materials
+func:LibraryLoader::loadMaterial, line:96|Load material: 1
+func:LibraryLoader::loadShader, line:150|Load shader: Shaders\color.vs
+func:LibraryLoader::loadShader, line:150|Load shader: Shaders\color.ps
+func:GS::DMGraphics::Initialize, line:92|Load material for ms: 6.078000
+func:GS::DMGraphics::Initialize, line:94|Load models
+func:LibraryLoader::loadModelWithLOD, line:181|Load model: 1
+func:LibraryLoader::loadMesh, line:163|Load mesh: 1
+func:GS::DMGraphics::Initialize, line:101|Load models for ms: 3.658000
+func:GS::DMGraphics::Initialize, line:105|Load textures
+func:GS::DMGraphics::Initialize, line:117|Load textures for ms: 0.000000
+func:GS::DMGraphics::Initialize, line:124|Create main camera
+func:GS::DMGraphics::Initialize, line:138|Create light driver
+func:LibraryLoader::loadMaterial, line:96|Load material: 4
+func:LibraryLoader::loadShader, line:150|Load shader: Shaders\clipmap_h.ps
+func:LibraryLoader::loadShader, line:150|Load shader: Shaders\clipmap.vs
+func:GS::DMGraphics::Initialize, line:192|Terrain init ms: 291.946000
+func:GS::DMGraphics::Initialize, line:202|Grass init ms: 102.153000
+func:GS::DMGraphics::Initialize, line:208|Total init ms: 2162.148000
+
+
+Close logger
+
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

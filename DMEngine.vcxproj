@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -19,6 +19,13 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\ShaderUtils.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\ShaderUtils.h" />
+    <ClCompile Include="src\Engine\Graphics\Scene\TerrainTesselation\Path.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\TerrainTesselation\Terrain.cpp" />
+    <ClCompile Include="src\Logger\Logger.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\CustomTexture.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DDSTexture.cpp" />
     <ClCompile Include="src\Common\DBConnector.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\Dictionaries\MaterialParameterKind.cpp" />
     <ClCompile Include="src\Engine\Graphics\Common\Dictionaries\ParameterType.cpp" />
@@ -103,6 +110,11 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Engine\Graphics\Scene\TerrainTesselation\Path.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\TerrainTesselation\Terrain.h" />
+    <ClInclude Include="src\Logger\Logger.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\CustomTexture.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DDSTexture.h" />
     <ClInclude Include="src\Common\DBConnector.h" />
     <ClInclude Include="src\Engine\Graphics\Common\Dictionaries\MaterialParameterKind.h" />
     <ClInclude Include="src\Engine\Graphics\Common\Dictionaries\ParameterType.h" />
@@ -134,7 +146,6 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMComputeShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\VertexLight.h" />
     <ClInclude Include="src\ObjectLibrary\LibraryLoader.h" />
-    <ClInclude Include="src\3rdParty\json.hpp" />
     <ClInclude Include="src\3rdParty\tinyxml2.h" />
     <ClInclude Include="src\Config\Config.h" />
     <ClInclude Include="src\Common\ResourceMetaFile.h" />
@@ -209,32 +220,32 @@
     <ProjectGuid>{4CE00D51-6BC5-4158-A3F7-DDE0B71874C5}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>DMEngine</RootNamespace>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -261,8 +272,8 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>E:\DMEngine\DirectXTex\DirectXTex;$(ProjectDir)\src\Engine\Graphics\Common;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir);$(ProjectDir)\src;$(ProjectDir)\src\3rdParty;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(ProjectDir)\src\Engine\Graphics\Scene;$(ProjectDir)\src\Engine\Graphics\Scene\Common;$(IncludePath)</IncludePath>
-    <LibraryPath>E:\DMEngine\DirectXTex\DirectXTex;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x64;$(ProjectDir)/SQLiteCpp;$(LibraryPath)</LibraryPath>
+    <IncludePath>F:\DMEngine\DirectXTex\DirectXTex;$(ProjectDir)\src\Engine\Graphics\Common;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir);$(ProjectDir)\src;$(ProjectDir)\src\3rdParty;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(ProjectDir)\src\Engine\Graphics\Scene;$(ProjectDir)\src\Engine\Graphics\Scene\Common;$(IncludePath)</IncludePath>
+    <LibraryPath>F:\DMEngine\DirectXTex\DirectXTex;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x64;$(ProjectDir)/SQLiteCpp;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -305,11 +316,14 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <MinimalRebuild>false</MinimalRebuild>
       <PreprocessToFile>false</PreprocessToFile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <StructMemberAlignment>Default</StructMemberAlignment>
+      <BrowseInformation>true</BrowseInformation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>WindowsCodecs.lib;sqlite3.lib;SQLiteCpp.lib;directxtex.lib;d3dcompiler.lib;dxgi.lib;d3d11.lib;d3dx11.lib;Winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>WindowsCodecs.lib;sqlite3.lib;SQLiteCpp.lib;directxtex.lib;d3dcompiler.lib;dxgi.lib;d3d11.lib;Winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <LargeAddressAware>true</LargeAddressAware>
     </Link>
   </ItemDefinitionGroup>

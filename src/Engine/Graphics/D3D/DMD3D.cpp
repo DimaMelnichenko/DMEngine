@@ -16,7 +16,6 @@ void DMD3D::destroy()
 	m_instance.reset();
 }
 
-
 DMD3D::DMD3D()
 {
 	
@@ -29,11 +28,11 @@ DMD3D::~DMD3D()
 
 bool DMD3D::Initialize( const Config& config, HWND hwnd )
 {
-	m_screenHeight = (uint32_t)config.screenHeight();
-	m_screenWidth = (uint32_t)config.screenWidth();
+	m_screenWidth = (uint32_t)config.backBufferWidth();
+	m_screenHeight = (uint32_t)config.backBufferHeight();
 	m_hWnd = hwnd;
 	m_vsync_enabled = config.vSync();
-	m_MSAAQuality = config.MSAAQuality();
+	m_MSAACount = config.MSAACount();
 
 	HRESULT result;
 	IDXGIFactory* factory;
@@ -192,8 +191,8 @@ bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 	swapChainDesc.OutputWindow = hwnd;
 
 	// Turn multisampling off.
-	swapChainDesc.SampleDesc.Count = m_MSAAQuality;
-	swapChainDesc.SampleDesc.Quality = 0;
+	swapChainDesc.SampleDesc.Count = m_MSAACount;
+	swapChainDesc.SampleDesc.Quality = m_MSAACount > 1 ? D3D11_STANDARD_MULTISAMPLE_QUALITY_LEVELS::D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
 
 	swapChainDesc.Windowed = !fullscreen;
 
@@ -273,7 +272,7 @@ bool DMD3D::createDepthStencilBufferAndView()
 	depthBufferDesc.MipLevels = 1;
 	depthBufferDesc.ArraySize = 1;
 	depthBufferDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	depthBufferDesc.SampleDesc.Count = m_MSAAQuality;
+	depthBufferDesc.SampleDesc.Count = m_MSAACount;
 	depthBufferDesc.SampleDesc.Quality = 0;
 	depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
 	depthBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
@@ -346,7 +345,7 @@ bool DMD3D::createDepthStencilBufferAndView()
 
 	// Set up the depth stencil view description.
 	depthStencilViewDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	if( m_MSAAQuality )
+	if( m_MSAACount > 1 )
 		depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
 	else
 		depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
@@ -876,16 +875,22 @@ bool DMD3D::setConstantBuffer( SRVType type, uint16_t slot, com_unique_ptr<ID3D1
 
 	switch( type )
 	{
-		case vs:
+		case SRVType::vs:
 			GetDeviceContext()->VSSetConstantBuffers( slot, 1, &cbuffer );
 			break;
-		case ps:
+		case SRVType::ps:
 			GetDeviceContext()->PSSetConstantBuffers( slot, 1, &cbuffer );
 			break;
-		case gs:
+		case SRVType::hs:
+			GetDeviceContext()->HSSetConstantBuffers( slot, 1, &cbuffer );
+			break;
+		case SRVType::ds:
+			GetDeviceContext()->DSSetConstantBuffers( slot, 1, &cbuffer );
+			break;
+		case SRVType::gs:
 			GetDeviceContext()->GSSetConstantBuffers( slot, 1, &cbuffer );
 			break;
-		case cs:
+		case SRVType::cs:
 			GetDeviceContext()->CSSetConstantBuffers( slot, 1, &cbuffer );
 			break;
 		default:
@@ -901,16 +906,22 @@ void DMD3D::setSRV( SRVType type, uint16_t slot, const com_unique_ptr<ID3D11Shad
 	ID3D11ShaderResourceView* const rawSRV = srv.get();
 	switch( type )
 	{
-		case vs:
+		case SRVType::vs:
 			DMD3D::instance().GetDeviceContext()->VSSetShaderResources( slot, 1, &rawSRV );
 			break;
-		case ps:
+		case SRVType::ps:
 			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( slot, 1, &rawSRV );
 			break;
-		case gs:
+		case SRVType::hs:
+			DMD3D::instance().GetDeviceContext()->HSSetShaderResources( slot, 1, &rawSRV );
+			break;
+		case SRVType::ds:
+			DMD3D::instance().GetDeviceContext()->DSSetShaderResources( slot, 1, &rawSRV );
+			break;
+		case SRVType::gs:
 			DMD3D::instance().GetDeviceContext()->GSSetShaderResources( slot, 1, &rawSRV );
 			break;
-		case cs:
+		case SRVType::cs:
 			DMD3D::instance().GetDeviceContext()->CSSetShaderResources( slot, 1, &rawSRV );
 			break;
 		default:

@@ -1,4 +1,5 @@
 #include "MeshStorage.h"
+#include "Logger\Logger.h"
 
 namespace GS
 {
@@ -43,7 +44,7 @@ bool MeshStorage::load( uint32_t id, const std::string& name, const std::string&
 	}
 	catch( std::exception& e )
 	{
-		//TODO log this exception
+		LOG( "Can`t load mesh from file: " + fullPath );
 		return false;
 	}
 

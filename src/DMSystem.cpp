@@ -201,13 +201,11 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 		screenWidth = m_config.screenWidth();
 		screenHeight = m_config.screenHeight();
 
-		// Place the window in the middle of the screen.
-#ifdef HOME_RUN
 		posX = ( GetSystemMetrics( SM_CXSCREEN ) - screenWidth ) / 2;
-#else
-		posX = 1960;
-#endif // HOME_RUN
 		posY = ( GetSystemMetrics( SM_CYSCREEN ) - screenHeight ) / 2;
+
+		//posX = 400;
+		//posY = 100;
 	}
 
 	// Create the window with the screen settings and get the handle to it.

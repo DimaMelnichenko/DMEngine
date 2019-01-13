@@ -16,7 +16,7 @@ TextureShader::~TextureShader()
 
 bool TextureShader::innerInitialize()
 {
-	createPhase( 0, -1, 0 );
+	createPhase( 0, 0 );
 	return true;
 }
 

@@ -1,6 +1,6 @@
 #include "DMTerrain.h"
 #include "System.h"
-#include "json.hpp"
+//#include "json.hpp"
 #include <fstream>
 #include "Shaders\DMClipMapShader.h"
 
@@ -19,7 +19,7 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 	m_shaderName = shaderName;
 	if( !libLoader.loadMaterial( 4 ) )
 		return false;
-
+	/*
 	using json = nlohmann::json;
 
 	json jsonParser;
@@ -68,7 +68,7 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 		m_clip_map.setHightOffset( 0.0 );
 
 	m_isInited = true;
-
+	*/
 	return true;
 }
 
@@ -104,6 +104,7 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 	DMD3D::instance().setSRV( SRVType::ps, 0, GS::System::textures().get( "t_heightmap" )->srv() );
 	DMD3D::instance().setSRV( SRVType::ps, 1, GS::System::textures().get( "t_normalmap" )->srv() ) ;
 	DMD3D::instance().setSRV( SRVType::ps, 2, GS::System::textures().get( "t_diffuse" )->srv() );
+	DMD3D::instance().setSRV( SRVType::ps, 3, GS::System::textures().get( "monohromeNoise" )->srv() );
 
 	DMD3D::instance().setSRV( SRVType::ps, 10, GS::System::textures().get( "mask_grass" )->srv() );			//Texture2D maskGrass : register( t10 );
 	DMD3D::instance().setSRV( SRVType::ps, 11, GS::System::textures().get( "t_grass" )->srv() );			//Texture2D textureGrass : register( t11 );
@@ -117,6 +118,10 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 	DMD3D::instance().setSRV( SRVType::ps, 19, GS::System::textures().get( "t_rock_normal" )->srv() );		//Texture2D g_rockNormal : register( t19 );
 	DMD3D::instance().setSRV( SRVType::ps, 20, GS::System::textures().get( "t_boulders_normal" )->srv() );	//Texture2D g_bouldersNormal : register( t20 );
 	DMD3D::instance().setSRV( SRVType::ps, 21, GS::System::textures().get( "t_snow_normal" )->srv() );		//Texture2D g_snowNormal : register( t21 );
+	DMD3D::instance().setSRV( SRVType::ps, 22, GS::System::textures().get( "t_grass_hmr" )->srv() );		//Texture2D g_grassHMR : register( t22 );
+	DMD3D::instance().setSRV( SRVType::ps, 23, GS::System::textures().get( "t_rock_hmr" )->srv() );			//Texture2D g_rockHMR : register( t23 );
+	DMD3D::instance().setSRV( SRVType::ps, 24, GS::System::textures().get( "t_boulders_hmr" )->srv() );		//Texture2D g_bouldersHMR : register( t24 );
+	DMD3D::instance().setSRV( SRVType::ps, 25, GS::System::textures().get( "t_snow_hmr" )->srv() );			//Texture2D g_snowHMR : register( t25 );
 
 
 	m_clip_map.Render( *shader, camera, frustum );

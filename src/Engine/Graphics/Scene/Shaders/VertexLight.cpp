@@ -77,7 +77,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> VertexLight::initLayouts()
 
 bool VertexLight::innerInitialize()
 {
-	createPhase( 0, -1, 0 );
+	createPhase( 0, 0 );
 
 	DMD3D::instance().createShaderConstantBuffer( sizeof( PSParam ), m_psCB );
 

@@ -1,5 +1,6 @@
 #include "Layout.h"
 #include "D3D\DMD3D.h"
+#include <d3dcompiler.h>
 
 Layout::Layout()
 {
@@ -30,7 +31,7 @@ bool Layout::initLayouts()
 	ID3D10Blob* shaderBuffer;
 	ID3D10Blob* errorMessage = nullptr;
 
-	HRESULT result = D3DX11CompileFromMemory( pseudoShader.data(),
+	HRESULT result = D3DCompile( pseudoShader.data(),
 											  sizeof( std::string::value_type) * pseudoShader.size(),
 											  NULL, 
 											  nullptr,
@@ -39,8 +40,7 @@ bool Layout::initLayouts()
 											  "vs_5_0",
 											  D3D10_SHADER_ENABLE_STRICTNESS,
 											  0,
-											  nullptr,
-											  &shaderBuffer, &errorMessage, NULL );
+											  &shaderBuffer, &errorMessage );
 	if( errorMessage )
 	{
 		MessageBox( 0, "Create layout error", (char*)( errorMessage->GetBufferPointer() ), MB_OK );

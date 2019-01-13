@@ -77,7 +77,7 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> PhongLight::initLayouts()
 
 bool PhongLight::innerInitialize()
 {
-	createPhase( 0, -1, 0 );
+	createPhase( 0, 0 );
 	return true;
 }
 

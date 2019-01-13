@@ -31,7 +31,7 @@ public:
 
 	char* getVertices() override
 	{
-		return  reinterpret_cast<char*>( &m_vertices[0] );
+		return reinterpret_cast<char*>( &m_vertices[0] );
 	}
 
 	uint32_t vertexCount() const override

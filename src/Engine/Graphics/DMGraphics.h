@@ -31,6 +31,7 @@
 
 #include "Particle\DMParticleSystem.h"
 #include "Scene\Scatterer\Scatterer.h"
+#include "Scene/TerrainTesselation/Terrain.h"
 
 namespace GS
 {
@@ -81,6 +82,8 @@ private:
 	DMTerrain m_water;
 	std::unordered_map<std::string, bool> m_visible;
 	LibraryLoader m_library;
+
+	Terrain m_tessTerrain;
 
 private:
 	DMParticleSystem m_particleSystem;

@@ -1,49 +1,22 @@
 #include "DMTexture.h"
-#include <D3DX11tex.h>
+//#include <D3DX11tex.h>
 
 namespace GS
 {
 
-DMTexture::DMTexture( uint32_t id, const std::string& name, ScratchImage&& image ) :
-	DMResource( id, name ),
-	m_image( std::move(image) )
+DMTexture::DMTexture( uint32_t id, const std::string& name ) :
+	DMResource( id, name )
 {
 }
 
-DMTexture::DMTexture( DMTexture&& obj ) : DMResource( obj.id(), obj.name() ), m_srv( nullptr )
+DMTexture::DMTexture( DMTexture&& obj ) : DMResource( std::move( obj ) )
 {
-	std::swap( this->m_srv, obj.m_srv );
+	
 }
 
 DMTexture::~DMTexture()
 {
 
-}
-
-const ScratchImage& DMTexture::image() const
-{
-	return m_image;
-}
-
-com_unique_ptr<ID3D11ShaderResourceView>& DMTexture::srv()
-{
-	return m_srv;
-}
-
-bool DMTexture::createSRV()
-{
-	ID3D11ShaderResourceView* srv = nullptr;
-	HRESULT hr = CreateShaderResourceView( DMD3D::instance().GetDevice(),
-										   m_image.GetImages(), m_image.GetImageCount(),
-										   m_image.GetMetadata(), &srv );
-	if( FAILED( hr ) )
-	{
-		return false;
-	}
-
-	m_srv = make_com_ptr<ID3D11ShaderResourceView>( srv );
-
-	return true;
 }
 
 }

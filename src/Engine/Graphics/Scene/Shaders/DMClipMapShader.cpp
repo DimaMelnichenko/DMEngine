@@ -115,10 +115,7 @@ void DMClipMapShader::setParams( const GS::ParamSet & )
 
 bool DMClipMapShader::innerInitialize()
 {
-	createPhase( 0, -1, 0 );
-
-	
-	
+	createPhase( 0, 0 );
 
 	return true;
 }

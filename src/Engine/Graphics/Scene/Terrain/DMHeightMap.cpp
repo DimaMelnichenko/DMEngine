@@ -22,7 +22,7 @@ void DMHeightMap::setHeightMapTexture( GS::DMTexture* texture )
 
 XMFLOAT2 DMHeightMap::size() const
 {
-	return XMFLOAT2( m_heightMap->image().GetMetadata().height, m_heightMap->image().GetMetadata().width );
+	return XMFLOAT2( m_heightMap->height(), m_heightMap->width() );
 }
 
 float DMHeightMap::height( float x, float y ) const

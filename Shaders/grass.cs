@@ -30,7 +30,8 @@ cbuffer PopulateParametersBuffer : register(b4)
 	float densityPopulate;
 	float nearFallowPopulate;
 	float farFallowPopulate;
-	float2 dumbPopulateParametersBuffer;
+	float noiseCoordMultipler;
+	float noisePower;
 };
 
 struct GrassItem
@@ -86,13 +87,13 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	steppedCamPos += float2( scale2, scale2 ) - mod;
 	
 	texCoord = texCoord - b_rect * 0.5f * step + steppedCamPos;
-	texCoord.x += noise3( float3( texCoord * 9.0, 0.0 ) ) * densityPopulate * 10.0;
-	texCoord.y += noise3( float3( texCoord * 9.0, 1.0 ) ) * densityPopulate * 10.0;
+	texCoord.x += noise3( float3( texCoord * noiseCoordMultipler, 0.0 ) ) * noisePower;
+	texCoord.y += noise3( float3( texCoord * noiseCoordMultipler, 1.0 ) ) * noisePower;
 	//texCoord = texCoord + steppedCamPos;
 	
 	//float2 noiseTexCoord = texCoord / 64.0;
 	//float noise = noise( noiseTexCoord )
-	grassItem.rotation.y = noise( texCoord * 10.0 ) * 40.0;
+	grassItem.rotation.y = noise( texCoord * noiseCoordMultipler ) * noisePower * 10.0;
 	
 	//texCoord += noise.xy * 0.5;
 	float2 offsetPosition = texCoord;
@@ -117,7 +118,7 @@ void main( uint3 groupID : SV_GroupID, uint3 dispatchThreadId : SV_DispatchThrea
 	grassItem.position = grassPosition;
 	
 	//grassItem.position = float3( groupID.x, 1.0f, groupID.y * 32 ) );
-	grassItem.size = sizeMultiplerPopulate * sizeMultipler * lerp( 0.7, 1.5f, noise3( float3( texCoord * 5.0, 2.0 ) ) * 0.5 + 0.5 );
+	grassItem.size = sizeMultiplerPopulate * sizeMultipler * lerp( 0.3, 1.0, PerlinNoise2D( offsetPosition.xy * 200.0, 6 ) );
 	
 	float distanceToGrass = distance( cb_cameraPosition, grassPosition );
 	

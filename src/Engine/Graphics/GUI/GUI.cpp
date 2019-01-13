@@ -42,6 +42,13 @@ void GUI::Begin()
 {
 	//static bool show_demo_window = true;
 	//static bool show_another_window = false;
+
+	DMD3D::instance().GetDeviceContext()->VSSetShader( nullptr, nullptr, 0 );
+	DMD3D::instance().GetDeviceContext()->GSSetShader( nullptr, nullptr, 0 );
+	DMD3D::instance().GetDeviceContext()->HSSetShader( nullptr, nullptr, 0 );
+	DMD3D::instance().GetDeviceContext()->DSSetShader( nullptr, nullptr, 0 );
+	DMD3D::instance().GetDeviceContext()->PSSetShader( nullptr, nullptr, 0 );
+
 	static ImVec4 clear_color = ImVec4( 0.45f, 0.55f, 0.60f, 1.00f );
 
 	ImGui_ImplDX11_NewFrame();
