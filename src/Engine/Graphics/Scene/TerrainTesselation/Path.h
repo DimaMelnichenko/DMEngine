@@ -17,5 +17,6 @@ public:
 private:
 	com_unique_ptr<ID3D11Buffer> m_vertexBuffer;
 	com_unique_ptr<ID3D11Buffer> m_indexBuffer;
+	uint32_t m_indexCount;
 };
 

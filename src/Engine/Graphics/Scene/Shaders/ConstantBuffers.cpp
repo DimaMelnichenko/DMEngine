@@ -92,6 +92,7 @@ void ConstantBuffers::setPerObjectBuffer( const XMMATRIX* matrix )
 
 	ID3D11Buffer* buffer = m_modelConstant.get();
 	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->DSSetConstantBuffers( 1, 1, &buffer );
 }
 
 }

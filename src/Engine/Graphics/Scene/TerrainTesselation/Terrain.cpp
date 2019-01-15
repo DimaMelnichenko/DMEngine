@@ -1,10 +1,14 @@
 #include "Terrain.h"
 #include "D3D/DMD3D.h"
 #include "Logger/Logger.h"
+#include <cmath>
 
+namespace GS
+{
 
-
-Terrain::Terrain()
+Terrain::Terrain() :
+	m_ringCount( 4 ),
+	m_pathSize(4)
 {
 
 }
@@ -17,6 +21,10 @@ Terrain::~Terrain()
 
 bool Terrain::initialize()
 {
+	m_tessParameters.push_back( 4.0 );
+	m_tessParameters.push_back( 1.0 );
+	m_tessParameters.push_back( 0.0 );
+
 	std::string buffer = R"(cbuffer FrameConstantBuffer : register( b0 )
 	{
 		matrix cb_viewMatrix;
@@ -42,6 +50,15 @@ bool Terrain::initialize()
 		float4      g_f2Modes;
 	};
 
+	struct PathParameters
+	{
+		float2 offset;
+		float sizeMultipler;
+		float ppDump;
+	};
+
+	StructuredBuffer<PathParameters> g_instancedPathParameters : register(t16);
+
 	//=================================================================================================================================
 	// Functions
 	//=================================================================================================================================
@@ -58,16 +75,12 @@ bool Terrain::initialize()
 	//=================================================================================================================================
 	// Shader structures
 	//=================================================================================================================================
+	
 
 	struct Position_Input
 	{
-		float3 f3Position   : POSITION0;  
-	};
-
-	struct HS_ConstantOutput
-	{
-		float fTessFactor[3]    : SV_TessFactor;
-		float fInsideTessFactor : SV_InsideTessFactor;
+		float3 f3Position   : POSITION0;
+		uint instanceIndex: SV_InstanceID;
 	};
 
 	struct HS_ConstantOutput_Quad
@@ -97,6 +110,9 @@ bool Terrain::initialize()
     
 		// Pass through world space position
 		O.f3Position = I.f3Position;
+		O.f3Position *= g_instancedPathParameters[I.instanceIndex].sizeMultipler;
+		float2 posOffset = g_instancedPathParameters[I.instanceIndex].offset;
+		O.f3Position.xz += posOffset;
     
 		return O;    
 	}
@@ -108,8 +124,7 @@ bool Terrain::initialize()
 		float2 ritf,itf; float4 rtf;
 		uint mode = (uint)g_f2Modes.x;
 
-		//Process2DQuadTessFactorsMax( float4( 4.0, 4.0, 4.0, 4.0 ), 1.0, rtf, ritf, itf);
-
+		//Process2DQuadTessFactorsMax( float4( 1.0, 1.0, 1.0, 1.0 ), 1.0, rtf, ritf, itf);
 
 
 		switch (mode)
@@ -156,15 +171,17 @@ bool Terrain::initialize()
 
 		float3 p[4]; 
 		[unroll]
-		for (uint i=0; i<4; i++)
+		for( uint i = 0; i < 4; i++ )
 		{
-			p[i]=I[i].f3Position;
+			p[i] = I[i].f3Position;
 		}
 		f3Position = bilerpUV(p, uv);
 
+		
+
 		O.f4Position = float4( f3Position.xyz, 1.0 );
 
-		//O.f4Position = mul(O.f4Position, cb_worldMatrix);
+		O.f4Position = mul(O.f4Position, cb_worldMatrix);
 		O.f4Position = mul(O.f4Position, cb_viewMatrix);
 		O.f4Position = mul(O.f4Position, cb_projectionMatrix);
         
@@ -182,7 +199,7 @@ bool Terrain::initialize()
 
 	)";
 
-	
+
 
 	std::vector<D3D11_INPUT_ELEMENT_DESC> vertexLayout;
 	D3D11_INPUT_ELEMENT_DESC polygonLayout;
@@ -225,11 +242,54 @@ bool Terrain::initialize()
 		return false;
 
 
-	if( !m_path.reinitializeBuffers() )
+	if( !m_path.reinitializeBuffers( m_pathSize ) )
 		return false;
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Param ), m_constBuffer ) )
-		return true;
+		return false;
+
+	struct PathParameters
+	{
+		XMFLOAT2 offset;
+		float sizeMultipler;
+		float dump;
+	};
+
+	m_structuredBuffer.createBuffer( sizeof( PathParameters ), 4 + m_ringCount * 12 );
+
+	float worldMultipler = 10.0;
+	
+	std::vector<PathParameters> pathPosition;
+	//central path
+	float offset = (float)m_pathSize / 2.0f * worldMultipler;
+	pathPosition.push_back( { XMFLOAT2( -offset, -offset ), 1.0f * worldMultipler } );
+	pathPosition.push_back( { XMFLOAT2(  offset, -offset ), 1.0f * worldMultipler } );
+	pathPosition.push_back( { XMFLOAT2(  offset,  offset ), 1.0f * worldMultipler } );
+	pathPosition.push_back( { XMFLOAT2( -offset,  offset ), 1.0f * worldMultipler } );
+															   
+	//create rings
+	for( uint16_t ringIndex = 0; ringIndex < m_ringCount; ++ringIndex )
+	{
+		float sizeMultipler = pow( 2, (float)ringIndex ) * worldMultipler;
+		float offset = pow( 2, (float)ringIndex ) * m_pathSize * 0.5 * worldMultipler;
+		float diagonalOffset = offset * 3.0;
+		
+		float offsetIncrementer = 1;
+		pathPosition.push_back( { XMFLOAT2( -diagonalOffset,   diagonalOffset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2( -diagonalOffset,           offset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2( -diagonalOffset,		  -offset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2( -diagonalOffset,  -diagonalOffset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2(		    -offset,  -diagonalOffset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2(		     offset,  -diagonalOffset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2(  diagonalOffset,  -diagonalOffset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2(  diagonalOffset,          -offset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2(  diagonalOffset,           offset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2(  diagonalOffset,   diagonalOffset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2(  offset,           diagonalOffset ), sizeMultipler } );
+		pathPosition.push_back( { XMFLOAT2( -offset,           diagonalOffset ), sizeMultipler } );
+	}
+
+	m_structuredBuffer.updateData( &pathPosition[0], m_structuredBuffer.sizeofElement() * m_structuredBuffer.numElements() );
 
 	return true;
 }
@@ -237,9 +297,9 @@ bool Terrain::initialize()
 void Terrain::render()
 {
 
-	Param param;
-	param.tessFactors = XMFLOAT4( 4.0, 4.0, 4.0, 4.0 );
-	param.modes = XMFLOAT4( 0.0, 1.0, 0.0, 0.0 );
+	static Param param;
+	param.tessFactors = XMFLOAT4( m_tessParameters[0], m_tessParameters[0], m_tessParameters[0], m_tessParameters[0] );
+	param.modes = XMFLOAT4( m_tessParameters[2], m_tessParameters[1], 0.0, 0.0 );
 
 	Device::updateResource<Terrain::Param>( m_constBuffer.get(), param );
 
@@ -253,10 +313,16 @@ void Terrain::render()
 	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &vertexBuffer, &Stride, &Offset );
 	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_path.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 
-
+	m_structuredBuffer.setToSlot( 16, SRVType::vs );
 	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST );
-	m_shader.setDrawType( GS::DMShader::by_index );
+	m_shader.setDrawType( GS::DMShader::by_index_instance );
 	m_shader.setPass( 0 );
-	m_shader.render( m_path.indexCount() );
+	m_shader.renderInstanced( m_path.indexCount(), 0, 0, m_structuredBuffer.numElements() );
 }
 
+std::vector<float>* Terrain::tessFactor()
+{
+	return &m_tessParameters;
+}
+
+}

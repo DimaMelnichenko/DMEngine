@@ -110,6 +110,8 @@
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\TextureLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Common\Properties\Property.h" />
+    <ClInclude Include="src\Common\Properties\PropertyTypes.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TerrainTesselation\Path.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TerrainTesselation\Terrain.h" />
     <ClInclude Include="src\Logger\Logger.h" />

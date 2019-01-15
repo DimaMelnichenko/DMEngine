@@ -81,6 +81,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	System::textures().insertResource( std::move( custTexture ) );
 
 	RET_FALSE( m_tessTerrain.initialize() );
+	m_GUI.terrainTessFactor( m_tessTerrain.tessFactor() );
 
 	LOG( "Load materials" );
 	timeStart = TIME_POINT();

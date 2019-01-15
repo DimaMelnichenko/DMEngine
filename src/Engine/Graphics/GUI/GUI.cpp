@@ -111,6 +111,8 @@ void GUI::Frame()
 	renderSceneObject();
 	materialParameterKind();
 
+	terrainSettings();
+
 	// 3. Show another simple window.
 	/*if( show_another_window )
 	{
@@ -274,6 +276,22 @@ void GUI::printCamera( const DMCamera& camera )
 	ImGui::Begin( "Camera", nullptr, ImVec2( 256, 300 ), 1.0 );
 
 	ImGui::Text( "Position:\nx:%f\ny:%f\nz:%f", camera.position().x, camera.position().y, camera.position().z );
+
+	ImGui::End();
+}
+
+void GUI::terrainTessFactor( std::vector<float>* tessFactor )
+{
+	m_terrainTessFactor = tessFactor;
+}
+
+void GUI::terrainSettings()
+{
+	ImGui::Begin( "Terrain Settings", nullptr, ImVec2( 256, 300 ), 1.0 );
+
+	ImGui::SliderFloat( "Tesselation factor", &( m_terrainTessFactor->at( 0 ) ), 1.0, 16.0 );
+	ImGui::SliderFloat( "Tesselation inside", &( m_terrainTessFactor->at( 1 ) ), 0.0, 1.0 );
+	ImGui::DragFloat( "Tesselation mode", &( m_terrainTessFactor->at( 2 ) ), 1.0, 0.0, 2.0 );
 
 	ImGui::End();
 }
