@@ -19,8 +19,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Common\Properties\Property.cpp" />
+    <ClCompile Include="src\Common\Properties\PropertyContainer.cpp" />
+    <ClCompile Include="src\Common\Properties\ValueType.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\ShaderUtils.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Shaders\ShaderUtils.h" />
     <ClCompile Include="src\Engine\Graphics\Scene\TerrainTesselation\Path.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TerrainTesselation\Terrain.cpp" />
     <ClCompile Include="src\Logger\Logger.cpp" />
@@ -111,7 +113,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Common\Properties\Property.h" />
-    <ClInclude Include="src\Common\Properties\PropertyTypes.h" />
+    <ClInclude Include="src\Common\Properties\PropertyContainer.h" />
+    <ClInclude Include="src\Common\Properties\value.h" />
+    <ClInclude Include="src\Common\Properties\ValueType.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\Shaders\ShaderUtils.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TerrainTesselation\Path.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TerrainTesselation\Terrain.h" />
     <ClInclude Include="src\Logger\Logger.h" />
@@ -321,6 +326,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <StructMemberAlignment>Default</StructMemberAlignment>
       <BrowseInformation>true</BrowseInformation>
+      <AdditionalIncludeDirectories>$(ProjectDir)src\Engine\Graphics\Scene\;$(ProjectDir)src\Engine\Graphics\Common\;$(ProjectDir)src\Common\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

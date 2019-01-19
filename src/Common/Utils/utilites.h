@@ -41,6 +41,9 @@ com_unique_ptr<T> make_com_ptr( T* p )
 
 void str_split( const std::string& str, std::vector<std::string>& tokens, const std::string& delimiters = " " );
 
+
 XMFLOAT3 strToVec3( const std::string& str );
-XMFLOAT4 strToVec4( const std::string& str );
+
+bool strToVec4( const std::string& str, XMFLOAT4& vec );
+
 std::string vec4ToStr( const XMFLOAT4& vec );

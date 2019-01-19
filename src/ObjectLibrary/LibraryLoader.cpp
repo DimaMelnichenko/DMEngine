@@ -234,8 +234,12 @@ bool LibraryLoader::loadMaterialParams( uint32_t idInstance, GS::ParamSet& param
 		switch( paramSet[paramName].valueType() )
 		{
 			case ParameterType::float4: // vec4
-				paramSet[paramName].setValue( strToVec4( paramValue ) );
+			{
+				XMFLOAT4 vec4;
+				if( strToVec4( paramValue, vec4 ) )
+					paramSet[paramName].setValue( vec4 );
 				break;
+			}
 			case ParameterType::textureId: // texture id
 				paramSet[paramName].setValue( static_cast<uint32_t>( std::stol( paramValue ) ) );
 				break;

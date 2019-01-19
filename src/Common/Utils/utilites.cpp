@@ -1,5 +1,5 @@
 #include "utilites.h"
-
+#include <charconv>
 
 void delete_com( IUnknown* p )
 {
@@ -36,18 +36,24 @@ XMFLOAT3 strToVec3( const std::string& str )
 	return XMFLOAT3( 0.0, 0.0, 0.0 );
 }
 
-XMFLOAT4 strToVec4( const std::string& str )
+bool strToVec4( const std::string& str, XMFLOAT4& vector )
 {
 	std::vector<std::string> vecString;
 	str_split( str, vecString, "," );
 
-	if( vecString.size() )
-		return XMFLOAT4( ::atof( vecString[0].c_str() ), 
-							::atof( vecString[1].c_str() ), 
-							::atof( vecString[2].c_str() ),
-							::atof( vecString[3].c_str() ) );
+	if( vecString.empty() )
+		return false;
+		
+	if( auto[p, ec] = std::from_chars( vecString[0].data(), vecString[0].data() + vecString[0].size(), vector.x ); ec != std::errc() ) 
+		return false;
+	if( auto[p, ec] = std::from_chars( vecString[1].data(), vecString[1].data() + vecString[1].size(), vector.y ); ec != std::errc() ) 
+		return false;
+	if( auto[p, ec] = std::from_chars( vecString[2].data(), vecString[2].data() + vecString[2].size(), vector.z ); ec != std::errc() ) 
+		return false;
+	if( auto[p, ec] = std::from_chars( vecString[3].data(), vecString[3].data() + vecString[3].size(), vector.w ); ec != std::errc() ) 
+		return false;
 
-	return XMFLOAT4( 0.0, 0.0, 0.0, 1.0 );
+	return true;
 }
 
 std::string vec4ToStr( const XMFLOAT4& vec )

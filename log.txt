@@ -4,27 +4,69 @@
 				Initialize logger
 
 
-func:GS::DMGraphics::Initialize, line:65|Initialize the Direct3D object ms: 119.437000
+func:GS::DMGraphics::Initialize, line:65|Initialize the Direct3D object ms: 161.007000
 func:GS::CustomTexture::generateTexture, line:64|Inputs correct
 func:GS::DMGraphics::Initialize, line:86|Load materials
 func:LibraryLoader::loadMaterial, line:96|Load material: 1
 func:LibraryLoader::loadShader, line:150|Load shader: Shaders\color.vs
 func:LibraryLoader::loadShader, line:150|Load shader: Shaders\color.ps
-func:GS::DMGraphics::Initialize, line:93|Load material for ms: 6.253000
+func:GS::DMGraphics::Initialize, line:93|Load material for ms: 6.447000
 func:GS::DMGraphics::Initialize, line:95|Load models
 func:LibraryLoader::loadModelWithLOD, line:181|Load model: 1
 func:LibraryLoader::loadMesh, line:163|Load mesh: 1
-func:GS::DMGraphics::Initialize, line:102|Load models for ms: 3.836000
+func:GS::DMGraphics::Initialize, line:102|Load models for ms: 3.321000
 func:GS::DMGraphics::Initialize, line:106|Load textures
-func:GS::DMGraphics::Initialize, line:118|Load textures for ms: 0.000000
+func:LibraryLoader::loadTexture, line:31|Load all textures
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 1; id = 1, name = no_image, file = no_image.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 65; id = 2, name = grass.jpg, file = grass.jpg
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 19; id = 3, name = WaterPlain, file = WaterPlain.jpg
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 28; id = 4, name = sky3, file = VizPeople_non_commercial_hdr_v1_05.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 240; id = 5, name = knot_tex, file = materials\blocksrough_basecolor_2048.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 249; id = 6, name = knot_shiness, file = materials\blocksrough_basecolor_2048.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 30; id = 7, name = t_heightmap, file = terrain\heightmap.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 198; id = 8, name = t_boulders, file = materials\rocky_dirt1-albedo.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 172; id = 9, name = t_normalmap, file = terrain\normalmap.tif
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 18; id = 10, name = Cliffs, file = Cliffs.jpg
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 37; id = 11, name = sand, file = sand.jpg
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 28; id = 12, name = t_snow, file = materials\Snow_003_COLOR.jpg
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 3; id = 13, name = FoilageMap, file = FoilageMap.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 63; id = 14, name = cvetok_romashki, file = cvetok_romashki.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 27; id = 15, name = TerrainHM.png, file = TerrainHM.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 280; id = 16, name = Romashka.png, file = Romashka.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 1; id = 17, name = noise2d, file = Noise2D.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 2; id = 18, name = grassBlade, file = GrassBlade.jpg
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 25; id = 19, name = grass2.dds, file = grass2.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 20; id = 21, name = oduvanchik, file = oduvanchik.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 0; id = 22, name = alpha03, file = alpha03.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 1; id = 23, name = default_gloss, file = default_gloss.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 10; id = 26, name = t_diffuse, file = terrain\diffuse.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 8; id = 27, name = mask_grass, file = terrain\mask_grass.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 7; id = 28, name = mask_camomile, file = terrain\mask_camomile.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 370; id = 29, name = knot_normal, file = materials\blocksrough_normal_2048.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 7; id = 30, name = mask_rock, file = terrain\mask_rock.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 8; id = 31, name = mask_boulders, file = terrain\mask_boulders.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 8; id = 32, name = mask_snow, file = terrain\mask_snow.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 228; id = 33, name = t_rock, file = materials\slatecliffrock-albedo.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 185; id = 34, name = t_grass, file = materials\mixedmoss-albedo2.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 381; id = 35, name = t_boulders_normal, file = materials\rocky_dirt1-normal-dx_with_height.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 68; id = 36, name = t_snow_normal, file = materials\Snow_003_NORM_H.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 5; id = 37, name = t_rock_normal, file = materials\slatecliffrock_Normal_with_height.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 372; id = 38, name = t_grass_normal, file = materials\mixedmoss-normal2_with_height.PNG
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 15; id = 39, name = t_grass_color, file = terrain\grass_color_d.dds
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 35; id = 40, name = t_snow_hmr, file = materials\Snow_003_HMR.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 188; id = 41, name = t_rock_hmr, file = materials\slatecliffrock_HMR.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 141; id = 42, name = t_boulders_hmr, file = materials\rocky_dirt1-HMR.png
+func:LibraryLoader::loadTexture, line:57|Load texture for ms: 157; id = 43, name = t_grass_hmr, file = materials\mixedmoss-HMR.png
+func:GS::DMGraphics::Initialize, line:118|Load textures for ms: 3723.996000
 func:GS::DMGraphics::Initialize, line:125|Create main camera
 func:GS::DMGraphics::Initialize, line:139|Create light driver
 func:LibraryLoader::loadMaterial, line:96|Load material: 4
 func:LibraryLoader::loadShader, line:150|Load shader: Shaders\clipmap_h.ps
 func:LibraryLoader::loadShader, line:150|Load shader: Shaders\clipmap.vs
-func:GS::DMGraphics::Initialize, line:193|Terrain init ms: 280.423000
-func:GS::DMGraphics::Initialize, line:203|Grass init ms: 95.324000
-func:GS::DMGraphics::Initialize, line:209|Total init ms: 1968.273000
+func:GS::DMGraphics::Initialize, line:193|Terrain init ms: 278.147000
+func:GS::DMGraphics::Initialize, line:203|Grass init ms: 95.798000
+func:GS::DMGraphics::Initialize, line:209|Total init ms: 5730.588000
+func:GS::DMGraphics::Initialize, line:211|typeid( XMFLOAT4 ).name()=struct DirectX::XMFLOAT4
 
 
 Close logger

@@ -2,13 +2,15 @@
 #include "D3D/DMD3D.h"
 #include "Logger/Logger.h"
 #include <cmath>
+#include "System.h"
+#include "Properties/Property.h"
 
 namespace GS
 {
 
 Terrain::Terrain() :
-	m_ringCount( 4 ),
-	m_pathSize(4)
+	m_ringCount(7),
+	m_pathSize(64)
 {
 
 }
@@ -21,184 +23,20 @@ Terrain::~Terrain()
 
 bool Terrain::initialize()
 {
-	m_tessParameters.push_back( 4.0 );
-	m_tessParameters.push_back( 1.0 );
-	m_tessParameters.push_back( 0.0 );
+	BasicProperty* prop = m_properties.moveProperty( new Property( "Outer tess", 1.0f ) );
+	prop->setLow( 1.0 );
+	prop->setHigh( 16.0 );
+	prop->setControlType( GUIControlType::SLIDER );
 
-	std::string buffer = R"(cbuffer FrameConstantBuffer : register( b0 )
-	{
-		matrix cb_viewMatrix;
-		matrix cb_viewInverseMatrix;
-		matrix cb_projectionMatrix;
-		matrix cb_viewProjectionMatrix;
-		float3 cb_cameraPosition;
-		float  cb_appTime;
-		float3 cb_viewDirection;
-		float  cb_elapsedTime;
-		float  cb_lightCount;
-		float3 fcb_dump;
-	};
+	prop = m_properties.moveProperty( new Property( "Inner tess", 1.0f ) );
+	prop->setControlType( GUIControlType::SLIDER );
 
-	cbuffer WorldBuffer : register( b1 )
-	{
-		matrix cb_worldMatrix;
-	}; 
+	prop = m_properties.moveProperty( new Property( "High multipler", 10.0f ) );
+	prop->setLow( 1.0 );
+	prop->setHigh( 1000.0 );
+	prop->setControlType( GUIControlType::SLIDER );
 
-	cbuffer cbQuadTesselation : register( b2 )
-	{
-		float4      g_f4TessFactors;            
-		float4      g_f2Modes;
-	};
-
-	struct PathParameters
-	{
-		float2 offset;
-		float sizeMultipler;
-		float ppDump;
-	};
-
-	StructuredBuffer<PathParameters> g_instancedPathParameters : register(t16);
-
-	//=================================================================================================================================
-	// Functions
-	//=================================================================================================================================
-	float3 bilerpUV(float3 v[4], float2 uv)
-	{
-		// bilerp the texture coordinates    
-		float3 bottom = lerp( v[0], v[1], uv.x );
-		float3 top = lerp( v[3], v[2], uv.x );
-		float3 result = lerp( bottom, top, uv.y );
-	
-		return result;    
-	}
-
-	//=================================================================================================================================
-	// Shader structures
-	//=================================================================================================================================
-	
-
-	struct Position_Input
-	{
-		float3 f3Position   : POSITION0;
-		uint instanceIndex: SV_InstanceID;
-	};
-
-	struct HS_ConstantOutput_Quad
-	{
-		float fTessFactor[4]       : SV_TessFactor;
-		float fInsideTessFactor[2] : SV_InsideTessFactor;
-	};
-
-	struct DS_Output
-	{
-		float4 f4Position   : SV_Position;
-	};
-
-	struct PS_RenderSceneInput
-	{
-		float4 f4Position   : SV_Position;
-	};
-
-	struct PS_RenderOutput
-	{
-		float4 f4Color      : SV_Target0;
-	};
-
-	Position_Input VS_RenderSceneWithTessellation( Position_Input I )
-	{
-		Position_Input O;
-    
-		// Pass through world space position
-		O.f3Position = I.f3Position;
-		O.f3Position *= g_instancedPathParameters[I.instanceIndex].sizeMultipler;
-		float2 posOffset = g_instancedPathParameters[I.instanceIndex].offset;
-		O.f3Position.xz += posOffset;
-    
-		return O;    
-	}
-
-	HS_ConstantOutput_Quad HS_QuadsConstant( InputPatch<Position_Input, 4> I )
-	{
-		HS_ConstantOutput_Quad O = (HS_ConstantOutput_Quad)0;
-    
-		float2 ritf,itf; float4 rtf;
-		uint mode = (uint)g_f2Modes.x;
-
-		//Process2DQuadTessFactorsMax( float4( 1.0, 1.0, 1.0, 1.0 ), 1.0, rtf, ritf, itf);
-
-
-		switch (mode)
-		{
-			case 0: Process2DQuadTessFactorsMax( g_f4TessFactors, g_f2Modes.y, rtf, ritf, itf);
-				break;
-			case 1: Process2DQuadTessFactorsMin( g_f4TessFactors, g_f2Modes.y, rtf, ritf, itf);
-				break;
-			case 2: Process2DQuadTessFactorsAvg( g_f4TessFactors, g_f2Modes.y, rtf, ritf, itf);
-				break;
-			default: Process2DQuadTessFactorsMax( g_f4TessFactors, g_f2Modes.y, rtf, ritf, itf);
-				break;
-		}
-
-		O.fTessFactor[0] = rtf.x;
-		O.fTessFactor[1] = rtf.y;
-		O.fTessFactor[2] = rtf.z;
-		O.fTessFactor[3] = rtf.w;
-		O.fInsideTessFactor[0] = ritf.x;
-		O.fInsideTessFactor[1] = ritf.y;
-
-		return O;
-	}
-
-	[domain("quad")]
-	[partitioning("fractional_even")]
-	[outputtopology("triangle_cw")]
-	[patchconstantfunc("HS_QuadsConstant")]
-	[outputcontrolpoints(4)]
-	Position_Input HS_Quads_fractionaleven( InputPatch<Position_Input, 4> I, uint uCPID : SV_OutputControlPointID )
-	{
-		Position_Input O = (Position_Input)0;
-
-		O.f3Position = I[uCPID].f3Position; 
-    
-		return O;
-	}
-
-	[domain("quad")]
-	PS_RenderSceneInput DS_Quads( HS_ConstantOutput_Quad HSConstantData, const OutputPatch<Position_Input, 4> I, float2 uv : SV_DomainLocation )
-	{
-		PS_RenderSceneInput O = (PS_RenderSceneInput)0;
-		float3 f3Position; 
-
-		float3 p[4]; 
-		[unroll]
-		for( uint i = 0; i < 4; i++ )
-		{
-			p[i] = I[i].f3Position;
-		}
-		f3Position = bilerpUV(p, uv);
-
-		
-
-		O.f4Position = float4( f3Position.xyz, 1.0 );
-
-		O.f4Position = mul(O.f4Position, cb_worldMatrix);
-		O.f4Position = mul(O.f4Position, cb_viewMatrix);
-		O.f4Position = mul(O.f4Position, cb_projectionMatrix);
-        
-		return O;
-	}
-
-	PS_RenderOutput PS_SolidColor( PS_RenderSceneInput I )
-	{
-		PS_RenderOutput O;
-
-		O.f4Color = float4( 0.9, 0.9, 0.0, 1.0 );
-
-		return O;
-	}
-
-	)";
-
+	prop = m_properties.moveProperty( new Property( "Wireframe", false ) );
 
 
 	std::vector<D3D11_INPUT_ELEMENT_DESC> vertexLayout;
@@ -214,25 +52,27 @@ bool Terrain::initialize()
 
 	m_shader.setLayoutDesc( std::move( vertexLayout ) );
 
-	if( !m_shader.addShaderPassFromMem( SRVType::vs, "VS_RenderSceneWithTessellation", buffer ) )
+	std::string fileName( "Shaders\\TessTerrain.fx" );
+
+	if( !m_shader.addShaderPassFromFile( SRVType::vs, "VS_RenderSceneWithTessellation", fileName ) )
 	{
 		LOG( "Не получилось скомпилить шейдер" );
 		return false;
 	}
 
-	if( !m_shader.addShaderPassFromMem( SRVType::hs, "HS_Quads_fractionaleven", buffer ) )
+	if( !m_shader.addShaderPassFromFile( SRVType::hs, "HS_Quads_fractionaleven", fileName ) )
 	{
 		LOG( "Не получилось скомпилить шейдер" );
 		return false;
 	}
 
-	if( !m_shader.addShaderPassFromMem( SRVType::ds, "DS_Quads", buffer ) )
+	if( !m_shader.addShaderPassFromFile( SRVType::ds, "DS_Quads", fileName ) )
 	{
 		LOG( "Не получилось скомпилить шейдер" );
 		return false;
 	}
 
-	if( !m_shader.addShaderPassFromMem( SRVType::ps, "PS_SolidColor", buffer ) )
+	if( !m_shader.addShaderPassFromFile( SRVType::ps, "PS_SolidColor", fileName ) )
 	{
 		LOG( "Не получилось скомпилить шейдер" );
 		return false;
@@ -257,7 +97,7 @@ bool Terrain::initialize()
 
 	m_structuredBuffer.createBuffer( sizeof( PathParameters ), 4 + m_ringCount * 12 );
 
-	float worldMultipler = 10.0;
+	float worldMultipler = 1.0;
 	
 	std::vector<PathParameters> pathPosition;
 	//central path
@@ -294,14 +134,39 @@ bool Terrain::initialize()
 	return true;
 }
 
+XMMATRIX Terrain::worldMatrix( const XMFLOAT3& cameraPosition )
+{
+	float snappedX = cameraPosition.x;
+	float snappedZ = cameraPosition.z;
+
+	static float temp  = m_pathSize / 2.0;
+	static float temp2 = m_pathSize / 2.0;
+
+	snappedZ = floorf( snappedZ * ( 1.0 / temp ) ) * temp2;
+	snappedX = floorf( snappedX * ( 1.0 / temp ) ) * temp2;
+
+	const float dx = cameraPosition.x - snappedX;
+	const float dz = cameraPosition.z - snappedZ;
+	snappedX = cameraPosition.x - dx;		
+	snappedZ = cameraPosition.z - dz;
+	return XMMatrixTranslation( snappedX, 0, snappedZ );
+}
+
 void Terrain::render()
 {
+	Device::updateResource<Terrain::Param>( m_constBuffer.get(), [this]( Terrain::Param& param )
+	{
+		param.tessFactors.x = param.tessFactors.y = param.tessFactors.z = param.tessFactors.w = *readProperty<float>( m_properties["Outer tess"] );
+		param.modes.x = 0.0;
+		param.modes.y = *readProperty<float>( m_properties["Inner tess"] );
+		param.hightMultipler.x = *readProperty<float>( m_properties["High multipler"] );
+	} );
+	
 
-	static Param param;
-	param.tessFactors = XMFLOAT4( m_tessParameters[0], m_tessParameters[0], m_tessParameters[0], m_tessParameters[0] );
-	param.modes = XMFLOAT4( m_tessParameters[2], m_tessParameters[1], 0.0, 0.0 );
+	DMD3D::instance().setSRV( SRVType::ds, 0, System::textures().get( "t_heightmap" )->srv() );
+	DMD3D::instance().setSRV( SRVType::ps, 1, System::textures().get( "t_normalmap" )->srv() );
+	DMD3D::instance().setSRV( SRVType::ps, 2, System::textures().get( "grass.jpg" )->srv() );
 
-	Device::updateResource<Terrain::Param>( m_constBuffer.get(), param );
 
 	DMD3D::instance().setConstantBuffer( SRVType::ds, 2, m_constBuffer );
 	DMD3D::instance().setConstantBuffer( SRVType::hs, 2, m_constBuffer );
@@ -320,9 +185,14 @@ void Terrain::render()
 	m_shader.renderInstanced( m_path.indexCount(), 0, 0, m_structuredBuffer.numElements() );
 }
 
-std::vector<float>* Terrain::tessFactor()
+PropertyContainer* Terrain::properties()
 {
-	return &m_tessParameters;
+	return &m_properties;
+}
+
+bool Terrain::wireframe()
+{
+	return *readProperty<bool>( m_properties["Wireframe"] );
 }
 
 }

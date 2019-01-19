@@ -37,7 +37,9 @@ void ModelLoader::loadMaterials( std::unordered_map<std::string, MaterialParam>&
 			}
 			else if( paramType == "vec4" )
 			{
-				matParam.param.insert( { paramName, Parameter( strToVec4( paramValue ) ) } );
+				XMFLOAT4 vec4;
+				if( strToVec4( paramValue, vec4 ) )
+					matParam.param.insert( { paramName, Parameter( vec4 ) } );
 			}
 
 			xmlParam = xmlParam->NextSiblingElement( "param" );
@@ -68,7 +70,9 @@ ParamSet ModelLoader::loadMaterialParam( ResourceMetaFile& metaResource, const s
 		}
 		else if( paramType == "vec4" )
 		{
-			paramSet.insert( { paramName, Parameter( strToVec4( paramValue ) ) } );
+			XMFLOAT4 vec4;
+			if( strToVec4( paramValue, vec4 ) )
+				paramSet.insert( { paramName, Parameter( vec4 ) } );
 		}
 	}
 

@@ -81,7 +81,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	System::textures().insertResource( std::move( custTexture ) );
 
 	RET_FALSE( m_tessTerrain.initialize() );
-	m_GUI.terrainTessFactor( m_tessTerrain.tessFactor() );
+	m_GUI.m_terrainProperties = m_tessTerrain.properties();
 
 	LOG( "Load materials" );
 	timeStart = TIME_POINT();
@@ -107,8 +107,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	timeStart = TIME_POINT();
 	try
 	{
-		//if( !m_library.loadTexture( -1 ) )
-		//	return false;
+		if( !m_library.loadTexture( -1 ) )
+			return false;
 	}
 	catch( const std::exception& e )
 	{
@@ -125,7 +125,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	LOG( "Create main camera" )
 	// Создаем основную камеру
 	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 10000.0f );
-	m_cameraPool["main"].SetPosition( 0.0, 0.0, -10.0 );
+	m_cameraPool["main"].SetPosition( -0.5, 500.0, -0.5 );
 	//m_cameraPool["main"].SetPosition( 10.0, 0.0, -10.0 );
 	//m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
@@ -208,7 +208,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	LOG( "Total init ms: " + TIME_PRINT( timeStartInit ) );
 
-	
+	LOG( std::string("typeid( XMFLOAT4 ).name()=") + typeid( XMFLOAT4 ).name() );
 
 	return true;
 }
@@ -337,7 +337,7 @@ bool DMGraphics::Render()
 
 
 
-	DMFrustum frustum( m_cameraPool["main"], 1000.0f );
+	//DMFrustum frustum( m_cameraPool["main"], 1000.0f );
 	if( m_visible["terrain"] )
 	{
 		//TIME_CHECK( m_terrain.Render( m_cameraPool["main"], frustum ), "Terrain Render = %.3f ms" );
@@ -350,14 +350,25 @@ bool DMGraphics::Render()
 	}
 	*/
 
-	DMD3D::instance().TurnOnWireframe();
-	pipeline().shaderConstant().setPerObjectBuffer( XMMatrixIdentity() );
-	m_tessTerrain.render();
-	DMD3D::instance().TurnOffWireframe();
+
+	auto terrainStart = TIME_POINT();
+	pipeline().shaderConstant().setPerObjectBuffer( m_tessTerrain.worldMatrix( m_cameraPool["main"].position() ) );
+	if( m_tessTerrain.wireframe() )
+	{
+		DMD3D::instance().TurnOnWireframe();
+		m_tessTerrain.render();
+		DMD3D::instance().TurnOffWireframe();
+	}
+	else
+	{
+		m_tessTerrain.render();
+	}
+	auto terrainEnd = TIME_POINT();
+	m_GUI.addCounterInfo( "Terrain Rendering = %.3f ms", TIME_DIFF( terrainStart, terrainEnd ) / 1000.0f );
 
 	
 	static uint64_t guiResult = 0;
-
+	
 	m_GUI.addCounterInfo( "GUI Rendering = %.3f ms", guiResult / 1000.0f );
 
 	auto guiStart = TIME_POINT();

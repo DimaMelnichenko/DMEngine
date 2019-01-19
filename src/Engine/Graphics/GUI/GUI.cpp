@@ -280,18 +280,48 @@ void GUI::printCamera( const DMCamera& camera )
 	ImGui::End();
 }
 
-void GUI::terrainTessFactor( std::vector<float>* tessFactor )
-{
-	m_terrainTessFactor = tessFactor;
-}
-
 void GUI::terrainSettings()
 {
 	ImGui::Begin( "Terrain Settings", nullptr, ImVec2( 256, 300 ), 1.0 );
 
-	ImGui::SliderFloat( "Tesselation factor", &( m_terrainTessFactor->at( 0 ) ), 1.0, 16.0 );
-	ImGui::SliderFloat( "Tesselation inside", &( m_terrainTessFactor->at( 1 ) ), 0.0, 1.0 );
-	ImGui::DragFloat( "Tesselation mode", &( m_terrainTessFactor->at( 2 ) ), 1.0, 0.0, 2.0 );
+	for( auto propIter = m_terrainProperties->begin(); propIter != m_terrainProperties->end(); propIter++ )
+	{
+		switch( propIter->enumType() )
+		{
+			case ValueType::BOOL:
+			{
+				ImGui::Checkbox( propIter->name().data(), readProperty<bool>( propIter.operator->() ) );
+				break;
+			}
+			case ValueType::FLOAT:
+			{
+				switch( propIter->controlType() )
+				{
+					case GUIControlType::SLIDER:
+						ImGui::SliderFloat( propIter->name().data(), readProperty<float>( propIter.operator->() ), propIter->low(), propIter->high() );
+						break;
+					case GUIControlType::DRAG:
+						ImGui::DragFloat( propIter->name().data(), readProperty<float>( propIter.operator->() ), 1.0f, propIter->low(), propIter->high() );
+						break;
+				}
+				break;
+			}
+			case ValueType::VECTOR:
+			{
+				XMFLOAT4* value = readProperty<XMFLOAT4>( propIter.operator->() );
+				switch( propIter->controlType() )
+				{
+					case GUIControlType::COLOR:
+						ImGui::ColorEdit4( propIter->name().data(), (float*)value );
+						break;
+					case GUIControlType::DRAG:
+						ImGui::DragFloat4( propIter->name().data(), (float*)value, 0.1f, propIter->low(), propIter->high() );
+						break;
+				}
+				break;
+			}
+		}
+	}
 
 	ImGui::End();
 }

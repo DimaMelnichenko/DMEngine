@@ -3,6 +3,7 @@
 #include "Path.h"
 #include "Scene/Shaders/DMShader.h"
 #include "D3D/DMStructuredBuffer.h"
+#include "Properties/PropertyContainer.h"
 
 namespace GS
 {
@@ -15,24 +16,29 @@ public:
 
 	bool initialize();
 
-	void render();
+	void render(  );
 
 	struct Param
 	{
 		XMFLOAT4 tessFactors;
-		XMFLOAT4 modes;
+		XMFLOAT2 modes;
+		XMFLOAT2 hightMultipler;
 	};
+	
+	XMMATRIX worldMatrix( const XMFLOAT3& cameraPosition );
 
-	std::vector<float>* tessFactor();
+	PropertyContainer* properties();
+
+	bool wireframe();
 
 private:
 	Path m_path;
 	GS::DMShader m_shader;
 	com_unique_ptr<ID3D11Buffer> m_constBuffer;
-	std::vector<float> m_tessParameters;
 	DMStructuredBuffer m_structuredBuffer;
 	uint16_t m_ringCount;
 	uint16_t m_pathSize;
+	PropertyContainer m_properties;
 };
 
 }

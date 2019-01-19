@@ -4,6 +4,7 @@
 #include <vector>
 #include "DirectX.h"
 #include "Camera\DMCamera.h"
+#include "Properties/PropertyContainer.h"
 
 
 
@@ -19,7 +20,7 @@ public:
 	void addCounterInfo( const std::string&, float );
 	void printCamera( const DMCamera& camera );
 
-	void terrainTessFactor( std::vector<float>* tessFactor );
+	PropertyContainer* m_terrainProperties;
 
 private:
 	void Frame();
@@ -36,6 +37,6 @@ private:
 private:
 	std::vector<std::pair<std::string,float>> m_counterInfoList;
 	bool m_isInited = false;
-	std::vector<float>* m_terrainTessFactor;
+	
 };
 
