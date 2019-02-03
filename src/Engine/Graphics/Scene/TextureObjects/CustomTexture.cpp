@@ -59,7 +59,7 @@ bool CustomTexture::generateTexture()
 	srInitData.SysMemSlicePitch = 0;// m_width * m_hight * bpp; // Not needed since this is a 2d texture
 
 	// checking inputs
-	if( DMD3D::instance().GetDevice()->CreateTexture2D( &tdesc, &srInitData, NULL ) == S_FALSE )
+	if( DMD3D::instance().GetDevice()->CreateTexture2D( &tdesc, &srInitData, nullptr ) == S_FALSE )
 	{
 		LOG( "Inputs correct" );
 	}

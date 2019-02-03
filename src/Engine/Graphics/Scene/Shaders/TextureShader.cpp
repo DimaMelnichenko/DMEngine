@@ -55,11 +55,11 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> TextureShader::initLayouts()
 	return vertex_layout;
 }
 
-void TextureShader::setParams( const ParamSet& params )
+void TextureShader::setParams( const PropertyContainer& params )
 {
-	if( params.count( "Albedo" ) )
+	if( params.exists( "Albedo" ) )
 	{
-		uint32_t idTexture = params.at( "Albedo" ).textId();
+		uint32_t idTexture = params["Albedo"].data<uint32_t>();
 		if( System::textures().exists( idTexture ) )
 		{
 			DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( idTexture )->srv() );

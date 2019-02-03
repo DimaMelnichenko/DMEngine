@@ -13,7 +13,6 @@ public:
 	~DMParticleShader();
 
 	bool Prepare();
-	void setParams( const ParamSet& ) override;
 
 private:
 	bool innerInitialize() override;

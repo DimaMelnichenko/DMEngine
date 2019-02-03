@@ -4,6 +4,7 @@
 #include "..\Camera\DMFrustum.h"
 #include "D3D\DMStructuredBuffer.h"
 
+
 class DMClipMapShader :	public GS::DMShader
 {
 public:
@@ -48,8 +49,7 @@ public:
 	bool SetPSParameters( PSParamBuffer* );
 	bool setInstanceOffset( std::vector<InstanceOffset> & );
 	void SetTextures( int count, ID3D11ShaderResourceView** _textures );
-
-	void setParams( const GS::ParamSet & );
+	
 	void updateMaterials( std::vector<Material>& materials );
 
 private:
@@ -67,7 +67,6 @@ private:
 	unsigned int m_max_MxM_instance_count;
 	DMStructuredBuffer m_blockOffsets;
 	DMStructuredBuffer m_materials;
-	
 };
 
 

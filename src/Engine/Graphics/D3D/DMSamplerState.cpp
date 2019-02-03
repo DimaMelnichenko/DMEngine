@@ -288,8 +288,11 @@ void DMSamplerState::setDefaultSmaplers()
 	SamplerState g_SamplerAnisotropicWrap : register(s7);
 	*/
 
-	DMD3D::instance().GetDeviceContext()->PSSetSamplers( 0, 8, &m_samplerPointers[0] );
-	DMD3D::instance().GetDeviceContext()->VSSetSamplers( 0, 8, &m_samplerPointers[0] );
 	DMD3D::instance().GetDeviceContext()->CSSetSamplers( 0, 8, &m_samplerPointers[0] );
+	
+	DMD3D::instance().GetDeviceContext()->VSSetSamplers( 0, 8, &m_samplerPointers[0] );
+	DMD3D::instance().GetDeviceContext()->HSSetSamplers( 0, 8, &m_samplerPointers[0] );
 	DMD3D::instance().GetDeviceContext()->DSSetSamplers( 0, 8, &m_samplerPointers[0] );
+	DMD3D::instance().GetDeviceContext()->GSSetSamplers( 0, 8, &m_samplerPointers[0] );
+	DMD3D::instance().GetDeviceContext()->PSSetSamplers( 0, 8, &m_samplerPointers[0] );
 }

@@ -19,7 +19,7 @@ public:
 	~DMColorShader();
 
 	bool Prepare();
-	void setParams( const ParamSet& ) override;
+	void setParams( const PropertyContainer& ) override;
 
 private:
 	bool innerInitialize() override;

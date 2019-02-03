@@ -33,13 +33,13 @@ void ModelLoader::loadMaterials( std::unordered_map<std::string, MaterialParam>&
 
 			if( paramType == "texture" )
 			{
-				matParam.param.insert( { paramName, Parameter( static_cast<uint32_t>( std::stol( paramValue ) ) ) } );
+				matParam.param.insert( paramName, std::stol( paramValue ) );
 			}
 			else if( paramType == "vec4" )
 			{
 				XMFLOAT4 vec4;
 				if( strToVec4( paramValue, vec4 ) )
-					matParam.param.insert( { paramName, Parameter( vec4 ) } );
+					matParam.param.insert( paramName, vec4 );
 			}
 
 			xmlParam = xmlParam->NextSiblingElement( "param" );
@@ -53,9 +53,8 @@ void ModelLoader::loadMaterials( std::unordered_map<std::string, MaterialParam>&
 	}
 }
 
-ParamSet ModelLoader::loadMaterialParam( ResourceMetaFile& metaResource, const std::string& matSection, int32_t count )
+bool ModelLoader::loadMaterialParam( ResourceMetaFile& metaResource, const std::string& matSection, int32_t count, PropertyContainer& properties )
 {
-	ParamSet paramSet;
 	for( uint32_t i = 0; i < count; ++i )
 	{
 		std::string paramBlock = "Param" + matSection + std::to_string( i );
@@ -66,17 +65,17 @@ ParamSet ModelLoader::loadMaterialParam( ResourceMetaFile& metaResource, const s
 
 		if( paramType == "texture" )
 		{
-			paramSet.insert( { paramName, Parameter( static_cast<uint32_t>( std::stol( paramValue ) ) ) } );
+			properties.insert( paramName, (uint32_t)std::stol( paramValue ) );
 		}
 		else if( paramType == "vec4" )
 		{
 			XMFLOAT4 vec4;
 			if( strToVec4( paramValue, vec4 ) )
-				paramSet.insert( { paramName, Parameter( vec4 ) } );
+				properties.insert( paramName, vec4 );
 		}
 	}
 
-	return paramSet;
+	return true;
 }
 
 }

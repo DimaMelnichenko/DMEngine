@@ -65,7 +65,7 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 	}
 
 	// Get the number of modes that fit the DXGI_FORMAT_R8G8B8A8_UNORM display format for the adapter output (monitor).
-	result = adapterOutput->GetDisplayModeList( DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_INTERLACED, &numModes, NULL );
+	result = adapterOutput->GetDisplayModeList( DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_INTERLACED, &numModes, nullptr );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -213,13 +213,13 @@ bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 	IDXGISwapChain* swapChain;
 	ID3D11Device* device;
 	ID3D11DeviceContext* deviceContext;
-	HRESULT result = D3D11CreateDeviceAndSwapChain( NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
-													D3D11_SDK_VERSION, &swapChainDesc, &swapChain, &device, NULL, &deviceContext );
+	HRESULT result = D3D11CreateDeviceAndSwapChain( nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
+													D3D11_SDK_VERSION, &swapChainDesc, &swapChain, &device, nullptr, &deviceContext );
 	if( FAILED( result ) )
 	{
 		featureLevel = D3D_FEATURE_LEVEL_11_0;
-		result = D3D11CreateDeviceAndSwapChain( NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
-												D3D11_SDK_VERSION, &swapChainDesc, &swapChain, &device, NULL, &deviceContext );
+		result = D3D11CreateDeviceAndSwapChain( nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
+												D3D11_SDK_VERSION, &swapChainDesc, &swapChain, &device, nullptr, &deviceContext );
 		if( FAILED( result ) )
 			return false;
 	}
@@ -244,7 +244,7 @@ bool DMD3D::createRenderTargetView()
 
 	// Create the render target view with the back buffer pointer.
 	ID3D11RenderTargetView* renderTargetView;
-	result = m_device->CreateRenderTargetView( backBufferPtr, NULL, &renderTargetView );
+	result = m_device->CreateRenderTargetView( backBufferPtr, nullptr, &renderTargetView );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -281,7 +281,7 @@ bool DMD3D::createDepthStencilBufferAndView()
 
 	// Create the texture for the depth buffer using the filled out description.
 	ID3D11Texture2D* depthStencilBuffer;
-	HRESULT result = m_device->CreateTexture2D( &depthBufferDesc, NULL, &depthStencilBuffer );
+	HRESULT result = m_device->CreateTexture2D( &depthBufferDesc, nullptr, &depthStencilBuffer );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -529,7 +529,7 @@ void DMD3D::Shutdown( )
 
 	if( m_swapChain )
 	{
-		m_swapChain->SetFullscreenState( false, NULL );		
+		m_swapChain->SetFullscreenState( false, nullptr );		
 	}
 }
 

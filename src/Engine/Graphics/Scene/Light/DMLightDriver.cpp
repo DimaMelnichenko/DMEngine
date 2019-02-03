@@ -90,10 +90,15 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 
 			DMLight light( type );
 
-			XMFLOAT3 vec = strToVec3( lightFile.get<std::string>( section, "Color" ) );
+			XMFLOAT3 vec;
+			if( !strToVec3( lightFile.get<std::string>( section, "Color" ), vec ) )
+				return false;
+
 			light.setColor( vec );
 
-			vec = strToVec3( lightFile.get<std::string>( section, "Position" ) );
+			if( strToVec3( lightFile.get<std::string>( section, "Position" ), vec ) )
+				return false;
+
 			light.m_transformBuffer.setPosition( vec );
 
 			light.m_attenuation = lightFile.get<float>( section, "Fade" );

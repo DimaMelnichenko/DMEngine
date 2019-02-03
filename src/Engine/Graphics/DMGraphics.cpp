@@ -70,8 +70,6 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	}
 
-	System::materialParameterKind().load();
-
 	std::unique_ptr<CustomTexture> custTexture( new CustomTexture( 1000000, "monohromeNoise" ) );
 	if( !custTexture->generateTexture() )
 	{
@@ -81,11 +79,11 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	System::textures().insertResource( std::move( custTexture ) );
 
 	RET_FALSE( m_tessTerrain.initialize() );
-	m_GUI.m_terrainProperties = m_tessTerrain.properties();
+	m_GUI.addPropertyWatching( m_tessTerrain.properties() );
 
 	LOG( "Load materials" );
 	timeStart = TIME_POINT();
-	for( uint16_t i = 1; i > 0; --i )
+	for( uint16_t i = 11; i > 0; --i )
 	{
 		if( !m_library.loadMaterial( i ) )
 			return false;
@@ -101,7 +99,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	}
 	LOG( "Load models for ms: " + TIME_PRINT( timeStart ) );
 
-
+	m_GUI.addPropertyWatching( System::models().get( 1 )->properties() );
 
 	LOG( "Load textures" );
 	timeStart = TIME_POINT();
@@ -125,8 +123,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	LOG( "Create main camera" )
 	// Создаем основную камеру
 	m_cameraPool["main"].Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 10000.0f );
-	m_cameraPool["main"].SetPosition( -0.5, 500.0, -0.5 );
-	//m_cameraPool["main"].SetPosition( 10.0, 0.0, -10.0 );
+	//m_cameraPool["main"].SetPosition( -0.5, 500.0, -0.5 );
+	m_cameraPool["main"].SetPosition( 0.0, 0.0, -1.0 );
 	//m_cameraPool["main"].SetDirection( 0.0, -0.0, 3.0 );
 
 	m_timer.Initialize();
@@ -142,55 +140,14 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	m_samplerState.initialize();
 
-	getInput().notifier().registerTrigger( DIK_Q, [](bool value)
-	{
-		if( value )
-			DMD3D::instance().TurnOnWireframe();
-		else
-			DMD3D::instance().TurnOffWireframe();
-	} );
-
-	getInput().notifier().registerTrigger( DIK_P, []( bool value )
-	{
-		//if( value )
-		{
-			DMD3D::instance().createScreenshot();
-		}
-			
-	} );
-
 	m_visible["terrain"] = true;
 	m_visible["water"] = true;
-	getInput().notifier().registerTrigger( DIK_1, [this]( bool value )
-	{
-		m_visible["terrain"] = value;
-	} );
-
-	getInput().notifier().registerTrigger( DIK_2, [this]( bool value )
-	{
-		m_visible["water"] = value;
-	} );
-
-	getInput().notifier().registerTrigger( DIK_3, [this]( bool value )
-	{
-		m_visible["grass calc"] = value;
-	} );
-
-	getInput().notifier().registerTrigger( DIK_4, [this]( bool value )
-	{
-		m_visible["grass render"] = value;
-	} );
-
-	getInput().notifier().registerTrigger( DIK_I, [this]( bool value )
-	{
-		m_cursorMode = value;
-		ShowCursor( value );
-	} );
 
 	timeStart = TIME_POINT();
 	if( !m_terrain.Initialize( "Models\\terrain.json", "GeoClipMap", m_library ) )
 		return false;
 	LOG( "Terrain init ms: " + TIME_PRINT( timeStart ) );
+	m_GUI.addPropertyWatching( m_terrain.properties() );
 	//if( !m_water.Initialize( "Models\\water.json", "GeoClipMapWater" ) )
 	//	return false;
 	
@@ -202,13 +159,18 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	//m_grass.addMesh( GS::System::models().get( "Romashka" )->getLodById( 0 ) );
 	LOG( "Grass init ms: " + TIME_PRINT( timeStart ) );
 
-	m_particleSystem.Initialize( 20, 200 );
+	if( !m_particleSystem.Initialize( 60, 10 ) )
+	{
+		LOG( "Fail to initialize particle sytem" );
+		return false;
+	}
+	m_GUI.addPropertyWatching(  &m_particleSystem.m_propertyContainer );
 
 	m_GUI.Initialize( m_hwnd );
 
 	LOG( "Total init ms: " + TIME_PRINT( timeStartInit ) );
 
-	LOG( std::string("typeid( XMFLOAT4 ).name()=") + typeid( XMFLOAT4 ).name() );
+	bindingKeys();
 
 	return true;
 }
@@ -253,15 +215,15 @@ bool DMGraphics::Render()
 {
 	TIME_CHECK( preparePipeline(), "preparePipeline = %.3f ms" );
 
-	//TIME_CHECK( ComputePass(), "Compute Pass = %.3f ms" );
+	TIME_CHECK( ComputePass(), "Compute Pass = %.3f ms" );
 
-	DMD3D::instance().BeginScene( 0.4f, 0.4f, 0.4f, 1.0f );
+	DMD3D::instance().BeginScene( 0.004f, 0.004f, 0.004f, 1.0f );
 
 	// Установка буфера вершин и индексов
 	m_vertexPool.setBuffers();
 
 	//render sky
-	//TIME_CHECK( renderSky(), "Render Sky = %.3f ms" );
+	TIME_CHECK( renderSky(), "Render Sky = %.3f ms" );
 
 	auto objectCullStart = TIME_POINT();
 	for( auto& queue : m_renderQueues )
@@ -290,13 +252,41 @@ bool DMGraphics::Render()
 	auto objectCullEnd = TIME_POINT();
 	m_GUI.addCounterInfo( "Object Prepare = %.3f ms", TIME_DIFF( objectCullStart, objectCullEnd ) / 1000.0f );
 
+	DMFrustum frustum( m_cameraPool["main"], 1000.0f );
+	if( m_visible["terrain"] )
+	{
+		TIME_CHECK( m_terrain.Render( m_cameraPool["main"], frustum ), "Terrain Render = %.3f ms" );
+	}
+	/*if( m_visible["water"] )
+	{
+		DMD3D::instance().TurnOnAlphaBlending();
+		m_water.Render( m_cameraPool["main"], frustum );
+		DMD3D::instance().TurnOffAlphaBlending();
+	}
+	
+	auto terrainStart = TIME_POINT();
+	pipeline().shaderConstant().setPerObjectBuffer( nullptr );
+	if( m_tessTerrain.wireframe() )
+	{
+		DMD3D::instance().TurnOnWireframe();
+		m_tessTerrain.render( m_cameraPool["main"].position() );
+		DMD3D::instance().TurnOffWireframe();
+	}
+	else
+	{
+		m_tessTerrain.render( m_cameraPool["main"].position() );
+	}
+	auto terrainEnd = TIME_POINT();
+	m_GUI.addCounterInfo( "Terrain Rendering = %.3f ms", TIME_DIFF( terrainStart, terrainEnd ) / 1000.0f );
+	*/
+
 	// эта вся хрень для вращения
 	double elapsedTime = m_timer.GetTime();
 	static double counter = 0.0;
 	counter += 0.001 * elapsedTime;
 
 	//	System::models().get( "Knot" )->transformBuffer().setRotationAxis( 0.0, 1.0, 0.0, counter );
-
+/*
 	auto objectStart = TIME_POINT();
 	// Перебираем все очереди
 	for( auto& queuePair : m_renderQueues )
@@ -322,7 +312,7 @@ bool DMGraphics::Render()
 	}
 	auto objectEnd = TIME_POINT();
 	m_GUI.addCounterInfo( "Object Rendering = %.3f ms", TIME_DIFF( objectStart, objectEnd ) / 1000.0f );
-
+	*/
 
 	DMD3D::instance().TurnOnAlphaBlending();
 	if( m_visible.count( "grass render" ) && m_visible["grass render"] )
@@ -331,40 +321,16 @@ bool DMGraphics::Render()
 	}
 	//if( m_visible.count( "grass render" ) && m_visible["grass render"] )
 	{
-		//TIME_CHECK( particleRendering(), "Particle Rendering = %.3f ms" );
+		TIME_CHECK( particleRendering(), "Particle Rendering = %.3f ms" );
 	}
 	DMD3D::instance().TurnOffAlphaBlending();
 
 
 
-	//DMFrustum frustum( m_cameraPool["main"], 1000.0f );
-	if( m_visible["terrain"] )
-	{
-		//TIME_CHECK( m_terrain.Render( m_cameraPool["main"], frustum ), "Terrain Render = %.3f ms" );
-	}
-	/*if( m_visible["water"] )
-	{
-		DMD3D::instance().TurnOnAlphaBlending();
-		m_water.Render( m_cameraPool["main"], frustum );
-		DMD3D::instance().TurnOffAlphaBlending();
-	}
-	*/
+	
 
 
-	auto terrainStart = TIME_POINT();
-	pipeline().shaderConstant().setPerObjectBuffer( m_tessTerrain.worldMatrix( m_cameraPool["main"].position() ) );
-	if( m_tessTerrain.wireframe() )
-	{
-		DMD3D::instance().TurnOnWireframe();
-		m_tessTerrain.render();
-		DMD3D::instance().TurnOffWireframe();
-	}
-	else
-	{
-		m_tessTerrain.render();
-	}
-	auto terrainEnd = TIME_POINT();
-	m_GUI.addCounterInfo( "Terrain Rendering = %.3f ms", TIME_DIFF( terrainStart, terrainEnd ) / 1000.0f );
+	
 
 	
 	static uint64_t guiResult = 0;
@@ -389,9 +355,6 @@ bool DMGraphics::renderSky()
 	//com_unique_ptr<ID3D11RasterizerState> prevRSState;
 	//DMD3D::instance().currentRS( prevRSState );
 
-	DMD3D::instance().TurnZBufferOff();
-	DMD3D::instance().TurnFrontFacesRS();
-
 	if( !System::materials().exists( "Texture" ) )
 		return false;
 
@@ -410,7 +373,10 @@ bool DMGraphics::renderSky()
 	pipeline().shaderConstant().setPerObjectBuffer( block->resultMatrix );
 
 	shader->setParams( block->params );
-	// отрисовка модели согласно смещению вершин и индексов для главного буфера
+	
+	DMD3D::instance().TurnZBufferOff();
+	DMD3D::instance().TurnFrontFacesRS();
+
 	shader->render( System::meshes().get( block->mesh )->indexCount(),
 					System::meshes().get( block->mesh )->vertexOffset(),
 					System::meshes().get( block->mesh )->indexOffset() );
@@ -463,6 +429,53 @@ void DMGraphics::particleRendering()
 	DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( "oduvanchik" )->srv() );
 	shader->render( m_particleSystem.particleCount(), 0, 0 );
 	DMD3D::instance().GetDeviceContext()->GSSetShader( nullptr, nullptr, 0 );
+}
+
+void DMGraphics::bindingKeys()
+{
+	getInput().notifier().registerTrigger( DIK_Q, []( bool value )
+	{
+		if( value )
+			DMD3D::instance().TurnOnWireframe();
+		else
+			DMD3D::instance().TurnOffWireframe();
+	} );
+
+	getInput().notifier().registerTrigger( DIK_P, []( bool value )
+	{
+		//if( value )
+		{
+			DMD3D::instance().createScreenshot();
+		}
+
+	} );
+
+
+	getInput().notifier().registerTrigger( DIK_1, [this]( bool value )
+	{
+		m_visible["terrain"] = value;
+	} );
+
+	getInput().notifier().registerTrigger( DIK_2, [this]( bool value )
+	{
+		m_visible["water"] = value;
+	} );
+
+	getInput().notifier().registerTrigger( DIK_3, [this]( bool value )
+	{
+		m_visible["grass calc"] = value;
+	} );
+
+	getInput().notifier().registerTrigger( DIK_4, [this]( bool value )
+	{
+		m_visible["grass render"] = value;
+	} );
+
+	getInput().notifier().registerTrigger( DIK_I, [this]( bool value )
+	{
+		m_cursorMode = value;
+		ShowCursor( value );
+	} );
 }
 
 }

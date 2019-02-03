@@ -10,7 +10,7 @@
 #include "..\TextureObjects\DMTextureStorage.h"
 #include "Mesh\DMMesh.h"
 #include "Common\DMTransformBuffer.h"
-#include "Materials\Parameter\Parameter.h"
+#include "Properties/PropertyContainer.h"
 
 namespace GS
 {
@@ -22,7 +22,7 @@ public:
 	{
 		uint32_t mesh;
 		uint32_t material;
-		ParamSet params;
+		PropertyContainer params;
 		bool isRender;
 		const XMMATRIX* resultMatrix;
 	};
@@ -32,7 +32,7 @@ public:
 	DMModel& operator=( DMModel&& );
 	~DMModel();
 
-	void addLod( float range, const LodBlock& );
+	void addLod( float range, std::unique_ptr<LodBlock>&& lod );
 	const LodBlock* getLod( float range );
 	LodBlock* getLodById( uint16_t index );
 	uint16_t lodCount();
@@ -40,11 +40,12 @@ public:
 	const DMTransformBuffer& transformBuffer() const;
 	DMTransformBuffer& transformBuffer();
 
+	PropertyContainer* properties();
+
 	void copyTo( DMModel& );
 private:
-	
-	std::vector<std::pair<float, LodBlock>> m_lods;
-
+	std::vector<std::pair<float, std::shared_ptr<LodBlock>>> m_lods;
+	PropertyContainer m_properties;
 	DMTransformBuffer m_transformBuffer;
 };
 

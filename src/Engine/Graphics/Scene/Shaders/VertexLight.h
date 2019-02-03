@@ -17,7 +17,7 @@ public:
 	VertexLight();
 	~VertexLight();
 	bool Prepare();
-	void setParams( const ParamSet& ) override;
+	void setParams( const PropertyContainer& ) override;
 
 private:
 	struct PSParam

@@ -368,3 +368,13 @@ void DMGeoClipMap::setMapOffsetSpeed( float speed )
 {
 	m_mapOffsetSpeed = speed;
 }
+
+void DMGeoClipMap::setHightMultipler( float value )
+{
+	m_height_multipler = value;
+}
+
+void DMGeoClipMap::setWidthMultipler( float value )
+{
+	m_widthMultipler = value;
+}

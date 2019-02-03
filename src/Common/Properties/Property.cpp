@@ -3,43 +3,53 @@
 
 
 //--------------------------------------------------
-// BasicProperty
+// Property
 
-BasicProperty::BasicProperty( const std::string& name ) : m_name( name )
+Property::Property()
+{
+
+}
+
+Property::Property( const std::string& name ) : m_name( name )
 {
 }
 
-const std::string& BasicProperty::name()
+ValueType Property::valueType()
+{
+	return static_cast<ValueType>( m_value.index() );
+}
+
+const std::string& Property::name() const
 {
 	return m_name;
 }
 
-float BasicProperty::low() const
+float Property::low() const
 {
 	return m_lowBorder;
 }
 
-float BasicProperty::high() const
+float Property::high() const
 {
 	return m_highBorder;
 }
 
-void BasicProperty::setLow( float val )
+void Property::setLow( float val )
 {
 	m_lowBorder = val;
 }
 
-void BasicProperty::setHigh( float val )
+void Property::setHigh( float val )
 {
 	m_highBorder = val;
 }
 
-GUIControlType BasicProperty::controlType()
+GUIControlType Property::controlType()
 {
 	return m_controlType;
 }
 
-void BasicProperty::setControlType( GUIControlType type )
+void Property::setControlType( GUIControlType type )
 {
 	m_controlType = type;
 }

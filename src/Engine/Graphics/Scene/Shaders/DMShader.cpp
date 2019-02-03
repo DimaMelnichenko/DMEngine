@@ -143,44 +143,44 @@ bool DMShader::setPass( int phase_idx )
 
 	// Set the vertex and pixel shaders that will be used to render this triangle.
 	ID3D11VertexShader* vs = m_vertexShader[phase.index_vs].get();
-	DMD3D::instance().GetDeviceContext()->VSSetShader( vs, NULL, 0 );
+	DMD3D::instance().GetDeviceContext()->VSSetShader( vs, nullptr, 0 );
 
 	if( m_geometryShader.size() )
 	{
 		ID3D11GeometryShader* shader = m_geometryShader[phase.index_gs].get();
-		DMD3D::instance().GetDeviceContext()->GSSetShader( shader, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->GSSetShader( shader, nullptr, 0 );
 	}
 	else
-		DMD3D::instance().GetDeviceContext()->GSSetShader( NULL, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->GSSetShader( nullptr, nullptr, 0 );
 
 	if( m_hullShader.size() && phase.index_hs >= 0 )
 	{
 		ID3D11HullShader* shader = m_hullShader[phase.index_hs].get();
-		DMD3D::instance().GetDeviceContext()->HSSetShader( shader, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->HSSetShader( shader, nullptr, 0 );
 	}
 	else
 	{
-		DMD3D::instance().GetDeviceContext()->HSSetShader( NULL, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->HSSetShader( nullptr, nullptr, 0 );
 	}
 
 	if( m_domainShader.size() && phase.index_ds >= 0 )
 	{
 		ID3D11DomainShader* shader = m_domainShader[phase.index_ds].get();
-		DMD3D::instance().GetDeviceContext()->DSSetShader( shader, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->DSSetShader( shader, nullptr, 0 );
 	}
 	else
 	{
-		DMD3D::instance().GetDeviceContext()->DSSetShader( NULL, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->DSSetShader( nullptr, nullptr, 0 );
 	}
 
 	if( m_pixelShader.size() && phase.index_ps >= 0 )
 	{
 		ID3D11PixelShader* ps = m_pixelShader[phase.index_ps].get();
-		DMD3D::instance().GetDeviceContext()->PSSetShader( ps, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->PSSetShader( ps, nullptr, 0 );
 	}
 	else
 	{
-		DMD3D::instance().GetDeviceContext()->PSSetShader( NULL, NULL, 0 );
+		DMD3D::instance().GetDeviceContext()->PSSetShader( nullptr, nullptr, 0 );
 	}
 
 	prepare();
@@ -276,7 +276,9 @@ bool DMShader::addShaderPassFromFile( SRVType type,
 	HRESULT result = D3DCompileFromFile( fileName.data(), 
 										 macros.empty() ? nullptr : &macros[0], 
 										 D3D_COMPILE_STANDARD_FILE_INCLUDE, function_name.data(),
-										 version( type ).data(), D3D10_SHADER_ENABLE_STRICTNESS, 0, &buffer, &error );
+										 version( type ).data(), 
+										 D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION | D3DCOMPILE_PREFER_FLOW_CONTROL,
+										 0, &buffer, &error );
 	com_unique_ptr<ID3DBlob> errorMessage( error );
 	com_unique_ptr<ID3DBlob> shaderBuffer( buffer );
 
@@ -457,7 +459,7 @@ void DMShader::parseDefines( std::string defines, std::vector<D3D_SHADER_MACRO>&
 	macros.push_back( macrosItem );
 }
 
-void DMShader::setParams( const ParamSet& )
+void DMShader::setParams( const PropertyContainer& )
 {
 	
 }

@@ -5,6 +5,7 @@ namespace GS
 
 Material::Material( uint32_t id, const std::string& name ) : DMResource( id, name )
 {
+	m_parameters.setName( name );
 }
 
 Material& Material::operator=( Material&& other ) 

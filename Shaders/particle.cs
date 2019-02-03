@@ -10,6 +10,12 @@ cbuffer ThreadsData : register(b2)
 	float b_elapsedTime;
 };
 
+cbuffer ParticleParameters : register(b3)
+{
+	float4 g_heightMultipler;
+	float4 g_highOfDeath;
+};
+
 struct Particle
 {
     float3 position;
@@ -42,13 +48,14 @@ void main( uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 di
 	
 	particle.position = position + velocity * b_elapsedTime;
 	
-	float2 texCoord = (float2)position.xz / 2048.0;
+	float2 texCoord = position.xz / 4096.0f;
 	texCoord.y = 1.0 - texCoord.y;
-	float height = heightMap.SampleLevel( g_SamplerLinearClamp, texCoord, 0.0 ).r * 100.0;
+	float height = heightMap.SampleLevel( g_SamplerLinearClamp, texCoord, 0.0 ).r * g_heightMultipler.x;
 	
-	if( particle.position.y >= ( height + 10.0 ) )
+	if( particle.position.y >= ( height + g_highOfDeath.x ) || particle.position.y < height - 0.1 )
 		particle.position.y = height;
-	particle.velocity = velocity;
+	
+	//particle.velocity = velocity;
 
 	Particles[index] = particle;
 }

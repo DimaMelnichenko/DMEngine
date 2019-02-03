@@ -5,7 +5,6 @@
 #include "Scene\Model\ModelStorage.h"
 #include "Scene\Materials\MaterialStorage.h"
 
-#include "Common\Dictionaries\MaterialParameterKind.h"
 
 namespace GS
 {
@@ -20,9 +19,6 @@ public:
 	static MeshStorage& meshes();
 	static ModelStorage& models();
 	static MaterialStorage& materials();
-
-	static MaterialParameterKind& materialParameterKind();
-
 	static void destroy();
 
 

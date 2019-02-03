@@ -61,6 +61,8 @@ private:
 	void grassRendering();
 	void particleRendering();
 
+	void bindingKeys();
+
 private:
 	float m_screenWidth;
 	float m_screenHeight;

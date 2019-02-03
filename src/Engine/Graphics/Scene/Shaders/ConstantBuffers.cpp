@@ -43,7 +43,7 @@ void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount
 	projectionMatrix = XMMatrixTranspose( projectionMatrix );
 	viewProjectionMatrix = XMMatrixTranspose( viewProjectionMatrix );
 	
-	Device::updateResource<ShaderFrameConstant>( m_frameConstant.get(), [&]( ShaderFrameConstant& data )
+	Device::updateResource<ShaderFrameConstant>( m_frameConstant, [&]( ShaderFrameConstant& data )
 	{
 		data.view = viewMatrix;
 		data.projection = projectionMatrix;
@@ -58,10 +58,11 @@ void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount
 
 	ID3D11Buffer* buffer = m_frameConstant.get();
 	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 0, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->HSSetConstantBuffers( 0, 1, &buffer );
 	DMD3D::instance().GetDeviceContext()->DSSetConstantBuffers( 0, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
 	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 0, 1, &buffer );
+
 	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( 0, 1, &buffer );
 }
 
@@ -85,14 +86,17 @@ void ConstantBuffers::setPerObjectBuffer( const XMMATRIX* matrix )
 		mat = XMMatrixTranspose( *matrix );
 	}
 
-	Device::updateResource<ShaderModelConstant>( m_modelConstant.get(), [&]( ShaderModelConstant& data )
+	Device::updateResource<ShaderModelConstant>( m_modelConstant, [&]( ShaderModelConstant& data )
 	{
 		data.world = mat;
 	} );
 
 	ID3D11Buffer* buffer = m_modelConstant.get();
 	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->HSSetConstantBuffers( 1, 1, &buffer );
 	DMD3D::instance().GetDeviceContext()->DSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
 }
 
 }

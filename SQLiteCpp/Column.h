@@ -24,7 +24,7 @@ extern const int INTEGER;   ///< SQLITE_INTEGER
 extern const int FLOAT;     ///< SQLITE_FLOAT
 extern const int TEXT;      ///< SQLITE_TEXT
 extern const int BLOB;      ///< SQLITE_BLOB
-extern const int Null;      ///< SQLITE_NULL
+extern const int Null;      ///< SQLITE_nullptr
 
 
 /**
@@ -93,7 +93,7 @@ public:
     /// Return the double (64bits float) value of the column
     double      getDouble() const noexcept; // nothrow
     /**
-     * @brief Return a pointer to the text value (NULL terminated string) of the column.
+     * @brief Return a pointer to the text value (nullptr terminated string) of the column.
      *
      * @warning The value pointed at is only valid while the statement is valid (ie. not finalized),
      *          thus you must copy it before using it beyond its scope (to a std::string for instance).
@@ -143,7 +143,7 @@ public:
     {
         return (SQLite::BLOB == getType());
     }
-    /// Test if the column is NULL (meaningful only before any conversion)
+    /// Test if the column is nullptr (meaningful only before any conversion)
     inline bool isNull() const noexcept // nothrow
     {
         return (SQLite::Null == getType());
@@ -156,7 +156,7 @@ public:
      * - size in bytes (not in characters) of the string returned by getText() without the '\0' terminator
      * - size in bytes of the string representation of the numerical value (integer or double)
      * - size in bytes of the binary blob returned by getBlob()
-     * - 0 for a NULL value
+     * - 0 for a nullptr value
      */
     int getBytes() const noexcept;
 

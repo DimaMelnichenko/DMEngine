@@ -10,7 +10,6 @@ GUI::GUI()
 {
 }
 
-
 GUI::~GUI()
 {
 	if( m_isInited )
@@ -32,11 +31,11 @@ void GUI::Initialize( HWND hwnd )
 	ImGui_ImplDX11_Init( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext() );
 
 	// Setup style
-	ImGui::StyleColorsDark();
-	//ImGui::StyleColorsClassic();
+	//ImGui::StyleColorsLight();
+	//ImGui::StyleColorsDark();
+	ImGui::StyleColorsClassic();
 	m_isInited = true;
 }
-
 
 void GUI::Begin()
 {
@@ -108,10 +107,10 @@ void GUI::Frame()
 	}
 	renderTextureLibrary();
 	//renderMaterialLibrary();
-	renderSceneObject();
-	materialParameterKind();
+	//renderSceneObject();
 
-	terrainSettings();
+
+	showPropertiesTree();
 
 	// 3. Show another simple window.
 	/*if( show_another_window )
@@ -165,7 +164,7 @@ void GUI::renderMaterialLibrary()
 	}
 	ImGui::End();
 }
-
+/*
 void GUI::renderSceneObject()
 {
 	struct ModelParam
@@ -186,6 +185,7 @@ void GUI::renderSceneObject()
 			scale.z = 1.0;
 		}
 	};
+
 	static std::unordered_map<uint32_t, ModelParam> modelsPos;
 	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 	ImGui::Begin( "Scene Objects", nullptr, ImVec2( 256, 300 ), 1.0 );
@@ -258,70 +258,147 @@ void GUI::renderSceneObject()
 	ImGui::End();
 }
 
+*/
 
-void GUI::materialParameterKind()
-{
-	ImGui::Begin( "MaterialKind", nullptr, ImVec2( 256, 300 ), 1.0 );
-	ImGui::BeginChild( "MaterialKindItem" );
-	for( auto& item : GS::System::materialParameterKind().dictionary() )
-	{	
-		ImGui::Text( "id:%d \t name:%s \t\t value:%s", item.first, item.second.name.data(), convertParamTypeToString(item.second.type).data() );
-	}
-	ImGui::EndChild();
-	ImGui::End();
-}
 
-void GUI::printCamera( const DMCamera& camera )
+void GUI::printCamera( DMCamera& camera )
 {
 	ImGui::Begin( "Camera", nullptr, ImVec2( 256, 300 ), 1.0 );
 
 	ImGui::Text( "Position:\nx:%f\ny:%f\nz:%f", camera.position().x, camera.position().y, camera.position().z );
 
+	parsePropertiesAndCreateControls( &camera.m_properties );
+
 	ImGui::End();
 }
 
-void GUI::terrainSettings()
-{
-	ImGui::Begin( "Terrain Settings", nullptr, ImVec2( 256, 300 ), 1.0 );
-
-	for( auto propIter = m_terrainProperties->begin(); propIter != m_terrainProperties->end(); propIter++ )
+void GUI::parsePropertiesAndCreateControls( PropertyContainer* propertyContainer )
+{	
+	for( auto& [name,property] : propertyContainer->propertyMap() )
 	{
-		switch( propIter->enumType() )
+		switch( property.valueType() )
 		{
 			case ValueType::BOOL:
 			{
-				ImGui::Checkbox( propIter->name().data(), readProperty<bool>( propIter.operator->() ) );
+				ImGui::Checkbox( name.data(), property.dataPtr<bool>() );
 				break;
 			}
 			case ValueType::FLOAT:
 			{
-				switch( propIter->controlType() )
+				switch( property.controlType() )
 				{
 					case GUIControlType::SLIDER:
-						ImGui::SliderFloat( propIter->name().data(), readProperty<float>( propIter.operator->() ), propIter->low(), propIter->high() );
+						ImGui::SliderFloat( name.data(), property.dataPtr<float>(), property.low(), property.high() );
 						break;
 					case GUIControlType::DRAG:
-						ImGui::DragFloat( propIter->name().data(), readProperty<float>( propIter.operator->() ), 1.0f, propIter->low(), propIter->high() );
+						ImGui::DragFloat( name.data(), property.dataPtr<float>(), 1.0f, property.low(), property.high() );
 						break;
 				}
 				break;
 			}
-			case ValueType::VECTOR:
+			case ValueType::VECTOR2:
 			{
-				XMFLOAT4* value = readProperty<XMFLOAT4>( propIter.operator->() );
-				switch( propIter->controlType() )
-				{
-					case GUIControlType::COLOR:
-						ImGui::ColorEdit4( propIter->name().data(), (float*)value );
+				XMFLOAT2* value = property.dataPtr<XMFLOAT2>();
+				switch( property.controlType() )
+				{	
+					case GUIControlType::SLIDER:
+						ImGui::SliderFloat2( name.data(), property.dataPtr<float>(), property.low(), property.high() );
 						break;
 					case GUIControlType::DRAG:
-						ImGui::DragFloat4( propIter->name().data(), (float*)value, 0.1f, propIter->low(), propIter->high() );
+						ImGui::DragFloat2( name.data(), property.dataPtr<float>(), 0.1f, property.low(), property.high() );
 						break;
 				}
+				break;
+			}
+			case ValueType::VECTOR3:
+			{
+				XMFLOAT3* value = property.dataPtr<XMFLOAT3>();
+				switch( property.controlType() )
+				{
+					case GUIControlType::COLOR:
+						ImGui::ColorEdit3( name.data(), (float*)value );
+					case GUIControlType::SLIDER:
+						ImGui::SliderFloat3( name.data(), (float*)value, property.low(), property.high() );
+						break;
+					case GUIControlType::DRAG:
+						ImGui::DragFloat3( name.data(), (float*)value, 0.1f, property.low(), property.high() );
+						break;
+				}
+				break;
+			}
+			case ValueType::VECTOR4:
+			{
+				XMFLOAT4* value = property.dataPtr<XMFLOAT4>();
+				switch( property.controlType() )
+				{
+					case GUIControlType::COLOR:
+						ImGui::ColorEdit4( name.data(), (float*)value );
+						break;
+					case GUIControlType::SLIDER:
+						ImGui::SliderFloat4( name.data(), (float*)value, property.low(), property.high() );
+						break;
+					case GUIControlType::DRAG:
+						ImGui::DragFloat4( name.data(), (float*)value, 0.1f, property.low(), property.high() );
+						break;
+				}
+				break;
+			}
+			case ValueType::INT:
+			{
+				int32_t* value = property.dataPtr<int32_t>();
+				switch( property.controlType() )
+				{
+					case GUIControlType::SLIDER:
+						ImGui::SliderInt( name.data(), property.dataPtr<int32_t>(), property.low(), property.high() );
+						break;
+					case GUIControlType::DRAG:
+						ImGui::DragInt( name.data(), property.dataPtr<int32_t>(), 1.0f, property.low(), property.high() );
+						break;
+				}
+				break;
+			}
+			case ValueType::UINT:
+			{
+				uint32_t* value = property.dataPtr<uint32_t>();
+				ImGui::BeginCombo( "Texture select", "select index" );
+				//ImGui::Combo()
+				ImGui::EndCombo();
 				break;
 			}
 		}
 	}
+}
 
+void GUI::addPropertyWatching( PropertyContainer* propertyContainer )
+{
+	m_propertiesMap.insert_or_assign( propertyContainer->name(), propertyContainer );
+}
+
+void GUI::parsePropertiesTree( PropertyContainer* propertyContainer )
+{
+	if( ImGui::TreeNode( (void*)(intptr_t)propertyContainer->name().data(), propertyContainer->name().data() ) )
+	{
+		parsePropertiesAndCreateControls( propertyContainer );
+		for( auto subConatiner : propertyContainer->subContainer() )
+		{
+			parsePropertiesTree( subConatiner );
+		}
+		ImGui::TreePop();
+	}
+}
+
+void GUI::showPropertiesTree()
+{
+	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+	ImGui::Begin( "Scene Objects", nullptr, ImVec2( 256, 300 ), 1.0 );
+	int counter = 0;
+	if( ImGui::TreeNode( "Properties Objects Tree" ) )
+	{
+		for( auto[name,propertyContainer] : m_propertiesMap )
+		{
+			parsePropertiesTree( propertyContainer );
+		}
+		ImGui::TreePop();
+	}
 	ImGui::End();
 }

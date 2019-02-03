@@ -22,6 +22,8 @@ public:
 	float heightMultipler();
 
 	void setHightOffset( float offset );
+	void setHightMultipler( float value );
+	void setWidthMultipler( float value );
 	void setMapScale( float scale );
 	void setMapOffset( float x, float y );
 	void setMapOffset( const XMFLOAT2& );

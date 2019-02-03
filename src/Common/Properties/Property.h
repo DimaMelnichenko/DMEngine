@@ -1,10 +1,11 @@
 #pragma once
 
-#include "value.h"
+#include "DirectX.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <cassert>
+#include <variant>
 #include "Logger\Logger.h"
 
 
@@ -15,27 +16,59 @@ enum class GUIControlType : int
 {
 	SLIDER = 1,
 	COLOR = 2,
-	DRAG = 3
+	DRAG = 3,
+	TEXTURE = 4
 };
 
-class BasicProperty
+enum class ValueType : int
 {
+	BOOL = 0,
+	FLOAT = 1,
+	VECTOR2 = 2,
+	VECTOR3 = 3,
+	VECTOR4 = 4,
+	INT = 5,
+	UINT = 6,
+};
+
+//ValueType convertStrinTypeToType
+
+class Property
+{
+private:
+	using Container = std::variant<bool, float, XMFLOAT2, XMFLOAT3, XMFLOAT4, int32_t, uint32_t>;
 public:
-    BasicProperty( const std::string& name );
-    virtual ~BasicProperty() = default;
+	Property();
+    Property( const std::string& name );
 
-    virtual bool typeMatched(const basic_type& var) = 0;
+	template<class TYPE>
+	Property( const std::string& name, const TYPE& value ) : m_name(name), m_value(value)
+	{
 
-	virtual ValueType enumType() = 0;
+	}
+    virtual ~Property() = default;
 
-    virtual const basic_type& data() const = 0;
-    virtual basic_type& data() = 0;
-	virtual basic_type* dataPtr() = 0;
+	ValueType valueType();
 
-    virtual BasicProperty* clone() const = 0;
+	template<class TYPE>
+	const TYPE& data() const
+	{
+		return std::get<TYPE>( m_value );
+	}
 
-	const std::string& name();
+	template<class TYPE>
+	TYPE* dataPtr()
+	{
+		return std::get_if<TYPE>( &m_value );
+	}
 
+	template<class TYPE>
+	void setData( const TYPE& value )
+	{
+		m_value = value;
+	}
+
+	const std::string& name() const;
 	float low() const;
 	float high() const;
 	GUIControlType controlType();
@@ -48,74 +81,7 @@ private:
 	float m_lowBorder = 0.0;
 	float m_highBorder = 1.0;
 	GUIControlType m_controlType;
+	Container m_value;
+	ValueType m_valueType;
 };
 
-
-//------------------------------
-// Property<...>
-
-template<typename TYPE>
-class Property: public BasicProperty, public type<TYPE>
-{
-public:
-    typedef type<TYPE> value_type;
-
-public:
-	Property( const std::string& name, const TYPE& value = TYPE() ) : 
-		BasicProperty( name ), 
-		type<TYPE>( value )
-    {
-    }
-
-    virtual Property* clone() const
-    {
-        return new Property(*this);
-    }
-
-    virtual bool typeMatched(const basic_type& value)
-    {
-        return value_type::typeMatched(value);
-    }
-
-    virtual const value_type& data() const
-    {
-        return *this;
-    }
-
-    virtual value_type& data()
-    {
-        return *this;
-    }
-
-	basic_type* dataPtr()
-	{
-		return this;
-	}
-
-    using value_type::setValue;
-
-    virtual void setValue(const basic_type& value)
-    {
-        value_type::setValue(value);
-    }
-    
-    operator const TYPE&() const
-    {
-        return value_type::value();
-    }
-
-	operator TYPE*( )
-	{
-		return value_type::valuePtr();
-	}
-
-    virtual void valueFromString( const std::string& s)
-    {
-        type<TYPE>::valueFromString(s);
-    }
-
-	ValueType enumType() override
-	{
-		return getValueType( valueType() );
-	}
-};

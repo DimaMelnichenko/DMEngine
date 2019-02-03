@@ -1,6 +1,7 @@
 #pragma once
 #include <Windows.h>
 #include <string>
+#include <map>
 #include <vector>
 #include "DirectX.h"
 #include "Camera\DMCamera.h"
@@ -18,9 +19,9 @@ public:
 	void Begin();
 	void End();
 	void addCounterInfo( const std::string&, float );
-	void printCamera( const DMCamera& camera );
+	void printCamera( DMCamera& camera );
 
-	PropertyContainer* m_terrainProperties;
+	void addPropertyWatching( PropertyContainer* propertyContainer );
 
 private:
 	void Frame();
@@ -29,13 +30,15 @@ private:
 	void renderMaterialLibrary();
 	void renderSceneObject();
 
-	void terrainSettings();
+	void showPropertiesTree();
+	void parsePropertiesTree( PropertyContainer* propertyContainer );
 
 private:
-	void materialParameterKind();
+	void parsePropertiesAndCreateControls( PropertyContainer* propertyContainer );
 
 private:
 	std::vector<std::pair<std::string,float>> m_counterInfoList;
+	std::map<std::string, PropertyContainer*> m_propertiesMap;
 	bool m_isInited = false;
 	
 };

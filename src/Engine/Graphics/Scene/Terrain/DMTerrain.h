@@ -7,6 +7,7 @@
 #include "DMGeoClipMap.h"
 #include "DMHeightMap.h"
 #include "ObjectLibrary\LibraryLoader.h"
+#include "Properties/PropertyContainer.h"
 
 
 class DMTerrain
@@ -27,9 +28,12 @@ public:
 		uint64_t idHeightmap;
 		uint64_t idNormalmap;
 	};
+
 	bool Initialize( const std::string& terrainConf, const std::string& shaderName, LibraryLoader& libLoader );
 	void Render( const DMCamera&, const DMFrustum& );
 	const DMHeightMap& heightmap();
+
+	PropertyContainer* properties();
 		  
 private:
 	DMTerrain( const DMTerrain& );
@@ -45,5 +49,6 @@ private:
 	std::string m_shaderName;
 	bool m_isInited;
 	Settings m_settings;
+	PropertyContainer m_properties;
 };
 

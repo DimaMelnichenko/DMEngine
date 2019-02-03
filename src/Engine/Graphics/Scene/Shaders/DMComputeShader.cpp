@@ -19,7 +19,7 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 	
 	std::wstring fileName( file_name.begin(), file_name.end() );
 
-	HRESULT result = D3DCompileFromFile( fileName.data(), NULL, D3D_COMPILE_STANDARD_FILE_INCLUDE, 
+	HRESULT result = D3DCompileFromFile( fileName.data(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, 
 										 function_name.data(), "cs_5_0", D3D10_SHADER_ENABLE_STRICTNESS, 0, &shader_buffer, &error_message );
 
 	if( FAILED( result ) )
@@ -39,7 +39,7 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 	}
 
 	ID3D11ComputeShader* compute_shader;
-	result = DMD3D::instance().GetDevice()->CreateComputeShader( shader_buffer->GetBufferPointer(), shader_buffer->GetBufferSize(), NULL, &compute_shader );
+	result = DMD3D::instance().GetDevice()->CreateComputeShader( shader_buffer->GetBufferPointer(), shader_buffer->GetBufferSize(), nullptr, &compute_shader );
 
 	shader_buffer->Release();
 	shader_buffer = 0;
@@ -167,7 +167,7 @@ void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_t
 
 void DMComputeShader::setConstants( ConstantType& constantType )
 {
-	Device::updateResource( m_constantBuffer.get(), constantType );
+	Device::updateResourceData( m_constantBuffer.get(), constantType );
 	
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 2, m_constantBuffer );
 }

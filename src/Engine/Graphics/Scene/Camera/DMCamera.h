@@ -4,6 +4,7 @@
 // INCLUDES //
 //////////////
 #include "DirectX.h"
+#include "Properties/PropertyContainer.h"
 
 
 class DMCamera
@@ -43,6 +44,8 @@ public:
 
 	CameraType type() const;
 
+	PropertyContainer m_properties;
+
 private:
 	void readKeyboard( XMFLOAT3& );
 private:
@@ -54,5 +57,7 @@ private:
 	XMMATRIX m_projection_matrix;
 	XMFLOAT3 m_view_direction;
 	XMMATRIX m_mCameraWorld;
+
+	
 };
 

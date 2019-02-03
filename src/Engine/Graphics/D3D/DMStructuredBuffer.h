@@ -18,7 +18,7 @@ public:
 	template<class ResourceType>
 	void updateData( Device::CopyFunc<ResourceType> function )
 	{
-		Device::updateResource<ResourceType>( m_buffer.get(), function );
+		Device::updateResource<ResourceType>( m_buffer, function );
 	}
 
 private:

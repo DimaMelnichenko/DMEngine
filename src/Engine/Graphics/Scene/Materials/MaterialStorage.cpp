@@ -37,8 +37,6 @@ bool MaterialStorage::createMaterial( uint32_t id, const std::string& name, cons
 		shader = new PhongLight();
 	else if( matClass == "Texture" )
 		shader = new TextureShader();
-	else if( matClass == "Texture" )
-		shader = new TextureShader();
 	else if( matClass == "Particle" )
 		shader = new DMParticleShader();
 	else if( matClass == "GeoClipMap" )

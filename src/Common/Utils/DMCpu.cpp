@@ -21,7 +21,7 @@ void DMCpu::Initialize( )
 	m_canReadCpu = true;
 
 	// Create a query object to poll cpu usage.
-	status = PdhOpenQuery( NULL, 0, &m_queryHandle );
+	status = PdhOpenQuery( nullptr, 0, &m_queryHandle );
 	if( status != ERROR_SUCCESS )
 	{
 		m_canReadCpu = false;
@@ -63,7 +63,7 @@ void DMCpu::Frame( )
 
 			PdhCollectQueryData( m_queryHandle );
 
-			PdhGetFormattedCounterValue( m_counterHandle, PDH_FMT_LONG, NULL, &value );
+			PdhGetFormattedCounterValue( m_counterHandle, PDH_FMT_LONG, nullptr, &value );
 
 			m_cpuUsage = value.longValue;
 		}

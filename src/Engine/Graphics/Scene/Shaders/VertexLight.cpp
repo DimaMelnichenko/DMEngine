@@ -89,26 +89,26 @@ bool VertexLight::Prepare()
 	return DMShader::setPass(0);
 }
 
-void VertexLight::setParams( const ParamSet& params )
+void VertexLight::setParams( const PropertyContainer& params )
 {
-	DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( params.at( "Albedo" ).textId() )->srv() );
+	DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( params["Albedo"].data<uint32_t>() )->srv() );
 
 	PSParam param;
 
-	if( params.count( "Color" ) )
+	if( params.exists( "Color" ) )
 	{	
-		param.tintColor = params.at( "Color" ).vector();
+		param.tintColor = params["Color"].data<XMFLOAT4>();
 	}
-	if( params.count( "AmbientColor" ) )
+	if( params.exists( "AmbientColor" ) )
 	{
-		param.ambientColor = params.at( "AmbientColor" ).vector();
+		param.ambientColor = params["AmbientColor"].data<XMFLOAT4>();
 	}
-	if( params.count( "blendFactor" ) )
+	if( params.exists( "blendFactor" ) )
 	{
-		param.blendFactor = params.at( "blendFactor" ).vector();
+		param.blendFactor = params["blendFactor"].data<XMFLOAT4>();
 	}
 
-	Device::updateResource<PSParam>( m_psCB.get(), param );
+	Device::updateResourceData<PSParam>( m_psCB.get(), param );
 	DMD3D::instance().setConstantBuffer( SRVType::ps, 2, m_psCB );
 	
 }

@@ -23,9 +23,4 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMParticleShader::initLayouts()
 	return std::vector<D3D11_INPUT_ELEMENT_DESC>();
 }
 
-void DMParticleShader::setParams( const ParamSet& params )
-{
-	
-}
-
 }

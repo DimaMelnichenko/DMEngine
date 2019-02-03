@@ -25,17 +25,17 @@
 
 #ifdef _MSC_VER
 #if _MSC_VER < 1600
-/// A macro to enable the use of the nullptr keyword (NULL on older MSVC compilers, as they do not accept "nullptr_t")
+/// A macro to enable the use of the nullptr keyword (nullptr on older MSVC compilers, as they do not accept "nullptr_t")
 #ifndef nullptr
-#define nullptr NULL
+#define nullptr nullptr
 #endif  // nullptr
 #endif  // _MSC_VER < 1600
 #elif defined(__APPLE__) // AppleClang
 #elif defined(__clang__) && __has_feature(cxx_nullptr) // Clang 3.0+
 #else // GCC or older Clang
 #if (__cplusplus < 201103L) && !defined(__GXX_EXPERIMENTAL_CXX0X__) // before C++11 on GCC4.7 and Visual Studio 2010
-#ifndef HAVE_NULLPTR
-#define HAVE_NULLPTR    ///< A macro to avoid double definition of nullptr
+#ifndef HAVE_nullptrPTR
+#define HAVE_nullptrPTR    ///< A macro to avoid double definition of nullptr
 /**
  * @brief nullptr_t is the type of the null pointer literal, nullptr.
 */
@@ -59,7 +59,7 @@ private:
  * @brief Better way to enable nullptr on older GCC/Clang compilers
 */
 const nullptr_t nullptr = {};
-#endif // HAVE_NULLPTR
+#endif // HAVE_nullptrPTR
 #endif // (__cplusplus < 201103L) && !defined(__GXX_EXPERIMENTAL_CXX0X__)
 #endif // _MSC_VER
 

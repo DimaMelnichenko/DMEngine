@@ -50,7 +50,7 @@ void main( point PixelInput input[1], inout TriangleStream<PixelInput> stream )
 
 	pointOut.position = mul( pointOut.position, cb_viewMatrix);
 	
-	const float max_size = 0.01f; // размер конечного квадрата 
+	const float max_size = 0.05f; // размер конечного квадрата 
 	// описание квадрата
 	stream.Append( offsetNprojected(pointOut, float2(-1, 0) * max_size, float2(0, 1)) );
 	stream.Append( offsetNprojected(pointOut, float2(-1, 2) * max_size, float2(0, 0)) );

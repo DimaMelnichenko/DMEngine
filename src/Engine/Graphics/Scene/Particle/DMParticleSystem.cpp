@@ -19,7 +19,7 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 	std::uniform_real_distribution<> urd_y( 0, 100 );
 	std::uniform_real_distribution<> urd_z( 0, 100 );
 	std::uniform_real_distribution<> vel_x( 0.0000, 0.0006 );
-	std::uniform_real_distribution<> vel_y( 0.0001, 0.0004 );
+	std::uniform_real_distribution<> vel_y( 0.0003, 0.0005 );
 	std::uniform_real_distribution<> vel_z( 0.0000, 0.0006 );
 
 	m_max_count = max_count;
@@ -45,9 +45,9 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 			{
 				data[counter].position.x = static_cast<float>( x + urd( gen ) ) * 1.0;
 				data[counter].position.z = static_cast<float>( y + urd( gen ) ) * 1.0;
-				data[counter].position.y = static_cast<float>( urd( gen ) ) + 3000.0;
+				data[counter].position.y = static_cast<float>( urd( gen ) ) + 0.0;
 
-				data[counter].velocity = XMFLOAT3( (vel_x( gen )-0.0003) * 0.5, vel_y(gen) * 0.3, (vel_z( gen ) - 0.0003) * 0.5 );
+				data[counter].velocity = XMFLOAT3( (vel_x( gen )-0.0003) * 0.5, vel_y(gen), (vel_z( gen ) - 0.0003) * 0.5 );
 				//data[counter].velocity = XMFLOAT3( 0.0, 0.0, 0.0 );
 				counter++;
 			}	
@@ -97,13 +97,43 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 		return false;
 
 
-	m_computeShader.Initialize( "Shaders\\particle.cs", "main" );
+	if( !m_computeShader.Initialize( "Shaders\\particle.cs", "main" ) )
+	{
+		LOG( "Can`t compile shader" );
+		return false;
+	}
+
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( ParticleParams ), m_constantBuffer ) )
+	{
+		LOG( "Can`t create constant buffer" );
+		return false;
+	}
+
+	m_propertyContainer.setName( "Particles:" );
+	auto prop = m_propertyContainer.insert( "Terrain hight multipler", 1.0f );
+	prop->setLow( 1.0f );
+	prop->setHigh( 1000.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
+	prop = m_propertyContainer.insert( "High of death", 1.0f );
+	prop->setLow( 1.0f );
+	prop->setHigh( 200.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
 
 	return true;
 }
 
 void DMParticleSystem::update( float elapsedTime )
 {
+	Device::updateResource<ParticleParams>( m_constantBuffer, [this]( ParticleParams& data ) ->void
+	{
+		data.heightMultipler.x = m_propertyContainer["Terrain hight multipler"].data<float>();
+		data.highOfDeath.x = m_propertyContainer["High of death"].data<float>();
+	} );
+
+	DMD3D::instance().setConstantBuffer( SRVType::cs, 3, m_constantBuffer );
+
 	m_computeShader.setUAVBuffer( 0, m_uavParticles.get() );
 
 	m_computeShader.Dispatch( m_max_count, elapsedTime );
@@ -116,8 +146,8 @@ void DMParticleSystem::Render()
 
 	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
 
-	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 0, NULL, 0, 0 );
-	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( NULL, DXGI_FORMAT_R32_UINT, 0 );
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 0, nullptr, 0, 0 );
+	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( nullptr, DXGI_FORMAT_R32_UINT, 0 );
 }
 
 void DMParticleSystem::generate()
@@ -127,8 +157,8 @@ void DMParticleSystem::generate()
 
 	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
 
-	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 0, NULL, 0, 0 );
-	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( NULL, DXGI_FORMAT_R32_UINT, 0 );
+	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 0, nullptr, 0, 0 );
+	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( nullptr, DXGI_FORMAT_R32_UINT, 0 );
 
 	unsigned int offset = 0;
 	ID3D11Buffer* buffers[] = { m_structuredBuffer.get() };

@@ -3,6 +3,7 @@
 //#include "json.hpp"
 #include <fstream>
 #include "Shaders\DMClipMapShader.h"
+#include "DBConnector.h"
 
 DMTerrain::DMTerrain( ) :
 	m_isInited(false)
@@ -17,37 +18,33 @@ DMTerrain::~DMTerrain( )
 bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& shaderName, LibraryLoader& libLoader )
 {
 	m_shaderName = shaderName;
+
 	if( !libLoader.loadMaterial( 4 ) )
 		return false;
-	/*
-	using json = nlohmann::json;
 
-	json jsonParser;
+	std::string queryText = "select height_multipler,height_offset,id,map_offset,map_offset_speed,map_scale,name,steps,width_multipler,wireframe_size \
+							from GeoClipMap where name = :name";
+	SQLite::Statement querySettings( dbConnect().db(), queryText );
+	querySettings.bind( ":name", "Terrain" );
 
-	try
+	float height_offset = 0.0f;
+
+	while( querySettings.executeStep() )
 	{
-		std::ifstream jsonFile( terrainConf.data() );
-		jsonFile.is_open();
-		jsonFile >> jsonParser;
-		jsonFile.close();
+		m_settings.idHeightmap = GS::System::textures().id( "t_heightmap" );
+		m_settings.idNormalmap = GS::System::textures().id( "t_normalmap" );
+		m_settings.heightMultipler = querySettings.getColumn( "height_multipler").getDouble();
+		m_settings.widthMultipler = querySettings.getColumn( "width_multipler" ).getDouble();
+		m_settings.wireframeSize = querySettings.getColumn( "wireframe_size" ).getDouble();
+		m_settings.steps = querySettings.getColumn( "steps" ).getInt();
+		m_settings.mapScale = querySettings.getColumn( "map_scale" ).getDouble();
+		XMFLOAT4 vec;
+		strToVec4( querySettings.getColumn( "map_offset" ).getString(), vec );
+		m_settings.mapOffset.x = vec.x;
+		m_settings.mapOffset.y = vec.y;
+		m_settings.mapOffsetSpeed = querySettings.getColumn( "map_offset_speed" ).getDouble();
+		height_offset = querySettings.getColumn( "height_offset" ).getDouble();
 	}
-	catch( std::exception& )
-	{
-		return false;
-	}
-
-	//m_settings.idHeightmap = jsonParser["heightmap"];
-	//m_settings.idNormalmap = jsonParser["normalmap"];
-	m_settings.idHeightmap = GS::System::textures().id( "t_heightmap" );
-	m_settings.idNormalmap = GS::System::textures().id( "t_normalmap" );
-	m_settings.heightMultipler = jsonParser["height_multipler"];
-	m_settings.widthMultipler = jsonParser["width_multipler"];
-	m_settings.wireframeSize = jsonParser["wireframe_size"];
-	m_settings.steps = jsonParser["steps"];
-	m_settings.mapScale = jsonParser["map_scale"];
-	m_settings.mapOffset.x = jsonParser["map_offset"][0];
-	m_settings.mapOffset.y = jsonParser["map_offset"][1];
-	m_settings.mapOffsetSpeed = jsonParser["map_offset_speed"];
 
 	if( !libLoader.loadTexture( m_settings.idHeightmap ) )
 		return false;
@@ -61,14 +58,24 @@ bool DMTerrain::Initialize( const std::string& terrainConf, const std::string& s
 	m_clip_map.setMapScale( m_settings.mapScale );
 	m_clip_map.setMapOffset( m_settings.mapOffset );
 	m_clip_map.setMapOffsetSpeed( m_settings.mapOffsetSpeed );
+	
+	m_clip_map.setHightOffset( height_offset );
 
-	if( jsonParser.count( "hight_offset" ) )
-		m_clip_map.setHightOffset( jsonParser["hight_offset"] );
-	else
-		m_clip_map.setHightOffset( 0.0 );
+
+	m_properties.setName( "Old Terrain" );
+	auto prop = m_properties.insert( "Height multipler", m_settings.heightMultipler );
+	prop->setLow( 1.0 );
+	prop->setHigh( 5000.0 );
+	prop->setControlType( GUIControlType::SLIDER );
+
+	prop = m_properties.insert( "Map scale", m_settings.mapScale );
+	prop->setLow( 0.01 );
+	prop->setHigh( 10.0 );
+	prop->setControlType( GUIControlType::SLIDER );
+
 
 	m_isInited = true;
-	*/
+	
 	return true;
 }
 
@@ -123,11 +130,17 @@ void DMTerrain::Render( const DMCamera& camera, const DMFrustum& frustum )
 	DMD3D::instance().setSRV( SRVType::ps, 24, GS::System::textures().get( "t_boulders_hmr" )->srv() );		//Texture2D g_bouldersHMR : register( t24 );
 	DMD3D::instance().setSRV( SRVType::ps, 25, GS::System::textures().get( "t_snow_hmr" )->srv() );			//Texture2D g_snowHMR : register( t25 );
 
-
+	m_clip_map.setHightMultipler( m_properties["Height multipler"].data<float>() );
+	m_clip_map.setMapScale( m_properties["Map scale"].data<float>() );
 	m_clip_map.Render( *shader, camera, frustum );
 }
 
 const DMHeightMap& DMTerrain::heightmap()
 {
 	return m_height_map;
+}
+
+PropertyContainer* DMTerrain::properties()
+{
+	return &m_properties;
 }

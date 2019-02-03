@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "..\Shaders\DMComputeShader.h"
+#include "Properties/PropertyContainer.h"
 
 class DMParticleSystem
 {
@@ -23,6 +24,14 @@ public:
 	void generate();
 	void after_generate();
 
+	PropertyContainer m_propertyContainer;
+
+	struct ParticleParams
+	{
+		XMFLOAT4 heightMultipler;
+		XMFLOAT4 highOfDeath;
+	};
+
 private:
 	struct ParticleData
 	{
@@ -37,6 +46,7 @@ private:
 	com_unique_ptr<ID3D11ShaderResourceView> m_srvParticles;
 	com_unique_ptr<ID3D11UnorderedAccessView> m_uavParticles;
 	XMMATRIX m_world_matrix;
+	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
 
 	DMComputeShader m_computeShader;
 

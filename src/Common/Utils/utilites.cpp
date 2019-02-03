@@ -24,16 +24,38 @@ void str_split( const std::string& str, std::vector<std::string>& tokens, const 
 	}
 }
 
-
-XMFLOAT3 strToVec3( const std::string& str )
+bool strToVec2( const std::string& str, XMFLOAT2& vector )
 {
-	std::vector<std::string> vec3String;
-	str_split( str, vec3String, "," );
+	std::vector<std::string> vecString;
+	str_split( str, vecString, "," );
 
-	if( vec3String.size() )
-		return XMFLOAT3( ::atof( vec3String[0].c_str() ), ::atof( vec3String[1].c_str() ), ::atof( vec3String[2].c_str() ) );
+	if( vecString.empty() )
+		return false;
 
-	return XMFLOAT3( 0.0, 0.0, 0.0 );
+	if( auto[p, ec] = std::from_chars( vecString[0].data(), vecString[0].data() + vecString[0].size(), vector.x ); ec != std::errc() )
+		return false;
+	if( auto[p, ec] = std::from_chars( vecString[1].data(), vecString[1].data() + vecString[1].size(), vector.y ); ec != std::errc() )
+		return false;
+
+	return true;
+}
+
+bool strToVec3( const std::string& str, XMFLOAT3& vector )
+{
+	std::vector<std::string> vecString;
+	str_split( str, vecString, "," );
+
+	if( vecString.empty() )
+		return false;
+
+	if( auto[p, ec] = std::from_chars( vecString[0].data(), vecString[0].data() + vecString[0].size(), vector.x ); ec != std::errc() )
+		return false;
+	if( auto[p, ec] = std::from_chars( vecString[1].data(), vecString[1].data() + vecString[1].size(), vector.y ); ec != std::errc() )
+		return false;
+	if( auto[p, ec] = std::from_chars( vecString[2].data(), vecString[2].data() + vecString[2].size(), vector.z ); ec != std::errc() )
+		return false;
+
+	return true;
 }
 
 bool strToVec4( const std::string& str, XMFLOAT4& vector )
@@ -54,6 +76,16 @@ bool strToVec4( const std::string& str, XMFLOAT4& vector )
 		return false;
 
 	return true;
+}
+
+std::string vec2ToStr( const XMFLOAT2& vec )
+{
+	return std::to_string( vec.x ) + "," + std::to_string( vec.y );
+}
+
+std::string vec3ToStr( const XMFLOAT3& vec )
+{
+	return std::to_string( vec.x ) + "," + std::to_string( vec.y ) + "," + std::to_string( vec.z );
 }
 
 std::string vec4ToStr( const XMFLOAT4& vec )

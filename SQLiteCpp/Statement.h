@@ -86,7 +86,7 @@ public:
      * @brief Clears away all the bindings of a prepared statement.
      *
      *  Contrary to the intuition of many, reset() does not reset the bindings on a prepared statement.
-     *  Use this routine to reset all parameters to NULL.
+     *  Use this routine to reset all parameters to nullptr.
      */
     void clearBindings(); // throw(SQLite::Exception)
 
@@ -183,9 +183,9 @@ public:
      */
     void bindNoCopy(const int aIndex, const void*           apValue, const int aSize);
     /**
-     * @brief Bind a NULL value to a parameter "?", "?NNN", ":VVV", "@VVV" or "$VVV" in the SQL prepared statement (aIndex >= 1)
+     * @brief Bind a nullptr value to a parameter "?", "?NNN", ":VVV", "@VVV" or "$VVV" in the SQL prepared statement (aIndex >= 1)
      *
-     * @see clearBindings() to set all bound parameters to NULL.
+     * @see clearBindings() to set all bound parameters to nullptr.
      */
     void bind(const int aIndex);
 
@@ -264,11 +264,11 @@ public:
      */
     void bindNoCopy(const char* apName, const void*         apValue, const int aSize);
     /**
-     * @brief Bind a NULL value to a named parameter "?NNN", ":VVV", "@VVV" or "$VVV" in the SQL prepared statement (aIndex >= 1)
+     * @brief Bind a nullptr value to a named parameter "?NNN", ":VVV", "@VVV" or "$VVV" in the SQL prepared statement (aIndex >= 1)
      *
-     * @see clearBindings() to set all bound parameters to NULL.
+     * @see clearBindings() to set all bound parameters to nullptr.
      */
-    void bind(const char* apName); // bind NULL value
+    void bind(const char* apName); // bind nullptr value
 
 
     /**
@@ -376,11 +376,11 @@ public:
         bindNoCopy(aName.c_str(), apValue, aSize);
     }
     /**
-     * @brief Bind a NULL value to a named parameter "?NNN", ":VVV", "@VVV" or "$VVV" in the SQL prepared statement (aIndex >= 1)
+     * @brief Bind a nullptr value to a named parameter "?NNN", ":VVV", "@VVV" or "$VVV" in the SQL prepared statement (aIndex >= 1)
      *
-     * @see clearBindings() to set all bound parameters to NULL.
+     * @see clearBindings() to set all bound parameters to nullptr.
      */
-    inline void bind(const std::string& aName) // bind NULL value
+    inline void bind(const std::string& aName) // bind nullptr value
     {
         bind(aName.c_str());
     }
@@ -536,22 +536,22 @@ public:
 #endif
 
     /**
-     * @brief Test if the column value is NULL
+     * @brief Test if the column value is nullptr
      *
      * @param[in] aIndex    Index of the column, starting at 0
      *
-     * @return true if the column value is NULL
+     * @return true if the column value is nullptr
      *
      *  Throw an exception if the specified index is out of the [0, getColumnCount()) range.
      */
     bool    isColumnNull(const int aIndex) const;
 
     /**
-     * @brief Test if the column value is NULL
+     * @brief Test if the column value is nullptr
      *
      * @param[in] apName    Aliased name of the column, that is, the named specified in the query (not the original name)
      *
-     * @return true if the column value is NULL
+     * @return true if the column value is nullptr
      *
      *  Throw an exception if the specified name is not one of the aliased name of the columns in the result.
      */

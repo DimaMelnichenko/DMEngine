@@ -33,6 +33,11 @@ void DMCamera::Initialize( CameraType _type, float width, float height, float _n
 		default:
 			break;
 	}
+
+	auto prop = m_properties.insert( "Camera speed", 1.0f );
+	prop->setLow( 1.0f );
+	prop->setHigh( 100.0f );
+	prop->setControlType( GUIControlType::SLIDER );
 }
 
 void DMCamera::projectionMatrix( XMMATRIX* matrix ) const
@@ -114,7 +119,7 @@ void DMCamera::readKeyboard( XMFLOAT3& offsetPosition )
 	//update main camera position
 	Input& input = getInput();
 
-	float speedMultipler = 0.1;
+	float speedMultipler = 0.1 * m_properties["Camera speed"].data<float>() ;
 
 	if( input.IsForwarPressed() )
 	{

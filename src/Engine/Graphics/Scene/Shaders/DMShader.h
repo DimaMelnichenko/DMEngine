@@ -11,7 +11,7 @@
 #include "D3D\DMD3D.h"
 #include "DM3DUtils.h"
 #include "Storage\DMResource.h"
-#include "Materials\Parameter\Parameter.h"
+#include "Properties/PropertyContainer.h"
 
 namespace GS
 {
@@ -30,7 +30,7 @@ public:
 	void renderInstancedIndirect( ID3D11Buffer* args );
 	bool setPass( int phase );
 	void setLayoutDesc( std::vector<D3D11_INPUT_ELEMENT_DESC>&& vertex_layout );
-	virtual void setParams( const ParamSet& );
+	virtual void setParams( const PropertyContainer& );
 	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts();
 
 public:

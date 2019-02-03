@@ -1,6 +1,5 @@
 #pragma once
 #include <memory>
-#include "Materials\Parameter\Parameter.h"
 #include "Shaders\DMShader.h"
 
 
@@ -16,8 +15,8 @@ public:
 	bool loadMaterialInstance( uint32_t idMaterialInstance );
 	bool loadMesh( uint32_t idMesh );
 	bool loadModelWithLOD( uint32_t idModel );
-	bool loadMaterialParams( uint32_t idLod, GS::ParamSet& paramSet );
-	bool loadMaterialParamDef( uint32_t idMaterial, GS::ParamSet& paramSet );
+	bool loadMaterialParams( uint32_t idLod, PropertyContainer& paramSet );
+	bool loadMaterialParamDef( uint32_t idMaterial, PropertyContainer& paramSet );
 	bool loadShader( uint32_t idMaterial, GS::DMShader* );
 
 

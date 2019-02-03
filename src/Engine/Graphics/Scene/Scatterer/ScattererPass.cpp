@@ -87,7 +87,7 @@ bool ScatterPass::createBuffers()
 
 void ScatterPass::setInstanceParameters( DMComputeShader& shader, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset )
 {
-	Device::updateResource<ArgsBuffer>( m_initArgsBuffer.get(), [&]( ArgsBuffer& v )
+	Device::updateResource<ArgsBuffer>( m_initArgsBuffer, [&]( ArgsBuffer& v )
 	{
 		v.indexCountPerInstance = indexCount;
 		v.baseVertexLocation = vertexOffset;
@@ -105,7 +105,7 @@ void ScatterPass::setInstanceParameters( DMComputeShader& shader, uint32_t index
 
 void ScatterPass::populate( DMComputeShader& shader )
 {
-	Device::updateResource<PopulateParams>( m_populateParamsBuffer.get(), m_populateParams );
+	Device::updateResourceData<PopulateParams>( m_populateParamsBuffer.get(), m_populateParams );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
 
 	shader.setUAVBuffer( 0, m_populateBuffers.m_uavArgs.get() );

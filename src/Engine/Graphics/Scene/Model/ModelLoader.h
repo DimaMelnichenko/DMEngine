@@ -21,13 +21,13 @@ public:
 	DMModel* loadFromFile( const std::string& filename, uint32_t id );
 
 private:
-	ParamSet loadMaterialParam( ResourceMetaFile&, const std::string& matSection, int32_t count );
+	bool loadMaterialParam( ResourceMetaFile&, const std::string& matSection, int32_t count, PropertyContainer& );
 
 
 	struct MaterialParam
 	{
 		std::string shaderName;
-		ParamSet param;
+		PropertyContainer param;
 	};
 
 	void loadMaterials( std::unordered_map<std::string, MaterialParam>& mats, tinyxml2::XMLElement* );

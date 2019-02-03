@@ -42,7 +42,7 @@ bool Input::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int scr
 	m_mouseY = 0;
 
 	// Initialize the main direct input interface.
-	result = DirectInput8Create( hinstance, DIRECTINPUT_VERSION, IID_IDirectInput8, (void**)&m_directInput, NULL );
+	result = DirectInput8Create( hinstance, DIRECTINPUT_VERSION, IID_IDirectInput8, (void**)&m_directInput, nullptr );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -50,7 +50,7 @@ bool Input::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int scr
 
 	// Initialize the direct input interface for the keyboard.
 	IDirectInputDevice8* inputDevice;
-	result = m_directInput->CreateDevice( GUID_SysKeyboard, &inputDevice, NULL );
+	result = m_directInput->CreateDevice( GUID_SysKeyboard, &inputDevice, nullptr );
 	if( FAILED( result ) )
 	{
 		return false;
@@ -80,7 +80,7 @@ bool Input::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int scr
 	}
 
 	// Initialize the direct input interface for the mouse.
-	result = m_directInput->CreateDevice( GUID_SysMouse, &inputDevice, NULL );
+	result = m_directInput->CreateDevice( GUID_SysMouse, &inputDevice, nullptr );
 	if( FAILED( result ) )
 	{
 		return false;

@@ -33,7 +33,7 @@ bool Layout::initLayouts()
 
 	HRESULT result = D3DCompile( pseudoShader.data(),
 											  sizeof( std::string::value_type) * pseudoShader.size(),
-											  NULL, 
+											  nullptr, 
 											  nullptr,
 											  nullptr,
 											  "main",

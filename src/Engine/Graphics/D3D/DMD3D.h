@@ -28,20 +28,20 @@ template<class ResourceType>
 using CopyFunc = std::function<void( ResourceType& )>;
 
 template<class ResourceType>
-void updateResource( ID3D11Buffer* buffer, CopyFunc<ResourceType> func, D3D11_MAP MapFlags = D3D11_MAP_WRITE_DISCARD )
+void updateResource( com_unique_ptr<ID3D11Buffer>& buffer, CopyFunc<ResourceType> func, D3D11_MAP MapFlags = D3D11_MAP_WRITE_DISCARD )
 {
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
-	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, MapFlags, 0, &mappedResource );
+	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer.get(), 0, MapFlags, 0, &mappedResource );
 
 	ResourceType* data = static_cast<ResourceType*>( mappedResource.pData );
 
 	func( *data );
 
-	DMD3D::instance().GetDeviceContext()->Unmap( buffer, 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( buffer.get(), 0 );
 }
 
 template<class ResourceType>
-void updateResource( ID3D11Buffer* buffer, ResourceType& data, D3D11_MAP MapFlags = D3D11_MAP_WRITE_DISCARD )
+void updateResourceData( ID3D11Buffer* buffer, ResourceType& data, D3D11_MAP MapFlags = D3D11_MAP_WRITE_DISCARD )
 {
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 	HRESULT result = DMD3D::instance().GetDeviceContext()->Map( buffer, 0, MapFlags, 0, &mappedResource );

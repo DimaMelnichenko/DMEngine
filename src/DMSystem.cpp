@@ -53,7 +53,7 @@ void DMSystem::Run( )
 	while( true )
 	{
 		// Handle the windows messages.
-		if( PeekMessage( &msg, NULL, 0, 0, PM_REMOVE ) )
+		if( PeekMessage( &msg, nullptr, 0, 0, PM_REMOVE ) )
 		{
 			TranslateMessage( &msg );
 			DispatchMessage( &msg );
@@ -152,7 +152,7 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	int posX, posY;
 
 	// Get the instance of this application.
-	m_hinstance = GetModuleHandle( NULL );
+	m_hinstance = GetModuleHandle( nullptr );
 
 	// Give the application a name.
 	m_applicationName = "Engine";
@@ -163,11 +163,11 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	wc.cbClsExtra = 0;
 	wc.cbWndExtra = 0;
 	wc.hInstance = m_hinstance;
-	wc.hIcon = LoadIcon( NULL, IDI_WINLOGO );
+	wc.hIcon = LoadIcon( nullptr, IDI_WINLOGO );
 	wc.hIconSm = wc.hIcon;
-	wc.hCursor = LoadCursor( NULL, IDC_ARROW );
+	wc.hCursor = LoadCursor( nullptr, IDC_ARROW );
 	wc.hbrBackground = (HBRUSH)GetStockObject( BLACK_BRUSH );
-	wc.lpszMenuName = NULL;
+	wc.lpszMenuName = nullptr;
 	wc.lpszClassName = m_applicationName;
 	wc.cbSize = sizeof( WNDCLASSEX );
 
@@ -211,7 +211,7 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	// Create the window with the screen settings and get the handle to it.
 	m_hwnd = CreateWindowEx( WS_EX_APPWINDOW, m_applicationName, m_applicationName,
 							 WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_POPUP,
-							 posX, posY, screenWidth, screenHeight, NULL, NULL, m_hinstance, this );
+							 posX, posY, screenWidth, screenHeight, nullptr, nullptr, m_hinstance, this );
 	return;
 }
 
@@ -223,7 +223,7 @@ void DMSystem::ShutdownWindows( )
 	// Fix the display settings if leaving full screen mode.
 	if( m_config.fullScreen() )
 	{
-		ChangeDisplaySettings( NULL, 0 );
+		ChangeDisplaySettings( nullptr, 0 );
 	}
 
 	// Remove the window.

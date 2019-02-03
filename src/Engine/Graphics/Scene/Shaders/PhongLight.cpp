@@ -86,19 +86,19 @@ bool PhongLight::Prepare()
 	return DMShader::setPass(0);
 }
 
-void PhongLight::setParams( const ParamSet& params )
+void PhongLight::setParams( const PropertyContainer& params )
 {
-	if( params.count( "Albedo" ) )
+	if( params.exists( "Albedo" ) )
 	{
-		DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( params.at( "Albedo" ).textId() )->srv() );
+		DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( params["Albedo"].data<uint32_t>() )->srv() );
 	}
-	if( params.count( "Normal" ) )
+	if( params.exists( "Normal" ) )
 	{
-		DMD3D::instance().setSRV( SRVType::ps, 1, System::textures().get( params.at( "Normal" ).textId() )->srv() );
+		DMD3D::instance().setSRV( SRVType::ps, 1, System::textures().get( params["Normal"].data<uint32_t>() )->srv() );
 	}
-	if( params.count( "Shiness" ) )
+	if( params.exists( "Shiness" ) )
 	{
-		DMD3D::instance().setSRV( SRVType::ps, 2, System::textures().get( params.at( "Shiness" ).textId() )->srv() );
+		DMD3D::instance().setSRV( SRVType::ps, 2, System::textures().get( params["Shiness"].data<uint32_t>() )->srv() );
 	}
 	
 }

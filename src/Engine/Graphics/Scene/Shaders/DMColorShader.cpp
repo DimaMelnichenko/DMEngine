@@ -50,11 +50,11 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> DMColorShader::initLayouts()
 	return vertex_layout;
 }
 
-void DMColorShader::setParams( const ParamSet& params )
+void DMColorShader::setParams( const PropertyContainer& params )
 {
-	Device::updateResource<XMFLOAT4>( m_constantBuffer.get(), [&]( XMFLOAT4& v )
+	Device::updateResource<XMFLOAT4>( m_constantBuffer, [&]( XMFLOAT4& v )
 	{
-		v = params.at( "Color" ).vector();
+		v = params["Color"].data<XMFLOAT4>();
 	} );
 
 	ID3D11Buffer* buffer = m_constantBuffer.get();

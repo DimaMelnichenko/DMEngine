@@ -21,16 +21,14 @@
   <ItemGroup>
     <ClCompile Include="src\Common\Properties\Property.cpp" />
     <ClCompile Include="src\Common\Properties\PropertyContainer.cpp" />
-    <ClCompile Include="src\Common\Properties\ValueType.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\ShaderUtils.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TerrainTesselation\Path.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TerrainTesselation\Terrain.cpp" />
+    <ClCompile Include="src\Engine\Graphics\Scene\TerrainTesselation\TerrainShader.cpp" />
     <ClCompile Include="src\Logger\Logger.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\CustomTexture.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\TextureObjects\DDSTexture.cpp" />
     <ClCompile Include="src\Common\DBConnector.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Common\Dictionaries\MaterialParameterKind.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Common\Dictionaries\ParameterType.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Scatterer\ScattererPass.cpp" />
     <ClCompile Include="imGUI\imgui.cpp" />
     <ClCompile Include="imGUI\imgui_demo.cpp" />
@@ -65,7 +63,6 @@
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\PhongLight.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\DMShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\Layout.cpp" />
-    <ClCompile Include="src\Engine\Graphics\Scene\Materials\Parameter\Parameter.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Shaders\TextureShader.cpp" />
     <ClCompile Include="src\Engine\Graphics\Scene\Sky\DMSkyBox.cpp" />
     <ClCompile Include="src\Engine\Graphics\D3D\DMStructuredBuffer.cpp" />
@@ -114,17 +111,14 @@
   <ItemGroup>
     <ClInclude Include="src\Common\Properties\Property.h" />
     <ClInclude Include="src\Common\Properties\PropertyContainer.h" />
-    <ClInclude Include="src\Common\Properties\value.h" />
-    <ClInclude Include="src\Common\Properties\ValueType.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\ShaderUtils.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TerrainTesselation\Path.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TerrainTesselation\Terrain.h" />
+    <ClInclude Include="src\Engine\Graphics\Scene\TerrainTesselation\TerrainShader.h" />
     <ClInclude Include="src\Logger\Logger.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\CustomTexture.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\TextureObjects\DDSTexture.h" />
     <ClInclude Include="src\Common\DBConnector.h" />
-    <ClInclude Include="src\Engine\Graphics\Common\Dictionaries\MaterialParameterKind.h" />
-    <ClInclude Include="src\Engine\Graphics\Common\Dictionaries\ParameterType.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Scatterer\ScattererPass.h" />
     <ClInclude Include="imGUI\imconfig.h" />
     <ClInclude Include="imGUI\imgui.h" />
@@ -171,7 +165,6 @@
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\PhongLight.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\DMShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\Layout.h" />
-    <ClInclude Include="src\Engine\Graphics\Scene\Materials\Parameter\Parameter.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\ShaderUnit.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Shaders\TextureShader.h" />
     <ClInclude Include="src\Engine\Graphics\Scene\Sky\DMSkyBox.h" />
@@ -364,6 +357,8 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4005</DisableSpecificWarnings>
+      <AdditionalIncludeDirectories>F:\DMEngine\DirectXTex\DirectXTex;$(ProjectDir)\src\Engine\Graphics\Common;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(ProjectDir);$(ProjectDir)\src;$(ProjectDir)\src\3rdParty;$(ProjectDir)\src\Common;$(ProjectDir)\src\Engine\Graphics;$(ProjectDir)\src\Engine\Graphics\Scene;$(ProjectDir)\src\Engine\Graphics\Scene\Common;$(ProjectDir)src\Engine\Graphics\Scene\;$(ProjectDir)src\Engine\Graphics\Common\;$(ProjectDir)src\Common\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

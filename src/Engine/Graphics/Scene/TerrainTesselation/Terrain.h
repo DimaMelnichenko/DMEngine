@@ -1,9 +1,9 @@
 #pragma once
 #include "DirectX.h"
 #include "Path.h"
-#include "Scene/Shaders/DMShader.h"
 #include "D3D/DMStructuredBuffer.h"
 #include "Properties/PropertyContainer.h"
+#include "TerrainShader.h"
 
 namespace GS
 {
@@ -16,24 +16,26 @@ public:
 
 	bool initialize();
 
-	void render(  );
+	void render( const XMFLOAT3& cameraPosition );
 
 	struct Param
 	{
 		XMFLOAT4 tessFactors;
-		XMFLOAT2 modes;
-		XMFLOAT2 hightMultipler;
+		float innerTess;
+		float hightMultipler;
+		XMFLOAT2 snapOffset;
 	};
-	
-	XMMATRIX worldMatrix( const XMFLOAT3& cameraPosition );
 
 	PropertyContainer* properties();
 
 	bool wireframe();
 
 private:
+	XMFLOAT2& calcWorldOffset( const XMFLOAT3& cameraPosition );
+
+private:
 	Path m_path;
-	GS::DMShader m_shader;
+	TerrainShader m_shader;
 	com_unique_ptr<ID3D11Buffer> m_constBuffer;
 	DMStructuredBuffer m_structuredBuffer;
 	uint16_t m_ringCount;

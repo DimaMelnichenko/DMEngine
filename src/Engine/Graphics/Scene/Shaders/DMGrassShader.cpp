@@ -23,10 +23,4 @@ bool DMGrassShader::innerInitialize()
 	return true;
 }
 
-void DMGrassShader::setParams( const ParamSet& )
-{
-
-}
-
-
 }

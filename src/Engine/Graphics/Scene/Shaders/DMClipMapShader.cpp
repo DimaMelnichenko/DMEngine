@@ -67,7 +67,7 @@ bool DMClipMapShader::SetPSParameters( PSParamBuffer* ps_param )
 {
 	ID3D11Buffer* buffer = m_ps_shader_param.get();
 
-	Device::updateResource<PSParamBuffer>( buffer, *ps_param );
+	Device::updateResourceData<PSParamBuffer>( buffer, *ps_param );
 
 	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 3, 1, &buffer );
 
@@ -78,7 +78,7 @@ bool DMClipMapShader::SetVSParameters( ParamBuffer* _param_buffer )
 {
 	ID3D11Buffer* buffer = m_shader_param.get();
 
-	Device::updateResource<ParamBuffer>( buffer, *_param_buffer );
+	Device::updateResourceData<ParamBuffer>( buffer, *_param_buffer );
 
 	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 2, 1, &buffer );
 	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 2, 1, &buffer );
@@ -106,11 +106,6 @@ void DMClipMapShader::Update( float )
 void DMClipMapShader::SetTextures( int count, ID3D11ShaderResourceView** _textures )
 {
 	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 10, count, _textures );
-}
-
-void DMClipMapShader::setParams( const GS::ParamSet & )
-{
-	
 }
 
 bool DMClipMapShader::innerInitialize()

@@ -9,9 +9,6 @@ namespace
 	static std::unique_ptr<MeshStorage> m_meshStorage;
 	static std::unique_ptr<ModelStorage> m_modelStorage;
 	static std::unique_ptr<MaterialStorage> m_materialStorage;
-
-	
-	static std::unique_ptr<MaterialParameterKind> m_materialParameterKind;
 }
 
 DMTextureStorage& System::textures()
@@ -52,16 +49,6 @@ MaterialStorage& System::materials()
 	}
 
 	return *m_materialStorage;
-}
-
-MaterialParameterKind& System::materialParameterKind()
-{
-	if( !m_materialParameterKind )
-	{
-		m_materialParameterKind = std::make_unique<MaterialParameterKind>();
-	}
-
-	return *m_materialParameterKind;
 }
 
 System::System()
