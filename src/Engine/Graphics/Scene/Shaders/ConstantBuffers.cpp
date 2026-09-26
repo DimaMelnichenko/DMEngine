@@ -5,6 +5,15 @@
 namespace GS
 {
 
+XMMATRIX normalMatrix( const XMMATRIX& world )
+{
+	XMMATRIX linear = world;
+	linear.r[3] = XMVectorSet( 0.0f, 0.0f, 0.0f, 1.0f );
+	XMVECTOR determinant;
+	const XMMATRIX inverse = XMMatrixInverse( &determinant, linear );
+	return fabsf( XMVectorGetX( determinant ) ) > 1e-12f ? XMMatrixTranspose( inverse ) : linear;
+}
+
 ConstantBuffers::ConstantBuffers()
 {
 
@@ -56,18 +65,12 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 
 void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world )
 {
-	// Сдвиг на нормали не действует; у вырожденной матрицы (нулевой масштаб) обратной нет — берётся сама матрица
-	XMMATRIX linear = world;
-	linear.r[3] = XMVectorSet( 0.0f, 0.0f, 0.0f, 1.0f );
-	XMVECTOR determinant;
-	XMMATRIX inverse = XMMatrixInverse( &determinant, linear );
-	const XMMATRIX normalMatrix = fabsf( XMVectorGetX( determinant ) ) > 1e-12f ? XMMatrixTranspose( inverse ) : linear;
-
 	// HLSL читает матрицы по столбцам: транспонирование даёт ту же запись mul( v, M ), что и в C++
+	const XMMATRIX normals = normalMatrix( world );
 	Device::updateResource<ShaderModelConstant>( m_modelConstant, [&]( ShaderModelConstant& data )
 	{
 		data.world = XMMatrixTranspose( world );
-		data.worldInverseTranspose = XMMatrixTranspose( normalMatrix );
+		data.worldInverseTranspose = XMMatrixTranspose( normals );
 	} );
 
 	ID3D11Buffer* buffer = m_modelConstant.get();

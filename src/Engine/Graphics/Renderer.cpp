@@ -17,6 +17,14 @@ namespace GS
 namespace
 {
 
+// Один ли это меш с одними параметрами и отсечением граней — можно ли нарисовать их одним инстансным вызовом
+bool sameMesh( const MeshBatch& a, const MeshBatch& b )
+{
+	return a.material == b.material && a.params == b.params && a.indexOffset == b.indexOffset &&
+		   a.vertexOffset == b.vertexOffset && a.indexCount == b.indexCount && a.state.blendMode == b.state.blendMode &&
+		   a.state.twoSided == b.state.twoSided && a.mirrored == b.mirrored;
+}
+
 // Ключ прозрачной команды: дальние раньше, при равном расстоянии — порядок объектов сцены и номер
 uint64_t transparentKey( float distance, uint32_t ownerOrder, uint32_t sequence )
 {
@@ -56,12 +64,17 @@ bool Renderer::initialize()
 	if( !m_gpuProfiler.initialize( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext() ) )
 		return false;
 
+	m_instanceBuffer.createBuffer( sizeof( InstanceTransform ), maxInstancesPerDraw );
+	m_instanceTransforms.reserve( maxInstancesPerDraw );
+
 	return m_samplerState.initialize();
 }
 
 void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 {
 	m_gpuProfiler.beginFrame();
+	m_meshCount = 0;
+	m_meshDraws = 0;
 	measure( "preparePipeline", [&] { preparePipeline( scene, frame ); } );
 
 	measure( "Compute Pass", [&]
@@ -96,6 +109,8 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	}
 
 	measure( "Post process", [&] { m_postProcess.render(); } );
+	m_gui.addCounterInfo( "Meshes = %.0f", static_cast<float>( m_meshCount ) );
+	m_gui.addCounterInfo( "Mesh draw calls = %.0f", static_cast<float>( m_meshDraws ) );
 
 	m_gpuProfiler.endFrame();
 	reportGpuTimes();
@@ -143,6 +158,7 @@ void Renderer::reportGpuTimes()
 		std::snprintf( value, sizeof( value ), "%.3f", average.sum / std::max( average.count, 1u ) );
 		line += " " + average.name + " " + value + ";";
 	}
+	line += " meshes " + std::to_string( m_meshCount ) + " in " + std::to_string( m_meshDraws ) + " draws";
 	LOG( line );
 	m_gpuAverageLogged = true;
 }
@@ -197,9 +213,10 @@ void Renderer::buildCommands()
 			const uint64_t phase = static_cast<uint64_t>( batch.material->phaseFor( *batch.params ) ) & 0xF;
 			const uint64_t raster = static_cast<uint64_t>( materialRasterState( batch.state.twoSided, batch.mirrored,
 																			   RasterState::solid ) ) & 0xF;
+			// Группа (меш с параметрами) последней: одинаковые меши встают подряд — для инстансного вызова
 			key = ( static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56 ) |
 				  ( static_cast<uint64_t>( batch.materialId & 0xFFFF ) << 40 ) | ( phase << 36 ) | ( raster << 32 ) |
-				  batch.indexOffset;
+				  batch.instanceGroup;
 		}
 		m_commands[static_cast<uint32_t>( pass )].push_back( { key, i, false } );
 	}
@@ -270,7 +287,20 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 				}
 				else
 				{
-					drawMesh( meshes[commands[i].index], context );
+					// Подряд одинаковые непрозрачные меши (тот же меш, параметры, растеризатор) — одним вызовом
+					const MeshBatch& batch = meshes[commands[i].index];
+					size_t last = i;
+					if( pass != MeshPass::transparent && batch.material->supportsInstancing() )
+					{
+						while( last + 1 < end && !commands[last + 1].custom &&
+							   sameMesh( batch, meshes[commands[last + 1].index] ) )
+							++last;
+					}
+					if( last > i )
+						drawMeshInstanced( commands, i, last, context );
+					else
+						drawMesh( batch, context );
+					i = last;
 				}
 			}
 		} );
@@ -278,6 +308,34 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 	}
 
 	m_gpuProfiler.endScope();
+}
+
+void Renderer::drawMeshInstanced( const std::vector<DrawCommand>& commands, size_t first, size_t last,
+								  const RenderContext& context )
+{
+	const std::vector<MeshBatch>& meshes = m_collector.meshes();
+	const MeshBatch& batch = meshes[commands[first].index];
+	DMShader* shader = batch.material;
+	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
+	shader->setPass( shader->phaseFor( *batch.params, true ) );
+	shader->setParams( *batch.params );
+
+	for( size_t chunk = first; chunk <= last; chunk += maxInstancesPerDraw )
+	{
+		const size_t count = std::min<size_t>( last - chunk + 1, maxInstancesPerDraw );
+		m_instanceTransforms.clear();
+		for( size_t i = chunk; i < chunk + count; ++i )
+		{
+			// HLSL читает матрицы по столбцам — транспонирование, как у константного буфера объекта
+			const XMMATRIX& world = meshes[commands[i].index].world;
+			m_instanceTransforms.push_back( { XMMatrixTranspose( world ), XMMatrixTranspose( normalMatrix( world ) ) } );
+		}
+		m_instanceBuffer.updateData( m_instanceTransforms.data(), count * sizeof( InstanceTransform ) );
+		m_instanceBuffer.setToSlot( SLOT_INSTANCE_DATA, SRVType::vs );
+		shader->renderInstanced( batch.indexCount, batch.vertexOffset, batch.indexOffset, static_cast<int>( count ) );
+		m_meshDraws++;
+	}
+	m_meshCount += static_cast<uint32_t>( last - first + 1 );
 }
 
 void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
@@ -289,6 +347,8 @@ void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
 	shader->setDrawType( DMShader::by_index );
 	context.constants.setPerObjectBuffer( batch.world );
 	shader->render( batch.indexCount, batch.vertexOffset, batch.indexOffset );
+	m_meshCount++;
+	m_meshDraws++;
 }
 
 }

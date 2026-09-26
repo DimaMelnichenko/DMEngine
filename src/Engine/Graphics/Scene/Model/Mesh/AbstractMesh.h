@@ -1,4 +1,5 @@
 #pragma once
+#include <DirectXCollision.h>
 #include "Storage\DMResource.h"
 #include "VertexData.h"
 
@@ -23,12 +24,16 @@ public:
 	virtual char* getVertices() = 0;
 	const std::vector<uint32_t>& getIndices() const;
 
+	// Границы в координатах меша (считаются при загрузке): по ним экземпляры отсекаются по frustum
+	const DirectX::BoundingBox& bounds() const { return m_bounds; }
+
 
 protected:
 	VertexData::Type m_vertex_combination;
 	std::vector<uint32_t> m_indices;
 	uint32_t m_vertexOffset;
 	uint32_t m_indexOffset;
+	DirectX::BoundingBox m_bounds;
 };
 
 }

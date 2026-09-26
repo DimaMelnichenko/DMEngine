@@ -54,8 +54,14 @@ PixelInputType main(VertexInputType input)
     
     
 
-    // Calculate the position of the vertex against the world, view, and projection matrices.
-    output.position = mul(output.position, cb_worldMatrix);
+	float4x4 worldMatrix = cb_worldMatrix;
+	float3x3 normalMatrix = (float3x3)cb_worldInverseTransposeMatrix;
+#ifdef INST_MATRIX
+	worldMatrix = g_instanceTransforms[input.instanceIndex].world;
+	normalMatrix = (float3x3)g_instanceTransforms[input.instanceIndex].worldInverseTranspose;
+#endif
+
+    output.position = mul(output.position, worldMatrix);
 	output.worldPosition = output.position.xyz;
     output.position = mul(output.position, cb_viewMatrix);
     output.position = mul(output.position, cb_projectionMatrix);
@@ -72,9 +78,9 @@ PixelInputType main(VertexInputType input)
 	#endif
 
 	// Касательная и бинормаль лежат в поверхности и преобразуются как точки, нормаль — обратной транспонированной
-	output.normal = normalize( mul( normal, (float3x3)cb_worldInverseTransposeMatrix ) );
-	output.tangent = normalize( mul( tangent, (float3x3)cb_worldMatrix ) );
-	output.binormal = normalize( mul( binormal, (float3x3)cb_worldMatrix ) );
+	output.normal = normalize( mul( normal, normalMatrix ) );
+	output.tangent = normalize( mul( tangent, (float3x3)worldMatrix ) );
+	output.binormal = normalize( mul( binormal, (float3x3)worldMatrix ) );
 	
 
     return output;

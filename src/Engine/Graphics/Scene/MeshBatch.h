@@ -48,6 +48,9 @@ struct MeshBatch
 	XMMATRIX world = XMMatrixIdentity();
 	MaterialRenderState state;					// режим и двусторонность материала
 	float distance = 0.0f;						// до вида — для сортировки полупрозрачных
+	// Постоянный номер «этот меш с этими параметрами» (у моделей — модель и LOD): по нему одинаковые меши
+	// встают в сортировке подряд, и рендерер рисует их одним инстансным вызовом
+	uint32_t instanceGroup = 0;
 	bool castsShadow = true;					// для теней (этап 3)
 
 	// Заполняет MeshCollector

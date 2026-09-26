@@ -9,6 +9,7 @@
 #include "MeshBatch.h"
 #include "PostProcess.h"
 #include "D3D\GpuProfiler.h"
+#include "D3D\DMStructuredBuffer.h"
 
 class GUI;
 
@@ -36,6 +37,8 @@ public:
 	PropertyContainer* postProcessProperties();
 
 private:
+	struct DrawCommand;
+
 	void preparePipeline( Scene& scene, const FrameContext& frame );
 	// Меши и свои вызовы видимых объектов с вида
 	void collect( Scene& scene, const RenderView& view );
@@ -44,6 +47,9 @@ private:
 	void executePass( MeshPass pass, const RenderView& view, RasterState frameRaster );
 	// Единственное место, где рисуется MeshBatch: вариант шейдера, параметры, растеризатор, матрица, вызов
 	void drawMesh( const MeshBatch& batch, const RenderContext& context );
+	// Команды first…last — один меш с одними параметрами: одним DrawIndexedInstanced с матрицами экземпляров в буфере
+	void drawMeshInstanced( const std::vector<DrawCommand>& commands, size_t first, size_t last,
+							const RenderContext& context );
 
 	// Время CPU на отправку команд и область GPU-профайлера с тем же именем
 	template<typename Func>
@@ -64,6 +70,19 @@ private:
 	};
 	MeshCollector m_collector;
 	std::vector<DrawCommand> m_commands[meshPassCount];
+
+	// Матрицы экземпляров инстансного вызова; раскладка — InstanceTransform в Shaders/instance.sh
+	struct InstanceTransform
+	{
+		XMMATRIX world;
+		XMMATRIX worldInverseTranspose;
+	};
+	static constexpr uint32_t maxInstancesPerDraw = 1024;
+	DMStructuredBuffer m_instanceBuffer;
+	std::vector<InstanceTransform> m_instanceTransforms;
+	// За кадр: сколько мешей нарисовано и сколькими вызовами — видно, работает ли инстансинг
+	uint32_t m_meshCount = 0;
+	uint32_t m_meshDraws = 0;
 	DMSamplerState m_samplerState;
 	PostProcess m_postProcess;
 	GpuProfiler m_gpuProfiler;

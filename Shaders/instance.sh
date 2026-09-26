@@ -1,6 +1,18 @@
 
 #include "slots.h"
 
+#ifdef INST_MATRIX
+// Экземпляры моделей уровня одним вызовом (Renderer::drawMeshInstanced): мировая матрица и матрица нормалей
+// экземпляра вместо cb_worldMatrix, по SV_InstanceID. Раскладка — Renderer::InstanceTransform
+struct InstanceTransform
+{
+	float4x4 world;
+	float4x4 worldInverseTranspose;
+};
+
+StructuredBuffer<InstanceTransform> g_instanceTransforms : register( SLOT_INSTANCE_DATA );
+#endif
+
 #if defined(INST_POS) || defined(INST_SCALE) || defined(INST_TEX) || defined(INST_ROTATE) || defined(INST_COLOR)
 
 #define INSTANCE_INCLUDE

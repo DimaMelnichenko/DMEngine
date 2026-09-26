@@ -10,7 +10,7 @@ namespace GS
 // Occlusion (R), Emissive и множители к ним. Текстура 0 — «не задана»: вместо неё белая или плоская нормаль.
 // Режим — тоже как в glTF: AlphaMode (0 OPAQUE, 1 MASK, 2 BLEND), AlphaCutoff, DoubleSided. Для MASK материал
 // сам собирает второй вариант пиксельного шейдера с отсечением (define ALPHA_MASK): у непрозрачных отсечения нет,
-// и ранняя проверка глубины работает
+// и ранняя проверка глубины работает. Так же — вариант вершинного шейдера для инстансинга (define INST_MATRIX)
 class PBRMaterial : public DMShader
 {
 public:
@@ -18,7 +18,8 @@ public:
 	~PBRMaterial();
 	void setParams( const PropertyContainer& ) override;
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
-	int phaseFor( const PropertyContainer& params ) const override;
+	int phaseFor( const PropertyContainer& params, bool instanced = false ) const override;
+	bool supportsInstancing() const override;
 
 private:
 	// Константный буфер PS b2, раскладка как у PBRMaterialBuffer в Shaders/PBRLit.ps
@@ -34,7 +35,9 @@ private:
 		float alphaCutoff;
 	};
 
-	enum PhaseIndex { opaquePhase = 0, maskedPhase = 1 };
+	// Фазы: вершинный шейдер из базы или инстансный × пиксельный без отсечения или с ним
+	enum PhaseIndex { opaquePhase = 0, maskedPhase = 1, instancedPhases = 2 };
+	bool m_instancing = false;
 
 	bool innerInitialize() override;
 	std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() override;

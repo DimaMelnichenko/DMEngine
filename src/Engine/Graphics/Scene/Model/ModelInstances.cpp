@@ -19,6 +19,7 @@ void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstan
 	{
 		Instance instance;
 		instance.model = System::models().get( description.model ).get();
+		instance.modelId = description.model;
 		instance.transform.setPosition( description.position );
 		instance.transform.setRotation( description.rotation );
 		instance.transform.setScale( description.scale );
@@ -37,11 +38,24 @@ void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& colle
 	for( const Instance& instance : m_instances )
 	{
 		const XMVECTOR position = XMLoadFloat3( &instance.transform.position() );
-		const DMModel::LodBlock* lod = instance.model->getLod( XMVectorGetX( XMVector3Length( position - lodOrigin ) ) );
-		if( lod == nullptr || !lod->isRender )
+		const int lodIndex = instance.model->lodIndex( XMVectorGetX( XMVector3Length( position - lodOrigin ) ) );
+		if( lodIndex < 0 )
+			continue;
+		const DMModel::LodBlock* lod = instance.model->getLodById( static_cast<uint16_t>( lodIndex ) );
+		if( !lod->isRender )
 			continue;
 
+		// Отсечение по frustum вида: границы меша, переведённые мировой матрицей экземпляра
 		const auto& mesh = System::meshes().get( lod->mesh );
+		DirectX::BoundingBox bounds;
+		mesh->bounds().Transform( bounds, instance.transform.worldMatrix() );
+		const XMFLOAT3 boundsMin( bounds.Center.x - bounds.Extents.x, bounds.Center.y - bounds.Extents.y,
+								  bounds.Center.z - bounds.Extents.z );
+		const XMFLOAT3 boundsMax( bounds.Center.x + bounds.Extents.x, bounds.Center.y + bounds.Extents.y,
+								  bounds.Center.z + bounds.Extents.z );
+		if( !view.frustum.checkBox( boundsMin, boundsMax ) )
+			continue;
+
 		MeshBatch batch;
 		batch.material = System::materials().get( lod->material )->m_shader.get();
 		batch.materialId = lod->material;
@@ -53,6 +67,7 @@ void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& colle
 		// Режим читается каждый кадр: параметры материала меняются в GUI
 		batch.state = batch.material->renderState( lod->params );
 		batch.distance = XMVectorGetX( XMVector3Length( position - viewPosition ) );
+		batch.instanceGroup = ( instance.modelId << 4 ) | static_cast<uint32_t>( lodIndex );
 		collector.add( batch );
 	}
 }

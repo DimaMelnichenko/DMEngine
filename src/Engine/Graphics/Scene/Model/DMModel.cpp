@@ -35,12 +35,18 @@ void DMModel::addLod( float range, std::unique_ptr<LodBlock>&& lod )
 
 const DMModel::LodBlock* DMModel::getLod( float distance ) const
 {
-	for( const auto& it : m_lods )
+	const int index = lodIndex( distance );
+	return index >= 0 ? m_lods[index].second.get() : nullptr;
+}
+
+int DMModel::lodIndex( float distance ) const
+{
+	for( size_t i = 0; i < m_lods.size(); ++i )
 	{
-		if( distance <= it.first )
-			return it.second.get();
+		if( distance <= m_lods[i].first )
+			return static_cast<int>( i );
 	}
-	return nullptr;
+	return -1;
 }
 
 DMModel::LodBlock* DMModel::getLodById( uint16_t index )

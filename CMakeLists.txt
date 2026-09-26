@@ -89,7 +89,6 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Shaders/TextureShader.cpp
     src/Engine/Graphics/D3D/DMStructuredBuffer.cpp
     src/DMSystem.cpp
-    src/Engine/Graphics/Common/DMAABB.cpp
     src/Engine/Graphics/Common/DMTransform.cpp
     src/Engine/Graphics/D3D/DMD3D.cpp
     src/Engine/Graphics/D3D/DMSamplerState.cpp

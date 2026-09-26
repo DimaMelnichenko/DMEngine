@@ -34,9 +34,12 @@ public:
 	// Режим и двусторонность материала с этими параметрами (Blend Mode и Two Sided в UE): по ним объект выбирает
 	// проход и отсечение граней. По умолчанию — непрозрачный односторонний
 	virtual MaterialRenderState renderState( const PropertyContainer& params ) const { return {}; }
-	// Фаза (набор шейдеров) для этих параметров — например, вариант с отсечением по альфе. Рисуют так:
+	// Фаза (набор шейдеров) для этих параметров — например, вариант с отсечением по альфе; instanced — вариант
+	// вершинного шейдера с матрицами экземпляров из буфера (INST_MATRIX). Рисуют так:
 	// setPass( phaseFor( params ) ), затем setParams( params )
-	virtual int phaseFor( const PropertyContainer& params ) const { return 0; }
+	virtual int phaseFor( const PropertyContainer& params, bool instanced = false ) const { return 0; }
+	// Есть ли вариант для инстансинга моделей: иначе одинаковые меши рисуются по одному
+	virtual bool supportsInstancing() const { return false; }
 
 public:
 	enum DrawType

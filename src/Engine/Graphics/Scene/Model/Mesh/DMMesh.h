@@ -17,6 +17,9 @@ public:
 		m_vertices( std::move( vertices ) )
 	{
 		m_vertex_combination = VertexData::type<VertexTypeStruct>();
+		if( !m_vertices.empty() )
+			DirectX::BoundingBox::CreateFromPoints( m_bounds, m_vertices.size(), &m_vertices[0].position,
+													sizeof( VertexTypeStruct ) );
 	}
 	DMMesh( DMMesh&& other ) : AbstractMesh( std::move( other ) )
 	{

@@ -104,8 +104,23 @@ bool PBRMaterial::innerInitialize()
 	if( !addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, maskedDefines ) )
 		return false;
 
+	// Инстансный вариант вершинного шейдера — у моделей уровня; у материала расстановки (defines INST_*) свои инстансы
+	const ShaderSource* vertex = shaderSource( SRVType::vs );
+	m_instancing = vertex && vertex->defines.find( "INST_" ) == std::string::npos;
+	if( m_instancing )
+	{
+		const std::string instancedDefines = vertex->defines.empty() ? "INST_MATRIX=1" : vertex->defines + ",INST_MATRIX=1";
+		if( !addShaderPassFromFile( SRVType::vs, vertex->function, vertex->file, instancedDefines ) )
+			return false;
+	}
+
 	createPhase( 0, 0 );
 	createPhase( 0, 1 );
+	if( m_instancing )
+	{
+		createPhase( 1, 0 );
+		createPhase( 1, 1 );
+	}
 
 	DMD3D::instance().createShaderConstantBuffer( sizeof( PSParam ), m_psCB );
 
@@ -125,9 +140,15 @@ MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) 
 	return state;
 }
 
-int PBRMaterial::phaseFor( const PropertyContainer& params ) const
+int PBRMaterial::phaseFor( const PropertyContainer& params, bool instanced ) const
 {
-	return renderState( params ).blendMode == BlendMode::masked ? maskedPhase : opaquePhase;
+	const int phase = renderState( params ).blendMode == BlendMode::masked ? maskedPhase : opaquePhase;
+	return instanced && m_instancing ? instancedPhases + phase : phase;
+}
+
+bool PBRMaterial::supportsInstancing() const
+{
+	return m_instancing;
 }
 
 void PBRMaterial::setParams( const PropertyContainer& params )
