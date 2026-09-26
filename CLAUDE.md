@@ -71,7 +71,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   `blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/source/test_models.glb`, затем
   `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,90.5,238`. Пучок травы
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
-  затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter`. Blender 5.0 стоит в
+  затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter`; ромашка (`Camomile`, альфа-лепестки) — так же
+  со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Blender 5.0 стоит в
   `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH).
 - Лог каждого запуска перезаписывается в отслеживаемый `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`).
 - Шейдеры (`Shaders/*.vs|.ps|.gs|.hlsl`) компилируются во время выполнения
@@ -152,7 +153,7 @@ NULL — этого у уровня нет. Экземпляры моделей 
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн, частицы,
-наборы `Meadow` (трава — пучки `GrassClump` из Blender, и ромашки) и `Debris` (камешки), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
+наборы `Meadow` (трава — пучки `GrassClump` из Blender, и ромашки `Camomile`) и `Debris` (камешки), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
 + `TestPanel_Frame`.
