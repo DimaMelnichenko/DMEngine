@@ -3,8 +3,6 @@
 #include "Shaders\TextureShader.h"
 #include "Shaders\PBRMaterial.h"
 #include "Shaders\DMParticleShader.h"
-#include "Shaders\DMGrassShader.h"
-#include "Shaders\VertexLight.h"
 #include "Logger\Logger.h"
 
 namespace GS
@@ -39,10 +37,6 @@ bool MaterialStorage::createMaterial( uint32_t id, const std::string& name, cons
 		shader = new TextureShader();
 	else if( matClass == "Particle" )
 		shader = new DMParticleShader();
-	else if( matClass == "Grass" )
-		shader = new DMGrassShader();
-	else if( matClass == "VertexLight" )
-		shader = new VertexLight();
 
 	if( !shader )
 	{

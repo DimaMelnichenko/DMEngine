@@ -32,7 +32,6 @@ struct LevelDescription
 	struct ScatterSet
 	{
 		std::string name;
-		std::string colorTexture;
 		std::vector<ScatterLayer> layers;
 	};
 

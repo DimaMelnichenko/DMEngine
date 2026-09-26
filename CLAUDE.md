@@ -154,8 +154,8 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 `Materials`; класс шейдера выбирает `MaterialStorage::createMaterial` по колонке `class`. Параметры LOD —
 экземпляр материала: `ModelProperties.material_instance_id` → `MaterialInstance` (определения параметров — от его
 `id_material`, значения — `MaterialParameterInstance`); NULL — параметры `material_id` со значениями по умолчанию
-(`MaterialParameterDef.default_value`). Экземпляры 5, 6, 9–12 — наследие старой схемы, где эта колонка означала
-`Materials.id`; у части старых моделей они не совпадают с материалом. Подробно — `docs/materials.md`. Цветовое
+(`MaterialParameterDef.default_value`). Экземпляры 5 и 12 — наследие старой схемы, где эта колонка означала
+`Materials.id`; у SkySphere экземпляр 5 не совпадает с материалом. Подробно — `docs/materials.md`. Цветовое
 пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла. Новые ассеты добавляются
 строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
 моделей, LOD, экземпляров материала `PBR`, расстановки: положение, поворот и масштаб объекта Blender — экземпляр
@@ -198,7 +198,7 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 `phaseFor( params )`: `PBRMaterial` сам собирает второй пиксельный шейдер с `clip` (define `ALPHA_MASK`), у непрозрачных
 отсечения нет. Рисуют `setPass( phaseFor( params ) )`, затем `setParams( params )`, двусторонние — без отсечения граней
 (`materialRasterState`). Прочие классы — `Texture`, `Color`
-(без освещения: небо, отладка), `VertexLight` (старая трава, сейчас не используется), `Particle`, `Grass`. Подробно — `docs/materials.md`.
+(без освещения: небо, отладка), `Particle`. Подробно — `docs/materials.md`.
 
 **Освещение считается в одном месте** — `Shaders/lighting.sh`: шейдер материала заполняет `Surface` (базовый цвет,
 металличность, шероховатость, нормаль, затенение, свечение) и возвращает `evaluateLighting(surface)` — прямой свет
@@ -241,7 +241,7 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 высот с морфингом между уровнями. Прежние террейны (GeoClipMap и тесселяционный) удалены, они есть в истории git.
 
 **Расстановка (трава, цветы, камешки, веточки)** — `Scatterer` (`Scene/Scatterer/`), по объекту сцены на набор
-(`ScatterSets`: имя и текстура цвета земли; проход и отсечение граней слоя задаёт режим его материала). Слой набора
+(`ScatterSets`: имя; проход и отсечение граней слоя задаёт режим его материала). Слой набора
 (`ScatterLayers`, свой `ScatterPass`: буфер инстансов, compute и `DrawIndexedInstancedIndirect`) — LOD модели, маска
 плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
 размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы) и `align_to_terrain`. Трава и ромашки,

@@ -60,11 +60,9 @@ add_executable(DMEngine WIN32
     src/3rdParty/ScreenGrab.cpp
     src/Engine/Graphics/GUI/GUI.cpp
     src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp
-    src/Engine/Graphics/Scene/Shaders/DMGrassShader.cpp
     src/Engine/Graphics/Scene/Shaders/DMParticleShader.cpp
     src/Engine/Graphics/Scene/Particle/DMParticleSystem.cpp
     src/Engine/Graphics/Scene/Shaders/DMComputeShader.cpp
-    src/Engine/Graphics/Scene/Shaders/VertexLight.cpp
     src/ObjectLibrary/LibraryLoader.cpp
     src/3rdParty/tinyxml2.cpp
     src/Config/Config.cpp

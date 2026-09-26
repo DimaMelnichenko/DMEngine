@@ -32,11 +32,6 @@ void Scatterer::setTerrain( const TerrainHeightSource* terrain )
 	m_terrain = terrain;
 }
 
-void Scatterer::setColorTexture( const std::string& texture )
-{
-	m_colorTexture = texture;
-}
-
 bool Scatterer::addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, const ScatterPass::PopulateParams& params )
 {
 	Layer layer;
@@ -106,9 +101,6 @@ void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 void Scatterer::renderCustom( const RenderContext& context )
 {
 	ScopedRenderState scatterState;
-
-	if( !m_colorTexture.empty() )
-		DMD3D::instance().setSRV( SRVType::ps, 1, System::textures().get( m_colorTexture )->srv() );
 
 	XMMATRIX worldMatrix = XMMatrixIdentity();
 

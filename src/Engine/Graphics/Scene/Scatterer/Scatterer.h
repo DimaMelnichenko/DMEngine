@@ -28,8 +28,6 @@ public:
 
 	bool Initialize();
 	void setTerrain( const TerrainHeightSource* terrain );
-	// Текстура цвета травы в слоте t1 пиксельного шейдера; пустое имя — не привязывать
-	void setColorTexture( const std::string& texture );
 	// mask — маска плотности в хранилище текстур, в координатах карты высот террейна
 	bool addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, const ScatterPass::PopulateParams& params );
 
@@ -70,7 +68,6 @@ private:
 
 	bool m_computeEnabled = true;
 	const TerrainHeightSource* m_terrain = nullptr;
-	std::string m_colorTexture;
 	std::vector<Layer> m_layers;
 	DMComputeShader m_computeShader;
 	DMComputeShader m_initShader;

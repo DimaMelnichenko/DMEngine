@@ -18,7 +18,7 @@
 
 ## Понятия
 
-**Набор** (`Scatterer`, таблица `ScatterSets`) — группа слоёв с общей текстурой цвета земли. Проход и отсечение
+**Набор** (`Scatterer`, таблица `ScatterSets`) — именованная группа слоёв. Проход и отсечение
 граней у каждого слоя свои — их задаёт режим материала LOD ([materials.md](materials.md)): непрозрачные и Masked слои
 рисуются в `opaque`, полупрозрачные — в `transparent`, двусторонние — без отсечения граней, как у травы ландшафта
 в UE. На уровне каждый набор — отдельный объект сцены,
@@ -87,7 +87,6 @@
 | Колонка | Значение |
 |---|---|
 | `name` | имя набора, под ним он виден в статистике кадра |
-| `color_texture` | текстура цвета земли для старого материала `VertexLight` (слот t1 пиксельного шейдера); для `PBR` — NULL |
 
 ### ScatterLayers — слои
 
@@ -186,7 +185,7 @@ VALUES (1, 3, 4, 0, 'mask_camomile', 0.7, 0, 12, 0, 4, 0.8, 1.0, 0, 360, 0, 0);
 по склону:
 
 ```sql
-INSERT INTO ScatterSets (name, color_texture) VALUES ('ForestFloor', NULL);
+INSERT INTO ScatterSets (name) VALUES ('ForestFloor');
 INSERT INTO ScatterLayers (scatter_set, layer, model, model_lod, mask, cell_size, near_border, far_border,
                            near_fade, far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z,
                            align_to_terrain)

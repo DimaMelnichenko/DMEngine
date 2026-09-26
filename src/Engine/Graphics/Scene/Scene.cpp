@@ -112,7 +112,6 @@ bool Scene::initialize()
 		if( !scatterer->Initialize() )
 			return false;
 		scatterer->setTerrain( &m_terrain );
-		scatterer->setColorTexture( set.colorTexture );
 
 		for( const LevelDescription::ScatterLayer& layer : set.layers )
 		{
