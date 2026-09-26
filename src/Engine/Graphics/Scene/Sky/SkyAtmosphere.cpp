@@ -15,15 +15,6 @@ namespace
 
 constexpr DXGI_FORMAT hdrFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
-bool loadFullscreenShader( DMShader& shader, const std::string& pixelShader )
-{
-	// Полноэкранный треугольник по SV_VertexID, без буферов и раскладки вершин
-	shader.setDrawType( DMShader::by_vertex );
-	return shader.addShaderPassFromFile( SRVType::vs, "main", "Shaders\\fullscreen.vs" ) &&
-		   shader.addShaderPassFromFile( SRVType::ps, "main", pixelShader ) &&
-		   shader.createPhase( 0, 0 );
-}
-
 }
 
 SkyAtmosphere::SkyAtmosphere() :
@@ -35,11 +26,11 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const std::string& 
 {
 	m_lights = &lights;
 
-	if( !loadFullscreenShader( m_multipleScatteringShader, "Shaders\\sky_multiscattering.ps" ) ||
-		!loadFullscreenShader( m_cubeShader, "Shaders\\sky_cube.ps" ) ||
-		!loadFullscreenShader( m_prefilterShader, "Shaders\\sky_prefilter.ps" ) ||
-		!loadFullscreenShader( m_brdfShader, "Shaders\\brdf_lut.ps" ) ||
-		!loadFullscreenShader( m_backgroundShader, "Shaders\\sky_background.ps" ) ||
+	if( !m_multipleScatteringShader.load( "Shaders\\sky_multiscattering.ps" ) ||
+		!m_cubeShader.load( "Shaders\\sky_cube.ps" ) ||
+		!m_prefilterShader.load( "Shaders\\sky_prefilter.ps" ) ||
+		!m_brdfShader.load( "Shaders\\brdf_lut.ps" ) ||
+		!m_backgroundShader.load( "Shaders\\sky_background.ps" ) ||
 		!m_irradianceShader.Initialize( "Shaders\\sky_irradiance.cs", "main" ) )
 		return false;
 
@@ -260,14 +251,12 @@ void SkyAtmosphere::updateEnvironment( const Parameters& params )
 	context->PSSetShaderResources( 0, 4, nullViews );
 	context->PSSetShaderResources( SLOT_IBL_IRRADIANCE, 3, nullViews );
 
-	ScopedRenderState state( RasterState::noCulling, DepthState::disabled, BlendState::opaque );
-	context->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
-
 	Parameters faceParams = params;
 	setParameters( faceParams );
 
 	// 1. Многократное рассеяние: таблица Ψ по высоте и зенитному углу солнца
-	drawFullscreen( m_multipleScatteringShader, m_multipleScatteringTarget.get(), multipleScatteringSize );
+	d3d.setRenderTarget( m_multipleScatteringTarget.get(), multipleScatteringSize, multipleScatteringSize );
+	m_multipleScatteringShader.draw();
 	context->OMSetRenderTargets( 0, nullptr, nullptr );
 	d3d.setSRV( SRVType::ps, 1, m_multipleScatteringSRV );
 
@@ -276,7 +265,8 @@ void SkyAtmosphere::updateEnvironment( const Parameters& params )
 	{
 		faceParams.face = face;
 		setParameters( faceParams );
-		drawFullscreen( m_cubeShader, m_skyTargets[face].get(), skySize );
+		d3d.setRenderTarget( m_skyTargets[face].get(), skySize, skySize );
+		m_cubeShader.draw();
 	}
 	context->OMSetRenderTargets( 0, nullptr, nullptr );
 	context->PSSetShaderResources( 1, 1, nullViews );
@@ -299,34 +289,22 @@ void SkyAtmosphere::updateEnvironment( const Parameters& params )
 		{
 			faceParams.face = face;
 			setParameters( faceParams );
-			drawFullscreen( m_prefilterShader, m_specularTargets[mip * 6 + face].get(), std::max( specularSize >> mip, 1u ) );
+			const uint32_t size = std::max( specularSize >> mip, 1u );
+			d3d.setRenderTarget( m_specularTargets[mip * 6 + face].get(), size, size );
+			m_prefilterShader.draw();
 		}
 	}
 
 	// 5. Таблица BRDF не зависит от неба — один раз
 	if( !m_brdfReady )
 	{
-		drawFullscreen( m_brdfShader, m_brdfTarget.get(), brdfLutSize );
+		d3d.setRenderTarget( m_brdfTarget.get(), brdfLutSize, brdfLutSize );
+		m_brdfShader.draw();
 		m_brdfReady = true;
 	}
 
 	context->OMSetRenderTargets( 0, nullptr, nullptr );
 	context->PSSetShaderResources( 0, 1, nullViews );
-}
-
-void SkyAtmosphere::drawFullscreen( DMShader& shader, ID3D11RenderTargetView* target, uint32_t size )
-{
-	ID3D11DeviceContext* context = DMD3D::instance().GetDeviceContext();
-	context->OMSetRenderTargets( 1, &target, nullptr );
-
-	D3D11_VIEWPORT viewport = {};
-	viewport.Width = static_cast<float>( size );
-	viewport.Height = static_cast<float>( size );
-	viewport.MaxDepth = 1.0f;
-	context->RSSetViewports( 1, &viewport );
-
-	shader.setPass( 0 );
-	shader.render( 3 );
 }
 
 void SkyAtmosphere::setParameters( const Parameters& params )
@@ -349,13 +327,9 @@ void SkyAtmosphere::render( const FrameContext& )
 	if( !m_backgroundVisible )
 		return;
 
-	ScopedRenderState state( RasterState::noCulling, DepthState::disabled, BlendState::opaque );
-	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
-
 	setParameters( m_computedFor );
 	DMD3D::instance().setSRV( SRVType::ps, 0, m_skySRV );
-	m_backgroundShader.setPass( 0 );
-	m_backgroundShader.render( 3 );
+	m_backgroundShader.draw();
 }
 
 PropertyContainer* SkyAtmosphere::properties()

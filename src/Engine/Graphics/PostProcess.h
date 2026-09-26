@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include "Shaders\DMShader.h"
+#include "Shaders\FullscreenShader.h"
 #include "Properties\PropertyContainer.h"
 
 namespace GS
@@ -34,7 +34,7 @@ private:
 		float padding[2];
 	};
 
-	DMShader m_shader;
+	FullscreenShader m_shader;
 	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
 	PropertyContainer m_properties;
 };

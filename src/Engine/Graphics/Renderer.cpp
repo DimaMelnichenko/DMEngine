@@ -78,6 +78,11 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 
 void Renderer::renderPass( Scene& scene, const FrameContext& frame, RenderPass pass )
 {
+	// Проход не полагается на состояние, оставленное прошлым: своя цель, область вывода, без чужих ресурсов.
+	// Растеризатор, глубину и блендинг задаёт ScopedRenderState кадра и прохода
+	DMD3D::instance().setSceneTarget();
+	DMD3D::instance().unbindTransientResources();
+
 	for( SceneObject* object : scene.objects() )
 	{
 		if( object->pass() != pass || !object->visible() )

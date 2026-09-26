@@ -92,7 +92,12 @@ public:
 	// BeginScene привязывает его вместе с буфером глубины и очищает. Тонмаппинг переводит его в задний буфер
 	// (setBackBufferTarget + sceneColor), поверх рисуется GUI, EndScene показывает кадр
 	void BeginScene( float, float, float, float );
-	void setBackBufferTarget();
+	// Цели рендера с областью вывода по их размеру. Проход ставит свою цель сам, а не полагается на оставленную
+	void setSceneTarget();		// HDR-буфер сцены и буфер глубины, область вывода на весь кадр
+	void setBackBufferTarget();	// задний буфер без глубины
+	void setRenderTarget( ID3D11RenderTargetView* target, uint32_t width, uint32_t height );	// без глубины
+	// Отвязывает ресурсы материалов, проходов и объектов (слоты до SLOT_TRANSIENT_COUNT) у графических стадий
+	void unbindTransientResources();
 	// Цвет сцены для чтения в шейдере; при MSAA сначала сводит выборки в обычную текстуру
 	const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor();
 	void EndScene( );

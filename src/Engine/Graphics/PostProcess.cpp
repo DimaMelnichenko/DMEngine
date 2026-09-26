@@ -9,11 +9,7 @@ namespace GS
 
 bool PostProcess::initialize( const std::string& settingsFile )
 {
-	// Полноэкранный треугольник строится в вершинном шейдере по SV_VertexID: без буферов и раскладки вершин
-	m_shader.setDrawType( DMShader::by_vertex );
-	if( !m_shader.addShaderPassFromFile( SRVType::vs, "main", "Shaders\\fullscreen.vs" ) ||
-		!m_shader.addShaderPassFromFile( SRVType::ps, "main", "Shaders\\tonemap.ps" ) ||
-		!m_shader.createPhase( 0, 0 ) )
+	if( !m_shader.load( "Shaders\\tonemap.ps" ) )
 		return false;
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) )
@@ -42,9 +38,6 @@ bool PostProcess::initialize( const std::string& settingsFile )
 
 void PostProcess::render()
 {
-	// Сплошная заливка и без глубины, даже если кадр рисуется каркасом (Q)
-	ScopedRenderState state( RasterState::noCulling, DepthState::disabled, BlendState::opaque );
-
 	DMD3D& d3d = DMD3D::instance();
 	const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor = d3d.sceneColor();
 	d3d.setBackBufferTarget();
@@ -56,10 +49,7 @@ void PostProcess::render()
 	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
 	d3d.setSRV( SRVType::ps, 0, sceneColor );
 
-	// Топологию оставляет последний объект кадра (у частиц — список точек)
-	d3d.GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
-	m_shader.setPass( 0 );
-	m_shader.render( 3 );
+	m_shader.draw();
 }
 
 PropertyContainer* PostProcess::properties()

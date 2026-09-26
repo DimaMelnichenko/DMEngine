@@ -677,13 +677,36 @@ void DMD3D::BeginScene( float red, float green, float blue, float alpha )
 	color[2] = blue;
 	color[3] = alpha;
 
-	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём. Область вывода — на весь кадр:
-	// проходы до сцены (cubemap неба) рисуют в цели другого размера
-	m_deviceContext->RSSetViewports( 1, &m_viewport );
-	ID3D11RenderTargetView* rtv = m_sceneRTV.get();
-	m_deviceContext->OMSetRenderTargets( 1, &rtv, m_depthStencilView.get() );
+	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём
+	setSceneTarget();
 	m_deviceContext->ClearRenderTargetView( m_sceneRTV.get(), color );
 	m_deviceContext->ClearDepthStencilView( m_depthStencilView.get(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
+}
+
+void DMD3D::setSceneTarget()
+{
+	ID3D11RenderTargetView* rtv = m_sceneRTV.get();
+	m_deviceContext->OMSetRenderTargets( 1, &rtv, m_depthStencilView.get() );
+	m_deviceContext->RSSetViewports( 1, &m_viewport );
+}
+
+void DMD3D::setRenderTarget( ID3D11RenderTargetView* target, uint32_t width, uint32_t height )
+{
+	m_deviceContext->OMSetRenderTargets( 1, &target, nullptr );
+
+	D3D11_VIEWPORT viewport = {};
+	viewport.Width = static_cast<float>( width );
+	viewport.Height = static_cast<float>( height );
+	viewport.MaxDepth = 1.0f;
+	m_deviceContext->RSSetViewports( 1, &viewport );
+}
+
+void DMD3D::unbindTransientResources()
+{
+	ID3D11ShaderResourceView* views[SLOT_TRANSIENT_COUNT] = {};
+	m_deviceContext->VSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
+	m_deviceContext->GSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
+	m_deviceContext->PSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
 }
 
 void DMD3D::setBackBufferTarget()
@@ -691,6 +714,7 @@ void DMD3D::setBackBufferTarget()
 	// Без буфера глубины: тонмаппинг и GUI рисуются поверх всего экрана
 	ID3D11RenderTargetView* rtv = m_renderTargetView.get();
 	m_deviceContext->OMSetRenderTargets( 1, &rtv, nullptr );
+	m_deviceContext->RSSetViewports( 1, &m_viewport );
 }
 
 const com_unique_ptr<ID3D11ShaderResourceView>& DMD3D::sceneColor()
@@ -716,11 +740,8 @@ void DMD3D::EndScene( )
 	}
 
 
-	// Отвязка ресурсов материалов, проходов и объектов; ресурсы сцены (SLOT_LIGHTS и дальше) живут до следующего кадра
-	ID3D11ShaderResourceView* views[SLOT_TRANSIENT_COUNT] = {};
-	m_deviceContext->VSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
-	m_deviceContext->GSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
-	m_deviceContext->PSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
+	// Ресурсы сцены (SLOT_LIGHTS и дальше) живут до следующего кадра
+	unbindTransientResources();
 
 	logDebugMessages();
 }

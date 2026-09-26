@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include "SceneObject.h"
-#include "Shaders\DMShader.h"
+#include "Shaders\FullscreenShader.h"
 #include "Shaders\DMComputeShader.h"
 #include "Properties\PropertyContainer.h"
 
@@ -62,7 +62,6 @@ private:
 	bool createIrradianceBuffer();
 	Parameters currentParameters() const;
 	void updateEnvironment( const Parameters& params );
-	void drawFullscreen( DMShader& shader, ID3D11RenderTargetView* target, uint32_t size );
 	void setParameters( const Parameters& params );
 	void bindEnvironment();
 
@@ -73,11 +72,11 @@ private:
 	bool m_brdfReady = false;
 	Parameters m_computedFor = {};
 
-	DMShader m_multipleScatteringShader;
-	DMShader m_cubeShader;
-	DMShader m_prefilterShader;
-	DMShader m_brdfShader;
-	DMShader m_backgroundShader;
+	FullscreenShader m_multipleScatteringShader;
+	FullscreenShader m_cubeShader;
+	FullscreenShader m_prefilterShader;
+	FullscreenShader m_brdfShader;
+	FullscreenShader m_backgroundShader;
 	DMComputeShader m_irradianceShader;
 	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
 
