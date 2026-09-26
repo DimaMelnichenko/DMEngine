@@ -306,12 +306,7 @@ void Renderer::buildShadowCommands()
 
 void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 {
-	XMFLOAT3 toSun;
-	XMFLOAT3 sunColor;
-	scene.lights().directionalLight( toSun, sunColor );
-	if( scene.lights().sunLightIndex() < 0 )
-		toSun = XMFLOAT3( 0.0f, -1.0f, 0.0f );	// солнца нет — как ниже горизонта
-	if( !m_shadows.update( frame.view, toSun, scene.bounds() ) )
+	if( !m_shadows.update( frame.view, frame.toSun, scene.bounds() ) )
 		return;
 
 	const auto start = std::chrono::high_resolution_clock::now();

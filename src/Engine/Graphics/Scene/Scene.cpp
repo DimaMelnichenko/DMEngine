@@ -122,7 +122,9 @@ bool Scene::initialize()
 				LOG( "Scatter set " + set.name + ": model " + std::to_string( layer.model ) + " has no LOD " + std::to_string( layer.modelLod ) );
 				return false;
 			}
-			if( !scatterer->addLayer( block, layer.mask, layer.params ) )
+			const std::string layerName = System::models().get( layer.model )->properties()->name() + " LOD" +
+										  std::to_string( layer.modelLod );
+			if( !scatterer->addLayer( layerName, block, layer.mask, layer.params ) )
 				return false;
 		}
 		m_scatterers.push_back( std::move( scatterer ) );

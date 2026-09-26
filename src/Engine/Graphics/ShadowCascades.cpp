@@ -199,6 +199,8 @@ bool ShadowCascades::update( const RenderView& mainView, const XMFLOAT3& toSun, 
 		view.farPlane = depthFar - depthNear;
 		view.frustum = DMFrustum( view.viewProjection );
 		view.index = cascade + 1;
+		view.cascadeNear = cascade == 0 ? 0.0f : n;
+		view.cascadeFar = f * std::sqrt( 1.0f + cornerK2 );
 
 		m_texelSize[cascade] = texel;
 	}

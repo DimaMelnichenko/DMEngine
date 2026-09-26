@@ -2,7 +2,8 @@
 // Расстановка слоя набора (Scatterer): трава, цветы, камешки. Инстансы раскладываются по сетке с шагом g_cellSize,
 // привязанной к миру, в кольце g_nearBorder…g_farBorder вокруг камеры. Смещение в ячейке, размер и поворот — хеш
 // координат ячейки, поэтому при движении камеры инстансы остаются на своих местах. Маска слоя задаёт вероятность
-// появления и размер, инстансы вне frustum отбрасываются, у краёв кольца размер плавно уходит в ноль.
+// появления и размер, инстансы вне frustum отбрасываются (у слоя с тенью — если и тень не падает в кадр), у краёв
+// кольца размер плавно уходит в ноль.
 // init — сбрасывает indirect-аргументы слоя перед расстановкой
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,12 +43,15 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	float  g_alignToTerrain;	// 1 — ось Y инстанса по нормали террейна
 	float3 g_rotationRange;		// предел случайного поворота вокруг осей X, Y, Z, радианы
 	uint   g_capacity;
+	float  g_castShadow;		// 1 — слой отбрасывает тень солнца
+	float3 g_layerPadding;
 };
 
 // Нормированные плоскости frustum, нормали смотрят внутрь
 cbuffer FrustumBuffer : register( b6 )
 {
 	float4 g_frustumPlanes[6];
+	float4 g_shadowCast;	// xyz — куда идёт свет солнца, w — длина тени на метр высоты вдоль луча (0 — солнца нет)
 };
 
 // Совпадает с InstanceParam в instance.sh при INST_POS, INST_SCALE и INST_ROTATE
@@ -148,7 +152,17 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	size *= saturate( ( g_farBorder - distanceToCamera ) / max( g_farFade, 1e-3f ) );
 	size *= saturate( ( distanceToCamera - g_nearBorder ) / max( g_nearFade, 1e-3f ) );
 
-	if( size <= 0.0f || !insideFrustum( position + float3( 0.0f, size * 0.5f, 0.0f ), size ) )
+	if( size <= 0.0f )
+		return;
+	float3 center = position + float3( 0.0f, size * 0.5f, 0.0f );
+	bool visible = insideFrustum( center, size );
+	// Инстанс за краем кадра может отбросить тень в кадр: проверяется и сфера, охватывающая путь луча от него до земли
+	[branch] if( !visible && g_castShadow > 0.5f && g_shadowCast.w > 0.0f )
+	{
+		float shadowLength = size * g_shadowCast.w;
+		visible = insideFrustum( center + g_shadowCast.xyz * ( shadowLength * 0.5f ), size + shadowLength * 0.5f );
+	}
+	if( !visible )
 		return;
 
 	float3 angles = ( float3( random( cell, seed + 4 ), random( cell, seed + 5 ), random( cell, seed + 6 ) ) - 0.5f ) * g_rotationRange;

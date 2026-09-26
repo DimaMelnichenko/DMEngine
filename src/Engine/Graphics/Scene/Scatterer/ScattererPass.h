@@ -36,6 +36,8 @@ public:
 		float alignToTerrain;	// 1 — ось Y инстанса по нормали террейна
 		XMFLOAT3 rotationRange;	// предел случайного поворота вокруг осей X, Y, Z, радианы
 		uint32_t capacity;		// ёмкость буфера инстансов, заполняет createBuffers()
+		float castShadow;		// 1 — слой отбрасывает тень солнца (Cast Shadow в UE)
+		XMFLOAT3 padding;
 	} m_populateParams;
 
 	PopulateParams& populateParams();

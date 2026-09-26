@@ -131,7 +131,13 @@ bool DMGraphics::Frame()
 	TIME_CHECK( camera.Update( elapsedTime, m_cursorMode || !m_config.mouseLook() ), "Camera Update = %.3f ms" );
 
 	const RenderView mainView = RenderView::fromCamera( camera );
-	const FrameContext frame{ mainView, elapsedTime };
+	XMFLOAT3 toSun( 0.0f, -1.0f, 0.0f );	// солнца нет — как ниже горизонта
+	if( m_scene.lights().sunLightIndex() >= 0 )
+	{
+		XMFLOAT3 sunColor;
+		m_scene.lights().directionalLight( toSun, sunColor );
+	}
+	const FrameContext frame{ mainView, elapsedTime, toSun };
 
 	// Сначала состояние сцены на CPU, затем команды GPU
 	TIME_CHECK( m_scene.update( frame ), "Scene Update = %.3f ms" );

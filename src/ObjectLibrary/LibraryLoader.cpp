@@ -343,7 +343,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
 {
 	SQLite::Statement query( dbConnect().db(), "SELECT model, model_lod, mask, cell_size, near_border, far_border, near_fade, "
-											   "far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain "
+											   "far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow "
 											   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
 	while( query.executeStep() )
@@ -367,6 +367,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.params.rotationRange = XMFLOAT3( XMConvertToRadians( value( "rotation_x" ) ), XMConvertToRadians( value( "rotation_y" ) ),
 											   XMConvertToRadians( value( "rotation_z" ) ) );
 		layer.params.alignToTerrain = query.getColumn( "align_to_terrain" ).getInt() ? 1.0f : 0.0f;
+		layer.params.castShadow = query.getColumn( "cast_shadow" ).getInt() ? 1.0f : 0.0f;
 		set.layers.push_back( layer );
 	}
 }

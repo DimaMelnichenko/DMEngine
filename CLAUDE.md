@@ -218,7 +218,8 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 центр привязан к сетке текселей (тень не дрожит); ближняя и дальняя плоскости — по `Scene::bounds` (террейн и модели).
 Карта — `Texture2DArray` D32 2048², растеризатор `RasterState::csmShadowDepth` (без отсечения граней и по глубине,
 наклонное смещение). Отбрасывают тень меши с `castsShadow` материалов с `depthPhaseFor` (у `PBR` Masked — `mainDepth`
-в `PBRLit.ps`) и свои вызовы с битом `csmShadowDepth` (террейн); расстановка — нет. Приём — `Shaders/shadows.sh`
+в `PBRLit.ps`) и свои вызовы с битом `csmShadowDepth` (террейн; слои расстановки с `ScatterLayers.cast_shadow` — только
+в каскады, которые задевает их кольцо, `RenderView::cascadeNear/Far`). Направление на солнце — `FrameContext::toSun`. Приём — `Shaders/shadows.sh`
 (каскад по глубине взгляда, смещения к солнцу и по нормали в текселях каскада, PCF 5 × 5 Castaño, смешение каскадов,
 «Show cascades»): карта t104, сэмплер сравнения s8, константы b3. Настройки — `[Shadows]` в `Lights.ini` и окно GUI
 «Shadows», подробно — `docs/shadows.md`.
@@ -259,7 +260,8 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 (`ScatterSets`: имя; проход и отсечение граней слоя задаёт режим его материала). Слой набора
 (`ScatterLayers`, свой `ScatterPass`: буфер инстансов, compute и `DrawIndexedInstancedIndirect`) — LOD модели, маска
 плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
-размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы) и `align_to_terrain`. Трава и ромашки,
+размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы), `align_to_terrain` и `cast_shadow` (тень
+солнца; флажок «Cast shadow» в окне набора — `Scatterer::properties`). Трава и ромашки,
 кольца одного растения (пучок травы: LOD0 вблизи, LOD1 дальше), камешки — всё это слои. Каждый кадр `Shaders/scatter.cs`
 раскладывает инстансы слоя по сетке, привязанной к миру (смещение, размер и поворот — хеш координат ячейки, поэтому
 при движении камеры они на месте), маска даёт вероятность и размер, отсечение — по плоскостям frustum

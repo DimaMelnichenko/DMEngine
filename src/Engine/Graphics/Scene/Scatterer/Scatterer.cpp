@@ -13,6 +13,7 @@ namespace GS
 Scatterer::Scatterer( const std::string& name ) :
 	SceneObject( name )
 {
+	m_properties.setName( name );
 }
 
 bool Scatterer::Initialize()
@@ -32,7 +33,8 @@ void Scatterer::setTerrain( const TerrainHeightSource* terrain )
 	m_terrain = terrain;
 }
 
-bool Scatterer::addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, const ScatterPass::PopulateParams& params )
+bool Scatterer::addLayer( const std::string& name, DMModel::LodBlock* lodBlock, const std::string& mask,
+						  const ScatterPass::PopulateParams& params )
 {
 	Layer layer;
 	layer.lodBlock = lodBlock;
@@ -42,6 +44,10 @@ bool Scatterer::addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, 
 	layer.pass->populateParams() = params;
 	if( !layer.pass->createBuffers() )
 		return false;
+
+	layer.properties = std::make_unique<PropertyContainer>( std::to_string( m_layers.size() ) + ": " + name );
+	layer.properties->insert( "Cast shadow", params.castShadow > 0.5f );
+	m_properties.addSubContainer( layer.properties.get() );
 
 	m_layers.push_back( std::move( layer ) );
 	return true;
@@ -61,10 +67,14 @@ void Scatterer::compute( const FrameContext& frame )
 	} );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 5, m_terrainBuffer );
 
-	Device::updateResource<FrustumParams>( m_frustumBuffer, [&frame]( FrustumParams& params )
+	// Луч от верха инстанса до земли длиннее высоты в 1 / sin(высота солнца) раз; у горизонта — не больше 10
+	const XMFLOAT3& toSun = frame.toSun;
+	m_shadowLength = toSun.y > 0.0f ? std::min( 1.0f / toSun.y, 10.0f ) : 0.0f;
+	Device::updateResource<FrustumParams>( m_frustumBuffer, [&]( FrustumParams& params )
 	{
 		for( int i = 0; i < 6; ++i )
 			XMStoreFloat4( &params.planes[i], frame.view.frustum.planes()[i] );
+		params.shadowCast = XMFLOAT4( -toSun.x, -toSun.y, -toSun.z, m_shadowLength );
 	} );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 6, m_frustumBuffer );
 
@@ -75,6 +85,9 @@ void Scatterer::compute( const FrameContext& frame )
 		const ScatterPass::PopulateParams& params = layer.pass->populateParams();
 		if( params.cellSize <= 0.0f || params.farBorder <= 0.0f )
 			continue;
+
+		// Флаг тени из GUI: по нему compute оставляет и инстансы за кадром, чья тень падает в кадр
+		layer.pass->populateParams().castShadow = ( *layer.properties )["Cast shadow"].data<bool>() ? 1.0f : 0.0f;
 
 		const AbstractMesh* mesh = System::meshes().get( layer.lodBlock->mesh ).get();
 		layer.pass->setInstanceParameters( m_initShader, mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
@@ -88,12 +101,21 @@ void Scatterer::compute( const FrameContext& frame )
 	}
 }
 
+bool Scatterer::castsShadow( const Layer& layer ) const
+{
+	return ( *layer.properties )["Cast shadow"].data<bool>() && layer.material->depthPhaseFor( layer.lodBlock->params ) >= 0;
+}
+
 void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 {
 	// Режим читается каждый кадр: параметры материала меняются в GUI
 	uint32_t passMask = 0;
 	for( const Layer& layer : m_layers )
+	{
 		passMask |= passBit( passFor( layer.material->renderState( layer.lodBlock->params ).blendMode ) );
+		if( castsShadow( layer ) )
+			passMask |= passBit( MeshPass::csmShadowDepth );
+	}
 	if( passMask )
 		collector.addCustom( passMask );
 }
@@ -104,15 +126,28 @@ void Scatterer::renderCustom( const RenderContext& context )
 
 	XMMATRIX worldMatrix = XMMatrixIdentity();
 
+	const bool shadow = context.pass == MeshPass::csmShadowDepth;
 	for( Layer& layer : m_layers )
 	{
 		const MaterialRenderState state = layer.material->renderState( layer.lodBlock->params );
-		if( passFor( state.blendMode ) != context.pass )
+		if( shadow )
+		{
+			// Инстансы слоя — в кольце near…far вокруг камеры; тень от них ложится не дальше её длины. Каскад, диапазон
+			// расстояний которого с кольцом не пересекается, этих теней не содержит
+			const ScatterPass::PopulateParams& params = layer.pass->populateParams();
+			const float margin = params.sizeMultiplier * m_shadowLength;
+			if( !castsShadow( layer ) || context.view.cascadeNear >= params.farBorder + margin ||
+				context.view.cascadeFar <= params.nearBorder - margin )
+				continue;
+		}
+		else if( passFor( state.blendMode ) != context.pass )
+		{
 			continue;
+		}
 		DMD3D::instance().setState( materialRasterState( state.twoSided, false, context.frameRaster ) );
 
 		DMShader* shader = layer.material;
-		shader->setPass( shader->phaseFor( layer.lodBlock->params ) );
+		shader->setPass( shadow ? shader->depthPhaseFor( layer.lodBlock->params ) : shader->phaseFor( layer.lodBlock->params ) );
 		shader->setParams( layer.lodBlock->params );
 		shader->setDrawType( DMShader::by_index );
 
@@ -122,6 +157,11 @@ void Scatterer::renderCustom( const RenderContext& context )
 		context.constants.setPerObjectBuffer( worldMatrix );
 		shader->renderInstancedIndirect( layer.pass->args() );
 	}
+}
+
+PropertyContainer* Scatterer::properties()
+{
+	return &m_properties;
 }
 
 void Scatterer::setComputeEnabled( bool enabled )

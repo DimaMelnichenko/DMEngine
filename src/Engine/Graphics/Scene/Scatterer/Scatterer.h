@@ -19,8 +19,9 @@ namespace GS
 // инстансы слоя по сетке, привязанной к миру, в кольце вокруг камеры и отсекает их по frustum, отрисовка — indirect
 // draw. Высоту и координаты масок даёт TerrainHeightSource, поэтому набор не зависит от устройства террейна.
 // Проход и отсечение граней задаёт материал слоя (режим и двусторонность, как у травы ландшафта в UE): набор рисует
-// непрозрачные и вырезанные по альфе слои в opaque, полупрозрачные — в transparent. Расчёт и отрисовка всех наборов
-// переключаются клавишами 3 и 4
+// непрозрачные и вырезанные по альфе слои в opaque, полупрозрачные — в transparent. Слой с cast_shadow рисуется
+// и в проход теней — в те каскады, которые пересекает его кольцо (с запасом на длину тени). Расчёт и отрисовка всех
+// наборов переключаются клавишами 3 и 4
 class Scatterer : public SceneObject
 {
 public:
@@ -28,8 +29,9 @@ public:
 
 	bool Initialize();
 	void setTerrain( const TerrainHeightSource* terrain );
-	// mask — маска плотности в хранилище текстур, в координатах карты высот террейна
-	bool addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, const ScatterPass::PopulateParams& params );
+	// mask — маска плотности в хранилище текстур, в координатах карты высот террейна; name — подпись слоя в GUI
+	bool addLayer( const std::string& name, DMModel::LodBlock* lodBlock, const std::string& mask,
+				   const ScatterPass::PopulateParams& params );
 
 	void compute( const FrameContext& frame ) override;
 	// Свой вызов в проходах, где есть слои их режима материала
@@ -38,6 +40,9 @@ public:
 
 	void setComputeEnabled( bool enabled );
 	bool computeEnabled() const;
+
+	// Окно набора в GUI: по слою — «Cast shadow» (начальное значение — ScatterLayers.cast_shadow)
+	PropertyContainer* properties() override;
 
 private:
 	// cbuffer TerrainHeightBuffer в Shaders\terrain_height.sh
@@ -53,6 +58,7 @@ private:
 	struct FrustumParams
 	{
 		XMFLOAT4 planes[6];
+		XMFLOAT4 shadowCast;	// xyz — куда идёт свет солнца, w — длина тени на метр высоты вдоль луча (0 — солнца нет)
 	};
 
 	struct Layer
@@ -61,18 +67,24 @@ private:
 		DMShader* material = nullptr;
 		std::string mask;
 		std::unique_ptr<ScatterPass> pass;
+		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
 	};
+
+	// Слой отбрасывает тень: флаг и вариант материала «только глубина»
+	bool castsShadow( const Layer& layer ) const;
 
 	// Больше потоков на слой не запускаем: при мелком шаге сетка покроет не всё кольцо, а только его середину
 	static constexpr uint16_t maxGridDim = 1024;
 
 	bool m_computeEnabled = true;
+	float m_shadowLength = 0.0f;	// длина тени на метр высоты инстанса в этом кадре (FrustumParams::shadowCast.w)
 	const TerrainHeightSource* m_terrain = nullptr;
 	std::vector<Layer> m_layers;
 	DMComputeShader m_computeShader;
 	DMComputeShader m_initShader;
 	com_unique_ptr<ID3D11Buffer> m_terrainBuffer;
 	com_unique_ptr<ID3D11Buffer> m_frustumBuffer;
+	PropertyContainer m_properties;
 };
 
 }
