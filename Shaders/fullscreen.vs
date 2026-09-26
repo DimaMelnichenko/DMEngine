@@ -1,0 +1,19 @@
+////////////////////////////////////////////////////////////////////////////////
+// Полноэкранный треугольник для постобработки: вершины 0, 1, 2 по SV_VertexID, без вершинного буфера.
+// Треугольник больше экрана и покрывает его целиком одним примитивом (без шва по диагонали, как у квада)
+////////////////////////////////////////////////////////////////////////////////
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+PixelInputType main( uint vertexId : SV_VertexID )
+{
+	PixelInputType output;
+	// (0, 0), (2, 0), (0, 2) — по часовой стрелке на экране, v вниз, как у текстур Direct3D
+	output.uv = float2( ( vertexId << 1 ) & 2, vertexId & 2 );
+	output.position = float4( output.uv * float2( 2.0f, -2.0f ) + float2( -1.0f, 1.0f ), 0.0f, 1.0f );
+	return output;
+}

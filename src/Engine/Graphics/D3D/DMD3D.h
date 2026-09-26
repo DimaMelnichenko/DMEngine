@@ -88,7 +88,13 @@ public:
 	bool Initialize( const Config& config, HWND hwnd );
 	void Shutdown( );
 
+	// Кадр рисуется в HDR-буфер сцены (R16G16B16A16_FLOAT, линейные значения без ограничения сверху):
+	// BeginScene привязывает его вместе с буфером глубины и очищает. Тонмаппинг переводит его в задний буфер
+	// (setBackBufferTarget + sceneColor), поверх рисуется GUI, EndScene показывает кадр
 	void BeginScene( float, float, float, float );
+	void setBackBufferTarget();
+	// Цвет сцены для чтения в шейдере; при MSAA сначала сводит выборки в обычную текстуру
+	const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor();
 	void EndScene( );
 
 	ID3D11Device* GetDevice( );
@@ -118,6 +124,7 @@ public:
 private:
 	bool createDeviceSwapChain( HWND, bool fullscreen );
 	bool createRenderTargetView();
+	bool createSceneTarget();
 	bool createDepthStencilBufferAndView();
 	bool createRasterDescs();
 	bool createViewport();
@@ -134,7 +141,11 @@ private:
 	com_unique_ptr<ID3D11Device> m_device;
 	com_unique_ptr<ID3D11DeviceContext> m_deviceContext;
 
-	com_unique_ptr<ID3D11RenderTargetView> m_renderTargetView;
+	com_unique_ptr<ID3D11RenderTargetView> m_renderTargetView;	// задний буфер
+	com_unique_ptr<ID3D11Texture2D> m_sceneTexture;				// HDR-буфер сцены, с MSAA — многовыборочный
+	com_unique_ptr<ID3D11RenderTargetView> m_sceneRTV;
+	com_unique_ptr<ID3D11Texture2D> m_sceneResolved;			// только при MSAA: сведённые выборки для чтения
+	com_unique_ptr<ID3D11ShaderResourceView> m_sceneSRV;
 	com_unique_ptr<ID3D11Texture2D> m_depthStencilBuffer;
 	com_unique_ptr<ID3D11DepthStencilState> m_depthStencilState;
 	com_unique_ptr<ID3D11DepthStencilState> m_depthDisabledStencilState;

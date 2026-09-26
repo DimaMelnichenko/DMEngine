@@ -78,9 +78,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float3 color = direct + ( ambientDiffuse + ambientSpecular ) * occlusion + emissive;
 
 	float4 result;
-	// Экспозиция 0,3, как у террейна (его tonemapReinhard сводится к тому же умножению, но делит на яркость
-	// и на чёрном даёт NaN), пока нет HDR-буфера и общего тонмаппинга
-	result.rgb = color * 0.3f;
+	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)
+	result.rgb = color;
 	result.a = baseColor.a;
 
 #ifdef ALPHA_TO_COVERAGE

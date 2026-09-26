@@ -27,6 +27,9 @@ bool Renderer::initialize()
 	if( !m_vertexPool.prepareMeshes() )
 		return false;
 
+	if( !m_postProcess.initialize( "Scene\\Lights.ini" ) )
+		return false;
+
 	return m_samplerState.initialize();
 }
 
@@ -50,8 +53,17 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	renderPass( scene, frame, RenderPass::sky );
 	renderPass( scene, frame, RenderPass::opaque );
 
-	ScopedRenderState blendState( BlendState::alpha );
-	renderPass( scene, frame, RenderPass::transparent );
+	{
+		ScopedRenderState blendState( BlendState::alpha );
+		renderPass( scene, frame, RenderPass::transparent );
+	}
+
+	measure( "Post process", [&] { m_postProcess.render(); } );
+}
+
+PropertyContainer* Renderer::postProcessProperties()
+{
+	return m_postProcess.properties();
 }
 
 void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )

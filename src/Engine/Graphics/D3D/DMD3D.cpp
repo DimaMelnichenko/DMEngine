@@ -140,6 +140,9 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 	if( !createRenderTargetView() )
 		return false;
 
+	if( !createSceneTarget() )
+		return false;
+
 	if( !createDepthStencilBufferAndView() )
 		return false;
 
@@ -191,9 +194,9 @@ bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 	// Set the handle for the window to render to.
 	swapChainDesc.OutputWindow = hwnd;
 
-	// Turn multisampling off.
-	swapChainDesc.SampleDesc.Count = m_MSAACount;
-	swapChainDesc.SampleDesc.Quality = m_MSAACount > 1 ? D3D11_STANDARD_MULTISAMPLE_QUALITY_LEVELS::D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
+	// Задний буфер без MSAA: выборки хранит HDR-буфер сцены, а сюда пишет тонмаппинг уже сведённое изображение
+	swapChainDesc.SampleDesc.Count = 1;
+	swapChainDesc.SampleDesc.Quality = 0;
 
 	swapChainDesc.Windowed = !fullscreen;
 
@@ -320,6 +323,50 @@ bool DMD3D::createRenderTargetView()
 	return true;
 }
 
+bool DMD3D::createSceneTarget()
+{
+	D3D11_TEXTURE2D_DESC desc = {};
+	desc.Width = m_screenWidth;
+	desc.Height = m_screenHeight;
+	desc.MipLevels = 1;
+	desc.ArraySize = 1;
+	desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	desc.SampleDesc.Count = m_MSAACount;
+	desc.SampleDesc.Quality = m_MSAACount > 1 ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_RENDER_TARGET | ( m_MSAACount > 1 ? 0 : D3D11_BIND_SHADER_RESOURCE );
+
+	ID3D11Texture2D* texture = nullptr;
+	if( FAILED( m_device->CreateTexture2D( &desc, nullptr, &texture ) ) )
+		return false;
+	m_sceneTexture = make_com_ptr<ID3D11Texture2D>( texture );
+
+	ID3D11RenderTargetView* rtv = nullptr;
+	if( FAILED( m_device->CreateRenderTargetView( m_sceneTexture.get(), nullptr, &rtv ) ) )
+		return false;
+	m_sceneRTV = make_com_ptr<ID3D11RenderTargetView>( rtv );
+
+	// Шейдер читает обычную текстуру: при MSAA выборки сводятся в неё перед тонмаппингом
+	ID3D11Texture2D* readable = m_sceneTexture.get();
+	if( m_MSAACount > 1 )
+	{
+		desc.SampleDesc.Count = 1;
+		desc.SampleDesc.Quality = 0;
+		desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+		if( FAILED( m_device->CreateTexture2D( &desc, nullptr, &texture ) ) )
+			return false;
+		m_sceneResolved = make_com_ptr<ID3D11Texture2D>( texture );
+		readable = m_sceneResolved.get();
+	}
+
+	ID3D11ShaderResourceView* srv = nullptr;
+	if( FAILED( m_device->CreateShaderResourceView( readable, nullptr, &srv ) ) )
+		return false;
+	m_sceneSRV = make_com_ptr<ID3D11ShaderResourceView>( srv );
+
+	return true;
+}
+
 bool DMD3D::createDepthStencilBufferAndView()
 {
 	D3D11_TEXTURE2D_DESC depthBufferDesc;
@@ -334,7 +381,7 @@ bool DMD3D::createDepthStencilBufferAndView()
 	depthBufferDesc.ArraySize = 1;
 	depthBufferDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	depthBufferDesc.SampleDesc.Count = m_MSAACount;
-	depthBufferDesc.SampleDesc.Quality = 0;
+	depthBufferDesc.SampleDesc.Quality = m_MSAACount > 1 ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
 	depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
 	depthBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 	depthBufferDesc.CPUAccessFlags = 0;
@@ -420,10 +467,6 @@ bool DMD3D::createDepthStencilBufferAndView()
 	}
 
 	m_depthStencilView = make_com_ptr<ID3D11DepthStencilView>( depthStencilView );
-
-	// Bind the render target view and depth stencil buffer to the output render pipeline.
-	ID3D11RenderTargetView* rtv = m_renderTargetView.get();
-	m_deviceContext->OMSetRenderTargets( 1, &rtv, m_depthStencilView.get() );
 
 	return true;
 }
@@ -633,13 +676,26 @@ void DMD3D::BeginScene( float red, float green, float blue, float alpha )
 	color[2] = blue;
 	color[3] = alpha;
 
-	// Clear the back buffer.
-	m_deviceContext->ClearRenderTargetView( m_renderTargetView.get(), color );
-
-	// Clear the depth buffer.
+	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём
+	ID3D11RenderTargetView* rtv = m_sceneRTV.get();
+	m_deviceContext->OMSetRenderTargets( 1, &rtv, m_depthStencilView.get() );
+	m_deviceContext->ClearRenderTargetView( m_sceneRTV.get(), color );
 	m_deviceContext->ClearDepthStencilView( m_depthStencilView.get(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
+}
 
-	return;
+void DMD3D::setBackBufferTarget()
+{
+	// Без буфера глубины: тонмаппинг и GUI рисуются поверх всего экрана
+	ID3D11RenderTargetView* rtv = m_renderTargetView.get();
+	m_deviceContext->OMSetRenderTargets( 1, &rtv, nullptr );
+}
+
+const com_unique_ptr<ID3D11ShaderResourceView>& DMD3D::sceneColor()
+{
+	if( m_sceneResolved )
+		m_deviceContext->ResolveSubresource( m_sceneResolved.get(), 0, m_sceneTexture.get(), 0, DXGI_FORMAT_R16G16B16A16_FLOAT );
+
+	return m_sceneSRV;
 }
 
 void DMD3D::EndScene( )

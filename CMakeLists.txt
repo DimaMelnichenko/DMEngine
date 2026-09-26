@@ -80,6 +80,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Shaders/ConstantBuffers.cpp
     src/Engine/Graphics/Scene/Shaders/DMColorShader.cpp
     src/Engine/Graphics/Scene/Shaders/PBRMaterial.cpp
+    src/Engine/Graphics/PostProcess.cpp
     src/Engine/Graphics/Scene/Shaders/DMShader.cpp
     src/Engine/Graphics/Scene/Shaders/Layout.cpp
     src/Engine/Graphics/Scene/Shaders/TextureShader.cpp

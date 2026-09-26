@@ -78,8 +78,11 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   и вызывает их `update()`. Состав уровня описывает строка таблицы `Levels` (см. «Данные сцены»); объект,
   которого у уровня нет, остаётся неинициализированным и ничего не делает;
 - `Renderer` (`Renderer.h`) отправляет команды GPU: общие данные конвейера (сэмплеры, свет, per-frame constant
-  buffer) → `compute()` всех объектов → проходы `sky` → `opaque` → `transparent` (alpha blending). Затем
-  `DMGraphics` рисует GUI и вызывает `EndScene`.
+  buffer) → `compute()` всех объектов → проходы `sky` → `opaque` → `transparent` (alpha blending) в HDR-буфер сцены
+  (`R16G16B16A16_FLOAT`) → `PostProcess`: экспозиция и тонмаппинг (AgX / ACES) в задний буфер sRGB. Затем
+  `DMGraphics` рисует GUI и вызывает `EndScene`. Шейдеры объектов пишут линейный цвет без экспозиции; настройки —
+  `[PostProcess]` в `Scene\Lights.ini` и окно GUI «Post process», подробно — `docs/postprocess.md`. Проход после
+  объектов сам ставит топологию, шейдеры и состояния: их оставляет последний объект (у частиц — список точек).
 
 Объект сцены наследует `GS::SceneObject` (`Scene/SceneObject.h`): `update` / `compute` / `render` / `properties`,
 проход и видимость. Всё нужное из кадра (камера, frustum, время) приходит в `FrameContext`. Перед `render()`
@@ -114,7 +117,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
 `Materials.id`; у части старых моделей они не совпадают с материалом. Подробно — `docs/materials.md`. Цветовое
 пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла. Новые ассеты добавляются
 строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
-моделей, LOD, экземпляров материала `PBR`, расстановки; повторный импорт обновляет), подробно — `docs/models.md`. Свет — `Scene\Lights.ini` (источники и окружающий свет `[Ambient]`), ini читается через
+моделей, LOD, экземпляров материала `PBR`, расстановки; повторный импорт обновляет), подробно — `docs/models.md`. Свет — `Scene\Lights.ini` (источники, окружающий свет `[Ambient]`, постобработка `[PostProcess]`; яркости подобраны под экспозицию 0 EV), ini читается через
 `ResourceMetaFile` (`GetPrivateProfileString`).
 
 Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`): строка `Levels` ссылается на террейн (`Terrain`,
@@ -142,7 +145,7 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 параметры материала передаются через `shader->setParams(lodBlock->params)`. Специализированные шейдеры
 (`Scene/Shaders/DM*Shader`, `DMComputeShader`) наследуются от него или работают рядом. Основной материал моделей —
 `PBR` (`PBRMaterial` + `Shaders/PBRLit.ps`): metallic/roughness как в glTF 2.0 и Default Lit в UE5, параметры названы
-как в glTF, окружающий свет — полусфера неба и земли, экспозиция пока 0,3 (HDR и IBL — в TODO); материал 9
+как в glTF, окружающий свет — полусфера неба и земли (IBL — в TODO); материал 9
 `PBRInstance` — его инстансный вариант для расстановки. Прочие классы — `Texture`, `Color` (без освещения: небо,
 отладка), `VertexLight` (трава), `Particle`, `Grass`. Подробно — `docs/materials.md`.
 

@@ -63,13 +63,3 @@ float3 CookTorrance_GGX_all_light( float3 n, float3 v, float3 F0, float3 albedo,
 	
 	return result;
 }
-
-
-float3 tonemapReinhard(float3 x, float exposure )
-{
-    float lum = dot(x, float3(0.2126f, 0.7152f, 0.0722f));
-    float L = exposure*lum;//(scale / averageLum) * lum;
-    //float Ld = (L * (1.0 + L / lumwhite2)) / (1.0 + L);
-    float Ld = (L * (1.0 + L)) / (1.0 + L);
-    return (x / lum) * Ld;
-}

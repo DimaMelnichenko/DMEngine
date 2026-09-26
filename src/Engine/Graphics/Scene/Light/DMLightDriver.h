@@ -22,8 +22,8 @@ public:
 
 private:
 	LightList m_light_list;
-	XMFLOAT3 m_ambientSkyColor = XMFLOAT3( 0.5f, 0.5f, 0.52f );
-	XMFLOAT3 m_ambientGroundColor = XMFLOAT3( 0.25f, 0.23f, 0.21f );
+	XMFLOAT3 m_ambientSkyColor = XMFLOAT3( 0.15f, 0.15f, 0.156f );
+	XMFLOAT3 m_ambientGroundColor = XMFLOAT3( 0.075f, 0.069f, 0.063f );
 	struct alignas( 16 ) LightBuffer
 	{
 		XMFLOAT3 lightPos;

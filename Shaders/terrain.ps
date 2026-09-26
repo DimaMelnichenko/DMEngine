@@ -143,5 +143,6 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float3 v = normalize( cb_cameraPosition - position );
 	float3 color = CookTorrance_GGX_all_light( n, v, 0.04f, albedo, surface.roughness, position ) + albedo * ambientHemisphere( n );
 
-	return float4( tonemapReinhard( color, 0.3f ), 1.0f );
+	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)
+	return float4( color, 1.0f );
 }

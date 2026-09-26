@@ -105,6 +105,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		if( object->properties() )
 			m_GUI.addPropertyWatching( object->properties() );
 	}
+	m_GUI.addPropertyWatching( m_renderer.postProcessProperties() );
 
 	m_GUI.Initialize( m_hwnd );
 	m_showGUI = m_config.showGUI();
