@@ -1,4 +1,5 @@
 #include "SkySphere.h"
+#include <algorithm>
 #include "System.h"
 #include "Shaders\ConstantBuffers.h"
 
@@ -23,12 +24,17 @@ void SkySphere::collectMeshes( const RenderView&, MeshCollector& collector )
 
 void SkySphere::renderCustom( const RenderContext& context )
 {
-	// Сфера всегда вокруг камеры вида
-	m_transform.setPosition( context.view.position );
-
 	const DMModel::LodBlock* block = System::models().get( m_modelId )->getLod( 0.0f );
 	if( !block || !System::materials().exists( block->material ) )
 		return;
+
+	// Сфера всегда вокруг камеры вида и почти до дальней плоскости: дальше любой геометрии уровня, но ещё не отсечена
+	const auto& mesh = System::meshes().get( block->mesh );
+	const XMFLOAT3& extents = mesh->bounds().Extents;
+	const float radius = std::max( XMVectorGetX( XMVector3Length( XMLoadFloat3( &extents ) ) ), 1e-3f );
+	const float scale = 0.9f * context.view.farPlane / radius;
+	m_transform.setPosition( context.view.position );
+	m_transform.setScale( XMFLOAT3( scale, scale, scale ) );
 
 	DMShader* shader = System::materials().get( block->material )->m_shader.get();
 	shader->setPass( 0 );
@@ -37,9 +43,9 @@ void SkySphere::renderCustom( const RenderContext& context )
 	context.constants.setPerObjectBuffer( m_transform.worldMatrix() );
 	shader->setParams( block->params );
 
-	ScopedRenderState skyState( DepthState::disabled, RasterState::frontCulling );
+	// Камера внутри сферы: видны внутренние грани. Глубину (LESS_EQUAL без записи) задаёт проход неба
+	ScopedRenderState skyState( RasterState::frontCulling );
 
-	const auto& mesh = System::meshes().get( block->mesh );
 	shader->render( mesh->indexCount(), mesh->vertexOffset(), mesh->indexOffset() );
 }
 

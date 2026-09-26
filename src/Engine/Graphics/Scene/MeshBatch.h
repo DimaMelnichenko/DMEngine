@@ -16,9 +16,9 @@ class SceneObject;
 // Проход кадра — как EMeshPass в UE. Порядок проходов и их состояния задаёт Renderer
 enum class MeshPass
 {
-	sky,			// первым, объект сам отключает глубину
 	opaque,			// непрозрачные и с отсечением по альфе (Opaque и Masked)
-	transparent		// после непрозрачных: альфа-блендинг, глубина только читается (Translucent)
+	sky,			// после непрозрачных: фон на дальней плоскости, глубина LESS_EQUAL без записи — только где пусто
+	transparent		// последним: альфа-блендинг, глубина только читается (Translucent)
 };
 
 constexpr uint32_t meshPassCount = 3;

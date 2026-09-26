@@ -454,6 +454,16 @@ bool DMD3D::createDepthStencilBufferAndView()
 
 	m_depthReadOnlyStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
 
+	// Фон на дальней плоскости: глубина 1 проходит там, где буфер глубины остался очищенным
+	depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
+	if( FAILED( result ) )
+	{
+		return false;
+	}
+
+	m_depthReadOnlyLessEqualStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
+
 	// Set the depth stencil state.
 	m_deviceContext->OMSetDepthStencilState( m_depthStencilState.get(), 1 );
 
@@ -667,6 +677,7 @@ void DMD3D::setState( DepthState state )
 {
 	ID3D11DepthStencilState* depthState = state == DepthState::enabled ? m_depthStencilState.get() :
 										  state == DepthState::readOnly ? m_depthReadOnlyStencilState.get() :
+										  state == DepthState::readOnlyLessEqual ? m_depthReadOnlyLessEqualStencilState.get() :
 										  m_depthDisabledStencilState.get();
 	m_deviceContext->OMSetDepthStencilState( depthState, 1 );
 

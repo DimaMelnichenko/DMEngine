@@ -99,8 +99,13 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	const RasterState frameRaster = wireframe ? RasterState::wireframe : RasterState::solid;
 	ScopedRenderState frameState( frameRaster );
 
-	executePass( MeshPass::sky, frame.view, frameRaster );
 	executePass( MeshPass::opaque, frame.view, frameRaster );
+
+	{
+		// Небо после непрозрачных: пиксели, закрытые сценой, отбрасывает ранняя проверка глубины
+		ScopedRenderState skyState( DepthState::readOnlyLessEqual );
+		executePass( MeshPass::sky, frame.view, frameRaster );
+	}
 
 	{
 		// Полупрозрачные не пишут глубину: иначе закрыли бы то, что за ними рисуется позже
@@ -249,7 +254,7 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 	DMD3D::instance().unbindTransientResources();
 	ScopedRenderState passState;
 
-	static const char* const passNames[] = { "Pass sky", "Pass opaque", "Pass transparent" };
+	static const char* const passNames[] = { "Pass opaque", "Pass sky", "Pass transparent" };
 	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
 
 	const RenderContext context{ view, pass, frameRaster, pipeline().shaderConstant(), m_vertexPool };

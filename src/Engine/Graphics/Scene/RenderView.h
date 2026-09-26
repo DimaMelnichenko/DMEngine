@@ -20,6 +20,7 @@ struct RenderView
 	// Откуда считаются LOD и морфинг террейна. У главного вида — положение камеры; у каскада теней тоже будет
 	// положение главной камеры: иначе тень строилась бы по другой геометрии, и поверхности затеняли бы сами себя
 	XMFLOAT3 lodOrigin;
+	float farPlane;		// расстояние до дальней плоскости, м
 	DMFrustum frustum;
 
 	static RenderView fromCamera( const DMCamera& camera )
@@ -32,6 +33,10 @@ struct RenderView
 		view.position = camera.position();
 		camera.viewDirection( &view.direction );
 		view.lodOrigin = view.position;
+		// Перспективная проекция LH: _33 = f / (f − n), _43 = −n·f / (f − n)
+		XMFLOAT4X4 projection;
+		XMStoreFloat4x4( &projection, view.projection );
+		view.farPlane = projection._43 / ( 1.0f - projection._33 );
 		view.frustum = DMFrustum( view.viewProjection );
 		return view;
 	}

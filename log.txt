@@ -4,7 +4,7 @@
 				Initialize logger
 
 
-func:GS::DMGraphics::Initialize, line:61|Initialize the Direct3D object ms: 200.424000
+func:GS::DMGraphics::Initialize, line:61|Initialize the Direct3D object ms: 205.106000
 func:GS::CustomTexture::generateTexture, line:64|Inputs correct
 func:GS::Scene::loadResources, line:22|Load materials
 func:LibraryLoader::loadMaterial, line:83|Load material: 1
@@ -38,7 +38,7 @@ func:LibraryLoader::loadShader, line:214|Load shader: Shaders\VertexLight.ps
 func:LibraryLoader::loadMaterial, line:83|Load material: 12
 func:LibraryLoader::loadShader, line:214|Load shader: Shaders\LightShader.vs
 func:LibraryLoader::loadShader, line:214|Load shader: Shaders\PBRLit.ps
-func:GS::Scene::loadResources, line:26|Load material for ms: 220.756000
+func:GS::Scene::loadResources, line:26|Load material for ms: 224.561000
 func:GS::Scene::loadResources, line:30|Level: Test
 func:GS::Scene::loadResources, line:32|Load models
 func:LibraryLoader::loadModelWithLOD, line:380|Load model: 1
@@ -76,7 +76,7 @@ func:LibraryLoader::loadMesh, line:228|Load mesh: 19
 func:LibraryLoader::loadModelWithLOD, line:380|Load model: 26
 func:LibraryLoader::loadMesh, line:228|Load mesh: 20
 func:LibraryLoader::loadModelWithLOD, line:380|Load model: 11
-func:GS::Scene::loadResources, line:52|Load models for ms: 3.787000
+func:GS::Scene::loadResources, line:52|Load models for ms: 4.084000
 func:GS::Scene::loadResources, line:54|Load textures
 func:LibraryLoader::loadAllTextures, line:23|Load all textures
 func:LibraryLoader::loadTextures, line:49|Can`t load texture no_image (no_image.dds), placeholder is used
@@ -85,7 +85,7 @@ func:LibraryLoader::loadTextures, line:49|Can`t load texture WaterPlain (WaterPl
 func:LibraryLoader::loadTextures, line:49|Can`t load texture sky3 (VizPeople_non_commercial_hdr_v1_05.dds), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture knot_tex (materials\blocksrough_basecolor_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture knot_shiness (materials\blocksrough_basecolor_2048.png), placeholder is used
-func:LibraryLoader::loadTextures, line:53|Load texture for ms: 2; id = 7, name = t_heightmap, file = terrain\heightmap.dds
+func:LibraryLoader::loadTextures, line:53|Load texture for ms: 3; id = 7, name = t_heightmap, file = terrain\heightmap.dds
 func:LibraryLoader::loadTextures, line:49|Can`t load texture Cliffs (Cliffs.jpg), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture sand (sand.jpg), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture FoilageMap (FoilageMap.dds), placeholder is used
@@ -103,17 +103,17 @@ func:LibraryLoader::loadTextures, line:53|Load texture for ms: 3; id = 28, name 
 func:LibraryLoader::loadTextures, line:49|Can`t load texture knot_normal (materials\blocksrough_normal_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture t_grass_color (terrain\grass_color_d.dds), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture knot_height (materials\blocksrough_height_2048.png), placeholder is used
-func:LibraryLoader::loadTextures, line:53|Load texture for ms: 1; id = 45, name = mask_pebbles, file = terrain\mask_pebbles.dds
-func:LibraryLoader::loadTextures, line:53|Load texture for ms: 58; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
-func:LibraryLoader::loadTextures, line:53|Load texture for ms: 53; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
+func:LibraryLoader::loadTextures, line:53|Load texture for ms: 2; id = 45, name = mask_pebbles, file = terrain\mask_pebbles.dds
+func:LibraryLoader::loadTextures, line:53|Load texture for ms: 57; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
+func:LibraryLoader::loadTextures, line:53|Load texture for ms: 51; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
 func:LibraryLoader::loadTextures, line:53|Load texture for ms: 2; id = 48, name = test_models_PanelNormal, file = models\test_models\PanelNormal.png
 func:LibraryLoader::loadTextures, line:53|Load texture for ms: 1; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
 func:LibraryLoader::loadTextures, line:53|Load texture for ms: 15; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
-func:GS::Scene::loadResources, line:66|Load textures for ms: 147.647000
+func:GS::Scene::loadResources, line:66|Load textures for ms: 146.844000
 func:GS::DMGraphics::Initialize, line:87|Create main camera
 func:GS::Scene::initialize, line:73|Create light driver
 func:GS::CDLODTerrain::initialize, line:93|CDLOD terrain: heightmap 1024, LOD levels 6
-func:GS::Scene::initialize, line:95|Terrain init ms: 176.740000
-func:GS::Scene::initialize, line:130|Scatter init ms: 158.177000
-func:GS::DMGraphics::Initialize, line:115|Total init ms: 2156.078000
-func:GS::Renderer::reportGpuTimes, line:162|GPU average over 2086 frames, ms: frame 1.382; preparePipeline 0.000; Compute Pass 0.037; Pass sky 0.060; Sky atmosphere 0.060; Pass opaque 1.105; CDLOD terrain 0.414; Meadow 0.683; Debris 0.008; Pass transparent 0.038; Particles 0.006; Post process 0.074; meshes 0 in 0 draws
+func:GS::Scene::initialize, line:95|Terrain init ms: 180.124000
+func:GS::Scene::initialize, line:130|Scatter init ms: 160.690000
+func:GS::DMGraphics::Initialize, line:115|Total init ms: 2179.786000
+func:GS::Renderer::reportGpuTimes, line:167|GPU average over 1557 frames, ms: frame 1.878; preparePipeline 0.000; Compute Pass 0.036; Pass opaque 1.637; CDLOD terrain 0.713; Meadow 0.921; Debris 0.003; Pass sky 0.048; Sky atmosphere 0.021; Pass transparent 0.002; Particles 0.002; Post process 0.059; meshes 0 in 0 draws

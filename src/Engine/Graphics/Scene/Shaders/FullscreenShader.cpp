@@ -13,10 +13,10 @@ bool FullscreenShader::load( const std::string& pixelShader )
 		   m_shader.createPhase( 0, 0 );
 }
 
-void FullscreenShader::draw( BlendState blend )
+void FullscreenShader::draw( BlendState blend, DepthState depth )
 {
-	// Сплошная заливка и без глубины, даже если кадр рисуется каркасом (Q)
-	ScopedRenderState state( RasterState::noCulling, DepthState::disabled, blend );
+	// Сплошная заливка, даже если кадр рисуется каркасом (Q)
+	ScopedRenderState state( RasterState::noCulling, depth, blend );
 	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
 	m_shader.setPass( 0 );
 	m_shader.render( 3 );
