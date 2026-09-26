@@ -69,7 +69,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   `Textures\terrain\splatmap.dds` — `python Tools/gen_terrain_textures.py` (нужен numpy). Тестовые модели уровня
   `Test` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
   `blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/source/test_models.glb`, затем
-  `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,90.5,238`.
+  `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,90.5,238`. Пучок травы
+  набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
+  затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter`. Blender 5.0 стоит в
+  `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH).
 - Лог каждого запуска перезаписывается в отслеживаемый `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`).
 - Шейдеры (`Shaders/*.vs|.ps|.gs|.hlsl`) компилируются во время выполнения
   (`D3DCompileFromFile` / `D3DCompile` в `DMShader`). Для правки шейдера пересборка не нужна. Флаги — `shaderCompileFlags()`
@@ -149,7 +152,7 @@ NULL — этого у уровня нет. Экземпляры моделей 
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн, частицы,
-наборы `Meadow` (трава) и `Debris` (камешки), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
+наборы `Meadow` (трава — пучки `GrassClump` из Blender, и ромашки) и `Debris` (камешки), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
 + `TestPanel_Frame`.
@@ -170,7 +173,7 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 (`Scene/Shaders/DM*Shader`, `DMComputeShader`) наследуются от него или работают рядом. Основной материал моделей —
 `PBR` (`PBRMaterial` + `Shaders/PBRLit.ps`): metallic/roughness как в glTF 2.0 и Default Lit в UE5, параметры названы
 как в glTF; материал 9 `PBRInstance` — его инстансный вариант для расстановки. Прочие классы — `Texture`, `Color`
-(без освещения: небо, отладка), `VertexLight` (трава), `Particle`, `Grass`. Подробно — `docs/materials.md`.
+(без освещения: небо, отладка), `VertexLight` (старая трава, сейчас не используется), `Particle`, `Grass`. Подробно — `docs/materials.md`.
 
 **Освещение считается в одном месте** — `Shaders/lighting.sh`: шейдер материала заполняет `Surface` (базовый цвет,
 металличность, шероховатость, нормаль, затенение, свечение) и возвращает `evaluateLighting(surface)` — прямой свет
@@ -217,7 +220,7 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 (`ScatterLayers`, свой `ScatterPass`: буфер инстансов, compute и `DrawIndexedInstancedIndirect`) — LOD модели, маска
 плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
 размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы) и `align_to_terrain`. Трава и ромашки,
-кольца одного растения (травинки вблизи, карточки дальше), камешки — всё это слои. Каждый кадр `Shaders/scatter.cs`
+кольца одного растения (пучок травы: LOD0 вблизи, LOD1 дальше), камешки — всё это слои. Каждый кадр `Shaders/scatter.cs`
 раскладывает инстансы слоя по сетке, привязанной к миру (смещение, размер и поворот — хеш координат ячейки, поэтому
 при движении камеры они на месте), маска даёт вероятность и размер, отсечение — по плоскостям frustum
 (`DMFrustum::planes`), поворот — кватернион (`Shaders/instance.sh`, `INST_ROTATE`). Высоту и UV масок даёт
