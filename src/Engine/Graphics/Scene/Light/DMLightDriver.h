@@ -14,13 +14,16 @@ public:
 	~DMLightDriver();
 	bool loadFromFile( const std::string& file );
 	bool Initialize();
-	void addLight( DMLight&& );
 	uint32_t setBuffer( int8_t slot, SRVType type );
-	LightList& lights();
-	
+	// Окружающий свет полусферой (hemispheric ambient): цвет неба сверху, цвет земли снизу,
+	// секция [Ambient] в Lights.ini (SkyColor, GroundColor)
+	const XMFLOAT3& ambientSkyColor() const;
+	const XMFLOAT3& ambientGroundColor() const;
 
 private:
 	LightList m_light_list;
+	XMFLOAT3 m_ambientSkyColor = XMFLOAT3( 0.5f, 0.5f, 0.52f );
+	XMFLOAT3 m_ambientGroundColor = XMFLOAT3( 0.25f, 0.23f, 0.21f );
 	struct alignas( 16 ) LightBuffer
 	{
 		XMFLOAT3 lightPos;

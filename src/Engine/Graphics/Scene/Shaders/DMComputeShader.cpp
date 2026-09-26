@@ -17,7 +17,7 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 	ID3D10Blob* error_message;
 	ID3D10Blob* shader_buffer;
 	
-	std::wstring fileName( file_name.begin(), file_name.end() );
+	std::wstring fileName = utf8ToWide( file_name );
 
 	HRESULT result = D3DCompileFromFile( fileName.data(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, 
 										 function_name.data(), "cs_5_0", D3D10_SHADER_ENABLE_STRICTNESS, 0, &shader_buffer, &error_message );
@@ -88,11 +88,6 @@ void DMComputeShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const 
 	return;
 }
 
-void DMComputeShader::setStructuredBuffer( int index, ID3D11ShaderResourceView* resource )
-{
-	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( index, 1, &resource );
-}
-
 void DMComputeShader::setUAVBuffer( int index, ID3D11UnorderedAccessView* resource )
 {
 	if( index < 0 || index > 7 )
@@ -121,7 +116,7 @@ void DMComputeShader::Dispatch( uint32_t numElements, float elapsed_time )
 	///////////////////////////////////	
 	// set contant
 
-	static ConstantType constantType;
+	ConstantType constantType = {};
 	constantType.groupDim = group_size_X;
 	constantType.rect.x = numElements;
 	constantType.elapsedTime = elapsed_time;
@@ -149,7 +144,7 @@ void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_t
 	///////////////////////////////////	
 	// set contant
 
-	static ConstantType constantType;
+	ConstantType constantType = {};
 	constantType.groupDim = group_size_X;
 	constantType.rect.x = width;
 	constantType.rect.y = height;
@@ -179,6 +174,4 @@ void DMComputeShader::clear()
 	ID3D11UnorderedAccessView* uav[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	DMD3D::instance().GetDeviceContext()->CSSetUnorderedAccessViews( 0, 8, uav, (UINT*)( &uav ) );
 
-	//ID3D11ShaderResourceView* srv[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-	//DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 10, srv );
 }

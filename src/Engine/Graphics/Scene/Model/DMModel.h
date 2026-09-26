@@ -37,12 +37,9 @@ public:
 	LodBlock* getLodById( uint16_t index );
 	uint16_t lodCount();
 
-	const DMTransformBuffer& transformBuffer() const;
 	DMTransformBuffer& transformBuffer();
 
 	PropertyContainer* properties();
-
-	void copyTo( DMModel& );
 private:
 	std::vector<std::pair<float, std::shared_ptr<LodBlock>>> m_lods;
 	PropertyContainer m_properties;

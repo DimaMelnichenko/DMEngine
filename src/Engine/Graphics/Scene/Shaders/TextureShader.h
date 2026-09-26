@@ -15,8 +15,6 @@ class TextureShader : public DMShader
 public:
 	TextureShader();
 	~TextureShader();
-
-	bool Prepare();
 	void setParams( const PropertyContainer& ) override;
 
 private:

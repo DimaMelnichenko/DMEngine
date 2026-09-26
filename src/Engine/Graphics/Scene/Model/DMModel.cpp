@@ -62,22 +62,11 @@ uint16_t DMModel::lodCount()
 	return m_lods.size();
 }
 
-const DMTransformBuffer& DMModel::transformBuffer() const
-{
-	return m_transformBuffer;
-}
-
 DMTransformBuffer& DMModel::transformBuffer()
 {
 	return m_transformBuffer;
 }
 
-
-void DMModel::copyTo( DMModel& other )
-{
-	other.m_lods = m_lods;
-	other.m_transformBuffer = m_transformBuffer;
-}
 
 PropertyContainer* DMModel::properties()
 {

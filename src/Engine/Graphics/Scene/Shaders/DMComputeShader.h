@@ -13,7 +13,6 @@ public:
 	~DMComputeShader();
 
 	bool Initialize( const std::string& file_name, const std::string& function_name );
-	void setStructuredBuffer( int index, ID3D11ShaderResourceView* );
 	void setUAVBuffer( int index, ID3D11UnorderedAccessView* );
 	void Dispatch( uint16_t width, uint16_t height, float elapsed_time );
 	void Dispatch( uint32_t numElements, float elapsed_time );

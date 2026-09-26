@@ -1,118 +1,133 @@
 #include "Scatterer.h"
+#include <algorithm>
+#include <cmath>
 #include "D3D\DMD3D.h"
 #include "System.h"
+#include "Pipeline.h"
 
 namespace GS
 {
 
-Scatterer::Scatterer()
+Scatterer::Scatterer( const std::string& name, RenderPass pass, bool twoSided ) :
+	SceneObject( name, pass ),
+	m_twoSided( twoSided )
 {
-
-}
-
-Scatterer::~Scatterer()
-{
-
-}
-
-bool Scatterer::addMesh( DMModel::LodBlock* lodBlock )
-{
-	LodStruct& lodStruct = m_lods[m_lods.size()];
-	lodStruct.lodBlock = lodBlock;
-	if( !lodStruct.scatterPass.createBuffers() )
-		return false;
-
-	return true;
 }
 
 bool Scatterer::Initialize()
 {
-	if( !m_computeShader.Initialize( "Shaders\\grass.cs", "main" ) )
+	if( !m_computeShader.Initialize( "Shaders\\scatter.cs", "main" ) )
 		return false;
 
-	if( !m_initShader.Initialize( "Shaders\\grass.cs", "init" ) )
+	if( !m_initShader.Initialize( "Shaders\\scatter.cs", "init" ) )
 		return false;
 
+	return DMD3D::instance().createShaderConstantBuffer( sizeof( TerrainParams ), m_terrainBuffer ) &&
+		   DMD3D::instance().createShaderConstantBuffer( sizeof( FrustumParams ), m_frustumBuffer );
+}
+
+void Scatterer::setTerrain( const TerrainHeightSource* terrain )
+{
+	m_terrain = terrain;
+}
+
+void Scatterer::setColorTexture( const std::string& texture )
+{
+	m_colorTexture = texture;
+}
+
+bool Scatterer::addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, const ScatterPass::PopulateParams& params )
+{
+	Layer layer;
+	layer.lodBlock = lodBlock;
+	layer.mask = mask;
+	layer.pass = std::make_unique<ScatterPass>();
+	layer.pass->populateParams() = params;
+	if( !layer.pass->createBuffers() )
+		return false;
+
+	m_layers.push_back( std::move( layer ) );
 	return true;
 }
 
-void Scatterer::prerender()
+void Scatterer::compute( const FrameContext& frame )
 {
-	for( uint16_t i = 0; i < m_lods.size(); ++i )
+	if( !m_computeEnabled || !m_terrain || m_layers.empty() )
+		return;
+
+	const TerrainHeight terrain = m_terrain->terrainHeight();
+	Device::updateResource<TerrainParams>( m_terrainBuffer, [&terrain]( TerrainParams& params )
 	{
-		const DMModel::LodBlock* block = m_lods[i].lodBlock;
-		AbstractMesh* mesh = System::meshes().get( block->mesh ).get();
-		m_lods[i].scatterPass.setInstanceParameters( m_initShader, mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
-	}
-	
-	DMD3D::instance().setSRV( SRVType::cs, 0, System::textures().get( "t_heightmap" )->srv() );
-	DMD3D::instance().setSRV( SRVType::cs, 1, System::textures().get( "noise2d" )->srv() );
-	
+		params.worldSize = terrain.worldSize;
+		params.heightMultipler = terrain.heightMultipler;
+		params.heightOffset = terrain.heightOffset;
+	} );
+	DMD3D::instance().setConstantBuffer( SRVType::cs, 5, m_terrainBuffer );
 
-	for( uint16_t i = 0; i < m_lods.size(); ++i )
-	{		
-		switch(i)
-		{
-			case 0:
-				m_lods[i].scatterPass.populateParams().nearBorder = 0.0;
-				m_lods[i].scatterPass.populateParams().farBorder = 10.0;
-				m_lods[i].scatterPass.populateParams().sizeMultipler = 0.003;
-				m_lods[i].scatterPass.populateParams().density = 1.0 / 16.0;
-				m_lods[i].scatterPass.populateParams().nearFallow = 0.0;
-				m_lods[i].scatterPass.populateParams().farFallow = 2.0;
-				m_lods[i].scatterPass.populateParams().noiseCoordMultipler = 10.0f;
-				m_lods[i].scatterPass.populateParams().noisePower = 1.0f;
-				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_grass" )->srv() );
-				//DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_camomile" )->srv() );
-				break;
-			case 1:
-				m_lods[i].scatterPass.populateParams().nearBorder = 5.0;
-				m_lods[i].scatterPass.populateParams().farBorder = 60.0;
-				m_lods[i].scatterPass.populateParams().sizeMultipler = 1.05;
-				m_lods[i].scatterPass.populateParams().density = 1.0 / 2.0;
-				m_lods[i].scatterPass.populateParams().nearFallow = 2.0;
-				m_lods[i].scatterPass.populateParams().farFallow = 30.0;
-				m_lods[i].scatterPass.populateParams().noiseCoordMultipler = 1.0f;
-				m_lods[i].scatterPass.populateParams().noisePower = 1.0f;
-				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_grass" )->srv() );
-				break;
-			case 2:
-				m_lods[i].scatterPass.populateParams().nearBorder = 0.0;
-				m_lods[i].scatterPass.populateParams().farBorder = 10.0;
-				m_lods[i].scatterPass.populateParams().sizeMultipler = 1.0;
-				m_lods[i].scatterPass.populateParams().density = 1.0;
-				m_lods[i].scatterPass.populateParams().nearFallow = 0.0;
-				m_lods[i].scatterPass.populateParams().farFallow = 5.0;
-				m_lods[i].scatterPass.populateParams().noiseCoordMultipler = 1.0f;
-				m_lods[i].scatterPass.populateParams().noisePower = 0.4f;
-				DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_camomile" )->srv() );
-				//DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( "mask_grass" )->srv() );
-				break;
-		}
+	Device::updateResource<FrustumParams>( m_frustumBuffer, [&frame]( FrustumParams& params )
+	{
+		for( int i = 0; i < 6; ++i )
+			XMStoreFloat4( &params.planes[i], frame.frustum.planes()[i] );
+	} );
+	DMD3D::instance().setConstantBuffer( SRVType::cs, 6, m_frustumBuffer );
 
+	DMD3D::instance().setSRV( SRVType::cs, 0, System::textures().get( terrain.heightMap )->srv() );
 
-		m_lods[i].scatterPass.populate( m_computeShader );
+	for( Layer& layer : m_layers )
+	{
+		const ScatterPass::PopulateParams& params = layer.pass->populateParams();
+		if( params.cellSize <= 0.0f || params.farBorder <= 0.0f )
+			continue;
+
+		const AbstractMesh* mesh = System::meshes().get( layer.lodBlock->mesh ).get();
+		layer.pass->setInstanceParameters( m_initShader, mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
+
+		// Сетка покрывает квадрат со стороной 2 · farBorder вокруг камеры
+		const float cells = std::ceil( 2.0f * params.farBorder / params.cellSize ) + 1.0f;
+		const uint16_t gridDim = static_cast<uint16_t>( std::min( cells, static_cast<float>( maxGridDim ) ) );
+
+		DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( layer.mask )->srv() );
+		layer.pass->populate( m_computeShader, gridDim );
 	}
 }
 
-void Scatterer::Render( uint16_t lod, uint16_t instanceSlot )
+void Scatterer::render( const FrameContext& frame )
 {
-	DMD3D::instance().setSRV( SRVType::vs, instanceSlot, m_lods[lod].scatterPass.structuredBuffer() );
+	if( m_layers.empty() )
+		return;
+
+	ScopedRenderState scatterState;
+	if( m_twoSided )
+		DMD3D::instance().setState( RasterState::noCulling );
+
+	if( !m_colorTexture.empty() )
+		DMD3D::instance().setSRV( SRVType::ps, 1, System::textures().get( m_colorTexture )->srv() );
+
+	XMMATRIX worldMatrix = XMMatrixIdentity();
+
+	for( Layer& layer : m_layers )
+	{
+		DMShader* shader = System::materials().get( layer.lodBlock->material )->m_shader.get();
+		shader->setParams( layer.lodBlock->params );
+		shader->setPass( 0 );
+		shader->setDrawType( DMShader::by_index );
+
+		// Инстансы слоя читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)
+		DMD3D::instance().setSRV( SRVType::vs, 16, layer.pass->structuredBuffer() );
+
+		pipeline().shaderConstant().setPerObjectBuffer( &worldMatrix );
+		shader->renderInstancedIndirect( layer.pass->args() );
+	}
 }
 
-ID3D11Buffer* Scatterer::indirectArgsBuffer( uint16_t lod )
+void Scatterer::setComputeEnabled( bool enabled )
 {
-	return m_lods[lod].scatterPass.args();
+	m_computeEnabled = enabled;
 }
 
-DMModel::LodBlock* Scatterer::lodBlock( uint16_t lod )
+bool Scatterer::computeEnabled() const
 {
-	return m_lods[lod].lodBlock;
-}
-
-uint16_t Scatterer::lodCount()
-{
-	return m_lods.size();
+	return m_computeEnabled;
 }
 
 }

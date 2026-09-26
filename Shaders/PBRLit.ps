@@ -1,0 +1,91 @@
+////////////////////////////////////////////////////////////////////////////////
+// PBR metallic/roughness (как Default Lit в UE5 и материал glTF 2.0), класс материала PBR (PBRMaterial)
+////////////////////////////////////////////////////////////////////////////////
+
+#include "common.vs"
+#include "CommonLight.ps"
+
+// Не заданная текстура — белая 1×1 (для Normal — плоская нормаль), так что работают одни множители
+Texture2D g_texBaseColor : register(t0);         // sRGB, альфа — прозрачность
+Texture2D g_texNormal : register(t1);            // касательное пространство, линейная
+Texture2D g_texMetallicRoughness : register(t2); // G — roughness, B — metallic (упаковка glTF), линейная
+Texture2D g_texOcclusion : register(t3);         // R — затенение окружающего света, линейная
+Texture2D g_texEmissive : register(t4);          // sRGB
+
+// Раскладка — PBRMaterial::PSParam
+cbuffer PBRMaterialBuffer : register(b2)
+{
+	float4 g_baseColorFactor;
+	float3 g_emissiveFactor;
+	float  g_metallic;
+	float  g_roughness;
+	float  g_normalScale;
+	float  g_normalGreenUp;     // 1 — зелёный канал карты нормалей смотрит вверх по картинке (OpenGL, glTF)
+	float  g_occlusionStrength;
+};
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 tex : TEXCOORD0;
+	float3 normal : NORMAL;
+	float3 tangent : TANGENT0;
+	float3 binormal : BINORMAL0;
+	float3 worldPosition : TEXCOORD1;
+	bool isFrontFace : SV_IsFrontFace;
+};
+
+// Минимальная шероховатость: при меньшей блик GGX от точечного источника вырождается в точку
+static const float minRoughness = 0.045f;
+
+float3 surfaceNormal( PixelInputType input )
+{
+	// Задняя грань двусторонней геометрии (карточки без отсечения граней) освещается как передняя
+	float3 normal = input.isFrontFace ? input.normal : -input.normal;
+
+	float3 n = g_texNormal.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * 2.0f - 1.0f;
+	n.xy *= g_normalScale;
+	// Бинормаль меша — направление роста v, то есть вниз по картинке (соглашение DirectX)
+	n.y = g_normalGreenUp > 0.5f ? -n.y : n.y;
+
+	float3x3 tbn = float3x3( normalize( input.tangent ), normalize( input.binormal ), normalize( normal ) );
+	return normalize( mul( n, tbn ) );
+}
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	float4 baseColor = g_texBaseColor.Sample( g_SamplerAnisotropicWrap, input.tex ) * g_baseColorFactor;
+	float4 metallicRoughness = g_texMetallicRoughness.Sample( g_SamplerAnisotropicWrap, input.tex );
+	float metallic = saturate( g_metallic * metallicRoughness.b );
+	float roughness = clamp( g_roughness * metallicRoughness.g, minRoughness, 1.0f );
+	float occlusion = lerp( 1.0f, g_texOcclusion.Sample( g_SamplerAnisotropicWrap, input.tex ).r, g_occlusionStrength );
+	float3 emissive = g_texEmissive.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * g_emissiveFactor;
+
+	float3 n = surfaceNormal( input );
+	float3 v = normalize( cb_cameraPosition - input.worldPosition );
+	float NV = saturate( dot( n, v ) );
+
+	// Металл отражает своим цветом и не рассеивает, диэлектрик отражает ~4 % и рассеивает цвет основы
+	float3 F0 = lerp( 0.04f, baseColor.rgb, metallic );
+	float3 diffuseColor = baseColor.rgb * ( 1.0f - metallic );
+
+	float3 direct = CookTorrance_GGX_all_light( n, v, F0, diffuseColor, roughness, input.worldPosition );
+
+	// Окружающий свет полусферой: рассеянный — по нормали, отражённый — по вектору отражения
+	float3 ambientDiffuse = diffuseColor * ambientHemisphere( n );
+	float3 ambientSpecular = EnvBRDFApprox( F0, roughness, NV ) * ambientHemisphere( reflect( -v, n ) );
+
+	float3 color = direct + ( ambientDiffuse + ambientSpecular ) * occlusion + emissive;
+
+	float4 result;
+	// Экспозиция 0,3, как у террейна (его tonemapReinhard сводится к тому же умножению, но делит на яркость
+	// и на чёрном даёт NaN), пока нет HDR-буфера и общего тонмаппинга
+	result.rgb = color * 0.3f;
+	result.a = baseColor.a;
+
+#ifdef ALPHA_TO_COVERAGE
+	result.a = step( 0.9f, baseColor.a );
+#endif
+
+	return result;
+}

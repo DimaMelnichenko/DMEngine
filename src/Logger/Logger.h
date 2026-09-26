@@ -9,7 +9,6 @@ class Logger
 public:
 	static Logger& instance();
 	~Logger();
-	void write(const std::string&);
 	void write( const char* function, long line, const std::string& message );
 
 private:

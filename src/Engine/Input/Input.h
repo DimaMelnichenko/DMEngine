@@ -34,19 +34,12 @@ public:
 	bool Frame( );
 
 	void GetMouseLocation( double&, double& );
-
-	bool isKeyPressed( unsigned char );
-	bool IsEscapePressed( );
 	bool IsLeftStride( );
 	bool IsRightStride( );
 	bool IsForwarPressed( );
 	bool IsBackwardPressed( );
 	bool IsUpMove( );
 	bool IsDownMove( );
-	bool IsLookUpPressed( );
-	bool IsLookDownPressed( );
-	bool IsLookLeftPressed( );
-	bool IsLookRightPressed( );
 
 	KeyEventNotifier& notifier();
 

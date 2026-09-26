@@ -3,12 +3,6 @@
 /////////////
 // LINKING //
 /////////////
-/*
-#pragma comment( lib, "dxgi.lib")
-#pragma comment( lib, "d3d11.lib")
-#pragma comment( lib, "d3dx11.lib")
-#pragma comment( lib, "d3dx10.lib")
-*/
 //////////////
 // INCLUDES //
 //////////////
@@ -17,9 +11,32 @@
 #include "DirectX.h"
 #include <list>
 #include <memory>
+#include <unordered_map>
 #include "Utils\utilites.h"
 #include "Config\Config.h"
 #include "DM3DUtils.h"
+
+enum class RasterState
+{
+	solid, frontCulling, noCulling, wireframe
+};
+
+enum class DepthState
+{
+	enabled, disabled
+};
+
+enum class BlendState
+{
+	opaque, alpha
+};
+
+struct RenderState
+{
+	RasterState raster = RasterState::solid;
+	DepthState depth = DepthState::enabled;
+	BlendState blend = BlendState::opaque;
+};
 
 namespace Device
 {
@@ -77,30 +94,11 @@ public:
 	ID3D11Device* GetDevice( );
 	ID3D11DeviceContext* GetDeviceContext( );
 
-	void GetVideoCardInfo( char*, int& );
-
-	void TurnZBufferOn( );
-	void TurnZBufferOff( );
-
-	void currentRS( com_unique_ptr<ID3D11RasterizerState>& );
-	void setRS( ID3D11RasterizerState* );
-	void TurnDefaultRS( );
-	void TurnFrontFacesRS();
-	void TurnShadowRS();
-	void TurnCullingNoneRS( );
-
-	void TurnOnWireframe( );
-	void TurnOffWireframe( );
-
-	void TurnOnAlphaBlending( );
-	void TurnOffAlphaBlending( );
-
-	ID3D11DepthStencilView* GetDepthStencilView( );
-	void SetBackBufferRenderTarget( );
-	void ResetViewport( );
-
-	void TurnOnTransparancy( );
-	void TurnOffTransparancy( );
+	void setState( RasterState state );
+	void setState( DepthState state );
+	void setState( BlendState state );
+	void setRenderState( const RenderState& state );
+	const RenderState& renderState() const;
 
 	bool createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer> &, const D3D11_SUBRESOURCE_DATA* = nullptr );
 	bool setConstantBuffer( SRVType type, uint16_t slot, com_unique_ptr<ID3D11Buffer>& );
@@ -112,6 +110,10 @@ public:
 	bool CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData, com_unique_ptr<ID3D11Buffer>& );
 
 	bool createScreenshot();
+
+	// Переносит в log.txt ошибки и предупреждения debug-слоя D3D11, накопленные с прошлого вызова. Без отладчика
+	// их больше нигде не видно. Вызывается после каждого кадра; без debug-слоя ничего не делает
+	void logDebugMessages();
 
 private:
 	bool createDeviceSwapChain( HWND, bool fullscreen );
@@ -140,13 +142,13 @@ private:
 
 	com_unique_ptr<ID3D11RasterizerState> m_rasterState;
 	com_unique_ptr<ID3D11RasterizerState> m_rasterStateFrontCulling;
-	com_unique_ptr<ID3D11RasterizerState> m_rasterStateShadow;
 	com_unique_ptr<ID3D11RasterizerState> m_rasterStateNoCulling;
 	com_unique_ptr<ID3D11RasterizerState> m_rasterStateWireframe;
 
 	com_unique_ptr<ID3D11BlendState> m_alphaEnableBlendingState;
 	com_unique_ptr<ID3D11BlendState> m_alphaDisableBlendingState;
-	com_unique_ptr<ID3D11BlendState> m_blendStateTransparency;
+
+	RenderState m_renderState;
 
 	D3D11_VIEWPORT m_viewport;
 
@@ -156,5 +158,33 @@ private:
 	uint32_t m_denominator;
 	uint32_t m_MSAACount = 1;
 	HWND m_hWnd;
+	uint16_t m_screenshotCounter = 0;
+
+	com_unique_ptr<ID3D11InfoQueue> m_infoQueue;	// только с debug-слоем
+	std::unordered_map<int, uint32_t> m_debugMessageCounts;	// сколько раз записано сообщение с этим D3D11_MESSAGE_ID
+};
+
+// Запоминает состояния растеризатора, глубины и блендинга и восстанавливает их в деструкторе.
+// Состояния, переданные в конструктор, действуют до конца области видимости:
+// ScopedRenderState state( DepthState::disabled, RasterState::frontCulling );
+class ScopedRenderState
+{
+public:
+	template<typename... States>
+	explicit ScopedRenderState( States... states ) : m_previous( DMD3D::instance().renderState() )
+	{
+		( DMD3D::instance().setState( states ), ... );
+	}
+
+	~ScopedRenderState()
+	{
+		DMD3D::instance().setRenderState( m_previous );
+	}
+
+	ScopedRenderState( const ScopedRenderState& ) = delete;
+	ScopedRenderState& operator=( const ScopedRenderState& ) = delete;
+
+private:
+	RenderState m_previous;
 };
 

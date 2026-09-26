@@ -191,39 +191,8 @@ void Input::ProcessInput( )
 	// Update the location of the mouse cursor based on the change of the mouse location during the frame.
 	m_mouseX += m_mouseState.lX;
 	m_mouseY += m_mouseState.lY;
-	/*
-	// Ensure the mouse location doesn't exceed the screen width or height.
-	if( m_mouseX < 0 )
-	{
-		m_mouseX = 0;
-	}
-	if( m_mouseY < 0 )
-	{
-		m_mouseY = 0;
-	}
-
-	if( m_mouseX > m_screenWidth )
-	{
-		m_mouseX = m_screenWidth;
-	}
-	if( m_mouseY > m_screenHeight )
-	{
-		m_mouseY = m_screenHeight;
-	}
-	*/
 	return;
 
-}
-
-bool Input::IsEscapePressed( )
-{
-	// Do a bitwise and on the keyboard state to check if the escape key is currently being pressed.
-	if( m_keyboardState[DIK_ESCAPE] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
 }
 
 void Input::GetMouseLocation( double& mouseX, double& mouseY )
@@ -292,58 +261,6 @@ bool Input::IsDownMove( )
 {
 	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
 	if( m_keyboardState[DIK_C] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
-}
-
-bool Input::IsLookUpPressed( )
-{
-	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
-	if( m_keyboardState[DIK_UP] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
-}
-
-bool Input::IsLookDownPressed( )
-{
-	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
-	if( m_keyboardState[DIK_DOWN] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
-}
-
-bool Input::IsLookLeftPressed()
-{	
-	if( m_keyboardState[DIK_LEFT] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
-}
-
-bool Input::IsLookRightPressed()
-{
-	if( m_keyboardState[DIK_RIGHT] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
-}
-
-bool Input::isKeyPressed( unsigned char _key )
-{
-	if( m_keyboardState[_key] & 0x80 )
 	{
 		return true;
 	}

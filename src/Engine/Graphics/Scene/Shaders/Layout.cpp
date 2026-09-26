@@ -112,15 +112,3 @@ bool Layout::initLayouts()
 
 	return true;
 }
-
-Layout::LayoutItem* Layout::get( const std::string& name )
-{
-	Layout::LayoutItem* result = nullptr;
-
-	if( m_layouts.count( name ) )
-	{
-		result = &m_layouts[name];
-	}
-
-	return result;
-}

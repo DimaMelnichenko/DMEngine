@@ -23,8 +23,6 @@ public:
 		m_propertyMap.insert( { name, Property( name, value ) } );
 		return &m_propertyMap[name];
 	}
-
-    size_t count() const;
 	void setName( const std::string& name );
 	const std::string& name();
     

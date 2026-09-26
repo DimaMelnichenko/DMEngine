@@ -19,39 +19,39 @@ bool VertexPool::prepareMeshes()
 	std::vector<VertexData::PTNTB> vertexes;
 	std::vector<uint32_t> indexes;
 
-	// подготовка бкферов для вершин и индексов
+	// РїРѕРґРіРѕС‚РѕРІРєР° Р±РєС„РµСЂРѕРІ РґР»СЏ РІРµСЂС€РёРЅ Рё РёРЅРґРµРєСЃРѕРІ
 	vertexes.resize( System::meshes().vertexCount() );
 	indexes.resize( System::meshes().indexCount() );
 
-	// переменные для сохранения смещения
+	// РїРµСЂРµРјРµРЅРЅС‹Рµ РґР»СЏ СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃРјРµС‰РµРЅРёСЏ
 	uint32_t vertexOffset = 0;
 	uint32_t indexOffset = 0;
 
-	// перебираем все меши какие есть
+	// РїРµСЂРµР±РёСЂР°РµРј РІСЃРµ РјРµС€Рё РєР°РєРёРµ РµСЃС‚СЊ
 	for( auto& pair : System::meshes() )
 	{
 		AbstractMesh* mesh = pair.second.get();
 		char* structuredBuffer = mesh->getVertices();
 
-		// копируем вершины в общий буфер
+		// РєРѕРїРёСЂСѓРµРј РІРµСЂС€РёРЅС‹ РІ РѕР±С‰РёР№ Р±СѓС„РµСЂ
 		memcpy( (char*)(&vertexes[0]) + vertexOffset * sizeof( VertexData::PTNTB ),
 				structuredBuffer, 
 				mesh->vertexCount() * sizeof( VertexData::PTNTB ) );
 
-		// копируем индексы в общий буфер
+		// РєРѕРїРёСЂСѓРµРј РёРЅРґРµРєСЃС‹ РІ РѕР±С‰РёР№ Р±СѓС„РµСЂ
 		memcpy( (char*)(&indexes[0]) + indexOffset * sizeof( uint32_t ),
 				&mesh->getIndices()[0], 
 				mesh->indexCount() * sizeof(uint32_t) );
 
-		// записываем в меш значение смещения его личных вершин в общем буфере
+		// Р·Р°РїРёСЃС‹РІР°РµРј РІ РјРµС€ Р·РЅР°С‡РµРЅРёРµ СЃРјРµС‰РµРЅРёСЏ РµРіРѕ Р»РёС‡РЅС‹С… РІРµСЂС€РёРЅ РІ РѕР±С‰РµРј Р±СѓС„РµСЂРµ
 		mesh->setOffsets( vertexOffset, indexOffset );
 
-		// сохраняем смещение
+		// СЃРѕС…СЂР°РЅСЏРµРј СЃРјРµС‰РµРЅРёРµ
 		vertexOffset += mesh->vertexCount();
 		indexOffset += mesh->indexCount();
 	}
 
-	// создание буферов на видюхе с нашими общими буферами
+	// СЃРѕР·РґР°РЅРёРµ Р±СѓС„РµСЂРѕРІ РЅР° РІРёРґСЋС…Рµ СЃ РЅР°С€РёРјРё РѕР±С‰РёРјРё Р±СѓС„РµСЂР°РјРё
 	DMD3D::instance().createVertexBuffer( m_vertexBuffer, &vertexes[0], System::meshes().vertexCount() * sizeof( VertexData::PTNTB ) );
 	DMD3D::instance().createIndexBuffer( m_indexBuffer, &indexes[0], System::meshes().indexCount() * sizeof( uint32_t ) );
 

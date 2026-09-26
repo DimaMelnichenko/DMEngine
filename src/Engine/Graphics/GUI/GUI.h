@@ -19,6 +19,8 @@ public:
 	void Begin();
 	void End();
 	void addCounterInfo( const std::string&, float );
+	// Кадр без интерфейса: собранные за кадр счётчики отбрасываются, как после отрисовки
+	void skipFrame();
 	void printCamera( DMCamera& camera );
 
 	void addPropertyWatching( PropertyContainer* propertyContainer );
@@ -27,7 +29,6 @@ private:
 	void Frame();
 	void clearAfterRender();
 	void renderTextureLibrary();
-	void renderMaterialLibrary();
 	void renderSceneObject();
 
 	void showPropertiesTree();

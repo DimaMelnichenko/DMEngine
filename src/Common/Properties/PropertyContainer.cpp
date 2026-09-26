@@ -24,11 +24,6 @@ Property& PropertyContainer::property( const std::string& name )
 	return m_propertyMap.at( name );
 }
 
-size_t PropertyContainer::count() const
-{
-    return m_propertyMap.size();
-}
-
 bool PropertyContainer::exists( const std::string& name ) const
 {
 	return (bool)m_propertyMap.count( name );

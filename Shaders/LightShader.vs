@@ -62,10 +62,19 @@ PixelInputType main(VertexInputType input)
     
     
 	
+	float3 normal = input.normal;
+	float3 tangent = input.tangent;
+	float3 binormal = input.binormal;
+	#if defined(INSTANCE_INCLUDE)
+		normal = calcInstanceDirection( normal, input.instanceIndex );
+		tangent = calcInstanceDirection( tangent, input.instanceIndex );
+		binormal = calcInstanceDirection( binormal, input.instanceIndex );
+	#endif
+
 	    // Calculate the normal vector against the world matrix only.
-    output.normal = normalize( mul(input.normal, (float3x3)cb_worldMatrix) );
-	output.tangent	= normalize( mul( input.tangent, (float3x3)cb_worldMatrix ) );
-	output.binormal = normalize( mul( input.binormal, (float3x3)cb_worldMatrix ) );
+    output.normal = normalize( mul(normal, (float3x3)cb_worldMatrix) );
+	output.tangent	= normalize( mul( tangent, (float3x3)cb_worldMatrix ) );
+	output.binormal = normalize( mul( binormal, (float3x3)cb_worldMatrix ) );
 	
     // Normalize the normal vector.
     output.normal = normalize(output.normal);

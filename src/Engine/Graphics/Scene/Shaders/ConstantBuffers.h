@@ -15,9 +15,8 @@ public:
 	~ConstantBuffers();
 
 	void initBuffers();
-	void setPerFrameBuffer( const DMCamera&, int lightsCount );
+	void setPerFrameBuffer( const DMCamera&, int lightsCount, const XMFLOAT3& ambientSkyColor, const XMFLOAT3& ambientGroundColor );
 	void setPerObjectBuffer( const XMMATRIX* );
-	void setPerObjectBuffer( const XMMATRIX& );
 
 private:
 	struct alignas( 16 ) ShaderFrameConstant
@@ -32,6 +31,8 @@ private:
 		float elapsedTime;
 		float lightsCount;
 		XMFLOAT3 dump;
+		XMFLOAT4 ambientSkyColor;
+		XMFLOAT4 ambientGroundColor;
 	};
 
 	struct alignas( 16 ) ShaderModelConstant

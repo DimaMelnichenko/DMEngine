@@ -12,8 +12,6 @@ namespace GS
 class System
 {
 public:
-	System();
-	~System();
 
 	static DMTextureStorage& textures();
 	static MeshStorage& meshes();

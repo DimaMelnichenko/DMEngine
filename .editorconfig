@@ -1,0 +1,15 @@
+root = true
+
+# Исходники, шейдеры и сборка: UTF-8 без BOM, концы строк LF (компилятор запускается с /utf-8)
+[*.{cpp,h,hpp,hlsl,fx,vs,ps,gs,cs,sh}]
+charset = utf-8
+end_of_line = lf
+
+[{CMakeLists.txt,*.cmake,*.md,*.ps1,*.py}]
+charset = utf-8
+end_of_line = lf
+
+# Batch-файлы: cmd с LF ошибается на метках и goto
+[*.{cmd,bat}]
+charset = utf-8
+end_of_line = crlf

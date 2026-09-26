@@ -26,25 +26,6 @@ DMShader::~DMShader()
 	
 }
 
-bool DMShader::initialize( const std::string& vsFilename, const std::string& psFilename, bool use_strimout )
-{
-	initialize();
-
-	addShaderPassFromFile( vs, "main", vsFilename );
-	addShaderPassFromFile( ps, "main", psFilename );
-
-	return true;
-}
-
-bool DMShader::initialize( const std::string& vsFilename, bool use_strimout )
-{
-	initialize();
-
-	addShaderPassFromFile( vs, "main", vsFilename );
-
-	return true;
-}
-
 bool DMShader::initialize()
 {
 	return innerInitialize();
@@ -145,7 +126,7 @@ bool DMShader::setPass( int phase_idx )
 	ID3D11VertexShader* vs = m_vertexShader[phase.index_vs].get();
 	DMD3D::instance().GetDeviceContext()->VSSetShader( vs, nullptr, 0 );
 
-	if( m_geometryShader.size() )
+	if( m_geometryShader.size() && phase.index_gs >= 0 )
 	{
 		ID3D11GeometryShader* shader = m_geometryShader[phase.index_gs].get();
 		DMD3D::instance().GetDeviceContext()->GSSetShader( shader, nullptr, 0 );
@@ -226,40 +207,6 @@ void DMShader::setLayoutDesc( std::vector<D3D11_INPUT_ELEMENT_DESC>&& layoutDesc
 	m_layoutDesc = std::move( layoutDesc );
 }
 
-bool DMShader::addShaderPassFromMem( SRVType type, const std::string& funcName, const std::string& shaderCode, const std::string& defines )
-{	
-	std::vector<D3D_SHADER_MACRO> macros;
-	parseDefines( defines, macros );
-
-	ID3DBlob* buffer = nullptr;
-	ID3DBlob* error = nullptr;
-	HRESULT result = D3DCompile( shaderCode.data(), sizeof( std::string::value_type ) * shaderCode.size(), nullptr, 
-								 macros.empty() ? nullptr : &macros[0], 
-								 D3D_COMPILE_STANDARD_FILE_INCLUDE, funcName.data(),
-								 version( type ).data(), D3D10_SHADER_ENABLE_STRICTNESS, 0, &buffer, &error );
-
-	com_unique_ptr<ID3DBlob> errorMessage( error );
-	com_unique_ptr<ID3DBlob> shaderBuffer( buffer );
-
-	if( FAILED( result ) )
-	{
-		// If the shader failed to compile it should have writen something to the error message.
-		if( errorMessage )
-		{
-			OutputShaderErrorMessage( errorMessage, "shaderCode" );
-		}
-		// If there was nothing in the error message then it simply could not find the shader file itself.
-		else
-		{
-			LOG( std::string("Missing Shader File: ") + "shaderCode" );
-		}
-
-		return false;
-	}
-
-	return createShaderPass( type, shaderBuffer );
-}
-
 bool DMShader::addShaderPassFromFile( SRVType type,
 									  const std::string& function_name,
 									  const std::string& file_name,
@@ -269,7 +216,7 @@ bool DMShader::addShaderPassFromFile( SRVType type,
 
 	parseDefines( defines, macros );
 
-	std::wstring fileName( file_name.begin(), file_name.end() );
+	std::wstring fileName = utf8ToWide( file_name );
 
 	ID3DBlob* buffer = nullptr;
 	ID3DBlob* error = nullptr;

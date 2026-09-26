@@ -23,11 +23,6 @@ bool DMColorShader::innerInitialize()
 	return true;
 }
 
-bool DMColorShader::Prepare()
-{
-	return DMShader::setPass( 0 );
-}
-
 std::vector<D3D11_INPUT_ELEMENT_DESC> DMColorShader::initLayouts()
 {
 	HRESULT result;
@@ -54,7 +49,8 @@ void DMColorShader::setParams( const PropertyContainer& params )
 {
 	Device::updateResource<XMFLOAT4>( m_constantBuffer, [&]( XMFLOAT4& v )
 	{
-		v = params["Color"].data<XMFLOAT4>();
+		const XMFLOAT4* color = params.exists( "Color" ) ? params["Color"].dataPtr<XMFLOAT4>() : nullptr;
+		v = color ? *color : XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );
 	} );
 
 	ID3D11Buffer* buffer = m_constantBuffer.get();

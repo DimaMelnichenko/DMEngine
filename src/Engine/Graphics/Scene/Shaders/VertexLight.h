@@ -16,7 +16,6 @@ public:
 public:
 	VertexLight();
 	~VertexLight();
-	bool Prepare();
 	void setParams( const PropertyContainer& ) override;
 
 private:

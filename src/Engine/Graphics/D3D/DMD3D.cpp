@@ -1,5 +1,6 @@
 #include "DMD3D.h"
 #include "Utils\utilites.h"
+#include "Logger\Logger.h"
 
 std::unique_ptr<DMD3D> DMD3D::m_instance;
 
@@ -206,29 +207,89 @@ bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 	// Don't set the advanced flags.
 	swapChainDesc.Flags = 0;
 
-	// Set the feature level to DirectX 11.
-	D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_1;
+	D3D_FEATURE_LEVEL featureLevel;
 
 	// Create the swap chain, Direct3D device, and Direct3D device context.
 	IDXGISwapChain* swapChain;
 	ID3D11Device* device;
 	ID3D11DeviceContext* deviceContext;
-	HRESULT result = D3D11CreateDeviceAndSwapChain( nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
+
+	// Try DirectX 11.1 first, then 11.0.
+	auto createDevice = [&]( UINT flags )
+	{
+		featureLevel = D3D_FEATURE_LEVEL_11_1;
+		HRESULT hr = D3D11CreateDeviceAndSwapChain( nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, &featureLevel, 1,
 													D3D11_SDK_VERSION, &swapChainDesc, &swapChain, &device, nullptr, &deviceContext );
+		if( FAILED( hr ) )
+		{
+			featureLevel = D3D_FEATURE_LEVEL_11_0;
+			hr = D3D11CreateDeviceAndSwapChain( nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, &featureLevel, 1,
+												D3D11_SDK_VERSION, &swapChainDesc, &swapChain, &device, nullptr, &deviceContext );
+		}
+		return hr;
+	};
+
+#ifdef _DEBUG
+	// Debug-слой только в Debug-сборке: он заметно замедляет отрисовку. Нужен компонент Windows «Средства графики»
+	HRESULT result = createDevice( D3D11_CREATE_DEVICE_DEBUG );
 	if( FAILED( result ) )
 	{
-		featureLevel = D3D_FEATURE_LEVEL_11_0;
-		result = D3D11CreateDeviceAndSwapChain( nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_DEBUG, &featureLevel, 1,
-												D3D11_SDK_VERSION, &swapChainDesc, &swapChain, &device, nullptr, &deviceContext );
-		if( FAILED( result ) )
-			return false;
+		LOG( "D3D11 debug layer is unavailable, creating device without it" );
+		result = createDevice( 0 );
 	}
+#else
+	HRESULT result = createDevice( 0 );
+#endif
+	if( FAILED( result ) )
+		return false;
 
 	m_swapChain = make_com_ptr<IDXGISwapChain>( swapChain );
 	m_device = make_com_ptr<ID3D11Device>( device );
 	m_deviceContext = make_com_ptr<ID3D11DeviceContext>( deviceContext );
 
+	ID3D11InfoQueue* infoQueue = nullptr;
+	if( SUCCEEDED( device->QueryInterface( __uuidof( ID3D11InfoQueue ), reinterpret_cast<void**>( &infoQueue ) ) ) )
+	{
+		m_infoQueue.reset( infoQueue );
+		LOG( "D3D11 debug layer is enabled, its messages are written to this log" );
+	}
+
 	return true;
+}
+
+void DMD3D::logDebugMessages()
+{
+	if( !m_infoQueue )
+		return;
+
+	// Одно и то же сообщение обычно повторяется каждый кадр: пишется только первые maxRepeats раз
+	const uint32_t maxRepeats = 3;
+	const UINT64 count = m_infoQueue->GetNumStoredMessages();
+	for( UINT64 i = 0; i < count; ++i )
+	{
+		SIZE_T length = 0;
+		if( FAILED( m_infoQueue->GetMessage( i, nullptr, &length ) ) || length == 0 )
+			continue;
+
+		std::vector<char> buffer( length );
+		D3D11_MESSAGE* message = reinterpret_cast<D3D11_MESSAGE*>( buffer.data() );
+		if( FAILED( m_infoQueue->GetMessage( i, message, &length ) ) )
+			continue;
+
+		if( message->Severity == D3D11_MESSAGE_SEVERITY_INFO || message->Severity == D3D11_MESSAGE_SEVERITY_MESSAGE )
+			continue;
+
+		const uint32_t repeats = ++m_debugMessageCounts[message->ID];
+		if( repeats > maxRepeats )
+			continue;
+
+		const char* severity = message->Severity == D3D11_MESSAGE_SEVERITY_WARNING ? "warning" :
+							   message->Severity == D3D11_MESSAGE_SEVERITY_ERROR ? "error" : "corruption";
+		LOG( std::string( "D3D11 " ) + severity + ": " + std::string( message->pDescription, message->DescriptionByteLength ? message->DescriptionByteLength - 1 : 0 ) +
+			 ( repeats == maxRepeats ? " (further repeats are not logged)" : "" ) );
+	}
+
+	m_infoQueue->ClearStoredMessages();
 }
 
 bool DMD3D::createRenderTargetView()
@@ -336,7 +397,6 @@ bool DMD3D::createDepthStencilBufferAndView()
 
 	// Set the depth stencil state.
 	m_deviceContext->OMSetDepthStencilState( m_depthStencilState.get(), 1 );
-	//m_deviceContext->OMSetDepthStencilState( nullptr, 0 );
 
 
 	// Initailze the depth stencil view.
@@ -409,14 +469,6 @@ bool DMD3D::createRasterDescs()
 	rasterDesc.CullMode = D3D11_CULL_FRONT;
 	if( !createRasterizerState( rasterDesc, m_rasterStateFrontCulling ) )
 		return false;
-
-	// create shadow render state
-	rasterDesc.CullMode = D3D11_CULL_BACK;
-	rasterDesc.DepthBias = 0;
-	rasterDesc.SlopeScaledDepthBias = 5.5f;
-	if( !createRasterizerState( rasterDesc, m_rasterStateShadow ) )
-		return false;
-
 
 	// Setup a raster description which turns off back face culling.
 	rasterDesc.FillMode = D3D11_FILL_SOLID;
@@ -507,19 +559,6 @@ bool DMD3D::createBlendStates()
 	if( !createBlendState( blendStateDescription, m_alphaDisableBlendingState ) )
 		return false;
 
-	// Create a secondary alpha blend state description.
-	blendStateDescription.AlphaToCoverageEnable = true;
-	blendStateDescription.RenderTarget[0].BlendEnable = TRUE;
-	blendStateDescription.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
-	blendStateDescription.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-	blendStateDescription.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-	blendStateDescription.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-	blendStateDescription.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
-	blendStateDescription.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-	blendStateDescription.RenderTarget[0].RenderTargetWriteMask = 0x0f;
-	if( !createBlendState( blendStateDescription, m_blendStateTransparency ) )
-		return false;
-
 	return true;
 }
 
@@ -533,38 +572,54 @@ void DMD3D::Shutdown( )
 	}
 }
 
-void DMD3D::TurnOnAlphaBlending( )
+void DMD3D::setState( RasterState state )
 {
-	float blendFactor[4];
+	switch( state )
+	{
+		case RasterState::solid:
+			m_deviceContext->RSSetState( m_rasterState.get() );
+			break;
+		case RasterState::frontCulling:
+			m_deviceContext->RSSetState( m_rasterStateFrontCulling.get() );
+			break;
+		case RasterState::noCulling:
+			m_deviceContext->RSSetState( m_rasterStateNoCulling.get() );
+			break;
+		case RasterState::wireframe:
+			m_deviceContext->RSSetState( m_rasterStateWireframe.get() );
+			break;
+	}
 
-
-	// Setup the blend factor.
-	blendFactor[0] = 0.0f;
-	blendFactor[1] = 0.0f;
-	blendFactor[2] = 0.0f;
-	blendFactor[3] = 0.0f;
-
-	// Turn on the alpha blending.
-	m_deviceContext->OMSetBlendState( m_alphaEnableBlendingState.get(), blendFactor, 0xffffffff );
-
-	return;
+	m_renderState.raster = state;
 }
 
-void DMD3D::TurnOffAlphaBlending( )
+void DMD3D::setState( DepthState state )
 {
-	float blendFactor[4];
+	ID3D11DepthStencilState* depthState = state == DepthState::enabled ? m_depthStencilState.get() : m_depthDisabledStencilState.get();
+	m_deviceContext->OMSetDepthStencilState( depthState, 1 );
 
+	m_renderState.depth = state;
+}
 
-	// Setup the blend factor.
-	blendFactor[0] = 0.0f;
-	blendFactor[1] = 0.0f;
-	blendFactor[2] = 0.0f;
-	blendFactor[3] = 0.0f;
+void DMD3D::setState( BlendState state )
+{
+	const float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	ID3D11BlendState* blendState = state == BlendState::alpha ? m_alphaEnableBlendingState.get() : m_alphaDisableBlendingState.get();
+	m_deviceContext->OMSetBlendState( blendState, blendFactor, 0xffffffff );
 
-	// Turn off the alpha blending.
-	m_deviceContext->OMSetBlendState( m_alphaDisableBlendingState.get(), blendFactor, 0xffffffff );
+	m_renderState.blend = state;
+}
 
-	return;
+void DMD3D::setRenderState( const RenderState& state )
+{
+	setState( state.raster );
+	setState( state.depth );
+	setState( state.blend );
+}
+
+const RenderState& DMD3D::renderState() const
+{
+	return m_renderState;
 }
 
 void DMD3D::BeginScene( float red, float green, float blue, float alpha )
@@ -603,37 +658,12 @@ void DMD3D::EndScene( )
 
 
 	// clear all slots and resources
-	
-	static ID3D11Buffer** buffers = new ID3D11Buffer*[10];
-	static ID3D11ShaderResourceView** views = new ID3D11ShaderResourceView*[50];
-	static UINT* strides = new UINT[10];
-	static UINT* offsets = new UINT[10];
-
-	static bool first = true;
-	
-	if( first )
-	{
-		for( size_t i = 0; i < 10; i++ )
-		{
-			buffers[i] = nullptr;
-			strides[i] = 0;
-			offsets[i] = 0;
-		}
-
-		for( size_t i = 0; i < 50; i++ )
-		{
-			views[i] = nullptr;
-		}
-
-		first = false;
-	}
-	
-	//m_deviceContext->IASetVertexBuffers( 0, 10, buffers, strides, offsets );
+	ID3D11ShaderResourceView* views[50] = {};
 	m_deviceContext->VSSetShaderResources( 0, 50, views );
 	m_deviceContext->GSSetShaderResources( 0, 50, views );
 	m_deviceContext->PSSetShaderResources( 0, 50, views );
-	
-	return;
+
+	logDebugMessages();
 }
 
 ID3D11Device* DMD3D::GetDevice( )
@@ -644,111 +674,6 @@ ID3D11Device* DMD3D::GetDevice( )
 ID3D11DeviceContext* DMD3D::GetDeviceContext( )
 {
 	return m_deviceContext.get();
-}
-
-void DMD3D::GetVideoCardInfo( char* cardName, int& memory )
-{
-	strcpy_s( cardName, 128, m_videoCardDescription );
-	memory = m_videoCardMemory;
-	return;
-}
-
-void DMD3D::TurnZBufferOn( )
-{
-	m_deviceContext->OMSetDepthStencilState( m_depthStencilState.get(), 1 );
-	return;
-}
-
-void DMD3D::TurnZBufferOff( )
-{
-	m_deviceContext->OMSetDepthStencilState( m_depthDisabledStencilState.get(), 1 );
-	return;
-}
-
-ID3D11DepthStencilView* DMD3D::GetDepthStencilView( )
-{
-	return m_depthStencilView.get();
-}
-
-void DMD3D::SetBackBufferRenderTarget( )
-{
-	// Bind the render target view and depth stencil buffer to the output render pipeline.
-	ID3D11RenderTargetView* renderTargetView = m_renderTargetView.get();
-	m_deviceContext->OMSetRenderTargets( 1, &renderTargetView, m_depthStencilView.get() );
-
-	return;
-}
-
-void DMD3D::ResetViewport( )
-{
-	// Set the viewport.
-	m_deviceContext->RSSetViewports( 1, &m_viewport );
-
-	return;
-}
-
-void DMD3D::TurnDefaultRS( )
-{
-	// Set the culling rasterizer state.
-	m_deviceContext->RSSetState( m_rasterState.get() );
-
-	return;
-}
-
-void DMD3D::TurnShadowRS()
-{
-	// Set the culling rasterizer state.
-	m_deviceContext->RSSetState( m_rasterStateShadow.get() );
-
-	return;
-}
-
-void DMD3D::TurnFrontFacesRS()
-{
-	// Set the culling rasterizer state.
-	m_deviceContext->RSSetState( m_rasterStateFrontCulling.get());
-
-	return;
-}
-
-void DMD3D::TurnCullingNoneRS( )
-{
-	// Set the no back face culling rasterizer state.
-	m_deviceContext->RSSetState( m_rasterStateNoCulling.get() );
-
-	return;
-}
-
-void DMD3D::TurnOnWireframe()
-{
-	m_deviceContext->RSSetState( m_rasterStateWireframe.get() );
-}
-
-void DMD3D::TurnOffWireframe()
-{
-	m_deviceContext->RSSetState( m_rasterState.get() );
-}
-
-void DMD3D::TurnOnTransparancy( )
-{
-	float blendFactor[4];
-
-
-	// Setup the blend factor.
-	blendFactor[0] = 0.0f;
-	blendFactor[1] = 0.0f;
-	blendFactor[2] = 0.0f;
-	blendFactor[3] = 0.0f;
-
-	// Turn on the alpha blending.
-	m_deviceContext->OMSetBlendState( m_blendStateTransparency.get(), blendFactor, 0xffffffff );
-
-	return;
-}
-
-void DMD3D::TurnOffTransparancy()
-{
-	TurnOffAlphaBlending();
 }
 
 bool DMD3D::createShaderConstantBuffer( size_t byte_size, com_unique_ptr<ID3D11Buffer>& shared_buffer,
@@ -857,18 +782,6 @@ bool DMD3D::CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURC
 	return true;
 }
 
-void DMD3D::currentRS( com_unique_ptr<ID3D11RasterizerState>& state )
-{
-	ID3D11RasterizerState* rs = nullptr;
-	m_deviceContext->RSGetState( &rs );
-	state = make_com_ptr<ID3D11RasterizerState>( rs );
-}
-
-void DMD3D::setRS( ID3D11RasterizerState* state )
-{
-	m_deviceContext->RSSetState( state );
-}
-
 bool DMD3D::setConstantBuffer( SRVType type, uint16_t slot, com_unique_ptr<ID3D11Buffer>& buffer )
 {
 	ID3D11Buffer* cbuffer = buffer.get();
@@ -935,12 +848,11 @@ void DMD3D::setSRV( SRVType type, uint16_t slot, const com_unique_ptr<ID3D11Shad
 
 bool DMD3D::createScreenshot()
 {
-	static uint16_t counter = 0;
 	ID3D11Texture2D* backBuffer = nullptr;
 	HRESULT hr = m_swapChain->GetBuffer( 0, __uuidof( ID3D11Texture2D ), (void**)&backBuffer );
 	if( SUCCEEDED( hr ) )
 	{
-		std::wstring fileName = L"screenshot" + std::to_wstring( counter++ ) + L".jpg";
+		std::wstring fileName = L"screenshot" + std::to_wstring( m_screenshotCounter++ ) + L".jpg";
 		hr = SaveWICTextureToFile( m_deviceContext.get(), backBuffer, GUID_ContainerFormatJpeg, fileName.data() );
 	}
 

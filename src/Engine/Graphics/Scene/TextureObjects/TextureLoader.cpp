@@ -1,6 +1,5 @@
 #include "TextureLoader.h"
-#include <locale>
-#include <codecvt>
+#include "Utils\utilites.h"
 
 
 TextureLoader::TextureLoader()
@@ -14,11 +13,7 @@ TextureLoader::~TextureLoader()
 
 bool TextureLoader::loadFromFile( const char* filename, ScratchImage& image )
 {
-	HRESULT result;
-
-	std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-	//std::string narrow = converter.to_bytes( wide_utf16_source_string );
-	std::wstring wideFilename = converter.from_bytes( filename );
+	std::wstring wideFilename = utf8ToWide( filename );
 
 	wchar_t ext[_MAX_EXT];
 	_wsplitpath_s( wideFilename.data(), nullptr, 0, nullptr, 0, nullptr, 0, ext, _MAX_EXT );

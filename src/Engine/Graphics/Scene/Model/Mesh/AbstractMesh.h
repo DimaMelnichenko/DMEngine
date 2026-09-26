@@ -14,8 +14,6 @@ public:
 	AbstractMesh& operator=( AbstractMesh&& other );
 	~AbstractMesh();
 
-	VertexData::Type vertexType() const;
-
 	void setOffsets( uint32_t vertexOffset, uint32_t indexoffset );
 	uint32_t vertexOffset() const;
 	uint32_t indexOffset() const;

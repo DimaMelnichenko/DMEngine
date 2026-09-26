@@ -45,7 +45,7 @@ DMTransformBuffer::~DMTransformBuffer(void)
 
 DMTransformBuffer& DMTransformBuffer::operator=(const DMTransformBuffer& right)
 {
-    //проверка на самоприсваивание
+    //РїСЂРѕРІРµСЂРєР° РЅР° СЃР°РјРѕРїСЂРёСЃРІР°РёРІР°РЅРёРµ
     if( this == &right )
 	{
         return *this;
@@ -85,11 +85,6 @@ void DMTransformBuffer::setPosition( float x, float y, float z )
 	m_aabb.setPosition( x, y, z );
 }
 
-void DMTransformBuffer::position( XMVECTOR& pos ) const
-{
-	pos = m_position_matrix.r[3];
-}
-
 const XMFLOAT3& DMTransformBuffer::posf3() const
 {
 	return m_position;
@@ -100,28 +95,6 @@ XMVECTOR DMTransformBuffer::position() const
 	return m_position_matrix.r[3];
 }
 
-void DMTransformBuffer::setRotationAxis( const XMFLOAT3& vec, float degree )
-{
-	XMVECTOR axis = XMLoadFloat3( &vec );
-	m_rotate_matrix = XMMatrixRotationAxis( axis, degree );
-
-	recalcMatrix();
-}
-
-void DMTransformBuffer::setRotationAxis( float x, float y, float z, float degree )
-{
-	static XMFLOAT3 rot;
-	rot.x = x;
-	rot.y = y;
-	rot.z = z;
-	setRotationAxis( rot, degree );
-}
-
-
-void DMTransformBuffer::resultMatrix( XMMATRIX* result )
-{
-	memcpy( result, &m_result_matrix, sizeof( XMMATRIX ) );
-}
 
 const XMMATRIX& DMTransformBuffer::resultMatrix() const
 {
@@ -158,23 +131,3 @@ void DMTransformBuffer::setScale( const XMFLOAT3& vec )
 
 }
 
-void DMTransformBuffer::setScale( float x )
-{
-	setScale( XMFLOAT3( x, x, x )  );
-}
-
-void DMTransformBuffer::setLink( DMTransformBuffer* dest )
-{
-	m_transform_link = dest;
-}
-
-void DMTransformBuffer::unlink()
-{
-	m_transform_link = nullptr;
-}
-
-
-DMAABB& DMTransformBuffer::aabb()
-{
-	return m_aabb;
-}

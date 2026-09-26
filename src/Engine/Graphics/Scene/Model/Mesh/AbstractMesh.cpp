@@ -24,11 +24,6 @@ AbstractMesh::~AbstractMesh()
 {
 }
 
-VertexData::Type AbstractMesh::vertexType() const
-{
-	return m_vertex_combination;
-}
-
 uint32_t AbstractMesh::vertexOffset() const
 {
 	return m_vertexOffset;

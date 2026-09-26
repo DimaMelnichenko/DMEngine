@@ -12,8 +12,6 @@ public:
 	DDSTexture( uint32_t id, const std::string& name, ScratchImage&& image );
 	DDSTexture( DDSTexture&& );
 	~DDSTexture();
-
-	const ScratchImage& image() const;
 	bool createSRV();
 	
 	const com_unique_ptr<ID3D11ShaderResourceView>& srv() const override;

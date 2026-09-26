@@ -2,27 +2,27 @@
 
 
 #include <memory>
+#include <string>
 
 #include "..\Shaders\DMComputeShader.h"
 #include "Properties/PropertyContainer.h"
+#include "SceneObject.h"
 
-class DMParticleSystem
+class DMParticleSystem : public GS::SceneObject
 {
 public:
 	DMParticleSystem();
 	~DMParticleSystem();
 
-	bool Initialize( unsigned int max_count, unsigned int width );
-	void Render();
+	// Частицы над квадратом width × width у начала координат, max_count на клетку; имена — в хранилищах текстур
+	// и материалов. Высота гибели частицы отсчитывается от карты высот террейна
+	bool Initialize( unsigned int max_count, unsigned int width, const std::string& heightMap,
+					 const std::string& material, const std::string& texture );
 	unsigned int particleCount();
-	
 
-	XMMATRIX* resultMatrix();
-
-	void update( float elapsedTime );
-
-	void generate();
-	void after_generate();
+	void compute( const GS::FrameContext& frame ) override;
+	void render( const GS::FrameContext& frame ) override;
+	PropertyContainer* properties() override;
 
 	PropertyContainer m_propertyContainer;
 
@@ -33,6 +33,9 @@ public:
 	};
 
 private:
+	void update( float elapsedTime );
+	void bindParticles();
+
 	struct ParticleData
 	{
 		XMFLOAT3 position;
@@ -49,6 +52,10 @@ private:
 	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
 
 	DMComputeShader m_computeShader;
+	std::string m_heightMap;
+	std::string m_material;
+	std::string m_texture;
+	bool m_initialized = false;
 
 };
 

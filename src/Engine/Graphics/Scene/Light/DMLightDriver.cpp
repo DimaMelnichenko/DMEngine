@@ -21,11 +21,6 @@ bool DMLightDriver::Initialize()
 	return true;
 }
 
-void DMLightDriver::addLight( DMLight&& light )
-{
-	m_light_list.push_back( std::move(light) );
-}
-
 uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 {	
 	LightBuffer lightBuffer;
@@ -69,14 +64,16 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
  }
 
 
-DMLightDriver::LightList& DMLightDriver::lights()
-{
-	return m_light_list;
-}
-
 bool DMLightDriver::loadFromFile( const std::string& file )
 {
 	ResourceMetaFile lightFile( file );
+
+	// Без секции [Ambient] остаются значения по умолчанию
+	XMFLOAT3 color;
+	if( strToVec3( lightFile.get<std::string>( "Ambient", "SkyColor" ), color ) )
+		m_ambientSkyColor = color;
+	if( strToVec3( lightFile.get<std::string>( "Ambient", "GroundColor" ), color ) )
+		m_ambientGroundColor = color;
 
 	try
 	{
@@ -96,7 +93,7 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 
 			light.setColor( vec );
 
-			if( strToVec3( lightFile.get<std::string>( section, "Position" ), vec ) )
+			if( !strToVec3( lightFile.get<std::string>( section, "Position" ), vec ) )
 				return false;
 
 			light.m_transformBuffer.setPosition( vec );
@@ -113,4 +110,14 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 	}
 
 	return true;
+}
+
+const XMFLOAT3& DMLightDriver::ambientSkyColor() const
+{
+	return m_ambientSkyColor;
+}
+
+const XMFLOAT3& DMLightDriver::ambientGroundColor() const
+{
+	return m_ambientGroundColor;
 }

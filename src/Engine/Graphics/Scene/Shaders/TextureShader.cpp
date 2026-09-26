@@ -20,11 +20,6 @@ bool TextureShader::innerInitialize()
 	return true;
 }
 
-bool TextureShader::Prepare()
-{
-	return DMShader::setPass( 0 );
-}
-
 std::vector<D3D11_INPUT_ELEMENT_DESC> TextureShader::initLayouts()
 {
 	D3D11_INPUT_ELEMENT_DESC polygonLayout;

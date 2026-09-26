@@ -5,7 +5,6 @@
 // INCLUDES //
 //////////////
 #include <windows.h>
-#include <map>
 #include <unordered_map>
 #include <memory>
 
@@ -14,24 +13,14 @@
 ///////////////////////
 
 #include "Utils\DMTimer.h"
-#include "Utils\dmcpu.h"
-#include "Utils\dmfps.h"
 
 #include "System.h"
 
-#include "Scene\VertexPool.h"
 #include "Config\Config.h"
-#include "Light\DMLightDriver.h"
-#include "D3D\DMSamplerState.h"
-#include "Camera\CameraController.h"
-#include "Terrain\DMTerrain.h"
 #include "ObjectLibrary\LibraryLoader.h"
 #include "GUI\GUI.h"
-
-
-#include "Particle\DMParticleSystem.h"
-#include "Scene\Scatterer\Scatterer.h"
-#include "Scene/TerrainTesselation/Terrain.h"
+#include "Scene\Scene.h"
+#include "Renderer.h"
 
 namespace GS
 {
@@ -54,12 +43,8 @@ public:
 	LRESULT HandleMsg( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
 
 private:
-	bool Render();
-	bool renderSky();
-	void ComputePass();
-	void preparePipeline();
-	void grassRendering();
-	void particleRendering();
+	// Кадр: сначала Scene::update() меняет состояние сцены на CPU, затем Render() только отправляет команды GPU
+	bool Render( const FrameContext& frame );
 
 	void bindingKeys();
 
@@ -69,29 +54,20 @@ private:
 	HWND m_hwnd;
 
 	std::unordered_map<std::string, DMCamera> m_cameraPool;
-	VertexPool m_vertexPool;
-	
+
 	DMTimer m_timer;
 	Config m_config;
-	DMLightDriver m_lightDriver;
-	DMSamplerState m_samplerState;
-
-	using RenderQueue = std::vector<const DMModel::LodBlock*>;
-	std::unordered_map<uint32_t, RenderQueue> m_renderQueues;
-
-	CameraController m_cameraController;
-	DMTerrain m_terrain;
-	DMTerrain m_water;
-	std::unordered_map<std::string, bool> m_visible;
 	LibraryLoader m_library;
 
-	Terrain m_tessTerrain;
-
-private:
-	DMParticleSystem m_particleSystem;
-	Scatterer m_grass;
+	Scene m_scene;
 	GUI m_GUI;
+	Renderer m_renderer;
+
 	bool m_cursorMode = false;
+	bool m_wireframe = false;
+	bool m_showGUI = true;
+	// Время отрисовки GUI в прошлом кадре, мкс: текущее станет известно только после GUI
+	uint64_t m_guiRenderTime = 0;
 };
 
 }

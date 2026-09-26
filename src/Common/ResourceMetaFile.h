@@ -17,8 +17,7 @@ public:
 	template<>
 	std::string get( const std::string& block, const std::string& param )
 	{
-		static char buffer[1024];
-		memset( buffer, 0, sizeof( char ) * 1024 );
+		char buffer[1024] = {};
 		GetPrivateProfileString( block.data(), param.data(), "", buffer, 1024, m_fileName.data() );
 		return std::string( buffer );
 	}

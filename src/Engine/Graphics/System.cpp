@@ -51,15 +51,6 @@ MaterialStorage& System::materials()
 	return *m_materialStorage;
 }
 
-System::System()
-{
-}
-
-
-System::~System()
-{
-}
-
 void System::destroy()
 {
 	m_textureStorage.reset();

@@ -21,28 +21,17 @@ public:
 	void Initialize( CameraType, float width, float height, float _near, float depth, float fieldOfView = 0.7853981f/*PI/4*/ );
 
 	void SetPosition( float, float, float );
-	void SetPosition( const XMFLOAT3& );
 	void SetRotation( float, float, float );
-	void SetDirection( const XMFLOAT3& );
-	void SetDirection( float, float, float );
 	void Update( float elapsedTime, bool cursorMode = false );
-	void RenderReflection( float heigh );
 
 	const XMFLOAT3& position( ) const;
 	void position( XMFLOAT3* ) const;
 	void position( XMVECTOR& ) const;
-	XMFLOAT3 GetRotation( ) const;
 	
 	void viewMatrix( XMMATRIX* ) const;
-	const XMMATRIX& viewMatrix() const;
 
 	void projectionMatrix( XMMATRIX* ) const;
-	const XMMATRIX& projectionMatrix( ) const;
-	
-	void GetReflectionViewMatrix( XMMATRIX& ) const;
 	void viewDirection( XMFLOAT3* ) const;	
-
-	CameraType type() const;
 
 	PropertyContainer m_properties;
 
@@ -57,7 +46,8 @@ private:
 	XMMATRIX m_projection_matrix;
 	XMFLOAT3 m_view_direction;
 	XMMATRIX m_mCameraWorld;
-
-	
+	// Последнее положение мыши: в режиме курсора (I) камера сохраняет поворот
+	double m_mouseX = 0.0;
+	double m_mouseY = 0.0;
 };
 

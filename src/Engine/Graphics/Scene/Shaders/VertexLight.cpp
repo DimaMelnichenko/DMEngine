@@ -84,16 +84,15 @@ bool VertexLight::innerInitialize()
 	return true;
 }
 
-bool VertexLight::Prepare()
-{
-	return DMShader::setPass(0);
-}
-
 void VertexLight::setParams( const PropertyContainer& params )
 {
-	DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( params["Albedo"].data<uint32_t>() )->srv() );
+	// Без параметра Albedo — заглушка: обращение к отсутствующему параметру бросает std::out_of_range
+	const uint32_t albedo = params.exists( "Albedo" ) ? params["Albedo"].data<uint32_t>() : 0;
+	DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( albedo )->srv() );
 
-	PSParam param;
+	// Значения по умолчанию для отсутствующих параметров: белый оттенок, без добавки окружения и цвета земли.
+	// Без них структура оставалась неинициализированной, и модель могла выйти чёрной
+	PSParam param = { XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f ), XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ), XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) };
 
 	if( params.exists( "Color" ) )
 	{	

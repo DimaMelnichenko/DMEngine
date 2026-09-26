@@ -40,7 +40,8 @@ float3 CookTorrance_GGX(float3 n, float3 l, float3 v, float3 f0, float roughness
     if (NL <= 0.0) 
 		return 0.0;
 		
-    float NV = dot(n, v);
+    // На силуэтах и у нормалей из карты нормалей dot(n, v) бывает ≤ 0: без ограничения деление ниже даёт бесконечность
+    float NV = max( dot(n, v), 1e-4 );
 	
    /* if (NV <= 0.0) 
 		return float3( 0.0,0.0,1.0 );*/
@@ -61,3 +62,14 @@ float3 CookTorrance_GGX(float3 n, float3 l, float3 v, float3 f0, float roughness
     return max(0.0, albedo * diffK * NL + specK );
 }
 
+// Аналитическая замена предынтегрированной таблицы BRDF для отражения окружения
+// (B. Karis, «Physically Based Shading on Mobile», 2014): доля отражённого света окружения по F0, roughness и N·V
+float3 EnvBRDFApprox( float3 specularColor, float roughness, float NV )
+{
+    const float4 c0 = float4( -1.0, -0.0275, -0.572, 0.022 );
+    const float4 c1 = float4( 1.0, 0.0425, 1.04, -0.04 );
+    float4 r = roughness * c0 + c1;
+    float a004 = min( r.x * r.x, exp2( -9.28 * NV ) ) * r.x + r.y;
+    float2 AB = float2( -1.04, 1.04 ) * a004 + r.zw;
+    return specularColor * AB.x + AB.y;
+}

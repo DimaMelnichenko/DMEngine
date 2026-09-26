@@ -12,7 +12,7 @@ struct InstanceParam
 	float scale;
 #endif
 #ifdef INST_ROTATE
-	float4 rotation;
+	float4 rotation;	// кватернион
 #endif
 #ifdef INST_TEX
 	float2 texCoord;
@@ -25,18 +25,28 @@ struct InstanceParam
 
 StructuredBuffer<InstanceParam> g_instanceData: register(t16);
 
+float3 rotateByQuaternion( float3 v, float4 q )
+{
+	return v + 2.0f * cross( q.xyz, cross( q.xyz, v ) + q.w * v );
+}
+
+// Направление (нормаль, касательная) поворачивается вместе с инстансом; масштаб одинаков по осям и его не меняет
+float3 calcInstanceDirection( float3 direction, uint instanceIndex )
+{
+#ifdef INST_ROTATE
+	return rotateByQuaternion( direction, g_instanceData[instanceIndex].rotation );
+#else
+	return direction;
+#endif
+}
+
 float3 calcInstance( float3 originPosition, uint instanceIndex )
 {
 	InstanceParam instanceItem = g_instanceData[instanceIndex];
 	float3 result = originPosition;
 
 #ifdef INST_ROTATE
-	float cosY = cos(instanceItem.rotation.y);
-	float sinY = sin(instanceItem.rotation.y);
-	float3x3 rotMat = {cosY, 0.0, -sinY, 
-						0.0, 1.0, 0.0, 
-						sinY, 0.0, cosY };
-	result = mul(result, rotMat);
+	result = rotateByQuaternion( result, instanceItem.rotation );
 #endif
 
 #ifdef INST_SCALE

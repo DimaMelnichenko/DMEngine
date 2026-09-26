@@ -47,8 +47,13 @@ PixelInputType main(VertexInputType input)
     output.position = mul(output.position, cb_viewMatrix);
     output.position = mul(output.position, cb_projectionMatrix);
 	
+	float3 normal = input.normal;
+	#if defined(INSTANCE_INCLUDE)
+		normal = calcInstanceDirection( normal, input.instanceIndex );
+	#endif
+
 	// Calculate the normal vector against the world matrix only.
-    float3 normal = normalize( mul(input.normal, (float3x3)cb_worldMatrix) );
+    normal = normalize( mul(normal, (float3x3)cb_worldMatrix) );
 	output.color = dot( normal, normalize(float3( 0.1, 0.5, -0.1 )));
 	output.color.a = 1.0f;
 	

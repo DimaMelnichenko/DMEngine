@@ -18,8 +18,6 @@ public:
 		st_cmp_less
 	};
 
-	ID3D11SamplerState* sampler( SamplerType type );
-
 	void setDefaultSmaplers();
 
 private:

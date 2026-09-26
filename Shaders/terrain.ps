@@ -1,68 +1,147 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Filename: terrain.ps
+// Материал террейна CDLOD (TerrainMaterial). Нормаль рельефа считается по карте высот, веса четырёх слоёв
+// берутся из каналов splat-карты. Слой — пара текстур из массивов: альбедо + высота и нормаль + шероховатость.
+// Текстура слоя проецируется сверху, а на крутых склонах ещё и вдоль осей X и Z (triplanar), поэтому на скалах
+// не растягивается. Слои смешиваются по высоте: где веса близки, видна более высокая текстура (камни из травы)
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "CommonLight.ps"
+#include "cdlod.sh"
 
-/////////////
-// GLOBALS //
-/////////////
-Texture2D shaderTexture;
-SamplerState SampleType;
+Texture2D g_splatMap : register( t1 );
+Texture2DArray g_albedoHeight : register( t2 );
+Texture2DArray g_normalRoughness : register( t3 );
+Texture2D g_noise : register( t4 );		// белый шум 256×256, R8_SNORM
 
-cbuffer LightBuffer
+static const uint layerCount = 4;
+static const float minWeight = 0.01f;	// слой или проекцию с меньшим вкладом не читаем
+
+struct LayerSample
 {
-	float4 ambientColor;
-	float4 diffuseColor;
-    float3 lightDirection;
-	float padding;
+	float3 albedo;
+	float  height;
+	float3 detail;		// отклонение нормали по карте нормалей, в мировых координатах
+	float  roughness;
 };
 
-
-//////////////
-// TYPEDEFS //
-//////////////
-struct PixelInputType
+// Нормаль рельефа: центральные разности в мипе карты высот, тексель которого примерно равен пикселю экрана.
+// Геометрия вдали грубее карты высот, но освещение по такой нормали остаётся детальным
+float3 terrainNormal( float2 worldXZ, float mip )
 {
-    float4 position : SV_POSITION;
-	float2 tex : TEXCOORD0;
-	float3 normal : NORMAL;
-};
+	float offset = g_texelSize * exp2( mip );
+	float left  = sampleHeight( worldXZ - float2( offset, 0.0f ), mip );
+	float right = sampleHeight( worldXZ + float2( offset, 0.0f ), mip );
+	float back  = sampleHeight( worldXZ - float2( 0.0f, offset ), mip );
+	float front = sampleHeight( worldXZ + float2( 0.0f, offset ), mip );
+	return normalize( float3( left - right, 2.0f * offset, back - front ) );
+}
 
-
-////////////////////////////////////////////////////////////////////////////////
-// Pixel Shader
-////////////////////////////////////////////////////////////////////////////////
-float4 TerrainPixelShader(PixelInputType input) : SV_TARGET
+// Веса проекций triplanar по нормали рельефа; малые отбрасываются
+float3 projectionWeights( float3 normal )
 {
-	float4 textureColor;
-	float3 lightDir;
-	float lightIntensity;
-	float4 color;
+	float3 weights = pow( abs( normal ), g_triplanarSharpness );
+	weights /= dot( weights, 1.0f );
+	weights *= step( minWeight, weights );
+	return weights / dot( weights, 1.0f );
+}
 
+// tangent и bitangent — направления роста u и v проекции в мире. Отклонение нормали добавляется к нормали рельефа
+// в плоскости проекции (UDN): для плоского участка это обычный normal mapping
+void addProjection( inout LayerSample result, float weight, float layer, float2 uv, float2 uvDX, float2 uvDY,
+					float3 tangent, float3 bitangent )
+{
+	float4 albedoHeight = g_albedoHeight.SampleGrad( g_SamplerAnisotropicWrap, float3( uv, layer ), uvDX, uvDY );
+	float4 normalRoughness = g_normalRoughness.SampleGrad( g_SamplerAnisotropicWrap, float3( uv, layer ), uvDX, uvDY );
+	float2 slope = normalRoughness.xy * 2.0f - 1.0f;
 
-	// Sample the pixel color from the texture using the sampler at this texture coordinate location.
-    textureColor = shaderTexture.Sample(SampleType, input.tex);
+	result.albedo += albedoHeight.rgb * weight;
+	result.height += albedoHeight.a * weight;
+	result.detail += ( tangent * slope.x + bitangent * slope.y ) * weight;
+	result.roughness += normalRoughness.a * weight;
+}
 
-	// Set the default output color to the ambient light value for all pixels.
-    color = ambientColor;
+// Производные позиции считаются до ветвлений: внутри них неявные производные не определены, поэтому SampleGrad
+LayerSample sampleLayer( uint layer, float3 position, float3 positionDX, float3 positionDY, float3 projection )
+{
+	LayerSample result = (LayerSample)0;
+	float scale = g_layerScale[layer];
 
-	// Invert the light direction for calculations.
-    lightDir = -lightDirection;
+	// Сверху: u вдоль X, v вдоль Z
+	[branch] if( projection.y > 0.0f )
+	{
+		addProjection( result, projection.y, layer, position.xz * scale, positionDX.xz * scale, positionDY.xz * scale,
+					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, 0.0f, 1.0f ) );
+	}
+	// Вдоль X: u вдоль Z, v вниз по Y, чтобы верх текстуры смотрел вверх
+	[branch] if( projection.x > 0.0f )
+	{
+		addProjection( result, projection.x, layer, float2( position.z, -position.y ) * scale,
+					   float2( positionDX.z, -positionDX.y ) * scale, float2( positionDY.z, -positionDY.y ) * scale,
+					   float3( 0.0f, 0.0f, 1.0f ), float3( 0.0f, -1.0f, 0.0f ) );
+	}
+	// Вдоль Z: u вдоль X, v вниз по Y
+	[branch] if( projection.z > 0.0f )
+	{
+		addProjection( result, projection.z, layer, float2( position.x, -position.y ) * scale,
+					   float2( positionDX.x, -positionDX.y ) * scale, float2( positionDY.x, -positionDY.y ) * scale,
+					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, -1.0f, 0.0f ) );
+	}
 
-    // Calculate the amount of light on this pixel.
-    lightIntensity = saturate(dot(input.normal, lightDir));
+	return result;
+}
 
-	if(lightIntensity > 0.0f)
-    {
-        // Determine the final diffuse color based on the diffuse color and the amount of light intensity.
-        color += (diffuseColor * lightIntensity);
-    }
+// Смешивание по высоте (A. Mishkinis, «Advanced Terrain Texture Splatting»): к весу слоя из splat-карты
+// прибавляется высота его текстуры, и виден только тот слой, чья сумма не ниже максимума больше чем на g_heightBlendDepth
+float4 heightBlend( float4 splat, float4 heights )
+{
+	float4 level = splat + heights;
+	float threshold = max( max( level.x, level.y ), max( level.z, level.w ) ) - g_heightBlendDepth;
+	float4 blend = max( level - threshold, 0.0f ) * step( minWeight, splat );
+	return blend / max( dot( blend, 1.0f ), 1e-5f );
+}
 
-    // Saturate the final light color.
-    color = saturate(color);
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	float3 position = input.worldPosition;
+	float3 positionDX = ddx( position );
+	float3 positionDY = ddy( position );
 
-	// Multiply the texture pixel and the final light color to get the result.
-    color = color * textureColor;
+	float footprint = max( length( positionDX.xz ), length( positionDY.xz ) );
+	float3 normal = terrainNormal( position.xz, max( log2( footprint / g_texelSize ), 0.0f ) );
+	float3 projection = projectionWeights( normal );
 
-    return color;
+	float4 splat = g_splatMap.Sample( g_SamplerLinearClamp, input.uv );
+	splat /= max( dot( splat, 1.0f ), 1e-5f );
+
+	LayerSample layers[layerCount];
+	float4 heights = 0.0f;
+	[unroll] for( uint i = 0; i < layerCount; ++i )
+	{
+		layers[i] = (LayerSample)0;
+		[branch] if( splat[i] > minWeight )
+		{
+			layers[i] = sampleLayer( i, position, positionDX, positionDY, projection );
+		}
+		heights[i] = layers[i].height;
+	}
+
+	float4 blend = heightBlend( splat, heights );
+	LayerSample surface = (LayerSample)0;
+	[unroll] for( uint j = 0; j < layerCount; ++j )
+	{
+		surface.albedo += layers[j].albedo * blend[j];
+		surface.detail += layers[j].detail * blend[j];
+		surface.roughness += layers[j].roughness * blend[j];
+	}
+
+	// Крупные пятна яркости (тексели шума по 40 и 13 м), чтобы вдали не было заметно повторение текстур
+	float variation = g_noise.Sample( g_SamplerLinearWrap, position.xz / 10240.0f ).r * 0.6f +
+					  g_noise.Sample( g_SamplerLinearWrap, position.xz / 3328.0f ).r * 0.4f;
+	float3 albedo = surface.albedo * ( 1.0f + 0.15f * variation );
+
+	float3 n = normalize( normal + surface.detail );
+	float3 v = normalize( cb_cameraPosition - position );
+	float3 color = CookTorrance_GGX_all_light( n, v, 0.04f, albedo, surface.roughness, position ) + albedo * ambientHemisphere( n );
+
+	return float4( tonemapReinhard( color, 0.3f ), 1.0f );
 }

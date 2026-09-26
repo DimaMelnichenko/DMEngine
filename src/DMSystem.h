@@ -2,7 +2,6 @@
 
 #include <windows.h>
 #include <memory>
-#include "Engine/DMEngineProcessor.h"
 #include "Engine\Graphics\DMGraphics.h"
 #include "Config\Config.h"
 
@@ -12,7 +11,7 @@ class DMSystem
 public:
 	DMSystem();
 	~DMSystem();
-	bool Initialize();
+	bool Initialize( const char* commandLine );
 	void Run();
 
 	static LRESULT CALLBACK proxyWndProc( HWND, UINT, WPARAM, LPARAM );
@@ -28,7 +27,6 @@ private:
 	LPCSTR m_applicationName;
 	HINSTANCE m_hinstance;
 	HWND m_hwnd;
-	DMEngineProcessor m_engineProcessor;
 	GS::DMGraphics m_graphics;
 	Config m_config;
 	bool m_exit;

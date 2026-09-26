@@ -39,7 +39,6 @@ private:
 	using Container = std::variant<bool, float, XMFLOAT2, XMFLOAT3, XMFLOAT4, int32_t, uint32_t>;
 public:
 	Property();
-    Property( const std::string& name );
 
 	template<class TYPE>
 	Property( const std::string& name, const TYPE& value ) : m_name(name), m_value(value)
@@ -63,12 +62,16 @@ public:
 	}
 
 	template<class TYPE>
+	const TYPE* dataPtr() const
+	{
+		return std::get_if<TYPE>( &m_value );
+	}
+
+	template<class TYPE>
 	void setData( const TYPE& value )
 	{
 		m_value = value;
 	}
-
-	const std::string& name() const;
 	float low() const;
 	float high() const;
 	GUIControlType controlType();

@@ -1,0 +1,49 @@
+#pragma once
+
+#include <vector>
+#include "SceneObject.h"
+#include "Sky\SkySphere.h"
+#include "Terrain\CDLODTerrain.h"
+#include "Model\ModelQueues.h"
+#include "Scatterer\Scatterer.h"
+#include "Particle\DMParticleSystem.h"
+#include "Light\DMLightDriver.h"
+#include "ObjectLibrary\LibraryLoader.h"
+
+namespace GS
+{
+
+// Содержимое уровня: ресурсы из base.db3, объекты сцены и свет. Состав уровня — строка таблицы Levels
+// (террейн, небо, трава, частицы) и его модели из LevelModels. Объекты рисуются в порядке objects() внутри
+// своего прохода; объект, которого у уровня нет, остаётся неинициализированным и ничего не делает
+class Scene
+{
+public:
+	// Загружает материалы, состав уровня levelName (пустое имя — первый уровень), его модели и текстуры
+	bool loadResources( LibraryLoader& library, const std::string& levelName );
+	// Создаёт объекты сцены и свет; вызывается после loadResources() и pipeline().init()
+	bool initialize();
+
+	void update( const FrameContext& frame );
+
+	const std::vector<SceneObject*>& objects() const;
+	DMLightDriver& lights();
+
+	CDLODTerrain& terrain();
+	// Наборы расстановки уровня: трава, камешки
+	const std::vector<std::unique_ptr<Scatterer>>& scatterers() const;
+
+private:
+	LevelDescription m_level;
+	DMLightDriver m_lightDriver;
+
+	SkySphere m_sky;
+	CDLODTerrain m_terrain;
+	ModelQueues m_models;
+	std::vector<std::unique_ptr<Scatterer>> m_scatterers;
+	DMParticleSystem m_particles;
+
+	std::vector<SceneObject*> m_objects;
+};
+
+}

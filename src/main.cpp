@@ -6,7 +6,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pScmdline
 	// Create the system object.	test 2
 	DMSystem system;
 	// Initialize and run the system object.
-	bool result = system.Initialize();
+	bool result = system.Initialize( pScmdline );
 	if( result )
 	{
 		system.Run( );

@@ -18,6 +18,8 @@ cbuffer FrameConstantBuffer : register( b0 )
 	float  cb_elapsedTime;
 	float  cb_lightCount;
 	float3 fcb_dump;
+	float4 cb_ambientSkyColor;
+	float4 cb_ambientGroundColor;
 };
 
 cbuffer WorldBuffer : register( b1 )

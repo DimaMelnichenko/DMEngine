@@ -1,8 +1,10 @@
 #include "DMParticleSystem.h"
 #include <random>
+#include "System.h"
 
 
-DMParticleSystem::DMParticleSystem()
+DMParticleSystem::DMParticleSystem() :
+	SceneObject( "Particles", GS::RenderPass::transparent )
 {
 }
 
@@ -11,8 +13,13 @@ DMParticleSystem::~DMParticleSystem()
 {
 }
 
-bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size )
+bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size, const std::string& heightMap,
+								   const std::string& material, const std::string& texture )
 {
+	m_heightMap = heightMap;
+	m_material = material;
+	m_texture = texture;
+
 	std::mt19937 gen( 0 );
 
 	std::uniform_real_distribution<> urd_x( 0, 100 );
@@ -89,7 +96,6 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 	memset( &uavDesc, 0, sizeof( uavDesc ) );
 	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
 	uavDesc.Buffer.FirstElement = 0;
-	//desc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_APPEND;
 	uavDesc.Format = DXGI_FORMAT_UNKNOWN;      // Format must be must be DXGI_FORMAT_UNKNOWN, when creating a View of a Structured Buffer
 	uavDesc.Buffer.NumElements = m_max_count;
 
@@ -120,6 +126,7 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 	prop->setHigh( 200.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
+	m_initialized = true;
 
 	return true;
 }
@@ -139,8 +146,38 @@ void DMParticleSystem::update( float elapsedTime )
 	m_computeShader.Dispatch( m_max_count, elapsedTime );
 }
 
-void DMParticleSystem::Render()
-{	
+void DMParticleSystem::compute( const GS::FrameContext& frame )
+{
+	if( !m_initialized )
+		return;
+
+	// Высота, на которой частица гибнет, отсчитывается от террейна: шейдер читает карту высот из t0
+	DMD3D::instance().setSRV( SRVType::cs, 0, GS::System::textures().get( m_heightMap )->srv() );
+	update( frame.elapsedTime );
+}
+
+void DMParticleSystem::render( const GS::FrameContext& frame )
+{
+	if( !m_initialized || !GS::System::materials().exists( m_material ) )
+		return;
+
+	GS::DMShader* shader = GS::System::materials().get( m_material )->m_shader.get();
+	shader->setPass( 0 );
+	shader->setDrawType( GS::DMShader::by_vertex );
+
+	bindParticles();
+	DMD3D::instance().setSRV( SRVType::ps, 0, GS::System::textures().get( m_texture )->srv() );
+	shader->render( particleCount(), 0, 0 );
+	DMD3D::instance().GetDeviceContext()->GSSetShader( nullptr, nullptr, 0 );
+}
+
+PropertyContainer* DMParticleSystem::properties()
+{
+	return &m_propertyContainer;
+}
+
+void DMParticleSystem::bindParticles()
+{
 	ID3D11ShaderResourceView* srv = m_srvParticles.get();
 	DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 5, 1, &srv );
 
@@ -150,35 +187,7 @@ void DMParticleSystem::Render()
 	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( nullptr, DXGI_FORMAT_R32_UINT, 0 );
 }
 
-void DMParticleSystem::generate()
-{
-	//ID3D11ShaderResourceView* srv = m_SRV_0.get();
-	//DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 5, 1, &srv );
-
-	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
-
-	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 0, nullptr, 0, 0 );
-	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( nullptr, DXGI_FORMAT_R32_UINT, 0 );
-
-	unsigned int offset = 0;
-	ID3D11Buffer* buffers[] = { m_structuredBuffer.get() };
-	DMD3D::instance().GetDeviceContext()->SOSetTargets( 1, buffers, &offset );
-}
-
-void DMParticleSystem::after_generate()
-{
-	unsigned int offset = 0;
-	ID3D11Buffer* buffers[] = { nullptr };
-	DMD3D::instance().GetDeviceContext()->SOSetTargets( 1, buffers, &offset );
-}
-
 unsigned int DMParticleSystem::particleCount()
 {
 	return  m_max_count;
-}
-
-XMMATRIX* DMParticleSystem::resultMatrix()
-{
-	m_world_matrix = XMMatrixIdentity();
-	return &m_world_matrix;
 }

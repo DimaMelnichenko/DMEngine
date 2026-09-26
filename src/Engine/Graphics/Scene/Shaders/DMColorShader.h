@@ -17,8 +17,6 @@ private:
 public:
 	DMColorShader();
 	~DMColorShader();
-
-	bool Prepare();
 	void setParams( const PropertyContainer& ) override;
 
 private:

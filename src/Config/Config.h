@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include "DirectX.h"
 
 class Config
 {
@@ -8,6 +9,8 @@ public:
 	~Config();
 
 	bool readConfig( const std::string& file );
+	// Параметры командной строки поверх settings.ini: -camera x,y,z[,pitch,yaw], -level имя, -nogui
+	void parseCommandLine( const std::string& commandLine );
 
 	bool fullScreen() const		{ return m_FullScreen; }
 	bool vSync() const			{ return m_VSync; }
@@ -24,6 +27,13 @@ public:
 		return m_backBufferHeight;
 	}
 	uint16_t MSAACount() const{ return m_MSAACount; }
+	// Стартовая камера: положение и поворот (тангаж, рыскание) в градусах, секция [Camera]
+	const XMFLOAT3& cameraPosition() const	{ return m_cameraPosition; }
+	const XMFLOAT2& cameraRotation() const	{ return m_cameraRotation; }
+	// Уровень из таблицы Levels (секция [Level], Name); пустое имя — первый уровень таблицы
+	const std::string& levelName() const	{ return m_levelName; }
+	// Показывать окна ImGui; -nogui скрывает их, например для снимков экрана
+	bool showGUI() const					{ return m_showGUI; }
 
 private:
 	bool m_FullScreen = false;
@@ -35,6 +45,10 @@ private:
 	float m_backBufferWidth = 1920.0f;
 	float m_backBufferHeight = 1080.0f;
 	uint16_t m_MSAACount = 0;
+	XMFLOAT3 m_cameraPosition = XMFLOAT3( 0.0f, 0.0f, -1.0f );
+	XMFLOAT2 m_cameraRotation = XMFLOAT2( 0.0f, 0.0f );
+	std::string m_levelName;
+	bool m_showGUI = true;
 
 };
 

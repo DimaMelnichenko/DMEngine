@@ -15,6 +15,8 @@ ScatterPass::~ScatterPass()
 
 bool ScatterPass::createBuffers()
 {
+	m_populateParams.capacity = static_cast<uint32_t>( m_maxVertexNum );
+
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( PopulateParams ), m_populateParamsBuffer, nullptr ) )
 		return false;
 
@@ -42,9 +44,11 @@ bool ScatterPass::createBuffers()
 		return false;
 	}
 
+	// Обычный RWStructuredBuffer: место под инстанс шейдер берёт из счётчика в indirect-аргументах
+	// и проверяет ёмкость, append-буфер ёмкость не ограничивал бы
 	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
 	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
-	uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_APPEND;
+	uavDesc.Buffer.Flags = 0;
 	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
 	uavDesc.Buffer.FirstElement = 0;
 	uavDesc.Buffer.NumElements = m_maxVertexNum;
@@ -61,7 +65,12 @@ bool ScatterPass::createBuffers()
 	desc.ByteWidth = 4 * 5;
 	desc.StructureByteStride = 4;
 	desc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS | D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
-	if( !DMD3D::instance().CreateBuffer( &desc, nullptr, m_populateBuffers.m_argsBuffer ) )
+	// Нули: пока расчёт травы (клавиша 3) не запускался, отрисовка по этим аргументам не рисует ничего.
+	// Без начальных данных содержимое буфера не определено, и число инстансов могло оказаться любым
+	const uint32_t emptyArgs[5] = {};
+	D3D11_SUBRESOURCE_DATA argsData = {};
+	argsData.pSysMem = emptyArgs;
+	if( !DMD3D::instance().CreateBuffer( &desc, &argsData, m_populateBuffers.m_argsBuffer ) )
 		return false;
 
 	viewDesc.Format = DXGI_FORMAT_R32_TYPELESS;;
@@ -83,6 +92,8 @@ bool ScatterPass::createBuffers()
 	{
 		return false;
 	}
+
+	return true;
 }
 
 void ScatterPass::setInstanceParameters( DMComputeShader& shader, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset )
@@ -103,7 +114,7 @@ void ScatterPass::setInstanceParameters( DMComputeShader& shader, uint32_t index
 	shader.Dispatch( 1, 1, 0.0 );
 }
 
-void ScatterPass::populate( DMComputeShader& shader )
+void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
 {
 	Device::updateResourceData<PopulateParams>( m_populateParamsBuffer.get(), m_populateParams );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
@@ -111,8 +122,7 @@ void ScatterPass::populate( DMComputeShader& shader )
 	shader.setUAVBuffer( 0, m_populateBuffers.m_uavArgs.get() );
 	shader.setUAVBuffer( 1, m_populateBuffers.m_uavVertex.get() );
 
-	shader.Dispatch( 512, 512, 0.0 );
-	//m_computeShader.Dispatch( 50, 50, 0.0 );
+	shader.Dispatch( gridDim, gridDim, 0.0f );
 }
 
 const com_unique_ptr<ID3D11ShaderResourceView>& ScatterPass::structuredBuffer()

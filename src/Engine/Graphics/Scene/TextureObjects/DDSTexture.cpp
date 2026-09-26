@@ -19,11 +19,6 @@ DDSTexture::~DDSTexture()
 {
 }
 
-const ScratchImage& DDSTexture::image() const
-{
-	return m_image;
-}
-
 bool DDSTexture::createSRV()
 {
 	ID3D11ShaderResourceView* srv = nullptr;
@@ -47,7 +42,7 @@ uint32_t DDSTexture::height() const
 
 uint32_t DDSTexture::width() const
 {
-	return m_image.GetMetadata().height;
+	return m_image.GetMetadata().width;
 }
 
 const com_unique_ptr<ID3D11ShaderResourceView>& DDSTexture::srv() const

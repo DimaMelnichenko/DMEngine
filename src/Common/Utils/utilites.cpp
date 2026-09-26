@@ -1,15 +1,6 @@
 #include "utilites.h"
 #include <charconv>
 
-void delete_com( IUnknown* p )
-{
-	if( p )
-	{
-		p->Release();
-		p = nullptr;
-	}
-}
-
 
 
 void str_split( const std::string& str, std::vector<std::string>& tokens, const std::string& delimiters )
@@ -24,12 +15,23 @@ void str_split( const std::string& str, std::vector<std::string>& tokens, const 
 	}
 }
 
+std::wstring utf8ToWide( const std::string& str )
+{
+	if( str.empty() )
+		return {};
+
+	int size = MultiByteToWideChar( CP_UTF8, 0, str.data(), static_cast<int>( str.size() ), nullptr, 0 );
+	std::wstring result( size, L'\0' );
+	MultiByteToWideChar( CP_UTF8, 0, str.data(), static_cast<int>( str.size() ), result.data(), size );
+	return result;
+}
+
 bool strToVec2( const std::string& str, XMFLOAT2& vector )
 {
 	std::vector<std::string> vecString;
-	str_split( str, vecString, "," );
+	str_split( str, vecString, ", \t" );
 
-	if( vecString.empty() )
+	if( vecString.size() < 2 )
 		return false;
 
 	if( auto[p, ec] = std::from_chars( vecString[0].data(), vecString[0].data() + vecString[0].size(), vector.x ); ec != std::errc() )
@@ -43,9 +45,9 @@ bool strToVec2( const std::string& str, XMFLOAT2& vector )
 bool strToVec3( const std::string& str, XMFLOAT3& vector )
 {
 	std::vector<std::string> vecString;
-	str_split( str, vecString, "," );
+	str_split( str, vecString, ", \t" );
 
-	if( vecString.empty() )
+	if( vecString.size() < 3 )
 		return false;
 
 	if( auto[p, ec] = std::from_chars( vecString[0].data(), vecString[0].data() + vecString[0].size(), vector.x ); ec != std::errc() )
@@ -61,9 +63,9 @@ bool strToVec3( const std::string& str, XMFLOAT3& vector )
 bool strToVec4( const std::string& str, XMFLOAT4& vector )
 {
 	std::vector<std::string> vecString;
-	str_split( str, vecString, "," );
+	str_split( str, vecString, ", \t" );
 
-	if( vecString.empty() )
+	if( vecString.size() < 4 )
 		return false;
 		
 	if( auto[p, ec] = std::from_chars( vecString[0].data(), vecString[0].data() + vecString[0].size(), vector.x ); ec != std::errc() ) 
@@ -76,16 +78,6 @@ bool strToVec4( const std::string& str, XMFLOAT4& vector )
 		return false;
 
 	return true;
-}
-
-std::string vec2ToStr( const XMFLOAT2& vec )
-{
-	return std::to_string( vec.x ) + "," + std::to_string( vec.y );
-}
-
-std::string vec3ToStr( const XMFLOAT3& vec )
-{
-	return std::to_string( vec.x ) + "," + std::to_string( vec.y ) + "," + std::to_string( vec.z );
 }
 
 std::string vec4ToStr( const XMFLOAT4& vec )

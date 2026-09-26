@@ -15,13 +15,14 @@ DMSystem::~DMSystem()
 	ShutdownWindows( );
 }
 
-bool DMSystem::Initialize( )
+bool DMSystem::Initialize( const char* commandLine )
 {
 	int16_t screenWidth = 0;
 	int16_t	screenHeight = 0;
 	bool result = true;
 
 	m_config.readConfig(".\\settings.ini");
+	m_config.parseCommandLine( commandLine ? commandLine : "" );
 
 	// Initialize the windows api.
 	InitializeWindows( screenWidth, screenHeight );
@@ -46,41 +47,38 @@ bool DMSystem::Initialize( )
 void DMSystem::Run( )
 {
 	MSG msg;
-	bool result = true;
+	bool quit = false;
 
 	// Initialize the message structure.
 	ZeroMemory( &msg, sizeof( MSG ) );
 	while( true )
 	{
-		// Handle the windows messages.
-		if( PeekMessage( &msg, nullptr, 0, 0, PM_REMOVE ) )
+		// Handle all pending windows messages before rendering the next frame.
+		while( PeekMessage( &msg, nullptr, 0, 0, PM_REMOVE ) )
 		{
+			if( msg.message == WM_QUIT )
+			{
+				quit = true;
+				break;
+			}
 			TranslateMessage( &msg );
 			DispatchMessage( &msg );
 		}
 
 		// If windows signals to end the application then exit out.
-		if( msg.message == WM_QUIT || m_exit )
+		if( quit || m_exit )
 		{
 			m_graphics.beforeExit();
 			break;
 		}
-		else
-		{
-			if( !getInput().Frame() )
-				break;
 
-			// Frame processing.
-			if( !m_graphics.Frame() )
-			{
-				break;
-			}
-		}
+		if( !getInput().Frame() )
+			break;
 
+		// Frame processing.
+		if( !m_graphics.Frame() )
+			break;
 	}
-
-	return ;
-
 }
 
 
@@ -115,17 +113,9 @@ LRESULT DMSystem::wndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 	if( ImGui_ImplWin32_WndProcHandler( hWnd, uMsg, wParam, lParam ) )
 		return true;
 
+	// Escape is handled by the DirectInput trigger registered in Initialize().
 	switch( uMsg )
 	{
-		case WM_KEYDOWN:
-		{
-			if( wParam == VK_ESCAPE )
-			{
-				DestroyWindow( hWnd );
-				return 0;
-			}
-		}
-		break;
 		case WM_DESTROY:
 			PostQuitMessage( 0 );
 			return 0;			

@@ -25,7 +25,6 @@ void GUI::Initialize( HWND hwnd )
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
 
 	ImGui_ImplWin32_Init( hwnd );
 	ImGui_ImplDX11_Init( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext() );
@@ -39,16 +38,12 @@ void GUI::Initialize( HWND hwnd )
 
 void GUI::Begin()
 {
-	//static bool show_demo_window = true;
-	//static bool show_another_window = false;
 
 	DMD3D::instance().GetDeviceContext()->VSSetShader( nullptr, nullptr, 0 );
 	DMD3D::instance().GetDeviceContext()->GSSetShader( nullptr, nullptr, 0 );
 	DMD3D::instance().GetDeviceContext()->HSSetShader( nullptr, nullptr, 0 );
 	DMD3D::instance().GetDeviceContext()->DSSetShader( nullptr, nullptr, 0 );
 	DMD3D::instance().GetDeviceContext()->PSSetShader( nullptr, nullptr, 0 );
-
-	static ImVec4 clear_color = ImVec4( 0.45f, 0.55f, 0.60f, 1.00f );
 
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
@@ -71,28 +66,9 @@ void GUI::Frame()
 {
 	
 
-	// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-	//if( show_demo_window )
-	//	ImGui::ShowDemoWindow( &show_demo_window );
-
 	// 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
 	{
-		static float f = 0.0f;
-		static int counter = 0;
-
 		ImGui::Begin( "Statistic" );                          // Create a window called "Hello, world!" and append into it.
-
-		//ImGui::Text( "This is some useful text." );               // Display some text (you can use a format strings too)
-		//ImGui::Checkbox( "Demo Window", &show_demo_window );      // Edit bools storing our window open/close state
-		//ImGui::Checkbox( "Another Window", &show_another_window );
-
-		//ImGui::SliderFloat( "float", &f, 0.0f, 1.0f );            // Edit 1 float using a slider from 0.0f to 1.0f    
-		//ImGui::ColorEdit3( "clear color", (float*)&clear_color ); // Edit 3 floats representing a color
-
-		//if( ImGui::Button( "Button" ) )                            // Buttons return true when clicked (most widgets return true when edited/activated)
-		//	counter++;
-		//ImGui::SameLine();
-		//ImGui::Text( "counter = %d", counter );
 
 		ImGui::Text( "Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate );
 
@@ -106,27 +82,21 @@ void GUI::Frame()
 		ImGui::End();
 	}
 	renderTextureLibrary();
-	//renderMaterialLibrary();
 	//renderSceneObject();
 
 
 	showPropertiesTree();
 
-	// 3. Show another simple window.
-	/*if( show_another_window )
-	{
-		ImGui::Begin( "Another Window", &show_another_window );   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-		ImGui::Text( "Hello from another window!" );
-		if( ImGui::Button( "Close Me" ) )
-			show_another_window = false;
-		ImGui::End();
-	}
-	*/
 }
 
 void GUI::addCounterInfo( const std::string& text, float value )
 {
 	m_counterInfoList.emplace_back( text, value );
+}
+
+void GUI::skipFrame()
+{
+	clearAfterRender();
 }
 
 void GUI::clearAfterRender()
@@ -136,9 +106,7 @@ void GUI::clearAfterRender()
 
 void GUI::renderTextureLibrary()
 {
-	//static bool isOpen = false;
-	static float alphaOverride = 1.0;
-	ImGui::Begin( "Texture Library", nullptr, ImVec2( 256, 300 ), alphaOverride );
+	ImGui::Begin( "Texture Library", nullptr, ImVec2( 256, 300 ), 1.0f );
 	ImGui::BeginChild( "Scrolling" );
 	for( auto& item : GS::System::textures() )
 	{
@@ -146,22 +114,6 @@ void GUI::renderTextureLibrary()
 		ImGui::Text( "id:%d name:%s", item.first, item.second->name().data() );
 	}
 	ImGui::EndChild();
-	ImGui::End();
-}
-
-void GUI::renderMaterialLibrary()
-{
-	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-	ImGui::Begin( "Material Library", nullptr, ImVec2( 256, 300 ), 1.0 );
-	if( ImGui::TreeNode( "Material Tree" ) )
-	{
-		for( auto& pair : GS::System::materials() )
-		{
-			GS::Material* material = pair.second.get();
-			ImGui::TreeNodeEx( (void*)(intptr_t)pair.first, node_flags, material->name().data() );
-		}
-		ImGui::TreePop();
-	}
 	ImGui::End();
 }
 /*
@@ -317,6 +269,7 @@ void GUI::parsePropertiesAndCreateControls( PropertyContainer* propertyContainer
 				{
 					case GUIControlType::COLOR:
 						ImGui::ColorEdit3( name.data(), (float*)value );
+						break;
 					case GUIControlType::SLIDER:
 						ImGui::SliderFloat3( name.data(), (float*)value, property.low(), property.high() );
 						break;

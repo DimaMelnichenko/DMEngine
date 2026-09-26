@@ -1,40 +1,78 @@
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
 #include "DirectX.h"
 #include "Utils\utilites.h"
 #include "Shaders\DMComputeShader.h"
 #include "Model/DMModel.h"
 #include "ScattererPass.h"
+#include "SceneObject.h"
+#include "Terrain\TerrainHeightSource.h"
 
 namespace GS
 {
 
-class Scatterer
+// Набор расстановки по террейну: трава, цветы, камешки, веточки (таблица ScatterSets). Слой набора — LOD модели,
+// маска плотности и параметры (таблица ScatterLayers): каждый кадр compute-шейдер Shaders\scatter.cs раскладывает
+// инстансы слоя по сетке, привязанной к миру, в кольце вокруг камеры и отсекает их по frustum, отрисовка — indirect
+// draw. Высоту и координаты масок даёт TerrainHeightSource, поэтому набор не зависит от устройства террейна.
+// Проход отрисовки и отсечение граней — настройки набора: трава — прозрачный проход без отсечения граней, камни —
+// opaque. Расчёт и отрисовка всех наборов переключаются клавишами 3 и 4
+class Scatterer : public SceneObject
 {
 public:
-	Scatterer();
-	~Scatterer();
+	Scatterer( const std::string& name, RenderPass pass, bool twoSided );
 
 	bool Initialize();
-	bool addMesh( DMModel::LodBlock* );
+	void setTerrain( const TerrainHeightSource* terrain );
+	// Текстура цвета травы в слоте t1 пиксельного шейдера; пустое имя — не привязывать
+	void setColorTexture( const std::string& texture );
+	// mask — маска плотности в хранилище текстур, в координатах карты высот террейна
+	bool addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, const ScatterPass::PopulateParams& params );
 
-	void prerender();
-	void Render( uint16_t lod, uint16_t instanceSlot );
-	
-	uint16_t lodCount();
-	DMModel::LodBlock* lodBlock( uint16_t );
-	ID3D11ShaderResourceView* structuredBuffer( uint16_t lod );
-	ID3D11Buffer* indirectArgsBuffer( uint16_t lod );
-	
+	void compute( const FrameContext& frame ) override;
+	void render( const FrameContext& frame ) override;
+
+	void setComputeEnabled( bool enabled );
+	bool computeEnabled() const;
+
 private:
-	struct LodStruct
+	// cbuffer TerrainHeightBuffer в Shaders\terrain_height.sh
+	struct alignas( 16 ) TerrainParams
 	{
-		DMModel::LodBlock* lodBlock;
-		ScatterPass scatterPass;
+		float worldSize;
+		float heightMultipler;
+		float heightOffset;
+		float padding;
 	};
-	std::unordered_map<uint16_t, LodStruct> m_lods;
+
+	// cbuffer FrustumBuffer в Shaders\scatter.cs
+	struct FrustumParams
+	{
+		XMFLOAT4 planes[6];
+	};
+
+	struct Layer
+	{
+		DMModel::LodBlock* lodBlock = nullptr;
+		std::string mask;
+		std::unique_ptr<ScatterPass> pass;
+	};
+
+	// Больше потоков на слой не запускаем: при мелком шаге сетка покроет не всё кольцо, а только его середину
+	static constexpr uint16_t maxGridDim = 1024;
+
+	bool m_twoSided = false;
+	bool m_computeEnabled = true;
+	const TerrainHeightSource* m_terrain = nullptr;
+	std::string m_colorTexture;
+	std::vector<Layer> m_layers;
 	DMComputeShader m_computeShader;
 	DMComputeShader m_initShader;
+	com_unique_ptr<ID3D11Buffer> m_terrainBuffer;
+	com_unique_ptr<ID3D11Buffer> m_frustumBuffer;
 };
 
 }

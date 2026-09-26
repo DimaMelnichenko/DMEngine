@@ -38,11 +38,6 @@ Logger::~Logger()
 }
 
 
-void Logger::write( const std::string& message )
-{
-	m_fileOut << message << "\n";
-}
-
 void Logger::write( const char* function, long line, const std::string& message )
 {
 	m_fileOut << "func:" << function << ", line:" << line << "|" << message << std::endl;

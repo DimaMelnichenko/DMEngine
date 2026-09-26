@@ -238,7 +238,6 @@ bool DMSamplerState::initialize()
 	/////////////////////////////////////////////////////////////////////////////////
 	
 	memset( &sampler_desc, 0, sizeof( D3D11_SAMPLER_DESC ) );
-	//sampler_desc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
 	sampler_desc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR;
 	sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
 	sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
@@ -268,11 +267,6 @@ bool DMSamplerState::initialize()
 	}
 
 	return true;
-}
-
-ID3D11SamplerState* DMSamplerState::sampler( SamplerType type )
-{
-	return m_sampler_states[type].get();
 }
 
 void DMSamplerState::setDefaultSmaplers()

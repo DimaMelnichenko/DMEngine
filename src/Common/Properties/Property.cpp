@@ -10,18 +10,9 @@ Property::Property()
 
 }
 
-Property::Property( const std::string& name ) : m_name( name )
-{
-}
-
 ValueType Property::valueType()
 {
 	return static_cast<ValueType>( m_value.index() );
-}
-
-const std::string& Property::name() const
-{
-	return m_name;
 }
 
 float Property::low() const

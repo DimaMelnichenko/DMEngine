@@ -22,54 +22,11 @@ float GetAttenuation( float distance, float lightInnerR, float invLightOuterR )
 	return saturate(1.0 - pow(distance * invLightOuterR, 4.0)) / (distance * distance + 1.0);
 }
 
-float D_BlinnPhong( float roughness, float NdotH )
+// Окружающий свет полусферой (hemispheric ambient): цвет неба для направлений вверх, земли — вниз.
+// Цвета — секция [Ambient] в Scene\Lights.ini
+float3 ambientHemisphere( float3 direction )
 {
-   float a = max( 0.001f, roughness * roughness );
-   return ( 1.0f / (PI * a * a) ) * pow( NdotH, 2.0f / (a * a) - 2.0f );
-}
-
-
-float3 D_BlinnPhongAllLights( float3 n, float3 v, float3 worldPosition )
-{
-	float specSum = 0;
-	float3 duffuseSum = (float3)0;
-	
-	[loop]
-	for( int i = 0; i < cb_lightCount; i++ )
-	{
-		float3 l;
-		float fade;
-		
-		LightParam light = sb_lightVector[i];
-		
-		//if( light.type == 0 )
-		//{
-			l = normalize( light.lightPos );
-			fade = 1.00;
-		/*}
-		else
-		{
-			l = ( light.lightPos - worldPosition );
-			float dist = length( l );
-			l = normalize( l );
-			fade = GetAttenuation( dist, 0.0, light.attenuation );
-			//fade = 1.0 / (dist * light.attenuation);
-		}	*/
-		
-		//if( fade < 0.00001 )
-		//	continue;
-		float NdotL    = max( dot( n, l ), 0.0 );
-		float NdotV    = max( dot( n, v ), 0.0 );
-		float3 h = normalize(l + v);
-		float rougness = 0.999;
-		specSum += ( D_BlinnPhong( rougness, max( dot( n, h ), 0.0 ) ) * ( 4.0 * NdotL * NdotV ) );
-		
-		
-		float3 diffuse = ( max( dot( n, l ), 0.0f ) / PI );
-		duffuseSum += ( diffuse  * light.lightColor );
-	}
-	
-	return duffuseSum + specSum;
+	return lerp( cb_ambientGroundColor.rgb, cb_ambientSkyColor.rgb, saturate( direction.y * 0.5f + 0.5f ) );
 }
 
 
@@ -107,40 +64,6 @@ float3 CookTorrance_GGX_all_light( float3 n, float3 v, float3 F0, float3 albedo,
 	return result;
 }
 
-
-float specByPhong( float3 N, float3 L, float3 V, float roughness) 
-{
-  float3 H = normalize(L + V);
-  
-  float NdotL    = max( dot( N, L ), 0.0 );
-  float NdotV    = max( dot( N, V ), 0.0 );
-  float NdotH    = max( dot( N, H ), 1.0e-7 );
-  float VdotH    = max( dot( V, H ), 0.0 );
-  float LdotV    = max( dot( L, V ), 0.0 );
-  
-  //float r0 = lerp(0.004,0.7,specular);
-  float r = roughness;
-  
-  float D = 1;
-  
-  D = D_BlinnPhong(r, NdotH);
-  //D = D_Skyforge(r, NdotH);
-  //D = D_Beckmann(r, NdotH);
-  //D = D_GGX(r, NdotH);
-  
-  //float G = 1;
-  //G = G_Implicit(NdotV, NdotL);
-  //G = G_CookTorrance(NdotV, NdotL, NdotH, VdotH);
-  //G = G_Kelemen(NdotV, NdotL, LdotV);
-  //G = G_Smith(r, NdotV, NdotL);
-
-  
-  //float F = 1;
-  //F = F_Schlick(r0,      VdotH);
-  //F = F_CookTorrance(r0, VdotH);
-  
-  return max( D/( 4.0 * NdotL * NdotV ), 0.0 );
-}
 
 float3 tonemapReinhard(float3 x, float exposure )
 {

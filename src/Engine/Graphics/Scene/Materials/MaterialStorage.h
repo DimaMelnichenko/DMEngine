@@ -2,7 +2,7 @@
 
 #include <unordered_map>
 #include "Storage\DMResourceStorage.h"
-#include "MaterialLoader.h"
+#include "Material.h"
 
 namespace GS
 {
@@ -16,7 +16,6 @@ public:
 	bool createMaterial( uint32_t id, const std::string& name, const std::string& matClass );
 
 private:
-	MaterialLoader m_materialLoader;
 };
 
 }

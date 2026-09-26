@@ -15,6 +15,10 @@ template<typename ResourceType>
 class DMResourceStorage : public DMAbstractStorage
 {
 public:
+	// Слот 0 занимает заглушка: её возвращают get() и operator[] вместо отсутствующего ресурса.
+	// Id из base.db3 начинаются с 1, поэтому слот 0 с ними не пересекается.
+	static constexpr uint32_t placeholderId = 0;
+
 	DMResourceStorage( const std::string& path ) : m_path( path )
 	{
 	}
@@ -24,7 +28,7 @@ public:
 
 	ResourceType& operator[]( const std::string& name )
 	{
-		return m_storage[id( name )];
+		return get( id( name ) );
 	}
 
 	virtual bool load( const std::string& )
@@ -37,22 +41,33 @@ public:
 		return false;
 	}
 
+	// Если нет ни ресурса, ни заглушки, возвращается пустое значение; в хранилище ничего не добавляется
 	const ResourceType& get( uint32_t id ) const
 	{
-		return m_storage[id];
+		auto it = m_storage.find( id );
+		if( it == m_storage.end() )
+			it = m_storage.find( placeholderId );
+
+		static const ResourceType empty{};
+		return it != m_storage.end() ? it->second : empty;
 	}
 
 	ResourceType& get( uint32_t id )
 	{
-		return m_storage[id];
+		auto it = m_storage.find( id );
+		if( it == m_storage.end() )
+			it = m_storage.find( placeholderId );
+
+		static ResourceType empty{};
+		return it != m_storage.end() ? it->second : empty;
 	}
 
 	const ResourceType& get( const std::string& name )
 	{
 		if( !exists( name ) && !load(name) )
-			return m_storage[0];
+			return get( placeholderId );
 
-		return m_storage[id(name)];
+		return get( id( name ) );
 	}
 
 	uint32_t id( const std::string& name )
@@ -78,11 +93,6 @@ public:
 	bool exists( const std::string& name )
 	{
 		return m_name_to_index.count( name ) > 0;
-	}
-
-	bool clone( const std::string& name, const std::string& cloneName )
-	{
-		
 	}
 
 	bool insertResource( ResourceType&& resource )

@@ -17,8 +17,6 @@ public:
 		std::string inputSemantic;
 	};
 
-	LayoutItem* get( const std::string& );
-
 private:
 	std::unordered_map<std::string, LayoutItem> m_layouts;
 };
