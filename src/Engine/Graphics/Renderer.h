@@ -10,6 +10,7 @@
 #include "PostProcess.h"
 #include "D3D\GpuProfiler.h"
 #include "D3D\DMStructuredBuffer.h"
+#include "ShadowCascades.h"
 
 class GUI;
 
@@ -33,23 +34,33 @@ public:
 
 	// Рисует сцену в HDR-буфер и тонмаппинг в задний буфер; дальше DMGraphics рисует GUI и вызывает EndScene
 	void render( Scene& scene, const FrameContext& frame, bool wireframe );
-	// Свойства постобработки для GUI
+	// Свойства постобработки и теней для GUI
 	PropertyContainer* postProcessProperties();
+	PropertyContainer* shadowProperties();
 
 private:
 	struct DrawCommand;
 
 	void preparePipeline( Scene& scene, const FrameContext& frame );
 	// Меши и свои вызовы видимых объектов с вида
-	void collect( Scene& scene, const RenderView& view );
-	// Раскладка собранного по проходам: меши — по режиму материала, свои вызовы — по маске; сортировка
+	void collect( Scene& scene, const RenderView& view, MeshCollector& collector );
+	// Раскладка собранного с главного вида по проходам сцены: меши — по режиму материала, свои вызовы — по маске
 	void buildCommands();
+	// Раскладка для прохода глубины тени: меши, отбрасывающие тень (материал с вариантом «только глубина», не
+	// полупрозрачные), и свои вызовы с битом прохода
+	void buildShadowCommands();
+	// Каскады теней солнца — до проходов сцены: на каждый каскад сбор с его вида и глубина в срез карты
+	void renderShadows( Scene& scene, const FrameContext& frame );
 	void executePass( MeshPass pass, const RenderView& view, RasterState frameRaster );
-	// Единственное место, где рисуется MeshBatch: вариант шейдера, параметры, растеризатор, матрица, вызов
+	// Команды прохода сериями по объектам; measureOwners — строка времени CPU и GPU на каждую серию
+	void executeCommands( const MeshCollector& collector, const std::vector<DrawCommand>& commands,
+						  const RenderContext& context, bool measureOwners );
+	// Единственное место, где рисуется MeshBatch: вариант шейдера (в проходе теней — «только глубина»), параметры,
+	// растеризатор, матрица, вызов
 	void drawMesh( const MeshBatch& batch, const RenderContext& context );
 	// Команды first…last — один меш с одними параметрами: одним DrawIndexedInstanced с матрицами экземпляров в буфере
-	void drawMeshInstanced( const std::vector<DrawCommand>& commands, size_t first, size_t last,
-							const RenderContext& context );
+	void drawMeshInstanced( const std::vector<MeshBatch>& meshes, const std::vector<DrawCommand>& commands,
+							size_t first, size_t last, const RenderContext& context );
 
 	// Время CPU на отправку команд и область GPU-профайлера с тем же именем
 	template<typename Func>
@@ -69,7 +80,11 @@ private:
 		bool custom;
 	};
 	MeshCollector m_collector;
-	std::vector<DrawCommand> m_commands[meshPassCount];
+	std::vector<DrawCommand> m_commands[scenePassCount];
+	// Проход теней: свой сборщик и команды на каждый каскад
+	ShadowCascades m_shadows;
+	MeshCollector m_shadowCollector;
+	std::vector<DrawCommand> m_shadowCommands;
 
 	// Матрицы экземпляров инстансного вызова; раскладка — InstanceTransform в Shaders/instance.sh
 	struct InstanceTransform
@@ -83,6 +98,8 @@ private:
 	// За кадр: сколько мешей нарисовано и сколькими вызовами — видно, работает ли инстансинг
 	uint32_t m_meshCount = 0;
 	uint32_t m_meshDraws = 0;
+	uint32_t m_shadowMeshCount = 0;
+	uint32_t m_shadowDraws = 0;
 	DMSamplerState m_samplerState;
 	PostProcess m_postProcess;
 	GpuProfiler m_gpuProfiler;

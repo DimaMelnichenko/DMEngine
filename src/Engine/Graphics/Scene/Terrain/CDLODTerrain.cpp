@@ -143,8 +143,8 @@ bool CDLODTerrain::createShader()
 		return false;
 	}
 
-	// Проход 0 — материал террейна, проход 1 — раскраска по уровням LOD
-	return m_shader.createPhase( 0, 0 ) && m_shader.createPhase( 0, 1 );
+	// Проход 0 — материал террейна, 1 — раскраска по уровням LOD, 2 — только глубина (тени)
+	return m_shader.createPhase( 0, 0 ) && m_shader.createPhase( 0, 1 ) && m_shader.createPhase( 0, -1 );
 }
 
 bool CDLODTerrain::buildHeightBounds()
@@ -311,7 +311,8 @@ void CDLODTerrain::update( const FrameContext& frame )
 
 void CDLODTerrain::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
-	m_patches.clear();
+	std::vector<PatchInstance>& patches = m_patches[view.index];
+	patches.clear();
 	if( !m_initialized )
 		return;
 
@@ -320,15 +321,16 @@ void CDLODTerrain::collectMeshes( const RenderView& view, MeshCollector& collect
 	{
 		for( uint32_t x = 0; x < m_nodesPerSide[top]; ++x )
 		{
-			selectNode( view, top, x, z );
+			selectNode( view, top, x, z, patches );
 		}
 	}
 
-	if( !m_patches.empty() )
-		collector.addCustom( passBit( MeshPass::opaque ) );
+	if( !patches.empty() )
+		collector.addCustom( passBit( MeshPass::opaque ) | passBit( MeshPass::csmShadowDepth ) );
 }
 
-bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t x, uint32_t z )
+bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t x, uint32_t z,
+							   std::vector<PatchInstance>& patches )
 {
 	const NodeBox box = nodeBox( level, x, z );
 	const XMFLOAT3& cameraPosition = view.lodOrigin;
@@ -343,7 +345,7 @@ bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t 
 	if( level == 0 || !sphereIntersectsBox( cameraPosition, m_ranges[level - 1], box.min, box.max ) )
 	{
 		for( uint32_t quarter = 0; quarter < 4; ++quarter )
-			addPatch( level, x, z, quarter );
+			addPatch( level, x, z, quarter, patches );
 		return true;
 	}
 
@@ -356,30 +358,33 @@ bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t 
 		if( cx >= childCount || cz >= childCount )
 			continue;
 
-		if( !selectNode( view, level - 1, cx, cz ) )
-			addPatch( level, x, z, quarter );
+		if( !selectNode( view, level - 1, cx, cz, patches ) )
+			addPatch( level, x, z, quarter, patches );
 	}
 
 	return true;
 }
 
-void CDLODTerrain::addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t quarter )
+void CDLODTerrain::addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t quarter, std::vector<PatchInstance>& patches )
 {
 	const float size = nodeSize( level );
 	const float halfSize = size * 0.5f;
 	const XMFLOAT2 origin( x * size + ( quarter & 1 ) * halfSize, z * size + ( quarter >> 1 ) * halfSize );
 
-	if( origin.x >= m_worldSize || origin.y >= m_worldSize || m_patches.size() >= maxPatches )
+	if( origin.x >= m_worldSize || origin.y >= m_worldSize || patches.size() >= maxPatches )
 		return;
 
-	m_patches.push_back( { origin, halfSize, static_cast<float>( level ) } );
+	patches.push_back( { origin, halfSize, static_cast<float>( level ) } );
 }
 
 void CDLODTerrain::renderCustom( const RenderContext& context )
 {
+	// В проходе теней — только глубина: без каркаса, раскраски LOD, материала и ресурсов пиксельного шейдера
+	const bool shadow = context.pass == MeshPass::csmShadowDepth;
+	std::vector<PatchInstance>& patches = m_patches[context.view.index];
 
 	ScopedRenderState terrainState;
-	if( m_properties["Wireframe"].data<bool>() )
+	if( !shadow && m_properties["Wireframe"].data<bool>() )
 	{
 		DMD3D::instance().setState( RasterState::wireframe );
 	}
@@ -397,15 +402,18 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.heightBlendDepth = m_properties["Height blend"].data<float>();
 	} );
 	DMD3D::instance().setConstantBuffer( SRVType::vs, SLOT_CB_MATERIAL, m_constantBuffer );
-	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_constantBuffer );
 
-	m_patchBuffer.updateData( m_patches.data(), sizeof( PatchInstance ) * m_patches.size() );
+	m_patchBuffer.updateData( patches.data(), sizeof( PatchInstance ) * patches.size() );
 	m_patchBuffer.setToSlot( 1, SRVType::vs );
 
-	// Карта высот нужна и пиксельному шейдеру: по ней считается нормаль рельефа
 	DMD3D::instance().setSRV( SRVType::vs, 0, m_heightMap );
-	DMD3D::instance().setSRV( SRVType::ps, 0, m_heightMap );
-	m_material.bind();
+	if( !shadow )
+	{
+		// Карта высот нужна и пиксельному шейдеру: по ней считается нормаль рельефа
+		DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_constantBuffer );
+		DMD3D::instance().setSRV( SRVType::ps, 0, m_heightMap );
+		m_material.bind();
+	}
 
 	context.constants.setPerObjectBuffer( XMMatrixIdentity() );
 
@@ -416,8 +424,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_patch.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
 
-	m_shader.setPass( m_properties["Show LOD"].data<bool>() ? 1 : 0 );
-	m_shader.renderInstanced( m_patch.indexCount(), 0, 0, static_cast<int>( m_patches.size() ) );
+	m_shader.setPass( shadow ? 2 : m_properties["Show LOD"].data<bool>() ? 1 : 0 );
+	m_shader.renderInstanced( m_patch.indexCount(), 0, 0, static_cast<int>( patches.size() ) );
 }
 
 PropertyContainer* CDLODTerrain::properties()

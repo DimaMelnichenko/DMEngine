@@ -21,7 +21,9 @@ enum class RasterState
 	solid, frontCulling, noCulling, wireframe,
 	// Для зеркальных мешей (отрицательный определитель мировой матрицы): лицевые грани обходятся против часовой
 	// стрелки — меняются и отсечение, и признак SV_IsFrontFace, так что нормали двусторонних не разворачиваются зря
-	solidMirrored, noCullingMirrored
+	solidMirrored, noCullingMirrored,
+	// Глубина каскадов теней: без отсечения граней, наклонное смещение глубины, без отсечения по глубине (pancaking)
+	csmShadowDepth
 };
 
 enum class DepthState
@@ -102,6 +104,9 @@ public:
 	void setSceneTarget();		// HDR-буфер сцены и буфер глубины, область вывода на весь кадр
 	void setBackBufferTarget();	// задний буфер без глубины
 	void setRenderTarget( ID3D11RenderTargetView* target, uint32_t width, uint32_t height );	// без глубины
+	void setDepthTarget( ID3D11DepthStencilView* target, uint32_t width, uint32_t height );	// только глубина
+	// Наклонное смещение глубины растеризатора теней (Shadow Slope Bias): пересоздаёт состояние
+	bool setShadowSlopeBias( float slopeBias );
 	// Отвязывает ресурсы материалов, проходов и объектов (слоты до SLOT_TRANSIENT_COUNT) у графических стадий
 	void unbindTransientResources();
 	// Цвет сцены для чтения в шейдере; при MSAA сначала сводит выборки в обычную текстуру
@@ -170,6 +175,7 @@ private:
 	com_unique_ptr<ID3D11RasterizerState> m_rasterStateWireframe;
 	com_unique_ptr<ID3D11RasterizerState> m_rasterStateSolidMirrored;
 	com_unique_ptr<ID3D11RasterizerState> m_rasterStateNoCullingMirrored;
+	com_unique_ptr<ID3D11RasterizerState> m_rasterStateShadowDepth;
 
 	com_unique_ptr<ID3D11BlendState> m_alphaEnableBlendingState;
 	com_unique_ptr<ID3D11BlendState> m_alphaDisableBlendingState;

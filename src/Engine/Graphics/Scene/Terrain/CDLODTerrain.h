@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 #include "SceneObject.h"
 #include "GridMesh.h"
@@ -76,8 +77,8 @@ private:
 	NodeBox nodeBox( uint32_t level, uint32_t x, uint32_t z ) const;
 	float nodeSize( uint32_t level ) const;
 	// false — узел дальше диапазона своего уровня, и его площадь рисует родитель
-	bool selectNode( const RenderView& view, uint32_t level, uint32_t x, uint32_t z );
-	void addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t quarter );
+	bool selectNode( const RenderView& view, uint32_t level, uint32_t x, uint32_t z, std::vector<PatchInstance>& patches );
+	void addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t quarter, std::vector<PatchInstance>& patches );
 
 private:
 	std::string m_heightMapName;	// карта высот в хранилище текстур
@@ -92,7 +93,9 @@ private:
 	float m_ranges[maxLevels] = {};
 	XMFLOAT4 m_morphConsts[maxLevels] = {};
 
-	std::vector<PatchInstance> m_patches;
+	// Выбранные патчи на каждый вид кадра (RenderView::index): главный и каскады теней. Деление узлов — от lodOrigin,
+	// общего у всех видов, frustum вида только отсекает, поэтому рельеф в тени и на экране один и тот же
+	std::array<std::vector<PatchInstance>, maxRenderViews> m_patches;
 	GridMesh m_patch;
 	DMShader m_shader;
 	TerrainMaterial m_material;

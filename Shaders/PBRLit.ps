@@ -66,6 +66,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	Surface surface;
 	surface.position = input.worldPosition;
 	surface.normal = surfaceNormal( input );
+	surface.geometricNormal = normalize( input.isFrontFace ? input.normal : -input.normal );
 	surface.baseColor = baseColor.rgb;
 	surface.metallic = saturate( g_metallic * metallicRoughness.b );
 	surface.roughness = g_roughness * metallicRoughness.g;
@@ -75,4 +76,11 @@ float4 main( PixelInputType input ) : SV_TARGET
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps). Альфа нужна только
 	// полупрозрачному (AlphaMode BLEND): у непрозрачных блендинг выключен
 	return float4( evaluateLighting( surface ), baseColor.a );
+}
+
+// Глубина теней для AlphaMode MASK: только отсечение по альфе, цвета нет (у прохода теней нет цели цвета).
+// Непрозрачные рисуют глубину без пиксельного шейдера
+void mainDepth( PixelInputType input )
+{
+	clip( g_texBaseColor.Sample( g_SamplerAnisotropicWrap, input.tex ).a * g_baseColorFactor.a - g_alphaCutoff );
 }

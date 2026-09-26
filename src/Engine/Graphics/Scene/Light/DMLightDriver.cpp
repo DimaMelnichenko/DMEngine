@@ -26,7 +26,8 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 	LightBuffer lightBuffer = {};
 	m_lightParamBuffer.clear();
 
-	std::sort( m_light_list.begin(), m_light_list.end(), []( const auto& a, const auto& b )
+	// Устойчивая сортировка: порядок источников одного типа — как в файле, солнце — первый направленный
+	std::stable_sort( m_light_list.begin(), m_light_list.end(), []( const auto& a, const auto& b )
 	{
 		return (int)a.type() < (int)b.type();
 	} );
@@ -135,6 +136,16 @@ void DMLightDriver::directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) con
 		}
 	}
 	direction = XMFLOAT3( -lightDirection.x, -lightDirection.y, -lightDirection.z );
+}
+
+int DMLightDriver::sunLightIndex() const
+{
+	for( const auto& light : m_light_list )
+	{
+		if( light.enabled() )
+			return light.type() == DMLight::Dir ? 0 : -1;
+	}
+	return -1;
 }
 
 XMFLOAT3 DMLightDriver::fallbackDirection()

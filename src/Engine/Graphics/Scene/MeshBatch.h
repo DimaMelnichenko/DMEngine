@@ -18,10 +18,12 @@ enum class MeshPass
 {
 	opaque,			// непрозрачные и с отсечением по альфе (Opaque и Masked)
 	sky,			// после непрозрачных: фон на дальней плоскости, глубина LESS_EQUAL без записи — только где пусто
-	transparent		// последним: альфа-блендинг, глубина только читается (Translucent)
+	transparent,	// последним: альфа-блендинг, глубина только читается (Translucent)
+	csmShadowDepth	// глубина каскадов теней солнца (EMeshPass::CSMShadowDepth в UE) — до проходов сцены, на виды каскадов
 };
 
-constexpr uint32_t meshPassCount = 3;
+// Проходов сцены с главного вида: opaque, sky, transparent
+constexpr uint32_t scenePassCount = 3;
 
 // Бит прохода для маски CustomBatch
 constexpr uint32_t passBit( MeshPass pass )
@@ -51,7 +53,7 @@ struct MeshBatch
 	// Постоянный номер «этот меш с этими параметрами» (у моделей — модель и LOD): по нему одинаковые меши
 	// встают в сортировке подряд, и рендерер рисует их одним инстансным вызовом
 	uint32_t instanceGroup = 0;
-	bool castsShadow = true;					// для теней (этап 3)
+	bool castsShadow = true;					// рисуется в проход глубины теней (Cast Shadow в UE)
 
 	// Заполняет MeshCollector
 	const SceneObject* owner = nullptr;

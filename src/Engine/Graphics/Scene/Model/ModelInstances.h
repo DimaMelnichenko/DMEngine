@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <DirectXCollision.h>
 #include "SceneObject.h"
 #include "Model\DMModel.h"
 #include "Common\DMTransform.h"
@@ -23,6 +24,8 @@ public:
 
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	PropertyContainer* properties() override;
+	// Границы всех экземпляров (меш LOD 0 в мировых координатах); false — экземпляров нет
+	bool bounds( DirectX::BoundingBox& bounds ) const;
 
 private:
 	struct Instance
@@ -33,6 +36,7 @@ private:
 	};
 
 	std::vector<Instance> m_instances;
+	DirectX::BoundingBox m_bounds;
 	PropertyContainer m_properties;
 };
 

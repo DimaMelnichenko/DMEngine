@@ -61,6 +61,9 @@ bool Renderer::initialize()
 	if( !m_postProcess.initialize( "Scene\\Lights.ini" ) )
 		return false;
 
+	if( !m_shadows.initialize( "Scene\\Lights.ini" ) )
+		return false;
+
 	if( !m_gpuProfiler.initialize( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext() ) )
 		return false;
 
@@ -75,8 +78,11 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	m_gpuProfiler.beginFrame();
 	m_meshCount = 0;
 	m_meshDraws = 0;
+	m_shadowMeshCount = 0;
+	m_shadowDraws = 0;
 	measure( "preparePipeline", [&] { preparePipeline( scene, frame ); } );
 
+	// Compute — при главном виде в константах кадра: кольцо расстановки считается вокруг камеры
 	measure( "Compute Pass", [&]
 	{
 		for( SceneObject* object : scene.objects() )
@@ -85,15 +91,18 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		}
 	} );
 
-	// Меши с главного вида; позже — и с видов каскадов теней
 	const auto collectStart = std::chrono::high_resolution_clock::now();
-	collect( scene, frame.view );
+	collect( scene, frame.view, m_collector );
 	buildCommands();
 	const auto collectEnd = std::chrono::high_resolution_clock::now();
 	m_gui.addCounterInfo( "Collect meshes = %.3f ms",
 						  std::chrono::duration_cast<std::chrono::microseconds>( collectEnd - collectStart ).count() / 1000.0f );
 
+	renderShadows( scene, frame );
+
 	DMD3D::instance().BeginScene( 0.004f, 0.004f, 0.004f, 1.0f );
+	// Карта теней — пиксельным шейдерам проходов сцены (после рисования в неё и смены цели)
+	m_shadows.bindForReceivers( scene.lights().sunLightIndex() );
 
 	// Базовое состояние кадра; объекты меняют его только в своей области видимости
 	const RasterState frameRaster = wireframe ? RasterState::wireframe : RasterState::solid;
@@ -116,6 +125,8 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	measure( "Post process", [&] { m_postProcess.render(); } );
 	m_gui.addCounterInfo( "Meshes = %.0f", static_cast<float>( m_meshCount ) );
 	m_gui.addCounterInfo( "Mesh draw calls = %.0f", static_cast<float>( m_meshDraws ) );
+	m_gui.addCounterInfo( "Shadow meshes = %.0f", static_cast<float>( m_shadowMeshCount ) );
+	m_gui.addCounterInfo( "Shadow draw calls = %.0f", static_cast<float>( m_shadowDraws ) );
 
 	m_gpuProfiler.endFrame();
 	reportGpuTimes();
@@ -141,7 +152,18 @@ void Renderer::reportGpuTimes()
 	}
 	m_gpuAverages[0].sum += m_gpuProfiler.frameMilliseconds();
 	m_gpuAverages[0].count++;
+
+	// Одноимённые области кадра (объект в нескольких проходах) сначала складываются, потом усредняются по кадрам
+	std::vector<std::pair<std::string, float>> frameTimes;
 	for( const auto& [name, milliseconds] : m_gpuProfiler.results() )
+	{
+		auto it = std::find_if( frameTimes.begin(), frameTimes.end(), [&]( const auto& entry ) { return entry.first == name; } );
+		if( it == frameTimes.end() )
+			frameTimes.push_back( { name, milliseconds } );
+		else
+			it->second += milliseconds;
+	}
+	for( const auto& [name, milliseconds] : frameTimes )
 	{
 		auto it = std::find_if( m_gpuAverages.begin(), m_gpuAverages.end(), [&]( const GpuAverage& a ) { return a.name == name; } );
 		if( it == m_gpuAverages.end() )
@@ -163,7 +185,8 @@ void Renderer::reportGpuTimes()
 		std::snprintf( value, sizeof( value ), "%.3f", average.sum / std::max( average.count, 1u ) );
 		line += " " + average.name + " " + value + ";";
 	}
-	line += " meshes " + std::to_string( m_meshCount ) + " in " + std::to_string( m_meshDraws ) + " draws";
+	line += " meshes " + std::to_string( m_meshCount ) + " in " + std::to_string( m_meshDraws ) + " draws; shadow meshes " +
+			std::to_string( m_shadowMeshCount ) + " in " + std::to_string( m_shadowDraws ) + " draws";
 	LOG( line );
 	m_gpuAverageLogged = true;
 }
@@ -171,6 +194,11 @@ void Renderer::reportGpuTimes()
 PropertyContainer* Renderer::postProcessProperties()
 {
 	return m_postProcess.properties();
+}
+
+PropertyContainer* Renderer::shadowProperties()
+{
+	return m_shadows.properties();
 }
 
 void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
@@ -183,16 +211,16 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	pipeline().shaderConstant().setViewBuffer( frame.view );
 }
 
-void Renderer::collect( Scene& scene, const RenderView& view )
+void Renderer::collect( Scene& scene, const RenderView& view, MeshCollector& collector )
 {
-	m_collector.clear();
+	collector.clear();
 	uint32_t order = 0;
 	for( SceneObject* object : scene.objects() )
 	{
 		if( object->visible() )
 		{
-			m_collector.beginObject( object, order );
-			object->collectMeshes( view, m_collector );
+			collector.beginObject( object, order );
+			object->collectMeshes( view, collector );
 		}
 		++order;
 	}
@@ -230,7 +258,7 @@ void Renderer::buildCommands()
 	for( uint32_t i = 0; i < customs.size(); ++i )
 	{
 		const CustomBatch& batch = customs[i];
-		for( uint32_t pass = 0; pass < meshPassCount; ++pass )
+		for( uint32_t pass = 0; pass < scenePassCount; ++pass )
 		{
 			if( !( batch.passMask & passBit( static_cast<MeshPass>( pass ) ) ) )
 				continue;
@@ -246,6 +274,77 @@ void Renderer::buildCommands()
 						  []( const DrawCommand& a, const DrawCommand& b ) { return a.key < b.key; } );
 }
 
+void Renderer::buildShadowCommands()
+{
+	m_shadowCommands.clear();
+
+	const std::vector<MeshBatch>& meshes = m_shadowCollector.meshes();
+	for( uint32_t i = 0; i < meshes.size(); ++i )
+	{
+		const MeshBatch& batch = meshes[i];
+		if( !batch.castsShadow || batch.state.blendMode == BlendMode::translucent )
+			continue;
+		const int phase = batch.material->depthPhaseFor( *batch.params, false );
+		if( phase < 0 )
+			continue;
+		const uint64_t key = ( static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56 ) |
+							 ( static_cast<uint64_t>( batch.materialId & 0xFFFF ) << 40 ) |
+							 ( static_cast<uint64_t>( phase & 0xF ) << 36 ) | batch.instanceGroup;
+		m_shadowCommands.push_back( { key, i, false } );
+	}
+
+	const std::vector<CustomBatch>& customs = m_shadowCollector.customs();
+	for( uint32_t i = 0; i < customs.size(); ++i )
+	{
+		if( customs[i].passMask & passBit( MeshPass::csmShadowDepth ) )
+			m_shadowCommands.push_back( { static_cast<uint64_t>( customs[i].ownerOrder & 0xFF ) << 56, i, true } );
+	}
+
+	std::stable_sort( m_shadowCommands.begin(), m_shadowCommands.end(),
+					  []( const DrawCommand& a, const DrawCommand& b ) { return a.key < b.key; } );
+}
+
+void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
+{
+	XMFLOAT3 toSun;
+	XMFLOAT3 sunColor;
+	scene.lights().directionalLight( toSun, sunColor );
+	if( scene.lights().sunLightIndex() < 0 )
+		toSun = XMFLOAT3( 0.0f, -1.0f, 0.0f );	// солнца нет — как ниже горизонта
+	if( !m_shadows.update( frame.view, toSun, scene.bounds() ) )
+		return;
+
+	const auto start = std::chrono::high_resolution_clock::now();
+	// Карта сейчас привязана к пиксельным шейдерам с прошлого кадра: рисовать в неё можно, только отвязав
+	m_shadows.unbindShadowMap();
+	DMD3D::instance().unbindTransientResources();
+	ScopedRenderState shadowState( RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque );
+
+	// Время — одной областью на каскад: имена объектов в строке «GPU average» остаются за проходами сцены
+	m_gpuProfiler.beginScope( "Shadow depths" );
+	for( uint32_t cascade = 0; cascade < ShadowCascades::cascadeCount; ++cascade )
+	{
+		const RenderView& view = m_shadows.cascadeView( cascade );
+		collect( scene, view, m_shadowCollector );
+		buildShadowCommands();
+
+		pipeline().shaderConstant().setViewBuffer( view );
+		m_shadows.beginCascade( cascade );
+		m_gpuProfiler.beginScope( "Shadow cascade " + std::to_string( cascade ) );
+		const RenderContext context{ view, MeshPass::csmShadowDepth, RasterState::csmShadowDepth,
+									 pipeline().shaderConstant(), m_vertexPool };
+		executeCommands( m_shadowCollector, m_shadowCommands, context, false );
+		m_gpuProfiler.endScope();
+	}
+	m_gpuProfiler.endScope();
+
+	// Проходы сцены — снова с главного вида
+	pipeline().shaderConstant().setViewBuffer( frame.view );
+	const auto end = std::chrono::high_resolution_clock::now();
+	m_gui.addCounterInfo( "Shadow depths = %.3f ms",
+						  std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
+}
+
 void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState frameRaster )
 {
 	// Проход не полагается на состояние, оставленное прошлым: своя цель, область вывода, без чужих ресурсов.
@@ -256,11 +355,16 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 
 	static const char* const passNames[] = { "Pass opaque", "Pass sky", "Pass transparent" };
 	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
-
 	const RenderContext context{ view, pass, frameRaster, pipeline().shaderConstant(), m_vertexPool };
-	const std::vector<MeshBatch>& meshes = m_collector.meshes();
-	const std::vector<CustomBatch>& customs = m_collector.customs();
-	const std::vector<DrawCommand>& commands = m_commands[static_cast<uint32_t>( pass )];
+	executeCommands( m_collector, m_commands[static_cast<uint32_t>( pass )], context, true );
+	m_gpuProfiler.endScope();
+}
+
+void Renderer::executeCommands( const MeshCollector& collector, const std::vector<DrawCommand>& commands,
+								const RenderContext& context, bool measureOwners )
+{
+	const std::vector<MeshBatch>& meshes = collector.meshes();
+	const std::vector<CustomBatch>& customs = collector.customs();
 	auto ownerOf = [&]( const DrawCommand& command ) -> const SceneObject*
 	{
 		return command.custom ? customs[command.index].owner : meshes[command.index].owner;
@@ -274,7 +378,7 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 		while( end < commands.size() && ownerOf( commands[end] ) == owner )
 			++end;
 
-		measure( owner->name(), [&]
+		auto run = [&]
 		{
 			bool poolBound = false;
 			for( size_t i = begin; i < end; ++i )
@@ -295,34 +399,36 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 					// Подряд одинаковые непрозрачные меши (тот же меш, параметры, растеризатор) — одним вызовом
 					const MeshBatch& batch = meshes[commands[i].index];
 					size_t last = i;
-					if( pass != MeshPass::transparent && batch.material->supportsInstancing() )
+					if( context.pass != MeshPass::transparent && batch.material->supportsInstancing() )
 					{
 						while( last + 1 < end && !commands[last + 1].custom &&
 							   sameMesh( batch, meshes[commands[last + 1].index] ) )
 							++last;
 					}
 					if( last > i )
-						drawMeshInstanced( commands, i, last, context );
+						drawMeshInstanced( meshes, commands, i, last, context );
 					else
 						drawMesh( batch, context );
 					i = last;
 				}
 			}
-		} );
+		};
+		if( measureOwners )
+			measure( owner->name(), run );
+		else
+			run();
 		begin = end;
 	}
-
-	m_gpuProfiler.endScope();
 }
 
-void Renderer::drawMeshInstanced( const std::vector<DrawCommand>& commands, size_t first, size_t last,
-								  const RenderContext& context )
+void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const std::vector<DrawCommand>& commands,
+								  size_t first, size_t last, const RenderContext& context )
 {
-	const std::vector<MeshBatch>& meshes = m_collector.meshes();
 	const MeshBatch& batch = meshes[commands[first].index];
+	const bool shadow = context.pass == MeshPass::csmShadowDepth;
 	DMShader* shader = batch.material;
 	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	shader->setPass( shader->phaseFor( *batch.params, true ) );
+	shader->setPass( shadow ? shader->depthPhaseFor( *batch.params, true ) : shader->phaseFor( *batch.params, true ) );
 	shader->setParams( *batch.params );
 
 	for( size_t chunk = first; chunk <= last; chunk += maxInstancesPerDraw )
@@ -338,22 +444,23 @@ void Renderer::drawMeshInstanced( const std::vector<DrawCommand>& commands, size
 		m_instanceBuffer.updateData( m_instanceTransforms.data(), count * sizeof( InstanceTransform ) );
 		m_instanceBuffer.setToSlot( SLOT_INSTANCE_DATA, SRVType::vs );
 		shader->renderInstanced( batch.indexCount, batch.vertexOffset, batch.indexOffset, static_cast<int>( count ) );
-		m_meshDraws++;
+		( shadow ? m_shadowDraws : m_meshDraws )++;
 	}
-	m_meshCount += static_cast<uint32_t>( last - first + 1 );
+	( shadow ? m_shadowMeshCount : m_meshCount ) += static_cast<uint32_t>( last - first + 1 );
 }
 
 void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
 {
+	const bool shadow = context.pass == MeshPass::csmShadowDepth;
 	DMShader* shader = batch.material;
 	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	shader->setPass( shader->phaseFor( *batch.params ) );
+	shader->setPass( shadow ? shader->depthPhaseFor( *batch.params, false ) : shader->phaseFor( *batch.params ) );
 	shader->setParams( *batch.params );
 	shader->setDrawType( DMShader::by_index );
 	context.constants.setPerObjectBuffer( batch.world );
 	shader->render( batch.indexCount, batch.vertexOffset, batch.indexOffset );
-	m_meshCount++;
-	m_meshDraws++;
+	( shadow ? m_shadowMeshCount : m_meshCount )++;
+	( shadow ? m_shadowDraws : m_meshDraws )++;
 }
 
 }

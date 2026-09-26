@@ -5,9 +5,9 @@
 
 
 func:DMD3D::createDeviceSwapChain, line:258|D3D11 debug layer is enabled, its messages are written to this log
-func:GS::DMGraphics::Initialize, line:61|Initialize the Direct3D object ms: 201.607000
+func:GS::DMGraphics::Initialize, line:62|Initialize the Direct3D object ms: 205.537000
 func:GS::CustomTexture::generateTexture, line:64|Inputs correct
-func:GS::Scene::loadResources, line:22|Load materials
+func:GS::Scene::loadResources, line:23|Load materials
 func:LibraryLoader::loadMaterial, line:83|Load material: 1
 func:LibraryLoader::loadShader, line:214|Load shader: Shaders\color.vs
 func:LibraryLoader::loadShader, line:214|Load shader: Shaders\color.ps
@@ -30,9 +30,9 @@ func:LibraryLoader::loadShader, line:214|Load shader: Shaders\PBRLit.ps
 func:LibraryLoader::loadMaterial, line:83|Load material: 12
 func:LibraryLoader::loadShader, line:214|Load shader: Shaders\LightShader.vs
 func:LibraryLoader::loadShader, line:214|Load shader: Shaders\PBRLit.ps
-func:GS::Scene::loadResources, line:26|Load material for ms: 172.919000
-func:GS::Scene::loadResources, line:30|Level: Test
-func:GS::Scene::loadResources, line:32|Load models
+func:GS::Scene::loadResources, line:27|Load material for ms: 281.332000
+func:GS::Scene::loadResources, line:31|Level: Test
+func:GS::Scene::loadResources, line:33|Load models
 func:LibraryLoader::loadModelWithLOD, line:379|Load model: 1
 func:LibraryLoader::loadMesh, line:228|Load mesh: 1
 func:GS::MeshStorage::load, line:243|Can`t load mesh from file: Meshes\box.bin
@@ -68,8 +68,8 @@ func:LibraryLoader::loadMesh, line:228|Load mesh: 19
 func:LibraryLoader::loadModelWithLOD, line:379|Load model: 26
 func:LibraryLoader::loadMesh, line:228|Load mesh: 20
 func:LibraryLoader::loadModelWithLOD, line:379|Load model: 11
-func:GS::Scene::loadResources, line:52|Load models for ms: 8.835000
-func:GS::Scene::loadResources, line:54|Load textures
+func:GS::Scene::loadResources, line:53|Load models for ms: 8.787000
+func:GS::Scene::loadResources, line:55|Load textures
 func:LibraryLoader::loadAllTextures, line:23|Load all textures
 func:LibraryLoader::loadTextures, line:49|Can`t load texture no_image (no_image.dds), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture grass.jpg (grass.jpg), placeholder is used
@@ -89,21 +89,20 @@ func:LibraryLoader::loadTextures, line:49|Can`t load texture grass2.dds (grass2.
 func:LibraryLoader::loadTextures, line:49|Can`t load texture oduvanchik (oduvanchik.png), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture alpha03 (alpha03.dds), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture default_gloss (default_gloss.png), placeholder is used
-func:LibraryLoader::loadTextures, line:53|Load texture for ms: 5; id = 27, name = mask_grass, file = terrain\mask_grass.dds
+func:LibraryLoader::loadTextures, line:53|Load texture for ms: 4; id = 27, name = mask_grass, file = terrain\mask_grass.dds
 func:LibraryLoader::loadTextures, line:53|Load texture for ms: 3; id = 28, name = mask_camomile, file = terrain\mask_camomile.dds
 func:LibraryLoader::loadTextures, line:49|Can`t load texture knot_normal (materials\blocksrough_normal_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:49|Can`t load texture knot_height (materials\blocksrough_height_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Load texture for ms: 2; id = 45, name = mask_pebbles, file = terrain\mask_pebbles.dds
-func:LibraryLoader::loadTextures, line:53|Load texture for ms: 235; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
-func:LibraryLoader::loadTextures, line:53|Load texture for ms: 230; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
+func:LibraryLoader::loadTextures, line:53|Load texture for ms: 233; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
+func:LibraryLoader::loadTextures, line:53|Load texture for ms: 228; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
 func:LibraryLoader::loadTextures, line:53|Load texture for ms: 2; id = 48, name = test_models_PanelNormal, file = models\test_models\PanelNormal.png
 func:LibraryLoader::loadTextures, line:53|Load texture for ms: 4; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
-func:LibraryLoader::loadTextures, line:53|Load texture for ms: 62; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
-func:GS::Scene::loadResources, line:66|Load textures for ms: 553.063000
-func:GS::DMGraphics::Initialize, line:87|Create main camera
-func:GS::Scene::initialize, line:73|Create light driver
+func:LibraryLoader::loadTextures, line:53|Load texture for ms: 65; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
+func:GS::Scene::loadResources, line:67|Load textures for ms: 551.829000
+func:GS::DMGraphics::Initialize, line:88|Create main camera
+func:GS::Scene::initialize, line:74|Create light driver
 func:GS::CDLODTerrain::initialize, line:93|CDLOD terrain: heightmap 1024, LOD levels 6
-func:GS::Scene::initialize, line:95|Terrain init ms: 320.947000
-func:GS::Scene::initialize, line:129|Scatter init ms: 66.236000
-func:GS::DMGraphics::Initialize, line:115|Total init ms: 2512.743000
-func:GS::Renderer::reportGpuTimes, line:167|GPU average over 1548 frames, ms: frame 1.890; preparePipeline 0.000; Compute Pass 0.037; Pass opaque 1.652; CDLOD terrain 0.718; Meadow 0.930; Debris 0.003; Pass sky 0.046; Sky atmosphere 0.046; Pass transparent 0.000; Particles 0.000; Post process 0.059; meshes 0 in 0 draws
+func:GS::Scene::initialize, line:96|Terrain init ms: 350.370000
+func:GS::Scene::initialize, line:130|Scatter init ms: 67.959000
+func:GS::DMGraphics::Initialize, line:116|Total init ms: 2744.730000

@@ -1,4 +1,5 @@
 #include "Scene.h"
+#include <algorithm>
 #include <chrono>
 #include "System.h"
 #include "Logger\Logger.h"
@@ -163,6 +164,33 @@ const std::vector<SceneObject*>& Scene::objects() const
 DMLightDriver& Scene::lights()
 {
 	return m_lightDriver;
+}
+
+DirectX::BoundingBox Scene::bounds() const
+{
+	DirectX::BoundingBox result( XMFLOAT3( 0.0f, 0.0f, 0.0f ), XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
+	bool empty = true;
+	if( m_level.terrain )
+	{
+		// Высота рельефа — значение карты 0…1, умноженное на множитель, плюс смещение
+		const TerrainHeight height = m_terrain.terrainHeight();
+		const float low = height.heightOffset + std::min( height.heightMultiplier, 0.0f );
+		const float high = height.heightOffset + std::max( height.heightMultiplier, 0.0f );
+		const XMFLOAT3 boxMin( 0.0f, low, 0.0f );
+		const XMFLOAT3 boxMax( height.worldSize, high, height.worldSize );
+		DirectX::BoundingBox::CreateFromPoints( result, XMLoadFloat3( &boxMin ), XMLoadFloat3( &boxMax ) );
+		empty = false;
+	}
+
+	DirectX::BoundingBox models;
+	if( m_models.bounds( models ) )
+	{
+		if( empty )
+			result = models;
+		else
+			DirectX::BoundingBox::CreateMerged( result, result, models );
+	}
+	return result;
 }
 
 CDLODTerrain& Scene::terrain()

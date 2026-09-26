@@ -27,7 +27,26 @@ void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstan
 
 		if( withProperties.insert( description.model ).second )
 			m_properties.addSubContainer( instance.model->properties() );
+
+		// Экземпляры неподвижны: границы считаются один раз
+		const DMModel::LodBlock* lod = instance.model->getLodById( 0 );
+		if( !lod )
+			continue;
+		DirectX::BoundingBox meshBounds;
+		System::meshes().get( lod->mesh )->bounds().Transform( meshBounds, instance.transform.worldMatrix() );
+		if( m_instances.size() == 1 )
+			m_bounds = meshBounds;
+		else
+			DirectX::BoundingBox::CreateMerged( m_bounds, m_bounds, meshBounds );
 	}
+}
+
+bool ModelInstances::bounds( DirectX::BoundingBox& bounds ) const
+{
+	if( m_instances.empty() )
+		return false;
+	bounds = m_bounds;
+	return true;
 }
 
 void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& collector )

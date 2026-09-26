@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <DirectXCollision.h>
 #include "SceneObject.h"
 #include "Sky\SkySphere.h"
 #include "Sky\SkyAtmosphere.h"
@@ -31,6 +32,8 @@ public:
 	DMLightDriver& lights();
 
 	CDLODTerrain& terrain();
+	// Границы того, что может отбросить тень: террейн (мир × диапазон высот) и модели уровня
+	DirectX::BoundingBox bounds() const;
 	// Наборы расстановки уровня: трава, камешки
 	const std::vector<std::unique_ptr<Scatterer>>& scatterers() const;
 

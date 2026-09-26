@@ -4,6 +4,7 @@
 #include <fstream>
 #include <list>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "Utils/DMTimer.h"
@@ -40,6 +41,9 @@ public:
 	virtual int phaseFor( const PropertyContainer& params, bool instanced = false ) const { return 0; }
 	// Есть ли вариант для инстансинга моделей: иначе одинаковые меши рисуются по одному
 	virtual bool supportsInstancing() const { return false; }
+	// Фаза «только глубина» для прохода теней (без пиксельного шейдера или только с отсечением по альфе) или −1:
+	// материал тень не отбрасывает
+	virtual int depthPhaseFor( const PropertyContainer& params, bool instanced = false ) const { return -1; }
 
 public:
 	enum DrawType
@@ -63,8 +67,8 @@ protected:
 		std::string file;
 		std::string defines;
 	};
-	// Первый шейдер стадии type или nullptr
-	const ShaderSource* shaderSource( SRVType type ) const;
+	// Копия исходника первого шейдера стадии type (не ссылка: addShaderPassFromFile дополняет список исходников)
+	std::optional<ShaderSource> shaderSource( SRVType type ) const;
 
 private:
 

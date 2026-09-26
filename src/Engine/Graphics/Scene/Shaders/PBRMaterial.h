@@ -11,6 +11,7 @@ namespace GS
 // Режим — тоже как в glTF: AlphaMode (0 OPAQUE, 1 MASK, 2 BLEND), AlphaCutoff, DoubleSided. Для MASK материал
 // сам собирает второй вариант пиксельного шейдера с отсечением (define ALPHA_MASK): у непрозрачных отсечения нет,
 // и ранняя проверка глубины работает. Так же — вариант вершинного шейдера для инстансинга (define INST_MATRIX)
+// и фазы «только глубина» для теней: непрозрачные — без пиксельного шейдера, MASK — точка входа mainDepth (только clip)
 class PBRMaterial : public DMShader
 {
 public:
@@ -20,6 +21,7 @@ public:
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
 	int phaseFor( const PropertyContainer& params, bool instanced = false ) const override;
 	bool supportsInstancing() const override;
+	int depthPhaseFor( const PropertyContainer& params, bool instanced = false ) const override;
 
 private:
 	// Константный буфер PS b2, раскладка как у PBRMaterialBuffer в Shaders/PBRLit.ps
@@ -35,9 +37,11 @@ private:
 		float alphaCutoff;
 	};
 
-	// Фазы: вершинный шейдер из базы или инстансный × пиксельный без отсечения или с ним
+	// Фазы: вершинный шейдер из базы или инстансный × пиксельный без отсечения или с ним; за ними — те же пары
+	// для глубины (без пиксельного шейдера или mainDepth), начиная с m_depthPhases
 	enum PhaseIndex { opaquePhase = 0, maskedPhase = 1, instancedPhases = 2 };
 	bool m_instancing = false;
+	int m_depthPhases = 0;
 
 	bool innerInitialize() override;
 	std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() override;

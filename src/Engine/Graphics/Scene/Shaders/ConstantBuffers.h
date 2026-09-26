@@ -40,7 +40,7 @@ private:
 		XMFLOAT3 viewDirection;
 		float elapsedTime;
 		float lightsCount;
-		XMFLOAT3 dump;
+		XMFLOAT3 lodOrigin;
 	};
 
 	// Раскладка — cbuffer WorldBuffer в Shaders/common.vs

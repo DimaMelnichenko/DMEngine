@@ -6,6 +6,7 @@
 #include <chrono>
 #include "Logger\Logger.h"
 #include "Scene\TextureObjects\CustomTexture.h"
+#include "Engine/Input/Input.h"
 
 #define TIME_POINT() std::chrono::high_resolution_clock::now()
 

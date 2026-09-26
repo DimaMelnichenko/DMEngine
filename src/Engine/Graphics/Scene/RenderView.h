@@ -7,6 +7,9 @@
 namespace GS
 {
 
+// Видов в кадре: главный и четыре каскада теней солнца
+constexpr uint32_t maxRenderViews = 5;
+
 // Вид, с которого рисуется кадр, — как FSceneView в UE: матрицы, положение и пирамида видимости. Сейчас один —
 // главная камера; каскады теней солнца станут ещё видами. Объекты сцены видят кадр только через вид
 struct RenderView
@@ -22,6 +25,7 @@ struct RenderView
 	XMFLOAT3 lodOrigin;
 	float farPlane;		// расстояние до дальней плоскости, м
 	DMFrustum frustum;
+	uint32_t index = 0;	// номер вида в кадре: 0 — главный, 1…4 — каскады теней (данные объектов на вид, например узлы террейна)
 
 	static RenderView fromCamera( const DMCamera& camera )
 	{

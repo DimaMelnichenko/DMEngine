@@ -557,6 +557,9 @@ bool DMD3D::createRasterDescs()
 	if( !createRasterizerState( rasterDesc, m_rasterStateSolidMirrored ) )
 		return false;
 
+	if( !setShadowSlopeBias( 2.0f ) )
+		return false;
+
 	// Setup a raster description which turns off back face culling.
 	rasterDesc.AntialiasedLineEnable = false;
 	rasterDesc.CullMode = D3D11_CULL_NONE;
@@ -668,6 +671,9 @@ void DMD3D::setState( RasterState state )
 		case RasterState::noCullingMirrored:
 			m_deviceContext->RSSetState( m_rasterStateNoCullingMirrored.get() );
 			break;
+		case RasterState::csmShadowDepth:
+			m_deviceContext->RSSetState( m_rasterStateShadowDepth.get() );
+			break;
 	}
 
 	m_renderState.raster = state;
@@ -738,6 +744,37 @@ void DMD3D::setRenderTarget( ID3D11RenderTargetView* target, uint32_t width, uin
 	viewport.Height = static_cast<float>( height );
 	viewport.MaxDepth = 1.0f;
 	m_deviceContext->RSSetViewports( 1, &viewport );
+}
+
+void DMD3D::setDepthTarget( ID3D11DepthStencilView* target, uint32_t width, uint32_t height )
+{
+	m_deviceContext->OMSetRenderTargets( 0, nullptr, target );
+
+	D3D11_VIEWPORT viewport = {};
+	viewport.Width = static_cast<float>( width );
+	viewport.Height = static_cast<float>( height );
+	viewport.MaxDepth = 1.0f;
+	m_deviceContext->RSSetViewports( 1, &viewport );
+}
+
+bool DMD3D::setShadowSlopeBias( float slopeBias )
+{
+	// Без отсечения граней: у рельефа (высотное поле) нет граней «к свету», тонкие панели и лепестки тоже отбрасывают
+	// тень. Постоянного смещения нет: у D32_FLOAT оно зависит от порядка числа. Без отсечения по глубине — объекты
+	// перед ближней плоскостью вида света прижимаются к ней, а не пропадают (pancaking)
+	D3D11_RASTERIZER_DESC desc = {};
+	desc.FillMode = D3D11_FILL_SOLID;
+	desc.CullMode = D3D11_CULL_NONE;
+	desc.DepthBias = 0;
+	desc.SlopeScaledDepthBias = slopeBias;
+	desc.DepthBiasClamp = 0.01f;
+	desc.DepthClipEnable = FALSE;
+	const bool active = m_renderState.raster == RasterState::csmShadowDepth;
+	if( !createRasterizerState( desc, m_rasterStateShadowDepth ) )
+		return false;
+	if( active )
+		m_deviceContext->RSSetState( m_rasterStateShadowDepth.get() );
+	return true;
 }
 
 void DMD3D::unbindTransientResources()

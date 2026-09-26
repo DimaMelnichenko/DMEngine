@@ -96,7 +96,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   и вызывает их `update()`. Состав уровня описывает строка таблицы `Levels` (см. «Данные сцены»); объект,
   которого у уровня нет, остаётся неинициализированным и ничего не делает;
 - `Renderer` (`Renderer.h`) отправляет команды GPU: общие данные конвейера (сэмплеры, свет, константы кадра и вида)
-  → `compute()` всех объектов → сбор мешей с вида и раскладка по проходам с сортировкой → проходы `opaque` → `sky`
+  → `compute()` всех объектов → сбор мешей с вида и раскладка по проходам с сортировкой → глубина каскадов теней
+  солнца (`renderShadows`: на каждый каскад сбор с его вида и проход `csmShadowDepth` в срез карты) → проходы `opaque` → `sky`
   (фон на дальней плоскости: глубина `LESS_EQUAL` без записи — только там, где сцена ничего не нарисовала) →
   `transparent` (alpha blending, глубина только читается) в HDR-буфер сцены
   (`R16G16B16A16_FLOAT`) → `PostProcess`: экспозиция и тонмаппинг (AgX / ACES) в задний буфер sRGB. Затем
@@ -110,20 +111,23 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
 
 **Виды и списки отрисовки** — как mesh draw commands в UE: объекты не рисуют себя сами и не знают, в каком проходе
 их меши. Вид кадра — `RenderView` (`Scene/RenderView.h`, ≈ FSceneView: матрицы, положение, `DMFrustum`, `lodOrigin` —
-откуда считаются LOD); сейчас один, главная камера, позже каскады теней. Объект сцены наследует `GS::SceneObject`
+откуда считаются LOD; `index` — номер вида в кадре): главная камера (0) и четыре каскада теней (1…4, `lodOrigin` —
+главной камеры). Объект сцены наследует `GS::SceneObject`
 (`Scene/SceneObject.h`): `update` / `compute` (кадр — `FrameContext`: главный вид и время) / `collectMeshes( view,
-collector )` / `renderCustom( context )` / `properties`, видимость. За каждый вид объект отдаёт в `MeshCollector`
+collector )` / `renderCustom( context )` / `properties`, видимость. За каждый вид (`collectMeshes` зовётся на каждый
+вид кадра: выбор, зависящий от вида, объект хранит по `view.index`, как `CDLODTerrain`) объект отдаёт в `MeshCollector`
 (`Scene/MeshBatch.h`) меши — `MeshBatch` (≈ FMeshBatch: меш в `VertexPool`, материал, параметры, мировая матрица,
 режим материала, расстояние) — или свой вызов `CustomBatch` с маской проходов (террейн, расстановка, небо, частицы).
 `Renderer` раскладывает их по проходам (`MeshPass`: меши — по режиму материала, `passFor`; свои вызовы — по маске)
 с 64-битным ключом сортировки (непрозрачные — объект в порядке сцены, материал, вариант шейдера, растеризатор, меш;
 прозрачные — от дальних к ближним между всеми объектами; `MeshBatch::instanceGroup` — «этот меш с этими
-параметрами») и рисует меши одной функцией `Renderer::drawMesh` (`setPass( phaseFor )`, `setParams`, растеризатор по
+параметрами») и рисует меши одной функцией `Renderer::drawMesh` (`setPass( phaseFor )`, в проходе теней —
+`depthPhaseFor`: вариант «только глубина», −1 — материал тень не отбрасывает; `setParams`, растеризатор по
 двусторонности и зеркальности — `materialRasterState`, матрица объекта). Одинаковые непрозрачные меши подряд — одним
 `DrawIndexedInstanced` (`drawMeshInstanced`: матрицы экземпляров в структурном буфере t16, вариант вершинного
 шейдера `INST_MATRIX`, который материал собирает сам — `supportsInstancing`, `phaseFor( params, true )`). Свой вызов получает `RenderContext` (вид, проход, растеризатор кадра, константы, `VertexPool`); перед
 ним привязан общий `VertexPool` с топологией TRIANGLELIST, свои буферы объект привязывает сам. Новый проход или вид
-(тени, depth prepass) добавляется в `Renderer`, а не в объекты.
+(depth prepass, тени прожекторов) добавляется в `Renderer`, а не в объекты.
 Сейчас объекты (в порядке сцены): `SkyAtmosphere` (процедурное небо фоном и освещение окружением от него;
 его `compute()` идёт первым и привязывает IBL к слотам PS t101…t103; фон — полноэкранный треугольник на дальней
 плоскости в проходе `sky`), `SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
@@ -161,8 +165,8 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 моделей, LOD, экземпляров материала `PBR`, расстановки: положение, поворот и масштаб объекта Blender — экземпляр
 в `LevelModels`, связанные дубликаты — экземпляры одной модели; повторный импорт обновляет), подробно — `docs/models.md`. Свет — `Scene\Lights.ini`: источники `[LightN]` (`Type` Dir / Point / Spot, `Color`,
 `Direction` — куда идёт свет, `Position`, `AttenuationRadius`, `InnerConeAngle` / `OuterConeAngle` — имена как в UE
-и KHR_lights_punctual; первый направленный — солнце для неба, его яркость подобрана под экспозицию 0 EV), небо `[Sky]`,
-постобработка `[PostProcess]`; ini читается через `ResourceMetaFile` (`GetPrivateProfileString`).
+и KHR_lights_punctual; первый направленный — солнце для неба и теней, его яркость подобрана под экспозицию 0 EV),
+небо `[Sky]`, тени `[Shadows]`, постобработка `[PostProcess]`; ini читается через `ResourceMetaFile` (`GetPrivateProfileString`).
 
 Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`): строка `Levels` ссылается на террейн (`Terrain`,
 слои материала — `TerrainLayers`), модель неба (`Models`) и частицы (`Particles`: материал, текстура, плотность);
@@ -201,12 +205,23 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 (без освещения: небо, отладка), `Particle`. Подробно — `docs/materials.md`.
 
 **Освещение считается в одном месте** — `Shaders/lighting.sh`: шейдер материала заполняет `Surface` (базовый цвет,
-металличность, шероховатость, нормаль, затенение, свечение) и возвращает `evaluateLighting(surface)` — прямой свет
-всех источников (BRDF — `Shaders/brdf.sh`; затухание — обратный квадрат с плавным обрезанием по радиусу, Karis 2013;
-конус прожектора) плюс освещение окружением от неба (`Shaders/ibl.sh`, подробно — `docs/sky.md`). Так делают
-`PBRLit.ps` и `terrain.ps`; новую составляющую освещения (тени, туман) добавляйте туда, а не в материалы. Раскладка
-источника — `struct Light` в шейдере и `DMLightDriver::LightBuffer` (с `static_assert` на размер), подробно —
-`docs/lighting.md`.
+металличность, шероховатость, нормаль и геометрическая нормаль без карты нормалей, затенение, свечение) и возвращает
+`evaluateLighting(surface)` — прямой свет всех источников (BRDF — `Shaders/brdf.sh`; затухание — обратный квадрат
+с плавным обрезанием по радиусу, Karis 2013; конус прожектора; у солнца — тень) плюс освещение окружением от неба
+(`Shaders/ibl.sh`, подробно — `docs/sky.md`). Так делают `PBRLit.ps` и `terrain.ps`; новую составляющую освещения
+(туман, воздушная перспектива) добавляйте туда, а не в материалы. Раскладка источника — `struct Light` в шейдере
+и `DMLightDriver::LightBuffer` (с `static_assert` на размер), подробно — `docs/lighting.md`.
+
+**Тени солнца** — `ShadowCascades` (`src/Engine/Graphics/ShadowCascades.h`, владеет `Renderer`), как Cascaded Shadow
+Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (200 м, границы по Cascade Distribution Exponent),
+каскад — ортографический `RenderView` вдоль солнца на описанную сферу своей части frustum; размер сферы постоянен,
+центр привязан к сетке текселей (тень не дрожит); ближняя и дальняя плоскости — по `Scene::bounds` (террейн и модели).
+Карта — `Texture2DArray` D32 2048², растеризатор `RasterState::csmShadowDepth` (без отсечения граней и по глубине,
+наклонное смещение). Отбрасывают тень меши с `castsShadow` материалов с `depthPhaseFor` (у `PBR` Masked — `mainDepth`
+в `PBRLit.ps`) и свои вызовы с битом `csmShadowDepth` (террейн); расстановка — нет. Приём — `Shaders/shadows.sh`
+(каскад по глубине взгляда, смещения к солнцу и по нормали в текселях каскада, PCF 5 × 5 Castaño, смешение каскадов,
+«Show cascades»): карта t104, сэмплер сравнения s8, константы b3. Настройки — `[Shadows]` в `Lights.ini` и окно GUI
+«Shadows», подробно — `docs/shadows.md`.
 
 **Система свойств** (`src/Common/Properties`). `Property` хранит значение в `std::variant`
 (bool, float, XMFLOAT2/3/4, int32, uint32) плюс границы и `GUIControlType`. `PropertyContainer` —

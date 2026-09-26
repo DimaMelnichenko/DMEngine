@@ -141,6 +141,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	Surface surface;
 	surface.position = position;
 	surface.normal = normalize( normal + mixed.detail );
+	surface.geometricNormal = normal;
 	surface.baseColor = mixed.albedo * ( 1.0f + 0.15f * variation );
 	surface.metallic = 0.0f;
 	surface.roughness = mixed.roughness;

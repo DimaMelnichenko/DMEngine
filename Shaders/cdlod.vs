@@ -33,7 +33,8 @@ PixelInputType main( VertexInputType input )
 
 	float3 approxPosition = float3( worldXZ.x, sampleHeight( worldXZ, node.level ), worldXZ.y );
 	float4 morph = g_morphConsts[(uint)node.level];
-	float morphK = saturate( ( distance( approxPosition, cb_cameraPosition ) - morph.x ) * morph.y );
+	// От точки LOD вида, а не от его камеры: в видах теней геометрия та же, что у главного вида
+	float morphK = saturate( ( distance( approxPosition, cb_lodOrigin ) - morph.x ) * morph.y );
 
 	// У нечётных вершин frac( gridPos * 0.5 ) = 0.5: при morphK = 1 они совпадают с чётными соседями
 	worldXZ -= frac( gridPos * 0.5f ) * 2.0f * quadSize * morphK;

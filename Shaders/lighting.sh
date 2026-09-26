@@ -1,7 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Общее освещение поверхностей: материал заполняет Surface и зовёт evaluateLighting — прямой свет всех источников
 // (Cook-Torrance GGX, Shaders/brdf.sh) и освещение окружением от неба (Shaders/ibl.sh). Новая составляющая
-// освещения (тени, туман) добавляется здесь, а не в каждый материал. Используют PBRLit.ps и terrain.ps
+// освещения (тени, туман) добавляется здесь, а не в каждый материал: так тень солнца (Shaders/shadows.sh) получают
+// все материалы с освещением. Используют PBRLit.ps и terrain.ps
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef LIGHTING_SH
@@ -12,6 +13,7 @@
 #include "samplers.sh"
 #include "brdf.sh"
 #include "ibl.sh"
+#include "shadows.sh"
 
 // Источник света, раскладка — DMLightDriver::LightBuffer
 struct Light
@@ -40,6 +42,7 @@ struct Surface
 {
 	float3 position;	// мир
 	float3 normal;		// мир, нормированная
+	float3 geometricNormal;	// нормаль геометрии без карты нормалей (для смещения при выборке тени), нормированная
 	float3 baseColor;	// линейный
 	float  metallic;
 	float  roughness;	// «на глаз» (perceptual), 0…1
@@ -69,6 +72,11 @@ float spotAttenuation( float3 toLight, Light light )
 
 float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 diffuseColor, float roughness )
 {
+	// Тень солнца — один раз до цикла источников
+	float sunShadowFactor = 1.0f;
+	[branch] if( g_shadowSunIndex >= 0 )
+		sunShadowFactor = sunShadow( surface.position, surface.geometricNormal, -g_lights[g_shadowSunIndex].direction );
+
 	float3 result = 0.0f;
 	[loop] for( int i = 0; i < (int)cb_lightCount; ++i )
 	{
@@ -79,6 +87,8 @@ float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 d
 		if( light.type == lightDirectional )
 		{
 			toLight = -light.direction;
+			if( i == g_shadowSunIndex )
+				attenuation = sunShadowFactor;
 		}
 		else
 		{
@@ -114,7 +124,8 @@ float3 evaluateLighting( Surface surface )
 	float3 ambient = diffuseColor * ambientIrradiance( surface.normal ) +
 					 ambientSpecular( reflect( -view, surface.normal ), roughness ) * ( F0 * environment.x + environment.y );
 
-	return direct + ambient * surface.occlusion + surface.emissive;
+	// Освещение окружением тень не гасит (как в UE без затенения окружения)
+	return ( direct + ambient * surface.occlusion + surface.emissive ) * shadowCascadeTint( surface.position );
 }
 
 #endif

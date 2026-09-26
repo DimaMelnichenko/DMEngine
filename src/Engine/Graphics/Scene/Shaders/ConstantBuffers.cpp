@@ -51,6 +51,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.appTime = static_cast<float>( m_timer.totalTime() );
 		data.elapsedTime = static_cast<float>( m_timer.GetTime() );
 		data.lightsCount = m_lightsCount;
+		data.lodOrigin = view.lodOrigin;
 	} );
 
 	ID3D11Buffer* buffer = m_frameConstant.get();

@@ -92,6 +92,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/D3D/DMSamplerState.cpp
     src/Engine/Graphics/DMGraphics.cpp
     src/Engine/Graphics/Renderer.cpp
+    src/Engine/Graphics/ShadowCascades.cpp
     src/Engine/Graphics/Scene/Camera/DMCamera.cpp
     src/Engine/Graphics/Scene/Camera/DMFrustum.cpp
     src/Engine/Graphics/Scene/Scene.cpp

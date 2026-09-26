@@ -19,7 +19,7 @@ cbuffer FrameConstantBuffer : register( SLOT_CB_FRAME )
 	float3 cb_viewDirection;
 	float  cb_elapsedTime;
 	float  cb_lightCount;
-	float3 fcb_dump;
+	float3 cb_lodOrigin;	// откуда считаются LOD и морфинг: у видов теней — позиция главной камеры
 };
 
 // Раскладка — ConstantBuffers::ShaderModelConstant

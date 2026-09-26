@@ -5,14 +5,15 @@ DMFrustum::DMFrustum( const XMMATRIX& viewProjection )
 	XMFLOAT4X4 m;
 	XMStoreFloat4x4( &m, viewProjection );
 
-	// Плоскость — сумма или разность четвёртого столбца и столбца оси: right, left, bottom, top, far, near
+	// Плоскость — сумма или разность четвёртого столбца и столбца оси: right, left, bottom, top, far; ближняя —
+	// третий столбец (в Direct3D глубина от 0, а не от −1, как в OpenGL)
 	const XMFLOAT4 planes[6] = {
 		{ m._14 - m._11, m._24 - m._21, m._34 - m._31, m._44 - m._41 },
 		{ m._14 + m._11, m._24 + m._21, m._34 + m._31, m._44 + m._41 },
 		{ m._14 + m._12, m._24 + m._22, m._34 + m._32, m._44 + m._42 },
 		{ m._14 - m._12, m._24 - m._22, m._34 - m._32, m._44 - m._42 },
 		{ m._14 - m._13, m._24 - m._23, m._34 - m._33, m._44 - m._43 },
-		{ m._14 + m._13, m._24 + m._23, m._34 + m._33, m._44 + m._43 },
+		{ m._13, m._23, m._33, m._43 },
 	};
 	for( int i = 0; i < 6; ++i )
 		m_planes[i] = XMPlaneNormalize( XMLoadFloat4( &planes[i] ) );

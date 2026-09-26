@@ -4,7 +4,8 @@
 в точке (цвет, металличность, шероховатость, нормаль, затенение, свечение) и вызывает `evaluateLighting`. Функция
 складывает прямой свет всех источников и освещение окружением от неба. Так устроены все современные движки: в UE
 материал заполняет входы Base Color, Metallic, Roughness, Normal, а освещение считает общий код. Поэтому новая
-составляющая освещения (тени, туман, локальные отражения) добавляется один раз, а не в каждый шейдер материала.
+составляющая освещения (тени, туман, локальные отражения) добавляется один раз, а не в каждый шейдер материала:
+так тень солнца ([shadows.md](shadows.md)) получили сразу все материалы с освещением.
 
 Сейчас функцией пользуются материал `PBR` (`Shaders/PBRLit.ps`, модели и `PBRInstance` у расстановки) и террейн
 (`Shaders/terrain.ps`). Материалы без освещения (`Texture`, `Color`, частицы) её не вызывают.
@@ -17,6 +18,7 @@
    |---|---|
    | `position` | точка в мире |
    | `normal` | нормаль в мире, нормированная (уже с картой нормалей) |
+   | `geometricNormal` | нормаль геометрии без карты нормалей, нормированная; по ней смещается точка выборки тени |
    | `baseColor` | базовый цвет, линейный |
    | `metallic` | металличность 0…1 |
    | `roughness` | шероховатость 0…1 «на глаз»; ниже 0,045 поднимается до 0,045, иначе блик точечного источника вырождается в точку |
@@ -27,7 +29,9 @@
    и цвет рассеянного света (базовый цвет × (1 − металличность)) — схема metallic/roughness, см.
    [materials.md](materials.md).
 3. **Прямой свет** — цикл по источникам из structured buffer (слот PS t100). Для каждого — направление на свет
-   и затухание, затем BRDF Cook-Torrance GGX (`Shaders/brdf.sh`) × цвет источника × затухание.
+   и затухание, затем BRDF Cook-Torrance GGX (`Shaders/brdf.sh`) × цвет источника × затухание. Затухание солнца —
+   множитель тени из каскадных карт (`sunShadow` в `Shaders/shadows.sh`, [shadows.md](shadows.md)); он считается
+   один раз до цикла.
 4. **Освещение окружением** — от процедурного неба ([sky.md](sky.md)): рассеянное — сферические гармоники по нормали,
    отражённое — префильтрованный cubemap по вектору отражения с таблицей BRDF (split-sum). Оба умножаются на
    `occlusion`.
@@ -116,6 +120,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	Surface surface;
 	surface.position = input.worldPosition;
 	surface.normal = normalize( input.normal );
+	surface.geometricNormal = surface.normal;
 	surface.baseColor = g_texAlbedo.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb;
 	surface.metallic = 0.0f;
 	surface.roughness = 0.8f;
@@ -125,8 +130,10 @@ float4 main( PixelInputType input ) : SV_TARGET
 }
 ```
 
-Свет (t100) и освещение окружением (t101…t103) привязываются для всех пиксельных шейдеров каждый кадр
-(`Renderer::preparePipeline`, `SkyAtmosphere::compute`), материалу привязывать их не нужно.
+Свет (t100), освещение окружением (t101…t103) и карта теней (t104, сэмплер s8, константы b3) привязываются для всех
+пиксельных шейдеров каждый кадр (`Renderer::preparePipeline`, `SkyAtmosphere::compute`,
+`ShadowCascades::bindForReceivers`), материалу привязывать их не нужно. Чтобы материал отбрасывал тень, ему нужен
+вариант «только глубина» (`DMShader::depthPhaseFor`, [shadows.md](shadows.md)).
 
 ## Если что-то не так
 
@@ -148,7 +155,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 ## Ограничения
 
-- Теней нет.
+- Тень отбрасывает только солнце ([shadows.md](shadows.md)); точечные и прожекторы — без теней.
 - Источники — один файл `Scene\Lights.ini` на все уровни, не данные уровня; в GUI не редактируются. Не больше 32
   (`DMLightDriver::maxLights`), лишние не освещают.
 - Каждый пиксель перебирает все источники: при десятках источников нужен Forward+ (отбор источников по тайлам экрана).
@@ -164,10 +171,11 @@ float4 main( PixelInputType input ) : SV_TARGET
 | `Shaders/lighting.sh` | `Surface`, `evaluateLighting`, источники (`Light`, `g_lights`), затухание и конус |
 | `Shaders/brdf.sh` | BRDF Cook-Torrance: GGX, Смит, Шлик |
 | `Shaders/ibl.sh` | освещение окружением от неба |
+| `Shaders/shadows.sh` | тень солнца из каскадных карт |
 | `src/Engine/Graphics/Scene/Light/DMLight.h/.cpp` | источник: тип, цвет, направление, радиус, конус |
-| `src/Engine/Graphics/Scene/Light/DMLightDriver.h/.cpp` | чтение `Lights.ini`, буфер источников для шейдеров (`LightBuffer`), солнце для неба |
+| `src/Engine/Graphics/Scene/Light/DMLightDriver.h/.cpp` | чтение `Lights.ini`, буфер источников для шейдеров (`LightBuffer`), солнце для неба и теней (`sunLightIndex`) |
 | `src/Engine/Graphics/Renderer.cpp` | привязка буфера источников каждый кадр (`preparePipeline`) |
-| `Scene/Lights.ini` | источники, настройки неба и постобработки |
+| `Scene/Lights.ini` | источники, настройки неба, теней и постобработки |
 
 ## Откуда подход
 

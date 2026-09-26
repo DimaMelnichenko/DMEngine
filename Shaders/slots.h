@@ -18,7 +18,8 @@
 #define SLOT_CB_OBJECT		DM_SLOT( b, 1 )	// матрица объекта
 #define SLOT_CB_MATERIAL	DM_SLOT( b, 2 )	// параметры материала (PBR, террейн, трава)
 #define SLOT_CB_PASS		DM_SLOT( b, 2 )	// параметры прохода без материала (небо, постобработка, compute — DMComputeShader)
-// b3 и дальше — свои буферы прохода (compute расстановки и частиц)
+#define SLOT_CB_SHADOW		DM_SLOT( b, 3 )	// каскады теней солнца (shadows.sh, ShadowCascades) — пиксельные шейдеры
+// b4 и дальше — свои буферы прохода (compute расстановки и частиц)
 
 // Текстуры и буферы. t0…t15 — ресурсы материала или прохода, t16… — данные объекта; всё до
 // SLOT_TRANSIENT_COUNT отвязывается в конце кадра (DMD3D::EndScene)
@@ -30,5 +31,9 @@
 #define SLOT_IBL_IRRADIANCE	DM_SLOT( t, 101 )	// освещение окружением: гармоники рассеянного света (ibl.sh, SkyAtmosphere)
 #define SLOT_IBL_SPECULAR	DM_SLOT( t, 102 )	// префильтрованный cubemap отражений
 #define SLOT_IBL_BRDF		DM_SLOT( t, 103 )	// таблица BRDF
+#define SLOT_SHADOW_MAP		DM_SLOT( t, 104 )	// карта теней солнца: массив каскадов (shadows.sh, ShadowCascades)
+
+// Сэмплеры: s0…s7 — общие (samplers.sh, DMSamplerState)
+#define SLOT_SAMPLER_SHADOW	DM_SLOT( s, 8 )		// сравнение глубины для карты теней (PCF 2×2)
 
 #endif
