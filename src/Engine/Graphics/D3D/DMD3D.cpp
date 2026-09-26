@@ -676,7 +676,9 @@ void DMD3D::BeginScene( float red, float green, float blue, float alpha )
 	color[2] = blue;
 	color[3] = alpha;
 
-	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём
+	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём. Область вывода — на весь кадр:
+	// проходы до сцены (cubemap неба) рисуют в цели другого размера
+	m_deviceContext->RSSetViewports( 1, &m_viewport );
 	ID3D11RenderTargetView* rtv = m_sceneRTV.get();
 	m_deviceContext->OMSetRenderTargets( 1, &rtv, m_depthStencilView.get() );
 	m_deviceContext->ClearRenderTargetView( m_sceneRTV.get(), color );

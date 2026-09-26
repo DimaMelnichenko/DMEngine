@@ -4,6 +4,7 @@
 
 #include "common.vs"
 #include "CommonLight.ps"
+#include "ibl.sh"
 
 // Не заданная текстура — белая 1×1 (для Normal — плоская нормаль), так что работают одни множители
 Texture2D g_texBaseColor : register(t0);         // sRGB, альфа — прозрачность
@@ -71,11 +72,13 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 	float3 direct = CookTorrance_GGX_all_light( n, v, F0, diffuseColor, roughness, input.worldPosition );
 
-	// Окружающий свет полусферой: рассеянный — по нормали, отражённый — по вектору отражения
-	float3 ambientDiffuse = diffuseColor * ambientHemisphere( n );
-	float3 ambientSpecular = EnvBRDFApprox( F0, roughness, NV ) * ambientHemisphere( reflect( -v, n ) );
+	// Освещение окружением от неба (Shaders/ibl.sh): рассеянное — гармоники по нормали, отражённое — префильтр
+	// по вектору отражения с таблицей BRDF (split-sum)
+	float3 ambientDiffuse = diffuseColor * ambientIrradiance( n );
+	float2 environment = environmentBRDF( NV, roughness );
+	float3 ambientReflection = ambientSpecular( reflect( -v, n ), roughness ) * ( F0 * environment.x + environment.y );
 
-	float3 color = direct + ( ambientDiffuse + ambientSpecular ) * occlusion + emissive;
+	float3 color = direct + ( ambientDiffuse + ambientReflection ) * occlusion + emissive;
 
 	float4 result;
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)

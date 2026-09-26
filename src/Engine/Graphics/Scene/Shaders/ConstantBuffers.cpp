@@ -21,7 +21,7 @@ void ConstantBuffers::initBuffers()
 	m_timer.Initialize();
 }
 
-void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount, const XMFLOAT3& ambientSkyColor, const XMFLOAT3& ambientGroundColor )
+void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount )
 {
 	m_timer.Frame();
 
@@ -54,8 +54,6 @@ void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount
 		data.appTime = static_cast<float>( m_timer.totalTime() );
 		data.elapsedTime = static_cast<float>( m_timer.GetTime() );
 		data.lightsCount = static_cast<float>( lightsCount );
-		data.ambientSkyColor = XMFLOAT4( ambientSkyColor.x, ambientSkyColor.y, ambientSkyColor.z, 1.0f );
-		data.ambientGroundColor = XMFLOAT4( ambientGroundColor.x, ambientGroundColor.y, ambientGroundColor.z, 1.0f );
 	} );
 
 	ID3D11Buffer* buffer = m_frameConstant.get();

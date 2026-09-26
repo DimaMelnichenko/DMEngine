@@ -1,0 +1,44 @@
+////////////////////////////////////////////////////////////////////////////////
+// Таблица BRDF для отражений окружения (split-sum, Karis 2013): u — N·V, v — шероховатость; результат — масштаб и
+// сдвиг F0 (отражение = префильтр × (F0·A + B)). Считается один раз при запуске
+////////////////////////////////////////////////////////////////////////////////
+
+#include "ibl_sampling.sh"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	const float NoV = max( input.uv.x, 1e-3f );
+	const float roughness = input.uv.y;
+	const float alpha = roughness * roughness;
+	const float k = alpha * 0.5f;	// Шлик-Смит для освещения окружением
+	const float3 n = float3( 0.0f, 0.0f, 1.0f );
+	const float3 v = float3( sqrt( 1.0f - NoV * NoV ), 0.0f, NoV );
+
+	const uint sampleCount = 256;
+	float a = 0.0f;
+	float b = 0.0f;
+	[loop] for( uint i = 0; i < sampleCount; ++i )
+	{
+		float3 h = importanceSampleGGX( hammersley( i, sampleCount ), alpha, n );
+		float3 l = 2.0f * dot( v, h ) * h - v;
+		float NoL = saturate( l.z );
+		if( NoL <= 0.0f )
+			continue;
+
+		float NoH = saturate( h.z );
+		float VoH = saturate( dot( v, h ) );
+		float g = ( NoV / ( NoV * ( 1.0f - k ) + k ) ) * ( NoL / ( NoL * ( 1.0f - k ) + k ) );
+		float visibility = g * VoH / ( NoH * NoV );
+		float fresnel = pow( 1.0f - VoH, 5.0f );
+		a += ( 1.0f - fresnel ) * visibility;
+		b += fresnel * visibility;
+	}
+
+	return float4( a / sampleCount, b / sampleCount, 0.0f, 1.0f );
+}

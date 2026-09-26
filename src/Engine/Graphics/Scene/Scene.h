@@ -3,6 +3,7 @@
 #include <vector>
 #include "SceneObject.h"
 #include "Sky\SkySphere.h"
+#include "Sky\SkyAtmosphere.h"
 #include "Terrain\CDLODTerrain.h"
 #include "Model\ModelQueues.h"
 #include "Scatterer\Scatterer.h"
@@ -37,7 +38,8 @@ private:
 	LevelDescription m_level;
 	DMLightDriver m_lightDriver;
 
-	SkySphere m_sky;
+	SkyAtmosphere m_atmosphere;	// процедурное небо и освещение окружением от него
+	SkySphere m_sky;			// модель неба уровня (Levels.sky), если задана — вместо фона атмосферы
 	CDLODTerrain m_terrain;
 	ModelQueues m_models;
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;

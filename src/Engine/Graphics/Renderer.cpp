@@ -72,8 +72,7 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	// установка источников света
 	int lightCount = scene.lights().setBuffer( 100, SRVType::ps );
 	// установка матриц в шейдер константы
-	pipeline().shaderConstant().setPerFrameBuffer( frame.camera, lightCount,
-												   scene.lights().ambientSkyColor(), scene.lights().ambientGroundColor() );
+	pipeline().shaderConstant().setPerFrameBuffer( frame.camera, lightCount );
 }
 
 void Renderer::renderPass( Scene& scene, const FrameContext& frame, RenderPass pass )

@@ -1,0 +1,37 @@
+////////////////////////////////////////////////////////////////////////////////
+// Фон кадра — небо: cubemap неба по направлению взгляда и солнечный диск. Рисуется первым, без буфера глубины
+////////////////////////////////////////////////////////////////////////////////
+
+#include "common.vs"
+#include "samplers.sh"
+#define ATMOSPHERE_NO_SKY
+#include "atmosphere.sh"
+
+TextureCube g_sky : register(t0);
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+// Угловой радиус солнца — вдвое больше настоящего (0,27°), чтобы диск был заметен на экране
+static const float sunAngularRadius = 0.0093f;
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	// Луч взгляда: из экранных координат в пространство камеры (левое, взгляд по +Z), затем в мир
+	float2 ndc = float2( input.uv.x * 2.0f - 1.0f, 1.0f - input.uv.y * 2.0f );
+	float3 viewDirection = float3( ndc.x / cb_projectionMatrix[0][0], ndc.y / cb_projectionMatrix[1][1], 1.0f );
+	float3 direction = normalize( mul( viewDirection, (float3x3)cb_viewInverseMatrix ) );
+
+	float3 color = g_sky.SampleLevel( g_SamplerLinearClamp, direction, 0.0f ).rgb;
+
+	// Диск: яркость = освещённость / телесный угол, с мягким краем; под горизонтом его закрывает земля
+	float angle = acos( saturate( dot( direction, g_sunDirection ) ) );
+	float disk = 1.0f - smoothstep( sunAngularRadius * 0.8f, sunAngularRadius, angle );
+	float solidAngle = atmospherePi * sunAngularRadius * sunAngularRadius;
+	color += g_sunColor / solidAngle * disk * step( 0.0f, direction.y );
+
+	return float4( color, 1.0f );
+}

@@ -80,6 +80,14 @@ bool Scene::initialize()
 	if( !m_lightDriver.loadFromFile( "Scene\\Lights.ini" ) )
 		LOG( "Lights are not loaded from Scene\\Lights.ini, default light is used" );
 
+	// Небо освещает сцену всегда, а фоном рисуется, если у уровня нет своей модели неба
+	if( !m_atmosphere.initialize( m_lightDriver, "Scene\\Lights.ini" ) )
+	{
+		LOG( "Fail to initialize sky atmosphere" );
+		return false;
+	}
+	m_atmosphere.setBackgroundVisible( !m_level.sky );
+
 	// Расстановка и частицы стоят на террейне и читают его карту высот
 	std::string heightMap;
 	auto timeStart = std::chrono::high_resolution_clock::now();
@@ -142,7 +150,8 @@ bool Scene::initialize()
 		}
 	}
 
-	m_objects = { &m_sky, &m_terrain, &m_models };
+	// Атмосфера первой: её compute() готовит освещение окружением для всех, render() рисует фон
+	m_objects = { &m_atmosphere, &m_sky, &m_terrain, &m_models };
 	for( const auto& scatterer : m_scatterers )
 		m_objects.push_back( scatterer.get() );
 	m_objects.push_back( &m_particles );

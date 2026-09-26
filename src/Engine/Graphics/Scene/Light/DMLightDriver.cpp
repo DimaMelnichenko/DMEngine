@@ -68,13 +68,6 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 {
 	ResourceMetaFile lightFile( file );
 
-	// Без секции [Ambient] остаются значения по умолчанию
-	XMFLOAT3 color;
-	if( strToVec3( lightFile.get<std::string>( "Ambient", "SkyColor" ), color ) )
-		m_ambientSkyColor = color;
-	if( strToVec3( lightFile.get<std::string>( "Ambient", "GroundColor" ), color ) )
-		m_ambientGroundColor = color;
-
 	try
 	{
 		int32_t count = lightFile.get<int32_t>( "General", "Count" );
@@ -112,12 +105,18 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 	return true;
 }
 
-const XMFLOAT3& DMLightDriver::ambientSkyColor() const
+void DMLightDriver::directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) const
 {
-	return m_ambientSkyColor;
-}
-
-const XMFLOAT3& DMLightDriver::ambientGroundColor() const
-{
-	return m_ambientGroundColor;
+	XMVECTOR position = XMVectorSet( 1.0f, 1.0f, -1.0f, 0.0f );
+	color = XMFLOAT3( 1.0f, 1.0f, 1.0f );
+	for( const auto& light : m_light_list )
+	{
+		if( light.enabled() && light.type() == DMLight::Dir )
+		{
+			position = light.m_transformBuffer.resultMatrix().r[3];
+			color = light.color();
+			break;
+		}
+	}
+	XMStoreFloat3( &direction, XMVector3Normalize( XMVectorSetW( position, 0.0f ) ) );
 }

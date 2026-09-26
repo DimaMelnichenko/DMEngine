@@ -1,0 +1,76 @@
+////////////////////////////////////////////////////////////////////////////////
+// Таблица многократного рассеяния Ψ (Hillaire 2020, раздел 5.5): для точки на высоте v и солнца с косинусом
+// зенитного угла u — свет второго порядка L2, пришедший со всех направлений (включая землю), и доля f_ms, которую
+// атмосфера рассеивает обратно в точку; все порядки — геометрическая прогрессия Ψ = L2 / (1 − f_ms).
+// Рассеяние считается изотропным, результат — на единицу освещённости от солнца
+////////////////////////////////////////////////////////////////////////////////
+
+#include "samplers.sh"
+#define ATMOSPHERE_NO_SKY
+#include "atmosphere.sh"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	const float sunCosZenith = input.uv.x * 2.0f - 1.0f;
+	const float height = max( input.uv.y * ( atmosphereRadius - planetRadius ), 10.0f );
+	const float3 origin = float3( 0.0f, planetRadius + height, 0.0f );
+	const float3 sunDirection = float3( sqrt( saturate( 1.0f - sunCosZenith * sunCosZenith ) ), sunCosZenith, 0.0f );
+	const float isotropicPhase = 1.0f / ( 4.0f * atmospherePi );
+
+	const uint directionCount = 64;
+	const uint stepCount = 20;
+	float3 secondOrder = 0.0f;
+	float3 transfer = 0.0f;
+
+	[loop] for( uint d = 0; d < directionCount; ++d )
+	{
+		// Направления, равномерно покрывающие сферу (спираль Фибоначчи)
+		float i = d + 0.5f;
+		float cosPhi = 1.0f - 2.0f * i / directionCount;
+		float sinPhi = sqrt( saturate( 1.0f - cosPhi * cosPhi ) );
+		float theta = atmospherePi * ( 1.0f + sqrt( 5.0f ) ) * i;
+		float3 direction = float3( cos( theta ) * sinPhi, cosPhi, sin( theta ) * sinPhi );
+
+		float pathLength = raySphere( origin, direction, atmosphereRadius ).y;
+		float2 ground = raySphere( origin, direction, planetRadius );
+		bool hitsGround = ground.x > 0.0f;
+		if( hitsGround )
+			pathLength = ground.x;
+
+		float stepLength = pathLength / stepCount;
+		float3 transmittance = 1.0f;
+		float3 luminance = 0.0f;
+		float3 transferred = 0.0f;
+		[loop] for( uint s = 0; s < stepCount; ++s )
+		{
+			float3 position = origin + direction * ( stepLength * ( s + 0.5f ) );
+			Medium medium = atmosphereMedium( length( position ) - planetRadius );
+			float3 segmentTransmittance = exp( -medium.extinction * stepLength );
+			float3 extinction = max( medium.extinction, 1e-12f );
+
+			float3 scattered = medium.scattering * isotropicPhase * transmittanceToTop( position, sunDirection, 8 );
+			luminance += transmittance * ( scattered - scattered * segmentTransmittance ) / extinction;
+			transferred += transmittance * ( medium.scattering - medium.scattering * segmentTransmittance ) / extinction;
+			transmittance *= segmentTransmittance;
+		}
+
+		// Земля — ламбертова поверхность, освещённая солнцем через атмосферу
+		if( hitsGround )
+		{
+			float3 groundPosition = origin + direction * pathLength;
+			float cosSun = saturate( dot( normalize( groundPosition ), sunDirection ) );
+			luminance += transmittance * transmittanceToTop( groundPosition, sunDirection, 8 ) * cosSun * g_groundAlbedo / atmospherePi;
+		}
+
+		secondOrder += luminance / directionCount;
+		transfer += transferred / directionCount;
+	}
+
+	return float4( secondOrder / ( 1.0f - transfer ), 1.0f );
+}

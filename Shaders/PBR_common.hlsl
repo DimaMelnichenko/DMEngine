@@ -61,15 +61,3 @@ float3 CookTorrance_GGX(float3 n, float3 l, float3 v, float3 f0, float roughness
     float3 diffK = saturate( 1.0 - F ) / PI;
     return max(0.0, albedo * diffK * NL + specK );
 }
-
-// Аналитическая замена предынтегрированной таблицы BRDF для отражения окружения
-// (B. Karis, «Physically Based Shading on Mobile», 2014): доля отражённого света окружения по F0, roughness и N·V
-float3 EnvBRDFApprox( float3 specularColor, float roughness, float NV )
-{
-    const float4 c0 = float4( -1.0, -0.0275, -0.572, 0.022 );
-    const float4 c1 = float4( 1.0, 0.0425, 1.04, -0.04 );
-    float4 r = roughness * c0 + c1;
-    float a004 = min( r.x * r.x, exp2( -9.28 * NV ) ) * r.x + r.y;
-    float2 AB = float2( -1.04, 1.04 ) * a004 + r.zw;
-    return specularColor * AB.x + AB.y;
-}

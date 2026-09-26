@@ -1,0 +1,16 @@
+////////////////////////////////////////////////////////////////////////////////
+// Грань cubemap неба (g_face): яркость атмосферы в направлении каждого текселя. Класс SkyAtmosphere
+////////////////////////////////////////////////////////////////////////////////
+
+#include "atmosphere.sh"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	return float4( skyRadiance( cubeDirection( g_face, input.uv ) ), 1.0f );
+}
