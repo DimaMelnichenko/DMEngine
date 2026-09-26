@@ -51,6 +51,10 @@ void Config::parseCommandLine( const std::string& commandLine )
 		{
 			m_showGUI = false;
 		}
+		else if( args[i] == "-nomouse" )
+		{
+			m_mouseLook = false;
+		}
 		else if( i + 1 >= args.size() )
 		{
 			// Параметры ниже ждут значение

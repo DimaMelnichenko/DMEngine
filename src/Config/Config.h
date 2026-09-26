@@ -9,7 +9,7 @@ public:
 	~Config();
 
 	bool readConfig( const std::string& file );
-	// Параметры командной строки поверх settings.ini: -camera x,y,z[,pitch,yaw], -level имя, -nogui
+	// Параметры командной строки поверх settings.ini: -camera x,y,z[,pitch,yaw], -level имя, -nogui, -nomouse
 	void parseCommandLine( const std::string& commandLine );
 
 	bool fullScreen() const		{ return m_FullScreen; }
@@ -34,6 +34,8 @@ public:
 	const std::string& levelName() const	{ return m_levelName; }
 	// Показывать окна ImGui; -nogui скрывает их, например для снимков экрана
 	bool showGUI() const					{ return m_showGUI; }
+	// Камера поворачивается мышью; -nomouse отключает это и скрывает указатель — для снимков с заданной точки
+	bool mouseLook() const					{ return m_mouseLook; }
 
 private:
 	bool m_FullScreen = false;
@@ -49,6 +51,7 @@ private:
 	XMFLOAT2 m_cameraRotation = XMFLOAT2( 0.0f, 0.0f );
 	std::string m_levelName;
 	bool m_showGUI = true;
+	bool m_mouseLook = true;
 
 };
 

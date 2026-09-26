@@ -109,6 +109,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	m_GUI.Initialize( m_hwnd );
 	m_showGUI = m_config.showGUI();
+	if( !m_config.mouseLook() )
+		ShowCursor( FALSE );
 
 	LOG( "Total init ms: " + TIME_PRINT( timeStartInit ) );
 
@@ -124,7 +126,8 @@ bool DMGraphics::Frame()
 
 	// Подготовка view, proj матриц
 	DMCamera& camera = m_cameraPool["main"];
-	TIME_CHECK( camera.Update( elapsedTime, m_cursorMode ), "Camera Update = %.3f ms" );
+	// С -nomouse камера не читает мышь, как в режиме курсора, — поворот только из -camera и настроек
+	TIME_CHECK( camera.Update( elapsedTime, m_cursorMode || !m_config.mouseLook() ), "Camera Update = %.3f ms" );
 
 	const FrameContext frame{ camera, DMFrustum( camera, 1000.0f ), elapsedTime };
 

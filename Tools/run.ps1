@@ -1,13 +1,14 @@
 # Запуск DMEngine для проверки изменений:
 #   .\Tools\run.ps1 [-Config Debug|Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,3] [-Camera x,y,z,pitch,yaw] [-Level имя]
-#                    [-NoGui]
+#                    [-NoGui] [-NoMouse]
 # Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные),
 # ждёт Seconds секунд, при необходимости нажимает клавиши и снимает окно, затем закрывает движок и печатает
 # из log.txt ошибки и время инициализации. Keys — скан-коды DirectInput: 2 — клавиша «1», 4 — «3», 5 — «4», 16 — Q, 23 — I.
 # Camera — стартовая камера вместо секции [Camera] в settings.ini: положение и поворот в градусах (тангаж, рыскание).
 # Level — уровень из таблицы Levels вместо секции [Level] в settings.ini.
 # NoGui — без окон ImGui (параметр движка -nogui), чтобы они не закрывали кадр; в движке их прячет и клавиша G.
-# Камера движка следует за мышью: пока идёт запуск со снимком, мышь трогать нельзя.
+# NoMouse — камера не следует за мышью, указатель скрыт (параметр движка -nomouse); со -Screenshot включается сам,
+# чтобы случайное движение мыши не сдвигало кадр.
 param(
     [ValidateSet('Debug', 'Release')] [string]$Config = 'Debug',
     [int]$Seconds = 8,
@@ -15,7 +16,8 @@ param(
     [string]$Keys,
     [string]$Camera,
     [string]$Level,
-    [switch]$NoGui
+    [switch]$NoGui,
+    [switch]$NoMouse
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,6 +65,7 @@ if ($Level) {
     $engineArgs += "-level $Level"
 }
 if ($NoGui) { $engineArgs += '-nogui' }
+if ($NoMouse -or $Screenshot) { $engineArgs += '-nomouse' }
 if ($engineArgs.Count -gt 0) { $startArgs.ArgumentList = $engineArgs -join ' ' }
 $process = Start-Process @startArgs
 Start-Sleep -Seconds $Seconds
@@ -118,4 +121,4 @@ else {
 $log = Get-Content (Join-Path $root 'log.txt') -Encoding UTF8
 $placeholders = @($log | Where-Object { $_ -match 'placeholder( [a-z]+)? is used' }).Count
 if ($placeholders -gt 0) { Write-Output "Missing resources replaced by placeholders: $placeholders" }
-$log | Where-Object { $_ -match 'error|fail|exception|unknown|Total init' -and $_ -notmatch 'placeholder( [a-z]+)? is used' }
+$log | Where-Object { $_ -match 'error|fail|exception|unknown|Total init|GPU average' -and $_ -notmatch 'placeholder( [a-z]+)? is used' }

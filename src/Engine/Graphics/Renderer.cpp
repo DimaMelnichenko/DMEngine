@@ -1,10 +1,13 @@
 #include "Renderer.h"
 #include "Shaders\slots.h"
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include "Scene.h"
 #include "Pipeline.h"
 #include "GUI\GUI.h"
 #include "D3D\DMD3D.h"
+#include "Logger\Logger.h"
 
 namespace GS
 {
@@ -77,6 +80,44 @@ void Renderer::reportGpuTimes()
 	m_gui.addCounterInfo( "GPU frame = %.3f ms", m_gpuProfiler.frameMilliseconds() );
 	for( const auto& [name, milliseconds] : m_gpuProfiler.results() )
 		m_gui.addCounterInfo( "GPU " + name + " = %.3f ms", milliseconds );
+
+	// Прогрев — первые кадры (пересчёт окружения неба, заполнение очередей) в среднее не входят
+	constexpr uint32_t warmupFrames = 60;
+	constexpr auto averageDuration = std::chrono::seconds( 3 );
+	if( m_gpuAverageLogged || ++m_frameIndex <= warmupFrames || m_gpuProfiler.results().empty() )
+		return;
+
+	if( m_gpuAverages.empty() )
+	{
+		m_gpuAverageStart = std::chrono::steady_clock::now();
+		m_gpuAverages.push_back( { "frame" } );
+	}
+	m_gpuAverages[0].sum += m_gpuProfiler.frameMilliseconds();
+	m_gpuAverages[0].count++;
+	for( const auto& [name, milliseconds] : m_gpuProfiler.results() )
+	{
+		auto it = std::find_if( m_gpuAverages.begin(), m_gpuAverages.end(), [&]( const GpuAverage& a ) { return a.name == name; } );
+		if( it == m_gpuAverages.end() )
+		{
+			m_gpuAverages.push_back( { name } );
+			it = m_gpuAverages.end() - 1;
+		}
+		it->sum += milliseconds;
+		it->count++;
+	}
+
+	if( std::chrono::steady_clock::now() - m_gpuAverageStart < averageDuration )
+		return;
+
+	char value[32];
+	std::string line = "GPU average over " + std::to_string( m_gpuAverages[0].count ) + " frames, ms:";
+	for( const GpuAverage& average : m_gpuAverages )
+	{
+		std::snprintf( value, sizeof( value ), "%.3f", average.sum / std::max( average.count, 1u ) );
+		line += " " + average.name + " " + value + ";";
+	}
+	LOG( line );
+	m_gpuAverageLogged = true;
 }
 
 PropertyContainer* Renderer::postProcessProperties()

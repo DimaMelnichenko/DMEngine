@@ -1,6 +1,8 @@
 #pragma once
 
+#include <chrono>
 #include <string>
+#include <vector>
 #include "Scene\VertexPool.h"
 #include "D3D\DMSamplerState.h"
 #include "SceneObject.h"
@@ -46,6 +48,19 @@ private:
 	DMSamplerState m_samplerState;
 	PostProcess m_postProcess;
 	GpuProfiler m_gpuProfiler;
+
+	// Среднее время GPU за первые секунды после прогрева — одной строкой в log.txt («GPU average»): её печатает
+	// Tools/run.ps1, чтобы сравнивать производительность до и после изменений
+	struct GpuAverage
+	{
+		std::string name;
+		double sum = 0.0;
+		uint32_t count = 0;
+	};
+	std::vector<GpuAverage> m_gpuAverages;	// первый элемент — весь кадр
+	uint32_t m_frameIndex = 0;
+	std::chrono::steady_clock::time_point m_gpuAverageStart;
+	bool m_gpuAverageLogged = false;
 };
 
 }
