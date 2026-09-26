@@ -58,7 +58,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   без них движок запускается на заглушках (см. «Заглушки ресурсов»), а в `log.txt` перечислено, что не загрузилось.
   Тестовые данные террейна создают скрипты: карту высот `Textures\terrain\heightmap.dds` (1024×1024) —
   `python Tools/gen_heightmap.py`, затем текстуры слоёв `Textures\terrain\layers\*.dds` и splat-карту
-  `Textures\terrain\splatmap.dds` — `python Tools/gen_terrain_textures.py` (нужен numpy).
+  `Textures\terrain\splatmap.dds` — `python Tools/gen_terrain_textures.py` (нужен numpy). Тестовые модели уровня
+  `Test` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
+  `blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/source/test_models.glb`, затем
+  `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,90.5,238`.
 - Лог каждого запуска перезаписывается в отслеживаемый `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`).
 - Шейдеры (`Shaders/*.vs|.ps|.gs|.hlsl`) компилируются во время выполнения
   (`D3DCompileFromFile` / `D3DCompile` в `DMShader`). Для правки шейдера пересборка не нужна.
@@ -110,7 +113,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
 (`MaterialParameterDef.default_value`). Экземпляры 5, 6, 9–12 — наследие старой схемы, где эта колонка означала
 `Materials.id`; у части старых моделей они не совпадают с материалом. Подробно — `docs/materials.md`. Цветовое
 пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла. Новые ассеты добавляются
-строками в БД, а не кодом. Свет — `Scene\Lights.ini` (источники и окружающий свет `[Ambient]`), ini читается через
+строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
+моделей, LOD, экземпляров материала `PBR`, расстановки; повторный импорт обновляет), подробно — `docs/models.md`. Свет — `Scene\Lights.ini` (источники и окружающий свет `[Ambient]`), ini читается через
 `ResourceMetaFile` (`GetPrivateProfileString`).
 
 Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`): строка `Levels` ссылается на террейн (`Terrain`,
@@ -120,7 +124,8 @@ NULL — этого у уровня нет. Модели уровня с пол�
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн, частицы,
 наборы `Meadow` (трава) и `Debris` (камешки), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
-`PBR_Metal_R01…R09`: roughness 0,1…0,9).
+`PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
++ `TestPanel_Frame`.
 
 **Заглушки ресурсов.** Слот `placeholderId` (0) в хранилищах текстур и мешей занимает процедурная заглушка:
 пурпурно-чёрная шахматка (`DMTextureStorage::createPlaceholder`) и куб от −0,5 до 0,5 (`MeshStorage::createPlaceholder`).
