@@ -2,6 +2,7 @@
 #include "Shaders\slots.h"
 #include <fstream>
 #include <d3dcompiler.h>
+#include "ShaderUtils.h"
 
 
 DMComputeShader::DMComputeShader()
@@ -21,7 +22,7 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 	std::wstring fileName = utf8ToWide( file_name );
 
 	HRESULT result = D3DCompileFromFile( fileName.data(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, 
-										 function_name.data(), "cs_5_0", D3D10_SHADER_ENABLE_STRICTNESS, 0, &shader_buffer, &error_message );
+										 function_name.data(), "cs_5_0", GS::shaderCompileFlags() | D3DCOMPILE_ENABLE_STRICTNESS, 0, &shader_buffer, &error_message );
 
 	if( FAILED( result ) )
 	{

@@ -1,4 +1,5 @@
 #include "ShaderUtils.h"
+#include <d3dcompiler.h>
 
 namespace GS
 {
@@ -61,6 +62,15 @@ HRESULT createInputLayout( std::vector<D3D11_INPUT_ELEMENT_DESC>& vertex_layout,
 	layout.reset( rawPointer );
 
 	return result;
+}
+
+UINT shaderCompileFlags()
+{
+#ifdef _DEBUG
+	return D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+	return D3DCOMPILE_OPTIMIZATION_LEVEL3;
+#endif
 }
 
 }

@@ -224,7 +224,7 @@ bool DMShader::addShaderPassFromFile( SRVType type,
 										 macros.empty() ? nullptr : &macros[0], 
 										 D3D_COMPILE_STANDARD_FILE_INCLUDE, function_name.data(),
 										 version( type ).data(), 
-										 D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION | D3DCOMPILE_PREFER_FLOW_CONTROL,
+										 shaderCompileFlags(),
 										 0, &buffer, &error );
 	com_unique_ptr<ID3DBlob> errorMessage( error );
 	com_unique_ptr<ID3DBlob> shaderBuffer( buffer );

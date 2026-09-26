@@ -15,6 +15,10 @@ HRESULT createShader( com_unique_ptr<ID3DBlob>& buffer, com_unique_ptr<ID3D11Dom
 
 HRESULT createShader( com_unique_ptr<ID3DBlob>& buffer, com_unique_ptr<ID3D11PixelShader>& shader );
 
+// Флаги компиляции шейдеров: в Debug — отладочная информация без оптимизации (исходник виден в RenderDoc / PIX),
+// в Release — полная оптимизация
+UINT shaderCompileFlags();
+
 HRESULT createInputLayout( std::vector<D3D11_INPUT_ELEMENT_DESC>& vertex_layout, com_unique_ptr<ID3DBlob>& shaderBuffer, com_unique_ptr<ID3D11InputLayout>& layout );
 
 }
