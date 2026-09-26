@@ -6,3 +6,6 @@
 /Meshes
 /Textures
 /cmake-build-*/
+# Локальные настройки инструментов: Claude Code (разрешения, хуки с путями машины) и проект CLion
+/.claude/
+/.idea/
