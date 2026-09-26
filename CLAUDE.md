@@ -73,7 +73,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   `blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/source/test_models.glb`, затем
   `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,90.5,238`. Пучок травы
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
-  затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter`; ромашка (`Camomile`, альфа-лепестки) — так же
+  затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 16`; ромашка (`Camomile`, альфа-лепестки) — так же
   со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Blender 5.0 стоит в
   `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH).
 - Лог каждого запуска перезаписывается в отслеживаемый `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`).
@@ -258,11 +258,11 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 
 **Расстановка (трава, цветы, камешки, веточки)** — `Scatterer` (`Scene/Scatterer/`), по объекту сцены на набор
 (`ScatterSets`: имя; проход и отсечение граней слоя задаёт режим его материала). Слой набора
-(`ScatterLayers`, свой `ScatterPass`: буфер инстансов, compute и `DrawIndexedInstancedIndirect`) — LOD модели, маска
-плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
+(`ScatterLayers`, свой `ScatterPass`: буфер инстансов по спискам LOD, compute и `DrawIndexedInstancedIndirect` на LOD) —
+растение: модель со всеми LOD (LOD экземпляра — по расстоянию и дальностям LOD модели `ModelProperties.range`, как у
+моделей уровня; меняется только меш, экземпляр на месте), маска плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
 размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы), `align_to_terrain` и `cast_shadow` (тень
-солнца; флажок «Cast shadow» в окне набора — `Scatterer::properties`). Трава и ромашки,
-кольца одного растения (пучок травы: LOD0 вблизи, LOD1 дальше), камешки — всё это слои. Каждый кадр `Shaders/scatter.cs`
+солнца; флажок «Cast shadow» в окне набора — `Scatterer::properties`). Трава, ромашки, камешки — слои. Каждый кадр `Shaders/scatter.cs`
 раскладывает инстансы слоя по сетке, привязанной к миру (смещение, размер и поворот — хеш координат ячейки, поэтому
 при движении камеры они на месте), маска даёт вероятность и размер, отсечение — по плоскостям frustum
 (`DMFrustum::planes`), поворот — кватернион (`Shaders/instance.sh`, `INST_ROTATE`). Высоту и UV масок даёт

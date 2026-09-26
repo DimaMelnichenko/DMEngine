@@ -14,10 +14,11 @@
 namespace GS
 {
 
-// Набор расстановки по террейну: трава, цветы, камешки, веточки (таблица ScatterSets). Слой набора — LOD модели,
-// маска плотности и параметры (таблица ScatterLayers): каждый кадр compute-шейдер Shaders\scatter.cs раскладывает
-// инстансы слоя по сетке, привязанной к миру, в кольце вокруг камеры и отсекает их по frustum, отрисовка — indirect
-// draw. Высоту и координаты масок даёт TerrainHeightSource, поэтому набор не зависит от устройства террейна.
+// Набор расстановки по террейну: трава, цветы, камешки, веточки (таблица ScatterSets). Слой набора — растение:
+// модель со всеми её LOD, маска плотности и параметры (таблица ScatterLayers). Каждый кадр compute-шейдер
+// Shaders\scatter.cs раскладывает инстансы слоя по сетке, привязанной к миру, в кольце вокруг камеры, отсекает их
+// по frustum и кладёт в список LOD по расстоянию (дальности LOD модели, как у моделей уровня); отрисовка — indirect
+// draw на LOD. Высоту и координаты масок даёт TerrainHeightSource, поэтому набор не зависит от устройства террейна.
 // Проход и отсечение граней задаёт материал слоя (режим и двусторонность, как у травы ландшафта в UE): набор рисует
 // непрозрачные и вырезанные по альфе слои в opaque, полупрозрачные — в transparent. Слой с cast_shadow рисуется
 // и в проход теней — в те каскады, которые пересекает его кольцо (с запасом на длину тени). Расчёт и отрисовка всех
@@ -29,9 +30,9 @@ public:
 
 	bool Initialize();
 	void setTerrain( const TerrainHeightSource* terrain );
-	// mask — маска плотности в хранилище текстур, в координатах карты высот террейна; name — подпись слоя в GUI
-	bool addLayer( const std::string& name, DMModel::LodBlock* lodBlock, const std::string& mask,
-				   const ScatterPass::PopulateParams& params );
+	// model — растение (все его LOD, не больше ScatterPass::maxLods); mask — маска плотности в хранилище текстур,
+	// в координатах карты высот террейна
+	bool addLayer( DMModel* model, const std::string& mask, const ScatterPass::PopulateParams& params );
 
 	void compute( const FrameContext& frame ) override;
 	// Свой вызов в проходах, где есть слои их режима материала
@@ -61,17 +62,25 @@ private:
 		XMFLOAT4 shadowCast;	// xyz — куда идёт свет солнца, w — длина тени на метр высоты вдоль луча (0 — солнца нет)
 	};
 
+	// LOD растения: меш и материал, часть кольца, где он рисуется
+	struct LayerLod
+	{
+		DMModel::LodBlock* block = nullptr;
+		DMShader* material = nullptr;
+		float nearDistance = 0.0f;
+		float farDistance = 0.0f;
+	};
+
 	struct Layer
 	{
-		DMModel::LodBlock* lodBlock = nullptr;
-		DMShader* material = nullptr;
+		std::vector<LayerLod> lods;
 		std::string mask;
 		std::unique_ptr<ScatterPass> pass;
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
 	};
 
-	// Слой отбрасывает тень: флаг и вариант материала «только глубина»
-	bool castsShadow( const Layer& layer ) const;
+	// LOD слоя отбрасывает тень: флаг слоя и вариант материала «только глубина»
+	bool castsShadow( const Layer& layer, const LayerLod& lod ) const;
 
 	// Больше потоков на слой не запускаем: при мелком шаге сетка покроет не всё кольцо, а только его середину
 	static constexpr uint16_t maxGridDim = 1024;

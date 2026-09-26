@@ -1,10 +1,11 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Расстановка слоя набора (Scatterer): трава, цветы, камешки. Инстансы раскладываются по сетке с шагом g_cellSize,
+// Расстановка слоя набора (Scatterer) — растения: трава, цветы, камешки. Инстансы раскладываются по сетке с шагом g_cellSize,
 // привязанной к миру, в кольце g_nearBorder…g_farBorder вокруг камеры. Смещение в ячейке, размер и поворот — хеш
 // координат ячейки, поэтому при движении камеры инстансы остаются на своих местах. Маска слоя задаёт вероятность
 // появления и размер, инстансы вне frustum отбрасываются (у слоя с тенью — если и тень не падает в кадр), у краёв
-// кольца размер плавно уходит в ноль.
-// init — сбрасывает indirect-аргументы слоя перед расстановкой
+// кольца размер плавно уходит в ноль. Инстанс попадает в список своего LOD по расстоянию: позиция, поворот и размер
+// от LOD не зависят, поэтому при смене LOD у растения меняется только меш.
+// init — сбрасывает indirect-аргументы одного LOD перед расстановкой
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "slots.h"
@@ -27,7 +28,8 @@ cbuffer ArgsBuffer : register( b3 )
 	uint   startIndexLocation;
 	int    baseVertexLocation;
 	uint   startInstanceLocation;
-	float3 argsPadding;
+	uint   argsOffset;			// аргументы LOD в g_drawArgs, байты
+	float2 argsPadding;
 };
 
 // ScatterPass::PopulateParams
@@ -42,9 +44,11 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	float  g_jitter;			// смещение внутри ячейки, доля шага
 	float  g_alignToTerrain;	// 1 — ось Y инстанса по нормали террейна
 	float3 g_rotationRange;		// предел случайного поворота вокруг осей X, Y, Z, радианы
-	uint   g_capacity;
+	uint   g_lodCapacity;		// ёмкость списка одного LOD
 	float  g_castShadow;		// 1 — слой отбрасывает тень солнца
-	float3 g_layerPadding;
+	uint   g_lodCount;
+	float2 g_layerPadding;
+	float4 g_lodEnd;			// дальность LOD 0…2, м: дальше — следующий LOD
 };
 
 // Нормированные плоскости frustum, нормали смотрят внутрь
@@ -62,15 +66,15 @@ struct ScatterItem
 	float4 rotation;	// кватернион
 };
 
-RWByteAddressBuffer g_drawArgs : register( u0 );	// аргументы DrawIndexedInstancedIndirect, число инстансов по смещению 4
-RWStructuredBuffer<ScatterItem> g_instances : register( u1 );
+RWByteAddressBuffer g_drawArgs : register( u0 );	// аргументы DrawIndexedInstancedIndirect по LOD, по 20 байт; число инстансов — по смещению 4
+RWStructuredBuffer<ScatterItem> g_instances : register( u1 );	// списки LOD подряд, по g_lodCapacity
 Texture2D g_densityMask : register( t2 );
 
 [numthreads( 1, 1, 1 )]
 void init()
 {
-	g_drawArgs.Store4( 0, uint4( indexCountPerInstance, instanceCount, startIndexLocation, (uint)baseVertexLocation ) );
-	g_drawArgs.Store( 16, startInstanceLocation );
+	g_drawArgs.Store4( argsOffset, uint4( indexCountPerInstance, instanceCount, startIndexLocation, (uint)baseVertexLocation ) );
+	g_drawArgs.Store( argsOffset + 16, startInstanceLocation );
 }
 
 uint hash( uint x )
@@ -172,12 +176,18 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	if( g_alignToTerrain > 0.5f )
 		rotation = quaternionMul( quaternionFromTo( float3( 0.0f, 1.0f, 0.0f ), terrainNormal( worldXZ ) ), rotation );
 
+	// LOD — как у моделей уровня: первый, чья дальность не меньше расстояния; последний — до конца кольца
+	uint lod = 0;
+	[unroll] for( uint i = 0; i < 3; ++i )
+		lod += ( i + 1 < g_lodCount && distanceToCamera > g_lodEnd[i] ) ? 1 : 0;
+	uint countOffset = lod * 20 + 4;
+
 	uint index;
-	g_drawArgs.InterlockedAdd( 4, 1, index );
-	if( index >= g_capacity )
+	g_drawArgs.InterlockedAdd( countOffset, 1, index );
+	if( index >= g_lodCapacity )
 	{
-		// Буфер полон: счётчик возвращается, чтобы отрисовка не читала за концом буфера
-		g_drawArgs.InterlockedAdd( 4, 0xffffffffU );
+		// Список полон: счётчик возвращается, чтобы отрисовка не читала за концом списка
+		g_drawArgs.InterlockedAdd( countOffset, 0xffffffffU );
 		return;
 	}
 
@@ -185,5 +195,5 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	item.position = position;
 	item.size = size;
 	item.rotation = rotation;
-	g_instances[index] = item;
+	g_instances[lod * g_lodCapacity + index] = item;
 }

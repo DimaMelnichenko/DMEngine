@@ -38,6 +38,8 @@ public:
 	// Номер LOD для расстояния или −1, если дальше последнего
 	int lodIndex( float distance ) const;
 	LodBlock* getLodById( uint16_t index );
+	// Дальность LOD index, м: до неё включительно рисуется этот LOD (ModelProperties.range)
+	float lodRange( uint16_t index ) const;
 	uint16_t lodCount();
 
 	PropertyContainer* properties();

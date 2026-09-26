@@ -33,19 +33,32 @@ void Scatterer::setTerrain( const TerrainHeightSource* terrain )
 	m_terrain = terrain;
 }
 
-bool Scatterer::addLayer( const std::string& name, DMModel::LodBlock* lodBlock, const std::string& mask,
-						  const ScatterPass::PopulateParams& params )
+bool Scatterer::addLayer( DMModel* model, const std::string& mask, const ScatterPass::PopulateParams& params )
 {
 	Layer layer;
-	layer.lodBlock = lodBlock;
-	layer.material = System::materials().get( lodBlock->material )->m_shader.get();
 	layer.mask = mask;
 	layer.pass = std::make_unique<ScatterPass>();
 	layer.pass->populateParams() = params;
-	if( !layer.pass->createBuffers() )
+	const uint32_t lodCount = std::min<uint32_t>( model->lodCount(), ScatterPass::maxLods );
+	if( !layer.pass->createBuffers( lodCount ) )
 		return false;
 
-	layer.properties = std::make_unique<PropertyContainer>( std::to_string( m_layers.size() ) + ": " + name );
+	// Дальности LOD — из модели, как у моделей уровня; последний LOD рисуется до конца кольца
+	ScatterPass::PopulateParams& populate = layer.pass->populateParams();
+	float lodEnd[ScatterPass::maxLods] = {};
+	for( uint32_t i = 0; i < lodCount; ++i )
+	{
+		lodEnd[i] = i + 1 < lodCount ? model->lodRange( static_cast<uint16_t>( i ) ) : params.farBorder;
+		LayerLod lod;
+		lod.block = model->getLodById( static_cast<uint16_t>( i ) );
+		lod.material = System::materials().get( lod.block->material )->m_shader.get();
+		lod.nearDistance = std::max( params.nearBorder, i == 0 ? 0.0f : lodEnd[i - 1] );
+		lod.farDistance = std::min( params.farBorder, lodEnd[i] );
+		layer.lods.push_back( lod );
+	}
+	populate.lodEnd = XMFLOAT4( lodEnd[0], lodEnd[1], lodEnd[2], lodEnd[3] );
+
+	layer.properties = std::make_unique<PropertyContainer>( std::to_string( m_layers.size() ) + ": " + model->properties()->name() );
 	layer.properties->insert( "Cast shadow", params.castShadow > 0.5f );
 	m_properties.addSubContainer( layer.properties.get() );
 
@@ -89,8 +102,11 @@ void Scatterer::compute( const FrameContext& frame )
 		// Флаг тени из GUI: по нему compute оставляет и инстансы за кадром, чья тень падает в кадр
 		layer.pass->populateParams().castShadow = ( *layer.properties )["Cast shadow"].data<bool>() ? 1.0f : 0.0f;
 
-		const AbstractMesh* mesh = System::meshes().get( layer.lodBlock->mesh ).get();
-		layer.pass->setInstanceParameters( m_initShader, mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
+		for( uint32_t i = 0; i < layer.lods.size(); ++i )
+		{
+			const AbstractMesh* mesh = System::meshes().get( layer.lods[i].block->mesh ).get();
+			layer.pass->resetArgs( m_initShader, i, mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
+		}
 
 		// Сетка покрывает квадрат со стороной 2 · farBorder вокруг камеры
 		const float cells = std::ceil( 2.0f * params.farBorder / params.cellSize ) + 1.0f;
@@ -101,9 +117,9 @@ void Scatterer::compute( const FrameContext& frame )
 	}
 }
 
-bool Scatterer::castsShadow( const Layer& layer ) const
+bool Scatterer::castsShadow( const Layer& layer, const LayerLod& lod ) const
 {
-	return ( *layer.properties )["Cast shadow"].data<bool>() && layer.material->depthPhaseFor( layer.lodBlock->params ) >= 0;
+	return ( *layer.properties )["Cast shadow"].data<bool>() && lod.material->depthPhaseFor( lod.block->params ) >= 0;
 }
 
 void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
@@ -112,9 +128,12 @@ void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 	uint32_t passMask = 0;
 	for( const Layer& layer : m_layers )
 	{
-		passMask |= passBit( passFor( layer.material->renderState( layer.lodBlock->params ).blendMode ) );
-		if( castsShadow( layer ) )
-			passMask |= passBit( MeshPass::csmShadowDepth );
+		for( const LayerLod& lod : layer.lods )
+		{
+			passMask |= passBit( passFor( lod.material->renderState( lod.block->params ).blendMode ) );
+			if( castsShadow( layer, lod ) )
+				passMask |= passBit( MeshPass::csmShadowDepth );
+		}
 	}
 	if( passMask )
 		collector.addCustom( passMask );
@@ -129,33 +148,39 @@ void Scatterer::renderCustom( const RenderContext& context )
 	const bool shadow = context.pass == MeshPass::csmShadowDepth;
 	for( Layer& layer : m_layers )
 	{
-		const MaterialRenderState state = layer.material->renderState( layer.lodBlock->params );
-		if( shadow )
+		const float margin = layer.pass->populateParams().sizeMultiplier * m_shadowLength;
+		for( uint32_t i = 0; i < layer.lods.size(); ++i )
 		{
-			// Инстансы слоя — в кольце near…far вокруг камеры; тень от них ложится не дальше её длины. Каскад, диапазон
-			// расстояний которого с кольцом не пересекается, этих теней не содержит
-			const ScatterPass::PopulateParams& params = layer.pass->populateParams();
-			const float margin = params.sizeMultiplier * m_shadowLength;
-			if( !castsShadow( layer ) || context.view.cascadeNear >= params.farBorder + margin ||
-				context.view.cascadeFar <= params.nearBorder - margin )
+			const LayerLod& lod = layer.lods[i];
+			if( lod.nearDistance >= lod.farDistance )
+				continue;	// LOD не попадает в кольцо слоя
+
+			const MaterialRenderState state = lod.material->renderState( lod.block->params );
+			if( shadow )
+			{
+				// Инстансы LOD — на расстояниях near…far от камеры; тень от них ложится не дальше её длины. Каскад,
+				// диапазон расстояний которого с этим не пересекается, их теней не содержит
+				if( !castsShadow( layer, lod ) || context.view.cascadeNear >= lod.farDistance + margin ||
+					context.view.cascadeFar <= lod.nearDistance - margin )
+					continue;
+			}
+			else if( passFor( state.blendMode ) != context.pass )
+			{
 				continue;
+			}
+			DMD3D::instance().setState( materialRasterState( state.twoSided, false, context.frameRaster ) );
+
+			DMShader* shader = lod.material;
+			shader->setPass( shadow ? shader->depthPhaseFor( lod.block->params ) : shader->phaseFor( lod.block->params ) );
+			shader->setParams( lod.block->params );
+			shader->setDrawType( DMShader::by_index );
+
+			// Инстансы LOD читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)
+			DMD3D::instance().setSRV( SRVType::vs, SLOT_INSTANCE_DATA, layer.pass->instances( i ) );
+
+			context.constants.setPerObjectBuffer( worldMatrix );
+			shader->renderInstancedIndirect( layer.pass->args(), ScatterPass::argsOffset( i ) );
 		}
-		else if( passFor( state.blendMode ) != context.pass )
-		{
-			continue;
-		}
-		DMD3D::instance().setState( materialRasterState( state.twoSided, false, context.frameRaster ) );
-
-		DMShader* shader = layer.material;
-		shader->setPass( shadow ? shader->depthPhaseFor( layer.lodBlock->params ) : shader->phaseFor( layer.lodBlock->params ) );
-		shader->setParams( layer.lodBlock->params );
-		shader->setDrawType( DMShader::by_index );
-
-		// Инстансы слоя читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)
-		DMD3D::instance().setSRV( SRVType::vs, SLOT_INSTANCE_DATA, layer.pass->structuredBuffer() );
-
-		context.constants.setPerObjectBuffer( worldMatrix );
-		shader->renderInstancedIndirect( layer.pass->args() );
 	}
 }
 

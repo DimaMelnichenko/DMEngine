@@ -26,7 +26,8 @@ public:
 	bool initialize();
 	bool render( int indexCount, uint32_t vertexOffset = 0, uint32_t indexOffset = 0 );
 	bool renderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count );
-	void renderInstancedIndirect( ID3D11Buffer* args );
+	// argsOffset — смещение аргументов DrawIndexedInstancedIndirect в буфере, байты
+	void renderInstancedIndirect( ID3D11Buffer* args, uint32_t argsOffset = 0 );
 	bool setPass( int phase );
 	void setLayoutDesc( std::vector<D3D11_INPUT_ELEMENT_DESC>&& vertex_layout );
 	virtual void setParams( const PropertyContainer& );

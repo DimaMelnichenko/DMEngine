@@ -116,15 +116,13 @@ bool Scene::initialize()
 
 		for( const LevelDescription::ScatterLayer& layer : set.layers )
 		{
-			DMModel::LodBlock* block = System::models().get( layer.model )->getLodById( layer.modelLod );
-			if( !block )
+			DMModel* model = System::models().get( layer.model ).get();
+			if( !model || model->lodCount() == 0 )
 			{
-				LOG( "Scatter set " + set.name + ": model " + std::to_string( layer.model ) + " has no LOD " + std::to_string( layer.modelLod ) );
+				LOG( "Scatter set " + set.name + ": model " + std::to_string( layer.model ) + " has no LOD" );
 				return false;
 			}
-			const std::string layerName = System::models().get( layer.model )->properties()->name() + " LOD" +
-										  std::to_string( layer.modelLod );
-			if( !scatterer->addLayer( layerName, block, layer.mask, layer.params ) )
+			if( !scatterer->addLayer( model, layer.mask, layer.params ) )
 				return false;
 		}
 		m_scatterers.push_back( std::move( scatterer ) );

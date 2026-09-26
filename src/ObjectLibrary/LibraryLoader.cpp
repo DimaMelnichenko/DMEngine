@@ -342,7 +342,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
 {
-	SQLite::Statement query( dbConnect().db(), "SELECT model, model_lod, mask, cell_size, near_border, far_border, near_fade, "
+	SQLite::Statement query( dbConnect().db(), "SELECT model, mask, cell_size, near_border, far_border, near_fade, "
 											   "far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow "
 											   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
@@ -355,7 +355,6 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 
 		LevelDescription::ScatterLayer layer;
 		layer.model = query.getColumn( "model" ).getUInt();
-		layer.modelLod = static_cast<uint16_t>( query.getColumn( "model_lod" ).getUInt() );
 		layer.mask = query.getColumn( "mask" ).getString();
 		layer.params.cellSize = value( "cell_size" );
 		layer.params.nearBorder = value( "near_border" );
