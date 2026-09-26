@@ -1,4 +1,5 @@
 
+#include "slots.h"
 #include "samplers.sh"
 #include "PBR_common.hlsl"
 
@@ -12,7 +13,7 @@ struct LightParam
 	float attenuation;
 };
 
-StructuredBuffer<LightParam> sb_lightVector: register(t100);
+StructuredBuffer<LightParam> sb_lightVector: register( SLOT_LIGHTS );
 
 //функция расчета затухания для источника света
 float GetAttenuation( float distance, float lightInnerR, float invLightOuterR )

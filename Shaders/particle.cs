@@ -1,9 +1,10 @@
 
+#include "slots.h"
 #include "samplers.sh"
 #include "common.vs"
 
 
-cbuffer ThreadsData : register(b2)
+cbuffer ThreadsData : register( SLOT_CB_PASS )
 {
 	float b_groupDim;
 	float2 b_rect;

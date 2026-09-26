@@ -1,4 +1,5 @@
 #include "DMD3D.h"
+#include "Shaders\slots.h"
 #include "Utils\utilites.h"
 #include "Logger\Logger.h"
 
@@ -715,11 +716,11 @@ void DMD3D::EndScene( )
 	}
 
 
-	// clear all slots and resources
-	ID3D11ShaderResourceView* views[50] = {};
-	m_deviceContext->VSSetShaderResources( 0, 50, views );
-	m_deviceContext->GSSetShaderResources( 0, 50, views );
-	m_deviceContext->PSSetShaderResources( 0, 50, views );
+	// Отвязка ресурсов материалов, проходов и объектов; ресурсы сцены (SLOT_LIGHTS и дальше) живут до следующего кадра
+	ID3D11ShaderResourceView* views[SLOT_TRANSIENT_COUNT] = {};
+	m_deviceContext->VSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
+	m_deviceContext->GSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
+	m_deviceContext->PSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
 
 	logDebugMessages();
 }

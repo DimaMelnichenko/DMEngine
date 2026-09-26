@@ -6,9 +6,11 @@
 #ifndef CDLOD_SH
 #define CDLOD_SH
 
+#include "slots.h"
+
 #include "samplers.sh"
 
-cbuffer CDLODBuffer : register( b2 )
+cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 {
 	float  g_worldSize;				// сторона террейна в мировых единицах
 	float  g_heightMultipler;

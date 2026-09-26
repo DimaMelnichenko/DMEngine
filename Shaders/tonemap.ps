@@ -3,10 +3,12 @@
 // Класс PostProcess, настройки — [PostProcess] в Scene\Lights.ini
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "slots.h"
+
 Texture2D<float4> g_sceneColor : register(t0);
 
 // Раскладка — PostProcess::Parameters
-cbuffer PostProcessBuffer : register(b2)
+cbuffer PostProcessBuffer : register( SLOT_CB_PASS )
 {
 	float g_exposure;	// 2^EV
 	int   g_tonemapper;	// 0 — без тонмаппинга, 1 — ACES, 2 — AgX

@@ -2,6 +2,7 @@
 // PBR metallic/roughness (как Default Lit в UE5 и материал glTF 2.0), класс материала PBR (PBRMaterial)
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "slots.h"
 #include "common.vs"
 #include "CommonLight.ps"
 #include "ibl.sh"
@@ -14,7 +15,7 @@ Texture2D g_texOcclusion : register(t3);         // R — затенение о�
 Texture2D g_texEmissive : register(t4);          // sRGB
 
 // Раскладка — PBRMaterial::PSParam
-cbuffer PBRMaterialBuffer : register(b2)
+cbuffer PBRMaterialBuffer : register( SLOT_CB_MATERIAL )
 {
 	float4 g_baseColorFactor;
 	float3 g_emissiveFactor;

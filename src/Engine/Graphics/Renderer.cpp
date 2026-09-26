@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "Shaders\slots.h"
 #include <chrono>
 #include "Scene.h"
 #include "Pipeline.h"
@@ -70,7 +71,7 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 {
 	m_samplerState.setDefaultSmaplers();
 	// установка источников света
-	int lightCount = scene.lights().setBuffer( 100, SRVType::ps );
+	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS, SRVType::ps );
 	// установка матриц в шейдер константы
 	pipeline().shaderConstant().setPerFrameBuffer( frame.camera, lightCount );
 }

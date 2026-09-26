@@ -2,7 +2,9 @@
 // Filename: color.ps
 ////////////////////////////////////////////////////////////////////////////////
 
-cbuffer ShaderConstantBuffer : register( b2 )
+#include "slots.h"
+
+cbuffer ShaderConstantBuffer : register( SLOT_CB_MATERIAL )
 {
 	float4 ObjectColor;
 }

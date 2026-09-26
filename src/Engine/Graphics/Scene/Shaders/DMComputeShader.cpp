@@ -1,4 +1,5 @@
 #include "DMComputeShader.h"
+#include "Shaders\slots.h"
 #include <fstream>
 #include <d3dcompiler.h>
 
@@ -164,7 +165,7 @@ void DMComputeShader::setConstants( ConstantType& constantType )
 {
 	Device::updateResourceData( m_constantBuffer.get(), constantType );
 	
-	DMD3D::instance().setConstantBuffer( SRVType::cs, 2, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );
 }
 
 void DMComputeShader::clear()

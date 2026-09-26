@@ -1,4 +1,6 @@
 
+#include "slots.h"
+
 #if defined(INST_POS) || defined(INST_SCALE) || defined(INST_TEX) || defined(INST_ROTATE) || defined(INST_COLOR)
 
 #define INSTANCE_INCLUDE
@@ -23,7 +25,7 @@ struct InstanceParam
 #endif
 };
 
-StructuredBuffer<InstanceParam> g_instanceData: register(t16);
+StructuredBuffer<InstanceParam> g_instanceData: register( SLOT_INSTANCE_DATA );
 
 float3 rotateByQuaternion( float3 v, float4 q )
 {

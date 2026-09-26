@@ -1,4 +1,5 @@
 #include "VertexLight.h"
+#include "Shaders\slots.h"
 #include "System.h"
 
 namespace GS
@@ -108,7 +109,7 @@ void VertexLight::setParams( const PropertyContainer& params )
 	}
 
 	Device::updateResourceData<PSParam>( m_psCB.get(), param );
-	DMD3D::instance().setConstantBuffer( SRVType::ps, 2, m_psCB );
+	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_psCB );
 	
 }
 

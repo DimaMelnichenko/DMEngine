@@ -1,4 +1,5 @@
 #include "Scatterer.h"
+#include "Shaders\slots.h"
 #include <algorithm>
 #include <cmath>
 #include "D3D\DMD3D.h"
@@ -113,7 +114,7 @@ void Scatterer::render( const FrameContext& frame )
 		shader->setDrawType( DMShader::by_index );
 
 		// Инстансы слоя читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)
-		DMD3D::instance().setSRV( SRVType::vs, 16, layer.pass->structuredBuffer() );
+		DMD3D::instance().setSRV( SRVType::vs, SLOT_INSTANCE_DATA, layer.pass->structuredBuffer() );
 
 		pipeline().shaderConstant().setPerObjectBuffer( &worldMatrix );
 		shader->renderInstancedIndirect( layer.pass->args() );

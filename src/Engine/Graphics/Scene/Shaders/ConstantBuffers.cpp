@@ -1,4 +1,5 @@
 #include "ConstantBuffers.h"
+#include "Shaders\slots.h"
 #include "D3D\DMD3D.h"
 
 namespace GS
@@ -57,13 +58,13 @@ void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount
 	} );
 
 	ID3D11Buffer* buffer = m_frameConstant.get();
-	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 0, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->HSSetConstantBuffers( 0, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->DSSetConstantBuffers( 0, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 0, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 0, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->HSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->DSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
 
-	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( 0, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
 }
 
 void ConstantBuffers::setPerObjectBuffer( const XMMATRIX* matrix )
@@ -87,11 +88,11 @@ void ConstantBuffers::setPerObjectBuffer( const XMMATRIX* matrix )
 	} );
 
 	ID3D11Buffer* buffer = m_modelConstant.get();
-	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( 1, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->HSSetConstantBuffers( 1, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->DSSetConstantBuffers( 1, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( 1, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 1, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->HSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->DSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
 }
 
 }

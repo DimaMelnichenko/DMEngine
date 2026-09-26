@@ -1,4 +1,5 @@
 #include "PostProcess.h"
+#include "Shaders\slots.h"
 #include <cmath>
 #include "D3D\DMD3D.h"
 #include "ResourceMetaFile.h"
@@ -52,7 +53,7 @@ void PostProcess::render()
 	params.exposure = std::exp2( m_properties["Exposure compensation (EV)"].data<float>() );
 	params.tonemapper = m_properties["Tonemapper (0 none, 1 ACES, 2 AgX)"].data<int32_t>();
 	Device::updateResourceData<Parameters>( m_constantBuffer.get(), params );
-	d3d.setConstantBuffer( SRVType::ps, 2, m_constantBuffer );
+	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
 	d3d.setSRV( SRVType::ps, 0, sceneColor );
 
 	// Топологию оставляет последний объект кадра (у частиц — список точек)

@@ -1,4 +1,5 @@
 #include "DMColorShader.h"
+#include "Shaders\slots.h"
 
 namespace GS
 {
@@ -54,7 +55,7 @@ void DMColorShader::setParams( const PropertyContainer& params )
 	} );
 
 	ID3D11Buffer* buffer = m_constantBuffer.get();
-	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( 2, 1, &buffer );
+	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( SLOT_CB_MATERIAL, 1, &buffer );
 }
 
 }

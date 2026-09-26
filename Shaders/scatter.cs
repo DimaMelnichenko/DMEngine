@@ -6,12 +6,13 @@
 // init — сбрасывает indirect-аргументы слоя перед расстановкой
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "slots.h"
 #include "samplers.sh"
 #include "common.vs"
 #include "terrain_height.sh"
 
 // DMComputeShader::Dispatch: b_rect — размер сетки в ячейках
-cbuffer ThreadsData : register( b2 )
+cbuffer ThreadsData : register( SLOT_CB_PASS )
 {
 	float  b_groupDim;
 	float2 b_rect;

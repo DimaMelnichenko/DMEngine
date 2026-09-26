@@ -2,6 +2,7 @@
 // Filename: particle.gs
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "slots.h"
 #include "common.vs"
 #include "samplers.sh"
 
@@ -11,7 +12,7 @@
 
 //Texture2D texture_distribution : register(t0);
 
-cbuffer ParticleSystemParam : register(b2)
+cbuffer ParticleSystemParam : register( SLOT_CB_PASS )
 {
 	
 }

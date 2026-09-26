@@ -2,6 +2,7 @@
 // Filename: light.ps
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "slots.h"
 #include "common.vs"
 #include "samplers.sh"
 //#include "CommonLight.ps"
@@ -10,7 +11,7 @@
 // GLOBALS //
 /////////////
 
-cbuffer ConstantVertexLightPS: register( b2 )
+cbuffer ConstantVertexLightPS: register( SLOT_CB_MATERIAL )
 {
 	float4 cb_TintColor;
 	float4 cb_AmbientColor;

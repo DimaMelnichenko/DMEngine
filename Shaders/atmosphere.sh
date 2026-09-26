@@ -8,10 +8,12 @@
 #ifndef ATMOSPHERE_SH
 #define ATMOSPHERE_SH
 
+#include "slots.h"
+
 #include "samplers.sh"
 
 // Раскладка — SkyAtmosphere::Parameters
-cbuffer SkyParameters : register(b2)
+cbuffer SkyParameters : register( SLOT_CB_PASS )
 {
 	float3 g_sunDirection;	// направление на солнце
 	float  g_skyIntensity;	// множитель рассеянного света (1 — по модели)

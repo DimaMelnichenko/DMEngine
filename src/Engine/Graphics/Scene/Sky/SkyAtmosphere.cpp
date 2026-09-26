@@ -1,4 +1,5 @@
 #include "SkyAtmosphere.h"
+#include "Shaders\slots.h"
 #include <algorithm>
 #include <cstring>
 #include "D3D\DMD3D.h"
@@ -11,11 +12,6 @@ namespace GS
 
 namespace
 {
-
-// Слоты освещения окружением в пиксельных шейдерах (Shaders/ibl.sh); t100 — источники света
-constexpr uint16_t irradianceSlot = 101;
-constexpr uint16_t specularSlot = 102;
-constexpr uint16_t brdfLutSlot = 103;
 
 constexpr DXGI_FORMAT hdrFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
@@ -262,7 +258,7 @@ void SkyAtmosphere::updateEnvironment( const Parameters& params )
 	// Ресурсы окружения станут целями рендера: снимаем их с входов, иначе D3D отвяжет их с предупреждением
 	ID3D11ShaderResourceView* nullViews[4] = {};
 	context->PSSetShaderResources( 0, 4, nullViews );
-	context->PSSetShaderResources( irradianceSlot, 3, nullViews );
+	context->PSSetShaderResources( SLOT_IBL_IRRADIANCE, 3, nullViews );
 
 	ScopedRenderState state( RasterState::noCulling, DepthState::disabled, BlendState::opaque );
 	context->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
@@ -337,15 +333,15 @@ void SkyAtmosphere::setParameters( const Parameters& params )
 {
 	Parameters data = params;
 	Device::updateResourceData<Parameters>( m_constantBuffer.get(), data );
-	DMD3D::instance().setConstantBuffer( SRVType::ps, 2, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
 }
 
 void SkyAtmosphere::bindEnvironment()
 {
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setSRV( SRVType::ps, irradianceSlot, m_irradianceSRV );
-	d3d.setSRV( SRVType::ps, specularSlot, m_specularSRV );
-	d3d.setSRV( SRVType::ps, brdfLutSlot, m_brdfSRV );
+	d3d.setSRV( SRVType::ps, SLOT_IBL_IRRADIANCE, m_irradianceSRV );
+	d3d.setSRV( SRVType::ps, SLOT_IBL_SPECULAR, m_specularSRV );
+	d3d.setSRV( SRVType::ps, SLOT_IBL_BRDF, m_brdfSRV );
 }
 
 void SkyAtmosphere::render( const FrameContext& )

@@ -1,4 +1,5 @@
 
+#include "slots.h"
 #include "common.vs"
 
 //////////////
@@ -32,7 +33,7 @@ struct InstanceItem
 #endif
 };
 
-StructuredBuffer<InstanceItem> instanceVector: register(t16);
+StructuredBuffer<InstanceItem> instanceVector: register( SLOT_INSTANCE_DATA );
 
 #endif
 

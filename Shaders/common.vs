@@ -6,7 +6,9 @@
 #ifndef COMMON_VS
 #define COMMON_VS
 
-cbuffer FrameConstantBuffer : register( b0 )
+#include "slots.h"
+
+cbuffer FrameConstantBuffer : register( SLOT_CB_FRAME )
 {
     matrix cb_viewMatrix;
 	matrix cb_viewInverseMatrix;
@@ -20,7 +22,7 @@ cbuffer FrameConstantBuffer : register( b0 )
 	float3 fcb_dump;
 };
 
-cbuffer WorldBuffer : register( b1 )
+cbuffer WorldBuffer : register( SLOT_CB_OBJECT )
 {
     matrix cb_worldMatrix; 
 };

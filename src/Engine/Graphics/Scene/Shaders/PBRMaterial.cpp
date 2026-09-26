@@ -1,4 +1,5 @@
 #include "PBRMaterial.h"
+#include "Shaders\slots.h"
 #include "System.h"
 
 namespace GS
@@ -123,7 +124,7 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.occlusionStrength = materialValue( params, "OcclusionStrength", 1.0f );
 
 	Device::updateResourceData<PSParam>( m_psCB.get(), param );
-	DMD3D::instance().setConstantBuffer( SRVType::ps, 2, m_psCB );
+	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_psCB );
 }
 
 }

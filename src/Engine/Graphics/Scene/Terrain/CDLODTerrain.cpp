@@ -1,4 +1,5 @@
 #include "CDLODTerrain.h"
+#include "Shaders\slots.h"
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -388,8 +389,8 @@ void CDLODTerrain::render( const FrameContext& frame )
 		params.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();
 		params.heightBlendDepth = m_properties["Height blend"].data<float>();
 	} );
-	DMD3D::instance().setConstantBuffer( SRVType::vs, 2, m_constantBuffer );
-	DMD3D::instance().setConstantBuffer( SRVType::ps, 2, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( SRVType::vs, SLOT_CB_MATERIAL, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_constantBuffer );
 
 	m_patchBuffer.updateData( m_patches.data(), sizeof( PatchInstance ) * m_patches.size() );
 	m_patchBuffer.setToSlot( 1, SRVType::vs );
