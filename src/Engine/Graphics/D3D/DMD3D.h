@@ -18,7 +18,10 @@
 
 enum class RasterState
 {
-	solid, frontCulling, noCulling, wireframe
+	solid, frontCulling, noCulling, wireframe,
+	// Для зеркальных мешей (отрицательный определитель мировой матрицы): лицевые грани обходятся против часовой
+	// стрелки — меняются и отсечение, и признак SV_IsFrontFace, так что нормали двусторонних не разворачиваются зря
+	solidMirrored, noCullingMirrored
 };
 
 enum class DepthState
@@ -32,12 +35,6 @@ enum class BlendState
 {
 	opaque, alpha
 };
-
-// Отсечение граней для материала: двусторонний рисуется без отсечения, каркасный режим кадра (Q) остаётся каркасом
-inline RasterState materialRasterState( bool twoSided, RasterState frameState )
-{
-	return twoSided && frameState == RasterState::solid ? RasterState::noCulling : frameState;
-}
 
 struct RenderState
 {
@@ -169,6 +166,8 @@ private:
 	com_unique_ptr<ID3D11RasterizerState> m_rasterStateFrontCulling;
 	com_unique_ptr<ID3D11RasterizerState> m_rasterStateNoCulling;
 	com_unique_ptr<ID3D11RasterizerState> m_rasterStateWireframe;
+	com_unique_ptr<ID3D11RasterizerState> m_rasterStateSolidMirrored;
+	com_unique_ptr<ID3D11RasterizerState> m_rasterStateNoCullingMirrored;
 
 	com_unique_ptr<ID3D11BlendState> m_alphaEnableBlendingState;
 	com_unique_ptr<ID3D11BlendState> m_alphaDisableBlendingState;

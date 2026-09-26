@@ -29,7 +29,9 @@ public:
 	TerrainHeight terrainHeight() const override;
 
 	void update( const FrameContext& frame ) override;
-	void render( const FrameContext& frame, RenderPass pass ) override;
+	// Выбор узлов квадродерева для вида: LOD — от точки LOD вида, отсечение — по его frustum
+	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
+	void renderCustom( const RenderContext& context ) override;
 	PropertyContainer* properties() override;
 
 private:
@@ -74,7 +76,7 @@ private:
 	NodeBox nodeBox( uint32_t level, uint32_t x, uint32_t z ) const;
 	float nodeSize( uint32_t level ) const;
 	// false — узел дальше диапазона своего уровня, и его площадь рисует родитель
-	bool selectNode( const FrameContext& frame, uint32_t level, uint32_t x, uint32_t z );
+	bool selectNode( const RenderView& view, uint32_t level, uint32_t x, uint32_t z );
 	void addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t quarter );
 
 private:

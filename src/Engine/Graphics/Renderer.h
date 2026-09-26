@@ -6,6 +6,7 @@
 #include "Scene\VertexPool.h"
 #include "D3D\DMSamplerState.h"
 #include "SceneObject.h"
+#include "MeshBatch.h"
 #include "PostProcess.h"
 #include "D3D\GpuProfiler.h"
 
@@ -16,10 +17,11 @@ namespace GS
 
 class Scene;
 
-// Отправляет на GPU кадр сцены: общие данные конвейера, compute-проходы объектов,
-// затем проходы отрисовки sky → opaque → transparent в HDR-буфер и постобработку (экспозиция, тонмаппинг)
-// в задний буфер. Время CPU и GPU каждого объекта и прохода выводится в GUI, проходы подписаны метками событий
-// для RenderDoc / PIX
+// Отправляет на GPU кадр сцены: общие данные конвейера, compute-проходы объектов, сбор мешей с вида
+// (MeshBatch — меш с материалом и матрицей, CustomBatch — свой вызов объекта), раскладка по проходам с сортировкой
+// и проходы sky → opaque → transparent в HDR-буфер, затем постобработка (экспозиция, тонмаппинг) в задний буфер.
+// Проходами и видами владеет рендерер, как mesh draw commands в UE: объекты не знают, в каком проходе рисуются их меши.
+// Время CPU и GPU каждого объекта и прохода выводится в GUI, проходы подписаны метками событий для RenderDoc / PIX
 class Renderer
 {
 public:
@@ -35,7 +37,13 @@ public:
 
 private:
 	void preparePipeline( Scene& scene, const FrameContext& frame );
-	void renderPass( Scene& scene, const FrameContext& frame, RenderPass pass );
+	// Меши и свои вызовы видимых объектов с вида
+	void collect( Scene& scene, const RenderView& view );
+	// Раскладка собранного по проходам: меши — по режиму материала, свои вызовы — по маске; сортировка
+	void buildCommands();
+	void executePass( MeshPass pass, const RenderView& view, RasterState frameRaster );
+	// Единственное место, где рисуется MeshBatch: вариант шейдера, параметры, растеризатор, матрица, вызов
+	void drawMesh( const MeshBatch& batch, const RenderContext& context );
 
 	// Время CPU на отправку команд и область GPU-профайлера с тем же именем
 	template<typename Func>
@@ -45,6 +53,17 @@ private:
 private:
 	GUI& m_gui;
 	VertexPool m_vertexPool;
+
+	// Команда прохода — батч и ключ сортировки (как FMeshDrawCommand в UE). Непрозрачные: объекты в порядке сцены,
+	// внутри объекта — по материалу, варианту шейдера, растеризатору и мешу; прозрачные — от дальних к ближним
+	struct DrawCommand
+	{
+		uint64_t key;
+		uint32_t index;		// в meshes() или customs() сборщика
+		bool custom;
+	};
+	MeshCollector m_collector;
+	std::vector<DrawCommand> m_commands[meshPassCount];
 	DMSamplerState m_samplerState;
 	PostProcess m_postProcess;
 	GpuProfiler m_gpuProfiler;

@@ -13,9 +13,9 @@ MaterialParameterInstance, по --level — LevelModels. Всё в одной т
 - На LOD движок рисует один меш и один материал: объект с несколькими материалами становится несколькими моделями
   (<имя>, <имя>_<материал>) с одинаковой расстановкой.
 - Опорная точка модели — origin объекта в Blender: вершины остаются в координатах объекта, а его положение, поворот
-  и масштаб становятся экземпляром модели на уровне (LevelModels) относительно --position. Зеркальный объект
-  (отрицательный масштаб) и сдвиг осей от неравномерного масштаба родителя запекаются в вершины; модели для
-  расстановки (--scatter) — тоже, их ставят слои расстановки.
+  и масштаб становятся экземпляром модели на уровне (LevelModels) относительно --position; зеркальный объект —
+  экземпляр с отрицательным масштабом по X. Сдвиг осей от неравномерного масштаба родителя запекается в вершины;
+  модели для расстановки (--scatter) — тоже, их ставят слои расстановки.
 - glTF правосторонний, движок левосторонний (оба Y вверх, метры): Z с минусом, порядок вершин треугольника обратный.
 - Материал glTF переносится в экземпляр материала PBR (id 12; с --scatter — PBRInstance, id 9) один в один;
   карты нормалей glTF в соглашении OpenGL — NormalGreenUp = true.
@@ -182,14 +182,18 @@ def quaternion(rotation):
 
 def decompose(matrix):
     """Мировая матрица узла glTF → положение, поворот (кватернион) и масштаб в координатах движка.
-    None — если у матрицы есть сдвиг осей (неравномерный масштаб родителя под поворотом) или зеркальность:
-    их не записать экземпляром, такой узел запекается в вершины."""
+    Зеркальная матрица — отрицательный масштаб по X (движок рисует такой экземпляр с обратным обходом граней).
+    None — если у матрицы есть сдвиг осей (неравномерный масштаб родителя под поворотом): его не записать
+    экземпляром, такой узел запекается в вершины."""
     linear = matrix[:3, :3]
     scale = np.linalg.norm(linear, axis=0)
     if np.any(scale < 1e-8):
         return None
     rotation = linear / scale
-    if np.linalg.det(rotation) < 0.0 or not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-4):
+    if np.linalg.det(rotation) < 0.0:
+        scale[0] = -scale[0]
+        rotation[:, 0] = -rotation[:, 0]
+    if not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-4):
         return None
     # Поворот R в правой системе → F·R·F в левой (F — зеркало по Z): у кватерниона меняют знак x и y
     x, y, z, w = quaternion(rotation)
@@ -460,7 +464,7 @@ def collect_models(gltf, asset, materials, rename, bake):
         baked = placement is None
         if baked:
             if not bake:
-                warn('model %s: object transform is mirrored or sheared, it is baked into vertices' % base)
+                warn('model %s: object transform is sheared, it is baked into vertices' % base)
             placement = {'position': lod0_world[:3, 3] * MIRROR, 'rotation': np.array([0.0, 0.0, 0.0, 1.0]),
                          'scale': np.ones(3)}
             bases = [lods[lod][1][:3, :3] for lod in order]   # каждый LOD — со своими поворотом и масштабом

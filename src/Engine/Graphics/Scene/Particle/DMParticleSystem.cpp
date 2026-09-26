@@ -4,7 +4,7 @@
 
 
 DMParticleSystem::DMParticleSystem() :
-	SceneObject( "Particles", GS::RenderPass::transparent )
+	SceneObject( "Particles" )
 {
 }
 
@@ -156,10 +156,14 @@ void DMParticleSystem::compute( const GS::FrameContext& frame )
 	update( frame.elapsedTime );
 }
 
-void DMParticleSystem::render( const GS::FrameContext& frame, GS::RenderPass )
+void DMParticleSystem::collectMeshes( const GS::RenderView&, GS::MeshCollector& collector )
 {
-	if( !m_initialized || !GS::System::materials().exists( m_material ) )
-		return;
+	if( m_initialized && GS::System::materials().exists( m_material ) )
+		collector.addCustom( GS::passBit( GS::MeshPass::transparent ) );
+}
+
+void DMParticleSystem::renderCustom( const GS::RenderContext& )
+{
 
 	GS::DMShader* shader = GS::System::materials().get( m_material )->m_shader.get();
 	shader->setPass( 0 );

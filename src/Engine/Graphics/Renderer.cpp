@@ -3,14 +3,31 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include "Scene.h"
 #include "Pipeline.h"
 #include "GUI\GUI.h"
 #include "D3D\DMD3D.h"
+#include "Shaders\DMShader.h"
 #include "Logger\Logger.h"
 
 namespace GS
 {
+
+namespace
+{
+
+// Ключ прозрачной команды: дальние раньше, при равном расстоянии — порядок объектов сцены и номер
+uint64_t transparentKey( float distance, uint32_t ownerOrder, uint32_t sequence )
+{
+	uint32_t bits;
+	const float positive = std::max( distance, 0.0f );
+	std::memcpy( &bits, &positive, sizeof( bits ) );	// у неотрицательных float порядок битов совпадает с порядком чисел
+	return ( static_cast<uint64_t>( 0xFFFFFFFFu - bits ) << 32 ) | ( static_cast<uint64_t>( ownerOrder & 0xFF ) << 24 ) |
+		   ( sequence & 0xFFFFFF );
+}
+
+}
 
 Renderer::Renderer( GUI& gui ) :
 	m_gui( gui )
@@ -55,18 +72,27 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		}
 	} );
 
+	// Меши с главного вида; позже — и с видов каскадов теней
+	const auto collectStart = std::chrono::high_resolution_clock::now();
+	collect( scene, frame.view );
+	buildCommands();
+	const auto collectEnd = std::chrono::high_resolution_clock::now();
+	m_gui.addCounterInfo( "Collect meshes = %.3f ms",
+						  std::chrono::duration_cast<std::chrono::microseconds>( collectEnd - collectStart ).count() / 1000.0f );
+
 	DMD3D::instance().BeginScene( 0.004f, 0.004f, 0.004f, 1.0f );
 
 	// Базовое состояние кадра; объекты меняют его только в своей области видимости
-	ScopedRenderState frameState( wireframe ? RasterState::wireframe : RasterState::solid );
+	const RasterState frameRaster = wireframe ? RasterState::wireframe : RasterState::solid;
+	ScopedRenderState frameState( frameRaster );
 
-	renderPass( scene, frame, RenderPass::sky );
-	renderPass( scene, frame, RenderPass::opaque );
+	executePass( MeshPass::sky, frame.view, frameRaster );
+	executePass( MeshPass::opaque, frame.view, frameRaster );
 
 	{
 		// Полупрозрачные не пишут глубину: иначе закрыли бы то, что за ними рисуется позже
 		ScopedRenderState transparentState( BlendState::alpha, DepthState::readOnly );
-		renderPass( scene, frame, RenderPass::transparent );
+		executePass( MeshPass::transparent, frame.view, frameRaster );
 	}
 
 	measure( "Post process", [&] { m_postProcess.render(); } );
@@ -131,31 +157,138 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	m_samplerState.setDefaultSmaplers();
 	// установка источников света
 	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS, SRVType::ps );
-	// установка матриц в шейдер константы
-	pipeline().shaderConstant().setPerFrameBuffer( frame.camera, lightCount );
+	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры)
+	pipeline().shaderConstant().beginFrame( lightCount );
+	pipeline().shaderConstant().setViewBuffer( frame.view );
 }
 
-void Renderer::renderPass( Scene& scene, const FrameContext& frame, RenderPass pass )
+void Renderer::collect( Scene& scene, const RenderView& view )
+{
+	m_collector.clear();
+	uint32_t order = 0;
+	for( SceneObject* object : scene.objects() )
+	{
+		if( object->visible() )
+		{
+			m_collector.beginObject( object, order );
+			object->collectMeshes( view, m_collector );
+		}
+		++order;
+	}
+}
+
+void Renderer::buildCommands()
+{
+	for( auto& commands : m_commands )
+		commands.clear();
+
+	const std::vector<MeshBatch>& meshes = m_collector.meshes();
+	for( uint32_t i = 0; i < meshes.size(); ++i )
+	{
+		const MeshBatch& batch = meshes[i];
+		const MeshPass pass = passFor( batch.state.blendMode );
+		uint64_t key;
+		if( pass == MeshPass::transparent )
+		{
+			key = transparentKey( batch.distance, batch.ownerOrder, i );
+		}
+		else
+		{
+			const uint64_t phase = static_cast<uint64_t>( batch.material->phaseFor( *batch.params ) ) & 0xF;
+			const uint64_t raster = static_cast<uint64_t>( materialRasterState( batch.state.twoSided, batch.mirrored,
+																			   RasterState::solid ) ) & 0xF;
+			key = ( static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56 ) |
+				  ( static_cast<uint64_t>( batch.materialId & 0xFFFF ) << 40 ) | ( phase << 36 ) | ( raster << 32 ) |
+				  batch.indexOffset;
+		}
+		m_commands[static_cast<uint32_t>( pass )].push_back( { key, i, false } );
+	}
+
+	const std::vector<CustomBatch>& customs = m_collector.customs();
+	for( uint32_t i = 0; i < customs.size(); ++i )
+	{
+		const CustomBatch& batch = customs[i];
+		for( uint32_t pass = 0; pass < meshPassCount; ++pass )
+		{
+			if( !( batch.passMask & passBit( static_cast<MeshPass>( pass ) ) ) )
+				continue;
+			const uint64_t key = static_cast<MeshPass>( pass ) == MeshPass::transparent ?
+								 transparentKey( batch.distance, batch.ownerOrder, static_cast<uint32_t>( meshes.size() ) + i ) :
+								 static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56;
+			m_commands[pass].push_back( { key, i, true } );
+		}
+	}
+
+	for( auto& commands : m_commands )
+		std::stable_sort( commands.begin(), commands.end(),
+						  []( const DrawCommand& a, const DrawCommand& b ) { return a.key < b.key; } );
+}
+
+void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState frameRaster )
 {
 	// Проход не полагается на состояние, оставленное прошлым: своя цель, область вывода, без чужих ресурсов.
-	// Растеризатор, глубину и блендинг задаёт ScopedRenderState кадра и прохода
+	// Глубину и блендинг задаёт ScopedRenderState кадра и прохода, растеризатор команд восстанавливается после прохода
 	DMD3D::instance().setSceneTarget();
 	DMD3D::instance().unbindTransientResources();
+	ScopedRenderState passState;
 
 	static const char* const passNames[] = { "Pass sky", "Pass opaque", "Pass transparent" };
 	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
 
-	for( SceneObject* object : scene.objects() )
+	const RenderContext context{ view, pass, frameRaster, pipeline().shaderConstant(), m_vertexPool };
+	const std::vector<MeshBatch>& meshes = m_collector.meshes();
+	const std::vector<CustomBatch>& customs = m_collector.customs();
+	const std::vector<DrawCommand>& commands = m_commands[static_cast<uint32_t>( pass )];
+	auto ownerOf = [&]( const DrawCommand& command ) -> const SceneObject*
 	{
-		if( !object->drawsIn( pass ) || !object->visible() )
-			continue;
+		return command.custom ? customs[command.index].owner : meshes[command.index].owner;
+	};
 
-		// Объект рисует из общего буфера или привязывает свои буферы сам
-		m_vertexPool.setBuffers();
-		measure( object->name(), [&] { object->render( frame, pass ); } );
+	for( size_t begin = 0; begin < commands.size(); )
+	{
+		// Серия команд одного объекта — одна строка времени CPU и GPU под его именем
+		const SceneObject* owner = ownerOf( commands[begin] );
+		size_t end = begin + 1;
+		while( end < commands.size() && ownerOf( commands[end] ) == owner )
+			++end;
+
+		measure( owner->name(), [&]
+		{
+			bool poolBound = false;
+			for( size_t i = begin; i < end; ++i )
+			{
+				// Свой вызов объекта может привязать свои буферы: после него общий буфер привязывается заново
+				if( !poolBound )
+				{
+					m_vertexPool.setBuffers();
+					poolBound = true;
+				}
+				if( commands[i].custom )
+				{
+					customs[commands[i].index].owner->renderCustom( context );
+					poolBound = false;
+				}
+				else
+				{
+					drawMesh( meshes[commands[i].index], context );
+				}
+			}
+		} );
+		begin = end;
 	}
 
 	m_gpuProfiler.endScope();
+}
+
+void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
+{
+	DMShader* shader = batch.material;
+	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
+	shader->setPass( shader->phaseFor( *batch.params ) );
+	shader->setParams( *batch.params );
+	shader->setDrawType( DMShader::by_index );
+	context.constants.setPerObjectBuffer( batch.world );
+	shader->render( batch.indexCount, batch.vertexOffset, batch.indexOffset );
 }
 
 }

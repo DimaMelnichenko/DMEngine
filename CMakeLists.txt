@@ -104,7 +104,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Model/Mesh/MeshLoader.cpp
     src/Engine/Graphics/Scene/Model/Mesh/MeshStorage.cpp
     src/Engine/Graphics/Scene/Model/ModelStorage.cpp
-    src/Engine/Graphics/Scene/Model/ModelQueues.cpp
+    src/Engine/Graphics/Scene/Model/ModelInstances.cpp
     src/Engine/Graphics/Scene/Terrain/GridMesh.cpp
     src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainMaterial.cpp

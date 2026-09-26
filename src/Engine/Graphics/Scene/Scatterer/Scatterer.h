@@ -34,8 +34,9 @@ public:
 	bool addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, const ScatterPass::PopulateParams& params );
 
 	void compute( const FrameContext& frame ) override;
-	bool drawsIn( RenderPass pass ) const override;
-	void render( const FrameContext& frame, RenderPass pass ) override;
+	// Свой вызов в проходах, где есть слои их режима материала
+	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
+	void renderCustom( const RenderContext& context ) override;
 
 	void setComputeEnabled( bool enabled );
 	bool computeEnabled() const;

@@ -5,12 +5,13 @@
 #include "D3D\DMD3D.h"
 #include "System.h"
 #include "Pipeline.h"
+#include "Shaders\ConstantBuffers.h"
 
 namespace GS
 {
 
 Scatterer::Scatterer( const std::string& name ) :
-	SceneObject( name, RenderPass::opaque )
+	SceneObject( name )
 {
 }
 
@@ -68,7 +69,7 @@ void Scatterer::compute( const FrameContext& frame )
 	Device::updateResource<FrustumParams>( m_frustumBuffer, [&frame]( FrustumParams& params )
 	{
 		for( int i = 0; i < 6; ++i )
-			XMStoreFloat4( &params.planes[i], frame.frustum.planes()[i] );
+			XMStoreFloat4( &params.planes[i], frame.view.frustum.planes()[i] );
 	} );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 6, m_frustumBuffer );
 
@@ -92,24 +93,19 @@ void Scatterer::compute( const FrameContext& frame )
 	}
 }
 
-bool Scatterer::drawsIn( RenderPass pass ) const
+void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 {
 	// Режим читается каждый кадр: параметры материала меняются в GUI
+	uint32_t passMask = 0;
 	for( const Layer& layer : m_layers )
-	{
-		if( passFor( layer.material->renderState( layer.lodBlock->params ).blendMode ) == pass )
-			return true;
-	}
-	return false;
+		passMask |= passBit( passFor( layer.material->renderState( layer.lodBlock->params ).blendMode ) );
+	if( passMask )
+		collector.addCustom( passMask );
 }
 
-void Scatterer::render( const FrameContext& frame, RenderPass pass )
+void Scatterer::renderCustom( const RenderContext& context )
 {
-	if( m_layers.empty() )
-		return;
-
 	ScopedRenderState scatterState;
-	const RasterState frameRaster = scatterState.previous().raster;
 
 	if( !m_colorTexture.empty() )
 		DMD3D::instance().setSRV( SRVType::ps, 1, System::textures().get( m_colorTexture )->srv() );
@@ -119,9 +115,9 @@ void Scatterer::render( const FrameContext& frame, RenderPass pass )
 	for( Layer& layer : m_layers )
 	{
 		const MaterialRenderState state = layer.material->renderState( layer.lodBlock->params );
-		if( passFor( state.blendMode ) != pass )
+		if( passFor( state.blendMode ) != context.pass )
 			continue;
-		DMD3D::instance().setState( materialRasterState( state.twoSided, frameRaster ) );
+		DMD3D::instance().setState( materialRasterState( state.twoSided, false, context.frameRaster ) );
 
 		DMShader* shader = layer.material;
 		shader->setPass( shader->phaseFor( layer.lodBlock->params ) );
@@ -131,7 +127,7 @@ void Scatterer::render( const FrameContext& frame, RenderPass pass )
 		// Инстансы слоя читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)
 		DMD3D::instance().setSRV( SRVType::vs, SLOT_INSTANCE_DATA, layer.pass->structuredBuffer() );
 
-		pipeline().shaderConstant().setPerObjectBuffer( worldMatrix );
+		context.constants.setPerObjectBuffer( worldMatrix );
 		shader->renderInstancedIndirect( layer.pass->args() );
 	}
 }

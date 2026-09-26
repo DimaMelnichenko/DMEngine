@@ -129,7 +129,8 @@ bool DMGraphics::Frame()
 	// С -nomouse камера не читает мышь, как в режиме курсора, — поворот только из -camera и настроек
 	TIME_CHECK( camera.Update( elapsedTime, m_cursorMode || !m_config.mouseLook() ), "Camera Update = %.3f ms" );
 
-	const FrameContext frame{ camera, DMFrustum( camera, 1000.0f ), elapsedTime };
+	const RenderView mainView = RenderView::fromCamera( camera );
+	const FrameContext frame{ mainView, elapsedTime };
 
 	// Сначала состояние сцены на CPU, затем команды GPU
 	TIME_CHECK( m_scene.update( frame ), "Scene Update = %.3f ms" );

@@ -22,39 +22,26 @@ void ConstantBuffers::initBuffers()
 	m_timer.Initialize();
 }
 
-void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount )
+void ConstantBuffers::beginFrame( int lightsCount )
 {
 	m_timer.Frame();
+	m_lightsCount = static_cast<float>( lightsCount );
+}
 
-	XMMATRIX viewMatrix;
-	XMMATRIX viewInverseMatrix;
-	XMMATRIX projectionMatrix;
-	XMMATRIX viewProjectionMatrix;
-
-	camera.viewMatrix( &viewMatrix );
-	viewInverseMatrix = XMMatrixInverse( nullptr, viewMatrix );
-	camera.projectionMatrix( &projectionMatrix );
-	viewProjectionMatrix = XMMatrixMultiply( viewMatrix, projectionMatrix );
-
-
-	// Transpose the matrices to prepare them for the shader.
-	
-	viewMatrix = XMMatrixTranspose( viewMatrix );
-	viewInverseMatrix = XMMatrixTranspose( viewInverseMatrix );
-	projectionMatrix = XMMatrixTranspose( projectionMatrix );
-	viewProjectionMatrix = XMMatrixTranspose( viewProjectionMatrix );
-	
+void ConstantBuffers::setViewBuffer( const RenderView& view )
+{
+	// HLSL читает матрицы по столбцам: транспонирование даёт ту же запись mul( v, M ), что и в C++
 	Device::updateResource<ShaderFrameConstant>( m_frameConstant, [&]( ShaderFrameConstant& data )
 	{
-		data.view = viewMatrix;
-		data.projection = projectionMatrix;
-		data.viewInverse = viewInverseMatrix;
-		data.viewProjection = viewProjectionMatrix;
-		camera.position( &data.cameraPosition );
-		camera.viewDirection( &data.viewDirection );
+		data.view = XMMatrixTranspose( view.view );
+		data.projection = XMMatrixTranspose( view.projection );
+		data.viewInverse = XMMatrixTranspose( view.viewInverse );
+		data.viewProjection = XMMatrixTranspose( view.viewProjection );
+		data.cameraPosition = view.position;
+		data.viewDirection = view.direction;
 		data.appTime = static_cast<float>( m_timer.totalTime() );
 		data.elapsedTime = static_cast<float>( m_timer.GetTime() );
-		data.lightsCount = static_cast<float>( lightsCount );
+		data.lightsCount = m_lightsCount;
 	} );
 
 	ID3D11Buffer* buffer = m_frameConstant.get();

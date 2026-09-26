@@ -6,6 +6,7 @@
 #include <DirectXTex.h>
 #include "System.h"
 #include "Pipeline.h"
+#include "Shaders\ConstantBuffers.h"
 #include "DBConnector.h"
 #include "Logger\Logger.h"
 
@@ -26,7 +27,7 @@ namespace GS
 {
 
 CDLODTerrain::CDLODTerrain() :
-	SceneObject( "CDLOD terrain", RenderPass::opaque )
+	SceneObject( "CDLOD terrain" )
 {
 }
 
@@ -301,34 +302,42 @@ CDLODTerrain::NodeBox CDLODTerrain::nodeBox( uint32_t level, uint32_t x, uint32_
 
 void CDLODTerrain::update( const FrameContext& frame )
 {
-	m_patches.clear();
-
-	if( !m_initialized || !visible() )
+	if( !m_initialized )
 		return;
 
 	m_heightMultiplier = m_properties["Height multiplier"].data<float>();
 	calcRanges();
+}
+
+void CDLODTerrain::collectMeshes( const RenderView& view, MeshCollector& collector )
+{
+	m_patches.clear();
+	if( !m_initialized )
+		return;
 
 	const uint32_t top = m_levelCount - 1;
 	for( uint32_t z = 0; z < m_nodesPerSide[top]; ++z )
 	{
 		for( uint32_t x = 0; x < m_nodesPerSide[top]; ++x )
 		{
-			selectNode( frame, top, x, z );
+			selectNode( view, top, x, z );
 		}
 	}
+
+	if( !m_patches.empty() )
+		collector.addCustom( passBit( MeshPass::opaque ) );
 }
 
-bool CDLODTerrain::selectNode( const FrameContext& frame, uint32_t level, uint32_t x, uint32_t z )
+bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t x, uint32_t z )
 {
 	const NodeBox box = nodeBox( level, x, z );
-	const XMFLOAT3& cameraPosition = frame.camera.position();
+	const XMFLOAT3& cameraPosition = view.lodOrigin;
 
 	if( !sphereIntersectsBox( cameraPosition, m_ranges[level], box.min, box.max ) )
 		return false;
 
 	// Невидимый узел считается обработанным: рисовать его не нужно ни ему, ни родителю
-	if( !frame.frustum.checkBox( box.min, box.max ) )
+	if( !view.frustum.checkBox( box.min, box.max ) )
 		return true;
 
 	if( level == 0 || !sphereIntersectsBox( cameraPosition, m_ranges[level - 1], box.min, box.max ) )
@@ -347,7 +356,7 @@ bool CDLODTerrain::selectNode( const FrameContext& frame, uint32_t level, uint32
 		if( cx >= childCount || cz >= childCount )
 			continue;
 
-		if( !selectNode( frame, level - 1, cx, cz ) )
+		if( !selectNode( view, level - 1, cx, cz ) )
 			addPatch( level, x, z, quarter );
 	}
 
@@ -366,10 +375,8 @@ void CDLODTerrain::addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t qu
 	m_patches.push_back( { origin, halfSize, static_cast<float>( level ) } );
 }
 
-void CDLODTerrain::render( const FrameContext& frame, RenderPass )
+void CDLODTerrain::renderCustom( const RenderContext& context )
 {
-	if( m_patches.empty() )
-		return;
 
 	ScopedRenderState terrainState;
 	if( m_properties["Wireframe"].data<bool>() )
@@ -400,7 +407,7 @@ void CDLODTerrain::render( const FrameContext& frame, RenderPass )
 	DMD3D::instance().setSRV( SRVType::ps, 0, m_heightMap );
 	m_material.bind();
 
-	pipeline().shaderConstant().setPerObjectBuffer( XMMatrixIdentity() );
+	context.constants.setPerObjectBuffer( XMMatrixIdentity() );
 
 	UINT stride = sizeof( XMFLOAT3 );
 	UINT offset = 0;

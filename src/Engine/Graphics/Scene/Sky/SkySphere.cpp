@@ -1,12 +1,12 @@
 #include "SkySphere.h"
 #include "System.h"
-#include "Pipeline.h"
+#include "Shaders\ConstantBuffers.h"
 
 namespace GS
 {
 
 SkySphere::SkySphere() :
-	SceneObject( "Sky", RenderPass::sky )
+	SceneObject( "Sky" )
 {
 }
 
@@ -15,15 +15,16 @@ void SkySphere::setModel( uint32_t modelId )
 	m_modelId = modelId;
 }
 
-void SkySphere::update( const FrameContext& frame )
+void SkySphere::collectMeshes( const RenderView&, MeshCollector& collector )
 {
-	m_transform.setPosition( frame.camera.position() );
+	if( m_modelId && System::models().exists( m_modelId ) )
+		collector.addCustom( passBit( MeshPass::sky ) );
 }
 
-void SkySphere::render( const FrameContext& frame, RenderPass )
+void SkySphere::renderCustom( const RenderContext& context )
 {
-	if( !m_modelId || !System::models().exists( m_modelId ) )
-		return;
+	// Сфера всегда вокруг камеры вида
+	m_transform.setPosition( context.view.position );
 
 	const DMModel::LodBlock* block = System::models().get( m_modelId )->getLod( 0.0f );
 	if( !block || !System::materials().exists( block->material ) )
@@ -33,7 +34,7 @@ void SkySphere::render( const FrameContext& frame, RenderPass )
 	shader->setPass( 0 );
 	shader->setDrawType( DMShader::by_index );
 
-	pipeline().shaderConstant().setPerObjectBuffer( m_transform.worldMatrix() );
+	context.constants.setPerObjectBuffer( m_transform.worldMatrix() );
 	shader->setParams( block->params );
 
 	ScopedRenderState skyState( DepthState::disabled, RasterState::frontCulling );

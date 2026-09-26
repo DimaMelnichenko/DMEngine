@@ -539,6 +539,14 @@ bool DMD3D::createRasterDescs()
 	if( !createRasterizerState( rasterDesc, m_rasterStateNoCulling ) )
 		return false;
 
+	// Зеркальные меши: лицевые грани — против часовой стрелки
+	rasterDesc.FrontCounterClockwise = TRUE;
+	if( !createRasterizerState( rasterDesc, m_rasterStateNoCullingMirrored ) )
+		return false;
+	rasterDesc.CullMode = D3D11_CULL_BACK;
+	if( !createRasterizerState( rasterDesc, m_rasterStateSolidMirrored ) )
+		return false;
+
 	// Setup a raster description which turns off back face culling.
 	rasterDesc.AntialiasedLineEnable = false;
 	rasterDesc.CullMode = D3D11_CULL_NONE;
@@ -643,6 +651,12 @@ void DMD3D::setState( RasterState state )
 			break;
 		case RasterState::wireframe:
 			m_deviceContext->RSSetState( m_rasterStateWireframe.get() );
+			break;
+		case RasterState::solidMirrored:
+			m_deviceContext->RSSetState( m_rasterStateSolidMirrored.get() );
+			break;
+		case RasterState::noCullingMirrored:
+			m_deviceContext->RSSetState( m_rasterStateNoCullingMirrored.get() );
 			break;
 	}
 

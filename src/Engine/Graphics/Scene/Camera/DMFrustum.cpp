@@ -1,86 +1,21 @@
 #include "DMFrustum.h"
 
-DMFrustum::DMFrustum( const DMCamera& camera, float screenDepth )
+DMFrustum::DMFrustum( const XMMATRIX& viewProjection )
 {
-	ConstructFrustum( camera, screenDepth );
-}
-
-
-DMFrustum::~DMFrustum()
-{
-}
-
-void DMFrustum::ConstructFrustum( const DMCamera& camera, float screenDepth )
-{
-	XMMATRIX matrix;
-
-	XMMATRIX projectionMatrix, viewMatrix;
-
-	camera.projectionMatrix( &projectionMatrix );
-	camera.viewMatrix( &viewMatrix );
-
-	matrix = XMMatrixMultiply( viewMatrix, projectionMatrix );
-
 	XMFLOAT4X4 m;
-	XMStoreFloat4x4( &m, matrix );
+	XMStoreFloat4x4( &m, viewProjection );
 
-	//right
-	XMFLOAT4 plane;
-	plane.x = m._14 - m._11;
-	plane.y = m._24 - m._21;
-	plane.z = m._34 - m._31;
-	plane.w = m._44 - m._41;
-	m_planes[0] = XMLoadFloat4( &plane );
-	m_planes[0] = XMPlaneNormalize( m_planes[0] );
-
-	//left
-	plane.x = m._14 + m._11;
-	plane.y = m._24 + m._21;
-	plane.z = m._34 + m._31;
-	plane.w = m._44 + m._41;
-	m_planes[1] = XMLoadFloat4( &plane );
-	m_planes[1] = XMPlaneNormalize( m_planes[1] );
-
-	//bottom
-	plane.x = m._14 + m._12;
-	plane.y = m._24 + m._22;
-	plane.z = m._34 + m._32;
-	plane.w = m._44 + m._42;
-	m_planes[2] = XMLoadFloat4( &plane );
-	m_planes[2] = XMPlaneNormalize( m_planes[2] );
-
-	//top
-	plane.x = m._14 - m._12;
-	plane.y = m._24 - m._22;
-	plane.z = m._34 - m._32;
-	plane.w = m._44 - m._42;
-	m_planes[3] = XMLoadFloat4( &plane );
-	m_planes[3] = XMPlaneNormalize( m_planes[3] );
-	
-	//far
-	plane.x = m._14 - m._13;
-	plane.y = m._24 - m._23;
-	plane.z = m._34 - m._33;
-	plane.w = m._44 - m._43;
-	m_planes[4] = XMLoadFloat4( &plane );
-	m_planes[4] = XMPlaneNormalize( m_planes[4] );
-
-	matrix = XMMatrixMultiply( viewMatrix, projectionMatrix );
-	XMStoreFloat4x4( &m, matrix );
-
-	//near
-	plane.x = m._14 + m._13;
-	plane.y = m._24 + m._23;
-	plane.z = m._34 + m._33;
-	plane.w = m._44 + m._43;
-	m_planes[5] = XMLoadFloat4( &plane );
-	m_planes[5] = XMPlaneNormalize( m_planes[5] );
-
-
-
-
-
-	return;
+	// Плоскость — сумма или разность четвёртого столбца и столбца оси: right, left, bottom, top, far, near
+	const XMFLOAT4 planes[6] = {
+		{ m._14 - m._11, m._24 - m._21, m._34 - m._31, m._44 - m._41 },
+		{ m._14 + m._11, m._24 + m._21, m._34 + m._31, m._44 + m._41 },
+		{ m._14 + m._12, m._24 + m._22, m._34 + m._32, m._44 + m._42 },
+		{ m._14 - m._12, m._24 - m._22, m._34 - m._32, m._44 - m._42 },
+		{ m._14 - m._13, m._24 - m._23, m._34 - m._33, m._44 - m._43 },
+		{ m._14 + m._13, m._24 + m._23, m._34 + m._33, m._44 + m._43 },
+	};
+	for( int i = 0; i < 6; ++i )
+		m_planes[i] = XMPlaneNormalize( XMLoadFloat4( &planes[i] ) );
 }
 
 bool DMFrustum::checkBox( const XMFLOAT3& boxMin, const XMFLOAT3& boxMax ) const

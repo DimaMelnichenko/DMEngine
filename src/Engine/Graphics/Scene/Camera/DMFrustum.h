@@ -1,19 +1,13 @@
 #pragma once
 
-//////////////
-// INCLUDES //
-//////////////
-#include "..\..\Common\DMAABB.h"
-#include "DMCamera.h"
+#include "DirectX.h"
 
-
+// Пирамида видимости: шесть плоскостей из матрицы вид × проекция (Gribb, Hartmann 2001). Строится для любого
+// вида — главной камеры, позже каскада теней
 class DMFrustum
 {
 public:
-	DMFrustum( const DMCamera& camera, float screenDepth );
-	~DMFrustum();
-
-	void ConstructFrustum( const DMCamera& camera, float screenDepth );
+	explicit DMFrustum( const XMMATRIX& viewProjection = XMMatrixIdentity() );
 
 	// Пересекает ли frustum (или содержит) ограничивающий параллелепипед, заданный углами в мировых координатах
 	bool checkBox( const XMFLOAT3& boxMin, const XMFLOAT3& boxMax ) const;
@@ -23,4 +17,3 @@ public:
 private:
 	XMVECTOR m_planes[6];
 };
-

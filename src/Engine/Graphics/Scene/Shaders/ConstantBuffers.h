@@ -2,7 +2,7 @@
 #include "DirectX.h"
 #include "Utils\utilites.h"
 #include "Utils\DMTimer.h"
-#include "Scene\Camera\DMCamera.h"
+#include "Scene\RenderView.h"
 
 namespace GS
 {
@@ -15,7 +15,11 @@ public:
 	~ConstantBuffers();
 
 	void initBuffers();
-	void setPerFrameBuffer( const DMCamera&, int lightsCount );
+	// Один раз за кадр: время и число источников света
+	void beginFrame( int lightsCount );
+	// Константы кадра (b0) для вида: матрицы и положение камеры; время и свет — от beginFrame. Для каждого вида
+	// кадра (главная камера, позже каскады теней) — свой вызов
+	void setViewBuffer( const RenderView& view );
 	// Мировая матрица объекта (b1) и матрица нормалей к ней — обратная транспонированная: нормали остаются
 	// перпендикулярными поверхности и при неравномерном масштабе
 	void setPerObjectBuffer( const XMMATRIX& world );
@@ -42,6 +46,7 @@ private:
 		XMMATRIX worldInverseTranspose;
 	};
 
+	float m_lightsCount = 0.0f;
 	com_unique_ptr<ID3D11Buffer> m_frameConstant;
 	com_unique_ptr<ID3D11Buffer> m_modelConstant;
 	DMTimer m_timer;

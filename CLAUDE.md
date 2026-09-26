@@ -93,26 +93,36 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
 - `Scene` (`Scene/Scene.h`) загружает ресурсы уровня из БД (`loadResources`), владеет светом и объектами сцены
   и вызывает их `update()`. Состав уровня описывает строка таблицы `Levels` (см. «Данные сцены»); объект,
   которого у уровня нет, остаётся неинициализированным и ничего не делает;
-- `Renderer` (`Renderer.h`) отправляет команды GPU: общие данные конвейера (сэмплеры, свет, per-frame constant
-  buffer) → `compute()` всех объектов → проходы `sky` → `opaque` → `transparent` (alpha blending, глубина только
-  читается) в HDR-буфер сцены
+- `Renderer` (`Renderer.h`) отправляет команды GPU: общие данные конвейера (сэмплеры, свет, константы кадра и вида)
+  → `compute()` всех объектов → сбор мешей с вида и раскладка по проходам с сортировкой → проходы `sky` → `opaque`
+  → `transparent` (alpha blending, глубина только читается) в HDR-буфер сцены
   (`R16G16B16A16_FLOAT`) → `PostProcess`: экспозиция и тонмаппинг (AgX / ACES) в задний буфер sRGB. Затем
   `DMGraphics` рисует GUI и вызывает `EndScene`. Шейдеры объектов пишут линейный цвет без экспозиции; настройки —
   `[PostProcess]` в `Scene\Lights.ini` и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
-  начинается с чистого состояния: `Renderer::renderPass` заново ставит цель сцены с областью вывода
+  начинается с чистого состояния: `Renderer::executePass` заново ставит цель сцены с областью вывода
   (`DMD3D::setSceneTarget`) и отвязывает ресурсы материалов (`unbindTransientResources`); полноэкранные проходы
   (постобработка, небо) — `FullscreenShader`: сам ставит топологию, шейдеры и состояния, цель — `DMD3D::setRenderTarget`.
   Время CPU и GPU (`GpuProfiler`, запросы timestamp) каждого объекта и прохода — в окне «Statistic», те же области —
   метки событий в захвате RenderDoc / PIX.
 
-Объект сцены наследует `GS::SceneObject` (`Scene/SceneObject.h`): `update` / `compute` / `render( frame, pass )` /
-`properties`, проход и видимость. Рендерер вызывает `render` в каждом проходе, где объект рисует (`drawsIn`): модели
-и расстановка рисуют непрозрачные и Masked материалы в `opaque`, полупрозрачные — в `transparent` (`passFor`). Всё нужное из кадра (камера, frustum, время) приходит в `FrameContext`. Перед `render()`
-рендерер привязывает общий `VertexPool` с топологией TRIANGLELIST; объект со своими буферами привязывает их сам.
+**Виды и списки отрисовки** — как mesh draw commands в UE: объекты не рисуют себя сами и не знают, в каком проходе
+их меши. Вид кадра — `RenderView` (`Scene/RenderView.h`, ≈ FSceneView: матрицы, положение, `DMFrustum`, `lodOrigin` —
+откуда считаются LOD); сейчас один, главная камера, позже каскады теней. Объект сцены наследует `GS::SceneObject`
+(`Scene/SceneObject.h`): `update` / `compute` (кадр — `FrameContext`: главный вид и время) / `collectMeshes( view,
+collector )` / `renderCustom( context )` / `properties`, видимость. За каждый вид объект отдаёт в `MeshCollector`
+(`Scene/MeshBatch.h`) меши — `MeshBatch` (≈ FMeshBatch: меш в `VertexPool`, материал, параметры, мировая матрица,
+режим материала, расстояние) — или свой вызов `CustomBatch` с маской проходов (террейн, расстановка, небо, частицы).
+`Renderer` раскладывает их по проходам (`MeshPass`: меши — по режиму материала, `passFor`; свои вызовы — по маске)
+с 64-битным ключом сортировки (непрозрачные — объект в порядке сцены, материал, вариант шейдера, растеризатор, меш;
+прозрачные — от дальних к ближним между всеми объектами) и рисует меши одной функцией `Renderer::drawMesh`
+(`setPass( phaseFor )`, `setParams`, растеризатор по двусторонности и зеркальности — `materialRasterState`,
+матрица объекта). Свой вызов получает `RenderContext` (вид, проход, растеризатор кадра, константы, `VertexPool`); перед
+ним привязан общий `VertexPool` с топологией TRIANGLELIST, свои буферы объект привязывает сам. Новый проход или вид
+(тени, depth prepass) добавляется в `Renderer`, а не в объекты.
 Сейчас объекты (в порядке отрисовки): `SkyAtmosphere` (процедурное небо фоном и освещение окружением от него;
 его `compute()` идёт первым и привязывает IBL к слотам PS t101…t103), `SkySphere` (модель неба уровня, если задана —
 тогда атмосфера только освещает), `CDLODTerrain`,
-`ModelQueues` (экземпляры моделей уровня: LOD по расстоянию, очереди по материалу),
+`ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида, меши в список отрисовки),
 `Scatterer` (по объекту на набор расстановки уровня: трава, камешки), `DMParticleSystem`. Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 
@@ -151,7 +161,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
 слои материала — `TerrainLayers`), модель неба (`Models`) и частицы (`Particles`: материал, текстура, плотность);
 NULL — этого у уровня нет. Экземпляры моделей уровня — `LevelModels`: строка на экземпляр (`position`, `rotation` —
 кватернион `x,y,z,w` как в glTF, `scale`), у модели их может быть сколько угодно. Модель (`DMModel`: LOD, меши,
-материалы) — общий ресурс без положения; положение держит экземпляр (`DMTransform` в `ModelQueues`, у неба — в
+материалы) — общий ресурс без положения; положение держит экземпляр (`DMTransform` в `ModelInstances`, у неба — в
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн, частицы,
@@ -239,7 +249,7 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
 `Particle` (`DMParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,
-`TextureObjects`, `Model`/`Mesh` (`ModelQueues`; общие вершинный и индексный буферы в `VertexPool`).
+`TextureObjects`, `Model`/`Mesh` (`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`).
 
 ## Соглашения
 

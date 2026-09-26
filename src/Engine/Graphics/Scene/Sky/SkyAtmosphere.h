@@ -19,7 +19,7 @@ namespace GS
 // - проецирует его на сферические гармоники — рассеянный свет (Shaders/sky_irradiance.cs);
 // - префильтрует отражения по шероховатости GGX (Shaders/sky_prefilter.ps);
 // а таблицу BRDF (Shaders/brdf_lut.ps) считает один раз. Затем привязывает всё это к слотам PS t101…t103
-// (Shaders/ibl.sh). render() рисует небо фоном кадра. Настройки — [Sky] в Scene\Lights.ini и окно GUI
+// (Shaders/ibl.sh). Свой вызов в проходе sky рисует небо фоном кадра. Настройки — [Sky] в Scene\Lights.ini и окно GUI
 class SkyAtmosphere : public SceneObject
 {
 public:
@@ -37,7 +37,8 @@ public:
 	void setBackgroundVisible( bool visible );
 
 	void compute( const FrameContext& frame ) override;
-	void render( const FrameContext& frame, RenderPass pass ) override;
+	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
+	void renderCustom( const RenderContext& context ) override;
 	PropertyContainer* properties() override;
 
 private:

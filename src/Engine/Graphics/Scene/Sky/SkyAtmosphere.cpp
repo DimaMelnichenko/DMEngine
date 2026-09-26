@@ -18,7 +18,7 @@ constexpr DXGI_FORMAT hdrFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 }
 
 SkyAtmosphere::SkyAtmosphere() :
-	SceneObject( "Sky atmosphere", RenderPass::sky )
+	SceneObject( "Sky atmosphere" )
 {
 }
 
@@ -322,10 +322,14 @@ void SkyAtmosphere::bindEnvironment()
 	d3d.setSRV( SRVType::ps, SLOT_IBL_BRDF, m_brdfSRV );
 }
 
-void SkyAtmosphere::render( const FrameContext&, RenderPass )
+void SkyAtmosphere::collectMeshes( const RenderView&, MeshCollector& collector )
 {
-	if( !m_backgroundVisible )
-		return;
+	if( m_backgroundVisible )
+		collector.addCustom( passBit( MeshPass::sky ) );
+}
+
+void SkyAtmosphere::renderCustom( const RenderContext& )
+{
 
 	setParameters( m_computedFor );
 	DMD3D::instance().setSRV( SRVType::ps, 0, m_skySRV );

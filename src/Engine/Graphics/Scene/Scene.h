@@ -5,7 +5,7 @@
 #include "Sky\SkySphere.h"
 #include "Sky\SkyAtmosphere.h"
 #include "Terrain\CDLODTerrain.h"
-#include "Model\ModelQueues.h"
+#include "Model\ModelInstances.h"
 #include "Scatterer\Scatterer.h"
 #include "Particle\DMParticleSystem.h"
 #include "Light\DMLightDriver.h"
@@ -41,7 +41,7 @@ private:
 	SkyAtmosphere m_atmosphere;	// процедурное небо и освещение окружением от него
 	SkySphere m_sky;			// модель неба уровня (Levels.sky), если задана — вместо фона атмосферы
 	CDLODTerrain m_terrain;
-	ModelQueues m_models;
+	ModelInstances m_models;
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;
 	DMParticleSystem m_particles;
 

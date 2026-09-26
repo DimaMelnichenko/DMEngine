@@ -1,63 +1,61 @@
 #pragma once
 
 #include <string>
-#include "Camera\DMCamera.h"
-#include "Camera\DMFrustum.h"
+#include "RenderView.h"
+#include "MeshBatch.h"
 #include "Properties/PropertyContainer.h"
-#include "Shaders\MaterialRenderState.h"
 
 namespace GS
 {
 
-// Данные кадра, общие для всех объектов сцены
+class ConstantBuffers;
+class VertexPool;
+
+// Данные кадра, общие для всех объектов сцены: главный вид (камера, frustum) и время
 struct FrameContext
 {
-	const DMCamera& camera;
-	DMFrustum frustum;
+	const RenderView& view;
 	float elapsedTime;
 };
 
-// Проход рендерера, в котором рисуется объект
-enum class RenderPass
+// Что рендерер передаёт объекту в его собственный вызов (CustomBatch): вид, проход, состояние растеризатора кадра
+// (каркас по клавише Q) и общие данные конвейера — вместо глобальных синглтонов
+struct RenderContext
 {
-	sky,			// первым, объект сам отключает глубину
-	opaque,			// непрозрачные и с отсечением по альфе (Opaque и Masked)
-	transparent		// после непрозрачных: альфа-блендинг, глубина только читается (Translucent)
+	const RenderView& view;
+	MeshPass pass;
+	RasterState frameRaster;
+	ConstantBuffers& constants;
+	VertexPool& vertexPool;
 };
 
-// Проход для режима материала
-inline RenderPass passFor( BlendMode mode )
-{
-	return mode == BlendMode::translucent ? RenderPass::transparent : RenderPass::opaque;
-}
-
-// Общий интерфейс объектов сцены. Scene вызывает update() на CPU, Renderer — compute() до отрисовки
-// и render() в каждом проходе, где объект рисует (drawsIn). Перед render() рендерер привязывает общий буфер вершин
-// и индексов (VertexPool) с топологией TRIANGLELIST; объект со своими буферами привязывает их сам
+// Общий интерфейс объектов сцены. Scene вызывает update() на CPU, Renderer — compute() до отрисовки,
+// collectMeshes() за каждый вид и renderCustom() в проходах своих вызовов. Объект не знает, в каком проходе рисуются
+// его меши: их раскладывает рендерер (как mesh draw commands в UE), поэтому новый проход или вид (тени, depth
+// prepass) не требует правки объектов
 class SceneObject
 {
 public:
-	SceneObject( const std::string& name, RenderPass pass ) : m_name( name ), m_pass( pass ) {}
+	explicit SceneObject( const std::string& name ) : m_name( name ) {}
 	virtual ~SceneObject() = default;
 
 	virtual void update( const FrameContext& frame ) {}
 	// Вызывается каждый кадр независимо от видимости
 	virtual void compute( const FrameContext& frame ) {}
-	virtual void render( const FrameContext& frame, RenderPass pass ) = 0;
+	// Что объект рисует с вида: меши (MeshBatch) и / или свой вызов (CustomBatch) — как GetDynamicMeshElements в UE.
+	// Невидимого объекта рендерер не спрашивает
+	virtual void collectMeshes( const RenderView& view, MeshCollector& collector ) = 0;
+	// Свой вызов в проходе context.pass — у объектов с нестандартной геометрией (террейн, расстановка, небо, частицы).
+	// Перед ним привязан общий буфер вершин (VertexPool) с топологией TRIANGLELIST; свои буферы объект привязывает сам
+	virtual void renderCustom( const RenderContext& context ) {}
 	virtual PropertyContainer* properties() { return nullptr; }
 
-	// Рисует ли объект в проходе. По умолчанию — только в своём; объект с материалами разных режимов (модели,
-	// расстановка) рисует непрозрачные в opaque, а полупрозрачные — в transparent
-	virtual bool drawsIn( RenderPass pass ) const { return pass == m_pass; }
-
 	const std::string& name() const { return m_name; }
-	RenderPass pass() const { return m_pass; }
 	bool visible() const { return m_visible; }
 	void setVisible( bool visible ) { m_visible = visible; }
 
 private:
 	std::string m_name;
-	RenderPass m_pass;
 	bool m_visible = true;
 };
 
