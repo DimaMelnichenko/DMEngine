@@ -40,10 +40,12 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   Папки `cmake-build-debug*` принадлежат профилям CLion: в них из терминала не собирать, иначе сборка
   сталкивается с перезагрузкой CMake в CLion («Permission denied»).
 - **Запуск для проверки** — `.\Tools\run.ps1 [-Config Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,4]
-  [-Camera x,y,z,pitch,yaw] [-Level имя] [-NoGui]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
+  [-Camera x,y,z,pitch,yaw] [-Level имя] [-NoGui] [-NoMouse]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
   Запускает exe из корня проекта, по желанию нажимает клавиши (скан-коды DirectInput: 2 — «1», 4 — «3», 5 — «4») и снимает
-  окно, закрывает движок и печатает из `log.txt` ошибки, число заглушек и время инициализации. Камера следует за мышью:
-  во время снимка мышь не трогать. Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
+  окно, закрывает движок и печатает из `log.txt` ошибки, число заглушек, время инициализации и строку «GPU average»
+  (среднее время GPU кадра и проходов за 3 с после прогрева — для сравнения производительности до и после правок).
+  Обычно камера поворачивается мышью; `-NoMouse` (`-nomouse` у exe) отключает это и скрывает указатель, со `-Screenshot`
+  он включается сам — снимки с одной точки совпадают до пикселя. Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
   `Rotation=pitch,yaw` в градусах, pitch > 0 — взгляд вниз), уровень — секция `[Level]` (`Name`); параметры `-Camera`
   и `-Level` скрипта (`-camera`, `-level` у exe) их переопределяют, так что снимок с нужной точки не требует правки кода.
   Списки (`-Keys`, `-Camera`) скрипт разбирает сам: через `powershell -File` они приходят одной строкой.
@@ -70,7 +72,11 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,90.5,238`.
 - Лог каждого запуска перезаписывается в отслеживаемый `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`).
 - Шейдеры (`Shaders/*.vs|.ps|.gs|.hlsl`) компилируются во время выполнения
-  (`D3DCompileFromFile` / `D3DCompile` в `DMShader`). Для правки шейдера пересборка не нужна.
+  (`D3DCompileFromFile` / `D3DCompile` в `DMShader`). Для правки шейдера пересборка не нужна. Флаги — `shaderCompileFlags()`
+  (`Scene/Shaders/ShaderUtils.h`): в Debug отладочная информация без оптимизации (исходник виден в RenderDoc / PIX),
+  в Release — `D3DCOMPILE_OPTIMIZATION_LEVEL3`. Номера слотов, общие для C++ и HLSL (константные буферы кадра,
+  объекта, материала; данные инстансов; свет и освещение окружением), — макросы `Shaders/slots.h`
+  (`register( SLOT_LIGHTS )` в шейдере, `SLOT_LIGHTS` в C++); новый общий слот заводите там же.
 - Горячие клавиши (`DMGraphics::bindingKeys`): Esc — выход, Q — wireframe, P — скриншот,
   1 — видимость террейна, 3 / 4 — расчёт / отрисовка всех наборов расстановки (трава, камешки; по умолчанию включены),
   I — курсор для работы с ImGui, G — показать / скрыть окна ImGui (как Game View в редакторе UE).
@@ -87,8 +93,12 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   buffer) → `compute()` всех объектов → проходы `sky` → `opaque` → `transparent` (alpha blending) в HDR-буфер сцены
   (`R16G16B16A16_FLOAT`) → `PostProcess`: экспозиция и тонмаппинг (AgX / ACES) в задний буфер sRGB. Затем
   `DMGraphics` рисует GUI и вызывает `EndScene`. Шейдеры объектов пишут линейный цвет без экспозиции; настройки —
-  `[PostProcess]` в `Scene\Lights.ini` и окно GUI «Post process», подробно — `docs/postprocess.md`. Проход после
-  объектов сам ставит топологию, шейдеры и состояния: их оставляет последний объект (у частиц — список точек).
+  `[PostProcess]` в `Scene\Lights.ini` и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
+  начинается с чистого состояния: `Renderer::renderPass` заново ставит цель сцены с областью вывода
+  (`DMD3D::setSceneTarget`) и отвязывает ресурсы материалов (`unbindTransientResources`); полноэкранные проходы
+  (постобработка, небо) — `FullscreenShader`: сам ставит топологию, шейдеры и состояния, цель — `DMD3D::setRenderTarget`.
+  Время CPU и GPU (`GpuProfiler`, запросы timestamp) каждого объекта и прохода — в окне «Statistic», те же области —
+  метки событий в захвате RenderDoc / PIX.
 
 Объект сцены наследует `GS::SceneObject` (`Scene/SceneObject.h`): `update` / `compute` / `render` / `properties`,
 проход и видимость. Всё нужное из кадра (камера, frustum, время) приходит в `FrameContext`. Перед `render()`
@@ -171,8 +181,8 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 в `Shaders/cdlod.vs` сдвигает её на сетку уровня L + 1 и переводит высоту в мип L + 1, поэтому уровни стыкуются без
 скачков и трещин. Условие отсутствия трещин — диапазон уровня не меньше диагонали его узла / `morphStartRatio`,
 `calcRanges()` не даёт «LOD distance» опуститься ниже. Настройки — строка таблицы `Terrain`, на которую ссылается уровень
-(`heightmap` — имя текстуры в таблице `Textures`, `splatmap` — файл, `height_multipler`, `height_offset`,
-`width_multipler`). Свойство «Show LOD» раскрашивает уровни (`Shaders/cdlod_lod.ps`). Общее для шейдеров террейна
+(`heightmap` — имя текстуры в таблице `Textures`, `splatmap` — файл, `height_multiplier`, `height_offset`,
+`width_multiplier`). Свойство «Show LOD» раскрашивает уровни (`Shaders/cdlod_lod.ps`). Общее для шейдеров террейна
 (constant buffer `CDLODTerrain::Parameters`, выборка карты высот, выход VS) — `Shaders/cdlod.sh`.
 
 **Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До четырёх слоёв из
@@ -192,7 +202,7 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 **Расстановка (трава, цветы, камешки, веточки)** — `Scatterer` (`Scene/Scatterer/`), по объекту сцены на набор
 (`ScatterSets`: проход `opaque` / `transparent`, `two_sided` — без отсечения задних граней, текстура цвета). Слой набора
 (`ScatterLayers`, свой `ScatterPass`: буфер инстансов, compute и `DrawIndexedInstancedIndirect`) — LOD модели, маска
-плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fallow`),
+плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
 размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы) и `align_to_terrain`. Трава и ромашки,
 кольца одного растения (травинки вблизи, карточки дальше), камешки — всё это слои. Каждый кадр `Shaders/scatter.cs`
 раскладывает инстансы слоя по сетке, привязанной к миру (смещение, размер и поворот — хеш координат ячейки, поэтому

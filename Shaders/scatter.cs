@@ -36,7 +36,7 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	float  g_farBorder;
 	float  g_nearFade;
 	float  g_farFade;
-	float  g_sizeMultipler;
+	float  g_sizeMultiplier;
 	float  g_cellSize;
 	float  g_jitter;			// смещение внутри ячейки, доля шага
 	float  g_alignToTerrain;	// 1 — ось Y инстанса по нормали террейна
@@ -125,7 +125,7 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	// Первая ячейка — у угла квадрата 2 · far вокруг камеры; у слоёв с разными параметрами разный узор
 	int2 firstCell = (int2)floor( ( cb_cameraPosition.xz - g_farBorder ) / g_cellSize );
 	int2 cell = firstCell + (int2)dispatchThreadId.xy;
-	uint seed = asuint( g_cellSize ) ^ hash( asuint( g_farBorder ) ^ hash( asuint( g_sizeMultipler ) ) );
+	uint seed = asuint( g_cellSize ) ^ hash( asuint( g_farBorder ) ^ hash( asuint( g_sizeMultiplier ) ) );
 
 	float2 offset = ( float2( random( cell, seed ), random( cell, seed + 1 ) ) - 0.5f ) * g_jitter;
 	float2 worldXZ = ( (float2)cell + 0.5f + offset ) * g_cellSize;
@@ -144,7 +144,7 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 		return;
 
 	// Размер: разброс, плотность маски и плавное исчезание у краёв кольца
-	float size = g_sizeMultipler * lerp( 0.7f, 1.0f, random( cell, seed + 3 ) ) * lerp( 0.6f, 1.0f, density );
+	float size = g_sizeMultiplier * lerp( 0.7f, 1.0f, random( cell, seed + 3 ) ) * lerp( 0.6f, 1.0f, density );
 	size *= saturate( ( g_farBorder - distanceToCamera ) / max( g_farFade, 1e-3f ) );
 	size *= saturate( ( distanceToCamera - g_nearBorder ) / max( g_nearFade, 1e-3f ) );
 

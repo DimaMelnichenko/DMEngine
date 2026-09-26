@@ -12,7 +12,7 @@
 cbuffer TerrainHeightBuffer : register( b5 )
 {
 	float g_terrainWorldSize;
-	float g_terrainHeightMultipler;
+	float g_terrainHeightMultiplier;
 	float g_terrainHeightOffset;
 	float g_terrainPadding;
 };
@@ -28,7 +28,7 @@ float2 terrainUV( float2 worldXZ )
 
 float terrainHeight( float2 worldXZ )
 {
-	return g_terrainHeightMap.SampleLevel( g_SamplerLinearClamp, terrainUV( worldXZ ), 0.0f ).r * g_terrainHeightMultipler +
+	return g_terrainHeightMap.SampleLevel( g_SamplerLinearClamp, terrainUV( worldXZ ), 0.0f ).r * g_terrainHeightMultiplier +
 		   g_terrainHeightOffset;
 }
 

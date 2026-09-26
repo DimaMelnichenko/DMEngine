@@ -32,9 +32,9 @@ CDLODTerrain::CDLODTerrain() :
 
 bool CDLODTerrain::initialize( uint32_t terrainId )
 {
-	float heightMultipler = 1.0f;
+	float heightMultiplier = 1.0f;
 	std::string splatMap;
-	if( !loadSettings( terrainId, heightMultipler, splatMap ) )
+	if( !loadSettings( terrainId, heightMultiplier, splatMap ) )
 		return false;
 
 	const uint32_t mapSize = System::textures().get( m_heightMapName )->width();
@@ -71,7 +71,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId )
 	prop->setHigh( nodeSize( 0 ) * 64.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
-	prop = m_properties.insert( "Height multipler", heightMultipler );
+	prop = m_properties.insert( "Height multiplier", heightMultiplier );
 	prop->setLow( 1.0f );
 	prop->setHigh( 5000.0f );
 	prop->setControlType( GUIControlType::SLIDER );
@@ -101,15 +101,15 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 	TerrainHeight height;
 	height.heightMap = m_heightMapName;
 	height.worldSize = m_worldSize;
-	// Ползунок, а не m_heightMultipler: тот обновляется в update() только у видимого террейна
-	height.heightMultipler = m_initialized ? m_properties["Height multipler"].data<float>() : m_heightMultipler;
+	// Ползунок, а не m_heightMultiplier: тот обновляется в update() только у видимого террейна
+	height.heightMultiplier = m_initialized ? m_properties["Height multiplier"].data<float>() : m_heightMultiplier;
 	height.heightOffset = m_heightOffset;
 	return height;
 }
 
-bool CDLODTerrain::loadSettings( uint32_t terrainId, float& heightMultipler, std::string& splatMap )
+bool CDLODTerrain::loadSettings( uint32_t terrainId, float& heightMultiplier, std::string& splatMap )
 {
-	SQLite::Statement query( dbConnect().db(), "select heightmap, splatmap, height_multipler, height_offset, width_multipler "
+	SQLite::Statement query( dbConnect().db(), "select heightmap, splatmap, height_multiplier, height_offset, width_multiplier "
 											   "from Terrain where id = :id" );
 	query.bind( ":id", terrainId );
 
@@ -121,9 +121,9 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, float& heightMultipler, std
 
 	m_heightMapName = query.getColumn( "heightmap" ).getString();
 	splatMap = query.getColumn( "splatmap" ).getString();
-	heightMultipler = static_cast<float>( query.getColumn( "height_multipler" ).getDouble() );
+	heightMultiplier = static_cast<float>( query.getColumn( "height_multiplier" ).getDouble() );
 	m_heightOffset = static_cast<float>( query.getColumn( "height_offset" ).getDouble() );
-	m_texelSize = static_cast<float>( query.getColumn( "width_multipler" ).getDouble() );
+	m_texelSize = static_cast<float>( query.getColumn( "width_multiplier" ).getDouble() );
 
 	return true;
 }
@@ -261,7 +261,7 @@ void CDLODTerrain::calcRanges()
 	{
 		float heightExtent = 0.0f;
 		for( const XMFLOAT2& bounds : m_heightBounds[level] )
-			heightExtent = std::max( heightExtent, ( bounds.y - bounds.x ) * m_heightMultipler );
+			heightExtent = std::max( heightExtent, ( bounds.y - bounds.x ) * m_heightMultiplier );
 
 		const float size = nodeSize( level );
 		const float diagonal = std::sqrt( 2.0f * size * size + heightExtent * heightExtent );
@@ -292,9 +292,9 @@ CDLODTerrain::NodeBox CDLODTerrain::nodeBox( uint32_t level, uint32_t x, uint32_
 	const XMFLOAT2& bounds = m_heightBounds[level][z * m_nodesPerSide[level] + x];
 
 	NodeBox box;
-	box.min = XMFLOAT3( x * size, bounds.x * m_heightMultipler + m_heightOffset, z * size );
+	box.min = XMFLOAT3( x * size, bounds.x * m_heightMultiplier + m_heightOffset, z * size );
 	box.max = XMFLOAT3( std::min( ( x + 1 ) * size, m_worldSize ),
-						bounds.y * m_heightMultipler + m_heightOffset,
+						bounds.y * m_heightMultiplier + m_heightOffset,
 						std::min( ( z + 1 ) * size, m_worldSize ) );
 	return box;
 }
@@ -306,7 +306,7 @@ void CDLODTerrain::update( const FrameContext& frame )
 	if( !m_initialized || !visible() )
 		return;
 
-	m_heightMultipler = m_properties["Height multipler"].data<float>();
+	m_heightMultiplier = m_properties["Height multiplier"].data<float>();
 	calcRanges();
 
 	const uint32_t top = m_levelCount - 1;
@@ -380,7 +380,7 @@ void CDLODTerrain::render( const FrameContext& frame )
 	Device::updateResource<Parameters>( m_constantBuffer, [this]( Parameters& params )
 	{
 		params.worldSize = m_worldSize;
-		params.heightMultipler = m_heightMultipler;
+		params.heightMultiplier = m_heightMultiplier;
 		params.heightOffset = m_heightOffset;
 		params.gridDim = static_cast<float>( patchDim );
 		std::copy( std::begin( m_morphConsts ), std::end( m_morphConsts ), params.morphConsts );

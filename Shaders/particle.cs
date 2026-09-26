@@ -13,7 +13,7 @@ cbuffer ThreadsData : register( SLOT_CB_PASS )
 
 cbuffer ParticleParameters : register(b3)
 {
-	float4 g_heightMultipler;
+	float4 g_heightMultiplier;
 	float4 g_highOfDeath;
 };
 
@@ -51,7 +51,7 @@ void main( uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 di
 	
 	float2 texCoord = position.xz / 4096.0f;
 	texCoord.y = 1.0 - texCoord.y;
-	float height = heightMap.SampleLevel( g_SamplerLinearClamp, texCoord, 0.0 ).r * g_heightMultipler.x;
+	float height = heightMap.SampleLevel( g_SamplerLinearClamp, texCoord, 0.0 ).r * g_heightMultiplier.x;
 	
 	if( particle.position.y >= ( height + g_highOfDeath.x ) || particle.position.y < height - 0.1 )
 		particle.position.y = height;

@@ -337,8 +337,8 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
 {
-	SQLite::Statement query( dbConnect().db(), "SELECT model, model_lod, mask, cell_size, near_border, far_border, near_fallow, "
-											   "far_fallow, size_multipler, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain "
+	SQLite::Statement query( dbConnect().db(), "SELECT model, model_lod, mask, cell_size, near_border, far_border, near_fade, "
+											   "far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain "
 											   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
 	while( query.executeStep() )
@@ -355,9 +355,9 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.params.cellSize = value( "cell_size" );
 		layer.params.nearBorder = value( "near_border" );
 		layer.params.farBorder = value( "far_border" );
-		layer.params.nearFade = value( "near_fallow" );
-		layer.params.farFade = value( "far_fallow" );
-		layer.params.sizeMultipler = value( "size_multipler" );
+		layer.params.nearFade = value( "near_fade" );
+		layer.params.farFade = value( "far_fade" );
+		layer.params.sizeMultiplier = value( "size_multiplier" );
 		layer.params.jitter = value( "jitter" );
 		layer.params.rotationRange = XMFLOAT3( XMConvertToRadians( value( "rotation_x" ) ), XMConvertToRadians( value( "rotation_y" ) ),
 											   XMConvertToRadians( value( "rotation_z" ) ) );

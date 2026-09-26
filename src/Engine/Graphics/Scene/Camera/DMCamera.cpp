@@ -100,36 +100,36 @@ void DMCamera::readKeyboard( XMFLOAT3& offsetPosition )
 	//update main camera position
 	Input& input = getInput();
 
-	float speedMultipler = 0.1 * m_properties["Camera speed"].data<float>() ;
+	float speedMultiplier = 0.1 * m_properties["Camera speed"].data<float>() ;
 
 	if( input.IsForwarPressed() )
 	{
-		offsetPosition.z += 1.0f * speedMultipler;
+		offsetPosition.z += 1.0f * speedMultiplier;
 	}
 
 	if( input.IsBackwardPressed() )
 	{
-		offsetPosition.z -= 1.0f * speedMultipler;
+		offsetPosition.z -= 1.0f * speedMultiplier;
 	}
 
 	if( input.IsRightStride() )
 	{
-		offsetPosition.x += 1.0f * speedMultipler;
+		offsetPosition.x += 1.0f * speedMultiplier;
 	}
 
 	if( input.IsLeftStride() )
 	{
-		offsetPosition.x -= 1.0f * speedMultipler;
+		offsetPosition.x -= 1.0f * speedMultiplier;
 	}
 
 	if( input.IsUpMove() )
 	{
-		offsetPosition.y += 1.0f * speedMultipler;
+		offsetPosition.y += 1.0f * speedMultiplier;
 	}
 
 	if( input.IsDownMove() )
 	{
-		offsetPosition.y -= 1.0f * speedMultipler;
+		offsetPosition.y -= 1.0f * speedMultiplier;
 	}
 }
 

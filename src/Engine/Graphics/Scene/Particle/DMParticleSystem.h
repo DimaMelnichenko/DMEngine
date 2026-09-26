@@ -28,7 +28,7 @@ public:
 
 	struct ParticleParams
 	{
-		XMFLOAT4 heightMultipler;
+		XMFLOAT4 heightMultiplier;
 		XMFLOAT4 highOfDeath;
 	};
 

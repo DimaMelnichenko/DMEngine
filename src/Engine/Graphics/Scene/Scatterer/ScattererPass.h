@@ -30,7 +30,7 @@ public:
 		float farBorder;
 		float nearFade;			// ширина плавного исчезания у ближней и дальней границы
 		float farFade;
-		float sizeMultipler;
+		float sizeMultiplier;
 		float cellSize;			// шаг сетки, метры
 		float jitter;			// смещение внутри ячейки, доля шага
 		float alignToTerrain;	// 1 — ось Y инстанса по нормали террейна

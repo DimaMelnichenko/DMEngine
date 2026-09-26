@@ -189,15 +189,15 @@ def splatmap(rng):
     height = read_dds_r16(HEIGHTMAP)
     size = height.shape[0]
     db = sqlite3.connect('base.db3')
-    height_multipler, texel_size = db.execute(
-        "select height_multipler, width_multipler from Terrain where name = 'Terrain'").fetchone()
+    height_multiplier, texel_size = db.execute(
+        "select height_multiplier, width_multiplier from Terrain where name = 'Terrain'").fetchone()
     db.close()
 
     # Уклон в градусах по центральным разностям (карта высот не бесшовная: за краем повторяется крайний тексель),
     # сглаженный: у мелких октав рельефа уклон меняется через несколько текселей, и без сглаживания скала и камни
     # рассыпаются штрихами
     padded = np.pad(height, 1, mode='edge')
-    scale = height_multipler / (2.0 * texel_size)
+    scale = height_multiplier / (2.0 * texel_size)
     dx = (padded[1:-1, 2:] - padded[1:-1, :-2]) * scale
     dz = (padded[2:, 1:-1] - padded[:-2, 1:-1]) * scale
     slope = blur(np.degrees(np.arctan(np.hypot(dx, dz))), radius=3)

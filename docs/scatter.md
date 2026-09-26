@@ -28,7 +28,7 @@
 плавный переход) и ромашки 0–10 м со своей маской.
 
 **Кольцо** — диапазон расстояний `near_border…far_border` от камеры, в котором слой рисуется. У границ размер
-объектов плавно уходит в ноль на ширине `near_fallow` и `far_fallow`. Расстояние считается в пространстве, а не по
+объектов плавно уходит в ноль на ширине `near_fade` и `far_fade`. Расстояние считается в пространстве, а не по
 земле: если поднять камеру выше `far_border`, слой исчезнет.
 
 **Маска плотности** — текстура в координатах карты высот: красный канал 0…1 — вероятность, что в ячейке появится
@@ -59,7 +59,7 @@
 1. Точка: центр ячейки плюс случайное смещение до `jitter / 2` шага по X и Z. Вне террейна — пропуск.
 2. Маска: случайное число сравнивается с плотностью маски в этой точке — так маска задаёт вероятность.
 3. Высота из карты высот; если расстояние до камеры вне `near_border…far_border` — пропуск.
-4. Размер: `size_multipler` × случайный множитель 0,7…1 × (0,6…1 по плотности маски) × исчезание у границ кольца.
+4. Размер: `size_multiplier` × случайный множитель 0,7…1 × (0,6…1 по плотности маски) × исчезание у границ кольца.
 5. Отсечение: сфера радиусом в размер объекта над точкой проверяется по шести плоскостям frustum.
 6. Поворот: случайные углы вокруг Y, X и Z в пределах `rotation_y`, `rotation_x`, `rotation_z` (полный размах:
    360 — любой угол, 30 — ±15°); при `align_to_terrain` ось Y объекта затем доворачивается к нормали рельефа.
@@ -98,8 +98,8 @@
 | `mask` | имя | маска плотности из таблицы `Textures` |
 | `cell_size` | м | шаг сетки: в среднем не больше одного объекта на ячейку |
 | `near_border`, `far_border` | м | кольцо дальности |
-| `near_fallow`, `far_fallow` | м | ширина плавного исчезания у ближней и дальней границы |
-| `size_multipler` | — | масштаб меша |
+| `near_fade`, `far_fade` | м | ширина плавного исчезания у ближней и дальней границы |
+| `size_multiplier` | — | масштаб меша |
 | `jitter` | доля шага | смещение внутри ячейки: 0 — строго по сетке, 1 — в пределах всей ячейки |
 | `rotation_x`, `rotation_y`, `rotation_z` | градусы | полный размах случайного поворота вокруг оси |
 | `align_to_terrain` | 0 / 1 | ось Y объекта по нормали рельефа |
@@ -124,7 +124,7 @@
 
 ```sql
 INSERT INTO ScatterLayers (scatter_set, layer, model, model_lod, mask, cell_size, near_border, far_border,
-                           near_fallow, far_fallow, size_multipler, jitter, rotation_x, rotation_y, rotation_z,
+                           near_fade, far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z,
                            align_to_terrain)
 VALUES (1, 3, 4, 0, 'mask_camomile', 0.7, 0, 12, 0, 4, 0.8, 1.0, 0, 360, 0, 0);
 ```
@@ -135,7 +135,7 @@ VALUES (1, 3, 4, 0, 'mask_camomile', 0.7, 0, 12, 0, 4, 0.8, 1.0, 0, 360, 0, 0);
 ```sql
 INSERT INTO ScatterSets (name, pass, two_sided, color_texture) VALUES ('ForestFloor', 'opaque', 0, NULL);
 INSERT INTO ScatterLayers (scatter_set, layer, model, model_lod, mask, cell_size, near_border, far_border,
-                           near_fallow, far_fallow, size_multipler, jitter, rotation_x, rotation_y, rotation_z,
+                           near_fade, far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z,
                            align_to_terrain)
 VALUES (<id набора>, 0, <id модели веточки>, 0, 'mask_twigs', 1.0, 0, 30, 0, 6, 0.5, 1.0, 20, 360, 20, 1);
 INSERT INTO LevelScatterSets (level, scatter_set) VALUES (1, <id набора>);
@@ -172,7 +172,7 @@ INSERT INTO LevelScatterSets (level, scatter_set) VALUES (1, <id набора>);
    террейна (см. лог) или отрисовка выключена клавишей 4.
 2. Камера ближе `far_border` к земле? Кольцо считается в пространстве.
 3. Маска в этом месте не ноль? Проверьте файл и имя в `Textures`.
-4. `size_multipler` подходит мешу? Размеры слоёв подобраны под настоящие меши: травинки GrassBlade — 0,003,
+4. `size_multiplier` подходит мешу? Размеры слоёв подобраны под настоящие меши: травинки GrassBlade — 0,003,
    и на подставленной карточке высотой 1 м они не видны.
 5. Материал LOD инстансный (8, 9 или 11)? Иначе все инстансы окажутся в начале координат.
 6. Объект чёрный? У освещённого материала на двусторонней карточке задняя сторона смотрит от света; у материала

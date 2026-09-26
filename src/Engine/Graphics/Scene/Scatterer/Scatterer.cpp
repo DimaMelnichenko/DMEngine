@@ -60,7 +60,7 @@ void Scatterer::compute( const FrameContext& frame )
 	Device::updateResource<TerrainParams>( m_terrainBuffer, [&terrain]( TerrainParams& params )
 	{
 		params.worldSize = terrain.worldSize;
-		params.heightMultipler = terrain.heightMultipler;
+		params.heightMultiplier = terrain.heightMultiplier;
 		params.heightOffset = terrain.heightOffset;
 	} );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 5, m_terrainBuffer );

@@ -43,7 +43,7 @@ private:
 	struct alignas( 16 ) TerrainParams
 	{
 		float worldSize;
-		float heightMultipler;
+		float heightMultiplier;
 		float heightOffset;
 		float padding;
 	};

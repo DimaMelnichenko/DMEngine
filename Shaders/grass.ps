@@ -46,9 +46,9 @@ float4 main(PixelInputType input) : SV_TARGET
 	
 	if( depth_value > 0.99 )
 	{
-		float fallow = ( depth_value - 0.99 ) * ( 1.0 / ( 0.993 - 0.99 ) );
+		float fade = ( depth_value - 0.99 ) * ( 1.0 / ( 0.993 - 0.99 ) );
 		//textureColor.r = 1.0;
-		textureColor.a = lerp( textureColor.a, 0.0, fallow );
+		textureColor.a = lerp( textureColor.a, 0.0, fade );
 	}
 	
 	

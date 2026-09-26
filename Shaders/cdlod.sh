@@ -13,7 +13,7 @@
 cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 {
 	float  g_worldSize;				// сторона террейна в мировых единицах
-	float  g_heightMultipler;
+	float  g_heightMultiplier;
 	float  g_heightOffset;
 	float  g_gridDim;				// квадов в стороне патча
 	float4 g_morphConsts[16];		// по уровням LOD: x — начало морфинга, y — 1 / длина зоны морфинга
@@ -45,7 +45,7 @@ float2 heightMapUV( float2 worldXZ )
 
 float sampleHeight( float2 worldXZ, float mip )
 {
-	return g_heightMap.SampleLevel( g_SamplerLinearClamp, heightMapUV( worldXZ ), mip ).r * g_heightMultipler + g_heightOffset;
+	return g_heightMap.SampleLevel( g_SamplerLinearClamp, heightMapUV( worldXZ ), mip ).r * g_heightMultiplier + g_heightOffset;
 }
 
 #endif

@@ -116,7 +116,7 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 	}
 
 	m_propertyContainer.setName( "Particles:" );
-	auto prop = m_propertyContainer.insert( "Terrain hight multipler", 1.0f );
+	auto prop = m_propertyContainer.insert( "Terrain height multiplier", 1.0f );
 	prop->setLow( 1.0f );
 	prop->setHigh( 1000.0f );
 	prop->setControlType( GUIControlType::SLIDER );
@@ -135,7 +135,7 @@ void DMParticleSystem::update( float elapsedTime )
 {
 	Device::updateResource<ParticleParams>( m_constantBuffer, [this]( ParticleParams& data ) ->void
 	{
-		data.heightMultipler.x = m_propertyContainer["Terrain hight multipler"].data<float>();
+		data.heightMultiplier.x = m_propertyContainer["Terrain height multiplier"].data<float>();
 		data.highOfDeath.x = m_propertyContainer["High of death"].data<float>();
 	} );
 
