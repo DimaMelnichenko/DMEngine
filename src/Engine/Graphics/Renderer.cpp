@@ -17,9 +17,11 @@ Renderer::Renderer( GUI& gui ) :
 template<typename Func>
 void Renderer::measure( const std::string& counterName, Func&& func )
 {
+	m_gpuProfiler.beginScope( counterName );
 	auto start = std::chrono::high_resolution_clock::now();
 	func();
 	auto end = std::chrono::high_resolution_clock::now();
+	m_gpuProfiler.endScope();
 	m_gui.addCounterInfo( counterName + " = %.3f ms", std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
 }
 
@@ -31,11 +33,15 @@ bool Renderer::initialize()
 	if( !m_postProcess.initialize( "Scene\\Lights.ini" ) )
 		return false;
 
+	if( !m_gpuProfiler.initialize( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext() ) )
+		return false;
+
 	return m_samplerState.initialize();
 }
 
 void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 {
+	m_gpuProfiler.beginFrame();
 	measure( "preparePipeline", [&] { preparePipeline( scene, frame ); } );
 
 	measure( "Compute Pass", [&]
@@ -60,6 +66,17 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	}
 
 	measure( "Post process", [&] { m_postProcess.render(); } );
+
+	m_gpuProfiler.endFrame();
+	reportGpuTimes();
+}
+
+void Renderer::reportGpuTimes()
+{
+	// Время GPU отстаёт от кадра на несколько кадров: запросы читаются без ожидания
+	m_gui.addCounterInfo( "GPU frame = %.3f ms", m_gpuProfiler.frameMilliseconds() );
+	for( const auto& [name, milliseconds] : m_gpuProfiler.results() )
+		m_gui.addCounterInfo( "GPU " + name + " = %.3f ms", milliseconds );
 }
 
 PropertyContainer* Renderer::postProcessProperties()
@@ -83,6 +100,9 @@ void Renderer::renderPass( Scene& scene, const FrameContext& frame, RenderPass p
 	DMD3D::instance().setSceneTarget();
 	DMD3D::instance().unbindTransientResources();
 
+	static const char* const passNames[] = { "Pass sky", "Pass opaque", "Pass transparent" };
+	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
+
 	for( SceneObject* object : scene.objects() )
 	{
 		if( object->pass() != pass || !object->visible() )
@@ -92,6 +112,8 @@ void Renderer::renderPass( Scene& scene, const FrameContext& frame, RenderPass p
 		m_vertexPool.setBuffers();
 		measure( object->name(), [&] { object->render( frame ); } );
 	}
+
+	m_gpuProfiler.endScope();
 }
 
 }
