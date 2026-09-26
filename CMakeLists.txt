@@ -90,7 +90,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/D3D/DMStructuredBuffer.cpp
     src/DMSystem.cpp
     src/Engine/Graphics/Common/DMAABB.cpp
-    src/Engine/Graphics/Common/DMTransformBuffer.cpp
+    src/Engine/Graphics/Common/DMTransform.cpp
     src/Engine/Graphics/D3D/DMD3D.cpp
     src/Engine/Graphics/D3D/DMSamplerState.cpp
     src/Engine/Graphics/DMGraphics.cpp

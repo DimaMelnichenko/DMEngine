@@ -71,13 +71,10 @@ PixelInputType main(VertexInputType input)
 		binormal = calcInstanceDirection( binormal, input.instanceIndex );
 	#endif
 
-	    // Calculate the normal vector against the world matrix only.
-    output.normal = normalize( mul(normal, (float3x3)cb_worldMatrix) );
-	output.tangent	= normalize( mul( tangent, (float3x3)cb_worldMatrix ) );
+	// Касательная и бинормаль лежат в поверхности и преобразуются как точки, нормаль — обратной транспонированной
+	output.normal = normalize( mul( normal, (float3x3)cb_worldInverseTransposeMatrix ) );
+	output.tangent = normalize( mul( tangent, (float3x3)cb_worldMatrix ) );
 	output.binormal = normalize( mul( binormal, (float3x3)cb_worldMatrix ) );
-	
-    // Normalize the normal vector.
-    output.normal = normalize(output.normal);
 	
 
     return output;

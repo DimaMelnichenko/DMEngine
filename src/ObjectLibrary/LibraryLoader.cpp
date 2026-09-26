@@ -279,19 +279,27 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 		const bool hasParticles = !query.getColumn( "particles" ).isNull();
 		const uint32_t particlesId = query.getColumn( "particles" ).getUInt();
 
-		SQLite::Statement queryModels( dbConnect().db(), "SELECT model, position, scale FROM LevelModels WHERE level = :level ORDER BY id" );
+		SQLite::Statement queryModels( dbConnect().db(), "SELECT id, model, position, rotation, scale FROM LevelModels "
+														 "WHERE level = :level ORDER BY id" );
 		queryModels.bind( ":level", level.id );
 		while( queryModels.executeStep() )
 		{
-			LevelDescription::Model model;
-			model.id = queryModels.getColumn( "model" ).getUInt();
+			LevelDescription::ModelInstance instance;
+			instance.model = queryModels.getColumn( "model" ).getUInt();
+			const std::string row = "Level model " + queryModels.getColumn( "id" ).getString();
 			const std::string position = queryModels.getColumn( "position" ).getString();
+			const std::string rotation = queryModels.getColumn( "rotation" ).getString();
 			const std::string scale = queryModels.getColumn( "scale" ).getString();
-			if( !position.empty() && !strToVec3( position, model.position ) )
-				LOG( "Level model " + std::to_string( model.id ) + ": wrong position '" + position + "'" );
-			if( !scale.empty() && !strToVec3( scale, model.scale ) )
-				LOG( "Level model " + std::to_string( model.id ) + ": wrong scale '" + scale + "'" );
-			level.models.push_back( model );
+			if( !position.empty() && !strToVec3( position, instance.position ) )
+				LOG( row + ": wrong position '" + position + "'" );
+			if( !rotation.empty() && !strToVec4( rotation, instance.rotation ) )
+			{
+				LOG( row + ": wrong rotation '" + rotation + "', expected quaternion x,y,z,w" );
+				instance.rotation = XMFLOAT4( 0.0f, 0.0f, 0.0f, 1.0f );
+			}
+			if( !scale.empty() && !strToVec3( scale, instance.scale ) )
+				LOG( row + ": wrong scale '" + scale + "'" );
+			level.modelInstances.push_back( instance );
 		}
 
 		SQLite::Statement querySets( dbConnect().db(), "SELECT s.id, s.name, s.pass, s.two_sided, s.color_texture "

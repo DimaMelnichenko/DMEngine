@@ -10,10 +10,12 @@
 // Пустой optional — у уровня этого нет (колонка NULL)
 struct LevelDescription
 {
-	struct Model
+	// Экземпляр модели на уровне (строка LevelModels): одна модель может стоять в нескольких местах
+	struct ModelInstance
 	{
-		uint32_t id = 0;
+		uint32_t model = 0;
 		XMFLOAT3 position = XMFLOAT3( 0.0f, 0.0f, 0.0f );
+		XMFLOAT4 rotation = XMFLOAT4( 0.0f, 0.0f, 0.0f, 1.0f );	// кватернион x, y, z, w, как rotation узла glTF
 		XMFLOAT3 scale = XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	};
 
@@ -48,7 +50,7 @@ struct LevelDescription
 	std::string name;
 	std::optional<uint32_t> terrain;	// строка таблицы Terrain
 	std::optional<uint32_t> sky;		// модель небесной сферы
-	std::vector<Model> models;			// таблица LevelModels
+	std::vector<ModelInstance> modelInstances;	// таблица LevelModels
 	std::vector<ScatterSet> scatterSets;	// таблица LevelScatterSets
 	std::optional<Particles> particles;
 };

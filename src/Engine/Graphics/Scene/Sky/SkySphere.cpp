@@ -17,8 +17,7 @@ void SkySphere::setModel( uint32_t modelId )
 
 void SkySphere::update( const FrameContext& frame )
 {
-	if( m_modelId && System::models().exists( m_modelId ) )
-		System::models().get( m_modelId )->transformBuffer().setPosition( frame.camera.position() );
+	m_transform.setPosition( frame.camera.position() );
 }
 
 void SkySphere::render( const FrameContext& frame )
@@ -34,7 +33,7 @@ void SkySphere::render( const FrameContext& frame )
 	shader->setPass( 0 );
 	shader->setDrawType( DMShader::by_index );
 
-	pipeline().shaderConstant().setPerObjectBuffer( block->resultMatrix );
+	pipeline().shaderConstant().setPerObjectBuffer( m_transform.worldMatrix() );
 	shader->setParams( block->params );
 
 	ScopedRenderState skyState( DepthState::disabled, RasterState::frontCulling );

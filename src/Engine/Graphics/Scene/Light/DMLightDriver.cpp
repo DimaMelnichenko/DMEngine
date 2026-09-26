@@ -36,7 +36,7 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 		if( !light.enabled() || m_lightParamBuffer.size() == maxLights )
 			continue;
 
-		XMStoreFloat3( &lightBuffer.position, light.m_transformBuffer.resultMatrix().r[3] );
+		lightBuffer.position = light.position();
 		lightBuffer.type = (int)light.type();
 		lightBuffer.direction = light.direction();
 		lightBuffer.attenuationRadius = light.attenuationRadius();
@@ -90,7 +90,7 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 			{
 				if( !strToVec3( lightFile.get<std::string>( section, "Position" ), vec ) )
 					return false;
-				light.m_transformBuffer.setPosition( vec );
+				light.setPosition( vec );
 				light.setAttenuationRadius( lightFile.get<float>( section, "AttenuationRadius" ) );
 			}
 

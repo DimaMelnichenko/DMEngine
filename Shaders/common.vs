@@ -22,9 +22,11 @@ cbuffer FrameConstantBuffer : register( SLOT_CB_FRAME )
 	float3 fcb_dump;
 };
 
+// Раскладка — ConstantBuffers::ShaderModelConstant
 cbuffer WorldBuffer : register( SLOT_CB_OBJECT )
 {
-    matrix cb_worldMatrix; 
+	matrix cb_worldMatrix;
+	matrix cb_worldInverseTransposeMatrix;	// для нормалей: перпендикулярны поверхности и при неравномерном масштабе
 };
 
 

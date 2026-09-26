@@ -67,24 +67,20 @@ void ConstantBuffers::setPerFrameBuffer( const DMCamera& camera, int lightsCount
 	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
 }
 
-void ConstantBuffers::setPerObjectBuffer( const XMMATRIX* matrix )
+void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world )
 {
-	D3D11_MAPPED_SUBRESOURCE mappedResource;
-	XMMATRIX mat;
+	// Сдвиг на нормали не действует; у вырожденной матрицы (нулевой масштаб) обратной нет — берётся сама матрица
+	XMMATRIX linear = world;
+	linear.r[3] = XMVectorSet( 0.0f, 0.0f, 0.0f, 1.0f );
+	XMVECTOR determinant;
+	XMMATRIX inverse = XMMatrixInverse( &determinant, linear );
+	const XMMATRIX normalMatrix = fabsf( XMVectorGetX( determinant ) ) > 1e-12f ? XMMatrixTranspose( inverse ) : linear;
 
-	if( !matrix )
-	{
-		mat = XMMatrixIdentity();
-		mat = XMMatrixTranspose( mat );
-	}
-	else
-	{
-		mat = XMMatrixTranspose( *matrix );
-	}
-
+	// HLSL читает матрицы по столбцам: транспонирование даёт ту же запись mul( v, M ), что и в C++
 	Device::updateResource<ShaderModelConstant>( m_modelConstant, [&]( ShaderModelConstant& data )
 	{
-		data.world = mat;
+		data.world = XMMatrixTranspose( world );
+		data.worldInverseTranspose = XMMatrixTranspose( normalMatrix );
 	} );
 
 	ID3D11Buffer* buffer = m_modelConstant.get();

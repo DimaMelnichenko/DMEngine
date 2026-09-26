@@ -116,7 +116,7 @@ void Scatterer::render( const FrameContext& frame )
 		// Инстансы слоя читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)
 		DMD3D::instance().setSRV( SRVType::vs, SLOT_INSTANCE_DATA, layer.pass->structuredBuffer() );
 
-		pipeline().shaderConstant().setPerObjectBuffer( &worldMatrix );
+		pipeline().shaderConstant().setPerObjectBuffer( worldMatrix );
 		shader->renderInstancedIndirect( layer.pass->args() );
 	}
 }

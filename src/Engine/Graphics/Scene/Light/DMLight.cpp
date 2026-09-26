@@ -27,6 +27,16 @@ XMFLOAT3 DMLight::color( ) const
 	return m_color;
 }
 
+void DMLight::setPosition( const XMFLOAT3& position )
+{
+	m_position = position;
+}
+
+const XMFLOAT3& DMLight::position() const
+{
+	return m_position;
+}
+
 void DMLight::setDirection( const XMFLOAT3& direction )
 {
 	XMVECTOR vector = XMLoadFloat3( &direction );

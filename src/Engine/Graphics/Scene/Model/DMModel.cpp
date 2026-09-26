@@ -33,15 +33,12 @@ void DMModel::addLod( float range, std::unique_ptr<LodBlock>&& lod )
 	m_lods.emplace_back( std::move( std::make_pair( range , std::move( lod ) ) ) );
 }
 
-const DMModel::LodBlock* DMModel::getLod( float range )
+const DMModel::LodBlock* DMModel::getLod( float distance ) const
 {
-	for( auto& it : m_lods )
+	for( const auto& it : m_lods )
 	{
-		if( range <= it.first )
-		{
-			it.second->resultMatrix = m_transformBuffer.resultMatrixPtr();
+		if( distance <= it.first )
 			return it.second.get();
-		}
 	}
 	return nullptr;
 }
@@ -49,22 +46,13 @@ const DMModel::LodBlock* DMModel::getLod( float range )
 DMModel::LodBlock* DMModel::getLodById( uint16_t index )
 {
 	if( index < m_lods.size() )
-	{
-		auto& it = m_lods[index];		
-		it.second->resultMatrix = m_transformBuffer.resultMatrixPtr();
-		return it.second.get();
-	}
+		return m_lods[index].second.get();
 	return nullptr;
 }
 
 uint16_t DMModel::lodCount()
 {
 	return m_lods.size();
-}
-
-DMTransformBuffer& DMModel::transformBuffer()
-{
-	return m_transformBuffer;
 }
 
 

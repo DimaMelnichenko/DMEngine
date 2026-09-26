@@ -31,14 +31,10 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName 
 
 	LOG( "Load models" );
 	timeStart = std::chrono::high_resolution_clock::now();
-	for( const LevelDescription::Model& model : m_level.models )
+	for( const LevelDescription::ModelInstance& instance : m_level.modelInstances )
 	{
-		if( !library.loadModelWithLOD( model.id ) )
+		if( !library.loadModelWithLOD( instance.model ) )
 			return false;
-
-		DMTransformBuffer& transform = System::models().get( model.id )->transformBuffer();
-		transform.setPosition( model.position );
-		transform.setScale( model.scale );
 	}
 
 	// Небесную сферу и модели расстановки рисуют свои объекты сцены, но загружаются они вместе с моделями уровня
@@ -100,11 +96,8 @@ bool Scene::initialize()
 	}
 
 	if( m_level.sky )
-	{
 		m_sky.setModel( *m_level.sky );
-		m_models.exclude( System::models().get( *m_level.sky )->name() );
-	}
-	m_models.initialize();
+	m_models.initialize( m_level.modelInstances );
 
 	timeStart = std::chrono::high_resolution_clock::now();
 	for( const LevelDescription::ScatterSet& set : m_level.scatterSets )

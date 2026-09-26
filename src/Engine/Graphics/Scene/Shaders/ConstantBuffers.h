@@ -16,7 +16,9 @@ public:
 
 	void initBuffers();
 	void setPerFrameBuffer( const DMCamera&, int lightsCount );
-	void setPerObjectBuffer( const XMMATRIX* );
+	// Мировая матрица объекта (b1) и матрица нормалей к ней — обратная транспонированная: нормали остаются
+	// перпендикулярными поверхности и при неравномерном масштабе
+	void setPerObjectBuffer( const XMMATRIX& world );
 
 private:
 	struct alignas( 16 ) ShaderFrameConstant
@@ -33,9 +35,11 @@ private:
 		XMFLOAT3 dump;
 	};
 
+	// Раскладка — cbuffer WorldBuffer в Shaders/common.vs
 	struct alignas( 16 ) ShaderModelConstant
 	{
 		XMMATRIX world;
+		XMMATRIX worldInverseTranspose;
 	};
 
 	com_unique_ptr<ID3D11Buffer> m_frameConstant;

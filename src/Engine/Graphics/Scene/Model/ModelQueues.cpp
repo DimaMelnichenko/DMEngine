@@ -1,4 +1,5 @@
 #include "ModelQueues.h"
+#include <unordered_set>
 #include "System.h"
 #include "Pipeline.h"
 
@@ -11,18 +12,22 @@ ModelQueues::ModelQueues() :
 	m_properties.setName( "Models" );
 }
 
-void ModelQueues::initialize()
+void ModelQueues::initialize( const std::vector<LevelDescription::ModelInstance>& instances )
 {
-	for( const auto& pair : System::models() )
+	std::unordered_set<uint32_t> withProperties;
+	m_instances.reserve( instances.size() );
+	for( const LevelDescription::ModelInstance& description : instances )
 	{
-		if( !m_excluded.count( pair.second->name() ) )
-			m_properties.addSubContainer( pair.second->properties() );
-	}
-}
+		Instance instance;
+		instance.model = System::models().get( description.model ).get();
+		instance.transform.setPosition( description.position );
+		instance.transform.setRotation( description.rotation );
+		instance.transform.setScale( description.scale );
+		m_instances.push_back( instance );
 
-void ModelQueues::exclude( const std::string& modelName )
-{
-	m_excluded.insert( modelName );
+		if( withProperties.insert( description.model ).second )
+			m_properties.addSubContainer( instance.model->properties() );
+	}
 }
 
 void ModelQueues::update( const FrameContext& frame )
@@ -32,23 +37,16 @@ void ModelQueues::update( const FrameContext& frame )
 		queue.second.clear();
 	}
 
-	XMVECTOR camPosVector = XMLoadFloat3( &frame.camera.position() );
+	const XMVECTOR cameraPosition = XMLoadFloat3( &frame.camera.position() );
 
-	for( const auto& pair : System::models() )
+	for( const Instance& instance : m_instances )
 	{
-		if( m_excluded.count( pair.second->name() ) )
-			continue;
+		const XMVECTOR offset = XMVectorSubtract( XMLoadFloat3( &instance.transform.position() ), cameraPosition );
+		const float distance = XMVectorGetX( XMVector3Length( offset ) );
 
-		XMVECTOR lenVec = XMVectorSubtract( pair.second->transformBuffer().position(), camPosVector );
-		XMVECTOR distance = XMVector3Length( lenVec );
-
-		// достаем лод меша в зависимости от расстояния до камеры
-		const DMModel::LodBlock* block = pair.second->getLod( distance.m128_f32[0] );
-
-		if( block != nullptr && block->isRender )
-		{
-			m_renderQueues[block->material].push_back( block );
-		}
+		const DMModel::LodBlock* lod = instance.model->getLod( distance );
+		if( lod != nullptr && lod->isRender )
+			m_renderQueues[lod->material].push_back( { lod, &instance.transform } );
 	}
 }
 
@@ -60,14 +58,13 @@ void ModelQueues::render( const FrameContext& frame )
 		shader->setPass( 0 );
 		shader->setDrawType( DMShader::by_index );
 
-		for( const auto LODblock : queuePair.second )
+		for( const DrawItem& item : queuePair.second )
 		{
-			//установка матрицы модели в шейдер
-			pipeline().shaderConstant().setPerObjectBuffer( LODblock->resultMatrix );
+			pipeline().shaderConstant().setPerObjectBuffer( item.transform->worldMatrix() );
 
-			shader->setParams( LODblock->params );
+			shader->setParams( item.lod->params );
 			// отрисовка модели согласно смещению вершин и индексов для главного буфера
-			const auto& mesh = System::meshes().get( LODblock->mesh );
+			const auto& mesh = System::meshes().get( item.lod->mesh );
 			shader->render( mesh->indexCount(), mesh->vertexOffset(), mesh->indexOffset() );
 		}
 	}

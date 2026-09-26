@@ -52,8 +52,7 @@ PixelInputType main(VertexInputType input)
 		normal = calcInstanceDirection( normal, input.instanceIndex );
 	#endif
 
-	// Calculate the normal vector against the world matrix only.
-    normal = normalize( mul(normal, (float3x3)cb_worldMatrix) );
+	normal = normalize( mul( normal, (float3x3)cb_worldInverseTransposeMatrix ) );
 	output.color = dot( normal, normalize(float3( 0.1, 0.5, -0.1 )));
 	output.color.a = 1.0f;
 	

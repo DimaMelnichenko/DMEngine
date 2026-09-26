@@ -9,12 +9,13 @@
 
 #include "..\TextureObjects\DMTextureStorage.h"
 #include "Mesh\DMMesh.h"
-#include "Common\DMTransformBuffer.h"
 #include "Properties/PropertyContainer.h"
 
 namespace GS
 {
 
+// Модель — ресурс: LOD (меш, материал, параметры материала) и дальности переключения. Где стоит модель, задают
+// её экземпляры (ModelQueues, SkySphere): одна модель может стоять на уровне в нескольких местах
 class DMModel : public DMResource
 {
 public:
@@ -24,7 +25,6 @@ public:
 		uint32_t material;
 		PropertyContainer params;
 		bool isRender;
-		const XMMATRIX* resultMatrix;
 	};
 public:
 	DMModel( uint32_t id, const std::string& name = "" );
@@ -33,17 +33,15 @@ public:
 	~DMModel();
 
 	void addLod( float range, std::unique_ptr<LodBlock>&& lod );
-	const LodBlock* getLod( float range );
+	// LOD для расстояния до камеры: первый, чья дальность не меньше; дальше последнего — nullptr
+	const LodBlock* getLod( float distance ) const;
 	LodBlock* getLodById( uint16_t index );
 	uint16_t lodCount();
-
-	DMTransformBuffer& transformBuffer();
 
 	PropertyContainer* properties();
 private:
 	std::vector<std::pair<float, std::shared_ptr<LodBlock>>> m_lods;
 	PropertyContainer m_properties;
-	DMTransformBuffer m_transformBuffer;
 };
 
 }

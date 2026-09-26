@@ -9,10 +9,13 @@ MaterialParameterInstance, по --level — LevelModels. Всё в одной т
 строки и файлы (reimport), лишние LOD удаляет. Подробно — docs/models.md.
 
 - Объект (узел с мешем) — модель; суффикс _LOD<N> в имени — LOD N модели с именем без суффикса.
+- Связанные дубликаты Blender (Alt+D: объекты с общим мешем) — одна модель с несколькими экземплярами на уровне.
 - На LOD движок рисует один меш и один материал: объект с несколькими материалами становится несколькими моделями
   (<имя>, <имя>_<материал>) с одинаковой расстановкой.
-- Опорная точка модели — origin объекта в Blender: поворот и масштаб объекта запекаются в вершины (у LevelModels
-  поворота нет), сдвиг объекта становится смещением модели на уровне относительно --position.
+- Опорная точка модели — origin объекта в Blender: вершины остаются в координатах объекта, а его положение, поворот
+  и масштаб становятся экземпляром модели на уровне (LevelModels) относительно --position. Зеркальный объект
+  (отрицательный масштаб) и сдвиг осей от неравномерного масштаба родителя запекаются в вершины; модели для
+  расстановки (--scatter) — тоже, их ставят слои расстановки.
 - glTF правосторонний, движок левосторонний (оба Y вверх, метры): Z с минусом, порядок вершин треугольника обратный.
 - Материал glTF переносится в экземпляр материала PBR (id 12; с --scatter — PBRInstance, id 9) один в один;
   карты нормалей glTF в соглашении OpenGL — NormalGreenUp = true.
@@ -41,6 +44,7 @@ COMPONENT_TYPES = {5120: np.int8, 5121: np.uint8, 5122: np.int16, 5123: np.uint1
 TYPE_SIZES = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT2': 4, 'MAT3': 9, 'MAT4': 16}
 TRIANGLES = 4
 WRAP_REPEAT = 10497
+MIRROR = np.array([1.0, 1.0, -1.0])   # glTF правый → движок левый: Z с минусом
 
 warnings = []
 
@@ -156,6 +160,42 @@ def node_matrix(node):
     return matrix
 
 
+def quaternion(rotation):
+    """Матрица поворота (по столбцам, как в glTF) → кватернион x, y, z, w с w >= 0."""
+    m = rotation
+    trace = m[0, 0] + m[1, 1] + m[2, 2]
+    if trace > 0.0:
+        s = 2.0 * np.sqrt(trace + 1.0)
+        q = [(m[2, 1] - m[1, 2]) / s, (m[0, 2] - m[2, 0]) / s, (m[1, 0] - m[0, 1]) / s, 0.25 * s]
+    elif m[0, 0] > m[1, 1] and m[0, 0] > m[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + m[0, 0] - m[1, 1] - m[2, 2])
+        q = [0.25 * s, (m[0, 1] + m[1, 0]) / s, (m[0, 2] + m[2, 0]) / s, (m[2, 1] - m[1, 2]) / s]
+    elif m[1, 1] > m[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + m[1, 1] - m[0, 0] - m[2, 2])
+        q = [(m[0, 1] + m[1, 0]) / s, 0.25 * s, (m[1, 2] + m[2, 1]) / s, (m[0, 2] - m[2, 0]) / s]
+    else:
+        s = 2.0 * np.sqrt(1.0 + m[2, 2] - m[0, 0] - m[1, 1])
+        q = [(m[0, 2] + m[2, 0]) / s, (m[1, 2] + m[2, 1]) / s, 0.25 * s, (m[1, 0] - m[0, 1]) / s]
+    q = np.array(q) / np.linalg.norm(q)
+    return -q if q[3] < 0.0 else q
+
+
+def decompose(matrix):
+    """Мировая матрица узла glTF → положение, поворот (кватернион) и масштаб в координатах движка.
+    None — если у матрицы есть сдвиг осей (неравномерный масштаб родителя под поворотом) или зеркальность:
+    их не записать экземпляром, такой узел запекается в вершины."""
+    linear = matrix[:3, :3]
+    scale = np.linalg.norm(linear, axis=0)
+    if np.any(scale < 1e-8):
+        return None
+    rotation = linear / scale
+    if np.linalg.det(rotation) < 0.0 or not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-4):
+        return None
+    # Поворот R в правой системе → F·R·F в левой (F — зеркало по Z): у кватерниона меняют знак x и y
+    x, y, z, w = quaternion(rotation)
+    return {'position': matrix[:3, 3] * MIRROR, 'rotation': np.array([-x, -y, z, w]), 'scale': scale}
+
+
 def mesh_nodes(gltf):
     """Узлы с мешем и их мировые матрицы (обход сцены по умолчанию)."""
     nodes = gltf.json.get('nodes', [])
@@ -255,7 +295,7 @@ def convert_primitive(gltf, primitive, basis, label):
 
     # glTF правый → движок левый: зеркало по Z. Треугольник меняет обход: лицевой в glTF — (b − a) × (c − a)
     # наружу, после зеркала — внутрь, поэтому две вершины меняются местами (ещё раз — если зеркальна матрица узла)
-    mirror = np.array([1.0, 1.0, -1.0])
+    mirror = MIRROR
     positions = positions * mirror
     if determinant > 0.0:
         triangles = triangles[:, [0, 2, 1]]
@@ -388,7 +428,8 @@ class MaterialConverter:
 # ---------------------------------------------------------------------------------------------------------------------
 # Разбор сцены на модели
 
-def collect_models(gltf, asset, materials, rename):
+def collect_models(gltf, asset, materials, rename, bake):
+    """bake — запечь поворот и масштаб объектов в вершины (модели для расстановки: их ставят слои)."""
     lod_pattern = re.compile(r'^(.*)_LOD(\d+)$', re.IGNORECASE)
     groups = {}   # имя модели → {lod: (узел, мировая матрица)}
     for index, node, world in mesh_nodes(gltf):
@@ -400,23 +441,50 @@ def collect_models(gltf, asset, materials, rename):
             raise SystemExit('error: two objects are LOD%d of model %s' % (lod, base))
         groups[base][lod] = (node, world)
 
-    if rename:
-        if len(groups) != 1:
-            raise SystemExit('error: --name needs a file with one model, found: %s' % ', '.join(groups))
-        groups = {sanitize(rename): next(iter(groups.values()))}
-
-    models = []
+    # Экземпляр — положение, поворот и масштаб LOD0 на уровне. Объекты с теми же мешами всех LOD (связанные
+    # дубликаты) — экземпляры первой такой модели
+    specs = []
+    by_meshes = {}   # меши LOD → описание модели
     for base, lods in groups.items():
         order = sorted(lods)
         if order != list(range(len(order))):
             warn('model %s: LOD numbers %s are renumbered from 0' % (base, order))
-        lod0_node, lod0_world = lods[order[0]]
-        offset = lod0_world[:3, 3] * np.array([1.0, 1.0, -1.0])   # сдвиг объекта — в координатах движка
+        lod0_world = lods[order[0]][1]
+        placement = None if bake else decompose(lod0_world)
+        key = tuple(lods[lod][0]['mesh'] for lod in order)
+        if placement is not None and key in by_meshes:
+            by_meshes[key]['instances'].append(placement)
+            continue
+        baked = placement is None
+        if baked:
+            if not bake:
+                warn('model %s: object transform is mirrored or sheared, it is baked into vertices' % base)
+            placement = {'position': lod0_world[:3, 3] * MIRROR, 'rotation': np.array([0.0, 0.0, 0.0, 1.0]),
+                         'scale': np.ones(3)}
+            bases = [lods[lod][1][:3, :3] for lod in order]   # каждый LOD — со своими поворотом и масштабом
+        else:
+            # Вершины — в координатах объекта LOD0; у других LOD — их поворот и масштаб относительно LOD0
+            # (сдвиг LOD не важен: в Blender их обычно ставят рядом)
+            inverse = np.linalg.inv(lod0_world[:3, :3])
+            bases = [inverse @ lods[lod][1][:3, :3] for lod in order]
+        spec = {'base': base, 'lods': [lods[lod][0] for lod in order], 'bases': bases, 'instances': [placement]}
+        specs.append(spec)
+        if not baked:
+            by_meshes[key] = spec
+
+    if rename:
+        if len(specs) != 1:
+            raise SystemExit('error: --name needs a file with one model, found: %s' %
+                             ', '.join(spec['base'] for spec in specs))
+        specs[0]['base'] = sanitize(rename)
+
+    models = []
+    for spec in specs:
+        base = spec['base']
 
         # Части LOD по материалам: на LOD движок рисует один меш с одним материалом
         per_material = []   # [(индекс материала, [меш LOD0, меш LOD1, ...])]
-        for lod_number, lod in enumerate(order):
-            node, world = lods[lod]
+        for lod_number, (node, basis) in enumerate(zip(spec['lods'], spec['bases'])):
             parts = {}
             for p_index, primitive in enumerate(gltf.json['meshes'][node['mesh']]['primitives']):
                 label = '%s LOD%d primitive %d' % (base, lod_number, p_index)
@@ -424,7 +492,7 @@ def collect_models(gltf, asset, materials, rename):
                     warn('%s: mode %d is not triangles, skipped' % (label, primitive['mode']))
                     continue
                 parts.setdefault(primitive.get('material'), []).append(
-                    convert_primitive(gltf, primitive, world[:3, :3], label))
+                    convert_primitive(gltf, primitive, basis, label))
             for material_index, meshes in parts.items():
                 entry = next((e for e in per_material if e[0] == material_index), None)
                 if entry is None:
@@ -442,9 +510,10 @@ def collect_models(gltf, asset, materials, rename):
             if number > 0:
                 material_name = gltf.json['materials'][material_index].get('name') if material_index is not None else None
                 name = '%s_%s' % (base, sanitize(material_name or 'material%d' % number))
-            if len(meshes) < len(order):
+            if len(meshes) < len(spec['lods']):
                 warn('model %s: LOD%d has no part with this material, LODs from there are dropped' % (name, len(meshes)))
-            models.append({'name': name, 'meshes': meshes, 'instance': instance, 'params': params, 'offset': offset})
+            models.append({'name': name, 'meshes': meshes, 'instance': instance, 'params': params,
+                           'instances': spec['instances']})
     return models
 
 
@@ -517,15 +586,16 @@ class Database:
                 self.cursor.execute('DELETE FROM Meshes WHERE id = ?', (mesh_id,))
         return model_id
 
-    def place(self, level_id, model_id, position, scale):
-        text = lambda v: ','.join('%g' % round(float(c), 4) for c in v)
-        row = self.one('SELECT id FROM LevelModels WHERE level = ? AND model = ?', (level_id, model_id))
-        if row is None:
-            self.cursor.execute('INSERT INTO LevelModels (level, model, position, scale) VALUES (?, ?, ?, ?)',
-                                (level_id, model_id, text(position), text(scale)))
-        else:
-            self.cursor.execute('UPDATE LevelModels SET position = ?, scale = ? WHERE id = ?',
-                                (text(position), text(scale), row))
+    def place(self, level_id, model_id, instances):
+        """Экземпляры модели на уровне: повторный импорт заменяет прежние строки этой модели."""
+        def text(vector, digits):
+            return ','.join('%g' % (round(float(c), digits) + 0.0) for c in vector)
+        self.cursor.execute('DELETE FROM LevelModels WHERE level = ? AND model = ?', (level_id, model_id))
+        for instance in instances:
+            self.cursor.execute('INSERT INTO LevelModels (level, model, position, rotation, scale) '
+                                'VALUES (?, ?, ?, ?, ?)',
+                                (level_id, model_id, text(instance['position'], 4), text(instance['rotation'], 6),
+                                 text(instance['scale'], 4)))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -571,7 +641,7 @@ def main():
     gltf = Gltf(args.file)
     asset = sanitize(args.asset or os.path.splitext(os.path.basename(args.file))[0])
     materials = MaterialConverter(gltf, asset, args.scatter)
-    models = collect_models(gltf, asset, materials, args.name)
+    models = collect_models(gltf, asset, materials, args.name, args.scatter)
     if not models:
         raise SystemExit('error: no meshes in %s' % args.file)
     if materials.double_sided:
@@ -615,9 +685,14 @@ def main():
                                      for i, m in enumerate(model['meshes'])),
             model['instance'], lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]))
         if level_id is not None:
-            place = position + model['offset'] * args.scale
-            db.place(level_id, model_id, place, [args.scale] * 3)
-            print('  level %s: position %.2f,%.2f,%.2f scale %g' % (args.level, place[0], place[1], place[2], args.scale))
+            # Origin файла — в --position с равномерным масштабом --scale
+            placed = [{'position': position + instance['position'] * args.scale, 'rotation': instance['rotation'],
+                       'scale': instance['scale'] * args.scale} for instance in model['instances']]
+            db.place(level_id, model_id, placed)
+            for instance in placed:
+                print('  level %s: position %.2f,%.2f,%.2f rotation %.3f,%.3f,%.3f,%.3f scale %.3g,%.3g,%.3g' % (
+                    (args.level,) + tuple(instance['position']) + tuple(instance['rotation']) +
+                    tuple(instance['scale'])))
 
     if args.dry_run:
         db.connection.rollback()

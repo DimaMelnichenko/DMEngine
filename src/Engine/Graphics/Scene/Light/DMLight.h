@@ -2,7 +2,6 @@
 
 #include <string>
 #include "DirectX.h"
-#include "DMTransformBuffer.h"
 
 // Источник света. Параметры названы как в UE (Attenuation Radius, Inner / Outer Cone Angle) и KHR_lights_punctual
 class DMLight
@@ -19,6 +18,10 @@ public:
 	void setColor( const XMFLOAT3& );
 	XMFLOAT3 color() const;
 
+	// Положение точечного и прожектора, м
+	void setPosition( const XMFLOAT3& );
+	const XMFLOAT3& position() const;
+
 	// Направление, в котором идёт свет (направленный и прожектор); хранится нормированным
 	void setDirection( const XMFLOAT3& );
 	XMFLOAT3 direction() const;
@@ -32,14 +35,13 @@ public:
 	float innerConeAngle() const;
 	float outerConeAngle() const;
 
-	DMTransformBuffer m_transformBuffer;
-
 	static LightType strToType( const std::string& );
 
 private:
 	bool m_enabled = true;
 	XMFLOAT3 m_color = { 1.0f, 1.0f, 1.0f };
 	LightType m_type;
+	XMFLOAT3 m_position = { 0.0f, 0.0f, 0.0f };
 	XMFLOAT3 m_direction = { 0.0f, -1.0f, 0.0f };
 	float m_attenuationRadius = 0.0f;
 	float m_innerConeAngle = 0.0f;	// как в KHR_lights_punctual

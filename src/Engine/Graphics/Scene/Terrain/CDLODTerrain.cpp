@@ -400,8 +400,7 @@ void CDLODTerrain::render( const FrameContext& frame )
 	DMD3D::instance().setSRV( SRVType::ps, 0, m_heightMap );
 	m_material.bind();
 
-	XMMATRIX worldMatrix = XMMatrixIdentity();
-	pipeline().shaderConstant().setPerObjectBuffer( &worldMatrix );
+	pipeline().shaderConstant().setPerObjectBuffer( XMMatrixIdentity() );
 
 	UINT stride = sizeof( XMFLOAT3 );
 	UINT offset = 0;
