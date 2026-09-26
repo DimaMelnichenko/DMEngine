@@ -1,4 +1,5 @@
 #include "ModelQueues.h"
+#include <algorithm>
 #include <unordered_set>
 #include "System.h"
 #include "Pipeline.h"
@@ -36,6 +37,7 @@ void ModelQueues::update( const FrameContext& frame )
 	{
 		queue.second.clear();
 	}
+	m_translucent.clear();
 
 	const XMVECTOR cameraPosition = XMLoadFloat3( &frame.camera.position() );
 
@@ -45,29 +47,61 @@ void ModelQueues::update( const FrameContext& frame )
 		const float distance = XMVectorGetX( XMVector3Length( offset ) );
 
 		const DMModel::LodBlock* lod = instance.model->getLod( distance );
-		if( lod != nullptr && lod->isRender )
-			m_renderQueues[lod->material].push_back( { lod, &instance.transform } );
+		if( lod == nullptr || !lod->isRender )
+			continue;
+
+		// Режим читается каждый кадр: параметры материала меняются в GUI
+		const DrawItem item = { lod, &instance.transform,
+								System::materials().get( lod->material )->m_shader->renderState( lod->params ), distance };
+		if( item.state.blendMode == BlendMode::translucent )
+			m_translucent.push_back( item );
+		else
+			m_renderQueues[lod->material].push_back( item );
+	}
+
+	// Полупрозрачные смешиваются с уже нарисованным, поэтому дальние — раньше. Сортировка по опорной точке
+	// экземпляра: пересекающиеся модели и грани внутри одной модели не сортируются
+	std::sort( m_translucent.begin(), m_translucent.end(),
+			   []( const DrawItem& a, const DrawItem& b ) { return a.distance > b.distance; } );
+}
+
+bool ModelQueues::drawsIn( RenderPass pass ) const
+{
+	return pass == RenderPass::opaque || ( pass == RenderPass::transparent && !m_translucent.empty() );
+}
+
+void ModelQueues::render( const FrameContext& frame, RenderPass pass )
+{
+	ScopedRenderState modelState;
+	const RasterState frameRaster = modelState.previous().raster;
+
+	if( pass == RenderPass::transparent )
+	{
+		for( const DrawItem& item : m_translucent )
+			draw( item, frameRaster );
+		return;
+	}
+
+	for( const auto& queuePair : m_renderQueues )
+	{
+		for( const DrawItem& item : queuePair.second )
+			draw( item, frameRaster );
 	}
 }
 
-void ModelQueues::render( const FrameContext& frame )
+void ModelQueues::draw( const DrawItem& item, RasterState frameRaster ) const
 {
-	for( auto& queuePair : m_renderQueues )
-	{
-		DMShader* shader = System::materials().get( queuePair.first )->m_shader.get();
-		shader->setPass( 0 );
-		shader->setDrawType( DMShader::by_index );
+	DMShader* shader = System::materials().get( item.lod->material )->m_shader.get();
+	DMD3D::instance().setState( materialRasterState( item.state.twoSided, frameRaster ) );
+	shader->setPass( shader->phaseFor( item.lod->params ) );
+	shader->setParams( item.lod->params );
+	shader->setDrawType( DMShader::by_index );
 
-		for( const DrawItem& item : queuePair.second )
-		{
-			pipeline().shaderConstant().setPerObjectBuffer( item.transform->worldMatrix() );
+	pipeline().shaderConstant().setPerObjectBuffer( item.transform->worldMatrix() );
 
-			shader->setParams( item.lod->params );
-			// отрисовка модели согласно смещению вершин и индексов для главного буфера
-			const auto& mesh = System::meshes().get( item.lod->mesh );
-			shader->render( mesh->indexCount(), mesh->vertexOffset(), mesh->indexOffset() );
-		}
-	}
+	// отрисовка модели согласно смещению вершин и индексов для главного буфера
+	const auto& mesh = System::meshes().get( item.lod->mesh );
+	shader->render( mesh->indexCount(), mesh->vertexOffset(), mesh->indexOffset() );
 }
 
 PropertyContainer* ModelQueues::properties()

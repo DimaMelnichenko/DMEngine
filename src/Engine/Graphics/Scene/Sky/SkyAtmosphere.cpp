@@ -322,7 +322,7 @@ void SkyAtmosphere::bindEnvironment()
 	d3d.setSRV( SRVType::ps, SLOT_IBL_BRDF, m_brdfSRV );
 }
 
-void SkyAtmosphere::render( const FrameContext& )
+void SkyAtmosphere::render( const FrameContext&, RenderPass )
 {
 	if( !m_backgroundVisible )
 		return;

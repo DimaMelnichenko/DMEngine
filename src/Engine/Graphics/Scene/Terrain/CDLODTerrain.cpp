@@ -366,7 +366,7 @@ void CDLODTerrain::addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t qu
 	m_patches.push_back( { origin, halfSize, static_cast<float>( level ) } );
 }
 
-void CDLODTerrain::render( const FrameContext& frame )
+void CDLODTerrain::render( const FrameContext& frame, RenderPass )
 {
 	if( m_patches.empty() )
 		return;

@@ -37,7 +37,7 @@ public:
 	void setBackgroundVisible( bool visible );
 
 	void compute( const FrameContext& frame ) override;
-	void render( const FrameContext& frame ) override;
+	void render( const FrameContext& frame, RenderPass pass ) override;
 	PropertyContainer* properties() override;
 
 private:

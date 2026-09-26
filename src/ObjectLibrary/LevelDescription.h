@@ -28,12 +28,10 @@ struct LevelDescription
 		GS::ScatterPass::PopulateParams params = {};
 	};
 
-	// Набор расстановки: трава, камешки (таблица ScatterSets)
+	// Набор расстановки: трава, камешки (таблица ScatterSets). Проход и отсечение граней задаёт материал слоя
 	struct ScatterSet
 	{
 		std::string name;
-		std::string pass;		// "opaque" или "transparent"
-		bool twoSided = false;	// без отсечения задних граней
 		std::string colorTexture;
 		std::vector<ScatterLayer> layers;
 	};

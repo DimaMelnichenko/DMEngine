@@ -23,6 +23,7 @@ cbuffer PBRMaterialBuffer : register( SLOT_CB_MATERIAL )
 	float  g_normalScale;
 	float  g_normalGreenUp;     // 1 — зелёный канал карты нормалей смотрит вверх по картинке (OpenGL, glTF)
 	float  g_occlusionStrength;
+	float  g_alphaCutoff;       // AlphaMode MASK: пиксели с альфой ниже порога отбрасываются
 };
 
 struct PixelInputType
@@ -53,6 +54,13 @@ float3 surfaceNormal( PixelInputType input )
 float4 main( PixelInputType input ) : SV_TARGET
 {
 	float4 baseColor = g_texBaseColor.Sample( g_SamplerAnisotropicWrap, input.tex ) * g_baseColorFactor;
+
+#ifdef ALPHA_MASK
+	// Вариант для AlphaMode MASK (Masked в UE) — PBRMaterial собирает его сам. В непрозрачном варианте отсечения нет:
+	// шейдер с clip() отключает раннюю проверку глубины
+	clip( baseColor.a - g_alphaCutoff );
+#endif
+
 	float4 metallicRoughness = g_texMetallicRoughness.Sample( g_SamplerAnisotropicWrap, input.tex );
 
 	Surface surface;
@@ -64,14 +72,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.occlusion = lerp( 1.0f, g_texOcclusion.Sample( g_SamplerAnisotropicWrap, input.tex ).r, g_occlusionStrength );
 	surface.emissive = g_texEmissive.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * g_emissiveFactor;
 
-	float4 result;
-	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)
-	result.rgb = evaluateLighting( surface );
-	result.a = baseColor.a;
-
-#ifdef ALPHA_TO_COVERAGE
-	result.a = step( 0.9f, baseColor.a );
-#endif
-
-	return result;
+	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps). Альфа нужна только
+	// полупрозрачному (AlphaMode BLEND): у непрозрачных блендинг выключен
+	return float4( evaluateLighting( surface ), baseColor.a );
 }

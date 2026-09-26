@@ -443,6 +443,17 @@ bool DMD3D::createDepthStencilBufferAndView()
 
 	m_depthDisabledStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
 
+	// Только проверка глубины, без записи
+	depthStencilDesc.DepthEnable = true;
+	depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
+	if( FAILED( result ) )
+	{
+		return false;
+	}
+
+	m_depthReadOnlyStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
+
 	// Set the depth stencil state.
 	m_deviceContext->OMSetDepthStencilState( m_depthStencilState.get(), 1 );
 
@@ -582,8 +593,9 @@ bool DMD3D::createBlendStates()
 	D3D11_BLEND_DESC blendStateDescription;
 	ZeroMemory( &blendStateDescription, sizeof( D3D11_BLEND_DESC ) );
 
-	// Create an alpha enabled blend state description.
-	blendStateDescription.AlphaToCoverageEnable = true;	
+	// Альфа-блендинг полупрозрачных. Без alpha-to-coverage: при одной выборке MSAA он отбрасывает пиксели с альфой
+	// ниже 0,5 целиком, и полупрозрачное пропадает; вырезанное по альфе (Masked) отсекает шейдер
+	blendStateDescription.AlphaToCoverageEnable = false;
 	blendStateDescription.RenderTarget[0].BlendEnable = TRUE;
 	blendStateDescription.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
 	blendStateDescription.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;	
@@ -639,7 +651,9 @@ void DMD3D::setState( RasterState state )
 
 void DMD3D::setState( DepthState state )
 {
-	ID3D11DepthStencilState* depthState = state == DepthState::enabled ? m_depthStencilState.get() : m_depthDisabledStencilState.get();
+	ID3D11DepthStencilState* depthState = state == DepthState::enabled ? m_depthStencilState.get() :
+										  state == DepthState::readOnly ? m_depthReadOnlyStencilState.get() :
+										  m_depthDisabledStencilState.get();
 	m_deviceContext->OMSetDepthStencilState( depthState, 1 );
 
 	m_renderState.depth = state;

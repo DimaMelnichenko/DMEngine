@@ -64,7 +64,8 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	renderPass( scene, frame, RenderPass::opaque );
 
 	{
-		ScopedRenderState blendState( BlendState::alpha );
+		// Полупрозрачные не пишут глубину: иначе закрыли бы то, что за ними рисуется позже
+		ScopedRenderState transparentState( BlendState::alpha, DepthState::readOnly );
 		renderPass( scene, frame, RenderPass::transparent );
 	}
 
@@ -146,12 +147,12 @@ void Renderer::renderPass( Scene& scene, const FrameContext& frame, RenderPass p
 
 	for( SceneObject* object : scene.objects() )
 	{
-		if( object->pass() != pass || !object->visible() )
+		if( !object->drawsIn( pass ) || !object->visible() )
 			continue;
 
 		// Объект рисует из общего буфера или привязывает свои буферы сам
 		m_vertexPool.setBuffers();
-		measure( object->name(), [&] { object->render( frame ); } );
+		measure( object->name(), [&] { object->render( frame, pass ); } );
 	}
 
 	m_gpuProfiler.endScope();

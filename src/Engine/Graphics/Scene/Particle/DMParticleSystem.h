@@ -21,7 +21,7 @@ public:
 	unsigned int particleCount();
 
 	void compute( const GS::FrameContext& frame ) override;
-	void render( const GS::FrameContext& frame ) override;
+	void render( const GS::FrameContext& frame, GS::RenderPass pass ) override;
 	PropertyContainer* properties() override;
 
 	PropertyContainer m_propertyContainer;

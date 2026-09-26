@@ -30,8 +30,10 @@ File → Export → glTF 2.0:
 | Data → Compression | выключено | Draco и meshopt не поддерживаются |
 | Animation | выключено | анимация, скелет и морфинг не импортируются |
 
-Единицы: 1 единица Blender = 1 метр движка. В свойствах материала Blender включите Backface Culling: иначе экспорт
-пометит материал двусторонним, а движок всё равно рисует модели с отсечением задних граней (импортёр об этом предупредит).
+Единицы: 1 единица Blender = 1 метр движка. В Blender у нового материала Backface Culling выключен, и экспорт помечает
+его двусторонним — движок так его и рисует, без отсечения задних граней. Замкнутому мешу это не нужно: включите
+Backface Culling в настройках материала (импортёр напоминает об этом списком двусторонних материалов). Отсечение по
+альфе (Masked) — узел Math → Round между альфой текстуры и входом Alpha: экспортёр пишет `alphaMode: MASK`.
 
 ## Как устроить сцену в Blender
 
@@ -63,9 +65,10 @@ File → Export → glTF 2.0:
 | `normalTexture`, `scale` | `Normal`, `NormalScale` | линейная; `NormalGreenUp = true` (карты glTF в соглашении OpenGL) |
 | `occlusionTexture`, `strength` | `Occlusion`, `OcclusionStrength` | линейная; может быть той же картинкой, что `MetallicRoughness` (ORM) |
 | `emissiveTexture`, `emissiveFactor`, `KHR_materials_emissive_strength` | `Emissive`, `EmissiveFactor` | текстура sRGB, сила свечения умножается на множитель |
+| `alphaMode`, `alphaCutoff` | `AlphaMode`, `AlphaCutoff` | OPAQUE → 0, MASK → 1, BLEND → 2 (импортёр предупреждает: полупрозрачные сортируются по опорной точке) |
+| `doubleSided` | `DoubleSided` | без отсечения задних граней, см. [materials.md](materials.md) |
 
-Не переносятся (импортёр предупреждает): `alphaMode` BLEND и MASK (модель непрозрачная; у `--scatter` MASK — порог
-альфы 0,9), `doubleSided`, вторая развёртка (`texCoord` ≠ 0), `KHR_texture_transform`, режимы повтора текстуры кроме
+Не переносятся (импортёр предупреждает): вторая развёртка (`texCoord` ≠ 0), `KHR_texture_transform`, режимы повтора текстуры кроме
 REPEAT, цвета вершин и расширения материала `KHR_materials_*` (clear coat, sheen, transmission…). Примитив без
 материала получает материал glTF по умолчанию: белый, metallic 1, roughness 1.
 

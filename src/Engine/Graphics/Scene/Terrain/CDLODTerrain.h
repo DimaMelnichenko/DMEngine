@@ -29,7 +29,7 @@ public:
 	TerrainHeight terrainHeight() const override;
 
 	void update( const FrameContext& frame ) override;
-	void render( const FrameContext& frame ) override;
+	void render( const FrameContext& frame, RenderPass pass ) override;
 	PropertyContainer* properties() override;
 
 private:

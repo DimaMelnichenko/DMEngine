@@ -245,7 +245,21 @@ bool DMShader::addShaderPassFromFile( SRVType type,
 		return false;
 	}
 
-	return createShaderPass( type, shaderBuffer );
+	if( !createShaderPass( type, shaderBuffer ) )
+		return false;
+
+	m_sources.push_back( { type, function_name, file_name, defines } );
+	return true;
+}
+
+const DMShader::ShaderSource* DMShader::shaderSource( SRVType type ) const
+{
+	for( const ShaderSource& source : m_sources )
+	{
+		if( source.type == type )
+			return &source;
+	}
+	return nullptr;
 }
 
 bool DMShader::createShaderPass( SRVType type, com_unique_ptr<ID3DBlob>& shaderBuffer )

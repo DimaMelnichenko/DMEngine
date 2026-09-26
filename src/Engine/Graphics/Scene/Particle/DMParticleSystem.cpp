@@ -156,7 +156,7 @@ void DMParticleSystem::compute( const GS::FrameContext& frame )
 	update( frame.elapsedTime );
 }
 
-void DMParticleSystem::render( const GS::FrameContext& frame )
+void DMParticleSystem::render( const GS::FrameContext& frame, GS::RenderPass )
 {
 	if( !m_initialized || !GS::System::materials().exists( m_material ) )
 		return;

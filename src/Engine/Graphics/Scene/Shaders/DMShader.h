@@ -12,6 +12,7 @@
 #include "DM3DUtils.h"
 #include "Storage\DMResource.h"
 #include "Properties/PropertyContainer.h"
+#include "MaterialRenderState.h"
 
 namespace GS
 {
@@ -30,6 +31,13 @@ public:
 	virtual void setParams( const PropertyContainer& );
 	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts();
 
+	// Режим и двусторонность материала с этими параметрами (Blend Mode и Two Sided в UE): по ним объект выбирает
+	// проход и отсечение граней. По умолчанию — непрозрачный односторонний
+	virtual MaterialRenderState renderState( const PropertyContainer& params ) const { return {}; }
+	// Фаза (набор шейдеров) для этих параметров — например, вариант с отсечением по альфе. Рисуют так:
+	// setPass( phaseFor( params ) ), затем setParams( params )
+	virtual int phaseFor( const PropertyContainer& params ) const { return 0; }
+
 public:
 	enum DrawType
 	{
@@ -42,6 +50,18 @@ public:
 	bool createPhase( int index_vs, int index_ps, int index_gs = -1, int index_hs = -1, int index_ds = -1 );
 	bool selectPhase( unsigned int idx );
 	int phase();
+
+protected:
+	// Исходник скомпилированного шейдера: материал может собрать из него свой вариант с другими defines
+	struct ShaderSource
+	{
+		SRVType type;
+		std::string function;
+		std::string file;
+		std::string defines;
+	};
+	// Первый шейдер стадии type или nullptr
+	const ShaderSource* shaderSource( SRVType type ) const;
 
 private:
 
@@ -81,6 +101,7 @@ private:
 	std::vector<com_unique_ptr<ID3D11GeometryShader>> m_geometryShader;
 	std::vector<com_unique_ptr<ID3D11HullShader>> m_hullShader;
 	std::vector<com_unique_ptr<ID3D11DomainShader>> m_domainShader;
+	std::vector<ShaderSource> m_sources;
 	com_unique_ptr<ID3D11InputLayout> m_layout;
 	std::vector<D3D11_INPUT_ELEMENT_DESC> m_layoutDesc;
 	DrawType m_drawType;

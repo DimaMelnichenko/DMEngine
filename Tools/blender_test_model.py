@@ -65,6 +65,7 @@ def material(name, base_color=(1.0, 1.0, 1.0), metallic=0.0, roughness=0.5, colo
     mat = bpy.data.materials.new(name)
     if bpy.app.version < (5, 0, 0):  # в Blender 5 узлы материала включены всегда
         mat.use_nodes = True
+    mat.use_backface_culling = True   # меши замкнутые: задние грани не нужны (doubleSided = false в glTF)
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
     bsdf = nodes['Principled BSDF']
     bsdf.inputs['Base Color'].default_value = (*base_color, 1.0)

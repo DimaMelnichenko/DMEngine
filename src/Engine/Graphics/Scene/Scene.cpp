@@ -108,11 +108,7 @@ bool Scene::initialize()
 			continue;
 		}
 
-		if( set.pass != "opaque" && set.pass != "transparent" )
-			LOG( "Scatter set " + set.name + ": unknown pass '" + set.pass + "', opaque is used" );
-		const RenderPass pass = set.pass == "transparent" ? RenderPass::transparent : RenderPass::opaque;
-
-		auto scatterer = std::make_unique<Scatterer>( set.name, pass, set.twoSided );
+		auto scatterer = std::make_unique<Scatterer>( set.name );
 		if( !scatterer->Initialize() )
 			return false;
 		scatterer->setTerrain( &m_terrain );

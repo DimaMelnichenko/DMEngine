@@ -9,9 +9,8 @@
 namespace GS
 {
 
-Scatterer::Scatterer( const std::string& name, RenderPass pass, bool twoSided ) :
-	SceneObject( name, pass ),
-	m_twoSided( twoSided )
+Scatterer::Scatterer( const std::string& name ) :
+	SceneObject( name, RenderPass::opaque )
 {
 }
 
@@ -41,6 +40,7 @@ bool Scatterer::addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, 
 {
 	Layer layer;
 	layer.lodBlock = lodBlock;
+	layer.material = System::materials().get( lodBlock->material )->m_shader.get();
 	layer.mask = mask;
 	layer.pass = std::make_unique<ScatterPass>();
 	layer.pass->populateParams() = params;
@@ -92,14 +92,24 @@ void Scatterer::compute( const FrameContext& frame )
 	}
 }
 
-void Scatterer::render( const FrameContext& frame )
+bool Scatterer::drawsIn( RenderPass pass ) const
+{
+	// Режим читается каждый кадр: параметры материала меняются в GUI
+	for( const Layer& layer : m_layers )
+	{
+		if( passFor( layer.material->renderState( layer.lodBlock->params ).blendMode ) == pass )
+			return true;
+	}
+	return false;
+}
+
+void Scatterer::render( const FrameContext& frame, RenderPass pass )
 {
 	if( m_layers.empty() )
 		return;
 
 	ScopedRenderState scatterState;
-	if( m_twoSided )
-		DMD3D::instance().setState( RasterState::noCulling );
+	const RasterState frameRaster = scatterState.previous().raster;
 
 	if( !m_colorTexture.empty() )
 		DMD3D::instance().setSRV( SRVType::ps, 1, System::textures().get( m_colorTexture )->srv() );
@@ -108,9 +118,14 @@ void Scatterer::render( const FrameContext& frame )
 
 	for( Layer& layer : m_layers )
 	{
-		DMShader* shader = System::materials().get( layer.lodBlock->material )->m_shader.get();
+		const MaterialRenderState state = layer.material->renderState( layer.lodBlock->params );
+		if( passFor( state.blendMode ) != pass )
+			continue;
+		DMD3D::instance().setState( materialRasterState( state.twoSided, frameRaster ) );
+
+		DMShader* shader = layer.material;
+		shader->setPass( shader->phaseFor( layer.lodBlock->params ) );
 		shader->setParams( layer.lodBlock->params );
-		shader->setPass( 0 );
 		shader->setDrawType( DMShader::by_index );
 
 		// Инстансы слоя читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)

@@ -23,13 +23,21 @@ enum class RasterState
 
 enum class DepthState
 {
-	enabled, disabled
+	enabled,	// проверка и запись
+	readOnly,	// только проверка: полупрозрачные
+	disabled
 };
 
 enum class BlendState
 {
 	opaque, alpha
 };
+
+// Отсечение граней для материала: двусторонний рисуется без отсечения, каркасный режим кадра (Q) остаётся каркасом
+inline RasterState materialRasterState( bool twoSided, RasterState frameState )
+{
+	return twoSided && frameState == RasterState::solid ? RasterState::noCulling : frameState;
+}
 
 struct RenderState
 {
@@ -154,6 +162,7 @@ private:
 	com_unique_ptr<ID3D11Texture2D> m_depthStencilBuffer;
 	com_unique_ptr<ID3D11DepthStencilState> m_depthStencilState;
 	com_unique_ptr<ID3D11DepthStencilState> m_depthDisabledStencilState;
+	com_unique_ptr<ID3D11DepthStencilState> m_depthReadOnlyStencilState;
 	com_unique_ptr<ID3D11DepthStencilView> m_depthStencilView;
 
 	com_unique_ptr<ID3D11RasterizerState> m_rasterState;
@@ -199,6 +208,9 @@ public:
 
 	ScopedRenderState( const ScopedRenderState& ) = delete;
 	ScopedRenderState& operator=( const ScopedRenderState& ) = delete;
+
+	// Состояния до этой области видимости — например, каркасный режим кадра
+	const RenderState& previous() const { return m_previous; }
 
 private:
 	RenderState m_previous;

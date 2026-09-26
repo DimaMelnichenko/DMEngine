@@ -96,11 +96,38 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> PBRMaterial::initLayouts()
 
 bool PBRMaterial::innerInitialize()
 {
+	// Фаза 0 — шейдеры из базы; фаза 1 — тот же пиксельный шейдер с отсечением по альфе
+	const ShaderSource* pixel = shaderSource( SRVType::ps );
+	if( !pixel )
+		return false;
+	const std::string maskedDefines = pixel->defines.empty() ? "ALPHA_MASK=1" : pixel->defines + ",ALPHA_MASK=1";
+	if( !addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, maskedDefines ) )
+		return false;
+
 	createPhase( 0, 0 );
+	createPhase( 0, 1 );
 
 	DMD3D::instance().createShaderConstantBuffer( sizeof( PSParam ), m_psCB );
 
 	return true;
+}
+
+MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) const
+{
+	MaterialRenderState state;
+	switch( materialValue( params, "AlphaMode", 0 ) )
+	{
+		case 1: state.blendMode = BlendMode::masked; break;
+		case 2: state.blendMode = BlendMode::translucent; break;
+		default: state.blendMode = BlendMode::opaque; break;
+	}
+	state.twoSided = materialValue( params, "DoubleSided", false );
+	return state;
+}
+
+int PBRMaterial::phaseFor( const PropertyContainer& params ) const
+{
+	return renderState( params ).blendMode == BlendMode::masked ? maskedPhase : opaquePhase;
 }
 
 void PBRMaterial::setParams( const PropertyContainer& params )
@@ -122,6 +149,7 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.normalScale = materialValue( params, "NormalScale", 1.0f );
 	param.normalGreenUp = materialValue( params, "NormalGreenUp", false ) ? 1.0f : 0.0f;
 	param.occlusionStrength = materialValue( params, "OcclusionStrength", 1.0f );
+	param.alphaCutoff = materialValue( params, "AlphaCutoff", 0.5f );
 
 	Device::updateResourceData<PSParam>( m_psCB.get(), param );
 	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_psCB );

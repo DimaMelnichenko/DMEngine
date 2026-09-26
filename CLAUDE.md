@@ -94,7 +94,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   и вызывает их `update()`. Состав уровня описывает строка таблицы `Levels` (см. «Данные сцены»); объект,
   которого у уровня нет, остаётся неинициализированным и ничего не делает;
 - `Renderer` (`Renderer.h`) отправляет команды GPU: общие данные конвейера (сэмплеры, свет, per-frame constant
-  buffer) → `compute()` всех объектов → проходы `sky` → `opaque` → `transparent` (alpha blending) в HDR-буфер сцены
+  buffer) → `compute()` всех объектов → проходы `sky` → `opaque` → `transparent` (alpha blending, глубина только
+  читается) в HDR-буфер сцены
   (`R16G16B16A16_FLOAT`) → `PostProcess`: экспозиция и тонмаппинг (AgX / ACES) в задний буфер sRGB. Затем
   `DMGraphics` рисует GUI и вызывает `EndScene`. Шейдеры объектов пишут линейный цвет без экспозиции; настройки —
   `[PostProcess]` в `Scene\Lights.ini` и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
@@ -104,8 +105,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   Время CPU и GPU (`GpuProfiler`, запросы timestamp) каждого объекта и прохода — в окне «Statistic», те же области —
   метки событий в захвате RenderDoc / PIX.
 
-Объект сцены наследует `GS::SceneObject` (`Scene/SceneObject.h`): `update` / `compute` / `render` / `properties`,
-проход и видимость. Всё нужное из кадра (камера, frustum, время) приходит в `FrameContext`. Перед `render()`
+Объект сцены наследует `GS::SceneObject` (`Scene/SceneObject.h`): `update` / `compute` / `render( frame, pass )` /
+`properties`, проход и видимость. Рендерер вызывает `render` в каждом проходе, где объект рисует (`drawsIn`): модели
+и расстановка рисуют непрозрачные и Masked материалы в `opaque`, полупрозрачные — в `transparent` (`passFor`). Всё нужное из кадра (камера, frustum, время) приходит в `FrameContext`. Перед `render()`
 рендерер привязывает общий `VertexPool` с топологией TRIANGLELIST; объект со своими буферами привязывает их сам.
 Сейчас объекты (в порядке отрисовки): `SkyAtmosphere` (процедурное небо фоном и освещение окружением от него;
 его `compute()` идёт первым и привязывает IBL к слотам PS t101…t103), `SkySphere` (модель неба уровня, если задана —
@@ -173,7 +175,12 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 параметры материала передаются через `shader->setParams(lodBlock->params)`. Специализированные шейдеры
 (`Scene/Shaders/DM*Shader`, `DMComputeShader`) наследуются от него или работают рядом. Основной материал моделей —
 `PBR` (`PBRMaterial` + `Shaders/PBRLit.ps`): metallic/roughness как в glTF 2.0 и Default Lit в UE5, параметры названы
-как в glTF; материал 9 `PBRInstance` — его инстансный вариант для расстановки. Прочие классы — `Texture`, `Color`
+как в glTF; материал 9 `PBRInstance` — его инстансный вариант для расстановки. Режим материала — тоже параметры
+с именами glTF: `AlphaMode` (0 OPAQUE, 1 MASK, 2 BLEND — Blend Mode в UE), `AlphaCutoff`, `DoubleSided`; материал
+сообщает его `DMShader::renderState( params )` (`Scene/Shaders/MaterialRenderState.h`), вариант шейдера —
+`phaseFor( params )`: `PBRMaterial` сам собирает второй пиксельный шейдер с `clip` (define `ALPHA_MASK`), у непрозрачных
+отсечения нет. Рисуют `setPass( phaseFor( params ) )`, затем `setParams( params )`, двусторонние — без отсечения граней
+(`materialRasterState`). Прочие классы — `Texture`, `Color`
 (без освещения: небо, отладка), `VertexLight` (старая трава, сейчас не используется), `Particle`, `Grass`. Подробно — `docs/materials.md`.
 
 **Освещение считается в одном месте** — `Shaders/lighting.sh`: шейдер материала заполняет `Surface` (базовый цвет,
@@ -217,7 +224,7 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 высот с морфингом между уровнями. Прежние террейны (GeoClipMap и тесселяционный) удалены, они есть в истории git.
 
 **Расстановка (трава, цветы, камешки, веточки)** — `Scatterer` (`Scene/Scatterer/`), по объекту сцены на набор
-(`ScatterSets`: проход `opaque` / `transparent`, `two_sided` — без отсечения задних граней, текстура цвета). Слой набора
+(`ScatterSets`: имя и текстура цвета земли; проход и отсечение граней слоя задаёт режим его материала). Слой набора
 (`ScatterLayers`, свой `ScatterPass`: буфер инстансов, compute и `DrawIndexedInstancedIndirect`) — LOD модели, маска
 плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
 размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы) и `align_to_terrain`. Трава и ромашки,

@@ -339,10 +339,9 @@ def mesh_bytes(mesh):
 # Материалы
 
 class MaterialConverter:
-    def __init__(self, gltf, asset, scatter):
+    def __init__(self, gltf, asset):
         self.gltf = gltf
         self.asset = asset
-        self.scatter = scatter
         self.textures = {}   # индекс картинки → {'name', 'file', 'srgb', 'data'}
         self.image_names = set()
         self.double_sided = []
@@ -413,11 +412,14 @@ class MaterialConverter:
         ignored = sorted(set(extensions) - {'KHR_materials_emissive_strength'})
         if ignored:
             warn('material %s: extensions are ignored: %s' % (name, ', '.join(ignored)))
+        # Режим материала — как в glTF: AlphaMode 0 OPAQUE, 1 MASK, 2 BLEND; порог отсечения; двусторонность
         alpha = material.get('alphaMode', 'OPAQUE')
-        if alpha == 'BLEND' or (alpha == 'MASK' and not self.scatter):
-            warn('material %s: alphaMode %s is drawn opaque' % (name, alpha))
-        elif alpha == 'MASK' and abs(material.get('alphaCutoff', 0.5) - 0.9) > 1e-3:
-            warn('material %s: alphaCutoff %g, PBRInstance cuts at 0.9' % (name, material.get('alphaCutoff', 0.5)))
+        params['AlphaMode'] = str({'OPAQUE': 0, 'MASK': 1, 'BLEND': 2}.get(alpha, 0))
+        if alpha == 'MASK':
+            params['AlphaCutoff'] = '%g' % material.get('alphaCutoff', 0.5)
+        if alpha == 'BLEND':
+            warn('material %s: alphaMode BLEND - translucent models are sorted by origin, not by triangle' % name)
+        params['DoubleSided'] = 'true' if material.get('doubleSided') else 'false'
         if material.get('doubleSided'):
             self.double_sided.append(name)
 
@@ -640,13 +642,13 @@ def main():
 
     gltf = Gltf(args.file)
     asset = sanitize(args.asset or os.path.splitext(os.path.basename(args.file))[0])
-    materials = MaterialConverter(gltf, asset, args.scatter)
+    materials = MaterialConverter(gltf, asset)
     models = collect_models(gltf, asset, materials, args.name, args.scatter)
     if not models:
         raise SystemExit('error: no meshes in %s' % args.file)
     if materials.double_sided:
-        warn('double-sided materials are drawn one-sided (back faces culled): %s. In Blender enable '
-             'Backface Culling in the material settings' % ', '.join(materials.double_sided))
+        print('Double-sided materials (drawn without back-face culling): %s. A closed mesh does not need it: '
+              'enable Backface Culling in the Blender material' % ', '.join(materials.double_sided))
 
     material_id = PBR_INSTANCE_MATERIAL if args.scatter else PBR_MATERIAL
     db = Database(args.db, material_id)

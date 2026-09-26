@@ -18,12 +18,13 @@ namespace GS
 // маска плотности и параметры (таблица ScatterLayers): каждый кадр compute-шейдер Shaders\scatter.cs раскладывает
 // инстансы слоя по сетке, привязанной к миру, в кольце вокруг камеры и отсекает их по frustum, отрисовка — indirect
 // draw. Высоту и координаты масок даёт TerrainHeightSource, поэтому набор не зависит от устройства террейна.
-// Проход отрисовки и отсечение граней — настройки набора: трава — прозрачный проход без отсечения граней, камни —
-// opaque. Расчёт и отрисовка всех наборов переключаются клавишами 3 и 4
+// Проход и отсечение граней задаёт материал слоя (режим и двусторонность, как у травы ландшафта в UE): набор рисует
+// непрозрачные и вырезанные по альфе слои в opaque, полупрозрачные — в transparent. Расчёт и отрисовка всех наборов
+// переключаются клавишами 3 и 4
 class Scatterer : public SceneObject
 {
 public:
-	Scatterer( const std::string& name, RenderPass pass, bool twoSided );
+	explicit Scatterer( const std::string& name );
 
 	bool Initialize();
 	void setTerrain( const TerrainHeightSource* terrain );
@@ -33,7 +34,8 @@ public:
 	bool addLayer( DMModel::LodBlock* lodBlock, const std::string& mask, const ScatterPass::PopulateParams& params );
 
 	void compute( const FrameContext& frame ) override;
-	void render( const FrameContext& frame ) override;
+	bool drawsIn( RenderPass pass ) const override;
+	void render( const FrameContext& frame, RenderPass pass ) override;
 
 	void setComputeEnabled( bool enabled );
 	bool computeEnabled() const;
@@ -57,6 +59,7 @@ private:
 	struct Layer
 	{
 		DMModel::LodBlock* lodBlock = nullptr;
+		DMShader* material = nullptr;
 		std::string mask;
 		std::unique_ptr<ScatterPass> pass;
 	};
@@ -64,7 +67,6 @@ private:
 	// Больше потоков на слой не запускаем: при мелком шаге сетка покроет не всё кольцо, а только его середину
 	static constexpr uint16_t maxGridDim = 1024;
 
-	bool m_twoSided = false;
 	bool m_computeEnabled = true;
 	const TerrainHeightSource* m_terrain = nullptr;
 	std::string m_colorTexture;

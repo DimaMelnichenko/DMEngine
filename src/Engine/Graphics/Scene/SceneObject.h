@@ -4,6 +4,7 @@
 #include "Camera\DMCamera.h"
 #include "Camera\DMFrustum.h"
 #include "Properties/PropertyContainer.h"
+#include "Shaders\MaterialRenderState.h"
 
 namespace GS
 {
@@ -20,13 +21,19 @@ struct FrameContext
 enum class RenderPass
 {
 	sky,			// первым, объект сам отключает глубину
-	opaque,
-	transparent		// после непрозрачных, с альфа-блендингом
+	opaque,			// непрозрачные и с отсечением по альфе (Opaque и Masked)
+	transparent		// после непрозрачных: альфа-блендинг, глубина только читается (Translucent)
 };
 
+// Проход для режима материала
+inline RenderPass passFor( BlendMode mode )
+{
+	return mode == BlendMode::translucent ? RenderPass::transparent : RenderPass::opaque;
+}
+
 // Общий интерфейс объектов сцены. Scene вызывает update() на CPU, Renderer — compute() до отрисовки
-// и render() в проходе объекта. Перед render() рендерер привязывает общий буфер вершин и индексов (VertexPool)
-// с топологией TRIANGLELIST; объект со своими буферами привязывает их сам
+// и render() в каждом проходе, где объект рисует (drawsIn). Перед render() рендерер привязывает общий буфер вершин
+// и индексов (VertexPool) с топологией TRIANGLELIST; объект со своими буферами привязывает их сам
 class SceneObject
 {
 public:
@@ -36,8 +43,12 @@ public:
 	virtual void update( const FrameContext& frame ) {}
 	// Вызывается каждый кадр независимо от видимости
 	virtual void compute( const FrameContext& frame ) {}
-	virtual void render( const FrameContext& frame ) = 0;
+	virtual void render( const FrameContext& frame, RenderPass pass ) = 0;
 	virtual PropertyContainer* properties() { return nullptr; }
+
+	// Рисует ли объект в проходе. По умолчанию — только в своём; объект с материалами разных режимов (модели,
+	// расстановка) рисует непрозрачные в opaque, а полупрозрачные — в transparent
+	virtual bool drawsIn( RenderPass pass ) const { return pass == m_pass; }
 
 	const std::string& name() const { return m_name; }
 	RenderPass pass() const { return m_pass; }

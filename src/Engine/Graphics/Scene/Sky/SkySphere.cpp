@@ -20,7 +20,7 @@ void SkySphere::update( const FrameContext& frame )
 	m_transform.setPosition( frame.camera.position() );
 }
 
-void SkySphere::render( const FrameContext& frame )
+void SkySphere::render( const FrameContext& frame, RenderPass )
 {
 	if( !m_modelId || !System::models().exists( m_modelId ) )
 		return;
