@@ -15,15 +15,15 @@ DMLightDriver::~DMLightDriver(void)
 
 bool DMLightDriver::Initialize()
 {	
-	m_structBuffer.createBuffer( sizeof( LightBuffer ), 32 );
-	m_lightParamBuffer.reserve( 32 );
+	m_structBuffer.createBuffer( sizeof( LightBuffer ), maxLights );
+	m_lightParamBuffer.reserve( maxLights );
 
 	return true;
 }
 
 uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 {	
-	LightBuffer lightBuffer;
+	LightBuffer lightBuffer = {};
 	m_lightParamBuffer.clear();
 
 	std::sort( m_light_list.begin(), m_light_list.end(), []( const auto& a, const auto& b )
@@ -33,26 +33,25 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 
 	for( auto& light : m_light_list )
 	{	
-		if( !light.enabled() )
+		if( !light.enabled() || m_lightParamBuffer.size() == maxLights )
 			continue;
 
-		XMMATRIX mat = light.m_transformBuffer.resultMatrix();
-		XMFLOAT4 pos;
-		XMStoreFloat4( &pos, mat.r[3] );
-		lightBuffer.lightPos = XMFLOAT3( pos.x, pos.y, pos.z );
-		lightBuffer.lightType = (int)light.type();
-		lightBuffer.lightColor = light.color();
-		lightBuffer.attenuation = light.m_attenuation;
-		lightBuffer.lightDir = light.direction();
+		XMStoreFloat3( &lightBuffer.position, light.m_transformBuffer.resultMatrix().r[3] );
+		lightBuffer.type = (int)light.type();
+		lightBuffer.direction = light.direction();
+		lightBuffer.attenuationRadius = light.attenuationRadius();
+		lightBuffer.color = light.color();
+		lightBuffer.cosOuterCone = cosf( XMConvertToRadians( light.outerConeAngle() ) );
+		lightBuffer.cosInnerCone = cosf( XMConvertToRadians( light.innerConeAngle() ) );
 		m_lightParamBuffer.push_back( lightBuffer );
 	}
 
 	if( m_lightParamBuffer.empty() )
 	{	
-		lightBuffer.lightPos = XMFLOAT3( 1.0f, 1.0f, -1.0f );
-		lightBuffer.lightType = 0;
-		lightBuffer.lightColor = XMFLOAT3( 1.0f, 1.0f, 1.0f );
-		lightBuffer.attenuation = 1000.0f;
+		lightBuffer = {};
+		lightBuffer.type = DMLight::Dir;
+		lightBuffer.direction = fallbackDirection();
+		lightBuffer.color = XMFLOAT3( 1.0f, 1.0f, 1.0f );
 		m_lightParamBuffer.push_back( lightBuffer );
 	}
 
@@ -86,12 +85,29 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 
 			light.setColor( vec );
 
-			if( !strToVec3( lightFile.get<std::string>( section, "Position" ), vec ) )
-				return false;
+			// Направленному нужно только направление, точечному — только положение
+			if( type != DMLight::Dir )
+			{
+				if( !strToVec3( lightFile.get<std::string>( section, "Position" ), vec ) )
+					return false;
+				light.m_transformBuffer.setPosition( vec );
+				light.setAttenuationRadius( lightFile.get<float>( section, "AttenuationRadius" ) );
+			}
 
-			light.m_transformBuffer.setPosition( vec );
+			if( type != DMLight::Point )
+			{
+				if( !strToVec3( lightFile.get<std::string>( section, "Direction" ), vec ) )
+					return false;
+				light.setDirection( vec );
+			}
 
-			light.m_attenuation = lightFile.get<float>( section, "Fade" );
+			if( type == DMLight::Spot )
+			{
+				const std::string inner = lightFile.get<std::string>( section, "InnerConeAngle" );
+				const std::string outer = lightFile.get<std::string>( section, "OuterConeAngle" );
+				light.setConeAngles( inner.empty() ? light.innerConeAngle() : std::stof( inner ),
+									 outer.empty() ? light.outerConeAngle() : std::stof( outer ) );
+			}
 
 			m_light_list.push_back( std::move( light ) );
 		}
@@ -107,16 +123,22 @@ bool DMLightDriver::loadFromFile( const std::string& file )
 
 void DMLightDriver::directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) const
 {
-	XMVECTOR position = XMVectorSet( 1.0f, 1.0f, -1.0f, 0.0f );
+	XMFLOAT3 lightDirection = fallbackDirection();
 	color = XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	for( const auto& light : m_light_list )
 	{
 		if( light.enabled() && light.type() == DMLight::Dir )
 		{
-			position = light.m_transformBuffer.resultMatrix().r[3];
+			lightDirection = light.direction();
 			color = light.color();
 			break;
 		}
 	}
-	XMStoreFloat3( &direction, XMVector3Normalize( XMVectorSetW( position, 0.0f ) ) );
+	direction = XMFLOAT3( -lightDirection.x, -lightDirection.y, -lightDirection.z );
+}
+
+XMFLOAT3 DMLightDriver::fallbackDirection()
+{
+	const float component = 1.0f / sqrtf( 3.0f );
+	return XMFLOAT3( -component, -component, component );
 }

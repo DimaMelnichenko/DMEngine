@@ -26,7 +26,7 @@
 #define SLOT_TRANSIENT_COUNT 50
 
 // Ресурсы сцены — привязываются один раз за кадр и живут до следующего
-#define SLOT_LIGHTS			DM_SLOT( t, 100 )	// источники света (CommonLight.ps, DMLightDriver)
+#define SLOT_LIGHTS			DM_SLOT( t, 100 )	// источники света (lighting.sh, DMLightDriver)
 #define SLOT_IBL_IRRADIANCE	DM_SLOT( t, 101 )	// освещение окружением: гармоники рассеянного света (ibl.sh, SkyAtmosphere)
 #define SLOT_IBL_SPECULAR	DM_SLOT( t, 102 )	// префильтрованный cubemap отражений
 #define SLOT_IBL_BRDF		DM_SLOT( t, 103 )	// таблица BRDF

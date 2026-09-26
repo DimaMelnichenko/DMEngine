@@ -1,9 +1,9 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Filename: light.ps
+// BRDF: Cook-Torrance с распределением GGX, геометрическим членом Смита и Френелем Шлика. Использует lighting.sh
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "samplers.sh"
-#include "common.vs"
+#ifndef BRDF_SH
+#define BRDF_SH
 
 static const float PI = 3.1415926535897932384626433832795;
 
@@ -61,3 +61,5 @@ float3 CookTorrance_GGX(float3 n, float3 l, float3 v, float3 f0, float roughness
     float3 diffK = saturate( 1.0 - F ) / PI;
     return max(0.0, albedo * diffK * NL + specK );
 }
+
+#endif

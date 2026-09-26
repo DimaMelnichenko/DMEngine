@@ -135,8 +135,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
 `Materials.id`; у части старых моделей они не совпадают с материалом. Подробно — `docs/materials.md`. Цветовое
 пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла. Новые ассеты добавляются
 строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
-моделей, LOD, экземпляров материала `PBR`, расстановки; повторный импорт обновляет), подробно — `docs/models.md`. Свет — `Scene\Lights.ini` (источники — первый направленный это солнце для неба, небо `[Sky]`, постобработка `[PostProcess]`; яркость солнца подобрана под экспозицию 0 EV), ini читается через
-`ResourceMetaFile` (`GetPrivateProfileString`).
+моделей, LOD, экземпляров материала `PBR`, расстановки; повторный импорт обновляет), подробно — `docs/models.md`. Свет — `Scene\Lights.ini`: источники `[LightN]` (`Type` Dir / Point / Spot, `Color`,
+`Direction` — куда идёт свет, `Position`, `AttenuationRadius`, `InnerConeAngle` / `OuterConeAngle` — имена как в UE
+и KHR_lights_punctual; первый направленный — солнце для неба, его яркость подобрана под экспозицию 0 EV), небо `[Sky]`,
+постобработка `[PostProcess]`; ini читается через `ResourceMetaFile` (`GetPrivateProfileString`).
 
 Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`): строка `Levels` ссылается на террейн (`Terrain`,
 слои материала — `TerrainLayers`), модель неба (`Models`) и частицы (`Particles`: материал, текстура, плотность);
@@ -163,9 +165,16 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 параметры материала передаются через `shader->setParams(lodBlock->params)`. Специализированные шейдеры
 (`Scene/Shaders/DM*Shader`, `DMComputeShader`) наследуются от него или работают рядом. Основной материал моделей —
 `PBR` (`PBRMaterial` + `Shaders/PBRLit.ps`): metallic/roughness как в glTF 2.0 и Default Lit в UE5, параметры названы
-как в glTF, освещение окружением — IBL от процедурного неба (`Shaders/ibl.sh`, подробно — `docs/sky.md`); материал 9
-`PBRInstance` — его инстансный вариант для расстановки. Прочие классы — `Texture`, `Color` (без освещения: небо,
-отладка), `VertexLight` (трава), `Particle`, `Grass`. Подробно — `docs/materials.md`.
+как в glTF; материал 9 `PBRInstance` — его инстансный вариант для расстановки. Прочие классы — `Texture`, `Color`
+(без освещения: небо, отладка), `VertexLight` (трава), `Particle`, `Grass`. Подробно — `docs/materials.md`.
+
+**Освещение считается в одном месте** — `Shaders/lighting.sh`: шейдер материала заполняет `Surface` (базовый цвет,
+металличность, шероховатость, нормаль, затенение, свечение) и возвращает `evaluateLighting(surface)` — прямой свет
+всех источников (BRDF — `Shaders/brdf.sh`; затухание — обратный квадрат с плавным обрезанием по радиусу, Karis 2013;
+конус прожектора) плюс освещение окружением от неба (`Shaders/ibl.sh`, подробно — `docs/sky.md`). Так делают
+`PBRLit.ps` и `terrain.ps`; новую составляющую освещения (тени, туман) добавляйте туда, а не в материалы. Раскладка
+источника — `struct Light` в шейдере и `DMLightDriver::LightBuffer` (с `static_assert` на размер), подробно —
+`docs/lighting.md`.
 
 **Система свойств** (`src/Common/Properties`). `Property` хранит значение в `std::variant`
 (bool, float, XMFLOAT2/3/4, int32, uint32) плюс границы и `GUIControlType`. `PropertyContainer` —

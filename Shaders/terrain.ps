@@ -5,8 +5,7 @@
 // не растягивается. Слои смешиваются по высоте: где веса близки, видна более высокая текстура (камни из травы)
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "CommonLight.ps"
-#include "ibl.sh"
+#include "lighting.sh"
 #include "cdlod.sh"
 
 Texture2D g_splatMap : register( t1 );
@@ -127,23 +126,27 @@ float4 main( PixelInputType input ) : SV_TARGET
 	}
 
 	float4 blend = heightBlend( splat, heights );
-	LayerSample surface = (LayerSample)0;
+	LayerSample mixed = (LayerSample)0;
 	[unroll] for( uint j = 0; j < layerCount; ++j )
 	{
-		surface.albedo += layers[j].albedo * blend[j];
-		surface.detail += layers[j].detail * blend[j];
-		surface.roughness += layers[j].roughness * blend[j];
+		mixed.albedo += layers[j].albedo * blend[j];
+		mixed.detail += layers[j].detail * blend[j];
+		mixed.roughness += layers[j].roughness * blend[j];
 	}
 
 	// Крупные пятна яркости (тексели шума по 40 и 13 м), чтобы вдали не было заметно повторение текстур
 	float variation = g_noise.Sample( g_SamplerLinearWrap, position.xz / 10240.0f ).r * 0.6f +
 					  g_noise.Sample( g_SamplerLinearWrap, position.xz / 3328.0f ).r * 0.4f;
-	float3 albedo = surface.albedo * ( 1.0f + 0.15f * variation );
 
-	float3 n = normalize( normal + surface.detail );
-	float3 v = normalize( cb_cameraPosition - position );
-	float3 color = CookTorrance_GGX_all_light( n, v, 0.04f, albedo, surface.roughness, position ) + albedo * ambientIrradiance( n );
+	Surface surface;
+	surface.position = position;
+	surface.normal = normalize( normal + mixed.detail );
+	surface.baseColor = mixed.albedo * ( 1.0f + 0.15f * variation );
+	surface.metallic = 0.0f;
+	surface.roughness = mixed.roughness;
+	surface.occlusion = 1.0f;
+	surface.emissive = 0.0f;
 
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)
-	return float4( color, 1.0f );
+	return float4( evaluateLighting( surface ), 1.0f );
 }

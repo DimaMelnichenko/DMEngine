@@ -4,8 +4,7 @@
 
 #include "slots.h"
 #include "common.vs"
-#include "CommonLight.ps"
-#include "ibl.sh"
+#include "lighting.sh"
 
 // Не заданная текстура — белая 1×1 (для Normal — плоская нормаль), так что работают одни множители
 Texture2D g_texBaseColor : register(t0);         // sRGB, альфа — прозрачность
@@ -37,9 +36,6 @@ struct PixelInputType
 	bool isFrontFace : SV_IsFrontFace;
 };
 
-// Минимальная шероховатость: при меньшей блик GGX от точечного источника вырождается в точку
-static const float minRoughness = 0.045f;
-
 float3 surfaceNormal( PixelInputType input )
 {
 	// Задняя грань двусторонней геометрии (карточки без отсечения граней) освещается как передняя
@@ -58,32 +54,19 @@ float4 main( PixelInputType input ) : SV_TARGET
 {
 	float4 baseColor = g_texBaseColor.Sample( g_SamplerAnisotropicWrap, input.tex ) * g_baseColorFactor;
 	float4 metallicRoughness = g_texMetallicRoughness.Sample( g_SamplerAnisotropicWrap, input.tex );
-	float metallic = saturate( g_metallic * metallicRoughness.b );
-	float roughness = clamp( g_roughness * metallicRoughness.g, minRoughness, 1.0f );
-	float occlusion = lerp( 1.0f, g_texOcclusion.Sample( g_SamplerAnisotropicWrap, input.tex ).r, g_occlusionStrength );
-	float3 emissive = g_texEmissive.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * g_emissiveFactor;
 
-	float3 n = surfaceNormal( input );
-	float3 v = normalize( cb_cameraPosition - input.worldPosition );
-	float NV = saturate( dot( n, v ) );
-
-	// Металл отражает своим цветом и не рассеивает, диэлектрик отражает ~4 % и рассеивает цвет основы
-	float3 F0 = lerp( 0.04f, baseColor.rgb, metallic );
-	float3 diffuseColor = baseColor.rgb * ( 1.0f - metallic );
-
-	float3 direct = CookTorrance_GGX_all_light( n, v, F0, diffuseColor, roughness, input.worldPosition );
-
-	// Освещение окружением от неба (Shaders/ibl.sh): рассеянное — гармоники по нормали, отражённое — префильтр
-	// по вектору отражения с таблицей BRDF (split-sum)
-	float3 ambientDiffuse = diffuseColor * ambientIrradiance( n );
-	float2 environment = environmentBRDF( NV, roughness );
-	float3 ambientReflection = ambientSpecular( reflect( -v, n ), roughness ) * ( F0 * environment.x + environment.y );
-
-	float3 color = direct + ( ambientDiffuse + ambientReflection ) * occlusion + emissive;
+	Surface surface;
+	surface.position = input.worldPosition;
+	surface.normal = surfaceNormal( input );
+	surface.baseColor = baseColor.rgb;
+	surface.metallic = saturate( g_metallic * metallicRoughness.b );
+	surface.roughness = g_roughness * metallicRoughness.g;
+	surface.occlusion = lerp( 1.0f, g_texOcclusion.Sample( g_SamplerAnisotropicWrap, input.tex ).r, g_occlusionStrength );
+	surface.emissive = g_texEmissive.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * g_emissiveFactor;
 
 	float4 result;
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)
-	result.rgb = color;
+	result.rgb = evaluateLighting( surface );
 	result.a = baseColor.a;
 
 #ifdef ALPHA_TO_COVERAGE

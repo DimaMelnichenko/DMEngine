@@ -66,12 +66,16 @@
 
 ## Освещение
 
-- **Прямой свет** — источники `Scene\Lights.ini` (`[General] Count`, секции `[Light0]`…: `Type=Dir|Point`, `Color`,
-  `Position`; у направленного источника `Position` — направление на свет). BRDF — Cook-Torrance с распределением GGX,
-  геометрическим членом Смита и Френелем Шлика (`Shaders/PBR_common.hlsl`), шероховатость переводится в α = r².
+Шейдер материала только заполняет поверхность (`Surface`: базовый цвет, металличность, шероховатость, нормаль,
+затенение, свечение), а освещение считает общая функция `evaluateLighting` из `Shaders/lighting.sh` — та же, что
+у террейна. Подробно — [lighting.md](lighting.md).
+
+- **Прямой свет** — источники `Scene\Lights.ini`: направленные, точечные и прожекторы, с затуханием по радиусу
+  и конусом ([lighting.md](lighting.md)). BRDF — Cook-Torrance с распределением GGX, геометрическим членом Смита
+  и Френелем Шлика (`Shaders/brdf.sh`), шероховатость переводится в α = r².
 - **Освещение окружением (IBL)** — от процедурного неба (см. [sky.md](sky.md)): рассеянная часть — сферические
   гармоники по нормали (`ambientIrradiance`), отражённая — cubemap, размытый по шероховатости, по вектору отражения
-  с таблицей BRDF (split-sum, Karis 2013); обе умножаются на затенение `Occlusion`. Рассеянную часть получает и террейн.
+  с таблицей BRDF (split-sum, Karis 2013); обе умножаются на затенение `Occlusion`.
 - **Экспозиция и тонмаппинг** — шейдер пишет линейный HDR-цвет без ограничения сверху, экспозицию и тонмаппинг (AgX или
   ACES) применяет постобработка кадра, см. [postprocess.md](postprocess.md). Яркость солнца в `Lights.ini`
   (`Color=3`) подобрана под экспозицию 0 EV, яркость неба следует из модели атмосферы.
@@ -144,14 +148,13 @@ WHERE model_id = <id модели>;
 | Файл | Что там |
 |---|---|
 | `src/Engine/Graphics/Scene/Shaders/PBRMaterial.h/.cpp` | класс материала: параметры → текстуры t0…t4 и константный буфер PS b2 |
-| `Shaders/PBRLit.ps` | пиксельный шейдер PBR |
-| `Shaders/PBR_common.hlsl` | Cook-Torrance GGX, Френель Шлика, `EnvBRDFApprox` |
-| `Shaders/CommonLight.ps` | источники света |
+| `Shaders/PBRLit.ps` | пиксельный шейдер PBR: текстуры и параметры → `Surface` |
+| `Shaders/lighting.sh` | общая функция освещения `evaluateLighting`, источники света ([lighting.md](lighting.md)) |
+| `Shaders/brdf.sh` | Cook-Torrance GGX, Френель Шлика |
 | `Shaders/ibl.sh` | освещение окружением: гармоники, префильтр отражений, таблица BRDF |
 | `Shaders/LightShader.vs` | вершинный шейдер (с `INST_*` — инстансный вариант) |
 | `src/ObjectLibrary/LibraryLoader.cpp` | загрузка материалов, определений, экземпляров и значений |
 | `src/Engine/Graphics/Scene/TextureObjects/DMTextureStorage.cpp` | цветовое пространство текстур, текстуры по умолчанию |
-| `src/Engine/Graphics/Scene/Light/DMLightDriver.cpp` | чтение `Lights.ini`, солнце для неба |
 
 ## Откуда подход
 
@@ -159,6 +162,5 @@ WHERE model_id = <id модели>;
   о зелёном канале.
 - B. Karis, «Real Shading in Unreal Engine 4» (SIGGRAPH 2013) — GGX, Смит, Шлик, α = roughness², металличность вместо
   отдельного specular.
-- B. Karis, «Physically Based Shading on Mobile» (2014) — `EnvBRDFApprox`.
 - B. Burley, «Physically-Based Shading at Disney» (2012) — metallic/roughness как параметры для художника.
 - Освещение окружением от неба — как Sky Light в UE; подробности и источники — [sky.md](sky.md).
