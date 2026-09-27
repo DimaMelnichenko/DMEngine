@@ -30,6 +30,7 @@ public:
 	// Свет и окружение уровня обратно в базу одной транзакцией: строки LevelLights — по id, настройки неба
 	// и постобработки — в строки уровня (нет строки — создаётся и привязывается к Levels, id пишется в level)
 	bool saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,
+							   const std::optional<SunPosition::Settings>& sunPosition,
 							   const GS::SkyAtmosphere::Settings& atmosphere, const GS::PostProcess::Settings& postProcess );
 
 

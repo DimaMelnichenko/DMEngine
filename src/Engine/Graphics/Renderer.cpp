@@ -124,6 +124,14 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 
 	measure( "Post process", [&] { m_postProcess.render( m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
 	m_gui.addCounterInfo( "Exposure EV100 = %.2f", m_postProcess.ev100() );
+	m_sunGroundIlluminance = scene.lights().sunGroundIlluminance();
+	m_gui.addCounterInfo( "Sun illuminance at ground = %.0f lx", m_sunGroundIlluminance );
+	if( const SunPosition* sunPosition = scene.lights().sunPosition() )
+	{
+		const SunPosition::Angles angles = sunPosition->angles();
+		m_gui.addCounterInfo( "Sun elevation = %.2f deg", angles.elevation );
+		m_gui.addCounterInfo( "Sun azimuth = %.2f deg", angles.azimuth );
+	}
 	m_gui.addCounterInfo( "Meshes = %.0f", static_cast<float>( m_meshCount ) );
 	m_gui.addCounterInfo( "Mesh draw calls = %.0f", static_cast<float>( m_meshDraws ) );
 	m_gui.addCounterInfo( "Shadow meshes = %.0f", static_cast<float>( m_shadowMeshCount ) );
@@ -190,6 +198,8 @@ void Renderer::reportGpuTimes()
 			std::to_string( m_shadowMeshCount ) + " in " + std::to_string( m_shadowDraws ) + " draws";
 	std::snprintf( value, sizeof( value ), "%.2f", m_postProcess.ev100() );
 	line += std::string( "; EV100 " ) + value;
+	std::snprintf( value, sizeof( value ), "%.0f", m_sunGroundIlluminance );
+	line += std::string( "; sun " ) + value + " lx";
 	LOG( line );
 	m_gpuAverageLogged = true;
 }

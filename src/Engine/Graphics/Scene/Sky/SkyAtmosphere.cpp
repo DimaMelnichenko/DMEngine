@@ -1,6 +1,8 @@
 #include "SkyAtmosphere.h"
 #include "Shaders\slots.h"
+#include "Shaders\atmosphere_constants.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include "D3D\DMD3D.h"
 #include "Light\DMLightDriver.h"
@@ -13,6 +15,23 @@ namespace
 {
 
 constexpr DXGI_FORMAT hdrFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+
+float luminance( const XMFLOAT3& color )
+{
+	return 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
+}
+
+// Расстояния до входа и выхода луча из сферы с центром в начале координат; y < 0 — промах или сфера позади
+XMFLOAT2 raySphere( const XMVECTOR& origin, const XMVECTOR& direction, float radius )
+{
+	const float b = XMVectorGetX( XMVector3Dot( origin, direction ) );
+	const float c = XMVectorGetX( XMVector3Dot( origin, origin ) ) - radius * radius;
+	const float d = b * b - c;
+	if( d < 0.0f )
+		return XMFLOAT2( -1.0f, -1.0f );
+	const float s = std::sqrt( d );
+	return XMFLOAT2( -b - s, -b + s );
+}
 
 }
 
@@ -212,14 +231,48 @@ void SkyAtmosphere::setBackgroundVisible( bool visible )
 	m_backgroundVisible = visible;
 }
 
+XMFLOAT3 SkyAtmosphere::sunTransmittance( const XMFLOAT3& toSun ) const
+{
+	const XMVECTOR origin = XMVectorSet( 0.0f, ATMOSPHERE_PLANET_RADIUS + ATMOSPHERE_OBSERVER_ALTITUDE, 0.0f, 0.0f );
+	const XMVECTOR direction = XMVector3Normalize( XMLoadFloat3( &toSun ) );
+	if( raySphere( origin, direction, ATMOSPHERE_PLANET_RADIUS ).x > 0.0f )
+		return XMFLOAT3( 0.0f, 0.0f, 0.0f );
+
+	// Оптическая толщина по лучу до края атмосферы: плотности — как atmosphereMedium в Shaders/atmosphere.sh.
+	// 64 шага — сходится до тысячных и у горизонта (у шейдера неба, где это внутренний цикл, их 8)
+	const float haze = m_properties["Haze"].data<float>();
+	const XMFLOAT3 rayleigh( ATMOSPHERE_RAYLEIGH_SCATTERING );
+	const XMFLOAT3 ozone( ATMOSPHERE_OZONE_ABSORPTION );
+	constexpr int samples = 64;
+	const float stepLength = raySphere( origin, direction, ATMOSPHERE_TOP_RADIUS ).y / samples;
+	XMFLOAT3 depth( 0.0f, 0.0f, 0.0f );
+	for( int i = 0; i < samples; ++i )
+	{
+		const XMVECTOR position = XMVectorMultiplyAdd( direction, XMVectorReplicate( stepLength * ( i + 0.5f ) ), origin );
+		const float height = std::max( XMVectorGetX( XMVector3Length( position ) ) - ATMOSPHERE_PLANET_RADIUS, 0.0f );
+		const float rayleighDensity = std::exp( -height / ATMOSPHERE_RAYLEIGH_SCALE_HEIGHT );
+		const float mieDensity = std::exp( -height / ATMOSPHERE_MIE_SCALE_HEIGHT ) * haze;
+		const float ozoneDensity = std::max( 0.0f, 1.0f - std::abs( height - ATMOSPHERE_OZONE_CENTER ) / ATMOSPHERE_OZONE_HALF_WIDTH );
+		const float mie = ( ATMOSPHERE_MIE_SCATTERING + ATMOSPHERE_MIE_ABSORPTION ) * mieDensity;
+		depth.x += ( rayleigh.x * rayleighDensity + mie + ozone.x * ozoneDensity ) * stepLength;
+		depth.y += ( rayleigh.y * rayleighDensity + mie + ozone.y * ozoneDensity ) * stepLength;
+		depth.z += ( rayleigh.z * rayleighDensity + mie + ozone.z * ozoneDensity ) * stepLength;
+	}
+	return XMFLOAT3( std::exp( -depth.x ), std::exp( -depth.y ), std::exp( -depth.z ) );
+}
+
 SkyAtmosphere::Parameters SkyAtmosphere::currentParameters() const
 {
 	Parameters params = {};
 	XMFLOAT3 lightColor;
 	m_lights->directionalLight( params.sunDirection, lightColor );
-	// Небо линейно по солнцу: запекается для белого солнца 1 лк, а яркость — умножением на освещённость от солнца
-	// при выборке (cb_skyIlluminance). Сдвиг интенсивности солнца поэтому небо не пересчитывает
-	params.sunColor = XMFLOAT3( 1.0f, 1.0f, 1.0f );
+	// Небо линейно по солнцу: запекается для солнца 1 лк над атмосферой (его цветность — цвет источника, делённый
+	// на яркость), а яркость — умножением на освещённость от солнца при выборке (cb_skyIlluminance). Сдвиг
+	// интенсивности солнца поэтому небо не пересчитывает
+	const float lightLuminance = luminance( lightColor );
+	params.sunColor = lightLuminance > 0.0f ?
+		XMFLOAT3( lightColor.x / lightLuminance, lightColor.y / lightLuminance, lightColor.z / lightLuminance ) :
+		XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	params.skyIntensity = m_properties["Sky intensity"].data<float>();
 	params.haze = m_properties["Haze"].data<float>();
 	const float albedo = m_properties["Ground albedo"].data<float>();

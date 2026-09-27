@@ -19,7 +19,8 @@ namespace GS
 // - проецирует его на сферические гармоники — рассеянный свет (Shaders/sky_irradiance.cs);
 // - префильтрует отражения по шероховатости GGX (Shaders/sky_prefilter.ps);
 // а таблицу BRDF (Shaders/brdf_lut.ps) считает один раз. Затем привязывает всё это к слотам PS t101…t103
-// (Shaders/ibl.sh). Свой вызов в проходе sky рисует небо фоном кадра. Настройки — строка таблицы SkyAtmosphere,
+// (Shaders/ibl.sh). Свой вызов в проходе sky рисует небо фоном кадра. Пропускание к солнцу для его света у земли
+// (Atmosphere Sun Light) считает на CPU по той же модели — sunTransmittance. Настройки — строка таблицы SkyAtmosphere,
 // на которую ссылается уровень (Levels.atmosphere), и окно GUI «Sky atmosphere»
 class SkyAtmosphere : public SceneObject
 {
@@ -46,6 +47,10 @@ public:
 	Settings settings();
 	// Фон не рисуется, если у уровня своя модель неба (SkySphere); освещение окружением остаётся
 	void setBackgroundVisible( bool visible );
+	// Пропускание атмосферы от наблюдателя к солнцу (toSun — нормированное направление на него): доля света солнца
+	// над атмосферой, которая доходит до земли, по каналам RGB. Как transmittanceToTop в Shaders/atmosphere.sh
+	// с дымкой из GUI; солнце под горизонтом — 0. Как GetTransmittanceAtGroundLevel в UE — на CPU, микросекунды
+	XMFLOAT3 sunTransmittance( const XMFLOAT3& toSun ) const;
 
 	void compute( const FrameContext& frame ) override;
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;

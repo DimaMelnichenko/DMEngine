@@ -173,14 +173,19 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 Свет и окружение — тоже данные уровня, как сущности уровня в UE: источники — строки `LevelLights` (`type` directional /
 point / spot, `enabled`, `color` и `intensity` раздельно, `direction` — куда идёт свет, `position`, `attenuation_radius`,
 `inner_cone_angle` / `outer_cone_angle` — имена как в UE и KHR_lights_punctual; у направленного ещё `cast_shadows`
-и настройки каскадных теней; первый включённый направленный — солнце для неба и теней; `intensity` направленного —
-люксы, точечного и прожектора — канделы, затухание — `1 / max(d², 0,01²)`), небо — строка `SkyAtmosphere`
+и настройки каскадных теней, `atmosphere_sun_light` — как Atmosphere Sun Light в UE: цвет и интенсивность над
+атмосферой, у земли × пропускание по лучу к солнцу, `SkyAtmosphere::sunTransmittance` на CPU по общим с HLSL параметрам
+`Shaders/atmosphere_constants.h`; первый включённый направленный — солнце для неба и теней; `intensity` направленного —
+люксы, точечного и прожектора — канделы, затухание — `1 / max(d², 0,01²)`), время суток — строка `SunPosition`
+(`Levels.sun_position`, как Sun Position в UE: широта, долгота, часовой пояс, `north_offset`, дата, `time_of_day` →
+направление первого направленного, `Light/SunPosition.h`, формулы NOAA; NULL — Pitch / Yaw солнца), небо — строка `SkyAtmosphere`
 (`Levels.atmosphere`; запекается для солнца 1 лк и умножается на `cb_skyIlluminance`), постобработка — `PostProcessSettings`
 (`Levels.post_process`; NULL — значения по умолчанию). В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
-вместо вектора), «Sky atmosphere», «Post process»; кнопка «Save level environment» (`GUI::addAction`) пишет их обратно
-(`LibraryLoader::saveLevelEnvironment`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
-уровень). Буфер источников `DMLightDriver` загружает на GPU, только когда источники изменились (`update()` раз за кадр
-в `DMGraphics::Frame`).
+вместо вектора; «Sun position» — время суток), «Sky atmosphere», «Post process»; кнопка «Save level environment»
+(`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
+уровень). Источники раз за кадр обновляет `Scene::updateLights` в `DMGraphics::Frame` (правки GUI и время
+суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`
+и загружает на GPU, только когда источники изменились.
 
 Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`): строка `Levels` ссылается на террейн (`Terrain`,
 слои материала — `TerrainLayers`), модель неба (`Models`) и частицы (`Particles`: материал, текстура, плотность);

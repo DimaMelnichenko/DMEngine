@@ -2,13 +2,14 @@
 // Небо: рассеяние света в атмосфере Земли по модели S. Hillaire, «A Scalable and Production Ready Sky and
 // Atmosphere Rendering Technique» (EGSR 2020) — на ней построен Sky Atmosphere в UE5. Рассеяние Рэлея (воздух),
 // Ми (аэрозоль), поглощение озоном и многократное рассеяние через таблицу Ψ (Shaders/sky_multiscattering.ps).
-// Параметры атмосферы — значения по умолчанию UE. Класс SkyAtmosphere
+// Параметры атмосферы — значения по умолчанию UE (atmosphere_constants.h, общие с C++). Класс SkyAtmosphere
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef ATMOSPHERE_SH
 #define ATMOSPHERE_SH
 
 #include "slots.h"
+#include "atmosphere_constants.h"
 
 #include "samplers.sh"
 
@@ -17,7 +18,7 @@ cbuffer SkyParameters : register( SLOT_CB_PASS )
 {
 	float3 g_sunDirection;	// направление на солнце
 	float  g_skyIntensity;	// множитель рассеянного света (1 — по модели)
-	float3 g_sunColor;		// освещённость от солнца над атмосферой
+	float3 g_sunColor;		// цветность солнца над атмосферой (яркость 1 — небо запекается для солнца 1 лк)
 	float  g_haze;			// множитель плотности аэрозоля (Ми): больше — дымка у горизонта и ореол вокруг солнца
 	float3 g_groundAlbedo;
 	float  g_roughness;		// префильтр отражений: шероховатость текущего мипа
@@ -27,16 +28,16 @@ cbuffer SkyParameters : register( SLOT_CB_PASS )
 };
 
 static const float atmospherePi = 3.14159265f;
-static const float planetRadius = 6360e3f;			// м
-static const float atmosphereRadius = 6460e3f;
-static const float observerAltitude = 100.0f;
-static const float3 rayleighScattering = float3( 5.802e-6f, 13.558e-6f, 33.1e-6f );	// 1/м, на уровне моря
-static const float rayleighScaleHeight = 8000.0f;
-static const float mieScattering = 3.996e-6f;
-static const float mieAbsorption = 4.40e-6f;
-static const float mieScaleHeight = 1200.0f;
-static const float mieAnisotropy = 0.8f;
-static const float3 ozoneAbsorption = float3( 0.650e-6f, 1.881e-6f, 0.085e-6f );	// слой 10…40 км, пик на 25 км
+static const float planetRadius = ATMOSPHERE_PLANET_RADIUS;
+static const float atmosphereRadius = ATMOSPHERE_TOP_RADIUS;
+static const float observerAltitude = ATMOSPHERE_OBSERVER_ALTITUDE;
+static const float3 rayleighScattering = float3( ATMOSPHERE_RAYLEIGH_SCATTERING );
+static const float rayleighScaleHeight = ATMOSPHERE_RAYLEIGH_SCALE_HEIGHT;
+static const float mieScattering = ATMOSPHERE_MIE_SCATTERING;
+static const float mieAbsorption = ATMOSPHERE_MIE_ABSORPTION;
+static const float mieScaleHeight = ATMOSPHERE_MIE_SCALE_HEIGHT;
+static const float mieAnisotropy = ATMOSPHERE_MIE_ANISOTROPY;
+static const float3 ozoneAbsorption = float3( ATMOSPHERE_OZONE_ABSORPTION );	// слой 10…40 км, пик на 25 км
 
 // Направление на тексель грани cubemap (соглашение Direct3D: v вниз)
 float3 cubeDirection( int face, float2 uv )
@@ -76,7 +77,7 @@ Medium atmosphereMedium( float height )
 {
 	float rayleighDensity = exp( -height / rayleighScaleHeight );
 	float mieDensity = exp( -height / mieScaleHeight ) * g_haze;
-	float ozoneDensity = max( 0.0f, 1.0f - abs( height - 25e3f ) / 15e3f );
+	float ozoneDensity = max( 0.0f, 1.0f - abs( height - ATMOSPHERE_OZONE_CENTER ) / ATMOSPHERE_OZONE_HALF_WIDTH );
 
 	Medium medium;
 	medium.rayleigh = rayleighScattering * rayleighDensity;

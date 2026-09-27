@@ -139,8 +139,8 @@ bool DMGraphics::Frame()
 	TIME_CHECK( camera.Update( elapsedTime, m_cursorMode || !m_config.mouseLook() ), "Camera Update = %.3f ms" );
 
 	const RenderView mainView = RenderView::fromCamera( camera );
-	// Правки источников в GUI — до кадра: по солнцу считаются тени, расстановка и небо
-	m_scene.lights().update();
+	// Правки источников в GUI и время суток — до кадра: по солнцу считаются тени, расстановка и небо
+	m_scene.updateLights();
 	XMFLOAT3 toSun( 0.0f, -1.0f, 0.0f );	// солнца нет — как ниже горизонта
 	if( m_scene.lights().sunLightIndex() >= 0 )
 	{

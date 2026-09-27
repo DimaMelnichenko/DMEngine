@@ -76,7 +76,7 @@ bool Scene::initialize()
 		return false;
 	if( m_level.lights.empty() )
 		LOG( "Level has no lights in table LevelLights, default light is used" );
-	m_lightDriver.load( m_level.lights );
+	m_lightDriver.load( m_level.lights, m_level.sunPosition );
 	m_lightDriver.update();
 
 	// Небо освещает сцену всегда, а фоном рисуется, если у уровня нет своей модели неба
@@ -86,6 +86,7 @@ bool Scene::initialize()
 		return false;
 	}
 	m_atmosphere.setBackgroundVisible( !m_level.sky );
+	updateLights();
 
 	// Расстановка и частицы стоят на террейне и читают его карту высот
 	std::string heightMap;
@@ -150,6 +151,16 @@ bool Scene::initialize()
 	return true;
 }
 
+void Scene::updateLights()
+{
+	m_lightDriver.update();
+	// Atmosphere Sun Light, как в UE: солнце задано над атмосферой, у земли его свет — прошедший атмосферу
+	XMFLOAT3 toSun;
+	XMFLOAT3 color;
+	m_lightDriver.directionalLight( toSun, color );
+	m_lightDriver.setSunTransmittance( m_atmosphere.sunTransmittance( toSun ) );
+}
+
 void Scene::update( const FrameContext& frame )
 {
 	for( SceneObject* object : m_objects )
@@ -175,7 +186,10 @@ const LevelDescription& Scene::level() const
 
 bool Scene::saveEnvironment( LibraryLoader& library, const PostProcess::Settings& postProcess )
 {
-	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), m_atmosphere.settings(), postProcess );
+	std::optional<SunPosition::Settings> sunPosition;
+	if( const SunPosition* position = m_lightDriver.sunPosition() )
+		sunPosition = position->settings();
+	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, m_atmosphere.settings(), postProcess );
 }
 
 DirectX::BoundingBox Scene::bounds() const

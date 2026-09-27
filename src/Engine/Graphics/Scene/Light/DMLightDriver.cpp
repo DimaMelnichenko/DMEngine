@@ -51,7 +51,7 @@ bool DMLightDriver::Initialize()
 	return true;
 }
 
-void DMLightDriver::load( LightList lights )
+void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Settings>& sunPosition )
 {
 	// Устойчивая сортировка: направленные первыми в порядке базы, солнце — первый включённый из них
 	std::stable_sort( lights.begin(), lights.end(), []( const DMLight& a, const DMLight& b )
@@ -62,6 +62,21 @@ void DMLightDriver::load( LightList lights )
 
 	m_controls.clear();
 	m_properties.subContainer().clear();
+	m_sunPosition.reset();
+	m_sunPositionLight = -1;
+	if( sunPosition )
+	{
+		if( !m_light_list.empty() && m_light_list[0].type() == DMLight::Dir )
+		{
+			m_sunPosition = std::make_unique<SunPosition>( *sunPosition );
+			m_sunPositionLight = 0;
+			m_properties.addSubContainer( m_sunPosition->properties() );
+			const SunPosition::Angles angles = m_sunPosition->angles();
+			LOG( "Sun position: elevation " + std::to_string( angles.elevation ) + ", azimuth " + std::to_string( angles.azimuth ) );
+		}
+		else
+			LOG( "Level has a sun position, but no directional light to move" );
+	}
 	for( uint32_t i = 0; i < m_light_list.size(); ++i )
 		createProperties( m_light_list[i], i );
 
@@ -79,13 +94,16 @@ void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
 	PropertyContainer& properties = *controls.properties;
 
 	properties.insert( "Enabled", light.enabled() );
+	if( light.type() == DMLight::Dir )
+		properties.insert( "Atmosphere sun light", light.atmosphereSunLight() );
 	addControl( properties, "Color", light.color(), GUIControlType::COLOR, 0.0f, 1.0f );
 	// Направленный — люксы (полуденное солнце ~100 000), точечный и прожектор — канделы (лампа 100 Вт ~130)
 	addControl( properties, light.type() == DMLight::Dir ? "Intensity (lx)" : "Intensity (cd)", light.intensity(),
 				GUIControlType::SLIDER, 0.0f, light.type() == DMLight::Dir ? 150000.0f : 20000.0f );
 
 	controls.rotation = rotationFromDirection( light.direction() );
-	if( light.type() != DMLight::Point )
+	// Направление солнца со временем суток задаёт SunPosition
+	if( light.type() != DMLight::Point && static_cast<int>( index ) != m_sunPositionLight )
 	{
 		addControl( properties, "Pitch", controls.rotation.x, GUIControlType::SLIDER, -90.0f, 90.0f );
 		addControl( properties, "Yaw", controls.rotation.y, GUIControlType::SLIDER, -180.0f, 180.0f );
@@ -129,7 +147,12 @@ void DMLightDriver::update()
 		light.setEnabled( properties["Enabled"].data<bool>() );
 		light.setColor( properties["Color"].data<XMFLOAT3>() );
 		light.setIntensity( properties[light.type() == DMLight::Dir ? "Intensity (lx)" : "Intensity (cd)"].data<float>() );
-		if( light.type() != DMLight::Point )
+		if( static_cast<int>( i ) == m_sunPositionLight )
+		{
+			const XMFLOAT3 toSun = m_sunPosition->toSun();
+			light.setDirection( XMFLOAT3( -toSun.x, -toSun.y, -toSun.z ) );
+		}
+		else if( light.type() != DMLight::Point )
 		{
 			// Направление пересчитывается из углов, только когда их сдвинули: иначе оно осталось бы как в базе
 			const XMFLOAT2 rotation( properties["Pitch"].data<float>(), properties["Yaw"].data<float>() );
@@ -148,6 +171,7 @@ void DMLightDriver::update()
 			light.setConeAngles( properties["Inner cone angle"].data<float>(), properties["Outer cone angle"].data<float>() );
 		if( light.type() == DMLight::Dir )
 		{
+			light.setAtmosphereSunLight( properties["Atmosphere sun light"].data<bool>() );
 			DMLight::ShadowSettings shadows;
 			shadows.castShadows = properties["Cast shadows"].data<bool>();
 			shadows.dynamicShadowDistance = properties["Dynamic shadow distance"].data<float>();
@@ -160,7 +184,28 @@ void DMLightDriver::update()
 			light.setShadowSettings( shadows );
 		}
 	}
+}
 
+void DMLightDriver::setSunTransmittance( const XMFLOAT3& transmittance )
+{
+	m_sunTransmittance = transmittance;
+}
+
+XMFLOAT3 DMLightDriver::sunRadiance( const DMLight& light ) const
+{
+	XMFLOAT3 radiance = light.radiance();
+	if( light.atmosphereSunLight() )
+	{
+		radiance.x *= m_sunTransmittance.x;
+		radiance.y *= m_sunTransmittance.y;
+		radiance.z *= m_sunTransmittance.z;
+	}
+	return radiance;
+}
+
+uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
+{
+	const DMLight* sunLight = sun();
 	std::vector<LightBuffer> buffer;
 	buffer.reserve( maxLights );
 	for( const DMLight& light : m_light_list )
@@ -173,12 +218,11 @@ void DMLightDriver::update()
 		lightBuffer.type = (int)light.type();
 		lightBuffer.direction = light.direction();
 		lightBuffer.attenuationRadius = light.attenuationRadius();
-		lightBuffer.color = light.radiance();
+		lightBuffer.color = &light == sunLight ? sunRadiance( light ) : light.radiance();
 		lightBuffer.cosOuterCone = cosf( XMConvertToRadians( light.outerConeAngle() ) );
 		lightBuffer.cosInnerCone = cosf( XMConvertToRadians( light.innerConeAngle() ) );
 		buffer.push_back( lightBuffer );
 	}
-	m_sunIndex = !buffer.empty() && buffer[0].type == DMLight::Dir ? 0 : -1;
 
 	if( buffer.empty() )
 	{
@@ -196,11 +240,8 @@ void DMLightDriver::update()
 		m_lightParamBuffer = std::move( buffer );
 		m_bufferChanged = true;
 	}
-}
 
-uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
-{
-	if( m_bufferChanged && !m_lightParamBuffer.empty() )
+	if( m_bufferChanged )
 	{
 		m_structBuffer.updateData( m_lightParamBuffer.data(), m_lightParamBuffer.size() * sizeof( LightBuffer ) );
 		m_bufferChanged = false;
@@ -240,7 +281,8 @@ void DMLightDriver::directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) con
 
 int DMLightDriver::sunLightIndex() const
 {
-	return m_sunIndex;
+	// Солнце — первый включённый источник, в буфере он первый
+	return sun() ? 0 : -1;
 }
 
 DMLight::ShadowSettings DMLightDriver::sunShadows() const
@@ -255,6 +297,20 @@ float DMLightDriver::sunIlluminance() const
 	XMFLOAT3 color;
 	directionalLight( direction, color );
 	return 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
+}
+
+float DMLightDriver::sunGroundIlluminance() const
+{
+	const DMLight* light = sun();
+	if( !light )
+		return sunIlluminance();
+	const XMFLOAT3 color = sunRadiance( *light );
+	return 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
+}
+
+const SunPosition* DMLightDriver::sunPosition() const
+{
+	return m_sunPosition.get();
 }
 
 const DMLightDriver::LightList& DMLightDriver::lights() const

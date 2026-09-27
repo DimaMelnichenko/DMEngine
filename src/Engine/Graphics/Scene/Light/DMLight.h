@@ -61,6 +61,12 @@ public:
 	const ShadowSettings& shadowSettings() const;
 	void setShadowSettings( const ShadowSettings& );
 
+	// Направленный, как Atmosphere Sun Light в UE: цвет и интенсивность — над атмосферой, у земли свет солнца
+	// умножается на пропускание атмосферы по лучу к нему (закат — красный, ночь — темно). Выключен — свет у земли
+	// такой, как задан
+	bool atmosphereSunLight() const;
+	void setAtmosphereSunLight( bool );
+
 	// Тип по имени из базы — как type в KHR_lights_punctual: directional, point, spot
 	static LightType strToType( const std::string& );
 	static const char* typeName( LightType );
@@ -76,4 +82,5 @@ private:
 	float m_innerConeAngle = 0.0f;	// как в KHR_lights_punctual
 	float m_outerConeAngle = 45.0f;
 	ShadowSettings m_shadowSettings;
+	bool m_atmosphereSunLight = true;
 };

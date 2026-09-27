@@ -261,7 +261,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 {
 	try
 	{
-		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process FROM Levels ";
+		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process, sun_position FROM Levels ";
 		SQLite::Statement query( dbConnect().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
 		if( !name.empty() )
 			query.bind( ":name", name );
@@ -284,6 +284,8 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.atmosphereId = query.getColumn( "atmosphere" ).getUInt();
 		if( !query.getColumn( "post_process" ).isNull() )
 			level.postProcessId = query.getColumn( "post_process" ).getUInt();
+		if( !query.getColumn( "sun_position" ).isNull() )
+			level.sunPositionId = query.getColumn( "sun_position" ).getUInt();
 
 		loadLevelLights( level );
 		if( !loadLevelEnvironment( level ) )
@@ -394,6 +396,7 @@ void LibraryLoader::loadLevelLights( LevelDescription& level )
 		shadows.normalBias = value( "normal_bias" );
 		shadows.shadowSlopeBias = value( "shadow_slope_bias" );
 		light.setShadowSettings( shadows );
+		light.setAtmosphereSunLight( query.getColumn( "atmosphere_sun_light" ).getInt() != 0 );
 
 		level.lights.push_back( std::move( light ) );
 	}
@@ -401,6 +404,31 @@ void LibraryLoader::loadLevelLights( LevelDescription& level )
 
 bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 {
+	if( level.sunPositionId )
+	{
+		SQLite::Statement query( dbConnect().db(), "SELECT * FROM SunPosition WHERE id = :id" );
+		query.bind( ":id", *level.sunPositionId );
+		if( !query.executeStep() )
+		{
+			LOG( "Sun position " + std::to_string( *level.sunPositionId ) + " is not found in table SunPosition" );
+			return false;
+		}
+		auto value = [&query]( const char* column )
+		{
+			return static_cast<float>( query.getColumn( column ).getDouble() );
+		};
+		SunPosition::Settings& settings = level.sunPosition.emplace();
+		settings.latitude = value( "latitude" );
+		settings.longitude = value( "longitude" );
+		settings.timeZone = value( "time_zone" );
+		settings.northOffset = value( "north_offset" );
+		settings.timeOfDay = value( "time_of_day" );
+		// Дата — как в SQLite: YYYY-MM-DD
+		const std::string date = query.getColumn( "date" ).getString();
+		if( sscanf_s( date.c_str(), "%d-%d-%d", &settings.year, &settings.month, &settings.day ) != 3 )
+			LOG( "Sun position " + std::to_string( *level.sunPositionId ) + ": wrong date '" + date + "', expected YYYY-MM-DD" );
+	}
+
 	if( level.atmosphereId )
 	{
 		SQLite::Statement query( dbConnect().db(), "SELECT sky_intensity, haze, ground_albedo FROM SkyAtmosphere WHERE id = :id" );
@@ -459,6 +487,7 @@ double dbValue( float value )
 }
 
 bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,
+										  const std::optional<SunPosition::Settings>& sunPosition,
 										  const GS::SkyAtmosphere::Settings& atmosphere, const GS::PostProcess::Settings& postProcess )
 {
 	try
@@ -472,7 +501,8 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 										   "cast_shadows = :castShadows, dynamic_shadow_distance = :distance, "
 										   "cascade_distribution_exponent = :exponent, cascade_transition_fraction = :transition, "
 										   "shadow_distance_fadeout_fraction = :fadeout, shadow_bias = :shadowBias, "
-										   "normal_bias = :normalBias, shadow_slope_bias = :slopeBias WHERE id = :id" );
+										   "normal_bias = :normalBias, shadow_slope_bias = :slopeBias, "
+										   "atmosphere_sun_light = :atmosphereSunLight WHERE id = :id" );
 		for( const DMLight& light : lights )
 		{
 			if( light.id == 0 )
@@ -495,9 +525,28 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 			updateLight.bind( ":shadowBias", dbValue( shadows.shadowBias ) );
 			updateLight.bind( ":normalBias", dbValue( shadows.normalBias ) );
 			updateLight.bind( ":slopeBias", dbValue( shadows.shadowSlopeBias ) );
+			updateLight.bind( ":atmosphereSunLight", light.atmosphereSunLight() ? 1 : 0 );
 			updateLight.bind( ":id", light.id );
 			updateLight.exec();
 			updateLight.reset();
+		}
+
+		// Место и время — только если строка у уровня есть: без неё солнце светит по своему направлению
+		if( sunPosition && level.sunPositionId )
+		{
+			char date[16];
+			std::snprintf( date, sizeof( date ), "%04d-%02d-%02d", sunPosition->year, sunPosition->month, sunPosition->day );
+			SQLite::Statement updateSun( db, "UPDATE SunPosition SET latitude = :latitude, longitude = :longitude, "
+											 "time_zone = :timeZone, north_offset = :northOffset, date = :date, "
+											 "time_of_day = :timeOfDay WHERE id = :id" );
+			updateSun.bind( ":latitude", dbValue( sunPosition->latitude ) );
+			updateSun.bind( ":longitude", dbValue( sunPosition->longitude ) );
+			updateSun.bind( ":timeZone", dbValue( sunPosition->timeZone ) );
+			updateSun.bind( ":northOffset", dbValue( sunPosition->northOffset ) );
+			updateSun.bind( ":date", std::string( date ) );
+			updateSun.bind( ":timeOfDay", dbValue( sunPosition->timeOfDay ) );
+			updateSun.bind( ":id", *level.sunPositionId );
+			updateSun.exec();
 		}
 
 		// Строки неба и постобработки: нет у уровня — создаются с его именем

@@ -6,6 +6,7 @@
 #include "DirectX.h"
 #include "Scatterer\ScattererPass.h"
 #include "Light\DMLight.h"
+#include "Light\SunPosition.h"
 #include "Sky\SkyAtmosphere.h"
 #include "PostProcess.h"
 
@@ -56,6 +57,8 @@ struct LevelDescription
 	// Свет и окружение уровня — как сущности уровня в UE (Directional / Point / Spot Light, Sky Atmosphere,
 	// Post Process Volume). Строки настроек неба и постобработки — по ссылке из Levels; NULL — значения по умолчанию
 	std::vector<DMLight> lights;				// таблица LevelLights
+	std::optional<uint32_t> sunPositionId;		// строка SunPosition: место и время — направление солнца
+	std::optional<SunPosition::Settings> sunPosition;
 	std::optional<uint32_t> atmosphereId;		// строка SkyAtmosphere
 	GS::SkyAtmosphere::Settings atmosphere;
 	std::optional<uint32_t> postProcessId;		// строка PostProcessSettings

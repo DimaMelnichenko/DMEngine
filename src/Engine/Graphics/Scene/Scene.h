@@ -26,6 +26,8 @@ public:
 	// Создаёт объекты сцены и свет; вызывается после loadResources() и pipeline().init()
 	bool initialize();
 
+	// Раз за кадр до update(): правки источников в GUI и время суток, затем свет солнца у земли — через атмосферу
+	void updateLights();
 	void update( const FrameContext& frame );
 
 	const std::vector<SceneObject*>& objects() const;

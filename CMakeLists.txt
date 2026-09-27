@@ -70,6 +70,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Pipeline.cpp
     src/Engine/Graphics/Scene/Light/DMLight.cpp
     src/Engine/Graphics/Scene/Light/DMLightDriver.cpp
+    src/Engine/Graphics/Scene/Light/SunPosition.cpp
     src/Engine/Graphics/Scene/Materials/MaterialStorage.cpp
     src/Engine/Graphics/Common/Storage/DMResourceStorage.cpp
     src/Engine/Graphics/Common/Storage/DMResource.cpp

@@ -126,3 +126,13 @@ const char* DMLight::typeName( LightType type )
 		default: return "point";
 	}
 }
+
+bool DMLight::atmosphereSunLight() const
+{
+	return m_atmosphereSunLight;
+}
+
+void DMLight::setAtmosphereSunLight( bool atmosphereSunLight )
+{
+	m_atmosphereSunLight = atmosphereSunLight;
+}

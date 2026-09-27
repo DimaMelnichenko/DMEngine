@@ -103,6 +103,7 @@ private:
 	uint32_t m_meshDraws = 0;
 	uint32_t m_shadowMeshCount = 0;
 	uint32_t m_shadowDraws = 0;
+	float m_sunGroundIlluminance = 0.0f;	// освещённость от солнца у земли, лк — в «Statistic» и строку «GPU average»
 	DMSamplerState m_samplerState;
 	PostProcess m_postProcess;
 	GpuProfiler m_gpuProfiler;
