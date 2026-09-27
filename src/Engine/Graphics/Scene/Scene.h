@@ -5,6 +5,7 @@
 #include "SceneObject.h"
 #include "Sky\SkySphere.h"
 #include "Sky\SkyAtmosphere.h"
+#include "Sky\HDRIBackdrop.h"
 #include "Terrain\CDLODTerrain.h"
 #include "Model\ModelInstances.h"
 #include "Scatterer\Scatterer.h"
@@ -28,6 +29,11 @@ public:
 
 	// Раз за кадр до update(): правки источников в GUI и время суток, затем свет солнца у земли — через атмосферу
 	void updateLights();
+	// Небо уровня — процедурная атмосфера (с воздушной перспективой) или HDRI-панорама
+	bool hasAtmosphere() const;
+	// Масштаб неба и освещения окружением (cb_skyLightScale): освещённость от солнца над атмосферой, лк, или
+	// интенсивность панорамы
+	float skyLightScale();
 	void update( const FrameContext& frame );
 
 	const std::vector<SceneObject*>& objects() const;
@@ -46,7 +52,10 @@ private:
 	LevelDescription m_level;
 	DMLightDriver m_lightDriver;
 
-	SkyAtmosphere m_atmosphere;	// процедурное небо и освещение окружением от него
+	SkyLight m_skyLight;		// освещение окружением: из неба атмосферы или панорамы
+	SkyAtmosphere m_atmosphere;	// процедурное небо, от него — освещение окружением и воздушная перспектива
+	HDRIBackdrop m_hdri;		// панорама вместо атмосферы (Levels.hdri_backdrop)
+	bool m_useHDRI = false;
 	SkySphere m_sky;			// модель неба уровня (Levels.sky), если задана — вместо фона атмосферы
 	CDLODTerrain m_terrain;
 	ModelInstances m_models;

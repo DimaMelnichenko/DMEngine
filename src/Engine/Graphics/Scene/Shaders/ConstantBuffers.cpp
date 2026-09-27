@@ -31,11 +31,11 @@ void ConstantBuffers::initBuffers()
 	m_timer.Initialize();
 }
 
-void ConstantBuffers::beginFrame( int lightsCount, float skyIlluminance, float aerialPerspectiveDistance )
+void ConstantBuffers::beginFrame( int lightsCount, float skyLightScale, float aerialPerspectiveDistance )
 {
 	m_timer.Frame();
 	m_lightsCount = static_cast<float>( lightsCount );
-	m_skyIlluminance = skyIlluminance;
+	m_skyLightScale = skyLightScale;
 	m_aerialPerspectiveDistance = aerialPerspectiveDistance;
 }
 
@@ -54,7 +54,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.elapsedTime = static_cast<float>( m_timer.GetTime() );
 		data.lightsCount = m_lightsCount;
 		data.lodOrigin = view.lodOrigin;
-		data.skyIlluminance = m_skyIlluminance;
+		data.skyLightScale = m_skyLightScale;
 		data.aerialPerspectiveDistance = m_aerialPerspectiveDistance;
 	} );
 

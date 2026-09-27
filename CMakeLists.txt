@@ -42,6 +42,22 @@ FetchContent_Declare(SQLiteCpp
 )
 FetchContent_MakeAvailable(SQLiteCpp)
 
+# tinyexr читает .exr (TextureLoader). Его CMakeLists — для тестов самой библиотеки: SOURCE_SUBDIR без CMakeLists
+# не даёт FetchContent подключить его, библиотека собирается здесь из tinyexr.cc и встроенного miniz
+FetchContent_Declare(tinyexr
+    GIT_REPOSITORY https://github.com/syoyo/tinyexr.git
+    GIT_TAG        v1.0.13
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  do-not-add
+)
+FetchContent_MakeAvailable(tinyexr)
+add_library(tinyexr STATIC
+    ${tinyexr_SOURCE_DIR}/tinyexr.cc
+    ${tinyexr_SOURCE_DIR}/deps/miniz/miniz.c
+)
+target_include_directories(tinyexr PUBLIC ${tinyexr_SOURCE_DIR} ${tinyexr_SOURCE_DIR}/deps/miniz)
+target_compile_definitions(tinyexr PRIVATE _CRT_SECURE_NO_WARNINGS)
+
 add_executable(DMEngine WIN32
     src/Common/Properties/Property.cpp
     src/Common/Properties/PropertyContainer.cpp
@@ -91,6 +107,9 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Common/DMTransform.cpp
     src/Engine/Graphics/D3D/DMD3D.cpp
     src/Engine/Graphics/D3D/RenderTarget.cpp
+    src/Engine/Graphics/D3D/CubeTarget.cpp
+    src/Engine/Graphics/Scene/Sky/SkyLight.cpp
+    src/Engine/Graphics/Scene/Sky/HDRIBackdrop.cpp
     src/Engine/Graphics/D3D/DMSamplerState.cpp
     src/Engine/Graphics/DMGraphics.cpp
     src/Engine/Graphics/Renderer.cpp
@@ -140,5 +159,6 @@ target_compile_options(DMEngine PRIVATE /W3 /wd4005 /utf-8)
 target_link_libraries(DMEngine PRIVATE
     DirectXTex
     SQLiteCpp
+    tinyexr
     d3d11 dxgi d3dcompiler dinput8 dxguid winmm windowscodecs
 )

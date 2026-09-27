@@ -19,9 +19,10 @@ public:
 	~ConstantBuffers();
 
 	void initBuffers();
-	// Один раз за кадр: время, число источников света, освещённость от солнца и дальность слоёв воздушной
-	// перспективы (дальняя плоскость главного вида)
-	void beginFrame( int lightsCount, float skyIlluminance, float aerialPerspectiveDistance );
+	// Один раз за кадр: время, число источников света, масштаб неба и освещения окружением (освещённость от солнца
+	// у атмосферы, интенсивность у панорамы) и дальность слоёв воздушной перспективы (дальняя плоскость главного вида,
+	// 0 — перспективы нет)
+	void beginFrame( int lightsCount, float skyLightScale, float aerialPerspectiveDistance );
 	// Константы кадра (b0) для вида: матрицы и положение камеры; время и свет — от beginFrame. Для каждого вида
 	// кадра (главная камера, позже каскады теней) — свой вызов
 	void setViewBuffer( const RenderView& view );
@@ -42,7 +43,7 @@ private:
 		float elapsedTime;
 		float lightsCount;
 		XMFLOAT3 lodOrigin;
-		float skyIlluminance;
+		float skyLightScale;
 		float aerialPerspectiveDistance;
 		XMFLOAT2 padding;
 	};
@@ -55,7 +56,7 @@ private:
 	};
 
 	float m_lightsCount = 0.0f;
-	float m_skyIlluminance = 0.0f;
+	float m_skyLightScale = 0.0f;
 	float m_aerialPerspectiveDistance = 0.0f;
 	com_unique_ptr<ID3D11Buffer> m_frameConstant;
 	com_unique_ptr<ID3D11Buffer> m_modelConstant;

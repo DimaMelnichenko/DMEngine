@@ -42,7 +42,7 @@ public:
 	// Настройки теней солнца; castShadows = false, если солнца нет
 	DMLight::ShadowSettings sunShadows() const;
 	// Освещённость от солнца над атмосферой, лк (яркость его цвета × интенсивность): на неё умножаются запечённые
-	// для солнца 1 лк небо и освещение окружением (cb_skyIlluminance)
+	// для солнца 1 лк небо и освещение окружением (cb_skyLightScale)
 	float sunIlluminance() const;
 	// Освещённость от солнца у земли, лк: после атмосферы, если у солнца atmosphereSunLight
 	float sunGroundIlluminance() const;

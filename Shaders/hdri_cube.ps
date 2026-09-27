@@ -1,0 +1,22 @@
+////////////////////////////////////////////////////////////////////////////////
+// Грань cubemap освещения окружением из панорамы: мип панорамы по размеру текселя грани, яркость выше g_maxLuminance
+// срезается с сохранением цвета — солнце панорамы светит направленным источником с тенью, а не второй раз через
+// освещение окружением. Класс HDRIBackdrop, затем SkyLight::capture
+////////////////////////////////////////////////////////////////////////////////
+
+#include "hdri.sh"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	float3 color = samplePanorama( cubeDirection( g_face, input.uv ), g_lod );
+	const float value = luminance( color );
+	if( g_maxLuminance > 0.0f && value > g_maxLuminance )
+		color *= g_maxLuminance / value;
+	return float4( color, 1.0f );
+}

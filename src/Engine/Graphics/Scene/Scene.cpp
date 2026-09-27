@@ -79,13 +79,31 @@ bool Scene::initialize()
 	m_lightDriver.load( m_level.lights, m_level.sunPosition );
 	m_lightDriver.update();
 
-	// Небо освещает сцену всегда, а фоном рисуется, если у уровня нет своей модели неба
-	if( !m_atmosphere.initialize( m_lightDriver, m_level.atmosphere ) )
+	if( !m_skyLight.initialize() )
 	{
-		LOG( "Fail to initialize sky atmosphere" );
+		LOG( "Fail to initialize sky light" );
 		return false;
 	}
-	m_atmosphere.setBackgroundVisible( !m_level.sky );
+
+	// Небо уровня — панорама или процедурная атмосфера; файл панорамы не загрузился — атмосфера, как заглушка.
+	// Небо освещает сцену всегда, а фоном рисуется, если у уровня нет своей модели неба
+	if( m_level.hdriBackdrop )
+	{
+		m_useHDRI = m_hdri.initialize( *m_level.hdriBackdrop, m_skyLight );
+		if( !m_useHDRI )
+			LOG( "HDRI backdrop is not loaded, sky atmosphere is used instead" );
+	}
+	if( m_useHDRI )
+		m_hdri.setBackgroundVisible( !m_level.sky );
+	else
+	{
+		if( !m_atmosphere.initialize( m_lightDriver, m_level.atmosphere, m_skyLight ) )
+		{
+			LOG( "Fail to initialize sky atmosphere" );
+			return false;
+		}
+		m_atmosphere.setBackgroundVisible( !m_level.sky );
+	}
 	updateLights();
 
 	// Расстановка и частицы стоят на террейне и читают его карту высот
@@ -142,8 +160,9 @@ bool Scene::initialize()
 		}
 	}
 
-	// Атмосфера первой: её compute() готовит освещение окружением для всех, render() рисует фон
-	m_objects = { &m_atmosphere, &m_sky, &m_terrain, &m_models };
+	// Небо первым: его compute() готовит освещение окружением для всех, render() рисует фон
+	SceneObject* sky = m_useHDRI ? static_cast<SceneObject*>( &m_hdri ) : &m_atmosphere;
+	m_objects = { sky, &m_sky, &m_terrain, &m_models };
 	for( const auto& scatterer : m_scatterers )
 		m_objects.push_back( scatterer.get() );
 	m_objects.push_back( &m_particles );
@@ -158,7 +177,18 @@ void Scene::updateLights()
 	XMFLOAT3 toSun;
 	XMFLOAT3 color;
 	m_lightDriver.directionalLight( toSun, color );
-	m_lightDriver.setSunTransmittance( m_atmosphere.sunTransmittance( toSun ) );
+	// У панорамы атмосферы нет: свет солнца у земли такой, как задан
+	m_lightDriver.setSunTransmittance( m_useHDRI ? XMFLOAT3( 1.0f, 1.0f, 1.0f ) : m_atmosphere.sunTransmittance( toSun ) );
+}
+
+bool Scene::hasAtmosphere() const
+{
+	return !m_useHDRI;
+}
+
+float Scene::skyLightScale()
+{
+	return m_useHDRI ? m_hdri.intensity() : m_lightDriver.sunIlluminance();
 }
 
 void Scene::update( const FrameContext& frame )
@@ -189,7 +219,14 @@ bool Scene::saveEnvironment( LibraryLoader& library, const PostProcess::Settings
 	std::optional<SunPosition::Settings> sunPosition;
 	if( const SunPosition* position = m_lightDriver.sunPosition() )
 		sunPosition = position->settings();
-	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, m_atmosphere.settings(), postProcess );
+	// Небо — строка того, что у уровня работает: атмосферы или панорамы
+	std::optional<SkyAtmosphere::Settings> atmosphere;
+	std::optional<HDRIBackdrop::Settings> hdri;
+	if( m_useHDRI )
+		hdri = m_hdri.settings();
+	else
+		atmosphere = m_atmosphere.settings();
+	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, atmosphere, hdri, postProcess );
 }
 
 DirectX::BoundingBox Scene::bounds() const

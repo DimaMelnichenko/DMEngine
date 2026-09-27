@@ -1,0 +1,26 @@
+////////////////////////////////////////////////////////////////////////////////
+// Фон кадра — HDRI-панорама по направлению взгляда, мип 0 и без среза: солнце панорамы видно и даёт bloom. Рисуется
+// после непрозрачных на дальней плоскости — только там, где сцена ничего не нарисовала (как фон атмосферы).
+// Класс HDRIBackdrop
+////////////////////////////////////////////////////////////////////////////////
+
+#include "common.vs"
+#include "hdri.sh"
+#include "exposure.sh"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	// Луч взгляда: из экранных координат в пространство камеры (левое, взгляд по +Z), затем в мир
+	float2 ndc = float2( input.uv.x * 2.0f - 1.0f, 1.0f - input.uv.y * 2.0f );
+	float3 viewDirection = float3( ndc.x / cb_projectionMatrix[0][0], ndc.y / cb_projectionMatrix[1][1], 1.0f );
+	float3 direction = normalize( mul( viewDirection, (float3x3)cb_viewInverseMatrix ) );
+
+	// Значение панорамы × интенсивность (cb_skyLightScale), кд/м²
+	return float4( samplePanorama( direction, 0.0f ) * cb_skyLightScale * preExposure(), 1.0f );
+}

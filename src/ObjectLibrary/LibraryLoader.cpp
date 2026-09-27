@@ -261,7 +261,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 {
 	try
 	{
-		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process, sun_position FROM Levels ";
+		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process, sun_position, hdri_backdrop FROM Levels ";
 		SQLite::Statement query( dbConnect().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
 		if( !name.empty() )
 			query.bind( ":name", name );
@@ -286,6 +286,8 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.postProcessId = query.getColumn( "post_process" ).getUInt();
 		if( !query.getColumn( "sun_position" ).isNull() )
 			level.sunPositionId = query.getColumn( "sun_position" ).getUInt();
+		if( !query.getColumn( "hdri_backdrop" ).isNull() )
+			level.hdriBackdropId = query.getColumn( "hdri_backdrop" ).getUInt();
 
 		loadLevelLights( level );
 		if( !loadLevelEnvironment( level ) )
@@ -446,6 +448,22 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 			static_cast<float>( query.getColumn( "aerial_perspective_view_distance_scale" ).getDouble() );
 	}
 
+	if( level.hdriBackdropId )
+	{
+		SQLite::Statement query( dbConnect().db(), "SELECT texture, intensity, rotation, max_luminance FROM HDRIBackdrop WHERE id = :id" );
+		query.bind( ":id", *level.hdriBackdropId );
+		if( !query.executeStep() )
+		{
+			LOG( "HDRI backdrop " + std::to_string( *level.hdriBackdropId ) + " is not found in table HDRIBackdrop" );
+			return false;
+		}
+		GS::HDRIBackdrop::Settings& hdri = level.hdriBackdrop.emplace();
+		hdri.texture = query.getColumn( "texture" ).getString();
+		hdri.intensity = static_cast<float>( query.getColumn( "intensity" ).getDouble() );
+		hdri.rotation = static_cast<float>( query.getColumn( "rotation" ).getDouble() );
+		hdri.maxLuminance = static_cast<float>( query.getColumn( "max_luminance" ).getDouble() );
+	}
+
 	if( level.postProcessId )
 	{
 		SQLite::Statement query( dbConnect().db(), "SELECT * FROM PostProcessSettings WHERE id = :id" );
@@ -491,7 +509,9 @@ double dbValue( float value )
 
 bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,
 										  const std::optional<SunPosition::Settings>& sunPosition,
-										  const GS::SkyAtmosphere::Settings& atmosphere, const GS::PostProcess::Settings& postProcess )
+										  const std::optional<GS::SkyAtmosphere::Settings>& atmosphere,
+										  const std::optional<GS::HDRIBackdrop::Settings>& hdri,
+										  const GS::PostProcess::Settings& postProcess )
 {
 	try
 	{
@@ -552,23 +572,42 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 			updateSun.exec();
 		}
 
-		// Строки неба и постобработки: нет у уровня — создаются с его именем
-		if( !level.atmosphereId )
+		// Строки неба и постобработки: нет у уровня — создаются с его именем. Небо — то, что у уровня работает:
+		// атмосфера или панорама (строку панорамы задают в базе, без неё небо — атмосфера)
+		if( atmosphere )
 		{
-			SQLite::Statement insert( db, "INSERT INTO SkyAtmosphere (name) VALUES (:name)" );
-			insert.bind( ":name", level.name );
-			insert.exec();
-			level.atmosphereId = static_cast<uint32_t>( db.getLastInsertRowid() );
+			if( !level.atmosphereId )
+			{
+				SQLite::Statement insert( db, "INSERT INTO SkyAtmosphere (name) VALUES (:name)" );
+				insert.bind( ":name", level.name );
+				insert.exec();
+				level.atmosphereId = static_cast<uint32_t>( db.getLastInsertRowid() );
+			}
+			SQLite::Statement updateAtmosphere( db, "UPDATE SkyAtmosphere SET sky_intensity = :intensity, haze = :haze, "
+													"ground_albedo = :albedo, aerial_perspective_view_distance_scale = :aerialScale "
+													"WHERE id = :id" );
+			updateAtmosphere.bind( ":intensity", dbValue( atmosphere->skyIntensity ) );
+			updateAtmosphere.bind( ":haze", dbValue( atmosphere->haze ) );
+			updateAtmosphere.bind( ":albedo", dbValue( atmosphere->groundAlbedo ) );
+			updateAtmosphere.bind( ":aerialScale", dbValue( atmosphere->aerialPerspectiveViewDistanceScale ) );
+			updateAtmosphere.bind( ":id", *level.atmosphereId );
+			updateAtmosphere.exec();
+
+			SQLite::Statement updateLevel( db, "UPDATE Levels SET atmosphere = :atmosphere WHERE id = :id" );
+			updateLevel.bind( ":atmosphere", *level.atmosphereId );
+			updateLevel.bind( ":id", level.id );
+			updateLevel.exec();
 		}
-		SQLite::Statement updateAtmosphere( db, "UPDATE SkyAtmosphere SET sky_intensity = :intensity, haze = :haze, "
-												"ground_albedo = :albedo, aerial_perspective_view_distance_scale = :aerialScale "
-												"WHERE id = :id" );
-		updateAtmosphere.bind( ":intensity", dbValue( atmosphere.skyIntensity ) );
-		updateAtmosphere.bind( ":haze", dbValue( atmosphere.haze ) );
-		updateAtmosphere.bind( ":albedo", dbValue( atmosphere.groundAlbedo ) );
-		updateAtmosphere.bind( ":aerialScale", dbValue( atmosphere.aerialPerspectiveViewDistanceScale ) );
-		updateAtmosphere.bind( ":id", *level.atmosphereId );
-		updateAtmosphere.exec();
+		if( hdri && level.hdriBackdropId )
+		{
+			SQLite::Statement updateHDRI( db, "UPDATE HDRIBackdrop SET intensity = :intensity, rotation = :rotation, "
+											  "max_luminance = :maxLuminance WHERE id = :id" );
+			updateHDRI.bind( ":intensity", dbValue( hdri->intensity ) );
+			updateHDRI.bind( ":rotation", dbValue( hdri->rotation ) );
+			updateHDRI.bind( ":maxLuminance", dbValue( hdri->maxLuminance ) );
+			updateHDRI.bind( ":id", *level.hdriBackdropId );
+			updateHDRI.exec();
+		}
 
 		if( !level.postProcessId )
 		{
@@ -598,8 +637,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 		updatePostProcess.bind( ":id", *level.postProcessId );
 		updatePostProcess.exec();
 
-		SQLite::Statement updateLevel( db, "UPDATE Levels SET atmosphere = :atmosphere, post_process = :postProcess WHERE id = :id" );
-		updateLevel.bind( ":atmosphere", *level.atmosphereId );
+		SQLite::Statement updateLevel( db, "UPDATE Levels SET post_process = :postProcess WHERE id = :id" );
 		updateLevel.bind( ":postProcess", *level.postProcessId );
 		updateLevel.bind( ":id", level.id );
 		updateLevel.exec();

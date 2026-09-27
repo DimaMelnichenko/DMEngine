@@ -25,8 +25,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
 ## Сборка и запуск
 
 - Проект только на CMake (`CMakeLists.txt`), только MSVC x64. CLion (toolchain Visual Studio, amd64, Ninja) и
-  Visual Studio открывают его напрямую. DirectXTex (тег `may2026`) и SQLiteCpp (тег `3.3.3`, со встроенным sqlite3)
-  подтягиваются через `FetchContent` при первом configure: нужны сеть и git. Остальное берётся из Windows SDK.
+  Visual Studio открывают его напрямую. DirectXTex (тег `may2026`), SQLiteCpp (тег `3.3.3`, со встроенным sqlite3)
+  и tinyexr (тег `v1.0.13`, чтение `.exr`; свой CMake не берётся — библиотека из `tinyexr.cc` и miniz собирается
+  в `CMakeLists.txt`) подтягиваются через `FetchContent` при первом configure: нужны сеть и git. Остальное берётся из
+  Windows SDK.
 - **Из терминала собирать только скриптом**, а не вызывать cmake вручную:
   ```
   Tools\build.cmd debug        (или release; из Git Bash: cmd //c "Tools\build.cmd debug")
@@ -75,7 +77,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
   затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 16`; ромашка (`Camomile`, альфа-лепестки) — так же
   со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Blender 5.0 стоит в
-  `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH).
+  `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH). Панорама уровня `TestHDRI` —
+  Kloofendal 48d Partly Cloudy с Poly Haven (CC0, https://polyhaven.com/a/kloofendal_48d_partly_cloudy), 2k `.hdr`
+  (и `.exr` для проверки) в `Textures\hdri\kloofendal_48d_partly_cloudy_2k.*`; без неё `TestHDRI` освещает атмосфера.
 - Лог каждого запуска перезаписывается в отслеживаемый `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`).
 - Шейдеры (`Shaders/*.vs|.ps|.gs|.hlsl`) компилируются во время выполнения
   (`D3DCompileFromFile` / `D3DCompile` в `DMShader`). Для правки шейдера пересборка не нужна. Флаги — `shaderCompileFlags()`
@@ -134,10 +138,11 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 шейдера `INST_MATRIX`, который материал собирает сам — `supportsInstancing`, `phaseFor( params, true )`). Свой вызов получает `RenderContext` (вид, проход, растеризатор кадра, константы, `VertexPool`); перед
 ним привязан общий `VertexPool` с топологией TRIANGLELIST, свои буферы объект привязывает сам. Новый проход или вид
 (depth prepass, тени прожекторов) добавляется в `Renderer`, а не в объекты.
-Сейчас объекты (в порядке сцены): `SkyAtmosphere` (процедурное небо фоном и освещение окружением от него;
-его `compute()` идёт первым, привязывает IBL к слотам PS t101…t103 и считает объём воздушной перспективы главного
-вида — t106; фон — полноэкранный треугольник на дальней
-плоскости в проходе `sky`), `SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
+Сейчас объекты (в порядке сцены): небо — `SkyAtmosphere` (процедурное небо фоном и освещение окружением от него;
+его `compute()` идёт первым, отдаёт cubemap неба в `SkyLight` — гармоники и префильтр, слоты PS t101…t103 — и считает
+объём воздушной перспективы главного вида — t106; фон — полноэкранный треугольник на дальней плоскости в проходе
+`sky`) или вместо него `HDRIBackdrop` (HDRI-панорама уровня: фон и cubemap для `SkyLight`, без воздушной перспективы),
+`SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
 растягивается до 0,9 дальней плоскости вида, `RenderView::farPlane`), `CDLODTerrain`,
 `ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида, отсечение по frustum вида — границы
 меша `AbstractMesh::bounds` считаются при загрузке, меши в список отрисовки),
@@ -180,9 +185,11 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 люксы, точечного и прожектора — канделы, затухание — `1 / max(d², 0,01²)`), время суток — строка `SunPosition`
 (`Levels.sun_position`, как Sun Position в UE: широта, долгота, часовой пояс, `north_offset`, дата, `time_of_day` →
 направление первого направленного, `Light/SunPosition.h`, формулы NOAA; NULL — Pitch / Yaw солнца), небо — строка `SkyAtmosphere`
-(`Levels.atmosphere`; запекается для солнца 1 лк и умножается на `cb_skyIlluminance`; там же сила воздушной перспективы), постобработка — `PostProcessSettings`
+(`Levels.atmosphere`; запекается для солнца 1 лк и умножается на `cb_skyLightScale`; там же сила воздушной перспективы)
+или панорама — строка `HDRIBackdrop` (`Levels.hdri_backdrop`: файл, `intensity` — кд/м² на единицу панорамы, она же
+`cb_skyLightScale`, `rotation`, `max_luminance` — срез солнца для освещения окружением; уровень `TestHDRI`), постобработка — `PostProcessSettings`
 (`Levels.post_process`; NULL — значения по умолчанию). В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
-вместо вектора; «Sun position» — время суток), «Sky atmosphere», «Post process»; кнопка «Save level environment»
+вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Post process»; кнопка «Save level environment»
 (`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
 уровень). Источники раз за кадр обновляет `Scene::updateLights` в `DMGraphics::Frame` (правки GUI и время
 суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`

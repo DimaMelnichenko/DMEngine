@@ -1,13 +1,22 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Префильтр отражений (split-sum, Karis 2013): грань g_face мипа с шероховатостью g_roughness — cubemap неба,
-// свёрнутый с распределением GGX. Выборка по важности берёт мип исходника по плотности выборок (filtered
-// importance sampling, Křivánek и Colbert 2008), чтобы не было шума при малом числе выборок
+// Префильтр отражений (split-sum, Karis 2013): грань g_face мипа с шероховатостью g_roughness — cubemap окружения
+// (неба или панорамы), свёрнутый с распределением GGX. Выборка по важности берёт мип исходника по плотности выборок
+// (filtered importance sampling, Křivánek и Colbert 2008), чтобы не было шума при малом числе выборок. Класс SkyLight
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "slots.h"
 #include "samplers.sh"
-#define ATMOSPHERE_NO_SKY
-#include "atmosphere.sh"
+#include "cubemap.sh"
 #include "ibl_sampling.sh"
+
+// Раскладка — SkyLight::PrefilterParameters
+cbuffer PrefilterParameters : register( SLOT_CB_PASS )
+{
+	int   g_face;			// грань: 0…5 — +X, −X, +Y, −Y, +Z, −Z
+	float g_roughness;		// шероховатость текущего мипа
+	float g_sourceSize;		// размер грани исходного cubemap в текселях
+	float g_prefilterPadding;
+};
 
 TextureCube g_sky : register(t0);
 
@@ -26,7 +35,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 	const uint sampleCount = 128;
 	const float alpha = g_roughness * g_roughness;
-	const float texelSolidAngle = 4.0f * atmospherePi / ( 6.0f * g_sourceSize * g_sourceSize );
+	const float texelSolidAngle = 4.0f * cubemapPi / ( 6.0f * g_sourceSize * g_sourceSize );
 
 	float3 sum = 0.0f;
 	float weight = 0.0f;
@@ -41,7 +50,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 		// pdf выборки направления l: D·(n·h) / (4·(v·h)), при v = n — D / 4
 		float NoH = saturate( dot( n, h ) );
 		float d = NoH * NoH * ( alpha * alpha - 1.0f ) + 1.0f;
-		float pdf = alpha * alpha / ( atmospherePi * d * d ) * 0.25f;
+		float pdf = alpha * alpha / ( cubemapPi * d * d ) * 0.25f;
 		float sampleSolidAngle = 1.0f / ( sampleCount * pdf + 1e-4f );
 		float mip = max( 0.5f * log2( sampleSolidAngle / texelSolidAngle ) + 1.0f, 0.0f );
 

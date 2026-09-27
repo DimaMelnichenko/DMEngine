@@ -8,6 +8,7 @@
 #include "Light\DMLight.h"
 #include "Light\SunPosition.h"
 #include "Sky\SkyAtmosphere.h"
+#include "Sky\HDRIBackdrop.h"
 #include "PostProcess.h"
 
 // Состав уровня из base.db3: строка таблицы Levels и то, на что она ссылается.
@@ -61,6 +62,8 @@ struct LevelDescription
 	std::optional<SunPosition::Settings> sunPosition;
 	std::optional<uint32_t> atmosphereId;		// строка SkyAtmosphere
 	GS::SkyAtmosphere::Settings atmosphere;
+	std::optional<uint32_t> hdriBackdropId;		// строка HDRIBackdrop: панорама вместо атмосферы
+	std::optional<GS::HDRIBackdrop::Settings> hdriBackdrop;
 	std::optional<uint32_t> postProcessId;		// строка PostProcessSettings
 	GS::PostProcess::Settings postProcess;
 };

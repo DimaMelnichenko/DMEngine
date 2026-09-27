@@ -1,13 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Рассеянный свет окружения: проекция cubemap неба на сферические гармоники 2-го порядка (9 коэффициентов,
-// Ramamoorthi и Hanrahan 2001) со свёрткой косинусом. Результат — коэффициенты для E(n)/π: рассеянный свет
-// поверхности = альбедо × ambientIrradiance(n) (Shaders/ibl.sh). Одна группа потоков
+// Рассеянный свет окружения: проекция cubemap окружения (неба или панорамы) на сферические гармоники 2-го порядка
+// (9 коэффициентов, Ramamoorthi и Hanrahan 2001) со свёрткой косинусом. Результат — коэффициенты для E(n)/π:
+// рассеянный свет поверхности = альбедо × ambientIrradiance(n) (Shaders/ibl.sh). Одна группа потоков, класс SkyLight
 ////////////////////////////////////////////////////////////////////////////////
 
-#define ATMOSPHERE_NO_SKY
-#include "atmosphere.sh"
+#include "cubemap.sh"
 
-Texture2DArray<float4> g_sky : register(t0);	// грани cubemap неба (один мип) как массив
+Texture2DArray<float4> g_sky : register(t0);	// грани cubemap окружения (один мип) как массив
 RWStructuredBuffer<float4> g_irradianceSH : register(u0);
 
 static const uint threadCount = 64;
@@ -71,7 +70,7 @@ void main( uint thread : SV_GroupIndex )
 	}
 
 	// Нормировка на полный телесный угол 4π и свёртка косинусом (A0 = π, A1 = 2π/3, A2 = π/4), делённая на π
-	const float normalization = 4.0f * atmospherePi / weightSum;
+	const float normalization = 4.0f * cubemapPi / weightSum;
 	const float band[9] = { 1.0f, 2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f };
 	[unroll] for( uint w = 0; w < 9; ++w )
 		g_irradianceSH[w] = float4( result[w] * normalization * band[w], 0.0f );

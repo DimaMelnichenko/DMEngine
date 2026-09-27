@@ -18,6 +18,10 @@ Texture3D<float4> g_aerialPerspective : register( SLOT_AERIAL_PERSPECTIVE );
 // color — яркость точки мира position в кд/м² (без экспозиции)
 float3 applyAerialPerspective( float3 color, float3 position )
 {
+	// Воздушной перспективы нет у уровня с панорамой вместо атмосферы (HDRIBackdrop)
+	[branch] if( cb_aerialPerspectiveDistance <= 0.0f )
+		return color;
+
 	// Ячейка экрана главного вида и слой по расстоянию: слой s накоплен до D · ((s + 1) / N)²
 	const float4 clip = mul( float4( position, 1.0f ), cb_viewProjectionMatrix );
 	const float2 uv = clip.xy / clip.w * float2( 0.5f, -0.5f ) + 0.5f;
@@ -26,8 +30,8 @@ float3 applyAerialPerspective( float3 color, float3 position )
 	// Ближе первого слоя — к «воздуха нет» у самой камеры
 	air = lerp( float4( 0.0f, 0.0f, 0.0f, 1.0f ), air, saturate( slice ) );
 
-	// Рассеянный свет запечён для солнца 1 лк, как небо: яркость — умножением на освещённость от солнца
-	return color * air.a + air.rgb * cb_skyIlluminance;
+	// Рассеянный свет запечён для солнца 1 лк, как небо: яркость — умножением на освещённость от солнца (cb_skyLightScale)
+	return color * air.a + air.rgb * cb_skyLightScale;
 }
 
 #endif

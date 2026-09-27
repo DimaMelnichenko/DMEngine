@@ -31,7 +31,9 @@ public:
 	// и постобработки — в строки уровня (нет строки — создаётся и привязывается к Levels, id пишется в level)
 	bool saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,
 							   const std::optional<SunPosition::Settings>& sunPosition,
-							   const GS::SkyAtmosphere::Settings& atmosphere, const GS::PostProcess::Settings& postProcess );
+							   const std::optional<GS::SkyAtmosphere::Settings>& atmosphere,
+							   const std::optional<GS::HDRIBackdrop::Settings>& hdri,
+							   const GS::PostProcess::Settings& postProcess );
 
 
 	void save();

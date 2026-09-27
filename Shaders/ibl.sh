@@ -1,6 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Освещение окружением (IBL) от неба: рассеянный свет — сферические гармоники, отражения — префильтрованный
-// cubemap и таблица BRDF (split-sum). Ресурсы готовит и привязывает SkyAtmosphere (слоты PS t101…t103)
+// cubemap и таблица BRDF (split-sum). Ресурсы готовит и привязывает SkyLight (слоты PS t101…t103) — из неба атмосферы
+// или панорамы; масштаб яркости — cb_skyLightScale
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef IBL_SH
@@ -14,7 +15,7 @@ StructuredBuffer<float4> g_irradianceSH : register( SLOT_IBL_IRRADIANCE );	// 9 
 TextureCube g_specularCube : register( SLOT_IBL_SPECULAR );				// мип m — шероховатость m / (specularMipCount − 1)
 Texture2D<float2> g_brdfLut : register( SLOT_IBL_BRDF );				// u — N·V, v — шероховатость
 
-static const float specularMipCount = 6.0f;	// SkyAtmosphere::specularMipCount
+static const float specularMipCount = 6.0f;	// SkyLight::specularMipCount
 
 // Освещённость от неба, делённая на π: рассеянный свет ламбертовой поверхности = альбедо × результат
 float3 ambientIrradiance( float3 n )
@@ -28,14 +29,14 @@ float3 ambientIrradiance( float3 n )
 				  + g_irradianceSH[6].rgb * ( 0.315392f * ( 3.0f * n.z * n.z - 1.0f ) )
 				  + g_irradianceSH[7].rgb * ( 1.092548f * n.x * n.z )
 				  + g_irradianceSH[8].rgb * ( 0.546274f * ( n.x * n.x - n.y * n.y ) );
-	// Запечено для солнца освещённостью 1 лк: небо линейно по солнцу
-	return max( result, 0.0f ) * cb_skyIlluminance;
+	// Атмосфера запечена для солнца освещённостью 1 лк (небо линейно по солнцу), панорама — в своих единицах
+	return max( result, 0.0f ) * cb_skyLightScale;
 }
 
 // Отражённый свет неба в направлении r, размытый по шероховатости
 float3 ambientSpecular( float3 r, float roughness )
 {
-	return g_specularCube.SampleLevel( g_SamplerLinearClamp, r, roughness * ( specularMipCount - 1.0f ) ).rgb * cb_skyIlluminance;
+	return g_specularCube.SampleLevel( g_SamplerLinearClamp, r, roughness * ( specularMipCount - 1.0f ) ).rgb * cb_skyLightScale;
 }
 
 // Масштаб и сдвиг F0 для отражений окружения: отражение = ambientSpecular × (F0·A + B)
