@@ -16,8 +16,7 @@ TextureShader::~TextureShader()
 
 bool TextureShader::innerInitialize()
 {
-	createPhase( 0, 0 );
-	return true;
+	return createPhase( 0, 0 ) >= 0;
 }
 
 std::vector<D3D11_INPUT_ELEMENT_DESC> TextureShader::initLayouts()

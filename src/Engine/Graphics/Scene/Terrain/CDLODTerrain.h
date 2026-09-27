@@ -98,6 +98,9 @@ private:
 	std::array<std::vector<PatchInstance>, maxRenderViews> m_patches;
 	GridMesh m_patch;
 	DMShader m_shader;
+	int m_materialPhase = 0;	// фазы m_shader: материал, раскраска по уровням LOD, только глубина (тени)
+	int m_lodPhase = 0;
+	int m_depthPhase = 0;
 	TerrainMaterial m_material;
 	DMStructuredBuffer m_patchBuffer;
 	com_unique_ptr<ID3D11Buffer> m_constantBuffer;

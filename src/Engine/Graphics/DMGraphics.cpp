@@ -86,9 +86,10 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	RET_FALSE( m_renderer.initialize( m_scene.level().postProcess, m_config.shadowMapResolution() ) );
 
 	LOG( "Create main camera" )
-	// Основная камера; стартовое положение — секция [Camera] в settings.ini или параметр -camera
+	// Основная камера: ближняя и дальняя плоскости — ScreenNear / ScreenDepth в settings.ini (от дальней зависят сфера
+	// неба и слои воздушной перспективы), стартовое положение — секция [Camera] или параметр -camera
 	DMCamera& camera = m_cameraPool["main"];
-	camera.Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, 0.1f, 10000.0f );
+	camera.Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, m_config.ScreenNear(), m_config.ScreenDepth() );
 	camera.SetPosition( m_config.cameraPosition().x, m_config.cameraPosition().y, m_config.cameraPosition().z );
 	camera.SetRotation( m_config.cameraRotation().x, m_config.cameraRotation().y, 0.0f );
 

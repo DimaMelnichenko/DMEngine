@@ -59,7 +59,7 @@ void PropertyContainer::addSubContainer( PropertyContainer* subContainer )
 	m_subContainer.push_back( subContainer );
 }
 
-PropertyContainer::PropertyMap& PropertyContainer::propertyMap()
+const std::vector<std::string>& PropertyContainer::names() const
 {
-	return m_propertyMap;
+	return m_order;
 }

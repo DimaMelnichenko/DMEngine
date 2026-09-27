@@ -10,7 +10,7 @@ bool FullscreenShader::load( const std::string& pixelShader )
 	m_shader.setDrawType( DMShader::by_vertex );
 	return m_shader.addShaderPassFromFile( SRVType::vs, "main", "Shaders\\fullscreen.vs" ) &&
 		   m_shader.addShaderPassFromFile( SRVType::ps, "main", pixelShader ) &&
-		   m_shader.createPhase( 0, 0 );
+		   m_shader.createPhase( 0, 0 ) >= 0;
 }
 
 void FullscreenShader::draw( BlendState blend, DepthState depth )

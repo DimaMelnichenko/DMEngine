@@ -115,20 +115,20 @@ bool PBRMaterial::innerInitialize()
 			return false;
 	}
 
-	createPhase( 0, 0 );
-	createPhase( 0, 1 );
-	if( m_instancing )
+	// Фазы по [инстансный вершинный шейдер][Masked]: цвет — пиксельный шейдер 0 или 1 (с отсечением), глубина — без
+	// пиксельного шейдера или mainDepth (2). Без инстансинга инстансные номера совпадают с обычными
+	for( int instanced = 0; instanced < 2; ++instanced )
 	{
-		createPhase( 1, 0 );
-		createPhase( 1, 1 );
-	}
-	m_depthPhases = m_instancing ? 4 : 2;
-	createPhase( 0, -1 );
-	createPhase( 0, 2 );
-	if( m_instancing )
-	{
-		createPhase( 1, -1 );
-		createPhase( 1, 2 );
+		const int vertex = instanced && m_instancing ? 1 : 0;
+		m_colorPhases[instanced][0] = createPhase( vertex, 0 );
+		m_colorPhases[instanced][1] = createPhase( vertex, 1 );
+		m_depthPhases[instanced][0] = createPhase( vertex, -1 );
+		m_depthPhases[instanced][1] = createPhase( vertex, 2 );
+		for( int masked = 0; masked < 2; ++masked )
+		{
+			if( m_colorPhases[instanced][masked] < 0 || m_depthPhases[instanced][masked] < 0 )
+				return false;
+		}
 	}
 
 	DMD3D::instance().createShaderConstantBuffer( sizeof( PSParam ), m_psCB );
@@ -151,8 +151,7 @@ MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) 
 
 int PBRMaterial::phaseFor( const PropertyContainer& params, bool instanced ) const
 {
-	const int phase = renderState( params ).blendMode == BlendMode::masked ? maskedPhase : opaquePhase;
-	return instanced && m_instancing ? instancedPhases + phase : phase;
+	return m_colorPhases[instanced ? 1 : 0][renderState( params ).blendMode == BlendMode::masked ? 1 : 0];
 }
 
 bool PBRMaterial::supportsInstancing() const
@@ -165,8 +164,7 @@ int PBRMaterial::depthPhaseFor( const PropertyContainer& params, bool instanced 
 	const MaterialRenderState state = renderState( params );
 	if( state.blendMode == BlendMode::translucent )
 		return -1;
-	const int phase = m_depthPhases + ( state.blendMode == BlendMode::masked ? maskedPhase : opaquePhase );
-	return instanced && m_instancing ? phase + instancedPhases : phase;
+	return m_depthPhases[instanced ? 1 : 0][state.blendMode == BlendMode::masked ? 1 : 0];
 }
 
 void PBRMaterial::setParams( const PropertyContainer& params )

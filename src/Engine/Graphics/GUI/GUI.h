@@ -42,7 +42,7 @@ private:
 
 private:
 	std::vector<std::pair<std::string,float>> m_counterInfoList;
-	std::map<std::string, PropertyContainer*> m_propertiesMap;
+	std::vector<PropertyContainer*> m_properties;	// окна свойств в порядке addPropertyWatching
 	std::vector<std::pair<std::string, std::function<void()>>> m_actions;
 	bool m_isInited = false;
 	

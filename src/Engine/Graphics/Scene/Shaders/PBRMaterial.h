@@ -37,11 +37,11 @@ private:
 		float alphaCutoff;
 	};
 
-	// Фазы: вершинный шейдер из базы или инстансный × пиксельный без отсечения или с ним; за ними — те же пары
-	// для глубины (без пиксельного шейдера или mainDepth), начиная с m_depthPhases
-	enum PhaseIndex { opaquePhase = 0, maskedPhase = 1, instancedPhases = 2 };
+	// Номера фаз (DMShader::createPhase) по [инстансный вершинный шейдер][Masked]: цвет — пиксельный шейдер без
+	// отсечения или с ним, глубина — без пиксельного шейдера или mainDepth
 	bool m_instancing = false;
-	int m_depthPhases = 0;
+	int m_colorPhases[2][2] = {};
+	int m_depthPhases[2][2] = {};
 
 	bool innerInitialize() override;
 	std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() override;

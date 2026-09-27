@@ -83,8 +83,8 @@ private:
 	std::string m_name;
 	float m_lowBorder = 0.0;
 	float m_highBorder = 1.0;
-	GUIControlType m_controlType;
-	Container m_value;
-	ValueType m_valueType;
+	// Без setControlType — ползунок в границах low…high; логическим свойствам (флажок) тип не нужен
+	GUIControlType m_controlType = GUIControlType::SLIDER;
+	Container m_value;	// тип значения — индекс варианта (valueType)
 };
 

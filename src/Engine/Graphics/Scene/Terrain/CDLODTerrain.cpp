@@ -143,8 +143,11 @@ bool CDLODTerrain::createShader()
 		return false;
 	}
 
-	// Проход 0 — материал террейна, 1 — раскраска по уровням LOD, 2 — только глубина (тени)
-	return m_shader.createPhase( 0, 0 ) && m_shader.createPhase( 0, 1 ) && m_shader.createPhase( 0, -1 );
+	// Фазы: материал террейна, раскраска по уровням LOD, только глубина (тени)
+	m_materialPhase = m_shader.createPhase( 0, 0 );
+	m_lodPhase = m_shader.createPhase( 0, 1 );
+	m_depthPhase = m_shader.createPhase( 0, -1 );
+	return m_materialPhase >= 0 && m_lodPhase >= 0 && m_depthPhase >= 0;
 }
 
 bool CDLODTerrain::buildHeightBounds()
@@ -424,7 +427,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_patch.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
 
-	m_shader.setPass( shadow ? 2 : m_properties["Show LOD"].data<bool>() ? 1 : 0 );
+	m_shader.setPass( shadow ? m_depthPhase : m_properties["Show LOD"].data<bool>() ? m_lodPhase : m_materialPhase );
 	m_shader.renderInstanced( m_patch.indexCount(), 0, 0, static_cast<int>( patches.size() ) );
 }
 

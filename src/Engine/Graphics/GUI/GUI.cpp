@@ -1,4 +1,5 @@
 #include "GUI.h"
+#include <algorithm>
 #include "imGUI\imgui.h"
 #include "imGUI\imgui_impl_dx11.h"
 #include "imGUI\imgui_impl_win32.h"
@@ -226,8 +227,9 @@ void GUI::printCamera( DMCamera& camera )
 
 void GUI::parsePropertiesAndCreateControls( PropertyContainer* propertyContainer )
 {	
-	for( auto& [name,property] : propertyContainer->propertyMap() )
+	for( const std::string& name : propertyContainer->names() )
 	{
+		Property& property = propertyContainer->property( name );
 		switch( property.valueType() )
 		{
 			case ValueType::BOOL:
@@ -323,7 +325,9 @@ void GUI::parsePropertiesAndCreateControls( PropertyContainer* propertyContainer
 
 void GUI::addPropertyWatching( PropertyContainer* propertyContainer )
 {
-	m_propertiesMap.insert_or_assign( propertyContainer->name(), propertyContainer );
+	// В порядке регистрации; одинаковые имена окон друг друга не затирают
+	if( std::find( m_properties.begin(), m_properties.end(), propertyContainer ) == m_properties.end() )
+		m_properties.push_back( propertyContainer );
 }
 
 void GUI::addAction( const std::string& label, std::function<void()> action )
@@ -347,7 +351,8 @@ void GUI::parsePropertiesTree( PropertyContainer* propertyContainer )
 void GUI::showPropertiesTree()
 {
 	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-	ImGui::Begin( "Scene Objects", nullptr, ImVec2( 256, 300 ), 1.0 );
+	// Шире прежних 256 пикселей: подписи свойств (Aerial perspective view distance scale) не обрезаются
+	ImGui::Begin( "Scene Objects", nullptr, ImVec2( 420, 300 ), 1.0 );
 	for( const auto& [label, action] : m_actions )
 	{
 		if( ImGui::Button( label.c_str() ) )
@@ -356,7 +361,7 @@ void GUI::showPropertiesTree()
 	int counter = 0;
 	if( ImGui::TreeNode( "Properties Objects Tree" ) )
 	{
-		for( auto[name,propertyContainer] : m_propertiesMap )
+		for( PropertyContainer* propertyContainer : m_properties )
 		{
 			parsePropertiesTree( propertyContainer );
 		}

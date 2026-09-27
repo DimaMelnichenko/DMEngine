@@ -319,7 +319,7 @@ bool DMShader::createShaderPass( SRVType type, com_unique_ptr<ID3DBlob>& shaderB
 	return true;
 }
 
-bool DMShader::createPhase( int index_vs, int index_ps, int index_gs, int index_hs, int index_ds )
+int DMShader::createPhase( int index_vs, int index_ps, int index_gs, int index_hs, int index_ds )
 {
 	int v_size = m_vertexShader.size();
 	int g_size = m_geometryShader.size();
@@ -333,7 +333,7 @@ bool DMShader::createPhase( int index_vs, int index_ps, int index_gs, int index_
 			index_hs < h_size &&
 			index_ds < d_size ) )
 	{
-		return false;
+		return -1;
 	}
 
 	Phase new_phase;
@@ -343,17 +343,14 @@ bool DMShader::createPhase( int index_vs, int index_ps, int index_gs, int index_
 	new_phase.index_hs = index_hs;
 	new_phase.index_ds = index_ds;
 
-	for( auto phase : m_phases )
+	for( size_t i = 0; i < m_phases.size(); ++i )
 	{
-		if( phase == new_phase )
-		{
-			return true;
-		}
+		if( m_phases[i] == new_phase )
+			return static_cast<int>( i );
 	}
 
 	m_phases.push_back( new_phase );
-
-	return true;
+	return static_cast<int>( m_phases.size() ) - 1;
 }
 
 bool DMShader::selectPhase( unsigned int idx )

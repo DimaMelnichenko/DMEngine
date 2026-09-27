@@ -797,6 +797,9 @@ void DMD3D::unbindTransientResources()
 	m_deviceContext->VSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
 	m_deviceContext->GSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
 	m_deviceContext->PSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
+	// Compute-проходы (расстановка, частицы, небо, воздушная перспектива, экспозиция) оставляют свои SRV: к следующему
+	// кадру они столкнулись бы с записью в те же ресурсы
+	m_deviceContext->CSSetShaderResources( 0, SLOT_TRANSIENT_COUNT, views );
 }
 
 void DMD3D::setBackBufferTarget()

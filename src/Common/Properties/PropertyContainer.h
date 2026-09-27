@@ -3,6 +3,7 @@
 #include "Property.h"
 #include <unordered_map>
 #include <type_traits>
+#include <vector>
 
 
 class PropertyContainer
@@ -17,11 +18,14 @@ public:
 	const Property& property( const std::string& name ) const;
 	Property& property( const std::string& name );
 	
+	// Свойство с таким именем уже есть — возвращается оно, значение не меняется
 	template<class TYPE>
 	Property* insert( const std::string& name, const TYPE& value )
-	{	
-		m_propertyMap.insert( { name, Property( name, value ) } );
-		return &m_propertyMap[name];
+	{
+		auto [it, inserted] = m_propertyMap.insert( { name, Property( name, value ) } );
+		if( inserted )
+			m_order.push_back( name );
+		return &it->second;
 	}
 	void setName( const std::string& name );
 	const std::string& name();
@@ -34,10 +38,12 @@ public:
 	void addSubContainer( PropertyContainer* subContainer );
 	std::vector<PropertyContainer*>& subContainer();
 
-	PropertyMap& propertyMap();
-    
+	// Имена свойств в порядке добавления — так их показывает GUI
+	const std::vector<std::string>& names() const;
+
 private:
     PropertyMap m_propertyMap;
+	std::vector<std::string> m_order;
 	std::string m_name;
 	std::vector<PropertyContainer*> m_subContainer;
 };
