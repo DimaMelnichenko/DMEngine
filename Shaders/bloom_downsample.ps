@@ -1,0 +1,106 @@
+////////////////////////////////////////////////////////////////////////////////
+// Bloom: уменьшение вдвое 13 выборками (J. Jimenez, «Next Generation Post Processing in Call of Duty: Advanced
+// Warfare», SIGGRAPH 2014). Первый проход — из цвета сцены: ограничение HDR-значений, мягкий порог и усреднение
+// групп с весом 1 / (1 + яркость) (B. Karis) — одиночные яркие пиксели не мерцают крупными пятнами на дальних
+// уровнях. Класс PostProcess
+////////////////////////////////////////////////////////////////////////////////
+
+#include "slots.h"
+#include "samplers.sh"
+
+Texture2D<float4> g_source : register( t0 );
+
+// Раскладка — PostProcess::BloomParameters
+cbuffer BloomBuffer : register( SLOT_CB_PASS )
+{
+	float2 g_sourceTexelSize;	// 1 / размер источника
+	float  g_exposure;			// 2^EV: порог сравнивается с яркостью после экспозиции
+	float  g_threshold;			// Bloom Threshold; < 0 — без порога
+	int    g_firstPass;			// 1 — источник — цвет сцены
+	float  g_radius;			// для увеличения
+	float  g_weight;			// для увеличения: вес добавляемого уровня
+	float  g_padding;
+};
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+// R16F-буфер сцены хранит inf при очень ярком солнечном диске; inf и NaN разнеслись бы по всем уровням
+static const float maxHdrValue = 60000.0f;
+
+float3 sampleSource( float2 uv, float2 offset )
+{
+	return g_source.SampleLevel( g_SamplerLinearClamp, uv + offset * g_sourceTexelSize, 0.0f ).rgb;
+}
+
+float luminance( float3 color )
+{
+	return dot( color, float3( 0.2126f, 0.7152f, 0.0722f ) );
+}
+
+// Мягкий порог (soft knee): ниже порога — ничего, в полосе колена — плавный рост, выше — всё, что над порогом
+float3 threshold( float3 color )
+{
+	color = min( max( color, 0.0f ), maxHdrValue );
+	[branch] if( g_threshold >= 0.0f )
+	{
+		const float brightness = max( color.r, max( color.g, color.b ) ) * g_exposure;
+		const float knee = g_threshold * 0.5f;
+		float soft = clamp( brightness - g_threshold + knee, 0.0f, 2.0f * knee );
+		soft = soft * soft / ( 4.0f * knee + 1e-4f );
+		color *= max( soft, brightness - g_threshold ) / max( brightness, 1e-4f );
+	}
+	return color;
+}
+
+float karisWeight( float3 color )
+{
+	return 1.0f / ( 1.0f + luminance( color ) * g_exposure );
+}
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	// Сетка выборок в текселях источника: a b c / j k / d e f / l m / g h i
+	float3 a = sampleSource( input.uv, float2( -2.0f, -2.0f ) );
+	float3 b = sampleSource( input.uv, float2(  0.0f, -2.0f ) );
+	float3 c = sampleSource( input.uv, float2(  2.0f, -2.0f ) );
+	float3 d = sampleSource( input.uv, float2( -2.0f,  0.0f ) );
+	float3 e = sampleSource( input.uv, float2(  0.0f,  0.0f ) );
+	float3 f = sampleSource( input.uv, float2(  2.0f,  0.0f ) );
+	float3 g = sampleSource( input.uv, float2( -2.0f,  2.0f ) );
+	float3 h = sampleSource( input.uv, float2(  0.0f,  2.0f ) );
+	float3 i = sampleSource( input.uv, float2(  2.0f,  2.0f ) );
+	float3 j = sampleSource( input.uv, float2( -1.0f, -1.0f ) );
+	float3 k = sampleSource( input.uv, float2(  1.0f, -1.0f ) );
+	float3 l = sampleSource( input.uv, float2( -1.0f,  1.0f ) );
+	float3 m = sampleSource( input.uv, float2(  1.0f,  1.0f ) );
+
+	float3 result;
+	[branch] if( g_firstPass != 0 )
+	{
+		a = threshold( a ); b = threshold( b ); c = threshold( c ); d = threshold( d ); e = threshold( e );
+		f = threshold( f ); g = threshold( g ); h = threshold( h ); i = threshold( i );
+		j = threshold( j ); k = threshold( k ); l = threshold( l ); m = threshold( m );
+
+		// Пять групп по четыре выборки: центральная — с весом 0,5, угловые — по 0,125, каждая ещё и по яркости
+		const float3 group0 = ( j + k + l + m ) * 0.25f;
+		const float3 group1 = ( a + b + d + e ) * 0.25f;
+		const float3 group2 = ( b + c + e + f ) * 0.25f;
+		const float3 group3 = ( d + e + g + h ) * 0.25f;
+		const float3 group4 = ( e + f + h + i ) * 0.25f;
+		const float w0 = 0.5f * karisWeight( group0 );
+		const float w1 = 0.125f * karisWeight( group1 );
+		const float w2 = 0.125f * karisWeight( group2 );
+		const float w3 = 0.125f * karisWeight( group3 );
+		const float w4 = 0.125f * karisWeight( group4 );
+		result = ( group0 * w0 + group1 * w1 + group2 * w2 + group3 * w3 + group4 * w4 ) / ( w0 + w1 + w2 + w3 + w4 );
+	}
+	else
+	{
+		result = e * 0.125f + ( a + c + g + i ) * 0.03125f + ( b + d + f + h ) * 0.0625f + ( j + k + l + m ) * 0.125f;
+	}
+	return float4( result, 1.0f );
+}

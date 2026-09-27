@@ -630,6 +630,14 @@ bool DMD3D::createBlendStates()
 	if( !createBlendState( blendStateDescription, m_alphaEnableBlendingState ) )
 		return false;
 
+	// Сложение: цель += источник (уровни bloom)
+	blendStateDescription.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+	blendStateDescription.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
+	blendStateDescription.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+	blendStateDescription.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+	if( !createBlendState( blendStateDescription, m_additiveBlendingState ) )
+		return false;
+
 	// Modify the description to create an alpha disabled blend state description.
 	blendStateDescription.AlphaToCoverageEnable = false;
 	blendStateDescription.RenderTarget[0].BlendEnable = FALSE;
@@ -693,7 +701,13 @@ void DMD3D::setState( DepthState state )
 void DMD3D::setState( BlendState state )
 {
 	const float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-	ID3D11BlendState* blendState = state == BlendState::alpha ? m_alphaEnableBlendingState.get() : m_alphaDisableBlendingState.get();
+	ID3D11BlendState* blendState = m_alphaDisableBlendingState.get();
+	switch( state )
+	{
+		case BlendState::alpha: blendState = m_alphaEnableBlendingState.get(); break;
+		case BlendState::additive: blendState = m_additiveBlendingState.get(); break;
+		case BlendState::opaque: break;
+	}
 	m_deviceContext->OMSetBlendState( blendState, blendFactor, 0xffffffff );
 
 	m_renderState.blend = state;

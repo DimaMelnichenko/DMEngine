@@ -100,7 +100,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   солнца (`renderShadows`: на каждый каскад сбор с его вида и проход `csmShadowDepth` в срез карты) → проходы `opaque` → `sky`
   (фон на дальней плоскости: глубина `LESS_EQUAL` без записи — только там, где сцена ничего не нарисовала) →
   `transparent` (alpha blending, глубина только читается) в HDR-буфер сцены
-  (`R16G16B16A16_FLOAT`) → `PostProcess`: экспозиция и тонмаппинг (AgX / ACES) в задний буфер sRGB. Затем
+  (`R16G16B16A16_FLOAT`) → `PostProcess` — цепочка полноэкранных проходов с промежуточными целями (`RenderTarget`,
+  `D3D/RenderTarget.h`): bloom (уровни ½ … ¹⁄₆₄, Jimenez 2014), затем экспозиция и тонмаппинг (AgX / ACES) в задний
+  буфер sRGB; новый проход — ещё одна цель и шаг в `PostProcess::render`. Затем
   `DMGraphics` рисует GUI и вызывает `EndScene`. Шейдеры объектов пишут линейный цвет без экспозиции; настройки —
   строка `PostProcessSettings` уровня и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
   начинается с чистого состояния: `Renderer::executePass` заново ставит цель сцены с областью вывода

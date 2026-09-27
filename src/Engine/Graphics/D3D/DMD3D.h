@@ -36,7 +36,9 @@ enum class DepthState
 
 enum class BlendState
 {
-	opaque, alpha
+	opaque,		// без смешивания
+	alpha,		// полупрозрачные: src · a + dst · (1 − a)
+	additive	// сложение (ONE, ONE): уровни bloom, накопление света
 };
 
 struct RenderState
@@ -104,6 +106,9 @@ public:
 	void setSceneTarget();		// HDR-буфер сцены и буфер глубины, область вывода на весь кадр
 	void setBackBufferTarget();	// задний буфер без глубины
 	void setRenderTarget( ID3D11RenderTargetView* target, uint32_t width, uint32_t height );	// без глубины
+	// Размер буфера сцены (и заднего буфера), пиксели
+	uint32_t sceneWidth() const { return m_screenWidth; }
+	uint32_t sceneHeight() const { return m_screenHeight; }
 	void setDepthTarget( ID3D11DepthStencilView* target, uint32_t width, uint32_t height );	// только глубина
 	// Наклонное смещение глубины растеризатора теней (Shadow Slope Bias): пересоздаёт состояние
 	bool setShadowSlopeBias( float slopeBias );
@@ -179,6 +184,7 @@ private:
 
 	com_unique_ptr<ID3D11BlendState> m_alphaEnableBlendingState;
 	com_unique_ptr<ID3D11BlendState> m_alphaDisableBlendingState;
+	com_unique_ptr<ID3D11BlendState> m_additiveBlendingState;
 
 	RenderState m_renderState;
 

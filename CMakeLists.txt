@@ -89,6 +89,7 @@ add_executable(DMEngine WIN32
     src/DMSystem.cpp
     src/Engine/Graphics/Common/DMTransform.cpp
     src/Engine/Graphics/D3D/DMD3D.cpp
+    src/Engine/Graphics/D3D/RenderTarget.cpp
     src/Engine/Graphics/D3D/DMSamplerState.cpp
     src/Engine/Graphics/DMGraphics.cpp
     src/Engine/Graphics/Renderer.cpp

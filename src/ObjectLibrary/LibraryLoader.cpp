@@ -417,7 +417,8 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 
 	if( level.postProcessId )
 	{
-		SQLite::Statement query( dbConnect().db(), "SELECT exposure_compensation, tonemapper FROM PostProcessSettings WHERE id = :id" );
+		SQLite::Statement query( dbConnect().db(), "SELECT exposure_compensation, tonemapper, bloom_intensity, bloom_threshold "
+												   "FROM PostProcessSettings WHERE id = :id" );
 		query.bind( ":id", *level.postProcessId );
 		if( !query.executeStep() )
 		{
@@ -426,6 +427,8 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		}
 		level.postProcess.exposureCompensation = static_cast<float>( query.getColumn( "exposure_compensation" ).getDouble() );
 		level.postProcess.tonemapper = GS::PostProcess::tonemapperFromName( query.getColumn( "tonemapper" ).getString() );
+		level.postProcess.bloomIntensity = static_cast<float>( query.getColumn( "bloom_intensity" ).getDouble() );
+		level.postProcess.bloomThreshold = static_cast<float>( query.getColumn( "bloom_threshold" ).getDouble() );
 	}
 	return true;
 }
@@ -509,9 +512,12 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 			level.postProcessId = static_cast<uint32_t>( db.getLastInsertRowid() );
 		}
 		SQLite::Statement updatePostProcess( db, "UPDATE PostProcessSettings SET exposure_compensation = :exposure, "
-												 "tonemapper = :tonemapper WHERE id = :id" );
+												 "tonemapper = :tonemapper, bloom_intensity = :bloomIntensity, "
+												 "bloom_threshold = :bloomThreshold WHERE id = :id" );
 		updatePostProcess.bind( ":exposure", dbValue( postProcess.exposureCompensation ) );
 		updatePostProcess.bind( ":tonemapper", GS::PostProcess::tonemapperName( postProcess.tonemapper ) );
+		updatePostProcess.bind( ":bloomIntensity", dbValue( postProcess.bloomIntensity ) );
+		updatePostProcess.bind( ":bloomThreshold", dbValue( postProcess.bloomThreshold ) );
 		updatePostProcess.bind( ":id", *level.postProcessId );
 		updatePostProcess.exec();
 

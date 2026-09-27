@@ -122,7 +122,7 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		executePass( MeshPass::transparent, frame.view, frameRaster );
 	}
 
-	measure( "Post process", [&] { m_postProcess.render(); } );
+	measure( "Post process", [&] { m_postProcess.render( m_gpuProfiler ); } );
 	m_gui.addCounterInfo( "Meshes = %.0f", static_cast<float>( m_meshCount ) );
 	m_gui.addCounterInfo( "Mesh draw calls = %.0f", static_cast<float>( m_meshDraws ) );
 	m_gui.addCounterInfo( "Shadow meshes = %.0f", static_cast<float>( m_shadowMeshCount ) );
