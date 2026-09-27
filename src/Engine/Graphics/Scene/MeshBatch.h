@@ -16,14 +16,21 @@ class SceneObject;
 // Проход кадра — как EMeshPass в UE. Порядок проходов и их состояния задаёт Renderer
 enum class MeshPass
 {
-	opaque,			// непрозрачные и с отсечением по альфе (Opaque и Masked)
-	sky,			// после непрозрачных: фон на дальней плоскости, глубина LESS_EQUAL без записи — только где пусто
+	depthPrepass,	// только глубина непрозрачных и Masked (EMeshPass::DepthPass в UE) — до непрозрачных
+	opaque,			// непрозрачные и с отсечением по альфе (Opaque и Masked); после prepass — глубина EQUAL без записи
+	sky,			// после непрозрачных: фон на дальней плоскости, глубина «ближе или равно» без записи — только где пусто
 	transparent,	// последним: альфа-блендинг, глубина только читается (Translucent)
 	csmShadowDepth	// глубина каскадов теней солнца (EMeshPass::CSMShadowDepth в UE) — до проходов сцены, на виды каскадов
 };
 
-// Проходов сцены с главного вида: opaque, sky, transparent
-constexpr uint32_t scenePassCount = 3;
+// Проходов сцены с главного вида: depthPrepass, opaque, sky, transparent
+constexpr uint32_t scenePassCount = 4;
+
+// Проходы только глубины: материал рисуется вариантом depthPhaseFor, без цвета
+constexpr bool isDepthOnlyPass( MeshPass pass )
+{
+	return pass == MeshPass::depthPrepass || pass == MeshPass::csmShadowDepth;
+}
 
 // Бит прохода для маски CustomBatch
 constexpr uint32_t passBit( MeshPass pass )
@@ -38,7 +45,7 @@ inline MeshPass passFor( BlendMode mode )
 }
 
 // Меш, который объект отдаёт на отрисовку, — как FMeshBatch в UE: что рисовать, а не в каком проходе. Проход
-// выбирает рендерер по режиму материала; позже по тем же данным он нарисует меш в depth prepass и в тенях
+// выбирает рендерер по режиму материала; по тем же данным он рисует меш в depth prepass и в тенях
 struct MeshBatch
 {
 	DMShader* material = nullptr;

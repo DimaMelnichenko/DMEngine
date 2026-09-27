@@ -2,6 +2,7 @@
 #include "Shaders\slots.h"
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include "D3D\DMD3D.h"
 #include "System.h"
 #include "Pipeline.h"
@@ -122,6 +123,12 @@ bool Scatterer::castsShadow( const Layer& layer, const LayerLod& lod ) const
 	return ( *layer.properties )["Cast shadow"].data<bool>() && lod.material->depthPhaseFor( lod.block->params ) >= 0;
 }
 
+bool Scatterer::inDepthPrepass( const LayerLod& lod ) const
+{
+	return passFor( lod.material->renderState( lod.block->params ).blendMode ) == MeshPass::opaque &&
+		   lod.material->depthPhaseFor( lod.block->params ) >= 0;
+}
+
 void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 {
 	// Режим читается каждый кадр: параметры материала меняются в GUI
@@ -131,6 +138,8 @@ void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 		for( const LayerLod& lod : layer.lods )
 		{
 			passMask |= passBit( passFor( lod.material->renderState( lod.block->params ).blendMode ) );
+			if( inDepthPrepass( lod ) )
+				passMask |= passBit( MeshPass::depthPrepass );
 			if( castsShadow( layer, lod ) )
 				passMask |= passBit( MeshPass::csmShadowDepth );
 		}
@@ -146,6 +155,7 @@ void Scatterer::renderCustom( const RenderContext& context )
 	XMMATRIX worldMatrix = XMMatrixIdentity();
 
 	const bool shadow = context.pass == MeshPass::csmShadowDepth;
+	const bool prepass = context.pass == MeshPass::depthPrepass;
 	for( Layer& layer : m_layers )
 	{
 		const float margin = layer.pass->populateParams().sizeMultiplier * m_shadowLength;
@@ -156,6 +166,7 @@ void Scatterer::renderCustom( const RenderContext& context )
 				continue;	// LOD не попадает в кольцо слоя
 
 			const MaterialRenderState state = lod.material->renderState( lod.block->params );
+			const bool prepassed = inDepthPrepass( lod );
 			if( shadow )
 			{
 				// Инстансы LOD — на расстояниях near…far от камеры; тень от них ложится не дальше её длины. Каскад,
@@ -164,14 +175,20 @@ void Scatterer::renderCustom( const RenderContext& context )
 					context.view.cascadeFar <= lod.nearDistance - margin )
 					continue;
 			}
-			else if( passFor( state.blendMode ) != context.pass )
+			else if( prepass ? !prepassed : passFor( state.blendMode ) != context.pass )
 			{
 				continue;
 			}
+			// Слой, которого не было в depth prepass, в проходе цвета пишет глубину сам
+			std::optional<ScopedRenderState> ownDepth;
+			if( context.depthFromPrepass && !prepassed )
+				ownDepth.emplace( DepthState::enabled );
 			DMD3D::instance().setState( materialRasterState( state.twoSided, false, context.frameRaster ) );
 
 			DMShader* shader = lod.material;
-			shader->setPass( shadow ? shader->depthPhaseFor( lod.block->params ) : shader->phaseFor( lod.block->params ) );
+			// После depth prepass Masked не отсекает по альфе: маска уже в глубине, проверка EQUAL
+			shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( lod.block->params ) :
+							 shader->phaseFor( lod.block->params, false, context.depthFromPrepass && prepassed ) );
 			shader->setParams( lod.block->params );
 			shader->setDrawType( DMShader::by_index );
 

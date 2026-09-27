@@ -83,7 +83,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	RET_FALSE( m_scene.loadResources( m_library, m_config.levelName() ) );
 
 	// Создаем общий буфер вершин и индексов
-	RET_FALSE( m_renderer.initialize( m_scene.level().postProcess, m_config.shadowMapResolution() ) );
+	RET_FALSE( m_renderer.initialize( m_scene.level().postProcess, m_config.shadowMapResolution(), m_config.depthPrepass() ) );
 
 	LOG( "Create main camera" )
 	// Основная камера: ближняя и дальняя плоскости — ScreenNear / ScreenDepth в settings.ini (от дальней зависят сфера
@@ -109,6 +109,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	}
 	m_GUI.addPropertyWatching( m_renderer.postProcessProperties() );
 	m_GUI.addPropertyWatching( m_renderer.shadowProperties() );
+	m_GUI.addPropertyWatching( m_renderer.properties() );
 	m_GUI.addPropertyWatching( m_scene.lights().properties() );
 	// Правки света, неба, теней и постобработки — в строки уровня (LevelLights, SkyAtmosphere, PostProcessSettings)
 	m_GUI.addAction( "Save level environment", [this]

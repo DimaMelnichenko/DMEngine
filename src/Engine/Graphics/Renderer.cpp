@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
+#include <optional>
 #include "Scene.h"
 #include "Pipeline.h"
 #include "GUI\GUI.h"
@@ -23,6 +25,24 @@ bool sameMesh( const MeshBatch& a, const MeshBatch& b )
 	return a.material == b.material && a.params == b.params && a.indexOffset == b.indexOffset &&
 		   a.vertexOffset == b.vertexOffset && a.indexCount == b.indexCount && a.state.blendMode == b.state.blendMode &&
 		   a.state.twoSided == b.state.twoSided && a.mirrored == b.mirrored;
+}
+
+// Рисуется ли меш в depth prepass: непрозрачный или Masked с вариантом материала «только глубина». Остальные
+// непрозрачные (материалы без варианта глубины) в проходе цвета пишут глубину сами
+bool inDepthPrepass( const MeshBatch& batch )
+{
+	return batch.state.blendMode != BlendMode::translucent && batch.material->depthPhaseFor( *batch.params ) >= 0;
+}
+
+// Ключ непрозрачной команды: объекты в порядке сцены, внутри — материал, вариант шейдера, растеризатор; группа (меш
+// с параметрами) последней — одинаковые меши встают подряд для инстансного вызова
+uint64_t opaqueKey( const MeshBatch& batch, int phase )
+{
+	const uint64_t raster = static_cast<uint64_t>( materialRasterState( batch.state.twoSided, batch.mirrored,
+																	   RasterState::solid ) ) & 0xF;
+	return ( static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56 ) |
+		   ( static_cast<uint64_t>( batch.materialId & 0xFFFF ) << 40 ) |
+		   ( ( static_cast<uint64_t>( phase ) & 0xF ) << 36 ) | ( raster << 32 ) | batch.instanceGroup;
 }
 
 // Ключ прозрачной команды: дальние раньше, при равном расстоянии — порядок объектов сцены и номер
@@ -53,8 +73,11 @@ void Renderer::measure( const std::string& counterName, Func&& func )
 	m_gui.addCounterInfo( counterName + " = %.3f ms", std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
 }
 
-bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution )
+bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution, bool depthPrepass )
 {
+	m_properties.setName( "Renderer" );
+	m_properties.insert( "Depth prepass", depthPrepass );
+
 	if( !m_vertexPool.prepareMeshes() )
 		return false;
 
@@ -91,9 +114,10 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		}
 	} );
 
+	const bool depthPrepass = m_properties["Depth prepass"].data<bool>();
 	const auto collectStart = std::chrono::high_resolution_clock::now();
 	collect( scene, frame.view, m_collector );
-	buildCommands();
+	buildCommands( depthPrepass );
 	const auto collectEnd = std::chrono::high_resolution_clock::now();
 	m_gui.addCounterInfo( "Collect meshes = %.3f ms",
 						  std::chrono::duration_cast<std::chrono::microseconds>( collectEnd - collectStart ).count() / 1000.0f );
@@ -108,7 +132,18 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	const RasterState frameRaster = wireframe ? RasterState::wireframe : RasterState::solid;
 	ScopedRenderState frameState( frameRaster );
 
-	executePass( MeshPass::opaque, frame.view, frameRaster );
+	if( depthPrepass )
+	{
+		// Сначала только глубина непрозрачных: проход цвета освещает каждый пиксель один раз — ближайшую поверхность
+		ScopedRenderState prepassState( DepthState::enabled );
+		executePass( MeshPass::depthPrepass, frame.view, frameRaster );
+	}
+
+	{
+		// После prepass — проверка на равенство без записи (как CF_Equal базового прохода UE при полном prepass)
+		ScopedRenderState opaqueState( depthPrepass ? DepthState::readOnlyEqual : DepthState::enabled );
+		executePass( MeshPass::opaque, frame.view, frameRaster, depthPrepass );
+	}
 
 	{
 		// Небо после непрозрачных: пиксели, закрытые сценой, отбрасывает ранняя проверка глубины
@@ -214,6 +249,11 @@ PropertyContainer* Renderer::shadowProperties()
 	return m_shadows.properties();
 }
 
+PropertyContainer* Renderer::properties()
+{
+	return &m_properties;
+}
+
 PostProcess::Settings Renderer::postProcessSettings()
 {
 	return m_postProcess.settings();
@@ -247,7 +287,7 @@ void Renderer::collect( Scene& scene, const RenderView& view, MeshCollector& col
 	}
 }
 
-void Renderer::buildCommands()
+void Renderer::buildCommands( bool depthPrepass )
 {
 	for( auto& commands : m_commands )
 		commands.clear();
@@ -264,13 +304,13 @@ void Renderer::buildCommands()
 		}
 		else
 		{
-			const uint64_t phase = static_cast<uint64_t>( batch.material->phaseFor( *batch.params ) ) & 0xF;
-			const uint64_t raster = static_cast<uint64_t>( materialRasterState( batch.state.twoSided, batch.mirrored,
-																			   RasterState::solid ) ) & 0xF;
-			// Группа (меш с параметрами) последней: одинаковые меши встают подряд — для инстансного вызова
-			key = ( static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56 ) |
-				  ( static_cast<uint64_t>( batch.materialId & 0xFFFF ) << 40 ) | ( phase << 36 ) | ( raster << 32 ) |
-				  batch.instanceGroup;
+			const bool prepass = depthPrepass && inDepthPrepass( batch );
+			key = opaqueKey( batch, batch.material->phaseFor( *batch.params, false, prepass ) );
+			if( prepass )
+			{
+				const uint32_t prepassIndex = static_cast<uint32_t>( MeshPass::depthPrepass );
+				m_commands[prepassIndex].push_back( { opaqueKey( batch, batch.material->depthPhaseFor( *batch.params ) ), i, false } );
+			}
 		}
 		m_commands[static_cast<uint32_t>( pass )].push_back( { key, i, false } );
 	}
@@ -281,7 +321,8 @@ void Renderer::buildCommands()
 		const CustomBatch& batch = customs[i];
 		for( uint32_t pass = 0; pass < scenePassCount; ++pass )
 		{
-			if( !( batch.passMask & passBit( static_cast<MeshPass>( pass ) ) ) )
+			if( !( batch.passMask & passBit( static_cast<MeshPass>( pass ) ) ) ||
+				( static_cast<MeshPass>( pass ) == MeshPass::depthPrepass && !depthPrepass ) )
 				continue;
 			const uint64_t key = static_cast<MeshPass>( pass ) == MeshPass::transparent ?
 								 transparentKey( batch.distance, batch.ownerOrder, static_cast<uint32_t>( meshes.size() ) + i ) :
@@ -361,18 +402,24 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 						  std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
 }
 
-void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState frameRaster )
+void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState frameRaster, bool depthFromPrepass )
 {
 	// Проход не полагается на состояние, оставленное прошлым: своя цель, область вывода, без чужих ресурсов.
-	// Глубину и блендинг задаёт ScopedRenderState кадра и прохода, растеризатор команд восстанавливается после прохода
-	DMD3D::instance().setSceneTarget();
+	// Глубину и блендинг задаёт ScopedRenderState кадра и прохода, растеризатор команд восстанавливается после прохода.
+	// Depth prepass — без цели цвета: только буфер глубины сцены
+	if( pass == MeshPass::depthPrepass )
+		DMD3D::instance().setSceneDepthTarget();
+	else
+		DMD3D::instance().setSceneTarget();
 	DMD3D::instance().unbindTransientResources();
 	ScopedRenderState passState;
 
-	static const char* const passNames[] = { "Pass opaque", "Pass sky", "Pass transparent" };
+	static const char* const passNames[] = { "Pass depth prepass", "Pass opaque", "Pass sky", "Pass transparent" };
+	static_assert( std::size( passNames ) == scenePassCount );
 	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
-	const RenderContext context{ view, pass, frameRaster, pipeline().shaderConstant(), m_vertexPool };
-	executeCommands( m_collector, m_commands[static_cast<uint32_t>( pass )], context, true );
+	const RenderContext context{ view, pass, frameRaster, pipeline().shaderConstant(), m_vertexPool, depthFromPrepass };
+	// Depth prepass — одной областью, как тени: строки объектов в «Statistic» и «GPU average» — их проходы цвета
+	executeCommands( m_collector, m_commands[static_cast<uint32_t>( pass )], context, pass != MeshPass::depthPrepass );
 	m_gpuProfiler.endScope();
 }
 
@@ -405,6 +452,13 @@ void Renderer::executeCommands( const MeshCollector& collector, const std::vecto
 					m_vertexPool.setBuffers();
 					poolBound = true;
 				}
+				// Меш или свой вызов, которого не было в depth prepass, в проходе цвета пишет глубину сам
+				const bool prepassed = commands[i].custom ?
+									   ( customs[commands[i].index].passMask & passBit( MeshPass::depthPrepass ) ) != 0 :
+									   inDepthPrepass( meshes[commands[i].index] );
+				std::optional<ScopedRenderState> ownDepth;
+				if( context.depthFromPrepass && !prepassed )
+					ownDepth.emplace( DepthState::enabled );
 				if( commands[i].custom )
 				{
 					customs[commands[i].index].owner->renderCustom( context );
@@ -441,10 +495,10 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 								  size_t first, size_t last, const RenderContext& context )
 {
 	const MeshBatch& batch = meshes[commands[first].index];
-	const bool shadow = context.pass == MeshPass::csmShadowDepth;
 	DMShader* shader = batch.material;
 	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	shader->setPass( shadow ? shader->depthPhaseFor( *batch.params, true ) : shader->phaseFor( *batch.params, true ) );
+	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, true ) :
+					 shader->phaseFor( *batch.params, true, context.depthFromPrepass && inDepthPrepass( batch ) ) );
 	shader->setParams( *batch.params );
 
 	for( size_t chunk = first; chunk <= last; chunk += maxInstancesPerDraw )
@@ -460,23 +514,36 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 		m_instanceBuffer.updateData( m_instanceTransforms.data(), count * sizeof( InstanceTransform ) );
 		m_instanceBuffer.setToSlot( SLOT_INSTANCE_DATA, SRVType::vs );
 		shader->renderInstanced( batch.indexCount, batch.vertexOffset, batch.indexOffset, static_cast<int>( count ) );
-		( shadow ? m_shadowDraws : m_meshDraws )++;
+		countMeshes( context.pass, 0, 1 );
 	}
-	( shadow ? m_shadowMeshCount : m_meshCount ) += static_cast<uint32_t>( last - first + 1 );
+	countMeshes( context.pass, static_cast<uint32_t>( last - first + 1 ), 0 );
 }
 
 void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
 {
-	const bool shadow = context.pass == MeshPass::csmShadowDepth;
 	DMShader* shader = batch.material;
 	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	shader->setPass( shadow ? shader->depthPhaseFor( *batch.params, false ) : shader->phaseFor( *batch.params ) );
+	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, false ) :
+					 shader->phaseFor( *batch.params, false, context.depthFromPrepass && inDepthPrepass( batch ) ) );
 	shader->setParams( *batch.params );
 	shader->setDrawType( DMShader::by_index );
 	context.constants.setPerObjectBuffer( batch.world );
 	shader->render( batch.indexCount, batch.vertexOffset, batch.indexOffset );
-	( shadow ? m_shadowMeshCount : m_meshCount )++;
-	( shadow ? m_shadowDraws : m_meshDraws )++;
+	countMeshes( context.pass, 1, 1 );
+}
+
+void Renderer::countMeshes( MeshPass pass, uint32_t meshes, uint32_t draws )
+{
+	if( pass == MeshPass::csmShadowDepth )
+	{
+		m_shadowMeshCount += meshes;
+		m_shadowDraws += draws;
+	}
+	else if( pass != MeshPass::depthPrepass )
+	{
+		m_meshCount += meshes;
+		m_meshDraws += draws;
+	}
 }
 
 }

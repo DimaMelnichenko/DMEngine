@@ -29,6 +29,8 @@ public:
 	uint16_t MSAACount() const{ return m_MSAACount; }
 	// Размер среза каскадной карты теней, текселей (ShadowMapResolution) — настройка качества, а не данные уровня
 	uint32_t shadowMapResolution() const	{ return m_shadowMapResolution; }
+	// Depth prepass (DepthPrepass, как r.EarlyZPass в UE): глубина непрозрачных до прохода цвета. Нет строки — включён
+	bool depthPrepass() const				{ return m_depthPrepass; }
 	// Стартовая камера: положение и поворот (тангаж, рыскание) в градусах, секция [Camera]
 	const XMFLOAT3& cameraPosition() const	{ return m_cameraPosition; }
 	const XMFLOAT2& cameraRotation() const	{ return m_cameraRotation; }
@@ -50,6 +52,7 @@ private:
 	float m_backBufferHeight = 1080.0f;
 	uint16_t m_MSAACount = 0;
 	uint32_t m_shadowMapResolution = 2048;
+	bool m_depthPrepass = true;
 	XMFLOAT3 m_cameraPosition = XMFLOAT3( 0.0f, 0.0f, -1.0f );
 	XMFLOAT2 m_cameraRotation = XMFLOAT2( 0.0f, 0.0f );
 	std::string m_levelName;

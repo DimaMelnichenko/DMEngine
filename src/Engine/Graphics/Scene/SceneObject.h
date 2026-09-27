@@ -29,6 +29,9 @@ struct RenderContext
 	RasterState frameRaster;
 	ConstantBuffers& constants;
 	VertexPool& vertexPool;
+	// Глубина вида уже записана depth prepass: непрозрачные проверяют её на равенство без записи, и Masked в проходе
+	// цвета не отсекает по альфе — маска уже в глубине (вариант phaseFor( …, maskedInDepthPrepass ))
+	bool depthFromPrepass = false;
 };
 
 // Общий интерфейс объектов сцены. Scene вызывает update() на CPU, Renderer — compute() до отрисовки,

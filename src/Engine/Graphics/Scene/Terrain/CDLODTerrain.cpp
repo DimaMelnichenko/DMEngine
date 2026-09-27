@@ -329,7 +329,7 @@ void CDLODTerrain::collectMeshes( const RenderView& view, MeshCollector& collect
 	}
 
 	if( !patches.empty() )
-		collector.addCustom( passBit( MeshPass::opaque ) | passBit( MeshPass::csmShadowDepth ) );
+		collector.addCustom( passBit( MeshPass::depthPrepass ) | passBit( MeshPass::opaque ) | passBit( MeshPass::csmShadowDepth ) );
 }
 
 bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t x, uint32_t z,
@@ -382,12 +382,13 @@ void CDLODTerrain::addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t qu
 
 void CDLODTerrain::renderCustom( const RenderContext& context )
 {
-	// В проходе теней — только глубина: без каркаса, раскраски LOD, материала и ресурсов пиксельного шейдера
-	const bool shadow = context.pass == MeshPass::csmShadowDepth;
+	// В проходах только глубины (тени, depth prepass) — без раскраски LOD, материала и ресурсов пиксельного шейдера.
+	// Каркас террейна — и в prepass: иначе сплошная глубина закрыла бы то, что видно сквозь каркас
+	const bool depthOnly = isDepthOnlyPass( context.pass );
 	std::vector<PatchInstance>& patches = m_patches[context.view.index];
 
 	ScopedRenderState terrainState;
-	if( !shadow && m_properties["Wireframe"].data<bool>() )
+	if( context.pass != MeshPass::csmShadowDepth && m_properties["Wireframe"].data<bool>() )
 	{
 		DMD3D::instance().setState( RasterState::wireframe );
 	}
@@ -410,7 +411,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	m_patchBuffer.setToSlot( 1, SRVType::vs );
 
 	DMD3D::instance().setSRV( SRVType::vs, 0, m_heightMap );
-	if( !shadow )
+	if( !depthOnly )
 	{
 		// Карта высот нужна и пиксельному шейдеру: по ней считается нормаль рельефа
 		DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_constantBuffer );
@@ -427,7 +428,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_patch.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
 	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
 
-	m_shader.setPass( shadow ? m_depthPhase : m_properties["Show LOD"].data<bool>() ? m_lodPhase : m_materialPhase );
+	m_shader.setPass( depthOnly ? m_depthPhase : m_properties["Show LOD"].data<bool>() ? m_lodPhase : m_materialPhase );
 	m_shader.renderInstanced( m_patch.indexCount(), 0, 0, static_cast<int>( patches.size() ) );
 }
 

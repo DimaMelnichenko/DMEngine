@@ -21,7 +21,8 @@ class Scene;
 
 // Отправляет на GPU кадр сцены: общие данные конвейера, compute-проходы объектов, сбор мешей с вида
 // (MeshBatch — меш с материалом и матрицей, CustomBatch — свой вызов объекта), раскладка по проходам с сортировкой
-// и проходы opaque → sky → transparent в HDR-буфер, затем постобработка (экспозиция, тонмаппинг) в задний буфер.
+// и проходы depth prepass → opaque → sky → transparent в HDR-буфер, затем постобработка (экспозиция, тонмаппинг) в
+// задний буфер.
 // Проходами и видами владеет рендерер, как mesh draw commands в UE: объекты не знают, в каком проходе рисуются их меши.
 // Время CPU и GPU каждого объекта и прохода выводится в GUI, проходы подписаны метками событий для RenderDoc / PIX
 class Renderer
@@ -30,14 +31,16 @@ public:
 	explicit Renderer( GUI& gui );
 
 	// Вызывается после загрузки мешей: собирает общий буфер вершин и индексов
-	// Уровень уже прочитан (Scene::loadResources): постобработка — его настройки; shadowResolution — размер карты теней
-	bool initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution );
+	// Уровень уже прочитан (Scene::loadResources): постобработка — его настройки; shadowResolution — размер карты теней,
+	// depthPrepass — начальное значение флажка «Depth prepass» (DepthPrepass в settings.ini)
+	bool initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution, bool depthPrepass );
 
 	// Рисует сцену в HDR-буфер и тонмаппинг в задний буфер; дальше DMGraphics рисует GUI и вызывает EndScene
 	void render( Scene& scene, const FrameContext& frame, bool wireframe );
-	// Свойства постобработки и теней для GUI
+	// Свойства постобработки и теней для GUI; properties — окно «Renderer»: проходы кадра («Depth prepass»)
 	PropertyContainer* postProcessProperties();
 	PropertyContainer* shadowProperties();
+	PropertyContainer* properties();
 	// Текущие настройки постобработки — для сохранения уровня
 	PostProcess::Settings postProcessSettings();
 
@@ -47,14 +50,16 @@ private:
 	void preparePipeline( Scene& scene, const FrameContext& frame );
 	// Меши и свои вызовы видимых объектов с вида
 	void collect( Scene& scene, const RenderView& view, MeshCollector& collector );
-	// Раскладка собранного с главного вида по проходам сцены: меши — по режиму материала, свои вызовы — по маске
-	void buildCommands();
+	// Раскладка собранного с главного вида по проходам сцены: меши — по режиму материала, свои вызовы — по маске;
+	// с depthPrepass непрозрачные и Masked с вариантом «только глубина» — ещё и в depth prepass
+	void buildCommands( bool depthPrepass );
 	// Раскладка для прохода глубины тени: меши, отбрасывающие тень (материал с вариантом «только глубина», не
 	// полупрозрачные), и свои вызовы с битом прохода
 	void buildShadowCommands();
 	// Каскады теней солнца — до проходов сцены: на каждый каскад сбор с его вида и глубина в срез карты
 	void renderShadows( Scene& scene, const FrameContext& frame );
-	void executePass( MeshPass pass, const RenderView& view, RasterState frameRaster );
+	// depthFromPrepass — глубина вида уже записана depth prepass (RenderContext::depthFromPrepass)
+	void executePass( MeshPass pass, const RenderView& view, RasterState frameRaster, bool depthFromPrepass = false );
 	// Команды прохода сериями по объектам; measureOwners — строка времени CPU и GPU на каждую серию
 	void executeCommands( const MeshCollector& collector, const std::vector<DrawCommand>& commands,
 						  const RenderContext& context, bool measureOwners );
@@ -64,6 +69,8 @@ private:
 	// Команды first…last — один меш с одними параметрами: одним DrawIndexedInstanced с матрицами экземпляров в буфере
 	void drawMeshInstanced( const std::vector<MeshBatch>& meshes, const std::vector<DrawCommand>& commands,
 							size_t first, size_t last, const RenderContext& context );
+	// Счётчики мешей и вызовов кадра: проход теней — свои, depth prepass не считается
+	void countMeshes( MeshPass pass, uint32_t meshes, uint32_t draws );
 
 	// Время CPU на отправку команд и область GPU-профайлера с тем же именем
 	template<typename Func>
@@ -73,6 +80,7 @@ private:
 private:
 	GUI& m_gui;
 	VertexPool m_vertexPool;
+	PropertyContainer m_properties;
 
 	// Команда прохода — батч и ключ сортировки (как FMeshDrawCommand в UE). Непрозрачные: объекты в порядке сцены,
 	// внутри объекта — по материалу, варианту шейдера, растеризатору и мешу; прозрачные — от дальних к ближним

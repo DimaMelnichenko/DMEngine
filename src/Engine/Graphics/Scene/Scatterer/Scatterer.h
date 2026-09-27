@@ -81,6 +81,8 @@ private:
 
 	// LOD слоя отбрасывает тень: флаг слоя и вариант материала «только глубина»
 	bool castsShadow( const Layer& layer, const LayerLod& lod ) const;
+	// LOD слоя рисуется в depth prepass: непрозрачный или Masked с вариантом «только глубина»
+	bool inDepthPrepass( const LayerLod& lod ) const;
 
 	// Больше потоков на слой не запускаем: при мелком шаге сетка покроет не всё кольцо, а только его середину
 	static constexpr uint16_t maxGridDim = 1024;

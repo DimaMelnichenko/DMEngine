@@ -31,6 +31,7 @@ enum class DepthState
 	enabled,			// проверка и запись
 	readOnly,			// только проверка: полупрозрачные
 	readOnlyNearOrEqual,	// проверка «ближе или равно» без записи: фон на дальней плоскости (небо) — где ничего нет
+	readOnlyEqual,		// проверка «равно» без записи: непрозрачные после depth prepass — освещается только ближайшая поверхность
 	disabled
 };
 
@@ -104,6 +105,7 @@ public:
 	void BeginScene( float, float, float, float );
 	// Цели рендера с областью вывода по их размеру. Проход ставит свою цель сам, а не полагается на оставленную
 	void setSceneTarget();		// HDR-буфер сцены и буфер глубины, область вывода на весь кадр
+	void setSceneDepthTarget();	// только буфер глубины сцены (depth prepass), область вывода на весь кадр
 	void setBackBufferTarget();	// задний буфер без глубины
 	void setRenderTarget( ID3D11RenderTargetView* target, uint32_t width, uint32_t height );	// без глубины
 	// Размер буфера сцены (и заднего буфера), пиксели
@@ -172,6 +174,7 @@ private:
 	com_unique_ptr<ID3D11DepthStencilState> m_depthDisabledStencilState;
 	com_unique_ptr<ID3D11DepthStencilState> m_depthReadOnlyStencilState;
 	com_unique_ptr<ID3D11DepthStencilState> m_depthReadOnlyNearOrEqualStencilState;
+	com_unique_ptr<ID3D11DepthStencilState> m_depthReadOnlyEqualStencilState;
 	com_unique_ptr<ID3D11DepthStencilView> m_depthStencilView;
 
 	com_unique_ptr<ID3D11RasterizerState> m_rasterState;

@@ -37,13 +37,17 @@ public:
 	// проход и отсечение граней. По умолчанию — непрозрачный односторонний
 	virtual MaterialRenderState renderState( const PropertyContainer& params ) const { return {}; }
 	// Фаза (набор шейдеров) для этих параметров — например, вариант с отсечением по альфе; instanced — вариант
-	// вершинного шейдера с матрицами экземпляров из буфера (INST_MATRIX). Рисуют так:
-	// setPass( phaseFor( params ) ), затем setParams( params )
-	virtual int phaseFor( const PropertyContainer& params, bool instanced = false ) const { return 0; }
+	// вершинного шейдера с матрицами экземпляров из буфера (INST_MATRIX); maskedInDepthPrepass — отсечение по альфе уже
+	// сделал depth prepass, проход цвета с проверкой глубины EQUAL берёт вариант без clip (как
+	// r.EarlyZPassOnlyMaterialMasking в UE). Рисуют так: setPass( phaseFor( params ) ), затем setParams( params )
+	virtual int phaseFor( const PropertyContainer& params, bool instanced = false, bool maskedInDepthPrepass = false ) const
+	{
+		return 0;
+	}
 	// Есть ли вариант для инстансинга моделей: иначе одинаковые меши рисуются по одному
 	virtual bool supportsInstancing() const { return false; }
-	// Фаза «только глубина» для прохода теней (без пиксельного шейдера или только с отсечением по альфе) или −1:
-	// материал тень не отбрасывает
+	// Фаза «только глубина» для теней и depth prepass (без пиксельного шейдера или только с отсечением по альфе) или −1:
+	// материал тень не отбрасывает и в prepass не рисуется
 	virtual int depthPhaseFor( const PropertyContainer& params, bool instanced = false ) const { return -1; }
 
 public:

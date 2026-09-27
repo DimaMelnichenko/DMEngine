@@ -466,6 +466,17 @@ bool DMD3D::createDepthStencilBufferAndView()
 
 	m_depthReadOnlyNearOrEqualStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
 
+	// Непрозрачные после depth prepass: проходит только поверхность, чья глубина и записана (вариант «только глубина»
+	// считает позицию так же, до бита)
+	depthStencilDesc.DepthFunc = D3D11_COMPARISON_EQUAL;
+	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
+	if( FAILED( result ) )
+	{
+		return false;
+	}
+
+	m_depthReadOnlyEqualStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
+
 	// Set the depth stencil state.
 	m_deviceContext->OMSetDepthStencilState( m_depthStencilState.get(), 1 );
 
@@ -694,6 +705,7 @@ void DMD3D::setState( DepthState state )
 	ID3D11DepthStencilState* depthState = state == DepthState::enabled ? m_depthStencilState.get() :
 										  state == DepthState::readOnly ? m_depthReadOnlyStencilState.get() :
 										  state == DepthState::readOnlyNearOrEqual ? m_depthReadOnlyNearOrEqualStencilState.get() :
+										  state == DepthState::readOnlyEqual ? m_depthReadOnlyEqualStencilState.get() :
 										  m_depthDisabledStencilState.get();
 	m_deviceContext->OMSetDepthStencilState( depthState, 1 );
 
@@ -749,6 +761,12 @@ void DMD3D::setSceneTarget()
 {
 	ID3D11RenderTargetView* rtv = m_sceneRTV.get();
 	m_deviceContext->OMSetRenderTargets( 1, &rtv, m_depthStencilView.get() );
+	m_deviceContext->RSSetViewports( 1, &m_viewport );
+}
+
+void DMD3D::setSceneDepthTarget()
+{
+	m_deviceContext->OMSetRenderTargets( 0, nullptr, m_depthStencilView.get() );
 	m_deviceContext->RSSetViewports( 1, &m_viewport );
 }
 

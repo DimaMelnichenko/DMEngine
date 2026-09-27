@@ -20,7 +20,7 @@ public:
 	~PBRMaterial();
 	void setParams( const PropertyContainer& ) override;
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
-	int phaseFor( const PropertyContainer& params, bool instanced = false ) const override;
+	int phaseFor( const PropertyContainer& params, bool instanced = false, bool maskedInDepthPrepass = false ) const override;
 	bool supportsInstancing() const override;
 	int depthPhaseFor( const PropertyContainer& params, bool instanced = false ) const override;
 

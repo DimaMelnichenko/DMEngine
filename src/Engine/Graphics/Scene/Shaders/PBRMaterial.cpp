@@ -176,9 +176,10 @@ MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) 
 	return state;
 }
 
-int PBRMaterial::phaseFor( const PropertyContainer& params, bool instanced ) const
+int PBRMaterial::phaseFor( const PropertyContainer& params, bool instanced, bool maskedInDepthPrepass ) const
 {
-	return m_colorPhases[instanced ? 1 : 0][renderState( params ).blendMode == BlendMode::masked ? 1 : 0];
+	const bool clipAlpha = renderState( params ).blendMode == BlendMode::masked && !maskedInDepthPrepass;
+	return m_colorPhases[instanced ? 1 : 0][clipAlpha ? 1 : 0];
 }
 
 bool PBRMaterial::supportsInstancing() const
