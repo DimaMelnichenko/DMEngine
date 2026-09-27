@@ -1,4 +1,5 @@
 #include "TerrainMaterial.h"
+#include <algorithm>
 #include <cstring>
 #include <DirectXTex.h>
 #include "System.h"
@@ -121,10 +122,52 @@ bool createArraySRV( const ScratchImage& layers, com_unique_ptr<ID3D11ShaderReso
 	return true;
 }
 
+// Массив из готовых мипов файлов слоёв (Tools/pack_terrain_layer.py и генератор пишут полную цепочку): у всех слоёв
+// один размер, R8G8B8A8 и полная цепочка — без GenerateMipMaps, которые на CPU стоят секунды (в Debug — ещё больше)
+bool buildArrayFromFileMips( const std::vector<std::string>& files, bool srgb, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+{
+	std::vector<ScratchImage> images( files.size() );
+	for( size_t i = 0; i < files.size(); ++i )
+	{
+		TextureLoader loader;
+		if( files[i].empty() || !loader.loadFromFile( ( GS::System::textures().path() + "\\" + files[i] ).c_str(), images[i] ) )
+			return false;
+		const TexMetadata& meta = images[i].GetMetadata();
+		const TexMetadata& first = images[0].GetMetadata();
+		size_t fullChain = 1;
+		for( size_t size = std::max( meta.width, meta.height ); size > 1; size /= 2 )
+			++fullChain;
+		const bool rgba8 = meta.format == DXGI_FORMAT_R8G8B8A8_UNORM || meta.format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+		if( !rgba8 || meta.arraySize != 1 || meta.mipLevels != fullChain || meta.width != first.width ||
+			meta.height != first.height )
+			return false;
+	}
+
+	const TexMetadata& meta = images[0].GetMetadata();
+	ScratchImage layers;
+	if( FAILED( layers.Initialize2D( srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM, meta.width,
+									 meta.height, files.size(), meta.mipLevels ) ) )
+		return false;
+	for( size_t i = 0; i < files.size(); ++i )
+	{
+		for( size_t mip = 0; mip < meta.mipLevels; ++mip )
+		{
+			const Image& source = *images[i].GetImage( mip, 0, 0 );
+			const Image& target = *layers.GetImage( mip, i, 0 );
+			for( size_t y = 0; y < source.height; ++y )
+				std::memcpy( target.pixels + y * target.rowPitch, source.pixels + y * source.rowPitch, source.width * 4 );
+		}
+	}
+	return createArraySRV( layers, srv );
+}
+
 // Массив текстур из файлов слоёв; пустое имя — слой не описан. srgb — RGB в sRGB (альбедо): массив R8G8B8A8_UNORM_SRGB,
 // выборка возвращает линейный цвет, мипы фильтруются в линейном; альфа (высота) остаётся линейной
 bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool srgb, com_unique_ptr<ID3D11ShaderResourceView>& srv )
 {
+	if( buildArrayFromFileMips( files, srgb, srv ) )
+		return true;
+
 	std::vector<ScratchImage> images( files.size() );
 	std::vector<bool> loaded( files.size(), false );
 	size_t width = 0;

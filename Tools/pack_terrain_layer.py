@@ -4,6 +4,7 @@
 #                      растянутая на 0…1 по 1-му и 99-му процентилю (у разных материалов разный разброс disp-карт);
 #   <имя>_normal.dds — RGB нормаль в соглашении DirectX (у карты OpenGL — nor_gl — зелёный канал переворачивается),
 #                      A — шероховатость.
+# Файлы — с полной цепочкой мипов (альбедо фильтруется в линейном): движок не строит их при загрузке.
 # С --layer обновляет строку TerrainLayers террейна (имя, файлы, повтор в метрах). Картинки читает Blender (JPG, PNG,
 # EXR), поэтому запуск — через него, из корня проекта. Файл внутри архива — «архив.zip:путь внутри»:
 #   blender -b --factory-startup --python Tools/pack_terrain_layer.py -- --name leafy_grass
@@ -120,8 +121,9 @@ def main():
 
     albedo_path = os.path.join(LAYERS_DIR, args.name + '_albedo.dds')
     normal_path = os.path.join(LAYERS_DIR, args.name + '_normal.dds')
-    dds.write_rgba8(albedo_path, np.concatenate([albedo, height[..., None]], axis=-1), srgb=True)
-    dds.write_rgba8(normal_path, np.concatenate([normal, roughness[..., None]], axis=-1))
+    # С готовыми мипами: TerrainMaterial берёт их из файлов, а не строит при каждом запуске
+    dds.write_rgba8(albedo_path, np.concatenate([albedo, height[..., None]], axis=-1), srgb=True, mips=True)
+    dds.write_rgba8(normal_path, np.concatenate([normal, roughness[..., None]], axis=-1), mips=True)
 
     if args.layer is not None:
         # Пути в базе — от каталога текстур, как у остальных строк

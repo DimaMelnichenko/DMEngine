@@ -103,8 +103,8 @@ def write_layer(name, albedo, height, roughness, depth):
     # Цвет задан линейным, в файле — sRGB, как у фото (слои из фото — Tools/pack_terrain_layer.py)
     albedo_height = np.concatenate([dds.linear_to_srgb(albedo), height[..., None]], axis=-1)
     normal_roughness = np.concatenate([normals(height, depth) * 0.5 + 0.5, roughness[..., None]], axis=-1)
-    dds.write_rgba8(os.path.join(LAYERS_DIR, name + '_albedo.dds'), albedo_height, srgb=True)
-    dds.write_rgba8(os.path.join(LAYERS_DIR, name + '_normal.dds'), normal_roughness)
+    dds.write_rgba8(os.path.join(LAYERS_DIR, name + '_albedo.dds'), albedo_height, srgb=True, mips=True)
+    dds.write_rgba8(os.path.join(LAYERS_DIR, name + '_normal.dds'), normal_roughness, mips=True)
 
 
 def grass(rng):
