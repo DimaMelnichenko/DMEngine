@@ -30,7 +30,10 @@ public:
 	
 	void viewMatrix( XMMATRIX* ) const;
 
+	// Проекция с обратной глубиной (Reversed-Z): 1 у ближней плоскости, 0 у дальней
 	void projectionMatrix( XMMATRIX* ) const;
+	float nearPlane() const { return m_nearPlane; }
+	float farPlane() const { return m_farPlane; }
 	void viewDirection( XMFLOAT3* ) const;	
 
 	PropertyContainer m_properties;
@@ -44,6 +47,8 @@ private:
 	float m_rotationX, m_rotationY, m_rotationZ;
 	XMMATRIX m_viewMatrix, m_reflectionViewMatrix;
 	XMMATRIX m_projection_matrix;
+	float m_nearPlane = 0.1f;
+	float m_farPlane = 1000.0f;
 	XMFLOAT3 m_view_direction;
 	XMMATRIX m_mCameraWorld;
 	// Последнее положение мыши: в режиме курсора (I) камера сохраняет поворот

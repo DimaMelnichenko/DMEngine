@@ -30,7 +30,7 @@ enum class DepthState
 {
 	enabled,			// проверка и запись
 	readOnly,			// только проверка: полупрозрачные
-	readOnlyLessEqual,	// проверка «ближе или равно» без записи: фон на дальней плоскости (небо) — где ничего нет
+	readOnlyNearOrEqual,	// проверка «ближе или равно» без записи: фон на дальней плоскости (небо) — где ничего нет
 	disabled
 };
 
@@ -171,7 +171,7 @@ private:
 	com_unique_ptr<ID3D11DepthStencilState> m_depthStencilState;
 	com_unique_ptr<ID3D11DepthStencilState> m_depthDisabledStencilState;
 	com_unique_ptr<ID3D11DepthStencilState> m_depthReadOnlyStencilState;
-	com_unique_ptr<ID3D11DepthStencilState> m_depthReadOnlyLessEqualStencilState;
+	com_unique_ptr<ID3D11DepthStencilState> m_depthReadOnlyNearOrEqualStencilState;
 	com_unique_ptr<ID3D11DepthStencilView> m_depthStencilView;
 
 	com_unique_ptr<ID3D11RasterizerState> m_rasterState;

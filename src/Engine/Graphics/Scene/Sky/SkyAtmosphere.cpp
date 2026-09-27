@@ -277,7 +277,7 @@ void SkyAtmosphere::renderCustom( const RenderContext& )
 	setParameters( m_computedFor );
 	DMD3D::instance().setSRV( SRVType::ps, 0, m_skyCube.srv() );
 	// На дальней плоскости: только там, где сцена ничего не нарисовала
-	m_backgroundShader.draw( BlendState::opaque, DepthState::readOnlyLessEqual );
+	m_backgroundShader.draw( BlendState::opaque, DepthState::readOnlyNearOrEqual );
 }
 
 PropertyContainer* SkyAtmosphere::properties()

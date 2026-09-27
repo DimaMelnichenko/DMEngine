@@ -112,7 +112,7 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 
 	{
 		// Небо после непрозрачных: пиксели, закрытые сценой, отбрасывает ранняя проверка глубины
-		ScopedRenderState skyState( DepthState::readOnlyLessEqual );
+		ScopedRenderState skyState( DepthState::readOnlyNearOrEqual );
 		executePass( MeshPass::sky, frame.view, frameRaster );
 	}
 

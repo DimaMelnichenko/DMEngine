@@ -14,7 +14,7 @@ class FullscreenShader
 {
 public:
 	bool load( const std::string& pixelShader );
-	// depth = DepthState::readOnlyLessEqual — только там, где ничего не нарисовано (фон неба)
+	// depth = DepthState::readOnlyNearOrEqual — только там, где ничего не нарисовано (фон неба на глубине 0)
 	void draw( BlendState blend = BlendState::opaque, DepthState depth = DepthState::disabled );
 
 private:

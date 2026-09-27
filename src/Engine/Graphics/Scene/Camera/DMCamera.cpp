@@ -19,16 +19,19 @@ void DMCamera::Initialize( CameraType _type, float width, float height, float _n
 {
 	m_type = _type;
 
-	// Setup the projection matrix.
 	float screenAspect = (float)width / (float)height;
+	m_nearPlane = _near;
+	m_farPlane = depth;
 
+	// Reversed-Z, как в UE: ближняя и дальняя плоскости переставлены — глубина 1 у ближней, 0 у дальней. Вместе с буфером
+	// D32_FLOAT точность float и 1/z складываются, и шаг глубины почти не зависит от расстояния
 	switch( _type )
 	{
 		case DMCamera::CT_PERSPECTIVE:
-			m_projection_matrix = XMMatrixPerspectiveFovLH( fieldOfView, screenAspect, _near, depth );
+			m_projection_matrix = XMMatrixPerspectiveFovLH( fieldOfView, screenAspect, depth, _near );
 			break;
 		case DMCamera::CT_ORTHO:
-			m_projection_matrix = XMMatrixOrthographicLH( (float)width, (float)height, _near, depth );
+			m_projection_matrix = XMMatrixOrthographicLH( (float)width, (float)height, depth, _near );
 			break;
 		default:
 			break;

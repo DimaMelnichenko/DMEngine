@@ -64,14 +64,15 @@ bool ShadowCascades::createResources()
 		return false;
 	m_shaderView = make_com_ptr<ID3D11ShaderResourceView>( shaderView );
 
-	// Сравнение с билинейной выборкой — аппаратный PCF 2×2; за краем карты — «освещено»
+	// Сравнение с билинейной выборкой — аппаратный PCF 2×2. Глубина обратная: точка освещена, если она не дальше
+	// от света, чем записанная (≥); за краем карты — «освещено»: граница 0 — дальняя плоскость
 	D3D11_SAMPLER_DESC samplerDesc = {};
 	samplerDesc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
 	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
 	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
 	samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
-	samplerDesc.BorderColor[0] = samplerDesc.BorderColor[1] = samplerDesc.BorderColor[2] = samplerDesc.BorderColor[3] = 1.0f;
-	samplerDesc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
+	samplerDesc.BorderColor[0] = samplerDesc.BorderColor[1] = samplerDesc.BorderColor[2] = samplerDesc.BorderColor[3] = 0.0f;
+	samplerDesc.ComparisonFunc = D3D11_COMPARISON_GREATER_EQUAL;
 	samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
 	ID3D11SamplerState* sampler = nullptr;
 	if( FAILED( device->CreateSamplerState( &samplerDesc, &sampler ) ) )
@@ -103,13 +104,13 @@ bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSe
 			distance * i / cascadeCount;
 	}
 
-	// Угол обзора и ближняя плоскость — из проекции главного вида (LH: _11 = ctg(x/2), _22 = ctg(y/2), near = −_43 / _33)
+	// Угол обзора — из проекции главного вида (LH: _11 = ctg(x/2), _22 = ctg(y/2)), ближняя плоскость — из вида
 	XMFLOAT4X4 projection;
 	XMStoreFloat4x4( &projection, mainView.projection );
 	const float tanX = 1.0f / projection._11;
 	const float tanY = 1.0f / projection._22;
 	const float cornerK2 = tanX * tanX + tanY * tanY;
-	const float nearPlane = -projection._43 / projection._33;
+	const float nearPlane = mainView.nearPlane;
 
 	// Базис света: взгляд против направления на солнце, «верх» — по +Z (при солнце у этой оси — по +X); мировой верх
 	// не годится — при солнце в зените базис вырождается
@@ -161,12 +162,14 @@ bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSe
 
 		RenderView& view = m_views[cascade];
 		view.view = XMMatrixLookToLH( eye, forward, up );
-		view.projection = XMMatrixOrthographicLH( 2.0f * radius, 2.0f * radius, 0.0f, depthFar - depthNear );
+		// Обратная глубина, как у камеры: 1 у ближней к свету плоскости, 0 у дальней
+		view.projection = XMMatrixOrthographicLH( 2.0f * radius, 2.0f * radius, depthFar - depthNear, 0.0f );
 		view.viewProjection = XMMatrixMultiply( view.view, view.projection );
 		view.viewInverse = XMMatrixInverse( nullptr, view.view );
 		XMStoreFloat3( &view.position, eye );
 		XMStoreFloat3( &view.direction, forward );
 		view.lodOrigin = mainView.lodOrigin;	// LOD и морфинг — как у главного вида
+		view.nearPlane = 0.0f;
 		view.farPlane = depthFar - depthNear;
 		view.frustum = DMFrustum( view.viewProjection );
 		view.index = cascade + 1;
@@ -188,7 +191,8 @@ void ShadowCascades::unbindShadowMap()
 void ShadowCascades::beginCascade( uint32_t cascade )
 {
 	DMD3D::instance().setDepthTarget( m_depthViews[cascade].get(), m_resolution, m_resolution );
-	DMD3D::instance().GetDeviceContext()->ClearDepthStencilView( m_depthViews[cascade].get(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
+	// Обратная глубина: «пусто» — 0, дальше всего от света
+	DMD3D::instance().GetDeviceContext()->ClearDepthStencilView( m_depthViews[cascade].get(), D3D11_CLEAR_DEPTH, 0.0f, 0 );
 }
 
 void ShadowCascades::bindForReceivers( int sunLightIndex )

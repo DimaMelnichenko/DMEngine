@@ -380,7 +380,8 @@ bool DMD3D::createDepthStencilBufferAndView()
 	depthBufferDesc.Height = m_screenHeight;
 	depthBufferDesc.MipLevels = 1;
 	depthBufferDesc.ArraySize = 1;
-	depthBufferDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	// Reversed-Z: float-глубина, 1 у ближней плоскости (DMCamera); трафарет не используется
+	depthBufferDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	depthBufferDesc.SampleDesc.Count = m_MSAACount;
 	depthBufferDesc.SampleDesc.Quality = m_MSAACount > 1 ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
 	depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -405,9 +406,10 @@ bool DMD3D::createDepthStencilBufferAndView()
 	// Set up the description of the stencil state.
 	depthStencilDesc.DepthEnable = true;
 	depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-	depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
+	// Обратная глубина: ближе — больше
+	depthStencilDesc.DepthFunc = D3D11_COMPARISON_GREATER;
 
-	depthStencilDesc.StencilEnable = true;
+	depthStencilDesc.StencilEnable = false;
 	depthStencilDesc.StencilReadMask = 0xFF;
 	depthStencilDesc.StencilWriteMask = 0xFF;
 
@@ -454,15 +456,15 @@ bool DMD3D::createDepthStencilBufferAndView()
 
 	m_depthReadOnlyStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
 
-	// Фон на дальней плоскости: глубина 1 проходит там, где буфер глубины остался очищенным
-	depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+	// Фон на дальней плоскости: глубина 0 проходит там, где буфер глубины остался очищенным («ближе или равно»)
+	depthStencilDesc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
 	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
 	if( FAILED( result ) )
 	{
 		return false;
 	}
 
-	m_depthReadOnlyLessEqualStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
+	m_depthReadOnlyNearOrEqualStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
 
 	// Set the depth stencil state.
 	m_deviceContext->OMSetDepthStencilState( m_depthStencilState.get(), 1 );
@@ -473,7 +475,7 @@ bool DMD3D::createDepthStencilBufferAndView()
 	ZeroMemory( &depthStencilViewDesc, sizeof( depthStencilViewDesc ) );
 
 	// Set up the depth stencil view description.
-	depthStencilViewDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	depthStencilViewDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	if( m_MSAACount > 1 )
 		depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
 	else
@@ -691,7 +693,7 @@ void DMD3D::setState( DepthState state )
 {
 	ID3D11DepthStencilState* depthState = state == DepthState::enabled ? m_depthStencilState.get() :
 										  state == DepthState::readOnly ? m_depthReadOnlyStencilState.get() :
-										  state == DepthState::readOnlyLessEqual ? m_depthReadOnlyLessEqualStencilState.get() :
+										  state == DepthState::readOnlyNearOrEqual ? m_depthReadOnlyNearOrEqualStencilState.get() :
 										  m_depthDisabledStencilState.get();
 	m_deviceContext->OMSetDepthStencilState( depthState, 1 );
 
@@ -739,7 +741,8 @@ void DMD3D::BeginScene( float red, float green, float blue, float alpha )
 	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём
 	setSceneTarget();
 	m_deviceContext->ClearRenderTargetView( m_sceneRTV.get(), color );
-	m_deviceContext->ClearDepthStencilView( m_depthStencilView.get(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
+	// Обратная глубина: очищенный буфер — дальняя плоскость, 0
+	m_deviceContext->ClearDepthStencilView( m_depthStencilView.get(), D3D11_CLEAR_DEPTH, 0.0f, 0 );
 }
 
 void DMD3D::setSceneTarget()
@@ -774,14 +777,15 @@ void DMD3D::setDepthTarget( ID3D11DepthStencilView* target, uint32_t width, uint
 bool DMD3D::setShadowSlopeBias( float slopeBias )
 {
 	// Без отсечения граней: у рельефа (высотное поле) нет граней «к свету», тонкие панели и лепестки тоже отбрасывают
-	// тень. Постоянного смещения нет: у D32_FLOAT оно зависит от порядка числа. Без отсечения по глубине — объекты
-	// перед ближней плоскостью вида света прижимаются к ней, а не пропадают (pancaking)
+	// тень. Постоянного смещения нет: у D32_FLOAT оно зависит от порядка числа. Глубина обратная — смещение от света
+	// уменьшает её, поэтому знак минус. Без отсечения по глубине — объекты перед ближней плоскостью вида света
+	// прижимаются к ней, а не пропадают (pancaking)
 	D3D11_RASTERIZER_DESC desc = {};
 	desc.FillMode = D3D11_FILL_SOLID;
 	desc.CullMode = D3D11_CULL_NONE;
 	desc.DepthBias = 0;
-	desc.SlopeScaledDepthBias = slopeBias;
-	desc.DepthBiasClamp = 0.01f;
+	desc.SlopeScaledDepthBias = -slopeBias;
+	desc.DepthBiasClamp = -0.01f;
 	desc.DepthClipEnable = FALSE;
 	const bool active = m_renderState.raster == RasterState::csmShadowDepth;
 	if( !createRasterizerState( desc, m_rasterStateShadowDepth ) )

@@ -16,6 +16,7 @@ PixelInputType main( uint vertexId : SV_VertexID )
 	PixelInputType output;
 	// (0, 0), (2, 0), (0, 2) — по часовой стрелке на экране, v вниз, как у текстур Direct3D
 	output.uv = float2( ( vertexId << 1 ) & 2, vertexId & 2 );
-	output.position = float4( output.uv * float2( 2.0f, -2.0f ) + float2( -1.0f, 1.0f ), 1.0f, 1.0f );
+	// Глубина 0 — дальняя плоскость (Reversed-Z): фон неба проходит только там, где сцена ничего не нарисовала
+	output.position = float4( output.uv * float2( 2.0f, -2.0f ) + float2( -1.0f, 1.0f ), 0.0f, 1.0f );
 	return output;
 }

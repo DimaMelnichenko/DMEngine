@@ -5,8 +5,9 @@ DMFrustum::DMFrustum( const XMMATRIX& viewProjection )
 	XMFLOAT4X4 m;
 	XMStoreFloat4x4( &m, viewProjection );
 
-	// Плоскость — сумма или разность четвёртого столбца и столбца оси: right, left, bottom, top, far; ближняя —
-	// третий столбец (в Direct3D глубина от 0, а не от −1, как в OpenGL)
+	// Плоскость — сумма или разность четвёртого столбца и столбца оси: right, left, bottom, top, затем z ≤ w и z ≥ 0
+	// (в Direct3D глубина от 0, а не от −1, как в OpenGL). С обратной глубиной (Reversed-Z) z = w у ближней плоскости,
+	// а z = 0 у дальней: последние две — ближняя и дальняя; отсечению порядок не важен
 	const XMFLOAT4 planes[6] = {
 		{ m._14 - m._11, m._24 - m._21, m._34 - m._31, m._44 - m._41 },
 		{ m._14 + m._11, m._24 + m._21, m._34 + m._31, m._44 + m._41 },
