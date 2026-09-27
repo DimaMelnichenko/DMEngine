@@ -15,10 +15,11 @@ namespace GS
 {
 
 // Набор расстановки по террейну: трава, цветы, камешки, веточки (таблица ScatterSets). Слой набора — растение:
-// модель со всеми её LOD, маска плотности и параметры (таблица ScatterLayers). Каждый кадр compute-шейдер
-// Shaders\scatter.cs раскладывает инстансы слоя по сетке, привязанной к миру, в кольце вокруг камеры, отсекает их
-// по frustum и кладёт в список LOD по расстоянию (дальности LOD модели, как у моделей уровня); отрисовка — indirect
-// draw на LOD. Высоту и координаты масок даёт TerrainHeightSource, поэтому набор не зависит от устройства террейна.
+// одна или несколько моделей со всеми их LOD и весами (ScatterLayerModels, как Mesh Entries у Static Mesh Spawner в
+// PCG UE), маска плотности и параметры (таблица ScatterLayers). Каждый кадр compute-шейдер Shaders\scatter.cs
+// раскладывает инстансы слоя по сетке, привязанной к миру, в кольце вокруг камеры: модель ячейки — по весам, отсекает
+// по frustum и кладёт в список «вариант × LOD» по расстоянию (дальности LOD модели, как у моделей уровня); отрисовка —
+// indirect draw на список. Высоту и координаты масок даёт TerrainHeightSource, поэтому набор не зависит от устройства террейна.
 // Проход и отсечение граней задаёт материал слоя (режим и двусторонность, как у травы ландшафта в UE): набор рисует
 // непрозрачные и вырезанные по альфе слои в opaque, полупрозрачные — в transparent. Слой с cast_shadow рисуется
 // и в проход теней — в те каскады, которые пересекает его кольцо (с запасом на длину тени). Расчёт и отрисовка всех
@@ -30,9 +31,15 @@ public:
 
 	bool Initialize();
 	void setTerrain( const TerrainHeightSource* terrain );
-	// model — растение (все его LOD, не больше ScatterPass::maxLods); mask — маска плотности в хранилище текстур,
-	// в координатах карты высот террейна
-	bool addLayer( DMModel* model, const std::string& mask, const ScatterPass::PopulateParams& params );
+	// Модель слоя (вариант растения) и её вес — доля ячеек слоя
+	struct LayerModel
+	{
+		DMModel* model = nullptr;
+		float weight = 1.0f;
+	};
+	// models — варианты растения (все их LOD, не больше ScatterPass::maxLods; вариантов — не больше
+	// ScatterPass::maxVariants); mask — маска плотности в хранилище текстур, в координатах карты высот террейна
+	bool addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterPass::PopulateParams& params );
 
 	void compute( const FrameContext& frame ) override;
 	// Свой вызов в проходах, где есть слои их режима материала
@@ -71,9 +78,15 @@ private:
 		float farDistance = 0.0f;
 	};
 
-	struct Layer
+	// Вариант растения — модель слоя
+	struct LayerVariant
 	{
 		std::vector<LayerLod> lods;
+	};
+
+	struct Layer
+	{
+		std::vector<LayerVariant> variants;
 		std::string mask;
 		std::unique_ptr<ScatterPass> pass;
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI

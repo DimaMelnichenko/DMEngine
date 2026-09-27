@@ -655,7 +655,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
 {
-	SQLite::Statement query( dbConnect().db(), "SELECT model, mask, cell_size, near_border, far_border, near_fade, "
+	SQLite::Statement query( dbConnect().db(), "SELECT id, mask, cell_size, near_border, far_border, near_fade, "
 											   "far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow "
 											   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
@@ -667,7 +667,6 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		};
 
 		LevelDescription::ScatterLayer layer;
-		layer.model = query.getColumn( "model" ).getUInt();
 		layer.mask = query.getColumn( "mask" ).getString();
 		layer.params.cellSize = value( "cell_size" );
 		layer.params.nearBorder = value( "near_border" );
@@ -680,6 +679,17 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 											   XMConvertToRadians( value( "rotation_z" ) ) );
 		layer.params.alignToTerrain = query.getColumn( "align_to_terrain" ).getInt() ? 1.0f : 0.0f;
 		layer.params.castShadow = query.getColumn( "cast_shadow" ).getInt() ? 1.0f : 0.0f;
+
+		// Модели слоя — варианты растения с весами, в порядке строк
+		SQLite::Statement queryModels( dbConnect().db(), "SELECT model, weight FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
+		queryModels.bind( ":layer", query.getColumn( "id" ).getUInt() );
+		while( queryModels.executeStep() )
+		{
+			LevelDescription::ScatterModel model;
+			model.model = queryModels.getColumn( "model" ).getUInt();
+			model.weight = static_cast<float>( queryModels.getColumn( "weight" ).getDouble() );
+			layer.models.push_back( model );
+		}
 		set.layers.push_back( layer );
 	}
 }

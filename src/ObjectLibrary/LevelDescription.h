@@ -24,10 +24,17 @@ struct LevelDescription
 		XMFLOAT3 scale = XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	};
 
-	// Слой расстановки — растение: модель со всеми её LOD, маска плотности и параметры (таблица ScatterLayers)
-	struct ScatterLayer
+	// Модель слоя расстановки и её вес (ScatterLayerModels)
+	struct ScatterModel
 	{
 		uint32_t model = 0;
+		float weight = 1.0f;
+	};
+
+	// Слой расстановки — растение: модели-варианты со всеми их LOD, маска плотности и параметры (таблица ScatterLayers)
+	struct ScatterLayer
+	{
+		std::vector<ScatterModel> models;
 		std::string mask;
 		GS::ScatterPass::PopulateParams params = {};
 	};

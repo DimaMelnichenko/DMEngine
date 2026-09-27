@@ -1,4 +1,5 @@
 #pragma once
+#include <vector>
 #include "DirectX.h"
 #include "Utils\utilites.h"
 #include "Shaders\DMComputeShader.h"
@@ -6,31 +7,45 @@
 namespace GS
 {
 
-// Буферы и параметры слоя расстановки. Экземпляр растения раскладывается один раз, а в какой список он попадёт,
-// решает его LOD по расстоянию: у каждого LOD свой участок буфера инстансов и свои indirect-аргументы, поэтому при
-// смене LOD у экземпляра меняется только меш — положение, поворот и размер те же
+// Буферы и параметры слоя расстановки. Экземпляр растения раскладывается один раз: его вариант (одна из моделей слоя,
+// по весам) и LOD по расстоянию решают, в какой список он попадёт. У каждой пары «вариант × LOD» свой участок буфера
+// инстансов и свои indirect-аргументы, поэтому при смене LOD у экземпляра меняется только меш — положение, поворот и
+// размер те же
 class ScatterPass
 {
 public:
 	static constexpr uint32_t maxLods = 4;
-	// Ёмкость буфера инстансов слоя; делится поровну между LOD
+	static constexpr uint32_t maxVariants = 8;
+	static constexpr uint32_t maxLists = maxVariants * maxLods;
+	// Ёмкость буфера инстансов слоя; делится между списками по ожидаемому числу инстансов
 	static constexpr uint32_t capacity = 262144;
+
+	// Модель слоя для раскладки: доля по весу и дальности LOD (ModelProperties.range; последний — до конца кольца)
+	struct Variant
+	{
+		float weight = 1.0f;
+		uint32_t lodCount = 1;
+		float lodEnd[maxLods] = {};
+	};
 
 	ScatterPass();
 	ScatterPass( const ScatterPass& ) = delete;
 	~ScatterPass();
 
-	bool createBuffers( uint32_t lodCount );
-	// Indirect-аргументы LOD lod перед расстановкой: его меш и ноль инстансов
-	void resetArgs( DMComputeShader& shader, uint32_t lod, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
+	// Параметры слоя (populateParams) уже заданы: по кольцу и дальностям LOD делится ёмкость
+	bool createBuffers( const std::vector<Variant>& variants );
+	// Список пары «вариант × LOD»
+	static uint32_t listIndex( uint32_t variant, uint32_t lod ) { return variant * maxLods + lod; }
+	// Indirect-аргументы списка перед расстановкой: меш LOD и ноль инстансов
+	void resetArgs( DMComputeShader& shader, uint32_t list, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
 	// Расставляет инстансы слоя: gridDim × gridDim ячеек сетки вокруг камеры
 	void populate( DMComputeShader& shader, uint16_t gridDim );
 
-	// Инстансы LOD lod для вершинного шейдера: участок буфера с начала его списка (SV_InstanceID считается от нуля)
-	const com_unique_ptr<ID3D11ShaderResourceView>& instances( uint32_t lod );
+	// Инстансы списка для вершинного шейдера: участок буфера с начала списка (SV_InstanceID считается от нуля)
+	const com_unique_ptr<ID3D11ShaderResourceView>& instances( uint32_t list );
 	ID3D11Buffer* args();
-	// Смещение аргументов LOD lod в буфере аргументов (DrawIndexedInstancedIndirect), байты
-	static uint32_t argsOffset( uint32_t lod ) { return lod * 5 * sizeof( uint32_t ); }
+	// Смещение аргументов списка в буфере аргументов (DrawIndexedInstancedIndirect), байты
+	static uint32_t argsOffset( uint32_t list ) { return list * 5 * sizeof( uint32_t ); }
 
 public:
 	// Параметры слоя для Shaders\scatter.cs (cbuffer ScatterLayerBuffer, b4)
@@ -45,11 +60,9 @@ public:
 		float jitter;			// смещение внутри ячейки, доля шага
 		float alignToTerrain;	// 1 — ось Y инстанса по нормали террейна
 		XMFLOAT3 rotationRange;	// предел случайного поворота вокруг осей X, Y, Z, радианы
-		uint32_t lodCapacity;	// ёмкость списка одного LOD, заполняет createBuffers()
 		float castShadow;		// 1 — слой отбрасывает тень солнца (Cast Shadow в UE)
-		uint32_t lodCount;		// заполняет createBuffers()
-		XMFLOAT2 padding;
-		XMFLOAT4 lodEnd;		// дальность LOD 0…2, м (ModelProperties.range): дальше — следующий LOD
+		uint32_t variantCount;	// заполняет createBuffers()
+		XMFLOAT3 padding;
 	} m_populateParams;
 
 	PopulateParams& populateParams();
@@ -75,14 +88,24 @@ private:
 		uint32_t argsOffset;	// куда записать аргументы, байты
 	};
 
+	// cbuffer ScatterVariantsBuffer в Shaders\scatter.cs (b7)
+	struct alignas( 16 ) VariantsBuffer
+	{
+		XMFLOAT4 variants[maxVariants];		// x — накопленная доля варианта (0…1), y — число LOD
+		XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
+		uint32_t lists[maxLists][4];		// x — начало списка в буфере инстансов, y — его ёмкость
+	};
+
+	VariantsBuffer m_variants = {};
 	com_unique_ptr<ID3D11Buffer> m_instanceBuffer;
 	com_unique_ptr<ID3D11UnorderedAccessView> m_instanceUAV;
-	com_unique_ptr<ID3D11ShaderResourceView> m_instanceSRVs[maxLods];
+	com_unique_ptr<ID3D11ShaderResourceView> m_instanceSRVs[maxLists];
 	com_unique_ptr<ID3D11Buffer> m_argsBuffer;
 	com_unique_ptr<ID3D11UnorderedAccessView> m_argsUAV;
 
 	com_unique_ptr<ID3D11Buffer> m_initArgsBuffer;
 	com_unique_ptr<ID3D11Buffer> m_populateParamsBuffer;
+	com_unique_ptr<ID3D11Buffer> m_variantsBuffer;
 };
 
 }

@@ -46,8 +46,11 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName 
 	{
 		for( const LevelDescription::ScatterLayer& layer : set.layers )
 		{
-			if( !library.loadModelWithLOD( layer.model ) )
-				return false;
+			for( const LevelDescription::ScatterModel& model : layer.models )
+			{
+				if( !library.loadModelWithLOD( model.model ) )
+					return false;
+			}
 		}
 	}
 	LOG( "Load models for ms: " + elapsedMs( timeStart ) );
@@ -137,13 +140,23 @@ bool Scene::initialize()
 
 		for( const LevelDescription::ScatterLayer& layer : set.layers )
 		{
-			DMModel* model = System::models().get( layer.model ).get();
-			if( !model || model->lodCount() == 0 )
+			std::vector<Scatterer::LayerModel> models;
+			for( const LevelDescription::ScatterModel& variant : layer.models )
 			{
-				LOG( "Scatter set " + set.name + ": model " + std::to_string( layer.model ) + " has no LOD" );
-				return false;
+				DMModel* model = System::models().get( variant.model ).get();
+				if( !model || model->lodCount() == 0 )
+				{
+					LOG( "Scatter set " + set.name + ": model " + std::to_string( variant.model ) + " has no LOD" );
+					return false;
+				}
+				models.push_back( { model, variant.weight } );
 			}
-			if( !scatterer->addLayer( model, layer.mask, layer.params ) )
+			if( models.empty() )
+			{
+				LOG( "Scatter set " + set.name + ": layer without models (ScatterLayerModels), skipped" );
+				continue;
+			}
+			if( !scatterer->addLayer( models, layer.mask, layer.params ) )
 				return false;
 		}
 		m_scatterers.push_back( std::move( scatterer ) );
