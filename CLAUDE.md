@@ -251,8 +251,8 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 каскад — ортографический `RenderView` вдоль солнца на описанную сферу своей части frustum; размер сферы постоянен,
 центр привязан к сетке текселей (тень не дрожит); ближняя и дальняя плоскости — по `Scene::bounds` (террейн и модели).
 Карта — `Texture2DArray` D32 2048², растеризатор `RasterState::csmShadowDepth` (без отсечения граней и по глубине,
-наклонное смещение). Отбрасывают тень меши с `castsShadow` материалов с `depthPhaseFor` (у `PBR` Masked — `mainDepth`
-в `PBRLit.ps`) и свои вызовы с битом `csmShadowDepth` (террейн; слои расстановки с `ScatterLayers.cast_shadow` — только
+наклонное смещение). Отбрасывают тень меши с `castsShadow` материалов с `depthPhaseFor` (у `PBR` — вершинный шейдер
+«только глубина», `DEPTH_ONLY` в `LightShader.vs`: позиция и UV, позиция `precise`; Masked — ещё `mainDepth` в `PBRLit.ps`) и свои вызовы с битом `csmShadowDepth` (террейн; слои расстановки с `ScatterLayers.cast_shadow` — только
 в каскады, которые задевает их кольцо, `RenderView::cascadeNear/Far`). Направление на солнце — `FrameContext::toSun`. Приём — `Shaders/shadows.sh`
 (каскад по глубине взгляда, смещения к солнцу и по нормали в текселях каскада, PCF 5 × 5 Castaño, смешение каскадов,
 «Show cascades»): карта t104, сэмплер сравнения s8, константы b3. Настройки — у солнца (`DMLight::ShadowSettings`,

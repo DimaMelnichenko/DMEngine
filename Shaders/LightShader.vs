@@ -1,11 +1,14 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Filename: light.vs
+// Вершинный шейдер материала PBR. С define DEPTH_ONLY — вариант «только глубина» (Shaders/depth_only.sh): позиция и UV
+// без нормалей, для проходов без цвета
 ////////////////////////////////////////////////////////////////////////////////
 
 
 #include "common.vs"
 #include "samplers.sh"
 #include "instance.sh"
+#include "depth_only.sh"
 
 //////////////
 // TYPEDEFS //
@@ -22,7 +25,7 @@ struct VertexInputType
 
 struct PixelInputType
 {
-    float4 position : SV_POSITION;
+    precise float4 position : SV_POSITION;	// как в DepthOnlyVertexOutput: глубина совпадает с вариантом DEPTH_ONLY
     float2 tex : TEXCOORD0;
     float3 normal : NORMAL;
 	float3 tangent : TANGENT0;
@@ -31,43 +34,62 @@ struct PixelInputType
 	uint instanceIndex : SV_InstanceID;
 };
 
+float4x4 objectWorldMatrix( uint instanceIndex )
+{
+#ifdef INST_MATRIX
+	return g_instanceTransforms[instanceIndex].world;
+#else
+	return cb_worldMatrix;
+#endif
+}
+
+// Положение вершины в мире — один путь у полного варианта и «только глубина»
+float4 vertexWorldPosition( VertexInputType input )
+{
+	float4 position = float4( input.position.xyz, 1.0f );
+
+	// instance defines block
+	#if defined(INSTANCE_INCLUDE)
+		position.xyz = calcInstance( position.xyz, input.instanceIndex );
+	#endif
+
+	return mul( position, objectWorldMatrix( input.instanceIndex ) );
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Vertex Shader
 ////////////////////////////////////////////////////////////////////////////////
+#ifdef DEPTH_ONLY
+
+DepthOnlyVertexOutput main( VertexInputType input )
+{
+	DepthOnlyVertexOutput output;
+	output.position = mul( mul( vertexWorldPosition( input ), cb_viewMatrix ), cb_projectionMatrix );
+	output.tex = input.tex;
+	return output;
+}
+
+#else
+
 PixelInputType main(VertexInputType input)
 {
     PixelInputType output;
-	float3 worldPosition;
 
-    output.position.xyz = input.position;
-	output.position.w = 1.0f;
-	
 	output.tex = input.tex;
-	
-	output.instanceIndex = input.instanceIndex;
-	
-	// instance defines block
-	#if defined(INSTANCE_INCLUDE)
-		output.position.xyz = calcInstance( output.position.xyz, input.instanceIndex );
-	#endif	
-    
-    
 
-	float4x4 worldMatrix = cb_worldMatrix;
+	output.instanceIndex = input.instanceIndex;
+
+	float4 worldPosition = vertexWorldPosition( input );
+	output.worldPosition = worldPosition.xyz;
+    output.position = mul( mul( worldPosition, cb_viewMatrix ), cb_projectionMatrix );
+
+	float4x4 worldMatrix = objectWorldMatrix( input.instanceIndex );
 	float3x3 normalMatrix = (float3x3)cb_worldInverseTransposeMatrix;
 #ifdef INST_MATRIX
-	worldMatrix = g_instanceTransforms[input.instanceIndex].world;
 	normalMatrix = (float3x3)g_instanceTransforms[input.instanceIndex].worldInverseTranspose;
 #endif
 
-    output.position = mul(output.position, worldMatrix);
-	output.worldPosition = output.position.xyz;
-    output.position = mul(output.position, cb_viewMatrix);
-    output.position = mul(output.position, cb_projectionMatrix);
-    
-    
-	
 	float3 normal = input.normal;
 	float3 tangent = input.tangent;
 	float3 binormal = input.binormal;
@@ -81,7 +103,9 @@ PixelInputType main(VertexInputType input)
 	output.normal = normalize( mul( normal, normalMatrix ) );
 	output.tangent = normalize( mul( tangent, (float3x3)worldMatrix ) );
 	output.binormal = normalize( mul( binormal, (float3x3)worldMatrix ) );
-	
+
 
     return output;
 }
+
+#endif

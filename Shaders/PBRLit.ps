@@ -5,6 +5,7 @@
 #include "slots.h"
 #include "common.vs"
 #include "lighting.sh"
+#include "depth_only.sh"
 
 // Не заданная текстура — белая 1×1 (для Normal — плоская нормаль), так что работают одни множители
 Texture2D g_texBaseColor : register(t0);         // sRGB, альфа — прозрачность
@@ -79,8 +80,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 }
 
 // Глубина теней для AlphaMode MASK: только отсечение по альфе, цвета нет (у прохода теней нет цели цвета).
-// Непрозрачные рисуют глубину без пиксельного шейдера
-void mainDepth( PixelInputType input )
+// Непрозрачные рисуют глубину без пиксельного шейдера. Вход — от вершинного шейдера «только глубина» (DEPTH_ONLY)
+void mainDepth( DepthOnlyVertexOutput input )
 {
 	clip( g_texBaseColor.Sample( g_SamplerAnisotropicWrap, input.tex ).a * g_baseColorFactor.a - g_alphaCutoff );
 }

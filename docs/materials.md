@@ -91,9 +91,11 @@
 Модели отдают меши с режимом в список отрисовки (`MeshBatch`), и `Renderer` сам кладёт их в проход и рисует одной
 функцией `drawMesh`: `setPass( phaseFor( params ) )`, затем `setParams( params )`, растеризатор, матрица. Расстановка
 выбирает проход и отсечение граней по материалу слоя (а не набора) в своём вызове. Для прохода теней материал
-собирает и варианты «только глубина» (`depthPhaseFor`): непрозрачные — без пиксельного шейдера, Masked — точка входа
-`mainDepth` в `PBRLit.ps` с одним `clip`, поэтому лепестки отбрасывают тень по альфе; полупрозрачные тень не
-отбрасывают ([shadows.md](shadows.md)). Импортёр glTF переносит `alphaMode`, `alphaCutoff`
+собирает и варианты «только глубина» (`depthPhaseFor`, как FDepthOnlyVS в UE): вершинный шейдер с define `DEPTH_ONLY`
+выводит только позицию и UV, без нормалей (`Shaders/depth_only.sh`), непрозрачные рисуются без пиксельного шейдера,
+Masked — с точкой входа `mainDepth` в `PBRLit.ps` и одним `clip`, поэтому лепестки отбрасывают тень по альфе;
+полупрозрачные тень не отбрасывают ([shadows.md](shadows.md)). Позиция в обоих вариантах вершинного шейдера считается
+одной функцией и помечена `precise`, поэтому глубина варианта «только глубина» совпадает с полным до бита. Импортёр glTF переносит `alphaMode`, `alphaCutoff`
 и `doubleSided` в экземпляр как есть ([models.md](models.md)).
 
 Проверка на уровне `Test`: трава `GrassClump` — Opaque + Two Sided, ромашка `Camomile` — Masked + Two Sided
@@ -195,7 +197,8 @@ WHERE model_id = <id модели>;
 | `Shaders/lighting.sh` | общая функция освещения `evaluateLighting`, источники света ([lighting.md](lighting.md)) |
 | `Shaders/brdf.sh` | Cook-Torrance GGX, Френель Шлика |
 | `Shaders/ibl.sh` | освещение окружением: гармоники, префильтр отражений, таблица BRDF |
-| `Shaders/LightShader.vs` | вершинный шейдер (с `INST_*` — инстансный вариант) |
+| `Shaders/LightShader.vs` | вершинный шейдер (с `INST_*` — инстансный вариант, с `DEPTH_ONLY` — «только глубина») |
+| `Shaders/depth_only.sh` | выход вершинного шейдера «только глубина» и вход `mainDepth` |
 | `src/ObjectLibrary/LibraryLoader.cpp` | загрузка материалов, определений, экземпляров и значений |
 | `src/Engine/Graphics/Scene/TextureObjects/DMTextureStorage.cpp` | цветовое пространство текстур, текстуры по умолчанию |
 

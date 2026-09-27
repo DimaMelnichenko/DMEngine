@@ -21,6 +21,12 @@ TYPE materialValue( const PropertyContainer& params, const char* name, const TYP
 	return params.exists( name ) ? params[name].data<TYPE>() : defaultValue;
 }
 
+// Defines варианта шейдера: исходные из базы плюс ещё один
+std::string withDefine( const std::string& defines, const char* define )
+{
+	return defines.empty() ? std::string( define ) : defines + "," + define;
+}
+
 }
 
 PBRMaterial::PBRMaterial()
@@ -100,30 +106,51 @@ bool PBRMaterial::innerInitialize()
 	const std::optional<ShaderSource> pixel = shaderSource( SRVType::ps );
 	if( !pixel )
 		return false;
-	const std::string maskedDefines = pixel->defines.empty() ? "ALPHA_MASK=1" : pixel->defines + ",ALPHA_MASK=1";
-	if( !addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, maskedDefines ) ||
+	if( !addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, withDefine( pixel->defines, "ALPHA_MASK=1" ) ) ||
 		!addShaderPassFromFile( SRVType::ps, "mainDepth", pixel->file, pixel->defines ) )
 		return false;
 
-	// Инстансный вариант вершинного шейдера — у моделей уровня; у материала расстановки (defines INST_*) свои инстансы
+	// Вершинные шейдеры по [инстансный][только глубина]: 0 — из базы, инстансный вариант (INST_MATRIX) — у моделей
+	// уровня (у материала расстановки, defines INST_*, свои инстансы), и те же «только глубина» (DEPTH_ONLY: позиция
+	// и UV, Shaders/depth_only.sh). Без инстансинга инстансные номера совпадают с обычными
 	const std::optional<ShaderSource> vertex = shaderSource( SRVType::vs );
-	m_instancing = vertex && vertex->defines.find( "INST_" ) == std::string::npos;
+	if( !vertex )
+		return false;
+	m_instancing = vertex->defines.find( "INST_" ) == std::string::npos;
+	int vertexCount = 1;
+	const auto addVertexShader = [&]( const std::string& defines )
+	{
+		return addShaderPassFromFile( SRVType::vs, vertex->function, vertex->file, defines ) ? vertexCount++ : -1;
+	};
+	int vertexShaders[2][2] = {};
+	vertexShaders[0][1] = addVertexShader( withDefine( vertex->defines, "DEPTH_ONLY=1" ) );
 	if( m_instancing )
 	{
-		const std::string instancedDefines = vertex->defines.empty() ? "INST_MATRIX=1" : vertex->defines + ",INST_MATRIX=1";
-		if( !addShaderPassFromFile( SRVType::vs, vertex->function, vertex->file, instancedDefines ) )
+		const std::string instancedDefines = withDefine( vertex->defines, "INST_MATRIX=1" );
+		vertexShaders[1][0] = addVertexShader( instancedDefines );
+		vertexShaders[1][1] = addVertexShader( withDefine( instancedDefines, "DEPTH_ONLY=1" ) );
+	}
+	else
+	{
+		vertexShaders[1][0] = vertexShaders[0][0];
+		vertexShaders[1][1] = vertexShaders[0][1];
+	}
+	for( const auto& shaders : vertexShaders )
+	{
+		if( shaders[0] < 0 || shaders[1] < 0 )
 			return false;
 	}
 
-	// Фазы по [инстансный вершинный шейдер][Masked]: цвет — пиксельный шейдер 0 или 1 (с отсечением), глубина — без
-	// пиксельного шейдера или mainDepth (2). Без инстансинга инстансные номера совпадают с обычными
+	// Фазы по [инстансный][Masked]: цвет — пиксельный шейдер 0 или 1 (с отсечением), глубина — вершинный «только
+	// глубина» без пиксельного шейдера или с mainDepth (2)
 	for( int instanced = 0; instanced < 2; ++instanced )
 	{
-		const int vertex = instanced && m_instancing ? 1 : 0;
-		m_colorPhases[instanced][0] = createPhase( vertex, 0 );
-		m_colorPhases[instanced][1] = createPhase( vertex, 1 );
-		m_depthPhases[instanced][0] = createPhase( vertex, -1 );
-		m_depthPhases[instanced][1] = createPhase( vertex, 2 );
+		const int color = vertexShaders[instanced][0];
+		const int depth = vertexShaders[instanced][1];
+		m_colorPhases[instanced][0] = createPhase( color, 0 );
+		m_colorPhases[instanced][1] = createPhase( color, 1 );
+		m_depthPhases[instanced][0] = createPhase( depth, -1 );
+		m_depthPhases[instanced][1] = createPhase( depth, 2 );
 		for( int masked = 0; masked < 2; ++masked )
 		{
 			if( m_colorPhases[instanced][masked] < 0 || m_depthPhases[instanced][masked] < 0 )
