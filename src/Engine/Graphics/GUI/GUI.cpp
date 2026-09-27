@@ -254,10 +254,10 @@ void GUI::parsePropertiesAndCreateControls( PropertyContainer* propertyContainer
 				switch( property.controlType() )
 				{	
 					case GUIControlType::SLIDER:
-						ImGui::SliderFloat2( name.data(), property.dataPtr<float>(), property.low(), property.high() );
+						ImGui::SliderFloat2( name.data(), (float*)value, property.low(), property.high() );
 						break;
 					case GUIControlType::DRAG:
-						ImGui::DragFloat2( name.data(), property.dataPtr<float>(), 0.1f, property.low(), property.high() );
+						ImGui::DragFloat2( name.data(), (float*)value, 0.1f, property.low(), property.high() );
 						break;
 				}
 				break;
@@ -312,10 +312,9 @@ void GUI::parsePropertiesAndCreateControls( PropertyContainer* propertyContainer
 			}
 			case ValueType::UINT:
 			{
-				uint32_t* value = property.dataPtr<uint32_t>();
-				ImGui::BeginCombo( "Texture select", "select index" );
-				//ImGui::Combo()
-				ImGui::EndCombo();
+				// Выбор текстуры по id пока не сделан; EndCombo — только после открытого BeginCombo
+				if( ImGui::BeginCombo( name.data(), std::to_string( property.data<uint32_t>() ).c_str() ) )
+					ImGui::EndCombo();
 				break;
 			}
 		}
@@ -325,6 +324,11 @@ void GUI::parsePropertiesAndCreateControls( PropertyContainer* propertyContainer
 void GUI::addPropertyWatching( PropertyContainer* propertyContainer )
 {
 	m_propertiesMap.insert_or_assign( propertyContainer->name(), propertyContainer );
+}
+
+void GUI::addAction( const std::string& label, std::function<void()> action )
+{
+	m_actions.emplace_back( label, std::move( action ) );
 }
 
 void GUI::parsePropertiesTree( PropertyContainer* propertyContainer )
@@ -344,6 +348,11 @@ void GUI::showPropertiesTree()
 {
 	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 	ImGui::Begin( "Scene Objects", nullptr, ImVec2( 256, 300 ), 1.0 );
+	for( const auto& [label, action] : m_actions )
+	{
+		if( ImGui::Button( label.c_str() ) )
+			action();
+	}
 	int counter = 0;
 	if( ImGui::TreeNode( "Properties Objects Tree" ) )
 	{

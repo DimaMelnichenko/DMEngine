@@ -65,48 +65,47 @@
 
 ## Настройки
 
-Источники описаны в `Scene\Lights.ini`: `[General] Count` — сколько секций `[Light0]`, `[Light1]`… читать.
+Источники — данные уровня, как источники света в уровне UE: строка таблицы `LevelLights` в `base.db3` на источник,
+`level` — уровень (`Levels.id`). Источники грузятся в порядке `id`, направленные ставятся первыми; солнце — первый
+включённый направленный.
 
-| Ключ | Типы | По умолчанию | Что это |
+| Колонка | Типы | По умолчанию | Что это |
 |---|---|---|---|
-| `Type` | все | `Point` | `Dir`, `Point` или `Spot` |
-| `Color` | все | — | цвет × яркость, линейный RGB через запятую; единицы условные (см. [postprocess.md](postprocess.md)) |
-| `Direction` | `Dir`, `Spot` | — | куда идёт свет, вектор через запятую (нормируется); `0,-1,0` — вниз |
-| `Position` | `Point`, `Spot` | — | положение, м |
-| `AttenuationRadius` | `Point`, `Spot` | 0 | радиус действия, м; 0 — без обрезания |
-| `InnerConeAngle` | `Spot` | 0 | угол полной яркости от оси, градусы |
-| `OuterConeAngle` | `Spot` | 45 | угол края конуса от оси, градусы |
+| `name` | все | — | подпись в GUI |
+| `type` | все | `point` | `directional`, `point` или `spot`, как `type` в KHR_lights_punctual |
+| `enabled` | все | 1 | 0 — источник выключен, в буфер не попадает |
+| `color` | все | `1,1,1` | цвет, линейный RGB через запятую |
+| `intensity` | все | 1 | яркость; в шейдер идёт `color × intensity`, единицы условные (см. [postprocess.md](postprocess.md)) |
+| `direction` | `directional`, `spot` | `0,-1,0` | куда идёт свет, вектор через запятую (нормируется); `0,-1,0` — вниз |
+| `position` | `point`, `spot` | `0,0,0` | положение, м |
+| `attenuation_radius` | `point`, `spot` | 0 | радиус действия, м; 0 — без обрезания |
+| `inner_cone_angle` | `spot` | 0 | угол полной яркости от оси, градусы |
+| `outer_cone_angle` | `spot` | 45 | угол края конуса от оси, градусы |
+| `cast_shadows` и настройки теней | `directional` | 0 | каскадные тени солнца, см. [shadows.md](shadows.md) |
 
-Пример — солнце, лампа и фонарь, светящий вниз:
+Цвет и интенсивность раздельно, как в glTF и UE. Пример — солнце, лампа и фонарь, светящий вниз, на уровне 1:
 
-```ini
-[General]
-Count=3
-
-[Light0]
-Type=Dir
-Color=3.0,3.0,2.64
-Direction=-1.0,-1.0,1.0
-
-[Light1]
-Type=Point
-Color=40.0,30.0,20.0
-Position=507.0,89.0,236.0
-AttenuationRadius=8.0
-
-[Light2]
-Type=Spot
-Color=100.0,100.0,100.0
-Position=517.0,95.0,246.0
-Direction=0.0,-1.0,0.0
-AttenuationRadius=40.0
-InnerConeAngle=10
-OuterConeAngle=20
+```sql
+INSERT INTO LevelLights (level, name, type, color, intensity, direction, cast_shadows)
+VALUES (1, 'Sun', 'directional', '1,1,0.88', 3.0, '-1,-1,1', 1);
+INSERT INTO LevelLights (level, name, type, color, intensity, position, attenuation_radius)
+VALUES (1, 'Lamp', 'point', '1,0.75,0.5', 40.0, '507,89,236', 8.0);
+INSERT INTO LevelLights (level, name, type, color, intensity, position, direction, attenuation_radius,
+                         inner_cone_angle, outer_cone_angle)
+VALUES (1, 'Flashlight', 'spot', '1,1,1', 100.0, '517,95,246', '0,-1,0', 40.0, 10, 20);
 ```
 
-Яркость точечного на расстоянии d — `Color / (d² + 1)`: чтобы лампа в 3 м от поверхности светила как солнце
-(`Color=3`), нужно `Color≈30`. Если секция неполная (нет `Color`, `Direction` или `Position` там, где он нужен), файл
-не читается, в лог пишется «Lights are not loaded», и сцену освещает запасной белый направленный свет.
+Яркость точечного на расстоянии d — `color × intensity / (d² + 1)`: чтобы лампа в 3 м от поверхности светила как
+солнце (`intensity` 3), нужна `intensity` ≈ 30. Уровень без строк в `LevelLights` освещает запасной белый
+направленный свет, в лог пишется «Level has no lights».
+
+**Правка в GUI.** Окно свойств (I — курсор) → «Lights» → подокно на источник: Enabled, Color, Intensity, у
+направленного и прожектора Pitch / Yaw (углы направления в градусах, как Rotation в UE: Pitch −90 — свет вниз),
+у точечного и прожектора Position и Attenuation radius, у прожектора углы конуса, у солнца — настройки теней.
+Изменения видны сразу: небо пересчитывает освещение окружением, буфер источников загружается на GPU, только когда
+источники изменились. Кнопка «Save level environment» над деревом свойств записывает источники (по `id`), небо
+и постобработку в строки уровня в `base.db3`. Тип источника в GUI не меняется; добавить или удалить источник — строкой
+в базе.
 
 ## Свой материал с освещением
 
@@ -137,13 +136,14 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 ## Если что-то не так
 
-1. **Источник не светит** — проверьте `Count` в `[General]` (секции с номером не меньше `Count` не читаются)
-   и `AttenuationRadius`: дальше радиуса света нет. В логе строка «Lights are not loaded» — секция неполная.
+1. **Источник не светит** — проверьте `level` и `enabled` в `LevelLights` и `attenuation_radius`: дальше радиуса
+   света нет. Неверный вектор в `color`, `position` или `direction` — строка «Level light N: wrong …» в логе.
 2. **Точечный слишком тусклый** — яркость падает как 1 / d²: на 10 м она в 100 раз меньше, чем на 1 м. Поднимайте
-   `Color`, а не радиус.
+   `intensity`, а не радиус.
 3. **Резкая граница света** — у точечного это граница радиуса при большой яркости: увеличьте `AttenuationRadius`.
    У прожектора — внутренний угол близок к внешнему: разведите их.
-4. **Солнце светит не оттуда** — `Direction` — куда идёт свет, а не где солнце: солнце в зените — `0,-1,0`.
+4. **Солнце светит не оттуда** — `direction` — куда идёт свет, а не где солнце: солнце в зените — `0,-1,0`
+   (Pitch −90 в GUI).
 5. **Материал выглядит иначе, чем раньше** — все материалы с освещением теперь получают и отражение неба; у шероховатых
    оно заметно только под скользящими углами (Френель).
 
@@ -156,7 +156,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 ## Ограничения
 
 - Тень отбрасывает только солнце ([shadows.md](shadows.md)); точечные и прожекторы — без теней.
-- Источники — один файл `Scene\Lights.ini` на все уровни, не данные уровня; в GUI не редактируются. Не больше 32
+- Источники в GUI правятся, но не добавляются и не удаляются (только строками `LevelLights`). Не больше 32
   (`DMLightDriver::maxLights`), лишние не освещают.
 - Каждый пиксель перебирает все источники: при десятках источников нужен Forward+ (отбор источников по тайлам экрана).
 - Единицы яркости условные, а не физические (люксы, люмены, канделы).
@@ -173,9 +173,9 @@ float4 main( PixelInputType input ) : SV_TARGET
 | `Shaders/ibl.sh` | освещение окружением от неба |
 | `Shaders/shadows.sh` | тень солнца из каскадных карт |
 | `src/Engine/Graphics/Scene/Light/DMLight.h/.cpp` | источник: тип, цвет, направление, радиус, конус |
-| `src/Engine/Graphics/Scene/Light/DMLightDriver.h/.cpp` | чтение `Lights.ini`, буфер источников для шейдеров (`LightBuffer`), солнце для неба и теней (`sunLightIndex`) |
+| `src/Engine/Graphics/Scene/Light/DMLightDriver.h/.cpp` | источники уровня, окно GUI «Lights», буфер источников для шейдеров (`LightBuffer`), солнце для неба и теней (`sunLightIndex`) |
 | `src/Engine/Graphics/Renderer.cpp` | привязка буфера источников каждый кадр (`preparePipeline`) |
-| `Scene/Lights.ini` | источники, настройки неба, теней и постобработки |
+| `src/ObjectLibrary/LibraryLoader.cpp` | чтение `LevelLights` (`loadLevelLights`) и сохранение (`saveLevelEnvironment`) |
 
 ## Откуда подход
 

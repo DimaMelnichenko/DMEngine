@@ -74,11 +74,13 @@ bool Scene::initialize()
 	LOG( "Create light driver" );
 	if( !m_lightDriver.Initialize() )
 		return false;
-	if( !m_lightDriver.loadFromFile( "Scene\\Lights.ini" ) )
-		LOG( "Lights are not loaded from Scene\\Lights.ini, default light is used" );
+	if( m_level.lights.empty() )
+		LOG( "Level has no lights in table LevelLights, default light is used" );
+	m_lightDriver.load( m_level.lights );
+	m_lightDriver.update();
 
 	// Небо освещает сцену всегда, а фоном рисуется, если у уровня нет своей модели неба
-	if( !m_atmosphere.initialize( m_lightDriver, "Scene\\Lights.ini" ) )
+	if( !m_atmosphere.initialize( m_lightDriver, m_level.atmosphere ) )
 	{
 		LOG( "Fail to initialize sky atmosphere" );
 		return false;
@@ -164,6 +166,16 @@ const std::vector<SceneObject*>& Scene::objects() const
 DMLightDriver& Scene::lights()
 {
 	return m_lightDriver;
+}
+
+const LevelDescription& Scene::level() const
+{
+	return m_level;
+}
+
+bool Scene::saveEnvironment( LibraryLoader& library, const PostProcess::Settings& postProcess )
+{
+	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), m_atmosphere.settings(), postProcess );
 }
 
 DirectX::BoundingBox Scene::bounds() const

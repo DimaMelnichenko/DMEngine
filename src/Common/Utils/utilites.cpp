@@ -1,5 +1,6 @@
 #include "utilites.h"
 #include <charconv>
+#include <cstdio>
 
 
 
@@ -83,4 +84,11 @@ bool strToVec4( const std::string& str, XMFLOAT4& vector )
 std::string vec4ToStr( const XMFLOAT4& vec )
 {
 	return std::to_string( vec.x ) + "," + std::to_string( vec.y ) + "," + std::to_string( vec.z ) + "," + std::to_string( vec.w );
+}
+
+std::string vec3ToStr( const XMFLOAT3& vec )
+{
+	char text[96];
+	std::snprintf( text, sizeof( text ), "%g,%g,%g", vec.x, vec.y, vec.z );
+	return text;
 }

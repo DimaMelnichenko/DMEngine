@@ -4,7 +4,6 @@
 #include <cstring>
 #include "D3D\DMD3D.h"
 #include "Light\DMLightDriver.h"
-#include "ResourceMetaFile.h"
 #include "Logger\Logger.h"
 
 namespace GS
@@ -22,7 +21,7 @@ SkyAtmosphere::SkyAtmosphere() :
 {
 }
 
-bool SkyAtmosphere::initialize( const DMLightDriver& lights, const std::string& settingsFile )
+bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& settings )
 {
 	m_lights = &lights;
 
@@ -55,32 +54,33 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const std::string& 
 		return false;
 	m_skyFacesSRV = make_com_ptr<ID3D11ShaderResourceView>( facesSRV );
 
-	// Без секции [Sky] — значения по умолчанию
-	ResourceMetaFile settings( settingsFile );
-	auto setting = [&]( const char* key, float fallback )
-	{
-		const std::string value = settings.get<std::string>( "Sky", key );
-		return value.empty() ? fallback : static_cast<float>( std::atof( value.c_str() ) );
-	};
-
 	m_properties.setName( "Sky atmosphere" );
 
-	auto prop = m_properties.insert( "Sky intensity", setting( "SkyIntensity", 1.0f ) );
+	auto prop = m_properties.insert( "Sky intensity", settings.skyIntensity );
 	prop->setLow( 0.0f );
 	prop->setHigh( 10.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
-	prop = m_properties.insert( "Haze", setting( "Haze", 1.0f ) );
+	prop = m_properties.insert( "Haze", settings.haze );
 	prop->setLow( 0.0f );
 	prop->setHigh( 10.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
-	prop = m_properties.insert( "Ground albedo", setting( "GroundAlbedo", 0.25f ) );
+	prop = m_properties.insert( "Ground albedo", settings.groundAlbedo );
 	prop->setLow( 0.0f );
 	prop->setHigh( 1.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
 	return true;
+}
+
+SkyAtmosphere::Settings SkyAtmosphere::settings()
+{
+	Settings settings;
+	settings.skyIntensity = m_properties["Sky intensity"].data<float>();
+	settings.haze = m_properties["Haze"].data<float>();
+	settings.groundAlbedo = m_properties["Ground albedo"].data<float>();
+	return settings;
 }
 
 bool SkyAtmosphere::createCube( uint32_t size, uint32_t mipCount, bool generateMips, com_unique_ptr<ID3D11Texture2D>& texture,

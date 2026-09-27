@@ -30,6 +30,9 @@ public:
 
 	const std::vector<SceneObject*>& objects() const;
 	DMLightDriver& lights();
+	const LevelDescription& level() const;
+	// Текущие свет, небо и постобработку (правки в GUI) — в строки уровня в base.db3
+	bool saveEnvironment( LibraryLoader& library, const PostProcess::Settings& postProcess );
 
 	CDLODTerrain& terrain();
 	// Границы того, что может отбросить тень: террейн (мир × диапазон высот) и модели уровня

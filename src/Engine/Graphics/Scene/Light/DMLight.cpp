@@ -12,6 +12,11 @@ bool DMLight::enabled() const
 	return m_enabled;
 }
 
+void DMLight::setEnabled( bool enabled )
+{
+	m_enabled = enabled;
+}
+
 DMLight::LightType DMLight::type() const
 {
 	return m_type;
@@ -25,6 +30,21 @@ void DMLight::setColor( const XMFLOAT3& color )
 XMFLOAT3 DMLight::color( ) const
 {
 	return m_color;
+}
+
+void DMLight::setIntensity( float intensity )
+{
+	m_intensity = std::max( intensity, 0.0f );
+}
+
+float DMLight::intensity() const
+{
+	return m_intensity;
+}
+
+XMFLOAT3 DMLight::radiance() const
+{
+	return XMFLOAT3( m_color.x * m_intensity, m_color.y * m_intensity, m_color.z * m_intensity );
 }
 
 void DMLight::setPosition( const XMFLOAT3& position )
@@ -76,16 +96,33 @@ float DMLight::outerConeAngle() const
 	return m_outerConeAngle;
 }
 
+const DMLight::ShadowSettings& DMLight::shadowSettings() const
+{
+	return m_shadowSettings;
+}
+
+void DMLight::setShadowSettings( const ShadowSettings& settings )
+{
+	m_shadowSettings = settings;
+}
+
 DMLight::LightType DMLight::strToType( const std::string& typeName )
 {
-	if( typeName == "Dir" )
+	if( typeName == "directional" )
 		return Dir;
 
-	if( typeName == "Point" )
-		return Point;
-
-	if( typeName == "Spot" )
+	if( typeName == "spot" )
 		return Spot;
 
 	return Point;
+}
+
+const char* DMLight::typeName( LightType type )
+{
+	switch( type )
+	{
+		case Dir: return "directional";
+		case Spot: return "spot";
+		default: return "point";
+	}
 }

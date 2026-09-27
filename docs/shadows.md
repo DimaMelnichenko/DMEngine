@@ -115,20 +115,24 @@ dᵢ = D · (Eⁱ − 1) / (E⁴ − 1)
 
 ## Настройки
 
-Секция `[Shadows]` в `Scene\Lights.ini`; все, кроме `Resolution`, меняются и в GUI (окно «Shadows»).
+Тени — свойство солнца, как Cascaded Shadow Maps у Directional Light в UE: колонки строки солнца в `LevelLights`
+([lighting.md](lighting.md)); у точечных и прожекторов они не используются. В GUI — в подокне солнца в «Lights»,
+кнопка «Save level environment» записывает их в базу.
 
-| Ключ | GUI | По умолчанию | Что это |
+| Колонка | GUI | По умолчанию | Что это |
 |---|---|---|---|
-| `Enabled` | Enabled | `true` | тени солнца включены |
-| `Resolution` | — | 2048 | размер среза карты, текселей; только при запуске |
-| `DynamicShadowDistance` | Dynamic shadow distance | 200 | до скольких метров от камеры есть тени |
-| `CascadeDistributionExponent` | Cascade distribution exponent | 3 | во сколько раз каждый каскад длиннее предыдущего |
-| `CascadeTransitionFraction` | Cascade transition fraction | 0,1 | доля каскада, где он смешивается со следующим |
-| `ShadowDistanceFadeoutFraction` | Shadow distance fadeout fraction | 0,1 | доля дистанции, на которой тень плавно уходит |
-| `ShadowBias` | Shadow bias | 1 | сдвиг точки к солнцу, текселей каскада |
-| `NormalBias` | Normal bias | 1 | сдвиг точки по нормали при скользящем свете, текселей каскада |
-| `ShadowSlopeBias` | Shadow slope bias | 2 | наклонное смещение глубины в растеризаторе теней |
-| — | Show cascades | выкл. | подкрасить каскады: красный, зелёный, синий, жёлтый |
+| `cast_shadows` | Cast shadows | 0 | солнце отбрасывает тени |
+| `dynamic_shadow_distance` | Dynamic shadow distance | 200 | до скольких метров от камеры есть тени |
+| `cascade_distribution_exponent` | Cascade distribution exponent | 3 | во сколько раз каждый каскад длиннее предыдущего |
+| `cascade_transition_fraction` | Cascade transition fraction | 0,1 | доля каскада, где он смешивается со следующим |
+| `shadow_distance_fadeout_fraction` | Shadow distance fadeout fraction | 0,1 | доля дистанции, на которой тень плавно уходит |
+| `shadow_bias` | Shadow bias | 1 | сдвиг точки к солнцу, текселей каскада |
+| `normal_bias` | Normal bias | 1 | сдвиг точки по нормали при скользящем свете, текселей каскада |
+| `shadow_slope_bias` | Shadow slope bias | 2 | наклонное смещение глубины в растеризаторе теней |
+
+Размер среза карты — настройка качества, а не данные уровня: `ShadowMapResolution` в `[General]` файла `settings.ini`
+(2048 по умолчанию, только при запуске), как `r.Shadow.MaxCSMResolution` в UE. Окно GUI «Shadows» — только отладка:
+«Show cascades» подкрашивает каскады (красный, зелёный, синий, жёлтый), как Show → Visualize → Shadow Cascades в UE.
 
 Тени есть, пока солнце над горизонтом; без направленного источника их нет.
 
@@ -199,7 +203,7 @@ Release, 2880 × 1620, время GPU кадра без теней и с тен�
 | `Shaders/lighting.sh` | множитель тени солнца в прямом свете |
 | `Shaders/PBRLit.ps` | `mainDepth` — глубина Masked-материалов |
 | `Shaders/slots.h` | `SLOT_CB_SHADOW` (b3), `SLOT_SHADOW_MAP` (t104), `SLOT_SAMPLER_SHADOW` (s8) |
-| `Scene/Lights.ini` | секция `[Shadows]` |
+| `settings.ini` | `ShadowMapResolution` — размер среза карты |
 
 ## Откуда подход
 

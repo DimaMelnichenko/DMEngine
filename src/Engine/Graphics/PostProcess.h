@@ -8,8 +8,8 @@ namespace GS
 {
 
 // Постобработка кадра: экспозиция и тонмаппинг HDR-буфера сцены в задний буфер (Shaders/fullscreen.vs +
-// Shaders/tonemap.ps), как Exposure и Tonemapper в Post Process Volume UE. Настройки — секция [PostProcess]
-// в Scene\Lights.ini (ExposureCompensation в EV, Tonemapper: None / ACES / AgX), меняются в GUI («Post process»)
+// Shaders/tonemap.ps), как Exposure и Tonemapper в Post Process Volume UE. Настройки — строка таблицы
+// PostProcessSettings, на которую ссылается уровень (Levels.post_process), меняются в GUI («Post process»)
 class PostProcess
 {
 public:
@@ -20,7 +20,19 @@ public:
 		agx = 2		// AgX — стандартное отображение Blender 4+, мягче уводит яркие цвета в белый
 	};
 
-	bool initialize( const std::string& settingsFile );
+	// Строка PostProcessSettings; без неё — 0 EV и AgX
+	struct Settings
+	{
+		float exposureCompensation = 0.0f;	// EV: +1 — вдвое ярче
+		Tonemapper tonemapper = Tonemapper::agx;
+	};
+	// Имя тонмаппинга в базе: None, ACES, AgX (другое — AgX)
+	static Tonemapper tonemapperFromName( const std::string& name );
+	static const char* tonemapperName( Tonemapper tonemapper );
+
+	bool initialize( const Settings& settings );
+	// Текущие значения из GUI — для сохранения уровня
+	Settings settings();
 	// Рисует тонмаппинг сцены в задний буфер и оставляет его привязанным для GUI
 	void render();
 	PropertyContainer* properties();

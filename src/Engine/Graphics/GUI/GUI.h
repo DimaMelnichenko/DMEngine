@@ -1,5 +1,6 @@
 #pragma once
 #include <Windows.h>
+#include <functional>
 #include <string>
 #include <map>
 #include <vector>
@@ -24,6 +25,8 @@ public:
 	void printCamera( DMCamera& camera );
 
 	void addPropertyWatching( PropertyContainer* propertyContainer );
+	// Кнопка над деревом свойств в окне «Scene Objects»: по нажатию — action
+	void addAction( const std::string& label, std::function<void()> action );
 
 private:
 	void Frame();
@@ -40,6 +43,7 @@ private:
 private:
 	std::vector<std::pair<std::string,float>> m_counterInfoList;
 	std::map<std::string, PropertyContainer*> m_propertiesMap;
+	std::vector<std::pair<std::string, std::function<void()>>> m_actions;
 	bool m_isInited = false;
 	
 };

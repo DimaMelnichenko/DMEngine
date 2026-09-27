@@ -13,13 +13,14 @@ namespace GS
 {
 
 // Процедурное небо и освещение окружением от него (как Sky Atmosphere + Sky Light в UE, только проще).
-// Когда меняется солнце (первый направленный источник Scene\Lights.ini) или настройки неба, compute() заново:
+// Когда меняется солнце (первый включённый направленный источник уровня) или настройки неба, compute() заново:
 // - считает таблицу многократного рассеяния (Shaders/sky_multiscattering.ps, модель Hillaire 2020 как в UE5);
 // - рендерит cubemap неба (Рэлей, Ми, озон, многократное рассеяние — Shaders/atmosphere.sh) и строит его мипы;
 // - проецирует его на сферические гармоники — рассеянный свет (Shaders/sky_irradiance.cs);
 // - префильтрует отражения по шероховатости GGX (Shaders/sky_prefilter.ps);
 // а таблицу BRDF (Shaders/brdf_lut.ps) считает один раз. Затем привязывает всё это к слотам PS t101…t103
-// (Shaders/ibl.sh). Свой вызов в проходе sky рисует небо фоном кадра. Настройки — [Sky] в Scene\Lights.ini и окно GUI
+// (Shaders/ibl.sh). Свой вызов в проходе sky рисует небо фоном кадра. Настройки — строка таблицы SkyAtmosphere,
+// на которую ссылается уровень (Levels.atmosphere), и окно GUI «Sky atmosphere»
 class SkyAtmosphere : public SceneObject
 {
 public:
@@ -30,9 +31,19 @@ public:
 	static constexpr uint32_t irradianceSourceMip = 3;	// мип неба для гармоник (32 × 32)
 	static constexpr uint32_t multipleScatteringSize = 32;
 
+	// Строка SkyAtmosphere; без неё — значения по умолчанию
+	struct Settings
+	{
+		float skyIntensity = 1.0f;	// множитель рассеянного света неба, 1 — по модели
+		float haze = 1.0f;			// плотность дымки (аэрозоли Ми)
+		float groundAlbedo = 0.25f;	// отражение земли под горизонтом
+	};
+
 	SkyAtmosphere();
 
-	bool initialize( const DMLightDriver& lights, const std::string& settingsFile );
+	bool initialize( const DMLightDriver& lights, const Settings& settings );
+	// Текущие значения из GUI — для сохранения уровня
+	Settings settings();
 	// Фон не рисуется, если у уровня своя модель неба (SkySphere); освещение окружением остаётся
 	void setBackgroundVisible( bool visible );
 

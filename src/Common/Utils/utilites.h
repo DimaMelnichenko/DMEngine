@@ -47,3 +47,5 @@ bool strToVec3( const std::string& str, XMFLOAT3& vec );
 
 bool strToVec4( const std::string& str, XMFLOAT4& vec );
 std::string vec4ToStr( const XMFLOAT4& vec );
+// "x,y,z" с короткой записью чисел (%g), как пишет Tools/import_gltf.py
+std::string vec3ToStr( const XMFLOAT3& vec );

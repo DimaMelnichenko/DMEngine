@@ -27,6 +27,10 @@ public:
 	bool loadShader( uint32_t idMaterial, GS::DMShader* );
 	// Состав уровня name (пустое имя — первый уровень таблицы Levels). Модели уровня не загружает
 	bool loadLevel( const std::string& name, LevelDescription& level );
+	// Свет и окружение уровня обратно в базу одной транзакцией: строки LevelLights — по id, настройки неба
+	// и постобработки — в строки уровня (нет строки — создаётся и привязывается к Levels, id пишется в level)
+	bool saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,
+							   const GS::SkyAtmosphere::Settings& atmosphere, const GS::PostProcess::Settings& postProcess );
 
 
 	void save();
@@ -35,6 +39,8 @@ private:
 	// Загружает текстуры из строк запроса вида "SELECT id, name, file, generate_mipmap, sRGB FROM Textures ..."
 	bool loadTextures( SQLite::Statement& queryTexture );
 	void loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set );
+	void loadLevelLights( LevelDescription& level );
+	bool loadLevelEnvironment( LevelDescription& level );
 	// Материал экземпляра (MaterialInstance.id_material); false — экземпляра нет
 	bool instanceMaterial( uint32_t idInstance, uint32_t& idMaterial );
 

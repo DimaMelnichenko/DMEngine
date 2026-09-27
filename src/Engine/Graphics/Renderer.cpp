@@ -53,15 +53,15 @@ void Renderer::measure( const std::string& counterName, Func&& func )
 	m_gui.addCounterInfo( counterName + " = %.3f ms", std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
 }
 
-bool Renderer::initialize()
+bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution )
 {
 	if( !m_vertexPool.prepareMeshes() )
 		return false;
 
-	if( !m_postProcess.initialize( "Scene\\Lights.ini" ) )
+	if( !m_postProcess.initialize( postProcess ) )
 		return false;
 
-	if( !m_shadows.initialize( "Scene\\Lights.ini" ) )
+	if( !m_shadows.initialize( shadowResolution ) )
 		return false;
 
 	if( !m_gpuProfiler.initialize( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext() ) )
@@ -201,6 +201,11 @@ PropertyContainer* Renderer::shadowProperties()
 	return m_shadows.properties();
 }
 
+PostProcess::Settings Renderer::postProcessSettings()
+{
+	return m_postProcess.settings();
+}
+
 void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 {
 	m_samplerState.setDefaultSmaplers();
@@ -306,7 +311,7 @@ void Renderer::buildShadowCommands()
 
 void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 {
-	if( !m_shadows.update( frame.view, frame.toSun, scene.bounds() ) )
+	if( !m_shadows.update( frame.view, scene.lights().sunShadows(), frame.toSun, scene.bounds() ) )
 		return;
 
 	const auto start = std::chrono::high_resolution_clock::now();

@@ -5,6 +5,9 @@
 #include <vector>
 #include "DirectX.h"
 #include "Scatterer\ScattererPass.h"
+#include "Light\DMLight.h"
+#include "Sky\SkyAtmosphere.h"
+#include "PostProcess.h"
 
 // Состав уровня из base.db3: строка таблицы Levels и то, на что она ссылается.
 // Пустой optional — у уровня этого нет (колонка NULL)
@@ -49,4 +52,12 @@ struct LevelDescription
 	std::vector<ModelInstance> modelInstances;	// таблица LevelModels
 	std::vector<ScatterSet> scatterSets;	// таблица LevelScatterSets
 	std::optional<Particles> particles;
+
+	// Свет и окружение уровня — как сущности уровня в UE (Directional / Point / Spot Light, Sky Atmosphere,
+	// Post Process Volume). Строки настроек неба и постобработки — по ссылке из Levels; NULL — значения по умолчанию
+	std::vector<DMLight> lights;				// таблица LevelLights
+	std::optional<uint32_t> atmosphereId;		// строка SkyAtmosphere
+	GS::SkyAtmosphere::Settings atmosphere;
+	std::optional<uint32_t> postProcessId;		// строка PostProcessSettings
+	GS::PostProcess::Settings postProcess;
 };

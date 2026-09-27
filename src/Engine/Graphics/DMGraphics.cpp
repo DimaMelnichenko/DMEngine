@@ -83,7 +83,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	RET_FALSE( m_scene.loadResources( m_library, m_config.levelName() ) );
 
 	// Создаем общий буфер вершин и индексов
-	RET_FALSE( m_renderer.initialize() );
+	RET_FALSE( m_renderer.initialize( m_scene.level().postProcess, m_config.shadowMapResolution() ) );
 
 	LOG( "Create main camera" )
 	// Основная камера; стартовое положение — секция [Camera] в settings.ini или параметр -camera
@@ -107,6 +107,14 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 			m_GUI.addPropertyWatching( object->properties() );
 	}
 	m_GUI.addPropertyWatching( m_renderer.postProcessProperties() );
+	m_GUI.addPropertyWatching( m_renderer.shadowProperties() );
+	m_GUI.addPropertyWatching( m_scene.lights().properties() );
+	// Правки света, неба, теней и постобработки — в строки уровня (LevelLights, SkyAtmosphere, PostProcessSettings)
+	m_GUI.addAction( "Save level environment", [this]
+	{
+		const bool saved = m_scene.saveEnvironment( m_library, m_renderer.postProcessSettings() );
+		LOG( saved ? "Level environment is saved to base.db3" : "Level environment is not saved" );
+	} );
 
 	m_GUI.Initialize( m_hwnd );
 	m_showGUI = m_config.showGUI();
@@ -131,6 +139,8 @@ bool DMGraphics::Frame()
 	TIME_CHECK( camera.Update( elapsedTime, m_cursorMode || !m_config.mouseLook() ), "Camera Update = %.3f ms" );
 
 	const RenderView mainView = RenderView::fromCamera( camera );
+	// Правки источников в GUI — до кадра: по солнцу считаются тени, расстановка и небо
+	m_scene.lights().update();
 	XMFLOAT3 toSun( 0.0f, -1.0f, 0.0f );	// солнца нет — как ниже горизонта
 	if( m_scene.lights().sunLightIndex() >= 0 )
 	{

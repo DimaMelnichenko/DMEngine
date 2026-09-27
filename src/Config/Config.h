@@ -27,6 +27,8 @@ public:
 		return m_backBufferHeight;
 	}
 	uint16_t MSAACount() const{ return m_MSAACount; }
+	// Размер среза каскадной карты теней, текселей (ShadowMapResolution) — настройка качества, а не данные уровня
+	uint32_t shadowMapResolution() const	{ return m_shadowMapResolution; }
 	// Стартовая камера: положение и поворот (тангаж, рыскание) в градусах, секция [Camera]
 	const XMFLOAT3& cameraPosition() const	{ return m_cameraPosition; }
 	const XMFLOAT2& cameraRotation() const	{ return m_cameraRotation; }
@@ -47,6 +49,7 @@ private:
 	float m_backBufferWidth = 1920.0f;
 	float m_backBufferHeight = 1080.0f;
 	uint16_t m_MSAACount = 0;
+	uint32_t m_shadowMapResolution = 2048;
 	XMFLOAT3 m_cameraPosition = XMFLOAT3( 0.0f, 0.0f, -1.0f );
 	XMFLOAT2 m_cameraRotation = XMFLOAT2( 0.0f, 0.0f );
 	std::string m_levelName;

@@ -63,7 +63,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   Release-сборка создаёт устройство без слоя.
 - Тестов и линтера нет. Проверка изменений — сборка и запуск приложения.
 - Запускать из корня проекта: все пути относительные к рабочей папке (`settings.ini`, `base.db3`,
-  `Shaders\`, `Textures\`, `Meshes\`, `Scene\Lights.ini`). Для CLion это задаёт общая
+  `Shaders\`, `Textures\`, `Meshes\`). Для CLion это задаёт общая
   конфигурация запуска `.run/DMEngine.run.xml`. Каталоги `Textures\` и `Meshes\` в git не хранятся;
   без них движок запускается на заглушках (см. «Заглушки ресурсов»), а в `log.txt` перечислено, что не загрузилось.
   Тестовые данные террейна создают скрипты: карту высот `Textures\terrain\heightmap.dds` (1024×1024) —
@@ -102,7 +102,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   `transparent` (alpha blending, глубина только читается) в HDR-буфер сцены
   (`R16G16B16A16_FLOAT`) → `PostProcess`: экспозиция и тонмаппинг (AgX / ACES) в задний буфер sRGB. Затем
   `DMGraphics` рисует GUI и вызывает `EndScene`. Шейдеры объектов пишут линейный цвет без экспозиции; настройки —
-  `[PostProcess]` в `Scene\Lights.ini` и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
+  строка `PostProcessSettings` уровня и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
   начинается с чистого состояния: `Renderer::executePass` заново ставит цель сцены с областью вывода
   (`DMD3D::setSceneTarget`) и отвязывает ресурсы материалов (`unbindTransientResources`); полноэкранные проходы
   (постобработка, небо) — `FullscreenShader`: сам ставит топологию, шейдеры и состояния, цель — `DMD3D::setRenderTarget`.
@@ -163,10 +163,17 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла. Новые ассеты добавляются
 строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
 моделей, LOD, экземпляров материала `PBR`, расстановки: положение, поворот и масштаб объекта Blender — экземпляр
-в `LevelModels`, связанные дубликаты — экземпляры одной модели; повторный импорт обновляет), подробно — `docs/models.md`. Свет — `Scene\Lights.ini`: источники `[LightN]` (`Type` Dir / Point / Spot, `Color`,
-`Direction` — куда идёт свет, `Position`, `AttenuationRadius`, `InnerConeAngle` / `OuterConeAngle` — имена как в UE
-и KHR_lights_punctual; первый направленный — солнце для неба и теней, его яркость подобрана под экспозицию 0 EV),
-небо `[Sky]`, тени `[Shadows]`, постобработка `[PostProcess]`; ini читается через `ResourceMetaFile` (`GetPrivateProfileString`).
+в `LevelModels`, связанные дубликаты — экземпляры одной модели; повторный импорт обновляет), подробно — `docs/models.md`.
+Свет и окружение — тоже данные уровня, как сущности уровня в UE: источники — строки `LevelLights` (`type` directional /
+point / spot, `enabled`, `color` и `intensity` раздельно, `direction` — куда идёт свет, `position`, `attenuation_radius`,
+`inner_cone_angle` / `outer_cone_angle` — имена как в UE и KHR_lights_punctual; у направленного ещё `cast_shadows`
+и настройки каскадных теней; первый включённый направленный — солнце для неба и теней, его яркость подобрана под
+экспозицию 0 EV), небо — строка `SkyAtmosphere` (`Levels.atmosphere`), постобработка — `PostProcessSettings`
+(`Levels.post_process`; NULL — значения по умолчанию). В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
+вместо вектора), «Sky atmosphere», «Post process»; кнопка «Save level environment» (`GUI::addAction`) пишет их обратно
+(`LibraryLoader::saveLevelEnvironment`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
+уровень). Буфер источников `DMLightDriver` загружает на GPU, только когда источники изменились (`update()` раз за кадр
+в `DMGraphics::Frame`).
 
 Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`): строка `Levels` ссылается на террейн (`Terrain`,
 слои материала — `TerrainLayers`), модель неба (`Models`) и частицы (`Particles`: материал, текстура, плотность);
@@ -221,8 +228,8 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 в `PBRLit.ps`) и свои вызовы с битом `csmShadowDepth` (террейн; слои расстановки с `ScatterLayers.cast_shadow` — только
 в каскады, которые задевает их кольцо, `RenderView::cascadeNear/Far`). Направление на солнце — `FrameContext::toSun`. Приём — `Shaders/shadows.sh`
 (каскад по глубине взгляда, смещения к солнцу и по нормали в текселях каскада, PCF 5 × 5 Castaño, смешение каскадов,
-«Show cascades»): карта t104, сэмплер сравнения s8, константы b3. Настройки — `[Shadows]` в `Lights.ini` и окно GUI
-«Shadows», подробно — `docs/shadows.md`.
+«Show cascades»): карта t104, сэмплер сравнения s8, константы b3. Настройки — у солнца (`DMLight::ShadowSettings`,
+колонки `LevelLights`, подокно солнца в «Lights»), в окне «Shadows» — только «Show cascades», подробно — `docs/shadows.md`.
 
 **Система свойств** (`src/Common/Properties`). `Property` хранит значение в `std::variant`
 (bool, float, XMFLOAT2/3/4, int32, uint32) плюс границы и `GUIControlType`. `PropertyContainer` —

@@ -4,47 +4,17 @@
 #include <cfloat>
 #include <cmath>
 #include "D3D\DMD3D.h"
-#include "ResourceMetaFile.h"
 #include "Logger\Logger.h"
 
 namespace GS
 {
 
-namespace
+bool ShadowCascades::initialize( uint32_t resolution )
 {
+	m_resolution = std::max( resolution, 256u );
 
-// Число из [Shadows] или значение по умолчанию, если ключа нет
-float setting( ResourceMetaFile& file, const char* key, float defaultValue )
-{
-	const std::string value = file.get<std::string>( "Shadows", key );
-	return value.empty() ? defaultValue : std::stof( value );
-}
-
-void addSlider( PropertyContainer& properties, const char* name, float value, float low, float high )
-{
-	Property* property = properties.insert( name, value );
-	property->setLow( low );
-	property->setHigh( high );
-	property->setControlType( GUIControlType::SLIDER );
-}
-
-}
-
-bool ShadowCascades::initialize( const std::string& settingsFile )
-{
-	ResourceMetaFile settings( settingsFile );
-	m_resolution = static_cast<uint32_t>( setting( settings, "Resolution", 2048.0f ) );
-	m_slopeBias = setting( settings, "ShadowSlopeBias", 2.0f );
-
+	// Настройки теней — у солнца; здесь только отладка, как Show → Visualize → Shadow Cascades в UE
 	m_properties.setName( "Shadows" );
-	m_properties.insert( "Enabled", settings.get<std::string>( "Shadows", "Enabled" ) != "false" );
-	addSlider( m_properties, "Dynamic shadow distance", setting( settings, "DynamicShadowDistance", 200.0f ), 20.0f, 1000.0f );
-	addSlider( m_properties, "Cascade distribution exponent", setting( settings, "CascadeDistributionExponent", 3.0f ), 1.0f, 6.0f );
-	addSlider( m_properties, "Cascade transition fraction", setting( settings, "CascadeTransitionFraction", 0.1f ), 0.0f, 0.5f );
-	addSlider( m_properties, "Shadow distance fadeout fraction", setting( settings, "ShadowDistanceFadeoutFraction", 0.1f ), 0.0f, 0.5f );
-	addSlider( m_properties, "Shadow bias", setting( settings, "ShadowBias", 1.0f ), 0.0f, 5.0f );
-	addSlider( m_properties, "Normal bias", setting( settings, "NormalBias", 1.0f ), 0.0f, 5.0f );
-	addSlider( m_properties, "Shadow slope bias", m_slopeBias, 0.0f, 8.0f );
 	m_properties.insert( "Show cascades", false );
 
 	return createResources() && DMD3D::instance().setShadowSlopeBias( m_slopeBias );
@@ -111,19 +81,20 @@ bool ShadowCascades::createResources()
 	return DMD3D::instance().createShaderConstantBuffer( sizeof( ShaderShadowConstants ), m_constantBuffer );
 }
 
-bool ShadowCascades::update( const RenderView& mainView, const XMFLOAT3& toSun, const DirectX::BoundingBox& sceneBounds )
+bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSettings& settings, const XMFLOAT3& toSun,
+							 const DirectX::BoundingBox& sceneBounds )
 {
-	const float slopeBias = m_properties["Shadow slope bias"].data<float>();
-	if( slopeBias != m_slopeBias && DMD3D::instance().setShadowSlopeBias( slopeBias ) )
-		m_slopeBias = slopeBias;
+	m_settings = settings;
+	if( settings.shadowSlopeBias != m_slopeBias && DMD3D::instance().setShadowSlopeBias( settings.shadowSlopeBias ) )
+		m_slopeBias = settings.shadowSlopeBias;
 
-	m_active = m_properties["Enabled"].data<bool>() && toSun.y > 0.0f;
+	m_active = settings.castShadows && toSun.y > 0.0f;
 	if( !m_active )
 		return false;
 
 	// Границы каскадов по формуле UE: dᵢ = D · (Eⁱ − 1) / (Eᴺ − 1); при E = 1 — равномерно
-	const float distance = m_properties["Dynamic shadow distance"].data<float>();
-	const float exponent = m_properties["Cascade distribution exponent"].data<float>();
+	const float distance = settings.dynamicShadowDistance;
+	const float exponent = settings.cascadeDistributionExponent;
 	for( uint32_t cascade = 0; cascade < cascadeCount; ++cascade )
 	{
 		const float i = static_cast<float>( cascade + 1 );
@@ -222,22 +193,22 @@ void ShadowCascades::beginCascade( uint32_t cascade )
 
 void ShadowCascades::bindForReceivers( int sunLightIndex )
 {
-	const float distance = m_properties["Dynamic shadow distance"].data<float>();
-	const float fadeout = m_properties["Shadow distance fadeout fraction"].data<float>();
+	const float distance = m_settings.dynamicShadowDistance;
+	const float fadeout = m_settings.shadowDistanceFadeoutFraction;
 
 	ShaderShadowConstants constants = {};
 	for( uint32_t cascade = 0; cascade < cascadeCount; ++cascade )
 		constants.cascadeViewProjection[cascade] = XMMatrixTranspose( m_views[cascade].viewProjection );
 	constants.cascadeSplits = XMFLOAT4( m_splits[0], m_splits[1], m_splits[2], m_splits[3] );
 	constants.cascadeTexelSize = XMFLOAT4( m_texelSize[0], m_texelSize[1], m_texelSize[2], m_texelSize[3] );
-	constants.cascadeTransition = m_properties["Cascade transition fraction"].data<float>();
+	constants.cascadeTransition = m_settings.cascadeTransitionFraction;
 	constants.fadeStart = distance * ( 1.0f - fadeout );
 	constants.shadowDistance = distance;
-	constants.normalBias = m_properties["Normal bias"].data<float>();
+	constants.normalBias = m_settings.normalBias;
 	constants.sunLightIndex = m_active ? sunLightIndex : -1;
 	constants.showCascades = m_properties["Show cascades"].data<bool>() ? 1 : 0;
 	constants.mapSize = static_cast<float>( m_resolution );
-	constants.depthBias = m_properties["Shadow bias"].data<float>();
+	constants.depthBias = m_settings.shadowBias;
 	Device::updateResourceData<ShaderShadowConstants>( m_constantBuffer.get(), constants );
 
 	DMD3D& d3d = DMD3D::instance();

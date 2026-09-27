@@ -29,6 +29,8 @@ bool Config::readConfig( const std::string& file )
 		m_backBufferWidth = configFile.get<float>( "General", "BackBufferWidth" );
 		m_backBufferHeight = configFile.get<float>( "General", "BackBufferHeight" );
 		m_MSAACount = configFile.get<int32_t>( "General", "MSAACount" );
+		if( const int32_t resolution = configFile.get<int32_t>( "General", "ShadowMapResolution" ); resolution > 0 )
+			m_shadowMapResolution = static_cast<uint32_t>( resolution );
 
 		strToVec3( configFile.get<std::string>( "Camera", "Position" ), m_cameraPosition );
 		strToVec2( configFile.get<std::string>( "Camera", "Rotation" ), m_cameraRotation );

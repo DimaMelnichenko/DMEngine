@@ -30,13 +30,16 @@ public:
 	explicit Renderer( GUI& gui );
 
 	// Вызывается после загрузки мешей: собирает общий буфер вершин и индексов
-	bool initialize();
+	// Уровень уже прочитан (Scene::loadResources): постобработка — его настройки; shadowResolution — размер карты теней
+	bool initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution );
 
 	// Рисует сцену в HDR-буфер и тонмаппинг в задний буфер; дальше DMGraphics рисует GUI и вызывает EndScene
 	void render( Scene& scene, const FrameContext& frame, bool wireframe );
 	// Свойства постобработки и теней для GUI
 	PropertyContainer* postProcessProperties();
 	PropertyContainer* shadowProperties();
+	// Текущие настройки постобработки — для сохранения уровня
+	PostProcess::Settings postProcessSettings();
 
 private:
 	struct DrawCommand;

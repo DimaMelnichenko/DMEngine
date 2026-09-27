@@ -2,6 +2,8 @@
 #include "System.h"
 #include <iostream>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 
 #include "DBConnector.h"
 #include "Logger\Logger.h"
@@ -259,7 +261,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 {
 	try
 	{
-		const char* columns = "SELECT id, name, terrain, sky, particles FROM Levels ";
+		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process FROM Levels ";
 		SQLite::Statement query( dbConnect().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
 		if( !name.empty() )
 			query.bind( ":name", name );
@@ -278,6 +280,14 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.sky = query.getColumn( "sky" ).getUInt();
 		const bool hasParticles = !query.getColumn( "particles" ).isNull();
 		const uint32_t particlesId = query.getColumn( "particles" ).getUInt();
+		if( !query.getColumn( "atmosphere" ).isNull() )
+			level.atmosphereId = query.getColumn( "atmosphere" ).getUInt();
+		if( !query.getColumn( "post_process" ).isNull() )
+			level.postProcessId = query.getColumn( "post_process" ).getUInt();
+
+		loadLevelLights( level );
+		if( !loadLevelEnvironment( level ) )
+			return false;
 
 		SQLite::Statement queryModels( dbConnect().db(), "SELECT id, model, position, rotation, scale FROM LevelModels "
 														 "WHERE level = :level ORDER BY id" );
@@ -334,6 +344,188 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 	catch( const std::exception& e )
 	{
 		LOG( std::string( "Can`t load level: " ) + e.what() );
+		return false;
+	}
+
+	return true;
+}
+
+void LibraryLoader::loadLevelLights( LevelDescription& level )
+{
+	SQLite::Statement query( dbConnect().db(), "SELECT * FROM LevelLights WHERE level = :level ORDER BY id" );
+	query.bind( ":level", level.id );
+	while( query.executeStep() )
+	{
+		auto value = [&query]( const char* column )
+		{
+			return static_cast<float>( query.getColumn( column ).getDouble() );
+		};
+		auto vector = [&query]( const char* column, XMFLOAT3& result )
+		{
+			const std::string text = query.getColumn( column ).getString();
+			if( !strToVec3( text, result ) )
+				LOG( "Level light " + query.getColumn( "id" ).getString() + ": wrong " + column + " '" + text + "'" );
+		};
+
+		DMLight light( DMLight::strToType( query.getColumn( "type" ).getString() ) );
+		light.id = query.getColumn( "id" ).getUInt();
+		light.name = query.getColumn( "name" ).getString();
+		light.setEnabled( query.getColumn( "enabled" ).getInt() != 0 );
+		XMFLOAT3 vec( 1.0f, 1.0f, 1.0f );
+		vector( "color", vec );
+		light.setColor( vec );
+		light.setIntensity( value( "intensity" ) );
+		vec = XMFLOAT3( 0.0f, 0.0f, 0.0f );
+		vector( "position", vec );
+		light.setPosition( vec );
+		vec = XMFLOAT3( 0.0f, -1.0f, 0.0f );
+		vector( "direction", vec );
+		light.setDirection( vec );
+		light.setAttenuationRadius( value( "attenuation_radius" ) );
+		light.setConeAngles( value( "inner_cone_angle" ), value( "outer_cone_angle" ) );
+
+		DMLight::ShadowSettings shadows;
+		shadows.castShadows = query.getColumn( "cast_shadows" ).getInt() != 0;
+		shadows.dynamicShadowDistance = value( "dynamic_shadow_distance" );
+		shadows.cascadeDistributionExponent = value( "cascade_distribution_exponent" );
+		shadows.cascadeTransitionFraction = value( "cascade_transition_fraction" );
+		shadows.shadowDistanceFadeoutFraction = value( "shadow_distance_fadeout_fraction" );
+		shadows.shadowBias = value( "shadow_bias" );
+		shadows.normalBias = value( "normal_bias" );
+		shadows.shadowSlopeBias = value( "shadow_slope_bias" );
+		light.setShadowSettings( shadows );
+
+		level.lights.push_back( std::move( light ) );
+	}
+}
+
+bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
+{
+	if( level.atmosphereId )
+	{
+		SQLite::Statement query( dbConnect().db(), "SELECT sky_intensity, haze, ground_albedo FROM SkyAtmosphere WHERE id = :id" );
+		query.bind( ":id", *level.atmosphereId );
+		if( !query.executeStep() )
+		{
+			LOG( "Sky atmosphere " + std::to_string( *level.atmosphereId ) + " is not found in table SkyAtmosphere" );
+			return false;
+		}
+		level.atmosphere.skyIntensity = static_cast<float>( query.getColumn( "sky_intensity" ).getDouble() );
+		level.atmosphere.haze = static_cast<float>( query.getColumn( "haze" ).getDouble() );
+		level.atmosphere.groundAlbedo = static_cast<float>( query.getColumn( "ground_albedo" ).getDouble() );
+	}
+
+	if( level.postProcessId )
+	{
+		SQLite::Statement query( dbConnect().db(), "SELECT exposure_compensation, tonemapper FROM PostProcessSettings WHERE id = :id" );
+		query.bind( ":id", *level.postProcessId );
+		if( !query.executeStep() )
+		{
+			LOG( "Post process settings " + std::to_string( *level.postProcessId ) + " are not found in table PostProcessSettings" );
+			return false;
+		}
+		level.postProcess.exposureCompensation = static_cast<float>( query.getColumn( "exposure_compensation" ).getDouble() );
+		level.postProcess.tonemapper = GS::PostProcess::tonemapperFromName( query.getColumn( "tonemapper" ).getString() );
+	}
+	return true;
+}
+
+namespace
+{
+
+// Число для базы — с короткой записью (%g), как векторы: float 0.1 не превращается в 0.10000000149011612
+double dbValue( float value )
+{
+	char text[32];
+	std::snprintf( text, sizeof( text ), "%g", value );
+	return std::atof( text );
+}
+
+}
+
+bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,
+										  const GS::SkyAtmosphere::Settings& atmosphere, const GS::PostProcess::Settings& postProcess )
+{
+	try
+	{
+		SQLite::Database& db = dbConnect().db();
+		SQLite::Transaction transaction( db );
+
+		SQLite::Statement updateLight( db, "UPDATE LevelLights SET name = :name, enabled = :enabled, color = :color, "
+										   "intensity = :intensity, position = :position, direction = :direction, "
+										   "attenuation_radius = :radius, inner_cone_angle = :inner, outer_cone_angle = :outer, "
+										   "cast_shadows = :castShadows, dynamic_shadow_distance = :distance, "
+										   "cascade_distribution_exponent = :exponent, cascade_transition_fraction = :transition, "
+										   "shadow_distance_fadeout_fraction = :fadeout, shadow_bias = :shadowBias, "
+										   "normal_bias = :normalBias, shadow_slope_bias = :slopeBias WHERE id = :id" );
+		for( const DMLight& light : lights )
+		{
+			if( light.id == 0 )
+				continue;
+			const DMLight::ShadowSettings& shadows = light.shadowSettings();
+			updateLight.bind( ":name", light.name );
+			updateLight.bind( ":enabled", light.enabled() ? 1 : 0 );
+			updateLight.bind( ":color", vec3ToStr( light.color() ) );
+			updateLight.bind( ":intensity", dbValue( light.intensity() ) );
+			updateLight.bind( ":position", vec3ToStr( light.position() ) );
+			updateLight.bind( ":direction", vec3ToStr( light.direction() ) );
+			updateLight.bind( ":radius", dbValue( light.attenuationRadius() ) );
+			updateLight.bind( ":inner", dbValue( light.innerConeAngle() ) );
+			updateLight.bind( ":outer", dbValue( light.outerConeAngle() ) );
+			updateLight.bind( ":castShadows", shadows.castShadows ? 1 : 0 );
+			updateLight.bind( ":distance", dbValue( shadows.dynamicShadowDistance ) );
+			updateLight.bind( ":exponent", dbValue( shadows.cascadeDistributionExponent ) );
+			updateLight.bind( ":transition", dbValue( shadows.cascadeTransitionFraction ) );
+			updateLight.bind( ":fadeout", dbValue( shadows.shadowDistanceFadeoutFraction ) );
+			updateLight.bind( ":shadowBias", dbValue( shadows.shadowBias ) );
+			updateLight.bind( ":normalBias", dbValue( shadows.normalBias ) );
+			updateLight.bind( ":slopeBias", dbValue( shadows.shadowSlopeBias ) );
+			updateLight.bind( ":id", light.id );
+			updateLight.exec();
+			updateLight.reset();
+		}
+
+		// Строки неба и постобработки: нет у уровня — создаются с его именем
+		if( !level.atmosphereId )
+		{
+			SQLite::Statement insert( db, "INSERT INTO SkyAtmosphere (name) VALUES (:name)" );
+			insert.bind( ":name", level.name );
+			insert.exec();
+			level.atmosphereId = static_cast<uint32_t>( db.getLastInsertRowid() );
+		}
+		SQLite::Statement updateAtmosphere( db, "UPDATE SkyAtmosphere SET sky_intensity = :intensity, haze = :haze, "
+												"ground_albedo = :albedo WHERE id = :id" );
+		updateAtmosphere.bind( ":intensity", dbValue( atmosphere.skyIntensity ) );
+		updateAtmosphere.bind( ":haze", dbValue( atmosphere.haze ) );
+		updateAtmosphere.bind( ":albedo", dbValue( atmosphere.groundAlbedo ) );
+		updateAtmosphere.bind( ":id", *level.atmosphereId );
+		updateAtmosphere.exec();
+
+		if( !level.postProcessId )
+		{
+			SQLite::Statement insert( db, "INSERT INTO PostProcessSettings (name) VALUES (:name)" );
+			insert.bind( ":name", level.name );
+			insert.exec();
+			level.postProcessId = static_cast<uint32_t>( db.getLastInsertRowid() );
+		}
+		SQLite::Statement updatePostProcess( db, "UPDATE PostProcessSettings SET exposure_compensation = :exposure, "
+												 "tonemapper = :tonemapper WHERE id = :id" );
+		updatePostProcess.bind( ":exposure", dbValue( postProcess.exposureCompensation ) );
+		updatePostProcess.bind( ":tonemapper", GS::PostProcess::tonemapperName( postProcess.tonemapper ) );
+		updatePostProcess.bind( ":id", *level.postProcessId );
+		updatePostProcess.exec();
+
+		SQLite::Statement updateLevel( db, "UPDATE Levels SET atmosphere = :atmosphere, post_process = :postProcess WHERE id = :id" );
+		updateLevel.bind( ":atmosphere", *level.atmosphereId );
+		updateLevel.bind( ":postProcess", *level.postProcessId );
+		updateLevel.bind( ":id", level.id );
+		updateLevel.exec();
+
+		transaction.commit();
+	}
+	catch( const std::exception& e )
+	{
+		LOG( std::string( "Can`t save level environment: " ) + e.what() );
 		return false;
 	}
 
