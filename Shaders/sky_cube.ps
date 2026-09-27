@@ -1,8 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Грань cubemap неба (g_face): яркость атмосферы в направлении каждого текселя. Класс SkyAtmosphere
+// Грань cubemap неба (g_face) для освещения окружением: яркость неба в направлении каждого текселя — из таблицы
+// Sky-View и земля под горизонтом (skyLuminance, Shaders/sky_view.sh). Класс SkyAtmosphere
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "atmosphere.sh"
+#define ATMOSPHERE_NO_SKY
+#include "sky_view.sh"
 
 struct PixelInputType
 {
@@ -12,5 +14,5 @@ struct PixelInputType
 
 float4 main( PixelInputType input ) : SV_TARGET
 {
-	return float4( skyRadiance( cubeDirection( g_face, input.uv ) ), 1.0f );
+	return float4( skyLuminance( cubeDirection( g_face, input.uv ) ), 1.0f );
 }

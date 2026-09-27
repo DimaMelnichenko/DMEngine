@@ -2,7 +2,8 @@
 // Таблица многократного рассеяния Ψ (Hillaire 2020, раздел 5.5): для точки на высоте v и солнца с косинусом
 // зенитного угла u — свет второго порядка L2, пришедший со всех направлений (включая землю), и доля f_ms, которую
 // атмосфера рассеивает обратно в точку; все порядки — геометрическая прогрессия Ψ = L2 / (1 − f_ms).
-// Рассеяние считается изотропным, результат — на единицу освещённости от солнца
+// Рассеяние считается изотропным, результат — на единицу освещённости от солнца. Пропускание к солнцу — из таблицы
+// (Shaders/sky_transmittance.ps). Зависит только от атмосферы (дымка, альбедо земли): считается при её смене
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "samplers.sh"
@@ -54,7 +55,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 			float3 segmentTransmittance = exp( -medium.extinction * stepLength );
 			float3 extinction = max( medium.extinction, 1e-12f );
 
-			float3 scattered = medium.scattering * isotropicPhase * transmittanceToTop( position, sunDirection, 8 );
+			float3 scattered = medium.scattering * isotropicPhase * transmittanceToTop( position, sunDirection );
 			luminance += transmittance * ( scattered - scattered * segmentTransmittance ) / extinction;
 			transferred += transmittance * ( medium.scattering - medium.scattering * segmentTransmittance ) / extinction;
 			transmittance *= segmentTransmittance;
@@ -65,7 +66,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 		{
 			float3 groundPosition = origin + direction * pathLength;
 			float cosSun = saturate( dot( normalize( groundPosition ), sunDirection ) );
-			luminance += transmittance * transmittanceToTop( groundPosition, sunDirection, 8 ) * cosSun * g_groundAlbedo / atmospherePi;
+			luminance += transmittance * transmittanceToTop( groundPosition, sunDirection ) * cosSun * g_groundAlbedo / atmospherePi;
 		}
 
 		secondOrder += luminance / directionCount;

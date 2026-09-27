@@ -1,0 +1,18 @@
+////////////////////////////////////////////////////////////////////////////////
+// Таблица Sky-View (Shaders/sky_view.sh): яркость неба вокруг наблюдателя по направлению — луч до края атмосферы или
+// до земли, 32 шага (integrateScattering). Каждый кадр, класс SkyAtmosphere
+////////////////////////////////////////////////////////////////////////////////
+
+#include "sky_view.sh"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	const AtmosphereSample sample = traceAtmosphere( skyViewLutDirection( input.uv ), 32 );
+	return float4( sample.luminance * g_skyIntensity * g_sunColor, 1.0f );
+}

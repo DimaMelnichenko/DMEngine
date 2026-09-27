@@ -1,15 +1,14 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Фон кадра — небо: cubemap неба по направлению взгляда и солнечный диск. Рисуется после непрозрачных на дальней
-// плоскости — только там, где сцена ничего не нарисовала
+// Фон кадра — небо: таблица Sky-View по направлению взгляда с землёй под горизонтом (skyLuminance,
+// Shaders/sky_view.sh) и солнечный диск. Рисуется после непрозрачных на дальней плоскости — только там, где сцена
+// ничего не нарисовала
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
 #include "samplers.sh"
 #define ATMOSPHERE_NO_SKY
-#include "atmosphere.sh"
+#include "sky_view.sh"
 #include "exposure.sh"
-
-TextureCube g_sky : register(t0);
 
 struct PixelInputType
 {
@@ -28,7 +27,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float3 direction = normalize( mul( viewDirection, (float3x3)cb_viewInverseMatrix ) );
 
 	// Небо запечено для солнца 1 лк над атмосферой: яркость, кд/м², — умножением на освещённость от солнца
-	float3 color = g_sky.SampleLevel( g_SamplerLinearClamp, direction, 0.0f ).rgb;
+	float3 color = skyLuminance( direction );
 
 	// Диск: яркость над атмосферой = освещённость / телесный угол, с мягким краем, и пропускание атмосферы по лучу
 	// взгляда — как свет солнца у земли (SkyAtmosphere::sunTransmittance): на закате диск красный, под горизонтом
@@ -38,8 +37,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	[branch] if( disk > 0.0f )
 	{
 		float solidAngle = atmospherePi * sunAngularRadius * sunAngularRadius;
-		float3 origin = float3( 0.0f, planetRadius + observerAltitude, 0.0f );
-		color += g_sunColor / solidAngle * disk * transmittanceToTop( origin, direction, 32 );
+		color += g_sunColor / solidAngle * disk * transmittanceToTop( observerAltitude, direction.y );
 	}
 
 	return float4( color * cb_skyLightScale * preExposure(), 1.0f );

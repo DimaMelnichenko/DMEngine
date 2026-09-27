@@ -16,6 +16,11 @@ namespace
 
 constexpr DXGI_FORMAT hdrFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
+// Слоты таблиц в проходах неба (Shaders/atmosphere.sh, sky_view.sh)
+constexpr uint32_t multipleScatteringSlot = 1;
+constexpr uint32_t transmittanceSlot = 2;
+constexpr uint32_t skyViewSlot = 3;
+
 float luminance( const XMFLOAT3& color )
 {
 	return 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
@@ -45,7 +50,9 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	m_lights = &lights;
 	m_skyLight = &skyLight;
 
-	if( !m_multipleScatteringShader.load( "Shaders\\sky_multiscattering.ps" ) ||
+	if( !m_transmittanceShader.load( "Shaders\\sky_transmittance.ps" ) ||
+		!m_multipleScatteringShader.load( "Shaders\\sky_multiscattering.ps" ) ||
+		!m_skyViewShader.load( "Shaders\\sky_view.ps" ) ||
 		!m_cubeShader.load( "Shaders\\sky_cube.ps" ) ||
 		!m_backgroundShader.load( "Shaders\\sky_background.ps" ) ||
 		!m_aerialPerspectiveShader.Initialize( "Shaders\\aerial_perspective.cs", "main" ) )
@@ -53,7 +60,9 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
 		!SkyLight::createSource( m_skyCube ) ||
+		!m_transmittanceLut.create( SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT, hdrFormat ) ||
 		!m_multipleScattering.create( multipleScatteringSize, multipleScatteringSize, hdrFormat ) ||
+		!m_skyViewLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, hdrFormat ) ||
 		!createAerialPerspectiveVolume() ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_aerialPerspectiveConstants ) )
 		return false;
@@ -180,17 +189,89 @@ SkyAtmosphere::Parameters SkyAtmosphere::currentParameters() const
 
 void SkyAtmosphere::compute( const FrameContext& )
 {
-	// Пересчёт только при смене солнца или настроек: cubemap неба, гармоники и префильтр — несколько миллисекунд
-	const Parameters params = currentParameters();
-	if( !m_environmentValid || std::memcmp( &params, &m_computedFor, sizeof( Parameters ) ) != 0 )
+	// Таблицы станут целями рендера: снимаем их со входов, иначе D3D отвяжет их с предупреждением
+	ID3D11ShaderResourceView* nullViews[4] = {};
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 4, nullViews );
+
+	m_frameParams = currentParameters();
+	setParameters( m_frameParams );
+
+	// 1. Пропускание и Ψ зависят только от атмосферы — при смене дымки или альбедо земли
+	if( !m_lutsValid || m_frameParams.haze != m_lutsFor.haze || m_frameParams.groundAlbedo.x != m_lutsFor.groundAlbedo.x )
 	{
-		updateEnvironment( params );
-		m_computedFor = params;
+		updateAtmosphereLuts();
+		m_lutsFor = m_frameParams;
+		m_lutsValid = true;
+	}
+
+	// 2. Каждый кадр, с солнцем кадра: небо вокруг камеры и объём воздушной перспективы
+	updateSkyView();
+	updateAerialPerspective();
+
+	// 3. Освещение окружением: при смене солнца или настроек — cubemap неба и новый пересчёт SkyLight по шагу за кадр
+	// (самый первый — сразу целиком); пока он идёт, cubemap не меняется. Освещение окружением отстаёт от неба на
+	// SkyLight::captureSteps кадров
+	if( m_skyLight->capturing() )
+	{
+		m_skyLight->updateCapture();
+	}
+	else if( !m_environmentValid || std::memcmp( &m_frameParams, &m_capturedFor, sizeof( Parameters ) ) != 0 )
+	{
+		renderSkyCube();
+		if( m_environmentValid )
+			m_skyLight->beginCapture( m_skyCube );
+		else
+			m_skyLight->capture( m_skyCube );
+		m_capturedFor = m_frameParams;
 		m_environmentValid = true;
 	}
 
-	updateAerialPerspective();
 	bindEnvironment();
+}
+
+void SkyAtmosphere::updateAtmosphereLuts()
+{
+	DMD3D& d3d = DMD3D::instance();
+	ID3D11DeviceContext* context = d3d.GetDeviceContext();
+
+	d3d.setRenderTarget( m_transmittanceLut.rtv(), SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT );
+	m_transmittanceShader.draw();
+	context->OMSetRenderTargets( 0, nullptr, nullptr );
+
+	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
+	d3d.setRenderTarget( m_multipleScattering.rtv(), multipleScatteringSize, multipleScatteringSize );
+	m_multipleScatteringShader.draw();
+	context->OMSetRenderTargets( 0, nullptr, nullptr );
+}
+
+void SkyAtmosphere::updateSkyView()
+{
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setSRV( SRVType::ps, multipleScatteringSlot, m_multipleScattering.srv() );
+	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
+	d3d.setRenderTarget( m_skyViewLut.rtv(), SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT );
+	m_skyViewShader.draw();
+	d3d.GetDeviceContext()->OMSetRenderTargets( 0, nullptr, nullptr );
+}
+
+void SkyAtmosphere::renderSkyCube()
+{
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
+	d3d.setSRV( SRVType::ps, skyViewSlot, m_skyViewLut.srv() );
+
+	// Грани мипа 0, затем цепочка мипов (для префильтра с выборкой мипа по плотности и гармоник)
+	Parameters faceParams = m_frameParams;
+	for( int32_t face = 0; face < 6; ++face )
+	{
+		faceParams.face = face;
+		setParameters( faceParams );
+		d3d.setRenderTarget( m_skyCube.rtv( 0, face ), m_skyCube.size(), m_skyCube.size() );
+		m_cubeShader.draw();
+	}
+	d3d.GetDeviceContext()->OMSetRenderTargets( 0, nullptr, nullptr );
+	d3d.GetDeviceContext()->GenerateMips( m_skyCube.srv().get() );
+	setParameters( m_frameParams );
 }
 
 void SkyAtmosphere::updateAerialPerspective()
@@ -206,50 +287,16 @@ void SkyAtmosphere::updateAerialPerspective()
 	XMFLOAT4 constants( m_properties["Aerial perspective view distance scale"].data<float>(), 0.0f, 0.0f, 0.0f );
 	Device::updateResourceData<XMFLOAT4>( m_aerialPerspectiveConstants.get(), constants );
 	d3d.setConstantBuffer( SRVType::cs, 4, m_aerialPerspectiveConstants );
-	Parameters params = m_computedFor;
-	Device::updateResourceData<Parameters>( m_constantBuffer.get(), params );
-	d3d.setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );
-	d3d.setSRV( SRVType::cs, 1, m_multipleScattering.srv() );
+	d3d.setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );	// параметры кадра — setParameters в compute()
+	d3d.setSRV( SRVType::cs, multipleScatteringSlot, m_multipleScattering.srv() );
+	d3d.setSRV( SRVType::cs, transmittanceSlot, m_transmittanceLut.srv() );
 
 	// Поток — столбец объёма: идёт от камеры по слоям и пишет накопленное к концу каждого
 	m_aerialPerspectiveShader.setUAVBuffer( 0, m_aerialPerspectiveUAV.get() );
 	constexpr uint32_t groupSize = 8;	// = numthreads в Shaders/aerial_perspective.cs
 	m_aerialPerspectiveShader.dispatchGroups( AERIAL_PERSPECTIVE_SIZE / groupSize, AERIAL_PERSPECTIVE_SIZE / groupSize, 1 );
-	context->CSSetShaderResources( 1, 1, &nullView );
-}
-
-void SkyAtmosphere::updateEnvironment( const Parameters& params )
-{
-	DMD3D& d3d = DMD3D::instance();
-	ID3D11DeviceContext* context = d3d.GetDeviceContext();
-
-	// Небо станет целью рендера: снимаем его и таблицу со входов, иначе D3D отвяжет их с предупреждением
 	ID3D11ShaderResourceView* nullViews[2] = {};
-	context->PSSetShaderResources( 0, 2, nullViews );
-
-	Parameters faceParams = params;
-	setParameters( faceParams );
-
-	// 1. Многократное рассеяние: таблица Ψ по высоте и зенитному углу солнца
-	d3d.setRenderTarget( m_multipleScattering.rtv(), multipleScatteringSize, multipleScatteringSize );
-	m_multipleScatteringShader.draw();
-	context->OMSetRenderTargets( 0, nullptr, nullptr );
-	d3d.setSRV( SRVType::ps, 1, m_multipleScattering.srv() );
-
-	// 2. Небо: грани мипа 0, затем цепочка мипов (для префильтра с выборкой мипа по плотности)
-	for( int32_t face = 0; face < 6; ++face )
-	{
-		faceParams.face = face;
-		setParameters( faceParams );
-		d3d.setRenderTarget( m_skyCube.rtv( 0, face ), m_skyCube.size(), m_skyCube.size() );
-		m_cubeShader.draw();
-	}
-	context->OMSetRenderTargets( 0, nullptr, nullptr );
-	context->PSSetShaderResources( 1, 1, nullViews );
-	context->GenerateMips( m_skyCube.srv().get() );
-
-	// 3. Освещение окружением из неба: гармоники и префильтр отражений
-	m_skyLight->capture( m_skyCube );
+	context->CSSetShaderResources( multipleScatteringSlot, 2, nullViews );
 }
 
 void SkyAtmosphere::setParameters( const Parameters& params )
@@ -273,9 +320,9 @@ void SkyAtmosphere::collectMeshes( const RenderView&, MeshCollector& collector )
 
 void SkyAtmosphere::renderCustom( const RenderContext& )
 {
-
-	setParameters( m_computedFor );
-	DMD3D::instance().setSRV( SRVType::ps, 0, m_skyCube.srv() );
+	setParameters( m_frameParams );
+	DMD3D::instance().setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
+	DMD3D::instance().setSRV( SRVType::ps, skyViewSlot, m_skyViewLut.srv() );
 	// На дальней плоскости: только там, где сцена ничего не нарисовала
 	m_backgroundShader.draw( BlendState::opaque, DepthState::readOnlyNearOrEqual );
 }

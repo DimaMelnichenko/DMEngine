@@ -1,7 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Небо: рассеяние света в атмосфере Земли по модели S. Hillaire, «A Scalable and Production Ready Sky and
 // Atmosphere Rendering Technique» (EGSR 2020) — на ней построен Sky Atmosphere в UE5. Рассеяние Рэлея (воздух),
-// Ми (аэрозоль), поглощение озоном и многократное рассеяние через таблицу Ψ (Shaders/sky_multiscattering.ps).
+// Ми (аэрозоль), поглощение озоном и многократное рассеяние через таблицу Ψ (Shaders/sky_multiscattering.ps);
+// пропускание до края атмосферы — из таблицы (Shaders/sky_transmittance.ps), а не трассировкой на каждом шаге.
 // Параметры атмосферы — значения по умолчанию UE (atmosphere_constants.h, общие с C++). Класс SkyAtmosphere
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -71,12 +72,10 @@ Medium atmosphereMedium( float height )
 	return medium;
 }
 
-// Пропускание от точки до края атмосферы; 0 — луч упирается в планету
-float3 transmittanceToTop( float3 position, float3 direction, int samples )
+// Оптическая толщина от точки до края атмосферы трассировкой — по ней строится таблица пропускания
+// (Shaders/sky_transmittance.ps). Планету луч не замечает: её тень учитывает выборка таблицы
+float3 opticalDepthToTop( float3 position, float3 direction, int samples )
 {
-	if( raySphere( position, direction, planetRadius ).x > 0.0f )
-		return 0.0f;
-
 	float stepLength = raySphere( position, direction, atmosphereRadius ).y / samples;
 	float3 opticalDepth = 0.0f;
 	[loop] for( int i = 0; i < samples; ++i )
@@ -84,7 +83,74 @@ float3 transmittanceToTop( float3 position, float3 direction, int samples )
 		float3 samplePosition = position + direction * ( stepLength * ( i + 0.5f ) );
 		opticalDepth += atmosphereMedium( max( length( samplePosition ) - planetRadius, 0.0f ) ).extinction * stepLength;
 	}
-	return exp( -opticalDepth );
+	return opticalDepth;
+}
+
+// Координаты таблиц по доле [0, 1]: крайние значения — центры крайних текселей, чтобы края таблицы были точными
+float2 lutUvFromUnit( float2 unit, float2 size )
+{
+	return ( unit * ( size - 1.0f ) + 0.5f ) / size;
+}
+
+float2 lutUnitFromUv( float2 uv, float2 size )
+{
+	return ( uv * size - 0.5f ) / ( size - 1.0f );
+}
+
+// Таблица пропускания до края атмосферы, SKY_TRANSMITTANCE_LUT_WIDTH × HEIGHT (Shaders/sky_transmittance.ps)
+Texture2D<float4> g_transmittanceLut : register( t2 );
+static const float2 transmittanceLutSize = float2( SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT );
+// Расстояние от земли до края атмосферы по касательной к планете
+static const float atmosphereHorizon = sqrt( ( atmosphereRadius - planetRadius ) * ( atmosphereRadius + planetRadius ) );
+
+// Расстояние до горизонта с высоты height — ρ = √(r² − R²), без вычитания квадратов радиусов (точность float в метрах)
+float horizonDistance( float height )
+{
+	return sqrt( max( height * ( 2.0f * planetRadius + height ), 0.0f ) );
+}
+
+// Параметризация Bruneton 2017, как у Hillaire: u — доля пути до края атмосферы между кратчайшим (вверх) и самым
+// длинным (по касательной к планете), v — высота через расстояние до горизонта
+float2 transmittanceLutUv( float height, float cosZenith )
+{
+	const float radius = planetRadius + height;
+	const float rho = horizonDistance( height );
+	// r²·μ² + (R_top² − r²): квадрат радиуса края — разностью, без вычитания больших чисел
+	const float discriminant = radius * radius * cosZenith * cosZenith + ( atmosphereRadius - radius ) * ( atmosphereRadius + radius );
+	const float distance = max( -radius * cosZenith + sqrt( max( discriminant, 0.0f ) ), 0.0f );
+	const float minDistance = atmosphereRadius - radius;
+	const float maxDistance = rho + atmosphereHorizon;
+	return lutUvFromUnit( float2( ( distance - minDistance ) / ( maxDistance - minDistance ), rho / atmosphereHorizon ),
+						  transmittanceLutSize );
+}
+
+// Обратное: высота и косинус зенитного угла центра текселя таблицы
+void transmittanceLutParameters( float2 uv, out float height, out float cosZenith )
+{
+	const float2 unit = lutUnitFromUv( uv, transmittanceLutSize );
+	const float rho = atmosphereHorizon * unit.y;
+	const float radius = sqrt( rho * rho + planetRadius * planetRadius );
+	height = rho * rho / ( radius + planetRadius );	// r − R = ρ² / (r + R)
+	const float minDistance = atmosphereRadius - radius;
+	const float maxDistance = rho + atmosphereHorizon;
+	const float distance = minDistance + unit.x * ( maxDistance - minDistance );
+	cosZenith = distance <= 0.0f ? 1.0f :
+		clamp( ( atmosphereHorizon * atmosphereHorizon - rho * rho - distance * distance ) / ( 2.0f * radius * distance ), -1.0f, 1.0f );
+}
+
+// Пропускание от точки на высоте height до края атмосферы по направлению с косинусом зенитного угла cosZenith;
+// луч в планету (ниже касательной к горизонту) — 0: тень Земли
+float3 transmittanceToTop( float height, float cosZenith )
+{
+	if( cosZenith < -horizonDistance( height ) / ( planetRadius + height ) )
+		return 0.0f;
+	return g_transmittanceLut.SampleLevel( g_SamplerLinearClamp, transmittanceLutUv( height, cosZenith ), 0.0f ).rgb;
+}
+
+float3 transmittanceToTop( float3 position, float3 direction )
+{
+	const float radius = length( position );
+	return transmittanceToTop( radius - planetRadius, dot( position / radius, direction ) );
 }
 
 float phaseRayleigh( float cosTheta )
@@ -119,8 +185,8 @@ struct AtmosphereSample
 
 // Отрезок луча взгляда от start до end метров из origin (samples шагов): рассеянный к наблюдателю свет
 // прибавляется к luminance — с пропусканием от наблюдателя до начала отрезка, transmittance умножается на
-// пропускание отрезка. На единицу освещённости от солнца. Так считаются и небо (traceAtmosphere), и воздушная
-// перспектива по отрезкам до слоёв объёма (Shaders/aerial_perspective.cs)
+// пропускание отрезка. На единицу освещённости от солнца. Так считаются и небо вокруг наблюдателя (traceAtmosphere,
+// Shaders/sky_view.ps), и воздушная перспектива по отрезкам до слоёв объёма (Shaders/aerial_perspective.cs)
 void integrateScattering( float3 origin, float3 direction, float start, float end, int samples,
 						  inout float3 luminance, inout float3 transmittance )
 {
@@ -138,7 +204,7 @@ void integrateScattering( float3 origin, float3 direction, float start, float en
 		Medium medium = atmosphereMedium( height );
 
 		// Однократное рассеяние солнца и многократное (изотропное, из таблицы)
-		float3 sunTransmittance = transmittanceToTop( position, g_sunDirection, 8 );
+		float3 sunTransmittance = transmittanceToTop( height, sunCosZenith );
 		float3 scattered = ( medium.rayleigh * rayleighPhase + medium.mie * miePhase ) * sunTransmittance +
 						   medium.scattering * multipleScattering( height, sunCosZenith );
 
@@ -149,6 +215,7 @@ void integrateScattering( float3 origin, float3 direction, float start, float en
 	}
 }
 
+// Луч взгляда наблюдателя на высоте observerAltitude до края атмосферы или до земли
 AtmosphereSample traceAtmosphere( float3 direction, int samples )
 {
 	AtmosphereSample result = (AtmosphereSample)0;
@@ -167,37 +234,6 @@ AtmosphereSample traceAtmosphere( float3 direction, int samples )
 	result.luminance = luminance;
 	result.transmittance = transmittance;
 	return result;
-}
-
-// Яркость земли под горизонтом: ламбертова поверхность под солнцем (через атмосферу) и небом. Свет неба — среднее
-// яркости по пяти направлениям (зенит и четыре на высоте 30°) вместо интеграла по полусфере
-float3 groundRadiance( float3 direction, float distance )
-{
-	float3 position = float3( 0.0f, planetRadius + observerAltitude, 0.0f ) + direction * distance;
-	float3 up = normalize( position );
-	float3 sun = transmittanceToTop( position, g_sunDirection, 8 ) * saturate( dot( up, g_sunDirection ) ) / atmospherePi;
-
-	float3 sky = traceAtmosphere( float3( 0.0f, 1.0f, 0.0f ), 12 ).luminance;
-	[loop] for( int k = 0; k < 4; ++k )
-	{
-		float azimuth = k * 0.5f * atmospherePi;
-		sky += traceAtmosphere( float3( 0.866f * cos( azimuth ), 0.5f, 0.866f * sin( azimuth ) ), 12 ).luminance;
-	}
-	return g_groundAlbedo * ( sun + sky / 5.0f * g_skyIntensity );
-}
-
-// Яркость неба в направлении direction без солнечного диска (диск рисует только фон: прямой свет солнца уже даёт
-// направленный источник, в освещении окружением он был бы учтён дважды)
-float3 skyRadiance( float3 direction )
-{
-	AtmosphereSample sample = traceAtmosphere( direction, 32 );
-	float3 color = sample.luminance * g_skyIntensity;
-	if( sample.hitsGround )
-	{
-		const float3 origin = float3( 0.0f, planetRadius + observerAltitude, 0.0f );
-		color += sample.transmittance * groundRadiance( direction, raySphere( origin, direction, planetRadius ).x );
-	}
-	return color * g_sunColor;
 }
 #endif
 

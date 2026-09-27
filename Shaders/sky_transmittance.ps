@@ -1,0 +1,24 @@
+////////////////////////////////////////////////////////////////////////////////
+// Таблица пропускания до края атмосферы (Transmittance LUT, Hillaire 2020 — как в Sky Atmosphere UE5): для высоты
+// и зенитного угла тексель хранит exp(−оптическая толщина до края) по каналам RGB. Все пропускания к солнцу и к краю
+// атмосферы берутся из неё (transmittanceToTop в atmosphere.sh). Зависит только от атмосферы (дымки): считается при
+// её смене, класс SkyAtmosphere
+////////////////////////////////////////////////////////////////////////////////
+
+#define ATMOSPHERE_NO_SKY
+#include "atmosphere.sh"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	float height, cosZenith;
+	transmittanceLutParameters( input.uv, height, cosZenith );
+	const float3 position = float3( 0.0f, planetRadius + height, 0.0f );
+	const float3 direction = float3( sqrt( saturate( 1.0f - cosZenith * cosZenith ) ), cosZenith, 0.0f );
+	return float4( exp( -opticalDepthToTop( position, direction, 40 ) ), 1.0f );
+}

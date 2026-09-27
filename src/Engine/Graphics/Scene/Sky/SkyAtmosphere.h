@@ -15,15 +15,18 @@ class DMLightDriver;
 namespace GS
 {
 
-// Процедурное небо, освещение окружением и воздушная перспектива от него (как Sky Atmosphere в UE).
-// Когда меняется солнце (первый включённый направленный источник уровня) или настройки неба, compute() заново:
-// - считает таблицу многократного рассеяния (Shaders/sky_multiscattering.ps, модель Hillaire 2020 как в UE5);
-// - рендерит cubemap неба (Рэлей, Ми, озон, многократное рассеяние — Shaders/atmosphere.sh) и строит его мипы;
-// - отдаёт его в SkyLight — гармоники рассеянного света и префильтр отражений (Shaders/ibl.sh, слоты PS t101…t103).
-// Каждый кадр — объём воздушной перспективы над экраном главного вида (Shaders/aerial_perspective.cs,
-// Hillaire 2020 — Camera Aerial Perspective Volume в UE): свет, рассеянный воздухом между камерой и точкой, и пропускание
-// до неё; его читает общая функция освещения (Shaders/aerial_perspective.sh, слот PS t106).
-// Свой вызов в проходе sky рисует небо фоном кадра. Пропускание к солнцу для его света у земли
+// Процедурное небо, освещение окружением и воздушная перспектива от него (как Sky Atmosphere в UE5, таблицы
+// Hillaire 2020; Рэлей, Ми, озон, многократное рассеяние — Shaders/atmosphere.sh). compute():
+// - при смене атмосферы (дымка, альбедо земли) — таблица пропускания до края атмосферы
+//   (Shaders/sky_transmittance.ps) и таблица многократного рассеяния Ψ (Shaders/sky_multiscattering.ps);
+// - каждый кадр — небо вокруг камеры, таблица Sky-View (Shaders/sky_view.ps), и объём воздушной перспективы над экраном
+//   главного вида (Shaders/aerial_perspective.cs, Camera Aerial Perspective Volume в UE: свет, рассеянный воздухом
+//   между камерой и точкой, и пропускание до неё; его читает общая функция освещения — Shaders/aerial_perspective.sh,
+//   слот PS t106);
+// - при смене солнца (первый включённый направленный источник уровня) или настроек — cubemap неба из Sky-View
+//   (Shaders/sky_cube.ps) с мипами для SkyLight: гармоники рассеянного света и префильтр отражений (Shaders/ibl.sh,
+//   слоты PS t101…t103) — по шагу за кадр, как Real Time Capture у Sky Light в UE.
+// Свой вызов в проходе sky рисует небо фоном кадра — из Sky-View (Shaders/sky_background.ps). Пропускание к солнцу для его света у земли
 // (Atmosphere Sun Light) считает на CPU по той же модели — sunTransmittance. Настройки — строка таблицы SkyAtmosphere,
 // на которую ссылается уровень (Levels.atmosphere), и окно GUI «Sky atmosphere»
 class SkyAtmosphere : public SceneObject
@@ -74,7 +77,12 @@ private:
 
 	bool createAerialPerspectiveVolume();
 	Parameters currentParameters() const;
-	void updateEnvironment( const Parameters& params );
+	// Таблицы, зависящие только от атмосферы: пропускание, затем Ψ по нему
+	void updateAtmosphereLuts();
+	// Небо вокруг камеры с солнцем кадра
+	void updateSkyView();
+	// Cubemap неба для SkyLight из Sky-View, 6 граней и мипы
+	void renderSkyCube();
 	// Объём воздушной перспективы для главного вида кадра (матрицы — в константах кадра)
 	void updateAerialPerspective();
 	void setParameters( const Parameters& params );
@@ -84,18 +92,26 @@ private:
 	SkyLight* m_skyLight = nullptr;
 	PropertyContainer m_properties;
 	bool m_backgroundVisible = true;
+	Parameters m_frameParams = {};		// солнце и настройки кадра: Sky-View, воздушная перспектива, фон
+	bool m_lutsValid = false;
+	Parameters m_lutsFor = {};			// для каких дымки и альбедо земли посчитаны пропускание и Ψ
 	bool m_environmentValid = false;
-	Parameters m_computedFor = {};
+	Parameters m_capturedFor = {};		// для чего начат последний пересчёт освещения окружением
 
+	FullscreenShader m_transmittanceShader;
 	FullscreenShader m_multipleScatteringShader;
+	FullscreenShader m_skyViewShader;
 	FullscreenShader m_cubeShader;
 	FullscreenShader m_backgroundShader;
 	DMComputeShader m_aerialPerspectiveShader;
 	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
 	com_unique_ptr<ID3D11Buffer> m_aerialPerspectiveConstants;	// b4 compute-прохода, AerialPerspectiveBuffer
 
+	// Таблицы проходов неба: t1 — Ψ, t2 — пропускание, t3 — Sky-View
+	RenderTarget m_transmittanceLut;
 	RenderTarget m_multipleScattering;
-	CubeTarget m_skyCube;	// источник SkyLight и фон
+	RenderTarget m_skyViewLut;
+	CubeTarget m_skyCube;	// источник SkyLight
 
 	// RGB — рассеянный свет на единицу освещённости от солнца, A — среднее пропускание; слой — расстояние
 	com_unique_ptr<ID3D11Texture3D> m_aerialPerspective;

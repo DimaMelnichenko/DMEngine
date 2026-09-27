@@ -21,6 +21,13 @@
 #define ATMOSPHERE_OZONE_CENTER			25e3f
 #define ATMOSPHERE_OZONE_HALF_WIDTH		15e3f
 
+// Таблицы неба (SkyAtmosphere, Hillaire 2020 — как в Sky Atmosphere UE5): пропускание до края атмосферы по высоте и
+// зенитному углу (Shaders/sky_transmittance.ps) и небо вокруг наблюдателя (Sky-View, Shaders/sky_view.ps)
+#define SKY_TRANSMITTANCE_LUT_WIDTH		256
+#define SKY_TRANSMITTANCE_LUT_HEIGHT	64
+#define SKY_VIEW_LUT_WIDTH				192
+#define SKY_VIEW_LUT_HEIGHT				108
+
 // Объём воздушной перспективы (SkyAtmosphere, Shaders/aerial_perspective.cs, aerial_perspective.sh): сетка над экраном
 // AERIAL_PERSPECTIVE_SIZE² × AERIAL_PERSPECTIVE_DEPTH слоёв по расстоянию до дальней плоскости
 #define AERIAL_PERSPECTIVE_SIZE			32
