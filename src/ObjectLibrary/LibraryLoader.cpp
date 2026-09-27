@@ -431,7 +431,8 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 
 	if( level.atmosphereId )
 	{
-		SQLite::Statement query( dbConnect().db(), "SELECT sky_intensity, haze, ground_albedo FROM SkyAtmosphere WHERE id = :id" );
+		SQLite::Statement query( dbConnect().db(), "SELECT sky_intensity, haze, ground_albedo, aerial_perspective_view_distance_scale "
+												   "FROM SkyAtmosphere WHERE id = :id" );
 		query.bind( ":id", *level.atmosphereId );
 		if( !query.executeStep() )
 		{
@@ -441,6 +442,8 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		level.atmosphere.skyIntensity = static_cast<float>( query.getColumn( "sky_intensity" ).getDouble() );
 		level.atmosphere.haze = static_cast<float>( query.getColumn( "haze" ).getDouble() );
 		level.atmosphere.groundAlbedo = static_cast<float>( query.getColumn( "ground_albedo" ).getDouble() );
+		level.atmosphere.aerialPerspectiveViewDistanceScale =
+			static_cast<float>( query.getColumn( "aerial_perspective_view_distance_scale" ).getDouble() );
 	}
 
 	if( level.postProcessId )
@@ -558,10 +561,12 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 			level.atmosphereId = static_cast<uint32_t>( db.getLastInsertRowid() );
 		}
 		SQLite::Statement updateAtmosphere( db, "UPDATE SkyAtmosphere SET sky_intensity = :intensity, haze = :haze, "
-												"ground_albedo = :albedo WHERE id = :id" );
+												"ground_albedo = :albedo, aerial_perspective_view_distance_scale = :aerialScale "
+												"WHERE id = :id" );
 		updateAtmosphere.bind( ":intensity", dbValue( atmosphere.skyIntensity ) );
 		updateAtmosphere.bind( ":haze", dbValue( atmosphere.haze ) );
 		updateAtmosphere.bind( ":albedo", dbValue( atmosphere.groundAlbedo ) );
+		updateAtmosphere.bind( ":aerialScale", dbValue( atmosphere.aerialPerspectiveViewDistanceScale ) );
 		updateAtmosphere.bind( ":id", *level.atmosphereId );
 		updateAtmosphere.exec();
 

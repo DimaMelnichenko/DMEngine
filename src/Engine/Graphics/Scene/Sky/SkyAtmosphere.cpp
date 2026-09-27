@@ -49,7 +49,8 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 		!m_prefilterShader.load( "Shaders\\sky_prefilter.ps" ) ||
 		!m_brdfShader.load( "Shaders\\brdf_lut.ps" ) ||
 		!m_backgroundShader.load( "Shaders\\sky_background.ps" ) ||
-		!m_irradianceShader.Initialize( "Shaders\\sky_irradiance.cs", "main" ) )
+		!m_irradianceShader.Initialize( "Shaders\\sky_irradiance.cs", "main" ) ||
+		!m_aerialPerspectiveShader.Initialize( "Shaders\\aerial_perspective.cs", "main" ) )
 		return false;
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
@@ -57,7 +58,9 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 		!createCube( specularSize, specularMipCount, false, m_specularCube, m_specularTargets, m_specularSRV ) ||
 		!createTexture2D( multipleScatteringSize, hdrFormat, m_multipleScattering, m_multipleScatteringTarget, m_multipleScatteringSRV ) ||
 		!createTexture2D( brdfLutSize, DXGI_FORMAT_R16G16_FLOAT, m_brdfLut, m_brdfTarget, m_brdfSRV ) ||
-		!createIrradianceBuffer() )
+		!createIrradianceBuffer() ||
+		!createAerialPerspectiveVolume() ||
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_aerialPerspectiveConstants ) )
 		return false;
 
 	// Грани неба одного мипа как массив: compute-шейдер читает тексели через Load
@@ -90,6 +93,11 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	prop->setHigh( 1.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
+	prop = m_properties.insert( "Aerial perspective view distance scale", settings.aerialPerspectiveViewDistanceScale );
+	prop->setLow( 0.0f );
+	prop->setHigh( 16.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
 	return true;
 }
 
@@ -99,6 +107,7 @@ SkyAtmosphere::Settings SkyAtmosphere::settings()
 	settings.skyIntensity = m_properties["Sky intensity"].data<float>();
 	settings.haze = m_properties["Haze"].data<float>();
 	settings.groundAlbedo = m_properties["Ground albedo"].data<float>();
+	settings.aerialPerspectiveViewDistanceScale = m_properties["Aerial perspective view distance scale"].data<float>();
 	return settings;
 }
 
@@ -226,6 +235,37 @@ bool SkyAtmosphere::createIrradianceBuffer()
 	return true;
 }
 
+bool SkyAtmosphere::createAerialPerspectiveVolume()
+{
+	ID3D11Device* device = DMD3D::instance().GetDevice();
+
+	D3D11_TEXTURE3D_DESC desc = {};
+	desc.Width = AERIAL_PERSPECTIVE_SIZE;
+	desc.Height = AERIAL_PERSPECTIVE_SIZE;
+	desc.Depth = AERIAL_PERSPECTIVE_DEPTH;
+	desc.MipLevels = 1;
+	desc.Format = hdrFormat;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+
+	ID3D11Texture3D* texture = nullptr;
+	if( FAILED( device->CreateTexture3D( &desc, nullptr, &texture ) ) )
+		return false;
+	m_aerialPerspective = make_com_ptr<ID3D11Texture3D>( texture );
+
+	ID3D11UnorderedAccessView* uav = nullptr;
+	if( FAILED( device->CreateUnorderedAccessView( texture, nullptr, &uav ) ) )
+		return false;
+	m_aerialPerspectiveUAV = make_com_ptr<ID3D11UnorderedAccessView>( uav );
+
+	ID3D11ShaderResourceView* srv = nullptr;
+	if( FAILED( device->CreateShaderResourceView( texture, nullptr, &srv ) ) )
+		return false;
+	m_aerialPerspectiveSRV = make_com_ptr<ID3D11ShaderResourceView>( srv );
+
+	return true;
+}
+
 void SkyAtmosphere::setBackgroundVisible( bool visible )
 {
 	m_backgroundVisible = visible;
@@ -291,7 +331,33 @@ void SkyAtmosphere::compute( const FrameContext& )
 		m_environmentValid = true;
 	}
 
+	updateAerialPerspective();
 	bindEnvironment();
+}
+
+void SkyAtmosphere::updateAerialPerspective()
+{
+	DMD3D& d3d = DMD3D::instance();
+	ID3D11DeviceContext* context = d3d.GetDeviceContext();
+
+	// Объём станет UAV: снимаем его с входа пиксельных шейдеров прошлого кадра
+	ID3D11ShaderResourceView* nullView = nullptr;
+	context->PSSetShaderResources( SLOT_AERIAL_PERSPECTIVE, 1, &nullView );
+
+	// Раскладка — AerialPerspectiveBuffer в Shaders/aerial_perspective.cs
+	XMFLOAT4 constants( m_properties["Aerial perspective view distance scale"].data<float>(), 0.0f, 0.0f, 0.0f );
+	Device::updateResourceData<XMFLOAT4>( m_aerialPerspectiveConstants.get(), constants );
+	d3d.setConstantBuffer( SRVType::cs, 4, m_aerialPerspectiveConstants );
+	Parameters params = m_computedFor;
+	Device::updateResourceData<Parameters>( m_constantBuffer.get(), params );
+	d3d.setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );
+	d3d.setSRV( SRVType::cs, 1, m_multipleScatteringSRV );
+
+	// Поток — столбец объёма: идёт от камеры по слоям и пишет накопленное к концу каждого
+	m_aerialPerspectiveShader.setUAVBuffer( 0, m_aerialPerspectiveUAV.get() );
+	constexpr uint32_t groupSize = 8;	// = numthreads в Shaders/aerial_perspective.cs
+	m_aerialPerspectiveShader.dispatchGroups( AERIAL_PERSPECTIVE_SIZE / groupSize, AERIAL_PERSPECTIVE_SIZE / groupSize, 1 );
+	context->CSSetShaderResources( 1, 1, &nullView );
 }
 
 void SkyAtmosphere::updateEnvironment( const Parameters& params )
@@ -373,6 +439,7 @@ void SkyAtmosphere::bindEnvironment()
 	d3d.setSRV( SRVType::ps, SLOT_IBL_IRRADIANCE, m_irradianceSRV );
 	d3d.setSRV( SRVType::ps, SLOT_IBL_SPECULAR, m_specularSRV );
 	d3d.setSRV( SRVType::ps, SLOT_IBL_BRDF, m_brdfSRV );
+	d3d.setSRV( SRVType::ps, SLOT_AERIAL_PERSPECTIVE, m_aerialPerspectiveSRV );
 }
 
 void SkyAtmosphere::collectMeshes( const RenderView&, MeshCollector& collector )

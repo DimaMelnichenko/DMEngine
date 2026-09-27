@@ -14,6 +14,7 @@
 #include "brdf.sh"
 #include "ibl.sh"
 #include "shadows.sh"
+#include "aerial_perspective.sh"
 #include "exposure.sh"
 
 // Источник света, раскладка — DMLightDriver::LightBuffer
@@ -108,8 +109,9 @@ float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 d
 	return result;
 }
 
-// Полное освещение точки: прямой свет, освещение окружением (рассеянное и отражённое, split-sum) и свечение.
-// Линейный HDR без экспозиции — её применяет постобработка
+// Полное освещение точки: прямой свет, освещение окружением (рассеянное и отражённое, split-sum) и свечение,
+// затем воздушная перспектива до камеры. Линейный HDR с экспозицией прошлого кадра (pre-exposure) — новую применяет
+// постобработка
 float3 evaluateLighting( Surface surface )
 {
 	const float3 view = normalize( cb_cameraPosition - surface.position );
@@ -127,8 +129,9 @@ float3 evaluateLighting( Surface surface )
 					 ambientSpecular( reflect( -view, surface.normal ), roughness ) * ( F0 * environment.x + environment.y );
 
 	// Освещение окружением тень не гасит (как в UE без затенения окружения)
+	const float3 color = ( direct + ambient * surface.occlusion + surface.emissive ) * shadowCascadeTint( surface.position );
 	// Яркость, кд/м², — в буфер сцены с экспозицией прошлого кадра (pre-exposure, Shaders/exposure.sh)
-	return ( direct + ambient * surface.occlusion + surface.emissive ) * shadowCascadeTint( surface.position ) * preExposure();
+	return applyAerialPerspective( color, surface.position ) * preExposure();
 }
 
 #endif

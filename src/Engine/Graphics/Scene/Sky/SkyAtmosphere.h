@@ -12,14 +12,17 @@ class DMLightDriver;
 namespace GS
 {
 
-// Процедурное небо и освещение окружением от него (как Sky Atmosphere + Sky Light в UE, только проще).
+// Процедурное небо, освещение окружением и воздушная перспектива от него (как Sky Atmosphere + Sky Light в UE).
 // Когда меняется солнце (первый включённый направленный источник уровня) или настройки неба, compute() заново:
 // - считает таблицу многократного рассеяния (Shaders/sky_multiscattering.ps, модель Hillaire 2020 как в UE5);
 // - рендерит cubemap неба (Рэлей, Ми, озон, многократное рассеяние — Shaders/atmosphere.sh) и строит его мипы;
 // - проецирует его на сферические гармоники — рассеянный свет (Shaders/sky_irradiance.cs);
 // - префильтрует отражения по шероховатости GGX (Shaders/sky_prefilter.ps);
 // а таблицу BRDF (Shaders/brdf_lut.ps) считает один раз. Затем привязывает всё это к слотам PS t101…t103
-// (Shaders/ibl.sh). Свой вызов в проходе sky рисует небо фоном кадра. Пропускание к солнцу для его света у земли
+// (Shaders/ibl.sh). Каждый кадр — объём воздушной перспективы над экраном главного вида (Shaders/aerial_perspective.cs,
+// Hillaire 2020 — Camera Aerial Perspective Volume в UE): свет, рассеянный воздухом между камерой и точкой, и пропускание
+// до неё; его читает общая функция освещения (Shaders/aerial_perspective.sh, слот PS t106).
+// Свой вызов в проходе sky рисует небо фоном кадра. Пропускание к солнцу для его света у земли
 // (Atmosphere Sun Light) считает на CPU по той же модели — sunTransmittance. Настройки — строка таблицы SkyAtmosphere,
 // на которую ссылается уровень (Levels.atmosphere), и окно GUI «Sky atmosphere»
 class SkyAtmosphere : public SceneObject
@@ -38,6 +41,9 @@ public:
 		float skyIntensity = 1.0f;	// множитель рассеянного света неба, 1 — по модели
 		float haze = 1.0f;			// плотность дымки (аэрозоли Ми)
 		float groundAlbedo = 0.25f;	// отражение земли под горизонтом
+		// Во сколько раз воздух между камерой и точкой кажется толще (Aerial Perspective View Distance Scale в UE):
+		// 1 — по модели (дымка на 1 км — несколько процентов), больше — небольшой мир выглядит как большой, 0 — выключено
+		float aerialPerspectiveViewDistanceScale = 1.0f;
 	};
 
 	SkyAtmosphere();
@@ -77,6 +83,9 @@ private:
 	bool createTexture2D( uint32_t size, DXGI_FORMAT format, com_unique_ptr<ID3D11Texture2D>& texture,
 						  com_unique_ptr<ID3D11RenderTargetView>& target, com_unique_ptr<ID3D11ShaderResourceView>& srv );
 	bool createIrradianceBuffer();
+	bool createAerialPerspectiveVolume();
+	// Объём воздушной перспективы для главного вида кадра (матрицы — в константах кадра)
+	void updateAerialPerspective();
 	Parameters currentParameters() const;
 	void updateEnvironment( const Parameters& params );
 	void setParameters( const Parameters& params );
@@ -95,7 +104,9 @@ private:
 	FullscreenShader m_brdfShader;
 	FullscreenShader m_backgroundShader;
 	DMComputeShader m_irradianceShader;
+	DMComputeShader m_aerialPerspectiveShader;
 	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
+	com_unique_ptr<ID3D11Buffer> m_aerialPerspectiveConstants;	// b4 compute-прохода, AerialPerspectiveBuffer
 
 	com_unique_ptr<ID3D11Texture2D> m_multipleScattering;
 	com_unique_ptr<ID3D11RenderTargetView> m_multipleScatteringTarget;
@@ -117,6 +128,11 @@ private:
 	com_unique_ptr<ID3D11Buffer> m_irradianceBuffer;
 	com_unique_ptr<ID3D11UnorderedAccessView> m_irradianceUAV;
 	com_unique_ptr<ID3D11ShaderResourceView> m_irradianceSRV;
+
+	// RGB — рассеянный свет на единицу освещённости от солнца, A — среднее пропускание; слой — расстояние
+	com_unique_ptr<ID3D11Texture3D> m_aerialPerspective;
+	com_unique_ptr<ID3D11UnorderedAccessView> m_aerialPerspectiveUAV;
+	com_unique_ptr<ID3D11ShaderResourceView> m_aerialPerspectiveSRV;
 };
 
 }

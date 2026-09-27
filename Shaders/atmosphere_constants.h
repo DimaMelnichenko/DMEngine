@@ -21,4 +21,9 @@
 #define ATMOSPHERE_OZONE_CENTER			25e3f
 #define ATMOSPHERE_OZONE_HALF_WIDTH		15e3f
 
+// Объём воздушной перспективы (SkyAtmosphere, Shaders/aerial_perspective.cs, aerial_perspective.sh): сетка над экраном
+// AERIAL_PERSPECTIVE_SIZE² × AERIAL_PERSPECTIVE_DEPTH слоёв по расстоянию до дальней плоскости
+#define AERIAL_PERSPECTIVE_SIZE			32
+#define AERIAL_PERSPECTIVE_DEPTH		32
+
 #endif

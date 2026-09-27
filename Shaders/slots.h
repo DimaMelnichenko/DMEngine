@@ -33,6 +33,7 @@
 #define SLOT_IBL_BRDF		DM_SLOT( t, 103 )	// таблица BRDF
 #define SLOT_SHADOW_MAP		DM_SLOT( t, 104 )	// карта теней солнца: массив каскадов (shadows.sh, ShadowCascades)
 #define SLOT_EXPOSURE		DM_SLOT( t, 105 )	// экспозиция кадра: pre-exposure и новая (exposure.sh, PostProcess)
+#define SLOT_AERIAL_PERSPECTIVE	DM_SLOT( t, 106 )	// объём воздушной перспективы (aerial_perspective.sh, SkyAtmosphere)
 
 // Сэмплеры: s0…s7 — общие (samplers.sh, DMSamplerState)
 #define SLOT_SAMPLER_SHADOW	DM_SLOT( s, 8 )		// сравнение глубины для карты теней (PCF 2×2)

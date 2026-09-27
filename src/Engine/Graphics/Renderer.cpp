@@ -225,7 +225,7 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	// установка источников света
 	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS, SRVType::ps );
 	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры)
-	pipeline().shaderConstant().beginFrame( lightCount, scene.lights().sunIlluminance() );
+	pipeline().shaderConstant().beginFrame( lightCount, scene.lights().sunIlluminance(), frame.view.farPlane );
 	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
 	m_postProcess.bindExposure();
 	pipeline().shaderConstant().setViewBuffer( frame.view );

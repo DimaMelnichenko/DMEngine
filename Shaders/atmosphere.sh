@@ -133,27 +133,21 @@ struct AtmosphereSample
 	bool hitsGround;
 };
 
-AtmosphereSample traceAtmosphere( float3 direction, int samples )
+// Отрезок луча взгляда от start до end метров из origin (samples шагов): рассеянный к наблюдателю свет
+// прибавляется к luminance — с пропусканием от наблюдателя до начала отрезка, transmittance умножается на
+// пропускание отрезка. На единицу освещённости от солнца. Так считаются и небо (traceAtmosphere), и воздушная
+// перспектива по отрезкам до слоёв объёма (Shaders/aerial_perspective.cs)
+void integrateScattering( float3 origin, float3 direction, float start, float end, int samples,
+						  inout float3 luminance, inout float3 transmittance )
 {
-	AtmosphereSample result = (AtmosphereSample)0;
-	const float3 origin = float3( 0.0f, planetRadius + observerAltitude, 0.0f );
-
-	float pathLength = raySphere( origin, direction, atmosphereRadius ).y;
-	float2 ground = raySphere( origin, direction, planetRadius );
-	result.hitsGround = ground.x > 0.0f;
-	if( result.hitsGround )
-		pathLength = ground.x;
-
 	const float cosTheta = dot( direction, g_sunDirection );
 	const float rayleighPhase = phaseRayleigh( cosTheta );
 	const float miePhase = phaseMie( cosTheta );
 
-	const float stepLength = pathLength / samples;
-	float3 transmittance = 1.0f;
-	float3 luminance = 0.0f;
+	const float stepLength = ( end - start ) / samples;
 	[loop] for( int i = 0; i < samples; ++i )
 	{
-		float3 position = origin + direction * ( stepLength * ( i + 0.5f ) );
+		float3 position = origin + direction * ( start + stepLength * ( i + 0.5f ) );
 		float radius = length( position );
 		float height = radius - planetRadius;
 		float sunCosZenith = dot( position / radius, g_sunDirection );
@@ -169,6 +163,22 @@ AtmosphereSample traceAtmosphere( float3 direction, int samples )
 		luminance += transmittance * ( scattered - scattered * segmentTransmittance ) / max( medium.extinction, 1e-12f );
 		transmittance *= segmentTransmittance;
 	}
+}
+
+AtmosphereSample traceAtmosphere( float3 direction, int samples )
+{
+	AtmosphereSample result = (AtmosphereSample)0;
+	const float3 origin = float3( 0.0f, planetRadius + observerAltitude, 0.0f );
+
+	float pathLength = raySphere( origin, direction, atmosphereRadius ).y;
+	float2 ground = raySphere( origin, direction, planetRadius );
+	result.hitsGround = ground.x > 0.0f;
+	if( result.hitsGround )
+		pathLength = ground.x;
+
+	float3 transmittance = 1.0f;
+	float3 luminance = 0.0f;
+	integrateScattering( origin, direction, 0.0f, pathLength, samples, luminance, transmittance );
 
 	result.luminance = luminance;
 	result.transmittance = transmittance;

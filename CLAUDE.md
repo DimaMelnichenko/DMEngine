@@ -135,7 +135,8 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 ним привязан общий `VertexPool` с топологией TRIANGLELIST, свои буферы объект привязывает сам. Новый проход или вид
 (depth prepass, тени прожекторов) добавляется в `Renderer`, а не в объекты.
 Сейчас объекты (в порядке сцены): `SkyAtmosphere` (процедурное небо фоном и освещение окружением от него;
-его `compute()` идёт первым и привязывает IBL к слотам PS t101…t103; фон — полноэкранный треугольник на дальней
+его `compute()` идёт первым, привязывает IBL к слотам PS t101…t103 и считает объём воздушной перспективы главного
+вида — t106; фон — полноэкранный треугольник на дальней
 плоскости в проходе `sky`), `SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
 растягивается до 0,9 дальней плоскости вида, `RenderView::farPlane`), `CDLODTerrain`,
 `ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида, отсечение по frustum вида — границы
@@ -179,7 +180,7 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 люксы, точечного и прожектора — канделы, затухание — `1 / max(d², 0,01²)`), время суток — строка `SunPosition`
 (`Levels.sun_position`, как Sun Position в UE: широта, долгота, часовой пояс, `north_offset`, дата, `time_of_day` →
 направление первого направленного, `Light/SunPosition.h`, формулы NOAA; NULL — Pitch / Yaw солнца), небо — строка `SkyAtmosphere`
-(`Levels.atmosphere`; запекается для солнца 1 лк и умножается на `cb_skyIlluminance`), постобработка — `PostProcessSettings`
+(`Levels.atmosphere`; запекается для солнца 1 лк и умножается на `cb_skyIlluminance`; там же сила воздушной перспективы), постобработка — `PostProcessSettings`
 (`Levels.post_process`; NULL — значения по умолчанию). В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
 вместо вектора; «Sun position» — время суток), «Sky atmosphere», «Post process»; кнопка «Save level environment»
 (`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
@@ -227,8 +228,11 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 металличность, шероховатость, нормаль и геометрическая нормаль без карты нормалей, затенение, свечение) и возвращает
 `evaluateLighting(surface)` — прямой свет всех источников (BRDF — `Shaders/brdf.sh`; затухание — обратный квадрат
 с плавным обрезанием по радиусу, Karis 2013; конус прожектора; у солнца — тень) плюс освещение окружением от неба
-(`Shaders/ibl.sh`, подробно — `docs/sky.md`). Так делают `PBRLit.ps` и `terrain.ps`; новую составляющую освещения
-(туман, воздушная перспектива) добавляйте туда, а не в материалы. Раскладка источника — `struct Light` в шейдере
+(`Shaders/ibl.sh`, подробно — `docs/sky.md`), затем воздушная перспектива до камеры (`Shaders/aerial_perspective.sh`:
+выборка объёма 32 × 32 × 32 над экраном, который каждый кадр считает `SkyAtmosphere` по модели неба —
+`Shaders/aerial_perspective.cs`, как Camera Aerial Perspective Volume в UE5; сила —
+`SkyAtmosphere.aerial_perspective_view_distance_scale`). Так делают `PBRLit.ps` и `terrain.ps`; новую составляющую освещения
+(объёмный туман) добавляйте туда, а не в материалы. Раскладка источника — `struct Light` в шейдере
 и `DMLightDriver::LightBuffer` (с `static_assert` на размер), подробно — `docs/lighting.md`.
 
 **Тени солнца** — `ShadowCascades` (`src/Engine/Graphics/ShadowCascades.h`, владеет `Renderer`), как Cascaded Shadow
