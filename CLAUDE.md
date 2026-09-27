@@ -84,7 +84,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,90.5,238`. Пучок травы
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
   затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 16`; ромашка (`Camomile`, альфа-лепестки) — так же
-  со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Blender 5.0 стоит в
+  со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Модели Poly Haven в расстановке
+  (пучки `grass_medium_01`, одуванчики `dandelion_01`, камни `rock_moss_set_01`; архивы `.blend` — в `DownloadResources\`) —
+  `Tools/export_polyhaven.py` через Blender, затем `import_gltf.py --scatter`, команды — в `docs/models.md`. Blender 5.0 стоит в
   `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH). Панорама уровня `TestHDRI` —
   Kloofendal 48d Partly Cloudy с Poly Haven (CC0, https://polyhaven.com/a/kloofendal_48d_partly_cloudy), 2k `.hdr`
   (и `.exr` для проверки) в `Textures\hdri\kloofendal_48d_partly_cloudy_2k.*`; без неё `TestHDRI` освещает атмосфера.
@@ -191,7 +193,8 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 `id_material`, значения — `MaterialParameterInstance`); NULL — параметры `material_id` со значениями по умолчанию
 (`MaterialParameterDef.default_value`). Экземпляры 5 и 12 — наследие старой схемы, где эта колонка означала
 `Materials.id`; у SkySphere экземпляр 5 не совпадает с материалом. Подробно — `docs/materials.md`. Цветовое
-пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла. Новые ассеты добавляются
+пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла; мипы с сохранением
+покрытия альфы (для Masked: трава, лепестки) — `Textures.preserve_alpha_coverage` (порог). Новые ассеты добавляются
 строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
 моделей, LOD, экземпляров материала `PBR`, расстановки: положение, поворот и масштаб объекта Blender — экземпляр
 в `LevelModels`, связанные дубликаты — экземпляры одной модели; повторный импорт обновляет), подробно — `docs/models.md`.
@@ -222,7 +225,8 @@ NULL — этого у уровня нет. Экземпляры моделей 
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн,
-наборы `Meadow` (трава — пучки `GrassClump` из Blender, и ромашки `Camomile`) и `Debris` (камешки), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
+наборы `Meadow` (трава — пучки `GrassClump` из Blender вперемешку с высокими пучками Poly Haven `grass_medium_01`, и
+одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
 + `TestPanel_Frame`. Частицы (`Particles`, одуванчики) у обоих уровней выключены — `Levels.particles` NULL: они движутся,
@@ -314,7 +318,7 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 Spawner в PCG UE: модель ячейки — по весам и случайному числу ячейки; LOD экземпляра — по расстоянию и дальностям LOD
 модели `ModelProperties.range`, как у моделей уровня; меняется только меш, экземпляр на месте), маска плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
 размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы), `align_to_terrain` и `cast_shadow` (тень
-солнца; флажок «Cast shadow» в окне набора — `Scatterer::properties`). Трава, ромашки, камешки — слои. Каждый кадр `Shaders/scatter.cs`
+солнца; флажок «Cast shadow» в окне набора — `Scatterer::properties`; у варианта ещё свой `ScatterLayerModels.cast_shadow`). Трава, ромашки, камешки — слои. Каждый кадр `Shaders/scatter.cs`
 раскладывает инстансы слоя по сетке, привязанной к миру (смещение, размер и поворот — хеш координат ячейки, поэтому
 при движении камеры они на месте), маска даёт вероятность и размер, отсечение — по плоскостям frustum
 (`DMFrustum::planes`), поворот — кватернион (`Shaders/instance.sh`, `INST_ROTATE`). Высоту и UV масок даёт

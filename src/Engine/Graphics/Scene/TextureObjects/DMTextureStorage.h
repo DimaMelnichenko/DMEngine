@@ -15,7 +15,10 @@ public:
 	DMTextureStorage( const std::string& path );
 	~DMTextureStorage();
 
-	bool load( uint32_t id, const std::string& name, const std::string& file, bool generateMipMap, bool sRGB );
+	// preserveAlphaCoverage — порог альфы (AlphaCutoff материала Masked), при котором мипы сохраняют долю
+	// непрозрачных пикселей нулевого мипа (Textures.preserve_alpha_coverage); 0 — обычные мипы
+	bool load( uint32_t id, const std::string& name, const std::string& file, bool generateMipMap, bool sRGB,
+			   float preserveAlphaCoverage = 0.0f );
 	// Шахматная текстура в слоте placeholderId: подставляется вместо незагруженных текстур
 	bool createPlaceholder();
 	// Текстуры 1×1 для материалов, у которых текстура не задана: белая и плоская нормаль.

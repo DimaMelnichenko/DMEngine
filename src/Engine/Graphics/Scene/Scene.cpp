@@ -149,7 +149,7 @@ bool Scene::initialize()
 					LOG( "Scatter set " + set.name + ": model " + std::to_string( variant.model ) + " has no LOD" );
 					return false;
 				}
-				models.push_back( { model, variant.weight } );
+				models.push_back( { model, variant.weight, variant.castShadow } );
 			}
 			if( models.empty() )
 			{

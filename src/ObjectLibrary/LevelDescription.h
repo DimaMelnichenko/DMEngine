@@ -24,11 +24,12 @@ struct LevelDescription
 		XMFLOAT3 scale = XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	};
 
-	// Модель слоя расстановки и её вес (ScatterLayerModels)
+	// Модель слоя расстановки, её вес и тень (ScatterLayerModels)
 	struct ScatterModel
 	{
 		uint32_t model = 0;
 		float weight = 1.0f;
+		bool castShadow = true;
 	};
 
 	// Слой расстановки — растение: модели-варианты со всеми их LOD, маска плотности и параметры (таблица ScatterLayers)

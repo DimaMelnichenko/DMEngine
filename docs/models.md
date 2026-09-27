@@ -82,7 +82,7 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z] [--
 | Параметр | Что делает |
 |---|---|
 | `--level`, `--position` | ставит модели на уровень: origin файла в точке `x,y,z`, каждый объект — со своими положением, поворотом и масштабом из Blender |
-| `--scale` | равномерный масштаб на уровне (и положений объектов тоже) |
+| `--scale` | равномерный масштаб на уровне (и положений объектов тоже); с `--scatter` — запекается в вершины |
 | `--lod-ranges` | дальности LOD в метрах: на один меньше числа LOD (последний — 10000) или по одной на каждый |
 | `--name` | имя модели вместо имени объекта — для файла с одной моделью |
 | `--asset` | папка и префикс файлов и текстур вместо имени файла |
@@ -156,6 +156,35 @@ python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --positio
 На уровне `Test` они стоят слева от таблицы шаров; вид вблизи — `run.ps1 -NoGui -Camera 471.5,93,231,10,0`.
 Правильный результат: буквы читаются, выпуклости освещены сверху (свет падает сверху справа), торцы плиты — металл.
 
+## Модели Poly Haven
+
+Растения и камни Poly Haven (CC0) скачиваются архивом `.blend` (`DownloadResources\`, не в git). Как есть экспортёр
+glTF их не понимает: материалы собраны на узлах-группах (цвет, «сухой» цвет, альфа, подповерхностное рассеяние),
+альфа — отдельной картинкой, нормали и шероховатость — в EXR. `Tools/export_polyhaven.py` (Blender без окна) готовит
+из архива `.glb` для импорта с `--scatter`:
+
+- объекты — по регулярному выражению `--objects`; служебные копии (`geonodes_`, `_geo`, шар превью) отбрасывает `--exclude`;
+- LOD — суффикс `_LOD<N>` Poly Haven; `--lod-offset k` отбрасывает LOD ниже k (у одуванчика LOD0 — 23 тыс. треугольников);
+  у объектов без LOD (камни, 5–16 тыс. треугольников) `--decimate-tris` строит их модификатором Decimate;
+- материал собирается заново простым Principled BSDF, картинки — до `--texture-size` (2048): базовый цвет с альфой из
+  отдельной карты (через Round — `alphaMode: MASK`), шероховатость — в G `metallicRoughness`, нормаль (OpenGL, как
+  в glTF) — в 8-битный PNG; двусторонний, как у исходного материала, или по `--double-sided` / `--single-sided`.
+
+Нынешние модели расстановки уровня `Test`:
+
+```
+blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/grass_medium_01_4k.blend.zip --objects "^grass_medium_01_" --out Meshes/source/grass_medium_01.glb
+python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --scale 1.7 --lod-ranges 4,12
+blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/dandelion_01_2k.blend.zip --objects "^dandelion_01_" --lod-offset 1 --out Meshes/source/dandelion_01.glb
+python Tools/import_gltf.py Meshes/source/dandelion_01.glb --scatter --lod-ranges 3,8
+blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/rock_moss_set_01_2k.blend.zip --objects "^rock_moss_set_01_rock0\d$" --decimate-tris 1500,400,100 --single-sided --out Meshes/source/rock_moss_set_01.glb
+python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-ranges 8,20
+```
+
+Пучки травы Poly Haven в 15–20 см; `--scale 1.7` доводит высокие до роста GrassClump (0,4–0,55 м). Базовый цвет
+у материала `MASK` импортёр помечает `Textures.preserve_alpha_coverage` = `alphaCutoff`: мипы сохраняют покрытие
+альфы ([materials.md](materials.md)), иначе пучки-карточки и лепестки тают в нескольких метрах.
+
 ## Если что-то не так
 
 1. **Модель вывернута наизнанку** (видна внутренняя сторона) — отрицательный масштаб объекта вместе с флипом нормалей
@@ -184,6 +213,7 @@ python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --positio
 |---|---|
 | `Tools/import_gltf.py` | импортёр: чтение glTF, геометрия, материалы, запись файлов и строк БД |
 | `Tools/blender_test_model.py` | тестовая сцена Blender и её экспорт |
+| `Tools/export_polyhaven.py` | модели Poly Haven (архив `.blend`) → `.glb` для импорта с `--scatter` |
 | `src/Engine/Graphics/Scene/Model/Mesh/MeshLoader.h` | чтение файла меша движком |
 | `src/ObjectLibrary/LibraryLoader.cpp` | загрузка моделей, LOD, мешей и экземпляров материалов из БД, экземпляры моделей уровня (`loadLevel`) |
 | `src/Engine/Graphics/Scene/Model/ModelInstances.h/.cpp` | экземпляры моделей уровня: LOD по расстоянию, отсечение по frustum, меши в список отрисовки |

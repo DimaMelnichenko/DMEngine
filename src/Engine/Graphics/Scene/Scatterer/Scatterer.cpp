@@ -54,6 +54,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		passVariant.weight = models[v].weight;
 		passVariant.lodCount = std::min<uint32_t>( model->lodCount(), ScatterPass::maxLods );
 		LayerVariant variant;
+		variant.castShadow = models[v].castShadow;
 		for( uint32_t i = 0; i < passVariant.lodCount; ++i )
 		{
 			passVariant.lodEnd[i] = i + 1 < passVariant.lodCount ? model->lodRange( static_cast<uint16_t>( i ) ) : params.farBorder;
@@ -116,7 +117,10 @@ void Scatterer::compute( const FrameContext& frame )
 			continue;
 
 		// Флаг тени из GUI: по нему compute оставляет и инстансы за кадром, чья тень падает в кадр
-		layer.pass->populateParams().castShadow = ( *layer.properties )["Cast shadow"].data<bool>() ? 1.0f : 0.0f;
+		bool anyShadow = false;
+		for( const LayerVariant& variant : layer.variants )
+			anyShadow = anyShadow || variant.castShadow;
+		layer.pass->populateParams().castShadow = anyShadow && ( *layer.properties )["Cast shadow"].data<bool>() ? 1.0f : 0.0f;
 
 		for( uint32_t v = 0; v < layer.variants.size(); ++v )
 		{
@@ -138,9 +142,10 @@ void Scatterer::compute( const FrameContext& frame )
 	}
 }
 
-bool Scatterer::castsShadow( const Layer& layer, const LayerLod& lod ) const
+bool Scatterer::castsShadow( const Layer& layer, const LayerVariant& variant, const LayerLod& lod ) const
 {
-	return ( *layer.properties )["Cast shadow"].data<bool>() && lod.material->depthPhaseFor( lod.block->params ) >= 0;
+	return variant.castShadow && ( *layer.properties )["Cast shadow"].data<bool>() &&
+		   lod.material->depthPhaseFor( lod.block->params ) >= 0;
 }
 
 bool Scatterer::inDepthPrepass( const LayerLod& lod ) const
@@ -161,7 +166,7 @@ void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 			passMask |= passBit( passFor( lod.material->renderState( lod.block->params ).blendMode ) );
 			if( inDepthPrepass( lod ) )
 				passMask |= passBit( MeshPass::depthPrepass );
-			if( castsShadow( layer, lod ) )
+			if( castsShadow( layer, variant, lod ) )
 				passMask |= passBit( MeshPass::csmShadowDepth );
 		}
 	}
@@ -194,7 +199,7 @@ void Scatterer::renderCustom( const RenderContext& context )
 			{
 				// Инстансы LOD — на расстояниях near…far от камеры; тень от них ложится не дальше её длины. Каскад,
 				// диапазон расстояний которого с этим не пересекается, их теней не содержит
-				if( !castsShadow( layer, lod ) || context.view.cascadeNear >= lod.farDistance + margin ||
+				if( !castsShadow( layer, layer.variants[v], lod ) || context.view.cascadeNear >= lod.farDistance + margin ||
 					context.view.cascadeFar <= lod.nearDistance - margin )
 					continue;
 			}

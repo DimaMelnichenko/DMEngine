@@ -19,6 +19,8 @@ MaterialParameterInstance, по --level — LevelModels. Всё в одной т
 - glTF правосторонний, движок левосторонний (оба Y вверх, метры): Z с минусом, порядок вершин треугольника обратный.
 - Материал glTF переносится в экземпляр материала PBR (id 12; с --scatter — PBRInstance, id 9) один в один;
   карты нормалей glTF в соглашении OpenGL — NormalGreenUp = true.
+- У материала alphaMode MASK мипы базового цвета сохраняют покрытие альфы при его alphaCutoff
+  (Textures.preserve_alpha_coverage): иначе вдали травинки и лепестки тают.
 
 Сообщения скрипта — ASCII (правило Tools/).
 """
@@ -371,7 +373,7 @@ class MaterialConverter:
             self.textures[source] = {
                 'name': '%s_%s' % (self.asset, image_name),
                 'file': 'models\\%s\\%s.%s' % (self.asset, image_name, extension),
-                'srgb': srgb, 'data': data}
+                'srgb': srgb, 'data': data, 'coverage': None}
         elif self.textures[source]['srgb'] != srgb:
             warn('image %s is used both as color and as data, it is read as %s'
                  % (self.textures[source]['name'], 'sRGB' if self.textures[source]['srgb'] else 'linear'))
@@ -421,6 +423,10 @@ class MaterialConverter:
         params['AlphaMode'] = str({'OPAQUE': 0, 'MASK': 1, 'BLEND': 2}.get(alpha, 0))
         if alpha == 'MASK':
             params['AlphaCutoff'] = '%g' % material.get('alphaCutoff', 0.5)
+            if 'baseColorTexture' in pbr:
+                # Мипы с сохранением покрытия альфы при пороге отсечения
+                source = self.gltf.json['textures'][pbr['baseColorTexture']['index']]['source']
+                self.textures[source]['coverage'] = material.get('alphaCutoff', 0.5)
         if alpha == 'BLEND':
             warn('material %s: alphaMode BLEND - translucent models are sorted by origin, not by triangle' % name)
         params['DoubleSided'] = 'true' if material.get('doubleSided') else 'false'
@@ -434,8 +440,9 @@ class MaterialConverter:
 # ---------------------------------------------------------------------------------------------------------------------
 # Разбор сцены на модели
 
-def collect_models(gltf, asset, materials, rename, bake):
-    """bake — запечь поворот и масштаб объектов в вершины (модели для расстановки: их ставят слои)."""
+def collect_models(gltf, asset, materials, rename, bake, bake_scale=1.0):
+    """bake — запечь поворот и масштаб объектов в вершины (модели для расстановки: их ставят слои), bake_scale —
+    ещё и общий масштаб (--scale у --scatter)."""
     lod_pattern = re.compile(r'^(.*)_LOD(\d+)$', re.IGNORECASE)
     groups = {}   # имя модели → {lod: (узел, мировая матрица)}
     for index, node, world in mesh_nodes(gltf):
@@ -467,7 +474,8 @@ def collect_models(gltf, asset, materials, rename, bake):
                 warn('model %s: object transform is sheared, it is baked into vertices' % base)
             placement = {'position': lod0_world[:3, 3] * MIRROR, 'rotation': np.array([0.0, 0.0, 0.0, 1.0]),
                          'scale': np.ones(3)}
-            bases = [lods[lod][1][:3, :3] for lod in order]   # каждый LOD — со своими поворотом и масштабом
+            # каждый LOD — со своими поворотом и масштабом
+            bases = [lods[lod][1][:3, :3] * (bake_scale if bake else 1.0) for lod in order]
         else:
             # Вершины — в координатах объекта LOD0; у других LOD — их поворот и масштаб относительно LOD0
             # (сдвиг LOD не важен: в Blender их обычно ставят рядом)
@@ -540,14 +548,14 @@ class Database:
         row = self.cursor.execute(sql, args).fetchone()
         return row[0] if row else None
 
-    def texture(self, name, file, srgb):
+    def texture(self, name, file, srgb, coverage):
         texture_id = self.one('SELECT id FROM Textures WHERE name = ?', (name,))
         if texture_id is None:
-            self.cursor.execute('INSERT INTO Textures (name, file, generate_mipmap, sRGB) VALUES (?, ?, 1, ?)',
-                                (name, file, int(srgb)))
+            self.cursor.execute('INSERT INTO Textures (name, file, generate_mipmap, sRGB, preserve_alpha_coverage) '
+                                'VALUES (?, ?, 1, ?, ?)', (name, file, int(srgb), coverage))
             return self.cursor.lastrowid
-        self.cursor.execute('UPDATE Textures SET file = ?, generate_mipmap = 1, sRGB = ? WHERE id = ?',
-                            (file, int(srgb), texture_id))
+        self.cursor.execute('UPDATE Textures SET file = ?, generate_mipmap = 1, sRGB = ?, preserve_alpha_coverage = ? '
+                            'WHERE id = ?', (file, int(srgb), coverage, texture_id))
         return texture_id
 
     def instance(self, name, params, texture_ids):
@@ -634,7 +642,8 @@ def main():
     parser.add_argument('--asset', help='folder and prefix for files and textures (default: file name)')
     parser.add_argument('--level', help='place the models on this level (Levels.name)')
     parser.add_argument('--position', default='0,0,0', help='level position of the file origin: x,y,z')
-    parser.add_argument('--scale', type=float, default=1.0, help='uniform scale on the level')
+    parser.add_argument('--scale', type=float, default=1.0,
+                        help='uniform scale on the level; with --scatter it is baked into vertices')
     parser.add_argument('--lod-ranges', help='LOD distances in meters, e.g. 25,60 (last LOD: 10000)')
     parser.add_argument('--scatter', action='store_true', help='model for scatter layers: PBRInstance, render = 0')
     parser.add_argument('--dry-run', action='store_true', help='print what would be written, write nothing')
@@ -647,7 +656,7 @@ def main():
     gltf = Gltf(args.file)
     asset = sanitize(args.asset or os.path.splitext(os.path.basename(args.file))[0])
     materials = MaterialConverter(gltf, asset)
-    models = collect_models(gltf, asset, materials, args.name, args.scatter)
+    models = collect_models(gltf, asset, materials, args.name, args.scatter, args.scale)
     if not models:
         raise SystemExit('error: no meshes in %s' % args.file)
     if materials.double_sided:
@@ -666,10 +675,11 @@ def main():
     files = {}   # путь относительно корня → байты
     texture_ids = {}
     for texture in materials.textures.values():
-        texture_ids[texture['name']] = db.texture(texture['name'], texture['file'], texture['srgb'])
+        texture_ids[texture['name']] = db.texture(texture['name'], texture['file'], texture['srgb'], texture['coverage'])
         files[os.path.join('Textures', texture['file'])] = texture['data']
-        print('Texture %s -> Textures\\%s (%s)' % (texture['name'], texture['file'],
-                                                    'sRGB' if texture['srgb'] else 'linear'))
+        coverage = ', alpha coverage %g' % texture['coverage'] if texture['coverage'] is not None else ''
+        print('Texture %s -> Textures\\%s (%s%s)' % (texture['name'], texture['file'],
+                                                      'sRGB' if texture['srgb'] else 'linear', coverage))
 
     instances = {}
     for model in models:

@@ -31,11 +31,13 @@ public:
 
 	bool Initialize();
 	void setTerrain( const TerrainHeightSource* terrain );
-	// Модель слоя (вариант растения) и её вес — доля ячеек слоя
+	// Модель слоя (вариант растения), её вес — доля ячеек слоя — и тень: вариант отбрасывает её, если она включена
+	// у слоя (как Cast Shadow в дескрипторе Mesh Entry у PCG UE: тень только у крупных вариантов дешевле)
 	struct LayerModel
 	{
 		DMModel* model = nullptr;
 		float weight = 1.0f;
+		bool castShadow = true;
 	};
 	// models — варианты растения (все их LOD, не больше ScatterPass::maxLods; вариантов — не больше
 	// ScatterPass::maxVariants); mask — маска плотности в хранилище текстур, в координатах карты высот террейна
@@ -82,6 +84,7 @@ private:
 	struct LayerVariant
 	{
 		std::vector<LayerLod> lods;
+		bool castShadow = true;
 	};
 
 	struct Layer
@@ -92,8 +95,8 @@ private:
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
 	};
 
-	// LOD слоя отбрасывает тень: флаг слоя и вариант материала «только глубина»
-	bool castsShadow( const Layer& layer, const LayerLod& lod ) const;
+	// LOD варианта отбрасывает тень: флаги слоя и варианта и вариант материала «только глубина»
+	bool castsShadow( const Layer& layer, const LayerVariant& variant, const LayerLod& lod ) const;
 	// LOD слоя рисуется в depth prepass: непрозрачный или Masked с вариантом «только глубина»
 	bool inDepthPrepass( const LayerLod& lod ) const;
 

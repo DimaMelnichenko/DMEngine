@@ -23,7 +23,7 @@ LibraryLoader::~LibraryLoader()
 bool LibraryLoader::loadAllTextures()
 {
 	LOG( "Load all textures" );
-	SQLite::Statement queryTexture( dbConnect().db(), "SELECT id, name, file, generate_mipmap, sRGB FROM Textures" );
+	SQLite::Statement queryTexture( dbConnect().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage FROM Textures" );
 	return loadTextures( queryTexture );
 }
 
@@ -32,7 +32,7 @@ bool LibraryLoader::loadTexture( uint32_t idTexture )
 	if( GS::System::textures().exists( idTexture ) )
 		return true;
 
-	SQLite::Statement queryTexture( dbConnect().db(), "SELECT id, name, file, generate_mipmap, sRGB FROM Textures where id = :id" );
+	SQLite::Statement queryTexture( dbConnect().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage FROM Textures where id = :id" );
 	queryTexture.bind( ":id", idTexture );
 	return loadTextures( queryTexture );
 }
@@ -46,7 +46,9 @@ bool LibraryLoader::loadTextures( SQLite::Statement& queryTexture )
 		const std::string& textureName = queryTexture.getColumn( 1 ).getString();
 		const std::string& fileName = queryTexture.getColumn( 2 ).getString();
 		
-		if( !GS::System::textures().load( id, textureName, fileName, queryTexture.getColumn( 3 ).getInt(), queryTexture.getColumn( 4 ).getInt() ) )
+		const float preserveAlphaCoverage = queryTexture.getColumn( 5 ).isNull() ? 0.0f : static_cast<float>( queryTexture.getColumn( 5 ).getDouble() );
+		if( !GS::System::textures().load( id, textureName, fileName, queryTexture.getColumn( 3 ).getInt(), queryTexture.getColumn( 4 ).getInt(),
+										  preserveAlphaCoverage ) )
 		{
 			LOG( "Can`t load texture " + textureName + " (" + fileName + "), placeholder is used" );
 			continue;
@@ -681,13 +683,14 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.params.castShadow = query.getColumn( "cast_shadow" ).getInt() ? 1.0f : 0.0f;
 
 		// Модели слоя — варианты растения с весами, в порядке строк
-		SQLite::Statement queryModels( dbConnect().db(), "SELECT model, weight FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
+		SQLite::Statement queryModels( dbConnect().db(), "SELECT model, weight, cast_shadow FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
 		queryModels.bind( ":layer", query.getColumn( "id" ).getUInt() );
 		while( queryModels.executeStep() )
 		{
 			LevelDescription::ScatterModel model;
 			model.model = queryModels.getColumn( "model" ).getUInt();
 			model.weight = static_cast<float>( queryModels.getColumn( "weight" ).getDouble() );
+			model.castShadow = queryModels.getColumn( "cast_shadow" ).getInt() != 0;
 			layer.models.push_back( model );
 		}
 		set.layers.push_back( layer );
