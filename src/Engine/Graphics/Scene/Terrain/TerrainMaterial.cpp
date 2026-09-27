@@ -50,8 +50,9 @@ void fill( const Image& image, Fallback fallback )
 	}
 }
 
-// Загружает файл (путь относительно каталога текстур) и приводит его первое изображение к несжатому
-// R8G8B8A8_UNORM размером width × height. Нулевые width и height заполняются размером файла
+// Загружает файл (путь относительно каталога текстур) и приводит его первое изображение к несжатому R8G8B8A8
+// размером width × height — байтами как в файле: цветовое пространство задаёт назначение (альбедо слоя — sRGB,
+// buildArray), а не метка формата файла, как у Textures.sRGB. Нулевые width и height заполняются размером файла
 bool loadImage( const std::string& file, size_t& width, size_t& height, ScratchImage& image )
 {
 	if( file.empty() )
@@ -63,19 +64,21 @@ bool loadImage( const std::string& file, size_t& width, size_t& height, ScratchI
 		return false;
 
 	const Image* source = loaded.GetImage( 0, 0, 0 );
+	// Файл с меткой sRGB — в R8G8B8A8_UNORM_SRGB, иначе в UNORM: так преобразования не трогают значения байтов
+	const DXGI_FORMAT target = IsSRGB( source->format ) ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 
 	ScratchImage decompressed;
 	if( IsCompressed( source->format ) )
 	{
-		if( FAILED( Decompress( *source, DXGI_FORMAT_R8G8B8A8_UNORM, decompressed ) ) )
+		if( FAILED( Decompress( *source, target, decompressed ) ) )
 			return false;
 		source = decompressed.GetImage( 0, 0, 0 );
 	}
 
 	ScratchImage converted;
-	if( source->format != DXGI_FORMAT_R8G8B8A8_UNORM )
+	if( source->format != target )
 	{
-		if( FAILED( Convert( *source, DXGI_FORMAT_R8G8B8A8_UNORM, TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT, converted ) ) )
+		if( FAILED( Convert( *source, target, TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT, converted ) ) )
 			return false;
 		source = converted.GetImage( 0, 0, 0 );
 	}
@@ -94,7 +97,7 @@ bool loadImage( const std::string& file, size_t& width, size_t& height, ScratchI
 		source = resized.GetImage( 0, 0, 0 );
 	}
 
-	return SUCCEEDED( image.InitializeFromImage( *source ) );
+	return SUCCEEDED( image.InitializeFromImage( *source ) ) && SUCCEEDED( image.OverrideFormat( DXGI_FORMAT_R8G8B8A8_UNORM ) );
 }
 
 bool createArraySRV( const ScratchImage& layers, com_unique_ptr<ID3D11ShaderResourceView>& srv )
@@ -118,8 +121,9 @@ bool createArraySRV( const ScratchImage& layers, com_unique_ptr<ID3D11ShaderReso
 	return true;
 }
 
-// Массив текстур из файлов слоёв; пустое имя — слой не описан
-bool buildArray( const std::vector<std::string>& files, Fallback fallback, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+// Массив текстур из файлов слоёв; пустое имя — слой не описан. srgb — RGB в sRGB (альбедо): массив R8G8B8A8_UNORM_SRGB,
+// выборка возвращает линейный цвет, мипы фильтруются в линейном; альфа (высота) остаётся линейной
+bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool srgb, com_unique_ptr<ID3D11ShaderResourceView>& srv )
 {
 	std::vector<ScratchImage> images( files.size() );
 	std::vector<bool> loaded( files.size(), false );
@@ -153,6 +157,9 @@ bool buildArray( const std::vector<std::string>& files, Fallback fallback, com_u
 		for( size_t y = 0; y < height; ++y )
 			std::memcpy( target.pixels + y * target.rowPitch, source.pixels + y * source.rowPitch, width * 4 );
 	}
+
+	if( srgb && FAILED( layers.OverrideFormat( DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ) ) )
+		return false;
 
 	ScratchImage mips;
 	if( FAILED( GenerateMipMaps( layers.GetImages(), layers.GetImageCount(), layers.GetMetadata(), mipFilter, 0, mips ) ) )
@@ -208,8 +215,8 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 	m_layerScale = XMFLOAT4( scale[0], scale[1], scale[2], scale[3] );
 
 	if( !loadSplatMap( splatMap, m_splatMap ) ||
-		!buildArray( albedoFiles, Fallback::checker, m_albedoHeight ) ||
-		!buildArray( normalFiles, Fallback::flatNormal, m_normalRoughness ) )
+		!buildArray( albedoFiles, Fallback::checker, true, m_albedoHeight ) ||
+		!buildArray( normalFiles, Fallback::flatNormal, false, m_normalRoughness ) )
 	{
 		LOG( "Terrain material: can`t create textures" );
 		return false;

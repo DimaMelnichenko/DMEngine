@@ -21,7 +21,10 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	float  g_texelSize;				// сторона текселя карты высот в мировых единицах
 	float  g_triplanarSharpness;	// чем больше, тем уже переход между проекциями triplanar
 	float  g_heightBlendDepth;		// ширина перехода между слоями при смешивании по высоте
-	float  g_padding;
+	float  g_farTextureScale;		// во сколько раз крупнее повтор текстур вдали (distance resampling)
+	float  g_farBlendStart;			// переход к крупному масштабу: от этого расстояния до камеры, м,
+	float  g_farBlendEnd;			// до этого — дальше только крупный
+	float2 g_farPadding;
 };
 
 // Копия карты высот в R32_FLOAT с полной цепочкой мипов, в вершинном и пиксельном шейдерах

@@ -2,7 +2,9 @@
 // Материал террейна CDLOD (TerrainMaterial). Нормаль рельефа считается по карте высот, веса четырёх слоёв
 // берутся из каналов splat-карты. Слой — пара текстур из массивов: альбедо + высота и нормаль + шероховатость.
 // Текстура слоя проецируется сверху, а на крутых склонах ещё и вдоль осей X и Z (triplanar), поэтому на скалах
-// не растягивается. Слои смешиваются по высоте: где веса близки, видна более высокая текстура (камни из травы)
+// не растягивается. Слои смешиваются по высоте: где веса близки, видна более высокая текстура (камни из травы).
+// Вдали повтор текстуры крупнее (distance resampling, как в материалах UE Landscape): мелкий повтор (скала, снег)
+// издалека складывается в сетку
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "lighting.sh"
@@ -60,33 +62,42 @@ void addProjection( inout LayerSample result, float weight, float layer, float2 
 	result.roughness += normalRoughness.a * weight;
 }
 
+// Проекции слоя с повтором scale (повторов на метр), вклад — с весом weight.
 // Производные позиции считаются до ветвлений: внутри них неявные производные не определены, поэтому SampleGrad
-LayerSample sampleLayer( uint layer, float3 position, float3 positionDX, float3 positionDY, float3 projection )
+void addProjections( inout LayerSample result, float weight, uint layer, float scale, float3 position, float3 positionDX,
+					 float3 positionDY, float3 projection )
 {
-	LayerSample result = (LayerSample)0;
-	float scale = g_layerScale[layer];
-
 	// Сверху: u вдоль X, v вдоль Z
 	[branch] if( projection.y > 0.0f )
 	{
-		addProjection( result, projection.y, layer, position.xz * scale, positionDX.xz * scale, positionDY.xz * scale,
+		addProjection( result, projection.y * weight, layer, position.xz * scale, positionDX.xz * scale, positionDY.xz * scale,
 					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, 0.0f, 1.0f ) );
 	}
 	// Вдоль X: u вдоль Z, v вниз по Y, чтобы верх текстуры смотрел вверх
 	[branch] if( projection.x > 0.0f )
 	{
-		addProjection( result, projection.x, layer, float2( position.z, -position.y ) * scale,
+		addProjection( result, projection.x * weight, layer, float2( position.z, -position.y ) * scale,
 					   float2( positionDX.z, -positionDX.y ) * scale, float2( positionDY.z, -positionDY.y ) * scale,
 					   float3( 0.0f, 0.0f, 1.0f ), float3( 0.0f, -1.0f, 0.0f ) );
 	}
 	// Вдоль Z: u вдоль X, v вниз по Y
 	[branch] if( projection.z > 0.0f )
 	{
-		addProjection( result, projection.z, layer, float2( position.x, -position.y ) * scale,
+		addProjection( result, projection.z * weight, layer, float2( position.x, -position.y ) * scale,
 					   float2( positionDX.x, -positionDX.y ) * scale, float2( positionDY.x, -positionDY.y ) * scale,
 					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, -1.0f, 0.0f ) );
 	}
+}
 
+// far — доля крупного масштаба (0 — вблизи, 1 — вдали): обе выборки только в полосе перехода
+LayerSample sampleLayer( uint layer, float far, float3 position, float3 positionDX, float3 positionDY, float3 projection )
+{
+	LayerSample result = (LayerSample)0;
+	const float scale = g_layerScale[layer];
+	[branch] if( far < 1.0f )
+		addProjections( result, 1.0f - far, layer, scale, position, positionDX, positionDY, projection );
+	[branch] if( far > 0.0f )
+		addProjections( result, far, layer, scale / g_farTextureScale, position, positionDX, positionDY, projection );
 	return result;
 }
 
@@ -112,6 +123,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 	float4 splat = g_splatMap.Sample( g_SamplerLinearClamp, input.uv );
 	splat /= max( dot( splat, 1.0f ), 1e-5f );
+	const float far = saturate( ( length( position - cb_cameraPosition ) - g_farBlendStart ) / ( g_farBlendEnd - g_farBlendStart ) );
 
 	LayerSample layers[layerCount];
 	float4 heights = 0.0f;
@@ -120,7 +132,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 		layers[i] = (LayerSample)0;
 		[branch] if( splat[i] > minWeight )
 		{
-			layers[i] = sampleLayer( i, position, positionDX, positionDY, projection );
+			layers[i] = sampleLayer( i, far, position, positionDX, positionDY, projection );
 		}
 		heights[i] = layers[i].height;
 	}

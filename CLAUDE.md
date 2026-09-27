@@ -76,7 +76,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   без них движок запускается на заглушках (см. «Заглушки ресурсов»), а в `log.txt` перечислено, что не загрузилось.
   Тестовые данные террейна создают скрипты: карту высот `Textures\terrain\heightmap.dds` (1024×1024) —
   `python Tools/gen_heightmap.py`, затем текстуры слоёв `Textures\terrain\layers\*.dds` и splat-карту
-  `Textures\terrain\splatmap.dds` — `python Tools/gen_terrain_textures.py` (нужен numpy). Тестовые модели уровня
+  `Textures\terrain\splatmap.dds` — `python Tools/gen_terrain_textures.py` (нужен numpy). Слои из фото-текстур (Poly Haven,
+  freepbr; архивы — в `DownloadResources\`, не в git) собирает `Tools/pack_terrain_layer.py` через Blender — команды
+  нынешних слоёв в `docs/terrain.md`. Тестовые модели уровня
   `Test` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
   `blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/source/test_models.glb`, затем
   `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,90.5,238`. Пучок травы
@@ -293,12 +295,13 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 **Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До четырёх слоёв из
 таблицы `TerrainLayers` (`layer` 0…3 — канал splat-карты, `albedo` и `normal` — файлы, `tiling` — метров на повтор).
 Текстуры слоёв собираются при загрузке в два `Texture2DArray`: «альбедо RGB + высота A» и «нормаль RGB (соглашение
-DirectX) + шероховатость A»; все слои приводятся к размеру первого и к R8G8B8A8_UNORM, вместо ненайденного файла
-подставляется шахматка или плоская нормаль. Мипы строятся без WIC (`TEX_FILTER_FORCE_NON_WIC`): WIC масштабирует
+DirectX) + шероховатость A»; все слои приводятся к размеру первого, альбедо — `R8G8B8A8_UNORM_SRGB` (фото в sRGB,
+высота в альфе линейная), нормаль — UNORM; вместо ненайденного файла подставляется шахматка или плоская нормаль. Мипы строятся без WIC (`TEX_FILTER_FORCE_NON_WIC`): WIC масштабирует
 с премультипликацией альфы, а в альфе здесь данные, поэтому splat-карту тоже грузит материал, а не хранилище текстур.
 В шейдере нормаль рельефа считается по карте высот (мип под размер пикселя), текстура слоя проецируется сверху,
-а на крутых склонах ещё и вдоль X и Z (triplanar, нормали по UDN), слои смешиваются по высоте. Настраиваются
-в GUI: «Triplanar sharpness», «Height blend».
+а на крутых склонах ещё и вдоль X и Z (triplanar, нормали по UDN), вдали — ещё и в крупном масштабе (distance
+resampling, как в UE Landscape: мелкий повтор не складывается в сетку), слои смешиваются по высоте. Настраиваются
+в GUI: «Triplanar sharpness», «Height blend», «Far texture scale», «Far blend start / end». Подробно — `docs/terrain.md`.
 
 Почему CDLOD, а не тесселяция или geometry clipmaps: аппаратная тесселяция как основа
 LOD из практики ушла (UE5 её удалил, Far Cry 5 отказался из-за стоимости); современные движки рисуют сетку по карте

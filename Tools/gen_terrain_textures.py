@@ -1,6 +1,7 @@
 # Генерирует тестовые текстуры материала террейна: четыре слоя (трава, камни, скала, снег) и splat-карту.
 # Каждый слой — две бесшовные текстуры 512×512 RGBA8 без сжатия (Textures\terrain\layers):
-#   <слой>_albedo.dds — RGB альбедо, A высота (по ней слои смешиваются: камни проступают сквозь траву);
+#   <слой>_albedo.dds — RGB альбедо в sRGB (R8G8B8A8_UNORM_SRGB), A высота (по ней слои смешиваются: камни проступают
+#   сквозь траву);
 #   <слой>_normal.dds — RGB нормаль (соглашение DirectX: G смотрит вдоль +v, вниз по картинке), A шероховатость.
 # Splat-карта Textures\terrain\splatmap.dds (RGBA — веса слоёв 0…3) строится по карте высот
 # Textures\terrain\heightmap.dds и строке Terrain из base.db3: снег на вершинах, скала на крутых склонах,
@@ -11,43 +12,15 @@
 #   python Tools/gen_terrain_textures.py
 import os
 import sqlite3
-import struct
 
 import numpy as np
+
+import dds
 
 LAYER_SIZE = 512
 LAYERS_DIR = os.path.join('Textures', 'terrain', 'layers')
 HEIGHTMAP = os.path.join('Textures', 'terrain', 'heightmap.dds')
 SPLATMAP = os.path.join('Textures', 'terrain', 'splatmap.dds')
-
-
-def write_dds_rgba8(path, rgba):
-    size = rgba.shape[0]
-    # Заголовок DDS + расширение DX10: DXGI_FORMAT_R8G8B8A8_UNORM (28), TEXTURE2D
-    header = struct.pack('<4sIIIIIII44sIIIIIIIIIIIII',
-        b'DDS ', 124, 0x100F, size, size, size * 4, 0, 0, b'\0' * 44,
-        32, 0x4, struct.unpack('<I', b'DX10')[0], 0, 0, 0, 0, 0,
-        0x1000, 0, 0, 0, 0)
-    dx10 = struct.pack('<IIIII', 28, 3, 0, 1, 0)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'wb') as f:
-        f.write(header)
-        f.write(dx10)
-        f.write(to_bytes(rgba).tobytes())
-    print('written', path, size)
-
-
-def read_dds_r16(path):
-    with open(path, 'rb') as f:
-        data = f.read()
-    height, width = struct.unpack('<II', data[12:20])
-    offset = 4 + 124 + (20 if data[84:88] == b'DX10' else 0)
-    pixels = np.frombuffer(data, dtype='<u2', count=width * height, offset=offset)
-    return pixels.reshape(height, width) / 65535.0
-
-
-def to_bytes(values):
-    return np.clip(np.rint(values * 255.0), 0, 255).astype(np.uint8)
 
 
 def smoothstep(a, b, x):
@@ -127,10 +100,11 @@ def mix(a, b, t):
 
 
 def write_layer(name, albedo, height, roughness, depth):
-    albedo_height = np.concatenate([albedo, height[..., None]], axis=-1)
+    # Цвет задан линейным, в файле — sRGB, как у фото (слои из фото — Tools/pack_terrain_layer.py)
+    albedo_height = np.concatenate([dds.linear_to_srgb(albedo), height[..., None]], axis=-1)
     normal_roughness = np.concatenate([normals(height, depth) * 0.5 + 0.5, roughness[..., None]], axis=-1)
-    write_dds_rgba8(os.path.join(LAYERS_DIR, name + '_albedo.dds'), albedo_height)
-    write_dds_rgba8(os.path.join(LAYERS_DIR, name + '_normal.dds'), normal_roughness)
+    dds.write_rgba8(os.path.join(LAYERS_DIR, name + '_albedo.dds'), albedo_height, srgb=True)
+    dds.write_rgba8(os.path.join(LAYERS_DIR, name + '_normal.dds'), normal_roughness)
 
 
 def grass(rng):
@@ -186,7 +160,7 @@ def snow(rng):
 
 
 def splatmap(rng):
-    height = read_dds_r16(HEIGHTMAP)
+    height = dds.read_r16(HEIGHTMAP)
     size = height.shape[0]
     db = sqlite3.connect('base.db3')
     height_multiplier, texel_size = db.execute(
@@ -213,7 +187,7 @@ def splatmap(rng):
 
     weights = np.stack([grass_w, boulders_w, rock_w, snow_w], axis=-1)
     weights /= weights.sum(axis=-1, keepdims=True)
-    write_dds_rgba8(SPLATMAP, weights)
+    dds.write_rgba8(SPLATMAP, weights)
 
     # Маски плотности расстановки в тех же координатах, что карта высот: трава растёт на текстуре травы,
     # ромашки — пятнами внутри травы, камешки — на текстуре камней
@@ -225,7 +199,7 @@ def splatmap(rng):
 
 def write_mask(name, values):
     rgba = np.concatenate([np.repeat(values[..., None], 3, axis=-1), np.ones(values.shape + (1,))], axis=-1)
-    write_dds_rgba8(os.path.join('Textures', 'terrain', name + '.dds'), rgba)
+    dds.write_rgba8(os.path.join('Textures', 'terrain', name + '.dds'), rgba)
 
 
 rng = np.random.default_rng(11)

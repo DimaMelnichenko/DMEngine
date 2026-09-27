@@ -60,7 +60,10 @@ private:
 		float texelSize;
 		float triplanarSharpness;
 		float heightBlendDepth;
-		float padding;
+		float farTextureScale;
+		float farBlendStart;
+		float farBlendEnd;
+		XMFLOAT2 padding;
 	};
 
 	struct NodeBox

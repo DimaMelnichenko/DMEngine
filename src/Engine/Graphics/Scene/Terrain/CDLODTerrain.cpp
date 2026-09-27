@@ -87,6 +87,23 @@ bool CDLODTerrain::initialize( uint32_t terrainId )
 	prop->setHigh( 1.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
+	// Второй масштаб текстур вдали (distance resampling, как в материалах UE Landscape): мелкий повтор слоёв
+	// издалека складывается в сетку
+	prop = m_properties.insert( "Far texture scale", 8.0f );
+	prop->setLow( 1.0f );
+	prop->setHigh( 32.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
+	prop = m_properties.insert( "Far blend start", 40.0f );
+	prop->setLow( 0.0f );
+	prop->setHigh( 500.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
+	prop = m_properties.insert( "Far blend end", 120.0f );
+	prop->setLow( 1.0f );
+	prop->setHigh( 1000.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
 	m_properties.insert( "Wireframe", false );
 	m_properties.insert( "Show LOD", false );
 
@@ -404,6 +421,9 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.texelSize = m_texelSize;
 		params.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();
 		params.heightBlendDepth = m_properties["Height blend"].data<float>();
+		params.farTextureScale = m_properties["Far texture scale"].data<float>();
+		params.farBlendStart = m_properties["Far blend start"].data<float>();
+		params.farBlendEnd = std::max( m_properties["Far blend end"].data<float>(), params.farBlendStart + 1.0f );
 	} );
 	DMD3D::instance().setConstantBuffer( SRVType::vs, SLOT_CB_MATERIAL, m_constantBuffer );
 

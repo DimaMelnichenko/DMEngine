@@ -5,6 +5,8 @@
 /ClassDiagram.cd
 /Meshes
 /Textures
+# Скачанные исходники ассетов (архивы Poly Haven и других): из них сценарии Tools/ собирают данные
+/DownloadResources
 /cmake-build-*/
 # Локальные настройки инструментов: Claude Code (разрешения, хуки с путями машины) и проект CLion
 /.claude/
