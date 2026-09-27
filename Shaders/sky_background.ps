@@ -6,6 +6,7 @@
 #include "samplers.sh"
 #define ATMOSPHERE_NO_SKY
 #include "atmosphere.sh"
+#include "exposure.sh"
 
 TextureCube g_sky : register(t0);
 
@@ -25,6 +26,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float3 viewDirection = float3( ndc.x / cb_projectionMatrix[0][0], ndc.y / cb_projectionMatrix[1][1], 1.0f );
 	float3 direction = normalize( mul( viewDirection, (float3x3)cb_viewInverseMatrix ) );
 
+	// Небо запечено для солнца 1 лк (g_sunColor = 1): яркость, кд/м², — умножением на освещённость от солнца
 	float3 color = g_sky.SampleLevel( g_SamplerLinearClamp, direction, 0.0f ).rgb;
 
 	// Диск: яркость = освещённость / телесный угол, с мягким краем; под горизонтом его закрывает земля
@@ -33,5 +35,5 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float solidAngle = atmospherePi * sunAngularRadius * sunAngularRadius;
 	color += g_sunColor / solidAngle * disk * step( 0.0f, direction.y );
 
-	return float4( color, 1.0f );
+	return float4( color * cb_skyIlluminance * preExposure(), 1.0f );
 }

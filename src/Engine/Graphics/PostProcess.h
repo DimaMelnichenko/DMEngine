@@ -2,6 +2,7 @@
 
 #include <string>
 #include "Shaders\FullscreenShader.h"
+#include "Shaders\DMComputeShader.h"
 #include "D3D\RenderTarget.h"
 #include "D3D\GpuProfiler.h"
 #include "Properties\PropertyContainer.h"
@@ -9,14 +10,17 @@
 namespace GS
 {
 
-// Постобработка кадра — цепочка полноэкранных проходов (Shaders/fullscreen.vs) с промежуточными целями (RenderTarget):
+// Постобработка кадра — цепочка проходов с промежуточными целями (RenderTarget):
+// - автоэкспозиция (Eye Adaptation в UE): гистограмма log₂ яркости кадра (Shaders/exposure_histogram.cs) и новая
+//   экспозиция (Shaders/exposure_adapt.cs) в буфере на GPU. Буфер сцены хранит яркость × экспозицию прошлого кадра
+//   (pre-exposure, Shaders/exposure.sh), иначе физические яркости переполнили бы R16F;
 // - bloom (J. Jimenez, SIGGRAPH 2014): цвет сцены уменьшается по уровням 1/2 … 1/64 (Shaders/bloom_downsample.ps —
 //   с порогом и защитой от «светлячков» на первом), затем уровни увеличиваются и складываются от мелкого к крупному
 //   (Shaders/bloom_upsample.ps, BlendState::additive);
-// - тонмаппинг (Shaders/tonemap.ps): цвет сцены + bloom, экспозиция, AgX / ACES — в задний буфер.
+// - тонмаппинг (Shaders/tonemap.ps): цвет сцены + bloom, приведение к новой экспозиции, AgX / ACES — в задний буфер.
 // Настройки — как Exposure, Tonemapper, Bloom в Post Process Volume UE: строка таблицы PostProcessSettings, на которую
-// ссылается уровень (Levels.post_process), меняются в GUI («Post process»). Новый проход (гистограмма яркости, LUT,
-// сглаживание) — ещё одна цель и шаг в render()
+// ссылается уровень (Levels.post_process), меняются в GUI («Post process»). Новый проход (LUT, сглаживание) — ещё одна
+// цель и шаг в render()
 class PostProcess
 {
 public:
@@ -27,62 +31,138 @@ public:
 		agx = 2		// AgX — стандартное отображение Blender 4+, мягче уводит яркие цвета в белый
 	};
 
+	// Metering Mode в UE: экспозиция задана или замеряется по гистограмме кадра
+	enum class MeteringMode : int32_t
+	{
+		manual = 0,
+		autoHistogram = 1
+	};
+
 	static constexpr uint32_t bloomLevelCount = 6;
 	// Вес каждого следующего, вдвое более широкого уровня относительно предыдущего: вклад уровней убывает от узкого
 	// к широкому примерно вшестеро, как веса Bloom1…Bloom6 Tint в UE
 	static constexpr float bloomLevelFalloff = 0.6f;
+	static constexpr uint32_t histogramBinCount = 64;	// HISTOGRAM_BINS в Shaders/exposure_*.cs
 
-	// Строка PostProcessSettings; без неё — значения по умолчанию
+	// Строка PostProcessSettings; без неё — значения по умолчанию (как у Post Process Volume в UE)
 	struct Settings
 	{
+		MeteringMode meteringMode = MeteringMode::autoHistogram;
+		float manualEV100 = 15.0f;			// Manual; с него же начинается автоэкспозиция
 		float exposureCompensation = 0.0f;	// EV: +1 — вдвое ярче
+		float minEV100 = -10.0f;			// пределы автоэкспозиции и диапазон гистограммы
+		float maxEV100 = 20.0f;
+		float histogramLowPercent = 10.0f;	// процентили гистограммы: темнее и ярче — не в среднем
+		float histogramHighPercent = 90.0f;
+		float speedUp = 3.0f;				// скорость адаптации к более яркой сцене, 1/с
+		float speedDown = 1.0f;				// к более тёмной
 		Tonemapper tonemapper = Tonemapper::agx;
 		float bloomIntensity = 0.05f;		// Bloom Intensity — доля энергии над порогом в свечении; 0 — без bloom
 		float bloomThreshold = 1.0f;		// Bloom Threshold, яркость после экспозиции; < 0 — без порога
 	};
-	// Имя тонмаппинга в базе: None, ACES, AgX (другое — AgX)
+	// Имена в базе: тонмаппинг None, ACES, AgX (другое — AgX); замер Manual, AutoHistogram (другое — AutoHistogram)
 	static Tonemapper tonemapperFromName( const std::string& name );
 	static const char* tonemapperName( Tonemapper tonemapper );
+	static MeteringMode meteringModeFromName( const std::string& name );
+	static const char* meteringModeName( MeteringMode mode );
 
 	bool initialize( const Settings& settings );
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
-	// Рисует цепочку в задний буфер и оставляет его привязанным для GUI; время проходов — области profiler
-	void render( GpuProfiler& profiler );
+	// Экспозиция кадра — пиксельным шейдерам сцены (t105), до проходов сцены
+	void bindExposure();
+	// Рисует цепочку в задний буфер и оставляет его привязанным для GUI; время проходов — области profiler.
+	// deltaTime — длительность кадра, с (скорость адаптации)
+	void render( GpuProfiler& profiler, float deltaTime );
+	// EV100 кадра с отставанием на несколько кадров (копия с GPU без ожидания) — для статистики
+	float ev100() const { return m_ev100; }
 	PropertyContainer* properties();
 
 private:
+	// Раскладка — ExposureState в Shaders/exposure.sh
+	struct ExposureState
+	{
+		float exposure;
+		float sceneExposure;
+		float ev100;
+		float padding;
+	};
+
+	// Константный буфер CS b4, раскладка как у HistogramBuffer в Shaders/exposure_histogram.cs
+	struct alignas( 16 ) HistogramParameters
+	{
+		uint32_t sceneWidth;
+		uint32_t sceneHeight;
+		float minLog2Luminance;
+		float log2LuminanceRange;
+	};
+
+	// Константный буфер CS b4, раскладка как у AdaptBuffer в Shaders/exposure_adapt.cs
+	struct alignas( 16 ) AdaptParameters
+	{
+		int32_t meteringMode;
+		float manualEV100;
+		float exposureCompensation;
+		float deltaTime;
+		float minEV100;
+		float maxEV100;
+		float lowPercent;
+		float highPercent;
+		float speedUp;
+		float speedDown;
+		float minLog2Luminance;
+		float log2LuminanceRange;
+	};
+
 	// Константный буфер PS b2, раскладка как у PostProcessBuffer в Shaders/tonemap.ps
 	struct alignas( 16 ) Parameters
 	{
-		float exposure;		// множитель 2^EV
 		int32_t tonemapper;
 		float bloomScale;	// Bloom Intensity / сумма весов уровней
-		float padding;
+		float padding[2];
 	};
 
 	// Константный буфер PS b2 проходов bloom, раскладка как у BloomBuffer в Shaders/bloom_*.ps
 	struct alignas( 16 ) BloomParameters
 	{
 		XMFLOAT2 sourceTexelSize;
-		float exposure;
 		float threshold;
 		int32_t firstPass;
 		float radius;
 		float weight;
-		float padding;
+		float padding[2];
 	};
 
-	void renderBloom( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float exposure, float threshold );
+	bool createExposureResources( float initialEV100, float exposureCompensation );
+	void renderExposure( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float deltaTime );
+	void readBackExposure();
+	void renderBloom( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float threshold );
 	void drawPass( FullscreenShader& shader, const RenderTarget& target, const com_unique_ptr<ID3D11ShaderResourceView>& source,
 				   BloomParameters params, BlendState blend );
 
 	FullscreenShader m_shader;
 	FullscreenShader m_bloomDownsample;
 	FullscreenShader m_bloomUpsample;
+	DMComputeShader m_histogramShader;
+	DMComputeShader m_adaptShader;
 	RenderTarget m_bloom[bloomLevelCount];
 	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
 	com_unique_ptr<ID3D11Buffer> m_bloomConstants;
+	com_unique_ptr<ID3D11Buffer> m_histogramConstants;
+	com_unique_ptr<ID3D11Buffer> m_adaptConstants;
+
+	com_unique_ptr<ID3D11Buffer> m_histogram;
+	com_unique_ptr<ID3D11UnorderedAccessView> m_histogramUAV;
+	com_unique_ptr<ID3D11ShaderResourceView> m_histogramSRV;
+	com_unique_ptr<ID3D11Buffer> m_exposureState;
+	com_unique_ptr<ID3D11UnorderedAccessView> m_exposureUAV;
+	com_unique_ptr<ID3D11ShaderResourceView> m_exposureSRV;
+	// Копии состояния для чтения на CPU по кругу: читается самая свежая из тех, до которых GPU уже дошёл
+	static constexpr uint32_t readbackCount = 6;
+	com_unique_ptr<ID3D11Buffer> m_exposureReadback[readbackCount];
+	uint32_t m_readbackFrame = 0;
+	float m_ev100 = 0.0f;
+
 	PropertyContainer m_properties;
 };
 

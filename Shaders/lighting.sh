@@ -14,6 +14,7 @@
 #include "brdf.sh"
 #include "ibl.sh"
 #include "shadows.sh"
+#include "exposure.sh"
 
 // Источник света, раскладка — DMLightDriver::LightBuffer
 struct Light
@@ -54,7 +55,8 @@ struct Surface
 // (B. Karis, «Real Shading in Unreal Engine 4», 2013 — так же в UE)
 float distanceAttenuation( float distanceSq, float radius )
 {
-	float falloff = 1.0f / ( distanceSq + 1.0f );
+	// Обратный квадрат с ограничением в 1 см, как в UE: сила света в канделах даёт освещённость в люксах
+	float falloff = 1.0f / max( distanceSq, 1e-4f );
 	if( radius <= 0.0f )
 		return falloff;
 	float ratio = distanceSq / ( radius * radius );
@@ -125,7 +127,8 @@ float3 evaluateLighting( Surface surface )
 					 ambientSpecular( reflect( -view, surface.normal ), roughness ) * ( F0 * environment.x + environment.y );
 
 	// Освещение окружением тень не гасит (как в UE без затенения окружения)
-	return ( direct + ambient * surface.occlusion + surface.emissive ) * shadowCascadeTint( surface.position );
+	// Яркость, кд/м², — в буфер сцены с экспозицией прошлого кадра (pre-exposure, Shaders/exposure.sh)
+	return ( direct + ambient * surface.occlusion + surface.emissive ) * shadowCascadeTint( surface.position ) * preExposure();
 }
 
 #endif

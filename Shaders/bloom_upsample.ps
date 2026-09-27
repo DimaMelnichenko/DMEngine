@@ -14,12 +14,11 @@ Texture2D<float4> g_source : register( t0 );
 cbuffer BloomBuffer : register( SLOT_CB_PASS )
 {
 	float2 g_sourceTexelSize;	// 1 / размер источника
-	float  g_exposure;
-	float  g_threshold;
-	int    g_firstPass;
-	float  g_radius;			// радиус тента в текселях источника
+	float  g_threshold;			// Bloom Threshold, яркость после экспозиции; < 0 — без порога
+	int    g_firstPass;			// 1 — источник — цвет сцены
+	float  g_radius;			// для увеличения: радиус тента в текселях источника
 	float  g_weight;			// для увеличения: вес добавляемого уровня
-	float  g_padding;
+	float2 g_padding;
 };
 
 struct PixelInputType

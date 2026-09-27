@@ -101,10 +101,14 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   (фон на дальней плоскости: глубина `LESS_EQUAL` без записи — только там, где сцена ничего не нарисовала) →
   `transparent` (alpha blending, глубина только читается) в HDR-буфер сцены
   (`R16G16B16A16_FLOAT`) → `PostProcess` — цепочка полноэкранных проходов с промежуточными целями (`RenderTarget`,
-  `D3D/RenderTarget.h`): bloom (уровни ½ … ¹⁄₆₄, Jimenez 2014), затем экспозиция и тонмаппинг (AgX / ACES) в задний
-  буфер sRGB; новый проход — ещё одна цель и шаг в `PostProcess::render`. Затем
-  `DMGraphics` рисует GUI и вызывает `EndScene`. Шейдеры объектов пишут линейный цвет без экспозиции; настройки —
-  строка `PostProcessSettings` уровня и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
+  `D3D/RenderTarget.h`): автоэкспозиция (гистограмма яркости и адаптация в compute, EV100, как Auto Exposure
+  Histogram в UE), bloom (уровни ½ … ¹⁄₆₄, Jimenez 2014), затем тонмаппинг (AgX / ACES) в задний буфер sRGB; новый
+  проход — ещё одна цель и шаг в `PostProcess::render`. Затем `DMGraphics` рисует GUI и вызывает `EndScene`.
+  Единицы света физические (солнце — люксы, лампы — канделы, небо и свечение — кд/м²), поэтому буфер сцены хранит
+  яркость × экспозицию прошлого кадра (pre-exposure, как в UE): экспозиция живёт на GPU (буфер `ExposureState`, t105,
+  `Shaders/exposure.sh`), шейдеры с освещением умножают результат на `preExposure()` в конце `evaluateLighting`,
+  небо — в `sky_background.ps`; материалы без освещения (`Texture`, `Color`, частицы) пишут «цвет на экране» как
+  есть. Настройки — строка `PostProcessSettings` уровня и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
   начинается с чистого состояния: `Renderer::executePass` заново ставит цель сцены с областью вывода
   (`DMD3D::setSceneTarget`) и отвязывает ресурсы материалов (`unbindTransientResources`); полноэкранные проходы
   (постобработка, небо) — `FullscreenShader`: сам ставит топологию, шейдеры и состояния, цель — `DMD3D::setRenderTarget`.
@@ -169,8 +173,9 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 Свет и окружение — тоже данные уровня, как сущности уровня в UE: источники — строки `LevelLights` (`type` directional /
 point / spot, `enabled`, `color` и `intensity` раздельно, `direction` — куда идёт свет, `position`, `attenuation_radius`,
 `inner_cone_angle` / `outer_cone_angle` — имена как в UE и KHR_lights_punctual; у направленного ещё `cast_shadows`
-и настройки каскадных теней; первый включённый направленный — солнце для неба и теней, его яркость подобрана под
-экспозицию 0 EV), небо — строка `SkyAtmosphere` (`Levels.atmosphere`), постобработка — `PostProcessSettings`
+и настройки каскадных теней; первый включённый направленный — солнце для неба и теней; `intensity` направленного —
+люксы, точечного и прожектора — канделы, затухание — `1 / max(d², 0,01²)`), небо — строка `SkyAtmosphere`
+(`Levels.atmosphere`; запекается для солнца 1 лк и умножается на `cb_skyIlluminance`), постобработка — `PostProcessSettings`
 (`Levels.post_process`; NULL — значения по умолчанию). В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
 вместо вектора), «Sky atmosphere», «Post process»; кнопка «Save level environment» (`GUI::addAction`) пишет их обратно
 (`LibraryLoader::saveLevelEnvironment`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не

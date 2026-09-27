@@ -31,10 +31,11 @@ void ConstantBuffers::initBuffers()
 	m_timer.Initialize();
 }
 
-void ConstantBuffers::beginFrame( int lightsCount )
+void ConstantBuffers::beginFrame( int lightsCount, float skyIlluminance )
 {
 	m_timer.Frame();
 	m_lightsCount = static_cast<float>( lightsCount );
+	m_skyIlluminance = skyIlluminance;
 }
 
 void ConstantBuffers::setViewBuffer( const RenderView& view )
@@ -52,6 +53,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.elapsedTime = static_cast<float>( m_timer.GetTime() );
 		data.lightsCount = m_lightsCount;
 		data.lodOrigin = view.lodOrigin;
+		data.skyIlluminance = m_skyIlluminance;
 	} );
 
 	ID3D11Buffer* buffer = m_frameConstant.get();

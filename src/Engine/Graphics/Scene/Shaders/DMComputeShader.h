@@ -16,6 +16,8 @@ public:
 	void setUAVBuffer( int index, ID3D11UnorderedAccessView* );
 	void Dispatch( uint16_t width, uint16_t height, float elapsed_time );
 	void Dispatch( uint32_t numElements, float elapsed_time );
+	// Сетка групп — явно; свои константы (ThreadsData, b2) не пишет: параметры прохода — в b4 и дальше
+	void dispatchGroups( uint32_t x, uint32_t y, uint32_t z );
 
 private:
 	void OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::string& shaderFilename );

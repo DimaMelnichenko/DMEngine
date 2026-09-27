@@ -217,9 +217,9 @@ SkyAtmosphere::Parameters SkyAtmosphere::currentParameters() const
 	Parameters params = {};
 	XMFLOAT3 lightColor;
 	m_lights->directionalLight( params.sunDirection, lightColor );
-	// Небо освещает белое солнце той же яркости: цвет источника — уже прошедший атмосферу свет у земли
-	const float sunLuminance = 0.2126f * lightColor.x + 0.7152f * lightColor.y + 0.0722f * lightColor.z;
-	params.sunColor = XMFLOAT3( sunLuminance, sunLuminance, sunLuminance );
+	// Небо линейно по солнцу: запекается для белого солнца 1 лк, а яркость — умножением на освещённость от солнца
+	// при выборке (cb_skyIlluminance). Сдвиг интенсивности солнца поэтому небо не пересчитывает
+	params.sunColor = XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	params.skyIntensity = m_properties["Sky intensity"].data<float>();
 	params.haze = m_properties["Haze"].data<float>();
 	const float albedo = m_properties["Ground albedo"].data<float>();

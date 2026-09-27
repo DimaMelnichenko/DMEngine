@@ -7,6 +7,7 @@
 
 #include "slots.h"
 #include "samplers.sh"
+#include "exposure.sh"
 
 Texture2D<float4> g_source : register( t0 );
 
@@ -14,12 +15,11 @@ Texture2D<float4> g_source : register( t0 );
 cbuffer BloomBuffer : register( SLOT_CB_PASS )
 {
 	float2 g_sourceTexelSize;	// 1 / размер источника
-	float  g_exposure;			// 2^EV: порог сравнивается с яркостью после экспозиции
-	float  g_threshold;			// Bloom Threshold; < 0 — без порога
+	float  g_threshold;			// Bloom Threshold, яркость после экспозиции; < 0 — без порога
 	int    g_firstPass;			// 1 — источник — цвет сцены
-	float  g_radius;			// для увеличения
+	float  g_radius;			// для увеличения: радиус тента в текселях источника
 	float  g_weight;			// для увеличения: вес добавляемого уровня
-	float  g_padding;
+	float2 g_padding;
 };
 
 struct PixelInputType
@@ -47,7 +47,7 @@ float3 threshold( float3 color )
 	color = min( max( color, 0.0f ), maxHdrValue );
 	[branch] if( g_threshold >= 0.0f )
 	{
-		const float brightness = max( color.r, max( color.g, color.b ) ) * g_exposure;
+		const float brightness = max( color.r, max( color.g, color.b ) ) * exposureRatio();
 		const float knee = g_threshold * 0.5f;
 		float soft = clamp( brightness - g_threshold + knee, 0.0f, 2.0f * knee );
 		soft = soft * soft / ( 4.0f * knee + 1e-4f );
@@ -58,7 +58,7 @@ float3 threshold( float3 color )
 
 float karisWeight( float3 color )
 {
-	return 1.0f / ( 1.0f + luminance( color ) * g_exposure );
+	return 1.0f / ( 1.0f + luminance( color ) * exposureRatio() );
 }
 
 float4 main( PixelInputType input ) : SV_TARGET

@@ -4,7 +4,7 @@
 				Initialize logger
 
 
-func:GS::DMGraphics::Initialize, line:62|Initialize the Direct3D object ms: 204.522000
+func:GS::DMGraphics::Initialize, line:62|Initialize the Direct3D object ms: 200.175000
 func:GS::CustomTexture::generateTexture, line:64|Inputs correct
 func:GS::Scene::loadResources, line:23|Load materials
 func:LibraryLoader::loadMaterial, line:85|Load material: 1
@@ -29,45 +29,45 @@ func:LibraryLoader::loadShader, line:216|Load shader: Shaders\PBRLit.ps
 func:LibraryLoader::loadMaterial, line:85|Load material: 12
 func:LibraryLoader::loadShader, line:216|Load shader: Shaders\LightShader.vs
 func:LibraryLoader::loadShader, line:216|Load shader: Shaders\PBRLit.ps
-func:GS::Scene::loadResources, line:27|Load material for ms: 475.609000
+func:GS::Scene::loadResources, line:27|Load material for ms: 500.449000
 func:GS::Scene::loadResources, line:31|Level: Test
 func:GS::Scene::loadResources, line:33|Load models
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 1
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 1
 func:LibraryLoader::loadMesh, line:230|Load mesh: 1
 func:GS::MeshStorage::load, line:243|Can`t load mesh from file: Meshes\box.bin
 func:LibraryLoader::loadMesh, line:249|Mesh 1 is not loaded, placeholder box is used
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 8
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 8
 func:LibraryLoader::loadMesh, line:230|Load mesh: 2
 func:GS::MeshStorage::load, line:243|Can`t load mesh from file: Meshes\Sphere36.bin
 func:LibraryLoader::loadMesh, line:249|Mesh 2 is not loaded, placeholder sphere is used
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 9
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 9
 func:LibraryLoader::loadMesh, line:230|Load mesh: 12
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 10
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 10
 func:LibraryLoader::loadMesh, line:230|Load mesh: 13
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 12
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 13
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 14
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 15
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 16
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 17
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 18
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 19
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 20
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 21
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 22
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 12
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 13
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 14
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 15
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 16
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 17
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 18
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 19
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 20
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 21
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 22
 func:LibraryLoader::loadMesh, line:230|Load mesh: 14
 func:LibraryLoader::loadMesh, line:230|Load mesh: 15
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 23
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 23
 func:LibraryLoader::loadMesh, line:230|Load mesh: 16
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 24
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 24
 func:LibraryLoader::loadMesh, line:230|Load mesh: 17
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 25
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 25
 func:LibraryLoader::loadMesh, line:230|Load mesh: 18
 func:LibraryLoader::loadMesh, line:230|Load mesh: 19
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 26
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 26
 func:LibraryLoader::loadMesh, line:230|Load mesh: 20
-func:LibraryLoader::loadModelWithLOD, line:577|Load model: 11
-func:GS::Scene::loadResources, line:53|Load models for ms: 3.662000
+func:LibraryLoader::loadModelWithLOD, line:600|Load model: 11
+func:GS::Scene::loadResources, line:53|Load models for ms: 3.815000
 func:GS::Scene::loadResources, line:55|Load textures
 func:LibraryLoader::loadAllTextures, line:25|Load all textures
 func:LibraryLoader::loadTextures, line:51|Can`t load texture no_image (no_image.dds), placeholder is used
@@ -93,16 +93,16 @@ func:LibraryLoader::loadTextures, line:55|Load texture for ms: 3; id = 28, name 
 func:LibraryLoader::loadTextures, line:51|Can`t load texture knot_normal (materials\blocksrough_normal_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:51|Can`t load texture knot_height (materials\blocksrough_height_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:55|Load texture for ms: 2; id = 45, name = mask_pebbles, file = terrain\mask_pebbles.dds
-func:LibraryLoader::loadTextures, line:55|Load texture for ms: 57; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
-func:LibraryLoader::loadTextures, line:55|Load texture for ms: 51; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
+func:LibraryLoader::loadTextures, line:55|Load texture for ms: 58; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
+func:LibraryLoader::loadTextures, line:55|Load texture for ms: 52; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
 func:LibraryLoader::loadTextures, line:55|Load texture for ms: 2; id = 48, name = test_models_PanelNormal, file = models\test_models\PanelNormal.png
 func:LibraryLoader::loadTextures, line:55|Load texture for ms: 1; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
 func:LibraryLoader::loadTextures, line:55|Load texture for ms: 15; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
-func:GS::Scene::loadResources, line:67|Load textures for ms: 143.988000
+func:GS::Scene::loadResources, line:67|Load textures for ms: 146.110000
 func:GS::DMGraphics::Initialize, line:88|Create main camera
 func:GS::Scene::initialize, line:74|Create light driver
 func:GS::CDLODTerrain::initialize, line:93|CDLOD terrain: heightmap 1024, LOD levels 6
-func:GS::Scene::initialize, line:98|Terrain init ms: 254.439000
-func:GS::Scene::initialize, line:132|Scatter init ms: 192.512000
-func:GS::DMGraphics::Initialize, line:124|Total init ms: 2571.950000
-func:GS::Renderer::reportGpuTimes, line:190|GPU average over 3883 frames, ms: frame 0.697; preparePipeline 0.000; Compute Pass 0.032; Shadow depths 0.435; Shadow cascade 0 0.022; Shadow cascade 1 0.032; Shadow cascade 2 0.106; Shadow cascade 3 0.200; Pass opaque 0.001; Meadow 0.001; Debris 0.000; Pass sky 0.049; Sky atmosphere 0.049; Pass transparent 0.000; Particles 0.000; Post process 0.162; Bloom 0.110; Tonemap 0.052; meshes 0 in 0 draws; shadow meshes 35 in 35 draws
+func:GS::Scene::initialize, line:98|Terrain init ms: 270.659000
+func:GS::Scene::initialize, line:132|Scatter init ms: 204.013000
+func:GS::DMGraphics::Initialize, line:124|Total init ms: 2672.975000
+func:GS::Renderer::reportGpuTimes, line:193|GPU average over 1907 frames, ms: frame 1.477; preparePipeline 0.000; Compute Pass 0.038; Shadow depths 0.455; Shadow cascade 0 0.024; Shadow cascade 1 0.068; Shadow cascade 2 0.112; Shadow cascade 3 0.187; Pass opaque 0.691; CDLOD terrain 0.605; Models 0.083; Meadow 0.002; Debris 0.000; Pass sky 0.021; Sky atmosphere 0.021; Pass transparent 0.001; Particles 0.001; Post process 0.243; Exposure 0.074; Bloom 0.119; Tonemap 0.050; meshes 13 in 13 draws; shadow meshes 42 in 42 draws; EV100 16.05

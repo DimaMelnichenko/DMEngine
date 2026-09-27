@@ -7,7 +7,7 @@
 #define IBL_SH
 
 #include "slots.h"
-
+#include "common.vs"
 #include "samplers.sh"
 
 StructuredBuffer<float4> g_irradianceSH : register( SLOT_IBL_IRRADIANCE );	// 9 коэффициентов для E(n)/π
@@ -28,13 +28,14 @@ float3 ambientIrradiance( float3 n )
 				  + g_irradianceSH[6].rgb * ( 0.315392f * ( 3.0f * n.z * n.z - 1.0f ) )
 				  + g_irradianceSH[7].rgb * ( 1.092548f * n.x * n.z )
 				  + g_irradianceSH[8].rgb * ( 0.546274f * ( n.x * n.x - n.y * n.y ) );
-	return max( result, 0.0f );
+	// Запечено для солнца освещённостью 1 лк: небо линейно по солнцу
+	return max( result, 0.0f ) * cb_skyIlluminance;
 }
 
 // Отражённый свет неба в направлении r, размытый по шероховатости
 float3 ambientSpecular( float3 r, float roughness )
 {
-	return g_specularCube.SampleLevel( g_SamplerLinearClamp, r, roughness * ( specularMipCount - 1.0f ) ).rgb;
+	return g_specularCube.SampleLevel( g_SamplerLinearClamp, r, roughness * ( specularMipCount - 1.0f ) ).rgb * cb_skyIlluminance;
 }
 
 // Масштаб и сдвиг F0 для отражений окружения: отражение = ambientSpecular × (F0·A + B)

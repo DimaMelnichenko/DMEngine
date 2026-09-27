@@ -417,14 +417,26 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 
 	if( level.postProcessId )
 	{
-		SQLite::Statement query( dbConnect().db(), "SELECT exposure_compensation, tonemapper, bloom_intensity, bloom_threshold "
-												   "FROM PostProcessSettings WHERE id = :id" );
+		SQLite::Statement query( dbConnect().db(), "SELECT * FROM PostProcessSettings WHERE id = :id" );
 		query.bind( ":id", *level.postProcessId );
 		if( !query.executeStep() )
 		{
 			LOG( "Post process settings " + std::to_string( *level.postProcessId ) + " are not found in table PostProcessSettings" );
 			return false;
 		}
+		auto value = [&query]( const char* column )
+		{
+			return static_cast<float>( query.getColumn( column ).getDouble() );
+		};
+		GS::PostProcess::Settings& settings = level.postProcess;
+		settings.meteringMode = GS::PostProcess::meteringModeFromName( query.getColumn( "metering_mode" ).getString() );
+		settings.manualEV100 = value( "manual_ev100" );
+		settings.minEV100 = value( "min_ev100" );
+		settings.maxEV100 = value( "max_ev100" );
+		settings.histogramLowPercent = value( "histogram_low_percent" );
+		settings.histogramHighPercent = value( "histogram_high_percent" );
+		settings.speedUp = value( "speed_up" );
+		settings.speedDown = value( "speed_down" );
 		level.postProcess.exposureCompensation = static_cast<float>( query.getColumn( "exposure_compensation" ).getDouble() );
 		level.postProcess.tonemapper = GS::PostProcess::tonemapperFromName( query.getColumn( "tonemapper" ).getString() );
 		level.postProcess.bloomIntensity = static_cast<float>( query.getColumn( "bloom_intensity" ).getDouble() );
@@ -513,11 +525,22 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 		}
 		SQLite::Statement updatePostProcess( db, "UPDATE PostProcessSettings SET exposure_compensation = :exposure, "
 												 "tonemapper = :tonemapper, bloom_intensity = :bloomIntensity, "
-												 "bloom_threshold = :bloomThreshold WHERE id = :id" );
+												 "bloom_threshold = :bloomThreshold, metering_mode = :meteringMode, "
+												 "manual_ev100 = :manualEV100, min_ev100 = :minEV100, max_ev100 = :maxEV100, "
+												 "histogram_low_percent = :lowPercent, histogram_high_percent = :highPercent, "
+												 "speed_up = :speedUp, speed_down = :speedDown WHERE id = :id" );
 		updatePostProcess.bind( ":exposure", dbValue( postProcess.exposureCompensation ) );
 		updatePostProcess.bind( ":tonemapper", GS::PostProcess::tonemapperName( postProcess.tonemapper ) );
 		updatePostProcess.bind( ":bloomIntensity", dbValue( postProcess.bloomIntensity ) );
 		updatePostProcess.bind( ":bloomThreshold", dbValue( postProcess.bloomThreshold ) );
+		updatePostProcess.bind( ":meteringMode", GS::PostProcess::meteringModeName( postProcess.meteringMode ) );
+		updatePostProcess.bind( ":manualEV100", dbValue( postProcess.manualEV100 ) );
+		updatePostProcess.bind( ":minEV100", dbValue( postProcess.minEV100 ) );
+		updatePostProcess.bind( ":maxEV100", dbValue( postProcess.maxEV100 ) );
+		updatePostProcess.bind( ":lowPercent", dbValue( postProcess.histogramLowPercent ) );
+		updatePostProcess.bind( ":highPercent", dbValue( postProcess.histogramHighPercent ) );
+		updatePostProcess.bind( ":speedUp", dbValue( postProcess.speedUp ) );
+		updatePostProcess.bind( ":speedDown", dbValue( postProcess.speedDown ) );
 		updatePostProcess.bind( ":id", *level.postProcessId );
 		updatePostProcess.exec();
 

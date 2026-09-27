@@ -27,13 +27,18 @@ public:
 	// Буфер источников — на GPU, если изменился, и в слот; возвращает число источников в буфере
 	uint32_t setBuffer( int8_t slot, SRVType type );
 	// Солнце — первый включённый направленный источник: направление на свет (нормированное) и яркость.
-	// Без него — запасной свет, как в setBuffer
+	// Включённых источников нет — запасной свет, как в setBuffer; есть, но не направленные — яркость 0 (ночь)
 	void directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) const;
 	// Индекс солнца в буфере источников (g_lights в шейдерах) или −1, если направленного нет. Направленные
 	// в буфере первыми, поэтому солнце — 0; оно же и в directionalLight()
 	int sunLightIndex() const;
 	// Настройки теней солнца; castShadows = false, если солнца нет
 	DMLight::ShadowSettings sunShadows() const;
+	// Освещённость от солнца, лк (яркость его цвета × интенсивность): на неё умножаются запечённые для солнца 1 лк
+	// небо и освещение окружением (cb_skyIlluminance)
+	float sunIlluminance() const;
+	// Запасной свет, когда включённых источников нет: белое солнце, лк
+	static constexpr float fallbackIlluminance = 100000.0f;
 
 	const LightList& lights() const;
 	PropertyContainer* properties();

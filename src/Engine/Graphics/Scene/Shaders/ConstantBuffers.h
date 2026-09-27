@@ -20,7 +20,7 @@ public:
 
 	void initBuffers();
 	// Один раз за кадр: время и число источников света
-	void beginFrame( int lightsCount );
+	void beginFrame( int lightsCount, float skyIlluminance );
 	// Константы кадра (b0) для вида: матрицы и положение камеры; время и свет — от beginFrame. Для каждого вида
 	// кадра (главная камера, позже каскады теней) — свой вызов
 	void setViewBuffer( const RenderView& view );
@@ -41,6 +41,8 @@ private:
 		float elapsedTime;
 		float lightsCount;
 		XMFLOAT3 lodOrigin;
+		float skyIlluminance;
+		XMFLOAT3 padding;
 	};
 
 	// Раскладка — cbuffer WorldBuffer в Shaders/common.vs
@@ -51,6 +53,7 @@ private:
 	};
 
 	float m_lightsCount = 0.0f;
+	float m_skyIlluminance = 0.0f;
 	com_unique_ptr<ID3D11Buffer> m_frameConstant;
 	com_unique_ptr<ID3D11Buffer> m_modelConstant;
 	DMTimer m_timer;

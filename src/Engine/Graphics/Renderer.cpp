@@ -122,7 +122,8 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		executePass( MeshPass::transparent, frame.view, frameRaster );
 	}
 
-	measure( "Post process", [&] { m_postProcess.render( m_gpuProfiler ); } );
+	measure( "Post process", [&] { m_postProcess.render( m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
+	m_gui.addCounterInfo( "Exposure EV100 = %.2f", m_postProcess.ev100() );
 	m_gui.addCounterInfo( "Meshes = %.0f", static_cast<float>( m_meshCount ) );
 	m_gui.addCounterInfo( "Mesh draw calls = %.0f", static_cast<float>( m_meshDraws ) );
 	m_gui.addCounterInfo( "Shadow meshes = %.0f", static_cast<float>( m_shadowMeshCount ) );
@@ -187,6 +188,8 @@ void Renderer::reportGpuTimes()
 	}
 	line += " meshes " + std::to_string( m_meshCount ) + " in " + std::to_string( m_meshDraws ) + " draws; shadow meshes " +
 			std::to_string( m_shadowMeshCount ) + " in " + std::to_string( m_shadowDraws ) + " draws";
+	std::snprintf( value, sizeof( value ), "%.2f", m_postProcess.ev100() );
+	line += std::string( "; EV100 " ) + value;
 	LOG( line );
 	m_gpuAverageLogged = true;
 }
@@ -212,7 +215,9 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	// установка источников света
 	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS, SRVType::ps );
 	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры)
-	pipeline().shaderConstant().beginFrame( lightCount );
+	pipeline().shaderConstant().beginFrame( lightCount, scene.lights().sunIlluminance() );
+	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
+	m_postProcess.bindExposure();
 	pipeline().shaderConstant().setViewBuffer( frame.view );
 }
 

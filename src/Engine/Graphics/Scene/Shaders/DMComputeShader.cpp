@@ -162,6 +162,13 @@ void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_t
 	clear();
 }
 
+void DMComputeShader::dispatchGroups( uint32_t x, uint32_t y, uint32_t z )
+{
+	DMD3D::instance().GetDeviceContext()->CSSetShader( m_computeShader.get(), nullptr, 0 );
+	DMD3D::instance().GetDeviceContext()->Dispatch( x, y, z );
+	clear();
+}
+
 void DMComputeShader::setConstants( ConstantType& constantType )
 {
 	Device::updateResourceData( m_constantBuffer.get(), constantType );

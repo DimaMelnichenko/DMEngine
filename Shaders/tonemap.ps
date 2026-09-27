@@ -6,6 +6,7 @@
 
 #include "slots.h"
 #include "samplers.sh"
+#include "exposure.sh"
 
 Texture2D<float4> g_sceneColor : register(t0);
 Texture2D<float4> g_bloom : register(t1);	// самый крупный уровень bloom (половина кадра), уже с добавленными меньшими
@@ -13,10 +14,9 @@ Texture2D<float4> g_bloom : register(t1);	// самый крупный уров�
 // Раскладка — PostProcess::Parameters
 cbuffer PostProcessBuffer : register( SLOT_CB_PASS )
 {
-	float g_exposure;	// 2^EV
 	int   g_tonemapper;	// 0 — без тонмаппинга, 1 — ACES, 2 — AgX
 	float g_bloomScale;	// Bloom Intensity / сумма весов уровней: уровень хранит взвешенную сумму всех уровней
-	float g_padding;
+	float2 g_padding;
 };
 
 struct PixelInputType
@@ -89,7 +89,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float3 color = g_sceneColor.Load( int3( input.position.xy, 0 ) ).rgb;
 	[branch] if( g_bloomScale > 0.0f )
 		color += g_bloom.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).rgb * g_bloomScale;
-	color *= g_exposure;
+	// Буфер сцены — с экспозицией прошлого кадра, приводим к новой (Shaders/exposure.sh)
+	color *= exposureRatio();
 
 	[branch] if( g_tonemapper == 1 )
 		color = acesFitted( color );

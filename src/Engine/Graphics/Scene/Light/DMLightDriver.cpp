@@ -80,7 +80,9 @@ void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
 
 	properties.insert( "Enabled", light.enabled() );
 	addControl( properties, "Color", light.color(), GUIControlType::COLOR, 0.0f, 1.0f );
-	addControl( properties, "Intensity", light.intensity(), GUIControlType::SLIDER, 0.0f, 100.0f );
+	// Направленный — люксы (полуденное солнце ~100 000), точечный и прожектор — канделы (лампа 100 Вт ~130)
+	addControl( properties, light.type() == DMLight::Dir ? "Intensity (lx)" : "Intensity (cd)", light.intensity(),
+				GUIControlType::SLIDER, 0.0f, light.type() == DMLight::Dir ? 150000.0f : 20000.0f );
 
 	controls.rotation = rotationFromDirection( light.direction() );
 	if( light.type() != DMLight::Point )
@@ -126,7 +128,7 @@ void DMLightDriver::update()
 
 		light.setEnabled( properties["Enabled"].data<bool>() );
 		light.setColor( properties["Color"].data<XMFLOAT3>() );
-		light.setIntensity( properties["Intensity"].data<float>() );
+		light.setIntensity( properties[light.type() == DMLight::Dir ? "Intensity (lx)" : "Intensity (cd)"].data<float>() );
 		if( light.type() != DMLight::Point )
 		{
 			// Направление пересчитывается из углов, только когда их сдвинули: иначе оно осталось бы как в базе
@@ -183,7 +185,7 @@ void DMLightDriver::update()
 		LightBuffer lightBuffer = {};
 		lightBuffer.type = DMLight::Dir;
 		lightBuffer.direction = fallbackDirection();
-		lightBuffer.color = XMFLOAT3( 1.0f, 1.0f, 1.0f );
+		lightBuffer.color = XMFLOAT3( fallbackIlluminance, fallbackIlluminance, fallbackIlluminance );
 		buffer.push_back( lightBuffer );
 	}
 
@@ -222,11 +224,16 @@ const DMLight* DMLightDriver::sun() const
 void DMLightDriver::directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) const
 {
 	XMFLOAT3 lightDirection = fallbackDirection();
-	color = XMFLOAT3( 1.0f, 1.0f, 1.0f );
+	color = XMFLOAT3( fallbackIlluminance, fallbackIlluminance, fallbackIlluminance );
 	if( const DMLight* light = sun() )
 	{
 		lightDirection = light->direction();
 		color = light->radiance();
+	}
+	else if( std::any_of( m_light_list.begin(), m_light_list.end(), []( const DMLight& light ) { return light.enabled(); } ) )
+	{
+		// Источники есть, а солнца нет — ночь: запасное солнце только у уровня совсем без света, как в setBuffer
+		color = XMFLOAT3( 0.0f, 0.0f, 0.0f );
 	}
 	direction = XMFLOAT3( -lightDirection.x, -lightDirection.y, -lightDirection.z );
 }
@@ -240,6 +247,14 @@ DMLight::ShadowSettings DMLightDriver::sunShadows() const
 {
 	const DMLight* light = sun();
 	return light ? light->shadowSettings() : DMLight::ShadowSettings();
+}
+
+float DMLightDriver::sunIlluminance() const
+{
+	XMFLOAT3 direction;
+	XMFLOAT3 color;
+	directionalLight( direction, color );
+	return 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
 }
 
 const DMLightDriver::LightList& DMLightDriver::lights() const

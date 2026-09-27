@@ -7,6 +7,36 @@
 namespace GS
 {
 
+namespace
+{
+
+void addSlider( PropertyContainer& properties, const char* name, float value, float low, float high )
+{
+	Property* property = properties.insert( name, value );
+	property->setLow( low );
+	property->setHigh( high );
+	property->setControlType( GUIControlType::SLIDER );
+}
+
+void addSlider( PropertyContainer& properties, const char* name, int32_t value, float low, float high )
+{
+	Property* property = properties.insert( name, value );
+	property->setLow( low );
+	property->setHigh( high );
+	property->setControlType( GUIControlType::SLIDER );
+}
+
+// Экспозиция по EV100 — как exposureFromEV100 в Shaders/exposure.sh
+float exposureFromEV100( float ev100 )
+{
+	return 1.0f / ( 1.2f * std::exp2( ev100 ) );
+}
+
+const char* const meteringModeProperty = "Metering mode (0 manual, 1 auto)";
+const char* const tonemapperProperty = "Tonemapper (0 none, 1 ACES, 2 AgX)";
+
+}
+
 PostProcess::Tonemapper PostProcess::tonemapperFromName( const std::string& name )
 {
 	return name == "None" ? Tonemapper::none : name == "ACES" ? Tonemapper::aces : Tonemapper::agx;
@@ -22,20 +52,35 @@ const char* PostProcess::tonemapperName( Tonemapper tonemapper )
 	}
 }
 
+PostProcess::MeteringMode PostProcess::meteringModeFromName( const std::string& name )
+{
+	return name == "Manual" ? MeteringMode::manual : MeteringMode::autoHistogram;
+}
+
+const char* PostProcess::meteringModeName( MeteringMode mode )
+{
+	return mode == MeteringMode::manual ? "Manual" : "AutoHistogram";
+}
+
 bool PostProcess::initialize( const Settings& settings )
 {
 	if( !m_shader.load( "Shaders\\tonemap.ps" ) ||
 		!m_bloomDownsample.load( "Shaders\\bloom_downsample.ps" ) ||
-		!m_bloomUpsample.load( "Shaders\\bloom_upsample.ps" ) )
+		!m_bloomUpsample.load( "Shaders\\bloom_upsample.ps" ) ||
+		!m_histogramShader.Initialize( "Shaders\\exposure_histogram.cs", "main" ) ||
+		!m_adaptShader.Initialize( "Shaders\\exposure_adapt.cs", "main" ) )
 		return false;
 
-	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( BloomParameters ), m_bloomConstants ) )
+	DMD3D& d3d = DMD3D::instance();
+	if( !d3d.createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
+		!d3d.createShaderConstantBuffer( sizeof( BloomParameters ), m_bloomConstants ) ||
+		!d3d.createShaderConstantBuffer( sizeof( HistogramParameters ), m_histogramConstants ) ||
+		!d3d.createShaderConstantBuffer( sizeof( AdaptParameters ), m_adaptConstants ) )
 		return false;
 
 	// Уровни bloom: половина кадра, четверть … 1/64; R11G11B10 — без альфы, как у bloom в UE
-	uint32_t width = DMD3D::instance().sceneWidth();
-	uint32_t height = DMD3D::instance().sceneHeight();
+	uint32_t width = d3d.sceneWidth();
+	uint32_t height = d3d.sceneHeight();
 	for( RenderTarget& level : m_bloom )
 	{
 		width = std::max( width / 2, 1u );
@@ -44,66 +89,142 @@ bool PostProcess::initialize( const Settings& settings )
 			return false;
 	}
 
+	// Первый кадр — с ручной экспозицией: автоэкспозиция начинает с неё, без вспышки при запуске
+	if( !createExposureResources( settings.manualEV100, settings.exposureCompensation ) )
+		return false;
+
 	m_properties.setName( "Post process" );
+	addSlider( m_properties, meteringModeProperty, static_cast<int32_t>( settings.meteringMode ), 0.0f, 1.0f );
+	addSlider( m_properties, "Manual EV100", settings.manualEV100, -10.0f, 20.0f );
+	addSlider( m_properties, "Exposure compensation (EV)", settings.exposureCompensation, -6.0f, 6.0f );
+	addSlider( m_properties, "Min EV100", settings.minEV100, -10.0f, 20.0f );
+	addSlider( m_properties, "Max EV100", settings.maxEV100, -10.0f, 20.0f );
+	addSlider( m_properties, "Histogram low percent", settings.histogramLowPercent, 0.0f, 100.0f );
+	addSlider( m_properties, "Histogram high percent", settings.histogramHighPercent, 0.0f, 100.0f );
+	addSlider( m_properties, "Speed up", settings.speedUp, 0.0f, 20.0f );
+	addSlider( m_properties, "Speed down", settings.speedDown, 0.0f, 20.0f );
+	addSlider( m_properties, tonemapperProperty, static_cast<int32_t>( settings.tonemapper ), 0.0f, 2.0f );
+	addSlider( m_properties, "Bloom intensity", settings.bloomIntensity, 0.0f, 8.0f );
+	addSlider( m_properties, "Bloom threshold", settings.bloomThreshold, -1.0f, 10.0f );
 
-	auto prop = m_properties.insert( "Exposure compensation (EV)", settings.exposureCompensation );
-	prop->setLow( -6.0f );
-	prop->setHigh( 6.0f );
-	prop->setControlType( GUIControlType::SLIDER );
+	return true;
+}
 
-	prop = m_properties.insert( "Tonemapper (0 none, 1 ACES, 2 AgX)", static_cast<int32_t>( settings.tonemapper ) );
-	prop->setLow( 0.0f );
-	prop->setHigh( 2.0f );
-	prop->setControlType( GUIControlType::SLIDER );
+bool PostProcess::createExposureResources( float initialEV100, float exposureCompensation )
+{
+	DMD3D& d3d = DMD3D::instance();
 
-	prop = m_properties.insert( "Bloom intensity", settings.bloomIntensity );
-	prop->setLow( 0.0f );
-	prop->setHigh( 8.0f );
-	prop->setControlType( GUIControlType::SLIDER );
+	// Гистограмма — HISTOGRAM_BINS чисел uint, пишется атомарно (RWByteAddressBuffer)
+	D3D11_BUFFER_DESC desc = {};
+	desc.ByteWidth = histogramBinCount * sizeof( uint32_t );
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+	if( !d3d.CreateBuffer( &desc, nullptr, m_histogram ) )
+		return false;
 
-	prop = m_properties.insert( "Bloom threshold", settings.bloomThreshold );
-	prop->setLow( -1.0f );
-	prop->setHigh( 10.0f );
-	prop->setControlType( GUIControlType::SLIDER );
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+	uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+	uavDesc.Buffer.NumElements = histogramBinCount;
+	uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+	srvDesc.BufferEx.NumElements = histogramBinCount;
+	srvDesc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
+	if( !d3d.createUAV( m_histogram, uavDesc, m_histogramUAV ) || !d3d.createSRV( m_histogram, srvDesc, m_histogramSRV ) )
+		return false;
 
+	// Состояние экспозиции — одна запись ExposureState; начальное — сразу «сошедшееся» к initialEV100
+	const float exposure = exposureFromEV100( initialEV100 - exposureCompensation );
+	const ExposureState initial = { exposure, exposure, initialEV100, 0.0f };
+	D3D11_SUBRESOURCE_DATA data = {};
+	data.pSysMem = &initial;
+	desc = {};
+	desc.ByteWidth = sizeof( ExposureState );
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+	desc.StructureByteStride = sizeof( ExposureState );
+	if( !d3d.CreateBuffer( &desc, &data, m_exposureState ) )
+		return false;
+
+	uavDesc = {};
+	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+	uavDesc.Buffer.NumElements = 1;
+	srvDesc = {};
+	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+	srvDesc.Buffer.NumElements = 1;
+	if( !d3d.createUAV( m_exposureState, uavDesc, m_exposureUAV ) || !d3d.createSRV( m_exposureState, srvDesc, m_exposureSRV ) )
+		return false;
+
+	// Копии для чтения на CPU (статистика)
+	desc = {};
+	desc.ByteWidth = sizeof( ExposureState );
+	desc.Usage = D3D11_USAGE_STAGING;
+	desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+	for( auto& readback : m_exposureReadback )
+	{
+		if( !d3d.CreateBuffer( &desc, nullptr, readback ) )
+			return false;
+	}
+	m_ev100 = initialEV100;
 	return true;
 }
 
 PostProcess::Settings PostProcess::settings()
 {
 	Settings settings;
+	settings.meteringMode = static_cast<MeteringMode>( std::clamp( m_properties[meteringModeProperty].data<int32_t>(), 0, 1 ) );
+	settings.manualEV100 = m_properties["Manual EV100"].data<float>();
 	settings.exposureCompensation = m_properties["Exposure compensation (EV)"].data<float>();
-	settings.tonemapper = static_cast<Tonemapper>( std::clamp( m_properties["Tonemapper (0 none, 1 ACES, 2 AgX)"].data<int32_t>(), 0, 2 ) );
+	settings.minEV100 = m_properties["Min EV100"].data<float>();
+	settings.maxEV100 = m_properties["Max EV100"].data<float>();
+	settings.histogramLowPercent = m_properties["Histogram low percent"].data<float>();
+	settings.histogramHighPercent = m_properties["Histogram high percent"].data<float>();
+	settings.speedUp = m_properties["Speed up"].data<float>();
+	settings.speedDown = m_properties["Speed down"].data<float>();
+	settings.tonemapper = static_cast<Tonemapper>( std::clamp( m_properties[tonemapperProperty].data<int32_t>(), 0, 2 ) );
 	settings.bloomIntensity = m_properties["Bloom intensity"].data<float>();
 	settings.bloomThreshold = m_properties["Bloom threshold"].data<float>();
 	return settings;
 }
 
-void PostProcess::render( GpuProfiler& profiler )
+void PostProcess::bindExposure()
+{
+	DMD3D::instance().setSRV( SRVType::ps, SLOT_EXPOSURE, m_exposureSRV );
+}
+
+void PostProcess::render( GpuProfiler& profiler, float deltaTime )
 {
 	DMD3D& d3d = DMD3D::instance();
-	// Сведение выборок MSAA — один раз за кадр: цвет сцены читают и bloom, и тонмаппинг
+	// Сведение выборок MSAA — один раз за кадр: цвет сцены читают замер, bloom и тонмаппинг
 	const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor = d3d.sceneColor();
-	const float exposure = std::exp2( m_properties["Exposure compensation (EV)"].data<float>() );
-	const float bloomIntensity = m_properties["Bloom intensity"].data<float>();
+	const Settings current = settings();
 
-	if( bloomIntensity > 0.0f )
+	profiler.beginScope( "Exposure" );
+	renderExposure( sceneColor, deltaTime );
+	profiler.endScope();
+
+	if( current.bloomIntensity > 0.0f )
 	{
 		profiler.beginScope( "Bloom" );
-		renderBloom( sceneColor, exposure, m_properties["Bloom threshold"].data<float>() );
+		renderBloom( sceneColor, current.bloomThreshold );
 		profiler.endScope();
 	}
 
 	profiler.beginScope( "Tonemap" );
 	d3d.setBackBufferTarget();
 	Parameters params = {};
-	params.exposure = exposure;
-	params.tonemapper = m_properties["Tonemapper (0 none, 1 ACES, 2 AgX)"].data<int32_t>();
+	params.tonemapper = static_cast<int32_t>( current.tonemapper );
 	// Уровень 1/2 хранит сумму уровней с весами 1, f, f², …: деление на неё — Bloom Intensity как доля энергии
 	float weightSum = 0.0f;
 	for( uint32_t level = 0; level < bloomLevelCount; ++level )
 		weightSum += std::pow( bloomLevelFalloff, static_cast<float>( level ) );
-	params.bloomScale = std::max( bloomIntensity, 0.0f ) / weightSum;
+	params.bloomScale = std::max( current.bloomIntensity, 0.0f ) / weightSum;
 	Device::updateResourceData<Parameters>( m_constantBuffer.get(), params );
 	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
 	d3d.setSRV( SRVType::ps, 0, sceneColor );
@@ -113,11 +234,90 @@ void PostProcess::render( GpuProfiler& profiler )
 	profiler.endScope();
 }
 
-void PostProcess::renderBloom( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float exposure, float threshold )
+void PostProcess::renderExposure( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float deltaTime )
+{
+	DMD3D& d3d = DMD3D::instance();
+	ID3D11DeviceContext* context = d3d.GetDeviceContext();
+	const Settings current = settings();
+
+	// Цвет сцены читает compute — его цель отвязывается; состояние экспозиции пишется — оно отвязывается от PS
+	context->OMSetRenderTargets( 0, nullptr, nullptr );
+	ID3D11ShaderResourceView* none = nullptr;
+	context->PSSetShaderResources( SLOT_EXPOSURE, 1, &none );
+
+	// Диапазон гистограммы — яркости Min…Max EV100: log₂ L = EV100 + log₂( 12,5 / 100 ) = EV100 − 3
+	const float minLog2Luminance = current.minEV100 - 3.0f;
+	const float log2LuminanceRange = std::max( current.maxEV100 - current.minEV100, 1.0f );
+
+	if( current.meteringMode == MeteringMode::autoHistogram )
+	{
+		const UINT zeros[4] = {};
+		context->ClearUnorderedAccessViewUint( m_histogramUAV.get(), zeros );
+
+		HistogramParameters histogram = { d3d.sceneWidth(), d3d.sceneHeight(), minLog2Luminance, log2LuminanceRange };
+		Device::updateResourceData<HistogramParameters>( m_histogramConstants.get(), histogram );
+		d3d.setConstantBuffer( SRVType::cs, 4, m_histogramConstants );
+		d3d.setSRV( SRVType::cs, 0, sceneColor );
+		d3d.setSRV( SRVType::cs, SLOT_EXPOSURE, m_exposureSRV );
+		m_histogramShader.setUAVBuffer( 0, m_histogramUAV.get() );
+		// Поток — пиксель из квадрата 2 × 2, группа — 16 × 16 потоков
+		m_histogramShader.dispatchGroups( ( d3d.sceneWidth() + 31 ) / 32, ( d3d.sceneHeight() + 31 ) / 32, 1 );
+		context->CSSetShaderResources( 0, 1, &none );
+		context->CSSetShaderResources( SLOT_EXPOSURE, 1, &none );
+	}
+
+	AdaptParameters adapt = {};
+	adapt.meteringMode = static_cast<int32_t>( current.meteringMode );
+	adapt.manualEV100 = current.manualEV100;
+	adapt.exposureCompensation = current.exposureCompensation;
+	adapt.deltaTime = deltaTime;
+	adapt.minEV100 = current.minEV100;
+	adapt.maxEV100 = std::max( current.maxEV100, current.minEV100 );
+	adapt.lowPercent = std::clamp( current.histogramLowPercent, 0.0f, 100.0f ) / 100.0f;
+	adapt.highPercent = std::clamp( current.histogramHighPercent, adapt.lowPercent * 100.0f, 100.0f ) / 100.0f;
+	adapt.speedUp = current.speedUp;
+	adapt.speedDown = current.speedDown;
+	adapt.minLog2Luminance = minLog2Luminance;
+	adapt.log2LuminanceRange = log2LuminanceRange;
+	Device::updateResourceData<AdaptParameters>( m_adaptConstants.get(), adapt );
+	d3d.setConstantBuffer( SRVType::cs, 4, m_adaptConstants );
+	d3d.setSRV( SRVType::cs, 0, m_histogramSRV );
+	m_adaptShader.setUAVBuffer( 0, m_exposureUAV.get() );
+	m_adaptShader.dispatchGroups( 1, 1, 1 );
+	context->CSSetShaderResources( 0, 1, &none );
+
+	// Новая экспозиция — bloom и тонмаппингу этого кадра, сцене следующего
+	bindExposure();
+	readBackExposure();
+}
+
+void PostProcess::readBackExposure()
+{
+	ID3D11DeviceContext* context = DMD3D::instance().GetDeviceContext();
+	context->CopyResource( m_exposureReadback[m_readbackFrame % readbackCount].get(), m_exposureState.get() );
+	++m_readbackFrame;
+	if( m_readbackFrame < readbackCount )
+		return;
+
+	// От самой свежей копии прошлых кадров к самой старой: первая готовая и есть последнее известное значение.
+	// GPU отстаёт от CPU на несколько кадров, без ожидания готовы только старые копии
+	for( uint32_t age = 1; age < readbackCount; ++age )
+	{
+		ID3D11Buffer* copy = m_exposureReadback[( m_readbackFrame - 1 - age ) % readbackCount].get();
+		D3D11_MAPPED_SUBRESOURCE mapped = {};
+		if( SUCCEEDED( context->Map( copy, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped ) ) )
+		{
+			m_ev100 = static_cast<const ExposureState*>( mapped.pData )->ev100;
+			context->Unmap( copy, 0 );
+			break;
+		}
+	}
+}
+
+void PostProcess::renderBloom( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float threshold )
 {
 	DMD3D& d3d = DMD3D::instance();
 	BloomParameters params = {};
-	params.exposure = exposure;
 	params.threshold = threshold;
 	params.radius = 1.0f;
 	params.weight = bloomLevelFalloff;
