@@ -101,7 +101,7 @@ private:
 		XMFLOAT3 equatorialZ;
 		float padding;
 		XMFLOAT3 moonDiskLuminance;
-		float padding2;
+		float moonDiskBrightnessLimit;	// предел яркости полного диска после экспозиции; 0 — без предела
 	};
 
 	bool createAerialPerspectiveVolume();

@@ -20,7 +20,7 @@ cbuffer NightSkyParameters : register( b4 )
 	float3 g_equatorialZ;			// к северному полюсу мира
 	float  g_nightSkyPadding;
 	float3 g_moonDiskLuminance;		// яркость диска полной луны (Ломмель — Зелигер: ровный диск), с цветом луны; 0 — луны нет
-	float  g_nightSkyPadding2;
+	float  g_moonDiskBrightnessLimit;	// предел яркости полного диска после экспозиции; 0 — физическая яркость
 };
 
 Texture2D g_moonAlbedo : register( t5 );	// карта луны: равнопромежуточная, долгота 0 — в центре (видимая сторона)
@@ -184,7 +184,18 @@ float4 main( PixelInputType input ) : SV_TARGET
 	}
 
 	[branch] if( any( g_moonDiskLuminance > 0.0f ) )
-		lights += moonLight( direction );
+	{
+		// Ночью экспозиция — для пейзажа, диск в ~10⁵ раз ярче и у камеры ушёл бы в засветку и bloom, как солнце;
+		// глаз видит белый диск с морями. Диск приглушается целиком (узор морей сохраняется), чтобы полный диск после
+		// экспозиции был не ярче предела. Днём луна тусклее неба — множитель 1
+		float moonScale = 1.0f;
+		[branch] if( g_moonDiskBrightnessLimit > 0.0f )
+		{
+			const float fullDisk = dot( g_moonDiskLuminance, float3( 0.2126f, 0.7152f, 0.0722f ) ) * cb_skyScale * preExposure();
+			moonScale = min( 1.0f, g_moonDiskBrightnessLimit / max( fullDisk, 1e-20f ) );
+		}
+		lights += moonLight( direction ) * moonScale;
+	}
 
 	// Размер пикселя в радианах — до ветвления: производные внутри него не определены
 	const float pixelAngle = max( max( length( ddx( direction ) ), length( ddy( direction ) ) ), 1e-6f );

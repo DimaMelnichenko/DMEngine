@@ -4,7 +4,7 @@
 				Initialize logger
 
 
-func:GS::DMGraphics::Initialize, line:64|Initialize the Direct3D object ms: 215.227000
+func:GS::DMGraphics::Initialize, line:64|Initialize the Direct3D object ms: 197.740000
 func:GS::CustomTexture::generateTexture, line:64|Inputs correct
 func:GS::Scene::loadResources, line:23|Load materials
 func:LibraryLoader::loadMaterial, line:87|Load material: 1
@@ -29,7 +29,7 @@ func:LibraryLoader::loadShader, line:218|Load shader: Shaders\PBRLit.ps
 func:LibraryLoader::loadMaterial, line:87|Load material: 12
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\LightShader.vs
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\PBRLit.ps
-func:GS::Scene::loadResources, line:27|Load material for ms: 517.942000
+func:GS::Scene::loadResources, line:27|Load material for ms: 516.683000
 func:GS::Scene::loadResources, line:31|Level: Test
 func:GS::Scene::loadResources, line:33|Load models
 func:LibraryLoader::loadModelWithLOD, line:710|Load model: 1
@@ -120,7 +120,7 @@ func:LibraryLoader::loadModelWithLOD, line:710|Load model: 43
 func:LibraryLoader::loadMesh, line:232|Load mesh: 69
 func:LibraryLoader::loadMesh, line:232|Load mesh: 70
 func:LibraryLoader::loadMesh, line:232|Load mesh: 71
-func:GS::Scene::loadResources, line:56|Load models for ms: 15.157000
+func:GS::Scene::loadResources, line:56|Load models for ms: 14.509000
 func:GS::Scene::loadResources, line:58|Load textures
 func:LibraryLoader::loadAllTextures, line:25|Load all textures
 func:LibraryLoader::loadTextures, line:53|Can`t load texture no_image (no_image.dds), placeholder is used
@@ -142,33 +142,32 @@ func:LibraryLoader::loadTextures, line:53|Can`t load texture oduvanchik (oduvanc
 func:LibraryLoader::loadTextures, line:53|Can`t load texture alpha03 (alpha03.dds), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture default_gloss (default_gloss.png), placeholder is used
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 4; id = 27, name = mask_grass, file = terrain\mask_grass.dds
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 3; id = 28, name = mask_camomile, file = terrain\mask_camomile.dds
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 6; id = 28, name = mask_camomile, file = terrain\mask_camomile.dds
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_normal (materials\blocksrough_normal_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_height (materials\blocksrough_height_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 45, name = mask_pebbles, file = terrain\mask_pebbles.dds
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 55; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 56; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 51; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 48, name = test_models_PanelNormal, file = models\test_models\PanelNormal.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 1; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 15; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 219; id = 51, name = grass_medium_01_grass_medium_01_BaseColor, file = models\grass_medium_01\grass_medium_01_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 91; id = 52, name = grass_medium_01_grass_medium_01_MetallicRoughness, file = models\grass_medium_01\grass_medium_01_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 232; id = 51, name = grass_medium_01_grass_medium_01_BaseColor, file = models\grass_medium_01\grass_medium_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 96; id = 52, name = grass_medium_01_grass_medium_01_MetallicRoughness, file = models\grass_medium_01\grass_medium_01_MetallicRoughness.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 130; id = 53, name = grass_medium_01_grass_medium_01_Normal, file = models\grass_medium_01\grass_medium_01_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 219; id = 54, name = dandelion_01_dandelion_01_BaseColor, file = models\dandelion_01\dandelion_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 226; id = 54, name = dandelion_01_dandelion_01_BaseColor, file = models\dandelion_01\dandelion_01_BaseColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 89; id = 55, name = dandelion_01_dandelion_01_MetallicRoughness, file = models\dandelion_01\dandelion_01_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 105; id = 56, name = dandelion_01_dandelion_01_Normal, file = models\dandelion_01\dandelion_01_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 215; id = 57, name = rock_moss_set_01_rock_moss_set_01_BaseColor, file = models\rock_moss_set_01\rock_moss_set_01_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 81; id = 58, name = rock_moss_set_01_rock_moss_set_01_MetallicRoughness, file = models\rock_moss_set_01\rock_moss_set_01_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 124; id = 59, name = rock_moss_set_01_rock_moss_set_01_Normal, file = models\rock_moss_set_01\rock_moss_set_01_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 37; id = 60, name = moon_albedo, file = sky\moon\lroc_color_poles_1k.jpg
-func:GS::Scene::loadResources, line:70|Load textures for ms: 1457.567000
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 108; id = 56, name = dandelion_01_dandelion_01_Normal, file = models\dandelion_01\dandelion_01_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 225; id = 57, name = rock_moss_set_01_rock_moss_set_01_BaseColor, file = models\rock_moss_set_01\rock_moss_set_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 82; id = 58, name = rock_moss_set_01_rock_moss_set_01_MetallicRoughness, file = models\rock_moss_set_01\rock_moss_set_01_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 127; id = 59, name = rock_moss_set_01_rock_moss_set_01_Normal, file = models\rock_moss_set_01\rock_moss_set_01_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 38; id = 60, name = moon_albedo, file = sky\moon\lroc_color_poles_1k.jpg
+func:GS::Scene::loadResources, line:70|Load textures for ms: 1506.111000
 func:GS::DMGraphics::Initialize, line:90|Create main camera
 func:GS::Scene::initialize, line:77|Create light driver
 func:DMLightDriver::load, line:76|Sun position: elevation 35.269276, azimuth 135.141678
 func:DMLightDriver::load, line:88|Moon: elevation 12.302816, azimuth 205.258469, illuminated 0.299969, 0.009111 lx
 func:DMLightDriver::load, line:97|Moon check (Meeus 47.a: 133.16, -3.23, 368410): 133.252563, -3.248484, 368334.656250
 func:GS::CDLODTerrain::initialize, line:110|CDLOD terrain: heightmap 1024, LOD levels 6
-func:GS::Scene::initialize, line:120|Terrain init ms: 618.798000
-func:GS::Scene::initialize, line:164|Scatter init ms: 246.998000
-func:GS::DMGraphics::Initialize, line:128|Total init ms: 4271.554000
-func:GS::Renderer::logGpuAverage, line:200|GPU average over 1880 frames, ms: frame 1.493; preparePipeline 0.000; Compute Pass 0.203; Shadow depths 0.369; Shadow cascade 0 0.030; Shadow cascade 1 0.032; Shadow cascade 2 0.089; Shadow cascade 3 0.158; Pass depth prepass 0.034; Pass opaque 0.477; CDLOD terrain 0.544; Models 0.111; Meadow 0.002; Debris 0.000; Pass sky 0.119; Sky atmosphere 0.119; Pass transparent 0.000; Post process 0.275; Exposure 0.098; Bloom 0.122; Tonemap 0.055; meshes 16 in 16 draws; shadow meshes 35 in 35 draws; EV100 15.06; sun 101569 lx
+func:GS::Scene::initialize, line:120|Terrain init ms: 591.965000
+func:GS::Scene::initialize, line:164|Scatter init ms: 253.423000
+func:GS::DMGraphics::Initialize, line:128|Total init ms: 4292.579000

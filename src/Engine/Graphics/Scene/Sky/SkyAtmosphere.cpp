@@ -123,6 +123,15 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	prop->setHigh( 30.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
+	// Ночью экспозиция — для пейзажа, а диск луны в ~10⁵ раз ярче: у камеры он уходит в засветку и bloom, как солнце.
+	// Глаз (местная адаптация) видит его белым диском с морями: диск целиком приглушается так, чтобы после
+	// экспозиции полный диск был не ярче предела (1 — средне-серый у тонмаппера, 3 — яркий, но с видимыми морями).
+	// Днём луна тусклее неба и предел не срабатывает; 0 — без предела, физическая яркость
+	prop = m_properties.insert( "Moon disk brightness limit", 3.0f );
+	prop->setLow( 0.0f );
+	prop->setHigh( 20.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
 	return true;
 }
 
@@ -279,6 +288,7 @@ SkyAtmosphere::NightSkyParameters SkyAtmosphere::currentNightSky( const Paramete
 	const float sunIlluminance = luminance( sunColor );
 	const float bakeScale = sunIlluminance > 0.0f ? 1.0f / sunIlluminance : 0.0f;
 	night.starIlluminanceScale = sunDirection.y > starsMaxSunSin ? 0.0f : bakeScale;
+	night.moonDiskBrightnessLimit = m_properties["Moon disk brightness limit"].data<float>();
 
 	// Диск луны: яркость полного диска — настоящая (освещённость от полной луны / телесный угол настоящего диска),
 	// фазу даёт освещение шара. Увеличенный диск светит той же яркостью: он только в фоне, сцену освещает источник
