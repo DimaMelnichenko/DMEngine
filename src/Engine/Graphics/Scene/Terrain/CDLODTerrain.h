@@ -56,14 +56,15 @@ private:
 		float heightOffset;
 		float gridDim;
 		XMFLOAT4 morphConsts[maxLevels];
-		XMFLOAT4 layerScale;
+		XMFLOAT4 layerScale[TerrainMaterial::splatSlices];
 		float texelSize;
 		float triplanarSharpness;
 		float heightBlendDepth;
 		float farTextureScale;
 		float farBlendStart;
 		float farBlendEnd;
-		XMFLOAT2 padding;
+		uint32_t layerCount;
+		float padding;
 	};
 
 	struct NodeBox

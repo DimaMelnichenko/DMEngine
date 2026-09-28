@@ -54,6 +54,8 @@ void fill( const Image& image, Fallback fallback )
 // Загружает файл (путь относительно каталога текстур) и приводит его первое изображение к несжатому R8G8B8A8
 // размером width × height — байтами как в файле: цветовое пространство задаёт назначение (альбедо слоя — sRGB,
 // buildArray), а не метка формата файла, как у Textures.sRGB. Нулевые width и height заполняются размером файла
+bool convertImage( const Image& loadedImage, size_t& width, size_t& height, ScratchImage& image );
+
 bool loadImage( const std::string& file, size_t& width, size_t& height, ScratchImage& image )
 {
 	if( file.empty() )
@@ -64,7 +66,13 @@ bool loadImage( const std::string& file, size_t& width, size_t& height, ScratchI
 	if( !loader.loadFromFile( ( GS::System::textures().path() + "\\" + file ).c_str(), loaded ) )
 		return false;
 
-	const Image* source = loaded.GetImage( 0, 0, 0 );
+	return convertImage( *loaded.GetImage( 0, 0, 0 ), width, height, image );
+}
+
+// Картинка файла → несжатый R8G8B8A8 размером width × height, байтами как в файле (см. loadImage)
+bool convertImage( const Image& loadedImage, size_t& width, size_t& height, ScratchImage& image )
+{
+	const Image* source = &loadedImage;
 	// Файл с меткой sRGB — в R8G8B8A8_UNORM_SRGB, иначе в UNORM: так преобразования не трогают значения байтов
 	const DXGI_FORMAT target = IsSRGB( source->format ) ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 
@@ -211,28 +219,58 @@ bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool 
 	return createArraySRV( mips, srv );
 }
 
+// Splat-карта — массив из splatSlices срезов RGBA (срез s — веса слоёв 4s…4s + 3). Срезов в файле меньше — остальные
+// нули: прежний файл из одной картинки читается как раньше. Нет файла — весь вес у слоя 0
 bool loadSplatMap( const std::string& file, com_unique_ptr<ID3D11ShaderResourceView>& srv )
 {
+	constexpr size_t slices = GS::TerrainMaterial::splatSlices;
 	size_t width = 0;
 	size_t height = 0;
-	ScratchImage image;
-	if( !loadImage( file, width, height, image ) )
+	std::vector<ScratchImage> images;
+	TextureLoader loader;
+	ScratchImage loaded;
+	if( !file.empty() && loader.loadFromFile( ( GS::System::textures().path() + "\\" + file ).c_str(), loaded ) )
+	{
+		const size_t count = std::min( loaded.GetMetadata().arraySize, slices );
+		images.resize( count );
+		for( size_t i = 0; i < count; ++i )
+		{
+			if( !convertImage( *loaded.GetImage( 0, i, 0 ), width, height, images[i] ) )
+			{
+				images.clear();
+				break;
+			}
+		}
+	}
+	if( images.empty() )
 	{
 		LOG( "Terrain material: can`t load splat map " + file + ", placeholder is used" );
-		if( FAILED( image.Initialize2D( DXGI_FORMAT_R8G8B8A8_UNORM, fallbackSize, fallbackSize, 1, 1 ) ) )
-			return false;
-		fill( *image.GetImage( 0, 0, 0 ), Fallback::firstLayer );
+		width = height = fallbackSize;
+	}
+
+	ScratchImage splat;
+	if( FAILED( splat.Initialize2D( DXGI_FORMAT_R8G8B8A8_UNORM, width, height, slices, 1 ) ) )
+		return false;
+	for( size_t i = 0; i < slices; ++i )
+	{
+		const Image& target = *splat.GetImage( 0, i, 0 );
+		if( i < images.size() )
+		{
+			const Image& source = *images[i].GetImage( 0, 0, 0 );
+			for( size_t y = 0; y < height; ++y )
+				std::memcpy( target.pixels + y * target.rowPitch, source.pixels + y * source.rowPitch, width * 4 );
+		}
+		else if( i == 0 )
+			fill( target, Fallback::firstLayer );
+		else
+			for( size_t y = 0; y < height; ++y )
+				std::memset( target.pixels + y * target.rowPitch, 0, width * 4 );
 	}
 
 	ScratchImage mips;
-	if( FAILED( GenerateMipMaps( *image.GetImage( 0, 0, 0 ), mipFilter, 0, mips ) ) )
+	if( FAILED( GenerateMipMaps( splat.GetImages(), splat.GetImageCount(), splat.GetMetadata(), mipFilter, 0, mips ) ) )
 		return false;
-
-	ID3D11ShaderResourceView* view = nullptr;
-	if( FAILED( CreateShaderResourceView( DMD3D::instance().GetDevice(), mips.GetImages(), mips.GetImageCount(), mips.GetMetadata(), &view ) ) )
-		return false;
-	srv.reset( view );
-	return true;
+	return createArraySRV( mips, srv );
 }
 
 }
@@ -246,16 +284,19 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 	if( !loadLayers( terrainId, layers ) )
 		return false;
 
+	// Массивы — по числу описанных слоёв, а не по maxLayers: срез 2048² с мипами — ~21 МБ на массив
+	m_layerCount = static_cast<uint32_t>( layers.size() );
 	std::vector<std::string> albedoFiles;
 	std::vector<std::string> normalFiles;
 	float scale[maxLayers] = {};
-	for( uint32_t i = 0; i < maxLayers; ++i )
+	for( uint32_t i = 0; i < m_layerCount; ++i )
 	{
 		albedoFiles.push_back( layers[i].albedo );
 		normalFiles.push_back( layers[i].normal );
 		scale[i] = layers[i].tiling > 0.0f ? 1.0f / layers[i].tiling : 1.0f;
 	}
-	m_layerScale = XMFLOAT4( scale[0], scale[1], scale[2], scale[3] );
+	for( uint32_t s = 0; s < splatSlices; ++s )
+		m_layerScale[s] = XMFLOAT4( scale[4 * s], scale[4 * s + 1], scale[4 * s + 2], scale[4 * s + 3] );
 
 	if( !loadSplatMap( splatMap, m_splatMap ) ||
 		!buildArray( albedoFiles, Fallback::checker, true, m_albedoHeight ) ||
@@ -299,7 +340,10 @@ bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers
 		return false;
 	}
 
-	for( uint32_t i = 0; i < maxLayers; ++i )
+	// Слоёв — до наибольшего описанного; пропуск в номерах — заглушка
+	while( layers.size() > 1 && layers.back().albedo.empty() && layers.back().normal.empty() )
+		layers.pop_back();
+	for( uint32_t i = 0; i < layers.size(); ++i )
 	{
 		if( layers[i].albedo.empty() && layers[i].normal.empty() )
 			LOG( "Terrain material: layer " + std::to_string( i ) + " is not described in TerrainLayers, placeholder is used" );

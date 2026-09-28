@@ -44,10 +44,13 @@ def mip_chain(rgba, srgb=False):
 
 
 def write_rgba8(path, rgba, srgb=False, mips=False):
-    """srgb — RGB уже в sRGB (альбедо): формат R8G8B8A8_UNORM_SRGB, иначе UNORM. Альфа всегда линейная.
+    """rgba — картинка или массив срезов (срезы × высота × ширина × 4) — массив текстур (splat-карта террейна).
+    srgb — RGB уже в sRGB (альбедо): формат R8G8B8A8_UNORM_SRGB, иначе UNORM. Альфа всегда линейная.
     mips — записать полную цепочку мипов (mip_chain): движку не нужно строить их при загрузке"""
-    levels = mip_chain(rgba, srgb) if mips else [rgba]
-    height, width = rgba.shape[:2]
+    slices = rgba if rgba.ndim == 4 else rgba[None]
+    chains = [mip_chain(image, srgb) if mips else [image] for image in slices]
+    levels = chains[0]
+    height, width = slices.shape[1:3]
     flags = 0x100F | (0x20000 if len(levels) > 1 else 0)            # + DDSD_MIPMAPCOUNT
     caps = 0x1000 | (0x400008 if len(levels) > 1 else 0)             # TEXTURE (+ MIPMAP, COMPLEX)
     header = struct.pack('<4sIIIIIII44sIIIIIIIIIIIII',
@@ -55,14 +58,16 @@ def write_rgba8(path, rgba, srgb=False, mips=False):
         32, 0x4, struct.unpack('<I', b'DX10')[0], 0, 0, 0, 0, 0,
         caps, 0, 0, 0, 0)
     fmt = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB if srgb else DXGI_FORMAT_R8G8B8A8_UNORM
-    dx10 = struct.pack('<IIIII', fmt, 3, 0, 1, 0)   # TEXTURE2D, массив из одной картинки
+    dx10 = struct.pack('<IIIII', fmt, 3, 0, len(slices), 0)   # TEXTURE2D, массив из len(slices) картинок
     os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
     with open(path, 'wb') as f:
         f.write(header)
         f.write(dx10)
-        for level in levels:
-            f.write(to_bytes(level).tobytes())
-    print('written', path, '%dx%d' % (width, height), 'sRGB' if srgb else 'UNORM', '%d mips' % len(levels))
+        for chain in chains:   # в DDS — по срезу со всеми его мипами
+            for level in chain:
+                f.write(to_bytes(level).tobytes())
+    print('written', path, '%dx%d' % (width, height), 'sRGB' if srgb else 'UNORM', '%d mips' % len(levels),
+          '%d slices' % len(slices) if len(slices) > 1 else '')
 
 
 def read_r16(path):

@@ -104,7 +104,7 @@ def main():
     parser.add_argument('--roughness', required=True, help='roughness map, file[:channel]')
     parser.add_argument('--height', required=True, help='height (displacement) map')
     parser.add_argument('--size', type=int, default=2048)
-    parser.add_argument('--layer', type=int, help='TerrainLayers.layer to update (0..3)')
+    parser.add_argument('--layer', type=int, choices=range(8), help='TerrainLayers.layer to update (0..7)')
     parser.add_argument('--tiling', type=float, help='meters per texture repeat for --layer')
     parser.add_argument('--terrain', default='Terrain', help='Terrain.name for --layer')
     args = parser.parse_args(argv)

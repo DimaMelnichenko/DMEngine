@@ -17,14 +17,15 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	float  g_heightOffset;
 	float  g_gridDim;				// квадов в стороне патча
 	float4 g_morphConsts[16];		// по уровням LOD: x — начало морфинга, y — 1 / длина зоны морфинга
-	float4 g_layerScale;			// по слоям материала: повторов текстуры на единицу мира
+	float4 g_layerScale[2];			// по слоям материала, по четыре: повторов текстуры на единицу мира
 	float  g_texelSize;				// сторона текселя карты высот в мировых единицах
 	float  g_triplanarSharpness;	// чем больше, тем уже переход между проекциями triplanar
 	float  g_heightBlendDepth;		// ширина перехода между слоями при смешивании по высоте
 	float  g_farTextureScale;		// во сколько раз крупнее повтор текстур вдали (distance resampling)
 	float  g_farBlendStart;			// переход к крупному масштабу: от этого расстояния до камеры, м,
 	float  g_farBlendEnd;			// до этого — дальше только крупный
-	float2 g_farPadding;
+	uint   g_layerCount;			// слоёв в массивах текстур (TerrainLayers)
+	float  g_padding;
 };
 
 // Копия карты высот в R32_FLOAT с полной цепочкой мипов, в вершинном и пиксельном шейдерах

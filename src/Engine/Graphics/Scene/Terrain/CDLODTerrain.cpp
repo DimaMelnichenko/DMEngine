@@ -417,7 +417,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.heightOffset = m_heightOffset;
 		params.gridDim = static_cast<float>( patchDim );
 		std::copy( std::begin( m_morphConsts ), std::end( m_morphConsts ), params.morphConsts );
-		params.layerScale = m_material.layerScale();
+		std::copy( m_material.layerScale().begin(), m_material.layerScale().end(), params.layerScale );
+		params.layerCount = m_material.layerCount();
 		params.texelSize = m_texelSize;
 		params.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();
 		params.heightBlendDepth = m_properties["Height blend"].data<float>();

@@ -3,7 +3,8 @@
 #   <слой>_albedo.dds — RGB альбедо в sRGB (R8G8B8A8_UNORM_SRGB), A высота (по ней слои смешиваются: камни проступают
 #   сквозь траву);
 #   <слой>_normal.dds — RGB нормаль (соглашение DirectX: G смотрит вдоль +v, вниз по картинке), A шероховатость.
-# Splat-карта Textures\terrain\splatmap.dds (RGBA — веса слоёв 0…3) строится по карте высот
+# Splat-карта Textures\terrain\splatmap.dds (массив из двух RGBA: срез 0 — веса слоёв 0…3, срез 1 — 4…7; слой 4 —
+# вторая трава, пятнами по шуму) строится по карте высот
 # Textures\terrain\heightmap.dds и строке Terrain из base.db3: снег на вершинах, скала на крутых склонах,
 # камни пятнами и у подножия скал, остальное трава. Там же маски плотности для расстановки (Textures\terrain,
 # значение в RGB): mask_grass — вес травы, mask_camomile — пятна внутри травы, mask_pebbles — вес камней.
@@ -187,14 +188,23 @@ def splatmap(rng):
 
     weights = np.stack([grass_w, boulders_w, rock_w, snow_w], axis=-1)
     weights /= weights.sum(axis=-1, keepdims=True)
-    dds.write_rgba8(SPLATMAP, weights)
 
-    # Маски плотности расстановки в тех же координатах, что карта высот: трава растёт на текстуре травы,
+    # Маски плотности расстановки в тех же координатах, что карта высот: трава растёт на текстуре травы (обеих),
     # ромашки — пятнами внутри травы, камешки — на текстуре камней
     camomile_patches = smoothstep(0.62, 0.72, fbm(size, [(32, 0.5), (64, 0.3), (128, 0.2)], rng))
     write_mask('mask_grass', weights[..., 0])
     write_mask('mask_camomile', weights[..., 0] * camomile_patches)
     write_mask('mask_pebbles', weights[..., 1])
+
+    # Две травы (слои 0 и 4) вперемешку крупными пятнами ~30-130 м по шуму. Шум — последним вызовом rng:
+    # остальные веса и маски выходят до бита прежними. Мягкий край делает смешивание по высоте в шейдере
+    meadow = smoothstep(0.42, 0.58, fbm(size, [(8, 0.5), (16, 0.3), (32, 0.2)], rng))
+    grass = weights[..., 0].copy()
+    slice0 = weights.copy()
+    slice0[..., 0] = grass * (1.0 - meadow)
+    slice1 = np.zeros_like(weights)
+    slice1[..., 0] = grass * meadow
+    dds.write_rgba8(SPLATMAP, np.stack([slice0, slice1]))
 
 
 def write_mask(name, values):

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <string>
 #include <vector>
 #include "DirectX.h"
@@ -8,8 +9,9 @@
 namespace GS
 {
 
-// Материал террейна для Shaders\terrain.ps. Слои — строки таблицы TerrainLayers (до maxLayers), вес слоя —
-// канал RGBA splat-карты. Текстуры слоёв при загрузке собираются в два массива текстур: «альбедо + высота»
+// Материал террейна для Shaders\terrain.ps. Слои — строки таблицы TerrainLayers (до maxLayers), вес слоя — канал
+// splat-карты: она — массив из двух RGBA, как weightmap в UE Landscape (срез 0 — слои 0…3, срез 1 — 4…7; файл из
+// одного среза дополняется нулями). Текстуры слоёв при загрузке собираются в два массива текстур: «альбедо + высота»
 // и «нормаль + шероховатость». Все слои приводятся к размеру первого загруженного и к R8G8B8A8: альбедо — sRGB
 // (R8G8B8A8_UNORM_SRGB, высота в альфе линейная), нормаль и шероховатость — UNORM; вместо ненайденного файла
 // подставляется шахматка (альбедо) или плоская нормаль. Слои из фото собирает Tools/pack_terrain_layer.py.
@@ -18,14 +20,17 @@ namespace GS
 class TerrainMaterial
 {
 public:
-	static constexpr uint32_t maxLayers = 4;
+	static constexpr uint32_t maxLayers = 8;
+	static constexpr uint32_t splatSlices = maxLayers / 4;
 
 	// splatMap — файл относительно каталога текстур
 	bool initialize( uint32_t terrainId, const std::string& splatMap );
 	// Пиксельный шейдер: t1 — splat-карта, t2 — альбедо + высота, t3 — нормаль + шероховатость, t4 — шум
 	void bind() const;
-	// Повторов текстуры слоя на единицу мира (1 / tiling) по слоям
-	const XMFLOAT4& layerScale() const { return m_layerScale; }
+	// Повторов текстуры слоя на единицу мира (1 / tiling) по слоям, по четыре в XMFLOAT4
+	const std::array<XMFLOAT4, splatSlices>& layerScale() const { return m_layerScale; }
+	// Слоёв в массивах текстур: наибольший описанный TerrainLayers.layer + 1
+	uint32_t layerCount() const { return m_layerCount; }
 
 private:
 	struct Layer
@@ -42,7 +47,8 @@ private:
 	com_unique_ptr<ID3D11ShaderResourceView> m_splatMap;
 	com_unique_ptr<ID3D11ShaderResourceView> m_albedoHeight;
 	com_unique_ptr<ID3D11ShaderResourceView> m_normalRoughness;
-	XMFLOAT4 m_layerScale = XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	std::array<XMFLOAT4, splatSlices> m_layerScale = {};
+	uint32_t m_layerCount = 0;
 };
 
 }

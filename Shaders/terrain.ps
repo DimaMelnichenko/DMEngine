@@ -1,6 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Материал террейна CDLOD (TerrainMaterial). Нормаль рельефа считается по карте высот, веса четырёх слоёв
-// берутся из каналов splat-карты. Слой — пара текстур из массивов: альбедо + высота и нормаль + шероховатость.
+// Материал террейна CDLOD (TerrainMaterial). Нормаль рельефа считается по карте высот, веса до восьми слоёв
+// берутся из каналов splat-карты — массива из двух RGBA, как weightmap в UE Landscape. Текстуры читаются только у
+// четырёх самых весомых слоёв пикселя. Слой — пара текстур из массивов: альбедо + высота и нормаль + шероховатость.
 // Текстура слоя проецируется сверху, а на крутых склонах ещё и вдоль осей X и Z (triplanar), поэтому на скалах
 // не растягивается. Слои смешиваются по высоте: где веса близки, видна более высокая текстура (камни из травы).
 // Вдали повтор текстуры крупнее (distance resampling, как в материалах UE Landscape): мелкий повтор (скала, снег)
@@ -10,12 +11,15 @@
 #include "lighting.sh"
 #include "cdlod.sh"
 
-Texture2D g_splatMap : register( t1 );
+Texture2DArray g_splatMap : register( t1 );		// срез 0 — веса слоёв 0…3, срез 1 — 4…7
 Texture2DArray g_albedoHeight : register( t2 );
 Texture2DArray g_normalRoughness : register( t3 );
 Texture2D g_noise : register( t4 );		// белый шум 256×256, R8_SNORM
 
-static const uint layerCount = 4;
+static const uint maxLayers = 8;
+// Слоёв с выборкой текстур в пикселе: больше трёх-четырёх в одной точке не бывает, а массив из восьми LayerSample
+// занял бы регистры и снизил занятость GPU
+static const uint activeLayers = 4;
 static const float minWeight = 0.01f;	// слой или проекцию с меньшим вкладом не читаем
 
 struct LayerSample
@@ -93,7 +97,7 @@ void addProjections( inout LayerSample result, float weight, uint layer, float s
 LayerSample sampleLayer( uint layer, float far, float3 position, float3 positionDX, float3 positionDY, float3 projection )
 {
 	LayerSample result = (LayerSample)0;
-	const float scale = g_layerScale[layer];
+	const float scale = g_layerScale[layer / 4][layer % 4];
 	[branch] if( far < 1.0f )
 		addProjections( result, 1.0f - far, layer, scale, position, positionDX, positionDY, projection );
 	[branch] if( far > 0.0f )
@@ -121,29 +125,52 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float3 normal = terrainNormal( position.xz, max( log2( footprint / g_texelSize ), 0.0f ) );
 	float3 projection = projectionWeights( normal );
 
-	float4 splat = g_splatMap.Sample( g_SamplerLinearClamp, input.uv );
+	const float4 splat0 = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 0.0f ) );
+	const float4 splat1 = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 1.0f ) );
+	const float weights[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
+
+	// Четыре самых весомых слоя по убыванию веса; слои, которых нет в TerrainLayers, веса не получают
+	float4 splat = 0.0f;
+	uint4 layerIndex = 0;
+	[unroll] for( uint i = 0; i < maxLayers; ++i )
+	{
+		float weight = i < g_layerCount ? weights[i] : 0.0f;
+		uint layer = i;
+		[unroll] for( uint k = 0; k < activeLayers; ++k )
+		{
+			if( weight > splat[k] )
+			{
+				const float lighter = splat[k];
+				const uint lighterLayer = layerIndex[k];
+				splat[k] = weight;
+				layerIndex[k] = layer;
+				weight = lighter;
+				layer = lighterLayer;
+			}
+		}
+	}
 	splat /= max( dot( splat, 1.0f ), 1e-5f );
 	const float far = saturate( ( length( position - cb_cameraPosition ) - g_farBlendStart ) / ( g_farBlendEnd - g_farBlendStart ) );
 
-	LayerSample layers[layerCount];
+	LayerSample layers[activeLayers];
 	float4 heights = 0.0f;
-	[unroll] for( uint i = 0; i < layerCount; ++i )
+	[unroll] for( uint j = 0; j < activeLayers; ++j )
 	{
-		layers[i] = (LayerSample)0;
-		[branch] if( splat[i] > minWeight )
+		layers[j] = (LayerSample)0;
+		[branch] if( splat[j] > minWeight )
 		{
-			layers[i] = sampleLayer( i, far, position, positionDX, positionDY, projection );
+			layers[j] = sampleLayer( layerIndex[j], far, position, positionDX, positionDY, projection );
 		}
-		heights[i] = layers[i].height;
+		heights[j] = layers[j].height;
 	}
 
 	float4 blend = heightBlend( splat, heights );
 	LayerSample mixed = (LayerSample)0;
-	[unroll] for( uint j = 0; j < layerCount; ++j )
+	[unroll] for( uint n = 0; n < activeLayers; ++n )
 	{
-		mixed.albedo += layers[j].albedo * blend[j];
-		mixed.detail += layers[j].detail * blend[j];
-		mixed.roughness += layers[j].roughness * blend[j];
+		mixed.albedo += layers[n].albedo * blend[n];
+		mixed.detail += layers[n].detail * blend[n];
+		mixed.roughness += layers[n].roughness * blend[n];
 	}
 
 	// Крупные пятна яркости (тексели шума по 40 и 13 м), чтобы вдали не было заметно повторение текстур

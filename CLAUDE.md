@@ -304,8 +304,10 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 `width_multiplier`). Свойство «Show LOD» раскрашивает уровни (`Shaders/cdlod_lod.ps`). Общее для шейдеров террейна
 (constant buffer `CDLODTerrain::Parameters`, выборка карты высот, выход VS) — `Shaders/cdlod.sh`.
 
-**Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До четырёх слоёв из
-таблицы `TerrainLayers` (`layer` 0…3 — канал splat-карты, `albedo` и `normal` — файлы, `tiling` — метров на повтор).
+**Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До восьми слоёв из
+таблицы `TerrainLayers` (`layer` 0…7 — канал `layer % 4` среза `layer / 4` splat-карты: она — массив из двух RGBA, как
+weightmap в UE Landscape; `albedo` и `normal` — файлы, `tiling` — метров на повтор; сейчас пять: две травы вперемешку
+пятнами по шуму, осыпи, скала, снег). Шейдер читает текстуры только четырёх самых весомых слоёв пикселя.
 Текстуры слоёв собираются при загрузке в два `Texture2DArray`: «альбедо RGB + высота A» и «нормаль RGB (соглашение
 DirectX) + шероховатость A»; все слои приводятся к размеру первого, альбедо — `R8G8B8A8_UNORM_SRGB` (фото в sRGB,
 высота в альфе линейная), нормаль — UNORM; вместо ненайденного файла подставляется шахматка или плоская нормаль. Мипы строятся без WIC (`TEX_FILTER_FORCE_NON_WIC`): WIC масштабирует

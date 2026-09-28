@@ -1,8 +1,8 @@
 # Террейн: CDLOD и материал слоёв
 
 Рельеф уровня — `CDLODTerrain` (`Scene/Terrain/`): сетка по карте высот с плавными уровнями детализации. Поверхность
-— `TerrainMaterial` и `Shaders/terrain.ps`: до четырёх слоёв (трава, осыпи, скала, снег) из фото-текстур, смешанных
-по splat-карте и по высоте, с проекцией triplanar на склонах и вторым масштабом вдали.
+— `TerrainMaterial` и `Shaders/terrain.ps`: до восьми слоёв из фото-текстур (сейчас пять: две травы, осыпи, скала, снег),
+смешанных по splat-карте и по высоте, с проекцией triplanar на склонах и вторым масштабом вдали.
 
 ## Геометрия (CDLOD)
 
@@ -21,15 +21,22 @@
 | 0 — трава | `patchy_meadow1` | 4 | freepbr, `DownloadResources/patchy-meadow1-bl.zip` |
 | 1 — осыпи | `rocky_terrain_03` | 20 (снято 90 × 90 м, сжато) | Poly Haven, `rocky_terrain_03_2k.gltf.zip` + disp |
 | 2 — скала | `rock_face_03` | 2,7 | Poly Haven, `DownloadResources/polyhaven/rock_face_03_*` |
-| 3 — снег | `snow_02` | 5 (снято 2 × 2 м) | Poly Haven, `snow_02_2k.gltf.zip` + disp |
+| 3 — снег | `crusted_snow2` | 4 | FreePBR, `DownloadResources/Crusted_snow2-bl.zip` |
+| 4 — вторая трава | `wispy_grass_meadow` | 4 | FreePBR, `DownloadResources/whispy-grass-meadow-bl.zip` |
 
-Слой — строка `TerrainLayers` (`terrain`, `layer` 0…3 — канал splat-карты, `name`, `albedo`, `normal` — файлы от
-`Textures\`, `tiling` — метров на повтор). Файлы слоя:
+Две травы лежат вперемешку крупными пятнами (см. «Splat-карта и маски»), чтобы луг издалека не был одного тона.
+Прежний снег `snow_02` (следы на снегу) заменён настом, его файлы остались в `Textures\terrain\layers\`. Лицензия
+FreePBR запрещает распространять сами файлы — архивы и собранные DDS в git не попадают (`DownloadResources/` и
+`Textures/` вне git).
+
+Слой — строка `TerrainLayers` (`terrain`, `layer` 0…7 — канал `layer % 4` среза `layer / 4` splat-карты, `name`,
+`albedo`, `normal` — файлы от `Textures\`, `tiling` — метров на повтор). Файлы слоя:
 
 - `<имя>_albedo.dds` — RGB альбедо в sRGB (`R8G8B8A8_UNORM_SRGB`), A — высота для смешивания слоёв, 0…1;
 - `<имя>_normal.dds` — RGB нормаль в соглашении DirectX (G — вниз по картинке), A — шероховатость.
 
-При загрузке слои собираются в два `Texture2DArray` одного размера (по первому слою): альбедо — sRGB, выборка отдаёт
+При загрузке слои собираются в два `Texture2DArray` одного размера (по первому слою), по срезу на слой до наибольшего
+описанного `layer` (пропуск в номерах — заглушка): альбедо — sRGB, выборка отдаёт
 линейный цвет, мипы фильтруются в линейном, высота в альфе остаётся линейной; нормаль — UNORM. Цветовое пространство
 задаёт назначение, а не метка формата файла (как `Textures.sRGB`). Мипы строятся без WIC: WIC масштабирует с
 премультипликацией альфы, а в альфе — данные; если у всех файлов слоёв один размер и полная цепочка мипов (их пишут
@@ -55,9 +62,14 @@ B --name rocky_terrain_03 --albedo D/rocky_terrain_03_2k.gltf.zip:textures/rocky
   --height D/polyhaven/rocky_terrain_03_disp_2k.exr --layer 1 --tiling 20
 B --name rock_face_03 --albedo D/polyhaven/rock_face_03_diff_2k.jpg --normal D/polyhaven/rock_face_03_nor_gl_2k.jpg
   --roughness D/polyhaven/rock_face_03_arm_2k.jpg:g --height D/polyhaven/rock_face_03_disp_2k.exr --layer 2 --tiling 2.7
-B --name snow_02 --albedo D/snow_02_2k.gltf.zip:textures/snow_02_diff_2k.jpg
-  --normal D/snow_02_2k.gltf.zip:textures/snow_02_nor_gl_2k.jpg --roughness D/snow_02_2k.gltf.zip:textures/snow_02_rough_2k.jpg
-  --height D/polyhaven/snow_02_disp_2k.exr --layer 3 --tiling 5
+B --name crusted_snow2 --albedo D/Crusted_snow2-bl.zip:Crusted_snow2-bl/Crusted_snow2_Base_Color.png
+  --normal D/Crusted_snow2-bl.zip:Crusted_snow2-bl/Crusted_snow2_Normal-ogl.png
+  --roughness D/Crusted_snow2-bl.zip:Crusted_snow2-bl/Crusted_snow2_Roughness.png
+  --height D/Crusted_snow2-bl.zip:Crusted_snow2-bl/Crusted_snow2_Height.png --layer 3 --tiling 4
+B --name wispy_grass_meadow --albedo D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png
+  --normal D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_normal-ogl.png
+  --roughness D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_roughness.png
+  --height D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_height.png --layer 4 --tiling 4
 ```
 
 У ARM Poly Haven шероховатость — канал G (`:g`), у отдельной карты шероховатости — R (по умолчанию). Размер —
@@ -69,20 +81,30 @@ B --name snow_02 --albedo D/snow_02_2k.gltf.zip:textures/snow_02_diff_2k.jpg
 
 ## Splat-карта и маски
 
+Splat-карта — массив из двух RGBA, как weightmap в UE Landscape (там веса тоже пакуются по четыре слоя в текстуру):
+срез 0 — веса слоёв 0…3, срез 1 — 4…7. `Tools/dds.py` пишет его DDS-массивом (`write_rgba8` с массивом срезов).
+Прежний файл из одной картинки движок читает как раньше — второй срез нулевой.
+
 `Tools/gen_terrain_textures.py` строит `Textures\terrain\splatmap.dds` по карте высот: снег на вершинах, скала на
-крутых склонах, осыпи пятнами и у подножия скал, остальное трава. Там же маски плотности расстановки: `mask_grass`,
-`mask_camomile` (пятна внутри травы), `mask_pebbles` (осыпи).
+крутых склонах, осыпи пятнами и у подножия скал, остальное трава. Траву он делит на две: `patchy_meadow1` (слой 0) —
+вес травы × (1 − n), `wispy_grass_meadow` (слой 4) — × n, где n — `smoothstep( 0,42, 0,58 )` от шума с периодами
+решётки 8, 16, 32 на карту (пятна ~30–130 м). Мягкий край дорабатывает смешивание по высоте: пучки одной травы
+проступают в другой. Шум берётся последним, поэтому остальные веса и маски от него не зависят. Там же маски плотности
+расстановки: `mask_grass` (обе травы), `mask_camomile` (пятна внутри травы), `mask_pebbles` (осыпи).
 
 ## Шейдер
 
 1. **Нормаль рельефа** — по карте высот, мип под размер пикселя.
-2. **Проекция** — сверху, на крутых склонах ещё вдоль X и Z (triplanar; нормали карты — по UDN), «Triplanar sharpness».
-3. **Второй масштаб вдали** (distance resampling, как в материалах UE Landscape) — мелкий повтор (скала 2,7 м, снег)
+2. **Четыре самых весомых слоя пикселя** — из восьми весов двух срезов (слои сверх `g_layerCount` — описанных в
+   `TerrainLayers` — веса не получают). Текстуры читаются только у них: в одной точке больше трёх-четырёх слоёв не бывает,
+   а массив из восьми выборок занял бы регистры и снизил занятость GPU.
+3. **Проекция** — сверху, на крутых склонах ещё вдоль X и Z (triplanar; нормали карты — по UDN), «Triplanar sharpness».
+4. **Второй масштаб вдали** (distance resampling, как в материалах UE Landscape) — мелкий повтор (скала 2,7 м, снег)
    издалека складывается в сетку, поэтому дальше «Far blend start» (40 м) та же текстура читается ещё и в масштабе
    «Far texture scale» (×8) и к «Far blend end» (120 м) заменяет ближний. Обе выборки — только в полосе перехода.
-4. **Смешивание по высоте** (Mishkinis): к весу слоя прибавляется его высота, виден слой с наибольшей суммой, переход —
+5. **Смешивание по высоте** (Mishkinis): к весу слоя прибавляется его высота, виден слой с наибольшей суммой, переход —
    «Height blend»; так камни осыпей проступают сквозь траву.
-5. Крупные пятна яркости по шуму (40 и 13 м), затем `evaluateLighting` ([lighting.md](lighting.md)).
+6. Крупные пятна яркости по шуму (40 и 13 м), затем `evaluateLighting` ([lighting.md](lighting.md)).
 
 Всё перечисленное в кавычках — ползунки окна террейна в GUI (Scene Objects → CDLOD terrain).
 
@@ -96,9 +118,12 @@ Release, 1920 × 1080, время GPU террейна (оба прохода ц
 | обзор (`512,160,150,30,0`) | — | 0,79 мс | 0,95 мс |
 | с холма вдаль (`300,140,100,12,40`) | — | 0,53 мс | 0,62 мс |
 
+С пятью слоями (две травы, splat-массив, выбор четырёх слоёв) обзор — 1,05 мс вместо 0,96 при четырёх, у земли
+(`567,58.1,212,8,35`) — 0,62 вместо 0,60.
+
 Второй масштаб стоит +0,1–0,15 мс не столько из-за двойной выборки в полосе (узкая полоса 60–90 м экономит только
-0,05 мс), сколько из-за более детальных мипов вдали: хуже работает кэш текстур. Массивы 2048² × 4 слоя × 2 с мипами —
-~170 МБ видеопамяти. Мипы лежат в файлах слоёв: с ними запуск дольше прежнего на ~0,2 с (чтение 8 × 21 МБ), без них —
+0,05 мс), сколько из-за более детальных мипов вдали: хуже работает кэш текстур. Массивы 2048² × 5 слоёв × 2 с мипами —
+~210 МБ видеопамяти (слой — ~42 МБ). Мипы лежат в файлах слоёв: с ними запуск дольше прежнего на ~0,2 с (чтение 8 × 21 МБ), без них —
 на ~0,9 с в Release и ~4 с в Debug (мипы на CPU).
 
 ## Если что-то не так
@@ -107,7 +132,9 @@ Release, 1920 × 1080, время GPU террейна (оба прохода ц
 2. **Выпуклости выглядят вмятинами** — нормаль в другом соглашении: пересоберите слой с `--normal-convention dx` или gl.
 3. **Слой бледный или тёмный** — альбедо записано не в sRGB (старые файлы генератора до перехода); пересоберите.
 4. **Слои не смешиваются по высоте** — высота слоя плоская (нет disp-карты): проверьте альфу `_albedo.dds`.
-5. **Сетка повтора** — увеличьте повтор слоя (`tiling`) или «Far texture scale»; вблизи повтор виден, только если
+5. **Слой 4…7 не виден** — splat-карта старая, из одной картинки (второй срез — нули): перегенерируйте её
+   `python Tools/gen_terrain_textures.py`.
+6. **Сетка повтора** — увеличьте повтор слоя (`tiling`) или «Far texture scale»; вблизи повтор виден, только если
    `tiling` мал для материала.
 
 ## Файлы
