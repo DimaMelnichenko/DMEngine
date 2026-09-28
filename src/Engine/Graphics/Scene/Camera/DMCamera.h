@@ -22,6 +22,10 @@ public:
 
 	void SetPosition( float, float, float );
 	void SetRotation( float, float, float );
+	// Положение и поворот ровно такие (тангаж и рыскание в градусах), с учётом накопленного поворота мышью
+	void setView( const XMFLOAT3& position, float pitch, float yaw );
+	// Тангаж и рыскание в градусах вместе с поворотом мышью — как у камеры в кадре
+	XMFLOAT2 rotation() const;
 	void Update( float elapsedTime, bool cursorMode = false );
 
 	const XMFLOAT3& position( ) const;

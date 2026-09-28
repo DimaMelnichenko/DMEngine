@@ -34,6 +34,18 @@ void KeyEventNotifier::process( uint8_t* keyboardState )
 	}
 }
 
+bool KeyEventNotifier::press( uint8_t key )
+{
+	auto it = m_processorMap.find( key );
+	if( it == m_processorMap.end() )
+		return false;
+	State& state = it->second;
+	state.triggered = !state.triggered;
+	for( auto& func : state.delegateList )
+		func( state.triggered );
+	return true;
+}
+
 void KeyEventNotifier::registerTrigger( uint8_t key, std::function<void( bool )> func )
 {
 	if( !m_processorMap.count( key ) )

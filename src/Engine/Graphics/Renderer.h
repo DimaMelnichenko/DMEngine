@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <functional>
 #include <string>
 #include <vector>
 #include "Scene\VertexPool.h"
@@ -43,6 +44,11 @@ public:
 	PropertyContainer* properties();
 	// Текущие настройки постобработки — для сохранения уровня
 	PostProcess::Settings postProcessSettings();
+	// Среднее время GPU кадра и проходов за seconds секунд с этого кадра — строкой, как «GPU average» в log.txt
+	// (команда stat gpu удалённого управления)
+	void measureGpu( float seconds, std::function<void( const std::string& )> done );
+	// Смена плана: экспозиция адаптируется сразу (PostProcess::cameraCut)
+	void cameraCut() { m_postProcess.cameraCut(); }
 
 private:
 	struct DrawCommand;
@@ -116,18 +122,29 @@ private:
 	PostProcess m_postProcess;
 	GpuProfiler m_gpuProfiler;
 
-	// Среднее время GPU за первые секунды после прогрева — одной строкой в log.txt («GPU average»): её печатает
-	// Tools/run.ps1, чтобы сравнивать производительность до и после изменений
+	// Замер среднего времени GPU за несколько секунд: после прогрева — одной строкой в log.txt («GPU average», её
+	// печатает Tools/run.ps1, чтобы сравнивать производительность до и после изменений), и по команде stat gpu
 	struct GpuAverage
 	{
 		std::string name;
 		double sum = 0.0;
 		uint32_t count = 0;
 	};
-	std::vector<GpuAverage> m_gpuAverages;	// первый элемент — весь кадр
+	struct GpuMeasure
+	{
+		std::vector<GpuAverage> averages;	// первый элемент — весь кадр
+		std::chrono::steady_clock::time_point start;
+		std::chrono::duration<float> duration;
+		std::function<void( const std::string& )> done;
+	};
+	// Кадр в замеры; законченные — строкой в done
+	void accumulateGpuMeasures();
+	// Строка замера после прогрева — в log.txt (из лямбды LOG записал бы её имя вместо функции)
+	void logGpuAverage( const std::string& line );
+	std::string gpuMeasureLine( const GpuMeasure& measure ) const;
+
+	std::vector<GpuMeasure> m_gpuMeasures;
 	uint32_t m_frameIndex = 0;
-	std::chrono::steady_clock::time_point m_gpuAverageStart;
-	bool m_gpuAverageLogged = false;
 };
 
 }

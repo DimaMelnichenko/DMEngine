@@ -270,7 +270,10 @@ void PostProcess::renderExposure( const com_unique_ptr<ID3D11ShaderResourceView>
 	adapt.meteringMode = static_cast<int32_t>( current.meteringMode );
 	adapt.manualEV100 = current.manualEV100;
 	adapt.exposureCompensation = current.exposureCompensation;
-	adapt.deltaTime = deltaTime;
+	// После смены плана — шаг времени, с которым адаптация (1 − e^(−Δt · скорость)) доходит до цели за кадр
+	adapt.deltaTime = m_cutFrames > 0 ? 1000.0f : deltaTime;
+	if( m_cutFrames > 0 )
+		--m_cutFrames;
 	adapt.minEV100 = current.minEV100;
 	adapt.maxEV100 = std::max( current.maxEV100, current.minEV100 );
 	adapt.lowPercent = std::clamp( current.histogramLowPercent, 0.0f, 100.0f ) / 100.0f;

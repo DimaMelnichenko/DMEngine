@@ -88,7 +88,7 @@ B --name snow_02 --albedo D/snow_02_2k.gltf.zip:textures/snow_02_diff_2k.jpg
 
 ## Производительность
 
-Release, 2880 × 1620, время GPU террейна (оба прохода цвета и prepass — отдельно, [passes.md](passes.md)):
+Release, 1920 × 1080, время GPU террейна (оба прохода цвета и prepass — отдельно, [passes.md](passes.md)):
 
 | Камера | Процедурные слои 512² | Фото 2048² | Фото + второй масштаб |
 |---|---|---|---|

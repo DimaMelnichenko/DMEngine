@@ -183,19 +183,32 @@ void Renderer::reportGpuTimes()
 	for( const auto& [name, milliseconds] : m_gpuProfiler.results() )
 		m_gui.addCounterInfo( "GPU " + name + " = %.3f ms", milliseconds );
 
-	// Прогрев — первые кадры (пересчёт окружения неба, заполнение очередей) в среднее не входят
+	// Прогрев — первые кадры (пересчёт окружения неба, заполнение очередей) в среднее для лога не входят
 	constexpr uint32_t warmupFrames = 60;
-	constexpr auto averageDuration = std::chrono::seconds( 3 );
-	if( m_gpuAverageLogged || ++m_frameIndex <= warmupFrames || m_gpuProfiler.results().empty() )
-		return;
+	if( ++m_frameIndex == warmupFrames )
+		measureGpu( 3.0f, [this]( const std::string& line ) { logGpuAverage( line ); } );
+	accumulateGpuMeasures();
+}
 
-	if( m_gpuAverages.empty() )
-	{
-		m_gpuAverageStart = std::chrono::steady_clock::now();
-		m_gpuAverages.push_back( { "frame" } );
-	}
-	m_gpuAverages[0].sum += m_gpuProfiler.frameMilliseconds();
-	m_gpuAverages[0].count++;
+void Renderer::logGpuAverage( const std::string& line )
+{
+	LOG( line );
+}
+
+void Renderer::measureGpu( float seconds, std::function<void( const std::string& )> done )
+{
+	GpuMeasure measure;
+	measure.start = std::chrono::steady_clock::now();
+	measure.duration = std::chrono::duration<float>( seconds );
+	measure.done = std::move( done );
+	measure.averages.push_back( { "frame" } );
+	m_gpuMeasures.push_back( std::move( measure ) );
+}
+
+void Renderer::accumulateGpuMeasures()
+{
+	if( m_gpuMeasures.empty() || m_gpuProfiler.results().empty() )
+		return;
 
 	// Одноимённые области кадра (объект в нескольких проходах) сначала складываются, потом усредняются по кадрам
 	std::vector<std::pair<std::string, float>> frameTimes;
@@ -207,24 +220,40 @@ void Renderer::reportGpuTimes()
 		else
 			it->second += milliseconds;
 	}
-	for( const auto& [name, milliseconds] : frameTimes )
+
+	const auto now = std::chrono::steady_clock::now();
+	for( auto measure = m_gpuMeasures.begin(); measure != m_gpuMeasures.end(); )
 	{
-		auto it = std::find_if( m_gpuAverages.begin(), m_gpuAverages.end(), [&]( const GpuAverage& a ) { return a.name == name; } );
-		if( it == m_gpuAverages.end() )
+		std::vector<GpuAverage>& averages = measure->averages;
+		averages[0].sum += m_gpuProfiler.frameMilliseconds();
+		averages[0].count++;
+		for( const auto& [name, milliseconds] : frameTimes )
 		{
-			m_gpuAverages.push_back( { name } );
-			it = m_gpuAverages.end() - 1;
+			auto it = std::find_if( averages.begin(), averages.end(), [&]( const GpuAverage& a ) { return a.name == name; } );
+			if( it == averages.end() )
+			{
+				averages.push_back( { name } );
+				it = averages.end() - 1;
+			}
+			it->sum += milliseconds;
+			it->count++;
 		}
-		it->sum += milliseconds;
-		it->count++;
+
+		if( now - measure->start < measure->duration )
+		{
+			++measure;
+			continue;
+		}
+		measure->done( gpuMeasureLine( *measure ) );
+		measure = m_gpuMeasures.erase( measure );
 	}
+}
 
-	if( std::chrono::steady_clock::now() - m_gpuAverageStart < averageDuration )
-		return;
-
+std::string Renderer::gpuMeasureLine( const GpuMeasure& measure ) const
+{
 	char value[32];
-	std::string line = "GPU average over " + std::to_string( m_gpuAverages[0].count ) + " frames, ms:";
-	for( const GpuAverage& average : m_gpuAverages )
+	std::string line = "GPU average over " + std::to_string( measure.averages[0].count ) + " frames, ms:";
+	for( const GpuAverage& average : measure.averages )
 	{
 		std::snprintf( value, sizeof( value ), "%.3f", average.sum / std::max( average.count, 1u ) );
 		line += " " + average.name + " " + value + ";";
@@ -235,8 +264,7 @@ void Renderer::reportGpuTimes()
 	line += std::string( "; EV100 " ) + value;
 	std::snprintf( value, sizeof( value ), "%.0f", m_sunGroundIlluminance );
 	line += std::string( "; sun " ) + value + " lx";
-	LOG( line );
-	m_gpuAverageLogged = true;
+	return line;
 }
 
 PropertyContainer* Renderer::postProcessProperties()

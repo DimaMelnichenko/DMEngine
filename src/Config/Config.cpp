@@ -58,6 +58,10 @@ void Config::parseCommandLine( const std::string& commandLine )
 		{
 			m_mouseLook = false;
 		}
+		else if( args[i] == "-remote" )
+		{
+			m_remoteControl = true;
+		}
 		else if( i + 1 >= args.size() )
 		{
 			// Параметры ниже ждут значение

@@ -9,7 +9,7 @@ public:
 	~Config();
 
 	bool readConfig( const std::string& file );
-	// Параметры командной строки поверх settings.ini: -camera x,y,z[,pitch,yaw], -level имя, -nogui, -nomouse
+	// Параметры командной строки поверх settings.ini: -camera x,y,z[,pitch,yaw], -level имя, -nogui, -nomouse, -remote
 	void parseCommandLine( const std::string& commandLine );
 
 	bool fullScreen() const		{ return m_FullScreen; }
@@ -40,6 +40,8 @@ public:
 	bool showGUI() const					{ return m_showGUI; }
 	// Камера поворачивается мышью; -nomouse отключает это и скрывает указатель — для снимков с заданной точки
 	bool mouseLook() const					{ return m_mouseLook; }
+	// Удалённое управление по каналу \\.\pipe\DMEngine (-remote, клиент — Tools/engine.py)
+	bool remoteControl() const				{ return m_remoteControl; }
 
 private:
 	bool m_FullScreen = false;
@@ -58,6 +60,7 @@ private:
 	std::string m_levelName;
 	bool m_showGUI = true;
 	bool m_mouseLook = true;
+	bool m_remoteControl = false;
 
 };
 

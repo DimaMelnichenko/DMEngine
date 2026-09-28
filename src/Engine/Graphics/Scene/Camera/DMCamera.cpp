@@ -88,6 +88,20 @@ void DMCamera::SetRotation( float x, float y, float z )
 	return;
 }
 
+void DMCamera::setView( const XMFLOAT3& position, float pitch, float yaw )
+{
+	// В Update поворот — сумма заданного и накопленного мышью (0,1° на единицу), поэтому вычитаем накопленное
+	constexpr float mouseForce = 0.1f;
+	SetPosition( position.x, position.y, position.z );
+	SetRotation( pitch - static_cast<float>( m_mouseY ) * mouseForce, yaw - static_cast<float>( m_mouseX ) * mouseForce, 0.0f );
+}
+
+XMFLOAT2 DMCamera::rotation() const
+{
+	constexpr float mouseForce = 0.1f;
+	return XMFLOAT2( m_rotationX + static_cast<float>( m_mouseY ) * mouseForce, m_rotationY + static_cast<float>( m_mouseX ) * mouseForce );
+}
+
 const XMFLOAT3& DMCamera::position( ) const
 {
 	return m_Eye;

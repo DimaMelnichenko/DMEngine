@@ -66,6 +66,9 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/TextureObjects/CustomTexture.cpp
     src/Engine/Graphics/Scene/TextureObjects/DDSTexture.cpp
     src/Common/DBConnector.cpp
+    src/Engine/Console/ConsoleCommands.cpp
+    src/Engine/Console/PropertyCommands.cpp
+    src/Engine/Console/RemoteControlServer.cpp
     src/Engine/Graphics/Scene/Scatterer/ScattererPass.cpp
     imGUI/imgui.cpp
     imGUI/imgui_demo.cpp

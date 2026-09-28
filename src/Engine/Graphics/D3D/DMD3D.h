@@ -139,6 +139,8 @@ public:
 	bool CreateBuffer( const D3D11_BUFFER_DESC *pDesc, const D3D11_SUBRESOURCE_DATA *pInitialData, com_unique_ptr<ID3D11Buffer>& );
 
 	bool createScreenshot();
+	// Задний буфер в файл (PNG или JPG по расширению) — вызывать до EndScene: после Present содержимое буфера не определено
+	bool saveScreenshot( const std::wstring& path );
 
 	// Переносит в log.txt ошибки и предупреждения debug-слоя D3D11, накопленные с прошлого вызова. Без отладчика
 	// их больше нигде не видно. Вызывается после каждого кадра; без debug-слоя ничего не делает

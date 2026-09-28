@@ -74,6 +74,8 @@ public:
 	// Рисует цепочку в задний буфер и оставляет его привязанным для GUI; время проходов — области profiler.
 	// deltaTime — длительность кадра, с (скорость адаптации)
 	void render( GpuProfiler& profiler, float deltaTime );
+	// Смена плана (camera cut, как у вида в UE): несколько кадров экспозиция адаптируется сразу, а не за секунды
+	void cameraCut() { m_cutFrames = cutFrameCount; }
 	// EV100 кадра с отставанием на несколько кадров (копия с GPU без ожидания) — для статистики
 	float ev100() const { return m_ev100; }
 	PropertyContainer* properties();
@@ -162,6 +164,9 @@ private:
 	com_unique_ptr<ID3D11Buffer> m_exposureReadback[readbackCount];
 	uint32_t m_readbackFrame = 0;
 	float m_ev100 = 0.0f;
+	// Кадры до конца смены плана: за один кадр гистограмма с чужой экспозицией может упереться в край диапазона
+	static constexpr uint32_t cutFrameCount = 4;
+	uint32_t m_cutFrames = 0;
 
 	PropertyContainer m_properties;
 };

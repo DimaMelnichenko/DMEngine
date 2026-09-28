@@ -66,7 +66,7 @@ void DMSystem::Run( )
 		}
 
 		// If windows signals to end the application then exit out.
-		if( quit || m_exit )
+		if( quit || m_exit || m_graphics.exitRequested() )
 		{
 			m_graphics.beforeExit();
 			break;

@@ -25,6 +25,8 @@ public:
 	void printCamera( DMCamera& camera );
 
 	void addPropertyWatching( PropertyContainer* propertyContainer );
+	// Окна свойств в порядке addPropertyWatching — для команд list / get / set удалённого управления
+	const std::vector<PropertyContainer*>& propertyContainers() const { return m_properties; }
 	// Кнопка над деревом свойств в окне «Scene Objects»: по нажатию — action
 	void addAction( const std::string& label, std::function<void()> action );
 
