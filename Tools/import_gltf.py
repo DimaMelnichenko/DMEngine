@@ -27,6 +27,9 @@ MaterialParameterInstance, по --level — LevelModels. Всё в одной т
   export_extras) с именами параметров PBR; значение-строка с именем текстуры материала (BaseColor) — та же текстура.
 - --snap-to-terrain ставит экземпляры на землю уровня, как Drop to surface в UE: высота — террейн в точке (x, z)
   плюс высота объекта над нулём в Blender (Tools/terrain.py).
+- Ветер дерева (docs/wind.md) — собственные атрибуты glTF, как входы Games wind SpeedTree: _WIND_BRANCH1 и
+  _WIND_BRANCH2 (VEC4: начало ветви xyz в пространстве позиций и вес), _WIND_WEIGHTS (VEC2: доля высоты дерева, вес
+  ряби). Пишутся блоком WIND в конце файла меша; материал секций с ними — PBRTree (id 13).
 
 Сообщения скрипта — ASCII (правило Tools/).
 """
@@ -47,6 +50,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 PBR_MATERIAL = 12
 PBR_INSTANCE_MATERIAL = 9
+PBR_TREE_MATERIAL = 13   # PBR с ветром дерева (WIND_TREE): у мешей с данными ветра
+WIND_ATTRIBUTES = (('_WIND_BRANCH1', 4), ('_WIND_BRANCH2', 4), ('_WIND_WEIGHTS', 2))
 FALLBACK_PRIMITIVE = 'box'   # Meshes.primitive: заглушка, если файла меша нет (Meshes\ не хранится в git)
 LAST_LOD_RANGE = 10000.0
 
@@ -274,7 +279,8 @@ def uv_tangents(positions, normals, uvs, triangles):
 
 
 def convert_primitive(gltf, primitive, basis, label):
-    """Примитив glTF → массивы движка: позиции, нормали, UV, касательные, бинормали, индексы треугольников."""
+    """Примитив glTF → массивы движка: позиции, нормали, UV, касательные, бинормали, индексы треугольников и данные
+    ветра дерева (10 чисел на вершину, VertexData::Wind; None — их нет)."""
     attributes = primitive['attributes']
     positions = gltf.accessor(attributes['POSITION']).astype(np.float64)
     count = len(positions)
@@ -293,6 +299,10 @@ def convert_primitive(gltf, primitive, basis, label):
         warn('%s: vertex colors (COLOR_0) are ignored' % label)
     if 'JOINTS_0' in attributes or primitive.get('targets'):
         warn('%s: skinning and morph targets are ignored, the mesh is imported in its bind pose' % label)
+    wind = None
+    if any(name in attributes for name, _ in WIND_ATTRIBUTES):
+        wind = np.hstack([gltf.accessor(attributes[name]).astype(np.float64).reshape(count, -1)[:, :size]
+                          if name in attributes else np.zeros((count, size)) for name, size in WIND_ATTRIBUTES])
 
     # Поворот и масштаб узла; нормали — обратной транспонированной матрицей
     determinant = np.linalg.det(basis)
@@ -311,6 +321,10 @@ def convert_primitive(gltf, primitive, basis, label):
     # наружу, после зеркала — внутрь, поэтому две вершины меняются местами (ещё раз — если зеркальна матрица узла)
     mirror = MIRROR
     positions = positions * mirror
+    if wind is not None:
+        # Начала ветвей — точки в пространстве позиций: та же матрица узла и то же зеркало
+        for first in (0, 4):
+            wind[:, first:first + 3] = (wind[:, first:first + 3] @ basis.T) * mirror
     if determinant > 0.0:
         triangles = triangles[:, [0, 2, 1]]
 
@@ -330,23 +344,32 @@ def convert_primitive(gltf, primitive, basis, label):
     # Бинормаль движка — направление роста v (вниз по картинке): у зеркально отражённого базиса glTF это
     # cross(N, T)·w; карта нормалей glTF (зелёный — вверх) читается с NormalGreenUp = true
     binormals = np.cross(normals, tangents) * handedness[:, None]
-    return positions, normals, uvs, tangents, binormals, triangles
+    return positions, normals, uvs, tangents, binormals, triangles, wind
 
 
 def merge(parts):
-    positions, normals, uvs, tangents, binormals, triangles = [], [], [], [], [], []
+    positions, normals, uvs, tangents, binormals, triangles, wind = [], [], [], [], [], [], []
     base = 0
-    for p, n, uv, t, b, tri in parts:
+    for p, n, uv, t, b, tri, w in parts:
         positions.append(p), normals.append(n), uvs.append(uv), tangents.append(t), binormals.append(b)
         triangles.append(tri + base)
+        wind.append(w)
         base += len(p)
-    return tuple(np.concatenate(x) for x in (positions, normals, uvs, tangents, binormals, triangles))
+    merged = tuple(np.concatenate(x) for x in (positions, normals, uvs, tangents, binormals, triangles))
+    # У примитива без данных ветра — нули (не гнётся), если они есть у другого примитива того же материала
+    if all(w is None for w in wind):
+        return merged + (None,)
+    return merged + (np.concatenate([w if w is not None else np.zeros((len(p), 10)) for w, p in zip(wind, positions)]),)
 
 
 def mesh_bytes(mesh):
-    positions, normals, uvs, tangents, binormals, triangles = mesh
+    positions, normals, uvs, tangents, binormals, triangles, wind = mesh
     vertices = np.hstack([positions, normals, uvs, tangents, binormals]).astype('<f4')
-    return struct.pack('<II', len(vertices), triangles.size) + vertices.tobytes() + triangles.astype('<u4').tobytes()
+    data = struct.pack('<II', len(vertices), triangles.size) + vertices.tobytes() + triangles.astype('<u4').tobytes()
+    if wind is not None:
+        # Необязательный блок: метка и данные ветра дерева на вершину (MeshLoader, VertexData::Wind)
+        data += b'WIND' + wind.astype('<f4').tobytes()
+    return data
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -568,10 +591,18 @@ class Database:
         self.connection = sqlite3.connect(path)
         self.cursor = self.connection.cursor()
         self.material_id = material_id
-        self.definitions = dict(self.cursor.execute(
-            'SELECT param_name, id_parameter_def FROM MaterialParameterDef WHERE id_material = ?', (material_id,)))
-        if not self.definitions:
-            raise SystemExit('error: material %d has no parameters in MaterialParameterDef' % material_id)
+        self.definitions_by_material = {}
+        self.definitions(material_id)
+
+    def definitions(self, material_id):
+        """Параметры материала: имя → id определения"""
+        if material_id not in self.definitions_by_material:
+            definitions = dict(self.cursor.execute(
+                'SELECT param_name, id_parameter_def FROM MaterialParameterDef WHERE id_material = ?', (material_id,)))
+            if not definitions:
+                raise SystemExit('error: material %d has no parameters in MaterialParameterDef' % material_id)
+            self.definitions_by_material[material_id] = definitions
+        return self.definitions_by_material[material_id]
 
     def one(self, sql, args=()):
         row = self.cursor.execute(sql, args).fetchone()
@@ -587,20 +618,37 @@ class Database:
                             'WHERE id = ?', (file, int(srgb), coverage, texture_id))
         return texture_id
 
-    def instance(self, name, params, texture_ids):
+    def instance(self, name, params, texture_ids, material_id=None):
+        material_id = material_id or self.material_id
+        definitions = self.definitions(material_id)
         instance_id = self.one('SELECT id_instance FROM MaterialInstance WHERE name = ? AND id_material = ?',
-                               (name, self.material_id))
+                               (name, material_id))
         if instance_id is None:
-            self.cursor.execute('INSERT INTO MaterialInstance (id_material, name) VALUES (?, ?)', (self.material_id, name))
+            self.cursor.execute('INSERT INTO MaterialInstance (id_material, name) VALUES (?, ?)', (material_id, name))
             instance_id = self.cursor.lastrowid
         self.cursor.execute('DELETE FROM MaterialParameterInstance WHERE id_instance = ?', (instance_id,))
         for param, value in params.items():
-            if param not in self.definitions:
-                raise SystemExit('error: material %d has no parameter %s' % (self.material_id, param))
+            if param not in definitions:
+                raise SystemExit('error: material %d has no parameter %s' % (material_id, param))
             value = str(texture_ids[value]) if value in texture_ids else value
             self.cursor.execute('INSERT INTO MaterialParameterInstance (id_instance, id_material_def, value) '
-                                'VALUES (?, ?, ?)', (instance_id, self.definitions[param], value))
+                                'VALUES (?, ?, ?)', (instance_id, definitions[param], value))
         return instance_id
+
+    def instance_material(self, instance_id):
+        """Материал секции — материал её экземпляра (PBR, PBRInstance или PBRTree): по нему выбирается шейдер"""
+        return self.one('SELECT id_material FROM MaterialInstance WHERE id_instance = ?', (instance_id,))
+
+    def remove_replaced_instances(self, instances):
+        """Экземпляры с теми же именами у другого материала (например, у меша появились данные ветра — стал PBRTree),
+        на которые больше не ссылается ни одна секция модели"""
+        for name, instance_id in instances.items():
+            for (old,) in self.cursor.execute('SELECT id_instance FROM MaterialInstance WHERE name = ? AND id_instance != ?',
+                                              (name, instance_id)).fetchall():
+                if self.one('SELECT COUNT(*) FROM ModelProperties WHERE material_instance_id = ?', (old,)) == 0:
+                    self.cursor.execute('DELETE FROM MaterialParameterInstance WHERE id_instance = ?', (old,))
+                    self.cursor.execute('DELETE FROM MaterialInstance WHERE id_instance = ?', (old,))
+                    print('Material instance %s: the old one (id %d) is replaced and removed' % (name, old))
 
     def mesh(self, name, file):
         mesh_id = self.one('SELECT id FROM Meshes WHERE name = ?', (name,))
@@ -625,7 +673,8 @@ class Database:
             for section, mesh_id, instance_id in sections:
                 self.cursor.execute('INSERT INTO ModelProperties (lod, section, model_id, range, material_id, mesh_id, '
                                     'render, material_instance_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                                    (lod, section, model_id, lod_range, self.material_id, mesh_id, render, instance_id))
+                                    (lod, section, model_id, lod_range, self.instance_material(instance_id), mesh_id, render,
+                                     instance_id))
                 new_meshes.add(mesh_id)
         # Меши LOD и секций, которых больше нет (reimport с меньшим числом LOD), — если на них никто не ссылается
         for mesh_id in set(old_meshes) - new_meshes:
@@ -723,6 +772,12 @@ def main():
         print('Texture %s -> Textures\\%s (%s%s)' % (texture['name'], texture['file'],
                                                       'sRGB' if texture['srgb'] else 'linear', coverage))
 
+    # Экземпляр материала, у сеток которого есть данные ветра дерева, — PBRTree
+    tree_instances = {section['instance'] for model in models for sections in model['lods'] for section in sections
+                      if section['mesh'][6] is not None}
+    if tree_instances and args.scatter:
+        warn('tree wind data (_WIND_*) is kept in the mesh files, but scatter layers have no tree wind variant: '
+             'PBRInstance bends like grass (WindWeight)')
     instances = {}
     for model in models:
         ranges = lod_ranges(len(model['lods']), args.lod_ranges)
@@ -731,7 +786,9 @@ def main():
             rows = []
             for section in sections:
                 if section['instance'] not in instances:
-                    instances[section['instance']] = db.instance(section['instance'], section['params'], texture_ids)
+                    tree = section['instance'] in tree_instances and not args.scatter
+                    instances[section['instance']] = db.instance(section['instance'], section['params'], texture_ids,
+                                                                 PBR_TREE_MATERIAL if tree else None)
                 # Секция 0 — прежнее имя меша LOD: повторный импорт модели из одного материала ничего не переименует
                 mesh_name = '%s_LOD%d' % (model['name'], lod) + ('_S%d' % section['slot'] if section['slot'] else '')
                 mesh_file = 'models\\%s\\%s.bin' % (asset, mesh_name)
@@ -764,6 +821,11 @@ def main():
                 print('  level %s: position %.2f,%.2f,%.2f rotation %.3f,%.3f,%.3f,%.3f scale %.3g,%.3g,%.3g' % (
                     (args.level,) + tuple(instance['position']) + tuple(instance['rotation']) +
                     tuple(instance['scale'])))
+
+    db.remove_replaced_instances(instances)
+    for name in sorted(tree_instances):
+        if not args.scatter:
+            print('Material instance %s: PBRTree (tree wind data in the meshes)' % name)
 
     if args.dry_run:
         db.connection.rollback()

@@ -241,7 +241,9 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 `cb_skyScale` и `cb_skyLightScale`, `rotation`, `max_luminance` — срез солнца для освещения окружением; уровень `TestHDRI`), постобработка — `PostProcessSettings`
 (`Levels.post_process`; NULL — значения по умолчанию), ветер — строка `Wind` (`Levels.wind`, как Wind Directional Source
 в UE: направление, сила, порывы волнами; класс `Wind` у `Scene`, константы кадра `cb_wind*` и время игры `cb_gameTime` —
-шагами кадра, изгиб в `vertexWorldPosition` у материалов с `WindWeight` > 0 — `Shaders/wind.sh`, подробно — `docs/wind.md`).
+шагами кадра, изгиб в `vertexWorldPosition` у материалов с `WindWeight` > 0 — `Shaders/wind.sh`, подробно — `docs/wind.md`;
+деревья — материал `PBRTree` (define `WIND_TREE`): слои Games wind SpeedTree по данным второго потока вершин `VertexPool` —
+начала и веса ветвей двух уровней, доля высоты, рябь, атрибуты glTF `_WIND_*`, блок `WIND` файла меша).
 В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
 вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Post process», «Wind»; кнопка «Save level environment»
 (`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не

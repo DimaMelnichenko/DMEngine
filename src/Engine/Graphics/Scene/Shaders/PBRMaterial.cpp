@@ -97,6 +97,25 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> PBRMaterial::initLayouts()
 
 	vertex_layout.push_back( polygonLayout );
 
+	// Второй поток VertexPool (слот 1) — данные ветра дерева в половинной точности, VertexData::WindHalf. Их читают
+	// только вершинные шейдеры с WIND_TREE (материал PBRTree); остальным лишние элементы раскладки не мешают
+	const struct { const char* semantic; UINT index; DXGI_FORMAT format; UINT offset; } windElements[] = {
+		{ "BRANCH", 0, DXGI_FORMAT_R16G16B16A16_FLOAT, 0 },
+		{ "BRANCH", 1, DXGI_FORMAT_R16G16B16A16_FLOAT, 8 },
+		{ "WINDWEIGHTS", 0, DXGI_FORMAT_R16G16_FLOAT, 16 },
+	};
+	for( const auto& element : windElements )
+	{
+		polygonLayout.SemanticName = element.semantic;
+		polygonLayout.SemanticIndex = element.index;
+		polygonLayout.Format = element.format;
+		polygonLayout.InputSlot = 1;
+		polygonLayout.AlignedByteOffset = element.offset;
+		polygonLayout.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+		polygonLayout.InstanceDataStepRate = 0;
+		vertex_layout.push_back( polygonLayout );
+	}
+
 	return vertex_layout;
 }
 
@@ -241,6 +260,15 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.windWeight = materialValue( params, "WindWeight", 0.0f );
 	param.diffuseTransmissionColorFactor = materialValue( params, "DiffuseTransmissionColorFactor", XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
 	param.diffuseTransmissionFactor = materialValue( params, "DiffuseTransmissionFactor", 0.0f );
+	param.windGlobalAngle = XMConvertToRadians( materialValue( params, "WindGlobalAngle", 1.5f ) );
+	param.windGlobalExponent = materialValue( params, "WindGlobalExponent", 1.5f );
+	param.windGlobalFrequency = materialValue( params, "WindGlobalFrequency", 0.25f );
+	param.windBranchAngle = XMConvertToRadians( materialValue( params, "WindBranchAngle", 6.0f ) );
+	param.windBranchFrequency = materialValue( params, "WindBranchFrequency", 0.8f );
+	param.windTwigAngle = XMConvertToRadians( materialValue( params, "WindTwigAngle", 12.0f ) );
+	param.windTwigFrequency = materialValue( params, "WindTwigFrequency", 2.0f );
+	param.windRippleAmplitude = materialValue( params, "WindRippleAmplitude", 0.02f );
+	param.windRippleFrequency = materialValue( params, "WindRippleFrequency", 6.0f );
 
 	Device::updateResourceData<PSParam>( m_psCB.get(), param );
 	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_psCB );

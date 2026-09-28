@@ -20,7 +20,9 @@
 #   - LOD2 — ствол 5 граней, по одной крупной карточке на ветвь. Импостер — вместе с лесом (TODO.md).
 # Материалы — секции: FirBark (кора, непрозрачная) и FirTwig (хвоя, Masked, двусторонняя). Параметры движка, которых
 # нет в glTF, — Custom Properties материала (в glTF — extras, импортёр пишет их в экземпляр): пропускание хвои,
-# смена LOD дизерингом. Сцена — по одной ели каждого варианта у луга и роща из связанных дубликатов (экземпляры
+# смена LOD дизерингом, ветер дерева. Ветер — по схеме Games wind SpeedTree (docs/wind.md): у каждой вершины начало
+# ветви (branch1) и веточки (branch2) с весами, доля высоты дерева и вес ряби — атрибуты _wind_branch1, _wind_branch2,
+# _wind_weights (экспорт glTF с export_attributes; импортёр ставит таким мешам материал PBRTree). Сцена — по одной ели каждого варианта у луга и роща из связанных дубликатов (экземпляры
 # одной модели); origin файла — --position импорта, высота — по земле (--snap-to-terrain).
 # Сообщения скрипта — ASCII (правило Tools/).
 import argparse
@@ -102,6 +104,7 @@ def make_materials(folder):
     # Параметры движка (docs/materials.md): extras glTF → экземпляр материала
     for mat in (bark, twig):
         mat['DitheredLODTransition'] = 'true'
+        mat['WindWeight'] = 1.0   # ветер дерева (PBRTree); углы и частоты слоёв — по умолчанию материала
     twig['DiffuseTransmissionFactor'] = 0.35
     twig['DiffuseTransmissionColorFactor'] = [1.0, 1.0, 0.6]
     twig['DiffuseTransmissionColor'] = 'BaseColor'
@@ -110,17 +113,24 @@ def make_materials(folder):
 
 # --- Геометрия ---------------------------------------------------------------------------------------------------------
 
-class Builder:
-    """Меш LOD: вершины, треугольники с развёрткой по углам и материалом (0 — кора, 1 — хвоя)"""
+NO_BRANCH = (Vector((0.0, 0.0, 0.0)), 0.0)   # начало и вес уровня ветвей, если вершина к нему не относится
 
-    def __init__(self):
+
+class Builder:
+    """Меш LOD: вершины, треугольники с развёрткой по углам и материалом (0 — кора, 1 — хвоя) и данные ветра вершин:
+    начало и вес ветви (branch1) и веточки (branch2), вес ряби; доля высоты — по высоте вершины"""
+
+    def __init__(self, height):
+        self.height = height
         self.verts = []
+        self.wind = []
         self.faces = []
         self.uvs = []
         self.mats = []
 
-    def vertex(self, p):
+    def vertex(self, p, branch1=NO_BRANCH, branch2=NO_BRANCH, ripple=0.0):
         self.verts.append(tuple(p))
+        self.wind.append((*branch1[0], branch1[1], *branch2[0], branch2[1], max(p[2], 0.0) / self.height, ripple))
         return len(self.verts) - 1
 
     def face(self, indices, uvs, mat):
@@ -128,8 +138,9 @@ class Builder:
         self.uvs.append(tuple(uvs))
         self.mats.append(mat)
 
-    def tube(self, points, radii, sides, v_scale, twist=0.0):
-        """Труба коры по ломаной: кольцо на точку, развёртка — вокруг и вдоль (BARK_TILE на повтор)"""
+    def tube(self, points, radii, sides, v_scale, twist=0.0, branch_origin=None):
+        """Труба коры по ломаной: кольцо на точку, развёртка — вокруг и вдоль (BARK_TILE на повтор). У ветви
+        (branch_origin — её начало на стволе) вес ветра — доля длины от начала"""
         u_tiles = max(1, round(2.0 * math.pi * radii[0] / BARK_TILE))
         rings = []
         length = 0.0
@@ -148,6 +159,10 @@ class Builder:
                 ring.append((self.vertex(p + (side * math.cos(a) + up * math.sin(a)) * radii[k]),
                              (u_tiles * s / sides, length * v_scale / BARK_TILE)))
             rings.append(ring)
+        if branch_origin is not None:
+            for k, ring in enumerate(rings):
+                for index, _ in ring:
+                    self.wind[index] = (*branch_origin, k / (len(rings) - 1), *self.wind[index][4:])
         # Кольцо обходит ось по часовой стрелке, если смотреть вдоль трубы: грани — против, нормалью наружу
         for k in range(len(rings) - 1):
             for s in range(sides):
@@ -156,15 +171,20 @@ class Builder:
                 self.face((a[0], c[0], b[0]), (a[1], c[1], b[1]), 0)
                 self.face((a[0], d[0], c[0]), (a[1], d[1], c[1]), 0)
 
-    def card(self, card, origin, forward, up, length):
-        """Карточка веточки: основание в origin, длинная ось (Y карточки) — forward, нормаль (Z) — примерно up"""
+    def card(self, card, origin, forward, up, length, branch1=NO_BRANCH, branch1_span=0.0, twig=True):
+        """Карточка веточки: основание в origin, длинная ось (Y карточки) — forward, нормаль (Z) — примерно up.
+        Ветер: ветвь branch1 (начало и вес в точке крепления; branch1_span — на сколько вес растёт к концу карточки,
+        если она тянется вдоль ветви), веточка — основание карточки, вес и рябь — доля её длины (twig = False — без
+        своего качания, только рябь: дальний LOD)"""
         side = forward.cross(up).normalized()
         normal = side.cross(forward).normalized()
         scale = length / card['length']
         basis = Matrix((side, forward, normal)).transposed()   # столбцы — оси X, Y, Z карточки
         first = len(self.verts)
         for v in card['co']:
-            self.verts.append(tuple(origin + basis @ Vector(v) * scale))
+            along = min(max(v[1] / card['length'], 0.0), 1.0)
+            self.vertex(origin + basis @ Vector(v) * scale, (branch1[0], branch1[1] + branch1_span * along),
+                        (origin, along) if twig else NO_BRANCH, along)
         for tri, uv in card['tris']:
             self.face(tuple(first + i for i in tri), uv, 1)
 
@@ -180,6 +200,15 @@ class Builder:
         mesh.polygons.foreach_set('use_smooth', np.ones(len(self.faces), bool))
         mesh.validate()
         mesh.update()
+        # Данные ветра (docs/wind.md): начала ветвей — в осях glTF (x, z, −y), как позиции после экспорта: собственные
+        # атрибуты экспортёр не переводит
+        if len(mesh.vertices) != len(self.wind):
+            raise SystemExit('error: %s: validate() changed the vertex count, wind data would not match' % name)
+        wind = np.array(self.wind, np.float32)
+        for attribute, first in (('_wind_branch1', 0), ('_wind_branch2', 4)):
+            data = np.column_stack([wind[:, first], wind[:, first + 2], -wind[:, first + 1], wind[:, first + 3]])
+            mesh.attributes.new(attribute, 'FLOAT_COLOR', 'POINT').data.foreach_set('color', data.ravel())
+        mesh.attributes.new('_wind_weights', 'FLOAT2', 'POINT').data.foreach_set('vector', wind[:, 8:10].ravel())
         return mesh
 
 
@@ -266,7 +295,7 @@ def build_fir(name, variant, lod, cards, rng_seed):
     height = variant['height']
     phase = rng.uniform(0.0, 2.0 * math.pi)
     branches = make_branches(variant, rng)
-    builder = Builder()
+    builder = Builder(height)
 
     # Ствол
     zs = list(np.arange(-0.3, height - 0.2, lod['trunk_step'])) + [height]
@@ -286,7 +315,7 @@ def build_fir(name, variant, lod, cards, rng_seed):
         if lod['branch_sides'] and branch['length'] >= lod['branch_min']:
             radius = 0.012 + 0.012 * branch['length']
             builder.tube(pts, [radius * (1.0 - 0.85 * k / segments) for k in range(segments + 1)], lod['branch_sides'],
-                         1.0, twist=branch['azimuth'])
+                         1.0, twist=branch['azimuth'], branch_origin=start)
         if branch['dead']:
             continue
 
@@ -297,7 +326,8 @@ def build_fir(name, variant, lod, cards, rng_seed):
             # чем у ближних LOD, и на смене LOD заметно «толстеет»
             p, d = point_on(pts, 0.15)
             forward = (pts[-1] - p).normalized()
-            builder.card(cards[(MAIN_CARDS[picks[0] % 3], source)], p, forward, up, branch['length'] * 0.8)
+            builder.card(cards[(MAIN_CARDS[picks[0] % 3], source)], p, forward, up, branch['length'] * 0.8,
+                         (start, 0.15), 0.8, twig=False)
             continue
 
         # Веточки вдоль ветви в обе стороны, от основания к кончику короче; на кончике — веточка-кончик
@@ -312,10 +342,11 @@ def build_fir(name, variant, lod, cards, rng_seed):
                              -math.radians(12.0))
             length = min(1.0, 0.3 + 0.45 * branch['length'] * (1.0 - s)) * lod['card_scale']
             card = cards[(MAIN_CARDS[picks[k % 16] % len(MAIN_CARDS)], source)]
-            builder.card(card, p, forward, rotate(up, forward, rolls[k % 16]), length)
+            builder.card(card, p, forward, rotate(up, forward, rolls[k % 16]), length, (start, s))
         p, d = point_on(pts, 0.92)
         tip = cards[(TIP_CARDS[picks[15] % len(TIP_CARDS)], source)]
-        builder.card(tip, p, d, rotate(up, d, rolls[15]), min(0.7, 0.25 + 0.2 * branch['length']) * lod['card_scale'])
+        builder.card(tip, p, d, rotate(up, d, rolls[15]), min(0.7, 0.25 + 0.2 * branch['length']) * lod['card_scale'],
+                     (start, 0.92))
 
     # Лидер: верхушка — вертикальная веточка
     top = Vector((0.0, 0.0, height - 0.5)) + trunk_offset(height - 0.5, height, phase)
@@ -381,7 +412,8 @@ def main():
     os.makedirs(os.path.dirname(out), exist_ok=True)
     bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_yup=True, export_apply=True,
                               export_tangents=True, export_image_format='AUTO', export_materials='EXPORT',
-                              export_extras=True, export_animations=False)
+                              export_extras=True, export_attributes=True, export_vertex_color='NONE',
+                              export_animations=False)   # данные ветра — не цвета: COLOR_n не нужны
     print('Written: ' + out)
 
 

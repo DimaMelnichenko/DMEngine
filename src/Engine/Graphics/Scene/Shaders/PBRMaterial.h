@@ -42,8 +42,19 @@ private:
 		float padding[2];
 		XMFLOAT3 diffuseTransmissionColorFactor;
 		float diffuseTransmissionFactor;
+		// Ветер дерева (материал PBRTree, define WIND_TREE, Shaders/wind.sh): углы — радианы при силе ветра 1, частоты — Гц
+		float windGlobalAngle;
+		float windGlobalExponent;
+		float windGlobalFrequency;
+		float windBranchAngle;
+		float windBranchFrequency;
+		float windTwigAngle;
+		float windTwigFrequency;
+		float windRippleAmplitude;	// м
+		float windRippleFrequency;
+		float windPadding[3];
 	};
-	static_assert( sizeof( PSParam ) == 80, "PBRMaterialBuffer layout" );
+	static_assert( sizeof( PSParam ) == 128, "PBRMaterialBuffer layout" );
 
 	// Вершинный шейдер фазы: обычный, с матрицами экземпляров (INST_MATRIX) или со сменой LOD дизерингом (LOD_DITHER)
 	enum VertexVariant { vertexDefault, vertexInstanced, vertexLodDither, vertexVariantCount };

@@ -24,6 +24,17 @@ cbuffer PBRMaterialBuffer : register( SLOT_CB_MATERIAL )
 	// Пропускание (KHR_materials_diffuse_transmission): цвет прошедшего света и доля рассеянного, проходящая насквозь
 	float3 g_diffuseTransmissionColorFactor;
 	float  g_diffuseTransmissionFactor;
+	// Ветер дерева (материал PBRTree, WIND_TREE — Shaders/wind.sh): углы — радианы при силе ветра 1, частоты — Гц
+	float  g_windGlobalAngle;		// наклон дерева у верхушки
+	float  g_windGlobalExponent;	// рост наклона с долей высоты
+	float  g_windGlobalFrequency;
+	float  g_windBranchAngle;		// ветви первого уровня
+	float  g_windBranchFrequency;
+	float  g_windTwigAngle;			// веточки (второй уровень)
+	float  g_windTwigFrequency;
+	float  g_windRippleAmplitude;	// рябь листвы вдоль нормали, м
+	float  g_windRippleFrequency;
+	float3 g_windPadding;
 };
 
 #endif

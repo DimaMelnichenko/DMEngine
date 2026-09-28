@@ -2,7 +2,8 @@
 // Filename: light.vs
 // Вершинный шейдер материала PBR. С define DEPTH_ONLY — вариант «только глубина» (Shaders/depth_only.sh): позиция и UV
 // без нормалей, для проходов без цвета. Растения с WindWeight > 0 гнутся ветром уровня (Shaders/wind.sh). С define
-// LOD_DITHER — экземпляр в полосе смены LOD: отдаёт пиксельному шейдеру долю перехода (Shaders/lod_dither.sh)
+// LOD_DITHER — экземпляр в полосе смены LOD: отдаёт пиксельному шейдеру долю перехода (Shaders/lod_dither.sh). С define
+// WIND_TREE (материал PBRTree) — ветер дерева по данным второго потока вершин (VertexData::Wind), а не изгиб травы
 ////////////////////////////////////////////////////////////////////////////////
 
 
@@ -23,6 +24,13 @@ struct VertexInputType
     float3 normal : NORMAL0;
 	float3 tangent : TANGENT0;
 	float3 binormal : BINORMAL0;
+#ifdef WIND_TREE
+	// Второй поток VertexPool (слот 1): начала ветвей первого и второго уровня (xyz, координаты меша) и их веса,
+	// доля высоты дерева и вес ряби — как входы Games wind SpeedTree
+	float4 windBranch1 : BRANCH0;
+	float4 windBranch2 : BRANCH1;
+	float2 windWeights : WINDWEIGHTS0;
+#endif
 	uint instanceIndex: SV_InstanceID;
 };
 
@@ -77,6 +85,16 @@ float4 vertexWorldPosition( VertexInputType input )
 
 	// Ветер: корень растения и высота вершины над ним. У расстановки корень — экземпляр на земле (origin модели внизу),
 	// высота — локальная высота × размер; у модели уровня — начало её мировой матрицы
+#ifdef WIND_TREE
+	// Дерево: слои Games wind SpeedTree (Shaders/wind.sh); корень — начало мировой матрицы экземпляра
+	[branch] if( g_windWeight > 0.0f && cb_windStrength > 0.0f )
+	{
+		worldPosition.xyz = treeWindPosition( worldPosition.xyz, world[3].xyz,
+											  mul( float4( input.windBranch1.xyz, 1.0f ), world ).xyz, input.windBranch1.w,
+											  mul( float4( input.windBranch2.xyz, 1.0f ), world ).xyz, input.windBranch2.w,
+											  input.windWeights, normalize( mul( input.normal, (float3x3)world ) ), g_windWeight );
+	}
+#else
 	[branch] if( g_windWeight > 0.0f && cb_windStrength > 0.0f )
 	{
 	#if defined(INST_POS)
@@ -93,6 +111,7 @@ float4 vertexWorldPosition( VertexInputType input )
 	#endif
 		worldPosition.xyz += windOffset( root, max( height, 0.0f ), g_windWeight );
 	}
+#endif
 	return worldPosition;
 }
 

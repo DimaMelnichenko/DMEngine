@@ -1,6 +1,7 @@
 #pragma once
 #include "DirectX.h"
 #include "DMMesh.h"
+#include <algorithm>
 #include <fstream>
 
 namespace GS
@@ -79,10 +80,23 @@ public:
 			indices.push_back( index );
 		}
 
+		// Необязательный блок после индексов: метка WIND и данные ветра дерева на каждую вершину (Tools/import_gltf.py)
+		std::vector<VertexData::Wind> wind;
+		char marker[4] = {};
+		if( fin.read( marker, sizeof( marker ) ) && std::equal( marker, marker + 4, "WIND" ) )
+		{
+			wind.resize( vertex_count );
+			fin.read( reinterpret_cast<char*>( wind.data() ), wind.size() * sizeof( VertexData::Wind ) );
+			if( !fin )
+				throw std::exception( "Wind block is shorter than the vertex count" );
+		}
+
 		// Close the model file.
 		fin.close();
 
-		return new DMMesh<MeshVertexStruct>( id, name, std::move( indices ), std::move( vertices ) ) ;
+		AbstractMesh* mesh = new DMMesh<MeshVertexStruct>( id, name, std::move( indices ), std::move( vertices ) );
+		mesh->setWind( std::move( wind ) );
+		return mesh;
 	}
 };
 
