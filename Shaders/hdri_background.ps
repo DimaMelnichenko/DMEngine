@@ -21,6 +21,6 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float3 viewDirection = float3( ndc.x / cb_projectionMatrix[0][0], ndc.y / cb_projectionMatrix[1][1], 1.0f );
 	float3 direction = normalize( mul( viewDirection, (float3x3)cb_viewInverseMatrix ) );
 
-	// Значение панорамы × интенсивность (cb_skyLightScale), кд/м²
-	return float4( samplePanorama( direction, 0.0f ) * cb_skyLightScale * preExposure(), 1.0f );
+	// Значение панорамы × интенсивность (cb_skyScale), кд/м²
+	return float4( samplePanorama( direction, 0.0f ) * cb_skyScale * preExposure(), 1.0f );
 }

@@ -2,7 +2,7 @@
 // Объём воздушной перспективы главного вида (S. Hillaire, EGSR 2020, раздел 6 — Camera Aerial Perspective Volume
 // в UE5): сетка AERIAL_PERSPECTIVE_SIZE² над экраном × AERIAL_PERSPECTIVE_DEPTH слоёв по расстоянию от камеры.
 // Слой s — от камеры до расстояния D · ((s + 1) / N)², D — дальняя плоскость (cb_aerialPerspectiveDistance): слои
-// гуще у камеры. В слое — свет, рассеянный воздухом на этом пути (на единицу освещённости от солнца, как небо), и
+// гуще у камеры. В слое — свет солнца и луны, рассеянный воздухом на этом пути (в единицах запекания, как небо), и
 // среднее пропускание. Та же модель, что небо (integrateScattering, Shaders/atmosphere.sh); камера — наблюдатель
 // неба на ATMOSPHERE_OBSERVER_ALTITUDE, точки берутся относительно неё. Поток — столбец объёма: идёт от камеры
 // по слоям и пишет накопленное к концу каждого. Каждый кадр, класс SkyAtmosphere
@@ -17,7 +17,8 @@ RWTexture3D<float4> g_volume : register( u0 );
 cbuffer AerialPerspectiveBuffer : register( b4 )
 {
 	float  g_viewDistanceScale;	// Aerial Perspective View Distance Scale: во сколько раз путь в воздухе длиннее, 0 — выключено
-	float3 g_aerialPadding;
+	float  g_outputScale;		// 1 / нормировка (SkyAtmosphere::aerialPerspectiveNormalization): объём — в половинной точности
+	float2 g_aerialPadding;
 };
 
 // Шагов интегрирования на слой (AerialPerspectiveLUTSampleCountMaxPerSlice в UE)
@@ -40,8 +41,8 @@ void main( uint3 id : SV_DispatchThreadID )
 	{
 		const float t = ( slice + 1.0f ) / AERIAL_PERSPECTIVE_DEPTH;
 		const float end = cb_aerialPerspectiveDistance * t * t * g_viewDistanceScale;
-		integrateScattering( origin, direction, start, end, samplesPerSlice, luminance, transmittance );
+		integrateScattering( origin, direction, start, end, samplesPerSlice, g_sunColor, g_moonColor, luminance, transmittance );
 		start = end;
-		g_volume[uint3( id.xy, slice )] = float4( luminance * g_skyIntensity, dot( transmittance, 1.0f / 3.0f ) );
+		g_volume[uint3( id.xy, slice )] = float4( luminance * ( g_skyIntensity * g_outputScale ), dot( transmittance, 1.0f / 3.0f ) );
 	}
 }

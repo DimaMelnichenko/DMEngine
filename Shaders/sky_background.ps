@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Фон кадра — небо: таблица Sky-View по направлению взгляда с землёй под горизонтом (skyLuminance,
-// Shaders/sky_view.sh) и солнечный диск. Рисуется после непрозрачных на дальней плоскости — только там, где сцена
-// ничего не нарисовала
+// Фон кадра — небо: таблицы Sky-View по направлению взгляда со свечением ночного неба и землёй под горизонтом
+// (skyLuminance, Shaders/sky_view.sh), диски солнца и луны и звёзды. Рисуется после непрозрачных на дальней
+// плоскости — только там, где сцена ничего не нарисовала
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
@@ -9,6 +9,21 @@
 #define ATMOSPHERE_NO_SKY
 #include "sky_view.sh"
 #include "exposure.sh"
+
+// Раскладка — SkyAtmosphere::NightSkyParameters. Яркости — в единицах запекания неба (на 1 лк солнца)
+cbuffer NightSkyParameters : register( b4 )
+{
+	float3 g_equatorialX;			// экваториальный базис в мире: к точке весеннего равноденствия,
+	float  g_moonAngularRadius;		// угловой радиус диска луны (увеличенный, как у солнца), рад
+	float3 g_equatorialY;			// к прямому восхождению 90°,
+	float  g_starIlluminanceScale;	// освещённость от звезды, лк → единицы запекания (1 / освещённость от солнца); 0 — звёзд нет
+	float3 g_equatorialZ;			// к северному полюсу мира
+	float  g_nightSkyPadding;
+	float3 g_moonDiskLuminance;		// яркость диска полной луны (Ломмель — Зелигер: ровный диск), с цветом луны; 0 — луны нет
+	float  g_nightSkyPadding2;
+};
+
+Texture2D g_moonAlbedo : register( t5 );	// карта луны: равнопромежуточная, долгота 0 — в центре (видимая сторона)
 
 struct PixelInputType
 {
@@ -18,6 +33,131 @@ struct PixelInputType
 
 // Угловой радиус солнца — вдвое больше настоящего (0,27°), чтобы диск был заметен на экране
 static const float sunAngularRadius = 0.0093f;
+
+// Звёзды: процедурный каталог на кубе экваториальных направлений, starGridSize² ячеек на грань, в ячейке — звезда
+// с вероятностью starDensity: ~9 тыс. звёзд до 6,5 величины, как видно глазом на тёмном небе
+static const float starGridSize = 192.0f;
+static const float starDensity = 0.04f;
+static const float starBrightestMagnitude = -1.5f;
+static const float starFaintestMagnitude = 6.5f;
+
+uint hash( uint x )
+{
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	x ^= x >> 16;
+	return x;
+}
+
+float random( uint seed, uint index )
+{
+	return ( hash( seed ^ hash( index + 0x9e3779b9u ) ) & 0x00ffffffu ) / 16777216.0f;
+}
+
+// Цвет звезды по температуре от ~3000 К (оранжевый) до ~10 000 К (голубовато-белый), яркость 1
+float3 starColor( float t )
+{
+	float3 color = t < 0.5f ? lerp( float3( 1.0f, 0.72f, 0.48f ), float3( 1.0f, 0.95f, 0.88f ), t * 2.0f )
+							: lerp( float3( 1.0f, 0.95f, 0.88f ), float3( 0.72f, 0.82f, 1.0f ), t * 2.0f - 1.0f );
+	return color / dot( color, float3( 0.2126f, 0.7152f, 0.0722f ) );
+}
+
+// Грань куба и координаты на ней (−1…1) для направления
+void cubeFace( float3 d, out uint face, out float2 st )
+{
+	const float3 a = abs( d );
+	if( a.x >= a.y && a.x >= a.z )
+	{
+		face = d.x > 0.0f ? 0 : 1;
+		st = d.zy / a.x;
+	}
+	else if( a.y >= a.z )
+	{
+		face = d.y > 0.0f ? 2 : 3;
+		st = d.xz / a.y;
+	}
+	else
+	{
+		face = d.z > 0.0f ? 4 : 5;
+		st = d.xy / a.z;
+	}
+}
+
+float3 cubePoint( uint face, float2 st )
+{
+	if( face == 0 )	return float3( 1.0f, st.y, st.x );
+	if( face == 1 )	return float3( -1.0f, st.y, st.x );
+	if( face == 2 )	return float3( st.x, 1.0f, st.y );
+	if( face == 3 )	return float3( st.x, -1.0f, st.y );
+	if( face == 4 )	return float3( st.x, st.y, 1.0f );
+	return float3( st.x, st.y, -1.0f );
+}
+
+// Звезда ячейки, в которую смотрит пиксель: пятно гаусса в ~пиксель, нормированное на её освещённость, делённую на
+// телесный угол пикселя; величина — m = m_max + 2·lg u (звёзд втрое больше на каждую величину)
+float3 starLight( float3 direction, float pixelAngle )
+{
+	const float3 d = float3( dot( direction, g_equatorialX ), dot( direction, g_equatorialY ), dot( direction, g_equatorialZ ) );
+	uint face;
+	float2 st;
+	cubeFace( d, face, st );
+	const float2 cell = floor( ( st * 0.5f + 0.5f ) * starGridSize );
+	const uint seed = hash( face * 0x01000193u ^ hash( uint( cell.x ) + 4096u * uint( cell.y ) ) );
+	if( random( seed, 0 ) >= starDensity )
+		return 0.0f;
+
+	// Звезда — в середине ячейки (0,3…0,7): её пятно не выходит за ячейку, соседей смотреть не нужно
+	const float2 starSt = ( cell + 0.3f + 0.4f * float2( random( seed, 1 ), random( seed, 2 ) ) ) / starGridSize * 2.0f - 1.0f;
+	const float3 starDirection = normalize( cubePoint( face, starSt ) );
+	const float distancePixels = length( cross( normalize( d ), starDirection ) ) / pixelAngle;
+
+	const float magnitude = max( starFaintestMagnitude + 2.0f * log10( max( random( seed, 3 ), 1e-6f ) ), starBrightestMagnitude );
+	const float illuminance = pow( 10.0f, -0.4f * ( magnitude + 14.18f ) );
+	const float sigma = 0.6f;	// пикселя
+	const float spot = exp( -0.5f * distancePixels * distancePixels / ( sigma * sigma ) ) / ( 2.0f * atmospherePi * sigma * sigma );
+	return starColor( random( seed, 4 ) ) * illuminance * spot / ( pixelAngle * pixelAngle );
+}
+
+// Диск луны: шар, освещённый солнцем (фаза и терминатор — сами), альбедо — карта NASA по селенографическим координатам;
+// север луны — к северному полюсу мира на небе. Ломмель — Зелигер (μ₀ / (μ₀ + μ)): полная луна — ровный диск без
+// потемнения к краю, как настоящая
+float3 moonLight( float3 direction )
+{
+	const float3 toMoon = g_moonDirection;
+	const float cosAngle = dot( direction, toMoon );
+	const float sinRadius = sin( g_moonAngularRadius );
+	if( cosAngle < cos( g_moonAngularRadius * 1.05f ) )
+		return 0.0f;
+
+	float3 north = g_equatorialZ - toMoon * dot( g_equatorialZ, toMoon );
+	north = dot( north, north ) > 1e-8f ? normalize( north ) : float3( 0.0f, 1.0f, 0.0f );
+	const float3 west = cross( north, toMoon );
+	const float3 offset = direction - toMoon * cosAngle;
+	const float2 disk = float2( dot( offset, west ), dot( offset, north ) ) / sinRadius;
+	const float r2 = dot( disk, disk );
+	const float coverage = 1.0f - smoothstep( 0.97f, 1.0f, sqrt( r2 ) );
+	if( coverage <= 0.0f )
+		return 0.0f;
+
+	// Нормаль поверхности луны к наблюдателю; селенографическая долгота растёт к западу неба (море Кризисов — справа)
+	const float3 normal = disk.x * west + disk.y * north - sqrt( saturate( 1.0f - r2 ) ) * toMoon;
+	const float latitude = asin( clamp( dot( normal, north ), -1.0f, 1.0f ) );
+	const float longitude = atan2( dot( normal, west ), dot( normal, -toMoon ) );
+	const float2 uv = float2( 0.5f + longitude / ( 2.0f * atmospherePi ), 0.5f - latitude / atmospherePi );
+	uint width, height, mips;
+	g_moonAlbedo.GetDimensions( 0, width, height, mips );
+	// Альбедо относительно среднего по карте (последний мип): яркость задаёт освещённость, карта — только узор
+	const float3 albedo = g_moonAlbedo.SampleLevel( g_SamplerLinearWrap, uv, 0.0f ).rgb /
+						  max( g_moonAlbedo.SampleLevel( g_SamplerLinearWrap, float2( 0.5f, 0.5f ), mips - 1 ).rgb, 1e-3f );
+
+	const float incidence = saturate( dot( normal, g_sunDirection ) );
+	const float emission = saturate( -dot( normal, toMoon ) );
+	const float lommelSeeliger = incidence / max( incidence + emission, 1e-4f );
+	// Полная луна: μ₀ = μ, ровно 1/2 по диску — отсюда множитель 2 к яркости полного диска
+	return g_moonDiskLuminance * albedo * ( 2.0f * lommelSeeliger ) * coverage;
+}
 
 float4 main( PixelInputType input ) : SV_TARGET
 {
@@ -29,16 +169,28 @@ float4 main( PixelInputType input ) : SV_TARGET
 	// Небо запечено для солнца 1 лк над атмосферой: яркость, кд/м², — умножением на освещённость от солнца
 	float3 color = skyLuminance( direction );
 
-	// Диск: яркость над атмосферой = освещённость / телесный угол, с мягким краем, и пропускание атмосферы по лучу
-	// взгляда — как свет солнца у земли (SkyAtmosphere::sunTransmittance): на закате диск красный, под горизонтом
-	// его закрывает земля (пропускание 0). Считается только для пикселей диска
+	// Солнце, луна и звёзды — над атмосферой, у наблюдателя — с пропусканием по лучу взгляда (на закате диск
+	// красный, под горизонтом его закрывает земля — пропускание 0)
+	const float3 transmittance = transmittanceToTop( observerAltitude, direction.y );
+	float3 lights = 0.0f;
+
+	// Диск солнца: яркость над атмосферой = освещённость / телесный угол, с мягким краем. Только для пикселей диска
 	float angle = acos( saturate( dot( direction, g_sunDirection ) ) );
 	float disk = 1.0f - smoothstep( sunAngularRadius * 0.8f, sunAngularRadius, angle );
 	[branch] if( disk > 0.0f )
 	{
 		float solidAngle = atmospherePi * sunAngularRadius * sunAngularRadius;
-		color += g_sunColor / solidAngle * disk * transmittanceToTop( observerAltitude, direction.y );
+		lights += g_sunColor / solidAngle * disk;
 	}
 
-	return float4( color * cb_skyLightScale * preExposure(), 1.0f );
+	[branch] if( any( g_moonDiskLuminance > 0.0f ) )
+		lights += moonLight( direction );
+
+	// Размер пикселя в радианах — до ветвления: производные внутри него не определены
+	const float pixelAngle = max( max( length( ddx( direction ) ), length( ddy( direction ) ) ), 1e-6f );
+	[branch] if( g_starIlluminanceScale > 0.0f && direction.y > -0.05f )
+		lights += starLight( direction, pixelAngle ) * g_starIlluminanceScale;
+
+	color += lights * transmittance;
+	return float4( color * cb_skyScale * preExposure(), 1.0f );
 }

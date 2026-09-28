@@ -1,6 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Таблица Sky-View (Shaders/sky_view.sh): яркость неба вокруг наблюдателя по направлению — луч до края атмосферы или
-// до земли, 32 шага (integrateScattering). Каждый кадр, класс SkyAtmosphere
+// Таблица Sky-View (Shaders/sky_view.sh): яркость неба вокруг наблюдателя по направлению от одного светила —
+// g_skyViewLight: 0 — солнце, 1 — луна; луч до края атмосферы или до земли, 32 шага (integrateScattering). Каждый
+// кадр, класс SkyAtmosphere
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "sky_view.sh"
@@ -13,6 +14,8 @@ struct PixelInputType
 
 float4 main( PixelInputType input ) : SV_TARGET
 {
-	const AtmosphereSample sample = traceAtmosphere( skyViewLutDirection( input.uv ), 32 );
-	return float4( sample.luminance * g_skyIntensity * g_sunColor, 1.0f );
+	const bool moon = g_skyViewLight == 1;
+	const float3 direction = skyViewLutDirection( input.uv, moon ? g_moonDirection : g_sunDirection );
+	const AtmosphereSample sample = traceAtmosphere( direction, 32, moon ? 0.0f : g_sunColor, moon ? g_moonColor : 0.0f );
+	return float4( sample.luminance * g_skyIntensity, 1.0f );
 }

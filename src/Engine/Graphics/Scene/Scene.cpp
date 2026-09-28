@@ -190,8 +190,11 @@ void Scene::updateLights( float seconds )
 	XMFLOAT3 toSun;
 	XMFLOAT3 color;
 	m_lightDriver.directionalLight( toSun, color );
-	// У панорамы атмосферы нет: свет солнца у земли такой, как задан
-	m_lightDriver.setSunTransmittance( m_useHDRI ? XMFLOAT3( 1.0f, 1.0f, 1.0f ) : m_atmosphere.sunTransmittance( toSun ) );
+	// У панорамы атмосферы нет: свет солнца у земли такой, как задан. Луна — второе светило атмосферы, то же пропускание
+	m_lightDriver.setAtmosphereTransmittance( 0, m_useHDRI ? XMFLOAT3( 1.0f, 1.0f, 1.0f ) : m_atmosphere.sunTransmittance( toSun ) );
+	XMFLOAT3 toMoon;
+	if( m_lightDriver.moonLight( toMoon, color ) )
+		m_lightDriver.setAtmosphereTransmittance( 1, m_useHDRI ? XMFLOAT3( 1.0f, 1.0f, 1.0f ) : m_atmosphere.sunTransmittance( toMoon ) );
 }
 
 bool Scene::hasAtmosphere() const
@@ -199,9 +202,20 @@ bool Scene::hasAtmosphere() const
 	return !m_useHDRI;
 }
 
-float Scene::skyLightScale()
+float Scene::aerialPerspectiveScale()
+{
+	return m_useHDRI ? 0.0f : skyScale() * m_atmosphere.skyNormalization();
+}
+
+float Scene::skyScale()
 {
 	return m_useHDRI ? m_hdri.intensity() : m_lightDriver.sunIlluminance();
+}
+
+float Scene::skyLightScale()
+{
+	// Результат SkyLight хранит свет, делённый на нормировку своего пересчёта
+	return skyScale() * m_skyLight.normalization();
 }
 
 void Scene::update( const FrameContext& frame )

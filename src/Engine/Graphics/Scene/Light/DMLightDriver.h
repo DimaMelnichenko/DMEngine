@@ -11,8 +11,10 @@
 
 // Источники света уровня (таблица LevelLights): буфер для шейдеров (g_lights в Shaders/lighting.sh) и окно GUI
 // «Lights» — по подокну на источник. Направленные стоят первыми, солнце — первый включённый из них: по нему считаются
-// небо и каскадные тени. Направление первого направленного может задавать время суток (SunPosition), а свет солнца
-// у земли — атмосфера (setSunTransmittance). Буфер загружается на GPU, только когда источники изменились
+// небо и каскадные тени. Луна — направленный с atmosphereSunLightIndex 1 (второе светило атмосферы, как в UE). Время
+// суток (SunPosition) задаёт направление солнца и направление и освещённость луны, свет светил у земли — атмосфера
+// (setAtmosphereTransmittance). Тени — от солнца, а когда оно под горизонтом — от луны (shadowLight). Буфер
+// загружается на GPU, только когда источники изменились
 class DMLightDriver
 {
 public:
@@ -29,19 +31,20 @@ public:
 	// Раз за кадр до отрисовки: значения из GUI — в источники, время суток — в направление солнца
 	// seconds — реальное время кадра: с ним идёт время суток (SunPosition::advance)
 	void update( float seconds = 0.0f );
-	// Пропускание атмосферы от земли к солнцу (SkyAtmosphere::sunTransmittance) — после update(): на него умножается
-	// свет солнца с atmosphereSunLight
-	void setSunTransmittance( const XMFLOAT3& transmittance );
+	// Пропускание атмосферы от земли к светилу index (0 — солнце, 1 — луна; SkyAtmosphere::sunTransmittance) — после
+	// update(): на него умножается свет светила с atmosphereSunLight
+	void setAtmosphereTransmittance( int index, const XMFLOAT3& transmittance );
 	// Упаковка буфера источников, на GPU — если он изменился, и в слот; возвращает число источников в буфере
 	uint32_t setBuffer( int8_t slot, SRVType type );
 	// Солнце — первый включённый направленный источник: направление на свет (нормированное) и яркость над
 	// атмосферой. Включённых источников нет — запасной свет, как в setBuffer; есть, но не направленные — яркость 0 (ночь)
 	void directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) const;
-	// Индекс солнца в буфере источников (g_lights в шейдерах) или −1, если направленного нет. Направленные
-	// в буфере первыми, поэтому солнце — 0; оно же и в directionalLight()
-	int sunLightIndex() const;
-	// Настройки теней солнца; castShadows = false, если солнца нет
-	DMLight::ShadowSettings sunShadows() const;
+	// Луна — включённый направленный с atmosphereSunLightIndex 1: направление на неё и яркость над атмосферой;
+	// false — луны у уровня нет
+	bool moonLight( XMFLOAT3& direction, XMFLOAT3& color ) const;
+	// Источник каскадных теней: солнце, пока оно над горизонтом, иначе луна над горизонтом; у него — тени. Индекс в
+	// буфере источников (−1 — теней нет), направление на него и настройки каскадов
+	int shadowLight( XMFLOAT3& direction, DMLight::ShadowSettings& settings ) const;
 	// Освещённость от солнца над атмосферой, лк (яркость его цвета × интенсивность): на неё умножаются запечённые
 	// для солнца 1 лк небо и освещение окружением (cb_skyLightScale)
 	float sunIlluminance() const;
@@ -59,7 +62,15 @@ private:
 	// Направление запасного света, когда источников нет
 	static XMFLOAT3 fallbackDirection();
 	const DMLight* sun() const;
-	// Цвет солнца в буфере: яркость, у земли — с пропусканием атмосферы
+	const DMLight* moon() const;
+	// Источники буфера по порядку: включённые, кроме светила атмосферы, свет которого у земли меньше
+	// negligibleFraction от самого яркого из них (днём — луна, ночью — солнце под горизонтом): каждый источник в буфере
+	// шейдеры освещения считают в каждом пикселе
+	std::vector<const DMLight*> bufferLights() const;
+	// Номер источника в буфере; −1 — не попал в буфер
+	int bufferIndex( const DMLight* light ) const;
+	static constexpr float negligibleFraction = 1e-5f;
+	// Цвет светила атмосферы в буфере: яркость, у земли — с пропусканием атмосферы к нему
 	XMFLOAT3 sunRadiance( const DMLight& light ) const;
 	void createProperties( const DMLight& light, uint32_t index );
 
@@ -74,7 +85,8 @@ private:
 	PropertyContainer m_properties;
 	std::unique_ptr<SunPosition> m_sunPosition;
 	int m_sunPositionLight = -1;	// источник, направление которого задаёт m_sunPosition: первый направленный
-	XMFLOAT3 m_sunTransmittance = { 1.0f, 1.0f, 1.0f };
+	int m_moonPositionLight = -1;	// луна, которую ведёт m_sunPosition: направленный с atmosphereSunLightIndex 1
+	XMFLOAT3 m_atmosphereTransmittance[2] = { { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f } };
 
 	// Раскладка — struct Light в Shaders/lighting.sh
 	struct alignas( 16 ) LightBuffer

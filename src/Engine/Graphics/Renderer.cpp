@@ -113,6 +113,9 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 			object->compute( frame );
 		}
 	} );
+	// Пересчёт освещения окружением мог закончиться в compute неба: масштаб — по показанному результату
+	pipeline().shaderConstant().setSkyLightScale( scene.skyLightScale() );
+	pipeline().shaderConstant().setViewBuffer( frame.view );
 
 	const bool depthPrepass = m_properties["Depth prepass"].data<bool>();
 	const auto collectStart = std::chrono::high_resolution_clock::now();
@@ -126,7 +129,9 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 
 	DMD3D::instance().BeginScene( 0.004f, 0.004f, 0.004f, 1.0f );
 	// Карта теней — пиксельным шейдерам проходов сцены (после рисования в неё и смены цели)
-	m_shadows.bindForReceivers( scene.lights().sunLightIndex() );
+	XMFLOAT3 toShadowLight;
+	DMLight::ShadowSettings shadowSettings;
+	m_shadows.bindForReceivers( scene.lights().shadowLight( toShadowLight, shadowSettings ) );
 
 	// Базовое состояние кадра; объекты меняют его только в своей области видимости
 	const RasterState frameRaster = wireframe ? RasterState::wireframe : RasterState::solid;
@@ -294,7 +299,8 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS, SRVType::ps );
 	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры)
 	// Масштаб неба и освещения окружением; воздушная перспектива — только у атмосферы
-	pipeline().shaderConstant().beginFrame( lightCount, scene.skyLightScale(), scene.hasAtmosphere() ? frame.view.farPlane : 0.0f );
+	pipeline().shaderConstant().beginFrame( lightCount, scene.skyLightScale(), scene.skyScale(),
+											 scene.hasAtmosphere() ? frame.view.farPlane : 0.0f, scene.aerialPerspectiveScale() );
 	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
 	m_postProcess.bindExposure();
 	pipeline().shaderConstant().setViewBuffer( frame.view );
@@ -396,7 +402,10 @@ void Renderer::buildShadowCommands()
 
 void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 {
-	if( !m_shadows.update( frame.view, scene.lights().sunShadows(), frame.toSun, scene.bounds() ) )
+	XMFLOAT3 toShadowLight;
+	DMLight::ShadowSettings shadowSettings;
+	scene.lights().shadowLight( toShadowLight, shadowSettings );
+	if( !m_shadows.update( frame.view, shadowSettings, frame.toShadowLight, scene.bounds() ) )
 		return;
 
 	const auto start = std::chrono::high_resolution_clock::now();

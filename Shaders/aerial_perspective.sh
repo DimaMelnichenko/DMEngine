@@ -30,8 +30,9 @@ float3 applyAerialPerspective( float3 color, float3 position )
 	// Ближе первого слоя — к «воздуха нет» у самой камеры
 	air = lerp( float4( 0.0f, 0.0f, 0.0f, 1.0f ), air, saturate( slice ) );
 
-	// Рассеянный свет запечён для солнца 1 лк, как небо: яркость — умножением на освещённость от солнца (cb_skyLightScale)
-	return color * air.a + air.rgb * cb_skyLightScale;
+	// Рассеянный свет запечён для солнца 1 лк, как небо, и нормирован на яркость неба кадра: яркость — умножением на
+	// освещённость от солнца и нормировку (cb_aerialPerspectiveScale)
+	return color * air.a + air.rgb * cb_aerialPerspectiveScale;
 }
 
 #endif

@@ -15,7 +15,9 @@
 
 #include "samplers.sh"
 
-// Раскладка — SkyAtmosphere::Parameters
+// Раскладка — SkyAtmosphere::Parameters. Небо запекается для солнца 1 лк над атмосферой (на освещённость от солнца
+// умножают при выборке — cb_skyLightScale), поэтому луна и ночное свечение здесь — в тех же единицах: их яркость,
+// делённая на освещённость от солнца (~10⁻⁶ и ~10⁻⁹; таблицы неба — во float32)
 cbuffer SkyParameters : register( SLOT_CB_PASS )
 {
 	float3 g_sunDirection;	// направление на солнце
@@ -24,6 +26,10 @@ cbuffer SkyParameters : register( SLOT_CB_PASS )
 	float  g_haze;			// множитель плотности аэрозоля (Ми): больше — дымка у горизонта и ореол вокруг солнца
 	float3 g_groundAlbedo;
 	int    g_face;			// грань cubemap неба: 0…5 — +X, −X, +Y, −Y, +Z, −Z (cubeDirection)
+	float3 g_moonDirection;	// направление на луну — второе светило атмосферы (Atmosphere Sun Light Index 1)
+	float  g_nightSkyLuminance;	// свечение ночного неба в зените
+	float3 g_moonColor;		// свет луны над атмосферой; 0 — луны нет
+	int    g_skyViewLight;	// какую таблицу Sky-View считает проход: 0 — солнца, 1 — луны
 };
 
 static const float atmospherePi = 3.14159265f;
@@ -178,21 +184,31 @@ float3 multipleScattering( float height, float sunCosZenith )
 
 struct AtmosphereSample
 {
-	float3 luminance;		// рассеянный к наблюдателю свет на единицу освещённости от солнца
+	float3 luminance;		// рассеянный к наблюдателю свет светил (с их цветом, в единицах запекания)
 	float3 transmittance;	// пропускание вдоль луча взгляда
 	bool hitsGround;
 };
 
-// Отрезок луча взгляда от start до end метров из origin (samples шагов): рассеянный к наблюдателю свет
-// прибавляется к luminance — с пропусканием от наблюдателя до начала отрезка, transmittance умножается на
-// пропускание отрезка. На единицу освещённости от солнца. Так считаются и небо вокруг наблюдателя (traceAtmosphere,
-// Shaders/sky_view.ps), и воздушная перспектива по отрезкам до слоёв объёма (Shaders/aerial_perspective.cs)
-void integrateScattering( float3 origin, float3 direction, float start, float end, int samples,
-						  inout float3 luminance, inout float3 transmittance )
+// Однократное и многократное (изотропное, из таблицы) рассеяние света светила в точке на высоте height
+float3 scatteredLight( Medium medium, float height, float3 up, float3 lightDirection, float cosTheta )
 {
-	const float cosTheta = dot( direction, g_sunDirection );
-	const float rayleighPhase = phaseRayleigh( cosTheta );
-	const float miePhase = phaseMie( cosTheta );
+	const float cosZenith = dot( up, lightDirection );
+	return ( medium.rayleigh * phaseRayleigh( cosTheta ) + medium.mie * phaseMie( cosTheta ) ) * transmittanceToTop( height, cosZenith ) +
+		   medium.scattering * multipleScattering( height, cosZenith );
+}
+
+// Отрезок луча взгляда от start до end метров из origin (samples шагов): рассеянный к наблюдателю свет солнца
+// (sunColor) и луны (moonColor; 0 — не считается) прибавляется к luminance — с пропусканием от наблюдателя до начала
+// отрезка, transmittance умножается на пропускание отрезка. Так считаются и небо вокруг наблюдателя
+// (traceAtmosphere, Shaders/sky_view.ps — по светилу на таблицу), и воздушная перспектива по отрезкам до слоёв
+// объёма (Shaders/aerial_perspective.cs — оба светила)
+void integrateScattering( float3 origin, float3 direction, float start, float end, int samples, float3 sunColor,
+						  float3 moonColor, inout float3 luminance, inout float3 transmittance )
+{
+	const float sunCosTheta = dot( direction, g_sunDirection );
+	const float moonCosTheta = dot( direction, g_moonDirection );
+	const bool sun = any( sunColor > 0.0f );
+	const bool moon = any( moonColor > 0.0f );
 
 	const float stepLength = ( end - start ) / samples;
 	[loop] for( int i = 0; i < samples; ++i )
@@ -200,13 +216,14 @@ void integrateScattering( float3 origin, float3 direction, float start, float en
 		float3 position = origin + direction * ( start + stepLength * ( i + 0.5f ) );
 		float radius = length( position );
 		float height = radius - planetRadius;
-		float sunCosZenith = dot( position / radius, g_sunDirection );
+		float3 up = position / radius;
 		Medium medium = atmosphereMedium( height );
 
-		// Однократное рассеяние солнца и многократное (изотропное, из таблицы)
-		float3 sunTransmittance = transmittanceToTop( height, sunCosZenith );
-		float3 scattered = ( medium.rayleigh * rayleighPhase + medium.mie * miePhase ) * sunTransmittance +
-						   medium.scattering * multipleScattering( height, sunCosZenith );
+		float3 scattered = 0.0f;
+		[branch] if( sun )
+			scattered += sunColor * scatteredLight( medium, height, up, g_sunDirection, sunCosTheta );
+		[branch] if( moon )
+			scattered += moonColor * scatteredLight( medium, height, up, g_moonDirection, moonCosTheta );
 
 		// Аналитический интеграл по отрезку при постоянной среде (Hillaire 2015): не теряет энергию на длинных шагах
 		float3 segmentTransmittance = exp( -medium.extinction * stepLength );
@@ -216,7 +233,7 @@ void integrateScattering( float3 origin, float3 direction, float start, float en
 }
 
 // Луч взгляда наблюдателя на высоте observerAltitude до края атмосферы или до земли
-AtmosphereSample traceAtmosphere( float3 direction, int samples )
+AtmosphereSample traceAtmosphere( float3 direction, int samples, float3 sunColor, float3 moonColor )
 {
 	AtmosphereSample result = (AtmosphereSample)0;
 	const float3 origin = float3( 0.0f, planetRadius + observerAltitude, 0.0f );
@@ -229,7 +246,7 @@ AtmosphereSample traceAtmosphere( float3 direction, int samples )
 
 	float3 transmittance = 1.0f;
 	float3 luminance = 0.0f;
-	integrateScattering( origin, direction, 0.0f, pathLength, samples, luminance, transmittance );
+	integrateScattering( origin, direction, 0.0f, pathLength, samples, sunColor, moonColor, luminance, transmittance );
 
 	result.luminance = luminance;
 	result.transmittance = transmittance;

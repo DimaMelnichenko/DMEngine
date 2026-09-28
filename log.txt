@@ -4,8 +4,7 @@
 				Initialize logger
 
 
-func:DMD3D::createDeviceSwapChain, line:258|D3D11 debug layer is enabled, its messages are written to this log
-func:GS::DMGraphics::Initialize, line:64|Initialize the Direct3D object ms: 217.385000
+func:GS::DMGraphics::Initialize, line:64|Initialize the Direct3D object ms: 215.227000
 func:GS::CustomTexture::generateTexture, line:64|Inputs correct
 func:GS::Scene::loadResources, line:23|Load materials
 func:LibraryLoader::loadMaterial, line:87|Load material: 1
@@ -30,98 +29,98 @@ func:LibraryLoader::loadShader, line:218|Load shader: Shaders\PBRLit.ps
 func:LibraryLoader::loadMaterial, line:87|Load material: 12
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\LightShader.vs
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\PBRLit.ps
-func:GS::Scene::loadResources, line:27|Load material for ms: 324.991000
+func:GS::Scene::loadResources, line:27|Load material for ms: 517.942000
 func:GS::Scene::loadResources, line:31|Level: Test
 func:GS::Scene::loadResources, line:33|Load models
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 1
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 1
 func:LibraryLoader::loadMesh, line:232|Load mesh: 1
 func:GS::MeshStorage::load, line:243|Can`t load mesh from file: Meshes\box.bin
 func:LibraryLoader::loadMesh, line:251|Mesh 1 is not loaded, placeholder box is used
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 8
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 8
 func:LibraryLoader::loadMesh, line:232|Load mesh: 2
 func:GS::MeshStorage::load, line:243|Can`t load mesh from file: Meshes\Sphere36.bin
 func:LibraryLoader::loadMesh, line:251|Mesh 2 is not loaded, placeholder sphere is used
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 9
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 9
 func:LibraryLoader::loadMesh, line:232|Load mesh: 12
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 10
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 10
 func:LibraryLoader::loadMesh, line:232|Load mesh: 13
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 12
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 13
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 14
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 15
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 16
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 17
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 18
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 19
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 20
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 21
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 22
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 12
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 13
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 14
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 15
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 16
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 17
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 18
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 19
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 20
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 21
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 22
 func:LibraryLoader::loadMesh, line:232|Load mesh: 14
 func:LibraryLoader::loadMesh, line:232|Load mesh: 15
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 23
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 23
 func:LibraryLoader::loadMesh, line:232|Load mesh: 16
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 24
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 24
 func:LibraryLoader::loadMesh, line:232|Load mesh: 17
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 25
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 25
 func:LibraryLoader::loadMesh, line:232|Load mesh: 18
 func:LibraryLoader::loadMesh, line:232|Load mesh: 19
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 30
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 30
 func:LibraryLoader::loadMesh, line:232|Load mesh: 30
 func:LibraryLoader::loadMesh, line:232|Load mesh: 31
 func:LibraryLoader::loadMesh, line:232|Load mesh: 32
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 29
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 29
 func:LibraryLoader::loadMesh, line:232|Load mesh: 27
 func:LibraryLoader::loadMesh, line:232|Load mesh: 28
 func:LibraryLoader::loadMesh, line:232|Load mesh: 29
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 31
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 31
 func:LibraryLoader::loadMesh, line:232|Load mesh: 33
 func:LibraryLoader::loadMesh, line:232|Load mesh: 34
 func:LibraryLoader::loadMesh, line:232|Load mesh: 35
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 33
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 33
 func:LibraryLoader::loadMesh, line:232|Load mesh: 39
 func:LibraryLoader::loadMesh, line:232|Load mesh: 40
 func:LibraryLoader::loadMesh, line:232|Load mesh: 41
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 36
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 36
 func:LibraryLoader::loadMesh, line:232|Load mesh: 48
 func:LibraryLoader::loadMesh, line:232|Load mesh: 49
 func:LibraryLoader::loadMesh, line:232|Load mesh: 50
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 34
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 34
 func:LibraryLoader::loadMesh, line:232|Load mesh: 42
 func:LibraryLoader::loadMesh, line:232|Load mesh: 43
 func:LibraryLoader::loadMesh, line:232|Load mesh: 44
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 35
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 35
 func:LibraryLoader::loadMesh, line:232|Load mesh: 45
 func:LibraryLoader::loadMesh, line:232|Load mesh: 46
 func:LibraryLoader::loadMesh, line:232|Load mesh: 47
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 37
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 37
 func:LibraryLoader::loadMesh, line:232|Load mesh: 51
 func:LibraryLoader::loadMesh, line:232|Load mesh: 52
 func:LibraryLoader::loadMesh, line:232|Load mesh: 53
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 38
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 38
 func:LibraryLoader::loadMesh, line:232|Load mesh: 54
 func:LibraryLoader::loadMesh, line:232|Load mesh: 55
 func:LibraryLoader::loadMesh, line:232|Load mesh: 56
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 39
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 39
 func:LibraryLoader::loadMesh, line:232|Load mesh: 57
 func:LibraryLoader::loadMesh, line:232|Load mesh: 58
 func:LibraryLoader::loadMesh, line:232|Load mesh: 59
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 40
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 40
 func:LibraryLoader::loadMesh, line:232|Load mesh: 60
 func:LibraryLoader::loadMesh, line:232|Load mesh: 61
 func:LibraryLoader::loadMesh, line:232|Load mesh: 62
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 41
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 41
 func:LibraryLoader::loadMesh, line:232|Load mesh: 63
 func:LibraryLoader::loadMesh, line:232|Load mesh: 64
 func:LibraryLoader::loadMesh, line:232|Load mesh: 65
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 42
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 42
 func:LibraryLoader::loadMesh, line:232|Load mesh: 66
 func:LibraryLoader::loadMesh, line:232|Load mesh: 67
 func:LibraryLoader::loadMesh, line:232|Load mesh: 68
-func:LibraryLoader::loadModelWithLOD, line:707|Load model: 43
+func:LibraryLoader::loadModelWithLOD, line:710|Load model: 43
 func:LibraryLoader::loadMesh, line:232|Load mesh: 69
 func:LibraryLoader::loadMesh, line:232|Load mesh: 70
 func:LibraryLoader::loadMesh, line:232|Load mesh: 71
-func:GS::Scene::loadResources, line:56|Load models for ms: 35.191000
+func:GS::Scene::loadResources, line:56|Load models for ms: 15.157000
 func:GS::Scene::loadResources, line:58|Load textures
 func:LibraryLoader::loadAllTextures, line:25|Load all textures
 func:LibraryLoader::loadTextures, line:53|Can`t load texture no_image (no_image.dds), placeholder is used
@@ -147,34 +146,29 @@ func:LibraryLoader::loadTextures, line:57|Load texture for ms: 3; id = 28, name 
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_normal (materials\blocksrough_normal_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_height (materials\blocksrough_height_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 45, name = mask_pebbles, file = terrain\mask_pebbles.dds
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 231; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 226; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 55; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 51; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 48, name = test_models_PanelNormal, file = models\test_models\PanelNormal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 4; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 62; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 977; id = 51, name = grass_medium_01_grass_medium_01_BaseColor, file = models\grass_medium_01\grass_medium_01_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 95; id = 52, name = grass_medium_01_grass_medium_01_MetallicRoughness, file = models\grass_medium_01\grass_medium_01_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 133; id = 53, name = grass_medium_01_grass_medium_01_Normal, file = models\grass_medium_01\grass_medium_01_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 969; id = 54, name = dandelion_01_dandelion_01_BaseColor, file = models\dandelion_01\dandelion_01_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 94; id = 55, name = dandelion_01_dandelion_01_MetallicRoughness, file = models\dandelion_01\dandelion_01_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 111; id = 56, name = dandelion_01_dandelion_01_Normal, file = models\dandelion_01\dandelion_01_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 955; id = 57, name = rock_moss_set_01_rock_moss_set_01_BaseColor, file = models\rock_moss_set_01\rock_moss_set_01_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 87; id = 58, name = rock_moss_set_01_rock_moss_set_01_MetallicRoughness, file = models\rock_moss_set_01\rock_moss_set_01_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 130; id = 59, name = rock_moss_set_01_rock_moss_set_01_Normal, file = models\rock_moss_set_01\rock_moss_set_01_Normal.png
-func:GS::Scene::loadResources, line:70|Load textures for ms: 4099.805000
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 1; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 15; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 219; id = 51, name = grass_medium_01_grass_medium_01_BaseColor, file = models\grass_medium_01\grass_medium_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 91; id = 52, name = grass_medium_01_grass_medium_01_MetallicRoughness, file = models\grass_medium_01\grass_medium_01_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 130; id = 53, name = grass_medium_01_grass_medium_01_Normal, file = models\grass_medium_01\grass_medium_01_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 219; id = 54, name = dandelion_01_dandelion_01_BaseColor, file = models\dandelion_01\dandelion_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 89; id = 55, name = dandelion_01_dandelion_01_MetallicRoughness, file = models\dandelion_01\dandelion_01_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 105; id = 56, name = dandelion_01_dandelion_01_Normal, file = models\dandelion_01\dandelion_01_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 215; id = 57, name = rock_moss_set_01_rock_moss_set_01_BaseColor, file = models\rock_moss_set_01\rock_moss_set_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 81; id = 58, name = rock_moss_set_01_rock_moss_set_01_MetallicRoughness, file = models\rock_moss_set_01\rock_moss_set_01_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 124; id = 59, name = rock_moss_set_01_rock_moss_set_01_Normal, file = models\rock_moss_set_01\rock_moss_set_01_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 37; id = 60, name = moon_albedo, file = sky\moon\lroc_color_poles_1k.jpg
+func:GS::Scene::loadResources, line:70|Load textures for ms: 1457.567000
 func:GS::DMGraphics::Initialize, line:90|Create main camera
 func:GS::Scene::initialize, line:77|Create light driver
-func:DMLightDriver::load, line:75|Sun position: elevation 35.269276, azimuth 135.141678
+func:DMLightDriver::load, line:76|Sun position: elevation 35.269276, azimuth 135.141678
+func:DMLightDriver::load, line:88|Moon: elevation 12.302816, azimuth 205.258469, illuminated 0.299969, 0.009111 lx
+func:DMLightDriver::load, line:97|Moon check (Meeus 47.a: 133.16, -3.23, 368410): 133.252563, -3.248484, 368334.656250
 func:GS::CDLODTerrain::initialize, line:110|CDLOD terrain: heightmap 1024, LOD levels 6
-func:GS::Scene::initialize, line:120|Terrain init ms: 592.284000
-func:GS::Scene::initialize, line:164|Scatter init ms: 95.723000
-func:GS::DMGraphics::Initialize, line:128|Total init ms: 6167.493000
-func:GS::RemoteControlServer::start, line:54|Remote control: listening on \\.\pipe\DMEngine
-func:GS::RemoteControlServer::poll, line:78|Remote control: set "Lights/Sun position/Time scale" 3600
-func:GS::RemoteControlServer::poll, line:78|Remote control: wait 60
-func:GS::RemoteControlServer::poll, line:78|Remote control: quit
-
-
-Close logger
-
-<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+func:GS::Scene::initialize, line:120|Terrain init ms: 618.798000
+func:GS::Scene::initialize, line:164|Scatter init ms: 246.998000
+func:GS::DMGraphics::Initialize, line:128|Total init ms: 4271.554000
+func:GS::Renderer::logGpuAverage, line:200|GPU average over 1880 frames, ms: frame 1.493; preparePipeline 0.000; Compute Pass 0.203; Shadow depths 0.369; Shadow cascade 0 0.030; Shadow cascade 1 0.032; Shadow cascade 2 0.089; Shadow cascade 3 0.158; Pass depth prepass 0.034; Pass opaque 0.477; CDLOD terrain 0.544; Models 0.111; Meadow 0.002; Debris 0.000; Pass sky 0.119; Sky atmosphere 0.119; Pass transparent 0.000; Post process 0.275; Exposure 0.098; Bloom 0.122; Tonemap 0.055; meshes 16 in 16 draws; shadow meshes 35 in 35 draws; EV100 15.06; sun 101569 lx

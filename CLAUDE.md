@@ -171,7 +171,10 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 таблицы Hillaire 2020 как в Sky Atmosphere UE5; его `compute()` идёт первым: при смене атмосферы — таблицы пропускания
 и Ψ, каждый кадр — небо вокруг камеры, Sky-View, и объём воздушной перспективы главного вида — t106; при смене солнца —
 cubemap из Sky-View в `SkyLight` — гармоники и префильтр по шагу за кадр с тремя результатами и плавным переходом
-от прежнего к новому (`blendFrames`), слоты PS t101…t103; фон
+от прежнего к новому (`blendFrames`), слоты PS t101…t103; ночью — ещё луна (вторая таблица Sky-View), звёзды и
+свечение ночного неба; то, что читает каждый пиксель (объём, префильтр), — half-float с нормировкой на яркость неба,
+`SkyAtmosphere::skyNormalization`, масштабы кадра `cb_skyLightScale` / `cb_skyScale` / `cb_aerialPerspectiveScale`,
+подробно — `docs/sky.md`; фон
 из Sky-View — полноэкранный треугольник на дальней плоскости в проходе `sky`) или вместо него `HDRIBackdrop` (HDRI-панорама уровня: фон и cubemap для `SkyLight`, без воздушной перспективы),
 `SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
 растягивается до 0,9 дальней плоскости вида, `RenderView::farPlane`), `CDLODTerrain`,
@@ -213,14 +216,16 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 `inner_cone_angle` / `outer_cone_angle` — имена как в UE и KHR_lights_punctual; у направленного ещё `cast_shadows`
 и настройки каскадных теней, `atmosphere_sun_light` — как Atmosphere Sun Light в UE: цвет и интенсивность над
 атмосферой, у земли × пропускание по лучу к солнцу, `SkyAtmosphere::sunTransmittance` на CPU по общим с HLSL параметрам
-`Shaders/atmosphere_constants.h`; первый включённый направленный — солнце для неба и теней; `intensity` направленного —
+`Shaders/atmosphere_constants.h`; первый включённый направленный — солнце для неба и теней; луна — направленный с
+`atmosphere_sun_light_index` 1 (второе светило атмосферы: положение, фаза и освещённость по дате — `SunPosition::moon`,
+своя таблица Sky-View, диск с картой NASA в фоне; тени ночью — от неё, `DMLightDriver::shadowLight`); `intensity` направленного —
 люксы, точечного и прожектора — канделы, затухание — `1 / max(d², 0,01²)`), время суток — строка `SunPosition`
 (`Levels.sun_position`, как Sun Position в UE: широта, долгота, часовой пояс, `north_offset`, дата, `time_of_day`,
 `time_scale` — скорость цикла дня и ночи, время идёт само в `SunPosition::advance`, пауза — «Time paused» в GUI →
 направление первого направленного, `Light/SunPosition.h`, формулы NOAA; NULL — Pitch / Yaw солнца), небо — строка `SkyAtmosphere`
-(`Levels.atmosphere`; запекается для солнца 1 лк и умножается на `cb_skyLightScale`; там же сила воздушной перспективы)
+(`Levels.atmosphere`; запекается для солнца 1 лк и умножается на освещённость от солнца — `cb_skyScale` у фона, `cb_skyLightScale` у освещения окружением; там же сила воздушной перспективы)
 или панорама — строка `HDRIBackdrop` (`Levels.hdri_backdrop`: файл, `intensity` — кд/м² на единицу панорамы, она же
-`cb_skyLightScale`, `rotation`, `max_luminance` — срез солнца для освещения окружением; уровень `TestHDRI`), постобработка — `PostProcessSettings`
+`cb_skyScale` и `cb_skyLightScale`, `rotation`, `max_luminance` — срез солнца для освещения окружением; уровень `TestHDRI`), постобработка — `PostProcessSettings`
 (`Levels.post_process`; NULL — значения по умолчанию). В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
 вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Post process»; кнопка «Save level environment»
 (`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
@@ -284,7 +289,7 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 Карта — `Texture2DArray` D32 2048², растеризатор `RasterState::csmShadowDepth` (без отсечения граней и по глубине,
 наклонное смещение). Отбрасывают тень меши с `castsShadow` материалов с `depthPhaseFor` (у `PBR` — вершинный шейдер
 «только глубина», `DEPTH_ONLY` в `LightShader.vs`: позиция и UV, позиция `precise`; Masked — ещё `mainDepth` в `PBRLit.ps`) и свои вызовы с битом `csmShadowDepth` (террейн; слои расстановки с `ScatterLayers.cast_shadow` — только
-в каскады, которые задевает их кольцо, `RenderView::cascadeNear/Far`). Направление на солнце — `FrameContext::toSun`. Приём — `Shaders/shadows.sh`
+в каскады, которые задевает их кольцо, `RenderView::cascadeNear/Far`). Направление на источник теней — `FrameContext::toShadowLight`: солнце, после заката — луна (`DMLightDriver::shadowLight`: светило над горизонтом с более ярким светом у земли). Приём — `Shaders/shadows.sh`
 (каскад по глубине взгляда, смещения к солнцу и по нормали в текселях каскада, PCF 5 × 5 Castaño, смешение каскадов,
 «Show cascades»): карта t104, сэмплер сравнения s8, константы b3. Настройки — у солнца (`DMLight::ShadowSettings`,
 колонки `LevelLights`, подокно солнца в «Lights»), в окне «Shadows» — только «Show cascades», подробно — `docs/shadows.md`.

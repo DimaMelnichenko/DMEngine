@@ -35,6 +35,10 @@ public:
 	// Масштаб неба и освещения окружением (cb_skyLightScale): освещённость от солнца над атмосферой, лк, или
 	// интенсивность панорамы
 	float skyLightScale();
+	// Масштаб фона неба (cb_skyScale): освещённость от солнца над атмосферой, лк, или интенсивность панорамы
+	float skyScale();
+	// Множитель объёма воздушной перспективы (cb_aerialPerspectiveScale): cb_skyScale × нормировка объёма
+	float aerialPerspectiveScale();
 	void update( const FrameContext& frame );
 
 	const std::vector<SceneObject*>& objects() const;

@@ -9,6 +9,7 @@
 #include "D3D\CubeTarget.h"
 #include "D3D\RenderTarget.h"
 #include "Properties\PropertyContainer.h"
+#include "TextureObjects\DMTexture.h"
 
 class DMLightDriver;
 
@@ -43,7 +44,13 @@ public:
 		// Во сколько раз воздух между камерой и точкой кажется толще (Aerial Perspective View Distance Scale в UE):
 		// 1 — по модели (дымка на 1 км — несколько процентов), больше — небольшой мир выглядит как большой, 0 — выключено
 		float aerialPerspectiveViewDistanceScale = 1.0f;
+		// Свечение ночного неба в зените, кд/м²: собственное свечение атмосферы (airglow), суммарный свет звёзд и
+		// зодиакальный свет — ~2·10⁻⁴ на тёмном небе; к горизонту ярче. Видно, когда солнце и луна не светят
+		float nightSkyLuminance = 2e-4f;
 	};
+
+	// Имя карты луны в таблице Textures (NASA CGI Moon Kit); нет — ровный диск
+	static constexpr const char* moonAlbedoTexture = "moon_albedo";
 
 	SkyAtmosphere();
 
@@ -57,6 +64,11 @@ public:
 	// над атмосферой, которая доходит до земли, по каналам RGB. Как transmittanceToTop в Shaders/atmosphere.sh
 	// с дымкой из GUI; солнце под горизонтом — 0. Как GetTransmittanceAtGroundLevel в UE — на CPU, микросекунды
 	XMFLOAT3 sunTransmittance( const XMFLOAT3& toSun ) const;
+	// Нормировка того, что в половинной точности (объём воздушной перспективы, результаты SkyLight): оценка яркости неба
+	// в единицах запекания — 1 днём, в сумерках падает с высотой солнца, ночью — свет луны и ночное свечение. Там
+	// хранится свет, делённый на неё, шейдеры умножают на масштаб с ней (cb_aerialPerspectiveScale, cb_skyLightScale):
+	// ночью значения ~10⁻⁷…10⁻⁹ не пропадают
+	float skyNormalization() const;
 
 	void compute( const FrameContext& frame ) override;
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
@@ -73,13 +85,32 @@ private:
 		float haze;
 		XMFLOAT3 groundAlbedo;
 		int32_t face;
+		XMFLOAT3 moonDirection;
+		float nightSkyLuminance;	// в единицах запекания: кд/м², делённые на освещённость от солнца
+		XMFLOAT3 moonColor;			// в единицах запекания; 0 — луны нет или она ниже −10° (её свет в небе — 0)
+		int32_t skyViewLight;		// проход Sky-View: 0 — таблица солнца, 1 — луны
+	};
+
+	// Константный буфер b4 фона — NightSkyParameters в Shaders/sky_background.ps
+	struct alignas( 16 ) NightSkyParameters
+	{
+		XMFLOAT3 equatorialX;
+		float moonAngularRadius;
+		XMFLOAT3 equatorialY;
+		float starIlluminanceScale;
+		XMFLOAT3 equatorialZ;
+		float padding;
+		XMFLOAT3 moonDiskLuminance;
+		float padding2;
 	};
 
 	bool createAerialPerspectiveVolume();
 	Parameters currentParameters() const;
+	// Звёзды и диск луны для фона: экваториальный базис, размер и яркость диска — по SunPosition уровня
+	NightSkyParameters currentNightSky( const Parameters& params ) const;
 	// Таблицы, зависящие только от атмосферы: пропускание, затем Ψ по нему
 	void updateAtmosphereLuts();
-	// Небо вокруг камеры с солнцем кадра
+	// Небо вокруг камеры: таблица солнца, и луны — если она на небе
 	void updateSkyView();
 	// Cubemap неба для SkyLight из Sky-View, 6 граней и мипы
 	void renderSkyCube();
@@ -106,14 +137,17 @@ private:
 	DMComputeShader m_aerialPerspectiveShader;
 	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
 	com_unique_ptr<ID3D11Buffer> m_aerialPerspectiveConstants;	// b4 compute-прохода, AerialPerspectiveBuffer
+	com_unique_ptr<ID3D11Buffer> m_nightSkyConstants;			// b4 фона, NightSkyParameters
+	const DMTexture* m_moonAlbedo = nullptr;
 
-	// Таблицы проходов неба: t1 — Ψ, t2 — пропускание, t3 — Sky-View
+	// Таблицы проходов неба: t1 — Ψ, t2 — пропускание, t3 — Sky-View солнца, t4 — луны
 	RenderTarget m_transmittanceLut;
 	RenderTarget m_multipleScattering;
 	RenderTarget m_skyViewLut;
+	RenderTarget m_skyViewMoonLut;
 	CubeTarget m_skyCube;	// источник SkyLight
 
-	// RGB — рассеянный свет на единицу освещённости от солнца, A — среднее пропускание; слой — расстояние
+	// RGB — рассеянный свет солнца и луны в единицах запекания, A — среднее пропускание; слой — расстояние
 	com_unique_ptr<ID3D11Texture3D> m_aerialPerspective;
 	com_unique_ptr<ID3D11UnorderedAccessView> m_aerialPerspectiveUAV;
 	com_unique_ptr<ID3D11ShaderResourceView> m_aerialPerspectiveSRV;

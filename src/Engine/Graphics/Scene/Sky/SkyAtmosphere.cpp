@@ -7,6 +7,7 @@
 #include "D3D\DMD3D.h"
 #include "Light\DMLightDriver.h"
 #include "Logger\Logger.h"
+#include "System.h"
 
 namespace GS
 {
@@ -15,11 +16,21 @@ namespace
 {
 
 constexpr DXGI_FORMAT hdrFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+// Небо вокруг наблюдателя и воздушная перспектива — во float32: луна в единицах запекания (на 1 лк солнца) — ~10⁻⁶,
+// ночное свечение — ~10⁻⁹, в половинной точности это ноль
+constexpr DXGI_FORMAT skyFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
+// Луна светит в небе, пока она выше −10°: ниже её свет в атмосфере — ноль (тень Земли), таблицу луны не считаем
+constexpr float moonSkyMinSin = -0.1736f;
+constexpr float moonRadiusKm = 1737.4f;
+// Звёзды не видны, пока солнце выше горизонта: фон их не считает (~0,2 мс на кадр неба)
+constexpr float starsMaxSunSin = 0.0f;
 
 // Слоты таблиц в проходах неба (Shaders/atmosphere.sh, sky_view.sh)
 constexpr uint32_t multipleScatteringSlot = 1;
 constexpr uint32_t transmittanceSlot = 2;
 constexpr uint32_t skyViewSlot = 3;
+constexpr uint32_t skyViewMoonSlot = 4;
+constexpr uint32_t moonAlbedoSlot = 5;	// фон
 
 float luminance( const XMFLOAT3& color )
 {
@@ -62,10 +73,21 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 		!SkyLight::createSource( m_skyCube ) ||
 		!m_transmittanceLut.create( SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT, hdrFormat ) ||
 		!m_multipleScattering.create( multipleScatteringSize, multipleScatteringSize, hdrFormat ) ||
-		!m_skyViewLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, hdrFormat ) ||
+		!m_skyViewLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat ) ||
+		!m_skyViewMoonLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat ) ||
 		!createAerialPerspectiveVolume() ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_aerialPerspectiveConstants ) )
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_aerialPerspectiveConstants ) ||
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( NightSkyParameters ), m_nightSkyConstants ) )
 		return false;
+
+	// Карта луны: нет в базе — белая текстура, диск ровный
+	if( System::textures().exists( moonAlbedoTexture ) )
+		m_moonAlbedo = System::textures().get( moonAlbedoTexture ).get();
+	else
+	{
+		LOG( std::string( "Sky atmosphere: no texture " ) + moonAlbedoTexture + ", the moon disk is plain" );
+		m_moonAlbedo = System::textures().get( DMTextureStorage::whiteId ).get();
+	}
 
 	m_properties.setName( "Sky atmosphere" );
 
@@ -89,6 +111,18 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	prop->setHigh( 16.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
+	prop = m_properties.insert( "Night sky luminance (cd/m2)", settings.nightSkyLuminance );
+	prop->setLow( 0.0f );
+	prop->setHigh( 0.01f );
+	prop->setControlType( GUIControlType::DRAG );
+
+	// Во сколько раз диск луны больше настоящего (0,52°), как Source Angle у источника в UE: по умолчанию вдвое, как
+	// диск солнца (Shaders/sky_background.ps), чтобы был заметен на экране; освещённость от луны не меняется
+	prop = m_properties.insert( "Moon disk scale", 2.0f );
+	prop->setLow( 1.0f );
+	prop->setHigh( 30.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
 	return true;
 }
 
@@ -99,6 +133,7 @@ SkyAtmosphere::Settings SkyAtmosphere::settings()
 	settings.haze = m_properties["Haze"].data<float>();
 	settings.groundAlbedo = m_properties["Ground albedo"].data<float>();
 	settings.aerialPerspectiveViewDistanceScale = m_properties["Aerial perspective view distance scale"].data<float>();
+	settings.nightSkyLuminance = m_properties["Night sky luminance (cd/m2)"].data<float>();
 	return settings;
 }
 
@@ -111,7 +146,7 @@ bool SkyAtmosphere::createAerialPerspectiveVolume()
 	desc.Height = AERIAL_PERSPECTIVE_SIZE;
 	desc.Depth = AERIAL_PERSPECTIVE_DEPTH;
 	desc.MipLevels = 1;
-	desc.Format = hdrFormat;
+	desc.Format = hdrFormat;	// с нормировкой (aerialPerspectiveNormalization) — половинной точности хватает
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
 
@@ -141,7 +176,24 @@ void SkyAtmosphere::setBackgroundVisible( bool visible )
 XMFLOAT3 SkyAtmosphere::sunTransmittance( const XMFLOAT3& toSun ) const
 {
 	const XMVECTOR origin = XMVectorSet( 0.0f, ATMOSPHERE_PLANET_RADIUS + ATMOSPHERE_OBSERVER_ALTITUDE, 0.0f, 0.0f );
-	const XMVECTOR direction = XMVector3Normalize( XMLoadFloat3( &toSun ) );
+	XMVECTOR direction = XMVector3Normalize( XMLoadFloat3( &toSun ) );
+
+	// Диск (солнца и луны — оба ~0,27°) уходит за горизонт не сразу: доля диска над горизонтом наблюдателя (он ниже 0°
+	// на угол dip), линейно. Иначе свет гас бы за кадр — на закате при быстром времени это скачок всей картинки
+	constexpr float diskRadius = 0.00465f;
+	const float dip = std::acos( ATMOSPHERE_PLANET_RADIUS / ( ATMOSPHERE_PLANET_RADIUS + ATMOSPHERE_OBSERVER_ALTITUDE ) );
+	const float elevation = std::asin( std::clamp( XMVectorGetY( direction ), -1.0f, 1.0f ) );
+	const float visible = std::clamp( ( elevation + dip + diskRadius ) / ( 2.0f * diskRadius ), 0.0f, 1.0f );
+	if( visible <= 0.0f )
+		return XMFLOAT3( 0.0f, 0.0f, 0.0f );
+	// Центр под горизонтом — пропускание по лучу у самого горизонта
+	const float grazing = -dip + 1e-4f;
+	if( elevation < grazing )
+	{
+		const float horizontal = std::sqrt( std::max( 1.0f - XMVectorGetY( direction ) * XMVectorGetY( direction ), 1e-8f ) );
+		const float scale = std::cos( grazing ) / horizontal;
+		direction = XMVectorSet( XMVectorGetX( direction ) * scale, std::sin( grazing ), XMVectorGetZ( direction ) * scale, 0.0f );
+	}
 	if( raySphere( origin, direction, ATMOSPHERE_PLANET_RADIUS ).x > 0.0f )
 		return XMFLOAT3( 0.0f, 0.0f, 0.0f );
 
@@ -165,7 +217,7 @@ XMFLOAT3 SkyAtmosphere::sunTransmittance( const XMFLOAT3& toSun ) const
 		depth.y += ( rayleigh.y * rayleighDensity + mie + ozone.y * ozoneDensity ) * stepLength;
 		depth.z += ( rayleigh.z * rayleighDensity + mie + ozone.z * ozoneDensity ) * stepLength;
 	}
-	return XMFLOAT3( std::exp( -depth.x ), std::exp( -depth.y ), std::exp( -depth.z ) );
+	return XMFLOAT3( std::exp( -depth.x ) * visible, std::exp( -depth.y ) * visible, std::exp( -depth.z ) * visible );
 }
 
 SkyAtmosphere::Parameters SkyAtmosphere::currentParameters() const
@@ -184,14 +236,74 @@ SkyAtmosphere::Parameters SkyAtmosphere::currentParameters() const
 	params.haze = m_properties["Haze"].data<float>();
 	const float albedo = m_properties["Ground albedo"].data<float>();
 	params.groundAlbedo = XMFLOAT3( albedo, albedo, albedo );
+
+	// Луна и ночное свечение — в тех же единицах: яркость, делённая на освещённость от солнца (cb_skyLightScale)
+	const float bakeScale = lightLuminance > 0.0f ? 1.0f / lightLuminance : 0.0f;
+	params.nightSkyLuminance = m_properties["Night sky luminance (cd/m2)"].data<float>() * bakeScale;
+	XMFLOAT3 moonColor;
+	params.moonDirection = XMFLOAT3( 0.0f, -1.0f, 0.0f );
+	if( m_lights->moonLight( params.moonDirection, moonColor ) && params.moonDirection.y > moonSkyMinSin )
+		params.moonColor = XMFLOAT3( moonColor.x * bakeScale, moonColor.y * bakeScale, moonColor.z * bakeScale );
 	return params;
+}
+
+float SkyAtmosphere::skyNormalization() const
+{
+	const Parameters params = currentParameters();
+	// Небо от солнца: 1 днём, в сумерках — ~в 2,5 раза меньше на градус высоты (до −20°)
+	const float sunElevation = XMConvertToDegrees( std::asin( std::clamp( params.sunDirection.y, -1.0f, 1.0f ) ) );
+	const float sun = std::pow( 10.0f, 0.4f * std::clamp( sunElevation, -20.0f, 0.0f ) );
+	return std::max( { sun, luminance( params.moonColor ), params.nightSkyLuminance, 1e-12f } );
+}
+
+SkyAtmosphere::NightSkyParameters SkyAtmosphere::currentNightSky( const Parameters& params ) const
+{
+	NightSkyParameters night = {};
+	// Без места и времени — небо без поворота: полюс мира в зените
+	night.equatorialX = XMFLOAT3( 1.0f, 0.0f, 0.0f );
+	night.equatorialY = XMFLOAT3( 0.0f, 0.0f, 1.0f );
+	night.equatorialZ = XMFLOAT3( 0.0f, 1.0f, 0.0f );
+	float moonDistance = 384400.0f;
+	float fullIlluminance = 0.0f;
+	if( const SunPosition* position = m_lights->sunPosition() )
+	{
+		position->equatorialFrame( night.equatorialX, night.equatorialY, night.equatorialZ );
+		const SunPosition::Moon moon = position->moon();
+		moonDistance = moon.distance;
+		fullIlluminance = moon.fullIlluminance;
+	}
+
+	XMFLOAT3 sunDirection;
+	XMFLOAT3 sunColor;
+	m_lights->directionalLight( sunDirection, sunColor );
+	const float sunIlluminance = luminance( sunColor );
+	const float bakeScale = sunIlluminance > 0.0f ? 1.0f / sunIlluminance : 0.0f;
+	night.starIlluminanceScale = sunDirection.y > starsMaxSunSin ? 0.0f : bakeScale;
+
+	// Диск луны: яркость полного диска — настоящая (освещённость от полной луны / телесный угол настоящего диска),
+	// фазу даёт освещение шара. Увеличенный диск светит той же яркостью: он только в фоне, сцену освещает источник
+	// луны, а тусклый большой диск терялся бы днём в небе. Без времени суток — освещённость источника луны
+	XMFLOAT3 toMoon;
+	XMFLOAT3 moonColor;
+	const float realRadius = std::asin( moonRadiusKm / moonDistance );
+	night.moonAngularRadius = realRadius * m_properties["Moon disk scale"].data<float>();
+	if( m_lights->moonLight( toMoon, moonColor ) )
+	{
+		const float moonLuminance = luminance( moonColor );
+		if( fullIlluminance <= 0.0f )
+			fullIlluminance = moonLuminance;
+		const float solidAngle = 3.14159265f * realRadius * realRadius;
+		const float scale = moonLuminance > 0.0f ? fullIlluminance / moonLuminance / solidAngle * bakeScale : 0.0f;
+		night.moonDiskLuminance = XMFLOAT3( moonColor.x * scale, moonColor.y * scale, moonColor.z * scale );
+	}
+	return night;
 }
 
 void SkyAtmosphere::compute( const FrameContext& )
 {
 	// Таблицы станут целями рендера: снимаем их со входов, иначе D3D отвяжет их с предупреждением
-	ID3D11ShaderResourceView* nullViews[4] = {};
-	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 4, nullViews );
+	ID3D11ShaderResourceView* nullViews[6] = {};
+	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 6, nullViews );
 
 	m_frameParams = currentParameters();
 	setParameters( m_frameParams );
@@ -219,9 +331,9 @@ void SkyAtmosphere::compute( const FrameContext& )
 	{
 		renderSkyCube();
 		if( m_environmentValid )
-			m_skyLight->beginCapture( m_skyCube );
+			m_skyLight->beginCapture( m_skyCube, skyNormalization() );
 		else
-			m_skyLight->capture( m_skyCube );
+			m_skyLight->capture( m_skyCube, skyNormalization() );
 		m_capturedFor = m_frameParams;
 		m_environmentValid = true;
 	}
@@ -251,6 +363,18 @@ void SkyAtmosphere::updateSkyView()
 	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
 	d3d.setRenderTarget( m_skyViewLut.rtv(), SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT );
 	m_skyViewShader.draw();
+
+	// Таблица луны — своя: небо от луны симметрично относительно её вертикальной плоскости, а не солнца
+	const XMFLOAT3& moonColor = m_frameParams.moonColor;
+	if( moonColor.x > 0.0f || moonColor.y > 0.0f || moonColor.z > 0.0f )
+	{
+		Parameters moonParams = m_frameParams;
+		moonParams.skyViewLight = 1;
+		setParameters( moonParams );
+		d3d.setRenderTarget( m_skyViewMoonLut.rtv(), SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT );
+		m_skyViewShader.draw();
+		setParameters( m_frameParams );
+	}
 	d3d.GetDeviceContext()->OMSetRenderTargets( 0, nullptr, nullptr );
 }
 
@@ -259,6 +383,7 @@ void SkyAtmosphere::renderSkyCube()
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
 	d3d.setSRV( SRVType::ps, skyViewSlot, m_skyViewLut.srv() );
+	d3d.setSRV( SRVType::ps, skyViewMoonSlot, m_skyViewMoonLut.srv() );
 
 	// Грани мипа 0, затем цепочка мипов (для префильтра с выборкой мипа по плотности и гармоник)
 	Parameters faceParams = m_frameParams;
@@ -284,7 +409,8 @@ void SkyAtmosphere::updateAerialPerspective()
 	context->PSSetShaderResources( SLOT_AERIAL_PERSPECTIVE, 1, &nullView );
 
 	// Раскладка — AerialPerspectiveBuffer в Shaders/aerial_perspective.cs
-	XMFLOAT4 constants( m_properties["Aerial perspective view distance scale"].data<float>(), 0.0f, 0.0f, 0.0f );
+	XMFLOAT4 constants( m_properties["Aerial perspective view distance scale"].data<float>(), 1.0f / skyNormalization(),
+						0.0f, 0.0f );
 	Device::updateResourceData<XMFLOAT4>( m_aerialPerspectiveConstants.get(), constants );
 	d3d.setConstantBuffer( SRVType::cs, 4, m_aerialPerspectiveConstants );
 	d3d.setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );	// параметры кадра — setParameters в compute()
@@ -321,8 +447,14 @@ void SkyAtmosphere::collectMeshes( const RenderView&, MeshCollector& collector )
 void SkyAtmosphere::renderCustom( const RenderContext& )
 {
 	setParameters( m_frameParams );
-	DMD3D::instance().setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
-	DMD3D::instance().setSRV( SRVType::ps, skyViewSlot, m_skyViewLut.srv() );
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
+	d3d.setSRV( SRVType::ps, skyViewSlot, m_skyViewLut.srv() );
+	d3d.setSRV( SRVType::ps, skyViewMoonSlot, m_skyViewMoonLut.srv() );
+	d3d.setSRV( SRVType::ps, moonAlbedoSlot, m_moonAlbedo->srv() );
+	NightSkyParameters night = currentNightSky( m_frameParams );
+	Device::updateResourceData<NightSkyParameters>( m_nightSkyConstants.get(), night );
+	d3d.setConstantBuffer( SRVType::ps, 4, m_nightSkyConstants );
 	// На дальней плоскости: только там, где сцена ничего не нарисовала
 	m_backgroundShader.draw( BlendState::opaque, DepthState::readOnlyNearOrEqual );
 }

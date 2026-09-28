@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Переход освещения окружением от прежнего результата SkyLight к новому: грань g_face мипа g_mip префильтра отражений —
-// смесь двух cubemap с долей g_blend. Пересчёт идёт по шагу за кадр, и без перехода при быстром времени суток свет
+// смесь двух cubemap с долями g_previousWeight и g_currentWeight. Пересчёт идёт по шагу за кадр, и без перехода при быстром времени суток свет
 // менялся бы ступеньками раз в SkyLight::captureSteps + 1 кадров. Класс SkyLight
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -13,8 +13,8 @@ cbuffer BlendParameters : register( SLOT_CB_PASS )
 {
 	int   g_face;
 	float g_mip;
-	float g_blend;		// 0 — прежний результат, 1 — новый
-	float g_blendPadding;
+	float g_previousWeight;	// доля прежнего результата — с поправкой на его нормировку
+	float g_currentWeight;	// доля нового
 };
 
 TextureCube g_previous : register( t0 );
@@ -32,5 +32,5 @@ float4 main( PixelInputType input ) : SV_TARGET
 	const float3 n = cubeDirection( g_face, input.uv );
 	const float4 previous = g_previous.SampleLevel( g_SamplerPointClamp, n, g_mip );
 	const float4 current = g_current.SampleLevel( g_SamplerPointClamp, n, g_mip );
-	return lerp( previous, current, g_blend );
+	return previous * g_previousWeight + current * g_currentWeight;
 }

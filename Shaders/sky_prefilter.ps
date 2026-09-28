@@ -15,7 +15,7 @@ cbuffer PrefilterParameters : register( SLOT_CB_PASS )
 	int   g_face;			// грань: 0…5 — +X, −X, +Y, −Y, +Z, −Z
 	float g_roughness;		// шероховатость текущего мипа
 	float g_sourceSize;		// размер грани исходного cubemap в текселях
-	float g_prefilterPadding;
+	float g_outputScale;	// 1 / нормировка результата SkyLight: он в половинной точности
 };
 
 TextureCube g_sky : register(t0);
@@ -31,7 +31,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	// Направление взгляда совпадает с нормалью и отражением (приближение split-sum)
 	float3 n = cubeDirection( g_face, input.uv );
 	if( g_roughness <= 0.0f )
-		return float4( g_sky.SampleLevel( g_SamplerLinearClamp, n, 0.0f ).rgb, 1.0f );
+		return float4( g_sky.SampleLevel( g_SamplerLinearClamp, n, 0.0f ).rgb * g_outputScale, 1.0f );
 
 	const uint sampleCount = 128;
 	const float alpha = g_roughness * g_roughness;
@@ -58,5 +58,5 @@ float4 main( PixelInputType input ) : SV_TARGET
 		weight += NoL;
 	}
 
-	return float4( sum / max( weight, 1e-4f ), 1.0f );
+	return float4( sum / max( weight, 1e-4f ) * g_outputScale, 1.0f );
 }

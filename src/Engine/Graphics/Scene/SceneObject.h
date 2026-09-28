@@ -17,7 +17,7 @@ struct FrameContext
 	const RenderView& view;
 	float elapsedTime;
 	// Направление на солнце, нормированное; y ≤ 0 — солнце ниже горизонта или его нет: теней нет
-	XMFLOAT3 toSun;
+	XMFLOAT3 toShadowLight;	// направление на источник теней: солнце, ночью — луна (DMLightDriver::shadowLight); y ≤ 0 — теней нет
 };
 
 // Что рендерер передаёт объекту в его собственный вызов (CustomBatch): вид, проход, состояние растеризатора кадра

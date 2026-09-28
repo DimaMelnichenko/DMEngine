@@ -9,6 +9,13 @@
 Texture2DArray<float4> g_sky : register(t0);	// грани cubemap окружения (один мип) как массив
 RWStructuredBuffer<float4> g_irradianceSH : register(u0);
 
+// Раскладка — SkyLight::captureIrradiance
+cbuffer IrradianceParameters : register( b4 )
+{
+	float  g_outputScale;	// 1 / нормировка результата SkyLight
+	float3 g_irradiancePadding;
+};
+
 static const uint threadCount = 64;
 groupshared float3 s_sh[threadCount][9];
 groupshared float s_weight[threadCount];
@@ -73,5 +80,5 @@ void main( uint thread : SV_GroupIndex )
 	const float normalization = 4.0f * cubemapPi / weightSum;
 	const float band[9] = { 1.0f, 2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f };
 	[unroll] for( uint w = 0; w < 9; ++w )
-		g_irradianceSH[w] = float4( result[w] * normalization * band[w], 0.0f );
+		g_irradianceSH[w] = float4( result[w] * ( normalization * g_outputScale ) * band[w], 0.0f );
 }

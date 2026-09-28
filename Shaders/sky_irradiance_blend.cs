@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Переход рассеянного света окружения от прежних гармоник SkyLight к новым: 9 коэффициентов, смесь с долей g_blend
+// Переход рассеянного света окружения от прежних гармоник SkyLight к новым: 9 коэффициентов, смесь с долями g_previousWeight и g_currentWeight
 // (пара к Shaders/sky_light_blend.ps). Класс SkyLight
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -8,8 +8,8 @@ cbuffer IrradianceBlendParameters : register( b4 )
 {
 	int   g_face;
 	float g_mip;
-	float g_blend;		// 0 — прежние гармоники, 1 — новые
-	float g_irradianceBlendPadding;
+	float g_previousWeight;	// доля прежних гармоник — с поправкой на их нормировку
+	float g_currentWeight;	// доля новых
 };
 
 StructuredBuffer<float4> g_previous : register( t0 );
@@ -19,5 +19,5 @@ RWStructuredBuffer<float4> g_irradianceSH : register( u0 );
 [numthreads( 9, 1, 1 )]
 void main( uint coefficient : SV_GroupIndex )
 {
-	g_irradianceSH[coefficient] = lerp( g_previous[coefficient], g_current[coefficient], g_blend );
+	g_irradianceSH[coefficient] = g_previous[coefficient] * g_previousWeight + g_current[coefficient] * g_currentWeight;
 }

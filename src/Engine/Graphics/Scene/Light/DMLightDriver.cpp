@@ -64,6 +64,7 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 	m_properties.subContainer().clear();
 	m_sunPosition.reset();
 	m_sunPositionLight = -1;
+	m_moonPositionLight = -1;
 	if( sunPosition )
 	{
 		if( !m_light_list.empty() && m_light_list[0].type() == DMLight::Dir )
@@ -73,6 +74,27 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 			m_properties.addSubContainer( m_sunPosition->properties() );
 			const SunPosition::Angles angles = m_sunPosition->angles();
 			LOG( "Sun position: elevation " + std::to_string( angles.elevation ) + ", azimuth " + std::to_string( angles.azimuth ) );
+			for( uint32_t i = 1; i < m_light_list.size(); ++i )
+			{
+				if( m_light_list[i].type() == DMLight::Dir && m_light_list[i].atmosphereSunLightIndex() == 1 )
+				{
+					m_moonPositionLight = static_cast<int>( i );
+					break;
+				}
+			}
+			const SunPosition::Moon moon = m_sunPosition->moon();
+			LOG( "Moon: elevation " + std::to_string( moon.angles.elevation ) + ", azimuth " + std::to_string( moon.angles.azimuth ) +
+				 ", illuminated " + std::to_string( moon.illuminatedFraction ) + ", " + std::to_string( moon.illuminance ) + " lx" +
+				 ( m_moonPositionLight < 0 ? " (no light with atmosphere_sun_light_index 1)" : "" ) );
+			// Проверка рядов по примеру 47.a Meeus: 12.04.1992 0h TD — λ 133,16°, β −3,23°, Δ 368 410 км
+			SunPosition::Settings check;
+			check.year = 1992;
+			check.month = 4;
+			check.day = 12;
+			check.timeOfDay = 0.0f;
+			const SunPosition::Moon example = SunPosition::computeMoon( check );
+			LOG( "Moon check (Meeus 47.a: 133.16, -3.23, 368410): " + std::to_string( example.eclipticLongitude ) + ", " +
+				 std::to_string( example.eclipticLatitude ) + ", " + std::to_string( example.distance ) );
 		}
 		else
 			LOG( "Level has a sun position, but no directional light to move" );
@@ -102,8 +124,9 @@ void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
 				GUIControlType::SLIDER, 0.0f, light.type() == DMLight::Dir ? 150000.0f : 20000.0f );
 
 	controls.rotation = rotationFromDirection( light.direction() );
-	// Направление солнца со временем суток задаёт SunPosition
-	if( light.type() != DMLight::Point && static_cast<int>( index ) != m_sunPositionLight )
+	// Направление солнца и луны со временем суток задаёт SunPosition
+	if( light.type() != DMLight::Point && static_cast<int>( index ) != m_sunPositionLight &&
+		static_cast<int>( index ) != m_moonPositionLight )
 	{
 		addControl( properties, "Pitch", controls.rotation.x, GUIControlType::SLIDER, -90.0f, 90.0f );
 		addControl( properties, "Yaw", controls.rotation.y, GUIControlType::SLIDER, -180.0f, 180.0f );
@@ -147,6 +170,10 @@ void DMLightDriver::update( float seconds )
 		LightControls& controls = m_controls[i];
 		PropertyContainer& properties = *controls.properties;
 
+		// Освещённость от луны — по её фазе и расстоянию, как направление; в GUI — расчётная
+		if( static_cast<int>( i ) == m_moonPositionLight )
+			properties["Intensity (lx)"].setData( m_sunPosition->moon().illuminance );
+
 		light.setEnabled( properties["Enabled"].data<bool>() );
 		light.setColor( properties["Color"].data<XMFLOAT3>() );
 		light.setIntensity( properties[light.type() == DMLight::Dir ? "Intensity (lx)" : "Intensity (cd)"].data<float>() );
@@ -154,6 +181,11 @@ void DMLightDriver::update( float seconds )
 		{
 			const XMFLOAT3 toSun = m_sunPosition->toSun();
 			light.setDirection( XMFLOAT3( -toSun.x, -toSun.y, -toSun.z ) );
+		}
+		else if( static_cast<int>( i ) == m_moonPositionLight )
+		{
+			const XMFLOAT3 toMoon = m_sunPosition->toMoon();
+			light.setDirection( XMFLOAT3( -toMoon.x, -toMoon.y, -toMoon.z ) );
 		}
 		else if( light.type() != DMLight::Point )
 		{
@@ -189,9 +221,9 @@ void DMLightDriver::update( float seconds )
 	}
 }
 
-void DMLightDriver::setSunTransmittance( const XMFLOAT3& transmittance )
+void DMLightDriver::setAtmosphereTransmittance( int index, const XMFLOAT3& transmittance )
 {
-	m_sunTransmittance = transmittance;
+	m_atmosphereTransmittance[index == 1 ? 1 : 0] = transmittance;
 }
 
 XMFLOAT3 DMLightDriver::sunRadiance( const DMLight& light ) const
@@ -199,11 +231,38 @@ XMFLOAT3 DMLightDriver::sunRadiance( const DMLight& light ) const
 	XMFLOAT3 radiance = light.radiance();
 	if( light.atmosphereSunLight() )
 	{
-		radiance.x *= m_sunTransmittance.x;
-		radiance.y *= m_sunTransmittance.y;
-		radiance.z *= m_sunTransmittance.z;
+		const XMFLOAT3& transmittance = m_atmosphereTransmittance[light.atmosphereSunLightIndex()];
+		radiance.x *= transmittance.x;
+		radiance.y *= transmittance.y;
+		radiance.z *= transmittance.z;
 	}
 	return radiance;
+}
+
+std::vector<const DMLight*> DMLightDriver::bufferLights() const
+{
+	const DMLight* sunLight = sun();
+	const DMLight* moonLight = moon();
+	auto groundLuminance = [this]( const DMLight* light )
+	{
+		const XMFLOAT3 color = sunRadiance( *light );
+		return 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
+	};
+	float brightest = 0.0f;
+	for( const DMLight* light : { sunLight, moonLight } )
+		if( light )
+			brightest = std::max( brightest, groundLuminance( light ) );
+
+	std::vector<const DMLight*> lights;
+	for( const DMLight& light : m_light_list )
+	{
+		if( !light.enabled() || lights.size() == maxLights )
+			continue;
+		if( ( &light == sunLight || &light == moonLight ) && groundLuminance( &light ) < brightest * negligibleFraction )
+			continue;
+		lights.push_back( &light );
+	}
+	return lights;
 }
 
 uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
@@ -211,17 +270,17 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 	const DMLight* sunLight = sun();
 	std::vector<LightBuffer> buffer;
 	buffer.reserve( maxLights );
-	for( const DMLight& light : m_light_list )
+	for( const DMLight* lightPointer : bufferLights() )
 	{
-		if( !light.enabled() || buffer.size() == maxLights )
-			continue;
+		const DMLight& light = *lightPointer;
 
 		LightBuffer lightBuffer = {};
 		lightBuffer.position = light.position();
 		lightBuffer.type = (int)light.type();
 		lightBuffer.direction = light.direction();
 		lightBuffer.attenuationRadius = light.attenuationRadius();
-		lightBuffer.color = &light == sunLight ? sunRadiance( light ) : light.radiance();
+		// Светила атмосферы (солнце и луна) у земли — с пропусканием атмосферы к ним
+		lightBuffer.color = &light == sunLight || &light == moon() ? sunRadiance( light ) : light.radiance();
 		lightBuffer.cosOuterCone = cosf( XMConvertToRadians( light.outerConeAngle() ) );
 		lightBuffer.cosInnerCone = cosf( XMConvertToRadians( light.innerConeAngle() ) );
 		buffer.push_back( lightBuffer );
@@ -282,16 +341,67 @@ void DMLightDriver::directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) con
 	direction = XMFLOAT3( -lightDirection.x, -lightDirection.y, -lightDirection.z );
 }
 
-int DMLightDriver::sunLightIndex() const
+const DMLight* DMLightDriver::moon() const
 {
-	// Солнце — первый включённый источник, в буфере он первый
-	return sun() ? 0 : -1;
+	const DMLight* sunLight = sun();
+	for( const auto& light : m_light_list )
+	{
+		if( light.enabled() && light.type() == DMLight::Dir && light.atmosphereSunLightIndex() == 1 && &light != sunLight )
+			return &light;
+	}
+	return nullptr;
 }
 
-DMLight::ShadowSettings DMLightDriver::sunShadows() const
+bool DMLightDriver::moonLight( XMFLOAT3& direction, XMFLOAT3& color ) const
 {
-	const DMLight* light = sun();
-	return light ? light->shadowSettings() : DMLight::ShadowSettings();
+	const DMLight* light = moon();
+	if( !light )
+		return false;
+	const XMFLOAT3 lightDirection = light->direction();
+	direction = XMFLOAT3( -lightDirection.x, -lightDirection.y, -lightDirection.z );
+	color = light->radiance();
+	return true;
+}
+
+int DMLightDriver::bufferIndex( const DMLight* light ) const
+{
+	const std::vector<const DMLight*> lights = bufferLights();
+	const auto it = std::find( lights.begin(), lights.end(), light );
+	return it == lights.end() ? -1 : static_cast<int>( it - lights.begin() );
+}
+
+int DMLightDriver::shadowLight( XMFLOAT3& direction, DMLight::ShadowSettings& settings ) const
+{
+	// Тени — от того светила над горизонтом, чей свет у земли ярче: днём и в сумерках — солнца, когда оно почти
+	// село, — луны (если она отбрасывает тени)
+	const DMLight* best = nullptr;
+	float bestLuminance = 0.0f;
+	for( const DMLight* light : { sun(), moon() } )
+	{
+		if( !light || light->direction().y >= 0.0f || !light->shadowSettings().castShadows || bufferIndex( light ) < 0 )
+			continue;
+		const XMFLOAT3 color = sunRadiance( *light );
+		const float groundLuminance = 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
+		if( !best || groundLuminance > bestLuminance )
+		{
+			best = light;
+			bestLuminance = groundLuminance;
+		}
+	}
+	for( const DMLight* light : { best } )
+	{
+		if( !light )
+			continue;
+		const int index = bufferIndex( light );
+		const XMFLOAT3 lightDirection = light->direction();
+		direction = XMFLOAT3( -lightDirection.x, -lightDirection.y, -lightDirection.z );
+		settings = light->shadowSettings();
+		return index;
+	}
+	direction = XMFLOAT3( 0.0f, -1.0f, 0.0f );
+	settings = DMLight::ShadowSettings();
+	settings.castShadows = false;
+	return -1;
 }
 
 float DMLightDriver::sunIlluminance() const

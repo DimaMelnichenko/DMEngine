@@ -9,7 +9,10 @@ namespace GS
 namespace
 {
 
-constexpr DXGI_FORMAT environmentFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+// Источник — во float32: ночью небо в единицах запекания (на 1 лк солнца) — ~10⁻⁶…10⁻⁹, в половинной точности это
+// ноль. Результат (его читает каждый освещённый пиксель) — в половинной, делённый на нормировку пересчёта
+constexpr DXGI_FORMAT sourceFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
+constexpr DXGI_FORMAT resultFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
 // Ресурсы освещения окружением и источник станут целями и UAV: снимаем их со входов пиксельных шейдеров, иначе D3D
 // отвяжет их с предупреждением
@@ -36,18 +39,19 @@ bool SkyLight::initialize()
 	return d3d.createShaderConstantBuffer( sizeof( PrefilterParameters ), m_constantBuffer ) &&
 		   d3d.createShaderConstantBuffer( sizeof( BlendParameters ), m_blendConstants ) &&
 		   d3d.createShaderConstantBuffer( sizeof( BlendParameters ), m_irradianceBlendConstants ) &&
+		   d3d.createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_irradianceConstants ) &&
 		   createResult( m_results[0] ) && createResult( m_results[1] ) && createResult( m_results[2] ) &&
 		   createResult( m_blended ) && m_brdfLut.create( brdfLutSize, brdfLutSize, DXGI_FORMAT_R16G16_FLOAT );
 }
 
 bool SkyLight::createSource( CubeTarget& source )
 {
-	return source.create( sourceSize, 0, environmentFormat, true ) && source.createFacesView( irradianceSourceMip );
+	return source.create( sourceSize, 0, sourceFormat, true ) && source.createFacesView( irradianceSourceMip );
 }
 
 bool SkyLight::createResult( Result& result )
 {
-	if( !result.specular.create( specularSize, specularMipCount, environmentFormat, false ) )
+	if( !result.specular.create( specularSize, specularMipCount, resultFormat, false ) )
 		return false;
 
 	ID3D11Device* device = DMD3D::instance().GetDevice();
@@ -85,9 +89,9 @@ bool SkyLight::createResult( Result& result )
 	return true;
 }
 
-void SkyLight::capture( const CubeTarget& source )
+void SkyLight::capture( const CubeTarget& source, float normalization )
 {
-	beginCapture( source );
+	beginCapture( source, normalization );
 	while( !updateCapture() )
 	{
 	}
@@ -96,10 +100,12 @@ void SkyLight::capture( const CubeTarget& source )
 	m_blendFrame = blendFrames;
 }
 
-void SkyLight::beginCapture( const CubeTarget& source )
+void SkyLight::beginCapture( const CubeTarget& source, float normalization )
 {
 	m_source = &source;
 	m_step = 0;
+	m_captureNormalization = normalization > 0.0f ? normalization : 1.0f;
+	m_results[m_building].normalization = m_captureNormalization;
 }
 
 bool SkyLight::updateCapture()
@@ -138,7 +144,10 @@ bool SkyLight::updateCapture()
 
 void SkyLight::captureIrradiance( Result& result )
 {
-	// Рассеянный свет: гармоники по мипу irradianceSourceMip
+	// Рассеянный свет: гармоники по мипу irradianceSourceMip, делённые на нормировку
+	XMFLOAT4 constants( 1.0f / m_captureNormalization, 0.0f, 0.0f, 0.0f );
+	Device::updateResourceData<XMFLOAT4>( m_irradianceConstants.get(), constants );
+	DMD3D::instance().setConstantBuffer( SRVType::cs, 4, m_irradianceConstants );
 	DMD3D::instance().setSRV( SRVType::cs, 0, m_source->facesSRV() );
 	m_irradianceShader.setUAVBuffer( 0, result.irradianceUAV.get() );
 	m_irradianceShader.Dispatch( 64u, 0.0f );
@@ -154,6 +163,7 @@ void SkyLight::prefilterFace( Result& result, int32_t face )
 	PrefilterParameters params = {};
 	params.face = face;
 	params.sourceSize = static_cast<float>( m_source->size() );
+	params.outputScale = 1.0f / m_captureNormalization;
 	for( uint32_t mip = 0; mip < specularMipCount; ++mip )
 	{
 		params.roughness = static_cast<float>( mip ) / ( specularMipCount - 1 );
@@ -169,6 +179,8 @@ void SkyLight::prefilterFace( Result& result, int32_t face )
 
 void SkyLight::blendResults( float blend )
 {
+	// В нормировке текущего: прежний пересчитывается из своей
+	const float previousWeight = ( 1.0f - blend ) * m_results[m_previous].normalization / m_results[m_current].normalization;
 	DMD3D& d3d = DMD3D::instance();
 	ID3D11DeviceContext* context = d3d.GetDeviceContext();
 	unbindEnvironment();
@@ -177,7 +189,8 @@ void SkyLight::blendResults( float blend )
 
 	// Гармоники: 9 коэффициентов одной группой
 	BlendParameters params = {};
-	params.blend = blend;
+	params.previousWeight = previousWeight;
+	params.currentWeight = blend;
 	Device::updateResourceData<BlendParameters>( m_irradianceBlendConstants.get(), params );
 	d3d.setConstantBuffer( SRVType::cs, 4, m_irradianceBlendConstants );
 	d3d.setSRV( SRVType::cs, 0, previous.irradianceSRV );

@@ -66,6 +66,10 @@ public:
 	// такой, как задан
 	bool atmosphereSunLight() const;
 	void setAtmosphereSunLight( bool );
+	// Какое светило атмосферы, как Atmosphere Sun Light Index в UE: 0 — солнце, 1 — луна (её направление и
+	// освещённость при времени суток уровня задаёт SunPosition, свет в небе — второе направление таблиц неба)
+	int atmosphereSunLightIndex() const { return m_atmosphereSunLightIndex; }
+	void setAtmosphereSunLightIndex( int index ) { m_atmosphereSunLightIndex = index == 1 ? 1 : 0; }
 
 	// Тип по имени из базы — как type в KHR_lights_punctual: directional, point, spot
 	static LightType strToType( const std::string& );
@@ -83,4 +87,5 @@ private:
 	float m_outerConeAngle = 45.0f;
 	ShadowSettings m_shadowSettings;
 	bool m_atmosphereSunLight = true;
+	int m_atmosphereSunLightIndex = 0;
 };

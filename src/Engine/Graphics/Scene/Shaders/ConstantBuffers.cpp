@@ -31,8 +31,11 @@ void ConstantBuffers::initBuffers()
 	m_timer.Initialize();
 }
 
-void ConstantBuffers::beginFrame( int lightsCount, float skyLightScale, float aerialPerspectiveDistance )
+void ConstantBuffers::beginFrame( int lightsCount, float skyLightScale, float skyScale, float aerialPerspectiveDistance,
+								  float aerialPerspectiveScale )
 {
+	m_skyScale = skyScale;
+	m_aerialPerspectiveScale = aerialPerspectiveScale;
 	m_timer.Frame();
 	m_lightsCount = static_cast<float>( lightsCount );
 	m_skyLightScale = skyLightScale;
@@ -56,6 +59,8 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.lodOrigin = view.lodOrigin;
 		data.skyLightScale = m_skyLightScale;
 		data.aerialPerspectiveDistance = m_aerialPerspectiveDistance;
+		data.aerialPerspectiveScale = m_aerialPerspectiveScale;
+		data.skyScale = m_skyScale;
 	} );
 
 	ID3D11Buffer* buffer = m_frameConstant.get();

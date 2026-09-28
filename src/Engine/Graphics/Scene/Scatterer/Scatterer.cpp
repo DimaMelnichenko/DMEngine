@@ -98,7 +98,7 @@ void Scatterer::compute( const FrameContext& frame )
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 5, m_terrainBuffer );
 
 	// Луч от верха инстанса до земли длиннее высоты в 1 / sin(высота солнца) раз; у горизонта — не больше 10
-	const XMFLOAT3& toSun = frame.toSun;
+	const XMFLOAT3& toSun = frame.toShadowLight;
 	m_shadowLength = toSun.y > 0.0f ? std::min( 1.0f / toSun.y, 10.0f ) : 0.0f;
 	Device::updateResource<FrustumParams>( m_frustumBuffer, [&]( FrustumParams& params )
 	{

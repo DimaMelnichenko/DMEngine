@@ -156,13 +156,11 @@ bool DMGraphics::Frame()
 	const RenderView mainView = RenderView::fromCamera( camera );
 	// Правки источников в GUI и время суток — до кадра: по солнцу считаются тени, расстановка и небо
 	m_scene.updateLights( elapsedTime / 1000.0f );
-	XMFLOAT3 toSun( 0.0f, -1.0f, 0.0f );	// солнца нет — как ниже горизонта
-	if( m_scene.lights().sunLightIndex() >= 0 )
-	{
-		XMFLOAT3 sunColor;
-		m_scene.lights().directionalLight( toSun, sunColor );
-	}
-	const FrameContext frame{ mainView, elapsedTime, toSun };
+	// Тени — от солнца, ночью — от луны; нет источника теней — направление вниз, как светило под горизонтом
+	XMFLOAT3 toShadowLight;
+	DMLight::ShadowSettings shadowSettings;
+	m_scene.lights().shadowLight( toShadowLight, shadowSettings );
+	const FrameContext frame{ mainView, elapsedTime, toShadowLight };
 
 	// Сначала состояние сцены на CPU, затем команды GPU
 	TIME_CHECK( m_scene.update( frame ), "Scene Update = %.3f ms" );
