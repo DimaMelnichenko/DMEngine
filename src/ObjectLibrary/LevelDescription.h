@@ -8,6 +8,7 @@
 #include "Light\DMLight.h"
 #include "Light\SunPosition.h"
 #include "Sky\SkyAtmosphere.h"
+#include "Wind\Wind.h"
 #include "Sky\HDRIBackdrop.h"
 #include "PostProcess.h"
 
@@ -74,4 +75,6 @@ struct LevelDescription
 	std::optional<GS::HDRIBackdrop::Settings> hdriBackdrop;
 	std::optional<uint32_t> postProcessId;		// строка PostProcessSettings
 	GS::PostProcess::Settings postProcess;
+	std::optional<uint32_t> windId;				// строка Wind: ветер уровня; NULL — ветра нет
+	std::optional<GS::Wind::Settings> wind;
 };

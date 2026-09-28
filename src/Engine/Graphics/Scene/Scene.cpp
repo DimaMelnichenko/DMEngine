@@ -107,6 +107,7 @@ bool Scene::initialize()
 		}
 		m_atmosphere.setBackgroundVisible( !m_level.sky );
 	}
+	m_wind.initialize( m_level.wind );
 	updateLights();
 
 	// Расстановка и частицы стоят на террейне и читают его карту высот
@@ -241,6 +242,11 @@ const LevelDescription& Scene::level() const
 	return m_level;
 }
 
+Wind& Scene::wind()
+{
+	return m_wind;
+}
+
 bool Scene::saveEnvironment( LibraryLoader& library, const PostProcess::Settings& postProcess )
 {
 	std::optional<SunPosition::Settings> sunPosition;
@@ -253,7 +259,8 @@ bool Scene::saveEnvironment( LibraryLoader& library, const PostProcess::Settings
 		hdri = m_hdri.settings();
 	else
 		atmosphere = m_atmosphere.settings();
-	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, atmosphere, hdri, postProcess );
+	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, atmosphere, hdri, postProcess,
+										 m_wind.settings() );
 }
 
 DirectX::BoundingBox Scene::bounds() const

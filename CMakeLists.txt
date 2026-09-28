@@ -102,6 +102,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/D3D/GpuProfiler.cpp
     src/Engine/Graphics/Scene/Shaders/FullscreenShader.cpp
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
+    src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Graphics/Scene/Shaders/DMShader.cpp
     src/Engine/Graphics/Scene/Shaders/Layout.cpp
     src/Engine/Graphics/Scene/Shaders/TextureShader.cpp

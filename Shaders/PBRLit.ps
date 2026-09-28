@@ -6,6 +6,7 @@
 #include "common.vs"
 #include "lighting.sh"
 #include "depth_only.sh"
+#include "pbr_material.sh"
 
 // Не заданная текстура — белая 1×1 (для Normal — плоская нормаль), так что работают одни множители
 Texture2D g_texBaseColor : register(t0);         // sRGB, альфа — прозрачность
@@ -13,19 +14,6 @@ Texture2D g_texNormal : register(t1);            // касательное пр�
 Texture2D g_texMetallicRoughness : register(t2); // G — roughness, B — metallic (упаковка glTF), линейная
 Texture2D g_texOcclusion : register(t3);         // R — затенение окружающего света, линейная
 Texture2D g_texEmissive : register(t4);          // sRGB
-
-// Раскладка — PBRMaterial::PSParam
-cbuffer PBRMaterialBuffer : register( SLOT_CB_MATERIAL )
-{
-	float4 g_baseColorFactor;
-	float3 g_emissiveFactor;
-	float  g_metallic;
-	float  g_roughness;
-	float  g_normalScale;
-	float  g_normalGreenUp;     // 1 — зелёный канал карты нормалей смотрит вверх по картинке (OpenGL, glTF)
-	float  g_occlusionStrength;
-	float  g_alphaCutoff;       // AlphaMode MASK: пиксели с альфой ниже порога отбрасываются
-};
 
 struct PixelInputType
 {

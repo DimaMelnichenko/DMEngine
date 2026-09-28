@@ -33,7 +33,7 @@ public:
 							   const std::optional<SunPosition::Settings>& sunPosition,
 							   const std::optional<GS::SkyAtmosphere::Settings>& atmosphere,
 							   const std::optional<GS::HDRIBackdrop::Settings>& hdri,
-							   const GS::PostProcess::Settings& postProcess );
+							   const GS::PostProcess::Settings& postProcess, const GS::Wind::Settings& wind );
 
 
 	void save();

@@ -303,8 +303,16 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS, SRVType::ps );
 	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры)
 	// Масштаб неба и освещения окружением; воздушная перспектива — только у атмосферы
-	pipeline().shaderConstant().beginFrame( lightCount, scene.skyLightScale(), scene.skyScale(),
-											 scene.hasAtmosphere() ? frame.view.farPlane : 0.0f, scene.aerialPerspectiveScale() );
+	FrameParameters frameParameters;
+	frameParameters.lightsCount = lightCount;
+	frameParameters.skyLightScale = scene.skyLightScale();
+	frameParameters.skyScale = scene.skyScale();
+	frameParameters.aerialPerspectiveDistance = scene.hasAtmosphere() ? frame.view.farPlane : 0.0f;
+	frameParameters.aerialPerspectiveScale = scene.aerialPerspectiveScale();
+	frameParameters.gameTime = frame.gameTime;
+	frameParameters.deltaTime = frame.elapsedTime / 1000.0f;
+	frameParameters.wind = scene.wind().parameters();
+	pipeline().shaderConstant().beginFrame( frameParameters );
 	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
 	m_postProcess.bindExposure();
 	pipeline().shaderConstant().setViewBuffer( frame.view );

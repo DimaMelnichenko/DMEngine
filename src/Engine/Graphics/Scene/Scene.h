@@ -11,6 +11,7 @@
 #include "Scatterer\Scatterer.h"
 #include "Particle\DMParticleSystem.h"
 #include "Light\DMLightDriver.h"
+#include "Wind\Wind.h"
 #include "ObjectLibrary\LibraryLoader.h"
 
 namespace GS
@@ -43,6 +44,8 @@ public:
 
 	const std::vector<SceneObject*>& objects() const;
 	DMLightDriver& lights();
+	// Ветер уровня (Levels.wind): константы кадра — Wind::parameters
+	Wind& wind();
 	const LevelDescription& level() const;
 	// Текущие свет, небо и постобработку (правки в GUI) — в строки уровня в base.db3
 	bool saveEnvironment( LibraryLoader& library, const PostProcess::Settings& postProcess );
@@ -56,6 +59,7 @@ public:
 private:
 	LevelDescription m_level;
 	DMLightDriver m_lightDriver;
+	Wind m_wind;
 
 	SkyLight m_skyLight;		// освещение окружением: из неба атмосферы или панорамы
 	SkyAtmosphere m_atmosphere;	// процедурное небо, от него — освещение окружением и воздушная перспектива

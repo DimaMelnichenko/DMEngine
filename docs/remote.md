@@ -9,7 +9,7 @@
 ## Как запустить
 
 ```
-python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse]
+python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind]
 python Tools/engine.py camera 567,58.1,212,8,35
 python Tools/engine.py screenshot кадр.png
 python Tools/engine.py stat gpu 3
@@ -18,8 +18,9 @@ python Tools/engine.py stop
 ```
 
 - `start` запускает `cmake-build-cli-<config>\DMEngine.exe` из корня проекта (по умолчанию Release) с параметрами
-  `-remote` и `-nomouse` (без `--mouse`: камера не следует за мышью, кадры с одной точки совпадают). Затем ждёт, пока
-  движок откроет канал, то есть конца инициализации.
+  `-remote` и `-nomouse` (без `--mouse`: камера не следует за мышью). Кадры с одной точки совпадают до пикселя, если
+  не движется трава: `--nowind` (параметр движка `-nowind`) или `set "Wind/Strength" 0` ([wind.md](wind.md)). Затем ждёт,
+  пока движок откроет канал, то есть конца инициализации.
 - Одна команда — `python Tools/engine.py <команда …>`: печатает ответ, при `error` код выхода 1. Слова с пробелами — в
   кавычках, как в командной строке.
 - `run` — команды из файла по строке за одно подключение; `#` — комментарий. Каждая строка печатается с `>`, за ней ответ.

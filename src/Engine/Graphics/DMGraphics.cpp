@@ -113,6 +113,10 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_GUI.addPropertyWatching( m_renderer.shadowProperties() );
 	m_GUI.addPropertyWatching( m_renderer.properties() );
 	m_GUI.addPropertyWatching( m_scene.lights().properties() );
+	m_GUI.addPropertyWatching( m_scene.wind().properties() );
+	// -nowind: растения неподвижны — кадры с одной точки совпадают до пикселя
+	if( !m_config.wind() )
+		m_scene.wind().disable();
 	// Правки света, неба, теней и постобработки — в строки уровня (LevelLights, SkyAtmosphere, PostProcessSettings)
 	m_GUI.addAction( "Save level environment", [this]
 	{
@@ -160,7 +164,8 @@ bool DMGraphics::Frame()
 	XMFLOAT3 toShadowLight;
 	DMLight::ShadowSettings shadowSettings;
 	m_scene.lights().shadowLight( toShadowLight, shadowSettings );
-	const FrameContext frame{ mainView, elapsedTime, toShadowLight };
+	m_gameTime += elapsedTime / 1000.0;
+	const FrameContext frame{ mainView, elapsedTime, static_cast<float>( m_gameTime ), toShadowLight };
 
 	// Сначала состояние сцены на CPU, затем команды GPU
 	TIME_CHECK( m_scene.update( frame ), "Scene Update = %.3f ms" );

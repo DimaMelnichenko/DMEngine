@@ -15,7 +15,8 @@ class VertexPool;
 struct FrameContext
 {
 	const RenderView& view;
-	float elapsedTime;
+	float elapsedTime;		// длительность кадра, мс (с timestep — фиксированная)
+	float gameTime;			// время игры, с: сумма длительностей кадров с запуска
 	// Направление на солнце, нормированное; y ≤ 0 — солнце ниже горизонта или его нет: теней нет
 	XMFLOAT3 toShadowLight;	// направление на источник теней: солнце, ночью — луна (DMLightDriver::shadowLight); y ≤ 0 — теней нет
 };

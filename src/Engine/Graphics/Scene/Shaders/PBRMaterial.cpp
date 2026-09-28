@@ -215,9 +215,12 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.normalGreenUp = materialValue( params, "NormalGreenUp", false ) ? 1.0f : 0.0f;
 	param.occlusionStrength = materialValue( params, "OcclusionStrength", 1.0f );
 	param.alphaCutoff = materialValue( params, "AlphaCutoff", 0.5f );
+	param.windWeight = materialValue( params, "WindWeight", 0.0f );
 
 	Device::updateResourceData<PSParam>( m_psCB.get(), param );
 	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_psCB );
+	// Вершинному шейдеру — отклик на ветер
+	DMD3D::instance().setConstantBuffer( SRVType::vs, SLOT_CB_MATERIAL, m_psCB );
 }
 
 }

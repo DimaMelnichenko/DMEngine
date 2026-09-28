@@ -25,7 +25,7 @@ public:
 	int depthPhaseFor( const PropertyContainer& params, bool instanced = false ) const override;
 
 private:
-	// Константный буфер PS b2, раскладка как у PBRMaterialBuffer в Shaders/PBRLit.ps
+	// Константный буфер b2 (PS и VS), раскладка как у PBRMaterialBuffer в Shaders/pbr_material.sh
 	struct alignas( 16 ) PSParam
 	{
 		XMFLOAT4 baseColorFactor;
@@ -36,7 +36,10 @@ private:
 		float normalGreenUp;
 		float occlusionStrength;
 		float alphaCutoff;
+		float windWeight;	// отклик на ветер уровня; вершинному шейдеру (Shaders/wind.sh)
+		float padding[2];
 	};
+	static_assert( sizeof( PSParam ) == 64, "PBRMaterialBuffer layout" );
 
 	// Номера фаз (DMShader::createPhase) по [инстансный вершинный шейдер][Masked]: цвет — пиксельный шейдер без
 	// отсечения или с ним, глубина — вершинный «только глубина» без пиксельного шейдера или с mainDepth

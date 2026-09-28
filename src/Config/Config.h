@@ -40,6 +40,8 @@ public:
 	bool showGUI() const					{ return m_showGUI; }
 	// Камера поворачивается мышью; -nomouse отключает это и скрывает указатель — для снимков с заданной точки
 	bool mouseLook() const					{ return m_mouseLook; }
+	// -nowind: ветер уровня выключен — растения неподвижны, кадры с одной точки совпадают до пикселя
+	bool wind() const						{ return m_wind; }
 	// Удалённое управление по каналу \\.\pipe\DMEngine (-remote, клиент — Tools/engine.py)
 	bool remoteControl() const				{ return m_remoteControl; }
 
@@ -60,6 +62,7 @@ private:
 	std::string m_levelName;
 	bool m_showGUI = true;
 	bool m_mouseLook = true;
+	bool m_wind = true;
 	bool m_remoteControl = false;
 
 };

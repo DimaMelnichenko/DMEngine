@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Filename: light.vs
 // Вершинный шейдер материала PBR. С define DEPTH_ONLY — вариант «только глубина» (Shaders/depth_only.sh): позиция и UV
-// без нормалей, для проходов без цвета
+// без нормалей, для проходов без цвета. Растения с WindWeight > 0 гнутся ветром уровня (Shaders/wind.sh)
 ////////////////////////////////////////////////////////////////////////////////
 
 
@@ -9,6 +9,8 @@
 #include "samplers.sh"
 #include "instance.sh"
 #include "depth_only.sh"
+#include "pbr_material.sh"
+#include "wind.sh"
 
 //////////////
 // TYPEDEFS //
@@ -53,7 +55,28 @@ float4 vertexWorldPosition( VertexInputType input )
 		position.xyz = calcInstance( position.xyz, input.instanceIndex );
 	#endif
 
-	return mul( position, objectWorldMatrix( input.instanceIndex ) );
+	const float4x4 world = objectWorldMatrix( input.instanceIndex );
+	float4 worldPosition = mul( position, world );
+
+	// Ветер: корень растения и высота вершины над ним. У расстановки корень — экземпляр на земле (origin модели внизу),
+	// высота — локальная высота × размер; у модели уровня — начало её мировой матрицы
+	[branch] if( g_windWeight > 0.0f && cb_windStrength > 0.0f )
+	{
+	#if defined(INST_POS)
+		const InstanceParam instance = g_instanceData[input.instanceIndex];
+		const float3 root = mul( float4( instance.position, 1.0f ), world ).xyz;
+		#ifdef INST_SCALE
+			const float height = input.position.y * instance.scale;
+		#else
+			const float height = input.position.y;
+		#endif
+	#else
+		const float3 root = world[3].xyz;
+		const float height = worldPosition.y - root.y;
+	#endif
+		worldPosition.xyz += windOffset( root, max( height, 0.0f ), g_windWeight );
+	}
+	return worldPosition;
 }
 
 

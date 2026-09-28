@@ -27,19 +27,12 @@ ConstantBuffers::~ConstantBuffers()
 void ConstantBuffers::initBuffers()
 {
 	DMD3D::instance().createShaderConstantBuffer( sizeof( ShaderFrameConstant ), m_frameConstant );
-	DMD3D::instance().createShaderConstantBuffer( sizeof( ShaderModelConstant ), m_modelConstant );	
-	m_timer.Initialize();
+	DMD3D::instance().createShaderConstantBuffer( sizeof( ShaderModelConstant ), m_modelConstant );
 }
 
-void ConstantBuffers::beginFrame( int lightsCount, float skyLightScale, float skyScale, float aerialPerspectiveDistance,
-								  float aerialPerspectiveScale )
+void ConstantBuffers::beginFrame( const FrameParameters& frame )
 {
-	m_skyScale = skyScale;
-	m_aerialPerspectiveScale = aerialPerspectiveScale;
-	m_timer.Frame();
-	m_lightsCount = static_cast<float>( lightsCount );
-	m_skyLightScale = skyLightScale;
-	m_aerialPerspectiveDistance = aerialPerspectiveDistance;
+	m_frame = frame;
 }
 
 void ConstantBuffers::setViewBuffer( const RenderView& view )
@@ -53,14 +46,22 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.viewProjection = XMMatrixTranspose( view.viewProjection );
 		data.cameraPosition = view.position;
 		data.viewDirection = view.direction;
-		data.appTime = static_cast<float>( m_timer.totalTime() );
-		data.elapsedTime = static_cast<float>( m_timer.GetTime() );
-		data.lightsCount = m_lightsCount;
+		data.gameTime = m_frame.gameTime;
+		data.deltaTime = m_frame.deltaTime;
+		data.lightsCount = static_cast<float>( m_frame.lightsCount );
 		data.lodOrigin = view.lodOrigin;
-		data.skyLightScale = m_skyLightScale;
-		data.aerialPerspectiveDistance = m_aerialPerspectiveDistance;
-		data.aerialPerspectiveScale = m_aerialPerspectiveScale;
-		data.skyScale = m_skyScale;
+		data.skyLightScale = m_frame.skyLightScale;
+		data.aerialPerspectiveDistance = m_frame.aerialPerspectiveDistance;
+		data.aerialPerspectiveScale = m_frame.aerialPerspectiveScale;
+		data.skyScale = m_frame.skyScale;
+		const WindParameters& wind = m_frame.wind;
+		data.windDirection = wind.direction;
+		data.windStrength = wind.strength;
+		data.windSpeed = wind.speed;
+		data.windGustMin = wind.gustMin;
+		data.windGustMax = wind.gustMax;
+		data.windGustSize = wind.gustSize;
+		data.framePadding = 0.0f;
 	} );
 
 	ID3D11Buffer* buffer = m_frameConstant.get();

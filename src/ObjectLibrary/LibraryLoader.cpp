@@ -263,7 +263,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 {
 	try
 	{
-		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process, sun_position, hdri_backdrop FROM Levels ";
+		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process, sun_position, hdri_backdrop, wind FROM Levels ";
 		SQLite::Statement query( dbConnect().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
 		if( !name.empty() )
 			query.bind( ":name", name );
@@ -290,6 +290,8 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.sunPositionId = query.getColumn( "sun_position" ).getUInt();
 		if( !query.getColumn( "hdri_backdrop" ).isNull() )
 			level.hdriBackdropId = query.getColumn( "hdri_backdrop" ).getUInt();
+		if( !query.getColumn( "wind" ).isNull() )
+			level.windId = query.getColumn( "wind" ).getUInt();
 
 		loadLevelLights( level );
 		if( !loadLevelEnvironment( level ) )
@@ -453,6 +455,27 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		level.atmosphere.nightSkyLuminance = static_cast<float>( query.getColumn( "night_sky_luminance" ).getDouble() );
 	}
 
+	if( level.windId )
+	{
+		SQLite::Statement query( dbConnect().db(), "SELECT direction, strength, speed, min_gust_amount, max_gust_amount, gust_size "
+												   "FROM Wind WHERE id = :id" );
+		query.bind( ":id", *level.windId );
+		if( !query.executeStep() )
+		{
+			LOG( "Wind " + std::to_string( *level.windId ) + " is not found in table Wind" );
+			return false;
+		}
+		GS::Wind::Settings& wind = level.wind.emplace();
+		const std::string direction = query.getColumn( "direction" ).getString();
+		if( !strToVec3( direction, wind.direction ) )
+			LOG( "Wind " + std::to_string( *level.windId ) + ": wrong direction '" + direction + "'" );
+		wind.strength = static_cast<float>( query.getColumn( "strength" ).getDouble() );
+		wind.speed = static_cast<float>( query.getColumn( "speed" ).getDouble() );
+		wind.minGustAmount = static_cast<float>( query.getColumn( "min_gust_amount" ).getDouble() );
+		wind.maxGustAmount = static_cast<float>( query.getColumn( "max_gust_amount" ).getDouble() );
+		wind.gustSize = static_cast<float>( query.getColumn( "gust_size" ).getDouble() );
+	}
+
 	if( level.hdriBackdropId )
 	{
 		SQLite::Statement query( dbConnect().db(), "SELECT texture, intensity, rotation, max_luminance FROM HDRIBackdrop WHERE id = :id" );
@@ -520,7 +543,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 										  const std::optional<SunPosition::Settings>& sunPosition,
 										  const std::optional<GS::SkyAtmosphere::Settings>& atmosphere,
 										  const std::optional<GS::HDRIBackdrop::Settings>& hdri,
-										  const GS::PostProcess::Settings& postProcess )
+										  const GS::PostProcess::Settings& postProcess, const GS::Wind::Settings& wind )
 {
 	try
 	{
@@ -658,6 +681,29 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 		updateLevel.bind( ":postProcess", *level.postProcessId );
 		updateLevel.bind( ":id", level.id );
 		updateLevel.exec();
+
+		// Ветер: нет строки — создаётся и привязывается к уровню, как у постобработки
+		if( !level.windId )
+		{
+			SQLite::Statement insert( db, "INSERT INTO Wind (name) VALUES (:name)" );
+			insert.bind( ":name", level.name );
+			insert.exec();
+			level.windId = static_cast<uint32_t>( db.getLastInsertRowid() );
+		}
+		SQLite::Statement updateWind( db, "UPDATE Wind SET direction = :direction, strength = :strength, speed = :speed, "
+										  "min_gust_amount = :minGust, max_gust_amount = :maxGust, gust_size = :gustSize WHERE id = :id" );
+		updateWind.bind( ":direction", vec3ToStr( wind.direction ) );
+		updateWind.bind( ":strength", dbValue( wind.strength ) );
+		updateWind.bind( ":speed", dbValue( wind.speed ) );
+		updateWind.bind( ":minGust", dbValue( wind.minGustAmount ) );
+		updateWind.bind( ":maxGust", dbValue( wind.maxGustAmount ) );
+		updateWind.bind( ":gustSize", dbValue( wind.gustSize ) );
+		updateWind.bind( ":id", *level.windId );
+		updateWind.exec();
+		SQLite::Statement updateLevelWind( db, "UPDATE Levels SET wind = :wind WHERE id = :id" );
+		updateLevelWind.bind( ":wind", *level.windId );
+		updateLevelWind.bind( ":id", level.id );
+		updateLevelWind.exec();
 
 		transaction.commit();
 	}
