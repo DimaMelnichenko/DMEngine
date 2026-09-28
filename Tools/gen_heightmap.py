@@ -22,6 +22,7 @@ import numpy as np
 import dds
 import erosion
 import preview
+from terrain import sample
 
 TERRAIN_DIR = os.path.join('Textures', 'terrain')
 HEIGHTMAP = os.path.join(TERRAIN_DIR, 'heightmap.dds')
@@ -123,19 +124,6 @@ def valley(size, cell, height_range, rng):
     return h * height_range
 
 
-def sample(height, world_x, world_z, cell):
-    """Высота карты в точке мира, билинейно (строка r ↔ z = W − (r + 0,5)·cell, столбец c ↔ x = (c + 0,5)·cell)"""
-    rows, cols = height.shape
-    world = rows * cell
-    c = np.clip(world_x / cell - 0.5, 0.0, cols - 1.001)
-    r = np.clip((world - world_z) / cell - 0.5, 0.0, rows - 1.001)
-    c0, r0 = int(c), int(r)
-    fc, fr = c - c0, r - r0
-    top = height[r0, c0] + (height[r0, c0 + 1] - height[r0, c0]) * fc
-    bottom = height[r0 + 1, c0] + (height[r0 + 1, c0 + 1] - height[r0 + 1, c0]) * fc
-    return top + (bottom - top) * fr
-
-
 def footprint_top(height, x, z, radius, cell):
     """Самая высокая точка земли под моделью — в круге radius вокруг (x, z), по сетке 5 × 5 точек"""
     offsets = np.linspace(-radius, radius, 5)
@@ -225,4 +213,5 @@ def main():
     print('done in %.1f s' % (time.time() - start))
 
 
-main()
+if __name__ == '__main__':
+    main()

@@ -229,4 +229,6 @@ def main():
     print('Written: ' + out)
 
 
-main()
+# Функции (open_archive, export_material) берёт и Tools/blender_fir.py
+if __name__ == '__main__':
+    main()

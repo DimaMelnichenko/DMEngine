@@ -1,7 +1,7 @@
 """Импорт моделей glTF 2.0 (.glb, .gltf) в DMEngine — как импорт FBX/glTF в редакторе UE.
 
-    python Tools/import_gltf.py модель.glb [--level Test --position x,y,z] [--scale s] [--lod-ranges 25,60]
-                                           [--name Имя] [--scatter] [--dry-run]
+    python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--snap-to-terrain]] [--scale s]
+                                           [--lod-ranges 25,60] [--name Имя] [--scatter] [--dry-run]
 
 Пишет файлы мешей (Meshes\\models\\<ассет>\\<модель>_LOD<N>[_S<секция>].bin, формат MeshLoader), картинки текстур
 (Textures\\models\\<ассет>\\) и строки base.db3: Meshes, Models, ModelProperties, Textures, MaterialInstance +
@@ -22,6 +22,11 @@ MaterialParameterInstance, по --level — LevelModels. Всё в одной т
   карты нормалей glTF в соглашении OpenGL — NormalGreenUp = true.
 - У материала alphaMode MASK мипы базового цвета сохраняют покрытие альфы при его alphaCutoff
   (Textures.preserve_alpha_coverage): иначе вдали травинки и лепестки тают.
+- Параметры движка без аналога в glTF (пропускание — экспортёр Blender не пишет KHR_materials_diffuse_transmission,
+  DitheredLODTransition, WindWeight) — extras материала (Custom Properties материала Blender, экспорт с
+  export_extras) с именами параметров PBR; значение-строка с именем текстуры материала (BaseColor) — та же текстура.
+- --snap-to-terrain ставит экземпляры на землю уровня, как Drop to surface в UE: высота — террейн в точке (x, z)
+  плюс высота объекта над нулём в Blender (Tools/terrain.py).
 
 Сообщения скрипта — ASCII (правило Tools/).
 """
@@ -35,6 +40,8 @@ import struct
 import sys
 
 import numpy as np
+
+import terrain
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -447,6 +454,19 @@ class MaterialConverter:
             self.double_sided.append(name)
 
         params.update(textures)
+        # Параметры движка из extras (Custom Properties материала Blender) — поверх перенесённых из glTF. Строка с именем
+        # текстуры материала — та же текстура (DiffuseTransmissionColor = BaseColor)
+        for key, value in material.get('extras', {}).items():
+            if isinstance(value, bool):
+                params[key] = 'true' if value else 'false'
+            elif isinstance(value, (int, float)):
+                params[key] = '%g' % value
+            elif isinstance(value, list):
+                params[key] = ','.join('%g' % v for v in value)
+            elif value in textures:
+                params[key] = textures[value]
+            else:
+                params[key] = str(value)
         return '%s/%s' % (self.asset, sanitize(name)), params
 
 
@@ -655,6 +675,8 @@ def main():
     parser.add_argument('--asset', help='folder and prefix for files and textures (default: file name)')
     parser.add_argument('--level', help='place the models on this level (Levels.name)')
     parser.add_argument('--position', default='0,0,0', help='level position of the file origin: x,y,z')
+    parser.add_argument('--snap-to-terrain', action='store_true',
+                        help='put the level instances on the level terrain: y = terrain height + object height in Blender')
     parser.add_argument('--scale', type=float, default=1.0,
                         help='uniform scale on the level; with --scatter it is baked into vertices')
     parser.add_argument('--lod-ranges', help='LOD distances in meters, e.g. 25,60 (last LOD: 10000)')
@@ -665,6 +687,8 @@ def main():
 
     if args.scatter and args.level:
         raise SystemExit('error: --scatter models are placed by scatter layers, not by --level')
+    if args.snap_to_terrain and not args.level:
+        raise SystemExit('error: --snap-to-terrain needs --level')
 
     gltf = Gltf(args.file)
     asset = sanitize(args.asset or os.path.splitext(os.path.basename(args.file))[0])
@@ -684,6 +708,11 @@ def main():
         if level_id is None:
             raise SystemExit('error: level %s is not found in Levels' % args.level)
     position = parse_vector(args.position, 3, '--position')
+    ground = None
+    if args.snap_to_terrain:
+        ground = terrain.load_level_terrain(db.connection, level_id, ROOT)
+        if ground is None:
+            raise SystemExit('error: level %s has no terrain for --snap-to-terrain' % args.level)
 
     files = {}   # путь относительно корня → байты
     texture_ids = {}
@@ -724,6 +753,12 @@ def main():
             # Origin файла — в --position с равномерным масштабом --scale
             placed = [{'position': position + instance['position'] * args.scale, 'rotation': instance['rotation'],
                        'scale': instance['scale'] * args.scale} for instance in model['instances']]
+            if ground is not None:
+                # Высота над нулём в Blender — над землёй: y --position не учитывается
+                heights, cell = ground
+                for instance, source in zip(placed, model['instances']):
+                    x, _, z = instance['position']
+                    instance['position'][1] = terrain.sample(heights, x, z, cell) + source['position'][1] * args.scale
             db.place(level_id, model_id, placed)
             for instance in placed:
                 print('  level %s: position %.2f,%.2f,%.2f rotation %.3f,%.3f,%.3f,%.3f scale %.3g,%.3g,%.3g' % (

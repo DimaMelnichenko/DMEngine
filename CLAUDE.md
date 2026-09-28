@@ -98,7 +98,11 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 16`; ромашка (`Camomile`, альфа-лепестки) — так же
   со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Модели Poly Haven в расстановке
   (пучки `grass_medium_01`, одуванчики `dandelion_01`, камни `rock_moss_set_01`; архивы `.blend` — в `DownloadResources\`) —
-  `Tools/export_polyhaven.py` через Blender, затем `import_gltf.py --scatter`, команды — в `docs/models.md`. Blender 5.0 стоит в
+  `Tools/export_polyhaven.py` через Blender, затем `import_gltf.py --scatter`, команды — в `docs/models.md`. Ели уровня
+`Test` (`Fir_A`, `Fir_B`, `Fir_C`: своя геометрия, кора и карточки хвои из `fir_tree_01` Poly Haven) —
+`blender -b --factory-startup --python Tools/blender_fir.py -- --archive DownloadResources/fir_tree_01_2k.blend.zip --out Meshes/source/fir.glb`,
+затем `python Tools/import_gltf.py Meshes/source/fir.glb --level Test --position 480,0,345 --snap-to-terrain --lod-ranges 35,90`
+(`--snap-to-terrain` ставит экземпляры на землю уровня). Blender 5.0 стоит в
   `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH). Панорама уровня `TestHDRI` —
   Kloofendal 48d Partly Cloudy с Poly Haven (CC0, https://polyhaven.com/a/kloofendal_48d_partly_cloudy), 2k `.hdr`
   (и `.exr` для проверки) в `Textures\hdri\kloofendal_48d_partly_cloudy_2k.*`; без неё `TestHDRI` освещает атмосфера.
@@ -255,7 +259,7 @@ NULL — этого у уровня нет. Экземпляры моделей 
 одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
-(две секции: панель и металлическая рамка). Частицы (`Particles`, одуванчики) у обоих уровней выключены — `Levels.particles` NULL: они движутся,
+(две секции: панель и металлическая рамка), к северу от луга — роща елей (`Fir_A/B/C`, 23 экземпляра). Частицы (`Particles`, одуванчики) у обоих уровней выключены — `Levels.particles` NULL: они движутся,
 и снимки с одной точки для сравнения кадров не совпадали бы; вернуть — `particles = 1`.
 
 **Заглушки ресурсов.** Слот `placeholderId` (0) в хранилищах текстур и мешей занимает процедурная заглушка:
