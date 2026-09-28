@@ -27,7 +27,8 @@ public:
 	// SunPosition): тогда направление первого направленного источника задаёт оно, а Pitch / Yaw у него нет
 	void load( LightList lights, const std::optional<SunPosition::Settings>& sunPosition = std::nullopt );
 	// Раз за кадр до отрисовки: значения из GUI — в источники, время суток — в направление солнца
-	void update();
+	// seconds — реальное время кадра: с ним идёт время суток (SunPosition::advance)
+	void update( float seconds = 0.0f );
 	// Пропускание атмосферы от земли к солнцу (SkyAtmosphere::sunTransmittance) — после update(): на него умножается
 	// свет солнца с atmosphereSunLight
 	void setSunTransmittance( const XMFLOAT3& transmittance );

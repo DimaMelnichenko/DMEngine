@@ -27,12 +27,17 @@ bool SkyLight::initialize()
 {
 	if( !m_prefilterShader.load( "Shaders\\sky_prefilter.ps" ) ||
 		!m_brdfShader.load( "Shaders\\brdf_lut.ps" ) ||
-		!m_irradianceShader.Initialize( "Shaders\\sky_irradiance.cs", "main" ) )
+		!m_blendShader.load( "Shaders\\sky_light_blend.ps" ) ||
+		!m_irradianceShader.Initialize( "Shaders\\sky_irradiance.cs", "main" ) ||
+		!m_irradianceBlendShader.Initialize( "Shaders\\sky_irradiance_blend.cs", "main" ) )
 		return false;
 
-	return DMD3D::instance().createShaderConstantBuffer( sizeof( PrefilterParameters ), m_constantBuffer ) &&
-		   createResult( m_results[0] ) && createResult( m_results[1] ) &&
-		   m_brdfLut.create( brdfLutSize, brdfLutSize, DXGI_FORMAT_R16G16_FLOAT );
+	DMD3D& d3d = DMD3D::instance();
+	return d3d.createShaderConstantBuffer( sizeof( PrefilterParameters ), m_constantBuffer ) &&
+		   d3d.createShaderConstantBuffer( sizeof( BlendParameters ), m_blendConstants ) &&
+		   d3d.createShaderConstantBuffer( sizeof( BlendParameters ), m_irradianceBlendConstants ) &&
+		   createResult( m_results[0] ) && createResult( m_results[1] ) && createResult( m_results[2] ) &&
+		   createResult( m_blended ) && m_brdfLut.create( brdfLutSize, brdfLutSize, DXGI_FORMAT_R16G16_FLOAT );
 }
 
 bool SkyLight::createSource( CubeTarget& source )
@@ -86,6 +91,9 @@ void SkyLight::capture( const CubeTarget& source )
 	while( !updateCapture() )
 	{
 	}
+	// Сразу целиком — без перехода от прежнего
+	m_previous = m_current;
+	m_blendFrame = blendFrames;
 }
 
 void SkyLight::beginCapture( const CubeTarget& source )
@@ -100,7 +108,7 @@ bool SkyLight::updateCapture()
 		return true;
 
 	unbindEnvironment();
-	Result& result = m_results[1 - m_front];
+	Result& result = m_results[m_building];
 	if( m_step == 0 )
 		captureIrradiance( result );
 	else
@@ -118,8 +126,12 @@ bool SkyLight::updateCapture()
 	if( ++m_step < captureSteps )
 		return false;
 
-	// Готово целиком: новый результат вместо прежнего
-	m_front = 1 - m_front;
+	// Готово целиком: переход от текущего к новому; пересчёт дальше — в третий результат
+	const uint32_t built = m_building;
+	m_previous = m_current;
+	m_current = built;
+	m_building = m_previous != m_current ? 3 - m_previous - m_current : ( m_current + 1 ) % 3;
+	m_blendFrame = 0;
 	m_source = nullptr;
 	return true;
 }
@@ -155,10 +167,61 @@ void SkyLight::prefilterFace( Result& result, int32_t face )
 	d3d.GetDeviceContext()->PSSetShaderResources( 0, 1, &nullView );
 }
 
+void SkyLight::blendResults( float blend )
+{
+	DMD3D& d3d = DMD3D::instance();
+	ID3D11DeviceContext* context = d3d.GetDeviceContext();
+	unbindEnvironment();
+	const Result& previous = m_results[m_previous];
+	const Result& current = m_results[m_current];
+
+	// Гармоники: 9 коэффициентов одной группой
+	BlendParameters params = {};
+	params.blend = blend;
+	Device::updateResourceData<BlendParameters>( m_irradianceBlendConstants.get(), params );
+	d3d.setConstantBuffer( SRVType::cs, 4, m_irradianceBlendConstants );
+	d3d.setSRV( SRVType::cs, 0, previous.irradianceSRV );
+	d3d.setSRV( SRVType::cs, 1, current.irradianceSRV );
+	m_irradianceBlendShader.setUAVBuffer( 0, m_blended.irradianceUAV.get() );
+	m_irradianceBlendShader.dispatchGroups( 1, 1, 1 );
+	ID3D11ShaderResourceView* nullViews[2] = {};
+	context->CSSetShaderResources( 0, 2, nullViews );
+
+	// Префильтр отражений: грань за гранью, все мипы
+	d3d.setSRV( SRVType::ps, 0, previous.specular.srv() );
+	d3d.setSRV( SRVType::ps, 1, current.specular.srv() );
+	for( int32_t face = 0; face < 6; ++face )
+	{
+		for( uint32_t mip = 0; mip < specularMipCount; ++mip )
+		{
+			params.face = face;
+			params.mip = static_cast<float>( mip );
+			Device::updateResourceData<BlendParameters>( m_blendConstants.get(), params );
+			d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_blendConstants );
+			const uint32_t size = m_blended.specular.mipSize( mip );
+			d3d.setRenderTarget( m_blended.specular.rtv( mip, face ), size, size );
+			m_blendShader.draw();
+		}
+	}
+	context->PSSetShaderResources( 0, 2, nullViews );
+	context->OMSetRenderTargets( 0, nullptr, nullptr );
+}
+
 void SkyLight::bind()
 {
 	DMD3D& d3d = DMD3D::instance();
-	const Result& result = m_results[m_front];
+	// Доля нового — с первого же кадра после готовности, чтобы на стыке переходов свет не стоял кадр на месте
+	const Result* shown = &m_results[m_current];
+	if( m_blendFrame < blendFrames )
+	{
+		++m_blendFrame;
+		if( m_blendFrame < blendFrames )
+		{
+			blendResults( static_cast<float>( m_blendFrame ) / blendFrames );
+			shown = &m_blended;
+		}
+	}
+	const Result& result = *shown;
 	d3d.setSRV( SRVType::ps, SLOT_IBL_IRRADIANCE, result.irradianceSRV );
 	d3d.setSRV( SRVType::ps, SLOT_IBL_SPECULAR, result.specular.srv() );
 	d3d.setSRV( SRVType::ps, SLOT_IBL_BRDF, m_brdfLut.srv() );

@@ -145,7 +145,8 @@ bool DMGraphics::Frame()
 	m_framesSinceCut = std::min( m_framesSinceCut + 1, settleFrames );
 
 	m_timer.Frame();
-	const float elapsedTime = static_cast<float>( m_timer.GetTime() );
+	// Время кадра, мс: по таймеру или фиксированным шагом (timestep)
+	const float elapsedTime = m_fixedTimeStep > 0.0f ? m_fixedTimeStep * 1000.0f : static_cast<float>( m_timer.GetTime() );
 
 	// Подготовка view, proj матриц
 	DMCamera& camera = m_cameraPool["main"];
@@ -154,7 +155,7 @@ bool DMGraphics::Frame()
 
 	const RenderView mainView = RenderView::fromCamera( camera );
 	// Правки источников в GUI и время суток — до кадра: по солнцу считаются тени, расстановка и небо
-	m_scene.updateLights();
+	m_scene.updateLights( elapsedTime / 1000.0f );
 	XMFLOAT3 toSun( 0.0f, -1.0f, 0.0f );	// солнца нет — как ниже горизонта
 	if( m_scene.lights().sunLightIndex() >= 0 )
 	{
@@ -214,10 +215,27 @@ void DMGraphics::takeScreenshots( bool withGui )
 			++it;
 			continue;
 		}
-		if( DMD3D::instance().saveScreenshot( it->path ) )
-			it->reply->ok();
-		else
+		std::wstring path = it->path;
+		if( it->frames > 1 )
+		{
+			// Серия: номер кадра перед расширением
+			wchar_t suffix[16];
+			swprintf_s( suffix, L"_%02u", it->taken );
+			const size_t dot = path.find_last_of( L'.' );
+			path.insert( dot == std::wstring::npos ? path.size() : dot, suffix );
+		}
+		if( !DMD3D::instance().saveScreenshot( path ) )
+		{
 			it->reply->error( "can`t save the screenshot" );
+			it = m_screenshots.erase( it );
+			continue;
+		}
+		if( ++it->taken < it->frames )
+		{
+			++it;
+			continue;
+		}
+		it->reply->ok();
 		it = m_screenshots.erase( it );
 	}
 }
@@ -258,12 +276,44 @@ void DMGraphics::registerCommands()
 		reply->ok( text );
 	} );
 
-	m_console.registerCommand( "screenshot", "<file.png|.jpg> [gui] - back buffer after the frame settles; gui - with ImGui windows",
+	m_console.registerCommand( "screenshot", "<file.png|.jpg> [gui] [frames] - back buffer after the frame settles; gui - with "
+							   "ImGui windows; frames - that many consecutive frames, file_00, file_01...",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		if( args.empty() )
 			return reply->error( "screenshot: expected a file name" );
-		m_screenshots.push_back( { utf8ToWide( args[0] ), args.size() > 1 && args[1] == "gui", reply } );
+		ScreenshotRequest request{ utf8ToWide( args[0] ), false, reply };
+		for( size_t i = 1; i < args.size(); ++i )
+		{
+			if( args[i] == "gui" )
+			{
+				request.withGui = true;
+				continue;
+			}
+			const int frames = std::atoi( args[i].c_str() );
+			if( frames <= 0 || frames > 1000 )
+				return reply->error( "screenshot: expected gui or a number of frames 1..1000, got " + args[i] );
+			request.frames = static_cast<uint32_t>( frames );
+		}
+		m_screenshots.push_back( std::move( request ) );
+	} );
+
+	m_console.registerCommand( "timestep", "[seconds|off] - fixed frame time step (as -UseFixedTimeStep in UE); no arguments - current",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( !args.empty() )
+		{
+			if( args[0] == "off" )
+				m_fixedTimeStep = 0.0f;
+			else
+			{
+				const float step = static_cast<float>( std::atof( args[0].c_str() ) );
+				if( step <= 0.0f || step > 1.0f )
+					return reply->error( "timestep: expected seconds in (0, 1] or off" );
+				m_fixedTimeStep = step;
+			}
+		}
+		reply->ok( m_fixedTimeStep > 0.0f ? std::to_string( m_fixedTimeStep ) : "off" );
 	} );
 
 	m_console.registerCommand( "stat", "gpu [seconds=3] - average GPU time of the frame and passes, after the frame settles",

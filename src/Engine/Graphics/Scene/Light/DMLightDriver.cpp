@@ -136,8 +136,11 @@ void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
 	m_controls.push_back( std::move( controls ) );
 }
 
-void DMLightDriver::update()
+void DMLightDriver::update( float seconds )
 {
+	if( m_sunPosition )
+		m_sunPosition->advance( seconds );
+
 	for( size_t i = 0; i < m_light_list.size(); ++i )
 	{
 		DMLight& light = m_light_list[i];

@@ -183,9 +183,9 @@ bool Scene::initialize()
 	return true;
 }
 
-void Scene::updateLights()
+void Scene::updateLights( float seconds )
 {
-	m_lightDriver.update();
+	m_lightDriver.update( seconds );
 	// Atmosphere Sun Light, как в UE: солнце задано над атмосферой, у земли его свет — прошедший атмосферу
 	XMFLOAT3 toSun;
 	XMFLOAT3 color;

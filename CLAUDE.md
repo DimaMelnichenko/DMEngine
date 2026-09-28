@@ -62,7 +62,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   `-NoGui` (`-nogui` у exe) снимает кадр без окон ImGui — для сравнения картинки лучше с ним.
 - **Серия проверок за один запуск** — удалённое управление (`docs/remote.md`, как консоль и Remote Control в UE):
   `python Tools/engine.py start [--config Release] [--nogui]`, затем команды — `camera x,y,z,pitch,yaw`,
-  `screenshot файл.png`, `stat gpu 3`, `list` / `get` / `set "окно/свойство" значение`, `key G`, — по одной или
+  `screenshot файл.png [кадров]`, `stat gpu 3`, `list` / `get` / `set "окно/свойство" значение`, `key G`, `timestep 0.0166`
+  (фиксированный шаг времени для серий кадров), — по одной или
   сценарием (`python Tools/engine.py run файл.txt`), и `python Tools/engine.py stop` (штатный выход, ошибки из лога).
   Движок с `-remote` слушает канал `\\.\pipe\DMEngine`, команды выполняет главный поток в начале кадра. Снимок —
   задний буфер 1920×1080 (`BackBufferWidth` в `settings.ini`; окно на экране с масштабом 150% — 2880×1620 вместе с
@@ -169,7 +170,8 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 Сейчас объекты (в порядке сцены): небо — `SkyAtmosphere` (процедурное небо фоном и освещение окружением от него,
 таблицы Hillaire 2020 как в Sky Atmosphere UE5; его `compute()` идёт первым: при смене атмосферы — таблицы пропускания
 и Ψ, каждый кадр — небо вокруг камеры, Sky-View, и объём воздушной перспективы главного вида — t106; при смене солнца —
-cubemap из Sky-View в `SkyLight` — гармоники и префильтр по шагу за кадр с двумя результатами, слоты PS t101…t103; фон
+cubemap из Sky-View в `SkyLight` — гармоники и префильтр по шагу за кадр с тремя результатами и плавным переходом
+от прежнего к новому (`blendFrames`), слоты PS t101…t103; фон
 из Sky-View — полноэкранный треугольник на дальней плоскости в проходе `sky`) или вместо него `HDRIBackdrop` (HDRI-панорама уровня: фон и cubemap для `SkyLight`, без воздушной перспективы),
 `SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
 растягивается до 0,9 дальней плоскости вида, `RenderView::farPlane`), `CDLODTerrain`,
@@ -213,7 +215,8 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 атмосферой, у земли × пропускание по лучу к солнцу, `SkyAtmosphere::sunTransmittance` на CPU по общим с HLSL параметрам
 `Shaders/atmosphere_constants.h`; первый включённый направленный — солнце для неба и теней; `intensity` направленного —
 люксы, точечного и прожектора — канделы, затухание — `1 / max(d², 0,01²)`), время суток — строка `SunPosition`
-(`Levels.sun_position`, как Sun Position в UE: широта, долгота, часовой пояс, `north_offset`, дата, `time_of_day` →
+(`Levels.sun_position`, как Sun Position в UE: широта, долгота, часовой пояс, `north_offset`, дата, `time_of_day`,
+`time_scale` — скорость цикла дня и ночи, время идёт само в `SunPosition::advance`, пауза — «Time paused» в GUI →
 направление первого направленного, `Light/SunPosition.h`, формулы NOAA; NULL — Pitch / Yaw солнца), небо — строка `SkyAtmosphere`
 (`Levels.atmosphere`; запекается для солнца 1 лк и умножается на `cb_skyLightScale`; там же сила воздушной перспективы)
 или панорама — строка `HDRIBackdrop` (`Levels.hdri_backdrop`: файл, `intensity` — кд/м² на единицу панорамы, она же

@@ -78,12 +78,17 @@ private:
 		std::wstring path;
 		bool withGui = false;
 		ConsoleReplyPtr reply;
+		uint32_t frames = 1;	// серия: столько кадров подряд, файлы <имя>_00, <имя>_01…
+		uint32_t taken = 0;
 	};
 	std::vector<ScreenshotRequest> m_screenshots;
 	// Кадров после смены плана (старт, команда camera): снимок и замер ждут, пока устоится экспозиция
 	uint32_t m_framesSinceCut = 0;
 	static constexpr uint32_t settleFrames = 10;
 	bool m_exitRequested = false;
+	// Фиксированный шаг времени кадра, с (команда timestep, как -UseFixedTimeStep в UE): время камеры, экспозиции,
+	// частиц и суток идёт шагами, сколько бы кадр ни длился, — серия снимков не сбивается записью файлов. 0 — таймер
+	float m_fixedTimeStep = 0.0f;
 
 	bool m_cursorMode = false;
 	bool m_wireframe = false;

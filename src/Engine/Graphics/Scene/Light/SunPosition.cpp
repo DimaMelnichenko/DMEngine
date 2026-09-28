@@ -50,7 +50,9 @@ void addControl( PropertyContainer& properties, const char* name, const TYPE& va
 
 SunPosition::SunPosition( const Settings& settings ) :
 	m_properties( "Sun position" ),
-	m_year( settings.year )
+	m_year( settings.year ),
+	m_hours( settings.timeOfDay ),
+	m_hoursShown( settings.timeOfDay )
 {
 	addControl( m_properties, "Latitude", settings.latitude, -90.0f, 90.0f );
 	addControl( m_properties, "Longitude", settings.longitude, -180.0f, 180.0f );
@@ -59,6 +61,47 @@ SunPosition::SunPosition( const Settings& settings ) :
 	addControl( m_properties, "Month", settings.month, 1.0f, 12.0f );
 	addControl( m_properties, "Day", settings.day, 1.0f, 31.0f );
 	addControl( m_properties, "Time of day (h)", settings.timeOfDay, 0.0f, 24.0f );
+	Property* timeScale = m_properties.insert( "Time scale", settings.timeScale );
+	timeScale->setControlType( GUIControlType::DRAG );
+	timeScale->setLow( 0.0f );
+	timeScale->setHigh( 100000.0f );
+	m_properties.insert( "Time paused", false );
+}
+
+void SunPosition::advance( float seconds )
+{
+	const float shown = m_properties["Time of day (h)"].data<float>();
+	if( shown != m_hoursShown )
+		m_hours = shown;
+
+	const float scale = m_properties["Time scale"].data<float>();
+	if( scale <= 0.0f || seconds <= 0.0f || m_properties["Time paused"].data<bool>() )
+		return;
+
+	m_hours += static_cast<double>( seconds ) * scale / 3600.0;
+	if( m_hours >= 24.0 )
+	{
+		// Через полночь — следующий день: дата двигает склонение солнца, за год — сезоны
+		int32_t month = std::clamp( m_properties["Month"].data<int32_t>(), 1, 12 );
+		int32_t day = std::clamp( m_properties["Day"].data<int32_t>(), 1, daysInMonth( m_year, month ) );
+		while( m_hours >= 24.0 )
+		{
+			m_hours -= 24.0;
+			if( ++day > daysInMonth( m_year, month ) )
+			{
+				day = 1;
+				if( ++month > 12 )
+				{
+					month = 1;
+					++m_year;
+				}
+			}
+		}
+		m_properties["Month"].setData( month );
+		m_properties["Day"].setData( day );
+	}
+	m_hoursShown = static_cast<float>( m_hours );
+	m_properties["Time of day (h)"].setData( m_hoursShown );
 }
 
 SunPosition::Settings SunPosition::settings() const
@@ -72,6 +115,7 @@ SunPosition::Settings SunPosition::settings() const
 	settings.month = m_properties["Month"].data<int32_t>();
 	settings.day = m_properties["Day"].data<int32_t>();
 	settings.timeOfDay = m_properties["Time of day (h)"].data<float>();
+	settings.timeScale = m_properties["Time scale"].data<float>();
 	return settings;
 }
 

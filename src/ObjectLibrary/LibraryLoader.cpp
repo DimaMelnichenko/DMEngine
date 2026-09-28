@@ -427,6 +427,7 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		settings.timeZone = value( "time_zone" );
 		settings.northOffset = value( "north_offset" );
 		settings.timeOfDay = value( "time_of_day" );
+		settings.timeScale = value( "time_scale" );
 		// Дата — как в SQLite: YYYY-MM-DD
 		const std::string date = query.getColumn( "date" ).getString();
 		if( sscanf_s( date.c_str(), "%d-%d-%d", &settings.year, &settings.month, &settings.day ) != 3 )
@@ -563,13 +564,14 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 			std::snprintf( date, sizeof( date ), "%04d-%02d-%02d", sunPosition->year, sunPosition->month, sunPosition->day );
 			SQLite::Statement updateSun( db, "UPDATE SunPosition SET latitude = :latitude, longitude = :longitude, "
 											 "time_zone = :timeZone, north_offset = :northOffset, date = :date, "
-											 "time_of_day = :timeOfDay WHERE id = :id" );
+											 "time_of_day = :timeOfDay, time_scale = :timeScale WHERE id = :id" );
 			updateSun.bind( ":latitude", dbValue( sunPosition->latitude ) );
 			updateSun.bind( ":longitude", dbValue( sunPosition->longitude ) );
 			updateSun.bind( ":timeZone", dbValue( sunPosition->timeZone ) );
 			updateSun.bind( ":northOffset", dbValue( sunPosition->northOffset ) );
 			updateSun.bind( ":date", std::string( date ) );
 			updateSun.bind( ":timeOfDay", dbValue( sunPosition->timeOfDay ) );
+			updateSun.bind( ":timeScale", dbValue( sunPosition->timeScale ) );
 			updateSun.bind( ":id", *level.sunPositionId );
 			updateSun.exec();
 		}
