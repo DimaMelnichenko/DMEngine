@@ -247,6 +247,9 @@ void GUI::parsePropertiesAndCreateControls( PropertyContainer* propertyContainer
 					case GUIControlType::DRAG:
 						ImGui::DragFloat( name.data(), property.dataPtr<float>(), 1.0f, property.low(), property.high() );
 						break;
+					case GUIControlType::LABEL:
+						ImGui::LabelText( name.data(), "%.4g", property.data<float>() );
+						break;
 				}
 				break;
 			}

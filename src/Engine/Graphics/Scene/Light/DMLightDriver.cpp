@@ -119,9 +119,11 @@ void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
 	if( light.type() == DMLight::Dir )
 		properties.insert( "Atmosphere sun light", light.atmosphereSunLight() );
 	addControl( properties, "Color", light.color(), GUIControlType::COLOR, 0.0f, 1.0f );
-	// Направленный — люксы (полуденное солнце ~100 000), точечный и прожектор — канделы (лампа 100 Вт ~130)
+	// Направленный — люксы (полуденное солнце ~100 000), точечный и прожектор — канделы (лампа 100 Вт ~130).
+	// Освещённость от луны при SunPosition — расчётная (фаза, расстояние): только для чтения
 	addControl( properties, light.type() == DMLight::Dir ? "Intensity (lx)" : "Intensity (cd)", light.intensity(),
-				GUIControlType::SLIDER, 0.0f, light.type() == DMLight::Dir ? 150000.0f : 20000.0f );
+				static_cast<int>( index ) == m_moonPositionLight ? GUIControlType::LABEL : GUIControlType::SLIDER, 0.0f,
+				light.type() == DMLight::Dir ? 150000.0f : 20000.0f );
 
 	controls.rotation = rotationFromDirection( light.direction() );
 	// Направление солнца и луны со временем суток задаёт SunPosition

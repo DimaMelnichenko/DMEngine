@@ -182,7 +182,8 @@ Attenuation radius, у прожектора углы конуса, у солнц
 Луна — второе светило атмосферы, как Atmosphere Sun Light Index 1 в UE: направленный источник с
 `LevelLights.atmosphere_sun_light_index` = 1 (у солнца — 0). У уровня `Test` это строка «Moon».
 - **Положение, фаза и свет.** При строке `SunPosition` направление и освещённость луны каждый кадр считает
-  `SunPosition::moon()`; в GUI «Intensity (lx)» — расчётная.
+  `SunPosition::moon()`; в GUI «Intensity (lx)» — расчётная, только для чтения (`GUIControlType::LABEL`). Высота,
+  азимут и освещённая доля луны — в окне «Statistic».
   - Положение: Meeus, «Astronomical Algorithms», гл. 47, главные члены рядов, точность ~0,1°. Эклиптика → экватор →
     горизонт через звёздное время, с параллаксом: у горизонта луна ниже почти на градус.
   - Проверка — пример 47.a Meeus, строка «Moon check» в логе.

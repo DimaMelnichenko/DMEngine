@@ -34,6 +34,12 @@ float exposureRatio()
 {
 	return g_exposureState[0].exposure / max( g_exposureState[0].sceneExposure, 1e-30f );
 }
+
+// Новая экспозиция: яркость с ней / currentExposure() — снова кд/м²
+float currentExposure()
+{
+	return g_exposureState[0].exposure;
+}
 #endif
 
 // Экспозиция по EV100 (S. Lagarde, C. de Rousiers, «Moving Frostbite to PBR», 2014): 1 / максимальная яркость без

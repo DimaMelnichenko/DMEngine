@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include "Shaders\FullscreenShader.h"
 #include "Shaders\DMComputeShader.h"
 #include "D3D\RenderTarget.h"
@@ -17,7 +18,9 @@ namespace GS
 // - bloom (J. Jimenez, SIGGRAPH 2014): цвет сцены уменьшается по уровням 1/2 … 1/64 (Shaders/bloom_downsample.ps —
 //   с порогом и защитой от «светлячков» на первом), затем уровни увеличиваются и складываются от мелкого к крупному
 //   (Shaders/bloom_upsample.ps, BlendState::additive);
-// - тонмаппинг (Shaders/tonemap.ps): цвет сцены + bloom, приведение к новой экспозиции, AgX / ACES — в задний буфер.
+// - тонмаппинг (Shaders/tonemap.ps): цвет сцены + bloom, приведение к новой экспозиции, ночное зрение (сдвиг Пуркинье:
+//   в темноте цвет уходит в синеватый монохромный), AgX / ACES — в задний буфер.
+// Ночь темнее дня — кривая компенсации экспозиции от EV100 сцены (Exposure Compensation Curve в UE).
 // Настройки — как Exposure, Tonemapper, Bloom в Post Process Volume UE: строка таблицы PostProcessSettings, на которую
 // ссылается уровень (Levels.post_process), меняются в GUI («Post process»). Новый проход (LUT, сглаживание) — ещё одна
 // цель и шаг в render()
@@ -43,6 +46,7 @@ public:
 	// к широкому примерно вшестеро, как веса Bloom1…Bloom6 Tint в UE
 	static constexpr float bloomLevelFalloff = 0.6f;
 	static constexpr uint32_t histogramBinCount = 64;	// HISTOGRAM_BINS в Shaders/exposure_*.cs
+	static constexpr uint32_t maxCurveKeys = 8;			// MAX_CURVE_KEYS в Shaders/exposure_adapt.cs
 
 	// Строка PostProcessSettings; без неё — значения по умолчанию (как у Post Process Volume в UE)
 	struct Settings
@@ -50,6 +54,9 @@ public:
 		MeteringMode meteringMode = MeteringMode::autoHistogram;
 		float manualEV100 = 15.0f;			// Manual; с него же начинается автоэкспозиция
 		float exposureCompensation = 0.0f;	// EV: +1 — вдвое ярче
+		// Exposure Compensation Curve: ключи (EV100 сцены, поправка EV) по возрастанию EV100, между ними — линейно,
+		// за крайними — значение крайнего; пусто — без кривой. Только для автоэкспозиции
+		std::vector<XMFLOAT2> exposureCompensationCurve;
 		float minEV100 = -10.0f;			// пределы автоэкспозиции и диапазон гистограммы
 		float maxEV100 = 20.0f;
 		float histogramLowPercent = 10.0f;	// процентили гистограммы: темнее и ярче — не в среднем
@@ -59,12 +66,16 @@ public:
 		Tonemapper tonemapper = Tonemapper::agx;
 		float bloomIntensity = 0.05f;		// Bloom Intensity — доля энергии над порогом в свечении; 0 — без bloom
 		float bloomThreshold = 1.0f;		// Bloom Threshold, яркость после экспозиции; < 0 — без порога
+		float purkinjeShift = 1.0f;			// сила ночного зрения 0…1; 0 — цвет как днём при любой яркости
 	};
 	// Имена в базе: тонмаппинг None, ACES, AgX (другое — AgX); замер Manual, AutoHistogram (другое — AutoHistogram)
 	static Tonemapper tonemapperFromName( const std::string& name );
 	static const char* tonemapperName( Tonemapper tonemapper );
 	static MeteringMode meteringModeFromName( const std::string& name );
 	static const char* meteringModeName( MeteringMode mode );
+	// Кривая в базе — текст «EV100,EV; EV100,EV; …»: ключи сортируются, лишние сверх maxCurveKeys отбрасываются
+	static std::vector<XMFLOAT2> curveFromText( const std::string& text );
+	static std::string curveText( const std::vector<XMFLOAT2>& curve );
 
 	bool initialize( const Settings& settings );
 	// Текущие значения из GUI — для сохранения уровня
@@ -114,6 +125,9 @@ private:
 		float speedDown;
 		float minLog2Luminance;
 		float log2LuminanceRange;
+		int32_t curveKeyCount;
+		float adaptPadding[3];
+		XMFLOAT4 curveKeys[maxCurveKeys / 2];	// по два ключа (EV100, EV) на float4
 	};
 
 	// Константный буфер PS b2, раскладка как у PostProcessBuffer в Shaders/tonemap.ps
@@ -121,7 +135,8 @@ private:
 	{
 		int32_t tonemapper;
 		float bloomScale;	// Bloom Intensity / сумма весов уровней
-		float padding[2];
+		float purkinjeShift;
+		float padding;
 	};
 
 	// Константный буфер PS b2 проходов bloom, раскладка как у BloomBuffer в Shaders/bloom_*.ps
@@ -169,6 +184,7 @@ private:
 	uint32_t m_cutFrames = 0;
 
 	PropertyContainer m_properties;
+	std::vector<std::string> m_curveKeyNames;	// свойства ключей кривой компенсации — по одному на ключ
 };
 
 }

@@ -495,6 +495,10 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		level.postProcess.tonemapper = GS::PostProcess::tonemapperFromName( query.getColumn( "tonemapper" ).getString() );
 		level.postProcess.bloomIntensity = static_cast<float>( query.getColumn( "bloom_intensity" ).getDouble() );
 		level.postProcess.bloomThreshold = static_cast<float>( query.getColumn( "bloom_threshold" ).getDouble() );
+		level.postProcess.purkinjeShift = value( "purkinje_shift" );
+		const SQLite::Column curve = query.getColumn( "exposure_compensation_curve" );
+		if( !curve.isNull() )
+			level.postProcess.exposureCompensationCurve = GS::PostProcess::curveFromText( curve.getString() );
 	}
 	return true;
 }
@@ -628,7 +632,8 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 												 "bloom_threshold = :bloomThreshold, metering_mode = :meteringMode, "
 												 "manual_ev100 = :manualEV100, min_ev100 = :minEV100, max_ev100 = :maxEV100, "
 												 "histogram_low_percent = :lowPercent, histogram_high_percent = :highPercent, "
-												 "speed_up = :speedUp, speed_down = :speedDown WHERE id = :id" );
+												 "speed_up = :speedUp, speed_down = :speedDown, purkinje_shift = :purkinjeShift, "
+												 "exposure_compensation_curve = :curve WHERE id = :id" );
 		updatePostProcess.bind( ":exposure", dbValue( postProcess.exposureCompensation ) );
 		updatePostProcess.bind( ":tonemapper", GS::PostProcess::tonemapperName( postProcess.tonemapper ) );
 		updatePostProcess.bind( ":bloomIntensity", dbValue( postProcess.bloomIntensity ) );
@@ -641,6 +646,11 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 		updatePostProcess.bind( ":highPercent", dbValue( postProcess.histogramHighPercent ) );
 		updatePostProcess.bind( ":speedUp", dbValue( postProcess.speedUp ) );
 		updatePostProcess.bind( ":speedDown", dbValue( postProcess.speedDown ) );
+		updatePostProcess.bind( ":purkinjeShift", dbValue( postProcess.purkinjeShift ) );
+		if( postProcess.exposureCompensationCurve.empty() )
+			updatePostProcess.bind( ":curve" );
+		else
+			updatePostProcess.bind( ":curve", GS::PostProcess::curveText( postProcess.exposureCompensationCurve ) );
 		updatePostProcess.bind( ":id", *level.postProcessId );
 		updatePostProcess.exec();
 

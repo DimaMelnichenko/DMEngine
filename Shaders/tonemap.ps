@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Последний проход цепочки: цвет сцены + bloom, экспозиция и тонмаппинг: линейный HDR → задний буфер
+// Последний проход цепочки: цвет сцены + bloom, экспозиция, ночное зрение и тонмаппинг: линейный HDR → задний буфер
 // (R8G8B8A8_UNORM_SRGB кодирует sRGB сам).
 // Класс PostProcess, настройки — строка PostProcessSettings уровня
 ////////////////////////////////////////////////////////////////////////////////
@@ -14,9 +14,10 @@ Texture2D<float4> g_bloom : register(t1);	// самый крупный уров�
 // Раскладка — PostProcess::Parameters
 cbuffer PostProcessBuffer : register( SLOT_CB_PASS )
 {
-	int   g_tonemapper;	// 0 — без тонмаппинга, 1 — ACES, 2 — AgX
-	float g_bloomScale;	// Bloom Intensity / сумма весов уровней: уровень хранит взвешенную сумму всех уровней
-	float2 g_padding;
+	int   g_tonemapper;		// 0 — без тонмаппинга, 1 — ACES, 2 — AgX
+	float g_bloomScale;		// Bloom Intensity / сумма весов уровней: уровень хранит взвешенную сумму всех уровней
+	float g_purkinjeShift;	// сила ночного зрения 0…1
+	float g_padding;
 };
 
 struct PixelInputType
@@ -84,6 +85,20 @@ float3 agx( float3 color )
 	return pow( saturate( color ), 2.2f );
 }
 
+// Ночное зрение — сдвиг Пуркинье (G. Krawczyk, K. Myszkowski, H.-P. Seidel, «Perceptual effects in real-time tone
+// mapping», 2005, по R. Hunt, 1995): в темноте работают палочки, и цвет уходит в монохромный с синеватым оттенком.
+// Доля палочек s(Y) = 0,04 / (0,04 + Y), Y — яркость пикселя, кд/м²: колбочки слабеют от ~3 кд/м² и почти не видят
+// ниже ~0,03 (склон в полнолуние — s ≈ 0,6, ночное небо — ≈ 1). Яркость сохраняется: замер экспозиции не меняется
+static const float3 scotopicTint = float3( 1.05f, 0.97f, 1.27f );
+
+float3 purkinjeShift( float3 color )
+{
+	const float luminance = dot( color, float3( 0.2126f, 0.7152f, 0.0722f ) );
+	const float physical = luminance / max( currentExposure(), 1e-30f );
+	const float rods = 0.04f / ( 0.04f + physical ) * g_purkinjeShift;
+	return lerp( color, scotopicTint * luminance, rods );
+}
+
 float4 main( PixelInputType input ) : SV_TARGET
 {
 	float3 color = g_sceneColor.Load( int3( input.position.xy, 0 ) ).rgb;
@@ -91,6 +106,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 		color += g_bloom.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).rgb * g_bloomScale;
 	// Буфер сцены — с экспозицией прошлого кадра, приводим к новой (Shaders/exposure.sh)
 	color *= exposureRatio();
+	[branch] if( g_purkinjeShift > 0.0f )
+		color = purkinjeShift( color );
 
 	[branch] if( g_tonemapper == 1 )
 		color = acesFitted( color );

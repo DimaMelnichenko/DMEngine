@@ -2,7 +2,8 @@
 // Автоэкспозиция, шаг 2: новая экспозиция кадра (Eye Adaptation в UE). Auto Exposure Histogram — средняя log₂
 // яркость между процентилями Low / High Percent гистограммы, из неё целевой EV100 (ограничен Min / Max EV100);
 // текущий EV100 плавно идёт к цели со скоростью Speed Up (сцена стала ярче) или Speed Down (темнее).
-// Manual — EV100 из настроек. Затем поправка Exposure Compensation. Пишет ExposureState: sceneExposure — прежняя
+// Manual — EV100 из настроек. Затем поправка Exposure Compensation и, у автоэкспозиции, поправка по кривой от EV100
+// сцены (Exposure Compensation Curve в UE: ночь темнее дня). Пишет ExposureState: sceneExposure — прежняя
 // экспозиция (с ней нарисован этот кадр), exposure — новая. Класс PostProcess
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -11,6 +12,7 @@
 #include "exposure.sh"
 
 #define HISTOGRAM_BINS 64
+#define MAX_CURVE_KEYS 8	// PostProcess::maxCurveKeys
 
 ByteAddressBuffer g_histogram : register( t0 );
 RWStructuredBuffer<ExposureState> g_state : register( u0 );
@@ -30,7 +32,34 @@ cbuffer AdaptBuffer : register( b4 )
 	float g_speedDown;
 	float g_minLog2Luminance;		// диапазон гистограммы — как у exposure_histogram.cs
 	float g_log2LuminanceRange;
+	int   g_curveKeyCount;			// ключей кривой компенсации; 0 — без кривой
+	float3 g_adaptPadding;
+	float4 g_curveKeys[MAX_CURVE_KEYS / 2];	// по два ключа (EV100 сцены, поправка EV), по возрастанию EV100
 };
+
+float2 curveKey( int index )
+{
+	const float4 pair = g_curveKeys[index / 2];
+	return index % 2 == 0 ? pair.xy : pair.zw;
+}
+
+// Поправка по кривой: между ключами — линейно, за крайними — значение крайнего, как у кривой UE
+float compensationCurve( float ev100 )
+{
+	if( g_curveKeyCount == 0 )
+		return 0.0f;
+	float2 previous = curveKey( 0 );
+	if( ev100 <= previous.x )
+		return previous.y;
+	[loop] for( int i = 1; i < g_curveKeyCount; ++i )
+	{
+		const float2 key = curveKey( i );
+		if( ev100 <= key.x )
+			return lerp( previous.y, key.y, ( ev100 - previous.x ) / max( key.x - previous.x, 1e-6f ) );
+		previous = key;
+	}
+	return previous.y;
+}
 
 [numthreads( 1, 1, 1 )]
 void main()
@@ -72,8 +101,12 @@ void main()
 		ev100 = lerp( state.ev100, target, 1.0f - exp( -g_deltaTime * speed ) );
 	}
 
+	// Кривая — по адаптированному EV100: поправка меняется так же плавно, как адаптация (в UE — по замеру до
+	// сглаживания, в установившемся состоянии то же). В Manual экспозиция задана целиком
+	const float curve = g_meteringMode == 1 ? compensationCurve( ev100 ) : 0.0f;
+
 	state.sceneExposure = state.exposure;
 	state.ev100 = ev100;
-	state.exposure = exposureFromEV100( ev100 - g_exposureCompensation );
+	state.exposure = exposureFromEV100( ev100 - g_exposureCompensation - curve );
 	g_state[0] = state;
 }

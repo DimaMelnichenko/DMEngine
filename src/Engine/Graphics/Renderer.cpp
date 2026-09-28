@@ -171,6 +171,10 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		const SunPosition::Angles angles = sunPosition->angles();
 		m_gui.addCounterInfo( "Sun elevation = %.2f deg", angles.elevation );
 		m_gui.addCounterInfo( "Sun azimuth = %.2f deg", angles.azimuth );
+		const SunPosition::Moon moon = sunPosition->moon();
+		m_gui.addCounterInfo( "Moon elevation = %.2f deg", moon.angles.elevation );
+		m_gui.addCounterInfo( "Moon azimuth = %.2f deg", moon.angles.azimuth );
+		m_gui.addCounterInfo( "Moon illuminated = %.2f", moon.illuminatedFraction );
 	}
 	m_gui.addCounterInfo( "Meshes = %.0f", static_cast<float>( m_meshCount ) );
 	m_gui.addCounterInfo( "Mesh draw calls = %.0f", static_cast<float>( m_meshDraws ) );

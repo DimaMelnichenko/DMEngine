@@ -2,6 +2,8 @@
 #include "Shaders\slots.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <sstream>
 #include "D3D\DMD3D.h"
 
 namespace GS
@@ -62,6 +64,35 @@ const char* PostProcess::meteringModeName( MeteringMode mode )
 	return mode == MeteringMode::manual ? "Manual" : "AutoHistogram";
 }
 
+std::vector<XMFLOAT2> PostProcess::curveFromText( const std::string& text )
+{
+	std::vector<XMFLOAT2> curve;
+	std::istringstream keys( text );
+	std::string key;
+	while( std::getline( keys, key, ';' ) )
+	{
+		XMFLOAT2 value;
+		if( std::sscanf( key.c_str(), " %f , %f", &value.x, &value.y ) == 2 )
+			curve.push_back( value );
+	}
+	std::sort( curve.begin(), curve.end(), []( const XMFLOAT2& a, const XMFLOAT2& b ) { return a.x < b.x; } );
+	if( curve.size() > maxCurveKeys )
+		curve.resize( maxCurveKeys );
+	return curve;
+}
+
+std::string PostProcess::curveText( const std::vector<XMFLOAT2>& curve )
+{
+	std::string text;
+	for( const XMFLOAT2& key : curve )
+	{
+		char value[64];
+		std::snprintf( value, sizeof( value ), "%s%g,%g", text.empty() ? "" : "; ", key.x, key.y );
+		text += value;
+	}
+	return text;
+}
+
 bool PostProcess::initialize( const Settings& settings )
 {
 	if( !m_shader.load( "Shaders\\tonemap.ps" ) ||
@@ -97,6 +128,15 @@ bool PostProcess::initialize( const Settings& settings )
 	addSlider( m_properties, meteringModeProperty, static_cast<int32_t>( settings.meteringMode ), 0.0f, 1.0f );
 	addSlider( m_properties, "Manual EV100", settings.manualEV100, -10.0f, 20.0f );
 	addSlider( m_properties, "Exposure compensation (EV)", settings.exposureCompensation, -6.0f, 6.0f );
+	// Ключи кривой — столько, сколько в базе: (EV100 сцены, поправка EV)
+	for( size_t i = 0; i < settings.exposureCompensationCurve.size(); ++i )
+	{
+		m_curveKeyNames.push_back( "Compensation curve key " + std::to_string( i + 1 ) + " (EV100, EV)" );
+		Property* key = m_properties.insert( m_curveKeyNames.back(), settings.exposureCompensationCurve[i] );
+		key->setLow( -10.0f );
+		key->setHigh( 20.0f );
+		key->setControlType( GUIControlType::DRAG );
+	}
 	addSlider( m_properties, "Min EV100", settings.minEV100, -10.0f, 20.0f );
 	addSlider( m_properties, "Max EV100", settings.maxEV100, -10.0f, 20.0f );
 	addSlider( m_properties, "Histogram low percent", settings.histogramLowPercent, 0.0f, 100.0f );
@@ -106,6 +146,7 @@ bool PostProcess::initialize( const Settings& settings )
 	addSlider( m_properties, tonemapperProperty, static_cast<int32_t>( settings.tonemapper ), 0.0f, 2.0f );
 	addSlider( m_properties, "Bloom intensity", settings.bloomIntensity, 0.0f, 8.0f );
 	addSlider( m_properties, "Bloom threshold", settings.bloomThreshold, -1.0f, 10.0f );
+	addSlider( m_properties, "Purkinje shift", settings.purkinjeShift, 0.0f, 1.0f );
 
 	return true;
 }
@@ -181,6 +222,11 @@ PostProcess::Settings PostProcess::settings()
 	settings.meteringMode = static_cast<MeteringMode>( std::clamp( m_properties[meteringModeProperty].data<int32_t>(), 0, 1 ) );
 	settings.manualEV100 = m_properties["Manual EV100"].data<float>();
 	settings.exposureCompensation = m_properties["Exposure compensation (EV)"].data<float>();
+	// Ключ, сдвинутый в GUI за соседний, встаёт на своё место
+	for( const std::string& name : m_curveKeyNames )
+		settings.exposureCompensationCurve.push_back( m_properties[name].data<XMFLOAT2>() );
+	std::sort( settings.exposureCompensationCurve.begin(), settings.exposureCompensationCurve.end(),
+			   []( const XMFLOAT2& a, const XMFLOAT2& b ) { return a.x < b.x; } );
 	settings.minEV100 = m_properties["Min EV100"].data<float>();
 	settings.maxEV100 = m_properties["Max EV100"].data<float>();
 	settings.histogramLowPercent = m_properties["Histogram low percent"].data<float>();
@@ -190,6 +236,7 @@ PostProcess::Settings PostProcess::settings()
 	settings.tonemapper = static_cast<Tonemapper>( std::clamp( m_properties[tonemapperProperty].data<int32_t>(), 0, 2 ) );
 	settings.bloomIntensity = m_properties["Bloom intensity"].data<float>();
 	settings.bloomThreshold = m_properties["Bloom threshold"].data<float>();
+	settings.purkinjeShift = m_properties["Purkinje shift"].data<float>();
 	return settings;
 }
 
@@ -225,6 +272,7 @@ void PostProcess::render( GpuProfiler& profiler, float deltaTime )
 	for( uint32_t level = 0; level < bloomLevelCount; ++level )
 		weightSum += std::pow( bloomLevelFalloff, static_cast<float>( level ) );
 	params.bloomScale = std::max( current.bloomIntensity, 0.0f ) / weightSum;
+	params.purkinjeShift = std::clamp( current.purkinjeShift, 0.0f, 1.0f );
 	Device::updateResourceData<Parameters>( m_constantBuffer.get(), params );
 	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
 	d3d.setSRV( SRVType::ps, 0, sceneColor );
@@ -282,6 +330,14 @@ void PostProcess::renderExposure( const com_unique_ptr<ID3D11ShaderResourceView>
 	adapt.speedDown = current.speedDown;
 	adapt.minLog2Luminance = minLog2Luminance;
 	adapt.log2LuminanceRange = log2LuminanceRange;
+	adapt.curveKeyCount = static_cast<int32_t>( std::min<size_t>( current.exposureCompensationCurve.size(), maxCurveKeys ) );
+	for( int32_t i = 0; i < adapt.curveKeyCount; ++i )
+	{
+		const XMFLOAT2& key = current.exposureCompensationCurve[i];
+		XMFLOAT4& pair = adapt.curveKeys[i / 2];
+		( i % 2 == 0 ? pair.x : pair.z ) = key.x;
+		( i % 2 == 0 ? pair.y : pair.w ) = key.y;
+	}
 	Device::updateResourceData<AdaptParameters>( m_adaptConstants.get(), adapt );
 	d3d.setConstantBuffer( SRVType::cs, 4, m_adaptConstants );
 	d3d.setSRV( SRVType::cs, 0, m_histogramSRV );

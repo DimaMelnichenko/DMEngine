@@ -17,7 +17,8 @@ enum class GUIControlType : int
 	SLIDER = 1,
 	COLOR = 2,
 	DRAG = 3,
-	TEXTURE = 4
+	TEXTURE = 4,
+	LABEL = 5	// только для чтения: значение считает объект (у числа — текст вместо ползунка)
 };
 
 enum class ValueType : int
