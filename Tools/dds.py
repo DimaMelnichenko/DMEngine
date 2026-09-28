@@ -1,11 +1,14 @@
 # DDS без сжатия для данных движка из сценариев Tools/: запись RGBA8 (слои и splat-карта террейна, маски
-# расстановки) и чтение R16 (карта высот). Заголовок DDS с расширением DX10, как у texconv; движок читает их DirectXTex.
-# Картинка — массив numpy высота × ширина × 4, значения 0…1, строки сверху вниз.
+# расстановки), R16 (карта высот) и R32_FLOAT (карты эрозии), чтение R16 и R32_FLOAT. Заголовок DDS с расширением
+# DX10, как у texconv; движок читает их DirectXTex.
+# Картинка — массив numpy высота × ширина (× 4 у RGBA, значения 0…1), строки сверху вниз.
 import os
 import struct
 
 import numpy as np
 
+DXGI_FORMAT_R32_FLOAT = 41
+DXGI_FORMAT_R16_UNORM = 56
 DXGI_FORMAT_R8G8B8A8_UNORM = 28
 DXGI_FORMAT_R8G8B8A8_UNORM_SRGB = 29
 
@@ -70,10 +73,43 @@ def write_rgba8(path, rgba, srgb=False, mips=False):
           '%d slices' % len(slices) if len(slices) > 1 else '')
 
 
-def read_r16(path):
+def write_single(path, pixels, fmt, bytes_per_pixel):
+    """Один канал без мипов: pixels — уже нужного типа (uint16, float32), высота × ширина"""
+    height, width = pixels.shape
+    header = struct.pack('<4sIIIIIII44sIIIIIIIIIIIII',
+        b'DDS ', 124, 0x100F, height, width, width * bytes_per_pixel, 0, 0, b'\0' * 44,
+        32, 0x4, struct.unpack('<I', b'DX10')[0], 0, 0, 0, 0, 0,
+        0x1000, 0, 0, 0, 0)
+    dx10 = struct.pack('<IIIII', fmt, 3, 0, 1, 0)
+    os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+    with open(path, 'wb') as f:
+        f.write(header)
+        f.write(dx10)
+        f.write(np.ascontiguousarray(pixels).tobytes())
+    print('written', path, '%dx%d' % (width, height))
+
+
+def write_r16(path, values):
+    """Карта высот: values 0…1 → R16_UNORM"""
+    write_single(path, np.clip(np.rint(values * 65535.0), 0, 65535).astype('<u2'), DXGI_FORMAT_R16_UNORM, 2)
+
+
+def write_r32f(path, values):
+    """Данные без нормировки (карты эрозии в метрах и м²) → R32_FLOAT"""
+    write_single(path, values.astype('<f4'), DXGI_FORMAT_R32_FLOAT, 4)
+
+
+def read_single(path, dtype):
     with open(path, 'rb') as f:
         data = f.read()
     height, width = struct.unpack('<II', data[12:20])
     offset = 4 + 124 + (20 if data[84:88] == b'DX10' else 0)
-    pixels = np.frombuffer(data, dtype='<u2', count=width * height, offset=offset)
-    return pixels.reshape(height, width) / 65535.0
+    return np.frombuffer(data, dtype=dtype, count=width * height, offset=offset).reshape(height, width)
+
+
+def read_r16(path):
+    return read_single(path, '<u2') / 65535.0
+
+
+def read_r32f(path):
+    return read_single(path, '<f4').astype(np.float64)

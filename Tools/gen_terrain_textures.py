@@ -4,19 +4,22 @@
 #   сквозь траву);
 #   <слой>_normal.dds — RGB нормаль (соглашение DirectX: G смотрит вдоль +v, вниз по картинке), A шероховатость.
 # Splat-карта Textures\terrain\splatmap.dds (массив из двух RGBA: срез 0 — веса слоёв 0…3, срез 1 — 4…7; слой 4 —
-# вторая трава, пятнами по шуму) строится по карте высот
-# Textures\terrain\heightmap.dds и строке Terrain из base.db3: снег на вершинах, скала на крутых склонах,
-# камни пятнами и у подножия скал, остальное трава. Там же маски плотности для расстановки (Textures\terrain,
-# значение в RGB): mask_grass — вес травы, mask_camomile — пятна внутри травы, mask_pebbles — вес камней.
+# вторая трава) строится по карте высот Textures\terrain\heightmap.dds, картам эрозии рядом с ней (flow, wear,
+# deposition, talus — их пишет Tools/gen_heightmap.py) и строке Terrain из base.db3: снег на вершинах и ниже на северных
+# склонах, скала на крутых склонах и в промоинах, осыпи у подножий скал и в руслах, остальное трава — сочная на
+# влажном, суше выше. Там же маски плотности для расстановки (Textures\terrain, значение в RGB): mask_grass — вес
+# травы, mask_camomile — пятна цветов в траве, mask_pebbles — вес осыпей.
 # Результат детерминирован. Нужен numpy.
 # Запускать из корня проекта после Tools/gen_heightmap.py:
-#   python Tools/gen_terrain_textures.py
+#   python Tools/gen_terrain_textures.py [--preview файл.png]
 import os
 import sqlite3
+import sys
 
 import numpy as np
 
 import dds
+import preview
 
 LAYER_SIZE = 512
 LAYERS_DIR = os.path.join('Textures', 'terrain', 'layers')
@@ -160,51 +163,81 @@ def snow(rng):
     write_layer('snow', albedo, height, 0.45 + 0.2 * grain, depth=4.0)
 
 
-def splatmap(rng):
+def splatmap(rng, preview_path=None):
     height = dds.read_r16(HEIGHTMAP)
     size = height.shape[0]
     db = sqlite3.connect('base.db3')
     height_multiplier, texel_size = db.execute(
         "select height_multiplier, width_multiplier from Terrain where name = 'Terrain'").fetchone()
     db.close()
+    # Карты эрозии (Tools/gen_heightmap.py); без них — нули: правила ниже работают по высоте и уклону
+    maps = {}
+    for name in ('flow', 'wear', 'deposition', 'talus'):
+        path = os.path.join('Textures', 'terrain', name + '.dds')
+        maps[name] = dds.read_r32f(path) if os.path.exists(path) else np.zeros_like(height)
+        if not os.path.exists(path):
+            print('no', path, '- run Tools/gen_heightmap.py first')
+    cell_area = texel_size * texel_size
+    log_flow = np.log10(np.maximum(maps['flow'], cell_area))
 
-    # Уклон в градусах по центральным разностям (карта высот не бесшовная: за краем повторяется крайний тексель),
-    # сглаженный: у мелких октав рельефа уклон меняется через несколько текселей, и без сглаживания скала и камни
-    # рассыпаются штрихами
+    # Уклон в градусах по центральным разностям (за краем карты повторяется крайний тексель), сглаженный: у мелких
+    # октав рельефа уклон меняется через несколько текселей, и без сглаживания скала и камни рассыпаются штрихами
     padded = np.pad(height, 1, mode='edge')
     scale = height_multiplier / (2.0 * texel_size)
     dx = (padded[1:-1, 2:] - padded[1:-1, :-2]) * scale
-    dz = (padded[2:, 1:-1] - padded[:-2, 1:-1]) * scale
+    dz = (padded[2:, 1:-1] - padded[:-2, 1:-1]) * scale   # вниз по картинке — на юг
     slope = blur(np.degrees(np.arctan(np.hypot(dx, dz))), radius=3)
+    # Склон смотрит на север, если к югу (вниз по картинке) он выше: там снег лежит ниже
+    north = blur(np.clip(dz / np.maximum(np.hypot(dx, dz), 1e-6), 0.0, 1.0) * smoothstep(5.0, 15.0, slope), radius=3)
 
     noise = fbm(size, [(8, 0.35), (16, 0.3), (32, 0.2), (64, 0.1), (128, 0.05)], rng) - 0.5
     patches = fbm(size, [(16, 0.5), (32, 0.3), (64, 0.2)], rng)
 
-    rock_w = smoothstep(25.0, 35.0, slope + noise * 10.0)
-    snow_w = smoothstep(0.70, 0.78, height + noise * 0.1) * (1.0 - 0.7 * rock_w)
-    boulders_w = np.maximum(smoothstep(0.58, 0.68, patches), 0.7 * smoothstep(18.0, 25.0, slope + noise * 6.0))
+    # Скала: крутые склоны и коренная порода там, где вода сняла грунт (промоины на средних уклонах)
+    bedrock = smoothstep(1.0, 3.0, blur(maps['wear'], radius=2)) * smoothstep(14.0, 24.0, slope)
+    rock_w = np.maximum(smoothstep(27.0, 37.0, slope + noise * 10.0), 0.8 * bedrock)
+    snow_w = smoothstep(0.80, 0.88, height + noise * 0.08 + 0.06 * north) * (1.0 - 0.7 * rock_w)
+    # Осыпи: осыпь у подножий скал, крутоватые склоны, галька в руслах на склонах (на дне долины — луг)
+    talus = smoothstep(0.15, 0.8, blur(maps['talus'], radius=2))
+    channel = smoothstep(3.3, 4.0, blur(log_flow, radius=1)) * smoothstep(6.0, 12.0, slope)
+    boulders_w = np.maximum.reduce([talus, 0.7 * smoothstep(18.0, 25.0, slope + noise * 6.0), 0.8 * channel,
+                                    0.6 * smoothstep(0.62, 0.72, patches) * smoothstep(8.0, 16.0, slope)])
     boulders_w *= (1.0 - rock_w) * (1.0 - snow_w)
     grass_w = np.maximum(1.0 - rock_w - snow_w - boulders_w, 0.0)
 
     weights = np.stack([grass_w, boulders_w, rock_w, snow_w], axis=-1)
     weights /= weights.sum(axis=-1, keepdims=True)
 
-    # Маски плотности расстановки в тех же координатах, что карта высот: трава растёт на текстуре травы (обеих),
-    # ромашки — пятнами внутри травы, камешки — на текстуре камней
-    camomile_patches = smoothstep(0.62, 0.72, fbm(size, [(32, 0.5), (64, 0.3), (128, 0.2)], rng))
+    # Влажность — топографический индекс влажности TWI = ln(a / tan β) (Beven, Kirkby 1979; a — водосбор на метр
+    # ширины склона): велик там, куда стекает много воды и где ровно — низины, дно долины, русла; плюс конусы выноса
+    twi = np.log(np.maximum(maps['flow'], cell_area) / texel_size / np.maximum(np.hypot(dx, dz), 1e-3))
+    moisture = blur(np.maximum(smoothstep(4.0, 8.0, twi), smoothstep(0.1, 0.5, maps['deposition'])), radius=6)
+
+    # Маски плотности расстановки в тех же координатах, что карта высот: трава — на обеих травах, одуванчики —
+    # пятнами в траве, гуще на влажном, камни — на осыпях
+    flowers = smoothstep(0.62, 0.72, fbm(size, [(32, 0.5), (64, 0.3), (128, 0.2)], rng) + 0.15 * moisture)
     write_mask('mask_grass', weights[..., 0])
-    write_mask('mask_camomile', weights[..., 0] * camomile_patches)
+    write_mask('mask_camomile', weights[..., 0] * flowers)
     write_mask('mask_pebbles', weights[..., 1])
 
-    # Две травы (слои 0 и 4) вперемешку крупными пятнами ~30-130 м по шуму. Шум — последним вызовом rng:
-    # остальные веса и маски выходят до бита прежними. Мягкий край делает смешивание по высоте в шейдере
-    meadow = smoothstep(0.42, 0.58, fbm(size, [(8, 0.5), (16, 0.3), (32, 0.2)], rng))
+    # Две травы: сочная wispy_grass_meadow (слой 4) — на влажном, суше patchy_meadow1 (слой 0), граница — пятнами
+    # по шуму (~30–130 м); мягкий край дорабатывает смешивание по высоте в шейдере
+    meadow = smoothstep(0.4, 0.6, 0.6 * moisture + 0.4 * fbm(size, [(8, 0.5), (16, 0.3), (32, 0.2)], rng))
     grass = weights[..., 0].copy()
     slice0 = weights.copy()
     slice0[..., 0] = grass * (1.0 - meadow)
     slice1 = np.zeros_like(weights)
     slice1[..., 0] = grass * meadow
     dds.write_rgba8(SPLATMAP, np.stack([slice0, slice1]))
+
+    if preview_path:
+        # Слои цветом поверх отмывки: травы — два зелёных, осыпи — охра, скала — серая, снег — белый
+        colors = np.array([(0.45, 0.50, 0.20), (0.62, 0.52, 0.36), (0.45, 0.44, 0.43), (0.95, 0.96, 0.98),
+                           (0.22, 0.52, 0.18)])
+        layer_weights = np.concatenate([slice0, slice1[..., :1]], axis=-1)
+        rgb = layer_weights @ colors
+        shade = preview.hillshade(height * height_multiplier, texel_size)[..., None]
+        preview.write_png(preview_path, rgb * (0.3 + 0.7 * shade))
 
 
 def write_mask(name, values):
@@ -217,4 +250,4 @@ grass(rng)
 boulders(rng)
 rock(rng)
 snow(rng)
-splatmap(rng)
+splatmap(rng, sys.argv[sys.argv.index('--preview') + 1] if '--preview' in sys.argv else None)

@@ -83,9 +83,11 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   `Shaders\`, `Textures\`, `Meshes\`). Для CLion это задаёт общая
   конфигурация запуска `.run/DMEngine.run.xml`. Каталоги `Textures\` и `Meshes\` в git не хранятся;
   без них движок запускается на заглушках (см. «Заглушки ресурсов»), а в `log.txt` перечислено, что не загрузилось.
-  Тестовые данные террейна создают скрипты: карту высот `Textures\terrain\heightmap.dds` (1024×1024) —
-  `python Tools/gen_heightmap.py`, затем текстуры слоёв `Textures\terrain\layers\*.dds` и splat-карту
-  `Textures\terrain\splatmap.dds` — `python Tools/gen_terrain_textures.py` (нужен numpy). Слои из фото-текстур (Poly Haven,
+  Тестовые данные террейна создают скрипты: карту высот `Textures\terrain\heightmap.dds` (1024×1024: горная долина
+  с эрозией — капли, осыпание, водосбор; ~2 мин, numpy) и карты эрозии рядом (`flow`, `wear`, `deposition`, `talus`;
+  экземпляры `LevelModels` он пересаживает на новую землю) — `python Tools/gen_heightmap.py`, затем текстуры слоёв
+  `Textures\terrain\layers\*.dds`, splat-карту `Textures\terrain\splatmap.dds` и маски расстановки по картам эрозии —
+  `python Tools/gen_terrain_textures.py` (нужен numpy). Слои из фото-текстур (Poly Haven,
   freepbr; архивы — в `DownloadResources\`, не в git) собирает `Tools/pack_terrain_layer.py` через Blender — команды
   нынешних слоёв в `docs/terrain.md`. Тестовые модели уровня
   `Test` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
