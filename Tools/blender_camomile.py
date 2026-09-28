@@ -10,7 +10,8 @@
 # материалами импортёр делит на несколько моделей): вверху кольцо лепестков и лист, внизу зелень стебля
 # и серединка. Альфа идёт в материал через Math → Round — экспортёр glTF пишет alphaMode MASK с порогом 0,5;
 # материал двусторонний (Backface Culling выключен). У прозрачных пикселей цвет соседних (лепестка, листа), чтобы
-# на мипах по краю не было тёмной каймы.
+# на мипах по краю не было тёмной каймы. Ветер и свет насквозь (параметры движка, которых нет в glTF) — Custom
+# Properties материала: в glTF — extras, импортёр пишет их в экземпляр материала.
 # Origin — у земли (ось Z Blender вверх). Сообщения скрипта — ASCII (правило Tools/).
 import math
 import os
@@ -190,6 +191,11 @@ def camomile_material(image):
     clip.operation = 'ROUND'
     links.new(tex.outputs['Alpha'], clip.inputs[0])
     links.new(clip.outputs[0], bsdf.inputs['Alpha'])
+    # Параметры движка (docs/materials.md, docs/wind.md): extras glTF → экземпляр материала
+    mat['WindWeight'] = 1.0
+    mat['DiffuseTransmissionFactor'] = 0.35
+    mat['DiffuseTransmissionColorFactor'] = [1.0, 1.0, 0.6]
+    mat['DiffuseTransmissionColor'] = 'BaseColor'
     return mat
 
 
@@ -359,7 +365,8 @@ def main():
     bpy.context.collection.objects.link(obj)
 
     bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_yup=True, export_apply=True,
-                              export_tangents=True, export_image_format='AUTO', export_materials='EXPORT')
+                              export_tangents=True, export_image_format='AUTO', export_materials='EXPORT',
+                              export_extras=True)
     print('Written: ' + out)
 
 

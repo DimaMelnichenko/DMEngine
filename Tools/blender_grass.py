@@ -10,7 +10,9 @@
 #     пикселя, и пучок выглядел бы редким — для дальнего кольца.
 # Материал GrassMat двусторонний (Backface Culling выключен → doubleSided в glTF): у тонкой травинки видны обе
 # стороны. Базовый цвет — текстура GrassColor: 8 столбцов оттенков (у каждой травинки свой), по высоте — градиент
-# от тёмного корня к светлому, чуть выгоревшему кончику.
+# от тёмного корня к светлому, чуть выгоревшему кончику; тон подтянут к траве Poly Haven множителем (узел Mix,
+# Multiply → baseColorFactor glTF). Параметры движка, которых нет в glTF (ветер, свет насквозь, смена LOD
+# дизерингом), — Custom Properties материала: в glTF — extras, импортёр пишет их в экземпляр материала.
 # Origin — у корней (ось Z Blender вверх), травинки начинаются чуть ниже нуля, чтобы на склоне не висели в воздухе.
 # Сообщения скрипта — ASCII (правило Tools/).
 import math
@@ -24,6 +26,7 @@ BLADES = 36
 LOD1_BLADES = 16
 COLUMNS = 8          # оттенков в текстуре
 SEED = 7
+BASE_COLOR_FACTOR = (0.977, 0.8, 1.0, 1.0)   # тон — к траве Poly Haven grass_medium_01 рядом в том же слое
 
 
 def output_path():
@@ -81,7 +84,21 @@ def grass_material(image):
     bsdf.inputs['Roughness'].default_value = 0.55
     tex = nodes.new('ShaderNodeTexImage')
     tex.image = image
-    links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
+    # Множитель тона — Mix в режиме Multiply с постоянным цветом: экспортёр glTF пишет его в baseColorFactor
+    tint = nodes.new('ShaderNodeMix')
+    tint.data_type = 'RGBA'
+    tint.blend_type = 'MULTIPLY'
+    tint.inputs['Factor'].default_value = 1.0
+    color_a, color_b = [s for s in tint.inputs if s.type == 'RGBA']
+    links.new(tex.outputs['Color'], color_a)
+    color_b.default_value = BASE_COLOR_FACTOR
+    links.new([s for s in tint.outputs if s.type == 'RGBA'][0], bsdf.inputs['Base Color'])
+    # Параметры движка (docs/materials.md, docs/wind.md): extras glTF → экземпляр материала
+    mat['WindWeight'] = 1.0
+    mat['DiffuseTransmissionFactor'] = 0.4
+    mat['DiffuseTransmissionColorFactor'] = [1.0, 1.0, 0.6]
+    mat['DiffuseTransmissionColor'] = 'BaseColor'
+    mat['DitheredLODTransition'] = 'true'
     return mat
 
 
@@ -173,7 +190,8 @@ def main():
     make_clump('GrassClump_LOD1', blades[:LOD1_BLADES], 2, 2.6, material, (1.0, 0.0, 0.0))
 
     bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_yup=True, export_apply=True,
-                              export_tangents=True, export_image_format='AUTO', export_materials='EXPORT')
+                              export_tangents=True, export_image_format='AUTO', export_materials='EXPORT',
+                              export_extras=True)
     print('Written: ' + out)
 
 

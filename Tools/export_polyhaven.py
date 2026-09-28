@@ -12,6 +12,8 @@
 #     MASK), шероховатость в G картинки metallicRoughness, нормаль (соглашение OpenGL, как у glTF) — в 8-битный PNG;
 #     картинки — до --texture-size; двусторонний, если у исходного материала не включено отсечение задних граней
 #     или задан --double-sided (--single-sided — одностороний для замкнутых мешей, камней);
+#   - параметры движка, которых нет в glTF (ветер, свет насквозь, смена LOD дизерингом), — --material-param ИМЯ=ЗНАЧЕНИЕ
+#     (повторяется) всем материалам: Custom Properties → extras glTF → экземпляр материала при импорте;
 #   - экспортирует .glb (Apply Modifiers, касательные).
 # Запуск из корня проекта:
 #   blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/grass_medium_01_4k.blend.zip
@@ -138,6 +140,21 @@ def export_material(source, folder, size, double_sided):
     return mat
 
 
+def material_param(text):
+    """ИМЯ=ЗНАЧЕНИЕ → Custom Property материала: true / false — строкой (импортёр переносит как есть), числа через
+    запятую — число или список, иное — строкой (имя текстуры материала: BaseColor)"""
+    name, _, value = text.partition('=')
+    if not name or not value:
+        raise SystemExit('error: --material-param expects NAME=VALUE, got %s' % text)
+    if value in ('true', 'false'):
+        return name, value
+    try:
+        numbers = [float(v) for v in value.split(',')]
+    except ValueError:
+        return name, value
+    return name, numbers[0] if len(numbers) == 1 else numbers
+
+
 def triangle_count(obj):
     # После модификаторов (Decimate, Displace) — как их применит экспорт
     evaluated = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
@@ -160,6 +177,9 @@ def main():
     parser.add_argument('--decimate-tris', help='for objects without LODs: triangle counts of generated LODs, e.g. 1200,300,80')
     parser.add_argument('--double-sided', action='store_true', help='double-sided materials regardless of the source')
     parser.add_argument('--single-sided', action='store_true', help='single-sided materials (closed meshes: rocks)')
+    parser.add_argument('--material-param', action='append', default=[], metavar='NAME=VALUE',
+                        help='engine material parameter for all materials (glTF extras), e.g. WindWeight=1, '
+                             'DiffuseTransmissionColorFactor=1,1,0.6, DitheredLODTransition=true, DiffuseTransmissionColor=BaseColor')
     args = parser.parse_args(argv)
 
     open_archive(args.archive)
@@ -216,6 +236,8 @@ def main():
             if source.name not in replaced:
                 double_sided = args.double_sided or (not args.single_sided and not source.use_backface_culling)
                 replaced[source.name] = export_material(source, folder, args.texture_size, double_sided)
+                for name, value in (material_param(text) for text in args.material_param):
+                    replaced[source.name][name] = value
             slot.material = replaced[source.name]
 
     for obj in sorted(keep, key=lambda o: o.name):
@@ -225,7 +247,7 @@ def main():
     os.makedirs(os.path.dirname(out), exist_ok=True)
     bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_yup=True, export_apply=True,
                               export_tangents=True, export_image_format='AUTO', export_materials='EXPORT',
-                              export_animations=False)
+                              export_extras=True, export_animations=False)
     print('Written: ' + out)
 
 

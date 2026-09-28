@@ -174,6 +174,10 @@ blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/sour
 python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,11.73,238
 ```
 
+Так модели ставятся на уровень в первый раз. После новой долины (`Tools/gen_heightmap.py` пересаживает экземпляры
+на землю) их высоты в `LevelModels` другие, поэтому повторный импорт — без `--level`: модели и материалы обновятся, а
+положения на уровне останутся. Смена LOD дизерингом у `RockMat` задана в сценарии (`engine_params`).
+
 Скрипт строит в Blender без окна `TestRock` + `TestRock_LOD1` (камень с сеткой Blender «Color Grid»: по буквам видно,
 не отражена ли развёртка) и `TestPanel` (плита с картой нормалей из полусфер и золотыми торцами — второй материал,
 секция 1 той же модели). На уровне `Test` они стоят слева от таблицы шаров; вид вблизи —
@@ -192,16 +196,18 @@ glTF их не понимает: материалы собраны на узла
   у объектов без LOD (камни, 5–16 тыс. треугольников) `--decimate-tris` строит их модификатором Decimate;
 - материал собирается заново простым Principled BSDF, картинки — до `--texture-size` (2048): базовый цвет с альфой из
   отдельной карты (через Round — `alphaMode: MASK`), шероховатость — в G `metallicRoughness`, нормаль (OpenGL, как
-  в glTF) — в 8-битный PNG; двусторонний, как у исходного материала, или по `--double-sided` / `--single-sided`.
+  в glTF) — в 8-битный PNG; двусторонний, как у исходного материала, или по `--double-sided` / `--single-sided`;
+- параметры движка, которых нет в glTF, — `--material-param ИМЯ=ЗНАЧЕНИЕ` (повторяется, всем материалам): в
+  `extras`, как у ели. Значения: `true` / `false`, числа через запятую, имя текстуры материала (`BaseColor`).
 
 Нынешние модели расстановки уровня `Test`:
 
 ```
-blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/grass_medium_01_4k.blend.zip --objects "^grass_medium_01_" --out Meshes/source/grass_medium_01.glb
+blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/grass_medium_01_4k.blend.zip --objects "^grass_medium_01_(small_a|mid_b|mid_c|tall_a|tall_b|tall_c)_LOD" --out Meshes/source/grass_medium_01.glb --material-param WindWeight=1 --material-param DiffuseTransmissionFactor=0.4 --material-param DiffuseTransmissionColorFactor=1,1,0.6 --material-param DiffuseTransmissionColor=BaseColor --material-param DitheredLODTransition=true
 python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --scale 1.7 --lod-ranges 4,12
-blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/dandelion_01_2k.blend.zip --objects "^dandelion_01_" --lod-offset 1 --out Meshes/source/dandelion_01.glb
+blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/dandelion_01_2k.blend.zip --objects "^dandelion_01_" --lod-offset 1 --out Meshes/source/dandelion_01.glb --material-param WindWeight=1.5 --material-param DiffuseTransmissionFactor=0.35 --material-param DiffuseTransmissionColorFactor=1,1,0.6 --material-param DiffuseTransmissionColor=BaseColor --material-param DitheredLODTransition=true
 python Tools/import_gltf.py Meshes/source/dandelion_01.glb --scatter --lod-ranges 3,8
-blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/rock_moss_set_01_2k.blend.zip --objects "^rock_moss_set_01_rock0\d$" --decimate-tris 1500,400,100 --single-sided --out Meshes/source/rock_moss_set_01.glb
+blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/rock_moss_set_01_2k.blend.zip --objects "^rock_moss_set_01_rock0\d$" --decimate-tris 1500,400,100 --single-sided --out Meshes/source/rock_moss_set_01.glb --material-param DitheredLODTransition=true
 python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-ranges 8,20
 ```
 
@@ -209,9 +215,10 @@ python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-r
 у материала `MASK` импортёр помечает `Textures.preserve_alpha_coverage` = `alphaCutoff`: мипы сохраняют покрытие
 альфы ([materials.md](materials.md)), иначе пучки-карточки и лепестки тают в нескольких метрах.
 
-Параметры, которых нет в glTF, у этих растений заданы в базе вручную: `WindWeight`, пропускание,
-`DitheredLODTransition`. Повторный импорт их сотрёт — после него верните значения ([materials.md](materials.md),
-[scatter.md](scatter.md)) или перенесите их в `extras` (пункт в `TODO.md`).
+В архиве травы 17 пучков; `--objects` берёт шесть, которые есть в базе (в слое `Meadow` — три высоких `tall_*`).
+Параметры движка, которых нет в glTF, — в командах (`--material-param`), у своих моделей — в сценариях:
+`blender_grass.py` (ветер, пропускание, смена LOD и тон травы множителем базового цвета), `blender_camomile.py`
+(ветер, пропускание), `blender_test_model.py` (смена LOD у камня). Повторный импорт их не теряет.
 
 ## Ель
 

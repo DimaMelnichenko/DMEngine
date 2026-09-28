@@ -61,8 +61,12 @@ def bump_normal_map(name, folder, size=256, cells=4):
     return image
 
 
-def material(name, base_color=(1.0, 1.0, 1.0), metallic=0.0, roughness=0.5, color_image=None, normal_image=None):
+def material(name, base_color=(1.0, 1.0, 1.0), metallic=0.0, roughness=0.5, color_image=None, normal_image=None,
+             engine_params=None):
+    """engine_params — параметры движка, которых нет в glTF: Custom Properties → extras → экземпляр материала"""
     mat = bpy.data.materials.new(name)
+    for key, value in (engine_params or {}).items():
+        mat[key] = value
     if bpy.app.version < (5, 0, 0):  # в Blender 5 узлы материала включены всегда
         mat.use_nodes = True
     mat.use_backface_culling = True   # меши замкнутые: задние грани не нужны (doubleSided = false в glTF)
@@ -88,7 +92,9 @@ def make_rock(folder):
     bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4, radius=1.0, location=(0.0, 0.0, 1.0))
     rock = bpy.context.active_object
     rock.name = 'TestRock'
-    rock.data.materials.append(material('RockMat', roughness=0.8, color_image=color_grid('RockColor', folder)))
+    # Смена LOD дизерингом: на 25 м видна смесь двух сеток (docs/models.md)
+    rock.data.materials.append(material('RockMat', roughness=0.8, color_image=color_grid('RockColor', folder),
+                                        engine_params={'DitheredLODTransition': 'true'}))
     for polygon in rock.data.polygons:
         polygon.use_smooth = True
 
@@ -133,7 +139,8 @@ def main():
     make_panel(folder)
 
     bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_yup=True, export_apply=True,
-                              export_tangents=True, export_image_format='AUTO', export_materials='EXPORT')
+                              export_tangents=True, export_image_format='AUTO', export_materials='EXPORT',
+                              export_extras=True)
     print('Written: ' + out)
 
 

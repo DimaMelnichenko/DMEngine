@@ -93,7 +93,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   нынешних слоёв в `docs/terrain.md`. Тестовые модели уровня
   `Test` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
   `blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/source/test_models.glb`, затем
-  `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,11.73,238`. Пучок травы
+  `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,11.73,238` (повторно — без
+  `--level`: после новой долины экземпляры пересажены на землю). Параметры движка, которых нет в glTF (ветер,
+  пропускание, смена LOD), — в сценариях и опциях `--material-param` (`extras` glTF), см. `docs/models.md`. Пучок травы
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
   затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 16`; ромашка (`Camomile`, альфа-лепестки) — так же
   со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Модели Poly Haven в расстановке
