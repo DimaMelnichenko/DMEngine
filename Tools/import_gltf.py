@@ -416,7 +416,19 @@ class MaterialConverter:
         if emissive.any() or 'emissiveTexture' in material:
             params['EmissiveFactor'] = ','.join('%g' % v for v in emissive)
 
-        ignored = sorted(set(extensions) - {'KHR_materials_emissive_strength'})
+        # Пропускание тонкой поверхностью (листья, травинки) — параметры с теми же именами
+        transmission = extensions.get('KHR_materials_diffuse_transmission')
+        if transmission is not None:
+            params['DiffuseTransmissionFactor'] = '%g' % transmission.get('diffuseTransmissionFactor', 0.0)
+            params['DiffuseTransmissionColorFactor'] = ','.join(
+                '%g' % v for v in transmission.get('diffuseTransmissionColorFactor', [1.0, 1.0, 1.0]))
+            if 'diffuseTransmissionColorTexture' in transmission:
+                textures['DiffuseTransmissionColor'] = self.texture(transmission['diffuseTransmissionColorTexture'], True,
+                                                                    name, 'diffuseTransmissionColorTexture')
+            if 'diffuseTransmissionTexture' in transmission:
+                warn('material %s: diffuseTransmissionTexture is ignored, only the factor is used' % name)
+
+        ignored = sorted(set(extensions) - {'KHR_materials_emissive_strength', 'KHR_materials_diffuse_transmission'})
         if ignored:
             warn('material %s: extensions are ignored: %s' % (name, ', '.join(ignored)))
         # Режим материала — как в glTF: AlphaMode 0 OPAQUE, 1 MASK, 2 BLEND; порог отсечения; двусторонность

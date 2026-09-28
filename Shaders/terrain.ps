@@ -178,6 +178,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 					  g_noise.Sample( g_SamplerLinearWrap, position.xz / 3328.0f ).r * 0.4f;
 
 	Surface surface;
+	surface.transmission = 0.0f;
+	surface.transmissionColor = 0.0f;
 	surface.position = position;
 	surface.normal = normalize( normal + mixed.detail );
 	surface.geometricNormal = normal;

@@ -205,6 +205,7 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	DMD3D::instance().setSRV( SRVType::ps, 2, materialTexture( params, "MetallicRoughness", white ) );
 	DMD3D::instance().setSRV( SRVType::ps, 3, materialTexture( params, "Occlusion", white ) );
 	DMD3D::instance().setSRV( SRVType::ps, 4, materialTexture( params, "Emissive", white ) );
+	DMD3D::instance().setSRV( SRVType::ps, 5, materialTexture( params, "DiffuseTransmissionColor", white ) );
 
 	PSParam param;
 	param.baseColorFactor = materialValue( params, "BaseColorFactor", XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f ) );
@@ -216,6 +217,8 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.occlusionStrength = materialValue( params, "OcclusionStrength", 1.0f );
 	param.alphaCutoff = materialValue( params, "AlphaCutoff", 0.5f );
 	param.windWeight = materialValue( params, "WindWeight", 0.0f );
+	param.diffuseTransmissionColorFactor = materialValue( params, "DiffuseTransmissionColorFactor", XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
+	param.diffuseTransmissionFactor = materialValue( params, "DiffuseTransmissionFactor", 0.0f );
 
 	Device::updateResourceData<PSParam>( m_psCB.get(), param );
 	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_psCB );

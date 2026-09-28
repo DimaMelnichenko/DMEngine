@@ -14,6 +14,7 @@ Texture2D g_texNormal : register(t1);            // касательное пр�
 Texture2D g_texMetallicRoughness : register(t2); // G — roughness, B — metallic (упаковка glTF), линейная
 Texture2D g_texOcclusion : register(t3);         // R — затенение окружающего света, линейная
 Texture2D g_texEmissive : register(t4);          // sRGB
+Texture2D g_texDiffuseTransmissionColor : register(t5);	// sRGB: цвет света, прошедшего насквозь
 
 struct PixelInputType
 {
@@ -61,6 +62,11 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.roughness = g_roughness * metallicRoughness.g;
 	surface.occlusion = lerp( 1.0f, g_texOcclusion.Sample( g_SamplerAnisotropicWrap, input.tex ).r, g_occlusionStrength );
 	surface.emissive = g_texEmissive.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * g_emissiveFactor;
+	surface.transmission = saturate( g_diffuseTransmissionFactor );
+	surface.transmissionColor = 0.0f;
+	[branch] if( surface.transmission > 0.0f )
+		surface.transmissionColor = g_texDiffuseTransmissionColor.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb *
+									g_diffuseTransmissionColorFactor;
 
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps). Альфа нужна только
 	// полупрозрачному (AlphaMode BLEND): у непрозрачных блендинг выключен

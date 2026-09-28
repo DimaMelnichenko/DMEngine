@@ -38,8 +38,10 @@ private:
 		float alphaCutoff;
 		float windWeight;	// отклик на ветер уровня; вершинному шейдеру (Shaders/wind.sh)
 		float padding[2];
+		XMFLOAT3 diffuseTransmissionColorFactor;
+		float diffuseTransmissionFactor;
 	};
-	static_assert( sizeof( PSParam ) == 64, "PBRMaterialBuffer layout" );
+	static_assert( sizeof( PSParam ) == 80, "PBRMaterialBuffer layout" );
 
 	// Номера фаз (DMShader::createPhase) по [инстансный вершинный шейдер][Masked]: цвет — пиксельный шейдер без
 	// отсечения или с ним, глубина — вершинный «только глубина» без пиксельного шейдера или с mainDepth

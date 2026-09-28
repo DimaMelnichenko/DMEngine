@@ -70,9 +70,10 @@ Backface Culling в настройках материала (импортёр н
 | `emissiveTexture`, `emissiveFactor`, `KHR_materials_emissive_strength` | `Emissive`, `EmissiveFactor` | текстура sRGB, сила свечения умножается на множитель |
 | `alphaMode`, `alphaCutoff` | `AlphaMode`, `AlphaCutoff` | OPAQUE → 0, MASK → 1, BLEND → 2 (импортёр предупреждает: полупрозрачные сортируются по опорной точке) |
 | `doubleSided` | `DoubleSided` | без отсечения задних граней, см. [materials.md](materials.md) |
+| `KHR_materials_diffuse_transmission`: `diffuseTransmissionFactor`, `diffuseTransmissionColorFactor`, `diffuseTransmissionColorTexture` | `DiffuseTransmissionFactor`, `DiffuseTransmissionColorFactor`, `DiffuseTransmissionColor` | свет сквозь тонкую поверхность (листья); текстура sRGB; `diffuseTransmissionTexture` пропускается с предупреждением |
 
 Не переносятся (импортёр предупреждает): вторая развёртка (`texCoord` ≠ 0), `KHR_texture_transform`, режимы повтора текстуры кроме
-REPEAT, цвета вершин и расширения материала `KHR_materials_*` (clear coat, sheen, transmission…). Примитив без
+REPEAT, цвета вершин и остальные расширения материала `KHR_materials_*` (clear coat, sheen, transmission…). Примитив без
 материала получает материал glTF по умолчанию: белый, metallic 1, roughness 1.
 
 ## Запуск

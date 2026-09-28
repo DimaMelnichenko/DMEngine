@@ -21,6 +21,9 @@ cbuffer PBRMaterialBuffer : register( SLOT_CB_MATERIAL )
 	float  g_alphaCutoff;       // AlphaMode MASK: пиксели с альфой ниже порога отбрасываются
 	float  g_windWeight;        // отклик на ветер уровня (Wind Weight у SimpleGrassWind в UE): 0 — неподвижен
 	float2 g_materialPadding;
+	// Пропускание (KHR_materials_diffuse_transmission): цвет прошедшего света и доля рассеянного, проходящая насквозь
+	float3 g_diffuseTransmissionColorFactor;
+	float  g_diffuseTransmissionFactor;
 };
 
 #endif
