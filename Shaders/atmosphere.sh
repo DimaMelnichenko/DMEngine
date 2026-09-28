@@ -215,7 +215,11 @@ void integrateScattering( float3 origin, float3 direction, float start, float en
 	{
 		float3 position = origin + direction * ( start + stepLength * ( i + 0.5f ) );
 		float radius = length( position );
-		float height = radius - planetRadius;
+		// Не ниже поверхности: воздушная перспектива растягивает луч (aerial_perspective_view_distance_scale) вместе с его
+		// вертикальной частью, и при взгляде вниз выборки уходили под землю, где плотность Ми росла как e^(−h / 1,2 км).
+		// Под землёй — воздух у поверхности. UE обрывает луч у поверхности планеты, но здесь растяжение задумано для
+		// горизонтальных расстояний: луч к дну долины уходит «под землю» уже на первой шестой пути, и дымка почти пропала бы
+		float height = max( radius - planetRadius, 0.0f );
 		float3 up = position / radius;
 		Medium medium = atmosphereMedium( height );
 
