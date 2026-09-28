@@ -12,7 +12,9 @@ namespace GS
 // сам собирает второй вариант пиксельного шейдера с отсечением (define ALPHA_MASK): у непрозрачных отсечения нет,
 // и ранняя проверка глубины работает. Так же — вариант вершинного шейдера для инстансинга (define INST_MATRIX)
 // и фазы «только глубина» для теней: вершинный шейдер с define DEPTH_ONLY (позиция и UV, без нормалей), непрозрачные —
-// без пиксельного шейдера, MASK — точка входа mainDepth (только clip)
+// без пиксельного шейдера, MASK — точка входа mainDepth (только clip). Смена LOD дизерингом (DitheredLODTransition, как
+// Dithered LOD Transition в UE) — ещё варианты с define LOD_DITHER: вершинный шейдер отдаёт долю перехода, пиксельные
+// отсекают свою долю пикселей (Shaders/lod_dither.sh)
 class PBRMaterial : public DMShader
 {
 public:
@@ -20,9 +22,9 @@ public:
 	~PBRMaterial();
 	void setParams( const PropertyContainer& ) override;
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
-	int phaseFor( const PropertyContainer& params, bool instanced = false, bool maskedInDepthPrepass = false ) const override;
+	int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
 	bool supportsInstancing() const override;
-	int depthPhaseFor( const PropertyContainer& params, bool instanced = false ) const override;
+	int depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
 
 private:
 	// Константный буфер b2 (PS и VS), раскладка как у PBRMaterialBuffer в Shaders/pbr_material.sh
@@ -43,11 +45,16 @@ private:
 	};
 	static_assert( sizeof( PSParam ) == 80, "PBRMaterialBuffer layout" );
 
-	// Номера фаз (DMShader::createPhase) по [инстансный вершинный шейдер][Masked]: цвет — пиксельный шейдер без
-	// отсечения или с ним, глубина — вершинный «только глубина» без пиксельного шейдера или с mainDepth
+	// Вершинный шейдер фазы: обычный, с матрицами экземпляров (INST_MATRIX) или со сменой LOD дизерингом (LOD_DITHER)
+	enum VertexVariant { vertexDefault, vertexInstanced, vertexLodDither, vertexVariantCount };
+	static VertexVariant vertexVariant( const ShaderPhaseOptions& options );
+
+	// Номера фаз (DMShader::createPhase): цвет — по [вершинный шейдер][отсечение по альфе][отсечение дизерингом],
+	// глубина — по [вершинный шейдер][Masked]: вершинный «только глубина» без пиксельного шейдера или с mainDepth.
+	// Дизеринг пиксельного шейдера — только с вершинным шейдером LOD_DITHER
 	bool m_instancing = false;
-	int m_colorPhases[2][2] = {};
-	int m_depthPhases[2][2] = {};
+	int m_colorPhases[vertexVariantCount][2][2] = {};
+	int m_depthPhases[vertexVariantCount][2] = {};
 
 	bool innerInitialize() override;
 	std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() override;

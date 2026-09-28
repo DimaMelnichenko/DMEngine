@@ -55,7 +55,8 @@ public:
 	void setViewBuffer( const RenderView& view );
 	// Мировая матрица объекта (b1) и матрица нормалей к ней — обратная транспонированная: нормали остаются
 	// перпендикулярными поверхности и при неравномерном масштабе
-	void setPerObjectBuffer( const XMMATRIX& world );
+	// lodDither — доля смены LOD дизерингом у экземпляра в полосе перехода (Shaders/lod_dither.sh), 0 — вне её
+	void setPerObjectBuffer( const XMMATRIX& world, float lodDither = 0.0f );
 
 private:
 	struct alignas( 16 ) ShaderFrameConstant
@@ -90,7 +91,10 @@ private:
 	{
 		XMMATRIX world;
 		XMMATRIX worldInverseTranspose;
+		float lodDither;
+		XMFLOAT3 padding;
 	};
+	static_assert( sizeof( ShaderModelConstant ) == 144, "WorldBuffer layout" );
 
 	FrameParameters m_frame;
 	com_unique_ptr<ID3D11Buffer> m_frameConstant;

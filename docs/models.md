@@ -41,6 +41,12 @@ Backface Culling в настройках материала (импортёр н
 - **LOD.** Объекты `Rock`, `Rock_LOD1`, `Rock_LOD2` — одна модель `Rock` с тремя уровнями детализации. Положение
   объектов LOD в сцене не важно: каждый берётся относительно своего origin (их поворот и масштаб — относительно `Rock`). Дальности переключения — `--lod-ranges`,
   по умолчанию 25, 50, 100 … м, последний LOD — до 10000 м, то есть до дальней плоскости камеры (`ScreenDepth` в `settings.ini`, 4000 м). Расстояние считается от камеры до опорной точки модели.
+  Если в материале секции включён `DitheredLODTransition` ([materials.md](materials.md)), LOD сменяется плавно, как
+  Dithered LOD Transition в UE. В полосе «дальность ± 5 %» (`Shaders/lod_transition.h`) экземпляр рисуется обоими LOD
+  (`ModelInstances::addLod`), каждый — своей долей пикселей экрана, маски дополняют друг друга. За последним LOD
+  экземпляр так же растворяется. Такие меши рисуются по одному, а не инстансным вызовом: доля перехода — в константах
+  объекта (`cb_lodDither`). Без флага LOD сменяется мгновенно на дальности. У `TestRock` флаг включён: на 25 м видна
+  смесь двух сеток.
 - **Материалы объекта — секции.** Как sections / material slots у Static Mesh в UE и primitives у меша glTF: LOD
   модели — список секций, у секции свой меш и свой материал (примитивы одного материала сливаются в один меш). Номер
   секции — слот материала: порядок его появления в LOD0 и дальше, одинаковый во всех LOD; в LOD, где материала нет,
@@ -222,7 +228,7 @@ python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-r
 | `Tools/export_polyhaven.py` | модели Poly Haven (архив `.blend`) → `.glb` для импорта с `--scatter` |
 | `src/Engine/Graphics/Scene/Model/Mesh/MeshLoader.h` | чтение файла меша движком |
 | `src/ObjectLibrary/LibraryLoader.cpp` | загрузка моделей, LOD, мешей и экземпляров материалов из БД, экземпляры моделей уровня (`loadLevel`) |
-| `src/Engine/Graphics/Scene/Model/ModelInstances.h/.cpp` | экземпляры моделей уровня: LOD по расстоянию, отсечение по frustum, меши в список отрисовки |
+| `src/Engine/Graphics/Scene/Model/ModelInstances.h/.cpp` | экземпляры моделей уровня: LOD по расстоянию с полосой перехода, отсечение по frustum, меши в список отрисовки |
 | `src/Engine/Graphics/Common/DMTransform.h/.cpp` | положение, поворот, масштаб и мировая матрица |
 
 ## Откуда подход

@@ -7,6 +7,7 @@
 #include "System.h"
 #include "Pipeline.h"
 #include "Shaders\ConstantBuffers.h"
+#include "Shaders\lod_transition.h"
 
 namespace GS
 {
@@ -69,8 +70,15 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 				lod.sections.push_back( section );
 			}
 			passVariant.sectionCount[i] = static_cast<uint32_t>( std::max<size_t>( sectionCount, 1 ) );
-			lod.nearDistance = std::max( params.nearBorder, i == 0 ? 0.0f : passVariant.lodEnd[i - 1] );
-			lod.farDistance = std::min( params.farBorder, passVariant.lodEnd[i] );
+			// Дальности экземпляров ближе дальностей модели на разброс (Shaders\lod_transition.h); полосы перехода — вокруг них
+			const bool hasNext = i + 1 < passVariant.lodCount;
+			lod.nearDistance = std::max( params.nearBorder, i == 0 ? 0.0f : passVariant.lodEnd[i - 1] * LOD_JITTER_MIN_SCALE );
+			lod.farDistance = std::min( params.farBorder, hasNext ? passVariant.lodEnd[i] : params.farBorder );
+			if( passVariant.lodCount > 1 )
+			{
+				lod.transitionNear = std::max( params.nearBorder, passVariant.lodEnd[i == 0 ? 0 : i - 1] * LOD_DISTANCE_MIN_SCALE );
+				lod.transitionFar = std::min( params.farBorder, passVariant.lodEnd[hasNext ? i : i - 1] * LOD_DISTANCE_MAX_SCALE );
+			}
 			variant.lods.push_back( lod );
 		}
 		layer.variants.push_back( std::move( variant ) );
@@ -130,16 +138,25 @@ void Scatterer::compute( const FrameContext& frame )
 			anyShadow = anyShadow || variant.castShadow;
 		layer.pass->populateParams().castShadow = anyShadow && ( *layer.properties )["Cast shadow"].data<bool>() ? 1.0f : 0.0f;
 
-		// Начальные аргументы — меш каждой секции и ноль инстансов, в буфер — одной записью
+		// Смена LOD дизерингом — если её умеют материалы всех секций варианта; начальные аргументы — меш каждой секции
+		// (у обычного списка и списка перехода) и ноль инстансов, в буфер — одной записью
 		for( uint32_t v = 0; v < layer.variants.size(); ++v )
 		{
-			const std::vector<LayerLod>& lods = layer.variants[v].lods;
-			for( uint32_t i = 0; i < lods.size(); ++i )
-			for( uint32_t s = 0; s < lods[i].sections.size(); ++s )
+			LayerVariant& variant = layer.variants[v];
+			variant.ditheredLodTransition = variant.lods.size() > 1;
+			for( const LayerLod& lod : variant.lods )
+			for( const LayerSection& section : lod.sections )
+				variant.ditheredLodTransition = variant.ditheredLodTransition &&
+												section.material->renderState( section.section->params ).ditheredLodTransition;
+			layer.pass->setDitheredLodTransition( v, variant.ditheredLodTransition );
+
+			for( uint32_t i = 0; i < variant.lods.size(); ++i )
+			for( uint32_t s = 0; s < variant.lods[i].sections.size(); ++s )
 			{
-				const AbstractMesh* mesh = System::meshes().get( lods[i].sections[s].section->mesh ).get();
-				layer.pass->setSectionArgs( ScatterPass::listIndex( v, i ), s, mesh->indexCount(), mesh->indexOffset(),
-											mesh->vertexOffset() );
+				const AbstractMesh* mesh = System::meshes().get( variant.lods[i].sections[s].section->mesh ).get();
+				for( bool transition : { false, true } )
+					layer.pass->setSectionArgs( ScatterPass::listIndex( v, i, transition ), s, mesh->indexCount(),
+												mesh->indexOffset(), mesh->vertexOffset() );
 			}
 		}
 		layer.pass->resetArgs();
@@ -200,11 +217,18 @@ void Scatterer::renderCustom( const RenderContext& context )
 		const float margin = layer.pass->populateParams().sizeMultiplier * m_shadowLength;
 		for( uint32_t v = 0; v < layer.variants.size(); ++v )
 		for( uint32_t i = 0; i < layer.variants[v].lods.size(); ++i )
+		for( bool transition : { false, true } )
 		{
-			const LayerLod& lod = layer.variants[v].lods[i];
-			const uint32_t list = ScatterPass::listIndex( v, i );
-			if( lod.nearDistance >= lod.farDistance )
-				continue;	// LOD не попадает в кольцо слоя
+			const LayerVariant& variant = layer.variants[v];
+			const LayerLod& lod = variant.lods[i];
+			const uint32_t list = ScatterPass::listIndex( v, i, transition );
+			// Список перехода — экземпляры в полосе смены LOD, у каждого LOD своя доля пикселей; без дизеринга он пуст
+			if( transition && !variant.ditheredLodTransition )
+				continue;
+			const float nearDistance = transition ? lod.transitionNear : lod.nearDistance;
+			const float farDistance = transition ? lod.transitionFar : lod.farDistance;
+			if( nearDistance >= farDistance )
+				continue;	// список не попадает в кольцо слоя
 
 			// Секция — свой вызов по тому же списку инстансов, проход — по режиму её материала
 			for( uint32_t s = 0; s < lod.sections.size(); ++s )
@@ -217,8 +241,8 @@ void Scatterer::renderCustom( const RenderContext& context )
 				{
 					// Инстансы LOD — на расстояниях near…far от камеры; тень от них ложится не дальше её длины. Каскад,
 					// диапазон расстояний которого с этим не пересекается, их теней не содержит
-					if( !castsShadow( layer, layer.variants[v], section ) || context.view.cascadeNear >= lod.farDistance + margin ||
-						context.view.cascadeFar <= lod.nearDistance - margin )
+					if( !castsShadow( layer, variant, section ) || context.view.cascadeNear >= farDistance + margin ||
+						context.view.cascadeFar <= nearDistance - margin )
 						continue;
 				}
 				else if( prepass ? !prepassed : passFor( state.blendMode ) != context.pass )
@@ -232,13 +256,17 @@ void Scatterer::renderCustom( const RenderContext& context )
 				DMD3D::instance().setState( materialRasterState( state.twoSided, false, context.frameRaster ) );
 
 				DMShader* shader = section.material;
-				// После depth prepass Masked не отсекает по альфе: маска уже в глубине, проверка EQUAL
-				shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( params ) :
-								 shader->phaseFor( params, false, context.depthFromPrepass && prepassed ) );
+				// После depth prepass Masked и дизеринг не отсекают: маска уже в глубине, проверка EQUAL
+				ShaderPhaseOptions options;
+				options.depthFromPrepass = context.depthFromPrepass && prepassed;
+				options.lodDither = transition;
+				shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( params, options ) :
+								 shader->phaseFor( params, options ) );
 				shader->setParams( params );
 				shader->setDrawType( DMShader::by_index );
 
-				// Инстансы LOD читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)
+				// Инстансы LOD читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh), списка
+				// перехода — ещё и с LOD_DITHER
 				DMD3D::instance().setSRV( SRVType::vs, SLOT_INSTANCE_DATA, layer.pass->instances( list ) );
 
 				context.constants.setPerObjectBuffer( worldMatrix );

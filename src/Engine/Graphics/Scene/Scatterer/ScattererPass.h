@@ -11,13 +11,16 @@ namespace GS
 // по весам) и LOD по расстоянию решают, в какой список он попадёт. У каждой пары «вариант × LOD» свой участок буфера
 // инстансов, поэтому при смене LOD у экземпляра меняется только меш — положение, поворот и размер те же. Секции LOD
 // (меши со своими материалами: стебель и лепестки) рисуют один список инстансов, у каждой — своя запись
-// indirect-аргументов
+// indirect-аргументов. Экземпляры в полосе смены LOD (Dithered LOD Transition в UE, Shaders/lod_transition.h) лежат
+// в списках перехода — у пары свой, в отдельном буфере с долей перехода: такой экземпляр есть в списках перехода
+// обоих LOD, и каждый рисует свою долю пикселей
 class ScatterPass
 {
 public:
 	static constexpr uint32_t maxLods = 4;
 	static constexpr uint32_t maxVariants = 8;
-	static constexpr uint32_t maxLists = maxVariants * maxLods;
+	static constexpr uint32_t pairCount = maxVariants * maxLods;	// пар «вариант × LOD»
+	static constexpr uint32_t maxLists = pairCount * 2;				// обычные списки и списки перехода; MAX_LISTS в Shaders\scatter.cs
 	static constexpr uint32_t maxSections = 4;	// MAX_SECTIONS в Shaders\scatter.cs
 	// Ёмкость буфера инстансов слоя; делится между списками по ожидаемому числу инстансов
 	static constexpr uint32_t capacity = 262144;
@@ -37,8 +40,14 @@ public:
 
 	// Параметры слоя (populateParams) уже заданы: по кольцу и дальностям LOD делится ёмкость
 	bool createBuffers( const std::vector<Variant>& variants );
-	// Список пары «вариант × LOD»
-	static uint32_t listIndex( uint32_t variant, uint32_t lod ) { return variant * maxLods + lod; }
+	// Список пары «вариант × LOD»: обычный или перехода (экземпляры в полосе смены LOD)
+	static uint32_t listIndex( uint32_t variant, uint32_t lod, bool transition = false )
+	{
+		return ( transition ? pairCount : 0 ) + variant * maxLods + lod;
+	}
+	// Смена LOD дизерингом у варианта (у всех его секций материал с DitheredLODTransition): без неё списки перехода
+	// пусты и LOD сменяется мгновенно на дальности экземпляра. Буфер вариантов обновляется, когда флаг меняется
+	void setDitheredLodTransition( uint32_t variant, bool dithered );
 	// Начальные indirect-аргументы секции списка: её меш и ноль инстансов; в буфер их пишет resetArgs
 	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
 	// Аргументы всех секций перед расстановкой — одной записью в буфер
@@ -49,7 +58,8 @@ public:
 	// каждый indirect-вызов читает свою запись. Без многосекционных LOD ничего не делает
 	void copySectionCounts( DMComputeShader& shader );
 
-	// Инстансы списка для вершинного шейдера: участок буфера с начала списка (SV_InstanceID считается от нуля)
+	// Инстансы списка для вершинного шейдера: участок буфера с начала списка (SV_InstanceID считается от нуля); у списка
+	// перехода — буфер перехода (InstanceParam с LOD_DITHER в Shaders\instance.sh)
 	const com_unique_ptr<ID3D11ShaderResourceView>& instances( uint32_t list );
 	ID3D11Buffer* args();
 	// Смещение аргументов секции списка в буфере аргументов (DrawIndexedInstancedIndirect), байты
@@ -85,19 +95,38 @@ private:
 		XMFLOAT4 rotation;	// кватернион
 	};
 
+	// Экземпляр списка перехода: то же и доля смены LOD — InstanceParam с LOD_DITHER
+	struct ScatterTransitionItem
+	{
+		ScatterItem item;
+		float lodDither;	// (0; 1) — уходящий LOD, (−1; 0) — приходящий (Shaders\lod_dither.sh)
+		XMFLOAT3 padding;
+	};
+
 	static constexpr uint32_t argsSize = 5 * sizeof( uint32_t );	// D3D11_DRAW_INDEXED_INSTANCED_INDIRECT_ARGS
 
 	// cbuffer ScatterVariantsBuffer в Shaders\scatter.cs (b7)
 	struct alignas( 16 ) VariantsBuffer
 	{
-		XMFLOAT4 variants[maxVariants];		// x — накопленная доля варианта (0…1), y — число LOD
+		// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом
+		XMFLOAT4 variants[maxVariants];
 		XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
-		uint32_t lists[maxLists][4];		// x — начало списка в буфере инстансов, y — его ёмкость, z — число секций
+		// x — начало списка в его буфере инстансов (обычном или перехода), y — ёмкость, z — число секций
+		uint32_t lists[maxLists][4];
 	};
 
+	// Буфер инстансов с видом на участок каждого списка и UAV для расстановки
+	struct InstanceBuffer
+	{
+		com_unique_ptr<ID3D11Buffer> buffer;
+		com_unique_ptr<ID3D11UnorderedAccessView> uav;
+	};
+	bool createInstanceBuffer( InstanceBuffer& buffer, uint32_t stride, uint32_t count );
+
 	VariantsBuffer m_variants = {};
-	com_unique_ptr<ID3D11Buffer> m_instanceBuffer;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_instanceUAV;
+	bool m_variantsChanged = false;
+	InstanceBuffer m_instances;
+	InstanceBuffer m_transitions;
 	com_unique_ptr<ID3D11ShaderResourceView> m_instanceSRVs[maxLists];
 	com_unique_ptr<ID3D11Buffer> m_argsBuffer;
 	com_unique_ptr<ID3D11UnorderedAccessView> m_argsUAV;

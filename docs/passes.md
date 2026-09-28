@@ -36,7 +36,9 @@
   одной функцией и помечена `precise`, поэтому глубины совпадают до бита и `EQUAL` не мерцает;
 - **Masked в проходе цвета — без `clip`** (как r.EarlyZPassOnlyMaterialMasking в UE): вырезанные по альфе пиксели уже
   не попали в глубину prepass, `EQUAL` их отбрасывает, а шейдер без `clip` сохраняет раннюю проверку глубины.
-  Вариант выбирает `phaseFor( params, instanced, maskedInDepthPrepass )`.
+  Так же и смена LOD дизерингом ([materials.md](materials.md)): в prepass экземпляр в полосе перехода рисует свою долю
+  пикселей (`mainDepth` с `LOD_DITHER`), в проходе цвета — без `clip`. Вариант выбирает `phaseFor( params, options )`
+  по `ShaderPhaseOptions::depthFromPrepass`.
 
 Меш, у материала которого нет варианта глубины (`depthPhaseFor` = −1: классы `Color`, `Texture`, — например Box
 уровня `Test`), и свой вызов без бита `depthPrepass` в prepass не рисуются. В проходе цвета они проверяют и пишут
@@ -106,7 +108,7 @@ Release, 1920 × 1080, время GPU, мс (частицы в уровнях в
 | `src/Engine/Graphics/Scene/MeshBatch.h` | `MeshPass::depthPrepass`, `isDepthOnlyPass`, `passFor` |
 | `src/Engine/Graphics/Scene/SceneObject.h` | `RenderContext::depthFromPrepass` |
 | `src/Engine/Graphics/D3D/DMD3D.cpp` | `DepthState::readOnlyEqual`, `setSceneDepthTarget` |
-| `src/Engine/Graphics/Scene/Shaders/PBRMaterial.cpp` | `phaseFor( …, maskedInDepthPrepass )`, фазы глубины |
+| `src/Engine/Graphics/Scene/Shaders/PBRMaterial.cpp` | `phaseFor( params, options )`, фазы глубины |
 | `src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp`, `Scatterer/Scatterer.cpp` | свои вызовы в prepass |
 | `Shaders/LightShader.vs`, `Shaders/depth_only.sh` | вариант «только глубина» с `precise`-позицией |
 | `settings.ini`, `src/Config/Config.cpp` | `DepthPrepass` |

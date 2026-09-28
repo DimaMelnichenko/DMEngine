@@ -35,6 +35,12 @@ struct InstanceParam
 #ifdef INST_COLOR
 	float4 color;
 #endif
+#ifdef LOD_DITHER
+	// Доля смены LOD дизерингом (Shaders/lod_dither.sh) — только в списках перехода расстановки: их буфер —
+	// ScatterPass::ScatterTransitionItem
+	float  lodDither;
+	float3 lodDitherPadding;
+#endif
 };
 
 StructuredBuffer<InstanceParam> g_instanceData: register( SLOT_INSTANCE_DATA );

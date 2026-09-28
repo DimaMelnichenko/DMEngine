@@ -1,6 +1,7 @@
 #include "ScattererPass.h"
 #include <algorithm>
 #include "D3D\DMD3D.h"
+#include "Shaders\lod_transition.h"
 
 namespace GS
 {
@@ -22,6 +23,26 @@ ScatterPass::~ScatterPass()
 {
 }
 
+bool ScatterPass::createInstanceBuffer( InstanceBuffer& instances, uint32_t stride, uint32_t count )
+{
+	D3D11_BUFFER_DESC desc = {};
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.ByteWidth = stride * count;
+	desc.StructureByteStride = stride;
+	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+	if( !DMD3D::instance().CreateBuffer( &desc, nullptr, instances.buffer ) )
+		return false;
+
+	// Обычный RWStructuredBuffer: место под инстанс шейдер берёт из счётчика в indirect-аргументах
+	// и проверяет ёмкость, append-буфер ёмкость не ограничивал бы
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+	uavDesc.Buffer.NumElements = count;
+	return DMD3D::instance().createUAV( instances.buffer, uavDesc, instances.uav );
+}
+
 bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 {
 	const uint32_t variantCount = std::max( 1u, std::min( static_cast<uint32_t>( variants.size() ), maxVariants ) );
@@ -35,10 +56,20 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 	const float nearBorder = m_populateParams.nearBorder;
 	const float farBorder = m_populateParams.farBorder;
 	const float ringArea = std::max( farBorder * farBorder - nearBorder * nearBorder, 1e-3f );
+	// Площадь части кольца между радиусами (без π, как ringArea)
+	const auto bandArea = [&]( float from, float to )
+	{
+		from = std::max( from, nearBorder );
+		to = std::min( to, farBorder );
+		return to > from ? to * to - from * from : 0.0f;
+	};
+	// Дальность LOD у экземпляра с полосой перехода — в пределах этих долей дальности модели
+	const float minScale = LOD_DISTANCE_MIN_SCALE;
+	const float maxScale = LOD_DISTANCE_MAX_SCALE;
 
 	m_variants = {};
 	float cumulative = 0.0f;
-	uint32_t offset = 0;
+	uint32_t offsets[2] = {};	// обычный буфер и буфер перехода
 	for( uint32_t v = 0; v < variantCount; ++v )
 	{
 		const Variant variant = v < variants.size() ? variants[v] : Variant();
@@ -50,19 +81,31 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 
 		for( uint32_t lod = 0; lod < lodCount; ++lod )
 		{
-			const float bandNear = std::max( nearBorder, lod == 0 ? 0.0f : variant.lodEnd[lod - 1] );
-			const float bandFar = std::min( farBorder, lod + 1 < lodCount ? variant.lodEnd[lod] : farBorder );
-			const float area = bandFar > bandNear ? bandFar * bandFar - bandNear * bandNear : 0.0f;
-			const uint32_t listCapacity = std::max( minListCapacity, static_cast<uint32_t>( capacity * share * area / ringArea ) );
-			uint32_t* list = m_variants.lists[listIndex( v, lod )];
-			list[0] = offset;
-			list[1] = listCapacity;
-			list[2] = std::max( 1u, std::min( variant.sectionCount[lod], maxSections ) );
-			m_hasSections = m_hasSections || list[2] > 1;
-			offset += listCapacity;
+			// Обычный список — полоса LOD, расширенная на разброс; перехода — зоны вокруг дальностей к нему и от него
+			const bool hasPrevious = lod > 0;
+			const bool hasNext = lod + 1 < lodCount;
+			const float bandNear = hasPrevious ? variant.lodEnd[lod - 1] * minScale : 0.0f;
+			const float bandFar = hasNext ? variant.lodEnd[lod] * maxScale : farBorder;
+			float transitionArea = 0.0f;
+			if( hasPrevious )
+				transitionArea += bandArea( variant.lodEnd[lod - 1] * minScale, variant.lodEnd[lod - 1] * maxScale );
+			if( hasNext )
+				transitionArea += bandArea( variant.lodEnd[lod] * minScale, variant.lodEnd[lod] * maxScale );
+
+			const uint32_t sections = std::max( 1u, std::min( variant.sectionCount[lod], maxSections ) );
+			m_hasSections = m_hasSections || sections > 1;
+			for( uint32_t transition = 0; transition < 2; ++transition )
+			{
+				const float area = transition ? transitionArea : bandArea( bandNear, bandFar );
+				const uint32_t listCapacity = std::max( minListCapacity, static_cast<uint32_t>( capacity * share * area / ringArea ) );
+				uint32_t* list = m_variants.lists[listIndex( v, lod, transition != 0 )];
+				list[0] = offsets[transition];
+				list[1] = listCapacity;
+				list[2] = sections;
+				offsets[transition] += listCapacity;
+			}
 		}
 	}
-	const uint32_t totalCapacity = offset;
 
 	D3D11_SUBRESOURCE_DATA variantsData = {};
 	variantsData.pSysMem = &m_variants;
@@ -70,42 +113,29 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( VariantsBuffer ), m_variantsBuffer, &variantsData ) )
 		return false;
 
-	D3D11_BUFFER_DESC desc = {};
-	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.ByteWidth = sizeof( ScatterItem ) * totalCapacity;
-	desc.StructureByteStride = sizeof( ScatterItem );
-	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	if( !DMD3D::instance().CreateBuffer( &desc, nullptr, m_instanceBuffer ) )
+	if( !createInstanceBuffer( m_instances, sizeof( ScatterItem ), offsets[0] ) ||
+		!createInstanceBuffer( m_transitions, sizeof( ScatterTransitionItem ), offsets[1] ) )
 		return false;
 
 	// Список — свой участок буфера: вершинный шейдер читает инстансы по SV_InstanceID от начала участка
 	for( uint32_t v = 0; v < variantCount; ++v )
 	{
 		for( uint32_t lod = 0; lod < static_cast<uint32_t>( m_variants.variants[v].y ); ++lod )
+		for( uint32_t transition = 0; transition < 2; ++transition )
 		{
-			const uint32_t list = listIndex( v, lod );
+			const uint32_t list = listIndex( v, lod, transition != 0 );
 			D3D11_SHADER_RESOURCE_VIEW_DESC viewDesc = {};
 			viewDesc.Format = DXGI_FORMAT_UNKNOWN;
 			viewDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
 			viewDesc.Buffer.FirstElement = m_variants.lists[list][0];
 			viewDesc.Buffer.NumElements = m_variants.lists[list][1];
-			if( !DMD3D::instance().createSRV( m_instanceBuffer, viewDesc, m_instanceSRVs[list] ) )
+			if( !DMD3D::instance().createSRV( transition ? m_transitions.buffer : m_instances.buffer, viewDesc, m_instanceSRVs[list] ) )
 				return false;
 		}
 	}
 
-	// Обычный RWStructuredBuffer: место под инстанс шейдер берёт из счётчика в indirect-аргументах
-	// и проверяет ёмкость, append-буфер ёмкость не ограничивал бы
-	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
-	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	uavDesc.Buffer.NumElements = totalCapacity;
-	if( !DMD3D::instance().createUAV( m_instanceBuffer, uavDesc, m_instanceUAV ) )
-		return false;
-
 	// Аргументы DrawIndexedInstancedIndirect — по пять чисел на секцию списка
-	desc = {};
+	D3D11_BUFFER_DESC desc = {};
 	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.ByteWidth = sizeof( m_initialArgs );
@@ -118,12 +148,24 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 	if( !DMD3D::instance().CreateBuffer( &desc, &argsData, m_argsBuffer ) )
 		return false;
 
-	uavDesc = {};
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 	uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
 	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
 	uavDesc.Buffer.NumElements = maxLists * maxSections * 5;
 	uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
 	return DMD3D::instance().createUAV( m_argsBuffer, uavDesc, m_argsUAV );
+}
+
+void ScatterPass::setDitheredLodTransition( uint32_t variant, bool dithered )
+{
+	if( variant >= m_populateParams.variantCount )
+		return;
+	const float value = dithered ? 1.0f : 0.0f;
+	if( m_variants.variants[variant].z != value )
+	{
+		m_variants.variants[variant].z = value;
+		m_variantsChanged = true;
+	}
 }
 
 void ScatterPass::setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset )
@@ -153,11 +195,17 @@ void ScatterPass::copySectionCounts( DMComputeShader& shader )
 void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
 {
 	Device::updateResourceData<PopulateParams>( m_populateParamsBuffer.get(), m_populateParams );
+	if( m_variantsChanged )
+	{
+		Device::updateResourceData<VariantsBuffer>( m_variantsBuffer.get(), m_variants );
+		m_variantsChanged = false;
+	}
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
 
 	shader.setUAVBuffer( 0, m_argsUAV.get() );
-	shader.setUAVBuffer( 1, m_instanceUAV.get() );
+	shader.setUAVBuffer( 1, m_instances.uav.get() );
+	shader.setUAVBuffer( 2, m_transitions.uav.get() );
 
 	shader.Dispatch( gridDim, gridDim, 0.0f );
 }

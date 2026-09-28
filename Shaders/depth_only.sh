@@ -6,4 +6,7 @@ struct DepthOnlyVertexOutput
 {
 	precise float4 position : SV_POSITION;
 	float2 tex : TEXCOORD0;	// для clip у Masked; непрозрачные рисуют глубину без пиксельного шейдера
+#ifdef LOD_DITHER
+	nointerpolation float lodDither : TEXCOORD1;	// экземпляр в полосе смены LOD (Shaders/lod_dither.sh)
+#endif
 };

@@ -6,7 +6,10 @@
 // кольца размер плавно уходит в ноль. Модель инстанса — один из вариантов слоя по весам (как Mesh Entries у Static
 // Mesh Spawner в PCG UE), по случайному числу ячейки: варианты делят сетку и не пересекаются. Инстанс попадает в список
 // «вариант × LOD» по расстоянию: позиция, поворот и размер от LOD не зависят, поэтому при смене LOD у растения
-// меняется только меш. Секции LOD (меши со своими материалами) рисуют тот же список: число инстансов считается в записи
+// меняется только меш. Дальность LOD у каждого экземпляра своя — дальности модели со сдвигом по случайному числу ячейки
+// и шуму мира (Shaders/lod_transition.h), поэтому граница LOD не идёт дугой; у варианта со сменой LOD дизерингом
+// экземпляр в полосе перехода попадает в списки перехода обоих LOD с долей перехода (Dithered LOD Transition в UE,
+// Shaders/lod_dither.sh). Секции LOD (меши со своими материалами) рисуют тот же список: число инстансов считается в записи
 // аргументов секции 0, после расстановки copySectionCounts переносит его в записи остальных секций.
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -14,6 +17,7 @@
 #include "samplers.sh"
 #include "common.vs"
 #include "terrain_height.sh"
+#include "lod_transition.h"
 
 // DMComputeShader::Dispatch: b_rect — размер сетки в ячейках
 cbuffer ThreadsData : register( SLOT_CB_PASS )
@@ -42,13 +46,20 @@ cbuffer ScatterLayerBuffer : register( b4 )
 
 // ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex, записи аргументов — ScatterPass::argsOffset
 static const uint maxLods = 4;
+static const uint maxVariants = 8;
 #define MAX_SECTIONS 4	// ScatterPass::maxSections
+#define MAX_LISTS 64	// ScatterPass::maxLists: обычные списки пар «вариант × LOD», затем списки перехода
 cbuffer ScatterVariantsBuffer : register( b7 )
 {
-	float4 g_variants[8];		// x — накопленная доля варианта (0…1), y — число LOD
-	float4 g_lodEnd[8];			// дальности LOD 0…2 варианта, м: дальше — следующий LOD
-	uint4  g_lists[32];			// x — начало списка в g_instances, y — ёмкость, z — число секций
+	float4 g_variants[maxVariants];	// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом
+	float4 g_lodEnd[maxVariants];	// дальности LOD 0…2 варианта, м: дальше — следующий LOD
+	uint4  g_lists[MAX_LISTS];		// x — начало списка в его буфере (g_instances или g_transitions), y — ёмкость, z — число секций
 };
+
+uint listIndex( uint variant, uint lod, bool transition )
+{
+	return ( transition ? maxVariants * maxLods : 0 ) + variant * maxLods + lod;
+}
 
 // Запись indirect-аргументов секции списка в g_drawArgs, байты (по 20 на запись)
 uint argsOffset( uint list, uint section )
@@ -71,12 +82,21 @@ struct ScatterItem
 	float4 rotation;	// кватернион
 };
 
+// Экземпляр списка перехода — ScatterPass::ScatterTransitionItem, InstanceParam с LOD_DITHER в instance.sh
+struct ScatterTransitionItem
+{
+	ScatterItem item;
+	float  lodDither;	// (0; 1) — уходящий LOD, (−1; 0) — приходящий (Shaders/lod_dither.sh)
+	float3 padding;
+};
+
 RWByteAddressBuffer g_drawArgs : register( u0 );	// аргументы DrawIndexedInstancedIndirect по секциям списков; число инстансов — по смещению 4
 RWStructuredBuffer<ScatterItem> g_instances : register( u1 );	// списки «вариант × LOD» подряд, участки — g_lists
+RWStructuredBuffer<ScatterTransitionItem> g_transitions : register( u2 );	// списки перехода подряд
 Texture2D g_densityMask : register( t2 );
 
 // После расстановки: число инстансов списка — в записях всех его секций (поток — список)
-[numthreads( 32, 1, 1 )]
+[numthreads( MAX_LISTS, 1, 1 )]
 void copySectionCounts( uint3 id : SV_DispatchThreadID )
 {
 	const uint list = id.x;
@@ -100,6 +120,40 @@ float random( int2 cell, uint index )
 {
 	uint h = hash( asuint( cell.x ) ^ hash( asuint( cell.y ) ^ hash( index ) ) );
 	return ( h & 0x00ffffffU ) / 16777216.0f;
+}
+
+// Низкочастотный шум мира −1…1 (value noise): случайные значения в узлах сетки с шагом size метров, между ними —
+// гладкая интерполяция
+float worldNoise( float2 position, float size, uint index )
+{
+	const float2 p = position / size;
+	const int2 node = (int2)floor( p );
+	float2 f = p - (float2)node;
+	f = f * f * ( 3.0f - 2.0f * f );
+	const float bottom = lerp( random( node, index ), random( node + int2( 1, 0 ), index ), f.x );
+	const float top = lerp( random( node + int2( 0, 1 ), index ), random( node + int2( 1, 1 ), index ), f.x );
+	return lerp( bottom, top, f.y ) * 2.0f - 1.0f;
+}
+
+// Место в списке: счётчик — число инстансов в indirect-аргументах секции 0. Список полон — счётчик возвращается,
+// чтобы отрисовка не читала за концом списка
+bool reserve( uint list, out uint index )
+{
+	const uint countOffset = argsOffset( list, 0 ) + 4;
+	g_drawArgs.InterlockedAdd( countOffset, 1, index );
+	if( index < g_lists[list].y )
+		return true;
+	g_drawArgs.InterlockedAdd( countOffset, 0xffffffffU );
+	return false;
+}
+
+void writeTransition( uint list, uint index, ScatterItem item, float lodDither )
+{
+	ScatterTransitionItem transition;
+	transition.item = item;
+	transition.lodDither = lodDither;
+	transition.padding = 0.0f;
+	g_transitions[g_lists[list].x + index] = transition;
 }
 
 float4 quaternionAxisAngle( float3 axis, float angle )
@@ -190,27 +244,50 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	[loop] for( uint v = 0; v + 1 < g_variantCount; ++v )
 		variant += pick >= g_variants[v].x ? 1 : 0;
 
-	// LOD — как у моделей уровня: первый, чья дальность не меньше расстояния; последний — до конца кольца
-	uint lodCount = (uint)g_variants[variant].y;
-	float4 lodEnd = g_lodEnd[variant];
+	// LOD — как у моделей уровня: первый, чья дальность не меньше расстояния; последний — до конца кольца. Дальности —
+	// свои у экземпляра: у модели, ближе на долю по случайному числу ячейки и шуму мира. Со сменой LOD дизерингом
+	// в полосе дальность × (1 ± LOD_TRANSITION_WIDTH / 2) экземпляр переходит к следующему LOD, transition — доля
+	const uint lodCount = (uint)g_variants[variant].y;
+	const bool dithered = g_variants[variant].z > 0.5f;
+	const float lodScale = 1.0f - LOD_JITTER_RANDOM * random( cell, seed + 8 ) -
+						   LOD_JITTER_NOISE * ( worldNoise( worldXZ, LOD_JITTER_NOISE_SIZE, seed + 9 ) * 0.5f + 0.5f );
+	const float4 lodEnd = g_lodEnd[variant] * lodScale;
 	uint lod = 0;
+	float transition = 0.0f;
 	[unroll] for( uint i = 0; i < 3; ++i )
-		lod += ( i + 1 < lodCount && distanceToCamera > lodEnd[i] ) ? 1 : 0;
-	uint list = variant * maxLods + lod;
-	uint countOffset = argsOffset( list, 0 ) + 4;
-
-	uint index;
-	g_drawArgs.InterlockedAdd( countOffset, 1, index );
-	if( index >= g_lists[list].y )
 	{
-		// Список полон: счётчик возвращается, чтобы отрисовка не читала за концом списка
-		g_drawArgs.InterlockedAdd( countOffset, 0xffffffffU );
-		return;
+		const float halfBand = dithered ? lodEnd[i] * ( LOD_TRANSITION_WIDTH * 0.5f ) : 0.0f;
+		if( lod == i && i + 1 < lodCount && distanceToCamera > lodEnd[i] - halfBand )
+		{
+			if( distanceToCamera >= lodEnd[i] + halfBand )
+				lod = i + 1;
+			else
+				transition = ( distanceToCamera - ( lodEnd[i] - halfBand ) ) / ( 2.0f * halfBand );
+		}
 	}
 
 	ScatterItem item;
 	item.position = position;
 	item.size = size;
 	item.rotation = rotation;
-	g_instances[g_lists[list].x + index] = item;
+
+	uint index;
+	if( transition > 0.0f )
+	{
+		// В полосе — в списки перехода обоих LOD: уходящий с долей t, приходящий с t − 1. Нет места у приходящего —
+		// уходящий рисуется целиком (доля 0), у уходящего — экземпляр идёт в обычный список своего LOD
+		uint nextIndex;
+		if( reserve( listIndex( variant, lod, true ), index ) )
+		{
+			const bool next = reserve( listIndex( variant, lod + 1, true ), nextIndex );
+			writeTransition( listIndex( variant, lod, true ), index, item, next ? transition : 0.0f );
+			if( next )
+				writeTransition( listIndex( variant, lod + 1, true ), nextIndex, item, transition - 1.0f );
+			return;
+		}
+	}
+
+	const uint list = listIndex( variant, lod, false );
+	if( reserve( list, index ) )
+		g_instances[g_lists[list].x + index] = item;
 }

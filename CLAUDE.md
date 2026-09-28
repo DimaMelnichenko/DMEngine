@@ -183,7 +183,8 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 из Sky-View — полноэкранный треугольник на дальней плоскости в проходе `sky`) или вместо него `HDRIBackdrop` (HDRI-панорама уровня: фон и cubemap для `SkyLight`, без воздушной перспективы),
 `SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
 растягивается до 0,9 дальней плоскости вида, `RenderView::farPlane`), `CDLODTerrain`,
-`ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида, отсечение по frustum вида — границы
+`ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида — в полосе перехода оба LOD с
+дизерингом, если у материала `DitheredLODTransition`; отсечение по frustum вида — границы
 меша `AbstractMesh::bounds` считаются при загрузке, меши в список отрисовки),
 `Scatterer` (по объекту на набор расстановки уровня: трава, камешки), `DMParticleSystem`. Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
@@ -275,8 +276,10 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 как в glTF; материал 9 `PBRInstance` — его инстансный вариант для расстановки. Режим материала — тоже параметры
 с именами glTF: `AlphaMode` (0 OPAQUE, 1 MASK, 2 BLEND — Blend Mode в UE), `AlphaCutoff`, `DoubleSided`; материал
 сообщает его `DMShader::renderState( params )` (`Scene/Shaders/MaterialRenderState.h`), вариант шейдера —
-`phaseFor( params )`: `PBRMaterial` сам собирает второй пиксельный шейдер с `clip` (define `ALPHA_MASK`), у непрозрачных
-отсечения нет. Рисуют `setPass( phaseFor( params ) )`, затем `setParams( params )`, двусторонние — без отсечения граней
+`phaseFor( params, options )`: `PBRMaterial` сам собирает второй пиксельный шейдер с `clip` (define `ALPHA_MASK`), у непрозрачных
+отсечения нет; `ShaderPhaseOptions` — что зависит от вызова: инстансы, глубина из prepass (цвет без `clip`), смена LOD
+дизерингом (`LOD_DITHER`, `Shaders/lod_dither.sh`, как Dithered LOD Transition в UE; флаг материала
+`DitheredLODTransition`). Рисуют `setPass( phaseFor( params ) )`, затем `setParams( params )`, двусторонние — без отсечения граней
 (`materialRasterState`). Прочие классы — `Texture`, `Color`
 (без освещения: небо, отладка), `Particle`. Подробно — `docs/materials.md`.
 
@@ -344,7 +347,8 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 (`ScatterLayers`, свой `ScatterPass`: буфер инстансов по спискам «вариант × LOD», compute и `DrawIndexedInstancedIndirect` на
 список) — растение: одна или несколько моделей со всеми LOD и весами (`ScatterLayerModels`, как Mesh Entries у Static Mesh
 Spawner в PCG UE: модель ячейки — по весам и случайному числу ячейки; LOD экземпляра — по расстоянию и дальностям LOD
-модели `ModelProperties.range`, как у моделей уровня; меняется только меш, экземпляр на месте), маска плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
+модели `ModelProperties.range`, как у моделей уровня, но ближе на случайную долю у каждого экземпляра; меняется только
+меш, экземпляр на месте; в полосе перехода экземпляр — в списках перехода обоих LOD с дизерингом), маска плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
 размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы), `align_to_terrain` и `cast_shadow` (тень
 солнца; флажок «Cast shadow» в окне набора — `Scatterer::properties`; у варианта ещё свой `ScatterLayerModels.cast_shadow`). Трава, ромашки, камешки — слои. Каждый кадр `Shaders/scatter.cs`
 раскладывает инстансы слоя по сетке, привязанной к миру (смещение, размер и поворот — хеш координат ячейки, поэтому

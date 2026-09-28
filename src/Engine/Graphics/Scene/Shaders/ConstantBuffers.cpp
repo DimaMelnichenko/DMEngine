@@ -74,7 +74,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
 }
 
-void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world )
+void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world, float lodDither )
 {
 	// HLSL читает матрицы по столбцам: транспонирование даёт ту же запись mul( v, M ), что и в C++
 	const XMMATRIX normals = normalMatrix( world );
@@ -82,6 +82,8 @@ void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world )
 	{
 		data.world = XMMatrixTranspose( world );
 		data.worldInverseTranspose = XMMatrixTranspose( normals );
+		data.lodDither = lodDither;
+		data.padding = XMFLOAT3( 0.0f, 0.0f, 0.0f );
 	} );
 
 	ID3D11Buffer* buffer = m_modelConstant.get();

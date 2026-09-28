@@ -24,7 +24,17 @@ bool sameMesh( const MeshBatch& a, const MeshBatch& b )
 {
 	return a.material == b.material && a.params == b.params && a.indexOffset == b.indexOffset &&
 		   a.vertexOffset == b.vertexOffset && a.indexCount == b.indexCount && a.state.blendMode == b.state.blendMode &&
-		   a.state.twoSided == b.state.twoSided && a.mirrored == b.mirrored;
+		   a.state.twoSided == b.state.twoSided && a.mirrored == b.mirrored && a.lodDither == 0.0f && b.lodDither == 0.0f;
+}
+
+// Вариант шейдера меша: инстансный вызов, глубина из depth prepass и смена LOD дизерингом (экземпляр в полосе перехода)
+ShaderPhaseOptions meshPhaseOptions( const MeshBatch& batch, bool instanced, bool depthFromPrepass )
+{
+	ShaderPhaseOptions options;
+	options.instanced = instanced;
+	options.depthFromPrepass = depthFromPrepass;
+	options.lodDither = batch.lodDither != 0.0f;
+	return options;
 }
 
 // Рисуется ли меш в depth prepass: непрозрачный или Masked с вариантом материала «только глубина». Остальные
@@ -351,11 +361,12 @@ void Renderer::buildCommands( bool depthPrepass )
 		else
 		{
 			const bool prepass = depthPrepass && inDepthPrepass( batch );
-			key = opaqueKey( batch, batch.material->phaseFor( *batch.params, false, prepass ) );
+			key = opaqueKey( batch, batch.material->phaseFor( *batch.params, meshPhaseOptions( batch, false, prepass ) ) );
 			if( prepass )
 			{
 				const uint32_t prepassIndex = static_cast<uint32_t>( MeshPass::depthPrepass );
-				m_commands[prepassIndex].push_back( { opaqueKey( batch, batch.material->depthPhaseFor( *batch.params ) ), i, false } );
+				const int depthPhase = batch.material->depthPhaseFor( *batch.params, meshPhaseOptions( batch, false, false ) );
+				m_commands[prepassIndex].push_back( { opaqueKey( batch, depthPhase ), i, false } );
 			}
 		}
 		m_commands[static_cast<uint32_t>( pass )].push_back( { key, i, false } );
@@ -392,7 +403,7 @@ void Renderer::buildShadowCommands()
 		const MeshBatch& batch = meshes[i];
 		if( !batch.castsShadow || batch.state.blendMode == BlendMode::translucent )
 			continue;
-		const int phase = batch.material->depthPhaseFor( *batch.params, false );
+		const int phase = batch.material->depthPhaseFor( *batch.params, meshPhaseOptions( batch, false, false ) );
 		if( phase < 0 )
 			continue;
 		const uint64_t key = ( static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56 ) |
@@ -546,8 +557,9 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 	const MeshBatch& batch = meshes[commands[first].index];
 	DMShader* shader = batch.material;
 	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, true ) :
-					 shader->phaseFor( *batch.params, true, context.depthFromPrepass && inDepthPrepass( batch ) ) );
+	const ShaderPhaseOptions options = meshPhaseOptions( batch, true, context.depthFromPrepass && inDepthPrepass( batch ) );
+	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
+					 shader->phaseFor( *batch.params, options ) );
 	shader->setParams( *batch.params );
 
 	for( size_t chunk = first; chunk <= last; chunk += maxInstancesPerDraw )
@@ -572,11 +584,12 @@ void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
 {
 	DMShader* shader = batch.material;
 	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, false ) :
-					 shader->phaseFor( *batch.params, false, context.depthFromPrepass && inDepthPrepass( batch ) ) );
+	const ShaderPhaseOptions options = meshPhaseOptions( batch, false, context.depthFromPrepass && inDepthPrepass( batch ) );
+	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
+					 shader->phaseFor( *batch.params, options ) );
 	shader->setParams( *batch.params );
 	shader->setDrawType( DMShader::by_index );
-	context.constants.setPerObjectBuffer( batch.world );
+	context.constants.setPerObjectBuffer( batch.world, batch.lodDither );
 	shader->render( batch.indexCount, batch.vertexOffset, batch.indexOffset );
 	countMeshes( context.pass, 1, 1 );
 }

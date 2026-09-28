@@ -1,7 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Filename: light.vs
 // Вершинный шейдер материала PBR. С define DEPTH_ONLY — вариант «только глубина» (Shaders/depth_only.sh): позиция и UV
-// без нормалей, для проходов без цвета. Растения с WindWeight > 0 гнутся ветром уровня (Shaders/wind.sh)
+// без нормалей, для проходов без цвета. Растения с WindWeight > 0 гнутся ветром уровня (Shaders/wind.sh). С define
+// LOD_DITHER — экземпляр в полосе смены LOD: отдаёт пиксельному шейдеру долю перехода (Shaders/lod_dither.sh)
 ////////////////////////////////////////////////////////////////////////////////
 
 
@@ -33,6 +34,10 @@ struct PixelInputType
 	float3 tangent : TANGENT0;
 	float3 binormal : BINORMAL0;
 	float3 worldPosition : TEXCOORD1;
+	// Перед instanceIndex: пиксельный шейдер без дизеринга читает начало выхода
+#ifdef LOD_DITHER
+	nointerpolation float lodDither : TEXCOORD2;
+#endif
 	uint instanceIndex : SV_InstanceID;
 };
 
@@ -44,6 +49,18 @@ float4x4 objectWorldMatrix( uint instanceIndex )
 	return cb_worldMatrix;
 #endif
 }
+
+#ifdef LOD_DITHER
+// Доля смены LOD: у расстановки — поле экземпляра в списке перехода, у модели уровня — константа объекта
+float lodDither( uint instanceIndex )
+{
+#if defined(INST_POS)
+	return g_instanceData[instanceIndex].lodDither;
+#else
+	return cb_lodDither;
+#endif
+}
+#endif
 
 // Положение вершины в мире — один путь у полного варианта и «только глубина»
 float4 vertexWorldPosition( VertexInputType input )
@@ -90,6 +107,9 @@ DepthOnlyVertexOutput main( VertexInputType input )
 	DepthOnlyVertexOutput output;
 	output.position = mul( mul( vertexWorldPosition( input ), cb_viewMatrix ), cb_projectionMatrix );
 	output.tex = input.tex;
+#ifdef LOD_DITHER
+	output.lodDither = lodDither( input.instanceIndex );
+#endif
 	return output;
 }
 
@@ -102,6 +122,9 @@ PixelInputType main(VertexInputType input)
 	output.tex = input.tex;
 
 	output.instanceIndex = input.instanceIndex;
+#ifdef LOD_DITHER
+	output.lodDither = lodDither( input.instanceIndex );
+#endif
 
 	float4 worldPosition = vertexWorldPosition( input );
 	output.worldPosition = worldPosition.xyz;

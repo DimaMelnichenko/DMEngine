@@ -7,6 +7,7 @@
 #include "lighting.sh"
 #include "depth_only.sh"
 #include "pbr_material.sh"
+#include "lod_dither.sh"
 
 // Не заданная текстура — белая 1×1 (для Normal — плоская нормаль), так что работают одни множители
 Texture2D g_texBaseColor : register(t0);         // sRGB, альфа — прозрачность
@@ -24,6 +25,9 @@ struct PixelInputType
 	float3 tangent : TANGENT0;
 	float3 binormal : BINORMAL0;
 	float3 worldPosition : TEXCOORD1;
+#ifdef LOD_DITHER
+	nointerpolation float lodDither : TEXCOORD2;
+#endif
 	bool isFrontFace : SV_IsFrontFace;
 };
 
@@ -43,6 +47,11 @@ float3 surfaceNormal( PixelInputType input )
 
 float4 main( PixelInputType input ) : SV_TARGET
 {
+#ifdef LOD_DITHER
+	// Экземпляр в полосе смены LOD (вариант, который PBRMaterial собирает сам): своя доля пикселей у каждого из двух LOD
+	clipLodTransition( input.position.xy, input.lodDither );
+#endif
+
 	float4 baseColor = g_texBaseColor.Sample( g_SamplerAnisotropicWrap, input.tex ) * g_baseColorFactor;
 
 #ifdef ALPHA_MASK
@@ -73,9 +82,15 @@ float4 main( PixelInputType input ) : SV_TARGET
 	return float4( evaluateLighting( surface ), baseColor.a );
 }
 
-// Глубина теней для AlphaMode MASK: только отсечение по альфе, цвета нет (у прохода теней нет цели цвета).
-// Непрозрачные рисуют глубину без пиксельного шейдера. Вход — от вершинного шейдера «только глубина» (DEPTH_ONLY)
+// Глубина теней и depth prepass: только отсечение, цвета нет (у проходов глубины нет цели цвета) — по альфе у
+// AlphaMode MASK (ALPHA_MASK) и дизерингом в полосе смены LOD (LOD_DITHER). Непрозрачные вне перехода рисуют глубину
+// без пиксельного шейдера. Вход — от вершинного шейдера «только глубина» (DEPTH_ONLY)
 void mainDepth( DepthOnlyVertexOutput input )
 {
+#ifdef LOD_DITHER
+	clipLodTransition( input.position.xy, input.lodDither );
+#endif
+#ifdef ALPHA_MASK
 	clip( g_texBaseColor.Sample( g_SamplerAnisotropicWrap, input.tex ).a * g_baseColorFactor.a - g_alphaCutoff );
+#endif
 }

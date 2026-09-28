@@ -39,6 +39,8 @@ cbuffer WorldBuffer : register( SLOT_CB_OBJECT )
 {
 	matrix cb_worldMatrix;
 	matrix cb_worldInverseTransposeMatrix;	// для нормалей: перпендикулярны поверхности и при неравномерном масштабе
+	float  cb_lodDither;		// смена LOD дизерингом у модели в полосе перехода (Shaders/lod_dither.sh), 0 — вне её
+	float3 cb_objectPadding;
 };
 
 

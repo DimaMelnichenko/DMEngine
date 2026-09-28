@@ -36,19 +36,18 @@ public:
 	// Режим и двусторонность материала с этими параметрами (Blend Mode и Two Sided в UE): по ним объект выбирает
 	// проход и отсечение граней. По умолчанию — непрозрачный односторонний
 	virtual MaterialRenderState renderState( const PropertyContainer& params ) const { return {}; }
-	// Фаза (набор шейдеров) для этих параметров — например, вариант с отсечением по альфе; instanced — вариант
-	// вершинного шейдера с матрицами экземпляров из буфера (INST_MATRIX); maskedInDepthPrepass — отсечение по альфе уже
-	// сделал depth prepass, проход цвета с проверкой глубины EQUAL берёт вариант без clip (как
-	// r.EarlyZPassOnlyMaterialMasking в UE). Рисуют так: setPass( phaseFor( params ) ), затем setParams( params )
-	virtual int phaseFor( const PropertyContainer& params, bool instanced = false, bool maskedInDepthPrepass = false ) const
+	// Фаза (набор шейдеров) для этих параметров — например, вариант с отсечением по альфе — и вызова (options: инстансы,
+	// глубина из depth prepass, смена LOD дизерингом). Рисуют так: setPass( phaseFor( params ) ), затем setParams( params )
+	virtual int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const
 	{
 		return 0;
 	}
 	// Есть ли вариант для инстансинга моделей: иначе одинаковые меши рисуются по одному
 	virtual bool supportsInstancing() const { return false; }
-	// Фаза «только глубина» для теней и depth prepass (без пиксельного шейдера или только с отсечением по альфе) или −1:
-	// материал тень не отбрасывает и в prepass не рисуется
-	virtual int depthPhaseFor( const PropertyContainer& params, bool instanced = false ) const { return -1; }
+	// Фаза «только глубина» для теней и depth prepass (без пиксельного шейдера или только с отсечением — по альфе,
+	// дизерингом смены LOD) или −1: материал тень не отбрасывает и в prepass не рисуется. Из options важны instanced
+	// и lodDither
+	virtual int depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const { return -1; }
 
 public:
 	enum DrawType

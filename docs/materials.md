@@ -79,6 +79,21 @@
 у SimpleGrassWind в UE. Больше 0 — вершинный шейдер гнёт меш от корня по ветру ([wind.md](wind.md)); у травы 1,
 у одуванчиков 1,5, у камней и моделей 0. Константы материала (`Shaders/pbr_material.sh`) поэтому видит и вершинный шейдер.
 
+**Смена LOD дизерингом** — параметр `DitheredLODTransition` (true / false, по умолчанию false), как флаг материала
+Dithered LOD Transition в UE. С ним экземпляр в полосе смены LOD рисуется обоими LOD ([models.md](models.md),
+[scatter.md](scatter.md)), без него LOD сменяется мгновенно. Вариант шейдера с дизерингом (define `LOD_DITHER`)
+`PBRMaterial` собирает сам:
+- вершинный шейдер отдаёт долю перехода: у расстановки — из экземпляра списка перехода, у моделей — `cb_lodDither`
+  константы объекта;
+- пиксельный отсекает свою долю пикселей экрана (`clipLodTransition` в `Shaders/lod_dither.sh`, как `ClipLODTransition`
+  в UE: доля в (0; 1) — уходящий LOD, в (−1; 0) — приходящий);
+- порог пикселя — interleaved gradient noise (Jimenez 2014): без TAA дизеринг даёт мелкую рябь, а не пятна.
+
+Отдельным вариантом, а не веткой — по той же причине, что Masked: `clip` отключает раннюю проверку глубины у всего
+вызова. Поэтому дизеринг — только у экземпляров в полосе перехода. После depth prepass в проходе цвета `clip` не
+нужен и дизерингу: маска уже в глубине. Вершинный шейдер при этом тот же `LOD_DITHER` — у списков перехода своя
+раскладка экземпляров. Включён у травы, одуванчиков и камней расстановки и у `TestRock`.
+
 **Пропускание** — свет сквозь тонкую поверхность: листья, травинки, лепестки против солнца светятся. Параметры — как
 у расширения glTF `KHR_materials_diffuse_transmission` (в UE то же даёт модель Two Sided Foliage с Subsurface Color):
 
@@ -102,7 +117,7 @@
   моделей (define `INST_MATRIX`: мировая матрица экземпляра из буфера по `SV_InstanceID`). Отдельный вариант, а не ветка в одном шейдере: шейдер, в котором
   есть `clip`, лишается ранней проверки глубины, а непрозрачным (трава) она нужна. С depth prepass
   ([passes.md](passes.md)) `clip` нужен только там: маска уже в глубине, и в проходе цвета Masked рисуется вариантом
-  без отсечения с проверкой `EQUAL` (`phaseFor( params, instanced, maskedInDepthPrepass )`, как
+  без отсечения с проверкой `EQUAL` (`phaseFor( params, options )` с `ShaderPhaseOptions::depthFromPrepass`, как
   r.EarlyZPassOnlyMaterialMasking в UE).
 - **Translucent** — проход `transparent` после непрозрачных: альфа-блендинг без alpha-to-coverage, глубина только
   читается (полупрозрачное не закрывает то, что за ним рисуется позже). Модели сортируются от дальних к ближним
@@ -110,7 +125,9 @@
 - **Two Sided** — вызов отрисовки без отсечения граней (каркасный режим, клавиша Q, сохраняется). Задняя грань
   освещается с развёрнутой нормалью: у травинки одна сторона на солнце, другая — в свете неба.
 
-Материал сообщает режим методом `DMShader::renderState( params )`, нужный вариант шейдера — `phaseFor( params )`.
+Материал сообщает режим методом `DMShader::renderState( params )`, нужный вариант шейдера — `phaseFor( params, options )`:
+`ShaderPhaseOptions` — то, что зависит не от параметров, а от вызова (инстансы, глубина из prepass, смена LOD
+дизерингом).
 Модели отдают секции с режимом в список отрисовки (`MeshBatch` — секция), и `Renderer` сам кладёт их в проход и рисует
 одной функцией `drawMesh`: `setPass( phaseFor( params ) )`, затем `setParams( params )`, растеризатор, матрица.
 Расстановка выбирает проход и отсечение граней по материалу секции (а не набора) в своём вызове. Для прохода теней материал
@@ -223,12 +240,13 @@ WHERE model_id = <id модели>;
 | Файл | Что там |
 |---|---|
 | `src/Engine/Graphics/Scene/Shaders/PBRMaterial.h/.cpp` | класс материала: параметры → текстуры t0…t4 и константный буфер PS b2, режим, вариант с отсечением |
-| `src/Engine/Graphics/Scene/Shaders/MaterialRenderState.h` | режим материала (`BlendMode`) и двусторонность |
+| `src/Engine/Graphics/Scene/Shaders/MaterialRenderState.h` | режим материала (`BlendMode`), двусторонность, смена LOD дизерингом; `ShaderPhaseOptions` — вариант шейдера вызова |
+| `Shaders/lod_dither.sh` | маска дизеринга смены LOD (`clipLodTransition`) |
 | `Shaders/PBRLit.ps` | пиксельный шейдер PBR: текстуры и параметры → `Surface` |
 | `Shaders/lighting.sh` | общая функция освещения `evaluateLighting`, источники света ([lighting.md](lighting.md)) |
 | `Shaders/brdf.sh` | Cook-Torrance GGX, Френель Шлика |
 | `Shaders/ibl.sh` | освещение окружением: гармоники, префильтр отражений, таблица BRDF |
-| `Shaders/LightShader.vs` | вершинный шейдер (с `INST_*` — инстансный вариант, с `DEPTH_ONLY` — «только глубина») |
+| `Shaders/LightShader.vs` | вершинный шейдер (с `INST_*` — инстансный вариант, с `DEPTH_ONLY` — «только глубина», с `LOD_DITHER` — доля перехода LOD) |
 | `Shaders/depth_only.sh` | выход вершинного шейдера «только глубина» и вход `mainDepth` |
 | `src/ObjectLibrary/LibraryLoader.cpp` | загрузка материалов, определений, экземпляров и значений |
 | `src/Engine/Graphics/Scene/TextureObjects/DMTextureStorage.cpp` | цветовое пространство текстур, текстуры по умолчанию |

@@ -61,6 +61,10 @@ struct MeshBatch
 	// встают в сортировке подряд, и рендерер рисует их одним инстансным вызовом
 	uint32_t instanceGroup = 0;
 	bool castsShadow = true;					// рисуется в проход глубины теней (Cast Shadow в UE)
+	// Экземпляр в полосе смены LOD (DitherFactor у ClipLODTransition в UE, Shaders/lod_dither.sh): (0; 1) — уходящий LOD,
+	// (−1; 0) — приходящий, 0 — вне перехода. Такой меш рисуется вариантом материала с дизерингом и не объединяется
+	// с другими в инстансный вызов: доля у каждого своя, в константах объекта
+	float lodDither = 0.0f;
 
 	// Заполняет MeshCollector
 	const SceneObject* owner = nullptr;

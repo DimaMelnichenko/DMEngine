@@ -102,17 +102,27 @@ std::vector<D3D11_INPUT_ELEMENT_DESC> PBRMaterial::initLayouts()
 
 bool PBRMaterial::innerInitialize()
 {
-	// Пиксельные шейдеры: 0 — из базы, 1 — он же с отсечением по альфе, 2 — только отсечение (глубина теней MASK)
+	// Пиксельные шейдеры: 0 — из базы, 1 — он же с отсечением по альфе, 2 — только отсечение по альфе (глубина MASK);
+	// с дизерингом смены LOD: 3 — цвет, 4 — цвет с отсечением по альфе, 5 — глубина, 6 — глубина MASK
 	const std::optional<ShaderSource> pixel = shaderSource( SRVType::ps );
 	if( !pixel )
 		return false;
-	if( !addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, withDefine( pixel->defines, "ALPHA_MASK=1" ) ) ||
-		!addShaderPassFromFile( SRVType::ps, "mainDepth", pixel->file, pixel->defines ) )
+	const std::string maskDefines = withDefine( pixel->defines, "ALPHA_MASK=1" );
+	const std::string pixelDitherDefines = withDefine( pixel->defines, "LOD_DITHER=1" );
+	const std::string maskDitherDefines = withDefine( maskDefines, "LOD_DITHER=1" );
+	if( !addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, maskDefines ) ||
+		!addShaderPassFromFile( SRVType::ps, "mainDepth", pixel->file, maskDefines ) ||
+		!addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, pixelDitherDefines ) ||
+		!addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, maskDitherDefines ) ||
+		!addShaderPassFromFile( SRVType::ps, "mainDepth", pixel->file, pixelDitherDefines ) ||
+		!addShaderPassFromFile( SRVType::ps, "mainDepth", pixel->file, maskDitherDefines ) )
 		return false;
 
-	// Вершинные шейдеры по [инстансный][только глубина]: 0 — из базы, инстансный вариант (INST_MATRIX) — у моделей
-	// уровня (у материала расстановки, defines INST_*, свои инстансы), и те же «только глубина» (DEPTH_ONLY: позиция
-	// и UV, Shaders/depth_only.sh). Без инстансинга инстансные номера совпадают с обычными
+	// Вершинные шейдеры по [вариант][только глубина]: 0 — из базы, инстансный вариант (INST_MATRIX) — у моделей
+	// уровня (у материала расстановки, defines INST_*, свои инстансы), вариант смены LOD дизерингом (LOD_DITHER: у
+	// расстановки доля перехода — в экземплярах её списков перехода, у моделей — в константах объекта; без инстансинга
+	// моделей) и те же «только глубина» (DEPTH_ONLY: позиция и UV, Shaders/depth_only.sh). Без инстансинга инстансные
+	// номера совпадают с обычными
 	const std::optional<ShaderSource> vertex = shaderSource( SRVType::vs );
 	if( !vertex )
 		return false;
@@ -122,38 +132,42 @@ bool PBRMaterial::innerInitialize()
 	{
 		return addShaderPassFromFile( SRVType::vs, vertex->function, vertex->file, defines ) ? vertexCount++ : -1;
 	};
-	int vertexShaders[2][2] = {};
-	vertexShaders[0][1] = addVertexShader( withDefine( vertex->defines, "DEPTH_ONLY=1" ) );
+	int vertexShaders[vertexVariantCount][2] = {};
+	vertexShaders[vertexDefault][1] = addVertexShader( withDefine( vertex->defines, "DEPTH_ONLY=1" ) );
 	if( m_instancing )
 	{
 		const std::string instancedDefines = withDefine( vertex->defines, "INST_MATRIX=1" );
-		vertexShaders[1][0] = addVertexShader( instancedDefines );
-		vertexShaders[1][1] = addVertexShader( withDefine( instancedDefines, "DEPTH_ONLY=1" ) );
+		vertexShaders[vertexInstanced][0] = addVertexShader( instancedDefines );
+		vertexShaders[vertexInstanced][1] = addVertexShader( withDefine( instancedDefines, "DEPTH_ONLY=1" ) );
 	}
 	else
 	{
-		vertexShaders[1][0] = vertexShaders[0][0];
-		vertexShaders[1][1] = vertexShaders[0][1];
+		vertexShaders[vertexInstanced][0] = vertexShaders[vertexDefault][0];
+		vertexShaders[vertexInstanced][1] = vertexShaders[vertexDefault][1];
 	}
+	const std::string vertexDitherDefines = withDefine( vertex->defines, "LOD_DITHER=1" );
+	vertexShaders[vertexLodDither][0] = addVertexShader( vertexDitherDefines );
+	vertexShaders[vertexLodDither][1] = addVertexShader( withDefine( vertexDitherDefines, "DEPTH_ONLY=1" ) );
 	for( const auto& shaders : vertexShaders )
 	{
 		if( shaders[0] < 0 || shaders[1] < 0 )
 			return false;
 	}
 
-	// Фазы по [инстансный][Masked]: цвет — пиксельный шейдер 0 или 1 (с отсечением), глубина — вершинный «только
-	// глубина» без пиксельного шейдера или с mainDepth (2)
-	for( int instanced = 0; instanced < 2; ++instanced )
+	// Фазы: цвет — пиксельный шейдер 0 или 1 (с отсечением по альфе), с дизерингом — 3 или 4; глубина — вершинный
+	// «только глубина» без пиксельного шейдера или с mainDepth (2), с дизерингом — всегда с mainDepth (5 или 6)
+	for( int variant = 0; variant < vertexVariantCount; ++variant )
 	{
-		const int color = vertexShaders[instanced][0];
-		const int depth = vertexShaders[instanced][1];
-		m_colorPhases[instanced][0] = createPhase( color, 0 );
-		m_colorPhases[instanced][1] = createPhase( color, 1 );
-		m_depthPhases[instanced][0] = createPhase( depth, -1 );
-		m_depthPhases[instanced][1] = createPhase( depth, 2 );
+		const bool dither = variant == vertexLodDither;
+		const int color = vertexShaders[variant][0];
+		const int depth = vertexShaders[variant][1];
 		for( int masked = 0; masked < 2; ++masked )
 		{
-			if( m_colorPhases[instanced][masked] < 0 || m_depthPhases[instanced][masked] < 0 )
+			int* colorPhases = m_colorPhases[variant][masked];
+			colorPhases[0] = createPhase( color, masked );
+			colorPhases[1] = dither ? createPhase( color, masked ? 4 : 3 ) : colorPhases[0];
+			m_depthPhases[variant][masked] = dither ? createPhase( depth, masked ? 6 : 5 ) : createPhase( depth, masked ? 2 : -1 );
+			if( colorPhases[0] < 0 || colorPhases[1] < 0 || m_depthPhases[variant][masked] < 0 )
 				return false;
 		}
 	}
@@ -173,13 +187,21 @@ MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) 
 		default: state.blendMode = BlendMode::opaque; break;
 	}
 	state.twoSided = materialValue( params, "DoubleSided", false );
+	state.ditheredLodTransition = materialValue( params, "DitheredLODTransition", false );
 	return state;
 }
 
-int PBRMaterial::phaseFor( const PropertyContainer& params, bool instanced, bool maskedInDepthPrepass ) const
+PBRMaterial::VertexVariant PBRMaterial::vertexVariant( const ShaderPhaseOptions& options )
 {
-	const bool clipAlpha = renderState( params ).blendMode == BlendMode::masked && !maskedInDepthPrepass;
-	return m_colorPhases[instanced ? 1 : 0][clipAlpha ? 1 : 0];
+	return options.lodDither ? vertexLodDither : options.instanced ? vertexInstanced : vertexDefault;
+}
+
+int PBRMaterial::phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options ) const
+{
+	// После depth prepass отсечения нет: маска и дизеринг уже в глубине, проверка EQUAL
+	const bool clipAlpha = renderState( params ).blendMode == BlendMode::masked && !options.depthFromPrepass;
+	const bool clipDither = options.lodDither && !options.depthFromPrepass;
+	return m_colorPhases[vertexVariant( options )][clipAlpha ? 1 : 0][clipDither ? 1 : 0];
 }
 
 bool PBRMaterial::supportsInstancing() const
@@ -187,12 +209,12 @@ bool PBRMaterial::supportsInstancing() const
 	return m_instancing;
 }
 
-int PBRMaterial::depthPhaseFor( const PropertyContainer& params, bool instanced ) const
+int PBRMaterial::depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options ) const
 {
 	const MaterialRenderState state = renderState( params );
 	if( state.blendMode == BlendMode::translucent )
 		return -1;
-	return m_depthPhases[instanced ? 1 : 0][state.blendMode == BlendMode::masked ? 1 : 0];
+	return m_depthPhases[vertexVariant( options )][state.blendMode == BlendMode::masked ? 1 : 0];
 }
 
 void PBRMaterial::setParams( const PropertyContainer& params )

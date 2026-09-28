@@ -16,6 +16,20 @@ struct MaterialRenderState
 {
 	BlendMode blendMode = BlendMode::opaque;
 	bool twoSided = false;	// Two Sided в UE, doubleSided в glTF: задние грани рисуются, нормаль у них развёрнута
+	// Dithered LOD Transition в UE: в полосе перехода экземпляр рисуется обоими LOD с дополняющими друг друга масками
+	// дизеринга (вариант шейдера ShaderPhaseOptions::lodDither); без него LOD сменяется мгновенно
+	bool ditheredLodTransition = false;
+};
+
+// Вариант шейдера материала для вызова — то, что зависит не от параметров материала, а от того, как и где рисуют
+// (перестановки шейдера материала в UE)
+struct ShaderPhaseOptions
+{
+	bool instanced = false;			// матрицы экземпляров из буфера (INST_MATRIX): модели уровня одним вызовом
+	// Глубину уже записал depth prepass: проход цвета с проверкой EQUAL берёт вариант без отсечения — ни по альфе, ни
+	// дизерингом (как r.EarlyZPassOnlyMaterialMasking в UE)
+	bool depthFromPrepass = false;
+	bool lodDither = false;			// экземпляр в полосе смены LOD: дизеринг (LOD_DITHER, Shaders/lod_dither.sh)
 };
 
 }

@@ -31,7 +31,7 @@ struct RenderContext
 	ConstantBuffers& constants;
 	VertexPool& vertexPool;
 	// Глубина вида уже записана depth prepass: непрозрачные проверяют её на равенство без записи, и Masked в проходе
-	// цвета не отсекает по альфе — маска уже в глубине (вариант phaseFor( …, maskedInDepthPrepass ))
+	// цвета не отсекает по альфе и дизерингом — маска уже в глубине (ShaderPhaseOptions::depthFromPrepass)
 	bool depthFromPrepass = false;
 };
 
