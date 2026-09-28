@@ -71,11 +71,17 @@ private:
 		XMFLOAT4 shadowCast;	// xyz — куда идёт свет солнца, w — длина тени на метр высоты вдоль луча (0 — солнца нет)
 	};
 
-	// LOD растения: меш и материал, часть кольца, где он рисуется
+	// Секция LOD: меш со своим материалом — свой indirect-вызов на список инстансов LOD
+	struct LayerSection
+	{
+		DMModel::Section* section = nullptr;
+		DMShader* material = nullptr;
+	};
+
+	// LOD растения: секции и часть кольца, где он рисуется
 	struct LayerLod
 	{
-		DMModel::LodBlock* block = nullptr;
-		DMShader* material = nullptr;
+		std::vector<LayerSection> sections;
 		float nearDistance = 0.0f;
 		float farDistance = 0.0f;
 	};
@@ -95,10 +101,10 @@ private:
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
 	};
 
-	// LOD варианта отбрасывает тень: флаги слоя и варианта и вариант материала «только глубина»
-	bool castsShadow( const Layer& layer, const LayerVariant& variant, const LayerLod& lod ) const;
-	// LOD слоя рисуется в depth prepass: непрозрачный или Masked с вариантом «только глубина»
-	bool inDepthPrepass( const LayerLod& lod ) const;
+	// Секция варианта отбрасывает тень: флаги слоя и варианта и вариант её материала «только глубина»
+	bool castsShadow( const Layer& layer, const LayerVariant& variant, const LayerSection& section ) const;
+	// Секция рисуется в depth prepass: непрозрачная или Masked с вариантом «только глубина»
+	bool inDepthPrepass( const LayerSection& section ) const;
 
 	// Больше потоков на слой не запускаем: при мелком шаге сетка покроет не всё кольцо, а только его середину
 	static constexpr uint16_t maxGridDim = 1024;
@@ -108,7 +114,7 @@ private:
 	const TerrainHeightSource* m_terrain = nullptr;
 	std::vector<Layer> m_layers;
 	DMComputeShader m_computeShader;
-	DMComputeShader m_initShader;
+	DMComputeShader m_sectionCountShader;	// copySectionCounts в Shaders\scatter.cs
 	com_unique_ptr<ID3D11Buffer> m_terrainBuffer;
 	com_unique_ptr<ID3D11Buffer> m_frustumBuffer;
 	PropertyContainer m_properties;

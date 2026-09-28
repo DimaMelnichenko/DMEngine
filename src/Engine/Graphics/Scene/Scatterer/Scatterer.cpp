@@ -22,7 +22,7 @@ bool Scatterer::Initialize()
 	if( !m_computeShader.Initialize( "Shaders\\scatter.cs", "main" ) )
 		return false;
 
-	if( !m_initShader.Initialize( "Shaders\\scatter.cs", "init" ) )
+	if( !m_sectionCountShader.Initialize( "Shaders\\scatter.cs", "copySectionCounts" ) )
 		return false;
 
 	return DMD3D::instance().createShaderConstantBuffer( sizeof( TerrainParams ), m_terrainBuffer ) &&
@@ -59,8 +59,16 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		{
 			passVariant.lodEnd[i] = i + 1 < passVariant.lodCount ? model->lodRange( static_cast<uint16_t>( i ) ) : params.farBorder;
 			LayerLod lod;
-			lod.block = model->getLodById( static_cast<uint16_t>( i ) );
-			lod.material = System::materials().get( lod.block->material )->m_shader.get();
+			DMModel::LodBlock* block = model->getLodById( static_cast<uint16_t>( i ) );
+			const size_t sectionCount = std::min<size_t>( block->sections.size(), ScatterPass::maxSections );
+			for( size_t s = 0; s < sectionCount; ++s )
+			{
+				LayerSection section;
+				section.section = block->sections[s].get();
+				section.material = System::materials().get( section.section->material )->m_shader.get();
+				lod.sections.push_back( section );
+			}
+			passVariant.sectionCount[i] = static_cast<uint32_t>( std::max<size_t>( sectionCount, 1 ) );
 			lod.nearDistance = std::max( params.nearBorder, i == 0 ? 0.0f : passVariant.lodEnd[i - 1] );
 			lod.farDistance = std::min( params.farBorder, passVariant.lodEnd[i] );
 			variant.lods.push_back( lod );
@@ -122,16 +130,19 @@ void Scatterer::compute( const FrameContext& frame )
 			anyShadow = anyShadow || variant.castShadow;
 		layer.pass->populateParams().castShadow = anyShadow && ( *layer.properties )["Cast shadow"].data<bool>() ? 1.0f : 0.0f;
 
+		// Начальные аргументы — меш каждой секции и ноль инстансов, в буфер — одной записью
 		for( uint32_t v = 0; v < layer.variants.size(); ++v )
 		{
 			const std::vector<LayerLod>& lods = layer.variants[v].lods;
 			for( uint32_t i = 0; i < lods.size(); ++i )
+			for( uint32_t s = 0; s < lods[i].sections.size(); ++s )
 			{
-				const AbstractMesh* mesh = System::meshes().get( lods[i].block->mesh ).get();
-				layer.pass->resetArgs( m_initShader, ScatterPass::listIndex( v, i ), mesh->indexCount(), mesh->indexOffset(),
-									   mesh->vertexOffset() );
+				const AbstractMesh* mesh = System::meshes().get( lods[i].sections[s].section->mesh ).get();
+				layer.pass->setSectionArgs( ScatterPass::listIndex( v, i ), s, mesh->indexCount(), mesh->indexOffset(),
+											mesh->vertexOffset() );
 			}
 		}
+		layer.pass->resetArgs();
 
 		// Сетка покрывает квадрат со стороной 2 · farBorder вокруг камеры
 		const float cells = std::ceil( 2.0f * params.farBorder / params.cellSize ) + 1.0f;
@@ -139,19 +150,20 @@ void Scatterer::compute( const FrameContext& frame )
 
 		DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( layer.mask )->srv() );
 		layer.pass->populate( m_computeShader, gridDim );
+		layer.pass->copySectionCounts( m_sectionCountShader );
 	}
 }
 
-bool Scatterer::castsShadow( const Layer& layer, const LayerVariant& variant, const LayerLod& lod ) const
+bool Scatterer::castsShadow( const Layer& layer, const LayerVariant& variant, const LayerSection& section ) const
 {
 	return variant.castShadow && ( *layer.properties )["Cast shadow"].data<bool>() &&
-		   lod.material->depthPhaseFor( lod.block->params ) >= 0;
+		   section.material->depthPhaseFor( section.section->params ) >= 0;
 }
 
-bool Scatterer::inDepthPrepass( const LayerLod& lod ) const
+bool Scatterer::inDepthPrepass( const LayerSection& section ) const
 {
-	return passFor( lod.material->renderState( lod.block->params ).blendMode ) == MeshPass::opaque &&
-		   lod.material->depthPhaseFor( lod.block->params ) >= 0;
+	return passFor( section.material->renderState( section.section->params ).blendMode ) == MeshPass::opaque &&
+		   section.material->depthPhaseFor( section.section->params ) >= 0;
 }
 
 void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
@@ -162,11 +174,12 @@ void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 	{
 		for( const LayerVariant& variant : layer.variants )
 		for( const LayerLod& lod : variant.lods )
+		for( const LayerSection& section : lod.sections )
 		{
-			passMask |= passBit( passFor( lod.material->renderState( lod.block->params ).blendMode ) );
-			if( inDepthPrepass( lod ) )
+			passMask |= passBit( passFor( section.material->renderState( section.section->params ).blendMode ) );
+			if( inDepthPrepass( section ) )
 				passMask |= passBit( MeshPass::depthPrepass );
-			if( castsShadow( layer, variant, lod ) )
+			if( castsShadow( layer, variant, section ) )
 				passMask |= passBit( MeshPass::csmShadowDepth );
 		}
 	}
@@ -193,38 +206,44 @@ void Scatterer::renderCustom( const RenderContext& context )
 			if( lod.nearDistance >= lod.farDistance )
 				continue;	// LOD не попадает в кольцо слоя
 
-			const MaterialRenderState state = lod.material->renderState( lod.block->params );
-			const bool prepassed = inDepthPrepass( lod );
-			if( shadow )
+			// Секция — свой вызов по тому же списку инстансов, проход — по режиму её материала
+			for( uint32_t s = 0; s < lod.sections.size(); ++s )
 			{
-				// Инстансы LOD — на расстояниях near…far от камеры; тень от них ложится не дальше её длины. Каскад,
-				// диапазон расстояний которого с этим не пересекается, их теней не содержит
-				if( !castsShadow( layer, layer.variants[v], lod ) || context.view.cascadeNear >= lod.farDistance + margin ||
-					context.view.cascadeFar <= lod.nearDistance - margin )
+				const LayerSection& section = lod.sections[s];
+				const PropertyContainer& params = section.section->params;
+				const MaterialRenderState state = section.material->renderState( params );
+				const bool prepassed = inDepthPrepass( section );
+				if( shadow )
+				{
+					// Инстансы LOD — на расстояниях near…far от камеры; тень от них ложится не дальше её длины. Каскад,
+					// диапазон расстояний которого с этим не пересекается, их теней не содержит
+					if( !castsShadow( layer, layer.variants[v], section ) || context.view.cascadeNear >= lod.farDistance + margin ||
+						context.view.cascadeFar <= lod.nearDistance - margin )
+						continue;
+				}
+				else if( prepass ? !prepassed : passFor( state.blendMode ) != context.pass )
+				{
 					continue;
+				}
+				// Секция, которой не было в depth prepass, в проходе цвета пишет глубину сама
+				std::optional<ScopedRenderState> ownDepth;
+				if( context.depthFromPrepass && !prepassed )
+					ownDepth.emplace( DepthState::enabled );
+				DMD3D::instance().setState( materialRasterState( state.twoSided, false, context.frameRaster ) );
+
+				DMShader* shader = section.material;
+				// После depth prepass Masked не отсекает по альфе: маска уже в глубине, проверка EQUAL
+				shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( params ) :
+								 shader->phaseFor( params, false, context.depthFromPrepass && prepassed ) );
+				shader->setParams( params );
+				shader->setDrawType( DMShader::by_index );
+
+				// Инстансы LOD читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)
+				DMD3D::instance().setSRV( SRVType::vs, SLOT_INSTANCE_DATA, layer.pass->instances( list ) );
+
+				context.constants.setPerObjectBuffer( worldMatrix );
+				shader->renderInstancedIndirect( layer.pass->args(), ScatterPass::argsOffset( list, s ) );
 			}
-			else if( prepass ? !prepassed : passFor( state.blendMode ) != context.pass )
-			{
-				continue;
-			}
-			// Слой, которого не было в depth prepass, в проходе цвета пишет глубину сам
-			std::optional<ScopedRenderState> ownDepth;
-			if( context.depthFromPrepass && !prepassed )
-				ownDepth.emplace( DepthState::enabled );
-			DMD3D::instance().setState( materialRasterState( state.twoSided, false, context.frameRaster ) );
-
-			DMShader* shader = lod.material;
-			// После depth prepass Masked не отсекает по альфе: маска уже в глубине, проверка EQUAL
-			shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( lod.block->params ) :
-							 shader->phaseFor( lod.block->params, false, context.depthFromPrepass && prepassed ) );
-			shader->setParams( lod.block->params );
-			shader->setDrawType( DMShader::by_index );
-
-			// Инстансы LOD читают вершинные шейдеры с INST_POS, INST_SCALE и INST_ROTATE (Shaders\instance.sh)
-			DMD3D::instance().setSRV( SRVType::vs, SLOT_INSTANCE_DATA, layer.pass->instances( list ) );
-
-			context.constants.setPerObjectBuffer( worldMatrix );
-			shader->renderInstancedIndirect( layer.pass->args(), ScatterPass::argsOffset( list ) );
 		}
 	}
 }

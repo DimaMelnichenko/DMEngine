@@ -3,15 +3,16 @@
     python Tools/import_gltf.py модель.glb [--level Test --position x,y,z] [--scale s] [--lod-ranges 25,60]
                                            [--name Имя] [--scatter] [--dry-run]
 
-Пишет файлы мешей (Meshes\\models\\<ассет>\\<модель>_LOD<N>.bin, формат MeshLoader), картинки текстур
+Пишет файлы мешей (Meshes\\models\\<ассет>\\<модель>_LOD<N>[_S<секция>].bin, формат MeshLoader), картинки текстур
 (Textures\\models\\<ассет>\\) и строки base.db3: Meshes, Models, ModelProperties, Textures, MaterialInstance +
 MaterialParameterInstance, по --level — LevelModels. Всё в одной транзакции; повторный импорт того же файла обновляет
 строки и файлы (reimport), лишние LOD удаляет. Подробно — docs/models.md.
 
 - Объект (узел с мешем) — модель; суффикс _LOD<N> в имени — LOD N модели с именем без суффикса.
 - Связанные дубликаты Blender (Alt+D: объекты с общим мешем) — одна модель с несколькими экземплярами на уровне.
-- На LOD движок рисует один меш и один материал: объект с несколькими материалами становится несколькими моделями
-  (<имя>, <имя>_<материал>) с одинаковой расстановкой.
+- Материалы объекта — секции LOD, как primitives меша glTF и sections Static Mesh в UE: секция — меш со своим
+  материалом (примитивы одного материала сливаются). Номер секции — порядок появления материала в LOD0 и дальше;
+  в LOD, где материала нет, этой секции нет.
 - Опорная точка модели — origin объекта в Blender: вершины остаются в координатах объекта, а его положение, поворот
   и масштаб становятся экземпляром модели на уровне (LevelModels) относительно --position; зеркальный объект —
   экземпляр с отрицательным масштабом по X. Сдвиг осей от неравномерного масштаба родителя запекается в вершины;
@@ -496,8 +497,10 @@ def collect_models(gltf, asset, materials, rename, bake, bake_scale=1.0):
     for spec in specs:
         base = spec['base']
 
-        # Части LOD по материалам: на LOD движок рисует один меш с одним материалом
-        per_material = []   # [(индекс материала, [меш LOD0, меш LOD1, ...])]
+        # Секции LOD по материалам: примитивы одного материала сливаются в один меш. Номер секции (слот материала)
+        # один во всех LOD модели — по порядку появления материала
+        slots = []      # индексы материалов glTF по слотам
+        lods = []       # по LOD: [{'slot', 'mesh', 'instance', 'params'}]
         for lod_number, (node, basis) in enumerate(zip(spec['lods'], spec['bases'])):
             parts = {}
             for p_index, primitive in enumerate(gltf.json['meshes'][node['mesh']]['primitives']):
@@ -507,27 +510,21 @@ def collect_models(gltf, asset, materials, rename, bake, bake_scale=1.0):
                     continue
                 parts.setdefault(primitive.get('material'), []).append(
                     convert_primitive(gltf, primitive, basis, label))
-            for material_index, meshes in parts.items():
-                entry = next((e for e in per_material if e[0] == material_index), None)
-                if entry is None:
-                    if lod_number > 0:
-                        warn('model %s: material %s appears only from LOD%d, skipped' % (base, material_index, lod_number))
-                        continue
-                    entry = (material_index, [])
-                    per_material.append(entry)
-                if len(entry[1]) == lod_number:
-                    entry[1].append(merge(meshes))
-
-        for number, (material_index, meshes) in enumerate(per_material):
-            instance, params = materials.convert(material_index)
-            name = base
-            if number > 0:
-                material_name = gltf.json['materials'][material_index].get('name') if material_index is not None else None
-                name = '%s_%s' % (base, sanitize(material_name or 'material%d' % number))
-            if len(meshes) < len(spec['lods']):
-                warn('model %s: LOD%d has no part with this material, LODs from there are dropped' % (name, len(meshes)))
-            models.append({'name': name, 'meshes': meshes, 'instance': instance, 'params': params,
-                           'instances': spec['instances']})
+            for material_index in parts:
+                if material_index not in slots:
+                    slots.append(material_index)
+            sections = []
+            for slot, material_index in enumerate(slots):
+                if material_index in parts:
+                    instance, params = materials.convert(material_index)
+                    sections.append({'slot': slot, 'mesh': merge(parts[material_index]), 'instance': instance,
+                                     'params': params})
+            if not sections:
+                warn('model %s: LOD%d has no triangles, LODs from there are dropped' % (base, lod_number))
+                break
+            lods.append(sections)
+        if lods:
+            models.append({'name': base, 'lods': lods, 'instances': spec['instances']})
     return models
 
 
@@ -582,7 +579,8 @@ class Database:
         self.cursor.execute('UPDATE Meshes SET file = ?, primitive = ? WHERE id = ?', (file, FALLBACK_PRIMITIVE, mesh_id))
         return mesh_id
 
-    def model(self, name, lods, instance_id, render):
+    def model(self, name, lods, render):
+        """lods — по LOD: ([(секция, id меша, id экземпляра материала)], дальность); строка ModelProperties — секция"""
         model_id = self.one('SELECT id FROM Models WHERE name = ?', (name,))
         if model_id is None:
             self.cursor.execute('INSERT INTO Models (name) VALUES (?)', (name,))
@@ -590,12 +588,15 @@ class Database:
         old_meshes = [r[0] for r in self.cursor.execute('SELECT mesh_id FROM ModelProperties WHERE model_id = ?',
                                                         (model_id,))]
         self.cursor.execute('DELETE FROM ModelProperties WHERE model_id = ?', (model_id,))
-        for lod, (mesh_id, lod_range) in enumerate(lods):
-            self.cursor.execute('INSERT INTO ModelProperties (lod, model_id, range, material_id, mesh_id, render, '
-                                'material_instance_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                                (lod, model_id, lod_range, self.material_id, mesh_id, render, instance_id))
-        # Меши LOD, которых больше нет (reimport с меньшим числом LOD), — если на них никто не ссылается
-        for mesh_id in set(old_meshes) - {m for m, _ in lods}:
+        new_meshes = set()
+        for lod, (sections, lod_range) in enumerate(lods):
+            for section, mesh_id, instance_id in sections:
+                self.cursor.execute('INSERT INTO ModelProperties (lod, section, model_id, range, material_id, mesh_id, '
+                                    'render, material_instance_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                                    (lod, section, model_id, lod_range, self.material_id, mesh_id, render, instance_id))
+                new_meshes.add(mesh_id)
+        # Меши LOD и секций, которых больше нет (reimport с меньшим числом LOD), — если на них никто не ссылается
+        for mesh_id in set(old_meshes) - new_meshes:
             if self.one('SELECT COUNT(*) FROM ModelProperties WHERE mesh_id = ?', (mesh_id,)) == 0:
                 self.cursor.execute('DELETE FROM Meshes WHERE id = ?', (mesh_id,))
         return model_id
@@ -683,23 +684,30 @@ def main():
 
     instances = {}
     for model in models:
-        if model['instance'] not in instances:
-            instances[model['instance']] = db.instance(model['instance'], model['params'], texture_ids)
-        ranges = lod_ranges(len(model['meshes']), args.lod_ranges)
+        ranges = lod_ranges(len(model['lods']), args.lod_ranges)
         lods = []
-        for lod, mesh in enumerate(model['meshes']):
-            mesh_name = '%s_LOD%d' % (model['name'], lod)
-            mesh_file = 'models\\%s\\%s.bin' % (asset, mesh_name)
-            lods.append((db.mesh(mesh_name, mesh_file), ranges[lod]))
-            files[os.path.join('Meshes', mesh_file)] = mesh_bytes(mesh)
-        model_id = db.model(model['name'], lods, instances[model['instance']], 0 if args.scatter else 1)
+        for lod, sections in enumerate(model['lods']):
+            rows = []
+            for section in sections:
+                if section['instance'] not in instances:
+                    instances[section['instance']] = db.instance(section['instance'], section['params'], texture_ids)
+                # Секция 0 — прежнее имя меша LOD: повторный импорт модели из одного материала ничего не переименует
+                mesh_name = '%s_LOD%d' % (model['name'], lod) + ('_S%d' % section['slot'] if section['slot'] else '')
+                mesh_file = 'models\\%s\\%s.bin' % (asset, mesh_name)
+                rows.append((section['slot'], db.mesh(mesh_name, mesh_file), instances[section['instance']]))
+                files[os.path.join('Meshes', mesh_file)] = mesh_bytes(section['mesh'])
+            lods.append((rows, ranges[lod]))
+        model_id = db.model(model['name'], lods, 0 if args.scatter else 1)
 
-        positions = model['meshes'][0][0]
+        positions = np.concatenate([section['mesh'][0] for section in model['lods'][0]])
         lo, hi = positions.min(axis=0), positions.max(axis=0)
-        print('Model %s: %s, material instance %s, bounds (%.2f %.2f %.2f)..(%.2f %.2f %.2f)' % (
-            model['name'], ', '.join('LOD%d %d verts %d tris <= %gm' % (i, len(m[0]), len(m[5]), ranges[i])
-                                     for i, m in enumerate(model['meshes'])),
-            model['instance'], lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]))
+        print('Model %s: %s, bounds (%.2f %.2f %.2f)..(%.2f %.2f %.2f)' % (
+            model['name'], ', '.join('LOD%d %d verts %d tris <= %gm' % (
+                i, sum(len(s['mesh'][0]) for s in sections), sum(len(s['mesh'][5]) for s in sections), ranges[i])
+                for i, sections in enumerate(model['lods'])),
+            lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]))
+        for section in model['lods'][0]:
+            print('  section %d: material instance %s' % (section['slot'], section['instance']))
         if level_id is not None:
             # Origin файла — в --position с равномерным масштабом --scale
             placed = [{'position': position + instance['position'] * args.scale, 'rotation': instance['rotation'],

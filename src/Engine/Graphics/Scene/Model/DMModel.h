@@ -14,17 +14,25 @@
 namespace GS
 {
 
-// Модель — ресурс: LOD (меш, материал, параметры материала) и дальности переключения. Где стоит модель, задают
-// её экземпляры (ModelInstances, SkySphere): одна модель может стоять на уровне в нескольких местах
+// Модель — ресурс: LOD из секций и дальности переключения. Где стоит модель, задают её экземпляры (ModelInstances,
+// SkySphere): одна модель может стоять на уровне в нескольких местах
 class DMModel : public DMResource
 {
 public:
-	struct LodBlock
+	// Секция LOD — меш со своим материалом, как section / material slot у Static Mesh в UE и primitive у меша glTF:
+	// у дерева непрозрачный ствол и Masked хвоя, у постройки несколько материалов. Строка ModelProperties
+	struct Section
 	{
 		uint32_t mesh;
 		uint32_t material;
-		PropertyContainer params;
-		bool isRender;
+		PropertyContainer params;	// параметры материала; адрес постоянен — на него ссылаются MeshBatch, GUI, расстановка
+	};
+
+	struct LodBlock
+	{
+		std::vector<std::unique_ptr<Section>> sections;
+		bool isRender = true;
+		DirectX::BoundingBox bounds;	// объединение границ мешей секций, в пространстве модели
 	};
 public:
 	DMModel( uint32_t id, const std::string& name = "" );

@@ -9,14 +9,16 @@ namespace GS
 
 // Буферы и параметры слоя расстановки. Экземпляр растения раскладывается один раз: его вариант (одна из моделей слоя,
 // по весам) и LOD по расстоянию решают, в какой список он попадёт. У каждой пары «вариант × LOD» свой участок буфера
-// инстансов и свои indirect-аргументы, поэтому при смене LOD у экземпляра меняется только меш — положение, поворот и
-// размер те же
+// инстансов, поэтому при смене LOD у экземпляра меняется только меш — положение, поворот и размер те же. Секции LOD
+// (меши со своими материалами: стебель и лепестки) рисуют один список инстансов, у каждой — своя запись
+// indirect-аргументов
 class ScatterPass
 {
 public:
 	static constexpr uint32_t maxLods = 4;
 	static constexpr uint32_t maxVariants = 8;
 	static constexpr uint32_t maxLists = maxVariants * maxLods;
+	static constexpr uint32_t maxSections = 4;	// MAX_SECTIONS в Shaders\scatter.cs
 	// Ёмкость буфера инстансов слоя; делится между списками по ожидаемому числу инстансов
 	static constexpr uint32_t capacity = 262144;
 
@@ -26,6 +28,7 @@ public:
 		float weight = 1.0f;
 		uint32_t lodCount = 1;
 		float lodEnd[maxLods] = {};
+		uint32_t sectionCount[maxLods] = { 1, 1, 1, 1 };	// секций у LOD, не больше maxSections
 	};
 
 	ScatterPass();
@@ -36,16 +39,21 @@ public:
 	bool createBuffers( const std::vector<Variant>& variants );
 	// Список пары «вариант × LOD»
 	static uint32_t listIndex( uint32_t variant, uint32_t lod ) { return variant * maxLods + lod; }
-	// Indirect-аргументы списка перед расстановкой: меш LOD и ноль инстансов
-	void resetArgs( DMComputeShader& shader, uint32_t list, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
+	// Начальные indirect-аргументы секции списка: её меш и ноль инстансов; в буфер их пишет resetArgs
+	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
+	// Аргументы всех секций перед расстановкой — одной записью в буфер
+	void resetArgs();
 	// Расставляет инстансы слоя: gridDim × gridDim ячеек сетки вокруг камеры
 	void populate( DMComputeShader& shader, uint16_t gridDim );
+	// После расстановки: число инстансов списка (оно в записи секции 0) — в записи остальных его секций; в D3D11
+	// каждый indirect-вызов читает свою запись. Без многосекционных LOD ничего не делает
+	void copySectionCounts( DMComputeShader& shader );
 
 	// Инстансы списка для вершинного шейдера: участок буфера с начала списка (SV_InstanceID считается от нуля)
 	const com_unique_ptr<ID3D11ShaderResourceView>& instances( uint32_t list );
 	ID3D11Buffer* args();
-	// Смещение аргументов списка в буфере аргументов (DrawIndexedInstancedIndirect), байты
-	static uint32_t argsOffset( uint32_t list ) { return list * 5 * sizeof( uint32_t ); }
+	// Смещение аргументов секции списка в буфере аргументов (DrawIndexedInstancedIndirect), байты
+	static uint32_t argsOffset( uint32_t list, uint32_t section ) { return ( list * maxSections + section ) * argsSize; }
 
 public:
 	// Параметры слоя для Shaders\scatter.cs (cbuffer ScatterLayerBuffer, b4)
@@ -77,23 +85,14 @@ private:
 		XMFLOAT4 rotation;	// кватернион
 	};
 
-	// cbuffer ArgsBuffer в Shaders\scatter.cs
-	struct alignas( 16 ) ArgsBuffer
-	{
-		uint32_t indexCountPerInstance;
-		uint32_t instanceCount;
-		uint32_t startIndexLocation;
-		int32_t baseVertexLocation;
-		uint32_t startInstanceLocation;
-		uint32_t argsOffset;	// куда записать аргументы, байты
-	};
+	static constexpr uint32_t argsSize = 5 * sizeof( uint32_t );	// D3D11_DRAW_INDEXED_INSTANCED_INDIRECT_ARGS
 
 	// cbuffer ScatterVariantsBuffer в Shaders\scatter.cs (b7)
 	struct alignas( 16 ) VariantsBuffer
 	{
 		XMFLOAT4 variants[maxVariants];		// x — накопленная доля варианта (0…1), y — число LOD
 		XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
-		uint32_t lists[maxLists][4];		// x — начало списка в буфере инстансов, y — его ёмкость
+		uint32_t lists[maxLists][4];		// x — начало списка в буфере инстансов, y — его ёмкость, z — число секций
 	};
 
 	VariantsBuffer m_variants = {};
@@ -102,8 +101,9 @@ private:
 	com_unique_ptr<ID3D11ShaderResourceView> m_instanceSRVs[maxLists];
 	com_unique_ptr<ID3D11Buffer> m_argsBuffer;
 	com_unique_ptr<ID3D11UnorderedAccessView> m_argsUAV;
-
-	com_unique_ptr<ID3D11Buffer> m_initArgsBuffer;
+	// Начальные аргументы (меш секции, ноль инстансов): каждый кадр копируются в m_argsBuffer
+	uint32_t m_initialArgs[maxLists * maxSections * 5] = {};
+	bool m_hasSections = false;	// есть LOD из нескольких секций
 	com_unique_ptr<ID3D11Buffer> m_populateParamsBuffer;
 	com_unique_ptr<ID3D11Buffer> m_variantsBuffer;
 };

@@ -734,8 +734,27 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	if( !model )
 		return false;
 	
-	SQLite::Statement queryLOD( dbConnect().db(), "SELECT id, lod, range, material_id, mesh_id, render, material_instance_id FROM ModelProperties where model_id = :id order by lod" );
+	// Строка — секция LOD (меш и материал); дальность и флаг отрисовки LOD — у его первой секции
+	SQLite::Statement queryLOD( dbConnect().db(), "SELECT id, lod, section, range, material_id, mesh_id, render, material_instance_id "
+												  "FROM ModelProperties where model_id = :id order by lod, section" );
 	queryLOD.bind( ":id", idModel );
+	std::unique_ptr<GS::DMModel::LodBlock> block;
+	int blockLod = -1;
+	float blockRange = 0.0f;
+	auto finishLod = [&]()
+	{
+		if( !block )
+			return;
+		for( size_t i = 0; i < block->sections.size(); ++i )
+		{
+			const DirectX::BoundingBox& meshBounds = GS::System::meshes().get( block->sections[i]->mesh )->bounds();
+			if( i == 0 )
+				block->bounds = meshBounds;
+			else
+				DirectX::BoundingBox::CreateMerged( block->bounds, block->bounds, meshBounds );
+		}
+		model->addLod( blockRange, std::move( block ) );
+	};
 	while( queryLOD.executeStep() )
 	{
 		uint32_t idMaterial = queryLOD.getColumn( "material_id" ).getInt();
@@ -757,16 +776,38 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		if( !loadMesh( queryLOD.getColumn( "mesh_id" ) ) )
 			return false;
 
-		std::unique_ptr<GS::DMModel::LodBlock> block( new GS::DMModel::LodBlock() );
-		block->material = idMaterial;
-		block->mesh = queryLOD.getColumn( "mesh_id" );
-		block->isRender = queryLOD.getColumn( "render" ).getInt();
-		block->params = GS::System::materials().get( idParamsMaterial )->m_parameters;
-		if( idInstance != 0 )
-			loadMaterialParams( idInstance, block->params );
+		const int lod = queryLOD.getColumn( "lod" ).getInt();
+		if( lod != blockLod )
+		{
+			finishLod();
+			block = std::make_unique<GS::DMModel::LodBlock>();
+			block->isRender = queryLOD.getColumn( "render" ).getInt();
+			blockLod = lod;
+			blockRange = static_cast<float>( queryLOD.getColumn( "range" ).getDouble() );
+		}
 
-		model->properties()->addSubContainer( &block->params );
-		model->addLod( queryLOD.getColumn("range").getDouble(), std::move(block) );
+		auto section = std::make_unique<GS::DMModel::Section>();
+		section->material = idMaterial;
+		section->mesh = queryLOD.getColumn( "mesh_id" );
+		section->params = GS::System::materials().get( idParamsMaterial )->m_parameters;
+		if( idInstance != 0 )
+			loadMaterialParams( idInstance, section->params );
+		model->properties()->addSubContainer( &section->params );
+		block->sections.push_back( std::move( section ) );
+	}
+	finishLod();
+
+	// Имена параметров в GUI: одинаковые имена в одном окне ImGui путаются, поэтому — номер LOD и секции
+	for( uint16_t lod = 0; lod < model->lodCount(); ++lod )
+	{
+		const auto& sections = model->getLodById( lod )->sections;
+		for( size_t i = 0; i < sections.size(); ++i )
+		{
+			const std::string material = GS::System::materials().get( sections[i]->material )->name();
+			sections[i]->params.setName( "LOD " + std::to_string( lod ) +
+										 ( sections.size() > 1 ? ", section " + std::to_string( i ) : std::string() ) +
+										 " (" + material + ")" );
+		}
 	}
 
 	return true;

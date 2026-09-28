@@ -33,7 +33,7 @@ void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstan
 		if( !lod )
 			continue;
 		DirectX::BoundingBox meshBounds;
-		System::meshes().get( lod->mesh )->bounds().Transform( meshBounds, instance.transform.worldMatrix() );
+		lod->bounds.Transform( meshBounds, instance.transform.worldMatrix() );
 		if( m_instances.size() == 1 )
 			m_bounds = meshBounds;
 		else
@@ -64,10 +64,9 @@ void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& colle
 		if( !lod->isRender )
 			continue;
 
-		// Отсечение по frustum вида: границы меша, переведённые мировой матрицей экземпляра
-		const auto& mesh = System::meshes().get( lod->mesh );
+		// Отсечение по frustum вида: границы LOD (все секции), переведённые мировой матрицей экземпляра
 		DirectX::BoundingBox bounds;
-		mesh->bounds().Transform( bounds, instance.transform.worldMatrix() );
+		lod->bounds.Transform( bounds, instance.transform.worldMatrix() );
 		const XMFLOAT3 boundsMin( bounds.Center.x - bounds.Extents.x, bounds.Center.y - bounds.Extents.y,
 								  bounds.Center.z - bounds.Extents.z );
 		const XMFLOAT3 boundsMax( bounds.Center.x + bounds.Extents.x, bounds.Center.y + bounds.Extents.y,
@@ -75,19 +74,27 @@ void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& colle
 		if( !view.frustum.checkBox( boundsMin, boundsMax ) )
 			continue;
 
-		MeshBatch batch;
-		batch.material = System::materials().get( lod->material )->m_shader.get();
-		batch.materialId = lod->material;
-		batch.params = &lod->params;
-		batch.indexCount = mesh->indexCount();
-		batch.indexOffset = mesh->indexOffset();
-		batch.vertexOffset = mesh->vertexOffset();
-		batch.world = instance.transform.worldMatrix();
-		// Режим читается каждый кадр: параметры материала меняются в GUI
-		batch.state = batch.material->renderState( lod->params );
-		batch.distance = XMVectorGetX( XMVector3Length( position - viewPosition ) );
-		batch.instanceGroup = ( instance.modelId << 4 ) | static_cast<uint32_t>( lodIndex );
-		collector.add( batch );
+		// Элемент отрисовки — секция: у каждой свой меш и материал, проход — по режиму её материала
+		const float distance = XMVectorGetX( XMVector3Length( position - viewPosition ) );
+		for( size_t i = 0; i < lod->sections.size(); ++i )
+		{
+			const DMModel::Section& section = *lod->sections[i];
+			const auto& mesh = System::meshes().get( section.mesh );
+			MeshBatch batch;
+			batch.material = System::materials().get( section.material )->m_shader.get();
+			batch.materialId = section.material;
+			batch.params = &section.params;
+			batch.indexCount = mesh->indexCount();
+			batch.indexOffset = mesh->indexOffset();
+			batch.vertexOffset = mesh->vertexOffset();
+			batch.world = instance.transform.worldMatrix();
+			// Режим читается каждый кадр: параметры материала меняются в GUI
+			batch.state = batch.material->renderState( section.params );
+			batch.distance = distance;
+			// «Эта секция этого LOD этой модели»: одинаковые у соседних экземпляров рисуются одним вызовом
+			batch.instanceGroup = ( instance.modelId << 8 ) | ( static_cast<uint32_t>( lodIndex ) << 4 ) | static_cast<uint32_t>( i );
+			collector.add( batch );
+		}
 	}
 }
 

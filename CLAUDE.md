@@ -92,7 +92,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   нынешних слоёв в `docs/terrain.md`. Тестовые модели уровня
   `Test` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
   `blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/source/test_models.glb`, затем
-  `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,90.5,238`. Пучок травы
+  `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,11.73,238`. Пучок травы
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
   затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 16`; ромашка (`Camomile`, альфа-лепестки) — так же
   со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Модели Poly Haven в расстановке
@@ -157,7 +157,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
 (`Scene/SceneObject.h`): `update` / `compute` (кадр — `FrameContext`: главный вид и время) / `collectMeshes( view,
 collector )` / `renderCustom( context )` / `properties`, видимость. За каждый вид (`collectMeshes` зовётся на каждый
 вид кадра: выбор, зависящий от вида, объект хранит по `view.index`, как `CDLODTerrain`) объект отдаёт в `MeshCollector`
-(`Scene/MeshBatch.h`) меши — `MeshBatch` (≈ FMeshBatch: меш в `VertexPool`, материал, параметры, мировая матрица,
+(`Scene/MeshBatch.h`) секции мешей — `MeshBatch` (≈ FMeshBatch: меш секции в `VertexPool`, материал, параметры, мировая матрица,
 режим материала, расстояние) — или свой вызов `CustomBatch` с маской проходов (террейн, расстановка, небо, частицы).
 `Renderer` раскладывает их по проходам (`MeshPass`: меши — по режиму материала, `passFor`; свои вызовы — по маске)
 с 64-битным ключом сортировки (непрозрачные — объект в порядке сцены, материал, вариант шейдера, растеризатор, меш;
@@ -204,8 +204,9 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 **Данные сцены в SQLite (`base.db3`).** `ObjectLibrary/LibraryLoader` по id загружает из БД текстуры,
 материалы, шейдеры материала (`MaterialShaderView`: файл, тип стадии, defines), определения
 и значения параметров материала (`MaterialParameterDefView`, `MaterialParamsValueView`), меш и модель с LOD
-(`ModelProperties`: lod, range, material, mesh, material instance). Материалы грузятся все, что есть в таблице
-`Materials`; класс шейдера выбирает `MaterialStorage::createMaterial` по колонке `class`. Параметры LOD —
+(`ModelProperties`: строка на секцию LOD — lod, section, range, material, mesh, material instance; секции — как sections
+Static Mesh в UE и primitives glTF, `DMModel::Section`). Материалы грузятся все, что есть в таблице
+`Materials`; класс шейдера выбирает `MaterialStorage::createMaterial` по колонке `class`. Параметры секции —
 экземпляр материала: `ModelProperties.material_instance_id` → `MaterialInstance` (определения параметров — от его
 `id_material`, значения — `MaterialParameterInstance`); NULL — параметры `material_id` со значениями по умолчанию
 (`MaterialParameterDef.default_value`). Экземпляры 5 и 12 — наследие старой схемы, где эта колонка означала
@@ -240,8 +241,8 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`): строка `Levels` ссылается на террейн (`Terrain`,
 слои материала — `TerrainLayers`), модель неба (`Models`) и частицы (`Particles`: материал, текстура, плотность);
 NULL — этого у уровня нет. Экземпляры моделей уровня — `LevelModels`: строка на экземпляр (`position`, `rotation` —
-кватернион `x,y,z,w` как в glTF, `scale`), у модели их может быть сколько угодно. Модель (`DMModel`: LOD, меши,
-материалы) — общий ресурс без положения; положение держит экземпляр (`DMTransform` в `ModelInstances`, у неба — в
+кватернион `x,y,z,w` как в glTF, `scale`), у модели их может быть сколько угодно. Модель (`DMModel`: LOD из секций —
+меш и материал) — общий ресурс без положения; положение держит экземпляр (`DMTransform` в `ModelInstances`, у неба — в
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн,
@@ -249,7 +250,7 @@ NULL — этого у уровня нет. Экземпляры моделей 
 одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
-+ `TestPanel_Frame`. Частицы (`Particles`, одуванчики) у обоих уровней выключены — `Levels.particles` NULL: они движутся,
+(две секции: панель и металлическая рамка). Частицы (`Particles`, одуванчики) у обоих уровней выключены — `Levels.particles` NULL: они движутся,
 и снимки с одной точки для сравнения кадров не совпадали бы; вернуть — `particles = 1`.
 
 **Заглушки ресурсов.** Слот `placeholderId` (0) в хранилищах текстур и мешей занимает процедурная заглушка:
@@ -264,7 +265,7 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 «файл не найден».
 
 **Материал = `DMShader`.** Шейдер собирается из проходов (`addShaderPassFromFile(stage, "main", file, defines)`),
-параметры материала передаются через `shader->setParams(lodBlock->params)`. Специализированные шейдеры
+параметры материала передаются через `shader->setParams(section->params)`. Специализированные шейдеры
 (`Scene/Shaders/DM*Shader`, `DMComputeShader`) наследуются от него или работают рядом. Основной материал моделей —
 `PBR` (`PBRMaterial` + `Shaders/PBRLit.ps`): metallic/roughness как в glTF 2.0 и Default Lit в UE5, параметры названы
 как в glTF; материал 9 `PBRInstance` — его инстансный вариант для расстановки. Режим материала — тоже параметры

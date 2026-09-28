@@ -6,8 +6,8 @@
 // кольца размер плавно уходит в ноль. Модель инстанса — один из вариантов слоя по весам (как Mesh Entries у Static
 // Mesh Spawner в PCG UE), по случайному числу ячейки: варианты делят сетку и не пересекаются. Инстанс попадает в список
 // «вариант × LOD» по расстоянию: позиция, поворот и размер от LOD не зависят, поэтому при смене LOD у растения
-// меняется только меш.
-// init — сбрасывает indirect-аргументы одного списка перед расстановкой
+// меняется только меш. Секции LOD (меши со своими материалами) рисуют тот же список: число инстансов считается в записи
+// аргументов секции 0, после расстановки copySectionCounts переносит его в записи остальных секций.
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "slots.h"
@@ -21,17 +21,6 @@ cbuffer ThreadsData : register( SLOT_CB_PASS )
 	float  b_groupDim;
 	float2 b_rect;
 	float  b_elapsedTime;
-};
-
-cbuffer ArgsBuffer : register( b3 )
-{
-	uint   indexCountPerInstance;
-	uint   instanceCount;
-	uint   startIndexLocation;
-	int    baseVertexLocation;
-	uint   startInstanceLocation;
-	uint   argsOffset;			// аргументы списка в g_drawArgs, байты
-	float2 argsPadding;
 };
 
 // ScatterPass::PopulateParams
@@ -51,14 +40,21 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	float3 g_layerPadding;
 };
 
-// ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex
+// ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex, записи аргументов — ScatterPass::argsOffset
 static const uint maxLods = 4;
+#define MAX_SECTIONS 4	// ScatterPass::maxSections
 cbuffer ScatterVariantsBuffer : register( b7 )
 {
 	float4 g_variants[8];		// x — накопленная доля варианта (0…1), y — число LOD
 	float4 g_lodEnd[8];			// дальности LOD 0…2 варианта, м: дальше — следующий LOD
-	uint4  g_lists[32];			// x — начало списка в g_instances, y — ёмкость
+	uint4  g_lists[32];			// x — начало списка в g_instances, y — ёмкость, z — число секций
 };
+
+// Запись indirect-аргументов секции списка в g_drawArgs, байты (по 20 на запись)
+uint argsOffset( uint list, uint section )
+{
+	return ( list * MAX_SECTIONS + section ) * 20;
+}
 
 // Нормированные плоскости frustum, нормали смотрят внутрь
 cbuffer FrustumBuffer : register( b6 )
@@ -75,15 +71,18 @@ struct ScatterItem
 	float4 rotation;	// кватернион
 };
 
-RWByteAddressBuffer g_drawArgs : register( u0 );	// аргументы DrawIndexedInstancedIndirect по спискам, по 20 байт; число инстансов — по смещению 4
+RWByteAddressBuffer g_drawArgs : register( u0 );	// аргументы DrawIndexedInstancedIndirect по секциям списков; число инстансов — по смещению 4
 RWStructuredBuffer<ScatterItem> g_instances : register( u1 );	// списки «вариант × LOD» подряд, участки — g_lists
 Texture2D g_densityMask : register( t2 );
 
-[numthreads( 1, 1, 1 )]
-void init()
+// После расстановки: число инстансов списка — в записях всех его секций (поток — список)
+[numthreads( 32, 1, 1 )]
+void copySectionCounts( uint3 id : SV_DispatchThreadID )
 {
-	g_drawArgs.Store4( argsOffset, uint4( indexCountPerInstance, instanceCount, startIndexLocation, (uint)baseVertexLocation ) );
-	g_drawArgs.Store( argsOffset + 16, startInstanceLocation );
+	const uint list = id.x;
+	const uint count = g_drawArgs.Load( argsOffset( list, 0 ) + 4 );
+	for( uint section = 1; section < g_lists[list].z; ++section )
+		g_drawArgs.Store( argsOffset( list, section ) + 4, count );
 }
 
 uint hash( uint x )
@@ -198,7 +197,7 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	[unroll] for( uint i = 0; i < 3; ++i )
 		lod += ( i + 1 < lodCount && distanceToCamera > lodEnd[i] ) ? 1 : 0;
 	uint list = variant * maxLods + lod;
-	uint countOffset = list * 20 + 4;
+	uint countOffset = argsOffset( list, 0 ) + 4;
 
 	uint index;
 	g_drawArgs.InterlockedAdd( countOffset, 1, index );

@@ -57,6 +57,8 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 			uint32_t* list = m_variants.lists[listIndex( v, lod )];
 			list[0] = offset;
 			list[1] = listCapacity;
+			list[2] = std::max( 1u, std::min( variant.sectionCount[lod], maxSections ) );
+			m_hasSections = m_hasSections || list[2] > 1;
 			offset += listCapacity;
 		}
 	}
@@ -65,7 +67,6 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 	D3D11_SUBRESOURCE_DATA variantsData = {};
 	variantsData.pSysMem = &m_variants;
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( PopulateParams ), m_populateParamsBuffer, nullptr ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( ArgsBuffer ), m_initArgsBuffer, nullptr ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( VariantsBuffer ), m_variantsBuffer, &variantsData ) )
 		return false;
 
@@ -103,15 +104,15 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 	if( !DMD3D::instance().createUAV( m_instanceBuffer, uavDesc, m_instanceUAV ) )
 		return false;
 
-	// Аргументы DrawIndexedInstancedIndirect — по пять чисел на список
+	// Аргументы DrawIndexedInstancedIndirect — по пять чисел на секцию списка
 	desc = {};
 	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
 	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.ByteWidth = argsOffset( maxLists );
+	desc.ByteWidth = sizeof( m_initialArgs );
 	desc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS | D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
 	// Нули: пока расчёт травы (клавиша 3) не запускался, отрисовка по этим аргументам не рисует ничего.
 	// Без начальных данных содержимое буфера не определено, и число инстансов могло оказаться любым
-	const uint32_t emptyArgs[5 * maxLists] = {};
+	const uint32_t emptyArgs[maxLists * maxSections * 5] = {};
 	D3D11_SUBRESOURCE_DATA argsData = {};
 	argsData.pSysMem = emptyArgs;
 	if( !DMD3D::instance().CreateBuffer( &desc, &argsData, m_argsBuffer ) )
@@ -120,28 +121,33 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 	uavDesc = {};
 	uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
 	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	uavDesc.Buffer.NumElements = 5 * maxLists;
+	uavDesc.Buffer.NumElements = maxLists * maxSections * 5;
 	uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
 	return DMD3D::instance().createUAV( m_argsBuffer, uavDesc, m_argsUAV );
 }
 
-void ScatterPass::resetArgs( DMComputeShader& shader, uint32_t list, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset )
+void ScatterPass::setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset )
 {
-	Device::updateResource<ArgsBuffer>( m_initArgsBuffer, [&]( ArgsBuffer& v )
-	{
-		v.indexCountPerInstance = indexCount;
-		v.baseVertexLocation = vertexOffset;
-		v.startIndexLocation = indexOffset;
-		v.instanceCount = 0;
-		v.startInstanceLocation = 0;
-		v.argsOffset = argsOffset( list );
-	} );
+	uint32_t* args = m_initialArgs + argsOffset( list, section ) / sizeof( uint32_t );
+	args[0] = indexCount;		// IndexCountPerInstance
+	args[1] = 0;				// InstanceCount — считает Shaders\scatter.cs
+	args[2] = indexOffset;		// StartIndexLocation
+	args[3] = vertexOffset;		// BaseVertexLocation
+	args[4] = 0;				// StartInstanceLocation: у списка свой SRV с начала его участка
+}
 
-	DMD3D::instance().setConstantBuffer( SRVType::cs, 3, m_initArgsBuffer );
+void ScatterPass::resetArgs()
+{
+	DMD3D::instance().GetDeviceContext()->UpdateSubresource( m_argsBuffer.get(), 0, nullptr, m_initialArgs, 0, 0 );
+}
 
+void ScatterPass::copySectionCounts( DMComputeShader& shader )
+{
+	if( !m_hasSections )
+		return;
+	DMD3D::instance().setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
 	shader.setUAVBuffer( 0, m_argsUAV.get() );
-
-	shader.Dispatch( 1, 1, 0.0 );
+	shader.dispatchGroups( 1, 1, 1 );
 }
 
 void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
