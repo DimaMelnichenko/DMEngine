@@ -3,17 +3,20 @@
 #include "DirectX.h"
 #include "Utils\utilites.h"
 #include "Shaders\DMComputeShader.h"
+#include "RenderView.h"
 
 namespace GS
 {
 
-// Буферы и параметры слоя расстановки. Экземпляр растения раскладывается один раз: его вариант (одна из моделей слоя,
-// по весам) и LOD по расстоянию решают, в какой список он попадёт. У каждой пары «вариант × LOD» свой участок буфера
-// инстансов, поэтому при смене LOD у экземпляра меняется только меш — положение, поворот и размер те же. Секции LOD
-// (меши со своими материалами: стебель и лепестки) рисуют один список инстансов, у каждой — своя запись
-// indirect-аргументов. Экземпляры в полосе смены LOD (Dithered LOD Transition в UE, Shaders/lod_transition.h) лежат
-// в списках перехода — у пары свой, в отдельном буфере с долей перехода: такой экземпляр есть в списках перехода
-// обоих LOD, и каждый рисует свою долю пикселей
+// Буферы и параметры слоя расстановки. Экземпляр растения раскладывается один раз за кадр в пул инстансов; у каждого вида
+// кадра (главная камера и каскады теней, maxRenderViews) — свои списки индексов «вариант × LOD»: экземпляр входит в
+// список вида, если виден в нём, LOD — по расстоянию до точки LOD с множителем вида. При смене LOD у экземпляра
+// меняется только меш — положение, поворот и размер в пуле те же. Секции LOD (меши со своими материалами: стебель и
+// лепестки) рисуют один список; секции с одним материалом и состоянием по всем спискам — группа (Scatterer::groups):
+// на группу и вид — один ExecuteIndirect со счётчиком, команды которого пишет Shaders\scatter.cs (buildCommands):
+// {начало списка индексов — root-константа b9 вершинного шейдера, DrawIndexedInstanced}. Экземпляры в полосе смены LOD
+// (Dithered LOD Transition в UE, Shaders/lod_transition.h) лежат в пуле перехода с долей перехода: такой экземпляр есть
+// в списках перехода обоих LOD, и каждый рисует свою долю пикселей
 class ScatterPass
 {
 public:
@@ -22,7 +25,9 @@ public:
 	static constexpr uint32_t pairCount = maxVariants * maxLods;	// пар «вариант × LOD»
 	static constexpr uint32_t maxLists = pairCount * 2;				// обычные списки и списки перехода; MAX_LISTS в Shaders\scatter.cs
 	static constexpr uint32_t maxSections = 4;	// MAX_SECTIONS в Shaders\scatter.cs
-	// Ёмкость буфера инстансов слоя; делится между списками по ожидаемому числу инстансов
+	static constexpr uint32_t maxViews = maxRenderViews;	// MAX_VIEWS
+	static constexpr uint32_t maxGroups = maxLists * maxSections;	// MAX_GROUPS: секций списков — команд на вид
+	// Ёмкость пула инстансов слоя и списков индексов вида; делится между списками по ожидаемому числу инстансов
 	static constexpr uint32_t capacity = 262144;
 
 	// Модель слоя для раскладки: доля по весу и дальности LOD (ModelProperties.range; последний — до конца кольца)
@@ -48,25 +53,35 @@ public:
 	// Смена LOD дизерингом у варианта (у всех его секций материал с DitheredLODTransition): без неё списки перехода
 	// пусты и LOD сменяется мгновенно на дальности экземпляра. Буфер вариантов обновляется, когда флаг меняется
 	void setDitheredLodTransition( uint32_t variant, bool dithered );
-	// Начальные indirect-аргументы секции списка: её меш и ноль инстансов; в буфер их копирует resetArgs
-	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
-	// Аргументы всех секций перед расстановкой: копия GPU-буфера начальных аргументов в буфер аргументов (в D3D12 —
-	// CopyBufferRegion + барьер INDIRECT_ARGUMENT); сам буфер начальных аргументов обновляется, только когда они менялись
-	void resetArgs();
-	// Объявление прохода раскладки (GpuPass.h): что слой пишет — аргументы и инстансы; что читает, добавляет Scatterer
+	// Секция списка: её меш и группа (0…maxGroups − 1, Scatterer::groups); таблицы секций и групп уходят на GPU в
+	// populate, только когда менялись
+	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset, uint32_t group );
+	// Секции списка нет (LOD без неё): команды на неё не будет
+	void clearSectionArgs( uint32_t list, uint32_t section );
+	// Счётчики пулов, списков и групп — в ноль перед раскладкой (ClearUnorderedAccessViewUint)
+	void resetCounters();
+	// Объявление прохода раскладки (GpuPass.h): что слой пишет — счётчики, пулы, индексы, команды; что читает, добавляет Scatterer
 	PassDesc passDesc( const char* name ) const;
 	// Расставляет инстансы слоя: gridDim × gridDim ячеек сетки вокруг камеры
 	void populate( DMComputeShader& shader, uint16_t gridDim );
-	// После расстановки: число инстансов списка (оно в записи секции 0) — в записи остальных его секций; в D3D11
-	// каждый indirect-вызов читает свою запись. Без многосекционных LOD ничего не делает
-	void copySectionCounts( DMComputeShader& shader );
+	// После расстановки: команды ExecuteIndirect по видам и группам (Shaders\scatter.cs, buildCommands)
+	void buildCommands( DMComputeShader& shader );
 
-	// Инстансы списка для вершинного шейдера: участок буфера с начала списка (SV_InstanceID считается от нуля); у списка
-	// перехода — буфер перехода (InstanceParam с LOD_DITHER в Shaders\instance.sh)
-	const ShaderView& instances( uint32_t list );
-	const Buffer& args();
-	// Смещение аргументов секции списка в буфере аргументов (DrawIndexedInstancedIndirect), байты
-	static uint32_t argsOffset( uint32_t list, uint32_t section ) { return ( list * maxSections + section ) * argsSize; }
+	// Для вершинного шейдера: пул инстансов (InstanceParam с INST_POS, INST_SCALE и INST_ROTATE — Shaders\instance.sh),
+	// пул перехода (ещё LOD_DITHER) и списки индексов всех видов (SLOT_INSTANCE_INDICES; начало списка — root-константа
+	// команды)
+	const ShaderView& items() const { return m_items.srv; }
+	const ShaderView& transitions() const { return m_transitions.srv; }
+	const ShaderView& indices() const { return m_indices.srv; }
+	// Команды и счётчики групп для DMD3D::drawIndexedInstancedIndirectCount
+	const Buffer& commands() const { return m_commands; }
+	const Buffer& counters() const { return m_counters; }
+	uint32_t commandsOffset( uint32_t view, uint32_t group ) const { return ( view * maxGroups + m_groupBase[group] ) * commandStride; }
+	static uint32_t groupCountOffset( uint32_t view, uint32_t group )
+	{
+		return 8 + maxViews * maxLists * 4 + ( view * maxGroups + group ) * 4;
+	}
+	uint32_t groupCapacity( uint32_t group ) const { return m_groupCapacity[group]; }
 
 public:
 	// Параметры слоя для Shaders\scatter.cs (cbuffer ScatterLayerBuffer, b4)
@@ -81,9 +96,11 @@ public:
 		float jitter;			// смещение внутри ячейки, доля шага
 		float alignToTerrain;	// 1 — ось Y инстанса по нормали террейна
 		XMFLOAT3 rotationRange;	// предел случайного поворота вокруг осей X, Y, Z, радианы
-		float castShadow;		// 1 — слой отбрасывает тень солнца (Cast Shadow в UE)
+		float castShadow;		// 1 — слой отбрасывает тень солнца (Cast Shadow в UE): инстансы попадают в списки видов теней
 		uint32_t variantCount;	// заполняет createBuffers()
-		XMFLOAT3 padding;
+		uint32_t itemCapacity;		// ёмкость пула инстансов — createBuffers()
+		uint32_t transitionCapacity;// ёмкость пула перехода — createBuffers()
+		uint32_t indexStride;		// индексов на вид — createBuffers()
 	} m_populateParams;
 
 	PopulateParams& populateParams();
@@ -98,7 +115,7 @@ private:
 		XMFLOAT4 rotation;	// кватернион
 	};
 
-	// Экземпляр списка перехода: то же и доля смены LOD — InstanceParam с LOD_DITHER
+	// Экземпляр пула перехода: то же и доля смены LOD — InstanceParam с LOD_DITHER
 	struct ScatterTransitionItem
 	{
 		ScatterItem item;
@@ -106,7 +123,8 @@ private:
 		XMFLOAT3 padding;
 	};
 
-	static constexpr uint32_t argsSize = 5 * sizeof( uint32_t );	// аргументы DrawIndexedInstancedIndirect
+	static constexpr uint32_t commandStride = 24;	// root-константа + D3D12_DRAW_INDEXED_ARGUMENTS (COMMAND_STRIDE)
+	static constexpr uint32_t countersSize = ( 2 + maxViews * maxLists + maxViews * maxGroups ) * sizeof( uint32_t );
 
 	// cbuffer ScatterVariantsBuffer в Shaders\scatter.cs (b7)
 	struct alignas( 16 ) VariantsBuffer
@@ -114,31 +132,41 @@ private:
 		// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом
 		XMFLOAT4 variants[maxVariants];
 		XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
-		// x — начало списка в его буфере инстансов (обычном или перехода), y — ёмкость, z — число секций
+		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 		uint32_t lists[maxLists][4];
 	};
 
-	// Буфер инстансов с видом на участок каждого списка и UAV для расстановки
-	struct InstanceBuffer
+	// Буфер с UAV для раскладки и SRV для вершинного шейдера
+	struct PoolBuffer
 	{
 		Buffer buffer;
 		StorageView uav;
+		ShaderView srv;
 	};
-	bool createInstanceBuffer( InstanceBuffer& buffer, uint32_t stride, uint32_t count );
+	bool createPool( PoolBuffer& pool, uint32_t stride, uint32_t count, const char* name );
+	// Таблица групп по таблице секций: команды группы — подряд в командах вида
+	void rebuildGroups();
 
 	VariantsBuffer m_variants = {};
 	bool m_variantsChanged = false;
-	InstanceBuffer m_instances;
-	InstanceBuffer m_transitions;
-	ShaderView m_instanceSRVs[maxLists];
-	Buffer m_argsBuffer;
-	StorageView m_argsUAV;
-	// Начальные аргументы (меш секции, ноль инстансов): копия на CPU и в GPU-буфере, откуда каждый кадр копируются
-	// в m_argsBuffer
-	uint32_t m_initialArgs[maxLists * maxSections * 5] = {};
-	Buffer m_initialArgsBuffer;
-	bool m_initialArgsChanged = true;
-	bool m_hasSections = false;	// есть LOD из нескольких секций
+	PoolBuffer m_items;
+	PoolBuffer m_transitions;
+	PoolBuffer m_indices;
+	Buffer m_counters;
+	StorageView m_countersUAV;
+	Buffer m_commands;
+	StorageView m_commandsUAV;
+	// Секции списков (x — индексов, y — начало индексов, z — начало вершин, w — группа + 1) и группы (x — начало команд
+	// в командах вида, y — ёмкость): копия на CPU и буферы на GPU, обновляемые при смене
+	uint32_t m_sectionArgs[maxLists * maxSections][4] = {};
+	uint32_t m_groups[maxGroups][4] = {};
+	uint32_t m_groupBase[maxGroups] = {};
+	uint32_t m_groupCapacity[maxGroups] = {};
+	bool m_tablesChanged = true;
+	Buffer m_sectionArgsBuffer;
+	ShaderView m_sectionArgsSRV;
+	Buffer m_groupsBuffer;
+	ShaderView m_groupsSRV;
 	Buffer m_populateParamsBuffer;
 	Buffer m_variantsBuffer;
 };

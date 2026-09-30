@@ -103,6 +103,7 @@ private:
 	std::vector<DrawCommand> m_commands[scenePassCount];
 	// Проход теней: свой сборщик и команды на каждый каскад
 	ShadowCascades m_shadows;
+	bool m_shadowsActive = false;	// каскады этого кадра посчитаны (update перед compute объектов)
 	MeshCollector m_shadowCollector;
 	std::vector<DrawCommand> m_shadowCommands;
 

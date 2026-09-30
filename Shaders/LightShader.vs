@@ -74,13 +74,15 @@ float lodDither( uint instanceIndex )
 float4 vertexWorldPosition( VertexInputType input )
 {
 	float4 position = float4( input.position.xyz, 1.0f );
+	// Номер инстанса вызова → индекс в данных инстансов (у расстановки — через список вида, instance.sh)
+	const uint instanceIndex = instanceSlot( input.instanceIndex );
 
 	// instance defines block
 	#if defined(INSTANCE_INCLUDE)
-		position.xyz = calcInstance( position.xyz, input.instanceIndex );
+		position.xyz = calcInstance( position.xyz, instanceIndex );
 	#endif
 
-	const float4x4 world = objectWorldMatrix( input.instanceIndex );
+	const float4x4 world = objectWorldMatrix( instanceIndex );
 	float4 worldPosition = mul( position, world );
 
 	// Ветер: корень растения и высота вершины над ним. У расстановки корень — экземпляр на земле (origin модели внизу),
@@ -98,7 +100,7 @@ float4 vertexWorldPosition( VertexInputType input )
 	[branch] if( g_windWeight > 0.0f && cb_windStrength > 0.0f )
 	{
 	#if defined(INST_POS)
-		const InstanceParam instance = g_instanceData[input.instanceIndex];
+		const InstanceParam instance = g_instanceData[instanceIndex];
 		const float3 root = mul( float4( instance.position, 1.0f ), world ).xyz;
 		#ifdef INST_SCALE
 			const float height = input.position.y * instance.scale;
@@ -127,7 +129,7 @@ DepthOnlyVertexOutput main( VertexInputType input )
 	output.position = mul( mul( vertexWorldPosition( input ), cb_viewMatrix ), cb_projectionMatrix );
 	output.tex = input.tex;
 #ifdef LOD_DITHER
-	output.lodDither = lodDither( input.instanceIndex );
+	output.lodDither = lodDither( instanceSlot( input.instanceIndex ) );
 #endif
 	return output;
 }
@@ -140,28 +142,29 @@ PixelInputType main(VertexInputType input)
 
 	output.tex = input.tex;
 
-	output.instanceIndex = input.instanceIndex;
+	const uint instanceIndex = instanceSlot( input.instanceIndex );
+	output.instanceIndex = instanceIndex;
 #ifdef LOD_DITHER
-	output.lodDither = lodDither( input.instanceIndex );
+	output.lodDither = lodDither( instanceIndex );
 #endif
 
 	float4 worldPosition = vertexWorldPosition( input );
 	output.worldPosition = worldPosition.xyz;
     output.position = mul( mul( worldPosition, cb_viewMatrix ), cb_projectionMatrix );
 
-	float4x4 worldMatrix = objectWorldMatrix( input.instanceIndex );
+	float4x4 worldMatrix = objectWorldMatrix( instanceIndex );
 	float3x3 normalMatrix = (float3x3)cb_worldInverseTransposeMatrix;
 #ifdef INST_MATRIX
-	normalMatrix = (float3x3)g_instanceTransforms[input.instanceIndex].worldInverseTranspose;
+	normalMatrix = (float3x3)g_instanceTransforms[instanceIndex].worldInverseTranspose;
 #endif
 
 	float3 normal = input.normal;
 	float3 tangent = input.tangent;
 	float3 binormal = input.binormal;
 	#if defined(INSTANCE_INCLUDE)
-		normal = calcInstanceDirection( normal, input.instanceIndex );
-		tangent = calcInstanceDirection( tangent, input.instanceIndex );
-		binormal = calcInstanceDirection( binormal, input.instanceIndex );
+		normal = calcInstanceDirection( normal, instanceIndex );
+		tangent = calcInstanceDirection( tangent, instanceIndex );
+		binormal = calcInstanceDirection( binormal, instanceIndex );
 	#endif
 
 	// Касательная и бинормаль лежат в поверхности и преобразуются как точки, нормаль — обратной транспонированной

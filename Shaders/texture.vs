@@ -31,7 +31,7 @@ PixelInput main(VertexInput input)
 	
 	// instance defines block
 	#if defined(INSTANCE_INCLUDE)
-		output.position.xyz = calcInstance( output.position.xyz, input.instanceIndex );
+		output.position.xyz = calcInstance( output.position.xyz, instanceSlot( input.instanceIndex ) );
 	#endif		
 
     // Calculate the position of the vertex against the world, view, and projection matrices.

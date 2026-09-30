@@ -22,13 +22,17 @@
 #define SLOT_CB_MATERIAL	DM_REGISTER( b, 2 )	// параметры материала (PBR, террейн, трава)
 #define SLOT_CB_PASS		DM_REGISTER( b, 2 )	// параметры прохода без материала (небо, постобработка, compute — DMComputeShader)
 #define SLOT_CB_SHADOW		DM_REGISTER( b, 3 )	// каскады теней солнца (shadows.sh, ShadowCascades) — пиксельные шейдеры
-// b4…b7 — свои буферы прохода (compute расстановки и частиц); b8 — таблица привязок вызова (bindless.sh)
+// b4…b7 — свои буферы прохода (compute расстановки и частиц); b8 — таблица привязок вызова (bindless.sh); b9 —
+// root-константы вызова из команды ExecuteIndirect (начало списка индексов инстансов — instance.sh, scatter.cs)
 #define SLOT_CB_BINDINGS	DM_REGISTER( b, 8 )
+#define SLOT_CB_DRAW		DM_REGISTER( b, 9 )
 #define SLOT_CB_COUNT		8						// root CBV b0…b7
+#define DM_DRAW_CONSTANT_COUNT 4					// DWORD root-констант b9
 
-// Текстуры и буферы — номера слотов таблицы привязок вызова: t0…t15 — ресурсы материала или прохода, t16 — данные
+// Текстуры и буферы — номера слотов таблицы привязок вызова: t0…t14 — ресурсы материала или прохода, t15 и t16 — данные
 // объекта, u0…u7 — UAV compute-проходов
-#define SLOT_INSTANCE_DATA	16	// вершинный шейдер: данные инстансов (instance.sh, расстановка)
+#define SLOT_INSTANCE_INDICES 15	// вершинный шейдер расстановки: индексы инстансов списка вида (instance.sh, scatter.cs)
+#define SLOT_INSTANCE_DATA	16	// вершинный шейдер: данные инстансов (instance.sh: пул расстановки или матрицы инстансов)
 #define SLOT_TRANSIENT_COUNT 17	// слотов SRV вызова: t0…t16
 #define SLOT_UAV_COUNT		8	// слотов UAV вызова: u0…u7
 

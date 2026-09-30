@@ -66,6 +66,9 @@ uint32_t subresourceCount( const TextureDesc& desc )
 	return desc.mipCount * ( desc.depth > 1 ? 1 : desc.arraySize );
 }
 
+// Root-параметр root-констант вызова (b9): после таблицы привязок [0] и root CBV [1…SLOT_CB_COUNT]
+constexpr UINT drawConstantsParameter = 1 + SLOT_CB_COUNT;
+
 // Слот таблицы привязок для слота SRV (Shaders/bindless.sh); −1 — слот вне таблицы
 int bindingIndex( uint16_t slot )
 {
@@ -509,10 +512,11 @@ void DMD3D::processDeferred( FrameResources& frame )
 bool DMD3D::createRootSignature()
 {
 	// [0] — root-константы таблицы привязок вызова (b8, DM_BINDING_COUNT DWORD: индексы дескрипторов по слотам —
-	// Shaders/bindless.sh); [1…SLOT_CB_COUNT] — root CBV b0…b7 (кольцо констант и буферы проходов); сэмплеры статические
+	// Shaders/bindless.sh); [1…SLOT_CB_COUNT] — root CBV b0…b7 (кольцо констант и буферы проходов); [1 + SLOT_CB_COUNT] —
+	// root-константы вызова b9 (их пишет команда ExecuteIndirect — начало списка инстансов); сэмплеры статические
 	DMSamplerState samplers;
 	samplers.initialize();
-	D3D12_ROOT_PARAMETER1 parameters[1 + SLOT_CB_COUNT] = {};
+	D3D12_ROOT_PARAMETER1 parameters[2 + SLOT_CB_COUNT] = {};
 	parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
 	parameters[0].Constants.ShaderRegister = SLOT_CB_BINDINGS;
 	parameters[0].Constants.Num32BitValues = DM_BINDING_COUNT;
@@ -524,6 +528,10 @@ bool DMD3D::createRootSignature()
 		parameters[1 + i].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE;
 		parameters[1 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	}
+	parameters[drawConstantsParameter].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+	parameters[drawConstantsParameter].Constants.ShaderRegister = SLOT_CB_DRAW;
+	parameters[drawConstantsParameter].Constants.Num32BitValues = DM_DRAW_CONSTANT_COUNT;
+	parameters[drawConstantsParameter].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc = {};
 	desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
 	desc.Desc_1_1.NumParameters = static_cast<UINT>( std::size( parameters ) );
@@ -541,6 +549,14 @@ bool DMD3D::createRootSignature()
 			error->Release();
 		return false;
 	}
+	// Другая root signature — другие пайплайны: библиотека на диске хранит PSO по имени, и старое имя с новой сигнатурой
+	// она не приняла бы (предупреждение слоя «desc does not match»)
+	m_rootSignatureHash = 14695981039346656037ull;
+	for( size_t i = 0; i < blob->GetBufferSize(); ++i )
+	{
+		m_rootSignatureHash ^= static_cast<const uint8_t*>( blob->GetBufferPointer() )[i];
+		m_rootSignatureHash *= 1099511628211ull;
+	}
 	ID3D12RootSignature* rootSignature = nullptr;
 	const HRESULT hr = m_device->CreateRootSignature( 0, blob->GetBufferPointer(), blob->GetBufferSize(), __uuidof( ID3D12RootSignature ),
 													  reinterpret_cast<void**>( &rootSignature ) );
@@ -557,22 +573,27 @@ bool DMD3D::createRootSignature()
 
 bool DMD3D::createCommandSignature()
 {
-	// ExecuteIndirect с одной DRAW_INDEXED (20 байт на команду) — ровно DrawIndexedInstancedIndirect D3D11; root-аргументы в
-	// команде не меняются, поэтому root signature сигнатуре не нужна
-	D3D12_INDIRECT_ARGUMENT_DESC argument = {};
-	argument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+	// Команда ExecuteIndirect: root-константы вызова b9 (первое DWORD — начало списка инстансов) и DRAW_INDEXED — 24 байта;
+	// сигнатура меняет root-аргументы, поэтому привязана к root signature
+	D3D12_INDIRECT_ARGUMENT_DESC arguments[2] = {};
+	arguments[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
+	arguments[0].Constant.RootParameterIndex = drawConstantsParameter;
+	arguments[0].Constant.DestOffsetIn32BitValues = 0;
+	arguments[0].Constant.Num32BitValuesToSet = 1;
+	arguments[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
 	D3D12_COMMAND_SIGNATURE_DESC desc = {};
-	desc.ByteStride = sizeof( D3D12_DRAW_INDEXED_ARGUMENTS );
-	desc.NumArgumentDescs = 1;
-	desc.pArgumentDescs = &argument;
+	desc.ByteStride = sizeof( uint32_t ) + sizeof( D3D12_DRAW_INDEXED_ARGUMENTS );
+	desc.NumArgumentDescs = 2;
+	desc.pArgumentDescs = arguments;
 	ID3D12CommandSignature* signature = nullptr;
-	if( FAILED( m_device->CreateCommandSignature( &desc, nullptr, __uuidof( ID3D12CommandSignature ), reinterpret_cast<void**>( &signature ) ) ) )
+	if( FAILED( m_device->CreateCommandSignature( &desc, m_rootSignature.get(), __uuidof( ID3D12CommandSignature ),
+												  reinterpret_cast<void**>( &signature ) ) ) )
 	{
-		LOG( "CreateCommandSignature (DRAW_INDEXED) failed" );
+		LOG( "CreateCommandSignature (root constant + DRAW_INDEXED) failed" );
 		return false;
 	}
-	signature->SetName( L"DrawIndexed indirect" );
-	m_drawIndexedSignature = make_com_ptr<ID3D12CommandSignature>( signature );
+	signature->SetName( L"DrawIndexed indirect with count" );
+	m_drawIndexedCountSignature = make_com_ptr<ID3D12CommandSignature>( signature );
 	return true;
 }
 
@@ -740,6 +761,9 @@ void DMD3D::openCommandList( FrameResources& frame )
 	m_commandList->SetDescriptorHeaps( 1, heaps );
 	m_commandList->SetGraphicsRootSignature( m_rootSignature.get() );
 	m_commandList->SetComputeRootSignature( m_rootSignature.get() );
+	// Root-константы вызова заданы всегда: их пишут только команды ExecuteIndirect
+	const uint32_t drawConstants[DM_DRAW_CONSTANT_COUNT] = {};
+	m_commandList->SetGraphicsRoot32BitConstants( drawConstantsParameter, DM_DRAW_CONSTANT_COUNT, drawConstants, 0 );
 	m_bindingsDirtyGraphics = m_bindingsDirtyCompute = true;
 	m_cbvDirtyGraphics = m_cbvDirtyCompute = ( 1u << SLOT_CB_COUNT ) - 1;
 	m_graphicsPipelineValid = m_computePipelineValid = false;
@@ -835,6 +859,8 @@ void DMD3D::beginFrame()
 	m_passFormats = {};
 	m_lastFrameBarriers = m_frameBarriers;
 	m_frameBarriers = 0;
+	m_lastFrameIndirectDraws = m_frameIndirectDraws;
+	m_frameIndirectDraws = 0;
 	if( m_passLogRequested )
 	{
 		m_passLogRequested = false;
@@ -1160,7 +1186,8 @@ void DMD3D::EndScene()
 	{
 		finishPassRecord();
 		m_recordingPasses = false;
-		LOG( "Frame passes: " + std::to_string( m_passRecords.size() ) + ", barriers: " + std::to_string( m_frameBarriers ) );
+		LOG( "Frame passes: " + std::to_string( m_passRecords.size() ) + ", barriers: " + std::to_string( m_frameBarriers ) +
+			 ", indirect draws: " + std::to_string( m_frameIndirectDraws ) );
 		for( size_t i = 0; i < m_passRecords.size(); ++i )
 			LOG( "  " + std::to_string( i ) + ". " + m_passRecords[i] );
 	}
@@ -1264,7 +1291,7 @@ void DMD3D::Shutdown()
 	m_pipelineLibrary.reset();
 	m_pipelineLibraryData.clear();
 	m_timestampHeap.reset();
-	m_drawIndexedSignature.reset();
+	m_drawIndexedCountSignature.reset();
 	m_rootSignature.reset();
 	m_commandList.reset();
 	for( FrameResources& frame : m_frames )
@@ -1380,9 +1407,9 @@ TargetFormats DMD3D::backBufferFormats()
 	return TargetFormats::colorTarget( backBufferViewFormat );
 }
 
-std::wstring DMD3D::pipelineName( const PipelineDesc& desc )
+std::wstring DMD3D::pipelineName( const PipelineDesc& desc ) const
 {
-	uint64_t hash = 14695981039346656037ull;
+	uint64_t hash = m_rootSignatureHash ? m_rootSignatureHash : 14695981039346656037ull;
 	const auto mix = [&hash]( uint64_t value )
 	{
 		for( int i = 0; i < 8; ++i )
@@ -1602,7 +1629,7 @@ ID3D12PipelineState* DMD3D::computePipeline( const ShaderStage& stage )
 	desc.pRootSignature = m_rootSignature.get();
 	desc.CS = D3D12_SHADER_BYTECODE{ stage.data(), stage.size() };
 	wchar_t name[24];
-	swprintf_s( name, L"c%016llx", static_cast<unsigned long long>( stage.hash() ) );
+	swprintf_s( name, L"c%016llx", static_cast<unsigned long long>( stage.hash() ^ m_rootSignatureHash ) );
 	ID3D12PipelineState* object = nullptr;
 	HRESULT hr = E_FAIL;
 	if( m_pipelineLibrary )
@@ -2618,14 +2645,17 @@ void DMD3D::drawIndexedInstanced( uint32_t indexCount, uint32_t instanceCount, u
 	m_commandList->DrawIndexedInstanced( indexCount, instanceCount, startIndex, baseVertex, startInstance );
 }
 
-void DMD3D::drawIndexedInstancedIndirect( const Buffer& args, uint32_t argsOffset )
+void DMD3D::drawIndexedInstancedIndirectCount( const Buffer& commands, uint32_t commandsOffset, uint32_t maxCommands, const Buffer& counts,
+											   uint32_t countOffset )
 {
-	if( !m_graphicsPipelineValid || !args.handle() )
+	if( !m_graphicsPipelineValid || !commands.handle() || !counts.handle() || maxCommands == 0 )
 		return;
-	barrier( args.handle(), D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT );
+	barrier( commands.handle(), D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT );
+	barrier( counts.handle(), D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT );
 	flushBarriers();
 	flushGraphicsRoot();
-	m_commandList->ExecuteIndirect( m_drawIndexedSignature.get(), 1, args.handle(), argsOffset, nullptr, 0 );
+	m_commandList->ExecuteIndirect( m_drawIndexedCountSignature.get(), maxCommands, commands.handle(), commandsOffset, counts.handle(), countOffset );
+	++m_frameIndirectDraws;
 }
 
 void DMD3D::dispatch( uint32_t x, uint32_t y, uint32_t z )

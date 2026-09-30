@@ -137,6 +137,7 @@ public:
 	VideoMemory videoMemory() const;
 	uint32_t shaderDescriptorCount() const { return m_shaderHeap.used(); }
 	uint32_t barrierCount() const { return m_lastFrameBarriers; }	// барьеров за прошлый кадр
+	uint32_t indirectDrawCount() const { return m_lastFrameIndirectDraws; }	// ExecuteIndirect за прошлый кадр
 
 	// --- D3D12 для кода в Graphics/D3D и привязки ImGui (imgui_impl_dx12) ----------------------------------------------
 	ID3D12Device10* GetDevice() const { return m_device.get(); }
@@ -232,8 +233,11 @@ public:
 	void draw( uint32_t vertexCount, uint32_t startVertex );
 	void drawIndexed( uint32_t indexCount, uint32_t startIndex, int32_t baseVertex );
 	void drawIndexedInstanced( uint32_t indexCount, uint32_t instanceCount, uint32_t startIndex, int32_t baseVertex, uint32_t startInstance = 0 );
-	// ExecuteIndirect с сигнатурой из одной DRAW_INDEXED — ровно то, что делал DrawIndexedInstancedIndirect D3D11
-	void drawIndexedInstancedIndirect( const Buffer& args, uint32_t argsOffset );
+	// ExecuteIndirect со счётчиком: до maxCommands команд {root-константа b9 (DM_DRAW_CONSTANT_COUNT DWORD, в команде —
+	// первое), D3D12_DRAW_INDEXED_ARGUMENTS} по 24 байта с commandsOffset, число команд — uint в counts по countOffset
+	// (оба буфера — BufferUsage::indirectArgs, их пишет compute). Так рисует расстановка: список инстансов вида — команда
+	void drawIndexedInstancedIndirectCount( const Buffer& commands, uint32_t commandsOffset, uint32_t maxCommands, const Buffer& counts,
+											uint32_t countOffset );
 	void dispatch( uint32_t x, uint32_t y, uint32_t z );
 
 	// Снимки заднего буфера (PNG или JPG по расширению) — вызывать до EndScene: после Present содержимое буфера не определено
@@ -300,8 +304,8 @@ private:
 	ID3D12PipelineState* computePipeline( const ShaderStage& stage );
 	bool loadPipelineLibrary();
 	void savePipelineLibrary();
-	// Имя пайплайна в библиотеке — хэш содержимого описания (байткод стадий, раскладка, состояния, форматы)
-	static std::wstring pipelineName( const PipelineDesc& desc );
+	// Имя пайплайна в библиотеке — хэш содержимого описания (байткод стадий, раскладка, состояния, форматы) и root signature
+	std::wstring pipelineName( const PipelineDesc& desc ) const;
 	// Командный список: открыть на аллокаторе кадра (root signature и кучи — сразу) / закрыть и отправить в очередь
 	void openCommandList( FrameResources& frame );
 	void ensureRecording();	// список закрыт между кадрами — открыть (ресурсы создаются и вне кадра)
@@ -401,6 +405,8 @@ private:
 	std::vector<ID3D12Resource*> m_dispatchWrites;		// UAV, привязанные к следующему dispatch: после него — uavWritten
 	uint32_t m_frameBarriers = 0;
 	uint32_t m_lastFrameBarriers = 0;
+	uint32_t m_frameIndirectDraws = 0;
+	uint32_t m_lastFrameIndirectDraws = 0;
 
 	// Root-аргументы вызова: таблица привязок (индексы дескрипторов по слотам) и адреса root CBV; ставятся перед
 	// вызовом, если менялись (у графики и compute — свои наборы)
@@ -431,10 +437,12 @@ private:
 	float m_shadowSlopeBias = 0.0f;
 
 	RenderState m_renderState;
-	// Root signature одна на графику и compute: root-константы таблицы привязок b8, root CBV b0…b7, статические
-	// сэмплеры s0…s8, флаг прямой индексации кучи (ResourceDescriptorHeap)
+	// Root signature одна на графику и compute: root-константы таблицы привязок b8, root CBV b0…b7, root-константы
+	// вызова b9 (их пишет команда ExecuteIndirect), статические сэмплеры s0…s8, флаг прямой индексации кучи
+	// (ResourceDescriptorHeap)
 	com_unique_ptr<ID3D12RootSignature> m_rootSignature;
-	com_unique_ptr<ID3D12CommandSignature> m_drawIndexedSignature;	// ExecuteIndirect: одна DRAW_INDEXED
+	uint64_t m_rootSignatureHash = 0;	// сериализованной root signature — в имена пайплайнов библиотеки
+	com_unique_ptr<ID3D12CommandSignature> m_drawIndexedCountSignature;	// ExecuteIndirect: root-константы b9 + DRAW_INDEXED
 	std::unordered_map<uint64_t, Pipeline> m_pipelines;
 	std::unordered_map<uint64_t, com_unique_ptr<ID3D12PipelineState>> m_computePipelines;	// по хэшу байткода
 	uint32_t m_lazyPipelines = 0;

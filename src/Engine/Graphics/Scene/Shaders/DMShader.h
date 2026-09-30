@@ -27,7 +27,6 @@ public:
 	bool render( int indexCount, uint32_t vertexOffset = 0, uint32_t indexOffset = 0 );
 	bool renderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count );
 	// argsOffset — смещение аргументов DrawIndexedInstancedIndirect в буфере, байты
-	void renderInstancedIndirect( const Buffer& args, uint32_t argsOffset = 0 );
 	// Ставит пайплайн фазы: её шейдеры, раскладка вершин, топология и текущие состояния DMD3D (setState / ScopedRenderState
 	// — до setPass). Пайплайн — из кэша DMD3D::pipeline
 	bool setPass( int phase );

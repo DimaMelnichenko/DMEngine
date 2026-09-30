@@ -1,5 +1,6 @@
 #include "ScattererPass.h"
 #include <algorithm>
+#include <cstring>
 #include "D3D\DMD3D.h"
 #include "Shaders\lod_transition.h"
 
@@ -23,19 +24,18 @@ ScatterPass::~ScatterPass()
 {
 }
 
-bool ScatterPass::createInstanceBuffer( InstanceBuffer& instances, uint32_t stride, uint32_t count )
+bool ScatterPass::createPool( PoolBuffer& pool, uint32_t stride, uint32_t count, const char* name )
 {
 	BufferDesc desc;
 	desc.size = stride * count;
 	desc.stride = stride;
 	desc.usage = BufferUsage::shaderResource | BufferUsage::unorderedAccess | BufferUsage::structured;
-	if( !DMD3D::instance().createBuffer( desc, nullptr, instances.buffer ) )
+	DMD3D& d3d = DMD3D::instance();
+	if( !d3d.createBuffer( desc, nullptr, pool.buffer ) )
 		return false;
-	DMD3D::instance().setName( instances.buffer, "Scatter instances" );
-
-	// Обычный RWStructuredBuffer: место под инстанс шейдер берёт из счётчика в indirect-аргументах
-	// и проверяет ёмкость, append-буфер ёмкость не ограничивал бы
-	return DMD3D::instance().createStorageView( instances.buffer, {}, instances.uav );
+	d3d.setName( pool.buffer, name );
+	// Обычный RWStructuredBuffer: место шейдер берёт по счётчику в g_counters и проверяет ёмкость
+	return d3d.createStorageView( pool.buffer, {}, pool.uav ) && d3d.createShaderView( pool.buffer, {}, pool.srv );
 }
 
 bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
@@ -64,7 +64,7 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 
 	m_variants = {};
 	float cumulative = 0.0f;
-	uint32_t offsets[2] = {};	// обычный буфер и буфер перехода
+	uint32_t poolCapacity[2] = {};	// пул инстансов и пул перехода — сумма ёмкостей их списков
 	for( uint32_t v = 0; v < variantCount; ++v )
 	{
 		const Variant variant = v < variants.size() ? variants[v] : Variant();
@@ -88,70 +88,79 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 				transitionArea += bandArea( variant.lodEnd[lod] * minScale, variant.lodEnd[lod] * maxScale );
 
 			const uint32_t sections = std::max( 1u, std::min( variant.sectionCount[lod], maxSections ) );
-			m_hasSections = m_hasSections || sections > 1;
 			for( uint32_t transition = 0; transition < 2; ++transition )
 			{
 				const float area = transition ? transitionArea : bandArea( bandNear, bandFar );
 				const uint32_t listCapacity = std::max( minListCapacity, static_cast<uint32_t>( capacity * share * area / ringArea ) );
 				uint32_t* list = m_variants.lists[listIndex( v, lod, transition != 0 )];
-				list[0] = offsets[transition];
 				list[1] = listCapacity;
 				list[2] = sections;
-				offsets[transition] += listCapacity;
+				poolCapacity[transition] += listCapacity;
 			}
 		}
 	}
+	// Списки индексов вида — подряд: сначала обычные, затем перехода
+	uint32_t indexOffset = 0;
+	for( uint32_t transition = 0; transition < 2; ++transition )
+	for( uint32_t v = 0; v < variantCount; ++v )
+	for( uint32_t lod = 0; lod < static_cast<uint32_t>( m_variants.variants[v].y ); ++lod )
+	{
+		uint32_t* list = m_variants.lists[listIndex( v, lod, transition != 0 )];
+		list[3] = indexOffset;
+		indexOffset += list[1];
+	}
+	m_populateParams.itemCapacity = poolCapacity[0];
+	// В пуле перехода экземпляр занимает два места (уходящий и приходящий LOD), в списках — по одному в каждом
+	m_populateParams.transitionCapacity = poolCapacity[1];
+	m_populateParams.indexStride = indexOffset;
 
 	// Параметры слоя пишутся каждый кадр — кольцо констант; варианты меняются редко (setDitheredLodTransition), а
 	// читаются каждым проходом — постоянный буфер, обновляемый при смене
+	DMD3D& d3d = DMD3D::instance();
 	BufferDesc variantsDesc;
 	variantsDesc.size = sizeof( VariantsBuffer );
 	variantsDesc.usage = BufferUsage::constant;
-	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( PopulateParams ), m_populateParamsBuffer ) ||
-		!DMD3D::instance().createBuffer( variantsDesc, &m_variants, m_variantsBuffer ) )
+	if( !d3d.createShaderConstantBuffer( sizeof( PopulateParams ), m_populateParamsBuffer ) ||
+		!d3d.createBuffer( variantsDesc, &m_variants, m_variantsBuffer ) )
 		return false;
 
-	if( !createInstanceBuffer( m_instances, sizeof( ScatterItem ), offsets[0] ) ||
-		!createInstanceBuffer( m_transitions, sizeof( ScatterTransitionItem ), offsets[1] ) )
+	if( !createPool( m_items, sizeof( ScatterItem ), poolCapacity[0], "Scatter instances" ) ||
+		!createPool( m_transitions, sizeof( ScatterTransitionItem ), poolCapacity[1], "Scatter LOD transition instances" ) ||
+		!createPool( m_indices, sizeof( uint32_t ), indexOffset * maxViews, "Scatter instance indices" ) )
 		return false;
 
-	// Список — свой участок буфера: вершинный шейдер читает инстансы по SV_InstanceID от начала участка
-	for( uint32_t v = 0; v < variantCount; ++v )
-	{
-		for( uint32_t lod = 0; lod < static_cast<uint32_t>( m_variants.variants[v].y ); ++lod )
-		for( uint32_t transition = 0; transition < 2; ++transition )
-		{
-			const uint32_t list = listIndex( v, lod, transition != 0 );
-			BufferViewDesc viewDesc;
-			viewDesc.firstElement = m_variants.lists[list][0];
-			viewDesc.elementCount = m_variants.lists[list][1];
-			if( !DMD3D::instance().createShaderView( transition ? m_transitions.buffer : m_instances.buffer, viewDesc, m_instanceSRVs[list] ) )
-				return false;
-		}
-	}
-
-	// Аргументы DrawIndexedInstancedIndirect — по пять чисел на секцию списка
-	BufferDesc desc;
-	desc.size = sizeof( m_initialArgs );
-	desc.usage = BufferUsage::unorderedAccess | BufferUsage::indirectArgs | BufferUsage::raw;
-	// Нули: пока расчёт травы (клавиша 3) не запускался, отрисовка по этим аргументам не рисует ничего.
-	// Без начальных данных содержимое буфера не определено, и число инстансов могло оказаться любым
-	const uint32_t emptyArgs[maxLists * maxSections * 5] = {};
-	if( !DMD3D::instance().createBuffer( desc, emptyArgs, m_argsBuffer ) )
+	// Счётчики (пулы, списки по видам, группы по видам) — байтовый буфер: UAV для расстановки, счётчики команд читает
+	// ExecuteIndirect. Команды — по виду и группе подряд
+	BufferDesc countersDesc;
+	countersDesc.size = countersSize;
+	countersDesc.usage = BufferUsage::unorderedAccess | BufferUsage::indirectArgs | BufferUsage::raw;
+	BufferDesc commandsDesc;
+	commandsDesc.size = maxViews * maxGroups * commandStride;
+	commandsDesc.usage = BufferUsage::unorderedAccess | BufferUsage::indirectArgs | BufferUsage::raw;
+	BufferViewDesc rawView;
+	rawView.raw = true;
+	if( !d3d.createBuffer( countersDesc, nullptr, m_counters ) || !d3d.createStorageView( m_counters, rawView, m_countersUAV ) ||
+		!d3d.createBuffer( commandsDesc, nullptr, m_commands ) || !d3d.createStorageView( m_commands, rawView, m_commandsUAV ) )
 		return false;
-	DMD3D::instance().setName( m_argsBuffer, "Scatter draw args" );
+	d3d.setName( m_counters, "Scatter counters" );
+	d3d.setName( m_commands, "Scatter indirect commands" );
 
-	BufferViewDesc uavDesc;
-	uavDesc.raw = true;
-	if( !DMD3D::instance().createStorageView( m_argsBuffer, uavDesc, m_argsUAV ) )
+	// Таблицы секций и групп — структурные буферы, обновляются в populate при смене
+	BufferDesc sectionsDesc;
+	sectionsDesc.size = sizeof( m_sectionArgs );
+	sectionsDesc.stride = sizeof( m_sectionArgs[0] );
+	sectionsDesc.usage = BufferUsage::shaderResource | BufferUsage::structured;
+	BufferDesc groupsDesc;
+	groupsDesc.size = sizeof( m_groups );
+	groupsDesc.stride = sizeof( m_groups[0] );
+	groupsDesc.usage = BufferUsage::shaderResource | BufferUsage::structured;
+	if( !d3d.createBuffer( sectionsDesc, m_sectionArgs, m_sectionArgsBuffer ) || !d3d.createShaderView( m_sectionArgsBuffer, {}, m_sectionArgsSRV ) ||
+		!d3d.createBuffer( groupsDesc, m_groups, m_groupsBuffer ) || !d3d.createShaderView( m_groupsBuffer, {}, m_groupsSRV ) )
 		return false;
-
-	// Начальные аргументы на GPU — только источник копирования для resetArgs, без привязок
-	BufferDesc initialDesc;
-	initialDesc.size = sizeof( m_initialArgs );
-	initialDesc.usage = 0;
-	m_initialArgsChanged = true;
-	return DMD3D::instance().createBuffer( initialDesc, m_initialArgs, m_initialArgsBuffer );
+	d3d.setName( m_sectionArgsBuffer, "Scatter section args" );
+	d3d.setName( m_groupsBuffer, "Scatter groups" );
+	m_tablesChanged = true;
+	return true;
 }
 
 void ScatterPass::setDitheredLodTransition( uint32_t variant, bool dithered )
@@ -166,72 +175,103 @@ void ScatterPass::setDitheredLodTransition( uint32_t variant, bool dithered )
 	}
 }
 
-void ScatterPass::setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset )
+void ScatterPass::setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset, uint32_t group )
 {
-	uint32_t* args = m_initialArgs + argsOffset( list, section ) / sizeof( uint32_t );
-	// IndexCountPerInstance, InstanceCount (считает Shaders\scatter.cs), StartIndexLocation, BaseVertexLocation,
-	// StartInstanceLocation (0: у списка свой SRV с начала его участка)
-	const uint32_t values[5] = { indexCount, 0, indexOffset, vertexOffset, 0 };
+	if( list >= maxLists || section >= maxSections || group >= maxGroups )
+		return;
+	uint32_t* args = m_sectionArgs[list * maxSections + section];
+	const uint32_t values[4] = { indexCount, indexOffset, vertexOffset, group + 1 };
 	if( memcmp( args, values, sizeof( values ) ) != 0 )
 	{
 		memcpy( args, values, sizeof( values ) );
-		m_initialArgsChanged = true;
+		m_tablesChanged = true;
 	}
 }
 
-void ScatterPass::resetArgs()
+void ScatterPass::clearSectionArgs( uint32_t list, uint32_t section )
 {
-	if( m_initialArgsChanged )
+	if( list >= maxLists || section >= maxSections )
+		return;
+	uint32_t* args = m_sectionArgs[list * maxSections + section];
+	if( args[3] != 0 )
 	{
-		DMD3D::instance().updateBuffer( m_initialArgsBuffer, m_initialArgs, sizeof( m_initialArgs ) );
-		m_initialArgsChanged = false;
+		memset( args, 0, sizeof( m_sectionArgs[0] ) );
+		m_tablesChanged = true;
 	}
-	DMD3D::instance().copyBuffer( m_argsBuffer, m_initialArgsBuffer );
+}
+
+void ScatterPass::rebuildGroups()
+{
+	// Ёмкость группы — число секций списков в ней (по команде на каждую в виде), команды групп — подряд
+	memset( m_groupCapacity, 0, sizeof( m_groupCapacity ) );
+	for( const uint32_t* args : m_sectionArgs )
+	{
+		if( args[3] )
+			++m_groupCapacity[args[3] - 1];
+	}
+	uint32_t base = 0;
+	for( uint32_t g = 0; g < maxGroups; ++g )
+	{
+		m_groupBase[g] = base;
+		m_groups[g][0] = base;
+		m_groups[g][1] = m_groupCapacity[g];
+		m_groups[g][2] = m_groups[g][3] = 0;
+		base += m_groupCapacity[g];
+	}
+}
+
+void ScatterPass::resetCounters()
+{
+	DMD3D::instance().clearStorageView( m_countersUAV );
 }
 
 PassDesc ScatterPass::passDesc( const char* name ) const
 {
 	PassDesc pass;
 	pass.name = name;
-	pass.writes = { { &m_argsUAV, "indirect args" }, { &m_instances.uav, "instances" }, { &m_transitions.uav, "LOD transition instances" } };
+	pass.writes = { { &m_countersUAV, "counters" }, { &m_items.uav, "instances" }, { &m_transitions.uav, "LOD transition instances" },
+					{ &m_indices.uav, "instance indices" }, { &m_commandsUAV, "indirect commands" } };
 	return pass;
-}
-
-void ScatterPass::copySectionCounts( DMComputeShader& shader )
-{
-	if( !m_hasSections )
-		return;
-	DMD3D::instance().setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
-	shader.setUAVBuffer( 0, m_argsUAV );
-	shader.dispatchGroups( 1, 1, 1 );
 }
 
 void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
 {
+	DMD3D& d3d = DMD3D::instance();
 	Device::updateResourceData<PopulateParams>( m_populateParamsBuffer, m_populateParams );
 	if( m_variantsChanged )
 	{
-		DMD3D::instance().updateBuffer( m_variantsBuffer, &m_variants, sizeof( m_variants ) );
+		d3d.updateBuffer( m_variantsBuffer, &m_variants, sizeof( m_variants ) );
 		m_variantsChanged = false;
 	}
-	DMD3D::instance().setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
-	DMD3D::instance().setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
+	if( m_tablesChanged )
+	{
+		rebuildGroups();
+		d3d.updateBuffer( m_sectionArgsBuffer, m_sectionArgs, sizeof( m_sectionArgs ) );
+		d3d.updateBuffer( m_groupsBuffer, m_groups, sizeof( m_groups ) );
+		m_tablesChanged = false;
+	}
+	d3d.setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
+	d3d.setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
 
-	shader.setUAVBuffer( 0, m_argsUAV );
-	shader.setUAVBuffer( 1, m_instances.uav );
+	shader.setUAVBuffer( 0, m_countersUAV );
+	shader.setUAVBuffer( 1, m_items.uav );
 	shader.setUAVBuffer( 2, m_transitions.uav );
+	shader.setUAVBuffer( 3, m_indices.uav );
 
 	shader.Dispatch( gridDim, gridDim, 0.0f );
 }
 
-const ShaderView& ScatterPass::instances( uint32_t list )
+void ScatterPass::buildCommands( DMComputeShader& shader )
 {
-	return m_instanceSRVs[list];
-}
-
-const Buffer& ScatterPass::args()
-{
-	return m_argsBuffer;
+	// Поток — секция списка вида; групп потоков хватает на все виды (MAX_VIEWS × MAX_LISTS × MAX_SECTIONS / 64)
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
+	d3d.setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
+	d3d.setSRV( SRVType::cs, 3, m_sectionArgsSRV );
+	d3d.setSRV( SRVType::cs, 4, m_groupsSRV );
+	shader.setUAVBuffer( 0, m_countersUAV );
+	shader.setUAVBuffer( 4, m_commandsUAV );
+	shader.dispatchGroups( maxViews * maxLists * maxSections / 64, 1, 1 );
 }
 
 ScatterPass::PopulateParams& ScatterPass::populateParams()

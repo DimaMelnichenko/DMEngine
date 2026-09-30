@@ -154,12 +154,27 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	m_shadowDraws = 0;
 	measure( "preparePipeline", [&] { preparePipeline( scene, frame ); } );
 
+	// Виды каскадов теней — до compute: расстановка раскладывает списки инстансов на каждый вид кадра
+	XMFLOAT3 shadowLightDirection;
+	DMLight::ShadowSettings shadowSettings;
+	scene.lights().shadowLight( shadowLightDirection, shadowSettings );
+	m_shadowsActive = m_shadows.update( frame.view, shadowSettings, frame.toShadowLight, scene.bounds() );
+	FrameContext computeFrame = frame;
+	computeFrame.views[0] = &frame.view;
+	computeFrame.viewCount = 1;
+	if( m_shadowsActive )
+	{
+		for( uint32_t cascade = 0; cascade < ShadowCascades::cascadeCount; ++cascade )
+			computeFrame.views[1 + cascade] = &m_shadows.cascadeView( cascade );
+		computeFrame.viewCount = 1 + ShadowCascades::cascadeCount;
+	}
+
 	// Compute — при главном виде в константах кадра: кольцо расстановки считается вокруг камеры
 	measure( "Compute Pass", [&]
 	{
 		for( SceneObject* object : scene.objects() )
 		{
-			object->compute( frame );
+			object->compute( computeFrame );
 		}
 	} );
 	// Пересчёт освещения окружением мог закончиться в compute неба: масштаб — по показанному результату
@@ -178,9 +193,7 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 
 	DMD3D::instance().BeginScene( 0.004f, 0.004f, 0.004f, 1.0f );
 	// Карта теней — пиксельным шейдерам проходов сцены (после рисования в неё и смены цели)
-	XMFLOAT3 toShadowLight;
-	DMLight::ShadowSettings shadowSettings;
-	m_shadows.bindForReceivers( scene.lights().shadowLight( toShadowLight, shadowSettings ) );
+	m_shadows.bindForReceivers( scene.lights().shadowLight( shadowLightDirection, shadowSettings ) );
 
 	// Базовое состояние кадра; объекты меняют его только в своей области видимости
 	const RasterState frameRaster = wireframe ? RasterState::wireframe : RasterState::solid;
@@ -463,10 +476,8 @@ void Renderer::buildShadowCommands()
 
 void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 {
-	XMFLOAT3 toShadowLight;
-	DMLight::ShadowSettings shadowSettings;
-	scene.lights().shadowLight( toShadowLight, shadowSettings );
-	if( !m_shadows.update( frame.view, shadowSettings, frame.toShadowLight, scene.bounds() ) )
+	// Каскады посчитаны в render() перед compute объектов
+	if( !m_shadowsActive )
 		return;
 
 	const auto start = std::chrono::high_resolution_clock::now();

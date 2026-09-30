@@ -17,14 +17,16 @@ namespace GS
 // Набор расстановки по террейну: трава, цветы, камешки, веточки (таблица ScatterSets). Слой набора — растение:
 // одна или несколько моделей со всеми их LOD и весами (ScatterLayerModels, как Mesh Entries у Static Mesh Spawner в
 // PCG UE), маска плотности и параметры (таблица ScatterLayers). Каждый кадр compute-шейдер Shaders\scatter.cs
-// раскладывает инстансы слоя по сетке, привязанной к миру, в кольце вокруг камеры: модель ячейки — по весам, отсекает
-// по frustum и кладёт в список «вариант × LOD» по расстоянию (дальности LOD модели, как у моделей уровня, со своим
-// разбросом у экземпляра; в полосе перехода — в списки перехода обоих LOD, которые рисуются с дизерингом, как Dithered
-// LOD Transition в UE); отрисовка — indirect draw на список. Высоту и координаты масок даёт TerrainHeightSource, поэтому набор не зависит от устройства террейна.
-// Проход и отсечение граней задаёт материал слоя (режим и двусторонность, как у травы ландшафта в UE): набор рисует
-// непрозрачные и вырезанные по альфе слои в opaque, полупрозрачные — в transparent. Слой с cast_shadow рисуется
-// и в проход теней — в те каскады, которые пересекает его кольцо (с запасом на длину тени). Расчёт и отрисовка всех
-// наборов переключаются клавишами 3 и 4
+// раскладывает инстансы слоя по сетке, привязанной к миру, в кольце вокруг камеры: модель ячейки — по весам, а для
+// каждого вида кадра (главная камера и каскады теней) отбирает видимые в свой список «вариант × LOD» по расстоянию
+// (дальности LOD модели, как у моделей уровня, со своим разбросом у экземпляра; у видов теней LOD можно брать грубее —
+// «Shadow LOD scale»; в полосе перехода — в списки перехода обоих LOD, которые рисуются с дизерингом, как Dithered
+// LOD Transition в UE). Отрисовка — один ExecuteIndirect со счётчиком на группу секций с одним материалом и состоянием
+// на вид; команды пишет тот же шейдер (buildCommands). Высоту и координаты масок даёт TerrainHeightSource, поэтому
+// набор не зависит от устройства террейна. Проход и отсечение граней задаёт материал слоя (режим и двусторонность, как
+// у травы ландшафта в UE): набор рисует непрозрачные и вырезанные по альфе слои в opaque, полупрозрачные — в
+// transparent. Слой с cast_shadow рисуется и в проход теней — списками видов каскадов. Расчёт и отрисовка всех наборов
+// переключаются клавишами 3 и 4
 class Scatterer : public SceneObject
 {
 public:
@@ -44,6 +46,7 @@ public:
 	// ScatterPass::maxVariants); mask — маска плотности в хранилище текстур, в координатах карты высот террейна
 	bool addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterPass::PopulateParams& params );
 
+	// Раскладка по видам кадра (FrameContext::views: главный и каскады теней)
 	void compute( const FrameContext& frame ) override;
 	// Свой вызов в проходах, где есть слои их режима материала
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
@@ -52,7 +55,8 @@ public:
 	void setComputeEnabled( bool enabled );
 	bool computeEnabled() const;
 
-	// Окно набора в GUI: по слою — «Cast shadow» (начальное значение — ScatterLayers.cast_shadow)
+	// Окно набора в GUI: «Shadow LOD scale» — множитель дальностей LOD у видов теней (< 1 — тень более грубым LOD, без
+	// дизеринга перехода); по слою — «Cast shadow» (начальное значение — ScatterLayers.cast_shadow)
 	PropertyContainer* properties() override;
 
 private:
@@ -65,29 +69,27 @@ private:
 		float padding;
 	};
 
-	// cbuffer FrustumBuffer в Shaders\scatter.cs
-	struct FrustumParams
+	// cbuffer FrustumBuffer в Shaders\scatter.cs: виды кадра
+	struct alignas( 16 ) FrustumParams
 	{
-		XMFLOAT4 planes[6];
-		XMFLOAT4 shadowCast;	// xyz — куда идёт свет солнца, w — длина тени на метр высоты вдоль луча (0 — солнца нет)
+		XMFLOAT4 planes[maxRenderViews * 6];
+		XMFLOAT4 viewParams[maxRenderViews];	// x — множитель дальностей LOD вида, y — 1: списки перехода у вида, zw — полоса каскада
+		XMFLOAT4 shadowCast;	// xyz — куда идёт свет источника теней, w — длина тени на метр высоты вдоль луча (0 — теней нет)
+		uint32_t viewCount;
+		uint32_t padding[3];
 	};
 
-	// Секция LOD: меш со своим материалом — свой indirect-вызов на список инстансов LOD
+	// Секция LOD: меш со своим материалом
 	struct LayerSection
 	{
 		DMModel::Section* section = nullptr;
 		DMShader* material = nullptr;
 	};
 
-	// LOD растения: секции и части кольца, где могут оказаться экземпляры его обычного списка (с разбросом дальностей
-	// экземпляров) и списка перехода (полосы перехода к нему и от него) — по ним отбираются каскады теней
+	// LOD растения: секции
 	struct LayerLod
 	{
 		std::vector<LayerSection> sections;
-		float nearDistance = 0.0f;
-		float farDistance = 0.0f;
-		float transitionNear = 0.0f;
-		float transitionFar = 0.0f;
 	};
 
 	// Вариант растения — модель слоя
@@ -100,9 +102,24 @@ private:
 		bool ditheredLodTransition = false;
 	};
 
+	// Группа секций списков с одним материалом, параметрами и состоянием: один ExecuteIndirect на вид
+	// (ScatterPass::groups). Пересобирается каждый кадр в compute — материалы и флаги меняются в GUI
+	struct LayerGroup
+	{
+		DMShader* material = nullptr;
+		const PropertyContainer* params = nullptr;
+		uint64_t paramsHash = 0;
+		MaterialRenderState state;
+		MeshPass pass = MeshPass::opaque;
+		bool transition = false;	// список перехода: пул перехода и вариант шейдера LOD_DITHER
+		bool prepassed = false;		// рисуется в depth prepass
+		bool castShadow = false;	// рисуется в каскады теней
+	};
+
 	struct Layer
 	{
 		std::vector<LayerVariant> variants;
+		std::vector<LayerGroup> groups;
 		std::string mask;
 		std::unique_ptr<ScatterPass> pass;
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
@@ -112,16 +129,20 @@ private:
 	bool castsShadow( const Layer& layer, const LayerVariant& variant, const LayerSection& section ) const;
 	// Секция рисуется в depth prepass: непрозрачная или Masked с вариантом «только глубина»
 	bool inDepthPrepass( const LayerSection& section ) const;
+	// Группы секций списков слоя и таблица секций для команд
+	void assignGroups( Layer& layer );
+	// Отпечаток параметров материала: секции с равными параметрами рисуются одной группой
+	static uint64_t hashParams( const PropertyContainer& params );
 
 	// Больше потоков на слой не запускаем: при мелком шаге сетка покроет не всё кольцо, а только его середину
 	static constexpr uint16_t maxGridDim = 1024;
 
 	bool m_computeEnabled = true;
-	float m_shadowLength = 0.0f;	// длина тени на метр высоты инстанса в этом кадре (FrustumParams::shadowCast.w)
+	float m_shadowLength = 0.0f;	// длина тени на метр высоты инстанса в этом кадре — запас дальности каскада
 	const TerrainHeightSource* m_terrain = nullptr;
 	std::vector<Layer> m_layers;
 	DMComputeShader m_computeShader;
-	DMComputeShader m_sectionCountShader;	// copySectionCounts в Shaders\scatter.cs
+	DMComputeShader m_commandShader;	// buildCommands в Shaders\scatter.cs
 	Buffer m_terrainBuffer;
 	Buffer m_frustumBuffer;
 	PropertyContainer m_properties;
