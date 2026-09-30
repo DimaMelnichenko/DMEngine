@@ -42,8 +42,9 @@ exe. Для этого движка, одного разработчика и о
   `passes` (список проходов с целями и барьерами), GPU-based validation, захват PIX и контрольные точки вехи M4 (§5),
   каждая из которых сравнивается с эталонным кадром.
 
-Цена прямого пути — между первой и последней вехой движок на ветке `d3d12` не рисует кадр целиком. Ветка `v2` при
-этом остаётся рабочей на D3D11 до слияния.
+Цена прямого пути — между вехами M1 и M4 вершина `v2` не рисует кадр целиком. Это принято (2026-09-30): на время
+переезда репозиторий больше никем не используется, поэтому отдельная ветка не заводится, вехи идут в `v2`, а рабочий
+D3D11 — это коммит `6a8cd3d`.
 
 ## 3. Целевой стек: «современный D3D12» на 2026-09-30
 
@@ -58,7 +59,7 @@ PIX 2603.25, компонент «Средства графики» (debug-сл�
 | **D3D12 Memory Allocator** | 3.2.0 (2026-06) | `FetchContent` с GitHub `GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator` | Память под ресурсы: committed / placed без своего аллокатора куч, потом алиасинг |
 | **WinPixEventRuntime** | 1.0.240308001 | NuGet zip через `FetchContent`; `WinPixEventRuntime.dll` рядом с exe | `PIXBeginEvent` / `PIXEndEvent` в командном списке — области профайлера видны в PIX |
 | **DirectXTex** | тег `may2026` (уже в проекте), `BUILD_DX12 ON`, `BUILD_DX11 OFF` | уже `FetchContent` | `CreateTexture` / `PrepareUpload` / `CaptureTexture( ID3D12CommandQueue* … )` для карты высот, `ScreenGrab12` вместо `3rdParty/ScreenGrab` |
-| **Dear ImGui** | обновить с 1.66 WIP (2018) до текущей 1.92.x | ядро + `imgui_impl_win32` + `imgui_impl_dx12` | Бэкенд DX12 для версии 1.66 не сочетается с нынешним ядром. GUI движка использует ~35 функций (`Begin`/`End`, `TreeNode`, `DragFloat*`, `SliderFloat*`, `ColorEdit*`, `BeginCombo`, `Image`…) — все есть в 1.92; `ImGui::Image` принимает `ImTextureRef` с GPU-дескриптором |
+| **Dear ImGui** | обновить с 1.66 WIP (2018) до текущей 1.92.x (решено 2026-09-30) | ядро + `imgui_impl_win32` + `imgui_impl_dx12` | Бэкенд DX12 для версии 1.66 не сочетается с нынешним ядром. GUI движка использует ~35 функций (`Begin`/`End`, `TreeNode`, `DragFloat*`, `SliderFloat*`, `ColorEdit*`, `BeginCombo`, `Image`…) — все есть в 1.92; `ImGui::Image` принимает `ImTextureRef` с GPU-дескриптором |
 
 Что требуется от устройства, без запасных путей (проверка при старте, при отсутствии — строка в лог и выход):
 feature level 12_0, Resource Binding Tier 3, `D3D12_FEATURE_SHADER_MODEL` ≥ 6.6, `D3D12_FEATURE_D3D12_OPTIONS12::EnhancedBarriersSupported`.
@@ -211,7 +212,7 @@ bindless), путь MSAA (`MSAACount`, `ResolveSubresource` в `sceneColor`: п�
 
 ## 5. Вехи
 
-Ветка `d3d12` от `v2`. Веха — коммит с проверкой (§7): что должно совпасть, сказано в каждой. Правило коммитов проекта —
+Вехи идут прямо в `v2` (§2). Веха — коммит с проверкой (§7): что должно совпасть, сказано в каждой. Правило коммитов проекта —
 короткий поясняющий коммит после каждого пункта, push не делать.
 
 - **M0. Операции, которых нет в D3D12 — на D3D11, пока он есть** (бывший A6). `Shaders/cube_downsample.cs` строит мипы
@@ -219,7 +220,6 @@ bindless), путь MSAA (`MSAACount`, `ResolveSubresource` в `sceneColor`: п�
   проверка против `GenerateMips` до пикселя возможна только сейчас); `ScatterPass::resetArgs` — копия из GPU-буфера
   начальных аргументов (`copyBuffer`, буфер обновляется только когда меняются секции); `ReadbackRing<T>`
   (`D3D/ReadbackRing.h`) для экспозиции. Проверка: контрольные камеры ±1, GPU не хуже, debug-слой D3D11 молчит.
-  Коммит в `v2`, дальше — ветка.
 - **M1. Зависимости и каркас.** CMake: `FetchContent` для Agility SDK, DirectX-Headers, DXC, D3D12MA,
   WinPixEventRuntime; DirectXTex `BUILD_DX12`; копирование DLL рядом с exe после сборки; экспорт `D3D12SDKVersion` /
   `D3D12SDKPath`; ImGui 1.92 с `imgui_impl_dx12`. Устройство на выбранном адаптере (код A1), очереди, swap chain, fence,
@@ -241,10 +241,10 @@ bindless), путь MSAA (`MSAACount`, `ResolveSubresource` в `sceneColor`: п�
   инстансинг; (c) каскады теней; (d) расстановка — indirect; (e) постобработка — экспозиция в compute с чтением на CPU,
   bloom, тонмаппинг; (f) частицы (`Levels.particles = 1` на время проверки). Итог вехи: четыре камеры ±1 (или
   задокументированные расхождения от DXC, §6), GPU-based validation в Debug молчит.
-- **M5. Профайлер, снимки, чистка, слияние.** Query heap и PIX-события, `ScreenGrab12` (`screenshot`, клавиша P),
+- **M5. Профайлер, снимки, чистка.** Query heap и PIX-события, `ScreenGrab12` (`screenshot`, клавиша P),
   «GPU average» в пределах ±5 % от эталона по четырём камерам, захват PIX без лишних барьеров и простоев между
   проходами. Удаление всего из §4.10, `CLAUDE.md` и `docs/` (этот файл — описание слоя, `passes.md`, `postprocess.md`,
-  `remote.md`), слияние `d3d12` → `v2`.
+  `remote.md`).
 
 **Дальше — то, ради чего всё это** (замер каждого шага; места в `TODO.md` — §8):
 
