@@ -102,11 +102,11 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t sh
 	if( !m_gpuProfiler.initialize() )
 		return false;
 
-	m_instanceBuffer.createBuffer( sizeof( InstanceTransform ), maxInstancesPerDraw );
+	m_instanceBuffer.createBuffer( sizeof( InstanceTransform ), maxInstancesPerDraw, "Instance transforms" );
 	m_instanceTransforms.reserve( maxInstancesPerDraw );
 
 	warmPipelines();
-	return m_samplerState.initialize();
+	return true;
 }
 
 void Renderer::warmPipelines()
@@ -347,7 +347,6 @@ PostProcess::Settings Renderer::postProcessSettings()
 
 void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 {
-	m_samplerState.setDefaultSamplers();
 	// установка источников света
 	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS, SRVType::ps );
 	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры)

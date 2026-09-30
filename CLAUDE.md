@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Проект
 
-DMEngine — самописный 3D-движок на C++17 / Direct3D 12 под Windows (Win32-окно, DirectInput, ImGui). Бэкенд
-переписан с D3D11 на D3D12 по вехам M1–M5 (`docs/d3d12_migration.md`): с вехи M4 кадр рисуется целиком и совпадает с
-эталоном D3D11 (коммит `6a8cd3d`) в пределах ±1; веха M5 (профайлер GPU, PIX-метки, чистка остатков D3D11) — впереди.
+DMEngine — самописный 3D-движок на C++17 / Direct3D 12 под Windows (Win32-окно, DirectInput, ImGui).
+Бэкенд — D3D12 в современном виде (Agility SDK, DXC и SM 6.6, bindless, enhanced barriers, D3D12MA, PIX), устройство слоя —
+`docs/d3d12.md`; переписан с D3D11 2026-09-30, эталон D3D11 для сравнения кадров — коммит `0aadc42` (worktree `..\DMEngine-d3d11`).
 Сейчас в основном используется как полигон для рендеринга: террейн (CDLOD),
 небо, расстановка травы и декора (compute + indirect draw), частицы.
 
@@ -164,7 +164,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (уровни ½ … ¹⁄₆₄, Jimenez 2014), затем ночное зрение (сдвиг Пуркинье: в темноте цвет уходит в синеватый монохром,
   Krawczyk 2005) и тонмаппинг (AgX / ACES) в задний буфер sRGB; новый
   проход — ещё одна цель и шаг в `PostProcess::render`. Затем `DMGraphics` рисует GUI и вызывает `EndScene`.
-  Задний буфер — swap chain flip model (`DMD3D::createDeviceSwapChain`: два буфера `R8G8B8A8_UNORM` с sRGB-видом, без
+  Задний буфер — swap chain flip model (`DMD3D::createSwapChain`: два буфера `R8G8B8A8_UNORM` с sRGB-видом, без
   vsync — tearing, начало кадра по waitable object — `DMD3D::waitForNextFrame`); `WM_SIZE` → `DMGraphics::resize`:
   задний буфер, буфер сцены, глубина, уровни bloom и проекция камеры заново по правилу D3D12 (дождаться GPU,
   отпустить ссылки на задние буферы, `ResizeBuffers`).
@@ -174,12 +174,12 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   небо — в `sky_background.ps`; материалы без освещения (`Texture`, `Color`, частицы) пишут «цвет на экране» как
   есть. Настройки — строка `PostProcessSettings` уровня и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
   начинается объявлением `PassDesc` (`D3D/GpuPass.h`: имя, цели цвета и глубины с областью вывода, что читает, что пишет;
-  без целей — compute) и `DMD3D::beginPass` — единственный способ поставить цели: он же снимает со входов транзитные
-  слоты (t0…t49) и виды ресурсов, в которые проход пишет; ресурсы прохода привязываются после него (`Renderer::executePass`,
+  без целей — compute) и `DMD3D::beginPass` — единственный способ поставить цели: он же ставит барьеры целей, чтения и записи
+  объявления и очищает слоты вызова таблицы привязок (t0…t16, u0…u7); ресурсы прохода привязываются после него (`Renderer::executePass`,
   `ShadowCascades::beginCascade`, `PostProcess`, небо, расстановка). Список проходов кадра — команда консоли `passes`
-  (в `log.txt`). Полноэкранные проходы (постобработка, небо) — `FullscreenShader`: сам ставит топологию, шейдеры и состояния.
-  Время CPU и GPU (`GpuProfiler`, запросы timestamp) каждого объекта и прохода — в окне «Statistic», те же области —
-  метки событий в захвате RenderDoc / PIX.
+  (в `log.txt`, с числом барьеров у каждого прохода). Полноэкранные проходы (постобработка, небо) — `FullscreenShader`: сам ставит
+  топологию, шейдеры и состояния. Время CPU и GPU (`GpuProfiler`: запросы timestamp, результат 2–3 кадра назад) каждого
+  объекта и прохода — в окне «Statistic», те же области — метки PIX в захвате (`PIXBeginEvent`), ресурсы с именами (`DMD3D::setName`).
 
 **Виды и списки отрисовки** — как mesh draw commands в UE: объекты не рисуют себя сами и не знают, в каком проходе
 их меши. Вид кадра — `RenderView` (`Scene/RenderView.h`, ≈ FSceneView: матрицы, положение, `DMFrustum`, `lodOrigin` —
@@ -229,9 +229,10 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
   `VertexElement`): `createBuffer`, `createTexture`, `createShaderView` / `createTargetView` / `createStorageView`;
   картинки DirectXTex — `D3D/TextureImages.h`. Константы кадра (`BufferUsage::constant | cpuWrite`, `createShaderConstantBuffer`)
   — участки кольца `D3D/ConstantRing.h`: `Device::updateResource*` пишет участок, `setConstantBuffer` в том же кадре привязывает
-  его со смещением (без записи в кадре привязывать нечего); редко меняющиеся константы — `BufferUsage::constant` и
-  `updateBuffer`. Привязка — `setSRV( SRVType::ps|vs|cs…, slot, view )`, `setConstantBuffer`,
-  `setUAV`, `setVertexBuffer(s)` / `setIndexBuffer` / `setTopology`; вызовы — `draw*`, `dispatch`; цели — только через
+  его со смещением (без записи в кадре привязывать нечего); структурные данные кадра (`BufferUsage::cpuWrite` без `constant`:
+  инстансы, патчи, свет — `DMStructuredBuffer`) — тоже участки кольца, с временным SRV на кадр (`setSRV( слот, буфер )`), поэтому
+  их пишут каждый кадр перед привязкой; редко меняющиеся константы — `BufferUsage::constant` и `updateBuffer`. Привязка — `setSRV( SRVType::ps|vs|cs…, slot, view )`, `setConstantBuffer`,
+  `setUAV`, `setVertexBuffer(s)` / `setIndexBuffer`; вызовы — `draw*`, `dispatch`; цели — только через
   `beginPass( PassDesc )` (`D3D/GpuPass.h`; буфер сцены и задний буфер — `sceneTarget()` / `sceneDepthTarget()` /
   `backBufferTarget()`); `setSRV` вида ресурса, который пишет текущий проход, завершает проход над ним (цели снимаются,
   UAV отвязывается — так ресурсы сцены t101…t106 привязываются сразу после своих проходов); скриншоты; состояния
@@ -369,7 +370,7 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 
 **Террейн** — `CDLODTerrain` (`Scene/Terrain/`, Strugar 2009): квадродерево над картой высот,
 корень покрывает весь террейн, лист — 32 текселя, диапазон каждого уровня вдвое больше предыдущего. Узлы выбираются
-на CPU в `update()` по расстоянию до AABB и frustum. При загрузке карта высот копируется с GPU (`DirectX::CaptureTexture`),
+на CPU в `update()` по расстоянию до AABB и frustum. При загрузке карта высот копируется с GPU (`GpuImages::captureTexture`),
 из копии строится текстура R32_FLOAT с мипами для вершинного шейдера и min/max высот узлов. Рисуются одним
 `DrawIndexedInstanced` патча 16×16 (`GridMesh`). Вершина уровня L читает мип L; к концу диапазона уровня морфинг
 в `Shaders/cdlod.vs` сдвигает её на сетку уровня L + 1 и переводит высоту в мип L + 1, поэтому уровни стыкуются без

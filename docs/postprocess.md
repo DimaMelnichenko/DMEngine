@@ -8,8 +8,8 @@ Exposure (Metering Mode, Auto Exposure Histogram) и Tonemapper в Post Process 
 
 ## Как устроен кадр
 
-1. `DMD3D::BeginScene` привязывает HDR-буфер сцены (`R16G16B16A16_FLOAT`, размер окна, число выборок MSAA из
-   `settings.ini`) и буфер глубины и очищает их.
+1. `DMD3D::BeginScene` объявляет проход очистки HDR-буфера сцены (`R16G16B16A16_FLOAT`, размер окна) и буфера глубины и
+   очищает их.
 2. `Renderer` рисует проходы `opaque` → `sky` → `transparent`. Шейдеры с освещением (`Shaders/lighting.sh`:
    `PBRLit.ps`, `terrain.ps`) и небо (`sky_background.ps`) пишут яркость, умноженную на экспозицию прошлого кадра
    (pre-exposure, см. ниже).
@@ -20,8 +20,8 @@ Exposure (Metering Mode, Auto Exposure Histogram) и Tonemapper в Post Process 
    3. **`Shaders/tonemap.ps`** в задний буфер: (цвет + bloom), приведённые к новой экспозиции, → ночное зрение →
       тонмаппинг.
 
-   При MSAA выборки перед этим один раз сводятся в обычную текстуру (`DMD3D::sceneColor`). Каждый проход ставит
-   свою цель и после себя отвязывает источник. Новый проход (LUT, сглаживание) — ещё одна цель и шаг
+   Цвет сцены читается через `DMD3D::sceneColor`. Каждый проход объявляет свою цель и источники (`PassDesc`),
+   барьеры ставит `beginPass`. Новый проход (LUT, сглаживание) — ещё одна цель и шаг
    в `PostProcess::render`.
 4. Задний буфер — `R8G8B8A8_UNORM_SRGB`: линейный результат тонмаппинга кодируется в sRGB аппаратно.
 5. Поверх рисуется GUI (без тонмаппинга, как интерфейс в играх), `EndScene` показывает кадр.
@@ -209,7 +209,7 @@ Release, 1920 × 1080, попеременные запуски с прежней
 ## Ограничения
 
 - Замер по всему кадру поровну: центрально-взвешенного замера (Metering Mask в UE) и локальной экспозиции нет.
-- Нет виньетки, цветокоррекции (LUT), бликов объектива (lens flare) и сглаживания кроме MSAA.
+- Нет виньетки, цветокоррекции (LUT), бликов объектива (lens flare) и сглаживания (MSAA ушёл с переездом на D3D12: буфер сцены с одной выборкой).
 - Физической камеры (ISO, выдержка, диафрагма) нет — только EV100.
 
 ## Файлы
@@ -224,7 +224,7 @@ Release, 1920 × 1080, попеременные запуски с прежней
 | `src/Engine/Graphics/Scene/Shaders/FullscreenShader.h/.cpp` | полноэкранный проход: шейдеры, топология, состояния |
 | `Shaders/fullscreen.vs` | полноэкранный треугольник по `SV_VertexID` |
 | `Shaders/tonemap.ps` | сложение с bloom, приведение к экспозиции, ночное зрение, ACES, AgX |
-| `src/Engine/Graphics/D3D/DMD3D.cpp` | HDR-буфер сцены, MSAA, задний буфер (`BeginScene`, `backBufferTarget`, `sceneColor`), цели проходов — `beginPass` |
+| `src/Engine/Graphics/D3D/DMD3D.cpp` | HDR-буфер сцены, задний буфер (`BeginScene`, `backBufferTarget`, `sceneColor`), цели проходов и барьеры — `beginPass` |
 | `src/Engine/Graphics/Renderer.cpp` | порядок проходов, привязка экспозиции к проходам сцены |
 
 ## Откуда подход

@@ -27,7 +27,6 @@ private:
 		float elapsedTime;
 	};
 
-	void clear();
 	void setConstants( ConstantType& constantType );
 private:
 	ShaderStage m_computeShader;

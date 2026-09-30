@@ -39,7 +39,7 @@ void DMComputeShader::setUAVBuffer( int index, const StorageView& view )
 
 void DMComputeShader::Dispatch( uint32_t numElements, float elapsed_time )
 {
-	DMD3D::instance().setShaderStage( SRVType::cs, &m_computeShader );
+	DMD3D::instance().setComputeShader( m_computeShader );
 
 	//////////////////////////////////////
 	//	calc
@@ -67,13 +67,12 @@ void DMComputeShader::Dispatch( uint32_t numElements, float elapsed_time )
 
 	DMD3D::instance().dispatch( group_size_X, group_size_Y, 1 );
 
-	clear();
 }
 
 
 void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_time )
 {
-	DMD3D::instance().setShaderStage( SRVType::cs, &m_computeShader );
+	DMD3D::instance().setComputeShader( m_computeShader );
 
 	//////////////////////////////////////
 	//	calc
@@ -96,14 +95,12 @@ void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_t
 
 	DMD3D::instance().dispatch( group_size_X, group_size_Y, 1 );
 
-	clear();
 }
 
 void DMComputeShader::dispatchGroups( uint32_t x, uint32_t y, uint32_t z )
 {
-	DMD3D::instance().setShaderStage( SRVType::cs, &m_computeShader );
+	DMD3D::instance().setComputeShader( m_computeShader );
 	DMD3D::instance().dispatch( x, y, z );
-	clear();
 }
 
 void DMComputeShader::setConstants( ConstantType& constantType )
@@ -111,10 +108,4 @@ void DMComputeShader::setConstants( ConstantType& constantType )
 	Device::updateResourceData( m_constantBuffer, constantType );
 
 	DMD3D::instance().setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );
-}
-
-void DMComputeShader::clear()
-{
-	DMD3D::instance().setShaderStage( SRVType::cs, nullptr );
-	DMD3D::instance().unbindUAVs( 0, 8 );
 }

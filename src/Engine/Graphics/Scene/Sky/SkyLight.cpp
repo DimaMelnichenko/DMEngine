@@ -32,17 +32,17 @@ bool SkyLight::initialize()
 		   d3d.createShaderConstantBuffer( sizeof( BlendParameters ), m_irradianceBlendConstants ) &&
 		   d3d.createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_irradianceConstants ) &&
 		   createResult( m_results[0] ) && createResult( m_results[1] ) && createResult( m_results[2] ) &&
-		   createResult( m_blended ) && m_brdfLut.create( brdfLutSize, brdfLutSize, DXGI_FORMAT_R16G16_FLOAT );
+		   createResult( m_blended ) && m_brdfLut.create( brdfLutSize, brdfLutSize, DXGI_FORMAT_R16G16_FLOAT, "BRDF LUT" );
 }
 
 bool SkyLight::createSource( CubeTarget& source )
 {
-	return source.create( sourceSize, 0, sourceFormat, true ) && source.createFacesView( irradianceSourceMip );
+	return source.create( sourceSize, 0, sourceFormat, true, "Sky light source cube" ) && source.createFacesView( irradianceSourceMip );
 }
 
 bool SkyLight::createResult( Result& result )
 {
-	if( !result.specular.create( specularSize, specularMipCount, resultFormat, false ) )
+	if( !result.specular.create( specularSize, specularMipCount, resultFormat, false, "Sky light specular" ) )
 		return false;
 
 	// Гармоники: 9 коэффициентов XMFLOAT4 — пишет compute, читают пиксельные шейдеры
@@ -55,6 +55,7 @@ bool SkyLight::createResult( Result& result )
 		!d3d.createStorageView( result.irradianceBuffer, {}, result.irradianceUAV ) ||
 		!d3d.createShaderView( result.irradianceBuffer, {}, result.irradianceSRV ) )
 		return false;
+	d3d.setName( result.irradianceBuffer, "Sky light irradiance SH" );
 
 	return true;
 }

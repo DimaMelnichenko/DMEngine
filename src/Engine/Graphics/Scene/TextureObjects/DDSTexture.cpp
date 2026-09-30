@@ -1,5 +1,6 @@
 #include "DDSTexture.h"
 #include "D3D\TextureImages.h"
+#include "D3D\DMD3D.h"
 
 namespace GS
 {
@@ -23,7 +24,10 @@ DDSTexture::~DDSTexture()
 
 bool DDSTexture::createSRV()
 {
-	return GpuImages::createTexture( m_image, m_texture, m_srv );
+	if( !GpuImages::createTexture( m_image, m_texture, m_srv ) )
+		return false;
+	DMD3D::instance().setName( m_texture, name() );
+	return true;
 }
 
 uint32_t DDSTexture::height() const

@@ -55,6 +55,7 @@ bool CustomTexture::generateTexture()
 		LOG( "Failed create CreateTexture2D" );
 		return false;
 	}
+	d3d.setName( m_texture, name() );
 	if( !d3d.createShaderView( m_texture, {}, m_srv ) )
 	{
 		LOG( "Can't create Shader Resource View" );

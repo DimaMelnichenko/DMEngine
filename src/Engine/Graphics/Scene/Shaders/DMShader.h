@@ -70,7 +70,7 @@ public:
 public:
 	enum DrawType
 	{
-		skip, by_vertex, by_index, by_index_instance, by_auto
+		skip, by_vertex, by_index, by_index_instance
 	};
 
 	void setDrawType( DrawType );

@@ -72,6 +72,9 @@ bool VertexPool::prepareMeshes()
 	DMD3D::instance().createVertexBuffer( m_vertexBuffer, &vertexes[0], System::meshes().vertexCount() * sizeof( VertexData::PTNTB ) );
 	DMD3D::instance().createVertexBuffer( m_windBuffer, &wind[0], System::meshes().vertexCount() * sizeof( VertexData::WindHalf ) );
 	DMD3D::instance().createIndexBuffer( m_indexBuffer, &indexes[0], System::meshes().indexCount() * sizeof( uint32_t ) );
+	DMD3D::instance().setName( m_vertexBuffer, "Vertex pool" );
+	DMD3D::instance().setName( m_windBuffer, "Vertex pool wind" );
+	DMD3D::instance().setName( m_indexBuffer, "Index pool" );
 
 	return true;
 }

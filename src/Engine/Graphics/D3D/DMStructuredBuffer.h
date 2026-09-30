@@ -3,14 +3,16 @@
 #include "D3D/DMD3D.h"
 #include "DM3DUtils.h"
 
-// Структурный буфер, который пишут с CPU каждый кадр (инстансы моделей, патчи террейна) и читает вершинный шейдер
+// Структурный буфер, который пишут с CPU каждый кадр (инстансы моделей, патчи террейна, свет) и читает шейдер: данные
+// живут в участке кольца кадра DMD3D (updateData), привязка — временный SRV участка (setToSlot). Записанное читается
+// только в этом кадре: писать надо каждый кадр перед привязкой
 class DMStructuredBuffer
 {
 public:
 	DMStructuredBuffer();
 	~DMStructuredBuffer();
 
-	void createBuffer( size_t sizeOfElement, size_t countElements );
+	void createBuffer( size_t sizeOfElement, size_t countElements, const char* name = nullptr );
 	void updateData( const void* data, size_t sizeInByte );
 	void setToSlot( int8_t slot, SRVType type );
 	uint32_t sizeofElement() const;
@@ -24,7 +26,6 @@ public:
 
 private:
 	Buffer m_buffer;
-	ShaderView m_view;
 	size_t m_sizeOfElement = 0;
 	size_t m_countElements = 0;
 };

@@ -72,10 +72,10 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
 		!SkyLight::createSource( m_skyCube ) ||
-		!m_transmittanceLut.create( SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT, hdrFormat ) ||
-		!m_multipleScattering.create( multipleScatteringSize, multipleScatteringSize, hdrFormat ) ||
-		!m_skyViewLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat ) ||
-		!m_skyViewMoonLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat ) ||
+		!m_transmittanceLut.create( SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT, hdrFormat, "Transmittance LUT" ) ||
+		!m_multipleScattering.create( multipleScatteringSize, multipleScatteringSize, hdrFormat, "Multiple scattering LUT" ) ||
+		!m_skyViewLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat, "Sky-View LUT" ) ||
+		!m_skyViewMoonLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat, "Sky-View moon LUT" ) ||
 		!createAerialPerspectiveVolume() ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_aerialPerspectiveConstants ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( NightSkyParameters ), m_nightSkyConstants ) )
@@ -157,8 +157,10 @@ bool SkyAtmosphere::createAerialPerspectiveVolume()
 	desc.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
 
 	DMD3D& d3d = DMD3D::instance();
-	return d3d.createTexture( desc, nullptr, m_aerialPerspective ) &&
-		   d3d.createStorageView( m_aerialPerspective, {}, m_aerialPerspectiveUAV ) &&
+	if( !d3d.createTexture( desc, nullptr, m_aerialPerspective ) )
+		return false;
+	d3d.setName( m_aerialPerspective, "Aerial perspective volume" );
+	return d3d.createStorageView( m_aerialPerspective, {}, m_aerialPerspectiveUAV ) &&
 		   d3d.createShaderView( m_aerialPerspective, {}, m_aerialPerspectiveSRV );
 }
 

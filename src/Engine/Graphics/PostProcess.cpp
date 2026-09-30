@@ -150,11 +150,12 @@ bool PostProcess::createBloomTargets()
 	DMD3D& d3d = DMD3D::instance();
 	uint32_t width = d3d.sceneWidth();
 	uint32_t height = d3d.sceneHeight();
+	uint32_t index = 0;
 	for( RenderTarget& level : m_bloom )
 	{
 		width = std::max( width / 2, 1u );
 		height = std::max( height / 2, 1u );
-		if( !level.create( width, height, bloomFormat ) )
+		if( !level.create( width, height, bloomFormat, ( "Bloom level " + std::to_string( ++index ) ).c_str() ) )
 			return false;
 	}
 	return true;
@@ -189,6 +190,8 @@ bool PostProcess::createExposureResources( float initialEV100, float exposureCom
 	if( !d3d.createBuffer( stateDesc, &initial, m_exposureState ) ||
 		!d3d.createStorageView( m_exposureState, {}, m_exposureUAV ) || !d3d.createShaderView( m_exposureState, {}, m_exposureSRV ) )
 		return false;
+	d3d.setName( m_histogram, "Exposure histogram" );
+	d3d.setName( m_exposureState, "Exposure state" );
 
 	// Копии для чтения на CPU (статистика)
 	if( !m_exposureReadback.create( readbackCount ) )
@@ -229,7 +232,7 @@ void PostProcess::bindExposure()
 void PostProcess::render( GpuProfiler& profiler, float deltaTime )
 {
 	DMD3D& d3d = DMD3D::instance();
-	// Сведение выборок MSAA — один раз за кадр: цвет сцены читают замер, bloom и тонмаппинг
+	// Цвет сцены читают замер экспозиции, bloom и тонмаппинг
 	const ShaderView& sceneColor = d3d.sceneColor();
 	const Settings current = settings();
 

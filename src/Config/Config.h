@@ -26,7 +26,6 @@ public:
 	{
 		return m_backBufferHeight;
 	}
-	uint16_t MSAACount() const{ return m_MSAACount; }
 	// Размер среза каскадной карты теней, текселей (ShadowMapResolution) — настройка качества, а не данные уровня
 	uint32_t shadowMapResolution() const	{ return m_shadowMapResolution; }
 	// Depth prepass (DepthPrepass, как r.EarlyZPass в UE): глубина непрозрачных до прохода цвета. Нет строки — включён
@@ -56,7 +55,6 @@ private:
 	float m_screenHeight = 576.0f;
 	float m_backBufferWidth = 1920.0f;
 	float m_backBufferHeight = 1080.0f;
-	uint16_t m_MSAACount = 0;
 	uint32_t m_shadowMapResolution = 2048;
 	bool m_depthPrepass = true;
 	bool m_gpuValidation = true;

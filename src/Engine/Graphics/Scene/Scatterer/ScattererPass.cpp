@@ -31,6 +31,7 @@ bool ScatterPass::createInstanceBuffer( InstanceBuffer& instances, uint32_t stri
 	desc.usage = BufferUsage::shaderResource | BufferUsage::unorderedAccess | BufferUsage::structured;
 	if( !DMD3D::instance().createBuffer( desc, nullptr, instances.buffer ) )
 		return false;
+	DMD3D::instance().setName( instances.buffer, "Scatter instances" );
 
 	// Обычный RWStructuredBuffer: место под инстанс шейдер берёт из счётчика в indirect-аргументах
 	// и проверяет ёмкость, append-буфер ёмкость не ограничивал бы
@@ -138,6 +139,7 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 	const uint32_t emptyArgs[maxLists * maxSections * 5] = {};
 	if( !DMD3D::instance().createBuffer( desc, emptyArgs, m_argsBuffer ) )
 		return false;
+	DMD3D::instance().setName( m_argsBuffer, "Scatter draw args" );
 
 	BufferViewDesc uavDesc;
 	uavDesc.raw = true;

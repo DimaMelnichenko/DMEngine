@@ -16,10 +16,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # /MDd в Debug, /MD в остальных конфигурациях — одинаково для движка и библиотек из FetchContent
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
-# Все зависимости скачиваются при первом configure (нужны сеть и git). Версии — docs/d3d12_migration.md §3
+# Все зависимости скачиваются при первом configure (нужны сеть и git). Версии — docs/d3d12.md §2
 include(FetchContent)
 
-# DirectXTex (загрузка текстур, ScreenGrab12): только часть D3D12
+# DirectXTex (загрузка текстур, мипы на CPU, запись снимков через WIC): только часть D3D12
 set(BUILD_TOOLS OFF)
 set(BUILD_SAMPLE OFF)
 set(BUILD_DX11 OFF)
@@ -215,7 +215,8 @@ target_link_libraries(DMEngine PRIVATE
     D3D12MemoryAllocator
     ${dxc_SOURCE_DIR}/lib/x64/dxcompiler.lib
     ${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.lib
-    d3d12 dxgi d3dcompiler dinput8 dxguid winmm windowscodecs
+    d3d12 dxgi dinput8 dxguid winmm windowscodecs
+    d3dcompiler # только шейдеры imgui_impl_dx12 (D3DCompile); шейдеры движка — DXC
 )
 
 # Рантайм рядом с exe: Agility SDK в D3D12\ (D3D12SDKPath), DXC и PIX — в каталог exe

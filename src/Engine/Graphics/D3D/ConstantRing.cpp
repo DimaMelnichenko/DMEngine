@@ -5,7 +5,7 @@
 bool ConstantRing::initialize( ID3D12Device* device, uint32_t bytes, uint32_t frames )
 {
 	m_frames = std::max( frames, 1u );
-	m_frameBytes = ( bytes / m_frames ) & ~( alignment - 1 );
+	m_frameBytes = ( bytes / m_frames ) & ~( constantAlignment - 1 );
 	const uint32_t total = m_frameBytes * m_frames;
 
 	// Upload-куча: CPU пишет, GPU читает через PCIe — для констант, которые живут один кадр, это и есть правильное место
@@ -54,23 +54,26 @@ void ConstantRing::beginFrame( uint32_t frameIndex )
 	m_head = m_frameStart;
 }
 
-void* ConstantRing::beginWrite( uint32_t size, uint32_t& offset, uint32_t& bytes )
+void* ConstantRing::beginWrite( uint32_t size, uint32_t& offset, uint32_t& bytes, uint32_t alignment )
 {
 	if( !m_mapped || m_writing || size == 0 )
 		return nullptr;
 
-	bytes = ( size + alignment - 1 ) & ~( alignment - 1 );
+	alignment = std::max( alignment, 4u );
+	const auto align = [alignment]( uint32_t value ) { return ( value + alignment - 1 ) / alignment * alignment; };
+	bytes = align( size );
 	if( bytes > m_frameBytes )
 		return nullptr;
-	if( m_head + bytes > m_frameStart + m_frameBytes )
+	uint32_t start = align( m_head );
+	if( start + bytes > m_frameStart + m_frameBytes )
 	{
 		// Часть кадра кончилась: начинаем сначала — прошлые участки этого кадра GPU ещё не прочитал, кольцо надо увеличить
-		m_head = m_frameStart;
+		start = m_frameStart;
 		++m_current.frameWraps;
 	}
 
-	offset = m_head;
-	m_head += bytes;
+	offset = start;
+	m_head = start + bytes;
 	m_current.frameBytes += bytes;
 	++m_current.frameWrites;
 	m_writing = true;

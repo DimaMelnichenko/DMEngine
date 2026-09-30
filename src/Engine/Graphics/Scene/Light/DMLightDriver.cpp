@@ -45,7 +45,7 @@ DMLightDriver::~DMLightDriver(void)
 
 bool DMLightDriver::Initialize()
 {
-	m_structBuffer.createBuffer( sizeof( LightBuffer ), maxLights );
+	m_structBuffer.createBuffer( sizeof( LightBuffer ), maxLights, "Lights" );
 	m_lightParamBuffer.reserve( maxLights );
 
 	return true;
@@ -104,7 +104,6 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 
 	if( m_light_list.size() > maxLights )
 		LOG( "Level has " + std::to_string( m_light_list.size() ) + " lights, only " + std::to_string( maxLights ) + " enabled ones are used" );
-	m_bufferChanged = true;
 }
 
 void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
@@ -297,19 +296,9 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 		buffer.push_back( lightBuffer );
 	}
 
-	// Источники меняются редко (правка в GUI): буфер на GPU обновляется, только если он другой
-	if( buffer.size() != m_lightParamBuffer.size() ||
-		std::memcmp( buffer.data(), m_lightParamBuffer.data(), buffer.size() * sizeof( LightBuffer ) ) != 0 )
-	{
-		m_lightParamBuffer = std::move( buffer );
-		m_bufferChanged = true;
-	}
-
-	if( m_bufferChanged )
-	{
-		m_structBuffer.updateData( m_lightParamBuffer.data(), m_lightParamBuffer.size() * sizeof( LightBuffer ) );
-		m_bufferChanged = false;
-	}
+	// Участок кольца живёт один кадр: буфер пишется каждый кадр (десятки источников — сотни байт)
+	m_lightParamBuffer = std::move( buffer );
+	m_structBuffer.updateData( m_lightParamBuffer.data(), m_lightParamBuffer.size() * sizeof( LightBuffer ) );
 
 	m_structBuffer.setToSlot( slot, type );
 

@@ -18,9 +18,6 @@ public:
 		count
 	};
 
-	// Осталось от D3D11 (привязка раз за кадр); в D3D12 сэмплеры в root signature — ничего не делает
-	void setDefaultSamplers() {}
-
 	// Описания статических сэмплеров root signature, слоты s0…s8
 	const std::vector<D3D12_STATIC_SAMPLER_DESC>& staticSamplers() const { return m_samplers; }
 

@@ -7,7 +7,8 @@
 class RenderTarget
 {
 public:
-	bool create( uint32_t width, uint32_t height, DXGI_FORMAT format );
+	// name — имя текстуры в захвате PIX и сообщениях debug-слоя
+	bool create( uint32_t width, uint32_t height, DXGI_FORMAT format, const char* name = nullptr );
 
 	const TargetView& target() const { return m_target; }
 	const ShaderView& srv() const { return m_srv; }

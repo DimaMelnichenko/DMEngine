@@ -103,6 +103,5 @@ private:
 	static_assert( sizeof( LightBuffer ) == 64, "LightBuffer must match struct Light in Shaders/lighting.sh" );
 	DMStructuredBuffer m_structBuffer;
 	std::vector<LightBuffer> m_lightParamBuffer;
-	bool m_bufferChanged = true;
 };
 

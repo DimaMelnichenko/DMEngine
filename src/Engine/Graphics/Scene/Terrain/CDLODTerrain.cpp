@@ -61,7 +61,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId )
 		return false;
 
 	m_patch.initialize( patchDim + 1, patchDim + 1 );
-	m_patchBuffer.createBuffer( sizeof( PatchInstance ), maxPatches );
+	m_patchBuffer.createBuffer( sizeof( PatchInstance ), maxPatches, "Terrain patches" );
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) )
 		return false;
@@ -224,6 +224,7 @@ bool CDLODTerrain::buildHeightBounds()
 		LOG( "CDLOD terrain: can`t create heightmap texture" );
 		return false;
 	}
+	DMD3D::instance().setName( m_heightMapTexture, "Terrain height map" );
 
 	const uint32_t lastMip = static_cast<uint32_t>( mipChain.GetMetadata().mipLevels ) - 1;
 

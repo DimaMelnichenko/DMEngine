@@ -56,9 +56,6 @@ void DMShader::RenderShader( int indexCount, uint32_t vertexOffset, uint32_t ind
 		case by_index_instance:
 			d3d.drawIndexedInstanced( indexCount, instance_count, indexOffset, vertexOffset, 0 );
 			break;
-		case by_auto:
-			d3d.drawAuto();
-			break;
 		default:
 			break;
 	}

@@ -1,7 +1,7 @@
 #include "CubeTarget.h"
 #include "DMD3D.h"
 
-bool CubeTarget::create( uint32_t size, uint32_t mipCount, DXGI_FORMAT format, bool computeMips )
+bool CubeTarget::create( uint32_t size, uint32_t mipCount, DXGI_FORMAT format, bool computeMips, const char* name )
 {
 	DMD3D& d3d = DMD3D::instance();
 
@@ -15,6 +15,8 @@ bool CubeTarget::create( uint32_t size, uint32_t mipCount, DXGI_FORMAT format, b
 	desc.cube = true;
 	if( !d3d.createTexture( desc, nullptr, m_texture ) )
 		return false;
+	if( name )
+		d3d.setName( m_texture, name );
 
 	// Цель — одна грань одного мипа
 	m_targets.clear();

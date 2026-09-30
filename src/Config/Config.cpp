@@ -28,7 +28,6 @@ bool Config::readConfig( const std::string& file )
 		m_screenHeight = configFile.get<float>( "General", "ScreenHeight" );
 		m_backBufferWidth = configFile.get<float>( "General", "BackBufferWidth" );
 		m_backBufferHeight = configFile.get<float>( "General", "BackBufferHeight" );
-		m_MSAACount = configFile.get<int32_t>( "General", "MSAACount" );
 		if( const int32_t resolution = configFile.get<int32_t>( "General", "ShadowMapResolution" ); resolution > 0 )
 			m_shadowMapResolution = static_cast<uint32_t>( resolution );
 		m_depthPrepass = configFile.get<std::string>( "General", "DepthPrepass" ) != "false";

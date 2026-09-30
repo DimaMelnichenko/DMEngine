@@ -291,6 +291,9 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 		LOG( "Terrain material: can`t create textures" );
 		return false;
 	}
+	DMD3D::instance().setName( m_splatMapTexture, "Terrain splat map" );
+	DMD3D::instance().setName( m_albedoHeightTexture, "Terrain albedo + height" );
+	DMD3D::instance().setName( m_normalRoughnessTexture, "Terrain normal + roughness" );
 
 	return true;
 }

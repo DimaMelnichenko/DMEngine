@@ -12,7 +12,7 @@ class CubeTarget
 {
 public:
 	// mipCount 0 — полная цепочка мипов; computeMips — мипы 1… строятся compute из мипа 0: у каждого мипа SRV и UAV
-	bool create( uint32_t size, uint32_t mipCount, DXGI_FORMAT format, bool computeMips );
+	bool create( uint32_t size, uint32_t mipCount, DXGI_FORMAT format, bool computeMips, const char* name = nullptr );
 	// Мип mip как Texture2DArray из 6 граней — facesSRV()
 	bool createFacesView( uint32_t mip );
 

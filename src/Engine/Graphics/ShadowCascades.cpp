@@ -36,6 +36,7 @@ bool ShadowCascades::createResources()
 		LOG( "Shadow map texture is not created" );
 		return false;
 	}
+	d3d.setName( m_texture, "Shadow map" );
 
 	for( uint32_t cascade = 0; cascade < cascadeCount; ++cascade )
 	{

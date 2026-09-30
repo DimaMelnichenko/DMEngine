@@ -1,6 +1,6 @@
 #pragma once
 
-// Непрозрачные ресурсы GPU и их виды — ресурсы и дескрипторы D3D12 (docs/d3d12_migration.md, §4.3–4.4). Объекты сцены,
+// Непрозрачные ресурсы GPU и их виды — ресурсы и дескрипторы D3D12 (docs/d3d12.md §3.3–3.4). Объекты сцены,
 // материалы и проходы держат только их и создают через DMD3D по описаниям ниже; ID3D12* живёт внутри Graphics/D3D:
 // методы handle() и reset() — для бэкенда (DMD3D, RenderTarget, CubeTarget, DMStructuredBuffer, TextureImages).
 // Вид — постоянный дескриптор в куче (bindless): ShaderView и StorageView — в общей shader-visible куче CBV/SRV/UAV,
@@ -34,8 +34,9 @@ namespace BufferUsage
 		indirectArgs = 1 << 5,		// аргументы DrawIndexedInstancedIndirect
 		structured = 1 << 6,		// структурный: элементы по stride, виды без формата
 		raw = 1 << 7,				// байтовый (ByteAddressBuffer): виды с BufferViewDesc::raw
-		cpuWrite = 1 << 8,			// пишется с CPU каждый кадр (Device::updateResource): участок кольца кадра в upload-куче
-									// (у констант — ConstantRing.h)
+		cpuWrite = 1 << 8,			// пишется с CPU каждый кадр (Device::updateResource): своего ресурса нет, данные — участок
+									// кольца кадра в upload-куче (ConstantRing.h); константы привязываются root CBV, структурные
+									// и raw — временным SRV на кадр (DMD3D::setSRV( слот, буфер ))
 		readback = 1 << 9,			// копия для чтения на CPU (DMD3D::copyBuffer + readBuffer) — readback-куча
 	};
 }
@@ -166,6 +167,7 @@ public:
 			m_gpuAddress = other.m_gpuAddress;
 			m_ringOffset = other.m_ringOffset;
 			m_ringBytes = other.m_ringBytes;
+			m_ringView = other.m_ringView;
 			m_copyFence = other.m_copyFence;
 		}
 		return *this;
@@ -175,16 +177,21 @@ public:
 	bool valid() const { return m_resource != nullptr || ring(); }
 	const BufferDesc& desc() const { return m_desc; }
 	uint32_t size() const { return m_desc.size; }
-	// Константы, которые пишут каждый кадр (BufferUsage::constant | cpuWrite): своего ресурса нет, данные — участок
-	// кольца констант DMD3D, записанный в этом кадре (Device::updateResource*); setConstantBuffer привязывает его
-	bool ring() const { return ( m_desc.usage & BufferUsage::constant ) && ( m_desc.usage & BufferUsage::cpuWrite ); }
+	// Буфер, который пишут каждый кадр (BufferUsage::cpuWrite): своего ресурса нет, данные — участок кольца DMD3D,
+	// записанный в этом кадре (Device::updateResource*). Константы привязывает setConstantBuffer по адресу участка,
+	// структурные и raw данные — setSRV( слот, буфер ) по временному дескриптору участка (ringView)
+	bool ring() const { return ( m_desc.usage & BufferUsage::cpuWrite ) != 0; }
+	bool ringConstant() const { return ring() && ( m_desc.usage & BufferUsage::constant ); }
 	uint32_t ringOffset() const { return m_ringOffset; }
 	uint32_t ringBytes() const { return m_ringBytes; }
+	uint32_t ringView() const { return m_ringView; }
 	void setRingSlice( uint32_t offset, uint32_t bytes )
 	{
 		m_ringOffset = offset;
 		m_ringBytes = bytes;
+		m_ringView = 0;
 	}
+	void setRingView( uint32_t descriptorIndex ) { m_ringView = descriptorIndex; }
 
 	ID3D12Resource* handle() const { return m_resource; }
 	D3D12_GPU_VIRTUAL_ADDRESS gpuAddress() const { return m_gpuAddress; }
@@ -198,7 +205,7 @@ public:
 		m_allocation = allocation;
 		m_desc = desc;
 		m_gpuAddress = resource ? resource->GetGPUVirtualAddress() : 0;
-		m_ringOffset = m_ringBytes = 0;
+		m_ringOffset = m_ringBytes = m_ringView = 0;
 		m_copyFence = 0;
 	}
 
@@ -209,6 +216,7 @@ private:
 	D3D12_GPU_VIRTUAL_ADDRESS m_gpuAddress = 0;
 	uint32_t m_ringOffset = 0;
 	uint32_t m_ringBytes = 0;
+	uint32_t m_ringView = 0;	// индекс временного SRV участка (только этот кадр)
 	uint64_t m_copyFence = 0;
 };
 

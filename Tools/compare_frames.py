@@ -1,4 +1,4 @@
-"""Сравнение двух снимков кадра по пикселям — правило «картинка совпадает до пикселя» из docs/d3d12_migration.md.
+"""Сравнение двух снимков кадра по пикселям — правило «картинка совпадает до пикселя» из docs/d3d12.md §4.
 
     python Tools/compare_frames.py a.png b.png [--tolerance 0] [--diff diff.png] [--quiet]
     python Tools/compare_frames.py папка_a папка_b [--tolerance 0] [--diff папка_diff]

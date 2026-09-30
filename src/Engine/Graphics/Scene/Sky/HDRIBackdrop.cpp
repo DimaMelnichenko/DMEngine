@@ -171,6 +171,7 @@ bool HDRIBackdrop::loadPanorama( const std::string& path, float rotation )
 		LOG( "HDRI backdrop: can't create texture for " + path );
 		return false;
 	}
+	DMD3D::instance().setName( m_panoramaTexture, "HDRI panorama" );
 	m_panoramaWidth = static_cast<uint32_t>( image.GetMetadata().width );
 	return true;
 }
