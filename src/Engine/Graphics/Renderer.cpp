@@ -7,6 +7,7 @@
 #include <iterator>
 #include <optional>
 #include "Scene.h"
+#include "System.h"
 #include "Pipeline.h"
 #include "GUI\GUI.h"
 #include "D3D\DMD3D.h"
@@ -97,13 +98,41 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t sh
 	if( !m_shadows.initialize( shadowResolution ) )
 		return false;
 
-	if( !m_gpuProfiler.initialize( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext() ) )
+	if( !m_gpuProfiler.initialize() )
 		return false;
 
 	m_instanceBuffer.createBuffer( sizeof( InstanceTransform ), maxInstancesPerDraw );
 	m_instanceTransforms.reserve( maxInstancesPerDraw );
 
+	warmPipelines();
 	return m_samplerState.initialize();
+}
+
+void Renderer::warmPipelines()
+{
+	// Состояния, с которыми проходы рисуют меши материалов: цвет и depth prepass — растеризатор по двусторонности и
+	// зеркальности (materialRasterState), в каркасном режиме кадра — wireframe; прозрачные — блендинг без записи глубины;
+	// тени — csmShadowDepth; frontCulling — сфера неба. Все фазы каждого материала
+	std::vector<RenderState> states;
+	for( RasterState raster : { RasterState::solid, RasterState::noCulling, RasterState::solidMirrored, RasterState::noCullingMirrored,
+								RasterState::wireframe, RasterState::frontCulling } )
+	{
+		states.push_back( { raster, DepthState::enabled, BlendState::opaque } );
+		states.push_back( { raster, DepthState::readOnlyEqual, BlendState::opaque } );
+		states.push_back( { raster, DepthState::readOnly, BlendState::alpha } );
+	}
+	states.push_back( { RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque } );
+	for( auto& material : System::materials() )
+	{
+		if( material.second && material.second->m_shader )
+			material.second->m_shader->warmPipelines( states );
+	}
+	LOG( "Pipelines after warm-up: " + std::to_string( DMD3D::instance().pipelineCount() ) );
+}
+
+bool Renderer::resize()
+{
+	return m_postProcess.resize();
 }
 
 void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
@@ -308,7 +337,7 @@ PostProcess::Settings Renderer::postProcessSettings()
 
 void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 {
-	m_samplerState.setDefaultSmaplers();
+	m_samplerState.setDefaultSamplers();
 	// установка источников света
 	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS, SRVType::ps );
 	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры)
@@ -433,8 +462,6 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 
 	const auto start = std::chrono::high_resolution_clock::now();
 	// Карта сейчас привязана к пиксельным шейдерам с прошлого кадра: рисовать в неё можно, только отвязав
-	m_shadows.unbindShadowMap();
-	DMD3D::instance().unbindTransientResources();
 	ScopedRenderState shadowState( RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque );
 
 	// Время — одной областью на каскад: имена объектов в строке «GPU average» остаются за проходами сцены
@@ -466,16 +493,22 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 {
 	// Проход не полагается на состояние, оставленное прошлым: своя цель, область вывода, без чужих ресурсов.
 	// Глубину и блендинг задаёт ScopedRenderState кадра и прохода, растеризатор команд восстанавливается после прохода.
-	// Depth prepass — без цели цвета: только буфер глубины сцены
-	if( pass == MeshPass::depthPrepass )
-		DMD3D::instance().setSceneDepthTarget();
-	else
-		DMD3D::instance().setSceneTarget();
-	DMD3D::instance().unbindTransientResources();
-	ScopedRenderState passState;
-
 	static const char* const passNames[] = { "Pass depth prepass", "Pass opaque", "Pass sky", "Pass transparent" };
 	static_assert( std::size( passNames ) == scenePassCount );
+
+	// Объявление прохода: буфер сцены (depth prepass — без цели цвета), читает ресурсы сцены — карту теней и экспозицию
+	// (освещение окружением и объём воздушной перспективы привязывают объекты неба)
+	DMD3D& d3d = DMD3D::instance();
+	PassDesc desc;
+	desc.name = passNames[static_cast<int>( pass )];
+	if( pass != MeshPass::depthPrepass )
+		desc.colors = { { &d3d.sceneTarget(), "scene color" } };
+	desc.depth = { &d3d.sceneDepthTarget(), "scene depth" };
+	desc.width = d3d.sceneWidth();
+	desc.height = d3d.sceneHeight();
+	desc.reads = { { &m_shadows.shaderView(), "shadow map" }, { &m_postProcess.exposureView(), "exposure" } };
+	d3d.beginPass( desc );
+	ScopedRenderState passState;
 	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
 	const RenderContext context{ view, pass, frameRaster, pipeline().shaderConstant(), m_vertexPool, depthFromPrepass };
 	// Depth prepass — одной областью, как тени: строки объектов в «Statistic» и «GPU average» — их проходы цвета

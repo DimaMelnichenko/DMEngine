@@ -1,9 +1,10 @@
 #include "GpuProfiler.h"
+#include "DMD3D.h"
 
-bool GpuProfiler::initialize( ID3D11Device* device, ID3D11DeviceContext* context )
+bool GpuProfiler::initialize()
 {
-	m_device = device;
-	m_context = context;
+	m_device = DMD3D::instance().GetDevice();
+	m_context = DMD3D::instance().GetDeviceContext();
 
 	// Метки событий есть у контекста D3D 11.1; без них профайлер просто меряет время
 	ID3DUserDefinedAnnotation* annotation = nullptr;

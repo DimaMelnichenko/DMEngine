@@ -1,4 +1,5 @@
 #include "TerrainMaterial.h"
+#include "D3D\TextureImages.h"
 #include <algorithm>
 #include <cstring>
 #include <DirectXTex.h>
@@ -109,30 +110,15 @@ bool convertImage( const Image& loadedImage, size_t& width, size_t& height, Scra
 	return SUCCEEDED( image.InitializeFromImage( *source ) ) && SUCCEEDED( image.OverrideFormat( DXGI_FORMAT_R8G8B8A8_UNORM ) );
 }
 
-bool createArraySRV( const ScratchImage& layers, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+bool createArraySRV( const ScratchImage& layers, Texture& texture, ShaderView& srv )
 {
-	ID3D11Resource* resource = nullptr;
-	if( FAILED( CreateTexture( DMD3D::instance().GetDevice(), layers.GetImages(), layers.GetImageCount(), layers.GetMetadata(), &resource ) ) )
-		return false;
-	com_unique_ptr<ID3D11Resource> texture( resource );
-
 	// Вид массива задаётся явно: для массива из одного слоя DirectXTex создал бы вид обычной текстуры
-	D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
-	desc.Format = layers.GetMetadata().format;
-	desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
-	desc.Texture2DArray.MipLevels = static_cast<UINT>( layers.GetMetadata().mipLevels );
-	desc.Texture2DArray.ArraySize = static_cast<UINT>( layers.GetMetadata().arraySize );
-
-	ID3D11ShaderResourceView* view = nullptr;
-	if( FAILED( DMD3D::instance().GetDevice()->CreateShaderResourceView( resource, &desc, &view ) ) )
-		return false;
-	srv.reset( view );
-	return true;
+	return GpuImages::createTexture( layers, texture, srv, TextureViewDesc::Kind::texture2DArray );
 }
 
 // Массив из готовых мипов файлов слоёв (Tools/pack_terrain_layer.py и генератор пишут полную цепочку): у всех слоёв
 // один размер, R8G8B8A8 и полная цепочка — без GenerateMipMaps, которые на CPU стоят секунды (в Debug — ещё больше)
-bool buildArrayFromFileMips( const std::vector<std::string>& files, bool srgb, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+bool buildArrayFromFileMips( const std::vector<std::string>& files, bool srgb, Texture& texture, ShaderView& srv )
 {
 	std::vector<ScratchImage> images( files.size() );
 	for( size_t i = 0; i < files.size(); ++i )
@@ -166,14 +152,14 @@ bool buildArrayFromFileMips( const std::vector<std::string>& files, bool srgb, c
 				std::memcpy( target.pixels + y * target.rowPitch, source.pixels + y * source.rowPitch, source.width * 4 );
 		}
 	}
-	return createArraySRV( layers, srv );
+	return createArraySRV( layers, texture, srv );
 }
 
 // Массив текстур из файлов слоёв; пустое имя — слой не описан. srgb — RGB в sRGB (альбедо): массив R8G8B8A8_UNORM_SRGB,
 // выборка возвращает линейный цвет, мипы фильтруются в линейном; альфа (высота) остаётся линейной
-bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool srgb, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool srgb, Texture& texture, ShaderView& srv )
 {
-	if( buildArrayFromFileMips( files, srgb, srv ) )
+	if( buildArrayFromFileMips( files, srgb, texture, srv ) )
 		return true;
 
 	std::vector<ScratchImage> images( files.size() );
@@ -216,12 +202,12 @@ bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool 
 	if( FAILED( GenerateMipMaps( layers.GetImages(), layers.GetImageCount(), layers.GetMetadata(), mipFilter, 0, mips ) ) )
 		return false;
 
-	return createArraySRV( mips, srv );
+	return createArraySRV( mips, texture, srv );
 }
 
 // Splat-карта — массив из splatSlices срезов RGBA (срез s — веса слоёв 4s…4s + 3). Срезов в файле меньше — остальные
 // нули: прежний файл из одной картинки читается как раньше. Нет файла — весь вес у слоя 0
-bool loadSplatMap( const std::string& file, com_unique_ptr<ID3D11ShaderResourceView>& srv )
+bool loadSplatMap( const std::string& file, Texture& texture, ShaderView& srv )
 {
 	constexpr size_t slices = GS::TerrainMaterial::splatSlices;
 	size_t width = 0;
@@ -270,7 +256,7 @@ bool loadSplatMap( const std::string& file, com_unique_ptr<ID3D11ShaderResourceV
 	ScratchImage mips;
 	if( FAILED( GenerateMipMaps( splat.GetImages(), splat.GetImageCount(), splat.GetMetadata(), mipFilter, 0, mips ) ) )
 		return false;
-	return createArraySRV( mips, srv );
+	return createArraySRV( mips, texture, srv );
 }
 
 }
@@ -298,9 +284,9 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 	for( uint32_t s = 0; s < splatSlices; ++s )
 		m_layerScale[s] = XMFLOAT4( scale[4 * s], scale[4 * s + 1], scale[4 * s + 2], scale[4 * s + 3] );
 
-	if( !loadSplatMap( splatMap, m_splatMap ) ||
-		!buildArray( albedoFiles, Fallback::checker, true, m_albedoHeight ) ||
-		!buildArray( normalFiles, Fallback::flatNormal, false, m_normalRoughness ) )
+	if( !loadSplatMap( splatMap, m_splatMapTexture, m_splatMap ) ||
+		!buildArray( albedoFiles, Fallback::checker, true, m_albedoHeightTexture, m_albedoHeight ) ||
+		!buildArray( normalFiles, Fallback::flatNormal, false, m_normalRoughnessTexture, m_normalRoughness ) )
 	{
 		LOG( "Terrain material: can`t create textures" );
 		return false;

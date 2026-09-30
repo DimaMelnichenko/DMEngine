@@ -25,22 +25,16 @@ ScatterPass::~ScatterPass()
 
 bool ScatterPass::createInstanceBuffer( InstanceBuffer& instances, uint32_t stride, uint32_t count )
 {
-	D3D11_BUFFER_DESC desc = {};
-	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.ByteWidth = stride * count;
-	desc.StructureByteStride = stride;
-	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	if( !DMD3D::instance().CreateBuffer( &desc, nullptr, instances.buffer ) )
+	BufferDesc desc;
+	desc.size = stride * count;
+	desc.stride = stride;
+	desc.usage = BufferUsage::shaderResource | BufferUsage::unorderedAccess | BufferUsage::structured;
+	if( !DMD3D::instance().createBuffer( desc, nullptr, instances.buffer ) )
 		return false;
 
 	// Обычный RWStructuredBuffer: место под инстанс шейдер берёт из счётчика в indirect-аргументах
 	// и проверяет ёмкость, append-буфер ёмкость не ограничивал бы
-	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
-	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	uavDesc.Buffer.NumElements = count;
-	return DMD3D::instance().createUAV( instances.buffer, uavDesc, instances.uav );
+	return DMD3D::instance().createStorageView( instances.buffer, {}, instances.uav );
 }
 
 bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
@@ -107,10 +101,13 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 		}
 	}
 
-	D3D11_SUBRESOURCE_DATA variantsData = {};
-	variantsData.pSysMem = &m_variants;
-	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( PopulateParams ), m_populateParamsBuffer, nullptr ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( VariantsBuffer ), m_variantsBuffer, &variantsData ) )
+	// Параметры слоя пишутся каждый кадр — кольцо констант; варианты меняются редко (setDitheredLodTransition), а
+	// читаются каждым проходом — постоянный буфер, обновляемый при смене
+	BufferDesc variantsDesc;
+	variantsDesc.size = sizeof( VariantsBuffer );
+	variantsDesc.usage = BufferUsage::constant;
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( PopulateParams ), m_populateParamsBuffer ) ||
+		!DMD3D::instance().createBuffer( variantsDesc, &m_variants, m_variantsBuffer ) )
 		return false;
 
 	if( !createInstanceBuffer( m_instances, sizeof( ScatterItem ), offsets[0] ) ||
@@ -124,36 +121,27 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 		for( uint32_t transition = 0; transition < 2; ++transition )
 		{
 			const uint32_t list = listIndex( v, lod, transition != 0 );
-			D3D11_SHADER_RESOURCE_VIEW_DESC viewDesc = {};
-			viewDesc.Format = DXGI_FORMAT_UNKNOWN;
-			viewDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-			viewDesc.Buffer.FirstElement = m_variants.lists[list][0];
-			viewDesc.Buffer.NumElements = m_variants.lists[list][1];
-			if( !DMD3D::instance().createSRV( transition ? m_transitions.buffer : m_instances.buffer, viewDesc, m_instanceSRVs[list] ) )
+			BufferViewDesc viewDesc;
+			viewDesc.firstElement = m_variants.lists[list][0];
+			viewDesc.elementCount = m_variants.lists[list][1];
+			if( !DMD3D::instance().createShaderView( transition ? m_transitions.buffer : m_instances.buffer, viewDesc, m_instanceSRVs[list] ) )
 				return false;
 		}
 	}
 
 	// Аргументы DrawIndexedInstancedIndirect — по пять чисел на секцию списка
-	D3D11_BUFFER_DESC desc = {};
-	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.ByteWidth = sizeof( m_initialArgs );
-	desc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS | D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+	BufferDesc desc;
+	desc.size = sizeof( m_initialArgs );
+	desc.usage = BufferUsage::unorderedAccess | BufferUsage::indirectArgs | BufferUsage::raw;
 	// Нули: пока расчёт травы (клавиша 3) не запускался, отрисовка по этим аргументам не рисует ничего.
 	// Без начальных данных содержимое буфера не определено, и число инстансов могло оказаться любым
 	const uint32_t emptyArgs[maxLists * maxSections * 5] = {};
-	D3D11_SUBRESOURCE_DATA argsData = {};
-	argsData.pSysMem = emptyArgs;
-	if( !DMD3D::instance().CreateBuffer( &desc, &argsData, m_argsBuffer ) )
+	if( !DMD3D::instance().createBuffer( desc, emptyArgs, m_argsBuffer ) )
 		return false;
 
-	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-	uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	uavDesc.Buffer.NumElements = maxLists * maxSections * 5;
-	uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
-	return DMD3D::instance().createUAV( m_argsBuffer, uavDesc, m_argsUAV );
+	BufferViewDesc uavDesc;
+	uavDesc.raw = true;
+	return DMD3D::instance().createStorageView( m_argsBuffer, uavDesc, m_argsUAV );
 }
 
 void ScatterPass::setDitheredLodTransition( uint32_t variant, bool dithered )
@@ -180,7 +168,15 @@ void ScatterPass::setSectionArgs( uint32_t list, uint32_t section, uint32_t inde
 
 void ScatterPass::resetArgs()
 {
-	DMD3D::instance().GetDeviceContext()->UpdateSubresource( m_argsBuffer.get(), 0, nullptr, m_initialArgs, 0, 0 );
+	DMD3D::instance().updateBuffer( m_argsBuffer, m_initialArgs, sizeof( m_initialArgs ) );
+}
+
+PassDesc ScatterPass::passDesc( const char* name ) const
+{
+	PassDesc pass;
+	pass.name = name;
+	pass.writes = { { &m_argsUAV, "indirect args" }, { &m_instances.uav, "instances" }, { &m_transitions.uav, "LOD transition instances" } };
+	return pass;
 }
 
 void ScatterPass::copySectionCounts( DMComputeShader& shader )
@@ -188,36 +184,36 @@ void ScatterPass::copySectionCounts( DMComputeShader& shader )
 	if( !m_hasSections )
 		return;
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
-	shader.setUAVBuffer( 0, m_argsUAV.get() );
+	shader.setUAVBuffer( 0, m_argsUAV );
 	shader.dispatchGroups( 1, 1, 1 );
 }
 
 void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
 {
-	Device::updateResourceData<PopulateParams>( m_populateParamsBuffer.get(), m_populateParams );
+	Device::updateResourceData<PopulateParams>( m_populateParamsBuffer, m_populateParams );
 	if( m_variantsChanged )
 	{
-		Device::updateResourceData<VariantsBuffer>( m_variantsBuffer.get(), m_variants );
+		DMD3D::instance().updateBuffer( m_variantsBuffer, &m_variants, sizeof( m_variants ) );
 		m_variantsChanged = false;
 	}
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
 
-	shader.setUAVBuffer( 0, m_argsUAV.get() );
-	shader.setUAVBuffer( 1, m_instances.uav.get() );
-	shader.setUAVBuffer( 2, m_transitions.uav.get() );
+	shader.setUAVBuffer( 0, m_argsUAV );
+	shader.setUAVBuffer( 1, m_instances.uav );
+	shader.setUAVBuffer( 2, m_transitions.uav );
 
 	shader.Dispatch( gridDim, gridDim, 0.0f );
 }
 
-const com_unique_ptr<ID3D11ShaderResourceView>& ScatterPass::instances( uint32_t list )
+const ShaderView& ScatterPass::instances( uint32_t list )
 {
 	return m_instanceSRVs[list];
 }
 
-ID3D11Buffer* ScatterPass::args()
+const Buffer& ScatterPass::args()
 {
-	return m_argsBuffer.get();
+	return m_argsBuffer;
 }
 
 ScatterPass::PopulateParams& ScatterPass::populateParams()

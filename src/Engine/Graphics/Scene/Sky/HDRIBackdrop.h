@@ -70,8 +70,9 @@ private:
 
 	FullscreenShader m_cubeShader;
 	FullscreenShader m_backgroundShader;
-	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
-	com_unique_ptr<ID3D11ShaderResourceView> m_panorama;
+	Buffer m_constantBuffer;
+	Texture m_panoramaTexture;
+	ShaderView m_panorama;
 	uint32_t m_panoramaWidth = 0;
 	CubeTarget m_cube;	// источник SkyLight
 };

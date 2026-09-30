@@ -19,6 +19,8 @@ public:
 	};
 
 	void Initialize( CameraType, float width, float height, float _near, float depth, float fieldOfView = 0.7853981f/*PI/4*/ );
+	// Новый размер кадра: проекция под его соотношение сторон (поле зрения и плоскости — прежние)
+	void setViewport( float width, float height );
 
 	void SetPosition( float, float, float );
 	void SetRotation( float, float, float );
@@ -53,6 +55,7 @@ private:
 	XMMATRIX m_projection_matrix;
 	float m_nearPlane = 0.1f;
 	float m_farPlane = 1000.0f;
+	float m_fieldOfView = 0.7853981f;
 	XMFLOAT3 m_view_direction;
 	XMMATRIX m_mCameraWorld;
 	// Последнее положение мыши: в режиме курсора (I) камера сохраняет поворот

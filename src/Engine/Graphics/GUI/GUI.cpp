@@ -40,11 +40,7 @@ void GUI::Initialize( HWND hwnd )
 void GUI::Begin()
 {
 
-	DMD3D::instance().GetDeviceContext()->VSSetShader( nullptr, nullptr, 0 );
-	DMD3D::instance().GetDeviceContext()->GSSetShader( nullptr, nullptr, 0 );
-	DMD3D::instance().GetDeviceContext()->HSSetShader( nullptr, nullptr, 0 );
-	DMD3D::instance().GetDeviceContext()->DSSetShader( nullptr, nullptr, 0 );
-	DMD3D::instance().GetDeviceContext()->PSSetShader( nullptr, nullptr, 0 );
+	DMD3D::instance().unbindShaders();
 
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
@@ -111,7 +107,8 @@ void GUI::renderTextureLibrary()
 	ImGui::BeginChild( "Scrolling" );
 	for( auto& item : GS::System::textures() )
 	{
-		ImGui::Image( item.second->srv().get(), ImVec2( 256, 256 ) );
+		// ImTextureID у бэкенда imgui_impl_dx11 — указатель вида D3D11 (B7 плана переезда заменит бэкенд)
+		ImGui::Image( item.second->srv().handle(), ImVec2( 256, 256 ) );
 		ImGui::Text( "id:%d name:%s", item.first, item.second->name().data() );
 	}
 	ImGui::EndChild();

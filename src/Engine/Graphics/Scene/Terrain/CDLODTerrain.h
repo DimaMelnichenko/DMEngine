@@ -93,7 +93,8 @@ private:
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;
 	std::vector<std::vector<XMFLOAT2>> m_heightBounds;	// по уровням: нормированные min / max высоты узлов
-	com_unique_ptr<ID3D11ShaderResourceView> m_heightMap;	// копия t_heightmap в R32_FLOAT с полной цепочкой мипов
+	Texture m_heightMapTexture;	// копия t_heightmap в R32_FLOAT с полной цепочкой мипов
+	ShaderView m_heightMap;
 	float m_ranges[maxLevels] = {};
 	XMFLOAT4 m_morphConsts[maxLevels] = {};
 
@@ -107,7 +108,7 @@ private:
 	int m_depthPhase = 0;
 	TerrainMaterial m_material;
 	DMStructuredBuffer m_patchBuffer;
-	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
+	Buffer m_constantBuffer;
 	PropertyContainer m_properties;
 	bool m_initialized = false;
 };

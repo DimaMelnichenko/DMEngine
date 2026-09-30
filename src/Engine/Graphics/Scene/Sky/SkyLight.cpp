@@ -14,16 +14,6 @@ namespace
 constexpr DXGI_FORMAT sourceFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
 constexpr DXGI_FORMAT resultFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
-// Ресурсы освещения окружением и источник станут целями и UAV: снимаем их со входов пиксельных шейдеров, иначе D3D
-// отвяжет их с предупреждением
-void unbindEnvironment()
-{
-	ID3D11ShaderResourceView* nullViews[3] = {};
-	ID3D11DeviceContext* context = DMD3D::instance().GetDeviceContext();
-	context->PSSetShaderResources( 0, 1, nullViews );
-	context->PSSetShaderResources( SLOT_IBL_IRRADIANCE, 3, nullViews );
-}
-
 }
 
 bool SkyLight::initialize()
@@ -54,37 +44,16 @@ bool SkyLight::createResult( Result& result )
 	if( !result.specular.create( specularSize, specularMipCount, resultFormat, false ) )
 		return false;
 
-	ID3D11Device* device = DMD3D::instance().GetDevice();
-
-	D3D11_BUFFER_DESC desc = {};
-	desc.ByteWidth = 9 * sizeof( XMFLOAT4 );
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
-	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	desc.StructureByteStride = sizeof( XMFLOAT4 );
-
-	ID3D11Buffer* buffer = nullptr;
-	if( FAILED( device->CreateBuffer( &desc, nullptr, &buffer ) ) )
+	// Гармоники: 9 коэффициентов XMFLOAT4 — пишет compute, читают пиксельные шейдеры
+	BufferDesc desc;
+	desc.size = 9 * sizeof( XMFLOAT4 );
+	desc.stride = sizeof( XMFLOAT4 );
+	desc.usage = BufferUsage::unorderedAccess | BufferUsage::shaderResource | BufferUsage::structured;
+	DMD3D& d3d = DMD3D::instance();
+	if( !d3d.createBuffer( desc, nullptr, result.irradianceBuffer ) ||
+		!d3d.createStorageView( result.irradianceBuffer, {}, result.irradianceUAV ) ||
+		!d3d.createShaderView( result.irradianceBuffer, {}, result.irradianceSRV ) )
 		return false;
-	result.irradianceBuffer = make_com_ptr<ID3D11Buffer>( buffer );
-
-	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
-	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	uavDesc.Buffer.NumElements = 9;
-	ID3D11UnorderedAccessView* uav = nullptr;
-	if( FAILED( device->CreateUnorderedAccessView( result.irradianceBuffer.get(), &uavDesc, &uav ) ) )
-		return false;
-	result.irradianceUAV = make_com_ptr<ID3D11UnorderedAccessView>( uav );
-
-	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-	srvDesc.Buffer.NumElements = 9;
-	ID3D11ShaderResourceView* srv = nullptr;
-	if( FAILED( device->CreateShaderResourceView( result.irradianceBuffer.get(), &srvDesc, &srv ) ) )
-		return false;
-	result.irradianceSRV = make_com_ptr<ID3D11ShaderResourceView>( srv );
 
 	return true;
 }
@@ -113,7 +82,6 @@ bool SkyLight::updateCapture()
 	if( !m_source )
 		return true;
 
-	unbindEnvironment();
 	Result& result = m_results[m_building];
 	if( m_step == 0 )
 		captureIrradiance( result );
@@ -123,12 +91,10 @@ bool SkyLight::updateCapture()
 	// Таблица BRDF не зависит от окружения — один раз
 	if( !m_brdfReady )
 	{
-		DMD3D::instance().setRenderTarget( m_brdfLut.rtv(), brdfLutSize, brdfLutSize );
+		DMD3D::instance().beginPass( PassDesc{ "BRDF LUT", { { &m_brdfLut.target(), "BRDF LUT" } }, {}, brdfLutSize, brdfLutSize } );
 		m_brdfShader.draw();
 		m_brdfReady = true;
 	}
-	DMD3D::instance().GetDeviceContext()->OMSetRenderTargets( 0, nullptr, nullptr );
-
 	if( ++m_step < captureSteps )
 		return false;
 
@@ -146,20 +112,19 @@ void SkyLight::captureIrradiance( Result& result )
 {
 	// Рассеянный свет: гармоники по мипу irradianceSourceMip, делённые на нормировку
 	XMFLOAT4 constants( 1.0f / m_captureNormalization, 0.0f, 0.0f, 0.0f );
-	Device::updateResourceData<XMFLOAT4>( m_irradianceConstants.get(), constants );
+	Device::updateResourceData<XMFLOAT4>( m_irradianceConstants, constants );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 4, m_irradianceConstants );
+	DMD3D::instance().beginPass( PassDesc{ "Sky light irradiance", {}, {}, 0, 0, { { &m_source->facesSRV(), "sky cube faces" } },
+										 { { &result.irradianceUAV, "irradiance SH" } } } );
 	DMD3D::instance().setSRV( SRVType::cs, 0, m_source->facesSRV() );
-	m_irradianceShader.setUAVBuffer( 0, result.irradianceUAV.get() );
+	m_irradianceShader.setUAVBuffer( 0, result.irradianceUAV );
 	m_irradianceShader.Dispatch( 64u, 0.0f );
-	ID3D11ShaderResourceView* nullView = nullptr;
-	DMD3D::instance().GetDeviceContext()->CSSetShaderResources( 0, 1, &nullView );
 }
 
 void SkyLight::prefilterFace( Result& result, int32_t face )
 {
 	// Отражения: мип m — шероховатость m / (specularMipCount − 1)
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setSRV( SRVType::ps, 0, m_source->srv() );
 	PrefilterParameters params = {};
 	params.face = face;
 	params.sourceSize = static_cast<float>( m_source->size() );
@@ -167,14 +132,14 @@ void SkyLight::prefilterFace( Result& result, int32_t face )
 	for( uint32_t mip = 0; mip < specularMipCount; ++mip )
 	{
 		params.roughness = static_cast<float>( mip ) / ( specularMipCount - 1 );
-		Device::updateResourceData<PrefilterParameters>( m_constantBuffer.get(), params );
+		Device::updateResourceData<PrefilterParameters>( m_constantBuffer, params );
 		d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
 		const uint32_t size = result.specular.mipSize( mip );
-		d3d.setRenderTarget( result.specular.rtv( mip, face ), size, size );
+		d3d.beginPass( PassDesc{ "Sky light prefilter", { { &result.specular.target( mip, face ), "specular cube" } }, {}, size, size,
+								 { { &m_source->srv(), "sky cube" } } } );
+		d3d.setSRV( SRVType::ps, 0, m_source->srv() );
 		m_prefilterShader.draw();
 	}
-	ID3D11ShaderResourceView* nullView = nullptr;
-	d3d.GetDeviceContext()->PSSetShaderResources( 0, 1, &nullView );
 }
 
 void SkyLight::blendResults( float blend )
@@ -182,8 +147,6 @@ void SkyLight::blendResults( float blend )
 	// В нормировке текущего: прежний пересчитывается из своей
 	const float previousWeight = ( 1.0f - blend ) * m_results[m_previous].normalization / m_results[m_current].normalization;
 	DMD3D& d3d = DMD3D::instance();
-	ID3D11DeviceContext* context = d3d.GetDeviceContext();
-	unbindEnvironment();
 	const Result& previous = m_results[m_previous];
 	const Result& current = m_results[m_current];
 
@@ -191,33 +154,35 @@ void SkyLight::blendResults( float blend )
 	BlendParameters params = {};
 	params.previousWeight = previousWeight;
 	params.currentWeight = blend;
-	Device::updateResourceData<BlendParameters>( m_irradianceBlendConstants.get(), params );
+	Device::updateResourceData<BlendParameters>( m_irradianceBlendConstants, params );
 	d3d.setConstantBuffer( SRVType::cs, 4, m_irradianceBlendConstants );
+	d3d.beginPass( PassDesc{ "Sky light blend irradiance", {}, {}, 0, 0,
+							 { { &previous.irradianceSRV, "previous irradiance SH" }, { &current.irradianceSRV, "current irradiance SH" } },
+							 { { &m_blended.irradianceUAV, "blended irradiance SH" } } } );
 	d3d.setSRV( SRVType::cs, 0, previous.irradianceSRV );
 	d3d.setSRV( SRVType::cs, 1, current.irradianceSRV );
-	m_irradianceBlendShader.setUAVBuffer( 0, m_blended.irradianceUAV.get() );
+	m_irradianceBlendShader.setUAVBuffer( 0, m_blended.irradianceUAV );
 	m_irradianceBlendShader.dispatchGroups( 1, 1, 1 );
-	ID3D11ShaderResourceView* nullViews[2] = {};
-	context->CSSetShaderResources( 0, 2, nullViews );
 
 	// Префильтр отражений: грань за гранью, все мипы
-	d3d.setSRV( SRVType::ps, 0, previous.specular.srv() );
-	d3d.setSRV( SRVType::ps, 1, current.specular.srv() );
+	const std::vector<PassDesc::Read> specularReads = { { &previous.specular.srv(), "previous specular cube" },
+													   { &current.specular.srv(), "current specular cube" } };
 	for( int32_t face = 0; face < 6; ++face )
 	{
 		for( uint32_t mip = 0; mip < specularMipCount; ++mip )
 		{
 			params.face = face;
 			params.mip = static_cast<float>( mip );
-			Device::updateResourceData<BlendParameters>( m_blendConstants.get(), params );
+			Device::updateResourceData<BlendParameters>( m_blendConstants, params );
 			d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_blendConstants );
 			const uint32_t size = m_blended.specular.mipSize( mip );
-			d3d.setRenderTarget( m_blended.specular.rtv( mip, face ), size, size );
+			d3d.beginPass( PassDesc{ "Sky light blend specular", { { &m_blended.specular.target( mip, face ), "blended specular cube" } }, {},
+									 size, size, specularReads } );
+			d3d.setSRV( SRVType::ps, 0, previous.specular.srv() );
+			d3d.setSRV( SRVType::ps, 1, current.specular.srv() );
 			m_blendShader.draw();
 		}
 	}
-	context->PSSetShaderResources( 0, 2, nullViews );
-	context->OMSetRenderTargets( 0, nullptr, nullptr );
 }
 
 void SkyLight::bind()

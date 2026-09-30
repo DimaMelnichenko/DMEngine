@@ -12,8 +12,6 @@ namespace GS
 
 class DMColorShader : public DMShader
 {
-private:
-
 public:
 	DMColorShader();
 	~DMColorShader();
@@ -21,8 +19,8 @@ public:
 
 private:
 	bool innerInitialize() override;
-	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts();
-	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
+	std::vector<VertexElement> initLayouts() override;
+	Buffer m_constantBuffer;
 };
 
 }

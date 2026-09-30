@@ -122,8 +122,8 @@ private:
 	std::vector<Layer> m_layers;
 	DMComputeShader m_computeShader;
 	DMComputeShader m_sectionCountShader;	// copySectionCounts в Shaders\scatter.cs
-	com_unique_ptr<ID3D11Buffer> m_terrainBuffer;
-	com_unique_ptr<ID3D11Buffer> m_frustumBuffer;
+	Buffer m_terrainBuffer;
+	Buffer m_frustumBuffer;
 	PropertyContainer m_properties;
 };
 

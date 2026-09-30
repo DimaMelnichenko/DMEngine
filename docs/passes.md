@@ -15,6 +15,11 @@
 7. **`transparent`** — полупрозрачные от дальних к ближним, глубина только читается.
 8. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
 
+Задний буфер — swap chain flip model (`DMD3D::createDeviceSwapChain`, как требует D3D12): два буфера `R8G8B8A8_UNORM`
+с sRGB-видом, без vsync — с разрывом кадра (tearing), кадр начинается по waitable object (`DMD3D::waitForNextFrame`).
+При `WM_SIZE` `DMGraphics::resize` пересоздаёт задний буфер, HDR-буфер сцены, глубину, уровни bloom и проекцию камеры
+по правилу D3D12: дождаться GPU, отпустить ссылки на задние буферы, `ResizeBuffers`, цели заново (`DMD3D::resize`).
+
 Проход объекта выбирает рендерер, а не объект: меши — по режиму материала (`passFor`: Translucent — в
 `transparent`, остальные — в `opaque` и prepass), свои вызовы — по битам маски (`passBit( MeshPass::… )`). Глубина
 обратная (Reversed-Z): 1 у ближней плоскости, 0 у дальней, «ближе» — `GREATER`.
@@ -29,7 +34,7 @@
 - **prepass** рисует глубину всех непрозрачных и Masked вариантом материала «только глубина» (`depthPhaseFor`):
   у `PBR` — вершинный шейдер `DEPTH_ONLY` (позиция и UV), непрозрачные без пиксельного шейдера, Masked — с `mainDepth`
   (только `clip` по альфе) ([materials.md](materials.md)). Цель — только буфер глубины сцены
-  (`DMD3D::setSceneDepthTarget`);
+  (объявление прохода без целей цвета в `Renderer::executePass`);
 - **проход цвета** рисует те же меши с `DepthState::readOnlyEqual` — проверка `EQUAL` без записи (CF_Equal
   базового прохода UE): пиксель проходит, только если его глубина совпадает с записанной, то есть это ближайшая
   поверхность. Каждый видимый пиксель освещается один раз. Позиция в обоих вариантах вершинного шейдера считается
@@ -107,7 +112,7 @@ Release, 1920 × 1080, время GPU, мс (частицы в уровнях в
 | `src/Engine/Graphics/Renderer.cpp` | порядок проходов (`render`), раскладка (`buildCommands`), запасной путь, `drawMesh` |
 | `src/Engine/Graphics/Scene/MeshBatch.h` | `MeshPass::depthPrepass`, `isDepthOnlyPass`, `passFor` |
 | `src/Engine/Graphics/Scene/SceneObject.h` | `RenderContext::depthFromPrepass` |
-| `src/Engine/Graphics/D3D/DMD3D.cpp` | `DepthState::readOnlyEqual`, `setSceneDepthTarget` |
+| `src/Engine/Graphics/D3D/DMD3D.cpp` | `DepthState::readOnlyEqual`, `beginPass` — цели прохода по `PassDesc` (`D3D/GpuPass.h`) |
 | `src/Engine/Graphics/Scene/Shaders/PBRMaterial.cpp` | `phaseFor( params, options )`, фазы глубины |
 | `src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp`, `Scatterer/Scatterer.cpp` | свои вызовы в prepass |
 | `Shaders/LightShader.vs`, `Shaders/depth_only.sh` | вариант «только глубина» с `precise`-позицией |

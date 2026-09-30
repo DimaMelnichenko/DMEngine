@@ -78,10 +78,14 @@ public:
 	static std::string curveText( const std::vector<XMFLOAT2>& curve );
 
 	bool initialize( const Settings& settings );
+	// Новый размер кадра: уровни bloom заново по размеру буфера сцены
+	bool resize();
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
 	// Экспозиция кадра — пиксельным шейдерам сцены (t105), до проходов сцены
 	void bindExposure();
+	// Экспозиция кадра — для объявлений проходов, которые её читают
+	const ShaderView& exposureView() const { return m_exposureSRV; }
 	// Рисует цепочку в задний буфер и оставляет его привязанным для GUI; время проходов — области profiler.
 	// deltaTime — длительность кадра, с (скорость адаптации)
 	void render( GpuProfiler& profiler, float deltaTime );
@@ -151,10 +155,11 @@ private:
 	};
 
 	bool createExposureResources( float initialEV100, float exposureCompensation );
-	void renderExposure( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float deltaTime );
+	bool createBloomTargets();
+	void renderExposure( const ShaderView& sceneColor, float deltaTime );
 	void readBackExposure();
-	void renderBloom( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float threshold );
-	void drawPass( FullscreenShader& shader, const RenderTarget& target, const com_unique_ptr<ID3D11ShaderResourceView>& source,
+	void renderBloom( const ShaderView& sceneColor, float threshold );
+	void drawPass( const char* name, FullscreenShader& shader, const RenderTarget& target, const ShaderView& source,
 				   BloomParameters params, BlendState blend );
 
 	FullscreenShader m_shader;
@@ -163,20 +168,20 @@ private:
 	DMComputeShader m_histogramShader;
 	DMComputeShader m_adaptShader;
 	RenderTarget m_bloom[bloomLevelCount];
-	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
-	com_unique_ptr<ID3D11Buffer> m_bloomConstants;
-	com_unique_ptr<ID3D11Buffer> m_histogramConstants;
-	com_unique_ptr<ID3D11Buffer> m_adaptConstants;
+	Buffer m_constantBuffer;
+	Buffer m_bloomConstants;
+	Buffer m_histogramConstants;
+	Buffer m_adaptConstants;
 
-	com_unique_ptr<ID3D11Buffer> m_histogram;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_histogramUAV;
-	com_unique_ptr<ID3D11ShaderResourceView> m_histogramSRV;
-	com_unique_ptr<ID3D11Buffer> m_exposureState;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_exposureUAV;
-	com_unique_ptr<ID3D11ShaderResourceView> m_exposureSRV;
+	Buffer m_histogram;
+	StorageView m_histogramUAV;
+	ShaderView m_histogramSRV;
+	Buffer m_exposureState;
+	StorageView m_exposureUAV;
+	ShaderView m_exposureSRV;
 	// Копии состояния для чтения на CPU по кругу: читается самая свежая из тех, до которых GPU уже дошёл
 	static constexpr uint32_t readbackCount = 6;
-	com_unique_ptr<ID3D11Buffer> m_exposureReadback[readbackCount];
+	Buffer m_exposureReadback[readbackCount];
 	uint32_t m_readbackFrame = 0;
 	float m_ev100 = 0.0f;
 	// Кадры до конца смены плана: за один кадр гистограмма с чужой экспозицией может упереться в край диапазона

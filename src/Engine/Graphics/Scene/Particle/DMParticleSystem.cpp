@@ -62,46 +62,16 @@ bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size
 	}
 	
 
-	D3D11_BUFFER_DESC buffer_desc;
-	memset( &buffer_desc, 0, sizeof( D3D11_BUFFER_DESC ) );
-	buffer_desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
-	buffer_desc.ByteWidth = sizeof( ParticleData ) * m_max_count;	
-	buffer_desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	buffer_desc.CPUAccessFlags = 0;
-	buffer_desc.StructureByteStride = sizeof( ParticleData );	
-
-	D3D11_SUBRESOURCE_DATA sub_data;
-	memset( &sub_data, 0, sizeof( D3D11_SUBRESOURCE_DATA ) );
-	sub_data.pSysMem = data;
-	
-	if( !DMD3D::instance().CreateBuffer( &buffer_desc, &sub_data, m_structuredBuffer ) )
+	// Частицы — структурный буфер: пишет compute, читает вершинный шейдер
+	BufferDesc desc;
+	desc.size = sizeof( ParticleData ) * m_max_count;
+	desc.stride = sizeof( ParticleData );
+	desc.usage = BufferUsage::unorderedAccess | BufferUsage::shaderResource | BufferUsage::structured;
+	DMD3D& d3d = DMD3D::instance();
+	if( !d3d.createBuffer( desc, data, m_structuredBuffer ) ||
+		!d3d.createShaderView( m_structuredBuffer, {}, m_srvParticles ) ||
+		!d3d.createStorageView( m_structuredBuffer, {}, m_uavParticles ) )
 		return false;
-
-
-
-	D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
-	memset( &srv_desc, 0, sizeof( D3D11_SHADER_RESOURCE_VIEW_DESC ) );
-	srv_desc.Format = DXGI_FORMAT_UNKNOWN;
-	srv_desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-	srv_desc.Buffer.FirstElement = 0;
-	srv_desc.Buffer.NumElements = m_max_count;
-
-	
-	if( !DMD3D::instance().createSRV( m_structuredBuffer, srv_desc, m_srvParticles ) )
-		return false;
-
-	
-
-	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
-	memset( &uavDesc, 0, sizeof( uavDesc ) );
-	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	uavDesc.Buffer.FirstElement = 0;
-	uavDesc.Format = DXGI_FORMAT_UNKNOWN;      // Format must be must be DXGI_FORMAT_UNKNOWN, when creating a View of a Structured Buffer
-	uavDesc.Buffer.NumElements = m_max_count;
-
-	if( !DMD3D::instance().createUAV( m_structuredBuffer, uavDesc, m_uavParticles ) )
-		return false;
-
 
 	if( !m_computeShader.Initialize( "Shaders\\particle.cs", "main" ) )
 	{
@@ -141,7 +111,7 @@ void DMParticleSystem::update( float elapsedTime )
 
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 3, m_constantBuffer );
 
-	m_computeShader.setUAVBuffer( 0, m_uavParticles.get() );
+	m_computeShader.setUAVBuffer( 0, m_uavParticles );
 
 	m_computeShader.Dispatch( m_max_count, elapsedTime );
 }
@@ -151,8 +121,11 @@ void DMParticleSystem::compute( const GS::FrameContext& frame )
 	if( !m_initialized )
 		return;
 
-	// Высота, на которой частица гибнет, отсчитывается от террейна: шейдер читает карту высот из t0
-	DMD3D::instance().setSRV( SRVType::cs, 0, GS::System::textures().get( m_heightMap )->srv() );
+	// Compute-проход: буфер частиц пишется (beginPass снимает его с входа вершинного шейдера прошлого кадра); высота,
+	// на которой частица гибнет, отсчитывается от террейна: шейдер читает карту высот из t0
+	const ShaderView& heightMap = GS::System::textures().get( m_heightMap )->srv();
+	DMD3D::instance().beginPass( PassDesc{ "Particles update", {}, {}, 0, 0, { { &heightMap, "height map" } }, { { &m_uavParticles, "particles" } } } );
+	DMD3D::instance().setSRV( SRVType::cs, 0, heightMap );
 	update( frame.elapsedTime );
 }
 
@@ -166,13 +139,15 @@ void DMParticleSystem::renderCustom( const GS::RenderContext& )
 {
 
 	GS::DMShader* shader = GS::System::materials().get( m_material )->m_shader.get();
+	// Точки по SV_VertexID: топология — часть пайплайна, до setPass
+	shader->setTopology( D3D_PRIMITIVE_TOPOLOGY_POINTLIST );
 	shader->setPass( 0 );
 	shader->setDrawType( GS::DMShader::by_vertex );
 
 	bindParticles();
 	DMD3D::instance().setSRV( SRVType::ps, 0, GS::System::textures().get( m_texture )->srv() );
 	shader->render( particleCount(), 0, 0 );
-	DMD3D::instance().GetDeviceContext()->GSSetShader( nullptr, nullptr, 0 );
+	DMD3D::instance().setShaderStage( SRVType::gs, nullptr );
 }
 
 PropertyContainer* DMParticleSystem::properties()
@@ -182,13 +157,10 @@ PropertyContainer* DMParticleSystem::properties()
 
 void DMParticleSystem::bindParticles()
 {
-	ID3D11ShaderResourceView* srv = m_srvParticles.get();
-	DMD3D::instance().GetDeviceContext()->VSSetShaderResources( 5, 1, &srv );
-
-	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
-
-	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 0, nullptr, 0, 0 );
-	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( nullptr, DXGI_FORMAT_R32_UINT, 0 );
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setSRV( SRVType::vs, 5, m_srvParticles );
+	// Буферов вершин и индексов нет
+	d3d.unbindGeometry();
 }
 
 unsigned int DMParticleSystem::particleCount()

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "D3D\GpuResources.h"
 #include <array>
 #include <string>
 #include <vector>
@@ -44,9 +45,13 @@ private:
 	bool loadLayers( uint32_t terrainId, std::vector<Layer>& layers );
 
 private:
-	com_unique_ptr<ID3D11ShaderResourceView> m_splatMap;
-	com_unique_ptr<ID3D11ShaderResourceView> m_albedoHeight;
-	com_unique_ptr<ID3D11ShaderResourceView> m_normalRoughness;
+	// Текстуры и виды: массивы срезов (splat-карта — веса, слои — альбедо с высотой и нормаль с шероховатостью)
+	Texture m_splatMapTexture;
+	Texture m_albedoHeightTexture;
+	Texture m_normalRoughnessTexture;
+	ShaderView m_splatMap;
+	ShaderView m_albedoHeight;
+	ShaderView m_normalRoughness;
 	std::array<XMFLOAT4, splatSlices> m_layerScale = {};
 	uint32_t m_layerCount = 0;
 };

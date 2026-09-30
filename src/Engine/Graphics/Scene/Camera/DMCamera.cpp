@@ -18,29 +18,34 @@ DMCamera::~DMCamera()
 void DMCamera::Initialize( CameraType _type, float width, float height, float _near, float depth, float fieldOfView )
 {
 	m_type = _type;
-
-	float screenAspect = (float)width / (float)height;
 	m_nearPlane = _near;
 	m_farPlane = depth;
-
-	// Reversed-Z, как в UE: ближняя и дальняя плоскости переставлены — глубина 1 у ближней, 0 у дальней. Вместе с буфером
-	// D32_FLOAT точность float и 1/z складываются, и шаг глубины почти не зависит от расстояния
-	switch( _type )
-	{
-		case DMCamera::CT_PERSPECTIVE:
-			m_projection_matrix = XMMatrixPerspectiveFovLH( fieldOfView, screenAspect, depth, _near );
-			break;
-		case DMCamera::CT_ORTHO:
-			m_projection_matrix = XMMatrixOrthographicLH( (float)width, (float)height, depth, _near );
-			break;
-		default:
-			break;
-	}
+	m_fieldOfView = fieldOfView;
+	setViewport( width, height );
 
 	auto prop = m_properties.insert( "Camera speed", 1.0f );
 	prop->setLow( 1.0f );
 	prop->setHigh( 100.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+}
+
+void DMCamera::setViewport( float width, float height )
+{
+	const float screenAspect = width / height;
+
+	// Reversed-Z, как в UE: ближняя и дальняя плоскости переставлены — глубина 1 у ближней, 0 у дальней. Вместе с буфером
+	// D32_FLOAT точность float и 1/z складываются, и шаг глубины почти не зависит от расстояния
+	switch( m_type )
+	{
+		case DMCamera::CT_PERSPECTIVE:
+			m_projection_matrix = XMMatrixPerspectiveFovLH( m_fieldOfView, screenAspect, m_farPlane, m_nearPlane );
+			break;
+		case DMCamera::CT_ORTHO:
+			m_projection_matrix = XMMatrixOrthographicLH( width, height, m_farPlane, m_nearPlane );
+			break;
+		default:
+			break;
+	}
 }
 
 void DMCamera::projectionMatrix( XMMATRIX* matrix ) const

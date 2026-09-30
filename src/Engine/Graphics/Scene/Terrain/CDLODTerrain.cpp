@@ -1,4 +1,5 @@
 #include "CDLODTerrain.h"
+#include "D3D\TextureImages.h"
 #include "Shaders\slots.h"
 #include <algorithm>
 #include <cfloat>
@@ -148,8 +149,7 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, float& heightMultiplier, st
 
 bool CDLODTerrain::createShader()
 {
-	std::vector<D3D11_INPUT_ELEMENT_DESC> layout = {
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
+	std::vector<VertexElement> layout = { { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0 } };
 	m_shader.setLayoutDesc( std::move( layout ) );
 
 	if( !m_shader.addShaderPassFromFile( SRVType::vs, "main", "Shaders\\cdlod.vs" ) ||
@@ -164,17 +164,21 @@ bool CDLODTerrain::createShader()
 	m_materialPhase = m_shader.createPhase( 0, 0 );
 	m_lodPhase = m_shader.createPhase( 0, 1 );
 	m_depthPhase = m_shader.createPhase( 0, -1 );
-	return m_materialPhase >= 0 && m_lodPhase >= 0 && m_depthPhase >= 0;
+	if( m_materialPhase < 0 || m_lodPhase < 0 || m_depthPhase < 0 )
+		return false;
+	// Пайплайны рельефа: цвет и prepass с растеризатором кадра (сплошной или каркасный), тени
+	m_shader.warmPipelines( { { RasterState::solid, DepthState::enabled, BlendState::opaque },
+							  { RasterState::solid, DepthState::readOnlyEqual, BlendState::opaque },
+							  { RasterState::wireframe, DepthState::enabled, BlendState::opaque },
+							  { RasterState::wireframe, DepthState::readOnlyEqual, BlendState::opaque },
+							  { RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque } } );
+	return true;
 }
 
 bool CDLODTerrain::buildHeightBounds()
 {
-	ID3D11Resource* resource = nullptr;
-	System::textures().get( m_heightMapName )->srv()->GetResource( &resource );
-	com_unique_ptr<ID3D11Resource> heightMapResource( resource );
-
 	ScratchImage captured;
-	if( FAILED( CaptureTexture( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext(), resource, captured ) ) )
+	if( !GpuImages::captureTexture( System::textures().get( m_heightMapName )->texture(), captured ) )
 	{
 		LOG( "CDLOD terrain: can`t copy heightmap to CPU" );
 		return false;
@@ -212,14 +216,11 @@ bool CDLODTerrain::buildHeightBounds()
 		return false;
 	}
 
-	ID3D11ShaderResourceView* srv = nullptr;
-	if( FAILED( CreateShaderResourceView( DMD3D::instance().GetDevice(), mipChain.GetImages(), mipChain.GetImageCount(),
-										  mipChain.GetMetadata(), &srv ) ) )
+	if( !GpuImages::createTexture( mipChain, m_heightMapTexture, m_heightMap ) )
 	{
 		LOG( "CDLOD terrain: can`t create heightmap texture" );
 		return false;
 	}
-	m_heightMap.reset( srv );
 
 	const uint32_t lastMip = static_cast<uint32_t>( mipChain.GetMetadata().mipLevels ) - 1;
 
@@ -442,12 +443,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 
 	context.constants.setPerObjectBuffer( XMMatrixIdentity() );
 
-	UINT stride = sizeof( XMFLOAT3 );
-	UINT offset = 0;
-	ID3D11Buffer* vertexBuffer = m_patch.vertexBuffer();
-	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 1, &vertexBuffer, &stride, &offset );
-	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_patch.indexBuffer(), DXGI_FORMAT_R32_UINT, 0 );
-	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
+	DMD3D::instance().setVertexBuffer( m_patch.vertexBuffer(), sizeof( XMFLOAT3 ) );
+	DMD3D::instance().setIndexBuffer( m_patch.indexBuffer(), DXGI_FORMAT_R32_UINT );
 
 	m_shader.setPass( depthOnly ? m_depthPhase : m_properties["Show LOD"].data<bool>() ? m_lodPhase : m_materialPhase );
 	m_shader.renderInstanced( m_patch.indexCount(), 0, 0, static_cast<int>( patches.size() ) );

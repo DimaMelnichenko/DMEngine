@@ -64,14 +64,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.framePadding = 0.0f;
 	} );
 
-	ID3D11Buffer* buffer = m_frameConstant.get();
-	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->HSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->DSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
-
-	DMD3D::instance().GetDeviceContext()->CSSetConstantBuffers( SLOT_CB_FRAME, 1, &buffer );
+	DMD3D::instance().setConstantBufferAllStages( SLOT_CB_FRAME, m_frameConstant );
 }
 
 void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world, float lodDither )
@@ -86,12 +79,9 @@ void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world, float lodDither
 		data.padding = XMFLOAT3( 0.0f, 0.0f, 0.0f );
 	} );
 
-	ID3D11Buffer* buffer = m_modelConstant.get();
-	DMD3D::instance().GetDeviceContext()->VSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->HSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->DSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->GSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
-	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( SLOT_CB_OBJECT, 1, &buffer );
+	// Всем графическим стадиям; compute-шейдеры объектов не рисуют
+	for( SRVType stage : { SRVType::vs, SRVType::hs, SRVType::ds, SRVType::gs, SRVType::ps } )
+		DMD3D::instance().setConstantBuffer( stage, SLOT_CB_OBJECT, m_modelConstant );
 }
 
 }

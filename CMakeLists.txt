@@ -104,13 +104,14 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Graphics/Scene/Shaders/DMShader.cpp
-    src/Engine/Graphics/Scene/Shaders/Layout.cpp
     src/Engine/Graphics/Scene/Shaders/TextureShader.cpp
     src/Engine/Graphics/D3D/DMStructuredBuffer.cpp
     src/DMSystem.cpp
     src/Engine/Graphics/Common/DMTransform.cpp
     src/Engine/Graphics/D3D/DMD3D.cpp
     src/Engine/Graphics/D3D/RenderTarget.cpp
+    src/Engine/Graphics/D3D/TextureImages.cpp
+    src/Engine/Graphics/D3D/ConstantRing.cpp
     src/Engine/Graphics/D3D/CubeTarget.cpp
     src/Engine/Graphics/Scene/Sky/SkyLight.cpp
     src/Engine/Graphics/Scene/Sky/HDRIBackdrop.cpp

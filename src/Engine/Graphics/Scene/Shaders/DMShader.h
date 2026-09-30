@@ -27,11 +27,21 @@ public:
 	bool render( int indexCount, uint32_t vertexOffset = 0, uint32_t indexOffset = 0 );
 	bool renderInstanced( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count );
 	// argsOffset — смещение аргументов DrawIndexedInstancedIndirect в буфере, байты
-	void renderInstancedIndirect( ID3D11Buffer* args, uint32_t argsOffset = 0 );
+	void renderInstancedIndirect( const Buffer& args, uint32_t argsOffset = 0 );
+	// Ставит пайплайн фазы: её шейдеры, раскладка вершин, топология и текущие состояния DMD3D (setState / ScopedRenderState
+	// — до setPass). Пайплайн — из кэша DMD3D::pipeline
 	bool setPass( int phase );
-	void setLayoutDesc( std::vector<D3D11_INPUT_ELEMENT_DESC>&& vertex_layout );
+	// Топология вершин пайплайна (частицы — точки); по умолчанию треугольники
+	void setTopology( D3D_PRIMITIVE_TOPOLOGY topology ) { m_topology = topology; }
+	int phaseCount() const { return static_cast<int>( m_phases.size() ); }
+	// Описание пайплайна фазы для состояния state (без привязки)
+	PipelineDesc pipelineDesc( int phase, const RenderState& state ) const;
+	// Собрать пайплайны всех фаз для этих состояний при загрузке (рендерер знает состояния своих проходов): в D3D12
+	// сборка PSO в кадре — фриз, здесь — учёт «ленивых» пайплайнов
+	void warmPipelines( const std::vector<RenderState>& states );
+	void setLayoutDesc( std::vector<VertexElement>&& vertex_layout );
 	virtual void setParams( const PropertyContainer& );
-	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts();
+	virtual std::vector<VertexElement> initLayouts();
 
 	// Режим и двусторонность материала с этими параметрами (Blend Mode и Two Sided в UE): по ним объект выбирает
 	// проход и отсечение граней. По умолчанию — непрозрачный односторонний
@@ -108,16 +118,23 @@ private:
 	std::string version( SRVType type );
 
 	bool createShaderPass( SRVType type, com_unique_ptr<ID3DBlob>& shaderBuffer );
+	// Стадия фазы: шейдер по номеру в списке стадии или nullptr — стадия выключена
+	const ShaderStage* stage( const std::vector<ShaderStage>& stages, int index ) const
+	{
+		return index >= 0 && index < static_cast<int>( stages.size() ) ? &stages[index] : nullptr;
+	}
 
 private:
-	std::vector<com_unique_ptr<ID3D11VertexShader>> m_vertexShader;
-	std::vector<com_unique_ptr<ID3D11PixelShader>> m_pixelShader;
-	std::vector<com_unique_ptr<ID3D11GeometryShader>> m_geometryShader;
-	std::vector<com_unique_ptr<ID3D11HullShader>> m_hullShader;
-	std::vector<com_unique_ptr<ID3D11DomainShader>> m_domainShader;
+	// Скомпилированные стадии по типу; номера в фазах — индексы в этих списках
+	std::vector<ShaderStage> m_vertexShader;
+	std::vector<ShaderStage> m_pixelShader;
+	std::vector<ShaderStage> m_geometryShader;
+	std::vector<ShaderStage> m_hullShader;
+	std::vector<ShaderStage> m_domainShader;
 	std::vector<ShaderSource> m_sources;
-	com_unique_ptr<ID3D11InputLayout> m_layout;
-	std::vector<D3D11_INPUT_ELEMENT_DESC> m_layoutDesc;
+	InputLayout m_layout;
+	std::vector<VertexElement> m_layoutDesc;
+	D3D_PRIMITIVE_TOPOLOGY m_topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	DrawType m_drawType;
 	int m_phaseIdx;
 };

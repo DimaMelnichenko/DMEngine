@@ -1,9 +1,10 @@
 #include "DDSTexture.h"
+#include "D3D\TextureImages.h"
 
 namespace GS
 {
 
-DDSTexture::DDSTexture( uint32_t id, const std::string& name, ScratchImage&& image ) 
+DDSTexture::DDSTexture( uint32_t id, const std::string& name, ScratchImage&& image )
 	: DMTexture( id, name ),
 	m_image( std::move( image ) )
 {
@@ -12,6 +13,7 @@ DDSTexture::DDSTexture( uint32_t id, const std::string& name, ScratchImage&& ima
 DDSTexture::DDSTexture( DDSTexture&& other ) : DMTexture( std::move( other ) )
 {
 	std::swap( m_image, other.m_image );
+	std::swap( other.m_texture, m_texture );
 	std::swap( other.m_srv, m_srv );
 }
 
@@ -21,18 +23,7 @@ DDSTexture::~DDSTexture()
 
 bool DDSTexture::createSRV()
 {
-	ID3D11ShaderResourceView* srv = nullptr;
-	HRESULT hr = CreateShaderResourceView( DMD3D::instance().GetDevice(),
-										   m_image.GetImages(), m_image.GetImageCount(),
-										   m_image.GetMetadata(), &srv );
-	if( FAILED( hr ) )
-	{
-		return false;
-	}
-
-	m_srv = make_com_ptr<ID3D11ShaderResourceView>( srv );
-
-	return true;
+	return GpuImages::createTexture( m_image, m_texture, m_srv );
 }
 
 uint32_t DDSTexture::height() const
@@ -45,9 +36,14 @@ uint32_t DDSTexture::width() const
 	return m_image.GetMetadata().width;
 }
 
-const com_unique_ptr<ID3D11ShaderResourceView>& DDSTexture::srv() const
+const ShaderView& DDSTexture::srv() const
 {
 	return m_srv;
+}
+
+const Texture& DDSTexture::texture() const
+{
+	return m_texture;
 }
 
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include "DirectX.h"
 #include "Utils\utilites.h"
+#include "D3D\GpuResources.h"
 
 namespace GS
 {
@@ -20,11 +21,11 @@ public:
 
 private:
 	bool createBuffers( uint32_t vertexCount, uint32_t indexCount );
-	
+
 private:
-	com_unique_ptr<ID3D11Buffer> m_vertexBuffer;
-	com_unique_ptr<ID3D11Buffer> m_windBuffer;
-	com_unique_ptr<ID3D11Buffer> m_indexBuffer;
+	Buffer m_vertexBuffer;
+	Buffer m_windBuffer;
+	Buffer m_indexBuffer;
 };
 
 }

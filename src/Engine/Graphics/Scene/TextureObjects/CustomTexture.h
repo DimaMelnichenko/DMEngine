@@ -11,7 +11,8 @@ public:
 	CustomTexture( CustomTexture&& );
 	~CustomTexture();
 
-	const com_unique_ptr<ID3D11ShaderResourceView>& srv() const override;
+	const ShaderView& srv() const override;
+	const Texture& texture() const override;
 
 	bool generateTexture(  );
 
@@ -26,7 +27,8 @@ public:
 	}
 
 private:
-	com_unique_ptr<ID3D11ShaderResourceView> m_srv;
+	Texture m_texture;
+	ShaderView m_srv;
 	uint16_t m_width = 256;
 	uint16_t m_hight = 256;
 };

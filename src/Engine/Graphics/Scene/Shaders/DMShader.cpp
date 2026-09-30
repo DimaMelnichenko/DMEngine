@@ -4,26 +4,18 @@
 #include <d3dcompiler.h>
 #include "ShaderUtils.h"
 
-#define RETFALSE_IF_FAILED(x) \
-{ \
-	if(FAILED(x)) \
-	{ \
-		return false; \
-	} \
-} \
-
 namespace GS
 {
 
 DMShader::DMShader() :
 	m_phaseIdx( 0 )
 {
-	
+
 }
 
 DMShader::~DMShader()
 {
-	
+
 }
 
 bool DMShader::initialize()
@@ -85,31 +77,29 @@ void DMShader::OutputShaderErrorMessage( com_unique_ptr<ID3DBlob>& errorMessage,
 
 void DMShader::RenderShader( int indexCount, uint32_t vertexOffset, uint32_t indexOffset, int instance_count )
 {
-	// Render the triangle.
+	DMD3D& d3d = DMD3D::instance();
 	switch( m_drawType )
 	{
 		case by_vertex:
-			DMD3D::instance().GetDeviceContext()->Draw( indexCount, vertexOffset );
+			d3d.draw( indexCount, vertexOffset );
 			break;
 		case by_index:
-			DMD3D::instance().GetDeviceContext()->DrawIndexed( indexCount, indexOffset, vertexOffset );
+			d3d.drawIndexed( indexCount, indexOffset, vertexOffset );
 			break;
 		case by_index_instance:
-			DMD3D::instance().GetDeviceContext()->DrawIndexedInstanced( indexCount, instance_count, indexOffset, vertexOffset, 0 );
+			d3d.drawIndexedInstanced( indexCount, instance_count, indexOffset, vertexOffset, 0 );
 			break;
 		case by_auto:
-			DMD3D::instance().GetDeviceContext()->DrawAuto();
+			d3d.drawAuto();
 			break;
 		default:
 			break;
 	}
-
-	return;
 }
 
-void DMShader::renderInstancedIndirect( ID3D11Buffer* args, uint32_t argsOffset )
+void DMShader::renderInstancedIndirect( const Buffer& args, uint32_t argsOffset )
 {
-	DMD3D::instance().GetDeviceContext()->DrawIndexedInstancedIndirect( args, argsOffset );
+	DMD3D::instance().drawIndexedInstancedIndirect( args, argsOffset );
 }
 
 bool DMShader::setPass( int phase_idx )
@@ -117,56 +107,35 @@ bool DMShader::setPass( int phase_idx )
 	if( !selectPhase( phase_idx ) )
 		return false;
 
-	DMShader::Phase phase = m_phases[m_phaseIdx];
-
-	// Set the vertex input layout.
-	DMD3D::instance().GetDeviceContext()->IASetInputLayout( m_layout.get() );
-
-	// Set the vertex and pixel shaders that will be used to render this triangle.
-	ID3D11VertexShader* vs = m_vertexShader[phase.index_vs].get();
-	DMD3D::instance().GetDeviceContext()->VSSetShader( vs, nullptr, 0 );
-
-	if( m_geometryShader.size() && phase.index_gs >= 0 )
-	{
-		ID3D11GeometryShader* shader = m_geometryShader[phase.index_gs].get();
-		DMD3D::instance().GetDeviceContext()->GSSetShader( shader, nullptr, 0 );
-	}
-	else
-		DMD3D::instance().GetDeviceContext()->GSSetShader( nullptr, nullptr, 0 );
-
-	if( m_hullShader.size() && phase.index_hs >= 0 )
-	{
-		ID3D11HullShader* shader = m_hullShader[phase.index_hs].get();
-		DMD3D::instance().GetDeviceContext()->HSSetShader( shader, nullptr, 0 );
-	}
-	else
-	{
-		DMD3D::instance().GetDeviceContext()->HSSetShader( nullptr, nullptr, 0 );
-	}
-
-	if( m_domainShader.size() && phase.index_ds >= 0 )
-	{
-		ID3D11DomainShader* shader = m_domainShader[phase.index_ds].get();
-		DMD3D::instance().GetDeviceContext()->DSSetShader( shader, nullptr, 0 );
-	}
-	else
-	{
-		DMD3D::instance().GetDeviceContext()->DSSetShader( nullptr, nullptr, 0 );
-	}
-
-	if( m_pixelShader.size() && phase.index_ps >= 0 )
-	{
-		ID3D11PixelShader* ps = m_pixelShader[phase.index_ps].get();
-		DMD3D::instance().GetDeviceContext()->PSSetShader( ps, nullptr, 0 );
-	}
-	else
-	{
-		DMD3D::instance().GetDeviceContext()->PSSetShader( nullptr, nullptr, 0 );
-	}
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setPipeline( d3d.pipeline( pipelineDesc( m_phaseIdx, d3d.renderState() ) ) );
 
 	prepare();
 
 	return true;
+}
+
+PipelineDesc DMShader::pipelineDesc( int phaseIndex, const RenderState& state ) const
+{
+	const Phase& phase = m_phases[phaseIndex];
+	PipelineDesc desc;
+	desc.vertex = stage( m_vertexShader, phase.index_vs );
+	desc.pixel = stage( m_pixelShader, phase.index_ps );
+	desc.geometry = stage( m_geometryShader, phase.index_gs );
+	desc.hull = stage( m_hullShader, phase.index_hs );
+	desc.domain = stage( m_domainShader, phase.index_ds );
+	desc.layout = m_layout.valid() ? &m_layout : nullptr;
+	desc.state = state;
+	desc.topology = m_topology;
+	return desc;
+}
+
+void DMShader::warmPipelines( const std::vector<RenderState>& states )
+{
+	DMD3D& d3d = DMD3D::instance();
+	for( int phase = 0; phase < phaseCount(); ++phase )
+		for( const RenderState& state : states )
+			d3d.pipeline( pipelineDesc( phase, state ) );
 }
 
 bool DMShader::prepare()
@@ -202,7 +171,7 @@ std::string DMShader::version( SRVType type )
 	return shaderVersion;
 }
 
-void DMShader::setLayoutDesc( std::vector<D3D11_INPUT_ELEMENT_DESC>&& layoutDesc )
+void DMShader::setLayoutDesc( std::vector<VertexElement>&& layoutDesc )
 {
 	m_layoutDesc = std::move( layoutDesc );
 }
@@ -220,10 +189,10 @@ bool DMShader::addShaderPassFromFile( SRVType type,
 
 	ID3DBlob* buffer = nullptr;
 	ID3DBlob* error = nullptr;
-	HRESULT result = D3DCompileFromFile( fileName.data(), 
-										 macros.empty() ? nullptr : &macros[0], 
+	HRESULT result = D3DCompileFromFile( fileName.data(),
+										 macros.empty() ? nullptr : &macros[0],
 										 D3D_COMPILE_STANDARD_FILE_INCLUDE, function_name.data(),
-										 version( type ).data(), 
+										 version( type ).data(),
 										 shaderCompileFlags(),
 										 0, &buffer, &error );
 	com_unique_ptr<ID3DBlob> errorMessage( error );
@@ -264,56 +233,34 @@ std::optional<DMShader::ShaderSource> DMShader::shaderSource( SRVType type ) con
 
 bool DMShader::createShaderPass( SRVType type, com_unique_ptr<ID3DBlob>& shaderBuffer )
 {
-	HRESULT result = S_OK;
+	DMD3D& d3d = DMD3D::instance();
+	ShaderStage stage;
+	if( !d3d.createShaderStage( type, shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), stage ) )
+		return false;
 
 	switch( type )
 	{
 		case SRVType::vs:
-		{
-			com_unique_ptr<ID3D11VertexShader> vertexShader;
-
-			RETFALSE_IF_FAILED( createShader( shaderBuffer, vertexShader ) );
-
-			m_vertexShader.push_back( std::move( vertexShader ) );
-
-			result = S_OK;
-			if( m_layoutDesc.size() )
-			{
-				RETFALSE_IF_FAILED( createInputLayout( m_layoutDesc, shaderBuffer, m_layout ) );
-			}
-			
+			m_vertexShader.push_back( std::move( stage ) );
+			// Раскладка вершин — под байткод первого вершинного шейдера
+			if( !m_layoutDesc.empty() &&
+				!d3d.createInputLayout( m_layoutDesc, shaderBuffer->GetBufferPointer(), shaderBuffer->GetBufferSize(), m_layout ) )
+				return false;
 			break;
-		}
 		case SRVType::ps:
-		{
-			com_unique_ptr<ID3D11PixelShader> pixelShader;
-			RETFALSE_IF_FAILED( createShader( shaderBuffer, pixelShader ) );
-			m_pixelShader.push_back( std::move( pixelShader ) );
+			m_pixelShader.push_back( std::move( stage ) );
 			break;
-		}
 		case SRVType::gs:
-		{
-			com_unique_ptr<ID3D11GeometryShader> geometryShader;
-			RETFALSE_IF_FAILED( createShader( shaderBuffer, geometryShader ) );
-			m_geometryShader.push_back( std::move( geometryShader ) );
+			m_geometryShader.push_back( std::move( stage ) );
 			break;
-		}
 		case SRVType::hs:
-		{
-			com_unique_ptr<ID3D11HullShader> hullShader;
-			RETFALSE_IF_FAILED( createShader( shaderBuffer, hullShader ) );
-			m_hullShader.push_back( std::move( hullShader ) );
+			m_hullShader.push_back( std::move( stage ) );
 			break;
-		}
 		case SRVType::ds:
-		{
-			com_unique_ptr<ID3D11DomainShader> domainShader;
-			RETFALSE_IF_FAILED( createShader( shaderBuffer, domainShader ) );
-			m_domainShader.push_back( std::move( domainShader ) );
+			m_domainShader.push_back( std::move( stage ) );
 			break;
-		}
 		default:
-			break;
+			return false;
 	}
 
 	return true;
@@ -394,7 +341,7 @@ void DMShader::parseDefines( std::string defines, std::vector<D3D_SHADER_MACRO>&
 
 		if( equal_split.size() == 2 )
 		{
-			
+
 			macrosItem.Name = new char[equal_split[0].size() + 1];
 			memset( (void*)macrosItem.Name, 0, sizeof( char ) * ( equal_split[0].size() + 1 ) );
 			memcpy( (void*)macrosItem.Name, equal_split[0].data(), sizeof( char ) * equal_split[0].size() );
@@ -419,7 +366,7 @@ void DMShader::parseDefines( std::string defines, std::vector<D3D_SHADER_MACRO>&
 
 void DMShader::setParams( const PropertyContainer& )
 {
-	
+
 }
 
 bool DMShader::innerInitialize()
@@ -427,9 +374,9 @@ bool DMShader::innerInitialize()
 	return true;
 }
 
-std::vector<D3D11_INPUT_ELEMENT_DESC> DMShader::initLayouts()
+std::vector<VertexElement> DMShader::initLayouts()
 {
-	return std::vector<D3D11_INPUT_ELEMENT_DESC>();
+	return std::vector<VertexElement>();
 }
 
 }

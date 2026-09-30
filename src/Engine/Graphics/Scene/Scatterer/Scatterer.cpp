@@ -124,8 +124,6 @@ void Scatterer::compute( const FrameContext& frame )
 	} );
 	DMD3D::instance().setConstantBuffer( SRVType::cs, 6, m_frustumBuffer );
 
-	DMD3D::instance().setSRV( SRVType::cs, 0, System::textures().get( terrain.heightMap )->srv() );
-
 	for( Layer& layer : m_layers )
 	{
 		const ScatterPass::PopulateParams& params = layer.pass->populateParams();
@@ -165,7 +163,14 @@ void Scatterer::compute( const FrameContext& frame )
 		const float cells = std::ceil( 2.0f * params.farBorder / params.cellSize ) + 1.0f;
 		const uint16_t gridDim = static_cast<uint16_t>( std::min( cells, static_cast<float>( maxGridDim ) ) );
 
-		DMD3D::instance().setSRV( SRVType::cs, 2, System::textures().get( layer.mask )->srv() );
+		// Проход раскладки слоя: читает карту высот и маску плотности, пишет аргументы и инстансы
+		const ShaderView& heightMap = System::textures().get( terrain.heightMap )->srv();
+		const ShaderView& mask = System::textures().get( layer.mask )->srv();
+		PassDesc pass = layer.pass->passDesc( "Scatter layer" );
+		pass.reads = { { &heightMap, "height map" }, { &mask, "density mask" } };
+		DMD3D::instance().beginPass( pass );
+		DMD3D::instance().setSRV( SRVType::cs, 0, heightMap );
+		DMD3D::instance().setSRV( SRVType::cs, 2, mask );
 		layer.pass->populate( m_computeShader, gridDim );
 		layer.pass->copySectionCounts( m_sectionCountShader );
 	}

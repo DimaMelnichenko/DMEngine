@@ -38,16 +38,6 @@ void GridMesh::initialize( uint16_t width, uint16_t height )
 	DMD3D::instance().createIndexBuffer( m_indexBuffer, &indexes[0], sizeof( unsigned long ) * m_indexCount );
 }
 
-ID3D11Buffer* GridMesh::vertexBuffer()
-{
-	return m_vertexBuffer.get();
-}
-
-ID3D11Buffer* GridMesh::indexBuffer()
-{
-	return m_indexBuffer.get();
-}
-
 uint32_t GridMesh::indexCount()
 {
 	return m_indexCount;

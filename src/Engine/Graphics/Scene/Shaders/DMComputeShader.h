@@ -13,7 +13,7 @@ public:
 	~DMComputeShader();
 
 	bool Initialize( const std::string& file_name, const std::string& function_name );
-	void setUAVBuffer( int index, ID3D11UnorderedAccessView* );
+	void setUAVBuffer( int index, const StorageView& view );
 	void Dispatch( uint16_t width, uint16_t height, float elapsed_time );
 	void Dispatch( uint32_t numElements, float elapsed_time );
 	// Сетка групп — явно; свои константы (ThreadsData, b2) не пишет: параметры прохода — в b4 и дальше
@@ -32,7 +32,6 @@ private:
 	void clear();
 	void setConstants( ConstantType& constantType );
 private:
-	com_unique_ptr<ID3D11ComputeShader> m_computeShader;
-	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
+	ShaderStage m_computeShader;
+	Buffer m_constantBuffer;
 };
-

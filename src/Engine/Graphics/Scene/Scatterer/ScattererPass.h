@@ -52,6 +52,8 @@ public:
 	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
 	// Аргументы всех секций перед расстановкой — одной записью в буфер
 	void resetArgs();
+	// Объявление прохода раскладки (GpuPass.h): что слой пишет — аргументы и инстансы; что читает, добавляет Scatterer
+	PassDesc passDesc( const char* name ) const;
 	// Расставляет инстансы слоя: gridDim × gridDim ячеек сетки вокруг камеры
 	void populate( DMComputeShader& shader, uint16_t gridDim );
 	// После расстановки: число инстансов списка (оно в записи секции 0) — в записи остальных его секций; в D3D11
@@ -60,8 +62,8 @@ public:
 
 	// Инстансы списка для вершинного шейдера: участок буфера с начала списка (SV_InstanceID считается от нуля); у списка
 	// перехода — буфер перехода (InstanceParam с LOD_DITHER в Shaders\instance.sh)
-	const com_unique_ptr<ID3D11ShaderResourceView>& instances( uint32_t list );
-	ID3D11Buffer* args();
+	const ShaderView& instances( uint32_t list );
+	const Buffer& args();
 	// Смещение аргументов секции списка в буфере аргументов (DrawIndexedInstancedIndirect), байты
 	static uint32_t argsOffset( uint32_t list, uint32_t section ) { return ( list * maxSections + section ) * argsSize; }
 
@@ -103,7 +105,7 @@ private:
 		XMFLOAT3 padding;
 	};
 
-	static constexpr uint32_t argsSize = 5 * sizeof( uint32_t );	// D3D11_DRAW_INDEXED_INSTANCED_INDIRECT_ARGS
+	static constexpr uint32_t argsSize = 5 * sizeof( uint32_t );	// аргументы DrawIndexedInstancedIndirect
 
 	// cbuffer ScatterVariantsBuffer в Shaders\scatter.cs (b7)
 	struct alignas( 16 ) VariantsBuffer
@@ -118,8 +120,8 @@ private:
 	// Буфер инстансов с видом на участок каждого списка и UAV для расстановки
 	struct InstanceBuffer
 	{
-		com_unique_ptr<ID3D11Buffer> buffer;
-		com_unique_ptr<ID3D11UnorderedAccessView> uav;
+		Buffer buffer;
+		StorageView uav;
 	};
 	bool createInstanceBuffer( InstanceBuffer& buffer, uint32_t stride, uint32_t count );
 
@@ -127,14 +129,14 @@ private:
 	bool m_variantsChanged = false;
 	InstanceBuffer m_instances;
 	InstanceBuffer m_transitions;
-	com_unique_ptr<ID3D11ShaderResourceView> m_instanceSRVs[maxLists];
-	com_unique_ptr<ID3D11Buffer> m_argsBuffer;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_argsUAV;
+	ShaderView m_instanceSRVs[maxLists];
+	Buffer m_argsBuffer;
+	StorageView m_argsUAV;
 	// Начальные аргументы (меш секции, ноль инстансов): каждый кадр копируются в m_argsBuffer
 	uint32_t m_initialArgs[maxLists * maxSections * 5] = {};
 	bool m_hasSections = false;	// есть LOD из нескольких секций
-	com_unique_ptr<ID3D11Buffer> m_populateParamsBuffer;
-	com_unique_ptr<ID3D11Buffer> m_variantsBuffer;
+	Buffer m_populateParamsBuffer;
+	Buffer m_variantsBuffer;
 };
 
 }

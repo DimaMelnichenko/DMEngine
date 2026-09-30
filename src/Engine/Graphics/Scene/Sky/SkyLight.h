@@ -75,9 +75,9 @@ private:
 	struct Result
 	{
 		CubeTarget specular;
-		com_unique_ptr<ID3D11Buffer> irradianceBuffer;
-		com_unique_ptr<ID3D11UnorderedAccessView> irradianceUAV;
-		com_unique_ptr<ID3D11ShaderResourceView> irradianceSRV;
+		Buffer irradianceBuffer;
+		StorageView irradianceUAV;
+		ShaderView irradianceSRV;
 		float normalization = 1.0f;	// результат — свет, делённый на неё
 	};
 
@@ -92,10 +92,10 @@ private:
 	FullscreenShader m_blendShader;
 	DMComputeShader m_irradianceShader;
 	DMComputeShader m_irradianceBlendShader;
-	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
-	com_unique_ptr<ID3D11Buffer> m_blendConstants;
-	com_unique_ptr<ID3D11Buffer> m_irradianceBlendConstants;
-	com_unique_ptr<ID3D11Buffer> m_irradianceConstants;	// CS b4 гармоник: 1 / нормировка
+	Buffer m_constantBuffer;
+	Buffer m_blendConstants;
+	Buffer m_irradianceBlendConstants;
+	Buffer m_irradianceConstants;	// CS b4 гармоник: 1 / нормировка
 	bool m_brdfReady = false;
 
 	Result m_results[3];

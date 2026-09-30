@@ -18,10 +18,10 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 {
 	ID3D10Blob* error_message;
 	ID3D10Blob* shader_buffer;
-	
+
 	std::wstring fileName = utf8ToWide( file_name );
 
-	HRESULT result = D3DCompileFromFile( fileName.data(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, 
+	HRESULT result = D3DCompileFromFile( fileName.data(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
 										 function_name.data(), "cs_5_0", GS::shaderCompileFlags() | D3DCOMPILE_ENABLE_STRICTNESS, 0, &shader_buffer, &error_message );
 
 	if( FAILED( result ) )
@@ -40,18 +40,13 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 		return false;
 	}
 
-	ID3D11ComputeShader* compute_shader;
-	result = DMD3D::instance().GetDevice()->CreateComputeShader( shader_buffer->GetBufferPointer(), shader_buffer->GetBufferSize(), nullptr, &compute_shader );
-
+	const bool created = DMD3D::instance().createShaderStage( SRVType::cs, shader_buffer->GetBufferPointer(), shader_buffer->GetBufferSize(),
+																m_computeShader );
 	shader_buffer->Release();
 	shader_buffer = 0;
 
-	if( FAILED( result ) )
-	{
+	if( !created )
 		return false;
-	}
-
-	m_computeShader = make_com_ptr<ID3D11ComputeShader>( compute_shader );
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( ConstantType ), m_constantBuffer ) )
 		return false;
@@ -90,19 +85,17 @@ void DMComputeShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const 
 	return;
 }
 
-void DMComputeShader::setUAVBuffer( int index, ID3D11UnorderedAccessView* resource )
+void DMComputeShader::setUAVBuffer( int index, const StorageView& view )
 {
 	if( index < 0 || index > 7 )
 		return;
 
-	ID3D11UnorderedAccessView* aUAViews[1] = { resource };
-	UINT counters[1] = { 0 };
-	DMD3D::instance().GetDeviceContext()->CSSetUnorderedAccessViews( index, 1, aUAViews, counters );
+	DMD3D::instance().setUAV( static_cast<uint16_t>( index ), view );
 }
 
 void DMComputeShader::Dispatch( uint32_t numElements, float elapsed_time )
 {
-	DMD3D::instance().GetDeviceContext()->CSSetShader( m_computeShader.get(), nullptr, 0 );
+	DMD3D::instance().setShaderStage( SRVType::cs, &m_computeShader );
 
 	//////////////////////////////////////
 	//	calc
@@ -115,7 +108,7 @@ void DMComputeShader::Dispatch( uint32_t numElements, float elapsed_time )
 	secondRoot = ceilf( secondRoot );
 	group_size_X = group_size_Y = (int)secondRoot;
 
-	///////////////////////////////////	
+	///////////////////////////////////
 	// set contant
 
 	ConstantType constantType = {};
@@ -128,7 +121,7 @@ void DMComputeShader::Dispatch( uint32_t numElements, float elapsed_time )
 	//////////////////////////////////////
 	//////////	DISPATCH	///////////////
 
-	DMD3D::instance().GetDeviceContext()->Dispatch( group_size_X, group_size_Y, 1 );
+	DMD3D::instance().dispatch( group_size_X, group_size_Y, 1 );
 
 	clear();
 }
@@ -136,14 +129,14 @@ void DMComputeShader::Dispatch( uint32_t numElements, float elapsed_time )
 
 void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_time )
 {
-	DMD3D::instance().GetDeviceContext()->CSSetShader( m_computeShader.get(), nullptr, 0 );
+	DMD3D::instance().setShaderStage( SRVType::cs, &m_computeShader );
 
 	//////////////////////////////////////
 	//	calc
 	int group_size_X = ( width % 32 != 0 ) ? ( ( width / 32 ) + 1 ) : ( width / 32 );
 	int group_size_Y = ( height % 32 != 0 ) ? ( ( height / 32 ) + 1 ) : ( height / 32 );
 
-	///////////////////////////////////	
+	///////////////////////////////////
 	// set contant
 
 	ConstantType constantType = {};
@@ -157,30 +150,27 @@ void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_t
 	//////////////////////////////////////
 	//////////	DISPATCH /////////////////
 
-	DMD3D::instance().GetDeviceContext()->Dispatch( group_size_X, group_size_Y, 1 );
+	DMD3D::instance().dispatch( group_size_X, group_size_Y, 1 );
 
 	clear();
 }
 
 void DMComputeShader::dispatchGroups( uint32_t x, uint32_t y, uint32_t z )
 {
-	DMD3D::instance().GetDeviceContext()->CSSetShader( m_computeShader.get(), nullptr, 0 );
-	DMD3D::instance().GetDeviceContext()->Dispatch( x, y, z );
+	DMD3D::instance().setShaderStage( SRVType::cs, &m_computeShader );
+	DMD3D::instance().dispatch( x, y, z );
 	clear();
 }
 
 void DMComputeShader::setConstants( ConstantType& constantType )
 {
-	Device::updateResourceData( m_constantBuffer.get(), constantType );
-	
+	Device::updateResourceData( m_constantBuffer, constantType );
+
 	DMD3D::instance().setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );
 }
 
 void DMComputeShader::clear()
 {
-	DMD3D::instance().GetDeviceContext()->CSSetShader( nullptr, nullptr, 0 );
-
-	ID3D11UnorderedAccessView* uav[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-	DMD3D::instance().GetDeviceContext()->CSSetUnorderedAccessViews( 0, 8, uav, (UINT*)( &uav ) );
-
+	DMD3D::instance().setShaderStage( SRVType::cs, nullptr );
+	DMD3D::instance().unbindUAVs( 0, 8 );
 }

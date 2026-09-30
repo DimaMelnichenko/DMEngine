@@ -68,9 +68,9 @@ private:
 	int m_depthPhases[vertexVariantCount][2] = {};
 
 	bool innerInitialize() override;
-	std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts() override;
+	std::vector<VertexElement> initLayouts() override;
 
-	com_unique_ptr<ID3D11Buffer> m_psCB;
+	Buffer m_psCB;
 };
 
 }

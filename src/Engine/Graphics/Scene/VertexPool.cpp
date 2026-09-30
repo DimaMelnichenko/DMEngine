@@ -80,12 +80,10 @@ bool VertexPool::setBuffers()
 {	
 	const uint32_t strides[] = { sizeof( VertexData::PTNTB ), sizeof( VertexData::WindHalf ) };
 	const uint32_t offsets[] = { 0, 0 };
-	ID3D11Buffer* buffers[] = { m_vertexBuffer.get(), m_windBuffer.get() };
-	DMD3D::instance().GetDeviceContext()->IASetVertexBuffers( 0, 2, buffers, strides, offsets );
-	
-	DMD3D::instance().GetDeviceContext()->IASetIndexBuffer( m_indexBuffer.get(), DXGI_FORMAT_R32_UINT, 0 );
-
-	DMD3D::instance().GetDeviceContext()->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
+	const Buffer* buffers[] = { &m_vertexBuffer, &m_windBuffer };
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setVertexBuffers( 2, buffers, strides, offsets );
+	d3d.setIndexBuffer( m_indexBuffer, DXGI_FORMAT_R32_UINT );
 
 	return true;
 }

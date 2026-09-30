@@ -1,6 +1,5 @@
 #include "DMGraphics.h"
 #include <string>
-#include "Shaders\Layout.h"
 #include "../Input/Input.h"
 #include "Pipeline.h"
 #include <chrono>
@@ -97,9 +96,6 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	m_timer.Initialize();
 
-	Layout layout;
-	layout.initLayouts();
-
 	pipeline().init();
 
 	RET_FALSE( m_scene.initialize() );
@@ -138,11 +134,17 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	if( m_config.remoteControl() )
 		m_remote.start();
 
+	// Набор пайплайнов собран (материалы — Renderer::warmPipelines, свои — объекты при инициализации): дальше — «ленивые»
+	DMD3D::instance().markPipelinesWarm();
+	m_initialized = true;
 	return true;
 }
 
 bool DMGraphics::Frame()
 {
+	// Кадр начинается, когда swap chain готов принять его (ввод и камера ниже берутся с меньшей задержкой), кольцо
+	// констант — с чистого участка
+	DMD3D::instance().beginFrame();
 	// Команды удалённого управления — до кадра: камера, свойства и клавиши действуют уже в нём
 	m_remote.poll( m_console );
 	m_console.tick();
@@ -181,8 +183,18 @@ bool DMGraphics::Render( const FrameContext& frame )
 	if( m_showGUI )
 	{
 		m_GUI.addCounterInfo( "GUI Rendering = %.3f ms", m_guiRenderTime / 1000.0f );
+		// Кольцо констант за прошлый кадр: переполнения — кольцо мало (constantRingBytes)
+		const ConstantRing::Stats& ring = DMD3D::instance().constantRingStats();
+		m_GUI.addCounterInfo( "Constant ring = %.1f KB", ring.frameBytes / 1024.0f );
+		m_GUI.addCounterInfo( "Constant ring writes = %.0f", static_cast<float>( ring.frameWrites ) );
+		m_GUI.addCounterInfo( "Constant ring wraps = %.0f", static_cast<float>( ring.frameWraps ) );
+		m_GUI.addCounterInfo( "Pipelines = %.0f", static_cast<float>( DMD3D::instance().pipelineCount() ) );
+		m_GUI.addCounterInfo( "Pipelines created lazily = %.0f", static_cast<float>( DMD3D::instance().lazyPipelineCount() ) );
 
 		auto guiStart = TIME_POINT();
+		// Проход GUI: задний буфер поверх тонмаппинга
+		DMD3D& d3d = DMD3D::instance();
+		d3d.beginPass( PassDesc{ "GUI", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.sceneWidth(), d3d.sceneHeight() } );
 		m_GUI.Begin();
 		m_GUI.printCamera( m_cameraPool["main"] );
 		m_GUI.End();
@@ -205,6 +217,25 @@ void DMGraphics::beforeExit()
 	m_library.save();
 	// Ответ на quit поток канала дописывает до выхода
 	m_remote.stop();
+}
+
+void DMGraphics::resize( uint32_t width, uint32_t height )
+{
+	// Свёрнутое окно — 0 × 0, цели не трогаем; до Initialize (WM_SIZE при создании окна) устройства ещё нет
+	if( !m_initialized || width == 0 || height == 0 )
+		return;
+	DMD3D& d3d = DMD3D::instance();
+	if( width == d3d.sceneWidth() && height == d3d.sceneHeight() )
+		return;
+	if( !d3d.resize( width, height ) || !m_renderer.resize() )
+	{
+		LOG( "Can`t resize the frame to " + std::to_string( width ) + "x" + std::to_string( height ) + ", exiting" );
+		m_exitRequested = true;
+		return;
+	}
+	m_screenWidth = static_cast<float>( width );
+	m_screenHeight = static_cast<float>( height );
+	m_cameraPool["main"].setViewport( m_screenWidth, m_screenHeight );
 }
 
 void DMGraphics::takeScreenshots( bool withGui )
@@ -246,6 +277,12 @@ void DMGraphics::takeScreenshots( bool withGui )
 void DMGraphics::registerCommands()
 {
 	// Камера как BugItGo в UE: положение и поворот в градусах; смена плана — экспозиция сразу по новому виду
+	m_console.registerCommand( "passes", "log the passes of the next frame with their targets, reads and writes (D3D/GpuPass.h)",
+							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
+	{
+		DMD3D::instance().logPasses();
+		reply->ok( "passes of the next frame are written to log.txt" );
+	} );
 	m_console.registerCommand( "camera", "[x,y,z[,pitch,yaw]] - move the camera (camera cut); no arguments - current camera",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{

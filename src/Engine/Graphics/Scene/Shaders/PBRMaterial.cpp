@@ -9,7 +9,7 @@ namespace
 {
 
 // Текстура материала: 0 — не задана, тогда подставляется defaultTexture
-const com_unique_ptr<ID3D11ShaderResourceView>& materialTexture( const PropertyContainer& params, const char* name, uint32_t defaultTexture )
+const ShaderView& materialTexture( const PropertyContainer& params, const char* name, uint32_t defaultTexture )
 {
 	uint32_t id = params.exists( name ) ? params[name].data<uint32_t>() : 0;
 	return System::textures().get( id != 0 ? id : defaultTexture )->srv();
@@ -39,84 +39,21 @@ PBRMaterial::~PBRMaterial()
 
 }
 
-std::vector<D3D11_INPUT_ELEMENT_DESC> PBRMaterial::initLayouts()
+std::vector<VertexElement> PBRMaterial::initLayouts()
 {
-	D3D11_INPUT_ELEMENT_DESC polygonLayout;
-
-	std::vector<D3D11_INPUT_ELEMENT_DESC> vertex_layout;
-
-	// Create the vertex input layout description.
-	// This setup needs to match the VertexType stucture in the ModelClass and in the shader.
-	polygonLayout.SemanticName = "POSITION";
-	polygonLayout.SemanticIndex = 0;
-	polygonLayout.Format = DXGI_FORMAT_R32G32B32_FLOAT;
-	polygonLayout.InputSlot = 0;
-	polygonLayout.AlignedByteOffset = 0;
-	polygonLayout.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-	polygonLayout.InstanceDataStepRate = 0;
-
-	vertex_layout.push_back( polygonLayout );
-
-	polygonLayout.SemanticName = "TEXCOORD";
-	polygonLayout.SemanticIndex = 0;
-	polygonLayout.Format = DXGI_FORMAT_R32G32_FLOAT;
-	polygonLayout.InputSlot = 0;
-	polygonLayout.AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;
-	polygonLayout.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-	polygonLayout.InstanceDataStepRate = 0;
-
-	vertex_layout.push_back( polygonLayout );
-
-	polygonLayout.SemanticName = "NORMAL";
-	polygonLayout.SemanticIndex = 0;
-	polygonLayout.Format = DXGI_FORMAT_R32G32B32_FLOAT;
-	polygonLayout.InputSlot = 0;
-	polygonLayout.AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;
-	polygonLayout.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-	polygonLayout.InstanceDataStepRate = 0;
-
-	vertex_layout.push_back( polygonLayout );
-
-	polygonLayout.SemanticName = "TANGENT";
-	polygonLayout.SemanticIndex = 0;
-	polygonLayout.Format = DXGI_FORMAT_R32G32B32_FLOAT;
-	polygonLayout.InputSlot = 0;
-	polygonLayout.AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;
-	polygonLayout.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-	polygonLayout.InstanceDataStepRate = 0;
-
-	vertex_layout.push_back( polygonLayout );
-
-	polygonLayout.SemanticName = "BINORMAL";
-	polygonLayout.SemanticIndex = 0;
-	polygonLayout.Format = DXGI_FORMAT_R32G32B32_FLOAT;
-	polygonLayout.InputSlot = 0;
-	polygonLayout.AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;
-	polygonLayout.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-	polygonLayout.InstanceDataStepRate = 0;
-
-	vertex_layout.push_back( polygonLayout );
-
-	// Второй поток VertexPool (слот 1) — данные ветра дерева в половинной точности, VertexData::WindHalf. Их читают
-	// только вершинные шейдеры с WIND_TREE (материал PBRTree); остальным лишние элементы раскладки не мешают
-	const struct { const char* semantic; UINT index; DXGI_FORMAT format; UINT offset; } windElements[] = {
-		{ "BRANCH", 0, DXGI_FORMAT_R16G16B16A16_FLOAT, 0 },
-		{ "BRANCH", 1, DXGI_FORMAT_R16G16B16A16_FLOAT, 8 },
-		{ "WINDWEIGHTS", 0, DXGI_FORMAT_R16G16_FLOAT, 16 },
+	// Основной поток VertexPool (слот 0) — VertexData::PTNTB. Второй поток (слот 1) — данные ветра дерева в половинной
+	// точности, VertexData::WindHalf: их читают только вершинные шейдеры с WIND_TREE (материал PBRTree); остальным лишние
+	// элементы раскладки не мешают
+	return {
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, VertexElement::appendOffset },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, VertexElement::appendOffset },
+		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, VertexElement::appendOffset },
+		{ "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, VertexElement::appendOffset },
+		{ "BRANCH", 0, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 0 },
+		{ "BRANCH", 1, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 8 },
+		{ "WINDWEIGHTS", 0, DXGI_FORMAT_R16G16_FLOAT, 1, 16 },
 	};
-	for( const auto& element : windElements )
-	{
-		polygonLayout.SemanticName = element.semantic;
-		polygonLayout.SemanticIndex = element.index;
-		polygonLayout.Format = element.format;
-		polygonLayout.InputSlot = 1;
-		polygonLayout.AlignedByteOffset = element.offset;
-		polygonLayout.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-		polygonLayout.InstanceDataStepRate = 0;
-		vertex_layout.push_back( polygonLayout );
-	}
-
-	return vertex_layout;
 }
 
 bool PBRMaterial::innerInitialize()
@@ -270,7 +207,7 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.windRippleAmplitude = materialValue( params, "WindRippleAmplitude", 0.02f );
 	param.windRippleFrequency = materialValue( params, "WindRippleFrequency", 6.0f );
 
-	Device::updateResourceData<PSParam>( m_psCB.get(), param );
+	Device::updateResourceData<PSParam>( m_psCB, param );
 	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_psCB );
 	// Вершинному шейдеру — отклик на ветер
 	DMD3D::instance().setConstantBuffer( SRVType::vs, SLOT_CB_MATERIAL, m_psCB );

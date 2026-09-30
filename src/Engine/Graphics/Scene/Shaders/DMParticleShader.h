@@ -16,7 +16,7 @@ public:
 
 private:
 	bool innerInitialize() override;
-	virtual std::vector<D3D11_INPUT_ELEMENT_DESC> initLayouts();
+	std::vector<VertexElement> initLayouts() override;
 };
 
 }

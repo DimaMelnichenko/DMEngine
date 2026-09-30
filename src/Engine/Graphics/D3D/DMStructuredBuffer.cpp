@@ -1,12 +1,9 @@
 #include "DMStructuredBuffer.h"
 #include <stdexcept>
 
-
-
 DMStructuredBuffer::DMStructuredBuffer( )
 {
 }
-
 
 DMStructuredBuffer::~DMStructuredBuffer()
 {
@@ -17,98 +14,41 @@ void DMStructuredBuffer::createBuffer( size_t sizeOfElement, size_t countElement
 	m_sizeOfElement = sizeOfElement;
 	m_countElements = countElements;
 
-	D3D11_BUFFER_DESC buffer_desc;
-	buffer_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-	buffer_desc.ByteWidth = m_countElements * m_sizeOfElement;
-	buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	buffer_desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	buffer_desc.StructureByteStride = m_sizeOfElement;
-	buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
-
-	ID3D11Buffer* buffer;
-	if( FAILED( DMD3D::instance().GetDevice()->CreateBuffer( &buffer_desc, nullptr, &buffer ) ) )
-	{
+	BufferDesc desc;
+	desc.size = static_cast<uint32_t>( m_countElements * m_sizeOfElement );
+	desc.stride = static_cast<uint32_t>( m_sizeOfElement );
+	desc.usage = BufferUsage::shaderResource | BufferUsage::structured | BufferUsage::cpuWrite;
+	if( !DMD3D::instance().createBuffer( desc, nullptr, m_buffer ) )
 		throw std::logic_error( "DMStructuredBuffer can`t create buffer" );
-	}
 
-	m_buffer = make_com_ptr<ID3D11Buffer>( buffer );
-
-
-	D3D11_SHADER_RESOURCE_VIEW_DESC view_desc;
-	std::memset( &view_desc, 0, sizeof( D3D11_SHADER_RESOURCE_VIEW_DESC ) );
-
-	view_desc.Format = DXGI_FORMAT_UNKNOWN;
-	view_desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-	view_desc.Buffer.ElementWidth = sizeOfElement;
-	view_desc.Buffer.NumElements = countElements;
-
-	ID3D11ShaderResourceView* view;
-	if( FAILED( DMD3D::instance().GetDevice()->CreateShaderResourceView( m_buffer.get(), &view_desc, &view ) ) )
-	{
+	if( !DMD3D::instance().createShaderView( m_buffer, {}, m_view ) )
 		throw std::logic_error( "DMStructuredBuffer can`t create ShaderResourceView" );
-	}
-
-	m_SRV = make_com_ptr<ID3D11ShaderResourceView>( view );
 }
 
-void DMStructuredBuffer::updateData( void* data, size_t sizeInByte )
+void DMStructuredBuffer::updateData( const void* data, size_t sizeInByte )
 {
-	D3D11_MAPPED_SUBRESOURCE mappedData;
-	std::memset( &mappedData, 0, sizeof( mappedData ) );
+	sizeInByte = std::min( sizeInByte, m_sizeOfElement * m_countElements );
 
-	if( sizeInByte > ( m_sizeOfElement * m_countElements ) )
-	{
-		sizeInByte = m_sizeOfElement * m_countElements;;
-	}
-
-	if( FAILED( DMD3D::instance().GetDeviceContext()->Map( m_buffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData ) ) )
-	{
-		//handleError( ... ); // insert error handling here
+	D3D11_MAPPED_SUBRESOURCE mappedData = {};
+	if( FAILED( DMD3D::instance().GetDeviceContext()->Map( m_buffer.handle(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData ) ) )
 		return;
-	}
 
 	std::memcpy( mappedData.pData, data, sizeInByte );
 
-	DMD3D::instance().GetDeviceContext()->Unmap( m_buffer.get(), 0 );
+	DMD3D::instance().GetDeviceContext()->Unmap( m_buffer.handle(), 0 );
 }
 
 void DMStructuredBuffer::setToSlot( int8_t slot, SRVType type )
 {
-	ID3D11ShaderResourceView* view = m_SRV.get();
-
-	switch( type )
-	{
-		case SRVType::vs:
-			DMD3D::instance().GetDeviceContext()->VSSetShaderResources( slot, 1, &view );
-			break;
-		case SRVType::ps:
-			DMD3D::instance().GetDeviceContext()->PSSetShaderResources( slot, 1, &view );
-			break;
-		case SRVType::hs:
-			DMD3D::instance().GetDeviceContext()->HSSetShaderResources( slot, 1, &view );
-			break;
-		case SRVType::ds:
-			DMD3D::instance().GetDeviceContext()->DSSetShaderResources( slot, 1, &view );
-			break;
-		case SRVType::gs:
-			DMD3D::instance().GetDeviceContext()->GSSetShaderResources( slot, 1, &view );
-			break;
-		case SRVType::cs:
-			DMD3D::instance().GetDeviceContext()->CSSetShaderResources( slot, 1, &view );
-			break;
-		default:
-			break;
-	}
-
-	
+	DMD3D::instance().setSRV( type, slot, m_view );
 }
 
 uint32_t DMStructuredBuffer::sizeofElement() const
 {
-	return m_sizeOfElement;
+	return static_cast<uint32_t>( m_sizeOfElement );
 }
 
 uint32_t DMStructuredBuffer::numElements() const
 {
-	return m_countElements;
+	return static_cast<uint32_t>( m_countElements );
 }

@@ -13,15 +13,17 @@ public:
 	DDSTexture( DDSTexture&& );
 	~DDSTexture();
 	bool createSRV();
-	
-	const com_unique_ptr<ID3D11ShaderResourceView>& srv() const override;
+
+	const ShaderView& srv() const override;
+	const Texture& texture() const override;
 
 	uint32_t height() const override;
 	uint32_t width() const override;
 
 private:
 	ScratchImage m_image;
-	com_unique_ptr<ID3D11ShaderResourceView> m_srv;
+	Texture m_texture;
+	ShaderView m_srv;
 };
 
 }

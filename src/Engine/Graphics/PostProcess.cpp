@@ -109,16 +109,8 @@ bool PostProcess::initialize( const Settings& settings )
 		!d3d.createShaderConstantBuffer( sizeof( AdaptParameters ), m_adaptConstants ) )
 		return false;
 
-	// Уровни bloom: половина кадра, четверть … 1/64; R11G11B10 — без альфы, как у bloom в UE
-	uint32_t width = d3d.sceneWidth();
-	uint32_t height = d3d.sceneHeight();
-	for( RenderTarget& level : m_bloom )
-	{
-		width = std::max( width / 2, 1u );
-		height = std::max( height / 2, 1u );
-		if( !level.create( width, height, DXGI_FORMAT_R11G11B10_FLOAT ) )
-			return false;
-	}
+	if( !createBloomTargets() )
+		return false;
 
 	// Первый кадр — с ручной экспозицией: автоэкспозиция начинает с неё, без вспышки при запуске
 	if( !createExposureResources( settings.manualEV100, settings.exposureCompensation ) )
@@ -151,65 +143,59 @@ bool PostProcess::initialize( const Settings& settings )
 	return true;
 }
 
+bool PostProcess::createBloomTargets()
+{
+	// Уровни bloom: половина кадра, четверть … 1/64; R11G11B10 — без альфы, как у bloom в UE
+	DMD3D& d3d = DMD3D::instance();
+	uint32_t width = d3d.sceneWidth();
+	uint32_t height = d3d.sceneHeight();
+	for( RenderTarget& level : m_bloom )
+	{
+		width = std::max( width / 2, 1u );
+		height = std::max( height / 2, 1u );
+		if( !level.create( width, height, DXGI_FORMAT_R11G11B10_FLOAT ) )
+			return false;
+	}
+	return true;
+}
+
+bool PostProcess::resize()
+{
+	return createBloomTargets();
+}
+
 bool PostProcess::createExposureResources( float initialEV100, float exposureCompensation )
 {
 	DMD3D& d3d = DMD3D::instance();
 
-	// Гистограмма — HISTOGRAM_BINS чисел uint, пишется атомарно (RWByteAddressBuffer)
-	D3D11_BUFFER_DESC desc = {};
-	desc.ByteWidth = histogramBinCount * sizeof( uint32_t );
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
-	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
-	if( !d3d.CreateBuffer( &desc, nullptr, m_histogram ) )
-		return false;
-
-	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-	uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	uavDesc.Buffer.NumElements = histogramBinCount;
-	uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
-	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
-	srvDesc.BufferEx.NumElements = histogramBinCount;
-	srvDesc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
-	if( !d3d.createUAV( m_histogram, uavDesc, m_histogramUAV ) || !d3d.createSRV( m_histogram, srvDesc, m_histogramSRV ) )
+	// Гистограмма — HISTOGRAM_BINS чисел uint, пишется атомарно (RWByteAddressBuffer): байтовый буфер и виды raw
+	BufferDesc histogramDesc;
+	histogramDesc.size = histogramBinCount * sizeof( uint32_t );
+	histogramDesc.usage = BufferUsage::unorderedAccess | BufferUsage::shaderResource | BufferUsage::raw;
+	BufferViewDesc rawView;
+	rawView.raw = true;
+	if( !d3d.createBuffer( histogramDesc, nullptr, m_histogram ) ||
+		!d3d.createStorageView( m_histogram, rawView, m_histogramUAV ) || !d3d.createShaderView( m_histogram, rawView, m_histogramSRV ) )
 		return false;
 
 	// Состояние экспозиции — одна запись ExposureState; начальное — сразу «сошедшееся» к initialEV100
 	const float exposure = exposureFromEV100( initialEV100 - exposureCompensation );
 	const ExposureState initial = { exposure, exposure, initialEV100, 0.0f };
-	D3D11_SUBRESOURCE_DATA data = {};
-	data.pSysMem = &initial;
-	desc = {};
-	desc.ByteWidth = sizeof( ExposureState );
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
-	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	desc.StructureByteStride = sizeof( ExposureState );
-	if( !d3d.CreateBuffer( &desc, &data, m_exposureState ) )
-		return false;
-
-	uavDesc = {};
-	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
-	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	uavDesc.Buffer.NumElements = 1;
-	srvDesc = {};
-	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-	srvDesc.Buffer.NumElements = 1;
-	if( !d3d.createUAV( m_exposureState, uavDesc, m_exposureUAV ) || !d3d.createSRV( m_exposureState, srvDesc, m_exposureSRV ) )
+	BufferDesc stateDesc;
+	stateDesc.size = sizeof( ExposureState );
+	stateDesc.stride = sizeof( ExposureState );
+	stateDesc.usage = BufferUsage::unorderedAccess | BufferUsage::shaderResource | BufferUsage::structured;
+	if( !d3d.createBuffer( stateDesc, &initial, m_exposureState ) ||
+		!d3d.createStorageView( m_exposureState, {}, m_exposureUAV ) || !d3d.createShaderView( m_exposureState, {}, m_exposureSRV ) )
 		return false;
 
 	// Копии для чтения на CPU (статистика)
-	desc = {};
-	desc.ByteWidth = sizeof( ExposureState );
-	desc.Usage = D3D11_USAGE_STAGING;
-	desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+	BufferDesc readbackDesc;
+	readbackDesc.size = sizeof( ExposureState );
+	readbackDesc.usage = BufferUsage::readback;
 	for( auto& readback : m_exposureReadback )
 	{
-		if( !d3d.CreateBuffer( &desc, nullptr, readback ) )
+		if( !d3d.createBuffer( readbackDesc, nullptr, readback ) )
 			return false;
 	}
 	m_ev100 = initialEV100;
@@ -249,7 +235,7 @@ void PostProcess::render( GpuProfiler& profiler, float deltaTime )
 {
 	DMD3D& d3d = DMD3D::instance();
 	// Сведение выборок MSAA — один раз за кадр: цвет сцены читают замер, bloom и тонмаппинг
-	const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor = d3d.sceneColor();
+	const ShaderView& sceneColor = d3d.sceneColor();
 	const Settings current = settings();
 
 	profiler.beginScope( "Exposure" );
@@ -264,7 +250,8 @@ void PostProcess::render( GpuProfiler& profiler, float deltaTime )
 	}
 
 	profiler.beginScope( "Tonemap" );
-	d3d.setBackBufferTarget();
+	d3d.beginPass( PassDesc{ "Tonemap", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.sceneWidth(), d3d.sceneHeight(),
+							 { { &sceneColor, "scene color" }, { &m_bloom[0].srv(), "bloom 1/2" }, { &m_exposureSRV, "exposure" } } } );
 	Parameters params = {};
 	params.tonemapper = static_cast<int32_t>( current.tonemapper );
 	// Уровень 1/2 хранит сумму уровней с весами 1, f, f², …: деление на неё — Bloom Intensity как доля энергии
@@ -273,7 +260,7 @@ void PostProcess::render( GpuProfiler& profiler, float deltaTime )
 		weightSum += std::pow( bloomLevelFalloff, static_cast<float>( level ) );
 	params.bloomScale = std::max( current.bloomIntensity, 0.0f ) / weightSum;
 	params.purkinjeShift = std::clamp( current.purkinjeShift, 0.0f, 1.0f );
-	Device::updateResourceData<Parameters>( m_constantBuffer.get(), params );
+	Device::updateResourceData<Parameters>( m_constantBuffer, params );
 	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
 	d3d.setSRV( SRVType::ps, 0, sceneColor );
 	d3d.setSRV( SRVType::ps, 1, m_bloom[0].srv() );
@@ -282,16 +269,14 @@ void PostProcess::render( GpuProfiler& profiler, float deltaTime )
 	profiler.endScope();
 }
 
-void PostProcess::renderExposure( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float deltaTime )
+void PostProcess::renderExposure( const ShaderView& sceneColor, float deltaTime )
 {
 	DMD3D& d3d = DMD3D::instance();
-	ID3D11DeviceContext* context = d3d.GetDeviceContext();
 	const Settings current = settings();
 
-	// Цвет сцены читает compute — его цель отвязывается; состояние экспозиции пишется — оно отвязывается от PS
-	context->OMSetRenderTargets( 0, nullptr, nullptr );
-	ID3D11ShaderResourceView* none = nullptr;
-	context->PSSetShaderResources( SLOT_EXPOSURE, 1, &none );
+	// Compute-проход: цвет сцены читается (его цель снимается), гистограмма пишется
+	d3d.beginPass( PassDesc{ "Exposure histogram", {}, {}, 0, 0, { { &sceneColor, "scene color" }, { &m_exposureSRV, "exposure" } },
+							 { { &m_histogramUAV, "histogram" } } } );
 
 	// Диапазон гистограммы — яркости Min…Max EV100: log₂ L = EV100 + log₂( 12,5 / 100 ) = EV100 − 3
 	const float minLog2Luminance = current.minEV100 - 3.0f;
@@ -299,19 +284,16 @@ void PostProcess::renderExposure( const com_unique_ptr<ID3D11ShaderResourceView>
 
 	if( current.meteringMode == MeteringMode::autoHistogram )
 	{
-		const UINT zeros[4] = {};
-		context->ClearUnorderedAccessViewUint( m_histogramUAV.get(), zeros );
+		d3d.clearStorageView( m_histogramUAV );
 
 		HistogramParameters histogram = { d3d.sceneWidth(), d3d.sceneHeight(), minLog2Luminance, log2LuminanceRange };
-		Device::updateResourceData<HistogramParameters>( m_histogramConstants.get(), histogram );
+		Device::updateResourceData<HistogramParameters>( m_histogramConstants, histogram );
 		d3d.setConstantBuffer( SRVType::cs, 4, m_histogramConstants );
 		d3d.setSRV( SRVType::cs, 0, sceneColor );
 		d3d.setSRV( SRVType::cs, SLOT_EXPOSURE, m_exposureSRV );
-		m_histogramShader.setUAVBuffer( 0, m_histogramUAV.get() );
+		m_histogramShader.setUAVBuffer( 0, m_histogramUAV );
 		// Поток — пиксель из квадрата 2 × 2, группа — 16 × 16 потоков
 		m_histogramShader.dispatchGroups( ( d3d.sceneWidth() + 31 ) / 32, ( d3d.sceneHeight() + 31 ) / 32, 1 );
-		context->CSSetShaderResources( 0, 1, &none );
-		context->CSSetShaderResources( SLOT_EXPOSURE, 1, &none );
 	}
 
 	AdaptParameters adapt = {};
@@ -338,12 +320,13 @@ void PostProcess::renderExposure( const com_unique_ptr<ID3D11ShaderResourceView>
 		( i % 2 == 0 ? pair.x : pair.z ) = key.x;
 		( i % 2 == 0 ? pair.y : pair.w ) = key.y;
 	}
-	Device::updateResourceData<AdaptParameters>( m_adaptConstants.get(), adapt );
+	// Адаптация пишет состояние экспозиции: beginPass снимает его со входов пиксельных шейдеров (t105)
+	d3d.beginPass( PassDesc{ "Exposure adapt", {}, {}, 0, 0, { { &m_histogramSRV, "histogram" } }, { { &m_exposureUAV, "exposure" } } } );
+	Device::updateResourceData<AdaptParameters>( m_adaptConstants, adapt );
 	d3d.setConstantBuffer( SRVType::cs, 4, m_adaptConstants );
 	d3d.setSRV( SRVType::cs, 0, m_histogramSRV );
-	m_adaptShader.setUAVBuffer( 0, m_exposureUAV.get() );
+	m_adaptShader.setUAVBuffer( 0, m_exposureUAV );
 	m_adaptShader.dispatchGroups( 1, 1, 1 );
-	context->CSSetShaderResources( 0, 1, &none );
 
 	// Новая экспозиция — bloom и тонмаппингу этого кадра, сцене следующего
 	bindExposure();
@@ -352,8 +335,8 @@ void PostProcess::renderExposure( const com_unique_ptr<ID3D11ShaderResourceView>
 
 void PostProcess::readBackExposure()
 {
-	ID3D11DeviceContext* context = DMD3D::instance().GetDeviceContext();
-	context->CopyResource( m_exposureReadback[m_readbackFrame % readbackCount].get(), m_exposureState.get() );
+	DMD3D& d3d = DMD3D::instance();
+	d3d.copyBuffer( m_exposureReadback[m_readbackFrame % readbackCount], m_exposureState );
 	++m_readbackFrame;
 	if( m_readbackFrame < readbackCount )
 		return;
@@ -362,18 +345,16 @@ void PostProcess::readBackExposure()
 	// GPU отстаёт от CPU на несколько кадров, без ожидания готовы только старые копии
 	for( uint32_t age = 1; age < readbackCount; ++age )
 	{
-		ID3D11Buffer* copy = m_exposureReadback[( m_readbackFrame - 1 - age ) % readbackCount].get();
-		D3D11_MAPPED_SUBRESOURCE mapped = {};
-		if( SUCCEEDED( context->Map( copy, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped ) ) )
+		ExposureState state = {};
+		if( d3d.readBuffer( m_exposureReadback[( m_readbackFrame - 1 - age ) % readbackCount], &state, sizeof( state ) ) )
 		{
-			m_ev100 = static_cast<const ExposureState*>( mapped.pData )->ev100;
-			context->Unmap( copy, 0 );
+			m_ev100 = state.ev100;
 			break;
 		}
 	}
 }
 
-void PostProcess::renderBloom( const com_unique_ptr<ID3D11ShaderResourceView>& sceneColor, float threshold )
+void PostProcess::renderBloom( const ShaderView& sceneColor, float threshold )
 {
 	DMD3D& d3d = DMD3D::instance();
 	BloomParameters params = {};
@@ -388,7 +369,7 @@ void PostProcess::renderBloom( const com_unique_ptr<ID3D11ShaderResourceView>& s
 		const float sourceHeight = static_cast<float>( level == 0 ? d3d.sceneHeight() : m_bloom[level - 1].height() );
 		params.sourceTexelSize = XMFLOAT2( 1.0f / sourceWidth, 1.0f / sourceHeight );
 		params.firstPass = level == 0 ? 1 : 0;
-		drawPass( m_bloomDownsample, m_bloom[level], level == 0 ? sceneColor : m_bloom[level - 1].srv(), params,
+		drawPass( "Bloom downsample", m_bloomDownsample, m_bloom[level], level == 0 ? sceneColor : m_bloom[level - 1].srv(), params,
 				  BlendState::opaque );
 	}
 
@@ -398,24 +379,20 @@ void PostProcess::renderBloom( const com_unique_ptr<ID3D11ShaderResourceView>& s
 	for( uint32_t level = bloomLevelCount - 1; level > 0; --level )
 	{
 		params.sourceTexelSize = XMFLOAT2( 1.0f / m_bloom[level].width(), 1.0f / m_bloom[level].height() );
-		drawPass( m_bloomUpsample, m_bloom[level - 1], m_bloom[level].srv(), params, BlendState::additive );
+		drawPass( "Bloom upsample", m_bloomUpsample, m_bloom[level - 1], m_bloom[level].srv(), params, BlendState::additive );
 	}
 }
 
-void PostProcess::drawPass( FullscreenShader& shader, const RenderTarget& target,
-							const com_unique_ptr<ID3D11ShaderResourceView>& source, BloomParameters params, BlendState blend )
+void PostProcess::drawPass( const char* name, FullscreenShader& shader, const RenderTarget& target,
+							const ShaderView& source, BloomParameters params, BlendState blend )
 {
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setRenderTarget( target.rtv(), target.width(), target.height() );
-	Device::updateResourceData<BloomParameters>( m_bloomConstants.get(), params );
+	d3d.beginPass( PassDesc{ name, { { &target.target(), "bloom level" } }, {}, target.width(), target.height(), { { &source, "source" } } } );
+	Device::updateResourceData<BloomParameters>( m_bloomConstants, params );
 	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_bloomConstants );
 	d3d.setSRV( SRVType::ps, 0, source );
 
 	shader.draw( blend );
-
-	// Источник отвязывается: следующий проход пишет в него
-	ID3D11ShaderResourceView* none = nullptr;
-	d3d.GetDeviceContext()->PSSetShaderResources( 0, 1, &none );
 }
 
 PropertyContainer* PostProcess::properties()

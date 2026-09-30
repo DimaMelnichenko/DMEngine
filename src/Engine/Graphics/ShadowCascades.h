@@ -1,5 +1,6 @@
 #pragma once
 
+#include "D3D\GpuResources.h"
 #include <string>
 #include <DirectXCollision.h>
 #include "DirectX.h"
@@ -35,8 +36,8 @@ public:
 	bool active() const { return m_active; }
 	const RenderView& cascadeView( uint32_t cascade ) const { return m_views[cascade]; }
 
-	// Перед рисованием в карту: отвязать её от пиксельных шейдеров (иначе D3D11 отвяжет цель сам)
-	void unbindShadowMap();
+	// Карта теней для объявлений проходов, которые её читают
+	const ShaderView& shaderView() const { return m_shaderView; }
 	// Цель — срез каскада, глубина очищена
 	void beginCascade( uint32_t cascade );
 	// После прохода теней, на цели сцены: карта, сэмплер и константы для приёма тени; sunLightIndex — индекс солнца
@@ -73,11 +74,10 @@ private:
 	float m_splits[cascadeCount] = {};
 	float m_texelSize[cascadeCount] = {};
 
-	com_unique_ptr<ID3D11Texture2D> m_texture;
-	com_unique_ptr<ID3D11DepthStencilView> m_depthViews[cascadeCount];
-	com_unique_ptr<ID3D11ShaderResourceView> m_shaderView;
-	com_unique_ptr<ID3D11SamplerState> m_sampler;
-	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
+	Texture m_texture;
+	TargetView m_depthViews[cascadeCount];
+	ShaderView m_shaderView;
+	Buffer m_constantBuffer;
 	PropertyContainer m_properties;
 };
 

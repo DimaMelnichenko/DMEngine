@@ -12,13 +12,13 @@ class GridMesh
 {
 public:
 	void initialize( uint16_t width, uint16_t height );
-	ID3D11Buffer* vertexBuffer();
-	ID3D11Buffer* indexBuffer();
+	const Buffer& vertexBuffer() const { return m_vertexBuffer; }
+	const Buffer& indexBuffer() const { return m_indexBuffer; }
 	uint32_t indexCount();
 
 private:
-	com_unique_ptr<ID3D11Buffer> m_vertexBuffer;
-	com_unique_ptr<ID3D11Buffer> m_indexBuffer;
+	Buffer m_vertexBuffer;
+	Buffer m_indexBuffer;
 	uint32_t m_vertexCount = 0;
 	uint32_t m_indexCount = 0;
 };

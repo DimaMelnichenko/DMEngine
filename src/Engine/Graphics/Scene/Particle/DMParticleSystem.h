@@ -46,11 +46,11 @@ private:
 
 private:
 	unsigned int m_max_count;	
-	com_unique_ptr<ID3D11Buffer> m_structuredBuffer;
-	com_unique_ptr<ID3D11ShaderResourceView> m_srvParticles;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_uavParticles;
+	Buffer m_structuredBuffer;
+	ShaderView m_srvParticles;
+	StorageView m_uavParticles;
 	XMMATRIX m_world_matrix;
-	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
+	Buffer m_constantBuffer;
 
 	DMComputeShader m_computeShader;
 	std::string m_heightMap;

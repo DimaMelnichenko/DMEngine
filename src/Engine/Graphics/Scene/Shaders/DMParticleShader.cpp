@@ -17,9 +17,9 @@ bool DMParticleShader::innerInitialize()
 	return createPhase( 0, 0, 0 ) >= 0;
 }
 
-std::vector<D3D11_INPUT_ELEMENT_DESC> DMParticleShader::initLayouts()
+std::vector<VertexElement> DMParticleShader::initLayouts()
 {
-	return std::vector<D3D11_INPUT_ELEMENT_DESC>();
+	return std::vector<VertexElement>();
 }
 
 }

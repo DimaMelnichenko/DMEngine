@@ -40,6 +40,8 @@ public:
 	bool Initialize( HINSTANCE hinstance, int, int, HWND, Config );
 	bool Frame();
 	void beforeExit();
+	// WM_SIZE: задний буфер, буфер сцены, цели постобработки и проекция камеры — под новый размер клиентской области
+	void resize( uint32_t width, uint32_t height );
 	// Команда quit удалённого управления: DMSystem выходит, как по Esc
 	bool exitRequested() const { return m_exitRequested; }
 
@@ -60,6 +62,7 @@ private:
 	float m_screenWidth;
 	float m_screenHeight;
 	HWND m_hwnd;
+	bool m_initialized = false;	// WM_SIZE приходит и при создании окна, до Initialize
 
 	std::unordered_map<std::string, DMCamera> m_cameraPool;
 

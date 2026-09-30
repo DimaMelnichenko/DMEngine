@@ -70,6 +70,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   задний буфер 1920×1080 (`BackBufferWidth` в `settings.ini`; окно на экране с масштабом 150% — 2880×1620 вместе с
   рамкой). `camera` — смена плана: экспозиция сразу, снимок и замер ждут 10 кадров. Для нескольких кадров или
   подбора параметров это быстрее отдельных запусков `run.ps1` (сессия из трёх снимков и двух замеров — ~12 с).
+  Сравнение снимков по пикселям — `python Tools/compare_frames.py a.png b.png [--tolerance 1] [--diff карта.png]`
+  (или две папки с одноимёнными снимками); ±1 в сотнях пикселей между запусками — округление экспозиции, не ошибка.
 - Мёртвый код (несобираемые файлы, невызываемые функции, старый закомментированный код, неиспользуемые
   шейдеры и данные) удалён. **Часть невызываемого кода сохранена намеренно**: его вызовы закомментированы
   в последних коммитах, это временно выключенные фичи. Например, закомментированные `GUI::renderSceneObject`
@@ -99,8 +101,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
   затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 16`; ромашка (`Camomile`, альфа-лепестки) — так же
   со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Модели Poly Haven в расстановке
-  (пучки `grass_medium_01`, одуванчики `dandelion_01`, камни `rock_moss_set_01`; архивы `.blend` — в `DownloadResources\`) —
-  `Tools/export_polyhaven.py` через Blender, затем `import_gltf.py --scatter`, команды — в `docs/models.md`. Ели уровня
+  (пучки `grass_medium_01`, одуванчики `dandelion_01`, камни `rock_moss_set_01`; архивы `.blend` — в `DownloadResources\`,
+  скачать — `python Tools/polyhaven_download.py <ассет> --resolution 2k`) — `Tools/export_polyhaven.py` через Blender,
+  затем `import_gltf.py --scatter`, команды — в `docs/models.md`; без архива травы высокие пучки подменяет
+  `Tools/blender_grass_tall.py` (импорт в копию базы, `base.db3` не меняется). Ели уровня
 `Test` (`Fir_A`, `Fir_B`, `Fir_C`: своя геометрия, кора и карточки хвои из `fir_tree_01` Poly Haven) —
 `blender -b --factory-startup --python Tools/blender_fir.py -- --archive DownloadResources/fir_tree_01_2k.blend.zip --out Meshes/source/fir.glb`,
 затем `python Tools/import_gltf.py Meshes/source/fir.glb --level Test --position 480,0,345 --snap-to-terrain --lod-ranges 35,90`
@@ -146,14 +150,20 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   (уровни ½ … ¹⁄₆₄, Jimenez 2014), затем ночное зрение (сдвиг Пуркинье: в темноте цвет уходит в синеватый монохром,
   Krawczyk 2005) и тонмаппинг (AgX / ACES) в задний буфер sRGB; новый
   проход — ещё одна цель и шаг в `PostProcess::render`. Затем `DMGraphics` рисует GUI и вызывает `EndScene`.
+  Задний буфер — swap chain flip model (`DMD3D::createDeviceSwapChain`: два буфера `R8G8B8A8_UNORM` с sRGB-видом, без
+  vsync — tearing, начало кадра по waitable object — `DMD3D::waitForNextFrame`); `WM_SIZE` → `DMGraphics::resize`:
+  задний буфер, буфер сцены, глубина, уровни bloom и проекция камеры заново по правилу D3D12 (дождаться GPU,
+  отпустить ссылки на задние буферы, `ResizeBuffers`).
   Единицы света физические (солнце — люксы, лампы — канделы, небо и свечение — кд/м²), поэтому буфер сцены хранит
   яркость × экспозицию прошлого кадра (pre-exposure, как в UE): экспозиция живёт на GPU (буфер `ExposureState`, t105,
   `Shaders/exposure.sh`), шейдеры с освещением умножают результат на `preExposure()` в конце `evaluateLighting`,
   небо — в `sky_background.ps`; материалы без освещения (`Texture`, `Color`, частицы) пишут «цвет на экране» как
   есть. Настройки — строка `PostProcessSettings` уровня и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
-  начинается с чистого состояния: `Renderer::executePass` заново ставит цель сцены с областью вывода
-  (`DMD3D::setSceneTarget`) и отвязывает ресурсы материалов (`unbindTransientResources`); полноэкранные проходы
-  (постобработка, небо) — `FullscreenShader`: сам ставит топологию, шейдеры и состояния, цель — `DMD3D::setRenderTarget`.
+  начинается объявлением `PassDesc` (`D3D/GpuPass.h`: имя, цели цвета и глубины с областью вывода, что читает, что пишет;
+  без целей — compute) и `DMD3D::beginPass` — единственный способ поставить цели: он же снимает со входов транзитные
+  слоты (t0…t49) и виды ресурсов, в которые проход пишет; ресурсы прохода привязываются после него (`Renderer::executePass`,
+  `ShadowCascades::beginCascade`, `PostProcess`, небо, расстановка). Список проходов кадра — команда консоли `passes`
+  (в `log.txt`). Полноэкранные проходы (постобработка, небо) — `FullscreenShader`: сам ставит топологию, шейдеры и состояния.
   Время CPU и GPU (`GpuProfiler`, запросы timestamp) каждого объекта и прохода — в окне «Statistic», те же области —
   метки событий в захвате RenderDoc / PIX.
 
@@ -198,8 +208,27 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 Логику, которая меняет состояние сцены, пишите в `SceneObject::update()`, а в `render()` оставляйте только команды GPU.
 
 **Глобальные синглтоны** — основной способ связи подсистем:
-- `DMD3D::instance()` — устройство/контекст D3D11, привязка SRV (`setSRV(SRVType::ps|vs|cs…, slot, srv)`), скриншоты,
-  состояния растеризатора/глубины/блендинга (`setState(RasterState | DepthState | BlendState)`).
+- `DMD3D::instance()` — устройство и контекст D3D11 за фасадом. Ресурсы GPU объекты держат только непрозрачными
+  (`D3D/GpuResources.h`: `Buffer`, `Texture`, виды `ShaderView` / `TargetView` / `StorageView`, `ShaderStage`, `InputLayout`)
+  и создают по описаниям без типов D3D11 (`BufferDesc` с маской `BufferUsage`, `TextureDesc`, `TextureViewDesc`,
+  `VertexElement`): `createBuffer`, `createTexture`, `createShaderView` / `createTargetView` / `createStorageView`;
+  картинки DirectXTex — `D3D/TextureImages.h`. Константы кадра (`BufferUsage::constant | cpuWrite`, `createShaderConstantBuffer`)
+  — участки кольца `D3D/ConstantRing.h`: `Device::updateResource*` пишет участок, `setConstantBuffer` в том же кадре привязывает
+  его со смещением (без записи в кадре привязывать нечего); редко меняющиеся константы — `BufferUsage::constant` и
+  `updateBuffer`. Привязка — `setSRV( SRVType::ps|vs|cs…, slot, view )`, `setConstantBuffer`,
+  `setUAV`, `setVertexBuffer(s)` / `setIndexBuffer` / `setTopology`; вызовы — `draw*`, `dispatch`; цели — только через
+  `beginPass( PassDesc )` (`D3D/GpuPass.h`; буфер сцены и задний буфер — `sceneTarget()` / `sceneDepthTarget()` /
+  `backBufferTarget()`); `setSRV` вида ресурса, который пишет текущий проход, завершает проход над ним (цели снимаются,
+  UAV отвязывается — так ресурсы сцены t101…t106 привязываются сразу после своих проходов); скриншоты; состояния
+  растеризатора/глубины/блендинга
+  (`setState(RasterState | DepthState | BlendState)`). Правило шага A2 переезда на D3D12: `ID3D11*` и `D3D11_*` — только
+  внутри `src/Engine/Graphics/D3D/` (`grep -rlE "ID3D11|D3D11_" src` вне него пуст), `GetDevice()` / `GetDeviceContext()` —
+  для этого каталога и `ImGui_ImplDX11_Init`. `DXGI_FORMAT` и `D3D_PRIMITIVE_TOPOLOGY` общие у D3D11 и D3D12 и допустимы везде.
+  Состояния и шейдеры ставятся в контекст одним объектом пайплайна (`D3D/GpuPipeline.h`: `PipelineDesc` — стадии фазы,
+  раскладка, состояния, топология; кэш `DMD3D::pipeline`, привязка `setPipeline`) в `DMShader::setPass`; `setState`
+  лишь запоминает состояние, поэтому порядок в коде объекта — состояние → `setPass` → рисование. Набор пайплайнов
+  собирается при загрузке (`Renderer::warmPipelines`, свои списки у объектов), созданный в кадре — «ленивый»: строка
+  в лог и счётчик в «Statistic» — дополните список прогрева.
   Проход, которому нужно другое состояние, меняет его через RAII-объект `ScopedRenderState`
   (`ScopedRenderState state( DepthState::disabled, RasterState::frontCulling );`): в деструкторе он восстановит
   предыдущие состояния;

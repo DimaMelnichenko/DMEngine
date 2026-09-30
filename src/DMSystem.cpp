@@ -1,6 +1,7 @@
 #include "DMSystem.h"
 #include "Engine\Input\Input.h"
 #include "Common\DBConnector.h"
+#include "Logger\Logger.h"
 
 
 DMSystem::DMSystem(  )
@@ -28,13 +29,22 @@ bool DMSystem::Initialize( const char* commandLine )
 	InitializeWindows( screenWidth, screenHeight );
 
 	if( !dbConnect().init() )
+	{
+		LOG( "Can`t open base.db3" );
 		return false;
+	}
 
 	if( !getInput().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight ) )
+	{
+		LOG( "Can`t initialize DirectInput" );
 		return false;
+	}
 
 	if( !m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd, m_config ) )
+	{
+		LOG( "Can`t initialize graphics" );
 		return false;
+	}
 
 	getInput().notifier().registerTrigger( DIK_ESCAPE, [this]( bool )
 	{
@@ -121,6 +131,11 @@ LRESULT DMSystem::wndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 			return 0;			
 		case WM_CLOSE:
 			PostQuitMessage( 0 );
+			return 0;
+		case WM_SIZE:
+			// Новый размер клиентской области — задний буфер и цели кадра за ним; свёрнутое окно (0 × 0) не трогаем
+			if( wParam != SIZE_MINIMIZED )
+				m_graphics.resize( LOWORD( lParam ), HIWORD( lParam ) );
 			return 0;
 		case WM_CREATE:
 		{

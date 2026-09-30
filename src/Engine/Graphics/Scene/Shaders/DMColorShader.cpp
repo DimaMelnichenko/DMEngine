@@ -11,38 +11,21 @@ DMColorShader::DMColorShader()
 
 DMColorShader::~DMColorShader()
 {
-	
+
 }
 
 
 bool DMColorShader::innerInitialize()
 {
-	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer, nullptr ) )
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer ) )
 		return false;
 
 	return createPhase( 0, 0 ) >= 0;
 }
 
-std::vector<D3D11_INPUT_ELEMENT_DESC> DMColorShader::initLayouts()
+std::vector<VertexElement> DMColorShader::initLayouts()
 {
-	HRESULT result;
-	D3D11_INPUT_ELEMENT_DESC polygonLayout;
-
-	std::vector<D3D11_INPUT_ELEMENT_DESC> vertex_layout;
-
-	// Create the vertex input layout description.
-	// This setup needs to match the VertexType stucture in the ModelClass and in the shader.
-	polygonLayout.SemanticName = "POSITION";
-	polygonLayout.SemanticIndex = 0;
-	polygonLayout.Format = DXGI_FORMAT_R32G32B32_FLOAT;
-	polygonLayout.InputSlot = 0;
-	polygonLayout.AlignedByteOffset = 0;
-	polygonLayout.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-	polygonLayout.InstanceDataStepRate = 0;
-
-	vertex_layout.push_back( polygonLayout );
-
-	return vertex_layout;
+	return { { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0 } };
 }
 
 void DMColorShader::setParams( const PropertyContainer& params )
@@ -53,8 +36,7 @@ void DMColorShader::setParams( const PropertyContainer& params )
 		v = color ? *color : XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );
 	} );
 
-	ID3D11Buffer* buffer = m_constantBuffer.get();
-	DMD3D::instance().GetDeviceContext()->PSSetConstantBuffers( SLOT_CB_MATERIAL, 1, &buffer );
+	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_constantBuffer );
 }
 
 }

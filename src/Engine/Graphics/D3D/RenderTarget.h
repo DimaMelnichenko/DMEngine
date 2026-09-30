@@ -1,24 +1,21 @@
 #pragma once
 
-#include <d3d11.h>
-#include "Utils\utilites.h"
+#include "GpuResources.h"
 
-// Промежуточная цель прохода: текстура 2D, в которую проход рисует (RTV) и из которой следующий читает (SRV).
-// Проход ставит её целью через DMD3D::setRenderTarget( rtv(), width(), height() )
+// Промежуточная цель прохода: текстура 2D, в которую проход рисует (target) и из которой следующий читает (srv).
+// Проход объявляет её целью: DMD3D::beginPass( PassDesc{ имя, { { &target(), … } }, {}, width(), height() } )
 class RenderTarget
 {
 public:
 	bool create( uint32_t width, uint32_t height, DXGI_FORMAT format );
 
-	ID3D11RenderTargetView* rtv() const { return m_rtv.get(); }
-	const com_unique_ptr<ID3D11ShaderResourceView>& srv() const { return m_srv; }
-	uint32_t width() const { return m_width; }
-	uint32_t height() const { return m_height; }
+	const TargetView& target() const { return m_target; }
+	const ShaderView& srv() const { return m_srv; }
+	uint32_t width() const { return m_texture.width(); }
+	uint32_t height() const { return m_texture.height(); }
 
 private:
-	com_unique_ptr<ID3D11Texture2D> m_texture;
-	com_unique_ptr<ID3D11RenderTargetView> m_rtv;
-	com_unique_ptr<ID3D11ShaderResourceView> m_srv;
-	uint32_t m_width = 0;
-	uint32_t m_height = 0;
+	Texture m_texture;
+	TargetView m_target;
+	ShaderView m_srv;
 };

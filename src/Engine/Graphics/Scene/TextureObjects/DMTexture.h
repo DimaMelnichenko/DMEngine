@@ -16,14 +16,12 @@ public:
 	DMTexture( DMTexture&& );
 	~DMTexture();
 
-	virtual const com_unique_ptr<ID3D11ShaderResourceView>& srv() const = 0;
+	// Вид для шейдеров и сама текстура (копия на CPU — GpuImages::captureTexture)
+	virtual const ShaderView& srv() const = 0;
+	virtual const Texture& texture() const = 0;
 
 	virtual uint32_t height() const = 0;
 	virtual uint32_t width() const = 0;
-
-
-
-
 };
 
 }

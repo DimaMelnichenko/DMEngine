@@ -35,6 +35,10 @@ public:
 	// Уровень уже прочитан (Scene::loadResources): постобработка — его настройки; shadowResolution — размер карты теней,
 	// depthPrepass — начальное значение флажка «Depth prepass» (DepthPrepass в settings.ini)
 	bool initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution, bool depthPrepass );
+	// Новый размер кадра (WM_SIZE): цели постобработки заново; буфер сцены уже пересоздал DMD3D::resize
+	bool resize();
+	// Пайплайны всех материалов для состояний проходов сцены — при загрузке уровня (Pipeline.h)
+	void warmPipelines();
 
 	// Рисует сцену в HDR-буфер и тонмаппинг в задний буфер; дальше DMGraphics рисует GUI и вызывает EndScene
 	void render( Scene& scene, const FrameContext& frame, bool wireframe );

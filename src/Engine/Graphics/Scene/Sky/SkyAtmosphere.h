@@ -135,9 +135,9 @@ private:
 	FullscreenShader m_cubeShader;
 	FullscreenShader m_backgroundShader;
 	DMComputeShader m_aerialPerspectiveShader;
-	com_unique_ptr<ID3D11Buffer> m_constantBuffer;
-	com_unique_ptr<ID3D11Buffer> m_aerialPerspectiveConstants;	// b4 compute-прохода, AerialPerspectiveBuffer
-	com_unique_ptr<ID3D11Buffer> m_nightSkyConstants;			// b4 фона, NightSkyParameters
+	Buffer m_constantBuffer;
+	Buffer m_aerialPerspectiveConstants;	// b4 compute-прохода, AerialPerspectiveBuffer
+	Buffer m_nightSkyConstants;			// b4 фона, NightSkyParameters
 	const DMTexture* m_moonAlbedo = nullptr;
 
 	// Таблицы проходов неба: t1 — Ψ, t2 — пропускание, t3 — Sky-View солнца, t4 — луны
@@ -148,9 +148,9 @@ private:
 	CubeTarget m_skyCube;	// источник SkyLight
 
 	// RGB — рассеянный свет солнца и луны в единицах запекания, A — среднее пропускание; слой — расстояние
-	com_unique_ptr<ID3D11Texture3D> m_aerialPerspective;
-	com_unique_ptr<ID3D11UnorderedAccessView> m_aerialPerspectiveUAV;
-	com_unique_ptr<ID3D11ShaderResourceView> m_aerialPerspectiveSRV;
+	Texture m_aerialPerspective;
+	StorageView m_aerialPerspectiveUAV;
+	ShaderView m_aerialPerspectiveSRV;
 };
 
 }

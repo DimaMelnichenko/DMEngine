@@ -148,33 +148,17 @@ SkyAtmosphere::Settings SkyAtmosphere::settings()
 
 bool SkyAtmosphere::createAerialPerspectiveVolume()
 {
-	ID3D11Device* device = DMD3D::instance().GetDevice();
+	TextureDesc desc;
+	desc.width = AERIAL_PERSPECTIVE_SIZE;
+	desc.height = AERIAL_PERSPECTIVE_SIZE;
+	desc.depth = AERIAL_PERSPECTIVE_DEPTH;
+	desc.format = hdrFormat;	// с нормировкой (aerialPerspectiveNormalization) — половинной точности хватает
+	desc.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
 
-	D3D11_TEXTURE3D_DESC desc = {};
-	desc.Width = AERIAL_PERSPECTIVE_SIZE;
-	desc.Height = AERIAL_PERSPECTIVE_SIZE;
-	desc.Depth = AERIAL_PERSPECTIVE_DEPTH;
-	desc.MipLevels = 1;
-	desc.Format = hdrFormat;	// с нормировкой (aerialPerspectiveNormalization) — половинной точности хватает
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
-
-	ID3D11Texture3D* texture = nullptr;
-	if( FAILED( device->CreateTexture3D( &desc, nullptr, &texture ) ) )
-		return false;
-	m_aerialPerspective = make_com_ptr<ID3D11Texture3D>( texture );
-
-	ID3D11UnorderedAccessView* uav = nullptr;
-	if( FAILED( device->CreateUnorderedAccessView( texture, nullptr, &uav ) ) )
-		return false;
-	m_aerialPerspectiveUAV = make_com_ptr<ID3D11UnorderedAccessView>( uav );
-
-	ID3D11ShaderResourceView* srv = nullptr;
-	if( FAILED( device->CreateShaderResourceView( texture, nullptr, &srv ) ) )
-		return false;
-	m_aerialPerspectiveSRV = make_com_ptr<ID3D11ShaderResourceView>( srv );
-
-	return true;
+	DMD3D& d3d = DMD3D::instance();
+	return d3d.createTexture( desc, nullptr, m_aerialPerspective ) &&
+		   d3d.createStorageView( m_aerialPerspective, {}, m_aerialPerspectiveUAV ) &&
+		   d3d.createShaderView( m_aerialPerspective, {}, m_aerialPerspectiveSRV );
 }
 
 void SkyAtmosphere::setBackgroundVisible( bool visible )
@@ -311,10 +295,6 @@ SkyAtmosphere::NightSkyParameters SkyAtmosphere::currentNightSky( const Paramete
 
 void SkyAtmosphere::compute( const FrameContext& )
 {
-	// Таблицы станут целями рендера: снимаем их со входов, иначе D3D отвяжет их с предупреждением
-	ID3D11ShaderResourceView* nullViews[6] = {};
-	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( 0, 6, nullViews );
-
 	m_frameParams = currentParameters();
 	setParameters( m_frameParams );
 
@@ -354,24 +334,29 @@ void SkyAtmosphere::compute( const FrameContext& )
 void SkyAtmosphere::updateAtmosphereLuts()
 {
 	DMD3D& d3d = DMD3D::instance();
-	ID3D11DeviceContext* context = d3d.GetDeviceContext();
 
-	d3d.setRenderTarget( m_transmittanceLut.rtv(), SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT );
+	d3d.beginPass( PassDesc{ "Sky transmittance LUT", { { &m_transmittanceLut.target(), "transmittance LUT" } }, {},
+							 SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT } );
 	m_transmittanceShader.draw();
-	context->OMSetRenderTargets( 0, nullptr, nullptr );
 
+	d3d.beginPass( PassDesc{ "Sky multiple scattering LUT", { { &m_multipleScattering.target(), "multiple scattering LUT" } }, {},
+							 multipleScatteringSize, multipleScatteringSize, { { &m_transmittanceLut.srv(), "transmittance LUT" } } } );
 	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
-	d3d.setRenderTarget( m_multipleScattering.rtv(), multipleScatteringSize, multipleScatteringSize );
 	m_multipleScatteringShader.draw();
-	context->OMSetRenderTargets( 0, nullptr, nullptr );
 }
 
 void SkyAtmosphere::updateSkyView()
 {
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setSRV( SRVType::ps, multipleScatteringSlot, m_multipleScattering.srv() );
-	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
-	d3d.setRenderTarget( m_skyViewLut.rtv(), SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT );
+	const auto bindLuts = [&]
+	{
+		d3d.setSRV( SRVType::ps, multipleScatteringSlot, m_multipleScattering.srv() );
+		d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
+	};
+	const std::vector<PassDesc::Read> lutReads = { { &m_multipleScattering.srv(), "multiple scattering LUT" },
+												  { &m_transmittanceLut.srv(), "transmittance LUT" } };
+	d3d.beginPass( PassDesc{ "Sky-View LUT", { { &m_skyViewLut.target(), "Sky-View LUT" } }, {}, SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, lutReads } );
+	bindLuts();
 	m_skyViewShader.draw();
 
 	// Таблица луны — своя: небо от луны симметрично относительно её вертикальной плоскости, а не солнца
@@ -381,19 +366,19 @@ void SkyAtmosphere::updateSkyView()
 		Parameters moonParams = m_frameParams;
 		moonParams.skyViewLight = 1;
 		setParameters( moonParams );
-		d3d.setRenderTarget( m_skyViewMoonLut.rtv(), SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT );
+		d3d.beginPass( PassDesc{ "Sky-View LUT (moon)", { { &m_skyViewMoonLut.target(), "Sky-View moon LUT" } }, {}, SKY_VIEW_LUT_WIDTH,
+								 SKY_VIEW_LUT_HEIGHT, lutReads } );
+		bindLuts();
 		m_skyViewShader.draw();
 		setParameters( m_frameParams );
 	}
-	d3d.GetDeviceContext()->OMSetRenderTargets( 0, nullptr, nullptr );
 }
 
 void SkyAtmosphere::renderSkyCube()
 {
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
-	d3d.setSRV( SRVType::ps, skyViewSlot, m_skyViewLut.srv() );
-	d3d.setSRV( SRVType::ps, skyViewMoonSlot, m_skyViewMoonLut.srv() );
+	const std::vector<PassDesc::Read> reads = { { &m_transmittanceLut.srv(), "transmittance LUT" }, { &m_skyViewLut.srv(), "Sky-View LUT" },
+											   { &m_skyViewMoonLut.srv(), "Sky-View moon LUT" } };
 
 	// Грани мипа 0, затем цепочка мипов (для префильтра с выборкой мипа по плотности и гармоник)
 	Parameters faceParams = m_frameParams;
@@ -401,44 +386,46 @@ void SkyAtmosphere::renderSkyCube()
 	{
 		faceParams.face = face;
 		setParameters( faceParams );
-		d3d.setRenderTarget( m_skyCube.rtv( 0, face ), m_skyCube.size(), m_skyCube.size() );
+		d3d.beginPass( PassDesc{ "Sky cube face", { { &m_skyCube.target( 0, face ), "sky cube" } }, {}, m_skyCube.size(), m_skyCube.size(), reads } );
+		d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
+		d3d.setSRV( SRVType::ps, skyViewSlot, m_skyViewLut.srv() );
+		d3d.setSRV( SRVType::ps, skyViewMoonSlot, m_skyViewMoonLut.srv() );
 		m_cubeShader.draw();
 	}
-	d3d.GetDeviceContext()->OMSetRenderTargets( 0, nullptr, nullptr );
-	d3d.GetDeviceContext()->GenerateMips( m_skyCube.srv().get() );
+	// Мипы куба: без целей — куб перестаёт быть целью и читается (A6 заменит GenerateMips compute-проходом)
+	d3d.beginPass( PassDesc{ "Sky cube mips", {}, {}, 0, 0, { { &m_skyCube.srv(), "sky cube" } } } );
+	d3d.generateMips( m_skyCube.srv() );
 	setParameters( m_frameParams );
 }
 
 void SkyAtmosphere::updateAerialPerspective()
 {
 	DMD3D& d3d = DMD3D::instance();
-	ID3D11DeviceContext* context = d3d.GetDeviceContext();
 
-	// Объём станет UAV: снимаем его с входа пиксельных шейдеров прошлого кадра
-	ID3D11ShaderResourceView* nullView = nullptr;
-	context->PSSetShaderResources( SLOT_AERIAL_PERSPECTIVE, 1, &nullView );
+	// Compute-проход: объём пишется (beginPass снимает его с входа пиксельных шейдеров прошлого кадра, t106)
+	d3d.beginPass( PassDesc{ "Aerial perspective volume", {}, {}, 0, 0,
+							 { { &m_multipleScattering.srv(), "multiple scattering LUT" }, { &m_transmittanceLut.srv(), "transmittance LUT" } },
+							 { { &m_aerialPerspectiveUAV, "aerial perspective volume" } } } );
 
 	// Раскладка — AerialPerspectiveBuffer в Shaders/aerial_perspective.cs
 	XMFLOAT4 constants( m_properties["Aerial perspective view distance scale"].data<float>(), 1.0f / skyNormalization(),
 						0.0f, 0.0f );
-	Device::updateResourceData<XMFLOAT4>( m_aerialPerspectiveConstants.get(), constants );
+	Device::updateResourceData<XMFLOAT4>( m_aerialPerspectiveConstants, constants );
 	d3d.setConstantBuffer( SRVType::cs, 4, m_aerialPerspectiveConstants );
 	d3d.setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );	// параметры кадра — setParameters в compute()
 	d3d.setSRV( SRVType::cs, multipleScatteringSlot, m_multipleScattering.srv() );
 	d3d.setSRV( SRVType::cs, transmittanceSlot, m_transmittanceLut.srv() );
 
 	// Поток — столбец объёма: идёт от камеры по слоям и пишет накопленное к концу каждого
-	m_aerialPerspectiveShader.setUAVBuffer( 0, m_aerialPerspectiveUAV.get() );
+	m_aerialPerspectiveShader.setUAVBuffer( 0, m_aerialPerspectiveUAV );
 	constexpr uint32_t groupSize = 8;	// = numthreads в Shaders/aerial_perspective.cs
 	m_aerialPerspectiveShader.dispatchGroups( AERIAL_PERSPECTIVE_SIZE / groupSize, AERIAL_PERSPECTIVE_SIZE / groupSize, 1 );
-	ID3D11ShaderResourceView* nullViews[2] = {};
-	context->CSSetShaderResources( multipleScatteringSlot, 2, nullViews );
 }
 
 void SkyAtmosphere::setParameters( const Parameters& params )
 {
 	Parameters data = params;
-	Device::updateResourceData<Parameters>( m_constantBuffer.get(), data );
+	Device::updateResourceData<Parameters>( m_constantBuffer, data );
 	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
 }
 
@@ -463,7 +450,7 @@ void SkyAtmosphere::renderCustom( const RenderContext& )
 	d3d.setSRV( SRVType::ps, skyViewMoonSlot, m_skyViewMoonLut.srv() );
 	d3d.setSRV( SRVType::ps, moonAlbedoSlot, m_moonAlbedo->srv() );
 	NightSkyParameters night = currentNightSky( m_frameParams );
-	Device::updateResourceData<NightSkyParameters>( m_nightSkyConstants.get(), night );
+	Device::updateResourceData<NightSkyParameters>( m_nightSkyConstants, night );
 	d3d.setConstantBuffer( SRVType::ps, 4, m_nightSkyConstants );
 	// На дальней плоскости: только там, где сцена ничего не нарисовала
 	m_backgroundShader.draw( BlendState::opaque, DepthState::readOnlyNearOrEqual );

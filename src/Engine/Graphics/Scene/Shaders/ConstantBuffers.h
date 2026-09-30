@@ -1,6 +1,7 @@
 #pragma once
 #include "DirectX.h"
 #include "Utils\utilites.h"
+#include "D3D\GpuResources.h"
 #include "Scene\RenderView.h"
 
 namespace GS
@@ -97,8 +98,8 @@ private:
 	static_assert( sizeof( ShaderModelConstant ) == 144, "WorldBuffer layout" );
 
 	FrameParameters m_frame;
-	com_unique_ptr<ID3D11Buffer> m_frameConstant;
-	com_unique_ptr<ID3D11Buffer> m_modelConstant;
+	Buffer m_frameConstant;
+	Buffer m_modelConstant;
 };
 
 }

@@ -224,7 +224,7 @@ Release, 1920 × 1080, попеременные запуски с прежней
 | `src/Engine/Graphics/Scene/Shaders/FullscreenShader.h/.cpp` | полноэкранный проход: шейдеры, топология, состояния |
 | `Shaders/fullscreen.vs` | полноэкранный треугольник по `SV_VertexID` |
 | `Shaders/tonemap.ps` | сложение с bloom, приведение к экспозиции, ночное зрение, ACES, AgX |
-| `src/Engine/Graphics/D3D/DMD3D.cpp` | HDR-буфер сцены, MSAA, задний буфер (`BeginScene`, `setBackBufferTarget`, `sceneColor`) |
+| `src/Engine/Graphics/D3D/DMD3D.cpp` | HDR-буфер сцены, MSAA, задний буфер (`BeginScene`, `backBufferTarget`, `sceneColor`), цели проходов — `beginPass` |
 | `src/Engine/Graphics/Renderer.cpp` | порядок проходов, привязка экспозиции к проходам сцены |
 
 ## Откуда подход

@@ -22,64 +22,38 @@ bool ShadowCascades::initialize( uint32_t resolution )
 
 bool ShadowCascades::createResources()
 {
-	ID3D11Device* device = DMD3D::instance().GetDevice();
+	DMD3D& d3d = DMD3D::instance();
 
-	D3D11_TEXTURE2D_DESC textureDesc = {};
-	textureDesc.Width = m_resolution;
-	textureDesc.Height = m_resolution;
-	textureDesc.MipLevels = 1;
-	textureDesc.ArraySize = cascadeCount;
-	textureDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-	textureDesc.SampleDesc.Count = 1;
-	textureDesc.Usage = D3D11_USAGE_DEFAULT;
-	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-	ID3D11Texture2D* texture = nullptr;
-	if( FAILED( device->CreateTexture2D( &textureDesc, nullptr, &texture ) ) )
+	// Карта — массив срезов глубины по каскаду: typeless, чтобы писать как D32 и читать как R32
+	TextureDesc textureDesc;
+	textureDesc.width = m_resolution;
+	textureDesc.height = m_resolution;
+	textureDesc.arraySize = cascadeCount;
+	textureDesc.format = DXGI_FORMAT_R32_TYPELESS;
+	textureDesc.usage = TextureUsage::depthStencil | TextureUsage::shaderResource;
+	if( !d3d.createTexture( textureDesc, nullptr, m_texture ) )
 	{
 		LOG( "Shadow map texture is not created" );
 		return false;
 	}
-	m_texture = make_com_ptr<ID3D11Texture2D>( texture );
 
 	for( uint32_t cascade = 0; cascade < cascadeCount; ++cascade )
 	{
-		D3D11_DEPTH_STENCIL_VIEW_DESC depthDesc = {};
-		depthDesc.Format = DXGI_FORMAT_D32_FLOAT;
-		depthDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
-		depthDesc.Texture2DArray.FirstArraySlice = cascade;
-		depthDesc.Texture2DArray.ArraySize = 1;
-		ID3D11DepthStencilView* depthView = nullptr;
-		if( FAILED( device->CreateDepthStencilView( texture, &depthDesc, &depthView ) ) )
+		TextureViewDesc depthDesc;
+		depthDesc.format = DXGI_FORMAT_D32_FLOAT;
+		depthDesc.firstSlice = cascade;
+		depthDesc.sliceCount = 1;
+		if( !d3d.createTargetView( m_texture, depthDesc, m_depthViews[cascade] ) )
 			return false;
-		m_depthViews[cascade] = make_com_ptr<ID3D11DepthStencilView>( depthView );
 	}
 
-	D3D11_SHADER_RESOURCE_VIEW_DESC viewDesc = {};
-	viewDesc.Format = DXGI_FORMAT_R32_FLOAT;
-	viewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
-	viewDesc.Texture2DArray.MipLevels = 1;
-	viewDesc.Texture2DArray.ArraySize = cascadeCount;
-	ID3D11ShaderResourceView* shaderView = nullptr;
-	if( FAILED( device->CreateShaderResourceView( texture, &viewDesc, &shaderView ) ) )
+	TextureViewDesc viewDesc;
+	viewDesc.format = DXGI_FORMAT_R32_FLOAT;
+	if( !d3d.createShaderView( m_texture, viewDesc, m_shaderView ) )
 		return false;
-	m_shaderView = make_com_ptr<ID3D11ShaderResourceView>( shaderView );
 
-	// Сравнение с билинейной выборкой — аппаратный PCF 2×2. Глубина обратная: точка освещена, если она не дальше
-	// от света, чем записанная (≥); за краем карты — «освещено»: граница 0 — дальняя плоскость
-	D3D11_SAMPLER_DESC samplerDesc = {};
-	samplerDesc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
-	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
-	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
-	samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
-	samplerDesc.BorderColor[0] = samplerDesc.BorderColor[1] = samplerDesc.BorderColor[2] = samplerDesc.BorderColor[3] = 0.0f;
-	samplerDesc.ComparisonFunc = D3D11_COMPARISON_GREATER_EQUAL;
-	samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
-	ID3D11SamplerState* sampler = nullptr;
-	if( FAILED( device->CreateSamplerState( &samplerDesc, &sampler ) ) )
-		return false;
-	m_sampler = make_com_ptr<ID3D11SamplerState>( sampler );
-
-	return DMD3D::instance().createShaderConstantBuffer( sizeof( ShaderShadowConstants ), m_constantBuffer );
+	// Сэмплер сравнения — общий s8 (DMSamplerState::shadowCompare)
+	return d3d.createShaderConstantBuffer( sizeof( ShaderShadowConstants ), m_constantBuffer );
 }
 
 bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSettings& settings, const XMFLOAT3& toSun,
@@ -182,17 +156,12 @@ bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSe
 	return true;
 }
 
-void ShadowCascades::unbindShadowMap()
-{
-	ID3D11ShaderResourceView* none = nullptr;
-	DMD3D::instance().GetDeviceContext()->PSSetShaderResources( SLOT_SHADOW_MAP, 1, &none );
-}
-
 void ShadowCascades::beginCascade( uint32_t cascade )
 {
-	DMD3D::instance().setDepthTarget( m_depthViews[cascade].get(), m_resolution, m_resolution );
-	// Обратная глубина: «пусто» — 0, дальше всего от света
-	DMD3D::instance().GetDeviceContext()->ClearDepthStencilView( m_depthViews[cascade].get(), D3D11_CLEAR_DEPTH, 0.0f, 0 );
+	// Проход каскада: цель — его срез карты (beginPass снимет карту со входов пиксельных шейдеров); обратная глубина:
+	// «пусто» — 0, дальше всего от света
+	DMD3D::instance().beginPass( PassDesc{ "Shadow cascade", {}, { &m_depthViews[cascade], "shadow map" }, m_resolution, m_resolution } );
+	DMD3D::instance().clearDepth( m_depthViews[cascade], 0.0f );
 }
 
 void ShadowCascades::bindForReceivers( int sunLightIndex )
@@ -213,13 +182,11 @@ void ShadowCascades::bindForReceivers( int sunLightIndex )
 	constants.showCascades = m_properties["Show cascades"].data<bool>() ? 1 : 0;
 	constants.mapSize = static_cast<float>( m_resolution );
 	constants.depthBias = m_settings.shadowBias;
-	Device::updateResourceData<ShaderShadowConstants>( m_constantBuffer.get(), constants );
+	Device::updateResourceData<ShaderShadowConstants>( m_constantBuffer, constants );
 
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_SHADOW, m_constantBuffer );
 	d3d.setSRV( SRVType::ps, SLOT_SHADOW_MAP, m_shaderView );
-	ID3D11SamplerState* sampler = m_sampler.get();
-	d3d.GetDeviceContext()->PSSetSamplers( SLOT_SAMPLER_SHADOW, 1, &sampler );
 }
 
 PropertyContainer* ShadowCascades::properties()

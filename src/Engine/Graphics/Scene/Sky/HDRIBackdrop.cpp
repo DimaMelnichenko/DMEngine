@@ -1,4 +1,5 @@
 #include "HDRIBackdrop.h"
+#include "D3D\TextureImages.h"
 #include "Shaders\slots.h"
 #include <algorithm>
 #include <cmath>
@@ -164,14 +165,11 @@ bool HDRIBackdrop::loadPanorama( const std::string& path, float rotation )
 		image = std::move( mips );
 	}
 
-	ID3D11ShaderResourceView* srv = nullptr;
-	if( FAILED( CreateShaderResourceView( DMD3D::instance().GetDevice(), image.GetImages(), image.GetImageCount(),
-										  image.GetMetadata(), &srv ) ) )
+	if( !GpuImages::createTexture( image, m_panoramaTexture, m_panorama ) )
 	{
 		LOG( "HDRI backdrop: can't create texture for " + path );
 		return false;
 	}
-	m_panorama = make_com_ptr<ID3D11ShaderResourceView>( srv );
 	m_panoramaWidth = static_cast<uint32_t>( image.GetMetadata().width );
 	return true;
 }
@@ -222,23 +220,20 @@ void HDRIBackdrop::compute( const FrameContext& )
 void HDRIBackdrop::updateEnvironment( const Parameters& params )
 {
 	DMD3D& d3d = DMD3D::instance();
-	ID3D11DeviceContext* context = d3d.GetDeviceContext();
 
 	// Грани cubemap из панорамы, затем мипы и освещение окружением
-	ID3D11ShaderResourceView* nullView = nullptr;
-	context->PSSetShaderResources( 0, 1, &nullView );
-	d3d.setSRV( SRVType::ps, 0, m_panorama );
 	Parameters faceParams = params;
 	for( int32_t face = 0; face < 6; ++face )
 	{
 		faceParams.face = face;
 		setParameters( faceParams );
-		d3d.setRenderTarget( m_cube.rtv( 0, face ), m_cube.size(), m_cube.size() );
+		d3d.beginPass( PassDesc{ "HDRI cube face", { { &m_cube.target( 0, face ), "HDRI cube" } }, {}, m_cube.size(), m_cube.size(),
+								 { { &m_panorama, "panorama" } } } );
+		d3d.setSRV( SRVType::ps, 0, m_panorama );
 		m_cubeShader.draw();
 	}
-	context->OMSetRenderTargets( 0, nullptr, nullptr );
-	context->PSSetShaderResources( 0, 1, &nullView );
-	context->GenerateMips( m_cube.srv().get() );
+	d3d.beginPass( PassDesc{ "HDRI cube mips", {}, {}, 0, 0, { { &m_cube.srv(), "HDRI cube" } } } );
+	d3d.generateMips( m_cube.srv() );
 
 	m_skyLight->capture( m_cube );
 }
@@ -246,7 +241,7 @@ void HDRIBackdrop::updateEnvironment( const Parameters& params )
 void HDRIBackdrop::setParameters( const Parameters& params )
 {
 	Parameters data = params;
-	Device::updateResourceData<Parameters>( m_constantBuffer.get(), data );
+	Device::updateResourceData<Parameters>( m_constantBuffer, data );
 	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
 }
 
