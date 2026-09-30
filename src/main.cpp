@@ -11,5 +11,6 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pScmdline
 	{
 		system.Run( );
 	}
-	return 0;
+	// Неудачная инициализация — код 1: скрипты (Tools/engine.py) отличают её от штатного выхода
+	return result ? 0 : 1;
 }

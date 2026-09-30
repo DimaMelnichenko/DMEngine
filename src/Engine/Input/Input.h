@@ -56,8 +56,8 @@ private:
 	com_input_ptr<IDirectInputDevice8> m_keyboard;
 	com_input_ptr<IDirectInputDevice8> m_mouse;
 
-	uint8_t m_keyboardState[256];
-	DIMOUSESTATE m_mouseState;
+	uint8_t m_keyboardState[256] = {};	// нули до первого захвата: иначе мусор читался бы как нажатия
+	DIMOUSESTATE m_mouseState = {};
 
 	double m_screenWidth, m_screenHeight;
 	double m_mouseX, m_mouseY;

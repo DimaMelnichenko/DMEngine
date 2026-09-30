@@ -192,7 +192,10 @@ python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --positio
 
 ## Модели Poly Haven
 
-Растения и камни Poly Haven (CC0) скачиваются архивом `.blend` (`DownloadResources\`, не в git). Как есть экспортёр
+Растения и камни Poly Haven (CC0) скачиваются архивом `.blend` в `DownloadResources\` (не в git):
+`python Tools/polyhaven_download.py rock_moss_set_01 --resolution 2k` берёт `.blend` и его текстуры через API
+Poly Haven и складывает `<ассет>_<разрешение>.blend.zip` в раскладке архива с сайта (`--list` — разрешения и
+размеры: у `fir_tree_01` в 2k — 406 МБ). Как есть экспортёр
 glTF их не понимает: материалы собраны на узлах-группах (цвет, «сухой» цвет, альфа, подповерхностное рассеяние),
 альфа — отдельной картинкой, нормали и шероховатость — в EXR. `Tools/export_polyhaven.py` (Blender без окна) готовит
 из архива `.glb` для импорта с `--scatter`:
@@ -225,6 +228,23 @@ python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-r
 Параметры движка, которых нет в glTF, — в командах (`--material-param`), у своих моделей — в сценариях:
 `blender_grass.py` (ветер, пропускание, смена LOD и тон травы множителем базового цвета), `blender_camomile.py`
 (ветер, пропускание), `blender_test_model.py` (смена LOD у камня). Повторный импорт их не теряет.
+
+Без архива травы слой `Meadow` рисует вместо трёх высоких пучков кубы-заглушки (примитив `box` строки `Meshes`),
+и замер нагрузки луга ничего не значит. Подмена — `Tools/blender_grass_tall.py`: три пучка травинок-полосок без
+альфы, как `GrassClump`, но 0,55–1,0 м и с тремя LOD (~700 / 160 / 35 треугольников), объекты и картинка названы как у
+настоящего ассета (`grass_medium_01_tall_a`, `grass_medium_01_BaseColor`), поэтому файлы ложатся на пути из
+`base.db3`, а строки базы не меняются — импорт идёт в копию базы:
+
+```
+blender -b --factory-startup --python Tools/blender_grass_tall.py -- Meshes/source/grass_medium_01.glb
+copy base.db3 %TEMP%\base_sandbox.db3
+python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --lod-ranges 4,12 --db %TEMP%\base_sandbox.db3
+```
+
+Карты `MetallicRoughness` и `Normal` экземпляра материала (строки `Textures` 52, 53) — плоские PNG 4 × 4 рядом с
+`grass_medium_01_BaseColor.png` (G 0,6 — шероховатость, B 0 — металличность; нормаль 128, 128, 255). Материал
+настоящего ассета Masked с порогом 0,5: у подмены альфа везде 1, отсечение ничего не режет, а стоимость варианта
+с `clip` та же, что у карточек Poly Haven. Настоящий ассет возвращают команды выше — файлы перезапишутся.
 
 ## Ель
 

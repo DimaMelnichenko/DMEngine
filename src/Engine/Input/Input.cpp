@@ -72,12 +72,9 @@ bool Input::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int scr
 		return false;
 	}
 
-	// Now acquire the keyboard.
-	result = m_keyboard->Acquire( );
-	if( FAILED( result ) )
-	{	
-		return false;
-	}
+	// Захват не обязателен: с DISCL_FOREGROUND он не удаётся, пока окно не на переднем плане (запуск скриптом из
+	// терминала), а ReadKeyboard захватывает устройство заново при DIERR_NOTACQUIRED
+	m_keyboard->Acquire( );
 
 	// Initialize the direct input interface for the mouse.
 	result = m_directInput->CreateDevice( GUID_SysMouse, &inputDevice, nullptr );
@@ -102,12 +99,8 @@ bool Input::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int scr
 		return false;
 	}
 
-	// Acquire the mouse.
-	result = m_mouse->Acquire( );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
+	// Захват мыши — так же не обязателен, ReadMouse захватит заново
+	m_mouse->Acquire( );
 
 	return true;
 
