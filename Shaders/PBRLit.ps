@@ -8,14 +8,15 @@
 #include "depth_only.sh"
 #include "pbr_material.sh"
 #include "lod_dither.sh"
+#include "bindless.sh"
 
 // Не заданная текстура — белая 1×1 (для Normal — плоская нормаль), так что работают одни множители
-Texture2D g_texBaseColor : register(t0);         // sRGB, альфа — прозрачность
-Texture2D g_texNormal : register(t1);            // касательное пространство, линейная
-Texture2D g_texMetallicRoughness : register(t2); // G — roughness, B — metallic (упаковка glTF), линейная
-Texture2D g_texOcclusion : register(t3);         // R — затенение окружающего света, линейная
-Texture2D g_texEmissive : register(t4);          // sRGB
-Texture2D g_texDiffuseTransmissionColor : register(t5);	// sRGB: цвет света, прошедшего насквозь
+DM_SRV( Texture2D, g_texBaseColor, 0 );         // sRGB, альфа — прозрачность
+DM_SRV( Texture2D, g_texNormal, 1 );            // касательное пространство, линейная
+DM_SRV( Texture2D, g_texMetallicRoughness, 2 ); // G — roughness, B — metallic (упаковка glTF), линейная
+DM_SRV( Texture2D, g_texOcclusion, 3 );         // R — затенение окружающего света, линейная
+DM_SRV( Texture2D, g_texEmissive, 4 );          // sRGB
+DM_SRV( Texture2D, g_texDiffuseTransmissionColor, 5 );	// sRGB: цвет света, прошедшего насквозь
 
 struct PixelInputType
 {

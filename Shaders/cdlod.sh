@@ -9,6 +9,7 @@
 #include "slots.h"
 
 #include "samplers.sh"
+#include "bindless.sh"
 
 cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 {
@@ -29,7 +30,7 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 };
 
 // Копия карты высот в R32_FLOAT с полной цепочкой мипов, в вершинном и пиксельном шейдерах
-Texture2D g_heightMap : register( t0 );
+DM_SRV( Texture2D, g_heightMap, 0 );
 
 struct PixelInputType
 {

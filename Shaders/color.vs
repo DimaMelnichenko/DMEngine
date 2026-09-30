@@ -1,6 +1,7 @@
 
 #include "slots.h"
 #include "common.vs"
+#include "bindless.sh"
 
 //////////////
 // TYPEDEFS //
@@ -33,7 +34,7 @@ struct InstanceItem
 #endif
 };
 
-StructuredBuffer<InstanceItem> instanceVector: register( SLOT_INSTANCE_DATA );
+DM_SRV( StructuredBuffer<InstanceItem>, instanceVector, SLOT_INSTANCE_DATA );
 
 #endif
 

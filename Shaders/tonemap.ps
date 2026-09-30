@@ -7,9 +7,10 @@
 #include "slots.h"
 #include "samplers.sh"
 #include "exposure.sh"
+#include "bindless.sh"
 
-Texture2D<float4> g_sceneColor : register(t0);
-Texture2D<float4> g_bloom : register(t1);	// самый крупный уровень bloom (половина кадра), уже с добавленными меньшими
+DM_SRV( Texture2D<float4>, g_sceneColor, 0 );
+DM_SRV( Texture2D<float4>, g_bloom, 1 );	// самый крупный уровень bloom (половина кадра), уже с добавленными меньшими
 
 // Раскладка — PostProcess::Parameters
 cbuffer PostProcessBuffer : register( SLOT_CB_PASS )

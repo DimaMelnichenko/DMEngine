@@ -25,6 +25,8 @@ public:
 	int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
 	bool supportsInstancing() const override;
 	int depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
+	// Фазы «только глубина» всех вариантов, в том числе с пиксельным шейдером mainDepth (Masked)
+	std::vector<int> depthPhases() const override;
 
 private:
 	// Константный буфер b2 (PS и VS), раскладка как у PBRMaterialBuffer в Shaders/pbr_material.sh

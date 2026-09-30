@@ -4,7 +4,7 @@
 namespace GS
 {
 
-bool FullscreenShader::load( const std::string& pixelShader )
+bool FullscreenShader::load( const std::string& pixelShader, const TargetFormats& formats )
 {
 	// Без буферов и раскладки вершин: вершинный шейдер строит треугольник по номеру вершины
 	m_shader.setDrawType( DMShader::by_vertex );
@@ -12,10 +12,15 @@ bool FullscreenShader::load( const std::string& pixelShader )
 		!m_shader.addShaderPassFromFile( SRVType::ps, "main", pixelShader ) ||
 		m_shader.createPhase( 0, 0 ) < 0 )
 		return false;
-	// Состояния draw(): без глубины и с накоплением (bloom), фон неба на дальней плоскости
-	m_shader.warmPipelines( { { RasterState::noCulling, DepthState::disabled, BlendState::opaque },
-							  { RasterState::noCulling, DepthState::disabled, BlendState::additive },
-							  { RasterState::noCulling, DepthState::readOnlyNearOrEqual, BlendState::opaque } } );
+	// Состояния draw(): без глубины и с накоплением (bloom); с буфером глубины — фон неба на дальней плоскости
+	if( formats.colorCount )
+	{
+		std::vector<RenderState> states = { { RasterState::noCulling, DepthState::disabled, BlendState::opaque },
+											{ RasterState::noCulling, DepthState::disabled, BlendState::additive } };
+		if( formats.depth != DXGI_FORMAT_UNKNOWN )
+			states.push_back( { RasterState::noCulling, DepthState::readOnlyNearOrEqual, BlendState::opaque } );
+		m_shader.warmPipelines( states, formats );
+	}
 	return true;
 }
 

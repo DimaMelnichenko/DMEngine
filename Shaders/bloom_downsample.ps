@@ -8,8 +8,9 @@
 #include "slots.h"
 #include "samplers.sh"
 #include "exposure.sh"
+#include "bindless.sh"
 
-Texture2D<float4> g_source : register( t0 );
+DM_SRV( Texture2D<float4>, g_source, 0 );
 
 // Раскладка — PostProcess::BloomParameters
 cbuffer BloomBuffer : register( SLOT_CB_PASS )

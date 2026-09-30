@@ -5,6 +5,7 @@
 
 #include "common.vs"
 #include "samplers.sh"
+#include "bindless.sh"
 
 //////////////
 // TYPEDEFS //
@@ -16,7 +17,7 @@ struct Particle // описание структуры на GPU
 	float2 dummy;
 };
 
-StructuredBuffer<Particle> Particles : register(t5); // буфер частиц
+DM_SRV( StructuredBuffer<Particle>, Particles, 5 ); // буфер частиц
 
 
 

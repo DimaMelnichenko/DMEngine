@@ -8,6 +8,7 @@
 #include "samplers.sh"
 #include "cubemap.sh"
 #include "ibl_sampling.sh"
+#include "bindless.sh"
 
 // Раскладка — SkyLight::PrefilterParameters
 cbuffer PrefilterParameters : register( SLOT_CB_PASS )
@@ -18,7 +19,7 @@ cbuffer PrefilterParameters : register( SLOT_CB_PASS )
 	float g_outputScale;	// 1 / нормировка результата SkyLight: он в половинной точности
 };
 
-TextureCube g_sky : register(t0);
+DM_SRV( TextureCube, g_sky, 0 );
 
 struct PixelInputType
 {

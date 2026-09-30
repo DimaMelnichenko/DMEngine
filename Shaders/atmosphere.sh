@@ -14,6 +14,7 @@
 #include "cubemap.sh"
 
 #include "samplers.sh"
+#include "bindless.sh"
 
 // Раскладка — SkyAtmosphere::Parameters. Небо запекается для солнца 1 лк над атмосферой (на освещённость от солнца
 // умножают при выборке — cb_skyLightScale), поэтому луна и ночное свечение здесь — в тех же единицах: их яркость,
@@ -104,7 +105,7 @@ float2 lutUnitFromUv( float2 uv, float2 size )
 }
 
 // Таблица пропускания до края атмосферы, SKY_TRANSMITTANCE_LUT_WIDTH × HEIGHT (Shaders/sky_transmittance.ps)
-Texture2D<float4> g_transmittanceLut : register( t2 );
+DM_SRV( Texture2D<float4>, g_transmittanceLut, 2 );
 static const float2 transmittanceLutSize = float2( SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT );
 // Расстояние от земли до края атмосферы по касательной к планете
 static const float atmosphereHorizon = sqrt( ( atmosphereRadius - planetRadius ) * ( atmosphereRadius + planetRadius ) );
@@ -174,7 +175,7 @@ float phaseMie( float cosTheta )
 
 #ifndef ATMOSPHERE_NO_SKY
 // Таблица многократного рассеяния Ψ (32 × 32): u — косинус зенитного угла солнца, v — высота над землёй
-Texture2D<float4> g_multipleScattering : register(t1);
+DM_SRV( Texture2D<float4>, g_multipleScattering, 1 );
 
 float3 multipleScattering( float height, float sunCosZenith )
 {

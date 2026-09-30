@@ -10,10 +10,11 @@
 #include "slots.h"
 #include "common.vs"
 #include "samplers.sh"
+#include "bindless.sh"
 
-StructuredBuffer<float4> g_irradianceSH : register( SLOT_IBL_IRRADIANCE );	// 9 коэффициентов для E(n)/π
-TextureCube g_specularCube : register( SLOT_IBL_SPECULAR );				// мип m — шероховатость m / (specularMipCount − 1)
-Texture2D<float2> g_brdfLut : register( SLOT_IBL_BRDF );				// u — N·V, v — шероховатость
+DM_SRV( StructuredBuffer<float4>, g_irradianceSH, SLOT_IBL_IRRADIANCE );	// 9 коэффициентов для E(n)/π
+DM_SRV( TextureCube, g_specularCube, SLOT_IBL_SPECULAR );				// мип m — шероховатость m / (specularMipCount − 1)
+DM_SRV( Texture2D<float2>, g_brdfLut, SLOT_IBL_BRDF );				// u — N·V, v — шероховатость
 
 static const float specularMipCount = 6.0f;	// SkyLight::specularMipCount
 

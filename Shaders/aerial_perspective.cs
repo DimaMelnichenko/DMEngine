@@ -10,8 +10,9 @@
 
 #include "common.vs"
 #include "atmosphere.sh"
+#include "bindless.sh"
 
-RWTexture3D<float4> g_volume : register( u0 );
+DM_UAV( RWTexture3D<float4>, g_volume, 0 );
 
 // Раскладка — SkyAtmosphere::updateAerialPerspective
 cbuffer AerialPerspectiveBuffer : register( b4 )

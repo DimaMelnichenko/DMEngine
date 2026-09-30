@@ -8,6 +8,7 @@
 #define TERRAIN_HEIGHT_SH
 
 #include "samplers.sh"
+#include "bindless.sh"
 
 cbuffer TerrainHeightBuffer : register( b5 )
 {
@@ -17,7 +18,7 @@ cbuffer TerrainHeightBuffer : register( b5 )
 	float g_terrainPadding;
 };
 
-Texture2D g_terrainHeightMap : register( t0 );
+DM_SRV( Texture2D, g_terrainHeightMap, 0 );
 
 float2 terrainUV( float2 worldXZ )
 {

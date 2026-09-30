@@ -10,6 +10,7 @@
 #define EXPOSURE_SH
 
 #include "slots.h"
+#include "bindless.sh"
 
 // Раскладка — PostProcess::ExposureState
 struct ExposureState
@@ -21,7 +22,7 @@ struct ExposureState
 };
 
 #ifndef EXPOSURE_STATE_WRITE
-StructuredBuffer<ExposureState> g_exposureState : register( SLOT_EXPOSURE );
+DM_SRV( StructuredBuffer<ExposureState>, g_exposureState, SLOT_EXPOSURE );
 
 // Множитель яркости для записи в буфер сцены (проходы сцены: до замера этого кадра)
 float preExposure()

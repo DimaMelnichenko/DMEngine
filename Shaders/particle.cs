@@ -2,6 +2,7 @@
 #include "slots.h"
 #include "samplers.sh"
 #include "common.vs"
+#include "bindless.sh"
 
 
 cbuffer ThreadsData : register( SLOT_CB_PASS )
@@ -24,9 +25,9 @@ struct Particle
 	float2 dummy;
 };
 
-Texture2D heightMap : register(t0);
+DM_SRV( Texture2D, heightMap, 0 );
 
-RWStructuredBuffer<Particle> Particles : register(u0);
+DM_UAV( RWStructuredBuffer<Particle>, Particles, 0 );
 
 #define THREAD_GROUP_X 32
 #define THREAD_GROUP_Y 32

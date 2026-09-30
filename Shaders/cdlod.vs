@@ -7,6 +7,7 @@
 
 #include "common.vs"
 #include "cdlod.sh"
+#include "bindless.sh"
 
 struct NodeInstance
 {
@@ -15,7 +16,7 @@ struct NodeInstance
 	float  level;	// уровень LOD, 0 — самый детальный
 };
 
-StructuredBuffer<NodeInstance> g_instances : register( t1 );
+DM_SRV( StructuredBuffer<NodeInstance>, g_instances, 1 );
 
 struct VertexInputType
 {

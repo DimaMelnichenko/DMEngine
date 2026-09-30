@@ -1,12 +1,13 @@
 
 #include "common.vs"
 #include "samplers.sh"
+#include "bindless.sh"
 
 /////////////
 // GLOBALS //
 /////////////
 
-Texture2D shaderTexture : register(t0);
+DM_SRV( Texture2D, shaderTexture, 0 );
 
 
 //////////////

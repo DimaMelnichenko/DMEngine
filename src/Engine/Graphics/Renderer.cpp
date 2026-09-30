@@ -8,6 +8,7 @@
 #include <optional>
 #include "Scene.h"
 #include "System.h"
+#include "D3D\ShaderCompiler.h"
 #include "Pipeline.h"
 #include "GUI\GUI.h"
 #include "D3D\DMD3D.h"
@@ -113,21 +114,30 @@ void Renderer::warmPipelines()
 	// Состояния, с которыми проходы рисуют меши материалов: цвет и depth prepass — растеризатор по двусторонности и
 	// зеркальности (materialRasterState), в каркасном режиме кадра — wireframe; прозрачные — блендинг без записи глубины;
 	// тени — csmShadowDepth; frontCulling — сфера неба. Все фазы каждого материала
-	std::vector<RenderState> states;
+	// Цели: цвет — буфер сцены (HDR + глубина); depth prepass и каскады теней — только глубина (форматы одинаковы —
+	// один пайплайн на оба)
+	std::vector<RenderState> colorStates;
+	std::vector<RenderState> depthStates;
 	for( RasterState raster : { RasterState::solid, RasterState::noCulling, RasterState::solidMirrored, RasterState::noCullingMirrored,
 								RasterState::wireframe, RasterState::frontCulling } )
 	{
-		states.push_back( { raster, DepthState::enabled, BlendState::opaque } );
-		states.push_back( { raster, DepthState::readOnlyEqual, BlendState::opaque } );
-		states.push_back( { raster, DepthState::readOnly, BlendState::alpha } );
+		colorStates.push_back( { raster, DepthState::enabled, BlendState::opaque } );
+		colorStates.push_back( { raster, DepthState::readOnlyEqual, BlendState::opaque } );
+		colorStates.push_back( { raster, DepthState::readOnly, BlendState::alpha } );
+		depthStates.push_back( { raster, DepthState::enabled, BlendState::opaque } );
 	}
-	states.push_back( { RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque } );
+	depthStates.push_back( { RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque } );
 	for( auto& material : System::materials() )
 	{
 		if( material.second && material.second->m_shader )
-			material.second->m_shader->warmPipelines( states );
+		{
+			DMShader& shader = *material.second->m_shader;
+			shader.warmPipelines( colorStates, DMD3D::sceneFormats(), shader.colorPhases() );
+			shader.warmPipelines( depthStates, DMD3D::depthOnlyFormats(), shader.depthPhases() );
+		}
 	}
 	LOG( "Pipelines after warm-up: " + std::to_string( DMD3D::instance().pipelineCount() ) );
+	ShaderCompiler::instance().logSummary();
 }
 
 bool Renderer::resize()

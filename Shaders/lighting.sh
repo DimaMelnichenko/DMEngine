@@ -16,6 +16,7 @@
 #include "shadows.sh"
 #include "aerial_perspective.sh"
 #include "exposure.sh"
+#include "bindless.sh"
 
 // Источник света, раскладка — DMLightDriver::LightBuffer
 struct Light
@@ -30,7 +31,7 @@ struct Light
 	float3 padding;
 };
 
-StructuredBuffer<Light> g_lights : register( SLOT_LIGHTS );
+DM_SRV( StructuredBuffer<Light>, g_lights, SLOT_LIGHTS );
 
 static const int lightDirectional = 0;
 static const int lightPoint = 1;

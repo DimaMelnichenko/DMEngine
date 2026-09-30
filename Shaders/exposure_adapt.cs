@@ -10,12 +10,13 @@
 #include "slots.h"
 #define EXPOSURE_STATE_WRITE
 #include "exposure.sh"
+#include "bindless.sh"
 
 #define HISTOGRAM_BINS 64
 #define MAX_CURVE_KEYS 8	// PostProcess::maxCurveKeys
 
-ByteAddressBuffer g_histogram : register( t0 );
-RWStructuredBuffer<ExposureState> g_state : register( u0 );
+DM_SRV( ByteAddressBuffer, g_histogram, 0 );
+DM_UAV( RWStructuredBuffer<ExposureState>, g_state, 0 );
 
 // Раскладка — PostProcess::AdaptParameters
 cbuffer AdaptBuffer : register( b4 )

@@ -18,6 +18,7 @@
 #include "common.vs"
 #include "terrain_height.sh"
 #include "lod_transition.h"
+#include "bindless.sh"
 
 // DMComputeShader::Dispatch: b_rect — размер сетки в ячейках
 cbuffer ThreadsData : register( SLOT_CB_PASS )
@@ -90,10 +91,10 @@ struct ScatterTransitionItem
 	float3 padding;
 };
 
-RWByteAddressBuffer g_drawArgs : register( u0 );	// аргументы DrawIndexedInstancedIndirect по секциям списков; число инстансов — по смещению 4
-RWStructuredBuffer<ScatterItem> g_instances : register( u1 );	// списки «вариант × LOD» подряд, участки — g_lists
-RWStructuredBuffer<ScatterTransitionItem> g_transitions : register( u2 );	// списки перехода подряд
-Texture2D g_densityMask : register( t2 );
+DM_UAV( RWByteAddressBuffer, g_drawArgs, 0 );	// аргументы DrawIndexedInstancedIndirect по секциям списков; число инстансов — по смещению 4
+DM_UAV( RWStructuredBuffer<ScatterItem>, g_instances, 1 );	// списки «вариант × LOD» подряд, участки — g_lists
+DM_UAV( RWStructuredBuffer<ScatterTransitionItem>, g_transitions, 2 );	// списки перехода подряд
+DM_SRV( Texture2D, g_densityMask, 2 );
 
 // После расстановки: число инстансов списка — в записях всех его секций (поток — список)
 [numthreads( MAX_LISTS, 1, 1 )]

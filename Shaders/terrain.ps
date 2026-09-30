@@ -10,11 +10,12 @@
 
 #include "lighting.sh"
 #include "cdlod.sh"
+#include "bindless.sh"
 
-Texture2DArray g_splatMap : register( t1 );		// срез 0 — веса слоёв 0…3, срез 1 — 4…7
-Texture2DArray g_albedoHeight : register( t2 );
-Texture2DArray g_normalRoughness : register( t3 );
-Texture2D g_noise : register( t4 );		// белый шум 256×256, R8_SNORM
+DM_SRV( Texture2DArray, g_splatMap, 1 );		// срез 0 — веса слоёв 0…3, срез 1 — 4…7
+DM_SRV( Texture2DArray, g_albedoHeight, 2 );
+DM_SRV( Texture2DArray, g_normalRoughness, 3 );
+DM_SRV( Texture2D, g_noise, 4 );		// белый шум 256×256, R8_SNORM
 
 static const uint maxLayers = 8;
 // Слоёв с выборкой текстур в пикселе: больше трёх-четырёх в одной точке не бывает, а массив из восьми LayerSample

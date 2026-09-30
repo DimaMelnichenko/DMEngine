@@ -9,6 +9,7 @@
 #define ATMOSPHERE_NO_SKY
 #include "sky_view.sh"
 #include "exposure.sh"
+#include "bindless.sh"
 
 // Раскладка — SkyAtmosphere::NightSkyParameters. Яркости — в единицах запекания неба (на 1 лк солнца)
 cbuffer NightSkyParameters : register( b4 )
@@ -23,7 +24,7 @@ cbuffer NightSkyParameters : register( b4 )
 	float  g_moonDiskBrightnessLimit;	// предел яркости полного диска после экспозиции; 0 — физическая яркость
 };
 
-Texture2D g_moonAlbedo : register( t5 );	// карта луны: равнопромежуточная, долгота 0 — в центре (видимая сторона)
+DM_SRV( Texture2D, g_moonAlbedo, 5 );	// карта луны: равнопромежуточная, долгота 0 — в центре (видимая сторона)
 
 struct PixelInputType
 {

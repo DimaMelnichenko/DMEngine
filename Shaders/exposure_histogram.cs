@@ -6,11 +6,12 @@
 
 #include "slots.h"
 #include "exposure.sh"
+#include "bindless.sh"
 
 #define HISTOGRAM_BINS 64
 
-Texture2D<float4> g_sceneColor : register( t0 );
-RWByteAddressBuffer g_histogram : register( u0 );	// HISTOGRAM_BINS чисел uint
+DM_SRV( Texture2D<float4>, g_sceneColor, 0 );
+DM_UAV( RWByteAddressBuffer, g_histogram, 0 );	// HISTOGRAM_BINS чисел uint
 
 // Раскладка — PostProcess::HistogramParameters
 cbuffer HistogramBuffer : register( b4 )

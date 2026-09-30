@@ -20,8 +20,6 @@ public:
 	void dispatchGroups( uint32_t x, uint32_t y, uint32_t z );
 
 private:
-	void OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::string& shaderFilename );
-
 	struct alignas( 16 ) ConstantType
 	{
 		float groupDim;

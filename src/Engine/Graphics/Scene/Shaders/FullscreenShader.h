@@ -13,7 +13,8 @@ namespace GS
 class FullscreenShader
 {
 public:
-	bool load( const std::string& pixelShader );
+	// formats — цели, в которые проход рисует (для прогрева пайплайнов; с глубиной — ещё вариант фона неба)
+	bool load( const std::string& pixelShader, const TargetFormats& formats = {} );
 	// depth = DepthState::readOnlyNearOrEqual — только там, где ничего не нарисовано (фон неба на глубине 0)
 	void draw( BlendState blend = BlendState::opaque, DepthState depth = DepthState::disabled );
 

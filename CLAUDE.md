@@ -119,12 +119,20 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Kloofendal 48d Partly Cloudy с Poly Haven (CC0, https://polyhaven.com/a/kloofendal_48d_partly_cloudy), 2k `.hdr`
   (и `.exr` для проверки) в `Textures\hdri\kloofendal_48d_partly_cloudy_2k.*`; без неё `TestHDRI` освещает атмосфера.
 - Лог каждого запуска перезаписывается в отслеживаемый `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`).
-- Шейдеры (`Shaders/*.vs|.ps|.gs|.hlsl`) компилируются во время выполнения
-  (`D3DCompileFromFile` / `D3DCompile` в `DMShader`). Для правки шейдера пересборка не нужна. Флаги — `shaderCompileFlags()`
-  (`Scene/Shaders/ShaderUtils.h`): в Debug отладочная информация без оптимизации (исходник виден в RenderDoc / PIX),
-  в Release — `D3DCOMPILE_OPTIMIZATION_LEVEL3`. Номера слотов, общие для C++ и HLSL (константные буферы кадра,
-  объекта, материала; данные инстансов; свет и освещение окружением), — макросы `Shaders/slots.h`
-  (`register( SLOT_LIGHTS )` в шейдере, `SLOT_LIGHTS` в C++); новый общий слот заводите там же.
+- Шейдеры (`Shaders/*.vs|.ps|.gs|.cs`, include — `*.sh`) компилируются во время выполнения компилятором DXC в DXIL
+  Shader Model 6.6, HLSL 2021 (`D3D/ShaderCompiler.h`, `dxcompiler.dll` + `dxil.dll` рядом с exe): для правки шейдера
+  пересборка не нужна. Кэш DXIL — `cache/shaders/<хэш>.dxil` (ключ — файл, точка входа, defines, флаги и отпечаток
+  всего каталога `Shaders\`: любая правка пересобирает всё); в Debug — отладочная информация без оптимизации
+  (исходник виден в PIX), в Release — `-O3`. Ресурсы привязываются bindless: шейдер объявляет их макросами
+  `DM_SRV( тип, имя, слот )` / `DM_UAV( … )` из `Shaders/bindless.sh` (static-переменные из `ResourceDescriptorHeap`
+  по индексам из root-констант b8 — таблицы привязок вызова, которую `DMD3D::setSRV` / `setUAV` заполняют по
+  слотам), константные буферы — `register( SLOT_CB_… )` (root CBV b0…b7), сэмплеры статические (s0…s8). Номера
+  слотов, общие для C++ и HLSL, — `Shaders/slots.h` (`DM_SRV( …, SLOT_LIGHTS )` в шейдере, `SLOT_LIGHTS` в C++);
+  новый общий слот заводите там же. Пайплайны (PSO) собираются при загрузке уровня по спискам прогрева
+  (`Renderer::warmPipelines` — цветные фазы материалов с целями сцены, фазы «только глубина» без цели цвета;
+  `FullscreenShader::load` и террейн — со своими форматами) и кэшируются на диске `ID3D12PipelineLibrary`
+  (`cache/pipelines.bin`, пишется при штатном выходе); собранный в кадре пайплайн — «ленивый»: строка в лог и
+  счётчик в «Statistic» — дополните список прогрева.
 - Горячие клавиши (`DMGraphics::bindingKeys`): Esc — выход, Q — wireframe, P — скриншот,
   1 — видимость террейна, 3 / 4 — расчёт / отрисовка всех наборов расстановки (трава, камешки; по умолчанию включены),
   I — курсор для работы с ImGui, G — показать / скрыть окна ImGui (как Game View в редакторе UE).

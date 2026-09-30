@@ -5,9 +5,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "cubemap.sh"
+#include "bindless.sh"
 
-Texture2DArray<float4> g_sky : register(t0);	// грани cubemap окружения (один мип) как массив
-RWStructuredBuffer<float4> g_irradianceSH : register(u0);
+DM_SRV( Texture2DArray<float4>, g_sky, 0 );	// грани cubemap окружения (один мип) как массив
+DM_UAV( RWStructuredBuffer<float4>, g_irradianceSH, 0 );
 
 // Раскладка — SkyLight::captureIrradiance
 cbuffer IrradianceParameters : register( b4 )

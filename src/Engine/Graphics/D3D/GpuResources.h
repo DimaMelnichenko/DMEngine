@@ -431,15 +431,24 @@ public:
 	SRVType type() const { return m_type; }
 	const void* data() const { return m_bytecode.data(); }
 	size_t size() const { return m_bytecode.size(); }
+	// FNV-1a байткода: имя пайплайна в ID3D12PipelineLibrary, ключ compute-пайплайна
+	uint64_t hash() const { return m_hash; }
 	void reset( SRVType type = SRVType::vs, const void* bytecode = nullptr, size_t size = 0 )
 	{
 		m_type = type;
 		m_bytecode.assign( static_cast<const uint8_t*>( bytecode ), static_cast<const uint8_t*>( bytecode ) + ( bytecode ? size : 0 ) );
+		m_hash = 14695981039346656037ull;
+		for( uint8_t byte : m_bytecode )
+		{
+			m_hash ^= byte;
+			m_hash *= 1099511628211ull;
+		}
 	}
 
 private:
 	SRVType m_type = SRVType::vs;
 	std::vector<uint8_t> m_bytecode;
+	uint64_t m_hash = 0;
 };
 
 // Раскладка вершин — часть пайплайна; байткода шейдера ей не нужно

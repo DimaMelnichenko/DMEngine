@@ -1,4 +1,5 @@
 #include "PBRMaterial.h"
+#include <algorithm>
 #include "Shaders\slots.h"
 #include "System.h"
 
@@ -131,6 +132,16 @@ bool PBRMaterial::innerInitialize()
 	DMD3D::instance().createShaderConstantBuffer( sizeof( PSParam ), m_psCB );
 
 	return true;
+}
+
+std::vector<int> PBRMaterial::depthPhases() const
+{
+	std::vector<int> phases;
+	for( const auto& variant : m_depthPhases )
+		for( int phase : variant )
+			if( std::find( phases.begin(), phases.end(), phase ) == phases.end() )
+				phases.push_back( phase );
+	return phases;
 }
 
 MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) const

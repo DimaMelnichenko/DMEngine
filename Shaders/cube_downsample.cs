@@ -4,8 +4,10 @@
 // (6 граней как массив), UAV — мип N + 1. Группа 8 × 8 потоков на грань (z — грань), класс SkyLight (buildMips)
 ////////////////////////////////////////////////////////////////////////////////
 
-Texture2DArray<float4> g_source : register( t0 );		// мип N: один мип как массив из 6 граней
-RWTexture2DArray<float4> g_target : register( u0 );	// мип N + 1
+#include "bindless.sh"
+
+DM_SRV( Texture2DArray<float4>, g_source, 0 );		// мип N: один мип как массив из 6 граней
+DM_UAV( RWTexture2DArray<float4>, g_target, 0 );	// мип N + 1
 
 [numthreads( 8, 8, 1 )]
 void main( uint3 id : SV_DispatchThreadID )

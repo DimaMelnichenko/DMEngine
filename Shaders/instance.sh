@@ -1,5 +1,6 @@
 
 #include "slots.h"
+#include "bindless.sh"
 
 #ifdef INST_MATRIX
 // Экземпляры моделей уровня одним вызовом (Renderer::drawMeshInstanced): мировая матрица и матрица нормалей
@@ -10,7 +11,7 @@ struct InstanceTransform
 	float4x4 worldInverseTranspose;
 };
 
-StructuredBuffer<InstanceTransform> g_instanceTransforms : register( SLOT_INSTANCE_DATA );
+DM_SRV( StructuredBuffer<InstanceTransform>, g_instanceTransforms, SLOT_INSTANCE_DATA );
 #endif
 
 #if defined(INST_POS) || defined(INST_SCALE) || defined(INST_TEX) || defined(INST_ROTATE) || defined(INST_COLOR)
@@ -43,7 +44,7 @@ struct InstanceParam
 #endif
 };
 
-StructuredBuffer<InstanceParam> g_instanceData: register( SLOT_INSTANCE_DATA );
+DM_SRV( StructuredBuffer<InstanceParam>, g_instanceData, SLOT_INSTANCE_DATA );
 
 float3 rotateByQuaternion( float3 v, float4 q )
 {

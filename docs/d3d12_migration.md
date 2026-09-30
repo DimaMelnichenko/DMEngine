@@ -230,7 +230,7 @@ bindless), путь MSAA (`MSAACount`, `ResolveSubresource` в `sceneColor`: п�
   карта высот через `CaptureTexture`, readback с fence, отложенное удаление, `resize`. Проверка: уровень `Test` грузится,
   в логе те же 20 заглушек, что на D3D11 (`Missing resources replaced by placeholders: 20`), бюджет видеопамяти в
   «Statistic».
-- **M3. Шейдеры и пайплайны.** `ShaderCompiler` на DXC с кэшем DXIL; `Shaders/bindless.sh` и замена 54 объявлений
+- **M3. Шейдеры и пайплайны — сделано 2026-09-30** (итог — «Сделано» в `TODO.md`). `ShaderCompiler` на DXC с кэшем DXIL; `Shaders/bindless.sh` и замена 54 объявлений
   ресурсов; root signature §4.4; PSO из `PipelineDesc` с форматами целей, `ID3D12PipelineLibrary1`; прогрев. Проверка:
   все варианты шейдеров (включая defines и `mainDepth`) компилируются, 826 пайплайнов собираются, время старта с кэшем
   и без — в лог.

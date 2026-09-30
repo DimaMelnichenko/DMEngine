@@ -12,3 +12,5 @@
 /.claude/
 /.idea/
 __pycache__/
+# Кэш DXIL шейдеров и библиотеки пайплайнов (D3D/ShaderCompiler.h, DMD3D::loadPipelineLibrary)
+/cache/

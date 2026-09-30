@@ -95,9 +95,10 @@ std::string PostProcess::curveText( const std::vector<XMFLOAT2>& curve )
 
 bool PostProcess::initialize( const Settings& settings )
 {
-	if( !m_shader.load( "Shaders\\tonemap.ps" ) ||
-		!m_bloomDownsample.load( "Shaders\\bloom_downsample.ps" ) ||
-		!m_bloomUpsample.load( "Shaders\\bloom_upsample.ps" ) ||
+	// Цели для прогрева пайплайнов: тонмаппинг — в задний буфер, bloom — в свои уровни
+	if( !m_shader.load( "Shaders\\tonemap.ps", DMD3D::backBufferFormats() ) ||
+		!m_bloomDownsample.load( "Shaders\\bloom_downsample.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
+		!m_bloomUpsample.load( "Shaders\\bloom_upsample.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
 		!m_histogramShader.Initialize( "Shaders\\exposure_histogram.cs", "main" ) ||
 		!m_adaptShader.Initialize( "Shaders\\exposure_adapt.cs", "main" ) )
 		return false;
@@ -153,7 +154,7 @@ bool PostProcess::createBloomTargets()
 	{
 		width = std::max( width / 2, 1u );
 		height = std::max( height / 2, 1u );
-		if( !level.create( width, height, DXGI_FORMAT_R11G11B10_FLOAT ) )
+		if( !level.create( width, height, bloomFormat ) )
 			return false;
 	}
 	return true;

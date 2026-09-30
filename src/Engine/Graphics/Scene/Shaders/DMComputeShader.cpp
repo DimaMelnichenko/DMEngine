@@ -1,8 +1,7 @@
 #include "DMComputeShader.h"
 #include "Shaders\slots.h"
-#include <fstream>
-#include <d3dcompiler.h>
-#include "ShaderUtils.h"
+#include "D3D\ShaderCompiler.h"
+#include "Logger\Logger.h"
 
 
 DMComputeShader::DMComputeShader()
@@ -16,73 +15,18 @@ DMComputeShader::~DMComputeShader()
 
 bool DMComputeShader::Initialize( const std::string& file_name, const std::string& function_name )
 {
-	ID3D10Blob* error_message;
-	ID3D10Blob* shader_buffer;
-
-	std::wstring fileName = utf8ToWide( file_name );
-
-	HRESULT result = D3DCompileFromFile( fileName.data(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
-										 function_name.data(), "cs_5_0", GS::shaderCompileFlags() | D3DCOMPILE_ENABLE_STRICTNESS, 0, &shader_buffer, &error_message );
-
-	if( FAILED( result ) )
-	{
-		// If the shader failed to compile it should have writen something to the error message.
-		if( error_message )
-		{
-			OutputShaderErrorMessage( error_message, file_name.data() );
-		}
-		// If there was nothing in the error message then it simply could not find the shader file itself.
-		else
-		{
-			MessageBox( 0, file_name.data(), "Missing Shader File", MB_OK );
-		}
-
+	// DXC → DXIL cs_6_6 с кэшем на диске; пайплайн собирается сразу — в кадре сборка PSO была бы фризом
+	std::vector<uint8_t> bytecode;
+	if( !ShaderCompiler::instance().compile( file_name, function_name, ShaderCompiler::profile( SRVType::cs ), "", bytecode ) )
 		return false;
-	}
-
-	const bool created = DMD3D::instance().createShaderStage( SRVType::cs, shader_buffer->GetBufferPointer(), shader_buffer->GetBufferSize(),
-																m_computeShader );
-	shader_buffer->Release();
-	shader_buffer = 0;
-
-	if( !created )
+	if( !DMD3D::instance().createShaderStage( SRVType::cs, bytecode.data(), bytecode.size(), m_computeShader ) )
 		return false;
+	DMD3D::instance().warmComputePipeline( m_computeShader );
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( ConstantType ), m_constantBuffer ) )
 		return false;
 
 	return true;
-}
-
-void DMComputeShader::OutputShaderErrorMessage( ID3D10Blob* errorMessage, const std::string& shaderFilename )
-{
-	// Get a pointer to the error message text buffer.
-	char* compileErrors = (char*)( errorMessage->GetBufferPointer() );
-
-	// Get the length of the message.
-	unsigned long bufferSize = errorMessage->GetBufferSize();
-
-	// Open a file to write the error message to.
-	std::ofstream fout;
-	fout.open( "shader-error.txt" );
-
-	// Write out the error message.
-	for( size_t i = 0; i < bufferSize; i++ )
-	{
-		fout << compileErrors[i];
-	}
-
-	// Close the file.
-	fout.close();
-
-	// Release the error message.
-	errorMessage->Release();
-	errorMessage = 0;
-
-	// Pop a message up on the screen to notify the user to check the text file for compile errors.
-	MessageBox( 0, "Error compiling shader.  Check shader-error.txt for message.", shaderFilename.data(), MB_OK );
-
-	return;
 }
 
 void DMComputeShader::setUAVBuffer( int index, const StorageView& view )

@@ -8,6 +8,7 @@
 
 #include "slots.h"
 #include "common.vs"
+#include "bindless.sh"
 
 #define SHADOW_CASCADE_COUNT 4
 
@@ -27,7 +28,7 @@ cbuffer ShadowConstants : register( SLOT_CB_SHADOW )
 	float  g_shadowDepthBias;	// сдвиг точки к солнцу, в текселях каскада
 };
 
-Texture2DArray<float> g_shadowMap : register( SLOT_SHADOW_MAP );
+DM_SRV( Texture2DArray<float>, g_shadowMap, SLOT_SHADOW_MAP );
 SamplerComparisonState g_shadowSampler : register( SLOT_SAMPLER_SHADOW );
 
 // Фильтр 5 × 5 текселей девятью выборками сравнения с билинейной фильтрацией (PCF 2×2 в каждой): веса и смещения

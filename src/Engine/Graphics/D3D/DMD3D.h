@@ -165,8 +165,17 @@ public:
 	const RenderState& renderState() const { return m_renderState; }
 	// Пайплайн по описанию из кэша (создаётся, если его ещё нет; после markPipelinesWarm — с записью в лог)
 	const Pipeline& pipeline( const PipelineDesc& desc );
-	// Ставит в командный список объект состояния пайплайна (веха M3)
+	// Ставит в командный список объект состояния пайплайна, root signature и топологию
 	void setPipeline( const Pipeline& pipeline );
+	// Цели текущего прохода (beginPass) — для описания пайплайна вызова (DMShader::setPass)
+	const TargetFormats& passFormats() const { return m_passFormats; }
+	// Цели проходов движка для прогрева пайплайнов: буфер сцены (HDR + глубина), только глубина (prepass, каскады
+	// теней — тот же формат), задний буфер (тонмаппинг, GUI)
+	static TargetFormats sceneFormats();
+	static TargetFormats depthOnlyFormats();
+	static TargetFormats backBufferFormats();
+	// Compute-пайплайн стадии — собрать заранее (DMComputeShader::Initialize)
+	void warmComputePipeline( const ShaderStage& stage ) { computePipeline( stage ); }
 	// Конец загрузки уровня: набор пайплайнов собран, новые в кадре — «ленивые» (сборка PSO в кадре — фриз)
 	void markPipelinesWarm() { m_pipelinesWarm = true; }
 	uint32_t pipelineCount() const { return static_cast<uint32_t>( m_pipelines.size() ); }
@@ -212,7 +221,9 @@ public:
 	// ничего не делает, убирается на вехе M5 вместе с вызовами
 	void unbindSRV( SRVType, uint16_t, uint16_t = 1 ) {}
 	void unbindUAVs( uint16_t, uint16_t ) {}
-	void setShaderStage( SRVType, const ShaderStage* ) {}
+	// Compute-шейдер — свой пайплайн (root signature общая): DMComputeShader перед dispatch; графические стадии —
+	// в setPipeline, здесь пропускаются
+	void setShaderStage( SRVType type, const ShaderStage* stage );
 	void unbindShaders() {}
 	void setInputLayout( const InputLayout* ) {}
 	void setTopology( D3D_PRIMITIVE_TOPOLOGY ) {}
@@ -261,6 +272,14 @@ private:
 	bool createSceneTargets( const float clearColor[4] );
 	void releaseSceneTargets();
 	// Командный список: открыть на аллокаторе кадра / закрыть и отправить в очередь
+	bool createRootSignature();
+	// Объект состояния пайплайна из описания: из библиотеки на диске или собрать (и положить в библиотеку)
+	bool createPipelineObject( Pipeline& pipeline );
+	ID3D12PipelineState* computePipeline( const ShaderStage& stage );
+	bool loadPipelineLibrary();
+	void savePipelineLibrary();
+	// Имя пайплайна в библиотеке — хэш содержимого описания (байткод стадий, раскладка, состояния, форматы)
+	static std::wstring pipelineName( const PipelineDesc& desc );
 	void openCommandList( FrameResources& frame );
 	void submitCommandList();
 	// Сигнал fence в конце очереди — возвращает его значение; ожидание значения на CPU
@@ -363,14 +382,20 @@ private:
 	float m_shadowSlopeBias = 0.0f;
 
 	RenderState m_renderState;
+	// Root signature одна на графику и compute: root-константы таблицы привязок b8, root CBV b0…b7, статические
+	// сэмплеры s0…s8, флаг прямой индексации кучи (ResourceDescriptorHeap)
+	com_unique_ptr<ID3D12RootSignature> m_rootSignature;
 	std::unordered_map<uint64_t, Pipeline> m_pipelines;
+	std::unordered_map<uint64_t, com_unique_ptr<ID3D12PipelineState>> m_computePipelines;	// по хэшу байткода
 	uint32_t m_lazyPipelines = 0;
 	bool m_pipelinesWarm = false;
+	// Кэш PSO на диске (cache/pipelines.bin): библиотека держит указатель на свои данные — они живут с ней
+	com_unique_ptr<ID3D12PipelineLibrary1> m_pipelineLibrary;
+	std::vector<uint8_t> m_pipelineLibraryData;
+	bool m_pipelineLibraryDirty = false;
 
-	// Цели текущего прохода: форматы — в ключ пайплайна (веха M3)
-	DXGI_FORMAT m_passColorFormats[D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
-	uint32_t m_passColorCount = 0;
-	DXGI_FORMAT m_passDepthFormat = DXGI_FORMAT_UNKNOWN;
+	// Цели текущего прохода — в описание пайплайна вызова
+	TargetFormats m_passFormats;
 	// Список проходов кадра для logPasses: пишется один кадр после запроса
 	bool m_passLogRequested = false;
 	bool m_recordingPasses = false;

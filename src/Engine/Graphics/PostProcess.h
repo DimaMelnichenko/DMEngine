@@ -182,6 +182,7 @@ private:
 	ShaderView m_exposureSRV;
 	// Копии состояния для чтения на CPU по кругу: читается самая свежая из тех, до которых GPU уже дошёл
 	static constexpr uint32_t readbackCount = 6;
+	static constexpr DXGI_FORMAT bloomFormat = DXGI_FORMAT_R11G11B10_FLOAT;
 	ReadbackRing<ExposureState> m_exposureReadback;
 	float m_ev100 = 0.0f;
 	// Кадры до конца смены плана: за один кадр гистограмма с чужой экспозицией может упереться в край диапазона

@@ -111,8 +111,9 @@ bool HDRIBackdrop::initialize( const Settings& settings, SkyLight& skyLight )
 	if( !loadPanorama( "Textures\\" + settings.texture, settings.rotation ) )
 		return false;
 
-	if( !m_cubeShader.load( "Shaders\\hdri_cube.ps" ) ||
-		!m_backgroundShader.load( "Shaders\\hdri_background.ps" ) ||
+	// Цели для прогрева: грани cubemap источника (формат SkyLight::createSource), фон — буфер сцены
+	if( !m_cubeShader.load( "Shaders\\hdri_cube.ps", TargetFormats::colorTarget( DXGI_FORMAT_R32G32B32A32_FLOAT ) ) ||
+		!m_backgroundShader.load( "Shaders\\hdri_background.ps", DMD3D::sceneFormats() ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
 		!SkyLight::createSource( m_cube ) )
 		return false;

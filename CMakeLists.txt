@@ -101,7 +101,6 @@ target_include_directories(D3D12MemoryAllocator BEFORE PRIVATE ${AGILITY_INCLUDE
 add_executable(DMEngine WIN32
     src/Common/Properties/Property.cpp
     src/Common/Properties/PropertyContainer.cpp
-    src/Engine/Graphics/Scene/Shaders/ShaderUtils.cpp
     src/Logger/Logger.cpp
     src/Engine/Graphics/Scene/TextureObjects/CustomTexture.cpp
     src/Engine/Graphics/Scene/TextureObjects/DDSTexture.cpp
@@ -152,6 +151,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/D3D/RenderTarget.cpp
     src/Engine/Graphics/D3D/TextureImages.cpp
     src/Engine/Graphics/D3D/ConstantRing.cpp
+    src/Engine/Graphics/D3D/ShaderCompiler.cpp
     src/Engine/Graphics/D3D/CubeTarget.cpp
     src/Engine/Graphics/Scene/Sky/SkyLight.cpp
     src/Engine/Graphics/Scene/Sky/HDRIBackdrop.cpp

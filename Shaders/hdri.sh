@@ -10,6 +10,7 @@
 #include "slots.h"
 #include "samplers.sh"
 #include "cubemap.sh"
+#include "bindless.sh"
 
 // Раскладка — HDRIBackdrop::Parameters
 cbuffer HDRIParameters : register( SLOT_CB_PASS )
@@ -20,7 +21,7 @@ cbuffer HDRIParameters : register( SLOT_CB_PASS )
 	float g_lod;			// мип панорамы для граней cubemap
 };
 
-Texture2D<float4> g_panorama : register( t0 );
+DM_SRV( Texture2D<float4>, g_panorama, 0 );
 
 float luminance( float3 color )
 {

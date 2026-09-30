@@ -18,9 +18,9 @@ constexpr DXGI_FORMAT resultFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
 bool SkyLight::initialize()
 {
-	if( !m_prefilterShader.load( "Shaders\\sky_prefilter.ps" ) ||
-		!m_brdfShader.load( "Shaders\\brdf_lut.ps" ) ||
-		!m_blendShader.load( "Shaders\\sky_light_blend.ps" ) ||
+	if( !m_prefilterShader.load( "Shaders\\sky_prefilter.ps", TargetFormats::colorTarget( resultFormat ) ) ||
+		!m_brdfShader.load( "Shaders\\brdf_lut.ps", TargetFormats::colorTarget( DXGI_FORMAT_R16G16_FLOAT ) ) ||
+		!m_blendShader.load( "Shaders\\sky_light_blend.ps", TargetFormats::colorTarget( resultFormat ) ) ||
 		!m_irradianceShader.Initialize( "Shaders\\sky_irradiance.cs", "main" ) ||
 		!m_irradianceBlendShader.Initialize( "Shaders\\sky_irradiance_blend.cs", "main" ) ||
 		!m_mipShader.Initialize( "Shaders\\cube_downsample.cs", "main" ) )

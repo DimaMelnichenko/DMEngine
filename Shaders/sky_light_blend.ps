@@ -7,6 +7,7 @@
 #include "slots.h"
 #include "samplers.sh"
 #include "cubemap.sh"
+#include "bindless.sh"
 
 // Раскладка — SkyLight::BlendParameters
 cbuffer BlendParameters : register( SLOT_CB_PASS )
@@ -17,8 +18,8 @@ cbuffer BlendParameters : register( SLOT_CB_PASS )
 	float g_currentWeight;	// доля нового
 };
 
-TextureCube g_previous : register( t0 );
-TextureCube g_current : register( t1 );
+DM_SRV( TextureCube, g_previous, 0 );
+DM_SRV( TextureCube, g_current, 1 );
 
 struct PixelInputType
 {

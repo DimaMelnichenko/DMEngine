@@ -61,11 +61,12 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	m_lights = &lights;
 	m_skyLight = &skyLight;
 
-	if( !m_transmittanceShader.load( "Shaders\\sky_transmittance.ps" ) ||
-		!m_multipleScatteringShader.load( "Shaders\\sky_multiscattering.ps" ) ||
-		!m_skyViewShader.load( "Shaders\\sky_view.ps" ) ||
-		!m_cubeShader.load( "Shaders\\sky_cube.ps" ) ||
-		!m_backgroundShader.load( "Shaders\\sky_background.ps" ) ||
+	// Цели для прогрева пайплайнов — форматы таблиц, куба и буфера сцены
+	if( !m_transmittanceShader.load( "Shaders\\sky_transmittance.ps", TargetFormats::colorTarget( hdrFormat ) ) ||
+		!m_multipleScatteringShader.load( "Shaders\\sky_multiscattering.ps", TargetFormats::colorTarget( hdrFormat ) ) ||
+		!m_skyViewShader.load( "Shaders\\sky_view.ps", TargetFormats::colorTarget( skyFormat ) ) ||
+		!m_cubeShader.load( "Shaders\\sky_cube.ps", TargetFormats::colorTarget( skyFormat ) ) ||
+		!m_backgroundShader.load( "Shaders\\sky_background.ps", DMD3D::sceneFormats() ) ||
 		!m_aerialPerspectiveShader.Initialize( "Shaders\\aerial_perspective.cs", "main" ) )
 		return false;
 

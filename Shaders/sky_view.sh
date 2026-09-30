@@ -12,9 +12,10 @@
 #define SKY_VIEW_SH
 
 #include "atmosphere.sh"
+#include "bindless.sh"
 
-Texture2D<float4> g_skyViewLut : register( t3 );		// солнце
-Texture2D<float4> g_skyViewMoonLut : register( t4 );	// луна — только если она есть (g_moonColor > 0)
+DM_SRV( Texture2D<float4>, g_skyViewLut, 3 );		// солнце
+DM_SRV( Texture2D<float4>, g_skyViewMoonLut, 4 );	// луна — только если она есть (g_moonColor > 0)
 static const float2 skyViewLutSize = float2( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT );
 
 // Свечение ночного неба (airglow, суммарный свет звёзд, зодиакальный свет) — слой на высоте ~100–300 км: к горизонту

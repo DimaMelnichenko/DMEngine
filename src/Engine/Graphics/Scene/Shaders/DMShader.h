@@ -34,11 +34,19 @@ public:
 	// Топология вершин пайплайна (частицы — точки); по умолчанию треугольники
 	void setTopology( D3D_PRIMITIVE_TOPOLOGY topology ) { m_topology = topology; }
 	int phaseCount() const { return static_cast<int>( m_phases.size() ); }
-	// Описание пайплайна фазы для состояния state (без привязки)
-	PipelineDesc pipelineDesc( int phase, const RenderState& state ) const;
-	// Собрать пайплайны всех фаз для этих состояний при загрузке (рендерер знает состояния своих проходов): в D3D12
-	// сборка PSO в кадре — фриз, здесь — учёт «ленивых» пайплайнов
-	void warmPipelines( const std::vector<RenderState>& states );
+	// Описание пайплайна фазы для состояния state и целей formats (без привязки)
+	PipelineDesc pipelineDesc( int phase, const RenderState& state, const TargetFormats& formats ) const;
+	// Собрать пайплайны всех фаз для этих состояний и целей при загрузке (рендерер знает состояния и цели своих
+	// проходов): сборка PSO в кадре — фриз, собранный в кадре считается «ленивым» и пишется в лог
+	void warmPipelines( const std::vector<RenderState>& states, const TargetFormats& formats );
+	// То же для части фаз: цветные фазы — с целями сцены, фазы «только глубина» — без цели цвета (пиксельный шейдер с
+	// SV_Target без цели — предупреждение debug-слоя и лишний PSO)
+	void warmPipelines( const std::vector<RenderState>& states, const TargetFormats& formats, const std::vector<int>& phases );
+	// Фазы «только глубина» (тени, depth prepass): по умолчанию — без пиксельного шейдера; материал с пиксельным шейдером
+	// отсечения (mainDepth) перечисляет свои сам
+	virtual std::vector<int> depthPhases() const;
+	// Остальные фазы — рисуют цвет
+	std::vector<int> colorPhases() const;
 	void setLayoutDesc( std::vector<VertexElement>&& vertex_layout );
 	virtual void setParams( const PropertyContainer& );
 	virtual std::vector<VertexElement> initLayouts();
@@ -112,12 +120,9 @@ private:
 private:
 	virtual bool innerInitialize();
 	virtual bool prepare();
-	void OutputShaderErrorMessage( com_unique_ptr<ID3DBlob>&, const std::string& );
 	void RenderShader( int, uint32_t vertexOffset, uint32_t indexOffset, int instanceCount = 0 );
-	void parseDefines( std::string defines, std::vector<D3D_SHADER_MACRO>& macros );
-	std::string version( SRVType type );
 
-	bool createShaderPass( SRVType type, com_unique_ptr<ID3DBlob>& shaderBuffer );
+	bool createShaderPass( SRVType type, const std::vector<uint8_t>& bytecode );
 	// Стадия фазы: шейдер по номеру в списке стадии или nullptr — стадия выключена
 	const ShaderStage* stage( const std::vector<ShaderStage>& stages, int index ) const
 	{

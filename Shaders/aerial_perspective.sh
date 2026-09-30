@@ -12,8 +12,9 @@
 #include "atmosphere_constants.h"
 #include "common.vs"
 #include "samplers.sh"
+#include "bindless.sh"
 
-Texture3D<float4> g_aerialPerspective : register( SLOT_AERIAL_PERSPECTIVE );
+DM_SRV( Texture3D<float4>, g_aerialPerspective, SLOT_AERIAL_PERSPECTIVE );
 
 // color — яркость точки мира position в кд/м² (без экспозиции)
 float3 applyAerialPerspective( float3 color, float3 position )
