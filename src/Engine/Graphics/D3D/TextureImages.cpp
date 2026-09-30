@@ -1,16 +1,32 @@
 #include "TextureImages.h"
 #include "DMD3D.h"
+#include "Logger\Logger.h"
 
 namespace GpuImages
 {
 
-bool createTexture( const DirectX::ScratchImage& image, Texture& texture, ShaderView& view, TextureViewDesc::Kind viewKind )
+namespace
 {
-	const DirectX::TexMetadata& metadata = image.GetMetadata();
-	ID3D11Resource* resource = nullptr;
-	if( FAILED( DirectX::CreateTexture( DMD3D::instance().GetDevice(), image.GetImages(), image.GetImageCount(), metadata, &resource ) ) )
-		return false;
 
+void notImplemented( const char* what )
+{
+	static bool logged[2] = {};
+	const int index = what[1] == 'r' ? 0 : 1;	// createTexture / captureTexture
+	if( !logged[index] )
+	{
+		LOG( std::string( "GpuImages::" ) + what + " is not implemented yet (D3D12 port, veha M2)" );
+		logged[index] = true;
+	}
+}
+
+}
+
+bool createTexture( const DirectX::ScratchImage& image, Texture& texture, ShaderView& view, TextureViewDesc::Kind )
+{
+	// Веха M2: DirectXTex D3D12 — CreateTexture + PrepareUpload, копирование через staging-буфер. Пока — текстура без
+	// ресурса с описанием картинки, чтобы загрузка уровня шла дальше (как остальные заглушки DMD3D)
+	notImplemented( "createTexture" );
+	const DirectX::TexMetadata& metadata = image.GetMetadata();
 	TextureDesc desc;
 	desc.width = static_cast<uint32_t>( metadata.width );
 	desc.height = static_cast<uint32_t>( metadata.height );
@@ -18,18 +34,17 @@ bool createTexture( const DirectX::ScratchImage& image, Texture& texture, Shader
 	desc.arraySize = metadata.dimension == DirectX::TEX_DIMENSION_TEXTURE3D ? 1 : static_cast<uint32_t>( metadata.arraySize );
 	desc.mipCount = static_cast<uint32_t>( metadata.mipLevels );
 	desc.format = metadata.format;
-	desc.usage = TextureUsage::shaderResource;
 	desc.cube = metadata.IsCubemap();
-	texture.reset( resource, desc );
-
-	TextureViewDesc viewDesc;
-	viewDesc.kind = viewKind;
-	return DMD3D::instance().createShaderView( texture, viewDesc, view );
+	texture.reset( nullptr, nullptr, desc );
+	view.reset();
+	return true;
 }
 
-bool captureTexture( const Texture& texture, DirectX::ScratchImage& image )
+bool captureTexture( const Texture&, DirectX::ScratchImage& )
 {
-	return SUCCEEDED( DirectX::CaptureTexture( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext(), texture.handle(), image ) );
+	// Веха M2: CaptureTexture( ID3D12CommandQueue*, … )
+	notImplemented( "captureTexture" );
+	return false;
 }
 
 }

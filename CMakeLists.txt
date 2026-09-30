@@ -16,11 +16,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # /MDd в Debug, /MD в остальных конфигурациях — одинаково для движка и библиотек из FetchContent
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
-# DirectXTex (загрузка текстур): при первом configure скачивается с GitHub
+# Все зависимости скачиваются при первом configure (нужны сеть и git). Версии — docs/d3d12_migration.md §3
 include(FetchContent)
+
+# DirectXTex (загрузка текстур, ScreenGrab12): только часть D3D12
 set(BUILD_TOOLS OFF)
 set(BUILD_SAMPLE OFF)
-set(BUILD_DX12 OFF)
+set(BUILD_DX11 OFF)
+set(BUILD_DX12 ON)
 set(BC_USE_OPENMP OFF)
 FetchContent_Declare(DirectXTex
     GIT_REPOSITORY https://github.com/microsoft/DirectXTex.git
@@ -58,6 +61,43 @@ add_library(tinyexr STATIC
 target_include_directories(tinyexr PUBLIC ${tinyexr_SOURCE_DIR} ${tinyexr_SOURCE_DIR}/deps/miniz)
 target_compile_definitions(tinyexr PRIVATE _CRT_SECURE_NO_WARNINGS)
 
+# DirectX 12 Agility SDK: рантайм D3D12 (D3D12Core.dll, debug-слой) и заголовки новее системных — пакет NuGet как zip.
+# Версия рантайма (экспорт D3D12SDKVersion в DMD3D.cpp) — число после «1.»; DLL копируются в D3D12\ рядом с exe
+set(DM_AGILITY_SDK_VERSION 619)
+FetchContent_Declare(agilitysdk
+    URL            https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.619.6
+    DOWNLOAD_NAME  Microsoft.Direct3D.D3D12.1.619.6.zip
+    SOURCE_SUBDIR  do-not-add
+)
+# DXC: компилятор HLSL → DXIL (SM 6.6) в процессе; dxil.dll подписывает байткод — обе DLL рядом с exe
+FetchContent_Declare(dxc
+    URL            https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2609/dxc_2026_09_29.zip
+    SOURCE_SUBDIR  do-not-add
+)
+# WinPixEventRuntime: метки PIXBeginEvent / PIXEndEvent в командном списке — области профайлера в PIX
+FetchContent_Declare(winpixeventruntime
+    URL            https://www.nuget.org/api/v2/package/WinPixEventRuntime/1.0.240308001
+    DOWNLOAD_NAME  WinPixEventRuntime.1.0.240308001.zip
+    SOURCE_SUBDIR  do-not-add
+)
+# Dear ImGui с бэкендами Win32 и DX12 (свой CMake у него нет — файлы собираются в движке)
+FetchContent_Declare(imgui
+    URL            https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9b.zip
+    SOURCE_SUBDIR  do-not-add
+)
+# D3D12 Memory Allocator (AMD): память под ресурсы
+set(D3D12MA_BUILD_SAMPLE OFF)
+FetchContent_Declare(d3d12ma
+    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator.git
+    GIT_TAG        v3.2.0
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(agilitysdk dxc winpixeventruntime imgui d3d12ma)
+set(AGILITY_INCLUDE ${agilitysdk_SOURCE_DIR}/build/native/include)
+set(AGILITY_BIN ${agilitysdk_SOURCE_DIR}/build/native/bin/x64)
+# Аллокатор — против тех же заголовков D3D12, что движок
+target_include_directories(D3D12MemoryAllocator BEFORE PRIVATE ${AGILITY_INCLUDE})
+
 add_executable(DMEngine WIN32
     src/Common/Properties/Property.cpp
     src/Common/Properties/PropertyContainer.cpp
@@ -70,13 +110,13 @@ add_executable(DMEngine WIN32
     src/Engine/Console/PropertyCommands.cpp
     src/Engine/Console/RemoteControlServer.cpp
     src/Engine/Graphics/Scene/Scatterer/ScattererPass.cpp
-    imGUI/imgui.cpp
-    imGUI/imgui_demo.cpp
-    imGUI/imgui_draw.cpp
-    imGUI/imgui_impl_dx11.cpp
-    imGUI/imgui_impl_win32.cpp
-    imGUI/imgui_widgets.cpp
-    src/3rdParty/ScreenGrab.cpp
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
     src/Engine/Graphics/GUI/GUI.cpp
     src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp
     src/Engine/Graphics/Scene/Shaders/DMParticleShader.cpp
@@ -144,8 +184,13 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/TextureObjects/TextureLoader.cpp
 )
 
+# Заголовки D3D12 Agility SDK — раньше Windows SDK (BEFORE), иначе d3d12.h возьмётся системный
+target_include_directories(DMEngine BEFORE PRIVATE ${AGILITY_INCLUDE} ${AGILITY_INCLUDE}/d3dx12)
 # Include-пути от корня проекта и основных каталогов движка: отсюда "Utils\DMTimer.h", "Shaders\DMShader.h" и т. п.
 target_include_directories(DMEngine PRIVATE
+    ${dxc_SOURCE_DIR}/inc
+    ${winpixeventruntime_SOURCE_DIR}/Include/WinPixEventRuntime
+    ${imgui_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/3rdParty
@@ -158,12 +203,27 @@ target_include_directories(DMEngine PRIVATE
 
 # Символьный набор MultiByte (_MBCS); NOMINMAX убирает макросы min / max из windows.h.
 # Исходники в UTF-8 без BOM: /utf-8 задаёт кодировку и исходников, и строковых литералов.
-target_compile_definitions(DMEngine PRIVATE HOME_RUN _MBCS NOMINMAX)
+target_compile_definitions(DMEngine PRIVATE HOME_RUN _MBCS NOMINMAX DM_AGILITY_SDK_VERSION=${DM_AGILITY_SDK_VERSION})
 target_compile_options(DMEngine PRIVATE /W3 /wd4005 /utf-8)
+# Карта линковки рядом с exe: адрес сбоя из журнала Windows (смещение в модуле) → функция
+target_link_options(DMEngine PRIVATE /MAP)
 
 target_link_libraries(DMEngine PRIVATE
     DirectXTex
     SQLiteCpp
     tinyexr
-    d3d11 dxgi d3dcompiler dinput8 dxguid winmm windowscodecs
+    D3D12MemoryAllocator
+    ${dxc_SOURCE_DIR}/lib/x64/dxcompiler.lib
+    ${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.lib
+    d3d12 dxgi d3dcompiler dinput8 dxguid winmm windowscodecs
+)
+
+# Рантайм рядом с exe: Agility SDK в D3D12\ (D3D12SDKPath), DXC и PIX — в каталог exe
+add_custom_command(TARGET DMEngine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:DMEngine>/D3D12"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${AGILITY_BIN}/D3D12Core.dll" "${AGILITY_BIN}/d3d12SDKLayers.dll" "$<TARGET_FILE_DIR:DMEngine>/D3D12"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${dxc_SOURCE_DIR}/bin/x64/dxcompiler.dll" "${dxc_SOURCE_DIR}/bin/x64/dxil.dll"
+            "${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.dll" "$<TARGET_FILE_DIR:DMEngine>"
+    COMMENT "Copying D3D12 Agility SDK, DXC and PIX runtime next to the executable"
+    VERBATIM
 )

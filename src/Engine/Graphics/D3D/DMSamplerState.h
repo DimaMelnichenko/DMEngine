@@ -2,16 +2,12 @@
 
 #include "DirectX.h"
 #include <vector>
-#include <Utils\utilites.h>
 
-// Общие сэмплеры всех шейдеров: слоты — как в Shaders/samplers.sh и Shaders/slots.h. Ставятся раз за кадр
-// (Renderer::preparePipeline); в D3D12 станут статическими сэмплерами root signature
+// Общие сэмплеры всех шейдеров: слоты — как в Shaders/samplers.sh и Shaders/slots.h. В D3D12 это статические
+// сэмплеры root signature (DMD3D собирает её из этой таблицы), привязки на кадр нет
 class DMSamplerState
 {
 public:
-	DMSamplerState();
-	~DMSamplerState();
-
 	bool initialize();
 
 	// Порядок — слоты s0…s8
@@ -22,9 +18,12 @@ public:
 		count
 	};
 
-	void setDefaultSamplers();
+	// Осталось от D3D11 (привязка раз за кадр); в D3D12 сэмплеры в root signature — ничего не делает
+	void setDefaultSamplers() {}
+
+	// Описания статических сэмплеров root signature, слоты s0…s8
+	const std::vector<D3D12_STATIC_SAMPLER_DESC>& staticSamplers() const { return m_samplers; }
 
 private:
-	std::vector<ID3D11SamplerState*> m_samplerPointers;
-	std::vector<com_unique_ptr<ID3D11SamplerState>> m_sampler_states;
+	std::vector<D3D12_STATIC_SAMPLER_DESC> m_samplers;
 };

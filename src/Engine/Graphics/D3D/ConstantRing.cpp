@@ -1,108 +1,83 @@
 #include "ConstantRing.h"
 #include "Logger\Logger.h"
+#include <algorithm>
 
-bool ConstantRing::initialize( ID3D11Device* device, ID3D11DeviceContext1* context, uint32_t bytes )
+bool ConstantRing::initialize( ID3D12Device* device, uint32_t bytes, uint32_t frames )
 {
-	m_device = device;
-	m_context = context;
+	m_frames = std::max( frames, 1u );
+	m_frameBytes = ( bytes / m_frames ) & ~( alignment - 1 );
+	const uint32_t total = m_frameBytes * m_frames;
 
-	// Больше 64 КБ: на уровне 11.1 размер константного буфера не ограничен, ограничено окно привязки (4096 констант)
-	D3D11_BUFFER_DESC desc = {};
-	desc.ByteWidth = ( bytes + alignment - 1 ) / alignment * alignment;
-	desc.Usage = D3D11_USAGE_DYNAMIC;
-	desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	ID3D11Buffer* buffer = nullptr;
-	if( FAILED( device->CreateBuffer( &desc, nullptr, &buffer ) ) )
+	// Upload-куча: CPU пишет, GPU читает через PCIe — для констант, которые живут один кадр, это и есть правильное место
+	D3D12_HEAP_PROPERTIES heap = {};
+	heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+	D3D12_RESOURCE_DESC desc = {};
+	desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	desc.Width = total;
+	desc.Height = 1;
+	desc.DepthOrArraySize = 1;
+	desc.MipLevels = 1;
+	desc.SampleDesc.Count = 1;
+	desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	ID3D12Resource* raw = nullptr;
+	if( FAILED( device->CreateCommittedResource( &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+												 __uuidof( ID3D12Resource ), reinterpret_cast<void**>( &raw ) ) ) )
 	{
-		LOG( "Constant ring: can`t create a " + std::to_string( desc.ByteWidth ) + "-byte constant buffer" );
+		LOG( "Constant ring: failed to create the upload buffer" );
 		return false;
 	}
-	m_buffer = make_com_ptr<ID3D11Buffer>( buffer );
-	m_capacity = desc.ByteWidth;
-	m_current.capacity = m_last.capacity = m_capacity;
-	m_head = 0;
-	m_discardNext = true;
+	raw->SetName( L"Constant ring" );
+	m_buffer.reset( raw );
+
+	// Отображение на всё время жизни: у upload-кучи это разрешено и дёшево
+	void* mapped = nullptr;
+	const D3D12_RANGE noRead = { 0, 0 };
+	if( FAILED( raw->Map( 0, &noRead, &mapped ) ) )
+	{
+		LOG( "Constant ring: failed to map the upload buffer" );
+		return false;
+	}
+	m_mapped = static_cast<uint8_t*>( mapped );
+	m_gpuAddress = raw->GetGPUVirtualAddress();
+	m_current = {};
+	m_last = {};
+	m_current.capacity = m_last.capacity = m_frameBytes;
 	return true;
 }
 
-void ConstantRing::beginFrame()
+void ConstantRing::beginFrame( uint32_t frameIndex )
 {
 	m_last = m_current;
 	m_current = {};
-	m_current.capacity = m_capacity;
-	m_discardNext = true;
+	m_current.capacity = m_frameBytes;
+	m_frameStart = ( frameIndex % std::max( m_frames, 1u ) ) * m_frameBytes;
+	m_head = m_frameStart;
 }
 
 void* ConstantRing::beginWrite( uint32_t size, uint32_t& offset, uint32_t& bytes )
 {
-	bytes = std::max<uint32_t>( ( size + alignment - 1 ) / alignment * alignment, alignment );
-	if( bytes > m_capacity )
-	{
-		LOG( "Constant ring: a " + std::to_string( size ) + "-byte block does not fit into the ring" );
-		bytes = m_capacity;
-	}
+	if( !m_mapped || m_writing || size == 0 )
+		return nullptr;
 
-	// Свободного места до конца нет — начинаем с нуля с DISCARD: прошлые участки кадра GPU дочитает из старой памяти
-	bool discard = m_discardNext;
-	if( !discard && m_head + bytes > m_capacity )
+	bytes = ( size + alignment - 1 ) & ~( alignment - 1 );
+	if( bytes > m_frameBytes )
+		return nullptr;
+	if( m_head + bytes > m_frameStart + m_frameBytes )
 	{
-		discard = true;
+		// Часть кадра кончилась: начинаем сначала — прошлые участки этого кадра GPU ещё не прочитал, кольцо надо увеличить
+		m_head = m_frameStart;
 		++m_current.frameWraps;
 	}
-	if( discard )
-		m_head = 0;
-	m_discardNext = false;
 
-	D3D11_MAPPED_SUBRESOURCE mapped = {};
-	if( FAILED( m_context->Map( m_buffer.get(), 0, discard ? D3D11_MAP_WRITE_DISCARD : D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mapped ) ) )
-	{
-		LOG( "Constant ring: Map failed" );
-		return nullptr;
-	}
-	m_mapped = true;
 	offset = m_head;
 	m_head += bytes;
 	m_current.frameBytes += bytes;
 	++m_current.frameWrites;
-	return static_cast<char*>( mapped.pData ) + offset;
+	m_writing = true;
+	return m_mapped + offset;
 }
 
 void ConstantRing::finishWrite()
 {
-	if( !m_mapped )
-		return;
-	m_context->Unmap( m_buffer.get(), 0 );
-	m_mapped = false;
-}
-
-void ConstantRing::bind( SRVType stage, uint16_t slot, uint32_t offset, uint32_t bytes ) const
-{
-	// Смещение и размер — в константах по 16 байт, кратные 16 константам (256 байт)
-	ID3D11Buffer* buffer = m_buffer.get();
-	const UINT first = offset / 16;
-	const UINT count = bytes / 16;
-	switch( stage )
-	{
-		case SRVType::vs:
-			m_context->VSSetConstantBuffers1( slot, 1, &buffer, &first, &count );
-			break;
-		case SRVType::ps:
-			m_context->PSSetConstantBuffers1( slot, 1, &buffer, &first, &count );
-			break;
-		case SRVType::gs:
-			m_context->GSSetConstantBuffers1( slot, 1, &buffer, &first, &count );
-			break;
-		case SRVType::hs:
-			m_context->HSSetConstantBuffers1( slot, 1, &buffer, &first, &count );
-			break;
-		case SRVType::ds:
-			m_context->DSSetConstantBuffers1( slot, 1, &buffer, &first, &count );
-			break;
-		case SRVType::cs:
-			m_context->CSSetConstantBuffers1( slot, 1, &buffer, &first, &count );
-			break;
-		default:
-			break;
-	}
+	m_writing = false;
 }

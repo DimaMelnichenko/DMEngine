@@ -1,8 +1,8 @@
 #include "GUI.h"
 #include <algorithm>
-#include "imGUI\imgui.h"
-#include "imGUI\imgui_impl_dx11.h"
-#include "imGUI\imgui_impl_win32.h"
+#include "imgui.h"
+#include "backends/imgui_impl_dx12.h"
+#include "backends/imgui_impl_win32.h"
 #include "D3D\DMD3D.h"
 #include "System.h"
 
@@ -15,7 +15,7 @@ GUI::~GUI()
 {
 	if( m_isInited )
 	{
-		ImGui_ImplDX11_Shutdown();
+		ImGui_ImplDX12_Shutdown();
 		ImGui_ImplWin32_Shutdown();
 		ImGui::DestroyContext();
 	}
@@ -28,7 +28,27 @@ void GUI::Initialize( HWND hwnd )
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 
 	ImGui_ImplWin32_Init( hwnd );
-	ImGui_ImplDX11_Init( DMD3D::instance().GetDevice(), DMD3D::instance().GetDeviceContext() );
+	// Бэкенд DX12: шрифт и картинки GUI — дескрипторы из общей shader-visible кучи движка (callback'и), кадров в полёте
+	// и формат заднего буфера — как у DMD3D; рисует в текущий командный список кадра (GUI::End)
+	DMD3D& d3d = DMD3D::instance();
+	ImGui_ImplDX12_InitInfo info;
+	info.Device = d3d.GetDevice();
+	info.CommandQueue = d3d.directQueue();
+	info.NumFramesInFlight = DMD3D::frameCount;
+	info.RTVFormat = DMD3D::backBufferViewFormat;
+	info.DSVFormat = DXGI_FORMAT_UNKNOWN;
+	info.SrvDescriptorHeap = d3d.shaderVisibleHeap();
+	info.SrvDescriptorAllocFn = []( ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* cpu, D3D12_GPU_DESCRIPTOR_HANDLE* gpu )
+	{
+		const Descriptor descriptor = DMD3D::instance().allocateShaderDescriptor();
+		*cpu = descriptor.cpu;
+		*gpu = descriptor.gpu;
+	};
+	info.SrvDescriptorFreeFn = []( ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE cpu, D3D12_GPU_DESCRIPTOR_HANDLE )
+	{
+		DMD3D::instance().freeShaderDescriptor( cpu );
+	};
+	ImGui_ImplDX12_Init( &info );
 
 	// Setup style
 	//ImGui::StyleColorsLight();
@@ -39,10 +59,7 @@ void GUI::Initialize( HWND hwnd )
 
 void GUI::Begin()
 {
-
-	DMD3D::instance().unbindShaders();
-
-	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
@@ -55,7 +72,7 @@ void GUI::End()
 	// Rendering
 	ImGui::Render();
 
-	ImGui_ImplDX11_RenderDrawData( ImGui::GetDrawData() );
+	ImGui_ImplDX12_RenderDrawData( ImGui::GetDrawData(), DMD3D::instance().commandList() );
 	clearAfterRender();
 }
 
@@ -103,12 +120,14 @@ void GUI::clearAfterRender()
 
 void GUI::renderTextureLibrary()
 {
-	ImGui::Begin( "Texture Library", nullptr, ImVec2( 256, 300 ), 1.0f );
+	ImGui::SetNextWindowSize( ImVec2( 256, 300 ), ImGuiCond_FirstUseEver );
+	ImGui::Begin( "Texture Library" );
 	ImGui::BeginChild( "Scrolling" );
 	for( auto& item : GS::System::textures() )
 	{
-		// ImTextureID у бэкенда imgui_impl_dx11 — указатель вида D3D11 (B7 плана переезда заменит бэкенд)
-		ImGui::Image( item.second->srv().handle(), ImVec2( 256, 256 ) );
+		// ImTextureID у бэкенда imgui_impl_dx12 — GPU-дескриптор вида из общей кучи
+		if( item.second->srv().valid() )
+			ImGui::Image( static_cast<ImTextureID>( item.second->srv().descriptor().gpu.ptr ), ImVec2( 256, 256 ) );
 		ImGui::Text( "id:%d name:%s", item.first, item.second->name().data() );
 	}
 	ImGui::EndChild();
@@ -138,7 +157,8 @@ void GUI::renderSceneObject()
 
 	static std::unordered_map<uint32_t, ModelParam> modelsPos;
 	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-	ImGui::Begin( "Scene Objects", nullptr, ImVec2( 256, 300 ), 1.0 );
+	ImGui::SetNextWindowSize( ImVec2( 256, 300 ), ImGuiCond_FirstUseEver );
+	ImGui::Begin( "Scene Objects" );
 	int counter = 0;
 	if( ImGui::TreeNode( "Scene Objects Tree" ) )
 	{
@@ -213,7 +233,8 @@ void GUI::renderSceneObject()
 
 void GUI::printCamera( DMCamera& camera )
 {
-	ImGui::Begin( "Camera", nullptr, ImVec2( 256, 300 ), 1.0 );
+	ImGui::SetNextWindowSize( ImVec2( 256, 300 ), ImGuiCond_FirstUseEver );
+	ImGui::Begin( "Camera" );
 
 	ImGui::Text( "Position:\nx:%f\ny:%f\nz:%f", camera.position().x, camera.position().y, camera.position().z );
 
@@ -352,7 +373,8 @@ void GUI::showPropertiesTree()
 {
 	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 	// Шире прежних 256 пикселей: подписи свойств (Aerial perspective view distance scale) не обрезаются
-	ImGui::Begin( "Scene Objects", nullptr, ImVec2( 420, 300 ), 1.0 );
+	ImGui::SetNextWindowSize( ImVec2( 420, 300 ), ImGuiCond_FirstUseEver );
+	ImGui::Begin( "Scene Objects" );
 	for( const auto& [label, action] : m_actions )
 	{
 		if( ImGui::Button( label.c_str() ) )

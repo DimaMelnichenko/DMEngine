@@ -1,14 +1,21 @@
 #pragma once
 
-// Непрозрачные ресурсы GPU и их виды — как ресурсы и дескрипторы в D3D12 (docs/d3d12_migration.md, шаг A2).
-// Объекты сцены, материалы и проходы держат только их и создают через DMD3D по описаниям ниже — в них нет типов
-// D3D11, а DXGI_FORMAT и D3D_PRIMITIVE_TOPOLOGY общие у D3D11 и D3D12. ID3D11* живёт внутри Graphics/D3D: методы
-// handle() и reset() — для бэкенда (DMD3D, RenderTarget, CubeTarget, DMStructuredBuffer, TextureImages)
-#include <d3d11.h>
+// Непрозрачные ресурсы GPU и их виды — ресурсы и дескрипторы D3D12 (docs/d3d12_migration.md, §4.3–4.4). Объекты сцены,
+// материалы и проходы держат только их и создают через DMD3D по описаниям ниже; ID3D12* живёт внутри Graphics/D3D:
+// методы handle() и reset() — для бэкенда (DMD3D, RenderTarget, CubeTarget, DMStructuredBuffer, TextureImages).
+// Вид — постоянный дескриптор в куче (bindless): ShaderView и StorageView — в общей shader-visible куче CBV/SRV/UAV,
+// TargetView — в куче RTV или DSV. Дескриптор освобождается вместе с видом
 #include <cstdint>
+#include <utility>
 #include <vector>
+#include "DirectX.h"
 #include "Utils\utilites.h"
 #include "DM3DUtils.h"
+
+namespace D3D12MA
+{
+class Allocation;
+}
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Описания
@@ -27,9 +34,9 @@ namespace BufferUsage
 		indirectArgs = 1 << 5,		// аргументы DrawIndexedInstancedIndirect
 		structured = 1 << 6,		// структурный: элементы по stride, виды без формата
 		raw = 1 << 7,				// байтовый (ByteAddressBuffer): виды с BufferViewDesc::raw
-		cpuWrite = 1 << 8,			// пишется с CPU каждый кадр (Device::updateResource); у констант — участок кольца
-									// DMD3D (ConstantRing.h), у остальных — DYNAMIC-буфер; в D3D12 — upload-куча
-		readback = 1 << 9,			// копия для чтения на CPU (DMD3D::copyBuffer + readBuffer; в D3D12 — readback-куча)
+		cpuWrite = 1 << 8,			// пишется с CPU каждый кадр (Device::updateResource): участок кольца кадра в upload-куче
+									// (у констант — ConstantRing.h)
+		readback = 1 << 9,			// копия для чтения на CPU (DMD3D::copyBuffer + readBuffer) — readback-куча
 	};
 }
 
@@ -106,6 +113,34 @@ struct VertexElement
 	bool perInstance = false;
 };
 
+// Дескриптор в куче: CPU-адрес (создание вида, очистки), GPU-адрес (привязка, ImGui) и номер в куче — индекс для
+// ResourceDescriptorHeap в шейдере. У куч без shader-visible (RTV, DSV, копии UAV для очисток) GPU-адреса нет
+struct Descriptor
+{
+	static constexpr uint32_t invalidIndex = 0xFFFFFFFFu;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE cpu = {};
+	D3D12_GPU_DESCRIPTOR_HANDLE gpu = {};
+	uint32_t index = invalidIndex;
+
+	bool valid() const { return cpu.ptr != 0; }
+};
+
+// Подресурсы вида — для барьеров по мипам и срезам (мипы куба неба, срезы каскадов теней)
+struct SubresourceRange
+{
+	uint32_t firstMip = 0;
+	uint32_t mipCount = 0;		// 0 — все
+	uint32_t firstSlice = 0;
+	uint32_t sliceCount = 0;	// 0 — все
+};
+
+// Освобождение дескрипторов и памяти — в DMD3D.cpp (кучи и аллокатор там); после DMD3D::destroy ничего не делают
+void gpuFreeShaderDescriptor( const Descriptor& descriptor );
+void gpuFreeStagingDescriptor( const Descriptor& descriptor );
+void gpuFreeTargetDescriptor( const Descriptor& descriptor, bool depth );
+void gpuReleaseAllocation( D3D12MA::Allocation* allocation );
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Ресурсы
 // ---------------------------------------------------------------------------------------------------------------------
@@ -113,7 +148,29 @@ struct VertexElement
 class Buffer
 {
 public:
-	bool valid() const { return m_buffer != nullptr || ring(); }
+	Buffer() = default;
+	Buffer( const Buffer& ) = delete;
+	Buffer& operator=( const Buffer& ) = delete;
+	Buffer( Buffer&& other ) noexcept { *this = std::move( other ); }
+	Buffer& operator=( Buffer&& other ) noexcept
+	{
+		if( this != &other )
+		{
+			reset();
+			m_resource = std::move( other.m_resource );
+			m_allocation = other.m_allocation;
+			other.m_allocation = nullptr;
+			m_desc = other.m_desc;
+			m_gpuAddress = other.m_gpuAddress;
+			m_ringOffset = other.m_ringOffset;
+			m_ringBytes = other.m_ringBytes;
+			m_copyFence = other.m_copyFence;
+		}
+		return *this;
+	}
+	~Buffer() { reset(); }
+
+	bool valid() const { return m_resource != nullptr || ring(); }
 	const BufferDesc& desc() const { return m_desc; }
 	uint32_t size() const { return m_desc.size; }
 	// Константы, которые пишут каждый кадр (BufferUsage::constant | cpuWrite): своего ресурса нет, данные — участок
@@ -127,144 +184,269 @@ public:
 		m_ringBytes = bytes;
 	}
 
-	ID3D11Buffer* handle() const { return m_buffer.get(); }
-	void reset( ID3D11Buffer* buffer = nullptr, const BufferDesc& desc = {} )
+	ID3D12Resource* handle() const { return m_resource.get(); }
+	D3D12_GPU_VIRTUAL_ADDRESS gpuAddress() const { return m_gpuAddress; }
+	// Значение fence кадра, в котором в буфер (readback) копировали: readBuffer читает, когда он пройден
+	uint64_t copyFence() const { return m_copyFence; }
+	void setCopyFence( uint64_t fence ) { m_copyFence = fence; }
+	void reset( ID3D12Resource* resource = nullptr, D3D12MA::Allocation* allocation = nullptr, const BufferDesc& desc = {} )
 	{
-		m_buffer.reset( buffer );
+		m_resource.reset( resource );
+		gpuReleaseAllocation( m_allocation );
+		m_allocation = allocation;
 		m_desc = desc;
+		m_gpuAddress = resource ? resource->GetGPUVirtualAddress() : 0;
 		m_ringOffset = m_ringBytes = 0;
+		m_copyFence = 0;
 	}
 
 private:
-	com_unique_ptr<ID3D11Buffer> m_buffer;
+	com_unique_ptr<ID3D12Resource> m_resource;
+	D3D12MA::Allocation* m_allocation = nullptr;
 	BufferDesc m_desc;
+	D3D12_GPU_VIRTUAL_ADDRESS m_gpuAddress = 0;
 	uint32_t m_ringOffset = 0;
 	uint32_t m_ringBytes = 0;
+	uint64_t m_copyFence = 0;
 };
 
 class Texture
 {
 public:
+	Texture() = default;
+	Texture( const Texture& ) = delete;
+	Texture& operator=( const Texture& ) = delete;
+	Texture( Texture&& other ) noexcept { *this = std::move( other ); }
+	Texture& operator=( Texture&& other ) noexcept
+	{
+		if( this != &other )
+		{
+			reset();
+			m_resource = std::move( other.m_resource );
+			m_allocation = other.m_allocation;
+			other.m_allocation = nullptr;
+			m_desc = other.m_desc;
+		}
+		return *this;
+	}
+	~Texture() { reset(); }
+
 	bool valid() const { return m_resource != nullptr; }
 	const TextureDesc& desc() const { return m_desc; }
 	uint32_t width() const { return m_desc.width; }
 	uint32_t height() const { return m_desc.height; }
 	uint32_t mipCount() const { return m_desc.mipCount; }
 
-	ID3D11Resource* handle() const { return m_resource.get(); }
-	void reset( ID3D11Resource* resource = nullptr, const TextureDesc& desc = {} )
+	ID3D12Resource* handle() const { return m_resource.get(); }
+	void reset( ID3D12Resource* resource = nullptr, D3D12MA::Allocation* allocation = nullptr, const TextureDesc& desc = {} )
 	{
 		m_resource.reset( resource );
+		gpuReleaseAllocation( m_allocation );
+		m_allocation = allocation;
 		m_desc = desc;
 	}
 
 private:
-	com_unique_ptr<ID3D11Resource> m_resource;
+	com_unique_ptr<ID3D12Resource> m_resource;
+	D3D12MA::Allocation* m_allocation = nullptr;
 	TextureDesc m_desc;
 };
 
-// Вид для чтения в шейдере (SRV). Виды помнят свой ресурс: по нему DMD3D::beginPass снимает со входов виды того,
-// во что проход пишет (в D3D12 — состояние ресурса для барьеров)
+// Вид для чтения в шейдере (SRV): постоянный дескриптор в shader-visible куче, его номер — индекс в таблице привязок
+// вызова (Shaders/bindless.sh). Вид помнит ресурс и подресурсы — по ним DMD3D ставит барьеры
 class ShaderView
 {
 public:
-	bool valid() const { return m_view != nullptr; }
-
-	ID3D11ShaderResourceView* handle() const { return m_view.get(); }
-	ID3D11Resource* resource() const { return m_resource; }
-	void reset( ID3D11ShaderResourceView* view = nullptr, ID3D11Resource* resource = nullptr )
+	ShaderView() = default;
+	ShaderView( const ShaderView& ) = delete;
+	ShaderView& operator=( const ShaderView& ) = delete;
+	ShaderView( ShaderView&& other ) noexcept { *this = std::move( other ); }
+	ShaderView& operator=( ShaderView&& other ) noexcept
 	{
-		m_view.reset( view );
+		if( this != &other )
+		{
+			reset();
+			m_descriptor = other.m_descriptor;
+			m_resource = other.m_resource;
+			m_range = other.m_range;
+			other.m_descriptor = {};
+			other.m_resource = nullptr;
+		}
+		return *this;
+	}
+	~ShaderView() { reset(); }
+
+	bool valid() const { return m_descriptor.valid(); }
+	const Descriptor& descriptor() const { return m_descriptor; }
+	uint32_t index() const { return m_descriptor.index; }
+	ID3D12Resource* resource() const { return m_resource; }
+	const SubresourceRange& range() const { return m_range; }
+	void reset()
+	{
+		if( m_descriptor.valid() )
+			gpuFreeShaderDescriptor( m_descriptor );
+		m_descriptor = {};
+		m_resource = nullptr;
+		m_range = {};
+	}
+	void reset( const Descriptor& descriptor, ID3D12Resource* resource, const SubresourceRange& range = {} )
+	{
+		reset();
+		m_descriptor = descriptor;
 		m_resource = resource;
+		m_range = range;
 	}
 
 private:
-	com_unique_ptr<ID3D11ShaderResourceView> m_view;
-	ID3D11Resource* m_resource = nullptr;
+	Descriptor m_descriptor;
+	ID3D12Resource* m_resource = nullptr;
+	SubresourceRange m_range;
 };
 
-// Вид для записи из compute-шейдера (UAV)
+// Вид для записи из compute (UAV): дескриптор в shader-visible куче и его копия в CPU-куче — ClearUnorderedAccessView
+// требует оба
 class StorageView
 {
 public:
-	bool valid() const { return m_view != nullptr; }
-
-	ID3D11UnorderedAccessView* handle() const { return m_view.get(); }
-	ID3D11Resource* resource() const { return m_resource; }
-	void reset( ID3D11UnorderedAccessView* view = nullptr, ID3D11Resource* resource = nullptr )
+	StorageView() = default;
+	StorageView( const StorageView& ) = delete;
+	StorageView& operator=( const StorageView& ) = delete;
+	StorageView( StorageView&& other ) noexcept { *this = std::move( other ); }
+	StorageView& operator=( StorageView&& other ) noexcept
 	{
-		m_view.reset( view );
+		if( this != &other )
+		{
+			reset();
+			m_descriptor = other.m_descriptor;
+			m_clearDescriptor = other.m_clearDescriptor;
+			m_resource = other.m_resource;
+			m_range = other.m_range;
+			other.m_descriptor = {};
+			other.m_clearDescriptor = {};
+			other.m_resource = nullptr;
+		}
+		return *this;
+	}
+	~StorageView() { reset(); }
+
+	bool valid() const { return m_descriptor.valid(); }
+	const Descriptor& descriptor() const { return m_descriptor; }
+	const Descriptor& clearDescriptor() const { return m_clearDescriptor; }
+	uint32_t index() const { return m_descriptor.index; }
+	ID3D12Resource* resource() const { return m_resource; }
+	const SubresourceRange& range() const { return m_range; }
+	void reset()
+	{
+		if( m_descriptor.valid() )
+			gpuFreeShaderDescriptor( m_descriptor );
+		if( m_clearDescriptor.valid() )
+			gpuFreeStagingDescriptor( m_clearDescriptor );
+		m_descriptor = {};
+		m_clearDescriptor = {};
+		m_resource = nullptr;
+		m_range = {};
+	}
+	void reset( const Descriptor& descriptor, const Descriptor& clearDescriptor, ID3D12Resource* resource, const SubresourceRange& range = {} )
+	{
+		reset();
+		m_descriptor = descriptor;
+		m_clearDescriptor = clearDescriptor;
 		m_resource = resource;
+		m_range = range;
 	}
 
 private:
-	com_unique_ptr<ID3D11UnorderedAccessView> m_view;
-	ID3D11Resource* m_resource = nullptr;
+	Descriptor m_descriptor;
+	Descriptor m_clearDescriptor;
+	ID3D12Resource* m_resource = nullptr;
+	SubresourceRange m_range;
 };
 
-// Цель рендера: цвет (RTV) или глубина (DSV) — по формату текстуры
+// Цель рендера: цвет (RTV) или глубина (DSV) — по формату при создании, один мип
 class TargetView
 {
 public:
-	bool valid() const { return m_color != nullptr || m_depth != nullptr; }
-	bool isDepth() const { return m_depth != nullptr; }
+	TargetView() = default;
+	TargetView( const TargetView& ) = delete;
+	TargetView& operator=( const TargetView& ) = delete;
+	TargetView( TargetView&& other ) noexcept { *this = std::move( other ); }
+	TargetView& operator=( TargetView&& other ) noexcept
+	{
+		if( this != &other )
+		{
+			reset();
+			m_descriptor = other.m_descriptor;
+			m_depth = other.m_depth;
+			m_format = other.m_format;
+			m_resource = other.m_resource;
+			m_range = other.m_range;
+			other.m_descriptor = {};
+			other.m_resource = nullptr;
+		}
+		return *this;
+	}
+	~TargetView() { reset(); }
 
-	ID3D11RenderTargetView* color() const { return m_color.get(); }
-	ID3D11DepthStencilView* depth() const { return m_depth.get(); }
-	ID3D11Resource* resource() const { return m_resource; }
-	void reset( ID3D11RenderTargetView* color, ID3D11Resource* resource = nullptr )
-	{
-		m_color.reset( color );
-		m_depth.reset();
-		m_resource = resource;
-	}
-	void reset( ID3D11DepthStencilView* depth, ID3D11Resource* resource = nullptr )
-	{
-		m_depth.reset( depth );
-		m_color.reset();
-		m_resource = resource;
-	}
+	bool valid() const { return m_descriptor.valid(); }
+	bool isDepth() const { return m_depth; }
+	D3D12_CPU_DESCRIPTOR_HANDLE handle() const { return m_descriptor.cpu; }
+	DXGI_FORMAT format() const { return m_format; }
+	ID3D12Resource* resource() const { return m_resource; }
+	const SubresourceRange& range() const { return m_range; }
 	void reset()
 	{
-		m_color.reset();
-		m_depth.reset();
+		if( m_descriptor.valid() )
+			gpuFreeTargetDescriptor( m_descriptor, m_depth );
+		m_descriptor = {};
 		m_resource = nullptr;
+		m_format = DXGI_FORMAT_UNKNOWN;
+		m_range = {};
+	}
+	void reset( const Descriptor& descriptor, bool depth, DXGI_FORMAT format, ID3D12Resource* resource, const SubresourceRange& range = {} )
+	{
+		reset();
+		m_descriptor = descriptor;
+		m_depth = depth;
+		m_format = format;
+		m_resource = resource;
+		m_range = range;
 	}
 
 private:
-	com_unique_ptr<ID3D11RenderTargetView> m_color;
-	com_unique_ptr<ID3D11DepthStencilView> m_depth;
-	ID3D11Resource* m_resource = nullptr;
+	Descriptor m_descriptor;
+	bool m_depth = false;
+	DXGI_FORMAT m_format = DXGI_FORMAT_UNKNOWN;
+	ID3D12Resource* m_resource = nullptr;
+	SubresourceRange m_range;
 };
 
-// Скомпилированный шейдер одной стадии (в D3D12 станет частью PSO, шаг A4)
+// Скомпилированная стадия шейдера — байткод; объект состояния из него собирает пайплайн (GpuPipeline.h)
 class ShaderStage
 {
 public:
-	bool valid() const { return m_shader != nullptr; }
+	bool valid() const { return !m_bytecode.empty(); }
 	SRVType type() const { return m_type; }
-
-	ID3D11DeviceChild* handle() const { return m_shader.get(); }
-	void reset( SRVType type, ID3D11DeviceChild* shader )
+	const void* data() const { return m_bytecode.data(); }
+	size_t size() const { return m_bytecode.size(); }
+	void reset( SRVType type = SRVType::vs, const void* bytecode = nullptr, size_t size = 0 )
 	{
 		m_type = type;
-		m_shader.reset( shader );
+		m_bytecode.assign( static_cast<const uint8_t*>( bytecode ), static_cast<const uint8_t*>( bytecode ) + ( bytecode ? size : 0 ) );
 	}
 
 private:
 	SRVType m_type = SRVType::vs;
-	com_unique_ptr<ID3D11DeviceChild> m_shader;
+	std::vector<uint8_t> m_bytecode;
 };
 
-// Раскладка вершин, собранная под байткод вершинного шейдера
+// Раскладка вершин — часть пайплайна; байткода шейдера ей не нужно
 class InputLayout
 {
 public:
-	bool valid() const { return m_layout != nullptr; }
-
-	ID3D11InputLayout* handle() const { return m_layout.get(); }
-	void reset( ID3D11InputLayout* layout = nullptr ) { m_layout.reset( layout ); }
+	bool valid() const { return !m_elements.empty(); }
+	const std::vector<VertexElement>& elements() const { return m_elements; }
+	void reset( const std::vector<VertexElement>& elements = {} ) { m_elements = elements; }
 
 private:
-	com_unique_ptr<ID3D11InputLayout> m_layout;
+	std::vector<VertexElement> m_elements;
 };

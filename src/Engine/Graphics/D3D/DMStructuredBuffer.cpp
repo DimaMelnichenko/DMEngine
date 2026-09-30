@@ -1,5 +1,7 @@
 #include "DMStructuredBuffer.h"
 #include <stdexcept>
+#include <algorithm>
+#include <cstring>
 
 DMStructuredBuffer::DMStructuredBuffer( )
 {
@@ -29,13 +31,10 @@ void DMStructuredBuffer::updateData( const void* data, size_t sizeInByte )
 {
 	sizeInByte = std::min( sizeInByte, m_sizeOfElement * m_countElements );
 
-	D3D11_MAPPED_SUBRESOURCE mappedData = {};
-	if( FAILED( DMD3D::instance().GetDeviceContext()->Map( m_buffer.handle(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData ) ) )
-		return;
-
-	std::memcpy( mappedData.pData, data, sizeInByte );
-
-	DMD3D::instance().GetDeviceContext()->Unmap( m_buffer.handle(), 0 );
+	// Данные кадра — в участок upload-кольца (DMD3D::beginWrite), вид читает его этот кадр
+	if( void* mapped = DMD3D::instance().beginWrite( m_buffer, static_cast<uint32_t>( sizeInByte ) ) )
+		std::memcpy( mapped, data, sizeInByte );
+	DMD3D::instance().endWrite();
 }
 
 void DMStructuredBuffer::setToSlot( int8_t slot, SRVType type )

@@ -4,10 +4,14 @@
 				Initialize logger
 
 
-func:DMD3D::Initialize, line:84|Video adapter: NVIDIA GeForce RTX 4070 Ti, dedicated memory 11994 MB
-func:DMD3D::createDeviceSwapChain, line:250|Swap chain: flip model, 2 buffers, feature level 11.1, tearing allowed, frame latency waitable object, constant ring 4096 KB
-func:DMD3D::createDeviceSwapChain, line:256|D3D11 debug layer is enabled, its messages are written to this log
-func:GS::DMGraphics::Initialize, line:63|Initialize the Direct3D object ms: 85.023000
+func:DMD3D::selectAdapter, line:141|Video adapter: NVIDIA GeForce RTX 4070 Ti, dedicated memory 11994 MB
+func:DMD3D::createDevice, line:243|D3D12 device: Agility SDK 619, feature level 12_0, shader model 6.6, resource binding tier 3, enhanced barriers, no GPU upload heaps
+func:DMD3D::createSwapChain, line:428|Swap chain: flip model, 2 buffers, tearing allowed, frame latency waitable object, 2 frames in flight, constant ring 4096 KB per frame
+func:DMD3D::Initialize, line:86|D3D12 backend: veha M1 — device, frame, swap chain; resources, shaders, drawing are not implemented yet
+func:GS::DMGraphics::Initialize, line:63|Initialize the Direct3D object ms: 185.258000
+func:GpuImages::`anonymous-namespace'::notImplemented, line:17|GpuImages::createTexture is not implemented yet (D3D12 port, veha M2)
+func:DMD3D::notImplemented, line:851|DMD3D::createTexture is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::createShaderView( Texture ) is not implemented yet (D3D12 port in progress)
 func:GS::Scene::loadResources, line:23|Load materials
 func:LibraryLoader::loadMaterial, line:87|Load material: 1
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\color.vs
@@ -34,113 +38,10 @@ func:LibraryLoader::loadShader, line:218|Load shader: Shaders\PBRLit.ps
 func:LibraryLoader::loadMaterial, line:87|Load material: 13
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\PBRLit.ps
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\LightShader.vs
-func:GS::Scene::loadResources, line:27|Load material for ms: 778.285000
-func:GS::Scene::loadResources, line:31|Level: Test
+func:GS::Scene::loadResources, line:27|Load material for ms: 1287.925000
+func:GS::Scene::loadResources, line:31|Level: Empty
 func:GS::Scene::loadResources, line:33|Load models
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 1
-func:LibraryLoader::loadMesh, line:232|Load mesh: 13
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 8
-func:LibraryLoader::loadMesh, line:232|Load mesh: 2
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 9
-func:LibraryLoader::loadMesh, line:232|Load mesh: 12
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 10
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 12
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 13
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 14
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 15
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 16
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 17
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 18
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 19
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 20
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 21
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 22
-func:LibraryLoader::loadMesh, line:232|Load mesh: 14
-func:LibraryLoader::loadMesh, line:232|Load mesh: 15
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 23
-func:LibraryLoader::loadMesh, line:232|Load mesh: 16
-func:LibraryLoader::loadMesh, line:232|Load mesh: 72
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 45
-func:LibraryLoader::loadMesh, line:232|Load mesh: 73
-func:LibraryLoader::loadMesh, line:232|Load mesh: 74
-func:LibraryLoader::loadMesh, line:232|Load mesh: 75
-func:LibraryLoader::loadMesh, line:232|Load mesh: 76
-func:LibraryLoader::loadMesh, line:232|Load mesh: 77
-func:LibraryLoader::loadMesh, line:232|Load mesh: 78
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 46
-func:LibraryLoader::loadMesh, line:232|Load mesh: 79
-func:LibraryLoader::loadMesh, line:232|Load mesh: 80
-func:LibraryLoader::loadMesh, line:232|Load mesh: 81
-func:LibraryLoader::loadMesh, line:232|Load mesh: 82
-func:LibraryLoader::loadMesh, line:232|Load mesh: 83
-func:LibraryLoader::loadMesh, line:232|Load mesh: 84
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 47
-func:LibraryLoader::loadMesh, line:232|Load mesh: 85
-func:LibraryLoader::loadMesh, line:232|Load mesh: 86
-func:LibraryLoader::loadMesh, line:232|Load mesh: 87
-func:LibraryLoader::loadMesh, line:232|Load mesh: 88
-func:LibraryLoader::loadMesh, line:232|Load mesh: 89
-func:LibraryLoader::loadMesh, line:232|Load mesh: 90
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 25
-func:LibraryLoader::loadMesh, line:232|Load mesh: 18
-func:LibraryLoader::loadMesh, line:232|Load mesh: 19
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 30
-func:LibraryLoader::loadMesh, line:232|Load mesh: 30
-func:LibraryLoader::loadMesh, line:232|Load mesh: 31
-func:LibraryLoader::loadMesh, line:232|Load mesh: 32
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 29
-func:LibraryLoader::loadMesh, line:232|Load mesh: 27
-func:LibraryLoader::loadMesh, line:232|Load mesh: 28
-func:LibraryLoader::loadMesh, line:232|Load mesh: 29
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 31
-func:LibraryLoader::loadMesh, line:232|Load mesh: 33
-func:LibraryLoader::loadMesh, line:232|Load mesh: 34
-func:LibraryLoader::loadMesh, line:232|Load mesh: 35
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 33
-func:LibraryLoader::loadMesh, line:232|Load mesh: 39
-func:LibraryLoader::loadMesh, line:232|Load mesh: 40
-func:LibraryLoader::loadMesh, line:232|Load mesh: 41
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 36
-func:LibraryLoader::loadMesh, line:232|Load mesh: 48
-func:LibraryLoader::loadMesh, line:232|Load mesh: 49
-func:LibraryLoader::loadMesh, line:232|Load mesh: 50
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 34
-func:LibraryLoader::loadMesh, line:232|Load mesh: 42
-func:LibraryLoader::loadMesh, line:232|Load mesh: 43
-func:LibraryLoader::loadMesh, line:232|Load mesh: 44
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 35
-func:LibraryLoader::loadMesh, line:232|Load mesh: 45
-func:LibraryLoader::loadMesh, line:232|Load mesh: 46
-func:LibraryLoader::loadMesh, line:232|Load mesh: 47
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 37
-func:LibraryLoader::loadMesh, line:232|Load mesh: 51
-func:LibraryLoader::loadMesh, line:232|Load mesh: 52
-func:LibraryLoader::loadMesh, line:232|Load mesh: 53
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 38
-func:LibraryLoader::loadMesh, line:232|Load mesh: 54
-func:LibraryLoader::loadMesh, line:232|Load mesh: 55
-func:LibraryLoader::loadMesh, line:232|Load mesh: 56
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 39
-func:LibraryLoader::loadMesh, line:232|Load mesh: 57
-func:LibraryLoader::loadMesh, line:232|Load mesh: 58
-func:LibraryLoader::loadMesh, line:232|Load mesh: 59
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 40
-func:LibraryLoader::loadMesh, line:232|Load mesh: 60
-func:LibraryLoader::loadMesh, line:232|Load mesh: 61
-func:LibraryLoader::loadMesh, line:232|Load mesh: 62
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 41
-func:LibraryLoader::loadMesh, line:232|Load mesh: 63
-func:LibraryLoader::loadMesh, line:232|Load mesh: 64
-func:LibraryLoader::loadMesh, line:232|Load mesh: 65
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 42
-func:LibraryLoader::loadMesh, line:232|Load mesh: 66
-func:LibraryLoader::loadMesh, line:232|Load mesh: 67
-func:LibraryLoader::loadMesh, line:232|Load mesh: 68
-func:LibraryLoader::loadModelWithLOD, line:766|Load model: 43
-func:LibraryLoader::loadMesh, line:232|Load mesh: 69
-func:LibraryLoader::loadMesh, line:232|Load mesh: 70
-func:LibraryLoader::loadMesh, line:232|Load mesh: 71
-func:GS::Scene::loadResources, line:56|Load models for ms: 99.166000
+func:GS::Scene::loadResources, line:56|Load models for ms: 0.000000
 func:GS::Scene::loadResources, line:58|Load textures
 func:LibraryLoader::loadAllTextures, line:25|Load all textures
 func:LibraryLoader::loadTextures, line:53|Can`t load texture no_image (no_image.dds), placeholder is used
@@ -149,7 +50,7 @@ func:LibraryLoader::loadTextures, line:53|Can`t load texture WaterPlain (WaterPl
 func:LibraryLoader::loadTextures, line:53|Can`t load texture sky3 (VizPeople_non_commercial_hdr_v1_05.dds), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_tex (materials\blocksrough_basecolor_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_shiness (materials\blocksrough_basecolor_2048.png), placeholder is used
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 7, name = t_heightmap, file = terrain\heightmap.dds
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 7, name = t_heightmap, file = terrain\heightmap.dds
 func:LibraryLoader::loadTextures, line:53|Can`t load texture Cliffs (Cliffs.jpg), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture sand (sand.jpg), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture FoilageMap (FoilageMap.dds), placeholder is used
@@ -161,84 +62,81 @@ func:LibraryLoader::loadTextures, line:53|Can`t load texture grass2.dds (grass2.
 func:LibraryLoader::loadTextures, line:53|Can`t load texture oduvanchik (oduvanchik.png), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture alpha03 (alpha03.dds), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture default_gloss (default_gloss.png), placeholder is used
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 4; id = 27, name = mask_grass, file = terrain\mask_grass.dds
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 28, name = mask_camomile, file = terrain\mask_camomile.dds
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 27, name = mask_grass, file = terrain\mask_grass.dds
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 28, name = mask_camomile, file = terrain\mask_camomile.dds
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_normal (materials\blocksrough_normal_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_height (materials\blocksrough_height_2048.png), placeholder is used
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 1; id = 45, name = mask_pebbles, file = terrain\mask_pebbles.dds
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 163; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 135; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 45, name = mask_pebbles, file = terrain\mask_pebbles.dds
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 33; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 31; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 1; id = 48, name = test_models_PanelNormal, file = models\test_models\PanelNormal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 36; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 51, name = grass_medium_01_grass_medium_01_BaseColor, file = models\grass_medium_01\grass_medium_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 8; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 51, name = grass_medium_01_grass_medium_01_BaseColor, file = models\grass_medium_01\grass_medium_01_BaseColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 52, name = grass_medium_01_grass_medium_01_MetallicRoughness, file = models\grass_medium_01\grass_medium_01_MetallicRoughness.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 53, name = grass_medium_01_grass_medium_01_Normal, file = models\grass_medium_01\grass_medium_01_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 594; id = 54, name = dandelion_01_dandelion_01_BaseColor, file = models\dandelion_01\dandelion_01_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 101; id = 55, name = dandelion_01_dandelion_01_MetallicRoughness, file = models\dandelion_01\dandelion_01_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 91; id = 56, name = dandelion_01_dandelion_01_Normal, file = models\dandelion_01\dandelion_01_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 590; id = 57, name = rock_moss_set_01_rock_moss_set_01_BaseColor, file = models\rock_moss_set_01\rock_moss_set_01_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 67; id = 58, name = rock_moss_set_01_rock_moss_set_01_MetallicRoughness, file = models\rock_moss_set_01\rock_moss_set_01_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 84; id = 59, name = rock_moss_set_01_rock_moss_set_01_Normal, file = models\rock_moss_set_01\rock_moss_set_01_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 161; id = 54, name = dandelion_01_dandelion_01_BaseColor, file = models\dandelion_01\dandelion_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 70; id = 55, name = dandelion_01_dandelion_01_MetallicRoughness, file = models\dandelion_01\dandelion_01_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 81; id = 56, name = dandelion_01_dandelion_01_Normal, file = models\dandelion_01\dandelion_01_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 145; id = 57, name = rock_moss_set_01_rock_moss_set_01_BaseColor, file = models\rock_moss_set_01\rock_moss_set_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 63; id = 58, name = rock_moss_set_01_rock_moss_set_01_MetallicRoughness, file = models\rock_moss_set_01\rock_moss_set_01_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 72; id = 59, name = rock_moss_set_01_rock_moss_set_01_Normal, file = models\rock_moss_set_01\rock_moss_set_01_Normal.png
 func:LibraryLoader::loadTextures, line:53|Can`t load texture moon_albedo (sky\moon\lroc_color_poles_1k.jpg), placeholder is used
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 154; id = 61, name = fir_fir_tree_01_bark_BaseColor, file = models\fir\fir_tree_01_bark_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 22; id = 62, name = fir_fir_tree_01_bark_MetallicRoughness, file = models\fir\fir_tree_01_bark_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 31; id = 63, name = fir_fir_tree_01_bark_Normal, file = models\fir\fir_tree_01_bark_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 146; id = 64, name = fir_fir_tree_01_twig_BaseColor, file = models\fir\fir_tree_01_twig_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 18; id = 65, name = fir_fir_tree_01_twig_MetallicRoughness, file = models\fir\fir_tree_01_twig_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 35; id = 61, name = fir_fir_tree_01_bark_BaseColor, file = models\fir\fir_tree_01_bark_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 21; id = 62, name = fir_fir_tree_01_bark_MetallicRoughness, file = models\fir\fir_tree_01_bark_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 30; id = 63, name = fir_fir_tree_01_bark_Normal, file = models\fir\fir_tree_01_bark_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 42; id = 64, name = fir_fir_tree_01_twig_BaseColor, file = models\fir\fir_tree_01_twig_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 19; id = 65, name = fir_fir_tree_01_twig_MetallicRoughness, file = models\fir\fir_tree_01_twig_MetallicRoughness.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 20; id = 66, name = fir_fir_tree_01_twig_Normal, file = models\fir\fir_tree_01_twig_Normal.png
-func:GS::Scene::loadResources, line:70|Load textures for ms: 2282.444000
+func:GS::Scene::loadResources, line:70|Load textures for ms: 846.486000
+func:DMD3D::notImplemented, line:851|DMD3D::createBuffer is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::createTargetView is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::createStorageView( Buffer ) is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::createShaderView( Buffer ) is not implemented yet (D3D12 port in progress)
 func:GS::Renderer::warmPipelines, line:130|Pipelines after warm-up: 826
 func:GS::DMGraphics::Initialize, line:89|Create main camera
 func:GS::Scene::initialize, line:77|Create light driver
-func:DMLightDriver::load, line:76|Sun position: elevation 35.269276, azimuth 135.141678
-func:DMLightDriver::load, line:88|Moon: elevation 12.302816, azimuth 205.258469, illuminated 0.299969, 0.009111 lx
-func:DMLightDriver::load, line:97|Moon check (Meeus 47.a: 133.16, -3.23, 368410): 133.252563, -3.248484, 368334.656250
+func:GS::Scene::initialize, line:81|Level has no lights in table LevelLights, default light is used
+func:DMD3D::notImplemented, line:851|DMD3D::createStorageView( Texture ) is not implemented yet (D3D12 port in progress)
 func:GS::SkyAtmosphere::initialize, line:88|Sky atmosphere: no texture moon_albedo, the moon disk is plain
-func:GS::CDLODTerrain::initialize, line:111|CDLOD terrain: heightmap 1024, LOD levels 6
-func:GS::Scene::initialize, line:121|Terrain init ms: 256.944000
-func:GS::Scene::initialize, line:165|Scatter init ms: 96.760000
-func:GS::DMGraphics::Initialize, line:128|Total init ms: 4410.458000
+func:GS::Scene::initialize, line:165|Scatter init ms: 0.000000
+func:GS::DMGraphics::Initialize, line:128|Total init ms: 3282.505000
 func:GS::RemoteControlServer::start, line:54|Remote control: listening on \\.\pipe\DMEngine
-func:GS::RemoteControlServer::poll, line:78|Remote control: camera 512,90,150,20,0
-func:GS::RemoteControlServer::poll, line:78|Remote control: wait 3
-func:GS::RemoteControlServer::poll, line:78|Remote control: camera 530,12.8,250,8,210
-func:GS::RemoteControlServer::poll, line:78|Remote control: key Q
-func:GS::RemoteControlServer::poll, line:78|Remote control: wait 2
-func:GS::RemoteControlServer::poll, line:78|Remote control: key Q
+func:DMD3D::notImplemented, line:851|DMD3D::beginWrite( structured ) is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::setSRV is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::setConstantBuffer is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::setPipeline is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::draw is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::setUAV is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::dispatch is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::setVertexBuffers is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::setIndexBuffer is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::clearStorageView is not implemented yet (D3D12 port in progress)
+func:DMD3D::notImplemented, line:851|DMD3D::copyBuffer is not implemented yet (D3D12 port in progress)
 func:GS::RemoteControlServer::poll, line:78|Remote control: passes
+func:DMD3D::EndScene, line:677|Frame passes: 21
+func:DMD3D::EndScene, line:679|  0. Sky-View LUT: color[Sky-View LUT] 192x108 reads[multiple scattering LUT] reads[transmittance LUT]
+func:DMD3D::EndScene, line:679|  1. Aerial perspective volume: compute reads[multiple scattering LUT] reads[transmittance LUT] writes[aerial perspective volume]
+func:DMD3D::EndScene, line:679|  2. Scene clear: color[scene color] depth[scene depth] 1920x1080
+func:DMD3D::EndScene, line:679|  3. Pass depth prepass: depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
+func:DMD3D::EndScene, line:679|  4. Pass opaque: color[scene color] depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
+func:DMD3D::EndScene, line:679|  5. Pass sky: color[scene color] depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
+func:DMD3D::EndScene, line:679|  6. Pass transparent: color[scene color] depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
+func:DMD3D::EndScene, line:679|  7. Exposure histogram: compute reads[scene color] reads[exposure] writes[histogram]
+func:DMD3D::EndScene, line:679|  8. Exposure adapt: compute reads[histogram] writes[exposure]
+func:DMD3D::EndScene, line:679|  9. Bloom downsample: color[bloom level] 960x540 reads[source]
+func:DMD3D::EndScene, line:679|  10. Bloom downsample: color[bloom level] 480x270 reads[source]
+func:DMD3D::EndScene, line:679|  11. Bloom downsample: color[bloom level] 240x135 reads[source]
+func:DMD3D::EndScene, line:679|  12. Bloom downsample: color[bloom level] 120x67 reads[source]
+func:DMD3D::EndScene, line:679|  13. Bloom downsample: color[bloom level] 60x33 reads[source]
+func:DMD3D::EndScene, line:679|  14. Bloom downsample: color[bloom level] 30x16 reads[source]
+func:DMD3D::EndScene, line:679|  15. Bloom upsample: color[bloom level] 60x33 reads[source]
+func:DMD3D::EndScene, line:679|  16. Bloom upsample: color[bloom level] 120x67 reads[source]
+func:DMD3D::EndScene, line:679|  17. Bloom upsample: color[bloom level] 240x135 reads[source]
+func:DMD3D::EndScene, line:679|  18. Bloom upsample: color[bloom level] 480x270 reads[source]
+func:DMD3D::EndScene, line:679|  19. Bloom upsample: color[bloom level] 960x540 reads[source]
+func:DMD3D::EndScene, line:679|  20. Tonemap: color[back buffer] 1920x1080 reads[scene color] reads[bloom 1/2] reads[exposure]
 func:GS::RemoteControlServer::poll, line:78|Remote control: wait 3
-func:DMD3D::EndScene, line:972|Frame passes: 30
-func:DMD3D::EndScene, line:974|  0. Sky-View LUT: color[Sky-View LUT] 192x108 reads[multiple scattering LUT] reads[transmittance LUT]
-func:DMD3D::EndScene, line:974|  1. Sky-View LUT (moon): color[Sky-View moon LUT] 192x108 reads[multiple scattering LUT] reads[transmittance LUT]
-func:DMD3D::EndScene, line:974|  2. Aerial perspective volume: compute reads[multiple scattering LUT] reads[transmittance LUT] writes[aerial perspective volume]
-func:DMD3D::EndScene, line:974|  3. Scatter layer: compute reads[height map] reads[density mask] writes[indirect args] writes[instances] writes[LOD transition instances]
-func:DMD3D::EndScene, line:974|  4. Scatter layer: compute reads[height map] reads[density mask] writes[indirect args] writes[instances] writes[LOD transition instances]
-func:DMD3D::EndScene, line:974|  5. Scatter layer: compute reads[height map] reads[density mask] writes[indirect args] writes[instances] writes[LOD transition instances]
-func:DMD3D::EndScene, line:974|  6. Shadow cascade: depth[shadow map] 2048x2048
-func:DMD3D::EndScene, line:974|  7. Shadow cascade: depth[shadow map] 2048x2048
-func:DMD3D::EndScene, line:974|  8. Shadow cascade: depth[shadow map] 2048x2048
-func:DMD3D::EndScene, line:974|  9. Shadow cascade: depth[shadow map] 2048x2048
-func:DMD3D::EndScene, line:974|  10. Scene clear: color[scene color] depth[scene depth] 1920x1080
-func:DMD3D::EndScene, line:974|  11. Pass depth prepass: depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
-func:DMD3D::EndScene, line:974|  12. Pass opaque: color[scene color] depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
-func:DMD3D::EndScene, line:974|  13. Pass sky: color[scene color] depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
-func:DMD3D::EndScene, line:974|  14. Pass transparent: color[scene color] depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
-func:DMD3D::EndScene, line:974|  15. Exposure histogram: compute reads[scene color] reads[exposure] writes[histogram]
-func:DMD3D::EndScene, line:974|  16. Exposure adapt: compute reads[histogram] writes[exposure]
-func:DMD3D::EndScene, line:974|  17. Bloom downsample: color[bloom level] 960x540 reads[source]
-func:DMD3D::EndScene, line:974|  18. Bloom downsample: color[bloom level] 480x270 reads[source]
-func:DMD3D::EndScene, line:974|  19. Bloom downsample: color[bloom level] 240x135 reads[source]
-func:DMD3D::EndScene, line:974|  20. Bloom downsample: color[bloom level] 120x67 reads[source]
-func:DMD3D::EndScene, line:974|  21. Bloom downsample: color[bloom level] 60x33 reads[source]
-func:DMD3D::EndScene, line:974|  22. Bloom downsample: color[bloom level] 30x16 reads[source]
-func:DMD3D::EndScene, line:974|  23. Bloom upsample: color[bloom level] 60x33 reads[source]
-func:DMD3D::EndScene, line:974|  24. Bloom upsample: color[bloom level] 120x67 reads[source]
-func:DMD3D::EndScene, line:974|  25. Bloom upsample: color[bloom level] 240x135 reads[source]
-func:DMD3D::EndScene, line:974|  26. Bloom upsample: color[bloom level] 480x270 reads[source]
-func:DMD3D::EndScene, line:974|  27. Bloom upsample: color[bloom level] 960x540 reads[source]
-func:DMD3D::EndScene, line:974|  28. Tonemap: color[back buffer] 1920x1080 reads[scene color] reads[bloom 1/2] reads[exposure]
-func:DMD3D::EndScene, line:974|  29. GUI: color[back buffer] 1920x1080
 func:GS::RemoteControlServer::poll, line:78|Remote control: quit
 
 

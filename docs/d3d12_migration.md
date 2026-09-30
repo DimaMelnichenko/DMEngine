@@ -220,7 +220,7 @@ bindless), путь MSAA (`MSAACount`, `ResolveSubresource` в `sceneColor`: п�
   проверка против `GenerateMips` до пикселя возможна только сейчас); `ScatterPass::resetArgs` — копия из GPU-буфера
   начальных аргументов (`copyBuffer`, буфер обновляется только когда меняются секции); `ReadbackRing<T>`
   (`D3D/ReadbackRing.h`) для экспозиции. Проверка: контрольные камеры ±1, GPU не хуже, debug-слой D3D11 молчит.
-- **M1. Зависимости и каркас.** CMake: `FetchContent` для Agility SDK, DirectX-Headers, DXC, D3D12MA,
+- **M1. Зависимости и каркас — сделано 2026-09-30** (итог — «Сделано» в `TODO.md`). CMake: `FetchContent` для Agility SDK, DirectX-Headers, DXC, D3D12MA,
   WinPixEventRuntime; DirectXTex `BUILD_DX12`; копирование DLL рядом с exe после сборки; экспорт `D3D12SDKVersion` /
   `D3D12SDKPath`; ImGui 1.92 с `imgui_impl_dx12`. Устройство на выбранном адаптере (код A1), очереди, swap chain, fence,
   `FrameResources`, кучи RTV / DSV / `CBV_SRV_UAV`, debug-слой + GPU-based validation + `InfoQueue1` + DRED. Остальные
@@ -291,6 +291,8 @@ M5 — одна.
   `Tools\build.cmd release`, `python Tools/engine.py start --config Release --nogui --nowind` и снимки четырёх камер в
   `DownloadResources\reference\d3d11\` (не в git). Ресурсы (`Textures\`, `Meshes\`, `base.db3`) у обеих сборок должны быть
   одни и те же — копировать или ссылаться, иначе кадры несравнимы.
+- **Уровень `Empty`** (`base.db3`, без террейна и объектов) — проверка каркаса кадра, пока сцена не рисуется (M1–M3):
+  `run.ps1 -Level Empty`, `engine.py start --level Empty`.
 - **Контрольные камеры** у земли нынешней долины: обзор `512,90,150,20,0`, у шаров `500,20,215,4,5`, в траве
   `530,12.8,250,8,210`, у рощи `480,12.6,320,3,0`. Снимки — задний буфер 1920 × 1080 (`engine.py screenshot` при
   `start --nogui --nowind`), сравнение — `Tools/compare_frames.py` (два файла или две папки, `--tolerance 1`, `--diff`).

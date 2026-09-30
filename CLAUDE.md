@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Проект
 
-DMEngine — самописный 3D-движок на C++17 / Direct3D 11 под Windows (Win32-окно, DirectInput, ImGui).
+DMEngine — самописный 3D-движок на C++17 / Direct3D 12 под Windows (Win32-окно, DirectInput, ImGui). Бэкенд
+переписывается с D3D11 на D3D12 по вехам M1–M5 (`docs/d3d12_migration.md`): до вехи M4 движок рисует только очистку и GUI,
+рабочий D3D11 — коммит `6a8cd3d`.
 Сейчас в основном используется как полигон для рендеринга: террейн (CDLOD),
 небо, расстановка травы и декора (compute + indirect draw), частицы.
 
@@ -33,8 +35,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
 - Проект только на CMake (`CMakeLists.txt`), только MSVC x64. CLion (toolchain Visual Studio, amd64, Ninja) и
   Visual Studio открывают его напрямую. DirectXTex (тег `may2026`), SQLiteCpp (тег `3.3.3`, со встроенным sqlite3)
   и tinyexr (тег `v1.0.13`, чтение `.exr`; свой CMake не берётся — библиотека из `tinyexr.cc` и miniz собирается
-  в `CMakeLists.txt`) подтягиваются через `FetchContent` при первом configure: нужны сеть и git. Остальное берётся из
-  Windows SDK.
+  в `CMakeLists.txt`), DirectX 12 Agility SDK 1.619 (пакет NuGet как zip: рантайм `D3D12Core.dll` и debug-слой копируются
+  в `D3D12\` рядом с exe, заголовки — раньше Windows SDK), DXC v1.9 (`dxcompiler.dll` и `dxil.dll` рядом с exe),
+  WinPixEventRuntime, Dear ImGui 1.92 (ядро и бэкенды Win32 / DX12 собираются в движке) и D3D12 Memory Allocator 3.2
+  подтягиваются через `FetchContent` при первом configure: нужны сеть и git. Остальное берётся из Windows SDK.
 - **Из терминала собирать только скриптом**, а не вызывать cmake вручную:
   ```
   Tools\build.cmd debug        (или release; из Git Bash: cmd //c "Tools\build.cmd debug")
@@ -77,10 +81,12 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 11 по�
   в последних коммитах, это временно выключенные фичи. Например, закомментированные `GUI::renderSceneObject`
   и тело `LibraryLoader::save`. Не удаляйте такой код без согласования: сначала проверьте `git blame`, когда его
   выключили.
-- Debug-сборка создаёт устройство с debug-слоем D3D11 (нужен компонент Windows «Средства графики» / Graphics Tools;
-  без него — устройство без слоя и запись в лог). Ошибки и предупреждения слоя `DMD3D::logDebugMessages` после
-  каждого кадра переносит в `log.txt` (одинаковые — первые три раза): без отладчика их больше нигде не видно.
-  Release-сборка создаёт устройство без слоя.
+- Debug-сборка создаёт устройство с debug-слоем D3D12 и GPU-based validation (слой — из redist Agility SDK рядом с
+  exe, компонент Windows «Средства графики» не нужен; `GpuValidation=false` в `settings.ini` оставляет только слой,
+  когда валидация слишком медленна). Ошибки и предупреждения слоя приходят callback'ом `ID3D12InfoQueue1` и пишутся
+  в `log.txt` (одинаковые — первые три раза): без отладчика их больше нигде не видно; при потере устройства в лог
+  уходят последние команды (DRED). Release-сборка создаёт устройство без слоя. Крах в Release: смещение из журнала
+  Windows (`Get-WinEvent`, Id 1000) ищется в `DMEngine.map` рядом с exe (линкер с `/MAP`).
 - Тестов и линтера нет. Проверка изменений — сборка и запуск приложения.
 - Запускать из корня проекта: все пути относительные к рабочей папке (`settings.ini`, `base.db3`,
   `Shaders\`, `Textures\`, `Meshes\`). Для CLion это задаёт общая
@@ -208,9 +214,10 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 Логику, которая меняет состояние сцены, пишите в `SceneObject::update()`, а в `render()` оставляйте только команды GPU.
 
 **Глобальные синглтоны** — основной способ связи подсистем:
-- `DMD3D::instance()` — устройство и контекст D3D11 за фасадом. Ресурсы GPU объекты держат только непрозрачными
+- `DMD3D::instance()` — устройство D3D12 за фасадом (`Graphics/D3D/`: очереди, кадры в полёте с fence, кучи дескрипторов,
+  кольцо констант, проходы, пайплайны). Ресурсы GPU объекты держат только непрозрачными
   (`D3D/GpuResources.h`: `Buffer`, `Texture`, виды `ShaderView` / `TargetView` / `StorageView`, `ShaderStage`, `InputLayout`)
-  и создают по описаниям без типов D3D11 (`BufferDesc` с маской `BufferUsage`, `TextureDesc`, `TextureViewDesc`,
+  и создают по описаниям без типов D3D12 (`BufferDesc` с маской `BufferUsage`, `TextureDesc`, `TextureViewDesc`,
   `VertexElement`): `createBuffer`, `createTexture`, `createShaderView` / `createTargetView` / `createStorageView`;
   картинки DirectXTex — `D3D/TextureImages.h`. Константы кадра (`BufferUsage::constant | cpuWrite`, `createShaderConstantBuffer`)
   — участки кольца `D3D/ConstantRing.h`: `Device::updateResource*` пишет участок, `setConstantBuffer` в том же кадре привязывает
@@ -221,9 +228,11 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
   `backBufferTarget()`); `setSRV` вида ресурса, который пишет текущий проход, завершает проход над ним (цели снимаются,
   UAV отвязывается — так ресурсы сцены t101…t106 привязываются сразу после своих проходов); скриншоты; состояния
   растеризатора/глубины/блендинга
-  (`setState(RasterState | DepthState | BlendState)`). Правило шага A2 переезда на D3D12: `ID3D11*` и `D3D11_*` — только
-  внутри `src/Engine/Graphics/D3D/` (`grep -rlE "ID3D11|D3D11_" src` вне него пуст), `GetDevice()` / `GetDeviceContext()` —
-  для этого каталога и `ImGui_ImplDX11_Init`. `DXGI_FORMAT` и `D3D_PRIMITIVE_TOPOLOGY` общие у D3D11 и D3D12 и допустимы везде.
+  (`setState(RasterState | DepthState | BlendState)`). Правило: `ID3D12*` и `D3D12_*` — только внутри
+  `src/Engine/Graphics/D3D/` (`grep -rlE "ID3D12|D3D12_" src` вне него пуст), `GetDevice()` / `commandList()` /
+  `shaderVisibleHeap()` — для этого каталога и привязки ImGui (`imgui_impl_dx12`). `DXGI_FORMAT` и
+  `D3D_PRIMITIVE_TOPOLOGY` допустимы везде. Виды (`ShaderView`, `StorageView`, `TargetView`) — постоянные дескрипторы
+  в кучах DMD3D (bindless): освобождаются вместе с видом.
   Состояния и шейдеры ставятся в контекст одним объектом пайплайна (`D3D/GpuPipeline.h`: `PipelineDesc` — стадии фазы,
   раскладка, состояния, топология; кэш `DMD3D::pipeline`, привязка `setPipeline`) в `DMShader::setPass`; `setState`
   лишь запоминает состояние, поэтому порядок в коде объекта — состояние → `setPass` → рисование. Набор пайплайнов

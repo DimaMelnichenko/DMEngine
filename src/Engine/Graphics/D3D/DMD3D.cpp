@@ -6,7 +6,45 @@
 #include <string>
 #include <vector>
 
+// Agility SDK: рантайм D3D12 из пакета рядом с exe (D3D12\D3D12Core.dll), а не системный — версия из CMakeLists.txt.
+// Загрузчик d3d12.dll читает эти экспорты при первом D3D12CreateDevice
+extern "C"
+{
+	__declspec( dllexport ) extern const UINT D3D12SDKVersion = DM_AGILITY_SDK_VERSION;
+	__declspec( dllexport ) extern const char* D3D12SDKPath = ".\\D3D12\\";
+}
+
 std::unique_ptr<DMD3D> DMD3D::m_instance;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Освобождение дескрипторов видов и памяти аллокатора (GpuResources.h)
+// ---------------------------------------------------------------------------------------------------------------------
+
+void gpuFreeShaderDescriptor( const Descriptor& descriptor )
+{
+	if( DMD3D::exists() )
+		DMD3D::instance().m_shaderHeap.free( descriptor );
+}
+
+void gpuFreeStagingDescriptor( const Descriptor& descriptor )
+{
+	if( DMD3D::exists() )
+		DMD3D::instance().m_stagingHeap.free( descriptor );
+}
+
+void gpuFreeTargetDescriptor( const Descriptor& descriptor, bool depth )
+{
+	if( DMD3D::exists() )
+		( depth ? DMD3D::instance().m_dsvHeap : DMD3D::instance().m_rtvHeap ).free( descriptor );
+}
+
+void gpuReleaseAllocation( D3D12MA::Allocation* allocation )
+{
+	// Веха M2: D3D12MA::Allocation::Release()
+	(void)allocation;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 
 DMD3D& DMD3D::instance()
 {
@@ -23,7 +61,6 @@ void DMD3D::destroy()
 
 DMD3D::DMD3D()
 {
-	
 }
 
 DMD3D::~DMD3D()
@@ -37,18 +74,38 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 	m_screenHeight = (uint32_t)config.backBufferHeight();
 	m_hWnd = hwnd;
 	m_vsync_enabled = config.vSync();
-	m_MSAACount = config.MSAACount();
 
+	if( !selectAdapter() || !createDevice( config ) || !createQueuesAndFrames() || !createDescriptorHeaps() ||
+		!createSwapChain( hwnd, config.fullScreen() ) || !createBackBufferTargets() )
+		return false;
+	if( !m_constantRing.initialize( m_device.get(), constantRingBytes, frameCount ) )
+		return false;
+
+	// Команды загрузки (копии, мипы куба неба) записываются в список первого кадра; beginFrame их выполнит и дождётся
+	openCommandList( m_frames[0] );
+	LOG( "D3D12 backend: veha M1 — device, frame, swap chain; resources, shaders, drawing are not implemented yet" );
+	return true;
+}
+
+bool DMD3D::selectAdapter()
+{
 	// Видеокарта: на машине с двумя GPU адаптер 0 — обычно встроенная, движку нужна дискретная. Выбор — как
 	// «Высокая производительность» в настройках графики Windows: IDXGIFactory6::EnumAdapterByGpuPreference;
-	// программные адаптеры (Microsoft Basic Render Driver) пропускаются. Без IDXGIFactory6 — адаптер 0, как раньше
-	IDXGIFactory1* factoryPtr = nullptr;
-	if( FAILED( CreateDXGIFactory1( __uuidof( IDXGIFactory1 ), (void**)&factoryPtr ) ) )
+	// программные адаптеры (Microsoft Basic Render Driver) пропускаются
+	UINT factoryFlags = 0;
+#ifdef _DEBUG
+	factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+#endif
+	IDXGIFactory4* factoryPtr = nullptr;
+	if( FAILED( CreateDXGIFactory2( factoryFlags, __uuidof( IDXGIFactory4 ), (void**)&factoryPtr ) ) )
+	{
+		LOG( "CreateDXGIFactory2 failed" );
 		return false;
-	auto factory = make_com_ptr<IDXGIFactory1>( factoryPtr );
+	}
+	m_factory = make_com_ptr<IDXGIFactory4>( factoryPtr );
 
 	IDXGIFactory6* factory6Ptr = nullptr;
-	if( SUCCEEDED( factory->QueryInterface( __uuidof( IDXGIFactory6 ), (void**)&factory6Ptr ) ) )
+	if( SUCCEEDED( m_factory->QueryInterface( __uuidof( IDXGIFactory6 ), (void**)&factory6Ptr ) ) )
 	{
 		auto factory6 = make_com_ptr<IDXGIFactory6>( factory6Ptr );
 		for( UINT i = 0; ; ++i )
@@ -69,7 +126,7 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 	if( !m_adapter )
 	{
 		IDXGIAdapter1* adapterPtr = nullptr;
-		if( FAILED( factory->EnumAdapters1( 0, &adapterPtr ) ) )
+		if( FAILED( m_factory->EnumAdapters1( 0, &adapterPtr ) ) )
 			return false;
 		m_adapter = make_com_ptr<IDXGIAdapter1>( adapterPtr );
 	}
@@ -92,10 +149,10 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 	{
 		auto output = make_com_ptr<IDXGIOutput>( outputPtr );
 		UINT numModes = 0;
-		if( SUCCEEDED( output->GetDisplayModeList( DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_INTERLACED, &numModes, nullptr ) ) && numModes )
+		if( SUCCEEDED( output->GetDisplayModeList( backBufferFormat, DXGI_ENUM_MODES_INTERLACED, &numModes, nullptr ) ) && numModes )
 		{
 			std::vector<DXGI_MODE_DESC> modes( numModes );
-			if( SUCCEEDED( output->GetDisplayModeList( DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_INTERLACED, &numModes, modes.data() ) ) )
+			if( SUCCEEDED( output->GetDisplayModeList( backBufferFormat, DXGI_ENUM_MODES_INTERLACED, &numModes, modes.data() ) ) )
 			{
 				for( const DXGI_MODE_DESC& mode : modes )
 				{
@@ -108,95 +165,211 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 			}
 		}
 	}
-
-	if( !createDeviceSwapChain( hwnd, config.fullScreen() ) )
-		return false;
-
-	if( !createRenderTargetView() )
-		return false;
-
-	if( !createSceneTarget() )
-		return false;
-
-	if( !createDepthBuffer() || !createDepthStates() )
-		return false;
-
-	if( !createRasterDescs() )
-		return false;
-
-	if( !createViewport() )
-		return false;
-
-	if( !createBlendStates() )
-		return false;
-
 	return true;
 }
 
-bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
+bool DMD3D::createDevice( const Config& config )
 {
-	// Устройство — на выбранной видеокарте (m_adapter, поэтому D3D_DRIVER_TYPE_UNKNOWN), уровень 11.1 без отката:
-	// кольцу констант нужны привязка со смещением и Map( NO_OVERWRITE ) у константных буферов (Windows 10 / 11)
-	ID3D11Device* device = nullptr;
-	ID3D11DeviceContext* deviceContext = nullptr;
-	const D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_1;
-	auto createDevice = [&]( UINT flags )
-	{
-		return D3D11CreateDevice( m_adapter.get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, &featureLevel, 1,
-								  D3D11_SDK_VERSION, &device, nullptr, &deviceContext );
-	};
-
 #ifdef _DEBUG
-	// Debug-слой только в Debug-сборке: он заметно замедляет отрисовку. Нужен компонент Windows «Средства графики»
-	HRESULT result = createDevice( D3D11_CREATE_DEVICE_DEBUG );
-	if( FAILED( result ) )
+	// Debug-слой и GPU-based validation (состояния ресурсов, индексы дескрипторов, барьеры — то, что D3D11 прощал)
+	// только в Debug-сборке: они заметно замедляют кадр. GpuValidation=false в settings.ini оставляет только слой.
+	// Слой — из redist Agility SDK (D3D12\d3d12SDKLayers.dll), компонент Windows «Средства графики» не нужен
+	ID3D12Debug* debugPtr = nullptr;
+	if( SUCCEEDED( D3D12GetDebugInterface( __uuidof( ID3D12Debug ), (void**)&debugPtr ) ) )
 	{
-		LOG( "D3D11 debug layer is unavailable, creating device without it" );
-		result = createDevice( 0 );
+		auto debug = make_com_ptr<ID3D12Debug>( debugPtr );
+		debug->EnableDebugLayer();
+		ID3D12Debug1* debug1Ptr = nullptr;
+		if( SUCCEEDED( debug->QueryInterface( __uuidof( ID3D12Debug1 ), (void**)&debug1Ptr ) ) )
+		{
+			auto debug1 = make_com_ptr<ID3D12Debug1>( debug1Ptr );
+			debug1->SetEnableGPUBasedValidation( config.gpuValidation() );
+		}
+		LOG( std::string( "D3D12 debug layer is enabled" ) + ( config.gpuValidation() ? " with GPU-based validation" : "" ) +
+			 ", its messages are written to this log" );
+	}
+	else
+		LOG( "D3D12 debug layer is unavailable (D3D12\\d3d12SDKLayers.dll), creating device without it" );
+
+	// DRED: при потере устройства — какая команда выполнялась последней и где случился page fault (logDeviceRemoved)
+	ID3D12DeviceRemovedExtendedDataSettings1* dredPtr = nullptr;
+	if( SUCCEEDED( D3D12GetDebugInterface( __uuidof( ID3D12DeviceRemovedExtendedDataSettings1 ), (void**)&dredPtr ) ) )
+	{
+		auto dred = make_com_ptr<ID3D12DeviceRemovedExtendedDataSettings1>( dredPtr );
+		dred->SetAutoBreadcrumbsEnablement( D3D12_DRED_ENABLEMENT_FORCED_ON );
+		dred->SetPageFaultEnablement( D3D12_DRED_ENABLEMENT_FORCED_ON );
+		dred->SetBreadcrumbContextEnablement( D3D12_DRED_ENABLEMENT_FORCED_ON );
 	}
 #else
-	HRESULT result = createDevice( 0 );
+	(void)config;
 #endif
-	if( FAILED( result ) )
+
+	ID3D12Device10* devicePtr = nullptr;
+	if( FAILED( D3D12CreateDevice( m_adapter.get(), D3D_FEATURE_LEVEL_12_0, __uuidof( ID3D12Device10 ), (void**)&devicePtr ) ) )
 	{
-		LOG( "D3D 11.1 device is not available" );
+		LOG( "D3D12 device (feature level 12_0, ID3D12Device10 — Agility SDK) is not available" );
+		return false;
+	}
+	m_device = make_com_ptr<ID3D12Device10>( devicePtr );
+	m_device->SetName( L"DMEngine device" );
+
+	// Без запасных путей: bindless (Tier 3 и ResourceDescriptorHeap SM 6.6) и enhanced barriers — основа слоя
+	D3D12_FEATURE_DATA_D3D12_OPTIONS options = {};
+	D3D12_FEATURE_DATA_SHADER_MODEL shaderModel = { D3D_SHADER_MODEL_6_6 };
+	D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12 = {};
+	D3D12_FEATURE_DATA_D3D12_OPTIONS16 options16 = {};
+	m_device->CheckFeatureSupport( D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof( options ) );
+	m_device->CheckFeatureSupport( D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof( shaderModel ) );
+	m_device->CheckFeatureSupport( D3D12_FEATURE_D3D12_OPTIONS12, &options12, sizeof( options12 ) );
+	m_device->CheckFeatureSupport( D3D12_FEATURE_D3D12_OPTIONS16, &options16, sizeof( options16 ) );
+	if( options.ResourceBindingTier < D3D12_RESOURCE_BINDING_TIER_3 )
+	{
+		LOG( "Resource Binding Tier 3 is required (bindless)" );
+		return false;
+	}
+	if( shaderModel.HighestShaderModel < D3D_SHADER_MODEL_6_6 )
+	{
+		LOG( "Shader Model 6.6 is required (ResourceDescriptorHeap)" );
+		return false;
+	}
+	if( !options12.EnhancedBarriersSupported )
+	{
+		LOG( "Enhanced barriers are required: check that D3D12\\D3D12Core.dll (Agility SDK) is next to the executable and the driver is recent" );
+		return false;
+	}
+	LOG( "D3D12 device: Agility SDK " + std::to_string( D3D12SDKVersion ) + ", feature level 12_0, shader model " +
+		 std::to_string( shaderModel.HighestShaderModel >> 4 ) + "." + std::to_string( shaderModel.HighestShaderModel & 0xF ) +
+		 ", resource binding tier " + std::to_string( static_cast<int>( options.ResourceBindingTier ) ) + ", enhanced barriers" +
+		 ( options16.GPUUploadHeapSupported ? ", GPU upload heaps" : ", no GPU upload heaps" ) );
+
+#ifdef _DEBUG
+	ID3D12InfoQueue1* infoQueuePtr = nullptr;
+	if( SUCCEEDED( m_device->QueryInterface( __uuidof( ID3D12InfoQueue1 ), (void**)&infoQueuePtr ) ) )
+	{
+		m_infoQueue = make_com_ptr<ID3D12InfoQueue1>( infoQueuePtr );
+		m_infoQueue->RegisterMessageCallback( messageCallback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, this, &m_messageCookie );
+	}
+#endif
+	return true;
+}
+
+void DMD3D::messageCallback( D3D12_MESSAGE_CATEGORY, D3D12_MESSAGE_SEVERITY severity, D3D12_MESSAGE_ID id, LPCSTR description, void* context )
+{
+	if( severity == D3D12_MESSAGE_SEVERITY_INFO || severity == D3D12_MESSAGE_SEVERITY_MESSAGE )
+		return;
+
+	// Одно и то же сообщение обычно повторяется каждый кадр: пишется только первые maxRepeats раз
+	const uint32_t maxRepeats = 3;
+	DMD3D* self = static_cast<DMD3D*>( context );
+	const uint32_t repeats = ++self->m_debugMessageCounts[static_cast<int>( id )];
+	if( repeats > maxRepeats )
+		return;
+	const char* severityName = severity == D3D12_MESSAGE_SEVERITY_WARNING ? "warning" :
+							   severity == D3D12_MESSAGE_SEVERITY_ERROR ? "error" : "corruption";
+	LOG( std::string( "D3D12 " ) + severityName + ": " + ( description ? description : "" ) +
+		 ( repeats == maxRepeats ? " (further repeats are not logged)" : "" ) );
+}
+
+bool DMD3D::createQueuesAndFrames()
+{
+	const auto createQueue = [this]( D3D12_COMMAND_LIST_TYPE type, const wchar_t* name, com_unique_ptr<ID3D12CommandQueue>& queue )
+	{
+		D3D12_COMMAND_QUEUE_DESC desc = {};
+		desc.Type = type;
+		ID3D12CommandQueue* raw = nullptr;
+		if( FAILED( m_device->CreateCommandQueue( &desc, __uuidof( ID3D12CommandQueue ), (void**)&raw ) ) )
+			return false;
+		raw->SetName( name );
+		queue = make_com_ptr<ID3D12CommandQueue>( raw );
+		return true;
+	};
+	if( !createQueue( D3D12_COMMAND_LIST_TYPE_DIRECT, L"Direct queue", m_directQueue ) ||
+		!createQueue( D3D12_COMMAND_LIST_TYPE_COMPUTE, L"Compute queue", m_computeQueue ) ||
+		!createQueue( D3D12_COMMAND_LIST_TYPE_COPY, L"Copy queue", m_copyQueue ) )
+	{
+		LOG( "Failed to create command queues" );
 		return false;
 	}
 
-	m_device = make_com_ptr<ID3D11Device>( device );
-	m_deviceContext = make_com_ptr<ID3D11DeviceContext>( deviceContext );
+	ID3D12Fence* fence = nullptr;
+	if( FAILED( m_device->CreateFence( 0, D3D12_FENCE_FLAG_NONE, __uuidof( ID3D12Fence ), (void**)&fence ) ) )
+		return false;
+	m_fence = make_com_ptr<ID3D12Fence>( fence );
+	m_fenceValue = 0;
+	m_fenceEvent = CreateEvent( nullptr, FALSE, FALSE, nullptr );
+	if( !m_fenceEvent )
+		return false;
 
-	ID3D11DeviceContext1* context1 = nullptr;
-	if( FAILED( m_deviceContext->QueryInterface( __uuidof( ID3D11DeviceContext1 ), reinterpret_cast<void**>( &context1 ) ) ) )
+	for( uint32_t i = 0; i < frameCount; ++i )
 	{
-		LOG( "D3D 11.1 device context is required (constant buffer offsets)" );
+		ID3D12CommandAllocator* allocator = nullptr;
+		if( FAILED( m_device->CreateCommandAllocator( D3D12_COMMAND_LIST_TYPE_DIRECT, __uuidof( ID3D12CommandAllocator ), (void**)&allocator ) ) )
+			return false;
+		allocator->SetName( ( L"Frame allocator " + std::to_wstring( i ) ).c_str() );
+		m_frames[i].allocator = make_com_ptr<ID3D12CommandAllocator>( allocator );
+		m_frames[i].fenceValue = 0;
+	}
+
+	// Один графический список на кадр (запись в один поток); создаётся закрытым, открывает его openCommandList
+	ID3D12GraphicsCommandList7* list = nullptr;
+	if( FAILED( m_device->CreateCommandList1( 0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE,
+											   __uuidof( ID3D12GraphicsCommandList7 ), (void**)&list ) ) )
+	{
+		LOG( "ID3D12GraphicsCommandList7 (enhanced barriers) is not available" );
 		return false;
 	}
-	m_deviceContext1 = make_com_ptr<ID3D11DeviceContext1>( context1 );
-	D3D11_FEATURE_DATA_D3D11_OPTIONS options = {};
-	if( FAILED( m_device->CheckFeatureSupport( D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof( options ) ) ) ||
-		!options.ConstantBufferOffsetting || !options.MapNoOverwriteOnDynamicConstantBuffer )
+	list->SetName( L"Frame command list" );
+	m_commandList = make_com_ptr<ID3D12GraphicsCommandList7>( list );
+	m_recording = false;
+	return true;
+}
+
+bool DMD3D::createDescriptorHeaps()
+{
+	// Одна shader-visible куча на всё (Tier 3 — до миллиона): дескриптор выдаётся виду навсегда, его номер — индекс
+	// ResourceDescriptorHeap в шейдере. CPU-копии UAV нужны ClearUnorderedAccessView
+	if( !m_shaderHeap.create( m_device.get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 65536, true, L"Shader-visible descriptors" ) ||
+		!m_stagingHeap.create( m_device.get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4096, false, L"UAV clear descriptors" ) ||
+		!m_rtvHeap.create( m_device.get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 256, false, L"RTV descriptors" ) ||
+		!m_dsvHeap.create( m_device.get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 64, false, L"DSV descriptors" ) )
 	{
-		LOG( "Constant buffer offsetting and Map( NO_OVERWRITE ) on constant buffers are required" );
+		LOG( "Failed to create descriptor heaps" );
 		return false;
 	}
-	if( !m_constantRing.initialize( m_device.get(), m_deviceContext1.get(), constantRingBytes ) )
-		return false;
 
-	// Swap chain — flip model (DXGI_SWAP_EFFECT_FLIP_DISCARD), единственная модель D3D12 и рекомендованная DXGI для D3D11:
-	// кадр отдаётся композитору без копирования, задних буферов два. Формат заднего буфера в flip model — только UNORM,
-	// перевод в sRGB делает вид заднего буфера (createRenderTargetView). Без vsync — DXGI_PRESENT_ALLOW_TEARING, иначе
-	// flip model упёрлась бы в частоту монитора. Waitable object — кадр начинается, когда очередь кадров короче предела
-	// (waitForNextFrame). Оба флага — только в окне: в исключительном полноэкранном режиме DXGI их не принимает
-	IDXGIFactory2* factoryPtr = nullptr;
-	if( FAILED( m_adapter->GetParent( __uuidof( IDXGIFactory2 ), (void**)&factoryPtr ) ) )
-		return false;
-	auto factory = make_com_ptr<IDXGIFactory2>( factoryPtr );
+	// Дескриптор 0 — пустой SRV: непривязанный слот таблицы привязок читает нули, а не чужой ресурс
+	m_nullDescriptor = m_shaderHeap.allocate();
+	D3D12_SHADER_RESOURCE_VIEW_DESC nullDesc = {};
+	nullDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	nullDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	nullDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	nullDesc.Texture2D.MipLevels = 1;
+	m_device->CreateShaderResourceView( nullptr, &nullDesc, m_nullDescriptor.cpu );
+	return true;
+}
 
+Descriptor DMD3D::allocateShaderDescriptor()
+{
+	const Descriptor descriptor = m_shaderHeap.allocate();
+	if( !descriptor.valid() )
+		LOG( "Shader-visible descriptor heap is full (" + std::to_string( m_shaderHeap.capacity() ) + ")" );
+	return descriptor;
+}
+
+void DMD3D::freeShaderDescriptor( D3D12_CPU_DESCRIPTOR_HANDLE cpu )
+{
+	m_shaderHeap.free( m_shaderHeap.at( m_shaderHeap.indexOf( cpu ) ) );
+}
+
+bool DMD3D::createSwapChain( HWND hwnd, bool fullscreen )
+{
+	// Swap chain — flip model (единственная в D3D12): кадр отдаётся композитору без копирования, задних буферов два.
+	// Без vsync — DXGI_PRESENT_ALLOW_TEARING, иначе flip model упёрлась бы в частоту монитора. Waitable object —
+	// кадр начинается, когда очередь кадров короче предела (waitForNextFrame). Оба флага — только в окне
 	const bool windowed = !fullscreen;
 	m_allowTearing = false;
 	IDXGIFactory5* factory5Ptr = nullptr;
-	if( windowed && SUCCEEDED( factory->QueryInterface( __uuidof( IDXGIFactory5 ), (void**)&factory5Ptr ) ) )
+	if( windowed && SUCCEEDED( m_factory->QueryInterface( __uuidof( IDXGIFactory5 ), (void**)&factory5Ptr ) ) )
 	{
 		auto factory5 = make_com_ptr<IDXGIFactory5>( factory5Ptr );
 		BOOL allowTearing = FALSE;
@@ -211,9 +384,7 @@ bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 	desc.Width = m_screenWidth;
 	desc.Height = m_screenHeight;
 	desc.Format = backBufferFormat;
-	// Задний буфер без MSAA: выборки хранит HDR-буфер сцены, а сюда пишет тонмаппинг уже сведённое изображение
 	desc.SampleDesc.Count = 1;
-	desc.SampleDesc.Quality = 0;
 	desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	desc.BufferCount = backBufferCount;
 	desc.Scaling = DXGI_SCALING_STRETCH;
@@ -226,704 +397,232 @@ bool DMD3D::createDeviceSwapChain( HWND hwnd, bool fullscreen )
 	fullscreenDesc.RefreshRate.Denominator = m_vsync_enabled ? m_denominator : 1;
 	fullscreenDesc.Windowed = windowed;
 
-	IDXGISwapChain1* swapChain = nullptr;
-	if( FAILED( factory->CreateSwapChainForHwnd( m_device.get(), hwnd, &desc, &fullscreenDesc, nullptr, &swapChain ) ) )
+	IDXGISwapChain1* swapChain1 = nullptr;
+	if( FAILED( m_factory->CreateSwapChainForHwnd( m_directQueue.get(), hwnd, &desc, &fullscreenDesc, nullptr, &swapChain1 ) ) )
+	{
+		LOG( "CreateSwapChainForHwnd failed" );
 		return false;
-	m_swapChain = make_com_ptr<IDXGISwapChain1>( swapChain );
+	}
+	IDXGISwapChain3* swapChain3 = nullptr;
+	const HRESULT hr = swapChain1->QueryInterface( __uuidof( IDXGISwapChain3 ), (void**)&swapChain3 );
+	swapChain1->Release();
+	if( FAILED( hr ) )
+	{
+		LOG( "IDXGISwapChain3 is required" );
+		return false;
+	}
+	m_swapChain = make_com_ptr<IDXGISwapChain3>( swapChain3 );
 	// Alt+Enter не переключает полноэкранный режим сам: размер целей меняет только WM_SIZE
-	factory->MakeWindowAssociation( hwnd, DXGI_MWA_NO_ALT_ENTER );
+	m_factory->MakeWindowAssociation( hwnd, DXGI_MWA_NO_ALT_ENTER );
 
 	if( m_swapChainFlags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT )
 	{
-		IDXGISwapChain2* swapChain2Ptr = nullptr;
-		if( SUCCEEDED( m_swapChain->QueryInterface( __uuidof( IDXGISwapChain2 ), (void**)&swapChain2Ptr ) ) )
-		{
-			auto swapChain2 = make_com_ptr<IDXGISwapChain2>( swapChain2Ptr );
-			// Два кадра в очереди: CPU готовит следующий, пока GPU рисует текущий; с одним задержка меньше, но GPU простаивает
-			swapChain2->SetMaximumFrameLatency( 2 );
-			m_frameLatencyWaitable = swapChain2->GetFrameLatencyWaitableObject();
-		}
+		// Два кадра в очереди: CPU готовит следующий, пока GPU рисует текущий
+		m_swapChain->SetMaximumFrameLatency( frameCount );
+		m_frameLatencyWaitable = m_swapChain->GetFrameLatencyWaitableObject();
 	}
+	m_backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
 
-	LOG( std::string( "Swap chain: flip model, " ) + std::to_string( backBufferCount ) + " buffers, feature level 11.1" +
+	LOG( std::string( "Swap chain: flip model, " ) + std::to_string( backBufferCount ) + " buffers" +
 		 ( m_allowTearing ? ", tearing allowed" : ", no tearing" ) + ( m_frameLatencyWaitable ? ", frame latency waitable object" : "" ) +
-		 ", constant ring " + std::to_string( constantRingBytes / 1024 ) + " KB" );
-
-	ID3D11InfoQueue* infoQueue = nullptr;
-	if( SUCCEEDED( device->QueryInterface( __uuidof( ID3D11InfoQueue ), reinterpret_cast<void**>( &infoQueue ) ) ) )
-	{
-		m_infoQueue.reset( infoQueue );
-		LOG( "D3D11 debug layer is enabled, its messages are written to this log" );
-	}
-
+		 ", " + std::to_string( frameCount ) + " frames in flight, constant ring " + std::to_string( constantRingBytes / 1024 / frameCount ) + " KB per frame" );
 	return true;
 }
 
-void DMD3D::logDebugMessages()
+bool DMD3D::createBackBufferTargets()
 {
-	if( !m_infoQueue )
-		return;
-
-	// Одно и то же сообщение обычно повторяется каждый кадр: пишется только первые maxRepeats раз
-	const uint32_t maxRepeats = 3;
-	const UINT64 count = m_infoQueue->GetNumStoredMessages();
-	for( UINT64 i = 0; i < count; ++i )
+	for( uint32_t i = 0; i < backBufferCount; ++i )
 	{
-		SIZE_T length = 0;
-		if( FAILED( m_infoQueue->GetMessage( i, nullptr, &length ) ) || length == 0 )
-			continue;
-
-		std::vector<char> buffer( length );
-		D3D11_MESSAGE* message = reinterpret_cast<D3D11_MESSAGE*>( buffer.data() );
-		if( FAILED( m_infoQueue->GetMessage( i, message, &length ) ) )
-			continue;
-
-		if( message->Severity == D3D11_MESSAGE_SEVERITY_INFO || message->Severity == D3D11_MESSAGE_SEVERITY_MESSAGE )
-			continue;
-
-		const uint32_t repeats = ++m_debugMessageCounts[message->ID];
-		if( repeats > maxRepeats )
-			continue;
-
-		const char* severity = message->Severity == D3D11_MESSAGE_SEVERITY_WARNING ? "warning" :
-							   message->Severity == D3D11_MESSAGE_SEVERITY_ERROR ? "error" : "corruption";
-		LOG( std::string( "D3D11 " ) + severity + ": " + std::string( message->pDescription, message->DescriptionByteLength ? message->DescriptionByteLength - 1 : 0 ) +
-			 ( repeats == maxRepeats ? " (further repeats are not logged)" : "" ) );
-	}
-
-	m_infoQueue->ClearStoredMessages();
-}
-
-bool DMD3D::createRenderTargetView()
-{
-	ID3D11Texture2D* backBufferPtr;
-
-	// Get the pointer to the back buffer.
-	HRESULT result = m_swapChain->GetBuffer( 0, __uuidof( ID3D11Texture2D ), (LPVOID*)&backBufferPtr );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	// Задний буфер flip model — UNORM; вид — sRGB: тонмаппинг и GUI пишут линейный цвет, перевод делает оборудование,
-	// байты в буфере те же, что были у заднего буфера R8G8B8A8_UNORM_SRGB
-	D3D11_RENDER_TARGET_VIEW_DESC viewDesc = {};
-	viewDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-	viewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-	ID3D11RenderTargetView* renderTargetView;
-	result = m_device->CreateRenderTargetView( backBufferPtr, &viewDesc, &renderTargetView );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	m_backBufferTarget.reset( renderTargetView, backBufferPtr );
-
-	// Release pointer to the back buffer as we no longer need it.
-	backBufferPtr->Release();
-	backBufferPtr = 0;
-
-	return true;
-}
-
-bool DMD3D::createSceneTarget()
-{
-	D3D11_TEXTURE2D_DESC desc = {};
-	desc.Width = m_screenWidth;
-	desc.Height = m_screenHeight;
-	desc.MipLevels = 1;
-	desc.ArraySize = 1;
-	desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	desc.SampleDesc.Count = m_MSAACount;
-	desc.SampleDesc.Quality = m_MSAACount > 1 ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.BindFlags = D3D11_BIND_RENDER_TARGET | ( m_MSAACount > 1 ? 0 : D3D11_BIND_SHADER_RESOURCE );
-
-	ID3D11Texture2D* texture = nullptr;
-	if( FAILED( m_device->CreateTexture2D( &desc, nullptr, &texture ) ) )
-		return false;
-	m_sceneTexture = make_com_ptr<ID3D11Texture2D>( texture );
-
-	ID3D11RenderTargetView* rtv = nullptr;
-	if( FAILED( m_device->CreateRenderTargetView( m_sceneTexture.get(), nullptr, &rtv ) ) )
-		return false;
-	m_sceneTarget.reset( rtv, m_sceneTexture.get() );
-
-	// Шейдер читает обычную текстуру: при MSAA выборки сводятся в неё перед тонмаппингом
-	ID3D11Texture2D* readable = m_sceneTexture.get();
-	if( m_MSAACount > 1 )
-	{
-		desc.SampleDesc.Count = 1;
-		desc.SampleDesc.Quality = 0;
-		desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-		if( FAILED( m_device->CreateTexture2D( &desc, nullptr, &texture ) ) )
+		ID3D12Resource* backBuffer = nullptr;
+		if( FAILED( m_swapChain->GetBuffer( i, __uuidof( ID3D12Resource ), (void**)&backBuffer ) ) )
 			return false;
-		m_sceneResolved = make_com_ptr<ID3D11Texture2D>( texture );
-		readable = m_sceneResolved.get();
+		backBuffer->SetName( ( L"Back buffer " + std::to_wstring( i ) ).c_str() );
+		m_backBuffers[i] = make_com_ptr<ID3D12Resource>( backBuffer );
+
+		// Задний буфер flip model — UNORM; вид — sRGB, байты в буфере те же, что были бы у R8G8B8A8_UNORM_SRGB
+		const Descriptor descriptor = m_rtvHeap.allocate();
+		if( !descriptor.valid() )
+			return false;
+		D3D12_RENDER_TARGET_VIEW_DESC viewDesc = {};
+		viewDesc.Format = backBufferViewFormat;
+		viewDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+		m_device->CreateRenderTargetView( backBuffer, &viewDesc, descriptor.cpu );
+		m_backBufferTargets[i].reset( descriptor, false, backBufferViewFormat, backBuffer, { 0, 1, 0, 1 } );
 	}
-
-	ID3D11ShaderResourceView* srv = nullptr;
-	if( FAILED( m_device->CreateShaderResourceView( readable, nullptr, &srv ) ) )
-		return false;
-	m_sceneSRV.reset( srv, readable );
-
 	return true;
 }
 
-bool DMD3D::createDepthBuffer()
+void DMD3D::releaseBackBufferTargets()
 {
-	D3D11_TEXTURE2D_DESC depthBufferDesc;
-
-	// Initialize the description of the depth buffer.
-	ZeroMemory( &depthBufferDesc, sizeof( depthBufferDesc ) );
-
-	// Set up the description of the depth buffer.
-	depthBufferDesc.Width = m_screenWidth;
-	depthBufferDesc.Height = m_screenHeight;
-	depthBufferDesc.MipLevels = 1;
-	depthBufferDesc.ArraySize = 1;
-	// Reversed-Z: float-глубина, 1 у ближней плоскости (DMCamera); трафарет не используется
-	depthBufferDesc.Format = DXGI_FORMAT_D32_FLOAT;
-	depthBufferDesc.SampleDesc.Count = m_MSAACount;
-	depthBufferDesc.SampleDesc.Quality = m_MSAACount > 1 ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
-	depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-	depthBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-	depthBufferDesc.CPUAccessFlags = 0;
-	depthBufferDesc.MiscFlags = 0;
-
-	// Create the texture for the depth buffer using the filled out description.
-	ID3D11Texture2D* depthStencilBuffer;
-	HRESULT result = m_device->CreateTexture2D( &depthBufferDesc, nullptr, &depthStencilBuffer );
-	if( FAILED( result ) )
+	for( uint32_t i = 0; i < backBufferCount; ++i )
 	{
-		return false;
+		m_backBufferTargets[i].reset();
+		m_backBuffers[i].reset();
 	}
-
-	m_depthStencilBuffer = make_com_ptr<ID3D11Texture2D>( depthStencilBuffer );
-
-	// Initailze the depth stencil view.
-	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
-	ZeroMemory( &depthStencilViewDesc, sizeof( depthStencilViewDesc ) );
-
-	// Set up the depth stencil view description.
-	depthStencilViewDesc.Format = DXGI_FORMAT_D32_FLOAT;
-	if( m_MSAACount > 1 )
-		depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
-	else
-		depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-	depthStencilViewDesc.Texture2D.MipSlice = 0;
-
-	// Create the depth stencil view.
-	ID3D11DepthStencilView* depthStencilView;
-	result = m_device->CreateDepthStencilView( m_depthStencilBuffer.get(), &depthStencilViewDesc, &depthStencilView );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	m_sceneDepth.reset( depthStencilView, m_depthStencilBuffer.get() );
-
-	return true;
 }
 
-bool DMD3D::createDepthStates()
+// ---------------------------------------------------------------------------------------------------------------------
+// Кадр
+// ---------------------------------------------------------------------------------------------------------------------
+
+void DMD3D::openCommandList( FrameResources& frame )
 {
-	HRESULT result;
-
-	// Initialize the description of the stencil state.
-	D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
-	ZeroMemory( &depthStencilDesc, sizeof( depthStencilDesc ) );
-
-	// Set up the description of the stencil state.
-	depthStencilDesc.DepthEnable = true;
-	depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-	// Обратная глубина: ближе — больше
-	depthStencilDesc.DepthFunc = D3D11_COMPARISON_GREATER;
-
-	depthStencilDesc.StencilEnable = false;
-	depthStencilDesc.StencilReadMask = 0xFF;
-	depthStencilDesc.StencilWriteMask = 0xFF;
-
-	// Stencil operations if pixel is front-facing.
-	depthStencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-	depthStencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
-	depthStencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-	depthStencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-
-	// Stencil operations if pixel is back-facing.
-	depthStencilDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-	depthStencilDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
-	depthStencilDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-	depthStencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-
-	// Create the depth stencil state.
-	ID3D11DepthStencilState* depthStencilState;
-	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	m_depthStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
-
-	// depth disable state
-	depthStencilDesc.DepthEnable = false;
-	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	m_depthDisabledStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
-
-	// Только проверка глубины, без записи
-	depthStencilDesc.DepthEnable = true;
-	depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	m_depthReadOnlyStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
-
-	// Фон на дальней плоскости: глубина 0 проходит там, где буфер глубины остался очищенным («ближе или равно»)
-	depthStencilDesc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
-	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	m_depthReadOnlyNearOrEqualStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
-
-	// Непрозрачные после depth prepass: проходит только поверхность, чья глубина и записана (вариант «только глубина»
-	// считает позицию так же, до бита)
-	depthStencilDesc.DepthFunc = D3D11_COMPARISON_EQUAL;
-	result = m_device->CreateDepthStencilState( &depthStencilDesc, &depthStencilState );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	m_depthReadOnlyEqualStencilState = make_com_ptr<ID3D11DepthStencilState>( depthStencilState );
-
-	// Set the depth stencil state.
-	m_deviceContext->OMSetDepthStencilState( m_depthStencilState.get(), 1 );
-
-	return true;
+	if( m_recording )
+		return;
+	m_commandList->Reset( frame.allocator.get(), nullptr );
+	ID3D12DescriptorHeap* heaps[] = { m_shaderHeap.handle() };
+	m_commandList->SetDescriptorHeaps( 1, heaps );
+	m_recording = true;
 }
 
-bool DMD3D::createRasterizerState( D3D11_RASTERIZER_DESC& desc, com_unique_ptr<ID3D11RasterizerState>& state )
+void DMD3D::submitCommandList()
 {
-	ID3D11RasterizerState* rasterState;
-	HRESULT result = m_device->CreateRasterizerState( &desc, &rasterState );
-	if( FAILED( result ) )
+	if( !m_recording )
+		return;
+	m_recording = false;
+	if( FAILED( m_commandList->Close() ) )
 	{
-		return false;
+		LOG( "Command list Close failed: a recorded command is invalid (see debug layer messages above)" );
+		return;
 	}
-
-	state = make_com_ptr<ID3D11RasterizerState>( rasterState );
-
-	return true;
+	ID3D12CommandList* lists[] = { m_commandList.get() };
+	m_directQueue->ExecuteCommandLists( 1, lists );
 }
 
-bool DMD3D::createRasterDescs()
+uint64_t DMD3D::signalFence()
 {
-	// Setup the raster description which will determine how and what polygons will be drawn.
-	D3D11_RASTERIZER_DESC rasterDesc;
-	rasterDesc.AntialiasedLineEnable = false;
-	rasterDesc.CullMode = D3D11_CULL_BACK;
-	rasterDesc.DepthBias = 0;
-	rasterDesc.DepthBiasClamp = 0.0f;
-	rasterDesc.DepthClipEnable = true;
-	rasterDesc.FillMode = D3D11_FILL_SOLID;
-	rasterDesc.FrontCounterClockwise = false;
-	rasterDesc.MultisampleEnable = true;
-	rasterDesc.ScissorEnable = false;
-	rasterDesc.SlopeScaledDepthBias = 0.0f;
-
-
-	if( !createRasterizerState( rasterDesc, m_rasterState ) )
-		return false;
-
-	// Now set the rasterizer state.
-	m_deviceContext->RSSetState( m_rasterState.get() );
-
-
-	// create back face culling state
-	rasterDesc.CullMode = D3D11_CULL_FRONT;
-	if( !createRasterizerState( rasterDesc, m_rasterStateFrontCulling ) )
-		return false;
-
-	// Setup a raster description which turns off back face culling.
-	rasterDesc.FillMode = D3D11_FILL_SOLID;
-	rasterDesc.CullMode = D3D11_CULL_NONE;
-	rasterDesc.FrontCounterClockwise = FALSE;
-	rasterDesc.DepthBias = 0;
-	rasterDesc.SlopeScaledDepthBias = 0.0f;
-	rasterDesc.DepthBiasClamp = 0.0f;
-	rasterDesc.DepthClipEnable = TRUE;
-	rasterDesc.ScissorEnable = FALSE;
-	rasterDesc.MultisampleEnable = TRUE;
-	rasterDesc.AntialiasedLineEnable = FALSE;
-	if( !createRasterizerState( rasterDesc, m_rasterStateNoCulling ) )
-		return false;
-
-	// Зеркальные меши: лицевые грани — против часовой стрелки
-	rasterDesc.FrontCounterClockwise = TRUE;
-	if( !createRasterizerState( rasterDesc, m_rasterStateNoCullingMirrored ) )
-		return false;
-	rasterDesc.CullMode = D3D11_CULL_BACK;
-	if( !createRasterizerState( rasterDesc, m_rasterStateSolidMirrored ) )
-		return false;
-
-	if( !setShadowSlopeBias( 2.0f ) )
-		return false;
-
-	// Setup a raster description which turns off back face culling.
-	rasterDesc.AntialiasedLineEnable = false;
-	rasterDesc.CullMode = D3D11_CULL_NONE;
-	rasterDesc.DepthBias = 0;
-	rasterDesc.DepthBiasClamp = 0.0f;
-	rasterDesc.DepthClipEnable = true;
-	rasterDesc.FillMode = D3D11_FILL_WIREFRAME;
-	rasterDesc.FrontCounterClockwise = false;
-	rasterDesc.MultisampleEnable = false;
-	rasterDesc.ScissorEnable = false;
-	rasterDesc.SlopeScaledDepthBias = 0.0f;
-	if( !createRasterizerState( rasterDesc, m_rasterStateWireframe ) )
-		return false;
-
-	return true;
+	++m_fenceValue;
+	m_directQueue->Signal( m_fence.get(), m_fenceValue );
+	return m_fenceValue;
 }
 
-bool DMD3D::createViewport()
+void DMD3D::waitForFence( uint64_t value )
 {
-	// Setup the viewport for rendering.
-	m_viewport.Width = (float)m_screenWidth;
-	m_viewport.Height = (float)m_screenHeight;
-	m_viewport.MinDepth = 0.0f;
-	m_viewport.MaxDepth = 1.0f;
-	m_viewport.TopLeftX = 0.0f;
-	m_viewport.TopLeftY = 0.0f;
-
-	// Create the viewport.
-	m_deviceContext->RSSetViewports( 1, &m_viewport );
-
-	return true;
+	if( value == 0 || m_fence->GetCompletedValue() >= value )
+		return;
+	if( SUCCEEDED( m_fence->SetEventOnCompletion( value, m_fenceEvent ) ) )
+		WaitForSingleObject( m_fenceEvent, INFINITE );
 }
 
-bool DMD3D::createBlendState( D3D11_BLEND_DESC& desc, com_unique_ptr<ID3D11BlendState>& state )
+void DMD3D::waitForNextFrame()
 {
-	ID3D11BlendState* blendState;
-	HRESULT result = m_device->CreateBlendState( &desc, &blendState );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	state = make_com_ptr<ID3D11BlendState>( blendState );
-
-	return true;
-}
-
-bool DMD3D::createBlendStates()
-{
-
-	// Clear the blend state description.
-	D3D11_BLEND_DESC blendStateDescription;
-	ZeroMemory( &blendStateDescription, sizeof( D3D11_BLEND_DESC ) );
-
-	// Альфа-блендинг полупрозрачных. Без alpha-to-coverage: при одной выборке MSAA он отбрасывает пиксели с альфой
-	// ниже 0,5 целиком, и полупрозрачное пропадает; вырезанное по альфе (Masked) отсекает шейдер
-	blendStateDescription.AlphaToCoverageEnable = false;
-	blendStateDescription.RenderTarget[0].BlendEnable = TRUE;
-	blendStateDescription.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
-	blendStateDescription.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;	
-	blendStateDescription.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-	blendStateDescription.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-	blendStateDescription.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
-	blendStateDescription.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-	blendStateDescription.RenderTarget[0].RenderTargetWriteMask = 0X0f;
-	
-
-	if( !createBlendState( blendStateDescription, m_alphaEnableBlendingState ) )
-		return false;
-
-	// Сложение: цель += источник (уровни bloom)
-	blendStateDescription.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
-	blendStateDescription.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
-	blendStateDescription.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-	blendStateDescription.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
-	if( !createBlendState( blendStateDescription, m_additiveBlendingState ) )
-		return false;
-
-	// Modify the description to create an alpha disabled blend state description.
-	blendStateDescription.AlphaToCoverageEnable = false;
-	blendStateDescription.RenderTarget[0].BlendEnable = FALSE;
-	if( !createBlendState( blendStateDescription, m_alphaDisableBlendingState ) )
-		return false;
-
-	return true;
-}
-
-void DMD3D::Shutdown( )
-{
-	// Before shutting down set to windowed mode or when you release the swap chain it will throw an exception.
-
 	if( m_frameLatencyWaitable )
-	{
-		CloseHandle( m_frameLatencyWaitable );
-		m_frameLatencyWaitable = nullptr;
-	}
-	if( m_swapChain )
-	{
-		m_swapChain->SetFullscreenState( false, nullptr );		
-	}
+		WaitForSingleObjectEx( m_frameLatencyWaitable, 1000, TRUE );
 }
 
-ID3D11RasterizerState* DMD3D::rasterObject( RasterState state ) const
+void DMD3D::waitForGpu()
 {
-	switch( state )
+	// Всё записанное — в очередь, затем ждём её конца; открытый список открывается заново на том же аллокаторе
+	const bool wasRecording = m_recording;
+	submitCommandList();
+	waitForFence( signalFence() );
+	for( FrameResources& frame : m_frames )
 	{
-		case RasterState::frontCulling: return m_rasterStateFrontCulling.get();
-		case RasterState::noCulling: return m_rasterStateNoCulling.get();
-		case RasterState::wireframe: return m_rasterStateWireframe.get();
-		case RasterState::solidMirrored: return m_rasterStateSolidMirrored.get();
-		case RasterState::noCullingMirrored: return m_rasterStateNoCullingMirrored.get();
-		case RasterState::csmShadowDepth: return m_rasterStateShadowDepth.get();
-		default: return m_rasterState.get();
+		frame.deferredReleases.clear();
+		frame.fenceValue = 0;
+	}
+	if( wasRecording )
+	{
+		m_frames[m_frameIndex].allocator->Reset();
+		openCommandList( m_frames[m_frameIndex] );
 	}
 }
 
-ID3D11DepthStencilState* DMD3D::depthObject( DepthState state ) const
+void DMD3D::beginFrame()
 {
-	switch( state )
+	waitForNextFrame();
+
+	if( m_recording )
 	{
-		case DepthState::enabled: return m_depthStencilState.get();
-		case DepthState::readOnly: return m_depthReadOnlyStencilState.get();
-		case DepthState::readOnlyNearOrEqual: return m_depthReadOnlyNearOrEqualStencilState.get();
-		case DepthState::readOnlyEqual: return m_depthReadOnlyEqualStencilState.get();
-		default: return m_depthDisabledStencilState.get();
+		// Команды загрузки: выполнить и дождаться до первого кадра — иначе кадр начал бы переписывать их данные
+		submitCommandList();
+		waitForFence( signalFence() );
+	}
+
+	FrameResources& frame = m_frames[m_frameIndex];
+	waitForFence( frame.fenceValue );
+	frame.deferredReleases.clear();
+	frame.allocator->Reset();
+	openCommandList( frame );
+
+	m_backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
+	m_constantRing.beginFrame( m_frameIndex );
+	m_passColorCount = 0;
+	m_passDepthFormat = DXGI_FORMAT_UNKNOWN;
+	if( m_passLogRequested )
+	{
+		m_passLogRequested = false;
+		m_recordingPasses = true;
+		m_passRecords.clear();
 	}
 }
 
-ID3D11BlendState* DMD3D::blendObject( BlendState state ) const
+void DMD3D::textureBarrier( ID3D12Resource* resource, D3D12_BARRIER_SYNC syncBefore, D3D12_BARRIER_SYNC syncAfter,
+							D3D12_BARRIER_ACCESS accessBefore, D3D12_BARRIER_ACCESS accessAfter,
+							D3D12_BARRIER_LAYOUT layoutBefore, D3D12_BARRIER_LAYOUT layoutAfter )
 {
-	switch( state )
-	{
-		case BlendState::alpha: return m_alphaEnableBlendingState.get();
-		case BlendState::additive: return m_additiveBlendingState.get();
-		default: return m_alphaDisableBlendingState.get();
-	}
-}
-
-void DMD3D::setState( RasterState state )
-{
-	m_renderState.raster = state;
-}
-
-void DMD3D::setState( DepthState state )
-{
-	m_renderState.depth = state;
-}
-
-void DMD3D::setState( BlendState state )
-{
-	m_renderState.blend = state;
-}
-
-void DMD3D::setRenderState( const RenderState& state )
-{
-	m_renderState = state;
-}
-
-const RenderState& DMD3D::renderState() const
-{
-	return m_renderState;
-}
-
-const Pipeline& DMD3D::pipeline( const PipelineDesc& desc )
-{
-	const uint64_t key = desc.key();
-	auto found = m_pipelines.find( key );
-	if( found != m_pipelines.end() )
-		return found->second;
-
-	const uint32_t id = static_cast<uint32_t>( m_pipelines.size() );
-	if( m_pipelinesWarm )
-	{
-		// Не из списка прогрева: в D3D12 сборка PSO в кадре — фриз; дополнить прогрев (DMShader::warmPipelines)
-		++m_lazyPipelines;
-		LOG( "Pipeline " + std::to_string( id ) + " is created lazily: raster " + std::to_string( static_cast<int>( desc.state.raster ) ) +
-			 ", depth " + std::to_string( static_cast<int>( desc.state.depth ) ) + ", blend " + std::to_string( static_cast<int>( desc.state.blend ) ) +
-			 ", topology " + std::to_string( static_cast<int>( desc.topology ) ) );
-	}
-	return m_pipelines.emplace( key, Pipeline( desc, id ) ).first->second;
-}
-
-void DMD3D::setPipeline( const Pipeline& pipeline )
-{
-	const PipelineDesc& desc = pipeline.desc();
-	m_deviceContext->IASetInputLayout( desc.layout ? desc.layout->handle() : nullptr );
-	setShaderStage( SRVType::vs, desc.vertex );
-	setShaderStage( SRVType::gs, desc.geometry );
-	setShaderStage( SRVType::hs, desc.hull );
-	setShaderStage( SRVType::ds, desc.domain );
-	setShaderStage( SRVType::ps, desc.pixel );
-	// Объекты состояний берутся по перечислению при каждой привязке: растеризатор теней пересоздаётся (setShadowSlopeBias)
-	m_deviceContext->RSSetState( rasterObject( desc.state.raster ) );
-	m_deviceContext->OMSetDepthStencilState( depthObject( desc.state.depth ), 1 );
-	const float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-	m_deviceContext->OMSetBlendState( blendObject( desc.state.blend ), blendFactor, 0xffffffff );
-	m_deviceContext->IASetPrimitiveTopology( desc.topology );
-	m_renderState = desc.state;
+	D3D12_TEXTURE_BARRIER barrier = {};
+	barrier.SyncBefore = syncBefore;
+	barrier.SyncAfter = syncAfter;
+	barrier.AccessBefore = accessBefore;
+	barrier.AccessAfter = accessAfter;
+	barrier.LayoutBefore = layoutBefore;
+	barrier.LayoutAfter = layoutAfter;
+	barrier.pResource = resource;
+	barrier.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFFu;	// все подресурсы
+	D3D12_BARRIER_GROUP group = {};
+	group.Type = D3D12_BARRIER_TYPE_TEXTURE;
+	group.NumBarriers = 1;
+	group.pTextureBarriers = &barrier;
+	m_commandList->Barrier( 1, &group );
 }
 
 void DMD3D::BeginScene( float red, float green, float blue, float alpha )
 {
-	float color[4];
+	const float color[4] = { red, green, blue, alpha };
 
+	// Задний буфер — цель этого кадра
+	textureBarrier( m_backBuffers[m_backBufferIndex].get(), D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_SYNC_RENDER_TARGET,
+					D3D12_BARRIER_ACCESS_NO_ACCESS, D3D12_BARRIER_ACCESS_RENDER_TARGET,
+					D3D12_BARRIER_LAYOUT_PRESENT, D3D12_BARRIER_LAYOUT_RENDER_TARGET );
 
-	// Setup the color to clear the buffer to.
-	color[0] = red;
-	color[1] = green;
-	color[2] = blue;
-	color[3] = alpha;
-
-	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём
+	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём. Обратная глубина: очищенный буфер — дальняя
+	// плоскость, 0
 	beginPass( PassDesc{ "Scene clear", { { &m_sceneTarget, "scene color" } }, { &m_sceneDepth, "scene depth" }, m_screenWidth, m_screenHeight } );
-	m_deviceContext->ClearRenderTargetView( m_sceneTarget.color(), color );
-	// Обратная глубина: очищенный буфер — дальняя плоскость, 0
-	m_deviceContext->ClearDepthStencilView( m_sceneDepth.depth(), D3D11_CLEAR_DEPTH, 0.0f, 0 );
-}
-
-void DMD3D::clearDepth( const TargetView& target, float depth )
-{
-	if( target.depth() )
-		m_deviceContext->ClearDepthStencilView( target.depth(), D3D11_CLEAR_DEPTH, depth, 0 );
-}
-
-void DMD3D::clearTarget( const TargetView& target, const float color[4] )
-{
-	if( target.color() )
-		m_deviceContext->ClearRenderTargetView( target.color(), color );
-}
-
-bool DMD3D::setShadowSlopeBias( float slopeBias )
-{
-	// Без отсечения граней: у рельефа (высотное поле) нет граней «к свету», тонкие панели и лепестки тоже отбрасывают
-	// тень. Постоянного смещения нет: у D32_FLOAT оно зависит от порядка числа. Глубина обратная — смещение от света
-	// уменьшает её, поэтому знак минус. Без отсечения по глубине — объекты перед ближней плоскостью вида света
-	// прижимаются к ней, а не пропадают (pancaking)
-	D3D11_RASTERIZER_DESC desc = {};
-	desc.FillMode = D3D11_FILL_SOLID;
-	desc.CullMode = D3D11_CULL_NONE;
-	desc.DepthBias = 0;
-	desc.SlopeScaledDepthBias = -slopeBias;
-	desc.DepthBiasClamp = -0.01f;
-	desc.DepthClipEnable = FALSE;
-	// В контекст новый объект попадёт со следующим setPipeline (объекты состояний берутся по перечислению)
-	return createRasterizerState( desc, m_rasterStateShadowDepth );
-}
-
-int DMD3D::stageIndex( SRVType type )
-{
-	switch( type )
-	{
-		case SRVType::vs: return 0;
-		case SRVType::hs: return 1;
-		case SRVType::ds: return 2;
-		case SRVType::gs: return 3;
-		case SRVType::ps: return 4;
-		default: return 5;	// cs
-	}
-}
-
-void DMD3D::unbindTransientResources( bool all )
-{
-	ID3D11ShaderResourceView* views[SLOT_TRANSIENT_COUNT] = {};
-	static const SRVType stages[stageCount] = { SRVType::vs, SRVType::hs, SRVType::ds, SRVType::gs, SRVType::ps, SRVType::cs };
-	for( int stage = 0; stage < stageCount; ++stage )
-	{
-		const uint16_t count = all ? SLOT_TRANSIENT_COUNT : m_boundTransientEnd[stage];
-		if( count == 0 )
-			continue;
-		switch( stages[stage] )
-		{
-			case SRVType::vs: m_deviceContext->VSSetShaderResources( 0, count, views ); break;
-			case SRVType::hs: m_deviceContext->HSSetShaderResources( 0, count, views ); break;
-			case SRVType::ds: m_deviceContext->DSSetShaderResources( 0, count, views ); break;
-			case SRVType::gs: m_deviceContext->GSSetShaderResources( 0, count, views ); break;
-			case SRVType::ps: m_deviceContext->PSSetShaderResources( 0, count, views ); break;
-			// Compute-проходы (расстановка, частицы, небо, воздушная перспектива, экспозиция) тоже: к следующему кадру их
-			// SRV столкнулись бы с записью в те же ресурсы
-			default: m_deviceContext->CSSetShaderResources( 0, count, views ); break;
-		}
-		memset( m_boundSRVs[stage], 0, sizeof( ID3D11Resource* ) * count );
-		m_boundTransientEnd[stage] = 0;
-	}
+	clearTarget( m_sceneTarget, color );
+	clearDepth( m_sceneDepth, 0.0f );
+	// Веха M1: буфера сцены ещё нет — цвет очистки в задний буфер, чтобы окно было не чёрным (M2 убирает)
+	if( !m_sceneTarget.valid() )
+		clearTarget( backBufferTarget(), color );
 }
 
 void DMD3D::beginPass( const PassDesc& pass )
 {
-	// Что проход пишет: цели и UAV. Их виды снимаются со входов всех стадий (иначе D3D11 отвязал бы цель сам, с
-	// предупреждением debug-слоя); транзитные слоты — чистые, проход привязывает свои ресурсы после beginPass
-	ID3D11Resource* written[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT + 1 + D3D11_1_UAV_SLOT_COUNT] = {};
-	uint32_t writtenCount = 0;
-	const auto addWritten = [&]( ID3D11Resource* resource )
-	{
-		if( resource && writtenCount < std::size( written ) )
-			written[writtenCount++] = resource;
-	};
+	// Цели и область вывода; барьеры целей, чтения и записи по объявлению — веха M4
+	D3D12_CPU_DESCRIPTOR_HANDLE targets[D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+	m_passColorCount = 0;
 	for( const PassDesc::Target& target : pass.colors )
-		addWritten( target.view ? target.view->resource() : nullptr );
-	addWritten( pass.depth.view ? pass.depth.view->resource() : nullptr );
-	for( const PassDesc::Write& write : pass.writes )
-		addWritten( write.view ? write.view->resource() : nullptr );
-	const auto isWritten = [&]( ID3D11Resource* resource )
 	{
-		for( uint32_t i = 0; i < writtenCount; ++i )
-			if( written[i] == resource )
-				return true;
-		return false;
-	};
-
-	unbindTransientResources( false );
-	static const SRVType stages[stageCount] = { SRVType::vs, SRVType::hs, SRVType::ds, SRVType::gs, SRVType::ps, SRVType::cs };
-	for( int stage = 0; stage < stageCount; ++stage )
-	{
-		for( uint16_t slot = SLOT_TRANSIENT_COUNT; slot < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; ++slot )
+		if( target.view && target.view->valid() && m_passColorCount < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT )
 		{
-			if( m_boundSRVs[stage][slot] && isWritten( m_boundSRVs[stage][slot] ) )
-				unbindSRV( stages[stage], slot );
+			targets[m_passColorCount] = target.view->handle();
+			m_passColorFormats[m_passColorCount++] = target.view->format();
 		}
 	}
-	for( uint16_t slot = 0; slot < D3D11_1_UAV_SLOT_COUNT; ++slot )
-	{
-		if( m_boundUAVs[slot] )
-			unbindUAVs( slot, 1 );
-	}
+	const bool hasDepth = pass.depth.view && pass.depth.view->valid();
+	const D3D12_CPU_DESCRIPTOR_HANDLE depth = hasDepth ? pass.depth.view->handle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
+	m_passDepthFormat = hasDepth ? pass.depth.view->format() : DXGI_FORMAT_UNKNOWN;
+	m_commandList->OMSetRenderTargets( m_passColorCount, m_passColorCount ? targets : nullptr, FALSE, hasDepth ? &depth : nullptr );
 
-	ID3D11RenderTargetView* targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
-	const uint32_t colorCount = std::min<uint32_t>( static_cast<uint32_t>( pass.colors.size() ), D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT );
-	for( uint32_t i = 0; i < colorCount; ++i )
-		targets[i] = pass.colors[i].view ? pass.colors[i].view->color() : nullptr;
-	m_deviceContext->OMSetRenderTargets( colorCount, colorCount ? targets : nullptr, pass.depth.view ? pass.depth.view->depth() : nullptr );
-	m_passTargetCount = 0;
-	for( uint32_t i = 0; i < colorCount; ++i )
-		if( pass.colors[i].view && pass.colors[i].view->resource() )
-			m_passTargets[m_passTargetCount++] = pass.colors[i].view->resource();
-	if( pass.depth.view && pass.depth.view->resource() )
-		m_passTargets[m_passTargetCount++] = pass.depth.view->resource();
 	if( pass.width && pass.height )
 	{
-		D3D11_VIEWPORT viewport = {};
+		D3D12_VIEWPORT viewport = {};
 		viewport.Width = static_cast<float>( pass.width );
 		viewport.Height = static_cast<float>( pass.height );
 		viewport.MaxDepth = 1.0f;
-		m_deviceContext->RSSetViewports( 1, &viewport );
+		const D3D12_RECT scissor = { 0, 0, static_cast<LONG>( pass.width ), static_cast<LONG>( pass.height ) };
+		m_commandList->RSSetViewports( 1, &viewport );
+		m_commandList->RSSetScissorRects( 1, &scissor );
 	}
 
 	if( m_recordingPasses )
@@ -945,26 +644,32 @@ void DMD3D::beginPass( const PassDesc& pass )
 	}
 }
 
-const ShaderView& DMD3D::sceneColor()
+void DMD3D::clearDepth( const TargetView& target, float depth )
 {
-	if( m_sceneResolved )
-		m_deviceContext->ResolveSubresource( m_sceneResolved.get(), 0, m_sceneTexture.get(), 0, DXGI_FORMAT_R16G16B16A16_FLOAT );
-
-	return m_sceneSRV;
+	if( target.valid() && target.isDepth() )
+		m_commandList->ClearDepthStencilView( target.handle(), D3D12_CLEAR_FLAG_DEPTH, depth, 0, 0, nullptr );
 }
 
-void DMD3D::EndScene( )
+void DMD3D::clearTarget( const TargetView& target, const float color[4] )
 {
-	// С vsync — по частоте монитора; без него — сразу, с разрывом кадра (tearing), если DXGI его поддерживает: иначе
-	// flip model всё равно ждала бы обновления экрана
+	if( target.valid() && !target.isDepth() )
+		m_commandList->ClearRenderTargetView( target.handle(), color, 0, nullptr );
+}
+
+void DMD3D::EndScene()
+{
+	// Задний буфер — на показ
+	textureBarrier( m_backBuffers[m_backBufferIndex].get(), D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_SYNC_NONE,
+					D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_ACCESS_NO_ACCESS,
+					D3D12_BARRIER_LAYOUT_RENDER_TARGET, D3D12_BARRIER_LAYOUT_PRESENT );
+	submitCommandList();
+
+	// С vsync — по частоте монитора; без него — сразу, с разрывом кадра (tearing), если DXGI его поддерживает
 	const UINT flags = !m_vsync_enabled && m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0;
 	const HRESULT hr = m_swapChain->Present( m_vsync_enabled ? 1 : 0, flags );
+	m_frames[m_frameIndex].fenceValue = signalFence();
 	if( hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET )
-		LOG( "Present: device removed or reset, reason " + std::to_string( static_cast<long>( m_device->GetDeviceRemovedReason() ) ) );
-
-
-	// Ресурсы сцены (SLOT_LIGHTS и дальше) живут до следующего кадра
-	unbindTransientResources( true );
+		logDeviceRemoved( m_device->GetDeviceRemovedReason() );
 
 	if( m_recordingPasses )
 	{
@@ -974,46 +679,34 @@ void DMD3D::EndScene( )
 			LOG( "  " + std::to_string( i ) + ". " + m_passRecords[i] );
 	}
 
-	logDebugMessages();
+	m_frameIndex = ( m_frameIndex + 1 ) % frameCount;
 }
 
-void DMD3D::waitForNextFrame()
+void DMD3D::logDeviceRemoved( HRESULT reason )
 {
-	if( m_frameLatencyWaitable )
-		WaitForSingleObjectEx( m_frameLatencyWaitable, 1000, TRUE );
-}
-
-void DMD3D::waitForGpu()
-{
-	// D3D11 дождался бы GPU сам внутри ResizeBuffers, но порядок пересоздания целей один для обоих API: ожидание —
-	// событие в конце очереди команд, как fence в D3D12
-	D3D11_QUERY_DESC desc = {};
-	desc.Query = D3D11_QUERY_EVENT;
-	ID3D11Query* queryPtr = nullptr;
-	if( FAILED( m_device->CreateQuery( &desc, &queryPtr ) ) )
-	{
-		m_deviceContext->Flush();
+	LOG( "Device removed, reason " + std::to_string( static_cast<long>( reason ) ) );
+	ID3D12DeviceRemovedExtendedData1* dredPtr = nullptr;
+	if( FAILED( m_device->QueryInterface( __uuidof( ID3D12DeviceRemovedExtendedData1 ), (void**)&dredPtr ) ) )
 		return;
-	}
-	auto query = make_com_ptr<ID3D11Query>( queryPtr );
-	m_deviceContext->End( query.get() );
-	m_deviceContext->Flush();
-	BOOL done = FALSE;
-	while( m_deviceContext->GetData( query.get(), &done, sizeof( done ), 0 ) == S_FALSE )
-		SwitchToThread();
-}
+	auto dred = make_com_ptr<ID3D12DeviceRemovedExtendedData1>( dredPtr );
 
-void DMD3D::releaseSizedTargets()
-{
-	m_deviceContext->OMSetRenderTargets( 0, nullptr, nullptr );
-	m_passTargetCount = 0;
-	m_backBufferTarget.reset();
-	m_sceneSRV.reset();
-	m_sceneTarget.reset();
-	m_sceneResolved.reset();
-	m_sceneTexture.reset();
-	m_sceneDepth.reset();
-	m_depthStencilBuffer.reset();
+	// Последняя выполненная команда каждого списка: op — D3D12_AUTO_BREADCRUMB_OP (например, 12 — Dispatch, 20 — DrawIndexedInstanced)
+	D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT1 breadcrumbs = {};
+	if( SUCCEEDED( dred->GetAutoBreadcrumbsOutput1( &breadcrumbs ) ) )
+	{
+		for( const D3D12_AUTO_BREADCRUMB_NODE1* node = breadcrumbs.pHeadAutoBreadcrumbNode; node; node = node->pNext )
+		{
+			if( !node->pLastBreadcrumbValue || *node->pLastBreadcrumbValue >= node->BreadcrumbCount )
+				continue;
+			const UINT last = *node->pLastBreadcrumbValue;
+			LOG( std::string( "DRED: command list " ) + ( node->pCommandListDebugNameA ? node->pCommandListDebugNameA : "?" ) +
+				 " stopped at command " + std::to_string( last ) + " of " + std::to_string( node->BreadcrumbCount ) +
+				 ", op " + std::to_string( static_cast<int>( node->pCommandHistory[last] ) ) );
+		}
+	}
+	D3D12_DRED_PAGE_FAULT_OUTPUT1 pageFault = {};
+	if( SUCCEEDED( dred->GetPageFaultAllocationOutput1( &pageFault ) ) && pageFault.PageFaultVA )
+		LOG( "DRED: page fault at GPU address " + std::to_string( pageFault.PageFaultVA ) );
 }
 
 bool DMD3D::resize( uint32_t width, uint32_t height )
@@ -1023,11 +716,13 @@ bool DMD3D::resize( uint32_t width, uint32_t height )
 	if( width == m_screenWidth && height == m_screenHeight )
 		return true;
 
-	// Как в D3D12: GPU закончил с задними буферами → ссылок на них нет → ResizeBuffers → цели заново. Буфер сцены и
-	// глубина — того же размера, что задний буфер, поэтому пересоздаются вместе с ним
-	unbindTransientResources( true );
+	// GPU закончил с задними буферами → ссылок на них нет → ResizeBuffers → цели заново. Буфер сцены и глубина —
+	// того же размера, что задний буфер, поэтому пересоздаются вместе с ним (веха M2)
 	waitForGpu();
-	releaseSizedTargets();
+	releaseBackBufferTargets();
+	m_sceneSRV.reset();
+	m_sceneTarget.reset();
+	m_sceneDepth.reset();
 	const HRESULT hr = m_swapChain->ResizeBuffers( backBufferCount, width, height, backBufferFormat, m_swapChainFlags );
 	if( FAILED( hr ) )
 	{
@@ -1036,107 +731,134 @@ bool DMD3D::resize( uint32_t width, uint32_t height )
 	}
 	m_screenWidth = width;
 	m_screenHeight = height;
-	if( !createRenderTargetView() || !createSceneTarget() || !createDepthBuffer() || !createViewport() )
+	if( !createBackBufferTargets() )
 		return false;
+	m_backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
 	LOG( "Back buffer resized to " + std::to_string( width ) + "x" + std::to_string( height ) );
 	return true;
 }
 
-ID3D11Device* DMD3D::GetDevice( )
+void DMD3D::Shutdown()
 {
-	return m_device.get();
+	if( !m_device )
+		return;
+
+	waitForGpu();
+	if( m_recording )
+	{
+		m_commandList->Close();
+		m_recording = false;
+	}
+	if( m_frameLatencyWaitable )
+	{
+		CloseHandle( m_frameLatencyWaitable );
+		m_frameLatencyWaitable = nullptr;
+	}
+	if( m_swapChain )
+		m_swapChain->SetFullscreenState( false, nullptr );
+
+	// Виды — до куч дескрипторов
+	releaseBackBufferTargets();
+	m_sceneSRV.reset();
+	m_sceneTarget.reset();
+	m_sceneDepth.reset();
+	if( m_infoQueue && m_messageCookie )
+	{
+		m_infoQueue->UnregisterMessageCallback( m_messageCookie );
+		m_messageCookie = 0;
+	}
+	if( m_fenceEvent )
+	{
+		CloseHandle( m_fenceEvent );
+		m_fenceEvent = nullptr;
+	}
+	m_swapChain.reset();
+	m_pipelines.clear();
+	m_commandList.reset();
+	for( FrameResources& frame : m_frames )
+	{
+		frame.deferredReleases.clear();
+		frame.allocator.reset();
+	}
+	m_fence.reset();
+	m_infoQueue.reset();
+	m_device.reset();
 }
 
-ID3D11DeviceContext* DMD3D::GetDeviceContext( )
+// ---------------------------------------------------------------------------------------------------------------------
+// Состояния и пайплайны
+// ---------------------------------------------------------------------------------------------------------------------
+
+void DMD3D::setState( RasterState state )
 {
-	return m_deviceContext.get();
+	m_renderState.raster = state;
 }
 
-namespace
+void DMD3D::setState( DepthState state )
 {
-
-bool isDepthFormat( DXGI_FORMAT format )
-{
-	return format == DXGI_FORMAT_D32_FLOAT || format == DXGI_FORMAT_D24_UNORM_S8_UINT || format == DXGI_FORMAT_D16_UNORM ||
-		   format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+	m_renderState.depth = state;
 }
 
-// Какой вид строить: явный или по описанию текстуры
-TextureViewDesc::Kind resolveKind( const TextureDesc& texture, const TextureViewDesc& view )
+void DMD3D::setState( BlendState state )
 {
-	if( view.kind != TextureViewDesc::Kind::automatic )
-		return view.kind;
-	if( texture.depth > 1 )
-		return TextureViewDesc::Kind::texture3D;
-	if( texture.cube )
-		return TextureViewDesc::Kind::cube;
-	return texture.arraySize > 1 ? TextureViewDesc::Kind::texture2DArray : TextureViewDesc::Kind::texture2D;
+	m_renderState.blend = state;
 }
 
-UINT bindFlags( uint32_t usage )
+void DMD3D::setRenderState( const RenderState& state )
 {
-	UINT flags = 0;
-	if( usage & TextureUsage::shaderResource )
-		flags |= D3D11_BIND_SHADER_RESOURCE;
-	if( usage & TextureUsage::renderTarget )
-		flags |= D3D11_BIND_RENDER_TARGET;
-	if( usage & TextureUsage::depthStencil )
-		flags |= D3D11_BIND_DEPTH_STENCIL;
-	if( usage & TextureUsage::unorderedAccess )
-		flags |= D3D11_BIND_UNORDERED_ACCESS;
-	return flags;
+	m_renderState = state;
 }
 
+const Pipeline& DMD3D::pipeline( const PipelineDesc& desc )
+{
+	const uint64_t key = desc.key();
+	auto found = m_pipelines.find( key );
+	if( found != m_pipelines.end() )
+		return found->second;
+
+	const uint32_t id = static_cast<uint32_t>( m_pipelines.size() );
+	if( m_pipelinesWarm )
+	{
+		// Не из списка прогрева: сборка PSO в кадре — фриз; дополнить прогрев (DMShader::warmPipelines)
+		++m_lazyPipelines;
+		LOG( "Pipeline " + std::to_string( id ) + " is created lazily: raster " + std::to_string( static_cast<int>( desc.state.raster ) ) +
+			 ", depth " + std::to_string( static_cast<int>( desc.state.depth ) ) + ", blend " + std::to_string( static_cast<int>( desc.state.blend ) ) +
+			 ", topology " + std::to_string( static_cast<int>( desc.topology ) ) );
+	}
+	return m_pipelines.emplace( key, Pipeline( desc, id ) ).first->second;
+}
+
+void DMD3D::setPipeline( const Pipeline& pipeline )
+{
+	// Веха M3: SetPipelineState + root signature + топология
+	m_renderState = pipeline.desc().state;
+	notImplemented( "setPipeline" );
+}
+
+bool DMD3D::setShadowSlopeBias( float slopeBias )
+{
+	m_shadowSlopeBias = slopeBias;
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Ресурсы (веха M2)
+// ---------------------------------------------------------------------------------------------------------------------
+
+void DMD3D::notImplemented( const char* method )
+{
+	if( m_notImplemented.insert( method ).second )
+		LOG( std::string( "DMD3D::" ) + method + " is not implemented yet (D3D12 port in progress)" );
 }
 
 bool DMD3D::createBuffer( const BufferDesc& desc, const void* initialData, Buffer& buffer )
 {
 	// Константы кадра — участок кольца, своего ресурса нет: данные появятся при первой записи
-	if( ( desc.usage & BufferUsage::constant ) && ( desc.usage & BufferUsage::cpuWrite ) )
-	{
-		buffer.reset( nullptr, desc );
+	buffer.reset( nullptr, nullptr, desc );
+	if( buffer.ring() )
 		return true;
-	}
-
-	D3D11_BUFFER_DESC bufferDesc = {};
-	bufferDesc.ByteWidth = desc.size;
-	bufferDesc.StructureByteStride = ( desc.usage & BufferUsage::structured ) ? desc.stride : 0;
-	if( desc.usage & BufferUsage::constant )
-		bufferDesc.BindFlags |= D3D11_BIND_CONSTANT_BUFFER;
-	if( desc.usage & BufferUsage::vertex )
-		bufferDesc.BindFlags |= D3D11_BIND_VERTEX_BUFFER;
-	if( desc.usage & BufferUsage::index )
-		bufferDesc.BindFlags |= D3D11_BIND_INDEX_BUFFER;
-	if( desc.usage & BufferUsage::shaderResource )
-		bufferDesc.BindFlags |= D3D11_BIND_SHADER_RESOURCE;
-	if( desc.usage & BufferUsage::unorderedAccess )
-		bufferDesc.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
-	if( desc.usage & BufferUsage::structured )
-		bufferDesc.MiscFlags |= D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	if( desc.usage & BufferUsage::raw )
-		bufferDesc.MiscFlags |= D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
-	if( desc.usage & BufferUsage::indirectArgs )
-		bufferDesc.MiscFlags |= D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
-	if( desc.usage & BufferUsage::readback )
-	{
-		bufferDesc.Usage = D3D11_USAGE_STAGING;
-		bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-		bufferDesc.BindFlags = 0;
-	}
-	else if( desc.usage & BufferUsage::cpuWrite )
-	{
-		bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-		bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	}
-	else
-		bufferDesc.Usage = D3D11_USAGE_DEFAULT;
-
-	D3D11_SUBRESOURCE_DATA data = {};
-	data.pSysMem = initialData;
-	ID3D11Buffer* raw = nullptr;
-	if( FAILED( m_device->CreateBuffer( &bufferDesc, initialData ? &data : nullptr, &raw ) ) )
-		return false;
-	buffer.reset( raw, desc );
+	(void)initialData;
+	notImplemented( "createBuffer" );
 	return true;
 }
 
@@ -1146,32 +868,6 @@ bool DMD3D::createShaderConstantBuffer( size_t byteSize, Buffer& buffer )
 	desc.size = static_cast<uint32_t>( byteSize );
 	desc.usage = BufferUsage::constant | BufferUsage::cpuWrite;
 	return createBuffer( desc, nullptr, buffer );
-}
-
-void DMD3D::beginFrame()
-{
-	waitForNextFrame();
-	m_constantRing.beginFrame();
-	if( m_passLogRequested )
-	{
-		m_passLogRequested = false;
-		m_recordingPasses = true;
-		m_passRecords.clear();
-	}
-}
-
-void* DMD3D::beginConstants( Buffer& buffer, uint32_t size )
-{
-	uint32_t offset = 0;
-	uint32_t bytes = 0;
-	void* data = m_constantRing.beginWrite( size, offset, bytes );
-	buffer.setRingSlice( offset, data ? bytes : 0 );
-	return data;
-}
-
-void DMD3D::endConstants()
-{
-	m_constantRing.finishWrite();
 }
 
 bool DMD3D::createVertexBuffer( Buffer& buffer, const void* data, size_t sizeInBytes )
@@ -1190,647 +886,202 @@ bool DMD3D::createIndexBuffer( Buffer& buffer, const void* data, size_t sizeInBy
 	return createBuffer( desc, data, buffer );
 }
 
-bool DMD3D::createShaderView( const Buffer& buffer, const BufferViewDesc& desc, ShaderView& view )
+bool DMD3D::createShaderView( const Buffer&, const BufferViewDesc&, ShaderView& view )
 {
-	// Байтовый вид — R32_TYPELESS по 4 байта (BufferEx с флагом RAW), структурный — без формата, элементы по stride
-	const uint32_t elementSize = desc.raw ? 4 : std::max( buffer.desc().stride, 1u );
-	const uint32_t count = desc.elementCount ? desc.elementCount : buffer.size() / elementSize - desc.firstElement;
-	D3D11_SHADER_RESOURCE_VIEW_DESC viewDesc = {};
-	if( desc.raw )
-	{
-		viewDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-		viewDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
-		viewDesc.BufferEx.FirstElement = desc.firstElement;
-		viewDesc.BufferEx.NumElements = count;
-		viewDesc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
-	}
-	else
-	{
-		viewDesc.Format = DXGI_FORMAT_UNKNOWN;
-		viewDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-		viewDesc.Buffer.FirstElement = desc.firstElement;
-		viewDesc.Buffer.NumElements = count;
-	}
-	ID3D11ShaderResourceView* raw = nullptr;
-	if( FAILED( m_device->CreateShaderResourceView( buffer.handle(), &viewDesc, &raw ) ) )
-		return false;
-	view.reset( raw, buffer.handle() );
+	view.reset();
+	notImplemented( "createShaderView( Buffer )" );
 	return true;
 }
 
-bool DMD3D::createStorageView( const Buffer& buffer, const BufferViewDesc& desc, StorageView& view )
+bool DMD3D::createStorageView( const Buffer&, const BufferViewDesc&, StorageView& view )
 {
-	const uint32_t elementSize = desc.raw ? 4 : std::max( buffer.desc().stride, 1u );
-	const uint32_t count = desc.elementCount ? desc.elementCount : buffer.size() / elementSize - desc.firstElement;
-	D3D11_UNORDERED_ACCESS_VIEW_DESC viewDesc = {};
-	viewDesc.Format = desc.raw ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_UNKNOWN;
-	viewDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-	viewDesc.Buffer.FirstElement = desc.firstElement;
-	viewDesc.Buffer.NumElements = count;
-	viewDesc.Buffer.Flags = desc.raw ? D3D11_BUFFER_UAV_FLAG_RAW : 0;
-	ID3D11UnorderedAccessView* raw = nullptr;
-	if( FAILED( m_device->CreateUnorderedAccessView( buffer.handle(), &viewDesc, &raw ) ) )
-		return false;
-	view.reset( raw, buffer.handle() );
+	view.reset();
+	notImplemented( "createStorageView( Buffer )" );
 	return true;
 }
 
-bool DMD3D::createTexture( const TextureDesc& desc, const TextureData* initial, Texture& texture )
+bool DMD3D::createTexture( const TextureDesc& desc, const TextureData*, Texture& texture )
 {
-	// Подресурсы D3D11 — в том же порядке, что TextureData: срез за срезом, внутри среза мипы
-	std::vector<D3D11_SUBRESOURCE_DATA> data;
-	if( initial )
-	{
-		const uint32_t count = desc.arraySize * std::max( desc.mipCount, 1u );
-		data.resize( count );
-		for( uint32_t i = 0; i < count; ++i )
-		{
-			data[i].pSysMem = initial[i].data;
-			data[i].SysMemPitch = initial[i].rowPitch;
-			data[i].SysMemSlicePitch = initial[i].slicePitch;
-		}
-	}
-
+	// mipCount 0 — полная цепочка: настоящее число мипов нужно уже сейчас (CubeTarget заводит цель на каждый мип)
 	TextureDesc created = desc;
-	ID3D11Resource* resource = nullptr;
-	if( desc.depth > 1 )
+	if( created.mipCount == 0 )
 	{
-		D3D11_TEXTURE3D_DESC textureDesc = {};
-		textureDesc.Width = desc.width;
-		textureDesc.Height = desc.height;
-		textureDesc.Depth = desc.depth;
-		textureDesc.MipLevels = desc.mipCount;
-		textureDesc.Format = desc.format;
-		textureDesc.Usage = D3D11_USAGE_DEFAULT;
-		textureDesc.BindFlags = bindFlags( desc.usage );
-		ID3D11Texture3D* raw = nullptr;
-		if( FAILED( m_device->CreateTexture3D( &textureDesc, initial ? data.data() : nullptr, &raw ) ) )
-			return false;
-		raw->GetDesc( &textureDesc );
-		created.mipCount = textureDesc.MipLevels;
-		created.arraySize = 1;
-		resource = raw;
-	}
-	else
-	{
-		D3D11_TEXTURE2D_DESC textureDesc = {};
-		textureDesc.Width = desc.width;
-		textureDesc.Height = desc.height;
-		textureDesc.MipLevels = desc.mipCount;
-		textureDesc.ArraySize = desc.arraySize;
-		textureDesc.Format = desc.format;
-		textureDesc.SampleDesc.Count = 1;
-		textureDesc.Usage = D3D11_USAGE_DEFAULT;
-		textureDesc.BindFlags = bindFlags( desc.usage );
-		textureDesc.MiscFlags = desc.cube ? D3D11_RESOURCE_MISC_TEXTURECUBE : 0;
-		ID3D11Texture2D* raw = nullptr;
-		if( FAILED( m_device->CreateTexture2D( &textureDesc, initial ? data.data() : nullptr, &raw ) ) )
-			return false;
-		raw->GetDesc( &textureDesc );
-		created.mipCount = textureDesc.MipLevels;
-		resource = raw;
-	}
-	texture.reset( resource, created );
-	return true;
-}
-
-bool DMD3D::createShaderView( const Texture& texture, const TextureViewDesc& desc, ShaderView& view )
-{
-	const TextureDesc& textureDesc = texture.desc();
-	const bool whole = desc.kind == TextureViewDesc::Kind::automatic && desc.format == DXGI_FORMAT_UNKNOWN &&
-					   desc.firstMip == 0 && desc.mipCount == 0 && desc.firstSlice == 0 && desc.sliceCount == 0;
-	D3D11_SHADER_RESOURCE_VIEW_DESC viewDesc = {};
-	viewDesc.Format = desc.format != DXGI_FORMAT_UNKNOWN ? desc.format : textureDesc.format;
-	const UINT mipCount = desc.mipCount ? desc.mipCount : static_cast<UINT>( -1 );	// -1 — все с firstMip
-	const UINT sliceCount = desc.sliceCount ? desc.sliceCount : textureDesc.arraySize - desc.firstSlice;
-	switch( resolveKind( textureDesc, desc ) )
-	{
-		case TextureViewDesc::Kind::texture3D:
-			viewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE3D;
-			viewDesc.Texture3D.MostDetailedMip = desc.firstMip;
-			viewDesc.Texture3D.MipLevels = mipCount;
-			break;
-		case TextureViewDesc::Kind::cube:
-			viewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
-			viewDesc.TextureCube.MostDetailedMip = desc.firstMip;
-			viewDesc.TextureCube.MipLevels = mipCount;
-			break;
-		case TextureViewDesc::Kind::texture2DArray:
-			viewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
-			viewDesc.Texture2DArray.MostDetailedMip = desc.firstMip;
-			viewDesc.Texture2DArray.MipLevels = mipCount;
-			viewDesc.Texture2DArray.FirstArraySlice = desc.firstSlice;
-			viewDesc.Texture2DArray.ArraySize = sliceCount;
-			break;
-		default:
-			viewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-			viewDesc.Texture2D.MostDetailedMip = desc.firstMip;
-			viewDesc.Texture2D.MipLevels = mipCount;
-			break;
-	}
-	ID3D11ShaderResourceView* raw = nullptr;
-	// Вид на всю текстуру как есть — по описанию ресурса (так же работает и для MSAA)
-	if( FAILED( m_device->CreateShaderResourceView( texture.handle(), whole ? nullptr : &viewDesc, &raw ) ) )
-		return false;
-	view.reset( raw, texture.handle() );
-	return true;
-}
-
-bool DMD3D::createTargetView( const Texture& texture, const TextureViewDesc& desc, TargetView& view )
-{
-	const TextureDesc& textureDesc = texture.desc();
-	const DXGI_FORMAT format = desc.format != DXGI_FORMAT_UNKNOWN ? desc.format : textureDesc.format;
-	const TextureViewDesc::Kind kind = resolveKind( textureDesc, desc );
-	const bool array = kind == TextureViewDesc::Kind::texture2DArray || kind == TextureViewDesc::Kind::cube;
-	const UINT sliceCount = desc.sliceCount ? desc.sliceCount : textureDesc.arraySize - desc.firstSlice;
-	if( isDepthFormat( format ) )
-	{
-		D3D11_DEPTH_STENCIL_VIEW_DESC depthDesc = {};
-		depthDesc.Format = format;
-		if( array )
+		uint32_t size = std::max( { desc.width, desc.height, desc.depth } );
+		created.mipCount = 1;
+		while( size > 1 )
 		{
-			depthDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
-			depthDesc.Texture2DArray.MipSlice = desc.firstMip;
-			depthDesc.Texture2DArray.FirstArraySlice = desc.firstSlice;
-			depthDesc.Texture2DArray.ArraySize = sliceCount;
+			size >>= 1;
+			++created.mipCount;
 		}
-		else
-		{
-			depthDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-			depthDesc.Texture2D.MipSlice = desc.firstMip;
-		}
-		ID3D11DepthStencilView* raw = nullptr;
-		if( FAILED( m_device->CreateDepthStencilView( texture.handle(), &depthDesc, &raw ) ) )
-			return false;
-		view.reset( raw, texture.handle() );
-		return true;
 	}
-
-	D3D11_RENDER_TARGET_VIEW_DESC colorDesc = {};
-	colorDesc.Format = format;
-	if( kind == TextureViewDesc::Kind::texture3D )
-	{
-		colorDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
-		colorDesc.Texture3D.MipSlice = desc.firstMip;
-		colorDesc.Texture3D.FirstWSlice = desc.firstSlice;
-		colorDesc.Texture3D.WSize = desc.sliceCount ? desc.sliceCount : static_cast<UINT>( -1 );
-	}
-	else if( array )
-	{
-		colorDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
-		colorDesc.Texture2DArray.MipSlice = desc.firstMip;
-		colorDesc.Texture2DArray.FirstArraySlice = desc.firstSlice;
-		colorDesc.Texture2DArray.ArraySize = sliceCount;
-	}
-	else
-	{
-		colorDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-		colorDesc.Texture2D.MipSlice = desc.firstMip;
-	}
-	ID3D11RenderTargetView* raw = nullptr;
-	if( FAILED( m_device->CreateRenderTargetView( texture.handle(), &colorDesc, &raw ) ) )
-		return false;
-	view.reset( raw, texture.handle() );
+	texture.reset( nullptr, nullptr, created );
+	notImplemented( "createTexture" );
 	return true;
 }
 
-bool DMD3D::createStorageView( const Texture& texture, const TextureViewDesc& desc, StorageView& view )
+bool DMD3D::createShaderView( const Texture&, const TextureViewDesc&, ShaderView& view )
 {
-	const TextureDesc& textureDesc = texture.desc();
-	const TextureViewDesc::Kind kind = resolveKind( textureDesc, desc );
-	D3D11_UNORDERED_ACCESS_VIEW_DESC viewDesc = {};
-	viewDesc.Format = desc.format != DXGI_FORMAT_UNKNOWN ? desc.format : textureDesc.format;
-	if( kind == TextureViewDesc::Kind::texture3D )
-	{
-		viewDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE3D;
-		viewDesc.Texture3D.MipSlice = desc.firstMip;
-		viewDesc.Texture3D.FirstWSlice = desc.firstSlice;
-		viewDesc.Texture3D.WSize = desc.sliceCount ? desc.sliceCount : static_cast<UINT>( -1 );
-	}
-	else if( kind == TextureViewDesc::Kind::texture2DArray || kind == TextureViewDesc::Kind::cube )
-	{
-		viewDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
-		viewDesc.Texture2DArray.MipSlice = desc.firstMip;
-		viewDesc.Texture2DArray.FirstArraySlice = desc.firstSlice;
-		viewDesc.Texture2DArray.ArraySize = desc.sliceCount ? desc.sliceCount : textureDesc.arraySize - desc.firstSlice;
-	}
-	else
-	{
-		viewDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
-		viewDesc.Texture2D.MipSlice = desc.firstMip;
-	}
-	ID3D11UnorderedAccessView* raw = nullptr;
-	if( FAILED( m_device->CreateUnorderedAccessView( texture.handle(), &viewDesc, &raw ) ) )
-		return false;
-	view.reset( raw, texture.handle() );
+	view.reset();
+	notImplemented( "createShaderView( Texture )" );
+	return true;
+}
+
+bool DMD3D::createTargetView( const Texture&, const TextureViewDesc&, TargetView& view )
+{
+	view.reset();
+	notImplemented( "createTargetView" );
+	return true;
+}
+
+bool DMD3D::createStorageView( const Texture&, const TextureViewDesc&, StorageView& view )
+{
+	view.reset();
+	notImplemented( "createStorageView( Texture )" );
 	return true;
 }
 
 bool DMD3D::createShaderStage( SRVType type, const void* bytecode, size_t size, ShaderStage& stage )
 {
-	HRESULT hr = E_INVALIDARG;
-	ID3D11DeviceChild* shader = nullptr;
-	switch( type )
-	{
-		case SRVType::vs:
-		{
-			ID3D11VertexShader* raw = nullptr;
-			hr = m_device->CreateVertexShader( bytecode, size, nullptr, &raw );
-			shader = raw;
-			break;
-		}
-		case SRVType::ps:
-		{
-			ID3D11PixelShader* raw = nullptr;
-			hr = m_device->CreatePixelShader( bytecode, size, nullptr, &raw );
-			shader = raw;
-			break;
-		}
-		case SRVType::gs:
-		{
-			ID3D11GeometryShader* raw = nullptr;
-			hr = m_device->CreateGeometryShader( bytecode, size, nullptr, &raw );
-			shader = raw;
-			break;
-		}
-		case SRVType::hs:
-		{
-			ID3D11HullShader* raw = nullptr;
-			hr = m_device->CreateHullShader( bytecode, size, nullptr, &raw );
-			shader = raw;
-			break;
-		}
-		case SRVType::ds:
-		{
-			ID3D11DomainShader* raw = nullptr;
-			hr = m_device->CreateDomainShader( bytecode, size, nullptr, &raw );
-			shader = raw;
-			break;
-		}
-		case SRVType::cs:
-		{
-			ID3D11ComputeShader* raw = nullptr;
-			hr = m_device->CreateComputeShader( bytecode, size, nullptr, &raw );
-			shader = raw;
-			break;
-		}
-		default:
-			break;
-	}
-	if( FAILED( hr ) )
+	if( !bytecode || size == 0 )
 		return false;
-	stage.reset( type, shader );
+	stage.reset( type, bytecode, size );
 	return true;
 }
 
-bool DMD3D::createInputLayout( const std::vector<VertexElement>& elements, const void* vsBytecode, size_t size, InputLayout& layout )
+bool DMD3D::createInputLayout( const std::vector<VertexElement>& elements, const void*, size_t, InputLayout& layout )
 {
-	std::vector<D3D11_INPUT_ELEMENT_DESC> descs( elements.size() );
-	for( size_t i = 0; i < elements.size(); ++i )
-	{
-		const VertexElement& element = elements[i];
-		descs[i].SemanticName = element.semantic;
-		descs[i].SemanticIndex = element.semanticIndex;
-		descs[i].Format = element.format;
-		descs[i].InputSlot = element.slot;
-		descs[i].AlignedByteOffset = element.offset == VertexElement::appendOffset ? D3D11_APPEND_ALIGNED_ELEMENT : element.offset;
-		descs[i].InputSlotClass = element.perInstance ? D3D11_INPUT_PER_INSTANCE_DATA : D3D11_INPUT_PER_VERTEX_DATA;
-		descs[i].InstanceDataStepRate = element.perInstance ? 1 : 0;
-	}
-	ID3D11InputLayout* raw = nullptr;
-	if( FAILED( m_device->CreateInputLayout( descs.data(), static_cast<UINT>( descs.size() ), vsBytecode, size, &raw ) ) )
-		return false;
-	layout.reset( raw );
+	layout.reset( elements );
 	return true;
 }
 
-void DMD3D::updateBuffer( Buffer& buffer, const void* data, size_t size )
+void DMD3D::updateBuffer( Buffer&, const void*, size_t )
 {
-	m_deviceContext->UpdateSubresource( buffer.handle(), 0, nullptr, data, static_cast<UINT>( size ), 0 );
+	notImplemented( "updateBuffer" );
 }
 
-void DMD3D::copyBuffer( Buffer& destination, const Buffer& source )
+void DMD3D::copyBuffer( Buffer&, const Buffer& )
 {
-	m_deviceContext->CopyResource( destination.handle(), source.handle() );
+	notImplemented( "copyBuffer" );
 }
 
-bool DMD3D::readBuffer( const Buffer& readback, void* data, size_t size )
+bool DMD3D::readBuffer( const Buffer&, void*, size_t )
 {
-	D3D11_MAPPED_SUBRESOURCE mapped = {};
-	if( FAILED( m_deviceContext->Map( readback.handle(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped ) ) )
-		return false;
-	memcpy( data, mapped.pData, size );
-	m_deviceContext->Unmap( readback.handle(), 0 );
-	return true;
+	return false;
 }
 
-bool DMD3D::setConstantBuffer( SRVType type, uint16_t slot, const Buffer& buffer )
+void* DMD3D::beginWrite( Buffer& buffer, uint32_t size )
 {
+	if( m_writingBuffer )
+		return nullptr;
 	if( buffer.ring() )
 	{
-		// Участок этого кадра; без записи в кадре привязывать нечего
-		if( buffer.ringBytes() == 0 )
-			return false;
-		m_constantRing.bind( type, slot, buffer.ringOffset(), buffer.ringBytes() );
-		return true;
+		uint32_t offset = 0, bytes = 0;
+		void* data = m_constantRing.beginWrite( size, offset, bytes );
+		if( !data )
+			return nullptr;
+		buffer.setRingSlice( offset, bytes );
+		m_writingBuffer = &buffer;
+		return data;
 	}
+	// Веха M4: кольцо структурных данных (инстансы, патчи, свет)
+	notImplemented( "beginWrite( structured )" );
+	return nullptr;
+}
 
-	ID3D11Buffer* cbuffer = buffer.handle();
+void DMD3D::endWrite()
+{
+	if( m_writingBuffer && m_writingBuffer->ring() )
+		m_constantRing.finishWrite();
+	m_writingBuffer = nullptr;
+}
 
-	switch( type )
-	{
-		case SRVType::vs:
-			m_deviceContext->VSSetConstantBuffers( slot, 1, &cbuffer );
-			break;
-		case SRVType::ps:
-			m_deviceContext->PSSetConstantBuffers( slot, 1, &cbuffer );
-			break;
-		case SRVType::hs:
-			m_deviceContext->HSSetConstantBuffers( slot, 1, &cbuffer );
-			break;
-		case SRVType::ds:
-			m_deviceContext->DSSetConstantBuffers( slot, 1, &cbuffer );
-			break;
-		case SRVType::gs:
-			m_deviceContext->GSSetConstantBuffers( slot, 1, &cbuffer );
-			break;
-		case SRVType::cs:
-			m_deviceContext->CSSetConstantBuffers( slot, 1, &cbuffer );
-			break;
-		default:
-			return false;
-	}
+// ---------------------------------------------------------------------------------------------------------------------
+// Привязка и вызовы (веха M4)
+// ---------------------------------------------------------------------------------------------------------------------
 
+bool DMD3D::setConstantBuffer( SRVType, uint16_t, const Buffer& buffer )
+{
+	// Участок этого кадра; без записи в кадре привязывать нечего
+	if( buffer.ring() && buffer.ringBytes() == 0 )
+		return false;
+	notImplemented( "setConstantBuffer" );
 	return true;
 }
 
 void DMD3D::setConstantBufferAllStages( uint16_t slot, const Buffer& buffer )
 {
-	if( buffer.ring() )
-	{
-		for( SRVType stage : { SRVType::vs, SRVType::hs, SRVType::ds, SRVType::gs, SRVType::ps, SRVType::cs } )
-			setConstantBuffer( stage, slot, buffer );
-		return;
-	}
-
-	ID3D11Buffer* cbuffer = buffer.handle();
-	m_deviceContext->VSSetConstantBuffers( slot, 1, &cbuffer );
-	m_deviceContext->HSSetConstantBuffers( slot, 1, &cbuffer );
-	m_deviceContext->DSSetConstantBuffers( slot, 1, &cbuffer );
-	m_deviceContext->GSSetConstantBuffers( slot, 1, &cbuffer );
-	m_deviceContext->PSSetConstantBuffers( slot, 1, &cbuffer );
-	m_deviceContext->CSSetConstantBuffers( slot, 1, &cbuffer );
+	setConstantBuffer( SRVType::vs, slot, buffer );
 }
 
-// Ресурс, который пишет текущий проход (цель или UAV compute), привязывается на вход: проход над ним закончен — цели
-// снимаются, UAV отвязывается. Так ресурсы сцены (освещение окружением t101…t103, объём воздушной перспективы t106)
-// привязываются сразу после прохода, который их посчитал; в D3D12 здесь — барьер в состояние чтения (D3D11 без этого
-// снял бы вид сам, с предупреждением debug-слоя «still bound on output»)
-void DMD3D::makeReadable( ID3D11Resource* resource )
+void DMD3D::setSRV( SRVType, uint16_t, const ShaderView& )
 {
-	for( uint32_t i = 0; i < m_passTargetCount; ++i )
-	{
-		if( m_passTargets[i] == resource )
-		{
-			m_deviceContext->OMSetRenderTargets( 0, nullptr, nullptr );
-			m_passTargetCount = 0;
-			break;
-		}
-	}
-	for( uint16_t slot = 0; slot < D3D11_1_UAV_SLOT_COUNT; ++slot )
-	{
-		if( m_boundUAVs[slot] == resource )
-			unbindUAVs( slot, 1 );
-	}
+	notImplemented( "setSRV" );
 }
 
-void DMD3D::setSRV( SRVType type, uint16_t slot, const ShaderView& view )
+void DMD3D::setUAV( uint16_t, const StorageView& )
 {
-	ID3D11ShaderResourceView* const rawSRV = view.handle();
-	if( view.resource() )
-		makeReadable( view.resource() );
-	if( slot < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT )
-		m_boundSRVs[stageIndex( type )][slot] = view.resource();
-	if( rawSRV && slot < SLOT_TRANSIENT_COUNT )
-		m_boundTransientEnd[stageIndex( type )] = std::max<uint16_t>( m_boundTransientEnd[stageIndex( type )], slot + 1 );
-	switch( type )
-	{
-		case SRVType::vs:
-			m_deviceContext->VSSetShaderResources( slot, 1, &rawSRV );
-			break;
-		case SRVType::ps:
-			m_deviceContext->PSSetShaderResources( slot, 1, &rawSRV );
-			break;
-		case SRVType::hs:
-			m_deviceContext->HSSetShaderResources( slot, 1, &rawSRV );
-			break;
-		case SRVType::ds:
-			m_deviceContext->DSSetShaderResources( slot, 1, &rawSRV );
-			break;
-		case SRVType::gs:
-			m_deviceContext->GSSetShaderResources( slot, 1, &rawSRV );
-			break;
-		case SRVType::cs:
-			m_deviceContext->CSSetShaderResources( slot, 1, &rawSRV );
-			break;
-		default:
-			break;
-	}
+	notImplemented( "setUAV" );
 }
 
-void DMD3D::unbindSRV( SRVType type, uint16_t slot, uint16_t count )
+void DMD3D::clearStorageView( const StorageView& )
 {
-	ID3D11ShaderResourceView* views[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
-	count = std::min<uint16_t>( count, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT );
-	for( uint16_t i = slot; i < std::min<uint32_t>( slot + count, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT ); ++i )
-		m_boundSRVs[stageIndex( type )][i] = nullptr;
-	switch( type )
-	{
-		case SRVType::vs:
-			m_deviceContext->VSSetShaderResources( slot, count, views );
-			break;
-		case SRVType::ps:
-			m_deviceContext->PSSetShaderResources( slot, count, views );
-			break;
-		case SRVType::hs:
-			m_deviceContext->HSSetShaderResources( slot, count, views );
-			break;
-		case SRVType::ds:
-			m_deviceContext->DSSetShaderResources( slot, count, views );
-			break;
-		case SRVType::gs:
-			m_deviceContext->GSSetShaderResources( slot, count, views );
-			break;
-		case SRVType::cs:
-			m_deviceContext->CSSetShaderResources( slot, count, views );
-			break;
-		default:
-			break;
-	}
+	notImplemented( "clearStorageView" );
 }
 
-void DMD3D::setUAV( uint16_t slot, const StorageView& view )
+void DMD3D::setVertexBuffers( uint32_t, const Buffer* const[], const uint32_t[], const uint32_t[] )
 {
-	if( slot < D3D11_1_UAV_SLOT_COUNT )
-		m_boundUAVs[slot] = view.resource();
-	ID3D11UnorderedAccessView* views[1] = { view.handle() };
-	const UINT counters[1] = { 0 };
-	m_deviceContext->CSSetUnorderedAccessViews( slot, 1, views, counters );
-}
-
-void DMD3D::unbindUAVs( uint16_t first, uint16_t count )
-{
-	ID3D11UnorderedAccessView* views[D3D11_1_UAV_SLOT_COUNT] = {};
-	UINT counters[D3D11_1_UAV_SLOT_COUNT] = {};
-	count = std::min<uint16_t>( count, D3D11_1_UAV_SLOT_COUNT );
-	m_deviceContext->CSSetUnorderedAccessViews( first, count, views, counters );
-	for( uint16_t i = first; i < std::min<uint32_t>( first + count, D3D11_1_UAV_SLOT_COUNT ); ++i )
-		m_boundUAVs[i] = nullptr;
-}
-
-void DMD3D::clearStorageView( const StorageView& view )
-{
-	const UINT zeros[4] = {};
-	m_deviceContext->ClearUnorderedAccessViewUint( view.handle(), zeros );
-}
-
-void DMD3D::setShaderStage( SRVType type, const ShaderStage* stage )
-{
-	ID3D11DeviceChild* shader = stage ? stage->handle() : nullptr;
-	switch( type )
-	{
-		case SRVType::vs:
-			m_deviceContext->VSSetShader( static_cast<ID3D11VertexShader*>( shader ), nullptr, 0 );
-			break;
-		case SRVType::ps:
-			m_deviceContext->PSSetShader( static_cast<ID3D11PixelShader*>( shader ), nullptr, 0 );
-			break;
-		case SRVType::gs:
-			m_deviceContext->GSSetShader( static_cast<ID3D11GeometryShader*>( shader ), nullptr, 0 );
-			break;
-		case SRVType::hs:
-			m_deviceContext->HSSetShader( static_cast<ID3D11HullShader*>( shader ), nullptr, 0 );
-			break;
-		case SRVType::ds:
-			m_deviceContext->DSSetShader( static_cast<ID3D11DomainShader*>( shader ), nullptr, 0 );
-			break;
-		case SRVType::cs:
-			m_deviceContext->CSSetShader( static_cast<ID3D11ComputeShader*>( shader ), nullptr, 0 );
-			break;
-		default:
-			break;
-	}
-}
-
-void DMD3D::unbindShaders()
-{
-	m_deviceContext->VSSetShader( nullptr, nullptr, 0 );
-	m_deviceContext->GSSetShader( nullptr, nullptr, 0 );
-	m_deviceContext->HSSetShader( nullptr, nullptr, 0 );
-	m_deviceContext->DSSetShader( nullptr, nullptr, 0 );
-	m_deviceContext->PSSetShader( nullptr, nullptr, 0 );
-}
-
-void DMD3D::setInputLayout( const InputLayout* layout )
-{
-	m_deviceContext->IASetInputLayout( layout ? layout->handle() : nullptr );
-}
-
-void DMD3D::setVertexBuffers( uint32_t count, const Buffer* const buffers[], const uint32_t strides[], const uint32_t offsets[] )
-{
-	ID3D11Buffer* raw[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT] = {};
-	count = std::min<uint32_t>( count, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT );
-	for( uint32_t i = 0; i < count; ++i )
-		raw[i] = buffers[i]->handle();
-	m_deviceContext->IASetVertexBuffers( 0, count, raw, strides, offsets );
+	notImplemented( "setVertexBuffers" );
 }
 
 void DMD3D::setVertexBuffer( const Buffer& buffer, uint32_t stride, uint32_t offset )
 {
-	ID3D11Buffer* raw = buffer.handle();
-	m_deviceContext->IASetVertexBuffers( 0, 1, &raw, &stride, &offset );
+	const Buffer* buffers[] = { &buffer };
+	setVertexBuffers( 1, buffers, &stride, &offset );
 }
 
-void DMD3D::setIndexBuffer( const Buffer& buffer, DXGI_FORMAT format, uint32_t offset )
+void DMD3D::setIndexBuffer( const Buffer&, DXGI_FORMAT, uint32_t )
 {
-	m_deviceContext->IASetIndexBuffer( buffer.handle(), format, offset );
+	notImplemented( "setIndexBuffer" );
 }
 
 void DMD3D::unbindGeometry()
 {
-	ID3D11Buffer* none = nullptr;
-	const UINT zero = 0;
-	m_deviceContext->IASetVertexBuffers( 0, 1, &none, &zero, &zero );
-	m_deviceContext->IASetIndexBuffer( nullptr, DXGI_FORMAT_R32_UINT, 0 );
 }
 
-void DMD3D::setTopology( D3D_PRIMITIVE_TOPOLOGY topology )
+void DMD3D::draw( uint32_t, uint32_t )
 {
-	m_deviceContext->IASetPrimitiveTopology( topology );
+	notImplemented( "draw" );
 }
 
-void DMD3D::draw( uint32_t vertexCount, uint32_t startVertex )
+void DMD3D::drawIndexed( uint32_t, uint32_t, int32_t )
 {
-	m_deviceContext->Draw( vertexCount, startVertex );
+	notImplemented( "drawIndexed" );
 }
 
-void DMD3D::drawIndexed( uint32_t indexCount, uint32_t startIndex, int32_t baseVertex )
+void DMD3D::drawIndexedInstanced( uint32_t, uint32_t, uint32_t, int32_t, uint32_t )
 {
-	m_deviceContext->DrawIndexed( indexCount, startIndex, baseVertex );
+	notImplemented( "drawIndexedInstanced" );
 }
 
-void DMD3D::drawIndexedInstanced( uint32_t indexCount, uint32_t instanceCount, uint32_t startIndex, int32_t baseVertex, uint32_t startInstance )
+void DMD3D::drawIndexedInstancedIndirect( const Buffer&, uint32_t )
 {
-	m_deviceContext->DrawIndexedInstanced( indexCount, instanceCount, startIndex, baseVertex, startInstance );
+	notImplemented( "drawIndexedInstancedIndirect" );
 }
 
-void DMD3D::drawIndexedInstancedIndirect( const Buffer& args, uint32_t argsOffset )
+void DMD3D::dispatch( uint32_t, uint32_t, uint32_t )
 {
-	m_deviceContext->DrawIndexedInstancedIndirect( args.handle(), argsOffset );
-}
-
-void DMD3D::drawAuto()
-{
-	m_deviceContext->DrawAuto();
-}
-
-void DMD3D::dispatch( uint32_t x, uint32_t y, uint32_t z )
-{
-	m_deviceContext->Dispatch( x, y, z );
-}
-
-#include "ScreenGrab.h"
-#include <wincodecsdk.h>
-
-bool DMD3D::saveScreenshot( const std::wstring& path )
-{
-	ID3D11Texture2D* backBuffer = nullptr;
-	HRESULT hr = m_swapChain->GetBuffer( 0, __uuidof( ID3D11Texture2D ), (void**)&backBuffer );
-	if( FAILED( hr ) )
-		return false;
-	const bool jpeg = path.size() > 4 && ( _wcsicmp( path.c_str() + path.size() - 4, L".jpg" ) == 0 ||
-										   _wcsicmp( path.c_str() + path.size() - 5, L".jpeg" ) == 0 );
-	hr = SaveWICTextureToFile( m_deviceContext.get(), backBuffer, jpeg ? GUID_ContainerFormatJpeg : GUID_ContainerFormatPng,
-							   path.c_str() );
-	backBuffer->Release();
-	return SUCCEEDED( hr );
+	notImplemented( "dispatch" );
 }
 
 bool DMD3D::createScreenshot()
 {
-	ID3D11Texture2D* backBuffer = nullptr;
-	HRESULT hr = m_swapChain->GetBuffer( 0, __uuidof( ID3D11Texture2D ), (void**)&backBuffer );
-	if( SUCCEEDED( hr ) )
-	{
-		std::wstring fileName = L"screenshot" + std::to_wstring( m_screenshotCounter++ ) + L".jpg";
-		hr = SaveWICTextureToFile( m_deviceContext.get(), backBuffer, GUID_ContainerFormatJpeg, fileName.data() );
-	}
+	const std::wstring fileName = L"screenshot" + std::to_wstring( m_screenshotCounter++ ) + L".jpg";
+	return saveScreenshot( fileName );
+}
 
-	if( backBuffer )
-	{
-		backBuffer->Release();
-		backBuffer = nullptr;
-	}
-
-	return true;
+bool DMD3D::saveScreenshot( const std::wstring& )
+{
+	// Веха M5: ScreenGrab12
+	notImplemented( "saveScreenshot" );
+	return false;
 }
