@@ -43,7 +43,7 @@ DMGraphics::~DMGraphics()
 {
 	pipelineDestroy();
 	System::destroy();
-	DMD3D::destroy();
+	// DMD3D::destroy — в main после DMSystem: члены DMGraphics ещё держат ресурсы GPU
 }
 
 bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd, Config config )
@@ -190,6 +190,10 @@ bool DMGraphics::Render( const FrameContext& frame )
 		m_GUI.addCounterInfo( "Constant ring wraps = %.0f", static_cast<float>( ring.frameWraps ) );
 		m_GUI.addCounterInfo( "Pipelines = %.0f", static_cast<float>( DMD3D::instance().pipelineCount() ) );
 		m_GUI.addCounterInfo( "Pipelines created lazily = %.0f", static_cast<float>( DMD3D::instance().lazyPipelineCount() ) );
+		const DMD3D::VideoMemory memory = DMD3D::instance().videoMemory();
+		m_GUI.addCounterInfo( "Video memory used = %.0f MB", memory.usedBytes / ( 1024.0f * 1024.0f ) );
+		m_GUI.addCounterInfo( "Video memory budget = %.0f MB", memory.budgetBytes / ( 1024.0f * 1024.0f ) );
+		m_GUI.addCounterInfo( "Shader descriptors = %.0f", static_cast<float>( DMD3D::instance().shaderDescriptorCount() ) );
 
 		auto guiStart = TIME_POINT();
 		// Проход GUI: задний буфер поверх тонмаппинга

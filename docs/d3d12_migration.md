@@ -226,7 +226,7 @@ bindless), путь MSAA (`MSAACount`, `ResolveSubresource` в `sceneColor`: п�
   `FrameResources`, кучи RTV / DSV / `CBV_SRV_UAV`, debug-слой + GPU-based validation + `InfoQueue1` + DRED. Остальные
   методы `DMD3D` — заглушки с одной строкой в лог, чтобы движок собирался и запускался целиком. Проверка: окно, очистка
   цветом, GUI ImGui поверх, `passes` печатает проходы, лог без сообщений слоя, `engine.py` работает.
-- **M2. Ресурсы.** D3D12MA, `createBuffer` / `createTexture` / виды с индексами в куче, staging-загрузка, DirectXTex D3D12,
+- **M2. Ресурсы — сделано 2026-09-30** (итог — «Сделано» в `TODO.md`). D3D12MA, `createBuffer` / `createTexture` / виды с индексами в куче, staging-загрузка, DirectXTex D3D12,
   карта высот через `CaptureTexture`, readback с fence, отложенное удаление, `resize`. Проверка: уровень `Test` грузится,
   в логе те же 20 заглушек, что на D3D11 (`Missing resources replaced by placeholders: 20`), бюджет видеопамяти в
   «Statistic».
@@ -291,7 +291,7 @@ M5 — одна.
   `Tools\build.cmd release`, `python Tools/engine.py start --config Release --nogui --nowind` и снимки четырёх камер в
   `DownloadResources\reference\d3d11\` (не в git). Ресурсы (`Textures\`, `Meshes\`, `base.db3`) у обеих сборок должны быть
   одни и те же — копировать или ссылаться, иначе кадры несравнимы.
-- **Уровень `Empty`** (`base.db3`, без террейна и объектов) — проверка каркаса кадра, пока сцена не рисуется (M1–M3):
+- **Уровень `Empty`** (`base.db3`, без террейна и объектов) — проверка каркаса кадра; с M2 грузится и `Test`, но до M4 не рисуется:
   `run.ps1 -Level Empty`, `engine.py start --level Empty`.
 - **Контрольные камеры** у земли нынешней долины: обзор `512,90,150,20,0`, у шаров `500,20,215,4,5`, в траве
   `530,12.8,250,8,210`, у рощи `480,12.6,320,3,0`. Снимки — задний буфер 1920 × 1080 (`engine.py screenshot` при

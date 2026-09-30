@@ -135,11 +135,12 @@ struct SubresourceRange
 	uint32_t sliceCount = 0;	// 0 — все
 };
 
-// Освобождение дескрипторов и памяти — в DMD3D.cpp (кучи и аллокатор там); после DMD3D::destroy ничего не делают
+// Освобождение дескрипторов и ресурсов — в DMD3D.cpp: отложенное, когда GPU закончил кадр, в котором их отпустили
+// (кучи и аллокатор там); после DMD3D::destroy — сразу
 void gpuFreeShaderDescriptor( const Descriptor& descriptor );
 void gpuFreeStagingDescriptor( const Descriptor& descriptor );
 void gpuFreeTargetDescriptor( const Descriptor& descriptor, bool depth );
-void gpuReleaseAllocation( D3D12MA::Allocation* allocation );
+void gpuReleaseResource( ID3D12Resource* resource, D3D12MA::Allocation* allocation );
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Ресурсы
@@ -157,8 +158,9 @@ public:
 		if( this != &other )
 		{
 			reset();
-			m_resource = std::move( other.m_resource );
+			m_resource = other.m_resource;
 			m_allocation = other.m_allocation;
+			other.m_resource = nullptr;
 			other.m_allocation = nullptr;
 			m_desc = other.m_desc;
 			m_gpuAddress = other.m_gpuAddress;
@@ -184,15 +186,15 @@ public:
 		m_ringBytes = bytes;
 	}
 
-	ID3D12Resource* handle() const { return m_resource.get(); }
+	ID3D12Resource* handle() const { return m_resource; }
 	D3D12_GPU_VIRTUAL_ADDRESS gpuAddress() const { return m_gpuAddress; }
 	// Значение fence кадра, в котором в буфер (readback) копировали: readBuffer читает, когда он пройден
 	uint64_t copyFence() const { return m_copyFence; }
 	void setCopyFence( uint64_t fence ) { m_copyFence = fence; }
 	void reset( ID3D12Resource* resource = nullptr, D3D12MA::Allocation* allocation = nullptr, const BufferDesc& desc = {} )
 	{
-		m_resource.reset( resource );
-		gpuReleaseAllocation( m_allocation );
+		gpuReleaseResource( m_resource, m_allocation );
+		m_resource = resource;
 		m_allocation = allocation;
 		m_desc = desc;
 		m_gpuAddress = resource ? resource->GetGPUVirtualAddress() : 0;
@@ -201,7 +203,7 @@ public:
 	}
 
 private:
-	com_unique_ptr<ID3D12Resource> m_resource;
+	ID3D12Resource* m_resource = nullptr;
 	D3D12MA::Allocation* m_allocation = nullptr;
 	BufferDesc m_desc;
 	D3D12_GPU_VIRTUAL_ADDRESS m_gpuAddress = 0;
@@ -222,8 +224,9 @@ public:
 		if( this != &other )
 		{
 			reset();
-			m_resource = std::move( other.m_resource );
+			m_resource = other.m_resource;
 			m_allocation = other.m_allocation;
+			other.m_resource = nullptr;
 			other.m_allocation = nullptr;
 			m_desc = other.m_desc;
 		}
@@ -237,17 +240,17 @@ public:
 	uint32_t height() const { return m_desc.height; }
 	uint32_t mipCount() const { return m_desc.mipCount; }
 
-	ID3D12Resource* handle() const { return m_resource.get(); }
+	ID3D12Resource* handle() const { return m_resource; }
 	void reset( ID3D12Resource* resource = nullptr, D3D12MA::Allocation* allocation = nullptr, const TextureDesc& desc = {} )
 	{
-		m_resource.reset( resource );
-		gpuReleaseAllocation( m_allocation );
+		gpuReleaseResource( m_resource, m_allocation );
+		m_resource = resource;
 		m_allocation = allocation;
 		m_desc = desc;
 	}
 
 private:
-	com_unique_ptr<ID3D12Resource> m_resource;
+	ID3D12Resource* m_resource = nullptr;
 	D3D12MA::Allocation* m_allocation = nullptr;
 	TextureDesc m_desc;
 };

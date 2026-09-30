@@ -17,6 +17,11 @@
 #include "GpuPipeline.h"
 #include "GpuPass.h"
 
+namespace D3D12MA
+{
+class Allocator;
+}
+
 namespace Device
 {
 
@@ -44,9 +49,10 @@ void updateResourceData( Buffer& buffer, const ResourceType& data )
 }
 
 // Бэкенд D3D12 за интерфейсом, которым пользуются объекты сцены, материалы и Renderer (docs/d3d12_migration.md §4):
-// устройство и очереди, кадры в полёте с fence, кучи дескрипторов (bindless), кольцо констант, проходы с барьерами,
-// пайплайны, ресурсы и виды, вызовы. Вехи M1 (каркас: устройство, кадр, swap chain, debug-слой) … M5 — что ещё
-// не сделано, отмечено в коде словом «веха»
+// устройство и очереди, кадры в полёте с fence, кучи дескрипторов (bindless), кольцо констант, память (D3D12MA),
+// ресурсы и виды, проходы с барьерами, пайплайны, вызовы. Вехи M1 (каркас), M2 (ресурсы) сделаны; что ещё не
+// сделано (M3 — шейдеры и пайплайны, M4 — привязка, барьеры проходов и вызовы, M5 — профайлер и снимки), отмечено
+// в коде словом «веха»
 class DMD3D
 {
 private:
@@ -62,6 +68,9 @@ public:
 	static constexpr DXGI_FORMAT backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 	static constexpr DXGI_FORMAT backBufferViewFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	static constexpr uint32_t backBufferCount = 2;
+	// Буфер сцены: HDR-цвет и глубина (обратная, D32)
+	static constexpr DXGI_FORMAT sceneColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	static constexpr DXGI_FORMAT sceneDepthFormat = DXGI_FORMAT_D32_FLOAT;
 
 	static DMD3D& instance();
 	static bool exists() { return m_instance != nullptr; }
@@ -76,9 +85,10 @@ public:
 	// командный список, новый кадр кольца констант. Команды, записанные до первого кадра (загрузка), выполняются и
 	// ждутся здесь
 	void beginFrame();
-	// Кадр рисуется в HDR-буфер сцены (R16G16B16A16_FLOAT, линейные значения без ограничения сверху): BeginScene
-	// объявляет проход очистки и очищает его вместе с буфером глубины. Тонмаппинг переводит его в задний буфер
-	// (backBufferTarget + sceneColor), поверх рисуется GUI, EndScene показывает кадр
+	// Кадр рисуется в HDR-буфер сцены (линейные значения без ограничения сверху): BeginScene объявляет проход очистки
+	// и очищает его вместе с буфером глубины. Буфер создаётся при первом вызове с этим цветом очистки (optimized clear
+	// value). Тонмаппинг переводит его в задний буфер (backBufferTarget + sceneColor), поверх рисуется GUI, EndScene
+	// показывает кадр
 	void BeginScene( float, float, float, float );
 	// Проход начинается объявлением (GpuPass.h): цели и область вывода ставятся, барьеры целей, чтения и записи
 	// ставятся по объявлению (веха M4); ресурсы прохода привязываются после beginPass. Без целей — compute-проход.
@@ -101,19 +111,30 @@ public:
 	const ShaderView& sceneColor() const { return m_sceneSRV; }
 	// Конец кадра: команды в очередь, Present, fence кадра
 	void EndScene();
-	// Ждёт, пока GPU закончит всё отправленное (fence в конце очереди) — размер окна, выгрузка
+	// Ждёт, пока GPU закончит всё отправленное (fence в конце очереди) — размер окна, чтение на CPU при загрузке, выгрузка
 	void waitForGpu();
 
-	// Участок upload-кольца под size байт для buffer (BufferUsage::cpuWrite): указатель для записи до endWrite();
-	// у констант buffer запоминает участок, и setConstantBuffer в этом кадре привязывает его. Так работают
-	// Device::updateResource*; напрямую — когда данные пишутся по месту. nullptr — участка нет (кольцо переполнено)
+	// Участок upload-кольца под size байт для buffer (BufferUsage::cpuWrite): указатель для записи до endWrite().
+	// У констант buffer запоминает участок, и setConstantBuffer в этом кадре привязывает его; у остальных (инстансы,
+	// патчи, свет) endWrite копирует участок в буфер — вид на него постоянный. Так работают Device::updateResource*;
+	// напрямую — когда данные пишутся по месту. nullptr — участка нет (кольцо переполнено)
 	void* beginWrite( Buffer& buffer, uint32_t size );
 	void endWrite();
 	const ConstantRing::Stats& constantRingStats() const { return m_constantRing.lastFrameStats(); }
 
 	// Новый размер заднего буфера (WM_SIZE): дождаться GPU, отпустить все ссылки на задние буферы, ResizeBuffers,
-	// затем цели заново. Цели постобработки и проекцию камеры пересоздаёт DMGraphics::resize. Тот же размер — ничего
+	// затем цели заново (буфер сцены — при следующем BeginScene). Цели постобработки и проекцию камеры пересоздаёт
+	// DMGraphics::resize. Тот же размер — ничего
 	bool resize( uint32_t width, uint32_t height );
+
+	// Занятая и доступная видеопамять адаптера (DXGI), байты — в «Statistic»
+	struct VideoMemory
+	{
+		uint64_t usedBytes = 0;
+		uint64_t budgetBytes = 0;
+	};
+	VideoMemory videoMemory() const;
+	uint32_t shaderDescriptorCount() const { return m_shaderHeap.used(); }
 
 	// --- D3D12 для кода в Graphics/D3D и привязки ImGui (imgui_impl_dx12) ----------------------------------------------
 	ID3D12Device10* GetDevice() const { return m_device.get(); }
@@ -123,6 +144,16 @@ public:
 	// Дескриптор из общей shader-visible кучи (ImGui — под шрифт и картинки); невалидный — куча полна
 	Descriptor allocateShaderDescriptor();
 	void freeShaderDescriptor( D3D12_CPU_DESCRIPTOR_HANDLE cpu );
+	// Копия всех подресурсов текстуры на CPU (TextureImages::captureTexture): раскладка подресурсов в bytes — как у
+	// GetCopyableFootprints, порядок — срез за срезом, внутри среза мипы. Ждёт GPU
+	struct SubresourceCopy
+	{
+		uint64_t offset = 0;	// байты от начала bytes
+		uint32_t rowPitch = 0;	// байты между строками в bytes (выравнены на 256)
+		uint32_t rows = 0;		// строк на слой глубины
+		uint64_t rowBytes = 0;	// значащих байтов в строке
+	};
+	bool captureTexture( const Texture& texture, std::vector<SubresourceCopy>& copies, std::vector<uint8_t>& bytes );
 
 	// --- Состояния и пайплайны (GpuPipeline.h) ------------------------------------------------------------------------
 	// Состояния — часть пайплайна: setState только запоминает их (renderState), в контекст они попадают вместе с
@@ -141,7 +172,8 @@ public:
 	uint32_t pipelineCount() const { return static_cast<uint32_t>( m_pipelines.size() ); }
 	uint32_t lazyPipelineCount() const { return m_lazyPipelines; }
 
-	// --- Ресурсы (GpuResources.h): создание по описаниям (веха M2) ------------------------------------------------------
+	// --- Ресурсы (GpuResources.h): создание по описаниям, память — D3D12MA ---------------------------------------------
+	// Начальные данные копируются через upload-буфер в командном списке (до первого кадра — списке загрузки)
 	bool createBuffer( const BufferDesc& desc, const void* initialData, Buffer& buffer );
 	// Константы, которые пишут каждый кадр (BufferUsage::constant | cpuWrite) — участок кольца констант. Константы,
 	// которые меняются редко, а читаются каждый кадр, — createBuffer с BufferUsage::constant и updateBuffer
@@ -160,7 +192,7 @@ public:
 	bool createShaderStage( SRVType type, const void* bytecode, size_t size, ShaderStage& stage );
 	bool createInputLayout( const std::vector<VertexElement>& elements, const void* vsBytecode, size_t size, InputLayout& layout );
 
-	// --- Обновление и копирование (веха M2) ---------------------------------------------------------------------------
+	// --- Обновление и копирование ----------------------------------------------------------------------------------------
 	void updateBuffer( Buffer& buffer, const void* data, size_t size );	// запись целиком в буфер без cpuWrite: upload + копия
 	void copyBuffer( Buffer& destination, const Buffer& source );
 	// Чтение копии BufferUsage::readback без ожидания: false — GPU ещё пишет её (fence копии не пройден) или ошибка
@@ -198,11 +230,25 @@ public:
 	bool saveScreenshot( const std::wstring& path );
 
 private:
+	// Куча дескриптора для отложенного освобождения
+	enum class HeapKind : uint8_t { shader, staging, rtv, dsv };
+
 	struct FrameResources
 	{
 		com_unique_ptr<ID3D12CommandAllocator> allocator;
 		uint64_t fenceValue = 0;								// GPU закончил кадр, когда fence ≥ этого значения
-		std::vector<com_unique_ptr<IUnknown>> deferredReleases;	// отпускаются, когда GPU закончил кадр
+		std::vector<IUnknown*> deferredReleases;				// отпускаются, когда GPU закончил кадр
+		std::vector<std::pair<HeapKind, Descriptor>> deferredDescriptors;
+	};
+
+	// Состояние ресурса для enhanced barriers: у буферов только sync и access, у текстур ещё layout (веха M4 —
+	// по подресурсам). Новый ресурс — SYNC_NONE / NO_ACCESS и начальный layout
+	struct ResourceState
+	{
+		D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_UNDEFINED;
+		D3D12_BARRIER_SYNC sync = D3D12_BARRIER_SYNC_NONE;
+		D3D12_BARRIER_ACCESS access = D3D12_BARRIER_ACCESS_NO_ACCESS;
+		bool texture = false;
 	};
 
 	bool selectAdapter();
@@ -212,6 +258,8 @@ private:
 	bool createSwapChain( HWND hwnd, bool fullscreen );
 	bool createBackBufferTargets();
 	void releaseBackBufferTargets();
+	bool createSceneTargets( const float clearColor[4] );
+	void releaseSceneTargets();
 	// Командный список: открыть на аллокаторе кадра / закрыть и отправить в очередь
 	void openCommandList( FrameResources& frame );
 	void submitCommandList();
@@ -219,20 +267,37 @@ private:
 	uint64_t signalFence();
 	void waitForFence( uint64_t value );
 	void waitForNextFrame();
-	// Барьер текстуры целиком (enhanced barriers)
-	void textureBarrier( ID3D12Resource* resource, D3D12_BARRIER_SYNC syncBefore, D3D12_BARRIER_SYNC syncAfter,
-						 D3D12_BARRIER_ACCESS accessBefore, D3D12_BARRIER_ACCESS accessAfter,
-						 D3D12_BARRIER_LAYOUT layoutBefore, D3D12_BARRIER_LAYOUT layoutAfter );
+	// Отпустить то, что кадр отложил (GPU его закончил)
+	void processDeferred( FrameResources& frame );
+	void deferRelease( IUnknown* object );
+	void deferFreeDescriptor( HeapKind heap, const Descriptor& descriptor );
+	// Барьер enhanced barriers к состоянию (access и, у текстур, layout) с учётом текущего; force — и при том же
+	// состоянии (запись после записи: копия за копией)
+	void barrier( ID3D12Resource* resource, D3D12_BARRIER_ACCESS access, D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_UNDEFINED,
+				  bool force = false );
+	void flushBarriers();
+	static D3D12_BARRIER_SYNC syncFor( D3D12_BARRIER_ACCESS access );
+	static D3D12_BARRIER_ACCESS steadyAccess( uint32_t bufferUsage );
+	// Ресурс из аллокатора; buffer — D3D12_RESOURCE_DESC1 буфера или текстуры
+	bool createResource( const D3D12_RESOURCE_DESC1& desc, D3D12_HEAP_TYPE heap, D3D12_BARRIER_LAYOUT initialLayout,
+						 const D3D12_CLEAR_VALUE* clearValue, ID3D12Resource** resource, D3D12MA::Allocation** allocation );
+	bool createTextureInternal( const TextureDesc& desc, const TextureData* initial, Texture& texture, const float* clearColor,
+								const wchar_t* name );
+	// Данные — в буфер: через участок кольца (в кадре, небольшие) или отдельный upload-буфер с отложенным отпуском
+	bool uploadToBuffer( ID3D12Resource* destination, uint64_t destinationOffset, const void* data, uint64_t size );
+	bool uploadToTexture( ID3D12Resource* destination, const TextureDesc& desc, const TextureData* initial );
+	bool createStaging( uint64_t bytes, D3D12_HEAP_TYPE heap, ID3D12Resource** resource, D3D12MA::Allocation** allocation, void** mapped );
 	// Потеря устройства: причина и последние выполненные команды (DRED) — в лог
 	void logDeviceRemoved( HRESULT reason );
 	static void messageCallback( D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVERITY severity, D3D12_MESSAGE_ID id,
 								 LPCSTR description, void* context );
-	// Метод ещё не реализован (веха M2–M5): одна строка в лог на имя
+	// Метод ещё не реализован (веха M3–M5): одна строка в лог на имя
 	void notImplemented( const char* method );
 
 	friend void gpuFreeShaderDescriptor( const Descriptor& descriptor );
 	friend void gpuFreeStagingDescriptor( const Descriptor& descriptor );
 	friend void gpuFreeTargetDescriptor( const Descriptor& descriptor, bool depth );
+	friend void gpuReleaseResource( ID3D12Resource* resource, D3D12MA::Allocation* allocation );
 
 private:
 	bool m_vsync_enabled = false;
@@ -248,11 +313,13 @@ private:
 	com_unique_ptr<IDXGIFactory4> m_factory;
 	com_unique_ptr<IDXGIAdapter1> m_adapter;			// видеокарта устройства: дискретная, если их две
 	com_unique_ptr<ID3D12Device10> m_device;
+	D3D12MA::Allocator* m_allocator = nullptr;
 	com_unique_ptr<ID3D12CommandQueue> m_directQueue;
 	com_unique_ptr<ID3D12CommandQueue> m_computeQueue;	// async compute — после переезда
 	com_unique_ptr<ID3D12CommandQueue> m_copyQueue;		// подгрузка во время игры — после переезда
 	com_unique_ptr<ID3D12GraphicsCommandList7> m_commandList;
 	bool m_recording = false;							// командный список открыт
+	bool m_frameStarted = false;						// был первый beginFrame: до него команды — список загрузки
 	com_unique_ptr<ID3D12Fence> m_fence;
 	uint64_t m_fenceValue = 0;
 	HANDLE m_fenceEvent = nullptr;
@@ -270,6 +337,13 @@ private:
 	static constexpr uint32_t constantRingBytes = 8 * 1024 * 1024;	// на все кадры в полёте; кадр сцены — сотни участков по 256 байт
 	ConstantRing m_constantRing;
 	Buffer* m_writingBuffer = nullptr;
+	uint32_t m_writeOffset = 0;
+	uint32_t m_writeBytes = 0;
+
+	// Состояния ресурсов для барьеров; барьеры копятся до flushBarriers — одной пачкой перед командой
+	std::unordered_map<ID3D12Resource*, ResourceState> m_states;
+	std::vector<D3D12_BUFFER_BARRIER> m_pendingBufferBarriers;
+	std::vector<D3D12_TEXTURE_BARRIER> m_pendingTextureBarriers;
 
 	com_unique_ptr<IDXGISwapChain3> m_swapChain;
 	UINT m_swapChainFlags = 0;
@@ -279,10 +353,13 @@ private:
 	TargetView m_backBufferTargets[backBufferCount];
 	uint32_t m_backBufferIndex = 0;
 
-	// Буфер сцены (веха M2): HDR-цвет, глубина, вид цвета для постобработки
+	// Буфер сцены: HDR-цвет, глубина, вид цвета для постобработки — при первом BeginScene и после resize
+	Texture m_sceneTexture;
+	Texture m_sceneDepthTexture;
 	TargetView m_sceneTarget;
 	TargetView m_sceneDepth;
 	ShaderView m_sceneSRV;
+	float m_sceneClearColor[4] = {};
 	float m_shadowSlopeBias = 0.0f;
 
 	RenderState m_renderState;

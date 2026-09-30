@@ -2,7 +2,9 @@
 #include "Shaders\slots.h"
 #include "Utils\utilites.h"
 #include "Logger\Logger.h"
+#include <D3D12MemAlloc.h>
 #include <algorithm>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -16,32 +18,84 @@ extern "C"
 
 std::unique_ptr<DMD3D> DMD3D::m_instance;
 
+namespace
+{
+
+bool isDepthFormat( DXGI_FORMAT format )
+{
+	return format == DXGI_FORMAT_D32_FLOAT || format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT || format == DXGI_FORMAT_D24_UNORM_S8_UINT ||
+		   format == DXGI_FORMAT_D16_UNORM;
+}
+
+// Формат глубины для typeless-текстуры (карта теней — R32_TYPELESS: DSV D32_FLOAT, SRV R32_FLOAT)
+DXGI_FORMAT depthFormatFor( DXGI_FORMAT format )
+{
+	switch( format )
+	{
+		case DXGI_FORMAT_R32_TYPELESS: return DXGI_FORMAT_D32_FLOAT;
+		case DXGI_FORMAT_R24G8_TYPELESS: return DXGI_FORMAT_D24_UNORM_S8_UINT;
+		case DXGI_FORMAT_R16_TYPELESS: return DXGI_FORMAT_D16_UNORM;
+		default: return format;
+	}
+}
+
+TextureViewDesc::Kind resolveKind( const TextureDesc& texture, const TextureViewDesc& view )
+{
+	if( view.kind != TextureViewDesc::Kind::automatic )
+		return view.kind;
+	if( texture.depth > 1 )
+		return TextureViewDesc::Kind::texture3D;
+	if( texture.cube )
+		return TextureViewDesc::Kind::cube;
+	return texture.arraySize > 1 ? TextureViewDesc::Kind::texture2DArray : TextureViewDesc::Kind::texture2D;
+}
+
+uint32_t subresourceCount( const TextureDesc& desc )
+{
+	return desc.mipCount * ( desc.depth > 1 ? 1 : desc.arraySize );
+}
+
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
-// Освобождение дескрипторов видов и памяти аллокатора (GpuResources.h)
+// Освобождение дескрипторов видов и ресурсов (GpuResources.h): отложенное, пока GPU не закончит кадр
 // ---------------------------------------------------------------------------------------------------------------------
 
 void gpuFreeShaderDescriptor( const Descriptor& descriptor )
 {
 	if( DMD3D::exists() )
-		DMD3D::instance().m_shaderHeap.free( descriptor );
+		DMD3D::instance().deferFreeDescriptor( DMD3D::HeapKind::shader, descriptor );
 }
 
 void gpuFreeStagingDescriptor( const Descriptor& descriptor )
 {
 	if( DMD3D::exists() )
-		DMD3D::instance().m_stagingHeap.free( descriptor );
+		DMD3D::instance().deferFreeDescriptor( DMD3D::HeapKind::staging, descriptor );
 }
 
 void gpuFreeTargetDescriptor( const Descriptor& descriptor, bool depth )
 {
 	if( DMD3D::exists() )
-		( depth ? DMD3D::instance().m_dsvHeap : DMD3D::instance().m_rtvHeap ).free( descriptor );
+		DMD3D::instance().deferFreeDescriptor( depth ? DMD3D::HeapKind::dsv : DMD3D::HeapKind::rtv, descriptor );
 }
 
-void gpuReleaseAllocation( D3D12MA::Allocation* allocation )
+void gpuReleaseResource( ID3D12Resource* resource, D3D12MA::Allocation* allocation )
 {
-	// Веха M2: D3D12MA::Allocation::Release()
-	(void)allocation;
+	if( !resource && !allocation )
+		return;
+	if( DMD3D::exists() && DMD3D::instance().m_device )
+	{
+		DMD3D& d3d = DMD3D::instance();
+		d3d.m_states.erase( resource );
+		d3d.deferRelease( resource );
+		d3d.deferRelease( allocation );
+		return;
+	}
+	// DMD3D уже нет (ресурсы хранилищ живут до конца процесса): отпускаем сразу — устройство держат сами объекты
+	if( resource )
+		resource->Release();
+	if( allocation )
+		allocation->Release();
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -81,9 +135,8 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 	if( !m_constantRing.initialize( m_device.get(), constantRingBytes, frameCount ) )
 		return false;
 
-	// Команды загрузки (копии, мипы куба неба) записываются в список первого кадра; beginFrame их выполнит и дождётся
+	// Команды загрузки (копии данных, мипы куба неба) записываются в список первого кадра; beginFrame их выполнит и дождётся
 	openCommandList( m_frames[0] );
-	LOG( "D3D12 backend: veha M1 — device, frame, swap chain; resources, shaders, drawing are not implemented yet" );
 	return true;
 }
 
@@ -250,6 +303,17 @@ bool DMD3D::createDevice( const Config& config )
 		m_infoQueue->RegisterMessageCallback( messageCallback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, this, &m_messageCookie );
 	}
 #endif
+
+	// Память ресурсов — D3D12MA: блоки куч под ресурсы, без своего аллокатора
+	D3D12MA::ALLOCATOR_DESC allocatorDesc = {};
+	allocatorDesc.Flags = D3D12MA_RECOMMENDED_ALLOCATOR_FLAGS;
+	allocatorDesc.pDevice = m_device.get();
+	allocatorDesc.pAdapter = m_adapter.get();
+	if( FAILED( D3D12MA::CreateAllocator( &allocatorDesc, &m_allocator ) ) )
+	{
+		LOG( "D3D12 Memory Allocator: CreateAllocator failed" );
+		return false;
+	}
 	return true;
 }
 
@@ -358,7 +422,43 @@ Descriptor DMD3D::allocateShaderDescriptor()
 
 void DMD3D::freeShaderDescriptor( D3D12_CPU_DESCRIPTOR_HANDLE cpu )
 {
-	m_shaderHeap.free( m_shaderHeap.at( m_shaderHeap.indexOf( cpu ) ) );
+	deferFreeDescriptor( HeapKind::shader, m_shaderHeap.at( m_shaderHeap.indexOf( cpu ) ) );
+}
+
+void DMD3D::deferFreeDescriptor( HeapKind heap, const Descriptor& descriptor )
+{
+	if( !descriptor.valid() )
+		return;
+	if( m_device )
+		m_frames[m_frameIndex].deferredDescriptors.emplace_back( heap, descriptor );
+}
+
+void DMD3D::deferRelease( IUnknown* object )
+{
+	if( !object )
+		return;
+	if( m_device )
+		m_frames[m_frameIndex].deferredReleases.push_back( object );
+	else
+		object->Release();
+}
+
+void DMD3D::processDeferred( FrameResources& frame )
+{
+	for( IUnknown* object : frame.deferredReleases )
+		object->Release();
+	frame.deferredReleases.clear();
+	for( const auto& [heap, descriptor] : frame.deferredDescriptors )
+	{
+		switch( heap )
+		{
+			case HeapKind::shader: m_shaderHeap.free( descriptor ); break;
+			case HeapKind::staging: m_stagingHeap.free( descriptor ); break;
+			case HeapKind::rtv: m_rtvHeap.free( descriptor ); break;
+			case HeapKind::dsv: m_dsvHeap.free( descriptor ); break;
+		}
+	}
+	frame.deferredDescriptors.clear();
 }
 
 bool DMD3D::createSwapChain( HWND hwnd, bool fullscreen )
@@ -461,6 +561,56 @@ void DMD3D::releaseBackBufferTargets()
 	}
 }
 
+bool DMD3D::createSceneTargets( const float clearColor[4] )
+{
+	memcpy( m_sceneClearColor, clearColor, sizeof( m_sceneClearColor ) );
+	TextureDesc colorDesc;
+	colorDesc.width = m_screenWidth;
+	colorDesc.height = m_screenHeight;
+	colorDesc.format = sceneColorFormat;
+	colorDesc.usage = TextureUsage::renderTarget | TextureUsage::shaderResource;
+	TextureDesc depthDesc;
+	depthDesc.width = m_screenWidth;
+	depthDesc.height = m_screenHeight;
+	depthDesc.format = sceneDepthFormat;
+	depthDesc.usage = TextureUsage::depthStencil;
+	if( !createTextureInternal( colorDesc, nullptr, m_sceneTexture, clearColor, L"Scene color" ) ||
+		!createTargetView( m_sceneTexture, {}, m_sceneTarget ) || !createShaderView( m_sceneTexture, {}, m_sceneSRV ) ||
+		!createTextureInternal( depthDesc, nullptr, m_sceneDepthTexture, nullptr, L"Scene depth" ) ||
+		!createTargetView( m_sceneDepthTexture, {}, m_sceneDepth ) )
+	{
+		LOG( "Failed to create the scene color and depth buffers" );
+		return false;
+	}
+	return true;
+}
+
+void DMD3D::releaseSceneTargets()
+{
+	m_sceneSRV.reset();
+	m_sceneTarget.reset();
+	m_sceneDepth.reset();
+	m_sceneTexture.reset();
+	m_sceneDepthTexture.reset();
+}
+
+DMD3D::VideoMemory DMD3D::videoMemory() const
+{
+	VideoMemory memory;
+	IDXGIAdapter3* adapter3 = nullptr;
+	if( m_adapter && SUCCEEDED( m_adapter->QueryInterface( __uuidof( IDXGIAdapter3 ), (void**)&adapter3 ) ) )
+	{
+		DXGI_QUERY_VIDEO_MEMORY_INFO info = {};
+		if( SUCCEEDED( adapter3->QueryVideoMemoryInfo( 0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info ) ) )
+		{
+			memory.usedBytes = info.CurrentUsage;
+			memory.budgetBytes = info.Budget;
+		}
+		adapter3->Release();
+	}
+	return memory;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Кадр
 // ---------------------------------------------------------------------------------------------------------------------
@@ -479,6 +629,7 @@ void DMD3D::submitCommandList()
 {
 	if( !m_recording )
 		return;
+	flushBarriers();
 	m_recording = false;
 	if( FAILED( m_commandList->Close() ) )
 	{
@@ -518,7 +669,7 @@ void DMD3D::waitForGpu()
 	waitForFence( signalFence() );
 	for( FrameResources& frame : m_frames )
 	{
-		frame.deferredReleases.clear();
+		processDeferred( frame );
 		frame.fenceValue = 0;
 	}
 	if( wasRecording )
@@ -538,10 +689,11 @@ void DMD3D::beginFrame()
 		submitCommandList();
 		waitForFence( signalFence() );
 	}
+	m_frameStarted = true;
 
 	FrameResources& frame = m_frames[m_frameIndex];
 	waitForFence( frame.fenceValue );
-	frame.deferredReleases.clear();
+	processDeferred( frame );
 	frame.allocator->Reset();
 	openCommandList( frame );
 
@@ -557,43 +709,140 @@ void DMD3D::beginFrame()
 	}
 }
 
-void DMD3D::textureBarrier( ID3D12Resource* resource, D3D12_BARRIER_SYNC syncBefore, D3D12_BARRIER_SYNC syncAfter,
-							D3D12_BARRIER_ACCESS accessBefore, D3D12_BARRIER_ACCESS accessAfter,
-							D3D12_BARRIER_LAYOUT layoutBefore, D3D12_BARRIER_LAYOUT layoutAfter )
+// ---------------------------------------------------------------------------------------------------------------------
+// Барьеры (enhanced barriers)
+// ---------------------------------------------------------------------------------------------------------------------
+
+D3D12_BARRIER_SYNC DMD3D::syncFor( D3D12_BARRIER_ACCESS access )
 {
-	D3D12_TEXTURE_BARRIER barrier = {};
-	barrier.SyncBefore = syncBefore;
-	barrier.SyncAfter = syncAfter;
-	barrier.AccessBefore = accessBefore;
-	barrier.AccessAfter = accessAfter;
-	barrier.LayoutBefore = layoutBefore;
-	barrier.LayoutAfter = layoutAfter;
-	barrier.pResource = resource;
-	barrier.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFFu;	// все подресурсы
-	D3D12_BARRIER_GROUP group = {};
-	group.Type = D3D12_BARRIER_TYPE_TEXTURE;
-	group.NumBarriers = 1;
-	group.pTextureBarriers = &barrier;
-	m_commandList->Barrier( 1, &group );
+	switch( access )
+	{
+		case D3D12_BARRIER_ACCESS_COPY_SOURCE:
+		case D3D12_BARRIER_ACCESS_COPY_DEST: return D3D12_BARRIER_SYNC_COPY;
+		case D3D12_BARRIER_ACCESS_RENDER_TARGET: return D3D12_BARRIER_SYNC_RENDER_TARGET;
+		case D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE:
+		case D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ: return D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+		case D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT: return D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
+		case D3D12_BARRIER_ACCESS_INDEX_BUFFER: return D3D12_BARRIER_SYNC_INDEX_INPUT;
+		case D3D12_BARRIER_ACCESS_VERTEX_BUFFER: return D3D12_BARRIER_SYNC_VERTEX_SHADING;
+		case D3D12_BARRIER_ACCESS_NO_ACCESS: return D3D12_BARRIER_SYNC_NONE;
+		default: return D3D12_BARRIER_SYNC_ALL_SHADING;	// SRV, UAV, константы
+	}
+}
+
+D3D12_BARRIER_ACCESS DMD3D::steadyAccess( uint32_t usage )
+{
+	// Чем буфер читается после записи с CPU: аргументы — ExecuteIndirect, вершины и индексы — IA, остальное — шейдеры
+	if( usage & BufferUsage::indirectArgs )
+		return D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT;
+	if( usage & BufferUsage::vertex )
+		return D3D12_BARRIER_ACCESS_VERTEX_BUFFER;
+	if( usage & BufferUsage::index )
+		return D3D12_BARRIER_ACCESS_INDEX_BUFFER;
+	if( usage & BufferUsage::constant )
+		return D3D12_BARRIER_ACCESS_CONSTANT_BUFFER;
+	if( usage & BufferUsage::shaderResource )
+		return D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+	if( usage & BufferUsage::unorderedAccess )
+		return D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+	return D3D12_BARRIER_ACCESS_COPY_SOURCE;
+}
+
+void DMD3D::barrier( ID3D12Resource* resource, D3D12_BARRIER_ACCESS access, D3D12_BARRIER_LAYOUT layout, bool force )
+{
+	if( !resource )
+		return;
+	auto found = m_states.find( resource );
+	if( found == m_states.end() )
+		return;	// задний буфер и ресурсы без учёта состояния — свои барьеры
+	ResourceState& state = found->second;
+	if( !force && state.access == access && ( !state.texture || state.layout == layout ) )
+		return;
+
+	const D3D12_BARRIER_SYNC syncAfter = syncFor( access );
+	if( state.texture )
+	{
+		D3D12_TEXTURE_BARRIER textureBarrier = {};
+		textureBarrier.SyncBefore = state.sync;
+		textureBarrier.SyncAfter = syncAfter;
+		textureBarrier.AccessBefore = state.access;
+		textureBarrier.AccessAfter = access;
+		textureBarrier.LayoutBefore = state.layout;
+		textureBarrier.LayoutAfter = layout;
+		textureBarrier.pResource = resource;
+		textureBarrier.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFFu;
+		m_pendingTextureBarriers.push_back( textureBarrier );
+		state.layout = layout;
+	}
+	else
+	{
+		D3D12_BUFFER_BARRIER bufferBarrier = {};
+		bufferBarrier.SyncBefore = state.sync;
+		bufferBarrier.SyncAfter = syncAfter;
+		bufferBarrier.AccessBefore = state.access;
+		bufferBarrier.AccessAfter = access;
+		bufferBarrier.pResource = resource;
+		bufferBarrier.Size = UINT64_MAX;
+		m_pendingBufferBarriers.push_back( bufferBarrier );
+	}
+	state.sync = syncAfter;
+	state.access = access;
+}
+
+void DMD3D::flushBarriers()
+{
+	if( m_pendingBufferBarriers.empty() && m_pendingTextureBarriers.empty() )
+		return;
+	D3D12_BARRIER_GROUP groups[2];
+	uint32_t count = 0;
+	if( !m_pendingBufferBarriers.empty() )
+	{
+		groups[count].Type = D3D12_BARRIER_TYPE_BUFFER;
+		groups[count].NumBarriers = static_cast<UINT32>( m_pendingBufferBarriers.size() );
+		groups[count].pBufferBarriers = m_pendingBufferBarriers.data();
+		++count;
+	}
+	if( !m_pendingTextureBarriers.empty() )
+	{
+		groups[count].Type = D3D12_BARRIER_TYPE_TEXTURE;
+		groups[count].NumBarriers = static_cast<UINT32>( m_pendingTextureBarriers.size() );
+		groups[count].pTextureBarriers = m_pendingTextureBarriers.data();
+		++count;
+	}
+	m_commandList->Barrier( count, groups );
+	m_pendingBufferBarriers.clear();
+	m_pendingTextureBarriers.clear();
 }
 
 void DMD3D::BeginScene( float red, float green, float blue, float alpha )
 {
 	const float color[4] = { red, green, blue, alpha };
 
-	// Задний буфер — цель этого кадра
-	textureBarrier( m_backBuffers[m_backBufferIndex].get(), D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_SYNC_RENDER_TARGET,
-					D3D12_BARRIER_ACCESS_NO_ACCESS, D3D12_BARRIER_ACCESS_RENDER_TARGET,
-					D3D12_BARRIER_LAYOUT_PRESENT, D3D12_BARRIER_LAYOUT_RENDER_TARGET );
+	// Задний буфер — цель этого кадра (у него свой учёт: PRESENT ↔ RENDER_TARGET)
+	D3D12_TEXTURE_BARRIER present = {};
+	present.SyncBefore = D3D12_BARRIER_SYNC_NONE;
+	present.SyncAfter = D3D12_BARRIER_SYNC_RENDER_TARGET;
+	present.AccessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+	present.AccessAfter = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+	present.LayoutBefore = D3D12_BARRIER_LAYOUT_PRESENT;
+	present.LayoutAfter = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+	present.pResource = m_backBuffers[m_backBufferIndex].get();
+	present.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFFu;
+	m_pendingTextureBarriers.push_back( present );
+
+	// Буфер сцены создаётся с этим цветом как optimized clear value — иначе debug-слой предупреждает при каждой очистке
+	if( !m_sceneTarget.valid() && !createSceneTargets( color ) )
+		return;
 
 	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём. Обратная глубина: очищенный буфер — дальняя
-	// плоскость, 0
+	// плоскость, 0. Очистка требует layout цели (веха M4 перенесёт барьеры целей в beginPass)
+	barrier( m_sceneTexture.handle(), D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET );
+	barrier( m_sceneDepthTexture.handle(), D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE );
 	beginPass( PassDesc{ "Scene clear", { { &m_sceneTarget, "scene color" } }, { &m_sceneDepth, "scene depth" }, m_screenWidth, m_screenHeight } );
 	clearTarget( m_sceneTarget, color );
 	clearDepth( m_sceneDepth, 0.0f );
-	// Веха M1: буфера сцены ещё нет — цвет очистки в задний буфер, чтобы окно было не чёрным (M2 убирает)
-	if( !m_sceneTarget.valid() )
-		clearTarget( backBufferTarget(), color );
+	// До вехи M4 тонмаппинг не рисует: цвет очистки в задний буфер, чтобы окно было не чёрным
+	clearTarget( backBufferTarget(), color );
 }
 
 void DMD3D::beginPass( const PassDesc& pass )
@@ -612,6 +861,7 @@ void DMD3D::beginPass( const PassDesc& pass )
 	const bool hasDepth = pass.depth.view && pass.depth.view->valid();
 	const D3D12_CPU_DESCRIPTOR_HANDLE depth = hasDepth ? pass.depth.view->handle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
 	m_passDepthFormat = hasDepth ? pass.depth.view->format() : DXGI_FORMAT_UNKNOWN;
+	flushBarriers();
 	m_commandList->OMSetRenderTargets( m_passColorCount, m_passColorCount ? targets : nullptr, FALSE, hasDepth ? &depth : nullptr );
 
 	if( pass.width && pass.height )
@@ -646,22 +896,35 @@ void DMD3D::beginPass( const PassDesc& pass )
 
 void DMD3D::clearDepth( const TargetView& target, float depth )
 {
-	if( target.valid() && target.isDepth() )
-		m_commandList->ClearDepthStencilView( target.handle(), D3D12_CLEAR_FLAG_DEPTH, depth, 0, 0, nullptr );
+	if( !target.valid() || !target.isDepth() )
+		return;
+	barrier( target.resource(), D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE );
+	flushBarriers();
+	m_commandList->ClearDepthStencilView( target.handle(), D3D12_CLEAR_FLAG_DEPTH, depth, 0, 0, nullptr );
 }
 
 void DMD3D::clearTarget( const TargetView& target, const float color[4] )
 {
-	if( target.valid() && !target.isDepth() )
-		m_commandList->ClearRenderTargetView( target.handle(), color, 0, nullptr );
+	if( !target.valid() || target.isDepth() )
+		return;
+	barrier( target.resource(), D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET );
+	flushBarriers();
+	m_commandList->ClearRenderTargetView( target.handle(), color, 0, nullptr );
 }
 
 void DMD3D::EndScene()
 {
 	// Задний буфер — на показ
-	textureBarrier( m_backBuffers[m_backBufferIndex].get(), D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_SYNC_NONE,
-					D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_ACCESS_NO_ACCESS,
-					D3D12_BARRIER_LAYOUT_RENDER_TARGET, D3D12_BARRIER_LAYOUT_PRESENT );
+	D3D12_TEXTURE_BARRIER present = {};
+	present.SyncBefore = D3D12_BARRIER_SYNC_RENDER_TARGET;
+	present.SyncAfter = D3D12_BARRIER_SYNC_NONE;
+	present.AccessBefore = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+	present.AccessAfter = D3D12_BARRIER_ACCESS_NO_ACCESS;
+	present.LayoutBefore = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+	present.LayoutAfter = D3D12_BARRIER_LAYOUT_PRESENT;
+	present.pResource = m_backBuffers[m_backBufferIndex].get();
+	present.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFFu;
+	m_pendingTextureBarriers.push_back( present );
 	submitCommandList();
 
 	// С vsync — по частоте монитора; без него — сразу, с разрывом кадра (tearing), если DXGI его поддерживает
@@ -716,13 +979,11 @@ bool DMD3D::resize( uint32_t width, uint32_t height )
 	if( width == m_screenWidth && height == m_screenHeight )
 		return true;
 
-	// GPU закончил с задними буферами → ссылок на них нет → ResizeBuffers → цели заново. Буфер сцены и глубина —
-	// того же размера, что задний буфер, поэтому пересоздаются вместе с ним (веха M2)
+	// GPU закончил с задними буферами → ссылок на них нет → ResizeBuffers → цели заново. Буфер сцены — того же
+	// размера, что задний буфер: отпускается здесь, создаётся при следующем BeginScene
 	waitForGpu();
 	releaseBackBufferTargets();
-	m_sceneSRV.reset();
-	m_sceneTarget.reset();
-	m_sceneDepth.reset();
+	releaseSceneTargets();
 	const HRESULT hr = m_swapChain->ResizeBuffers( backBufferCount, width, height, backBufferFormat, m_swapChainFlags );
 	if( FAILED( hr ) )
 	{
@@ -757,11 +1018,12 @@ void DMD3D::Shutdown()
 	if( m_swapChain )
 		m_swapChain->SetFullscreenState( false, nullptr );
 
-	// Виды — до куч дескрипторов
+	// Виды и ресурсы — до куч дескрипторов и аллокатора: отложенные отпускаются сразу (GPU остановлен)
 	releaseBackBufferTargets();
-	m_sceneSRV.reset();
-	m_sceneTarget.reset();
-	m_sceneDepth.reset();
+	releaseSceneTargets();
+	for( FrameResources& frame : m_frames )
+		processDeferred( frame );
+	m_constantRing = ConstantRing();
 	if( m_infoQueue && m_messageCookie )
 	{
 		m_infoQueue->UnregisterMessageCallback( m_messageCookie );
@@ -776,11 +1038,13 @@ void DMD3D::Shutdown()
 	m_pipelines.clear();
 	m_commandList.reset();
 	for( FrameResources& frame : m_frames )
-	{
-		frame.deferredReleases.clear();
 		frame.allocator.reset();
-	}
 	m_fence.reset();
+	if( m_allocator )
+	{
+		m_allocator->Release();
+		m_allocator = nullptr;
+	}
 	m_infoQueue.reset();
 	m_device.reset();
 }
@@ -842,7 +1106,7 @@ bool DMD3D::setShadowSlopeBias( float slopeBias )
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Ресурсы (веха M2)
+// Ресурсы
 // ---------------------------------------------------------------------------------------------------------------------
 
 void DMD3D::notImplemented( const char* method )
@@ -851,14 +1115,174 @@ void DMD3D::notImplemented( const char* method )
 		LOG( std::string( "DMD3D::" ) + method + " is not implemented yet (D3D12 port in progress)" );
 }
 
+bool DMD3D::createResource( const D3D12_RESOURCE_DESC1& desc, D3D12_HEAP_TYPE heap, D3D12_BARRIER_LAYOUT initialLayout,
+							const D3D12_CLEAR_VALUE* clearValue, ID3D12Resource** resource, D3D12MA::Allocation** allocation )
+{
+	D3D12MA::ALLOCATION_DESC allocationDesc = {};
+	allocationDesc.HeapType = heap;
+	const HRESULT hr = m_allocator->CreateResource3( &allocationDesc, &desc, initialLayout, clearValue, 0, nullptr, allocation,
+													 __uuidof( ID3D12Resource ), reinterpret_cast<void**>( resource ) );
+	if( FAILED( hr ) )
+	{
+		LOG( "CreateResource failed, HRESULT " + std::to_string( static_cast<long>( hr ) ) + ": " +
+			 ( desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER ? "buffer of " + std::to_string( desc.Width ) + " bytes" :
+			   "texture " + std::to_string( desc.Width ) + "x" + std::to_string( desc.Height ) + ", format " + std::to_string( desc.Format ) ) );
+		return false;
+	}
+	ResourceState state;
+	state.layout = initialLayout;
+	state.texture = desc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER;
+	m_states[*resource] = state;
+	return true;
+}
+
+bool DMD3D::createStaging( uint64_t bytes, D3D12_HEAP_TYPE heap, ID3D12Resource** resource, D3D12MA::Allocation** allocation, void** mapped )
+{
+	D3D12_RESOURCE_DESC1 desc = {};
+	desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	desc.Width = std::max<uint64_t>( bytes, 1 );
+	desc.Height = 1;
+	desc.DepthOrArraySize = 1;
+	desc.MipLevels = 1;
+	desc.SampleDesc.Count = 1;
+	desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	if( !createResource( desc, heap, D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr, resource, allocation ) )
+		return false;
+	( *resource )->SetName( heap == D3D12_HEAP_TYPE_UPLOAD ? L"Upload staging" : L"Readback staging" );
+	if( mapped )
+	{
+		const D3D12_RANGE noRead = { 0, 0 };
+		if( FAILED( ( *resource )->Map( 0, heap == D3D12_HEAP_TYPE_UPLOAD ? &noRead : nullptr, mapped ) ) )
+			return false;
+	}
+	return true;
+}
+
+bool DMD3D::uploadToBuffer( ID3D12Resource* destination, uint64_t destinationOffset, const void* data, uint64_t size )
+{
+	if( !data || size == 0 )
+		return true;
+	barrier( destination, D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, true );
+
+	// В кадре небольшие данные идут через участок кольца (он живёт, пока GPU не закончит кадр); до первого кадра и
+	// большие — отдельный upload-буфер, отпускается, когда GPU закончит копирование
+	uint32_t offset = 0, bytes = 0;
+	if( m_frameStarted && !m_writingBuffer && size <= constantRingBytes / frameCount / 4 )
+	{
+		if( void* slice = m_constantRing.beginWrite( static_cast<uint32_t>( size ), offset, bytes ) )
+		{
+			memcpy( slice, data, size );
+			m_constantRing.finishWrite();
+			flushBarriers();
+			m_commandList->CopyBufferRegion( destination, destinationOffset, m_constantRing.handle(), offset, size );
+			return true;
+		}
+	}
+	ID3D12Resource* staging = nullptr;
+	D3D12MA::Allocation* allocation = nullptr;
+	void* mapped = nullptr;
+	if( !createStaging( size, D3D12_HEAP_TYPE_UPLOAD, &staging, &allocation, &mapped ) )
+		return false;
+	memcpy( mapped, data, size );
+	staging->Unmap( 0, nullptr );
+	flushBarriers();
+	m_commandList->CopyBufferRegion( destination, destinationOffset, staging, 0, size );
+	m_states.erase( staging );
+	deferRelease( staging );
+	deferRelease( allocation );
+	return true;
+}
+
+bool DMD3D::uploadToTexture( ID3D12Resource* destination, const TextureDesc& desc, const TextureData* initial )
+{
+	const uint32_t count = subresourceCount( desc );
+	const D3D12_RESOURCE_DESC resourceDesc = destination->GetDesc();
+	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts( count );
+	std::vector<UINT> rows( count );
+	std::vector<UINT64> rowBytes( count );
+	UINT64 total = 0;
+	m_device->GetCopyableFootprints( &resourceDesc, 0, count, 0, layouts.data(), rows.data(), rowBytes.data(), &total );
+
+	ID3D12Resource* staging = nullptr;
+	D3D12MA::Allocation* allocation = nullptr;
+	void* mapped = nullptr;
+	if( !createStaging( total, D3D12_HEAP_TYPE_UPLOAD, &staging, &allocation, &mapped ) )
+		return false;
+
+	// Подресурс i у D3D12 — мип + срез × мипов: тот же порядок, что у TextureData (срез за срезом, внутри среза мипы)
+	for( uint32_t i = 0; i < count; ++i )
+	{
+		const TextureData& source = initial[i];
+		const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& layout = layouts[i];
+		const uint32_t sourceRowPitch = source.rowPitch ? source.rowPitch : static_cast<uint32_t>( rowBytes[i] );
+		const uint32_t sourceSlicePitch = source.slicePitch ? source.slicePitch : sourceRowPitch * rows[i];
+		for( uint32_t z = 0; z < layout.Footprint.Depth; ++z )
+		{
+			for( uint32_t row = 0; row < rows[i]; ++row )
+			{
+				uint8_t* target = static_cast<uint8_t*>( mapped ) + layout.Offset +
+								  ( static_cast<uint64_t>( z ) * rows[i] + row ) * layout.Footprint.RowPitch;
+				const uint8_t* pixels = static_cast<const uint8_t*>( source.data ) + static_cast<uint64_t>( z ) * sourceSlicePitch +
+										static_cast<uint64_t>( row ) * sourceRowPitch;
+				memcpy( target, pixels, rowBytes[i] );
+			}
+		}
+	}
+	staging->Unmap( 0, nullptr );
+
+	barrier( destination, D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_COPY_DEST );
+	flushBarriers();
+	for( uint32_t i = 0; i < count; ++i )
+	{
+		D3D12_TEXTURE_COPY_LOCATION target = {};
+		target.pResource = destination;
+		target.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		target.SubresourceIndex = i;
+		D3D12_TEXTURE_COPY_LOCATION source = {};
+		source.pResource = staging;
+		source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+		source.PlacedFootprint = layouts[i];
+		m_commandList->CopyTextureRegion( &target, 0, 0, 0, &source, nullptr );
+	}
+	// Дальше текстуру читают шейдеры (и GUI)
+	barrier( destination, D3D12_BARRIER_ACCESS_SHADER_RESOURCE, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE );
+	m_states.erase( staging );
+	deferRelease( staging );
+	deferRelease( allocation );
+	return true;
+}
+
 bool DMD3D::createBuffer( const BufferDesc& desc, const void* initialData, Buffer& buffer )
 {
 	// Константы кадра — участок кольца, своего ресурса нет: данные появятся при первой записи
 	buffer.reset( nullptr, nullptr, desc );
 	if( buffer.ring() )
 		return true;
-	(void)initialData;
-	notImplemented( "createBuffer" );
+
+	D3D12_RESOURCE_DESC1 resourceDesc = {};
+	resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	// CBV — участками по 256 байт
+	resourceDesc.Width = ( desc.usage & BufferUsage::constant ) ? ( desc.size + 255 ) & ~255u : std::max( desc.size, 1u );
+	resourceDesc.Height = 1;
+	resourceDesc.DepthOrArraySize = 1;
+	resourceDesc.MipLevels = 1;
+	resourceDesc.SampleDesc.Count = 1;
+	resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	resourceDesc.Flags = ( desc.usage & BufferUsage::unorderedAccess ) ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE;
+	const bool readback = ( desc.usage & BufferUsage::readback ) != 0;
+
+	ID3D12Resource* resource = nullptr;
+	D3D12MA::Allocation* allocation = nullptr;
+	if( !createResource( resourceDesc, readback ? D3D12_HEAP_TYPE_READBACK : D3D12_HEAP_TYPE_DEFAULT, D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr,
+						 &resource, &allocation ) )
+		return false;
+	buffer.reset( resource, allocation, desc );
+	if( initialData && !readback )
+	{
+		if( !uploadToBuffer( resource, 0, initialData, desc.size ) )
+			return false;
+		barrier( resource, steadyAccess( desc.usage ) );
+	}
 	return true;
 }
 
@@ -886,57 +1310,278 @@ bool DMD3D::createIndexBuffer( Buffer& buffer, const void* data, size_t sizeInBy
 	return createBuffer( desc, data, buffer );
 }
 
-bool DMD3D::createShaderView( const Buffer&, const BufferViewDesc&, ShaderView& view )
+bool DMD3D::createShaderView( const Buffer& buffer, const BufferViewDesc& desc, ShaderView& view )
 {
 	view.reset();
-	notImplemented( "createShaderView( Buffer )" );
+	if( !buffer.handle() )
+		return false;
+	const bool structured = ( buffer.desc().usage & BufferUsage::structured ) != 0 && buffer.desc().stride;
+	const uint32_t elementSize = desc.raw || !structured ? 4 : buffer.desc().stride;
+	D3D12_SHADER_RESOURCE_VIEW_DESC viewDesc = {};
+	viewDesc.Format = desc.raw || !structured ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_UNKNOWN;
+	viewDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+	viewDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	viewDesc.Buffer.FirstElement = desc.firstElement;
+	viewDesc.Buffer.NumElements = desc.elementCount ? desc.elementCount : buffer.size() / elementSize - desc.firstElement;
+	viewDesc.Buffer.StructureByteStride = desc.raw || !structured ? 0 : buffer.desc().stride;
+	viewDesc.Buffer.Flags = desc.raw || !structured ? D3D12_BUFFER_SRV_FLAG_RAW : D3D12_BUFFER_SRV_FLAG_NONE;
+	const Descriptor descriptor = allocateShaderDescriptor();
+	if( !descriptor.valid() )
+		return false;
+	m_device->CreateShaderResourceView( buffer.handle(), &viewDesc, descriptor.cpu );
+	view.reset( descriptor, buffer.handle() );
 	return true;
 }
 
-bool DMD3D::createStorageView( const Buffer&, const BufferViewDesc&, StorageView& view )
+bool DMD3D::createStorageView( const Buffer& buffer, const BufferViewDesc& desc, StorageView& view )
 {
 	view.reset();
-	notImplemented( "createStorageView( Buffer )" );
-	return true;
-}
-
-bool DMD3D::createTexture( const TextureDesc& desc, const TextureData*, Texture& texture )
-{
-	// mipCount 0 — полная цепочка: настоящее число мипов нужно уже сейчас (CubeTarget заводит цель на каждый мип)
-	TextureDesc created = desc;
-	if( created.mipCount == 0 )
+	if( !buffer.handle() )
+		return false;
+	const bool structured = ( buffer.desc().usage & BufferUsage::structured ) != 0 && buffer.desc().stride;
+	const uint32_t elementSize = desc.raw || !structured ? 4 : buffer.desc().stride;
+	D3D12_UNORDERED_ACCESS_VIEW_DESC viewDesc = {};
+	viewDesc.Format = desc.raw || !structured ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_UNKNOWN;
+	viewDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+	viewDesc.Buffer.FirstElement = desc.firstElement;
+	viewDesc.Buffer.NumElements = desc.elementCount ? desc.elementCount : buffer.size() / elementSize - desc.firstElement;
+	viewDesc.Buffer.StructureByteStride = desc.raw || !structured ? 0 : buffer.desc().stride;
+	viewDesc.Buffer.Flags = desc.raw || !structured ? D3D12_BUFFER_UAV_FLAG_RAW : D3D12_BUFFER_UAV_FLAG_NONE;
+	const Descriptor descriptor = allocateShaderDescriptor();
+	const Descriptor clearDescriptor = m_stagingHeap.allocate();
+	if( !descriptor.valid() || !clearDescriptor.valid() )
 	{
-		uint32_t size = std::max( { desc.width, desc.height, desc.depth } );
-		created.mipCount = 1;
-		while( size > 1 )
+		LOG( "Descriptor heap is full (UAV)" );
+		return false;
+	}
+	m_device->CreateUnorderedAccessView( buffer.handle(), nullptr, &viewDesc, descriptor.cpu );
+	m_device->CreateUnorderedAccessView( buffer.handle(), nullptr, &viewDesc, clearDescriptor.cpu );
+	view.reset( descriptor, clearDescriptor, buffer.handle() );
+	return true;
+}
+
+bool DMD3D::createTexture( const TextureDesc& desc, const TextureData* initial, Texture& texture )
+{
+	return createTextureInternal( desc, initial, texture, nullptr, nullptr );
+}
+
+bool DMD3D::createTextureInternal( const TextureDesc& desc, const TextureData* initial, Texture& texture, const float* clearColor,
+									const wchar_t* name )
+{
+	texture.reset();
+	D3D12_RESOURCE_DESC1 resourceDesc = {};
+	resourceDesc.Dimension = desc.depth > 1 ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resourceDesc.Width = desc.width;
+	resourceDesc.Height = desc.height;
+	resourceDesc.DepthOrArraySize = static_cast<UINT16>( desc.depth > 1 ? desc.depth : desc.arraySize );
+	resourceDesc.MipLevels = static_cast<UINT16>( desc.mipCount );	// 0 — полная цепочка
+	resourceDesc.Format = desc.format;
+	resourceDesc.SampleDesc.Count = 1;
+	resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	if( desc.usage & TextureUsage::renderTarget )
+		resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	if( desc.usage & TextureUsage::depthStencil )
+		resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+	if( desc.usage & TextureUsage::unorderedAccess )
+		resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	if( ( desc.usage & TextureUsage::depthStencil ) && !( desc.usage & TextureUsage::shaderResource ) )
+		resourceDesc.Flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
+
+	// Начальный layout — по назначению; текстуры с данными — COMMON (первый барьер — в COPY_DEST). Optimized clear
+	// value: у глубины — 0 (обратная глубина), у цветной цели — цвет, если задан (буфер сцены)
+	D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_COMMON;
+	D3D12_CLEAR_VALUE clearValue = {};
+	const D3D12_CLEAR_VALUE* clear = nullptr;
+	if( desc.usage & TextureUsage::depthStencil )
+	{
+		layout = D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+		clearValue.Format = depthFormatFor( desc.format );
+		clearValue.DepthStencil.Depth = 0.0f;
+		clear = &clearValue;
+	}
+	else if( desc.usage & TextureUsage::renderTarget )
+	{
+		layout = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+		if( clearColor )
 		{
-			size >>= 1;
-			++created.mipCount;
+			clearValue.Format = desc.format;
+			memcpy( clearValue.Color, clearColor, sizeof( clearValue.Color ) );
+			clear = &clearValue;
 		}
 	}
-	texture.reset( nullptr, nullptr, created );
-	notImplemented( "createTexture" );
+	else if( desc.usage & TextureUsage::unorderedAccess )
+		layout = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+
+	ID3D12Resource* resource = nullptr;
+	D3D12MA::Allocation* allocation = nullptr;
+	if( !createResource( resourceDesc, D3D12_HEAP_TYPE_DEFAULT, layout, clear, &resource, &allocation ) )
+		return false;
+	if( name )
+		resource->SetName( name );
+
+	TextureDesc created = desc;
+	created.mipCount = resource->GetDesc().MipLevels;
+	texture.reset( resource, allocation, created );
+	if( initial )
+		return uploadToTexture( resource, created, initial );
 	return true;
 }
 
-bool DMD3D::createShaderView( const Texture&, const TextureViewDesc&, ShaderView& view )
+bool DMD3D::createShaderView( const Texture& texture, const TextureViewDesc& desc, ShaderView& view )
 {
 	view.reset();
-	notImplemented( "createShaderView( Texture )" );
+	if( !texture.handle() )
+		return false;
+	const TextureDesc& textureDesc = texture.desc();
+	const TextureViewDesc::Kind kind = resolveKind( textureDesc, desc );
+	const uint32_t mipCount = desc.mipCount ? desc.mipCount : textureDesc.mipCount - desc.firstMip;
+	const uint32_t sliceCount = desc.sliceCount ? desc.sliceCount : textureDesc.arraySize - desc.firstSlice;
+	D3D12_SHADER_RESOURCE_VIEW_DESC viewDesc = {};
+	viewDesc.Format = desc.format != DXGI_FORMAT_UNKNOWN ? desc.format : textureDesc.format;
+	viewDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	switch( kind )
+	{
+		case TextureViewDesc::Kind::texture3D:
+			viewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+			viewDesc.Texture3D.MostDetailedMip = desc.firstMip;
+			viewDesc.Texture3D.MipLevels = mipCount;
+			break;
+		case TextureViewDesc::Kind::cube:
+			viewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+			viewDesc.TextureCube.MostDetailedMip = desc.firstMip;
+			viewDesc.TextureCube.MipLevels = mipCount;
+			break;
+		case TextureViewDesc::Kind::texture2DArray:
+			viewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+			viewDesc.Texture2DArray.MostDetailedMip = desc.firstMip;
+			viewDesc.Texture2DArray.MipLevels = mipCount;
+			viewDesc.Texture2DArray.FirstArraySlice = desc.firstSlice;
+			viewDesc.Texture2DArray.ArraySize = sliceCount;
+			break;
+		default:
+			viewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			viewDesc.Texture2D.MostDetailedMip = desc.firstMip;
+			viewDesc.Texture2D.MipLevels = mipCount;
+			break;
+	}
+	const Descriptor descriptor = allocateShaderDescriptor();
+	if( !descriptor.valid() )
+		return false;
+	m_device->CreateShaderResourceView( texture.handle(), &viewDesc, descriptor.cpu );
+	view.reset( descriptor, texture.handle(), { desc.firstMip, mipCount, desc.firstSlice, sliceCount } );
 	return true;
 }
 
-bool DMD3D::createTargetView( const Texture&, const TextureViewDesc&, TargetView& view )
+bool DMD3D::createTargetView( const Texture& texture, const TextureViewDesc& desc, TargetView& view )
 {
 	view.reset();
-	notImplemented( "createTargetView" );
+	if( !texture.handle() )
+		return false;
+	const TextureDesc& textureDesc = texture.desc();
+	const TextureViewDesc::Kind kind = resolveKind( textureDesc, desc );
+	const uint32_t sliceCount = desc.sliceCount ? desc.sliceCount : textureDesc.arraySize - desc.firstSlice;
+	DXGI_FORMAT format = desc.format != DXGI_FORMAT_UNKNOWN ? desc.format : textureDesc.format;
+	if( textureDesc.usage & TextureUsage::depthStencil )
+		format = depthFormatFor( format );
+
+	if( isDepthFormat( format ) )
+	{
+		const Descriptor descriptor = m_dsvHeap.allocate();
+		if( !descriptor.valid() )
+		{
+			LOG( "DSV descriptor heap is full" );
+			return false;
+		}
+		D3D12_DEPTH_STENCIL_VIEW_DESC viewDesc = {};
+		viewDesc.Format = format;
+		if( kind == TextureViewDesc::Kind::texture2DArray || kind == TextureViewDesc::Kind::cube )
+		{
+			viewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+			viewDesc.Texture2DArray.MipSlice = desc.firstMip;
+			viewDesc.Texture2DArray.FirstArraySlice = desc.firstSlice;
+			viewDesc.Texture2DArray.ArraySize = sliceCount;
+		}
+		else
+		{
+			viewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+			viewDesc.Texture2D.MipSlice = desc.firstMip;
+		}
+		m_device->CreateDepthStencilView( texture.handle(), &viewDesc, descriptor.cpu );
+		view.reset( descriptor, true, format, texture.handle(), { desc.firstMip, 1, desc.firstSlice, sliceCount } );
+		return true;
+	}
+
+	const Descriptor descriptor = m_rtvHeap.allocate();
+	if( !descriptor.valid() )
+	{
+		LOG( "RTV descriptor heap is full" );
+		return false;
+	}
+	D3D12_RENDER_TARGET_VIEW_DESC viewDesc = {};
+	viewDesc.Format = format;
+	if( kind == TextureViewDesc::Kind::texture3D )
+	{
+		viewDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE3D;
+		viewDesc.Texture3D.MipSlice = desc.firstMip;
+		viewDesc.Texture3D.FirstWSlice = desc.firstSlice;
+		viewDesc.Texture3D.WSize = desc.sliceCount ? desc.sliceCount : static_cast<UINT>( -1 );
+	}
+	else if( kind == TextureViewDesc::Kind::texture2DArray || kind == TextureViewDesc::Kind::cube )
+	{
+		viewDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+		viewDesc.Texture2DArray.MipSlice = desc.firstMip;
+		viewDesc.Texture2DArray.FirstArraySlice = desc.firstSlice;
+		viewDesc.Texture2DArray.ArraySize = sliceCount;
+	}
+	else
+	{
+		viewDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+		viewDesc.Texture2D.MipSlice = desc.firstMip;
+	}
+	m_device->CreateRenderTargetView( texture.handle(), &viewDesc, descriptor.cpu );
+	view.reset( descriptor, false, format, texture.handle(), { desc.firstMip, 1, desc.firstSlice, sliceCount } );
 	return true;
 }
 
-bool DMD3D::createStorageView( const Texture&, const TextureViewDesc&, StorageView& view )
+bool DMD3D::createStorageView( const Texture& texture, const TextureViewDesc& desc, StorageView& view )
 {
 	view.reset();
-	notImplemented( "createStorageView( Texture )" );
+	if( !texture.handle() )
+		return false;
+	const TextureDesc& textureDesc = texture.desc();
+	const TextureViewDesc::Kind kind = resolveKind( textureDesc, desc );
+	const uint32_t sliceCount = desc.sliceCount ? desc.sliceCount : textureDesc.arraySize - desc.firstSlice;
+	D3D12_UNORDERED_ACCESS_VIEW_DESC viewDesc = {};
+	viewDesc.Format = desc.format != DXGI_FORMAT_UNKNOWN ? desc.format : textureDesc.format;
+	if( kind == TextureViewDesc::Kind::texture3D )
+	{
+		viewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+		viewDesc.Texture3D.MipSlice = desc.firstMip;
+		viewDesc.Texture3D.FirstWSlice = desc.firstSlice;
+		viewDesc.Texture3D.WSize = desc.sliceCount ? desc.sliceCount : static_cast<UINT>( -1 );
+	}
+	else if( kind == TextureViewDesc::Kind::texture2DArray || kind == TextureViewDesc::Kind::cube )
+	{
+		viewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+		viewDesc.Texture2DArray.MipSlice = desc.firstMip;
+		viewDesc.Texture2DArray.FirstArraySlice = desc.firstSlice;
+		viewDesc.Texture2DArray.ArraySize = sliceCount;
+	}
+	else
+	{
+		viewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		viewDesc.Texture2D.MipSlice = desc.firstMip;
+	}
+	const Descriptor descriptor = allocateShaderDescriptor();
+	const Descriptor clearDescriptor = m_stagingHeap.allocate();
+	if( !descriptor.valid() || !clearDescriptor.valid() )
+	{
+		LOG( "Descriptor heap is full (texture UAV)" );
+		return false;
+	}
+	m_device->CreateUnorderedAccessView( texture.handle(), nullptr, &viewDesc, descriptor.cpu );
+	m_device->CreateUnorderedAccessView( texture.handle(), nullptr, &viewDesc, clearDescriptor.cpu );
+	view.reset( descriptor, clearDescriptor, texture.handle(), { desc.firstMip, 1, desc.firstSlice, sliceCount } );
 	return true;
 }
 
@@ -954,45 +1599,132 @@ bool DMD3D::createInputLayout( const std::vector<VertexElement>& elements, const
 	return true;
 }
 
-void DMD3D::updateBuffer( Buffer&, const void*, size_t )
+// ---------------------------------------------------------------------------------------------------------------------
+// Обновление, копирование, чтение
+// ---------------------------------------------------------------------------------------------------------------------
+
+void DMD3D::updateBuffer( Buffer& buffer, const void* data, size_t size )
 {
-	notImplemented( "updateBuffer" );
+	if( !buffer.handle() || !data )
+		return;
+	if( uploadToBuffer( buffer.handle(), 0, data, std::min<size_t>( size, buffer.size() ) ) )
+		barrier( buffer.handle(), steadyAccess( buffer.desc().usage ) );
 }
 
-void DMD3D::copyBuffer( Buffer&, const Buffer& )
+void DMD3D::copyBuffer( Buffer& destination, const Buffer& source )
 {
-	notImplemented( "copyBuffer" );
+	if( !destination.handle() || !source.handle() )
+		return;
+	barrier( source.handle(), D3D12_BARRIER_ACCESS_COPY_SOURCE );
+	// Копия за копией в тот же буфер (readback каждый кадр) — барьер и при том же доступе: порядок записей
+	barrier( destination.handle(), D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, true );
+	flushBarriers();
+	m_commandList->CopyBufferRegion( destination.handle(), 0, source.handle(), 0, std::min( destination.size(), source.size() ) );
+	if( destination.desc().usage & BufferUsage::readback )
+		destination.setCopyFence( m_fenceValue + 1 );	// сигнал в конце этого кадра (EndScene) или waitForGpu
+	else
+		barrier( destination.handle(), steadyAccess( destination.desc().usage ) );
 }
 
-bool DMD3D::readBuffer( const Buffer&, void*, size_t )
+bool DMD3D::readBuffer( const Buffer& readback, void* data, size_t size )
 {
-	return false;
+	if( !readback.handle() || readback.copyFence() == 0 || m_fence->GetCompletedValue() < readback.copyFence() )
+		return false;
+	const D3D12_RANGE range = { 0, std::min<SIZE_T>( size, readback.size() ) };
+	void* mapped = nullptr;
+	if( FAILED( readback.handle()->Map( 0, &range, &mapped ) ) )
+		return false;
+	memcpy( data, mapped, range.End );
+	const D3D12_RANGE noWrite = { 0, 0 };
+	readback.handle()->Unmap( 0, &noWrite );
+	return true;
+}
+
+bool DMD3D::captureTexture( const Texture& texture, std::vector<SubresourceCopy>& copies, std::vector<uint8_t>& bytes )
+{
+	if( !texture.handle() )
+		return false;
+	const uint32_t count = subresourceCount( texture.desc() );
+	const D3D12_RESOURCE_DESC resourceDesc = texture.handle()->GetDesc();
+	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts( count );
+	std::vector<UINT> rows( count );
+	std::vector<UINT64> rowBytes( count );
+	UINT64 total = 0;
+	m_device->GetCopyableFootprints( &resourceDesc, 0, count, 0, layouts.data(), rows.data(), rowBytes.data(), &total );
+
+	ID3D12Resource* readback = nullptr;
+	D3D12MA::Allocation* allocation = nullptr;
+	if( !createStaging( total, D3D12_HEAP_TYPE_READBACK, &readback, &allocation, nullptr ) )
+		return false;
+
+	barrier( texture.handle(), D3D12_BARRIER_ACCESS_COPY_SOURCE, D3D12_BARRIER_LAYOUT_COPY_SOURCE );
+	flushBarriers();
+	for( uint32_t i = 0; i < count; ++i )
+	{
+		D3D12_TEXTURE_COPY_LOCATION target = {};
+		target.pResource = readback;
+		target.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+		target.PlacedFootprint = layouts[i];
+		D3D12_TEXTURE_COPY_LOCATION source = {};
+		source.pResource = texture.handle();
+		source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		source.SubresourceIndex = i;
+		m_commandList->CopyTextureRegion( &target, 0, 0, 0, &source, nullptr );
+	}
+	barrier( texture.handle(), D3D12_BARRIER_ACCESS_SHADER_RESOURCE, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE );
+	waitForGpu();
+
+	bool ok = false;
+	void* mapped = nullptr;
+	const D3D12_RANGE range = { 0, static_cast<SIZE_T>( total ) };
+	if( SUCCEEDED( readback->Map( 0, &range, &mapped ) ) )
+	{
+		bytes.assign( static_cast<const uint8_t*>( mapped ), static_cast<const uint8_t*>( mapped ) + total );
+		const D3D12_RANGE noWrite = { 0, 0 };
+		readback->Unmap( 0, &noWrite );
+		copies.resize( count );
+		for( uint32_t i = 0; i < count; ++i )
+			copies[i] = { layouts[i].Offset, layouts[i].Footprint.RowPitch, rows[i], rowBytes[i] };
+		ok = true;
+	}
+	m_states.erase( readback );
+	readback->Release();
+	allocation->Release();
+	return ok;
 }
 
 void* DMD3D::beginWrite( Buffer& buffer, uint32_t size )
 {
-	if( m_writingBuffer )
+	if( m_writingBuffer || size == 0 )
+		return nullptr;
+	if( !buffer.ring() && !buffer.handle() )
+		return nullptr;
+	uint32_t offset = 0, bytes = 0;
+	void* data = m_constantRing.beginWrite( size, offset, bytes );
+	if( !data )
 		return nullptr;
 	if( buffer.ring() )
-	{
-		uint32_t offset = 0, bytes = 0;
-		void* data = m_constantRing.beginWrite( size, offset, bytes );
-		if( !data )
-			return nullptr;
 		buffer.setRingSlice( offset, bytes );
-		m_writingBuffer = &buffer;
-		return data;
-	}
-	// Веха M4: кольцо структурных данных (инстансы, патчи, свет)
-	notImplemented( "beginWrite( structured )" );
-	return nullptr;
+	m_writingBuffer = &buffer;
+	m_writeOffset = offset;
+	m_writeBytes = std::min( size, buffer.size() );
+	return data;
 }
 
 void DMD3D::endWrite()
 {
-	if( m_writingBuffer && m_writingBuffer->ring() )
-		m_constantRing.finishWrite();
+	if( !m_writingBuffer )
+		return;
+	Buffer& buffer = *m_writingBuffer;
 	m_writingBuffer = nullptr;
+	m_constantRing.finishWrite();
+	if( buffer.ring() )
+		return;
+	// Данные кадра (инстансы, патчи, свет) — из участка кольца в свой буфер: вид на него постоянный
+	barrier( buffer.handle(), D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, true );
+	flushBarriers();
+	m_commandList->CopyBufferRegion( buffer.handle(), 0, m_constantRing.handle(), m_writeOffset, m_writeBytes );
+	barrier( buffer.handle(), steadyAccess( buffer.desc().usage ) );
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -1023,9 +1755,14 @@ void DMD3D::setUAV( uint16_t, const StorageView& )
 	notImplemented( "setUAV" );
 }
 
-void DMD3D::clearStorageView( const StorageView& )
+void DMD3D::clearStorageView( const StorageView& view )
 {
-	notImplemented( "clearStorageView" );
+	if( !view.valid() )
+		return;
+	barrier( view.resource(), D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS );
+	flushBarriers();
+	const UINT zeros[4] = {};
+	m_commandList->ClearUnorderedAccessViewUint( view.descriptor().gpu, view.clearDescriptor().cpu, view.resource(), zeros, 0, nullptr );
 }
 
 void DMD3D::setVertexBuffers( uint32_t, const Buffer* const[], const uint32_t[], const uint32_t[] )
