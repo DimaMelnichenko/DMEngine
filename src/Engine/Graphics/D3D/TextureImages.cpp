@@ -1,6 +1,7 @@
 #include "TextureImages.h"
 #include "DMD3D.h"
 #include "Logger\Logger.h"
+#include <wincodec.h>
 #include <algorithm>
 #include <cstring>
 #include <vector>
@@ -91,6 +92,23 @@ bool captureTexture( const Texture& texture, DirectX::ScratchImage& image )
 		}
 	}
 	return true;
+}
+
+bool saveImage( const std::wstring& path, uint32_t width, uint32_t height, DXGI_FORMAT format, const uint8_t* bytes, uint32_t rowPitch )
+{
+	DirectX::Image image = {};
+	image.width = width;
+	image.height = height;
+	image.format = format;
+	image.rowPitch = rowPitch;
+	image.slicePitch = static_cast<size_t>( rowPitch ) * height;
+	image.pixels = const_cast<uint8_t*>( bytes );
+	const bool jpeg = path.size() > 4 && ( _wcsicmp( path.c_str() + path.size() - 4, L".jpg" ) == 0 ||
+										   _wcsicmp( path.c_str() + path.size() - 5, L".jpeg" ) == 0 );
+	// Без альфы: у заднего буфера она не имеет смысла, а PNG с ней получился бы полупрозрачным
+	return SUCCEEDED( DirectX::SaveToWICFile( image, DirectX::WIC_FLAGS_IGNORE_SRGB | DirectX::WIC_FLAGS_FORCE_RGB,
+											  DirectX::GetWICCodec( jpeg ? DirectX::WIC_CODEC_JPEG : DirectX::WIC_CODEC_PNG ), path.c_str(),
+											  jpeg ? &GUID_WICPixelFormat24bppBGR : &GUID_WICPixelFormat24bppBGR ) );
 }
 
 }

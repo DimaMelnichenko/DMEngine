@@ -194,6 +194,7 @@ bool DMGraphics::Render( const FrameContext& frame )
 		m_GUI.addCounterInfo( "Video memory used = %.0f MB", memory.usedBytes / ( 1024.0f * 1024.0f ) );
 		m_GUI.addCounterInfo( "Video memory budget = %.0f MB", memory.budgetBytes / ( 1024.0f * 1024.0f ) );
 		m_GUI.addCounterInfo( "Shader descriptors = %.0f", static_cast<float>( DMD3D::instance().shaderDescriptorCount() ) );
+		m_GUI.addCounterInfo( "Barriers per frame = %.0f", static_cast<float>( DMD3D::instance().barrierCount() ) );
 
 		auto guiStart = TIME_POINT();
 		// Проход GUI: задний буфер поверх тонмаппинга

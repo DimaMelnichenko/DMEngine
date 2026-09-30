@@ -433,7 +433,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	DMD3D::instance().setConstantBuffer( SRVType::vs, SLOT_CB_MATERIAL, m_constantBuffer );
 
 	m_patchBuffer.updateData( patches.data(), sizeof( PatchInstance ) * patches.size() );
-	m_patchBuffer.setToSlot( 1, SRVType::vs );
+	m_patchBuffer.setToSlot( SLOT_INSTANCE_DATA, SRVType::vs );
 
 	DMD3D::instance().setSRV( SRVType::vs, 0, m_heightMap );
 	if( !depthOnly )

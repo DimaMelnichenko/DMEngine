@@ -1,9 +1,10 @@
 #pragma once
 
-// Мост между картинками DirectXTex (ScratchImage: файлы текстур, карта высот, панорама) и ресурсами GPU. Здесь
-// единственное место вне DMD3D, где DirectXTex говорит с устройством D3D11; с бэкендом D3D12 меняется только оно
-// (DirectXTex с BUILD_DX12, шаг B2 плана переезда)
+// Мост между картинками DirectXTex (ScratchImage: файлы текстур, карта высот, панорама, снимки) и ресурсами GPU.
+// Единственное место вне DMD3D, где DirectXTex встречается с бэкендом: текстуры из картинок и обратно
 #include <DirectXTex.h>
+#include <string>
+#include <vector>
 #include "GpuResources.h"
 
 namespace GpuImages
@@ -16,5 +17,8 @@ bool createTexture( const DirectX::ScratchImage& image, Texture& texture, Shader
 
 // Копия текстуры с GPU на CPU (все мипы и срезы)
 bool captureTexture( const Texture& texture, DirectX::ScratchImage& image );
+
+// Картинка 2D из байтов (шаг строки rowPitch) в файл: PNG или JPG по расширению (снимки заднего буфера)
+bool saveImage( const std::wstring& path, uint32_t width, uint32_t height, DXGI_FORMAT format, const uint8_t* bytes, uint32_t rowPitch );
 
 }

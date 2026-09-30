@@ -16,6 +16,7 @@
 #include "RenderState.h"
 #include "GpuPipeline.h"
 #include "GpuPass.h"
+#include "Shaders\slots.h"
 
 namespace D3D12MA
 {
@@ -50,9 +51,8 @@ void updateResourceData( Buffer& buffer, const ResourceType& data )
 
 // Бэкенд D3D12 за интерфейсом, которым пользуются объекты сцены, материалы и Renderer (docs/d3d12_migration.md §4):
 // устройство и очереди, кадры в полёте с fence, кучи дескрипторов (bindless), кольцо констант, память (D3D12MA),
-// ресурсы и виды, проходы с барьерами, пайплайны, вызовы. Вехи M1 (каркас), M2 (ресурсы) сделаны; что ещё не
-// сделано (M3 — шейдеры и пайплайны, M4 — привязка, барьеры проходов и вызовы, M5 — профайлер и снимки), отмечено
-// в коде словом «веха»
+// ресурсы и виды, шейдеры и пайплайны (PSO с кэшем на диске), проходы с барьерами по объявлениям, привязка через
+// таблицу привязок вызова (root-константы) и root CBV, вызовы. Вехи M1–M4 сделаны; M5 — профайлер (веха отмечена в коде)
 class DMD3D
 {
 private:
@@ -90,9 +90,10 @@ public:
 	// value). Тонмаппинг переводит его в задний буфер (backBufferTarget + sceneColor), поверх рисуется GUI, EndScene
 	// показывает кадр
 	void BeginScene( float, float, float, float );
-	// Проход начинается объявлением (GpuPass.h): цели и область вывода ставятся, барьеры целей, чтения и записи
-	// ставятся по объявлению (веха M4); ресурсы прохода привязываются после beginPass. Без целей — compute-проход.
-	// Список проходов следующего кадра с ресурсами — logPasses (команда passes) → log.txt
+	// Проход начинается объявлением (GpuPass.h): барьеры целей, чтения и записи по объявлению (по подресурсам — мипы
+	// куба, срезы каскадов), цели и область вывода ставятся, слоты вызова таблицы привязок (t0…t16, u0…u7) очищаются;
+	// ресурсы прохода привязываются после beginPass. Без целей — compute-проход. Список проходов следующего кадра с
+	// ресурсами — logPasses (команда passes) → log.txt
 	void beginPass( const PassDesc& pass );
 	void logPasses() { m_passLogRequested = true; }
 	// Буфер сцены (HDR и глубина) и текущий задний буфер — цели проходов сцены, тонмаппинга и GUI
@@ -135,6 +136,7 @@ public:
 	};
 	VideoMemory videoMemory() const;
 	uint32_t shaderDescriptorCount() const { return m_shaderHeap.used(); }
+	uint32_t barrierCount() const { return m_lastFrameBarriers; }	// барьеров за прошлый кадр
 
 	// --- D3D12 для кода в Graphics/D3D и привязки ImGui (imgui_impl_dx12) ----------------------------------------------
 	ID3D12Device10* GetDevice() const { return m_device.get(); }
@@ -165,7 +167,7 @@ public:
 	const RenderState& renderState() const { return m_renderState; }
 	// Пайплайн по описанию из кэша (создаётся, если его ещё нет; после markPipelinesWarm — с записью в лог)
 	const Pipeline& pipeline( const PipelineDesc& desc );
-	// Ставит в командный список объект состояния пайплайна, root signature и топологию
+	// Ставит в командный список объект состояния пайплайна и топологию (root signature одна, стоит с начала списка)
 	void setPipeline( const Pipeline& pipeline );
 	// Цели текущего прохода (beginPass) — для описания пайплайна вызова (DMShader::setPass)
 	const TargetFormats& passFormats() const { return m_passFormats; }
@@ -207,8 +209,12 @@ public:
 	// Чтение копии BufferUsage::readback без ожидания: false — GPU ещё пишет её (fence копии не пройден) или ошибка
 	bool readBuffer( const Buffer& readback, void* data, size_t size );
 
-	// --- Привязка (веха M4: таблица привязок вызова — индексы дескрипторов по слотам, root CBV) -----------------------
-	bool setConstantBuffer( SRVType type, uint16_t slot, const Buffer& buffer );
+	// --- Привязка ---------------------------------------------------------------------------------------------------------
+	// Таблица привязок вызова (Shaders/bindless.sh): setSRV / setUAV пишут индекс дескриптора вида в слот, draw* /
+	// dispatch ставят таблицу root-константами. Стадия у setSRV не важна — таблица одна на вызов; слоты сцены
+	// (t100…t106) живут до следующего кадра, слоты вызова очищаются в beginPass. Вид ресурса, который пишет текущий
+	// проход, на входе — барьер в состояние чтения (проход над ним закончен)
+	bool setConstantBuffer( SRVType type, uint16_t slot, const Buffer& buffer );	// root CBV b0…b7
 	void setConstantBufferAllStages( uint16_t slot, const Buffer& buffer );
 	void setSRV( SRVType type, uint16_t slot, const ShaderView& view );
 	void setUAV( uint16_t slot, const StorageView& view );		// compute
@@ -229,14 +235,15 @@ public:
 	void setTopology( D3D_PRIMITIVE_TOPOLOGY ) {}
 	void drawAuto() {}
 
-	// --- Вызовы (веха M4) -----------------------------------------------------------------------------------------------
+	// --- Вызовы -----------------------------------------------------------------------------------------------------------
 	void draw( uint32_t vertexCount, uint32_t startVertex );
 	void drawIndexed( uint32_t indexCount, uint32_t startIndex, int32_t baseVertex );
 	void drawIndexedInstanced( uint32_t indexCount, uint32_t instanceCount, uint32_t startIndex, int32_t baseVertex, uint32_t startInstance = 0 );
+	// ExecuteIndirect с сигнатурой из одной DRAW_INDEXED — ровно то, что делал DrawIndexedInstancedIndirect D3D11
 	void drawIndexedInstancedIndirect( const Buffer& args, uint32_t argsOffset );
 	void dispatch( uint32_t x, uint32_t y, uint32_t z );
 
-	// Снимки заднего буфера (веха M5: ScreenGrab12) — вызывать до EndScene
+	// Снимки заднего буфера (PNG или JPG по расширению) — вызывать до EndScene: после Present содержимое буфера не определено
 	bool createScreenshot();
 	bool saveScreenshot( const std::wstring& path );
 
@@ -252,27 +259,35 @@ private:
 		std::vector<std::pair<HeapKind, Descriptor>> deferredDescriptors;
 	};
 
-	// Состояние ресурса для enhanced barriers: у буферов только sync и access, у текстур ещё layout (веха M4 —
-	// по подресурсам). Новый ресурс — SYNC_NONE / NO_ACCESS и начальный layout
-	struct ResourceState
+	// Состояние подресурса для enhanced barriers: у буферов только sync и access, у текстур ещё layout. Новый ресурс —
+	// SYNC_NONE / NO_ACCESS и начальный layout. uavWritten — после dispatch в него писали через UAV: следующая запись
+	// через UAV ждёт барьер UAV → UAV (иначе две записи не упорядочены)
+	struct SubresourceState
 	{
 		D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_UNDEFINED;
 		D3D12_BARRIER_SYNC sync = D3D12_BARRIER_SYNC_NONE;
 		D3D12_BARRIER_ACCESS access = D3D12_BARRIER_ACCESS_NO_ACCESS;
+		bool uavWritten = false;
+	};
+	struct ResourceState
+	{
 		bool texture = false;
+		uint32_t mipCount = 1;
+		uint32_t arraySize = 1;
+		std::vector<SubresourceState> subresources;	// mipCount × arraySize у текстур, одно у буферов
 	};
 
 	bool selectAdapter();
 	bool createDevice( const Config& config );
 	bool createQueuesAndFrames();
 	bool createDescriptorHeaps();
+	bool createRootSignature();
+	bool createCommandSignature();
 	bool createSwapChain( HWND hwnd, bool fullscreen );
 	bool createBackBufferTargets();
 	void releaseBackBufferTargets();
 	bool createSceneTargets( const float clearColor[4] );
 	void releaseSceneTargets();
-	// Командный список: открыть на аллокаторе кадра / закрыть и отправить в очередь
-	bool createRootSignature();
 	// Объект состояния пайплайна из описания: из библиотеки на диске или собрать (и положить в библиотеку)
 	bool createPipelineObject( Pipeline& pipeline );
 	ID3D12PipelineState* computePipeline( const ShaderStage& stage );
@@ -280,7 +295,9 @@ private:
 	void savePipelineLibrary();
 	// Имя пайплайна в библиотеке — хэш содержимого описания (байткод стадий, раскладка, состояния, форматы)
 	static std::wstring pipelineName( const PipelineDesc& desc );
+	// Командный список: открыть на аллокаторе кадра (root signature и кучи — сразу) / закрыть и отправить в очередь
 	void openCommandList( FrameResources& frame );
+	void ensureRecording();	// список закрыт между кадрами — открыть (ресурсы создаются и вне кадра)
 	void submitCommandList();
 	// Сигнал fence в конце очереди — возвращает его значение; ожидание значения на CPU
 	uint64_t signalFence();
@@ -290,14 +307,18 @@ private:
 	void processDeferred( FrameResources& frame );
 	void deferRelease( IUnknown* object );
 	void deferFreeDescriptor( HeapKind heap, const Descriptor& descriptor );
-	// Барьер enhanced barriers к состоянию (access и, у текстур, layout) с учётом текущего; force — и при том же
-	// состоянии (запись после записи: копия за копией)
+	// Барьер enhanced barriers к состоянию (access и, у текстур, layout) подресурсов range (nullptr — всех) с учётом
+	// текущего; force — и при том же состоянии (запись после записи: копия за копией)
 	void barrier( ID3D12Resource* resource, D3D12_BARRIER_ACCESS access, D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_UNDEFINED,
-				  bool force = false );
+				  const SubresourceRange* range = nullptr, bool force = false );
 	void flushBarriers();
 	static D3D12_BARRIER_SYNC syncFor( D3D12_BARRIER_ACCESS access );
 	static D3D12_BARRIER_ACCESS steadyAccess( uint32_t bufferUsage );
-	// Ресурс из аллокатора; buffer — D3D12_RESOURCE_DESC1 буфера или текстуры
+	// Root-аргументы (таблица привязок и CBV), изменившиеся с прошлого вызова, — в командный список перед вызовом
+	void flushGraphicsRoot();
+	void flushComputeRoot();
+	void setBinding( uint32_t index, uint32_t descriptorIndex );
+	// Ресурс из аллокатора; desc — буфера или текстуры
 	bool createResource( const D3D12_RESOURCE_DESC1& desc, D3D12_HEAP_TYPE heap, D3D12_BARRIER_LAYOUT initialLayout,
 						 const D3D12_CLEAR_VALUE* clearValue, ID3D12Resource** resource, D3D12MA::Allocation** allocation );
 	bool createTextureInternal( const TextureDesc& desc, const TextureData* initial, Texture& texture, const float* clearColor,
@@ -306,11 +327,13 @@ private:
 	bool uploadToBuffer( ID3D12Resource* destination, uint64_t destinationOffset, const void* data, uint64_t size );
 	bool uploadToTexture( ID3D12Resource* destination, const TextureDesc& desc, const TextureData* initial );
 	bool createStaging( uint64_t bytes, D3D12_HEAP_TYPE heap, ID3D12Resource** resource, D3D12MA::Allocation** allocation, void** mapped );
+	// Задний буфер на CPU: байты R8G8B8A8 (sRGB) с шагом строки rowPitch. Ждёт GPU; задний буфер остаётся целью
+	bool captureBackBuffer( std::vector<uint8_t>& bytes, uint32_t& rowPitch );
 	// Потеря устройства: причина и последние выполненные команды (DRED) — в лог
 	void logDeviceRemoved( HRESULT reason );
 	static void messageCallback( D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVERITY severity, D3D12_MESSAGE_ID id,
 								 LPCSTR description, void* context );
-	// Метод ещё не реализован (веха M3–M5): одна строка в лог на имя
+	// Метод ещё не реализован (веха M5): одна строка в лог на имя
 	void notImplemented( const char* method );
 
 	friend void gpuFreeShaderDescriptor( const Descriptor& descriptor );
@@ -363,6 +386,20 @@ private:
 	std::unordered_map<ID3D12Resource*, ResourceState> m_states;
 	std::vector<D3D12_BUFFER_BARRIER> m_pendingBufferBarriers;
 	std::vector<D3D12_TEXTURE_BARRIER> m_pendingTextureBarriers;
+	std::vector<ID3D12Resource*> m_dispatchWrites;		// UAV, привязанные к следующему dispatch: после него — uavWritten
+	uint32_t m_frameBarriers = 0;
+	uint32_t m_lastFrameBarriers = 0;
+
+	// Root-аргументы вызова: таблица привязок (индексы дескрипторов по слотам) и адреса root CBV; ставятся перед
+	// вызовом, если менялись (у графики и compute — свои наборы)
+	uint32_t m_bindings[DM_BINDING_COUNT] = {};
+	D3D12_GPU_VIRTUAL_ADDRESS m_rootCBV[SLOT_CB_COUNT] = {};
+	bool m_bindingsDirtyGraphics = true;
+	bool m_bindingsDirtyCompute = true;
+	uint32_t m_cbvDirtyGraphics = 0;	// бит на слот
+	uint32_t m_cbvDirtyCompute = 0;
+	bool m_graphicsPipelineValid = false;
+	bool m_computePipelineValid = false;
 
 	com_unique_ptr<IDXGISwapChain3> m_swapChain;
 	UINT m_swapChainFlags = 0;
@@ -385,6 +422,7 @@ private:
 	// Root signature одна на графику и compute: root-константы таблицы привязок b8, root CBV b0…b7, статические
 	// сэмплеры s0…s8, флаг прямой индексации кучи (ResourceDescriptorHeap)
 	com_unique_ptr<ID3D12RootSignature> m_rootSignature;
+	com_unique_ptr<ID3D12CommandSignature> m_drawIndexedSignature;	// ExecuteIndirect: одна DRAW_INDEXED
 	std::unordered_map<uint64_t, Pipeline> m_pipelines;
 	std::unordered_map<uint64_t, com_unique_ptr<ID3D12PipelineState>> m_computePipelines;	// по хэшу байткода
 	uint32_t m_lazyPipelines = 0;
@@ -404,7 +442,7 @@ private:
 	// Debug-слой: сообщения через callback → log.txt (одинаковые — первые три раза)
 	com_unique_ptr<ID3D12InfoQueue1> m_infoQueue;
 	DWORD m_messageCookie = 0;
-	std::unordered_map<int, uint32_t> m_debugMessageCounts;
+	std::unordered_map<std::string, uint32_t> m_debugMessageCounts;	// id (+ место в шейдере у GBV) → повторов
 	std::unordered_set<std::string> m_notImplemented;
 };
 

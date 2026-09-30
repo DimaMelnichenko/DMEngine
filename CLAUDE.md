@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Проект
 
 DMEngine — самописный 3D-движок на C++17 / Direct3D 12 под Windows (Win32-окно, DirectInput, ImGui). Бэкенд
-переписывается с D3D11 на D3D12 по вехам M1–M5 (`docs/d3d12_migration.md`): до вехи M4 движок рисует только очистку и GUI,
-рабочий D3D11 — коммит `6a8cd3d`.
+переписан с D3D11 на D3D12 по вехам M1–M5 (`docs/d3d12_migration.md`): с вехи M4 кадр рисуется целиком и совпадает с
+эталоном D3D11 (коммит `6a8cd3d`) в пределах ±1; веха M5 (профайлер GPU, PIX-метки, чистка остатков D3D11) — впереди.
 Сейчас в основном используется как полигон для рендеринга: террейн (CDLOD),
 небо, расстановка травы и декора (compute + indirect draw), частицы.
 

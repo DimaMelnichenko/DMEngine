@@ -3,6 +3,7 @@
 #include "Utils\utilites.h"
 #include "Logger\Logger.h"
 #include "DMSamplerState.h"
+#include "TextureImages.h"
 #include <D3D12MemAlloc.h>
 #include <d3dx12.h>
 #include <algorithm>
@@ -58,6 +59,16 @@ TextureViewDesc::Kind resolveKind( const TextureDesc& texture, const TextureView
 uint32_t subresourceCount( const TextureDesc& desc )
 {
 	return desc.mipCount * ( desc.depth > 1 ? 1 : desc.arraySize );
+}
+
+// Слот таблицы привязок для слота SRV (Shaders/bindless.sh); −1 — слот вне таблицы
+int bindingIndex( uint16_t slot )
+{
+	if( slot < SLOT_TRANSIENT_COUNT )
+		return slot;
+	if( slot >= SLOT_SCENE_FIRST && slot < SLOT_SCENE_FIRST + SLOT_SCENE_COUNT )
+		return DM_BINDING_SCENE_BASE + slot - SLOT_SCENE_FIRST;
+	return -1;
 }
 
 }
@@ -135,7 +146,7 @@ bool DMD3D::Initialize( const Config& config, HWND hwnd )
 	m_vsync_enabled = config.vSync();
 
 	if( !selectAdapter() || !createDevice( config ) || !createQueuesAndFrames() || !createDescriptorHeaps() ||
-		!createSwapChain( hwnd, config.fullScreen() ) || !createBackBufferTargets() || !createRootSignature() )
+		!createSwapChain( hwnd, config.fullScreen() ) || !createBackBufferTargets() || !createRootSignature() || !createCommandSignature() )
 		return false;
 	if( !m_constantRing.initialize( m_device.get(), constantRingBytes, frameCount ) )
 		return false;
@@ -327,14 +338,22 @@ void DMD3D::messageCallback( D3D12_MESSAGE_CATEGORY, D3D12_MESSAGE_SEVERITY seve
 {
 	if( severity == D3D12_MESSAGE_SEVERITY_INFO || severity == D3D12_MESSAGE_SEVERITY_MESSAGE )
 		return;
-	// Пайплайна нет в библиотеке на диске — штатно: он собирается и кладётся туда (createPipelineObject)
-	if( id == D3D12_MESSAGE_ID_LOADPIPELINE_NAMENOTFOUND )
+	// Пайплайна нет в библиотеке на диске — штатно: он собирается и кладётся туда (createPipelineObject). Список из одних
+	// барьеров — подсказка драйверу: так заканчивается список загрузки, когда после копий шли только барьеры
+	if( id == D3D12_MESSAGE_ID_LOADPIPELINE_NAMENOTFOUND || id == D3D12_MESSAGE_ID_NON_OPTIMAL_BARRIER_ONLY_EXECUTE_COMMAND_LISTS )
 		return;
 
-	// Одно и то же сообщение обычно повторяется каждый кадр: пишется только первые maxRepeats раз
+	// Одно и то же сообщение обычно повторяется каждый кадр: пишется только первые maxRepeats раз. У ошибок GPU-based
+	// validation один id на все шейдеры — ключ ещё и место в шейдере («Shader Code: файл(строка»)
 	const uint32_t maxRepeats = 3;
 	DMD3D* self = static_cast<DMD3D*>( context );
-	const uint32_t repeats = ++self->m_debugMessageCounts[static_cast<int>( id )];
+	std::string key = std::to_string( static_cast<int>( id ) );
+	if( const char* code = description ? strstr( description, "Shader Code: " ) : nullptr )
+	{
+		const char* end = strchr( code, ',' );
+		key += end ? std::string( code, end ) : code;
+	}
+	const uint32_t repeats = ++self->m_debugMessageCounts[key];
 	if( repeats > maxRepeats )
 		return;
 	const char* severityName = severity == D3D12_MESSAGE_SEVERITY_WARNING ? "warning" :
@@ -468,6 +487,76 @@ void DMD3D::processDeferred( FrameResources& frame )
 		}
 	}
 	frame.deferredDescriptors.clear();
+}
+
+bool DMD3D::createRootSignature()
+{
+	// [0] — root-константы таблицы привязок вызова (b8, DM_BINDING_COUNT DWORD: индексы дескрипторов по слотам —
+	// Shaders/bindless.sh); [1…SLOT_CB_COUNT] — root CBV b0…b7 (кольцо констант и буферы проходов); сэмплеры статические
+	DMSamplerState samplers;
+	samplers.initialize();
+	D3D12_ROOT_PARAMETER1 parameters[1 + SLOT_CB_COUNT] = {};
+	parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+	parameters[0].Constants.ShaderRegister = SLOT_CB_BINDINGS;
+	parameters[0].Constants.Num32BitValues = DM_BINDING_COUNT;
+	parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	for( uint32_t i = 0; i < SLOT_CB_COUNT; ++i )
+	{
+		parameters[1 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+		parameters[1 + i].Descriptor.ShaderRegister = i;
+		parameters[1 + i].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE;
+		parameters[1 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	}
+	D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc = {};
+	desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+	desc.Desc_1_1.NumParameters = static_cast<UINT>( std::size( parameters ) );
+	desc.Desc_1_1.pParameters = parameters;
+	desc.Desc_1_1.NumStaticSamplers = static_cast<UINT>( samplers.staticSamplers().size() );
+	desc.Desc_1_1.pStaticSamplers = samplers.staticSamplers().data();
+	desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
+
+	ID3DBlob* blob = nullptr;
+	ID3DBlob* error = nullptr;
+	if( FAILED( D3D12SerializeVersionedRootSignature( &desc, &blob, &error ) ) )
+	{
+		LOG( std::string( "Root signature serialization failed: " ) + ( error ? static_cast<const char*>( error->GetBufferPointer() ) : "" ) );
+		if( error )
+			error->Release();
+		return false;
+	}
+	ID3D12RootSignature* rootSignature = nullptr;
+	const HRESULT hr = m_device->CreateRootSignature( 0, blob->GetBufferPointer(), blob->GetBufferSize(), __uuidof( ID3D12RootSignature ),
+													  reinterpret_cast<void**>( &rootSignature ) );
+	blob->Release();
+	if( FAILED( hr ) )
+	{
+		LOG( "CreateRootSignature failed" );
+		return false;
+	}
+	rootSignature->SetName( L"Root signature" );
+	m_rootSignature = make_com_ptr<ID3D12RootSignature>( rootSignature );
+	return true;
+}
+
+bool DMD3D::createCommandSignature()
+{
+	// ExecuteIndirect с одной DRAW_INDEXED (20 байт на команду) — ровно DrawIndexedInstancedIndirect D3D11; root-аргументы в
+	// команде не меняются, поэтому root signature сигнатуре не нужна
+	D3D12_INDIRECT_ARGUMENT_DESC argument = {};
+	argument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+	D3D12_COMMAND_SIGNATURE_DESC desc = {};
+	desc.ByteStride = sizeof( D3D12_DRAW_INDEXED_ARGUMENTS );
+	desc.NumArgumentDescs = 1;
+	desc.pArgumentDescs = &argument;
+	ID3D12CommandSignature* signature = nullptr;
+	if( FAILED( m_device->CreateCommandSignature( &desc, nullptr, __uuidof( ID3D12CommandSignature ), reinterpret_cast<void**>( &signature ) ) ) )
+	{
+		LOG( "CreateCommandSignature (DRAW_INDEXED) failed" );
+		return false;
+	}
+	signature->SetName( L"DrawIndexed indirect" );
+	m_drawIndexedSignature = make_com_ptr<ID3D12CommandSignature>( signature );
+	return true;
 }
 
 bool DMD3D::createSwapChain( HWND hwnd, bool fullscreen )
@@ -629,9 +718,23 @@ void DMD3D::openCommandList( FrameResources& frame )
 	if( m_recording )
 		return;
 	m_commandList->Reset( frame.allocator.get(), nullptr );
+	// Кучи и root signature — на весь список: root-аргументы сохраняются при смене PSO и ставятся заново целиком
 	ID3D12DescriptorHeap* heaps[] = { m_shaderHeap.handle() };
 	m_commandList->SetDescriptorHeaps( 1, heaps );
+	m_commandList->SetGraphicsRootSignature( m_rootSignature.get() );
+	m_commandList->SetComputeRootSignature( m_rootSignature.get() );
+	m_bindingsDirtyGraphics = m_bindingsDirtyCompute = true;
+	m_cbvDirtyGraphics = m_cbvDirtyCompute = ( 1u << SLOT_CB_COUNT ) - 1;
+	m_graphicsPipelineValid = m_computePipelineValid = false;
 	m_recording = true;
+}
+
+void DMD3D::ensureRecording()
+{
+	// Ресурс создаётся между EndScene и beginFrame (WM_SIZE, загрузка по команде): список закрыт — открыть на аллокаторе
+	// текущего кадра; beginFrame выполнит записанное и дождётся, прежде чем сбросить аллокатор
+	if( !m_recording && m_device )
+		openCommandList( m_frames[m_frameIndex] );
 }
 
 void DMD3D::submitCommandList()
@@ -706,9 +809,14 @@ void DMD3D::beginFrame()
 	frame.allocator->Reset();
 	openCommandList( frame );
 
+	// Адреса констант прошлого кадра указывают в часть кольца, которую CPU уже переписывает: забыть их — шейдер, который
+	// читает не записанный в этом кадре буфер, получит ошибку debug-слоя, а не мусор
+	memset( m_rootCBV, 0, sizeof( m_rootCBV ) );
 	m_backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
 	m_constantRing.beginFrame( m_frameIndex );
 	m_passFormats = {};
+	m_lastFrameBarriers = m_frameBarriers;
+	m_frameBarriers = 0;
 	if( m_passLogRequested )
 	{
 		m_passLogRequested = false;
@@ -756,7 +864,7 @@ D3D12_BARRIER_ACCESS DMD3D::steadyAccess( uint32_t usage )
 	return D3D12_BARRIER_ACCESS_COPY_SOURCE;
 }
 
-void DMD3D::barrier( ID3D12Resource* resource, D3D12_BARRIER_ACCESS access, D3D12_BARRIER_LAYOUT layout, bool force )
+void DMD3D::barrier( ID3D12Resource* resource, D3D12_BARRIER_ACCESS access, D3D12_BARRIER_LAYOUT layout, const SubresourceRange* range, bool force )
 {
 	if( !resource )
 		return;
@@ -764,37 +872,99 @@ void DMD3D::barrier( ID3D12Resource* resource, D3D12_BARRIER_ACCESS access, D3D1
 	if( found == m_states.end() )
 		return;	// задний буфер и ресурсы без учёта состояния — свои барьеры
 	ResourceState& state = found->second;
-	if( !force && state.access == access && ( !state.texture || state.layout == layout ) )
-		return;
-
 	const D3D12_BARRIER_SYNC syncAfter = syncFor( access );
-	if( state.texture )
+	const bool uavWrite = access == D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+	// Нужен ли барьер подресурсу: другой доступ или layout; запись через UAV после записи через UAV — тоже (порядок)
+	const auto needs = [&]( const SubresourceState& sub )
 	{
-		D3D12_TEXTURE_BARRIER textureBarrier = {};
-		textureBarrier.SyncBefore = state.sync;
-		textureBarrier.SyncAfter = syncAfter;
-		textureBarrier.AccessBefore = state.access;
-		textureBarrier.AccessAfter = access;
-		textureBarrier.LayoutBefore = state.layout;
-		textureBarrier.LayoutAfter = layout;
-		textureBarrier.pResource = resource;
-		textureBarrier.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFFu;
-		m_pendingTextureBarriers.push_back( textureBarrier );
-		state.layout = layout;
-	}
-	else
+		return force || sub.access != access || ( state.texture && sub.layout != layout ) || ( uavWrite && sub.uavWritten );
+	};
+	const auto apply = [&]( SubresourceState& sub )
 	{
+		sub.layout = state.texture ? layout : D3D12_BARRIER_LAYOUT_UNDEFINED;
+		sub.sync = syncAfter;
+		sub.access = access;
+		sub.uavWritten = false;
+	};
+
+	if( !state.texture )
+	{
+		SubresourceState& sub = state.subresources[0];
+		if( !needs( sub ) )
+			return;
 		D3D12_BUFFER_BARRIER bufferBarrier = {};
-		bufferBarrier.SyncBefore = state.sync;
+		bufferBarrier.SyncBefore = sub.sync;
 		bufferBarrier.SyncAfter = syncAfter;
-		bufferBarrier.AccessBefore = state.access;
+		bufferBarrier.AccessBefore = sub.access;
 		bufferBarrier.AccessAfter = access;
 		bufferBarrier.pResource = resource;
 		bufferBarrier.Size = UINT64_MAX;
 		m_pendingBufferBarriers.push_back( bufferBarrier );
+		apply( sub );
+		return;
 	}
-	state.sync = syncAfter;
-	state.access = access;
+
+	// Текстура: диапазон подресурсов вида (мипы куба, срезы каскадов) — одним барьером, если они в одном состоянии,
+	// иначе по подресурсу
+	uint32_t firstMip = 0, mipCount = state.mipCount, firstSlice = 0, sliceCount = state.arraySize;
+	if( range )
+	{
+		firstMip = std::min( range->firstMip, state.mipCount - 1 );
+		mipCount = range->mipCount ? std::min( range->mipCount, state.mipCount - firstMip ) : state.mipCount - firstMip;
+		firstSlice = std::min( range->firstSlice, state.arraySize - 1 );
+		sliceCount = range->sliceCount ? std::min( range->sliceCount, state.arraySize - firstSlice ) : state.arraySize - firstSlice;
+	}
+	const auto subresource = [&]( uint32_t mip, uint32_t slice ) -> SubresourceState& { return state.subresources[slice * state.mipCount + mip]; };
+	const SubresourceState first = subresource( firstMip, firstSlice );
+	bool uniform = true;
+	for( uint32_t slice = firstSlice; slice < firstSlice + sliceCount && uniform; ++slice )
+		for( uint32_t mip = firstMip; mip < firstMip + mipCount && uniform; ++mip )
+		{
+			const SubresourceState& sub = subresource( mip, slice );
+			uniform = sub.access == first.access && sub.layout == first.layout && sub.sync == first.sync && sub.uavWritten == first.uavWritten;
+		}
+
+	const auto push = [&]( const SubresourceState& before, uint32_t mip, uint32_t mips, uint32_t slice, uint32_t slices )
+	{
+		D3D12_TEXTURE_BARRIER textureBarrier = {};
+		textureBarrier.SyncBefore = before.sync;
+		textureBarrier.SyncAfter = syncAfter;
+		textureBarrier.AccessBefore = before.access;
+		textureBarrier.AccessAfter = access;
+		textureBarrier.LayoutBefore = before.layout;
+		textureBarrier.LayoutAfter = layout;
+		textureBarrier.pResource = resource;
+		if( mip == 0 && mips == state.mipCount && slice == 0 && slices == state.arraySize )
+			textureBarrier.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFFu;
+		else
+		{
+			textureBarrier.Subresources.IndexOrFirstMipLevel = mip;
+			textureBarrier.Subresources.NumMipLevels = mips;
+			textureBarrier.Subresources.FirstArraySlice = slice;
+			textureBarrier.Subresources.NumArraySlices = slices;
+			textureBarrier.Subresources.NumPlanes = 1;
+		}
+		m_pendingTextureBarriers.push_back( textureBarrier );
+	};
+	if( uniform )
+	{
+		if( !needs( first ) )
+			return;
+		push( first, firstMip, mipCount, firstSlice, sliceCount );
+		for( uint32_t slice = firstSlice; slice < firstSlice + sliceCount; ++slice )
+			for( uint32_t mip = firstMip; mip < firstMip + mipCount; ++mip )
+				apply( subresource( mip, slice ) );
+		return;
+	}
+	for( uint32_t slice = firstSlice; slice < firstSlice + sliceCount; ++slice )
+		for( uint32_t mip = firstMip; mip < firstMip + mipCount; ++mip )
+		{
+			SubresourceState& sub = subresource( mip, slice );
+			if( !needs( sub ) )
+				continue;
+			push( sub, mip, 1, slice, 1 );
+			apply( sub );
+		}
 }
 
 void DMD3D::flushBarriers()
@@ -818,6 +988,7 @@ void DMD3D::flushBarriers()
 		++count;
 	}
 	m_commandList->Barrier( count, groups );
+	m_frameBarriers += static_cast<uint32_t>( m_pendingBufferBarriers.size() + m_pendingTextureBarriers.size() );
 	m_pendingBufferBarriers.clear();
 	m_pendingTextureBarriers.clear();
 }
@@ -843,25 +1014,22 @@ void DMD3D::BeginScene( float red, float green, float blue, float alpha )
 		return;
 
 	// Сцена рисуется в HDR-буфер; цвет очистки — линейный, как всё в нём. Обратная глубина: очищенный буфер — дальняя
-	// плоскость, 0. Очистка требует layout цели (веха M4 перенесёт барьеры целей в beginPass)
-	barrier( m_sceneTexture.handle(), D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET );
-	barrier( m_sceneDepthTexture.handle(), D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE );
+	// плоскость, 0
 	beginPass( PassDesc{ "Scene clear", { { &m_sceneTarget, "scene color" } }, { &m_sceneDepth, "scene depth" }, m_screenWidth, m_screenHeight } );
 	clearTarget( m_sceneTarget, color );
 	clearDepth( m_sceneDepth, 0.0f );
-	// До вехи M4 тонмаппинг не рисует: цвет очистки в задний буфер, чтобы окно было не чёрным
-	clearTarget( backBufferTarget(), color );
 }
 
 void DMD3D::beginPass( const PassDesc& pass )
 {
-	// Цели и область вывода; барьеры целей, чтения и записи по объявлению — веха M4
+	// Барьеры по объявлению: цели — в layout записи, чтение — в состояние чтения, UAV — в запись (по подресурсам вида)
 	D3D12_CPU_DESCRIPTOR_HANDLE targets[D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
 	m_passFormats = {};
 	for( const PassDesc::Target& target : pass.colors )
 	{
 		if( target.view && target.view->valid() && m_passFormats.colorCount < TargetFormats::maxColors )
 		{
+			barrier( target.view->resource(), D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET, &target.view->range() );
 			targets[m_passFormats.colorCount] = target.view->handle();
 			m_passFormats.color[m_passFormats.colorCount++] = target.view->format();
 		}
@@ -869,6 +1037,18 @@ void DMD3D::beginPass( const PassDesc& pass )
 	const bool hasDepth = pass.depth.view && pass.depth.view->valid();
 	const D3D12_CPU_DESCRIPTOR_HANDLE depth = hasDepth ? pass.depth.view->handle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
 	m_passFormats.depth = hasDepth ? pass.depth.view->format() : DXGI_FORMAT_UNKNOWN;
+	if( hasDepth )
+		barrier( pass.depth.view->resource(), D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, &pass.depth.view->range() );
+	for( const PassDesc::Read& read : pass.reads )
+	{
+		if( read.view && read.view->valid() )
+			barrier( read.view->resource(), D3D12_BARRIER_ACCESS_SHADER_RESOURCE, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, &read.view->range() );
+	}
+	for( const PassDesc::Write& write : pass.writes )
+	{
+		if( write.view && write.view->valid() )
+			barrier( write.view->resource(), D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS, &write.view->range() );
+	}
 	flushBarriers();
 	m_commandList->OMSetRenderTargets( m_passFormats.colorCount, m_passFormats.colorCount ? targets : nullptr, FALSE, hasDepth ? &depth : nullptr );
 
@@ -882,6 +1062,11 @@ void DMD3D::beginPass( const PassDesc& pass )
 		m_commandList->RSSetViewports( 1, &viewport );
 		m_commandList->RSSetScissorRects( 1, &scissor );
 	}
+
+	// Слоты вызова таблицы привязок — чистые (дескриптор 0 — пустой SRV); слоты сцены живут до следующего кадра
+	for( uint32_t i = 0; i < DM_BINDING_SCENE_BASE; ++i )
+		m_bindings[i] = 0;
+	m_bindingsDirtyGraphics = m_bindingsDirtyCompute = true;
 
 	if( m_recordingPasses )
 	{
@@ -906,7 +1091,7 @@ void DMD3D::clearDepth( const TargetView& target, float depth )
 {
 	if( !target.valid() || !target.isDepth() )
 		return;
-	barrier( target.resource(), D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE );
+	barrier( target.resource(), D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, &target.range() );
 	flushBarriers();
 	m_commandList->ClearDepthStencilView( target.handle(), D3D12_CLEAR_FLAG_DEPTH, depth, 0, 0, nullptr );
 }
@@ -915,7 +1100,7 @@ void DMD3D::clearTarget( const TargetView& target, const float color[4] )
 {
 	if( !target.valid() || target.isDepth() )
 		return;
-	barrier( target.resource(), D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET );
+	barrier( target.resource(), D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET, &target.range() );
 	flushBarriers();
 	m_commandList->ClearRenderTargetView( target.handle(), color, 0, nullptr );
 }
@@ -945,7 +1130,7 @@ void DMD3D::EndScene()
 	if( m_recordingPasses )
 	{
 		m_recordingPasses = false;
-		LOG( "Frame passes: " + std::to_string( m_passRecords.size() ) );
+		LOG( "Frame passes: " + std::to_string( m_passRecords.size() ) + ", barriers: " + std::to_string( m_frameBarriers ) );
 		for( size_t i = 0; i < m_passRecords.size(); ++i )
 			LOG( "  " + std::to_string( i ) + ". " + m_passRecords[i] );
 	}
@@ -1048,6 +1233,7 @@ void DMD3D::Shutdown()
 	m_computePipelines.clear();
 	m_pipelineLibrary.reset();
 	m_pipelineLibraryData.clear();
+	m_drawIndexedSignature.reset();
 	m_rootSignature.reset();
 	m_commandList.reset();
 	for( FrameResources& frame : m_frames )
@@ -1100,7 +1286,8 @@ const Pipeline& DMD3D::pipeline( const PipelineDesc& desc )
 		++m_lazyPipelines;
 		LOG( "Pipeline " + std::to_string( id ) + " is created lazily: raster " + std::to_string( static_cast<int>( desc.state.raster ) ) +
 			 ", depth " + std::to_string( static_cast<int>( desc.state.depth ) ) + ", blend " + std::to_string( static_cast<int>( desc.state.blend ) ) +
-			 ", topology " + std::to_string( static_cast<int>( desc.topology ) ) );
+			 ", topology " + std::to_string( static_cast<int>( desc.topology ) ) + ", colors " + std::to_string( desc.formats.colorCount ) +
+			 " (" + std::to_string( desc.formats.colorCount ? desc.formats.color[0] : 0 ) + "), depth format " + std::to_string( desc.formats.depth ) );
 	}
 	Pipeline& pipeline = m_pipelines.emplace( key, Pipeline( desc, id ) ).first->second;
 	createPipelineObject( pipeline );
@@ -1110,10 +1297,11 @@ const Pipeline& DMD3D::pipeline( const PipelineDesc& desc )
 void DMD3D::setPipeline( const Pipeline& pipeline )
 {
 	m_renderState = pipeline.desc().state;
-	if( ID3D12PipelineState* object = pipeline.object() )
+	ID3D12PipelineState* object = pipeline.object();
+	m_graphicsPipelineValid = object != nullptr;
+	if( object )
 	{
 		m_commandList->SetPipelineState( object );
-		m_commandList->SetGraphicsRootSignature( m_rootSignature.get() );
 		m_commandList->IASetPrimitiveTopology( pipeline.desc().topology );
 	}
 }
@@ -1122,11 +1310,10 @@ void DMD3D::setShaderStage( SRVType type, const ShaderStage* stage )
 {
 	if( type != SRVType::cs || !stage || !stage->valid() )
 		return;
-	if( ID3D12PipelineState* object = computePipeline( *stage ) )
-	{
+	ID3D12PipelineState* object = computePipeline( *stage );
+	m_computePipelineValid = object != nullptr;
+	if( object )
 		m_commandList->SetPipelineState( object );
-		m_commandList->SetComputeRootSignature( m_rootSignature.get() );
-	}
 }
 
 bool DMD3D::setShadowSlopeBias( float slopeBias )
@@ -1157,55 +1344,6 @@ TargetFormats DMD3D::depthOnlyFormats()
 TargetFormats DMD3D::backBufferFormats()
 {
 	return TargetFormats::colorTarget( backBufferViewFormat );
-}
-
-bool DMD3D::createRootSignature()
-{
-	// [0] — root-константы таблицы привязок вызова (b8, DM_BINDING_COUNT DWORD: индексы дескрипторов по слотам —
-	// Shaders/bindless.sh); [1…SLOT_CB_COUNT] — root CBV b0…b7 (кольцо констант и буферы проходов); сэмплеры статические
-	DMSamplerState samplers;
-	samplers.initialize();
-	D3D12_ROOT_PARAMETER1 parameters[1 + SLOT_CB_COUNT] = {};
-	parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-	parameters[0].Constants.ShaderRegister = SLOT_CB_BINDINGS;
-	parameters[0].Constants.Num32BitValues = DM_BINDING_COUNT;
-	parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-	for( uint32_t i = 0; i < SLOT_CB_COUNT; ++i )
-	{
-		parameters[1 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-		parameters[1 + i].Descriptor.ShaderRegister = i;
-		parameters[1 + i].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE;
-		parameters[1 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-	}
-	D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc = {};
-	desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
-	desc.Desc_1_1.NumParameters = static_cast<UINT>( std::size( parameters ) );
-	desc.Desc_1_1.pParameters = parameters;
-	desc.Desc_1_1.NumStaticSamplers = static_cast<UINT>( samplers.staticSamplers().size() );
-	desc.Desc_1_1.pStaticSamplers = samplers.staticSamplers().data();
-	desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
-
-	ID3DBlob* blob = nullptr;
-	ID3DBlob* error = nullptr;
-	if( FAILED( D3D12SerializeVersionedRootSignature( &desc, &blob, &error ) ) )
-	{
-		LOG( std::string( "Root signature serialization failed: " ) + ( error ? static_cast<const char*>( error->GetBufferPointer() ) : "" ) );
-		if( error )
-			error->Release();
-		return false;
-	}
-	ID3D12RootSignature* rootSignature = nullptr;
-	const HRESULT hr = m_device->CreateRootSignature( 0, blob->GetBufferPointer(), blob->GetBufferSize(), __uuidof( ID3D12RootSignature ),
-													  reinterpret_cast<void**>( &rootSignature ) );
-	blob->Release();
-	if( FAILED( hr ) )
-	{
-		LOG( "CreateRootSignature failed" );
-		return false;
-	}
-	rootSignature->SetName( L"Root signature" );
-	m_rootSignature = make_com_ptr<ID3D12RootSignature>( rootSignature );
-	return true;
 }
 
 std::wstring DMD3D::pipelineName( const PipelineDesc& desc )
@@ -1466,7 +1604,7 @@ bool DMD3D::loadPipelineLibrary()
 		m_pipelineLibraryData.assign( std::istreambuf_iterator<char>( file ), std::istreambuf_iterator<char>() );
 	ID3D12PipelineLibrary1* library = nullptr;
 	HRESULT hr = m_device->CreatePipelineLibrary( m_pipelineLibraryData.data(), m_pipelineLibraryData.size(), __uuidof( ID3D12PipelineLibrary1 ),
-													  reinterpret_cast<void**>( &library ) );
+												  reinterpret_cast<void**>( &library ) );
 	if( FAILED( hr ) && !m_pipelineLibraryData.empty() )
 	{
 		LOG( "Pipeline library cache/pipelines.bin is not accepted (driver or adapter changed), rebuilding" );
@@ -1530,9 +1668,17 @@ bool DMD3D::createResource( const D3D12_RESOURCE_DESC1& desc, D3D12_HEAP_TYPE he
 		return false;
 	}
 	ResourceState state;
-	state.layout = initialLayout;
 	state.texture = desc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER;
-	m_states[*resource] = state;
+	if( state.texture )
+	{
+		const D3D12_RESOURCE_DESC created = ( *resource )->GetDesc();
+		state.mipCount = std::max<uint32_t>( created.MipLevels, 1 );
+		state.arraySize = created.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D ? 1 : std::max<uint32_t>( created.DepthOrArraySize, 1 );
+	}
+	SubresourceState initial;
+	initial.layout = initialLayout;
+	state.subresources.assign( static_cast<size_t>( state.mipCount ) * state.arraySize, initial );
+	m_states[*resource] = std::move( state );
 	return true;
 }
 
@@ -1562,7 +1708,8 @@ bool DMD3D::uploadToBuffer( ID3D12Resource* destination, uint64_t destinationOff
 {
 	if( !data || size == 0 )
 		return true;
-	barrier( destination, D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, true );
+	ensureRecording();
+	barrier( destination, D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr, true );
 
 	// В кадре небольшие данные идут через участок кольца (он живёт, пока GPU не закончит кадр); до первого кадра и
 	// большие — отдельный upload-буфер, отпускается, когда GPU закончит копирование
@@ -1595,6 +1742,7 @@ bool DMD3D::uploadToBuffer( ID3D12Resource* destination, uint64_t destinationOff
 
 bool DMD3D::uploadToTexture( ID3D12Resource* destination, const TextureDesc& desc, const TextureData* initial )
 {
+	ensureRecording();
 	const uint32_t count = subresourceCount( desc );
 	const D3D12_RESOURCE_DESC resourceDesc = destination->GetDesc();
 	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts( count );
@@ -1824,6 +1972,22 @@ bool DMD3D::createTextureInternal( const TextureDesc& desc, const TextureData* i
 	texture.reset( resource, allocation, created );
 	if( initial )
 		return uploadToTexture( resource, created, initial );
+	if( desc.usage & ( TextureUsage::renderTarget | TextureUsage::depthStencil ) )
+	{
+		// Память под целью из кучи без обнуления (D3D12MA): первой операцией над ней должна быть очистка, копия или
+		// discard, иначе рисование в неё без очистки (таблицы неба, уровни bloom) — ошибка. Discard — в начальном layout
+		ensureRecording();
+		flushBarriers();
+		m_commandList->DiscardResource( resource, nullptr );
+		// Discard — доступ к цели: следующий барьер ждёт его (SyncBefore NONE после доступа — ошибка), а проход в том же
+		// layout и доступе барьера не требует
+		const bool depthTarget = ( desc.usage & TextureUsage::depthStencil ) != 0;
+		for( SubresourceState& sub : m_states[resource].subresources )
+		{
+			sub.sync = depthTarget ? D3D12_BARRIER_SYNC_DEPTH_STENCIL : D3D12_BARRIER_SYNC_RENDER_TARGET;
+			sub.access = depthTarget ? D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE : D3D12_BARRIER_ACCESS_RENDER_TARGET;
+		}
+	}
 	return true;
 }
 
@@ -1868,7 +2032,9 @@ bool DMD3D::createShaderView( const Texture& texture, const TextureViewDesc& des
 	if( !descriptor.valid() )
 		return false;
 	m_device->CreateShaderResourceView( texture.handle(), &viewDesc, descriptor.cpu );
-	view.reset( descriptor, texture.handle(), { desc.firstMip, mipCount, desc.firstSlice, sliceCount } );
+	// Куб: барьеры — по всем шести граням, вид на них один
+	const uint32_t rangeSlices = kind == TextureViewDesc::Kind::cube ? textureDesc.arraySize - desc.firstSlice : sliceCount;
+	view.reset( descriptor, texture.handle(), { desc.firstMip, mipCount, desc.firstSlice, rangeSlices } );
 	return true;
 }
 
@@ -1939,7 +2105,7 @@ bool DMD3D::createTargetView( const Texture& texture, const TextureViewDesc& des
 		viewDesc.Texture2D.MipSlice = desc.firstMip;
 	}
 	m_device->CreateRenderTargetView( texture.handle(), &viewDesc, descriptor.cpu );
-	view.reset( descriptor, false, format, texture.handle(), { desc.firstMip, 1, desc.firstSlice, sliceCount } );
+	view.reset( descriptor, false, format, texture.handle(), { desc.firstMip, 1, desc.firstSlice, kind == TextureViewDesc::Kind::texture3D ? 1 : sliceCount } );
 	return true;
 }
 
@@ -1981,7 +2147,7 @@ bool DMD3D::createStorageView( const Texture& texture, const TextureViewDesc& de
 	}
 	m_device->CreateUnorderedAccessView( texture.handle(), nullptr, &viewDesc, descriptor.cpu );
 	m_device->CreateUnorderedAccessView( texture.handle(), nullptr, &viewDesc, clearDescriptor.cpu );
-	view.reset( descriptor, clearDescriptor, texture.handle(), { desc.firstMip, 1, desc.firstSlice, sliceCount } );
+	view.reset( descriptor, clearDescriptor, texture.handle(), { desc.firstMip, 1, desc.firstSlice, kind == TextureViewDesc::Kind::texture3D ? 1 : sliceCount } );
 	return true;
 }
 
@@ -2017,7 +2183,7 @@ void DMD3D::copyBuffer( Buffer& destination, const Buffer& source )
 		return;
 	barrier( source.handle(), D3D12_BARRIER_ACCESS_COPY_SOURCE );
 	// Копия за копией в тот же буфер (readback каждый кадр) — барьер и при том же доступе: порядок записей
-	barrier( destination.handle(), D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, true );
+	barrier( destination.handle(), D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr, true );
 	flushBarriers();
 	m_commandList->CopyBufferRegion( destination.handle(), 0, source.handle(), 0, std::min( destination.size(), source.size() ) );
 	if( destination.desc().usage & BufferUsage::readback )
@@ -2044,6 +2210,7 @@ bool DMD3D::captureTexture( const Texture& texture, std::vector<SubresourceCopy>
 {
 	if( !texture.handle() )
 		return false;
+	ensureRecording();
 	const uint32_t count = subresourceCount( texture.desc() );
 	const D3D12_RESOURCE_DESC resourceDesc = texture.handle()->GetDesc();
 	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts( count );
@@ -2093,6 +2260,75 @@ bool DMD3D::captureTexture( const Texture& texture, std::vector<SubresourceCopy>
 	return ok;
 }
 
+bool DMD3D::captureBackBuffer( std::vector<uint8_t>& bytes, uint32_t& rowPitch )
+{
+	ID3D12Resource* backBuffer = m_backBuffers[m_backBufferIndex].get();
+	const D3D12_RESOURCE_DESC resourceDesc = backBuffer->GetDesc();
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout = {};
+	UINT rows = 0;
+	UINT64 rowBytes = 0, total = 0;
+	m_device->GetCopyableFootprints( &resourceDesc, 0, 1, 0, &layout, &rows, &rowBytes, &total );
+
+	ID3D12Resource* readback = nullptr;
+	D3D12MA::Allocation* allocation = nullptr;
+	if( !createStaging( total, D3D12_HEAP_TYPE_READBACK, &readback, &allocation, nullptr ) )
+		return false;
+
+	// Задний буфер в кадре — цель (BeginScene); на копию и обратно — свои барьеры
+	flushBarriers();
+	D3D12_TEXTURE_BARRIER toCopy = {};
+	toCopy.SyncBefore = D3D12_BARRIER_SYNC_RENDER_TARGET;
+	toCopy.SyncAfter = D3D12_BARRIER_SYNC_COPY;
+	toCopy.AccessBefore = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+	toCopy.AccessAfter = D3D12_BARRIER_ACCESS_COPY_SOURCE;
+	toCopy.LayoutBefore = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+	toCopy.LayoutAfter = D3D12_BARRIER_LAYOUT_COPY_SOURCE;
+	toCopy.pResource = backBuffer;
+	toCopy.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFFu;
+	D3D12_BARRIER_GROUP group = {};
+	group.Type = D3D12_BARRIER_TYPE_TEXTURE;
+	group.NumBarriers = 1;
+	group.pTextureBarriers = &toCopy;
+	m_commandList->Barrier( 1, &group );
+
+	D3D12_TEXTURE_COPY_LOCATION target = {};
+	target.pResource = readback;
+	target.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+	target.PlacedFootprint = layout;
+	D3D12_TEXTURE_COPY_LOCATION source = {};
+	source.pResource = backBuffer;
+	source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	source.SubresourceIndex = 0;
+	m_commandList->CopyTextureRegion( &target, 0, 0, 0, &source, nullptr );
+
+	D3D12_TEXTURE_BARRIER back = toCopy;
+	back.SyncBefore = D3D12_BARRIER_SYNC_COPY;
+	back.SyncAfter = D3D12_BARRIER_SYNC_RENDER_TARGET;
+	back.AccessBefore = D3D12_BARRIER_ACCESS_COPY_SOURCE;
+	back.AccessAfter = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+	back.LayoutBefore = D3D12_BARRIER_LAYOUT_COPY_SOURCE;
+	back.LayoutAfter = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+	group.pTextureBarriers = &back;
+	m_commandList->Barrier( 1, &group );
+	waitForGpu();
+
+	bool ok = false;
+	void* mapped = nullptr;
+	const D3D12_RANGE range = { 0, static_cast<SIZE_T>( total ) };
+	if( SUCCEEDED( readback->Map( 0, &range, &mapped ) ) )
+	{
+		bytes.assign( static_cast<const uint8_t*>( mapped ), static_cast<const uint8_t*>( mapped ) + total );
+		const D3D12_RANGE noWrite = { 0, 0 };
+		readback->Unmap( 0, &noWrite );
+		rowPitch = layout.Footprint.RowPitch;
+		ok = true;
+	}
+	m_states.erase( readback );
+	readback->Release();
+	allocation->Release();
+	return ok;
+}
+
 void* DMD3D::beginWrite( Buffer& buffer, uint32_t size )
 {
 	if( m_writingBuffer || size == 0 )
@@ -2121,22 +2357,40 @@ void DMD3D::endWrite()
 	if( buffer.ring() )
 		return;
 	// Данные кадра (инстансы, патчи, свет) — из участка кольца в свой буфер: вид на него постоянный
-	barrier( buffer.handle(), D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, true );
+	barrier( buffer.handle(), D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr, true );
 	flushBarriers();
 	m_commandList->CopyBufferRegion( buffer.handle(), 0, m_constantRing.handle(), m_writeOffset, m_writeBytes );
 	barrier( buffer.handle(), steadyAccess( buffer.desc().usage ) );
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Привязка и вызовы (веха M4)
+// Привязка и вызовы
 // ---------------------------------------------------------------------------------------------------------------------
 
-bool DMD3D::setConstantBuffer( SRVType, uint16_t, const Buffer& buffer )
+void DMD3D::setBinding( uint32_t index, uint32_t descriptorIndex )
 {
+	if( index >= DM_BINDING_COUNT || m_bindings[index] == descriptorIndex )
+		return;
+	m_bindings[index] = descriptorIndex;
+	m_bindingsDirtyGraphics = m_bindingsDirtyCompute = true;
+}
+
+bool DMD3D::setConstantBuffer( SRVType, uint16_t slot, const Buffer& buffer )
+{
+	if( slot >= SLOT_CB_COUNT )
+		return false;
 	// Участок этого кадра; без записи в кадре привязывать нечего
 	if( buffer.ring() && buffer.ringBytes() == 0 )
 		return false;
-	notImplemented( "setConstantBuffer" );
+	const D3D12_GPU_VIRTUAL_ADDRESS address = buffer.ring() ? m_constantRing.address( buffer.ringOffset() ) : buffer.gpuAddress();
+	if( !address )
+		return false;
+	if( m_rootCBV[slot] != address )
+	{
+		m_rootCBV[slot] = address;
+		m_cbvDirtyGraphics |= 1u << slot;
+		m_cbvDirtyCompute |= 1u << slot;
+	}
 	return true;
 }
 
@@ -2145,29 +2399,61 @@ void DMD3D::setConstantBufferAllStages( uint16_t slot, const Buffer& buffer )
 	setConstantBuffer( SRVType::vs, slot, buffer );
 }
 
-void DMD3D::setSRV( SRVType, uint16_t, const ShaderView& )
+void DMD3D::setSRV( SRVType, uint16_t slot, const ShaderView& view )
 {
-	notImplemented( "setSRV" );
+	const int index = bindingIndex( slot );
+	if( index < 0 )
+		return;
+	// Вид ресурса, который пишет текущий проход, на входе: проход над ним закончен — барьер в состояние чтения
+	if( view.valid() )
+		barrier( view.resource(), D3D12_BARRIER_ACCESS_SHADER_RESOURCE, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, &view.range() );
+	setBinding( static_cast<uint32_t>( index ), view.valid() ? view.index() : 0 );
 }
 
-void DMD3D::setUAV( uint16_t, const StorageView& )
+void DMD3D::setUAV( uint16_t slot, const StorageView& view )
 {
-	notImplemented( "setUAV" );
+	if( slot >= SLOT_UAV_COUNT )
+		return;
+	if( view.valid() )
+	{
+		barrier( view.resource(), D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS, &view.range() );
+		m_dispatchWrites.push_back( view.resource() );
+	}
+	setBinding( DM_BINDING_UAV_BASE + slot, view.valid() ? view.index() : 0 );
 }
 
 void DMD3D::clearStorageView( const StorageView& view )
 {
 	if( !view.valid() )
 		return;
-	barrier( view.resource(), D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS );
+	ensureRecording();
+	barrier( view.resource(), D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS, &view.range() );
 	flushBarriers();
 	const UINT zeros[4] = {};
 	m_commandList->ClearUnorderedAccessViewUint( view.descriptor().gpu, view.clearDescriptor().cpu, view.resource(), zeros, 0, nullptr );
+	// Следующая запись через UAV — после барьера
+	auto found = m_states.find( view.resource() );
+	if( found != m_states.end() )
+		for( SubresourceState& sub : found->second.subresources )
+			sub.uavWritten = true;
 }
 
-void DMD3D::setVertexBuffers( uint32_t, const Buffer* const[], const uint32_t[], const uint32_t[] )
+void DMD3D::setVertexBuffers( uint32_t count, const Buffer* const buffers[], const uint32_t strides[], const uint32_t offsets[] )
 {
-	notImplemented( "setVertexBuffers" );
+	D3D12_VERTEX_BUFFER_VIEW views[D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT] = {};
+	count = std::min<uint32_t>( count, D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT );
+	for( uint32_t i = 0; i < count; ++i )
+	{
+		const Buffer* buffer = buffers[i];
+		if( !buffer || !buffer->handle() )
+			continue;
+		const uint32_t offset = offsets ? offsets[i] : 0;
+		views[i].BufferLocation = buffer->gpuAddress() + offset;
+		views[i].SizeInBytes = buffer->size() - std::min( offset, buffer->size() );
+		views[i].StrideInBytes = strides[i];
+		barrier( buffer->handle(), D3D12_BARRIER_ACCESS_VERTEX_BUFFER );
+	}
+	m_commandList->IASetVertexBuffers( 0, count, views );
 }
 
 void DMD3D::setVertexBuffer( const Buffer& buffer, uint32_t stride, uint32_t offset )
@@ -2176,38 +2462,111 @@ void DMD3D::setVertexBuffer( const Buffer& buffer, uint32_t stride, uint32_t off
 	setVertexBuffers( 1, buffers, &stride, &offset );
 }
 
-void DMD3D::setIndexBuffer( const Buffer&, DXGI_FORMAT, uint32_t )
+void DMD3D::setIndexBuffer( const Buffer& buffer, DXGI_FORMAT format, uint32_t offset )
 {
-	notImplemented( "setIndexBuffer" );
+	if( !buffer.handle() )
+		return;
+	D3D12_INDEX_BUFFER_VIEW view = {};
+	view.BufferLocation = buffer.gpuAddress() + offset;
+	view.SizeInBytes = buffer.size() - std::min( offset, buffer.size() );
+	view.Format = format;
+	barrier( buffer.handle(), D3D12_BARRIER_ACCESS_INDEX_BUFFER );
+	m_commandList->IASetIndexBuffer( &view );
 }
 
 void DMD3D::unbindGeometry()
 {
+	// Вершины по SV_VertexID: буферов вершин и индексов нет
+	const D3D12_VERTEX_BUFFER_VIEW empty[2] = {};
+	m_commandList->IASetVertexBuffers( 0, 2, empty );
+	m_commandList->IASetIndexBuffer( nullptr );
 }
 
-void DMD3D::draw( uint32_t, uint32_t )
+void DMD3D::flushGraphicsRoot()
 {
-	notImplemented( "draw" );
+	if( m_bindingsDirtyGraphics )
+	{
+		m_commandList->SetGraphicsRoot32BitConstants( 0, DM_BINDING_COUNT, m_bindings, 0 );
+		m_bindingsDirtyGraphics = false;
+	}
+	for( uint32_t slot = 0; slot < SLOT_CB_COUNT && m_cbvDirtyGraphics; ++slot )
+	{
+		if( ( m_cbvDirtyGraphics & ( 1u << slot ) ) && m_rootCBV[slot] )
+			m_commandList->SetGraphicsRootConstantBufferView( 1 + slot, m_rootCBV[slot] );
+		m_cbvDirtyGraphics &= ~( 1u << slot );
+	}
 }
 
-void DMD3D::drawIndexed( uint32_t, uint32_t, int32_t )
+void DMD3D::flushComputeRoot()
 {
-	notImplemented( "drawIndexed" );
+	if( m_bindingsDirtyCompute )
+	{
+		m_commandList->SetComputeRoot32BitConstants( 0, DM_BINDING_COUNT, m_bindings, 0 );
+		m_bindingsDirtyCompute = false;
+	}
+	for( uint32_t slot = 0; slot < SLOT_CB_COUNT && m_cbvDirtyCompute; ++slot )
+	{
+		if( ( m_cbvDirtyCompute & ( 1u << slot ) ) && m_rootCBV[slot] )
+			m_commandList->SetComputeRootConstantBufferView( 1 + slot, m_rootCBV[slot] );
+		m_cbvDirtyCompute &= ~( 1u << slot );
+	}
 }
 
-void DMD3D::drawIndexedInstanced( uint32_t, uint32_t, uint32_t, int32_t, uint32_t )
+void DMD3D::draw( uint32_t vertexCount, uint32_t startVertex )
 {
-	notImplemented( "drawIndexedInstanced" );
+	if( !m_graphicsPipelineValid )
+		return;
+	flushBarriers();
+	flushGraphicsRoot();
+	m_commandList->DrawInstanced( vertexCount, 1, startVertex, 0 );
 }
 
-void DMD3D::drawIndexedInstancedIndirect( const Buffer&, uint32_t )
+void DMD3D::drawIndexed( uint32_t indexCount, uint32_t startIndex, int32_t baseVertex )
 {
-	notImplemented( "drawIndexedInstancedIndirect" );
+	if( !m_graphicsPipelineValid )
+		return;
+	flushBarriers();
+	flushGraphicsRoot();
+	m_commandList->DrawIndexedInstanced( indexCount, 1, startIndex, baseVertex, 0 );
 }
 
-void DMD3D::dispatch( uint32_t, uint32_t, uint32_t )
+void DMD3D::drawIndexedInstanced( uint32_t indexCount, uint32_t instanceCount, uint32_t startIndex, int32_t baseVertex, uint32_t startInstance )
 {
-	notImplemented( "dispatch" );
+	if( !m_graphicsPipelineValid )
+		return;
+	flushBarriers();
+	flushGraphicsRoot();
+	m_commandList->DrawIndexedInstanced( indexCount, instanceCount, startIndex, baseVertex, startInstance );
+}
+
+void DMD3D::drawIndexedInstancedIndirect( const Buffer& args, uint32_t argsOffset )
+{
+	if( !m_graphicsPipelineValid || !args.handle() )
+		return;
+	barrier( args.handle(), D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT );
+	flushBarriers();
+	flushGraphicsRoot();
+	m_commandList->ExecuteIndirect( m_drawIndexedSignature.get(), 1, args.handle(), argsOffset, nullptr, 0 );
+}
+
+void DMD3D::dispatch( uint32_t x, uint32_t y, uint32_t z )
+{
+	if( m_computePipelineValid )
+	{
+		flushBarriers();
+		flushComputeRoot();
+		m_commandList->Dispatch( x, y, z );
+	}
+	// Записанные UAV: следующая запись в них — после барьера
+	for( ID3D12Resource* resource : m_dispatchWrites )
+	{
+		auto found = m_states.find( resource );
+		if( found != m_states.end() )
+			for( SubresourceState& sub : found->second.subresources )
+				if( sub.access == D3D12_BARRIER_ACCESS_UNORDERED_ACCESS )
+					sub.uavWritten = true;
+	}
+	m_dispatchWrites.clear();
 }
 
 bool DMD3D::createScreenshot()
@@ -2216,9 +2575,11 @@ bool DMD3D::createScreenshot()
 	return saveScreenshot( fileName );
 }
 
-bool DMD3D::saveScreenshot( const std::wstring& )
+bool DMD3D::saveScreenshot( const std::wstring& path )
 {
-	// Веха M5: ScreenGrab12
-	notImplemented( "saveScreenshot" );
-	return false;
+	std::vector<uint8_t> bytes;
+	uint32_t rowPitch = 0;
+	if( !captureBackBuffer( bytes, rowPitch ) )
+		return false;
+	return GpuImages::saveImage( path, m_screenWidth, m_screenHeight, backBufferViewFormat, bytes.data(), rowPitch );
 }

@@ -16,7 +16,7 @@ struct NodeInstance
 	float  level;	// уровень LOD, 0 — самый детальный
 };
 
-DM_SRV( StructuredBuffer<NodeInstance>, g_instances, 1 );
+DM_SRV( StructuredBuffer<NodeInstance>, g_instances, SLOT_INSTANCE_DATA );	// слот данных объекта: t1 занят splat-картой пиксельного шейдера
 
 struct VertexInputType
 {
