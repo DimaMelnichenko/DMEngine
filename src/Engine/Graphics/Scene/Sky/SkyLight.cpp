@@ -22,7 +22,8 @@ bool SkyLight::initialize()
 		!m_brdfShader.load( "Shaders\\brdf_lut.ps" ) ||
 		!m_blendShader.load( "Shaders\\sky_light_blend.ps" ) ||
 		!m_irradianceShader.Initialize( "Shaders\\sky_irradiance.cs", "main" ) ||
-		!m_irradianceBlendShader.Initialize( "Shaders\\sky_irradiance_blend.cs", "main" ) )
+		!m_irradianceBlendShader.Initialize( "Shaders\\sky_irradiance_blend.cs", "main" ) ||
+		!m_mipShader.Initialize( "Shaders\\cube_downsample.cs", "main" ) )
 		return false;
 
 	DMD3D& d3d = DMD3D::instance();
@@ -71,6 +72,7 @@ void SkyLight::capture( const CubeTarget& source, float normalization )
 
 void SkyLight::beginCapture( const CubeTarget& source, float normalization )
 {
+	buildMips( source );
 	m_source = &source;
 	m_step = 0;
 	m_captureNormalization = normalization > 0.0f ? normalization : 1.0f;
@@ -106,6 +108,20 @@ bool SkyLight::updateCapture()
 	m_blendFrame = 0;
 	m_source = nullptr;
 	return true;
+}
+
+void SkyLight::buildMips( const CubeTarget& source )
+{
+	DMD3D& d3d = DMD3D::instance();
+	for( uint32_t mip = 1; mip < source.mipCount(); ++mip )
+	{
+		d3d.beginPass( PassDesc{ "Sky cube mip", {}, {}, 0, 0, { { &source.mipView( mip - 1 ), "sky cube mip N" } },
+								 { { &source.mipStorage( mip ), "sky cube mip N + 1" } } } );
+		d3d.setSRV( SRVType::cs, 0, source.mipView( mip - 1 ) );
+		m_mipShader.setUAVBuffer( 0, source.mipStorage( mip ) );
+		const uint32_t groups = ( source.mipSize( mip ) + 7 ) / 8;
+		m_mipShader.dispatchGroups( groups, groups, 6 );
+	}
 }
 
 void SkyLight::captureIrradiance( Result& result )

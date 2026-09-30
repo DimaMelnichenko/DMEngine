@@ -190,14 +190,8 @@ bool PostProcess::createExposureResources( float initialEV100, float exposureCom
 		return false;
 
 	// Копии для чтения на CPU (статистика)
-	BufferDesc readbackDesc;
-	readbackDesc.size = sizeof( ExposureState );
-	readbackDesc.usage = BufferUsage::readback;
-	for( auto& readback : m_exposureReadback )
-	{
-		if( !d3d.createBuffer( readbackDesc, nullptr, readback ) )
-			return false;
-	}
+	if( !m_exposureReadback.create( readbackCount ) )
+		return false;
 	m_ev100 = initialEV100;
 	return true;
 }
@@ -335,23 +329,11 @@ void PostProcess::renderExposure( const ShaderView& sceneColor, float deltaTime 
 
 void PostProcess::readBackExposure()
 {
-	DMD3D& d3d = DMD3D::instance();
-	d3d.copyBuffer( m_exposureReadback[m_readbackFrame % readbackCount], m_exposureState );
-	++m_readbackFrame;
-	if( m_readbackFrame < readbackCount )
-		return;
-
-	// От самой свежей копии прошлых кадров к самой старой: первая готовая и есть последнее известное значение.
-	// GPU отстаёт от CPU на несколько кадров, без ожидания готовы только старые копии
-	for( uint32_t age = 1; age < readbackCount; ++age )
-	{
-		ExposureState state = {};
-		if( d3d.readBuffer( m_exposureReadback[( m_readbackFrame - 1 - age ) % readbackCount], &state, sizeof( state ) ) )
-		{
-			m_ev100 = state.ev100;
-			break;
-		}
-	}
+	// Копия этого кадра в кольцо, значение — из самой свежей готовой копии прошлых кадров (GPU отстаёт от CPU)
+	m_exposureReadback.push( m_exposureState );
+	ExposureState state = {};
+	if( m_exposureReadback.latest( state ) )
+		m_ev100 = state.ev100;
 }
 
 void PostProcess::renderBloom( const ShaderView& sceneColor, float threshold )

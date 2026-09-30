@@ -34,8 +34,8 @@ public:
 	static constexpr uint32_t blendFrames = captureSteps + 1;
 
 	bool initialize();
-	// Источник того же формата, что создаёт createSource(): полная цепочка мипов и мип irradianceSourceMip как массив
-	// граней. Весь пересчёт сразу — панорама и первый кадр атмосферы
+	// Источник того же формата, что создаёт createSource(): нарисован мип 0 (грани), мипы строит сам пересчёт
+	// (buildMips). Весь пересчёт сразу — панорама и первый кадр атмосферы
 	// normalization — делитель результата (яркость неба в единицах источника); 1 — как есть (панорама)
 	void capture( const CubeTarget& source, float normalization = 1.0f );
 	// Пересчёт по шагу за кадр, как Real Time Capture с time slicing у Sky Light в UE: beginCapture запоминает
@@ -49,7 +49,7 @@ public:
 	// Нормировка показанного результата: на неё умножают освещение окружением (cb_skyLightScale)
 	float normalization() const { return m_results[m_current].normalization; }
 
-	// Cubemap источника sourceSize² с мипами (GenerateMips) и видом граней для гармоник
+	// Cubemap источника sourceSize² с видами мипов для цепочки в compute и видом граней для гармоник
 	static bool createSource( CubeTarget& source );
 
 private:
@@ -82,6 +82,8 @@ private:
 	};
 
 	static bool createResult( Result& result );
+	// Мипы 1… источника из мипа 0: среднее 2 × 2 в compute (Shaders/cube_downsample.cs), проход на мип
+	void buildMips( const CubeTarget& source );
 	void captureIrradiance( Result& result );
 	void prefilterFace( Result& result, int32_t face );
 	// Смесь m_results[m_previous] и m_results[m_current] с долей blend — в m_blended
@@ -92,6 +94,7 @@ private:
 	FullscreenShader m_blendShader;
 	DMComputeShader m_irradianceShader;
 	DMComputeShader m_irradianceBlendShader;
+	DMComputeShader m_mipShader;
 	Buffer m_constantBuffer;
 	Buffer m_blendConstants;
 	Buffer m_irradianceBlendConstants;

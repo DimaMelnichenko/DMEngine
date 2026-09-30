@@ -6,7 +6,8 @@
 
 func:DMD3D::Initialize, line:84|Video adapter: NVIDIA GeForce RTX 4070 Ti, dedicated memory 11994 MB
 func:DMD3D::createDeviceSwapChain, line:250|Swap chain: flip model, 2 buffers, feature level 11.1, tearing allowed, frame latency waitable object, constant ring 4096 KB
-func:GS::DMGraphics::Initialize, line:63|Initialize the Direct3D object ms: 97.220000
+func:DMD3D::createDeviceSwapChain, line:256|D3D11 debug layer is enabled, its messages are written to this log
+func:GS::DMGraphics::Initialize, line:63|Initialize the Direct3D object ms: 85.023000
 func:GS::Scene::loadResources, line:23|Load materials
 func:LibraryLoader::loadMaterial, line:87|Load material: 1
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\color.vs
@@ -33,7 +34,7 @@ func:LibraryLoader::loadShader, line:218|Load shader: Shaders\PBRLit.ps
 func:LibraryLoader::loadMaterial, line:87|Load material: 13
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\PBRLit.ps
 func:LibraryLoader::loadShader, line:218|Load shader: Shaders\LightShader.vs
-func:GS::Scene::loadResources, line:27|Load material for ms: 1292.456000
+func:GS::Scene::loadResources, line:27|Load material for ms: 778.285000
 func:GS::Scene::loadResources, line:31|Level: Test
 func:GS::Scene::loadResources, line:33|Load models
 func:LibraryLoader::loadModelWithLOD, line:766|Load model: 1
@@ -139,7 +140,7 @@ func:LibraryLoader::loadModelWithLOD, line:766|Load model: 43
 func:LibraryLoader::loadMesh, line:232|Load mesh: 69
 func:LibraryLoader::loadMesh, line:232|Load mesh: 70
 func:LibraryLoader::loadMesh, line:232|Load mesh: 71
-func:GS::Scene::loadResources, line:56|Load models for ms: 27.121000
+func:GS::Scene::loadResources, line:56|Load models for ms: 99.166000
 func:GS::Scene::loadResources, line:58|Load textures
 func:LibraryLoader::loadAllTextures, line:25|Load all textures
 func:LibraryLoader::loadTextures, line:53|Can`t load texture no_image (no_image.dds), placeholder is used
@@ -160,33 +161,33 @@ func:LibraryLoader::loadTextures, line:53|Can`t load texture grass2.dds (grass2.
 func:LibraryLoader::loadTextures, line:53|Can`t load texture oduvanchik (oduvanchik.png), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture alpha03 (alpha03.dds), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture default_gloss (default_gloss.png), placeholder is used
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 3; id = 27, name = mask_grass, file = terrain\mask_grass.dds
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 4; id = 27, name = mask_grass, file = terrain\mask_grass.dds
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 28, name = mask_camomile, file = terrain\mask_camomile.dds
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_normal (materials\blocksrough_normal_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:53|Can`t load texture knot_height (materials\blocksrough_height_2048.png), placeholder is used
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 1; id = 45, name = mask_pebbles, file = terrain\mask_pebbles.dds
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 41; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 39; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 163; id = 46, name = test_models_RockColor, file = models\test_models\RockColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 135; id = 47, name = test_models_PanelColor, file = models\test_models\PanelColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 1; id = 48, name = test_models_PanelNormal, file = models\test_models\PanelNormal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 10; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 51, name = grass_medium_01_grass_medium_01_BaseColor, file = models\grass_medium_01\grass_medium_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 49, name = grass_GrassColor, file = models\grass\GrassColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 36; id = 50, name = camomile_CamomileAtlas, file = models\camomile\CamomileAtlas.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 2; id = 51, name = grass_medium_01_grass_medium_01_BaseColor, file = models\grass_medium_01\grass_medium_01_BaseColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 52, name = grass_medium_01_grass_medium_01_MetallicRoughness, file = models\grass_medium_01\grass_medium_01_MetallicRoughness.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 0; id = 53, name = grass_medium_01_grass_medium_01_Normal, file = models\grass_medium_01\grass_medium_01_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 158; id = 54, name = dandelion_01_dandelion_01_BaseColor, file = models\dandelion_01\dandelion_01_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 73; id = 55, name = dandelion_01_dandelion_01_MetallicRoughness, file = models\dandelion_01\dandelion_01_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 85; id = 56, name = dandelion_01_dandelion_01_Normal, file = models\dandelion_01\dandelion_01_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 151; id = 57, name = rock_moss_set_01_rock_moss_set_01_BaseColor, file = models\rock_moss_set_01\rock_moss_set_01_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 68; id = 58, name = rock_moss_set_01_rock_moss_set_01_MetallicRoughness, file = models\rock_moss_set_01\rock_moss_set_01_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 86; id = 59, name = rock_moss_set_01_rock_moss_set_01_Normal, file = models\rock_moss_set_01\rock_moss_set_01_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 594; id = 54, name = dandelion_01_dandelion_01_BaseColor, file = models\dandelion_01\dandelion_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 101; id = 55, name = dandelion_01_dandelion_01_MetallicRoughness, file = models\dandelion_01\dandelion_01_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 91; id = 56, name = dandelion_01_dandelion_01_Normal, file = models\dandelion_01\dandelion_01_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 590; id = 57, name = rock_moss_set_01_rock_moss_set_01_BaseColor, file = models\rock_moss_set_01\rock_moss_set_01_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 67; id = 58, name = rock_moss_set_01_rock_moss_set_01_MetallicRoughness, file = models\rock_moss_set_01\rock_moss_set_01_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 84; id = 59, name = rock_moss_set_01_rock_moss_set_01_Normal, file = models\rock_moss_set_01\rock_moss_set_01_Normal.png
 func:LibraryLoader::loadTextures, line:53|Can`t load texture moon_albedo (sky\moon\lroc_color_poles_1k.jpg), placeholder is used
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 43; id = 61, name = fir_fir_tree_01_bark_BaseColor, file = models\fir\fir_tree_01_bark_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 154; id = 61, name = fir_fir_tree_01_bark_BaseColor, file = models\fir\fir_tree_01_bark_BaseColor.png
 func:LibraryLoader::loadTextures, line:57|Load texture for ms: 22; id = 62, name = fir_fir_tree_01_bark_MetallicRoughness, file = models\fir\fir_tree_01_bark_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 33; id = 63, name = fir_fir_tree_01_bark_Normal, file = models\fir\fir_tree_01_bark_Normal.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 44; id = 64, name = fir_fir_tree_01_twig_BaseColor, file = models\fir\fir_tree_01_twig_BaseColor.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 19; id = 65, name = fir_fir_tree_01_twig_MetallicRoughness, file = models\fir\fir_tree_01_twig_MetallicRoughness.png
-func:LibraryLoader::loadTextures, line:57|Load texture for ms: 19; id = 66, name = fir_fir_tree_01_twig_Normal, file = models\fir\fir_tree_01_twig_Normal.png
-func:GS::Scene::loadResources, line:70|Load textures for ms: 914.627000
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 31; id = 63, name = fir_fir_tree_01_bark_Normal, file = models\fir\fir_tree_01_bark_Normal.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 146; id = 64, name = fir_fir_tree_01_twig_BaseColor, file = models\fir\fir_tree_01_twig_BaseColor.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 18; id = 65, name = fir_fir_tree_01_twig_MetallicRoughness, file = models\fir\fir_tree_01_twig_MetallicRoughness.png
+func:LibraryLoader::loadTextures, line:57|Load texture for ms: 20; id = 66, name = fir_fir_tree_01_twig_Normal, file = models\fir\fir_tree_01_twig_Normal.png
+func:GS::Scene::loadResources, line:70|Load textures for ms: 2282.444000
 func:GS::Renderer::warmPipelines, line:130|Pipelines after warm-up: 826
 func:GS::DMGraphics::Initialize, line:89|Create main camera
 func:GS::Scene::initialize, line:77|Create light driver
@@ -195,16 +196,49 @@ func:DMLightDriver::load, line:88|Moon: elevation 12.302816, azimuth 205.258469,
 func:DMLightDriver::load, line:97|Moon check (Meeus 47.a: 133.16, -3.23, 368410): 133.252563, -3.248484, 368334.656250
 func:GS::SkyAtmosphere::initialize, line:88|Sky atmosphere: no texture moon_albedo, the moon disk is plain
 func:GS::CDLODTerrain::initialize, line:111|CDLOD terrain: heightmap 1024, LOD levels 6
-func:GS::Scene::initialize, line:121|Terrain init ms: 315.397000
-func:GS::Scene::initialize, line:165|Scatter init ms: 251.978000
-func:GS::DMGraphics::Initialize, line:128|Total init ms: 3884.023000
+func:GS::Scene::initialize, line:121|Terrain init ms: 256.944000
+func:GS::Scene::initialize, line:165|Scatter init ms: 96.760000
+func:GS::DMGraphics::Initialize, line:128|Total init ms: 4410.458000
 func:GS::RemoteControlServer::start, line:54|Remote control: listening on \\.\pipe\DMEngine
-func:GS::RemoteControlServer::poll, line:78|Remote control: camera 500,20,215,4,5
-func:GS::RemoteControlServer::poll, line:78|Remote control: wait 120
-func:GS::RemoteControlServer::poll, line:78|Remote control: screenshot C:\Users\Dimok\AppData\Local\Temp\claude\X--DMEngine\df12e6e4-0dc6-400d-902c-cb9338c8581e\scratchpad\a5_stat_spheres.png gui
 func:GS::RemoteControlServer::poll, line:78|Remote control: camera 512,90,150,20,0
-func:GS::RemoteControlServer::poll, line:78|Remote control: wait 120
-func:GS::RemoteControlServer::poll, line:78|Remote control: screenshot C:\Users\Dimok\AppData\Local\Temp\claude\X--DMEngine\df12e6e4-0dc6-400d-902c-cb9338c8581e\scratchpad\a5_stat_overview.png gui
+func:GS::RemoteControlServer::poll, line:78|Remote control: wait 3
+func:GS::RemoteControlServer::poll, line:78|Remote control: camera 530,12.8,250,8,210
+func:GS::RemoteControlServer::poll, line:78|Remote control: key Q
+func:GS::RemoteControlServer::poll, line:78|Remote control: wait 2
+func:GS::RemoteControlServer::poll, line:78|Remote control: key Q
+func:GS::RemoteControlServer::poll, line:78|Remote control: passes
+func:GS::RemoteControlServer::poll, line:78|Remote control: wait 3
+func:DMD3D::EndScene, line:972|Frame passes: 30
+func:DMD3D::EndScene, line:974|  0. Sky-View LUT: color[Sky-View LUT] 192x108 reads[multiple scattering LUT] reads[transmittance LUT]
+func:DMD3D::EndScene, line:974|  1. Sky-View LUT (moon): color[Sky-View moon LUT] 192x108 reads[multiple scattering LUT] reads[transmittance LUT]
+func:DMD3D::EndScene, line:974|  2. Aerial perspective volume: compute reads[multiple scattering LUT] reads[transmittance LUT] writes[aerial perspective volume]
+func:DMD3D::EndScene, line:974|  3. Scatter layer: compute reads[height map] reads[density mask] writes[indirect args] writes[instances] writes[LOD transition instances]
+func:DMD3D::EndScene, line:974|  4. Scatter layer: compute reads[height map] reads[density mask] writes[indirect args] writes[instances] writes[LOD transition instances]
+func:DMD3D::EndScene, line:974|  5. Scatter layer: compute reads[height map] reads[density mask] writes[indirect args] writes[instances] writes[LOD transition instances]
+func:DMD3D::EndScene, line:974|  6. Shadow cascade: depth[shadow map] 2048x2048
+func:DMD3D::EndScene, line:974|  7. Shadow cascade: depth[shadow map] 2048x2048
+func:DMD3D::EndScene, line:974|  8. Shadow cascade: depth[shadow map] 2048x2048
+func:DMD3D::EndScene, line:974|  9. Shadow cascade: depth[shadow map] 2048x2048
+func:DMD3D::EndScene, line:974|  10. Scene clear: color[scene color] depth[scene depth] 1920x1080
+func:DMD3D::EndScene, line:974|  11. Pass depth prepass: depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
+func:DMD3D::EndScene, line:974|  12. Pass opaque: color[scene color] depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
+func:DMD3D::EndScene, line:974|  13. Pass sky: color[scene color] depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
+func:DMD3D::EndScene, line:974|  14. Pass transparent: color[scene color] depth[scene depth] 1920x1080 reads[shadow map] reads[exposure]
+func:DMD3D::EndScene, line:974|  15. Exposure histogram: compute reads[scene color] reads[exposure] writes[histogram]
+func:DMD3D::EndScene, line:974|  16. Exposure adapt: compute reads[histogram] writes[exposure]
+func:DMD3D::EndScene, line:974|  17. Bloom downsample: color[bloom level] 960x540 reads[source]
+func:DMD3D::EndScene, line:974|  18. Bloom downsample: color[bloom level] 480x270 reads[source]
+func:DMD3D::EndScene, line:974|  19. Bloom downsample: color[bloom level] 240x135 reads[source]
+func:DMD3D::EndScene, line:974|  20. Bloom downsample: color[bloom level] 120x67 reads[source]
+func:DMD3D::EndScene, line:974|  21. Bloom downsample: color[bloom level] 60x33 reads[source]
+func:DMD3D::EndScene, line:974|  22. Bloom downsample: color[bloom level] 30x16 reads[source]
+func:DMD3D::EndScene, line:974|  23. Bloom upsample: color[bloom level] 60x33 reads[source]
+func:DMD3D::EndScene, line:974|  24. Bloom upsample: color[bloom level] 120x67 reads[source]
+func:DMD3D::EndScene, line:974|  25. Bloom upsample: color[bloom level] 240x135 reads[source]
+func:DMD3D::EndScene, line:974|  26. Bloom upsample: color[bloom level] 480x270 reads[source]
+func:DMD3D::EndScene, line:974|  27. Bloom upsample: color[bloom level] 960x540 reads[source]
+func:DMD3D::EndScene, line:974|  28. Tonemap: color[back buffer] 1920x1080 reads[scene color] reads[bloom 1/2] reads[exposure]
+func:DMD3D::EndScene, line:974|  29. GUI: color[back buffer] 1920x1080
 func:GS::RemoteControlServer::poll, line:78|Remote control: quit
 
 

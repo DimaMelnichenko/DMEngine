@@ -5,6 +5,7 @@
 #include "Shaders\FullscreenShader.h"
 #include "Shaders\DMComputeShader.h"
 #include "D3D\RenderTarget.h"
+#include "D3D\ReadbackRing.h"
 #include "D3D\GpuProfiler.h"
 #include "Properties\PropertyContainer.h"
 
@@ -181,8 +182,7 @@ private:
 	ShaderView m_exposureSRV;
 	// Копии состояния для чтения на CPU по кругу: читается самая свежая из тех, до которых GPU уже дошёл
 	static constexpr uint32_t readbackCount = 6;
-	Buffer m_exposureReadback[readbackCount];
-	uint32_t m_readbackFrame = 0;
+	ReadbackRing<ExposureState> m_exposureReadback;
 	float m_ev100 = 0.0f;
 	// Кадры до конца смены плана: за один кадр гистограмма с чужой экспозицией может упереться в край диапазона
 	static constexpr uint32_t cutFrameCount = 4;

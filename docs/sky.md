@@ -112,7 +112,8 @@ Sky-View сгущает текселы к нему, а земля добавля
 1. **Загрузка** — один раз: файл читает `TextureLoader` (`.hdr` и `.dds` — DirectXTex, `.exr` — tinyexr), сжатый DDS
    распаковывается, мипы строятся фильтром box. На GPU — R32G32B32A32_FLOAT: солнце в панораме бывает ярче предела
    half (у тестовой — 73 000).
-2. **Cubemap для освещения** (`Shaders/hdri_cube.ps`, 6 граней по 128², затем мипы и `SkyLight::capture`) — при
+2. **Cubemap для освещения** (`Shaders/hdri_cube.ps`, 6 граней по 128², затем `SkyLight::capture`: мипы в compute и
+   пересчёт) — при
    смене поворота или среза: мип панорамы по размеру текселя грани, яркость выше `max_luminance` срезается с
    сохранением цвета. Срез нужен, потому что солнце светит направленным источником с тенью: без среза солнце панорамы
    учлось бы ещё раз через освещение окружением (сцена ярче на ~0,5 EV, свет плоский).
@@ -277,7 +278,8 @@ Release, 1920 × 1080. Каждый кадр — Sky-View и объём возд
 | `src/Engine/Graphics/Scene/Sky/SkyLight.h/.cpp` | освещение окружением из cubemap: гармоники, префильтр (по шагу за кадр, три результата и плавный переход), таблица BRDF, слоты t101…t103 |
 | `Shaders/sky_light_blend.ps`, `Shaders/sky_irradiance_blend.cs` | переход освещения окружением от прежнего результата к новому |
 | `src/Engine/Graphics/Scene/Sky/HDRIBackdrop.h/.cpp` | панорама: загрузка, сводка в лог, cubemap для освещения, фон |
-| `src/Engine/Graphics/D3D/CubeTarget.h/.cpp` | cubemap-цель: грани × мипы, SRV куба и граней |
+| `src/Engine/Graphics/D3D/CubeTarget.h/.cpp` | cubemap-цель: грани × мипы, SRV куба и граней, SRV и UAV каждого мипа для цепочки в compute |
+| `Shaders/cube_downsample.cs` | мип куба из предыдущего: среднее 2 × 2 (`SkyLight::buildMips`, GenerateMips в D3D12 нет) |
 | `Shaders/hdri.sh`, `hdri_cube.ps`, `hdri_background.ps` | выборка панорамы, грань cubemap из неё, фон |
 | `Shaders/cubemap.sh` | направление на тексель грани cubemap |
 | `Shaders/atmosphere.sh` | среда атмосферы, фазовые функции, таблица пропускания (отображение и выборка), трассировка неба |

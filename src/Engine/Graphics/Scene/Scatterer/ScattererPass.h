@@ -48,9 +48,10 @@ public:
 	// Смена LOD дизерингом у варианта (у всех его секций материал с DitheredLODTransition): без неё списки перехода
 	// пусты и LOD сменяется мгновенно на дальности экземпляра. Буфер вариантов обновляется, когда флаг меняется
 	void setDitheredLodTransition( uint32_t variant, bool dithered );
-	// Начальные indirect-аргументы секции списка: её меш и ноль инстансов; в буфер их пишет resetArgs
+	// Начальные indirect-аргументы секции списка: её меш и ноль инстансов; в буфер их копирует resetArgs
 	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset );
-	// Аргументы всех секций перед расстановкой — одной записью в буфер
+	// Аргументы всех секций перед расстановкой: копия GPU-буфера начальных аргументов в буфер аргументов (в D3D12 —
+	// CopyBufferRegion + барьер INDIRECT_ARGUMENT); сам буфер начальных аргументов обновляется, только когда они менялись
 	void resetArgs();
 	// Объявление прохода раскладки (GpuPass.h): что слой пишет — аргументы и инстансы; что читает, добавляет Scatterer
 	PassDesc passDesc( const char* name ) const;
@@ -132,8 +133,11 @@ private:
 	ShaderView m_instanceSRVs[maxLists];
 	Buffer m_argsBuffer;
 	StorageView m_argsUAV;
-	// Начальные аргументы (меш секции, ноль инстансов): каждый кадр копируются в m_argsBuffer
+	// Начальные аргументы (меш секции, ноль инстансов): копия на CPU и в GPU-буфере, откуда каждый кадр копируются
+	// в m_argsBuffer
 	uint32_t m_initialArgs[maxLists * maxSections * 5] = {};
+	Buffer m_initialArgsBuffer;
+	bool m_initialArgsChanged = true;
 	bool m_hasSections = false;	// есть LOD из нескольких секций
 	Buffer m_populateParamsBuffer;
 	Buffer m_variantsBuffer;

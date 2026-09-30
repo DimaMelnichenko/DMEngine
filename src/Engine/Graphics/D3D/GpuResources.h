@@ -56,8 +56,7 @@ namespace TextureUsage
 		shaderResource = 1 << 0,
 		renderTarget = 1 << 1,
 		depthStencil = 1 << 2,
-		unorderedAccess = 1 << 3,
-		generateMips = 1 << 4,	// мипы строит DMD3D::generateMips (в D3D12 — compute-проход, шаг A6)
+		unorderedAccess = 1 << 3,	// пишется compute-шейдером (StorageView на мип); мипы куба строит compute (cube_downsample.cs)
 	};
 }
 

@@ -1263,7 +1263,6 @@ bool DMD3D::createTexture( const TextureDesc& desc, const TextureData* initial, 
 		textureDesc.Format = desc.format;
 		textureDesc.Usage = D3D11_USAGE_DEFAULT;
 		textureDesc.BindFlags = bindFlags( desc.usage );
-		textureDesc.MiscFlags = ( desc.usage & TextureUsage::generateMips ) ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0;
 		ID3D11Texture3D* raw = nullptr;
 		if( FAILED( m_device->CreateTexture3D( &textureDesc, initial ? data.data() : nullptr, &raw ) ) )
 			return false;
@@ -1283,8 +1282,7 @@ bool DMD3D::createTexture( const TextureDesc& desc, const TextureData* initial, 
 		textureDesc.SampleDesc.Count = 1;
 		textureDesc.Usage = D3D11_USAGE_DEFAULT;
 		textureDesc.BindFlags = bindFlags( desc.usage );
-		textureDesc.MiscFlags = ( desc.cube ? D3D11_RESOURCE_MISC_TEXTURECUBE : 0 ) |
-								( ( desc.usage & TextureUsage::generateMips ) ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0 );
+		textureDesc.MiscFlags = desc.cube ? D3D11_RESOURCE_MISC_TEXTURECUBE : 0;
 		ID3D11Texture2D* raw = nullptr;
 		if( FAILED( m_device->CreateTexture2D( &textureDesc, initial ? data.data() : nullptr, &raw ) ) )
 			return false;
@@ -1524,11 +1522,6 @@ bool DMD3D::readBuffer( const Buffer& readback, void* data, size_t size )
 	memcpy( data, mapped.pData, size );
 	m_deviceContext->Unmap( readback.handle(), 0 );
 	return true;
-}
-
-void DMD3D::generateMips( const ShaderView& view )
-{
-	m_deviceContext->GenerateMips( view.handle() );
 }
 
 bool DMD3D::setConstantBuffer( SRVType type, uint16_t slot, const Buffer& buffer )

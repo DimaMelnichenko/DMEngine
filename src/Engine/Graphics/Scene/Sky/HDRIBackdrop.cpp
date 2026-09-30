@@ -221,7 +221,7 @@ void HDRIBackdrop::updateEnvironment( const Parameters& params )
 {
 	DMD3D& d3d = DMD3D::instance();
 
-	// Грани cubemap из панорамы, затем мипы и освещение окружением
+	// Грани cubemap из панорамы, затем освещение окружением (мипы строит SkyLight в compute)
 	Parameters faceParams = params;
 	for( int32_t face = 0; face < 6; ++face )
 	{
@@ -232,8 +232,6 @@ void HDRIBackdrop::updateEnvironment( const Parameters& params )
 		d3d.setSRV( SRVType::ps, 0, m_panorama );
 		m_cubeShader.draw();
 	}
-	d3d.beginPass( PassDesc{ "HDRI cube mips", {}, {}, 0, 0, { { &m_cube.srv(), "HDRI cube" } } } );
-	d3d.generateMips( m_cube.srv() );
 
 	m_skyLight->capture( m_cube );
 }

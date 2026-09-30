@@ -174,7 +174,6 @@ public:
 	void copyBuffer( Buffer& destination, const Buffer& source );
 	// Чтение копии BufferUsage::readback без ожидания: false — GPU ещё пишет её или ошибка
 	bool readBuffer( const Buffer& readback, void* data, size_t size );
-	void generateMips( const ShaderView& view );		// текстура с TextureUsage::generateMips
 
 	// --- Привязка -------------------------------------------------------------------------------------------------------
 	bool setConstantBuffer( SRVType type, uint16_t slot, const Buffer& buffer );

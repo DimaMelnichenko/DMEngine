@@ -157,18 +157,18 @@ void Scatterer::compute( const FrameContext& frame )
 												mesh->indexOffset(), mesh->vertexOffset() );
 			}
 		}
-		layer.pass->resetArgs();
 
 		// Сетка покрывает квадрат со стороной 2 · farBorder вокруг камеры
 		const float cells = std::ceil( 2.0f * params.farBorder / params.cellSize ) + 1.0f;
 		const uint16_t gridDim = static_cast<uint16_t>( std::min( cells, static_cast<float>( maxGridDim ) ) );
 
-		// Проход раскладки слоя: читает карту высот и маску плотности, пишет аргументы и инстансы
+		// Проход раскладки слоя: читает карту высот и маску плотности, пишет аргументы (сначала копия начальных) и инстансы
 		const ShaderView& heightMap = System::textures().get( terrain.heightMap )->srv();
 		const ShaderView& mask = System::textures().get( layer.mask )->srv();
 		PassDesc pass = layer.pass->passDesc( "Scatter layer" );
 		pass.reads = { { &heightMap, "height map" }, { &mask, "density mask" } };
 		DMD3D::instance().beginPass( pass );
+		layer.pass->resetArgs();
 		DMD3D::instance().setSRV( SRVType::cs, 0, heightMap );
 		DMD3D::instance().setSRV( SRVType::cs, 2, mask );
 		layer.pass->populate( m_computeShader, gridDim );

@@ -141,7 +141,15 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 
 	BufferViewDesc uavDesc;
 	uavDesc.raw = true;
-	return DMD3D::instance().createStorageView( m_argsBuffer, uavDesc, m_argsUAV );
+	if( !DMD3D::instance().createStorageView( m_argsBuffer, uavDesc, m_argsUAV ) )
+		return false;
+
+	// Начальные аргументы на GPU — только источник копирования для resetArgs, без привязок
+	BufferDesc initialDesc;
+	initialDesc.size = sizeof( m_initialArgs );
+	initialDesc.usage = 0;
+	m_initialArgsChanged = true;
+	return DMD3D::instance().createBuffer( initialDesc, m_initialArgs, m_initialArgsBuffer );
 }
 
 void ScatterPass::setDitheredLodTransition( uint32_t variant, bool dithered )
@@ -159,16 +167,24 @@ void ScatterPass::setDitheredLodTransition( uint32_t variant, bool dithered )
 void ScatterPass::setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset )
 {
 	uint32_t* args = m_initialArgs + argsOffset( list, section ) / sizeof( uint32_t );
-	args[0] = indexCount;		// IndexCountPerInstance
-	args[1] = 0;				// InstanceCount — считает Shaders\scatter.cs
-	args[2] = indexOffset;		// StartIndexLocation
-	args[3] = vertexOffset;		// BaseVertexLocation
-	args[4] = 0;				// StartInstanceLocation: у списка свой SRV с начала его участка
+	// IndexCountPerInstance, InstanceCount (считает Shaders\scatter.cs), StartIndexLocation, BaseVertexLocation,
+	// StartInstanceLocation (0: у списка свой SRV с начала его участка)
+	const uint32_t values[5] = { indexCount, 0, indexOffset, vertexOffset, 0 };
+	if( memcmp( args, values, sizeof( values ) ) != 0 )
+	{
+		memcpy( args, values, sizeof( values ) );
+		m_initialArgsChanged = true;
+	}
 }
 
 void ScatterPass::resetArgs()
 {
-	DMD3D::instance().updateBuffer( m_argsBuffer, m_initialArgs, sizeof( m_initialArgs ) );
+	if( m_initialArgsChanged )
+	{
+		DMD3D::instance().updateBuffer( m_initialArgsBuffer, m_initialArgs, sizeof( m_initialArgs ) );
+		m_initialArgsChanged = false;
+	}
+	DMD3D::instance().copyBuffer( m_argsBuffer, m_initialArgsBuffer );
 }
 
 PassDesc ScatterPass::passDesc( const char* name ) const

@@ -380,7 +380,7 @@ void SkyAtmosphere::renderSkyCube()
 	const std::vector<PassDesc::Read> reads = { { &m_transmittanceLut.srv(), "transmittance LUT" }, { &m_skyViewLut.srv(), "Sky-View LUT" },
 											   { &m_skyViewMoonLut.srv(), "Sky-View moon LUT" } };
 
-	// Грани мипа 0, затем цепочка мипов (для префильтра с выборкой мипа по плотности и гармоник)
+	// Грани мипа 0; цепочку мипов (для префильтра с выборкой мипа по плотности и гармоник) строит SkyLight в compute
 	Parameters faceParams = m_frameParams;
 	for( int32_t face = 0; face < 6; ++face )
 	{
@@ -392,9 +392,6 @@ void SkyAtmosphere::renderSkyCube()
 		d3d.setSRV( SRVType::ps, skyViewMoonSlot, m_skyViewMoonLut.srv() );
 		m_cubeShader.draw();
 	}
-	// Мипы куба: без целей — куб перестаёт быть целью и читается (A6 заменит GenerateMips compute-проходом)
-	d3d.beginPass( PassDesc{ "Sky cube mips", {}, {}, 0, 0, { { &m_skyCube.srv(), "sky cube" } } } );
-	d3d.generateMips( m_skyCube.srv() );
 	setParameters( m_frameParams );
 }
 
