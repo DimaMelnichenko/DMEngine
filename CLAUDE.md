@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DMEngine — самописный 3D-движок на C++17 / Direct3D 12 под Windows (Win32-окно, DirectInput, ImGui).
 Бэкенд — D3D12 в современном виде (Agility SDK, DXC и SM 6.6, bindless, enhanced barriers, D3D12MA, PIX), устройство слоя —
-`docs/d3d12.md`; переписан с D3D11 2026-09-30, эталон D3D11 для сравнения кадров — коммит `0aadc42` (worktree `..\DMEngine-d3d11`).
+`docs/d3d12.md`; переписан с D3D11 2026-09-30, последний коммит на D3D11 — `0aadc42` (в истории git; эталон кадров теперь — снимки D3D12, `docs/d3d12.md` §4).
 Сейчас в основном используется как полигон для рендеринга: террейн (CDLOD),
 небо, расстановка травы и декора (compute + indirect draw), частицы.
 
