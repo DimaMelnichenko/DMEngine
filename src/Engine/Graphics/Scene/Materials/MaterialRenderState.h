@@ -26,6 +26,10 @@ struct MaterialRenderState
 struct ShaderPhaseOptions
 {
 	bool instanced = false;			// матрицы экземпляров из буфера (INST_MATRIX): модели уровня одним вызовом
+	// Экземпляры расстановки и леса из пула (INST_POS, INST_SCALE, INST_ROTATE — Shaders/instance.sh): положение, размер,
+	// поворот по списку вида. Материал собирает этот вариант по Material::enablePlacedInstances (как Used with Instanced
+	// Static Meshes в UE), у материала расстановки (PBRInstance) он и есть основной
+	bool placed = false;
 	// Глубину уже записал depth prepass: проход цвета с проверкой EQUAL берёт вариант без отсечения — ни по альфе, ни
 	// дизерингом (как r.EarlyZPassOnlyMaterialMasking в UE)
 	bool depthFromPrepass = false;

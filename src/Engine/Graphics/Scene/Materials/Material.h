@@ -37,6 +37,9 @@ public:
 	virtual int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const { return 0; }
 	// Есть ли вариант для инстансинга моделей: иначе одинаковые меши рисуются по одному
 	virtual bool supportsInstancing() const { return false; }
+	// Собрать варианты для экземпляров расстановки (ShaderPhaseOptions::placed) — при загрузке, до прогрева пайплайнов
+	// (Renderer::warmPipelines): так модель уровня (ель) годится и для слоя расстановки (лес). false — материал так не умеет
+	virtual bool enablePlacedInstances() { return false; }
 	// Фаза «только глубина» для теней и depth prepass (без пиксельного шейдера или только с отсечением — по альфе,
 	// дизерингом смены LOD) или −1: материал тень не отбрасывает и в prepass не рисуется. Из options важны instanced
 	// и lodDither

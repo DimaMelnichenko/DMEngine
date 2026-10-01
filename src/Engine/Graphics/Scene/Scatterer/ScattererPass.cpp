@@ -1,5 +1,6 @@
 #include "ScattererPass.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include "D3D\DMD3D.h"
 #include "Shaders\lod_transition.h"
@@ -75,6 +76,7 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 		const uint32_t lodCount = std::max( 1u, std::min( variant.lodCount, maxLods ) );
 		m_variants.variants[v] = XMFLOAT4( v + 1 == variantCount ? 1.0f : cumulative, static_cast<float>( lodCount ), 0.0f, 0.0f );
 		m_variants.lodEnd[v] = XMFLOAT4( variant.lodEnd[0], variant.lodEnd[1], variant.lodEnd[2], variant.lodEnd[3] );
+		m_variants.bounds[v] = variant.bounds;
 
 		for( uint32_t lod = 0; lod < lodCount; ++lod )
 		{
@@ -236,7 +238,72 @@ PassDesc ScatterPass::passDesc( const char* name ) const
 	return pass;
 }
 
-void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
+bool ScatterPass::createPersistent( float worldSize, float margin )
+{
+	const float cellSize = std::max( m_populateParams.cellSize, 1e-3f );
+	const uint32_t cells = static_cast<uint32_t>( std::ceil( std::max( worldSize, 0.0f ) / cellSize ) );
+	const uint32_t clustersX = std::max( 1u, ( cells + clusterCells - 1 ) / clusterCells );
+	m_populateParams.clustersX = clustersX;
+	m_populateParams.clusterCount = clustersX * clustersX;
+	// Не больше одного экземпляра на ячейку
+	const uint64_t cellCount = static_cast<uint64_t>( clustersX * clusterCells ) * ( clustersX * clusterCells );
+	m_populateParams.placedCapacity = static_cast<uint32_t>( std::min<uint64_t>( cellCount, maxPlaced ) );
+	m_populateParams.clusterMargin = margin;
+
+	DMD3D& d3d = DMD3D::instance();
+	BufferDesc counterDesc;
+	counterDesc.size = 16;
+	counterDesc.usage = BufferUsage::unorderedAccess | BufferUsage::raw;
+	BufferViewDesc rawView;
+	rawView.raw = true;
+	if( !createPool( m_placed, sizeof( PlacedItem ), m_populateParams.placedCapacity, "Scatter placed instances" ) ||
+		!createPool( m_clusters, sizeof( uint32_t ) * 4, m_populateParams.clusterCount, "Scatter clusters" ) ||
+		!d3d.createBuffer( counterDesc, nullptr, m_placedCounter ) || !d3d.createStorageView( m_placedCounter, rawView, m_placedCounterUAV ) )
+		return false;
+	d3d.setName( m_placedCounter, "Scatter placed counter" );
+	return true;
+}
+
+PassDesc ScatterPass::placeDesc( const char* name ) const
+{
+	PassDesc pass;
+	pass.name = name;
+	pass.writes = { { &m_placed.uav, "placed instances" }, { &m_clusters.uav, "clusters" }, { &m_placedCounterUAV, "placed counter" } };
+	return pass;
+}
+
+std::vector<PassDesc::Read> ScatterPass::placedReads() const
+{
+	return { { &m_placed.srv, "placed instances" }, { &m_clusters.srv, "clusters" } };
+}
+
+void ScatterPass::place( DMComputeShader& shader )
+{
+	DMD3D& d3d = DMD3D::instance();
+	d3d.clearStorageView( m_placedCounterUAV );
+	bindParams();
+	shader.setUAVBuffer( 5, m_placed.uav );
+	shader.setUAVBuffer( 6, m_clusters.uav );
+	shader.setUAVBuffer( 7, m_placedCounterUAV );
+	// Группа — кластер clusterCells² ячеек
+	shader.dispatchGroups( m_populateParams.clustersX, m_populateParams.clustersX, 1 );
+}
+
+void ScatterPass::cull( DMComputeShader& shader )
+{
+	DMD3D& d3d = DMD3D::instance();
+	bindParams();
+	d3d.setSRV( 5, m_placed.srv );
+	d3d.setSRV( 6, m_clusters.srv );
+	shader.setUAVBuffer( 0, m_countersUAV );
+	shader.setUAVBuffer( 1, m_items.uav );
+	shader.setUAVBuffer( 2, m_transitions.uav );
+	shader.setUAVBuffer( 3, m_indices.uav );
+	// Группа — кластер
+	shader.dispatchGroups( m_populateParams.clusterCount, 1, 1 );
+}
+
+void ScatterPass::bindParams()
 {
 	DMD3D& d3d = DMD3D::instance();
 	Device::updateResourceData<PopulateParams>( m_populateParamsBuffer, m_populateParams );
@@ -254,7 +321,11 @@ void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
 	}
 	d3d.setConstantBuffer( 4, m_populateParamsBuffer );
 	d3d.setConstantBuffer( 7, m_variantsBuffer );
+}
 
+void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
+{
+	bindParams();
 	shader.setUAVBuffer( 0, m_countersUAV );
 	shader.setUAVBuffer( 1, m_items.uav );
 	shader.setUAVBuffer( 2, m_transitions.uav );

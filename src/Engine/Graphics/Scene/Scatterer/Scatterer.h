@@ -26,8 +26,10 @@ namespace GS
 // на вид; команды пишет тот же шейдер (buildCommands). Высоту и координаты масок даёт TerrainHeightSource, поэтому
 // набор не зависит от устройства террейна. Проход и отсечение граней задаёт материал слоя (режим и двусторонность, как
 // у травы ландшафта в UE): набор рисует непрозрачные и вырезанные по альфе слои в opaque, полупрозрачные — в
-// transparent. Слой с cast_shadow рисуется и в проход теней — списками видов каскадов. Расчёт и отрисовка всех наборов
-// переключаются клавишами 3 и 4
+// transparent. Слой с cast_shadow рисуется и в проход теней — списками видов каскадов. Постоянный слой (persistent,
+// лес) раскладывается не кольцом каждый кадр, а один раз на всю карту кластерами; каждый кадр отбираются видимые кластеры
+// и их экземпляры — в те же списки видов. Модели слоя — и модели уровня (ель): материал собирает вариант для экземпляров
+// расстановки (Material::enablePlacedInstances). Расчёт и отрисовка всех наборов переключаются клавишами 3 и 4
 class Scatterer : public SceneObject
 {
 public:
@@ -123,6 +125,9 @@ private:
 		std::vector<LayerGroup> groups;
 		std::string mask;
 		std::unique_ptr<ScatterPass> pass;
+		bool placed = false;		// постоянный слой разложен на карту (раз, в первом compute)
+		// Наибольшая высота экземпляра (границы моделей × размер слоя), м: длина его тени — запас дальности каскада
+		float maxHeight = 1.0f;
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
 	};
 
@@ -144,6 +149,10 @@ private:
 	std::vector<Layer> m_layers;
 	DMComputeShader m_computeShader;
 	DMComputeShader m_commandShader;	// buildCommands в Shaders\scatter.cs
+	// Постоянные слои: раскладка на карту (placeWorld) и отбор кластеров кадра (cullPlaced) — с первым таким слоем
+	DMComputeShader m_placeShader;
+	DMComputeShader m_cullShader;
+	bool m_persistentShaders = false;
 	Buffer m_terrainBuffer;
 	Buffer m_frustumBuffer;
 	PropertyContainer m_properties;

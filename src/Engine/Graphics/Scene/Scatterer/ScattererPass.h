@@ -16,7 +16,9 @@ namespace GS
 // на группу и вид — один ExecuteIndirect со счётчиком, команды которого пишет Shaders\scatter.cs (buildCommands):
 // {начало списка индексов — root-константа b9 вершинного шейдера, DrawIndexedInstanced}. Экземпляры в полосе смены LOD
 // (Dithered LOD Transition в UE, Shaders/lod_transition.h) лежат в пуле перехода с долей перехода: такой экземпляр есть
-// в списках перехода обоих LOD, и каждый рисует свою долю пикселей
+// в списках перехода обоих LOD, и каждый рисует свою долю пикселей.
+// Постоянный слой (лес) раскладывается один раз на всю карту (place) в постоянный пул кластерами по clusterCells²
+// ячеек, а каждый кадр (cull) экземпляры видимых кластеров идут в тот же пул кадра и списки видов, что у кольцевого слоя
 class ScatterPass
 {
 public:
@@ -29,6 +31,9 @@ public:
 	static constexpr uint32_t maxGroups = maxLists * maxSections;	// MAX_GROUPS: секций списков — команд на вид
 	// Ёмкость пула инстансов слоя и списков индексов вида; делится между списками по ожидаемому числу инстансов
 	static constexpr uint32_t capacity = 262144;
+	// Постоянный слой: ячеек по стороне кластера (PLACED_CLUSTER_CELLS в Shaders\scatter.cs) и наибольший постоянный пул
+	static constexpr uint32_t clusterCells = 8;
+	static constexpr uint32_t maxPlaced = 4194304;
 
 	// Модель слоя для раскладки: доля по весу и дальности LOD (ModelProperties.range; последний — до конца кольца)
 	struct Variant
@@ -37,6 +42,8 @@ public:
 		uint32_t lodCount = 1;
 		float lodEnd[maxLods] = {};
 		uint32_t sectionCount[maxLods] = { 1, 1, 1, 1 };	// секций у LOD, не больше maxSections
+		// Сфера модели (LOD0) в её координатах: xyz — центр, w — радиус. По ней — отсечение экземпляра и длина его тени
+		DirectX::XMFLOAT4 bounds = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 	};
 
 	ScatterPass();
@@ -66,6 +73,17 @@ public:
 	void populate( DMComputeShader& shader, uint16_t gridDim );
 	// После расстановки: команды ExecuteIndirect по видам и группам (Shaders\scatter.cs, buildCommands)
 	void buildCommands( DMComputeShader& shader );
+
+	// Постоянный слой: пул и кластеры на мир worldSize × worldSize м (после createBuffers); margin — наибольший радиус
+	// экземпляра, запас границ кластера по XZ
+	bool createPersistent( float worldSize, float margin );
+	bool persistent() const { return m_populateParams.clusterCount > 0; }
+	// Объявление прохода раскладки на карту (пишет постоянный пул, кластеры и их счётчик) и сама раскладка (placeWorld)
+	PassDesc placeDesc( const char* name ) const;
+	void place( DMComputeShader& shader );
+	// Каждый кадр: экземпляры видимых кластеров — в пул кадра и списки видов (cullPlaced); что читает — placedReads
+	void cull( DMComputeShader& shader );
+	std::vector<PassDesc::Read> placedReads() const;
 
 	// Для вершинного шейдера: пул инстансов (InstanceParam с INST_POS, INST_SCALE и INST_ROTATE — Shaders\instance.sh),
 	// пул перехода (ещё LOD_DITHER) и списки индексов всех видов (SLOT_INSTANCE_INDICES; начало списка — root-константа
@@ -101,7 +119,14 @@ public:
 		uint32_t itemCapacity;		// ёмкость пула инстансов — createBuffers()
 		uint32_t transitionCapacity;// ёмкость пула перехода — createBuffers()
 		uint32_t indexStride;		// индексов на вид — createBuffers()
+		// Постоянный слой — createPersistent(): кластеров по X и всего (0 — слой кольцевой), ёмкость постоянного пула,
+		// запас границ кластера по XZ, м
+		uint32_t clustersX;
+		uint32_t clusterCount;
+		uint32_t placedCapacity;
+		float clusterMargin;
 	} m_populateParams;
+	static_assert( sizeof( PopulateParams ) == 80, "ScatterLayerBuffer layout" );
 
 	PopulateParams& populateParams();
 
@@ -113,6 +138,16 @@ private:
 		DirectX::XMFLOAT3 position;
 		float size;
 		DirectX::XMFLOAT4 rotation;	// кватернион
+	};
+
+	// Экземпляр постоянного пула — PlacedItem в Shaders\scatter.cs: размер без исчезания у краёв кольца, вариант и своя
+	// доля дальностей LOD
+	struct PlacedItem
+	{
+		ScatterItem item;
+		uint32_t variant;
+		float lodScale;
+		float padding[2];
 	};
 
 	// Экземпляр пула перехода: то же и доля смены LOD — InstanceParam с LOD_DITHER
@@ -132,6 +167,7 @@ private:
 		// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом
 		DirectX::XMFLOAT4 variants[maxVariants];
 		DirectX::XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
+		DirectX::XMFLOAT4 bounds[maxVariants];		// сфера модели варианта (Variant::bounds)
 		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 		uint32_t lists[maxLists][4];
 	};
@@ -146,12 +182,19 @@ private:
 	bool createPool( PoolBuffer& pool, uint32_t stride, uint32_t count, const char* name );
 	// Таблица групп по таблице секций: команды группы — подряд в командах вида
 	void rebuildGroups();
+	// Параметры слоя, варианты и таблицы секций и групп — на GPU (что менялось) и в слоты b4, b7
+	void bindParams();
 
 	VariantsBuffer m_variants = {};
 	bool m_variantsChanged = false;
 	PoolBuffer m_items;
 	PoolBuffer m_transitions;
 	PoolBuffer m_indices;
+	// Постоянный слой: экземпляры кластерами, кластеры (начало, число, высоты) и счётчик постоянного пула
+	PoolBuffer m_placed;
+	PoolBuffer m_clusters;
+	Buffer m_placedCounter;
+	StorageView m_placedCounterUAV;
 	Buffer m_counters;
 	StorageView m_countersUAV;
 	Buffer m_commands;

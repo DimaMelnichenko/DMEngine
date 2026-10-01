@@ -120,7 +120,10 @@ Dithered LOD Transition в UE. С ним экземпляр в полосе см
 - **Masked** — тот же проход, но вариант пиксельного шейдера с `clip( alpha − AlphaCutoff )` (define `ALPHA_MASK`):
   вырезанные лепестки, листья, решётки. Вариант `PBRMaterial` собирает сам из пиксельного шейдера материала — как
   перестановки шейдера материала в UE; в базе его нет. Так же он собирает вариант вершинного шейдера для инстансинга
-  моделей (define `INST_MATRIX`: мировая матрица экземпляра из буфера по `SV_InstanceID`). Отдельный вариант, а не ветка в одном шейдере: шейдер, в котором
+  моделей (define `INST_MATRIX`: мировая матрица экземпляра из буфера по `SV_InstanceID`), а по запросу набора
+  расстановки — вариант для её экземпляров (`INST_POS`, `INST_SCALE`, `INST_ROTATE`: положение, размер и поворот из
+  пула; `Material::enablePlacedInstances`, `ShaderPhaseOptions::placed`, как Used with Instanced Static Meshes в UE) —
+  так модель уровня (ель) годится и для леса ([scatter.md](scatter.md)). Отдельный вариант, а не ветка в одном шейдере: шейдер, в котором
   есть `clip`, лишается ранней проверки глубины, а непрозрачным (трава) она нужна. С depth prepass
   ([passes.md](passes.md)) `clip` нужен только там: маска уже в глубине, и в проходе цвета Masked рисуется вариантом
   без отсечения с проверкой `EQUAL` (`phaseFor( params, options )` с `ShaderPhaseOptions::depthFromPrepass`, как

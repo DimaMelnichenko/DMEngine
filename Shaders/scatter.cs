@@ -14,6 +14,11 @@
 // перехода попадает в списки перехода обоих LOD с долей перехода (Dithered LOD Transition в UE, Shaders/lod_dither.sh) —
 // в пул перехода g_transitions.
 //
+// Постоянный слой (лес, ScatterLayers.persistent): экземпляры раскладываются один раз на всю карту (placeWorld) в
+// постоянный пул g_placed кластерами — группа потоков на квадрат PLACED_CLUSTER_CELLS² ячеек, экземпляры кластера подряд,
+// у кластера — начало, число и диапазон высот (как кластеры HISM в UE). Каждый кадр cullPlaced отсекает кластер по видам
+// кадра целиком, а экземпляры видимых кластеров — так же, как кольцевой слой (emitInstance): в пул кадра и списки видов.
+//
 // После раскладки buildCommands собирает команды ExecuteIndirect: по виду и группе (секции с одним материалом и
 // состоянием — ScatterPass::groups) подряд команды {начало списка индексов (root-константа b9), DrawIndexedInstanced},
 // число команд группы — счётчик в g_counters. Один ExecuteIndirect на группу на вид вместо вызова на каждую секцию
@@ -52,6 +57,12 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	uint   g_itemCapacity;		// ёмкость пула инстансов g_items
 	uint   g_transitionCapacity;// ёмкость пула перехода g_transitions
 	uint   g_indexStride;		// индексов на вид в g_indices (списки всех пар вида подряд)
+	// Постоянный слой: кластеров по X и всего, ёмкость постоянного пула, запас границ кластера по XZ (наибольший радиус
+	// экземпляра), м
+	uint   g_clustersX;
+	uint   g_clusterCount;
+	uint   g_placedCapacity;
+	float  g_clusterMargin;
 };
 
 // ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex
@@ -65,6 +76,7 @@ cbuffer ScatterVariantsBuffer : register( b7 )
 {
 	float4 g_variants[maxVariants];	// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом
 	float4 g_lodEnd[maxVariants];	// дальности LOD 0…2 варианта, м: дальше — следующий LOD
+	float4 g_bounds[maxVariants];	// сфера модели (LOD0) в её координатах: xyz — центр, w — радиус (при размере 1)
 	uint4  g_lists[MAX_LISTS];		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 };
 
@@ -120,6 +132,22 @@ DM_UAV( RWStructuredBuffer<ScatterTransitionItem>, g_transitions, 2 );	// пул
 DM_UAV( RWStructuredBuffer<uint>, g_indices, 3 );						// списки индексов по видам: индексы в пуле списка
 DM_UAV( RWByteAddressBuffer, g_commands, 4 );							// команды ExecuteIndirect по видам и группам
 DM_SRV( Texture2D, g_densityMask, 2 );
+
+// Постоянный слой: экземпляр — ScatterPass::PlacedItem, кластер — x начало и y число экземпляров в g_placed, z и w —
+// наименьшая и наибольшая высота (orderedFloat)
+#define PLACED_CLUSTER_CELLS 8	// ScatterPass::clusterCells: ячеек по стороне кластера, группа потоков placeWorld
+struct PlacedItem
+{
+	ScatterItem item;	// размер — без исчезания у краёв кольца
+	uint   variant;
+	float  lodScale;	// своя доля дальностей LOD экземпляра
+	float2 padding;
+};
+DM_UAV( RWStructuredBuffer<PlacedItem>, g_placed, 5 );
+DM_UAV( RWStructuredBuffer<uint4>, g_clusters, 6 );
+DM_UAV( RWByteAddressBuffer, g_placedCounter, 7 );
+DM_SRV( StructuredBuffer<PlacedItem>, g_placedItems, 5 );
+DM_SRV( StructuredBuffer<uint4>, g_clusterRanges, 6 );
 // Секция списка: x — число индексов меша, y — начало индексов, z — начало вершин, w — группа + 1 (0 — секции нет)
 DM_SRV( StructuredBuffer<uint4>, g_sectionArgs, 3 );
 // Группа: x — начало команд группы в командах вида, y — ёмкость (число секций списков в группе)
@@ -192,6 +220,33 @@ float4 quaternionFromTo( float3 from, float3 to )
 	return normalize( float4( cross( from, to ), 1.0f + dot( from, to ) ) );
 }
 
+// Поворот вектора кватернионом (как rotateByQuaternion в instance.sh)
+float3 quaternionRotate( float3 v, float4 q )
+{
+	return v + 2.0f * cross( q.xyz, cross( q.xyz, v ) + q.w * v );
+}
+
+// Сфера, охватывающая обе
+void enclose( float3 c1, float r1, float3 c2, float r2, out float3 center, out float radius )
+{
+	const float d = distance( c1, c2 );
+	if( d + r2 <= r1 ) { center = c1; radius = r1; return; }
+	if( d + r1 <= r2 ) { center = c2; radius = r2; return; }
+	radius = ( d + r1 + r2 ) * 0.5f;
+	center = c1 + ( c2 - c1 ) * ( ( radius - r1 ) / max( d, 1e-6f ) );
+}
+
+// float → uint с тем же порядком (атомарные min / max высот кластера) и обратно
+uint orderedFloat( float f )
+{
+	const uint u = asuint( f );
+	return ( u & 0x80000000U ) ? ~u : ( u | 0x80000000U );
+}
+float unorderedFloat( uint u )
+{
+	return asfloat( ( u & 0x80000000U ) ? ( u & 0x7fffffffU ) : ~u );
+}
+
 bool insideFrustum( uint view, float3 center, float radius )
 {
 	[unroll]
@@ -223,89 +278,94 @@ void selectLod( float distanceToLodOrigin, float4 lodEnd, uint lodCount, bool di
 	}
 }
 
-[numthreads( 32, 32, 1 )]
-void main( uint3 dispatchThreadId : SV_DispatchThreadID )
+// Экземпляр в ячейке сетки мира: смещение, плотность маски (вероятность и размер), высота, размер без исчезания,
+// поворот, вариант по весам и своя доля дальностей LOD. Все случайные величины — хеш ячейки и номера величины, поэтому у
+// ячейки всегда один и тот же экземпляр — и у кольцевого слоя каждый кадр, и у постоянного при раскладке
+bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, out float lodScale )
 {
-	if( dispatchThreadId.x >= (uint)b_rect.x || dispatchThreadId.y >= (uint)b_rect.y )
-		return;
-
-	// Первая ячейка — у угла квадрата 2 · far вокруг камеры; у слоёв с разными параметрами разный узор
-	int2 firstCell = (int2)floor( ( cb_cameraPosition.xz - g_farBorder ) / g_cellSize );
-	int2 cell = firstCell + (int2)dispatchThreadId.xy;
-	uint seed = asuint( g_cellSize ) ^ hash( asuint( g_farBorder ) ^ hash( asuint( g_sizeMultiplier ) ) );
+	item = (ScatterItem)0;
+	variant = 0;
+	lodScale = 1.0f;
 
 	float2 offset = ( float2( random( cell, seed ), random( cell, seed + 1 ) ) - 0.5f ) * g_jitter;
 	float2 worldXZ = ( (float2)cell + 0.5f + offset ) * g_cellSize;
 
 	float2 uv = terrainUV( worldXZ );
 	if( any( uv < 0.0f ) || any( uv > 1.0f ) )
-		return;
+		return false;
 
 	float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r;
 	if( random( cell, seed + 2 ) >= density )
-		return;
+		return false;
 
-	float3 position = float3( worldXZ.x, terrainHeight( worldXZ ), worldXZ.y );
-	float distanceToCamera = distance( position, cb_cameraPosition );
-	if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )
-		return;
-
-	// Размер: разброс, плотность маски и плавное исчезание у краёв кольца
-	float size = g_sizeMultiplier * lerp( 0.7f, 1.0f, random( cell, seed + 3 ) ) * lerp( 0.6f, 1.0f, density );
-	size *= saturate( ( g_farBorder - distanceToCamera ) / max( g_farFade, 1e-3f ) );
-	size *= saturate( ( distanceToCamera - g_nearBorder ) / max( g_nearFade, 1e-3f ) );
-
-	if( size <= 0.0f )
-		return;
-
-	// Видимость по видам. Главный вид — сфера вокруг инстанса в его frustum. Каскады теней (у слоя с тенью): инстанс
-	// нужен им, только если он или его тень попадает в кадр — сфера, охватывающая путь луча от него до земли
-	// (frustum каскада вдоль света охватывает и много лишнего); тень ложится на землю не дальше её длины от инстанса,
-	// поэтому каскад, полоса расстояний которого с этим не пересекается, инстанс не рисует; и сам frustum каскада
-	const float3 center = position + float3( 0.0f, size * 0.5f, 0.0f );
-	const float shadowLength = size * g_shadowCast.w;
-	const bool mainVisible = insideFrustum( 0, center, size );
-	uint visibleMask = mainVisible ? 1u : 0u;
-	if( g_castShadow > 0.5f && g_viewCount > 1 &&
-		( mainVisible || ( shadowLength > 0.0f && insideFrustum( 0, center + g_shadowCast.xyz * ( shadowLength * 0.5f ), size + shadowLength * 0.5f ) ) ) )
-	{
-		[loop] for( uint view = 1; view < g_viewCount; ++view )
-		{
-			if( distanceToCamera + shadowLength < g_viewParams[view].z || distanceToCamera - shadowLength > g_viewParams[view].w )
-				continue;
-			visibleMask |= insideFrustum( view, center, size ) ? 1u << view : 0;
-		}
-	}
-	if( visibleMask == 0 )
-		return;
-	const uint viewCount = g_viewCount;
+	item.position = float3( worldXZ.x, terrainHeight( worldXZ ), worldXZ.y );
+	// Размер: разброс и плотность маски
+	item.size = g_sizeMultiplier * lerp( 0.7f, 1.0f, random( cell, seed + 3 ) ) * lerp( 0.6f, 1.0f, density );
 
 	float3 angles = ( float3( random( cell, seed + 4 ), random( cell, seed + 5 ), random( cell, seed + 6 ) ) - 0.5f ) * g_rotationRange;
-	float4 rotation = quaternionMul( quaternionAxisAngle( float3( 0.0f, 1.0f, 0.0f ), angles.y ),
-									 quaternionMul( quaternionAxisAngle( float3( 1.0f, 0.0f, 0.0f ), angles.x ),
-													quaternionAxisAngle( float3( 0.0f, 0.0f, 1.0f ), angles.z ) ) );
+	item.rotation = quaternionMul( quaternionAxisAngle( float3( 0.0f, 1.0f, 0.0f ), angles.y ),
+								   quaternionMul( quaternionAxisAngle( float3( 1.0f, 0.0f, 0.0f ), angles.x ),
+												  quaternionAxisAngle( float3( 0.0f, 0.0f, 1.0f ), angles.z ) ) );
 	if( g_alignToTerrain > 0.5f )
-		rotation = quaternionMul( quaternionFromTo( float3( 0.0f, 1.0f, 0.0f ), terrainNormal( worldXZ ) ), rotation );
+		item.rotation = quaternionMul( quaternionFromTo( float3( 0.0f, 1.0f, 0.0f ), terrainNormal( worldXZ ) ), item.rotation );
 
 	// Вариант — по накопленным долям весов; отдельное случайное число ячейки (прежние 0…6 от вариантов не зависят)
 	float pick = random( cell, seed + 7 );
-	uint variant = 0;
 	[loop] for( uint v = 0; v + 1 < g_variantCount; ++v )
 		variant += pick >= g_variants[v].x ? 1 : 0;
 
 	// Дальности LOD — свои у экземпляра: у модели, ближе на долю по случайному числу ячейки и шуму мира
+	lodScale = 1.0f - LOD_JITTER_RANDOM * random( cell, seed + 8 ) -
+			   LOD_JITTER_NOISE * ( worldNoise( worldXZ, LOD_JITTER_NOISE_SIZE, seed + 9 ) * 0.5f + 0.5f );
+	return true;
+}
+
+// Сфера экземпляра: по границам модели варианта (у деревьев — десятки метров) и не меньше прежней «единичной» сферы
+// размера size над точкой (трава, цветы — модели меньше метра); высота — для длины тени
+void instanceSphere( ScatterItem item, uint variant, out float3 center, out float radius, out float height )
+{
+	const float4 bounds = g_bounds[variant];
+	enclose( item.position + float3( 0.0f, item.size * 0.5f, 0.0f ), item.size,
+			 item.position + quaternionRotate( bounds.xyz, item.rotation ) * item.size, bounds.w * item.size, center, radius );
+	height = max( item.size, ( bounds.y + bounds.w ) * item.size );
+}
+
+// Экземпляр — в пул кадра и списки видов, где он виден: видимость по видам кадра (views — какие виды вообще проверять),
+// LOD вида и переход дизерингом. false — пул полон
+bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanceToCamera, uint views )
+{
+	// Видимость по видам. Главный вид — сфера вокруг инстанса в его frustum. Каскады теней (у слоя с тенью): инстанс
+	// нужен им, только если он или его тень попадает в кадр — сфера, охватывающая путь луча от него до земли
+	// (frustum каскада вдоль света охватывает и много лишнего); тень ложится на землю не дальше её длины от инстанса,
+	// поэтому каскад, полоса расстояний которого с этим не пересекается, инстанс не рисует; и сам frustum каскада
+	float3 center;
+	float radius;
+	float height;
+	instanceSphere( item, variant, center, radius, height );
+	const float shadowLength = height * g_shadowCast.w;
+	const bool mainVisible = ( views & 1u ) != 0 && insideFrustum( 0, center, radius );
+	uint visibleMask = mainVisible ? 1u : 0u;
+	if( g_castShadow > 0.5f && g_viewCount > 1 &&
+		( mainVisible || ( shadowLength > 0.0f && insideFrustum( 0, center + g_shadowCast.xyz * ( shadowLength * 0.5f ), radius + shadowLength * 0.5f ) ) ) )
+	{
+		[loop] for( uint view = 1; view < g_viewCount; ++view )
+		{
+			if( ( views & ( 1u << view ) ) == 0 )
+				continue;
+			if( distanceToCamera + shadowLength < g_viewParams[view].z || distanceToCamera - shadowLength > g_viewParams[view].w )
+				continue;
+			visibleMask |= insideFrustum( view, center, radius ) ? 1u << view : 0;
+		}
+	}
+	if( visibleMask == 0 )
+		return true;
+	const uint viewCount = g_viewCount;
+
 	const uint lodCount = (uint)g_variants[variant].y;
 	const bool dithered = g_variants[variant].z > 0.5f;
-	const float lodScale = 1.0f - LOD_JITTER_RANDOM * random( cell, seed + 8 ) -
-						   LOD_JITTER_NOISE * ( worldNoise( worldXZ, LOD_JITTER_NOISE_SIZE, seed + 9 ) * 0.5f + 0.5f );
 	const float4 lodEnd = g_lodEnd[variant] * lodScale;
 	// Расстояние до точки LOD — у всех видов кадра одна, главная камера (RenderView::lodOrigin)
 	const float distanceToLodOrigin = distanceToCamera;
-
-	ScatterItem item;
-	item.position = position;
-	item.size = size;
-	item.rotation = rotation;
 
 	// Место в пулах берётся один раз, когда какой-нибудь вид попросил: обычный экземпляр и пара экземпляров перехода
 	// (уходящий LOD с долей t, приходящий с t − 1; доля у всех видов с переходом одна — множитель LOD у них 1)
@@ -361,9 +421,161 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 				itemIndex = slot;
 			}
 			else
-				return;	// пул полон: ёмкость слоя мала (ScatterPass::capacity)
+				return false;	// пул полон: ёмкость слоя мала (ScatterPass::capacity)
 		}
 		pushIndex( view, listIndex( variant, lod, false ), itemIndex );
+	}
+	return true;
+}
+
+// Исчезание у краёв кольца: множитель размера по расстоянию до камеры
+float ringFade( float distanceToCamera )
+{
+	return saturate( ( g_farBorder - distanceToCamera ) / max( g_farFade, 1e-3f ) ) *
+		   saturate( ( distanceToCamera - g_nearBorder ) / max( g_nearFade, 1e-3f ) );
+}
+
+// Кольцевой слой: ячейки квадрата 2 · far вокруг камеры
+[numthreads( 32, 32, 1 )]
+void main( uint3 dispatchThreadId : SV_DispatchThreadID )
+{
+	if( dispatchThreadId.x >= (uint)b_rect.x || dispatchThreadId.y >= (uint)b_rect.y )
+		return;
+
+	// Первая ячейка — у угла квадрата 2 · far вокруг камеры; у слоёв с разными параметрами разный узор
+	int2 firstCell = (int2)floor( ( cb_cameraPosition.xz - g_farBorder ) / g_cellSize );
+	int2 cell = firstCell + (int2)dispatchThreadId.xy;
+	uint seed = asuint( g_cellSize ) ^ hash( asuint( g_farBorder ) ^ hash( asuint( g_sizeMultiplier ) ) );
+
+	ScatterItem item;
+	uint variant;
+	float lodScale;
+	if( !placeInCell( cell, seed, item, variant, lodScale ) )
+		return;
+
+	float distanceToCamera = distance( item.position, cb_cameraPosition );
+	if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )
+		return;
+
+	item.size *= ringFade( distanceToCamera );
+	if( item.size <= 0.0f )
+		return;
+
+	emitInstance( item, variant, lodScale, distanceToCamera, 0xffffffffU );
+}
+
+// Постоянный слой, раз при загрузке: группа — кластер PLACED_CLUSTER_CELLS² ячеек сетки мира от начала координат.
+// Экземпляры кластера — подряд в g_placed, место берётся одним атомарным сложением на группу
+groupshared uint gs_placedCount;
+groupshared uint gs_placedFirst;
+groupshared uint gs_minHeight;
+groupshared uint gs_maxHeight;
+
+[numthreads( PLACED_CLUSTER_CELLS, PLACED_CLUSTER_CELLS, 1 )]
+void placeWorld( uint3 groupId : SV_GroupID, uint3 threadId : SV_GroupThreadID, uint threadIndex : SV_GroupIndex )
+{
+	if( threadIndex == 0 )
+	{
+		gs_placedCount = 0;
+		gs_minHeight = 0xffffffffU;
+		gs_maxHeight = 0;
+	}
+	GroupMemoryBarrierWithGroupSync();
+
+	const int2 cell = (int2)( groupId.xy * PLACED_CLUSTER_CELLS + threadId.xy );
+	const uint seed = asuint( g_cellSize ) ^ hash( asuint( g_farBorder ) ^ hash( asuint( g_sizeMultiplier ) ) );
+	PlacedItem placed = (PlacedItem)0;
+	const bool valid = placeInCell( cell, seed, placed.item, placed.variant, placed.lodScale );
+	uint local = 0;
+	if( valid )
+	{
+		float3 center;
+		float radius;
+		float height;
+		instanceSphere( placed.item, placed.variant, center, radius, height );
+		InterlockedAdd( gs_placedCount, 1, local );
+		InterlockedMin( gs_minHeight, orderedFloat( min( placed.item.position.y, center.y - radius ) ) );
+		InterlockedMax( gs_maxHeight, orderedFloat( center.y + radius ) );
+	}
+	GroupMemoryBarrierWithGroupSync();
+
+	const uint cluster = groupId.y * g_clustersX + groupId.x;
+	if( threadIndex == 0 )
+	{
+		uint first = 0;
+		if( gs_placedCount > 0 )
+			g_placedCounter.InterlockedAdd( 0, gs_placedCount, first );
+		// Пул полон — кластер пуст (ёмкость — по числу ячеек, так не бывает)
+		const uint count = first + gs_placedCount <= g_placedCapacity ? gs_placedCount : 0;
+		gs_placedFirst = first;
+		g_clusters[cluster] = uint4( first, count, gs_minHeight, gs_maxHeight );
+	}
+	GroupMemoryBarrierWithGroupSync();
+
+	if( valid && gs_placedFirst + gs_placedCount <= g_placedCapacity )
+		g_placed[gs_placedFirst + local] = placed;
+}
+
+// Постоянный слой, каждый кадр: группа — кластер. Сначала кластер целиком (его ящик — сферой) по видам кадра и кольцу
+// дальности, затем его экземпляры — как у кольцевого слоя, только в видах, где виден кластер
+groupshared uint gs_clusterViews;
+
+[numthreads( 64, 1, 1 )]
+void cullPlaced( uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex )
+{
+	const uint cluster = groupId.x;
+	if( cluster >= g_clusterCount )
+		return;
+	const uint4 range = g_clusterRanges[cluster];
+	if( range.y == 0 )
+		return;
+
+	if( threadIndex == 0 )
+	{
+		const float clusterSize = PLACED_CLUSTER_CELLS * g_cellSize;
+		const float2 cornerXZ = float2( cluster % g_clustersX, cluster / g_clustersX ) * clusterSize;
+		const float3 boxMin = float3( cornerXZ.x - g_clusterMargin, unorderedFloat( range.z ), cornerXZ.y - g_clusterMargin );
+		const float3 boxMax = float3( cornerXZ.x + clusterSize + g_clusterMargin, unorderedFloat( range.w ), cornerXZ.y + clusterSize + g_clusterMargin );
+		const float3 center = ( boxMin + boxMax ) * 0.5f;
+		const float radius = length( boxMax - boxMin ) * 0.5f;
+		// Расстояния от камеры до ближней и дальней точки ящика: вне кольца — кластер не нужен ни одному виду
+		const float nearest = length( max( max( boxMin - cb_cameraPosition, cb_cameraPosition - boxMax ), 0.0f ) );
+		const float farthest = length( max( abs( boxMin - cb_cameraPosition ), abs( boxMax - cb_cameraPosition ) ) );
+		uint views = 0;
+		if( nearest <= g_farBorder && farthest >= g_nearBorder )
+		{
+			views = insideFrustum( 0, center, radius ) ? 1u : 0u;
+			if( g_castShadow > 0.5f )
+			{
+				// Тень кластера ложится не дальше её длины от него: высота кластера на метр высоты вдоль луча
+				const float shadowLength = ( boxMax.y - boxMin.y ) * g_shadowCast.w;
+				[loop] for( uint view = 1; view < g_viewCount; ++view )
+				{
+					if( farthest + shadowLength < g_viewParams[view].z || nearest - shadowLength > g_viewParams[view].w )
+						continue;
+					views |= insideFrustum( view, center, radius ) ? 1u << view : 0;
+				}
+			}
+		}
+		gs_clusterViews = views;
+	}
+	GroupMemoryBarrierWithGroupSync();
+
+	const uint views = gs_clusterViews;
+	if( views == 0 )
+		return;
+	[loop] for( uint i = threadIndex; i < range.y; i += 64 )
+	{
+		const PlacedItem placed = g_placedItems[range.x + i];
+		ScatterItem item = placed.item;
+		const float distanceToCamera = distance( item.position, cb_cameraPosition );
+		if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )
+			continue;
+		item.size *= ringFade( distanceToCamera );
+		if( item.size <= 0.0f )
+			continue;
+		if( !emitInstance( item, placed.variant, placed.lodScale, distanceToCamera, views ) )
+			return;
 	}
 }
 

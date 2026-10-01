@@ -70,6 +70,15 @@ float lodDither( uint instanceIndex )
 }
 #endif
 
+// Точка в координатах меша — в мир: у экземпляра расстановки — его поворот, размер и положение, затем мировая матрица
+float3 meshToWorld( float3 position, uint instanceIndex, float4x4 world )
+{
+#if defined(INSTANCE_INCLUDE)
+	position = calcInstance( position, instanceIndex );
+#endif
+	return mul( float4( position, 1.0f ), world ).xyz;
+}
+
 // Положение вершины в мире — один путь у полного варианта и «только глубина»
 float4 vertexWorldPosition( VertexInputType input )
 {
@@ -88,13 +97,18 @@ float4 vertexWorldPosition( VertexInputType input )
 	// Ветер: корень растения и высота вершины над ним. У расстановки корень — экземпляр на земле (origin модели внизу),
 	// высота — локальная высота × размер; у модели уровня — начало её мировой матрицы
 #ifdef WIND_TREE
-	// Дерево: слои Games wind SpeedTree (Shaders/wind.sh); корень — начало мировой матрицы экземпляра
+	// Дерево: слои Games wind SpeedTree (Shaders/wind.sh). Корень и начала ветвей — точки меша в мире: у экземпляра
+	// расстановки (лес) — через его поворот, размер и положение, у модели уровня — мировой матрицей
 	[branch] if( g_windWeight > 0.0f && cb_windStrength > 0.0f )
 	{
-		worldPosition.xyz = treeWindPosition( worldPosition.xyz, world[3].xyz,
-											  mul( float4( input.windBranch1.xyz, 1.0f ), world ).xyz, input.windBranch1.w,
-											  mul( float4( input.windBranch2.xyz, 1.0f ), world ).xyz, input.windBranch2.w,
-											  input.windWeights, normalize( mul( input.normal, (float3x3)world ) ), g_windWeight );
+		float3 normal = input.normal;
+		#if defined(INSTANCE_INCLUDE)
+			normal = calcInstanceDirection( normal, instanceIndex );
+		#endif
+		worldPosition.xyz = treeWindPosition( worldPosition.xyz, meshToWorld( float3( 0.0f, 0.0f, 0.0f ), instanceIndex, world ),
+											  meshToWorld( input.windBranch1.xyz, instanceIndex, world ), input.windBranch1.w,
+											  meshToWorld( input.windBranch2.xyz, instanceIndex, world ), input.windBranch2.w,
+											  input.windWeights, normalize( mul( normal, (float3x3)world ) ), g_windWeight );
 	}
 #else
 	[branch] if( g_windWeight > 0.0f && cb_windStrength > 0.0f )

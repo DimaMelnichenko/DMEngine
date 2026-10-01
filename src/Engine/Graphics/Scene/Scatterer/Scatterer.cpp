@@ -8,6 +8,7 @@
 #include "System.h"
 #include "ConstantBuffers.h"
 #include "Shaders\lod_transition.h"
+#include "Logger\Logger.h"
 
 using namespace DirectX;
 
@@ -63,8 +64,10 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
 	params.castShadow = settings.castShadow ? 1.0f : 0.0f;
 
-	// Дальности LOD — из модели, как у моделей уровня; последний LOD рисуется до конца кольца
+	// Дальности LOD — из модели, как у моделей уровня; последний LOD рисуется до конца кольца. Границы — сфера LOD0:
+	// по ней отсечение экземпляров (у деревьев — десятки метров) и длина их тени
 	std::vector<ScatterPass::Variant> passVariants;
+	float maxRadius = 0.0f;
 	const size_t variantCount = std::min<size_t>( models.size(), ScatterPass::maxVariants );
 	for( size_t v = 0; v < variantCount; ++v )
 	{
@@ -72,6 +75,14 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		ScatterPass::Variant passVariant;
 		passVariant.weight = models[v].weight;
 		passVariant.lodCount = std::min<uint32_t>( model->lodCount(), ScatterPass::maxLods );
+		if( DMModel::LodBlock* lod0 = model->getLodById( 0 ) )
+		{
+			const BoundingBox& box = lod0->bounds;
+			const float radius = XMVectorGetX( XMVector3Length( XMLoadFloat3( &box.Extents ) ) );
+			passVariant.bounds = XMFLOAT4( box.Center.x, box.Center.y, box.Center.z, radius );
+			maxRadius = std::max( maxRadius, radius );
+			layer.maxHeight = std::max( layer.maxHeight, ( box.Center.y + radius ) * settings.sizeMultiplier );
+		}
 		LayerVariant variant;
 		variant.castShadow = models[v].castShadow;
 		for( uint32_t i = 0; i < passVariant.lodCount; ++i )
@@ -85,6 +96,9 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 				LayerSection section;
 				section.section = block->sections[s].get();
 				section.material = System::materials().get( section.section->material ).get();
+				// Вариант материала для экземпляров расстановки — до прогрева пайплайнов
+				if( !section.material->enablePlacedInstances() )
+					LOG( "Scatter layer " + layer.mask + ": material " + section.material->name() + " can't draw scatter instances" );
 				lod.sections.push_back( section );
 			}
 			passVariant.sectionCount[i] = static_cast<uint32_t>( std::max<size_t>( sectionCount, 1 ) );
@@ -93,8 +107,24 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		layer.variants.push_back( std::move( variant ) );
 		passVariants.push_back( passVariant );
 	}
+	layer.maxHeight = std::max( layer.maxHeight, settings.sizeMultiplier );
 	if( !layer.pass->createBuffers( passVariants ) )
 		return false;
+
+	// Постоянный слой: пул и кластеры на весь мир террейна
+	if( settings.persistent )
+	{
+		if( !m_terrain )
+			return false;
+		if( !m_persistentShaders )
+		{
+			if( !m_placeShader.Initialize( "Shaders\\scatter.cs", "placeWorld" ) || !m_cullShader.Initialize( "Shaders\\scatter.cs", "cullPlaced" ) )
+				return false;
+			m_persistentShaders = true;
+		}
+		if( !layer.pass->createPersistent( m_terrain->terrainHeight().worldSize, maxRadius * settings.sizeMultiplier ) )
+			return false;
+	}
 
 	// Имя окна слоя — первая модель и число остальных
 	std::string name = std::to_string( m_layers.size() ) + ": " + models[0].model->properties()->name();
@@ -250,14 +280,38 @@ void Scatterer::compute( const FrameContext& frame )
 		}
 		assignGroups( layer );
 
+		const ShaderView& heightMap = System::textures().get( terrain.heightMap )->srv();
+		const ShaderView& mask = System::textures().get( layer.mask )->srv();
+
+		// Постоянный слой: раз — раскладка на карту кластерами, каждый кадр — отбор кластеров и их экземпляров в пул
+		// кадра и списки видов
+		if( layer.pass->persistent() )
+		{
+			if( !layer.placed )
+			{
+				PassDesc place = layer.pass->placeDesc( "Scatter placement" );
+				place.reads = { { &heightMap, "height map" }, { &mask, "density mask" } };
+				DMD3D::instance().beginPass( place );
+				DMD3D::instance().setSRV( 0, heightMap );
+				DMD3D::instance().setSRV( 2, mask );
+				layer.pass->place( m_placeShader );
+				layer.placed = true;
+			}
+			PassDesc cull = layer.pass->passDesc( "Scatter clusters" );
+			cull.reads = layer.pass->placedReads();
+			DMD3D::instance().beginPass( cull );
+			layer.pass->resetCounters();
+			layer.pass->cull( m_cullShader );
+			layer.pass->buildCommands( m_commandShader );
+			continue;
+		}
+
 		// Сетка покрывает квадрат со стороной 2 · farBorder вокруг камеры
 		const float cells = std::ceil( 2.0f * params.farBorder / params.cellSize ) + 1.0f;
 		const uint16_t gridDim = static_cast<uint16_t>( std::min( cells, static_cast<float>( maxGridDim ) ) );
 
 		// Проход раскладки слоя: читает карту высот и маску плотности, пишет счётчики (сначала нули), пулы, списки
 		// индексов видов и команды
-		const ShaderView& heightMap = System::textures().get( terrain.heightMap )->srv();
-		const ShaderView& mask = System::textures().get( layer.mask )->srv();
 		PassDesc pass = layer.pass->passDesc( "Scatter layer" );
 		pass.reads = { { &heightMap, "height map" }, { &mask, "density mask" } };
 		DMD3D::instance().beginPass( pass );
@@ -271,14 +325,18 @@ void Scatterer::compute( const FrameContext& frame )
 
 bool Scatterer::castsShadow( const Layer& layer, const LayerVariant& variant, const LayerSection& section ) const
 {
+	ShaderPhaseOptions placed;
+	placed.placed = true;
 	return variant.castShadow && ( *layer.properties )["Cast shadow"].data<bool>() &&
-		   section.material->depthPhaseFor( section.section->params ) >= 0;
+		   section.material->depthPhaseFor( section.section->params, placed ) >= 0;
 }
 
 bool Scatterer::inDepthPrepass( const LayerSection& section ) const
 {
+	ShaderPhaseOptions placed;
+	placed.placed = true;
 	return passFor( section.material->renderState( section.section->params ).blendMode ) == MeshPass::opaque &&
-		   section.material->depthPhaseFor( section.section->params ) >= 0;
+		   section.material->depthPhaseFor( section.section->params, placed ) >= 0;
 }
 
 void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
@@ -315,7 +373,7 @@ void Scatterer::renderCustom( const RenderContext& context )
 	{
 		const ScatterPass::PopulateParams& params = layer.pass->populateParams();
 		// Инстансы слоя — не дальше кольца от камеры, их тень — не дальше её длины: каскад дальше этого их теней не содержит
-		if( shadow && ( params.castShadow < 0.5f || context.view.cascadeNear >= params.farBorder + params.sizeMultiplier * m_shadowLength ) )
+		if( shadow && ( params.castShadow < 0.5f || context.view.cascadeNear >= params.farBorder + layer.maxHeight * m_shadowLength ) )
 			continue;
 
 		for( uint32_t g = 0; g < layer.groups.size(); ++g )
@@ -331,12 +389,15 @@ void Scatterer::renderCustom( const RenderContext& context )
 			d3d.setState( materialRasterState( group.state.twoSided, false, context.frameRaster ) );
 
 			// После depth prepass Masked и дизеринг не отсекают: маска уже в глубине, проверка EQUAL
+			// Экземпляры — из пула расстановки (вариант материала placed: у модели уровня — свой, у PBRInstance — основной)
 			ShaderPhaseOptions options;
+			options.placed = true;
 			options.depthFromPrepass = context.depthFromPrepass && group.prepassed;
 			options.lodDither = group.transition;
 			Material* shader = group.material;
-			shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *group.params, options ) :
-							 shader->phaseFor( *group.params, options ) );
+			if( !shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *group.params, options ) :
+								  shader->phaseFor( *group.params, options ) ) )
+				continue;
 			shader->setParams( *group.params );
 
 			// Вершинный шейдер: индекс инстанса — из списка вида по root-константе команды (начало списка), сам инстанс —

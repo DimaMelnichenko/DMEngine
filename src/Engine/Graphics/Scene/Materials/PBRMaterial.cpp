@@ -75,17 +75,18 @@ bool PBRMaterial::initialize()
 	// уровня (у материала расстановки, defines INST_*, свои инстансы), вариант смены LOD дизерингом (LOD_DITHER: у
 	// расстановки доля перехода — в экземплярах её списков перехода, у моделей — в константах объекта; без инстансинга
 	// моделей) и те же «только глубина» (DEPTH_ONLY: позиция и UV, Shaders/depth_only.sh). Без инстансинга инстансные
-	// номера совпадают с обычными
+	// номера совпадают с обычными. Варианты экземпляров расстановки — enablePlacedInstances; у материала расстановки
+	// (вершинный шейдер из базы с INST_POS) они — обычные
 	const std::optional<ShaderSource> vertex = shaderSource( ShaderStageType::vertex );
 	if( !vertex )
 		return false;
 	m_instancing = vertex->defines.find( "INST_" ) == std::string::npos;
-	int vertexCount = 1;
+	m_vertexShaderCount = 1;
 	const auto addVertexShader = [&]( const std::string& defines )
 	{
-		return addShaderPassFromFile( ShaderStageType::vertex, vertex->function, vertex->file, defines ) ? vertexCount++ : -1;
+		return addShaderPassFromFile( ShaderStageType::vertex, vertex->function, vertex->file, defines ) ? m_vertexShaderCount++ : -1;
 	};
-	int vertexShaders[vertexVariantCount][2] = {};
+	int vertexShaders[vertexLodDither + 1][2] = {};
 	vertexShaders[vertexDefault][1] = addVertexShader( withDefine( vertex->defines, "DEPTH_ONLY=1" ) );
 	if( m_instancing )
 	{
@@ -101,27 +102,23 @@ bool PBRMaterial::initialize()
 	const std::string vertexDitherDefines = withDefine( vertex->defines, "LOD_DITHER=1" );
 	vertexShaders[vertexLodDither][0] = addVertexShader( vertexDitherDefines );
 	vertexShaders[vertexLodDither][1] = addVertexShader( withDefine( vertexDitherDefines, "DEPTH_ONLY=1" ) );
-	for( const auto& shaders : vertexShaders )
+
+	for( int variant = vertexDefault; variant <= vertexLodDither; ++variant )
 	{
-		if( shaders[0] < 0 || shaders[1] < 0 )
+		if( !createVariantPhases( static_cast<VertexVariant>( variant ), vertexShaders[variant][0], vertexShaders[variant][1] ) )
 			return false;
 	}
 
-	// Фазы: цвет — пиксельный шейдер 0 или 1 (с отсечением по альфе), с дизерингом — 3 или 4; глубина — вершинный
-	// «только глубина» без пиксельного шейдера или с mainDepth (2), с дизерингом — всегда с mainDepth (5 или 6)
-	for( int variant = 0; variant < vertexVariantCount; ++variant )
+	// Экземпляры расстановки: у материала расстановки — его же фазы, у остальных — пока нет (−1)
+	m_placed = vertex->defines.find( "INST_POS" ) != std::string::npos;
+	for( int placed : { vertexPlaced, vertexPlacedLodDither } )
 	{
-		const bool dither = variant == vertexLodDither;
-		const int color = vertexShaders[variant][0];
-		const int depth = vertexShaders[variant][1];
+		const int source = placed == vertexPlaced ? vertexDefault : vertexLodDither;
 		for( int masked = 0; masked < 2; ++masked )
 		{
-			int* colorPhases = m_colorPhases[variant][masked];
-			colorPhases[0] = createPhase( color, masked );
-			colorPhases[1] = dither ? createPhase( color, masked ? 4 : 3 ) : colorPhases[0];
-			m_depthPhases[variant][masked] = dither ? createPhase( depth, masked ? 6 : 5 ) : createPhase( depth, masked ? 2 : -1 );
-			if( colorPhases[0] < 0 || colorPhases[1] < 0 || m_depthPhases[variant][masked] < 0 )
-				return false;
+			for( int dither = 0; dither < 2; ++dither )
+				m_colorPhases[placed][masked][dither] = m_placed ? m_colorPhases[source][masked][dither] : -1;
+			m_depthPhases[placed][masked] = m_placed ? m_depthPhases[source][masked] : -1;
 		}
 	}
 
@@ -130,12 +127,51 @@ bool PBRMaterial::initialize()
 	return true;
 }
 
+bool PBRMaterial::createVariantPhases( VertexVariant variant, int colorShader, int depthShader )
+{
+	if( colorShader < 0 || depthShader < 0 )
+		return false;
+	const bool dither = variant == vertexLodDither || variant == vertexPlacedLodDither;
+	for( int masked = 0; masked < 2; ++masked )
+	{
+		int* colorPhases = m_colorPhases[variant][masked];
+		colorPhases[0] = createPhase( colorShader, masked );
+		colorPhases[1] = dither ? createPhase( colorShader, masked ? 4 : 3 ) : colorPhases[0];
+		m_depthPhases[variant][masked] = dither ? createPhase( depthShader, masked ? 6 : 5 ) : createPhase( depthShader, masked ? 2 : -1 );
+		if( colorPhases[0] < 0 || colorPhases[1] < 0 || m_depthPhases[variant][masked] < 0 )
+			return false;
+	}
+	return true;
+}
+
+bool PBRMaterial::enablePlacedInstances()
+{
+	if( m_placed )
+		return true;
+	const std::optional<ShaderSource> vertex = shaderSource( ShaderStageType::vertex );
+	if( !vertex )
+		return false;
+	// Экземпляр — положение, размер и поворот из пула расстановки (Shaders/instance.sh, ScatterPass::ScatterItem)
+	const std::string placedDefines = withDefine( vertex->defines, "INST_POS=1,INST_SCALE=1,INST_ROTATE=1" );
+	const std::string placedDitherDefines = withDefine( placedDefines, "LOD_DITHER=1" );
+	const auto addVertexShader = [&]( const std::string& defines )
+	{
+		return addShaderPassFromFile( ShaderStageType::vertex, vertex->function, vertex->file, defines ) ? m_vertexShaderCount++ : -1;
+	};
+	const int color = addVertexShader( placedDefines );
+	const int depth = addVertexShader( withDefine( placedDefines, "DEPTH_ONLY=1" ) );
+	const int ditherColor = addVertexShader( placedDitherDefines );
+	const int ditherDepth = addVertexShader( withDefine( placedDitherDefines, "DEPTH_ONLY=1" ) );
+	m_placed = createVariantPhases( vertexPlaced, color, depth ) && createVariantPhases( vertexPlacedLodDither, ditherColor, ditherDepth );
+	return m_placed;
+}
+
 std::vector<int> PBRMaterial::depthPhases() const
 {
 	std::vector<int> phases;
 	for( const auto& variant : m_depthPhases )
 		for( int phase : variant )
-			if( std::find( phases.begin(), phases.end(), phase ) == phases.end() )
+			if( phase >= 0 && std::find( phases.begin(), phases.end(), phase ) == phases.end() )
 				phases.push_back( phase );
 	return phases;
 }
@@ -156,6 +192,8 @@ MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) 
 
 PBRMaterial::VertexVariant PBRMaterial::vertexVariant( const ShaderPhaseOptions& options )
 {
+	if( options.placed )
+		return options.lodDither ? vertexPlacedLodDither : vertexPlaced;
 	return options.lodDither ? vertexLodDither : options.instanced ? vertexInstanced : vertexDefault;
 }
 

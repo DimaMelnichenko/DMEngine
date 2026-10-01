@@ -25,6 +25,9 @@ public:
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
 	int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
 	bool supportsInstancing() const override;
+	// Вершинные шейдеры с INST_POS, INST_SCALE, INST_ROTATE (обычный и LOD_DITHER, у каждого — «только глубина») и их
+	// фазы; у материала, вершинный шейдер которого из базы уже такой (PBRInstance), — он сам
+	bool enablePlacedInstances() override;
 	int depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
 	// Фазы «только глубина» всех вариантов, в том числе с пиксельным шейдером mainDepth (Masked)
 	std::vector<int> depthPhases() const override;
@@ -59,14 +62,20 @@ private:
 	};
 	static_assert( sizeof( PSParam ) == 128, "PBRMaterialBuffer layout" );
 
-	// Вершинный шейдер фазы: обычный, с матрицами экземпляров (INST_MATRIX) или со сменой LOD дизерингом (LOD_DITHER)
-	enum VertexVariant { vertexDefault, vertexInstanced, vertexLodDither, vertexVariantCount };
+	// Вершинный шейдер фазы: обычный, с матрицами экземпляров (INST_MATRIX), со сменой LOD дизерингом (LOD_DITHER) и
+	// экземпляры расстановки (INST_POS, INST_SCALE, INST_ROTATE) — обычный и с дизерингом
+	enum VertexVariant { vertexDefault, vertexInstanced, vertexLodDither, vertexPlaced, vertexPlacedLodDither, vertexVariantCount };
 	static VertexVariant vertexVariant( const ShaderPhaseOptions& options );
+	// Фазы варианта: цвет — пиксельный шейдер 0 или 1 (отсечение по альфе), с дизерингом — 3 или 4; глубина — без
+	// пиксельного шейдера или с mainDepth (2), с дизерингом — всегда с mainDepth (5 или 6)
+	bool createVariantPhases( VertexVariant variant, int colorShader, int depthShader );
 
 	// Номера фаз (ShaderProgram::createPhase): цвет — по [вершинный шейдер][отсечение по альфе][отсечение дизерингом],
 	// глубина — по [вершинный шейдер][Masked]: вершинный «только глубина» без пиксельного шейдера или с mainDepth.
-	// Дизеринг пиксельного шейдера — только с вершинным шейдером LOD_DITHER
+	// Дизеринг пиксельного шейдера — только с вершинным шейдером LOD_DITHER. −1 — варианта нет (placed не включён)
 	bool m_instancing = false;
+	bool m_placed = false;		// варианты экземпляров расстановки есть
+	int m_vertexShaderCount = 0;	// вершинных шейдеров в программе — номер следующего
 	int m_colorPhases[vertexVariantCount][2][2] = {};
 	int m_depthPhases[vertexVariantCount][2] = {};
 
