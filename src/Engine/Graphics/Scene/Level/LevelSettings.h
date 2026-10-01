@@ -1,0 +1,124 @@
+#pragma once
+
+#include <string>
+#include <vector>
+#include "DirectX.h"
+
+// Настройки окружения и расстановки уровня — данные строк base.db3 без объектов сцены: их читает и пишет LibraryLoader,
+// а объекты (SkyAtmosphere, HDRIBackdrop, PostProcess, Wind, SunPosition, Scatterer) принимают при создании и отдают
+// для сохранения. У объектов те же структуры — под именами SkyAtmosphere::Settings и т. п.
+namespace GS
+{
+
+// Строка SkyAtmosphere; без неё — значения по умолчанию
+struct SkyAtmosphereSettings
+{
+	float skyIntensity = 1.0f;	// множитель рассеянного света неба, 1 — по модели
+	float haze = 1.0f;			// плотность дымки (аэрозоли Ми)
+	float groundAlbedo = 0.25f;	// отражение земли под горизонтом
+	// Во сколько раз воздух между камерой и точкой кажется толще (Aerial Perspective View Distance Scale в UE):
+	// 1 — по модели (дымка на 1 км — несколько процентов), больше — небольшой мир выглядит как большой, 0 — выключено
+	float aerialPerspectiveViewDistanceScale = 1.0f;
+	// Свечение ночного неба в зените, кд/м²: собственное свечение атмосферы (airglow), суммарный свет звёзд и
+	// зодиакальный свет — ~2·10⁻⁴ на тёмном небе; к горизонту ярче. Видно, когда солнце и луна не светят
+	float nightSkyLuminance = 2e-4f;
+};
+
+// Строка HDRIBackdrop
+struct HDRIBackdropSettings
+{
+	std::string texture;		// файл от Textures\: .hdr, .exr, .dds
+	float intensity = 1.0f;		// кд/м² на единицу значения панорамы (Intensity в UE)
+	float rotation = 0.0f;		// поворот панорамы вокруг вертикали, градусы
+	float maxLuminance = 0.0f;	// срез яркости для освещения окружением, в единицах панорамы; 0 — без среза
+};
+
+enum class Tonemapper : int32_t
+{
+	none = 0,	// только ограничение 0…1 — для отладки
+	aces = 1,	// ACES (подгонка RRT + ODT, S. Hill) — основа Filmic tonemapper UE
+	agx = 2		// AgX — стандартное отображение Blender 4+, мягче уводит яркие цвета в белый
+};
+
+// Metering Mode в UE: экспозиция задана или замеряется по гистограмме кадра
+enum class MeteringMode : int32_t
+{
+	manual = 0,
+	autoHistogram = 1
+};
+
+// Ключей кривой компенсации экспозиции не больше — MAX_CURVE_KEYS в Shaders/exposure_adapt.cs
+constexpr uint32_t maxExposureCurveKeys = 8;
+
+// Строка PostProcessSettings; без неё — значения по умолчанию (как у Post Process Volume в UE)
+struct PostProcessSettings
+{
+	MeteringMode meteringMode = MeteringMode::autoHistogram;
+	float manualEV100 = 15.0f;			// Manual; с него же начинается автоэкспозиция
+	float exposureCompensation = 0.0f;	// EV: +1 — вдвое ярче
+	// Exposure Compensation Curve: ключи (EV100 сцены, поправка EV) по возрастанию EV100, между ними — линейно,
+	// за крайними — значение крайнего; пусто — без кривой. Только для автоэкспозиции
+	std::vector<XMFLOAT2> exposureCompensationCurve;
+	float minEV100 = -10.0f;			// пределы автоэкспозиции и диапазон гистограммы
+	float maxEV100 = 20.0f;
+	float histogramLowPercent = 10.0f;	// процентили гистограммы: темнее и ярче — не в среднем
+	float histogramHighPercent = 90.0f;
+	float speedUp = 3.0f;				// скорость адаптации к более яркой сцене, 1/с
+	float speedDown = 1.0f;				// к более тёмной
+	Tonemapper tonemapper = Tonemapper::agx;
+	float bloomIntensity = 0.05f;		// Bloom Intensity — доля энергии над порогом в свечении; 0 — без bloom
+	float bloomThreshold = 1.0f;		// Bloom Threshold, яркость после экспозиции; < 0 — без порога
+	float purkinjeShift = 1.0f;			// сила ночного зрения 0…1; 0 — цвет как днём при любой яркости
+};
+
+// Имена в базе: тонмаппинг None, ACES, AgX (другое — AgX); замер Manual, AutoHistogram (другое — AutoHistogram)
+Tonemapper tonemapperFromName( const std::string& name );
+const char* tonemapperName( Tonemapper tonemapper );
+MeteringMode meteringModeFromName( const std::string& name );
+const char* meteringModeName( MeteringMode mode );
+// Кривая в базе — текст «EV100,EV; EV100,EV; …»: ключи сортируются, лишние сверх maxExposureCurveKeys отбрасываются
+std::vector<XMFLOAT2> curveFromText( const std::string& text );
+std::string curveText( const std::vector<XMFLOAT2>& curve );
+
+// Строка Wind
+struct WindSettings
+{
+	XMFLOAT3 direction = XMFLOAT3( 0.0f, 0.0f, 1.0f );	// куда дует, горизонтально (y не учитывается)
+	float strength = 0.0f;			// сила изгиба: сдвиг верха растения высотой h — strength · WindWeight · порыв · h²
+	float speed = 4.0f;				// скорость волн порывов, м/с
+	float minGustAmount = 0.3f;		// порыв между волнами и на гребне волны — доли силы (Min / Max Gust Amount в UE)
+	float maxGustAmount = 1.0f;
+	float gustSize = 25.0f;			// длина волны порыва, м
+};
+
+// Строка SunPosition
+struct SunPositionSettings
+{
+	float latitude = 0.0f;		// градусы, север > 0
+	float longitude = 0.0f;		// градусы, восток > 0
+	float timeZone = 0.0f;		// часы от UTC; летнее время — ещё час
+	float northOffset = 0.0f;	// поворот севера от +Z вокруг вертикали (к +X), градусы
+	int32_t year = 2026;
+	int32_t month = 6;
+	int32_t day = 21;
+	float timeOfDay = 12.0f;	// часы по местным часам, 0…24 (Solar Time в UE)
+	float timeScale = 0.0f;		// во сколько раз игровое время быстрее реального; 0 — время стоит
+};
+
+// Параметры слоя расстановки — колонки строки ScatterLayers; Scatterer::addLayer переводит их в константы раскладки
+// (ScatterPass::PopulateParams)
+struct ScatterLayerSettings
+{
+	float cellSize = 1.0f;			// шаг сетки, метры
+	float nearBorder = 0.0f;		// кольцо вокруг камеры, метры
+	float farBorder = 0.0f;
+	float nearFade = 0.0f;			// ширина плавного исчезания у ближней и дальней границы
+	float farFade = 0.0f;
+	float sizeMultiplier = 1.0f;
+	float jitter = 0.0f;			// смещение внутри ячейки, доля шага
+	XMFLOAT3 rotationRange = XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
+	bool alignToTerrain = false;	// ось Y инстанса по нормали террейна
+	bool castShadow = false;		// слой отбрасывает тень солнца (Cast Shadow в UE)
+};
+
+}

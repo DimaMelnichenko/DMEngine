@@ -1,4 +1,5 @@
 #include "DMGraphics.h"
+#include "ObjectLibrary\LibraryLoader.h"
 #include <string>
 #include "../Input/Input.h"
 #include <chrono>
@@ -33,6 +34,7 @@ namespace GS
 {
 
 DMGraphics::DMGraphics() :
+	m_library( std::make_unique<LibraryLoader>() ),
 	m_renderer( m_GUI )
 {
 
@@ -77,7 +79,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	RET_FALSE( System::textures().createDefaults() );
 	RET_FALSE( System::meshes().createPlaceholder() );
 
-	RET_FALSE( m_scene.loadResources( m_library, m_config.levelName() ) );
+	RET_FALSE( m_scene.loadResources( *m_library, m_config.levelName() ) );
 
 	// Создаем общий буфер вершин и индексов
 	RET_FALSE( m_renderer.initialize( m_scene.level().postProcess, m_config.shadowMapResolution(), m_config.depthPrepass() ) );
@@ -112,7 +114,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	// Правки света, неба, теней и постобработки — в строки уровня (LevelLights, SkyAtmosphere, PostProcessSettings)
 	m_GUI.addAction( "Save level environment", [this]
 	{
-		const bool saved = m_scene.saveEnvironment( m_library, m_renderer.postProcessSettings() );
+		const bool saved = m_scene.saveEnvironment( *m_library, m_renderer.postProcessSettings() );
 		LOG( saved ? "Level environment is saved to base.db3" : "Level environment is not saved" );
 	} );
 
@@ -216,7 +218,7 @@ bool DMGraphics::Render( const FrameContext& frame )
 
 void DMGraphics::beforeExit()
 {
-	m_library.save();
+	m_library->save();
 	// Ответ на quit поток канала дописывает до выхода
 	m_remote.stop();
 }

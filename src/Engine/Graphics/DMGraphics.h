@@ -17,12 +17,13 @@
 #include "System.h"
 
 #include "Config\Config.h"
-#include "ObjectLibrary\LibraryLoader.h"
 #include "GUI\GUI.h"
 #include "Scene\Scene.h"
 #include "Renderer.h"
 #include "Engine\Console\ConsoleCommands.h"
 #include "Engine\Console\RemoteControlServer.h"
+
+class LibraryLoader;
 
 namespace GS
 {
@@ -70,7 +71,7 @@ private:
 
 	DMTimer m_timer;
 	Config m_config;
-	LibraryLoader m_library;
+	std::unique_ptr<LibraryLoader> m_library;
 
 	Scene m_scene;
 	GUI m_GUI;

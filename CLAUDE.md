@@ -274,6 +274,10 @@ Static Mesh в UE и primitives glTF, `DMModel::Section`). Материалы г
 строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
 моделей, LOD, экземпляров материала `PBR`, расстановки: положение, поворот и масштаб объекта Blender — экземпляр
 в `LevelModels`, связанные дубликаты — экземпляры одной модели; повторный импорт обновляет), подробно — `docs/models.md`.
+Слои: что уровень прочитал из базы — только данные, `Scene/Level/` (`LevelDescription`, `LevelSettings.h` — настройки
+неба, панорамы, постобработки, ветра, солнца и слоёв расстановки без объектов сцены; у объектов те же структуры под
+именами `SkyAtmosphere::Settings` и т. п.). Заголовки `ObjectLibrary` включают только их, а сам загрузчик знают лишь
+`Scene.cpp` и `DMGraphics.cpp`: новый параметр уровня — поле в `LevelSettings.h`, а не включение объекта в загрузчик.
 Свет и окружение — тоже данные уровня, как сущности уровня в UE: источники — строки `LevelLights` (`type` directional /
 point / spot, `enabled`, `color` и `intensity` раздельно, `direction` — куда идёт свет, `position`, `attenuation_radius`,
 `inner_cone_angle` / `outer_cone_angle` — имена как в UE и KHR_lights_punctual; у направленного ещё `cast_shadows`
@@ -296,12 +300,12 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 начала и веса ветвей двух уровней, доля высоты, рябь, атрибуты glTF `_WIND_*`, блок `WIND` файла меша).
 В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
 вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Post process», «Wind»; кнопка «Save level environment»
-(`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
+(`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`; чтение и запись окружения — `ObjectLibrary/LibraryLoaderEnvironment.cpp`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
 уровень). Источники раз за кадр обновляет `Scene::updateLights` в `DMGraphics::Frame` (правки GUI и время
 суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`
 и загружает на GPU, только когда источники изменились.
 
-Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`): строка `Levels` ссылается на террейн (`Terrain`,
+Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`, `Scene/Level/`): строка `Levels` ссылается на террейн (`Terrain`,
 слои материала — `TerrainLayers`), модель неба (`Models`) и частицы (`Particles`: материал, текстура, плотность);
 NULL — этого у уровня нет. Экземпляры моделей уровня — `LevelModels`: строка на экземпляр (`position`, `rotation` —
 кватернион `x,y,z,w` как в glTF, `scale`), у модели их может быть сколько угодно. Модель (`DMModel`: LOD из секций —

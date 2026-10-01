@@ -1,4 +1,5 @@
 #include "Scene.h"
+#include "ObjectLibrary\LibraryLoader.h"
 #include <algorithm>
 #include <chrono>
 #include "System.h"
@@ -157,7 +158,7 @@ bool Scene::initialize()
 				LOG( "Scatter set " + set.name + ": layer without models (ScatterLayerModels), skipped" );
 				continue;
 			}
-			if( !scatterer->addLayer( models, layer.mask, layer.params ) )
+			if( !scatterer->addLayer( models, layer.mask, layer.settings ) )
 				return false;
 		}
 		m_scatterers.push_back( std::move( scatterer ) );
@@ -247,7 +248,7 @@ Wind& Scene::wind()
 	return m_wind;
 }
 
-bool Scene::saveEnvironment( LibraryLoader& library, const PostProcess::Settings& postProcess )
+bool Scene::saveEnvironment( LibraryLoader& library, const PostProcessSettings& postProcess )
 {
 	std::optional<SunPosition::Settings> sunPosition;
 	if( const SunPosition* position = m_lightDriver.sunPosition() )

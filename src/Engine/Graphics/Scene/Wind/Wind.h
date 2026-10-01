@@ -3,6 +3,7 @@
 #include "DirectX.h"
 #include "Properties\PropertyContainer.h"
 #include "ConstantBuffers.h"
+#include "Level\LevelSettings.h"
 
 namespace GS
 {
@@ -14,15 +15,8 @@ namespace GS
 class Wind
 {
 public:
-	struct Settings
-	{
-		XMFLOAT3 direction = XMFLOAT3( 0.0f, 0.0f, 1.0f );	// куда дует, горизонтально (y не учитывается)
-		float strength = 0.0f;			// сила изгиба: сдвиг верха растения высотой h — strength · WindWeight · порыв · h²
-		float speed = 4.0f;				// скорость волн порывов, м/с
-		float minGustAmount = 0.3f;		// порыв между волнами и на гребне волны — доли силы (Min / Max Gust Amount в UE)
-		float maxGustAmount = 1.0f;
-		float gustSize = 25.0f;			// длина волны порыва, м
-	};
+	// Строка Wind (Level/LevelSettings.h)
+	using Settings = WindSettings;
 
 	Wind();
 	void initialize( const std::optional<Settings>& settings );

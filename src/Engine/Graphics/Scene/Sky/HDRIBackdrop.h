@@ -6,6 +6,7 @@
 #include "FullscreenShader.h"
 #include "D3D\CubeTarget.h"
 #include "Properties\PropertyContainer.h"
+#include "Level\LevelSettings.h"
 
 namespace GS
 {
@@ -20,14 +21,8 @@ namespace GS
 class HDRIBackdrop : public SceneObject
 {
 public:
-	// Строка HDRIBackdrop
-	struct Settings
-	{
-		std::string texture;		// файл от Textures\: .hdr, .exr, .dds
-		float intensity = 1.0f;		// кд/м² на единицу значения панорамы (Intensity в UE)
-		float rotation = 0.0f;		// поворот панорамы вокруг вертикали, градусы
-		float maxLuminance = 0.0f;	// срез яркости для освещения окружением, в единицах панорамы; 0 — без среза
-	};
+	// Строка HDRIBackdrop (Level/LevelSettings.h)
+	using Settings = HDRIBackdropSettings;
 
 	HDRIBackdrop();
 

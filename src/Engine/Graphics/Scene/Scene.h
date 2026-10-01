@@ -12,7 +12,9 @@
 #include "Particle\DMParticleSystem.h"
 #include "Light\DMLightDriver.h"
 #include "Wind\Wind.h"
-#include "ObjectLibrary\LibraryLoader.h"
+#include "Level\LevelDescription.h"
+
+class LibraryLoader;
 
 namespace GS
 {
@@ -48,7 +50,7 @@ public:
 	Wind& wind();
 	const LevelDescription& level() const;
 	// Текущие свет, небо и постобработку (правки в GUI) — в строки уровня в base.db3
-	bool saveEnvironment( LibraryLoader& library, const PostProcess::Settings& postProcess );
+	bool saveEnvironment( LibraryLoader& library, const PostProcessSettings& postProcess );
 
 	CDLODTerrain& terrain();
 	// Границы того, что может отбросить тень: террейн (мир × диапазон высот) и модели уровня

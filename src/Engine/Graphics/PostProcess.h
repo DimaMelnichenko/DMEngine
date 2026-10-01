@@ -8,6 +8,7 @@
 #include "D3D\ReadbackRing.h"
 #include "D3D\GpuProfiler.h"
 #include "Properties\PropertyContainer.h"
+#include "Scene\Level\LevelSettings.h"
 
 namespace GS
 {
@@ -28,55 +29,19 @@ namespace GS
 class PostProcess
 {
 public:
-	enum class Tonemapper : int32_t
-	{
-		none = 0,	// только ограничение 0…1 — для отладки
-		aces = 1,	// ACES (подгонка RRT + ODT, S. Hill) — основа Filmic tonemapper UE
-		agx = 2		// AgX — стандартное отображение Blender 4+, мягче уводит яркие цвета в белый
-	};
-
-	// Metering Mode в UE: экспозиция задана или замеряется по гистограмме кадра
-	enum class MeteringMode : int32_t
-	{
-		manual = 0,
-		autoHistogram = 1
-	};
+	// Тонмаппинг и замер экспозиции, настройки — Level/LevelSettings.h
+	using Tonemapper = GS::Tonemapper;
+	using MeteringMode = GS::MeteringMode;
 
 	static constexpr uint32_t bloomLevelCount = 6;
 	// Вес каждого следующего, вдвое более широкого уровня относительно предыдущего: вклад уровней убывает от узкого
 	// к широкому примерно вшестеро, как веса Bloom1…Bloom6 Tint в UE
 	static constexpr float bloomLevelFalloff = 0.6f;
 	static constexpr uint32_t histogramBinCount = 64;	// HISTOGRAM_BINS в Shaders/exposure_*.cs
-	static constexpr uint32_t maxCurveKeys = 8;			// MAX_CURVE_KEYS в Shaders/exposure_adapt.cs
+	static constexpr uint32_t maxCurveKeys = maxExposureCurveKeys;	// MAX_CURVE_KEYS в Shaders/exposure_adapt.cs
 
-	// Строка PostProcessSettings; без неё — значения по умолчанию (как у Post Process Volume в UE)
-	struct Settings
-	{
-		MeteringMode meteringMode = MeteringMode::autoHistogram;
-		float manualEV100 = 15.0f;			// Manual; с него же начинается автоэкспозиция
-		float exposureCompensation = 0.0f;	// EV: +1 — вдвое ярче
-		// Exposure Compensation Curve: ключи (EV100 сцены, поправка EV) по возрастанию EV100, между ними — линейно,
-		// за крайними — значение крайнего; пусто — без кривой. Только для автоэкспозиции
-		std::vector<XMFLOAT2> exposureCompensationCurve;
-		float minEV100 = -10.0f;			// пределы автоэкспозиции и диапазон гистограммы
-		float maxEV100 = 20.0f;
-		float histogramLowPercent = 10.0f;	// процентили гистограммы: темнее и ярче — не в среднем
-		float histogramHighPercent = 90.0f;
-		float speedUp = 3.0f;				// скорость адаптации к более яркой сцене, 1/с
-		float speedDown = 1.0f;				// к более тёмной
-		Tonemapper tonemapper = Tonemapper::agx;
-		float bloomIntensity = 0.05f;		// Bloom Intensity — доля энергии над порогом в свечении; 0 — без bloom
-		float bloomThreshold = 1.0f;		// Bloom Threshold, яркость после экспозиции; < 0 — без порога
-		float purkinjeShift = 1.0f;			// сила ночного зрения 0…1; 0 — цвет как днём при любой яркости
-	};
-	// Имена в базе: тонмаппинг None, ACES, AgX (другое — AgX); замер Manual, AutoHistogram (другое — AutoHistogram)
-	static Tonemapper tonemapperFromName( const std::string& name );
-	static const char* tonemapperName( Tonemapper tonemapper );
-	static MeteringMode meteringModeFromName( const std::string& name );
-	static const char* meteringModeName( MeteringMode mode );
-	// Кривая в базе — текст «EV100,EV; EV100,EV; …»: ключи сортируются, лишние сверх maxCurveKeys отбрасываются
-	static std::vector<XMFLOAT2> curveFromText( const std::string& text );
-	static std::string curveText( const std::vector<XMFLOAT2>& curve );
+	// Строка PostProcessSettings (Level/LevelSettings.h)
+	using Settings = PostProcessSettings;
 
 	bool initialize( const Settings& settings );
 	// Новый размер кадра: уровни bloom заново по размеру заднего буфера

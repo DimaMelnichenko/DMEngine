@@ -2,6 +2,7 @@
 
 #include "DirectX.h"
 #include "Properties\PropertyContainer.h"
+#include "Level\LevelSettings.h"
 
 // Положение солнца по месту и времени, как Sun Position в UE: широта, долгота, часовой пояс, дата и время по местным
 // часам дают высоту солнца над горизонтом и азимут (формулы NOAA Solar Calculator по J. Meeus, «Astronomical
@@ -14,19 +15,8 @@
 class SunPosition
 {
 public:
-	// Строка SunPosition
-	struct Settings
-	{
-		float latitude = 0.0f;		// градусы, север > 0
-		float longitude = 0.0f;		// градусы, восток > 0
-		float timeZone = 0.0f;		// часы от UTC; летнее время — ещё час
-		float northOffset = 0.0f;	// поворот севера от +Z вокруг вертикали (к +X), градусы
-		int32_t year = 2026;
-		int32_t month = 6;
-		int32_t day = 21;
-		float timeOfDay = 12.0f;	// часы по местным часам, 0…24 (Solar Time в UE)
-		float timeScale = 0.0f;		// во сколько раз игровое время быстрее реального; 0 — время стоит
-	};
+	// Строка SunPosition (Level/LevelSettings.h)
+	using Settings = GS::SunPositionSettings;
 
 	// Высота над горизонтом и азимут — от севера по часовой стрелке, через восток; градусы
 	struct Angles

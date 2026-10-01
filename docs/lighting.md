@@ -289,7 +289,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 | `src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp` | пропускание атмосферы к солнцу (`sunTransmittance`) |
 | `Shaders/atmosphere_constants.h` | параметры атмосферы, общие для C++ и HLSL |
 | `src/Engine/Graphics/Renderer.cpp` | привязка буфера источников каждый кадр (`preparePipeline`) |
-| `src/ObjectLibrary/LibraryLoader.cpp` | чтение `LevelLights` (`loadLevelLights`) и `SunPosition` (`loadLevelEnvironment`), сохранение (`saveLevelEnvironment`) |
+| `src/ObjectLibrary/LibraryLoaderEnvironment.cpp` | чтение `LevelLights` (`loadLevelLights`) и `SunPosition` (`loadLevelEnvironment`), сохранение (`saveLevelEnvironment`) |
 
 ## Откуда подход
 

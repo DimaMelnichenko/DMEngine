@@ -120,6 +120,8 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Particle/DMParticleSystem.cpp
     src/Engine/Graphics/DMComputeShader.cpp
     src/ObjectLibrary/LibraryLoader.cpp
+    src/ObjectLibrary/LibraryLoaderEnvironment.cpp
+    src/Engine/Graphics/Scene/Level/LevelSettings.cpp
     src/3rdParty/tinyxml2.cpp
     src/Config/Config.cpp
     src/Common/ResourceMetaFile.cpp

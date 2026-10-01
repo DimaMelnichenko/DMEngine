@@ -4,16 +4,11 @@
 #include <string>
 #include <vector>
 #include "DirectX.h"
-#include "Scatterer\ScattererPass.h"
+#include "LevelSettings.h"
 #include "Light\DMLight.h"
-#include "Light\SunPosition.h"
-#include "Sky\SkyAtmosphere.h"
-#include "Wind\Wind.h"
-#include "Sky\HDRIBackdrop.h"
-#include "PostProcess.h"
 
-// Состав уровня из base.db3: строка таблицы Levels и то, на что она ссылается.
-// Пустой optional — у уровня этого нет (колонка NULL)
+// Состав уровня из base.db3: строка таблицы Levels и то, на что она ссылается. Только данные: читает их LibraryLoader,
+// а Scene создаёт по ним объекты. Пустой optional — у уровня этого нет (колонка NULL)
 struct LevelDescription
 {
 	// Экземпляр модели на уровне (строка LevelModels): одна модель может стоять в нескольких местах
@@ -38,7 +33,7 @@ struct LevelDescription
 	{
 		std::vector<ScatterModel> models;
 		std::string mask;
-		GS::ScatterPass::PopulateParams params = {};
+		GS::ScatterLayerSettings settings;
 	};
 
 	// Набор расстановки: трава, камешки (таблица ScatterSets). Проход и отсечение граней задаёт материал слоя
@@ -68,13 +63,13 @@ struct LevelDescription
 	// Post Process Volume). Строки настроек неба и постобработки — по ссылке из Levels; NULL — значения по умолчанию
 	std::vector<DMLight> lights;				// таблица LevelLights
 	std::optional<uint32_t> sunPositionId;		// строка SunPosition: место и время — направление солнца
-	std::optional<SunPosition::Settings> sunPosition;
+	std::optional<GS::SunPositionSettings> sunPosition;
 	std::optional<uint32_t> atmosphereId;		// строка SkyAtmosphere
-	GS::SkyAtmosphere::Settings atmosphere;
+	GS::SkyAtmosphereSettings atmosphere;
 	std::optional<uint32_t> hdriBackdropId;		// строка HDRIBackdrop: панорама вместо атмосферы
-	std::optional<GS::HDRIBackdrop::Settings> hdriBackdrop;
+	std::optional<GS::HDRIBackdropSettings> hdriBackdrop;
 	std::optional<uint32_t> postProcessId;		// строка PostProcessSettings
-	GS::PostProcess::Settings postProcess;
+	GS::PostProcessSettings postProcess;
 	std::optional<uint32_t> windId;				// строка Wind: ветер уровня; NULL — ветра нет
-	std::optional<GS::Wind::Settings> wind;
+	std::optional<GS::WindSettings> wind;
 };

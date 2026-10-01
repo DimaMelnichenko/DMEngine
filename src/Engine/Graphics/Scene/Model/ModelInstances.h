@@ -5,7 +5,7 @@
 #include "SceneObject.h"
 #include "Model\DMModel.h"
 #include "Common\DMTransform.h"
-#include "ObjectLibrary\LevelDescription.h"
+#include "Level\LevelDescription.h"
 
 namespace GS
 {

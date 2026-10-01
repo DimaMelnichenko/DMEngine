@@ -6,6 +6,7 @@
 #include "DirectX.h"
 #include "Utils\utilites.h"
 #include "DMComputeShader.h"
+#include "Level\LevelSettings.h"
 #include "Model/DMModel.h"
 #include "ScattererPass.h"
 #include "SceneObject.h"
@@ -44,7 +45,7 @@ public:
 	};
 	// models — варианты растения (все их LOD, не больше ScatterPass::maxLods; вариантов — не больше
 	// ScatterPass::maxVariants); mask — маска плотности в хранилище текстур, в координатах карты высот террейна
-	bool addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterPass::PopulateParams& params );
+	bool addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterLayerSettings& settings );
 
 	// Раскладка по видам кадра (FrameContext::views: главный и каскады теней)
 	void compute( const FrameContext& frame ) override;

@@ -38,7 +38,7 @@ void Scatterer::setTerrain( const TerrainHeightSource* terrain )
 	m_terrain = terrain;
 }
 
-bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterPass::PopulateParams& params )
+bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterLayerSettings& settings )
 {
 	if( models.empty() )
 		return false;
@@ -46,7 +46,20 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	Layer layer;
 	layer.mask = mask;
 	layer.pass = std::make_unique<ScatterPass>();
-	layer.pass->populateParams() = params;
+	// Константы раскладки (Shaders\scatter.cs) из строки ScatterLayers; ёмкости и число вариантов — createBuffers()
+	ScatterPass::PopulateParams& params = layer.pass->populateParams();
+	params = {};
+	params.cellSize = settings.cellSize;
+	params.nearBorder = settings.nearBorder;
+	params.farBorder = settings.farBorder;
+	params.nearFade = settings.nearFade;
+	params.farFade = settings.farFade;
+	params.sizeMultiplier = settings.sizeMultiplier;
+	params.jitter = settings.jitter;
+	params.rotationRange = XMFLOAT3( XMConvertToRadians( settings.rotationRange.x ), XMConvertToRadians( settings.rotationRange.y ),
+									 XMConvertToRadians( settings.rotationRange.z ) );
+	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
+	params.castShadow = settings.castShadow ? 1.0f : 0.0f;
 
 	// Дальности LOD — из модели, как у моделей уровня; последний LOD рисуется до конца кольца
 	std::vector<ScatterPass::Variant> passVariants;

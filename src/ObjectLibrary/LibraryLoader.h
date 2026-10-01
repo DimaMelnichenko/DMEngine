@@ -1,12 +1,20 @@
 #pragma once
 #include <memory>
 #include <unordered_set>
-#include "Materials\Material.h"
-#include "LevelDescription.h"
+#include <optional>
+#include <string>
+#include <vector>
+#include "Properties\PropertyContainer.h"
+#include "Level\LevelDescription.h"
 
 namespace SQLite
 {
 	class Statement;
+}
+
+namespace GS
+{
+class Material;
 }
 
 class LibraryLoader
@@ -30,10 +38,10 @@ public:
 	// Свет и окружение уровня обратно в базу одной транзакцией: строки LevelLights — по id, настройки неба
 	// и постобработки — в строки уровня (нет строки — создаётся и привязывается к Levels, id пишется в level)
 	bool saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,
-							   const std::optional<SunPosition::Settings>& sunPosition,
-							   const std::optional<GS::SkyAtmosphere::Settings>& atmosphere,
-							   const std::optional<GS::HDRIBackdrop::Settings>& hdri,
-							   const GS::PostProcess::Settings& postProcess, const GS::Wind::Settings& wind );
+							   const std::optional<GS::SunPositionSettings>& sunPosition,
+							   const std::optional<GS::SkyAtmosphereSettings>& atmosphere,
+							   const std::optional<GS::HDRIBackdropSettings>& hdri,
+							   const GS::PostProcessSettings& postProcess, const GS::WindSettings& wind );
 
 
 	void save();

@@ -364,7 +364,7 @@ LOD1 (16–45 м) — ~140 тысяч. Ёмкость списка — доля 
 | `Shaders/lod_transition.h`, `Shaders/lod_dither.sh` | полоса перехода и разброс дальностей LOD (общие с C++), маска дизеринга |
 | `Shaders/terrain_height.sh` | высота, нормаль и UV масок по карте высот |
 | `Shaders/instance.sh` | данные инстанса в вершинных шейдерах; `instanceSlot` — индекс в пуле по списку вида и root-константе b9 |
-| `src/ObjectLibrary/LibraryLoader.cpp` (`loadLevel`), `LevelDescription.h` | чтение наборов и слоёв из базы |
+| `src/ObjectLibrary/LibraryLoader.cpp` (`loadLevel`, `loadScatterLayers`), `Scene/Level/LevelDescription.h`, `Scene/Level/LevelSettings.h` (`ScatterLayerSettings` — колонки `ScatterLayers`; в константы раскладки их переводит `Scatterer::addLayer`) | чтение наборов и слоёв из базы |
 | `src/Engine/Graphics/Scene/Scene.cpp` | создание наборов уровня |
 | `Tools/blender_grass.py` | пучок травы GrassClump (два LOD, текстура оттенков) — сцена Blender и экспорт glTF |
 | `Tools/blender_camomile.py` | ромашка Camomile (атлас с альфа-лепестками и листом, alphaMode MASK) — сцена Blender и экспорт glTF |

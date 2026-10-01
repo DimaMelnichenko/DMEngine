@@ -10,6 +10,7 @@
 #include "D3D\RenderTarget.h"
 #include "Properties\PropertyContainer.h"
 #include "Texture\DMTexture.h"
+#include "Level\LevelSettings.h"
 
 class DMLightDriver;
 
@@ -35,19 +36,8 @@ class SkyAtmosphere : public SceneObject
 public:
 	static constexpr uint32_t multipleScatteringSize = 32;
 
-	// Строка SkyAtmosphere; без неё — значения по умолчанию
-	struct Settings
-	{
-		float skyIntensity = 1.0f;	// множитель рассеянного света неба, 1 — по модели
-		float haze = 1.0f;			// плотность дымки (аэрозоли Ми)
-		float groundAlbedo = 0.25f;	// отражение земли под горизонтом
-		// Во сколько раз воздух между камерой и точкой кажется толще (Aerial Perspective View Distance Scale в UE):
-		// 1 — по модели (дымка на 1 км — несколько процентов), больше — небольшой мир выглядит как большой, 0 — выключено
-		float aerialPerspectiveViewDistanceScale = 1.0f;
-		// Свечение ночного неба в зените, кд/м²: собственное свечение атмосферы (airglow), суммарный свет звёзд и
-		// зодиакальный свет — ~2·10⁻⁴ на тёмном небе; к горизонту ярче. Видно, когда солнце и луна не светят
-		float nightSkyLuminance = 2e-4f;
-	};
+	// Строка SkyAtmosphere (Level/LevelSettings.h)
+	using Settings = SkyAtmosphereSettings;
 
 	// Имя карты луны в таблице Textures (NASA CGI Moon Kit); нет — ровный диск
 	static constexpr const char* moonAlbedoTexture = "moon_albedo";
