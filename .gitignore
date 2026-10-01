@@ -17,3 +17,6 @@ __pycache__/
 
 # graphify: граф знаний по репозиторию (перестраивается /graphify)
 /graphify-out/
+# Лог запуска — каждый запуск пишет его заново (LOG, src/Logger) — и снимки клавишей P (DMGraphics::saveScreenshot)
+/log.txt
+/screenshot*.jpg

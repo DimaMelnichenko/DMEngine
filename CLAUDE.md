@@ -119,7 +119,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH). Панорама уровня `TestHDRI` —
   Kloofendal 48d Partly Cloudy с Poly Haven (CC0, https://polyhaven.com/a/kloofendal_48d_partly_cloudy), 2k `.hdr`
   (и `.exr` для проверки) в `Textures\hdri\kloofendal_48d_partly_cloudy_2k.*`; без неё `TestHDRI` освещает атмосфера.
-- Лог каждого запуска перезаписывается в отслеживаемый `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`).
+- Лог каждого запуска перезаписывается в `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`); в git его нет
+  (`.gitignore`), как и снимков клавишей P (`screenshot<N>.jpg` в корне).
 - Шейдеры (`Shaders/*.vs|.ps|.gs|.cs`, include — `*.sh`) компилируются во время выполнения компилятором DXC в DXIL
   Shader Model 6.6, HLSL 2021 (`D3D/ShaderCompiler.h`, `dxcompiler.dll` + `dxil.dll` рядом с exe): для правки шейдера
   пересборка не нужна. Кэш DXIL — `cache/shaders/<хэш>.dxil` (ключ — файл, точка входа, defines, флаги и отпечаток
