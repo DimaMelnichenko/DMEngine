@@ -9,7 +9,6 @@
 #include "Scene.h"
 #include "System.h"
 #include "D3D\ShaderCompiler.h"
-#include "GUI\GUI.h"
 #include "D3D\DMD3D.h"
 #include "Materials\Material.h"
 #include "Logger\Logger.h"
@@ -68,8 +67,8 @@ uint64_t transparentKey( float distance, uint32_t ownerOrder, uint32_t sequence 
 
 }
 
-Renderer::Renderer( GUI& gui ) :
-	m_gui( gui )
+Renderer::Renderer( FrameStats& stats ) :
+	m_stats( stats )
 {
 }
 
@@ -81,7 +80,7 @@ void Renderer::measure( const std::string& counterName, Func&& func )
 	func();
 	auto end = std::chrono::high_resolution_clock::now();
 	m_gpuProfiler.endScope();
-	m_gui.addCounterInfo( counterName + " = %.3f ms", std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
+	m_stats.add( counterName + " = %.3f ms", std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
 }
 
 bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution, bool depthPrepass )
@@ -218,7 +217,7 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	collect( scene, frame.view, m_collector );
 	buildCommands( depthPrepass );
 	const auto collectEnd = std::chrono::high_resolution_clock::now();
-	m_gui.addCounterInfo( "Collect meshes = %.3f ms",
+	m_stats.add( "Collect meshes = %.3f ms",
 						  std::chrono::duration_cast<std::chrono::microseconds>( collectEnd - collectStart ).count() / 1000.0f );
 
 	renderShadows( scene, frame );
@@ -258,23 +257,23 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	}
 
 	measure( "Post process", [&] { m_postProcess.render( m_sceneTargets.colorView(), m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
-	m_gui.addCounterInfo( "Exposure EV100 = %.2f", m_postProcess.ev100() );
+	m_stats.add( "Exposure EV100 = %.2f", m_postProcess.ev100() );
 	m_sunGroundIlluminance = scene.lights().sunGroundIlluminance();
-	m_gui.addCounterInfo( "Sun illuminance at ground = %.0f lx", m_sunGroundIlluminance );
+	m_stats.add( "Sun illuminance at ground = %.0f lx", m_sunGroundIlluminance );
 	if( const SunPosition* sunPosition = scene.lights().sunPosition() )
 	{
 		const SunPosition::Angles angles = sunPosition->angles();
-		m_gui.addCounterInfo( "Sun elevation = %.2f deg", angles.elevation );
-		m_gui.addCounterInfo( "Sun azimuth = %.2f deg", angles.azimuth );
+		m_stats.add( "Sun elevation = %.2f deg", angles.elevation );
+		m_stats.add( "Sun azimuth = %.2f deg", angles.azimuth );
 		const SunPosition::Moon moon = sunPosition->moon();
-		m_gui.addCounterInfo( "Moon elevation = %.2f deg", moon.angles.elevation );
-		m_gui.addCounterInfo( "Moon azimuth = %.2f deg", moon.angles.azimuth );
-		m_gui.addCounterInfo( "Moon illuminated = %.2f", moon.illuminatedFraction );
+		m_stats.add( "Moon elevation = %.2f deg", moon.angles.elevation );
+		m_stats.add( "Moon azimuth = %.2f deg", moon.angles.azimuth );
+		m_stats.add( "Moon illuminated = %.2f", moon.illuminatedFraction );
 	}
-	m_gui.addCounterInfo( "Meshes = %.0f", static_cast<float>( m_meshCount ) );
-	m_gui.addCounterInfo( "Mesh draw calls = %.0f", static_cast<float>( m_meshDraws ) );
-	m_gui.addCounterInfo( "Shadow meshes = %.0f", static_cast<float>( m_shadowMeshCount ) );
-	m_gui.addCounterInfo( "Shadow draw calls = %.0f", static_cast<float>( m_shadowDraws ) );
+	m_stats.add( "Meshes = %.0f", static_cast<float>( m_meshCount ) );
+	m_stats.add( "Mesh draw calls = %.0f", static_cast<float>( m_meshDraws ) );
+	m_stats.add( "Shadow meshes = %.0f", static_cast<float>( m_shadowMeshCount ) );
+	m_stats.add( "Shadow draw calls = %.0f", static_cast<float>( m_shadowDraws ) );
 
 	m_gpuProfiler.endFrame();
 	reportGpuTimes();
@@ -283,9 +282,9 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 void Renderer::reportGpuTimes()
 {
 	// Время GPU отстаёт от кадра на несколько кадров: запросы читаются без ожидания
-	m_gui.addCounterInfo( "GPU frame = %.3f ms", m_gpuProfiler.frameMilliseconds() );
+	m_stats.add( "GPU frame = %.3f ms", m_gpuProfiler.frameMilliseconds() );
 	for( const auto& [name, milliseconds] : m_gpuProfiler.results() )
-		m_gui.addCounterInfo( "GPU " + name + " = %.3f ms", milliseconds );
+		m_stats.add( "GPU " + name + " = %.3f ms", milliseconds );
 
 	// Прогрев — первые кадры (пересчёт окружения неба, заполнение очередей) в среднее для лога не входят
 	constexpr uint32_t warmupFrames = 60;
@@ -538,7 +537,7 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 	// Проходы сцены — снова с главного вида
 	m_constants.setViewBuffer( frame.view );
 	const auto end = std::chrono::high_resolution_clock::now();
-	m_gui.addCounterInfo( "Shadow depths = %.3f ms",
+	m_stats.add( "Shadow depths = %.3f ms",
 						  std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
 }
 

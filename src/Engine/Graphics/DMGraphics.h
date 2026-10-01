@@ -75,6 +75,7 @@ private:
 
 	Scene m_scene;
 	GUI m_GUI;
+	FrameStats m_frameStats;	// счётчики окна «Statistic» за кадр: пишут Frame и рендерер, показывает GUI
 	Renderer m_renderer;
 
 	ConsoleCommands m_console;

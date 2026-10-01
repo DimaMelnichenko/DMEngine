@@ -5,12 +5,12 @@ namespace
 	static std::unique_ptr<Input> inputPtr;
 }
 
-void destroyInput()
+void Input::destroy()
 {
 	inputPtr.reset();
 }
 
-Input& getInput()
+Input& Input::instance()
 {
 	if( inputPtr == nullptr )
 	{

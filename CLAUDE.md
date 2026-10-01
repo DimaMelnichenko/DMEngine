@@ -140,7 +140,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 
 ## Архитектура
 
-**Цикл.** `main.cpp` → `DMSystem` (окно, `Config` из `settings.ini`, `dbConnect().init()`, `getInput()`)
+**Цикл.** `main.cpp` → `DMSystem` (окно, `Config` из `settings.ini`, `DBConnector::instance().init()`, `Input::instance()`)
 → `GS::DMGraphics::Initialize` / `Frame`. `DMGraphics` владеет окном, камерой, GUI и горячими клавишами,
 а содержимое уровня и отрисовку отдаёт двум классам:
 - `Scene` (`Scene/Scene.h`) загружает ресурсы уровня из БД (`loadResources`), владеет светом и объектами сцены
@@ -182,7 +182,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `ShadowCascades::beginCascade`, `PostProcess`, небо, расстановка). Список проходов кадра — команда консоли `passes`
   (в `log.txt`, с числом барьеров у каждого прохода). Полноэкранные проходы (постобработка, небо) — `FullscreenShader`: сам ставит
   топологию, шейдеры и состояния. Время CPU и GPU (`GpuProfiler`: запросы timestamp, результат 2–3 кадра назад) каждого
-  объекта и прохода — в окне «Statistic», те же области — метки PIX в захвате (`PIXBeginEvent`), ресурсы с именами (`DMD3D::setName`).
+  объекта и прохода — в окне «Statistic» (счётчики кадра — `FrameStats`, `Graphics/FrameStats.h`: пишут `Renderer` и
+  `DMGraphics`, показывает GUI; рендерер от GUI не зависит), те же области — метки PIX в захвате (`PIXBeginEvent`), ресурсы с именами (`DMD3D::setName`).
 
 **Виды и списки отрисовки** — как mesh draw commands в UE: объекты не рисуют себя сами и не знают, в каком проходе
 их меши. Вид кадра — `RenderView` (`Scene/RenderView.h`, ≈ FSceneView: матрицы, положение, `DMFrustum`, `lodOrigin` —
@@ -224,7 +225,8 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 
 Логику, которая меняет состояние сцены, пишите в `SceneObject::update()`, а в `render()` оставляйте только команды GPU.
 
-**Глобальные синглтоны** — основной способ связи подсистем:
+**Глобальные синглтоны** — основной способ связи подсистем, все в одном стиле — статические члены класса
+(`Class::instance()`, при явном разрушении — `Class::destroy()`; у хранилищ — `System::textures()` и т. п.):
 - `DMD3D::instance()` — устройство D3D12 за фасадом (`Graphics/D3D/`: очереди, кадры в полёте с fence, кучи дескрипторов,
   кольцо констант, проходы, пайплайны). Ресурсы GPU объекты держат только непрозрачными
   (`D3D/GpuResources.h`: `Buffer`, `Texture`, виды `ShaderView` / `TargetView` / `StorageView`, `ShaderStage`, `InputLayout`)
@@ -257,7 +259,7 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 - `GS::System::textures() / meshes() / models() / materials()` — хранилища ресурсов
   (`DMResourceStorage<T>`, доступ по id или по имени; путь хранилища — подкаталог: `Textures`, `Meshes`,
   `Models`, `Shaders`);
-- `dbConnect().db()` — `SQLite::Database` на `base.db3`; `getInput()` — DirectInput + `KeyEventNotifier`.
+- `DBConnector::instance().db()` — `SQLite::Database` на `base.db3`; `Input::instance()` — DirectInput + `KeyEventNotifier`.
 
 **Данные сцены в SQLite (`base.db3`).** `ObjectLibrary/LibraryLoader` по id загружает из БД текстуры,
 материалы, шейдеры материала (`MaterialShaderView`: файл, тип стадии, defines), определения

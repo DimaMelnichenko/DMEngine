@@ -127,8 +127,8 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 
 bool CDLODTerrain::loadSettings( uint32_t terrainId, float& heightMultiplier, std::string& splatMap )
 {
-	SQLite::Statement query( dbConnect().db(), "select heightmap, splatmap, height_multiplier, height_offset, width_multiplier "
-											   "from Terrain where id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "select heightmap, splatmap, height_multiplier, height_offset, width_multiplier "
+														   "from Terrain where id = :id" );
 	query.bind( ":id", terrainId );
 
 	if( !query.executeStep() )

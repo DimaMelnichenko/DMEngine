@@ -21,13 +21,12 @@
 
 
 
+// DirectInput — синглтон, как DMD3D::instance(); destroy() — при выходе (DMSystem::Shutdown)
 class Input
 {
-private:
-	friend Input& getInput();
-	friend void destroyInput();
-
 public:
+	static Input& instance();
+	static void destroy();
 	~Input();
 
 	bool Initialize( HINSTANCE, HWND, int, int );

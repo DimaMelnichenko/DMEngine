@@ -6,7 +6,7 @@ namespace
 	static std::unique_ptr<DBConnector> singletonConnector;
 }
 
-DBConnector& dbConnect()
+DBConnector& DBConnector::instance()
 {
 	if( singletonConnector == nullptr )
 	{

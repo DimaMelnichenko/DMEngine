@@ -19,7 +19,7 @@
 	std::chrono::high_resolution_clock::time_point start##__LINE__ = std::chrono::high_resolution_clock::now(); \
 	CHECKED_FUNC; \
 	std::chrono::high_resolution_clock::time_point end##__LINE__ = std::chrono::high_resolution_clock::now(); \
-	m_GUI.addCounterInfo( (INFO_TEXT), std::chrono::duration_cast<std::chrono::microseconds>( end##__LINE__ - start##__LINE__ ).count() / 1000.0f ); }
+	m_frameStats.add( (INFO_TEXT), std::chrono::duration_cast<std::chrono::microseconds>( end##__LINE__ - start##__LINE__ ).count() / 1000.0f ); }
 
 #define RET_FALSE(x) \
 {\
@@ -35,7 +35,7 @@ namespace GS
 
 DMGraphics::DMGraphics() :
 	m_library( std::make_unique<LibraryLoader>() ),
-	m_renderer( m_GUI )
+	m_renderer( m_frameStats )
 {
 
 }
@@ -180,35 +180,33 @@ bool DMGraphics::Render( const FrameContext& frame )
 
 	if( m_showGUI )
 	{
-		m_GUI.addCounterInfo( "GUI Rendering = %.3f ms", m_guiRenderTime / 1000.0f );
+		m_frameStats.add( "GUI Rendering = %.3f ms", m_guiRenderTime / 1000.0f );
 		// Кольцо констант за прошлый кадр: переполнения — кольцо мало (constantRingBytes)
 		const ConstantRing::Stats& ring = DMD3D::instance().constantRingStats();
-		m_GUI.addCounterInfo( "Constant ring = %.1f KB", ring.frameBytes / 1024.0f );
-		m_GUI.addCounterInfo( "Constant ring writes = %.0f", static_cast<float>( ring.frameWrites ) );
-		m_GUI.addCounterInfo( "Constant ring wraps = %.0f", static_cast<float>( ring.frameWraps ) );
-		m_GUI.addCounterInfo( "Pipelines = %.0f", static_cast<float>( DMD3D::instance().pipelineCount() ) );
-		m_GUI.addCounterInfo( "Pipelines created lazily = %.0f", static_cast<float>( DMD3D::instance().lazyPipelineCount() ) );
+		m_frameStats.add( "Constant ring = %.1f KB", ring.frameBytes / 1024.0f );
+		m_frameStats.add( "Constant ring writes = %.0f", static_cast<float>( ring.frameWrites ) );
+		m_frameStats.add( "Constant ring wraps = %.0f", static_cast<float>( ring.frameWraps ) );
+		m_frameStats.add( "Pipelines = %.0f", static_cast<float>( DMD3D::instance().pipelineCount() ) );
+		m_frameStats.add( "Pipelines created lazily = %.0f", static_cast<float>( DMD3D::instance().lazyPipelineCount() ) );
 		const DMD3D::VideoMemory memory = DMD3D::instance().videoMemory();
-		m_GUI.addCounterInfo( "Video memory used = %.0f MB", memory.usedBytes / ( 1024.0f * 1024.0f ) );
-		m_GUI.addCounterInfo( "Video memory budget = %.0f MB", memory.budgetBytes / ( 1024.0f * 1024.0f ) );
-		m_GUI.addCounterInfo( "Shader descriptors = %.0f", static_cast<float>( DMD3D::instance().shaderDescriptorCount() ) );
-		m_GUI.addCounterInfo( "Barriers per frame = %.0f", static_cast<float>( DMD3D::instance().barrierCount() ) );
-		m_GUI.addCounterInfo( "Indirect draws per frame = %.0f", static_cast<float>( DMD3D::instance().indirectDrawCount() ) );
+		m_frameStats.add( "Video memory used = %.0f MB", memory.usedBytes / ( 1024.0f * 1024.0f ) );
+		m_frameStats.add( "Video memory budget = %.0f MB", memory.budgetBytes / ( 1024.0f * 1024.0f ) );
+		m_frameStats.add( "Shader descriptors = %.0f", static_cast<float>( DMD3D::instance().shaderDescriptorCount() ) );
+		m_frameStats.add( "Barriers per frame = %.0f", static_cast<float>( DMD3D::instance().barrierCount() ) );
+		m_frameStats.add( "Indirect draws per frame = %.0f", static_cast<float>( DMD3D::instance().indirectDrawCount() ) );
 
 		auto guiStart = TIME_POINT();
 		// Проход GUI: задний буфер поверх тонмаппинга
 		DMD3D& d3d = DMD3D::instance();
 		d3d.beginPass( PassDesc{ "GUI", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight() } );
-		m_GUI.Begin();
+		m_GUI.Begin( m_frameStats );
 		m_GUI.printCamera( m_cameraPool["main"] );
 		m_GUI.End();
 		auto guiFinish = TIME_POINT();
 		m_guiRenderTime = TIME_DIFF( guiStart, guiFinish );
 	}
-	else
-	{
-		m_GUI.skipFrame();
-	}
+	// Счётчики показаны (или кадр без интерфейса) — следующий кадр собирает свои
+	m_frameStats.clear();
 	takeScreenshots( true );
 
 	DMD3D::instance().endFrame();
@@ -414,7 +412,7 @@ void DMGraphics::registerCommands()
 		}
 		if( code < 0 )
 			return reply->error( "key: unknown key " + args[0] );
-		if( !getInput().notifier().press( static_cast<uint8_t>( code ) ) )
+		if( !Input::instance().notifier().press( static_cast<uint8_t>( code ) ) )
 			return reply->error( "key: nothing is bound to " + args[0] );
 		reply->ok();
 	} );
@@ -440,41 +438,41 @@ void DMGraphics::registerCommands()
 
 void DMGraphics::bindingKeys()
 {
-	getInput().notifier().registerTrigger( DIK_Q, [this]( bool value )
+	Input::instance().notifier().registerTrigger( DIK_Q, [this]( bool value )
 	{
 		m_wireframe = value;
 	} );
 
-	getInput().notifier().registerTrigger( DIK_P, [this]( bool )
+	Input::instance().notifier().registerTrigger( DIK_P, [this]( bool )
 	{
 		saveScreenshot( L"screenshot" + std::to_wstring( m_screenshotCounter++ ) + L".jpg" );
 	} );
 
-	getInput().notifier().registerTrigger( DIK_1, [this]( bool )
+	Input::instance().notifier().registerTrigger( DIK_1, [this]( bool )
 	{
 		m_scene.terrain().setVisible( !m_scene.terrain().visible() );
 	} );
 
 	// Расстановка (трава, камешки) по умолчанию включена: клавиши переключают текущее состояние всех наборов
-	getInput().notifier().registerTrigger( DIK_3, [this]( bool )
+	Input::instance().notifier().registerTrigger( DIK_3, [this]( bool )
 	{
 		for( const auto& scatterer : m_scene.scatterers() )
 			scatterer->setComputeEnabled( !scatterer->computeEnabled() );
 	} );
 
-	getInput().notifier().registerTrigger( DIK_4, [this]( bool )
+	Input::instance().notifier().registerTrigger( DIK_4, [this]( bool )
 	{
 		for( const auto& scatterer : m_scene.scatterers() )
 			scatterer->setVisible( !scatterer->visible() );
 	} );
 
 	// Как Game View в редакторе UE: кадр без окон интерфейса
-	getInput().notifier().registerTrigger( DIK_G, [this]( bool )
+	Input::instance().notifier().registerTrigger( DIK_G, [this]( bool )
 	{
 		m_showGUI = !m_showGUI;
 	} );
 
-	getInput().notifier().registerTrigger( DIK_I, [this]( bool value )
+	Input::instance().notifier().registerTrigger( DIK_I, [this]( bool value )
 	{
 		m_cursorMode = value;
 		ShowCursor( value );

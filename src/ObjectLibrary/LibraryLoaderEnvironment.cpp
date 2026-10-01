@@ -10,7 +10,7 @@
 
 void LibraryLoader::loadLevelLights( LevelDescription& level )
 {
-	SQLite::Statement query( dbConnect().db(), "SELECT * FROM LevelLights WHERE level = :level ORDER BY id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM LevelLights WHERE level = :level ORDER BY id" );
 	query.bind( ":level", level.id );
 	while( query.executeStep() )
 	{
@@ -63,7 +63,7 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 {
 	if( level.sunPositionId )
 	{
-		SQLite::Statement query( dbConnect().db(), "SELECT * FROM SunPosition WHERE id = :id" );
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM SunPosition WHERE id = :id" );
 		query.bind( ":id", *level.sunPositionId );
 		if( !query.executeStep() )
 		{
@@ -89,8 +89,8 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 
 	if( level.atmosphereId )
 	{
-		SQLite::Statement query( dbConnect().db(), "SELECT sky_intensity, haze, ground_albedo, aerial_perspective_view_distance_scale, "
-												   "night_sky_luminance FROM SkyAtmosphere WHERE id = :id" );
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT sky_intensity, haze, ground_albedo, aerial_perspective_view_distance_scale, "
+															   "night_sky_luminance FROM SkyAtmosphere WHERE id = :id" );
 		query.bind( ":id", *level.atmosphereId );
 		if( !query.executeStep() )
 		{
@@ -107,8 +107,8 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 
 	if( level.windId )
 	{
-		SQLite::Statement query( dbConnect().db(), "SELECT direction, strength, speed, min_gust_amount, max_gust_amount, gust_size "
-												   "FROM Wind WHERE id = :id" );
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT direction, strength, speed, min_gust_amount, max_gust_amount, gust_size "
+															   "FROM Wind WHERE id = :id" );
 		query.bind( ":id", *level.windId );
 		if( !query.executeStep() )
 		{
@@ -128,7 +128,7 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 
 	if( level.hdriBackdropId )
 	{
-		SQLite::Statement query( dbConnect().db(), "SELECT texture, intensity, rotation, max_luminance FROM HDRIBackdrop WHERE id = :id" );
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT texture, intensity, rotation, max_luminance FROM HDRIBackdrop WHERE id = :id" );
 		query.bind( ":id", *level.hdriBackdropId );
 		if( !query.executeStep() )
 		{
@@ -144,7 +144,7 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 
 	if( level.postProcessId )
 	{
-		SQLite::Statement query( dbConnect().db(), "SELECT * FROM PostProcessSettings WHERE id = :id" );
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM PostProcessSettings WHERE id = :id" );
 		query.bind( ":id", *level.postProcessId );
 		if( !query.executeStep() )
 		{
@@ -197,7 +197,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 {
 	try
 	{
-		SQLite::Database& db = dbConnect().db();
+		SQLite::Database& db = DBConnector::instance().db();
 		SQLite::Transaction transaction( db );
 
 		SQLite::Statement updateLight( db, "UPDATE LevelLights SET name = :name, enabled = :enabled, color = :color, "

@@ -7,6 +7,7 @@
 #include "DirectX.h"
 #include "Camera\DMCamera.h"
 #include "Properties/PropertyContainer.h"
+#include "FrameStats.h"
 
 
 
@@ -17,11 +18,9 @@ public:
 	~GUI();
 
 	void Initialize( HWND hwnd );
-	void Begin();
+	// Окна кадра; stats — счётчики окна «Statistic»
+	void Begin( const GS::FrameStats& stats );
 	void End();
-	void addCounterInfo( const std::string&, float );
-	// Кадр без интерфейса: собранные за кадр счётчики отбрасываются, как после отрисовки
-	void skipFrame();
 	void printCamera( DMCamera& camera );
 
 	void addPropertyWatching( PropertyContainer* propertyContainer );
@@ -31,8 +30,7 @@ public:
 	void addAction( const std::string& label, std::function<void()> action );
 
 private:
-	void Frame();
-	void clearAfterRender();
+	void Frame( const GS::FrameStats& stats );
 	void renderTextureLibrary();
 	void renderSceneObject();
 
@@ -43,7 +41,6 @@ private:
 	void parsePropertiesAndCreateControls( PropertyContainer* propertyContainer );
 
 private:
-	std::vector<std::pair<std::string,float>> m_counterInfoList;
 	std::vector<PropertyContainer*> m_properties;	// окна свойств в порядке addPropertyWatching
 	std::vector<std::pair<std::string, std::function<void()>>> m_actions;
 	bool m_isInited = false;

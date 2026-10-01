@@ -12,7 +12,7 @@ DMSystem::DMSystem(  )
 
 DMSystem::~DMSystem()
 {
-	destroyInput();
+	Input::destroy();
 	ShutdownWindows( );
 }
 
@@ -28,13 +28,13 @@ bool DMSystem::Initialize( const char* commandLine )
 	// Initialize the windows api.
 	InitializeWindows( screenWidth, screenHeight );
 
-	if( !dbConnect().init() )
+	if( !DBConnector::instance().init() )
 	{
 		LOG( "Can`t open base.db3" );
 		return false;
 	}
 
-	if( !getInput().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight ) )
+	if( !Input::instance().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight ) )
 	{
 		LOG( "Can`t initialize DirectInput" );
 		return false;
@@ -46,7 +46,7 @@ bool DMSystem::Initialize( const char* commandLine )
 		return false;
 	}
 
-	getInput().notifier().registerTrigger( DIK_ESCAPE, [this]( bool )
+	Input::instance().notifier().registerTrigger( DIK_ESCAPE, [this]( bool )
 	{
 		m_exit = true;
 	} );
@@ -82,7 +82,7 @@ void DMSystem::Run( )
 			break;
 		}
 
-		if( !getInput().Frame() )
+		if( !Input::instance().Frame() )
 			break;
 
 		// Frame processing.

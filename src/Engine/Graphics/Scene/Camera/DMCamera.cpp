@@ -120,7 +120,7 @@ void DMCamera::position( XMFLOAT3* vec ) const
 void DMCamera::readKeyboard( XMFLOAT3& offsetPosition )
 {
 	//update main camera position
-	Input& input = getInput();
+	Input& input = Input::instance();
 
 	float speedMultiplier = 0.1 * m_properties["Camera speed"].data<float>() ;
 
@@ -173,7 +173,7 @@ void DMCamera::Update( float elapsedTime, bool cursorMode )
 	// Set the yaw (Y axis), pitch (X axis), and roll (Z axis) rotations in radians.
 	if( !cursorMode )
 	{
-		getInput().GetMouseLocation( m_mouseX, m_mouseY );
+		Input::instance().GetMouseLocation( m_mouseX, m_mouseY );
 		SetCursorPos( 600, 600 );
 	}	
 

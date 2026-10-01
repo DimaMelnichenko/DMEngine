@@ -12,9 +12,8 @@
 #include "D3D\DMStructuredBuffer.h"
 #include "ShadowCascades.h"
 #include "SceneTargets.h"
+#include "FrameStats.h"
 #include "ConstantBuffers.h"
-
-class GUI;
 
 namespace GS
 {
@@ -30,7 +29,8 @@ class Scene;
 class Renderer
 {
 public:
-	explicit Renderer( GUI& gui );
+	// stats — счётчики кадра для окна «Statistic» (их показывает GUI)
+	explicit Renderer( FrameStats& stats );
 
 	// Вызывается после загрузки мешей: собирает общий буфер вершин и индексов, создаёт буфер сцены (SceneTargets).
 	// Уровень уже прочитан (Scene::loadResources): постобработка — его настройки; shadowResolution — размер карты теней,
@@ -95,7 +95,7 @@ private:
 	void reportGpuTimes();
 
 private:
-	GUI& m_gui;
+	FrameStats& m_stats;
 	VertexPool m_vertexPool;
 	// Константы кадра и вида (b0) и объекта (b1); своим вызовам объектов приходят в RenderContext::constants
 	ConstantBuffers m_constants;

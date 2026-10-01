@@ -57,14 +57,14 @@ void GUI::Initialize( HWND hwnd )
 	m_isInited = true;
 }
 
-void GUI::Begin()
+void GUI::Begin( const GS::FrameStats& stats )
 {
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
 
-	Frame();
+	Frame( stats );
 }
 
 void GUI::End()
@@ -73,10 +73,9 @@ void GUI::End()
 	ImGui::Render();
 
 	ImGui_ImplDX12_RenderDrawData( ImGui::GetDrawData(), DMD3D::instance().commandList() );
-	clearAfterRender();
 }
 
-void GUI::Frame()
+void GUI::Frame( const GS::FrameStats& stats )
 {
 	
 
@@ -86,7 +85,7 @@ void GUI::Frame()
 
 		ImGui::Text( "Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate );
 
-		for( auto& pair : m_counterInfoList )
+		for( const auto& pair : stats.counters )
 		{
 			ImGui::Text( pair.first.data(), pair.second );
 		}
@@ -101,21 +100,6 @@ void GUI::Frame()
 
 	showPropertiesTree();
 
-}
-
-void GUI::addCounterInfo( const std::string& text, float value )
-{
-	m_counterInfoList.emplace_back( text, value );
-}
-
-void GUI::skipFrame()
-{
-	clearAfterRender();
-}
-
-void GUI::clearAfterRender()
-{
-	m_counterInfoList.clear();
 }
 
 void GUI::renderTextureLibrary()

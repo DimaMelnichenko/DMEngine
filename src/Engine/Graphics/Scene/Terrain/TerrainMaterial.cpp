@@ -301,7 +301,7 @@ bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers
 
 	try
 	{
-		SQLite::Statement query( dbConnect().db(), "select layer, name, albedo, normal, tiling from TerrainLayers where terrain = :terrain" );
+		SQLite::Statement query( DBConnector::instance().db(), "select layer, name, albedo, normal, tiling from TerrainLayers where terrain = :terrain" );
 		query.bind( ":terrain", terrainId );
 
 		while( query.executeStep() )

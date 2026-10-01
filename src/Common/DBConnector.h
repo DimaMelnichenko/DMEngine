@@ -3,12 +3,13 @@
 #include <memory>
 #include "SQLiteCpp\SQLiteCpp.h"
 
+// Соединение с base.db3 — синглтон, как DMD3D::instance(); init() открывает базу (DMSystem)
 class DBConnector
 {
 private:
-	friend DBConnector& dbConnect();
 	DBConnector(){}
 public:
+	static DBConnector& instance();
 	DBConnector( const DBConnector& ) = delete;
 	~DBConnector(){}
 

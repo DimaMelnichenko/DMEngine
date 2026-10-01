@@ -24,7 +24,7 @@ LibraryLoader::~LibraryLoader()
 bool LibraryLoader::loadAllTextures()
 {
 	LOG( "Load all textures" );
-	SQLite::Statement queryTexture( dbConnect().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage FROM Textures" );
+	SQLite::Statement queryTexture( DBConnector::instance().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage FROM Textures" );
 	return loadTextures( queryTexture );
 }
 
@@ -33,7 +33,7 @@ bool LibraryLoader::loadTexture( uint32_t idTexture )
 	if( GS::System::textures().exists( idTexture ) )
 		return true;
 
-	SQLite::Statement queryTexture( dbConnect().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage FROM Textures where id = :id" );
+	SQLite::Statement queryTexture( DBConnector::instance().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage FROM Textures where id = :id" );
 	queryTexture.bind( ":id", idTexture );
 	return loadTextures( queryTexture );
 }
@@ -64,7 +64,7 @@ bool LibraryLoader::loadTextures( SQLite::Statement& queryTexture )
 bool LibraryLoader::loadAllMaterials()
 {
 	std::vector<uint32_t> ids;
-	SQLite::Statement query( dbConnect().db(), "SELECT id FROM Materials ORDER BY id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id FROM Materials ORDER BY id" );
 	while( query.executeStep() )
 	{
 		ids.push_back( query.getColumn( 0 ).getUInt() );
@@ -87,7 +87,7 @@ bool LibraryLoader::loadMaterial( uint32_t idMaterial )
 
 	LOG( "Load material: " + std::to_string( idMaterial ) );
 
-	SQLite::Statement query( dbConnect().db(), "SELECT id, name, class file FROM Materials where id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, class file FROM Materials where id = :id" );
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{
@@ -158,7 +158,7 @@ static bool setParamFromString( Property& prop, const std::string& value )
 
 bool LibraryLoader::loadMaterialParamDef( uint32_t idMaterial, PropertyContainer& paramSet )
 {
-	SQLite::Statement query( dbConnect().db(), "SELECT id_material, param_name, value_type, control_type, low, high, default_value FROM MaterialParameterDefView where id_material = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id_material, param_name, value_type, control_type, low, high, default_value FROM MaterialParameterDefView where id_material = :id" );
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{
@@ -210,7 +210,7 @@ bool LibraryLoader::loadMaterialParamDef( uint32_t idMaterial, PropertyContainer
 bool LibraryLoader::loadShader( uint32_t idMaterial, GS::Material* material )
 {
 	
-	SQLite::Statement query( dbConnect().db(), "SELECT material_id, file, type, define FROM MaterialShaderView where material_id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT material_id, file, type, define FROM MaterialShaderView where material_id = :id" );
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{	
@@ -233,7 +233,7 @@ bool LibraryLoader::loadMesh( uint32_t idMesh )
 
 	LOG( "Load mesh: " + std::to_string( idMesh ) );
 
-	SQLite::Statement query( dbConnect().db(), "SELECT id, name, file, primitive FROM Meshes where id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, file, primitive FROM Meshes where id = :id" );
 	query.bind( ":id", idMesh );
 	while( query.executeStep() )
 	{
@@ -266,7 +266,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 	try
 	{
 		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process, sun_position, hdri_backdrop, wind FROM Levels ";
-		SQLite::Statement query( dbConnect().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
+		SQLite::Statement query( DBConnector::instance().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
 		if( !name.empty() )
 			query.bind( ":name", name );
 
@@ -299,8 +299,8 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 		if( !loadLevelEnvironment( level ) )
 			return false;
 
-		SQLite::Statement queryModels( dbConnect().db(), "SELECT id, model, position, rotation, scale FROM LevelModels "
-														 "WHERE level = :level ORDER BY id" );
+		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, position, rotation, scale FROM LevelModels "
+																	 "WHERE level = :level ORDER BY id" );
 		queryModels.bind( ":level", level.id );
 		while( queryModels.executeStep() )
 		{
@@ -322,9 +322,9 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.modelInstances.push_back( instance );
 		}
 
-		SQLite::Statement querySets( dbConnect().db(), "SELECT s.id, s.name "
-													   "FROM LevelScatterSets l JOIN ScatterSets s ON s.id = l.scatter_set "
-													   "WHERE l.level = :level ORDER BY l.id" );
+		SQLite::Statement querySets( DBConnector::instance().db(), "SELECT s.id, s.name "
+																   "FROM LevelScatterSets l JOIN ScatterSets s ON s.id = l.scatter_set "
+																   "WHERE l.level = :level ORDER BY l.id" );
 		querySets.bind( ":level", level.id );
 		while( querySets.executeStep() )
 		{
@@ -336,7 +336,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 
 		if( hasParticles )
 		{
-			SQLite::Statement queryParticles( dbConnect().db(), "SELECT material, texture, count_per_cell, area_size FROM Particles WHERE id = :id" );
+			SQLite::Statement queryParticles( DBConnector::instance().db(), "SELECT material, texture, count_per_cell, area_size FROM Particles WHERE id = :id" );
 			queryParticles.bind( ":id", particlesId );
 			if( !queryParticles.executeStep() )
 			{
@@ -362,9 +362,9 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
 {
-	SQLite::Statement query( dbConnect().db(), "SELECT id, mask, cell_size, near_border, far_border, near_fade, "
-											   "far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow "
-											   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, mask, cell_size, near_border, far_border, near_fade, "
+														   "far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow "
+														   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
 	while( query.executeStep() )
 	{
@@ -387,7 +387,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.settings.castShadow = query.getColumn( "cast_shadow" ).getInt() != 0;
 
 		// Модели слоя — варианты растения с весами, в порядке строк
-		SQLite::Statement queryModels( dbConnect().db(), "SELECT model, weight, cast_shadow FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
+		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT model, weight, cast_shadow FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
 		queryModels.bind( ":layer", query.getColumn( "id" ).getUInt() );
 		while( queryModels.executeStep() )
 		{
@@ -408,7 +408,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 
 	LOG( "Load model: " + std::to_string( idModel ) );
 
-	SQLite::Statement query( dbConnect().db(), "SELECT id, name FROM Models where id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name FROM Models where id = :id" );
 	query.bind( ":id", idModel );
 	while( query.executeStep() )
 	{	
@@ -424,8 +424,8 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		return false;
 	
 	// Строка — секция LOD (меш и материал); дальность и флаг отрисовки LOD — у его первой секции
-	SQLite::Statement queryLOD( dbConnect().db(), "SELECT id, lod, section, range, material_id, mesh_id, render, material_instance_id "
-												  "FROM ModelProperties where model_id = :id order by lod, section" );
+	SQLite::Statement queryLOD( DBConnector::instance().db(), "SELECT id, lod, section, range, material_id, mesh_id, render, material_instance_id "
+															  "FROM ModelProperties where model_id = :id order by lod, section" );
 	queryLOD.bind( ":id", idModel );
 	std::unique_ptr<GS::DMModel::LodBlock> block;
 	int blockLod = -1;
@@ -504,7 +504,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 
 bool LibraryLoader::instanceMaterial( uint32_t idInstance, uint32_t& idMaterial )
 {
-	SQLite::Statement query( dbConnect().db(), "SELECT id_material FROM MaterialInstance where id_instance = :instance" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id_material FROM MaterialInstance where id_instance = :instance" );
 	query.bind( ":instance", idInstance );
 	if( !query.executeStep() || query.getColumn( 0 ).isNull() )
 		return false;
@@ -515,7 +515,7 @@ bool LibraryLoader::instanceMaterial( uint32_t idInstance, uint32_t& idMaterial 
 
 bool LibraryLoader::loadMaterialParams( uint32_t idInstance, PropertyContainer& paramSet )
 {
-	SQLite::Statement query( dbConnect().db(), "SELECT id_instance, param_name, value FROM MaterialParamsValueView where id_instance = :instance" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id_instance, param_name, value FROM MaterialParamsValueView where id_instance = :instance" );
 	query.bind( ":instance", idInstance );
 	while( query.executeStep() )
 	{
@@ -555,7 +555,7 @@ void LibraryLoader::save()
 				uint32_t idValue = paramItem.second.m_id;				
 				try
 				{
-					SQLite::Statement query( dbConnect().db(), "UPDATE MaterialParameterValue SET value = :value WHERE id = :id" );
+					SQLite::Statement query( DBConnector::instance().db(), "UPDATE MaterialParameterValue SET value = :value WHERE id = :id" );
 					query.bind( ":value", insertedValue );
 					query.bind( ":id", idValue );
 					query.exec();
