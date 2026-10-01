@@ -2,7 +2,8 @@
 // Импостер (ImpostorMaterial, Shaders/impostor.sh): экземпляр расстановки (INST_POS, INST_SCALE, INST_ROTATE) —
 // карточка в плоскости вида через центр сферы модели, размером в её диаметр. Кадры — три ближайших к направлению на
 // зрителя в координатах модели (у перспективного вида — к камере, у ортографического каскада теней — против света):
-// UV точки карточки в каждом — её проекция на плоскость кадра. С LOD_DITHER — доля смены LOD экземпляра
+// UV точки карточки в каждом — её проекция на плоскость кадра. У каскада теней растеризуется та же карточка, отодвинутая
+// к свету на радиус: смещение глубины в impostor.ps только отодвигает пиксели. С LOD_DITHER — доля смены LOD
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
@@ -72,9 +73,16 @@ ImpostorPixelInput main( VertexInputType input )
 		weights = float3( f.x + f.y - 1.0f, 1.0f - f.x, 1.0f - f.y );
 	}
 
+	// У каскада теней (ортография) карточка — перед сферой, на радиус ближе к свету: глубину пишет запечённая поверхность
+	// (PIXEL_DEPTH_OFFSET в impostor.ps), и она только дальше карточки. В кадре глубину пишет сама карточка через центр:
+	// смещение глубины там без глубины сцены для шейдеров лишило бы проход цвета точного раннего теста (TODO.md)
+	const float3 cardPosition = orthographic ? worldPosition - cb_viewDirection * radius : worldPosition;
+
 	ImpostorPixelInput output;
-	output.position = mul( float4( worldPosition, 1.0f ), cb_viewProjectionMatrix );
+	output.position = mul( float4( cardPosition, 1.0f ), cb_viewProjectionMatrix );
 	output.worldPosition = worldPosition;
+	output.viewer = float4( toViewer, radius );
+	output.planeOffset = dot( worldPosition - center, toViewer );
 	output.frameUV01 = float4( impostorFrameUV( frame0, offset ), impostorFrameUV( frame1, offset ) );
 	output.frameUV2 = impostorFrameUV( frame2, offset );
 	output.frames = uint3( frame0.y * frames + frame0.x, frame1.y * frames + frame1.x, frame2.y * frames + frame2.x );

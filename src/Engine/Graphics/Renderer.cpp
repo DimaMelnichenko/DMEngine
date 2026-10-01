@@ -656,7 +656,8 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 	Material* shader = batch.material;
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	const ShaderPhaseOptions options = meshPhaseOptions( batch, true, context.depthFromPrepass && inDepthPrepass( batch ) );
+	ShaderPhaseOptions options = meshPhaseOptions( batch, true, context.depthFromPrepass && inDepthPrepass( batch ) );
+	options.shadowDepth = context.pass == MeshPass::csmShadowDepth;
 	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
 					 shader->phaseFor( *batch.params, options ) );
 	shader->setParams( *batch.params );
@@ -684,7 +685,8 @@ void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
 	Material* shader = batch.material;
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	const ShaderPhaseOptions options = meshPhaseOptions( batch, false, context.depthFromPrepass && inDepthPrepass( batch ) );
+	ShaderPhaseOptions options = meshPhaseOptions( batch, false, context.depthFromPrepass && inDepthPrepass( batch ) );
+	options.shadowDepth = context.pass == MeshPass::csmShadowDepth;
 	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
 					 shader->phaseFor( *batch.params, options ) );
 	shader->setParams( *batch.params );

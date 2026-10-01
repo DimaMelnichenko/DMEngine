@@ -1,8 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Импостер дерева (ImpostorMaterial) — как octahedral impostors в UE (ImpostorBaker, R. Brucks): виды модели с
 // g_impostorFrames² направлений верхней полусферы (сетка на полуоктаэдре), каждый — срез массива текстур (цвет и покрытие;
-// нормаль модели и доля пропускания). В кадре — карточка, развёрнутая к виду; три кадра, ближайших к направлению на
-// зрителя, смешиваются по весам. Общее для impostor.vs, impostor.ps и запекания (ImpostorMaterial::bake)
+// нормаль модели и доля пропускания; глубина поверхности). В кадре — карточка, развёрнутая к виду; три кадра, ближайших к
+// направлению на зрителя, смешиваются по весам; пиксель освещается в точке запечённой поверхности, а в каскадах теней и
+// пишет её глубину (pixel depth offset, как у импостеров UE). Общее для impostor.vs, impostor.ps и запекания
+// (ImpostorMaterial::bake)
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef DM_IMPOSTOR_SH
@@ -21,18 +23,23 @@ cbuffer ImpostorBuffer : register( SLOT_CB_MATERIAL )
 	float  g_impostorPadding;
 };
 
-// Выход вершинного шейдера: точка карточки в мире, UV в трёх кадрах, их срезы и веса, поворот экземпляра
+// Выход вершинного шейдера: карточка (position; у каскада теней — перед сферой), её точка в плоскости вида через центр
+// сферы (worldPosition), UV в трёх кадрах, их срезы и веса, поворот экземпляра; для точки поверхности — направление на
+// зрителя и радиус сферы в мире, расстояние точки worldPosition от плоскости через центр поперёк направления на зрителя
 struct ImpostorPixelInput
 {
-	precise float4 position : SV_POSITION;
-	float3 worldPosition : TEXCOORD0;
+	// centroid: пиксельный шейдер теней с SV_DepthLessEqual читает position.z (без MSAA — центр пикселя, как обычно)
+	precise centroid float4 position : SV_POSITION;
+	precise float3 worldPosition : TEXCOORD0;
 	float4 frameUV01 : TEXCOORD1;
 	float2 frameUV2 : TEXCOORD2;
 	nointerpolation uint3 frames : TEXCOORD3;
 	nointerpolation float3 weights : TEXCOORD4;
 	nointerpolation float4 rotation : TEXCOORD5;	// кватернион экземпляра: нормаль модели — в мир
+	nointerpolation float4 viewer : TEXCOORD6;		// xyz — направление на зрителя, w — радиус сферы, м
+	precise float planeOffset : TEXCOORD7;
 #ifdef LOD_DITHER
-	nointerpolation float lodDither : TEXCOORD6;
+	nointerpolation float lodDither : TEXCOORD8;
 #endif
 };
 

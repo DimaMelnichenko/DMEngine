@@ -466,6 +466,7 @@ void Scatterer::renderCustom( const RenderContext& context )
 			options.placed = true;
 			options.depthFromPrepass = context.depthFromPrepass && group.prepassed;
 			options.lodDither = group.transition;
+			options.shadowDepth = shadow;
 			Material* shader = group.material;
 			if( !shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *group.params, options ) :
 								  shader->phaseFor( *group.params, options ) ) )

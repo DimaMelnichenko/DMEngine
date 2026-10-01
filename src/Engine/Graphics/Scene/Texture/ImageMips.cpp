@@ -87,8 +87,31 @@ bool dilateTransparent( ScratchImage& image, int passes, const ScratchImage* cov
 {
 	const TexMetadata& metadata = image.GetMetadata();
 	const DXGI_FORMAT format = MakeLinear( metadata.format );
-	if( format != DXGI_FORMAT_R8G8B8A8_UNORM && format != DXGI_FORMAT_B8G8R8A8_UNORM )
+	const bool rgba8 = format == DXGI_FORMAT_R8G8B8A8_UNORM || format == DXGI_FORMAT_B8G8R8A8_UNORM;
+	if( !rgba8 && !( format == DXGI_FORMAT_R16_UNORM && coverage ) )
 		return false;
+	if( coverage )
+	{
+		const TexMetadata& mask = coverage->GetMetadata();
+		const DXGI_FORMAT maskFormat = MakeLinear( mask.format );
+		if( ( maskFormat != DXGI_FORMAT_R8G8B8A8_UNORM && maskFormat != DXGI_FORMAT_B8G8R8A8_UNORM ) ||
+			mask.width != metadata.width || mask.height != metadata.height || mask.arraySize < metadata.arraySize )
+			return false;
+	}
+	// Тексель: RGBA по 8 бит — растекаются три канала, R16 — один
+	const size_t texelSize = rgba8 ? 4 : 2;
+	const int channels = rgba8 ? 3 : 1;
+	const auto read = [rgba8]( const uint8_t* texel, int c ) -> uint32_t
+	{
+		return rgba8 ? texel[c] : reinterpret_cast<const uint16_t*>( texel )[0];
+	};
+	const auto write = [rgba8]( uint8_t* texel, int c, uint32_t value )
+	{
+		if( rgba8 )
+			texel[c] = static_cast<uint8_t>( value );
+		else
+			reinterpret_cast<uint16_t*>( texel )[0] = static_cast<uint16_t>( value );
+	};
 
 	for( size_t item = 0; item < metadata.arraySize; ++item )
 	{
@@ -119,16 +142,16 @@ bool dilateTransparent( ScratchImage& image, int passes, const ScratchImage* cov
 						const int ny = static_cast<int>( y ) + dy;
 						if( nx < 0 || ny < 0 || nx >= static_cast<int>( width ) || ny >= static_cast<int>( height ) || !filled[ny * width + nx] )
 							continue;
-						const uint8_t* texel = slice.pixels + ny * slice.rowPitch + nx * 4;
-						for( int c = 0; c < 3; ++c )
-							sum[c] += texel[c];
+						const uint8_t* texel = slice.pixels + ny * slice.rowPitch + nx * texelSize;
+						for( int c = 0; c < channels; ++c )
+							sum[c] += read( texel, c );
 						++count;
 					}
 					if( count == 0 )
 						continue;
-					uint8_t* texel = slice.pixels + y * slice.rowPitch + x * 4;
-					for( int c = 0; c < 3; ++c )
-						texel[c] = static_cast<uint8_t>( ( sum[c] + count / 2 ) / count );
+					uint8_t* texel = slice.pixels + y * slice.rowPitch + x * texelSize;
+					for( int c = 0; c < channels; ++c )
+						write( texel, c, ( sum[c] + count / 2 ) / count );
 					next[y * width + x] = 1;
 				}
 			}

@@ -40,8 +40,9 @@ public:
 	// Собрать варианты для экземпляров расстановки (ShaderPhaseOptions::placed) — при загрузке, до прогрева пайплайнов
 	// (Renderer::warmPipelines): так модель уровня (ель) годится и для слоя расстановки (лес). false — материал так не умеет
 	virtual bool enablePlacedInstances() { return false; }
-	// Собрать вариант запекания импостера (ShaderPhaseOptions::impostorBake): цели — цвет и альфа (sRGB) и нормаль модели
-	// с долей пропускания (ImpostorMaterial). false — материал так не умеет, модель с ним в импостер не запекается
+	// Собрать вариант запекания импостера (ShaderPhaseOptions::impostorBake): цели — цвет и альфа (sRGB), нормаль модели
+	// с долей пропускания и глубина поверхности (ImpostorMaterial). false — материал так не умеет, модель с ним в импостер
+	// не запекается
 	virtual bool enableImpostorBake() { return false; }
 	// Фаза «только глубина» для теней и depth prepass (без пиксельного шейдера или только с отсечением — по альфе,
 	// дизерингом смены LOD) или −1: материал тень не отбрасывает и в prepass не рисуется. Из options важны instanced

@@ -30,7 +30,8 @@ std::vector<VertexElement> ImpostorMaterial::initLayouts()
 bool ImpostorMaterial::initialize()
 {
 	// Вершинные шейдеры: экземпляр расстановки, 1 — со сменой LOD дизерингом. Пиксельные: 0 — с отсечением по покрытию,
-	// 1 — без (после depth prepass), 2 — с отсечением и дизерингом, 3 — глубина, 4 — глубина с дизерингом
+	// 1 — без (после depth prepass), 2 — с отсечением и дизерингом, 3 — глубина, 4 — глубина с дизерингом, 5 и 6 — они же
+	// для каскадов теней: глубина запечённой поверхности (PIXEL_DEPTH_OFFSET)
 	const std::string placed = "INST_POS=1,INST_SCALE=1,INST_ROTATE=1";
 	const std::string placedDither = placed + ",LOD_DITHER=1";
 	if( !addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\impostor.vs", placed ) ||
@@ -39,7 +40,9 @@ bool ImpostorMaterial::initialize()
 		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps" ) ||
 		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", "ALPHA_MASK=1,LOD_DITHER=1" ) ||
 		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps" ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", "LOD_DITHER=1" ) )
+		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", "LOD_DITHER=1" ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", "PIXEL_DEPTH_OFFSET=1" ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", "PIXEL_DEPTH_OFFSET=1,LOD_DITHER=1" ) )
 		return false;
 
 	for( int dither = 0; dither < 2; ++dither )
@@ -48,14 +51,19 @@ bool ImpostorMaterial::initialize()
 		m_colorPhases[dither][0][0] = createPhase( dither, 1 );
 		m_colorPhases[dither][1][1] = dither ? createPhase( dither, 2 ) : m_colorPhases[dither][1][0];
 		m_colorPhases[dither][0][1] = m_colorPhases[dither][0][0];
-		m_depthPhases[dither] = createPhase( dither, dither ? 4 : 3 );
+		m_depthPhases[dither][0] = createPhase( dither, dither ? 4 : 3 );
+		m_depthPhases[dither][1] = createPhase( dither, dither ? 6 : 5 );
 	}
 	for( const auto& variant : m_colorPhases )
 		for( const auto& masked : variant )
 			for( int phase : masked )
 				if( phase < 0 )
 					return false;
-	return m_depthPhases[0] >= 0 && m_depthPhases[1] >= 0;
+	for( const auto& variant : m_depthPhases )
+		for( int phase : variant )
+			if( phase < 0 )
+				return false;
+	return true;
 }
 
 MaterialRenderState ImpostorMaterial::renderState( const PropertyContainer& ) const
@@ -77,12 +85,12 @@ int ImpostorMaterial::phaseFor( const PropertyContainer&, const ShaderPhaseOptio
 
 int ImpostorMaterial::depthPhaseFor( const PropertyContainer&, const ShaderPhaseOptions& options ) const
 {
-	return m_depthPhases[options.lodDither ? 1 : 0];
+	return m_depthPhases[options.lodDither ? 1 : 0][options.shadowDepth ? 1 : 0];
 }
 
 std::vector<int> ImpostorMaterial::depthPhases() const
 {
-	return { m_depthPhases[0], m_depthPhases[1] };
+	return { m_depthPhases[0][0], m_depthPhases[0][1], m_depthPhases[1][0], m_depthPhases[1][1] };
 }
 
 void ImpostorMaterial::setParams( const PropertyContainer& )
@@ -90,6 +98,7 @@ void ImpostorMaterial::setParams( const PropertyContainer& )
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setSRV( 0, System::textures().get( m_colorTexture )->srv() );
 	d3d.setSRV( 1, System::textures().get( m_normalTexture )->srv() );
+	d3d.setSRV( 2, System::textures().get( m_offsetTexture )->srv() );
 	d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
 }
 
@@ -159,7 +168,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context )
 		}
 	}
 
-	// Цели запекания: кадр — срез массива (цвет sRGB и нормаль), глубина общая
+	// Цели запекания: кадр — срез массива (цвет sRGB, нормаль и глубина поверхности — смещение глубины), буфер глубины общий
 	DMD3D& d3d = DMD3D::instance();
 	const uint32_t count = frames * frames;
 	TextureDesc colorDesc;
@@ -172,14 +181,19 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context )
 	normalDesc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	const float clearNormal[4] = { 0.5f, 0.5f, 1.0f, 0.0f };
 	std::copy( std::begin( clearNormal ), std::end( clearNormal ), normalDesc.clearColor );
+	TextureDesc offsetDesc = colorDesc;
+	offsetDesc.format = DXGI_FORMAT_R16_UNORM;
+	const float clearOffset[4] = { 0.5f, 0.0f, 0.0f, 0.0f };	// плоскость через центр
+	std::copy( std::begin( clearOffset ), std::end( clearOffset ), offsetDesc.clearColor );
 	TextureDesc depthDesc;
 	depthDesc.width = depthDesc.height = frameSize;
 	depthDesc.format = DXGI_FORMAT_D32_FLOAT;
 	depthDesc.usage = TextureUsage::depthStencil;
-	Texture color, normal, depth;
+	Texture color, normal, offset, depth;
 	TargetView depthTarget;
 	if( !d3d.createTexture( colorDesc, nullptr, color ) || !d3d.createTexture( normalDesc, nullptr, normal ) ||
-		!d3d.createTexture( depthDesc, nullptr, depth ) || !d3d.createTargetView( depth, {}, depthTarget ) )
+		!d3d.createTexture( offsetDesc, nullptr, offset ) || !d3d.createTexture( depthDesc, nullptr, depth ) ||
+		!d3d.createTargetView( depth, {}, depthTarget ) )
 	{
 		LOG( name() + ": can't create bake targets" );
 		return false;
@@ -196,19 +210,22 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context )
 		target.sliceCount = 1;
 		TargetView colorTarget;
 		TargetView normalTarget;
-		if( !d3d.createTargetView( color, target, colorTarget ) || !d3d.createTargetView( normal, target, normalTarget ) )
+		TargetView offsetTarget;
+		if( !d3d.createTargetView( color, target, colorTarget ) || !d3d.createTargetView( normal, target, normalTarget ) ||
+			!d3d.createTargetView( offset, target, offsetTarget ) )
 		{
 			LOG( name() + ": can't create frame target views" );
 			return false;
 		}
 		PassDesc pass;
 		pass.name = "Impostor bake";
-		pass.colors = { { &colorTarget, "impostor color" }, { &normalTarget, "impostor normal" } };
+		pass.colors = { { &colorTarget, "impostor color" }, { &normalTarget, "impostor normal" }, { &offsetTarget, "impostor offset" } };
 		pass.depth = { &depthTarget, "impostor depth" };
 		pass.width = pass.height = frameSize;
 		d3d.beginPass( pass );
 		d3d.clearTarget( colorTarget, clearColor );
 		d3d.clearTarget( normalTarget, clearNormal );
+		d3d.clearTarget( offsetTarget, clearOffset );
 		d3d.clearDepth( depthTarget, 0.0f );
 		context.constants.setViewBuffer( frameView( x, y ) );
 		context.constants.setPerObjectBuffer( XMMatrixIdentity() );
@@ -231,14 +248,18 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context )
 	// покрытия при пороге отсечения, обратно на GPU текстурами хранилища
 	ScratchImage colorImage;
 	ScratchImage normalImage;
-	if( !GpuImages::captureTexture( color, colorImage ) || !GpuImages::captureTexture( normal, normalImage ) )
+	ScratchImage offsetImage;
+	if( !GpuImages::captureTexture( color, colorImage ) || !GpuImages::captureTexture( normal, normalImage ) ||
+		!GpuImages::captureTexture( offset, offsetImage ) )
 	{
 		LOG( name() + ": can't read frames back" );
 		return false;
 	}
 	ImageMips::dilateTransparent( normalImage, 8, &colorImage );
+	ImageMips::dilateTransparent( offsetImage, 8, &colorImage );
 	ImageMips::dilateTransparent( colorImage, 8 );
-	if( !ImageMips::generate( colorImage, m_params.alphaCutoff ) || !ImageMips::generate( normalImage ) )
+	if( !ImageMips::generate( colorImage, m_params.alphaCutoff ) || !ImageMips::generate( normalImage ) ||
+		!ImageMips::generate( offsetImage ) )
 	{
 		LOG( name() + ": can't build mips" );
 		return false;
@@ -258,6 +279,11 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context )
 		return false;
 	m_normalTexture = normalTexture->id();
 	textures.insertResource( std::move( normalTexture ) );
+	auto offsetTexture = std::make_unique<DMTexture>( textures.freeId(), name() + " depth" );
+	if( !offsetTexture->create( offsetImage ) )
+		return false;
+	m_offsetTexture = offsetTexture->id();
+	textures.insertResource( std::move( offsetTexture ) );
 
 	BufferDesc constants;
 	constants.size = sizeof( Params );

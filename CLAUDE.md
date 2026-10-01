@@ -441,8 +441,9 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 для экземпляров расстановки (`Material::enablePlacedInstances`, `ShaderPhaseOptions::placed`). Дальше
 `ScatterLayers.impostor_distance` — импостер (`ImpostorMaterial`: последний LOD варианта, карточка с тремя из 8 × 8 кадров
 полуоктаэдра; кадры запекаются при загрузке из LOD0 модели — `SceneObject::bake` → `Renderer::bake` после `Scene::initialize`,
-до прогрева пайплайнов, вариантом `mainBake` материала секции); в каскадах теней импостер — уже дальше
-`ScatterLayers.shadow_impostor_distance` (у леса 65 м). Подробно — `docs/scatter.md`.
+до прогрева пайплайнов, вариантом `mainBake` материала секции: цвет, нормаль, глубина поверхности); в каскадах теней
+импостер — уже дальше `ScatterLayers.shadow_impostor_distance` (у леса 65 м) и пишет глубину запечённой поверхности
+(смещение глубины, `ShaderPhaseOptions::shadowDepth`). Подробно — `docs/scatter.md`.
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
 `Particle` (`DMParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,

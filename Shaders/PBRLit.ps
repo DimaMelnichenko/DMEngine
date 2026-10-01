@@ -83,13 +83,15 @@ float4 main( PixelInputType input ) : SV_TARGET
 	return float4( evaluateLighting( surface ), baseColor.a );
 }
 
-// Запекание импостера (ImpostorMaterial::bake, как ImpostorBaker в UE): вид модели с одного направления в две цели —
-// цвет и покрытие (альфа 1 там, где модель есть; цель sRGB) и нормаль в координатах модели (при запекании мировая
-// матрица — единичная) с долей пропускания в альфе. Освещение — у импостера в кадре (Shaders/impostor.ps)
+// Запекание импостера (ImpostorMaterial::bake, как ImpostorBaker в UE): вид модели с одного направления в три цели —
+// цвет и покрытие (альфа 1 там, где модель есть; цель sRGB), нормаль в координатах модели (при запекании мировая
+// матрица — единичная) с долей пропускания в альфе и глубина поверхности для смещения глубины импостера. Освещение — у
+// импостера в кадре (Shaders/impostor.ps)
 struct BakeOutput
 {
 	float4 color : SV_Target0;
 	float4 normal : SV_Target1;
+	float depth : SV_Target2;
 };
 
 BakeOutput mainBake( PixelInputType input )
@@ -101,6 +103,9 @@ BakeOutput mainBake( PixelInputType input )
 	BakeOutput output;
 	output.color = float4( baseColor.rgb, 1.0f );
 	output.normal = float4( surfaceNormal( input ) * 0.5f + 0.5f, saturate( g_diffuseTransmissionFactor ) );
+	// Ортография кадра на сферу модели (ImpostorMaterial::frameView): глубина 0,5 — плоскость через центр, ± 0,25 — радиус
+	// к камере и от неё; в цель — смещение к камере в долях радиуса × 0,5 + 0,5
+	output.depth = saturate( 2.0f * input.position.z - 0.5f );
 	return output;
 }
 

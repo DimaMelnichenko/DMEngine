@@ -1,8 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Импостер (ImpostorMaterial, Shaders/impostor.sh): три кадра смешиваются по весам — цвет и покрытие, нормаль модели
-// (в мир — поворотом экземпляра) и доля пропускания; освещение — общая функция evaluateLighting, как у материалов: свет,
-// тень, небо, воздушная перспектива. С ALPHA_MASK — отсечение по покрытию (без него — после depth prepass), с LOD_DITHER —
-// доля пикселей смены LOD. mainDepth — тени и depth prepass
+// (в мир — поворотом экземпляра), доля пропускания и глубина поверхности: пиксель освещается и затеняется в точке
+// запечённой поверхности, а не карточки, а в каскадах теней пишет её глубину (PIXEL_DEPTH_OFFSET, pixel depth offset) —
+// крона затеняет себя. Освещение — общая функция evaluateLighting, как у материалов: свет, тень, небо, воздушная
+// перспектива. С ALPHA_MASK — отсечение по покрытию (без него — после depth prepass), с LOD_DITHER — доля пикселей смены
+// LOD. mainDepth — тени и depth prepass
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "slots.h"
@@ -14,12 +16,21 @@
 
 DM_SRV( Texture2DArray, g_impostorColor, 0 );	// sRGB: цвет и покрытие, срез — кадр
 DM_SRV( Texture2DArray, g_impostorNormal, 1 );	// нормаль модели × 0,5 + 0,5 и доля пропускания
+DM_SRV( Texture2DArray, g_impostorDepth, 2 );	// R16: смещение поверхности к камере кадра от плоскости через центр, радиусов × 0,5 + 0,5
 
 float4 sampleFrames( Texture2DArray frames, ImpostorPixelInput input )
 {
 	return frames.Sample( g_SamplerLinearClamp, float3( input.frameUV01.xy, input.frames.x ) ) * input.weights.x +
 		   frames.Sample( g_SamplerLinearClamp, float3( input.frameUV01.zw, input.frames.y ) ) * input.weights.y +
 		   frames.Sample( g_SamplerLinearClamp, float3( input.frameUV2, input.frames.z ) ) * input.weights.z;
+}
+
+// Точка поверхности под пикселем: точка карточки в плоскости через центр, сдвинутая вдоль направления на зрителя до
+// запечённой глубины кадров
+float3 impostorSurface( ImpostorPixelInput input )
+{
+	const float stored = sampleFrames( g_impostorDepth, input ).x;
+	return input.worldPosition + input.viewer.xyz * ( ( stored * 2.0f - 1.0f ) * input.viewer.w - input.planeOffset );
 }
 
 float4 main( ImpostorPixelInput input ) : SV_TARGET
@@ -31,11 +42,12 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 #ifdef ALPHA_MASK
 	clip( color.a - g_impostorAlphaCutoff );
 #endif
+	const float3 position = impostorSurface( input );
 	const float4 packed = sampleFrames( g_impostorNormal, input );
 	const float3 normal = normalize( impostorRotate( normalize( packed.xyz * 2.0f - 1.0f ), input.rotation ) );
 
 	Surface surface;
-	surface.position = input.worldPosition;
+	surface.position = position;
 	surface.normal = normal;
 	surface.geometricNormal = normal;
 	surface.baseColor = color.rgb;
@@ -48,10 +60,20 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 	return float4( evaluateLighting( surface ), 1.0f );
 }
 
+// Каскад теней (PIXEL_DEPTH_OFFSET): глубина — точки поверхности, не ближе растеризованной карточки (SV_DepthLessEqual:
+// при обратной глубине только дальше от света — ранний тест остаётся). depth prepass — глубина карточки
+#ifdef PIXEL_DEPTH_OFFSET
+void mainDepth( ImpostorPixelInput input, out float depth : SV_DepthLessEqual )
+#else
 void mainDepth( ImpostorPixelInput input )
+#endif
 {
 #ifdef LOD_DITHER
 	clipLodTransition( input.position.xy, input.lodDither );
 #endif
 	clip( sampleFrames( g_impostorColor, input ).a - g_impostorAlphaCutoff );
+#ifdef PIXEL_DEPTH_OFFSET
+	const float4 clipPosition = mul( float4( impostorSurface( input ), 1.0f ), cb_viewProjectionMatrix );
+	depth = min( clipPosition.z / clipPosition.w, input.position.z );
+#endif
 }

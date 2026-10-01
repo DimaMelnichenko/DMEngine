@@ -14,7 +14,8 @@ bool generate( DirectX::ScratchImage& image, float preserveAlphaCoverage = 0.0f 
 
 // Цвет прозрачных текселей (альфа 0) — от соседних непрозрачных за passes проходов: у мипов и билинейной выборки на
 // краю силуэта нет тёмной каймы от чёрного фона. Альфа не меняется; coverage — картинка того же размера, по альфе которой
-// решается, где тексель есть (у нормали импостера в альфе — пропускание). Форматы — 8-битные RGBA / BGRA
+// решается, где тексель есть (у нормали импостера в альфе — пропускание). Форматы — 8-битные RGBA / BGRA (растекается
+// RGB) и R16_UNORM (глубина импостера; только с coverage)
 bool dilateTransparent( DirectX::ScratchImage& image, int passes, const DirectX::ScratchImage* coverage = nullptr );
 
 }
