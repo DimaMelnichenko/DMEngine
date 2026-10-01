@@ -148,6 +148,10 @@ add_executable(DMEngine WIN32
     src/DMSystem.cpp
     src/Engine/Graphics/Common/DMTransform.cpp
     src/Engine/Graphics/D3D/DMD3D.cpp
+    src/Engine/Graphics/D3D/DMD3DPasses.cpp
+    src/Engine/Graphics/D3D/DMD3DPipelines.cpp
+    src/Engine/Graphics/D3D/DMD3DResources.cpp
+    src/Engine/Graphics/D3D/DMD3DCommands.cpp
     src/Engine/Graphics/D3D/RenderTarget.cpp
     src/Engine/Graphics/D3D/TextureImages.cpp
     src/Engine/Graphics/D3D/ConstantRing.cpp
@@ -159,6 +163,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/DMGraphics.cpp
     src/Engine/Graphics/Renderer.cpp
     src/Engine/Graphics/ShadowCascades.cpp
+    src/Engine/Graphics/SceneTargets.cpp
     src/Engine/Graphics/Scene/Camera/DMCamera.cpp
     src/Engine/Graphics/Scene/Camera/DMFrustum.cpp
     src/Engine/Graphics/Scene/Scene.cpp

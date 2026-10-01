@@ -11,6 +11,7 @@
 #include "D3D\GpuProfiler.h"
 #include "D3D\DMStructuredBuffer.h"
 #include "ShadowCascades.h"
+#include "SceneTargets.h"
 
 class GUI;
 
@@ -30,16 +31,17 @@ class Renderer
 public:
 	explicit Renderer( GUI& gui );
 
-	// Вызывается после загрузки мешей: собирает общий буфер вершин и индексов
+	// Вызывается после загрузки мешей: собирает общий буфер вершин и индексов, создаёт буфер сцены (SceneTargets).
 	// Уровень уже прочитан (Scene::loadResources): постобработка — его настройки; shadowResolution — размер карты теней,
 	// depthPrepass — начальное значение флажка «Depth prepass» (DepthPrepass в settings.ini)
 	bool initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution, bool depthPrepass );
-	// Новый размер кадра (WM_SIZE): цели постобработки заново; буфер сцены уже пересоздал DMD3D::resize
+	// Новый размер кадра (WM_SIZE): буфер сцены и цели постобработки заново; задний буфер уже пересоздал DMD3D::resize
 	bool resize();
-	// Пайплайны всех материалов для состояний проходов сцены — при загрузке уровня (Pipeline.h)
-	void warmPipelines();
+	// Пайплайны всех материалов и объектов сцены для состояний проходов кадра — после Scene::initialize при загрузке
+	// уровня (GpuPipeline.h). Состояние прохода теней — со смещением глубины солнца уровня (ShadowCascades::renderState)
+	void warmPipelines( Scene& scene );
 
-	// Рисует сцену в HDR-буфер и тонмаппинг в задний буфер; дальше DMGraphics рисует GUI и вызывает EndScene
+	// Рисует сцену в HDR-буфер (SceneTargets) и тонмаппинг в задний буфер; дальше DMGraphics рисует GUI и вызывает endFrame
 	void render( Scene& scene, const FrameContext& frame, bool wireframe );
 	// Свойства постобработки и теней для GUI; properties — окно «Renderer»: проходы кадра («Depth prepass»)
 	PropertyContainer* postProcessProperties();
@@ -57,6 +59,11 @@ private:
 	struct DrawCommand;
 
 	void preparePipeline( Scene& scene, const FrameContext& frame );
+	// Состояния и цели проходов для прогрева пайплайнов объектов (SceneObject::warmPipelines)
+	PassStates passStates( const RenderState& shadowState ) const;
+	// Пайплайны теней для нового состояния прохода теней (смещение сменилось в GUI, тени перешли с солнца на луну):
+	// фазы «только глубина» материалов и объекты — до прохода, иначе они собрались бы в кадре «лениво»
+	void warmShadowPipelines( Scene& scene );
 	// Меши и свои вызовы видимых объектов с вида
 	void collect( Scene& scene, const RenderView& view, MeshCollector& collector );
 	// Раскладка собранного с главного вида по проходам сцены: меши — по режиму материала, свои вызовы — по маске;
@@ -90,6 +97,10 @@ private:
 	GUI& m_gui;
 	VertexPool m_vertexPool;
 	PropertyContainer m_properties;
+	// Буфер сцены (HDR-цвет и глубина) — цели проходов кадра; цвет очистки — почти чёрный линейный (небо рисует фон там,
+	// где сцена ничего не нарисовала)
+	SceneTargets m_sceneTargets;
+	static constexpr float sceneClearColor[4] = { 0.004f, 0.004f, 0.004f, 1.0f };
 
 	// Команда прохода — батч и ключ сортировки (как FMeshDrawCommand в UE). Непрозрачные: объекты в порядке сцены,
 	// внутри объекта — по материалу, варианту шейдера, растеризатору и мешу; прозрачные — от дальних к ближним
@@ -104,6 +115,7 @@ private:
 	// Проход теней: свой сборщик и команды на каждый каскад
 	ShadowCascades m_shadows;
 	bool m_shadowsActive = false;	// каскады этого кадра посчитаны (update перед compute объектов)
+	RenderState m_warmedShadowState;	// состояние прохода теней, для которого прогреты пайплайны (warmShadowPipelines)
 	MeshCollector m_shadowCollector;
 	std::vector<DrawCommand> m_shadowCommands;
 

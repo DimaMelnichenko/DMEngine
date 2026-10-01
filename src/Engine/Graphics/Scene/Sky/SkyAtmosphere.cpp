@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include "D3D\DMD3D.h"
+#include "SceneTargets.h"
 #include "Light\DMLightDriver.h"
 #include "Logger\Logger.h"
 #include "System.h"
@@ -66,7 +67,7 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 		!m_multipleScatteringShader.load( "Shaders\\sky_multiscattering.ps", TargetFormats::colorTarget( hdrFormat ) ) ||
 		!m_skyViewShader.load( "Shaders\\sky_view.ps", TargetFormats::colorTarget( skyFormat ) ) ||
 		!m_cubeShader.load( "Shaders\\sky_cube.ps", TargetFormats::colorTarget( skyFormat ) ) ||
-		!m_backgroundShader.load( "Shaders\\sky_background.ps", DMD3D::sceneFormats() ) ||
+		!m_backgroundShader.load( "Shaders\\sky_background.ps", SceneTargets::formats() ) ||
 		!m_aerialPerspectiveShader.Initialize( "Shaders\\aerial_perspective.cs", "main" ) )
 		return false;
 

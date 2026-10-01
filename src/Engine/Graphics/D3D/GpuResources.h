@@ -78,6 +78,10 @@ struct TextureDesc
 	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
 	uint32_t usage = TextureUsage::shaderResource;
 	bool cube = false;
+	// Цвет очистки цели (optimized clear value D3D12): очистка другим цветом — предупреждение debug-слоя и медленнее.
+	// Без него цель очищается любым цветом; глубина очищается нулём (обратная глубина) всегда
+	bool hasClearColor = false;
+	float clearColor[4] = {};
 };
 
 // Данные одного подресурса при создании: подресурсы — по срезам, внутри среза — по мипам

@@ -57,6 +57,8 @@ private:
 	void registerCommands();
 	// Снимки, заказанные командой screenshot, — в своей точке кадра: до окон ImGui или после них
 	void takeScreenshots( bool withGui );
+	// Задний буфер в файл (PNG или JPG по расширению) — в кадре до endFrame
+	bool saveScreenshot( const std::wstring& path );
 
 private:
 	float m_screenWidth;
@@ -85,6 +87,7 @@ private:
 		uint32_t taken = 0;
 	};
 	std::vector<ScreenshotRequest> m_screenshots;
+	uint16_t m_screenshotCounter = 0;	// снимки по клавише P: screenshotN.jpg в рабочей папке
 	// Кадров после смены плана (старт, команда camera): снимок и замер ждут, пока устоится экспозиция
 	uint32_t m_framesSinceCut = 0;
 	static constexpr uint32_t settleFrames = 10;

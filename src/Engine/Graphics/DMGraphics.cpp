@@ -4,6 +4,7 @@
 #include "Pipeline.h"
 #include <chrono>
 #include "Logger\Logger.h"
+#include "D3D\TextureImages.h"
 #include "Scene\TextureObjects\CustomTexture.h"
 #include "Engine/Input/Input.h"
 #include "Engine\Console\PropertyCommands.h"
@@ -59,12 +60,18 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_screenHeight = static_cast<float>( screenHeight );
 
 	timeStart = TIME_POINT();
-	result = DMD3D::instance().Initialize( m_config, hwnd );
+	DMD3D::Settings d3dSettings;
+	d3dSettings.backBufferWidth = static_cast<uint32_t>( m_config.backBufferWidth() );
+	d3dSettings.backBufferHeight = static_cast<uint32_t>( m_config.backBufferHeight() );
+	d3dSettings.vsync = m_config.vSync();
+	d3dSettings.fullscreen = m_config.fullScreen();
+	d3dSettings.gpuValidation = m_config.gpuValidation();
+	result = DMD3D::instance().initialize( d3dSettings, hwnd );
 	LOG( "Initialize the Direct3D object ms: " + TIME_PRINT( timeStart ) );
 
 	if( !result )
 	{
-		MessageBox( hwnd, "Could not initialize DirectX 11.", "Error", MB_OK );
+		MessageBox( hwnd, "Could not initialize Direct3D 12 (see log.txt).", "Error", MB_OK );
 		return false;
 	}
 
@@ -99,6 +106,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	pipeline().init();
 
 	RET_FALSE( m_scene.initialize() );
+	// Пайплайны материалов и объектов для проходов кадра — когда объекты созданы, а свет уровня известен (смещение теней)
+	m_renderer.warmPipelines( m_scene );
 
 	for( SceneObject* object : m_scene.objects() )
 	{
@@ -200,7 +209,7 @@ bool DMGraphics::Render( const FrameContext& frame )
 		auto guiStart = TIME_POINT();
 		// Проход GUI: задний буфер поверх тонмаппинга
 		DMD3D& d3d = DMD3D::instance();
-		d3d.beginPass( PassDesc{ "GUI", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.sceneWidth(), d3d.sceneHeight() } );
+		d3d.beginPass( PassDesc{ "GUI", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight() } );
 		m_GUI.Begin();
 		m_GUI.printCamera( m_cameraPool["main"] );
 		m_GUI.End();
@@ -213,7 +222,7 @@ bool DMGraphics::Render( const FrameContext& frame )
 	}
 	takeScreenshots( true );
 
-	DMD3D::instance().EndScene();
+	DMD3D::instance().endFrame();
 
 	return true;
 }
@@ -231,7 +240,7 @@ void DMGraphics::resize( uint32_t width, uint32_t height )
 	if( !m_initialized || width == 0 || height == 0 )
 		return;
 	DMD3D& d3d = DMD3D::instance();
-	if( width == d3d.sceneWidth() && height == d3d.sceneHeight() )
+	if( width == d3d.backBufferWidth() && height == d3d.backBufferHeight() )
 		return;
 	if( !d3d.resize( width, height ) || !m_renderer.resize() )
 	{
@@ -264,7 +273,7 @@ void DMGraphics::takeScreenshots( bool withGui )
 			const size_t dot = path.find_last_of( L'.' );
 			path.insert( dot == std::wstring::npos ? path.size() : dot, suffix );
 		}
-		if( !DMD3D::instance().saveScreenshot( path ) )
+		if( !saveScreenshot( path ) )
 		{
 			it->reply->error( "can`t save the screenshot" );
 			it = m_screenshots.erase( it );
@@ -278,6 +287,16 @@ void DMGraphics::takeScreenshots( bool withGui )
 		it->reply->ok();
 		it = m_screenshots.erase( it );
 	}
+}
+
+bool DMGraphics::saveScreenshot( const std::wstring& path )
+{
+	DMD3D& d3d = DMD3D::instance();
+	std::vector<uint8_t> bytes;
+	uint32_t rowPitch = 0;
+	if( !d3d.captureBackBuffer( bytes, rowPitch ) )
+		return false;
+	return GpuImages::saveImage( path, d3d.backBufferWidth(), d3d.backBufferHeight(), DMD3D::backBufferViewFormat, bytes.data(), rowPitch );
 }
 
 void DMGraphics::registerCommands()
@@ -437,13 +456,9 @@ void DMGraphics::bindingKeys()
 		m_wireframe = value;
 	} );
 
-	getInput().notifier().registerTrigger( DIK_P, []( bool value )
+	getInput().notifier().registerTrigger( DIK_P, [this]( bool )
 	{
-		//if( value )
-		{
-			DMD3D::instance().createScreenshot();
-		}
-
+		saveScreenshot( L"screenshot" + std::to_wstring( m_screenshotCounter++ ) + L".jpg" );
 	} );
 
 	getInput().notifier().registerTrigger( DIK_1, [this]( bool )

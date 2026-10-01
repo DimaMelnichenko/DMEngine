@@ -1,6 +1,7 @@
 #pragma once
 
 #include "D3D\GpuResources.h"
+#include "D3D\RenderState.h"
 #include <string>
 #include <DirectXCollision.h>
 #include "DirectX.h"
@@ -35,6 +36,11 @@ public:
 				 const DirectX::BoundingBox& sceneBounds );
 	bool active() const { return m_active; }
 	const RenderView& cascadeView( uint32_t cascade ) const { return m_views[cascade]; }
+	// Состояние прохода глубины каскадов — часть пайплайнов теней: растеризатор теней (без отсечения граней и по
+	// глубине) с наклонным смещением глубины солнца (Shadow Slope Bias, DMLight::ShadowSettings). Из настроек
+	// последнего update() или из заданных (прогрев пайплайнов при загрузке — Renderer::warmPipelines)
+	RenderState renderState() const { return renderState( m_settings ); }
+	static RenderState renderState( const DMLight::ShadowSettings& settings );
 
 	// Карта теней для объявлений проходов, которые её читают
 	const ShaderView& shaderView() const { return m_shaderView; }
@@ -66,10 +72,11 @@ private:
 
 	bool createResources();
 
+	static constexpr float depthBiasClamp = 0.01f;	// предел наклонного смещения, единицы глубины
+
 	uint32_t m_resolution = 2048;
 	bool m_active = false;
 	DMLight::ShadowSettings m_settings;	// из последнего update()
-	float m_slopeBias = 2.0f;			// наклонное смещение, с которым создан растеризатор теней
 	RenderView m_views[cascadeCount];
 	float m_splits[cascadeCount] = {};
 	float m_texelSize[cascadeCount] = {};

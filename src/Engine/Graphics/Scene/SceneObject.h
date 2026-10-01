@@ -3,6 +3,8 @@
 #include <string>
 #include "RenderView.h"
 #include "MeshBatch.h"
+#include "D3D\RenderState.h"
+#include "D3D\GpuPipeline.h"
 #include "Properties/PropertyContainer.h"
 
 namespace GS
@@ -39,6 +41,16 @@ struct RenderContext
 	bool depthFromPrepass = false;
 };
 
+// Состояния и цели проходов рендерера, которых объект сам не знает, — для прогрева пайплайнов его своих вызовов
+// (SceneObject::warmPipelines): пайплайн, собранный в кадре, — «ленивый» (фриз и строка в лог). Растеризатор кадра
+// (сплошной / каркасный — RenderContext::frameRaster) и глубину проходов цвета объект знает по своим вызовам
+struct PassStates
+{
+	RenderState shadowDepth;	// глубина каскадов теней: растеризатор теней со смещением глубины солнца уровня
+	TargetFormats scene;		// буфер сцены (HDR-цвет + глубина) — проходы цвета
+	TargetFormats depthOnly;	// только глубина — depth prepass и каскады теней
+};
+
 // Общий интерфейс объектов сцены. Scene вызывает update() на CPU, Renderer — compute() до отрисовки,
 // collectMeshes() за каждый вид и renderCustom() в проходах своих вызовов. Объект не знает, в каком проходе рисуются
 // его меши: их раскладывает рендерер (как mesh draw commands в UE), поэтому новый проход или вид (тени, depth
@@ -58,6 +70,9 @@ public:
 	// Свой вызов в проходе context.pass — у объектов с нестандартной геометрией (террейн, расстановка, небо, частицы).
 	// Перед ним привязан общий буфер вершин (VertexPool) с топологией TRIANGLELIST; свои буферы объект привязывает сам
 	virtual void renderCustom( const RenderContext& context ) {}
+	// Пайплайны своих вызовов для состояний проходов рендерера — при загрузке уровня и когда состояние прохода меняется
+	// (смещение теней в GUI): Renderer::warmPipelines. Объекты, которые рисуют только меши материалов, ничего не делают
+	virtual void warmPipelines( const PassStates& states ) {}
 	virtual PropertyContainer* properties() { return nullptr; }
 
 	const std::string& name() const { return m_name; }

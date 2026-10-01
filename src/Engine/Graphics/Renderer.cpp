@@ -90,6 +90,11 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t sh
 	m_properties.setName( "Renderer" );
 	m_properties.insert( "Depth prepass", depthPrepass );
 
+	// Буфер сцены — размером с задний буфер
+	DMD3D& d3d = DMD3D::instance();
+	if( !m_sceneTargets.create( d3d.backBufferWidth(), d3d.backBufferHeight(), sceneClearColor ) )
+		return false;
+
 	if( !m_vertexPool.prepareMeshes() )
 		return false;
 
@@ -104,16 +109,22 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t sh
 
 	m_instanceBuffer.createBuffer( sizeof( InstanceTransform ), maxInstancesPerDraw, "Instance transforms" );
 	m_instanceTransforms.reserve( maxInstancesPerDraw );
-
-	warmPipelines();
 	return true;
 }
 
-void Renderer::warmPipelines()
+PassStates Renderer::passStates( const RenderState& shadowState ) const
 {
+	return { shadowState, SceneTargets::formats(), SceneTargets::depthOnlyFormats() };
+}
+
+void Renderer::warmPipelines( Scene& scene )
+{
+	// Состояние прохода теней — по настройкам солнца уровня (Shadow Slope Bias); нет солнца — по умолчанию
+	m_warmedShadowState = ShadowCascades::renderState( scene.lights().sun() ? scene.lights().sun()->shadowSettings() : DMLight::ShadowSettings() );
+
 	// Состояния, с которыми проходы рисуют меши материалов: цвет и depth prepass — растеризатор по двусторонности и
 	// зеркальности (materialRasterState), в каркасном режиме кадра — wireframe; прозрачные — блендинг без записи глубины;
-	// тени — csmShadowDepth; frontCulling — сфера неба. Все фазы каждого материала
+	// тени — состояние прохода теней; frontCulling — сфера неба. Все фазы каждого материала
 	// Цели: цвет — буфер сцены (HDR + глубина); depth prepass и каскады теней — только глубина (форматы одинаковы —
 	// один пайплайн на оба)
 	std::vector<RenderState> colorStates;
@@ -126,23 +137,44 @@ void Renderer::warmPipelines()
 		colorStates.push_back( { raster, DepthState::readOnly, BlendState::alpha } );
 		depthStates.push_back( { raster, DepthState::enabled, BlendState::opaque } );
 	}
-	depthStates.push_back( { RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque } );
+	depthStates.push_back( m_warmedShadowState );
 	for( auto& material : System::materials() )
 	{
 		if( material.second && material.second->m_shader )
 		{
 			DMShader& shader = *material.second->m_shader;
-			shader.warmPipelines( colorStates, DMD3D::sceneFormats(), shader.colorPhases() );
-			shader.warmPipelines( depthStates, DMD3D::depthOnlyFormats(), shader.depthPhases() );
+			shader.warmPipelines( colorStates, SceneTargets::formats(), shader.colorPhases() );
+			shader.warmPipelines( depthStates, SceneTargets::depthOnlyFormats(), shader.depthPhases() );
 		}
 	}
+	// Свои вызовы объектов (террейн): их пайплайны для состояний проходов рендерера
+	const PassStates states = passStates( m_warmedShadowState );
+	for( SceneObject* object : scene.objects() )
+		object->warmPipelines( states );
 	LOG( "Pipelines after warm-up: " + std::to_string( DMD3D::instance().pipelineCount() ) );
 	ShaderCompiler::instance().logSummary();
 }
 
+void Renderer::warmShadowPipelines( Scene& scene )
+{
+	m_warmedShadowState = m_shadows.renderState();
+	for( auto& material : System::materials() )
+	{
+		if( material.second && material.second->m_shader )
+		{
+			DMShader& shader = *material.second->m_shader;
+			shader.warmPipelines( { m_warmedShadowState }, SceneTargets::depthOnlyFormats(), shader.depthPhases() );
+		}
+	}
+	const PassStates states = passStates( m_warmedShadowState );
+	for( SceneObject* object : scene.objects() )
+		object->warmPipelines( states );
+}
+
 bool Renderer::resize()
 {
-	return m_postProcess.resize();
+	DMD3D& d3d = DMD3D::instance();
+	return m_sceneTargets.create( d3d.backBufferWidth(), d3d.backBufferHeight(), sceneClearColor ) && m_postProcess.resize();
 }
 
 void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
@@ -159,6 +191,9 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	DMLight::ShadowSettings shadowSettings;
 	scene.lights().shadowLight( shadowLightDirection, shadowSettings );
 	m_shadowsActive = m_shadows.update( frame.view, shadowSettings, frame.toShadowLight, scene.bounds() );
+	// Смещение теней сменилось (слайдер в GUI, тени перешли на луну) — пайплайны теней заново до прохода
+	if( m_shadows.renderState() != m_warmedShadowState )
+		warmShadowPipelines( scene );
 	FrameContext computeFrame = frame;
 	computeFrame.views[0] = &frame.view;
 	computeFrame.viewCount = 1;
@@ -191,7 +226,8 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 
 	renderShadows( scene, frame );
 
-	DMD3D::instance().BeginScene( 0.004f, 0.004f, 0.004f, 1.0f );
+	// Проходы сцены — в HDR-буфер: очистка цвета и глубины (0 — дальняя плоскость при обратной глубине)
+	m_sceneTargets.clear();
 	// Карта теней — пиксельным шейдерам проходов сцены (после рисования в неё и смены цели)
 	m_shadows.bindForReceivers( scene.lights().shadowLight( shadowLightDirection, shadowSettings ) );
 
@@ -224,7 +260,7 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		executePass( MeshPass::transparent, frame.view, frameRaster );
 	}
 
-	measure( "Post process", [&] { m_postProcess.render( m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
+	measure( "Post process", [&] { m_postProcess.render( m_sceneTargets.colorView(), m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
 	m_gui.addCounterInfo( "Exposure EV100 = %.2f", m_postProcess.ev100() );
 	m_sunGroundIlluminance = scene.lights().sunGroundIlluminance();
 	m_gui.addCounterInfo( "Sun illuminance at ground = %.0f lx", m_sunGroundIlluminance );
@@ -481,8 +517,8 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 		return;
 
 	const auto start = std::chrono::high_resolution_clock::now();
-	// Карта сейчас привязана к пиксельным шейдерам с прошлого кадра: рисовать в неё можно, только отвязав
-	ScopedRenderState shadowState( RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque );
+	// Состояние прохода теней — растеризатор теней со смещением глубины солнца (часть пайплайнов, warmShadowPipelines)
+	ScopedRenderState shadowState( m_shadows.renderState() );
 
 	// Время — одной областью на каскад: имена объектов в строке «GPU average» остаются за проходами сцены
 	m_gpuProfiler.beginScope( "Shadow depths" );
@@ -522,10 +558,10 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 	PassDesc desc;
 	desc.name = passNames[static_cast<int>( pass )];
 	if( pass != MeshPass::depthPrepass )
-		desc.colors = { { &d3d.sceneTarget(), "scene color" } };
-	desc.depth = { &d3d.sceneDepthTarget(), "scene depth" };
-	desc.width = d3d.sceneWidth();
-	desc.height = d3d.sceneHeight();
+		desc.colors = { { &m_sceneTargets.colorTarget(), "scene color" } };
+	desc.depth = { &m_sceneTargets.depthTarget(), "scene depth" };
+	desc.width = m_sceneTargets.width();
+	desc.height = m_sceneTargets.height();
 	desc.reads = { { &m_shadows.shaderView(), "shadow map" }, { &m_postProcess.exposureView(), "exposure" } };
 	d3d.beginPass( desc );
 	ScopedRenderState passState;

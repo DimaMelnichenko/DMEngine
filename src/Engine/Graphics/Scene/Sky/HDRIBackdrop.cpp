@@ -8,6 +8,7 @@
 #include <vector>
 #include <DirectXTex.h>
 #include "D3D\DMD3D.h"
+#include "SceneTargets.h"
 #include "Logger\Logger.h"
 #include "TextureObjects\TextureLoader.h"
 
@@ -113,7 +114,7 @@ bool HDRIBackdrop::initialize( const Settings& settings, SkyLight& skyLight )
 
 	// Цели для прогрева: грани cubemap источника (формат SkyLight::createSource), фон — буфер сцены
 	if( !m_cubeShader.load( "Shaders\\hdri_cube.ps", TargetFormats::colorTarget( DXGI_FORMAT_R32G32B32A32_FLOAT ) ) ||
-		!m_backgroundShader.load( "Shaders\\hdri_background.ps", DMD3D::sceneFormats() ) ||
+		!m_backgroundShader.load( "Shaders\\hdri_background.ps", SceneTargets::formats() ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
 		!SkyLight::createSource( m_cube ) )
 		return false;

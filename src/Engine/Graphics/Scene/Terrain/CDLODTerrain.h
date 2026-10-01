@@ -33,6 +33,8 @@ public:
 	// Выбор узлов квадродерева для вида: LOD — от точки LOD вида, отсечение — по его frustum
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	void renderCustom( const RenderContext& context ) override;
+	// Пайплайны рельефа: цвет с растеризатором кадра (сплошной или каркасный) в буфер сцены; prepass и тени — только глубина
+	void warmPipelines( const PassStates& states ) override;
 	PropertyContainer* properties() override;
 
 private:

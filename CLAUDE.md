@@ -164,7 +164,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Histogram в UE; ночью темнее по кривой компенсации от EV100 сцены — Exposure Compensation Curve в UE), bloom
   (уровни ½ … ¹⁄₆₄, Jimenez 2014), затем ночное зрение (сдвиг Пуркинье: в темноте цвет уходит в синеватый монохром,
   Krawczyk 2005) и тонмаппинг (AgX / ACES) в задний буфер sRGB; новый
-  проход — ещё одна цель и шаг в `PostProcess::render`. Затем `DMGraphics` рисует GUI и вызывает `EndScene`.
+  проход — ещё одна цель и шаг в `PostProcess::render`. Затем `DMGraphics` рисует GUI и вызывает `DMD3D::endFrame`.
+  Буфер сцены (HDR-цвет и глубина) — `SceneTargets` у `Renderer` (`Graphics/SceneTargets.h`): устройство о нём не знает.
   Задний буфер — swap chain flip model (`DMD3D::createSwapChain`: два буфера `R8G8B8A8_UNORM` с sRGB-видом, без
   vsync — tearing, начало кадра по waitable object — `DMD3D::waitForNextFrame`); `WM_SIZE` → `DMGraphics::resize`:
   задний буфер, буфер сцены, глубина, уровни bloom и проекция камеры заново по правилу D3D12 (дождаться GPU,
@@ -234,12 +235,13 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
   инстансы, патчи, свет — `DMStructuredBuffer`) — тоже участки кольца, с временным SRV на кадр (`setSRV( слот, буфер )`), поэтому
   их пишут каждый кадр перед привязкой; редко меняющиеся константы — `BufferUsage::constant` и `updateBuffer`. Привязка — `setSRV( SRVType::ps|vs|cs…, slot, view )`, `setConstantBuffer`,
   `setUAV`, `setVertexBuffer(s)` / `setIndexBuffer`; вызовы — `draw*`, `dispatch`; цели — только через
-  `beginPass( PassDesc )` (`D3D/GpuPass.h`; буфер сцены и задний буфер — `sceneTarget()` / `sceneDepthTarget()` /
-  `backBufferTarget()`); `setSRV` вида ресурса, который пишет текущий проход, завершает проход над ним (цели снимаются,
-  UAV отвязывается — так ресурсы сцены t101…t106 привязываются сразу после своих проходов); скриншоты; состояния
-  растеризатора/глубины/блендинга
-  (`setState(RasterState | DepthState | BlendState)`). Правило: `ID3D12*` и `D3D12_*` — только внутри
-  `src/Engine/Graphics/D3D/` (`grep -rlE "ID3D12|D3D12_" src` вне него пуст), `GetDevice()` / `commandList()` /
+  `beginPass( PassDesc )` (`D3D/GpuPass.h`; задний буфер — `backBufferTarget()`, буфер сцены — `SceneTargets` рендерера); `setSRV` вида ресурса, который пишет текущий проход, завершает проход над ним (цели снимаются,
+  UAV отвязывается — так ресурсы сцены t101…t106 привязываются сразу после своих проходов); копия заднего буфера
+  (`captureBackBuffer` — снимки пишет `DMGraphics::saveScreenshot`); состояния растеризатора/глубины/блендинга
+  (`setState(RasterState | DepthState | BlendState | RenderState)`; смещение глубины — `RenderState::depthBias`).
+  Реализация `DMD3D` — по файлам: `DMD3D.cpp` (устройство, кадры, swap chain), `DMD3DPasses.cpp`, `DMD3DPipelines.cpp`,
+  `DMD3DResources.cpp`, `DMD3DCommands.cpp`. Правило: `ID3D12*` и `D3D12_*` — только внутри
+  `src/Engine/Graphics/D3D/` (`grep -rlE "ID3D12|D3D12_" src` вне него пуст), `device()` / `commandList()` /
   `shaderVisibleHeap()` — для этого каталога и привязки ImGui (`imgui_impl_dx12`). `DXGI_FORMAT` и
   `D3D_PRIMITIVE_TOPOLOGY` допустимы везде. Виды (`ShaderView`, `StorageView`, `TargetView`) — постоянные дескрипторы
   в кучах DMD3D (bindless): освобождаются вместе с видом.
@@ -356,7 +358,9 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 каскад — ортографический `RenderView` вдоль солнца на описанную сферу своей части frustum; размер сферы постоянен,
 центр привязан к сетке текселей (тень не дрожит); ближняя и дальняя плоскости — по `Scene::bounds` (террейн и модели).
 Карта — `Texture2DArray` D32 2048², растеризатор `RasterState::csmShadowDepth` (без отсечения граней и по глубине,
-наклонное смещение). Отбрасывают тень меши с `castsShadow` материалов с `depthPhaseFor` (у `PBR` — вершинный шейдер
+наклонное смещение солнца — `RenderState::depthBias`: состояние прохода теней даёт `ShadowCascades::renderState`,
+пайплайны для него прогревает `Renderer::warmPipelines` / `warmShadowPipelines`, объекты со своими вызовами — через
+`SceneObject::warmPipelines( PassStates )`). Отбрасывают тень меши с `castsShadow` материалов с `depthPhaseFor` (у `PBR` — вершинный шейдер
 «только глубина», `DEPTH_ONLY` в `LightShader.vs`: позиция и UV, позиция `precise`; Masked — ещё `mainDepth` в `PBRLit.ps`) и свои вызовы с битом `csmShadowDepth` (террейн; слои расстановки с `ScatterLayers.cast_shadow` — только
 в каскады, которые задевает их кольцо, `RenderView::cascadeNear/Far`). Направление на источник теней — `FrameContext::toShadowLight`: солнце, после заката — луна (`DMLightDriver::shadowLight`: светило над горизонтом с более ярким светом у земли). Приём — `Shaders/shadows.sh`
 (каскад по глубине взгляда, смещения к солнцу и по нормали в текселях каскада, PCF 5 × 5 Castaño, смешение каскадов,

@@ -28,14 +28,28 @@ enum class BlendState
 	additive	// сложение (ONE, ONE): уровни bloom, накопление света
 };
 
+// Смещение глубины растеризатора — у глубины каскадов теней (Shadow Slope Bias солнца, DMLight::ShadowSettings): наклонное
+// — пропорционально наклону поверхности к свету, предел — в единицах глубины; постоянного нет (у D32_FLOAT оно зависит
+// от порядка числа). Знак — «от света»: глубина обратная, поэтому в растеризатор D3D12 значения идут с минусом
+struct DepthBias
+{
+	float slopeScaled = 0.0f;
+	float clamp = 0.0f;
+
+	bool operator==( const DepthBias& other ) const { return slopeScaled == other.slopeScaled && clamp == other.clamp; }
+	bool operator!=( const DepthBias& other ) const { return !( *this == other ); }
+};
+
 struct RenderState
 {
 	RasterState raster = RasterState::solid;
 	DepthState depth = DepthState::enabled;
 	BlendState blend = BlendState::opaque;
+	DepthBias depthBias;	// часть пайплайна: состояние с другим смещением — другой PSO
 
 	bool operator==( const RenderState& other ) const
 	{
-		return raster == other.raster && depth == other.depth && blend == other.blend;
+		return raster == other.raster && depth == other.depth && blend == other.blend && depthBias == other.depthBias;
 	}
+	bool operator!=( const RenderState& other ) const { return !( *this == other ); }
 };

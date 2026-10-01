@@ -79,7 +79,7 @@ public:
 	static std::string curveText( const std::vector<XMFLOAT2>& curve );
 
 	bool initialize( const Settings& settings );
-	// Новый размер кадра: уровни bloom заново по размеру буфера сцены
+	// Новый размер кадра: уровни bloom заново по размеру заднего буфера
 	bool resize();
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
@@ -88,8 +88,8 @@ public:
 	// Экспозиция кадра — для объявлений проходов, которые её читают
 	const ShaderView& exposureView() const { return m_exposureSRV; }
 	// Рисует цепочку в задний буфер и оставляет его привязанным для GUI; время проходов — области profiler.
-	// deltaTime — длительность кадра, с (скорость адаптации)
-	void render( GpuProfiler& profiler, float deltaTime );
+	// sceneColor — HDR-цвет сцены (SceneTargets::colorView), deltaTime — длительность кадра, с (скорость адаптации)
+	void render( const ShaderView& sceneColor, GpuProfiler& profiler, float deltaTime );
 	// Смена плана (camera cut, как у вида в UE): несколько кадров экспозиция адаптируется сразу, а не за секунды
 	void cameraCut() { m_cutFrames = cutFrameCount; }
 	// EV100 кадра с отставанием на несколько кадров (копия с GPU без ожидания) — для статистики

@@ -85,7 +85,10 @@ dᵢ = D · (Eⁱ − 1) / (E⁴ − 1)
 - без отсечения граней. У рельефа (высотное поле) нет граней «к свету», отсечение убрало бы его из карты; тонкие
   панели и лепестки тоже отбрасывают тень;
 - наклонное смещение глубины (Shadow Slope Bias), постоянного смещения нет: у `D32_FLOAT` оно зависит от порядка
-  числа. Глубина обратная, поэтому смещение от света — со знаком минус (`DMD3D::setShadowSlopeBias`);
+  числа. Смещение — часть состояния пайплайна (`RenderState::depthBias`): состояние прохода теней со смещением солнца
+  даёт `ShadowCascades::renderState`, рендерер ставит его на проход и прогревает пайплайны теней для него (новое
+  значение слайдера — `Renderer::warmShadowPipelines`). Глубина обратная, поэтому в растеризатор D3D12 смещение идёт
+  со знаком минус (`DMD3D::createPipelineObject`);
 
 Кто что рисует:
 - **модели** (`ModelInstances`) — меши с `MeshBatch::castsShadow`, кроме полупрозрачных (Translucent). Вариант
@@ -207,7 +210,7 @@ Release, 1920 × 1080, время GPU кадра без теней и с тен�
 | `src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp` | выбор узлов на каждый вид, глубина рельефа |
 | `src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp`, `Shaders/scatter.cs` | тень слоёв расстановки, отбор инстансов с учётом тени |
 | `src/Engine/Graphics/Scene/Scene.cpp` | `Scene::bounds` — границы сцены для глубины карты |
-| `src/Engine/Graphics/D3D/DMD3D.cpp` | растеризатор теней (`setShadowSlopeBias`), цель только глубины (`setDepthTarget`) |
+| `src/Engine/Graphics/D3D/DMD3DPipelines.cpp` | растеризатор теней по `RenderState` (`csmShadowDepth`, `depthBias`) |
 | `Shaders/shadows.sh` | приём тени: каскад, смещения, фильтр, переход, подкраска каскадов |
 | `Shaders/lighting.sh` | множитель тени солнца в прямом свете |
 | `Shaders/PBRLit.ps` | `mainDepth` — глубина Masked-материалов |

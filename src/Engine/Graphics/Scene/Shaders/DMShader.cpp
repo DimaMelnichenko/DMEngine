@@ -96,7 +96,7 @@ void DMShader::warmPipelines( const std::vector<RenderState>& states, const Targ
 	DMD3D& d3d = DMD3D::instance();
 	for( int phase = 0; phase < phaseCount(); ++phase )
 		for( const RenderState& state : states )
-			d3d.pipeline( pipelineDesc( phase, state, formats ) );
+			d3d.warmPipeline( pipelineDesc( phase, state, formats ) );
 }
 
 void DMShader::warmPipelines( const std::vector<RenderState>& states, const TargetFormats& formats, const std::vector<int>& phases )
@@ -105,7 +105,7 @@ void DMShader::warmPipelines( const std::vector<RenderState>& states, const Targ
 	for( int phase : phases )
 		if( phase >= 0 && phase < phaseCount() )
 			for( const RenderState& state : states )
-				d3d.pipeline( pipelineDesc( phase, state, formats ) );
+				d3d.warmPipeline( pipelineDesc( phase, state, formats ) );
 }
 
 std::vector<int> DMShader::depthPhases() const

@@ -56,13 +56,14 @@ public:
 	static constexpr float fallbackIlluminance = 100000.0f;
 
 	const LightList& lights() const;
+	// Солнце — первый включённый направленный источник, луна — направленный с atmosphere_sun_light_index 1; nullptr — нет
+	const DMLight* sun() const;
+	const DMLight* moon() const;
 	PropertyContainer* properties();
 
 private:
 	// Направление запасного света, когда источников нет
 	static XMFLOAT3 fallbackDirection();
-	const DMLight* sun() const;
-	const DMLight* moon() const;
 	// Источники буфера по порядку: включённые, кроме светила атмосферы, свет которого у земли меньше
 	// negligibleFraction от самого яркого из них (днём — луна, ночью — солнце под горизонтом): каждый источник в буфере
 	// шейдеры освещения считают в каждом пикселе

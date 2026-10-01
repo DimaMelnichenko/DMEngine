@@ -32,7 +32,7 @@ void GUI::Initialize( HWND hwnd )
 	// и формат заднего буфера — как у DMD3D; рисует в текущий командный список кадра (GUI::End)
 	DMD3D& d3d = DMD3D::instance();
 	ImGui_ImplDX12_InitInfo info;
-	info.Device = d3d.GetDevice();
+	info.Device = d3d.device();
 	info.CommandQueue = d3d.directQueue();
 	info.NumFramesInFlight = DMD3D::frameCount;
 	info.RTVFormat = DMD3D::backBufferViewFormat;

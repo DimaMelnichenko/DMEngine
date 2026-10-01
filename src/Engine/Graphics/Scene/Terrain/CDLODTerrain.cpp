@@ -166,16 +166,23 @@ bool CDLODTerrain::createShader()
 	m_depthPhase = m_shader.createPhase( 0, -1 );
 	if( m_materialPhase < 0 || m_lodPhase < 0 || m_depthPhase < 0 )
 		return false;
-	// Пайплайны рельефа: цвет с растеризатором кадра (сплошной или каркасный) в буфер сцены; prepass и тени — только глубина
+	return true;
+}
+
+void CDLODTerrain::warmPipelines( const PassStates& states )
+{
+	if( !m_initialized )
+		return;
+	// Цвет: глубина с записью или проверка на равенство после depth prepass; prepass — только глубина; тени — состояние
+	// прохода теней рендерера (растеризатор со смещением глубины солнца)
 	m_shader.warmPipelines( { { RasterState::solid, DepthState::enabled, BlendState::opaque },
 							  { RasterState::solid, DepthState::readOnlyEqual, BlendState::opaque },
 							  { RasterState::wireframe, DepthState::enabled, BlendState::opaque },
-							  { RasterState::wireframe, DepthState::readOnlyEqual, BlendState::opaque } }, DMD3D::sceneFormats(),
+							  { RasterState::wireframe, DepthState::readOnlyEqual, BlendState::opaque } }, states.scene,
 							{ m_materialPhase, m_lodPhase } );
 	m_shader.warmPipelines( { { RasterState::solid, DepthState::enabled, BlendState::opaque },
 							  { RasterState::wireframe, DepthState::enabled, BlendState::opaque },
-							  { RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque } }, DMD3D::depthOnlyFormats(), { m_depthPhase } );
-	return true;
+							  states.shadowDepth }, states.depthOnly, { m_depthPhase } );
 }
 
 bool CDLODTerrain::buildHeightBounds()

@@ -7,7 +7,6 @@
 #include <unordered_map>
 #include <vector>
 #include "Utils\utilites.h"
-#include "Config\Config.h"
 #include "DM3DUtils.h"
 #include "GpuResources.h"
 #include "DescriptorHeap.h"
@@ -49,9 +48,12 @@ void updateResourceData( Buffer& buffer, const ResourceType& data )
 }
 
 // Бэкенд D3D12 за интерфейсом, которым пользуются объекты сцены, материалы и Renderer (docs/d3d12.md §3):
-// устройство и очереди, кадры в полёте с fence, кучи дескрипторов (bindless), кольцо констант, память (D3D12MA),
-// ресурсы и виды, шейдеры и пайплайны (PSO с кэшем на диске), проходы с барьерами по объявлениям, привязка через
-// таблицу привязок вызова (root-константы) и root CBV, вызовы, запросы времени GPU и метки PIX
+// устройство и очереди, кадры в полёте с fence, swap chain и задний буфер, кучи дескрипторов (bindless), кольцо
+// констант, память (D3D12MA), ресурсы и виды, шейдеры и пайплайны (PSO с кэшем на диске), проходы с барьерами по
+// объявлениям, привязка через таблицу привязок вызова (root-константы) и root CBV, вызовы, запросы времени GPU и метки
+// PIX. Что рисуется и куда — не здесь: буфер сцены и проходы кадра — у Renderer (SceneTargets), снимки — у DMGraphics.
+// Реализация — по файлам: DMD3D.cpp (устройство, кадры, swap chain), DMD3DPasses.cpp (барьеры, проходы),
+// DMD3DPipelines.cpp, DMD3DResources.cpp, DMD3DCommands.cpp (привязка, вызовы, профайлер)
 class DMD3D
 {
 private:
@@ -67,50 +69,47 @@ public:
 	static constexpr DXGI_FORMAT backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 	static constexpr DXGI_FORMAT backBufferViewFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	static constexpr uint32_t backBufferCount = 2;
-	// Буфер сцены: HDR-цвет и глубина (обратная, D32)
-	static constexpr DXGI_FORMAT sceneColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	static constexpr DXGI_FORMAT sceneDepthFormat = DXGI_FORMAT_D32_FLOAT;
+
+	// Настройки устройства из settings.ini (DMGraphics собирает их из Config)
+	struct Settings
+	{
+		uint32_t backBufferWidth = 1920;
+		uint32_t backBufferHeight = 1080;
+		bool vsync = false;
+		bool fullscreen = false;
+		bool gpuValidation = true;	// Debug-сборка: GPU-based validation поверх debug-слоя
+	};
 
 	static DMD3D& instance();
 	static bool exists() { return m_instance != nullptr; }
 	static void destroy();
 	~DMD3D();
 
-	bool Initialize( const Config& config, HWND hwnd );
-	void Shutdown();
+	bool initialize( const Settings& settings, HWND hwnd );
+	void shutdown();
 
 	// --- Кадр -----------------------------------------------------------------------------------------------------------
 	// Начало кадра: ожидание swap chain (waitable object) и fence кадра, который занимал эти ресурсы кадра, новый
-	// командный список, новый кадр кольца констант. Команды, записанные до первого кадра (загрузка), выполняются и
-	// ждутся здесь
+	// командный список, новый кадр кольца констант, задний буфер кадра — цель (барьер PRESENT → RENDER_TARGET). Команды,
+	// записанные до первого кадра (загрузка), выполняются и ждутся здесь
 	void beginFrame();
-	// Кадр рисуется в HDR-буфер сцены (линейные значения без ограничения сверху): BeginScene объявляет проход очистки
-	// и очищает его вместе с буфером глубины. Буфер создаётся при первом вызове с этим цветом очистки (optimized clear
-	// value). Тонмаппинг переводит его в задний буфер (backBufferTarget + sceneColor), поверх рисуется GUI, EndScene
-	// показывает кадр
-	void BeginScene( float, float, float, float );
+	// Конец кадра: задний буфер на показ, команды в очередь, Present, fence кадра
+	void endFrame();
 	// Проход начинается объявлением (GpuPass.h): барьеры целей, чтения и записи по объявлению (по подресурсам — мипы
 	// куба, срезы каскадов), цели и область вывода ставятся, слоты вызова таблицы привязок (t0…t16, u0…u7) очищаются;
 	// ресурсы прохода привязываются после beginPass. Без целей — compute-проход. Список проходов следующего кадра с
 	// ресурсами — logPasses (команда passes) → log.txt
 	void beginPass( const PassDesc& pass );
 	void logPasses() { m_passLogRequested = true; }
-	// Буфер сцены (HDR и глубина) и текущий задний буфер — цели проходов сцены, тонмаппинга и GUI
-	const TargetView& sceneTarget() const { return m_sceneTarget; }
-	const TargetView& sceneDepthTarget() const { return m_sceneDepth; }
+	// Текущий задний буфер (R8G8B8A8 с sRGB-видом) — цель тонмаппинга и GUI; размер — пиксели клиентской области
 	const TargetView& backBufferTarget() const { return m_backBufferTargets[m_backBufferIndex]; }
-	// Размер буфера сцены (и заднего буфера), пиксели
-	uint32_t sceneWidth() const { return m_screenWidth; }
-	uint32_t sceneHeight() const { return m_screenHeight; }
+	uint32_t backBufferWidth() const { return m_backBufferWidth; }
+	uint32_t backBufferHeight() const { return m_backBufferHeight; }
+	// Копия заднего буфера на CPU (снимок — DMGraphics): байты строками по rowPitch, формат backBufferViewFormat. Вызывать
+	// в кадре до endFrame: после Present содержимое буфера не определено. Ждёт GPU
+	bool captureBackBuffer( std::vector<uint8_t>& bytes, uint32_t& rowPitch );
 	void clearDepth( const TargetView& target, float depth );
 	void clearTarget( const TargetView& target, const float color[4] );
-	// Наклонное смещение глубины растеризатора теней (Shadow Slope Bias) — параметр пайплайнов теней
-	bool setShadowSlopeBias( float slopeBias );
-	float shadowSlopeBias() const { return m_shadowSlopeBias; }
-	// Цвет сцены для чтения в шейдере (постобработка)
-	const ShaderView& sceneColor() const { return m_sceneSRV; }
-	// Конец кадра: команды в очередь, Present, fence кадра
-	void EndScene();
 	// Ждёт, пока GPU закончит всё отправленное (fence в конце очереди) — размер окна, чтение на CPU при загрузке, выгрузка
 	void waitForGpu();
 
@@ -123,9 +122,9 @@ public:
 	void endWrite();
 	const ConstantRing::Stats& constantRingStats() const { return m_constantRing.lastFrameStats(); }
 
-	// Новый размер заднего буфера (WM_SIZE): дождаться GPU, отпустить все ссылки на задние буферы, ResizeBuffers,
-	// затем цели заново (буфер сцены — при следующем BeginScene). Цели постобработки и проекцию камеры пересоздаёт
-	// DMGraphics::resize. Тот же размер — ничего
+	// Новый размер заднего буфера (WM_SIZE): дождаться GPU, отпустить все ссылки на задние буферы, ResizeBuffers, виды
+	// заново. Буфер сцены, цели постобработки и проекцию камеры пересоздают Renderer::resize и DMGraphics::resize. Тот
+	// же размер — ничего
 	bool resize( uint32_t width, uint32_t height );
 
 	// Занятая и доступная видеопамять адаптера (DXGI), байты — в «Statistic»
@@ -140,7 +139,7 @@ public:
 	uint32_t indirectDrawCount() const { return m_lastFrameIndirectDraws; }	// ExecuteIndirect за прошлый кадр
 
 	// --- D3D12 для кода в Graphics/D3D и привязки ImGui (imgui_impl_dx12) ----------------------------------------------
-	ID3D12Device10* GetDevice() const { return m_device.get(); }
+	ID3D12Device10* device() const { return m_device.get(); }
 	ID3D12GraphicsCommandList7* commandList() const { return m_commandList.get(); }
 	ID3D12CommandQueue* directQueue() const { return m_directQueue.get(); }
 	ID3D12DescriptorHeap* shaderVisibleHeap() const { return m_shaderHeap.handle(); }
@@ -164,18 +163,18 @@ public:
 	void setState( RasterState state );
 	void setState( DepthState state );
 	void setState( BlendState state );
-	void setRenderState( const RenderState& state );
+	void setState( const RenderState& state );	// целиком, со смещением глубины (состояние прохода теней)
 	const RenderState& renderState() const { return m_renderState; }
-	// Пайплайн по описанию из кэша (создаётся, если его ещё нет; после markPipelinesWarm — с записью в лог)
-	const Pipeline& pipeline( const PipelineDesc& desc );
+	// Пайплайн по описанию из кэша (создаётся, если его ещё нет; после markPipelinesWarm — «ленивый»: запись в лог и счётчик)
+	const Pipeline& pipeline( const PipelineDesc& desc ) { return findOrCreatePipeline( desc, false ); }
+	// То же при прогреве (списки при загрузке уровня, новое состояние прохода теней — Renderer::warmShadowPipelines):
+	// собранный здесь пайплайн «ленивым» не считается
+	void warmPipeline( const PipelineDesc& desc ) { findOrCreatePipeline( desc, true ); }
 	// Ставит в командный список объект состояния пайплайна и топологию (root signature одна, стоит с начала списка)
 	void setPipeline( const Pipeline& pipeline );
 	// Цели текущего прохода (beginPass) — для описания пайплайна вызова (DMShader::setPass)
 	const TargetFormats& passFormats() const { return m_passFormats; }
-	// Цели проходов движка для прогрева пайплайнов: буфер сцены (HDR + глубина), только глубина (prepass, каскады
-	// теней — тот же формат), задний буфер (тонмаппинг, GUI)
-	static TargetFormats sceneFormats();
-	static TargetFormats depthOnlyFormats();
+	// Цели заднего буфера для прогрева пайплайнов тонмаппинга и GUI (цели сцены — SceneTargets::formats)
 	static TargetFormats backBufferFormats();
 	// Compute-пайплайн стадии — собрать заранее (DMComputeShader::Initialize)
 	void warmComputePipeline( const ShaderStage& stage ) { computePipeline( stage ); }
@@ -194,7 +193,8 @@ public:
 	bool createIndexBuffer( Buffer& buffer, const void* data, size_t sizeInBytes );
 	bool createShaderView( const Buffer& buffer, const BufferViewDesc& desc, ShaderView& view );
 	bool createStorageView( const Buffer& buffer, const BufferViewDesc& desc, StorageView& view );
-	// initial — данные подресурсов (arraySize × mipCount, по срезам, внутри среза по мипам) или nullptr
+	// initial — данные подресурсов (arraySize × mipCount, по срезам, внутри среза по мипам) или nullptr. Цель без данных
+	// получает DiscardResource: память куч без обнуления, первой операцией должна быть очистка или discard
 	bool createTexture( const TextureDesc& desc, const TextureData* initial, Texture& texture );
 	bool createShaderView( const Texture& texture, const TextureViewDesc& desc, ShaderView& view );
 	// Цель цвета или глубины — по формату (desc.format либо формат текстуры), один мип firstMip
@@ -239,10 +239,6 @@ public:
 	void drawIndexedInstancedIndirectCount( const Buffer& commands, uint32_t commandsOffset, uint32_t maxCommands, const Buffer& counts,
 											uint32_t countOffset );
 	void dispatch( uint32_t x, uint32_t y, uint32_t z );
-
-	// Снимки заднего буфера (PNG или JPG по расширению) — вызывать до EndScene: после Present содержимое буфера не определено
-	bool createScreenshot();
-	bool saveScreenshot( const std::wstring& path );
 
 	// --- Профайлер, метки PIX, имена ресурсов -------------------------------------------------------------------------
 	// Куча запросов TIMESTAMP на count запросов (GpuProfiler); writeTimestamp пишет метку в точке команды, resolveTimestamps
@@ -289,7 +285,7 @@ private:
 	};
 
 	bool selectAdapter();
-	bool createDevice( const Config& config );
+	bool createDevice( bool gpuValidation );
 	bool createQueuesAndFrames();
 	bool createDescriptorHeaps();
 	bool createRootSignature();
@@ -297,9 +293,8 @@ private:
 	bool createSwapChain( HWND hwnd, bool fullscreen );
 	bool createBackBufferTargets();
 	void releaseBackBufferTargets();
-	bool createSceneTargets( const float clearColor[4] );
-	void releaseSceneTargets();
 	// Объект состояния пайплайна из описания: из библиотеки на диске или собрать (и положить в библиотеку)
+	const Pipeline& findOrCreatePipeline( const PipelineDesc& desc, bool warming );
 	bool createPipelineObject( Pipeline& pipeline );
 	ID3D12PipelineState* computePipeline( const ShaderStage& stage );
 	bool loadPipelineLibrary();
@@ -333,14 +328,10 @@ private:
 	// Ресурс из аллокатора; desc — буфера или текстуры
 	bool createResource( const D3D12_RESOURCE_DESC1& desc, D3D12_HEAP_TYPE heap, D3D12_BARRIER_LAYOUT initialLayout,
 						 const D3D12_CLEAR_VALUE* clearValue, ID3D12Resource** resource, D3D12MA::Allocation** allocation );
-	bool createTextureInternal( const TextureDesc& desc, const TextureData* initial, Texture& texture, const float* clearColor,
-								const wchar_t* name );
 	// Данные — в буфер: через участок кольца (в кадре, небольшие) или отдельный upload-буфер с отложенным отпуском
 	bool uploadToBuffer( ID3D12Resource* destination, uint64_t destinationOffset, const void* data, uint64_t size );
 	bool uploadToTexture( ID3D12Resource* destination, const TextureDesc& desc, const TextureData* initial );
 	bool createStaging( uint64_t bytes, D3D12_HEAP_TYPE heap, ID3D12Resource** resource, D3D12MA::Allocation** allocation, void** mapped );
-	// Задний буфер на CPU: байты R8G8B8A8 (sRGB) с шагом строки rowPitch. Ждёт GPU; задний буфер остаётся целью
-	bool captureBackBuffer( std::vector<uint8_t>& bytes, uint32_t& rowPitch );
 	// Потеря устройства: причина и последние выполненные команды (DRED) — в лог
 	void logDeviceRemoved( HRESULT reason );
 	static void messageCallback( D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVERITY severity, D3D12_MESSAGE_ID id,
@@ -352,15 +343,10 @@ private:
 	friend void gpuReleaseResource( ID3D12Resource* resource, D3D12MA::Allocation* allocation );
 
 private:
-	bool m_vsync_enabled = false;
-	int m_videoCardMemory = 0;
-	char m_videoCardDescription[128] = {};
-	uint32_t m_screenWidth = 0;
-	uint32_t m_screenHeight = 0;
-	uint32_t m_numerator = 0;
-	uint32_t m_denominator = 1;
+	bool m_vsync = false;
+	uint32_t m_backBufferWidth = 0;
+	uint32_t m_backBufferHeight = 0;
 	HWND m_hWnd = nullptr;
-	uint16_t m_screenshotCounter = 0;
 
 	com_unique_ptr<IDXGIFactory4> m_factory;
 	com_unique_ptr<IDXGIAdapter1> m_adapter;			// видеокарта устройства: дискретная, если их две
@@ -427,15 +413,6 @@ private:
 	TargetView m_backBufferTargets[backBufferCount];
 	uint32_t m_backBufferIndex = 0;
 
-	// Буфер сцены: HDR-цвет, глубина, вид цвета для постобработки — при первом BeginScene и после resize
-	Texture m_sceneTexture;
-	Texture m_sceneDepthTexture;
-	TargetView m_sceneTarget;
-	TargetView m_sceneDepth;
-	ShaderView m_sceneSRV;
-	float m_sceneClearColor[4] = {};
-	float m_shadowSlopeBias = 0.0f;
-
 	RenderState m_renderState;
 	// Root signature одна на графику и compute: root-константы таблицы привязок b8, root CBV b0…b7, root-константы
 	// вызова b9 (их пишет команда ExecuteIndirect), статические сэмплеры s0…s8, флаг прямой индексации кучи
@@ -486,7 +463,7 @@ public:
 	}
 	~ScopedRenderState()
 	{
-		DMD3D::instance().setRenderState( m_previous );
+		DMD3D::instance().setState( m_previous );
 	}
 	ScopedRenderState( const ScopedRenderState& ) = delete;
 	ScopedRenderState& operator=( const ScopedRenderState& ) = delete;

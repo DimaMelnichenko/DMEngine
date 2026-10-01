@@ -1,12 +1,14 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include "GpuResources.h"
 #include "RenderState.h"
 
 // Форматы целей прохода — часть PSO D3D12: одна фаза материала в проходе сцены (HDR + глубина), в каскаде теней
 // (только глубина) и в тонмаппинге (задний буфер) — три пайплайна. В кадре их даёт текущий проход (DMD3D::passFormats
-// по объявлению beginPass), при прогреве — тот, кто знает свои цели (DMD3D::sceneFormats и др., TargetFormats::color)
+// по объявлению beginPass), при прогреве — тот, кто знает свои цели (SceneTargets::formats, DMD3D::backBufferFormats,
+// TargetFormats::colorTarget)
 struct TargetFormats
 {
 	static constexpr uint32_t maxColors = 8;
@@ -58,6 +60,15 @@ struct PipelineDesc
 	D3D_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	TargetFormats formats;
 
+	// Биты смещения глубины — в ключ и имя пайплайна (библиотека на диске)
+	static uint64_t depthBiasBits( const DepthBias& bias )
+	{
+		uint32_t slope = 0, clamp = 0;
+		memcpy( &slope, &bias.slopeScaled, sizeof( slope ) );
+		memcpy( &clamp, &bias.clamp, sizeof( clamp ) );
+		return static_cast<uint64_t>( slope ) | static_cast<uint64_t>( clamp ) << 32;
+	}
+
 	// Ключ кэша в памяти: FNV-1a по указателям стадий и раскладки (они живут, пока жив шейдер), состояниям и форматам
 	uint64_t key() const
 	{
@@ -78,6 +89,7 @@ struct PipelineDesc
 		mix( reinterpret_cast<uintptr_t>( layout ) );
 		mix( static_cast<uint64_t>( state.raster ) | static_cast<uint64_t>( state.depth ) << 8 | static_cast<uint64_t>( state.blend ) << 16 |
 			 static_cast<uint64_t>( topology ) << 24 );
+		mix( depthBiasBits( state.depthBias ) );
 		for( uint32_t i = 0; i < formats.colorCount; ++i )
 			mix( static_cast<uint64_t>( formats.color[i] ) | static_cast<uint64_t>( i ) << 32 );
 		mix( static_cast<uint64_t>( formats.depth ) | static_cast<uint64_t>( formats.colorCount ) << 32 );

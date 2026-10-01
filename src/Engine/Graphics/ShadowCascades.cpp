@@ -17,7 +17,7 @@ bool ShadowCascades::initialize( uint32_t resolution )
 	m_properties.setName( "Shadows" );
 	m_properties.insert( "Show cascades", false );
 
-	return createResources() && DMD3D::instance().setShadowSlopeBias( m_slopeBias );
+	return createResources();
 }
 
 bool ShadowCascades::createResources()
@@ -61,9 +61,6 @@ bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSe
 							 const DirectX::BoundingBox& sceneBounds )
 {
 	m_settings = settings;
-	if( settings.shadowSlopeBias != m_slopeBias && DMD3D::instance().setShadowSlopeBias( settings.shadowSlopeBias ) )
-		m_slopeBias = settings.shadowSlopeBias;
-
 	m_active = settings.castShadows && toSun.y > 0.0f;
 	if( !m_active )
 		return false;
@@ -155,6 +152,12 @@ bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSe
 	}
 
 	return true;
+}
+
+RenderState ShadowCascades::renderState( const DMLight::ShadowSettings& settings )
+{
+	// Постоянного смещения нет: у D32_FLOAT оно зависит от порядка числа; знак «от света» ставит DMD3D (глубина обратная)
+	return { RasterState::csmShadowDepth, DepthState::enabled, BlendState::opaque, { settings.shadowSlopeBias, depthBiasClamp } };
 }
 
 void ShadowCascades::beginCascade( uint32_t cascade )

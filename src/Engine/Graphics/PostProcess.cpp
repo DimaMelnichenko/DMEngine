@@ -148,8 +148,8 @@ bool PostProcess::createBloomTargets()
 {
 	// Уровни bloom: половина кадра, четверть … 1/64; R11G11B10 — без альфы, как у bloom в UE
 	DMD3D& d3d = DMD3D::instance();
-	uint32_t width = d3d.sceneWidth();
-	uint32_t height = d3d.sceneHeight();
+	uint32_t width = d3d.backBufferWidth();
+	uint32_t height = d3d.backBufferHeight();
 	uint32_t index = 0;
 	for( RenderTarget& level : m_bloom )
 	{
@@ -229,11 +229,10 @@ void PostProcess::bindExposure()
 	DMD3D::instance().setSRV( SRVType::ps, SLOT_EXPOSURE, m_exposureSRV );
 }
 
-void PostProcess::render( GpuProfiler& profiler, float deltaTime )
+void PostProcess::render( const ShaderView& sceneColor, GpuProfiler& profiler, float deltaTime )
 {
-	DMD3D& d3d = DMD3D::instance();
 	// Цвет сцены читают замер экспозиции, bloom и тонмаппинг
-	const ShaderView& sceneColor = d3d.sceneColor();
+	DMD3D& d3d = DMD3D::instance();
 	const Settings current = settings();
 
 	profiler.beginScope( "Exposure" );
@@ -248,7 +247,7 @@ void PostProcess::render( GpuProfiler& profiler, float deltaTime )
 	}
 
 	profiler.beginScope( "Tonemap" );
-	d3d.beginPass( PassDesc{ "Tonemap", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.sceneWidth(), d3d.sceneHeight(),
+	d3d.beginPass( PassDesc{ "Tonemap", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight(),
 							 { { &sceneColor, "scene color" }, { &m_bloom[0].srv(), "bloom 1/2" }, { &m_exposureSRV, "exposure" } } } );
 	Parameters params = {};
 	params.tonemapper = static_cast<int32_t>( current.tonemapper );
@@ -284,14 +283,14 @@ void PostProcess::renderExposure( const ShaderView& sceneColor, float deltaTime 
 	{
 		d3d.clearStorageView( m_histogramUAV );
 
-		HistogramParameters histogram = { d3d.sceneWidth(), d3d.sceneHeight(), minLog2Luminance, log2LuminanceRange };
+		HistogramParameters histogram = { d3d.backBufferWidth(), d3d.backBufferHeight(), minLog2Luminance, log2LuminanceRange };
 		Device::updateResourceData<HistogramParameters>( m_histogramConstants, histogram );
 		d3d.setConstantBuffer( SRVType::cs, 4, m_histogramConstants );
 		d3d.setSRV( SRVType::cs, 0, sceneColor );
 		d3d.setSRV( SRVType::cs, SLOT_EXPOSURE, m_exposureSRV );
 		m_histogramShader.setUAVBuffer( 0, m_histogramUAV );
 		// Поток — пиксель из квадрата 2 × 2, группа — 16 × 16 потоков
-		m_histogramShader.dispatchGroups( ( d3d.sceneWidth() + 31 ) / 32, ( d3d.sceneHeight() + 31 ) / 32, 1 );
+		m_histogramShader.dispatchGroups( ( d3d.backBufferWidth() + 31 ) / 32, ( d3d.backBufferHeight() + 31 ) / 32, 1 );
 	}
 
 	AdaptParameters adapt = {};
@@ -351,8 +350,8 @@ void PostProcess::renderBloom( const ShaderView& sceneColor, float threshold )
 	// Вниз: сцена → 1/2 → 1/4 … 1/64; первый проход — с порогом и усреднением Karis
 	for( uint32_t level = 0; level < bloomLevelCount; ++level )
 	{
-		const float sourceWidth = static_cast<float>( level == 0 ? d3d.sceneWidth() : m_bloom[level - 1].width() );
-		const float sourceHeight = static_cast<float>( level == 0 ? d3d.sceneHeight() : m_bloom[level - 1].height() );
+		const float sourceWidth = static_cast<float>( level == 0 ? d3d.backBufferWidth() : m_bloom[level - 1].width() );
+		const float sourceHeight = static_cast<float>( level == 0 ? d3d.backBufferHeight() : m_bloom[level - 1].height() );
 		params.sourceTexelSize = XMFLOAT2( 1.0f / sourceWidth, 1.0f / sourceHeight );
 		params.firstPass = level == 0 ? 1 : 0;
 		drawPass( "Bloom downsample", m_bloomDownsample, m_bloom[level], level == 0 ? sceneColor : m_bloom[level - 1].srv(), params,

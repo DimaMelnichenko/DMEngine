@@ -8,8 +8,8 @@ Exposure (Metering Mode, Auto Exposure Histogram) и Tonemapper в Post Process 
 
 ## Как устроен кадр
 
-1. `DMD3D::BeginScene` объявляет проход очистки HDR-буфера сцены (`R16G16B16A16_FLOAT`, размер окна) и буфера глубины и
-   очищает их.
+1. `SceneTargets::clear` (буфер сцены у `Renderer`, `src/Engine/Graphics/SceneTargets.h`) объявляет проход очистки
+   HDR-буфера сцены (`R16G16B16A16_FLOAT`, размер окна) и буфера глубины и очищает их.
 2. `Renderer` рисует проходы `opaque` → `sky` → `transparent`. Шейдеры с освещением (`Shaders/lighting.sh`:
    `PBRLit.ps`, `terrain.ps`) и небо (`sky_background.ps`) пишут яркость, умноженную на экспозицию прошлого кадра
    (pre-exposure, см. ниже).
@@ -20,11 +20,12 @@ Exposure (Metering Mode, Auto Exposure Histogram) и Tonemapper в Post Process 
    3. **`Shaders/tonemap.ps`** в задний буфер: (цвет + bloom), приведённые к новой экспозиции, → ночное зрение →
       тонмаппинг.
 
-   Цвет сцены читается через `DMD3D::sceneColor`. Каждый проход объявляет свою цель и источники (`PassDesc`),
+   Цвет сцены (`SceneTargets::colorView`) рендерер передаёт в `PostProcess::render`. Каждый проход объявляет свою цель и
+   источники (`PassDesc`),
    барьеры ставит `beginPass`. Новый проход (LUT, сглаживание) — ещё одна цель и шаг
    в `PostProcess::render`.
 4. Задний буфер — `R8G8B8A8_UNORM_SRGB`: линейный результат тонмаппинга кодируется в sRGB аппаратно.
-5. Поверх рисуется GUI (без тонмаппинга, как интерфейс в играх), `EndScene` показывает кадр.
+5. Поверх рисуется GUI (без тонмаппинга, как интерфейс в играх), `DMD3D::endFrame` показывает кадр.
 
 ## Экспозиция
 
@@ -224,7 +225,8 @@ Release, 1920 × 1080, попеременные запуски с прежней
 | `src/Engine/Graphics/Scene/Shaders/FullscreenShader.h/.cpp` | полноэкранный проход: шейдеры, топология, состояния |
 | `Shaders/fullscreen.vs` | полноэкранный треугольник по `SV_VertexID` |
 | `Shaders/tonemap.ps` | сложение с bloom, приведение к экспозиции, ночное зрение, ACES, AgX |
-| `src/Engine/Graphics/D3D/DMD3D.cpp` | HDR-буфер сцены, задний буфер (`BeginScene`, `backBufferTarget`, `sceneColor`), цели проходов и барьеры — `beginPass` |
+| `src/Engine/Graphics/SceneTargets.h/.cpp` | HDR-буфер сцены и глубина: создание с цветом очистки, проход очистки, вид цвета для постобработки |
+| `src/Engine/Graphics/D3D/DMD3D.cpp`, `DMD3DPasses.cpp` | задний буфер (`backBufferTarget`), цели проходов и барьеры — `beginPass` |
 | `src/Engine/Graphics/Renderer.cpp` | порядок проходов, привязка экспозиции к проходам сцены |
 
 ## Откуда подход
