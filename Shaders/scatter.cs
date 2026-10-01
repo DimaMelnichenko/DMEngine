@@ -74,7 +74,9 @@ static const uint maxVariants = 8;
 #define MAX_GROUPS 256	// ScatterPass::maxGroups — не больше секций списков
 cbuffer ScatterVariantsBuffer : register( b7 )
 {
-	float4 g_variants[maxVariants];	// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом
+	// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом, w — с этого расстояния у видов
+	// теней последний LOD (импостер; 0 — LOD как у главного вида)
+	float4 g_variants[maxVariants];
 	float4 g_lodEnd[maxVariants];	// дальности LOD 0…2 варианта, м: дальше — следующий LOD
 	float4 g_bounds[maxVariants];	// сфера модели (LOD0) в её координатах: xyz — центр, w — радиус (при размере 1)
 	uint4  g_lists[MAX_LISTS];		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
@@ -87,6 +89,8 @@ cbuffer FrustumBuffer : register( b6 )
 	// x — множитель дальностей LOD (< 1 — LOD грубее), y — 1: списки перехода у вида; у каскада теней z, w — полоса
 	// расстояний от камеры (RenderView::cascadeNear / cascadeFar): тень инстанса ложится не дальше её длины от него
 	float4 g_viewParams[MAX_VIEWS];
+	// У каскада теней: xy — полоса глубины взгляда, пиксели которой читают каскад (cascadeNear, cascadeDepthFar)
+	float4 g_viewDepths[MAX_VIEWS];
 	float4 g_shadowCast;	// xyz — куда идёт свет источника теней, w — длина тени на метр высоты вдоль луча (0 — теней нет)
 	uint   g_viewCount;
 	uint3  g_frustumPadding;
@@ -330,14 +334,45 @@ void instanceSphere( ScatterItem item, uint variant, out float3 center, out floa
 	height = max( item.size, ( bounds.y + bounds.w ) * item.size );
 }
 
+// Пара экземпляров перехода подряд в пуле перехода: уходящий LOD с долей t, приходящий с t − 1. index — пара экземпляра
+// (0xffffffff — ещё не взята, 0xfffffffe — пул полон): у экземпляра она одна на долю перехода, общая для видов. false —
+// места нет
+bool reserveTransition( ScatterItem item, float transition, inout uint index )
+{
+	if( index == 0xffffffffU )
+	{
+		uint pair;
+		g_counters.InterlockedAdd( COUNTER_TRANSITIONS, 2, pair );
+		if( pair + 1 < g_transitionCapacity )
+		{
+			ScatterTransitionItem leaving;
+			leaving.item = item;
+			leaving.lodDither = transition;
+			leaving.padding = 0.0f;
+			g_transitions[pair] = leaving;
+			leaving.lodDither = transition - 1.0f;
+			g_transitions[pair + 1] = leaving;
+			index = pair;
+		}
+		else
+		{
+			g_counters.InterlockedAdd( COUNTER_TRANSITIONS, 0xfffffffeU );
+			index = 0xfffffffeU;
+		}
+	}
+	return index != 0xfffffffeU;
+}
+
 // Экземпляр — в пул кадра и списки видов, где он виден: видимость по видам кадра (views — какие виды вообще проверять),
 // LOD вида и переход дизерингом. false — пул полон
 bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanceToCamera, uint views )
 {
 	// Видимость по видам. Главный вид — сфера вокруг инстанса в его frustum. Каскады теней (у слоя с тенью): инстанс
 	// нужен им, только если он или его тень попадает в кадр — сфера, охватывающая путь луча от него до земли
-	// (frustum каскада вдоль света охватывает и много лишнего); тень ложится на землю не дальше её длины от инстанса,
-	// поэтому каскад, полоса расстояний которого с этим не пересекается, инстанс не рисует; и сам frustum каскада
+	// (frustum каскада вдоль света охватывает и много лишнего); тень ложится на землю не дальше её длины от инстанса
+	// вдоль света, поэтому каскад, полоса глубины взгляда которого не пересекается с глубиной сферы инстанса,
+	// протянутой вдоль света, инстанс не рисует (тень солнца сбоку или со спины не уходит в ближние каскады); и сам
+	// frustum каскада
 	float3 center;
 	float radius;
 	float height;
@@ -348,11 +383,15 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 	if( g_castShadow > 0.5f && g_viewCount > 1 &&
 		( mainVisible || ( shadowLength > 0.0f && insideFrustum( 0, center + g_shadowCast.xyz * ( shadowLength * 0.5f ), radius + shadowLength * 0.5f ) ) ) )
 	{
+		const float depthCenter = dot( center - cb_cameraPosition, cb_viewDirection );
+		const float shadowDepth = shadowLength * dot( g_shadowCast.xyz, cb_viewDirection );
+		const float depthNear = depthCenter + min( shadowDepth, 0.0f ) - radius;
+		const float depthFar = depthCenter + max( shadowDepth, 0.0f ) + radius;
 		[loop] for( uint view = 1; view < g_viewCount; ++view )
 		{
 			if( ( views & ( 1u << view ) ) == 0 )
 				continue;
-			if( distanceToCamera + shadowLength < g_viewParams[view].z || distanceToCamera - shadowLength > g_viewParams[view].w )
+			if( depthFar < g_viewDepths[view].x || depthNear > g_viewDepths[view].y )
 				continue;
 			visibleMask |= insideFrustum( view, center, radius ) ? 1u << view : 0;
 		}
@@ -364,13 +403,15 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 	const uint lodCount = (uint)g_variants[variant].y;
 	const bool dithered = g_variants[variant].z > 0.5f;
 	const float4 lodEnd = g_lodEnd[variant] * lodScale;
+	const float shadowLastLod = g_variants[variant].w * lodScale;
 	// Расстояние до точки LOD — у всех видов кадра одна, главная камера (RenderView::lodOrigin)
 	const float distanceToLodOrigin = distanceToCamera;
 
 	// Место в пулах берётся один раз, когда какой-нибудь вид попросил: обычный экземпляр и пара экземпляров перехода
-	// (уходящий LOD с долей t, приходящий с t − 1; доля у всех видов с переходом одна — множитель LOD у них 1)
+	// (доля у всех видов с переходом одна — множитель LOD у них 1); у видов теней — ещё пара перехода к последнему LOD
 	uint itemIndex = 0xffffffffU;
 	uint transitionIndex = 0xffffffffU;
+	uint shadowTransitionIndex = 0xffffffffU;
 	[loop] for( uint view = 0; view < viewCount; ++view )
 	{
 		if( ( visibleMask & ( 1u << view ) ) == 0 )
@@ -380,36 +421,36 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 		const bool viewDithered = dithered && g_viewParams[view].y > 0.5f;
 		selectLod( distanceToLodOrigin, lodEnd * g_viewParams[view].x, lodCount, viewDithered, lod, transition );
 
-		if( transition > 0.0f )
+		// Тень дальнего экземпляра — последним LOD раньше, чем в кадре (импостер леса); в полосе вокруг этой дальности —
+		// переход дизерингом от LOD кадра к последнему своей парой: тень меняется так же плавно, как экземпляр в кадре
+		if( view > 0 && shadowLastLod > 0.0f && lod + 1 < lodCount )
 		{
-			if( transitionIndex == 0xffffffffU )
+			const float start = shadowLastLod * g_viewParams[view].x;
+			const float halfBand = viewDithered ? start * ( LOD_TRANSITION_WIDTH * 0.5f ) : 0.0f;
+			if( distanceToLodOrigin >= start + halfBand )
 			{
-				// Пара экземпляров перехода подряд: нет места — экземпляр в этом виде идёт обычным списком своего LOD
-				uint pair;
-				g_counters.InterlockedAdd( COUNTER_TRANSITIONS, 2, pair );
-				if( pair + 1 < g_transitionCapacity )
-				{
-					ScatterTransitionItem leaving;
-					leaving.item = item;
-					leaving.lodDither = transition;
-					leaving.padding = 0.0f;
-					g_transitions[pair] = leaving;
-					leaving.lodDither = transition - 1.0f;
-					g_transitions[pair + 1] = leaving;
-					transitionIndex = pair;
-				}
-				else
-				{
-					g_counters.InterlockedAdd( COUNTER_TRANSITIONS, 0xfffffffeU );
-					transitionIndex = 0xfffffffeU;	// пул перехода полон
-				}
+				lod = lodCount - 1;
+				transition = 0.0f;
 			}
-			if( transitionIndex != 0xfffffffeU )
+			else if( distanceToLodOrigin > start - halfBand )
 			{
-				pushIndex( view, listIndex( variant, lod, true ), transitionIndex );
-				pushIndex( view, listIndex( variant, lod + 1, true ), transitionIndex + 1 );
-				continue;
+				const float shadowTransition = ( distanceToLodOrigin - ( start - halfBand ) ) / ( 2.0f * halfBand );
+				if( reserveTransition( item, shadowTransition, shadowTransitionIndex ) )
+				{
+					pushIndex( view, listIndex( variant, lod, true ), shadowTransitionIndex );
+					pushIndex( view, listIndex( variant, lodCount - 1, true ), shadowTransitionIndex + 1 );
+					continue;
+				}
+				transition = 0.0f;
 			}
+		}
+
+		// Нет места в пуле перехода — экземпляр в этом виде идёт обычным списком своего LOD
+		if( transition > 0.0f && reserveTransition( item, transition, transitionIndex ) )
+		{
+			pushIndex( view, listIndex( variant, lod, true ), transitionIndex );
+			pushIndex( view, listIndex( variant, lod + 1, true ), transitionIndex + 1 );
+			continue;
 		}
 
 		if( itemIndex == 0xffffffffU )

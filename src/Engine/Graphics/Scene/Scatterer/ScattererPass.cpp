@@ -74,7 +74,8 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 		const float share = totalWeight > 0.0f ? std::max( variant.weight, 0.0f ) / totalWeight : 1.0f / variantCount;
 		cumulative += share;
 		const uint32_t lodCount = std::max( 1u, std::min( variant.lodCount, maxLods ) );
-		m_variants.variants[v] = XMFLOAT4( v + 1 == variantCount ? 1.0f : cumulative, static_cast<float>( lodCount ), 0.0f, 0.0f );
+		m_variants.variants[v] = XMFLOAT4( v + 1 == variantCount ? 1.0f : cumulative, static_cast<float>( lodCount ), 0.0f,
+										   variant.shadowLastLodDistance );
 		m_variants.lodEnd[v] = XMFLOAT4( variant.lodEnd[0], variant.lodEnd[1], variant.lodEnd[2], variant.lodEnd[3] );
 		m_variants.bounds[v] = variant.bounds;
 
@@ -179,6 +180,15 @@ void ScatterPass::setDitheredLodTransition( uint32_t variant, bool dithered )
 	if( m_variants.variants[variant].z != value )
 	{
 		m_variants.variants[variant].z = value;
+		m_variantsChanged = true;
+	}
+}
+
+void ScatterPass::setShadowLastLodDistance( uint32_t variant, float distance )
+{
+	if( variant < m_populateParams.variantCount && m_variants.variants[variant].w != distance )
+	{
+		m_variants.variants[variant].w = distance;
 		m_variantsChanged = true;
 	}
 }

@@ -147,8 +147,12 @@ bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSe
 		view.farPlane = depthFar - depthNear;
 		view.frustum = DMFrustum( view.viewProjection );
 		view.index = cascade + 1;
-		view.cascadeNear = cascade == 0 ? 0.0f : n;
+		// Каскад читают и пиксели полосы смешения в конце предыдущего (sunShadow в Shaders/shadows.sh)
+		const float previousBand = cascade == 0 ? 0.0f :
+								   ( n - ( cascade == 1 ? nearPlane : m_splits[cascade - 2] ) ) * settings.cascadeTransitionFraction;
+		view.cascadeNear = cascade == 0 ? 0.0f : n - previousBand;
 		view.cascadeFar = f * std::sqrt( 1.0f + cornerK2 );
+		view.cascadeDepthFar = f;
 
 		m_texelSize[cascade] = texel;
 	}

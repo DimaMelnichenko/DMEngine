@@ -128,6 +128,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			passVariant.lodEnd[modelLods] = params.farBorder;
 			passVariant.sectionCount[modelLods] = 1;
 			passVariant.lodCount = modelLods + 1;
+			passVariant.shadowLastLodDistance = settings.shadowImpostorDistance;
 			variant.lods.push_back( lod );
 		}
 		layer.variants.push_back( std::move( variant ) );
@@ -158,6 +159,13 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		name += " + " + std::to_string( variantCount - 1 );
 	layer.properties = std::make_unique<PropertyContainer>( name );
 	layer.properties->insert( "Cast shadow", params.castShadow > 0.5f );
+	if( settings.impostorDistance > 0.0f )
+	{
+		// С какого расстояния тень — импостером (0 — как в кадре); до impostor_distance — раньше, чем в кадре
+		Property* shadowImpostor = layer.properties->insert( "Shadow impostor distance", settings.shadowImpostorDistance );
+		shadowImpostor->setLow( 0.0f );
+		shadowImpostor->setHigh( settings.impostorDistance );
+	}
 	m_properties.addSubContainer( layer.properties.get() );
 
 	m_layers.push_back( std::move( layer ) );
@@ -308,6 +316,7 @@ void Scatterer::compute( const FrameContext& frame )
 				XMStoreFloat4( &params.planes[v * 6 + i], view.frustum.planes()[i] );
 			const float lodScale = v == 0 ? 1.0f : shadowLodScale;
 			params.viewParams[v] = XMFLOAT4( lodScale, lodScale >= 0.999f ? 1.0f : 0.0f, view.cascadeNear, view.cascadeFar );
+			params.viewDepths[v] = XMFLOAT4( view.cascadeNear, view.cascadeDepthFar, 0.0f, 0.0f );
 		}
 		params.viewCount = count;
 		params.shadowCast = XMFLOAT4( -toSun.x, -toSun.y, -toSun.z, m_shadowLength );
@@ -336,6 +345,8 @@ void Scatterer::compute( const FrameContext& frame )
 				variant.ditheredLodTransition = variant.ditheredLodTransition && section.material &&
 												section.material->renderState( section.section->params ).ditheredLodTransition;
 			layer.pass->setDitheredLodTransition( v, variant.ditheredLodTransition );
+			if( variant.impostor )
+				layer.pass->setShadowLastLodDistance( v, ( *layer.properties )["Shadow impostor distance"].data<float>() );
 		}
 		assignGroups( layer );
 

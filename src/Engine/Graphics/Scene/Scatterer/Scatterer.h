@@ -79,6 +79,7 @@ private:
 	{
 		DirectX::XMFLOAT4 planes[maxRenderViews * 6];
 		DirectX::XMFLOAT4 viewParams[maxRenderViews];	// x — множитель дальностей LOD вида, y — 1: списки перехода у вида, zw — полоса каскада
+		DirectX::XMFLOAT4 viewDepths[maxRenderViews];	// у каскада: xy — полоса глубины взгляда (cascadeNear, cascadeDepthFar)
 		DirectX::XMFLOAT4 shadowCast;	// xyz — куда идёт свет источника теней, w — длина тени на метр высоты вдоль луча (0 — теней нет)
 		uint32_t viewCount;
 		uint32_t padding[3];

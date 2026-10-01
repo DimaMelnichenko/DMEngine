@@ -44,6 +44,9 @@ public:
 		uint32_t sectionCount[maxLods] = { 1, 1, 1, 1 };	// секций у LOD, не больше maxSections
 		// Сфера модели (LOD0) в её координатах: xyz — центр, w — радиус. По ней — отсечение экземпляра и длина его тени
 		DirectX::XMFLOAT4 bounds = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+		// С этого расстояния виды теней берут последний LOD (у леса — импостер), без перехода дизерингом, м; 0 — LOD
+		// как у главного вида
+		float shadowLastLodDistance = 0.0f;
 	};
 
 	ScatterPass();
@@ -62,6 +65,8 @@ public:
 	// Смена LOD дизерингом у варианта (у всех его секций материал с DitheredLODTransition): без неё списки перехода
 	// пусты и LOD сменяется мгновенно на дальности экземпляра. Буфер вариантов обновляется, когда флаг меняется
 	void setDitheredLodTransition( uint32_t variant, bool dithered );
+	// Дальность последнего LOD у видов теней (Variant::shadowLastLodDistance) — из GUI; буфер вариантов — при смене
+	void setShadowLastLodDistance( uint32_t variant, float distance );
 	// Секция списка: её меш и группа (0…maxGroups − 1, Scatterer::groups); таблицы секций и групп уходят на GPU в
 	// populate, только когда менялись
 	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset, uint32_t group );
@@ -166,7 +171,8 @@ private:
 	// cbuffer ScatterVariantsBuffer в Shaders\scatter.cs (b7)
 	struct alignas( 16 ) VariantsBuffer
 	{
-		// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом
+		// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом, w — с этого расстояния у
+		// видов теней последний LOD (Variant::shadowLastLodDistance; 0 — как у главного)
 		DirectX::XMFLOAT4 variants[maxVariants];
 		DirectX::XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
 		DirectX::XMFLOAT4 bounds[maxVariants];		// сфера модели варианта (Variant::bounds)

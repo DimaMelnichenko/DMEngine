@@ -376,7 +376,8 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 пайплайны для него прогревает `Renderer::warmPipelines` / `warmShadowPipelines`, объекты со своими вызовами — через
 `SceneObject::warmPipelines( PassStates )`). Отбрасывают тень меши с `castsShadow` материалов с `depthPhaseFor` (у `PBR` — вершинный шейдер
 «только глубина», `DEPTH_ONLY` в `LightShader.vs`: позиция и UV, позиция `precise`; Masked — ещё `mainDepth` в `PBRLit.ps`) и свои вызовы с битом `csmShadowDepth` (террейн; слои расстановки с `ScatterLayers.cast_shadow` — только
-в каскады, которые задевает их кольцо, `RenderView::cascadeNear/Far`). Направление на источник теней — `FrameContext::toShadowLight`: солнце, после заката — луна (`DMLightDriver::shadowLight`: светило над горизонтом с более ярким светом у земли). Приём — `Shaders/shadows.sh`
+в каскады, которые задевает их кольцо, `RenderView::cascadeNear/Far`; экземпляр — в каскад, полосу глубины взгляда которого
+задевает его сфера, протянутая вдоль света на длину тени, `cascadeDepthFar`). Направление на источник теней — `FrameContext::toShadowLight`: солнце, после заката — луна (`DMLightDriver::shadowLight`: светило над горизонтом с более ярким светом у земли). Приём — `Shaders/shadows.sh`
 (каскад по глубине взгляда, смещения к солнцу и по нормали в текселях каскада, PCF 5 × 5 Castaño, смешение каскадов,
 «Show cascades»): карта t104, сэмплер сравнения s8, константы b3. Настройки — у солнца (`DMLight::ShadowSettings`,
 колонки `LevelLights`, подокно солнца в «Lights»), в окне «Shadows» — только «Show cascades», подробно — `docs/shadows.md`.
@@ -440,7 +441,8 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 для экземпляров расстановки (`Material::enablePlacedInstances`, `ShaderPhaseOptions::placed`). Дальше
 `ScatterLayers.impostor_distance` — импостер (`ImpostorMaterial`: последний LOD варианта, карточка с тремя из 8 × 8 кадров
 полуоктаэдра; кадры запекаются при загрузке из LOD0 модели — `SceneObject::bake` → `Renderer::bake` после `Scene::initialize`,
-до прогрева пайплайнов, вариантом `mainBake` материала секции). Подробно — `docs/scatter.md`.
+до прогрева пайплайнов, вариантом `mainBake` материала секции); в каскадах теней импостер — уже дальше
+`ScatterLayers.shadow_impostor_distance` (у леса 65 м). Подробно — `docs/scatter.md`.
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
 `Particle` (`DMParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,

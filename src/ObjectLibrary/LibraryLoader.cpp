@@ -366,7 +366,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 {
 	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, mask, cell_size, near_border, far_border, near_fade, "
 														   "far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow, persistent, "
-											   "impostor_distance "
+														   "impostor_distance, shadow_impostor_distance "
 														   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
 	while( query.executeStep() )
@@ -390,6 +390,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.settings.castShadow = query.getColumn( "cast_shadow" ).getInt() != 0;
 		layer.settings.persistent = query.getColumn( "persistent" ).getInt() != 0;
 		layer.settings.impostorDistance = value( "impostor_distance" );
+		layer.settings.shadowImpostorDistance = value( "shadow_impostor_distance" );
 
 		// Модели слоя — варианты растения с весами, в порядке строк
 		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT model, weight, cast_shadow FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
