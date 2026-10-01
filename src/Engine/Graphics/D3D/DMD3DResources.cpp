@@ -661,6 +661,12 @@ bool DMD3D::captureTexture( const Texture& texture, std::vector<SubresourceCopy>
 
 bool DMD3D::captureBackBuffer( std::vector<uint8_t>& bytes, uint32_t& rowPitch )
 {
+	// Вне кадра список закрыт и задний буфер на показе: копия не записалась бы, а в буфере чтения осталась бы чужая память
+	if( !m_inFrame || !m_recording )
+	{
+		LOG( "captureBackBuffer: only inside a frame, between beginFrame and endFrame" );
+		return false;
+	}
 	ID3D12Resource* backBuffer = m_backBuffers[m_backBufferIndex].get();
 	const D3D12_RESOURCE_DESC resourceDesc = backBuffer->GetDesc();
 	D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout = {};

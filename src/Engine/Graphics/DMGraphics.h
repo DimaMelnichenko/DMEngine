@@ -84,7 +84,7 @@ private:
 	{
 		std::wstring path;
 		bool withGui = false;
-		ConsoleReplyPtr reply;
+		ConsoleReplyPtr reply;	// ответ команде screenshot; у снимка по клавише P — нет
 		uint32_t frames = 1;	// серия: столько кадров подряд, файлы <имя>_00, <имя>_01…
 		uint32_t taken = 0;
 	};

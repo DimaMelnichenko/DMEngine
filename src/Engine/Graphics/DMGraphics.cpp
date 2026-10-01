@@ -267,7 +267,8 @@ void DMGraphics::takeScreenshots( bool withGui )
 		}
 		if( !saveScreenshot( path ) )
 		{
-			it->reply->error( "can`t save the screenshot" );
+			if( it->reply )
+				it->reply->error( "can`t save the screenshot" );
 			it = m_screenshots.erase( it );
 			continue;
 		}
@@ -276,7 +277,8 @@ void DMGraphics::takeScreenshots( bool withGui )
 			++it;
 			continue;
 		}
-		it->reply->ok();
+		if( it->reply )
+			it->reply->ok();
 		it = m_screenshots.erase( it );
 	}
 }
@@ -448,9 +450,14 @@ void DMGraphics::bindingKeys()
 		m_wireframe = value;
 	} );
 
+	// Снимок — в очередь, как команда screenshot: клавиши обрабатываются до кадра (Input::Frame), а задний буфер можно
+	// скопировать только в кадре. Кадр как на экране — с окнами ImGui
 	Input::instance().notifier().registerTrigger( DIK_P, [this]( bool )
 	{
-		saveScreenshot( L"screenshot" + std::to_wstring( m_screenshotCounter++ ) + L".jpg" );
+		ScreenshotRequest request;
+		request.path = L"screenshot" + std::to_wstring( m_screenshotCounter++ ) + L".jpg";
+		request.withGui = true;
+		m_screenshots.push_back( std::move( request ) );
 	} );
 
 	Input::instance().notifier().registerTrigger( DIK_1, [this]( bool )

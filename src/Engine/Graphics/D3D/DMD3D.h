@@ -104,8 +104,9 @@ public:
 	const TargetView& backBufferTarget() const { return m_backBufferTargets[m_backBufferIndex]; }
 	uint32_t backBufferWidth() const { return m_backBufferWidth; }
 	uint32_t backBufferHeight() const { return m_backBufferHeight; }
-	// Копия заднего буфера на CPU (снимок — DMGraphics): байты строками по rowPitch, формат backBufferViewFormat. Вызывать
-	// в кадре до endFrame: после Present содержимое буфера не определено. Ждёт GPU
+	// Копия заднего буфера на CPU (снимок — DMGraphics): байты строками по rowPitch, формат backBufferViewFormat. Только
+	// в кадре, между beginFrame и endFrame (задний буфер — цель кадра, командный список открыт; после Present содержимое
+	// не определено), иначе false и строка в лог. Ждёт GPU
 	bool captureBackBuffer( std::vector<uint8_t>& bytes, uint32_t& rowPitch );
 	void clearDepth( const TargetView& target, float depth );
 	void clearTarget( const TargetView& target, const float color[4] );
@@ -359,6 +360,7 @@ private:
 	com_unique_ptr<ID3D12GraphicsCommandList7> m_commandList;
 	bool m_recording = false;							// командный список открыт
 	bool m_frameStarted = false;						// был первый beginFrame: до него команды — список загрузки
+	bool m_inFrame = false;								// между beginFrame и endFrame: задний буфер — цель кадра
 	com_unique_ptr<ID3D12Fence> m_fence;
 	uint64_t m_fenceValue = 0;
 	HANDLE m_fenceEvent = nullptr;

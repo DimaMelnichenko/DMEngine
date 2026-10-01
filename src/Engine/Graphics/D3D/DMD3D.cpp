@@ -724,6 +724,7 @@ void DMD3D::beginFrame()
 		waitForFence( signalFence() );
 	}
 	m_frameStarted = true;
+	m_inFrame = true;
 
 	FrameResources& frame = m_frames[m_frameIndex];
 	waitForFence( frame.fenceValue );
@@ -776,6 +777,7 @@ void DMD3D::endFrame()
 	present.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFFu;
 	m_pendingTextureBarriers.push_back( present );
 	submitCommandList();
+	m_inFrame = false;
 
 	// С vsync — по частоте монитора; без него — сразу, с разрывом кадра (tearing), если DXGI его поддерживает
 	const UINT flags = !m_vsync && m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0;
