@@ -257,7 +257,7 @@ WHERE model_id = <id модели>;
 | `Shaders/LightShader.vs` | вершинный шейдер (с `INST_*` — инстансный вариант, с `DEPTH_ONLY` — «только глубина», с `LOD_DITHER` — доля перехода LOD) |
 | `Shaders/depth_only.sh` | выход вершинного шейдера «только глубина» и вход `mainDepth` |
 | `src/ObjectLibrary/LibraryLoader.cpp` | загрузка материалов, определений, экземпляров и значений |
-| `src/Engine/Graphics/Scene/TextureObjects/DMTextureStorage.cpp` | цветовое пространство текстур, текстуры по умолчанию |
+| `src/Engine/Graphics/Scene/Texture/DMTextureStorage.cpp` | цветовое пространство текстур, текстуры по умолчанию |
 
 ## Откуда подход
 

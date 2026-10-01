@@ -4,7 +4,6 @@
 #include <chrono>
 #include "Logger\Logger.h"
 #include "D3D\TextureImages.h"
-#include "Scene\TextureObjects\CustomTexture.h"
 #include "Engine/Input/Input.h"
 #include "Engine\Console\PropertyCommands.h"
 #include "Utils\utilites.h"
@@ -77,14 +76,6 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	RET_FALSE( System::textures().createPlaceholder() );
 	RET_FALSE( System::textures().createDefaults() );
 	RET_FALSE( System::meshes().createPlaceholder() );
-
-	std::unique_ptr<CustomTexture> custTexture( new CustomTexture( 1000000, "monohromeNoise" ) );
-	if( !custTexture->generateTexture() )
-	{
-		LOG( "Failed gen texture" );
-		return false;
-	}
-	System::textures().insertResource( std::move( custTexture ) );
 
 	RET_FALSE( m_scene.loadResources( m_library, m_config.levelName() ) );
 

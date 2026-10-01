@@ -7,7 +7,7 @@
 #include <memory>
 #include <unordered_set>
 
-#include "..\TextureObjects\DMTextureStorage.h"
+#include "..\Texture\DMTextureStorage.h"
 #include "Mesh\DMMesh.h"
 #include "Properties/PropertyContainer.h"
 

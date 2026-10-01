@@ -9,7 +9,7 @@
 #include "D3D\CubeTarget.h"
 #include "D3D\RenderTarget.h"
 #include "Properties\PropertyContainer.h"
-#include "TextureObjects\DMTexture.h"
+#include "Texture\DMTexture.h"
 
 class DMLightDriver;
 

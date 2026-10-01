@@ -323,7 +323,8 @@ Plane с материалом `PBR` перед стартовой камерой
 Id в `base.db3` начинаются с 1, поэтому со слотом 0 не пересекаются. Пока нет настоящих мешей, вместо меша подставляется
 его примитив (колонка `Meshes.primitive`: `box`, `sphere`, `plane` — вписаны в куб от −0,5 до 0,5; `card` —
 вертикальная карточка высотой 1 на y = 0, для травы; `MeshStorage::createPrimitive`); строка без файла — чистый примитив.
-Рядом с заглушкой `DMTextureStorage::createDefaults` создаёт белую текстуру и плоскую нормаль 1×1 (id 1000001, 1000002):
+Рядом с заглушкой `DMTextureStorage::createDefaults` создаёт процедурные текстуры: монохромный шум 256² для террейна
+(`noiseId`, 1000000) и белую текстуру и плоскую нормаль 1×1 (`whiteId`, `flatNormalId` — 1000001, 1000002):
 их материал `PBR` подставляет вместо не заданных текстур (значение параметра 0), а шахматка по-прежнему означает
 «файл не найден».
 
@@ -426,8 +427,9 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
 `Particle` (`DMParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,
-`TextureObjects`, `Model`/`Mesh` (`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`), `Materials`
-(`Material` и его классы, `MaterialStorage`). Не объекты сцены, а общее для проходов — в `src/Engine/Graphics/`:
+`Texture` (`DMTexture` — текстура GPU и вид, `DMTextureStorage`, чтение файлов — `ImageFile::load`), `Model`/`Mesh`
+(`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`), `Materials` (`Material` и его классы,
+`MaterialStorage`). Не объекты сцены, а общее для проходов — в `src/Engine/Graphics/`:
 `ShaderProgram`, `FullscreenShader`, `DMComputeShader`, `ConstantBuffers`.
 
 ## Соглашения

@@ -10,7 +10,7 @@
 #include "D3D\DMD3D.h"
 #include "SceneTargets.h"
 #include "Logger\Logger.h"
-#include "TextureObjects\TextureLoader.h"
+#include "Texture\ImageFile.h"
 
 namespace GS
 {
@@ -130,8 +130,7 @@ bool HDRIBackdrop::initialize( const Settings& settings, SkyLight& skyLight )
 bool HDRIBackdrop::loadPanorama( const std::string& path, float rotation )
 {
 	ScratchImage image;
-	TextureLoader loader;
-	if( !loader.loadFromFile( path.c_str(), image ) )
+	if( !ImageFile::load( path, image ) )
 	{
 		LOG( "HDRI backdrop: can't load " + path );
 		return false;

@@ -1,4 +1,4 @@
-#include "TextureLoader.h"
+#include "ImageFile.h"
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
@@ -44,24 +44,16 @@ HRESULT loadFromEXRFile( const std::wstring& filename, ScratchImage& image )
 
 }
 
-
-TextureLoader::TextureLoader()
+namespace ImageFile
 {
-}
 
-
-TextureLoader::~TextureLoader()
+bool load( const std::string& path, ScratchImage& image )
 {
-}
-
-bool TextureLoader::loadFromFile( const char* filename, ScratchImage& image )
-{
-	std::wstring wideFilename = utf8ToWide( filename );
+	std::wstring wideFilename = utf8ToWide( path );
 
 	wchar_t ext[_MAX_EXT];
 	_wsplitpath_s( wideFilename.data(), nullptr, 0, nullptr, 0, nullptr, 0, ext, _MAX_EXT );
 
-	
 	HRESULT hr;
 	if( _wcsicmp( ext, L".dds" ) == 0 )
 	{
@@ -84,10 +76,8 @@ bool TextureLoader::loadFromFile( const char* filename, ScratchImage& image )
 		hr = LoadFromWICFile( wideFilename.data(), WIC_FLAGS_NONE, nullptr, image );
 	}
 
-	if( FAILED( hr ) )
-	{
-		return false;
-	}
-
-	return true;
+	return SUCCEEDED( hr );
 }
+
+}
+

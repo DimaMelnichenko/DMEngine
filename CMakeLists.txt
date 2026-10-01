@@ -45,7 +45,7 @@ FetchContent_Declare(SQLiteCpp
 )
 FetchContent_MakeAvailable(SQLiteCpp)
 
-# tinyexr читает .exr (TextureLoader). Его CMakeLists — для тестов самой библиотеки: SOURCE_SUBDIR без CMakeLists
+# tinyexr читает .exr (ImageFile::load). Его CMakeLists — для тестов самой библиотеки: SOURCE_SUBDIR без CMakeLists
 # не даёт FetchContent подключить его, библиотека собирается здесь из tinyexr.cc и встроенного miniz
 FetchContent_Declare(tinyexr
     GIT_REPOSITORY https://github.com/syoyo/tinyexr.git
@@ -102,8 +102,6 @@ add_executable(DMEngine WIN32
     src/Common/Properties/Property.cpp
     src/Common/Properties/PropertyContainer.cpp
     src/Logger/Logger.cpp
-    src/Engine/Graphics/Scene/TextureObjects/CustomTexture.cpp
-    src/Engine/Graphics/Scene/TextureObjects/DDSTexture.cpp
     src/Common/DBConnector.cpp
     src/Engine/Console/ConsoleCommands.cpp
     src/Engine/Console/PropertyCommands.cpp
@@ -176,8 +174,8 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Terrain/GridMesh.cpp
     src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainMaterial.cpp
-    src/Engine/Graphics/Scene/TextureObjects/DMTexture.cpp
-    src/Engine/Graphics/Scene/TextureObjects/DMTextureStorage.cpp
+    src/Engine/Graphics/Scene/Texture/DMTexture.cpp
+    src/Engine/Graphics/Scene/Texture/DMTextureStorage.cpp
     src/Engine/Graphics/Scene/VertexPool.cpp
     src/Engine/Graphics/System.cpp
     src/Engine/Input/Input.cpp
@@ -185,7 +183,7 @@ add_executable(DMEngine WIN32
     src/main.cpp
     src/Common/Utils/DMTimer.cpp
     src/Common/Utils/utilites.cpp
-    src/Engine/Graphics/Scene/TextureObjects/TextureLoader.cpp
+    src/Engine/Graphics/Scene/Texture/ImageFile.cpp
 )
 
 # Заголовки D3D12 Agility SDK — раньше Windows SDK (BEFORE), иначе d3d12.h возьмётся системный

@@ -7,7 +7,7 @@
 #include "DBConnector.h"
 #include "D3D\DMD3D.h"
 #include "Logger\Logger.h"
-#include "TextureObjects\TextureLoader.h"
+#include "Texture\ImageFile.h"
 
 namespace
 {
@@ -62,9 +62,8 @@ bool loadImage( const std::string& file, size_t& width, size_t& height, ScratchI
 	if( file.empty() )
 		return false;
 
-	TextureLoader loader;
 	ScratchImage loaded;
-	if( !loader.loadFromFile( ( GS::System::textures().path() + "\\" + file ).c_str(), loaded ) )
+	if( !ImageFile::load( GS::System::textures().path() + "\\" + file, loaded ) )
 		return false;
 
 	return convertImage( *loaded.GetImage( 0, 0, 0 ), width, height, image );
@@ -123,8 +122,7 @@ bool buildArrayFromFileMips( const std::vector<std::string>& files, bool srgb, T
 	std::vector<ScratchImage> images( files.size() );
 	for( size_t i = 0; i < files.size(); ++i )
 	{
-		TextureLoader loader;
-		if( files[i].empty() || !loader.loadFromFile( ( GS::System::textures().path() + "\\" + files[i] ).c_str(), images[i] ) )
+		if( files[i].empty() || !ImageFile::load( GS::System::textures().path() + "\\" + files[i], images[i] ) )
 			return false;
 		const TexMetadata& meta = images[i].GetMetadata();
 		const TexMetadata& first = images[0].GetMetadata();
@@ -213,9 +211,8 @@ bool loadSplatMap( const std::string& file, Texture& texture, ShaderView& srv )
 	size_t width = 0;
 	size_t height = 0;
 	std::vector<ScratchImage> images;
-	TextureLoader loader;
 	ScratchImage loaded;
-	if( !file.empty() && loader.loadFromFile( ( GS::System::textures().path() + "\\" + file ).c_str(), loaded ) )
+	if( !file.empty() && ImageFile::load( GS::System::textures().path() + "\\" + file, loaded ) )
 	{
 		const size_t count = std::min( loaded.GetMetadata().arraySize, slices );
 		images.resize( count );
@@ -346,7 +343,7 @@ void TerrainMaterial::bind() const
 	DMD3D::instance().setSRV( 1, m_splatMap );
 	DMD3D::instance().setSRV( 2, m_albedoHeight );
 	DMD3D::instance().setSRV( 3, m_normalRoughness );
-	DMD3D::instance().setSRV( 4, System::textures().get( "monohromeNoise" )->srv() );
+	DMD3D::instance().setSRV( 4, System::textures().get( DMTextureStorage::noiseId )->srv() );
 }
 
 }

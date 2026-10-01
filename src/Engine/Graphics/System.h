@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Scene\TextureObjects\DMTextureStorage.h"
+#include "Scene\Texture\DMTextureStorage.h"
 #include "Scene\Model\Mesh\MeshStorage.h"
 #include "Scene\Model\ModelStorage.h"
 #include "Scene\Materials\MaterialStorage.h"
