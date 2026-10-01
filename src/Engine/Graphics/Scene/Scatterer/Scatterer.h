@@ -54,6 +54,8 @@ public:
 	// Свой вызов в проходах, где есть слои их режима материала
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	void renderCustom( const RenderContext& context ) override;
+	// Импостеры вариантов слоёв с impostor_distance: материал на модель (общий для наборов — по имени в хранилище)
+	bool bake( const BakeContext& context ) override;
 
 	void setComputeEnabled( bool enabled );
 	bool computeEnabled() const;
@@ -99,6 +101,10 @@ private:
 	struct LayerVariant
 	{
 		std::vector<LayerLod> lods;
+		DMModel* model = nullptr;
+		// Импостер — последний LOD (lods.back()): его секция — карточка, материал — после bake
+		bool impostor = false;
+		std::unique_ptr<DMModel::Section> impostorSection;
 		bool castShadow = true;
 		// Смена LOD дизерингом: у всех секций материал с DitheredLODTransition; обновляет compute() — флаг материала
 		// меняется в GUI

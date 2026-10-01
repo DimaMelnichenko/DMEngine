@@ -80,6 +80,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	RET_FALSE( System::textures().createPlaceholder() );
 	RET_FALSE( System::textures().createDefaults() );
 	RET_FALSE( System::meshes().createPlaceholder() );
+	RET_FALSE( System::meshes().createDefaults() );
 
 	RET_FALSE( m_scene.loadResources( *m_library, m_config.levelName() ) );
 
@@ -97,6 +98,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_timer.Initialize();
 
 	RET_FALSE( m_scene.initialize() );
+	// Импостеры расстановки — рендером моделей в кадры, до прогрева: их материалы прогреются вместе со всеми
+	RET_FALSE( m_renderer.bake( m_scene ) );
 	// Пайплайны материалов и объектов для проходов кадра — когда объекты созданы, а свет уровня известен (смещение теней)
 	m_renderer.warmPipelines( m_scene );
 

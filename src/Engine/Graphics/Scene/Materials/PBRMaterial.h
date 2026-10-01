@@ -28,6 +28,9 @@ public:
 	// Вершинные шейдеры с INST_POS, INST_SCALE, INST_ROTATE (обычный и LOD_DITHER, у каждого — «только глубина») и их
 	// фазы; у материала, вершинный шейдер которого из базы уже такой (PBRInstance), — он сам
 	bool enablePlacedInstances() override;
+	// Пиксельный шейдер mainBake (и с отсечением по альфе) с обычным вершинным шейдером
+	bool enableImpostorBake() override;
+	std::vector<int> bakePhases() const override;
 	int depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
 	// Фазы «только глубина» всех вариантов, в том числе с пиксельным шейдером mainDepth (Masked)
 	std::vector<int> depthPhases() const override;
@@ -78,6 +81,7 @@ private:
 	int m_vertexShaderCount = 0;	// вершинных шейдеров в программе — номер следующего
 	int m_colorPhases[vertexVariantCount][2][2] = {};
 	int m_depthPhases[vertexVariantCount][2] = {};
+	int m_bakePhases[2] = { -1, -1 };	// запекание импостера: [Masked]
 
 	Buffer m_psCB;
 };

@@ -50,8 +50,10 @@ public:
 	ScatterPass( const ScatterPass& ) = delete;
 	~ScatterPass();
 
-	// Параметры слоя (populateParams) уже заданы: по кольцу и дальностям LOD делится ёмкость
-	bool createBuffers( const std::vector<Variant>& variants );
+	// Параметры слоя (populateParams) уже заданы: по кольцу и дальностям LOD делится ёмкость. cellBound — ёмкость списка
+	// по числу ячеек в полосе его LOD (не больше экземпляра на ячейку): у постоянного слоя кольцо — вся дальность леса,
+	// и доля от capacity у ближних LOD была бы меньше, чем в них помещается деревьев
+	bool createBuffers( const std::vector<Variant>& variants, bool cellBound = false );
 	// Список пары «вариант × LOD»: обычный или перехода (экземпляры в полосе смены LOD)
 	static uint32_t listIndex( uint32_t variant, uint32_t lod, bool transition = false )
 	{

@@ -83,6 +83,27 @@ float4 main( PixelInputType input ) : SV_TARGET
 	return float4( evaluateLighting( surface ), baseColor.a );
 }
 
+// Запекание импостера (ImpostorMaterial::bake, как ImpostorBaker в UE): вид модели с одного направления в две цели —
+// цвет и покрытие (альфа 1 там, где модель есть; цель sRGB) и нормаль в координатах модели (при запекании мировая
+// матрица — единичная) с долей пропускания в альфе. Освещение — у импостера в кадре (Shaders/impostor.ps)
+struct BakeOutput
+{
+	float4 color : SV_Target0;
+	float4 normal : SV_Target1;
+};
+
+BakeOutput mainBake( PixelInputType input )
+{
+	float4 baseColor = g_texBaseColor.Sample( g_SamplerAnisotropicWrap, input.tex ) * g_baseColorFactor;
+#ifdef ALPHA_MASK
+	clip( baseColor.a - g_alphaCutoff );
+#endif
+	BakeOutput output;
+	output.color = float4( baseColor.rgb, 1.0f );
+	output.normal = float4( surfaceNormal( input ) * 0.5f + 0.5f, saturate( g_diffuseTransmissionFactor ) );
+	return output;
+}
+
 // Глубина теней и depth prepass: только отсечение, цвета нет (у проходов глубины нет цели цвета) — по альфе у
 // AlphaMode MASK (ALPHA_MASK) и дизерингом в полосе смены LOD (LOD_DITHER). Непрозрачные вне перехода рисуют глубину
 // без пиксельного шейдера. Вход — от вершинного шейдера «только глубина» (DEPTH_ONLY)

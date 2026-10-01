@@ -1,0 +1,57 @@
+////////////////////////////////////////////////////////////////////////////////
+// Импостер (ImpostorMaterial, Shaders/impostor.sh): три кадра смешиваются по весам — цвет и покрытие, нормаль модели
+// (в мир — поворотом экземпляра) и доля пропускания; освещение — общая функция evaluateLighting, как у материалов: свет,
+// тень, небо, воздушная перспектива. С ALPHA_MASK — отсечение по покрытию (без него — после depth prepass), с LOD_DITHER —
+// доля пикселей смены LOD. mainDepth — тени и depth prepass
+////////////////////////////////////////////////////////////////////////////////
+
+#include "slots.h"
+#include "common.vs"
+#include "lighting.sh"
+#include "lod_dither.sh"
+#include "bindless.sh"
+#include "impostor.sh"
+
+DM_SRV( Texture2DArray, g_impostorColor, 0 );	// sRGB: цвет и покрытие, срез — кадр
+DM_SRV( Texture2DArray, g_impostorNormal, 1 );	// нормаль модели × 0,5 + 0,5 и доля пропускания
+
+float4 sampleFrames( Texture2DArray frames, ImpostorPixelInput input )
+{
+	return frames.Sample( g_SamplerLinearClamp, float3( input.frameUV01.xy, input.frames.x ) ) * input.weights.x +
+		   frames.Sample( g_SamplerLinearClamp, float3( input.frameUV01.zw, input.frames.y ) ) * input.weights.y +
+		   frames.Sample( g_SamplerLinearClamp, float3( input.frameUV2, input.frames.z ) ) * input.weights.z;
+}
+
+float4 main( ImpostorPixelInput input ) : SV_TARGET
+{
+#ifdef LOD_DITHER
+	clipLodTransition( input.position.xy, input.lodDither );
+#endif
+	const float4 color = sampleFrames( g_impostorColor, input );
+#ifdef ALPHA_MASK
+	clip( color.a - g_impostorAlphaCutoff );
+#endif
+	const float4 packed = sampleFrames( g_impostorNormal, input );
+	const float3 normal = normalize( impostorRotate( normalize( packed.xyz * 2.0f - 1.0f ), input.rotation ) );
+
+	Surface surface;
+	surface.position = input.worldPosition;
+	surface.normal = normal;
+	surface.geometricNormal = normal;
+	surface.baseColor = color.rgb;
+	surface.metallic = 0.0f;
+	surface.roughness = g_impostorRoughness;
+	surface.occlusion = 1.0f;
+	surface.emissive = 0.0f;
+	surface.transmission = saturate( packed.w * g_impostorTransmission.w );
+	surface.transmissionColor = color.rgb * g_impostorTransmission.xyz;
+	return float4( evaluateLighting( surface ), 1.0f );
+}
+
+void mainDepth( ImpostorPixelInput input )
+{
+#ifdef LOD_DITHER
+	clipLodTransition( input.position.xy, input.lodDither );
+#endif
+	clip( sampleFrames( g_impostorColor, input ).a - g_impostorAlphaCutoff );
+}

@@ -1,74 +1,10 @@
 #include "DMTextureStorage.h"
 #include <random>
 #include "ImageFile.h"
+#include "ImageMips.h"
 #include "Logger\Logger.h"
 
 using namespace DirectX;
-
-namespace
-{
-
-// Мипы с сохранением покрытия альфы (Castaño 2010, как Mip Maps Preserve Coverage в Unity): альфа мипа умножается
-// на такое число, чтобы доля текселей выше порога совпала с нулевым мипом. Число находится по гистограмме альфы мипа
-// (8 бит — 256 столбцов) за один проход, а не подбором с субсэмплингом, как ScaleMipMapsAlphaForCoverage в DirectXTex
-// (у той — секунды на 2048²). Форматы — RGBA / BGRA по 8 бит, альфа — четвёртый байт
-bool preserveAlphaCoverage( const ScratchImage& image, float cutoff )
-{
-	const TexMetadata& metadata = image.GetMetadata();
-	const DXGI_FORMAT format = MakeLinear( metadata.format );
-	if( format != DXGI_FORMAT_R8G8B8A8_UNORM && format != DXGI_FORMAT_B8G8R8A8_UNORM )
-		return false;
-
-	auto histogram = []( const Image& mip, uint64_t( &counts )[256] )
-	{
-		std::fill( std::begin( counts ), std::end( counts ), 0 );
-		for( size_t y = 0; y < mip.height; ++y )
-		{
-			const uint8_t* row = mip.pixels + y * mip.rowPitch;
-			for( size_t x = 0; x < mip.width; ++x )
-				++counts[row[x * 4 + 3]];
-		}
-	};
-
-	const float threshold = cutoff * 255.0f;	// тексель виден, если альфа (в байтах) больше
-	for( size_t item = 0; item < metadata.arraySize; ++item )
-	{
-		uint64_t counts[256];
-		const Image& base = *image.GetImage( 0, item, 0 );
-		histogram( base, counts );
-		uint64_t covered = 0;
-		for( int value = 0; value < 256; ++value )
-			covered += value > threshold ? counts[value] : 0;
-		const double coverage = double( covered ) / double( base.width * base.height );
-		if( covered == 0 )
-			continue;
-
-		for( size_t level = 1; level < metadata.mipLevels; ++level )
-		{
-			const Image& mip = *image.GetImage( level, item, 0 );
-			histogram( mip, counts );
-			// Наименьшая альфа b, начиная с которой тексели мипа должны остаться видимыми
-			const double target = coverage * double( mip.width * mip.height );
-			uint64_t above = 0;
-			int b = 256;
-			while( b > 1 && double( above ) < target - 0.5 )
-				above += counts[--b];
-			if( b > 255 )
-				continue;
-			// b проходит порог, b − 1 — нет
-			const float scale = threshold / ( float( b ) - 0.5f );
-			for( size_t y = 0; y < mip.height; ++y )
-			{
-				uint8_t* row = mip.pixels + y * mip.rowPitch;
-				for( size_t x = 0; x < mip.width; ++x )
-					row[x * 4 + 3] = static_cast<uint8_t>( std::min( 255.0f, row[x * 4 + 3] * scale + 0.5f ) );
-			}
-		}
-	}
-	return true;
-}
-
-}
 
 namespace GS
 {
@@ -184,22 +120,8 @@ bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::st
 	const DXGI_FORMAT fileFormat = baseImage.GetMetadata().format;
 	baseImage.OverrideFormat( sRGB ? MakeSRGB( fileFormat ) : MakeLinear( fileFormat ) );
 
-	HRESULT hr;
-	if( generateMipMap )
-	{
-		ScratchImage mipmapImage;
-		hr = GenerateMipMaps( baseImage.GetImages(), baseImage.GetImageCount(),
-							  baseImage.GetMetadata(), TEX_FILTER_DEFAULT, 0, mipmapImage );
-
-		if( SUCCEEDED( hr ) )
-		{
-			std::swap( mipmapImage, baseImage );
-		}
-
-		// При усреднении тонкие травинки и лепестки уходят под порог отсечения и вдали тают
-		if( SUCCEEDED( hr ) && preserveAlphaCoverage > 0.0f && !::preserveAlphaCoverage( baseImage, preserveAlphaCoverage ) )
-			LOG( "Can`t preserve alpha coverage in mips of texture " + name + ": the format is not 8-bit RGBA" );
-	}
+	if( generateMipMap && !ImageMips::generate( baseImage, preserveAlphaCoverage ) && preserveAlphaCoverage > 0.0f )
+		LOG( "Can`t preserve alpha coverage in mips of texture " + name + ": the format is not 8-bit RGBA" );
 
 	auto texture = std::make_unique<DMTexture>( id, name );
 	if( !texture->create( baseImage ) )

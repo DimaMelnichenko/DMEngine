@@ -105,6 +105,17 @@ bool ShaderProgram::createShaderPass( ShaderStageType type, const std::vector<ui
 	return true;
 }
 
+int ShaderProgram::stageCount( ShaderStageType type ) const
+{
+	switch( type )
+	{
+		case ShaderStageType::vertex: return static_cast<int>( m_vertexShader.size() );
+		case ShaderStageType::pixel: return static_cast<int>( m_pixelShader.size() );
+		case ShaderStageType::geometry: return static_cast<int>( m_geometryShader.size() );
+		default: return 0;
+	}
+}
+
 int ShaderProgram::createPhase( int index_vs, int index_ps, int index_gs )
 {
 	if( index_vs >= static_cast<int>( m_vertexShader.size() ) ||

@@ -23,6 +23,8 @@ public:
 	// у совпавшей фазы он не следующий по порядку
 	int createPhase( int index_vs, int index_ps, int index_gs = -1 );
 	int phaseCount() const { return static_cast<int>( m_phases.size() ); }
+	// Шейдеров стадии в программе — номер следующего добавленного (addShaderPassFromFile)
+	int stageCount( ShaderStageType type ) const;
 	// Фаза без пиксельного шейдера — «только глубина» (тени, depth prepass)
 	bool hasPixelShader( int phase ) const { return m_phases[phase].index_ps >= 0; }
 

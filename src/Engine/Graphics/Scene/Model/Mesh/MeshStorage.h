@@ -31,6 +31,10 @@ public:
 	bool createPrimitive( uint32_t id, const std::string& name, Primitive primitive );
 	// Куб в слоте placeholderId: подставляется вместо незагруженных мешей без своего примитива
 	bool createPlaceholder();
+	// Процедурные меши движка, id вне диапазона base.db3 — до сборки VertexPool (Renderer::initialize): карточка
+	// импостера (cardId, Primitive::card — его вершинный шейдер разворачивает её к виду, Shaders/impostor.vs)
+	bool createDefaults();
+	static constexpr uint32_t cardId = 1000001;
 
 	uint32_t vertexCount() const;
 	uint32_t indexCount() const;

@@ -30,6 +30,9 @@ struct ShaderPhaseOptions
 	// поворот по списку вида. Материал собирает этот вариант по Material::enablePlacedInstances (как Used with Instanced
 	// Static Meshes в UE), у материала расстановки (PBRInstance) он и есть основной
 	bool placed = false;
+	// Запекание импостера (ImpostorMaterial::bake): цвет с покрытием и нормаль модели в две цели вместо освещения;
+	// вариант собирает Material::enableImpostorBake
+	bool impostorBake = false;
 	// Глубину уже записал depth prepass: проход цвета с проверкой EQUAL берёт вариант без отсечения — ни по альфе, ни
 	// дизерингом (как r.EarlyZPassOnlyMaterialMasking в UE)
 	bool depthFromPrepass = false;

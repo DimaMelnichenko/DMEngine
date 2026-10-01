@@ -41,6 +41,13 @@ struct RenderContext
 	bool depthFromPrepass = false;
 };
 
+// Что рендерер даёт объекту для запекания при загрузке (SceneObject::bake): константы вида и объекта и общий буфер вершин
+struct BakeContext
+{
+	ConstantBuffers& constants;
+	VertexPool& vertexPool;
+};
+
 // Состояния и цели проходов рендерера, которых объект сам не знает, — для прогрева пайплайнов его своих вызовов
 // (SceneObject::warmPipelines): пайплайн, собранный в кадре, — «ленивый» (фриз и строка в лог). Растеризатор кадра
 // (сплошной / каркасный — RenderContext::frameRaster) и глубину проходов цвета объект знает по своим вызовам
@@ -73,6 +80,9 @@ public:
 	// Пайплайны своих вызовов для состояний проходов рендерера — при загрузке уровня и когда состояние прохода меняется
 	// (смещение теней в GUI): Renderer::warmPipelines. Объекты, которые рисуют только меши материалов, ничего не делают
 	virtual void warmPipelines( const PassStates& states ) {}
+	// Ресурсы, которые объект рисует сам один раз при загрузке (импостеры расстановки): после Scene::initialize, до
+	// прогрева пайплайнов кадра (Renderer::bake). false — загрузка уровня не удалась
+	virtual bool bake( const BakeContext& context ) { return true; }
 	virtual PropertyContainer* properties() { return nullptr; }
 
 	const std::string& name() const { return m_name; }

@@ -41,7 +41,7 @@ bool ScatterPass::createPool( PoolBuffer& pool, uint32_t stride, uint32_t count,
 	return d3d.createStorageView( pool.buffer, {}, pool.uav ) && d3d.createShaderView( pool.buffer, {}, pool.srv );
 }
 
-bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
+bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cellBound )
 {
 	const uint32_t variantCount = std::max( 1u, std::min( static_cast<uint32_t>( variants.size() ), maxVariants ) );
 	m_populateParams.variantCount = variantCount;
@@ -95,7 +95,11 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants )
 			for( uint32_t transition = 0; transition < 2; ++transition )
 			{
 				const float area = transition ? transitionArea : bandArea( bandNear, bandFar );
-				const uint32_t listCapacity = std::max( minListCapacity, static_cast<uint32_t>( capacity * share * area / ringArea ) );
+				// Ячеек в полосе — π · area / cell²; с запасом на разброс доли варианта
+				const float cellArea = std::max( m_populateParams.cellSize * m_populateParams.cellSize, 1e-6f );
+				const float expected = cellBound ? std::min( 3.14159265f * area / cellArea * share * 1.1f, static_cast<float>( capacity ) ) :
+										capacity * share * area / ringArea;
+				const uint32_t listCapacity = std::max( minListCapacity, static_cast<uint32_t>( expected ) );
 				uint32_t* list = m_variants.lists[listIndex( v, lod, transition != 0 )];
 				list[1] = listCapacity;
 				list[2] = sections;

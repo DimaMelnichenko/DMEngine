@@ -116,9 +116,14 @@ public:
 	}
 
 
-	uint32_t nextId()
+	// Свободный id не меньше from — для ресурсов, которые движок создаёт сам (импостеры): id вне диапазона base.db3,
+	// начиная с generatedIdBase
+	static constexpr uint32_t generatedIdBase = 2000000;
+	uint32_t freeId( uint32_t from = generatedIdBase )
 	{
-		return m_id_counter++;
+		while( m_storage.count( from ) )
+			++from;
+		return from;
 	}
 
 	uint32_t size()
@@ -132,6 +137,5 @@ protected:
 
 private:
 	std::string m_path;
-	uint32_t m_id_counter = 0;
 };
 

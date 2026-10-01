@@ -156,6 +156,17 @@ void Renderer::warmPipelines( Scene& scene )
 	ShaderCompiler::instance().logSummary();
 }
 
+bool Renderer::bake( Scene& scene )
+{
+	const BakeContext context{ m_constants, m_vertexPool };
+	for( SceneObject* object : scene.objects() )
+	{
+		if( !object->bake( context ) )
+			return false;
+	}
+	return true;
+}
+
 void Renderer::warmShadowPipelines( Scene& scene )
 {
 	m_warmedShadowState = m_shadows.renderState();

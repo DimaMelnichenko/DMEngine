@@ -346,7 +346,8 @@ bool DMD3D::createDescriptorHeaps()
 	// ResourceDescriptorHeap в шейдере. CPU-копии UAV нужны ClearUnorderedAccessView
 	if( !m_shaderHeap.create( m_device.get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 65536, true, L"Shader-visible descriptors" ) ||
 		!m_stagingHeap.create( m_device.get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4096, false, L"UAV clear descriptors" ) ||
-		!m_rtvHeap.create( m_device.get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 256, false, L"RTV descriptors" ) ||
+		// RTV: грани cubemap неба по мипам, уровни bloom, кадры запекания импостеров (освобождаются после GPU) — с запасом
+		!m_rtvHeap.create( m_device.get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 1024, false, L"RTV descriptors" ) ||
 		!m_dsvHeap.create( m_device.get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 64, false, L"DSV descriptors" ) )
 	{
 		LOG( "Failed to create descriptor heaps" );

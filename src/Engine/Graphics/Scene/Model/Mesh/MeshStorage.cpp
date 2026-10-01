@@ -224,6 +224,11 @@ bool MeshStorage::createPlaceholder()
 	return createPrimitive( placeholderId, "placeholder", Primitive::box );
 }
 
+bool MeshStorage::createDefaults()
+{
+	return createPrimitive( cardId, "impostor_card", Primitive::card );
+}
+
 bool MeshStorage::load( uint32_t id, const std::string& name, const std::string& file )
 {
 

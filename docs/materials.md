@@ -123,7 +123,10 @@ Dithered LOD Transition в UE. С ним экземпляр в полосе см
   моделей (define `INST_MATRIX`: мировая матрица экземпляра из буфера по `SV_InstanceID`), а по запросу набора
   расстановки — вариант для её экземпляров (`INST_POS`, `INST_SCALE`, `INST_ROTATE`: положение, размер и поворот из
   пула; `Material::enablePlacedInstances`, `ShaderPhaseOptions::placed`, как Used with Instanced Static Meshes в UE) —
-  так модель уровня (ель) годится и для леса ([scatter.md](scatter.md)). Отдельный вариант, а не ветка в одном шейдере: шейдер, в котором
+  так модель уровня (ель) годится и для леса ([scatter.md](scatter.md)), — и вариант запекания импостера (`mainBake`:
+  цвет с покрытием и нормаль модели в две цели, `Material::enableImpostorBake`, `ShaderPhaseOptions::impostorBake`; в
+  прогрев проходов кадра он не идёт — `Material::bakePhases`). Импостер — свой класс `ImpostorMaterial` (не из базы:
+  создаёт расстановка, [scatter.md](scatter.md), «Импостеры»). Отдельный вариант, а не ветка в одном шейдере: шейдер, в котором
   есть `clip`, лишается ранней проверки глубины, а непрозрачным (трава) она нужна. С depth prepass
   ([passes.md](passes.md)) `clip` нужен только там: маска уже в глубине, и в проходе цвета Masked рисуется вариантом
   без отсечения с проверкой `EQUAL` (`phaseFor( params, options )` с `ShaderPhaseOptions::depthFromPrepass`, как

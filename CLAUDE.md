@@ -322,7 +322,8 @@ NULL — этого у уровня нет. Экземпляры моделей 
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
 (две секции: панель и металлическая рамка), к северу от луга — роща елей (`Fir_A/B/C`, 23 экземпляра), на склонах — лес:
-набор `Forest` (те же ели постоянным слоем по `mask_forest_spruce`, ~12,9 тыс. деревьев, видны до 250 м). Частицы (`Particles`, одуванчики) у обоих уровней выключены — `Levels.particles` NULL: они движутся,
+набор `Forest` (те же ели постоянным слоем по `mask_forest_spruce`, ~12,9 тыс. деревьев; до 150 м — модели, дальше до
+1500 м — импостеры). Частицы (`Particles`, одуванчики) у обоих уровней выключены — `Levels.particles` NULL: они движутся,
 и снимки с одной точки для сравнения кадров не совпадали бы; вернуть — `particles = 1`.
 
 **Заглушки ресурсов.** Слот `placeholderId` (0) в хранилищах текстур и мешей занимает процедурная заглушка:
@@ -436,7 +437,10 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 (`ScatterLayers.persistent`): раскладывается один раз на всю карту кластерами по 8 × 8 ячеек (`placeWorld`), каждый
 кадр отбираются видимые кластеры и их экземпляры в те же списки видов (`cullPlaced`); отсечение экземпляров — по сфере
 модели варианта (`ScatterPass::Variant::bounds`). Модели слоёв могут быть и моделями уровня: материал собирает вариант
-для экземпляров расстановки (`Material::enablePlacedInstances`, `ShaderPhaseOptions::placed`). Подробно — `docs/scatter.md`.
+для экземпляров расстановки (`Material::enablePlacedInstances`, `ShaderPhaseOptions::placed`). Дальше
+`ScatterLayers.impostor_distance` — импостер (`ImpostorMaterial`: последний LOD варианта, карточка с тремя из 8 × 8 кадров
+полуоктаэдра; кадры запекаются при загрузке из LOD0 модели — `SceneObject::bake` → `Renderer::bake` после `Scene::initialize`,
+до прогрева пайплайнов, вариантом `mainBake` материала секции). Подробно — `docs/scatter.md`.
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
 `Particle` (`DMParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,

@@ -41,6 +41,8 @@ public:
 	// Пайплайны всех материалов и объектов сцены для состояний проходов кадра — после Scene::initialize при загрузке
 	// уровня (GpuPipeline.h). Состояние прохода теней — со смещением глубины солнца уровня (ShadowCascades::renderState)
 	void warmPipelines( Scene& scene );
+	// Запекание объектов сцены при загрузке (SceneObject::bake: импостеры) — после Scene::initialize, до warmPipelines
+	bool bake( Scene& scene );
 
 	// Рисует сцену в HDR-буфер (SceneTargets) и тонмаппинг в задний буфер; дальше DMGraphics рисует GUI и вызывает endFrame
 	void render( Scene& scene, const FrameContext& frame, bool wireframe );

@@ -1,6 +1,7 @@
 #include "Scatterer.h"
 #include "Shaders\slots.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <optional>
@@ -9,6 +10,7 @@
 #include "ConstantBuffers.h"
 #include "Shaders\lod_transition.h"
 #include "Logger\Logger.h"
+#include "Materials\ImpostorMaterial.h"
 
 using namespace DirectX;
 
@@ -85,9 +87,19 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		}
 		LayerVariant variant;
 		variant.castShadow = models[v].castShadow;
-		for( uint32_t i = 0; i < passVariant.lodCount; ++i )
+		// Импостер — ещё один LOD после последнего LOD модели (если есть место): модель — до impostor_distance
+		const uint32_t modelLods = passVariant.lodCount;
+		variant.model = model;
+		variant.impostor = settings.impostorDistance > 0.0f;
+		if( variant.impostor && modelLods >= ScatterPass::maxLods )
 		{
-			passVariant.lodEnd[i] = i + 1 < passVariant.lodCount ? model->lodRange( static_cast<uint16_t>( i ) ) : params.farBorder;
+			LOG( "Scatter layer " + layer.mask + ": model " + model->properties()->name() + " has no free LOD for an impostor" );
+			variant.impostor = false;
+		}
+		for( uint32_t i = 0; i < modelLods; ++i )
+		{
+			passVariant.lodEnd[i] = i + 1 < modelLods ? model->lodRange( static_cast<uint16_t>( i ) ) :
+									variant.impostor ? settings.impostorDistance : params.farBorder;
 			LayerLod lod;
 			DMModel::LodBlock* block = model->getLodById( static_cast<uint16_t>( i ) );
 			const size_t sectionCount = std::min<size_t>( block->sections.size(), ScatterPass::maxSections );
@@ -104,11 +116,25 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			passVariant.sectionCount[i] = static_cast<uint32_t>( std::max<size_t>( sectionCount, 1 ) );
 			variant.lods.push_back( lod );
 		}
+		if( variant.impostor )
+		{
+			// Секция импостера — карточка (MeshStorage::cardId); материал появится при запекании (bake)
+			variant.impostorSection = std::make_unique<DMModel::Section>();
+			variant.impostorSection->mesh = MeshStorage::cardId;
+			variant.impostorSection->material = 0;
+			variant.impostorSection->params.setName( "Impostor" );
+			LayerLod lod;
+			lod.sections.push_back( { variant.impostorSection.get(), nullptr } );
+			passVariant.lodEnd[modelLods] = params.farBorder;
+			passVariant.sectionCount[modelLods] = 1;
+			passVariant.lodCount = modelLods + 1;
+			variant.lods.push_back( lod );
+		}
 		layer.variants.push_back( std::move( variant ) );
 		passVariants.push_back( passVariant );
 	}
 	layer.maxHeight = std::max( layer.maxHeight, settings.sizeMultiplier );
-	if( !layer.pass->createBuffers( passVariants ) )
+	if( !layer.pass->createBuffers( passVariants, settings.persistent ) )
 		return false;
 
 	// Постоянный слой: пул и кластеры на весь мир террейна
@@ -135,6 +161,39 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	m_properties.addSubContainer( layer.properties.get() );
 
 	m_layers.push_back( std::move( layer ) );
+	return true;
+}
+
+bool Scatterer::bake( const BakeContext& context )
+{
+	for( Layer& layer : m_layers )
+	for( LayerVariant& variant : layer.variants )
+	{
+		if( !variant.impostor )
+			continue;
+		// Материал импостера — на модель, общий для всех наборов
+		const std::string name = "Impostor " + variant.model->properties()->name();
+		MaterialStorage& materials = System::materials();
+		Material* material = materials.exists( name ) ? materials[name].get() : nullptr;
+		if( !material )
+		{
+			const auto start = std::chrono::steady_clock::now();
+			auto impostor = std::make_unique<ImpostorMaterial>( materials.freeId(), name );
+			impostor->setLayoutDesc( impostor->initLayouts() );
+			if( !impostor->initialize() || !impostor->bake( *variant.model, context ) )
+			{
+				// Без импостера дальний LOD варианта не рисуется (группы пропускают секции без материала)
+				LOG( "Scatter layer " + layer.mask + ": impostor of model " + variant.model->properties()->name() + " is not baked" );
+				continue;
+			}
+			material = impostor.get();
+			materials.insertResource( std::move( impostor ) );
+			const auto ms = std::chrono::duration<float, std::milli>( std::chrono::steady_clock::now() - start ).count();
+			LOG( "Impostor baked: " + name + ", ms: " + std::to_string( ms ) );
+		}
+		variant.impostorSection->material = material->id();
+		variant.lods.back().sections.back().material = material;
+	}
 	return true;
 }
 
@@ -182,7 +241,7 @@ void Scatterer::assignGroups( Layer& layer )
 			for( uint32_t s = 0; s < ScatterPass::maxSections; ++s )
 			{
 				// Список перехода — экземпляры в полосе смены LOD; без дизеринга он пуст
-				if( s >= lod.sections.size() || ( transition && !variant.ditheredLodTransition ) )
+				if( s >= lod.sections.size() || !lod.sections[s].material || ( transition && !variant.ditheredLodTransition ) )
 				{
 					layer.pass->clearSectionArgs( list, s );
 					continue;
@@ -274,7 +333,7 @@ void Scatterer::compute( const FrameContext& frame )
 			variant.ditheredLodTransition = variant.lods.size() > 1;
 			for( const LayerLod& lod : variant.lods )
 			for( const LayerSection& section : lod.sections )
-				variant.ditheredLodTransition = variant.ditheredLodTransition &&
+				variant.ditheredLodTransition = variant.ditheredLodTransition && section.material &&
 												section.material->renderState( section.section->params ).ditheredLodTransition;
 			layer.pass->setDitheredLodTransition( v, variant.ditheredLodTransition );
 		}
@@ -349,6 +408,8 @@ void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 		for( const LayerLod& lod : variant.lods )
 		for( const LayerSection& section : lod.sections )
 		{
+			if( !section.material )
+				continue;
 			passMask |= passBit( passFor( section.material->renderState( section.section->params ).blendMode ) );
 			if( inDepthPrepass( section ) )
 				passMask |= passBit( MeshPass::depthPrepass );

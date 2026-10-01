@@ -131,6 +131,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Common/Storage/DMResourceStorage.cpp
     src/Engine/Graphics/Common/Storage/DMResource.cpp
     src/Engine/Graphics/Scene/Materials/Material.cpp
+    src/Engine/Graphics/Scene/Materials/ImpostorMaterial.cpp
     src/Engine/Graphics/Scene/Model/Mesh/AbstractMesh.cpp
     src/Engine/Graphics/ConstantBuffers.cpp
     src/Engine/Graphics/Scene/Materials/ColorMaterial.cpp
@@ -185,6 +186,7 @@ add_executable(DMEngine WIN32
     src/Common/Utils/DMTimer.cpp
     src/Common/Utils/utilites.cpp
     src/Engine/Graphics/Scene/Texture/ImageFile.cpp
+    src/Engine/Graphics/Scene/Texture/ImageMips.cpp
 )
 
 # Заголовки D3D12 Agility SDK — раньше Windows SDK (BEFORE), иначе d3d12.h возьмётся системный

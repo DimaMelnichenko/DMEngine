@@ -166,6 +166,30 @@ bool PBRMaterial::enablePlacedInstances()
 	return m_placed;
 }
 
+bool PBRMaterial::enableImpostorBake()
+{
+	if( m_bakePhases[0] >= 0 )
+		return true;
+	const std::optional<ShaderSource> pixel = shaderSource( ShaderStageType::pixel );
+	const int first = stageCount( ShaderStageType::pixel );
+	if( !pixel || !addShaderPassFromFile( ShaderStageType::pixel, "mainBake", pixel->file, pixel->defines ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "mainBake", pixel->file, withDefine( pixel->defines, "ALPHA_MASK=1" ) ) )
+		return false;
+	// Вершинный шейдер — из базы (0): мировая матрица запекания — константа объекта
+	m_bakePhases[0] = createPhase( 0, first );
+	m_bakePhases[1] = createPhase( 0, first + 1 );
+	return m_bakePhases[0] >= 0 && m_bakePhases[1] >= 0;
+}
+
+std::vector<int> PBRMaterial::bakePhases() const
+{
+	std::vector<int> phases;
+	for( int phase : m_bakePhases )
+		if( phase >= 0 )
+			phases.push_back( phase );
+	return phases;
+}
+
 std::vector<int> PBRMaterial::depthPhases() const
 {
 	std::vector<int> phases;
@@ -199,6 +223,8 @@ PBRMaterial::VertexVariant PBRMaterial::vertexVariant( const ShaderPhaseOptions&
 
 int PBRMaterial::phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options ) const
 {
+	if( options.impostorBake )
+		return m_bakePhases[renderState( params ).blendMode == BlendMode::masked ? 1 : 0];
 	// После depth prepass отсечения нет: маска и дизеринг уже в глубине, проверка EQUAL
 	const bool clipAlpha = renderState( params ).blendMode == BlendMode::masked && !options.depthFromPrepass;
 	const bool clipDither = options.lodDither && !options.depthFromPrepass;
