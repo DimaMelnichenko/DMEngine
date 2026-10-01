@@ -6,7 +6,6 @@
 #include <optional>
 #include "D3D\DMD3D.h"
 #include "System.h"
-#include "Pipeline.h"
 #include "Shaders\ConstantBuffers.h"
 #include "Shaders\lod_transition.h"
 

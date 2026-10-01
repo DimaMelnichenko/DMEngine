@@ -12,6 +12,7 @@
 #include "D3D\DMStructuredBuffer.h"
 #include "ShadowCascades.h"
 #include "SceneTargets.h"
+#include "Shaders\ConstantBuffers.h"
 
 class GUI;
 
@@ -96,6 +97,8 @@ private:
 private:
 	GUI& m_gui;
 	VertexPool m_vertexPool;
+	// Константы кадра и вида (b0) и объекта (b1); своим вызовам объектов приходят в RenderContext::constants
+	ConstantBuffers m_constants;
 	PropertyContainer m_properties;
 	// Буфер сцены (HDR-цвет и глубина) — цели проходов кадра; цвет очистки — почти чёрный линейный (небо рисует фон там,
 	// где сцена ничего не нарисовала)

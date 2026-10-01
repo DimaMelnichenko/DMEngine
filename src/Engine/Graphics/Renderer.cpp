@@ -9,7 +9,6 @@
 #include "Scene.h"
 #include "System.h"
 #include "D3D\ShaderCompiler.h"
-#include "Pipeline.h"
 #include "GUI\GUI.h"
 #include "D3D\DMD3D.h"
 #include "Shaders\DMShader.h"
@@ -97,6 +96,8 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t sh
 
 	if( !m_vertexPool.prepareMeshes() )
 		return false;
+
+	m_constants.initBuffers();
 
 	if( !m_postProcess.initialize( postProcess ) )
 		return false;
@@ -213,8 +214,8 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		}
 	} );
 	// Пересчёт освещения окружением мог закончиться в compute неба: масштаб — по показанному результату
-	pipeline().shaderConstant().setSkyLightScale( scene.skyLightScale() );
-	pipeline().shaderConstant().setViewBuffer( frame.view );
+	m_constants.setSkyLightScale( scene.skyLightScale() );
+	m_constants.setViewBuffer( frame.view );
 
 	const bool depthPrepass = m_properties["Depth prepass"].data<bool>();
 	const auto collectStart = std::chrono::high_resolution_clock::now();
@@ -409,10 +410,10 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	frameParameters.gameTime = frame.gameTime;
 	frameParameters.deltaTime = frame.elapsedTime / 1000.0f;
 	frameParameters.wind = scene.wind().parameters();
-	pipeline().shaderConstant().beginFrame( frameParameters );
+	m_constants.beginFrame( frameParameters );
 	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
 	m_postProcess.bindExposure();
-	pipeline().shaderConstant().setViewBuffer( frame.view );
+	m_constants.setViewBuffer( frame.view );
 }
 
 void Renderer::collect( Scene& scene, const RenderView& view, MeshCollector& collector )
@@ -528,18 +529,18 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 		collect( scene, view, m_shadowCollector );
 		buildShadowCommands();
 
-		pipeline().shaderConstant().setViewBuffer( view );
+		m_constants.setViewBuffer( view );
 		m_shadows.beginCascade( cascade );
 		m_gpuProfiler.beginScope( "Shadow cascade " + std::to_string( cascade ) );
 		const RenderContext context{ view, MeshPass::csmShadowDepth, RasterState::csmShadowDepth,
-									 pipeline().shaderConstant(), m_vertexPool };
+									 m_constants, m_vertexPool };
 		executeCommands( m_shadowCollector, m_shadowCommands, context, false );
 		m_gpuProfiler.endScope();
 	}
 	m_gpuProfiler.endScope();
 
 	// Проходы сцены — снова с главного вида
-	pipeline().shaderConstant().setViewBuffer( frame.view );
+	m_constants.setViewBuffer( frame.view );
 	const auto end = std::chrono::high_resolution_clock::now();
 	m_gui.addCounterInfo( "Shadow depths = %.3f ms",
 						  std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
@@ -566,7 +567,7 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 	d3d.beginPass( desc );
 	ScopedRenderState passState;
 	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
-	const RenderContext context{ view, pass, frameRaster, pipeline().shaderConstant(), m_vertexPool, depthFromPrepass };
+	const RenderContext context{ view, pass, frameRaster, m_constants, m_vertexPool, depthFromPrepass };
 	// Depth prepass — одной областью, как тени: строки объектов в «Statistic» и «GPU average» — их проходы цвета
 	executeCommands( m_collector, m_commands[static_cast<uint32_t>( pass )], context, pass != MeshPass::depthPrepass );
 	m_gpuProfiler.endScope();

@@ -25,7 +25,7 @@ class Scene
 public:
 	// Загружает материалы, состав уровня levelName (пустое имя — первый уровень), его модели и текстуры
 	bool loadResources( LibraryLoader& library, const std::string& levelName );
-	// Создаёт объекты сцены и свет; вызывается после loadResources() и pipeline().init()
+	// Создаёт объекты сцены и свет; вызывается после loadResources() и Renderer::initialize()
 	bool initialize();
 
 	// Раз за кадр до update(): правки источников в GUI и время суток, затем свет солнца у земли — через атмосферу

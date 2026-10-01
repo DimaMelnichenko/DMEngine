@@ -6,7 +6,6 @@
 #include <cmath>
 #include <DirectXTex.h>
 #include "System.h"
-#include "Pipeline.h"
 #include "Shaders\ConstantBuffers.h"
 #include "DBConnector.h"
 #include "Logger\Logger.h"

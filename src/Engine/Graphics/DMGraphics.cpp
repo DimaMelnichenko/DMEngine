@@ -1,7 +1,6 @@
 #include "DMGraphics.h"
 #include <string>
 #include "../Input/Input.h"
-#include "Pipeline.h"
 #include <chrono>
 #include "Logger\Logger.h"
 #include "D3D\TextureImages.h"
@@ -42,7 +41,6 @@ DMGraphics::DMGraphics() :
 
 DMGraphics::~DMGraphics()
 {
-	pipelineDestroy();
 	System::destroy();
 	// DMD3D::destroy — в main после DMSystem: члены DMGraphics ещё держат ресурсы GPU
 }
@@ -102,8 +100,6 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	camera.SetRotation( m_config.cameraRotation().x, m_config.cameraRotation().y, 0.0f );
 
 	m_timer.Initialize();
-
-	pipeline().init();
 
 	RET_FALSE( m_scene.initialize() );
 	// Пайплайны материалов и объектов для проходов кадра — когда объекты созданы, а свет уровня известен (смещение теней)

@@ -125,7 +125,6 @@ add_executable(DMEngine WIN32
     src/3rdParty/tinyxml2.cpp
     src/Config/Config.cpp
     src/Common/ResourceMetaFile.cpp
-    src/Engine/Graphics/Pipeline.cpp
     src/Engine/Graphics/Scene/Light/DMLight.cpp
     src/Engine/Graphics/Scene/Light/DMLightDriver.cpp
     src/Engine/Graphics/Scene/Light/SunPosition.cpp

@@ -146,7 +146,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 - `Scene` (`Scene/Scene.h`) загружает ресурсы уровня из БД (`loadResources`), владеет светом и объектами сцены
   и вызывает их `update()`. Состав уровня описывает строка таблицы `Levels` (см. «Данные сцены»); объект,
   которого у уровня нет, остаётся неинициализированным и ничего не делает;
-- `Renderer` (`Renderer.h`) отправляет команды GPU: общие данные конвейера (сэмплеры, свет, константы кадра и вида)
+- `Renderer` (`Renderer.h`) отправляет команды GPU: общие данные конвейера (сэмплеры, свет, константы кадра и вида —
+  `ConstantBuffers` (`Shaders/ConstantBuffers.h`), член `Renderer`; своим вызовам объектов — `RenderContext::constants`)
   → `compute()` всех объектов → сбор мешей с вида и раскладка по проходам с сортировкой → глубина каскадов теней
   солнца (`renderShadows`: на каждый каскад сбор с его вида и проход `csmShadowDepth` в срез карты) → depth prepass
   (`depthPrepass`: только глубина непрозрачных и Masked вариантом `depthPhaseFor`, без цели цвета; `DepthPrepass` в
@@ -256,7 +257,6 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 - `GS::System::textures() / meshes() / models() / materials()` — хранилища ресурсов
   (`DMResourceStorage<T>`, доступ по id или по имени; путь хранилища — подкаталог: `Textures`, `Meshes`,
   `Models`, `Shaders`);
-- `pipeline().shaderConstant()` — общие constant buffers (`Shaders/ConstantBuffers.h`);
 - `dbConnect().db()` — `SQLite::Database` на `base.db3`; `getInput()` — DirectInput + `KeyEventNotifier`.
 
 **Данные сцены в SQLite (`base.db3`).** `ObjectLibrary/LibraryLoader` по id загружает из БД текстуры,
