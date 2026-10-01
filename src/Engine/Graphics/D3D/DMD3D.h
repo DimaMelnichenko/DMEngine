@@ -7,7 +7,6 @@
 #include <unordered_map>
 #include <vector>
 #include "Utils\utilites.h"
-#include "DM3DUtils.h"
 #include "GpuResources.h"
 #include "DescriptorHeap.h"
 #include "ConstantRing.h"
@@ -201,7 +200,7 @@ public:
 	bool createTargetView( const Texture& texture, const TextureViewDesc& desc, TargetView& view );
 	bool createStorageView( const Texture& texture, const TextureViewDesc& desc, StorageView& view );
 	// Стадия — байткод как есть; раскладка — элементы без байткода
-	bool createShaderStage( SRVType type, const void* bytecode, size_t size, ShaderStage& stage );
+	bool createShaderStage( ShaderStageType type, const void* bytecode, size_t size, ShaderStage& stage );
 	bool createInputLayout( const std::vector<VertexElement>& elements, const void* vsBytecode, size_t size, InputLayout& layout );
 
 	// --- Обновление и копирование ----------------------------------------------------------------------------------------
@@ -212,14 +211,13 @@ public:
 
 	// --- Привязка ---------------------------------------------------------------------------------------------------------
 	// Таблица привязок вызова (Shaders/bindless.sh): setSRV / setUAV пишут индекс дескриптора вида в слот, draw* /
-	// dispatch ставят таблицу root-константами. Стадия у setSRV не важна — таблица одна на вызов; слоты сцены
+	// dispatch ставят таблицу root-константами. Стадии у привязки нет — таблица одна на вызов; слоты сцены
 	// (t100…t106) живут до следующего кадра, слоты вызова очищаются в beginPass. Вид ресурса, который пишет текущий
 	// проход, на входе — барьер в состояние чтения (проход над ним закончен)
-	bool setConstantBuffer( SRVType type, uint16_t slot, const Buffer& buffer );	// root CBV b0…b7
-	void setConstantBufferAllStages( uint16_t slot, const Buffer& buffer );
-	void setSRV( SRVType type, uint16_t slot, const ShaderView& view );
+	bool setConstantBuffer( uint16_t slot, const Buffer& buffer );	// root CBV b0…b7
+	void setSRV( uint16_t slot, const ShaderView& view );
 	// Буфер кадра (BufferUsage::cpuWrite без constant): временный SRV участка, записанного в этом кадре (endWrite)
-	void setSRV( SRVType type, uint16_t slot, const Buffer& ringBuffer );
+	void setSRV( uint16_t slot, const Buffer& ringBuffer );
 	void setUAV( uint16_t slot, const StorageView& view );		// compute
 	void clearStorageView( const StorageView& view );	// нули (uint) в буфер по UAV
 	void setVertexBuffers( uint32_t count, const Buffer* const buffers[], const uint32_t strides[], const uint32_t offsets[] );

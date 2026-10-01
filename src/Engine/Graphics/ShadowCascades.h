@@ -5,7 +5,6 @@
 #include <string>
 #include <DirectXCollision.h>
 #include "DirectX.h"
-#include "DM3DUtils.h"
 #include "Utils\utilites.h"
 #include "RenderView.h"
 #include "Light\DMLight.h"

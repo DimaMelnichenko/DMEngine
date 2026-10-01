@@ -35,9 +35,9 @@ void DMStructuredBuffer::updateData( const void* data, size_t sizeInByte )
 	DMD3D::instance().endWrite();
 }
 
-void DMStructuredBuffer::setToSlot( int8_t slot, SRVType type )
+void DMStructuredBuffer::setToSlot( int8_t slot )
 {
-	DMD3D::instance().setSRV( type, slot, m_buffer );
+	DMD3D::instance().setSRV( slot, m_buffer );
 }
 
 uint32_t DMStructuredBuffer::sizeofElement() const

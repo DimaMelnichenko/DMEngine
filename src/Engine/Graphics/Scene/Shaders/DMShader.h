@@ -10,7 +10,6 @@
 #include "Utils/DMTimer.h"
 #include "Camera\DMCamera.h"
 #include "D3D\DMD3D.h"
-#include "DM3DUtils.h"
 #include "Storage\DMResource.h"
 #include "Properties/PropertyContainer.h"
 #include "MaterialRenderState.h"
@@ -73,7 +72,7 @@ public:
 	};
 
 	void setDrawType( DrawType );
-	bool addShaderPassFromFile( SRVType type, const std::string& funcName, const std::string& fileName, const std::string& defines = "" );
+	bool addShaderPassFromFile( ShaderStageType type, const std::string& funcName, const std::string& fileName, const std::string& defines = "" );
 
 	// Фаза — набор шейдеров стадий (номера в порядке addShaderPassFromFile, −1 — стадии нет). Возвращает номер фазы
 	// для setPass: новой или уже существующей с теми же шейдерами; −1 — такого шейдера нет. Номер надо хранить:
@@ -86,13 +85,13 @@ protected:
 	// Исходник скомпилированного шейдера: материал может собрать из него свой вариант с другими defines
 	struct ShaderSource
 	{
-		SRVType type;
+		ShaderStageType type;
 		std::string function;
 		std::string file;
 		std::string defines;
 	};
 	// Копия исходника первого шейдера стадии type (не ссылка: addShaderPassFromFile дополняет список исходников)
-	std::optional<ShaderSource> shaderSource( SRVType type ) const;
+	std::optional<ShaderSource> shaderSource( ShaderStageType type ) const;
 
 private:
 
@@ -121,7 +120,7 @@ private:
 	virtual bool prepare();
 	void RenderShader( int, uint32_t vertexOffset, uint32_t indexOffset, int instanceCount = 0 );
 
-	bool createShaderPass( SRVType type, const std::vector<uint8_t>& bytecode );
+	bool createShaderPass( ShaderStageType type, const std::vector<uint8_t>& bytecode );
 	// Стадия фазы: шейдер по номеру в списке стадии или nullptr — стадия выключена
 	const ShaderStage* stage( const std::vector<ShaderStage>& stages, int index ) const
 	{

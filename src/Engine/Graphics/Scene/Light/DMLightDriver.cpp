@@ -266,7 +266,7 @@ std::vector<const DMLight*> DMLightDriver::bufferLights() const
 	return lights;
 }
 
-uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
+uint32_t DMLightDriver::setBuffer( int8_t slot )
 {
 	const DMLight* sunLight = sun();
 	std::vector<LightBuffer> buffer;
@@ -300,7 +300,7 @@ uint32_t DMLightDriver::setBuffer( int8_t slot, SRVType type )
 	m_lightParamBuffer = std::move( buffer );
 	m_structBuffer.updateData( m_lightParamBuffer.data(), m_lightParamBuffer.size() * sizeof( LightBuffer ) );
 
-	m_structBuffer.setToSlot( slot, type );
+	m_structBuffer.setToSlot( slot );
 
 	return static_cast<uint32_t>( m_lightParamBuffer.size() );
 }

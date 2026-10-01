@@ -36,7 +36,7 @@ void DMColorShader::setParams( const PropertyContainer& params )
 		v = color ? *color : XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );
 	} );
 
-	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
 }
 
 }

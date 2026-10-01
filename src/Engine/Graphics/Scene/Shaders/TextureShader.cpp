@@ -34,7 +34,7 @@ void TextureShader::setParams( const PropertyContainer& params )
 		uint32_t idTexture = params["Albedo"].data<uint32_t>();
 		if( System::textures().exists( idTexture ) )
 		{
-			DMD3D::instance().setSRV( SRVType::ps, 0, System::textures().get( idTexture )->srv() );
+			DMD3D::instance().setSRV( 0, System::textures().get( idTexture )->srv() );
 		}
 	}
 }

@@ -109,7 +109,7 @@ void DMParticleSystem::update( float elapsedTime )
 		data.highOfDeath.x = m_propertyContainer["High of death"].data<float>();
 	} );
 
-	DMD3D::instance().setConstantBuffer( SRVType::cs, 3, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( 3, m_constantBuffer );
 
 	m_computeShader.setUAVBuffer( 0, m_uavParticles );
 
@@ -125,7 +125,7 @@ void DMParticleSystem::compute( const GS::FrameContext& frame )
 	// на которой частица гибнет, отсчитывается от террейна: шейдер читает карту высот из t0
 	const ShaderView& heightMap = GS::System::textures().get( m_heightMap )->srv();
 	DMD3D::instance().beginPass( PassDesc{ "Particles update", {}, {}, 0, 0, { { &heightMap, "height map" } }, { { &m_uavParticles, "particles" } } } );
-	DMD3D::instance().setSRV( SRVType::cs, 0, heightMap );
+	DMD3D::instance().setSRV( 0, heightMap );
 	update( frame.elapsedTime );
 }
 
@@ -144,7 +144,7 @@ void DMParticleSystem::renderCustom( const GS::RenderContext& )
 	shader->setDrawType( GS::DMShader::by_vertex );
 
 	bindParticles();
-	DMD3D::instance().setSRV( SRVType::ps, 0, GS::System::textures().get( m_texture )->srv() );
+	DMD3D::instance().setSRV( 0, GS::System::textures().get( m_texture )->srv() );
 	shader->render( particleCount(), 0, 0 );
 }
 
@@ -156,7 +156,7 @@ PropertyContainer* DMParticleSystem::properties()
 void DMParticleSystem::bindParticles()
 {
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setSRV( SRVType::vs, 5, m_srvParticles );
+	d3d.setSRV( 5, m_srvParticles );
 	// Буферов вершин и индексов нет
 	d3d.unbindGeometry();
 }

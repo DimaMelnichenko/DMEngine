@@ -64,7 +64,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.framePadding = 0.0f;
 	} );
 
-	DMD3D::instance().setConstantBufferAllStages( SLOT_CB_FRAME, m_frameConstant );
+	DMD3D::instance().setConstantBuffer( SLOT_CB_FRAME, m_frameConstant );
 }
 
 void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world, float lodDither )
@@ -79,9 +79,7 @@ void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world, float lodDither
 		data.padding = XMFLOAT3( 0.0f, 0.0f, 0.0f );
 	} );
 
-	// Всем графическим стадиям; compute-шейдеры объектов не рисуют
-	for( SRVType stage : { SRVType::vs, SRVType::hs, SRVType::ds, SRVType::gs, SRVType::ps } )
-		DMD3D::instance().setConstantBuffer( stage, SLOT_CB_OBJECT, m_modelConstant );
+	DMD3D::instance().setConstantBuffer( SLOT_CB_OBJECT, m_modelConstant );
 }
 
 }

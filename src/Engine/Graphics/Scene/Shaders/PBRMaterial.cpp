@@ -61,18 +61,18 @@ bool PBRMaterial::innerInitialize()
 {
 	// Пиксельные шейдеры: 0 — из базы, 1 — он же с отсечением по альфе, 2 — только отсечение по альфе (глубина MASK);
 	// с дизерингом смены LOD: 3 — цвет, 4 — цвет с отсечением по альфе, 5 — глубина, 6 — глубина MASK
-	const std::optional<ShaderSource> pixel = shaderSource( SRVType::ps );
+	const std::optional<ShaderSource> pixel = shaderSource( ShaderStageType::pixel );
 	if( !pixel )
 		return false;
 	const std::string maskDefines = withDefine( pixel->defines, "ALPHA_MASK=1" );
 	const std::string pixelDitherDefines = withDefine( pixel->defines, "LOD_DITHER=1" );
 	const std::string maskDitherDefines = withDefine( maskDefines, "LOD_DITHER=1" );
-	if( !addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, maskDefines ) ||
-		!addShaderPassFromFile( SRVType::ps, "mainDepth", pixel->file, maskDefines ) ||
-		!addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, pixelDitherDefines ) ||
-		!addShaderPassFromFile( SRVType::ps, pixel->function, pixel->file, maskDitherDefines ) ||
-		!addShaderPassFromFile( SRVType::ps, "mainDepth", pixel->file, pixelDitherDefines ) ||
-		!addShaderPassFromFile( SRVType::ps, "mainDepth", pixel->file, maskDitherDefines ) )
+	if( !addShaderPassFromFile( ShaderStageType::pixel, pixel->function, pixel->file, maskDefines ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", pixel->file, maskDefines ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, pixel->function, pixel->file, pixelDitherDefines ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, pixel->function, pixel->file, maskDitherDefines ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", pixel->file, pixelDitherDefines ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", pixel->file, maskDitherDefines ) )
 		return false;
 
 	// Вершинные шейдеры по [вариант][только глубина]: 0 — из базы, инстансный вариант (INST_MATRIX) — у моделей
@@ -80,14 +80,14 @@ bool PBRMaterial::innerInitialize()
 	// расстановки доля перехода — в экземплярах её списков перехода, у моделей — в константах объекта; без инстансинга
 	// моделей) и те же «только глубина» (DEPTH_ONLY: позиция и UV, Shaders/depth_only.sh). Без инстансинга инстансные
 	// номера совпадают с обычными
-	const std::optional<ShaderSource> vertex = shaderSource( SRVType::vs );
+	const std::optional<ShaderSource> vertex = shaderSource( ShaderStageType::vertex );
 	if( !vertex )
 		return false;
 	m_instancing = vertex->defines.find( "INST_" ) == std::string::npos;
 	int vertexCount = 1;
 	const auto addVertexShader = [&]( const std::string& defines )
 	{
-		return addShaderPassFromFile( SRVType::vs, vertex->function, vertex->file, defines ) ? vertexCount++ : -1;
+		return addShaderPassFromFile( ShaderStageType::vertex, vertex->function, vertex->file, defines ) ? vertexCount++ : -1;
 	};
 	int vertexShaders[vertexVariantCount][2] = {};
 	vertexShaders[vertexDefault][1] = addVertexShader( withDefine( vertex->defines, "DEPTH_ONLY=1" ) );
@@ -189,12 +189,12 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	// Значения по умолчанию совпадают с default_value в MaterialParameterDef: набор параметров другого материала
 	// (у старых моделей такое бывает) не роняет отрисовку
 	const uint32_t white = DMTextureStorage::whiteId;
-	DMD3D::instance().setSRV( SRVType::ps, 0, materialTexture( params, "BaseColor", white ) );
-	DMD3D::instance().setSRV( SRVType::ps, 1, materialTexture( params, "Normal", DMTextureStorage::flatNormalId ) );
-	DMD3D::instance().setSRV( SRVType::ps, 2, materialTexture( params, "MetallicRoughness", white ) );
-	DMD3D::instance().setSRV( SRVType::ps, 3, materialTexture( params, "Occlusion", white ) );
-	DMD3D::instance().setSRV( SRVType::ps, 4, materialTexture( params, "Emissive", white ) );
-	DMD3D::instance().setSRV( SRVType::ps, 5, materialTexture( params, "DiffuseTransmissionColor", white ) );
+	DMD3D::instance().setSRV( 0, materialTexture( params, "BaseColor", white ) );
+	DMD3D::instance().setSRV( 1, materialTexture( params, "Normal", DMTextureStorage::flatNormalId ) );
+	DMD3D::instance().setSRV( 2, materialTexture( params, "MetallicRoughness", white ) );
+	DMD3D::instance().setSRV( 3, materialTexture( params, "Occlusion", white ) );
+	DMD3D::instance().setSRV( 4, materialTexture( params, "Emissive", white ) );
+	DMD3D::instance().setSRV( 5, materialTexture( params, "DiffuseTransmissionColor", white ) );
 
 	PSParam param;
 	param.baseColorFactor = materialValue( params, "BaseColorFactor", XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f ) );
@@ -219,9 +219,9 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.windRippleFrequency = materialValue( params, "WindRippleFrequency", 6.0f );
 
 	Device::updateResourceData<PSParam>( m_psCB, param );
-	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_psCB );
+	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_psCB );
 	// Вершинному шейдеру — отклик на ветер
-	DMD3D::instance().setConstantBuffer( SRVType::vs, SLOT_CB_MATERIAL, m_psCB );
+	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_psCB );
 }
 
 }

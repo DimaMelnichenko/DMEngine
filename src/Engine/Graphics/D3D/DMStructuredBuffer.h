@@ -1,7 +1,6 @@
 #pragma once
 
 #include "D3D/DMD3D.h"
-#include "DM3DUtils.h"
 
 // Структурный буфер, который пишут с CPU каждый кадр (инстансы моделей, патчи террейна, свет) и читает шейдер: данные
 // живут в участке кольца кадра DMD3D (updateData), привязка — временный SRV участка (setToSlot). Записанное читается
@@ -14,7 +13,7 @@ public:
 
 	void createBuffer( size_t sizeOfElement, size_t countElements, const char* name = nullptr );
 	void updateData( const void* data, size_t sizeInByte );
-	void setToSlot( int8_t slot, SRVType type );
+	void setToSlot( int8_t slot );
 	uint32_t sizeofElement() const;
 	uint32_t numElements() const;
 

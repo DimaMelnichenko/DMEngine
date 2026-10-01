@@ -10,7 +10,6 @@
 #include <vector>
 #include "DirectX.h"
 #include "Utils\utilites.h"
-#include "DM3DUtils.h"
 
 namespace D3D12MA
 {
@@ -435,17 +434,24 @@ private:
 	SubresourceRange m_range;
 };
 
+// Стадия шейдера: профиль компиляции (ShaderCompiler::profile) и место в фазе материала (DMShader::createShaderPass).
+// Номера — столбец Shader.type в base.db3 (таблица ShaderType)
+enum class ShaderStageType : uint8_t
+{
+	vertex = 1, geometry = 2, pixel = 3, compute = 4, hull = 5, domain = 6
+};
+
 // Скомпилированная стадия шейдера — байткод; объект состояния из него собирает пайплайн (GpuPipeline.h)
 class ShaderStage
 {
 public:
 	bool valid() const { return !m_bytecode.empty(); }
-	SRVType type() const { return m_type; }
+	ShaderStageType type() const { return m_type; }
 	const void* data() const { return m_bytecode.data(); }
 	size_t size() const { return m_bytecode.size(); }
 	// FNV-1a байткода: имя пайплайна в ID3D12PipelineLibrary, ключ compute-пайплайна
 	uint64_t hash() const { return m_hash; }
-	void reset( SRVType type = SRVType::vs, const void* bytecode = nullptr, size_t size = 0 )
+	void reset( ShaderStageType type = ShaderStageType::vertex, const void* bytecode = nullptr, size_t size = 0 )
 	{
 		m_type = type;
 		m_bytecode.assign( static_cast<const uint8_t*>( bytecode ), static_cast<const uint8_t*>( bytecode ) + ( bytecode ? size : 0 ) );
@@ -458,7 +464,7 @@ public:
 	}
 
 private:
-	SRVType m_type = SRVType::vs;
+	ShaderStageType m_type = ShaderStageType::vertex;
 	std::vector<uint8_t> m_bytecode;
 	uint64_t m_hash = 0;
 };

@@ -34,7 +34,7 @@ void DMD3D::setBinding( uint32_t index, uint32_t descriptorIndex )
 	m_bindingsDirtyGraphics = m_bindingsDirtyCompute = true;
 }
 
-bool DMD3D::setConstantBuffer( SRVType, uint16_t slot, const Buffer& buffer )
+bool DMD3D::setConstantBuffer( uint16_t slot, const Buffer& buffer )
 {
 	if( slot >= SLOT_CB_COUNT || ( buffer.ring() && !buffer.ringConstant() ) )
 		return false;
@@ -53,12 +53,7 @@ bool DMD3D::setConstantBuffer( SRVType, uint16_t slot, const Buffer& buffer )
 	return true;
 }
 
-void DMD3D::setConstantBufferAllStages( uint16_t slot, const Buffer& buffer )
-{
-	setConstantBuffer( SRVType::vs, slot, buffer );
-}
-
-void DMD3D::setSRV( SRVType, uint16_t slot, const ShaderView& view )
+void DMD3D::setSRV( uint16_t slot, const ShaderView& view )
 {
 	const int index = bindingIndex( slot );
 	if( index < 0 )
@@ -69,7 +64,7 @@ void DMD3D::setSRV( SRVType, uint16_t slot, const ShaderView& view )
 	setBinding( static_cast<uint32_t>( index ), view.valid() ? view.index() : 0 );
 }
 
-void DMD3D::setSRV( SRVType, uint16_t slot, const Buffer& ringBuffer )
+void DMD3D::setSRV( uint16_t slot, const Buffer& ringBuffer )
 {
 	const int index = bindingIndex( slot );
 	if( index < 0 )

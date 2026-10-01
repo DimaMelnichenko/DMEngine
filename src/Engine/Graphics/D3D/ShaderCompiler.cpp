@@ -1,4 +1,5 @@
 #include "ShaderCompiler.h"
+#include "GpuResources.h"
 #include "DirectX.h"
 #include <dxcapi.h>
 #include <filesystem>
@@ -55,15 +56,15 @@ ShaderCompiler& ShaderCompiler::instance()
 	return compiler;
 }
 
-std::string ShaderCompiler::profile( SRVType type )
+std::string ShaderCompiler::profile( ShaderStageType type )
 {
 	switch( type )
 	{
-		case SRVType::vs: return "vs_6_6";
-		case SRVType::ps: return "ps_6_6";
-		case SRVType::gs: return "gs_6_6";
-		case SRVType::hs: return "hs_6_6";
-		case SRVType::ds: return "ds_6_6";
+		case ShaderStageType::vertex: return "vs_6_6";
+		case ShaderStageType::pixel: return "ps_6_6";
+		case ShaderStageType::geometry: return "gs_6_6";
+		case ShaderStageType::hull: return "hs_6_6";
+		case ShaderStageType::domain: return "ds_6_6";
 		default: return "cs_6_6";
 	}
 }

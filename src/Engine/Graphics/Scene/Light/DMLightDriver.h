@@ -35,7 +35,7 @@ public:
 	// update(): на него умножается свет светила с atmosphereSunLight
 	void setAtmosphereTransmittance( int index, const XMFLOAT3& transmittance );
 	// Упаковка буфера источников, на GPU — если он изменился, и в слот; возвращает число источников в буфере
-	uint32_t setBuffer( int8_t slot, SRVType type );
+	uint32_t setBuffer( int8_t slot );
 	// Солнце — первый включённый направленный источник: направление на свет (нормированное) и яркость над
 	// атмосферой. Включённых источников нет — запасной свет, как в setBuffer; есть, но не направленные — яркость 0 (ночь)
 	void directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) const;

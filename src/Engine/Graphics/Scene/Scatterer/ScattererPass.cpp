@@ -250,8 +250,8 @@ void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
 		d3d.updateBuffer( m_groupsBuffer, m_groups, sizeof( m_groups ) );
 		m_tablesChanged = false;
 	}
-	d3d.setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
-	d3d.setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
+	d3d.setConstantBuffer( 4, m_populateParamsBuffer );
+	d3d.setConstantBuffer( 7, m_variantsBuffer );
 
 	shader.setUAVBuffer( 0, m_countersUAV );
 	shader.setUAVBuffer( 1, m_items.uav );
@@ -265,10 +265,10 @@ void ScatterPass::buildCommands( DMComputeShader& shader )
 {
 	// Поток — секция списка вида; групп потоков хватает на все виды (MAX_VIEWS × MAX_LISTS × MAX_SECTIONS / 64)
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setConstantBuffer( SRVType::cs, 4, m_populateParamsBuffer );
-	d3d.setConstantBuffer( SRVType::cs, 7, m_variantsBuffer );
-	d3d.setSRV( SRVType::cs, 3, m_sectionArgsSRV );
-	d3d.setSRV( SRVType::cs, 4, m_groupsSRV );
+	d3d.setConstantBuffer( 4, m_populateParamsBuffer );
+	d3d.setConstantBuffer( 7, m_variantsBuffer );
+	d3d.setSRV( 3, m_sectionArgsSRV );
+	d3d.setSRV( 4, m_groupsSRV );
 	shader.setUAVBuffer( 0, m_countersUAV );
 	shader.setUAVBuffer( 4, m_commandsUAV );
 	shader.dispatchGroups( maxViews * maxLists * maxSections / 64, 1, 1 );

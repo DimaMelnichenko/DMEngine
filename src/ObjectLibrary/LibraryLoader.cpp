@@ -216,7 +216,9 @@ bool LibraryLoader::loadShader( uint32_t idMaterial, GS::DMShader* shader )
 	{	
 		std::string fullPath = GS::System::materials().path() + "\\" + query.getColumn( 1 ).getString();
 		LOG( "Load shader: " + fullPath );
-		if( !shader->addShaderPassFromFile( static_cast<SRVType>( query.getColumn( 2 ).getInt() ), "main", fullPath, query.getColumn( 3 ) ) )
+		// Shader.type — номер ShaderStageType (таблица ShaderType)
+		const auto stage = static_cast<ShaderStageType>( query.getColumn( 2 ).getInt() );
+		if( !shader->addShaderPassFromFile( stage, "main", fullPath, query.getColumn( 3 ) ) )
 			return false;
 	}
 

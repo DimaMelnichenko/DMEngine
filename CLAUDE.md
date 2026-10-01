@@ -234,7 +234,7 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
   — участки кольца `D3D/ConstantRing.h`: `Device::updateResource*` пишет участок, `setConstantBuffer` в том же кадре привязывает
   его со смещением (без записи в кадре привязывать нечего); структурные данные кадра (`BufferUsage::cpuWrite` без `constant`:
   инстансы, патчи, свет — `DMStructuredBuffer`) — тоже участки кольца, с временным SRV на кадр (`setSRV( слот, буфер )`), поэтому
-  их пишут каждый кадр перед привязкой; редко меняющиеся константы — `BufferUsage::constant` и `updateBuffer`. Привязка — `setSRV( SRVType::ps|vs|cs…, slot, view )`, `setConstantBuffer`,
+  их пишут каждый кадр перед привязкой; редко меняющиеся константы — `BufferUsage::constant` и `updateBuffer`. Привязка — `setSRV( slot, view )` (стадии нет: таблица привязок одна на вызов), `setConstantBuffer`,
   `setUAV`, `setVertexBuffer(s)` / `setIndexBuffer`; вызовы — `draw*`, `dispatch`; цели — только через
   `beginPass( PassDesc )` (`D3D/GpuPass.h`; задний буфер — `backBufferTarget()`, буфер сцены — `SceneTargets` рендерера); `setSRV` вида ресурса, который пишет текущий проход, завершает проход над ним (цели снимаются,
   UAV отвязывается — так ресурсы сцены t101…t106 привязываются сразу после своих проходов); копия заднего буфера

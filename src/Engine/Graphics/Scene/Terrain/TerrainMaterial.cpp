@@ -343,10 +343,10 @@ bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers
 
 void TerrainMaterial::bind() const
 {
-	DMD3D::instance().setSRV( SRVType::ps, 1, m_splatMap );
-	DMD3D::instance().setSRV( SRVType::ps, 2, m_albedoHeight );
-	DMD3D::instance().setSRV( SRVType::ps, 3, m_normalRoughness );
-	DMD3D::instance().setSRV( SRVType::ps, 4, System::textures().get( "monohromeNoise" )->srv() );
+	DMD3D::instance().setSRV( 1, m_splatMap );
+	DMD3D::instance().setSRV( 2, m_albedoHeight );
+	DMD3D::instance().setSRV( 3, m_normalRoughness );
+	DMD3D::instance().setSRV( 4, System::textures().get( "monohromeNoise" )->srv() );
 }
 
 }

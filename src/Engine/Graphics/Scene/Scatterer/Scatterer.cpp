@@ -184,7 +184,7 @@ void Scatterer::compute( const FrameContext& frame )
 		params.heightMultiplier = terrain.heightMultiplier;
 		params.heightOffset = terrain.heightOffset;
 	} );
-	DMD3D::instance().setConstantBuffer( SRVType::cs, 5, m_terrainBuffer );
+	DMD3D::instance().setConstantBuffer( 5, m_terrainBuffer );
 
 	// Луч от верха инстанса до земли длиннее высоты в 1 / sin(высота солнца) раз; у горизонта — не больше 10
 	const XMFLOAT3& toSun = frame.toShadowLight;
@@ -208,7 +208,7 @@ void Scatterer::compute( const FrameContext& frame )
 		params.viewCount = count;
 		params.shadowCast = XMFLOAT4( -toSun.x, -toSun.y, -toSun.z, m_shadowLength );
 	} );
-	DMD3D::instance().setConstantBuffer( SRVType::cs, 6, m_frustumBuffer );
+	DMD3D::instance().setConstantBuffer( 6, m_frustumBuffer );
 
 	for( Layer& layer : m_layers )
 	{
@@ -247,8 +247,8 @@ void Scatterer::compute( const FrameContext& frame )
 		pass.reads = { { &heightMap, "height map" }, { &mask, "density mask" } };
 		DMD3D::instance().beginPass( pass );
 		layer.pass->resetCounters();
-		DMD3D::instance().setSRV( SRVType::cs, 0, heightMap );
-		DMD3D::instance().setSRV( SRVType::cs, 2, mask );
+		DMD3D::instance().setSRV( 0, heightMap );
+		DMD3D::instance().setSRV( 2, mask );
 		layer.pass->populate( m_computeShader, gridDim );
 		layer.pass->buildCommands( m_commandShader );
 	}
@@ -327,8 +327,8 @@ void Scatterer::renderCustom( const RenderContext& context )
 
 			// Вершинный шейдер: индекс инстанса — из списка вида по root-константе команды (начало списка), сам инстанс —
 			// из пула (INST_POS, INST_SCALE, INST_ROTATE — Shaders\instance.sh; у списка перехода — ещё LOD_DITHER)
-			d3d.setSRV( SRVType::vs, SLOT_INSTANCE_INDICES, layer.pass->indices() );
-			d3d.setSRV( SRVType::vs, SLOT_INSTANCE_DATA, group.transition ? layer.pass->transitions() : layer.pass->items() );
+			d3d.setSRV( SLOT_INSTANCE_INDICES, layer.pass->indices() );
+			d3d.setSRV( SLOT_INSTANCE_DATA, group.transition ? layer.pass->transitions() : layer.pass->items() );
 			context.constants.setPerObjectBuffer( worldMatrix );
 			d3d.drawIndexedInstancedIndirectCount( layer.pass->commands(), layer.pass->commandsOffset( view, g ), layer.pass->groupCapacity( g ),
 												   layer.pass->counters(), ScatterPass::groupCountOffset( view, g ) );

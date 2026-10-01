@@ -226,7 +226,7 @@ PostProcess::Settings PostProcess::settings()
 
 void PostProcess::bindExposure()
 {
-	DMD3D::instance().setSRV( SRVType::ps, SLOT_EXPOSURE, m_exposureSRV );
+	DMD3D::instance().setSRV( SLOT_EXPOSURE, m_exposureSRV );
 }
 
 void PostProcess::render( const ShaderView& sceneColor, GpuProfiler& profiler, float deltaTime )
@@ -258,9 +258,9 @@ void PostProcess::render( const ShaderView& sceneColor, GpuProfiler& profiler, f
 	params.bloomScale = std::max( current.bloomIntensity, 0.0f ) / weightSum;
 	params.purkinjeShift = std::clamp( current.purkinjeShift, 0.0f, 1.0f );
 	Device::updateResourceData<Parameters>( m_constantBuffer, params );
-	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
-	d3d.setSRV( SRVType::ps, 0, sceneColor );
-	d3d.setSRV( SRVType::ps, 1, m_bloom[0].srv() );
+	d3d.setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
+	d3d.setSRV( 0, sceneColor );
+	d3d.setSRV( 1, m_bloom[0].srv() );
 
 	m_shader.draw();
 	profiler.endScope();
@@ -285,9 +285,9 @@ void PostProcess::renderExposure( const ShaderView& sceneColor, float deltaTime 
 
 		HistogramParameters histogram = { d3d.backBufferWidth(), d3d.backBufferHeight(), minLog2Luminance, log2LuminanceRange };
 		Device::updateResourceData<HistogramParameters>( m_histogramConstants, histogram );
-		d3d.setConstantBuffer( SRVType::cs, 4, m_histogramConstants );
-		d3d.setSRV( SRVType::cs, 0, sceneColor );
-		d3d.setSRV( SRVType::cs, SLOT_EXPOSURE, m_exposureSRV );
+		d3d.setConstantBuffer( 4, m_histogramConstants );
+		d3d.setSRV( 0, sceneColor );
+		d3d.setSRV( SLOT_EXPOSURE, m_exposureSRV );
 		m_histogramShader.setUAVBuffer( 0, m_histogramUAV );
 		// Поток — пиксель из квадрата 2 × 2, группа — 16 × 16 потоков
 		m_histogramShader.dispatchGroups( ( d3d.backBufferWidth() + 31 ) / 32, ( d3d.backBufferHeight() + 31 ) / 32, 1 );
@@ -320,8 +320,8 @@ void PostProcess::renderExposure( const ShaderView& sceneColor, float deltaTime 
 	// Адаптация пишет состояние экспозиции: beginPass снимает его со входов пиксельных шейдеров (t105)
 	d3d.beginPass( PassDesc{ "Exposure adapt", {}, {}, 0, 0, { { &m_histogramSRV, "histogram" } }, { { &m_exposureUAV, "exposure" } } } );
 	Device::updateResourceData<AdaptParameters>( m_adaptConstants, adapt );
-	d3d.setConstantBuffer( SRVType::cs, 4, m_adaptConstants );
-	d3d.setSRV( SRVType::cs, 0, m_histogramSRV );
+	d3d.setConstantBuffer( 4, m_adaptConstants );
+	d3d.setSRV( 0, m_histogramSRV );
 	m_adaptShader.setUAVBuffer( 0, m_exposureUAV );
 	m_adaptShader.dispatchGroups( 1, 1, 1 );
 
@@ -374,8 +374,8 @@ void PostProcess::drawPass( const char* name, FullscreenShader& shader, const Re
 	DMD3D& d3d = DMD3D::instance();
 	d3d.beginPass( PassDesc{ name, { { &target.target(), "bloom level" } }, {}, target.width(), target.height(), { { &source, "source" } } } );
 	Device::updateResourceData<BloomParameters>( m_bloomConstants, params );
-	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_bloomConstants );
-	d3d.setSRV( SRVType::ps, 0, source );
+	d3d.setConstantBuffer( SLOT_CB_PASS, m_bloomConstants );
+	d3d.setSRV( 0, source );
 
 	shader.draw( blend );
 }

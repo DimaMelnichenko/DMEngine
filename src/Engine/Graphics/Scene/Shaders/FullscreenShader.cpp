@@ -8,8 +8,8 @@ bool FullscreenShader::load( const std::string& pixelShader, const TargetFormats
 {
 	// Без буферов и раскладки вершин: вершинный шейдер строит треугольник по номеру вершины
 	m_shader.setDrawType( DMShader::by_vertex );
-	if( !m_shader.addShaderPassFromFile( SRVType::vs, "main", "Shaders\\fullscreen.vs" ) ||
-		!m_shader.addShaderPassFromFile( SRVType::ps, "main", pixelShader ) ||
+	if( !m_shader.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\fullscreen.vs" ) ||
+		!m_shader.addShaderPassFromFile( ShaderStageType::pixel, "main", pixelShader ) ||
 		m_shader.createPhase( 0, 0 ) < 0 )
 		return false;
 	// Состояния draw(): без глубины и с накоплением (bloom); с буфером глубины — фон неба на дальней плоскости

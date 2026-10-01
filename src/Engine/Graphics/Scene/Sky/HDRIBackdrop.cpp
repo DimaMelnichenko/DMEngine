@@ -232,7 +232,7 @@ void HDRIBackdrop::updateEnvironment( const Parameters& params )
 		setParameters( faceParams );
 		d3d.beginPass( PassDesc{ "HDRI cube face", { { &m_cube.target( 0, face ), "HDRI cube" } }, {}, m_cube.size(), m_cube.size(),
 								 { { &m_panorama, "panorama" } } } );
-		d3d.setSRV( SRVType::ps, 0, m_panorama );
+		d3d.setSRV( 0, m_panorama );
 		m_cubeShader.draw();
 	}
 
@@ -243,7 +243,7 @@ void HDRIBackdrop::setParameters( const Parameters& params )
 {
 	Parameters data = params;
 	Device::updateResourceData<Parameters>( m_constantBuffer, data );
-	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
 }
 
 void HDRIBackdrop::collectMeshes( const RenderView&, MeshCollector& collector )
@@ -255,7 +255,7 @@ void HDRIBackdrop::collectMeshes( const RenderView&, MeshCollector& collector )
 void HDRIBackdrop::renderCustom( const RenderContext& )
 {
 	setParameters( m_computedFor );
-	DMD3D::instance().setSRV( SRVType::ps, 0, m_panorama );
+	DMD3D::instance().setSRV( 0, m_panorama );
 	// На дальней плоскости: только там, где сцена ничего не нарисовала
 	m_backgroundShader.draw( BlendState::opaque, DepthState::readOnlyNearOrEqual );
 }

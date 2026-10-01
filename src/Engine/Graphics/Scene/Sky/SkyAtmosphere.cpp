@@ -345,7 +345,7 @@ void SkyAtmosphere::updateAtmosphereLuts()
 
 	d3d.beginPass( PassDesc{ "Sky multiple scattering LUT", { { &m_multipleScattering.target(), "multiple scattering LUT" } }, {},
 							 multipleScatteringSize, multipleScatteringSize, { { &m_transmittanceLut.srv(), "transmittance LUT" } } } );
-	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
+	d3d.setSRV( transmittanceSlot, m_transmittanceLut.srv() );
 	m_multipleScatteringShader.draw();
 }
 
@@ -354,8 +354,8 @@ void SkyAtmosphere::updateSkyView()
 	DMD3D& d3d = DMD3D::instance();
 	const auto bindLuts = [&]
 	{
-		d3d.setSRV( SRVType::ps, multipleScatteringSlot, m_multipleScattering.srv() );
-		d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
+		d3d.setSRV( multipleScatteringSlot, m_multipleScattering.srv() );
+		d3d.setSRV( transmittanceSlot, m_transmittanceLut.srv() );
 	};
 	const std::vector<PassDesc::Read> lutReads = { { &m_multipleScattering.srv(), "multiple scattering LUT" },
 												  { &m_transmittanceLut.srv(), "transmittance LUT" } };
@@ -391,9 +391,9 @@ void SkyAtmosphere::renderSkyCube()
 		faceParams.face = face;
 		setParameters( faceParams );
 		d3d.beginPass( PassDesc{ "Sky cube face", { { &m_skyCube.target( 0, face ), "sky cube" } }, {}, m_skyCube.size(), m_skyCube.size(), reads } );
-		d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
-		d3d.setSRV( SRVType::ps, skyViewSlot, m_skyViewLut.srv() );
-		d3d.setSRV( SRVType::ps, skyViewMoonSlot, m_skyViewMoonLut.srv() );
+		d3d.setSRV( transmittanceSlot, m_transmittanceLut.srv() );
+		d3d.setSRV( skyViewSlot, m_skyViewLut.srv() );
+		d3d.setSRV( skyViewMoonSlot, m_skyViewMoonLut.srv() );
 		m_cubeShader.draw();
 	}
 	setParameters( m_frameParams );
@@ -412,10 +412,10 @@ void SkyAtmosphere::updateAerialPerspective()
 	XMFLOAT4 constants( m_properties["Aerial perspective view distance scale"].data<float>(), 1.0f / skyNormalization(),
 						0.0f, 0.0f );
 	Device::updateResourceData<XMFLOAT4>( m_aerialPerspectiveConstants, constants );
-	d3d.setConstantBuffer( SRVType::cs, 4, m_aerialPerspectiveConstants );
-	d3d.setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );	// параметры кадра — setParameters в compute()
-	d3d.setSRV( SRVType::cs, multipleScatteringSlot, m_multipleScattering.srv() );
-	d3d.setSRV( SRVType::cs, transmittanceSlot, m_transmittanceLut.srv() );
+	d3d.setConstantBuffer( 4, m_aerialPerspectiveConstants );
+	d3d.setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );	// параметры кадра — setParameters в compute()
+	d3d.setSRV( multipleScatteringSlot, m_multipleScattering.srv() );
+	d3d.setSRV( transmittanceSlot, m_transmittanceLut.srv() );
 
 	// Поток — столбец объёма: идёт от камеры по слоям и пишет накопленное к концу каждого
 	m_aerialPerspectiveShader.setUAVBuffer( 0, m_aerialPerspectiveUAV );
@@ -427,13 +427,13 @@ void SkyAtmosphere::setParameters( const Parameters& params )
 {
 	Parameters data = params;
 	Device::updateResourceData<Parameters>( m_constantBuffer, data );
-	DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
 }
 
 void SkyAtmosphere::bindEnvironment()
 {
 	m_skyLight->bind();
-	DMD3D::instance().setSRV( SRVType::ps, SLOT_AERIAL_PERSPECTIVE, m_aerialPerspectiveSRV );
+	DMD3D::instance().setSRV( SLOT_AERIAL_PERSPECTIVE, m_aerialPerspectiveSRV );
 }
 
 void SkyAtmosphere::collectMeshes( const RenderView&, MeshCollector& collector )
@@ -446,13 +446,13 @@ void SkyAtmosphere::renderCustom( const RenderContext& )
 {
 	setParameters( m_frameParams );
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setSRV( SRVType::ps, transmittanceSlot, m_transmittanceLut.srv() );
-	d3d.setSRV( SRVType::ps, skyViewSlot, m_skyViewLut.srv() );
-	d3d.setSRV( SRVType::ps, skyViewMoonSlot, m_skyViewMoonLut.srv() );
-	d3d.setSRV( SRVType::ps, moonAlbedoSlot, m_moonAlbedo->srv() );
+	d3d.setSRV( transmittanceSlot, m_transmittanceLut.srv() );
+	d3d.setSRV( skyViewSlot, m_skyViewLut.srv() );
+	d3d.setSRV( skyViewMoonSlot, m_skyViewMoonLut.srv() );
+	d3d.setSRV( moonAlbedoSlot, m_moonAlbedo->srv() );
 	NightSkyParameters night = currentNightSky( m_frameParams );
 	Device::updateResourceData<NightSkyParameters>( m_nightSkyConstants, night );
-	d3d.setConstantBuffer( SRVType::ps, 4, m_nightSkyConstants );
+	d3d.setConstantBuffer( 4, m_nightSkyConstants );
 	// На дальней плоскости: только там, где сцена ничего не нарисовала
 	m_backgroundShader.draw( BlendState::opaque, DepthState::readOnlyNearOrEqual );
 }

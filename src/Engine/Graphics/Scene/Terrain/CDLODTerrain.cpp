@@ -151,9 +151,9 @@ bool CDLODTerrain::createShader()
 	std::vector<VertexElement> layout = { { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0 } };
 	m_shader.setLayoutDesc( std::move( layout ) );
 
-	if( !m_shader.addShaderPassFromFile( SRVType::vs, "main", "Shaders\\cdlod.vs" ) ||
-		!m_shader.addShaderPassFromFile( SRVType::ps, "main", "Shaders\\terrain.ps" ) ||
-		!m_shader.addShaderPassFromFile( SRVType::ps, "main", "Shaders\\cdlod_lod.ps" ) )
+	if( !m_shader.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\cdlod.vs" ) ||
+		!m_shader.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\terrain.ps" ) ||
+		!m_shader.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\cdlod_lod.ps" ) )
 	{
 		LOG( "CDLOD terrain: shader compilation failed" );
 		return false;
@@ -437,17 +437,17 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.farBlendStart = m_properties["Far blend start"].data<float>();
 		params.farBlendEnd = std::max( m_properties["Far blend end"].data<float>(), params.farBlendStart + 1.0f );
 	} );
-	DMD3D::instance().setConstantBuffer( SRVType::vs, SLOT_CB_MATERIAL, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
 
 	m_patchBuffer.updateData( patches.data(), sizeof( PatchInstance ) * patches.size() );
-	m_patchBuffer.setToSlot( SLOT_INSTANCE_DATA, SRVType::vs );
+	m_patchBuffer.setToSlot( SLOT_INSTANCE_DATA );
 
-	DMD3D::instance().setSRV( SRVType::vs, 0, m_heightMap );
+	DMD3D::instance().setSRV( 0, m_heightMap );
 	if( !depthOnly )
 	{
 		// Карта высот нужна и пиксельному шейдеру: по ней считается нормаль рельефа
-		DMD3D::instance().setConstantBuffer( SRVType::ps, SLOT_CB_MATERIAL, m_constantBuffer );
-		DMD3D::instance().setSRV( SRVType::ps, 0, m_heightMap );
+		DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
+		DMD3D::instance().setSRV( 0, m_heightMap );
 		m_material.bind();
 	}
 

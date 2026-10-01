@@ -17,9 +17,10 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 {
 	// DXC → DXIL cs_6_6 с кэшем на диске; пайплайн собирается сразу — в кадре сборка PSO была бы фризом
 	std::vector<uint8_t> bytecode;
-	if( !ShaderCompiler::instance().compile( file_name, function_name, ShaderCompiler::profile( SRVType::cs ), "", bytecode ) )
+	const std::string profile = ShaderCompiler::profile( ShaderStageType::compute );
+	if( !ShaderCompiler::instance().compile( file_name, function_name, profile, "", bytecode ) )
 		return false;
-	if( !DMD3D::instance().createShaderStage( SRVType::cs, bytecode.data(), bytecode.size(), m_computeShader ) )
+	if( !DMD3D::instance().createShaderStage( ShaderStageType::compute, bytecode.data(), bytecode.size(), m_computeShader ) )
 		return false;
 	DMD3D::instance().warmComputePipeline( m_computeShader );
 
@@ -107,5 +108,5 @@ void DMComputeShader::setConstants( ConstantType& constantType )
 {
 	Device::updateResourceData( m_constantBuffer, constantType );
 
-	DMD3D::instance().setConstantBuffer( SRVType::cs, SLOT_CB_PASS, m_constantBuffer );
+	DMD3D::instance().setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
 }

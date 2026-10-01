@@ -189,8 +189,8 @@ void ShadowCascades::bindForReceivers( int sunLightIndex )
 	Device::updateResourceData<ShaderShadowConstants>( m_constantBuffer, constants );
 
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setConstantBuffer( SRVType::ps, SLOT_CB_SHADOW, m_constantBuffer );
-	d3d.setSRV( SRVType::ps, SLOT_SHADOW_MAP, m_shaderView );
+	d3d.setConstantBuffer( SLOT_CB_SHADOW, m_constantBuffer );
+	d3d.setSRV( SLOT_SHADOW_MAP, m_shaderView );
 }
 
 PropertyContainer* ShadowCascades::properties()

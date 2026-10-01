@@ -553,7 +553,7 @@ bool DMD3D::createStorageView( const Texture& texture, const TextureViewDesc& de
 	return true;
 }
 
-bool DMD3D::createShaderStage( SRVType type, const void* bytecode, size_t size, ShaderStage& stage )
+bool DMD3D::createShaderStage( ShaderStageType type, const void* bytecode, size_t size, ShaderStage& stage )
 {
 	if( !bytecode || size == 0 )
 		return false;

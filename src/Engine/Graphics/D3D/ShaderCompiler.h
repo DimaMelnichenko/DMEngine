@@ -3,11 +3,11 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include "DM3DUtils.h"
 
 struct IDxcCompiler3;
 struct IDxcUtils;
 struct IDxcIncludeHandler;
+enum class ShaderStageType : uint8_t;	// GpuResources.h
 
 // Компиляция HLSL в DXIL компилятором DXC в процессе (dxcompiler.dll рядом с exe; dxil.dll подписывает байткод —
 // без подписи рантайм D3D12 шейдер не примет). Цель — Shader Model 6.6 (bindless: ResourceDescriptorHeap), HLSL 2021;
@@ -24,7 +24,7 @@ public:
 	bool compile( const std::string& file, const std::string& entry, const std::string& profile, const std::string& defines,
 				  std::vector<uint8_t>& bytecode );
 	// Профиль стадии для compile
-	static std::string profile( SRVType type );
+	static std::string profile( ShaderStageType type );
 	// Сколько шейдеров скомпилировано и сколько взято из кэша с начала работы — строка в лог
 	void logSummary() const;
 

@@ -398,7 +398,7 @@ PostProcess::Settings Renderer::postProcessSettings()
 void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 {
 	// установка источников света
-	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS, SRVType::ps );
+	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS );
 	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры)
 	// Масштаб неба и освещения окружением; воздушная перспектива — только у атмосферы
 	FrameParameters frameParameters;
@@ -663,7 +663,7 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 			m_instanceTransforms.push_back( { XMMatrixTranspose( world ), XMMatrixTranspose( normalMatrix( world ) ) } );
 		}
 		m_instanceBuffer.updateData( m_instanceTransforms.data(), count * sizeof( InstanceTransform ) );
-		m_instanceBuffer.setToSlot( SLOT_INSTANCE_DATA, SRVType::vs );
+		m_instanceBuffer.setToSlot( SLOT_INSTANCE_DATA );
 		shader->renderInstanced( batch.indexCount, batch.vertexOffset, batch.indexOffset, static_cast<int>( count ) );
 		countMeshes( context.pass, 0, 1 );
 	}

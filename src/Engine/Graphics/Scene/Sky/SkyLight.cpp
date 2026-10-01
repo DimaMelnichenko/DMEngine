@@ -118,7 +118,7 @@ void SkyLight::buildMips( const CubeTarget& source )
 	{
 		d3d.beginPass( PassDesc{ "Sky cube mip", {}, {}, 0, 0, { { &source.mipView( mip - 1 ), "sky cube mip N" } },
 								 { { &source.mipStorage( mip ), "sky cube mip N + 1" } } } );
-		d3d.setSRV( SRVType::cs, 0, source.mipView( mip - 1 ) );
+		d3d.setSRV( 0, source.mipView( mip - 1 ) );
 		m_mipShader.setUAVBuffer( 0, source.mipStorage( mip ) );
 		const uint32_t groups = ( source.mipSize( mip ) + 7 ) / 8;
 		m_mipShader.dispatchGroups( groups, groups, 6 );
@@ -130,10 +130,10 @@ void SkyLight::captureIrradiance( Result& result )
 	// Рассеянный свет: гармоники по мипу irradianceSourceMip, делённые на нормировку
 	XMFLOAT4 constants( 1.0f / m_captureNormalization, 0.0f, 0.0f, 0.0f );
 	Device::updateResourceData<XMFLOAT4>( m_irradianceConstants, constants );
-	DMD3D::instance().setConstantBuffer( SRVType::cs, 4, m_irradianceConstants );
+	DMD3D::instance().setConstantBuffer( 4, m_irradianceConstants );
 	DMD3D::instance().beginPass( PassDesc{ "Sky light irradiance", {}, {}, 0, 0, { { &m_source->facesSRV(), "sky cube faces" } },
 										 { { &result.irradianceUAV, "irradiance SH" } } } );
-	DMD3D::instance().setSRV( SRVType::cs, 0, m_source->facesSRV() );
+	DMD3D::instance().setSRV( 0, m_source->facesSRV() );
 	m_irradianceShader.setUAVBuffer( 0, result.irradianceUAV );
 	m_irradianceShader.Dispatch( 64u, 0.0f );
 }
@@ -150,11 +150,11 @@ void SkyLight::prefilterFace( Result& result, int32_t face )
 	{
 		params.roughness = static_cast<float>( mip ) / ( specularMipCount - 1 );
 		Device::updateResourceData<PrefilterParameters>( m_constantBuffer, params );
-		d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_constantBuffer );
+		d3d.setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
 		const uint32_t size = result.specular.mipSize( mip );
 		d3d.beginPass( PassDesc{ "Sky light prefilter", { { &result.specular.target( mip, face ), "specular cube" } }, {}, size, size,
 								 { { &m_source->srv(), "sky cube" } } } );
-		d3d.setSRV( SRVType::ps, 0, m_source->srv() );
+		d3d.setSRV( 0, m_source->srv() );
 		m_prefilterShader.draw();
 	}
 }
@@ -172,12 +172,12 @@ void SkyLight::blendResults( float blend )
 	params.previousWeight = previousWeight;
 	params.currentWeight = blend;
 	Device::updateResourceData<BlendParameters>( m_irradianceBlendConstants, params );
-	d3d.setConstantBuffer( SRVType::cs, 4, m_irradianceBlendConstants );
+	d3d.setConstantBuffer( 4, m_irradianceBlendConstants );
 	d3d.beginPass( PassDesc{ "Sky light blend irradiance", {}, {}, 0, 0,
 							 { { &previous.irradianceSRV, "previous irradiance SH" }, { &current.irradianceSRV, "current irradiance SH" } },
 							 { { &m_blended.irradianceUAV, "blended irradiance SH" } } } );
-	d3d.setSRV( SRVType::cs, 0, previous.irradianceSRV );
-	d3d.setSRV( SRVType::cs, 1, current.irradianceSRV );
+	d3d.setSRV( 0, previous.irradianceSRV );
+	d3d.setSRV( 1, current.irradianceSRV );
 	m_irradianceBlendShader.setUAVBuffer( 0, m_blended.irradianceUAV );
 	m_irradianceBlendShader.dispatchGroups( 1, 1, 1 );
 
@@ -191,12 +191,12 @@ void SkyLight::blendResults( float blend )
 			params.face = face;
 			params.mip = static_cast<float>( mip );
 			Device::updateResourceData<BlendParameters>( m_blendConstants, params );
-			d3d.setConstantBuffer( SRVType::ps, SLOT_CB_PASS, m_blendConstants );
+			d3d.setConstantBuffer( SLOT_CB_PASS, m_blendConstants );
 			const uint32_t size = m_blended.specular.mipSize( mip );
 			d3d.beginPass( PassDesc{ "Sky light blend specular", { { &m_blended.specular.target( mip, face ), "blended specular cube" } }, {},
 									 size, size, specularReads } );
-			d3d.setSRV( SRVType::ps, 0, previous.specular.srv() );
-			d3d.setSRV( SRVType::ps, 1, current.specular.srv() );
+			d3d.setSRV( 0, previous.specular.srv() );
+			d3d.setSRV( 1, current.specular.srv() );
 			m_blendShader.draw();
 		}
 	}
@@ -217,9 +217,9 @@ void SkyLight::bind()
 		}
 	}
 	const Result& result = *shown;
-	d3d.setSRV( SRVType::ps, SLOT_IBL_IRRADIANCE, result.irradianceSRV );
-	d3d.setSRV( SRVType::ps, SLOT_IBL_SPECULAR, result.specular.srv() );
-	d3d.setSRV( SRVType::ps, SLOT_IBL_BRDF, m_brdfLut.srv() );
+	d3d.setSRV( SLOT_IBL_IRRADIANCE, result.irradianceSRV );
+	d3d.setSRV( SLOT_IBL_SPECULAR, result.specular.srv() );
+	d3d.setSRV( SLOT_IBL_BRDF, m_brdfLut.srv() );
 }
 
 }

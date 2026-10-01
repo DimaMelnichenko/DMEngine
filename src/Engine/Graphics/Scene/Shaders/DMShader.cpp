@@ -137,7 +137,7 @@ void DMShader::setLayoutDesc( std::vector<VertexElement>&& layoutDesc )
 	m_layoutDesc = std::move( layoutDesc );
 }
 
-bool DMShader::addShaderPassFromFile( SRVType type,
+bool DMShader::addShaderPassFromFile( ShaderStageType type,
 									  const std::string& function_name,
 									  const std::string& file_name,
 									  const std::string& defines )
@@ -154,7 +154,7 @@ bool DMShader::addShaderPassFromFile( SRVType type,
 	return true;
 }
 
-std::optional<DMShader::ShaderSource> DMShader::shaderSource( SRVType type ) const
+std::optional<DMShader::ShaderSource> DMShader::shaderSource( ShaderStageType type ) const
 {
 	for( const ShaderSource& source : m_sources )
 	{
@@ -164,7 +164,7 @@ std::optional<DMShader::ShaderSource> DMShader::shaderSource( SRVType type ) con
 	return std::nullopt;
 }
 
-bool DMShader::createShaderPass( SRVType type, const std::vector<uint8_t>& bytecode )
+bool DMShader::createShaderPass( ShaderStageType type, const std::vector<uint8_t>& bytecode )
 {
 	DMD3D& d3d = DMD3D::instance();
 	ShaderStage stage;
@@ -173,22 +173,22 @@ bool DMShader::createShaderPass( SRVType type, const std::vector<uint8_t>& bytec
 
 	switch( type )
 	{
-		case SRVType::vs:
+		case ShaderStageType::vertex:
 			m_vertexShader.push_back( std::move( stage ) );
 			// Раскладка вершин — с первым вершинным шейдером (байткод ей не нужен)
 			if( !m_layoutDesc.empty() && !d3d.createInputLayout( m_layoutDesc, bytecode.data(), bytecode.size(), m_layout ) )
 				return false;
 			break;
-		case SRVType::ps:
+		case ShaderStageType::pixel:
 			m_pixelShader.push_back( std::move( stage ) );
 			break;
-		case SRVType::gs:
+		case ShaderStageType::geometry:
 			m_geometryShader.push_back( std::move( stage ) );
 			break;
-		case SRVType::hs:
+		case ShaderStageType::hull:
 			m_hullShader.push_back( std::move( stage ) );
 			break;
-		case SRVType::ds:
+		case ShaderStageType::domain:
 			m_domainShader.push_back( std::move( stage ) );
 			break;
 		default:
