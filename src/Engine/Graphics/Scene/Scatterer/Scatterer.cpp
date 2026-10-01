@@ -87,10 +87,14 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		}
 		LayerVariant variant;
 		variant.castShadow = models[v].castShadow;
-		// Импостер — ещё один LOD после последнего LOD модели (если есть место): модель — до impostor_distance
-		const uint32_t modelLods = passVariant.lodCount;
+		// Импостер — ещё один LOD после последнего LOD модели (если есть место): модель — до impostor_distance. LOD модели,
+		// которые начинаются не ближе impostor_distance, не нужны: импостер сменяет предыдущий сразу, с дизерингом
+		uint32_t modelLods = passVariant.lodCount;
 		variant.model = model;
 		variant.impostor = settings.impostorDistance > 0.0f;
+		while( variant.impostor && modelLods > 1 && model->lodRange( static_cast<uint16_t>( modelLods - 2 ) ) >= settings.impostorDistance )
+			--modelLods;
+		passVariant.lodCount = modelLods;
 		if( variant.impostor && modelLods >= ScatterPass::maxLods )
 		{
 			LOG( "Scatter layer " + layer.mask + ": model " + model->properties()->name() + " has no free LOD for an impostor" );
@@ -159,6 +163,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		name += " + " + std::to_string( variantCount - 1 );
 	layer.properties = std::make_unique<PropertyContainer>( name );
 	layer.properties->insert( "Cast shadow", params.castShadow > 0.5f );
+	layer.impostorDensity = settings.impostorDensity;
+	layer.impostorOcclusion = settings.impostorOcclusion;
 	if( settings.impostorDistance > 0.0f )
 	{
 		// С какого расстояния тень — импостером (0 — как в кадре); до impostor_distance — раньше, чем в кадре
@@ -179,7 +185,7 @@ bool Scatterer::bake( const BakeContext& context )
 	{
 		if( !variant.impostor )
 			continue;
-		// Материал импостера — на модель, общий для всех наборов
+		// Материал импостера — на модель, общий для всех наборов (настройки запекания — первого слоя с этой моделью)
 		const std::string name = "Impostor " + variant.model->properties()->name();
 		MaterialStorage& materials = System::materials();
 		Material* material = materials.exists( name ) ? materials[name].get() : nullptr;
@@ -188,7 +194,10 @@ bool Scatterer::bake( const BakeContext& context )
 			const auto start = std::chrono::steady_clock::now();
 			auto impostor = std::make_unique<ImpostorMaterial>( materials.freeId(), name );
 			impostor->setLayoutDesc( impostor->initLayouts() );
-			if( !impostor->initialize() || !impostor->bake( *variant.model, context ) )
+			ImpostorMaterial::BakeSettings bakeSettings;
+			bakeSettings.density = layer.impostorDensity;
+			bakeSettings.occlusion = layer.impostorOcclusion;
+			if( !impostor->initialize() || !impostor->bake( *variant.model, context, bakeSettings ) )
 			{
 				// Без импостера дальний LOD варианта не рисуется (группы пропускают секции без материала)
 				LOG( "Scatter layer " + layer.mask + ": impostor of model " + variant.model->properties()->name() + " is not baked" );

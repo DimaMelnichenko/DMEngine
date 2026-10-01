@@ -20,7 +20,7 @@ cbuffer ImpostorBuffer : register( SLOT_CB_MATERIAL )
 	uint   g_impostorFrames;		// кадров по стороне сетки
 	float  g_impostorAlphaCutoff;
 	float  g_impostorRoughness;
-	float  g_impostorPadding;
+	float  g_impostorOcclusion;		// сила затенения окружающего света по запечённому (G глубины кадров)
 };
 
 // Выход вершинного шейдера: карточка перед сферой (position), её точка в плоскости вида через центр сферы

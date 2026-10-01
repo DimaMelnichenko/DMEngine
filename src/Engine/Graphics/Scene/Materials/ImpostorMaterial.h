@@ -22,13 +22,23 @@ class ImpostorMaterial : public Material
 public:
 	static constexpr uint32_t frames = 8;		// кадров по стороне сетки (g_impostorFrames в Shaders/impostor.sh)
 	static constexpr uint32_t frameSize = 128;	// кадр, текселей
+	// Сверхвыборка запекания: кадр рисуется со стороной frameSize × bakeSamples и усредняется — альфа становится долей
+	// покрытия, а не попаданием тонкой хвоинки в центр текселя
+	static constexpr uint32_t bakeSamples = 4;
+
+	// Настройки запекания (ScatterLayers.impostor_density / impostor_occlusion)
+	struct BakeSettings
+	{
+		float density = 1.0f;	// множитель доли покрытия: > 1 — крона плотнее
+		float occlusion = 0.0f;	// сила затенения окружающего света внутри кроны, 0…1
+	};
 
 	ImpostorMaterial( uint32_t id, const std::string& name );
 
 	bool initialize() override;
 	std::vector<VertexElement> initLayouts() override;
 	// Запекание модели: материалы её секций — с вариантом запекания (Material::enableImpostorBake). false — не вышло (лог)
-	bool bake( DMModel& model, const BakeContext& context );
+	bool bake( DMModel& model, const BakeContext& context, const BakeSettings& settings = {} );
 
 	void setParams( const PropertyContainer& ) override;
 	// Masked без отсечения граней (карточка всегда к виду), со сменой LOD дизерингом
@@ -51,7 +61,7 @@ private:
 		uint32_t frames;
 		float alphaCutoff;
 		float roughness;
-		float padding;
+		float occlusion;		// сила затенения окружающего света по запечённому (BakeSettings::occlusion)
 	};
 	static_assert( sizeof( Params ) == 64, "ImpostorBuffer layout" );
 
@@ -65,7 +75,7 @@ private:
 	Params m_params = {};
 	uint32_t m_colorTexture = 0;
 	uint32_t m_normalTexture = 0;
-	uint32_t m_offsetTexture = 0;	// глубина поверхности кадров (смещение глубины, R16)
+	uint32_t m_offsetTexture = 0;	// глубина поверхности кадров (смещение глубины) и затенение окружающего света, R16G16
 	Buffer m_constantBuffer;
 };
 

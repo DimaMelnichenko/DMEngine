@@ -135,6 +135,9 @@ private:
 		bool placed = false;		// постоянный слой разложен на карту (раз, в первом compute)
 		// Наибольшая высота экземпляра (границы моделей × размер слоя), м: длина его тени — запас дальности каскада
 		float maxHeight = 1.0f;
+		// Запекание импостеров слоя (ScatterLayers.impostor_density / impostor_occlusion, ImpostorMaterial::BakeSettings)
+		float impostorDensity = 1.0f;
+		float impostorOcclusion = 0.0f;
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
 	};
 

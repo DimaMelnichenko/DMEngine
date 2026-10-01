@@ -19,7 +19,9 @@
 
 DM_SRV( Texture2DArray, g_impostorColor, 0 );	// sRGB: цвет и покрытие, срез — кадр
 DM_SRV( Texture2DArray, g_impostorNormal, 1 );	// нормаль модели × 0,5 + 0,5 и доля пропускания
-DM_SRV( Texture2DArray, g_impostorDepth, 2 );	// R16: смещение поверхности к камере кадра от плоскости через центр, радиусов × 0,5 + 0,5
+// R16G16: R — смещение поверхности к камере кадра от плоскости через центр, радиусов × 0,5 + 0,5; G — доля направлений
+// полусферы, откуда точку видно (затенение окружающего света внутри кроны)
+DM_SRV( Texture2DArray, g_impostorDepth, 2 );
 #ifndef ALPHA_MASK
 DM_SRV( Texture2D<float>, g_sceneDepth, SLOT_SCENE_DEPTH );
 #endif
@@ -89,7 +91,7 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 	surface.baseColor = color.rgb;
 	surface.metallic = 0.0f;
 	surface.roughness = g_impostorRoughness;
-	surface.occlusion = 1.0f;
+	surface.occlusion = lerp( 1.0f, sampleFrames( g_impostorDepth, input ).y, g_impostorOcclusion );
 	surface.emissive = 0.0f;
 	surface.transmission = saturate( packed.w * g_impostorTransmission.w );
 	surface.transmissionColor = color.rgb * g_impostorTransmission.xyz;

@@ -88,7 +88,8 @@ bool dilateTransparent( ScratchImage& image, int passes, const ScratchImage* cov
 	const TexMetadata& metadata = image.GetMetadata();
 	const DXGI_FORMAT format = MakeLinear( metadata.format );
 	const bool rgba8 = format == DXGI_FORMAT_R8G8B8A8_UNORM || format == DXGI_FORMAT_B8G8R8A8_UNORM;
-	if( !rgba8 && !( format == DXGI_FORMAT_R16_UNORM && coverage ) )
+	const bool r16 = format == DXGI_FORMAT_R16_UNORM || format == DXGI_FORMAT_R16G16_UNORM;
+	if( !rgba8 && !( r16 && coverage ) )
 		return false;
 	if( coverage )
 	{
@@ -98,19 +99,19 @@ bool dilateTransparent( ScratchImage& image, int passes, const ScratchImage* cov
 			mask.width != metadata.width || mask.height != metadata.height || mask.arraySize < metadata.arraySize )
 			return false;
 	}
-	// Тексель: RGBA по 8 бит — растекаются три канала, R16 — один
-	const size_t texelSize = rgba8 ? 4 : 2;
-	const int channels = rgba8 ? 3 : 1;
+	// Тексель: RGBA по 8 бит — растекаются три канала, R16 и R16G16 — все
+	const int channels = rgba8 ? 3 : format == DXGI_FORMAT_R16G16_UNORM ? 2 : 1;
+	const size_t texelSize = rgba8 ? 4 : channels * 2;
 	const auto read = [rgba8]( const uint8_t* texel, int c ) -> uint32_t
 	{
-		return rgba8 ? texel[c] : reinterpret_cast<const uint16_t*>( texel )[0];
+		return rgba8 ? texel[c] : reinterpret_cast<const uint16_t*>( texel )[c];
 	};
 	const auto write = [rgba8]( uint8_t* texel, int c, uint32_t value )
 	{
 		if( rgba8 )
 			texel[c] = static_cast<uint8_t>( value );
 		else
-			reinterpret_cast<uint16_t*>( texel )[0] = static_cast<uint16_t>( value );
+			reinterpret_cast<uint16_t*>( texel )[c] = static_cast<uint16_t>( value );
 	};
 
 	for( size_t item = 0; item < metadata.arraySize; ++item )
