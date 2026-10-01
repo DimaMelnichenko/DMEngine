@@ -43,7 +43,7 @@ struct TargetFormats
 };
 
 // Описание пайплайна GPU: всё, что входит в PSO, — шейдеры стадий, раскладка вершин, состояния растеризатора, глубины
-// и блендинга, топология, форматы целей. Собирается DMShader::setPass из фазы, текущего состояния (DMD3D::renderState)
+// и блендинга, топология, форматы целей. Собирается ShaderProgram::setPass из фазы, текущего состояния (DMD3D::renderState)
 // и целей текущего прохода и ставится в командный список одним DMD3D::setPipeline. Кэш — DMD3D::pipeline по ключу;
 // набор нужных пайплайнов известен заранее и собирается при загрузке уровня (warmPipelines), собранный «лениво»
 // в кадре — фриз, он считается и пишется в лог.
@@ -53,8 +53,6 @@ struct PipelineDesc
 	const ShaderStage* vertex = nullptr;
 	const ShaderStage* pixel = nullptr;
 	const ShaderStage* geometry = nullptr;
-	const ShaderStage* hull = nullptr;
-	const ShaderStage* domain = nullptr;
 	const InputLayout* layout = nullptr;
 	RenderState state;
 	D3D_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -84,8 +82,6 @@ struct PipelineDesc
 		mix( reinterpret_cast<uintptr_t>( vertex ) );
 		mix( reinterpret_cast<uintptr_t>( pixel ) );
 		mix( reinterpret_cast<uintptr_t>( geometry ) );
-		mix( reinterpret_cast<uintptr_t>( hull ) );
-		mix( reinterpret_cast<uintptr_t>( domain ) );
 		mix( reinterpret_cast<uintptr_t>( layout ) );
 		mix( static_cast<uint64_t>( state.raster ) | static_cast<uint64_t>( state.depth ) << 8 | static_cast<uint64_t>( state.blend ) << 16 |
 			 static_cast<uint64_t>( topology ) << 24 );

@@ -63,8 +63,6 @@ std::string ShaderCompiler::profile( ShaderStageType type )
 		case ShaderStageType::vertex: return "vs_6_6";
 		case ShaderStageType::pixel: return "ps_6_6";
 		case ShaderStageType::geometry: return "gs_6_6";
-		case ShaderStageType::hull: return "hs_6_6";
-		case ShaderStageType::domain: return "ds_6_6";
 		default: return "cs_6_6";
 	}
 }

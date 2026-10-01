@@ -234,7 +234,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 перспективы (t106) привязываются для всех
 пиксельных шейдеров каждый кадр (`Renderer::preparePipeline`, `SkyLight::bind` из `SkyAtmosphere::compute` или `HDRIBackdrop::compute`,
 `ShadowCascades::bindForReceivers`), материалу привязывать их не нужно. Чтобы материал отбрасывал тень, ему нужен
-вариант «только глубина» (`DMShader::depthPhaseFor`, [shadows.md](shadows.md)).
+вариант «только глубина» (`Material::depthPhaseFor`, [shadows.md](shadows.md)).
 
 ## Если что-то не так
 

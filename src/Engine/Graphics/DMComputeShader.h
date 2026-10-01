@@ -4,7 +4,6 @@
 #include <memory>
 
 #include "D3D\DMD3D.h"
-#include "DMShader.h"
 
 class DMComputeShader
 {

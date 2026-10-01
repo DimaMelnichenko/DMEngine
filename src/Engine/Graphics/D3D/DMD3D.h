@@ -158,7 +158,7 @@ public:
 
 	// --- Состояния и пайплайны (GpuPipeline.h) ------------------------------------------------------------------------
 	// Состояния — часть пайплайна: setState только запоминает их (renderState), в контекст они попадают вместе с
-	// шейдерами при setPipeline — DMShader::setPass после них. Порядок кода объектов: состояние → setPass → рисование
+	// шейдерами при setPipeline — ShaderProgram::setPass после них. Порядок кода объектов: состояние → setPass → рисование
 	void setState( RasterState state );
 	void setState( DepthState state );
 	void setState( BlendState state );
@@ -171,7 +171,7 @@ public:
 	void warmPipeline( const PipelineDesc& desc ) { findOrCreatePipeline( desc, true ); }
 	// Ставит в командный список объект состояния пайплайна и топологию (root signature одна, стоит с начала списка)
 	void setPipeline( const Pipeline& pipeline );
-	// Цели текущего прохода (beginPass) — для описания пайплайна вызова (DMShader::setPass)
+	// Цели текущего прохода (beginPass) — для описания пайплайна вызова (ShaderProgram::setPass)
 	const TargetFormats& passFormats() const { return m_passFormats; }
 	// Цели заднего буфера для прогрева пайплайнов тонмаппинга и GUI (цели сцены — SceneTargets::formats)
 	static TargetFormats backBufferFormats();

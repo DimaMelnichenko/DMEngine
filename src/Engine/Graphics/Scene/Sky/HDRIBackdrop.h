@@ -3,7 +3,7 @@
 #include <string>
 #include "SceneObject.h"
 #include "SkyLight.h"
-#include "Shaders\FullscreenShader.h"
+#include "FullscreenShader.h"
 #include "D3D\CubeTarget.h"
 #include "Properties\PropertyContainer.h"
 

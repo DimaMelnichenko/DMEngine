@@ -434,11 +434,11 @@ private:
 	SubresourceRange m_range;
 };
 
-// Стадия шейдера: профиль компиляции (ShaderCompiler::profile) и место в фазе материала (DMShader::createShaderPass).
+// Стадия шейдера: профиль компиляции (ShaderCompiler::profile) и место в фазе (ShaderProgram::createShaderPass).
 // Номера — столбец Shader.type в base.db3 (таблица ShaderType)
 enum class ShaderStageType : uint8_t
 {
-	vertex = 1, geometry = 2, pixel = 3, compute = 4, hull = 5, domain = 6
+	vertex = 1, geometry = 2, pixel = 3, compute = 4
 };
 
 // Скомпилированная стадия шейдера — байткод; объект состояния из него собирает пайплайн (GpuPipeline.h)

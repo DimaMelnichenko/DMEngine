@@ -2,7 +2,7 @@
 #include <vector>
 #include "DirectX.h"
 #include "Utils\utilites.h"
-#include "Shaders\DMComputeShader.h"
+#include "DMComputeShader.h"
 #include "RenderView.h"
 
 namespace GS

@@ -92,7 +92,7 @@ dᵢ = D · (Eⁱ − 1) / (E⁴ − 1)
 
 Кто что рисует:
 - **модели** (`ModelInstances`) — меши с `MeshBatch::castsShadow`, кроме полупрозрачных (Translucent). Вариант
-  материала — `DMShader::depthPhaseFor( params, instanced )`. У `PBR` это вершинный шейдер «только глубина»
+  материала — `Material::depthPhaseFor( params, options )`. У `PBR` это вершинный шейдер «только глубина»
   (`DEPTH_ONLY` в `Shaders/LightShader.vs`: позиция и UV, без нормалей); непрозрачные рисуются без пиксельного
   шейдера, Masked — с точкой входа `mainDepth` в `Shaders/PBRLit.ps` (только `clip` по альфе). Одинаковые меши и
   здесь рисуются одним инстансным вызовом;
@@ -146,7 +146,7 @@ dᵢ = D · (Eⁱ − 1) / (E⁴ − 1)
 
 ## Свой объект или материал с тенью
 
-- **Материал.** Переопределите `DMShader::depthPhaseFor( params, instanced )`: верните фазу «только глубина»
+- **Материал.** Переопределите `Material::depthPhaseFor( params, options )`: верните фазу «только глубина»
   (вершинный шейдер только с позицией — как `DEPTH_ONLY` у `PBR`, у Masked ещё с UV — и пиксельный `nullptr` или
   шейдер с одним `clip`), −1 — материал тень не отбрасывает
   (по умолчанию). У прохода теней нет цели цвета, пиксельный шейдер ничего не выводит.
@@ -205,8 +205,8 @@ Release, 1920 × 1080, время GPU кадра без теней и с тен�
 | `src/Engine/Graphics/ShadowCascades.h/.cpp` | карта теней, границы и виды каскадов, стабилизация, настройки, константы для приёма |
 | `src/Engine/Graphics/Renderer.cpp` | проход теней (`renderShadows`, `buildShadowCommands`), общий исполнитель команд |
 | `src/Engine/Graphics/Scene/MeshBatch.h` | `MeshPass::csmShadowDepth`, `MeshBatch::castsShadow` |
-| `src/Engine/Graphics/Scene/Shaders/DMShader.h` | `depthPhaseFor` — вариант материала «только глубина» |
-| `src/Engine/Graphics/Scene/Shaders/PBRMaterial.cpp` | фазы глубины `PBR` |
+| `src/Engine/Graphics/Scene/Materials/Material.h` | `depthPhaseFor` — вариант материала «только глубина» |
+| `src/Engine/Graphics/Scene/Materials/PBRMaterial.cpp` | фазы глубины `PBR` |
 | `src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp` | выбор узлов на каждый вид, глубина рельефа |
 | `src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp`, `Shaders/scatter.cs` | тень слоёв расстановки, отбор инстансов с учётом тени |
 | `src/Engine/Graphics/Scene/Scene.cpp` | `Scene::bounds` — границы сцены для глубины карты |

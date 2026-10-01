@@ -20,7 +20,7 @@ public:
 	static ShaderCompiler& instance();
 
 	// file — путь к HLSL (Shaders\x.ps), entry — точка входа, profile — vs_6_6 / ps_6_6 / gs_6_6 / cs_6_6,
-	// defines — "A=1,B" (как у DMShader::addShaderPassFromFile). Ошибки — в лог и shader-error.txt
+	// defines — "A=1,B" (как у ShaderProgram::addShaderPassFromFile). Ошибки — в лог и shader-error.txt
 	bool compile( const std::string& file, const std::string& entry, const std::string& profile, const std::string& defines,
 				  std::vector<uint8_t>& bytecode );
 	// Профиль стадии для compile

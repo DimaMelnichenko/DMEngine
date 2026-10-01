@@ -1,21 +1,14 @@
-#include "DMColorShader.h"
+#include "ColorMaterial.h"
 #include "Shaders\slots.h"
 
 namespace GS
 {
 
-DMColorShader::DMColorShader()
+ColorMaterial::ColorMaterial( uint32_t id, const std::string& name ) : Material( id, name )
 {
-
 }
 
-DMColorShader::~DMColorShader()
-{
-
-}
-
-
-bool DMColorShader::innerInitialize()
+bool ColorMaterial::initialize()
 {
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer ) )
 		return false;
@@ -23,12 +16,12 @@ bool DMColorShader::innerInitialize()
 	return createPhase( 0, 0 ) >= 0;
 }
 
-std::vector<VertexElement> DMColorShader::initLayouts()
+std::vector<VertexElement> ColorMaterial::initLayouts()
 {
 	return { { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0 } };
 }
 
-void DMColorShader::setParams( const PropertyContainer& params )
+void ColorMaterial::setParams( const PropertyContainer& params )
 {
 	Device::updateResource<XMFLOAT4>( m_constantBuffer, [&]( XMFLOAT4& v )
 	{

@@ -11,7 +11,7 @@
 #include "D3D\ShaderCompiler.h"
 #include "GUI\GUI.h"
 #include "D3D\DMD3D.h"
-#include "Shaders\DMShader.h"
+#include "Materials\Material.h"
 #include "Logger\Logger.h"
 
 namespace GS
@@ -141,11 +141,10 @@ void Renderer::warmPipelines( Scene& scene )
 	depthStates.push_back( m_warmedShadowState );
 	for( auto& material : System::materials() )
 	{
-		if( material.second && material.second->m_shader )
+		if( Material* shader = material.second.get() )
 		{
-			DMShader& shader = *material.second->m_shader;
-			shader.warmPipelines( colorStates, SceneTargets::formats(), shader.colorPhases() );
-			shader.warmPipelines( depthStates, SceneTargets::depthOnlyFormats(), shader.depthPhases() );
+			shader->warmPipelines( colorStates, SceneTargets::formats(), shader->colorPhases() );
+			shader->warmPipelines( depthStates, SceneTargets::depthOnlyFormats(), shader->depthPhases() );
 		}
 	}
 	// Свои вызовы объектов (террейн): их пайплайны для состояний проходов рендерера
@@ -161,11 +160,8 @@ void Renderer::warmShadowPipelines( Scene& scene )
 	m_warmedShadowState = m_shadows.renderState();
 	for( auto& material : System::materials() )
 	{
-		if( material.second && material.second->m_shader )
-		{
-			DMShader& shader = *material.second->m_shader;
-			shader.warmPipelines( { m_warmedShadowState }, SceneTargets::depthOnlyFormats(), shader.depthPhases() );
-		}
+		if( Material* shader = material.second.get() )
+			shader->warmPipelines( { m_warmedShadowState }, SceneTargets::depthOnlyFormats(), shader->depthPhases() );
 	}
 	const PassStates states = passStates( m_warmedShadowState );
 	for( SceneObject* object : scene.objects() )
@@ -645,8 +641,9 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 								  size_t first, size_t last, const RenderContext& context )
 {
 	const MeshBatch& batch = meshes[commands[first].index];
-	DMShader* shader = batch.material;
-	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
+	Material* shader = batch.material;
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
 	const ShaderPhaseOptions options = meshPhaseOptions( batch, true, context.depthFromPrepass && inDepthPrepass( batch ) );
 	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
 					 shader->phaseFor( *batch.params, options ) );
@@ -664,7 +661,7 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 		}
 		m_instanceBuffer.updateData( m_instanceTransforms.data(), count * sizeof( InstanceTransform ) );
 		m_instanceBuffer.setToSlot( SLOT_INSTANCE_DATA );
-		shader->renderInstanced( batch.indexCount, batch.vertexOffset, batch.indexOffset, static_cast<int>( count ) );
+		d3d.drawIndexedInstanced( batch.indexCount, static_cast<uint32_t>( count ), batch.indexOffset, batch.vertexOffset );
 		countMeshes( context.pass, 0, 1 );
 	}
 	countMeshes( context.pass, static_cast<uint32_t>( last - first + 1 ), 0 );
@@ -672,15 +669,15 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 
 void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
 {
-	DMShader* shader = batch.material;
-	DMD3D::instance().setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
+	Material* shader = batch.material;
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
 	const ShaderPhaseOptions options = meshPhaseOptions( batch, false, context.depthFromPrepass && inDepthPrepass( batch ) );
 	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
 					 shader->phaseFor( *batch.params, options ) );
 	shader->setParams( *batch.params );
-	shader->setDrawType( DMShader::by_index );
 	context.constants.setPerObjectBuffer( batch.world, batch.lodDither );
-	shader->render( batch.indexCount, batch.vertexOffset, batch.indexOffset );
+	d3d.drawIndexed( batch.indexCount, batch.indexOffset, batch.vertexOffset );
 	countMeshes( context.pass, 1, 1 );
 }
 

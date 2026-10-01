@@ -138,14 +138,13 @@ void DMParticleSystem::collectMeshes( const GS::RenderView&, GS::MeshCollector& 
 void DMParticleSystem::renderCustom( const GS::RenderContext& )
 {
 
-	// Точки по SV_VertexID: топология точек — у материала частиц (DMParticleShader), часть пайплайна
-	GS::DMShader* shader = GS::System::materials().get( m_material )->m_shader.get();
-	shader->setPass( 0 );
-	shader->setDrawType( GS::DMShader::by_vertex );
+	// Точки по SV_VertexID: топология точек — у материала частиц (ParticleMaterial), часть пайплайна
+	GS::Material* material = GS::System::materials().get( m_material ).get();
+	material->setPass( 0 );
 
 	bindParticles();
 	DMD3D::instance().setSRV( 0, GS::System::textures().get( m_texture )->srv() );
-	shader->render( particleCount(), 0, 0 );
+	DMD3D::instance().draw( particleCount(), 0 );
 }
 
 PropertyContainer* DMParticleSystem::properties()

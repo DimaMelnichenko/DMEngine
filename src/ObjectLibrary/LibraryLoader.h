@@ -1,7 +1,7 @@
 #pragma once
 #include <memory>
 #include <unordered_set>
-#include "Shaders\DMShader.h"
+#include "Materials\Material.h"
 #include "LevelDescription.h"
 
 namespace SQLite
@@ -24,7 +24,7 @@ public:
 	// Значения экземпляра материала (MaterialParameterInstance) поверх определений paramSet
 	bool loadMaterialParams( uint32_t idInstance, PropertyContainer& paramSet );
 	bool loadMaterialParamDef( uint32_t idMaterial, PropertyContainer& paramSet );
-	bool loadShader( uint32_t idMaterial, GS::DMShader* );
+	bool loadShader( uint32_t idMaterial, GS::Material* material );
 	// Состав уровня name (пустое имя — первый уровень таблицы Levels). Модели уровня не загружает
 	bool loadLevel( const std::string& name, LevelDescription& level );
 	// Свет и окружение уровня обратно в базу одной транзакцией: строки LevelLights — по id, настройки неба

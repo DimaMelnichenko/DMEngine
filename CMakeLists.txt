@@ -118,9 +118,9 @@ add_executable(DMEngine WIN32
     ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
     src/Engine/Graphics/GUI/GUI.cpp
     src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp
-    src/Engine/Graphics/Scene/Shaders/DMParticleShader.cpp
+    src/Engine/Graphics/Scene/Materials/ParticleMaterial.cpp
     src/Engine/Graphics/Scene/Particle/DMParticleSystem.cpp
-    src/Engine/Graphics/Scene/Shaders/DMComputeShader.cpp
+    src/Engine/Graphics/DMComputeShader.cpp
     src/ObjectLibrary/LibraryLoader.cpp
     src/3rdParty/tinyxml2.cpp
     src/Config/Config.cpp
@@ -133,16 +133,16 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Common/Storage/DMResource.cpp
     src/Engine/Graphics/Scene/Materials/Material.cpp
     src/Engine/Graphics/Scene/Model/Mesh/AbstractMesh.cpp
-    src/Engine/Graphics/Scene/Shaders/ConstantBuffers.cpp
-    src/Engine/Graphics/Scene/Shaders/DMColorShader.cpp
-    src/Engine/Graphics/Scene/Shaders/PBRMaterial.cpp
+    src/Engine/Graphics/ConstantBuffers.cpp
+    src/Engine/Graphics/Scene/Materials/ColorMaterial.cpp
+    src/Engine/Graphics/Scene/Materials/PBRMaterial.cpp
     src/Engine/Graphics/PostProcess.cpp
     src/Engine/Graphics/D3D/GpuProfiler.cpp
-    src/Engine/Graphics/Scene/Shaders/FullscreenShader.cpp
+    src/Engine/Graphics/FullscreenShader.cpp
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
-    src/Engine/Graphics/Scene/Shaders/DMShader.cpp
-    src/Engine/Graphics/Scene/Shaders/TextureShader.cpp
+    src/Engine/Graphics/ShaderProgram.cpp
+    src/Engine/Graphics/Scene/Materials/TextureMaterial.cpp
     src/Engine/Graphics/D3D/DMStructuredBuffer.cpp
     src/DMSystem.cpp
     src/Engine/Graphics/Common/DMTransform.cpp
@@ -190,7 +190,7 @@ add_executable(DMEngine WIN32
 
 # Заголовки D3D12 Agility SDK — раньше Windows SDK (BEFORE), иначе d3d12.h возьмётся системный
 target_include_directories(DMEngine BEFORE PRIVATE ${AGILITY_INCLUDE} ${AGILITY_INCLUDE}/d3dx12)
-# Include-пути от корня проекта и основных каталогов движка: отсюда "Utils\DMTimer.h", "Shaders\DMShader.h" и т. п.
+# Include-пути от корня проекта и основных каталогов движка: отсюда "Utils\DMTimer.h", "Materials\Material.h" и т. п.
 target_include_directories(DMEngine PRIVATE
     ${dxc_SOURCE_DIR}/inc
     ${winpixeventruntime_SOURCE_DIR}/Include/WinPixEventRuntime

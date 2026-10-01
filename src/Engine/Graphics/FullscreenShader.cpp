@@ -7,7 +7,6 @@ namespace GS
 bool FullscreenShader::load( const std::string& pixelShader, const TargetFormats& formats )
 {
 	// Без буферов и раскладки вершин: вершинный шейдер строит треугольник по номеру вершины
-	m_shader.setDrawType( DMShader::by_vertex );
 	if( !m_shader.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\fullscreen.vs" ) ||
 		!m_shader.addShaderPassFromFile( ShaderStageType::pixel, "main", pixelShader ) ||
 		m_shader.createPhase( 0, 0 ) < 0 )
@@ -29,7 +28,7 @@ void FullscreenShader::draw( BlendState blend, DepthState depth )
 	// Сплошная заливка, даже если кадр рисуется каркасом (Q)
 	ScopedRenderState state( RasterState::noCulling, depth, blend );
 	m_shader.setPass( 0 );
-	m_shader.render( 3 );
+	DMD3D::instance().draw( 3, 0 );
 }
 
 }

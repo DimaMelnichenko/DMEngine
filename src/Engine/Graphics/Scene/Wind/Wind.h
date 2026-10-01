@@ -2,7 +2,7 @@
 #include <optional>
 #include "DirectX.h"
 #include "Properties\PropertyContainer.h"
-#include "Shaders\ConstantBuffers.h"
+#include "ConstantBuffers.h"
 
 namespace GS
 {

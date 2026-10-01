@@ -5,7 +5,7 @@
 #include <vector>
 #include "DirectX.h"
 #include "Utils\utilites.h"
-#include "Shaders\DMComputeShader.h"
+#include "DMComputeShader.h"
 #include "Model/DMModel.h"
 #include "ScattererPass.h"
 #include "SceneObject.h"
@@ -83,7 +83,7 @@ private:
 	struct LayerSection
 	{
 		DMModel::Section* section = nullptr;
-		DMShader* material = nullptr;
+		Material* material = nullptr;
 	};
 
 	// LOD растения: секции
@@ -106,7 +106,7 @@ private:
 	// (ScatterPass::groups). Пересобирается каждый кадр в compute — материалы и флаги меняются в GUI
 	struct LayerGroup
 	{
-		DMShader* material = nullptr;
+		Material* material = nullptr;
 		const PropertyContainer* params = nullptr;
 		uint64_t paramsHash = 0;
 		MaterialRenderState state;

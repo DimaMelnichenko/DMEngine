@@ -97,14 +97,13 @@ bool LibraryLoader::loadMaterial( uint32_t idMaterial )
 	if( !GS::System::materials().exists( idMaterial ) )
 		return false;
 	
-	loadMaterialParamDef( idMaterial, GS::System::materials().get( idMaterial )->m_parameters );
+	GS::Material* material = GS::System::materials().get( idMaterial ).get();
+	loadMaterialParamDef( idMaterial, material->parameters() );
 
-	GS::DMShader* shader = GS::System::materials().get( idMaterial )->m_shader.get();
-
-	if( !loadShader( idMaterial, shader ) )
+	if( !loadShader( idMaterial, material ) )
 		return false;
 
-	if( !shader->initialize() )
+	if( !material->initialize() )
 		return false;
 
 	return true;
@@ -207,7 +206,7 @@ bool LibraryLoader::loadMaterialParamDef( uint32_t idMaterial, PropertyContainer
 	return true;
 }
 
-bool LibraryLoader::loadShader( uint32_t idMaterial, GS::DMShader* shader )
+bool LibraryLoader::loadShader( uint32_t idMaterial, GS::Material* material )
 {
 	
 	SQLite::Statement query( dbConnect().db(), "SELECT material_id, file, type, define FROM MaterialShaderView where material_id = :id" );
@@ -218,7 +217,7 @@ bool LibraryLoader::loadShader( uint32_t idMaterial, GS::DMShader* shader )
 		LOG( "Load shader: " + fullPath );
 		// Shader.type — номер ShaderStageType (таблица ShaderType)
 		const auto stage = static_cast<ShaderStageType>( query.getColumn( 2 ).getInt() );
-		if( !shader->addShaderPassFromFile( stage, "main", fullPath, query.getColumn( 3 ) ) )
+		if( !material->addShaderPassFromFile( stage, "main", fullPath, query.getColumn( 3 ) ) )
 			return false;
 	}
 
@@ -837,7 +836,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		auto section = std::make_unique<GS::DMModel::Section>();
 		section->material = idMaterial;
 		section->mesh = queryLOD.getColumn( "mesh_id" );
-		section->params = GS::System::materials().get( idParamsMaterial )->m_parameters;
+		section->params = GS::System::materials().get( idParamsMaterial )->parameters();
 		if( idInstance != 0 )
 			loadMaterialParams( idInstance, section->params );
 		model->properties()->addSubContainer( &section->params );

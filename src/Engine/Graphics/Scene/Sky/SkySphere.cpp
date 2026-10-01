@@ -1,7 +1,7 @@
 #include "SkySphere.h"
 #include <algorithm>
 #include "System.h"
-#include "Shaders\ConstantBuffers.h"
+#include "ConstantBuffers.h"
 
 namespace GS
 {
@@ -43,12 +43,11 @@ void SkySphere::renderCustom( const RenderContext& context )
 	{
 		if( !System::materials().exists( section->material ) )
 			continue;
-		DMShader* shader = System::materials().get( section->material )->m_shader.get();
-		shader->setPass( 0 );
-		shader->setDrawType( DMShader::by_index );
-		shader->setParams( section->params );
+		Material* material = System::materials().get( section->material ).get();
+		material->setPass( 0 );
+		material->setParams( section->params );
 		const auto& mesh = System::meshes().get( section->mesh );
-		shader->render( mesh->indexCount(), mesh->vertexOffset(), mesh->indexOffset() );
+		DMD3D::instance().drawIndexed( mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
 	}
 }
 

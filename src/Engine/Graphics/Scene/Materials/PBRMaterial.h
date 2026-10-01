@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DMShader.h"
+#include "Material.h"
 
 namespace GS
 {
@@ -15,11 +15,12 @@ namespace GS
 // без пиксельного шейдера, MASK — точка входа mainDepth (только clip). Смена LOD дизерингом (DitheredLODTransition, как
 // Dithered LOD Transition в UE) — ещё варианты с define LOD_DITHER: вершинный шейдер отдаёт долю перехода, пиксельные
 // отсекают свою долю пикселей (Shaders/lod_dither.sh)
-class PBRMaterial : public DMShader
+class PBRMaterial : public Material
 {
 public:
-	PBRMaterial();
-	~PBRMaterial();
+	PBRMaterial( uint32_t id, const std::string& name );
+	bool initialize() override;
+	std::vector<VertexElement> initLayouts() override;
 	void setParams( const PropertyContainer& ) override;
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
 	int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
@@ -62,15 +63,12 @@ private:
 	enum VertexVariant { vertexDefault, vertexInstanced, vertexLodDither, vertexVariantCount };
 	static VertexVariant vertexVariant( const ShaderPhaseOptions& options );
 
-	// Номера фаз (DMShader::createPhase): цвет — по [вершинный шейдер][отсечение по альфе][отсечение дизерингом],
+	// Номера фаз (ShaderProgram::createPhase): цвет — по [вершинный шейдер][отсечение по альфе][отсечение дизерингом],
 	// глубина — по [вершинный шейдер][Masked]: вершинный «только глубина» без пиксельного шейдера или с mainDepth.
 	// Дизеринг пиксельного шейдера — только с вершинным шейдером LOD_DITHER
 	bool m_instancing = false;
 	int m_colorPhases[vertexVariantCount][2][2] = {};
 	int m_depthPhases[vertexVariantCount][2] = {};
-
-	bool innerInitialize() override;
-	std::vector<VertexElement> initLayouts() override;
 
 	Buffer m_psCB;
 };

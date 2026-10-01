@@ -39,7 +39,7 @@ const Pipeline& DMD3D::findOrCreatePipeline( const PipelineDesc& desc, bool warm
 	const uint32_t id = static_cast<uint32_t>( m_pipelines.size() );
 	if( m_pipelinesWarm && !warming )
 	{
-		// Не из списка прогрева: сборка PSO в кадре — фриз; дополнить прогрев (DMShader::warmPipelines)
+		// Не из списка прогрева: сборка PSO в кадре — фриз; дополнить прогрев (ShaderProgram::warmPipelines)
 		++m_lazyPipelines;
 		LOG( "Pipeline " + std::to_string( id ) + " is created lazily: raster " + std::to_string( static_cast<int>( desc.state.raster ) ) +
 			 ", depth " + std::to_string( static_cast<int>( desc.state.depth ) ) + ", blend " + std::to_string( static_cast<int>( desc.state.blend ) ) +

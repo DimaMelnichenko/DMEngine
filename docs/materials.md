@@ -131,7 +131,7 @@ Dithered LOD Transition в UE. С ним экземпляр в полосе см
 - **Two Sided** — вызов отрисовки без отсечения граней (каркасный режим, клавиша Q, сохраняется). Задняя грань
   освещается с развёрнутой нормалью: у травинки одна сторона на солнце, другая — в свете неба.
 
-Материал сообщает режим методом `DMShader::renderState( params )`, нужный вариант шейдера — `phaseFor( params, options )`:
+Материал сообщает режим методом `Material::renderState( params )`, нужный вариант шейдера — `phaseFor( params, options )`:
 `ShaderPhaseOptions` — то, что зависит не от параметров, а от вызова (инстансы, глубина из prepass, смена LOD
 дизерингом).
 Модели отдают секции с режимом в список отрисовки (`MeshBatch` — секция), и `Renderer` сам кладёт их в проход и рисует
@@ -245,8 +245,10 @@ WHERE model_id = <id модели>;
 
 | Файл | Что там |
 |---|---|
-| `src/Engine/Graphics/Scene/Shaders/PBRMaterial.h/.cpp` | класс материала: параметры → текстуры t0…t4 и константный буфер PS b2, режим, вариант с отсечением |
-| `src/Engine/Graphics/Scene/Shaders/MaterialRenderState.h` | режим материала (`BlendMode`), двусторонность, смена LOD дизерингом; `ShaderPhaseOptions` — вариант шейдера вызова |
+| `src/Engine/Graphics/Scene/Materials/Material.h/.cpp` | базовый класс материала: ресурс хранилища, определения параметров, `setParams` / `renderState` / `phaseFor` / `depthPhaseFor`; программа шейдеров — `ShaderProgram` (`Graphics/ShaderProgram.h`: стадии, фазы, `setPass`, прогрев) |
+| `src/Engine/Graphics/Scene/Materials/MaterialStorage.h/.cpp` | хранилище `System::materials()`: класс материала по колонке `Materials.class` |
+| `src/Engine/Graphics/Scene/Materials/PBRMaterial.h/.cpp` | класс материала `PBR`: параметры → текстуры t0…t4 и константный буфер PS b2, режим, вариант с отсечением |
+| `src/Engine/Graphics/Scene/Materials/MaterialRenderState.h` | режим материала (`BlendMode`), двусторонность, смена LOD дизерингом; `ShaderPhaseOptions` — вариант шейдера вызова |
 | `Shaders/lod_dither.sh` | маска дизеринга смены LOD (`clipLodTransition`) |
 | `Shaders/PBRLit.ps` | пиксельный шейдер PBR: текстуры и параметры → `Surface` |
 | `Shaders/lighting.sh` | общая функция освещения `evaluateLighting`, источники света ([lighting.md](lighting.md)) |

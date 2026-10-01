@@ -222,7 +222,7 @@ Release, 1920 × 1080, попеременные запуски с прежней
 | `Shaders/exposure_histogram.cs`, `Shaders/exposure_adapt.cs` | гистограмма яркости и новая экспозиция с кривой компенсации |
 | `src/Engine/Graphics/D3D/RenderTarget.h/.cpp` | промежуточная цель прохода: текстура с RTV и SRV |
 | `Shaders/bloom_downsample.ps`, `Shaders/bloom_upsample.ps` | уровни bloom: уменьшение с порогом, увеличение тентом |
-| `src/Engine/Graphics/Scene/Shaders/FullscreenShader.h/.cpp` | полноэкранный проход: шейдеры, топология, состояния |
+| `src/Engine/Graphics/FullscreenShader.h/.cpp` | полноэкранный проход: шейдеры, топология, состояния |
 | `Shaders/fullscreen.vs` | полноэкранный треугольник по `SV_VertexID` |
 | `Shaders/tonemap.ps` | сложение с bloom, приведение к экспозиции, ночное зрение, ACES, AgX |
 | `src/Engine/Graphics/SceneTargets.h/.cpp` | HDR-буфер сцены и глубина: создание с цветом очистки, проход очистки, вид цвета для постобработки |

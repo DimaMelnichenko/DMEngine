@@ -6,7 +6,7 @@
 #include "GridMesh.h"
 #include "TerrainMaterial.h"
 #include "TerrainHeightSource.h"
-#include "Shaders\DMShader.h"
+#include "ShaderProgram.h"
 #include "D3D\DMStructuredBuffer.h"
 
 namespace GS
@@ -104,7 +104,7 @@ private:
 	// общего у всех видов, frustum вида только отсекает, поэтому рельеф в тени и на экране один и тот же
 	std::array<std::vector<PatchInstance>, maxRenderViews> m_patches;
 	GridMesh m_patch;
-	DMShader m_shader;
+	ShaderProgram m_shader;
 	int m_materialPhase = 0;	// фазы m_shader: материал, раскраска по уровням LOD, только глубина (тени)
 	int m_lodPhase = 0;
 	int m_depthPhase = 0;

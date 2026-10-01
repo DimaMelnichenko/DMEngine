@@ -2,8 +2,8 @@
 
 #include <string>
 #include <vector>
-#include "Shaders\FullscreenShader.h"
-#include "Shaders\DMComputeShader.h"
+#include "FullscreenShader.h"
+#include "DMComputeShader.h"
 #include "D3D\RenderTarget.h"
 #include "D3D\ReadbackRing.h"
 #include "D3D\GpuProfiler.h"

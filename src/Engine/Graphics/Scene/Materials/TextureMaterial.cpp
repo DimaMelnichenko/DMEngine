@@ -1,25 +1,19 @@
-#include "TextureShader.h"
+#include "TextureMaterial.h"
 #include "System.h"
 
 namespace GS
 {
 
-TextureShader::TextureShader()
+TextureMaterial::TextureMaterial( uint32_t id, const std::string& name ) : Material( id, name )
 {
-
 }
 
-TextureShader::~TextureShader()
-{
-
-}
-
-bool TextureShader::innerInitialize()
+bool TextureMaterial::initialize()
 {
 	return createPhase( 0, 0 ) >= 0;
 }
 
-std::vector<VertexElement> TextureShader::initLayouts()
+std::vector<VertexElement> TextureMaterial::initLayouts()
 {
 	return {
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0 },
@@ -27,7 +21,7 @@ std::vector<VertexElement> TextureShader::initLayouts()
 	};
 }
 
-void TextureShader::setParams( const PropertyContainer& params )
+void TextureMaterial::setParams( const PropertyContainer& params )
 {
 	if( params.exists( "Albedo" ) )
 	{

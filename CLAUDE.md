@@ -147,7 +147,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   и вызывает их `update()`. Состав уровня описывает строка таблицы `Levels` (см. «Данные сцены»); объект,
   которого у уровня нет, остаётся неинициализированным и ничего не делает;
 - `Renderer` (`Renderer.h`) отправляет команды GPU: общие данные конвейера (сэмплеры, свет, константы кадра и вида —
-  `ConstantBuffers` (`Shaders/ConstantBuffers.h`), член `Renderer`; своим вызовам объектов — `RenderContext::constants`)
+  `ConstantBuffers` (`Graphics/ConstantBuffers.h`), член `Renderer`; своим вызовам объектов — `RenderContext::constants`)
   → `compute()` всех объектов → сбор мешей с вида и раскладка по проходам с сортировкой → глубина каскадов теней
   солнца (`renderShadows`: на каждый каскад сбор с его вида и проход `csmShadowDepth` в срез карты) → depth prepass
   (`depthPrepass`: только глубина непрозрачных и Masked вариантом `depthPhaseFor`, без цели цвета; `DepthPrepass` в
@@ -247,7 +247,7 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
   `D3D_PRIMITIVE_TOPOLOGY` допустимы везде. Виды (`ShaderView`, `StorageView`, `TargetView`) — постоянные дескрипторы
   в кучах DMD3D (bindless): освобождаются вместе с видом.
   Состояния и шейдеры ставятся в контекст одним объектом пайплайна (`D3D/GpuPipeline.h`: `PipelineDesc` — стадии фазы,
-  раскладка, состояния, топология; кэш `DMD3D::pipeline`, привязка `setPipeline`) в `DMShader::setPass`; `setState`
+  раскладка, состояния, топология; кэш `DMD3D::pipeline`, привязка `setPipeline`) в `ShaderProgram::setPass`; `setState`
   лишь запоминает состояние, поэтому порядок в коде объекта — состояние → `setPass` → рисование. Набор пайплайнов
   собирается при загрузке (`Renderer::warmPipelines`, свои списки у объектов), созданный в кадре — «ленивый»: строка
   в лог и счётчик в «Statistic» — дополните список прогрева.
@@ -327,19 +327,22 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 их материал `PBR` подставляет вместо не заданных текстур (значение параметра 0), а шахматка по-прежнему означает
 «файл не найден».
 
-**Материал = `DMShader`.** Шейдер собирается из проходов (`addShaderPassFromFile(stage, "main", file, defines)`),
-параметры материала передаются через `shader->setParams(section->params)`. Специализированные шейдеры
-(`Scene/Shaders/DM*Shader`, `DMComputeShader`) наследуются от него или работают рядом. Основной материал моделей —
+**Материал = `Material`** (`Scene/Materials/`: ресурс хранилища `System::materials()`, класс по колонке `class` —
+`MaterialStorage::createMaterial`). Программу шейдеров — стадии (`addShaderPassFromFile(stage, "main", file, defines)`),
+фазы-варианты, раскладку, `setPass`, прогрев — он наследует от `ShaderProgram` (`Graphics/ShaderProgram.h`; ею же пользуются
+шейдеры без материала: террейн, `FullscreenShader`), сам добавляет определения параметров (`parameters()`) и что зависит
+от параметров секции: `setParams`, `renderState`, `phaseFor`, `depthPhaseFor`. Материал не рисует: вызов `DMD3D::draw*` —
+у вызывающего (`Renderer::drawMesh`, свои вызовы объектов). Основной материал моделей —
 `PBR` (`PBRMaterial` + `Shaders/PBRLit.ps`): metallic/roughness как в glTF 2.0 и Default Lit в UE5, параметры названы
 как в glTF; материал 9 `PBRInstance` — его инстансный вариант для расстановки. Режим материала — тоже параметры
 с именами glTF: `AlphaMode` (0 OPAQUE, 1 MASK, 2 BLEND — Blend Mode в UE), `AlphaCutoff`, `DoubleSided`; материал
-сообщает его `DMShader::renderState( params )` (`Scene/Shaders/MaterialRenderState.h`), вариант шейдера —
+сообщает его `Material::renderState( params )` (`Scene/Materials/MaterialRenderState.h`), вариант шейдера —
 `phaseFor( params, options )`: `PBRMaterial` сам собирает второй пиксельный шейдер с `clip` (define `ALPHA_MASK`), у непрозрачных
 отсечения нет; `ShaderPhaseOptions` — что зависит от вызова: инстансы, глубина из prepass (цвет без `clip`), смена LOD
 дизерингом (`LOD_DITHER`, `Shaders/lod_dither.sh`, как Dithered LOD Transition в UE; флаг материала
 `DitheredLODTransition`). Рисуют `setPass( phaseFor( params ) )`, затем `setParams( params )`, двусторонние — без отсечения граней
 (`materialRasterState`). Прочие классы — `Texture`, `Color`
-(без освещения: небо, отладка), `Particle`. Подробно — `docs/materials.md`.
+(без освещения: небо, отладка; `TextureMaterial`, `ColorMaterial`), `Particle` (`ParticleMaterial`). Подробно — `docs/materials.md`.
 
 **Освещение считается в одном месте** — `Shaders/lighting.sh`: шейдер материала заполняет `Surface` (базовый цвет,
 металличность, шероховатость, нормаль и геометрическая нормаль без карты нормалей, затенение, свечение, пропускание —
@@ -423,13 +426,15 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
 `Particle` (`DMParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,
-`TextureObjects`, `Model`/`Mesh` (`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`).
+`TextureObjects`, `Model`/`Mesh` (`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`), `Materials`
+(`Material` и его классы, `MaterialStorage`). Не объекты сцены, а общее для проходов — в `src/Engine/Graphics/`:
+`ShaderProgram`, `FullscreenShader`, `DMComputeShader`, `ConstantBuffers`.
 
 ## Соглашения
 
 - Include-пути: `src`, `src/3rdParty`, `src/Common`, `src/Engine/Graphics`, `src/Engine/Graphics/Common`,
   `src/Engine/Graphics/Scene`, `src/Engine/Graphics/Scene/Common` и корень проекта. Поэтому встречается `#include "Utils\DMTimer.h"`
-  (из `src/Common`) или `"Shaders\DMShader.h"` (из `Scene`). В include используются обратные слеши.
+  (из `src/Common`) или `"Materials\Material.h"` (из `Scene`). В include используются обратные слеши.
 - Большая часть графики находится в пространстве имён `GS`, классы с префиксом `DM`.
 - Все исходники и шейдеры в **UTF-8 без BOM**, концы строк LF (закреплено в `.editorconfig`).
   Компилятор запускается с `/utf-8`, поэтому строковые литералы тоже в UTF-8 — так они попадают в `log.txt`

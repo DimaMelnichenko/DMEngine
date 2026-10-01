@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "..\Shaders\DMComputeShader.h"
+#include "DMComputeShader.h"
 #include "Properties/PropertyContainer.h"
 #include "SceneObject.h"
 

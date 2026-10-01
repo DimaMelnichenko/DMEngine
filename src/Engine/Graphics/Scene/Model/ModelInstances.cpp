@@ -102,7 +102,7 @@ void ModelInstances::addLod( const Instance& instance, uint16_t lodIndex, float 
 	{
 		const DMModel::Section& section = *lod->sections[i];
 		MeshBatch batch;
-		batch.material = System::materials().get( section.material )->m_shader.get();
+		batch.material = System::materials().get( section.material ).get();
 		// Режим читается каждый кадр: параметры материала меняются в GUI
 		batch.state = batch.material->renderState( section.params );
 		if( lodDither != 0.0f && !batch.state.ditheredLodTransition )

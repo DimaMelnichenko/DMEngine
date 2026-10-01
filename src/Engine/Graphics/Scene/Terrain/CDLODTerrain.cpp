@@ -6,7 +6,7 @@
 #include <cmath>
 #include <DirectXTex.h>
 #include "System.h"
-#include "Shaders\ConstantBuffers.h"
+#include "ConstantBuffers.h"
 #include "DBConnector.h"
 #include "Logger\Logger.h"
 
@@ -442,14 +442,10 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	m_patchBuffer.updateData( patches.data(), sizeof( PatchInstance ) * patches.size() );
 	m_patchBuffer.setToSlot( SLOT_INSTANCE_DATA );
 
+	// Карта высот — вершинному шейдеру и пиксельному: по ней считается нормаль рельефа
 	DMD3D::instance().setSRV( 0, m_heightMap );
 	if( !depthOnly )
-	{
-		// Карта высот нужна и пиксельному шейдеру: по ней считается нормаль рельефа
-		DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
-		DMD3D::instance().setSRV( 0, m_heightMap );
 		m_material.bind();
-	}
 
 	context.constants.setPerObjectBuffer( XMMatrixIdentity() );
 
@@ -457,7 +453,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	DMD3D::instance().setIndexBuffer( m_patch.indexBuffer(), DXGI_FORMAT_R32_UINT );
 
 	m_shader.setPass( depthOnly ? m_depthPhase : m_properties["Show LOD"].data<bool>() ? m_lodPhase : m_materialPhase );
-	m_shader.renderInstanced( m_patch.indexCount(), 0, 0, static_cast<int>( patches.size() ) );
+	DMD3D::instance().drawIndexedInstanced( m_patch.indexCount(), static_cast<uint32_t>( patches.size() ), 0, 0 );
 }
 
 PropertyContainer* CDLODTerrain::properties()

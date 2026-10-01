@@ -12,7 +12,7 @@
 #include "D3D\DMStructuredBuffer.h"
 #include "ShadowCascades.h"
 #include "SceneTargets.h"
-#include "Shaders\ConstantBuffers.h"
+#include "ConstantBuffers.h"
 
 class GUI;
 

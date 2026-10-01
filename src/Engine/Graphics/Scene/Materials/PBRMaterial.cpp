@@ -30,14 +30,8 @@ std::string withDefine( const std::string& defines, const char* define )
 
 }
 
-PBRMaterial::PBRMaterial()
+PBRMaterial::PBRMaterial( uint32_t id, const std::string& name ) : Material( id, name )
 {
-
-}
-
-PBRMaterial::~PBRMaterial()
-{
-
 }
 
 std::vector<VertexElement> PBRMaterial::initLayouts()
@@ -57,7 +51,7 @@ std::vector<VertexElement> PBRMaterial::initLayouts()
 	};
 }
 
-bool PBRMaterial::innerInitialize()
+bool PBRMaterial::initialize()
 {
 	// Пиксельные шейдеры: 0 — из базы, 1 — он же с отсечением по альфе, 2 — только отсечение по альфе (глубина MASK);
 	// с дизерингом смены LOD: 3 — цвет, 4 — цвет с отсечением по альфе, 5 — глубина, 6 — глубина MASK
@@ -219,8 +213,7 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.windRippleFrequency = materialValue( params, "WindRippleFrequency", 6.0f );
 
 	Device::updateResourceData<PSParam>( m_psCB, param );
-	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_psCB );
-	// Вершинному шейдеру — отклик на ветер
+	// b2 читают и пиксельный, и вершинный шейдер (отклик на ветер)
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_psCB );
 }
 

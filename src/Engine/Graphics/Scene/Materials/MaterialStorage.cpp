@@ -1,8 +1,8 @@
 #include "MaterialStorage.h"
-#include "Shaders\DMColorShader.h"
-#include "Shaders\TextureShader.h"
-#include "Shaders\PBRMaterial.h"
-#include "Shaders\DMParticleShader.h"
+#include "ColorMaterial.h"
+#include "TextureMaterial.h"
+#include "PBRMaterial.h"
+#include "ParticleMaterial.h"
 #include "Logger\Logger.h"
 
 namespace GS
@@ -23,31 +23,23 @@ bool MaterialStorage::createMaterial( uint32_t id, const std::string& name, cons
 	if( exists( id ) )
 		return true;
 
-	std::string fullPath = path() + "\\";
-	
-	std::unique_ptr<Material> material( new Material( id, name ) );
-
-	DMShader* shader = nullptr;
-
+	std::unique_ptr<Material> material;
 	if( matClass == "Color" )
-		shader = new DMColorShader();
+		material = std::make_unique<ColorMaterial>( id, name );
 	else if( matClass == "PBR" )
-		shader = new PBRMaterial();
+		material = std::make_unique<PBRMaterial>( id, name );
 	else if( matClass == "Texture" )
-		shader = new TextureShader();
+		material = std::make_unique<TextureMaterial>( id, name );
 	else if( matClass == "Particle" )
-		shader = new DMParticleShader();
+		material = std::make_unique<ParticleMaterial>( id, name );
 
-	if( !shader )
+	if( !material )
 	{
 		LOG( "Unknown material class '" + matClass + "' of material " + name );
 		return false;
 	}
 
-	shader->setLayoutDesc( std::move( shader->initLayouts() ) );
-
-	material->m_shader.reset( shader );
-
+	material->setLayoutDesc( material->initLayouts() );
 	insertResource( std::move( material ) );
 
 	return true;

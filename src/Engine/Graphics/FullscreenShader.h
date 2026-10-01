@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include "DMShader.h"
+#include "ShaderProgram.h"
 
 namespace GS
 {
@@ -9,7 +9,7 @@ namespace GS
 // Проход на всю цель рендера: треугольник по SV_VertexID на дальней плоскости (Shaders/fullscreen.vs) и свой
 // пиксельный шейдер. draw() сам ставит топологию, шейдеры и состояния (без отсечения граней, по умолчанию и без
 // глубины) — не зависит от того, что оставил предыдущий проход. Цель рендера и ресурсы задаёт вызывающий:
-// DMD3D::setRenderTarget, setSRV
+// DMD3D::beginPass, setSRV
 class FullscreenShader
 {
 public:
@@ -19,7 +19,7 @@ public:
 	void draw( BlendState blend = BlendState::opaque, DepthState depth = DepthState::disabled );
 
 private:
-	DMShader m_shader;
+	ShaderProgram m_shader;
 };
 
 }

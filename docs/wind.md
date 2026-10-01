@@ -164,7 +164,7 @@ Release, 1920 × 1080, камера у шаров на лугу (`500,20,215,4,5
 | `src/Engine/Graphics/Scene/Model/Mesh/MeshLoader.h` | блок `WIND` файла меша |
 | `Tools/blender_fir.py`, `Tools/import_gltf.py` | данные ветра ели, их импорт и материал `PBRTree` |
 | `Shaders/pbr_material.sh` | константы материала `PBR`, в том числе `g_windWeight` |
-| `Shaders/common.vs`, `src/Engine/Graphics/Scene/Shaders/ConstantBuffers.h/.cpp` | константы кадра: `cb_gameTime`, `cb_wind*` |
+| `Shaders/common.vs`, `src/Engine/Graphics/ConstantBuffers.h/.cpp` | константы кадра: `cb_gameTime`, `cb_wind*` |
 
 ## Откуда подход
 

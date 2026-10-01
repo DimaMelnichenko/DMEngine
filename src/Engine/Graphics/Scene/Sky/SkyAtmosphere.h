@@ -4,8 +4,8 @@
 #include <vector>
 #include "SceneObject.h"
 #include "SkyLight.h"
-#include "Shaders\FullscreenShader.h"
-#include "Shaders\DMComputeShader.h"
+#include "FullscreenShader.h"
+#include "DMComputeShader.h"
 #include "D3D\CubeTarget.h"
 #include "D3D\RenderTarget.h"
 #include "Properties\PropertyContainer.h"

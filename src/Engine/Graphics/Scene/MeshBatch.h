@@ -4,13 +4,13 @@
 #include <vector>
 #include "DirectX.h"
 #include "D3D\DMD3D.h"
-#include "Shaders\MaterialRenderState.h"
+#include "Materials\MaterialRenderState.h"
 #include "Properties/PropertyContainer.h"
 
 namespace GS
 {
 
-class DMShader;
+class Material;
 class SceneObject;
 
 // Проход кадра — как EMeshPass в UE. Порядок проходов и их состояния задаёт Renderer
@@ -48,7 +48,7 @@ inline MeshPass passFor( BlendMode mode )
 // выбирает рендерер по режиму материала; по тем же данным он рисует меш в depth prepass и в тенях
 struct MeshBatch
 {
-	DMShader* material = nullptr;
+	Material* material = nullptr;
 	uint32_t materialId = 0;					// для сортировки по материалу
 	const PropertyContainer* params = nullptr;	// параметры материала (LOD модели)
 	uint32_t indexCount = 0;					// диапазон в общем буфере VertexPool

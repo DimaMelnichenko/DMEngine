@@ -6,7 +6,7 @@
 #include <optional>
 #include "D3D\DMD3D.h"
 #include "System.h"
-#include "Shaders\ConstantBuffers.h"
+#include "ConstantBuffers.h"
 #include "Shaders\lod_transition.h"
 
 namespace GS
@@ -69,7 +69,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			{
 				LayerSection section;
 				section.section = block->sections[s].get();
-				section.material = System::materials().get( section.section->material )->m_shader.get();
+				section.material = System::materials().get( section.section->material ).get();
 				lod.sections.push_back( section );
 			}
 			passVariant.sectionCount[i] = static_cast<uint32_t>( std::max<size_t>( sectionCount, 1 ) );
@@ -319,11 +319,10 @@ void Scatterer::renderCustom( const RenderContext& context )
 			ShaderPhaseOptions options;
 			options.depthFromPrepass = context.depthFromPrepass && group.prepassed;
 			options.lodDither = group.transition;
-			DMShader* shader = group.material;
+			Material* shader = group.material;
 			shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *group.params, options ) :
 							 shader->phaseFor( *group.params, options ) );
 			shader->setParams( *group.params );
-			shader->setDrawType( DMShader::by_index );
 
 			// Вершинный шейдер: индекс инстанса — из списка вида по root-константе команды (начало списка), сам инстанс —
 			// из пула (INST_POS, INST_SCALE, INST_ROTATE — Shaders\instance.sh; у списка перехода — ещё LOD_DITHER)
