@@ -125,8 +125,8 @@ private:
 	// Матрицы экземпляров инстансного вызова; раскладка — InstanceTransform в Shaders/instance.sh
 	struct InstanceTransform
 	{
-		XMMATRIX world;
-		XMMATRIX worldInverseTranspose;
+		DirectX::XMMATRIX world;
+		DirectX::XMMATRIX worldInverseTranspose;
 	};
 	static constexpr uint32_t maxInstancesPerDraw = 1024;
 	DMStructuredBuffer m_instanceBuffer;

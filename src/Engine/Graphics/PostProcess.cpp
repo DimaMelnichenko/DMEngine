@@ -6,6 +6,8 @@
 #include <sstream>
 #include "D3D\DMD3D.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

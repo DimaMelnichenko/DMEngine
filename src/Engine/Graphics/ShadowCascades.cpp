@@ -6,6 +6,8 @@
 #include "D3D\DMD3D.h"
 #include "Logger\Logger.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

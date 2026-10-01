@@ -1,5 +1,7 @@
 #include "DMTransform.h"
 
+using namespace DirectX;
+
 
 DMTransform::DMTransform() :
 	m_worldMatrix( XMMatrixIdentity() )

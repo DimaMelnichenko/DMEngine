@@ -73,9 +73,9 @@ private:
 	// cbuffer FrustumBuffer в Shaders\scatter.cs: виды кадра
 	struct alignas( 16 ) FrustumParams
 	{
-		XMFLOAT4 planes[maxRenderViews * 6];
-		XMFLOAT4 viewParams[maxRenderViews];	// x — множитель дальностей LOD вида, y — 1: списки перехода у вида, zw — полоса каскада
-		XMFLOAT4 shadowCast;	// xyz — куда идёт свет источника теней, w — длина тени на метр высоты вдоль луча (0 — теней нет)
+		DirectX::XMFLOAT4 planes[maxRenderViews * 6];
+		DirectX::XMFLOAT4 viewParams[maxRenderViews];	// x — множитель дальностей LOD вида, y — 1: списки перехода у вида, zw — полоса каскада
+		DirectX::XMFLOAT4 shadowCast;	// xyz — куда идёт свет источника теней, w — длина тени на метр высоты вдоль луча (0 — теней нет)
 		uint32_t viewCount;
 		uint32_t padding[3];
 	};

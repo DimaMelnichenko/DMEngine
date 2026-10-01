@@ -29,7 +29,7 @@ public:
 	// Пиксельный шейдер: t1 — splat-карта, t2 — альбедо + высота, t3 — нормаль + шероховатость, t4 — шум
 	void bind() const;
 	// Повторов текстуры слоя на единицу мира (1 / tiling) по слоям, по четыре в XMFLOAT4
-	const std::array<XMFLOAT4, splatSlices>& layerScale() const { return m_layerScale; }
+	const std::array<DirectX::XMFLOAT4, splatSlices>& layerScale() const { return m_layerScale; }
 	// Слоёв в массивах текстур: наибольший описанный TerrainLayers.layer + 1
 	uint32_t layerCount() const { return m_layerCount; }
 
@@ -52,7 +52,7 @@ private:
 	ShaderView m_splatMap;
 	ShaderView m_albedoHeight;
 	ShaderView m_normalRoughness;
-	std::array<XMFLOAT4, splatSlices> m_layerScale = {};
+	std::array<DirectX::XMFLOAT4, splatSlices> m_layerScale = {};
 	uint32_t m_layerCount = 0;
 };
 

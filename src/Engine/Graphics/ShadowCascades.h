@@ -31,7 +31,7 @@ public:
 	// Каскады для главного вида: settings — тени солнца, toSun — направление на него, sceneBounds — границы сцены (по ним
 	// ближняя и дальняя плоскости вида света: тень отбрасывает и то, что вне frustum камеры). false — тени выключены
 	// или солнце ниже горизонта
-	bool update( const RenderView& mainView, const DMLight::ShadowSettings& settings, const XMFLOAT3& toSun,
+	bool update( const RenderView& mainView, const DMLight::ShadowSettings& settings, const DirectX::XMFLOAT3& toSun,
 				 const DirectX::BoundingBox& sceneBounds );
 	bool active() const { return m_active; }
 	const RenderView& cascadeView( uint32_t cascade ) const { return m_views[cascade]; }
@@ -55,9 +55,9 @@ private:
 	// Раскладка — cbuffer ShadowConstants в Shaders/shadows.sh
 	struct alignas( 16 ) ShaderShadowConstants
 	{
-		XMMATRIX cascadeViewProjection[cascadeCount];
-		XMFLOAT4 cascadeSplits;		// дальняя граница каскада по глубине взгляда, м
-		XMFLOAT4 cascadeTexelSize;	// размер текселя каскада в мире, м
+		DirectX::XMMATRIX cascadeViewProjection[cascadeCount];
+		DirectX::XMFLOAT4 cascadeSplits;		// дальняя граница каскада по глубине взгляда, м
+		DirectX::XMFLOAT4 cascadeTexelSize;	// размер текселя каскада в мире, м
 		float cascadeTransition;
 		float fadeStart;
 		float shadowDistance;

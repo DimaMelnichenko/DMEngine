@@ -41,11 +41,11 @@ void str_split( const std::string& str, std::vector<std::string>& tokens, const 
 
 std::wstring utf8ToWide( const std::string& str );
 
-bool strToVec2( const std::string& str, XMFLOAT2& vec );
+bool strToVec2( const std::string& str, DirectX::XMFLOAT2& vec );
 
-bool strToVec3( const std::string& str, XMFLOAT3& vec );
+bool strToVec3( const std::string& str, DirectX::XMFLOAT3& vec );
 
-bool strToVec4( const std::string& str, XMFLOAT4& vec );
-std::string vec4ToStr( const XMFLOAT4& vec );
+bool strToVec4( const std::string& str, DirectX::XMFLOAT4& vec );
+std::string vec4ToStr( const DirectX::XMFLOAT4& vec );
 // "x,y,z" с короткой записью чисел (%g), как пишет Tools/import_gltf.py
-std::string vec3ToStr( const XMFLOAT3& vec );
+std::string vec3ToStr( const DirectX::XMFLOAT3& vec );

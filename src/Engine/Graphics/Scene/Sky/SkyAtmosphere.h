@@ -53,7 +53,7 @@ public:
 	// Пропускание атмосферы от наблюдателя к солнцу (toSun — нормированное направление на него): доля света солнца
 	// над атмосферой, которая доходит до земли, по каналам RGB. Как transmittanceToTop в Shaders/atmosphere.sh
 	// с дымкой из GUI; солнце под горизонтом — 0. Как GetTransmittanceAtGroundLevel в UE — на CPU, микросекунды
-	XMFLOAT3 sunTransmittance( const XMFLOAT3& toSun ) const;
+	DirectX::XMFLOAT3 sunTransmittance( const DirectX::XMFLOAT3& toSun ) const;
 	// Нормировка того, что в половинной точности (объём воздушной перспективы, результаты SkyLight): оценка яркости неба
 	// в единицах запекания — 1 днём, в сумерках падает с высотой солнца, ночью — свет луны и ночное свечение. Там
 	// хранится свет, делённый на неё, шейдеры умножают на масштаб с ней (cb_aerialPerspectiveScale, cb_skyLightScale):
@@ -69,28 +69,28 @@ private:
 	// Константный буфер PS b2, раскладка как у SkyParameters в Shaders/atmosphere.sh
 	struct alignas( 16 ) Parameters
 	{
-		XMFLOAT3 sunDirection;
+		DirectX::XMFLOAT3 sunDirection;
 		float skyIntensity;
-		XMFLOAT3 sunColor;
+		DirectX::XMFLOAT3 sunColor;
 		float haze;
-		XMFLOAT3 groundAlbedo;
+		DirectX::XMFLOAT3 groundAlbedo;
 		int32_t face;
-		XMFLOAT3 moonDirection;
+		DirectX::XMFLOAT3 moonDirection;
 		float nightSkyLuminance;	// в единицах запекания: кд/м², делённые на освещённость от солнца
-		XMFLOAT3 moonColor;			// в единицах запекания; 0 — луны нет или она ниже −10° (её свет в небе — 0)
+		DirectX::XMFLOAT3 moonColor;			// в единицах запекания; 0 — луны нет или она ниже −10° (её свет в небе — 0)
 		int32_t skyViewLight;		// проход Sky-View: 0 — таблица солнца, 1 — луны
 	};
 
 	// Константный буфер b4 фона — NightSkyParameters в Shaders/sky_background.ps
 	struct alignas( 16 ) NightSkyParameters
 	{
-		XMFLOAT3 equatorialX;
+		DirectX::XMFLOAT3 equatorialX;
 		float moonAngularRadius;
-		XMFLOAT3 equatorialY;
+		DirectX::XMFLOAT3 equatorialY;
 		float starIlluminanceScale;
-		XMFLOAT3 equatorialZ;
+		DirectX::XMFLOAT3 equatorialZ;
 		float padding;
-		XMFLOAT3 moonDiskLuminance;
+		DirectX::XMFLOAT3 moonDiskLuminance;
 		float moonDiskBrightnessLimit;	// предел яркости полного диска после экспозиции; 0 — без предела
 	};
 

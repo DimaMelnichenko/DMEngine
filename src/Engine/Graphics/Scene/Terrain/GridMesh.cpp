@@ -1,5 +1,7 @@
 #include "GridMesh.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

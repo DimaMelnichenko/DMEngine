@@ -3,6 +3,8 @@
 #include "ImageFile.h"
 #include "Logger\Logger.h"
 
+using namespace DirectX;
+
 namespace
 {
 

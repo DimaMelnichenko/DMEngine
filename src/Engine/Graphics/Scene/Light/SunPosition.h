@@ -47,18 +47,18 @@ public:
 	void advance( float seconds );
 	Angles angles() const;
 	// Направление на солнце в мире: север — +Z, повёрнутый на North offset, восток — +X (как Yaw у источника), вверх — +Y
-	XMFLOAT3 toSun() const;
+	DirectX::XMFLOAT3 toSun() const;
 	Moon moon() const;
-	XMFLOAT3 toMoon() const;
+	DirectX::XMFLOAT3 toMoon() const;
 	// Экваториальный базис в мире (оси — к точке весеннего равноденствия, к прямому восхождению 90° и к северному
 	// полюсу мира): небо поворачивается за сутки со звёздным временем. Звёзды фона задаются в нём
-	void equatorialFrame( XMFLOAT3& x, XMFLOAT3& y, XMFLOAT3& z ) const;
+	void equatorialFrame( DirectX::XMFLOAT3& x, DirectX::XMFLOAT3& y, DirectX::XMFLOAT3& z ) const;
 	PropertyContainer* properties();
 
 	static Angles compute( const Settings& settings );
 	static Moon computeMoon( const Settings& settings );
 	// Направление в мире по высоте и азимуту: север — +Z, повёрнутый на northOffset, восток — +X, вверх — +Y
-	static XMFLOAT3 direction( const Angles& angles, float northOffset );
+	static DirectX::XMFLOAT3 direction( const Angles& angles, float northOffset );
 
 private:
 	PropertyContainer m_properties;

@@ -20,7 +20,7 @@ struct FrameContext
 	float elapsedTime;		// длительность кадра, мс (с timestep — фиксированная)
 	float gameTime;			// время игры, с: сумма длительностей кадров с запуска
 	// Направление на солнце, нормированное; y ≤ 0 — солнце ниже горизонта или его нет: теней нет
-	XMFLOAT3 toShadowLight;	// направление на источник теней: солнце, ночью — луна (DMLightDriver::shadowLight); y ≤ 0 — теней нет
+	DirectX::XMFLOAT3 toShadowLight;	// направление на источник теней: солнце, ночью — луна (DMLightDriver::shadowLight); y ≤ 0 — теней нет
 	// Все виды кадра для compute (по RenderView::index: 0 — главный, 1… — каскады теней), заполняет Renderer перед
 	// compute(); 0 — только главный вид (view)
 	const RenderView* views[maxRenderViews] = {};

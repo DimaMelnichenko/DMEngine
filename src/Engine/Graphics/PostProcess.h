@@ -97,7 +97,7 @@ private:
 		float log2LuminanceRange;
 		int32_t curveKeyCount;
 		float adaptPadding[3];
-		XMFLOAT4 curveKeys[maxCurveKeys / 2];	// по два ключа (EV100, EV) на float4
+		DirectX::XMFLOAT4 curveKeys[maxCurveKeys / 2];	// по два ключа (EV100, EV) на float4
 	};
 
 	// Константный буфер PS b2, раскладка как у PostProcessBuffer в Shaders/tonemap.ps
@@ -112,7 +112,7 @@ private:
 	// Константный буфер PS b2 проходов bloom, раскладка как у BloomBuffer в Shaders/bloom_*.ps
 	struct alignas( 16 ) BloomParameters
 	{
-		XMFLOAT2 sourceTexelSize;
+		DirectX::XMFLOAT2 sourceTexelSize;
 		float threshold;
 		int32_t firstPass;
 		float radius;

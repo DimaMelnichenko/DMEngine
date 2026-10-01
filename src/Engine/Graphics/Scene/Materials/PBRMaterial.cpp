@@ -3,6 +3,8 @@
 #include "Shaders\slots.h"
 #include "System.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

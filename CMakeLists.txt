@@ -124,7 +124,6 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Level/LevelSettings.cpp
     src/3rdParty/tinyxml2.cpp
     src/Config/Config.cpp
-    src/Common/ResourceMetaFile.cpp
     src/Engine/Graphics/Scene/Light/DMLight.cpp
     src/Engine/Graphics/Scene/Light/DMLightDriver.cpp
     src/Engine/Graphics/Scene/Light/SunPosition.cpp
@@ -202,7 +201,6 @@ target_include_directories(DMEngine PRIVATE
     ${CMAKE_SOURCE_DIR}/src/Engine/Graphics
     ${CMAKE_SOURCE_DIR}/src/Engine/Graphics/Common
     ${CMAKE_SOURCE_DIR}/src/Engine/Graphics/Scene
-    ${CMAKE_SOURCE_DIR}/src/Engine/Graphics/Scene/Common
 )
 
 # Символьный набор MultiByte (_MBCS); NOMINMAX убирает макросы min / max из windows.h.

@@ -8,4 +8,4 @@
 #include <d3dcommon.h>
 #include <DirectXMath.h>
 
-using namespace DirectX;
+// Без using namespace DirectX: заголовки пишут DirectX::XMFLOAT3, .cpp — using namespace DirectX после include

@@ -1,6 +1,8 @@
 #include "DMCamera.h"
 #include "Engine\Input\Input.h"
 
+using namespace DirectX;
+
 DMCamera::DMCamera(  ) :
 	m_Eye( XMFLOAT3( 0.0, 0.0, 0.0 ) )
 {	

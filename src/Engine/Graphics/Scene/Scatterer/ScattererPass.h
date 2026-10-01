@@ -95,7 +95,7 @@ public:
 		float cellSize;			// шаг сетки, метры
 		float jitter;			// смещение внутри ячейки, доля шага
 		float alignToTerrain;	// 1 — ось Y инстанса по нормали террейна
-		XMFLOAT3 rotationRange;	// предел случайного поворота вокруг осей X, Y, Z, радианы
+		DirectX::XMFLOAT3 rotationRange;	// предел случайного поворота вокруг осей X, Y, Z, радианы
 		float castShadow;		// 1 — слой отбрасывает тень солнца (Cast Shadow в UE): инстансы попадают в списки видов теней
 		uint32_t variantCount;	// заполняет createBuffers()
 		uint32_t itemCapacity;		// ёмкость пула инстансов — createBuffers()
@@ -110,9 +110,9 @@ private:
 	// Совпадает с InstanceParam в Shaders\instance.sh при INST_POS, INST_SCALE и INST_ROTATE
 	struct ScatterItem
 	{
-		XMFLOAT3 position;
+		DirectX::XMFLOAT3 position;
 		float size;
-		XMFLOAT4 rotation;	// кватернион
+		DirectX::XMFLOAT4 rotation;	// кватернион
 	};
 
 	// Экземпляр пула перехода: то же и доля смены LOD — InstanceParam с LOD_DITHER
@@ -120,7 +120,7 @@ private:
 	{
 		ScatterItem item;
 		float lodDither;	// (0; 1) — уходящий LOD, (−1; 0) — приходящий (Shaders\lod_dither.sh)
-		XMFLOAT3 padding;
+		DirectX::XMFLOAT3 padding;
 	};
 
 	static constexpr uint32_t commandStride = 24;	// root-константа + D3D12_DRAW_INDEXED_ARGUMENTS (COMMAND_STRIDE)
@@ -130,8 +130,8 @@ private:
 	struct alignas( 16 ) VariantsBuffer
 	{
 		// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом
-		XMFLOAT4 variants[maxVariants];
-		XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
+		DirectX::XMFLOAT4 variants[maxVariants];
+		DirectX::XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
 		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 		uint32_t lists[maxLists][4];
 	};

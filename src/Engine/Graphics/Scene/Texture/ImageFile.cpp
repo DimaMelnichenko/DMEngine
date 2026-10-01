@@ -7,6 +7,8 @@
 #include "Utils\utilites.h"
 #include "Logger\Logger.h"
 
+using namespace DirectX;
+
 namespace
 {
 

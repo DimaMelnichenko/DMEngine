@@ -160,7 +160,7 @@ Release, 1920 × 1080, камера у шаров на лугу (`500,20,215,4,5
 | `src/Engine/Graphics/Scene/Wind/Wind.h/.cpp` | ветер уровня: настройки, окно GUI, константы кадра |
 | `Shaders/wind.sh` | порыв и изгиб травы (`windGust`, `windOffset`), ветер дерева (`treeWindPosition`, `windBend`) |
 | `Shaders/LightShader.vs` | `vertexWorldPosition`: корень, высота, сдвиг; с `WIND_TREE` — входы второго потока и ветер дерева |
-| `src/Engine/Graphics/Scene/Common/VertexData.h`, `VertexPool.h/.cpp` | данные ветра дерева на вершину, второй поток вершин |
+| `src/Engine/Graphics/Scene/Model/Mesh/VertexData.h`, `Scene/VertexPool.h/.cpp` | данные ветра дерева на вершину, второй поток вершин |
 | `src/Engine/Graphics/Scene/Model/Mesh/MeshLoader.h` | блок `WIND` файла меша |
 | `Tools/blender_fir.py`, `Tools/import_gltf.py` | данные ветра ели, их импорт и материал `PBRTree` |
 | `Shaders/pbr_material.sh` | константы материала `PBR`, в том числе `g_windWeight` |

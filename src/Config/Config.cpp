@@ -1,6 +1,37 @@
 #include "Config.h"
-#include "ResourceMetaFile.h"
+#include <cstdlib>
 #include <fstream>
+#include <Windows.h>
+#include "Utils\utilites.h"
+
+namespace
+{
+
+// Значение ключа param секции [block] файла settings.ini (GetPrivateProfile*): нет ключа — пустая строка или 0
+std::string iniString( const std::string& file, const char* block, const char* param )
+{
+	char buffer[1024] = {};
+	GetPrivateProfileString( block, param, "", buffer, sizeof( buffer ), file.c_str() );
+	return buffer;
+}
+
+int32_t iniInt( const std::string& file, const char* block, const char* param )
+{
+	return static_cast<int32_t>( GetPrivateProfileInt( block, param, 0, file.c_str() ) );
+}
+
+bool iniBool( const std::string& file, const char* block, const char* param )
+{
+	return iniString( file, block, param ) == "true";
+}
+
+float iniFloat( const std::string& file, const char* block, const char* param )
+{
+	const std::string value = iniString( file, block, param );
+	return value.empty() ? 0.0f : static_cast<float>( std::atof( value.c_str() ) );
+}
+
+}
 
 
 Config::Config()
@@ -18,24 +49,22 @@ bool Config::readConfig( const std::string& file )
 	if( f.good() )
 	{
 		f.close();
-		ResourceMetaFile configFile( file );
-
-		m_FullScreen = configFile.get<bool>( "General", "FullScreen" );
-		m_VSync = configFile.get<bool>( "General", "VSync" );
-		m_ScreenDepth = configFile.get<float>( "General", "ScreenDepth" );
-		m_ScreenNear = configFile.get<float>( "General", "ScreenNear" );
-		m_screenWidth = configFile.get<float>( "General", "ScreenWidth" );
-		m_screenHeight = configFile.get<float>( "General", "ScreenHeight" );
-		m_backBufferWidth = configFile.get<float>( "General", "BackBufferWidth" );
-		m_backBufferHeight = configFile.get<float>( "General", "BackBufferHeight" );
-		if( const int32_t resolution = configFile.get<int32_t>( "General", "ShadowMapResolution" ); resolution > 0 )
+		m_fullScreen = iniBool( file, "General", "FullScreen" );
+		m_vSync = iniBool( file, "General", "VSync" );
+		m_screenDepth = iniFloat( file, "General", "ScreenDepth" );
+		m_screenNear = iniFloat( file, "General", "ScreenNear" );
+		m_screenWidth = iniFloat( file, "General", "ScreenWidth" );
+		m_screenHeight = iniFloat( file, "General", "ScreenHeight" );
+		m_backBufferWidth = iniFloat( file, "General", "BackBufferWidth" );
+		m_backBufferHeight = iniFloat( file, "General", "BackBufferHeight" );
+		if( const int32_t resolution = iniInt( file, "General", "ShadowMapResolution" ); resolution > 0 )
 			m_shadowMapResolution = static_cast<uint32_t>( resolution );
-		m_depthPrepass = configFile.get<std::string>( "General", "DepthPrepass" ) != "false";
-		m_gpuValidation = configFile.get<std::string>( "General", "GpuValidation" ) != "false";
+		m_depthPrepass = iniString( file, "General", "DepthPrepass" ) != "false";
+		m_gpuValidation = iniString( file, "General", "GpuValidation" ) != "false";
 
-		strToVec3( configFile.get<std::string>( "Camera", "Position" ), m_cameraPosition );
-		strToVec2( configFile.get<std::string>( "Camera", "Rotation" ), m_cameraRotation );
-		m_levelName = configFile.get<std::string>( "Level", "Name" );
+		strToVec3( iniString( file, "Camera", "Position" ), m_cameraPosition );
+		strToVec2( iniString( file, "Camera", "Rotation" ), m_cameraRotation );
+		m_levelName = iniString( file, "Level", "Name" );
 
 		return true;
 	}

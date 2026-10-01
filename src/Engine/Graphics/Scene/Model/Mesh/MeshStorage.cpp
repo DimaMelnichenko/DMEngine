@@ -2,6 +2,8 @@
 #include <cmath>
 #include "Logger\Logger.h"
 
+using namespace DirectX;
+
 namespace
 {
 

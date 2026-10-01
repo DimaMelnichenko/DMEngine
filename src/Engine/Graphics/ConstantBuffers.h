@@ -9,12 +9,12 @@ namespace GS
 
 // Матрица нормалей к мировой — обратная транспонированная (без сдвига): нормали остаются перпендикулярными
 // поверхности и при неравномерном масштабе. У вырожденной матрицы (нулевой масштаб) обратной нет — берётся сама матрица
-XMMATRIX normalMatrix( const XMMATRIX& world );
+DirectX::XMMATRIX normalMatrix( const DirectX::XMMATRIX& world );
 
 // Ветер кадра (Wind::parameters) — cb_wind* в Shaders/common.vs, изгиб — Shaders/wind.sh
 struct WindParameters
 {
-	XMFLOAT2 direction = XMFLOAT2( 0.0f, 1.0f );	// куда дует, нормированное (x, z)
+	DirectX::XMFLOAT2 direction = DirectX::XMFLOAT2( 0.0f, 1.0f );	// куда дует, нормированное (x, z)
 	float strength = 0.0f;
 	float speed = 0.0f;			// м/с
 	float gustMin = 0.0f;
@@ -57,26 +57,26 @@ public:
 	// Мировая матрица объекта (b1) и матрица нормалей к ней — обратная транспонированная: нормали остаются
 	// перпендикулярными поверхности и при неравномерном масштабе
 	// lodDither — доля смены LOD дизерингом у экземпляра в полосе перехода (Shaders/lod_dither.sh), 0 — вне её
-	void setPerObjectBuffer( const XMMATRIX& world, float lodDither = 0.0f );
+	void setPerObjectBuffer( const DirectX::XMMATRIX& world, float lodDither = 0.0f );
 
 private:
 	struct alignas( 16 ) ShaderFrameConstant
 	{
-		XMMATRIX view;
-		XMMATRIX viewInverse;
-		XMMATRIX projection;
-		XMMATRIX viewProjection;
-		XMFLOAT3 cameraPosition;
+		DirectX::XMMATRIX view;
+		DirectX::XMMATRIX viewInverse;
+		DirectX::XMMATRIX projection;
+		DirectX::XMMATRIX viewProjection;
+		DirectX::XMFLOAT3 cameraPosition;
 		float gameTime;
-		XMFLOAT3 viewDirection;
+		DirectX::XMFLOAT3 viewDirection;
 		float deltaTime;
 		float lightsCount;
-		XMFLOAT3 lodOrigin;
+		DirectX::XMFLOAT3 lodOrigin;
 		float skyLightScale;
 		float aerialPerspectiveDistance;
 		float aerialPerspectiveScale;
 		float skyScale;
-		XMFLOAT2 windDirection;
+		DirectX::XMFLOAT2 windDirection;
 		float windStrength;
 		float windSpeed;
 		float windGustMin;
@@ -90,10 +90,10 @@ private:
 	// Раскладка — cbuffer WorldBuffer в Shaders/common.vs
 	struct alignas( 16 ) ShaderModelConstant
 	{
-		XMMATRIX world;
-		XMMATRIX worldInverseTranspose;
+		DirectX::XMMATRIX world;
+		DirectX::XMMATRIX worldInverseTranspose;
 		float lodDither;
-		XMFLOAT3 padding;
+		DirectX::XMFLOAT3 padding;
 	};
 	static_assert( sizeof( ShaderModelConstant ) == 144, "WorldBuffer layout" );
 

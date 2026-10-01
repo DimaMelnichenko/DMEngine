@@ -7,13 +7,13 @@
 class DMFrustum
 {
 public:
-	explicit DMFrustum( const XMMATRIX& viewProjection = XMMatrixIdentity() );
+	explicit DMFrustum( const DirectX::XMMATRIX& viewProjection = DirectX::XMMatrixIdentity() );
 
 	// Пересекает ли frustum (или содержит) ограничивающий параллелепипед, заданный углами в мировых координатах
-	bool checkBox( const XMFLOAT3& boxMin, const XMFLOAT3& boxMax ) const;
+	bool checkBox( const DirectX::XMFLOAT3& boxMin, const DirectX::XMFLOAT3& boxMax ) const;
 	// Шесть нормированных плоскостей (a, b, c, d) с нормалями внутрь: точка p внутри, если a·x + b·y + c·z + d >= 0
-	const XMVECTOR* planes() const { return m_planes; }
+	const DirectX::XMVECTOR* planes() const { return m_planes; }
 
 private:
-	XMVECTOR m_planes[6];
+	DirectX::XMVECTOR m_planes[6];
 };

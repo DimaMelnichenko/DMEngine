@@ -2,6 +2,8 @@
 #include <random>
 #include "System.h"
 
+using namespace DirectX;
+
 
 DMParticleSystem::DMParticleSystem() :
 	SceneObject( "Particles" )

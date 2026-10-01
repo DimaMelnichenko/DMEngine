@@ -33,18 +33,18 @@ public:
 	void update( float seconds = 0.0f );
 	// Пропускание атмосферы от земли к светилу index (0 — солнце, 1 — луна; SkyAtmosphere::sunTransmittance) — после
 	// update(): на него умножается свет светила с atmosphereSunLight
-	void setAtmosphereTransmittance( int index, const XMFLOAT3& transmittance );
+	void setAtmosphereTransmittance( int index, const DirectX::XMFLOAT3& transmittance );
 	// Упаковка буфера источников, на GPU — если он изменился, и в слот; возвращает число источников в буфере
 	uint32_t setBuffer( int8_t slot );
 	// Солнце — первый включённый направленный источник: направление на свет (нормированное) и яркость над
 	// атмосферой. Включённых источников нет — запасной свет, как в setBuffer; есть, но не направленные — яркость 0 (ночь)
-	void directionalLight( XMFLOAT3& direction, XMFLOAT3& color ) const;
+	void directionalLight( DirectX::XMFLOAT3& direction, DirectX::XMFLOAT3& color ) const;
 	// Луна — включённый направленный с atmosphereSunLightIndex 1: направление на неё и яркость над атмосферой;
 	// false — луны у уровня нет
-	bool moonLight( XMFLOAT3& direction, XMFLOAT3& color ) const;
+	bool moonLight( DirectX::XMFLOAT3& direction, DirectX::XMFLOAT3& color ) const;
 	// Источник каскадных теней: солнце, пока оно над горизонтом, иначе луна над горизонтом; у него — тени. Индекс в
 	// буфере источников (−1 — теней нет), направление на него и настройки каскадов
-	int shadowLight( XMFLOAT3& direction, DMLight::ShadowSettings& settings ) const;
+	int shadowLight( DirectX::XMFLOAT3& direction, DMLight::ShadowSettings& settings ) const;
 	// Освещённость от солнца над атмосферой, лк (яркость его цвета × интенсивность): на неё умножаются запечённые
 	// для солнца 1 лк небо и освещение окружением (cb_skyLightScale)
 	float sunIlluminance() const;
@@ -63,7 +63,7 @@ public:
 
 private:
 	// Направление запасного света, когда источников нет
-	static XMFLOAT3 fallbackDirection();
+	static DirectX::XMFLOAT3 fallbackDirection();
 	// Источники буфера по порядку: включённые, кроме светила атмосферы, свет которого у земли меньше
 	// negligibleFraction от самого яркого из них (днём — луна, ночью — солнце под горизонтом): каждый источник в буфере
 	// шейдеры освещения считают в каждом пикселе
@@ -72,7 +72,7 @@ private:
 	int bufferIndex( const DMLight* light ) const;
 	static constexpr float negligibleFraction = 1e-5f;
 	// Цвет светила атмосферы в буфере: яркость, у земли — с пропусканием атмосферы к нему
-	XMFLOAT3 sunRadiance( const DMLight& light ) const;
+	DirectX::XMFLOAT3 sunRadiance( const DMLight& light ) const;
 	void createProperties( const DMLight& light, uint32_t index );
 
 	LightList m_light_list;
@@ -80,26 +80,26 @@ private:
 	struct LightControls
 	{
 		std::unique_ptr<PropertyContainer> properties;
-		XMFLOAT2 rotation;	// Pitch / Yaw, по которым последний раз задано направление
+		DirectX::XMFLOAT2 rotation;	// Pitch / Yaw, по которым последний раз задано направление
 	};
 	std::vector<LightControls> m_controls;
 	PropertyContainer m_properties;
 	std::unique_ptr<SunPosition> m_sunPosition;
 	int m_sunPositionLight = -1;	// источник, направление которого задаёт m_sunPosition: первый направленный
 	int m_moonPositionLight = -1;	// луна, которую ведёт m_sunPosition: направленный с atmosphereSunLightIndex 1
-	XMFLOAT3 m_atmosphereTransmittance[2] = { { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f } };
+	DirectX::XMFLOAT3 m_atmosphereTransmittance[2] = { { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f } };
 
 	// Раскладка — struct Light в Shaders/lighting.sh
 	struct alignas( 16 ) LightBuffer
 	{
-		XMFLOAT3 position;
+		DirectX::XMFLOAT3 position;
 		int type;
-		XMFLOAT3 direction;		// куда идёт свет, нормированное
+		DirectX::XMFLOAT3 direction;		// куда идёт свет, нормированное
 		float attenuationRadius;
-		XMFLOAT3 color;
+		DirectX::XMFLOAT3 color;
 		float cosOuterCone;
 		float cosInnerCone;
-		XMFLOAT3 padding;
+		DirectX::XMFLOAT3 padding;
 	};
 	static_assert( sizeof( LightBuffer ) == 64, "LightBuffer must match struct Light in Shaders/lighting.sh" );
 	DMStructuredBuffer m_structBuffer;

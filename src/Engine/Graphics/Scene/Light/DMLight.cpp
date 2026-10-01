@@ -1,6 +1,8 @@
 #include "DMLight.h"
 #include <algorithm>
 
+using namespace DirectX;
+
 
 DMLight::DMLight( LightType type ) :
 	m_type( type )

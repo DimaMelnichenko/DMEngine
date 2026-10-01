@@ -9,6 +9,8 @@
 #include "Logger\Logger.h"
 #include "Texture\ImageFile.h"
 
+using namespace DirectX;
+
 namespace
 {
 

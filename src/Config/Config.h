@@ -12,10 +12,10 @@ public:
 	// Параметры командной строки поверх settings.ini: -camera x,y,z[,pitch,yaw], -level имя, -nogui, -nomouse, -remote
 	void parseCommandLine( const std::string& commandLine );
 
-	bool fullScreen() const		{ return m_FullScreen; }
-	bool vSync() const			{ return m_VSync; }
-	float ScreenDepth() const	{ return m_ScreenDepth; }
-	float ScreenNear() const	{ return m_ScreenNear; }
+	bool fullScreen() const		{ return m_fullScreen; }
+	bool vSync() const			{ return m_vSync; }
+	float screenDepth() const	{ return m_screenDepth; }
+	float screenNear() const	{ return m_screenNear; }
 	float screenWidth() const	{ return m_screenWidth; }
 	float screenHeight()  const	{ return m_screenHeight; }	
 	float backBufferWidth() const
@@ -33,8 +33,8 @@ public:
 	// GPU-based validation debug-слоя D3D12 в Debug-сборке (GpuValidation; медленно). Нет строки — включена
 	bool gpuValidation() const				{ return m_gpuValidation; }
 	// Стартовая камера: положение и поворот (тангаж, рыскание) в градусах, секция [Camera]
-	const XMFLOAT3& cameraPosition() const	{ return m_cameraPosition; }
-	const XMFLOAT2& cameraRotation() const	{ return m_cameraRotation; }
+	const DirectX::XMFLOAT3& cameraPosition() const	{ return m_cameraPosition; }
+	const DirectX::XMFLOAT2& cameraRotation() const	{ return m_cameraRotation; }
 	// Уровень из таблицы Levels (секция [Level], Name); пустое имя — первый уровень таблицы
 	const std::string& levelName() const	{ return m_levelName; }
 	// Показывать окна ImGui; -nogui скрывает их, например для снимков экрана
@@ -47,10 +47,10 @@ public:
 	bool remoteControl() const				{ return m_remoteControl; }
 
 private:
-	bool m_FullScreen = false;
-	bool m_VSync = true;
-	float m_ScreenDepth = 2000.0f;
-	float m_ScreenNear = 1.0f;
+	bool m_fullScreen = false;
+	bool m_vSync = true;
+	float m_screenDepth = 2000.0f;
+	float m_screenNear = 1.0f;
 	float m_screenWidth = 1024.0f;
 	float m_screenHeight = 576.0f;
 	float m_backBufferWidth = 1920.0f;
@@ -58,8 +58,8 @@ private:
 	uint32_t m_shadowMapResolution = 2048;
 	bool m_depthPrepass = true;
 	bool m_gpuValidation = true;
-	XMFLOAT3 m_cameraPosition = XMFLOAT3( 0.0f, 0.0f, -1.0f );
-	XMFLOAT2 m_cameraRotation = XMFLOAT2( 0.0f, 0.0f );
+	DirectX::XMFLOAT3 m_cameraPosition = DirectX::XMFLOAT3( 0.0f, 0.0f, -1.0f );
+	DirectX::XMFLOAT2 m_cameraRotation = DirectX::XMFLOAT2( 0.0f, 0.0f );
 	std::string m_levelName;
 	bool m_showGUI = true;
 	bool m_mouseLook = true;

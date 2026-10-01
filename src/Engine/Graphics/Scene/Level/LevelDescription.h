@@ -15,9 +15,9 @@ struct LevelDescription
 	struct ModelInstance
 	{
 		uint32_t model = 0;
-		XMFLOAT3 position = XMFLOAT3( 0.0f, 0.0f, 0.0f );
-		XMFLOAT4 rotation = XMFLOAT4( 0.0f, 0.0f, 0.0f, 1.0f );	// кватернион x, y, z, w, как rotation узла glTF
-		XMFLOAT3 scale = XMFLOAT3( 1.0f, 1.0f, 1.0f );
+		DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );
+		DirectX::XMFLOAT4 rotation = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 1.0f );	// кватернион x, y, z, w, как rotation узла glTF
+		DirectX::XMFLOAT3 scale = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	};
 
 	// Модель слоя расстановки, её вес и тень (ScatterLayerModels)

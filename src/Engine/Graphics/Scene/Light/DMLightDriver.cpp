@@ -4,6 +4,8 @@
 #include <cstring>
 #include "Logger\Logger.h"
 
+using namespace DirectX;
+
 namespace
 {
 

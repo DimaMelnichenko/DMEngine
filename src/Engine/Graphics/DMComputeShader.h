@@ -22,7 +22,7 @@ private:
 	struct alignas( 16 ) ConstantType
 	{
 		float groupDim;
-		XMFLOAT2 rect;
+		DirectX::XMFLOAT2 rect;
 		float elapsedTime;
 	};
 

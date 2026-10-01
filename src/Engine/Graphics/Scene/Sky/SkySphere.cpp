@@ -3,6 +3,8 @@
 #include "System.h"
 #include "ConstantBuffers.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

@@ -2,6 +2,8 @@
 #include <DirectXPackedVector.h>
 #include "System.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

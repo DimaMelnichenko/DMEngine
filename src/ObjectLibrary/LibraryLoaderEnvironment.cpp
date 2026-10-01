@@ -5,6 +5,8 @@
 #include "Logger\Logger.h"
 #include "Utils\utilites.h"
 
+using namespace DirectX;
+
 // Свет и окружение уровня: строки LevelLights, SunPosition, SkyAtmosphere, Wind, HDRIBackdrop, PostProcessSettings —
 // загрузка в LevelDescription и сохранение правок из GUI («Save level environment»)
 

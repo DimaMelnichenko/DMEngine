@@ -4,6 +4,8 @@
 #include "D3D\DMD3D.h"
 #include "Shaders\lod_transition.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

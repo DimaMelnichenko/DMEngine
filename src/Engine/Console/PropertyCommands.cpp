@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include "Utils\utilites.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

@@ -14,15 +14,15 @@ constexpr uint32_t maxRenderViews = 5;
 // камера, ещё четыре — каскады теней солнца (ShadowCascades). Объекты сцены видят кадр только через вид
 struct RenderView
 {
-	XMMATRIX view;
-	XMMATRIX projection;
-	XMMATRIX viewProjection;
-	XMMATRIX viewInverse;
-	XMFLOAT3 position;
-	XMFLOAT3 direction;
+	DirectX::XMMATRIX view;
+	DirectX::XMMATRIX projection;
+	DirectX::XMMATRIX viewProjection;
+	DirectX::XMMATRIX viewInverse;
+	DirectX::XMFLOAT3 position;
+	DirectX::XMFLOAT3 direction;
 	// Откуда считаются LOD и морфинг террейна. У главного вида — положение камеры; у каскада теней тоже положение
 	// главной камеры: иначе тень строилась бы по другой геометрии, и поверхности затеняли бы сами себя
-	XMFLOAT3 lodOrigin;
+	DirectX::XMFLOAT3 lodOrigin;
 	float nearPlane = 0.0f;	// расстояния до ближней и дальней плоскостей, м (глубина в буфере — обратная: 1 у ближней)
 	float farPlane = 0.0f;
 	DMFrustum frustum;
@@ -38,8 +38,8 @@ struct RenderView
 		RenderView view;
 		camera.viewMatrix( &view.view );
 		camera.projectionMatrix( &view.projection );
-		view.viewProjection = XMMatrixMultiply( view.view, view.projection );
-		view.viewInverse = XMMatrixInverse( nullptr, view.view );
+		view.viewProjection = DirectX::XMMatrixMultiply( view.view, view.projection );
+		view.viewInverse = DirectX::XMMatrixInverse( nullptr, view.view );
 		view.position = camera.position();
 		camera.viewDirection( &view.direction );
 		view.lodOrigin = view.position;

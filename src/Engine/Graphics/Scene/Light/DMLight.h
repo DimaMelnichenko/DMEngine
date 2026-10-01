@@ -35,19 +35,19 @@ public:
 	LightType type( ) const;
 
 	// Цвет (линейный) и интенсивность раздельно, как в glTF и UE; в шейдер идёт их произведение — radiance()
-	void setColor( const XMFLOAT3& );
-	XMFLOAT3 color() const;
+	void setColor( const DirectX::XMFLOAT3& );
+	DirectX::XMFLOAT3 color() const;
 	void setIntensity( float );
 	float intensity() const;
-	XMFLOAT3 radiance() const;
+	DirectX::XMFLOAT3 radiance() const;
 
 	// Положение точечного и прожектора, м
-	void setPosition( const XMFLOAT3& );
-	const XMFLOAT3& position() const;
+	void setPosition( const DirectX::XMFLOAT3& );
+	const DirectX::XMFLOAT3& position() const;
 
 	// Направление, в котором идёт свет (направленный и прожектор); хранится нормированным
-	void setDirection( const XMFLOAT3& );
-	XMFLOAT3 direction() const;
+	void setDirection( const DirectX::XMFLOAT3& );
+	DirectX::XMFLOAT3 direction() const;
 
 	// Радиус, на котором свет точечного и прожектора плавно спадает до нуля, м; 0 — без обрезания
 	void setAttenuationRadius( float );
@@ -77,11 +77,11 @@ public:
 
 private:
 	bool m_enabled = true;
-	XMFLOAT3 m_color = { 1.0f, 1.0f, 1.0f };
+	DirectX::XMFLOAT3 m_color = { 1.0f, 1.0f, 1.0f };
 	float m_intensity = 1.0f;
 	LightType m_type;
-	XMFLOAT3 m_position = { 0.0f, 0.0f, 0.0f };
-	XMFLOAT3 m_direction = { 0.0f, -1.0f, 0.0f };
+	DirectX::XMFLOAT3 m_position = { 0.0f, 0.0f, 0.0f };
+	DirectX::XMFLOAT3 m_direction = { 0.0f, -1.0f, 0.0f };
 	float m_attenuationRadius = 0.0f;
 	float m_innerConeAngle = 0.0f;	// как в KHR_lights_punctual
 	float m_outerConeAngle = 45.0f;

@@ -1,6 +1,8 @@
 #include "ColorMaterial.h"
 #include "Shaders\slots.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

@@ -6,6 +6,8 @@
 #include "D3D\DMD3D.h"
 #include "System.h"
 
+using namespace DirectX;
+
 
 GUI::GUI()
 {

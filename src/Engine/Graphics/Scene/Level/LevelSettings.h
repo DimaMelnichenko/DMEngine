@@ -58,7 +58,7 @@ struct PostProcessSettings
 	float exposureCompensation = 0.0f;	// EV: +1 — вдвое ярче
 	// Exposure Compensation Curve: ключи (EV100 сцены, поправка EV) по возрастанию EV100, между ними — линейно,
 	// за крайними — значение крайнего; пусто — без кривой. Только для автоэкспозиции
-	std::vector<XMFLOAT2> exposureCompensationCurve;
+	std::vector<DirectX::XMFLOAT2> exposureCompensationCurve;
 	float minEV100 = -10.0f;			// пределы автоэкспозиции и диапазон гистограммы
 	float maxEV100 = 20.0f;
 	float histogramLowPercent = 10.0f;	// процентили гистограммы: темнее и ярче — не в среднем
@@ -77,13 +77,13 @@ const char* tonemapperName( Tonemapper tonemapper );
 MeteringMode meteringModeFromName( const std::string& name );
 const char* meteringModeName( MeteringMode mode );
 // Кривая в базе — текст «EV100,EV; EV100,EV; …»: ключи сортируются, лишние сверх maxExposureCurveKeys отбрасываются
-std::vector<XMFLOAT2> curveFromText( const std::string& text );
-std::string curveText( const std::vector<XMFLOAT2>& curve );
+std::vector<DirectX::XMFLOAT2> curveFromText( const std::string& text );
+std::string curveText( const std::vector<DirectX::XMFLOAT2>& curve );
 
 // Строка Wind
 struct WindSettings
 {
-	XMFLOAT3 direction = XMFLOAT3( 0.0f, 0.0f, 1.0f );	// куда дует, горизонтально (y не учитывается)
+	DirectX::XMFLOAT3 direction = DirectX::XMFLOAT3( 0.0f, 0.0f, 1.0f );	// куда дует, горизонтально (y не учитывается)
 	float strength = 0.0f;			// сила изгиба: сдвиг верха растения высотой h — strength · WindWeight · порыв · h²
 	float speed = 4.0f;				// скорость волн порывов, м/с
 	float minGustAmount = 0.3f;		// порыв между волнами и на гребне волны — доли силы (Min / Max Gust Amount в UE)
@@ -116,7 +116,7 @@ struct ScatterLayerSettings
 	float farFade = 0.0f;
 	float sizeMultiplier = 1.0f;
 	float jitter = 0.0f;			// смещение внутри ячейки, доля шага
-	XMFLOAT3 rotationRange = XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
+	DirectX::XMFLOAT3 rotationRange = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
 	bool alignToTerrain = false;	// ось Y инстанса по нормали террейна
 	bool castShadow = false;		// слой отбрасывает тень солнца (Cast Shadow в UE)
 };

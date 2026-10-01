@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <sstream>
 
+using namespace DirectX;
+
 namespace GS
 {
 

@@ -54,7 +54,7 @@ struct MeshBatch
 	uint32_t indexCount = 0;					// диапазон в общем буфере VertexPool
 	uint32_t indexOffset = 0;
 	uint32_t vertexOffset = 0;
-	XMMATRIX world = XMMatrixIdentity();
+	DirectX::XMMATRIX world = DirectX::XMMatrixIdentity();
 	MaterialRenderState state;					// режим и двусторонность материала
 	float distance = 0.0f;						// до вида — для сортировки полупрозрачных
 	// Постоянный номер «этот меш с этими параметрами» (у моделей — модель и LOD): по нему одинаковые меши
@@ -98,7 +98,7 @@ public:
 		MeshBatch& added = m_meshes.back();
 		added.owner = m_owner;
 		added.ownerOrder = m_order;
-		added.mirrored = XMVectorGetX( XMMatrixDeterminant( batch.world ) ) < 0.0f;
+		added.mirrored = DirectX::XMVectorGetX( DirectX::XMMatrixDeterminant( batch.world ) ) < 0.0f;
 	}
 
 	void addCustom( uint32_t passMask, float distance = 0.0f )

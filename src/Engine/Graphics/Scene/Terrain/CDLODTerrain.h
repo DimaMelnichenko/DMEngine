@@ -46,7 +46,7 @@ private:
 
 	struct PatchInstance
 	{
-		XMFLOAT2 origin;
+		DirectX::XMFLOAT2 origin;
 		float size;
 		float level;
 	};
@@ -57,8 +57,8 @@ private:
 		float heightMultiplier;
 		float heightOffset;
 		float gridDim;
-		XMFLOAT4 morphConsts[maxLevels];
-		XMFLOAT4 layerScale[TerrainMaterial::splatSlices];
+		DirectX::XMFLOAT4 morphConsts[maxLevels];
+		DirectX::XMFLOAT4 layerScale[TerrainMaterial::splatSlices];
 		float texelSize;
 		float triplanarSharpness;
 		float heightBlendDepth;
@@ -71,8 +71,8 @@ private:
 
 	struct NodeBox
 	{
-		XMFLOAT3 min;
-		XMFLOAT3 max;
+		DirectX::XMFLOAT3 min;
+		DirectX::XMFLOAT3 max;
 	};
 
 	bool loadSettings( uint32_t terrainId, float& heightMultiplier, std::string& splatMap );
@@ -94,11 +94,11 @@ private:
 	float m_heightMultiplier = 1.0f;
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;
-	std::vector<std::vector<XMFLOAT2>> m_heightBounds;	// по уровням: нормированные min / max высоты узлов
+	std::vector<std::vector<DirectX::XMFLOAT2>> m_heightBounds;	// по уровням: нормированные min / max высоты узлов
 	Texture m_heightMapTexture;	// копия t_heightmap в R32_FLOAT с полной цепочкой мипов
 	ShaderView m_heightMap;
 	float m_ranges[maxLevels] = {};
-	XMFLOAT4 m_morphConsts[maxLevels] = {};
+	DirectX::XMFLOAT4 m_morphConsts[maxLevels] = {};
 
 	// Выбранные патчи на каждый вид кадра (RenderView::index): главный и каскады теней. Деление узлов — от lodOrigin,
 	// общего у всех видов, frustum вида только отсекает, поэтому рельеф в тени и на экране один и тот же

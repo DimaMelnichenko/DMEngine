@@ -29,8 +29,8 @@ public:
 
 	struct ParticleParams
 	{
-		XMFLOAT4 heightMultiplier;
-		XMFLOAT4 highOfDeath;
+		DirectX::XMFLOAT4 heightMultiplier;
+		DirectX::XMFLOAT4 highOfDeath;
 	};
 
 private:
@@ -39,9 +39,9 @@ private:
 
 	struct ParticleData
 	{
-		XMFLOAT3 position;
-		XMFLOAT3 velocity;
-		XMFLOAT2 dummy;
+		DirectX::XMFLOAT3 position;
+		DirectX::XMFLOAT3 velocity;
+		DirectX::XMFLOAT2 dummy;
 	};
 
 private:
@@ -49,7 +49,7 @@ private:
 	Buffer m_structuredBuffer;
 	ShaderView m_srvParticles;
 	StorageView m_uavParticles;
-	XMMATRIX m_world_matrix;
+	DirectX::XMMATRIX m_world_matrix;
 	Buffer m_constantBuffer;
 
 	DMComputeShader m_computeShader;

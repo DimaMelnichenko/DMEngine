@@ -33,8 +33,8 @@ private:
 	// Константный буфер b2 (PS и VS), раскладка как у PBRMaterialBuffer в Shaders/pbr_material.sh
 	struct alignas( 16 ) PSParam
 	{
-		XMFLOAT4 baseColorFactor;
-		XMFLOAT3 emissiveFactor;
+		DirectX::XMFLOAT4 baseColorFactor;
+		DirectX::XMFLOAT3 emissiveFactor;
 		float metallic;
 		float roughness;
 		float normalScale;
@@ -43,7 +43,7 @@ private:
 		float alphaCutoff;
 		float windWeight;	// отклик на ветер уровня; вершинному шейдеру (Shaders/wind.sh)
 		float padding[2];
-		XMFLOAT3 diffuseTransmissionColorFactor;
+		DirectX::XMFLOAT3 diffuseTransmissionColorFactor;
 		float diffuseTransmissionFactor;
 		// Ветер дерева (материал PBRTree, define WIND_TREE, Shaders/wind.sh): углы — радианы при силе ветра 1, частоты — Гц
 		float windGlobalAngle;

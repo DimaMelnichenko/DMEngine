@@ -9,6 +9,8 @@
 #include "ConstantBuffers.h"
 #include "Shaders\lod_transition.h"
 
+using namespace DirectX;
+
 namespace GS
 {
 

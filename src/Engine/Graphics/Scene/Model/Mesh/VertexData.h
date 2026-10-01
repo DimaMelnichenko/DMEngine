@@ -12,18 +12,18 @@ public:
 
 	struct PTN
 	{
-		XMFLOAT3 position;
-		XMFLOAT2 texture;
-		XMFLOAT3 normal;
+		DirectX::XMFLOAT3 position;
+		DirectX::XMFLOAT2 texture;
+		DirectX::XMFLOAT3 normal;
 	};
 
 	struct PTNTB
 	{
-		XMFLOAT3 position;
-		XMFLOAT2 texture;
-		XMFLOAT3 normal;
-		XMFLOAT3 tangent;
-		XMFLOAT3 binormal;
+		DirectX::XMFLOAT3 position;
+		DirectX::XMFLOAT2 texture;
+		DirectX::XMFLOAT3 normal;
+		DirectX::XMFLOAT3 tangent;
+		DirectX::XMFLOAT3 binormal;
 	};
 
 	// Данные ветра дерева на вершину (второй поток VertexPool, слот 1) — как входы Games wind SpeedTree: начало ветви
@@ -31,9 +31,9 @@ public:
 	// меша. У мешей без данных ветра — нули. Раскладка — входы WIND_TREE в Shaders/LightShader.vs
 	struct Wind
 	{
-		XMFLOAT4 branch1;	// xyz — начало ветви на стволе (in_wind_branch1_origin), w — вес (in_wind_branch1_weight)
-		XMFLOAT4 branch2;	// то же для веточки (branch2)
-		XMFLOAT2 weights;	// x — доля высоты дерева (общее качание), y — вес ряби (in_wind_ripple)
+		DirectX::XMFLOAT4 branch1;	// xyz — начало ветви на стволе (in_wind_branch1_origin), w — вес (in_wind_branch1_weight)
+		DirectX::XMFLOAT4 branch2;	// то же для веточки (branch2)
+		DirectX::XMFLOAT2 weights;	// x — доля высоты дерева (общее качание), y — вес ряби (in_wind_ripple)
 	};
 	static_assert( sizeof( Wind ) == 40, "VertexData::Wind layout: file block WIND" );
 

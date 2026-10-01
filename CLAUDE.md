@@ -442,9 +442,16 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 ## Соглашения
 
 - Include-пути: `src`, `src/3rdParty`, `src/Common`, `src/Engine/Graphics`, `src/Engine/Graphics/Common`,
-  `src/Engine/Graphics/Scene`, `src/Engine/Graphics/Scene/Common` и корень проекта. Поэтому встречается `#include "Utils\DMTimer.h"`
+  `src/Engine/Graphics/Scene` и корень проекта. Поэтому встречается `#include "Utils\DMTimer.h"`
   (из `src/Common`) или `"Materials\Material.h"` (из `Scene`). В include используются обратные слеши.
-- Большая часть графики находится в пространстве имён `GS`, классы с префиксом `DM`.
+- Именование: большая часть графики — в пространстве имён `GS`, его достаточно, поэтому новые классы — без префикса
+  (`Scene`, `Renderer`, `Material`, `ShaderProgram`); методы и свободные функции — camelCase (`initialize`, `setPass`),
+  члены — `m_` + camelCase, типы и перечисления — с заглавной (`BlendMode::opaque`). Старые имена — префикс `DM`
+  (`DMModel`, `DMMesh`, `DMTexture`, `DMCamera`, `DMLight`, `DMD3D`, `DMGraphics`) и методы с заглавной (`Initialize`,
+  `Frame`, `HandleMsg`), — переименовываются, когда класс правится, а не отдельным коммитом на всё; имя, занятое типом
+  слоя GPU (`Texture`, `Buffer` в `D3D/GpuResources.h`), не берётся (у текстуры хранилища — например, `TextureAsset`).
+- `DirectX` (DirectXMath, DirectXTex, DirectXCollision): в заголовках — с квалификацией (`DirectX::XMFLOAT3`), в `.cpp` —
+  `using namespace DirectX;` после include; `using namespace` в заголовках не пишется.
 - Все исходники и шейдеры в **UTF-8 без BOM**, концы строк LF (закреплено в `.editorconfig`).
   Компилятор запускается с `/utf-8`, поэтому строковые литералы тоже в UTF-8 — так они попадают в `log.txt`
   и ImGui. Исключение: batch-файлы (`*.cmd`) с CRLF, иначе cmd ошибается на метках (`.editorconfig`, `.gitattributes`).

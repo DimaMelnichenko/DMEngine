@@ -37,7 +37,7 @@ enum class ValueType : int
 class Property
 {
 private:
-	using Container = std::variant<bool, float, XMFLOAT2, XMFLOAT3, XMFLOAT4, int32_t, uint32_t>;
+	using Container = std::variant<bool, float, DirectX::XMFLOAT2, DirectX::XMFLOAT3, DirectX::XMFLOAT4, int32_t, uint32_t>;
 public:
 	Property();
 

@@ -1,5 +1,7 @@
 #include "DMFrustum.h"
 
+using namespace DirectX;
+
 DMFrustum::DMFrustum( const XMMATRIX& viewProjection )
 {
 	XMFLOAT4X4 m;

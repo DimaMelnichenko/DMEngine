@@ -9,6 +9,8 @@
 #include "Engine\Console\PropertyCommands.h"
 #include "Utils\utilites.h"
 
+using namespace DirectX;
+
 #define TIME_POINT() std::chrono::high_resolution_clock::now()
 
 #define TIME_DIFF( start, end ) std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count()
@@ -88,7 +90,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	// Основная камера: ближняя и дальняя плоскости — ScreenNear / ScreenDepth в settings.ini (от дальней зависят сфера
 	// неба и слои воздушной перспективы), стартовое положение — секция [Camera] или параметр -camera
 	DMCamera& camera = m_cameraPool["main"];
-	camera.Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, m_config.ScreenNear(), m_config.ScreenDepth() );
+	camera.Initialize( DMCamera::CT_PERSPECTIVE, m_screenWidth, m_screenHeight, m_config.screenNear(), m_config.screenDepth() );
 	camera.SetPosition( m_config.cameraPosition().x, m_config.cameraPosition().y, m_config.cameraPosition().z );
 	camera.SetRotation( m_config.cameraRotation().x, m_config.cameraRotation().y, 0.0f );
 

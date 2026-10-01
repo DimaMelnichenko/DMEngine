@@ -48,11 +48,11 @@ public:
 
 		struct MyFormatVertex
 		{
-			XMFLOAT3 position;			
-			XMFLOAT3 normal;
-			XMFLOAT2 texture;
-			XMFLOAT3 tangent;
-			XMFLOAT3 binormal;
+			DirectX::XMFLOAT3 position;			
+			DirectX::XMFLOAT3 normal;
+			DirectX::XMFLOAT2 texture;
+			DirectX::XMFLOAT3 tangent;
+			DirectX::XMFLOAT3 binormal;
 		};
 
 		// Read in the vertex data.
