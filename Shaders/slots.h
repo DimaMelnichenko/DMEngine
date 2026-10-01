@@ -44,13 +44,16 @@
 #define SLOT_SHADOW_MAP		104	// карта теней солнца: массив каскадов (shadows.sh, ShadowCascades)
 #define SLOT_EXPOSURE		105	// экспозиция кадра: pre-exposure и новая (exposure.sh, PostProcess)
 #define SLOT_AERIAL_PERSPECTIVE	106	// объём воздушной перспективы (aerial_perspective.sh, SkyAtmosphere)
+// Глубина сцены (SceneDepthTexture в UE): обратная, R32_FLOAT — в проходе opaqueDepthRead, где буфер глубины только
+// для чтения (Renderer::executePass, SceneTargets::depthView)
+#define SLOT_SCENE_DEPTH	107
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	7
+#define SLOT_SCENE_COUNT	8
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту
 #define DM_BINDING_UAV_BASE		17	// u0…u7 → 17…24
-#define DM_BINDING_SCENE_BASE	25	// t100…t106 → 25…31
-#define DM_BINDING_COUNT		32
+#define DM_BINDING_SCENE_BASE	25	// t100…t107 → 25…32
+#define DM_BINDING_COUNT		36	// кратно 4 (uint4 в bindless.sh)
 
 // Сэмплеры — статические в root signature: s0…s7 общие (samplers.sh, DMSamplerState)
 #define SLOT_SAMPLER_SHADOW	DM_REGISTER( s, 8 )		// сравнение глубины для карты теней (PCF 2×2)

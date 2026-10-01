@@ -37,8 +37,6 @@ struct ShaderPhaseOptions
 	// дизерингом (как r.EarlyZPassOnlyMaterialMasking в UE)
 	bool depthFromPrepass = false;
 	bool lodDither = false;			// экземпляр в полосе смены LOD: дизеринг (LOD_DITHER, Shaders/lod_dither.sh)
-	// Глубина каскадов теней, а не depth prepass: у импостера в тени глубина — запечённой поверхности (смещение глубины)
-	bool shadowDepth = false;
 };
 
 }

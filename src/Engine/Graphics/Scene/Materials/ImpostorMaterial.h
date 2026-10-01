@@ -13,7 +13,7 @@ struct BakeContext;
 // с frames² направлений верхней полусферы (сетка на полуоктаэдре, Shaders/impostor.sh) в массивы текстур — цвет и
 // покрытие, нормаль модели и доля пропускания, глубина поверхности, — с мипами, сохраняющими покрытие хвои. В кадре —
 // карточка к виду с тремя ближайшими кадрами (Shaders/impostor.vs / .ps), освещённая как материалы в точке запечённой
-// поверхности; в каскадах теней глубина пикселя — тоже её (pixel depth offset), так что крона затеняет себя. Это
+// поверхности; глубина пикселя — тоже её (pixel depth offset): дерево не уходит в склон, крона затеняет себя. Это
 // последний LOD варианта слоя расстановки (Scatterer: ScatterLayers.impostor_distance): экземпляры из пула расстановки,
 // смена LOD — дизерингом. Материал — в хранилище System::materials() (прогрев пайплайнов — как у остальных), текстуры —
 // в System::textures()
@@ -38,27 +38,30 @@ public:
 	std::vector<int> depthPhases() const override;
 	// Экземпляры — всегда из пула расстановки
 	bool enablePlacedInstances() override { return true; }
+	// Глубина пикселя — запечённой поверхности: после depth prepass видимость — по глубине сцены (проход opaqueDepthRead)
+	bool readsSceneDepth() const override { return true; }
 
 private:
 	// cbuffer ImpostorBuffer в Shaders/impostor.sh
 	struct alignas( 16 ) Params
 	{
 		DirectX::XMFLOAT4 bounds;			// сфера модели: центр в её координатах, радиус
+		DirectX::XMFLOAT4 extents;			// половины ящика LOD0 (центр — центр сферы)
 		DirectX::XMFLOAT4 transmission;		// цвет пропускания (множитель альбедо), множитель доли
 		uint32_t frames;
 		float alphaCutoff;
 		float roughness;
 		float padding;
 	};
-	static_assert( sizeof( Params ) == 48, "ImpostorBuffer layout" );
+	static_assert( sizeof( Params ) == 64, "ImpostorBuffer layout" );
 
 	// Вид кадра запекания frame (номер по сторонам сетки): ортография на сферу модели со стороны его направления
 	RenderView frameView( uint32_t x, uint32_t y ) const;
 
-	// Фазы: цвет — [вершинный с LOD_DITHER][отсечение по покрытию][отсечение дизерингом], глубина — [LOD_DITHER][тени:
-	// глубина запечённой поверхности]
+	// Фазы: цвет — [вершинный с LOD_DITHER][без depth prepass: ALPHA_MASK и глубина поверхности; иначе — видимость по
+	// глубине сцены][отсечение дизерингом], глубина — [LOD_DITHER]
 	int m_colorPhases[2][2][2] = {};
-	int m_depthPhases[2][2] = {};
+	int m_depthPhases[2] = {};
 	Params m_params = {};
 	uint32_t m_colorTexture = 0;
 	uint32_t m_normalTexture = 0;

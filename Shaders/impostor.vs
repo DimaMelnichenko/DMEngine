@@ -1,9 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Импостер (ImpostorMaterial, Shaders/impostor.sh): экземпляр расстановки (INST_POS, INST_SCALE, INST_ROTATE) —
-// карточка в плоскости вида через центр сферы модели, размером в её диаметр. Кадры — три ближайших к направлению на
+// карточка в плоскости вида через центр сферы модели, размером в проекцию ящика модели на эту плоскость (у ели — вдвое
+// меньше квадрата на сферу: меньше пикселей у prepass, теней и цвета). Кадры — три ближайших к направлению на
 // зрителя в координатах модели (у перспективного вида — к камере, у ортографического каскада теней — против света):
-// UV точки карточки в каждом — её проекция на плоскость кадра. У каскада теней растеризуется та же карточка, отодвинутая
-// к свету на радиус: смещение глубины в impostor.ps только отодвигает пиксели. С LOD_DITHER — доля смены LOD
+// UV точки карточки в каждом — её проекция на плоскость кадра. Растеризуется та же карточка, отодвинутая к зрителю на
+// радиус по лучам вида: смещение глубины в impostor.ps только отодвигает пиксели. С LOD_DITHER — доля смены LOD
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
@@ -37,15 +38,18 @@ ImpostorPixelInput main( VertexInputType input )
 	const bool orthographic = cb_projectionMatrix[3][3] > 0.5f;
 	const float3 toViewer = orthographic ? -cb_viewDirection : normalize( cb_cameraPosition - center );
 
-	// Карточка — в плоскости вида: углы по осям вида; UV карточки (0…1, v вниз) → (−1…1, вверх)
+	// Карточка — в плоскости вида: углы по осям вида, половины сторон — проекция ящика модели на них; UV карточки
+	// (0…1, v вниз) → (−1…1, вверх)
+	const float4 inverse = float4( -instance.rotation.xyz, instance.rotation.w );
 	const float3 right = normalize( cb_viewInverseMatrix[0].xyz );
 	const float3 up = normalize( cb_viewInverseMatrix[1].xyz );
-	const float2 corner = float2( input.tex.x * 2.0f - 1.0f, 1.0f - input.tex.y * 2.0f );
-	const float3 worldPosition = center + ( right * corner.x + up * corner.y ) * radius;
+	const float3 extents = g_impostorExtents.xyz * scale;
+	const float2 halfSize = float2( dot( abs( impostorRotate( right, inverse ) ), extents ), dot( abs( impostorRotate( up, inverse ) ), extents ) );
+	const float2 corner = float2( input.tex.x * 2.0f - 1.0f, 1.0f - input.tex.y * 2.0f ) * halfSize;
+	const float3 worldPosition = center + right * corner.x + up * corner.y;
 
 	// Направление на зрителя и точка карточки — в координатах модели (без поворота и масштаба экземпляра); снизу кадров
 	// нет — направление прижимается к горизонту
-	const float4 inverse = float4( -instance.rotation.xyz, instance.rotation.w );
 	float3 viewDirection = impostorRotate( toViewer, inverse );
 	viewDirection.y = max( viewDirection.y, 1e-3f );
 	viewDirection = normalize( viewDirection );
@@ -73,10 +77,16 @@ ImpostorPixelInput main( VertexInputType input )
 		weights = float3( f.x + f.y - 1.0f, 1.0f - f.x, 1.0f - f.y );
 	}
 
-	// У каскада теней (ортография) карточка — перед сферой, на радиус ближе к свету: глубину пишет запечённая поверхность
-	// (PIXEL_DEPTH_OFFSET в impostor.ps), и она только дальше карточки. В кадре глубину пишет сама карточка через центр:
-	// смещение глубины там без глубины сцены для шейдеров лишило бы проход цвета точного раннего теста (TODO.md)
-	const float3 cardPosition = orthographic ? worldPosition - cb_viewDirection * radius : worldPosition;
+	// Карточка перед сферой: точки worldPosition на радиус ближе к зрителю по лучам вида (у ортографии каскада — вдоль
+	// взгляда), плоскость по-прежнему параллельна экрану, поэтому worldPosition и planeOffset интерполируются по ней точно.
+	// Глубину пишет запечённая поверхность (impostor.ps), и она только дальше карточки; камера ближе радиуса к центру —
+	// карточка не ближе половины его глубины
+	float3 cardPosition = worldPosition - cb_viewDirection * radius;
+	if( !orthographic )
+	{
+		const float centerDepth = max( dot( center - cb_cameraPosition, cb_viewDirection ), 1e-3f );
+		cardPosition = cb_cameraPosition + ( worldPosition - cb_cameraPosition ) * ( max( centerDepth - radius, centerDepth * 0.5f ) / centerDepth );
+	}
 
 	ImpostorPixelInput output;
 	output.position = mul( float4( cardPosition, 1.0f ), cb_viewProjectionMatrix );

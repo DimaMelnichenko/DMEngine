@@ -155,7 +155,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (`depthPrepass`: только глубина непрозрачных и Masked вариантом `depthPhaseFor`, без цели цвета; `DepthPrepass` в
   `settings.ini`, флажок в окне «Renderer») → `opaque` (после prepass — `DepthState::readOnlyEqual`: освещается только
   ближайшая поверхность, Masked без `clip`; меш без варианта глубины и свой вызов без бита prepass пишут глубину сами;
-  подробно — `docs/passes.md`) → `sky`
+  подробно — `docs/passes.md`) → `opaqueDepthRead` (после prepass — непрозрачные, которым нужна глубина сцены в шейдере:
+  `Material::readsSceneDepth`, импостеры; глубина только для чтения и видна шейдерам — `SLOT_SCENE_DEPTH`, t107) → `sky`
   (фон на дальней плоскости: глубина 0 и `DepthState::readOnlyNearOrEqual` без записи — только там, где сцена ничего
   не нарисовала) →
   `transparent` (alpha blending, глубина только читается) в HDR-буфер сцены. Глубина везде обратная (Reversed-Z, как в
@@ -169,6 +170,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Krawczyk 2005) и тонмаппинг (AgX / ACES) в задний буфер sRGB; новый
   проход — ещё одна цель и шаг в `PostProcess::render`. Затем `DMGraphics` рисует GUI и вызывает `DMD3D::endFrame`.
   Буфер сцены (HDR-цвет и глубина) — `SceneTargets` у `Renderer` (`Graphics/SceneTargets.h`): устройство о нём не знает.
+  Глубина видна шейдерам (SceneDepthTexture в UE): текстура `R32_TYPELESS`, вид `depthView` (`R32_FLOAT`) и цель только
+  для чтения `depthReadTarget` (`TextureViewDesc::readOnlyDepth`) — проход с ней читает ту же глубину шейдерами (layout
+  `DIRECT_QUEUE_GENERIC_READ`, `docs/d3d12.md` §3.7, `docs/passes.md`).
   Задний буфер — swap chain flip model (`DMD3D::createSwapChain`: два буфера `R8G8B8A8_UNORM` с sRGB-видом, без
   vsync — tearing, начало кадра по waitable object — `DMD3D::waitForNextFrame`); `WM_SIZE` → `DMGraphics::resize`:
   задний буфер, буфер сцены, глубина, уровни bloom и проекция камеры заново по правилу D3D12 (дождаться GPU,
@@ -441,9 +445,10 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 для экземпляров расстановки (`Material::enablePlacedInstances`, `ShaderPhaseOptions::placed`). Дальше
 `ScatterLayers.impostor_distance` — импостер (`ImpostorMaterial`: последний LOD варианта, карточка с тремя из 8 × 8 кадров
 полуоктаэдра; кадры запекаются при загрузке из LOD0 модели — `SceneObject::bake` → `Renderer::bake` после `Scene::initialize`,
-до прогрева пайплайнов, вариантом `mainBake` материала секции: цвет, нормаль, глубина поверхности); в каскадах теней
-импостер — уже дальше `ScatterLayers.shadow_impostor_distance` (у леса 65 м) и пишет глубину запечённой поверхности
-(смещение глубины, `ShaderPhaseOptions::shadowDepth`). Подробно — `docs/scatter.md`.
+до прогрева пайплайнов, вариантом `mainBake` материала секции: цвет, нормаль, глубина поверхности); глубина пикселя —
+запечённой поверхности (смещение глубины): prepass и тени пишут её, проход цвета — `opaqueDepthRead` (видимость по
+глубине сцены); в каскадах теней импостер — уже дальше `ScatterLayers.shadow_impostor_distance` (у леса 65 м). Подробно —
+`docs/scatter.md`.
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
 `Particle` (`DMParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,

@@ -102,6 +102,9 @@ struct TextureViewDesc
 	uint32_t mipCount = 0;		// 0 — все с firstMip
 	uint32_t firstSlice = 0;
 	uint32_t sliceCount = 0;	// 0 — все с firstSlice
+	// Вид глубины только для чтения (DSV с READ_ONLY_DEPTH): проход с ним читает ту же глубину и шейдерами (layout
+	// DIRECT_QUEUE_GENERIC_READ) — глубина сцены в проходе opaqueDepthRead
+	bool readOnlyDepth = false;
 };
 
 // Элемент раскладки вершин (как input element в D3D11 и D3D12)
@@ -391,6 +394,7 @@ public:
 			reset();
 			m_descriptor = other.m_descriptor;
 			m_depth = other.m_depth;
+			m_readOnly = other.m_readOnly;
 			m_format = other.m_format;
 			m_resource = other.m_resource;
 			m_range = other.m_range;
@@ -403,6 +407,7 @@ public:
 
 	bool valid() const { return m_descriptor.valid(); }
 	bool isDepth() const { return m_depth; }
+	bool isReadOnly() const { return m_readOnly; }	// глубина только для чтения (TextureViewDesc::readOnlyDepth)
 	D3D12_CPU_DESCRIPTOR_HANDLE handle() const { return m_descriptor.cpu; }
 	DXGI_FORMAT format() const { return m_format; }
 	ID3D12Resource* resource() const { return m_resource; }
@@ -416,11 +421,13 @@ public:
 		m_format = DXGI_FORMAT_UNKNOWN;
 		m_range = {};
 	}
-	void reset( const Descriptor& descriptor, bool depth, DXGI_FORMAT format, ID3D12Resource* resource, const SubresourceRange& range = {} )
+	void reset( const Descriptor& descriptor, bool depth, DXGI_FORMAT format, ID3D12Resource* resource, const SubresourceRange& range = {},
+				bool readOnly = false )
 	{
 		reset();
 		m_descriptor = descriptor;
 		m_depth = depth;
+		m_readOnly = readOnly;
 		m_format = format;
 		m_resource = resource;
 		m_range = range;
@@ -429,6 +436,7 @@ public:
 private:
 	Descriptor m_descriptor;
 	bool m_depth = false;
+	bool m_readOnly = false;
 	DXGI_FORMAT m_format = DXGI_FORMAT_UNKNOWN;
 	ID3D12Resource* m_resource = nullptr;
 	SubresourceRange m_range;

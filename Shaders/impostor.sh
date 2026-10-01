@@ -2,9 +2,8 @@
 // Импостер дерева (ImpostorMaterial) — как octahedral impostors в UE (ImpostorBaker, R. Brucks): виды модели с
 // g_impostorFrames² направлений верхней полусферы (сетка на полуоктаэдре), каждый — срез массива текстур (цвет и покрытие;
 // нормаль модели и доля пропускания; глубина поверхности). В кадре — карточка, развёрнутая к виду; три кадра, ближайших к
-// направлению на зрителя, смешиваются по весам; пиксель освещается в точке запечённой поверхности, а в каскадах теней и
-// пишет её глубину (pixel depth offset, как у импостеров UE). Общее для impostor.vs, impostor.ps и запекания
-// (ImpostorMaterial::bake)
+// направлению на зрителя, смешиваются по весам; пиксель освещается в точке запечённой поверхности и пишет её глубину
+// (pixel depth offset, как у импостеров UE). Общее для impostor.vs, impostor.ps и запекания (ImpostorMaterial::bake)
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef DM_IMPOSTOR_SH
@@ -16,6 +15,7 @@
 cbuffer ImpostorBuffer : register( SLOT_CB_MATERIAL )
 {
 	float4 g_impostorBounds;		// сфера модели: xyz — центр в её координатах, w — радиус
+	float4 g_impostorExtents;		// xyz — половины ящика LOD0 модели (центр — центр сферы): по ним размер карточки
 	float4 g_impostorTransmission;	// xyz — цвет пропускания (множитель альбедо), w — множитель доли
 	uint   g_impostorFrames;		// кадров по стороне сетки
 	float  g_impostorAlphaCutoff;
@@ -23,12 +23,12 @@ cbuffer ImpostorBuffer : register( SLOT_CB_MATERIAL )
 	float  g_impostorPadding;
 };
 
-// Выход вершинного шейдера: карточка (position; у каскада теней — перед сферой), её точка в плоскости вида через центр
-// сферы (worldPosition), UV в трёх кадрах, их срезы и веса, поворот экземпляра; для точки поверхности — направление на
+// Выход вершинного шейдера: карточка перед сферой (position), её точка в плоскости вида через центр сферы
+// (worldPosition), UV в трёх кадрах, их срезы и веса, поворот экземпляра; для точки поверхности — направление на
 // зрителя и радиус сферы в мире, расстояние точки worldPosition от плоскости через центр поперёк направления на зрителя
 struct ImpostorPixelInput
 {
-	// centroid: пиксельный шейдер теней с SV_DepthLessEqual читает position.z (без MSAA — центр пикселя, как обычно)
+	// centroid: пиксельный шейдер с SV_DepthLessEqual читает position.z (без MSAA — центр пикселя, как обычно)
 	precise centroid float4 position : SV_POSITION;
 	precise float3 worldPosition : TEXCOORD0;
 	float4 frameUV01 : TEXCOORD1;

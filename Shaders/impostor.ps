@@ -1,10 +1,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Импостер (ImpostorMaterial, Shaders/impostor.sh): три кадра смешиваются по весам — цвет и покрытие, нормаль модели
-// (в мир — поворотом экземпляра), доля пропускания и глубина поверхности: пиксель освещается и затеняется в точке
-// запечённой поверхности, а не карточки, а в каскадах теней пишет её глубину (PIXEL_DEPTH_OFFSET, pixel depth offset) —
-// крона затеняет себя. Освещение — общая функция evaluateLighting, как у материалов: свет, тень, небо, воздушная
-// перспектива. С ALPHA_MASK — отсечение по покрытию (без него — после depth prepass), с LOD_DITHER — доля пикселей смены
-// LOD. mainDepth — тени и depth prepass
+// (в мир — поворотом экземпляра), доля пропускания и глубина поверхности: пиксель — точка запечённой поверхности, а не
+// карточки (pixel depth offset), и освещается, затеняется и пишет глубину она — дерево не уходит в склон, крона затеняет
+// себя в каскадах. Освещение — общая функция evaluateLighting, как у материалов: свет, тень, небо, воздушная перспектива.
+// С ALPHA_MASK — отсечение по покрытию и глубина поверхности (без depth prepass); без него — после prepass, в проходе
+// opaqueDepthRead: глубину уже записал mainDepth, пиксель освещается, только если записана его глубина (глубина сцены,
+// SLOT_SCENE_DEPTH), — закрытый соседней елью отбрасывается до освещения; отсечение по покрытию и дизеринг — как в
+// prepass. С LOD_DITHER — доля пикселей смены LOD.
+// mainDepth — тени и depth prepass
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "slots.h"
@@ -17,6 +20,9 @@
 DM_SRV( Texture2DArray, g_impostorColor, 0 );	// sRGB: цвет и покрытие, срез — кадр
 DM_SRV( Texture2DArray, g_impostorNormal, 1 );	// нормаль модели × 0,5 + 0,5 и доля пропускания
 DM_SRV( Texture2DArray, g_impostorDepth, 2 );	// R16: смещение поверхности к камере кадра от плоскости через центр, радиусов × 0,5 + 0,5
+#ifndef ALPHA_MASK
+DM_SRV( Texture2D<float>, g_sceneDepth, SLOT_SCENE_DEPTH );
+#endif
 
 float4 sampleFrames( Texture2DArray frames, ImpostorPixelInput input )
 {
@@ -26,23 +32,53 @@ float4 sampleFrames( Texture2DArray frames, ImpostorPixelInput input )
 }
 
 // Точка поверхности под пикселем: точка карточки в плоскости через центр, сдвинутая вдоль направления на зрителя до
-// запечённой глубины кадров
+// запечённой глубины кадров. precise — одна и та же у depth prepass и прохода цвета (сравнение с глубиной сцены)
 float3 impostorSurface( ImpostorPixelInput input )
 {
-	const float stored = sampleFrames( g_impostorDepth, input ).x;
-	return input.worldPosition + input.viewer.xyz * ( ( stored * 2.0f - 1.0f ) * input.viewer.w - input.planeOffset );
+	precise const float stored = sampleFrames( g_impostorDepth, input ).x;
+	precise const float3 position = input.worldPosition + input.viewer.xyz * ( ( stored * 2.0f - 1.0f ) * input.viewer.w - input.planeOffset );
+	return position;
 }
 
+// Глубина точки поверхности (обратная): не ближе растеризованной карточки — SV_DepthLessEqual, при обратной глубине
+// только дальше, ранний тест остаётся
+float impostorDepth( ImpostorPixelInput input, float3 position )
+{
+	precise const float4 clipPosition = mul( float4( position, 1.0f ), cb_viewProjectionMatrix );
+	precise const float depth = min( clipPosition.z / clipPosition.w, input.position.z );
+	return depth;
+}
+
+#ifdef ALPHA_MASK
+float4 main( ImpostorPixelInput input, out float depth : SV_DepthLessEqual ) : SV_TARGET
+#else
 float4 main( ImpostorPixelInput input ) : SV_TARGET
+#endif
 {
 #ifdef LOD_DITHER
 	clipLodTransition( input.position.xy, input.lodDither );
 #endif
-	const float4 color = sampleFrames( g_impostorColor, input );
 #ifdef ALPHA_MASK
+	const float4 color = sampleFrames( g_impostorColor, input );
+	clip( color.a - g_impostorAlphaCutoff );
+	const float3 position = impostorSurface( input );
+	depth = impostorDepth( input, position );
+#else
+	// Видимость — до выборки цвета и освещения: пиксель наш, только если prepass записал его глубину; иначе там другая
+	// поверхность (соседняя ель, склон) или прозрачная часть карточки (prepass её отсёк, а растёкшаяся глубина кадров —
+	// ближе земли за ней). Сначала одной выборкой: записанное дальше задней границы сферы (земля, небо, дальние ели);
+	// затем глубина поверхности — равна записанной с допуском в долю глубины (у обратной глубины она ~ 1 / расстояние)
+	const float sceneDepth = g_sceneDepth[uint2( input.position.xy )];
+	const float4 backPosition = mul( float4( input.worldPosition - input.viewer.xyz * ( input.viewer.w + input.planeOffset ), 1.0f ), cb_viewProjectionMatrix );
+	if( sceneDepth < backPosition.z / backPosition.w )
+		discard;
+	const float3 position = impostorSurface( input );
+	if( abs( impostorDepth( input, position ) - sceneDepth ) > sceneDepth * 1e-4f )
+		discard;
+	// И покрытие, как в prepass: у подножия растёкшаяся глубина прозрачного текселя может совпасть с землёй
+	const float4 color = sampleFrames( g_impostorColor, input );
 	clip( color.a - g_impostorAlphaCutoff );
 #endif
-	const float3 position = impostorSurface( input );
 	const float4 packed = sampleFrames( g_impostorNormal, input );
 	const float3 normal = normalize( impostorRotate( normalize( packed.xyz * 2.0f - 1.0f ), input.rotation ) );
 
@@ -60,20 +96,12 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 	return float4( evaluateLighting( surface ), 1.0f );
 }
 
-// Каскад теней (PIXEL_DEPTH_OFFSET): глубина — точки поверхности, не ближе растеризованной карточки (SV_DepthLessEqual:
-// при обратной глубине только дальше от света — ранний тест остаётся). depth prepass — глубина карточки
-#ifdef PIXEL_DEPTH_OFFSET
+// Тени и depth prepass: глубина — точки поверхности (у каскада — вдоль света)
 void mainDepth( ImpostorPixelInput input, out float depth : SV_DepthLessEqual )
-#else
-void mainDepth( ImpostorPixelInput input )
-#endif
 {
 #ifdef LOD_DITHER
 	clipLodTransition( input.position.xy, input.lodDither );
 #endif
 	clip( sampleFrames( g_impostorColor, input ).a - g_impostorAlphaCutoff );
-#ifdef PIXEL_DEPTH_OFFSET
-	const float4 clipPosition = mul( float4( impostorSurface( input ), 1.0f ), cb_viewProjectionMatrix );
-	depth = min( clipPosition.z / clipPosition.w, input.position.z );
-#endif
+	depth = impostorDepth( input, impostorSurface( input ) );
 }

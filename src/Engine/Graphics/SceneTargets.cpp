@@ -21,8 +21,10 @@ bool SceneTargets::create( uint32_t width, uint32_t height, const float clearCol
 	DMD3D& d3d = DMD3D::instance();
 	// Прежние цели отпускаются отложенно, когда GPU закончит кадр, в котором они ещё рисовались
 	m_colorView.reset();
+	m_depthView.reset();
 	m_colorTarget.reset();
 	m_depthTarget.reset();
+	m_depthReadTarget.reset();
 	m_color.reset();
 	m_depth.reset();
 	m_width = width;
@@ -39,11 +41,16 @@ bool SceneTargets::create( uint32_t width, uint32_t height, const float clearCol
 	TextureDesc depthDesc;
 	depthDesc.width = width;
 	depthDesc.height = height;
-	depthDesc.format = depthFormat;
-	depthDesc.usage = TextureUsage::depthStencil;
+	depthDesc.format = depthTextureFormat;
+	depthDesc.usage = TextureUsage::depthStencil | TextureUsage::shaderResource;
+	TextureViewDesc depthReadDesc;
+	depthReadDesc.readOnlyDepth = true;
+	TextureViewDesc depthViewDesc;
+	depthViewDesc.format = depthViewFormat;
 	if( !d3d.createTexture( colorDesc, nullptr, m_color ) || !d3d.createTargetView( m_color, {}, m_colorTarget ) ||
 		!d3d.createShaderView( m_color, {}, m_colorView ) || !d3d.createTexture( depthDesc, nullptr, m_depth ) ||
-		!d3d.createTargetView( m_depth, {}, m_depthTarget ) )
+		!d3d.createTargetView( m_depth, {}, m_depthTarget ) || !d3d.createTargetView( m_depth, depthReadDesc, m_depthReadTarget ) ||
+		!d3d.createShaderView( m_depth, depthViewDesc, m_depthView ) )
 	{
 		LOG( "Failed to create the scene color and depth buffers " + std::to_string( width ) + "x" + std::to_string( height ) );
 		return false;

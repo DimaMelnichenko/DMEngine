@@ -140,12 +140,19 @@ void Renderer::warmPipelines( Scene& scene )
 		depthStates.push_back( { raster, DepthState::enabled, BlendState::opaque } );
 	}
 	depthStates.push_back( m_warmedShadowState );
+	// Проход opaqueDepthRead — у материалов, которые читают глубину сцены: проверка «ближе или равно» без записи
+	std::vector<RenderState> depthReadStates;
+	for( RasterState raster : { RasterState::solid, RasterState::noCulling, RasterState::solidMirrored, RasterState::noCullingMirrored,
+								RasterState::wireframe } )
+		depthReadStates.push_back( { raster, DepthState::readOnlyNearOrEqual, BlendState::opaque } );
 	for( auto& material : System::materials() )
 	{
 		if( Material* shader = material.second.get() )
 		{
 			shader->warmPipelines( colorStates, SceneTargets::formats(), shader->colorPhases() );
 			shader->warmPipelines( depthStates, SceneTargets::depthOnlyFormats(), shader->depthPhases() );
+			if( shader->readsSceneDepth() )
+				shader->warmPipelines( depthReadStates, SceneTargets::formats(), shader->colorPhases() );
 		}
 	}
 	// Свои вызовы объектов (террейн): их пайплайны для состояний проходов рендерера
@@ -255,6 +262,14 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		// После prepass — проверка на равенство без записи (как CF_Equal базового прохода UE при полном prepass)
 		ScopedRenderState opaqueState( depthPrepass ? DepthState::readOnlyEqual : DepthState::enabled );
 		executePass( MeshPass::opaque, frame.view, frameRaster, depthPrepass );
+	}
+
+	if( depthPrepass && !m_commands[static_cast<uint32_t>( MeshPass::opaqueDepthRead )].empty() )
+	{
+		// Непрозрачные, которым нужна глубина сцены (импостеры со смещением глубины): глубина только для чтения и видна
+		// шейдерам; закрытое ближе растеризованной геометрии отбрасывает ранняя проверка «ближе или равно»
+		ScopedRenderState depthReadState( DepthState::readOnlyNearOrEqual );
+		executePass( MeshPass::opaqueDepthRead, frame.view, frameRaster, true );
 	}
 
 	{
@@ -448,7 +463,7 @@ void Renderer::buildCommands( bool depthPrepass )
 	for( uint32_t i = 0; i < meshes.size(); ++i )
 	{
 		const MeshBatch& batch = meshes[i];
-		const MeshPass pass = passFor( batch.state.blendMode );
+		const MeshPass pass = passFor( batch.state.blendMode, batch.material->readsSceneDepth(), depthPrepass );
 		uint64_t key;
 		if( pass == MeshPass::transparent )
 		{
@@ -558,7 +573,7 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 {
 	// Проход не полагается на состояние, оставленное прошлым: своя цель, область вывода, без чужих ресурсов.
 	// Глубину и блендинг задаёт ScopedRenderState кадра и прохода, растеризатор команд восстанавливается после прохода.
-	static const char* const passNames[] = { "Pass depth prepass", "Pass opaque", "Pass sky", "Pass transparent" };
+	static const char* const passNames[] = { "Pass depth prepass", "Pass opaque", "Pass opaque depth read", "Pass sky", "Pass transparent" };
 	static_assert( std::size( passNames ) == scenePassCount );
 
 	// Объявление прохода: буфер сцены (depth prepass — без цели цвета), читает ресурсы сцены — карту теней и экспозицию
@@ -566,13 +581,20 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 	DMD3D& d3d = DMD3D::instance();
 	PassDesc desc;
 	desc.name = passNames[static_cast<int>( pass )];
+	// opaqueDepthRead — с глубиной только для чтения: она же — глубина сцены для шейдеров (SLOT_SCENE_DEPTH)
+	const bool depthRead = pass == MeshPass::opaqueDepthRead;
 	if( pass != MeshPass::depthPrepass )
 		desc.colors = { { &m_sceneTargets.colorTarget(), "scene color" } };
-	desc.depth = { &m_sceneTargets.depthTarget(), "scene depth" };
+	desc.depth = depthRead ? PassDesc::Target{ &m_sceneTargets.depthReadTarget(), "scene depth" } :
+							 PassDesc::Target{ &m_sceneTargets.depthTarget(), "scene depth" };
 	desc.width = m_sceneTargets.width();
 	desc.height = m_sceneTargets.height();
 	desc.reads = { { &m_shadows.shaderView(), "shadow map" }, { &m_postProcess.exposureView(), "exposure" } };
+	if( depthRead )
+		desc.reads.push_back( { &m_sceneTargets.depthView(), "scene depth" } );
 	d3d.beginPass( desc );
+	if( depthRead )
+		d3d.setSRV( SLOT_SCENE_DEPTH, m_sceneTargets.depthView() );
 	ScopedRenderState passState;
 	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
 	const RenderContext context{ view, pass, frameRaster, m_constants, m_vertexPool, depthFromPrepass };
@@ -656,8 +678,7 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 	Material* shader = batch.material;
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	ShaderPhaseOptions options = meshPhaseOptions( batch, true, context.depthFromPrepass && inDepthPrepass( batch ) );
-	options.shadowDepth = context.pass == MeshPass::csmShadowDepth;
+	const ShaderPhaseOptions options = meshPhaseOptions( batch, true, context.depthFromPrepass && inDepthPrepass( batch ) );
 	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
 					 shader->phaseFor( *batch.params, options ) );
 	shader->setParams( *batch.params );
@@ -685,8 +706,7 @@ void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
 	Material* shader = batch.material;
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setState( materialRasterState( batch.state.twoSided, batch.mirrored, context.frameRaster ) );
-	ShaderPhaseOptions options = meshPhaseOptions( batch, false, context.depthFromPrepass && inDepthPrepass( batch ) );
-	options.shadowDepth = context.pass == MeshPass::csmShadowDepth;
+	const ShaderPhaseOptions options = meshPhaseOptions( batch, false, context.depthFromPrepass && inDepthPrepass( batch ) );
 	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
 					 shader->phaseFor( *batch.params, options ) );
 	shader->setParams( *batch.params );

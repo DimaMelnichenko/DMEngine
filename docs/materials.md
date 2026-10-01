@@ -127,7 +127,8 @@ Dithered LOD Transition в UE. С ним экземпляр в полосе см
   цвет с покрытием, нормаль модели и глубина поверхности в три цели, `Material::enableImpostorBake`,
   `ShaderPhaseOptions::impostorBake`; в
   прогрев проходов кадра он не идёт — `Material::bakePhases`). Импостер — свой класс `ImpostorMaterial` (не из базы:
-  создаёт расстановка, [scatter.md](scatter.md), «Импостеры»). Отдельный вариант, а не ветка в одном шейдере: шейдер, в котором
+  создаёт расстановка, [scatter.md](scatter.md), «Импостеры»); он читает глубину сцены (`Material::readsSceneDepth`) — после
+  depth prepass такие материалы рисуются проходом `opaqueDepthRead` ([passes.md](passes.md)). Отдельный вариант, а не ветка в одном шейдере: шейдер, в котором
   есть `clip`, лишается ранней проверки глубины, а непрозрачным (трава) она нужна. С depth prepass
   ([passes.md](passes.md)) `clip` нужен только там: маска уже в глубине, и в проходе цвета Masked рисуется вариантом
   без отсечения с проверкой `EQUAL` (`phaseFor( params, options )` с `ShaderPhaseOptions::depthFromPrepass`, как

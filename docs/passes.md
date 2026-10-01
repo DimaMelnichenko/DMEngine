@@ -11,9 +11,13 @@
 3. Глубина четырёх каскадов теней — у каждого каскада свой сбор ([shadows.md](shadows.md)).
 4. **`depthPrepass`** — только глубина непрозрачных и Masked, без цели цвета.
 5. **`opaque`** — непрозрачные и Masked с освещением. После prepass глубина проверяется на равенство без записи.
-6. **`sky`** — фон на дальней плоскости (глубина 0), только там, где сцена ничего не нарисовала ([sky.md](sky.md)).
-7. **`transparent`** — полупрозрачные от дальних к ближним, глубина только читается.
-8. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
+6. **`opaqueDepthRead`** (только после prepass и если есть кому) — непрозрачные, которым нужна глубина сцены в шейдере
+   (`Material::readsSceneDepth`; сейчас импостеры, [scatter.md](scatter.md)): глубина в проходе только для чтения и
+   видна шейдерам (`SLOT_SCENE_DEPTH`, t107), проверка «ближе или равно» без записи. Без prepass такие материалы рисует
+   `opaque` и пишут глубину сами.
+7. **`sky`** — фон на дальней плоскости (глубина 0), только там, где сцена ничего не нарисовала ([sky.md](sky.md)).
+8. **`transparent`** — полупрозрачные от дальних к ближним, глубина только читается.
+9. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
 
 Задний буфер — swap chain flip model (`DMD3D::createDeviceSwapChain`, как требует D3D12): два буфера `R8G8B8A8_UNORM`
 с sRGB-видом, без vsync — с разрывом кадра (tearing), кадр начинается по waitable object (`DMD3D::waitForNextFrame`).
@@ -21,8 +25,21 @@
 по правилу D3D12: дождаться GPU, отпустить ссылки на задние буферы, `ResizeBuffers`, цели заново (`DMD3D::resize`).
 
 Проход объекта выбирает рендерер, а не объект: меши — по режиму материала (`passFor`: Translucent — в
-`transparent`, остальные — в `opaque` и prepass), свои вызовы — по битам маски (`passBit( MeshPass::… )`). Глубина
-обратная (Reversed-Z): 1 у ближней плоскости, 0 у дальней, «ближе» — `GREATER`.
+`transparent`, остальные — в `opaque` и prepass, читающие глубину сцены после prepass — в `opaqueDepthRead`), свои
+вызовы — по битам маски (`passBit( MeshPass::… )`). Глубина обратная (Reversed-Z): 1 у ближней плоскости, 0 у дальней,
+«ближе» — `GREATER`.
+
+## Глубина сцены для шейдеров
+
+Как SceneDepthTexture в UE. Буфер глубины сцены (`SceneTargets`) — текстура `R32_TYPELESS`: цель `D32_FLOAT`
+(`depthTarget`), цель только для чтения (`depthReadTarget`, DSV с `READ_ONLY_DEPTH`) и вид `R32_FLOAT` (`depthView`).
+Проход, которому глубина нужна в шейдере, объявляет цель только для чтения и `depthView` в `reads`: слой ставит layout
+`DIRECT_QUEUE_GENERIC_READ` — проверка глубины и чтение шейдерами одной текстуры ([d3d12.md](d3d12.md), §3.7). Рендерер
+так рисует `opaqueDepthRead` и привязывает `depthView` в слот сцены `SLOT_SCENE_DEPTH` (`Shaders/slots.h`; в шейдере —
+`DM_SRV( Texture2D<float>, g_sceneDepth, SLOT_SCENE_DEPTH )`, выборка `g_sceneDepth[uint2( position.xy )]`). Экранным
+эффектам между prepass и проходом цвета (SSAO, контактные тени) достаточно обычного чтения: `depthView` в `reads`
+compute-прохода. Цели только для чтения очистка не нужна (`clearDepth` её пропускает). Цвет сцены за прозрачными (вода) —
+пока нет: план в `TODO.md`.
 
 ## Depth prepass
 
@@ -101,8 +118,6 @@ Release, 1920 × 1080, время GPU, мс (частицы в уровнях в
 ## Ограничения
 
 - Prepass только у главного вида; виды теней рисуют одну глубину и так.
-- Буфер глубины сцены шейдерам не виден (`D32_FLOAT` без SRV): экранным эффектам (SSAO, контактные тени) и
-  плиточному Forward+ нужна глубина как текстура — план в `TODO.md`.
 - Полупрозрачные в prepass не рисуются и освещают всё, что проходит проверку глубины.
 
 ## Файлы
@@ -110,7 +125,8 @@ Release, 1920 × 1080, время GPU, мс (частицы в уровнях в
 | Файл | Что там |
 |---|---|
 | `src/Engine/Graphics/Renderer.cpp` | порядок проходов (`render`), раскладка (`buildCommands`), запасной путь, `drawMesh` |
-| `src/Engine/Graphics/Scene/MeshBatch.h` | `MeshPass::depthPrepass`, `isDepthOnlyPass`, `passFor` |
+| `src/Engine/Graphics/Scene/MeshBatch.h` | `MeshPass::depthPrepass`, `opaqueDepthRead`, `isDepthOnlyPass`, `passFor` |
+| `src/Engine/Graphics/SceneTargets.h/.cpp` | буфер сцены: глубина с видом для шейдеров и целью только для чтения |
 | `src/Engine/Graphics/Scene/SceneObject.h` | `RenderContext::depthFromPrepass` |
 | `src/Engine/Graphics/D3D/DMD3DPipelines.cpp`, `DMD3DPasses.cpp` | `DepthState::readOnlyEqual`, `beginPass` — цели прохода по `PassDesc` (`D3D/GpuPass.h`) |
 | `src/Engine/Graphics/Scene/Materials/PBRMaterial.cpp` | `phaseFor( params, options )`, фазы глубины |

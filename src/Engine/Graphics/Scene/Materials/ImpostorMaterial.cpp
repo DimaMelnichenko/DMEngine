@@ -29,9 +29,9 @@ std::vector<VertexElement> ImpostorMaterial::initLayouts()
 
 bool ImpostorMaterial::initialize()
 {
-	// Вершинные шейдеры: экземпляр расстановки, 1 — со сменой LOD дизерингом. Пиксельные: 0 — с отсечением по покрытию,
-	// 1 — без (после depth prepass), 2 — с отсечением и дизерингом, 3 — глубина, 4 — глубина с дизерингом, 5 и 6 — они же
-	// для каскадов теней: глубина запечённой поверхности (PIXEL_DEPTH_OFFSET)
+	// Вершинные шейдеры: экземпляр расстановки, 1 — со сменой LOD дизерингом. Пиксельные: 0 — с отсечением по покрытию и
+	// глубиной поверхности (без depth prepass), 1 — после prepass: видимость по глубине сцены (проход opaqueDepthRead),
+	// 2 — как 0 с дизерингом, 3 — глубина (prepass и тени), 4 — глубина с дизерингом, 5 — как 1 с дизерингом
 	const std::string placed = "INST_POS=1,INST_SCALE=1,INST_ROTATE=1";
 	const std::string placedDither = placed + ",LOD_DITHER=1";
 	if( !addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\impostor.vs", placed ) ||
@@ -41,8 +41,7 @@ bool ImpostorMaterial::initialize()
 		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", "ALPHA_MASK=1,LOD_DITHER=1" ) ||
 		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps" ) ||
 		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", "LOD_DITHER=1" ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", "PIXEL_DEPTH_OFFSET=1" ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", "PIXEL_DEPTH_OFFSET=1,LOD_DITHER=1" ) )
+		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", "LOD_DITHER=1" ) )
 		return false;
 
 	for( int dither = 0; dither < 2; ++dither )
@@ -50,20 +49,15 @@ bool ImpostorMaterial::initialize()
 		m_colorPhases[dither][1][0] = createPhase( dither, 0 );
 		m_colorPhases[dither][0][0] = createPhase( dither, 1 );
 		m_colorPhases[dither][1][1] = dither ? createPhase( dither, 2 ) : m_colorPhases[dither][1][0];
-		m_colorPhases[dither][0][1] = m_colorPhases[dither][0][0];
-		m_depthPhases[dither][0] = createPhase( dither, dither ? 4 : 3 );
-		m_depthPhases[dither][1] = createPhase( dither, dither ? 6 : 5 );
+		m_colorPhases[dither][0][1] = dither ? createPhase( dither, 5 ) : m_colorPhases[dither][0][0];
+		m_depthPhases[dither] = createPhase( dither, dither ? 4 : 3 );
 	}
 	for( const auto& variant : m_colorPhases )
 		for( const auto& masked : variant )
 			for( int phase : masked )
 				if( phase < 0 )
 					return false;
-	for( const auto& variant : m_depthPhases )
-		for( int phase : variant )
-			if( phase < 0 )
-				return false;
-	return true;
+	return m_depthPhases[0] >= 0 && m_depthPhases[1] >= 0;
 }
 
 MaterialRenderState ImpostorMaterial::renderState( const PropertyContainer& ) const
@@ -77,20 +71,21 @@ MaterialRenderState ImpostorMaterial::renderState( const PropertyContainer& ) co
 
 int ImpostorMaterial::phaseFor( const PropertyContainer&, const ShaderPhaseOptions& options ) const
 {
-	// После depth prepass отсечения нет: покрытие и дизеринг уже в глубине, проверка EQUAL
+	// После depth prepass — вариант с видимостью по глубине сцены (проход opaqueDepthRead), покрытие и дизеринг в нём
+	// отсекаются, как в prepass
 	const bool clipAlpha = !options.depthFromPrepass;
-	const bool clipDither = options.lodDither && !options.depthFromPrepass;
+	const bool clipDither = options.lodDither;
 	return m_colorPhases[options.lodDither ? 1 : 0][clipAlpha ? 1 : 0][clipDither ? 1 : 0];
 }
 
 int ImpostorMaterial::depthPhaseFor( const PropertyContainer&, const ShaderPhaseOptions& options ) const
 {
-	return m_depthPhases[options.lodDither ? 1 : 0][options.shadowDepth ? 1 : 0];
+	return m_depthPhases[options.lodDither ? 1 : 0];
 }
 
 std::vector<int> ImpostorMaterial::depthPhases() const
 {
-	return { m_depthPhases[0][0], m_depthPhases[0][1], m_depthPhases[1][0], m_depthPhases[1][1] };
+	return { m_depthPhases[0], m_depthPhases[1] };
 }
 
 void ImpostorMaterial::setParams( const PropertyContainer& )
@@ -143,6 +138,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context )
 	// Сфера с запасом: кадр не обрезает кончики ветвей
 	const float radius = XMVectorGetX( XMVector3Length( XMLoadFloat3( &box.Extents ) ) ) * 1.02f;
 	m_params.bounds = XMFLOAT4( box.Center.x, box.Center.y, box.Center.z, radius );
+	m_params.extents = XMFLOAT4( box.Extents.x * 1.02f, box.Extents.y * 1.02f, box.Extents.z * 1.02f, 0.0f );
 	m_params.transmission = XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );
 	m_params.frames = frames;
 	m_params.alphaCutoff = 0.5f;

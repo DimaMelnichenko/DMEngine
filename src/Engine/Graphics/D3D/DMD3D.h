@@ -317,6 +317,9 @@ private:
 	void barrier( ID3D12Resource* resource, D3D12_BARRIER_ACCESS access, D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_UNDEFINED,
 				  const SubresourceRange* range = nullptr, bool force = false, D3D12_BARRIER_SYNC sync = D3D12_BARRIER_SYNC_NONE );
 	void flushBarriers();
+	// Текстура вида — глубина прохода только для чтения (layout DIRECT_QUEUE_GENERIC_READ: глубина и шейдеры): setSRV без
+	// барьера
+	bool readableInDepthRead( const ShaderView& view ) const;
 	static D3D12_BARRIER_SYNC syncFor( D3D12_BARRIER_ACCESS access );
 	static D3D12_BARRIER_ACCESS steadyAccess( uint32_t bufferUsage );
 	// Root-аргументы (таблица привязок и CBV), изменившиеся с прошлого вызова, — в командный список перед вызовом

@@ -462,6 +462,7 @@ bool DMD3D::createTargetView( const Texture& texture, const TextureViewDesc& des
 		}
 		D3D12_DEPTH_STENCIL_VIEW_DESC viewDesc = {};
 		viewDesc.Format = format;
+		viewDesc.Flags = desc.readOnlyDepth ? D3D12_DSV_FLAG_READ_ONLY_DEPTH : D3D12_DSV_FLAG_NONE;
 		if( kind == TextureViewDesc::Kind::texture2DArray || kind == TextureViewDesc::Kind::cube )
 		{
 			viewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
@@ -475,7 +476,7 @@ bool DMD3D::createTargetView( const Texture& texture, const TextureViewDesc& des
 			viewDesc.Texture2D.MipSlice = desc.firstMip;
 		}
 		m_device->CreateDepthStencilView( texture.handle(), &viewDesc, descriptor.cpu );
-		view.reset( descriptor, true, format, texture.handle(), { desc.firstMip, 1, desc.firstSlice, sliceCount } );
+		view.reset( descriptor, true, format, texture.handle(), { desc.firstMip, 1, desc.firstSlice, sliceCount }, desc.readOnlyDepth );
 		return true;
 	}
 

@@ -421,7 +421,10 @@ void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 		{
 			if( !section.material )
 				continue;
-			passMask |= passBit( passFor( section.material->renderState( section.section->params ).blendMode ) );
+			const MeshPass pass = passFor( section.material->renderState( section.section->params ).blendMode );
+			passMask |= passBit( pass );
+			if( pass == MeshPass::opaque && section.material->readsSceneDepth() )
+				passMask |= passBit( MeshPass::opaqueDepthRead );
 			if( inDepthPrepass( section ) )
 				passMask |= passBit( MeshPass::depthPrepass );
 			if( castsShadow( layer, variant, section ) )
@@ -451,7 +454,10 @@ void Scatterer::renderCustom( const RenderContext& context )
 		for( uint32_t g = 0; g < layer.groups.size(); ++g )
 		{
 			const LayerGroup& group = layer.groups[g];
-			if( shadow ? !group.castShadow : prepass ? !group.prepassed : group.pass != context.pass )
+			// Читающим глубину сцены (импостерам) после prepass — свой проход opaqueDepthRead (Material::readsSceneDepth)
+			const MeshPass groupPass = group.pass == MeshPass::opaque && group.material->readsSceneDepth() && context.depthFromPrepass ?
+									   MeshPass::opaqueDepthRead : group.pass;
+			if( shadow ? !group.castShadow : prepass ? !group.prepassed : groupPass != context.pass )
 				continue;
 
 			// Группа, которой не было в depth prepass, в проходе цвета пишет глубину сама
@@ -466,7 +472,6 @@ void Scatterer::renderCustom( const RenderContext& context )
 			options.placed = true;
 			options.depthFromPrepass = context.depthFromPrepass && group.prepassed;
 			options.lodDither = group.transition;
-			options.shadowDepth = shadow;
 			Material* shader = group.material;
 			if( !shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *group.params, options ) :
 								  shader->phaseFor( *group.params, options ) ) )

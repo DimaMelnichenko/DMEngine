@@ -58,8 +58,9 @@ void DMD3D::setSRV( uint16_t slot, const ShaderView& view )
 	const int index = bindingIndex( slot );
 	if( index < 0 )
 		return;
-	// Вид ресурса, который пишет текущий проход, на входе: проход над ним закончен — барьер в состояние чтения
-	if( view.valid() )
+	// Вид ресурса, который пишет текущий проход, на входе: проход над ним закончен — барьер в состояние чтения. Глубина
+	// прохода только для чтения (DIRECT_QUEUE_GENERIC_READ) читается шейдерами и так — барьера нет, цель остаётся
+	if( view.valid() && !readableInDepthRead( view ) )
 		barrier( view.resource(), D3D12_BARRIER_ACCESS_SHADER_RESOURCE, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, &view.range() );
 	setBinding( static_cast<uint32_t>( index ), view.valid() ? view.index() : 0 );
 }

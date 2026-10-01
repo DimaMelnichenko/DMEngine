@@ -44,6 +44,9 @@ public:
 	// с долей пропускания и глубина поверхности (ImpostorMaterial). false — материал так не умеет, модель с ним в импостер
 	// не запекается
 	virtual bool enableImpostorBake() { return false; }
+	// Шейдер читает глубину сцены (SLOT_SCENE_DEPTH): после depth prepass такие меши и свои вызовы рисуются проходом
+	// opaqueDepthRead — глубина в нём только для чтения, проверка «ближе или равно» (импостер: смещение глубины)
+	virtual bool readsSceneDepth() const { return false; }
 	// Фаза «только глубина» для теней и depth prepass (без пиксельного шейдера или только с отсечением — по альфе,
 	// дизерингом смены LOD) или −1: материал тень не отбрасывает и в prepass не рисуется. Из options важны instanced
 	// и lodDither

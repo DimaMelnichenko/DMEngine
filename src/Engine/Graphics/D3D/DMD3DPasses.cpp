@@ -187,11 +187,19 @@ void DMD3D::beginPass( const PassDesc& pass )
 	const bool hasDepth = pass.depth.view && pass.depth.view->valid();
 	const D3D12_CPU_DESCRIPTOR_HANDLE depth = hasDepth ? pass.depth.view->handle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
 	m_passFormats.depth = hasDepth ? pass.depth.view->format() : DXGI_FORMAT_UNKNOWN;
-	if( hasDepth )
+	// Глубина только для чтения — layout DIRECT_QUEUE_GENERIC_READ (у DEPTH_STENCIL_READ нет доступа шейдеров): проверка
+	// глубины и чтение шейдерами той же текстуры (глубина сцены в opaqueDepthRead), так что её чтение в reads барьера не
+	// требует
+	const bool readOnlyDepth = hasDepth && pass.depth.view->isReadOnly();
+	if( readOnlyDepth )
+		barrier( pass.depth.view->resource(), D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ | D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+				 D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ, &pass.depth.view->range(), false,
+				 D3D12_BARRIER_SYNC_DEPTH_STENCIL | D3D12_BARRIER_SYNC_ALL_SHADING );
+	else if( hasDepth )
 		barrier( pass.depth.view->resource(), D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, &pass.depth.view->range() );
 	for( const PassDesc::Read& read : pass.reads )
 	{
-		if( read.view && read.view->valid() )
+		if( read.view && read.view->valid() && !( readOnlyDepth && read.view->resource() == pass.depth.view->resource() ) )
 			barrier( read.view->resource(), D3D12_BARRIER_ACCESS_SHADER_RESOURCE, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, &read.view->range() );
 	}
 	for( const PassDesc::Write& write : pass.writes )
@@ -225,7 +233,7 @@ void DMD3D::beginPass( const PassDesc& pass )
 		for( const PassDesc::Target& target : pass.colors )
 			record += std::string( " color[" ) + target.name + "]";
 		if( pass.depth.view )
-			record += std::string( " depth[" ) + pass.depth.name + "]";
+			record += std::string( " depth[" ) + pass.depth.name + ( readOnlyDepth ? ", read-only]" : "]" );
 		if( pass.width && pass.height )
 			record += " " + std::to_string( pass.width ) + "x" + std::to_string( pass.height );
 		if( pass.colors.empty() && !pass.depth.view )
@@ -246,9 +254,19 @@ void DMD3D::finishPassRecord()
 		m_passRecords.back() += " barriers " + std::to_string( m_frameBarriers - m_passBarriersStart );
 }
 
+bool DMD3D::readableInDepthRead( const ShaderView& view ) const
+{
+	auto found = m_states.find( view.resource() );
+	if( found == m_states.end() || !found->second.texture || found->second.subresources.empty() )
+		return false;
+	const SubresourceState& sub = found->second.subresources[0];
+	return sub.layout == D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ && ( sub.access & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ ) != 0 &&
+		   ( sub.access & D3D12_BARRIER_ACCESS_SHADER_RESOURCE ) != 0;
+}
+
 void DMD3D::clearDepth( const TargetView& target, float depth )
 {
-	if( !target.valid() || !target.isDepth() )
+	if( !target.valid() || !target.isDepth() || target.isReadOnly() )
 		return;
 	barrier( target.resource(), D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, &target.range() );
 	flushBarriers();
