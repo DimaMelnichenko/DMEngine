@@ -9,9 +9,13 @@
 # склонах, скала на крутых склонах и в промоинах, осыпи у подножий скал и в руслах, остальное трава — сочная на
 # влажном, суше выше. Там же маски плотности для расстановки (Textures\terrain, значение в RGB): mask_grass — вес
 # травы, mask_camomile — пятна цветов в траве, mask_pebbles — вес осыпей.
-# Результат детерминирован. Нужен numpy.
+# И маски леса по типам (forest_masks, как в Valley Benchmark): mask_forest_spruce — ель выше и на северных склонах,
+# mask_forest_pine — сосна на средних сухих склонах, mask_forest_birch — берёза во влажных низинах, mask_shrubs_riparian —
+# кусты вдоль ручьёв, mask_shrubs_slope — стланик над границей леса и кусты на сухих прогалинах; лес — не на скале,
+# снегу, осыпях и в руслах, ниже границы леса, на дне долины — луга с редкими рощами.
+# Результат детерминирован (у масок леса свой генератор: остальное от них не меняется). Нужен numpy.
 # Запускать из корня проекта после Tools/gen_heightmap.py:
-#   python Tools/gen_terrain_textures.py [--preview файл.png]
+#   python Tools/gen_terrain_textures.py [--preview файл.png] [--forest-preview файл.png]
 import os
 import sqlite3
 import sys
@@ -99,6 +103,15 @@ def blur(values, radius, passes=3):
     return values
 
 
+def dilate(values, radius):
+    # Максимум по квадрату (2·radius + 1)²: тонкие линии (русла по карте стока) расширяются, а не гаснут, как при размытии
+    size = values.shape[0]
+    padded = np.pad(values, radius, mode='edge')
+    values = np.maximum.reduce([padded[radius:radius + size, shift:shift + size] for shift in range(2 * radius + 1)])
+    padded = np.pad(values, radius, mode='edge')
+    return np.maximum.reduce([padded[shift:shift + size, radius:radius + size] for shift in range(2 * radius + 1)])
+
+
 def mix(a, b, t):
     return np.asarray(a) + (np.asarray(b) - np.asarray(a)) * t[..., None]
 
@@ -163,7 +176,7 @@ def snow(rng):
     write_layer('snow', albedo, height, 0.45 + 0.2 * grain, depth=4.0)
 
 
-def splatmap(rng, preview_path=None):
+def splatmap(rng, preview_path=None, forest_preview_path=None):
     height = dds.read_r16(HEIGHTMAP)
     size = height.shape[0]
     db = sqlite3.connect('base.db3')
@@ -230,6 +243,9 @@ def splatmap(rng, preview_path=None):
     slice1[..., 0] = grass * meadow
     dds.write_rgba8(SPLATMAP, np.stack([slice0, slice1]))
 
+    forest_masks(height, height_multiplier, texel_size, slope, north, moisture, log_flow, rock_w, snow_w, boulders_w,
+                 forest_preview_path)
+
     if preview_path:
         # Слои цветом поверх отмывки: травы — два зелёных, осыпи — охра, скала — серая, снег — белый
         colors = np.array([(0.45, 0.50, 0.20), (0.62, 0.52, 0.36), (0.45, 0.44, 0.43), (0.95, 0.96, 0.98),
@@ -240,9 +256,77 @@ def splatmap(rng, preview_path=None):
         preview.write_png(preview_path, rgb * (0.3 + 0.7 * shade))
 
 
+def forest_masks(height, height_multiplier, texel_size, slope, north, moisture, log_flow, rock_w, snow_w, boulders_w,
+                 preview_path=None):
+    # Маски леса по типам (как в Valley Benchmark: ель, сосна, берёза, кусты) — плотность 0…1 в тех же координатах,
+    # что карта высот. Свой генератор случайных чисел: splat-карта и маски травы от них не меняются
+    rng = np.random.default_rng(23)
+    size = height.shape[0]
+    noise = fbm(size, [(8, 0.4), (16, 0.3), (32, 0.2), (64, 0.1)], rng) - 0.5
+
+    # Где лес растёт вообще: не на скале, снегу и осыпях, не круче ~35°, ниже границы леса (на северных склонах она
+    # ниже), не в руслах — там кусты. Граница и опушки рваные — шум в несколько десятков метров
+    treeline = 1.0 - smoothstep(0.72, 0.79, height + 0.08 * noise + 0.04 * north)
+    # На осыпях лес реже, но не исчезает: осыпь включает и просто крутоватые склоны (boulders_w в splatmap)
+    ground = (1.0 - rock_w) * (1.0 - snow_w) * (1.0 - 0.8 * smoothstep(0.45, 0.85, boulders_w))
+    steep = 1.0 - smoothstep(30.0, 38.0, slope + 6.0 * noise)
+    # Русло — сток больше ~4000 м² (log10 3,6), шириной в несколько метров
+    stream = smoothstep(3.6, 4.2, blur(dilate(log_flow, 1), radius=1))
+    # Дно долины — луга: ровное и низкое почти без леса, рощи только пятнами
+    floor = smoothstep(0.32, 0.22, height) * smoothstep(9.0, 4.0, slope)
+    clearings = smoothstep(0.30, 0.46, fbm(size, [(16, 0.5), (32, 0.3), (64, 0.2)], rng) + 0.13 - 0.42 * floor)
+    forest = ground * steep * treeline * (1.0 - stream) * clearings
+
+    # Типы — по месту: ель выше и на северных склонах, сосна — на средних сухих склонах, обращённых к солнцу, берёза —
+    # во влажных низинах. У каждого типа свой шум древостоев (~30–130 м): пояса по высоте не лентами, а мозаикой —
+    # соседний тип заходит пятнами. Степень 3 даёт чистые древостои с узкой смешанной полосой между ними
+    # Предпочтения мягкие: на средних высотах ель и сосна конкурируют, у подножий — сосна и берёза, решает шум
+    spruce = (0.35 + 0.65 * smoothstep(0.25, 0.55, height + 0.10 * noise)) * (0.7 + 0.3 * north)
+    pine = smoothstep(8.0, 20.0, slope) * (1.1 - moisture) * (1.0 - 0.6 * north) * smoothstep(0.66, 0.45, height)
+    birch = smoothstep(0.2, 0.7, moisture) * smoothstep(0.45, 0.25, height) * smoothstep(20.0, 8.0, slope)
+    stands = [0.4 + 1.2 * fbm(size, [(8, 0.5), (16, 0.3), (32, 0.2)], rng) for _ in range(3)]
+    types = np.stack([spruce * stands[0], pine * stands[1], birch * stands[2]], axis=-1) + 1e-4
+    types = types ** 3
+    types /= types.sum(axis=-1, keepdims=True)
+    spruce_m, pine_m, birch_m = (forest * types[..., i] for i in range(3))
+
+    # Кусты: у ручьёв (ольха, ива) — полоса вдоль русел, шире самого русла; на склонах (можжевельник) — над границей
+    # леса до скал и снега и на прогалинах сухих склонов
+    # Берега ручьёв с водосбором от ~5000 м² (log10 3,7): полоса в несколько метров по обе стороны
+    banks = smoothstep(3.5, 3.9, blur(dilate(log_flow, 3), radius=2)) * ground * smoothstep(0.78, 0.70, height)
+    shrubs_riparian = banks * (1.0 - 0.7 * stream) * smoothstep(0.30, 0.50, fbm(size, [(32, 0.5), (64, 0.5)], rng) + 0.2 * moisture)
+    # Стланик — узкий пояс над границей леса пятнами
+    krummholz = smoothstep(0.73, 0.78, height + 0.08 * noise + 0.04 * north) * smoothstep(0.84, 0.79, height)
+    patches = smoothstep(0.40, 0.60, fbm(size, [(32, 0.5), (64, 0.3), (128, 0.2)], rng))
+    dry_gaps = (1.0 - clearings) * smoothstep(12.0, 20.0, slope) * (1.0 - moisture) * (1.0 - floor)
+    shrubs_slope = np.maximum(krummholz * patches, 0.5 * dry_gaps) * ground * steep * (1.0 - stream)
+
+    masks = [('mask_forest_spruce', spruce_m), ('mask_forest_pine', pine_m), ('mask_forest_birch', birch_m),
+             ('mask_shrubs_riparian', shrubs_riparian), ('mask_shrubs_slope', shrubs_slope)]
+    for name, values in masks:
+        write_mask(name, values)
+        print('  %s: %.1f%% of the map covered (mean density %.2f)' % (name, 100.0 * np.mean(values > 0.5), np.mean(values)))
+
+    if preview_path:
+        # Ель — тёмно-зелёная, сосна — рыжеватая, берёза — светло-зелёная, кусты у ручьёв — бирюзовые, на склонах —
+        # лиловые поверх отмывки рельефа
+        colors = np.array([(0.05, 0.25, 0.10), (0.60, 0.42, 0.15), (0.65, 0.85, 0.30), (0.15, 0.65, 0.65), (0.55, 0.35, 0.60)])
+        weights = np.stack([m for _, m in masks], axis=-1)
+        cover = np.clip(weights.sum(axis=-1, keepdims=True), 0.0, 1.0)
+        rgb = (weights @ colors) / np.maximum(weights.sum(axis=-1, keepdims=True), 1e-6)
+        base = np.array([0.82, 0.80, 0.74]) * (1.0 - snow_w[..., None]) + snow_w[..., None]
+        rgb = rgb * cover + base * (1.0 - cover)
+        shade = preview.hillshade(height * height_multiplier, texel_size)[..., None]
+        preview.write_png(preview_path, rgb * (0.35 + 0.65 * shade))
+
+
 def write_mask(name, values):
     rgba = np.concatenate([np.repeat(values[..., None], 3, axis=-1), np.ones(values.shape + (1,))], axis=-1)
     dds.write_rgba8(os.path.join('Textures', 'terrain', name + '.dds'), rgba)
+
+
+def option(name):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else None
 
 
 rng = np.random.default_rng(11)
@@ -250,4 +334,4 @@ grass(rng)
 boulders(rng)
 rock(rng)
 snow(rng)
-splatmap(rng, sys.argv[sys.argv.index('--preview') + 1] if '--preview' in sys.argv else None)
+splatmap(rng, option('--preview'), option('--forest-preview'))

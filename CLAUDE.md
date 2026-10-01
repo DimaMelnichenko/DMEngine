@@ -96,7 +96,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Тестовые данные террейна создают скрипты: карту высот `Textures\terrain\heightmap.dds` (1024×1024: горная долина
   с эрозией — капли, осыпание, водосбор; ~2 мин, numpy) и карты эрозии рядом (`flow`, `wear`, `deposition`, `talus`;
   экземпляры `LevelModels` он пересаживает на новую землю) — `python Tools/gen_heightmap.py`, затем текстуры слоёв
-  `Textures\terrain\layers\*.dds`, splat-карту `Textures\terrain\splatmap.dds` и маски расстановки по картам эрозии —
+  `Textures\terrain\layers\*.dds`, splat-карту `Textures\terrain\splatmap.dds`, маски расстановки и маски леса по типам
+  (`mask_forest_spruce` / `pine` / `birch`, `mask_shrubs_riparian` / `slope`) по картам эрозии —
   `python Tools/gen_terrain_textures.py` (нужен numpy). Слои из фото-текстур (Poly Haven,
   freepbr; архивы — в `DownloadResources\`, не в git) собирает `Tools/pack_terrain_layer.py` через Blender — команды
   нынешних слоёв в `docs/terrain.md`. Тестовые модели уровня
