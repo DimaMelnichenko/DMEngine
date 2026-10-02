@@ -114,11 +114,11 @@ bool Scene::initialize()
 	updateLights();
 
 	// Расстановка и частицы стоят на террейне и читают его карту высот
-	std::string heightMap;
+	const ShaderView* heightMap = nullptr;
 	auto timeStart = std::chrono::high_resolution_clock::now();
 	if( m_level.terrain )
 	{
-		if( !m_terrain.initialize( *m_level.terrain ) )
+		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits ) )
 			return false;
 		heightMap = m_terrain.terrainHeight().heightMap;
 		LOG( "Terrain init ms: " + elapsedMs( timeStart ) );

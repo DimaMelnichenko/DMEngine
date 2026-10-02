@@ -418,6 +418,13 @@ DirectX) + шероховатость A»; все слои приводятся 
 resampling, как в UE Landscape: мелкий повтор не складывается в сетку), слои смешиваются по высоте. Настраиваются
 в GUI: «Triplanar sharpness», «Height blend», «Far texture scale», «Far blend start / end». Подробно — `docs/terrain.md`.
 
+Правка рельефа — слои правок поверх карты высот (как Edit Layers и Landscape Splines в UE): строки `TerrainEdits` и
+`TerrainEditPoints` (кривая Catmull-Rom через точки — русло, насыпь; одна точка — площадка; ширина, полоса перехода,
+`raise_terrain` / `lower_terrain`, высоты абсолютные или от рельефа), загрузчик — в `LevelDescription::terrainEdits`,
+наложение — `Scene/Terrain/TerrainEdits` на копию карты в `CDLODTerrain::buildHeightBounds` до мипов: итоговый рельеф
+видят вершины, узлы, расстановка и частицы (`TerrainHeight::heightMap` — вид итоговой карты). Правки в базе —
+`python Tools/terrain_edit.py add|list|enable|disable|delete`, подробно — `docs/terrain.md`.
+
 Почему CDLOD, а не тесселяция или geometry clipmaps: аппаратная тесселяция как основа
 LOD из практики ушла (UE5 её удалил, Far Cry 5 отказался из-за стоимости); современные движки рисуют сетку по карте
 высот с морфингом между уровнями. Прежние террейны (GeoClipMap и тесселяционный) удалены, они есть в истории git.

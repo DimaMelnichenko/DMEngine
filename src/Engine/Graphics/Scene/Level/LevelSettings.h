@@ -10,6 +10,28 @@
 namespace GS
 {
 
+// Точка правки рельефа (строка TerrainEditPoints): положение (y — высота, м, или у относительной правки — смещение от
+// рельефа под точкой), ширина плоской части и полоса перехода к исходному рельефу с каждой стороны, м
+struct TerrainEditPoint
+{
+	DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );
+	float width = 4.0f;
+	float falloff = 4.0f;
+};
+
+// Правка рельефа (строка TerrainEdits, как сплайн Landscape Splines с Raise / Lower Terrain и слой Edit Layers в UE):
+// кривая через точки — русло, насыпь тропы; одна точка — круглая площадка. Слои — по порядку (TerrainEdits.layer),
+// накладывает Scene/Terrain/TerrainEdits
+struct TerrainEdit
+{
+	std::string name;
+	bool raise = true;		// рельеф ниже кривой поднимается к ней
+	bool lower = true;		// выше — опускается
+	bool relative = false;	// y точек — смещение от рельефа под точкой (до этой правки), а не высота
+	bool smooth = true;		// Catmull-Rom через точки, иначе ломаная
+	std::vector<TerrainEditPoint> points;
+};
+
 // Строка SkyAtmosphere; без неё — значения по умолчанию
 struct SkyAtmosphereSettings
 {

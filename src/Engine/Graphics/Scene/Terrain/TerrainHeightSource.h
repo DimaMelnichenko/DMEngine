@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string>
+class ShaderView;
 
 namespace GS
 {
@@ -11,7 +11,7 @@ namespace GS
 // Shaders\terrain_height.sh
 struct TerrainHeight
 {
-	std::string heightMap;	// имя в хранилище текстур
+	const ShaderView* heightMap = nullptr;	// итоговая карта — с правками рельефа (R32_FLOAT, мипы)
 	float worldSize = 0.0f;
 	float heightMultiplier = 1.0f;
 	float heightOffset = 0.0f;

@@ -50,6 +50,8 @@ private:
 	// Загружает текстуры из строк запроса вида "SELECT id, name, file, generate_mipmap, sRGB FROM Textures ..."
 	bool loadTextures( SQLite::Statement& queryTexture );
 	void loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set );
+	// Правки рельефа террейна уровня (включённые, по порядку слоёв)
+	void loadTerrainEdits( uint32_t terrainId, LevelDescription& level );
 	void loadLevelLights( LevelDescription& level );
 	bool loadLevelEnvironment( LevelDescription& level );
 	// Материал экземпляра (MaterialInstance.id_material); false — экземпляра нет

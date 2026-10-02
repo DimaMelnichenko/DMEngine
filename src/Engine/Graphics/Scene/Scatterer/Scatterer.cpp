@@ -359,7 +359,7 @@ void Scatterer::compute( const FrameContext& frame )
 		}
 		assignGroups( layer );
 
-		const ShaderView& heightMap = System::textures().get( terrain.heightMap )->srv();
+		const ShaderView& heightMap = *terrain.heightMap;
 		const ShaderView& mask = System::textures().get( layer.mask )->srv();
 
 		// Постоянный слой: раз — раскладка на карту кластерами, каждый кадр — отбор кластеров и их экземпляров в пул

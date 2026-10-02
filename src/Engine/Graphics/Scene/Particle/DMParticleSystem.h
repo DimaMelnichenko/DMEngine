@@ -15,8 +15,8 @@ public:
 	~DMParticleSystem();
 
 	// Частицы над квадратом width × width у начала координат, max_count на клетку; имена — в хранилищах текстур
-	// и материалов. Высота гибели частицы отсчитывается от карты высот террейна
-	bool Initialize( unsigned int max_count, unsigned int width, const std::string& heightMap,
+	// и материалов. Высота гибели частицы отсчитывается от карты высот террейна (TerrainHeight::heightMap)
+	bool Initialize( unsigned int max_count, unsigned int width, const ShaderView* heightMap,
 					 const std::string& material, const std::string& texture );
 	unsigned int particleCount();
 
@@ -53,7 +53,7 @@ private:
 	Buffer m_constantBuffer;
 
 	DMComputeShader m_computeShader;
-	std::string m_heightMap;
+	const ShaderView* m_heightMap = nullptr;
 	std::string m_material;
 	std::string m_texture;
 	bool m_initialized = false;

@@ -15,7 +15,7 @@ DMParticleSystem::~DMParticleSystem()
 {
 }
 
-bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size, const std::string& heightMap,
+bool DMParticleSystem::Initialize( unsigned int max_count, unsigned int map_size, const ShaderView* heightMap,
 								   const std::string& material, const std::string& texture )
 {
 	m_heightMap = heightMap;
@@ -125,7 +125,9 @@ void DMParticleSystem::compute( const GS::FrameContext& frame )
 
 	// Compute-проход: буфер частиц пишется (beginPass снимает его с входа вершинного шейдера прошлого кадра); высота,
 	// на которой частица гибнет, отсчитывается от террейна: шейдер читает карту высот из t0
-	const ShaderView& heightMap = GS::System::textures().get( m_heightMap )->srv();
+	if( !m_heightMap )
+		return;
+	const ShaderView& heightMap = *m_heightMap;
 	DMD3D::instance().beginPass( PassDesc{ "Particles update", {}, {}, 0, 0, { { &heightMap, "height map" } }, { { &m_uavParticles, "particles" } } } );
 	DMD3D::instance().setSRV( 0, heightMap );
 	update( frame.elapsedTime );

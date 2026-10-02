@@ -54,6 +54,7 @@ struct LevelDescription
 	uint32_t id = 0;
 	std::string name;
 	std::optional<uint32_t> terrain;	// строка таблицы Terrain
+	std::vector<GS::TerrainEdit> terrainEdits;	// правки его рельефа по порядку слоёв: таблицы TerrainEdits / TerrainEditPoints
 	std::optional<uint32_t> sky;		// модель небесной сферы
 	std::vector<ModelInstance> modelInstances;	// таблица LevelModels
 	std::vector<ScatterSet> scatterSets;	// таблица LevelScatterSets

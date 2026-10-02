@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Level\LevelSettings.h"
 #include <array>
 #include <vector>
 #include "SceneObject.h"
@@ -24,8 +25,9 @@ class CDLODTerrain : public SceneObject, public TerrainHeightSource
 public:
 	CDLODTerrain();
 
-	// terrainId — строка таблицы Terrain
-	bool initialize( uint32_t terrainId );
+	// terrainId — строка таблицы Terrain, edits — правки рельефа уровня по порядку слоёв (накладываются на копию карты
+	// высот при загрузке: её читают вершины, узлы квадродерева и всё, что стоит на рельефе)
+	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {} );
 	// Карта высот и её масштаб: по ним стоят расстановка травы и декора и частицы
 	TerrainHeight terrainHeight() const override;
 
@@ -77,8 +79,9 @@ private:
 
 	bool loadSettings( uint32_t terrainId, float& heightMultiplier, std::string& splatMap );
 	bool createShader();
-	// Копия карты высот с мипами для вершинного шейдера и минимум / максимум высоты каждого узла по мипам его уровня
-	bool buildHeightBounds();
+	// Копия карты высот с правками рельефа и мипами для вершинного шейдера и минимум / максимум высоты каждого узла по
+	// мипам его уровня
+	bool buildHeightBounds( const std::vector<TerrainEdit>& edits );
 	void calcRanges();
 	NodeBox nodeBox( uint32_t level, uint32_t x, uint32_t z ) const;
 	float nodeSize( uint32_t level ) const;
@@ -95,7 +98,7 @@ private:
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;
 	std::vector<std::vector<DirectX::XMFLOAT2>> m_heightBounds;	// по уровням: нормированные min / max высоты узлов
-	Texture m_heightMapTexture;	// копия t_heightmap в R32_FLOAT с полной цепочкой мипов
+	Texture m_heightMapTexture;	// копия t_heightmap в R32_FLOAT с правками рельефа и полной цепочкой мипов
 	ShaderView m_heightMap;
 	float m_ranges[maxLevels] = {};
 	DirectX::XMFLOAT4 m_morphConsts[maxLevels] = {};

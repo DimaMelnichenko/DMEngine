@@ -1,4 +1,5 @@
 #include "CDLODTerrain.h"
+#include "TerrainEdits.h"
 #include "D3D\TextureImages.h"
 #include "Shaders\slots.h"
 #include <algorithm>
@@ -33,12 +34,13 @@ CDLODTerrain::CDLODTerrain() :
 {
 }
 
-bool CDLODTerrain::initialize( uint32_t terrainId )
+bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits )
 {
 	float heightMultiplier = 1.0f;
 	std::string splatMap;
 	if( !loadSettings( terrainId, heightMultiplier, splatMap ) )
 		return false;
+	m_heightMultiplier = heightMultiplier;
 
 	const uint32_t mapSize = System::textures().get( m_heightMapName )->width();
 	m_worldSize = mapSize * m_texelSize;
@@ -52,7 +54,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId )
 	for( uint32_t level = 0; level < m_levelCount; ++level )
 		m_nodesPerSide[level] = static_cast<uint32_t>( std::ceil( m_worldSize / nodeSize( level ) ) );
 
-	if( !buildHeightBounds() )
+	if( !buildHeightBounds( edits ) )
 		return false;
 
 	if( !createShader() )
@@ -119,7 +121,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId )
 TerrainHeight CDLODTerrain::terrainHeight() const
 {
 	TerrainHeight height;
-	height.heightMap = m_heightMapName;
+	height.heightMap = &m_heightMap;
 	height.worldSize = m_worldSize;
 	// Ползунок, а не m_heightMultiplier: тот обновляется в update() только у видимого террейна
 	height.heightMultiplier = m_initialized ? m_properties["Height multiplier"].data<float>() : m_heightMultiplier;
@@ -186,7 +188,7 @@ void CDLODTerrain::warmPipelines( const PassStates& states )
 							  states.shadowDepth }, states.depthOnly, { m_depthPhase } );
 }
 
-bool CDLODTerrain::buildHeightBounds()
+bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits )
 {
 	ScratchImage captured;
 	if( !GpuImages::captureTexture( System::textures().get( m_heightMapName )->texture(), captured ) )
@@ -217,6 +219,20 @@ bool CDLODTerrain::buildHeightBounds()
 			return false;
 		}
 		image = converted.GetImage( 0, 0, 0 );
+	}
+
+	// Правки рельефа (TerrainEdits) — на копию до мипов: их видят вершины всех уровней, узлы и расстановка
+	if( !edits.empty() )
+	{
+		HeightField field;
+		field.heights = reinterpret_cast<float*>( image->pixels );
+		field.size = static_cast<uint32_t>( image->width );
+		field.rowPitch = image->rowPitch / sizeof( float );
+		field.texelSize = m_texelSize;
+		field.heightMultiplier = m_heightMultiplier;
+		field.heightOffset = m_heightOffset;
+		const size_t changed = applyTerrainEdits( field, edits );
+		LOG( "CDLOD terrain: " + std::to_string( edits.size() ) + " terrain edits, texels changed: " + std::to_string( changed ) );
 	}
 
 	// Вершины уровня L читают мипы L и L + 1, поэтому вершинному шейдеру нужна карта высот с полной цепочкой мипов

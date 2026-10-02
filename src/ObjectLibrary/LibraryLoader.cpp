@@ -281,7 +281,10 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 		level.id = query.getColumn( "id" ).getUInt();
 		level.name = query.getColumn( "name" ).getString();
 		if( !query.getColumn( "terrain" ).isNull() )
+		{
 			level.terrain = query.getColumn( "terrain" ).getUInt();
+			loadTerrainEdits( *level.terrain, level );
+		}
 		if( !query.getColumn( "sky" ).isNull() )
 			level.sky = query.getColumn( "sky" ).getUInt();
 		const bool hasParticles = !query.getColumn( "particles" ).isNull();
@@ -360,6 +363,40 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 	}
 
 	return true;
+}
+
+void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& level )
+{
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, raise_terrain, lower_terrain, relative, smooth FROM TerrainEdits "
+														   "WHERE terrain = :terrain AND enabled != 0 ORDER BY layer, id" );
+	query.bind( ":terrain", terrainId );
+	while( query.executeStep() )
+	{
+		GS::TerrainEdit edit;
+		edit.name = query.getColumn( "name" ).getString();
+		edit.raise = query.getColumn( "raise_terrain" ).getInt() != 0;
+		edit.lower = query.getColumn( "lower_terrain" ).getInt() != 0;
+		edit.relative = query.getColumn( "relative" ).getInt() != 0;
+		edit.smooth = query.getColumn( "smooth" ).getInt() != 0;
+		SQLite::Statement points( DBConnector::instance().db(), "SELECT x, y, z, width, falloff FROM TerrainEditPoints "
+																"WHERE edit = :edit ORDER BY point" );
+		points.bind( ":edit", query.getColumn( "id" ).getInt() );
+		while( points.executeStep() )
+		{
+			GS::TerrainEditPoint point;
+			point.position = XMFLOAT3( static_cast<float>( points.getColumn( "x" ).getDouble() ), static_cast<float>( points.getColumn( "y" ).getDouble() ),
+									   static_cast<float>( points.getColumn( "z" ).getDouble() ) );
+			point.width = static_cast<float>( points.getColumn( "width" ).getDouble() );
+			point.falloff = static_cast<float>( points.getColumn( "falloff" ).getDouble() );
+			edit.points.push_back( point );
+		}
+		if( edit.points.empty() )
+		{
+			LOG( "Terrain edit " + edit.name + " has no points, skipped" );
+		}
+		else
+			level.terrainEdits.push_back( std::move( edit ) );
+	}
 }
 
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
