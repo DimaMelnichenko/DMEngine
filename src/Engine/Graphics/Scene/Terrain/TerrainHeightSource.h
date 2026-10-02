@@ -12,6 +12,8 @@ namespace GS
 struct TerrainHeight
 {
 	const ShaderView* heightMap = nullptr;	// итоговая карта — с правками рельефа (R32_FLOAT, мипы)
+	// Доля растительности, которую убрали правки рельефа (R8_UNORM, те же UV; русло, площадка): 0 — не тронута
+	const ShaderView* foliageClearMask = nullptr;
 	float worldSize = 0.0f;
 	float heightMultiplier = 1.0f;
 	float heightOffset = 0.0f;

@@ -1,7 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Высота рельефа для тех, кто на нём стоит (расстановка, частицы), без привязки к устройству террейна:
 // параметры приходят из TerrainHeightSource (Scene\Terrain\TerrainHeightSource.h). Карта высот покрывает
-// квадрат [0, worldSize] по X и Z, ось Z идёт по текстуре снизу вверх — как heightMapUV в cdlod.sh
+// квадрат [0, worldSize] по X и Z, ось Z идёт по текстуре снизу вверх — как heightMapUV в cdlod.sh. Слоты SRV 0 и 1 —
+// карта высот и маска очистки растительности правками рельефа (TerrainHeight::foliageClearMask)
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef TERRAIN_HEIGHT_SH
@@ -19,6 +20,7 @@ cbuffer TerrainHeightBuffer : register( b5 )
 };
 
 DM_SRV( Texture2D, g_terrainHeightMap, 0 );
+DM_SRV( Texture2D, g_terrainFoliageClear, 1 );
 
 float2 terrainUV( float2 worldXZ )
 {
@@ -31,6 +33,12 @@ float terrainHeight( float2 worldXZ )
 {
 	return g_terrainHeightMap.SampleLevel( g_SamplerLinearClamp, terrainUV( worldXZ ), 0.0f ).r * g_terrainHeightMultiplier +
 		   g_terrainHeightOffset;
+}
+
+// Доля растительности, которую убрали правки рельефа (русло, площадка): 0 — не тронута, 1 — убрана вся
+float terrainFoliageClear( float2 uv )
+{
+	return g_terrainFoliageClear.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r;
 }
 
 // Нормаль рельефа по центральным разностям через тексель карты высот

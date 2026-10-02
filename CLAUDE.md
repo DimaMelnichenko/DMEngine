@@ -424,8 +424,8 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 
 **Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До восьми слоёв из
 таблицы `TerrainLayers` (`layer` 0…7 — канал `layer % 4` среза `layer / 4` splat-карты: она — массив из двух RGBA, как
-weightmap в UE Landscape; `albedo` и `normal` — файлы, `tiling` — метров на повтор; сейчас пять: две травы вперемешку
-пятнами по шуму, осыпи, скала, снег). Шейдер читает текстуры только четырёх самых весомых слоёв пикселя.
+weightmap в UE Landscape; `albedo` и `normal` — файлы, `tiling` — метров на повтор; сейчас шесть: две травы вперемешку
+пятнами по шуму, осыпи, скала, снег и галька русел — ею красят правки рельефа). Шейдер читает текстуры только четырёх самых весомых слоёв пикселя.
 Текстуры слоёв собираются при загрузке в два `Texture2DArray`: «альбедо RGB + высота A» и «нормаль RGB (соглашение
 DirectX) + шероховатость A»; все слои приводятся к размеру первого, альбедо — `R8G8B8A8_UNORM_SRGB` (фото в sRGB,
 высота в альфе линейная), нормаль — UNORM; вместо ненайденного файла подставляется шахматка или плоская нормаль. Мипы строятся без WIC (`TEX_FILTER_FORCE_NON_WIC`): WIC масштабирует
@@ -439,8 +439,11 @@ resampling, как в UE Landscape: мелкий повтор не склады�
 `TerrainEditPoints` (кривая Catmull-Rom через точки — русло, насыпь; одна точка — площадка; ширина, полоса перехода,
 `raise_terrain` / `lower_terrain`, высоты абсолютные или от рельефа), загрузчик — в `LevelDescription::terrainEdits`,
 наложение — `Scene/Terrain/TerrainEdits` на копию карты в `CDLODTerrain::buildHeightBounds` до мипов: итоговый рельеф
-видят вершины, узлы, расстановка и частицы (`TerrainHeight::heightMap` — вид итоговой карты). Правки в базе —
-`python Tools/terrain_edit.py add|list|enable|disable|delete`, подробно — `docs/terrain.md`.
+видят вершины, узлы, расстановка и частицы (`TerrainHeight::heightMap` — вид итоговой карты). Та же полоса правки убирает
+растительность (`clear_foliage`: маска `TerrainHeight::foliageClearMask`, её читает `scatter.cs` у всех слоёв, и у леса)
+и красит слой splat-карты (`paint_layer`, как Paint Layer у Landscape Splines: `TerrainMaterial` смешивает до мипов;
+русло `test_channel` — галька `dry_river_pebbles`, слой 5). Правки в базе —
+`python Tools/terrain_edit.py add|set|list|enable|disable|delete`, подробно — `docs/terrain.md`.
 
 Почему CDLOD, а не тесселяция или geometry clipmaps: аппаратная тесселяция как основа
 LOD из практики ушла (UE5 её удалил, Far Cry 5 отказался из-за стоимости); современные движки рисуют сетку по карте

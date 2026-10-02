@@ -10,6 +10,8 @@
 namespace GS
 {
 
+struct TerrainEditCoverage;
+
 // Материал террейна для Shaders\terrain.ps. Слои — строки таблицы TerrainLayers (до maxLayers), вес слоя — канал
 // splat-карты: она — массив из двух RGBA, как weightmap в UE Landscape (срез 0 — слои 0…3, срез 1 — 4…7; файл из
 // одного среза дополняется нулями). Текстуры слоёв при загрузке собираются в два массива текстур: «альбедо + высота»
@@ -24,8 +26,8 @@ public:
 	static constexpr uint32_t maxLayers = 8;
 	static constexpr uint32_t splatSlices = maxLayers / 4;
 
-	// splatMap — файл относительно каталога текстур
-	bool initialize( uint32_t terrainId, const std::string& splatMap );
+	// splatMap — файл относительно каталога текстур; coverage — покраска слоёв правками рельефа поверх файла
+	bool initialize( uint32_t terrainId, const std::string& splatMap, const TerrainEditCoverage& coverage );
 	// Пиксельный шейдер: t1 — splat-карта, t2 — альбедо + высота, t3 — нормаль + шероховатость, t4 — шум
 	void bind() const;
 	// Повторов текстуры слоя на единицу мира (1 / tiling) по слоям, по четыре в XMFLOAT4

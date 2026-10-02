@@ -298,7 +298,8 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	if( any( uv < 0.0f ) || any( uv > 1.0f ) )
 		return false;
 
-	float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r;
+	// Маска слоя без того, что убрали правки рельефа
+	float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - terrainFoliageClear( uv ) );
 	if( random( cell, seed + 2 ) >= density )
 		return false;
 

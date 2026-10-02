@@ -98,7 +98,26 @@ std::vector<CurveSample> buildCurve( const TerrainEdit& edit, const HeightField&
 
 }
 
-size_t applyTerrainEdits( HeightField& field, const std::vector<TerrainEdit>& edits )
+float TerrainEditCoverage::sample( const std::vector<float>& values, float u, float v ) const
+{
+	if( values.empty() || size == 0 )
+		return 0.0f;
+	const float maxIndex = static_cast<float>( size - 1 );
+	const float col = std::clamp( u * size - 0.5f, 0.0f, maxIndex );
+	const float row = std::clamp( v * size - 0.5f, 0.0f, maxIndex );
+	const uint32_t c0 = static_cast<uint32_t>( col );
+	const uint32_t r0 = static_cast<uint32_t>( row );
+	const uint32_t c1 = std::min( c0 + 1, size - 1 );
+	const uint32_t r1 = std::min( r0 + 1, size - 1 );
+	const float fc = col - c0;
+	const float fr = row - r0;
+	const auto at = [this, &values]( uint32_t r, uint32_t c ) { return values[static_cast<size_t>( r ) * size + c]; };
+	const float top = at( r0, c0 ) + ( at( r0, c1 ) - at( r0, c0 ) ) * fc;
+	const float bottom = at( r1, c0 ) + ( at( r1, c1 ) - at( r1, c0 ) ) * fc;
+	return top + ( bottom - top ) * fr;
+}
+
+size_t applyTerrainEdits( HeightField& field, const std::vector<TerrainEdit>& edits, TerrainEditCoverage* coverage )
 {
 	if( !field.heights || field.size == 0 || field.heightMultiplier == 0.0f )
 		return 0;
@@ -109,11 +128,25 @@ size_t applyTerrainEdits( HeightField& field, const std::vector<TerrainEdit>& ed
 	std::vector<CurveSample> nearest( texelCount );
 	std::vector<uint32_t> touched;
 	size_t changed = 0;
+	if( coverage )
+		coverage->size = field.size;
 
 	for( const TerrainEdit& edit : edits )
 	{
-		if( !edit.raise && !edit.lower )
+		const bool height = edit.raise || edit.lower;
+		const bool clear = coverage && edit.clearFoliage > 0.0f;
+		const bool paint = coverage && edit.paintLayer >= 0 && edit.paintLayer < static_cast<int>( TerrainEditCoverage::paintLayers );
+		if( !height && !clear && !paint )
 			continue;
+		if( clear && coverage->foliageClear.empty() )
+			coverage->foliageClear.assign( texelCount, 0.0f );
+		if( paint )
+		{
+			if( coverage->remaining.empty() )
+				coverage->remaining.assign( texelCount, 1.0f );
+			if( coverage->paint[edit.paintLayer].empty() )
+				coverage->paint[edit.paintLayer].assign( texelCount, 0.0f );
+		}
 		const std::vector<CurveSample> curve = buildCurve( edit, field );
 		if( curve.empty() )
 			continue;
@@ -174,6 +207,18 @@ size_t applyTerrainEdits( HeightField& field, const std::vector<TerrainEdit>& ed
 					continue;
 				weight = 0.5f + 0.5f * std::cos( 3.14159265f * ( d - half ) / sample.falloff );
 			}
+			if( clear )
+				coverage->foliageClear[index] = std::max( coverage->foliageClear[index], weight * edit.clearFoliage );
+			if( paint )
+			{
+				coverage->remaining[index] *= 1.0f - weight;
+				for( std::vector<float>& layer : coverage->paint )
+					if( !layer.empty() )
+						layer[index] *= 1.0f - weight;
+				coverage->paint[edit.paintLayer][index] += weight;
+			}
+			if( !height )
+				continue;
 			const uint32_t row = index / field.size;
 			const uint32_t col = index % field.size;
 			float& value = field.heights[row * field.rowPitch + col];

@@ -1,6 +1,8 @@
 #include "TerrainMaterial.h"
+#include "TerrainEdits.h"
 #include "D3D\TextureImages.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <DirectXTex.h>
 #include "System.h"
@@ -10,6 +12,8 @@
 #include "Texture\ImageFile.h"
 
 using namespace DirectX;
+
+static_assert( GS::TerrainEditCoverage::paintLayers == GS::TerrainMaterial::maxLayers, "terrain edits paint TerrainMaterial layers" );
 
 namespace
 {
@@ -205,9 +209,42 @@ bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool 
 	return createArraySRV( mips, texture, srv );
 }
 
+// Покраска правками рельефа (TerrainEdits.paint_layer, как Paint Layer у Landscape Splines): вес слоя i = вес файла ×
+// remaining + paint[i] по полям покрытия в UV текселя splat-карты; слоёв дальше layerCount нет в массивах — их покраска
+// пропускается
+void paintSplatMap( ScratchImage& splat, const GS::TerrainEditCoverage& coverage, uint32_t layerCount )
+{
+	const TexMetadata& metadata = splat.GetMetadata();
+	const size_t width = metadata.width;
+	const size_t height = metadata.height;
+	for( size_t y = 0; y < height; ++y )
+	{
+		const float v = ( y + 0.5f ) / height;
+		for( size_t x = 0; x < width; ++x )
+		{
+			const float u = ( x + 0.5f ) / width;
+			const float remaining = coverage.sample( coverage.remaining, u, v );
+			if( remaining >= 1.0f )
+				continue;
+			for( size_t slice = 0; slice < GS::TerrainMaterial::splatSlices; ++slice )
+			{
+				uint8_t* texel = splat.GetImage( 0, slice, 0 )->pixels + y * splat.GetImage( 0, slice, 0 )->rowPitch + x * 4;
+				for( size_t c = 0; c < 4; ++c )
+				{
+					const size_t layer = slice * 4 + c;
+					const float painted = layer < layerCount ? coverage.sample( coverage.paint[layer], u, v ) : 0.0f;
+					const float weight = texel[c] / 255.0f * remaining + painted;
+					texel[c] = static_cast<uint8_t>( std::lround( std::clamp( weight, 0.0f, 1.0f ) * 255.0f ) );
+				}
+			}
+		}
+	}
+}
+
 // Splat-карта — массив из splatSlices срезов RGBA (срез s — веса слоёв 4s…4s + 3). Срезов в файле меньше — остальные
-// нули: прежний файл из одной картинки читается как раньше. Нет файла — весь вес у слоя 0
-bool loadSplatMap( const std::string& file, Texture& texture, ShaderView& srv )
+// нули: прежний файл из одной картинки читается как раньше. Нет файла — весь вес у слоя 0. Покраска правками — поверх
+bool loadSplatMap( const std::string& file, const GS::TerrainEditCoverage& coverage, uint32_t layerCount, Texture& texture,
+				   ShaderView& srv )
 {
 	constexpr size_t slices = GS::TerrainMaterial::splatSlices;
 	size_t width = 0;
@@ -251,6 +288,8 @@ bool loadSplatMap( const std::string& file, Texture& texture, ShaderView& srv )
 			for( size_t y = 0; y < height; ++y )
 				std::memset( target.pixels + y * target.rowPitch, 0, width * 4 );
 	}
+	if( coverage.paints() )
+		paintSplatMap( splat, coverage, layerCount );
 
 	ScratchImage mips;
 	if( FAILED( GenerateMipMaps( splat.GetImages(), splat.GetImageCount(), splat.GetMetadata(), mipFilter, 0, mips ) ) )
@@ -263,7 +302,7 @@ bool loadSplatMap( const std::string& file, Texture& texture, ShaderView& srv )
 namespace GS
 {
 
-bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMap )
+bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMap, const TerrainEditCoverage& coverage )
 {
 	std::vector<Layer> layers;
 	if( !loadLayers( terrainId, layers ) )
@@ -283,7 +322,11 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 	for( uint32_t s = 0; s < splatSlices; ++s )
 		m_layerScale[s] = XMFLOAT4( scale[4 * s], scale[4 * s + 1], scale[4 * s + 2], scale[4 * s + 3] );
 
-	if( !loadSplatMap( splatMap, m_splatMapTexture, m_splatMap ) ||
+	for( uint32_t layer = m_layerCount; layer < TerrainEditCoverage::paintLayers; ++layer )
+		if( !coverage.paint[layer].empty() )
+			LOG( "Terrain material: terrain edits paint layer " + std::to_string( layer ) + ", which TerrainLayers does not describe" );
+
+	if( !loadSplatMap( splatMap, coverage, m_layerCount, m_splatMapTexture, m_splatMap ) ||
 		!buildArray( albedoFiles, Fallback::checker, true, m_albedoHeightTexture, m_albedoHeight ) ||
 		!buildArray( normalFiles, Fallback::flatNormal, false, m_normalRoughnessTexture, m_normalRoughness ) )
 	{

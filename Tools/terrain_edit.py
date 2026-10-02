@@ -1,11 +1,15 @@
 """Правки рельефа уровня в base.db3 (таблицы TerrainEdits / TerrainEditPoints, как Landscape Splines и Edit Layers в UE).
 
 Движок накладывает их на карту высот при загрузке (Scene/Terrain/TerrainEdits): кривая через точки поднимает и (или)
-опускает рельеф к своей высоте — русло, насыпь тропы; одна точка — круглая площадка. Подробно — docs/terrain.md.
+опускает рельеф к своей высоте — русло, насыпь тропы; одна точка — круглая площадка. Та же полоса убирает растительность
+(--clear-foliage: доля 0…1) и красит слой splat-карты (--paint-layer: TerrainLayers.layer), как Paint Layer у Landscape
+Splines; --paint-only — правка без высоты, только очистка и покраска. Подробно — docs/terrain.md.
 
   python Tools/terrain_edit.py list [--level Test]
   python Tools/terrain_edit.py add ИМЯ --points "x,z[,y[,ширина[,полоса]]];..." [--width 4] [--falloff 4]
-         [--height Y] [--relative] [--raise-only | --lower-only] [--linear] [--layer N] [--level Test]
+         [--height Y] [--relative] [--raise-only | --lower-only | --paint-only] [--linear] [--layer N]
+         [--clear-foliage F] [--paint-layer N] [--level Test]
+  python Tools/terrain_edit.py set ИМЯ [--clear-foliage F] [--paint-layer N | --no-paint] [--level Test]
   python Tools/terrain_edit.py delete ИМЯ [--level Test]
   python Tools/terrain_edit.py enable ИМЯ / disable ИМЯ [--level Test]
 
@@ -34,7 +38,9 @@ CREATE TABLE IF NOT EXISTS TerrainEdits (
     raise_terrain INTEGER NOT NULL DEFAULT 1,
     lower_terrain INTEGER NOT NULL DEFAULT 1,
     relative INTEGER NOT NULL DEFAULT 0,
-    smooth INTEGER NOT NULL DEFAULT 1
+    smooth INTEGER NOT NULL DEFAULT 1,
+    clear_foliage REAL NOT NULL DEFAULT 0,
+    paint_layer INTEGER
 );
 CREATE TABLE IF NOT EXISTS TerrainEditPoints (
     edit INTEGER NOT NULL REFERENCES TerrainEdits(id) ON DELETE CASCADE,
@@ -47,6 +53,15 @@ CREATE TABLE IF NOT EXISTS TerrainEditPoints (
     PRIMARY KEY (edit, point)
 );
 """
+# Колонки, добавленные после первой версии таблицы: у базы без них — ALTER TABLE
+COLUMNS = [('clear_foliage', 'REAL NOT NULL DEFAULT 0'), ('paint_layer', 'INTEGER')]
+
+
+def migrate(db):
+    existing = {row[1] for row in db.execute('PRAGMA table_info(TerrainEdits)')}
+    for name, declaration in COLUMNS:
+        if name not in existing:
+            db.execute('ALTER TABLE TerrainEdits ADD COLUMN %s %s' % (name, declaration))
 
 
 def terrain_of(db, level):
@@ -102,7 +117,7 @@ def parse_points(text, args, sample):
 
 def main():
     parser = argparse.ArgumentParser(description='Terrain edits in base.db3 (TerrainEdits / TerrainEditPoints)')
-    parser.add_argument('command', choices=['list', 'add', 'delete', 'enable', 'disable'])
+    parser.add_argument('command', choices=['list', 'add', 'set', 'delete', 'enable', 'disable'])
     parser.add_argument('name', nargs='?')
     parser.add_argument('--level', default='Test')
     parser.add_argument('--points', help='"x,z[,y[,width[,falloff]]];..."')
@@ -113,20 +128,28 @@ def main():
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--raise-only', action='store_true')
     group.add_argument('--lower-only', action='store_true')
+    group.add_argument('--paint-only', action='store_true', help='no height change: only clear foliage and paint')
     parser.add_argument('--linear', action='store_true', help='polyline instead of Catmull-Rom')
     parser.add_argument('--layer', type=int, default=0, help='edits apply in layer order')
+    parser.add_argument('--clear-foliage', type=float, help='0..1: share of scatter (grass, forest) removed under the edit')
+    paint = parser.add_mutually_exclusive_group()
+    paint.add_argument('--paint-layer', type=int, choices=range(8), help='TerrainLayers.layer painted under the edit')
+    paint.add_argument('--no-paint', action='store_true', help='set: stop painting')
     args = parser.parse_args()
 
     db = sqlite3.connect(DB)
     db.execute('PRAGMA foreign_keys = ON')
     db.executescript(SCHEMA)
+    migrate(db)
     terrain = terrain_of(db, args.level)
 
     if args.command == 'list':
-        for row in db.execute('SELECT id, layer, name, enabled, raise_terrain, lower_terrain, relative, smooth FROM TerrainEdits '
-                              'WHERE terrain = ? ORDER BY layer, id', (terrain,)):
+        for row in db.execute('SELECT id, layer, name, enabled, raise_terrain, lower_terrain, relative, smooth, clear_foliage, '
+                              'paint_layer FROM TerrainEdits WHERE terrain = ? ORDER BY layer, id', (terrain,)):
             count = db.execute('SELECT COUNT(*) FROM TerrainEditPoints WHERE edit = ?', (row[0],)).fetchone()[0]
-            print('%d layer %d %s enabled %d raise %d lower %d relative %d smooth %d points %d' % (row + (count,)))
+            paint_layer = '-' if row[9] is None else str(row[9])
+            print('%d layer %d %s enabled %d raise %d lower %d relative %d smooth %d clear %g paint %s points %d' %
+                  (row[:9] + (paint_layer, count)))
         return
     if not args.name:
         sys.exit('name is required')
@@ -136,13 +159,23 @@ def main():
             sys.exit('--points is required')
         points = parse_points(args.points, args, height_sampler(db, terrain))
         db.execute('DELETE FROM TerrainEdits WHERE terrain = ? AND name = ?', (terrain, args.name))
-        cursor = db.execute('INSERT INTO TerrainEdits (terrain, layer, name, raise_terrain, lower_terrain, relative, smooth) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                            (terrain, args.layer, args.name, 0 if args.lower_only else 1, 0 if args.raise_only else 1,
-                             1 if args.relative else 0, 0 if args.linear else 1))
+        cursor = db.execute('INSERT INTO TerrainEdits (terrain, layer, name, raise_terrain, lower_terrain, relative, smooth, '
+                            'clear_foliage, paint_layer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                            (terrain, args.layer, args.name, 0 if args.lower_only or args.paint_only else 1,
+                             0 if args.raise_only or args.paint_only else 1, 1 if args.relative else 0, 0 if args.linear else 1,
+                             args.clear_foliage or 0.0, args.paint_layer))
         edit = cursor.lastrowid
         db.executemany('INSERT INTO TerrainEditPoints (edit, point, x, y, z, width, falloff) VALUES (?, ?, ?, ?, ?, ?, ?)',
                        [(edit, i) + p for i, p in enumerate(points)])
         print('edit %s: %d points' % (args.name, len(points)))
+    elif args.command == 'set':
+        if not db.execute('SELECT 1 FROM TerrainEdits WHERE terrain = ? AND name = ?', (terrain, args.name)).fetchone():
+            sys.exit('no edit %s' % args.name)
+        if args.clear_foliage is not None:
+            db.execute('UPDATE TerrainEdits SET clear_foliage = ? WHERE terrain = ? AND name = ?', (args.clear_foliage, terrain, args.name))
+        if args.paint_layer is not None or args.no_paint:
+            db.execute('UPDATE TerrainEdits SET paint_layer = ? WHERE terrain = ? AND name = ?', (args.paint_layer, terrain, args.name))
+        print('set %s' % args.name)
     elif args.command == 'delete':
         db.execute('DELETE FROM TerrainEdits WHERE terrain = ? AND name = ?', (terrain, args.name))
         print('deleted %s' % args.name)

@@ -13,6 +13,8 @@
 namespace GS
 {
 
+struct TerrainEditCoverage;
+
 // Террейн CDLOD (Continuous Distance-Dependent Level of Detail, F. Strugar, 2009).
 // Квадродерево над картой высот: корень покрывает весь террейн, лист — gridDim текселей.
 // У каждого уровня свой диапазон расстояний, вдвое больше предыдущего; узел, до которого камера ближе
@@ -26,7 +28,8 @@ public:
 	CDLODTerrain();
 
 	// terrainId — строка таблицы Terrain, edits — правки рельефа уровня по порядку слоёв (накладываются на копию карты
-	// высот при загрузке: её читают вершины, узлы квадродерева и всё, что стоит на рельефе)
+	// высот при загрузке: её читают вершины, узлы квадродерева и всё, что стоит на рельефе; их очистка растительности —
+	// маска для расстановки, покраска — в splat-карту материала)
 	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {} );
 	// Карта высот и её масштаб: по ним стоят расстановка травы и декора и частицы
 	TerrainHeight terrainHeight() const override;
@@ -80,8 +83,10 @@ private:
 	bool loadSettings( uint32_t terrainId, float& heightMultiplier, std::string& splatMap );
 	bool createShader();
 	// Копия карты высот с правками рельефа и мипами для вершинного шейдера и минимум / максимум высоты каждого узла по
-	// мипам его уровня
-	bool buildHeightBounds( const std::vector<TerrainEdit>& edits );
+	// мипам его уровня; coverage — что правки делают, кроме высоты
+	bool buildHeightBounds( const std::vector<TerrainEdit>& edits, TerrainEditCoverage& coverage );
+	// Маска очистки растительности правками (R8_UNORM размером с карту высот, без правок с очисткой — 1 × 1 ноль)
+	bool createFoliageClearMask( const TerrainEditCoverage& coverage );
 	void calcRanges();
 	NodeBox nodeBox( uint32_t level, uint32_t x, uint32_t z ) const;
 	float nodeSize( uint32_t level ) const;
@@ -100,6 +105,8 @@ private:
 	std::vector<std::vector<DirectX::XMFLOAT2>> m_heightBounds;	// по уровням: нормированные min / max высоты узлов
 	Texture m_heightMapTexture;	// копия t_heightmap в R32_FLOAT с правками рельефа и полной цепочкой мипов
 	ShaderView m_heightMap;
+	Texture m_foliageClearTexture;
+	ShaderView m_foliageClearMask;
 	float m_ranges[maxLevels] = {};
 	DirectX::XMFLOAT4 m_morphConsts[maxLevels] = {};
 

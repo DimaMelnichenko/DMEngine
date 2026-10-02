@@ -54,13 +54,14 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	for( uint32_t level = 0; level < m_levelCount; ++level )
 		m_nodesPerSide[level] = static_cast<uint32_t>( std::ceil( m_worldSize / nodeSize( level ) ) );
 
-	if( !buildHeightBounds( edits ) )
+	TerrainEditCoverage coverage;
+	if( !buildHeightBounds( edits, coverage ) || !createFoliageClearMask( coverage ) )
 		return false;
 
 	if( !createShader() )
 		return false;
 
-	if( !m_material.initialize( terrainId, splatMap ) )
+	if( !m_material.initialize( terrainId, splatMap, coverage ) )
 		return false;
 
 	m_patch.initialize( patchDim + 1, patchDim + 1 );
@@ -122,6 +123,7 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 {
 	TerrainHeight height;
 	height.heightMap = &m_heightMap;
+	height.foliageClearMask = &m_foliageClearMask;
 	height.worldSize = m_worldSize;
 	// Ползунок, а не m_heightMultiplier: тот обновляется в update() только у видимого террейна
 	height.heightMultiplier = m_initialized ? m_properties["Height multiplier"].data<float>() : m_heightMultiplier;
@@ -188,7 +190,7 @@ void CDLODTerrain::warmPipelines( const PassStates& states )
 							  states.shadowDepth }, states.depthOnly, { m_depthPhase } );
 }
 
-bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits )
+bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, TerrainEditCoverage& coverage )
 {
 	ScratchImage captured;
 	if( !GpuImages::captureTexture( System::textures().get( m_heightMapName )->texture(), captured ) )
@@ -231,7 +233,7 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits )
 		field.texelSize = m_texelSize;
 		field.heightMultiplier = m_heightMultiplier;
 		field.heightOffset = m_heightOffset;
-		const size_t changed = applyTerrainEdits( field, edits );
+		const size_t changed = applyTerrainEdits( field, edits, &coverage );
 		LOG( "CDLOD terrain: " + std::to_string( edits.size() ) + " terrain edits, texels changed: " + std::to_string( changed ) );
 	}
 
@@ -297,6 +299,29 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits )
 		}
 	}
 
+	return true;
+}
+
+bool CDLODTerrain::createFoliageClearMask( const TerrainEditCoverage& coverage )
+{
+	const size_t size = coverage.clearsFoliage() ? coverage.size : 1;
+	ScratchImage mask;
+	if( FAILED( mask.Initialize2D( DXGI_FORMAT_R8_UNORM, size, size, 1, 1 ) ) )
+		return false;
+	const Image& image = *mask.GetImage( 0, 0, 0 );
+	for( size_t row = 0; row < size; ++row )
+	{
+		uint8_t* line = image.pixels + row * image.rowPitch;
+		for( size_t col = 0; col < size; ++col )
+			line[col] = coverage.clearsFoliage() ?
+				static_cast<uint8_t>( std::lround( std::clamp( coverage.foliageClear[row * size + col], 0.0f, 1.0f ) * 255.0f ) ) : 0;
+	}
+	if( !GpuImages::createTexture( mask, m_foliageClearTexture, m_foliageClearMask ) )
+	{
+		LOG( "CDLOD terrain: can`t create foliage clear mask" );
+		return false;
+	}
+	DMD3D::instance().setName( m_foliageClearTexture, "Terrain foliage clear mask" );
 	return true;
 }
 

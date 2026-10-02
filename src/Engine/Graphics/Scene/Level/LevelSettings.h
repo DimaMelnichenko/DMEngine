@@ -21,7 +21,8 @@ struct TerrainEditPoint
 
 // Правка рельефа (строка TerrainEdits, как сплайн Landscape Splines с Raise / Lower Terrain и слой Edit Layers в UE):
 // кривая через точки — русло, насыпь тропы; одна точка — круглая площадка. Слои — по порядку (TerrainEdits.layer),
-// накладывает Scene/Terrain/TerrainEdits
+// накладывает Scene/Terrain/TerrainEdits. Та же полоса (с полосой перехода) убирает растительность и красит слой
+// splat-карты — как Paint Layer у Landscape Splines
 struct TerrainEdit
 {
 	std::string name;
@@ -29,6 +30,8 @@ struct TerrainEdit
 	bool lower = true;		// выше — опускается
 	bool relative = false;	// y точек — смещение от рельефа под точкой (до этой правки), а не высота
 	bool smooth = true;		// Catmull-Rom через точки, иначе ломаная
+	float clearFoliage = 0.0f;	// 0…1: какую долю растительности (расстановка: трава, лес) правка убирает
+	int paintLayer = -1;		// слой материала террейна (TerrainLayers.layer), которым правка красит splat-карту; −1 — нет
 	std::vector<TerrainEditPoint> points;
 };
 

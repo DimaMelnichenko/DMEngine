@@ -360,6 +360,7 @@ void Scatterer::compute( const FrameContext& frame )
 		assignGroups( layer );
 
 		const ShaderView& heightMap = *terrain.heightMap;
+		const ShaderView& foliageClear = *terrain.foliageClearMask;
 		const ShaderView& mask = System::textures().get( layer.mask )->srv();
 
 		// Постоянный слой: раз — раскладка на карту кластерами, каждый кадр — отбор кластеров и их экземпляров в пул
@@ -369,9 +370,10 @@ void Scatterer::compute( const FrameContext& frame )
 			if( !layer.placed )
 			{
 				PassDesc place = layer.pass->placeDesc( "Scatter placement" );
-				place.reads = { { &heightMap, "height map" }, { &mask, "density mask" } };
+				place.reads = { { &heightMap, "height map" }, { &foliageClear, "foliage clear mask" }, { &mask, "density mask" } };
 				DMD3D::instance().beginPass( place );
 				DMD3D::instance().setSRV( 0, heightMap );
+				DMD3D::instance().setSRV( 1, foliageClear );
 				DMD3D::instance().setSRV( 2, mask );
 				layer.pass->place( m_placeShader );
 				layer.placed = true;
@@ -392,10 +394,11 @@ void Scatterer::compute( const FrameContext& frame )
 		// Проход раскладки слоя: читает карту высот и маску плотности, пишет счётчики (сначала нули), пулы, списки
 		// индексов видов и команды
 		PassDesc pass = layer.pass->passDesc( "Scatter layer" );
-		pass.reads = { { &heightMap, "height map" }, { &mask, "density mask" } };
+		pass.reads = { { &heightMap, "height map" }, { &foliageClear, "foliage clear mask" }, { &mask, "density mask" } };
 		DMD3D::instance().beginPass( pass );
 		layer.pass->resetCounters();
 		DMD3D::instance().setSRV( 0, heightMap );
+		DMD3D::instance().setSRV( 1, foliageClear );
 		DMD3D::instance().setSRV( 2, mask );
 		layer.pass->populate( m_computeShader, gridDim );
 		layer.pass->buildCommands( m_commandShader );

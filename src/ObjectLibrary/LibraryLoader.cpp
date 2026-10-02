@@ -1,6 +1,7 @@
 #include "LibraryLoader.h"
 #include "System.h"
 #include "Materials\Material.h"
+#include <algorithm>
 #include <iostream>
 #include <chrono>
 #include <cstdio>
@@ -367,7 +368,8 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 
 void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& level )
 {
-	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, raise_terrain, lower_terrain, relative, smooth FROM TerrainEdits "
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, raise_terrain, lower_terrain, relative, smooth, clear_foliage, "
+														   "paint_layer FROM TerrainEdits "
 														   "WHERE terrain = :terrain AND enabled != 0 ORDER BY layer, id" );
 	query.bind( ":terrain", terrainId );
 	while( query.executeStep() )
@@ -378,6 +380,8 @@ void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& leve
 		edit.lower = query.getColumn( "lower_terrain" ).getInt() != 0;
 		edit.relative = query.getColumn( "relative" ).getInt() != 0;
 		edit.smooth = query.getColumn( "smooth" ).getInt() != 0;
+		edit.clearFoliage = std::clamp( static_cast<float>( query.getColumn( "clear_foliage" ).getDouble() ), 0.0f, 1.0f );
+		edit.paintLayer = query.getColumn( "paint_layer" ).isNull() ? -1 : query.getColumn( "paint_layer" ).getInt();
 		SQLite::Statement points( DBConnector::instance().db(), "SELECT x, y, z, width, falloff FROM TerrainEditPoints "
 																"WHERE edit = :edit ORDER BY point" );
 		points.bind( ":edit", query.getColumn( "id" ).getInt() );

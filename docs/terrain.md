@@ -23,8 +23,10 @@
 | 2 — скала | `rock_face_03` | 2,7 | Poly Haven, `DownloadResources/polyhaven/rock_face_03_*` |
 | 3 — снег | `crusted_snow2` | 4 | FreePBR, `DownloadResources/Crusted_snow2-bl.zip` |
 | 4 — вторая трава | `wispy_grass_meadow` | 4 | FreePBR, `DownloadResources/whispy-grass-meadow-bl.zip` |
+| 5 — галька русла | `dry_river_pebbles` | 2 | Poly Haven (CC0), `DownloadResources/dry_river_pebbles_2k.blend.zip` |
 
 Две травы лежат вперемешку крупными пятнами (см. «Splat-карта и маски»), чтобы луг издалека не был одного тона.
+Слоя 5 нет в splat-карте генератора: им дно русел красят правки рельефа (`paint_layer`, «Правка рельефа»).
 Прежний снег `snow_02` (следы на снегу) заменён настом, его файлы остались в `Textures\terrain\layers\`. Лицензия
 FreePBR запрещает распространять сами файлы — архивы и собранные DDS в git не попадают (`DownloadResources/` и
 `Textures/` вне git).
@@ -70,7 +72,14 @@ B --name wispy_grass_meadow --albedo D/whispy-grass-meadow-bl.zip:whispy-grass-m
   --normal D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_normal-ogl.png
   --roughness D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_roughness.png
   --height D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_height.png --layer 4 --tiling 4
+B --name dry_river_pebbles --albedo D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_diff_2k.jpg
+  --normal D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_nor_gl_2k.exr
+  --roughness D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_rough_2k.exr
+  --height D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_disp_2k.png --layer 5 --tiling 2
 ```
+
+Архив `dry_river_pebbles` — `python Tools/polyhaven_download.py dry_river_pebbles --resolution 2k` (у текстур Poly Haven
+тоже есть вариант `.blend` с картами в `textures/`).
 
 У ARM Poly Haven шероховатость — канал G (`:g`), у отдельной карты шероховатости — R (по умолчанию). Размер —
 `--size` (2048). Нормаль DirectX — `--normal-convention dx`. Настоящий размер текстуры Poly Haven отдаёт API
@@ -135,7 +144,8 @@ B --name wispy_grass_meadow --albedo D/whispy-grass-meadow-bl.zip:whispy-grass-m
 так что после новой долины (`gen_heightmap.py`) они ложатся на новый рельеф.
 
 - **Правка** — строка `TerrainEdits` (`terrain`, `layer` — порядок, `name`, `enabled`, `raise_terrain` / `lower_terrain`
-  — можно ли поднимать и опускать рельеф, как Raise / Lower Terrain у сплайна UE, `relative`, `smooth`) и её точки —
+  — можно ли поднимать и опускать рельеф, как Raise / Lower Terrain у сплайна UE, `relative`, `smooth`, `clear_foliage`
+  и `paint_layer` — см. «Очистка и покраска») и её точки —
   `TerrainEditPoints` (`point` — порядок, `x`, `y`, `z`, `width` — ширина плоской части, `falloff` — полоса перехода к
   исходному рельефу с каждой стороны, м). Через точки идёт кривая Catmull-Rom (`smooth` 0 — ломаная), высота, ширина и
   полоса — вдоль неё. Одна точка — круглая площадка диаметром `width`.
@@ -148,22 +158,38 @@ B --name wispy_grass_meadow --albedo D/whispy-grass-meadow-bl.zip:whispy-grass-m
   поэтому итоговый рельеф видят вершины всех уровней, min / max узлов квадродерева, нормали в `terrain.ps`, расстановка
   и частицы (`TerrainHeight::heightMap` — итоговая карта). Цена — доли миллисекунды при загрузке (отрезок кривой обходит
   только свои тексели).
+- **Очистка и покраска** — как Paint Layer и удаление листвы у Landscape Splines. С тем же весом, что высота (1 до
+  половины ширины, косинусом в полосе перехода), правка убирает растительность — долю `clear_foliage` (0…1) — и красит
+  слой `paint_layer` (`TerrainLayers.layer`, NULL — не красит). Обе — и без изменения высоты (`raise_terrain` и
+  `lower_terrain` равны 0: тропа краской, поляна). Поля считает `applyTerrainEdits` в `TerrainEditCoverage` при
+  наложении. Очистка — наибольшая из правок, маска `R8_UNORM` размером с карту высот (`TerrainHeight::foliageClearMask`,
+  слот 1 `Shaders/terrain_height.sh`): `scatter.cs` умножает на `1 − очистка` плотность маски слоя (`placeInCell`),
+  поэтому редеют и мельчают и кольцевые слои (трава, камешки), и лес (`placeWorld`). Покраска — по порядку правок, как
+  кисть: правка с весом w умножает прежние веса текселя на 1 − w и добавляет w своему слою; `TerrainMaterial` смешивает
+  её с весами файла splat-карты до мипов (`paintSplatMap`), поэтому `terrain.ps` не меняется. Слой, которого нет
+  в `TerrainLayers`, не красится (строка в логе).
 - **Инструмент** — `Tools/terrain_edit.py`:
   ```
   python Tools/terrain_edit.py add test_channel --points "400,300;420,285;440,275;460,265;480,260;500,262" --relative --height -1.2 --width 2.5 --falloff 3 --lower-only
   python Tools/terrain_edit.py add test_pad --points "630,250" --width 14 --falloff 8
+  python Tools/terrain_edit.py set test_channel --clear-foliage 1 --paint-layer 5
+  python Tools/terrain_edit.py set test_pad --clear-foliage 1
   python Tools/terrain_edit.py list | disable ИМЯ | enable ИМЯ | delete ИМЯ
   ```
+  `add` принимает те же `--clear-foliage F` и `--paint-layer N`, `--paint-only` — правка без высоты; `set` меняет их
+  у готовой правки (`--no-paint` — снять покраску). Колонки очистки и покраски скрипт добавляет и в прежнюю базу.
   Точка — `x,z[,y[,ширина[,полоса]]]`; без `y` — `--height`, а у абсолютной правки — высота рельефа под точкой по карте
   высот (площадка «на текущей высоте»). Повторный `add` с тем же именем заменяет правку. Правки — у террейна, поэтому
   общие для уровней с ним (`Test` и `TestHDRI`).
 - **Тестовые правки** уровня `Test`: `test_channel` — русло через луг у старта (x 400…500, z 300…262, на 1,2 м ниже
-  земли, дно 2,5 м, откосы по 3 м), `test_pad` — площадка Ø 14 м на склоне у (630, 250) на высоте 18,8 м: снизу видна
-  терраса с насыпью и выемкой.
+  земли, дно 2,5 м, откосы по 3 м; дно и откосы — галька `dry_river_pebbles`, трава убрана), `test_pad` — площадка
+  Ø 14 м на склоне у (630, 250) на высоте 18,8 м: снизу видна терраса с насыпью и выемкой, трава и ели убраны (к краю
+  полосы перехода — реже).
 
-Ограничения: маски расстановки и splat-карта считаются по исходному рельефу (`gen_terrain_textures.py`) — в русле
-растут трава и ели, его дно не каменистое; сценарии `Tools/` (`import_gltf.py --snap-to-terrain`) читают исходную карту
-высот. План — в `TODO.md`.
+Ограничения: маски расстановки и splat-карта генератора по-прежнему считаются по исходному рельефу
+(`gen_terrain_textures.py`): правка лишь убирает растительность и красит слой поверх, а не пересчитывает уклоны и сток
+под новым рельефом (откос насыпи не станет осыпью сам). Сценарии `Tools/` (`import_gltf.py --snap-to-terrain`) читают
+исходную карту высот. План — в `TODO.md`.
 
 ## Splat-карта и маски
 
