@@ -1,5 +1,7 @@
 #include "GUI.h"
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include "imgui.h"
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_win32.h"
@@ -219,10 +221,24 @@ void GUI::renderSceneObject()
 
 void GUI::printCamera( DMCamera& camera )
 {
-	ImGui::SetNextWindowSize( ImVec2( 256, 300 ), ImGuiCond_FirstUseEver );
+	ImGui::SetNextWindowSize( ImVec2( 330, 200 ), ImGuiCond_FirstUseEver );
 	ImGui::Begin( "Camera" );
 
-	ImGui::Text( "Position:\nx:%f\ny:%f\nz:%f", camera.position().x, camera.position().y, camera.position().z );
+	// Всё, чтобы по скриншоту поставить камеру так же: строка — в формате команды camera удалённого управления и
+	// параметра -Camera (x,y,z,pitch,yaw; pitch > 0 — взгляд вниз, yaw 0 — на +Z, 90 — на +X)
+	const XMFLOAT3& position = camera.position();
+	const XMFLOAT2 rotation = camera.rotation();
+	const float yaw = std::fmod( std::fmod( rotation.y, 360.0f ) + 360.0f, 360.0f );
+	XMFLOAT3 direction;
+	camera.viewDirection( &direction );
+	ImGui::Text( "Position:  %.2f, %.2f, %.2f", position.x, position.y, position.z );
+	ImGui::Text( "Direction: %.3f, %.3f, %.3f", direction.x, direction.y, direction.z );
+	ImGui::Text( "Pitch %.1f, yaw %.1f (degrees)", rotation.x, yaw );
+	char line[128];
+	std::snprintf( line, sizeof( line ), "%.2f,%.2f,%.2f,%.1f,%.1f", position.x, position.y, position.z, rotation.x, yaw );
+	ImGui::Text( "camera %s", line );
+	if( ImGui::Button( "Copy x,y,z,pitch,yaw" ) )
+		ImGui::SetClipboardText( line );
 
 	parsePropertiesAndCreateControls( &camera.m_properties );
 

@@ -1,4 +1,5 @@
 #include "DMSystem.h"
+#include <algorithm>
 #include "Engine\Input\Input.h"
 #include "Common\DBConnector.h"
 #include "Logger\Logger.h"
@@ -156,6 +157,10 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	DEVMODE dmScreenSettings;
 	int posX, posY;
 
+	// Пиксели окна — физические: без этого Windows с масштабом экрана 150 % растягивает окно 1920 × 1080 до 2880 × 1620,
+	// больше экрана 2560 × 1440, и картинка размыта. Задний буфер от этого не зависит (BackBufferWidth в settings.ini)
+	SetProcessDpiAwarenessContext( DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 );
+
 	// Get the instance of this application.
 	m_hinstance = GetModuleHandle( nullptr );
 
@@ -184,6 +189,9 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	screenHeight = GetSystemMetrics( SM_CYSCREEN );
 
 	// Setup the screen settings depending on whether it is running in full screen or in windowed mode.
+	DWORD style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_POPUP;
+	int windowWidth = screenWidth;
+	int windowHeight = screenHeight;
 	if( m_config.fullScreen() )
 	{
 		// If full screen set the screen to maximum size of the users desktop and 32bit.
@@ -202,21 +210,25 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	}
 	else
 	{
-		// If windowed then set it to 1024x1024 resolution.
+		// Оконный режим — обычное окно с заголовком (перетаскивается, не закрывает экран) и клиентской областью
+		// ScreenWidth × ScreenHeight из settings.ini; размер не меняется, окно — в рабочей области по центру
 		screenWidth = m_config.screenWidth();
 		screenHeight = m_config.screenHeight();
+		style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+		RECT frame = { 0, 0, screenWidth, screenHeight };
+		AdjustWindowRectExForDpi( &frame, style, FALSE, WS_EX_APPWINDOW, GetDpiForSystem() );
+		windowWidth = frame.right - frame.left;
+		windowHeight = frame.bottom - frame.top;
 
-		posX = ( GetSystemMetrics( SM_CXSCREEN ) - screenWidth ) / 2;
-		posY = ( GetSystemMetrics( SM_CYSCREEN ) - screenHeight ) / 2;
-
-		//posX = 400;
-		//posY = 100;
+		RECT work = {};
+		SystemParametersInfo( SPI_GETWORKAREA, 0, &work, 0 );
+		posX = std::max<int>( work.left, work.left + ( work.right - work.left - windowWidth ) / 2 );
+		posY = std::max<int>( work.top, work.top + ( work.bottom - work.top - windowHeight ) / 2 );
 	}
 
 	// Create the window with the screen settings and get the handle to it.
-	m_hwnd = CreateWindowEx( WS_EX_APPWINDOW, m_applicationName, m_applicationName,
-							 WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_POPUP,
-							 posX, posY, screenWidth, screenHeight, nullptr, nullptr, m_hinstance, this );
+	m_hwnd = CreateWindowEx( WS_EX_APPWINDOW, m_applicationName, m_applicationName, style,
+							 posX, posY, windowWidth, windowHeight, nullptr, nullptr, m_hinstance, this );
 	return;
 }
 
