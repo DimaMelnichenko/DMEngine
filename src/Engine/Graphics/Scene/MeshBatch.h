@@ -89,6 +89,7 @@ struct CustomBatch
 	uint32_t ownerOrder = 0;
 	uint32_t passMask = 0;						// биты passBit()
 	float distance = 0.0f;						// для сортировки в проходе прозрачных: 0 — ближе всех, рисуется последним
+	bool readsSceneColor = false;				// в проходе прозрачных читает цвет сцены (Material::readsSceneColor)
 };
 
 // Куда объекты складывают меши и свои вызовы за вид — как FMeshElementCollector в UE
@@ -111,9 +112,9 @@ public:
 		added.mirrored = DirectX::XMVectorGetX( DirectX::XMMatrixDeterminant( batch.world ) ) < 0.0f;
 	}
 
-	void addCustom( uint32_t passMask, float distance = 0.0f )
+	void addCustom( uint32_t passMask, float distance = 0.0f, bool readsSceneColor = false )
 	{
-		m_customs.push_back( { m_owner, m_order, passMask, distance } );
+		m_customs.push_back( { m_owner, m_order, passMask, distance, readsSceneColor } );
 	}
 
 	void clear()

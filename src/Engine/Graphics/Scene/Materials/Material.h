@@ -47,6 +47,9 @@ public:
 	// Шейдер читает глубину сцены (SLOT_SCENE_DEPTH): после depth prepass такие меши и свои вызовы рисуются проходом
 	// opaqueDepthRead — глубина в нём только для чтения, проверка «ближе или равно» (импостер: смещение глубины)
 	virtual bool readsSceneDepth() const { return false; }
+	// Полупрозрачный шейдер читает цвет сцены за собой (SLOT_SCENE_COLOR: преломление, поглощение воды): перед проходом
+	// transparent рендерер копирует HDR-буфер, а глубина в проходе — только для чтения и тоже видна (SLOT_SCENE_DEPTH)
+	virtual bool readsSceneColor() const { return false; }
 	// Фаза «только глубина» для теней и depth prepass (без пиксельного шейдера или только с отсечением — по альфе,
 	// дизерингом смены LOD) или −1: материал тень не отбрасывает и в prepass не рисуется. Из options важны instanced
 	// и lodDither

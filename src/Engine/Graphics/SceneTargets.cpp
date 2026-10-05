@@ -22,6 +22,8 @@ bool SceneTargets::create( uint32_t width, uint32_t height, const float clearCol
 	// Прежние цели отпускаются отложенно, когда GPU закончит кадр, в котором они ещё рисовались
 	m_colorView.reset();
 	m_depthView.reset();
+	m_colorCopyView.reset();
+	m_colorCopy.reset();
 	m_colorTarget.reset();
 	m_depthTarget.reset();
 	m_depthReadTarget.reset();
@@ -66,6 +68,26 @@ void SceneTargets::clear() const
 	d3d.beginPass( PassDesc{ "Scene clear", { { &m_colorTarget, "scene color" } }, { &m_depthTarget, "scene depth" }, m_width, m_height } );
 	d3d.clearTarget( m_colorTarget, m_clearColor );
 	d3d.clearDepth( m_depthTarget, 0.0f );
+}
+
+void SceneTargets::copyColor()
+{
+	DMD3D& d3d = DMD3D::instance();
+	if( !m_colorCopy.handle() )
+	{
+		TextureDesc desc;
+		desc.width = m_width;
+		desc.height = m_height;
+		desc.format = colorFormat;
+		if( !d3d.createTexture( desc, nullptr, m_colorCopy ) || !d3d.createShaderView( m_colorCopy, {}, m_colorCopyView ) )
+		{
+			LOG( "Failed to create the scene color copy " + std::to_string( m_width ) + "x" + std::to_string( m_height ) );
+			m_colorCopy.reset();
+			return;
+		}
+		d3d.setName( m_colorCopy, "Scene color copy" );
+	}
+	d3d.copyTexture( m_colorCopy, m_color, "Scene color copy" );
 }
 
 }

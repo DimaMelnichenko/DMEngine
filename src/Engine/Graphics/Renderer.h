@@ -117,6 +117,8 @@ private:
 	};
 	MeshCollector m_collector;
 	std::vector<DrawCommand> m_commands[scenePassCount];
+	// В проходе transparent кто-то читает цвет сцены (buildCommands): перед ним — копия HDR-буфера, глубина — только чтение
+	bool m_sceneColorRead = false;
 	// Проход теней: свой сборщик и команды на каждый каскад
 	ShadowCascades m_shadows;
 	bool m_shadowsActive = false;	// каскады этого кадра посчитаны (update перед compute объектов)

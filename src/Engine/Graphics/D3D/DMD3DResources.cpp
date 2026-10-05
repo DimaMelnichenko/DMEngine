@@ -591,6 +591,22 @@ void DMD3D::copyBuffer( Buffer& destination, const Buffer& source )
 		barrier( destination.handle(), steadyAccess( destination.desc().usage ) );
 }
 
+void DMD3D::copyTexture( Texture& destination, const Texture& source, const char* passName )
+{
+	if( !destination.handle() || !source.handle() )
+		return;
+	if( m_recordingPasses )
+	{
+		finishPassRecord();
+		m_passRecords.push_back( std::string( passName ) + ": copy" );
+		m_passBarriersStart = m_frameBarriers;
+	}
+	barrier( source.handle(), D3D12_BARRIER_ACCESS_COPY_SOURCE, D3D12_BARRIER_LAYOUT_COPY_SOURCE );
+	barrier( destination.handle(), D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_COPY_DEST );
+	flushBarriers();
+	m_commandList->CopyResource( destination.handle(), source.handle() );
+}
+
 bool DMD3D::readBuffer( const Buffer& readback, void* data, size_t size )
 {
 	if( !readback.handle() || readback.copyFence() == 0 || m_fence->GetCompletedValue() < readback.copyFence() )

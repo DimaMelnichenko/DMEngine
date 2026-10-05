@@ -177,7 +177,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `Material::readsSceneDepth`, импостеры; глубина только для чтения и видна шейдерам — `SLOT_SCENE_DEPTH`, t107) → `sky`
   (фон на дальней плоскости: глубина 0 и `DepthState::readOnlyNearOrEqual` без записи — только там, где сцена ничего
   не нарисовала) →
-  `transparent` (alpha blending, глубина только читается) в HDR-буфер сцены. Глубина везде обратная (Reversed-Z, как в
+  `transparent` (alpha blending, глубина только читается; если его шейдеры читают цвет сцены — `Material::readsSceneColor`,
+  `CustomBatch::readsSceneColor`, — перед ним копия HDR-буфера `SceneTargets::copyColor` в `SLOT_SCENE_COLOR`, t108, и
+  глубина только для чтения в `SLOT_SCENE_DEPTH`, как SceneColor в UE) в HDR-буфер сцены. Глубина везде обратная (Reversed-Z, как в
   UE): буфер `D32_FLOAT`, 1 у ближней плоскости и 0 у дальней (`DMCamera` строит проекцию с переставленными
   плоскостями, `RenderView::nearPlane` / `farPlane` — из камеры), очистка в 0, «ближе» — `GREATER`; так же карты теней
   (ортография каскада — 1 у ближней к свету, сэмплер сравнения `GREATER_EQUAL`, наклонное смещение со знаком минус)

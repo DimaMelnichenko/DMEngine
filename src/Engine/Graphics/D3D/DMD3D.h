@@ -207,6 +207,9 @@ public:
 	// --- Обновление и копирование ----------------------------------------------------------------------------------------
 	void updateBuffer( Buffer& buffer, const void* data, size_t size );	// запись целиком в буфер без cpuWrite: upload + копия
 	void copyBuffer( Buffer& destination, const Buffer& source );
+	// Копия текстуры целиком (размер и формат совпадают) — в кадре, между проходами: источник и приёмник переходят в
+	// layout копии, следующий проход вернёт их объявлением. passName — строка в списке проходов (команда passes)
+	void copyTexture( Texture& destination, const Texture& source, const char* passName );
 	// Чтение копии BufferUsage::readback без ожидания: false — GPU ещё пишет её (fence копии не пройден) или ошибка
 	bool readBuffer( const Buffer& readback, void* data, size_t size );
 

@@ -16,8 +16,10 @@
    видна шейдерам (`SLOT_SCENE_DEPTH`, t107), проверка «ближе или равно» без записи. Без prepass такие материалы рисует
    `opaque` и пишут глубину сами.
 7. **`sky`** — фон на дальней плоскости (глубина 0), только там, где сцена ничего не нарисовала ([sky.md](sky.md)).
-8. **`transparent`** — полупрозрачные от дальних к ближним, глубина только читается.
-9. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
+8. **`Scene color copy`** (только если в `transparent` кто-то читает цвет сцены) — копия HDR-буфера для шейдеров, см.
+   «Цвет сцены для шейдеров».
+9. **`transparent`** — полупрозрачные от дальних к ближним, глубина только читается.
+10. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
 
 Задний буфер — swap chain flip model (`DMD3D::createDeviceSwapChain`, как требует D3D12): два буфера `R8G8B8A8_UNORM`
 с sRGB-видом, без vsync — с разрывом кадра (tearing), кадр начинается по waitable object (`DMD3D::waitForNextFrame`).
@@ -38,8 +40,28 @@
 так рисует `opaqueDepthRead` и привязывает `depthView` в слот сцены `SLOT_SCENE_DEPTH` (`Shaders/slots.h`; в шейдере —
 `DM_SRV( Texture2D<float>, g_sceneDepth, SLOT_SCENE_DEPTH )`, выборка `g_sceneDepth[uint2( position.xy )]`). Экранным
 эффектам между prepass и проходом цвета (SSAO, контактные тени) достаточно обычного чтения: `depthView` в `reads`
-compute-прохода. Цели только для чтения очистка не нужна (`clearDepth` её пропускает). Цвет сцены за прозрачными (вода) —
-пока нет: план в `TODO.md`.
+compute-прохода. Цели только для чтения очистка не нужна (`clearDepth` её пропускает).
+
+## Цвет сцены для шейдеров
+
+Как SceneColor в UE (преломление, Single Layer Water): полупрозрачному шейдеру нужен цвет того, что за ним, а рисует он
+в тот же HDR-буфер, из которого читать нельзя. Поэтому перед проходом `transparent` рендерер копирует буфер целиком
+(`SceneTargets::copyColor` → `DMD3D::copyTexture`, `CopyResource`) — то, что нарисовали непрозрачные и небо, без других
+полупрозрачных (как в UE). Копия — `R16G16B16A16_FLOAT` в тех же единицах, что буфер сцены: яркость × pre-exposure
+(`preExposure()` из `Shaders/exposure.sh`), а не «цвет на экране».
+
+Копия делается, только если её кто-то читает: меш с материалом `Material::readsSceneColor()` или свой вызов
+`MeshCollector::addCustom( маска, расстояние, true )` (`CustomBatch::readsSceneColor`) в проходе `transparent`;
+`Renderer::buildCommands` ставит `m_sceneColorRead`. Текстура копии создаётся при первой копии (16 МБ при 1920 × 1080)
+и заново при смене размера окна. Тогда проход `transparent`:
+- объявляет копию в `reads` и привязывает её в слот сцены `SLOT_SCENE_COLOR` (t108; в шейдере —
+  `DM_SRV( Texture2D<float4>, g_sceneColor, SLOT_SCENE_COLOR )`, выборка `g_sceneColor[uint2( position.xy )]` или со
+  смещением преломления — `SampleLevel` с `g_SamplerLinearClamp`);
+- рисует с глубиной только для чтения (`depthReadTarget`) и привязывает её в `SLOT_SCENE_DEPTH`, как `opaqueDepthRead`:
+  воде нужны оба — цвет дна и толщина слоя до него.
+
+Без читающих копии нет, и проход `transparent` такой же, как прежде. Копия 1920 × 1080 — 0,028 мс GPU (Release,
+RTX 4070 Ti, строка `Scene color copy` в «GPU average»). В списке проходов (`passes`) — строка `Scene color copy: copy`.
 
 ## Depth prepass
 
