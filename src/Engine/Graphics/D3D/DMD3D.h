@@ -103,6 +103,8 @@ public:
 	// Текущий задний буфер (R8G8B8A8 с sRGB-видом) — цель тонмаппинга и GUI; размер — пиксели клиентской области
 	const TargetView& backBufferTarget() const { return m_backBufferTargets[m_backBufferIndex]; }
 	uint32_t backBufferWidth() const { return m_backBufferWidth; }
+	// Включена GPU-based validation (Debug): каждый вызов на GPU в разы дольше — долгие расчёты при загрузке урезать
+	bool gpuValidation() const { return m_gpuValidation; }
 	uint32_t backBufferHeight() const { return m_backBufferHeight; }
 	// Копия заднего буфера на CPU (снимок — DMGraphics): байты строками по rowPitch, формат backBufferViewFormat. Только
 	// в кадре, между beginFrame и endFrame (задний буфер — цель кадра, командный список открыт; после Present содержимое
@@ -363,6 +365,7 @@ private:
 	com_unique_ptr<ID3D12GraphicsCommandList7> m_commandList;
 	bool m_recording = false;							// командный список открыт
 	bool m_frameStarted = false;						// был первый beginFrame: до него команды — список загрузки
+	bool m_gpuValidation = false;
 	bool m_inFrame = false;								// между beginFrame и endFrame: задний буфер — цель кадра
 	com_unique_ptr<ID3D12Fence> m_fence;
 	uint64_t m_fenceValue = 0;

@@ -123,6 +123,11 @@ bool Scene::initialize()
 		heightMap = m_terrain.terrainHeight().heightMap;
 		LOG( "Terrain init ms: " + elapsedMs( timeStart ) );
 	}
+	const bool hasWater = m_level.terrain && m_level.waterSimulation;
+	if( m_level.waterSimulation && !m_level.terrain )
+		LOG( "Water simulation needs a terrain, skipped" );
+	if( hasWater && !m_water.initialize( *m_level.waterSimulation, m_terrain ) )
+		return false;
 
 	if( m_level.sky )
 		m_sky.setModel( *m_level.sky );
@@ -180,6 +185,9 @@ bool Scene::initialize()
 	// Небо первым: его compute() готовит освещение окружением для всех, render() рисует фон
 	SceneObject* sky = m_useHDRI ? static_cast<SceneObject*>( &m_hdri ) : &m_atmosphere;
 	m_objects = { sky, &m_sky, &m_terrain, &m_models };
+	// Вода — до тех, кто её читает: её compute() привязывает текстуру воды в слот сцены (террейн рисует её позже)
+	if( hasWater )
+		m_objects.push_back( &m_water );
 	for( const auto& scatterer : m_scatterers )
 		m_objects.push_back( scatterer.get() );
 	m_objects.push_back( &m_particles );

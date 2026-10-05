@@ -52,6 +52,8 @@ private:
 	void loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set );
 	// Правки рельефа террейна уровня (включённые, по порядку слоёв)
 	void loadTerrainEdits( uint32_t terrainId, LevelDescription& level );
+	// Строка WaterSimulation уровня (level.waterSimulationId); false — строки нет
+	bool loadWaterSimulation( LevelDescription& level );
 	void loadLevelLights( LevelDescription& level );
 	bool loadLevelEnvironment( LevelDescription& level );
 	// Материал экземпляра (MaterialInstance.id_material); false — экземпляра нет

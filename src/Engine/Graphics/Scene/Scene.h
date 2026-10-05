@@ -12,6 +12,7 @@
 #include "Particle\DMParticleSystem.h"
 #include "Light\DMLightDriver.h"
 #include "Wind\Wind.h"
+#include "Water\WaterSimulation.h"
 #include "Level\LevelDescription.h"
 
 class LibraryLoader;
@@ -69,6 +70,7 @@ private:
 	bool m_useHDRI = false;
 	SkySphere m_sky;			// модель неба уровня (Levels.sky), если задана — вместо фона атмосферы
 	CDLODTerrain m_terrain;
+	WaterSimulation m_water;	// вода по рельефу (Levels.water_simulation), только с террейном
 	ModelInstances m_models;
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;
 	DMParticleSystem m_particles;

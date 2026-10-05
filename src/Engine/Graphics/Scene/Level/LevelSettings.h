@@ -116,6 +116,23 @@ struct WindSettings
 	float gustSize = 25.0f;			// длина волны порыва, м
 };
 
+// Строка WaterSimulation: вода на сетке карты высот (WaterSimulation, docs/water.md). Источники — по карте водосбора
+// (flow.dds из Tools/gen_heightmap.py): приток нарастает от flowStart до flowFull м² водосбора
+struct WaterSimulationSettings
+{
+	std::string flowMap;			// имя текстуры водосбора в Textures (R32_FLOAT, м²), размер — как у карты высот
+	float sourceRate = 0.1f;		// приток клетки при полном водосборе, л/с
+	float flowStart = 2000.0f;		// водосбор, с которого начинается приток, м²
+	float flowFull = 20000.0f;		// водосбор, при котором приток полный, м²
+	float sourceRadius = 3.0f;		// размытие источников вокруг линий стока, м: ручей рождается из пятна, а не из клетки
+	float rain = 0.0f;				// дождь — равномерный приток, мм/ч
+	float evaporation = 2.0f;		// испарение, мм/ч
+	float manning = 0.04f;			// шероховатость дна по Маннингу, с/м^(1/3): горный ручей 0,04–0,07, гладкое дно 0,02
+	float timeStep = 0.1f;			// шаг симуляции, с
+	float warmupTime = 1800.0f;		// просчёт при загрузке до установившегося течения, с времени симуляции
+	float timeScale = 1.0f;			// скорость симуляции в игре относительно времени кадра
+};
+
 // Строка SunPosition
 struct SunPositionSettings
 {

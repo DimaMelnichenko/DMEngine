@@ -246,6 +246,10 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 `ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида — в полосе перехода оба LOD с
 дизерингом, если у материала `DitheredLODTransition`; отсечение по frustum вида — границы
 меша `AbstractMesh::bounds` считаются при загрузке, меши в список отрисовки),
+`WaterSimulation` (вода по рельефу, как в From Dust: модель виртуальных труб на сетке карты высот с трением по Маннингу,
+источники по карте водосбора, озёра до уровня перелива и прогрев при загрузке, шаги по времени кадра; текстура воды —
+слот сцены `SLOT_WATER`, t109, `Shaders/water.sh`; строка `WaterSimulation` уровня, `Levels.water_simulation`; рисовать
+воду пока нечем — подсветка «Show water» у террейна, `docs/water.md`),
 `Scatterer` (по объекту на набор расстановки уровня: трава, камешки), `DMParticleSystem`. Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 
@@ -421,7 +425,8 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 скачков и трещин. Условие отсутствия трещин — диапазон уровня не меньше диагонали его узла / `morphStartRatio`,
 `calcRanges()` не даёт «LOD distance» опуститься ниже. Настройки — строка таблицы `Terrain`, на которую ссылается уровень
 (`heightmap` — имя текстуры в таблице `Textures`, `splatmap` — файл, `height_multiplier`, `height_offset`,
-`width_multiplier`). Свойство «Show LOD» раскрашивает уровни (`Shaders/cdlod_lod.ps`). Общее для шейдеров террейна
+`width_multiplier`). Свойство «Show LOD» раскрашивает уровни (`Shaders/cdlod_lod.ps`), «Show water» подсвечивает воду
+симуляции (`docs/water.md`). Общее для шейдеров террейна
 (constant buffer `CDLODTerrain::Parameters`, выборка карты высот, выход VS) — `Shaders/cdlod.sh`.
 
 **Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До восьми слоёв из
@@ -481,6 +486,7 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 `docs/scatter.md`.
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
+`Water` (`WaterSimulation`),
 `Particle` (`DMParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,
 `Texture` (`DMTexture` — текстура GPU и вид, `DMTextureStorage`, чтение файлов — `ImageFile::load`), `Model`/`Mesh`
 (`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`), `Materials` (`Material` и его классы,

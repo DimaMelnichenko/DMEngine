@@ -268,7 +268,8 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 {
 	try
 	{
-		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process, sun_position, hdri_backdrop, wind FROM Levels ";
+		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process, sun_position, hdri_backdrop, wind, "
+							  "water_simulation FROM Levels ";
 		SQLite::Statement query( DBConnector::instance().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
 		if( !name.empty() )
 			query.bind( ":name", name );
@@ -300,6 +301,12 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.hdriBackdropId = query.getColumn( "hdri_backdrop" ).getUInt();
 		if( !query.getColumn( "wind" ).isNull() )
 			level.windId = query.getColumn( "wind" ).getUInt();
+		if( !query.getColumn( "water_simulation" ).isNull() )
+		{
+			level.waterSimulationId = query.getColumn( "water_simulation" ).getUInt();
+			if( !loadWaterSimulation( level ) )
+				return false;
+		}
 
 		loadLevelLights( level );
 		if( !loadLevelEnvironment( level ) )
@@ -363,6 +370,34 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 		return false;
 	}
 
+	return true;
+}
+
+bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
+{
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM WaterSimulation WHERE id = :id" );
+	query.bind( ":id", *level.waterSimulationId );
+	if( !query.executeStep() )
+	{
+		LOG( "Water simulation " + std::to_string( *level.waterSimulationId ) + " is not found in table WaterSimulation" );
+		return false;
+	}
+	auto value = [&query]( const char* column )
+	{
+		return static_cast<float>( query.getColumn( column ).getDouble() );
+	};
+	GS::WaterSimulationSettings& water = level.waterSimulation.emplace();
+	water.flowMap = query.getColumn( "flow_map" ).getString();
+	water.sourceRate = value( "source_rate" );
+	water.flowStart = value( "flow_start" );
+	water.flowFull = value( "flow_full" );
+	water.sourceRadius = value( "source_radius" );
+	water.rain = value( "rain" );
+	water.evaporation = value( "evaporation" );
+	water.manning = value( "manning" );
+	water.timeStep = value( "time_step" );
+	water.warmupTime = value( "warmup_time" );
+	water.timeScale = value( "time_scale" );
 	return true;
 }
 

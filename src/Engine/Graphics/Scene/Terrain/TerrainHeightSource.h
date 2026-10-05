@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 class ShaderView;
 
 namespace GS
@@ -15,6 +17,7 @@ struct TerrainHeight
 	// Доля растительности, которую убрали правки рельефа (R8_UNORM, те же UV; русло, площадка): 0 — не тронута
 	const ShaderView* foliageClearMask = nullptr;
 	float worldSize = 0.0f;
+	uint32_t mapSize = 0;	// текселей карты высот по стороне
 	float heightMultiplier = 1.0f;
 	float heightOffset = 0.0f;
 };

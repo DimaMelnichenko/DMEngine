@@ -141,6 +141,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/FullscreenShader.cpp
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
+    src/Engine/Graphics/Scene/Water/WaterSimulation.cpp
     src/Engine/Graphics/ShaderProgram.cpp
     src/Engine/Graphics/Scene/Materials/TextureMaterial.cpp
     src/Engine/Graphics/D3D/DMStructuredBuffer.cpp

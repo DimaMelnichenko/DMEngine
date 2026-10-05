@@ -111,6 +111,8 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 
 	m_properties.insert( "Wireframe", false );
 	m_properties.insert( "Show LOD", false );
+	// Вода симуляции (WaterSimulation, SLOT_WATER) поверх земли: синее — глубже, светлее — быстрее
+	m_properties.insert( "Show water", false );
 
 	LOG( "CDLOD terrain: heightmap " + std::to_string( mapSize ) + ", LOD levels " + std::to_string( m_levelCount ) );
 
@@ -125,6 +127,7 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 	height.heightMap = &m_heightMap;
 	height.foliageClearMask = &m_foliageClearMask;
 	height.worldSize = m_worldSize;
+	height.mapSize = static_cast<uint32_t>( std::lround( m_worldSize / m_texelSize ) );
 	// Ползунок, а не m_heightMultiplier: тот обновляется в update() только у видимого террейна
 	height.heightMultiplier = m_initialized ? m_properties["Height multiplier"].data<float>() : m_heightMultiplier;
 	height.heightOffset = m_heightOffset;
@@ -479,6 +482,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.farTextureScale = m_properties["Far texture scale"].data<float>();
 		params.farBlendStart = m_properties["Far blend start"].data<float>();
 		params.farBlendEnd = std::max( m_properties["Far blend end"].data<float>(), params.farBlendStart + 1.0f );
+		params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
 	} );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
 

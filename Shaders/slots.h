@@ -50,12 +50,14 @@
 // Цвет сцены (SceneColor в UE): копия HDR-буфера после непрозрачных и неба, R16G16B16A16_FLOAT, яркость × pre-exposure —
 // в проходе transparent, если его читает кто-то из полупрозрачных (Material::readsSceneColor, CustomBatch::readsSceneColor)
 #define SLOT_SCENE_COLOR	108
+// Вода симуляции (water.sh, WaterSimulation): на сетке карты высот — глубина, м, и скорость по X и Z мира, м/с
+#define SLOT_WATER			109
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	9
+#define SLOT_SCENE_COUNT	10
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту
 #define DM_BINDING_UAV_BASE		17	// u0…u7 → 17…24
-#define DM_BINDING_SCENE_BASE	25	// t100…t108 → 25…33
+#define DM_BINDING_SCENE_BASE	25	// t100…t109 → 25…34
 #define DM_BINDING_COUNT		36	// кратно 4 (uint4 в bindless.sh)
 
 // Сэмплеры — статические в root signature: s0…s7 общие (samplers.sh, DMSamplerState)

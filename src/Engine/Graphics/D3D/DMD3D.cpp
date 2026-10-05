@@ -178,6 +178,7 @@ bool DMD3D::createDevice( bool gpuValidation )
 		{
 			auto debug1 = make_com_ptr<ID3D12Debug1>( debug1Ptr );
 			debug1->SetEnableGPUBasedValidation( gpuValidation );
+			m_gpuValidation = gpuValidation;
 		}
 		LOG( std::string( "D3D12 debug layer is enabled" ) + ( gpuValidation ? " with GPU-based validation" : "" ) +
 			 ", its messages are written to this log" );

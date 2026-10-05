@@ -26,7 +26,7 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	float  g_farBlendStart;			// переход к крупному масштабу: от этого расстояния до камеры, м,
 	float  g_farBlendEnd;			// до этого — дальше только крупный
 	uint   g_layerCount;			// слоёв в массивах текстур (TerrainLayers)
-	float  g_padding;
+	uint   g_showWater;				// подсветка воды симуляции (water.sh) — отладка, «Show water»
 };
 
 // Копия карты высот в R32_FLOAT с полной цепочкой мипов, в вершинном и пиксельном шейдерах

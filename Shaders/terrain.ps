@@ -11,6 +11,7 @@
 #include "lighting.sh"
 #include "cdlod.sh"
 #include "bindless.sh"
+#include "water.sh"
 
 DM_SRV( Texture2DArray, g_splatMap, 1 );		// срез 0 — веса слоёв 0…3, срез 1 — 4…7
 DM_SRV( Texture2DArray, g_albedoHeight, 2 );
@@ -189,6 +190,16 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.roughness = mixed.roughness;
 	surface.occlusion = 1.0f;
 	surface.emissive = 0.0f;
+
+	// Отладка симуляции воды («Show water»): от 5 мм до 0,5 м глубины земля уходит в синий, быстрая вода — светлее
+	[branch] if( g_showWater )
+	{
+		const WaterSample water = sampleWater( input.uv );
+		const float cover = saturate( log10( max( water.depth, 1e-6f ) / 0.005f ) * 0.5f );
+		const float3 waterColor = lerp( float3( 0.01f, 0.04f, 0.25f ), float3( 0.5f, 0.75f, 1.0f ), saturate( length( water.velocity ) * 0.5f ) );
+		surface.baseColor = lerp( surface.baseColor, waterColor, cover );
+		surface.roughness = lerp( surface.roughness, 0.1f, cover );
+	}
 
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)
 	return float4( evaluateLighting( surface ), 1.0f );

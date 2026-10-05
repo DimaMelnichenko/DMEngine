@@ -71,7 +71,7 @@ private:
 		float farBlendStart;
 		float farBlendEnd;
 		uint32_t layerCount;
-		float padding;
+		uint32_t showWater;		// подсветка воды симуляции (SLOT_WATER) — отладка, «Show water»
 	};
 
 	struct NodeBox
