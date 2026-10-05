@@ -50,6 +50,7 @@ bool sameSources( const WaterSimulationSettings& a, const WaterSimulationSetting
 WaterSimulation::WaterSimulation() : SceneObject( "Water simulation" )
 {
 	m_properties.setName( "Water simulation" );
+	m_surfaceProperties.setName( "Surface" );
 }
 
 bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightSource& terrain )
@@ -74,6 +75,22 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	addSlider( m_properties, "Rain (mm/h)", settings.rain, 0.0f, 50.0f );
 	addSlider( m_properties, "Evaporation (mm/h)", settings.evaporation, 0.0f, 50.0f );
 	addSlider( m_properties, "Manning roughness", settings.manning, 0.0f, 0.2f );
+
+	Property* property = m_surfaceProperties.insert( "Absorption (1/m)", settings.absorption );
+	property->setLow( 0.0f );
+	property->setHigh( 5.0f );
+	property->setControlType( GUIControlType::DRAG );
+	m_surfaceProperties.insert( "Scatter color", settings.scatterColor )->setControlType( GUIControlType::COLOR );
+	addSlider( m_surfaceProperties, "Scatter strength", settings.scatterStrength, 0.0f, 0.1f );
+	addSlider( m_surfaceProperties, "Roughness", settings.roughness, 0.0f, 0.5f );
+	addSlider( m_surfaceProperties, "Ripple scale (m)", settings.rippleScale, 0.5f, 20.0f );
+	addSlider( m_surfaceProperties, "Ripple strength", settings.rippleStrength, 0.0f, 4.0f );
+	addSlider( m_surfaceProperties, "Calm ripple", settings.calmRipple, 0.0f, 2.0f );
+	addSlider( m_surfaceProperties, "Refraction", settings.refraction, 0.0f, 0.1f );
+	addSlider( m_surfaceProperties, "Flow period (s)", settings.flowPeriod, 0.2f, 5.0f );
+	addSlider( m_surfaceProperties, "Foam speed (m/s)", settings.foamSpeed, 0.1f, 5.0f );
+	addSlider( m_surfaceProperties, "Foam shear (1/s)", settings.foamShear, 0.1f, 10.0f );
+	m_properties.addSubContainer( &m_surfaceProperties );
 
 	DMD3D& d3d = DMD3D::instance();
 	if( !m_sourcesShader.Initialize( "Shaders\\water_simulation.cs", "mainSources" ) ||
@@ -276,14 +293,18 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	params.cellSize = m_cellSize;
 	params.worldSize = height.worldSize;
 	params.tilesPerSide = m_tilesPerSide;
-	// Горный ручей: красный гаснет за метры, синий — за десятки; рассеяние — бирюзовое
-	params.absorption = DirectX::XMFLOAT3( 0.45f, 0.09f, 0.06f );
-	params.flowPeriod = 1.5f;
-	params.scatterColor = DirectX::XMFLOAT3( 0.004f, 0.016f, 0.016f );
-	params.rippleScale = 6.0f;
-	params.rippleStrength = 1.0f;
-	params.calmRipple = 0.25f;
-	params.refraction = 0.02f;
+	const Settings current = settings();
+	params.absorption = current.absorption;
+	params.flowPeriod = std::max( current.flowPeriod, 0.01f );
+	params.scatterColor = DirectX::XMFLOAT3( current.scatterColor.x * current.scatterStrength, current.scatterColor.y * current.scatterStrength,
+											 current.scatterColor.z * current.scatterStrength );
+	params.rippleScale = std::max( current.rippleScale, 0.01f );
+	params.rippleStrength = current.rippleStrength;
+	params.calmRipple = current.calmRipple;
+	params.refraction = current.refraction;
+	params.roughness = current.roughness;
+	params.foamSpeed = std::max( current.foamSpeed, 0.01f );
+	params.foamShear = std::max( current.foamShear, 0.01f );
 	Device::updateResourceData( m_surfaceBuffer, params );
 
 	ScopedRenderState state( context.frameRaster );
@@ -388,6 +409,17 @@ WaterSimulation::Settings WaterSimulation::settings() const
 	settings.rain = m_properties["Rain (mm/h)"].data<float>();
 	settings.evaporation = m_properties["Evaporation (mm/h)"].data<float>();
 	settings.manning = m_properties["Manning roughness"].data<float>();
+	settings.absorption = m_surfaceProperties["Absorption (1/m)"].data<DirectX::XMFLOAT3>();
+	settings.scatterColor = m_surfaceProperties["Scatter color"].data<DirectX::XMFLOAT3>();
+	settings.scatterStrength = m_surfaceProperties["Scatter strength"].data<float>();
+	settings.roughness = m_surfaceProperties["Roughness"].data<float>();
+	settings.rippleScale = m_surfaceProperties["Ripple scale (m)"].data<float>();
+	settings.rippleStrength = m_surfaceProperties["Ripple strength"].data<float>();
+	settings.calmRipple = m_surfaceProperties["Calm ripple"].data<float>();
+	settings.refraction = m_surfaceProperties["Refraction"].data<float>();
+	settings.flowPeriod = m_surfaceProperties["Flow period (s)"].data<float>();
+	settings.foamSpeed = m_surfaceProperties["Foam speed (m/s)"].data<float>();
+	settings.foamShear = m_surfaceProperties["Foam shear (1/s)"].data<float>();
 	return settings;
 }
 

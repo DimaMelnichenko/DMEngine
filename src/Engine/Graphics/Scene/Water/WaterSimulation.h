@@ -77,7 +77,10 @@ private:
 		float rippleStrength;
 		float calmRipple;
 		float refraction;
-		float padding;
+		float roughness;
+		float foamSpeed;
+		float foamShear;
+		float padding[2];
 	};
 
 	// Текущие значения GUI
@@ -98,6 +101,7 @@ private:
 	void cullTiles( const RenderView& view );
 
 	PropertyContainer m_properties;
+	PropertyContainer m_surfaceProperties;	// подокно «Surface» — материал поверхности
 	Settings m_initial;
 	Settings m_sourcesBuilt;		// настройки, по которым посчитаны источники
 	const TerrainHeightSource* m_terrain = nullptr;

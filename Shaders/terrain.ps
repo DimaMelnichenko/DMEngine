@@ -191,6 +191,11 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.occlusion = 1.0f;
 	surface.emissive = 0.0f;
 
+	// Мокрая земля у воды и под ней (симуляция, water.sh): вода в порах — темнее и глаже (блик), как wet в материалах UE
+	const float wet = waterWetness( input.uv );
+	surface.baseColor *= lerp( 1.0f, 0.6f, wet );
+	surface.roughness = lerp( surface.roughness, 0.2f, wet );
+
 	// Отладка симуляции воды («Show water»): от 5 мм до 0,5 м глубины земля уходит в синий, быстрая вода — светлее
 	[branch] if( g_showWater )
 	{

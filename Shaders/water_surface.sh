@@ -23,7 +23,10 @@ cbuffer WaterSurfaceBuffer : register( SLOT_CB_MATERIAL )
 	float  g_rippleStrength;	// наклон нормали ряби на быстрой воде
 	float  g_calmRipple;		// и на стоячей (ветер)
 	float  g_refraction;		// сдвиг выборки цвета сцены по нормали, доля экрана на метр толщины
-	float  g_surfacePadding;
+	float  g_roughness;			// шероховатость поверхности (размытие отражения неба, ширина блика)
+	float  g_foamSpeed;			// пена — быстрее этого, м/с (полная — вдвое быстрее)
+	float  g_foamShear;			// и там, где сдвиг скорости больше, 1/с
+	float2 g_surfacePadding;
 };
 
 struct WaterPixelInput

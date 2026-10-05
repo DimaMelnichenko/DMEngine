@@ -131,6 +131,19 @@ struct WaterSimulationSettings
 	float timeStep = 0.1f;			// шаг симуляции, с
 	float warmupTime = 1800.0f;		// просчёт при загрузке до установившегося течения, с времени симуляции
 	float timeScale = 1.0f;			// скорость симуляции в игре относительно времени кадра
+
+	// Материал поверхности (Shaders/water.ps)
+	DirectX::XMFLOAT3 absorption = DirectX::XMFLOAT3( 0.45f, 0.09f, 0.06f );	// поглощение по каналам, 1/м
+	DirectX::XMFLOAT3 scatterColor = DirectX::XMFLOAT3( 0.25f, 1.0f, 1.0f );	// цвет рассеяния в толще
+	float scatterStrength = 0.016f;	// доля освещённости неба, рассеянная толщей к камере
+	float roughness = 0.06f;		// шероховатость поверхности: размытие отражения, ширина блика
+	float rippleScale = 6.0f;		// метров на повтор ряби
+	float rippleStrength = 1.0f;	// рябь быстрой воды
+	float calmRipple = 0.25f;		// рябь стоячей (ветер)
+	float refraction = 0.02f;		// сдвиг преломления, доля высоты экрана на метр толщины
+	float flowPeriod = 1.5f;		// период фазы течения текстуры, с (Vlachos 2010)
+	float foamSpeed = 1.0f;			// пена — быстрее этого, м/с
+	float foamShear = 1.5f;			// и где сдвиг скорости больше, 1/с
 };
 
 // Строка SunPosition

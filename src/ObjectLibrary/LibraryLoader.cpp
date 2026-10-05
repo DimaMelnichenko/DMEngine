@@ -398,6 +398,23 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 	water.timeStep = value( "time_step" );
 	water.warmupTime = value( "warmup_time" );
 	water.timeScale = value( "time_scale" );
+	auto vector = [&]( const char* column, DirectX::XMFLOAT3& result )
+	{
+		const std::string text = query.getColumn( column ).getString();
+		if( !strToVec3( text, result ) )
+			LOG( "Water simulation " + std::to_string( *level.waterSimulationId ) + ": wrong " + column + " '" + text + "'" );
+	};
+	vector( "absorption", water.absorption );
+	vector( "scatter_color", water.scatterColor );
+	water.scatterStrength = value( "scatter_strength" );
+	water.roughness = value( "roughness" );
+	water.rippleScale = value( "ripple_scale" );
+	water.rippleStrength = value( "ripple_strength" );
+	water.calmRipple = value( "calm_ripple" );
+	water.refraction = value( "refraction" );
+	water.flowPeriod = value( "flow_period" );
+	water.foamSpeed = value( "foam_speed" );
+	water.foamShear = value( "foam_shear" );
 	return true;
 }
 

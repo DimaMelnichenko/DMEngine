@@ -26,4 +26,20 @@ WaterSample sampleWater( float2 uv )
 	return water;
 }
 
+// Влажность земли: под водой и полосой в ячейку-две вокруг неё — глубина, сглаженная по соседям в полутора ячейках
+// (край без ступенек сетки); плёнка тоньше 5 мм — сухо, от 2 см — мокро
+float waterWetness( float2 uv )
+{
+	uint width, height;
+	g_waterState.GetDimensions( width, height );
+	const float2 texel = 1.5f / float2( max( width, 1u ), max( height, 1u ) );
+	float depth = 2.0f * g_waterState.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).x;
+	depth += g_waterState.SampleLevel( g_SamplerLinearClamp, uv + float2( texel.x, 0.0f ), 0.0f ).x;
+	depth += g_waterState.SampleLevel( g_SamplerLinearClamp, uv - float2( texel.x, 0.0f ), 0.0f ).x;
+	depth += g_waterState.SampleLevel( g_SamplerLinearClamp, uv + float2( 0.0f, texel.y ), 0.0f ).x;
+	depth += g_waterState.SampleLevel( g_SamplerLinearClamp, uv - float2( 0.0f, texel.y ), 0.0f ).x;
+	// Среднее × 2: у самого уреза, где вода с одной стороны, земля тоже мокрая
+	return smoothstep( 0.005f, 0.02f, depth / 3.0f );
+}
+
 #endif
