@@ -2,6 +2,8 @@
 
 #include "SceneObject.h"
 #include "DMComputeShader.h"
+#include "ShaderProgram.h"
+#include "Terrain\GridMesh.h"
 #include "Level\LevelSettings.h"
 #include "Terrain\TerrainHeightSource.h"
 
@@ -13,7 +15,9 @@ namespace GS
 // рельефа и притока. Приток — по карте водосбора (ручей рождается там, где водосбор большой) и дождь, сток — края
 // карты и испарение. При загрузке симуляция просчитывается до установившегося течения, в игре идёт шагами по времени
 // кадра. Результат — текстура для шейдеров в слоте сцены SLOT_WATER (Shaders/water.sh): глубина и скорость. Шейдер —
-// Shaders/water_simulation.cs, настройки — строка WaterSimulation уровня, подробно — docs/water.md
+// Shaders/water_simulation.cs, настройки — строка WaterSimulation уровня, подробно — docs/water.md. Поверхность воды
+// объект рисует сам в проходе transparent (читает цвет и глубину сцены): тайлы сетки с водой, отобранные на GPU
+// (Shaders/water_surface.cs), — один косвенный вызов (water.vs, water.ps)
 class WaterSimulation : public SceneObject
 {
 public:
@@ -24,7 +28,9 @@ public:
 	bool initialize( const Settings& settings, const TerrainHeightSource& terrain );
 
 	void compute( const FrameContext& frame ) override;
-	void collectMeshes( const RenderView& view, MeshCollector& collector ) override {}
+	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
+	void renderCustom( const RenderContext& context ) override;
+	void warmPipelines( const PassStates& states ) override;
 	PropertyContainer* properties() override;
 
 private:
@@ -47,6 +53,33 @@ private:
 		float padding[3];
 	};
 
+	// Раскладка — cbuffer WaterTilesBuffer (b5) в water_surface.cs
+	struct alignas( 16 ) TilesParameters
+	{
+		DirectX::XMFLOAT4 planes[6];
+		uint32_t indexCount;
+		uint32_t tilesPerSide;
+		float visibleDepth;
+		float worldSize;
+	};
+
+	// Раскладка — cbuffer WaterSurfaceBuffer (b2) в Shaders/water_surface.sh
+	struct alignas( 16 ) SurfaceParameters
+	{
+		uint32_t size;
+		float cellSize;
+		float worldSize;
+		uint32_t tilesPerSide;
+		DirectX::XMFLOAT3 absorption;
+		float flowPeriod;
+		DirectX::XMFLOAT3 scatterColor;
+		float rippleScale;
+		float rippleStrength;
+		float calmRipple;
+		float refraction;
+		float padding;
+	};
+
 	// Текущие значения GUI
 	Settings settings() const;
 	void setParameters( const Settings& settings );
@@ -58,6 +91,11 @@ private:
 	void step( uint32_t steps );
 	// Объём воды, наибольшая глубина и число мокрых ячеек — в лог (ждёт GPU)
 	void logWaterSummary();
+	bool createSurface();
+	// Уровень поверхности и границы тайлов — после шагов симуляции
+	void buildSurface();
+	// Видимые тайлы главного вида — в список экземпляров косвенного вызова
+	void cullTiles( const RenderView& view );
 
 	PropertyContainer m_properties;
 	Settings m_initial;
@@ -88,6 +126,30 @@ private:
 	StorageView m_outputUAV;
 	ShaderView m_sourcesView;
 	ShaderView m_outputView;
+	ShaderView m_waterView;
+
+	// Поверхность
+	DMComputeShader m_surfaceShader;
+	DMComputeShader m_tilesResetShader;
+	DMComputeShader m_tilesShader;
+	ShaderProgram m_surfaceProgram;
+	int m_surfacePhase = -1;
+	GridMesh m_tileMesh;
+	uint32_t m_tilesPerSide = 0;
+	bool m_surfaceDirty = true;		// шаги симуляции были — уровень поверхности пересчитать
+	Texture m_level;				// R32_FLOAT: уровень поверхности, м; −1e30 — сухо
+	StorageView m_levelUAV;
+	ShaderView m_levelView;
+	Buffer m_tileBounds;			// float2 на тайл: наименьший и наибольший уровень
+	StorageView m_tileBoundsUAV;
+	ShaderView m_tileBoundsView;
+	Buffer m_tileList;				// uint на видимый тайл — экземпляры вызова
+	StorageView m_tileListUAV;
+	ShaderView m_tileListView;
+	Buffer m_drawArgs;				// команда ExecuteIndirect (24 байта) и число команд
+	StorageView m_drawArgsUAV;
+	Buffer m_tilesBuffer;			// TilesParameters
+	Buffer m_surfaceBuffer;			// SurfaceParameters
 };
 
 }

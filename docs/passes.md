@@ -60,7 +60,8 @@ compute-прохода. Цели только для чтения очистка
 - рисует с глубиной только для чтения (`depthReadTarget`) и привязывает её в `SLOT_SCENE_DEPTH`, как `opaqueDepthRead`:
   воде нужны оба — цвет дна и толщина слоя до него.
 
-Без читающих копии нет, и проход `transparent` такой же, как прежде. Копия 1920 × 1080 — 0,028 мс GPU (Release,
+Без читающих копии нет, и проход `transparent` такой же, как прежде. Читает её поверхность воды
+([water.md](water.md), «Поверхность»). Копия 1920 × 1080 — 0,028 мс GPU (Release,
 RTX 4070 Ti, строка `Scene color copy` в «GPU average»). В списке проходов (`passes`) — строка `Scene color copy: copy`.
 
 ## Depth prepass

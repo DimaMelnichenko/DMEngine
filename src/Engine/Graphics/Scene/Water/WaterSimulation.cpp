@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <tuple>
 #include "System.h"
+#include "ConstantBuffers.h"
+#include "Texture\DMTextureStorage.h"
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
 
@@ -25,6 +27,8 @@ constexpr uint32_t iterationsPerSubmit = 512;
 constexpr uint32_t validationWarmupSteps = 600;	// при загрузке — порциями, чтобы одна отправка GPU не шла секундами
 constexpr int32_t maxSourceRadius = 8;			// ячеек: размытие источников — цикл (2r + 1)² в шейдере
 constexpr float gravity = 9.81f;
+constexpr uint32_t tileCells = 32;				// WATER_TILE в water_surface.cs / water_surface.sh
+constexpr float visibleDepth = 0.01f;			// м: мельче воды не видно — только мокрая земля
 constexpr float wetDepth = 0.01f;				// м: ячейка с водой в сводке (logWaterSummary)
 constexpr float mmPerHour = 0.001f / 3600.0f;	// мм/ч → м/с
 
@@ -104,7 +108,8 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	if( !create( DXGI_FORMAT_R32_FLOAT, "Water depth", m_water, m_waterUAV, nullptr ) ||
 		!create( DXGI_FORMAT_R32G32B32A32_FLOAT, "Water flux", m_flux, m_fluxUAV, nullptr ) ||
 		!create( DXGI_FORMAT_R32_FLOAT, "Water sources", m_sources, m_sourcesUAV, &m_sourcesView ) ||
-		!create( DXGI_FORMAT_R16G16B16A16_FLOAT, "Water state", m_output, m_outputUAV, &m_outputView ) )
+		!create( DXGI_FORMAT_R16G16B16A16_FLOAT, "Water state", m_output, m_outputUAV, &m_outputView ) ||
+		!d3d.createShaderView( m_water, {}, m_waterView ) || !createSurface() )
 		return false;
 
 	// Источники, озёра до уровня перелива, затем до установившегося течения — порциями с ожиданием GPU
@@ -124,6 +129,7 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		step( std::min( warmupStepsPerSubmit, warmupSteps - done ) );
 		d3d.waitForGpu();
 	}
+	buildSurface();
 	m_initialized = true;
 	const auto end = std::chrono::high_resolution_clock::now();
 	LOG( "Water simulation " + std::to_string( m_size ) + "x" + std::to_string( m_size ) + ", warm-up " +
@@ -131,6 +137,164 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		 std::to_string( std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0 ) );
 	logWaterSummary();
 	return true;
+}
+
+bool WaterSimulation::createSurface()
+{
+	DMD3D& d3d = DMD3D::instance();
+	m_tilesPerSide = ( m_size + tileCells - 1 ) / tileCells;
+	const uint32_t tileCount = m_tilesPerSide * m_tilesPerSide;
+	if( !m_surfaceShader.Initialize( "Shaders\\water_surface.cs", "mainSurface" ) ||
+		!m_tilesResetShader.Initialize( "Shaders\\water_surface.cs", "mainTilesReset" ) ||
+		!m_tilesShader.Initialize( "Shaders\\water_surface.cs", "mainTiles" ) ||
+		!d3d.createShaderConstantBuffer( sizeof( TilesParameters ), m_tilesBuffer ) ||
+		!d3d.createShaderConstantBuffer( sizeof( SurfaceParameters ), m_surfaceBuffer ) )
+		return false;
+
+	TextureDesc levelDesc;
+	levelDesc.width = m_size;
+	levelDesc.height = m_size;
+	levelDesc.format = DXGI_FORMAT_R32_FLOAT;
+	levelDesc.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
+	BufferDesc boundsDesc;
+	boundsDesc.size = tileCount * sizeof( DirectX::XMFLOAT2 );
+	boundsDesc.stride = sizeof( DirectX::XMFLOAT2 );
+	boundsDesc.usage = BufferUsage::unorderedAccess | BufferUsage::shaderResource | BufferUsage::structured;
+	BufferDesc listDesc;
+	listDesc.size = tileCount * sizeof( uint32_t );
+	listDesc.stride = sizeof( uint32_t );
+	listDesc.usage = BufferUsage::unorderedAccess | BufferUsage::shaderResource | BufferUsage::structured;
+	BufferDesc argsDesc;
+	argsDesc.size = 32;
+	argsDesc.usage = BufferUsage::unorderedAccess | BufferUsage::indirectArgs | BufferUsage::raw;
+	BufferViewDesc rawView;
+	rawView.raw = true;
+	if( !d3d.createTexture( levelDesc, nullptr, m_level ) || !d3d.createStorageView( m_level, {}, m_levelUAV ) ||
+		!d3d.createShaderView( m_level, {}, m_levelView ) ||
+		!d3d.createBuffer( boundsDesc, nullptr, m_tileBounds ) || !d3d.createStorageView( m_tileBounds, {}, m_tileBoundsUAV ) ||
+		!d3d.createShaderView( m_tileBounds, {}, m_tileBoundsView ) ||
+		!d3d.createBuffer( listDesc, nullptr, m_tileList ) || !d3d.createStorageView( m_tileList, {}, m_tileListUAV ) ||
+		!d3d.createShaderView( m_tileList, {}, m_tileListView ) ||
+		!d3d.createBuffer( argsDesc, nullptr, m_drawArgs ) || !d3d.createStorageView( m_drawArgs, rawView, m_drawArgsUAV ) )
+	{
+		LOG( "Failed to create water surface resources" );
+		return false;
+	}
+	d3d.setName( m_level, "Water surface level" );
+	d3d.setName( m_tileBounds, "Water tile bounds" );
+	d3d.setName( m_tileList, "Water visible tiles" );
+	d3d.setName( m_drawArgs, "Water indirect command" );
+
+	m_tileMesh.initialize( tileCells + 1, tileCells + 1 );
+	m_surfaceProgram.setLayoutDesc( { { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0 } } );
+	if( !m_surfaceProgram.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\water.vs" ) ||
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water.ps" ) )
+	{
+		LOG( "Water surface: shader compilation failed" );
+		return false;
+	}
+	m_surfacePhase = m_surfaceProgram.createPhase( 0, 0 );
+	return m_surfacePhase >= 0;
+}
+
+void WaterSimulation::buildSurface()
+{
+	DMD3D& d3d = DMD3D::instance();
+	const ShaderView& heightMap = *m_terrain->terrainHeight().heightMap;
+	PassDesc pass;
+	pass.name = "Water surface";
+	pass.reads = { { &heightMap, "height map" }, { &m_waterView, "water depth" } };
+	pass.writes = { { &m_levelUAV, "water level" }, { &m_tileBoundsUAV, "water tile bounds" } };
+	d3d.beginPass( pass );
+	setParameters( settings() );
+	TilesParameters tiles = {};
+	tiles.tilesPerSide = m_tilesPerSide;
+	tiles.visibleDepth = visibleDepth;
+	tiles.worldSize = m_terrain->terrainHeight().worldSize;
+	tiles.indexCount = m_tileMesh.indexCount();
+	Device::updateResourceData( m_tilesBuffer, tiles );
+	d3d.setConstantBuffer( 5, m_tilesBuffer );
+	d3d.setSRV( 0, heightMap );
+	d3d.setSRV( 3, m_waterView );
+	d3d.setUAV( 0, m_levelUAV );
+	d3d.setUAV( 1, m_tileBoundsUAV );
+	m_surfaceShader.dispatchGroups( m_tilesPerSide, m_tilesPerSide, 1 );
+	m_surfaceDirty = false;
+}
+
+void WaterSimulation::cullTiles( const RenderView& view )
+{
+	DMD3D& d3d = DMD3D::instance();
+	PassDesc pass;
+	pass.name = "Water tiles";
+	pass.reads = { { &m_tileBoundsView, "water tile bounds" } };
+	pass.writes = { { &m_drawArgsUAV, "water indirect command" }, { &m_tileListUAV, "water visible tiles" } };
+	d3d.beginPass( pass );
+	TilesParameters tiles = {};
+	for( int i = 0; i < 6; ++i )
+		DirectX::XMStoreFloat4( &tiles.planes[i], view.frustum.planes()[i] );
+	tiles.tilesPerSide = m_tilesPerSide;
+	tiles.visibleDepth = visibleDepth;
+	tiles.worldSize = m_terrain->terrainHeight().worldSize;
+	tiles.indexCount = m_tileMesh.indexCount();
+	Device::updateResourceData( m_tilesBuffer, tiles );
+	d3d.setConstantBuffer( 5, m_tilesBuffer );
+	setParameters( settings() );
+	d3d.setUAV( 2, m_drawArgsUAV );
+	m_tilesResetShader.dispatchGroups( 1, 1, 1 );
+	d3d.setSRV( 4, m_tileBoundsView );
+	d3d.setUAV( 2, m_drawArgsUAV );
+	d3d.setUAV( 3, m_tileListUAV );
+	const uint32_t tileCount = m_tilesPerSide * m_tilesPerSide;
+	m_tilesShader.dispatchGroups( ( tileCount + 63 ) / 64, 1, 1 );
+}
+
+void WaterSimulation::collectMeshes( const RenderView& view, MeshCollector& collector )
+{
+	// Только главный вид: тени вода не отбрасывает. Полупрозрачные — от дальних к ближним, вода — первой
+	if( m_initialized && view.index == 0 )
+		collector.addCustom( passBit( MeshPass::transparent ), view.farPlane, true );
+}
+
+void WaterSimulation::warmPipelines( const PassStates& states )
+{
+	if( !m_initialized )
+		return;
+	m_surfaceProgram.warmPipelines( { { RasterState::solid, DepthState::readOnly, BlendState::alpha },
+									  { RasterState::wireframe, DepthState::readOnly, BlendState::alpha } },
+									states.scene, { m_surfacePhase } );
+}
+
+void WaterSimulation::renderCustom( const RenderContext& context )
+{
+	if( context.pass != MeshPass::transparent )
+		return;
+	DMD3D& d3d = DMD3D::instance();
+	const TerrainHeight height = m_terrain->terrainHeight();
+	SurfaceParameters params = {};
+	params.size = m_size;
+	params.cellSize = m_cellSize;
+	params.worldSize = height.worldSize;
+	params.tilesPerSide = m_tilesPerSide;
+	// Горный ручей: красный гаснет за метры, синий — за десятки; рассеяние — бирюзовое
+	params.absorption = DirectX::XMFLOAT3( 0.45f, 0.09f, 0.06f );
+	params.flowPeriod = 1.5f;
+	params.scatterColor = DirectX::XMFLOAT3( 0.004f, 0.016f, 0.016f );
+	params.rippleScale = 6.0f;
+	params.rippleStrength = 1.0f;
+	params.calmRipple = 0.25f;
+	params.refraction = 0.02f;
+	Device::updateResourceData( m_surfaceBuffer, params );
+
+	ScopedRenderState state( context.frameRaster );
+	d3d.setVertexBuffer( m_tileMesh.vertexBuffer(), sizeof( DirectX::XMFLOAT3 ) );
+	d3d.setIndexBuffer( m_tileMesh.indexBuffer(), DXGI_FORMAT_R32_UINT );
+	m_surfaceProgram.setPass( m_surfacePhase );
+	d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_surfaceBuffer );
+	d3d.setSRV( 0, m_levelView );
+	d3d.setSRV( 1, System::textures().get( DMTextureStorage::noiseId )->srv() );
+	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
+	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
 }
 
 bool WaterSimulation::fillLakes()
@@ -313,8 +477,12 @@ void WaterSimulation::compute( const FrameContext& frame )
 		{
 			setParameters( current );
 			step( steps );
+			m_surfaceDirty = true;
 		}
 	}
+	if( m_surfaceDirty )
+		buildSurface();
+	cullTiles( frame.view );
 	// Вода — ресурс сцены до следующего кадра (террейн, позже — поверхность воды и мокрый берег)
 	DMD3D::instance().setSRV( SLOT_WATER, m_outputView );
 }

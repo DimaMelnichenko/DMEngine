@@ -248,8 +248,10 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 меша `AbstractMesh::bounds` считаются при загрузке, меши в список отрисовки),
 `WaterSimulation` (вода по рельефу, как в From Dust: модель виртуальных труб на сетке карты высот с трением по Маннингу,
 источники по карте водосбора, озёра до уровня перелива и прогрев при загрузке, шаги по времени кадра; текстура воды —
-слот сцены `SLOT_WATER`, t109, `Shaders/water.sh`; строка `WaterSimulation` уровня, `Levels.water_simulation`; рисовать
-воду пока нечем — подсветка «Show water» у террейна, `docs/water.md`),
+слот сцены `SLOT_WATER`, t109, `Shaders/water.sh`; строка `WaterSimulation` уровня, `Levels.water_simulation`;
+поверхность — свой вызов в `transparent` с цветом и глубиной сцены: тайлы сетки с водой отбирает compute, один
+ExecuteIndirect, берег — пересечение продолженной за урез плоскости воды с рельефом, `water.vs` / `water.ps`;
+подсветка «Show water» у террейна; `docs/water.md`),
 `Scatterer` (по объекту на набор расстановки уровня: трава, камешки), `DMParticleSystem`. Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 

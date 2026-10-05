@@ -13,9 +13,8 @@
 // размытый вокруг линий стока. Класс WaterSimulation, docs/water.md
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "bindless.sh"
+#include "water_simulation.sh"
 
-DM_SRV( Texture2D<float>, g_heightMap, 0 );		// итоговая карта высот террейна (TerrainHeight::heightMap)
 DM_SRV( Texture2D<float>, g_flowMap, 1 );		// водосбор, м² (mainSources)
 DM_SRV( Texture2D<float>, g_sources, 2 );		// приток ячейки, м/с слоя воды
 
@@ -26,37 +25,8 @@ DM_UAV( RWTexture2D<float>, g_sourcesOut, 3 );	// mainSources
 DM_UAV( RWTexture2D<float>, g_fill, 4 );		// уровень заполненных низин, м (mainFill*, при загрузке)
 DM_UAV( RWTexture2D<float>, g_lake, 5 );		// 1 — низина с водой при загрузке (mainLake*)
 
-// Раскладка — WaterSimulation::Parameters
-cbuffer WaterSimulationBuffer : register( b4 )
-{
-	uint  g_size;				// ячеек по стороне (= текселей карты высот)
-	float g_cellSize;			// сторона ячейки, м
-	float g_timeStep;			// с
-	float g_gravity;			// м/с²
-	float g_rain;				// дождь, м/с слоя воды
-	float g_evaporation;		// испарение, м/с
-	float g_sourceRate;			// приток ячейки при полном водосборе, м/с слоя воды
-	float g_heightMultiplier;	// высота рельефа = карта · множитель + смещение (TerrainHeight)
-	float g_heightOffset;
-	float g_logFlowStart;		// log10 водосбора: от начала притока до полного
-	float g_logFlowFull;
-	int   g_sourceRadius;		// радиус размытия источников, ячейки
-	float g_manning;			// шероховатость дна по Маннингу, с/м^(1/3)
-	float3 g_simulationPadding;
-};
-
 static const float minVelocityDepth = 1e-3f;	// мельче — скорость не считается: делить поток не на что
 static const float minFrictionDepth = 1e-4f;	// глубина в трении — не ниже: деление на ноль у сухих ячеек
-
-float terrain( int2 cell )
-{
-	return g_heightMap.Load( int3( cell, 0 ) ) * g_heightMultiplier + g_heightOffset;
-}
-
-bool inside( int2 cell )
-{
-	return all( cell >= 0 ) && all( cell < (int)g_size );
-}
 
 // Вода ячейки с притоком этого шага
 float waterWithInflow( int2 cell )
