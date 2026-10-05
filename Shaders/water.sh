@@ -26,9 +26,9 @@ WaterSample sampleWater( float2 uv )
 	return water;
 }
 
-// Влажность земли: под водой и полосой в ячейку-две вокруг неё — глубина, сглаженная по соседям в полутора ячейках
-// (край без ступенек сетки); плёнка тоньше 5 мм — сухо, от 2 см — мокро
-float waterWetness( float2 uv )
+// Глубина, сглаженная по соседям в полутора ячейках (край без ступенек сетки), × 2: у самого уреза, где вода только
+// с одной стороны, — как в воде
+float smoothedWaterDepth( float2 uv )
 {
 	uint width, height;
 	g_waterState.GetDimensions( width, height );
@@ -38,8 +38,20 @@ float waterWetness( float2 uv )
 	depth += g_waterState.SampleLevel( g_SamplerLinearClamp, uv - float2( texel.x, 0.0f ), 0.0f ).x;
 	depth += g_waterState.SampleLevel( g_SamplerLinearClamp, uv + float2( 0.0f, texel.y ), 0.0f ).x;
 	depth += g_waterState.SampleLevel( g_SamplerLinearClamp, uv - float2( 0.0f, texel.y ), 0.0f ).x;
-	// Среднее × 2: у самого уреза, где вода с одной стороны, земля тоже мокрая
-	return smoothstep( 0.005f, 0.02f, depth / 3.0f );
+	return depth / 3.0f;
+}
+
+// Влажность земли: под водой и полосой в ячейку-две вокруг неё; плёнка тоньше 5 мм — сухо, от 2 см — мокро
+float waterWetness( float2 uv )
+{
+	return smoothstep( 0.005f, 0.02f, smoothedWaterDepth( uv ) );
+}
+
+// Доля растительности, которую убирает вода (расстановка, scatter.cs): в воде глубже 1–3 см не растёт ничего —
+// ни трава, ни деревья; мокрый берег не трогается
+float waterFoliageClear( float2 uv )
+{
+	return smoothstep( 0.01f, 0.03f, smoothedWaterDepth( uv ) );
 }
 
 #endif

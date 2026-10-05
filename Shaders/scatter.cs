@@ -29,6 +29,7 @@
 #include "samplers.sh"
 #include "common.vs"
 #include "terrain_height.sh"
+#include "water.sh"
 #include "lod_transition.h"
 #include "bindless.sh"
 
@@ -298,8 +299,11 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	if( any( uv < 0.0f ) || any( uv > 1.0f ) )
 		return false;
 
-	// Маска слоя без того, что убрали правки рельефа
-	float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - terrainFoliageClear( uv ) );
+	// Маска слоя без того, что убрали правки рельефа, и без воды симуляции (SLOT_WATER: её привязывает WaterSimulation,
+	// объект сцены раньше расстановки; без воды у уровня — нули). Кольцевые слои следуют за водой каждый кадр, постоянные
+	// (лес) — по воде первого кадра
+	float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - terrainFoliageClear( uv ) ) *
+					( 1.0f - waterFoliageClear( uv ) );
 	if( random( cell, seed + 2 ) >= density )
 		return false;
 
