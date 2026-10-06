@@ -21,4 +21,7 @@ bool captureTexture( const Texture& texture, DirectX::ScratchImage& image );
 // Картинка 2D из байтов (шаг строки rowPitch) в файл: PNG или JPG по расширению (снимки заднего буфера)
 bool saveImage( const std::wstring& path, uint32_t width, uint32_t height, DXGI_FORMAT format, const uint8_t* bytes, uint32_t rowPitch );
 
+// Данные R32_FLOAT (width × height подряд) в DDS — карты для сценариев Tools/ (читает Tools/dds.py)
+bool saveFloatDDS( const std::wstring& path, uint32_t width, uint32_t height, const float* values );
+
 }

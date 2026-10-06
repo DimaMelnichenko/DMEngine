@@ -433,6 +433,20 @@ void DMGraphics::registerCommands()
 		reply->ok();
 	} );
 
+	m_console.registerCommand( "water", "discharge <file.dds> - water discharge of the cells, m3/s, as R32_FLOAT DDS (Tools/carve_channels.py)",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( args.size() != 2 || args[0] != "discharge" )
+		{
+			reply->error( "usage: water discharge <file.dds>" );
+			return;
+		}
+		std::string reason;
+		if( m_scene.water().exportDischarge( args[1], reason ) )
+			reply->ok( "written " + args[1] );
+		else
+			reply->error( reason );
+	} );
 	m_console.registerCommand( "quit", "- exit the engine normally (log is written to the end)",
 							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
 	{

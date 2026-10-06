@@ -94,6 +94,18 @@ bool captureTexture( const Texture& texture, DirectX::ScratchImage& image )
 	return true;
 }
 
+bool saveFloatDDS( const std::wstring& path, uint32_t width, uint32_t height, const float* values )
+{
+	DirectX::Image image = {};
+	image.width = width;
+	image.height = height;
+	image.format = DXGI_FORMAT_R32_FLOAT;
+	image.rowPitch = static_cast<size_t>( width ) * sizeof( float );
+	image.slicePitch = image.rowPitch * height;
+	image.pixels = reinterpret_cast<uint8_t*>( const_cast<float*>( values ) );
+	return SUCCEEDED( DirectX::SaveToDDSFile( image, DirectX::DDS_FLAGS_FORCE_DX10_EXT, path.c_str() ) );
+}
+
 bool saveImage( const std::wstring& path, uint32_t width, uint32_t height, DXGI_FORMAT format, const uint8_t* bytes, uint32_t rowPitch )
 {
 	DirectX::Image image = {};

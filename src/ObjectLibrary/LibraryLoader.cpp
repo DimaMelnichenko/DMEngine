@@ -439,7 +439,7 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& level )
 {
 	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, raise_terrain, lower_terrain, relative, smooth, clear_foliage, "
-														   "paint_layer FROM TerrainEdits "
+														   "paint_layer, raster FROM TerrainEdits "
 														   "WHERE terrain = :terrain AND enabled != 0 ORDER BY layer, id" );
 	query.bind( ":terrain", terrainId );
 	while( query.executeStep() )
@@ -452,6 +452,8 @@ void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& leve
 		edit.smooth = query.getColumn( "smooth" ).getInt() != 0;
 		edit.clearFoliage = std::clamp( static_cast<float>( query.getColumn( "clear_foliage" ).getDouble() ), 0.0f, 1.0f );
 		edit.paintLayer = query.getColumn( "paint_layer" ).isNull() ? -1 : query.getColumn( "paint_layer" ).getInt();
+		if( !query.getColumn( "raster" ).isNull() )
+			edit.raster = query.getColumn( "raster" ).getString();
 		SQLite::Statement points( DBConnector::instance().db(), "SELECT x, y, z, width, falloff FROM TerrainEditPoints "
 																"WHERE edit = :edit ORDER BY point" );
 		points.bind( ":edit", query.getColumn( "id" ).getInt() );
@@ -464,9 +466,9 @@ void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& leve
 			point.falloff = static_cast<float>( points.getColumn( "falloff" ).getDouble() );
 			edit.points.push_back( point );
 		}
-		if( edit.points.empty() )
+		if( edit.points.empty() && edit.raster.empty() )
 		{
-			LOG( "Terrain edit " + edit.name + " has no points, skipped" );
+			LOG( "Terrain edit " + edit.name + " has neither points nor raster, skipped" );
 		}
 		else
 			level.terrainEdits.push_back( std::move( edit ) );

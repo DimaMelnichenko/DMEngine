@@ -32,6 +32,9 @@ public:
 	void renderCustom( const RenderContext& context ) override;
 	void warmPipelines( const PassStates& states ) override;
 	PropertyContainer* properties() override;
+	// Расход ячеек, м³/с (сумма оттоков к соседям), — в DDS R32_FLOAT на сетке карты высот (строка 0 — дальний край
+	// по z): по нему Tools/carve_channels.py режет русла. Ждёт GPU; false — воды нет или файл не записан (reason)
+	bool exportDischarge( const std::string& file, std::string& reason );
 
 private:
 	// Раскладка — cbuffer WaterSimulationBuffer (b4) в water_simulation.cs

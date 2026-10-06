@@ -33,6 +33,12 @@ struct TerrainEdit
 	float clearFoliage = 0.0f;	// 0…1: какую долю растительности (расстановка: трава, лес) правка убирает
 	int paintLayer = -1;		// слой материала террейна (TerrainLayers.layer), которым правка красит splat-карту; −1 — нет
 	std::vector<TerrainEditPoint> points;
+	// Растровая правка (как растровые Edit Layers в UE) вместо кривой: файл карты сдвига высоты, м (< 0 — опустить),
+	// R32_FLOAT квадратом, от Textures\ (TerrainEdits.raster; русла — Tools/carve_channels.py). Значения читает
+	// CDLODTerrain перед наложением; размер может отличаться от карты высот — выборка билинейная
+	std::string raster;
+	std::vector<float> rasterValues;
+	uint32_t rasterSize = 0;
 };
 
 // Строка SkyAtmosphere; без неё — значения по умолчанию

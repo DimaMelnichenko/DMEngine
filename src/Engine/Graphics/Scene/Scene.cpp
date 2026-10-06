@@ -306,6 +306,11 @@ CDLODTerrain& Scene::terrain()
 	return m_terrain;
 }
 
+WaterSimulation& Scene::water()
+{
+	return m_water;
+}
+
 const std::vector<std::unique_ptr<Scatterer>>& Scene::scatterers() const
 {
 	return m_scatterers;

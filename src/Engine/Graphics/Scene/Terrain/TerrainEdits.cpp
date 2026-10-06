@@ -37,6 +37,9 @@ float fieldHeight( const HeightField& field, float x, float z )
 	return ( top + ( bottom - top ) * fr ) * field.heightMultiplier + field.heightOffset;
 }
 
+// Растровая правка: опускание, с которого её покрытие (покраска, очистка) полное, м
+constexpr float rasterCoverageDepth = 0.15f;
+
 float catmullRom( float p0, float p1, float p2, float p3, float t )
 {
 	return 0.5f * ( 2.0f * p1 + ( p2 - p0 ) * t + ( 2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3 ) * t * t +
@@ -98,7 +101,8 @@ std::vector<CurveSample> buildCurve( const TerrainEdit& edit, const HeightField&
 
 }
 
-float TerrainEditCoverage::sample( const std::vector<float>& values, float u, float v ) const
+// Билинейно по центрам ячеек квадратной сетки size × size, u, v — доли стороны (v = 0 — строка 0)
+float sampleGrid( const std::vector<float>& values, uint32_t size, float u, float v )
 {
 	if( values.empty() || size == 0 )
 		return 0.0f;
@@ -111,10 +115,15 @@ float TerrainEditCoverage::sample( const std::vector<float>& values, float u, fl
 	const uint32_t r1 = std::min( r0 + 1, size - 1 );
 	const float fc = col - c0;
 	const float fr = row - r0;
-	const auto at = [this, &values]( uint32_t r, uint32_t c ) { return values[static_cast<size_t>( r ) * size + c]; };
+	const auto at = [&values, size]( uint32_t r, uint32_t c ) { return values[static_cast<size_t>( r ) * size + c]; };
 	const float top = at( r0, c0 ) + ( at( r0, c1 ) - at( r0, c0 ) ) * fc;
 	const float bottom = at( r1, c0 ) + ( at( r1, c1 ) - at( r1, c0 ) ) * fc;
 	return top + ( bottom - top ) * fr;
+}
+
+float TerrainEditCoverage::sample( const std::vector<float>& values, float u, float v ) const
+{
+	return sampleGrid( values, size, u, v );
 }
 
 size_t applyTerrainEdits( HeightField& field, const std::vector<TerrainEdit>& edits, TerrainEditCoverage* coverage )
@@ -147,6 +156,53 @@ size_t applyTerrainEdits( HeightField& field, const std::vector<TerrainEdit>& ed
 			if( coverage->paint[edit.paintLayer].empty() )
 				coverage->paint[edit.paintLayer].assign( texelCount, 0.0f );
 		}
+		// Покрытие текселя с весом правки: очистка растительности — наибольшая, покраска — кистью поверх прежних
+		const auto cover = [&]( size_t index, float weight )
+		{
+			if( clear )
+				coverage->foliageClear[index] = std::max( coverage->foliageClear[index], weight * edit.clearFoliage );
+			if( paint )
+			{
+				coverage->remaining[index] *= 1.0f - weight;
+				for( std::vector<float>& layer : coverage->paint )
+					if( !layer.empty() )
+						layer[index] *= 1.0f - weight;
+				coverage->paint[edit.paintLayer][index] += weight;
+			}
+		};
+
+		// Растровая правка: сдвиг высоты из карты в каждом текселе; вес покрытия — по глубине опускания (галька по дну
+		// русла, на пологих берегах — нет)
+		if( !edit.raster.empty() )
+		{
+			if( edit.rasterValues.empty() || edit.rasterSize == 0 )
+				continue;
+			for( uint32_t row = 0; row < field.size; ++row )
+			{
+				for( uint32_t col = 0; col < field.size; ++col )
+				{
+					float delta = sampleGrid( edit.rasterValues, edit.rasterSize, ( col + 0.5f ) / field.size, ( row + 0.5f ) / field.size );
+					if( !edit.lower )
+						delta = std::max( delta, 0.0f );
+					if( !edit.raise )
+						delta = std::min( delta, 0.0f );
+					if( delta == 0.0f )
+						continue;
+					const size_t index = static_cast<size_t>( row ) * field.size + col;
+					const float weight = std::clamp( -delta / rasterCoverageDepth, 0.0f, 1.0f );
+					if( weight > 0.0f )
+						cover( index, weight * weight * ( 3.0f - 2.0f * weight ) );
+					float& value = field.heights[row * field.rowPitch + col];
+					const float height = value * field.heightMultiplier + field.heightOffset;
+					const float normalized = std::clamp( ( height + delta - field.heightOffset ) / field.heightMultiplier, 0.0f, 1.0f );
+					if( normalized != value )
+						++changed;
+					value = normalized;
+				}
+			}
+			continue;
+		}
+
 		const std::vector<CurveSample> curve = buildCurve( edit, field );
 		if( curve.empty() )
 			continue;
@@ -207,16 +263,7 @@ size_t applyTerrainEdits( HeightField& field, const std::vector<TerrainEdit>& ed
 					continue;
 				weight = 0.5f + 0.5f * std::cos( 3.14159265f * ( d - half ) / sample.falloff );
 			}
-			if( clear )
-				coverage->foliageClear[index] = std::max( coverage->foliageClear[index], weight * edit.clearFoliage );
-			if( paint )
-			{
-				coverage->remaining[index] *= 1.0f - weight;
-				for( std::vector<float>& layer : coverage->paint )
-					if( !layer.empty() )
-						layer[index] *= 1.0f - weight;
-				coverage->paint[edit.paintLayer][index] += weight;
-			}
+			cover( index, weight );
 			if( !height )
 				continue;
 			const uint32_t row = index / field.size;

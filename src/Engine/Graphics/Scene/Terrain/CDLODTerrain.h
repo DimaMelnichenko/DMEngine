@@ -85,6 +85,8 @@ private:
 	// Копия карты высот с правками рельефа и мипами для вершинного шейдера и минимум / максимум высоты каждого узла по
 	// мипам его уровня; coverage — что правки делают, кроме высоты
 	bool buildHeightBounds( const std::vector<TerrainEdit>& edits, TerrainEditCoverage& coverage );
+	// Значения растровой правки (TerrainEdit::raster) из файла; false — файла нет или он не R32_FLOAT (строка в лог)
+	static bool loadEditRaster( TerrainEdit& edit );
 	// Маска очистки растительности правками (R8_UNORM размером с карту высот, без правок с очисткой — 1 × 1 ноль)
 	bool createFoliageClearMask( const TerrainEditCoverage& coverage );
 	void calcRanges();

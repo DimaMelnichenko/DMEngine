@@ -9,13 +9,17 @@ Splines; --paint-only — правка без высоты, только очи�
   python Tools/terrain_edit.py add ИМЯ --points "x,z[,y[,ширина[,полоса]]];..." [--width 4] [--falloff 4]
          [--height Y] [--relative] [--raise-only | --lower-only | --paint-only] [--linear] [--layer N]
          [--clear-foliage F] [--paint-layer N] [--level Test]
+  python Tools/terrain_edit.py add ИМЯ --raster terrain\\channels.dds [--raise-only | --lower-only] [--layer N]
+         [--clear-foliage F] [--paint-layer N] [--level Test]
   python Tools/terrain_edit.py set ИМЯ [--clear-foliage F] [--paint-layer N | --no-paint] [--level Test]
   python Tools/terrain_edit.py delete ИМЯ [--level Test]
   python Tools/terrain_edit.py enable ИМЯ / disable ИМЯ [--level Test]
 
 y точки — высота, м; у --relative — смещение от рельефа под точкой (−1.5 — русло на полтора метра ниже земли). Без y —
 --height, иначе (абсолютная правка) — высота рельефа под точкой по карте высот: площадка «как есть сейчас». Повторный
-add с тем же именем заменяет правку. Сообщения — ASCII (Windows PowerShell 5.1, cmd).
+add с тем же именем заменяет правку. --raster — растровая правка вместо кривой (как растровые Edit Layers в UE): файл
+от Textures\\, R32_FLOAT квадратом — сдвиг высоты, м (< 0 — опустить); её покраска и очистка — по глубине опускания
+(полные с 0,15 м). Так хранятся русла (Tools/carve_channels.py). Сообщения — ASCII (Windows PowerShell 5.1, cmd).
 """
 import argparse
 import os
@@ -54,7 +58,7 @@ CREATE TABLE IF NOT EXISTS TerrainEditPoints (
 );
 """
 # Колонки, добавленные после первой версии таблицы: у базы без них — ALTER TABLE
-COLUMNS = [('clear_foliage', 'REAL NOT NULL DEFAULT 0'), ('paint_layer', 'INTEGER')]
+COLUMNS = [('clear_foliage', 'REAL NOT NULL DEFAULT 0'), ('paint_layer', 'INTEGER'), ('raster', 'TEXT')]
 
 
 def migrate(db):
@@ -121,6 +125,7 @@ def main():
     parser.add_argument('name', nargs='?')
     parser.add_argument('--level', default='Test')
     parser.add_argument('--points', help='"x,z[,y[,width[,falloff]]];..."')
+    parser.add_argument('--raster', help='raster edit: R32_FLOAT DDS from Textures\\, height offset in meters')
     parser.add_argument('--width', type=float, default=4.0, help='flat part width, m')
     parser.add_argument('--falloff', type=float, default=4.0, help='blend band to the original terrain on each side, m')
     parser.add_argument('--height', type=float, help='y for points without one')
@@ -145,29 +150,30 @@ def main():
 
     if args.command == 'list':
         for row in db.execute('SELECT id, layer, name, enabled, raise_terrain, lower_terrain, relative, smooth, clear_foliage, '
-                              'paint_layer FROM TerrainEdits WHERE terrain = ? ORDER BY layer, id', (terrain,)):
+                              'paint_layer, raster FROM TerrainEdits WHERE terrain = ? ORDER BY layer, id', (terrain,)):
             count = db.execute('SELECT COUNT(*) FROM TerrainEditPoints WHERE edit = ?', (row[0],)).fetchone()[0]
             paint_layer = '-' if row[9] is None else str(row[9])
-            print('%d layer %d %s enabled %d raise %d lower %d relative %d smooth %d clear %g paint %s points %d' %
-                  (row[:9] + (paint_layer, count)))
+            shape = 'raster %s' % row[10] if row[10] else 'points %d' % count
+            print('%d layer %d %s enabled %d raise %d lower %d relative %d smooth %d clear %g paint %s %s' %
+                  (row[:9] + (paint_layer, shape)))
         return
     if not args.name:
         sys.exit('name is required')
 
     if args.command == 'add':
-        if not args.points:
-            sys.exit('--points is required')
-        points = parse_points(args.points, args, height_sampler(db, terrain))
+        if bool(args.points) == bool(args.raster):
+            sys.exit('either --points or --raster is required')
+        points = parse_points(args.points, args, height_sampler(db, terrain)) if args.points else []
         db.execute('DELETE FROM TerrainEdits WHERE terrain = ? AND name = ?', (terrain, args.name))
         cursor = db.execute('INSERT INTO TerrainEdits (terrain, layer, name, raise_terrain, lower_terrain, relative, smooth, '
-                            'clear_foliage, paint_layer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                            'clear_foliage, paint_layer, raster) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                             (terrain, args.layer, args.name, 0 if args.lower_only or args.paint_only else 1,
                              0 if args.raise_only or args.paint_only else 1, 1 if args.relative else 0, 0 if args.linear else 1,
-                             args.clear_foliage or 0.0, args.paint_layer))
+                             args.clear_foliage or 0.0, args.paint_layer, args.raster))
         edit = cursor.lastrowid
         db.executemany('INSERT INTO TerrainEditPoints (edit, point, x, y, z, width, falloff) VALUES (?, ?, ?, ?, ?, ?, ?)',
                        [(edit, i) + p for i, p in enumerate(points)])
-        print('edit %s: %d points' % (args.name, len(points)))
+        print('edit %s: %s' % (args.name, 'raster %s' % args.raster if args.raster else '%d points' % len(points)))
     elif args.command == 'set':
         if not db.execute('SELECT 1 FROM TerrainEdits WHERE terrain = ? AND name = ?', (terrain, args.name)).fetchone():
             sys.exit('no edit %s' % args.name)

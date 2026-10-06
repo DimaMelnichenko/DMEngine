@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstring>
 #include <DirectXTex.h>
 #include "System.h"
 #include "ConstantBuffers.h"
@@ -121,6 +122,26 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	return true;
 }
 
+bool CDLODTerrain::loadEditRaster( TerrainEdit& edit )
+{
+	// Карта сдвига высоты, м: R32_FLOAT квадратом, путь — от Textures\ (как у текстур хранилища)
+	const std::wstring path = L"Textures\\" + std::wstring( edit.raster.begin(), edit.raster.end() );
+	ScratchImage image;
+	if( FAILED( LoadFromDDSFile( path.c_str(), DDS_FLAGS_NONE, nullptr, image ) ) || image.GetImageCount() == 0 ||
+		image.GetMetadata().format != DXGI_FORMAT_R32_FLOAT || image.GetMetadata().width != image.GetMetadata().height )
+	{
+		LOG( "CDLOD terrain: raster of terrain edit " + edit.name + " (" + edit.raster + ") is not loaded: square R32_FLOAT DDS expected" );
+		return false;
+	}
+	const Image* level = image.GetImage( 0, 0, 0 );
+	edit.rasterSize = static_cast<uint32_t>( level->width );
+	edit.rasterValues.resize( static_cast<size_t>( edit.rasterSize ) * edit.rasterSize );
+	for( uint32_t row = 0; row < edit.rasterSize; ++row )
+		memcpy( edit.rasterValues.data() + static_cast<size_t>( row ) * edit.rasterSize, level->pixels + row * level->rowPitch,
+				edit.rasterSize * sizeof( float ) );
+	return true;
+}
+
 TerrainHeight CDLODTerrain::terrainHeight() const
 {
 	TerrainHeight height;
@@ -229,6 +250,11 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, Ter
 	// Правки рельефа (TerrainEdits) — на копию до мипов: их видят вершины всех уровней, узлы и расстановка
 	if( !edits.empty() )
 	{
+		std::vector<TerrainEdit> loaded = edits;
+		for( TerrainEdit& edit : loaded )
+			if( !edit.raster.empty() )
+				loadEditRaster( edit );
+
 		HeightField field;
 		field.heights = reinterpret_cast<float*>( image->pixels );
 		field.size = static_cast<uint32_t>( image->width );
@@ -236,7 +262,7 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, Ter
 		field.texelSize = m_texelSize;
 		field.heightMultiplier = m_heightMultiplier;
 		field.heightOffset = m_heightOffset;
-		const size_t changed = applyTerrainEdits( field, edits, &coverage );
+		const size_t changed = applyTerrainEdits( field, loaded, &coverage );
 		LOG( "CDLOD terrain: " + std::to_string( edits.size() ) + " terrain edits, texels changed: " + std::to_string( changed ) );
 	}
 

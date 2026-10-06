@@ -9,6 +9,7 @@
 #include "Texture\DMTextureStorage.h"
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
+#include "D3D\TextureImages.h"
 
 namespace GS
 {
@@ -544,6 +545,46 @@ void WaterSimulation::compute( const FrameContext& frame )
 	cullTiles( frame.view );
 	// Вода — ресурс сцены до следующего кадра (террейн, позже — поверхность воды и мокрый берег)
 	DMD3D::instance().setSRV( SLOT_WATER, m_outputView );
+}
+
+bool WaterSimulation::exportDischarge( const std::string& file, std::string& reason )
+{
+	if( !m_initialized )
+	{
+		reason = "the level has no water simulation";
+		return false;
+	}
+	std::vector<DMD3D::SubresourceCopy> copies;
+	std::vector<uint8_t> bytes;
+	if( !DMD3D::instance().captureTexture( m_flux, copies, bytes ) || copies.empty() )
+	{
+		reason = "water flux readback failed";
+		return false;
+	}
+	std::vector<float> discharge( static_cast<size_t>( m_size ) * m_size );
+	double total = 0.0;
+	float peak = 0.0f;
+	for( uint32_t row = 0; row < m_size; ++row )
+	{
+		const float* flux = reinterpret_cast<const float*>( bytes.data() + copies[0].offset + row * copies[0].rowPitch );
+		for( uint32_t col = 0; col < m_size; ++col )
+		{
+			const float* out = flux + col * 4;
+			const float q = out[0] + out[1] + out[2] + out[3];
+			discharge[static_cast<size_t>( row ) * m_size + col] = q;
+			peak = std::max( peak, q );
+			total += q;
+		}
+	}
+	if( !GpuImages::saveFloatDDS( std::wstring( file.begin(), file.end() ), m_size, m_size, discharge.data() ) )
+	{
+		reason = "cannot write " + file;
+		return false;
+	}
+	char text[160];
+	snprintf( text, sizeof( text ), "Water discharge: %ux%u, peak %.3f m3/s -> ", m_size, m_size, peak );
+	LOG( text + file );
+	return true;
 }
 
 PropertyContainer* WaterSimulation::properties()

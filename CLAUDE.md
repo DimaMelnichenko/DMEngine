@@ -248,7 +248,8 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 меша `AbstractMesh::bounds` считаются при загрузке, меши в список отрисовки),
 `WaterSimulation` (вода по рельефу, как в From Dust: модель виртуальных труб на сетке карты высот с трением по Маннингу,
 источники по карте водосбора и помощники — родник, ледниковое озеро (строки `WaterSources`, `Tools/water_source.py`),
-озёра до уровня перелива и прогрев при загрузке, шаги по времени кадра; текстура воды —
+озёра до уровня перелива и прогрев при загрузке, шаги по времени кадра; русла — растровая правка рельефа `channels` по
+расходу из симуляции: `water discharge` → `Tools/carve_channels.py`; текстура воды —
 слот сцены `SLOT_WATER`, t109, `Shaders/water.sh`; строка `WaterSimulation` уровня, `Levels.water_simulation`;
 поверхность — свой вызов в `transparent` с цветом и глубиной сцены: тайлы сетки с водой отбирает compute, один
 ExecuteIndirect, берег — пересечение продолженной за урез плоскости воды с рельефом, `water.vs` / `water.ps`: поглощение
@@ -455,7 +456,8 @@ resampling, как в UE Landscape: мелкий повтор не склады�
 растительность (`clear_foliage`: маска `TerrainHeight::foliageClearMask`, её читает `scatter.cs` у всех слоёв, и у леса)
 и красит слой splat-карты (`paint_layer`, как Paint Layer у Landscape Splines: `TerrainMaterial` смешивает до мипов;
 русло `test_channel` — галька `dry_river_pebbles`, слой 5). Правки в базе —
-`python Tools/terrain_edit.py add|set|list|enable|disable|delete`, подробно — `docs/terrain.md`.
+`python Tools/terrain_edit.py add|set|list|enable|disable|delete`; растровая правка (`TerrainEdits.raster`: карта сдвига
+высоты `R32_FLOAT`, `--raster`) — вместо кривой, так хранятся русла; подробно — `docs/terrain.md`.
 
 Почему CDLOD, а не тесселяция или geometry clipmaps: аппаратная тесселяция как основа
 LOD из практики ушла (UE5 её удалил, Far Cry 5 отказался из-за стоимости); современные движки рисуют сетку по карте
