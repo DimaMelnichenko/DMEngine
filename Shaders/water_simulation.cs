@@ -17,10 +17,11 @@
 
 DM_SRV( Texture2D<float>, g_flowMap, 1 );		// водосбор, м² (mainSources)
 DM_SRV( Texture2D<float>, g_sources, 2 );		// приток ячейки, м/с слоя воды
+DM_SRV( StructuredBuffer<float4>, g_helpers, 4 );	// источники-помощники: x, z мира, расход м³/с, σ м (mainSources)
 
 DM_UAV( RWTexture2D<float>, g_water, 0 );		// глубина воды, м
 DM_UAV( RWTexture2D<float4>, g_flux, 1 );		// потоки к соседям −X, +X, −Y, +Y (по текселям), м³/с
-DM_UAV( RWTexture2D<float4>, g_output, 2 );		// для шейдеров (SLOT_WATER): глубина, скорость по X и Z мира, 0
+DM_UAV( RWTexture2D<float4>, g_output, 2 );		// для шейдеров (SLOT_WATER): глубина, скорость по X и Z мира, приток мм/с
 DM_UAV( RWTexture2D<float>, g_sourcesOut, 3 );	// mainSources
 DM_UAV( RWTexture2D<float>, g_fill, 4 );		// уровень заполненных низин, м (mainFill*, при загрузке)
 DM_UAV( RWTexture2D<float>, g_lake, 5 );		// 1 — низина с водой при загрузке (mainLake*)
@@ -59,7 +60,19 @@ void mainSources( uint3 id : SV_DispatchThreadID )
 			weights += weight;
 		}
 	}
-	g_sourcesOut[id.xy] = g_sourceRate * sum / weights;
+	// Источники-помощники (родник, ледниковое озеро — WaterSources): гауссово пятно плотности расход / (2πσ²), м/с слоя,
+	// обрезанное за 3σ — иначе хвост дал бы приток (и метку озера при загрузке) во всех низинах карты
+	const float2 world = float2( ( id.x + 0.5f ) * g_cellSize, ( g_size - id.y - 0.5f ) * g_cellSize );
+	float helpers = 0.0f;
+	for( uint h = 0; h < g_helperCount; ++h )
+	{
+		const float4 helper = g_helpers[h];
+		const float2 offset = world - helper.xy;
+		const float distanceSq = dot( offset, offset ) / ( helper.w * helper.w );
+		if( distanceSq < 9.0f )
+			helpers += helper.z / ( 2.0f * 3.14159265f * helper.w * helper.w ) * exp( -0.5f * distanceSq );
+	}
+	g_sourcesOut[id.xy] = g_sourceRate * sum / weights + helpers;
 }
 
 [numthreads( 8, 8, 1 )]
@@ -206,5 +219,6 @@ void mainWater( uint3 id : SV_DispatchThreadID )
 	const float water = max( after - g_timeStep * g_evaporation, 0.0f );
 	g_water[cell] = water;
 	// Ось Y текселей идёт против Z мира (v = 1 − z / worldSize)
-	g_output[cell] = float4( water, velocity.x, -velocity.y, 0.0f );
+	// Приток — в мм/с: в половинной точности м/с притока ручья (~10⁻⁴) — у предела нормальных чисел
+	g_output[cell] = float4( water, velocity.x, -velocity.y, g_sources[cell] * 1000.0f );
 }

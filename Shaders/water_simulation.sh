@@ -26,7 +26,8 @@ cbuffer WaterSimulationBuffer : register( b4 )
 	float g_logFlowFull;
 	int   g_sourceRadius;		// радиус размытия источников, ячейки
 	float g_manning;			// шероховатость дна по Маннингу, с/м^(1/3)
-	float3 g_simulationPadding;
+	uint  g_helperCount;		// источников-помощников (WaterSources) в g_helpers water_simulation.cs
+	float2 g_simulationPadding;
 };
 
 float terrain( int2 cell )

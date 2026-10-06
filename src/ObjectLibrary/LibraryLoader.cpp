@@ -415,6 +415,24 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 	water.flowPeriod = value( "flow_period" );
 	water.foamSpeed = value( "foam_speed" );
 	water.foamShear = value( "foam_shear" );
+
+	// Источники-помощники (Tools/water_source.py); таблицы может не быть у базы, где их не ставили
+	SQLite::Database& db = DBConnector::instance().db();
+	if( db.tableExists( "WaterSources" ) )
+	{
+		SQLite::Statement sources( db, "SELECT name, x, z, rate, radius FROM WaterSources "
+									   "WHERE water_simulation = :id AND enabled = 1 ORDER BY id" );
+		sources.bind( ":id", *level.waterSimulationId );
+		while( sources.executeStep() )
+		{
+			GS::WaterSource& source = water.sources.emplace_back();
+			source.name = sources.getColumn( "name" ).getString();
+			source.position = DirectX::XMFLOAT2( static_cast<float>( sources.getColumn( "x" ).getDouble() ),
+												 static_cast<float>( sources.getColumn( "z" ).getDouble() ) );
+			source.rate = static_cast<float>( sources.getColumn( "rate" ).getDouble() );
+			source.radius = static_cast<float>( sources.getColumn( "radius" ).getDouble() );
+		}
+	}
 	return true;
 }
 

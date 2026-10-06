@@ -204,6 +204,10 @@ float4 main( PixelInputType input ) : SV_TARGET
 		const float3 waterColor = lerp( float3( 0.01f, 0.04f, 0.25f ), float3( 0.5f, 0.75f, 1.0f ), saturate( length( water.velocity ) * 0.5f ) );
 		surface.baseColor = lerp( surface.baseColor, waterColor, cover );
 		surface.roughness = lerp( surface.roughness, 0.1f, cover );
+		// Источники (по водосбору и помощники WaterSources) — оранжевым, от 0,01 до 1 мм/с притока
+		const float source = saturate( log10( max( water.inflow, 1e-4f ) / 0.01f ) * 0.5f );
+		surface.baseColor = lerp( surface.baseColor, float3( 1.0f, 0.35f, 0.02f ), source );
+		surface.emissive = float3( 1.0f, 0.35f, 0.02f ) * source * 0.02f * ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
 	}
 
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)

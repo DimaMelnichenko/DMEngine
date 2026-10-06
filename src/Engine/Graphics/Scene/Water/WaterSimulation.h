@@ -50,7 +50,8 @@ private:
 		float logFlowFull;
 		int32_t sourceRadius;
 		float manning;
-		float padding[3];
+		uint32_t helperCount;		// источников-помощников в буфере m_helpers
+		float padding[2];
 	};
 
 	// Раскладка — cbuffer WaterTilesBuffer (b5) в water_surface.cs
@@ -131,6 +132,9 @@ private:
 	ShaderView m_sourcesView;
 	ShaderView m_outputView;
 	ShaderView m_waterView;
+	Buffer m_helpers;				// float4 на источник-помощник: x, z, расход м³/с, σ м (WaterSources)
+	ShaderView m_helpersView;
+	uint32_t m_helperCount = 0;
 
 	// Поверхность
 	DMComputeShader m_surfaceShader;

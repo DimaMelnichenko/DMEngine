@@ -215,7 +215,8 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 		const float2 foamDY = uvDY * 3.0f;
 		const float pattern = 0.5f + 0.5f * lerp( rippleHeight( ( input.worldPosition.xz + phases.offset0 ) * 3.0f, foamDX, foamDY ),
 												 rippleHeight( ( input.worldPosition.xz + phases.offset1 ) * 3.0f, foamDX, foamDY ), phases.blend );
-		const float foam = smoothstep( 1.0f - foamAmount, 1.2f - foamAmount, pattern ) * foamAmount;
+		// На тонкой воде пена реже и прозрачнее: в пару сантиметров ей не на чем держаться
+		const float foam = smoothstep( 1.0f - foamAmount, 1.2f - foamAmount, pattern ) * foamAmount * saturate( water.depth / 0.05f );
 		surface.baseColor = foamAlbedo;
 		surface.roughness = foamRoughness;
 		surface.normal = float3( 0.0f, 1.0f, 0.0f );

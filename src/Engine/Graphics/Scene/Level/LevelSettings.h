@@ -116,6 +116,15 @@ struct WindSettings
 	float gustSize = 25.0f;			// длина волны порыва, м
 };
 
+// Строка WaterSources: источник воды, поставленный руками (родник, ледниковое озеро), — гауссово пятно притока
+struct WaterSource
+{
+	std::string name;
+	DirectX::XMFLOAT2 position = DirectX::XMFLOAT2( 0.0f, 0.0f );	// x, z мира
+	float rate = 1.0f;				// расход, л/с
+	float radius = 3.0f;			// радиус пятна, м (≈ 2σ гаусса)
+};
+
 // Строка WaterSimulation: вода на сетке карты высот (WaterSimulation, docs/water.md). Источники — по карте водосбора
 // (flow.dds из Tools/gen_heightmap.py): приток нарастает от flowStart до flowFull м² водосбора
 struct WaterSimulationSettings
@@ -144,6 +153,8 @@ struct WaterSimulationSettings
 	float flowPeriod = 1.5f;		// период фазы течения текстуры, с (Vlachos 2010)
 	float foamSpeed = 1.0f;			// пена — быстрее этого, м/с
 	float foamShear = 1.5f;			// и где сдвиг скорости больше, 1/с
+
+	std::vector<WaterSource> sources;	// включённые строки WaterSources этой строки WaterSimulation
 };
 
 // Строка SunPosition

@@ -129,6 +129,28 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		!d3d.createShaderView( m_water, {}, m_waterView ) || !createSurface() )
 		return false;
 
+	// Источники-помощники — гауссовы пятна притока в mainSources: x, z, расход м³/с, σ (не меньше ячейки)
+	if( !settings.sources.empty() )
+	{
+		std::vector<DirectX::XMFLOAT4> helpers;
+		for( const WaterSource& source : settings.sources )
+			helpers.emplace_back( source.position.x, source.position.y, source.rate * 0.001f, std::max( source.radius * 0.5f, m_cellSize ) );
+		BufferDesc desc;
+		desc.size = static_cast<uint32_t>( helpers.size() * sizeof( DirectX::XMFLOAT4 ) );
+		desc.stride = sizeof( DirectX::XMFLOAT4 );
+		desc.usage = BufferUsage::shaderResource | BufferUsage::structured;
+		if( !d3d.createBuffer( desc, helpers.data(), m_helpers ) || !d3d.createShaderView( m_helpers, {}, m_helpersView ) )
+		{
+			LOG( "Failed to create water source helpers" );
+			return false;
+		}
+		d3d.setName( m_helpers, "Water source helpers" );
+		m_helperCount = static_cast<uint32_t>( helpers.size() );
+		for( const WaterSource& source : settings.sources )
+			LOG( "Water source " + source.name + ": " + std::to_string( source.rate ) + " l/s at " +
+				 std::to_string( source.position.x ) + ", " + std::to_string( source.position.y ) );
+	}
+
 	// Источники, озёра до уровня перелива, затем до установившегося течения — порциями с ожиданием GPU
 	buildSources( settings );
 	if( !fillLakes() )
@@ -441,6 +463,7 @@ void WaterSimulation::setParameters( const Settings& settings )
 	params.logFlowFull = std::max( std::log10( std::max( settings.flowFull, 1.0f ) ), params.logFlowStart + 0.01f );
 	params.sourceRadius = std::clamp( static_cast<int32_t>( std::lround( settings.sourceRadius / m_cellSize ) ), 0, maxSourceRadius );
 	params.manning = settings.manning;
+	params.helperCount = m_helperCount;
 	Device::updateResourceData( m_constantBuffer, params );
 	DMD3D::instance().setConstantBuffer( 4, m_constantBuffer );
 }
@@ -452,10 +475,14 @@ void WaterSimulation::buildSources( const Settings& settings )
 	PassDesc pass;
 	pass.name = "Water sources";
 	pass.reads = { { &flowMap, "flow map" } };
+	if( m_helperCount > 0 )
+		pass.reads.push_back( { &m_helpersView, "water source helpers" } );
 	pass.writes = { { &m_sourcesUAV, "water sources" } };
 	d3d.beginPass( pass );
 	setParameters( settings );
 	d3d.setSRV( 1, flowMap );
+	if( m_helperCount > 0 )
+		d3d.setSRV( 4, m_helpersView );
 	d3d.setUAV( 3, m_sourcesUAV );
 	const uint32_t groups = ( m_size + groupSize - 1 ) / groupSize;
 	m_sourcesShader.dispatchGroups( groups, groups, 1 );

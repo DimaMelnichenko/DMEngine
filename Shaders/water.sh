@@ -9,12 +9,13 @@
 #include "samplers.sh"
 #include "bindless.sh"
 
-DM_SRV( Texture2D<float4>, g_waterState, SLOT_WATER );	// глубина, м; скорость по X и Z мира, м/с
+DM_SRV( Texture2D<float4>, g_waterState, SLOT_WATER );	// глубина, м; скорость по X и Z мира, м/с; приток, мм/с
 
 struct WaterSample
 {
 	float depth;
 	float2 velocity;
+	float inflow;		// приток источников в ячейку, мм/с слоя воды (по водосбору и помощники)
 };
 
 WaterSample sampleWater( float2 uv )
@@ -23,6 +24,7 @@ WaterSample sampleWater( float2 uv )
 	WaterSample water;
 	water.depth = state.x;
 	water.velocity = state.yz;
+	water.inflow = state.w;
 	return water;
 }
 
