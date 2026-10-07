@@ -158,6 +158,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/D3D/CubeTarget.cpp
     src/Engine/Graphics/Scene/Sky/SkyLight.cpp
     src/Engine/Graphics/Scene/Sky/HDRIBackdrop.cpp
+    src/Engine/Graphics/Scene/Sky/VolumetricCloud.cpp
     src/Engine/Graphics/D3D/DMSamplerState.cpp
     src/Engine/Graphics/DMGraphics.cpp
     src/Engine/Graphics/Renderer.cpp

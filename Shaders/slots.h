@@ -54,13 +54,15 @@
 #define SLOT_WATER			109
 // Объёмный туман (height_fog.sh, VolumetricFog): над экраном, накопленные от камеры свет тумана и пропускание
 #define SLOT_VOLUMETRIC_FOG	110
+// Тень облаков (cloud_shadow.sh, VolumetricCloud): пропускание облачного слоя к солнцу на плоскости над камерой
+#define SLOT_CLOUD_SHADOW	111
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	11
+#define SLOT_SCENE_COUNT	12
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту
 #define DM_BINDING_UAV_BASE		17	// u0…u7 → 17…24
-#define DM_BINDING_SCENE_BASE	25	// t100…t110 → 25…35
-#define DM_BINDING_COUNT		36	// кратно 4 (uint4 в bindless.sh)
+#define DM_BINDING_SCENE_BASE	25	// t100…t111 → 25…36
+#define DM_BINDING_COUNT		40	// кратно 4 (uint4 в bindless.sh); с CBV и b9 — 60 из 64 DWORD root signature
 
 // Сэмплеры — статические в root signature: s0…s7 общие (samplers.sh, DMSamplerState)
 #define SLOT_SAMPLER_SHADOW	DM_REGISTER( s, 8 )		// сравнение глубины для карты теней (PCF 2×2)

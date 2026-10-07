@@ -122,6 +122,22 @@ struct WindSettings
 	float gustSize = 25.0f;			// длина волны порыва, м
 };
 
+// Строка VolumetricCloud (как Volumetric Cloud в UE5): слой облаков над долиной, Shaders/volumetric_cloud.sh
+struct VolumetricCloudSettings
+{
+	float layerBottomAltitude = 1500.0f;	// высота основания слоя над землёй мира (y = 0), м (Layer Bottom Altitude)
+	float layerHeight = 2500.0f;			// толщина слоя, м (Layer Height)
+	float coverage = 0.3f;					// покрытие неба 0…1: 0 — ясно, 1 — сплошь
+	float density = 0.02f;					// коэффициент ослабления облака полной плотности, 1/м
+	DirectX::XMFLOAT3 albedo = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );	// доля рассеянного в ослабленном
+	float shapeScale = 8000.0f;				// повтор шума формы, м: ячейка облака — четверть
+	float detailScale = 800.0f;				// повтор мелкого шума краёв, м
+	float weatherScale = 40000.0f;			// повтор карты погоды (просветы и гуще), м
+	float windSpeed = 10.0f;				// скорость облаков, м/с; направление — ветра уровня
+	float shadowStrength = 1.0f;			// тень облаков на земле: множитель оптической толщины, 0 — нет
+	float tracingMaxDistance = 50000.0f;	// дальше облака не видны, м (Tracing Max Distance)
+};
+
 // Слой тумана по высоте: ниже своей высоты ровный, выше редеет по экспоненте
 struct HeightFogLayer
 {

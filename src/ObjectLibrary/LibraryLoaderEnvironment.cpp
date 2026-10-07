@@ -8,7 +8,7 @@
 using namespace DirectX;
 
 // Свет и окружение уровня: строки LevelLights, SunPosition, SkyAtmosphere, Wind, HDRIBackdrop, PostProcessSettings,
-// ExponentialHeightFog —
+// ExponentialHeightFog, VolumetricCloud —
 // загрузка в LevelDescription и сохранение правок из GUI («Save level environment»)
 
 void LibraryLoader::loadLevelLights( LevelDescription& level )
@@ -153,6 +153,35 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		fog.viewDistance = value( "view_distance" );
 	}
 
+	if( level.volumetricCloudId )
+	{
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM VolumetricCloud WHERE id = :id" );
+		query.bind( ":id", *level.volumetricCloudId );
+		if( !query.executeStep() )
+		{
+			LOG( "Volumetric cloud " + std::to_string( *level.volumetricCloudId ) + " is not found in table VolumetricCloud" );
+			return false;
+		}
+		auto value = [&query]( const char* column )
+		{
+			return static_cast<float>( query.getColumn( column ).getDouble() );
+		};
+		GS::VolumetricCloudSettings& cloud = level.volumetricCloud.emplace();
+		cloud.layerBottomAltitude = value( "layer_bottom_altitude" );
+		cloud.layerHeight = value( "layer_height" );
+		cloud.coverage = value( "coverage" );
+		cloud.density = value( "density" );
+		const std::string albedo = query.getColumn( "albedo" ).getString();
+		if( !strToVec3( albedo, cloud.albedo ) )
+			LOG( "Volumetric cloud " + std::to_string( *level.volumetricCloudId ) + ": wrong albedo '" + albedo + "'" );
+		cloud.shapeScale = value( "shape_scale" );
+		cloud.detailScale = value( "detail_scale" );
+		cloud.weatherScale = value( "weather_scale" );
+		cloud.windSpeed = value( "wind_speed" );
+		cloud.shadowStrength = value( "shadow_strength" );
+		cloud.tracingMaxDistance = value( "tracing_max_distance" );
+	}
+
 	if( level.hdriBackdropId )
 	{
 		SQLite::Statement query( DBConnector::instance().db(), "SELECT texture, intensity, rotation, max_luminance FROM HDRIBackdrop WHERE id = :id" );
@@ -221,7 +250,8 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 										  const std::optional<GS::SkyAtmosphereSettings>& atmosphere,
 										  const std::optional<GS::HDRIBackdropSettings>& hdri,
 										  const GS::PostProcessSettings& postProcess, const GS::WindSettings& wind,
-										  const std::optional<GS::HeightFogSettings>& heightFog )
+										  const std::optional<GS::HeightFogSettings>& heightFog,
+										  const std::optional<GS::VolumetricCloudSettings>& cloud )
 {
 	try
 	{
@@ -414,6 +444,28 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 			updateLevelFog.bind( ":fog", *level.heightFogId );
 			updateLevelFog.bind( ":id", level.id );
 			updateLevelFog.exec();
+		}
+
+		// Облака — только в свою строку: без строки у уровня облаков нет, и окна тоже
+		if( cloud && level.volumetricCloudId )
+		{
+			SQLite::Statement updateCloud( db, "UPDATE VolumetricCloud SET layer_bottom_altitude = :bottom, layer_height = :height, "
+											   "coverage = :coverage, density = :density, albedo = :albedo, shape_scale = :shape, "
+											   "detail_scale = :detail, weather_scale = :weather, wind_speed = :wind, "
+											   "shadow_strength = :shadow, tracing_max_distance = :distance WHERE id = :id" );
+			updateCloud.bind( ":bottom", dbValue( cloud->layerBottomAltitude ) );
+			updateCloud.bind( ":height", dbValue( cloud->layerHeight ) );
+			updateCloud.bind( ":coverage", dbValue( cloud->coverage ) );
+			updateCloud.bind( ":density", dbValue( cloud->density ) );
+			updateCloud.bind( ":albedo", vec3ToStr( cloud->albedo ) );
+			updateCloud.bind( ":shape", dbValue( cloud->shapeScale ) );
+			updateCloud.bind( ":detail", dbValue( cloud->detailScale ) );
+			updateCloud.bind( ":weather", dbValue( cloud->weatherScale ) );
+			updateCloud.bind( ":wind", dbValue( cloud->windSpeed ) );
+			updateCloud.bind( ":shadow", dbValue( cloud->shadowStrength ) );
+			updateCloud.bind( ":distance", dbValue( cloud->tracingMaxDistance ) );
+			updateCloud.bind( ":id", *level.volumetricCloudId );
+			updateCloud.exec();
 		}
 
 		transaction.commit();

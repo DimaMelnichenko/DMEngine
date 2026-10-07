@@ -269,7 +269,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 	try
 	{
 		const char* columns = "SELECT id, name, terrain, sky, atmosphere, post_process, sun_position, hdri_backdrop, wind, "
-							  "water_simulation, height_fog FROM Levels ";
+							  "water_simulation, height_fog, volumetric_cloud FROM Levels ";
 		SQLite::Statement query( DBConnector::instance().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
 		if( !name.empty() )
 			query.bind( ":name", name );
@@ -301,6 +301,8 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.windId = query.getColumn( "wind" ).getUInt();
 		if( !query.getColumn( "height_fog" ).isNull() )
 			level.heightFogId = query.getColumn( "height_fog" ).getUInt();
+		if( !query.getColumn( "volumetric_cloud" ).isNull() )
+			level.volumetricCloudId = query.getColumn( "volumetric_cloud" ).getUInt();
 		if( !query.getColumn( "water_simulation" ).isNull() )
 		{
 			level.waterSimulationId = query.getColumn( "water_simulation" ).getUInt();

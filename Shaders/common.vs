@@ -40,6 +40,9 @@ cbuffer FrameConstantBuffer : register( SLOT_CB_FRAME )
 	float  cb_fogScale;			// множитель объёма тумана (свет в нём делён на него); 0 — тумана нет
 	float3 cb_fogGridZ;			// слои объёма по глубине взгляда: слой = log₂(z · B + O) · S, (B, O, S)
 	float  cb_fogVolumeDistance;	// дальность объёма по глубине взгляда, м; 0 — только туман по формуле
+	// Тень облаков (Shaders/cloud_shadow.sh, VolumetricCloud): начало карты по X и Z мира, м; 1 / её размер, 1/м (0 —
+	// облаков нет); высота плоскости карты — середина облачного слоя, м
+	float4 cb_cloudShadow;
 };
 
 // Раскладка — ConstantBuffers::ShaderModelConstant

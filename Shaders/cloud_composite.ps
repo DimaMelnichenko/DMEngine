@@ -1,0 +1,44 @@
+////////////////////////////////////////////////////////////////////////////////
+// Облака поверх фона неба (VolumetricCloud, проход sky): текстура облаков (Shaders/volumetric_cloud.cs, половина кадра)
+// с линейной выборкой, только там, где сцена ничего не нарисовала. Фон уже лежит за туманом уровня, поэтому облака тоже
+// уходят в туман: итог (небо × пропускание облаков + свет облаков) × пропускание тумана + свет тумана — смешиванием
+// по непрозрачности облаков, без чтения фона
+////////////////////////////////////////////////////////////////////////////////
+
+#include "common.vs"
+#include "samplers.sh"
+#include "height_fog.sh"
+#include "exposure.sh"
+#include "bindless.sh"
+
+DM_SRV( Texture2D<float4>, g_clouds, 0 );
+
+// Раскладка — VolumetricCloud::CompositeParameters
+cbuffer CloudCompositeBuffer : register( b4 )
+{
+	float  g_cloudScale;	// нормировка неба (SkyAtmosphere::skyNormalization): свет в текстуре × она × cb_skyScale — кд/м²
+	float3 g_compositePadding;
+};
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	const float4 clouds = g_clouds.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f );
+	const float opacity = saturate( 1.0f - clouds.a );
+	clip( opacity - 1e-4f );
+
+	float2 ndc = float2( input.uv.x * 2.0f - 1.0f, 1.0f - input.uv.y * 2.0f );
+	float3 viewDirection = float3( ndc.x / cb_projectionMatrix[0][0], ndc.y / cb_projectionMatrix[1][1], 1.0f );
+	float3 direction = normalize( mul( viewDirection, (float3x3)cb_viewInverseMatrix ) );
+
+	// Туман между камерой и небом: фон уже с ним — облака закрывают его долю opacity
+	const float3 fogLight = applyHeightFogToSky( 0.0f, direction );
+	const float3 fogTransmittance = applyHeightFogToSky( 1.0f, direction ) - fogLight;
+	const float3 cloudLight = clouds.rgb * ( g_cloudScale * cb_skyScale );
+	return float4( ( cloudLight * fogTransmittance / opacity + fogLight ) * preExposure(), opacity );
+}

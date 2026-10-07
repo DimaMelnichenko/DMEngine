@@ -425,6 +425,30 @@ void SkyAtmosphere::updateAerialPerspective()
 	m_aerialPerspectiveShader.dispatchGroups( AERIAL_PERSPECTIVE_SIZE / groupSize, AERIAL_PERSPECTIVE_SIZE / groupSize, 1 );
 }
 
+void SkyAtmosphere::bindForClouds()
+{
+	setParameters( m_frameParams );
+	DMD3D& d3d = DMD3D::instance();
+	d3d.setSRV( multipleScatteringSlot, m_multipleScattering.srv() );
+	d3d.setSRV( transmittanceSlot, m_transmittanceLut.srv() );
+}
+
+void SkyAtmosphere::cloudLight( XMFLOAT3& direction, XMFLOAT3& color ) const
+{
+	// Ниже −3° солнце облаков уже не освещает (тень Земли на высоте слоя), светит луна
+	constexpr float sunMinSin = -0.0523f;
+	if( m_frameParams.sunDirection.y > sunMinSin || m_frameParams.moonDirection.y <= 0.0f )
+	{
+		direction = m_frameParams.sunDirection;
+		color = m_frameParams.sunColor;
+	}
+	else
+	{
+		direction = m_frameParams.moonDirection;
+		color = m_frameParams.moonColor;
+	}
+}
+
 void SkyAtmosphere::setParameters( const Parameters& params )
 {
 	Parameters data = params;

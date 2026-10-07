@@ -244,6 +244,11 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 `SkyAtmosphere::skyNormalization`, масштабы кадра `cb_skyLightScale` / `cb_skyScale` / `cb_aerialPerspectiveScale`,
 подробно — `docs/sky.md`; фон
 из Sky-View — полноэкранный треугольник на дальней плоскости в проходе `sky`) или вместо него `HDRIBackdrop` (HDRI-панорама уровня: фон и cubemap для `SkyLight`, без воздушной перспективы),
+облака — `VolumetricCloud` (как Volumetric Cloud в UE5, только с атмосферой: строка `VolumetricCloud`,
+`Levels.volumetric_cloud`, `Tools/volumetric_cloud.py`; шумы при загрузке, каждый кадр — карта тени облаков вокруг камеры
+(слот сцены `SLOT_CLOUD_SHADOW`, t111, константы `cb_cloudShadow`; её читают `sunShadow` и `volumeShadow` — все
+приёмники тени солнца) и луч главного вида через слой в половине кадра, в проходе `sky` — поверх фона неба; плывут по
+ветру уровня, `-nowind` их останавливает; `docs/clouds.md`),
 `SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
 растягивается до 0,9 дальней плоскости вида, `RenderView::farPlane`), `CDLODTerrain`,
 `ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида — в полосе перехода оба LOD с
@@ -340,13 +345,14 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 `cb_skyScale` и `cb_skyLightScale`, `rotation`, `max_luminance` — срез солнца для освещения окружением; уровень `TestHDRI`), постобработка — `PostProcessSettings`
 (`Levels.post_process`; NULL — значения по умолчанию), туман — строка `ExponentialHeightFog` (`Levels.height_fog`, как
 Exponential Height Fog с Volumetric Fog в UE: два слоя по высоте, альбедо, анизотропия, объём и его дальность; NULL —
-тумана нет; `Tools/height_fog.py`, `docs/fog.md`), ветер — строка `Wind` (`Levels.wind`, как Wind Directional Source
+тумана нет; `Tools/height_fog.py`, `docs/fog.md`), облака — строка `VolumetricCloud` (`Levels.volumetric_cloud`;
+NULL — облаков нет), ветер — строка `Wind` (`Levels.wind`, как Wind Directional Source
 в UE: направление, сила, порывы волнами; класс `Wind` у `Scene`, константы кадра `cb_wind*` и время игры `cb_gameTime` —
 шагами кадра, изгиб в `vertexWorldPosition` у материалов с `WindWeight` > 0 — `Shaders/wind.sh`, подробно — `docs/wind.md`;
 деревья — материал `PBRTree` (define `WIND_TREE`): слои Games wind SpeedTree по данным второго потока вершин `VertexPool` —
 начала и веса ветвей двух уровней, доля высоты, рябь, атрибуты glTF `_WIND_*`, блок `WIND` файла меша).
 В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
-вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Post process», «Height fog», «Wind»; кнопка «Save level environment»
+вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Volumetric cloud», «Post process», «Height fog», «Wind»; кнопка «Save level environment»
 (`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`; чтение и запись окружения — `ObjectLibrary/LibraryLoaderEnvironment.cpp`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
 уровень). Источники раз за кадр обновляет `Scene::updateLights` в `DMGraphics::Frame` (правки GUI и время
 суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`
@@ -505,7 +511,7 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
 `Water` (`WaterSimulation`),
-`Particle` (`ParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,
+`Particle` (`ParticleSystem`), `Sky` (`SkySphere`, `SkyAtmosphere`, `VolumetricCloud`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,
 `Texture` (`DMTexture` — текстура GPU и вид, `DMTextureStorage`, чтение файлов — `ImageFile::load`), `Model`/`Mesh`
 (`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`), `Materials` (`Material` и его классы,
 `MaterialStorage`). Не объекты сцены, а общее для проходов — в `src/Engine/Graphics/`:

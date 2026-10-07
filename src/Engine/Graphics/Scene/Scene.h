@@ -6,6 +6,7 @@
 #include "Sky\SkySphere.h"
 #include "Sky\SkyAtmosphere.h"
 #include "Sky\HDRIBackdrop.h"
+#include "Sky\VolumetricCloud.h"
 #include "Terrain\CDLODTerrain.h"
 #include "Model\ModelInstances.h"
 #include "Scatterer\Scatterer.h"
@@ -54,6 +55,8 @@ public:
 	// Текущие свет, небо и постобработку (правки в GUI) — в строки уровня в base.db3
 	bool saveEnvironment( LibraryLoader& library, const PostProcessSettings& postProcess,
 						  const std::optional<HeightFogSettings>& heightFog );
+	// Тень облаков для констант кадра (cb_cloudShadow); облаков нет — нули
+	DirectX::XMFLOAT4 cloudShadow( const RenderView& view );
 
 	CDLODTerrain& terrain();
 	// Вода по рельефу (Levels.water_simulation); без неё у уровня объект не инициализирован
@@ -70,6 +73,7 @@ private:
 
 	SkyLight m_skyLight;		// освещение окружением: из неба атмосферы или панорамы
 	SkyAtmosphere m_atmosphere;	// процедурное небо, от него — освещение окружением и воздушная перспектива
+	VolumetricCloud m_clouds;	// облака (Levels.volumetric_cloud), только с атмосферой
 	HDRIBackdrop m_hdri;		// панорама вместо атмосферы (Levels.hdri_backdrop)
 	bool m_useHDRI = false;
 	SkySphere m_sky;			// модель неба уровня (Levels.sky), если задана — вместо фона атмосферы

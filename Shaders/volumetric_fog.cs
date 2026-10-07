@@ -57,7 +57,7 @@ float3 froxelLight( float3 position )
 		{
 			float attenuation = henyeyGreenstein( dot( source.direction, toCamera ), g );
 			if( i == g_shadowSunIndex )
-				attenuation *= volumeShadow( position );
+				attenuation *= volumeShadow( position, -source.direction );
 			light += source.color * attenuation;
 		}
 		else

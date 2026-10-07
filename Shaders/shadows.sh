@@ -8,6 +8,7 @@
 
 #include "slots.h"
 #include "common.vs"
+#include "cloud_shadow.sh"
 #include "bindless.sh"
 
 #define SHADOW_CASCADE_COUNT 4
@@ -110,12 +111,13 @@ float sunShadow( float3 position, float3 geometricNormal, float3 toSun )
 		const float fade = saturate( ( viewDepth - g_shadowFadeStart ) / max( g_shadowDistance - g_shadowFadeStart, 1e-4f ) );
 		shadow = lerp( shadow, 1.0f, fade );
 	}
-	return shadow;
+	// Облака — и дальше дистанции теней
+	return shadow * cloudShadow( position, toSun );
 }
 
 // Тень солнца в точке воздуха (объёмный туман, Shaders/volumetric_fog.cs): одна выборка сравнения без смещений и
-// смешения каскадов — у воздуха нет поверхности, а шум выборки сглаживает накопление объёма по кадрам
-float volumeShadow( float3 position )
+// смешения каскадов — у воздуха нет поверхности, а шум выборки сглаживает накопление объёма по кадрам. toSun — на солнце
+float volumeShadow( float3 position, float3 toSun )
 {
 	const float viewDepth = viewDepthOf( position );
 	float shadow = 1.0f;
@@ -128,7 +130,7 @@ float volumeShadow( float3 position )
 		const float fade = saturate( ( viewDepth - g_shadowFadeStart ) / max( g_shadowDistance - g_shadowFadeStart, 1e-4f ) );
 		shadow = lerp( shadow, 1.0f, fade );
 	}
-	return shadow;
+	return shadow * cloudShadow( position, toSun );
 }
 
 // «Show cascades»: каскады 0…3 — красный, зелёный, синий, жёлтый; дальше дистанции — без изменений

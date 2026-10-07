@@ -112,6 +112,18 @@ bool Scene::initialize( bool particles )
 	}
 	m_wind.initialize( m_level.wind );
 	updateLights();
+	if( m_level.volumetricCloud )
+	{
+		if( m_useHDRI )
+		{
+			LOG( "Volumetric cloud needs the sky atmosphere, skipped" );
+		}
+		else if( !m_clouds.initialize( *m_level.volumetricCloud, m_atmosphere, m_wind ) )
+		{
+			LOG( "Fail to initialize volumetric cloud" );
+			return false;
+		}
+	}
 
 	// Расстановка, вода и частицы стоят на террейне и читают его карту высот (TerrainHeightSource)
 	auto timeStart = std::chrono::high_resolution_clock::now();
@@ -180,6 +192,9 @@ bool Scene::initialize( bool particles )
 	// Небо первым: его compute() готовит освещение окружением для всех, render() рисует фон
 	SceneObject* sky = m_useHDRI ? static_cast<SceneObject*>( &m_hdri ) : &m_atmosphere;
 	m_objects = { sky, &m_sky, &m_terrain, &m_models };
+	// Облака — сразу после неба: их compute() читает таблицы атмосферы и освещение окружением, фон рисуют поверх неба
+	if( m_clouds.initialized() )
+		m_objects.insert( m_objects.begin() + 1, &m_clouds );
 	// Вода — до тех, кто её читает: её compute() привязывает текстуру воды в слот сцены (террейн рисует её позже)
 	if( hasWater )
 		m_objects.push_back( &m_water );
@@ -268,8 +283,16 @@ bool Scene::saveEnvironment( LibraryLoader& library, const PostProcessSettings& 
 		hdri = m_hdri.settings();
 	else
 		atmosphere = m_atmosphere.settings();
+	std::optional<VolumetricCloud::Settings> cloud;
+	if( m_clouds.initialized() )
+		cloud = m_clouds.settings();
 	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, atmosphere, hdri, postProcess,
-										 m_wind.settings(), heightFog );
+										 m_wind.settings(), heightFog, cloud );
+}
+
+DirectX::XMFLOAT4 Scene::cloudShadow( const RenderView& view )
+{
+	return m_clouds.initialized() ? m_clouds.shadowParameters( view ) : DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 }
 
 DirectX::BoundingBox Scene::bounds() const

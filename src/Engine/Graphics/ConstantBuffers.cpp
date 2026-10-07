@@ -71,6 +71,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.fogScale = fog.scale;
 		data.fogGridZ = fog.gridZ;
 		data.fogVolumeDistance = fog.volumeDistance;
+		data.cloudShadow = m_frame.cloudShadow;
 	} );
 
 	DMD3D::instance().setConstantBuffer( SLOT_CB_FRAME, m_frameConstant );

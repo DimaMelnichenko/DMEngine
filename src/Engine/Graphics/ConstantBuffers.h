@@ -51,6 +51,8 @@ struct FrameParameters
 	float deltaTime = 0.0f;
 	WindParameters wind;
 	FogParameters fog;
+	// Тень облаков (VolumetricCloud::shadowParameters): начало карты X, Z; 1 / размер (0 — облаков нет); высота плоскости
+	DirectX::XMFLOAT4 cloudShadow = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 };
 
 class ConstantBuffers
@@ -103,9 +105,10 @@ private:
 		float fogScale;
 		DirectX::XMFLOAT3 fogGridZ;
 		float fogVolumeDistance;
+		DirectX::XMFLOAT4 cloudShadow;
 	};
 	// Раскладка — cbuffer FrameConstantBuffer в Shaders/common.vs
-	static_assert( sizeof( ShaderFrameConstant ) == 416, "FrameConstantBuffer layout" );
+	static_assert( sizeof( ShaderFrameConstant ) == 432, "FrameConstantBuffer layout" );
 
 	// Раскладка — cbuffer WorldBuffer в Shaders/common.vs
 	struct alignas( 16 ) ShaderModelConstant

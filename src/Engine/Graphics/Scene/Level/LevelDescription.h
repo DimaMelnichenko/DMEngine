@@ -69,4 +69,6 @@ struct LevelDescription
 	std::optional<GS::WindSettings> wind;
 	std::optional<uint32_t> heightFogId;		// строка ExponentialHeightFog: туман уровня; NULL — тумана нет
 	std::optional<GS::HeightFogSettings> heightFog;
+	std::optional<uint32_t> volumetricCloudId;	// строка VolumetricCloud: облака; NULL — облаков нет
+	std::optional<GS::VolumetricCloudSettings> volumetricCloud;
 };

@@ -453,6 +453,8 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	frameParameters.wind = scene.wind().parameters();
 	// Туман: свет в объёме — в долях яркости, которую экспозиция делает белой (EV100 с отставанием в несколько кадров)
 	frameParameters.fog = m_fog.frameParameters( frame.view, 1.2f * std::exp2( m_postProcess.ev100() ) );
+	// Тень облаков: карту считает их compute(), константы — уже сейчас (её читают все приёмники тени солнца)
+	frameParameters.cloudShadow = scene.cloudShadow( frame.view );
 	m_constants.beginFrame( frameParameters );
 	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
 	m_postProcess.bindExposure();

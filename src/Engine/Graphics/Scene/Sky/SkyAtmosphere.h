@@ -59,6 +59,12 @@ public:
 	// хранится свет, делённый на неё, шейдеры умножают на масштаб с ней (cb_aerialPerspectiveScale, cb_skyLightScale):
 	// ночью значения ~10⁻⁷…10⁻⁹ не пропадают
 	float skyNormalization() const;
+	// Для облаков (VolumetricCloud): параметры неба кадра (b2) и таблицы Ψ и пропускания (t1, t2) — их compute-проходу
+	void bindForClouds();
+	const ShaderView& transmittanceLut() const { return m_transmittanceLut.srv(); }
+	const ShaderView& multipleScatteringLut() const { return m_multipleScattering.srv(); }
+	// Светило облаков кадра: солнце, пока оно выше −3°, иначе луна; свет над атмосферой — в единицах запекания неба
+	void cloudLight( DirectX::XMFLOAT3& direction, DirectX::XMFLOAT3& color ) const;
 
 	void compute( const FrameContext& frame ) override;
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
