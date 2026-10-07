@@ -127,7 +127,9 @@ private:
 	Texture m_water;				// R32_FLOAT: глубина, м
 	Texture m_flux;					// R32G32B32A32_FLOAT: потоки к соседям, м³/с
 	Texture m_sources;				// R32_FLOAT: приток, м/с
-	Texture m_output;				// R16G16B16A16_FLOAT: глубина, скорость X и Z — для шейдеров
+	Texture m_output;				// R16G16B16A16_FLOAT: глубина, скорость X и Z, глубина с памятью — для шейдеров
+	Texture m_memory;				// R32_FLOAT: глубина с памятью (mainWater читает прошлое значение)
+	StorageView m_memoryUAV;
 	StorageView m_waterUAV;
 	StorageView m_fluxUAV;
 	StorageView m_sourcesUAV;

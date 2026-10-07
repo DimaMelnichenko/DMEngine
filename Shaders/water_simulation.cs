@@ -21,13 +21,17 @@ DM_SRV( StructuredBuffer<float4>, g_helpers, 4 );	// источники-помо
 
 DM_UAV( RWTexture2D<float>, g_water, 0 );		// глубина воды, м
 DM_UAV( RWTexture2D<float4>, g_flux, 1 );		// потоки к соседям −X, +X, −Y, +Y (по текселям), м³/с
-DM_UAV( RWTexture2D<float4>, g_output, 2 );		// для шейдеров (SLOT_WATER): глубина, скорость по X и Z мира, приток мм/с
+DM_UAV( RWTexture2D<float4>, g_output, 2 );		// для шейдеров (SLOT_WATER): глубина, скорость по X и Z мира, глубина с памятью
 DM_UAV( RWTexture2D<float>, g_sourcesOut, 3 );	// mainSources
 DM_UAV( RWTexture2D<float>, g_fill, 4 );		// уровень заполненных низин, м (mainFill*, при загрузке)
 DM_UAV( RWTexture2D<float>, g_lake, 5 );		// 1 — низина с водой при загрузке (mainLake*)
+DM_UAV( RWTexture2D<float>, g_memory, 6 );		// глубина с памятью, м (mainWater): вода ушла — гаснет за wetMemoryTime
 
 static const float minVelocityDepth = 1e-3f;	// мельче — скорость не считается: делить поток не на что
 static const float minFrictionDepth = 1e-4f;	// глубина в трении — не ниже: деление на ноль у сухих ячеек
+// Память воды, с: где вода была недавно, трава не растёт и земля мокрая — перекатывающийся край мелкой воды не
+// заставляет траву исчезать и вырастать каждые несколько секунд
+static const float wetMemoryTime = 30.0f;
 
 // Вода ячейки с притоком этого шага
 float waterWithInflow( int2 cell )
@@ -218,7 +222,8 @@ void mainWater( uint3 id : SV_DispatchThreadID )
 	}
 	const float water = max( after - g_timeStep * g_evaporation, 0.0f );
 	g_water[cell] = water;
+	const float memory = max( water, g_memory[cell] * exp( -g_timeStep / wetMemoryTime ) );
+	g_memory[cell] = memory;
 	// Ось Y текселей идёт против Z мира (v = 1 − z / worldSize)
-	// Приток — в мм/с: в половинной точности м/с притока ручья (~10⁻⁴) — у предела нормальных чисел
-	g_output[cell] = float4( water, velocity.x, -velocity.y, g_sources[cell] * 1000.0f );
+	g_output[cell] = float4( water, velocity.x, -velocity.y, memory );
 }

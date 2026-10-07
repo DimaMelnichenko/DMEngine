@@ -127,6 +127,7 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		!create( DXGI_FORMAT_R32G32B32A32_FLOAT, "Water flux", m_flux, m_fluxUAV, nullptr ) ||
 		!create( DXGI_FORMAT_R32_FLOAT, "Water sources", m_sources, m_sourcesUAV, &m_sourcesView ) ||
 		!create( DXGI_FORMAT_R16G16B16A16_FLOAT, "Water state", m_output, m_outputUAV, &m_outputView ) ||
+		!create( DXGI_FORMAT_R32_FLOAT, "Water memory", m_memory, m_memoryUAV, nullptr ) ||
 		!d3d.createShaderView( m_water, {}, m_waterView ) || !createSurface() )
 		return false;
 
@@ -499,7 +500,8 @@ void WaterSimulation::step( uint32_t steps )
 	PassDesc pass;
 	pass.name = "Water simulation";
 	pass.reads = { { &heightMap, "height map" }, { &m_sourcesView, "water sources" } };
-	pass.writes = { { &m_waterUAV, "water depth" }, { &m_fluxUAV, "water flux" }, { &m_outputUAV, "water state" } };
+	pass.writes = { { &m_waterUAV, "water depth" }, { &m_fluxUAV, "water flux" }, { &m_outputUAV, "water state" },
+					{ &m_memoryUAV, "water memory" } };
 	d3d.beginPass( pass );
 	// Константы привязаны setParameters до прохода; beginPass очищает только таблицу привязок
 	d3d.setSRV( 0, heightMap );
@@ -514,6 +516,7 @@ void WaterSimulation::step( uint32_t steps )
 		d3d.setUAV( 0, m_waterUAV );
 		d3d.setUAV( 1, m_fluxUAV );
 		d3d.setUAV( 2, m_outputUAV );
+		d3d.setUAV( 6, m_memoryUAV );
 		m_waterShader.dispatchGroups( groups, groups, 1 );
 	}
 }
@@ -543,8 +546,10 @@ void WaterSimulation::compute( const FrameContext& frame )
 	if( m_surfaceDirty )
 		buildSurface();
 	cullTiles( frame.view );
-	// Вода — ресурс сцены до следующего кадра (террейн, позже — поверхность воды и мокрый берег)
+	// Вода — ресурс сцены до следующего кадра (террейн, поверхность воды, мокрый берег, расстановка, частицы); приток —
+	// подсветке «Show water»
 	DMD3D::instance().setSRV( SLOT_WATER, m_outputView );
+	DMD3D::instance().setSRV( SLOT_WATER_SOURCES, m_sourcesView );
 }
 
 bool WaterSimulation::exportDischarge( const std::string& file, std::string& reason )
