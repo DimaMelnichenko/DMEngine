@@ -68,7 +68,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   с эталоном ±1, «GPU average» не хуже, Debug-сборка с GPU-based validation молчит в `log.txt`. Эталон D3D11 — коммит
   `0aadc42` в истории git.
 - **Запуск для проверки** — `.\Tools\run.ps1 [-Config Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,4]
-  [-Camera x,y,z,pitch,yaw] [-Level имя] [-NoGui] [-NoMouse] [-NoWind]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
+  [-Camera x,y,z,pitch,yaw] [-Level имя] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
   Запускает exe из корня проекта, по желанию нажимает клавиши (скан-коды DirectInput: 2 — «1», 4 — «3», 5 — «4») и снимает
   окно, закрывает движок и печатает из `log.txt` ошибки, число заглушек, время инициализации и строку «GPU average»
   (среднее время GPU кадра и проходов за 3 с после прогрева — для сравнения производительности до и после правок;
@@ -76,7 +76,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   не ждут окончания работы, и часть работы объекта (пиксели террейна) попадает в время следующего.
   Обычно камера поворачивается мышью; `-NoMouse` (`-nomouse` у exe) отключает это и скрывает указатель, со `-Screenshot`
   он включается сам — снимки с одной точки совпадают до пикселя, если не движется трава: ветер уровня качает её, для
-  сравнения кадров — `-NoWind` (`-nowind` у exe, `--nowind` у `engine.py start`, в сессии `set "Wind/Strength" 0`). Ближняя и дальняя плоскости камеры — `ScreenNear` / `ScreenDepth` в секции `[General]` `settings.ini` (0,1 и 4000 м; от дальней зависят сфера неба и слои воздушной перспективы). Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
+  сравнения кадров — `-NoWind` (`-nowind` у exe, `--nowind` у `engine.py start`, в сессии `set "Wind/Strength" 0`) и
+  `-NoParticles` (`-noparticles`, `--noparticles`: частицы движутся). Ближняя и дальняя плоскости камеры — `ScreenNear` / `ScreenDepth` в секции `[General]` `settings.ini` (0,1 и 4000 м; от дальней зависят сфера неба и слои воздушной перспективы). Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
   `Rotation=pitch,yaw` в градусах, pitch > 0 — взгляд вниз), уровень — секция `[Level]` (`Name`); параметры `-Camera`
   и `-Level` скрипта (`-camera`, `-level` у exe) их переопределяют, так что снимок с нужной точки не требует правки кода.
   Списки (`-Keys`, `-Camera`) скрипт разбирает сам: через `powershell -File` они приходят одной строкой.
@@ -200,7 +201,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Единицы света физические (солнце — люксы, лампы — канделы, небо и свечение — кд/м²), поэтому буфер сцены хранит
   яркость × экспозицию прошлого кадра (pre-exposure, как в UE): экспозиция живёт на GPU (буфер `ExposureState`, t105,
   `Shaders/exposure.sh`), шейдеры с освещением умножают результат на `preExposure()` в конце `evaluateLighting`,
-  небо — в `sky_background.ps`; материалы без освещения (`Texture`, `Color`, частицы) пишут «цвет на экране» как
+  небо — в `sky_background.ps`, частицы — в `particles.vs`; материалы без освещения (`Texture`, `Color`) пишут «цвет на экране» как
   есть. Настройки — строка `PostProcessSettings` уровня и окно GUI «Post process», подробно — `docs/postprocess.md`. Каждый проход
   начинается объявлением `PassDesc` (`D3D/GpuPass.h`: имя, цели цвета и глубины с областью вывода, что читает, что пишет;
   без целей — compute) и `DMD3D::beginPass` — единственный способ поставить цели: он же ставит барьеры целей, чтения и записи
@@ -256,7 +257,11 @@ ExecuteIndirect, берег — пересечение продолженной 
 по толщине, экранные отражения, блик, рябь и пена, которые несёт течение; террейн по воде темнеет и блестит — мокрая
 земля, `waterWetness`; расстановка в воде не растёт — `waterFoliageClear` в `scatter.cs`; подсветка «Show water» у
 террейна; `docs/water.md`),
-`Scatterer` (по объекту на набор расстановки уровня: трава, камешки), `DMParticleSystem`. Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
+`Scatterer` (по объекту на набор расстановки уровня: трава, камешки), `ParticleSystem` (частицы на GPU, как Niagara в UE:
+эмиттеры уровня — строки `LevelParticleEmitters` → `ParticleEmitters`, `Tools/particle_emitter.py`; пул, стек мёртвых и
+список живых в compute `Shaders/particles.cs`, рождение по маске вокруг камеры или на быстрой воде, ветер, вихри, течение,
+столкновения; один ExecuteIndirect на эмиттер в `transparent` с глубиной сцены — `CustomBatch::readsSceneDepth`; на
+`Test` — пыльца, хвоя, брызги; `-noparticles` — нет; `docs/particles.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 
 Логику, которая меняет состояние сцены, пишите в `SceneObject::update()`, а в `render()` оставляйте только команды GPU.
@@ -305,8 +310,8 @@ Static Mesh в UE и primitives glTF, `DMModel::Section`). Материалы г
 `Materials`; класс шейдера выбирает `MaterialStorage::createMaterial` по колонке `class`. Параметры секции —
 экземпляр материала: `ModelProperties.material_instance_id` → `MaterialInstance` (определения параметров — от его
 `id_material`, значения — `MaterialParameterInstance`); NULL — параметры `material_id` со значениями по умолчанию
-(`MaterialParameterDef.default_value`). Экземпляры 5 и 12 — наследие старой схемы, где эта колонка означала
-`Materials.id`; у SkySphere экземпляр 5 не совпадает с материалом. Подробно — `docs/materials.md`. Цветовое
+(`MaterialParameterDef.default_value`). Экземпляр 12 — наследие старой схемы, где эта колонка означала
+`Materials.id`; у SkySphere — свой экземпляр `Texture` с `Albedo` = `sky3`. Подробно — `docs/materials.md`. Цветовое
 пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла; мипы с сохранением
 покрытия альфы (для Masked: трава, лепестки) — `Textures.preserve_alpha_coverage` (порог). Новые ассеты добавляются
 строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
@@ -344,8 +349,8 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 и загружает на GPU, только когда источники изменились.
 
 Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`, `Scene/Level/`): строка `Levels` ссылается на террейн (`Terrain`,
-слои материала — `TerrainLayers`), модель неба (`Models`) и частицы (`Particles`: материал, текстура, плотность);
-NULL — этого у уровня нет. Экземпляры моделей уровня — `LevelModels`: строка на экземпляр (`position`, `rotation` —
+слои материала — `TerrainLayers`), модель неба (`Models`); NULL — этого у уровня нет; эмиттеры частиц — строки
+`LevelParticleEmitters`. Экземпляры моделей уровня — `LevelModels`: строка на экземпляр (`position`, `rotation` —
 кватернион `x,y,z,w` как в glTF, `scale`), у модели их может быть сколько угодно. Модель (`DMModel`: LOD из секций —
 меш и материал) — общий ресурс без положения; положение держит экземпляр (`DMTransform` в `ModelInstances`, у неба — в
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
@@ -357,8 +362,8 @@ Plane с материалом `PBR` перед стартовой камерой
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
 (две секции: панель и металлическая рамка), к северу от луга — роща елей (`Fir_A/B/C`, 23 экземпляра), на склонах — лес:
 набор `Forest` (те же ели постоянным слоем по `mask_forest_spruce`, ~12,9 тыс. деревьев; до 90 м — модели, дальше до
-1500 м — импостеры). Частицы (`Particles`, одуванчики) у обоих уровней выключены — `Levels.particles` NULL: они движутся,
-и снимки с одной точки для сравнения кадров не совпадали бы; вернуть — `particles = 1`.
+1500 м — импостеры), частицы — пыльца над лугом, хвоя под ельником, брызги на быстрой воде (для сравнения кадров —
+`-noparticles`).
 
 **Заглушки ресурсов.** Слот `placeholderId` (0) в хранилищах текстур и мешей занимает процедурная заглушка:
 пурпурно-чёрная шахматка (`DMTextureStorage::createPlaceholder`) и куб от −0,5 до 0,5 (`MeshStorage::createPlaceholder`).
@@ -387,7 +392,7 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 дизерингом (`LOD_DITHER`, `Shaders/lod_dither.sh`, как Dithered LOD Transition в UE; флаг материала
 `DitheredLODTransition`). Рисуют `setPass( phaseFor( params ) )`, затем `setParams( params )`, двусторонние — без отсечения граней
 (`materialRasterState`). Прочие классы — `Texture`, `Color`
-(без освещения: небо, отладка; `TextureMaterial`, `ColorMaterial`), `Particle` (`ParticleMaterial`). Подробно — `docs/materials.md`.
+(без освещения: небо, отладка; `TextureMaterial`, `ColorMaterial`). Подробно — `docs/materials.md`.
 
 **Освещение считается в одном месте** — `Shaders/lighting.sh`: шейдер материала заполняет `Surface` (базовый цвет,
 металличность, шероховатость, нормаль и геометрическая нормаль без карты нормалей, затенение, свечение, пропускание —
@@ -494,7 +499,7 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 
 **Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
 `Water` (`WaterSimulation`),
-`Particle` (`DMParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,
+`Particle` (`ParticleSystem`), `Sky` (`SkySphere`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,
 `Texture` (`DMTexture` — текстура GPU и вид, `DMTextureStorage`, чтение файлов — `ImageFile::load`), `Model`/`Mesh`
 (`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`), `Materials` (`Material` и его классы,
 `MaterialStorage`). Не объекты сцены, а общее для проходов — в `src/Engine/Graphics/`:

@@ -163,6 +163,47 @@ struct WaterSimulationSettings
 	std::vector<WaterSource> sources;	// включённые строки WaterSources этой строки WaterSimulation
 };
 
+// Эмиттер частиц (строки ParticleEmitters и экземпляр LevelParticleEmitters, ParticleSystem, docs/particles.md)
+struct ParticleEmitterSettings
+{
+	// Где рождаются: в точке экземпляра, в шаре вокруг неё, на поле вокруг камеры (по маске плотности — пыльца над
+	// лугом, хвоя под ельником) или на быстрой воде симуляции (брызги на перекатах)
+	enum class Spawn { point, sphere, camera, water };
+	// Как выглядят: мягкое пятно к камере или узкая карточка, вытянутая вдоль скорости (хвоинка)
+	enum class Shape { dot, needle };
+
+	std::string name;
+	Spawn spawn = Spawn::point;
+	Shape shape = Shape::dot;
+	DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// экземпляр, м мира (point, sphere)
+	float radius = 1.0f;			// шар (sphere), поле вокруг камеры (camera, water), м; дальше от камеры — гибнут
+	float heightMin = 0.0f;			// над рельефом (camera) или над поверхностью воды (water), м
+	float heightMax = 0.0f;
+	std::string mask;				// текстура плотности в координатах карты высот (camera); пусто — всюду
+	float rate = 10.0f;				// рождений в секунду; у camera — на 100 м² поля
+	uint32_t maxParticles = 4096;
+	float lifetimeMin = 1.0f;		// с
+	float lifetimeMax = 2.0f;
+	float sizeStart = 0.05f;		// м
+	float sizeEnd = 0.05f;
+	DirectX::XMFLOAT3 color = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );	// альбедо, линейное
+	float alpha = 1.0f;
+	float fadeIn = 0.1f;			// доли жизни: появление и угасание
+	float fadeOut = 0.2f;
+	DirectX::XMFLOAT3 velocity = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// начальная, м/с
+	float velocitySpread = 0.0f;	// случайная добавка, м/с
+	float gravity = 0.0f;			// м/с² вниз
+	float drag = 0.0f;				// 1/с: скорость стремится к скорости воздуха (ветер) и воды
+	float wind = 0.0f;				// доля ветра уровня
+	float curl = 0.0f;				// сила вихрей (curl noise), м/с
+	float curlScale = 4.0f;			// размер вихрей, м
+	float waterFlow = 0.0f;			// доля скорости воды симуляции под частицей
+	float waterSpeed = 1.0f;		// water: порог скорости воды, м/с
+	bool collide = false;			// с рельефом: needle ложится, dot гибнет
+	float transmission = 0.0f;		// просвет на солнце (пыльца, пух светятся против солнца)
+	float emissive = 0.0f;			// свечение, кд/м² (светлячки)
+};
+
 // Строка SunPosition
 struct SunPositionSettings
 {

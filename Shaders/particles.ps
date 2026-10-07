@@ -1,0 +1,43 @@
+////////////////////////////////////////////////////////////////////////////////
+// Частица (ParticleSystem): форма — мягкое пятно или узкая полоса хвоинки; мягкий край по глубине сцены (soft
+// particles: у земли и травы частица гаснет, а не обрезается линией)
+////////////////////////////////////////////////////////////////////////////////
+
+#include "common.vs"
+#include "particles.sh"
+#include "bindless.sh"
+
+DM_SRV( Texture2D<float>, g_sceneDepth, SLOT_SCENE_DEPTH );
+
+struct ParticlePixelInput
+{
+	float4 position : SV_POSITION;
+	float3 color : COLOR0;
+	float  alpha : COLOR1;
+	float2 corner : TEXCOORD0;
+	float  viewDepth : TEXCOORD1;
+};
+
+static const float softDistance = 0.3f;		// м: на этой толщине до сцены частица гаснет
+
+float4 main( ParticlePixelInput input ) : SV_TARGET
+{
+	float shape;
+	if( g_shape == particleShapeNeedle )
+		shape = ( 1.0f - smoothstep( 0.3f, 1.0f, abs( input.corner.x ) ) ) * ( 1.0f - smoothstep( 0.8f, 1.0f, abs( input.corner.y ) ) );
+	else
+	{
+		const float r = length( input.corner );
+		shape = saturate( 1.0f - r * r );
+		shape *= shape;
+	}
+
+	// Глубина сцены обратная: z вида = P₃₂ / (глубина − P₂₂); над небом (0) — далеко
+	const float sceneDepth = g_sceneDepth[uint2( input.position.xy )];
+	const float sceneViewZ = sceneDepth > 0.0f ? cb_projectionMatrix[3][2] / ( sceneDepth - cb_projectionMatrix[2][2] ) : 1e9f;
+	const float soft = saturate( ( sceneViewZ - input.viewDepth ) / softDistance );
+
+	const float alpha = saturate( input.alpha * shape * soft );
+	clip( alpha - 1.0f / 255.0f );
+	return float4( input.color, alpha );
+}

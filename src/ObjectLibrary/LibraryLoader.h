@@ -54,6 +54,8 @@ private:
 	void loadTerrainEdits( uint32_t terrainId, LevelDescription& level );
 	// Строка WaterSimulation уровня (level.waterSimulationId); false — строки нет
 	bool loadWaterSimulation( LevelDescription& level );
+	// Эмиттеры частиц уровня (LevelParticleEmitters → ParticleEmitters); таблиц нет — эмиттеров нет
+	void loadParticleEmitters( LevelDescription& level );
 	void loadLevelLights( LevelDescription& level );
 	bool loadLevelEnvironment( LevelDescription& level );
 	// Материал экземпляра (MaterialInstance.id_material); false — экземпляра нет

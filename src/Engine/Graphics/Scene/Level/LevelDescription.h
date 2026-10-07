@@ -43,14 +43,6 @@ struct LevelDescription
 		std::vector<ScatterLayer> layers;
 	};
 
-	struct Particles
-	{
-		std::string material;
-		std::string texture;
-		uint32_t countPerCell = 0;
-		uint32_t areaSize = 0;
-	};
-
 	uint32_t id = 0;
 	std::string name;
 	std::optional<uint32_t> terrain;	// строка таблицы Terrain
@@ -60,7 +52,7 @@ struct LevelDescription
 	std::optional<uint32_t> sky;		// модель небесной сферы
 	std::vector<ModelInstance> modelInstances;	// таблица LevelModels
 	std::vector<ScatterSet> scatterSets;	// таблица LevelScatterSets
-	std::optional<Particles> particles;
+	std::vector<GS::ParticleEmitterSettings> particleEmitters;	// включённые строки LevelParticleEmitters
 
 	// Свет и окружение уровня — как сущности уровня в UE (Directional / Point / Spot Light, Sky Atmosphere,
 	// Post Process Volume). Строки настроек неба и постобработки — по ссылке из Levels; NULL — значения по умолчанию

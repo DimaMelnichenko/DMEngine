@@ -38,7 +38,7 @@ bool DMSamplerState::initialize()
 
 	// Карта теней (Shaders/shadows.sh): линейный PCF с сравнением — «освещено», если глубина пикселя не дальше
 	// от света, чем записанная (≥, глубина обратная); за краем карты — «освещено»: граница 0 — дальняя плоскость.
-	// Читают только пиксельные шейдеры
+	// Читают пиксельные шейдеры и вершинный шейдер частиц (тень в центре частицы)
 	D3D12_STATIC_SAMPLER_DESC shadow = {};
 	shadow.Filter = D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
 	shadow.AddressU = shadow.AddressV = shadow.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
@@ -47,7 +47,7 @@ bool DMSamplerState::initialize()
 	shadow.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
 	shadow.MaxLOD = D3D12_FLOAT32_MAX;
 	shadow.ShaderRegister = shadowCompare;
-	shadow.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	shadow.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	m_samplers.push_back( shadow );
 	return true;
 }

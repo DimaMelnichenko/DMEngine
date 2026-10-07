@@ -467,6 +467,7 @@ void Renderer::buildCommands( bool depthPrepass )
 	for( auto& commands : m_commands )
 		commands.clear();
 	m_sceneColorRead = false;
+	m_sceneDepthRead = false;
 
 	const std::vector<MeshBatch>& meshes = m_collector.meshes();
 	for( uint32_t i = 0; i < meshes.size(); ++i )
@@ -508,6 +509,7 @@ void Renderer::buildCommands( bool depthPrepass )
 								 static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56;
 			m_commands[pass].push_back( { key, i, true } );
 			m_sceneColorRead |= transparent && batch.readsSceneColor;
+			m_sceneDepthRead |= transparent && batch.readsSceneDepth;
 		}
 	}
 
@@ -594,9 +596,9 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 	PassDesc desc;
 	desc.name = passNames[static_cast<int>( pass )];
 	// opaqueDepthRead — с глубиной только для чтения: она же — глубина сцены для шейдеров (SLOT_SCENE_DEPTH); так же
-	// transparent, если в нём читают цвет сцены (копия — SLOT_SCENE_COLOR)
+	// transparent, если в нём читают цвет сцены (копия — SLOT_SCENE_COLOR) или только глубину (частицы)
 	const bool sceneColorRead = pass == MeshPass::transparent && m_sceneColorRead;
-	const bool depthRead = pass == MeshPass::opaqueDepthRead || sceneColorRead;
+	const bool depthRead = pass == MeshPass::opaqueDepthRead || sceneColorRead || ( pass == MeshPass::transparent && m_sceneDepthRead );
 	if( pass != MeshPass::depthPrepass )
 		desc.colors = { { &m_sceneTargets.colorTarget(), "scene color" } };
 	desc.depth = depthRead ? PassDesc::Target{ &m_sceneTargets.depthReadTarget(), "scene depth" } :

@@ -268,7 +268,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 {
 	try
 	{
-		const char* columns = "SELECT id, name, terrain, sky, particles, atmosphere, post_process, sun_position, hdri_backdrop, wind, "
+		const char* columns = "SELECT id, name, terrain, sky, atmosphere, post_process, sun_position, hdri_backdrop, wind, "
 							  "water_simulation FROM Levels ";
 		SQLite::Statement query( DBConnector::instance().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
 		if( !name.empty() )
@@ -289,8 +289,6 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 		}
 		if( !query.getColumn( "sky" ).isNull() )
 			level.sky = query.getColumn( "sky" ).getUInt();
-		const bool hasParticles = !query.getColumn( "particles" ).isNull();
-		const uint32_t particlesId = query.getColumn( "particles" ).getUInt();
 		if( !query.getColumn( "atmosphere" ).isNull() )
 			level.atmosphereId = query.getColumn( "atmosphere" ).getUInt();
 		if( !query.getColumn( "post_process" ).isNull() )
@@ -347,22 +345,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.scatterSets.push_back( std::move( set ) );
 		}
 
-		if( hasParticles )
-		{
-			SQLite::Statement queryParticles( DBConnector::instance().db(), "SELECT material, texture, count_per_cell, area_size FROM Particles WHERE id = :id" );
-			queryParticles.bind( ":id", particlesId );
-			if( !queryParticles.executeStep() )
-			{
-				LOG( "Particles " + std::to_string( particlesId ) + " are not found in table Particles" );
-				return false;
-			}
-
-			LevelDescription::Particles& particles = level.particles.emplace();
-			particles.material = queryParticles.getColumn( "material" ).getString();
-			particles.texture = queryParticles.getColumn( "texture" ).getString();
-			particles.countPerCell = queryParticles.getColumn( "count_per_cell" ).getUInt();
-			particles.areaSize = queryParticles.getColumn( "area_size" ).getUInt();
-		}
+		loadParticleEmitters( level );
 	}
 	catch( const std::exception& e )
 	{
@@ -371,6 +354,62 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 	}
 
 	return true;
+}
+
+void LibraryLoader::loadParticleEmitters( LevelDescription& level )
+{
+	// Таблиц может не быть у базы, где эмиттеры не заводили (Tools/particle_emitter.py)
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "LevelParticleEmitters" ) || !db.tableExists( "ParticleEmitters" ) )
+		return;
+	SQLite::Statement query( db, "SELECT e.*, l.position AS instance_position FROM LevelParticleEmitters l "
+								 "JOIN ParticleEmitters e ON e.id = l.emitter WHERE l.level = :level AND l.enabled = 1 ORDER BY l.id" );
+	query.bind( ":level", level.id );
+	while( query.executeStep() )
+	{
+		auto value = [&query]( const char* column ) { return static_cast<float>( query.getColumn( column ).getDouble() ); };
+		auto vector = [&query]( const char* column, XMFLOAT3& result )
+		{
+			const std::string text = query.getColumn( column ).getString();
+			if( !text.empty() && !strToVec3( text, result ) )
+				LOG( "Particle emitter " + query.getColumn( "name" ).getString() + ": wrong " + column + " '" + text + "'" );
+		};
+		GS::ParticleEmitterSettings& emitter = level.particleEmitters.emplace_back();
+		emitter.name = query.getColumn( "name" ).getString();
+		const std::string spawn = query.getColumn( "spawn" ).getString();
+		emitter.spawn = spawn == "sphere" ? GS::ParticleEmitterSettings::Spawn::sphere :
+						spawn == "camera" ? GS::ParticleEmitterSettings::Spawn::camera :
+						spawn == "water" ? GS::ParticleEmitterSettings::Spawn::water : GS::ParticleEmitterSettings::Spawn::point;
+		emitter.shape = query.getColumn( "shape" ).getString() == "needle" ? GS::ParticleEmitterSettings::Shape::needle :
+																			  GS::ParticleEmitterSettings::Shape::dot;
+		vector( "instance_position", emitter.position );
+		emitter.radius = value( "radius" );
+		emitter.heightMin = value( "height_min" );
+		emitter.heightMax = value( "height_max" );
+		emitter.mask = query.getColumn( "mask" ).isNull() ? std::string() : query.getColumn( "mask" ).getString();
+		emitter.rate = value( "rate" );
+		emitter.maxParticles = query.getColumn( "max_particles" ).getUInt();
+		emitter.lifetimeMin = value( "lifetime_min" );
+		emitter.lifetimeMax = value( "lifetime_max" );
+		emitter.sizeStart = value( "size_start" );
+		emitter.sizeEnd = value( "size_end" );
+		vector( "color", emitter.color );
+		emitter.alpha = value( "alpha" );
+		emitter.fadeIn = value( "fade_in" );
+		emitter.fadeOut = value( "fade_out" );
+		vector( "velocity", emitter.velocity );
+		emitter.velocitySpread = value( "velocity_spread" );
+		emitter.gravity = value( "gravity" );
+		emitter.drag = value( "drag" );
+		emitter.wind = value( "wind" );
+		emitter.curl = value( "curl" );
+		emitter.curlScale = value( "curl_scale" );
+		emitter.waterFlow = value( "water_flow" );
+		emitter.waterSpeed = value( "water_speed" );
+		emitter.collide = query.getColumn( "collide" ).getInt() != 0;
+		emitter.transmission = value( "transmission" );
+		emitter.emissive = value( "emissive" );
+	}
 }
 
 bool LibraryLoader::loadWaterSimulation( LevelDescription& level )

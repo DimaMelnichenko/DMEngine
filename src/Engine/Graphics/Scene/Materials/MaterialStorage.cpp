@@ -2,7 +2,6 @@
 #include "ColorMaterial.h"
 #include "TextureMaterial.h"
 #include "PBRMaterial.h"
-#include "ParticleMaterial.h"
 #include "Logger\Logger.h"
 
 namespace GS
@@ -30,8 +29,6 @@ bool MaterialStorage::createMaterial( uint32_t id, const std::string& name, cons
 		material = std::make_unique<PBRMaterial>( id, name );
 	else if( matClass == "Texture" )
 		material = std::make_unique<TextureMaterial>( id, name );
-	else if( matClass == "Particle" )
-		material = std::make_unique<ParticleMaterial>( id, name );
 
 	if( !material )
 	{

@@ -97,7 +97,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	m_timer.Initialize();
 
-	RET_FALSE( m_scene.initialize() );
+	RET_FALSE( m_scene.initialize( m_config.particles() ) );
 	// Импостеры расстановки — рендером моделей в кадры, до прогрева: их материалы прогреются вместе со всеми
 	RET_FALSE( m_renderer.bake( m_scene ) );
 	// Пайплайны материалов и объектов для проходов кадра — когда объекты созданы, а свет уровня известен (смещение теней)

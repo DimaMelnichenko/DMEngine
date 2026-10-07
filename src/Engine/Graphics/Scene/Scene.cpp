@@ -75,7 +75,7 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName 
 	return true;
 }
 
-bool Scene::initialize()
+bool Scene::initialize( bool particles )
 {
 	LOG( "Create light driver" );
 	if( !m_lightDriver.Initialize() )
@@ -113,14 +113,12 @@ bool Scene::initialize()
 	m_wind.initialize( m_level.wind );
 	updateLights();
 
-	// Расстановка и частицы стоят на террейне и читают его карту высот
-	const ShaderView* heightMap = nullptr;
+	// Расстановка, вода и частицы стоят на террейне и читают его карту высот (TerrainHeightSource)
 	auto timeStart = std::chrono::high_resolution_clock::now();
 	if( m_level.terrain )
 	{
 		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits ) )
 			return false;
-		heightMap = m_terrain.terrainHeight().heightMap;
 		LOG( "Terrain init ms: " + elapsedMs( timeStart ) );
 	}
 	const bool hasWater = m_level.terrain && m_level.waterSimulation;
@@ -172,14 +170,11 @@ bool Scene::initialize()
 	}
 	LOG( "Scatter init ms: " + elapsedMs( timeStart ) );
 
-	if( m_level.particles )
+	if( particles && !m_level.particleEmitters.empty() &&
+		!m_particles.initialize( m_level.particleEmitters, m_level.terrain ? &m_terrain : nullptr ) )
 	{
-		const LevelDescription::Particles& particles = *m_level.particles;
-		if( !m_particles.Initialize( particles.countPerCell, particles.areaSize, heightMap, particles.material, particles.texture ) )
-		{
-			LOG( "Fail to initialize particle sytem" );
-			return false;
-		}
+		LOG( "Fail to initialize particles" );
+		return false;
 	}
 
 	// Небо первым: его compute() готовит освещение окружением для всех, render() рисует фон
@@ -190,7 +185,9 @@ bool Scene::initialize()
 		m_objects.push_back( &m_water );
 	for( const auto& scatterer : m_scatterers )
 		m_objects.push_back( scatterer.get() );
-	m_objects.push_back( &m_particles );
+	// Частицы — после воды и расстановки: читают воду (SLOT_WATER) в compute
+	if( m_particles.initialized() )
+		m_objects.push_back( &m_particles );
 
 	return true;
 }

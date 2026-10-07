@@ -116,8 +116,7 @@ add_executable(DMEngine WIN32
     ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
     src/Engine/Graphics/GUI/GUI.cpp
     src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp
-    src/Engine/Graphics/Scene/Materials/ParticleMaterial.cpp
-    src/Engine/Graphics/Scene/Particle/DMParticleSystem.cpp
+    src/Engine/Graphics/Scene/Particle/ParticleSystem.cpp
     src/Engine/Graphics/DMComputeShader.cpp
     src/ObjectLibrary/LibraryLoader.cpp
     src/ObjectLibrary/LibraryLoaderEnvironment.cpp

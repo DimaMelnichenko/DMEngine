@@ -43,6 +43,8 @@ public:
 	bool mouseLook() const					{ return m_mouseLook; }
 	// -nowind: ветер уровня выключен — растения неподвижны, кадры с одной точки совпадают до пикселя
 	bool wind() const						{ return m_wind; }
+	// -noparticles: частицы уровня не создаются — кадры с одной точки совпадают до пикселя (частицы движутся)
+	bool particles() const					{ return m_particles; }
 	// Удалённое управление по каналу \\.\pipe\DMEngine (-remote, клиент — Tools/engine.py)
 	bool remoteControl() const				{ return m_remoteControl; }
 
@@ -64,6 +66,7 @@ private:
 	bool m_showGUI = true;
 	bool m_mouseLook = true;
 	bool m_wind = true;
+	bool m_particles = true;
 	bool m_remoteControl = false;
 
 };

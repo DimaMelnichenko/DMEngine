@@ -1,6 +1,6 @@
 # Запуск DMEngine для проверки изменений:
 #   .\Tools\run.ps1 [-Config Debug|Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,3] [-Camera x,y,z,pitch,yaw] [-Level имя]
-#                    [-NoGui] [-NoMouse] [-NoWind]
+#                    [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
 # Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные),
 # ждёт Seconds секунд, при необходимости нажимает клавиши и снимает окно, затем закрывает движок и печатает
 # из log.txt ошибки и время инициализации. Keys — скан-коды DirectInput: 2 — клавиша «1», 4 — «3», 5 — «4», 16 — Q, 23 — I.
@@ -10,6 +10,7 @@
 # NoMouse — камера не следует за мышью, указатель скрыт (параметр движка -nomouse); со -Screenshot включается сам,
 # чтобы случайное движение мыши не сдвигало кадр.
 # NoWind — без ветра (параметр движка -nowind): трава неподвижна, снимки с одной точки совпадают до пикселя.
+# NoParticles — без частиц (параметр движка -noparticles): они движутся, и снимки с одной точки иначе не совпадут.
 param(
     [ValidateSet('Debug', 'Release')] [string]$Config = 'Debug',
     [int]$Seconds = 8,
@@ -19,7 +20,8 @@ param(
     [string]$Level,
     [switch]$NoGui,
     [switch]$NoMouse,
-    [switch]$NoWind
+    [switch]$NoWind,
+    [switch]$NoParticles
 )
 
 $ErrorActionPreference = 'Stop'
@@ -69,6 +71,7 @@ if ($Level) {
 if ($NoGui) { $engineArgs += '-nogui' }
 if ($NoMouse -or $Screenshot) { $engineArgs += '-nomouse' }
 if ($NoWind) { $engineArgs += '-nowind' }
+if ($NoParticles) { $engineArgs += '-noparticles' }
 if ($engineArgs.Count -gt 0) { $startArgs.ArgumentList = $engineArgs -join ' ' }
 $process = Start-Process @startArgs
 Start-Sleep -Seconds $Seconds

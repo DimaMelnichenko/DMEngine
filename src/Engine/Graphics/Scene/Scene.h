@@ -9,7 +9,7 @@
 #include "Terrain\CDLODTerrain.h"
 #include "Model\ModelInstances.h"
 #include "Scatterer\Scatterer.h"
-#include "Particle\DMParticleSystem.h"
+#include "Particle\ParticleSystem.h"
 #include "Light\DMLightDriver.h"
 #include "Wind\Wind.h"
 #include "Water\WaterSimulation.h"
@@ -29,7 +29,8 @@ public:
 	// Загружает материалы, состав уровня levelName (пустое имя — первый уровень), его модели и текстуры
 	bool loadResources( LibraryLoader& library, const std::string& levelName );
 	// Создаёт объекты сцены и свет; вызывается после loadResources() и Renderer::initialize()
-	bool initialize();
+	// particles — частицы уровня (-noparticles: нет, кадры с одной точки совпадают)
+	bool initialize( bool particles = true );
 
 	// Раз за кадр до update(): правки источников в GUI и время суток, затем свет солнца у земли — через атмосферу
 	// seconds — время кадра: с ним идёт время суток
@@ -75,7 +76,7 @@ private:
 	WaterSimulation m_water;	// вода по рельефу (Levels.water_simulation), только с террейном
 	ModelInstances m_models;
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;
-	DMParticleSystem m_particles;
+	ParticleSystem m_particles;	// частицы уровня (LevelParticleEmitters); -noparticles — нет
 
 	std::vector<SceneObject*> m_objects;
 };
