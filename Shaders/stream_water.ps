@@ -1,0 +1,35 @@
+////////////////////////////////////////////////////////////////////////////////
+// Ручей — лента воды (StreamRibbons): материал — Shaders/water_shading.sh. Глубина воды в пикселе — от поверхности до
+// сцены под ней по вертикали (глубина сцены, SLOT_SCENE_DEPTH), а не по сетке 1 м: урез плавный. Пена — с крутых
+// участков (перекаты, точки ручья) и по скорости
+////////////////////////////////////////////////////////////////////////////////
+
+#include "water_shading.sh"
+#include "bindless.sh"
+
+struct StreamPixelInput
+{
+	float4 position : SV_POSITION;
+	float3 worldPosition : WORLDPOS0;
+	float4 flow : TEXCOORD0;	// скорость по X и Z мира, м/с; пена 0…1; поперёк ленты −1…1
+};
+
+float4 main( StreamPixelInput input ) : SV_TARGET
+{
+	// Точка сцены за пикселем — на том же луче взгляда, на глубине сцены
+	const float surfaceViewZ = max( mul( float4( input.worldPosition, 1.0f ), cb_viewMatrix ).z, 1e-3f );
+	const float behindViewZ = sceneViewDepthAt( input.position );
+	const float3 behind = cb_cameraPosition + ( input.worldPosition - cb_cameraPosition ) * ( behindViewZ / surfaceViewZ );
+
+	const float2 velocity = input.flow.xy;
+	WaterShading shading;
+	shading.position = input.position;
+	shading.worldPosition = input.worldPosition;
+	shading.normal = float3( 0.0f, 1.0f, 0.0f );
+	shading.velocity = velocity;
+	shading.depth = max( input.worldPosition.y - behind.y, 0.0f );
+	shading.foam = input.flow.z + saturate( ( length( velocity ) - g_foamSpeed ) / g_foamSpeed );
+	// Горный ручей неспокоен и на пологом: рябь не слабее этой доли, на перекатах — сильнее
+	shading.ripple = 0.7f + input.flow.z;
+	return shadeWater( shading );
+}

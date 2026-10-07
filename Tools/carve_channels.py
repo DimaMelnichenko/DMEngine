@@ -173,7 +173,7 @@ def carve(height, filled, nodes, args, cell):
     rows, cols = height.shape
     result = np.zeros((rows, cols))
     half = 0.5 * np.maximum(args.width_coef * np.sqrt(q), args.min_width) / cell
-    depth = args.depth_coef * np.power(q, 0.4)
+    depth = np.maximum(args.depth_coef * np.power(q, 0.4), args.min_incision)
 
     # Дно монотонно вниз по течению: не выше, чем дно любого узла выше минус --min-slope на метр. Иначе там, где ось
     # отошла от линии наибольшего уклона (извилина, сглаживание), в дне остались бы горбы, и вода вставала бы перед ними
@@ -204,12 +204,15 @@ def carve(height, filled, nodes, args, cell):
         w = half[k] + (half[d] - half[k]) * t
         dep = depth[k] + (depth[d] - depth[k]) * t
         bw = np.maximum(bank[k] + (bank[d] - bank[k]) * t, 1e-3)
-        profile = dep * (1.0 - smoothstep(0.0, 1.0, (distance - w) / bw))
+        # Ложе U: к середине дно глубже (тальвег) — малый расход собирается в середине, а не плёнкой по всей ширине
+        inner = np.clip(distance / np.maximum(w, 1e-3), 0.0, 1.0)
+        thalweg = args.thalweg * dep * (1.0 - inner * inner)
+        profile = dep * (1.0 - smoothstep(0.0, 1.0, (distance - w) / bw)) + thalweg
         window = result[r0:r1 + 1, c0:c1 + 1]
         np.maximum(window, profile, out=window)
     # Низины, которые заполнит вода (озёра), не режутся: русло кончается у берега
     result[filled - height > args.lake_depth] = 0.0
-    return -result
+    return -result, bed, 2.0 * half * cell, (half + bank) * cell
 
 
 def channel_flow(flow_area, nodes, shape):
@@ -233,6 +236,159 @@ def channel_flow(flow_area, nodes, shape):
     return result
 
 
+def stream_water(nodes, carved, bed, width, reach, lake, args, cell):
+    """Вода ручьёв по узлам оси: уровень по Маннингу (прямоугольное русло шириной дна), скорость, пена; цепочки узлов —
+    ручьи от истока до слияния (приток кончается у борта главного), озера или края карты. Возвращает (ручьи — списки
+    узлов, уровень, скорость, пена, полуширина ленты)"""
+    position, down, q, order, stream = nodes
+    count = len(q)
+    up = np.full(count, -1)
+    up_flow = np.zeros(count)
+    for k, d in enumerate(down):
+        if d >= 0 and q[k] > up_flow[d]:
+            up_flow[d] = q[k]
+            up[d] = k
+
+    # Уклон дна вниз по течению (не меньше --min-water-slope) и глубина: h = (Q·n / (w·√S))^(3/5)
+    slope = np.full(count, args.min_water_slope)
+    for k in range(count):
+        d = down[k]
+        if d >= 0:
+            step = max(np.hypot(*(position[d] - position[k])) * cell, 1e-3)
+            slope[k] = max((bed[k] - bed[d]) / step, args.min_water_slope)
+    depth = np.power(q * args.manning / (width * np.sqrt(slope)), 0.6)
+    # Дно — по прорезанному рельефу у оси (наименьшее в клетке вокруг точки): расчётное дно на сетке 1 м отличается от
+    # того, что рельеф показывает, и вода оказалась бы то под землёй, то над берегом
+    actual = np.full(count, np.inf)
+    for dy in (-0.7, 0.0, 0.7):
+        for dx in (-0.7, 0.0, 0.7):
+            actual = np.minimum(actual, sample_bilinear(carved, position[:, 0] - 0.5 + dx, position[:, 1] - 0.5 + dy))
+    level = actual + np.maximum(depth, args.min_water_depth)
+    # Уровень — не выше, чем выше по течению: вода не поднимается
+    for k in order:
+        d = down[k]
+        if d >= 0:
+            level[d] = min(level[d], level[k])
+    # Скорость — для течения ряби на ленте: не меньше --min-speed (по Маннингу на широком дне вода почти стоит)
+    speed = np.maximum(q / (width * np.maximum(level - actual, 1e-3)), args.min_speed)
+    foam = np.clip((slope - args.foam_slope) / (2.0 * args.foam_slope), 0.0, 1.0) * 0.6
+
+    in_lake = lake.ravel()[stream]
+    streams = []
+    for k in order:
+        # Ручей начинается у истока и у первого узла ниже озера (слив)
+        if in_lake[k] or (up[k] >= 0 and not in_lake[up[k]]):
+            continue
+        chain = [k]
+        while True:
+            d = down[chain[-1]]
+            if d < 0:
+                break
+            chain.append(d)
+            # Слияние: дальше течёт главный ручей; озеро: ручей кончается у берега
+            if up[d] != chain[-2] or in_lake[d]:
+                break
+        if len(chain) >= 2:
+            streams.append(chain)
+    # Ручей — узлы и их точки (столбец, строка). Подтекающий в главный кончается на борту главного, а не на его оси:
+    # иначе две полупрозрачные ленты легли бы друг на друга
+    result = []
+    for chain in streams:
+        points = [position[k].copy() for k in chain]
+        last, previous = chain[-1], chain[-2]
+        if up[last] != previous and not in_lake[last]:
+            offset = points[-2] - points[-1]
+            length = np.hypot(*offset)
+            trim = min(0.7 * width[last] / cell, 0.8 * length)
+            points[-1] = points[-1] + offset / max(length, 1e-6) * trim
+        result.append((chain, points))
+    return result, level, speed, foam
+
+
+def static_water(nodes, streams, level, speed, reach, shape, cell):
+    """Растр статичной воды ручьёв на сетке карты высот: R — уровень воды, м (−1e9 — нет), G, B — скорость по X и Z
+    мира, A — пена. Глубину по итоговому рельефу считает движок (WaterSimulation, режим static)"""
+    position, down, q, order, stream = nodes
+    rows, cols = shape
+    result = np.zeros((rows, cols, 4), dtype=np.float32)
+    result[..., 0] = -1e9
+    nearest = np.full((rows, cols), np.inf)
+    for chain, points in streams:
+        for i in range(len(chain) - 1):
+            k, d = chain[i], chain[i + 1]
+            a, b = points[i], points[i + 1]
+            radius = max(reach[k], reach[d]) / cell + 0.5
+            c0 = int(max(math.floor(min(a[0], b[0]) - radius), 0))
+            c1 = int(min(math.ceil(max(a[0], b[0]) + radius), cols - 1))
+            r0 = int(max(math.floor(min(a[1], b[1]) - radius), 0))
+            r1 = int(min(math.ceil(max(a[1], b[1]) + radius), rows - 1))
+            cc, rr = np.meshgrid(np.arange(c0, c1 + 1) + 0.5, np.arange(r0, r1 + 1) + 0.5)
+            segment = b - a
+            length2 = max(float(segment @ segment), 1e-9)
+            t = np.clip(((cc - a[0]) * segment[0] + (rr - a[1]) * segment[1]) / length2, 0.0, 1.0)
+            distance = np.hypot(cc - (a[0] + t * segment[0]), rr - (a[1] + t * segment[1]))
+            closer = (distance < radius) & (distance < nearest[r0:r1 + 1, c0:c1 + 1])
+            direction = segment / max(math.sqrt(length2), 1e-6)
+            v = speed[k] + (speed[d] - speed[k]) * t
+            window = result[r0:r1 + 1, c0:c1 + 1]
+            window[..., 0] = np.where(closer, level[k] + (level[d] - level[k]) * t, window[..., 0])
+            # Ряды сетки идут против Z мира
+            window[..., 1] = np.where(closer, direction[0] * v, window[..., 1])
+            window[..., 2] = np.where(closer, -direction[1] * v, window[..., 2])
+            nearest[r0:r1 + 1, c0:c1 + 1] = np.where(closer, distance, nearest[r0:r1 + 1, c0:c1 + 1])
+    return result
+
+
+def register_streams(db, simulation, streams, level, speed, foam, reach, args, cell, world):
+    """Ручьи в базу: WaterStreams и WaterStreamPoints (точки оси в мире, уровень, полуширина ленты, скорость, пена);
+    строка WaterSimulation — режим static и растр статичной воды"""
+    db.executescript("""
+CREATE TABLE IF NOT EXISTS WaterStreams (
+    id INTEGER PRIMARY KEY,
+    water_simulation INTEGER NOT NULL REFERENCES WaterSimulation(id),
+    name TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS WaterStreamPoints (
+    id INTEGER PRIMARY KEY,
+    stream INTEGER NOT NULL REFERENCES WaterStreams(id) ON DELETE CASCADE,
+    idx INTEGER NOT NULL,
+    x REAL NOT NULL,
+    z REAL NOT NULL,
+    surface REAL NOT NULL,
+    half_width REAL NOT NULL,
+    speed REAL NOT NULL,
+    foam REAL NOT NULL
+);
+""")
+    columns = [row[1] for row in db.execute('PRAGMA table_info(WaterSimulation)')]
+    if 'mode' not in columns:
+        db.execute("ALTER TABLE WaterSimulation ADD COLUMN mode TEXT NOT NULL DEFAULT 'simulated'")
+    if 'static_water' not in columns:
+        db.execute('ALTER TABLE WaterSimulation ADD COLUMN static_water TEXT')
+    db.execute('DELETE FROM WaterStreamPoints WHERE stream IN (SELECT id FROM WaterStreams WHERE water_simulation = ?)',
+               (simulation,))
+    db.execute('DELETE FROM WaterStreams WHERE water_simulation = ?', (simulation,))
+    points = 0
+    for number, (chain, chain_points) in enumerate(streams):
+        stream_id = db.execute('INSERT INTO WaterStreams (water_simulation, name) VALUES (?, ?)',
+                               (simulation, 'stream %d' % number)).lastrowid
+        rows = []
+        for i, k in enumerate(chain):
+            x = chain_points[i][0] * cell
+            z = world - chain_points[i][1] * cell
+            rows.append((stream_id, i, float(x), float(z), float(level[k]), float(reach[k] + args.ribbon_overlap),
+                         float(speed[k]), float(foam[k])))
+        db.executemany('INSERT INTO WaterStreamPoints (stream, idx, x, z, surface, half_width, speed, foam) '
+                       'VALUES (?, ?, ?, ?, ?, ?, ?, ?)', rows)
+        points += len(rows)
+    db.execute('DELETE FROM Textures WHERE name = ?', (args.static_water,))
+    db.execute('INSERT INTO Textures (name, file, generate_mipmap, sRGB) VALUES (?, ?, 0, 0)',
+               (args.static_water, args.static_water_file.replace('/', '\\')))
+    db.execute("UPDATE WaterSimulation SET mode = 'static', static_water = ? WHERE id = ?", (args.static_water, simulation))
+    db.commit()
+    print('streams %d, points %d; water simulation: mode static, static water %s' % (len(streams), points, args.static_water))
+
+
 def register(db, terrain_id, args):
     """Правка channels — растр, только опускание, после остальных правок (слой 1), дно галькой, без растительности"""
     db.execute('DELETE FROM TerrainEdits WHERE terrain = ? AND name = ?', (terrain_id, args.edit))
@@ -249,8 +405,9 @@ def main():
     parser.add_argument('--edit', default='channels', help='TerrainEdits name')
     parser.add_argument('--min-discharge', type=float, default=0.002, help='m3/s: a channel starts here')
     parser.add_argument('--width-coef', type=float, default=3.0, help='bed width w = a * Q^0.5, m')
-    parser.add_argument('--min-width', type=float, default=1.5, help='narrowest bed, m')
+    parser.add_argument('--min-width', type=float, default=3.0, help='narrowest bed, m')
     parser.add_argument('--depth-coef', type=float, default=1.0, help='incision d = c * Q^0.4, m')
+    parser.add_argument('--min-incision', type=float, default=0.4, help='shallowest incision, m')
     parser.add_argument('--bank-slope', type=float, default=1.0, help='bank: horizontal m per m of incision')
     parser.add_argument('--smooth', type=int, default=6, help='smoothing passes of the axis along the flow')
     parser.add_argument('--meander-length', type=float, default=35.0, help='meander wavelength along the stream, m')
@@ -263,6 +420,15 @@ def main():
     parser.add_argument('--channel-flow', default='terrain_channel_flow', help='Textures name of the catchment along channels')
     parser.add_argument('--channel-flow-file', default='terrain/channel_flow.dds', help='its file from Textures\\')
     parser.add_argument('--source-radius', type=float, default=1.0, help='WaterSimulation.source_radius: inflow spread, cells')
+    parser.add_argument('--thalweg', type=float, default=0.3, help='extra incision in the bed middle, share of the incision')
+    parser.add_argument('--manning', type=float, default=0.06, help='bed roughness of mountain streams, s/m^(1/3)')
+    parser.add_argument('--min-water-slope', type=float, default=0.005, help='slope in the stream water depth at least')
+    parser.add_argument('--min-speed', type=float, default=0.4, help='stream ribbon flow at least, m/s')
+    parser.add_argument('--min-water-depth', type=float, default=0.3, help='water depth over the bed at least, m')
+    parser.add_argument('--foam-slope', type=float, default=0.1, help='steeper - foam on the stream (full at twice)')
+    parser.add_argument('--ribbon-overlap', type=float, default=0.4, help='ribbon beyond the trough edge, under the bank, m')
+    parser.add_argument('--static-water', default='terrain_static_water', help='Textures name of the stream water raster')
+    parser.add_argument('--static-water-file', default='terrain/static_water.dds', help='its file from Textures\\')
     args = parser.parse_args()
 
     db = sqlite3.connect(DB)
@@ -287,7 +453,7 @@ def main():
     print('flow routing: %.1f s, largest discharge %.3f m3/s' % (time.time() - start, flow.max()))
 
     nodes = stream_nodes(flow, height, filled, receiver, args, cell)
-    lowered = carve(height, filled, nodes, args, cell)
+    lowered, bed, width, reach = carve(height, filled, nodes, args, cell)
     print('channel nodes %d (Q > %.3f m3/s), widest bed %.2f m, deepest %.2f m, carved cells %d' %
           (len(nodes[2]), args.min_discharge, max(args.min_width, args.width_coef * math.sqrt(flow.max())),
            -lowered.min(), (lowered < -0.01).sum()))
@@ -305,6 +471,14 @@ def main():
                (args.channel_flow, args.source_radius, simulation))
     db.commit()
     print('water simulation: flow map %s, source radius %g' % (args.channel_flow, args.source_radius))
+
+    # Ручьи — лентами по оси (WaterSimulation, режим static), их вода — растром для травы, мокрой земли и брызг. Озёра
+    # налива движок по итоговому рельефу (fillLakes): здесь только где кончаются ручьи
+    lake = (filled - height) > args.lake_depth
+    streams, level, speed, foam = stream_water(nodes, height + lowered, bed, width, reach, lake, args, cell)
+    dds.write_rgba32f(os.path.join(ROOT, 'Textures', args.static_water_file.replace('\\', os.sep)),
+                      static_water(nodes, streams, level, speed, reach, height.shape, cell))
+    register_streams(db, simulation, streams, level, speed, foam, reach, args, cell, height.shape[0] * cell)
 
 
 if __name__ == '__main__':

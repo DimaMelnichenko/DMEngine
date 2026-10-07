@@ -18,6 +18,7 @@
 DM_SRV( Texture2D<float>, g_flowMap, 1 );		// водосбор, м² (mainSources)
 DM_SRV( Texture2D<float>, g_sources, 2 );		// приток ячейки, м/с слоя воды
 DM_SRV( StructuredBuffer<float4>, g_helpers, 4 );	// источники-помощники: x, z мира, расход м³/с, σ м (mainSources)
+DM_SRV( Texture2D<float4>, g_staticWater, 3 );		// mainStatic: уровень воды ручья, м (−1e9 — нет); скорость X, Z мира
 
 DM_UAV( RWTexture2D<float>, g_water, 0 );		// глубина воды, м
 DM_UAV( RWTexture2D<float4>, g_flux, 1 );		// потоки к соседям −X, +X, −Y, +Y (по текселям), м³/с
@@ -226,4 +227,21 @@ void mainWater( uint3 id : SV_DispatchThreadID )
 	g_memory[cell] = memory;
 	// Ось Y текселей идёт против Z мира (v = 1 − z / worldSize)
 	g_output[cell] = float4( water, velocity.x, -velocity.y, memory );
+}
+
+// Статичная вода (режим static) — один раз при загрузке, после налива озёр: озёра (g_water — глубина до уровня
+// перелива) и ручьи из растра Tools/carve_channels.py (уровень воды — абсолютный, глубина — по итоговому рельефу с
+// правками) в текстуру для шейдеров. Там, где ручей глубже озера, — его течение
+[numthreads( 8, 8, 1 )]
+void mainStatic( uint3 id : SV_DispatchThreadID )
+{
+	if( any( id.xy >= g_size ) )
+		return;
+	const int2 cell = int2( id.xy );
+	const float lake = g_water[cell];
+	const float4 stream = g_staticWater.Load( int3( cell, 0 ) );
+	const float streamDepth = max( stream.x - terrain( cell ), 0.0f );
+	const bool flowing = streamDepth > lake;
+	const float depth = max( lake, streamDepth );
+	g_output[cell] = float4( depth, flowing ? stream.yz : 0.0f, depth );
 }

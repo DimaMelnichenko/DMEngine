@@ -6,6 +6,7 @@
 #include "Terrain\GridMesh.h"
 #include "Level\LevelSettings.h"
 #include "Terrain\TerrainHeightSource.h"
+#include "StreamRibbons.h"
 
 namespace GS
 {
@@ -17,7 +18,10 @@ namespace GS
 // кадра. Результат — текстура для шейдеров в слоте сцены SLOT_WATER (Shaders/water.sh): глубина и скорость. Шейдер —
 // Shaders/water_simulation.cs, настройки — строка WaterSimulation уровня, подробно — docs/water.md. Поверхность воды
 // объект рисует сам в проходе transparent (читает цвет и глубину сцены): тайлы сетки с водой, отобранные на GPU
-// (Shaders/water_surface.cs), — один косвенный вызов (water.vs, water.ps)
+// (Shaders/water_surface.cs), — один косвенный вызов (water.vs, water.ps).
+// Режим static (WaterSimulationSettings::staticWater): вода не течёт — озёра наливаются при загрузке до перелива, ручьи —
+// ленты по точкам из Tools/carve_channels.py (StreamRibbons), их вода для травы, мокрой земли и брызг — растр
+// (mainStatic); как реки-сплайны и озёра в UE Water. Симуляция остаётся инструментом — режим simulated
 class WaterSimulation : public SceneObject
 {
 public:
@@ -103,6 +107,8 @@ private:
 	void buildSurface();
 	// Видимые тайлы главного вида — в список экземпляров косвенного вызова
 	void cullTiles( const RenderView& view );
+	// Режим static: озёра и ручьи в текстуру для шейдеров (mainStatic)
+	bool buildStaticWater( const Settings& settings );
 
 	PropertyContainer m_properties;
 	PropertyContainer m_surfaceProperties;	// подокно «Surface» — материал поверхности
@@ -122,6 +128,9 @@ private:
 	DMComputeShader m_lakeInitShader;
 	DMComputeShader m_lakeGrowShader;
 	DMComputeShader m_lakeApplyShader;
+	DMComputeShader m_staticShader;
+	bool m_static = false;			// режим static: шагов нет
+	StreamRibbons m_streams;
 	Buffer m_constantBuffer;
 
 	Texture m_water;				// R32_FLOAT: глубина, м

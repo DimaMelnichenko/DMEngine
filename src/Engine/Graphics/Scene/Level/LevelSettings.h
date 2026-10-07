@@ -166,6 +166,21 @@ struct WaterSource
 	float radius = 3.0f;			// радиус пятна, м (≈ 2σ гаусса)
 };
 
+// Точка оси ручья (строка WaterStreamPoints, Tools/carve_channels.py): лента воды вдоль ручья — StreamRibbons
+struct WaterStreamPoint
+{
+	DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// x, z — ось ручья; y — уровень воды, м
+	float halfWidth = 1.0f;			// полуширина ленты, м: до края ложбины и под берег
+	float speed = 0.0f;				// скорость течения, м/с
+	float foam = 0.0f;				// пена 0…1 (крутой участок)
+};
+
+// Ручей (строка WaterStreams): точки оси от истока вниз
+struct WaterStream
+{
+	std::vector<WaterStreamPoint> points;
+};
+
 // Строка WaterSimulation: вода на сетке карты высот (WaterSimulation, docs/water.md). Источники — по карте водосбора
 // (flow.dds из Tools/gen_heightmap.py): приток нарастает от flowStart до flowFull м² водосбора
 struct WaterSimulationSettings
@@ -196,6 +211,13 @@ struct WaterSimulationSettings
 	float foamShear = 1.5f;			// и где сдвиг скорости больше, 1/с
 
 	std::vector<WaterSource> sources;	// включённые строки WaterSources этой строки WaterSimulation
+
+	// Режим static (колонка mode): вода не течёт — озёра наливаются при загрузке до перелива, ручьи — ленты по точкам
+	// streams (WaterStreams), их вода для травы, мокрой земли и брызг — растр staticWater (Tools/carve_channels.py).
+	// Режим simulated — вода течёт по рельефу (трубы, Маннинг)
+	bool staticWater = false;
+	std::string staticWaterMap;		// имя текстуры в Textures: R — уровень воды ручья, м; G, B — скорость X, Z
+	std::vector<WaterStream> streams;
 };
 
 // Эмиттер частиц (строки ParticleEmitters и экземпляр LevelParticleEmitters, ParticleSystem, docs/particles.md)

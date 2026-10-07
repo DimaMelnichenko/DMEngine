@@ -7,6 +7,7 @@ import struct
 
 import numpy as np
 
+DXGI_FORMAT_R32G32B32A32_FLOAT = 2
 DXGI_FORMAT_R32_FLOAT = 41
 DXGI_FORMAT_R16_UNORM = 56
 DXGI_FORMAT_R8G8B8A8_UNORM = 28
@@ -74,8 +75,8 @@ def write_rgba8(path, rgba, srgb=False, mips=False):
 
 
 def write_single(path, pixels, fmt, bytes_per_pixel):
-    """Один канал без мипов: pixels — уже нужного типа (uint16, float32), высота × ширина"""
-    height, width = pixels.shape
+    """Одна картинка без мипов: pixels — уже нужного типа (uint16, float32), высота × ширина (× каналы)"""
+    height, width = pixels.shape[:2]
     header = struct.pack('<4sIIIIIII44sIIIIIIIIIIIII',
         b'DDS ', 124, 0x100F, height, width, width * bytes_per_pixel, 0, 0, b'\0' * 44,
         32, 0x4, struct.unpack('<I', b'DX10')[0], 0, 0, 0, 0, 0,
@@ -97,6 +98,11 @@ def write_r16(path, values):
 def write_r32f(path, values):
     """Данные без нормировки (карты эрозии в метрах и м²) → R32_FLOAT"""
     write_single(path, values.astype('<f4'), DXGI_FORMAT_R32_FLOAT, 4)
+
+
+def write_rgba32f(path, values):
+    """Четыре канала данных (высота × ширина × 4) → R32G32B32A32_FLOAT"""
+    write_single(path, values.astype('<f4'), DXGI_FORMAT_R32G32B32A32_FLOAT, 16)
 
 
 def read_single(path, dtype):

@@ -102,6 +102,7 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		!m_lakeInitShader.Initialize( "Shaders\\water_simulation.cs", "mainLakeInit" ) ||
 		!m_lakeGrowShader.Initialize( "Shaders\\water_simulation.cs", "mainLakeGrow" ) ||
 		!m_lakeApplyShader.Initialize( "Shaders\\water_simulation.cs", "mainLakeApply" ) ||
+		!m_staticShader.Initialize( "Shaders\\water_simulation.cs", "mainStatic" ) ||
 		!d3d.createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) )
 		return false;
 
@@ -157,6 +158,18 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	buildSources( settings );
 	if( !fillLakes() )
 		return false;
+	m_static = settings.staticWater;
+	if( m_static )
+	{
+		// Статичная вода: озёра налиты, ручьи — лентами и растром; шагов нет
+		if( !buildStaticWater( settings ) || !m_streams.initialize( settings.streams ) )
+			return false;
+		buildSurface();
+		m_surfaceDirty = false;
+		m_initialized = true;
+		logWaterSummary();
+		return true;
+	}
 	uint32_t warmupSteps = settings.timeStep > 0.0f ? static_cast<uint32_t>( settings.warmupTime / settings.timeStep ) : 0;
 	if( d3d.gpuValidation() && warmupSteps > validationWarmupSteps )
 	{
@@ -304,6 +317,7 @@ void WaterSimulation::warmPipelines( const PassStates& states )
 	m_surfaceProgram.warmPipelines( { { RasterState::solid, DepthState::readOnly, BlendState::alpha },
 									  { RasterState::wireframe, DepthState::readOnly, BlendState::alpha } },
 									states.scene, { m_surfacePhase } );
+	m_streams.warmPipelines( states );
 }
 
 void WaterSimulation::renderCustom( const RenderContext& context )
@@ -340,6 +354,38 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	d3d.setSRV( 1, System::textures().get( DMTextureStorage::noiseId )->srv() );
 	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
 	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
+	// Ручьи — с теми же константами материала и шумом
+	m_streams.render( context );
+}
+
+bool WaterSimulation::buildStaticWater( const Settings& settings )
+{
+	if( !System::textures().exists( settings.staticWaterMap ) )
+	{
+		LOG( "Water simulation: static water map " + settings.staticWaterMap + " is not found in Textures" );
+		return false;
+	}
+	const ShaderView& staticWater = System::textures().get( settings.staticWaterMap )->srv();
+	if( System::textures().get( settings.staticWaterMap )->width() != m_size )
+	{
+		LOG( "Water simulation: static water map " + settings.staticWaterMap + " differs from the height map in size" );
+		return false;
+	}
+	DMD3D& d3d = DMD3D::instance();
+	setParameters( settings );
+	const ShaderView& heightMap = *m_terrain->terrainHeight().heightMap;
+	PassDesc pass;
+	pass.name = "Water static";
+	pass.reads = { { &heightMap, "height map" }, { &staticWater, "static water" } };
+	pass.writes = { { &m_waterUAV, "water depth" }, { &m_outputUAV, "water state" } };
+	d3d.beginPass( pass );
+	d3d.setSRV( 0, heightMap );
+	d3d.setSRV( 3, staticWater );
+	d3d.setUAV( 0, m_waterUAV );
+	d3d.setUAV( 2, m_outputUAV );
+	const uint32_t groups = ( m_size + groupSize - 1 ) / groupSize;
+	m_staticShader.dispatchGroups( groups, groups, 1 );
+	return true;
 }
 
 bool WaterSimulation::fillLakes()
@@ -526,11 +572,11 @@ void WaterSimulation::compute( const FrameContext& frame )
 	if( !m_initialized )
 		return;
 	const Settings current = settings();
-	if( !sameSources( current, m_sourcesBuilt ) )
+	if( !m_static && !sameSources( current, m_sourcesBuilt ) )
 		buildSources( current );
 
 	// Время симуляции — по времени кадра (с timestep — фиксированному), не больше maxStepsPerFrame шагов за кадр
-	if( current.timeStep > 0.0f )
+	if( !m_static && current.timeStep > 0.0f )
 	{
 		m_accumulated = std::min( m_accumulated + frame.elapsedTime * 0.001f * current.timeScale,
 								  current.timeStep * maxStepsPerFrame );

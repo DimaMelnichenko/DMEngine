@@ -1,0 +1,248 @@
+////////////////////////////////////////////////////////////////////////////////
+// Материал воды — общее для озёр и воды симуляции (water.ps, тайлы WaterSimulation) и ручьёв-лент (stream_water.ps,
+// StreamRibbons), как Single Layer Water в UE. Под поверхностью — цвет сцены за водой (копия буфера, SLOT_SCENE_COLOR,
+// со сдвигом по нормали — преломление) с поглощением по пути луча в воде (глубина сцены, SLOT_SCENE_DEPTH) и рассеянием
+// в толще. Сверху — отражение: блик солнца с тенью, отражённое небо и экранные отражения — луч по буферу глубины сцены
+// (сама вода в глубину не пишет и себя не отражает). Рябь — шум, который течение несёт по полю скорости: flow map в две
+// фазы со сбросом и смешиванием (Vlachos 2010, «Water Flow in Portal 2»), фаза сдвинута крупным шумом, чтобы вода не
+// «дышала» разом. Пена — где течение быстрое, неоднородное или ручей круто падает; её узор несёт то же течение. Тонкая
+// вода у берега прозрачнее и без отражения — кромка мягкая. Константы — Shaders/water_surface.sh
+////////////////////////////////////////////////////////////////////////////////
+
+#ifndef WATER_SHADING_SH
+#define WATER_SHADING_SH
+
+#include "lighting.sh"
+#include "water_surface.sh"
+#include "bindless.sh"
+
+DM_SRV( Texture2D, g_noise, 1 );		// белый шум 256×256, R8_SNORM (DMTextureStorage::noiseId)
+DM_SRV( Texture2D<float>, g_sceneDepth, SLOT_SCENE_DEPTH );
+DM_SRV( Texture2D<float4>, g_sceneColor, SLOT_SCENE_COLOR );
+
+static const float waterF0 = 0.02f;		// отражение воды по нормали (показатель преломления 1,33)
+static const float edgeDepth = 0.02f;	// мельче — кромка: отражение и рассеяние гаснут к урезу
+static const float3 foamAlbedo = 0.8f;
+static const float foamRoughness = 0.7f;
+
+// Экранные отражения: шагов луча, первый шаг и его рост, м; уточнение попадания — делением пополам
+static const int reflectionSteps = 32;
+static const float reflectionFirstStep = 0.25f;
+static const float reflectionStepGrowth = 1.15f;
+static const int reflectionRefineSteps = 5;
+
+// Высота ряби: две октавы шума; мипы по экранной производной — вдали рябь сглаживается, а не искрит
+float rippleHeight( float2 xz, float2 uvDX, float2 uvDY )
+{
+	const float2 uv = xz / g_rippleScale;
+	return g_noise.SampleGrad( g_SamplerLinearWrap, uv, uvDX, uvDY ).r +
+		   0.5f * g_noise.SampleGrad( g_SamplerLinearWrap, uv * 2.7f + 0.37f, uvDX * 2.7f, uvDY * 2.7f ).r;
+}
+
+// Наклон ряби (производные высоты по X и Z мира)
+float2 rippleSlope( float2 xz, float2 uvDX, float2 uvDY )
+{
+	// Шаг разности — не меньше текселя мипа, который читается: иначе вдали наклон — шум выборки
+	const float footprint = max( length( uvDX ), length( uvDY ) ) * g_rippleScale;
+	const float step = max( g_rippleScale / 256.0f, footprint );
+	const float center = rippleHeight( xz, uvDX, uvDY );
+	return float2( rippleHeight( xz + float2( step, 0.0f ), uvDX, uvDY ) - center,
+				   rippleHeight( xz + float2( 0.0f, step ), uvDX, uvDY ) - center ) / step * 0.01f;
+}
+
+// Течение текстуры: две фазы, сдвинутые на половину периода, каждая сбрасывается в начале своего периода и видна
+// сильнее посередине. Смещения фаз и вес второй
+struct FlowPhases
+{
+	float2 offset0;
+	float2 offset1;
+	float blend;
+};
+
+FlowPhases flowPhases( float2 xz, float2 velocity )
+{
+	const float phaseShift = g_noise.SampleLevel( g_SamplerLinearWrap, xz / 40.0f, 0.0f ).r;
+	const float phase0 = frac( cb_gameTime / g_flowPeriod + phaseShift );
+	const float phase1 = frac( phase0 + 0.5f );
+	FlowPhases phases;
+	phases.offset0 = -velocity * phase0 * g_flowPeriod;
+	phases.offset1 = -velocity * phase1 * g_flowPeriod + 0.5f * g_rippleScale;
+	phases.blend = abs( 2.0f * phase0 - 1.0f );
+	return phases;
+}
+
+// Расстояние вдоль оси взгляда по глубине буфера (обратной): z вида = P₃₂ / (глубина − P₂₂)
+float viewDepth( float deviceDepth )
+{
+	return cb_projectionMatrix[3][2] / ( deviceDepth - cb_projectionMatrix[2][2] );
+}
+
+// Экранное отражение: луч из точки поверхности по направлению r шагами растущей длины, попадание — точка луча за
+// поверхностью сцены не глубже толщины слоя. rgb — цвет сцены в точке попадания, a — вес (0 — промах: за краем
+// экрана, в небо, слишком далеко)
+float4 traceReflection( float3 origin, float3 r )
+{
+	uint width, height;
+	g_sceneColor.GetDimensions( width, height );
+	const float2 size = float2( width, height );
+
+	float previous = 0.0f;
+	float distance = reflectionFirstStep;
+	float stepLength = reflectionFirstStep;
+	[loop] for( int i = 0; i < reflectionSteps; ++i )
+	{
+		const float4 clip = mul( float4( origin + r * distance, 1.0f ), cb_viewProjectionMatrix );
+		if( clip.w <= 0.0f )
+			break;
+		const float2 uv = clip.xy / clip.w * float2( 0.5f, -0.5f ) + 0.5f;
+		if( any( uv < 0.0f ) || any( uv > 1.0f ) )
+			break;
+		const float sceneDepth = g_sceneDepth[min( uint2( uv * size ), uint2( width, height ) - 1 )];
+		const float behind = clip.w - ( sceneDepth > 0.0f ? viewDepth( sceneDepth ) : 1e9f );
+		const float thickness = max( 0.5f, stepLength * 2.0f );
+		if( behind > 0.0f && behind < thickness )
+		{
+			// Уточнение между последним шагом перед поверхностью и первым за ней
+			float low = previous;
+			float high = distance;
+			float2 hitUV = uv;
+			[unroll] for( int k = 0; k < reflectionRefineSteps; ++k )
+			{
+				const float middle = 0.5f * ( low + high );
+				const float4 middleClip = mul( float4( origin + r * middle, 1.0f ), cb_viewProjectionMatrix );
+				const float2 middleUV = middleClip.xy / middleClip.w * float2( 0.5f, -0.5f ) + 0.5f;
+				const float middleDepth = g_sceneDepth[min( uint2( saturate( middleUV ) * size ), uint2( width, height ) - 1 )];
+				if( middleClip.w > ( middleDepth > 0.0f ? viewDepth( middleDepth ) : 1e9f ) )
+				{
+					high = middle;
+					hitUV = middleUV;
+				}
+				else
+					low = middle;
+			}
+			// Гаснет к краям экрана и к концу луча: там, где отражение обрывается, видно небо, а не шов
+			const float2 edge = saturate( min( hitUV, 1.0f - hitUV ) * 10.0f );
+			const float weight = edge.x * edge.y * saturate( 1.0f - (float)i / reflectionSteps );
+			return float4( g_sceneColor.SampleLevel( g_SamplerLinearClamp, hitUV, 0.0f ).rgb, weight );
+		}
+		previous = distance;
+		stepLength *= reflectionStepGrowth;
+		distance += stepLength;
+	}
+	return 0.0f;
+}
+
+// Цвет сцены за водой (с экспозицией) — без тумана и воздуха между камерой и поверхностью: вода считается до них, а
+// дымка ложится на её итоговый цвет один раз. Иначе дымка оказалась бы за водой и гасла в её толще — вода вдали
+// темнела бы в тумане
+float3 withoutFogging( float3 sceneColor, float3 position )
+{
+	const float3 inscatter = applyFogging( 0.0f, position );
+	const float3 transmittance = applyFogging( 1.0f, position ) - inscatter;
+	return max( sceneColor / preExposure() - inscatter, 0.0f ) / max( transmittance, 1e-4f );
+}
+
+// Что материалу нужно о точке поверхности
+struct WaterShading
+{
+	float4 position;		// SV_POSITION пикселя
+	float3 worldPosition;
+	float3 normal;			// нормаль поверхности без ряби
+	float2 velocity;		// течение по X и Z мира, м/с
+	float  depth;			// глубина воды в точке, м: у уреза — кромка
+	float  foam;			// доля пены 0…1 до кромки и узора (быстро, сдвиг скорости, перекат)
+	float  ripple;			// сила ряби течения не меньше этой доли (ручей неспокоен и при малой скорости); 0 — по скорости
+};
+
+// Расстояние вдоль оси взгляда до сцены за пикселем; над небом — далеко
+float sceneViewDepthAt( float4 position )
+{
+	const float sceneDepth = g_sceneDepth[uint2( position.xy )];
+	return sceneDepth > 0.0f ? viewDepth( sceneDepth ) : 1e4f;
+}
+
+// Яркость поверхности воды с экспозицией прошлого кадра — в буфер сцены
+float4 shadeWater( WaterShading input )
+{
+	const float speed = length( input.velocity );
+	const float3 toCamera = cb_cameraPosition - input.worldPosition;
+	const float surfaceDistance = length( toCamera );
+	const float3 view = toCamera / surfaceDistance;
+
+	// Нормаль: наклон поверхности по уровню (перекаты) и рябь — течение несёт её, у стоячей воды гонит ветер
+	const float2 uvDX = ddx( input.worldPosition.xz ) / g_rippleScale;
+	const float2 uvDY = ddy( input.worldPosition.xz ) / g_rippleScale;
+	const FlowPhases phases = flowPhases( input.worldPosition.xz, input.velocity );
+	const float2 flow = lerp( rippleSlope( input.worldPosition.xz + phases.offset0, uvDX, uvDY ),
+							  rippleSlope( input.worldPosition.xz + phases.offset1, uvDX, uvDY ), phases.blend ) *
+						g_rippleStrength * max( saturate( speed / 1.5f ), input.ripple );
+	const float2 calm = rippleSlope( input.worldPosition.xz * 0.6f - cb_windDirection * cb_gameTime * 0.3f, uvDX * 0.6f, uvDY * 0.6f ) * g_calmRipple;
+	const float3 normal = normalize( input.normal + float3( -( flow.x + calm.x ), 0.0f, -( flow.y + calm.y ) ) );
+	const float NV = saturate( dot( normal, view ) );
+
+	// Путь луча в воде — от поверхности до того, что за ней (глубина сцены); над небом — далеко
+	const float surfaceViewZ = mul( float4( input.worldPosition, 1.0f ), cb_viewMatrix ).z;
+	const float behindViewZ = sceneViewDepthAt( input.position );
+	const float path = max( behindViewZ - surfaceViewZ, 0.0f ) * surfaceDistance / max( surfaceViewZ, 1e-3f );
+
+	// Преломление: выборка цвета сцены сдвинута по нормали — если там то, что ближе воды, без сдвига
+	uint width, height;
+	g_sceneColor.GetDimensions( width, height );
+	float2 refractedUV = ( input.position.xy + normal.xz * g_refraction * saturate( path ) * height ) / float2( width, height );
+	const uint2 refractedPixel = min( uint2( refractedUV * float2( width, height ) ), uint2( width, height ) - 1 );
+	if( g_sceneDepth[refractedPixel] > input.position.z )
+		refractedUV = input.position.xy / float2( width, height );
+	const float3 behind = withoutFogging( g_sceneColor.SampleLevel( g_SamplerLinearClamp, refractedUV, 0.0f ).rgb, input.worldPosition );
+
+	// Толща: свет из-за воды гаснет по пути, а рассеянный в воде свет неба его заменяет
+	const float edge = saturate( input.depth / edgeDepth );
+	const float3 transmittance = exp( -g_absorption * path );
+	const float3 inscatter = g_scatterColor * ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
+	const float3 body = behind * transmittance + inscatter * ( 1.0f - transmittance ) * edge;
+
+	// Отражение: блик солнца с тенью и отражённое окружение — сцена лучом по экрану, где он попал, иначе небо
+	Surface surface;
+	surface.position = input.worldPosition;
+	surface.normal = normal;
+	surface.geometricNormal = input.normal;
+	surface.baseColor = 0.0f;
+	surface.metallic = 0.0f;
+	surface.roughness = g_roughness;
+	surface.occlusion = 1.0f;
+	surface.emissive = 0.0f;
+	surface.transmission = 0.0f;
+	surface.transmissionColor = 0.0f;
+	const float roughness = clamp( g_roughness, minRoughness, 1.0f );
+	const float3 sun = evaluateDirectLighting( surface, view, waterF0, 0.0f, 0.0f, roughness );
+	const float3 r = reflect( -view, normal );
+	const float2 environment = environmentBRDF( NV, roughness );
+	const float environmentWeight = waterF0 * environment.x + environment.y;
+	const float4 screen = traceReflection( input.worldPosition + normal * 0.05f, r );
+	const float3 sky = ambientSpecular( r, roughness ) * environmentWeight * ( 1.0f - screen.a );
+	const float3 reflection = sun + sky + withoutFogging( screen.rgb, input.worldPosition ) * environmentWeight * screen.a;
+
+	const float fresnel = waterF0 + ( 1.0f - waterF0 ) * pow( 1.0f - NV, 5.0f );
+	float3 color = body * ( 1.0f - fresnel * edge ) + reflection * edge;
+
+	// Пена: узор — тот же шум, который несёт течение, порогом по доле пены
+	const float foamAmount = saturate( input.foam ) * edge;
+	[branch] if( foamAmount > 0.0f )
+	{
+		const float2 foamDX = uvDX * 3.0f;
+		const float2 foamDY = uvDY * 3.0f;
+		const float pattern = 0.5f + 0.5f * lerp( rippleHeight( ( input.worldPosition.xz + phases.offset0 ) * 3.0f, foamDX, foamDY ),
+												 rippleHeight( ( input.worldPosition.xz + phases.offset1 ) * 3.0f, foamDX, foamDY ), phases.blend );
+		// На тонкой воде пена реже и прозрачнее: в пару сантиметров ей не на чем держаться
+		const float foam = smoothstep( 1.0f - foamAmount, 1.2f - foamAmount, pattern ) * foamAmount * saturate( input.depth / 0.05f );
+		surface.baseColor = foamAlbedo;
+		surface.roughness = foamRoughness;
+		surface.normal = float3( 0.0f, 1.0f, 0.0f );
+		const float3 foamLight = evaluateDirectLighting( surface, view, 0.04f, foamAlbedo, 0.0f, foamRoughness ) +
+								 foamAlbedo * ambientIrradiance( surface.normal );
+		color = lerp( color, foamLight, foam );
+	}
+	// Яркость, кд/м², — за туманом и воздухом, в буфер сцены с экспозицией прошлого кадра
+	return float4( applyFogging( color, input.worldPosition ) * preExposure(), 1.0f );
+}
+
+#endif
