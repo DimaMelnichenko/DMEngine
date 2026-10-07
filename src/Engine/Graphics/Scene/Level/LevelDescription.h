@@ -67,4 +67,6 @@ struct LevelDescription
 	GS::PostProcessSettings postProcess;
 	std::optional<uint32_t> windId;				// строка Wind: ветер уровня; NULL — ветра нет
 	std::optional<GS::WindSettings> wind;
+	std::optional<uint32_t> heightFogId;		// строка ExponentialHeightFog: туман уровня; NULL — тумана нет
+	std::optional<GS::HeightFogSettings> heightFog;
 };

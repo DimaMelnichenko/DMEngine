@@ -2,6 +2,7 @@
 #include "Shaders\slots.h"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <iterator>
@@ -85,7 +86,8 @@ void Renderer::measure( const std::string& counterName, Func&& func )
 	m_stats.add( counterName + " = %.3f ms", std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
 }
 
-bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution, bool depthPrepass )
+bool Renderer::initialize( const PostProcess::Settings& postProcess, const std::optional<VolumetricFog::Settings>& fog,
+						   uint32_t shadowResolution, bool depthPrepass )
 {
 	m_properties.setName( "Renderer" );
 	m_properties.insert( "Depth prepass", depthPrepass );
@@ -104,6 +106,9 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, uint32_t sh
 		return false;
 
 	if( !m_shadows.initialize( shadowResolution ) )
+		return false;
+
+	if( !m_fog.initialize( fog ) )
 		return false;
 
 	if( !m_gpuProfiler.initialize() )
@@ -190,7 +195,8 @@ void Renderer::warmShadowPipelines( Scene& scene )
 bool Renderer::resize()
 {
 	DMD3D& d3d = DMD3D::instance();
-	return m_sceneTargets.create( d3d.backBufferWidth(), d3d.backBufferHeight(), sceneClearColor ) && m_postProcess.resize();
+	return m_sceneTargets.create( d3d.backBufferWidth(), d3d.backBufferHeight(), sceneClearColor ) && m_postProcess.resize() &&
+		   m_fog.resize();
 }
 
 void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
@@ -246,6 +252,10 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	m_sceneTargets.clear();
 	// Карта теней — пиксельным шейдерам проходов сцены (после рисования в неё и смены цели)
 	m_shadows.bindForReceivers( scene.lights().shadowLight( shadowLightDirection, shadowSettings ) );
+
+	// Объём тумана — по карте теней (лучи в дымке), до проходов сцены: его читает освещение каждого пикселя
+	if( m_fog.active() )
+		measure( "Volumetric fog", [&] { m_fog.render( frame.view, m_shadows.shaderView() ); } );
 
 	// Базовое состояние кадра; объекты меняют его только в своей области видимости
 	const RasterState frameRaster = wireframe ? RasterState::wireframe : RasterState::solid;
@@ -441,6 +451,8 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	frameParameters.gameTime = frame.gameTime;
 	frameParameters.deltaTime = frame.elapsedTime / 1000.0f;
 	frameParameters.wind = scene.wind().parameters();
+	// Туман: свет в объёме — в долях яркости, которую экспозиция делает белой (EV100 с отставанием в несколько кадров)
+	frameParameters.fog = m_fog.frameParameters( frame.view, 1.2f * std::exp2( m_postProcess.ev100() ) );
 	m_constants.beginFrame( frameParameters );
 	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
 	m_postProcess.bindExposure();

@@ -34,6 +34,13 @@ float3 ambientIrradiance( float3 n )
 	return max( result, 0.0f ) * cb_skyLightScale;
 }
 
+// Средняя яркость неба по всем направлениям, кд/м²: свет неба, рассеянный в тумане (нулевая гармоника — у E/π она та же,
+// что у яркости: свёртка с косинусом её не меняет)
+float3 ambientAverageRadiance()
+{
+	return max( g_irradianceSH[0].rgb * 0.282095f, 0.0f ) * cb_skyLightScale;
+}
+
 // Отражённый свет неба в направлении r, размытый по шероховатости
 float3 ambientSpecular( float3 r, float roughness )
 {

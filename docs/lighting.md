@@ -44,8 +44,9 @@
    отражённое — префильтрованный cubemap по вектору отражения с таблицей BRDF (split-sum). Оба умножаются на
    `occlusion`. У пропускающей поверхности ещё небо с обратной стороны: прошедший цвет × гармоники по −N (как
    Subsurface Color у Two Sided Foliage в UE).
-5. **Воздушная перспектива** — свет точки ослабляется воздухом по пути к камере, и к нему прибавляется свет,
-   рассеянный этим воздухом (`applyAerialPerspective`, объём — от неба, [sky.md](sky.md)): дальние склоны синеют.
+5. **Туман и воздушная перспектива** — свет точки ослабляется туманом уровня и воздухом по пути к камере, и к нему
+   прибавляется свет, рассеянный ими (`applyFogging`: туман — [fog.md](fog.md), воздух — объём от неба,
+   `applyAerialPerspective`, [sky.md](sky.md)): дальние склоны синеют, низины тонут в тумане.
 6. **Результат** — линейный HDR, умноженный на экспозицию прошлого кадра (pre-exposure); новую экспозицию
    и тонмаппинг применяет постобработка ([postprocess.md](postprocess.md)).
 
@@ -230,8 +231,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 }
 ```
 
-Свет (t100), освещение окружением (t101…t103), карта теней (t104, сэмплер s8, константы b3) и объём воздушной
-перспективы (t106) привязываются для всех
+Свет (t100), освещение окружением (t101…t103), карта теней (t104, сэмплер s8, константы b3), объём воздушной
+перспективы (t106) и объём тумана (t110) привязываются для всех
 пиксельных шейдеров каждый кадр (`Renderer::preparePipeline`, `SkyLight::bind` из `SkyAtmosphere::compute` или `HDRIBackdrop::compute`,
 `ShadowCascades::bindForReceivers`), материалу привязывать их не нужно. Чтобы материал отбрасывал тень, ему нужен
 вариант «только глубина» (`Material::depthPhaseFor`, [shadows.md](shadows.md)).
@@ -278,11 +279,13 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 | Файл | Что там |
 |---|---|
-| `Shaders/lighting.sh` | `Surface`, `evaluateLighting`, источники (`Light`, `g_lights`), затухание и конус |
+| `Shaders/lighting.sh` | `Surface`, `evaluateLighting` |
+| `Shaders/lights.sh` | источники (`Light`, `g_lights`), затухание и конус — общее с туманом |
 | `Shaders/brdf.sh` | BRDF Cook-Torrance: GGX, Смит, Шлик |
 | `Shaders/ibl.sh` | освещение окружением от неба |
 | `Shaders/shadows.sh` | тень солнца из каскадных карт |
 | `Shaders/aerial_perspective.sh` | воздушная перспектива: выборка объёма, который считает небо |
+| `Shaders/height_fog.sh` | туман уровня и `applyFogging` ([fog.md](fog.md)) |
 | `src/Engine/Graphics/Scene/Light/DMLight.h/.cpp` | источник: тип, цвет, направление, радиус, конус |
 | `src/Engine/Graphics/Scene/Light/DMLightDriver.h/.cpp` | источники уровня, окно GUI «Lights», буфер источников для шейдеров (`LightBuffer`, `bufferLights`), солнце и луна (`moonLight`), источник теней (`shadowLight`), свет светил у земли (`setAtmosphereTransmittance`) |
 | `src/Engine/Graphics/Scene/Light/SunPosition.h/.cpp` | время суток: высота и азимут солнца, положение, фаза и освещённость луны, поворот звёздного неба; подокно «Sun position» |

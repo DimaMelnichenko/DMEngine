@@ -22,7 +22,20 @@ struct WindParameters
 	float gustSize = 1.0f;		// м
 };
 
-// Что одно на весь кадр (все виды): время, свет, небо, ветер
+// Туман уровня кадра (VolumetricFog::frameParameters) — cb_fog* в Shaders/common.vs, Shaders/height_fog.sh
+struct FogParameters
+{
+	// Слои: плотность, 1/м; высота, ниже которой она ровная, м; спад выше неё, 1/м; w — у первого расстояние до фона
+	// неба, м, у второго — анизотропия рассеяния g
+	DirectX::XMFLOAT4 layer0 = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	DirectX::XMFLOAT4 layer1 = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	DirectX::XMFLOAT3 albedo = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );
+	float scale = 0.0f;				// нормировка света в объёме; 0 — тумана нет
+	DirectX::XMFLOAT3 gridZ = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );	// слои объёма по глубине: (B, O, S)
+	float volumeDistance = 0.0f;	// дальность объёма, м; 0 — только туман по формуле
+};
+
+// Что одно на весь кадр (все виды): время, свет, небо, ветер, туман
 struct FrameParameters
 {
 	int lightsCount = 0;
@@ -37,6 +50,7 @@ struct FrameParameters
 	float gameTime = 0.0f;
 	float deltaTime = 0.0f;
 	WindParameters wind;
+	FogParameters fog;
 };
 
 class ConstantBuffers
@@ -83,9 +97,15 @@ private:
 		float windGustMax;
 		float windGustSize;
 		float framePadding;
+		DirectX::XMFLOAT4 fogLayer0;
+		DirectX::XMFLOAT4 fogLayer1;
+		DirectX::XMFLOAT3 fogAlbedo;
+		float fogScale;
+		DirectX::XMFLOAT3 fogGridZ;
+		float fogVolumeDistance;
 	};
 	// Раскладка — cbuffer FrameConstantBuffer в Shaders/common.vs
-	static_assert( sizeof( ShaderFrameConstant ) == 352, "FrameConstantBuffer layout" );
+	static_assert( sizeof( ShaderFrameConstant ) == 416, "FrameConstantBuffer layout" );
 
 	// Раскладка — cbuffer WorldBuffer в Shaders/common.vs
 	struct alignas( 16 ) ShaderModelConstant

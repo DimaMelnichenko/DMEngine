@@ -85,7 +85,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	RET_FALSE( m_scene.loadResources( *m_library, m_config.levelName() ) );
 
 	// Создаем общий буфер вершин и индексов
-	RET_FALSE( m_renderer.initialize( m_scene.level().postProcess, m_config.shadowMapResolution(), m_config.depthPrepass() ) );
+	RET_FALSE( m_renderer.initialize( m_scene.level().postProcess, m_scene.level().heightFog, m_config.shadowMapResolution(),
+									  m_config.depthPrepass() ) );
 
 	LOG( "Create main camera" )
 	// Основная камера: ближняя и дальняя плоскости — ScreenNear / ScreenDepth в settings.ini (от дальней зависят сфера
@@ -110,16 +111,18 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	}
 	m_GUI.addPropertyWatching( m_renderer.postProcessProperties() );
 	m_GUI.addPropertyWatching( m_renderer.shadowProperties() );
+	m_GUI.addPropertyWatching( m_renderer.fogProperties() );
 	m_GUI.addPropertyWatching( m_renderer.properties() );
 	m_GUI.addPropertyWatching( m_scene.lights().properties() );
 	m_GUI.addPropertyWatching( m_scene.wind().properties() );
 	// -nowind: растения неподвижны — кадры с одной точки совпадают до пикселя
 	if( !m_config.wind() )
 		m_scene.wind().disable();
-	// Правки света, неба, теней и постобработки — в строки уровня (LevelLights, SkyAtmosphere, PostProcessSettings)
+	// Правки света, неба, теней, постобработки и тумана — в строки уровня (LevelLights, SkyAtmosphere, PostProcessSettings,
+	// ExponentialHeightFog)
 	m_GUI.addAction( "Save level environment", [this]
 	{
-		const bool saved = m_scene.saveEnvironment( *m_library, m_renderer.postProcessSettings() );
+		const bool saved = m_scene.saveEnvironment( *m_library, m_renderer.postProcessSettings(), m_renderer.fogSettings() );
 		LOG( saved ? "Level environment is saved to base.db3" : "Level environment is not saved" );
 	} );
 

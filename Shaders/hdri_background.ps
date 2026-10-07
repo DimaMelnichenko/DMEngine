@@ -1,12 +1,14 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Фон кадра — HDRI-панорама по направлению взгляда, мип 0 и без среза: солнце панорамы видно и даёт bloom. Рисуется
-// после непрозрачных на дальней плоскости — только там, где сцена ничего не нарисовала (как фон атмосферы).
+// после непрозрачных на дальней плоскости — только там, где сцена ничего не нарисовала (как фон атмосферы); туман
+// уровня — перед ним (Shaders/height_fog.sh).
 // Класс HDRIBackdrop
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
 #include "hdri.sh"
 #include "exposure.sh"
+#include "height_fog.sh"
 
 struct PixelInputType
 {
@@ -21,6 +23,6 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float3 viewDirection = float3( ndc.x / cb_projectionMatrix[0][0], ndc.y / cb_projectionMatrix[1][1], 1.0f );
 	float3 direction = normalize( mul( viewDirection, (float3x3)cb_viewInverseMatrix ) );
 
-	// Значение панорамы × интенсивность (cb_skyScale), кд/м²
-	return float4( samplePanorama( direction, 0.0f ) * cb_skyScale * preExposure(), 1.0f );
+	// Значение панорамы × интенсивность (cb_skyScale), кд/м², за туманом
+	return float4( applyHeightFogToSky( samplePanorama( direction, 0.0f ) * cb_skyScale, direction ) * preExposure(), 1.0f );
 }

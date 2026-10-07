@@ -113,6 +113,24 @@ float sunShadow( float3 position, float3 geometricNormal, float3 toSun )
 	return shadow;
 }
 
+// Тень солнца в точке воздуха (объёмный туман, Shaders/volumetric_fog.cs): одна выборка сравнения без смещений и
+// смешения каскадов — у воздуха нет поверхности, а шум выборки сглаживает накопление объёма по кадрам
+float volumeShadow( float3 position )
+{
+	const float viewDepth = viewDepthOf( position );
+	float shadow = 1.0f;
+	[branch] if( g_shadowSunIndex >= 0 && viewDepth < g_shadowDistance )
+	{
+		const uint cascade = shadowCascade( viewDepth );
+		const float4 clip = mul( float4( position, 1.0f ), g_cascadeViewProjection[cascade] );
+		const float2 uv = clip.xy * float2( 0.5f, -0.5f ) + 0.5f;
+		shadow = g_shadowMap.SampleCmpLevelZero( g_shadowSampler, float3( uv, cascade ), clip.z );
+		const float fade = saturate( ( viewDepth - g_shadowFadeStart ) / max( g_shadowDistance - g_shadowFadeStart, 1e-4f ) );
+		shadow = lerp( shadow, 1.0f, fade );
+	}
+	return shadow;
+}
+
 // «Show cascades»: каскады 0…3 — красный, зелёный, синий, жёлтый; дальше дистанции — без изменений
 float3 shadowCascadeTint( float3 position )
 {

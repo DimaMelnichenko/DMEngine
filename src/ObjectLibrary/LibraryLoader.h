@@ -41,7 +41,8 @@ public:
 							   const std::optional<GS::SunPositionSettings>& sunPosition,
 							   const std::optional<GS::SkyAtmosphereSettings>& atmosphere,
 							   const std::optional<GS::HDRIBackdropSettings>& hdri,
-							   const GS::PostProcessSettings& postProcess, const GS::WindSettings& wind );
+							   const GS::PostProcessSettings& postProcess, const GS::WindSettings& wind,
+							   const std::optional<GS::HeightFogSettings>& heightFog );
 
 
 	void save();

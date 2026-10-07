@@ -9,7 +9,7 @@
 #include "D3D\DMStructuredBuffer.h"
 #include "Properties\PropertyContainer.h"
 
-// Источники света уровня (таблица LevelLights): буфер для шейдеров (g_lights в Shaders/lighting.sh) и окно GUI
+// Источники света уровня (таблица LevelLights): буфер для шейдеров (g_lights в Shaders/lights.sh) и окно GUI
 // «Lights» — по подокну на источник. Направленные стоят первыми, солнце — первый включённый из них: по нему считаются
 // небо и каскадные тени. Луна — направленный с atmosphereSunLightIndex 1 (второе светило атмосферы, как в UE). Время
 // суток (SunPosition) задаёт направление солнца и направление и освещённость луны, свет светил у земли — атмосфера
@@ -89,7 +89,7 @@ private:
 	int m_moonPositionLight = -1;	// луна, которую ведёт m_sunPosition: направленный с atmosphereSunLightIndex 1
 	DirectX::XMFLOAT3 m_atmosphereTransmittance[2] = { { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f } };
 
-	// Раскладка — struct Light в Shaders/lighting.sh
+	// Раскладка — struct Light в Shaders/lights.sh
 	struct alignas( 16 ) LightBuffer
 	{
 		DirectX::XMFLOAT3 position;
@@ -101,7 +101,7 @@ private:
 		float cosInnerCone;
 		DirectX::XMFLOAT3 padding;
 	};
-	static_assert( sizeof( LightBuffer ) == 64, "LightBuffer must match struct Light in Shaders/lighting.sh" );
+	static_assert( sizeof( LightBuffer ) == 64, "LightBuffer must match struct Light in Shaders/lights.sh" );
 	DMStructuredBuffer m_structBuffer;
 	std::vector<LightBuffer> m_lightParamBuffer;
 };

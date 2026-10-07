@@ -9,6 +9,7 @@
 #define ATMOSPHERE_NO_SKY
 #include "sky_view.sh"
 #include "exposure.sh"
+#include "height_fog.sh"
 #include "bindless.sh"
 
 // Раскладка — SkyAtmosphere::NightSkyParameters. Яркости — в единицах запекания неба (на 1 лк солнца)
@@ -204,5 +205,6 @@ float4 main( PixelInputType input ) : SV_TARGET
 		lights += starLight( direction, pixelAngle ) * g_starIlluminanceScale;
 
 	color += lights * transmittance;
-	return float4( color * cb_skyScale * preExposure(), 1.0f );
+	// Туман уровня — между камерой и небом (Shaders/height_fog.sh)
+	return float4( applyHeightFogToSky( color * cb_skyScale, direction ) * preExposure(), 1.0f );
 }

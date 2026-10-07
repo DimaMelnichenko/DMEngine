@@ -122,6 +122,25 @@ struct WindSettings
 	float gustSize = 25.0f;			// длина волны порыва, м
 };
 
+// Слой тумана по высоте: ниже своей высоты ровный, выше редеет по экспоненте
+struct HeightFogLayer
+{
+	float density = 0.0f;			// коэффициент ослабления, 1/м: видимость в слое ~3 / density
+	float height = 0.0f;			// до этой высоты, м, плотность ровная…
+	float heightFalloff = 0.01f;	// …выше спадает: в e раз на 1 / heightFalloff м
+};
+
+// Строка ExponentialHeightFog (как Exponential Height Fog с Volumetric Fog в UE): туман уровня, Shaders/height_fog.sh
+struct HeightFogSettings
+{
+	HeightFogLayer layer;			// дымка над долиной (Fog Density, Fog Height Falloff)
+	HeightFogLayer secondLayer;		// туман, налитый в низины (Second Fog Data)
+	DirectX::XMFLOAT3 albedo = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );	// доля рассеянного в ослабленном (Albedo)
+	float scatteringDistribution = 0.2f;	// анизотропия g: > 0 — туман светится вокруг солнца
+	bool volumetric = true;			// объём со светом ламп и тенями (Volumetric Fog), иначе только по формуле
+	float viewDistance = 200.0f;	// дальность объёма по глубине взгляда, м (View Distance)
+};
+
 // Строка WaterSources: источник воды, поставленный руками (родник, ледниковое озеро), — гауссово пятно притока
 struct WaterSource
 {

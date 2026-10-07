@@ -11,6 +11,7 @@
 #include "D3D\GpuProfiler.h"
 #include "D3D\DMStructuredBuffer.h"
 #include "ShadowCascades.h"
+#include "VolumetricFog.h"
 #include "SceneTargets.h"
 #include "FrameStats.h"
 #include "ConstantBuffers.h"
@@ -33,9 +34,10 @@ public:
 	explicit Renderer( FrameStats& stats );
 
 	// Вызывается после загрузки мешей: собирает общий буфер вершин и индексов, создаёт буфер сцены (SceneTargets).
-	// Уровень уже прочитан (Scene::loadResources): постобработка — его настройки; shadowResolution — размер карты теней,
-	// depthPrepass — начальное значение флажка «Depth prepass» (DepthPrepass в settings.ini)
-	bool initialize( const PostProcess::Settings& postProcess, uint32_t shadowResolution, bool depthPrepass );
+	// Уровень уже прочитан (Scene::loadResources): постобработка и туман — его настройки; shadowResolution — размер карты
+	// теней, depthPrepass — начальное значение флажка «Depth prepass» (DepthPrepass в settings.ini)
+	bool initialize( const PostProcess::Settings& postProcess, const std::optional<VolumetricFog::Settings>& fog,
+					 uint32_t shadowResolution, bool depthPrepass );
 	// Новый размер кадра (WM_SIZE): буфер сцены и цели постобработки заново; задний буфер уже пересоздал DMD3D::resize
 	bool resize();
 	// Пайплайны всех материалов и объектов сцены для состояний проходов кадра — после Scene::initialize при загрузке
@@ -49,14 +51,20 @@ public:
 	// Свойства постобработки и теней для GUI; properties — окно «Renderer»: проходы кадра («Depth prepass»)
 	PropertyContainer* postProcessProperties();
 	PropertyContainer* shadowProperties();
+	PropertyContainer* fogProperties() { return m_fog.properties(); }
 	PropertyContainer* properties();
-	// Текущие настройки постобработки — для сохранения уровня
+	// Текущие настройки постобработки и тумана — для сохранения уровня
 	PostProcess::Settings postProcessSettings();
+	std::optional<VolumetricFog::Settings> fogSettings() { return m_fog.settings(); }
 	// Среднее время GPU кадра и проходов за seconds секунд с этого кадра — строкой, как «GPU average» в log.txt
 	// (команда stat gpu удалённого управления)
 	void measureGpu( float seconds, std::function<void( const std::string& )> done );
-	// Смена плана: экспозиция адаптируется сразу (PostProcess::cameraCut)
-	void cameraCut() { m_postProcess.cameraCut(); }
+	// Смена плана: экспозиция адаптируется сразу (PostProcess::cameraCut), объём тумана — без прошлого кадра
+	void cameraCut()
+	{
+		m_postProcess.cameraCut();
+		m_fog.cameraCut();
+	}
 
 private:
 	struct DrawCommand;
@@ -144,6 +152,8 @@ private:
 	uint32_t m_shadowDraws = 0;
 	float m_sunGroundIlluminance = 0.0f;	// освещённость от солнца у земли, лк — в «Statistic» и строку «GPU average»
 	PostProcess m_postProcess;
+	// Туман уровня: объём после карты теней, до проходов сцены
+	VolumetricFog m_fog;
 	GpuProfiler m_gpuProfiler;
 
 	// Замер среднего времени GPU за несколько секунд: после прогрева — одной строкой в log.txt («GPU average», её

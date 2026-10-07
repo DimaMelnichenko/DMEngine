@@ -32,6 +32,14 @@ cbuffer FrameConstantBuffer : register( SLOT_CB_FRAME )
 	float  cb_windGustMax;
 	float  cb_windGustSize;		// длина волны порыва, м
 	float  cb_framePadding;
+	// Туман по высоте (Shaders/height_fog.sh, VolumetricFog). Слой: плотность — коэффициент ослабления, 1/м; высота, ниже
+	// которой она ровная, м; спад выше неё, 1/м
+	float4 cb_fogLayer0;		// w — расстояние до фона неба, м (дальняя плоскость вида)
+	float4 cb_fogLayer1;		// w — анизотропия рассеяния g (Scattering Distribution в UE)
+	float3 cb_fogAlbedo;
+	float  cb_fogScale;			// множитель объёма тумана (свет в нём делён на него); 0 — тумана нет
+	float3 cb_fogGridZ;			// слои объёма по глубине взгляда: слой = log₂(z · B + O) · S, (B, O, S)
+	float  cb_fogVolumeDistance;	// дальность объёма по глубине взгляда, м; 0 — только туман по формуле
 };
 
 // Раскладка — ConstantBuffers::ShaderModelConstant

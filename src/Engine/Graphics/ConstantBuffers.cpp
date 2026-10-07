@@ -64,6 +64,13 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.windGustMax = wind.gustMax;
 		data.windGustSize = wind.gustSize;
 		data.framePadding = 0.0f;
+		const FogParameters& fog = m_frame.fog;
+		data.fogLayer0 = fog.layer0;
+		data.fogLayer1 = fog.layer1;
+		data.fogAlbedo = fog.albedo;
+		data.fogScale = fog.scale;
+		data.fogGridZ = fog.gridZ;
+		data.fogVolumeDistance = fog.volumeDistance;
 	} );
 
 	DMD3D::instance().setConstantBuffer( SLOT_CB_FRAME, m_frameConstant );

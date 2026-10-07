@@ -130,10 +130,14 @@ float4 traceReflection( float3 origin, float3 r )
 	return 0.0f;
 }
 
-// Свет, отражённый в точке, с пропусканием воздуха до камеры, но без дымки воздуха: она уже есть в цвете сцены за водой
-float3 withAirTransmittance( float3 color, float3 position )
+// Цвет сцены за водой (с экспозицией) — без тумана и воздуха между камерой и поверхностью: вода считается до них, а
+// дымка ложится на её итоговый цвет один раз. Иначе дымка оказалась бы за водой и гасла в её толще — вода вдали
+// темнела бы в тумане
+float3 withoutFogging( float3 sceneColor, float3 position )
 {
-	return applyAerialPerspective( color, position ) - applyAerialPerspective( 0.0f, position );
+	const float3 inscatter = applyFogging( 0.0f, position );
+	const float3 transmittance = applyFogging( 1.0f, position ) - inscatter;
+	return max( sceneColor / preExposure() - inscatter, 0.0f ) / max( transmittance, 1e-4f );
 }
 
 float4 main( WaterPixelInput input ) : SV_TARGET
@@ -169,12 +173,12 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	const uint2 refractedPixel = min( uint2( refractedUV * float2( width, height ) ), uint2( width, height ) - 1 );
 	if( g_sceneDepth[refractedPixel] > input.position.z )
 		refractedUV = input.position.xy / float2( width, height );
-	const float3 behind = g_sceneColor.SampleLevel( g_SamplerLinearClamp, refractedUV, 0.0f ).rgb;
+	const float3 behind = withoutFogging( g_sceneColor.SampleLevel( g_SamplerLinearClamp, refractedUV, 0.0f ).rgb, input.worldPosition );
 
 	// Толща: свет из-за воды гаснет по пути, а рассеянный в воде свет неба его заменяет
 	const float edge = saturate( water.depth / edgeDepth );
 	const float3 transmittance = exp( -g_absorption * path );
-	const float3 inscatter = g_scatterColor * ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) ) * preExposure();
+	const float3 inscatter = g_scatterColor * ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
 	const float3 body = behind * transmittance + inscatter * ( 1.0f - transmittance ) * edge;
 
 	// Отражение: блик солнца с тенью и отражённое окружение — сцена лучом по экрану, где он попал, иначе небо
@@ -196,8 +200,7 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	const float environmentWeight = waterF0 * environment.x + environment.y;
 	const float4 screen = traceReflection( input.worldPosition + normal * 0.05f, r );
 	const float3 sky = ambientSpecular( r, roughness ) * environmentWeight * ( 1.0f - screen.a );
-	const float3 reflection = withAirTransmittance( sun + sky, input.worldPosition ) * preExposure() +
-							  screen.rgb * environmentWeight * screen.a;
+	const float3 reflection = sun + sky + withoutFogging( screen.rgb, input.worldPosition ) * environmentWeight * screen.a;
 
 	const float fresnel = waterF0 + ( 1.0f - waterF0 ) * pow( 1.0f - NV, 5.0f );
 	float3 color = body * ( 1.0f - fresnel * edge ) + reflection * edge;
@@ -222,7 +225,8 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 		surface.normal = float3( 0.0f, 1.0f, 0.0f );
 		const float3 foamLight = evaluateDirectLighting( surface, view, 0.04f, foamAlbedo, 0.0f, foamRoughness ) +
 								 foamAlbedo * ambientIrradiance( surface.normal );
-		color = lerp( color, withAirTransmittance( foamLight, input.worldPosition ) * preExposure(), foam );
+		color = lerp( color, foamLight, foam );
 	}
-	return float4( color, 1.0f );
+	// Яркость, кд/м², — за туманом и воздухом, в буфер сцены с экспозицией прошлого кадра
+	return float4( applyFogging( color, input.worldPosition ) * preExposure(), 1.0f );
 }

@@ -255,7 +255,8 @@ Wind& Scene::wind()
 	return m_wind;
 }
 
-bool Scene::saveEnvironment( LibraryLoader& library, const PostProcessSettings& postProcess )
+bool Scene::saveEnvironment( LibraryLoader& library, const PostProcessSettings& postProcess,
+							  const std::optional<HeightFogSettings>& heightFog )
 {
 	std::optional<SunPosition::Settings> sunPosition;
 	if( const SunPosition* position = m_lightDriver.sunPosition() )
@@ -268,7 +269,7 @@ bool Scene::saveEnvironment( LibraryLoader& library, const PostProcessSettings& 
 	else
 		atmosphere = m_atmosphere.settings();
 	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, atmosphere, hdri, postProcess,
-										 m_wind.settings() );
+										 m_wind.settings(), heightFog );
 }
 
 DirectX::BoundingBox Scene::bounds() const

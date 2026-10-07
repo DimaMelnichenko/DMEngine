@@ -52,7 +52,8 @@ public:
 	Wind& wind();
 	const LevelDescription& level() const;
 	// Текущие свет, небо и постобработку (правки в GUI) — в строки уровня в base.db3
-	bool saveEnvironment( LibraryLoader& library, const PostProcessSettings& postProcess );
+	bool saveEnvironment( LibraryLoader& library, const PostProcessSettings& postProcess,
+						  const std::optional<HeightFogSettings>& heightFog );
 
 	CDLODTerrain& terrain();
 	// Вода по рельефу (Levels.water_simulation); без неё у уровня объект не инициализирован

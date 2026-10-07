@@ -7,7 +7,8 @@
 
 using namespace DirectX;
 
-// Свет и окружение уровня: строки LevelLights, SunPosition, SkyAtmosphere, Wind, HDRIBackdrop, PostProcessSettings —
+// Свет и окружение уровня: строки LevelLights, SunPosition, SkyAtmosphere, Wind, HDRIBackdrop, PostProcessSettings,
+// ExponentialHeightFog —
 // загрузка в LevelDescription и сохранение правок из GUI («Save level environment»)
 
 void LibraryLoader::loadLevelLights( LevelDescription& level )
@@ -128,6 +129,30 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		wind.gustSize = static_cast<float>( query.getColumn( "gust_size" ).getDouble() );
 	}
 
+	if( level.heightFogId )
+	{
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM ExponentialHeightFog WHERE id = :id" );
+		query.bind( ":id", *level.heightFogId );
+		if( !query.executeStep() )
+		{
+			LOG( "Height fog " + std::to_string( *level.heightFogId ) + " is not found in table ExponentialHeightFog" );
+			return false;
+		}
+		auto value = [&query]( const char* column )
+		{
+			return static_cast<float>( query.getColumn( column ).getDouble() );
+		};
+		GS::HeightFogSettings& fog = level.heightFog.emplace();
+		fog.layer = { value( "density" ), value( "height" ), value( "height_falloff" ) };
+		fog.secondLayer = { value( "second_density" ), value( "second_height" ), value( "second_height_falloff" ) };
+		const std::string albedo = query.getColumn( "albedo" ).getString();
+		if( !strToVec3( albedo, fog.albedo ) )
+			LOG( "Height fog " + std::to_string( *level.heightFogId ) + ": wrong albedo '" + albedo + "'" );
+		fog.scatteringDistribution = value( "scattering_distribution" );
+		fog.volumetric = query.getColumn( "volumetric" ).getInt() != 0;
+		fog.viewDistance = value( "view_distance" );
+	}
+
 	if( level.hdriBackdropId )
 	{
 		SQLite::Statement query( DBConnector::instance().db(), "SELECT texture, intensity, rotation, max_luminance FROM HDRIBackdrop WHERE id = :id" );
@@ -195,7 +220,8 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 										  const std::optional<GS::SunPositionSettings>& sunPosition,
 										  const std::optional<GS::SkyAtmosphereSettings>& atmosphere,
 										  const std::optional<GS::HDRIBackdropSettings>& hdri,
-										  const GS::PostProcessSettings& postProcess, const GS::WindSettings& wind )
+										  const GS::PostProcessSettings& postProcess, const GS::WindSettings& wind,
+										  const std::optional<GS::HeightFogSettings>& heightFog )
 {
 	try
 	{
@@ -356,6 +382,39 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 		updateLevelWind.bind( ":wind", *level.windId );
 		updateLevelWind.bind( ":id", level.id );
 		updateLevelWind.exec();
+
+		// Туман: строка создаётся, только если его включили в GUI; выключенный остаётся строкой с нулевой плотностью
+		if( heightFog )
+		{
+			if( !level.heightFogId )
+			{
+				SQLite::Statement insert( db, "INSERT INTO ExponentialHeightFog (name) VALUES (:name)" );
+				insert.bind( ":name", level.name );
+				insert.exec();
+				level.heightFogId = static_cast<uint32_t>( db.getLastInsertRowid() );
+			}
+			SQLite::Statement updateFog( db, "UPDATE ExponentialHeightFog SET density = :density, height = :height, "
+											 "height_falloff = :falloff, second_density = :secondDensity, second_height = :secondHeight, "
+											 "second_height_falloff = :secondFalloff, albedo = :albedo, "
+											 "scattering_distribution = :distribution, volumetric = :volumetric, "
+											 "view_distance = :viewDistance WHERE id = :id" );
+			updateFog.bind( ":density", dbValue( heightFog->layer.density ) );
+			updateFog.bind( ":height", dbValue( heightFog->layer.height ) );
+			updateFog.bind( ":falloff", dbValue( heightFog->layer.heightFalloff ) );
+			updateFog.bind( ":secondDensity", dbValue( heightFog->secondLayer.density ) );
+			updateFog.bind( ":secondHeight", dbValue( heightFog->secondLayer.height ) );
+			updateFog.bind( ":secondFalloff", dbValue( heightFog->secondLayer.heightFalloff ) );
+			updateFog.bind( ":albedo", vec3ToStr( heightFog->albedo ) );
+			updateFog.bind( ":distribution", dbValue( heightFog->scatteringDistribution ) );
+			updateFog.bind( ":volumetric", heightFog->volumetric ? 1 : 0 );
+			updateFog.bind( ":viewDistance", dbValue( heightFog->viewDistance ) );
+			updateFog.bind( ":id", *level.heightFogId );
+			updateFog.exec();
+			SQLite::Statement updateLevelFog( db, "UPDATE Levels SET height_fog = :fog WHERE id = :id" );
+			updateLevelFog.bind( ":fog", *level.heightFogId );
+			updateLevelFog.bind( ":id", level.id );
+			updateLevelFog.exec();
+		}
 
 		transaction.commit();
 	}

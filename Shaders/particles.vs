@@ -81,7 +81,7 @@ ParticlePixelInput main( VertexInputType input )
 		const float forward = pow( saturate( dot( -view, toSun ) ), 6.0f );
 		light += sun.color * shadow * ( 0.6f + g_transmission * forward * 4.0f ) / PI;
 	}
-	const float3 color = applyAerialPerspective( g_color * light + g_emissive, particle.position ) * preExposure();
+	const float3 color = applyFogging( g_color * light + g_emissive, particle.position ) * preExposure();
 
 	ParticlePixelInput output;
 	output.position = mul( float4( position, 1.0f ), cb_viewProjectionMatrix );

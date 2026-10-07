@@ -170,7 +170,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 - `Renderer` (`Renderer.h`) отправляет команды GPU: общие данные конвейера (сэмплеры, свет, константы кадра и вида —
   `ConstantBuffers` (`Graphics/ConstantBuffers.h`), член `Renderer`; своим вызовам объектов — `RenderContext::constants`)
   → `compute()` всех объектов → сбор мешей с вида и раскладка по проходам с сортировкой → глубина каскадов теней
-  солнца (`renderShadows`: на каждый каскад сбор с его вида и проход `csmShadowDepth` в срез карты) → depth prepass
+  солнца (`renderShadows`: на каждый каскад сбор с его вида и проход `csmShadowDepth` в срез карты) → туман уровня
+  (`VolumetricFog`, как Volumetric Fog в UE: свет в ячейках сетки над экраном по карте теней и накопление вдоль лучей,
+  `SLOT_VOLUMETRIC_FOG`, t110; только у уровня со строкой `ExponentialHeightFog`, `docs/fog.md`) → depth prepass
   (`depthPrepass`: только глубина непрозрачных и Masked вариантом `depthPhaseFor`, без цели цвета; `DepthPrepass` в
   `settings.ini`, флажок в окне «Renderer») → `opaque` (после prepass — `DepthState::readOnlyEqual`: освещается только
   ближайшая поверхность, Masked без `clip`; меш без варианта глубины и свой вызов без бита prepass пишут глубину сами;
@@ -336,13 +338,15 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 (`Levels.atmosphere`; запекается для солнца 1 лк и умножается на освещённость от солнца — `cb_skyScale` у фона, `cb_skyLightScale` у освещения окружением; там же сила воздушной перспективы)
 или панорама — строка `HDRIBackdrop` (`Levels.hdri_backdrop`: файл, `intensity` — кд/м² на единицу панорамы, она же
 `cb_skyScale` и `cb_skyLightScale`, `rotation`, `max_luminance` — срез солнца для освещения окружением; уровень `TestHDRI`), постобработка — `PostProcessSettings`
-(`Levels.post_process`; NULL — значения по умолчанию), ветер — строка `Wind` (`Levels.wind`, как Wind Directional Source
+(`Levels.post_process`; NULL — значения по умолчанию), туман — строка `ExponentialHeightFog` (`Levels.height_fog`, как
+Exponential Height Fog с Volumetric Fog в UE: два слоя по высоте, альбедо, анизотропия, объём и его дальность; NULL —
+тумана нет; `Tools/height_fog.py`, `docs/fog.md`), ветер — строка `Wind` (`Levels.wind`, как Wind Directional Source
 в UE: направление, сила, порывы волнами; класс `Wind` у `Scene`, константы кадра `cb_wind*` и время игры `cb_gameTime` —
 шагами кадра, изгиб в `vertexWorldPosition` у материалов с `WindWeight` > 0 — `Shaders/wind.sh`, подробно — `docs/wind.md`;
 деревья — материал `PBRTree` (define `WIND_TREE`): слои Games wind SpeedTree по данным второго потока вершин `VertexPool` —
 начала и веса ветвей двух уровней, доля высоты, рябь, атрибуты glTF `_WIND_*`, блок `WIND` файла меша).
 В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
-вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Post process», «Wind»; кнопка «Save level environment»
+вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Post process», «Height fog», «Wind»; кнопка «Save level environment»
 (`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`; чтение и запись окружения — `ObjectLibrary/LibraryLoaderEnvironment.cpp`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
 уровень). Источники раз за кадр обновляет `Scene::updateLights` в `DMGraphics::Frame` (правки GUI и время
 суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`
@@ -399,11 +403,13 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 доля и цвет света насквозь, как KHR_materials_diffuse_transmission в glTF и Two Sided Foliage в UE) и возвращает
 `evaluateLighting(surface)` — прямой свет всех источников (BRDF — `Shaders/brdf.sh`; затухание — обратный квадрат
 с плавным обрезанием по радиусу, Karis 2013; конус прожектора; у солнца — тень) плюс освещение окружением от неба
-(`Shaders/ibl.sh`, подробно — `docs/sky.md`), затем воздушная перспектива до камеры (`Shaders/aerial_perspective.sh`:
+(`Shaders/ibl.sh`, подробно — `docs/sky.md`), затем туман уровня и воздушная перспектива до камеры (`applyFogging`,
+`Shaders/height_fog.sh`: туман — из объёма `VolumetricFog` ближе его дальности и по формуле дальше, `docs/fog.md`;
+воздушная перспектива — `Shaders/aerial_perspective.sh`:
 выборка объёма 32 × 32 × 32 над экраном, который каждый кадр считает `SkyAtmosphere` по модели неба —
 `Shaders/aerial_perspective.cs`, как Camera Aerial Perspective Volume в UE5; сила —
 `SkyAtmosphere.aerial_perspective_view_distance_scale`). Так делают `PBRLit.ps` и `terrain.ps`; новую составляющую освещения
-(объёмный туман) добавляйте туда, а не в материалы. Раскладка источника — `struct Light` в шейдере
+добавляйте туда, а не в материалы. Раскладка источника — `struct Light` в `Shaders/lights.sh` (общий с туманом)
 и `DMLightDriver::LightBuffer` (с `static_assert` на размер), подробно — `docs/lighting.md`.
 
 **Тени солнца** — `ShadowCascades` (`src/Engine/Graphics/ShadowCascades.h`, владеет `Renderer`), как Cascaded Shadow
@@ -503,7 +509,7 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 `Texture` (`DMTexture` — текстура GPU и вид, `DMTextureStorage`, чтение файлов — `ImageFile::load`), `Model`/`Mesh`
 (`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`), `Materials` (`Material` и его классы,
 `MaterialStorage`). Не объекты сцены, а общее для проходов — в `src/Engine/Graphics/`:
-`ShaderProgram`, `FullscreenShader`, `DMComputeShader`, `ConstantBuffers`.
+`ShaderProgram`, `FullscreenShader`, `DMComputeShader`, `ConstantBuffers`, `VolumetricFog`.
 
 ## Соглашения
 
