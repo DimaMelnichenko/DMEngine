@@ -15,6 +15,9 @@ namespace
 
 constexpr double fillEpsilon = 1e-4;	// уклон заполненных низин на шаг, м: из каждой клетки есть путь вниз к краю
 constexpr double pi = 3.14159265358979323846;
+// Врез ручья, вытекающего из озера, нарастает от порога не круче этого уклона: вода уходит из озера через порог, а не
+// обрывом — иначе у берега вода ручья стояла бы на полметра ниже озера рядом
+constexpr double outletSlope = 0.05;
 // Восемь соседей (строка, столбец) и расстояние в шагах — порядок как в Tools/erosion.py (при равном уклоне берётся первый)
 constexpr int neighbourRow[8] = { -1, -1, -1, 0, 0, 1, 1, 1 };
 constexpr int neighbourCol[8] = { -1, 0, 1, -1, 1, -1, 0, 1 };
@@ -234,6 +237,34 @@ std::vector<double> lakeLevels( const std::vector<double>& filled, const std::ve
 			for( int i : component )
 				level[i] = surface;
 	}
+	// Мелкая кромка (не глубже depth) — тоже озеро: всё, что связано с ним и ниже уровня в той же низине (заполнено почти
+	// до уровня: уклон заполнения — доли миллиметра на клетку). Иначе на плоском дне плоскость воды на клетку выходила бы
+	// за маску и обрывалась ступенькой по клеткам над рельефом ниже уровня. Сток из низины (заполнен ниже) не заливается
+	constexpr double shoreTolerance = 0.01;
+	queue.clear();
+	for( size_t i = 0; i < cells; ++i )
+		if( !std::isnan( level[i] ) )
+			queue.push_back( static_cast<int>( i ) );
+	while( !queue.empty() )
+	{
+		const int i = queue.back();
+		queue.pop_back();
+		const int row = i / n;
+		const int col = i % n;
+		for( int k = 0; k < 8; ++k )
+		{
+			const int r = row + neighbourRow[k];
+			const int c = col + neighbourCol[k];
+			if( r < 0 || c < 0 || r >= n || c >= n )
+				continue;
+			const int j = r * n + c;
+			if( std::isnan( level[j] ) && height[j] < level[i] && filled[j] >= level[i] - shoreTolerance )
+			{
+				level[j] = level[i];
+				queue.push_back( j );
+			}
+		}
+	}
 	return level;
 }
 
@@ -391,19 +422,51 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		position = std::move( shifted );
 	}
 
-	// 4. Ложе: дно монотонно вниз по течению, профиль по отрезкам оси — дно, тальвег, борта
+	// Низины, которые заполнит вода (озёра), не режутся: русло кончается у берега. Низина меньше minLakeArea — не озеро, а
+	// ямка на дне ручья (извилина, тальвег, кривая правки рельефа): ручей идёт сквозь неё, иначе лента обрывалась бы у
+	// каждой ямки, а в ямке стояла бы своя плоская вода
+	const std::vector<double> lakeLevel = lakeLevels( filled, height.values, inflow, n, p.lakeDepth, p.minLakeArea / ( cell * cell ) );
+	std::vector<uint8_t> lake( cells );
+	for( size_t i = 0; i < cells; ++i )
+		lake[i] = std::isnan( lakeLevel[i] ) ? 0 : 1;
+	// Узлы ниже озера: путь от берега, м, и уровень озера, из которого течёт ручей (NaN — не из озера)
+	std::vector<double> outletDistance( count, std::numeric_limits<double>::infinity() );
+	std::vector<double> outletLevel( count, std::numeric_limits<double>::quiet_NaN() );
+	for( int k : nodeOrder )
+	{
+		const int d = down[k];
+		if( d < 0 || lake[stream[d]] )
+			continue;
+		const bool fromLake = lake[stream[k]] != 0;
+		if( !fromLake && std::isnan( outletLevel[k] ) )
+			continue;
+		const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
+		const double distance = ( fromLake ? 0.0 : outletDistance[k] ) + step;
+		if( distance < outletDistance[d] )
+		{
+			outletDistance[d] = distance;
+			outletLevel[d] = fromLake ? lakeLevel[stream[k]] : outletLevel[k];
+		}
+	}
+
+	// 4. Ложе: дно монотонно вниз по течению, профиль по отрезкам оси — дно, тальвег, борта. В озере ложа нет (дно озера),
+	// и оно не тянет дно ниже по течению; ниже озера врез нарастает от порога (outletSlope)
 	std::vector<double> half( count ), depth( count ), bed( count ), bank( count ), surface( count );
 	for( int k = 0; k < count; ++k )
 	{
 		half[k] = 0.5 * std::max( p.widthCoef * std::sqrt( q[k] ), static_cast<double>( p.minWidth ) ) / cell;
 		depth[k] = std::max( p.depthCoef * std::pow( q[k], 0.4 ), static_cast<double>( p.minIncision ) );
+		if( lake[stream[k]] )
+			depth[k] = 0.0;
+		else if( !std::isnan( outletLevel[k] ) )
+			depth[k] = std::min( depth[k], outletDistance[k] * outletSlope );
 		surface[k] = height.sample( position[k].x - 0.5, position[k].y - 0.5 );
 		bed[k] = surface[k] - depth[k];
 	}
 	for( int k : nodeOrder )
 	{
 		const int d = down[k];
-		if( d >= 0 )
+		if( d >= 0 && !lake[stream[k]] )
 		{
 			const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
 			bed[d] = std::min( bed[d], bed[k] - p.minSlope * step );
@@ -450,17 +513,9 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			}
 		}
 	}
-	// Низины, которые заполнит вода (озёра), не режутся: русло кончается у берега. Низина меньше minLakeArea — не озеро, а
-	// ямка на дне ручья (извилина, тальвег, кривая правки рельефа): ручей идёт сквозь неё, иначе лента обрывалась бы у
-	// каждой ямки, а в ямке стояла бы своя плоская вода
-	const std::vector<double> lakeLevel = lakeLevels( filled, height.values, inflow, n, p.lakeDepth, p.minLakeArea / ( cell * cell ) );
-	std::vector<uint8_t> lake( cells );
 	for( size_t i = 0; i < cells; ++i )
-	{
-		lake[i] = std::isnan( lakeLevel[i] ) ? 0 : 1;
 		if( lake[i] )
 			carve[i] = 0.0;
-	}
 	result.size = static_cast<uint32_t>( n );
 	result.lowering.resize( cells );
 	result.carvedCells = 0;
@@ -519,11 +574,17 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			for( double dx : { -0.7, 0.0, 0.7 } )
 				actual[k] = std::min( actual[k], carved.sample( position[k].x - 0.5 + dx, position[k].y - 0.5 + dy ) );
 		level[k] = actual[k] + std::max( waterDepth, static_cast<double>( p.minWaterDepth ) );
+		// Ручей из озера — не выше его уровня, а первый узел ниже берега — на уровне озера: вода выходит из озера ровно
+		if( !std::isnan( outletLevel[k] ) )
+		{
+			const bool first = up[k] >= 0 && lake[stream[up[k]]];
+			level[k] = first ? std::max( outletLevel[k], actual[k] ) : std::min( level[k], outletLevel[k] );
+		}
 	}
 	for( int k : nodeOrder )
 	{
 		const int d = down[k];
-		if( d >= 0 )
+		if( d >= 0 && !lake[stream[k]] )
 			level[d] = std::min( level[d], level[k] );
 	}
 	for( int k = 0; k < count; ++k )
