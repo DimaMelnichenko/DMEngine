@@ -151,14 +151,17 @@ void mainFill( uint3 id : SV_DispatchThreadID )
 	g_fill[cell] = max( ground, lowest );
 }
 
-// Вода только в тех низинах, куда впадает источник (приток есть внутри озера: линия стока проходит через него)
+// Вода только в тех низинах, куда впадает источник (приток есть внутри озера: линия стока проходит через него). В режиме
+// static — ещё и только в озёрах сценария (низины исходного рельефа, маска — g_staticWater.w): приток там идёт по оси
+// русла, и иначе наливались бы ямки прорезанного дна — плоская вода под лентой ручья на своём уровне
 [numthreads( 8, 8, 1 )]
 void mainLakeInit( uint3 id : SV_DispatchThreadID )
 {
 	if( any( id.xy >= g_size ) )
 		return;
 	const int2 cell = int2( id.xy );
-	g_lake[cell] = g_fill[cell] - terrain( cell ) > lakeMinDepth && g_sources[cell] > 0.0f ? 1.0f : 0.0f;
+	const bool scriptLake = g_staticLakes == 0 || g_staticWater.Load( int3( cell, 0 ) ).w > 0.5f;
+	g_lake[cell] = g_fill[cell] - terrain( cell ) > lakeMinDepth && g_sources[cell] > 0.0f && scriptLake ? 1.0f : 0.0f;
 }
 
 // Метка озера растекается по ячейкам низины с тем же уровнем

@@ -61,7 +61,8 @@ private:
 		int32_t sourceRadius;
 		float manning;
 		uint32_t helperCount;		// источников-помощников в буфере m_helpers
-		float padding[2];
+		uint32_t staticLakes;		// 1 — озёра только по маске сценария (растр статичной воды, канал A)
+		float padding;
 	};
 
 	// Раскладка — cbuffer WaterTilesBuffer (b5) в water_surface.cs
@@ -131,6 +132,7 @@ private:
 	DMComputeShader m_lakeApplyShader;
 	DMComputeShader m_staticShader;
 	bool m_static = false;			// режим static: шагов нет
+	const ShaderView* m_staticWaterMap = nullptr;	// растр статичной воды (режим static): ручьи и маска озёр
 	StreamRibbons m_streams;
 	Buffer m_constantBuffer;
 

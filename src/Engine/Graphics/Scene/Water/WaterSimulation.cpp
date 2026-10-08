@@ -157,11 +157,14 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 				 std::to_string( source.position.x ) + ", " + std::to_string( source.position.y ) );
 	}
 
-	// Источники, озёра до уровня перелива, затем до установившегося течения — порциями с ожиданием GPU
+	// Источники, озёра до уровня перелива, затем до установившегося течения — порциями с ожиданием GPU. Режим static —
+	// до озёр: они наливаются по маске его растра
+	m_static = settings.staticWater;
+	if( m_static && System::textures().exists( settings.staticWaterMap ) )
+		m_staticWaterMap = &System::textures().get( settings.staticWaterMap )->srv();
 	buildSources( settings );
 	if( !fillLakes() )
 		return false;
-	m_static = settings.staticWater;
 	if( m_static )
 	{
 		// Статичная вода: озёра налиты, ручьи — лентами и растром; шагов нет
@@ -424,11 +427,15 @@ bool WaterSimulation::fillLakes()
 				PassDesc pass;
 				pass.name = "Water lakes";
 				pass.reads = { { &heightMap, "height map" }, { &m_sourcesView, "water sources" } };
+				if( m_staticWaterMap )
+					pass.reads.push_back( { m_staticWaterMap, "static water" } );
 				pass.writes = { { &fillUAV, "lake level" }, { &lakeUAV, "lake mask" }, { &m_waterUAV, "water depth" } };
 				d3d.beginPass( pass );
 				setParameters( m_initial );
 				d3d.setSRV( 0, heightMap );
 				d3d.setSRV( 2, m_sourcesView );
+				if( m_staticWaterMap )
+					d3d.setSRV( 3, *m_staticWaterMap );
 			}
 			d3d.setUAV( 0, m_waterUAV );
 			d3d.setUAV( 4, fillUAV );
@@ -515,6 +522,7 @@ void WaterSimulation::setParameters( const Settings& settings )
 	params.sourceRadius = std::clamp( static_cast<int32_t>( std::lround( settings.sourceRadius / m_cellSize ) ), 0, maxSourceRadius );
 	params.manning = settings.manning;
 	params.helperCount = m_helperCount;
+	params.staticLakes = m_staticWaterMap ? 1 : 0;
 	Device::updateResourceData( m_constantBuffer, params );
 	DMD3D::instance().setConstantBuffer( 4, m_constantBuffer );
 }

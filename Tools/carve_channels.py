@@ -305,13 +305,16 @@ def stream_water(nodes, carved, bed, width, reach, lake, args, cell):
     return result, level, speed, foam
 
 
-def static_water(nodes, streams, level, speed, reach, shape, cell):
+def static_water(nodes, streams, level, speed, reach, lake, shape, cell):
     """Растр статичной воды ручьёв на сетке карты высот: R — уровень воды, м (−1e9 — нет), G, B — скорость по X и Z
-    мира, A — пена. Глубину по итоговому рельефу считает движок (WaterSimulation, режим static)"""
+    мира, A — 1 в озёрах (низинах исходного рельефа, где кончаются ручьи). Глубину по итоговому рельефу считает
+    движок (WaterSimulation, режим static); озёра он наливает только по маске A — ямки прорезанного дна русла сухие,
+    в них вода — лента ручья"""
     position, down, q, order, stream = nodes
     rows, cols = shape
     result = np.zeros((rows, cols, 4), dtype=np.float32)
     result[..., 0] = -1e9
+    result[..., 3] = lake.astype(np.float32)
     nearest = np.full((rows, cols), np.inf)
     for chain, points in streams:
         for i in range(len(chain) - 1):
@@ -477,7 +480,7 @@ def main():
     lake = (filled - height) > args.lake_depth
     streams, level, speed, foam = stream_water(nodes, height + lowered, bed, width, reach, lake, args, cell)
     dds.write_rgba32f(os.path.join(ROOT, 'Textures', args.static_water_file.replace('\\', os.sep)),
-                      static_water(nodes, streams, level, speed, reach, height.shape, cell))
+                      static_water(nodes, streams, level, speed, reach, lake, height.shape, cell))
     register_streams(db, simulation, streams, level, speed, foam, reach, args, cell, height.shape[0] * cell)
 
 
