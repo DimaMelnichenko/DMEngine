@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 #include "DirectX.h"
@@ -41,6 +42,29 @@ struct TerrainEdit
 	uint32_t rasterSize = 0;
 };
 
+// Эрозия карты высот — строка TerrainErosion, на которую ссылается Terrain.erosion (NULL — карта уже готова, эрозии нет):
+// первая ступень конвейера рельефа и воды (TerrainErosion, docs/terrain.md, «Эрозия»). Применяется при загрузке уровня
+struct TerrainErosionSettings
+{
+	uint32_t id = 0;				// строка TerrainErosion
+	int32_t droplets = 1000000;		// капель воды
+	uint32_t seed = 7;
+	int32_t lifetime = 80;			// шагов капли (тексель за шаг)
+	float inertia = 0.3f;			// доля прежнего направления
+	float capacity = 1.0f;			// ёмкость переноса: уклон · скорость · вода · capacity
+	float minSlope = 0.01f;			// уклон в ёмкости — не меньше (капля несёт и по ровному)
+	float erodeSpeed = 0.1f;		// доля недобора ёмкости, размываемая за шаг (capacity · erode_speed ≪ 1: иначе гребни — плато)
+	float depositSpeed = 0.2f;		// доля излишка, откладываемая за шаг
+	float evaporation = 0.01f;		// вода испаряется за шаг
+	float gravity = 4.0f;			// разгон вниз по склону
+	int32_t radius = 5;				// кисть размыва, тексели
+	float rainScale = 250.0f;		// размер пятен дождя, м
+	float rainMin = 0.25f;			// доля дождя в сухих местах (1 — дождь всюду поровну)
+	float talusAngle = 38.0f;		// угол естественного откоса осыпей, градусы
+	int32_t thermalIterations = 40;	// шагов осыпания
+	float thermalRate = 0.25f;		// доля излишка, сползающая за шаг
+};
+
 // Материал и высота террейна — колонки строки Terrain и tiling строк TerrainLayers: читает CDLODTerrain, правки окна
 // террейна пишет «Save level»
 struct TerrainSettings
@@ -53,6 +77,7 @@ struct TerrainSettings
 	float farBlendStart = 40.0f;		// полоса перехода ко второму масштабу, м
 	float farBlendEnd = 120.0f;
 	std::vector<float> layerTiling;		// метров на повтор по номеру слоя (TerrainLayers.layer); 0 — слоя нет
+	std::optional<TerrainErosionSettings> erosion;	// строка TerrainErosion — правки подокна «Erosion»
 };
 
 // Строка SkyAtmosphere; без неё — значения по умолчанию

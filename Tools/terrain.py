@@ -1,8 +1,8 @@
-"""Высота террейна в точке мира для инструментов, которые ставят модели на землю (gen_heightmap.py, import_gltf.py).
+"""Высота террейна в точке мира для инструментов, которые ставят модели на землю (import_gltf.py, terrain_edit.py).
 
 Раскладка карты — как у terrainHeight в Shaders/terrain_height.sh и docs/terrain.md: строка r — z = W − (r + 0,5)·cell,
-столбец c — x = (c + 0,5)·cell, cell — Terrain.width_multiplier, высота — значение R16 × height_multiplier +
-height_offset.
+столбец c — x = (c + 0,5)·cell, cell — Terrain.width_multiplier. Рельеф — после эрозии движка (каталог eroded рядом с
+картой высот: height.dds, R32, метры), без неё — исходная карта: значение × height_multiplier + height_offset.
 """
 import os
 
@@ -36,4 +36,12 @@ def load_level_terrain(db, level_id, root):
     if texture is None:
         raise SystemExit('error: heightmap texture %s is not found in Textures' % heightmap)
     path = os.path.join(root, 'Textures', texture[0].replace('\\', os.sep))
+    eroded = eroded_directory(path)
+    if os.path.exists(os.path.join(eroded, 'height.dds')):
+        return dds.read_r32f(os.path.join(eroded, 'height.dds')), cell
     return dds.read_r16(path) * multiplier + offset, cell
+
+
+def eroded_directory(heightmap_path):
+    """Каталог эрозии движка рядом с картой высот (CDLODTerrain::erode): height, flow, wear, deposition, talus — R32"""
+    return os.path.join(os.path.dirname(heightmap_path), 'eroded')

@@ -13,12 +13,12 @@ DMComputeShader::~DMComputeShader()
 {
 }
 
-bool DMComputeShader::Initialize( const std::string& file_name, const std::string& function_name )
+bool DMComputeShader::Initialize( const std::string& file_name, const std::string& function_name, bool reproducible )
 {
 	// DXC → DXIL cs_6_6 с кэшем на диске; пайплайн собирается сразу — в кадре сборка PSO была бы фризом
 	std::vector<uint8_t> bytecode;
 	const std::string profile = ShaderCompiler::profile( ShaderStageType::compute );
-	if( !ShaderCompiler::instance().compile( file_name, function_name, profile, "", bytecode ) )
+	if( !ShaderCompiler::instance().compile( file_name, function_name, profile, "", bytecode, reproducible ) )
 		return false;
 	if( !DMD3D::instance().createShaderStage( ShaderStageType::compute, bytecode.data(), bytecode.size(), m_computeShader ) )
 		return false;

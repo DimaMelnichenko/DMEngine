@@ -140,6 +140,12 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		else
 			m_GUI.notify( "Level is not saved, see Log", true );
 	} );
+	// На землю (End, как в UE): выбранный во вьюпорте экземпляр модели
+	m_GUI.addAction( "Snap to terrain", "End", [this]
+	{
+		if( !m_scene.models().snapToTerrain( m_viewport.selected(), m_scene.terrain() ) )
+			m_GUI.notify( "Select a model instance over the terrain first", true );
+	} );
 	m_GUI.addAction( "Exit", "Esc", [this] { m_exitRequested = true; } );
 	// Меню View — те же переключатели, что горячие клавиши (нажатие через KeyEventNotifier: состояние клавиши не сбивается)
 	auto press = []( uint8_t key ) { return [key] { Input::instance().notifier().press( key ); }; };
@@ -648,6 +654,11 @@ void DMGraphics::bindingKeys()
 	Input::instance().notifier().registerTrigger( DIK_I, [this]( bool value )
 	{
 		m_flyMode = value;
+	} );
+
+	Input::instance().notifier().registerTrigger( DIK_END, [this]( bool )
+	{
+		m_GUI.runAction( "Snap to terrain" );
 	} );
 
 	// Полёт ↔ ходьба по рельефу: включение в воздухе — падение до земли. Без террейна — только полёт

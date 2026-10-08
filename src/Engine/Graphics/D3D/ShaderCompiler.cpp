@@ -48,6 +48,12 @@ const wchar_t* const buildArguments[] =
 	L"-HV", L"2021",
 };
 
+// Флаги шейдеров, которые генерируют данные (reproducible): одинаковые в обеих конфигурациях, строгий IEEE (-Gis)
+const wchar_t* const reproducibleArguments[] =
+{
+	L"-O3", L"-Gis", L"-Qstrip_reflect", L"-HV", L"2021",
+};
+
 }
 
 ShaderCompiler& ShaderCompiler::instance()
@@ -119,7 +125,7 @@ uint64_t ShaderCompiler::sourcesStamp() const
 }
 
 bool ShaderCompiler::compile( const std::string& file, const std::string& entry, const std::string& profile, const std::string& defines,
-							  std::vector<uint8_t>& bytecode )
+							  std::vector<uint8_t>& bytecode, bool reproducible )
 {
 	bytecode.clear();
 	if( !initialize() )
@@ -130,7 +136,10 @@ bool ShaderCompiler::compile( const std::string& file, const std::string& entry,
 	key = fnv1a( entry, key );
 	key = fnv1a( profile, key );
 	key = fnv1a( defines, key );
-	for( const wchar_t* argument : buildArguments )
+	const std::vector<const wchar_t*> compileFlags = reproducible ?
+		std::vector<const wchar_t*>( std::begin( reproducibleArguments ), std::end( reproducibleArguments ) ) :
+		std::vector<const wchar_t*>( std::begin( buildArguments ), std::end( buildArguments ) );
+	for( const wchar_t* argument : compileFlags )
 		key = fnv1a( argument, wcslen( argument ) * sizeof( wchar_t ), key );
 	const std::filesystem::path cachePath = std::filesystem::path( cacheDirectory ) / ( hex( key ) + ".dxil" );
 	{
@@ -160,7 +169,7 @@ bool ShaderCompiler::compile( const std::string& file, const std::string& entry,
 	source.Encoding = DXC_CP_UTF8;
 
 	std::vector<std::wstring> ownedArguments = { wideFile, L"-E", utf8ToWide( entry ), L"-T", utf8ToWide( profile ), L"-I", utf8ToWide( shadersDirectory ) };
-	for( const wchar_t* argument : buildArguments )
+	for( const wchar_t* argument : compileFlags )
 		ownedArguments.push_back( argument );
 	std::vector<std::string> defineList;
 	str_split( defines, defineList, "," );

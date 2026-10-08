@@ -50,6 +50,8 @@ public:
 
 	// field — итоговая карта высот с ручными правками; water — строка WaterSimulation: приток, помощники, русла
 	static bool build( const HeightField& field, const WaterSimulationSettings& water, Result& result );
+	// Водосбор каждой клетки, м²: сток D8 по карте с заполненными низинами (тот же, что у build) — для карт эрозии
+	static std::vector<float> catchment( const HeightField& field );
 	// Растровая правка рельефа по опусканию: опускает, красит дно галькой и убирает растительность (как правка
 	// channels прежнего сценария); имя — для лога
 	static TerrainEdit loweringEdit( const Result& result, const WaterChannelsSettings& channels );

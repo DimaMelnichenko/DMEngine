@@ -113,12 +113,14 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `Shaders\`, `Textures\`, `Meshes\`). Для CLion это задаёт общая
   конфигурация запуска `.run/DMEngine.run.xml`. Каталоги `Textures\` и `Meshes\` в git не хранятся;
   без них движок запускается на заглушках (см. «Заглушки ресурсов»), а в `log.txt` перечислено, что не загрузилось.
-  Тестовые данные террейна создают скрипты: карту высот `Textures\terrain\heightmap.dds` (1024×1024: горная долина
-  с эрозией — капли, осыпание, водосбор; ~2 мин, numpy) и карты эрозии рядом (`flow`, `wear`, `deposition`, `talus`;
-  экземпляры `LevelModels` он пересаживает на новую землю) — `python Tools/gen_heightmap.py`, затем текстуры слоёв
-  `Textures\terrain\layers\*.dds`, splat-карту `Textures\terrain\splatmap.dds`, маски расстановки и маски леса по типам
-  (`mask_forest_spruce` / `pine` / `birch`, `mask_shrubs_riparian` / `slope`) по картам эрозии —
-  `python Tools/gen_terrain_textures.py` (нужен numpy). Слои из фото-текстур (Poly Haven,
+  Тестовые данные террейна: исходную карту высот `Textures\terrain\heightmap.dds` (1024×1024: горная долина без
+  эрозии, секунды, numpy; карта может быть и из World Machine, Gaea) — `python Tools/gen_heightmap.py`; эрозию (капли,
+  осыпание) делает движок при загрузке на GPU и пишет рельеф и карты эрозии в `Textures\terrain\eroded\` (`height`,
+  `flow`, `wear`, `deposition`, `talus`; это и кэш), а экземпляры `LevelModels` пересаживает на новую землю — закрепить
+  «Save level»; затем текстуры слоёв `Textures\terrain\layers\*.dds`, splat-карту `Textures\terrain\splatmap.dds`, маски
+  расстановки и маски леса по типам (`mask_forest_spruce` / `pine` / `birch`, `mask_shrubs_riparian` / `slope`) по
+  `eroded\` — `python Tools/gen_terrain_textures.py` (нужен numpy; splat-карта и маски — обычные входные файлы, их можно
+  править в любой программе). Слои из фото-текстур (Poly Haven,
   freepbr; архивы — в `DownloadResources\`, не в git) собирает `Tools/pack_terrain_layer.py` через Blender — команды
   нынешних слоёв в `docs/terrain.md`. Тестовые модели уровня
   `Test` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
@@ -160,7 +162,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `screenshot<N>.jpg`; ставится в ту же очередь, что команда `screenshot`: копировать задний буфер можно только в кадре),
   1 — видимость террейна, 3 / 4 — расчёт / отрисовка всех наборов расстановки (трава, камешки; по умолчанию включены),
   I — режим полёта (камера смотрит мышью всегда), G — вид игры без редактора, Ctrl+S — сохранить уровень (правки окон),
-  левая кнопка по сцене — выбрать экземпляр модели, 5 / 6 / 7 — гизмо: перемещение / поворот / масштаб, F — полёт ↔
+  левая кнопка по сцене — выбрать экземпляр модели, 5 / 6 / 7 — гизмо: перемещение / поворот / масштаб, End — выбранный
+  экземпляр на землю («Snap to terrain», `ModelInstances::snapToTerrain`), F — полёт ↔
   ходьба по рельефу (`Scene/Camera/WalkMode.h`: высота — `TerrainHeightSource::surfaceHeight`, итоговая карта на CPU;
   без столкновений; включение в воздухе — падение до земли),
   `` ` `` — консоль. Камера смотрит мышью при зажатой правой кнопке над сценой (`DMGraphics::updateMouseLook`); пока
@@ -285,7 +288,7 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 источники по карте водосбора и помощники — родник, ледниковое озеро (строки `WaterSources`, `Tools/water_source.py`),
 озёра до уровня перелива и прогрев при загрузке, шаги по времени кадра; русла горных ручьёв — растровая правка рельефа `channels` по
 сети стока D8 — ступень конвейера рельефа и воды при загрузке (`Scene/Terrain/TerrainHydrology.h`, вызывает
-`CDLODTerrain::buildHeightBounds`: карта высот → ручные правки `TerrainEdits` → русла, ручьи и озёра по итоговому рельефу →
+`CDLODTerrain::buildHeightBounds`: карта высот → эрозия `TerrainErosion` → ручные правки `TerrainEdits` → русла, ручьи и озёра по итоговому рельефу →
 вода; узкое дно, врез с крутыми бортами, извилины на пологом, галька и без травы; настройки — строка `WaterChannels`,
 подокно «Channels»; приток симуляции — водосбор вдоль оси русел; выгрузка — команда `terrain hydrology`); глубина с памятью ~30 с — для травы и мокрой земли; текстура воды —
 слот сцены `SLOT_WATER`, t109, `Shaders/water.sh`; строка `WaterSimulation` уровня, `Levels.water_simulation`;
@@ -495,6 +498,14 @@ DirectX) + шероховатость A»; все слои приводятся 
 а на крутых склонах ещё и вдоль X и Z (triplanar, нормали по UDN), вдали — ещё и в крупном масштабе (distance
 resampling, как в UE Landscape: мелкий повтор не складывается в сетку), слои смешиваются по высоте. Настраиваются
 в GUI: «Triplanar sharpness», «Height blend», «Far texture scale», «Far blend start / end». Подробно — `docs/terrain.md`.
+
+Эрозия — первая ступень конвейера рельефа и воды (`Scene/Terrain/TerrainErosion.h`, `Shaders/terrain_erosion.cs`, как
+Erosion в World Machine и Gaea): капли (Beyer 2015, целочисленные атомики — результат одинаков от запуска к запуску) и
+осыпание на GPU по исходной карте; параметры — строка `TerrainErosion` (`Terrain.erosion`, NULL — карта уже готова;
+подокно «Erosion»); кэш и выгрузка — `eroded\` рядом с картой высот по отпечатку (`key.txt`); шейдеры — одинаковые в
+Debug и Release, строгий IEEE (`ShaderCompiler::compile( …, reproducible )`), поэтому кэш общий; сменился рельеф —
+модели уровня пересаживаются (`ModelInstances::reseat`, `eroded\previous.dds` до «Save level»). Подробно —
+`docs/terrain.md`, «Эрозия».
 
 Правка рельефа — слои правок поверх карты высот (как Edit Layers и Landscape Splines в UE): строки `TerrainEdits` и
 `TerrainEditPoints` (кривая Catmull-Rom через точки — русло, насыпь; одна точка — площадка; ширина, полоса перехода,

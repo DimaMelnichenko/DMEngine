@@ -31,6 +31,48 @@ const std::pair<const char*, float GS::WaterChannelsSettings::*> channelColumns[
 	{ "ribbon_overlap", &GS::WaterChannelsSettings::ribbonOverlap },
 };
 
+// Колонки TerrainErosion ↔ поля TerrainErosionSettings
+const std::pair<const char*, float GS::TerrainErosionSettings::*> erosionFloatColumns[] = {
+	{ "inertia", &GS::TerrainErosionSettings::inertia },
+	{ "capacity", &GS::TerrainErosionSettings::capacity },
+	{ "min_slope", &GS::TerrainErosionSettings::minSlope },
+	{ "erode_speed", &GS::TerrainErosionSettings::erodeSpeed },
+	{ "deposit_speed", &GS::TerrainErosionSettings::depositSpeed },
+	{ "evaporation", &GS::TerrainErosionSettings::evaporation },
+	{ "gravity", &GS::TerrainErosionSettings::gravity },
+	{ "rain_scale", &GS::TerrainErosionSettings::rainScale },
+	{ "rain_min", &GS::TerrainErosionSettings::rainMin },
+	{ "talus_angle", &GS::TerrainErosionSettings::talusAngle },
+	{ "thermal_rate", &GS::TerrainErosionSettings::thermalRate },
+};
+const std::pair<const char*, int32_t GS::TerrainErosionSettings::*> erosionIntColumns[] = {
+	{ "droplets", &GS::TerrainErosionSettings::droplets },
+	{ "lifetime", &GS::TerrainErosionSettings::lifetime },
+	{ "radius", &GS::TerrainErosionSettings::radius },
+	{ "thermal_iterations", &GS::TerrainErosionSettings::thermalIterations },
+};
+
+}
+
+void LibraryLoader::loadTerrainErosion( uint32_t terrainId, LevelDescription& level )
+{
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "TerrainErosion" ) )
+		return;
+	SQLite::Statement query( db, "SELECT e.* FROM Terrain t JOIN TerrainErosion e ON e.id = t.erosion WHERE t.id = :terrain" );
+	query.bind( ":terrain", terrainId );
+	if( !query.executeStep() )
+		return;
+	GS::TerrainErosionSettings& erosion = level.terrainErosion.emplace();
+	erosion.id = query.getColumn( "id" ).getUInt();
+	for( const auto& [column, field] : erosionFloatColumns )
+		if( !query.getColumn( column ).isNull() )
+			erosion.*field = static_cast<float>( query.getColumn( column ).getDouble() );
+	for( const auto& [column, field] : erosionIntColumns )
+		if( !query.getColumn( column ).isNull() )
+			erosion.*field = query.getColumn( column ).getInt();
+	if( !query.getColumn( "seed" ).isNull() )
+		erosion.seed = static_cast<uint32_t>( query.getColumn( "seed" ).getInt64() );
 }
 
 void LibraryLoader::loadWaterChannels( uint32_t waterSimulationId, GS::WaterChannelsSettings& channels )
@@ -95,6 +137,24 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 			updateTerrain.bind( ":farEnd", dbValue( terrain->farBlendEnd ) );
 			updateTerrain.bind( ":id", terrain->id );
 			updateTerrain.exec();
+
+			// Эрозия: строка TerrainErosion по id
+			if( terrain->erosion && terrain->erosion->id )
+			{
+				std::string assignments = "seed = :seed";
+				for( const auto& [column, field] : erosionFloatColumns )
+					assignments += std::string( ", " ) + column + " = :" + column;
+				for( const auto& [column, field] : erosionIntColumns )
+					assignments += std::string( ", " ) + column + " = :" + column;
+				SQLite::Statement updateErosion( db, "UPDATE TerrainErosion SET " + assignments + " WHERE id = :id" );
+				updateErosion.bind( ":seed", static_cast<int64_t>( terrain->erosion->seed ) );
+				for( const auto& [column, field] : erosionFloatColumns )
+					updateErosion.bind( std::string( ":" ) + column, dbValue( ( *terrain->erosion ).*field ) );
+				for( const auto& [column, field] : erosionIntColumns )
+					updateErosion.bind( std::string( ":" ) + column, ( *terrain->erosion ).*field );
+				updateErosion.bind( ":id", terrain->erosion->id );
+				updateErosion.exec();
+			}
 
 			SQLite::Statement updateLayer( db, "UPDATE TerrainLayers SET tiling = :tiling WHERE terrain = :terrain AND layer = :layer" );
 			for( uint32_t layer = 0; layer < terrain->layerTiling.size(); ++layer )

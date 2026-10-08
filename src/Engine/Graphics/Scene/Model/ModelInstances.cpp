@@ -5,6 +5,8 @@
 #include <unordered_set>
 #include "System.h"
 #include "Shaders\lod_transition.h"
+#include "Terrain\TerrainHeightSource.h"
+#include <cfloat>
 
 using namespace DirectX;
 
@@ -171,6 +173,58 @@ void ModelInstances::setInstanceMatrix( int instance, FXMMATRIX matrix )
 	const XMVECTOR current = XMLoadFloat4( &m_instances[instance].transform.rotation() );
 	if( std::abs( XMVectorGetX( XMVector4Dot( current, rotation ) ) ) < 0.999999f )
 		properties["Rotation"].setData( quaternionToAngles( quaternion ) );
+}
+
+size_t ModelInstances::reseat( const std::function<float( float x, float z, float radius )>& shift )
+{
+	size_t moved = 0;
+	for( Instance& instance : m_instances )
+	{
+		// Размер модели — по масштабу экземпляра (примитивы и тестовые модели — около метра), не меньше метра
+		const XMFLOAT3& scale = instance.transform.scale();
+		const float radius = std::max( 0.5f * std::max( std::abs( scale.x ), std::abs( scale.z ) ), 1.0f );
+		XMFLOAT3 position = instance.properties->property( "Position" ).data<XMFLOAT3>();
+		const float dy = shift( position.x, position.z, radius );
+		if( std::abs( dy ) < 1e-3f )
+			continue;
+		position.y += dy;
+		instance.properties->property( "Position" ).setData( position );
+		++moved;
+	}
+	return moved;
+}
+
+bool ModelInstances::snapToTerrain( int instance, const TerrainHeightSource& terrain )
+{
+	DirectX::BoundingOrientedBox box;
+	if( instance < 0 || instance >= static_cast<int>( m_instances.size() ) || !instanceBox( instance, box ) )
+		return false;
+	XMFLOAT3 corners[DirectX::BoundingOrientedBox::CORNER_COUNT];
+	box.GetCorners( corners );
+	XMFLOAT3 low = corners[0];
+	XMFLOAT3 high = corners[0];
+	for( const XMFLOAT3& corner : corners )
+	{
+		low = XMFLOAT3( std::min( low.x, corner.x ), std::min( low.y, corner.y ), std::min( low.z, corner.z ) );
+		high = XMFLOAT3( std::max( high.x, corner.x ), std::max( high.y, corner.y ), std::max( high.z, corner.z ) );
+	}
+	// Земля под границами — сетка 5 × 5 точек, самая высокая
+	float ground = -FLT_MAX;
+	for( int i = 0; i < 5; ++i )
+	{
+		for( int j = 0; j < 5; ++j )
+		{
+			float height = 0.0f;
+			if( terrain.surfaceHeight( low.x + ( high.x - low.x ) * i / 4.0f, low.z + ( high.z - low.z ) * j / 4.0f, height ) )
+				ground = std::max( ground, height );
+		}
+	}
+	if( ground == -FLT_MAX )
+		return false;
+	XMFLOAT3 position = m_instances[instance].properties->property( "Position" ).data<XMFLOAT3>();
+	position.y += ground - low.y;
+	m_instances[instance].properties->property( "Position" ).setData( position );
+	return true;
 }
 
 bool ModelInstances::instanceBox( int instance, DirectX::BoundingOrientedBox& box ) const

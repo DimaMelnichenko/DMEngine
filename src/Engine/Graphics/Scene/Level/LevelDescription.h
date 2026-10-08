@@ -49,6 +49,7 @@ struct LevelDescription
 	std::string name;
 	std::optional<uint32_t> terrain;	// строка таблицы Terrain
 	std::vector<GS::TerrainEdit> terrainEdits;	// правки его рельефа по порядку слоёв: таблицы TerrainEdits / TerrainEditPoints
+	std::optional<GS::TerrainErosionSettings> terrainErosion;	// эрозия его карты высот (Terrain.erosion); NULL — нет
 	std::optional<uint32_t> waterSimulationId;	// строка WaterSimulation: вода по рельефу; NULL — воды нет
 	std::optional<GS::WaterSimulationSettings> waterSimulation;
 	std::optional<uint32_t> sky;		// модель небесной сферы

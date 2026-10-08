@@ -20,9 +20,12 @@ public:
 	static ShaderCompiler& instance();
 
 	// file — путь к HLSL (Shaders\x.ps), entry — точка входа, profile — vs_6_6 / ps_6_6 / gs_6_6 / cs_6_6,
-	// defines — "A=1,B" (как у ShaderProgram::addShaderPassFromFile). Ошибки — в лог и shader-error.txt
+	// defines — "A=1,B" (как у ShaderProgram::addShaderPassFromFile). Ошибки — в лог и shader-error.txt.
+	// reproducible — одинаковый результат в Debug и Release: тот же байткод (-O3 без отладочной информации) и строгий IEEE
+	// (-Gis: драйвер не сливает умножение со сложением и не переставляет операции — иначе debug-слой и GPU-based validation,
+	// меняя код шейдера, меняли бы и округление). Для шейдеров, которые генерируют данные, кэшируемые на диске (эрозия)
 	bool compile( const std::string& file, const std::string& entry, const std::string& profile, const std::string& defines,
-				  std::vector<uint8_t>& bytecode );
+				  std::vector<uint8_t>& bytecode, bool reproducible = false );
 	// Профиль стадии для compile
 	static std::string profile( ShaderStageType type );
 	// Сколько шейдеров скомпилировано и сколько взято из кэша с начала работы — строка в лог

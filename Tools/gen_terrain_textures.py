@@ -4,8 +4,8 @@
 #   сквозь траву);
 #   <слой>_normal.dds — RGB нормаль (соглашение DirectX: G смотрит вдоль +v, вниз по картинке), A шероховатость.
 # Splat-карта Textures\terrain\splatmap.dds (массив из двух RGBA: срез 0 — веса слоёв 0…3, срез 1 — 4…7; слой 4 —
-# вторая трава) строится по карте высот Textures\terrain\heightmap.dds, картам эрозии рядом с ней (flow, wear,
-# deposition, talus — их пишет Tools/gen_heightmap.py) и строке Terrain из base.db3: снег на вершинах и ниже на северных
+# вторая трава) строится по рельефу после эрозии и картам эрозии (Textures\terrain\eroded: height, flow, wear,
+# deposition, talus — их пишет движок при загрузке, TerrainErosion) и строке Terrain из base.db3: снег на вершинах и ниже на северных
 # склонах, скала на крутых склонах и в промоинах, осыпи у подножий скал и в руслах, остальное трава — сочная на
 # влажном, суше выше. Там же маски плотности для расстановки (Textures\terrain, значение в RGB): mask_grass — вес
 # травы, mask_camomile — пятна цветов в траве, mask_pebbles — вес осыпей.
@@ -14,7 +14,8 @@
 # кусты вдоль ручьёв, mask_shrubs_slope — стланик над границей леса и кусты на сухих прогалинах; лес — не на скале,
 # снегу, осыпях и в руслах, ниже границы леса, на дне долины — луга с редкими рощами.
 # Результат детерминирован (у масок леса свой генератор: остальное от них не меняется). Нужен numpy.
-# Запускать из корня проекта после Tools/gen_heightmap.py:
+# Splat-карта и маски — такие же входные файлы, как любая текстура: их можно поправить в любой программе. Запускать из
+# корня проекта после первого запуска движка с новой картой высот (он пишет каталог eroded):
 #   python Tools/gen_terrain_textures.py [--preview файл.png] [--forest-preview файл.png]
 import os
 import sqlite3
@@ -27,7 +28,7 @@ import preview
 
 LAYER_SIZE = 512
 LAYERS_DIR = os.path.join('Textures', 'terrain', 'layers')
-HEIGHTMAP = os.path.join('Textures', 'terrain', 'heightmap.dds')
+ERODED = os.path.join('Textures', 'terrain', 'eroded')
 SPLATMAP = os.path.join('Textures', 'terrain', 'splatmap.dds')
 
 
@@ -177,19 +178,23 @@ def snow(rng):
 
 
 def splatmap(rng, preview_path=None, forest_preview_path=None):
-    height = dds.read_r16(HEIGHTMAP)
-    size = height.shape[0]
     db = sqlite3.connect('base.db3')
-    height_multiplier, texel_size = db.execute(
-        "select height_multiplier, width_multiplier from Terrain where name = 'Terrain'").fetchone()
+    height_multiplier, height_offset, texel_size = db.execute(
+        "select height_multiplier, height_offset, width_multiplier from Terrain where name = 'Terrain'").fetchone()
     db.close()
-    # Карты эрозии (Tools/gen_heightmap.py); без них — нули: правила ниже работают по высоте и уклону
+    # Рельеф после эрозии движка, нормированный (0…1 — как исходная карта: правила ниже — в долях высоты)
+    height_path = os.path.join(ERODED, 'height.dds')
+    if not os.path.exists(height_path):
+        sys.exit('no %s - run the engine once with the terrain heightmap (it writes the eroded terrain)' % height_path)
+    height = (dds.read_r32f(height_path) - height_offset) / height_multiplier
+    size = height.shape[0]
+    # Карты эрозии движка; без них — нули: правила ниже работают по высоте и уклону
     maps = {}
     for name in ('flow', 'wear', 'deposition', 'talus'):
-        path = os.path.join('Textures', 'terrain', name + '.dds')
+        path = os.path.join(ERODED, name + '.dds')
         maps[name] = dds.read_r32f(path) if os.path.exists(path) else np.zeros_like(height)
         if not os.path.exists(path):
-            print('no', path, '- run Tools/gen_heightmap.py first')
+            print('no', path, '- run the engine once (it writes the erosion maps)')
     cell_area = texel_size * texel_size
     log_flow = np.log10(np.maximum(maps['flow'], cell_area))
 

@@ -2,6 +2,7 @@
 
 #include "Level\LevelSettings.h"
 #include <array>
+#include <optional>
 #include <vector>
 #include "SceneObject.h"
 #include "GridMesh.h"
@@ -31,8 +32,18 @@ public:
 	// terrainId — строка таблицы Terrain, edits — правки рельефа уровня по порядку слоёв (накладываются на копию карты
 	// высот при загрузке: её читают вершины, узлы квадродерева и всё, что стоит на рельефе; их очистка растительности —
 	// маска для расстановки, покраска — в splat-карту материала). water — вода уровня: после правок по итоговому рельефу
-	// конвейер (TerrainHydrology) режет русла и строит ручьи и маску озёр; nullptr — воды нет
-	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {}, const WaterSimulationSettings* water = nullptr );
+	// конвейер (TerrainHydrology) режет русла и строит ручьи и маску озёр; nullptr — воды нет. erosion — эрозия исходной
+	// карты до правок (TerrainErosion, кэш — каталог eroded\ рядом с картой высот); nullptr — карта уже готова
+	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {}, const WaterSimulationSettings* water = nullptr,
+					 const TerrainErosionSettings* erosion = nullptr );
+	// Рельеф после эрозии сменился, а пересадка моделей на него ещё не сохранена (eroded\\previous.dds — прежний рельеф):
+	// модели уровня пересаживаются при каждой загрузке, пока «Save level» не закрепит (confirmErosionChange).
+	// Разница «самой высокой точки земли под моделью» (круг radius вокруг x, z) между новым и прежним рельефом после эрозии, м
+	bool erosionChanged() const { return !m_previousEroded.empty(); }
+	float erosionShift( float x, float z, float radius ) const;
+	// Пересадка сохранена в базе: прежний рельеф больше не нужен
+	void confirmErosionChange();
+	void releaseErosionChange() { m_previousEroded.clear(); m_previousEroded.shrink_to_fit(); m_eroded.clear(); m_eroded.shrink_to_fit(); }
 	// Русла, ручьи, растр статичной воды и приток — для WaterSimulation; nullptr — у уровня нет воды
 	const TerrainHydrology::Result* hydrology() const { return m_hasHydrology ? &m_hydrology : nullptr; }
 	// Карта высот и её масштаб: по ним стоят расстановка травы и декора и частицы
@@ -89,6 +100,10 @@ private:
 	};
 
 	bool loadSettings( uint32_t terrainId, TerrainSettings& settings, std::string& splatMap );
+	// Эрозия карты field (нормированные высоты) — из кэша eroded\ или на GPU с записью кэша и карт эрозии
+	bool erode( HeightField& field, const TerrainErosionSettings& erosion );
+	// Подокно «Erosion»: параметры эрозии (применяются при следующей загрузке)
+	void addErosionProperties( const TerrainErosionSettings& erosion );
 	bool createShader();
 	// Копия карты высот с правками рельефа и мипами для вершинного шейдера и минимум / максимум высоты каждого узла по
 	// мипам его уровня; coverage — что правки делают, кроме высоты
@@ -116,6 +131,12 @@ private:
 	uint32_t m_cpuSize = 0;
 	TerrainHydrology::Result m_hydrology;	// конвейер рельефа и воды: русла по итоговому рельефу
 	bool m_hasHydrology = false;
+	std::string m_erodedDirectory;			// кэш и карты эрозии: Textures\<каталог карты высот>\eroded
+	std::optional<TerrainErosionSettings> m_erosion;
+	PropertyContainer m_erosionProperties;	// «Erosion»
+	// Рельеф после эрозии, м: прежний (из кэша до пересчёта) и новый — для пересадки моделей, пока она не сделана
+	std::vector<float> m_previousEroded;
+	std::vector<float> m_eroded;
 	PropertyContainer m_layerProperties;	// «Layer tiling»: метров на повтор по слоям — подокно окна террейна
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;

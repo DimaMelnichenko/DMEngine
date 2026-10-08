@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -11,6 +12,8 @@
 
 namespace GS
 {
+
+class TerrainHeightSource;
 
 // Модели уровня (таблица LevelModels): у каждого экземпляра свой трансформ, модель — общий ресурс. За каждый вид
 // выбирает LOD экземпляра по расстоянию от точки LOD вида, отсекает его по frustum вида (границы меша в мировых
@@ -43,6 +46,11 @@ public:
 	uint32_t instanceCount() const { return static_cast<uint32_t>( m_instances.size() ); }
 	// Границы LOD 0 экземпляра в мире (рамка выбранного); false — у модели нет LOD
 	bool instanceBox( int instance, DirectX::BoundingOrientedBox& box ) const;
+	// Пересадка на новую землю (эрозия пересчитана): y экземпляра сдвигается на shift( x, z, радиус под моделью ) — через
+	// свойства окна, правка видна как изменённая. Возвращает, сколько экземпляров сдвинуто
+	size_t reseat( const std::function<float( float x, float z, float radius )>& shift );
+	// На землю (End, как в UE): низ границ LOD 0 — на самую высокую точку земли под ними. false — земли под ним нет
+	bool snapToTerrain( int instance, const TerrainHeightSource& terrain );
 	// Мировая матрица экземпляра и её запись в свойства окна (положение, поворот углами, масштаб) — гизмо вьюпорта;
 	// трансформ меняется в update, как после правки в Details
 	DirectX::XMMATRIX instanceMatrix( int instance ) const { return m_instances[instance].transform.worldMatrix(); }

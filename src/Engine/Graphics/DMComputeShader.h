@@ -11,7 +11,8 @@ public:
 	DMComputeShader();
 	~DMComputeShader();
 
-	bool Initialize( const std::string& file_name, const std::string& function_name );
+	// reproducible — одинаковый байткод в Debug и Release (ShaderCompiler::compile): шейдеры, чей результат кэшируется на диске
+	bool Initialize( const std::string& file_name, const std::string& function_name, bool reproducible = false );
 	void setUAVBuffer( int index, const StorageView& view );
 	void Dispatch( uint16_t width, uint16_t height, float elapsed_time );
 	void Dispatch( uint32_t numElements, float elapsed_time );

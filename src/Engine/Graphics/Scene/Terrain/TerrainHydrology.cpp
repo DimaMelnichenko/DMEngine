@@ -239,6 +239,36 @@ std::vector<double> lakeLevels( const std::vector<double>& filled, const std::ve
 
 }
 
+namespace
+{
+
+Grid gridMetres( const HeightField& field )
+{
+	const int n = static_cast<int>( field.size );
+	Grid height;
+	height.size = n;
+	height.values.resize( static_cast<size_t>( n ) * n );
+	for( int row = 0; row < n; ++row )
+		for( int col = 0; col < n; ++col )
+			height.values[static_cast<size_t>( row ) * n + col] =
+				static_cast<double>( field.heights[row * field.rowPitch + col] ) * field.heightMultiplier + field.heightOffset;
+	return height;
+}
+
+}
+
+std::vector<float> TerrainHydrology::catchment( const HeightField& field )
+{
+	if( field.size < 3 )
+		return {};
+	const Grid height = gridMetres( field );
+	const std::vector<double> filled = fillDepressions( height );
+	const std::vector<int> receiver = receivers( filled, height.size );
+	const double cellArea = static_cast<double>( field.texelSize ) * field.texelSize;
+	const std::vector<double> area = accumulate( std::vector<double>( filled.size(), cellArea ), receiver, downhillOrder( filled ) );
+	return std::vector<float>( area.begin(), area.end() );
+}
+
 bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSettings& water, Result& result )
 {
 	const WaterChannelsSettings& p = water.channels;
@@ -248,13 +278,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	const size_t cells = static_cast<size_t>( n ) * n;
 	const double cell = field.texelSize;
 
-	Grid height;
-	height.size = n;
-	height.values.resize( cells );
-	for( int row = 0; row < n; ++row )
-		for( int col = 0; col < n; ++col )
-			height.values[static_cast<size_t>( row ) * n + col] =
-				static_cast<double>( field.heights[row * field.rowPitch + col] ) * field.heightMultiplier + field.heightOffset;
+	const Grid height = gridMetres( field );
 
 	// 1. Сток по заполненной карте и водосбор
 	const std::vector<double> filled = fillDepressions( height );

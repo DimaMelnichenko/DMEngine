@@ -108,6 +108,10 @@ F (или View → «Walk on terrain») переключает камеру с �
   экземпляра (у масштаба — всегда свои). Перетаскивание пишет матрицу в свойства окна (`ModelInstances::setInstanceMatrix`:
   положение, углы, масштаб), поэтому отметка изменённого, «reset» и «Save level» работают как при правке в Details.
   Над панелями гизмо мышь не берёт. ImGuizmo понимает обратную глубину: луч берётся от ближайшей к камере точки.
+- **На землю** — «Snap to terrain» (File, End, как в UE; `ModelInstances::snapToTerrain`): выбранный экземпляр
+  сдвигается по высоте так, что низ его границ LOD 0 ложится на самую высокую точку земли под ними (сетка 5 × 5 точек
+  `TerrainHeightSource::surfaceHeight`). Правка — через свойства окна, как у гизмо. Все экземпляры уровня сдвигаются так
+  же сами, когда сменился рельеф после эрозии ([terrain.md](terrain.md), «Эрозия»).
 - **Удалённое управление:** `pick x y` — тот же выбор лучом через точку окна (снимки выбора сценарием).
 
 Рамка и гизмо рисуются в фоновый список ImGui — под панелями, поверх сцены.
@@ -120,8 +124,8 @@ Details строка «Saved with the level», у остальных — «Not s
 | Окно | Куда |
 |---|---|
 | Lights, Sky atmosphere / HDRI backdrop, Volumetric cloud, Height fog, Post process, Wind | строки окружения уровня (`LibraryLoader::saveLevelEnvironment`) |
-| Model instances | строки `LevelModels`: положение, поворот (кватернион из углов окна), масштаб ([models.md](models.md)) |
-| CDLOD terrain | строка `Terrain` (множитель высоты, triplanar, смешение по высоте, второй масштаб) и `tiling` строк `TerrainLayers` («Layer tiling») |
+| Model instances | строки `LevelModels`: положение, поворот (кватернион из углов окна), масштаб ([models.md](models.md)); пересадка на рельеф после новой эрозии закрепляется — `eroded\previous.dds` удаляется |
+| CDLOD terrain | строка `Terrain` (множитель высоты, triplanar, смешение по высоте, второй масштаб), `tiling` строк `TerrainLayers` («Layer tiling») и строка `TerrainErosion` (подокно «Erosion»; новая эрозия — при следующей загрузке) |
 | Наборы расстановки | строки `ScatterLayers` (шаг, кольцо, исчезание, размер, разброс, поворот, выравнивание, тень) и `ScatterLayerModels` (вес и тень варианта) |
 | Water simulation | строка `WaterSimulation` уровня (источники, дождь, Маннинг, поверхность) |
 | Particles | строки `ParticleEmitters` (всё, кроме способа рождения, формы, маски и ёмкости) |

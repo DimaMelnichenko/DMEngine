@@ -130,7 +130,8 @@ bool Scene::initialize( bool particles )
 	if( m_level.terrain )
 	{
 		// Рельеф с ручными правками, затем русла и ручьи по нему (конвейер рельефа и воды) — если у уровня есть вода
-		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits, m_level.waterSimulation ? &*m_level.waterSimulation : nullptr ) )
+		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits, m_level.waterSimulation ? &*m_level.waterSimulation : nullptr,
+								   m_level.terrainErosion ? &*m_level.terrainErosion : nullptr ) )
 			return false;
 		LOG( "Terrain init ms: " + elapsedMs( timeStart ) );
 	}
@@ -143,6 +144,13 @@ bool Scene::initialize( bool particles )
 	if( m_level.sky )
 		m_sky.setModel( *m_level.sky );
 	m_models.initialize( m_level.modelInstances );
+	// Эрозия посчитана заново — экземпляры моделей на новую землю (правка окна «Model instances», в базу — «Save level»)
+	if( m_terrain.erosionChanged() )
+	{
+		const size_t moved = m_models.reseat( [this]( float x, float z, float radius ) { return m_terrain.erosionShift( x, z, radius ); } );
+		LOG( "Model instances moved to the new eroded terrain: " + std::to_string( moved ) + " (File > Save level keeps it)" );
+		m_terrain.releaseErosionChange();
+	}
 
 	timeStart = std::chrono::high_resolution_clock::now();
 	for( const LevelDescription::ScatterSet& set : m_level.scatterSets )
@@ -306,7 +314,12 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	std::vector<ParticleEmitterSettings> emitters;
 	if( m_particles.initialized() )
 		emitters = m_particles.emitterSettings();
-	return library.saveLevelScene( m_level, m_models.instances(), terrain, scatterLayers, water, emitters );
+	if( !library.saveLevelScene( m_level, m_models.instances(), terrain, scatterLayers, water, emitters ) )
+		return false;
+	// Экземпляры моделей в базе — на нынешней земле: пересадка после эрозии закреплена
+	if( m_level.terrain )
+		m_terrain.confirmErosionChange();
+	return true;
 }
 
 DirectX::XMFLOAT4 Scene::cloudShadow( const RenderView& view )

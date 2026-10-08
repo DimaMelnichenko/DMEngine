@@ -1,16 +1,12 @@
-# Карта высот террейна: горная долина с эрозией, как в World Machine и Gaea у Valley Benchmark (docs/terrain.md,
-# «Рельеф: долина и эрозия»). Размер мира и высота — из строки Terrain в base.db3 (width_multiplier — метров на тексель,
-# height_multiplier — метров на 1,0 карты), все размеры рельефа — в метрах. Шаги:
-#   1. исходная долина: дно петляет с юга на север и понижается к северу, U-образные склоны поднимаются к хребтам
-#      (ridged multifractal на шуме Перлина с искажением координат);
-#   2. гидравлическая эрозия каплями и осыпание (Tools/erosion.py);
-#   3. водосбор по стоку D8 (Tools/erosion.py);
-#   4. запись: Textures\terrain\heightmap.dds (R16_UNORM, 0…1) и карты эрозии R32_FLOAT рядом — flow (водосбор, м²),
-#      wear (размыв, м), deposition (отложения воды, м), talus (осыпи, м). Их читает Tools/gen_terrain_textures.py;
-#   5. экземпляры моделей уровней с этим террейном (LevelModels) сдвигаются по высоте на разницу новой и прежней
-#      карт — стоят на земле, как стояли (--keep-models — не трогать).
-# Результат детерминирован (seed). Около двух минут на 1024 × 1024. Нужен numpy. Запускать из корня проекта:
-#   python Tools/gen_heightmap.py [--size 1024] [--droplets N] [--no-erosion] [--keep-models] [--preview файл.png]
+# Исходная карта высот террейна: горная долина без эрозии (docs/terrain.md, «Рельеф: долина и эрозия») — один из
+# источников карты, как World Machine или Gaea. Эрозию (капли и осыпание), водосбор, карты эрозии и пересадку моделей на
+# новую землю делает движок при загрузке — первая ступень конвейера рельефа и воды (TerrainErosion, строка
+# TerrainErosion у террейна). Размер мира и высота — из строки Terrain в base.db3 (width_multiplier — метров на тексель,
+# height_multiplier — метров на 1,0 карты), все размеры рельефа — в метрах: дно петляет с юга на север и понижается к
+# северу, U-образные склоны поднимаются к хребтам (ridged multifractal на шуме Перлина с искажением координат).
+# Запись: Textures\terrain\heightmap.dds (R16_UNORM, 0…1). Результат детерминирован (seed), секунды. Нужен numpy.
+# Запускать из корня проекта:
+#   python Tools/gen_heightmap.py [--size 1024] [--seed 7] [--preview файл.png]
 import argparse
 import math
 import os
@@ -22,7 +18,6 @@ import numpy as np
 import dds
 import erosion
 import preview
-from terrain import sample
 
 TERRAIN_DIR = os.path.join('Textures', 'terrain')
 HEIGHTMAP = os.path.join(TERRAIN_DIR, 'heightmap.dds')
@@ -124,29 +119,6 @@ def valley(size, cell, height_range, rng):
     return h * height_range
 
 
-def footprint_top(height, x, z, radius, cell):
-    """Самая высокая точка земли под моделью — в круге radius вокруг (x, z), по сетке 5 × 5 точек"""
-    offsets = np.linspace(-radius, radius, 5)
-    return max(sample(height, x + ox, z + oz, cell) for ox in offsets for oz in offsets
-               if ox * ox + oz * oz <= radius * radius + 1e-6)
-
-
-def reseat_models(db, terrain_id, old, new, cell):
-    """Экземпляры моделей уровней с этим террейном стоят на новой земле так же, как на прежней: y сдвигается на разницу
-    самых высоких точек земли под моделью. Не по центру: шар, лежавший на склоне, на ровном месте иначе повис бы.
-    Размер модели — по масштабу экземпляра (примитивы и тестовые модели — около 1 м), не меньше метра"""
-    rows = db.execute('SELECT lm.id, lm.position, lm.scale FROM LevelModels lm JOIN Levels l ON l.id = lm.level '
-                      'WHERE l.terrain = ?', (terrain_id,)).fetchall()
-    for instance, position, scale in rows:
-        x, y, z = (float(v) for v in position.split(','))
-        sx, _, sz = (float(v) for v in scale.split(','))
-        radius = max(0.5 * max(abs(sx), abs(sz)), 1.0)
-        shift = footprint_top(new, x, z, radius, cell) - footprint_top(old, x, z, radius, cell)
-        db.execute('UPDATE LevelModels SET position = ? WHERE id = ?', ('%g,%g,%g' % (x, round(y + shift, 2), z), instance))
-    db.commit()
-    print('models moved to the new terrain:', len(rows))
-
-
 def write_preview(path, height, flow, cell):
     """Отмывка рельефа, цвет по высоте, русла (водосбор больше 2000 м²) — синим"""
     t = (height - height.min()) / (height.max() - height.min())
@@ -161,56 +133,26 @@ def write_preview(path, height, flow, cell):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Terrain heightmap: mountain valley with erosion')
+    parser = argparse.ArgumentParser(description='Source terrain heightmap: mountain valley without erosion')
     parser.add_argument('--size', type=int, default=1024)
-    parser.add_argument('--droplets', type=int, default=1000000, help='hydraulic erosion droplets')
-    parser.add_argument('--no-erosion', action='store_true')
-    parser.add_argument('--keep-models', action='store_true', help='do not move LevelModels to the new terrain')
     parser.add_argument('--preview', help='PNG with a hillshade and water channels')
     parser.add_argument('--seed', type=int, default=7)
     args = parser.parse_args()
 
     db = sqlite3.connect('base.db3')
-    terrain_id, height_range, cell = db.execute(
-        "SELECT id, height_multiplier, width_multiplier FROM Terrain WHERE name = 'Terrain'").fetchone()
+    height_range, cell = db.execute(
+        "SELECT height_multiplier, width_multiplier FROM Terrain WHERE name = 'Terrain'").fetchone()
+    db.close()
     rng = np.random.default_rng(args.seed)
     start = time.time()
 
     height = valley(args.size, cell, height_range, rng)
-    wear = np.zeros_like(height)
-    deposition = np.zeros_like(height)
-    talus = np.zeros_like(height)
-    if not args.no_erosion:
-        # Дождь неравномерен: где капель больше — промоины глубже, склоны не ребристые одинаково
-        noise = Perlin(rng)
-        x = (np.arange(args.size) + 0.5) * cell
-        X, Z = np.meshgrid(x, x)
-        rain = 0.25 + 0.75 * smoothstep(-0.3, 0.3, fbm(noise, X / 250.0, Z / 250.0, 3))
-        height, wear, deposition = erosion.hydraulic_erosion(height, cell, args.droplets, rng, rain=rain)
-        print('hydraulic erosion: %.1f s' % (time.time() - start))
-        height, talus = erosion.thermal_erosion(height, cell)
-        print('thermal erosion: %.1f s' % (time.time() - start))
-    flow, _ = erosion.flow_accumulation(height, cell)
-    print('flow accumulation: %.1f s' % (time.time() - start))
-
-    # В 0…1 карты; эрозия чуть меняет размах — карты в метрах пересчитываются тем же множителем
-    low, high = height.min(), height.max()
-    scale = height_range / (high - low)
-    normalized = (height - low) / (high - low)
-
-    if os.path.exists(HEIGHTMAP) and not args.keep_models:
-        old = dds.read_r16(HEIGHTMAP) * height_range
-        reseat_models(db, terrain_id, old, normalized * height_range, cell)
-    db.close()
-
+    normalized = (height - height.min()) / (height.max() - height.min())
     dds.write_r16(HEIGHTMAP, normalized)
-    dds.write_r32f(os.path.join(TERRAIN_DIR, 'flow.dds'), flow)
-    dds.write_r32f(os.path.join(TERRAIN_DIR, 'wear.dds'), wear * scale)
-    dds.write_r32f(os.path.join(TERRAIN_DIR, 'deposition.dds'), deposition * scale)
-    dds.write_r32f(os.path.join(TERRAIN_DIR, 'talus.dds'), talus * scale)
     if args.preview:
+        flow, _ = erosion.flow_accumulation(normalized * height_range, cell)
         write_preview(args.preview, normalized * height_range, flow, cell)
-    print('done in %.1f s' % (time.time() - start))
+    print('source valley written in %.1f s; erosion - the engine at load (TerrainErosion)' % (time.time() - start))
 
 
 if __name__ == '__main__':

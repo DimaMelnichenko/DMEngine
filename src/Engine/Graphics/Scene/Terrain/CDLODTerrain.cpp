@@ -1,5 +1,6 @@
 #include "CDLODTerrain.h"
 #include "TerrainEdits.h"
+#include "TerrainErosion.h"
 #include "D3D\TextureImages.h"
 #include "Shaders\slots.h"
 #include <algorithm>
@@ -8,6 +9,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <filesystem>
 #include <DirectXTex.h>
 #include "System.h"
 #include "ConstantBuffers.h"
@@ -37,8 +40,11 @@ CDLODTerrain::CDLODTerrain() :
 {
 }
 
-bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water )
+bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water,
+							   const TerrainErosionSettings* erosion )
 {
+	if( erosion )
+		m_erosion = *erosion;
 	TerrainSettings settings;
 	std::string splatMap;
 	if( !loadSettings( terrainId, settings, splatMap ) )
@@ -131,6 +137,8 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 		prop->setLogarithmic()->setUnit( "m" )->setTooltip( "Metres per texture repeat" );
 	}
 	m_properties.addSubContainer( &m_layerProperties );
+	if( m_erosion )
+		addErosionProperties( *m_erosion );
 
 	m_properties.insert( "Wireframe", false );
 	m_properties.insert( "Show LOD", false );
@@ -208,6 +216,17 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings, 
 	m_heightOffset = static_cast<float>( query.getColumn( "height_offset" ).getDouble() );
 	m_texelSize = static_cast<float>( query.getColumn( "width_multiplier" ).getDouble() );
 
+	// Кэш и карты эрозии — рядом с файлом карты высот: Textures\<его каталог>\eroded
+	SQLite::Statement file( DBConnector::instance().db(), "select file from Textures where name = :name" );
+	file.bind( ":name", m_heightMapName );
+	std::string directory;
+	if( file.executeStep() )
+	{
+		const std::string path = file.getColumn( "file" ).getString();
+		const size_t slash = path.find_last_of( "\\/" );
+		directory = slash == std::string::npos ? std::string() : path.substr( 0, slash );
+	}
+	m_erodedDirectory = "Textures\\" + ( directory.empty() ? std::string() : directory + "\\" ) + "eroded";
 	return true;
 }
 
@@ -272,7 +291,26 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 	}
 
 	ScratchImage converted;
-	if( image->format != DXGI_FORMAT_R32_FLOAT )
+	if( image->format == DXGI_FORMAT_R16_UNORM )
+	{
+		// R16 — сами, точным делением: Convert DirectXTex округляет в Debug и Release по-разному (SIMD), а от исходной карты
+		// зависит кэш эрозии и её результат
+		if( FAILED( converted.Initialize2D( DXGI_FORMAT_R32_FLOAT, image->width, image->height, 1, 1 ) ) )
+		{
+			LOG( "CDLOD terrain: can`t convert heightmap to R32_FLOAT" );
+			return false;
+		}
+		const Image* target = converted.GetImage( 0, 0, 0 );
+		for( size_t row = 0; row < image->height; ++row )
+		{
+			const uint16_t* from = reinterpret_cast<const uint16_t*>( image->pixels + row * image->rowPitch );
+			float* to = reinterpret_cast<float*>( target->pixels + row * target->rowPitch );
+			for( size_t col = 0; col < image->width; ++col )
+				to[col] = static_cast<float>( from[col] ) / 65535.0f;
+		}
+		image = target;
+	}
+	else if( image->format != DXGI_FORMAT_R32_FLOAT )
 	{
 		if( FAILED( Convert( *image, DXGI_FORMAT_R32_FLOAT, TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT, converted ) ) )
 		{
@@ -291,6 +329,9 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 	field.texelSize = m_texelSize;
 	field.heightMultiplier = m_heightMultiplier;
 	field.heightOffset = m_heightOffset;
+	// Первая ступень — эрозия исходной карты (до правок: правки — поверх размытого рельефа)
+	if( m_erosion && !erode( field, *m_erosion ) )
+		return false;
 	if( !edits.empty() )
 	{
 		std::vector<TerrainEdit> loaded = edits;
@@ -511,6 +552,211 @@ bool CDLODTerrain::surfaceHeight( float x, float z, float& height ) const
 	return true;
 }
 
+namespace
+{
+
+// Отпечаток FNV-1a 64 — ключ кэша эрозии
+struct Fingerprint
+{
+	uint64_t value = 1469598103934665603ull;
+	void add( const void* data, size_t size )
+	{
+		const uint8_t* bytes = static_cast<const uint8_t*>( data );
+		for( size_t i = 0; i < size; ++i )
+			value = ( value ^ bytes[i] ) * 1099511628211ull;
+	}
+	template<typename T> void add( const T& v ) { add( &v, sizeof( v ) ); }
+};
+
+bool loadFloatDDS( const std::string& path, uint32_t size, std::vector<float>& values )
+{
+	ScratchImage image;
+	const std::wstring wide( path.begin(), path.end() );
+	if( FAILED( LoadFromDDSFile( wide.c_str(), DDS_FLAGS_NONE, nullptr, image ) ) || image.GetMetadata().format != DXGI_FORMAT_R32_FLOAT ||
+		image.GetMetadata().width != size || image.GetMetadata().height != size )
+		return false;
+	const Image* level = image.GetImage( 0, 0, 0 );
+	values.resize( static_cast<size_t>( size ) * size );
+	for( uint32_t row = 0; row < size; ++row )
+		memcpy( &values[static_cast<size_t>( row ) * size], level->pixels + row * level->rowPitch, size * sizeof( float ) );
+	return true;
+}
+
+bool saveFloatDDS( const std::string& path, uint32_t size, const std::vector<float>& values )
+{
+	return GpuImages::saveFloatDDS( std::wstring( path.begin(), path.end() ), size, size, values.data() );
+}
+
+// Высота земли в точке рельефа, м (строки сверху вниз; z = W − (строка + 0,5) · шаг), билинейно
+float sampleMetres( const std::vector<float>& heights, uint32_t size, float cell, float x, float z )
+{
+	const float col = std::clamp( x / cell - 0.5f, 0.0f, size - 1.001f );
+	const float row = std::clamp( ( size * cell - z ) / cell - 0.5f, 0.0f, size - 1.001f );
+	const uint32_t c = static_cast<uint32_t>( col );
+	const uint32_t r = static_cast<uint32_t>( row );
+	const float fc = col - c;
+	const float fr = row - r;
+	auto at = [&]( uint32_t rr, uint32_t cc ) { return heights[static_cast<size_t>( rr ) * size + cc]; };
+	const float top = at( r, c ) + ( at( r, c + 1 ) - at( r, c ) ) * fc;
+	const float bottom = at( r + 1, c ) + ( at( r + 1, c + 1 ) - at( r + 1, c ) ) * fc;
+	return top + ( bottom - top ) * fr;
+}
+
+// Самая высокая точка земли под моделью — в круге radius вокруг (x, z), по сетке 5 × 5 точек (как прежний gen_heightmap.py)
+float footprintTop( const std::vector<float>& heights, uint32_t size, float cell, float x, float z, float radius )
+{
+	float top = -FLT_MAX;
+	for( int i = 0; i < 5; ++i )
+	{
+		for( int j = 0; j < 5; ++j )
+		{
+			const float ox = radius * ( i / 2.0f - 1.0f );
+			const float oz = radius * ( j / 2.0f - 1.0f );
+			if( ox * ox + oz * oz <= radius * radius + 1e-6f )
+				top = std::max( top, sampleMetres( heights, size, cell, x + ox, z + oz ) );
+		}
+	}
+	return top;
+}
+
+}
+
+bool CDLODTerrain::erode( HeightField& field, const TerrainErosionSettings& erosion )
+{
+	const uint32_t size = field.size;
+	std::vector<float> source( static_cast<size_t>( size ) * size );
+	for( uint32_t row = 0; row < size; ++row )
+		for( uint32_t col = 0; col < size; ++col )
+			source[static_cast<size_t>( row ) * size + col] = field.heights[row * field.rowPitch + col] * field.heightMultiplier + field.heightOffset;
+
+	// Ключ кэша: исходная карта, масштаб и параметры; версия — при правке алгоритма (terrain_erosion.cs)
+	Fingerprint key;
+	const char version[] = "erosion-v1";
+	key.add( version, sizeof( version ) );
+	key.add( source.data(), source.size() * sizeof( float ) );
+	key.add( field.texelSize );
+	TerrainErosionSettings keyed = erosion;
+	keyed.id = 0;
+	key.add( &keyed, sizeof( keyed ) );
+	char keyText[32];
+	std::snprintf( keyText, sizeof( keyText ), "%016llx", static_cast<unsigned long long>( key.value ) );
+
+	const std::string directory = m_erodedDirectory;
+	const std::string heightPath = directory + "\\height.dds";
+	std::string cachedKey;
+	{
+		std::ifstream keyFile( directory + "\\key.txt" );
+		std::getline( keyFile, cachedKey );
+	}
+	std::vector<float> eroded;
+	if( cachedKey == keyText && loadFloatDDS( heightPath, size, eroded ) )
+	{
+		LOG( "Terrain erosion: from cache " + directory );
+	}
+	else
+	{
+		// Прежний рельеф после эрозии — для пересадки моделей: previous.dds живёт, пока пересадку не сохранят («Save level»,
+		// confirmErosionChange); пересчитали ещё раз до сохранения — модели стоят на самом раннем, он и остаётся
+		const std::string previousPath = directory + "\\previous.dds";
+		std::error_code error;
+		if( !std::filesystem::exists( previousPath, error ) && std::filesystem::exists( heightPath, error ) )
+			std::filesystem::rename( heightPath, previousPath, error );
+		TerrainErosion::Result result;
+		if( !TerrainErosion::run( source, size, field.texelSize, erosion, result ) )
+		{
+			LOG( "Terrain erosion: failed" );
+			return false;
+		}
+		eroded = std::move( result.height );
+
+		// Кэш и карты эрозии для офлайн-сценариев (Tools/gen_terrain_textures.py): высота, водосбор, размыв, отложения, осыпь
+		std::vector<float> normalized( eroded.size() );
+		for( size_t i = 0; i < eroded.size(); ++i )
+			normalized[i] = ( eroded[i] - field.heightOffset ) / field.heightMultiplier;
+		HeightField erodedField = field;
+		erodedField.heights = normalized.data();
+		erodedField.rowPitch = size;
+		const std::vector<float> flow = TerrainHydrology::catchment( erodedField );
+		std::filesystem::create_directories( directory, error );
+		if( saveFloatDDS( heightPath, size, eroded ) && saveFloatDDS( directory + "\\flow.dds", size, flow ) &&
+			saveFloatDDS( directory + "\\wear.dds", size, result.wear ) && saveFloatDDS( directory + "\\deposition.dds", size, result.deposition ) &&
+			saveFloatDDS( directory + "\\talus.dds", size, result.talus ) )
+		{
+			std::ofstream( directory + "\\key.txt" ) << keyText << "\n";
+			LOG( "Terrain erosion: written " + directory );
+		}
+		else
+			LOG( "Terrain erosion: can`t write " + directory );
+	}
+	// Пересадка, не закреплённая сохранением, — на каждой загрузке, пока её не сохранят
+	std::vector<float> previous;
+	if( loadFloatDDS( directory + "\\previous.dds", size, previous ) )
+	{
+		if( previous != eroded )
+		{
+			m_previousEroded = std::move( previous );
+			m_eroded = eroded;
+		}
+		else	// пересчитали в тот же рельеф — модели и так на нём
+			confirmErosionChange();
+	}
+	for( uint32_t row = 0; row < size; ++row )
+		for( uint32_t col = 0; col < size; ++col )
+			field.heights[row * field.rowPitch + col] = ( eroded[static_cast<size_t>( row ) * size + col] - field.heightOffset ) / field.heightMultiplier;
+	return true;
+}
+
+float CDLODTerrain::erosionShift( float x, float z, float radius ) const
+{
+	if( m_previousEroded.empty() )
+		return 0.0f;
+	return footprintTop( m_eroded, m_cpuSize, m_texelSize, x, z, radius ) - footprintTop( m_previousEroded, m_cpuSize, m_texelSize, x, z, radius );
+}
+
+void CDLODTerrain::confirmErosionChange()
+{
+	std::error_code error;
+	std::filesystem::remove( m_erodedDirectory + "\\previous.dds", error );
+}
+
+void CDLODTerrain::addErosionProperties( const TerrainErosionSettings& erosion )
+{
+	m_erosionProperties.setName( "Erosion" );
+	auto number = [this]( const char* name, float value, float low, float high, const char* tooltip )
+	{
+		Property* property = m_erosionProperties.insert( name, value );
+		property->setLow( low );
+		property->setHigh( std::max( high, value ) );
+		property->setTooltip( std::string( tooltip ) + "; applied at the next level load" );
+		return property;
+	};
+	auto integer = [this]( const char* name, int32_t value, float low, float high, const char* tooltip )
+	{
+		Property* property = m_erosionProperties.insert( name, value );
+		property->setLow( low );
+		property->setHigh( std::max( high, static_cast<float>( value ) ) );
+		property->setTooltip( std::string( tooltip ) + "; applied at the next level load" );
+		return property;
+	};
+	integer( "Droplets", erosion.droplets, 0.0f, 4000000.0f, "Water droplets of the hydraulic erosion" );
+	integer( "Seed", static_cast<int32_t>( erosion.seed ), 0.0f, 1000.0f, "Random numbers of the droplets" );
+	integer( "Lifetime", erosion.lifetime, 1.0f, 300.0f, "Steps of a droplet, a texel each" );
+	number( "Inertia", erosion.inertia, 0.0f, 1.0f, "Share of the previous direction" );
+	number( "Capacity", erosion.capacity, 0.0f, 8.0f, "Sediment capacity: slope * speed * water * capacity" );
+	number( "Min slope", erosion.minSlope, 0.0f, 0.1f, "Slope in the capacity at least" );
+	number( "Erode speed", erosion.erodeSpeed, 0.0f, 1.0f, "Share of the missing capacity eroded per step" );
+	number( "Deposit speed", erosion.depositSpeed, 0.0f, 1.0f, "Share of the excess sediment deposited per step" );
+	number( "Evaporation", erosion.evaporation, 0.0f, 0.1f, "Water evaporated per step" );
+	number( "Gravity", erosion.gravity, 0.0f, 20.0f, "Speed-up downhill" );
+	integer( "Radius", erosion.radius, 1.0f, 12.0f, "Erosion brush, texels" );
+	number( "Rain scale", erosion.rainScale, 10.0f, 2000.0f, "Size of the rain patches, m" )->setUnit( "m" );
+	number( "Rain min", erosion.rainMin, 0.0f, 1.0f, "Rain share in dry places (1 - even rain)" );
+	number( "Talus angle", erosion.talusAngle, 10.0f, 80.0f, "Angle of repose of the scree" )->setUnit( "deg" );
+	integer( "Thermal iterations", erosion.thermalIterations, 0.0f, 200.0f, "Steps of the scree sliding" );
+	number( "Thermal rate", erosion.thermalRate, 0.0f, 1.0f, "Share of the excess sliding per step" );
+	m_properties.addSubContainer( &m_erosionProperties );
+}
+
 TerrainSettings CDLODTerrain::settings() const
 {
 	TerrainSettings settings;
@@ -525,6 +771,27 @@ TerrainSettings CDLODTerrain::settings() const
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
 		if( !m_material.layerName( layer ).empty() )
 			settings.layerTiling[layer] = m_material.tiling( layer );
+	if( m_erosion )
+	{
+		TerrainErosionSettings& erosion = settings.erosion.emplace( *m_erosion );
+		const PropertyContainer& p = m_erosionProperties;
+		erosion.droplets = std::max( p["Droplets"].data<int32_t>(), 0 );
+		erosion.seed = static_cast<uint32_t>( std::max( p["Seed"].data<int32_t>(), 0 ) );
+		erosion.lifetime = std::max( p["Lifetime"].data<int32_t>(), 1 );
+		erosion.inertia = p["Inertia"].data<float>();
+		erosion.capacity = p["Capacity"].data<float>();
+		erosion.minSlope = p["Min slope"].data<float>();
+		erosion.erodeSpeed = p["Erode speed"].data<float>();
+		erosion.depositSpeed = p["Deposit speed"].data<float>();
+		erosion.evaporation = p["Evaporation"].data<float>();
+		erosion.gravity = p["Gravity"].data<float>();
+		erosion.radius = std::max( p["Radius"].data<int32_t>(), 1 );
+		erosion.rainScale = p["Rain scale"].data<float>();
+		erosion.rainMin = p["Rain min"].data<float>();
+		erosion.talusAngle = p["Talus angle"].data<float>();
+		erosion.thermalIterations = std::max( p["Thermal iterations"].data<int32_t>(), 0 );
+		erosion.thermalRate = p["Thermal rate"].data<float>();
+	}
 	return settings;
 }
 

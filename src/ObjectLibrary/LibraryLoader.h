@@ -66,6 +66,8 @@ private:
 	bool loadWaterSimulation( LevelDescription& level );
 	// Строка WaterChannels строки WaterSimulation (LibraryLoaderScene.cpp); нет таблицы или строки — по умолчанию
 	void loadWaterChannels( uint32_t waterSimulationId, GS::WaterChannelsSettings& channels );
+	// Строка TerrainErosion, на которую ссылается Terrain.erosion (LibraryLoaderScene.cpp); нет колонки или NULL — эрозии нет
+	void loadTerrainErosion( uint32_t terrainId, LevelDescription& level );
 	// Эмиттеры частиц уровня (LevelParticleEmitters → ParticleEmitters); таблиц нет — эмиттеров нет
 	void loadParticleEmitters( LevelDescription& level );
 	void loadLevelLights( LevelDescription& level );
