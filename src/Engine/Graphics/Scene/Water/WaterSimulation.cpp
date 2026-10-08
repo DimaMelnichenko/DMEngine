@@ -43,6 +43,39 @@ Property* addSlider( PropertyContainer& properties, const char* name, float valu
 	return property;
 }
 
+// Русла конвейера (WaterChannelsSettings) в подокне «Channels»: имя свойства, поле, границы, единицы, подсказка
+struct ChannelParameter
+{
+	const char* name;
+	float WaterChannelsSettings::* field;
+	float low;
+	float high;
+	const char* unit;
+	const char* tooltip;
+};
+
+const ChannelParameter channelParameters[] = {
+	{ "Min discharge", &WaterChannelsSettings::minDischarge, 0.0005f, 0.05f, "m3/s", "A channel starts where the discharge is larger" },
+	{ "Width coef", &WaterChannelsSettings::widthCoef, 0.5f, 10.0f, "", "Bed width w = a * Q^0.5, m" },
+	{ "Min width", &WaterChannelsSettings::minWidth, 0.5f, 10.0f, "m", "Narrowest bed" },
+	{ "Depth coef", &WaterChannelsSettings::depthCoef, 0.1f, 5.0f, "", "Incision d = c * Q^0.4, m" },
+	{ "Min incision", &WaterChannelsSettings::minIncision, 0.0f, 3.0f, "m", "Shallowest incision" },
+	{ "Bank slope", &WaterChannelsSettings::bankSlope, 0.2f, 5.0f, "", "Bank: horizontal metres per metre of incision" },
+	{ "Meander length", &WaterChannelsSettings::meanderLength, 5.0f, 200.0f, "m", "Meander wavelength along the stream" },
+	{ "Meander amplitude", &WaterChannelsSettings::meanderAmplitude, 0.0f, 10.0f, "m", "Lateral shift at Q >= 0.1 m3/s" },
+	{ "Meander max slope", &WaterChannelsSettings::meanderMaxSlope, 0.005f, 0.3f, "", "Steeper terrain has no meanders, m per m" },
+	{ "Min slope", &WaterChannelsSettings::minSlope, 0.0f, 0.05f, "", "Bed drop downstream at least, m per m" },
+	{ "Lake depth", &WaterChannelsSettings::lakeDepth, 0.01f, 1.0f, "m", "Deeper filled depressions are lakes: not carved, streams end there" },
+	{ "Min lake area", &WaterChannelsSettings::minLakeArea, 0.0f, 1000.0f, "m2", "Smaller depressions are a part of the stream bed, not lakes" },
+	{ "Thalweg", &WaterChannelsSettings::thalweg, 0.0f, 1.0f, "", "Extra incision in the bed middle, share of the incision" },
+	{ "Manning", &WaterChannelsSettings::manning, 0.02f, 0.15f, "s/m^(1/3)", "Stream bed roughness: water depth of the ribbons" },
+	{ "Min water slope", &WaterChannelsSettings::minWaterSlope, 0.001f, 0.05f, "", "Slope in the water depth at least, m per m" },
+	{ "Min speed", &WaterChannelsSettings::minSpeed, 0.0f, 2.0f, "m/s", "Ribbon flow at least" },
+	{ "Min water depth", &WaterChannelsSettings::minWaterDepth, 0.05f, 1.0f, "m", "Water over the bed at least" },
+	{ "Foam slope", &WaterChannelsSettings::foamSlope, 0.02f, 0.5f, "", "Steeper streams foam (fully at twice), m per m" },
+	{ "Ribbon overlap", &WaterChannelsSettings::ribbonOverlap, 0.0f, 2.0f, "m", "Ribbon beyond the trough edge, under the bank" },
+};
+
 bool sameSources( const WaterSimulationSettings& a, const WaterSimulationSettings& b )
 {
 	return a.sourceRate == b.sourceRate && a.flowStart == b.flowStart && a.flowFull == b.flowFull && a.sourceRadius == b.sourceRadius;
@@ -56,7 +89,7 @@ WaterSimulation::WaterSimulation() : SceneObject( "Water simulation" )
 	m_surfaceProperties.setName( "Surface" );
 }
 
-bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightSource& terrain )
+bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightSource& terrain, const TerrainHydrology::Result& hydrology )
 {
 	const auto start = std::chrono::high_resolution_clock::now();
 	m_initial = settings;
@@ -95,6 +128,21 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	addSlider( m_surfaceProperties, "Foam speed", settings.foamSpeed, 0.1f, 5.0f, "m/s" );
 	addSlider( m_surfaceProperties, "Foam shear", settings.foamShear, 0.1f, 10.0f, "1/s" );
 	m_properties.addSubContainer( &m_surfaceProperties );
+
+	// Русла и ручьи строит конвейер рельефа при загрузке — правки применяются при следующей загрузке уровня
+	m_channelsProperties.setName( "Channels" );
+	for( const ChannelParameter& parameter : channelParameters )
+		addSlider( m_channelsProperties, parameter.name, settings.channels.*parameter.field, parameter.low, parameter.high, parameter.unit )
+			->setTooltip( std::string( parameter.tooltip ) + "; applied at the next level load" );
+	Property* smooth = m_channelsProperties.insert( "Smooth passes", settings.channels.smooth );
+	smooth->setLow( 0.0f );
+	smooth->setHigh( 20.0f );
+	smooth->setTooltip( "Smoothing passes of the channel axis along the flow; applied at the next level load" );
+	Property* paint = m_channelsProperties.insert( "Paint layer", settings.channels.paintLayer );
+	paint->setLow( 0.0f );
+	paint->setHigh( 7.0f );
+	paint->setTooltip( "Terrain material layer of the bed and banks (TerrainLayers.layer); applied at the next level load" );
+	m_properties.addSubContainer( &m_channelsProperties );
 
 	DMD3D& d3d = DMD3D::instance();
 	if( !m_sourcesShader.Initialize( "Shaders\\water_simulation.cs", "mainSources" ) ||
@@ -157,18 +205,20 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 				 std::to_string( source.position.x ) + ", " + std::to_string( source.position.y ) );
 	}
 
-	// Источники, озёра до уровня перелива, затем до установившегося течения — порциями с ожиданием GPU. Режим static —
-	// до озёр: они наливаются по маске его растра
+	// Режим static: озёра, ручьи и их вода — из конвейера рельефа (TerrainHydrology), без шагов и налива на GPU
 	m_static = settings.staticWater;
-	if( m_static && System::textures().exists( settings.staticWaterMap ) )
-		m_staticWaterMap = &System::textures().get( settings.staticWaterMap )->srv();
+	if( !createHydrologyTextures( hydrology ) )
+		return false;
+	if( m_static )
+		m_staticWaterMap = &m_staticWaterView;
 	buildSources( settings );
-	if( !fillLakes() )
+	// Режим simulated: озёра до уровня перелива, затем до установившегося течения — порциями с ожиданием GPU
+	if( !m_static && !fillLakes() )
 		return false;
 	if( m_static )
 	{
 		// Статичная вода: озёра налиты, ручьи — лентами и растром; шагов нет
-		if( !buildStaticWater( settings ) || !m_streams.initialize( settings.streams ) )
+		if( !buildStaticWater( settings ) || !m_streams.initialize( hydrology.streams ) )
 			return false;
 		buildSurface();
 		m_surfaceDirty = false;
@@ -364,19 +414,40 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	m_streams.render( context );
 }
 
+bool WaterSimulation::createHydrologyTextures( const TerrainHydrology::Result& hydrology )
+{
+	if( hydrology.size != m_size || hydrology.channelFlow.size() != static_cast<size_t>( m_size ) * m_size )
+	{
+		LOG( "Water simulation: water channels differ from the height map in size" );
+		return false;
+	}
+	DMD3D& d3d = DMD3D::instance();
+	auto create = [&]( DXGI_FORMAT format, const void* data, uint32_t texelBytes, const char* name, Texture& texture, ShaderView& view )
+	{
+		TextureDesc desc;
+		desc.width = m_size;
+		desc.height = m_size;
+		desc.format = format;
+		TextureData initial;
+		initial.data = data;
+		initial.rowPitch = m_size * texelBytes;
+		initial.slicePitch = initial.rowPitch * m_size;
+		if( !d3d.createTexture( desc, &initial, texture ) || !d3d.createShaderView( texture, {}, view ) )
+		{
+			LOG( std::string( "Failed to create water texture " ) + name );
+			return false;
+		}
+		d3d.setName( texture, name );
+		return true;
+	};
+	return create( DXGI_FORMAT_R32_FLOAT, hydrology.channelFlow.data(), sizeof( float ), "Water channel flow", m_flowTexture, m_flowView ) &&
+		   create( DXGI_FORMAT_R32G32B32A32_FLOAT, hydrology.staticWater.data(), sizeof( DirectX::XMFLOAT4 ), "Water static streams",
+				   m_staticWaterTexture, m_staticWaterView );
+}
+
 bool WaterSimulation::buildStaticWater( const Settings& settings )
 {
-	if( !System::textures().exists( settings.staticWaterMap ) )
-	{
-		LOG( "Water simulation: static water map " + settings.staticWaterMap + " is not found in Textures" );
-		return false;
-	}
-	const ShaderView& staticWater = System::textures().get( settings.staticWaterMap )->srv();
-	if( System::textures().get( settings.staticWaterMap )->width() != m_size )
-	{
-		LOG( "Water simulation: static water map " + settings.staticWaterMap + " differs from the height map in size" );
-		return false;
-	}
+	const ShaderView& staticWater = m_staticWaterView;
 	DMD3D& d3d = DMD3D::instance();
 	setParameters( settings );
 	const ShaderView& heightMap = *m_terrain->terrainHeight().heightMap;
@@ -427,15 +498,11 @@ bool WaterSimulation::fillLakes()
 				PassDesc pass;
 				pass.name = "Water lakes";
 				pass.reads = { { &heightMap, "height map" }, { &m_sourcesView, "water sources" } };
-				if( m_staticWaterMap )
-					pass.reads.push_back( { m_staticWaterMap, "static water" } );
 				pass.writes = { { &fillUAV, "lake level" }, { &lakeUAV, "lake mask" }, { &m_waterUAV, "water depth" } };
 				d3d.beginPass( pass );
 				setParameters( m_initial );
 				d3d.setSRV( 0, heightMap );
 				d3d.setSRV( 2, m_sourcesView );
-				if( m_staticWaterMap )
-					d3d.setSRV( 3, *m_staticWaterMap );
 			}
 			d3d.setUAV( 0, m_waterUAV );
 			d3d.setUAV( 4, fillUAV );
@@ -500,6 +567,10 @@ WaterSimulation::Settings WaterSimulation::settings() const
 	settings.flowPeriod = m_surfaceProperties["Flow period"].data<float>();
 	settings.foamSpeed = m_surfaceProperties["Foam speed"].data<float>();
 	settings.foamShear = m_surfaceProperties["Foam shear"].data<float>();
+	for( const ChannelParameter& parameter : channelParameters )
+		settings.channels.*parameter.field = m_channelsProperties[parameter.name].data<float>();
+	settings.channels.smooth = m_channelsProperties["Smooth passes"].data<int32_t>();
+	settings.channels.paintLayer = m_channelsProperties["Paint layer"].data<int32_t>();
 	return settings;
 }
 
@@ -522,7 +593,6 @@ void WaterSimulation::setParameters( const Settings& settings )
 	params.sourceRadius = std::clamp( static_cast<int32_t>( std::lround( settings.sourceRadius / m_cellSize ) ), 0, maxSourceRadius );
 	params.manning = settings.manning;
 	params.helperCount = m_helperCount;
-	params.staticLakes = m_staticWaterMap ? 1 : 0;
 	Device::updateResourceData( m_constantBuffer, params );
 	DMD3D::instance().setConstantBuffer( 4, m_constantBuffer );
 }
@@ -530,7 +600,7 @@ void WaterSimulation::setParameters( const Settings& settings )
 void WaterSimulation::buildSources( const Settings& settings )
 {
 	DMD3D& d3d = DMD3D::instance();
-	const ShaderView& flowMap = System::textures().get( settings.flowMap )->srv();
+	const ShaderView& flowMap = m_flowView;
 	PassDesc pass;
 	pass.name = "Water sources";
 	pass.reads = { { &flowMap, "flow map" } };

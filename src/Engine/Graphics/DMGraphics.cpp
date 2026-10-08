@@ -487,7 +487,7 @@ void DMGraphics::registerCommands()
 		reply->ok();
 	} );
 
-	m_console.registerCommand( "water", "discharge <file.dds> - water discharge of the cells, m3/s, as R32_FLOAT DDS (Tools/carve_channels.py)",
+	m_console.registerCommand( "water", "discharge <file.dds> - water discharge of the cells, m3/s, as R32_FLOAT DDS",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		if( args.size() != 2 || args[0] != "discharge" )
@@ -500,6 +500,30 @@ void DMGraphics::registerCommands()
 			reply->ok( "written " + args[1] );
 		else
 			reply->error( reason );
+	} );
+	m_console.registerCommand( "terrain", "hydrology <prefix> - water channels of the level as R32_FLOAT DDS: <prefix>_lowering.dds "
+							   "(bed lowering, m), <prefix>_level.dds (stream water level, m), <prefix>_lake.dds (lake level, m; -1e9 - no lake)",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( args.size() != 2 || args[0] != "hydrology" )
+			return reply->error( "usage: terrain hydrology <prefix>" );
+		const TerrainHydrology::Result* hydrology = m_scene.terrain().hydrology();
+		if( !hydrology )
+			return reply->error( "terrain hydrology: the level has no water" );
+		const size_t cells = static_cast<size_t>( hydrology->size ) * hydrology->size;
+		std::vector<float> level( cells ), lake( cells );
+		for( size_t i = 0; i < cells; ++i )
+		{
+			level[i] = hydrology->staticWater[i].x;
+			lake[i] = hydrology->staticWater[i].w;
+		}
+		const std::wstring prefix( args[1].begin(), args[1].end() );
+		const uint32_t size = hydrology->size;
+		if( !GpuImages::saveFloatDDS( prefix + L"_lowering.dds", size, size, hydrology->lowering.data() ) ||
+			!GpuImages::saveFloatDDS( prefix + L"_level.dds", size, size, level.data() ) ||
+			!GpuImages::saveFloatDDS( prefix + L"_lake.dds", size, size, lake.data() ) )
+			return reply->error( "terrain hydrology: can`t write " + args[1] + "_*.dds" );
+		reply->ok( "written " + args[1] + "_lowering.dds, _level.dds, _lake.dds" );
 	} );
 	m_console.registerCommand( "action", "\"<name>\" - run an editor action, as File menu items (Save level, Exit)",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )

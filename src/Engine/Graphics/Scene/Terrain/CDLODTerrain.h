@@ -7,6 +7,7 @@
 #include "GridMesh.h"
 #include "TerrainMaterial.h"
 #include "TerrainHeightSource.h"
+#include "TerrainHydrology.h"
 #include "ShaderProgram.h"
 #include "D3D\DMStructuredBuffer.h"
 
@@ -29,8 +30,11 @@ public:
 
 	// terrainId — строка таблицы Terrain, edits — правки рельефа уровня по порядку слоёв (накладываются на копию карты
 	// высот при загрузке: её читают вершины, узлы квадродерева и всё, что стоит на рельефе; их очистка растительности —
-	// маска для расстановки, покраска — в splat-карту материала)
-	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {} );
+	// маска для расстановки, покраска — в splat-карту материала). water — вода уровня: после правок по итоговому рельефу
+	// конвейер (TerrainHydrology) режет русла и строит ручьи и маску озёр; nullptr — воды нет
+	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {}, const WaterSimulationSettings* water = nullptr );
+	// Русла, ручьи, растр статичной воды и приток — для WaterSimulation; nullptr — у уровня нет воды
+	const TerrainHydrology::Result* hydrology() const { return m_hasHydrology ? &m_hydrology : nullptr; }
 	// Карта высот и её масштаб: по ним стоят расстановка травы и декора и частицы
 	TerrainHeight terrainHeight() const override;
 	bool surfaceHeight( float x, float z, float& height ) const override;
@@ -88,7 +92,7 @@ private:
 	bool createShader();
 	// Копия карты высот с правками рельефа и мипами для вершинного шейдера и минимум / максимум высоты каждого узла по
 	// мипам его уровня; coverage — что правки делают, кроме высоты
-	bool buildHeightBounds( const std::vector<TerrainEdit>& edits, TerrainEditCoverage& coverage );
+	bool buildHeightBounds( const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water, TerrainEditCoverage& coverage );
 	// Значения растровой правки (TerrainEdit::raster) из файла; false — файла нет или он не R32_FLOAT (строка в лог)
 	static bool loadEditRaster( TerrainEdit& edit );
 	// Маска очистки растительности правками (R8_UNORM размером с карту высот, без правок с очисткой — 1 × 1 ноль)
@@ -110,6 +114,8 @@ private:
 	// Итоговая карта (с правками рельефа) на CPU — значения 0…1 строками сверху вниз, как текстура: высота для ходьбы
 	std::vector<float> m_cpuHeights;
 	uint32_t m_cpuSize = 0;
+	TerrainHydrology::Result m_hydrology;	// конвейер рельефа и воды: русла по итоговому рельефу
+	bool m_hasHydrology = false;
 	PropertyContainer m_layerProperties;	// «Layer tiling»: метров на повтор по слоям — подокно окна террейна
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;

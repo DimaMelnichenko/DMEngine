@@ -27,8 +27,7 @@ cbuffer WaterSimulationBuffer : register( b4 )
 	int   g_sourceRadius;		// радиус размытия источников, ячейки
 	float g_manning;			// шероховатость дна по Маннингу, с/м^(1/3)
 	uint  g_helperCount;		// источников-помощников (WaterSources) в g_helpers water_simulation.cs
-	uint  g_staticLakes;		// 1 — режим static: озёра только по маске сценария (g_staticWater.w в water_simulation.cs)
-	float g_simulationPadding;
+	float2 g_simulationPadding;
 };
 
 float terrain( int2 cell )

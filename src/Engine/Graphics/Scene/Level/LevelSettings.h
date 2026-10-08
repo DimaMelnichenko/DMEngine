@@ -34,7 +34,7 @@ struct TerrainEdit
 	int paintLayer = -1;		// слой материала террейна (TerrainLayers.layer), которым правка красит splat-карту; −1 — нет
 	std::vector<TerrainEditPoint> points;
 	// Растровая правка (как растровые Edit Layers в UE) вместо кривой: файл карты сдвига высоты, м (< 0 — опустить),
-	// R32_FLOAT квадратом, от Textures\ (TerrainEdits.raster; русла — Tools/carve_channels.py). Значения читает
+	// R32_FLOAT квадратом, от Textures\ (TerrainEdits.raster); русла — такая же правка в памяти (TerrainHydrology). Значения читает
 	// CDLODTerrain перед наложением; размер может отличаться от карты высот — выборка билинейная
 	std::string raster;
 	std::vector<float> rasterValues;
@@ -180,7 +180,7 @@ struct WaterSource
 	float radius = 3.0f;			// радиус пятна, м (≈ 2σ гаусса)
 };
 
-// Точка оси ручья (строка WaterStreamPoints, Tools/carve_channels.py): лента воды вдоль ручья — StreamRibbons
+// Точка оси ручья (TerrainHydrology): лента воды вдоль ручья — StreamRibbons
 struct WaterStreamPoint
 {
 	DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// x, z — ось ручья; y — уровень воды, м
@@ -189,17 +189,43 @@ struct WaterStreamPoint
 	float foam = 0.0f;				// пена 0…1 (крутой участок)
 };
 
-// Ручей (строка WaterStreams): точки оси от истока вниз
+// Ручей: точки оси от истока вниз
 struct WaterStream
 {
 	std::vector<WaterStreamPoint> points;
 };
 
-// Строка WaterSimulation: вода на сетке карты высот (WaterSimulation, docs/water.md). Источники — по карте водосбора
-// (flow.dds из Tools/gen_heightmap.py): приток нарастает от flowStart до flowFull м² водосбора
+// Русла и ручьи конвейера рельефа и воды (TerrainHydrology) — строка WaterChannels той же строки WaterSimulation;
+// без строки — значения по умолчанию. Применяются при загрузке уровня
+struct WaterChannelsSettings
+{
+	float minDischarge = 0.002f;	// м³/с: отсюда начинается русло
+	float widthCoef = 3.0f;			// ширина дна w = a · Q^0,5, м
+	float minWidth = 3.0f;			// самое узкое дно, м (уже сетка 1 м не покажет)
+	float depthCoef = 1.0f;			// врез d = c · Q^0,4, м
+	float minIncision = 0.4f;		// самый мелкий врез, м
+	float bankSlope = 1.0f;			// борт: метров по горизонтали на метр вреза
+	int32_t smooth = 6;				// проходов сглаживания оси вдоль течения
+	float meanderLength = 35.0f;	// длина волны извилин вдоль ручья, м
+	float meanderAmplitude = 2.5f;	// сдвиг поперёк течения при Q ≥ 0,1 м³/с, м
+	float meanderMaxSlope = 0.06f;	// круче (м на м) — без извилин
+	float minSlope = 0.002f;		// дно вниз по течению — не меньше, м на м
+	float lakeDepth = 0.05f;		// низина глубже — озеро: не режется, ручей в нём кончается, м
+	float minLakeArea = 50.0f;		// низина меньше — не озеро, а часть русла (ямка на дне ручья), м²
+	int32_t paintLayer = 5;			// слой материала террейна (TerrainLayers.layer) дна и бортов — галька
+	float thalweg = 0.3f;			// тальвег: добавка вреза к середине дна, доля вреза
+	float manning = 0.06f;			// шероховатость дна ручья по Маннингу, с/м^(1/3) (галька)
+	float minWaterSlope = 0.005f;	// уклон в глубине воды — не меньше, м на м
+	float minSpeed = 0.4f;			// течение ленты — не медленнее, м/с
+	float minWaterDepth = 0.3f;		// вода над дном — не мельче, м
+	float foamSlope = 0.1f;			// круче — пена на ручье (полная — на вдвое большем), м на м
+	float ribbonOverlap = 0.4f;		// лента за край ложбины, под берег, м
+};
+
+// Строка WaterSimulation: вода на сетке карты высот (WaterSimulation, docs/water.md). Приток — по водосбору, который
+// считает конвейер рельефа и воды (TerrainHydrology) по итоговому рельефу: нарастает от flowStart до flowFull м²
 struct WaterSimulationSettings
 {
-	std::string flowMap;			// имя текстуры водосбора в Textures (R32_FLOAT, м²), размер — как у карты высот
 	float sourceRate = 0.1f;		// приток клетки при полном водосборе, л/с
 	float flowStart = 2000.0f;		// водосбор, с которого начинается приток, м²
 	float flowFull = 20000.0f;		// водосбор, при котором приток полный, м²
@@ -226,12 +252,11 @@ struct WaterSimulationSettings
 
 	std::vector<WaterSource> sources;	// включённые строки WaterSources этой строки WaterSimulation
 
-	// Режим static (колонка mode): вода не течёт — озёра наливаются при загрузке до перелива, ручьи — ленты по точкам
-	// streams (WaterStreams), их вода для травы, мокрой земли и брызг — растр staticWater (Tools/carve_channels.py).
-	// Режим simulated — вода течёт по рельефу (трубы, Маннинг)
+	// Режим static (колонка mode): вода не течёт — озёра наливаются при загрузке до перелива, ручьи — ленты, их вода для
+	// травы, мокрой земли и брызг — растр; всё это строит конвейер (TerrainHydrology). Режим simulated — вода течёт по
+	// рельефу (трубы, Маннинг)
 	bool staticWater = false;
-	std::string staticWaterMap;		// имя текстуры в Textures: R — уровень воды ручья, м; G, B — скорость X, Z
-	std::vector<WaterStream> streams;
+	WaterChannelsSettings channels;
 };
 
 // Эмиттер частиц (строки ParticleEmitters и экземпляр LevelParticleEmitters, ParticleSystem, docs/particles.md)

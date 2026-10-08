@@ -4,7 +4,9 @@
 #include "Shaders\slots.h"
 #include <algorithm>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <DirectXTex.h>
 #include "System.h"
@@ -35,7 +37,7 @@ CDLODTerrain::CDLODTerrain() :
 {
 }
 
-bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits )
+bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water )
 {
 	TerrainSettings settings;
 	std::string splatMap;
@@ -57,7 +59,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 		m_nodesPerSide[level] = static_cast<uint32_t>( std::ceil( m_worldSize / nodeSize( level ) ) );
 
 	TerrainEditCoverage coverage;
-	if( !buildHeightBounds( edits, coverage ) || !createFoliageClearMask( coverage ) )
+	if( !buildHeightBounds( edits, water, coverage ) || !createFoliageClearMask( coverage ) )
 		return false;
 
 	if( !createShader() )
@@ -247,7 +249,7 @@ void CDLODTerrain::warmPipelines( const PassStates& states )
 							  states.shadowDepth }, states.depthOnly, { m_depthPhase } );
 }
 
-bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, TerrainEditCoverage& coverage )
+bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water, TerrainEditCoverage& coverage )
 {
 	ScratchImage captured;
 	if( !GpuImages::captureTexture( System::textures().get( m_heightMapName )->texture(), captured ) )
@@ -280,23 +282,41 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, Ter
 		image = converted.GetImage( 0, 0, 0 );
 	}
 
-	// Правки рельефа (TerrainEdits) — на копию до мипов: их видят вершины всех уровней, узлы и расстановка
+	// Конвейер рельефа и воды на копии до мипов (её видят вершины всех уровней, узлы, расстановка и вода): ручные правки
+	// (TerrainEdits) → русла по итоговому рельефу (TerrainHydrology) — каждая ступень видит итог предыдущих
+	HeightField field;
+	field.heights = reinterpret_cast<float*>( image->pixels );
+	field.size = static_cast<uint32_t>( image->width );
+	field.rowPitch = image->rowPitch / sizeof( float );
+	field.texelSize = m_texelSize;
+	field.heightMultiplier = m_heightMultiplier;
+	field.heightOffset = m_heightOffset;
 	if( !edits.empty() )
 	{
 		std::vector<TerrainEdit> loaded = edits;
 		for( TerrainEdit& edit : loaded )
 			if( !edit.raster.empty() )
 				loadEditRaster( edit );
-
-		HeightField field;
-		field.heights = reinterpret_cast<float*>( image->pixels );
-		field.size = static_cast<uint32_t>( image->width );
-		field.rowPitch = image->rowPitch / sizeof( float );
-		field.texelSize = m_texelSize;
-		field.heightMultiplier = m_heightMultiplier;
-		field.heightOffset = m_heightOffset;
 		const size_t changed = applyTerrainEdits( field, loaded, &coverage );
 		LOG( "CDLOD terrain: " + std::to_string( edits.size() ) + " terrain edits, texels changed: " + std::to_string( changed ) );
+	}
+	m_hasHydrology = false;
+	if( water )
+	{
+		const auto start = std::chrono::steady_clock::now();
+		if( !TerrainHydrology::build( field, *water, m_hydrology ) )
+		{
+			LOG( "CDLOD terrain: water channels are not built" );
+			return false;
+		}
+		applyTerrainEdits( field, { TerrainHydrology::loweringEdit( m_hydrology, water->channels ) }, &coverage );
+		m_hasHydrology = true;
+		char text[256];
+		std::snprintf( text, sizeof( text ), "Terrain hydrology: largest discharge %.3f m3/s, channel nodes %zu, carved cells %zu, "
+					   "deepest %.2f m, streams %zu, points %zu, ms: %.1f", m_hydrology.largestDischarge, m_hydrology.nodes,
+					   m_hydrology.carvedCells, -m_hydrology.deepestLowering, m_hydrology.streams.size(), m_hydrology.points,
+					   std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
+		LOG( text );
 	}
 
 	// Копия итоговой карты на CPU — высота поверхности для ходьбы (surfaceHeight); 1024² — 4 МБ

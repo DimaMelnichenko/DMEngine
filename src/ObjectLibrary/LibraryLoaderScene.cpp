@@ -1,8 +1,55 @@
 #include "LibraryLoader.h"
 #include <cstdio>
+#include <utility>
 #include "DBConnector.h"
 #include "Logger\Logger.h"
 #include "Utils\utilites.h"
+
+namespace
+{
+
+// Колонки WaterChannels ↔ поля WaterChannelsSettings — одна таблица для загрузки и сохранения
+const std::pair<const char*, float GS::WaterChannelsSettings::*> channelColumns[] = {
+	{ "min_discharge", &GS::WaterChannelsSettings::minDischarge },
+	{ "width_coef", &GS::WaterChannelsSettings::widthCoef },
+	{ "min_width", &GS::WaterChannelsSettings::minWidth },
+	{ "depth_coef", &GS::WaterChannelsSettings::depthCoef },
+	{ "min_incision", &GS::WaterChannelsSettings::minIncision },
+	{ "bank_slope", &GS::WaterChannelsSettings::bankSlope },
+	{ "meander_length", &GS::WaterChannelsSettings::meanderLength },
+	{ "meander_amplitude", &GS::WaterChannelsSettings::meanderAmplitude },
+	{ "meander_max_slope", &GS::WaterChannelsSettings::meanderMaxSlope },
+	{ "min_slope", &GS::WaterChannelsSettings::minSlope },
+	{ "lake_depth", &GS::WaterChannelsSettings::lakeDepth },
+	{ "min_lake_area", &GS::WaterChannelsSettings::minLakeArea },
+	{ "thalweg", &GS::WaterChannelsSettings::thalweg },
+	{ "manning", &GS::WaterChannelsSettings::manning },
+	{ "min_water_slope", &GS::WaterChannelsSettings::minWaterSlope },
+	{ "min_speed", &GS::WaterChannelsSettings::minSpeed },
+	{ "min_water_depth", &GS::WaterChannelsSettings::minWaterDepth },
+	{ "foam_slope", &GS::WaterChannelsSettings::foamSlope },
+	{ "ribbon_overlap", &GS::WaterChannelsSettings::ribbonOverlap },
+};
+
+}
+
+void LibraryLoader::loadWaterChannels( uint32_t waterSimulationId, GS::WaterChannelsSettings& channels )
+{
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "WaterChannels" ) )
+		return;
+	SQLite::Statement query( db, "SELECT * FROM WaterChannels WHERE water_simulation = :id" );
+	query.bind( ":id", waterSimulationId );
+	if( !query.executeStep() )
+		return;
+	for( const auto& [column, field] : channelColumns )
+		if( !query.getColumn( column ).isNull() )
+			channels.*field = static_cast<float>( query.getColumn( column ).getDouble() );
+	if( !query.getColumn( "smooth" ).isNull() )
+		channels.smooth = query.getColumn( "smooth" ).getInt();
+	if( !query.getColumn( "paint_layer" ).isNull() )
+		channels.paintLayer = query.getColumn( "paint_layer" ).getInt();
+}
 
 // Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterLayers и ScatterLayerModels,
 // WaterSimulation, ParticleEmitters. Только колонки, которые правятся в окнах; состав (какие слои, модели, эмиттеры)
@@ -133,6 +180,22 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 			updateWater.bind( ":foamShear", dbValue( water->foamShear ) );
 			updateWater.bind( ":id", *level.waterSimulationId );
 			updateWater.exec();
+
+			// Русла конвейера: строка на строку WaterSimulation (нет — создаётся)
+			std::string columns = "water_simulation, smooth, paint_layer";
+			std::string values = ":id, :smooth, :paintLayer";
+			for( const auto& [column, field] : channelColumns )
+			{
+				columns += std::string( ", " ) + column;
+				values += std::string( ", :" ) + column;
+			}
+			SQLite::Statement saveChannels( db, "INSERT OR REPLACE INTO WaterChannels (" + columns + ") VALUES (" + values + ")" );
+			saveChannels.bind( ":id", *level.waterSimulationId );
+			saveChannels.bind( ":smooth", water->channels.smooth );
+			saveChannels.bind( ":paintLayer", water->channels.paintLayer );
+			for( const auto& [column, field] : channelColumns )
+				saveChannels.bind( std::string( ":" ) + column, dbValue( water->channels.*field ) );
+			saveChannels.exec();
 		}
 
 		// Эмиттер — тип (ParticleEmitters), экземпляры уровня ссылаются на него: у двух экземпляров одного типа

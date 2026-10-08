@@ -432,7 +432,6 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 		return static_cast<float>( query.getColumn( column ).getDouble() );
 	};
 	GS::WaterSimulationSettings& water = level.waterSimulation.emplace();
-	water.flowMap = query.getColumn( "flow_map" ).getString();
 	water.sourceRate = value( "source_rate" );
 	water.flowStart = value( "flow_start" );
 	water.flowFull = value( "flow_full" );
@@ -479,34 +478,9 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 		}
 	}
 
-	// Статичная вода и ручьи (Tools/carve_channels.py); колонок может не быть у базы, где сценарий не запускали
-	const SQLite::Column mode = query.getColumn( "mode" );
-	water.staticWater = mode.getString() == "static";
-	if( water.staticWater )
-	{
-		water.staticWaterMap = query.getColumn( "static_water" ).getString();
-		SQLite::Statement points( db, "SELECT p.stream, p.x, p.z, p.surface, p.half_width, p.speed, p.foam FROM WaterStreamPoints p "
-									  "JOIN WaterStreams s ON s.id = p.stream WHERE s.water_simulation = :id ORDER BY p.stream, p.idx" );
-		points.bind( ":id", *level.waterSimulationId );
-		int64_t stream = -1;
-		while( points.executeStep() )
-		{
-			if( points.getColumn( "stream" ).getInt64() != stream )
-			{
-				stream = points.getColumn( "stream" ).getInt64();
-				water.streams.emplace_back();
-			}
-			GS::WaterStreamPoint& point = water.streams.back().points.emplace_back();
-			auto number = [&points]( const char* column )
-			{
-				return static_cast<float>( points.getColumn( column ).getDouble() );
-			};
-			point.position = DirectX::XMFLOAT3( number( "x" ), number( "surface" ), number( "z" ) );
-			point.halfWidth = number( "half_width" );
-			point.speed = number( "speed" );
-			point.foam = number( "foam" );
-		}
-	}
+	// Режим: static — ручьи лентами и озёра без шагов, simulated — вода течёт; русла и ручьи строит конвейер рельефа и воды
+	water.staticWater = query.getColumn( "mode" ).getString() == "static";
+	loadWaterChannels( *level.waterSimulationId, water.channels );
 	return true;
 }
 

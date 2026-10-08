@@ -129,14 +129,15 @@ bool Scene::initialize( bool particles )
 	auto timeStart = std::chrono::high_resolution_clock::now();
 	if( m_level.terrain )
 	{
-		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits ) )
+		// Рельеф с ручными правками, затем русла и ручьи по нему (конвейер рельефа и воды) — если у уровня есть вода
+		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits, m_level.waterSimulation ? &*m_level.waterSimulation : nullptr ) )
 			return false;
 		LOG( "Terrain init ms: " + elapsedMs( timeStart ) );
 	}
 	const bool hasWater = m_level.terrain && m_level.waterSimulation;
 	if( m_level.waterSimulation && !m_level.terrain )
 		LOG( "Water simulation needs a terrain, skipped" );
-	if( hasWater && !m_water.initialize( *m_level.waterSimulation, m_terrain ) )
+	if( hasWater && ( !m_terrain.hydrology() || !m_water.initialize( *m_level.waterSimulation, m_terrain, *m_terrain.hydrology() ) ) )
 		return false;
 
 	if( m_level.sky )

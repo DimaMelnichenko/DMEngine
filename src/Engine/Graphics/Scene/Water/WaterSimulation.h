@@ -6,6 +6,7 @@
 #include "Terrain\GridMesh.h"
 #include "Level\LevelSettings.h"
 #include "Terrain\TerrainHeightSource.h"
+#include "Terrain\TerrainHydrology.h"
 #include "StreamRibbons.h"
 
 namespace GS
@@ -19,9 +20,9 @@ namespace GS
 // Shaders/water_simulation.cs, настройки — строка WaterSimulation уровня, подробно — docs/water.md. Поверхность воды
 // объект рисует сам в проходе transparent (читает цвет и глубину сцены): тайлы сетки с водой, отобранные на GPU
 // (Shaders/water_surface.cs), — один косвенный вызов (water.vs, water.ps).
-// Режим static (WaterSimulationSettings::staticWater): вода не течёт — озёра наливаются при загрузке до перелива, ручьи —
-// ленты по точкам из Tools/carve_channels.py (StreamRibbons), их вода для травы, мокрой земли и брызг — растр
-// (mainStatic); как реки-сплайны и озёра в UE Water. Симуляция остаётся инструментом — режим simulated
+// Режим static (WaterSimulationSettings::staticWater): вода не течёт — озёра и ручьи из конвейера рельефа и воды
+// (TerrainHydrology): ленты ручьёв (StreamRibbons), их вода и озёра для травы, мокрой земли и брызг — растр (mainStatic);
+// как реки-сплайны и озёра в UE Water. Симуляция остаётся инструментом — режим simulated
 class WaterSimulation : public SceneObject
 {
 public:
@@ -29,7 +30,8 @@ public:
 
 	WaterSimulation();
 	// После террейна: сетка — его итоговая карта высот (с правками рельефа)
-	bool initialize( const Settings& settings, const TerrainHeightSource& terrain );
+	// hydrology — конвейер рельефа и воды (CDLODTerrain::hydrology): приток вдоль русел, ленты ручьёв и растр статичной воды
+	bool initialize( const Settings& settings, const TerrainHeightSource& terrain, const TerrainHydrology::Result& hydrology );
 
 	void compute( const FrameContext& frame ) override;
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
@@ -40,7 +42,7 @@ public:
 	// Настройки с правками GUI — для сохранения уровня (строка WaterSimulation)
 	Settings settings() const;
 	// Расход ячеек, м³/с (сумма оттоков к соседям), — в DDS R32_FLOAT на сетке карты высот (строка 0 — дальний край
-	// по z): по нему Tools/carve_channels.py режет русла. Ждёт GPU; false — воды нет или файл не записан (reason)
+	// по z) — для проверки. Ждёт GPU; false — воды нет или файл не записан (reason)
 	bool exportDischarge( const std::string& file, std::string& reason );
 
 private:
@@ -61,8 +63,7 @@ private:
 		int32_t sourceRadius;
 		float manning;
 		uint32_t helperCount;		// источников-помощников в буфере m_helpers
-		uint32_t staticLakes;		// 1 — озёра только по маске сценария (растр статичной воды, канал A)
-		float padding;
+		float padding[2];
 	};
 
 	// Раскладка — cbuffer WaterTilesBuffer (b5) в water_surface.cs
@@ -111,6 +112,8 @@ private:
 	void cullTiles( const RenderView& view );
 	// Режим static: озёра и ручьи в текстуру для шейдеров (mainStatic)
 	bool buildStaticWater( const Settings& settings );
+	// Текстуры из данных конвейера: водосбор вдоль русел и растр статичной воды
+	bool createHydrologyTextures( const TerrainHydrology::Result& hydrology );
 
 	PropertyContainer m_properties;
 	PropertyContainer m_surfaceProperties;	// подокно «Surface» — материал поверхности
@@ -132,7 +135,14 @@ private:
 	DMComputeShader m_lakeApplyShader;
 	DMComputeShader m_staticShader;
 	bool m_static = false;			// режим static: шагов нет
-	const ShaderView* m_staticWaterMap = nullptr;	// растр статичной воды (режим static): ручьи и маска озёр
+	// Из конвейера (TerrainHydrology): водосбор вдоль русел — приток (mainSources); растр статичной воды — ручьи и маска
+	// озёр (режим static)
+	Texture m_flowTexture;
+	ShaderView m_flowView;
+	Texture m_staticWaterTexture;
+	ShaderView m_staticWaterView;
+	const ShaderView* m_staticWaterMap = nullptr;
+	PropertyContainer m_channelsProperties;	// «Channels»: WaterChannelsSettings — при следующей загрузке
 	StreamRibbons m_streams;
 	Buffer m_constantBuffer;
 
