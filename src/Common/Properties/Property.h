@@ -80,6 +80,23 @@ public:
 	void setLow( float );
 	void setHigh( float );
 	void setControlType( GUIControlType type );
+
+	// Для панели Details (необязательно): подсказка, единицы («lx», «m», «1/m»), формат числа (printf; пусто — по
+	// величине значения) и логарифмический ползунок — для величин в несколько порядков (плотность, яркость)
+	Property* setTooltip( const std::string& tooltip ) { m_tooltip = tooltip; return this; }
+	Property* setUnit( const std::string& unit ) { m_unit = unit; return this; }
+	Property* setFormat( const std::string& format ) { m_format = format; return this; }
+	Property* setLogarithmic( bool logarithmic = true ) { m_logarithmic = logarithmic; return this; }
+	const std::string& tooltip() const { return m_tooltip; }
+	const std::string& unit() const { return m_unit; }
+	const std::string& format() const { return m_format; }
+	bool logarithmic() const { return m_logarithmic; }
+
+	// Сохранённое значение — при регистрации в GUI и после сохранения уровня: панель отмечает изменённые после него
+	// и сбрасывает к нему
+	void markSaved();
+	bool modified() const;
+	void resetToSaved();
 private:
 	std::string m_name;
 	float m_lowBorder = 0.0;
@@ -87,5 +104,11 @@ private:
 	// Без setControlType — ползунок в границах low…high; логическим свойствам (флажок) тип не нужен
 	GUIControlType m_controlType = GUIControlType::SLIDER;
 	Container m_value;	// тип значения — индекс варианта (valueType)
+	Container m_saved;
+	bool m_hasSaved = false;
+	std::string m_tooltip;
+	std::string m_unit;
+	std::string m_format;
+	bool m_logarithmic = false;
 };
 

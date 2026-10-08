@@ -63,3 +63,34 @@ const std::vector<std::string>& PropertyContainer::names() const
 {
 	return m_order;
 }
+
+void PropertyContainer::markSaved()
+{
+	for( auto& [name, property] : m_propertyMap )
+		property.markSaved();
+	for( PropertyContainer* sub : m_subContainer )
+		sub->markSaved();
+}
+
+bool PropertyContainer::modified() const
+{
+	for( const auto& [name, property] : m_propertyMap )
+	{
+		if( property.modified() )
+			return true;
+	}
+	for( const PropertyContainer* sub : m_subContainer )
+	{
+		if( sub->modified() )
+			return true;
+	}
+	return false;
+}
+
+void PropertyContainer::resetToSaved()
+{
+	for( auto& [name, property] : m_propertyMap )
+		property.resetToSaved();
+	for( PropertyContainer* sub : m_subContainer )
+		sub->resetToSaved();
+}

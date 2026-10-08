@@ -51,6 +51,8 @@ public:
 	void tick();
 
 	static std::vector<std::string> split( const std::string& line );
+	// Имена команд по алфавиту — дополнение в консоли редактора
+	std::vector<std::string> names() const;
 
 private:
 	struct Command

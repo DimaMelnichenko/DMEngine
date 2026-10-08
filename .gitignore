@@ -20,3 +20,6 @@ __pycache__/
 # Лог запуска — каждый запуск пишет его заново (LOG, src/Logger) — и снимки клавишей P (DMGraphics::saveScreenshot)
 /log.txt
 /screenshot*.jpg
+# Раскладка окон редактора (строится кодом, Window > Reset layout) и прежний файл ImGui
+/imgui_editor.ini
+/imgui.ini

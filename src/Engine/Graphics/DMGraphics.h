@@ -54,6 +54,8 @@ private:
 	bool Render( const FrameContext& frame );
 
 	void bindingKeys();
+	// Поворот камеры мышью: правая кнопка над сценой, режим полёта (I), кадр без редактора (G); курсор и мышь GUI
+	void updateMouseLook();
 	// Консольные команды: камера, снимок, замер GPU, свойства GUI, клавиши, выход (docs/remote.md)
 	void registerCommands();
 	// Снимки, заказанные командой screenshot, — в своей точке кадра: до окон ImGui или после них
@@ -99,7 +101,10 @@ private:
 	float m_fixedTimeStep = 0.0f;
 	double m_gameTime = 0.0;	// время игры, с: FrameContext::gameTime, шейдерам — cb_gameTime
 
-	bool m_cursorMode = false;
+	bool m_flyMode = false;			// I: камера смотрит мышью всегда
+	bool m_rightButtonLook = false;	// зажата правая кнопка, нажатая над сценой
+	bool m_mouseLook = false;		// камера читает мышь в этом кадре
+	POINT m_lookCursor = {};		// где был курсор до поворота — туда он возвращается
 	bool m_wireframe = false;
 	bool m_showGUI = true;
 	// Время отрисовки GUI в прошлом кадре, мкс: текущее станет известно только после GUI

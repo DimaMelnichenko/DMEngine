@@ -42,6 +42,7 @@ public:
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	void renderCustom( const RenderContext& context ) override;
 	PropertyContainer* properties() override { return &m_properties; }
+	bool environment() const override { return true; }
 
 private:
 	// Константный буфер CS b4, раскладка как у VolumetricCloudBuffer в Shaders/volumetric_cloud.sh

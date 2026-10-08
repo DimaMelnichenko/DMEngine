@@ -137,4 +137,12 @@ std::vector<std::string> ConsoleCommands::split( const std::string& line )
 	return words;
 }
 
+std::vector<std::string> ConsoleCommands::names() const
+{
+	std::vector<std::string> result;
+	for( const auto& [name, command] : m_commands )
+		result.push_back( name );
+	return result;
+}
+
 }

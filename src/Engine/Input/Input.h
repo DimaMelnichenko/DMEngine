@@ -42,6 +42,14 @@ public:
 
 	KeyEventNotifier& notifier();
 
+	// Ввод текста в редакторе: клавиатура для движка — как отпущенная (горячие клавиши и WASD не срабатывают);
+	// действует со следующего Frame
+	void setKeyboardBlocked( bool blocked ) { m_keyboardBlocked = blocked; }
+	// Мышь поворачивает камеру: смещения копятся только тогда — иначе поворот прыгнул бы на всё, что накопилось, пока
+	// курсор работал с окнами редактора
+	void setMouseCapture( bool capture ) { m_mouseCapture = capture; }
+	bool isRightMouseDown() const { return ( m_mouseState.rgbButtons[1] & 0x80 ) != 0; }
+
 private:
 	bool ReadKeyboard( );
 	bool ReadMouse( );
@@ -62,5 +70,7 @@ private:
 	double m_mouseX, m_mouseY;
 
 	KeyEventNotifier m_keyNotifier;
+	bool m_keyboardBlocked = false;
+	bool m_mouseCapture = true;
 };
 

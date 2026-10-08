@@ -104,29 +104,55 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	// Пайплайны материалов и объектов для проходов кадра — когда объекты созданы, а свет уровня известен (смещение теней)
 	m_renderer.warmPipelines( m_scene );
 
+	// Outliner: окружение уровня (то, что пишет «Save level environment»), объекты сцены, настройки рендера
+	using Editor::Category;
+	m_GUI.addPropertyWatching( m_scene.lights().properties(), Category::environment );
 	for( SceneObject* object : m_scene.objects() )
 	{
 		if( object->properties() )
-			m_GUI.addPropertyWatching( object->properties() );
+			m_GUI.addPropertyWatching( object->properties(), object->environment() ? Category::environment : Category::scene, object );
 	}
-	m_GUI.addPropertyWatching( m_renderer.postProcessProperties() );
-	m_GUI.addPropertyWatching( m_renderer.shadowProperties() );
-	m_GUI.addPropertyWatching( m_renderer.fogProperties() );
-	m_GUI.addPropertyWatching( m_renderer.properties() );
-	m_GUI.addPropertyWatching( m_scene.lights().properties() );
-	m_GUI.addPropertyWatching( m_scene.wind().properties() );
+	m_GUI.addPropertyWatching( m_renderer.fogProperties(), Category::environment );
+	m_GUI.addPropertyWatching( m_renderer.postProcessProperties(), Category::environment );
+	m_GUI.addPropertyWatching( m_scene.wind().properties(), Category::environment );
+	m_GUI.addPropertyWatching( m_renderer.properties(), Category::rendering );
+	m_GUI.addPropertyWatching( m_renderer.shadowProperties(), Category::rendering );
 	// -nowind: растения неподвижны — кадры с одной точки совпадают до пикселя
 	if( !m_config.wind() )
 		m_scene.wind().disable();
 	// Правки света, неба, теней, постобработки и тумана — в строки уровня (LevelLights, SkyAtmosphere, PostProcessSettings,
 	// ExponentialHeightFog)
-	m_GUI.addAction( "Save level environment", [this]
+	// Первое действие — по Ctrl+S
+	m_GUI.addAction( "Save level environment", "Ctrl+S", [this]
 	{
 		const bool saved = m_scene.saveEnvironment( *m_library, m_renderer.postProcessSettings(), m_renderer.fogSettings() );
 		LOG( saved ? "Level environment is saved to base.db3" : "Level environment is not saved" );
+		if( saved )
+		{
+			m_GUI.markSaved( Editor::Category::environment );
+			m_GUI.notify( "Level environment is saved to base.db3" );
+		}
+		else
+			m_GUI.notify( "Level environment is not saved, see Log", true );
 	} );
+	m_GUI.addAction( "Exit", "Esc", [this] { m_exitRequested = true; } );
+	// Меню View — те же переключатели, что горячие клавиши (нажатие через KeyEventNotifier: состояние клавиши не сбивается)
+	auto press = []( uint8_t key ) { return [key] { Input::instance().notifier().press( key ); }; };
+	m_GUI.addToggle( { "Wireframe", "Q", [this] { return m_wireframe; }, press( DIK_Q ) } );
+	m_GUI.addToggle( { "Terrain", "1", [this] { return m_scene.terrain().visible(); }, press( DIK_1 ) } );
+	m_GUI.addToggle( { "Scatter compute", "3", [this]
+	{
+		return !m_scene.scatterers().empty() && m_scene.scatterers().front()->computeEnabled();
+	}, press( DIK_3 ) } );
+	m_GUI.addToggle( { "Scatter drawing", "4", [this]
+	{
+		return !m_scene.scatterers().empty() && m_scene.scatterers().front()->visible();
+	}, press( DIK_4 ) } );
+	m_GUI.addToggle( { "Fly mode (mouse look)", "I", [this] { return m_flyMode; }, press( DIK_I ) } );
+	m_GUI.addToggle( { "Game view (hide editor)", "G", [this] { return !m_showGUI; }, press( DIK_G ) } );
 
 	m_GUI.Initialize( m_hwnd );
+	m_GUI.setCommandNames( m_console.names() );
 	m_showGUI = m_config.showGUI();
 	if( !m_config.mouseLook() )
 		ShowCursor( FALSE );
@@ -153,6 +179,9 @@ bool DMGraphics::Frame()
 	DMD3D::instance().beginFrame();
 	// Команды удалённого управления — до кадра: камера, свойства и клавиши действуют уже в нём
 	m_remote.poll( m_console );
+	// Команды консоли редактора — там же, где удалённые: в начале кадра, ответ — в окно Output
+	for( const std::string& line : m_GUI.takeConsoleCommands() )
+		m_console.execute( line, std::make_shared<ConsoleReply>( [this]( const std::string& text ) { m_GUI.consoleReply( text ); } ) );
 	m_console.tick();
 	m_framesSinceCut = std::min( m_framesSinceCut + 1, settleFrames );
 
@@ -162,8 +191,8 @@ bool DMGraphics::Frame()
 
 	// Подготовка view, proj матриц
 	DMCamera& camera = m_cameraPool["main"];
-	// С -nomouse камера не читает мышь, как в режиме курсора, — поворот только из -camera и настроек
-	TIME_CHECK( camera.Update( elapsedTime, m_cursorMode || !m_config.mouseLook() ), "Camera Update = %.3f ms" );
+	updateMouseLook();
+	TIME_CHECK( camera.Update( elapsedTime, !m_mouseLook ), "Camera Update = %.3f ms" );
 
 	const RenderView mainView = RenderView::fromCamera( camera );
 	// Правки источников в GUI и время суток — до кадра: по солнцу считаются тени, расстановка и небо
@@ -207,8 +236,7 @@ bool DMGraphics::Render( const FrameContext& frame )
 		// Проход GUI: задний буфер поверх тонмаппинга
 		DMD3D& d3d = DMD3D::instance();
 		d3d.beginPass( PassDesc{ "GUI", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight() } );
-		m_GUI.Begin( m_frameStats );
-		m_GUI.printCamera( m_cameraPool["main"] );
+		m_GUI.Begin( m_frameStats, m_cameraPool["main"] );
 		m_GUI.End();
 		auto guiFinish = TIME_POINT();
 		m_guiRenderTime = TIME_DIFF( guiStart, guiFinish );
@@ -450,6 +478,32 @@ void DMGraphics::registerCommands()
 		else
 			reply->error( reason );
 	} );
+	m_console.registerCommand( "action", "\"<name>\" - run an editor action, as File menu items (Save level environment, Exit)",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( args.size() != 1 )
+		{
+			std::string names;
+			for( const Editor::Action& action : m_GUI.actions() )
+				names += " \"" + action.name + "\"";
+			reply->error( "usage: action \"<name>\"; actions:" + names );
+			return;
+		}
+		if( m_GUI.runAction( args[0] ) )
+			reply->ok();
+		else
+			reply->error( "action: no action " + args[0] );
+	} );
+	m_console.registerCommand( "select", "\"<window>\" - select a properties window in the editor Outliner (Details shows it)",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( args.size() != 1 )
+			return reply->error( "usage: select \"<window>\"" );
+		if( m_GUI.select( args[0] ) )
+			reply->ok();
+		else
+			reply->error( "select: no window " + args[0] );
+	} );
 	m_console.registerCommand( "quit", "- exit the engine normally (log is written to the end)",
 							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
 	{
@@ -458,6 +512,38 @@ void DMGraphics::registerCommands()
 	} );
 
 	registerPropertyCommands( m_console, [this]() -> const std::vector<PropertyContainer*>& { return m_GUI.propertyContainers(); } );
+}
+
+void DMGraphics::updateMouseLook()
+{
+	// Как вьюпорт редактора UE: камера смотрит мышью, пока зажата правая кнопка над сценой (не над окнами редактора);
+	// в режиме полёта (I) и без редактора (G) — всегда. С -nomouse — никогда: поворот только из -camera и команд
+	Input& input = Input::instance();
+	const bool rightButton = input.isRightMouseDown();
+	if( !m_rightButtonLook && rightButton && !( m_showGUI && m_GUI.wantsMouse() ) )
+		m_rightButtonLook = true;
+	else if( m_rightButtonLook && !rightButton )
+		m_rightButtonLook = false;
+	const bool look = m_config.mouseLook() && ( m_rightButtonLook || m_flyMode || !m_showGUI );
+	if( look != m_mouseLook )
+	{
+		// Курсор прячется на время поворота и возвращается на место; окна редактора мышь не видят
+		if( look )
+		{
+			GetCursorPos( &m_lookCursor );
+			ShowCursor( FALSE );
+		}
+		else
+		{
+			SetCursorPos( m_lookCursor.x, m_lookCursor.y );
+			ShowCursor( TRUE );
+		}
+		m_GUI.setMouseEnabled( !look );
+		m_mouseLook = look;
+	}
+	input.setMouseCapture( look );
+	// Ввод текста в окнах редактора — горячие клавиши и WASD молчат
+	input.setKeyboardBlocked( m_showGUI && m_GUI.wantsKeyboard() );
 }
 
 void DMGraphics::bindingKeys()
@@ -501,10 +587,10 @@ void DMGraphics::bindingKeys()
 		m_showGUI = !m_showGUI;
 	} );
 
+	// Режим полёта: камера смотрит мышью всегда, без правой кнопки
 	Input::instance().notifier().registerTrigger( DIK_I, [this]( bool value )
 	{
-		m_cursorMode = value;
-		ShowCursor( value );
+		m_flyMode = value;
 	} );
 }
 

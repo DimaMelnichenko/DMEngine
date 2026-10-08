@@ -20,9 +20,8 @@ constexpr uint32_t jitterPeriod = 16;
 // Объём начинается чуть дальше ближней плоскости (NearOffset в UE): у самой камеры слои не тратятся
 constexpr float nearOffset = 0.1f;
 
-// Плотность в окне — в 1/км: у дымки она тысячные доли 1/м, ползунок с тремя знаками их не показал бы
-const char* const densityProperty = "Density (per km)";
-const char* const secondDensityProperty = "Second density (per km)";
+const char* const densityProperty = "Density";
+const char* const secondDensityProperty = "Second density";
 
 // Последовательность Халтона: сдвиги точки в ячейке по кадрам равномерно заполняют её
 float halton( uint32_t index, uint32_t base )
@@ -38,12 +37,13 @@ float halton( uint32_t index, uint32_t base )
 	return result;
 }
 
-void addSlider( PropertyContainer& properties, const char* name, float value, float low, float high )
+Property* addSlider( PropertyContainer& properties, const char* name, float value, float low, float high )
 {
 	Property* property = properties.insert( name, value );
 	property->setLow( low );
 	property->setHigh( high );
 	property->setControlType( GUIControlType::SLIDER );
+	return property;
 }
 
 }
@@ -61,16 +61,23 @@ bool VolumetricFog::initialize( const std::optional<Settings>& settings )
 	m_properties.setName( "Height fog" );
 	// Строка без плотности — туман выключен (так его сохраняет снятый флажок)
 	m_properties.insert( "Enabled", m_hasRow && ( values.layer.density > 0.0f || values.secondLayer.density > 0.0f ) );
-	addSlider( m_properties, densityProperty, values.layer.density * 1000.0f, 0.0f, 20.0f );
-	addSlider( m_properties, "Height", values.layer.height, -100.0f, 500.0f );
-	addSlider( m_properties, "Height falloff", values.layer.heightFalloff, 0.0f, 0.5f );
-	addSlider( m_properties, secondDensityProperty, values.secondLayer.density * 1000.0f, 0.0f, 200.0f );
-	addSlider( m_properties, "Second height", values.secondLayer.height, -100.0f, 500.0f );
-	addSlider( m_properties, "Second height falloff", values.secondLayer.heightFalloff, 0.0f, 1.0f );
+	// Плотность — от тысячных до сотых 1/м: логарифмический ползунок
+	addSlider( m_properties, densityProperty, values.layer.density, 0.0f, 0.02f )->setLogarithmic()->setUnit( "1/m" )
+		->setTooltip( "Haze over the valley: extinction coefficient; visibility in the layer is about 3 / density" );
+	addSlider( m_properties, "Height", values.layer.height, -100.0f, 500.0f )->setUnit( "m" )
+		->setTooltip( "Below this height the layer is uniform, above it thins out" );
+	addSlider( m_properties, "Height falloff", values.layer.heightFalloff, 0.0f, 0.5f )->setUnit( "1/m" )
+		->setTooltip( "Above the height the density drops e times every 1 / falloff metres" );
+	addSlider( m_properties, secondDensityProperty, values.secondLayer.density, 0.0f, 0.2f )->setLogarithmic()->setUnit( "1/m" )
+		->setTooltip( "Fog poured into the lowlands" );
+	addSlider( m_properties, "Second height", values.secondLayer.height, -100.0f, 500.0f )->setUnit( "m" );
+	addSlider( m_properties, "Second height falloff", values.secondLayer.heightFalloff, 0.0f, 1.0f )->setUnit( "1/m" );
 	m_properties.insert( "Albedo", values.albedo )->setControlType( GUIControlType::COLOR );
-	addSlider( m_properties, "Scattering distribution", values.scatteringDistribution, -0.9f, 0.9f );
-	m_properties.insert( "Volumetric", values.volumetric );
-	addSlider( m_properties, "View distance", values.viewDistance, 20.0f, 1000.0f );
+	addSlider( m_properties, "Scattering distribution", values.scatteringDistribution, -0.9f, 0.9f )
+		->setTooltip( "Henyey-Greenstein g: > 0 - fog glows around the sun" );
+	m_properties.insert( "Volumetric", values.volumetric )->setTooltip( "Froxel volume with sun shadows and lamps; off - analytic fog only" );
+	addSlider( m_properties, "View distance", values.viewDistance, 20.0f, 1000.0f )->setUnit( "m" )
+		->setTooltip( "Depth of the froxel volume; beyond it the fog is analytic, without shadows" );
 	return true;
 }
 
@@ -133,9 +140,9 @@ FogParameters VolumetricFog::frameParameters( const RenderView& view, float norm
 		return fog;
 
 	PropertyContainer& p = m_properties;
-	fog.layer0 = XMFLOAT4( p[densityProperty].data<float>() / 1000.0f, p["Height"].data<float>(),
+	fog.layer0 = XMFLOAT4( p[densityProperty].data<float>(), p["Height"].data<float>(),
 						   p["Height falloff"].data<float>(), view.farPlane );
-	fog.layer1 = XMFLOAT4( p[secondDensityProperty].data<float>() / 1000.0f, p["Second height"].data<float>(),
+	fog.layer1 = XMFLOAT4( p[secondDensityProperty].data<float>(), p["Second height"].data<float>(),
 						   p["Second height falloff"].data<float>(), p["Scattering distribution"].data<float>() );
 	fog.albedo = p["Albedo"].data<XMFLOAT3>();
 	m_scale = std::max( normalization, 1e-6f );
@@ -217,8 +224,8 @@ std::optional<VolumetricFog::Settings> VolumetricFog::settings()
 
 	PropertyContainer& p = m_properties;
 	Settings settings;
-	settings.layer = { p[densityProperty].data<float>() / 1000.0f, p["Height"].data<float>(), p["Height falloff"].data<float>() };
-	settings.secondLayer = { p[secondDensityProperty].data<float>() / 1000.0f, p["Second height"].data<float>(),
+	settings.layer = { p[densityProperty].data<float>(), p["Height"].data<float>(), p["Height falloff"].data<float>() };
+	settings.secondLayer = { p[secondDensityProperty].data<float>(), p["Second height"].data<float>(),
 							 p["Second height falloff"].data<float>() };
 	settings.albedo = p["Albedo"].data<XMFLOAT3>();
 	settings.scatteringDistribution = p["Scattering distribution"].data<float>();

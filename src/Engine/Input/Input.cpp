@@ -1,4 +1,5 @@
 #include "Input.h"
+#include <cstring>
 
 namespace
 {
@@ -117,6 +118,8 @@ bool Input::Frame( )
 	{
 		return false;
 	}
+	if( m_keyboardBlocked )
+		memset( m_keyboardState, 0, sizeof( m_keyboardState ) );
 
 	// Read the current state of the mouse.
 	result = ReadMouse( );
@@ -182,8 +185,11 @@ bool Input::ReadMouse( )
 void Input::ProcessInput( )
 {
 	// Update the location of the mouse cursor based on the change of the mouse location during the frame.
-	m_mouseX += m_mouseState.lX;
-	m_mouseY += m_mouseState.lY;
+	if( m_mouseCapture )
+	{
+		m_mouseX += m_mouseState.lX;
+		m_mouseY += m_mouseState.lY;
+	}
 	return;
 
 }

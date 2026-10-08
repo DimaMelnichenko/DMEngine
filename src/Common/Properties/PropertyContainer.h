@@ -41,6 +41,11 @@ public:
 	// Имена свойств в порядке добавления — так их показывает GUI
 	const std::vector<std::string>& names() const;
 
+	// Со всеми подконтейнерами: запомнить нынешние значения сохранёнными, есть ли изменённые после этого, вернуть их
+	void markSaved();
+	bool modified() const;
+	void resetToSaved();
+
 private:
     PropertyMap m_propertyMap;
 	std::vector<std::string> m_order;

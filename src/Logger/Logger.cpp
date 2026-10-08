@@ -40,5 +40,23 @@ Logger::~Logger()
 
 void Logger::write( const char* function, long line, const std::string& message )
 {
+	std::lock_guard<std::mutex> lock( m_mutex );
 	m_fileOut << "func:" << function << ", line:" << line << "|" << message << std::endl;
+	m_recent.push_back( std::string( function ) + ": " + message );
+	if( m_recent.size() > recentCapacity )
+		m_recent.pop_front();
+	++m_total;
+}
+
+void Logger::recent( std::vector<std::string>& lines, uint64_t& first ) const
+{
+	std::lock_guard<std::mutex> lock( m_mutex );
+	lines.assign( m_recent.begin(), m_recent.end() );
+	first = m_total - m_recent.size();
+}
+
+uint64_t Logger::total() const
+{
+	std::lock_guard<std::mutex> lock( m_mutex );
+	return m_total;
 }

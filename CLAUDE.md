@@ -50,7 +50,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   и tinyexr (тег `v1.0.13`, чтение `.exr`; свой CMake не берётся — библиотека из `tinyexr.cc` и miniz собирается
   в `CMakeLists.txt`), DirectX 12 Agility SDK 1.619 (пакет NuGet как zip: рантайм `D3D12Core.dll` и debug-слой копируются
   в `D3D12\` рядом с exe, заголовки — раньше Windows SDK), DXC v1.9 (`dxcompiler.dll` и `dxil.dll` рядом с exe),
-  WinPixEventRuntime, Dear ImGui 1.92 (ядро и бэкенды Win32 / DX12 собираются в движке) и D3D12 Memory Allocator 3.2
+  WinPixEventRuntime, Dear ImGui 1.92.9b ветки docking (ядро и бэкенды Win32 / DX12 собираются в движке; архив — из
+  `DownloadResources\imgui-1.92.9b-docking.zip`, если он там есть, иначе с GitHub) и D3D12 Memory Allocator 3.2
   подтягиваются через `FetchContent` при первом configure: нужны сеть и git. Остальное берётся из Windows SDK.
 - **Из терминала собирать только скриптом**, а не вызывать cmake вручную:
   ```
@@ -157,7 +158,17 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 - Горячие клавиши (`DMGraphics::bindingKeys`): Esc — выход, Q — wireframe, P — скриншот (кадр с окнами ImGui в
   `screenshot<N>.jpg`; ставится в ту же очередь, что команда `screenshot`: копировать задний буфер можно только в кадре),
   1 — видимость террейна, 3 / 4 — расчёт / отрисовка всех наборов расстановки (трава, камешки; по умолчанию включены),
-  I — курсор для работы с ImGui, G — показать / скрыть окна ImGui (как Game View в редакторе UE).
+  I — режим полёта (камера смотрит мышью всегда), G — вид игры без редактора, Ctrl+S — сохранить окружение уровня,
+  `` ` `` — консоль. Камера смотрит мышью при зажатой правой кнопке над сценой (`DMGraphics::updateMouseLook`); пока
+  в окнах редактора набирается текст, горячие клавиши и WASD молчат (`Input::setKeyboardBlocked`).
+- **Редактор** (`src/Engine/Graphics/GUI/`, подробно — `docs/gui.md`), как редактор UE: главное меню (File — действия
+  `GUI::addAction`, их же вызывает команда `action`; View — переключатели `addToggle`; Window — панели и «Reset layout»;
+  Help), докинг панелей: Outliner (окна свойств по разделам Environment / Scene / Rendering, флажок видимости объекта),
+  Details (свойства выбранного таблицей: поиск, единицы, подсказки, отметка изменённого после загрузки или сохранения и
+  сброс — `Property::markSaved` / `modified` / `resetToSaved`), Output (консоль на `ConsoleCommands` с историей и
+  дополнением; лог — `Logger::recent`), Stats, Camera, Texture Library; оверлей FPS и времени кадра. Раскладка по
+  умолчанию — кодом (`DockBuilder`), запоминается в `imgui_editor.ini` (не в git). Команда `select "<окно>"` выбирает
+  окно в Outliner — для снимков Details сценарием.
 
 ## Архитектура
 
@@ -441,7 +452,8 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 (bool, float, XMFLOAT2/3/4, int32, uint32) плюс границы и `GUIControlType`. `PropertyContainer` —
 именованная карта свойств с вложенными контейнерами. Объекты, которые нужно крутить в рантайме
 (террейн, модели, частицы), отдают `properties()`, а `DMGraphics` регистрирует их через
-`m_GUI.addPropertyWatching(...)`. После этого ImGui (`Graphics/GUI/GUI.cpp`) сам строит контролы по типу свойства.
+`m_GUI.addPropertyWatching( контейнер, раздел Outliner, объект )`. После этого панель Details (`GUI/PropertyWidgets.cpp`)
+сама строит контролы по типу свойства; необязательно — `setUnit`, `setTooltip`, `setFormat`, `setLogarithmic`.
 
 **Террейн** — `CDLODTerrain` (`Scene/Terrain/`, Strugar 2009): квадродерево над картой высот,
 корень покрывает весь террейн, лист — 32 текселя, диапазон каждого уровня вдвое больше предыдущего. Узлы выбираются

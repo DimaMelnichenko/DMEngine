@@ -80,9 +80,15 @@ FetchContent_Declare(winpixeventruntime
     DOWNLOAD_NAME  WinPixEventRuntime.1.0.240308001.zip
     SOURCE_SUBDIR  do-not-add
 )
-# Dear ImGui с бэкендами Win32 и DX12 (свой CMake у него нет — файлы собираются в движке)
+# Dear ImGui ветки docking (редактор: панели прилипают к краям и складываются вкладками, docs/gui.md) с бэкендами Win32 и
+# DX12 (свой CMake у него нет — файлы собираются в движке). Архив берётся из DownloadResources\, если он там есть
+# (сеть до GitHub бывает недоступна), иначе с GitHub
+set(DM_IMGUI_ARCHIVE ${CMAKE_SOURCE_DIR}/DownloadResources/imgui-1.92.9b-docking.zip)
+if(NOT EXISTS ${DM_IMGUI_ARCHIVE})
+    set(DM_IMGUI_ARCHIVE https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9b-docking.zip)
+endif()
 FetchContent_Declare(imgui
-    URL            https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9b.zip
+    URL            ${DM_IMGUI_ARCHIVE}
     SOURCE_SUBDIR  do-not-add
 )
 # D3D12 Memory Allocator (AMD): память под ресурсы
@@ -114,7 +120,15 @@ add_executable(DMEngine WIN32
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+    ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
     src/Engine/Graphics/GUI/GUI.cpp
+    src/Engine/Graphics/GUI/PropertyWidgets.cpp
+    src/Engine/Graphics/GUI/OutlinerPanel.cpp
+    src/Engine/Graphics/GUI/DetailsPanel.cpp
+    src/Engine/Graphics/GUI/StatsPanel.cpp
+    src/Engine/Graphics/GUI/ConsolePanel.cpp
+    src/Engine/Graphics/GUI/CameraPanel.cpp
+    src/Engine/Graphics/GUI/TextureLibraryPanel.cpp
     src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp
     src/Engine/Graphics/Scene/Particle/ParticleSystem.cpp
     src/Engine/Graphics/DMComputeShader.cpp
@@ -200,6 +214,7 @@ target_include_directories(DMEngine PRIVATE
     ${dxc_SOURCE_DIR}/inc
     ${winpixeventruntime_SOURCE_DIR}/Include/WinPixEventRuntime
     ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/misc/cpp
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/3rdParty

@@ -70,6 +70,7 @@ public:
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	void renderCustom( const RenderContext& context ) override;
 	PropertyContainer* properties() override;
+	bool environment() const override { return true; }
 
 private:
 	// Константный буфер PS b2, раскладка как у SkyParameters в Shaders/atmosphere.sh
