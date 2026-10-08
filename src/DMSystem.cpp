@@ -143,7 +143,7 @@ LRESULT DMSystem::wndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 			ShowWindow( hWnd, SW_SHOW );
 			SetFocus( hWnd );
 			SetForegroundWindow( hWnd );
-			ShowCursor( false );
+			// Курсор виден: прячет его только поворот камеры мышью и -nomouse (DMGraphics::updateMouseLook, Initialize)
 			break;
 		}
 	}
