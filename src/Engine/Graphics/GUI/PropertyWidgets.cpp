@@ -243,7 +243,19 @@ void drawProperties( PropertyContainer& container, const std::string& filter, bo
 	ImGui::EndTable();
 }
 
-void drawContainerImpl( PropertyContainer& container, const std::string& filter, bool parentMatches )
+bool contains( PropertyContainer& container, const PropertyContainer* target )
+{
+	if( &container == target )
+		return true;
+	for( PropertyContainer* sub : container.subContainer() )
+	{
+		if( contains( *sub, target ) )
+			return true;
+	}
+	return false;
+}
+
+void drawContainerImpl( PropertyContainer& container, const std::string& filter, bool parentMatches, PropertyContainer* focus )
 {
 	const bool containerMatches = parentMatches || ( !filter.empty() && matches( container.name(), filter ) );
 	drawProperties( container, filter, containerMatches );
@@ -256,10 +268,15 @@ void drawContainerImpl( PropertyContainer& container, const std::string& filter,
 		// Под фильтром — раскрыты: видно, что нашлось
 		if( !filter.empty() )
 			ImGui::SetNextItemOpen( true, ImGuiCond_Always );
-		if( ImGui::CollapsingHeader( title.c_str() ) )
+		else if( focus )
+			ImGui::SetNextItemOpen( contains( *sub, focus ), ImGuiCond_Always );
+		const bool open = ImGui::CollapsingHeader( title.c_str() );
+		if( sub == focus )
+			ImGui::SetScrollHereY( 0.1f );
+		if( open )
 		{
 			ImGui::Indent( ImGui::GetStyle().IndentSpacing * 0.5f );
-			drawContainerImpl( *sub, filter, containerMatches );
+			drawContainerImpl( *sub, filter, containerMatches, focus );
 			ImGui::Unindent( ImGui::GetStyle().IndentSpacing * 0.5f );
 		}
 		ImGui::PopID();
@@ -294,9 +311,9 @@ bool hasMatches( PropertyContainer& container, const std::string& filter )
 	return false;
 }
 
-void drawContainer( PropertyContainer& container, const std::string& filter )
+void drawContainer( PropertyContainer& container, const std::string& filter, PropertyContainer* focus )
 {
-	drawContainerImpl( container, filter, false );
+	drawContainerImpl( container, filter, false, focus );
 }
 
 }

@@ -46,6 +46,7 @@ struct Toggle
 	std::string shortcut;
 	std::function<bool()> state;
 	std::function<void()> toggle;
+	bool debugView = false;	// в подменю View → Debug views (раскраска LOD, каскады, вода)
 };
 
 }

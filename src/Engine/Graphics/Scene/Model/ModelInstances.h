@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <vector>
 #include <DirectXCollision.h>
 #include "SceneObject.h"
@@ -35,6 +36,20 @@ public:
 	PropertyContainer* instanceProperties() { return &m_instanceProperties; }
 	// Экземпляры с правками окна — для сохранения уровня (строки LevelModels по id)
 	std::vector<LevelDescription::ModelInstance> instances() const;
+
+	// Выбор во вьюпорте редактора: экземпляр, чьи повёрнутые границы LOD 0 луч пересекает ближе всех (distance — до
+	// пересечения); −1 — ни один
+	int pick( DirectX::FXMVECTOR origin, DirectX::FXMVECTOR direction, float& distance ) const;
+	uint32_t instanceCount() const { return static_cast<uint32_t>( m_instances.size() ); }
+	// Границы LOD 0 экземпляра в мире (рамка выбранного); false — у модели нет LOD
+	bool instanceBox( int instance, DirectX::BoundingOrientedBox& box ) const;
+	// Мировая матрица экземпляра и её запись в свойства окна (положение, поворот углами, масштаб) — гизмо вьюпорта;
+	// трансформ меняется в update, как после правки в Details
+	DirectX::XMMATRIX instanceMatrix( int instance ) const { return m_instances[instance].transform.worldMatrix(); }
+	void setInstanceMatrix( int instance, DirectX::FXMMATRIX matrix );
+	// Подокно экземпляра в окне «Model instances» и его имя («id: модель»)
+	PropertyContainer* instanceProperties( int instance ) const { return m_instances[instance].properties.get(); }
+	const std::string& instanceName( int instance ) const { return m_instances[instance].name; }
 	// Границы всех экземпляров (меш LOD 0 в мировых координатах); false — экземпляров нет
 	bool bounds( DirectX::BoundingBox& bounds ) const;
 
@@ -47,6 +62,7 @@ private:
 		DMTransform transform;
 		DirectX::XMFLOAT3 angles = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// применённый поворот: pitch, yaw, roll, градусы
 		std::unique_ptr<PropertyContainer> properties;	// «Position», «Rotation», «Scale»
+		std::string name;	// «id: модель» — имя подокна
 	};
 
 	// Секции LOD экземпляра в список вида. lodDither — доля перехода (MeshBatch::lodDither): (0; 1) — уходящий LOD,

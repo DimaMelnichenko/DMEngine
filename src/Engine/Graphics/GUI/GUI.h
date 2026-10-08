@@ -46,6 +46,9 @@ public:
 	const std::vector<Editor::Action>& actions() const { return m_actions; }
 	// Переключатель меню View
 	void addToggle( Editor::Toggle toggle );
+	// Выбрать в Outliner запись, где лежит container (сама или подокно), и раскрыть его в Details (выбор во вьюпорте);
+	// false — такого окна нет
+	bool focusProperties( PropertyContainer* container );
 	// Имена консольных команд — для дополнения в консоли
 	void setCommandNames( std::vector<std::string> names ) { m_commandNames = std::move( names ); }
 
@@ -88,6 +91,7 @@ private:
 	std::vector<Editor::Entry> m_entries;
 	std::vector<PropertyContainer*> m_containers;
 	int m_selected = -1;
+	PropertyContainer* m_focus = nullptr;	// раскрыть в Details в следующем кадре (focusProperties)
 	std::vector<Editor::Action> m_actions;
 	std::vector<Editor::Toggle> m_toggles;
 	std::vector<std::string> m_commandNames;

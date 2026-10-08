@@ -91,6 +91,16 @@ FetchContent_Declare(imgui
     URL            ${DM_IMGUI_ARCHIVE}
     SOURCE_SUBDIR  do-not-add
 )
+# ImGuizmo (C. Guillemet): гизмо перемещения, поворота и масштаба во вьюпорте редактора; ImGuizmo.cpp собирается в
+# движке. Архив — из DownloadResources\, иначе ветка master с GitHub
+set(DM_IMGUIZMO_ARCHIVE ${CMAKE_SOURCE_DIR}/DownloadResources/ImGuizmo-master.zip)
+if(NOT EXISTS ${DM_IMGUIZMO_ARCHIVE})
+    set(DM_IMGUIZMO_ARCHIVE https://github.com/CedricGuillemet/ImGuizmo/archive/refs/heads/master.zip)
+endif()
+FetchContent_Declare(imguizmo
+    URL            ${DM_IMGUIZMO_ARCHIVE}
+    SOURCE_SUBDIR  do-not-add
+)
 # D3D12 Memory Allocator (AMD): память под ресурсы
 set(D3D12MA_BUILD_SAMPLE OFF)
 FetchContent_Declare(d3d12ma
@@ -98,7 +108,7 @@ FetchContent_Declare(d3d12ma
     GIT_TAG        v3.2.0
     GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(agilitysdk dxc winpixeventruntime imgui d3d12ma)
+FetchContent_MakeAvailable(agilitysdk dxc winpixeventruntime imgui imguizmo d3d12ma)
 set(AGILITY_INCLUDE ${agilitysdk_SOURCE_DIR}/build/native/include)
 set(AGILITY_BIN ${agilitysdk_SOURCE_DIR}/build/native/bin/x64)
 # Аллокатор — против тех же заголовков D3D12, что движок
@@ -121,6 +131,7 @@ add_executable(DMEngine WIN32
     ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
     ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
+    ${imguizmo_SOURCE_DIR}/src/ImGuizmo.cpp
     src/Engine/Graphics/GUI/GUI.cpp
     src/Engine/Graphics/GUI/PropertyWidgets.cpp
     src/Engine/Graphics/GUI/OutlinerPanel.cpp
@@ -129,6 +140,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/GUI/ConsolePanel.cpp
     src/Engine/Graphics/GUI/CameraPanel.cpp
     src/Engine/Graphics/GUI/TextureLibraryPanel.cpp
+    src/Engine/Graphics/GUI/Viewport.cpp
     src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp
     src/Engine/Graphics/Scene/Particle/ParticleSystem.cpp
     src/Engine/Graphics/DMComputeShader.cpp
@@ -216,6 +228,7 @@ target_include_directories(DMEngine PRIVATE
     ${winpixeventruntime_SOURCE_DIR}/Include/WinPixEventRuntime
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/misc/cpp
+    ${imguizmo_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/3rdParty

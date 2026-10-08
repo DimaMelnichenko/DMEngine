@@ -154,6 +154,17 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	}, press( DIK_4 ) } );
 	m_GUI.addToggle( { "Fly mode (mouse look)", "I", [this] { return m_flyMode; }, press( DIK_I ) } );
 	m_GUI.addToggle( { "Game view (hide editor)", "G", [this] { return !m_showGUI; }, press( DIK_G ) } );
+	// Отладочные виды — флажки окон объектов одним списком View → Debug views
+	auto debugView = [this]( const char* name, PropertyContainer* properties, const char* property )
+	{
+		if( !properties || !properties->exists( property ) )
+			return;
+		m_GUI.addToggle( { name, "", [properties, property] { return ( *properties )[property].data<bool>(); },
+						   [properties, property] { ( *properties )[property].setData( !( *properties )[property].data<bool>() ); }, true } );
+	};
+	debugView( "Terrain LOD", m_scene.terrain().properties(), "Show LOD" );
+	debugView( "Water on terrain", m_scene.terrain().properties(), "Show water" );
+	debugView( "Shadow cascades", m_renderer.shadowProperties(), "Show cascades" );
 
 	m_GUI.Initialize( m_hwnd );
 	m_GUI.setCommandNames( m_console.names() );
@@ -241,6 +252,9 @@ bool DMGraphics::Render( const FrameContext& frame )
 		DMD3D& d3d = DMD3D::instance();
 		d3d.beginPass( PassDesc{ "GUI", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight() } );
 		m_GUI.Begin( m_frameStats, m_cameraPool["main"] );
+		// Вьюпорт — в кадре ImGui: выбор кликом по сцене, рамка выбранного; пока камера смотрит мышью — без кликов
+		if( !m_mouseLook )
+			m_viewport.update( m_cameraPool["main"], m_scene.models(), m_GUI );
 		m_GUI.End();
 		auto guiFinish = TIME_POINT();
 		m_guiRenderTime = TIME_DIFF( guiStart, guiFinish );
@@ -507,6 +521,16 @@ void DMGraphics::registerCommands()
 			reply->ok();
 		else
 			reply->error( "select: no window " + args[0] );
+	} );
+	m_console.registerCommand( "pick", "<x> <y> - select a model instance under a window point, as a click in the viewport",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( args.size() != 2 )
+			return reply->error( "usage: pick <x> <y>" );
+		const int instance = m_viewport.pickAt( m_cameraPool["main"], m_scene.models(), m_GUI, std::stof( args[0] ), std::stof( args[1] ) );
+		if( instance < 0 )
+			return reply->ok( "nothing" );
+		reply->ok( m_scene.models().instanceName( instance ) );
 	} );
 	m_console.registerCommand( "quit", "- exit the engine normally (log is written to the end)",
 							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )

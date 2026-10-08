@@ -44,6 +44,7 @@ python Tools/engine.py stop
 | `key клавиша` | нажатие горячей клавиши (буква, цифра или скан-код DirectInput): `G`, `Q`, `1`, `3`, `4`… |
 | `gui on\|off` | окна редактора, как клавиша G |
 | `action "имя"` | действие меню File редактора: `"Save level"` — правки окон в базу, `"Exit"` ([gui.md](gui.md)) |
+| `pick x y` | выбрать экземпляр модели под точкой окна (пиксели), как клик во вьюпорте; ответ — его имя или `nothing` ([gui.md](gui.md)) |
 | `select "окно"` | выбрать окно свойств в Outliner — Details показывает его (снимки редактора сценарием: `screenshot файл.png gui`) |
 | `wait кадров` | пропустить столько кадров |
 | `water discharge файл.dds` | расход воды ячеек симуляции, м³/с, в DDS `R32_FLOAT` (`WaterSimulation::exportDischarge`) — по нему `Tools/carve_channels.py` режет русла; путь — от корня проекта |

@@ -161,7 +161,11 @@ void GUI::Begin( const GS::FrameStats& stats, DMCamera& camera )
 	if( m_showOutliner && placeNext( outlinerWindow ) )
 		m_outliner.draw( m_entries, m_selected, &m_showOutliner );
 	if( m_showDetails && placeNext( detailsWindow ) )
-		m_details.draw( m_selected >= 0 && m_selected < static_cast<int>( m_entries.size() ) ? &m_entries[m_selected] : nullptr, &m_showDetails );
+	{
+		m_details.draw( m_selected >= 0 && m_selected < static_cast<int>( m_entries.size() ) ? &m_entries[m_selected] : nullptr,
+						&m_showDetails, m_focus );
+		m_focus = nullptr;
+	}
 	if( m_showOutput && placeNext( outputWindow ) )
 		m_console.draw( &m_showOutput, m_commandNames, m_containers );
 	if( m_showStats && placeNext( statsWindow ) )
@@ -200,8 +204,19 @@ void GUI::drawMenu()
 	{
 		for( const Editor::Toggle& toggle : m_toggles )
 		{
+			if( toggle.debugView )
+				continue;
 			if( ImGui::MenuItem( toggle.name.c_str(), toggle.shortcut.empty() ? nullptr : toggle.shortcut.c_str(), toggle.state() ) )
 				toggle.toggle();
+		}
+		if( ImGui::BeginMenu( "Debug views" ) )
+		{
+			for( const Editor::Toggle& toggle : m_toggles )
+			{
+				if( toggle.debugView && ImGui::MenuItem( toggle.name.c_str(), toggle.shortcut.empty() ? nullptr : toggle.shortcut.c_str(), toggle.state() ) )
+					toggle.toggle();
+			}
+			ImGui::EndMenu();
 		}
 		ImGui::Separator();
 		ImGui::MenuItem( "Frame overlay", nullptr, &m_showOverlay );
@@ -416,6 +431,38 @@ bool GUI::runAction( const std::string& name )
 void GUI::addToggle( Editor::Toggle toggle )
 {
 	m_toggles.push_back( std::move( toggle ) );
+}
+
+namespace
+{
+
+bool containsProperties( PropertyContainer& container, const PropertyContainer* target )
+{
+	if( &container == target )
+		return true;
+	for( PropertyContainer* sub : container.subContainer() )
+	{
+		if( containsProperties( *sub, target ) )
+			return true;
+	}
+	return false;
+}
+
+}
+
+bool GUI::focusProperties( PropertyContainer* container )
+{
+	for( int i = 0; i < static_cast<int>( m_entries.size() ); ++i )
+	{
+		if( containsProperties( *m_entries[i].properties, container ) )
+		{
+			m_selected = i;
+			m_focus = container;
+			m_showDetails = true;
+			return true;
+		}
+	}
+	return false;
 }
 
 void GUI::markSaved()

@@ -51,7 +51,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   в `CMakeLists.txt`), DirectX 12 Agility SDK 1.619 (пакет NuGet как zip: рантайм `D3D12Core.dll` и debug-слой копируются
   в `D3D12\` рядом с exe, заголовки — раньше Windows SDK), DXC v1.9 (`dxcompiler.dll` и `dxil.dll` рядом с exe),
   WinPixEventRuntime, Dear ImGui 1.92.9b ветки docking (ядро и бэкенды Win32 / DX12 собираются в движке; архив — из
-  `DownloadResources\imgui-1.92.9b-docking.zip`, если он там есть, иначе с GitHub) и D3D12 Memory Allocator 3.2
+  `DownloadResources\imgui-1.92.9b-docking.zip`, если он там есть, иначе с GitHub), ImGuizmo (ветка master, гизмо
+  вьюпорта; `DownloadResources\ImGuizmo-master.zip`, иначе с GitHub) и D3D12 Memory Allocator 3.2
   подтягиваются через `FetchContent` при первом configure: нужны сеть и git. Остальное берётся из Windows SDK.
 - **Из терминала собирать только скриптом**, а не вызывать cmake вручную:
   ```
@@ -159,6 +160,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `screenshot<N>.jpg`; ставится в ту же очередь, что команда `screenshot`: копировать задний буфер можно только в кадре),
   1 — видимость террейна, 3 / 4 — расчёт / отрисовка всех наборов расстановки (трава, камешки; по умолчанию включены),
   I — режим полёта (камера смотрит мышью всегда), G — вид игры без редактора, Ctrl+S — сохранить уровень (правки окон),
+  левая кнопка по сцене — выбрать экземпляр модели, 5 / 6 / 7 — гизмо: перемещение / поворот / масштаб,
   `` ` `` — консоль. Камера смотрит мышью при зажатой правой кнопке над сценой (`DMGraphics::updateMouseLook`); пока
   в окнах редактора набирается текст, горячие клавиши и WASD молчат (`Input::setKeyboardBlocked`).
 - **Редактор** (`src/Engine/Graphics/GUI/`, подробно — `docs/gui.md`), как редактор UE: главное меню (File — действия
@@ -174,7 +176,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (`LibraryLoader::saveLevelScene`, `ObjectLibrary/LibraryLoaderScene.cpp`); объект отдаёт настройки по своим свойствам,
   о базе не знает. Имя свойства — без «/» (разделитель пути `set`), единицы — `Property::setUnit`. Экземпляры моделей —
   окно «Model instances» (`ModelInstances::instanceProperties`: положение, поворот углами, масштаб → `LevelModels`).
-  У числа — поле ввода справа от ползунка, векторы — перетаскиванием с вводом по двойному клику.
+  У числа — поле ввода справа от ползунка, векторы — перетаскиванием с вводом по двойному клику. Вьюпорт
+  (`GUI/Viewport.h`, вызывается между `GUI::Begin` и `End`): клик по сцене — луч к границам экземпляров
+  (`ModelInstances::pick`), рамка, подокно в Details (`GUI::focusProperties`), гизмо ImGuizmo пишет в те же свойства;
+  отладочные виды — View → Debug views; команда `pick x y` — выбор сценарием.
 
 ## Архитектура
 

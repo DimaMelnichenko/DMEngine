@@ -3,7 +3,7 @@
 #include "imgui_stdlib.h"
 #include "PropertyWidgets.h"
 
-void DetailsPanel::draw( Editor::Entry* entry, bool* open )
+void DetailsPanel::draw( Editor::Entry* entry, bool* open, PropertyContainer* focus )
 {
 	if( !ImGui::Begin( "Details", open ) )
 	{
@@ -37,7 +37,7 @@ void DetailsPanel::draw( Editor::Entry* entry, bool* open )
 
 	ImGui::BeginChild( "properties" );
 	ImGui::PushID( &properties );
-	PropertyWidgets::drawContainer( properties, m_filter );
+	PropertyWidgets::drawContainer( properties, m_filter, focus );
 	ImGui::PopID();
 	ImGui::EndChild();
 	ImGui::End();

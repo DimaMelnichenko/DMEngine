@@ -12,8 +12,9 @@ namespace PropertyWidgets
 // Подстрока без учёта регистра (латиница); пустой образец подходит ко всему
 bool matches( const std::string& text, const std::string& pattern );
 
-// Свойства контейнера и его подконтейнеры (сворачиваемые заголовки); filter — подстрока имени свойства или подконтейнера
-void drawContainer( PropertyContainer& container, const std::string& filter );
+// Свойства контейнера и его подконтейнеры (сворачиваемые заголовки); filter — подстрока имени свойства или подконтейнера;
+// focus — подконтейнер, который раскрыть (с родителями) и прокрутить к нему, прочие свернуть; nullptr — как есть
+void drawContainer( PropertyContainer& container, const std::string& filter, PropertyContainer* focus = nullptr );
 
 // Есть ли в контейнере что показать под фильтром
 bool hasMatches( PropertyContainer& container, const std::string& filter );

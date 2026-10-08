@@ -78,7 +78,8 @@ void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstan
 		if( withProperties.insert( description.model ).second )
 			m_properties.addSubContainer( instance.model->properties() );
 
-		instance.properties = std::make_unique<PropertyContainer>( std::to_string( description.id ) + ": " + instance.model->properties()->name() );
+		instance.name = std::to_string( description.id ) + ": " + instance.model->properties()->name();
+		instance.properties = std::make_unique<PropertyContainer>( instance.name );
 		Property* position = instance.properties->insert( "Position", instance.transform.position() );
 		// Перетаскивание без границ (low = high), шаг — на пиксель
 		position->setControlType( GUIControlType::DRAG );
@@ -148,6 +149,55 @@ void ModelInstances::updateBounds()
 			DirectX::BoundingBox::CreateMerged( m_bounds, m_bounds, meshBounds );
 		first = false;
 	}
+}
+
+void ModelInstances::setInstanceMatrix( int instance, FXMMATRIX matrix )
+{
+	XMVECTOR scale;
+	XMVECTOR rotation;
+	XMVECTOR translation;
+	if( !XMMatrixDecompose( &scale, &rotation, &translation, matrix ) )
+		return;
+	XMFLOAT3 position;
+	XMFLOAT3 size;
+	XMFLOAT4 quaternion;
+	XMStoreFloat3( &position, translation );
+	XMStoreFloat3( &size, scale );
+	XMStoreFloat4( &quaternion, rotation );
+	PropertyContainer& properties = *m_instances[instance].properties;
+	properties["Position"].setData( position );
+	properties["Scale"].setData( size );
+	// Поворот не менялся (перемещение, масштаб) — углы окна как есть: перевод туда и обратно сдвинул бы их на ±0,0001
+	const XMVECTOR current = XMLoadFloat4( &m_instances[instance].transform.rotation() );
+	if( std::abs( XMVectorGetX( XMVector4Dot( current, rotation ) ) ) < 0.999999f )
+		properties["Rotation"].setData( quaternionToAngles( quaternion ) );
+}
+
+bool ModelInstances::instanceBox( int instance, DirectX::BoundingOrientedBox& box ) const
+{
+	const DMModel::LodBlock* lod = m_instances[instance].model->getLodById( 0 );
+	if( !lod )
+		return false;
+	DirectX::BoundingOrientedBox local;
+	DirectX::BoundingOrientedBox::CreateFromBoundingBox( local, lod->bounds );
+	local.Transform( box, m_instances[instance].transform.worldMatrix() );
+	return true;
+}
+
+int ModelInstances::pick( FXMVECTOR origin, FXMVECTOR direction, float& distance ) const
+{
+	int nearest = -1;
+	for( int i = 0; i < static_cast<int>( m_instances.size() ); ++i )
+	{
+		DirectX::BoundingOrientedBox box;
+		float hit = 0.0f;
+		if( instanceBox( i, box ) && box.Intersects( origin, direction, hit ) && ( nearest < 0 || hit < distance ) )
+		{
+			nearest = i;
+			distance = hit;
+		}
+	}
+	return nearest;
 }
 
 std::vector<LevelDescription::ModelInstance> ModelInstances::instances() const

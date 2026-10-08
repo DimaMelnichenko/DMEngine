@@ -18,6 +18,7 @@
 
 #include "Config\Config.h"
 #include "GUI\GUI.h"
+#include "GUI\Viewport.h"
 #include "Scene\Scene.h"
 #include "Renderer.h"
 #include "Engine\Console\ConsoleCommands.h"
@@ -77,6 +78,7 @@ private:
 
 	Scene m_scene;
 	GUI m_GUI;
+	Viewport m_viewport;
 	FrameStats m_frameStats;	// счётчики окна «Statistic» за кадр: пишут Frame и рендерер, показывает GUI
 	Renderer m_renderer;
 
