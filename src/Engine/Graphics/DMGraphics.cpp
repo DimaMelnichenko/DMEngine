@@ -118,6 +118,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 			m_GUI.addPropertyWatching( object->properties(), object->environment() ? Category::environment : Category::scene, object,
 									   object->savedWithLevel() );
 	}
+	// Экземпляры моделей — своё окно: положение сохраняется, а параметры материалов окна «Models» — нет
+	m_GUI.addPropertyWatching( m_scene.models().instanceProperties(), Category::scene, nullptr, true );
 	m_GUI.addPropertyWatching( m_renderer.fogProperties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_renderer.postProcessProperties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_scene.wind().properties(), Category::environment, nullptr, true );

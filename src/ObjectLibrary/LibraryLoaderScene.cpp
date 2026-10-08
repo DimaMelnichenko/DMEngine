@@ -1,13 +1,15 @@
 #include "LibraryLoader.h"
+#include <cstdio>
 #include "DBConnector.h"
 #include "Logger\Logger.h"
 #include "Utils\utilites.h"
 
-// Объекты сцены уровня: правки из GUI («Save level») — строки Terrain и TerrainLayers, ScatterLayers и ScatterLayerModels,
+// Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterLayers и ScatterLayerModels,
 // WaterSimulation, ParticleEmitters. Только колонки, которые правятся в окнах; состав (какие слои, модели, эмиттеры)
 // не меняется
 
-bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::optional<GS::TerrainSettings>& terrain,
+bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::vector<LevelDescription::ModelInstance>& models,
+									const std::optional<GS::TerrainSettings>& terrain,
 									const std::vector<GS::ScatterLayerRecord>& scatterLayers,
 									const std::optional<GS::WaterSimulationSettings>& water,
 									const std::vector<GS::ParticleEmitterSettings>& particleEmitters )
@@ -16,6 +18,21 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::op
 	{
 		SQLite::Database& db = DBConnector::instance().db();
 		SQLite::Transaction transaction( db );
+
+		SQLite::Statement updateModel( db, "UPDATE LevelModels SET position = :position, rotation = :rotation, scale = :scale WHERE id = :id" );
+		for( const LevelDescription::ModelInstance& model : models )
+		{
+			if( model.id == 0 )
+				continue;
+			char rotation[96];
+			std::snprintf( rotation, sizeof( rotation ), "%g,%g,%g,%g", model.rotation.x, model.rotation.y, model.rotation.z, model.rotation.w );
+			updateModel.bind( ":position", vec3ToStr( model.position ) );
+			updateModel.bind( ":rotation", std::string( rotation ) );
+			updateModel.bind( ":scale", vec3ToStr( model.scale ) );
+			updateModel.bind( ":id", model.id );
+			updateModel.exec();
+			updateModel.reset();
+		}
 
 		if( terrain && terrain->id )
 		{

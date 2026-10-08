@@ -15,8 +15,9 @@ namespace
 
 const ImVec4 modifiedColor( 1.0f, 0.75f, 0.3f, 1.0f );
 
-// Формат числа: заданный у свойства или по величине значения — 128000 без экспоненты, 0,0003 — не в ноль
-std::string numberFormat( const Property& property, float value )
+// Формат числа: заданный у свойства или по величине значения — 128000 без экспоненты, 0,0003 — не в ноль; unit —
+// с единицами (у поля ввода их нет)
+std::string numberFormat( const Property& property, float value, bool unit = true )
 {
 	std::string format = property.format();
 	if( format.empty() )
@@ -31,14 +32,48 @@ std::string numberFormat( const Property& property, float value )
 		else
 			format = "%.3e";
 	}
-	if( !property.unit().empty() )
+	if( unit && !property.unit().empty() )
 		format += " " + property.unit();
 	return format;
+}
+
+// Ячейка «ползунок | поле ввода числа»: поле — под «-0000.000» (не уже «-0.000»), ползунок — остальное. В узкой
+// ячейке (панель Camera) ползунку места нет — только поле. true — ползунок рисовать (ширина уже задана)
+bool beginWithNumberField()
+{
+	const float padding = ImGui::GetStyle().FramePadding.x * 2.0f;
+	const float avail = ImGui::GetContentRegionAvail().x;
+	const float field = std::clamp( avail * 0.4f, ImGui::CalcTextSize( "-0.000" ).x + padding, ImGui::CalcTextSize( "-0000.000" ).x + padding );
+	const float slider = avail - field - ImGui::GetStyle().ItemInnerSpacing.x;
+	if( slider < ImGui::GetFontSize() * 2.5f )
+		return false;
+	ImGui::SetNextItemWidth( slider );
+	return true;
+}
+
+// Поле ввода числа: точное значение без ползунка (за границы ползунка — можно); afterSlider — в той же строке
+void numberField( const Property& property, float* value, bool afterSlider )
+{
+	if( afterSlider )
+		ImGui::SameLine( 0.0f, ImGui::GetStyle().ItemInnerSpacing.x );
+	ImGui::SetNextItemWidth( -FLT_MIN );
+	const std::string format = numberFormat( property, *value, !afterSlider );
+	ImGui::InputFloat( "##number", value, 0.0f, 0.0f, format.c_str(), ImGuiInputTextFlags_CharsScientific );
+}
+
+void intField( int32_t* value, bool afterSlider )
+{
+	if( afterSlider )
+		ImGui::SameLine( 0.0f, ImGui::GetStyle().ItemInnerSpacing.x );
+	ImGui::SetNextItemWidth( -FLT_MIN );
+	ImGui::InputInt( "##number", value, 0, 0 );
 }
 
 // Шаг перетаскивания: доля диапазона, но не меньше доли самого значения
 float dragSpeed( const Property& property, float value )
 {
+	if( property.dragSpeed() > 0.0f )
+		return property.dragSpeed();
 	const float range = property.high() - property.low();
 	return std::max( { std::fabs( value ) * 0.005f, range > 0.0f ? range * 0.001f : 0.0f, 1e-5f } );
 }
@@ -85,27 +120,37 @@ void controlCell( const std::string& name, Property& property )
 		{
 			float* value = property.dataPtr<float>();
 			const std::string format = numberFormat( property, *value );
+			ImGui::PushID( label );
 			switch( property.controlType() )
 			{
 				case GUIControlType::DRAG:
-					ImGui::DragFloat( label, value, dragSpeed( property, *value ), property.low(), property.high(), format.c_str(), flags );
+				{
+					const bool slider = beginWithNumberField();
+					if( slider )
+						ImGui::DragFloat( label, value, dragSpeed( property, *value ), property.low(), property.high(), format.c_str(), flags );
+					numberField( property, value, slider );
 					break;
+				}
 				case GUIControlType::LABEL:
 					ImGui::Text( format.c_str(), *value );
 					break;
 				default:
-					ImGui::SliderFloat( label, value, property.low(), property.high(), format.c_str(), flags );
+				{
+					const bool slider = beginWithNumberField();
+					if( slider )
+						ImGui::SliderFloat( label, value, property.low(), property.high(), format.c_str(), flags );
+					numberField( property, value, slider );
 					break;
+				}
 			}
+			ImGui::PopID();
 			break;
 		}
+		// Векторы — перетаскиванием (у ползунка — границы): двойной клик по полю — ввод числа
 		case ValueType::VECTOR2:
 		{
 			float* value = reinterpret_cast<float*>( property.dataPtr<XMFLOAT2>() );
-			if( property.controlType() == GUIControlType::DRAG )
-				ImGui::DragFloat2( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
-			else
-				ImGui::SliderFloat2( label, value, property.low(), property.high() );
+			ImGui::DragFloat2( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
 			break;
 		}
 		case ValueType::VECTOR3:
@@ -116,11 +161,8 @@ void controlCell( const std::string& name, Property& property )
 				case GUIControlType::COLOR:
 					ImGui::ColorEdit3( label, value, ImGuiColorEditFlags_Float );
 					break;
-				case GUIControlType::DRAG:
-					ImGui::DragFloat3( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
-					break;
 				default:
-					ImGui::SliderFloat3( label, value, property.low(), property.high() );
+					ImGui::DragFloat3( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
 					break;
 			}
 			break;
@@ -133,11 +175,8 @@ void controlCell( const std::string& name, Property& property )
 				case GUIControlType::COLOR:
 					ImGui::ColorEdit4( label, value, ImGuiColorEditFlags_Float );
 					break;
-				case GUIControlType::DRAG:
-					ImGui::DragFloat4( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
-					break;
 				default:
-					ImGui::SliderFloat4( label, value, property.low(), property.high() );
+					ImGui::DragFloat4( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
 					break;
 			}
 			break;
@@ -145,10 +184,14 @@ void controlCell( const std::string& name, Property& property )
 		case ValueType::INT:
 		{
 			int32_t* value = property.dataPtr<int32_t>();
-			if( property.controlType() == GUIControlType::DRAG )
+			ImGui::PushID( label );
+			const bool slider = beginWithNumberField();
+			if( slider && property.controlType() == GUIControlType::DRAG )
 				ImGui::DragInt( label, value, 1.0f, static_cast<int>( property.low() ), static_cast<int>( property.high() ) );
-			else
+			else if( slider )
 				ImGui::SliderInt( label, value, static_cast<int>( property.low() ), static_cast<int>( property.high() ) );
+			intField( value, slider );
+			ImGui::PopID();
 			break;
 		}
 		case ValueType::UINT:

@@ -14,6 +14,7 @@ struct LevelDescription
 	// Экземпляр модели на уровне (строка LevelModels): одна модель может стоять в нескольких местах
 	struct ModelInstance
 	{
+		uint32_t id = 0;	// строка LevelModels — куда пишет «Save level»
 		uint32_t model = 0;
 		DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );
 		DirectX::XMFLOAT4 rotation = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 1.0f );	// кватернион x, y, z, w, как rotation узла glTF

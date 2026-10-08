@@ -87,6 +87,9 @@ public:
 	Property* setUnit( const std::string& unit ) { m_unit = unit; return this; }
 	Property* setFormat( const std::string& format ) { m_format = format; return this; }
 	Property* setLogarithmic( bool logarithmic = true ) { m_logarithmic = logarithmic; return this; }
+	// Шаг перетаскивания (GUIControlType::DRAG) на пиксель; 0 — по величине значения и диапазону
+	Property* setDragSpeed( float speed ) { m_dragSpeed = speed; return this; }
+	float dragSpeed() const { return m_dragSpeed; }
 	const std::string& tooltip() const { return m_tooltip; }
 	const std::string& unit() const { return m_unit; }
 	const std::string& format() const { return m_format; }
@@ -110,5 +113,6 @@ private:
 	std::string m_unit;
 	std::string m_format;
 	bool m_logarithmic = false;
+	float m_dragSpeed = 0.0f;
 };
 

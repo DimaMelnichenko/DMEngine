@@ -305,7 +305,7 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	std::vector<ParticleEmitterSettings> emitters;
 	if( m_particles.initialized() )
 		emitters = m_particles.emitterSettings();
-	return library.saveLevelScene( m_level, terrain, scatterLayers, water, emitters );
+	return library.saveLevelScene( m_level, m_models.instances(), terrain, scatterLayers, water, emitters );
 }
 
 DirectX::XMFLOAT4 Scene::cloudShadow( const RenderView& view )
@@ -343,6 +343,11 @@ DirectX::BoundingBox Scene::bounds() const
 CDLODTerrain& Scene::terrain()
 {
 	return m_terrain;
+}
+
+ModelInstances& Scene::models()
+{
+	return m_models;
 }
 
 WaterSimulation& Scene::water()

@@ -320,6 +320,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 		while( queryModels.executeStep() )
 		{
 			LevelDescription::ModelInstance instance;
+			instance.id = queryModels.getColumn( "id" ).getUInt();
 			instance.model = queryModels.getColumn( "model" ).getUInt();
 			const std::string row = "Level model " + queryModels.getColumn( "id" ).getString();
 			const std::string position = queryModels.getColumn( "position" ).getString();

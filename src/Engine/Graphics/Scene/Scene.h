@@ -60,6 +60,8 @@ public:
 	DirectX::XMFLOAT4 cloudShadow( const RenderView& view );
 
 	CDLODTerrain& terrain();
+	// Экземпляры моделей уровня (LevelModels)
+	ModelInstances& models();
 	// Вода по рельефу (Levels.water_simulation); без неё у уровня объект не инициализирован
 	WaterSimulation& water();
 	// Границы того, что может отбросить тень: террейн (мир × диапазон высот) и модели уровня
