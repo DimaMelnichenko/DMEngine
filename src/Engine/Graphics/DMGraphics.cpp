@@ -124,6 +124,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_GUI.addPropertyWatching( m_renderer.postProcessProperties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_scene.wind().properties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_renderer.properties(), Category::rendering );
+	m_GUI.addPropertyWatching( m_walk.properties(), Category::rendering );
 	m_GUI.addPropertyWatching( m_renderer.shadowProperties(), Category::rendering );
 	// Правки окон, сохраняемых с уровнем, — в его строки (LevelLights, SkyAtmosphere, PostProcessSettings,
 	// ExponentialHeightFog, Terrain, ScatterLayers, WaterSimulation, ParticleEmitters…). Первое действие — по Ctrl+S
@@ -153,6 +154,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return !m_scene.scatterers().empty() && m_scene.scatterers().front()->visible();
 	}, press( DIK_4 ) } );
 	m_GUI.addToggle( { "Fly mode (mouse look)", "I", [this] { return m_flyMode; }, press( DIK_I ) } );
+	m_GUI.addToggle( { "Walk on terrain", "F", [this] { return m_walk.enabled(); }, press( DIK_F ) } );
 	m_GUI.addToggle( { "Game view (hide editor)", "G", [this] { return !m_showGUI; }, press( DIK_G ) } );
 	// Отладочные виды — флажки окон объектов одним списком View → Debug views
 	auto debugView = [this]( const char* name, PropertyContainer* properties, const char* property )
@@ -207,6 +209,9 @@ bool DMGraphics::Frame()
 	// Подготовка view, proj матриц
 	DMCamera& camera = m_cameraPool["main"];
 	updateMouseLook();
+	// Ходьба ставит камеру на землю до её Update (поворот мышью — как в полёте)
+	if( m_walk.enabled() )
+		m_walk.update( elapsedTime / 1000.0f, camera, m_scene.terrain() );
 	TIME_CHECK( camera.Update( elapsedTime, !m_mouseLook ), "Camera Update = %.3f ms" );
 
 	const RenderView mainView = RenderView::fromCamera( camera );
@@ -552,7 +557,7 @@ void DMGraphics::updateMouseLook()
 		m_rightButtonLook = true;
 	else if( m_rightButtonLook && !rightButton )
 		m_rightButtonLook = false;
-	const bool look = m_config.mouseLook() && ( m_rightButtonLook || m_flyMode || !m_showGUI );
+	const bool look = m_config.mouseLook() && ( m_rightButtonLook || m_flyMode || m_walk.enabled() || !m_showGUI );
 	if( look != m_mouseLook )
 	{
 		// Курсор прячется на время поворота и возвращается на место; окна редактора мышь не видят
@@ -619,6 +624,14 @@ void DMGraphics::bindingKeys()
 	Input::instance().notifier().registerTrigger( DIK_I, [this]( bool value )
 	{
 		m_flyMode = value;
+	} );
+
+	// Полёт ↔ ходьба по рельефу: включение в воздухе — падение до земли. Без террейна — только полёт
+	Input::instance().notifier().registerTrigger( DIK_F, [this]( bool )
+	{
+		const bool walk = !m_walk.enabled() && m_scene.level().terrain.has_value();
+		m_walk.setEnabled( walk, m_cameraPool["main"], walk ? &m_scene.terrain() : nullptr );
+		LOG( walk ? "Walk mode" : "Fly mode" );
 	} );
 }
 

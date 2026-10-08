@@ -29,6 +29,8 @@ public:
 	// Тангаж и рыскание в градусах вместе с поворотом мышью — как у камеры в кадре
 	DirectX::XMFLOAT2 rotation() const;
 	void Update( float elapsedTime, bool cursorMode = false );
+	// W A S D, пробел и C двигают камеру (полёт); выключено — положение задаёт режим ходьбы (WalkMode)
+	void setKeyboardMovement( bool enabled ) { m_keyboardMovement = enabled; }
 
 	const DirectX::XMFLOAT3& position( ) const;
 	void position( DirectX::XMFLOAT3* ) const;
@@ -60,6 +62,7 @@ private:
 	float m_fieldOfView = 0.7853981f;
 	float m_viewportWidth = 1.0f;
 	float m_viewportHeight = 1.0f;
+	bool m_keyboardMovement = true;
 	DirectX::XMFLOAT3 m_view_direction;
 	DirectX::XMMATRIX m_mCameraWorld;
 	// Последнее положение мыши: в режиме курсора (I) камера сохраняет поворот

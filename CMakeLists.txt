@@ -194,6 +194,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/VolumetricFog.cpp
     src/Engine/Graphics/SceneTargets.cpp
     src/Engine/Graphics/Scene/Camera/DMCamera.cpp
+    src/Engine/Graphics/Scene/Camera/WalkMode.cpp
     src/Engine/Graphics/Scene/Camera/DMFrustum.cpp
     src/Engine/Graphics/Scene/Scene.cpp
     src/Engine/Graphics/Scene/Sky/SkySphere.cpp

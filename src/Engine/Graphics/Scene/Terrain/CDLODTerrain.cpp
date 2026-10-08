@@ -299,6 +299,12 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, Ter
 		LOG( "CDLOD terrain: " + std::to_string( edits.size() ) + " terrain edits, texels changed: " + std::to_string( changed ) );
 	}
 
+	// Копия итоговой карты на CPU — высота поверхности для ходьбы (surfaceHeight); 1024² — 4 МБ
+	m_cpuSize = static_cast<uint32_t>( image->width );
+	m_cpuHeights.resize( static_cast<size_t>( m_cpuSize ) * image->height );
+	for( size_t row = 0; row < image->height; ++row )
+		std::memcpy( &m_cpuHeights[row * m_cpuSize], image->pixels + row * image->rowPitch, m_cpuSize * sizeof( float ) );
+
 	// Вершины уровня L читают мипы L и L + 1, поэтому вершинному шейдеру нужна карта высот с полной цепочкой мипов
 	ScratchImage mipChain;
 	if( FAILED( GenerateMipMaps( *image, TEX_FILTER_DEFAULT, 0, mipChain ) ) )
@@ -449,6 +455,40 @@ void CDLODTerrain::update( const FrameContext& frame )
 		if( m_layerProperties.exists( name ) )
 			m_material.setTiling( layer, std::max( m_layerProperties[name].data<float>(), 0.01f ) );
 	}
+}
+
+bool CDLODTerrain::surfaceHeight( float x, float z, float& height ) const
+{
+	if( m_cpuHeights.empty() || x < 0.0f || z < 0.0f || x > m_worldSize || z > m_worldSize )
+		return false;
+	const int size = static_cast<int>( m_cpuSize );
+	// Вершина сетки LOD 0 (kx, kz) — в углу текселей: шейдер читает карту билинейно по uv = (x, worldSize − z) / worldSize,
+	// центры текселей — на половинах, поэтому вершина — среднее четырёх текселей вокруг угла (на краю — повтор)
+	auto texel = [&]( int column, int row )
+	{
+		column = std::clamp( column, 0, size - 1 );
+		row = std::clamp( row, 0, size - 1 );
+		return m_cpuHeights[static_cast<size_t>( row ) * m_cpuSize + column];
+	};
+	auto vertex = [&]( int kx, int kz )
+	{
+		const int row = size - kz;	// строка текселя над углом (ось z идёт по текстуре снизу вверх)
+		return 0.25f * ( texel( kx - 1, row - 1 ) + texel( kx, row - 1 ) + texel( kx - 1, row ) + texel( kx, row ) );
+	};
+	const float gx = x / m_texelSize;
+	const float gz = z / m_texelSize;
+	const int kx = std::min( static_cast<int>( gx ), size - 1 );
+	const int kz = std::min( static_cast<int>( gz ), size - 1 );
+	const float fx = gx - kx;
+	const float fz = gz - kz;
+	const float h00 = vertex( kx, kz );
+	const float h10 = vertex( kx + 1, kz );
+	const float h01 = vertex( kx, kz + 1 );
+	const float h11 = vertex( kx + 1, kz + 1 );
+	// Диагональ квада — от (0, 0) к (1, 1), как в GridMesh
+	const float value = fx >= fz ? h00 + fx * ( h10 - h00 ) + fz * ( h11 - h10 ) : h00 + fz * ( h01 - h00 ) + fx * ( h11 - h01 );
+	height = value * m_heightMultiplier + m_heightOffset;
+	return true;
 }
 
 TerrainSettings CDLODTerrain::settings() const

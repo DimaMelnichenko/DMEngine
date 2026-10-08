@@ -49,6 +49,8 @@ public:
 	// курсор работал с окнами редактора
 	void setMouseCapture( bool capture ) { m_mouseCapture = capture; }
 	bool isRightMouseDown() const { return ( m_mouseState.rgbButtons[1] & 0x80 ) != 0; }
+	// Клавиша зажата (скан-код DirectInput, DIK_*); при вводе текста в редакторе — нет
+	bool isKeyDown( uint8_t key ) const { return ( m_keyboardState[key] & 0x80 ) != 0; }
 
 private:
 	bool ReadKeyboard( );

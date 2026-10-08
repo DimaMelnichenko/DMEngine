@@ -19,6 +19,7 @@
 #include "Config\Config.h"
 #include "GUI\GUI.h"
 #include "GUI\Viewport.h"
+#include "Scene\Camera\WalkMode.h"
 #include "Scene\Scene.h"
 #include "Renderer.h"
 #include "Engine\Console\ConsoleCommands.h"
@@ -104,6 +105,7 @@ private:
 	double m_gameTime = 0.0;	// время игры, с: FrameContext::gameTime, шейдерам — cb_gameTime
 
 	bool m_flyMode = false;			// I: камера смотрит мышью всегда
+	WalkMode m_walk;				// F: ходьба по рельефу вместо полёта
 	bool m_rightButtonLook = false;	// зажата правая кнопка, нажатая над сценой
 	bool m_mouseLook = false;		// камера читает мышь в этом кадре
 	POINT m_lookCursor = {};		// где был курсор до поворота — туда он возвращается

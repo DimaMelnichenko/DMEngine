@@ -28,6 +28,9 @@ public:
 	virtual ~TerrainHeightSource() = default;
 	// Текущие параметры: множитель высоты можно менять во время работы
 	virtual TerrainHeight terrainHeight() const = 0;
+	// Высота поверхности в точке (x, z) мира, как её рисует террейн вблизи — треугольники сетки LOD 0 по итоговой карте, м;
+	// false — точка вне карты или высот на CPU нет. Для того, кто ходит по земле (WalkMode)
+	virtual bool surfaceHeight( float x, float z, float& height ) const { return false; }
 };
 
 }

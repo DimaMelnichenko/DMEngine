@@ -33,6 +33,7 @@ public:
 	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {} );
 	// Карта высот и её масштаб: по ним стоят расстановка травы и декора и частицы
 	TerrainHeight terrainHeight() const override;
+	bool surfaceHeight( float x, float z, float& height ) const override;
 
 	void update( const FrameContext& frame ) override;
 	// Выбор узлов квадродерева для вида: LOD — от точки LOD вида, отсечение — по его frustum
@@ -106,6 +107,9 @@ private:
 	float m_heightOffset = 0.0f;
 	float m_heightMultiplier = 1.0f;
 	uint32_t m_terrainId = 0;
+	// Итоговая карта (с правками рельефа) на CPU — значения 0…1 строками сверху вниз, как текстура: высота для ходьбы
+	std::vector<float> m_cpuHeights;
+	uint32_t m_cpuSize = 0;
 	PropertyContainer m_layerProperties;	// «Layer tiling»: метров на повтор по слоям — подокно окна террейна
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;

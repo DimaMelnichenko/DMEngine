@@ -197,7 +197,8 @@ void DMCamera::Update( float elapsedTime, bool cursorMode )
 	XMFLOAT3 lookAt( 0.0, 0.0, 1.0 );
 
 	XMFLOAT3 posDirection( 0.0, 0.0, 0.0 );
-	readKeyboard( posDirection );
+	if( m_keyboardMovement )
+		readKeyboard( posDirection );
 	XMVECTOR vPosDelta = XMLoadFloat3( &posDirection );
 	vPosDelta = XMVectorScale( vPosDelta, elapsedTime );
 	vPosDelta = XMVectorScale( vPosDelta, 0.1f );
