@@ -34,6 +34,9 @@ public:
 	void renderCustom( const RenderContext& context ) override;
 	void warmPipelines( const PassStates& states ) override;
 	PropertyContainer* properties() override;
+	bool savedWithLevel() const override { return true; }
+	// Эмиттеры с настройками из GUI — для сохранения уровня (строки ParticleEmitters)
+	std::vector<Settings> emitterSettings() const;
 
 private:
 	// Раскладка — cbuffer ParticleEmitterBuffer (b4) в Shaders/particles.sh

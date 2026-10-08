@@ -36,6 +36,9 @@ public:
 	void renderCustom( const RenderContext& context ) override;
 	void warmPipelines( const PassStates& states ) override;
 	PropertyContainer* properties() override;
+	bool savedWithLevel() const override { return true; }
+	// Настройки с правками GUI — для сохранения уровня (строка WaterSimulation)
+	Settings settings() const;
 	// Расход ячеек, м³/с (сумма оттоков к соседям), — в DDS R32_FLOAT на сетке карты высот (строка 0 — дальний край
 	// по z): по нему Tools/carve_channels.py режет русла. Ждёт GPU; false — воды нет или файл не записан (reason)
 	bool exportDischarge( const std::string& file, std::string& reason );
@@ -91,8 +94,6 @@ private:
 		float padding[2];
 	};
 
-	// Текущие значения GUI
-	Settings settings() const;
 	void setParameters( const Settings& settings );
 	// Приток ячеек по карте водосбора — при загрузке и при смене настроек источников
 	void buildSources( const Settings& settings );

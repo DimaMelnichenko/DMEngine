@@ -9,7 +9,7 @@ using namespace DirectX;
 
 // Свет и окружение уровня: строки LevelLights, SunPosition, SkyAtmosphere, Wind, HDRIBackdrop, PostProcessSettings,
 // ExponentialHeightFog, VolumetricCloud —
-// загрузка в LevelDescription и сохранение правок из GUI («Save level environment»)
+// загрузка в LevelDescription и сохранение правок из GUI («Save level»)
 
 void LibraryLoader::loadLevelLights( LevelDescription& level )
 {
@@ -232,17 +232,11 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 	return true;
 }
 
-namespace
-{
-
-// Число для базы — с короткой записью (%g), как векторы: float 0.1 не превращается в 0.10000000149011612
-double dbValue( float value )
+double LibraryLoader::dbValue( float value )
 {
 	char text[32];
 	std::snprintf( text, sizeof( text ), "%g", value );
 	return std::atof( text );
-}
-
 }
 
 bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,

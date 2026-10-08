@@ -89,7 +89,7 @@ python Tools/height_fog.py remove [--level Test]
 
 - Окно «Height fog»: «Enabled», «Density» (1/м, логарифмический ползунок), «Height», «Height falloff»,
   «Second density», «Second height», «Second height falloff», «Albedo»,
-  «Scattering distribution», «Volumetric», «View distance». Кнопка «Save level environment» пишет их в строку уровня
+  «Scattering distribution», «Volumetric», «View distance». Кнопка «Save level» пишет их в строку уровня
   (нет строки — создаёт); снятый «Enabled» сохраняется строкой без плотности.
 - Удалённое управление: `set "Height fog/Enabled" false` — кадр без тумана (для сравнения с прошлым эталоном),
   `set "Height fog/Second height" 40` и т. п.

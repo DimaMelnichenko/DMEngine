@@ -229,10 +229,10 @@ void GUI::drawMenu()
 		ImGui::EndMenu();
 	}
 
-	// Справа: несохранённое окружение уровня
-	if( modified( Editor::Category::environment ) )
+	// Справа: несохранённые правки уровня
+	if( modified() )
 	{
-		const char* text = "Level environment changed — Ctrl+S to save";
+		const char* text = "Level changed — Ctrl+S to save";
 		ImGui::SameLine( ImGui::GetWindowWidth() - ImGui::CalcTextSize( text ).x - ImGui::GetStyle().ItemSpacing.x * 2.0f );
 		ImGui::TextColored( ImVec4( 1.0f, 0.75f, 0.3f, 1.0f ), "%s", text );
 	}
@@ -371,14 +371,14 @@ void GUI::drawHotkeys()
 	ImGui::End();
 }
 
-void GUI::addPropertyWatching( PropertyContainer* propertyContainer, Editor::Category category, GS::SceneObject* object )
+void GUI::addPropertyWatching( PropertyContainer* propertyContainer, Editor::Category category, GS::SceneObject* object, bool saved )
 {
 	// В порядке регистрации; одинаковые имена окон друг друга не затирают
 	if( !propertyContainer || std::find( m_containers.begin(), m_containers.end(), propertyContainer ) != m_containers.end() )
 		return;
 	propertyContainer->markSaved();
 	m_containers.push_back( propertyContainer );
-	m_entries.push_back( { propertyContainer, category, object } );
+	m_entries.push_back( { propertyContainer, category, object, saved } );
 }
 
 void GUI::addAction( const std::string& name, const std::string& shortcut, std::function<void()> run )
@@ -418,20 +418,20 @@ void GUI::addToggle( Editor::Toggle toggle )
 	m_toggles.push_back( std::move( toggle ) );
 }
 
-void GUI::markSaved( Editor::Category category )
+void GUI::markSaved()
 {
 	for( Editor::Entry& entry : m_entries )
 	{
-		if( entry.category == category )
+		if( entry.saved )
 			entry.properties->markSaved();
 	}
 }
 
-bool GUI::modified( Editor::Category category ) const
+bool GUI::modified() const
 {
 	for( const Editor::Entry& entry : m_entries )
 	{
-		if( entry.category == category && entry.properties->modified() )
+		if( entry.saved && entry.properties->modified() )
 			return true;
 	}
 	return false;

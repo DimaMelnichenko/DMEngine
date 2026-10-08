@@ -77,7 +77,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   не ждут окончания работы, и часть работы объекта (пиксели террейна) попадает в время следующего.
   Обычно камера поворачивается мышью; `-NoMouse` (`-nomouse` у exe) отключает это и скрывает указатель, со `-Screenshot`
   он включается сам — снимки с одной точки совпадают до пикселя, если не движется трава: ветер уровня качает её, для
-  сравнения кадров — `-NoWind` (`-nowind` у exe, `--nowind` у `engine.py start`, в сессии `set "Wind/Strength" 0`) и
+  сравнения кадров — `-NoWind` (`-nowind` у exe, `--nowind` у `engine.py start`, в сессии `set "Wind/Enabled" false`) и
   `-NoParticles` (`-noparticles`, `--noparticles`: частицы движутся). Ближняя и дальняя плоскости камеры — `ScreenNear` / `ScreenDepth` в секции `[General]` `settings.ini` (0,1 и 4000 м; от дальней зависят сфера неба и слои воздушной перспективы). Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
   `Rotation=pitch,yaw` в градусах, pitch > 0 — взгляд вниз), уровень — секция `[Level]` (`Name`); параметры `-Camera`
   и `-Level` скрипта (`-camera`, `-level` у exe) их переопределяют, так что снимок с нужной точки не требует правки кода.
@@ -158,7 +158,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 - Горячие клавиши (`DMGraphics::bindingKeys`): Esc — выход, Q — wireframe, P — скриншот (кадр с окнами ImGui в
   `screenshot<N>.jpg`; ставится в ту же очередь, что команда `screenshot`: копировать задний буфер можно только в кадре),
   1 — видимость террейна, 3 / 4 — расчёт / отрисовка всех наборов расстановки (трава, камешки; по умолчанию включены),
-  I — режим полёта (камера смотрит мышью всегда), G — вид игры без редактора, Ctrl+S — сохранить окружение уровня,
+  I — режим полёта (камера смотрит мышью всегда), G — вид игры без редактора, Ctrl+S — сохранить уровень (правки окон),
   `` ` `` — консоль. Камера смотрит мышью при зажатой правой кнопке над сценой (`DMGraphics::updateMouseLook`); пока
   в окнах редактора набирается текст, горячие клавиши и WASD молчат (`Input::setKeyboardBlocked`).
 - **Редактор** (`src/Engine/Graphics/GUI/`, подробно — `docs/gui.md`), как редактор UE: главное меню (File — действия
@@ -168,7 +168,11 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   сброс — `Property::markSaved` / `modified` / `resetToSaved`), Output (консоль на `ConsoleCommands` с историей и
   дополнением; лог — `Logger::recent`), Stats, Camera, Texture Library; оверлей FPS и времени кадра. Раскладка по
   умолчанию — кодом (`DockBuilder`), запоминается в `imgui_editor.ini` (не в git). Команда `select "<окно>"` выбирает
-  окно в Outliner — для снимков Details сценарием.
+  окно в Outliner — для снимков Details сценарием. «Save level» (Ctrl+S, `Scene::saveLevel`) пишет в базу окна,
+  сохраняемые с уровнем (`SceneObject::savedWithLevel`; Details пишет «Saved with the level»): окружение
+  (`LibraryLoader::saveLevelEnvironment`) и объекты сцены — террейн, расстановку, воду, частицы
+  (`LibraryLoader::saveLevelScene`, `ObjectLibrary/LibraryLoaderScene.cpp`); объект отдаёт настройки по своим свойствам,
+  о базе не знает. Имя свойства — без «/» (разделитель пути `set`), единицы — `Property::setUnit`.
 
 ## Архитектура
 
@@ -367,8 +371,8 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 деревья — материал `PBRTree` (define `WIND_TREE`): слои Games wind SpeedTree по данным второго потока вершин `VertexPool` —
 начала и веса ветвей двух уровней, доля высоты, рябь, атрибуты glTF `_WIND_*`, блок `WIND` файла меша).
 В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
-вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Volumetric cloud», «Post process», «Height fog», «Wind»; кнопка «Save level environment»
-(`GUI::addAction`) пишет их обратно (`LibraryLoader::saveLevelEnvironment`; чтение и запись окружения — `ObjectLibrary/LibraryLoaderEnvironment.cpp`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
+вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Volumetric cloud», «Post process», «Height fog», «Wind»; кнопка «Save level»
+(`GUI::addAction`) пишет их обратно вместе с окнами объектов сцены (`LibraryLoader::saveLevelEnvironment`; чтение и запись окружения — `ObjectLibrary/LibraryLoaderEnvironment.cpp`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
 уровень). Источники раз за кадр обновляет `Scene::updateLights` в `DMGraphics::Frame` (правки GUI и время
 суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`
 и загружает на GPU, только когда источники изменились.

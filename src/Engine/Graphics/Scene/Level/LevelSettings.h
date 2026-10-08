@@ -41,6 +41,20 @@ struct TerrainEdit
 	uint32_t rasterSize = 0;
 };
 
+// Материал и высота террейна — колонки строки Terrain и tiling строк TerrainLayers: читает CDLODTerrain, правки окна
+// террейна пишет «Save level»
+struct TerrainSettings
+{
+	uint32_t id = 0;					// строка Terrain
+	float heightMultiplier = 1.0f;
+	float triplanarSharpness = 8.0f;	// резкость смены проекций triplanar на склонах
+	float heightBlend = 0.2f;			// глубина смешения слоёв по высоте
+	float farTextureScale = 8.0f;		// второй масштаб текстур вдали (distance resampling)
+	float farBlendStart = 40.0f;		// полоса перехода ко второму масштабу, м
+	float farBlendEnd = 120.0f;
+	std::vector<float> layerTiling;		// метров на повтор по номеру слоя (TerrainLayers.layer); 0 — слоя нет
+};
+
 // Строка SkyAtmosphere; без неё — значения по умолчанию
 struct SkyAtmosphereSettings
 {
@@ -229,6 +243,7 @@ struct ParticleEmitterSettings
 	// Как выглядят: мягкое пятно к камере или узкая карточка, вытянутая вдоль скорости (хвоинка)
 	enum class Shape { dot, needle };
 
+	uint32_t id = 0;				// строка ParticleEmitters — куда пишет «Save level»
 	std::string name;
 	Spawn spawn = Spawn::point;
 	Shape shape = Shape::dot;
@@ -279,6 +294,7 @@ struct SunPositionSettings
 // (ScatterPass::PopulateParams)
 struct ScatterLayerSettings
 {
+	uint32_t id = 0;				// строка ScatterLayers — куда пишет «Save level»
 	float cellSize = 1.0f;			// шаг сетки, метры
 	float nearBorder = 0.0f;		// кольцо вокруг камеры, метры
 	float farBorder = 0.0f;
@@ -302,6 +318,21 @@ struct ScatterLayerSettings
 	// альфа-тест отбрасывает тексели, закрытые меньше чем наполовину) и сила затенения окружающего света внутри кроны (0…1)
 	float impostorDensity = 1.0f;
 	float impostorOcclusion = 0.0f;
+};
+
+// Вариант слоя расстановки — строка ScatterLayerModels: доля ячеек и тень (то, что пишет «Save level»)
+struct ScatterModelSettings
+{
+	uint32_t id = 0;
+	float weight = 1.0f;
+	bool castShadow = true;
+};
+
+// Слой расстановки для сохранения уровня: строка ScatterLayers и строки её моделей
+struct ScatterLayerRecord
+{
+	ScatterLayerSettings settings;
+	std::vector<ScatterModelSettings> models;
 };
 
 }

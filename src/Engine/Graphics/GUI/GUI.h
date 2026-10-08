@@ -32,10 +32,10 @@ public:
 	void Begin( const GS::FrameStats& stats, DMCamera& camera );
 	void End();
 
-	// Окно свойств: в Outliner — в разделе category; у объекта сцены — флажок видимости. Значения при регистрации —
-	// «сохранённые» (Details отмечает изменённые после них)
+	// Окно свойств: в Outliner — в разделе category; у объекта сцены — флажок видимости; saved — правки пишет в базу
+	// «Save level». Значения при регистрации — «сохранённые» (Details отмечает изменённые после них)
 	void addPropertyWatching( PropertyContainer* propertyContainer, Editor::Category category = Editor::Category::rendering,
-							  GS::SceneObject* object = nullptr );
+							  GS::SceneObject* object = nullptr, bool saved = false );
 	// Окна свойств в порядке регистрации — для команд list / get / set удалённого управления
 	const std::vector<PropertyContainer*>& propertyContainers() const { return m_containers; }
 	// Действие меню File (сохранение, выход); его же вызывает команда action. false — нет такого
@@ -53,9 +53,9 @@ public:
 	std::vector<std::string> takeConsoleCommands() { return m_console.takePending(); }
 	void consoleReply( const std::string& text ) { m_console.appendReply( text ); }
 
-	// Нынешние значения раздела — сохранёнными (после сохранения уровня); есть ли изменения после сохранения
-	void markSaved( Editor::Category category );
-	bool modified( Editor::Category category ) const;
+	// Нынешние значения окон, сохраняемых с уровнем, — сохранёнными (после «Save level»); есть ли в них несохранённое
+	void markSaved();
+	bool modified() const;
 	// Сообщение в углу экрана на несколько секунд (сохранено, ошибка)
 	void notify( const std::string& text, bool error = false );
 

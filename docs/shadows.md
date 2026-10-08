@@ -127,7 +127,7 @@ dᵢ = D · (Eⁱ − 1) / (E⁴ − 1)
 
 Тени — свойство солнца, как Cascaded Shadow Maps у Directional Light в UE: колонки строки солнца в `LevelLights`
 ([lighting.md](lighting.md)); у точечных и прожекторов они не используются. В GUI — в подокне солнца в «Lights»,
-кнопка «Save level environment» записывает их в базу.
+кнопка «Save level» записывает их в базу.
 
 | Колонка | GUI | По умолчанию | Что это |
 |---|---|---|---|

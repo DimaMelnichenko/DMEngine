@@ -97,7 +97,7 @@ python Tools/volumetric_cloud.py remove [--level Test]
 
 ## Управление
 
-- Окно «Volumetric cloud»: «Enabled» и поля строки; кнопка «Save level environment» пишет их в строку уровня.
+- Окно «Volumetric cloud»: «Enabled» и поля строки; кнопка «Save level» пишет их в строку уровня.
 - Удалённое управление: `set "Volumetric cloud/Coverage" 0.6`, `set "Volumetric cloud/Enabled" false`.
 
 ## Ограничения

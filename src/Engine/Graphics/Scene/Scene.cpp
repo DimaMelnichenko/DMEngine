@@ -168,7 +168,7 @@ bool Scene::initialize( bool particles )
 					LOG( "Scatter set " + set.name + ": model " + std::to_string( variant.model ) + " has no LOD" );
 					return false;
 				}
-				models.push_back( { model, variant.weight, variant.castShadow } );
+				models.push_back( { model, variant.weight, variant.castShadow, variant.id } );
 			}
 			if( models.empty() )
 			{
@@ -270,8 +270,8 @@ Wind& Scene::wind()
 	return m_wind;
 }
 
-bool Scene::saveEnvironment( LibraryLoader& library, const PostProcessSettings& postProcess,
-							  const std::optional<HeightFogSettings>& heightFog )
+bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postProcess,
+						const std::optional<HeightFogSettings>& heightFog )
 {
 	std::optional<SunPosition::Settings> sunPosition;
 	if( const SunPosition* position = m_lightDriver.sunPosition() )
@@ -286,8 +286,26 @@ bool Scene::saveEnvironment( LibraryLoader& library, const PostProcessSettings& 
 	std::optional<VolumetricCloud::Settings> cloud;
 	if( m_clouds.initialized() )
 		cloud = m_clouds.settings();
-	return library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, atmosphere, hdri, postProcess,
-										 m_wind.settings(), heightFog, cloud );
+	if( !library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, atmosphere, hdri, postProcess,
+									   m_wind.settings(), heightFog, cloud ) )
+		return false;
+
+	std::optional<TerrainSettings> terrain;
+	if( m_level.terrain )
+		terrain = m_terrain.settings();
+	std::vector<ScatterLayerRecord> scatterLayers;
+	for( const auto& scatterer : m_scatterers )
+	{
+		std::vector<ScatterLayerRecord> layers = scatterer->layerRecords();
+		scatterLayers.insert( scatterLayers.end(), layers.begin(), layers.end() );
+	}
+	std::optional<WaterSimulationSettings> water;
+	if( m_level.terrain && m_level.waterSimulation )
+		water = m_water.settings();
+	std::vector<ParticleEmitterSettings> emitters;
+	if( m_particles.initialized() )
+		emitters = m_particles.emitterSettings();
+	return library.saveLevelScene( m_level, terrain, scatterLayers, water, emitters );
 }
 
 DirectX::XMFLOAT4 Scene::cloudShadow( const RenderView& view )

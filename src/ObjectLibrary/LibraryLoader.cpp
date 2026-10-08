@@ -379,6 +379,7 @@ void LibraryLoader::loadParticleEmitters( LevelDescription& level )
 				LOG( "Particle emitter " + query.getColumn( "name" ).getString() + ": wrong " + column + " '" + text + "'" );
 		};
 		GS::ParticleEmitterSettings& emitter = level.particleEmitters.emplace_back();
+		emitter.id = query.getColumn( "id" ).getUInt();
 		emitter.name = query.getColumn( "name" ).getString();
 		const std::string spawn = query.getColumn( "spawn" ).getString();
 		emitter.spawn = spawn == "sphere" ? GS::ParticleEmitterSettings::Spawn::sphere :
@@ -562,6 +563,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		};
 
 		LevelDescription::ScatterLayer layer;
+		layer.settings.id = query.getColumn( "id" ).getUInt();
 		layer.mask = query.getColumn( "mask" ).getString();
 		layer.settings.cellSize = value( "cell_size" );
 		layer.settings.nearBorder = value( "near_border" );
@@ -580,11 +582,12 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.settings.impostorOcclusion = value( "impostor_occlusion" );
 
 		// Модели слоя — варианты растения с весами, в порядке строк
-		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT model, weight, cast_shadow FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
+		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, weight, cast_shadow FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
 		queryModels.bind( ":layer", query.getColumn( "id" ).getUInt() );
 		while( queryModels.executeStep() )
 		{
 			LevelDescription::ScatterModel model;
+			model.id = queryModels.getColumn( "id" ).getUInt();
 			model.model = queryModels.getColumn( "model" ).getUInt();
 			model.weight = static_cast<float>( queryModels.getColumn( "weight" ).getDouble() );
 			model.castShadow = queryModels.getColumn( "cast_shadow" ).getInt() != 0;

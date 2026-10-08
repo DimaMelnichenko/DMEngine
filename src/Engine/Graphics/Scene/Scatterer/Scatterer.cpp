@@ -50,21 +50,11 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 
 	Layer layer;
 	layer.mask = mask;
+	layer.settings = settings;
 	layer.pass = std::make_unique<ScatterPass>();
 	// Константы раскладки (Shaders\scatter.cs) из строки ScatterLayers; ёмкости и число вариантов — createBuffers()
 	ScatterPass::PopulateParams& params = layer.pass->populateParams();
-	params = {};
-	params.cellSize = settings.cellSize;
-	params.nearBorder = settings.nearBorder;
-	params.farBorder = settings.farBorder;
-	params.nearFade = settings.nearFade;
-	params.farFade = settings.farFade;
-	params.sizeMultiplier = settings.sizeMultiplier;
-	params.jitter = settings.jitter;
-	params.rotationRange = XMFLOAT3( XMConvertToRadians( settings.rotationRange.x ), XMConvertToRadians( settings.rotationRange.y ),
-									 XMConvertToRadians( settings.rotationRange.z ) );
-	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
-	params.castShadow = settings.castShadow ? 1.0f : 0.0f;
+	fillParams( params, settings );
 
 	// Дальности LOD — из модели, как у моделей уровня; последний LOD рисуется до конца кольца. Границы — сфера LOD0:
 	// по ней отсечение экземпляров (у деревьев — десятки метров) и длина их тени
@@ -83,10 +73,17 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			const float radius = XMVectorGetX( XMVector3Length( XMLoadFloat3( &box.Extents ) ) );
 			passVariant.bounds = XMFLOAT4( box.Center.x, box.Center.y, box.Center.z, radius );
 			maxRadius = std::max( maxRadius, radius );
-			layer.maxHeight = std::max( layer.maxHeight, ( box.Center.y + radius ) * settings.sizeMultiplier );
+			layer.modelTop = std::max( layer.modelTop, box.Center.y + radius );
 		}
 		LayerVariant variant;
 		variant.castShadow = models[v].castShadow;
+		variant.id = models[v].id;
+		variant.properties = std::make_unique<PropertyContainer>( model->properties()->name() );
+		Property* weight = variant.properties->insert( "Weight", models[v].weight );
+		weight->setLow( 0.0f );
+		weight->setHigh( std::max( 10.0f, models[v].weight * 2.0f ) );
+		weight->setTooltip( "Share of the layer cells: weight / sum of the weights" );
+		variant.properties->insert( "Cast shadow", models[v].castShadow )->setTooltip( "If the layer casts a shadow" );
 		// Импостер — ещё один LOD после последнего LOD модели (если есть место): модель — до impostor_distance. LOD модели,
 		// которые начинаются не ближе impostor_distance, не нужны: импостер сменяет предыдущий сразу, с дизерингом
 		uint32_t modelLods = passVariant.lodCount;
@@ -138,7 +135,9 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		layer.variants.push_back( std::move( variant ) );
 		passVariants.push_back( passVariant );
 	}
-	layer.maxHeight = std::max( layer.maxHeight, settings.sizeMultiplier );
+	layer.maxRadius = maxRadius;
+	layer.maxHeight = maxHeight( layer );
+	layer.passVariants = passVariants;
 	if( !layer.pass->createBuffers( passVariants, settings.persistent ) )
 		return false;
 
@@ -162,6 +161,27 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	if( variantCount > 1 )
 		name += " + " + std::to_string( variantCount - 1 );
 	layer.properties = std::make_unique<PropertyContainer>( name );
+	auto number = [&layer]( const char* name, float value, float low, float high, const char* unit, const char* tooltip )
+	{
+		Property* property = layer.properties->insert( name, value );
+		property->setLow( low );
+		property->setHigh( std::max( high, value ) );
+		property->setUnit( unit )->setTooltip( tooltip );
+		return property;
+	};
+	const float ringHigh = std::max( 200.0f, settings.farBorder * 2.0f );
+	number( "Cell size", settings.cellSize, 0.05f, 20.0f, "m", "Grid step: at most one instance per cell" )->setLogarithmic();
+	number( "Near border", settings.nearBorder, 0.0f, ringHigh, "m", "Ring around the camera where the layer grows" );
+	number( "Far border", settings.farBorder, 1.0f, ringHigh, "m", "Ring around the camera where the layer grows" );
+	number( "Near fade", settings.nearFade, 0.0f, 100.0f, "m", "Instances shrink to zero over this width at the near border" );
+	number( "Far fade", settings.farFade, 0.0f, 200.0f, "m", "Instances shrink to zero over this width at the far border" );
+	number( "Size", settings.sizeMultiplier, 0.05f, 10.0f, "", "Size multiplier of the models" )->setLogarithmic();
+	number( "Jitter", settings.jitter, 0.0f, 1.0f, "", "Random offset inside the cell, share of the cell size" );
+	Property* rotation = layer.properties->insert( "Rotation", settings.rotationRange );
+	rotation->setLow( 0.0f );
+	rotation->setHigh( 360.0f );
+	rotation->setUnit( "deg" )->setTooltip( "Random rotation limit around X, Y, Z" );
+	layer.properties->insert( "Align to terrain", settings.alignToTerrain )->setTooltip( "Instance Y axis along the terrain normal" );
 	layer.properties->insert( "Cast shadow", params.castShadow > 0.5f );
 	layer.impostorDensity = settings.impostorDensity;
 	layer.impostorOcclusion = settings.impostorOcclusion;
@@ -171,7 +191,10 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		Property* shadowImpostor = layer.properties->insert( "Shadow impostor distance", settings.shadowImpostorDistance );
 		shadowImpostor->setLow( 0.0f );
 		shadowImpostor->setHigh( settings.impostorDistance );
+		shadowImpostor->setUnit( "m" );
 	}
+	for( LayerVariant& variant : layer.variants )
+		layer.properties->addSubContainer( variant.properties.get() );
 	m_properties.addSubContainer( layer.properties.get() );
 
 	m_layers.push_back( std::move( layer ) );
@@ -334,6 +357,7 @@ void Scatterer::compute( const FrameContext& frame )
 
 	for( Layer& layer : m_layers )
 	{
+		applyProperties( layer );
 		const ScatterPass::PopulateParams& params = layer.pass->populateParams();
 		if( params.cellSize <= 0.0f || params.farBorder <= 0.0f )
 			continue;
@@ -504,6 +528,133 @@ void Scatterer::renderCustom( const RenderContext& context )
 PropertyContainer* Scatterer::properties()
 {
 	return &m_properties;
+}
+
+void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLayerSettings& settings )
+{
+	params = {};
+	params.cellSize = settings.cellSize;
+	params.nearBorder = settings.nearBorder;
+	params.farBorder = settings.farBorder;
+	params.nearFade = settings.nearFade;
+	params.farFade = settings.farFade;
+	params.sizeMultiplier = settings.sizeMultiplier;
+	params.jitter = settings.jitter;
+	params.rotationRange = XMFLOAT3( XMConvertToRadians( settings.rotationRange.x ), XMConvertToRadians( settings.rotationRange.y ),
+									 XMConvertToRadians( settings.rotationRange.z ) );
+	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
+	params.castShadow = settings.castShadow ? 1.0f : 0.0f;
+}
+
+float Scatterer::maxHeight( const Layer& layer )
+{
+	return std::max( { 1.0f, layer.modelTop * layer.settings.sizeMultiplier, layer.settings.sizeMultiplier } );
+}
+
+ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) const
+{
+	const PropertyContainer& properties = *layer.properties;
+	ScatterLayerSettings settings = layer.settings;
+	settings.cellSize = std::max( properties["Cell size"].data<float>(), 0.05f );
+	settings.nearBorder = std::max( properties["Near border"].data<float>(), 0.0f );
+	settings.farBorder = std::max( properties["Far border"].data<float>(), settings.nearBorder + settings.cellSize );
+	settings.nearFade = std::max( properties["Near fade"].data<float>(), 0.0f );
+	settings.farFade = std::max( properties["Far fade"].data<float>(), 0.0f );
+	settings.sizeMultiplier = std::max( properties["Size"].data<float>(), 0.01f );
+	settings.jitter = std::max( properties["Jitter"].data<float>(), 0.0f );
+	settings.rotationRange = properties["Rotation"].data<XMFLOAT3>();
+	settings.alignToTerrain = properties["Align to terrain"].data<bool>();
+	settings.castShadow = properties["Cast shadow"].data<bool>();
+	if( properties.exists( "Shadow impostor distance" ) )
+		settings.shadowImpostorDistance = properties["Shadow impostor distance"].data<float>();
+	return settings;
+}
+
+void Scatterer::applyProperties( Layer& layer )
+{
+	const ScatterLayerSettings settings = settingsFromProperties( layer );
+	const ScatterLayerSettings& applied = layer.settings;
+
+	bool weights = false;
+	for( uint32_t v = 0; v < layer.variants.size(); ++v )
+	{
+		LayerVariant& variant = layer.variants[v];
+		variant.castShadow = ( *variant.properties )["Cast shadow"].data<bool>();
+		const float weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
+		if( v < layer.passVariants.size() && weight != layer.passVariants[v].weight )
+		{
+			layer.passVariants[v].weight = weight;
+			weights = true;
+		}
+	}
+	const bool buffers = weights || settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
+						 settings.farBorder != applied.farBorder || settings.sizeMultiplier != applied.sizeMultiplier;
+	const bool placement = settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ||
+						   settings.jitter != applied.jitter || settings.alignToTerrain != applied.alignToTerrain ||
+						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
+						   settings.rotationRange.z != applied.rotationRange.z;
+	layer.settings = settings;
+	if( buffers )
+	{
+		if( !rebuildPass( layer ) )
+			LOG( "Scatter layer " + layer.mask + ": buffers are not rebuilt" );
+		return;
+	}
+	if( placement )
+	{
+		// Тень и дальность импостера тени — каждый кадр в compute; здесь — константы раскладки
+		ScatterPass::PopulateParams& params = layer.pass->populateParams();
+		const float castShadow = params.castShadow;
+		ScatterPass::PopulateParams fresh;
+		fillParams( fresh, settings );
+		params.nearFade = fresh.nearFade;
+		params.farFade = fresh.farFade;
+		params.jitter = fresh.jitter;
+		params.rotationRange = fresh.rotationRange;
+		params.alignToTerrain = fresh.alignToTerrain;
+		params.castShadow = castShadow;
+		// Постоянный слой разложен один раз — раскладка заново
+		layer.placed = false;
+	}
+}
+
+bool Scatterer::rebuildPass( Layer& layer )
+{
+	const ScatterLayerSettings& settings = layer.settings;
+	auto pass = std::make_unique<ScatterPass>();
+	fillParams( pass->populateParams(), settings );
+	// Последний LOD (у леса — импостер) — до конца кольца
+	for( ScatterPass::Variant& variant : layer.passVariants )
+		variant.lodEnd[variant.lodCount - 1] = settings.farBorder;
+	if( !pass->createBuffers( layer.passVariants, settings.persistent ) )
+		return false;
+	if( settings.persistent && ( !m_terrain || !pass->createPersistent( m_terrain->terrainHeight().worldSize, layer.maxRadius * settings.sizeMultiplier ) ) )
+		return false;
+	// Прежний пул и списки ещё в кадрах GPU: ресурсы отпускаются отложенно (DMD3D::deferRelease)
+	layer.pass = std::move( pass );
+	layer.maxHeight = maxHeight( layer );
+	layer.placed = false;
+	return true;
+}
+
+std::vector<ScatterLayerRecord> Scatterer::layerRecords() const
+{
+	std::vector<ScatterLayerRecord> records;
+	for( const Layer& layer : m_layers )
+	{
+		ScatterLayerRecord record;
+		record.settings = settingsFromProperties( layer );
+		for( const LayerVariant& variant : layer.variants )
+		{
+			ScatterModelSettings model;
+			model.id = variant.id;
+			model.weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
+			model.castShadow = ( *variant.properties )["Cast shadow"].data<bool>();
+			record.models.push_back( model );
+		}
+		records.push_back( std::move( record ) );
+	}
+	return records;
 }
 
 void Scatterer::setComputeEnabled( bool enabled )

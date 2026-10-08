@@ -44,6 +44,7 @@ public:
 		DMModel* model = nullptr;
 		float weight = 1.0f;
 		bool castShadow = true;
+		uint32_t id = 0;	// строка ScatterLayerModels — куда пишет «Save level»
 	};
 	// models — варианты растения (все их LOD, не больше ScatterPass::maxLods; вариантов — не больше
 	// ScatterPass::maxVariants); mask — маска плотности в хранилище текстур, в координатах карты высот террейна
@@ -61,8 +62,13 @@ public:
 	bool computeEnabled() const;
 
 	// Окно набора в GUI: «Shadow LOD scale» — множитель дальностей LOD у видов теней (< 1 — тень более грубым LOD, без
-	// дизеринга перехода); по слою — «Cast shadow» (начальное значение — ScatterLayers.cast_shadow)
+	// дизеринга перехода); по слою — колонки ScatterLayers (шаг, кольцо, исчезание, размер, разброс, поворот, тень) и
+	// подокна вариантов — вес и тень (ScatterLayerModels). Шаг, кольцо, размер и веса пересобирают буферы слоя, прочее
+	// меняет константы раскладки; постоянный слой после любой правки раскладывается заново
 	PropertyContainer* properties() override;
+	bool savedWithLevel() const override { return true; }
+	// Слои с настройками из GUI — для сохранения уровня (строки ScatterLayers и ScatterLayerModels)
+	std::vector<ScatterLayerRecord> layerRecords() const;
 
 private:
 	// cbuffer TerrainHeightBuffer в Shaders\terrain_height.sh
@@ -110,6 +116,8 @@ private:
 		// Смена LOD дизерингом: у всех секций материал с DitheredLODTransition; обновляет compute() — флаг материала
 		// меняется в GUI
 		bool ditheredLodTransition = false;
+		uint32_t id = 0;	// строка ScatterLayerModels
+		std::unique_ptr<PropertyContainer> properties;	// «Weight», «Cast shadow» — подокно слоя
 	};
 
 	// Группа секций списков с одним материалом, параметрами и состоянием: один ExecuteIndirect на вид
@@ -139,7 +147,23 @@ private:
 		float impostorDensity = 1.0f;
 		float impostorOcclusion = 0.0f;
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
+		// Применённые настройки: с ними сравниваются свойства окна. Варианты раскладки (веса, дальности LOD) и размеры
+		// моделей — для пересборки буферов слоя при смене шага, кольца, размера и весов
+		ScatterLayerSettings settings;
+		std::vector<ScatterPass::Variant> passVariants;
+		float maxRadius = 0.0f;		// наибольший радиус сферы LOD0 вариантов, м (без размера слоя)
+		float modelTop = 0.0f;		// наибольшая высота верха сферы LOD0, м (без размера слоя)
 	};
+
+	// Константы раскладки из настроек слоя (ёмкости и число вариантов заполняет ScatterPass::createBuffers)
+	static void fillParams( ScatterPass::PopulateParams& params, const ScatterLayerSettings& settings );
+	// Настройки слоя по свойствам окна (у прочих колонок — применённые)
+	ScatterLayerSettings settingsFromProperties( const Layer& layer ) const;
+	// Правки окна слоя — в раскладку: константы или новые буферы (rebuildPass)
+	void applyProperties( Layer& layer );
+	// Буферы слоя заново по layer.settings и layer.passVariants: прежние GPU отпустит, когда закончит кадры с ними
+	bool rebuildPass( Layer& layer );
+	static float maxHeight( const Layer& layer );
 
 	// Секция варианта отбрасывает тень: флаги слоя и варианта и вариант её материала «только глубина»
 	bool castsShadow( const Layer& layer, const LayerVariant& variant, const LayerSection& section ) const;

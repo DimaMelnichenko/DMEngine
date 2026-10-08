@@ -252,7 +252,10 @@ Splat-карта — массив из двух RGBA, как weightmap в UE Lan
    «Height blend»; так камни осыпей проступают сквозь траву.
 6. Крупные пятна яркости по шуму (40 и 13 м), затем `evaluateLighting` ([lighting.md](lighting.md)).
 
-Всё перечисленное в кавычках — ползунки окна террейна в GUI (Scene Objects → CDLOD terrain).
+Всё перечисленное в кавычках — ползунки окна террейна в GUI (Outliner → Scene → CDLOD terrain), значения — колонки
+строки `Terrain`: `triplanar_sharpness` (8), `height_blend` (0,2), `far_texture_scale` (8), `far_blend_start` (40),
+`far_blend_end` (120); NULL — значение в скобках. Подокно «Layer tiling» — метров на повтор каждого слоя
+(`TerrainLayers.tiling`). «Save level» (Ctrl+S) пишет их и «Height multiplier» в базу ([gui.md](gui.md)).
 
 ## Производительность
 

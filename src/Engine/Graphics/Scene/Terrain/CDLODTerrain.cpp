@@ -37,11 +37,12 @@ CDLODTerrain::CDLODTerrain() :
 
 bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits )
 {
-	float heightMultiplier = 1.0f;
+	TerrainSettings settings;
 	std::string splatMap;
-	if( !loadSettings( terrainId, heightMultiplier, splatMap ) )
+	if( !loadSettings( terrainId, settings, splatMap ) )
 		return false;
-	m_heightMultiplier = heightMultiplier;
+	m_terrainId = terrainId;
+	m_heightMultiplier = settings.heightMultiplier;
 
 	const uint32_t mapSize = System::textures().get( m_heightMapName )->width();
 	m_worldSize = mapSize * m_texelSize;
@@ -78,37 +79,56 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	prop->setHigh( nodeSize( 0 ) * 64.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
-	prop = m_properties.insert( "Height multiplier", heightMultiplier );
+	prop = m_properties.insert( "Height multiplier", settings.heightMultiplier );
 	prop->setLow( 1.0f );
 	prop->setHigh( 5000.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+	prop->setUnit( "m" )->setTooltip( "Height of the heightmap value 1; the scatter and particles follow, the terrain edits do not" );
 
-	prop = m_properties.insert( "Triplanar sharpness", 8.0f );
+	prop = m_properties.insert( "Triplanar sharpness", settings.triplanarSharpness );
 	prop->setLow( 1.0f );
 	prop->setHigh( 32.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+	prop->setTooltip( "How sharply steep slopes switch from the top projection to the side ones" );
 
-	prop = m_properties.insert( "Height blend", 0.2f );
+	prop = m_properties.insert( "Height blend", settings.heightBlend );
 	prop->setLow( 0.01f );
 	prop->setHigh( 1.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+	prop->setTooltip( "Depth of the height-based blend between layers" );
 
 	// Второй масштаб текстур вдали (distance resampling, как в материалах UE Landscape): мелкий повтор слоёв
 	// издалека складывается в сетку
-	prop = m_properties.insert( "Far texture scale", 8.0f );
+	prop = m_properties.insert( "Far texture scale", settings.farTextureScale );
 	prop->setLow( 1.0f );
 	prop->setHigh( 32.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+	prop->setTooltip( "Texture repeat multiplier far away: the small repeat does not fold into a grid" );
 
-	prop = m_properties.insert( "Far blend start", 40.0f );
+	prop = m_properties.insert( "Far blend start", settings.farBlendStart );
 	prop->setLow( 0.0f );
 	prop->setHigh( 500.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+	prop->setUnit( "m" );
 
-	prop = m_properties.insert( "Far blend end", 120.0f );
+	prop = m_properties.insert( "Far blend end", settings.farBlendEnd );
 	prop->setLow( 1.0f );
 	prop->setHigh( 1000.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+	prop->setUnit( "m" );
+
+	// Метров на повтор текстуры слоя (TerrainLayers.tiling)
+	m_layerProperties.setName( "Layer tiling" );
+	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
+	{
+		if( m_material.layerName( layer ).empty() )
+			continue;
+		prop = m_layerProperties.insert( std::to_string( layer ) + ": " + m_material.layerName( layer ), m_material.tiling( layer ) );
+		prop->setLow( 0.25f );
+		prop->setHigh( std::max( 64.0f, m_material.tiling( layer ) * 2.0f ) );
+		prop->setLogarithmic()->setUnit( "m" )->setTooltip( "Metres per texture repeat" );
+	}
+	m_properties.addSubContainer( &m_layerProperties );
 
 	m_properties.insert( "Wireframe", false );
 	m_properties.insert( "Show LOD", false );
@@ -155,10 +175,11 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 	return height;
 }
 
-bool CDLODTerrain::loadSettings( uint32_t terrainId, float& heightMultiplier, std::string& splatMap )
+bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings, std::string& splatMap )
 {
-	SQLite::Statement query( DBConnector::instance().db(), "select heightmap, splatmap, height_multiplier, height_offset, width_multiplier "
-														   "from Terrain where id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "select heightmap, splatmap, height_multiplier, height_offset, width_multiplier, "
+														   "triplanar_sharpness, height_blend, far_texture_scale, far_blend_start, "
+														   "far_blend_end from Terrain where id = :id" );
 	query.bind( ":id", terrainId );
 
 	if( !query.executeStep() )
@@ -169,7 +190,19 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, float& heightMultiplier, st
 
 	m_heightMapName = query.getColumn( "heightmap" ).getString();
 	splatMap = query.getColumn( "splatmap" ).getString();
-	heightMultiplier = static_cast<float>( query.getColumn( "height_multiplier" ).getDouble() );
+	settings.id = terrainId;
+	settings.heightMultiplier = static_cast<float>( query.getColumn( "height_multiplier" ).getDouble() );
+	// Материал: NULL — значения по умолчанию TerrainSettings
+	auto material = [&query]( const char* column, float& value )
+	{
+		if( !query.getColumn( column ).isNull() )
+			value = static_cast<float>( query.getColumn( column ).getDouble() );
+	};
+	material( "triplanar_sharpness", settings.triplanarSharpness );
+	material( "height_blend", settings.heightBlend );
+	material( "far_texture_scale", settings.farTextureScale );
+	material( "far_blend_start", settings.farBlendStart );
+	material( "far_blend_end", settings.farBlendEnd );
 	m_heightOffset = static_cast<float>( query.getColumn( "height_offset" ).getDouble() );
 	m_texelSize = static_cast<float>( query.getColumn( "width_multiplier" ).getDouble() );
 
@@ -410,6 +443,29 @@ void CDLODTerrain::update( const FrameContext& frame )
 
 	m_heightMultiplier = m_properties["Height multiplier"].data<float>();
 	calcRanges();
+	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
+	{
+		const std::string name = std::to_string( layer ) + ": " + m_material.layerName( layer );
+		if( m_layerProperties.exists( name ) )
+			m_material.setTiling( layer, std::max( m_layerProperties[name].data<float>(), 0.01f ) );
+	}
+}
+
+TerrainSettings CDLODTerrain::settings() const
+{
+	TerrainSettings settings;
+	settings.id = m_terrainId;
+	settings.heightMultiplier = m_properties["Height multiplier"].data<float>();
+	settings.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();
+	settings.heightBlend = m_properties["Height blend"].data<float>();
+	settings.farTextureScale = m_properties["Far texture scale"].data<float>();
+	settings.farBlendStart = m_properties["Far blend start"].data<float>();
+	settings.farBlendEnd = m_properties["Far blend end"].data<float>();
+	settings.layerTiling.assign( m_material.layerCount(), 0.0f );
+	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
+		if( !m_material.layerName( layer ).empty() )
+			settings.layerTiling[layer] = m_material.tiling( layer );
+	return settings;
 }
 
 void CDLODTerrain::collectMeshes( const RenderView& view, MeshCollector& collector )

@@ -33,12 +33,14 @@ constexpr float visibleDepth = 0.01f;			// м: мельче воды не вид
 constexpr float wetDepth = 0.01f;				// м: ячейка с водой в сводке (logWaterSummary)
 constexpr float mmPerHour = 0.001f / 3600.0f;	// мм/ч → м/с
 
-void addSlider( PropertyContainer& properties, const char* name, float value, float low, float high )
+Property* addSlider( PropertyContainer& properties, const char* name, float value, float low, float high, const char* unit = "" )
 {
 	Property* property = properties.insert( name, value );
 	property->setLow( low );
-	property->setHigh( high );
+	property->setHigh( std::max( high, value ) );
 	property->setControlType( GUIControlType::SLIDER );
+	property->setUnit( unit );
+	return property;
 }
 
 bool sameSources( const WaterSimulationSettings& a, const WaterSimulationSettings& b )
@@ -69,28 +71,29 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	}
 
 	addSlider( m_properties, "Time scale", settings.timeScale, 0.0f, 100.0f );
-	addSlider( m_properties, "Source rate (l/s)", settings.sourceRate, 0.0f, 2.0f );
-	addSlider( m_properties, "Flow start (m2)", settings.flowStart, 100.0f, 100000.0f );
-	addSlider( m_properties, "Flow full (m2)", settings.flowFull, 100.0f, 1000000.0f );
-	addSlider( m_properties, "Source radius (m)", settings.sourceRadius, 0.0f, 16.0f );
-	addSlider( m_properties, "Rain (mm/h)", settings.rain, 0.0f, 50.0f );
-	addSlider( m_properties, "Evaporation (mm/h)", settings.evaporation, 0.0f, 50.0f );
+	addSlider( m_properties, "Source rate", settings.sourceRate, 0.0f, 2.0f, "l/s" );
+	addSlider( m_properties, "Flow start", settings.flowStart, 100.0f, 100000.0f, "m2" );
+	addSlider( m_properties, "Flow full", settings.flowFull, 100.0f, 1000000.0f, "m2" );
+	addSlider( m_properties, "Source radius", settings.sourceRadius, 0.0f, 16.0f, "m" );
+	addSlider( m_properties, "Rain", settings.rain, 0.0f, 50.0f, "mm/h" );
+	addSlider( m_properties, "Evaporation", settings.evaporation, 0.0f, 50.0f, "mm/h" );
 	addSlider( m_properties, "Manning roughness", settings.manning, 0.0f, 0.2f );
 
-	Property* property = m_surfaceProperties.insert( "Absorption (1/m)", settings.absorption );
+	Property* property = m_surfaceProperties.insert( "Absorption", settings.absorption );
 	property->setLow( 0.0f );
 	property->setHigh( 5.0f );
 	property->setControlType( GUIControlType::DRAG );
+	property->setUnit( "1/m" )->setTooltip( "Absorption per channel R, G, B" );
 	m_surfaceProperties.insert( "Scatter color", settings.scatterColor )->setControlType( GUIControlType::COLOR );
 	addSlider( m_surfaceProperties, "Scatter strength", settings.scatterStrength, 0.0f, 0.1f );
 	addSlider( m_surfaceProperties, "Roughness", settings.roughness, 0.0f, 0.5f );
-	addSlider( m_surfaceProperties, "Ripple scale (m)", settings.rippleScale, 0.5f, 20.0f );
+	addSlider( m_surfaceProperties, "Ripple scale", settings.rippleScale, 0.5f, 20.0f, "m" );
 	addSlider( m_surfaceProperties, "Ripple strength", settings.rippleStrength, 0.0f, 4.0f );
 	addSlider( m_surfaceProperties, "Calm ripple", settings.calmRipple, 0.0f, 2.0f );
 	addSlider( m_surfaceProperties, "Refraction", settings.refraction, 0.0f, 0.1f );
-	addSlider( m_surfaceProperties, "Flow period (s)", settings.flowPeriod, 0.2f, 5.0f );
-	addSlider( m_surfaceProperties, "Foam speed (m/s)", settings.foamSpeed, 0.1f, 5.0f );
-	addSlider( m_surfaceProperties, "Foam shear (1/s)", settings.foamShear, 0.1f, 10.0f );
+	addSlider( m_surfaceProperties, "Flow period", settings.flowPeriod, 0.2f, 5.0f, "s" );
+	addSlider( m_surfaceProperties, "Foam speed", settings.foamSpeed, 0.1f, 5.0f, "m/s" );
+	addSlider( m_surfaceProperties, "Foam shear", settings.foamShear, 0.1f, 10.0f, "1/s" );
 	m_properties.addSubContainer( &m_surfaceProperties );
 
 	DMD3D& d3d = DMD3D::instance();
@@ -472,24 +475,24 @@ WaterSimulation::Settings WaterSimulation::settings() const
 {
 	Settings settings = m_initial;
 	settings.timeScale = m_properties["Time scale"].data<float>();
-	settings.sourceRate = m_properties["Source rate (l/s)"].data<float>();
-	settings.flowStart = m_properties["Flow start (m2)"].data<float>();
-	settings.flowFull = m_properties["Flow full (m2)"].data<float>();
-	settings.sourceRadius = m_properties["Source radius (m)"].data<float>();
-	settings.rain = m_properties["Rain (mm/h)"].data<float>();
-	settings.evaporation = m_properties["Evaporation (mm/h)"].data<float>();
+	settings.sourceRate = m_properties["Source rate"].data<float>();
+	settings.flowStart = m_properties["Flow start"].data<float>();
+	settings.flowFull = m_properties["Flow full"].data<float>();
+	settings.sourceRadius = m_properties["Source radius"].data<float>();
+	settings.rain = m_properties["Rain"].data<float>();
+	settings.evaporation = m_properties["Evaporation"].data<float>();
 	settings.manning = m_properties["Manning roughness"].data<float>();
-	settings.absorption = m_surfaceProperties["Absorption (1/m)"].data<DirectX::XMFLOAT3>();
+	settings.absorption = m_surfaceProperties["Absorption"].data<DirectX::XMFLOAT3>();
 	settings.scatterColor = m_surfaceProperties["Scatter color"].data<DirectX::XMFLOAT3>();
 	settings.scatterStrength = m_surfaceProperties["Scatter strength"].data<float>();
 	settings.roughness = m_surfaceProperties["Roughness"].data<float>();
-	settings.rippleScale = m_surfaceProperties["Ripple scale (m)"].data<float>();
+	settings.rippleScale = m_surfaceProperties["Ripple scale"].data<float>();
 	settings.rippleStrength = m_surfaceProperties["Ripple strength"].data<float>();
 	settings.calmRipple = m_surfaceProperties["Calm ripple"].data<float>();
 	settings.refraction = m_surfaceProperties["Refraction"].data<float>();
-	settings.flowPeriod = m_surfaceProperties["Flow period (s)"].data<float>();
-	settings.foamSpeed = m_surfaceProperties["Foam speed (m/s)"].data<float>();
-	settings.foamShear = m_surfaceProperties["Foam shear (1/s)"].data<float>();
+	settings.flowPeriod = m_surfaceProperties["Flow period"].data<float>();
+	settings.foamSpeed = m_surfaceProperties["Foam speed"].data<float>();
+	settings.foamShear = m_surfaceProperties["Foam shear"].data<float>();
 	return settings;
 }
 

@@ -302,6 +302,16 @@ bool loadSplatMap( const std::string& file, const GS::TerrainEditCoverage& cover
 namespace GS
 {
 
+void TerrainMaterial::setTiling( uint32_t layer, float tiling )
+{
+	if( layer >= m_layerCount )
+		return;
+	m_tiling[layer] = tiling;
+	const float scale = tiling > 0.0f ? 1.0f / tiling : 1.0f;
+	float* slice = &m_layerScale[layer / 4].x;
+	slice[layer % 4] = scale;
+}
+
 bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMap, const TerrainEditCoverage& coverage )
 {
 	std::vector<Layer> layers;
@@ -312,15 +322,15 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 	m_layerCount = static_cast<uint32_t>( layers.size() );
 	std::vector<std::string> albedoFiles;
 	std::vector<std::string> normalFiles;
-	float scale[maxLayers] = {};
+	m_layerNames.assign( m_layerCount, {} );
+	m_tiling.assign( m_layerCount, 1.0f );
 	for( uint32_t i = 0; i < m_layerCount; ++i )
 	{
 		albedoFiles.push_back( layers[i].albedo );
 		normalFiles.push_back( layers[i].normal );
-		scale[i] = layers[i].tiling > 0.0f ? 1.0f / layers[i].tiling : 1.0f;
+		m_layerNames[i] = layers[i].name;
+		setTiling( i, layers[i].tiling );
 	}
-	for( uint32_t s = 0; s < splatSlices; ++s )
-		m_layerScale[s] = XMFLOAT4( scale[4 * s], scale[4 * s + 1], scale[4 * s + 2], scale[4 * s + 3] );
 
 	for( uint32_t layer = m_layerCount; layer < TerrainEditCoverage::paintLayers; ++layer )
 		if( !coverage.paint[layer].empty() )

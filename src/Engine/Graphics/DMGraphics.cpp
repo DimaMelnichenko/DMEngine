@@ -104,36 +104,38 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	// Пайплайны материалов и объектов для проходов кадра — когда объекты созданы, а свет уровня известен (смещение теней)
 	m_renderer.warmPipelines( m_scene );
 
-	// Outliner: окружение уровня (то, что пишет «Save level environment»), объекты сцены, настройки рендера
+	// -nowind: растения неподвижны — кадры с одной точки совпадают до пикселя. До регистрации в GUI: выключенный ветер —
+	// исходное состояние окна, а не правка
+	if( !m_config.wind() )
+		m_scene.wind().disable();
+	// Outliner: окружение уровня, объекты сцены, настройки рендера. Сохраняемые с уровнем (saved) — окружение и объекты
+	// сцены с savedWithLevel: их пишет «Save level»
 	using Editor::Category;
-	m_GUI.addPropertyWatching( m_scene.lights().properties(), Category::environment );
+	m_GUI.addPropertyWatching( m_scene.lights().properties(), Category::environment, nullptr, true );
 	for( SceneObject* object : m_scene.objects() )
 	{
 		if( object->properties() )
-			m_GUI.addPropertyWatching( object->properties(), object->environment() ? Category::environment : Category::scene, object );
+			m_GUI.addPropertyWatching( object->properties(), object->environment() ? Category::environment : Category::scene, object,
+									   object->savedWithLevel() );
 	}
-	m_GUI.addPropertyWatching( m_renderer.fogProperties(), Category::environment );
-	m_GUI.addPropertyWatching( m_renderer.postProcessProperties(), Category::environment );
-	m_GUI.addPropertyWatching( m_scene.wind().properties(), Category::environment );
+	m_GUI.addPropertyWatching( m_renderer.fogProperties(), Category::environment, nullptr, true );
+	m_GUI.addPropertyWatching( m_renderer.postProcessProperties(), Category::environment, nullptr, true );
+	m_GUI.addPropertyWatching( m_scene.wind().properties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_renderer.properties(), Category::rendering );
 	m_GUI.addPropertyWatching( m_renderer.shadowProperties(), Category::rendering );
-	// -nowind: растения неподвижны — кадры с одной точки совпадают до пикселя
-	if( !m_config.wind() )
-		m_scene.wind().disable();
-	// Правки света, неба, теней, постобработки и тумана — в строки уровня (LevelLights, SkyAtmosphere, PostProcessSettings,
-	// ExponentialHeightFog)
-	// Первое действие — по Ctrl+S
-	m_GUI.addAction( "Save level environment", "Ctrl+S", [this]
+	// Правки окон, сохраняемых с уровнем, — в его строки (LevelLights, SkyAtmosphere, PostProcessSettings,
+	// ExponentialHeightFog, Terrain, ScatterLayers, WaterSimulation, ParticleEmitters…). Первое действие — по Ctrl+S
+	m_GUI.addAction( "Save level", "Ctrl+S", [this]
 	{
-		const bool saved = m_scene.saveEnvironment( *m_library, m_renderer.postProcessSettings(), m_renderer.fogSettings() );
-		LOG( saved ? "Level environment is saved to base.db3" : "Level environment is not saved" );
+		const bool saved = m_scene.saveLevel( *m_library, m_renderer.postProcessSettings(), m_renderer.fogSettings() );
+		LOG( saved ? "Level is saved to base.db3" : "Level is not saved" );
 		if( saved )
 		{
-			m_GUI.markSaved( Editor::Category::environment );
-			m_GUI.notify( "Level environment is saved to base.db3" );
+			m_GUI.markSaved();
+			m_GUI.notify( "Level is saved to base.db3" );
 		}
 		else
-			m_GUI.notify( "Level environment is not saved, see Log", true );
+			m_GUI.notify( "Level is not saved, see Log", true );
 	} );
 	m_GUI.addAction( "Exit", "Esc", [this] { m_exitRequested = true; } );
 	// Меню View — те же переключатели, что горячие клавиши (нажатие через KeyEventNotifier: состояние клавиши не сбивается)
@@ -478,7 +480,7 @@ void DMGraphics::registerCommands()
 		else
 			reply->error( reason );
 	} );
-	m_console.registerCommand( "action", "\"<name>\" - run an editor action, as File menu items (Save level environment, Exit)",
+	m_console.registerCommand( "action", "\"<name>\" - run an editor action, as File menu items (Save level, Exit)",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		if( args.size() != 1 )

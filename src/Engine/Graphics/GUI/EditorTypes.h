@@ -13,7 +13,7 @@ class SceneObject;
 namespace Editor
 {
 
-// Раздел Outliner: окружение уровня (то, что пишет «Save level environment»), объекты сцены, настройки рендера
+// Раздел Outliner: окружение уровня (свет, небо, туман, ветер), объекты сцены, настройки рендера
 enum class Category
 {
 	environment,
@@ -21,12 +21,14 @@ enum class Category
 	rendering
 };
 
-// Окно свойств в Outliner: свойства, раздел и объект сцены (у него — флажок видимости); nullptr — не объект сцены
+// Окно свойств в Outliner: свойства, раздел и объект сцены (у него — флажок видимости); nullptr — не объект сцены.
+// saved — правки окна пишет в базу «Save level»; у остальных они живут до выхода
 struct Entry
 {
 	PropertyContainer* properties = nullptr;
 	Category category = Category::rendering;
 	GS::SceneObject* object = nullptr;
+	bool saved = false;
 };
 
 // Пункт меню File — действие (кнопка): сохранение, выход; его же вызывает команда action удалённого управления

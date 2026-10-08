@@ -29,6 +29,8 @@ void Wind::initialize( const std::optional<Settings>& settings )
 {
 	// Без строки Wind у уровня — ветра нет (сила 0), но окно есть: ветер можно включить и сохранить с уровнем
 	const Settings initial = settings ? *settings : Settings();
+	// Выключатель кадра, не данные уровня: -nowind останавливает ветер им, а сила остаётся — сохранение её не затрёт
+	m_properties.insert( "Enabled", true )->setTooltip( "Off - plants and clouds stand still (-nowind); not saved with the level" );
 	// Направление в GUI — Yaw, как у источников света: 0 — на север (+Z), 90 — на восток (+X)
 	addSlider( m_properties, "Yaw", XMConvertToDegrees( std::atan2( initial.direction.x, initial.direction.z ) ), -180.0f, 180.0f );
 	addSlider( m_properties, "Strength", initial.strength, 0.0f, 2.0f );
@@ -56,7 +58,7 @@ WindParameters Wind::parameters()
 	const Settings current = settings();
 	WindParameters parameters;
 	parameters.direction = XMFLOAT2( current.direction.x, current.direction.z );
-	parameters.strength = std::max( current.strength, 0.0f );
+	parameters.strength = m_properties["Enabled"].data<bool>() ? std::max( current.strength, 0.0f ) : 0.0f;
 	parameters.speed = current.speed;
 	parameters.gustMin = current.minGustAmount;
 	parameters.gustMax = std::max( current.maxGustAmount, current.minGustAmount );
@@ -66,7 +68,7 @@ WindParameters Wind::parameters()
 
 void Wind::disable()
 {
-	m_properties["Strength"].setData( 0.0f );
+	m_properties["Enabled"].setData( false );
 }
 
 PropertyContainer* Wind::properties()

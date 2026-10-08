@@ -34,6 +34,10 @@ public:
 	const std::array<DirectX::XMFLOAT4, splatSlices>& layerScale() const { return m_layerScale; }
 	// Слоёв в массивах текстур: наибольший описанный TerrainLayers.layer + 1
 	uint32_t layerCount() const { return m_layerCount; }
+	// Слой: имя (TerrainLayers.name; пусто — слоя в таблице нет) и метров на повтор текстуры (TerrainLayers.tiling)
+	const std::string& layerName( uint32_t layer ) const { return m_layerNames[layer]; }
+	float tiling( uint32_t layer ) const { return m_tiling[layer]; }
+	void setTiling( uint32_t layer, float tiling );
 
 private:
 	struct Layer
@@ -56,6 +60,8 @@ private:
 	ShaderView m_normalRoughness;
 	std::array<DirectX::XMFLOAT4, splatSlices> m_layerScale = {};
 	uint32_t m_layerCount = 0;
+	std::vector<std::string> m_layerNames;
+	std::vector<float> m_tiling;
 };
 
 }

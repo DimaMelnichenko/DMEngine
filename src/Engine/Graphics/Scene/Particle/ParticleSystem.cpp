@@ -18,12 +18,14 @@ constexpr uint32_t groupSize = 64;				// numthreads в Shaders/particles.cs
 constexpr float maxTimeStep = 0.1f;			// с: после долгого кадра (загрузка, отладчик) — не больше
 constexpr float spawnShare = 0.25f;			// за кадр рождается не больше этой доли пула
 
-void addSlider( PropertyContainer& properties, const char* name, float value, float low, float high )
+Property* addSlider( PropertyContainer& properties, const char* name, float value, float low, float high, const char* unit = "" )
 {
 	Property* property = properties.insert( name, value );
 	property->setLow( low );
-	property->setHigh( high );
+	property->setHigh( std::max( high, value ) );
 	property->setControlType( GUIControlType::SLIDER );
+	property->setUnit( unit );
+	return property;
 }
 
 uint32_t groups( uint32_t threads )
@@ -125,17 +127,38 @@ bool ParticleSystem::createEmitter( Emitter& emitter, uint32_t index )
 	// Окно GUI: подокно на эмиттер
 	PropertyContainer& properties = emitter.properties;
 	properties.setName( settings.name );
-	properties.insert( "Enabled", true );
-	addSlider( properties, "Rate", settings.rate, 0.0f, std::max( settings.rate * 4.0f, 10.0f ) );
-	addSlider( properties, "Size start (m)", settings.sizeStart, 0.001f, std::max( settings.sizeStart * 4.0f, 0.1f ) );
-	addSlider( properties, "Size end (m)", settings.sizeEnd, 0.001f, std::max( settings.sizeEnd * 4.0f, 0.1f ) );
+	// Всё, кроме способа рождения, формы, маски и ёмкости пула (они задают буферы и ресурсы эмиттера)
+	properties.insert( "Enabled", true )->setTooltip( "Off - the emitter stops; not saved with the level" );
+	const bool field = settings.spawn == Settings::Spawn::camera || settings.spawn == Settings::Spawn::water;
+	addSlider( properties, "Rate", settings.rate, 0.0f, std::max( settings.rate * 4.0f, 10.0f ), field ? "1/s per 100 m2" : "1/s" );
+	addSlider( properties, "Radius", settings.radius, 0.0f, std::max( settings.radius * 4.0f, 10.0f ), "m" )
+		->setTooltip( field ? "Field around the camera; farther particles die" : "Spawn sphere" );
+	addSlider( properties, "Height min", settings.heightMin, -10.0f, 50.0f, "m" )->setTooltip( "Above the terrain or the water surface" );
+	addSlider( properties, "Height max", settings.heightMax, -10.0f, 50.0f, "m" );
+	addSlider( properties, "Lifetime min", settings.lifetimeMin, 0.0f, std::max( settings.lifetimeMin * 4.0f, 10.0f ), "s" );
+	addSlider( properties, "Lifetime max", settings.lifetimeMax, 0.0f, std::max( settings.lifetimeMax * 4.0f, 10.0f ), "s" );
+	addSlider( properties, "Size start", settings.sizeStart, 0.001f, std::max( settings.sizeStart * 4.0f, 0.1f ), "m" );
+	addSlider( properties, "Size end", settings.sizeEnd, 0.001f, std::max( settings.sizeEnd * 4.0f, 0.1f ), "m" );
 	properties.insert( "Color", settings.color )->setControlType( GUIControlType::COLOR );
 	addSlider( properties, "Alpha", settings.alpha, 0.0f, 1.0f );
-	addSlider( properties, "Gravity", settings.gravity, 0.0f, 20.0f );
-	addSlider( properties, "Drag", settings.drag, 0.0f, 20.0f );
-	addSlider( properties, "Wind", settings.wind, 0.0f, 2.0f );
-	addSlider( properties, "Curl", settings.curl, 0.0f, 5.0f );
-	addSlider( properties, "Transmission", settings.transmission, 0.0f, 4.0f );
+	addSlider( properties, "Fade in", settings.fadeIn, 0.0f, 1.0f )->setTooltip( "Share of the life" );
+	addSlider( properties, "Fade out", settings.fadeOut, 0.0f, 1.0f )->setTooltip( "Share of the life" );
+	Property* velocity = properties.insert( "Velocity", settings.velocity );
+	velocity->setLow( -20.0f );
+	velocity->setHigh( 20.0f );
+	velocity->setControlType( GUIControlType::DRAG );
+	velocity->setUnit( "m/s" )->setTooltip( "Initial velocity" );
+	addSlider( properties, "Velocity spread", settings.velocitySpread, 0.0f, 10.0f, "m/s" );
+	addSlider( properties, "Gravity", settings.gravity, 0.0f, 20.0f, "m/s2" );
+	addSlider( properties, "Drag", settings.drag, 0.0f, 20.0f, "1/s" )->setTooltip( "Velocity tends to the air (wind) and water velocity" );
+	addSlider( properties, "Wind", settings.wind, 0.0f, 2.0f )->setTooltip( "Share of the level wind" );
+	addSlider( properties, "Curl", settings.curl, 0.0f, 5.0f, "m/s" )->setTooltip( "Strength of the curl noise vortices" );
+	addSlider( properties, "Curl scale", settings.curlScale, 0.1f, 50.0f, "m" )->setLogarithmic()->setTooltip( "Size of the vortices" );
+	addSlider( properties, "Water flow", settings.waterFlow, 0.0f, 2.0f )->setTooltip( "Share of the water velocity under the particle" );
+	addSlider( properties, "Water speed", settings.waterSpeed, 0.0f, 5.0f, "m/s" )->setTooltip( "Spawn on water faster than this" );
+	properties.insert( "Collide", settings.collide )->setTooltip( "With the terrain: needles lie down, dots die" );
+	addSlider( properties, "Transmission", settings.transmission, 0.0f, 4.0f )->setTooltip( "Glow against the sun (pollen, fluff)" );
+	addSlider( properties, "Emissive", settings.emissive, 0.0f, std::max( settings.emissive * 4.0f, 10.0f ), "cd/m2" );
 	m_properties.addSubContainer( &properties );
 
 	// Все частицы мертвы, стек мёртвых — весь пул
@@ -155,17 +178,40 @@ ParticleSystem::Settings ParticleSystem::current( const Emitter& emitter ) const
 {
 	Settings settings = emitter.settings;
 	const PropertyContainer& properties = emitter.properties;
-	settings.rate = properties["Rate"].data<float>();
-	settings.sizeStart = properties["Size start (m)"].data<float>();
-	settings.sizeEnd = properties["Size end (m)"].data<float>();
+	auto value = [&properties]( const char* name ) { return properties[name].data<float>(); };
+	settings.rate = std::max( value( "Rate" ), 0.0f );
+	settings.radius = std::max( value( "Radius" ), 0.0f );
+	settings.heightMin = value( "Height min" );
+	settings.heightMax = value( "Height max" );
+	settings.lifetimeMin = std::max( value( "Lifetime min" ), 0.0f );
+	settings.lifetimeMax = std::max( value( "Lifetime max" ), 0.0f );
+	settings.sizeStart = value( "Size start" );
+	settings.sizeEnd = value( "Size end" );
 	settings.color = properties["Color"].data<XMFLOAT3>();
-	settings.alpha = properties["Alpha"].data<float>();
-	settings.gravity = properties["Gravity"].data<float>();
-	settings.drag = properties["Drag"].data<float>();
-	settings.wind = properties["Wind"].data<float>();
-	settings.curl = properties["Curl"].data<float>();
-	settings.transmission = properties["Transmission"].data<float>();
+	settings.alpha = value( "Alpha" );
+	settings.fadeIn = value( "Fade in" );
+	settings.fadeOut = value( "Fade out" );
+	settings.velocity = properties["Velocity"].data<XMFLOAT3>();
+	settings.velocitySpread = value( "Velocity spread" );
+	settings.gravity = value( "Gravity" );
+	settings.drag = value( "Drag" );
+	settings.wind = value( "Wind" );
+	settings.curl = value( "Curl" );
+	settings.curlScale = std::max( value( "Curl scale" ), 0.01f );
+	settings.waterFlow = value( "Water flow" );
+	settings.waterSpeed = value( "Water speed" );
+	settings.collide = properties["Collide"].data<bool>();
+	settings.transmission = value( "Transmission" );
+	settings.emissive = value( "Emissive" );
 	return settings;
+}
+
+std::vector<ParticleSystem::Settings> ParticleSystem::emitterSettings() const
+{
+	std::vector<Settings> result;
+	for( const auto& emitter : m_emitters )
+		result.push_back( current( *emitter ) );
+	return result;
 }
 
 bool ParticleSystem::enabled( const Emitter& emitter ) const

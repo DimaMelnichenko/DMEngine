@@ -23,6 +23,7 @@ struct LevelDescription
 	// Модель слоя расстановки, её вес и тень (ScatterLayerModels)
 	struct ScatterModel
 	{
+		uint32_t id = 0;	// строка ScatterLayerModels
 		uint32_t model = 0;
 		float weight = 1.0f;
 		bool castShadow = true;

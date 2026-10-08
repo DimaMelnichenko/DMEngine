@@ -52,9 +52,10 @@ public:
 	// Ветер уровня (Levels.wind): константы кадра — Wind::parameters
 	Wind& wind();
 	const LevelDescription& level() const;
-	// Текущие свет, небо и постобработку (правки в GUI) — в строки уровня в base.db3
-	bool saveEnvironment( LibraryLoader& library, const PostProcessSettings& postProcess,
-						  const std::optional<HeightFogSettings>& heightFog );
+	// Правки GUI — в строки уровня в base.db3 («Save level»): свет, небо, облака, постобработка, туман, ветер, затем
+	// террейн, расстановка, вода и частицы
+	bool saveLevel( LibraryLoader& library, const PostProcessSettings& postProcess,
+					const std::optional<HeightFogSettings>& heightFog );
 	// Тень облаков для констант кадра (cb_cloudShadow); облаков нет — нули
 	DirectX::XMFLOAT4 cloudShadow( const RenderView& view );
 

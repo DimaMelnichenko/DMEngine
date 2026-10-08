@@ -84,8 +84,11 @@ public:
 	// прогрева пайплайнов кадра (Renderer::bake). false — загрузка уровня не удалась
 	virtual bool bake( const BakeContext& context ) { return true; }
 	virtual PropertyContainer* properties() { return nullptr; }
-	// Часть окружения уровня (небо, облака): в Outliner — раздел Environment, сохраняется с окружением
+	// Часть окружения уровня (небо, облака): в Outliner — раздел Environment
 	virtual bool environment() const { return false; }
+	// Свойства окна пишет в базу «Save level» (окружение, террейн, расстановка, вода, частицы); у остальных правки живут
+	// до выхода
+	virtual bool savedWithLevel() const { return environment(); }
 
 	const std::string& name() const { return m_name; }
 	bool visible() const { return m_visible; }

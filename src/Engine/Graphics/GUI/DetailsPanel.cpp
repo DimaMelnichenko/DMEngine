@@ -27,8 +27,10 @@ void DetailsPanel::draw( Editor::Entry* entry, bool* open )
 		if( ImGui::Button( "Reset all" ) )
 			properties.resetToSaved();
 	}
-	if( entry->category == Editor::Category::environment )
-		ImGui::TextDisabled( "Saved with the level: File > Save level environment (Ctrl+S)" );
+	if( entry->saved )
+		ImGui::TextDisabled( "Saved with the level: File > Save level (Ctrl+S)" );
+	else
+		ImGui::TextDisabled( "Not saved: changes last until exit" );
 	ImGui::SetNextItemWidth( -FLT_MIN );
 	ImGui::InputTextWithHint( "##filter", "Search properties", &m_filter );
 	ImGui::Separator();

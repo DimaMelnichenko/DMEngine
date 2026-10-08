@@ -1,4 +1,5 @@
 #include "DMCamera.h"
+#include <algorithm>
 #include "Engine\Input\Input.h"
 
 using namespace DirectX;
@@ -29,10 +30,38 @@ void DMCamera::Initialize( CameraType _type, float width, float height, float _n
 	prop->setLow( 1.0f );
 	prop->setHigh( 100.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+	// Проекция — в окне Camera; ScreenNear / ScreenDepth в settings.ini — начальные значения (не сохраняются из окна)
+	prop = m_properties.insert( "Field of view", XMConvertToDegrees( fieldOfView ) );
+	prop->setLow( 20.0f );
+	prop->setHigh( 120.0f );
+	prop->setUnit( "deg" )->setTooltip( "Vertical field of view" );
+	prop = m_properties.insert( "Near plane", _near );
+	prop->setLow( 0.01f );
+	prop->setHigh( 10.0f );
+	prop->setLogarithmic()->setUnit( "m" );
+	prop = m_properties.insert( "Far plane", depth );
+	prop->setLow( 100.0f );
+	prop->setHigh( 20000.0f );
+	prop->setLogarithmic()->setUnit( "m" )->setTooltip( "Also the sky sphere and the depth of aerial perspective and fog over the sky" );
+}
+
+void DMCamera::applyProjectionProperties()
+{
+	const float fieldOfView = XMConvertToRadians( std::clamp( m_properties["Field of view"].data<float>(), 1.0f, 170.0f ) );
+	const float nearPlane = std::max( m_properties["Near plane"].data<float>(), 0.001f );
+	const float farPlane = std::max( m_properties["Far plane"].data<float>(), nearPlane * 2.0f );
+	if( fieldOfView == m_fieldOfView && nearPlane == m_nearPlane && farPlane == m_farPlane )
+		return;
+	m_fieldOfView = fieldOfView;
+	m_nearPlane = nearPlane;
+	m_farPlane = farPlane;
+	setViewport( m_viewportWidth, m_viewportHeight );
 }
 
 void DMCamera::setViewport( float width, float height )
 {
+	m_viewportWidth = width;
+	m_viewportHeight = height;
 	const float screenAspect = width / height;
 
 	// Reversed-Z, как в UE: ближняя и дальняя плоскости переставлены — глубина 1 у ближней, 0 у дальней. Вместе с буфером
@@ -159,6 +188,7 @@ void DMCamera::readKeyboard( XMFLOAT3& offsetPosition )
 
 void DMCamera::Update( float elapsedTime, bool cursorMode )
 {
+	applyProjectionProperties();
 	XMMATRIX rotationMatrix;
 	// Setup the vector that points upwards.
 	XMFLOAT3 up( 0.0, 1.0, 0.0 );

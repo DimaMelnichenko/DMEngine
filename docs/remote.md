@@ -19,7 +19,7 @@ python Tools/engine.py stop
 
 - `start` запускает `cmake-build-cli-<config>\DMEngine.exe` из корня проекта (по умолчанию Release) с параметрами
   `-remote` и `-nomouse` (без `--mouse`: камера не следует за мышью). Кадры с одной точки совпадают до пикселя, если
-  не движется трава: `--nowind` (параметр движка `-nowind`) или `set "Wind/Strength" 0` ([wind.md](wind.md)), и нет
+  не движется трава: `--nowind` (параметр движка `-nowind`) или `set "Wind/Enabled" false` ([wind.md](wind.md)), и нет
   частиц: `--noparticles` (`-noparticles`, [particles.md](particles.md)). Затем ждёт,
   пока движок откроет канал, то есть конца инициализации.
 - Одна команда — `python Tools/engine.py <команда …>`: печатает ответ, при `error` код выхода 1. Слова с пробелами — в
@@ -43,7 +43,7 @@ python Tools/engine.py stop
 | `set окно/свойство значение` | новое значение свойства — так же, как ползунок в GUI: объекты читают свойства каждый кадр |
 | `key клавиша` | нажатие горячей клавиши (буква, цифра или скан-код DirectInput): `G`, `Q`, `1`, `3`, `4`… |
 | `gui on\|off` | окна редактора, как клавиша G |
-| `action "имя"` | действие меню File редактора: `"Save level environment"`, `"Exit"` ([gui.md](gui.md)) |
+| `action "имя"` | действие меню File редактора: `"Save level"` — правки окон в базу, `"Exit"` ([gui.md](gui.md)) |
 | `select "окно"` | выбрать окно свойств в Outliner — Details показывает его (снимки редактора сценарием: `screenshot файл.png gui`) |
 | `wait кадров` | пропустить столько кадров |
 | `water discharge файл.dds` | расход воды ячеек симуляции, м³/с, в DDS `R32_FLOAT` (`WaterSimulation::exportDischarge`) — по нему `Tools/carve_channels.py` режет русла; путь — от корня проекта |

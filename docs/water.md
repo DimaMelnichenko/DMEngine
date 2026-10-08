@@ -309,11 +309,11 @@ Release, 1920 × 1080, RTX 4070 Ti: вода в кадре — 0,02–0,22 мс 
 
 ## Управление
 
-- Окно «Water simulation»: `Time scale`, `Source rate (l/s)`, `Flow start (m2)`, `Flow full (m2)`,
-  `Source radius (m)`, `Rain (mm/h)`, `Evaporation (mm/h)`, `Manning roughness`. Смена настроек источников пересчитывает
+- Окно «Water simulation»: `Time scale`, `Source rate` (л/с), `Flow start`, `Flow full` (м²), `Source radius` (м),
+  `Rain`, `Evaporation` (мм/ч), `Manning roughness`. Смена настроек источников пересчитывает
   их сразу; вода подстраивается со скоростью симуляции (`Time scale` 100 — быстро посмотреть, куда она придёт).
-  Подокно «Surface» — материал поверхности (колонки от `absorption` до `foam_shear`). Кнопки сохранения пока нет —
-  правьте строку в базе. С удалённым управлением — `set "Water simulation/Surface/Roughness" 0.1`; гладкая вода, чтобы
+  Подокно «Surface» — материал поверхности (колонки от `absorption` до `foam_shear`). «Save level» (Ctrl+S) пишет окно в
+  строку `WaterSimulation` уровня ([gui.md](gui.md)). С удалённым управлением — `set "Water simulation/Surface/Roughness" 0.1`; гладкая вода, чтобы
   посмотреть отражения, — `Ripple strength` и `Calm ripple` 0.
 - Флажок «Show water» в окне террейна («CDLOD terrain») — подсветка воды на земле: от 5 мм до 0,5 м глубины земля
   уходит в синий, быстрая вода светлее; источники — оранжевым по притоку от 0,01 до 1 мм/с (и по водосбору, и

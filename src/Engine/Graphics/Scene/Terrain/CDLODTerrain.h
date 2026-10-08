@@ -41,6 +41,9 @@ public:
 	// Пайплайны рельефа: цвет с растеризатором кадра (сплошной или каркасный) в буфер сцены; prepass и тени — только глубина
 	void warmPipelines( const PassStates& states ) override;
 	PropertyContainer* properties() override;
+	bool savedWithLevel() const override { return true; }
+	// Настройки из окна — для сохранения уровня (строка Terrain и tiling строк TerrainLayers)
+	TerrainSettings settings() const;
 
 private:
 	static constexpr uint32_t gridDim = 32;			// квадов в стороне узла
@@ -80,7 +83,7 @@ private:
 		DirectX::XMFLOAT3 max;
 	};
 
-	bool loadSettings( uint32_t terrainId, float& heightMultiplier, std::string& splatMap );
+	bool loadSettings( uint32_t terrainId, TerrainSettings& settings, std::string& splatMap );
 	bool createShader();
 	// Копия карты высот с правками рельефа и мипами для вершинного шейдера и минимум / максимум высоты каждого узла по
 	// мипам его уровня; coverage — что правки делают, кроме высоты
@@ -102,6 +105,8 @@ private:
 	float m_texelSize = 1.0f;
 	float m_heightOffset = 0.0f;
 	float m_heightMultiplier = 1.0f;
+	uint32_t m_terrainId = 0;
+	PropertyContainer m_layerProperties;	// «Layer tiling»: метров на повтор по слоям — подокно окна террейна
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;
 	std::vector<std::vector<DirectX::XMFLOAT2>> m_heightBounds;	// по уровням: нормированные min / max высоты узлов

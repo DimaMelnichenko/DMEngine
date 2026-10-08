@@ -46,6 +46,8 @@ public:
 
 private:
 	void readKeyboard( DirectX::XMFLOAT3& );
+	// Поле зрения и плоскости из окна Camera — проекция заново, если сменились
+	void applyProjectionProperties();
 private:
 	CameraType m_type;
 	DirectX::XMFLOAT3 m_Eye;
@@ -56,6 +58,8 @@ private:
 	float m_nearPlane = 0.1f;
 	float m_farPlane = 1000.0f;
 	float m_fieldOfView = 0.7853981f;
+	float m_viewportWidth = 1.0f;
+	float m_viewportHeight = 1.0f;
 	DirectX::XMFLOAT3 m_view_direction;
 	DirectX::XMMATRIX m_mCameraWorld;
 	// Последнее положение мыши: в режиме курсора (I) камера сохраняет поворот
