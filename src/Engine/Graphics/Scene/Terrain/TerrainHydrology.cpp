@@ -835,7 +835,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	const Drainage dr = drainage( field, water );
 	const Grid& height = dr.height;
 	const std::vector<double>& lakeLevel = dr.lakeLevel;
-	const std::vector<uint8_t>& lake = dr.lake;
+	std::vector<uint8_t> lake = dr.lake;	// до заливки по итоговому уровню — низины заполнения
 	result.largestDischarge = static_cast<float>( *std::max_element( dr.flow.begin(), dr.flow.end() ) );
 	result.warnings.clear();
 
@@ -1019,10 +1019,47 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 					 p.thalweg * curve.thalwegScale, p.manning * curve.roughnessScale };
 	}
 
-	// Узлы ниже озера: путь от берега, м, и уровень озера, из которого течёт ручей (NaN — не из озера). Кривая, которая
-	// начинается у берега, — из озера
+	// Озёра — связные области одного уровня заполнения: номер озера у клетки (−1 — не озеро)
+	std::vector<int> lakeLabel( cells, -1 );
+	int lakeCount = 0;
+	{
+		std::vector<int> stack;
+		for( size_t start = 0; start < cells; ++start )
+		{
+			if( !lake[start] || lakeLabel[start] >= 0 )
+				continue;
+			lakeLabel[start] = lakeCount;
+			stack.assign( 1, static_cast<int>( start ) );
+			while( !stack.empty() )
+			{
+				const int i = stack.back();
+				stack.pop_back();
+				for( int k = 0; k < 8; ++k )
+				{
+					const int r = i / n + neighbourRow[k];
+					const int c = i % n + neighbourCol[k];
+					if( r < 0 || c < 0 || r >= n || c >= n )
+						continue;
+					const int j = r * n + c;
+					if( lake[j] && lakeLabel[j] < 0 && lakeLevel[j] == lakeLevel[i] )
+					{
+						lakeLabel[j] = lakeCount;
+						stack.push_back( j );
+					}
+				}
+			}
+			++lakeCount;
+		}
+	}
+	// Уровень заполнения низины озера (перелив) — по номеру
+	std::vector<double> fillLevel( lakeCount, 0.0 );
+	for( size_t i = 0; i < cells; ++i )
+		if( lakeLabel[i] >= 0 )
+			fillLevel[lakeLabel[i]] = lakeLevel[i];
+	// Узлы ниже озера: путь от берега, м (бесконечность — не из озера). Кривая, которая начинается у берега (озеро в трёх
+	// клетках), — исток этого озера; у озера с несколькими — ниже всех по земле (порог перелива)
 	std::vector<double> outletDistance( count, std::numeric_limits<double>::infinity() );
-	std::vector<double> outletLevel( count, std::numeric_limits<double>::quiet_NaN() );
+	std::vector<int> lakeOutlet( lakeCount, -1 );
 	std::vector<uint8_t> lakeStart( count, 0 );
 	for( size_t a = 0; a < lines.size(); ++a )
 	{
@@ -1034,6 +1071,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		const int col = cellOf[k] % n;
 		const int row = cellOf[k] / n;
 		double best = 3.0;
+		int outletLake = -1;
 		for( int dy = -3; dy <= 3; ++dy )
 		{
 			for( int dx = -3; dx <= 3; ++dx )
@@ -1047,8 +1085,46 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 				{
 					best = distance;
 					outletDistance[k] = distance * cell;
-					outletLevel[k] = lakeLevel[static_cast<size_t>( r ) * n + c];
 					lakeStart[k] = 1;
+					outletLake = lakeLabel[static_cast<size_t>( r ) * n + c];
+				}
+			}
+		}
+		// Исток — ниже перелива (не ручей, который лишь начинается выше по склону у берега)
+		if( outletLake >= 0 && height.sample( position[k].x - 0.5, position[k].y - 0.5 ) <= fillLevel[outletLake] + 0.25 )
+		{
+			int& outlet = lakeOutlet[outletLake];
+			if( outlet < 0 || height.sample( position[k].x - 0.5, position[k].y - 0.5 ) <
+								  height.sample( position[outlet].x - 0.5, position[outlet].y - 0.5 ) )
+				outlet = k;
+		}
+	}
+	// Ручей, который кончается в озере или у его берега (озеро в трёх клетках), впадает в него: уровень озера — его вода ниже
+	// по течению (подпор)
+	std::vector<int> endLake( count, -1 );
+	for( size_t a = 0; a < lines.size(); ++a )
+	{
+		if( lineNodes[a].empty() )
+			continue;
+		const int last = lineNodes[a].back();
+		if( down[last] >= 0 )
+			continue;
+		const int col = cellOf[last] % n;
+		const int row = cellOf[last] / n;
+		double best = 3.5;
+		for( int dy = -3; dy <= 3; ++dy )
+		{
+			for( int dx = -3; dx <= 3; ++dx )
+			{
+				const int r = row + dy;
+				const int c = col + dx;
+				if( r < 0 || c < 0 || r >= n || c >= n || lakeLabel[static_cast<size_t>( r ) * n + c] < 0 )
+					continue;
+				const double distance = std::hypot( dx, dy );
+				if( distance < best )
+				{
+					best = distance;
+					endLake[last] = lakeLabel[static_cast<size_t>( r ) * n + c];
 				}
 			}
 		}
@@ -1059,15 +1135,10 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		if( d < 0 || inLake( d ) )
 			continue;
 		const bool fromLake = inLake( k );
-		if( !fromLake && std::isnan( outletLevel[k] ) )
+		if( !fromLake && !std::isfinite( outletDistance[k] ) )
 			continue;
 		const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
-		const double distance = ( fromLake ? 0.0 : outletDistance[k] ) + step;
-		if( distance < outletDistance[d] )
-		{
-			outletDistance[d] = distance;
-			outletLevel[d] = fromLake ? lakeLevel[cellOf[k]] : outletLevel[k];
-		}
+		outletDistance[d] = std::min( outletDistance[d], ( fromLake ? 0.0 : outletDistance[k] ) + step );
 	}
 
 	// 4. Ложе: дно монотонно вниз по течению, профиль по отрезкам оси — дно, тальвег, борта. В озере ложа нет (дно озера),
@@ -1092,7 +1163,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		depth[k] = std::max( { s.depthCoef * std::pow( q[k], 0.4 ), s.minIncision, ( waterEstimate + s.freeboard ) / ( 1.0 + s.thalweg ) } );
 		if( inLake( k ) )
 			depth[k] = 0.0;
-		else if( !std::isnan( outletLevel[k] ) )
+		else if( std::isfinite( outletDistance[k] ) )
 			depth[k] = std::min( depth[k], outletDistance[k] * outletSlope );
 		bed[k] = surface[k] - depth[k];
 	}
@@ -1418,9 +1489,28 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		}
 	}
 
-	// 5. Вода ручьёв: уклон дна, глубина по Маннингу для прямоугольного русла h = (Q·n / (w·√S))^(3/5), дно — по
-	// прорезанному рельефу у оси (наименьшее в клетке вокруг точки), уровень вниз по течению не растёт
+	// 5. Вода — одно поле уровня по сети: в узле — своя вода (дно у оси — наименьшее в клетке вокруг точки — плюс глубина по
+	// Маннингу для прямоугольного русла h = (Q·n / (w·√S))^(3/5), не мельче min_water_depth и ниже бровки на запас), но не
+	// ниже воды ниже по течению — подпор. Озеро — вода ниже по течению у впадающих в него ручьёв и уровень его истока:
+	// ручьи в нём и у берега — на том же уровне подпором, а не правилами на стыках
 	std::vector<double> slope( count, p.minWaterSlope ), level( count ), speed( count ), foam( count ), actual( count );
+	// Путь до берега озера ниже по течению, м: у впадения, как у истока, наименьшая глубина и запас нарастают от берега —
+	// в устье вода ручья переходит в озеро, а не стоит над ним ступенькой
+	std::vector<double> inflowDistance( count, std::numeric_limits<double>::infinity() );
+	for( auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it )
+	{
+		const int k = *it;
+		const int d = down[k];
+		if( inLake( k ) )
+			continue;
+		if( endLake[k] >= 0 )
+			inflowDistance[k] = 0.0;
+		else if( d >= 0 )
+		{
+			const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
+			inflowDistance[k] = inLake( d ) ? step : inflowDistance[d] + step;
+		}
+	}
 	for( int k = 0; k < count; ++k )
 	{
 		const int d = down[k];
@@ -1434,23 +1524,30 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		for( double dy : { -0.7, 0.0, 0.7 } )
 			for( double dx : { -0.7, 0.0, 0.7 } )
 				actual[k] = std::min( actual[k], carved.sample( position[k].x - 0.5 + dx, position[k].y - 0.5 + dy ) );
-		level[k] = actual[k] + std::max( waterDepth, static_cast<double>( p.minWaterDepth ) );
-		// Вода ниже бровки на запас, но не мельче 5 см над дном
-		const double freeboard = std::isnan( outletLevel[k] ) ? shape[k].freeboard : std::min( shape[k].freeboard, outletDistance[k] * outletSlope );
-		level[k] = std::max( std::min( level[k], surface[k] - freeboard ), actual[k] + 0.05 );
-		// Ручей из озера — не выше его уровня, а первый узел ниже берега — на уровне озера: вода выходит из озера ровно
-		if( !std::isnan( outletLevel[k] ) )
-		{
-			const bool first = lakeStart[k] || ( up[k] >= 0 && inLake( up[k] ) );
-			level[k] = first ? std::max( outletLevel[k], actual[k] ) : std::min( level[k], outletLevel[k] );
-		}
+		// У истока и устья наименьшая глубина и запас бровки нарастают от берега озера (как врез у истока): на пороге вода —
+		// тонкий слив, в устье — подпор озера
+		const double ramp = std::min( outletDistance[k], inflowDistance[k] ) * outletSlope;
+		const double minDepth = std::min( static_cast<double>( p.minWaterDepth ), ramp );
+		const double freeboard = std::min( shape[k].freeboard, ramp );
+		level[k] = actual[k] + std::max( waterDepth, minDepth );
+		level[k] = std::max( std::min( level[k], surface[k] - freeboard ), actual[k] + std::min( 0.05, minDepth ) );
 	}
-	for( int k : nodeOrder )
+	// Озеро стоит до перелива своей низины (fillLevel): это вода ниже по течению у узлов в озере и у ручьёв, которые в него
+	// впадают; исток на пороге — тоже на уровне перелива (дальше вода сходит по истоку вниз)
+	const std::vector<double>& lakeSurface = fillLevel;
+	for( int k = 0; k < count; ++k )
 	{
-		const int d = down[k];
-		if( d >= 0 && !inLake( k ) )
-			level[d] = std::min( level[d], level[k] );
+		const int label = inLake( k ) ? lakeLabel[cellOf[k]] : endLake[k];
+		if( label >= 0 )
+			level[k] = std::max( level[k], lakeSurface[label] );
 	}
+	for( int label = 0; label < lakeCount; ++label )
+		if( lakeOutlet[label] >= 0 )
+			level[lakeOutlet[label]] = lakeSurface[label];
+	// Подпор: снизу вверх по сети уровень — не ниже воды ниже по течению
+	for( auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it )
+		if( down[*it] >= 0 )
+			level[*it] = std::max( level[*it], level[down[*it]] );
 	for( int k = 0; k < count; ++k )
 	{
 		speed[k] = std::max( q[k] / ( width[k] * std::max( level[k] - actual[k], 1e-3 ) ), static_cast<double>( p.minSpeed ) );
@@ -1511,9 +1608,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	}
 
 	// Растр статичной воды: у клетки — ближайший отрезок ручья в пределах его ленты
-	result.staticWater.assign( cells, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, 0.0f ) );
-	for( size_t i = 0; i < cells; ++i )
-		result.staticWater[i].w = lake[i] ? static_cast<float>( lakeLevel[i] ) : -1e9f;
+	result.staticWater.assign( cells, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, -1e9f ) );
 	std::vector<double> nearest( cells, std::numeric_limits<double>::infinity() );
 	result.streams.clear();
 	result.points = 0;
@@ -1564,20 +1659,16 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			if( points.size() < 2 )
 				continue;
 		}
-		// Уровень ленты у точек. Ручей, впадающий в озеро, кончается на берегу (последний узел — уже в озере: там вода —
-		// поверхность озера) и не ниже уровня озера: иначе хвост ленты спускался бы по ложу круче берега плёнкой поверх
-		// сухого борта и уходил под поверхность озера
+		// Уровень ленты у точек — поле уровня сети. Ручей, впадающий в озеро, кончается на берегу (последний узел — уже в
+		// озере: там вода — поверхность озера; уровень у берега и так озёрный — подпор)
 		std::vector<double> pointLevel( points.size() );
 		for( size_t i = 0; i < points.size(); ++i )
 			pointLevel[i] = level[nodes[i]];
 		if( lake[cellOf[nodes.back()]] )
 		{
-			const double lakeSurface = lakeLevel[cellOf[nodes.back()]];
 			points.pop_back();
 			nodes.pop_back();
 			pointLevel.pop_back();
-			for( double& value : pointLevel )
-				value = std::max( value, lakeSurface );
 			if( points.size() < 2 )
 				continue;
 		}
@@ -1631,6 +1722,56 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			point.foam = static_cast<float>( foam[k] );
 		}
 		result.points += points.size();
+	}
+
+	// Озеро — по своему уровню над прорезанной землёй: из клеток низины ниже уровня по соседям ниже уровня в той же низине
+	// (заполнение до вреза — до перелива: за край низины вода не растекается), через русла — только где вода ручья на уровне
+	// озера (подпор впадающего), не вниз по истоку
+	{
+		std::vector<int> stack, region;
+		std::vector<uint8_t> tried( cells, 0 );
+		for( size_t start = 0; start < cells; ++start )
+		{
+			const int label = lakeLabel[start];
+			if( label < 0 || result.staticWater[start].w > -1e8f || tried[start] )
+				continue;
+			const double surfaceLevel = lakeSurface[label];
+			tried[start] = 1;
+			if( height.values[start] - carve[start] >= surfaceLevel )
+				continue;
+			result.staticWater[start].w = static_cast<float>( surfaceLevel );
+			stack.assign( 1, static_cast<int>( start ) );
+			region.assign( 1, static_cast<int>( start ) );
+			while( !stack.empty() )
+			{
+				const int i = stack.back();
+				stack.pop_back();
+				for( int k = 0; k < 8; ++k )
+				{
+					const int r = i / n + neighbourRow[k];
+					const int c = i % n + neighbourCol[k];
+					if( r < 0 || c < 0 || r >= n || c >= n )
+						continue;
+					const size_t j = static_cast<size_t>( r ) * n + c;
+					DirectX::XMFLOAT4& texel = result.staticWater[j];
+					if( texel.w > -1e8f || ( lakeLabel[j] >= 0 && lakeLabel[j] != label ) || height.values[j] - carve[j] >= surfaceLevel - 0.005 ||
+						dr.filled[j] < fillLevel[label] - 0.01 )
+						continue;
+					if( texel.x > -1e8f && texel.x < surfaceLevel - 0.01 )
+						continue;
+					texel.w = static_cast<float>( surfaceLevel );
+					tried[j] = 1;
+					stack.push_back( static_cast<int>( j ) );
+					region.push_back( static_cast<int>( j ) );
+				}
+			}
+			// Клочок меньше min_lake_area (ямка низины в русле, которую ручей перекрыл) — не озеро: там вода ручья
+			if( region.size() < p.minLakeArea / ( cell * cell ) )
+				for( int i : region )
+					result.staticWater[i].w = -1e9f;
+		}
+		for( size_t i = 0; i < cells; ++i )
+			lake[i] = result.staticWater[i].w > -1e8f ? 1 : 0;
 	}
 
 	// Под лентой ручья озёрной поверхности нет: у берега лента и плоскость озера легли бы друг на друга двумя
