@@ -301,7 +301,8 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 `CDLODTerrain::buildHeightBounds`: карта высот → эрозия `TerrainErosion` → ручные правки `TerrainEdits` → русла, ручьи и озёра по итоговому рельефу →
 вода; узкое дно, врез с крутыми бортами, извилины на пологом, галька и без травы; настройки — строка `WaterChannels`,
 подокно «Channels»; русла — по кривым из базы (`Streams` / `StreamPoints`, как Landscape Splines): генератор предлагает их
-по стоку, когда сменился отпечаток (`StreamGeneration`), правленные и ручные остаются; правка — точки во вьюпорте (View →
+по стоку, когда сменился отпечаток (`StreamGeneration`: параметры генератора и приток из базы, без высот рельефа — у разных
+машин рельеф чуть разный) или по `Tools/stream_edit.py regenerate`, правленные и ручные остаются; правка — точки во вьюпорте (View →
 «Stream curves»: гизмо с мягким выделением, Insert / Delete), подокна «Streams» и «Channels» — с перестройкой русел, воды и
 леса без перезагрузки (`Scene::rebuildChannels`), и `Tools/stream_edit.py`; приток симуляции — водосбор вдоль оси русел; выгрузка — команда `terrain hydrology`); глубина с памятью ~30 с — для травы и мокрой земли; текстура воды —
 слот сцены `SLOT_WATER`, t109, `Shaders/water.sh`; строка `WaterSimulation` уровня, `Levels.water_simulation`;

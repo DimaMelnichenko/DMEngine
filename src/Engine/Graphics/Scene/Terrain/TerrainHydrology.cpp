@@ -582,12 +582,14 @@ std::vector<float> TerrainHydrology::catchment( const HeightField& field )
 
 std::string TerrainHydrology::generationKey( const HeightField& field, const WaterSimulationSettings& water )
 {
+	// Кривые — данные, как Landscape Splines: отпечаток — только то, что лежит в базе (размеры карты, приток, помощники,
+	// параметры генератора), без высот рельефа. Рельеф после эрозии на GPU и исходная карта у разных машин чуть разные — от
+	// высот кривые генерировались бы заново на каждой машине и переписывали базу. Сменился рельеф — предупреждение «идёт
+	// в гору» (build), генерация заново — Tools/stream_edit.py regenerate
 	Fingerprint key;
-	const char version[] = "streams-v1";
+	const char version[] = "streams-v2";
 	key.add( version, sizeof( version ) );
 	key.add( field.size );
-	for( uint32_t row = 0; row < field.size; ++row )
-		key.add( field.heights + row * field.rowPitch, field.size * sizeof( float ) );
 	key.add( field.texelSize );
 	key.add( field.heightMultiplier );
 	key.add( field.heightOffset );
@@ -1814,12 +1816,15 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		foam[k] = std::clamp( ( slope[k] - p.foamSlope ) / ( 2.0 * p.foamSlope ), 0.0, 1.0 ) * 0.6;
 	}
 
-	// Правленная или ручная кривая, которая на нынешнем рельефе идёт в гору (земля под ней сменилась) — предупреждение:
-	// дно монотонно вниз, и русло там прорежется траншеей
+	// Кривая, которая на нынешнем рельефе идёт в гору (земля под ней сменилась: новая эрозия, другая карта, другая машина) —
+	// предупреждение: дно монотонно вниз, и русло там прорежется траншеей. Правленные и ручные — по одной, сгенерированные —
+	// одной строкой с подсказкой: их генерация от рельефа не зависит (generationKey)
+	size_t generatedUphill = 0;
+	double generatedRise = 0.0;
 	for( size_t a = 0; a < lines.size(); ++a )
 	{
 		const StreamCurve& curve = *lines[a].curve;
-		if( ( curve.generated && !curve.edited ) || lineNodes[a].empty() )
+		if( lineNodes[a].empty() )
 			continue;
 		double lowest = std::numeric_limits<double>::infinity();
 		double rise = 0.0;
@@ -1833,13 +1838,25 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			}
 			lowest = std::min( lowest, surface[k] );
 		}
-		if( rise > 0.5 )
+		if( rise <= 0.5 )
+			continue;
+		if( curve.generated && !curve.edited )
 		{
-			char text[256];
-			std::snprintf( text, sizeof( text ), "stream \"%s\" runs uphill by %.1f m near %.0f, %.0f: the terrain under the edited curve changed?",
-						   curve.name.c_str(), rise, position[at].x * cell, world - position[at].y * cell );
-			result.warnings.push_back( text );
+			++generatedUphill;
+			generatedRise = std::max( generatedRise, rise );
+			continue;
 		}
+		char text[256];
+		std::snprintf( text, sizeof( text ), "stream \"%s\" runs uphill by %.1f m near %.0f, %.0f: the terrain under the edited curve changed?",
+					   curve.name.c_str(), rise, position[at].x * cell, world - position[at].y * cell );
+		result.warnings.push_back( text );
+	}
+	if( generatedUphill > 0 )
+	{
+		char text[320];
+		std::snprintf( text, sizeof( text ), "%zu generated stream curves run uphill (up to %.1f m): the terrain changed since they were generated? "
+					   "Regenerate: python Tools/stream_edit.py regenerate", generatedUphill, generatedRise );
+		result.warnings.push_back( text );
 	}
 
 	// Ручьи растра — по кривым: от истока (или узла ниже озера) до слияния, озера или края; кривая, проходящая озеро, рвётся в нём
