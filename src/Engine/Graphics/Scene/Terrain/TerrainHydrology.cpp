@@ -1245,9 +1245,15 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// сдвигается к внешнему берегу, внешний борт круче и глубже, внутренний — пологая отмель (bend_asymmetry); плёсы — глубже
 	// (pool_depth); шум дна и бортов (bed_noise). base — тот же врез без плёсов и шума: по нему уровень воды (в плёсе вода
 	// глубже, а не ниже)
-	auto pieceProfile = [&]( int k, Point a, Point b, double t0, double t1, double cx, double cy, double& base )
+	// Сечение русла в узле: полуширина дна и ширина борта (клетки), врез (м), доля тальвега, изгиб, фаза плёсов
+	struct Section
 	{
-		const int d = down[k];
+		double half, depth, bank, thalweg, bend, phase;
+	};
+	auto section = [&]( int k ) { return Section{ half[k], depth[k], bank[k], shape[k].thalweg, bend[k], poolPhase[k] }; };
+	auto pieceProfile = [&]( const Section& s0, const Section& s1, Point a, Point b, double t0, double t1, double cx, double cy,
+							 double& base )
+	{
 		const double sx = b.x - a.x;
 		const double sy = b.y - a.y;
 		const double length2 = std::max( sx * sx + sy * sy, 1e-9 );
@@ -1258,11 +1264,11 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		// Сторона: > 0 — слева по течению (в клетках карты)
 		const double side = sx * offsetY - sy * offsetX;
 		const double t = t0 + ( t1 - t0 ) * local;
-		const double w = half[k] + ( half[d] - half[k] ) * t;
-		const double dep = depth[k] + ( depth[d] - depth[k] ) * t;
-		const double bw = std::max( bank[k] + ( bank[d] - bank[k] ) * t, 1e-3 );
-		const double thalwegShare = shape[k].thalweg + ( shape[d].thalweg - shape[k].thalweg ) * t;
-		const double bendHere = bend[k] + ( bend[d] - bend[k] ) * t;
+		const double w = s0.half + ( s1.half - s0.half ) * t;
+		const double dep = s0.depth + ( s1.depth - s0.depth ) * t;
+		const double bw = std::max( s0.bank + ( s1.bank - s0.bank ) * t, 1e-3 );
+		const double thalwegShare = s0.thalweg + ( s1.thalweg - s0.thalweg ) * t;
+		const double bendHere = s0.bend + ( s1.bend - s0.bend ) * t;
 		// Асимметрия: внутренний берег — со стороны центра поворота (bend > 0 — слева)
 		const double asym = std::clamp( p.bendAsymmetry * std::abs( bendHere ), 0.0, 1.0 );
 		const bool innerSide = side * bendHere > 0.0;
@@ -1281,7 +1287,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		const double profile = sideDepth * ( 1.0 - rise ) + thalweg;
 		base = profile;
 		// Плёс — глубже на pool_depth вреза, пол-периода; перекат — как есть
-		const double phase = poolPhase[k] + ( poolPhase[d] - poolPhase[k] ) * t;
+		const double phase = s0.phase + ( s1.phase - s0.phase ) * t;
 		const double pool = 1.0 + p.poolDepth * 0.5 * ( 1.0 + std::sin( 2.0 * pi * phase ) );
 		const double fill = profile / std::max( sideDepth * ( 1.0 + thalwegShare ), 1e-3 );	// 0 у бровки, 1 у тальвега
 		const double noise = p.bedNoise * fill *
@@ -1319,10 +1325,12 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	{
 		double value = 0.0;
 		base = 0.0;
+		const Section s0 = section( k );
+		const Section s1 = section( down[k] );
 		for( int s = 0; s < pieces; ++s )
 		{
 			double pieceBase = 0.0;
-			value = std::max( value, pieceProfile( k, spline[k][s], spline[k][s + 1], static_cast<double>( s ) / pieces,
+			value = std::max( value, pieceProfile( s0, s1, spline[k][s], spline[k][s + 1], static_cast<double>( s ) / pieces,
 												   static_cast<double>( s + 1 ) / pieces, cx, cy, pieceBase ) );
 			base = std::max( base, pieceBase );
 		}
@@ -1369,9 +1377,140 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	}
 	// В озёрах русло не режется, дно — чаша (lakeBasins)
 	const std::vector<double> basin = lakeBasins( lakeLevel, height.values, n, cell, p );
+
+	// Подводное русло: ручей, который впадает в озеро (последний узел вне озера — следующий в озере или конец кривой у
+	// берега), продолжается от этого узла с тем же сечением — по узлам кривой в озере, за концом кривой — прямо, дно — вниз
+	// не положе min_slope, пока чаша не станет глубже (и ещё на ширину русла — без стенки на конце). Иначе врез обрывался у
+	// озера: в клетках озера дно — чаша, а у берега она мелкая (отмель от нуля) — порог на дне между руслом и свалом
+	struct MouthExtension
+	{
+		Point a, b;
+		Section s0, s1;
+	};
+	std::vector<MouthExtension> mouths;
+	constexpr double mouthMaxLength = 40.0;	// м
+	for( int k = 0; k < count; ++k )
+	{
+		if( inLake( k ) || up[k] < 0 )
+			continue;
+		const bool intoLake = down[k] >= 0 ? inLake( down[k] ) : endLake[k] >= 0;
+		if( !intoLake )
+			continue;
+		// Путь: узлы кривой в озере; кривая кончилась (в озере или у берега) — дальше прямо по направлению последних узлов
+		// (у сгенерированной кривой точки через метр, ось извилиста). Ручей, который выходит из озера, — до последнего узла в нём
+		std::vector<Point> path = { position[k] };
+		int last = k;
+		while( down[last] >= 0 && inLake( down[last] ) && path.size() * cell < mouthMaxLength )
+		{
+			last = down[last];
+			path.push_back( position[last] );
+		}
+		const size_t curveCount = path.size();
+		if( down[last] < 0 )
+		{
+			int from = last;
+			for( int step = 0; step < 4 && up[from] >= 0; ++step )
+				from = up[from];
+			const double dx = position[last].x - position[from].x;
+			const double dy = position[last].y - position[from].y;
+			const double length = std::hypot( dx, dy );
+			if( length > 1e-3 )
+				for( double s = 1.0; ( curveCount - 1 + s ) * cell <= mouthMaxLength; s += 1.0 )
+					path.push_back( { position[last].x + dx / length * s, position[last].y + dy / length * s } );
+		}
+		// Вершины пути до места, где чаша глубже продолжения дна, и ещё на ширину русла; расстояние — по пути, клетки
+		const double thalwegFactor = 1.0 + shape[k].thalweg;
+		const double tail = half[k] + bank[k];
+		std::vector<Point> kept = { path[0] };
+		std::vector<double> along = { 0.0 };
+		bool entered = false;
+		double deepFrom = -1.0;
+		for( size_t v = 1; v < path.size(); ++v )
+		{
+			const Point q = path[v];
+			const int col = static_cast<int>( std::floor( q.x ) );
+			const int row = static_cast<int>( std::floor( q.y ) );
+			if( col < 0 || row < 0 || col >= n || row >= n )
+				break;
+			const size_t i = static_cast<size_t>( row ) * n + col;
+			if( !lake[i] && entered && v >= curveCount )
+				break;	// прямое продолжение вышло из озера (узкий залив) — дальше не режем
+			const double s = along.back() + std::hypot( q.x - kept.back().x, q.y - kept.back().y );
+			kept.push_back( q );
+			along.push_back( s );
+			if( !lake[i] )
+				continue;
+			entered = true;
+			if( deepFrom < 0.0 )
+			{
+				const double need = ( height.sample( q.x - 0.5, q.y - 0.5 ) - ( bed[k] - p.minSlope * s * cell ) ) * thalwegFactor;
+				if( basin[i] >= need )
+					deepFrom = s;
+			}
+			else if( s >= deepFrom + tail )
+				break;
+		}
+		if( !entered )
+			continue;
+		auto sectionAt = [&]( size_t v )
+		{
+			if( v == 0 )
+				return section( k );
+			Section result = section( k );
+			result.bend = 0.0;
+			result.depth = std::max( height.sample( kept[v].x - 0.5, kept[v].y - 0.5 ) - ( bed[k] - p.minSlope * along[v] * cell ), 0.0 );
+			result.phase += along[v] * cell / std::max( p.poolSpacing * 2.0 * half[k] * cell, 1.0 );
+			return result;
+		};
+		for( size_t v = 0; v + 1 < kept.size(); ++v )
+			mouths.push_back( { kept[v], kept[v + 1], sectionAt( v ), sectionAt( v + 1 ) } );	}
+	auto mouthBox = [&]( const MouthExtension& mouth, double& xMin, double& xMax, double& yMin, double& yMax )
+	{
+		const double reach = std::max( mouth.s0.half + mouth.s0.bank, mouth.s1.half + mouth.s1.bank );
+		xMin = std::min( mouth.a.x, mouth.b.x ) - reach;
+		xMax = std::max( mouth.a.x, mouth.b.x ) + reach;
+		yMin = std::min( mouth.a.y, mouth.b.y ) - reach;
+		yMax = std::max( mouth.a.y, mouth.b.y ) + reach;
+	};
+	auto mouthProfile = [&]( const MouthExtension& mouth, double cx, double cy, double& base )
+	{
+		return pieceProfile( mouth.s0, mouth.s1, mouth.a, mouth.b, 0.0, 1.0, cx, cy, base );
+	};
+	// Врез подводных русел — отдельно: в клетках озера он спорит с чашей, а не с руслами
+	std::vector<double> mouthCarve( cells, 0.0 );
+	std::vector<double> mouthBase( cells, 0.0 );
+	for( const MouthExtension& mouth : mouths )
+	{
+		double xMin, xMax, yMin, yMax;
+		mouthBox( mouth, xMin, xMax, yMin, yMax );
+		const int c0 = static_cast<int>( std::max( std::floor( xMin ), 0.0 ) );
+		const int c1 = static_cast<int>( std::min( std::ceil( xMax ), n - 1.0 ) );
+		const int r0 = static_cast<int>( std::max( std::floor( yMin ), 0.0 ) );
+		const int r1 = static_cast<int>( std::min( std::ceil( yMax ), n - 1.0 ) );
+		for( int row = r0; row <= r1; ++row )
+		{
+			for( int col = c0; col <= c1; ++col )
+			{
+				const size_t i = static_cast<size_t>( row ) * n + col;
+				double base = 0.0;
+				mouthCarve[i] = std::max( mouthCarve[i], mouthProfile( mouth, col + 0.5, row + 0.5, base ) );
+				mouthBase[i] = std::max( mouthBase[i], base );
+			}
+		}
+	}
 	for( size_t i = 0; i < cells; ++i )
+	{
 		if( lake[i] )
-			carve[i] = carveBase[i] = basin[i];
+		{
+			carve[i] = std::max( basin[i], mouthCarve[i] );
+			carveBase[i] = std::max( basin[i], mouthBase[i] );
+		}
+		else
+		{
+			carve[i] = std::max( carve[i], mouthCarve[i] );
+			carveBase[i] = std::max( carveBase[i], mouthBase[i] );
+		}
+	}
 
 	// Детальная земля у русел: плитки по detailTileCells клеток, где русло режет рельеф (озёра — нет: дно под водой);
 	// точка — рельеф до вреза Catmull-Rom (через центры клеток) минус тот же профиль русла, что у клеток, в самой точке;
@@ -1385,12 +1524,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		const double step = 1.0 / samples;	// клеток на тексель
 		// Плитки — где проходит русло (рамка отрезка оси): узкое русло может не задеть центры клеток карты
 		std::vector<int> tileIndex( static_cast<size_t>( tiles ) * tiles, -1 );
-		for( int k = 0; k < count; ++k )
+		auto addTiles = [&]( double xMin, double xMax, double yMin, double yMax )
 		{
-			if( down[k] < 0 || ( inLake( k ) && inLake( down[k] ) ) )
-				continue;
-			double xMin, xMax, yMin, yMax;
-			segmentBox( k, xMin, xMax, yMin, yMax );
 			const int tx0 = std::max( static_cast<int>( std::floor( xMin / tileCells ) ), 0 );
 			const int tx1 = std::min( static_cast<int>( std::floor( xMax / tileCells ) ), tiles - 1 );
 			const int tz0 = std::max( static_cast<int>( std::floor( ( n - yMax ) / tileCells ) ), 0 );
@@ -1408,20 +1543,31 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 					detail.z = static_cast<uint32_t>( tz );
 				}
 			}
+		};
+		for( int k = 0; k < count; ++k )
+		{
+			if( down[k] < 0 || ( inLake( k ) && inLake( down[k] ) ) )
+				continue;
+			double xMin, xMax, yMin, yMax;
+			segmentBox( k, xMin, xMax, yMin, yMax );
+			addTiles( xMin, xMax, yMin, yMax );
+		}
+		for( const MouthExtension& mouth : mouths )
+		{
+			double xMin, xMax, yMin, yMax;
+			mouthBox( mouth, xMin, xMax, yMin, yMax );
+			addTiles( xMin, xMax, yMin, yMax );
 		}
 		// Тексель (i, j) плитки (x, z): клетки — ( x · tileCells + ( i − 0,5 ) · step, n − z · tileCells − ( j − 0,5 ) · step )
 		auto texelCell = [&]( const DetailTile& tile, int i, int j )
 		{
 			return Point{ tile.x * tileCells + ( i - 0.5 ) * step, n - ( tile.z * tileCells + ( j - 0.5 ) * step ) };
 		};
-		// Отрезки оси, рамка которых задевает плитку
+		// Отрезки оси и подводные русла, рамка которых задевает плитку
 		std::vector<std::vector<int>> tileSegments( result.detailTiles.size() );
-		for( int k = 0; k < count; ++k )
+		std::vector<std::vector<int>> tileMouths( result.detailTiles.size() );
+		auto collectTiles = [&]( double xMin, double xMax, double yMin, double yMax, std::vector<std::vector<int>>& lists, int item )
 		{
-			if( down[k] < 0 )
-				continue;
-			double xMin, xMax, yMin, yMax;
-			segmentBox( k, xMin, xMax, yMin, yMax );
 			// Плитки по z мира: строки клеток y → z = n − y
 			const int tx0 = std::max( static_cast<int>( std::floor( ( xMin - step ) / tileCells ) ), 0 );
 			const int tx1 = std::min( static_cast<int>( std::floor( ( xMax + step ) / tileCells ) ), tiles - 1 );
@@ -1430,7 +1576,21 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			for( int tz = tz0; tz <= tz1; ++tz )
 				for( int tx = tx0; tx <= tx1; ++tx )
 					if( const int t = tileIndex[static_cast<size_t>( tz ) * tiles + tx]; t >= 0 )
-						tileSegments[t].push_back( k );
+						lists[t].push_back( item );
+		};
+		for( int k = 0; k < count; ++k )
+		{
+			if( down[k] < 0 )
+				continue;
+			double xMin, xMax, yMin, yMax;
+			segmentBox( k, xMin, xMax, yMin, yMax );
+			collectTiles( xMin, xMax, yMin, yMax, tileSegments, k );
+		}
+		for( size_t m = 0; m < mouths.size(); ++m )
+		{
+			double xMin, xMax, yMin, yMax;
+			mouthBox( mouths[m], xMin, xMax, yMin, yMax );
+			collectTiles( xMin, xMax, yMin, yMax, tileMouths, static_cast<int>( m ) );
 		}
 		Grid basinGrid;
 		basinGrid.size = n;
@@ -1447,6 +1607,28 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			tile.carve.assign( tile.heights.size(), 0.0f );
 			tileBase[t].assign( tile.heights.size(), 0.0f );
 			std::vector<double> carved( tile.heights.size(), 0.0 );
+			std::vector<double> mouthCarved( tile.heights.size(), 0.0 );
+			for( int m : tileMouths[t] )
+			{
+				const MouthExtension& mouth = mouths[m];
+				double xMin, xMax, yMin, yMax;
+				mouthBox( mouth, xMin, xMax, yMin, yMax );
+				const int i0 = std::max( static_cast<int>( std::floor( ( xMin - tile.x * tileCells ) / step + 0.5 ) ), 0 );
+				const int i1 = std::min( static_cast<int>( std::ceil( ( xMax - tile.x * tileCells ) / step + 0.5 ) ), side - 1 );
+				const int j0 = std::max( static_cast<int>( std::floor( ( n - yMax - tile.z * tileCells ) / step + 0.5 ) ), 0 );
+				const int j1 = std::min( static_cast<int>( std::ceil( ( n - yMin - tile.z * tileCells ) / step + 0.5 ) ), side - 1 );
+				for( int j = j0; j <= j1; ++j )
+				{
+					for( int i = i0; i <= i1; ++i )
+					{
+						const Point at = texelCell( tile, i, j );
+						const size_t index = static_cast<size_t>( j ) * side + i;
+						double base = 0.0;
+						mouthCarved[index] = std::max( mouthCarved[index], mouthProfile( mouth, at.x, at.y, base ) );
+						tileBase[t][index] = std::max( tileBase[t][index], static_cast<float>( base ) );
+					}
+				}
+			}
 			for( int k : tileSegments[t] )
 			{
 				double xMin, xMax, yMin, yMax;
@@ -1476,7 +1658,9 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 					const int col = std::clamp( static_cast<int>( at.x ), 0, n - 1 );
 					const int row = std::clamp( static_cast<int>( at.y ), 0, n - 1 );
 					const size_t index = static_cast<size_t>( j ) * side + i;
-					const double lowering = lake[static_cast<size_t>( row ) * n + col] ? basinGrid.sample( at.x - 0.5, at.y - 0.5 ) : carved[index];
+					// В озере — чаша или подводное русло, что глубже; вне озера — русла и подводные русла через берег
+					const double lowering = std::max( lake[static_cast<size_t>( row ) * n + col] ? basinGrid.sample( at.x - 0.5, at.y - 0.5 )
+																								 : carved[index], mouthCarved[index] );
 					tile.heights[index] = static_cast<float>( catmullRom( height, at.x - 0.5, at.y - 0.5 ) - lowering );
 					tile.carve[index] = static_cast<float>( lowering );
 				}
