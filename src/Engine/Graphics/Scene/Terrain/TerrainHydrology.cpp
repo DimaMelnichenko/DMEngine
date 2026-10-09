@@ -587,7 +587,8 @@ std::string TerrainHydrology::generationKey( const HeightField& field, const Wat
 	// высот кривые генерировались бы заново на каждой машине и переписывали базу. Сменился рельеф — предупреждение «идёт
 	// в гору» (build), генерация заново — Tools/stream_edit.py regenerate
 	Fingerprint key;
-	const char version[] = "streams-v2";
+	// v3 — приток кончается у оси главного, а не в узле слияния по стоку D8 (ось главного сдвинута извилинами)
+	const char version[] = "streams-v3";
 	key.add( version, sizeof( version ) );
 	key.add( field.size );
 	key.add( field.texelSize );
@@ -713,6 +714,7 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 	// (узел в озере — последняя) или края; дальше слияния течёт главный ручей
 	curves.clear();
 	const double world = n * cell;
+	std::vector<uint8_t> confluenceEnd;	// у кривой — конец на слиянии (не в озере и не у края)
 	for( int k : nodeOrder )
 	{
 		const bool inLake = dr.lake[stream[k]] != 0;
@@ -728,6 +730,44 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 			if( up[d] != chain[chain.size() - 2] || dr.lake[stream[d]] )
 				break;
 		}
+		// Приток: узлы — на клетках стока D8, а ось главного сглажена и сдвинута извилинами (притоки на неё не тянут), поэтому
+		// приток мог пересечь ось главного раньше узла слияния и уйти за неё — его врез выедал противоположный берег. Приток
+		// кончается у первой своей точки ближе confluenceReach к оси главного — в ближайшем к ней узле главного
+		const int last = chain.back();
+		const bool atConfluence = chain.size() >= 2 && up[last] >= 0 && up[last] != chain[chain.size() - 2] && !dr.lake[stream[last]];
+		if( atConfluence )
+		{
+			constexpr double confluenceReach = 1.5;	// клетки
+			constexpr int mainReach = 12;				// узлов главного вверх и вниз от узла слияния
+			std::vector<int> mainNodes = { last };
+			// Узлы в озере — не точки кривых (кривая кончается первым из них): только вне озера
+			for( int k2 = up[last], steps = 0; k2 >= 0 && steps < mainReach && !dr.lake[stream[k2]]; k2 = up[k2], ++steps )
+				mainNodes.insert( mainNodes.begin(), k2 );
+			for( int k2 = down[last], steps = 0; k2 >= 0 && steps < mainReach && !dr.lake[stream[k2]]; k2 = down[k2], ++steps )
+				mainNodes.push_back( k2 );
+			std::vector<Point> mainLine;
+			for( int node : mainNodes )
+				mainLine.push_back( position[node] );
+			for( size_t j = 1; j + 1 < chain.size(); ++j )
+			{
+				if( distanceToPolyline( position[chain[j]], mainLine ) >= confluenceReach )
+					continue;
+				int nearest = last;
+				double best = std::numeric_limits<double>::infinity();
+				for( int node : mainNodes )
+				{
+					const double distance = std::hypot( position[node].x - position[chain[j]].x, position[node].y - position[chain[j]].y );
+					if( distance < best )
+					{
+						best = distance;
+						nearest = node;
+					}
+				}
+				chain.resize( j );
+				chain.push_back( nearest );
+				break;
+			}
+		}
 		if( chain.size() < 2 )
 			continue;
 		StreamCurve& curve = curves.emplace_back();
@@ -738,6 +778,41 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 			point.position = DirectX::XMFLOAT2( static_cast<float>( position[node].x * cell ), static_cast<float>( world - position[node].y * cell ) );
 			point.discharge = static_cast<float>( q[node] );
 		}
+		confluenceEnd.push_back( atConfluence ? 1 : 0 );
+	}
+	// Обрезка каскадом: приток мог кончаться узлом другого притока, который сам обрезан у своего главного, — такой конец
+	// уже не точка ни одной кривой (build оставил бы его обрывом). Он переносится в ближайшую точку другой кривой в трёх
+	// клетках
+	const float snapReach = static_cast<float>( 3.0 * cell );
+	for( size_t a = 0; a < curves.size(); ++a )
+	{
+		if( !confluenceEnd[a] )
+			continue;
+		DirectX::XMFLOAT2& end = curves[a].points.back().position;
+		bool joined = false;
+		float best = snapReach;
+		DirectX::XMFLOAT2 nearest = end;
+		for( size_t b = 0; b < curves.size() && !joined; ++b )
+		{
+			if( a == b )
+				continue;
+			for( const StreamCurvePoint& point : curves[b].points )
+			{
+				const float distance = std::hypot( point.position.x - end.x, point.position.y - end.y );
+				if( distance < 1e-3f )
+				{
+					joined = true;
+					break;
+				}
+				if( distance < best )
+				{
+					best = distance;
+					nearest = point.position;
+				}
+			}
+		}
+		if( !joined )
+			end = nearest;
 	}
 	return true;
 }
@@ -877,22 +952,29 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			line.discharge.push_back( curve.points[i].discharge );
 		}
 	}
+	// Сначала — внутренняя точка другой кривой: два притока, впадающих в один узел главного, иначе нашли бы концы друг друга и
+	// оба остались бы без продолжения; конец другой кривой — только если внутренней нет
 	for( size_t a = 0; a < lines.size(); ++a )
 	{
 		const Point end = lines[a].points.back();
 		if( lake[cellIndex( end, n )] )
 			continue;
-		for( size_t b = 0; b < lines.size() && lines[a].target < 0; ++b )
+		for( int pass = 0; pass < 2 && lines[a].target < 0; ++pass )
 		{
-			if( a == b )
-				continue;
-			for( size_t i = 0; i < lines[b].points.size(); ++i )
+			for( size_t b = 0; b < lines.size() && lines[a].target < 0; ++b )
 			{
-				if( std::hypot( lines[b].points[i].x - end.x, lines[b].points[i].y - end.y ) < 0.25 )
+				if( a == b )
+					continue;
+				for( size_t i = 0; i < lines[b].points.size(); ++i )
 				{
-					lines[a].target = static_cast<int>( b );
-					lines[a].targetPoint = i;
-					break;
+					if( pass == 0 && i + 1 == lines[b].points.size() )
+						continue;
+					if( std::hypot( lines[b].points[i].x - end.x, lines[b].points[i].y - end.y ) < 0.25 )
+					{
+						lines[a].target = static_cast<int>( b );
+						lines[a].targetPoint = i;
+						break;
+					}
 				}
 			}
 		}
