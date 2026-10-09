@@ -10,6 +10,7 @@
 
 #include "samplers.sh"
 #include "bindless.sh"
+#include "terrain_detail.sh"
 
 cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 {
@@ -27,6 +28,9 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	float  g_farBlendEnd;			// до этого — дальше только крупный
 	uint   g_layerCount;			// слоёв в массивах текстур (TerrainLayers)
 	uint   g_showWater;				// подсветка воды симуляции (water.sh) — отладка, «Show water»
+	float  g_detailTile;			// сторона детальной плитки, м (terrain_detail.sh); 0 — детальной земли нет
+	float3 g_cdlodPadding;
+	float4 g_detailMorph[2];		// уровни мельче листа (−1, −2): x — начало морфинга, y — 1 / длина зоны
 };
 
 // Копия карты высот в R32_FLOAT с полной цепочкой мипов, в вершинном и пиксельном шейдерах
@@ -51,6 +55,15 @@ float2 heightMapUV( float2 worldXZ )
 float sampleHeight( float2 worldXZ, float mip )
 {
 	return g_heightMap.SampleLevel( g_SamplerLinearClamp, heightMapUV( worldXZ ), mip ).r * g_heightMultiplier + g_heightOffset;
+}
+
+// Высота самой детальной земли в точке: плитка у русла (terrain_detail.sh) или карта высот (мип 0)
+float sampleFineHeight( float2 worldXZ )
+{
+	float detail;
+	if( sampleTerrainDetail( worldXZ, g_detailTile, detail ) )
+		return detail * g_heightMultiplier + g_heightOffset;
+	return sampleHeight( worldXZ, 0.0f );
 }
 
 #endif

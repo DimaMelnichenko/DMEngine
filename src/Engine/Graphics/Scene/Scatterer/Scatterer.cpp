@@ -327,6 +327,7 @@ void Scatterer::compute( const FrameContext& frame )
 		params.worldSize = terrain.worldSize;
 		params.heightMultiplier = terrain.heightMultiplier;
 		params.heightOffset = terrain.heightOffset;
+		params.detailTileSize = terrain.detailTileSize;
 	} );
 	DMD3D::instance().setConstantBuffer( 5, m_terrainBuffer );
 

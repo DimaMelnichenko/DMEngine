@@ -10,13 +10,14 @@
 
 #include "samplers.sh"
 #include "bindless.sh"
+#include "terrain_detail.sh"
 
 cbuffer TerrainHeightBuffer : register( b5 )
 {
 	float g_terrainWorldSize;
 	float g_terrainHeightMultiplier;
 	float g_terrainHeightOffset;
-	float g_terrainPadding;
+	float g_terrainDetailTile;	// сторона детальной плитки, м (terrain_detail.sh); 0 — детальной земли нет
 };
 
 DM_SRV( Texture2D, g_terrainHeightMap, 0 );
@@ -29,10 +30,13 @@ float2 terrainUV( float2 worldXZ )
 	return uv;
 }
 
+// Высота земли в точке: детальная плитка у русла (U-ложе) или карта высот — как самый детальный уровень террейна
 float terrainHeight( float2 worldXZ )
 {
-	return g_terrainHeightMap.SampleLevel( g_SamplerLinearClamp, terrainUV( worldXZ ), 0.0f ).r * g_terrainHeightMultiplier +
-		   g_terrainHeightOffset;
+	float detail;
+	const float normalized = sampleTerrainDetail( worldXZ, g_terrainDetailTile, detail ) ? detail :
+							 g_terrainHeightMap.SampleLevel( g_SamplerLinearClamp, terrainUV( worldXZ ), 0.0f ).r;
+	return normalized * g_terrainHeightMultiplier + g_terrainHeightOffset;
 }
 
 // Доля растительности, которую убрали правки рельефа (русло, площадка): 0 — не тронута, 1 — убрана вся

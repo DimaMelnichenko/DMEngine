@@ -83,7 +83,7 @@ private:
 		float worldSize;
 		float heightMultiplier;
 		float heightOffset;
-		float padding;
+		float detailTileSize;	// детальная земля у русел (terrain_detail.sh); 0 — нет
 	};
 
 	// cbuffer FrustumBuffer в Shaders\scatter.cs: виды кадра

@@ -50,7 +50,7 @@ python Tools/engine.py stop
 | `select "окно"` | выбрать окно свойств в Outliner — Details показывает его (снимки редактора сценарием: `screenshot файл.png gui`) |
 | `wait кадров` | пропустить столько кадров |
 | `water discharge файл.dds` | расход воды ячеек симуляции, м³/с, в DDS `R32_FLOAT` (`WaterSimulation::exportDischarge`) — для проверки |
-| `terrain hydrology префикс` | русла и вода конвейера рельефа в DDS `R32_FLOAT`: `_lowering` — опускание ложа, `_level` — уровень ручьёв, `_lake` — уровень озёр ([water.md](water.md)) |
+| `terrain hydrology префикс` | русла и вода конвейера рельефа в DDS `R32_FLOAT`: `_lowering` — опускание ложа, `_level` — уровень ручьёв, `_lake` — уровень озёр, `_detail` — детальная земля у русел, 4096², −1e9 — плиток нет ([water.md](water.md), [terrain.md](terrain.md)) |
 | `passes` | список проходов следующего кадра в `log.txt` (`DMD3D::logPasses`): имя, цели с размером, что читает и пишет — по объявлениям `PassDesc` (`D3D/GpuPass.h`); compute-проходы помечены `compute` |
 | `timestep [секунды\|off]` | фиксированный шаг времени кадра, как `-UseFixedTimeStep` в UE: камера, экспозиция, частицы и время суток идут шагами, сколько бы кадр ни длился. Нужен сериям кадров: запись снимков не сбивает ход времени |
 | `quit` | штатный выход |

@@ -182,6 +182,7 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 	// Ползунок, а не m_heightMultiplier: тот обновляется в update() только у видимого террейна
 	height.heightMultiplier = m_initialized ? m_properties["Height multiplier"].data<float>() : m_heightMultiplier;
 	height.heightOffset = m_heightOffset;
+	height.detailTileSize = m_detailTileSize;
 	return height;
 }
 
@@ -404,6 +405,8 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 					   std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
 		LOG( text );
 	}
+	if( !createDetailTiles() )
+		return false;
 
 	// Копия итоговой карты на CPU — высота поверхности для ходьбы (surfaceHeight); 1024² — 4 МБ
 	m_cpuSize = static_cast<uint32_t>( image.width );
@@ -492,6 +495,133 @@ bool CDLODTerrain::rebuildChannels( const WaterSimulationSettings& water, const 
 	return finishHeights( target, &water, coverage ) && createFoliageClearMask( coverage ) && m_material.repaint( coverage );
 }
 
+bool CDLODTerrain::createDetailTiles()
+{
+	const std::vector<TerrainHydrology::DetailTile> none;
+	const std::vector<TerrainHydrology::DetailTile>& tiles = m_hasHydrology ? m_hydrology.detailTiles : none;
+	const uint32_t tileCells = TerrainHydrology::detailTileCells;
+	const uint32_t side = tileCells * TerrainHydrology::detailSamples + 2;
+	const uint32_t mapSize = static_cast<uint32_t>( std::lround( m_worldSize / m_texelSize ) );
+	m_detailTilesPerSide = ( mapSize + tileCells - 1 ) / tileCells;
+	m_detailSide = side;
+	m_detailTileSize = tiles.empty() ? 0.0f : tileCells * m_texelSize;
+	m_detailIndex.assign( static_cast<size_t>( m_detailTilesPerSide ) * m_detailTilesPerSide, -1 );
+	m_detailHeights.assign( tiles.size(), {} );
+	m_detailBounds.assign( tiles.size(), XMFLOAT2( FLT_MAX, -FLT_MAX ) );
+
+	// Массив: срез — плитка, нормированные высоты (как карта высот); без плиток — один нулевой срез
+	const size_t slices = std::max<size_t>( tiles.size(), 1 );
+	ScratchImage array;
+	if( FAILED( array.Initialize2D( DXGI_FORMAT_R32_FLOAT, tiles.empty() ? 1 : side, tiles.empty() ? 1 : side, slices, 1 ) ) )
+		return false;
+	if( tiles.empty() )
+		std::memset( array.GetPixels(), 0, array.GetPixelsSize() );
+	for( size_t t = 0; t < tiles.size(); ++t )
+	{
+		const TerrainHydrology::DetailTile& tile = tiles[t];
+		std::vector<float>& heights = m_detailHeights[t];
+		heights.resize( tile.heights.size() );
+		for( size_t i = 0; i < heights.size(); ++i )
+		{
+			heights[i] = ( tile.heights[i] - m_heightOffset ) / m_heightMultiplier;
+			m_detailBounds[t].x = std::min( m_detailBounds[t].x, heights[i] );
+			m_detailBounds[t].y = std::max( m_detailBounds[t].y, heights[i] );
+		}
+		const Image& target = *array.GetImage( 0, t, 0 );
+		for( uint32_t row = 0; row < side; ++row )
+			std::memcpy( target.pixels + row * target.rowPitch, &heights[static_cast<size_t>( row ) * side], side * sizeof( float ) );
+		if( tile.x < m_detailTilesPerSide && tile.z < m_detailTilesPerSide )
+			m_detailIndex[static_cast<size_t>( tile.z ) * m_detailTilesPerSide + tile.x] = static_cast<int>( t );
+	}
+	if( !GpuImages::createTexture( array, m_detailTexture, m_detailView, TextureViewDesc::Kind::texture2DArray ) )
+	{
+		LOG( "CDLOD terrain: can`t create detail tiles" );
+		return false;
+	}
+	DMD3D::instance().setName( m_detailTexture, "Terrain detail tiles" );
+
+	// Индекс: плитка → срез + 1 (0 — нет); без плиток — 1 × 1 ноль
+	const uint32_t indexSide = tiles.empty() ? 1 : m_detailTilesPerSide;
+	ScratchImage index;
+	if( FAILED( index.Initialize2D( DXGI_FORMAT_R16_UINT, indexSide, indexSide, 1, 1 ) ) )
+		return false;
+	std::memset( index.GetPixels(), 0, index.GetPixelsSize() );
+	if( !tiles.empty() )
+	{
+		const Image& target = *index.GetImage( 0, 0, 0 );
+		for( uint32_t z = 0; z < indexSide; ++z )
+		{
+			uint16_t* line = reinterpret_cast<uint16_t*>( target.pixels + z * target.rowPitch );
+			for( uint32_t x = 0; x < indexSide; ++x )
+				line[x] = static_cast<uint16_t>( m_detailIndex[static_cast<size_t>( z ) * m_detailTilesPerSide + x] + 1 );
+		}
+	}
+	if( !GpuImages::createTexture( index, m_detailIndexTexture, m_detailIndexView ) )
+	{
+		LOG( "CDLOD terrain: can`t create detail tile index" );
+		return false;
+	}
+	DMD3D::instance().setName( m_detailIndexTexture, "Terrain detail tile index" );
+	if( !tiles.empty() )
+		LOG( "CDLOD terrain: detail tiles " + std::to_string( tiles.size() ) + " (" + std::to_string( side ) + "x" + std::to_string( side ) +
+			 ", " + std::to_string( tiles.size() * side * side * sizeof( float ) / 1024 / 1024 ) + " MB)" );
+	return true;
+}
+
+float CDLODTerrain::fineHeight( float x, float z ) const
+{
+	if( m_detailTileSize > 0.0f )
+	{
+		const int tx = static_cast<int>( std::floor( x / m_detailTileSize ) );
+		const int tz = static_cast<int>( std::floor( z / m_detailTileSize ) );
+		if( tx >= 0 && tz >= 0 && tx < static_cast<int>( m_detailTilesPerSide ) && tz < static_cast<int>( m_detailTilesPerSide ) )
+		{
+			const int slice = m_detailIndex[static_cast<size_t>( tz ) * m_detailTilesPerSide + tx];
+			if( slice >= 0 )
+			{
+				// Как SampleLevel с линейным фильтром и clamp: тексель i — центр в ( i + 0,5 ) текселей от края среза
+				const float cell = m_detailTileSize / ( m_detailSide - 2 );
+				const float u = ( x - tx * m_detailTileSize ) / cell + 1.0f - 0.5f;
+				const float v = ( z - tz * m_detailTileSize ) / cell + 1.0f - 0.5f;
+				const int last = static_cast<int>( m_detailSide ) - 1;
+				const int i0 = std::clamp( static_cast<int>( std::floor( u ) ), 0, last );
+				const int j0 = std::clamp( static_cast<int>( std::floor( v ) ), 0, last );
+				const int i1 = std::min( i0 + 1, last );
+				const int j1 = std::min( j0 + 1, last );
+				const float fu = std::clamp( u - std::floor( u ), 0.0f, 1.0f );
+				const float fv = std::clamp( v - std::floor( v ), 0.0f, 1.0f );
+				const std::vector<float>& h = m_detailHeights[slice];
+				auto at = [&]( int i, int j ) { return h[static_cast<size_t>( j ) * m_detailSide + i]; };
+				const float bottom = at( i0, j0 ) + ( at( i1, j0 ) - at( i0, j0 ) ) * fu;
+				const float top = at( i0, j1 ) + ( at( i1, j1 ) - at( i0, j1 ) ) * fu;
+				return bottom + ( top - bottom ) * fv;
+			}
+		}
+	}
+	// Карта высот билинейно по центрам текселей (строки сверху вниз: v = 1 − z / worldSize)
+	const int size = static_cast<int>( m_cpuSize );
+	const float u = x / m_texelSize - 0.5f;
+	const float v = ( m_worldSize - z ) / m_texelSize - 0.5f;
+	const int c0 = std::clamp( static_cast<int>( std::floor( u ) ), 0, size - 1 );
+	const int r0 = std::clamp( static_cast<int>( std::floor( v ) ), 0, size - 1 );
+	const int c1 = std::min( c0 + 1, size - 1 );
+	const int r1 = std::min( r0 + 1, size - 1 );
+	const float fu = std::clamp( u - std::floor( u ), 0.0f, 1.0f );
+	const float fv = std::clamp( v - std::floor( v ), 0.0f, 1.0f );
+	auto at = [&]( int c, int r ) { return m_cpuHeights[static_cast<size_t>( r ) * m_cpuSize + c]; };
+	const float upper = at( c0, r0 ) + ( at( c1, r0 ) - at( c0, r0 ) ) * fu;
+	const float lower = at( c0, r1 ) + ( at( c1, r1 ) - at( c0, r1 ) ) * fu;
+	return upper + ( lower - upper ) * fv;
+}
+
+void CDLODTerrain::compute( const FrameContext& frame )
+{
+	if( !m_initialized )
+		return;
+	DMD3D::instance().setSRV( SLOT_TERRAIN_DETAIL, m_detailView );
+	DMD3D::instance().setSRV( SLOT_TERRAIN_DETAIL_INDEX, m_detailIndexView );
+}
+
 bool CDLODTerrain::createFoliageClearMask( const TerrainEditCoverage& coverage )
 {
 	const size_t size = coverage.clearsFoliage() ? coverage.size : 1;
@@ -544,6 +674,24 @@ void CDLODTerrain::calcRanges()
 		previousRange = range;
 		range *= 2.0f;
 	}
+
+	// Уровни мельче листа: диапазон −1 — половина диапазона листа, −2 — четверть, не меньше диагонали узла / morphStartRatio
+	// (условие без трещин, как выше). Морфинг листа начинается дальше 0,66 его диапазона — за диапазоном −1
+	float detailPrevious = 0.0f;
+	float detailRange[detailLevels];
+	for( uint32_t depth = 1; depth <= detailLevels; ++depth )
+	{
+		const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
+		detailRange[depth - 1] = std::max( m_ranges[0] / static_cast<float>( 1u << depth ), std::sqrt( 2.0f ) * size / morphStartRatio );
+	}
+	for( uint32_t depth = detailLevels; depth >= 1; --depth )
+	{
+		const float rangeAt = std::min( detailRange[depth - 1], m_ranges[0] * 0.5f );
+		const float morphStart = detailPrevious + ( rangeAt - detailPrevious ) * morphStartRatio;
+		m_detailRanges[depth - 1] = rangeAt;
+		m_detailMorph[depth - 1] = XMFLOAT4( morphStart, 1.0f / std::max( rangeAt - morphStart, 1e-3f ), 0.0f, 0.0f );
+		detailPrevious = rangeAt;
+	}
 }
 
 float CDLODTerrain::nodeSize( uint32_t level ) const
@@ -583,31 +731,19 @@ bool CDLODTerrain::surfaceHeight( float x, float z, float& height ) const
 {
 	if( m_cpuHeights.empty() || x < 0.0f || z < 0.0f || x > m_worldSize || z > m_worldSize )
 		return false;
-	const int size = static_cast<int>( m_cpuSize );
-	// Вершина сетки LOD 0 (kx, kz) — в углу текселей: шейдер читает карту билинейно по uv = (x, worldSize − z) / worldSize,
-	// центры текселей — на половинах, поэтому вершина — среднее четырёх текселей вокруг угла (на краю — повтор)
-	auto texel = [&]( int column, int row )
-	{
-		column = std::clamp( column, 0, size - 1 );
-		row = std::clamp( row, 0, size - 1 );
-		return m_cpuHeights[static_cast<size_t>( row ) * m_cpuSize + column];
-	};
-	auto vertex = [&]( int kx, int kz )
-	{
-		const int row = size - kz;	// строка текселя над углом (ось z идёт по текстуре снизу вверх)
-		return 0.25f * ( texel( kx - 1, row - 1 ) + texel( kx, row - 1 ) + texel( kx - 1, row ) + texel( kx, row ) );
-	};
-	const float gx = x / m_texelSize;
-	const float gz = z / m_texelSize;
-	const int kx = std::min( static_cast<int>( gx ), size - 1 );
-	const int kz = std::min( static_cast<int>( gz ), size - 1 );
+	// Самый детальный уровень у камеры (−2): квад — четверть текселя, вершина — высота детальной земли в своей точке
+	// (плитка у русла или карта высот билинейно), диагональ квада — от (0, 0) к (1, 1), как в GridMesh
+	const float quad = m_texelSize / static_cast<float>( 1u << detailLevels );
+	const float gx = x / quad;
+	const float gz = z / quad;
+	const float kx = std::floor( gx );
+	const float kz = std::floor( gz );
 	const float fx = gx - kx;
 	const float fz = gz - kz;
-	const float h00 = vertex( kx, kz );
-	const float h10 = vertex( kx + 1, kz );
-	const float h01 = vertex( kx, kz + 1 );
-	const float h11 = vertex( kx + 1, kz + 1 );
-	// Диагональ квада — от (0, 0) к (1, 1), как в GridMesh
+	const float h00 = fineHeight( kx * quad, kz * quad );
+	const float h10 = fineHeight( ( kx + 1.0f ) * quad, kz * quad );
+	const float h01 = fineHeight( kx * quad, ( kz + 1.0f ) * quad );
+	const float h11 = fineHeight( ( kx + 1.0f ) * quad, ( kz + 1.0f ) * quad );
 	const float value = fx >= fz ? h00 + fx * ( h10 - h00 ) + fz * ( h11 - h10 ) : h00 + fz * ( h01 - h00 ) + fx * ( h11 - h01 );
 	height = value * m_heightMultiplier + m_heightOffset;
 	return true;
@@ -889,6 +1025,14 @@ bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t 
 	if( !view.frustum.checkBox( box.min, box.max ) )
 		return true;
 
+	// Лист у камеры — уровни мельче листа (−1, −2) везде: квадродерево однородно, переходы без трещин
+	if( level == 0 && sphereIntersectsBox( cameraPosition, m_detailRanges[0], box.min, box.max ) )
+	{
+		for( uint32_t quarter = 0; quarter < 4; ++quarter )
+			if( !selectDetailNode( view, 1, x * 2 + ( quarter & 1 ), z * 2 + ( quarter >> 1 ), patches ) )
+				addPatch( 0, x, z, quarter, patches );
+		return true;
+	}
 	if( level == 0 || !sphereIntersectsBox( cameraPosition, m_ranges[level - 1], box.min, box.max ) )
 	{
 		for( uint32_t quarter = 0; quarter < 4; ++quarter )
@@ -924,6 +1068,51 @@ void CDLODTerrain::addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t qu
 	patches.push_back( { origin, halfSize, static_cast<float>( level ) } );
 }
 
+bool CDLODTerrain::selectDetailNode( const RenderView& view, uint32_t depth, uint32_t nx, uint32_t nz, std::vector<PatchInstance>& patches )
+{
+	// Высоты узла — его листа и детальной плитки листа, если она есть
+	const uint32_t leafX = nx >> depth;
+	const uint32_t leafZ = nz >> depth;
+	if( leafX >= m_nodesPerSide[0] || leafZ >= m_nodesPerSide[0] )
+		return true;
+	XMFLOAT2 bounds = m_heightBounds[0][leafZ * m_nodesPerSide[0] + leafX];
+	if( m_detailTileSize > 0.0f )
+	{
+		const int slice = m_detailIndex[static_cast<size_t>( leafZ ) * m_detailTilesPerSide + leafX];
+		if( slice >= 0 )
+			bounds = XMFLOAT2( std::min( bounds.x, m_detailBounds[slice].x ), std::max( bounds.y, m_detailBounds[slice].y ) );
+	}
+	const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
+	const XMFLOAT3 boxMin( nx * size, bounds.x * m_heightMultiplier + m_heightOffset, nz * size );
+	const XMFLOAT3 boxMax( std::min( ( nx + 1 ) * size, m_worldSize ), bounds.y * m_heightMultiplier + m_heightOffset,
+						   std::min( ( nz + 1 ) * size, m_worldSize ) );
+	const XMFLOAT3& origin = view.lodOrigin;
+	if( !sphereIntersectsBox( origin, m_detailRanges[depth - 1], boxMin, boxMax ) )
+		return false;
+	if( !view.frustum.checkBox( boxMin, boxMax ) )
+		return true;
+	if( depth == detailLevels || !sphereIntersectsBox( origin, m_detailRanges[depth], boxMin, boxMax ) )
+	{
+		for( uint32_t quarter = 0; quarter < 4; ++quarter )
+			addDetailPatch( depth, nx, nz, quarter, patches );
+		return true;
+	}
+	for( uint32_t quarter = 0; quarter < 4; ++quarter )
+		if( !selectDetailNode( view, depth + 1, nx * 2 + ( quarter & 1 ), nz * 2 + ( quarter >> 1 ), patches ) )
+			addDetailPatch( depth, nx, nz, quarter, patches );
+	return true;
+}
+
+void CDLODTerrain::addDetailPatch( uint32_t depth, uint32_t nx, uint32_t nz, uint32_t quarter, std::vector<PatchInstance>& patches )
+{
+	const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
+	const float halfSize = size * 0.5f;
+	const XMFLOAT2 origin( nx * size + ( quarter & 1 ) * halfSize, nz * size + ( quarter >> 1 ) * halfSize );
+	if( origin.x >= m_worldSize || origin.y >= m_worldSize || patches.size() >= maxPatches )
+		return;
+	patches.push_back( { origin, halfSize, -static_cast<float>( depth ) } );
+}
+
 void CDLODTerrain::renderCustom( const RenderContext& context )
 {
 	// В проходах только глубины (тени, depth prepass) — без раскраски LOD, материала и ресурсов пиксельного шейдера.
@@ -953,6 +1142,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.farBlendStart = m_properties["Far blend start"].data<float>();
 		params.farBlendEnd = std::max( m_properties["Far blend end"].data<float>(), params.farBlendStart + 1.0f );
 		params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
+		params.detailTile = m_detailTileSize;
+		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
 	} );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
 

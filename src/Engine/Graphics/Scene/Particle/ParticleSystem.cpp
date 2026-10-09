@@ -280,6 +280,7 @@ void ParticleSystem::compute( const FrameContext& frame )
 		params.worldSize = terrain.worldSize;
 		params.heightMultiplier = terrain.heightMultiplier;
 		params.heightOffset = terrain.heightOffset;
+		params.detailTileSize = terrain.detailTileSize;
 		Device::updateResourceData( m_terrainBuffer, params );
 	}
 

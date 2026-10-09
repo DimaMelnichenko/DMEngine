@@ -515,7 +515,8 @@ void DMGraphics::registerCommands()
 			reply->error( reason );
 	} );
 	m_console.registerCommand( "terrain", "hydrology <prefix> - water channels of the level as R32_FLOAT DDS: <prefix>_lowering.dds "
-							   "(bed lowering, m), <prefix>_level.dds (stream water level, m), <prefix>_lake.dds (lake level, m; -1e9 - no lake)",
+							   "(bed lowering, m), <prefix>_level.dds (stream water level, m), <prefix>_lake.dds (lake level, m; -1e9 - no lake), <prefix>_detail.dds (detail ground near channels, m, "
+							   "4 samples per height map texel; -1e9 - no detail tile)",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		if( args.size() != 2 || args[0] != "hydrology" )
@@ -532,6 +533,23 @@ void DMGraphics::registerCommands()
 		}
 		const std::wstring prefix( args[1].begin(), args[1].end() );
 		const uint32_t size = hydrology->size;
+		// Детальная земля у русел — одной картой с шагом детальной плитки (без плиток — −1e9), строки сверху вниз, как у карты
+		const uint32_t samples = TerrainHydrology::detailSamples;
+		const uint32_t tileCells = TerrainHydrology::detailTileCells;
+		const uint32_t fine = size * samples;
+		const uint32_t tileSide = tileCells * samples;
+		std::vector<float> detail( static_cast<size_t>( fine ) * fine, -1e9f );
+		for( const TerrainHydrology::DetailTile& tile : hydrology->detailTiles )
+			for( uint32_t j = 0; j < tileSide; ++j )
+				for( uint32_t i = 0; i < tileSide; ++i )
+				{
+					const uint32_t x = tile.x * tileSide + i;
+					const uint32_t z = tile.z * tileSide + j;
+					if( x < fine && z < fine )
+						detail[static_cast<size_t>( fine - 1 - z ) * fine + x] = tile.heights[static_cast<size_t>( j + 1 ) * ( tileSide + 2 ) + i + 1];
+				}
+		if( !hydrology->detailTiles.empty() && !GpuImages::saveFloatDDS( prefix + L"_detail.dds", fine, fine, detail.data() ) )
+			return reply->error( "terrain hydrology: can`t write " + args[1] + "_detail.dds" );
 		if( !GpuImages::saveFloatDDS( prefix + L"_lowering.dds", size, size, hydrology->lowering.data() ) ||
 			!GpuImages::saveFloatDDS( prefix + L"_level.dds", size, size, level.data() ) ||
 			!GpuImages::saveFloatDDS( prefix + L"_lake.dds", size, size, lake.data() ) )

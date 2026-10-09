@@ -32,6 +32,17 @@ namespace GS
 class TerrainHydrology
 {
 public:
+	// Детальная земля у русел: плитка — detailTileCells клеток карты (лист квадродерева CDLOD), detailSamples точек на
+	// клетку (0,25 м при клетке 1 м) и поле в тексель с каждой стороны: (detailTileCells · detailSamples + 2)² точек
+	static constexpr uint32_t detailTileCells = 32;
+	static constexpr uint32_t detailSamples = 4;
+	struct DetailTile
+	{
+		uint32_t x = 0;					// плитка по x и z мира (z — от ближнего края карты)
+		uint32_t z = 0;
+		std::vector<float> heights;		// высота, м; строки — по z мира вверх, тексели — по x
+	};
+
 	struct Result
 	{
 		uint32_t size = 0;								// клеток по стороне — как у карты высот
@@ -43,6 +54,7 @@ public:
 		std::vector<float> channelFlow;					// водосбор вдоль оси русла, м²: приток симуляции (mainSources)
 		std::vector<WaterStream> streams;				// ленты ручьёв (StreamRibbons)
 		std::vector<std::string> warnings;				// правленные кривые не по рельефу, петли — в лог
+		std::vector<DetailTile> detailTiles;			// детальная земля у русел (U-ложе): там, где русло режет рельеф
 
 		// Сводка для лога
 		size_t nodes = 0;

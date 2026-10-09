@@ -20,6 +20,8 @@ struct TerrainHeight
 	uint32_t mapSize = 0;	// текселей карты высот по стороне
 	float heightMultiplier = 1.0f;
 	float heightOffset = 0.0f;
+	// Детальная земля у русел — ресурс сцены (SLOT_TERRAIN_DETAIL, terrain_detail.sh): сторона плитки, м; 0 — её нет
+	float detailTileSize = 0.0f;
 };
 
 class TerrainHeightSource

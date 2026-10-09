@@ -1,10 +1,12 @@
 #include "TerrainHydrology.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <limits>
 #include <numeric>
 #include <cstdio>
+#include <execution>
 #include <queue>
 #include <string>
 #include <utility>
@@ -58,6 +60,40 @@ struct Grid
 		return top * ( 1.0 - fy ) + bottom * fy;
 	}
 };
+
+// Бикубическая (Catmull-Rom) выборка сетки в дробных (столбец, строка) центров клеток: гладкий рельеф между клетками
+// (детальная земля), проходит через значения клеток
+double catmullRom( const Grid& grid, double x, double y )
+{
+	const int n = grid.size;
+	const int x0 = static_cast<int>( std::floor( x ) );
+	const int y0 = static_cast<int>( std::floor( y ) );
+	const double fx = x - x0;
+	const double fy = y - y0;
+	auto weights = []( double f, double w[4] )
+	{
+		const double f2 = f * f;
+		const double f3 = f2 * f;
+		w[0] = -0.5 * f3 + f2 - 0.5 * f;
+		w[1] = 1.5 * f3 - 2.5 * f2 + 1.0;
+		w[2] = -1.5 * f3 + 2.0 * f2 + 0.5 * f;
+		w[3] = 0.5 * f3 - 0.5 * f2;
+	};
+	double wx[4];
+	double wy[4];
+	weights( fx, wx );
+	weights( fy, wy );
+	double result = 0.0;
+	for( int j = 0; j < 4; ++j )
+	{
+		const int row = std::clamp( y0 - 1 + j, 0, n - 1 );
+		double line = 0.0;
+		for( int i = 0; i < 4; ++i )
+			line += wx[i] * grid.at( row, std::clamp( x0 - 1 + i, 0, n - 1 ) );
+		result += wy[j] * line;
+	}
+	return result;
+}
 
 // Priority-Flood с уклоном (Barnes, Lehman, Mulla 2014): обход от края по возрастанию, при равной высоте — по индексу
 std::vector<double> fillDepressions( const Grid& height )
@@ -1051,40 +1087,93 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		depth[k] = surface[k] - bed[k];
 		bank[k] = depth[k] * shape[k].bankSlope / cell;
 	}
+	// Врез отрезка k → down[k] в точке (cx, cy) клеток (центр клетки — +0,5): дно, тальвег, борта. Его же считают и клетки
+	// карты, и точки детальной земли
+	// Врез по отрезку оси a → b, параметры — от узла k к down[k] в долях t0…t1 (часть отрезка — у гладкой оси детальной земли)
+	auto pieceProfile = [&]( int k, Point a, Point b, double t0, double t1, double cx, double cy )
+	{
+		const int d = down[k];
+		const double sx = b.x - a.x;
+		const double sy = b.y - a.y;
+		const double length2 = std::max( sx * sx + sy * sy, 1e-9 );
+		const double local = std::clamp( ( ( cx - a.x ) * sx + ( cy - a.y ) * sy ) / length2, 0.0, 1.0 );
+		const double distance = std::hypot( cx - ( a.x + local * sx ), cy - ( a.y + local * sy ) );
+		const double t = t0 + ( t1 - t0 ) * local;
+		const double w = half[k] + ( half[d] - half[k] ) * t;
+		const double dep = depth[k] + ( depth[d] - depth[k] ) * t;
+		const double bw = std::max( bank[k] + ( bank[d] - bank[k] ) * t, 1e-3 );
+		const double thalwegShare = shape[k].thalweg + ( shape[d].thalweg - shape[k].thalweg ) * t;
+		// Ложе U: к середине дно глубже (тальвег) — малый расход собирается в середине, а не плёнкой по ширине
+		const double inner = std::clamp( distance / std::max( w, 1e-3 ), 0.0, 1.0 );
+		const double thalweg = thalwegShare * dep * ( 1.0 - inner * inner );
+		return dep * ( 1.0 - smoothstep( 0.0, 1.0, ( distance - w ) / bw ) ) + thalweg;
+	};
+	// Ось — сплайн Catmull-Rom через узлы (до — главный приток, после — получатель получателя), четыре части на отрезок: по
+	// ломаной на каждом изломе внутренний борт сходился бы складкой (фестоны вдоль бровки через метр)
+	constexpr int pieces = 4;
+	std::vector<std::array<Point, pieces + 1>> spline( count );
+	for( int k = 0; k < count; ++k )
+	{
+		const int d = down[k];
+		if( d < 0 )
+			continue;
+		const Point p0 = position[up[k] >= 0 ? up[k] : k];
+		const Point p1 = position[k];
+		const Point p2 = position[d];
+		const Point p3 = position[down[d] >= 0 ? down[d] : d];
+		for( int s = 0; s <= pieces; ++s )
+		{
+			const double t = static_cast<double>( s ) / pieces;
+			const double t2 = t * t;
+			const double t3 = t2 * t;
+			auto blend = [&]( double v0, double v1, double v2, double v3 )
+			{
+				return 0.5 * ( 2.0 * v1 + ( v2 - v0 ) * t + ( 2.0 * v0 - 5.0 * v1 + 4.0 * v2 - v3 ) * t2 + ( 3.0 * v1 - v0 - 3.0 * v2 + v3 ) * t3 );
+			};
+			spline[k][s] = { blend( p0.x, p1.x, p2.x, p3.x ), blend( p0.y, p1.y, p2.y, p3.y ) };
+		}
+	}
+	auto segmentProfile = [&]( int k, double cx, double cy )
+	{
+		double value = 0.0;
+		for( int s = 0; s < pieces; ++s )
+			value = std::max( value, pieceProfile( k, spline[k][s], spline[k][s + 1], static_cast<double>( s ) / pieces,
+												   static_cast<double>( s + 1 ) / pieces, cx, cy ) );
+		return value;
+	};
+	auto segmentReach = [&]( int k ) { return std::max( half[k] + bank[k], half[down[k]] + bank[down[k]] ); };
+	// Рамка отрезка по сплайну, клетки
+	auto segmentBox = [&]( int k, double& xMin, double& xMax, double& yMin, double& yMax )
+	{
+		const double reach = segmentReach( k );
+		xMin = yMin = std::numeric_limits<double>::infinity();
+		xMax = yMax = -std::numeric_limits<double>::infinity();
+		for( const Point& point : spline[k] )
+		{
+			xMin = std::min( xMin, point.x - reach );
+			xMax = std::max( xMax, point.x + reach );
+			yMin = std::min( yMin, point.y - reach );
+			yMax = std::max( yMax, point.y + reach );
+		}
+	};
 	std::vector<double> carve( cells, 0.0 );
 	for( int k = 0; k < count; ++k )
 	{
 		const int d = down[k];
 		if( d < 0 )
 			continue;
-		const Point a = position[k];
-		const Point b = position[d];
-		const double reach = std::max( half[k] + bank[k], half[d] + bank[d] );
-		const int c0 = static_cast<int>( std::max( std::floor( std::min( a.x, b.x ) - reach ), 0.0 ) );
-		const int c1 = static_cast<int>( std::min( std::ceil( std::max( a.x, b.x ) + reach ), n - 1.0 ) );
-		const int r0 = static_cast<int>( std::max( std::floor( std::min( a.y, b.y ) - reach ), 0.0 ) );
-		const int r1 = static_cast<int>( std::min( std::ceil( std::max( a.y, b.y ) + reach ), n - 1.0 ) );
-		const double sx = b.x - a.x;
-		const double sy = b.y - a.y;
-		const double length2 = std::max( sx * sx + sy * sy, 1e-9 );
+		double xMin, xMax, yMin, yMax;
+		segmentBox( k, xMin, xMax, yMin, yMax );
+		const int c0 = static_cast<int>( std::max( std::floor( xMin ), 0.0 ) );
+		const int c1 = static_cast<int>( std::min( std::ceil( xMax ), n - 1.0 ) );
+		const int r0 = static_cast<int>( std::max( std::floor( yMin ), 0.0 ) );
+		const int r1 = static_cast<int>( std::min( std::ceil( yMax ), n - 1.0 ) );
 		for( int row = r0; row <= r1; ++row )
 		{
 			for( int col = c0; col <= c1; ++col )
 			{
-				const double cx = col + 0.5;
-				const double cy = row + 0.5;
-				const double t = std::clamp( ( ( cx - a.x ) * sx + ( cy - a.y ) * sy ) / length2, 0.0, 1.0 );
-				const double distance = std::hypot( cx - ( a.x + t * sx ), cy - ( a.y + t * sy ) );
-				const double w = half[k] + ( half[d] - half[k] ) * t;
-				const double dep = depth[k] + ( depth[d] - depth[k] ) * t;
-				const double bw = std::max( bank[k] + ( bank[d] - bank[k] ) * t, 1e-3 );
-				const double thalwegShare = shape[k].thalweg + ( shape[d].thalweg - shape[k].thalweg ) * t;
-				// Ложе U: к середине дно глубже (тальвег) — малый расход собирается в середине, а не плёнкой по ширине
-				const double inner = std::clamp( distance / std::max( w, 1e-3 ), 0.0, 1.0 );
-				const double thalweg = thalwegShare * dep * ( 1.0 - inner * inner );
-				const double profile = dep * ( 1.0 - smoothstep( 0.0, 1.0, ( distance - w ) / bw ) ) + thalweg;
 				double& value = carve[static_cast<size_t>( row ) * n + col];
-				value = std::max( value, profile );
+				value = std::max( value, segmentProfile( k, col + 0.5, row + 0.5 ) );
 			}
 		}
 	}
@@ -1093,6 +1182,103 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( size_t i = 0; i < cells; ++i )
 		if( lake[i] )
 			carve[i] = basin[i];
+
+	// Детальная земля у русел: плитки по detailTileCells клеток, где русло режет рельеф (озёра — нет: дно под водой);
+	// точка — рельеф до вреза Catmull-Rom (через центры клеток) минус тот же профиль русла, что у клеток, в самой точке;
+	// в клетке озера — чаша (билинейно). Тексели — по x и z мира, с полем в тексель с каждой стороны
+	result.detailTiles.clear();
+	{
+		const int tileCells = static_cast<int>( detailTileCells );
+		const int samples = static_cast<int>( detailSamples );
+		const int side = tileCells * samples + 2;
+		const int tiles = ( n + tileCells - 1 ) / tileCells;
+		const double step = 1.0 / samples;	// клеток на тексель
+		std::vector<int> tileIndex( static_cast<size_t>( tiles ) * tiles, -1 );
+		for( int row = 0; row < n; ++row )
+		{
+			for( int col = 0; col < n; ++col )
+			{
+				const size_t i = static_cast<size_t>( row ) * n + col;
+				if( lake[i] || carve[i] <= 0.001 )
+					continue;
+				const size_t tile = static_cast<size_t>( ( n - 1 - row ) / tileCells ) * tiles + col / tileCells;
+				if( tileIndex[tile] < 0 )
+				{
+					tileIndex[tile] = static_cast<int>( result.detailTiles.size() );
+					DetailTile& detail = result.detailTiles.emplace_back();
+					detail.x = static_cast<uint32_t>( col / tileCells );
+					detail.z = static_cast<uint32_t>( ( n - 1 - row ) / tileCells );
+				}
+			}
+		}
+		// Тексель (i, j) плитки (x, z): клетки — ( x · tileCells + ( i − 0,5 ) · step, n − z · tileCells − ( j − 0,5 ) · step )
+		auto texelCell = [&]( const DetailTile& tile, int i, int j )
+		{
+			return Point{ tile.x * tileCells + ( i - 0.5 ) * step, n - ( tile.z * tileCells + ( j - 0.5 ) * step ) };
+		};
+		// Отрезки оси, рамка которых задевает плитку
+		std::vector<std::vector<int>> tileSegments( result.detailTiles.size() );
+		for( int k = 0; k < count; ++k )
+		{
+			if( down[k] < 0 )
+				continue;
+			double xMin, xMax, yMin, yMax;
+			segmentBox( k, xMin, xMax, yMin, yMax );
+			// Плитки по z мира: строки клеток y → z = n − y
+			const int tx0 = std::max( static_cast<int>( std::floor( ( xMin - step ) / tileCells ) ), 0 );
+			const int tx1 = std::min( static_cast<int>( std::floor( ( xMax + step ) / tileCells ) ), tiles - 1 );
+			const int tz0 = std::max( static_cast<int>( std::floor( ( n - yMax - step ) / tileCells ) ), 0 );
+			const int tz1 = std::min( static_cast<int>( std::floor( ( n - yMin + step ) / tileCells ) ), tiles - 1 );
+			for( int tz = tz0; tz <= tz1; ++tz )
+				for( int tx = tx0; tx <= tx1; ++tx )
+					if( const int t = tileIndex[static_cast<size_t>( tz ) * tiles + tx]; t >= 0 )
+						tileSegments[t].push_back( k );
+		}
+		Grid basinGrid;
+		basinGrid.size = n;
+		basinGrid.values = basin;
+		// Плитки независимы — параллельно: рельеф до вреза Catmull-Rom, врез отрезков (тот же сплайн оси, что у клеток), в
+		// озере — чаша
+		std::vector<size_t> order( result.detailTiles.size() );
+		std::iota( order.begin(), order.end(), size_t( 0 ) );
+		std::for_each( std::execution::par, order.begin(), order.end(), [&]( size_t t )
+		{
+			DetailTile& tile = result.detailTiles[t];
+			tile.heights.resize( static_cast<size_t>( side ) * side );
+			std::vector<double> carved( tile.heights.size(), 0.0 );
+			for( int k : tileSegments[t] )
+			{
+				double xMin, xMax, yMin, yMax;
+				segmentBox( k, xMin, xMax, yMin, yMax );
+				// Тексели плитки в рамке отрезка
+				const int i0 = std::max( static_cast<int>( std::floor( ( xMin - tile.x * tileCells ) / step + 0.5 ) ), 0 );
+				const int i1 = std::min( static_cast<int>( std::ceil( ( xMax - tile.x * tileCells ) / step + 0.5 ) ), side - 1 );
+				const int j0 = std::max( static_cast<int>( std::floor( ( n - yMax - tile.z * tileCells ) / step + 0.5 ) ), 0 );
+				const int j1 = std::min( static_cast<int>( std::ceil( ( n - yMin - tile.z * tileCells ) / step + 0.5 ) ), side - 1 );
+				for( int j = j0; j <= j1; ++j )
+				{
+					for( int i = i0; i <= i1; ++i )
+					{
+						const Point at = texelCell( tile, i, j );
+						double& value = carved[static_cast<size_t>( j ) * side + i];
+						value = std::max( value, segmentProfile( k, at.x, at.y ) );
+					}
+				}
+			}
+			for( int j = 0; j < side; ++j )
+			{
+				for( int i = 0; i < side; ++i )
+				{
+					const Point at = texelCell( tile, i, j );
+					const int col = std::clamp( static_cast<int>( at.x ), 0, n - 1 );
+					const int row = std::clamp( static_cast<int>( at.y ), 0, n - 1 );
+					const size_t index = static_cast<size_t>( j ) * side + i;
+					const double lowering = lake[static_cast<size_t>( row ) * n + col] ? basinGrid.sample( at.x - 0.5, at.y - 0.5 ) : carved[index];
+					tile.heights[index] = static_cast<float>( catmullRom( height, at.x - 0.5, at.y - 0.5 ) - lowering );
+				}
+			}
+		} );
+	}
 	result.size = static_cast<uint32_t>( n );
 	result.lowering.resize( cells );
 	result.carvedCells = 0;

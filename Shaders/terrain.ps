@@ -44,6 +44,16 @@ float3 terrainNormal( float2 worldXZ, float mip )
 	return normalize( float3( left - right, 2.0f * offset, back - front ) );
 }
 
+// Нормаль по самой детальной земле (плитка у русла или карта высот) — центральные разности через offset, м
+float3 fineNormal( float2 worldXZ, float offset )
+{
+	float left  = sampleFineHeight( worldXZ - float2( offset, 0.0f ) );
+	float right = sampleFineHeight( worldXZ + float2( offset, 0.0f ) );
+	float back  = sampleFineHeight( worldXZ - float2( 0.0f, offset ) );
+	float front = sampleFineHeight( worldXZ + float2( 0.0f, offset ) );
+	return normalize( float3( left - right, 2.0f * offset, back - front ) );
+}
+
 // Веса проекций triplanar по нормали рельефа; малые отбрасываются
 float3 projectionWeights( float3 normal )
 {
@@ -125,6 +135,14 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 	float footprint = max( length( positionDX.xz ), length( positionDY.xz ) );
 	float3 normal = terrainNormal( position.xz, max( log2( footprint / g_texelSize ), 0.0f ) );
+	// У русла — нормаль детальной плитки (U-ложе, бровки): разности через полпикселя, но не мельче её шага; вдали (пиксель
+	// крупнее двух текселей карты высот) — к нормали карты, к четырём — только она
+	float unused;
+	[branch] if( footprint < 4.0f * g_texelSize && sampleTerrainDetail( position.xz, g_detailTile, unused ) )
+	{
+		const float detailShare = saturate( 2.0f - footprint / ( 2.0f * g_texelSize ) );
+		normal = normalize( lerp( normal, fineNormal( position.xz, max( 0.5f * footprint, 0.25f * g_texelSize ) ), detailShare ) );
+	}
 	float3 projection = projectionWeights( normal );
 
 	const float4 splat0 = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 0.0f ) );

@@ -19,8 +19,11 @@ static const float3 g_levelColors[8] =
 
 float4 main( PixelInputType input ) : SV_TARGET
 {
-	uint level = (uint)input.lodDebug.x;
-	float3 color = lerp( g_levelColors[level % 8], g_levelColors[( level + 1 ) % 8], input.lodDebug.y );
+	// Уровни мельче листа (−1, −2) — цвета с конца таблицы
+	int level = (int)round( input.lodDebug.x );
+	uint index = level < 0 ? (uint)( 8 + level ) : (uint)level;
+	uint next = level < 0 ? (uint)( 8 + level + 1 ) % 8 : (uint)( level + 1 );
+	float3 color = lerp( g_levelColors[index % 8], g_levelColors[next % 8], input.lodDebug.y );
 
 	float3 normal = normalize( cross( ddy( input.worldPosition ), ddx( input.worldPosition ) ) );
 	normal *= normal.y < 0.0f ? -1.0f : 1.0f;	// у террейна нормаль всегда смотрит вверх
