@@ -37,7 +37,7 @@ bool DMSystem::Initialize( const char* commandLine )
 
 	if( !Input::instance().Initialize( m_hinstance, m_hwnd, screenWidth, screenHeight ) )
 	{
-		LOG( "Can`t initialize DirectInput" );
+		LOG( "Can`t initialize Raw Input" );
 		return false;
 	}
 
@@ -121,10 +121,12 @@ LRESULT CALLBACK DMSystem::proxyWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LP
 extern LRESULT ImGui_ImplWin32_WndProcHandler( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
 LRESULT DMSystem::wndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 {
+	// Raw Input (WM_INPUT) и потеря фокуса — до ImGui: он может забрать сообщение себе
+	Input::instance().handleMessage( uMsg, wParam, lParam );
 	if( ImGui_ImplWin32_WndProcHandler( hWnd, uMsg, wParam, lParam ) )
 		return true;
 
-	// Escape is handled by the DirectInput trigger registered in Initialize().
+	// Escape — триггер Input, назначенный в Initialize()
 	switch( uMsg )
 	{
 		case WM_DESTROY:
@@ -133,6 +135,12 @@ LRESULT DMSystem::wndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 		case WM_CLOSE:
 			PostQuitMessage( 0 );
 			return 0;
+		case WM_SYSCOMMAND:
+			// Alt или F10 без сочетания — не меню окна: DefWindowProc вошёл бы в цикл меню, и кадры стояли бы до следующей
+			// клавиши (меню у окна нет; Alt+F4 и Alt+Tab работают)
+			if( ( wParam & 0xFFF0 ) == SC_KEYMENU )
+				return 0;
+			break;
 		case WM_SIZE:
 			// Новый размер клиентской области — задний буфер и цели кадра за ним; свёрнутое окно (0 × 0) не трогаем
 			if( wParam != SIZE_MINIMIZED )
@@ -234,7 +242,8 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 
 void DMSystem::ShutdownWindows( )
 {
-	// Show the mouse cursor.
+	// Курсор виден и свободен (выход посреди поворота мышью — ClipCursor в DMGraphics::updateMouseLook)
+	ClipCursor( nullptr );
 	ShowCursor( true );
 
 	// Fix the display settings if leaving full screen mode.

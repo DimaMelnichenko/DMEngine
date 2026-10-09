@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Проект
 
-DMEngine — самописный 3D-движок на C++17 / Direct3D 12 под Windows (Win32-окно, DirectInput, ImGui).
+DMEngine — самописный 3D-движок на C++17 / Direct3D 12 под Windows (Win32-окно, Raw Input, ImGui).
 Бэкенд — D3D12 в современном виде (Agility SDK, DXC и SM 6.6, bindless, enhanced barriers, D3D12MA, PIX), устройство слоя —
 `docs/d3d12.md`; переписан с D3D11 2026-09-30, последний коммит на D3D11 — `0aadc42` (в истории git; эталон кадров теперь — снимки D3D12, `docs/d3d12.md` §4).
 Сейчас в основном используется как полигон для рендеринга: террейн (CDLOD),
@@ -71,7 +71,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `0aadc42` в истории git.
 - **Запуск для проверки** — `.\Tools\run.ps1 [-Config Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,4]
   [-Camera x,y,z,pitch,yaw] [-Level имя] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
-  Запускает exe из корня проекта, по желанию нажимает клавиши (скан-коды DirectInput: 2 — «1», 4 — «3», 5 — «4») и снимает
+  Запускает exe из корня проекта, по желанию нажимает клавиши (скан-коды клавиш `DIK_*`, как в DirectInput: 2 — «1», 4 — «3», 5 — «4») и снимает
   окно, закрывает движок и печатает из `log.txt` ошибки, число заглушек, время инициализации и строку «GPU average»
   (среднее время GPU кадра и проходов за 3 с после прогрева — для сравнения производительности до и после правок;
   в конце — сколько мешей нарисовано и сколькими вызовами). Достоверен итог кадра и проходов: метки времени
@@ -166,7 +166,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   экземпляр на землю («Snap to terrain», `ModelInstances::snapToTerrain`), F — полёт ↔
   ходьба по рельефу (`Scene/Camera/WalkMode.h`: высота — `TerrainHeightSource::surfaceHeight`, итоговая карта на CPU;
   без столкновений; включение в воздухе — падение до земли),
-  `` ` `` — консоль. Камера смотрит мышью при зажатой правой кнопке над сценой (`DMGraphics::updateMouseLook`); пока
+  `` ` `` — консоль. Камера смотрит мышью при зажатой правой кнопке над сценой (`DMGraphics::updateMouseLook`: только у
+  активного окна, курсор спрятан и закреплён `ClipCursor` на месте, после Alt+Tab свободен); пока
   в окнах редактора набирается текст, горячие клавиши и WASD молчат (`Input::setKeyboardBlocked`).
 - **Редактор** (`src/Engine/Graphics/GUI/`, подробно — `docs/gui.md`), как редактор UE: главное меню (File — действия
   `GUI::addAction`, их же вызывает команда `action`; View — переключатели `addToggle`; Window — панели и «Reset layout»;
@@ -345,7 +346,8 @@ ExecuteIndirect, берег — пересечение продолженной 
 - `GS::System::textures() / meshes() / models() / materials()` — хранилища ресурсов
   (`DMResourceStorage<T>`, доступ по id или по имени; путь хранилища — подкаталог: `Textures`, `Meshes`,
   `Models`, `Shaders`);
-- `DBConnector::instance().db()` — `SQLite::Database` на `base.db3`; `Input::instance()` — DirectInput + `KeyEventNotifier`.
+- `DBConnector::instance().db()` — `SQLite::Database` на `base.db3`; `Input::instance()` — Raw Input (`WM_INPUT` из `DMSystem::wndProc`: клавиши по скан-кодам `DIK_*`, смещения мыши)
+  + `KeyEventNotifier`; обычные сообщения окна (ImGui, ввод текста, Ctrl+S, раскладка, Alt+Tab) не перехватываются.
 
 **Данные сцены в SQLite (`base.db3`).** `ObjectLibrary/LibraryLoader` по id загружает из БД текстуры,
 материалы, шейдеры материала (`MaterialShaderView`: файл, тип стадии, defines), определения

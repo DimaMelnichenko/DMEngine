@@ -254,7 +254,7 @@ target_link_libraries(DMEngine PRIVATE
     D3D12MemoryAllocator
     ${dxc_SOURCE_DIR}/lib/x64/dxcompiler.lib
     ${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.lib
-    d3d12 dxgi dinput8 dxguid winmm windowscodecs
+    d3d12 dxgi dxguid winmm windowscodecs
     d3dcompiler # только шейдеры imgui_impl_dx12 (D3DCompile); шейдеры движка — DXC
 )
 

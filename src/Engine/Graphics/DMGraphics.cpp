@@ -459,7 +459,7 @@ void DMGraphics::registerCommands()
 		} );
 	} );
 
-	// Горячие клавиши (bindingKeys): имя — буква или цифра, как на клавиатуре, или скан-код DirectInput
+	// Горячие клавиши (bindingKeys): имя — буква или цифра, как на клавиатуре, или скан-код DIK_*
 	m_console.registerCommand( "key", "<letter|digit|scan code> - press a hotkey (G, Q, 1, 3, 4...)",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
@@ -657,23 +657,35 @@ void DMGraphics::updateMouseLook()
 {
 	// Как вьюпорт редактора UE: камера смотрит мышью, пока зажата правая кнопка над сценой (не над окнами редактора);
 	// в режиме полёта (I) и без редактора (G) — всегда. С -nomouse — никогда: поворот только из -camera и команд
+	// Только у активного окна: после Alt+Tab курсор свободен, полёт и ходьба продолжат поворот, когда окно снова активно
 	Input& input = Input::instance();
-	const bool rightButton = input.isRightMouseDown();
+	const bool active = GetForegroundWindow() == m_hwnd;
+	const bool rightButton = active && input.isRightMouseDown();
 	if( !m_rightButtonLook && rightButton && !( m_showGUI && m_GUI.wantsMouse() ) )
 		m_rightButtonLook = true;
 	else if( m_rightButtonLook && !rightButton )
 		m_rightButtonLook = false;
-	const bool look = m_config.mouseLook() && ( m_rightButtonLook || m_flyMode || m_walk.enabled() || !m_showGUI );
+	const bool look = active && m_config.mouseLook() && ( m_rightButtonLook || m_flyMode || m_walk.enabled() || !m_showGUI );
 	if( look != m_mouseLook )
 	{
-		// Курсор прячется на время поворота и возвращается на место; окна редактора мышь не видят
+		// Курсор прячется на время поворота и стоит на месте (ClipCursor в точку: смещения даёт Raw Input), затем
+		// виден там же; окна редактора мышь не видят
 		if( look )
 		{
 			GetCursorPos( &m_lookCursor );
+			// Курсор вне окна (полёт включили, когда мышь была за краем) — в середину окна: клик не уйдёт другому окну
+			RECT client;
+			GetClientRect( m_hwnd, &client );
+			MapWindowPoints( m_hwnd, nullptr, reinterpret_cast<POINT*>( &client ), 2 );
+			if( !PtInRect( &client, m_lookCursor ) )
+				m_lookCursor = { ( client.left + client.right ) / 2, ( client.top + client.bottom ) / 2 };
+			const RECT point = { m_lookCursor.x, m_lookCursor.y, m_lookCursor.x + 1, m_lookCursor.y + 1 };
+			ClipCursor( &point );
 			ShowCursor( FALSE );
 		}
 		else
 		{
+			ClipCursor( nullptr );
 			SetCursorPos( m_lookCursor.x, m_lookCursor.y );
 			ShowCursor( TRUE );
 		}

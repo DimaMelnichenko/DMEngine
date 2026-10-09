@@ -3,7 +3,7 @@
 #                    [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
 # Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные),
 # ждёт Seconds секунд, при необходимости нажимает клавиши и снимает окно, затем закрывает движок и печатает
-# из log.txt ошибки и время инициализации. Keys — скан-коды DirectInput: 2 — клавиша «1», 4 — «3», 5 — «4», 16 — Q, 23 — I.
+# из log.txt ошибки и время инициализации. Keys — скан-коды клавиш (DIK_*, как в DirectInput): 2 — клавиша «1», 4 — «3», 5 — «4», 16 — Q, 23 — I.
 # Camera — стартовая камера вместо секции [Camera] в settings.ini: положение и поворот в градусах (тангаж, рыскание).
 # Level — уровень из таблицы Levels вместо секции [Level] в settings.ini.
 # NoGui — без окон ImGui (параметр движка -nogui), чтобы они не закрывали кадр; в движке их прячет и клавиша G.
@@ -83,7 +83,7 @@ else {
     if ($scanCodes.Count -gt 0 -or $Screenshot) {
         $process.Refresh()
         $window = $process.MainWindowHandle
-        # Нажатия DirectInput получает только окно на переднем плане, а фоновому процессу Windows не всегда даёт
+        # Нажатия (Raw Input) получает только окно на переднем плане, а фоновому процессу Windows не всегда даёт
         # вывести окно вперёд. Нажатие Alt перед SetForegroundWindow снимает этот запрет (VK_MENU = 0x12)
         for ($attempt = 0; $attempt -lt 5 -and [DMEngineWindow]::GetForegroundWindow() -ne $window; $attempt++) {
             [DMEngineWindow]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
@@ -96,7 +96,7 @@ else {
         }
         Start-Sleep -Milliseconds 700
 
-        # DirectInput читает скан-коды: KEYEVENTF_SCANCODE = 0x8, KEYEVENTF_KEYUP = 0x2
+        # Движок читает скан-коды: KEYEVENTF_SCANCODE = 0x8, KEYEVENTF_KEYUP = 0x2
         foreach ($key in $scanCodes) {
             [DMEngineWindow]::keybd_event(0, $key, 0x8, [UIntPtr]::Zero)
             Start-Sleep -Milliseconds 150

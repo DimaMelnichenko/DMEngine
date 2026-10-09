@@ -1,5 +1,7 @@
 #include "Input.h"
 #include <cstring>
+#include <memory>
+#include <vector>
 
 namespace
 {
@@ -27,244 +29,135 @@ Input::Input(  )
 
 Input::~Input()
 {
-
 }
 
-bool Input::Initialize( HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeight )
+bool Input::Initialize( HINSTANCE, HWND hwnd, int, int )
 {
-	HRESULT result;
+	// Мышь и клавиатура (Generic Desktop: usage 2 и 6) — WM_INPUT окну. Без RIDEV_NOLEGACY: обычные сообщения окна
+	// остаются (ImGui, ввод текста, Ctrl+S, раскладка), без RIDEV_INPUTSINK — ввод приходит только активному окну
+	RAWINPUTDEVICE devices[2] = {};
+	devices[0].usUsagePage = 0x01;
+	devices[0].usUsage = 0x02;
+	devices[0].hwndTarget = hwnd;
+	devices[1].usUsagePage = 0x01;
+	devices[1].usUsage = 0x06;
+	devices[1].hwndTarget = hwnd;
+	return RegisterRawInputDevices( devices, 2, sizeof( RAWINPUTDEVICE ) ) != FALSE;
+}
 
-	// Store the screen size which will be used for positioning the mouse cursor.
-	m_screenWidth = screenWidth;
-	m_screenHeight = screenHeight;
-
-	// Initialize the location of the mouse on the screen.
-	m_mouseX = 0;
-	m_mouseY = 0;
-
-	// Initialize the main direct input interface.
-	result = DirectInput8Create( hinstance, DIRECTINPUT_VERSION, IID_IDirectInput8, (void**)&m_directInput, nullptr );
-	if( FAILED( result ) )
+void Input::handleMessage( UINT message, WPARAM wParam, LPARAM lParam )
+{
+	if( ( message == WM_ACTIVATE && LOWORD( wParam ) == WA_INACTIVE ) || message == WM_KILLFOCUS )
 	{
-		return false;
+		clear();
+		return;
 	}
+	if( message != WM_INPUT || GET_RAWINPUT_CODE_WPARAM( wParam ) != RIM_INPUT )
+		return;
 
-	// Initialize the direct input interface for the keyboard.
-	IDirectInputDevice8* inputDevice;
-	result = m_directInput->CreateDevice( GUID_SysKeyboard, &inputDevice, nullptr );
-	if( FAILED( result ) )
+	UINT size = 0;
+	GetRawInputData( reinterpret_cast<HRAWINPUT>( lParam ), RID_INPUT, nullptr, &size, sizeof( RAWINPUTHEADER ) );
+	alignas( RAWINPUT ) uint8_t local[sizeof( RAWINPUT )];
+	std::vector<uint8_t> heap;
+	uint8_t* bytes = local;
+	if( size > sizeof( local ) )
 	{
-		return false;
+		heap.resize( size );
+		bytes = heap.data();
 	}
+	if( size == 0 || GetRawInputData( reinterpret_cast<HRAWINPUT>( lParam ), RID_INPUT, bytes, &size, sizeof( RAWINPUTHEADER ) ) != size )
+		return;
+	const RAWINPUT& input = *reinterpret_cast<const RAWINPUT*>( bytes );
 
-	m_keyboard = make_input_ptr<IDirectInputDevice8>( inputDevice );
-
-	// Set the data format.  In this case since it is a keyboard we can use the predefined data format.
-	result = m_keyboard->SetDataFormat( &c_dfDIKeyboard );
-	if( FAILED( result ) )
+	if( input.header.dwType == RIM_TYPEKEYBOARD )
 	{
-		return false;
+		const RAWKEYBOARD& keyboard = input.data.keyboard;
+		// Скан-код как у DIK_*: расширенные клавиши (префикс E0: стрелки, End, правый Ctrl) — со старшим битом. Префикс
+		// E1 (Pause) и служебный Shift (VKey 0xFF) пропускаются
+		if( keyboard.VKey == 0xFF || ( keyboard.Flags & RI_KEY_E1 ) || keyboard.MakeCode == 0 )
+			return;
+		const uint8_t key = static_cast<uint8_t>( ( keyboard.MakeCode & 0x7F ) | ( ( keyboard.Flags & RI_KEY_E0 ) ? 0x80 : 0 ) );
+		m_keys[key] = ( keyboard.Flags & RI_KEY_BREAK ) ? 0 : 0x80;
 	}
-
-	// Set the cooperative level of the keyboard to not share with other programs.
-	result = m_keyboard->SetCooperativeLevel( hwnd, DISCL_FOREGROUND | DISCL_EXCLUSIVE );
-	if( FAILED( result ) )
+	else if( input.header.dwType == RIM_TYPEMOUSE )
 	{
-		return false;
+		const RAWMOUSE& mouse = input.data.mouse;
+		// Абсолютные координаты (удалённый стол, планшет) поворота не дают — только относительные смещения
+		if( !( mouse.usFlags & MOUSE_MOVE_ABSOLUTE ) )
+		{
+			m_mouseDeltaX += mouse.lLastX;
+			m_mouseDeltaY += mouse.lLastY;
+		}
+		if( mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN )
+			m_rightButton = true;
+		if( mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP )
+			m_rightButton = false;
 	}
+}
 
-	// Захват не обязателен: с DISCL_FOREGROUND он не удаётся, пока окно не на переднем плане (запуск скриптом из
-	// терминала), а ReadKeyboard захватывает устройство заново при DIERR_NOTACQUIRED
-	m_keyboard->Acquire( );
-
-	// Initialize the direct input interface for the mouse.
-	result = m_directInput->CreateDevice( GUID_SysMouse, &inputDevice, nullptr );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	m_mouse = make_input_ptr<IDirectInputDevice8>( inputDevice );
-
-	// Set the data format for the mouse using the pre-defined mouse data format.
-	result = m_mouse->SetDataFormat( &c_dfDIMouse );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	// Set the cooperative level of the mouse to share with other programs.
-	result = m_mouse->SetCooperativeLevel( hwnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE );
-	if( FAILED( result ) )
-	{
-		return false;
-	}
-
-	// Захват мыши — так же не обязателен, ReadMouse захватит заново
-	m_mouse->Acquire( );
-
-	return true;
-
+void Input::clear()
+{
+	memset( m_keys, 0, sizeof( m_keys ) );
+	m_rightButton = false;
+	m_mouseDeltaX = 0;
+	m_mouseDeltaY = 0;
 }
 
 bool Input::Frame( )
 {
-	bool result;
-
-
-	// Read the current state of the keyboard.
-	result = ReadKeyboard( );
-	if( !result )
-	{
-		return false;
-	}
 	if( m_keyboardBlocked )
 		memset( m_keyboardState, 0, sizeof( m_keyboardState ) );
+	else
+		memcpy( m_keyboardState, m_keys, sizeof( m_keyboardState ) );
 
-	// Read the current state of the mouse.
-	result = ReadMouse( );
-	if( !result )
+	// Смещения мыши за кадр — в положение поворота только при захвате (поворот камеры мышью)
+	if( m_mouseCapture )
 	{
-		return false;
+		m_mouseX += m_mouseDeltaX;
+		m_mouseY += m_mouseDeltaY;
 	}
-
-	// Process the changes in the mouse and keyboard.
-	ProcessInput( );
+	m_mouseDeltaX = 0;
+	m_mouseDeltaY = 0;
 
 	m_keyNotifier.process( m_keyboardState );
 
 	return true;
 }
 
-bool Input::ReadKeyboard( )
-{
-	HRESULT result;
-
-
-	// Read the keyboard device.
-	result = m_keyboard->GetDeviceState( sizeof( m_keyboardState ), (LPVOID)&m_keyboardState );
-	if( FAILED( result ) )
-	{
-		// If the keyboard lost focus or was not acquired then try to get control back.
-		if( ( result == DIERR_INPUTLOST ) || ( result == DIERR_NOTACQUIRED ) )
-		{
-			m_keyboard->Acquire( );
-		}
-		else
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
-bool Input::ReadMouse( )
-{
-	HRESULT result;
-
-
-	// Read the mouse device.
-	result = m_mouse->GetDeviceState( sizeof( DIMOUSESTATE ), (LPVOID)&m_mouseState );
-	if( FAILED( result ) )
-	{
-		// If the mouse lost focus or was not acquired then try to get control back.
-		if( ( result == DIERR_INPUTLOST ) || ( result == DIERR_NOTACQUIRED ) )
-		{
-			m_mouse->Acquire( );
-		}
-		else
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
-void Input::ProcessInput( )
-{
-	// Update the location of the mouse cursor based on the change of the mouse location during the frame.
-	if( m_mouseCapture )
-	{
-		m_mouseX += m_mouseState.lX;
-		m_mouseY += m_mouseState.lY;
-	}
-	return;
-
-}
-
 void Input::GetMouseLocation( double& mouseX, double& mouseY )
 {
 	mouseX = m_mouseX;
 	mouseY = m_mouseY;
-	return;
 }
 
 bool Input::IsLeftStride( )
 {
-	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
-	if( m_keyboardState[DIK_A] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
+	return isKeyDown( DIK_A );
 }
 
 bool Input::IsRightStride( )
 {
-	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
-	if( m_keyboardState[DIK_D] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
+	return isKeyDown( DIK_D );
 }
 
 bool Input::IsForwarPressed( )
 {
-	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
-	if( m_keyboardState[DIK_W] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
+	return isKeyDown( DIK_W );
 }
 
 bool Input::IsBackwardPressed( )
 {
-	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
-	if( m_keyboardState[DIK_S] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
+	return isKeyDown( DIK_S );
 }
 
 bool Input::IsUpMove( )
 {
-	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
-	if( m_keyboardState[DIK_SPACE] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
+	return isKeyDown( DIK_SPACE );
 }
 
 bool Input::IsDownMove( )
 {
-	// Do a bitwise and on the keyboard state to check if the key is currently being pressed.
-	if( m_keyboardState[DIK_C] & 0x80 )
-	{
-		return true;
-	}
-
-	return false;
+	return isKeyDown( DIK_C );
 }
 
 KeyEventNotifier& Input::notifier()

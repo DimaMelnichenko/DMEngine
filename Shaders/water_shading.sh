@@ -14,6 +14,7 @@
 
 #include "lighting.sh"
 #include "water_surface.sh"
+#include "wind_field.sh"
 #include "bindless.sh"
 
 DM_SRV( Texture2D, g_noise, 1 );		// белый шум 256×256, R8_SNORM (DMTextureStorage::noiseId)
@@ -176,7 +177,11 @@ float4 shadeWater( WaterShading input )
 	const float2 flow = lerp( rippleSlope( input.worldPosition.xz + phases.offset0, uvDX, uvDY ),
 							  rippleSlope( input.worldPosition.xz + phases.offset1, uvDX, uvDY ), phases.blend ) *
 						g_rippleStrength * max( saturate( speed / 1.5f ), input.ripple );
-	const float2 calm = rippleSlope( input.worldPosition.xz * 0.6f - cb_windDirection * cb_gameTime * 0.3f, uvDX * 0.6f, uvDY * 0.6f ) * g_calmRipple;
+	// Ветровая рябь — пятнами порывов поля ветра («кошачьи лапы» бегут по воде); в штиль (сила 0: флажок ветра, -nowind)
+	// её нет, рябь течения остаётся
+	const float wind = cb_windStrength > 0.0f ? windGust( input.worldPosition.xz ) : 0.0f;
+	const float2 calm = rippleSlope( input.worldPosition.xz * 0.6f - cb_windDirection * cb_gameTime * 0.3f, uvDX * 0.6f, uvDY * 0.6f ) *
+						g_calmRipple * wind;
 	const float3 normal = normalize( input.normal + float3( -( flow.x + calm.x ), 0.0f, -( flow.y + calm.y ) ) );
 	const float NV = saturate( dot( normal, view ) );
 

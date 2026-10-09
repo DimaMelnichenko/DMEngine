@@ -1,27 +1,16 @@
 #pragma once
 
-//////////////
-// INCLUDES //
-//////////////
-#include <dinput.h>
-
-///////////////////////////////
-// PRE-PROCESSING DIRECTIVES //
-///////////////////////////////
+#include <windows.h>
+#include <cstdint>
+// Только скан-коды клавиш DIK_* (как в DirectInput): сам DirectInput не используется
 #define DIRECTINPUT_VERSION 0x0800
-
-/////////////
-// LINKING //
-/////////////
-#pragma comment(lib, "dinput8.lib")
-#pragma comment(lib, "dxguid.lib")
-#include "Utils\utilites.h"
-#include "Utils.h"
+#include <dinput.h>
 #include "KeyEventNotifier.h"
 
-
-
-// DirectInput — синглтон, как DMD3D::instance(); destroy() — при выходе (DMSystem::Shutdown)
+// Клавиатура и мышь — Raw Input (WM_INPUT, как ввод в UE на Windows): синглтон, как DMD3D::instance(); destroy() — при
+// выходе (DMSystem::Shutdown). Состояние клавиш — по скан-кодам DIK_*, мышь — относительные смещения за кадр. Обычные
+// сообщения окна (ImGui, ввод текста, сочетания, раскладка, Alt+Tab) не перехватываются; ввод приходит только
+// активному окну, при потере фокуса всё отпускается
 class Input
 {
 public:
@@ -30,6 +19,8 @@ public:
 	~Input();
 
 	bool Initialize( HINSTANCE, HWND, int, int );
+	// Сообщение окна (DMSystem::wndProc, до DefWindowProc): WM_INPUT — клавиши и мышь, потеря фокуса — всё отпущено
+	void handleMessage( UINT message, WPARAM wParam, LPARAM lParam );
 	bool Frame( );
 
 	void GetMouseLocation( double&, double& );
@@ -48,31 +39,27 @@ public:
 	// Мышь поворачивает камеру: смещения копятся только тогда — иначе поворот прыгнул бы на всё, что накопилось, пока
 	// курсор работал с окнами редактора
 	void setMouseCapture( bool capture ) { m_mouseCapture = capture; }
-	bool isRightMouseDown() const { return ( m_mouseState.rgbButtons[1] & 0x80 ) != 0; }
-	// Клавиша зажата (скан-код DirectInput, DIK_*); при вводе текста в редакторе — нет
+	bool isRightMouseDown() const { return m_rightButton; }
+	// Клавиша зажата (скан-код DIK_*); при вводе текста в редакторе — нет
 	bool isKeyDown( uint8_t key ) const { return ( m_keyboardState[key] & 0x80 ) != 0; }
 
 private:
-	bool ReadKeyboard( );
-	bool ReadMouse( );
-	void ProcessInput( );
-
 	Input( const Input& ) = delete;
 	Input();
+	// Все клавиши и кнопки отпущены, смещения — нуль (окно потеряло фокус: иначе клавиши залипали бы после Alt+Tab)
+	void clear();
 
 private:
-	com_unique_ptr<IDirectInput8> m_directInput;
-	com_input_ptr<IDirectInputDevice8> m_keyboard;
-	com_input_ptr<IDirectInputDevice8> m_mouse;
+	uint8_t m_keys[256] = {};			// зажатые клавиши по WM_INPUT
+	uint8_t m_keyboardState[256] = {};	// состояние кадра (Frame): m_keys или нули при вводе текста
+	bool m_rightButton = false;
+	long m_mouseDeltaX = 0;				// смещения мыши с прошлого Frame
+	long m_mouseDeltaY = 0;
 
-	uint8_t m_keyboardState[256] = {};	// нули до первого захвата: иначе мусор читался бы как нажатия
-	DIMOUSESTATE m_mouseState = {};
-
-	double m_screenWidth, m_screenHeight;
-	double m_mouseX, m_mouseY;
+	double m_mouseX = 0.0;
+	double m_mouseY = 0.0;
 
 	KeyEventNotifier m_keyNotifier;
 	bool m_keyboardBlocked = false;
 	bool m_mouseCapture = true;
 };
-
