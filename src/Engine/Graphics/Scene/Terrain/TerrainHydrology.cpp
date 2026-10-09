@@ -413,6 +413,7 @@ std::vector<double> lakeBasins( const std::vector<double>& level, const std::vec
 										static_cast<double>( std::max( p.lakeMaxDepth, p.lakeMinDepth ) ) ) );
 	}
 	const double shelfWidth = std::max( static_cast<double>( p.lakeShelfWidth ), 1e-3 );
+	std::vector<double> depth( cells, 0.0 );
 	for( size_t i = 0; i < cells; ++i )
 	{
 		if( label[i] < 0 )
@@ -423,9 +424,38 @@ std::vector<double> lakeBasins( const std::vector<double>& level, const std::vec
 		const double limit = maxDepth[label[i]];
 		const double k = 0.25 * limit;
 		const double h = std::clamp( 0.5 + 0.5 * ( limit - raw ) / k, 0.0, 1.0 );
-		const double depth = raw * h + limit * ( 1.0 - h ) - k * h * ( 1.0 - h );
-		lowering[i] = std::max( height[i] - ( level[i] - depth ), 0.0 );
+		depth[i] = raw * h + limit * ( 1.0 - h ) - k * h * ( 1.0 - h );
 	}
+	// Глубина чаши — сглаженная (два прохода 3 × 3, вне озера — 0): по клеткам у первой клетки озера сразу отмель на
+	// клетку (0,17 м), у соседней вне озера — 0, и узкий рукав по диагонали становился лесенкой ступеней по 16 см — урез
+	// и граница отмели шли по краям клеток. Сглаженная — скат от берега, а узкий рукав остаётся почти на своём дне
+	for( int pass = 0; pass < 2; ++pass )
+	{
+		std::vector<double> blurred( cells, 0.0 );
+		for( int row = 0; row < n; ++row )
+		{
+			for( int col = 0; col < n; ++col )
+			{
+				const size_t i = static_cast<size_t>( row ) * n + col;
+				if( label[i] < 0 )
+					continue;
+				double sum = 0.0;
+				for( int dr = -1; dr <= 1; ++dr )
+					for( int dc = -1; dc <= 1; ++dc )
+					{
+						const int r = row + dr;
+						const int c = col + dc;
+						if( r >= 0 && c >= 0 && r < n && c < n )
+							sum += depth[static_cast<size_t>( r ) * n + c];
+					}
+				blurred[i] = sum / 9.0;
+			}
+		}
+		depth = std::move( blurred );
+	}
+	for( size_t i = 0; i < cells; ++i )
+		if( label[i] >= 0 )
+			lowering[i] = std::max( height[i] - ( level[i] - depth[i] ), 0.0 );
 	return lowering;
 }
 
