@@ -19,6 +19,7 @@ AbstractMesh& AbstractMesh::operator=( AbstractMesh&& other )
 	std::swap( m_indices, other.m_indices );
 	std::swap( m_wind, other.m_wind );
 	m_bounds = other.m_bounds;
+	m_baseBounds = other.m_baseBounds;
 	return *this;
 }
 

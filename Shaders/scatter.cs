@@ -80,6 +80,7 @@ cbuffer ScatterVariantsBuffer : register( b7 )
 	float4 g_variants[maxVariants];
 	float4 g_lodEnd[maxVariants];	// дальности LOD 0…2 варианта, м: дальше — следующий LOD
 	float4 g_bounds[maxVariants];	// сфера модели (LOD0) в её координатах: xyz — центр, w — радиус (при размере 1)
+	float4 g_footprints[maxVariants];	// след основания (LOD0): xy — центр по X и Z, z — радиус по XZ (при размере 1)
 	uint4  g_lists[MAX_LISTS];		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 };
 
@@ -283,6 +284,29 @@ void selectLod( float distanceToLodOrigin, float4 lodEnd, uint lodCount, bool di
 	}
 }
 
+// Доля растительности, которую убирают в точке правки рельефа, русло и вода: 0 — растёт, 1 — убрана.
+// Маска слоя без того, что убрали правки рельефа, и без воды симуляции (SLOT_WATER: её привязывает WaterSimulation,
+// объект сцены раньше расстановки; без воды у уровня — нули). Кольцевые слои следуют за водой каждый кадр, постоянные
+// (лес) — по воде первого кадра.
+// В детальной плитке у русла — по врезу (0,25 м) и по воде над детальной землёй: уровень воды (сетка 1 м — земля карты
+// и глубина) против высоты точки — узкий ручей и мелкий слив из озера не выкашивают метровую полосу и не зарастают
+float foliageClear( float2 worldXZ )
+{
+	const float2 uv = terrainUV( worldXZ );
+	const float channelClear = terrainChannelClear( worldXZ );
+	float waterClear = waterFoliageClear( uv );
+	if( channelClear >= 0.0f )
+	{
+		const float coarseGround = g_terrainHeightMap.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * g_terrainHeightMultiplier +
+								   g_terrainHeightOffset;
+		waterClear = smoothstep( 0.01f, 0.03f, coarseGround + sampleWater( uv ).depth - terrainHeight( worldXZ ) );
+	}
+	return 1.0f - ( 1.0f - terrainFoliageClear( uv ) ) * ( 1.0f - max( channelClear, 0.0f ) ) * ( 1.0f - waterClear );
+}
+
+// След шире детальной плитки у русла (0,25 м) проверяется по краю: центр следа и четыре точки на его окружности
+static const float footprintCheckRadius = 0.25f;
+
 // Экземпляр в ячейке сетки мира: смещение, плотность маски (вероятность и размер), высота, размер без исчезания,
 // поворот, вариант по весам и своя доля дальностей LOD. Все случайные величины — хеш ячейки и номера величины, поэтому у
 // ячейки всегда один и тот же экземпляр — и у кольцевого слоя каждый кадр, и у постоянного при раскладке
@@ -299,39 +323,49 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	if( any( uv < 0.0f ) || any( uv > 1.0f ) )
 		return false;
 
-	// Маска слоя без того, что убрали правки рельефа, и без воды симуляции (SLOT_WATER: её привязывает WaterSimulation,
-	// объект сцены раньше расстановки; без воды у уровня — нули). Кольцевые слои следуют за водой каждый кадр, постоянные
-	// (лес) — по воде первого кадра
-	// В детальной плитке у русла — по врезу (0,25 м) и по воде над детальной землёй: уровень воды (сетка 1 м — земля карты
-	// и глубина) против высоты точки — узкий ручей и мелкий слив из озера не выкашивают метровую полосу и не зарастают
-	const float channelClear = terrainChannelClear( worldXZ );
-	float waterClear = waterFoliageClear( uv );
-	if( channelClear >= 0.0f )
-	{
-		const float coarseGround = g_terrainHeightMap.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * g_terrainHeightMultiplier +
-								   g_terrainHeightOffset;
-		waterClear = smoothstep( 0.01f, 0.03f, coarseGround + sampleWater( uv ).depth - terrainHeight( worldXZ ) );
-	}
-	float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - terrainFoliageClear( uv ) ) *
-					( 1.0f - max( channelClear, 0.0f ) ) * ( 1.0f - waterClear );
-	if( random( cell, seed + 2 ) >= density )
+	const float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - foliageClear( worldXZ ) );
+	const float chance = random( cell, seed + 2 );
+	if( chance >= density )
 		return false;
-
-	item.position = float3( worldXZ.x, terrainHeight( worldXZ ), worldXZ.y );
-	// Размер: разброс и плотность маски
-	item.size = g_sizeMultiplier * lerp( 0.7f, 1.0f, random( cell, seed + 3 ) ) * lerp( 0.6f, 1.0f, density );
-
-	float3 angles = ( float3( random( cell, seed + 4 ), random( cell, seed + 5 ), random( cell, seed + 6 ) ) - 0.5f ) * g_rotationRange;
-	item.rotation = quaternionMul( quaternionAxisAngle( float3( 0.0f, 1.0f, 0.0f ), angles.y ),
-								   quaternionMul( quaternionAxisAngle( float3( 1.0f, 0.0f, 0.0f ), angles.x ),
-												  quaternionAxisAngle( float3( 0.0f, 0.0f, 1.0f ), angles.z ) ) );
-	if( g_alignToTerrain > 0.5f )
-		item.rotation = quaternionMul( quaternionFromTo( float3( 0.0f, 1.0f, 0.0f ), terrainNormal( worldXZ ) ), item.rotation );
 
 	// Вариант — по накопленным долям весов; отдельное случайное число ячейки (прежние 0…6 от вариантов не зависят)
 	float pick = random( cell, seed + 7 );
 	[loop] for( uint v = 0; v + 1 < g_variantCount; ++v )
 		variant += pick >= g_variants[v].x ? 1 : 0;
+
+	float3 angles = ( float3( random( cell, seed + 4 ), random( cell, seed + 5 ), random( cell, seed + 6 ) ) - 0.5f ) * g_rotationRange;
+
+	// Широкая модель (куртина травы) — ещё и по следу основания: корень на бровке, а пучки куртины над врезом русла висели
+	// бы в воздухе (как проверка границ точки в PCG UE). Размер — наибольший при этой ячейке, след поворачивается с моделью
+	const float4 footprint = g_footprints[variant];
+	const float sizeBound = g_sizeMultiplier * lerp( 0.7f, 1.0f, random( cell, seed + 3 ) );
+	const float footprintRadius = footprint.z * sizeBound;
+	if( footprintRadius > footprintCheckRadius )
+	{
+		float sinYaw, cosYaw;
+		sincos( angles.y, sinYaw, cosYaw );
+		// Поворот вокруг Y как у quaternionAxisAngle( Y ): x' = x cos + z sin, z' = −x sin + z cos
+		const float2 center = worldXZ + float2( footprint.x * cosYaw + footprint.y * sinYaw,
+												-footprint.x * sinYaw + footprint.y * cosYaw ) * sizeBound;
+		float clear = foliageClear( center );
+		clear = max( clear, foliageClear( center + float2( footprintRadius, 0.0f ) ) );
+		clear = max( clear, foliageClear( center - float2( footprintRadius, 0.0f ) ) );
+		clear = max( clear, foliageClear( center + float2( 0.0f, footprintRadius ) ) );
+		clear = max( clear, foliageClear( center - float2( 0.0f, footprintRadius ) ) );
+		// Только решение «ставить ли»: размер — по плотности в корне, как у модели без проверки следа
+		if( chance >= density * ( 1.0f - clear ) )
+			return false;
+	}
+
+	item.position = float3( worldXZ.x, terrainHeight( worldXZ ), worldXZ.y );
+	// Размер: разброс и плотность маски
+	item.size = g_sizeMultiplier * lerp( 0.7f, 1.0f, random( cell, seed + 3 ) ) * lerp( 0.6f, 1.0f, density );
+
+	item.rotation = quaternionMul( quaternionAxisAngle( float3( 0.0f, 1.0f, 0.0f ), angles.y ),
+								   quaternionMul( quaternionAxisAngle( float3( 1.0f, 0.0f, 0.0f ), angles.x ),
+												  quaternionAxisAngle( float3( 0.0f, 0.0f, 1.0f ), angles.z ) ) );
+	if( g_alignToTerrain > 0.5f )
+		item.rotation = quaternionMul( quaternionFromTo( float3( 0.0f, 1.0f, 0.0f ), terrainNormal( worldXZ ) ), item.rotation );
 
 	// Дальности LOD — свои у экземпляра: у модели, ближе на долю по случайному числу ячейки и шуму мира
 	lodScale = 1.0f - LOD_JITTER_RANDOM * random( cell, seed + 8 ) -

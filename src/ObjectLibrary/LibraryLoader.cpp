@@ -622,11 +622,17 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 			return;
 		for( size_t i = 0; i < block->sections.size(); ++i )
 		{
-			const DirectX::BoundingBox& meshBounds = GS::System::meshes().get( block->sections[i]->mesh )->bounds();
+			const auto& mesh = GS::System::meshes().get( block->sections[i]->mesh );
 			if( i == 0 )
-				block->bounds = meshBounds;
+			{
+				block->bounds = mesh->bounds();
+				block->baseBounds = mesh->baseBounds();
+			}
 			else
-				DirectX::BoundingBox::CreateMerged( block->bounds, block->bounds, meshBounds );
+			{
+				DirectX::BoundingBox::CreateMerged( block->bounds, block->bounds, mesh->bounds() );
+				DirectX::BoundingBox::CreateMerged( block->baseBounds, block->baseBounds, mesh->baseBounds() );
+			}
 		}
 		model->addLod( blockRange, std::move( block ) );
 	};

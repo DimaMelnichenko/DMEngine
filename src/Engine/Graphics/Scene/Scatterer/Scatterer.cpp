@@ -73,6 +73,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			const BoundingBox& box = lod0->bounds;
 			const float radius = XMVectorGetX( XMVector3Length( XMLoadFloat3( &box.Extents ) ) );
 			passVariant.bounds = XMFLOAT4( box.Center.x, box.Center.y, box.Center.z, radius );
+			const BoundingBox& base = lod0->baseBounds;
+			passVariant.footprint = XMFLOAT4( base.Center.x, base.Center.z, std::hypot( base.Extents.x, base.Extents.z ), 0.0f );
 			maxRadius = std::max( maxRadius, radius );
 			layer.modelTop = std::max( layer.modelTop, box.Center.y + radius );
 		}

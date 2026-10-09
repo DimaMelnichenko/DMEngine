@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <DirectXCollision.h>
 #include "Storage\DMResource.h"
 #include "VertexData.h"
@@ -26,6 +27,10 @@ public:
 
 	// Границы в координатах меша (считаются при загрузке): по ним экземпляры отсекаются по frustum
 	const DirectX::BoundingBox& bounds() const { return m_bounds; }
+	// Границы основания — вершин не выше baseBand() над низом меша: где модель касается земли (все пучки куртины травы,
+	// ствол дерева без кроны). По ним расстановка проверяет, что под моделью нет русла и воды (Shaders/scatter.cs)
+	const DirectX::BoundingBox& baseBounds() const { return m_baseBounds; }
+	static float baseBand( float height ) { return std::min( 0.1f * height, 0.25f ); }
 
 	// Данные ветра дерева по вершинам (VertexData::Wind) — блок WIND файла меша; пусто — у меша их нет
 	void setWind( std::vector<VertexData::Wind>&& wind ) { m_wind = std::move( wind ); }
@@ -39,6 +44,7 @@ protected:
 	uint32_t m_vertexOffset;
 	uint32_t m_indexOffset;
 	DirectX::BoundingBox m_bounds;
+	DirectX::BoundingBox m_baseBounds;
 };
 
 }

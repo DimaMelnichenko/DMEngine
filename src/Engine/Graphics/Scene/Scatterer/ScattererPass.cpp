@@ -78,6 +78,7 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 										   variant.shadowLastLodDistance );
 		m_variants.lodEnd[v] = XMFLOAT4( variant.lodEnd[0], variant.lodEnd[1], variant.lodEnd[2], variant.lodEnd[3] );
 		m_variants.bounds[v] = variant.bounds;
+		m_variants.footprints[v] = variant.footprint;
 
 		for( uint32_t lod = 0; lod < lodCount; ++lod )
 		{

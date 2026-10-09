@@ -33,6 +33,7 @@ public:
 		std::vector<std::unique_ptr<Section>> sections;
 		bool isRender = true;
 		DirectX::BoundingBox bounds;	// объединение границ мешей секций, в пространстве модели
+		DirectX::BoundingBox baseBounds;	// то же для границ основания (AbstractMesh::baseBounds)
 	};
 public:
 	DMModel( uint32_t id, const std::string& name = "" );

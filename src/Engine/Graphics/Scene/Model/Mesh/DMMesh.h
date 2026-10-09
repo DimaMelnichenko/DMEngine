@@ -18,8 +18,17 @@ public:
 	{
 		m_vertex_combination = VertexData::type<VertexTypeStruct>();
 		if( !m_vertices.empty() )
+		{
 			DirectX::BoundingBox::CreateFromPoints( m_bounds, m_vertices.size(), &m_vertices[0].position,
 													sizeof( VertexTypeStruct ) );
+			const float bottom = m_bounds.Center.y - m_bounds.Extents.y;
+			const float top = bottom + baseBand( 2.0f * m_bounds.Extents.y );
+			std::vector<DirectX::XMFLOAT3> base;
+			for( const VertexTypeStruct& vertex : m_vertices )
+				if( vertex.position.y <= top )
+					base.push_back( vertex.position );
+			DirectX::BoundingBox::CreateFromPoints( m_baseBounds, base.size(), base.data(), sizeof( DirectX::XMFLOAT3 ) );
+		}
 	}
 	DMMesh( DMMesh&& other ) : AbstractMesh( std::move( other ) )
 	{

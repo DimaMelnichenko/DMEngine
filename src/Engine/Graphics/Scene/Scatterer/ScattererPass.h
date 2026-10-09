@@ -44,6 +44,9 @@ public:
 		uint32_t sectionCount[maxLods] = { 1, 1, 1, 1 };	// секций у LOD, не больше maxSections
 		// Сфера модели (LOD0) в её координатах: xyz — центр, w — радиус. По ней — отсечение экземпляра и длина его тени
 		DirectX::XMFLOAT4 bounds = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+		// След основания модели на земле (LOD0, AbstractMesh::baseBounds): x, y — центр по X и Z, z — радиус по XZ. По нему
+		// раскладка проверяет русла и воду под всей моделью, а не только в точке экземпляра
+		DirectX::XMFLOAT4 footprint = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 		// С этого расстояния виды теней берут последний LOD (у леса — импостер), без перехода дизерингом, м; 0 — LOD
 		// как у главного вида
 		float shadowLastLodDistance = 0.0f;
@@ -176,6 +179,7 @@ private:
 		DirectX::XMFLOAT4 variants[maxVariants];
 		DirectX::XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
 		DirectX::XMFLOAT4 bounds[maxVariants];		// сфера модели варианта (Variant::bounds)
+		DirectX::XMFLOAT4 footprints[maxVariants];	// след основания варианта (Variant::footprint)
 		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 		uint32_t lists[maxLists][4];
 	};
