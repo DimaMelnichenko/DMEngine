@@ -243,11 +243,10 @@ void mainStatic( uint3 id : SV_DispatchThreadID )
 	// Озеро — уровень из конвейера рельефа (канал w; −1e9 — не озеро); глубина — до итогового рельефа, она же — поверхность
 	// озёр (mainSurface читает g_water)
 	const float lake = stream.w > -1e8f ? max( stream.w - terrain( cell ), 0.0f ) : 0.0f;
-	const float streamDepth = max( stream.x - terrain( cell ), 0.0f );
-	// Где лежит лента ручья (исток из озера, устье), воду рисует она: поверхность озера здесь не рисуется и не продолжается
-	// за урез (−1 для mainSurface) — иначе две полупрозрачные воды сложились бы в светлый прямоугольник по клеткам
-	g_water[cell] = stream.x > -1e8f && streamDepth > 0.0f ? -1.0f : lake;
+	const float streamDepth = stream.x > -1e8f ? max( stream.x - terrain( cell ), 0.0f ) : 0.0f;
+	// Одно поле воды: поверхность (mainSurface читает g_water) — и озёр, и ручьёв; течение — ручья, где он глубже озера
 	const bool flowing = streamDepth > lake;
 	const float depth = max( lake, streamDepth );
+	g_water[cell] = depth;
 	g_output[cell] = float4( depth, flowing ? stream.yz : 0.0f, depth );
 }

@@ -9,7 +9,6 @@
 #include "Level\LevelSettings.h"
 #include "Terrain\TerrainHeightSource.h"
 #include "Terrain\TerrainHydrology.h"
-#include "StreamRibbons.h"
 
 namespace GS
 {
@@ -23,8 +22,8 @@ namespace GS
 // объект рисует сам в проходе transparent (читает цвет и глубину сцены): тайлы сетки с водой, отобранные на GPU
 // (Shaders/water_surface.cs), — один косвенный вызов (water.vs, water.ps).
 // Режим static (WaterSimulationSettings::staticWater): вода не течёт — озёра и ручьи из конвейера рельефа и воды
-// (TerrainHydrology): ленты ручьёв (StreamRibbons), их вода и озёра для травы, мокрой земли и брызг — растр (mainStatic);
-// как реки-сплайны и озёра в UE Water. Симуляция остаётся инструментом — режим simulated
+// (TerrainHydrology) одним полем уровня — растр (mainStatic): по нему та же поверхность тайлов, что у симуляции, трава,
+// мокрая земля и брызги. Симуляция остаётся инструментом — режим simulated
 class WaterSimulation : public SceneObject
 {
 public:
@@ -174,7 +173,6 @@ private:
 	std::vector<StreamCurve> m_builtCurves;
 	WaterChannelsSettings m_builtChannels;
 	bool m_curvesDirty = false;
-	StreamRibbons m_streams;
 	Buffer m_constantBuffer;
 
 	Texture m_water;				// R32_FLOAT: глубина, м

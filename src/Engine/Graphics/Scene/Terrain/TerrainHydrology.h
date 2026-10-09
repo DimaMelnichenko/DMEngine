@@ -53,7 +53,7 @@ public:
 		// Shaders/water_simulation.cs, mainStatic
 		std::vector<DirectX::XMFLOAT4> staticWater;
 		std::vector<float> channelFlow;					// водосбор вдоль оси русла, м²: приток симуляции (mainSources)
-		std::vector<WaterStream> streams;				// ленты ручьёв (StreamRibbons)
+		size_t streamCount = 0;							// ручьёв в растре (для лога)
 		std::vector<std::string> warnings;				// правленные кривые не по рельефу, петли — в лог
 		std::vector<DetailTile> detailTiles;			// детальная земля у русел (U-ложе): там, где русло режет рельеф
 

@@ -70,10 +70,9 @@ const ChannelParameter channelParameters[] = {
 	{ "Thalweg", &WaterChannelsSettings::thalweg, 0.0f, 1.0f, "", "Extra incision in the bed middle, share of the incision" },
 	{ "Manning", &WaterChannelsSettings::manning, 0.02f, 0.15f, "s/m^(1/3)", "Stream bed roughness: water depth of the ribbons" },
 	{ "Min water slope", &WaterChannelsSettings::minWaterSlope, 0.001f, 0.05f, "", "Slope in the water depth at least, m per m" },
-	{ "Min speed", &WaterChannelsSettings::minSpeed, 0.0f, 2.0f, "m/s", "Ribbon flow at least" },
+	{ "Min speed", &WaterChannelsSettings::minSpeed, 0.0f, 2.0f, "m/s", "Stream flow at least" },
 	{ "Min water depth", &WaterChannelsSettings::minWaterDepth, 0.05f, 1.0f, "m", "Water over the bed at least" },
 	{ "Foam slope", &WaterChannelsSettings::foamSlope, 0.02f, 0.5f, "", "Steeper streams foam (fully at twice), m per m" },
-	{ "Ribbon overlap", &WaterChannelsSettings::ribbonOverlap, 0.0f, 2.0f, "m", "Ribbon beyond the trough edge, under the bank" },
 	{ "Freeboard", &WaterChannelsSettings::freeboard, 0.0f, 2.0f, "m", "Water stands this much below the bank top: the bed is cut for floods" },
 	{ "Bed shape", &WaterChannelsSettings::bedShape, 1.0f, 12.0f, "", "Bed cross-section: 2 - V (sharp thalweg), more - flat U" },
 	{ "Bank roundness", &WaterChannelsSettings::bankRoundness, 0.0f, 1.0f, "", "1 - rounded bank top and toe, 0 - straight bank with a sharp edge" },
@@ -285,7 +284,7 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	if( m_static )
 	{
 		// Статичная вода: озёра налиты, ручьи — лентами и растром; шагов нет
-		if( !buildStaticWater( settings ) || !m_streams.initialize( hydrology.streams ) )
+		if( !buildStaticWater( settings ) )
 			return false;
 		buildSurface();
 		m_surfaceDirty = false;
@@ -440,7 +439,6 @@ void WaterSimulation::warmPipelines( const PassStates& states )
 	m_surfaceProgram.warmPipelines( { { RasterState::solid, DepthState::readOnly, BlendState::alpha },
 									  { RasterState::wireframe, DepthState::readOnly, BlendState::alpha } },
 									states.scene, { m_surfacePhase } );
-	m_streams.warmPipelines( states );
 }
 
 void WaterSimulation::renderCustom( const RenderContext& context )
@@ -477,8 +475,6 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	d3d.setSRV( 1, System::textures().get( DMTextureStorage::noiseId )->srv() );
 	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
 	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
-	// Ручьи — с теми же константами материала и шумом
-	m_streams.render( context );
 }
 
 bool WaterSimulation::createHydrologyTextures( const TerrainHydrology::Result& hydrology )
@@ -741,7 +737,7 @@ bool WaterSimulation::rebuild( const TerrainHydrology::Result& hydrology )
 	buildSources( current );
 	if( m_static )
 	{
-		if( !buildStaticWater( current ) || !m_streams.initialize( hydrology.streams ) )
+		if( !buildStaticWater( current ) )
 			return false;
 		buildSurface();
 		m_surfaceDirty = false;

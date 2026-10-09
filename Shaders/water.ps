@@ -1,7 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Поверхность воды на сетке симуляции — озёра и вода, которая течёт по рельефу (класс WaterSimulation, docs/water.md).
-// Материал — Shaders/water_shading.sh; здесь — вода из текстуры симуляции: глубина, течение и пена по скорости и сдвигу
-// скорости между соседними ячейками (перекаты, у камней, слив из озера)
+// Материал — Shaders/water_shading.sh; здесь — вода из текстуры симуляции (режим static — одно поле озёр и ручьёв):
+// течение и пена по скорости и сдвигу скорости между соседними ячейками (перекаты, у камней, слив из озера); глубина — до
+// сцены под поверхностью
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "water_shading.sh"
@@ -17,13 +18,20 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	const float2 dz = sampleWater( input.uv + float2( 0.0f, texel ) ).velocity - sampleWater( input.uv - float2( 0.0f, texel ) ).velocity;
 	const float shear = ( length( dx ) + length( dz ) ) / ( 2.0f * g_cellSize );
 
+	// Глубина в пикселе — от поверхности до сцены под ней по вертикали (глубина сцены), а не по сетке 1 м: урез по земле,
+	// которую видно (детальная земля у русел — U-ложе), плавный
+	const float surfaceViewZ = max( mul( float4( input.worldPosition, 1.0f ), cb_viewMatrix ).z, 1e-3f );
+	const float behindViewZ = sceneViewDepthAt( input.position );
+	const float3 behind = cb_cameraPosition + ( input.worldPosition - cb_cameraPosition ) * ( behindViewZ / surfaceViewZ );
+
 	WaterShading shading;
 	shading.position = input.position;
 	shading.worldPosition = input.worldPosition;
 	shading.normal = input.normal;
 	shading.velocity = water.velocity;
-	shading.depth = water.depth;
-	shading.ripple = 0.0f;
+	shading.depth = max( input.worldPosition.y - behind.y, 0.0f );
+	// Текущая вода (ручей) неспокойна и на пологом: рябь течения не слабее 0,7 уже при 0,3 м/с; озеро — по скорости
+	shading.ripple = 0.7f * saturate( speed / 0.3f );
 	shading.foam = saturate( ( speed - g_foamSpeed ) / g_foamSpeed ) + saturate( shear / g_foamShear - 0.5f );
 	return shadeWater( shading );
 }

@@ -1582,7 +1582,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		}
 	}
 
-	// Ленты — по кривым: от истока (или узла ниже озера) до слияния, озера или края; кривая, проходящая озеро, рвётся в нём
+	// Ручьи растра — по кривым: от истока (или узла ниже озера) до слияния, озера или края; кривая, проходящая озеро, рвётся в нём
 	std::vector<std::vector<int>> chains;
 	for( size_t a = 0; a < lineNodes.size(); ++a )
 	{
@@ -1607,17 +1607,17 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			chains.push_back( std::move( chain ) );
 	}
 
-	// Растр статичной воды: у клетки — ближайший отрезок ручья в пределах его ленты
+	// Растр статичной воды — одно поле: у клетки — уровень и течение ближайшего отрезка ручья в пределах его русла, уровень
+	// озера (ниже); поверхность воды по нему рисует WaterSimulation (тайлы)
 	result.staticWater.assign( cells, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, -1e9f ) );
 	std::vector<double> nearest( cells, std::numeric_limits<double>::infinity() );
-	result.streams.clear();
+	result.streamCount = 0;
 	result.points = 0;
 	for( const std::vector<int>& chain : chains )
 	{
 		// Точки ручья и узлы, чьи уровень, течение и ширина у точки. Подтекающий в главный кончается на урезе главного (где
-		// его вода встречает борт), а не на оси: иначе последний отрезок притока лёг бы поверх ленты главного, и две
-		// полупрозрачные воды сложились бы в светлое пятно; и не на внешнем краю ленты главного — там под ней сухой борт, и
-		// хвост притока лёг бы плёнкой на сухую гальку. Точки внутри уреза отбрасываются, конец — на пересечении с ним
+		// его вода встречает борт), а не на оси: клетки главного — с течением главного. Точки внутри уреза отбрасываются,
+		// конец — на пересечении с ним
 		std::vector<int> nodes = chain;
 		std::vector<Point> points( chain.size() );
 		for( size_t i = 0; i < chain.size(); ++i )
@@ -1659,8 +1659,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			if( points.size() < 2 )
 				continue;
 		}
-		// Уровень ленты у точек — поле уровня сети. Ручей, впадающий в озеро, кончается на берегу (последний узел — уже в
-		// озере: там вода — поверхность озера; уровень у берега и так озёрный — подпор)
+		// Уровень у точек — поле уровня сети. Ручей, впадающий в озеро, кончается на берегу (последний узел — уже в озере:
+		// там вода — поверхность озера; уровень у берега и так озёрный — подпор)
 		std::vector<double> pointLevel( points.size() );
 		for( size_t i = 0; i < points.size(); ++i )
 			pointLevel[i] = level[nodes[i]];
@@ -1710,17 +1710,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			}
 		}
 
-		WaterStream& water = result.streams.emplace_back();
-		for( size_t i = 0; i < points.size(); ++i )
-		{
-			const int k = nodes[i];
-			WaterStreamPoint& point = water.points.emplace_back();
-			point.position = DirectX::XMFLOAT3( static_cast<float>( points[i].x * cell ), static_cast<float>( pointLevel[i] ),
-												static_cast<float>( world - points[i].y * cell ) );
-			point.halfWidth = static_cast<float>( reach[k] + p.ribbonOverlap );
-			point.speed = static_cast<float>( speed[k] );
-			point.foam = static_cast<float>( foam[k] );
-		}
+		++result.streamCount;
 		result.points += points.size();
 	}
 
@@ -1774,44 +1764,6 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			lake[i] = result.staticWater[i].w > -1e8f ? 1 : 0;
 	}
 
-	// Под лентой ручья озёрной поверхности нет: у берега лента и плоскость озера легли бы друг на друга двумя
-	// полупрозрачными слоями. Клетки озера в полосе ленты (по отрезку, без скруглений на концах) — без уровня озера, их вода
-	// — вода ленты (mainStatic берёт наибольшую глубину)
-	for( const WaterStream& water : result.streams )
-	{
-		for( size_t i = 0; i + 1 < water.points.size(); ++i )
-		{
-			const WaterStreamPoint& pa = water.points[i];
-			const WaterStreamPoint& pb = water.points[i + 1];
-			const Point a = { pa.position.x / cell, ( world - pa.position.z ) / cell };
-			const Point b = { pb.position.x / cell, ( world - pb.position.z ) / cell };
-			const double radius = std::max( pa.halfWidth, pb.halfWidth ) / cell;
-			const int c0 = static_cast<int>( std::max( std::floor( std::min( a.x, b.x ) - radius ), 0.0 ) );
-			const int c1 = static_cast<int>( std::min( std::ceil( std::max( a.x, b.x ) + radius ), n - 1.0 ) );
-			const int r0 = static_cast<int>( std::max( std::floor( std::min( a.y, b.y ) - radius ), 0.0 ) );
-			const int r1 = static_cast<int>( std::min( std::ceil( std::max( a.y, b.y ) + radius ), n - 1.0 ) );
-			const double sx = b.x - a.x;
-			const double sy = b.y - a.y;
-			const double length2 = std::max( sx * sx + sy * sy, 1e-9 );
-			for( int row = r0; row <= r1; ++row )
-			{
-				for( int col = c0; col <= c1; ++col )
-				{
-					const size_t index = static_cast<size_t>( row ) * n + col;
-					if( !lake[index] )
-						continue;
-					const double cx = col + 0.5;
-					const double cy = row + 0.5;
-					const double t = ( ( cx - a.x ) * sx + ( cy - a.y ) * sy ) / length2;
-					if( t < 0.0 || t > 1.0 )
-						continue;
-					const double w = ( pa.halfWidth + ( pb.halfWidth - pa.halfWidth ) * t ) / cell;
-					if( std::hypot( cx - ( a.x + t * sx ), cy - ( a.y + t * sy ) ) <= w )
-						result.staticWater[index].w = -1e9f;
-				}
-			}
-		}
-	}
 	return true;
 }
 

@@ -205,21 +205,6 @@ struct WaterSource
 	float radius = 3.0f;			// радиус пятна, м (≈ 2σ гаусса)
 };
 
-// Точка оси ручья (TerrainHydrology): лента воды вдоль ручья — StreamRibbons
-struct WaterStreamPoint
-{
-	DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// x, z — ось ручья; y — уровень воды, м
-	float halfWidth = 1.0f;			// полуширина ленты, м: до края ложбины и под берег
-	float speed = 0.0f;				// скорость течения, м/с
-	float foam = 0.0f;				// пена 0…1 (крутой участок)
-};
-
-// Ручей: точки оси от истока вниз
-struct WaterStream
-{
-	std::vector<WaterStreamPoint> points;
-};
-
 // Точка кривой русла: x, z мира; расход — м³/с, 0 — по водосбору под точкой (ручная кривая)
 struct StreamCurvePoint
 {
@@ -289,7 +274,6 @@ struct WaterChannelsSettings
 	float lakeShelfDepth = 0.5f;	// глубина у края отмели, м
 	float lakeDropSlope = 0.4f;		// свал за отмелью, м на м
 	float foamSlope = 0.1f;			// круче — пена на ручье (полная — на вдвое большем), м на м
-	float ribbonOverlap = 0.4f;		// лента за край ложбины, под берег, м
 };
 
 // Строка WaterSimulation: вода на сетке карты высот (WaterSimulation, docs/water.md). Приток — по водосбору, который

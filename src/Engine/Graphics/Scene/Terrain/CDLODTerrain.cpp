@@ -401,7 +401,7 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 		char text[256];
 		std::snprintf( text, sizeof( text ), "Terrain hydrology: largest discharge %.3f m3/s, channel nodes %zu, carved cells %zu, "
 					   "deepest %.2f m, streams %zu, points %zu, ms: %.1f", m_hydrology.largestDischarge, m_hydrology.nodes,
-					   m_hydrology.carvedCells, -m_hydrology.deepestLowering, m_hydrology.streams.size(), m_hydrology.points,
+					   m_hydrology.carvedCells, -m_hydrology.deepestLowering, m_hydrology.streamCount, m_hydrology.points,
 					   std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
 		LOG( text );
 	}

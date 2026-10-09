@@ -28,7 +28,6 @@ const std::pair<const char*, float GS::WaterChannelsSettings::*> channelColumns[
 	{ "min_speed", &GS::WaterChannelsSettings::minSpeed },
 	{ "min_water_depth", &GS::WaterChannelsSettings::minWaterDepth },
 	{ "foam_slope", &GS::WaterChannelsSettings::foamSlope },
-	{ "ribbon_overlap", &GS::WaterChannelsSettings::ribbonOverlap },
 	{ "freeboard", &GS::WaterChannelsSettings::freeboard },
 	{ "bed_shape", &GS::WaterChannelsSettings::bedShape },
 	{ "bank_roundness", &GS::WaterChannelsSettings::bankRoundness },
