@@ -212,6 +212,7 @@ float4 shadeWater( WaterShading input )
 	surface.geometricNormal = input.normal;
 	surface.baseColor = 0.0f;
 	surface.metallic = 0.0f;
+	surface.specular = 1.0f;
 	surface.roughness = g_roughness;
 	surface.occlusion = 1.0f;
 	surface.emissive = 0.0f;

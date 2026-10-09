@@ -141,8 +141,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   затем `import_gltf.py --scatter`, команды — в `docs/models.md`; без архива травы высокие пучки подменяет
   `Tools/blender_grass_tall.py` (импорт в копию базы, `base.db3` не меняется). Растения Megascans с Fab (трава
   `rough_meadow_grass`; архив FBX — в `DownloadResources\`) — `Tools/export_megascans.py` через Blender, затем
-  `import_gltf.py --scatter`, команды — в `docs/models.md`; эти ассеты Fab помечены «без ИИ» — их вид не смотреть, проверка
-  по числам и логу, внешний вид проверяет Dimok. Ели уровня
+  `import_gltf.py --scatter`, команды — в `docs/models.md`. Ели уровня
 `Test` (`Fir_A`, `Fir_B`, `Fir_C`: своя геометрия, кора и карточки хвои из `fir_tree_01` Poly Haven) —
 `blender -b --factory-startup --python Tools/blender_fir.py -- --archive DownloadResources/fir_tree_01_2k.blend.zip --out Meshes/source/fir.glb`,
 затем `python Tools/import_gltf.py Meshes/source/fir.glb --level Test --position 480,0,345 --snap-to-terrain --lod-ranges 35,90`
@@ -445,7 +444,7 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 от параметров секции: `setParams`, `renderState`, `phaseFor`, `depthPhaseFor`. Материал не рисует: вызов `DMD3D::draw*` —
 у вызывающего (`Renderer::drawMesh`, свои вызовы объектов). Основной материал моделей —
 `PBR` (`PBRMaterial` + `Shaders/PBRLit.ps`): metallic/roughness как в glTF 2.0 и Default Lit в UE5, параметры названы
-как в glTF; материал 9 `PBRInstance` — его инстансный вариант для расстановки. Режим материала — тоже параметры
+как в glTF (сила отражения диэлектрика — `SpecularFactor`, KHR_materials_specular); материал 9 `PBRInstance` — его инстансный вариант для расстановки. Режим материала — тоже параметры
 с именами glTF: `AlphaMode` (0 OPAQUE, 1 MASK, 2 BLEND — Blend Mode в UE), `AlphaCutoff`, `DoubleSided`; материал
 сообщает его `Material::renderState( params )` (`Scene/Materials/MaterialRenderState.h`), вариант шейдера —
 `phaseFor( params, options )`: `PBRMaterial` сам собирает второй пиксельный шейдер с `clip` (define `ALPHA_MASK`), у непрозрачных

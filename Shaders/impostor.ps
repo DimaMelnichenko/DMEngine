@@ -90,6 +90,7 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 	surface.geometricNormal = normal;
 	surface.baseColor = color.rgb;
 	surface.metallic = 0.0f;
+	surface.specular = 1.0f;
 	surface.roughness = g_impostorRoughness;
 	surface.occlusion = lerp( 1.0f, sampleFrames( g_impostorDepth, input ).y, g_impostorOcclusion );
 	surface.emissive = 0.0f;

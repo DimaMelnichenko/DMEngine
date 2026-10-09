@@ -30,6 +30,8 @@ struct Surface
 	float3 geometricNormal;	// нормаль геометрии без карты нормалей (для смещения при выборке тени), нормированная
 	float3 baseColor;	// линейный
 	float  metallic;
+	float  specular;	// сила отражения диэлектрика: F0 = 0,04 × specular (specularFactor KHR_materials_specular;
+					// Specular в UE — вдвое меньше: 0,5 ↔ 1)
 	float  roughness;	// «на глаз» (perceptual), 0…1
 	float  occlusion;	// затенение освещения окружением, 0…1
 	float3 emissive;
@@ -103,9 +105,9 @@ float3 evaluateLighting( Surface surface )
 	const float roughness = clamp( surface.roughness, minRoughness, 1.0f );
 	const float NV = saturate( dot( surface.normal, view ) );
 
-	// Металл отражает своим цветом и не рассеивает, диэлектрик отражает ~4 % и рассеивает цвет основы. У тонкой
-	// поверхности доля transmission рассеянного света не отражается, а проходит насквозь
-	const float3 F0 = lerp( 0.04f, surface.baseColor, surface.metallic );
+	// Металл отражает своим цветом и не рассеивает, диэлектрик отражает ~4 % (× specular) и рассеивает цвет основы.
+	// У тонкой поверхности доля transmission рассеянного света не отражается, а проходит насквозь
+	const float3 F0 = lerp( 0.04f * saturate( surface.specular ), surface.baseColor, surface.metallic );
 	const float transmission = saturate( surface.transmission ) * ( 1.0f - surface.metallic );
 	const float3 diffuseColor = surface.baseColor * ( 1.0f - surface.metallic ) * ( 1.0f - transmission );
 	const float3 transmissionColor = surface.transmissionColor * transmission;
@@ -113,8 +115,10 @@ float3 evaluateLighting( Surface surface )
 	float3 direct = evaluateDirectLighting( surface, view, F0, diffuseColor, transmissionColor, roughness );
 
 	float2 environment = environmentBRDF( NV, roughness );
+	// Как EnvBRDF в UE: блеск на скользящих углах (environment.y) гаснет вместе с F0 ниже 0,02 — «без отражения»
 	float3 ambient = diffuseColor * ambientIrradiance( surface.normal ) +
-					 ambientSpecular( reflect( -view, surface.normal ), roughness ) * ( F0 * environment.x + environment.y );
+					 ambientSpecular( reflect( -view, surface.normal ), roughness ) *
+					 ( F0 * environment.x + saturate( 50.0f * F0.g ) * environment.y );
 	// Небо с обратной стороны тоже просвечивает (как Subsurface Color × гармоники по −N у Two Sided Foliage в UE)
 	[branch] if( transmission > 0.0f )
 		ambient += transmissionColor * ambientIrradiance( -surface.normal );

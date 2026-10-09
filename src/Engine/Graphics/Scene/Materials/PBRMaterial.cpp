@@ -266,6 +266,7 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.occlusionStrength = materialValue( params, "OcclusionStrength", 1.0f );
 	param.alphaCutoff = materialValue( params, "AlphaCutoff", 0.5f );
 	param.windWeight = materialValue( params, "WindWeight", 0.0f );
+	param.specularFactor = materialValue( params, "SpecularFactor", 1.0f );
 	param.diffuseTransmissionColorFactor = materialValue( params, "DiffuseTransmissionColorFactor", XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
 	param.diffuseTransmissionFactor = materialValue( params, "DiffuseTransmissionFactor", 0.0f );
 	param.windGlobalAngle = XMConvertToRadians( materialValue( params, "WindGlobalAngle", 1.5f ) );

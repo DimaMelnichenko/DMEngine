@@ -19,7 +19,9 @@ MaterialParameterInstance, по --level — LevelModels. Всё в одной т
   модели для расстановки (--scatter) — тоже, их ставят слои расстановки.
 - glTF правосторонний, движок левосторонний (оба Y вверх, метры): Z с минусом, порядок вершин треугольника обратный.
 - Материал glTF переносится в экземпляр материала PBR (id 12; с --scatter — PBRInstance, id 9) один в один;
-  карты нормалей glTF в соглашении OpenGL — NormalGreenUp = true.
+  карты нормалей glTF в соглашении OpenGL — NormalGreenUp = true. Расширения: KHR_materials_emissive_strength,
+  KHR_materials_diffuse_transmission (DiffuseTransmission*), KHR_materials_specular (только specularFactor —
+  SpecularFactor), остальные — с предупреждением.
 - У материала alphaMode MASK мипы базового цвета сохраняют покрытие альфы при его alphaCutoff
   (Textures.preserve_alpha_coverage): иначе вдали травинки и лепестки тают.
 - Параметры движка без аналога в glTF (пропускание — экспортёр Blender не пишет KHR_materials_diffuse_transmission,
@@ -458,7 +460,16 @@ class MaterialConverter:
             if 'diffuseTransmissionTexture' in transmission:
                 warn('material %s: diffuseTransmissionTexture is ignored, only the factor is used' % name)
 
-        ignored = sorted(set(extensions) - {'KHR_materials_emissive_strength', 'KHR_materials_diffuse_transmission'})
+        # Сила отражения диэлектрика (F0 = 0,04 x specularFactor); цвет отражения и текстуры движок не читает
+        specular = extensions.get('KHR_materials_specular')
+        if specular is not None:
+            params['SpecularFactor'] = '%g' % specular.get('specularFactor', 1.0)
+            for key in ('specularTexture', 'specularColorTexture', 'specularColorFactor'):
+                if key in specular and specular[key] != [1.0, 1.0, 1.0]:
+                    warn('material %s: KHR_materials_specular %s is ignored' % (name, key))
+
+        ignored = sorted(set(extensions) - {'KHR_materials_emissive_strength', 'KHR_materials_diffuse_transmission',
+                                            'KHR_materials_specular'})
         if ignored:
             warn('material %s: extensions are ignored: %s' % (name, ', '.join(ignored)))
         # Режим материала — как в glTF: AlphaMode 0 OPAQUE, 1 MASK, 2 BLEND; порог отсечения; двусторонность

@@ -213,6 +213,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.geometricNormal = normal;
 	surface.baseColor = mixed.albedo * ( 1.0f + 0.15f * variation );
 	surface.metallic = 0.0f;
+	surface.specular = 1.0f;
 	surface.roughness = mixed.roughness;
 	surface.occlusion = 1.0f;
 	surface.emissive = 0.0f;

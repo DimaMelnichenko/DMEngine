@@ -77,6 +77,7 @@ Backface Culling в настройках материала (импортёр н
 | `alphaMode`, `alphaCutoff` | `AlphaMode`, `AlphaCutoff` | OPAQUE → 0, MASK → 1, BLEND → 2 (импортёр предупреждает: полупрозрачные сортируются по опорной точке) |
 | `doubleSided` | `DoubleSided` | без отсечения задних граней, см. [materials.md](materials.md) |
 | `KHR_materials_diffuse_transmission`: `diffuseTransmissionFactor`, `diffuseTransmissionColorFactor`, `diffuseTransmissionColorTexture` | `DiffuseTransmissionFactor`, `DiffuseTransmissionColorFactor`, `DiffuseTransmissionColor` | свет сквозь тонкую поверхность (листья); текстура sRGB; `diffuseTransmissionTexture` пропускается с предупреждением |
+| `KHR_materials_specular`: `specularFactor` | `SpecularFactor` | сила отражения диэлектрика; `specularTexture` и цвет отражения пропускаются с предупреждением |
 
 **Параметры движка без аналога в glTF** — `extras` материала: Custom Properties материала Blender (экспорт с
 `export_extras`). Имена — как у параметров `PBR` ([materials.md](materials.md)): `DitheredLODTransition`, `WindWeight`,
@@ -272,12 +273,19 @@ python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --lod-ra
 - billboard Megascans — одна плоская карточка по силуэту (5–9 треугольников): в UE её поворачивает к камере материал,
   у нас такого материала нет, поэтому сценарий делает из неё крест — копию, повёрнутую на 90° вокруг вертикали
   (`--no-billboard-cross` — оставить одну);
+- просвет и отражение — расширения glTF, которых экспортёр Blender не пишет: сценарий дописывает их в `.glb` после
+  экспорта (картинка — новый bufferView в BIN). `KHR_materials_diffuse_transmission` — доля `--diffuse-transmission`
+  (0,4) и цвет из карты `_Translucency` (как Subsurface Color у Two Sided Foliage в UE; есть и у billboard);
+  `KHR_materials_specular` — `specularFactor` = 2 × среднее карты `_Specular` по непрозрачной части (Specular в UE s →
+  F0 = 0,08 s; у billboard своей карты нет — значение основного). У Rough Meadow Grass `Specular` ≈ 0,025 →
+  `specularFactor` 0,05: без него отблеск неба F0 = 0,04 на тёмном скане (альбедо линейно ≈ 0,025) делал траву
+  серо-чёрной;
 - цвета вершин не экспортируются (движок их не читает), параметры движка — `--material-param`, как у Poly Haven.
 
 Rough Meadow Grass (5 вариантов × 3 LOD) — слой `Meadow` ([scatter.md](scatter.md), «Трава Megascans»):
 
 ```
-blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/rough_meadow_grass_skfjj_high.zip --name rough_meadow_grass --out Meshes/source/rough_meadow_grass.glb --material-param WindWeight=1 --material-param DiffuseTransmissionFactor=0.4 --material-param DiffuseTransmissionColorFactor=1,1,0.6 --material-param DiffuseTransmissionColor=BaseColor --material-param DitheredLODTransition=true
+blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/rough_meadow_grass_skfjj_high.zip --name rough_meadow_grass --out Meshes/source/rough_meadow_grass.glb --material-param WindWeight=1 --material-param DitheredLODTransition=true
 python Tools/import_gltf.py Meshes/source/rough_meadow_grass.glb --scatter --lod-ranges 6,18
 ```
 

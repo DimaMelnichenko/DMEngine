@@ -69,6 +69,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.geometricNormal = normalize( input.isFrontFace ? input.normal : -input.normal );
 	surface.baseColor = baseColor.rgb;
 	surface.metallic = saturate( g_metallic * metallicRoughness.b );
+	surface.specular = g_specularFactor;
 	surface.roughness = g_roughness * metallicRoughness.g;
 	surface.occlusion = lerp( 1.0f, g_texOcclusion.Sample( g_SamplerAnisotropicWrap, input.tex ).r, g_occlusionStrength );
 	surface.emissive = g_texEmissive.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * g_emissiveFactor;

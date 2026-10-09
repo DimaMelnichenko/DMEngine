@@ -48,7 +48,8 @@ private:
 		float occlusionStrength;
 		float alphaCutoff;
 		float windWeight;	// отклик на ветер уровня; вершинному шейдеру (Shaders/wind.sh)
-		float padding[2];
+		float specularFactor;	// F0 диэлектрика = 0,04 × множитель (KHR_materials_specular)
+		float padding;
 		DirectX::XMFLOAT3 diffuseTransmissionColorFactor;
 		float diffuseTransmissionFactor;
 		// Ветер дерева (материал PBRTree, define WIND_TREE, Shaders/wind.sh): углы — радианы при силе ветра 1, частоты — Гц

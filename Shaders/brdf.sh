@@ -23,9 +23,12 @@ float GGX_Distribution( float cosThetaNH, float alpha )
     return alpha2 / ( PI * den * den );
 }
 
+// Как F_Schlick в UE: при F0 ниже 0,02 (у воды и диэлектриков 0,02…0,04 — без изменений) гаснет и блеск на скользящих
+// углах — поверхность «без отражения» (specularFactor KHR_materials_specular около 0)
 float3 FresnelSchlick(float3 F0, float cosTheta)
 {
-    return F0 + (1.0 - F0) * pow(1.0 - saturate(cosTheta), 5.0);
+    const float Fc = pow(1.0 - saturate(cosTheta), 5.0);
+    return saturate(50.0 * F0.g) * Fc + (1.0 - Fc) * F0;
 }
 
 float3 CookTorrance_GGX(float3 n, float3 l, float3 v, float3 f0, float roughness, float3 albedo ) 

@@ -9,6 +9,10 @@
 #     metallicRoughness, нормаль — в соглашении OpenGL, как у glTF (карта DirectX переворачивается по G: соглашение
 #     определяется по интегрируемости поля нормалей или задаётся --normal-convention); картинки — до --texture-size;
 #     двусторонние; карточка billboard — крестом из двух (--no-billboard-cross — одна);
+#   - просвет и отражение — расширения glTF, которые экспортёр Blender не пишет, сценарий дописывает их в .glb сам:
+#     KHR_materials_diffuse_transmission — доля --diffuse-transmission (0,4) и цвет из карты Translucency (как Subsurface
+#     Color у Two Sided Foliage в UE), KHR_materials_specular — specularFactor из карты Specular (Specular UE s → F0 =
+#     0,08 s, множитель к 0,04 — 2 s; среднее по непрозрачной части; у billboard своей карты нет — значение основного);
 #   - параметры движка, которых нет в glTF, — --material-param ИМЯ=ЗНАЧЕНИЕ (повторяется) обоим материалам: extras glTF;
 #   - печатает габариты вариантов (м, ось Z Blender вверх) и треугольники LOD, экспортирует .glb без цветов вершин
 #     (движок их не читает).
@@ -16,7 +20,9 @@
 #   blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/rough_meadow_grass_skfjj_high.zip
 #       --name rough_meadow_grass --out Meshes/source/rough_meadow_grass.glb [--texture-size 2048] [--material-param WindWeight=1]
 import argparse
+import json
 import os
+import struct
 import re
 import sys
 import tempfile
@@ -100,6 +106,19 @@ def build_material(name, folder, prefix, size, convention, params):
     rough_path = find_map(folder, prefix + 'Roughness')
     rough = load_pixels(rough_path, size)[..., 0] if rough_path else np.full(base.shape[:2], 0.8, np.float32)
     mr = np.stack([np.ones_like(rough), rough, np.zeros_like(rough), np.ones_like(rough)], axis=-1)
+    # Просвет и отражение — для расширений glTF, которые сценарий допишет в .glb (add_extensions)
+    extras = {'translucency': None, 'specular': None}
+    translucency_path = find_map(folder, prefix + 'Translucency')
+    if translucency_path:
+        translucency = load_pixels(translucency_path, size)
+        translucency[..., 3] = 1.0
+        save_png(prefix + 'Translucency', translucency, folder, True)
+        extras['translucency'] = os.path.join(folder, prefix + 'Translucency.png')
+    specular_path = find_map(folder, prefix + 'Specular')
+    if specular_path:
+        opaque = base[..., 3] > 0.5
+        specular = load_pixels(specular_path, size)[..., 0]
+        extras['specular'] = 2.0 * float(np.mean(specular[opaque] if opaque.any() else specular))
 
     mat = bpy.data.materials.new(name)
     if bpy.app.version < (5, 0, 0):
@@ -135,9 +154,66 @@ def build_material(name, folder, prefix, size, convention, params):
         links.new(n_map.outputs['Normal'], bsdf.inputs['Normal'])
     for key, value in params:
         mat[key] = value
-    print('material %s: %s, %dx%d%s%s' % (name, os.path.basename(base_path), base.shape[1], base.shape[0],
-                                         ', alpha' if opacity_path else '', ', normal ' + (convention or '?') if normal_path else ''))
-    return mat
+    print('material %s: %s, %dx%d%s%s%s%s' % (name, os.path.basename(base_path), base.shape[1], base.shape[0],
+                                             ', alpha' if opacity_path else '', ', normal ' + (convention or '?') if normal_path else '',
+                                             ', translucency' if translucency_path else '',
+                                             ', specularFactor %.3f' % extras['specular'] if specular_path else ''))
+    return mat, extras
+
+
+def add_extensions(path, materials, transmission):
+    """Дописывает в .glb расширения материалов, которых экспортёр Blender не пишет: materials — имя материала →
+    {'translucency': PNG или None, 'specular': specularFactor или None}. Картинка — новый bufferView в конце BIN"""
+    with open(path, 'rb') as f:
+        data = f.read()
+    magic, version, _ = struct.unpack_from('<4sII', data, 0)
+    json_length, json_type = struct.unpack_from('<I4s', data, 12)
+    if magic != b'glTF' or version != 2 or json_type != b'JSON':
+        raise SystemExit('error: %s is not a glTF 2.0 binary' % path)
+    gltf = json.loads(data[20:20 + json_length].decode('utf-8'))
+    offset = 20 + json_length
+    binary = bytearray()
+    if offset < len(data):
+        bin_length, bin_type = struct.unpack_from('<I4s', data, offset)
+        if bin_type != b'BIN\x00':
+            raise SystemExit('error: %s: second chunk is not BIN' % path)
+        binary = bytearray(data[offset + 8:offset + 8 + bin_length])
+    used = gltf.setdefault('extensionsUsed', [])
+    for material in gltf.get('materials', []):
+        info = materials.get(material.get('name'))
+        if not info:
+            continue
+        extensions = material.setdefault('extensions', {})
+        diffuse = {'diffuseTransmissionFactor': transmission}
+        if info['translucency']:
+            with open(info['translucency'], 'rb') as f:
+                png = f.read()
+            binary.extend(b'\x00' * (-len(binary) % 4))
+            gltf.setdefault('bufferViews', []).append({'buffer': 0, 'byteOffset': len(binary), 'byteLength': len(png)})
+            binary.extend(png)
+            gltf.setdefault('images', []).append({'name': os.path.splitext(os.path.basename(info['translucency']))[0],
+                                                  'mimeType': 'image/png', 'bufferView': len(gltf['bufferViews']) - 1})
+            texture = {'source': len(gltf['images']) - 1}
+            base = material.get('pbrMetallicRoughness', {}).get('baseColorTexture')
+            if base is not None and 'sampler' in gltf['textures'][base['index']]:
+                texture['sampler'] = gltf['textures'][base['index']]['sampler']
+            gltf.setdefault('textures', []).append(texture)
+            diffuse['diffuseTransmissionColorTexture'] = {'index': len(gltf['textures']) - 1}
+        extensions['KHR_materials_diffuse_transmission'] = diffuse
+        if info['specular'] is not None:
+            extensions['KHR_materials_specular'] = {'specularFactor': round(info['specular'], 4)}
+        for name in extensions:
+            if name not in used:
+                used.append(name)
+        print('material %s: %s' % (material.get('name'), ', '.join(sorted(extensions))))
+    binary.extend(b'\x00' * (-len(binary) % 4))
+    gltf.setdefault('buffers', [{}])[0]['byteLength'] = len(binary)
+    text = json.dumps(gltf, separators=(',', ':')).encode('utf-8')
+    text += b' ' * (-len(text) % 4)
+    out = struct.pack('<4sII', b'glTF', 2, 12 + 8 + len(text) + 8 + len(binary))
+    out += struct.pack('<I4s', len(text), b'JSON') + text + struct.pack('<I4s', len(binary), b'BIN\x00') + bytes(binary)
+    with open(path, 'wb') as f:
+        f.write(out)
 
 
 def main():
@@ -152,6 +228,8 @@ def main():
     parser.add_argument('--billboard-lod', type=int, help='LOD with the billboard maps (after --lod-offset); default — the last')
     parser.add_argument('--normal-convention', choices=('gl', 'dx'), help='normal map convention; default — detected from the normal map')
     parser.add_argument('--no-billboard-cross', action='store_true', help='keep the billboard LOD a single card')
+    parser.add_argument('--diffuse-transmission', type=float, default=0.4,
+                        help='share of diffuse light passing through (KHR_materials_diffuse_transmission); color - Translucency map')
     parser.add_argument('--material-param', action='append', default=[], metavar='NAME=VALUE',
                         help='engine material parameter for both materials (glTF extras)')
     args = parser.parse_args(argv)
@@ -193,10 +271,15 @@ def main():
     if convention is None:
         raise SystemExit('error: normal map convention is not detected, pass --normal-convention gl|dx')
     params = [material_param(text) for text in args.material_param]
-    main_mat = build_material(args.name, folder, '', args.texture_size, convention, params)
+    main_mat, main_extras = build_material(args.name, folder, '', args.texture_size, convention, params)
+    material_extras = {main_mat.name: main_extras}
     billboard_mat = None
     if find_map(folder, 'Billboard_BaseColor'):
-        billboard_mat = build_material(args.name + '_billboard', folder, 'Billboard_', args.texture_size, convention, params)
+        billboard_mat, billboard_extras = build_material(args.name + '_billboard', folder, 'Billboard_', args.texture_size,
+                                                         convention, params)
+        if billboard_extras['specular'] is None:
+            billboard_extras['specular'] = main_extras['specular']
+        material_extras[billboard_mat.name] = billboard_extras
 
     for (variant, lod), obj in sorted(objects.items()):
         mat = billboard_mat if billboard_mat and lod == billboard_lod else main_mat
@@ -232,6 +315,7 @@ def main():
     bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_yup=True, export_apply=True,
                               export_tangents=True, export_image_format='AUTO', export_materials='EXPORT',
                               export_extras=True, export_animations=False, export_vertex_color='NONE')
+    add_extensions(out, material_extras, args.diffuse_transmission)
     print('Written: ' + out)
 
 
