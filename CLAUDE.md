@@ -139,7 +139,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (пучки `grass_medium_01`, одуванчики `dandelion_01`, камни `rock_moss_set_01`; архивы `.blend` — в `DownloadResources\`,
   скачать — `python Tools/polyhaven_download.py <ассет> --resolution 2k`) — `Tools/export_polyhaven.py` через Blender,
   затем `import_gltf.py --scatter`, команды — в `docs/models.md`; без архива травы высокие пучки подменяет
-  `Tools/blender_grass_tall.py` (импорт в копию базы, `base.db3` не меняется). Ели уровня
+  `Tools/blender_grass_tall.py` (импорт в копию базы, `base.db3` не меняется). Растения Megascans с Fab (трава
+  `rough_meadow_grass`; архив FBX — в `DownloadResources\`) — `Tools/export_megascans.py` через Blender, затем
+  `import_gltf.py --scatter`, команды — в `docs/models.md`; эти ассеты Fab помечены «без ИИ» — их вид не смотреть, проверка
+  по числам и логу, внешний вид проверяет Dimok. Ели уровня
 `Test` (`Fir_A`, `Fir_B`, `Fir_C`: своя геометрия, кора и карточки хвои из `fir_tree_01` Poly Haven) —
 `blender -b --factory-startup --python Tools/blender_fir.py -- --archive DownloadResources/fir_tree_01_2k.blend.zip --out Meshes/source/fir.glb`,
 затем `python Tools/import_gltf.py Meshes/source/fir.glb --level Test --position 480,0,345 --snap-to-terrain --lod-ranges 35,90`
@@ -414,8 +417,8 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн,
-наборы `Meadow` (трава — пучки `GrassClump` из Blender вперемешку с высокими пучками Poly Haven `grass_medium_01`, и
-одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
+наборы `Meadow` (трава — пучки `GrassClump` из Blender вперемешку с высокими пучками Poly Haven `grass_medium_01`,
+крупные пучки Megascans `rough_meadow_grass` своим слоем и одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
 (две секции: панель и металлическая рамка), к северу от луга — роща елей (`Fir_A/B/C`, 23 экземпляра), на склонах — лес:

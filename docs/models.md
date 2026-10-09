@@ -252,6 +252,35 @@ python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --lod-ra
 настоящего ассета Masked с порогом 0,5: у подмены альфа везде 1, отсечение ничего не режет, а стоимость варианта
 с `clip` та же, что у карточек Poly Haven. Настоящий ассет возвращают команды выше — файлы перезапишутся.
 
+## Модели Megascans (Fab)
+
+Растения Quixel Megascans из библиотеки Fab скачиваются архивом `.zip` в формате FBX в `DownloadResources\` (не в git;
+у ассета на Fab — «Скачать», формат FBX, качество High): в архиве на каждый вариант и LOD — `<Ассет>_<Вар>_LOD<N>.fbx`,
+карты JPG (`_BaseColor`, `_Opacity`, `_Roughness`, `_Normal` и т. д.), у растений — ещё карты карточки дальнего LOD
+(`_Billboard_*`). Вариант качества Raw — только LOD0 сканов (13–52 тыс. треугольников) с картами 8K, для расстановки
+не годится. `Tools/export_megascans.py` (Blender без окна) готовит из архива `.glb` для импорта с `--scatter`:
+
+- FBX вариантов (`--variants` — регулярное выражение по `VarA…`) импортируются, объекты называются `<--name>_<Вар>` и
+  `<--name>_<Вар>_LOD<N>` (суффикс понимает импортёр); `--lod-offset k` отбрасывает LOD ниже k; поворот и масштаб FBX
+  переходят в вершины, origin — у основания (у сканов он и так в точке касания земли);
+- два материала простым Principled BSDF, как у Poly Haven: основной и billboard — у последнего LOD (`--billboard-lod`).
+  Базовый цвет с альфой из `_Opacity` (через Round — `alphaMode: MASK`), шероховатость — в G `metallicRoughness`, нормаль —
+  в соглашении OpenGL (glTF). Соглашение карты нормалей определяется по самой карте: наклоны поверхности по карте,
+  прочитанной как OpenGL, — производные одной функции высоты, и их ротор мал; у карты DirectX, прочитанной как OpenGL,
+  мал ротор с другим знаком (сравнение на непрозрачной части; неясный случай — ошибка, тогда `--normal-convention gl|dx`).
+  У Rough Meadow Grass — OpenGL (ротор 0,066 против 0,107). Картинки — до `--texture-size` (2048); двусторонние;
+- billboard Megascans — одна плоская карточка по силуэту (5–9 треугольников): в UE её поворачивает к камере материал,
+  у нас такого материала нет, поэтому сценарий делает из неё крест — копию, повёрнутую на 90° вокруг вертикали
+  (`--no-billboard-cross` — оставить одну);
+- цвета вершин не экспортируются (движок их не читает), параметры движка — `--material-param`, как у Poly Haven.
+
+Rough Meadow Grass (5 вариантов × 3 LOD) — слой `Meadow` ([scatter.md](scatter.md), «Трава Megascans»):
+
+```
+blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/rough_meadow_grass_skfjj_high.zip --name rough_meadow_grass --out Meshes/source/rough_meadow_grass.glb --material-param WindWeight=1 --material-param DiffuseTransmissionFactor=0.4 --material-param DiffuseTransmissionColorFactor=1,1,0.6 --material-param DiffuseTransmissionColor=BaseColor --material-param DitheredLODTransition=true
+python Tools/import_gltf.py Meshes/source/rough_meadow_grass.glb --scatter --lod-ranges 6,18
+```
+
 ## Ель
 
 `Tools/blender_fir.py` (Blender без окна) строит ели сам, а текстуры и карточки веточек берёт из ели Poly Haven

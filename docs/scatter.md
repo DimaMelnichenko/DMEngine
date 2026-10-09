@@ -32,11 +32,13 @@
 граней у каждой секции LOD свои — их задаёт режим её материала ([materials.md](materials.md)): непрозрачные и Masked секции
 рисуются в depth prepass и `opaque` ([passes.md](passes.md)), полупрозрачные — в `transparent`, двусторонние — без отсечения граней, как у травы ландшафта
 в UE. На уровне каждый набор — отдельный объект сцены,
-в статистике кадра он виден под своим именем. В тестовом уровне два набора: `Meadow` (трава, одуванчики) и `Debris` (камни).
+в статистике кадра он виден под своим именем. В тестовом уровне три набора: `Meadow` (трава, одуванчики), `Debris` (камни)
+и `Forest` (ели).
 
 **Слой** (таблица `ScatterLayers`) — одно растение или один вид объектов: модели-варианты со всеми их LOD и весами
 (`ScatterLayerModels`), маска плотности, шаг сетки, кольцо дальности, размер, разброс и повороты. Например, в
-`Meadow`: трава в 0–45 м (пучки GrassClump и Poly Haven) и одуванчики 0–25 м со своей маской.
+`Meadow`: трава в 0–45 м (пучки GrassClump и Poly Haven), крупные пучки Megascans в 0–45 м со своим шагом сетки и
+одуванчики 0–25 м со своей маской.
 
 **Вариант** — одна из моделей слоя. Какая модель стоит в ячейке, решает случайное число ячейки и накопленные доли весов
 (`Shaders/scatter.cs`), так что выбор, как положение и поворот, от камеры не зависит. Инстанс раскладывается один раз
@@ -395,6 +397,17 @@ python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 16
 Тень в траве: каждый вариант отбрасывает её по своему флагу `ScatterLayerModels.cast_shadow`. Без этого флага тяжёлые
 пучки-карточки удваивали стоимость каскадов 0–1.
 
+## Трава Megascans в `Meadow`
+
+Rough Meadow Grass с Fab (Quixel Megascans; экспорт и импорт — [models.md](models.md), «Модели Megascans») — третий слой
+`Meadow` (`ScatterLayers` 7): та же маска `mask_grass`, но шаг 0,6 м — пучки 0,5–1,1 м в поперечнике и 0,5–1,7 м
+высотой, при шаге основной травы (0,2 м) они слились бы в стену. Кольцо 0–45 м (исчезание 15 м), размер 1 (масштаб скана),
+наклон до ±8°, тень. Варианты `rough_meadow_grass_VarA…E` с весами 2, 1, 2, 3, 3 (у самого высокого и тяжёлого `VarB` —
+6,4 тыс. треугольников — вес меньше). LOD — сканы Megascans: 2,4–6,4 тыс. треугольников до 6 м, 0,6–1,6 тыс. до 18 м,
+дальше billboard Megascans (крест из двух карточек, 10–18 треугольников). У земли на лугу (Release,
+`camera 478,14,220,8,0`) слой стоит ≈ 1,1 мс кадра (8,3 → 9,45 мс) и закрывает ≈ 10 % кадра; при шаге 0,9 м —
+≈ 0,3 мс и ≈ 5 %. Шаг, размер и веса — в окне набора (подокно «2: rough_meadow_grass_VarA + 4»), сохраняются «Save level».
+
 ## Ромашка: альфа-лепестки
 
 Слой ромашек `Meadow` (маска `mask_camomile`) — модель Camomile, тоже из скрипта Blender:
@@ -423,13 +436,14 @@ python Tools/import_gltf.py Meshes/source/camomile.glb --scatter
 
 ## Как добавить
 
-**Слой в существующий набор** — одна строка. Например, ромашки второго сорта в `Meadow`:
+**Слой в существующий набор** — строка слоя и строки его вариантов. Например, ромашки второго сорта в `Meadow`:
 
 ```sql
-INSERT INTO ScatterLayers (scatter_set, layer, model, mask, cell_size, near_border, far_border,
+INSERT INTO ScatterLayers (scatter_set, layer, mask, cell_size, near_border, far_border,
                            near_fade, far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z,
                            align_to_terrain, cast_shadow)
-VALUES (1, 2, 4, 'mask_camomile', 0.7, 0, 12, 0, 4, 0.8, 1.0, 0, 360, 0, 0, 1);
+VALUES (1, 3, 'mask_camomile', 0.7, 0, 12, 0, 4, 0.8, 1.0, 0, 360, 0, 0, 1);
+INSERT INTO ScatterLayerModels (layer, model, weight, cast_shadow) VALUES (<id слоя>, 4, 1, 1);
 ```
 
 **Новый набор** — например, лесная подстилка с веточками, повёрнутыми вокруг вертикали и слегка наклонёнными,
@@ -437,10 +451,11 @@ VALUES (1, 2, 4, 'mask_camomile', 0.7, 0, 12, 0, 4, 0.8, 1.0, 0, 360, 0, 0, 1);
 
 ```sql
 INSERT INTO ScatterSets (name) VALUES ('ForestFloor');
-INSERT INTO ScatterLayers (scatter_set, layer, model, mask, cell_size, near_border, far_border,
+INSERT INTO ScatterLayers (scatter_set, layer, mask, cell_size, near_border, far_border,
                            near_fade, far_fade, size_multiplier, jitter, rotation_x, rotation_y, rotation_z,
                            align_to_terrain, cast_shadow)
-VALUES (<id набора>, 0, <id модели веточки>, 'mask_twigs', 1.0, 0, 30, 0, 6, 0.5, 1.0, 20, 360, 20, 1, 0);
+VALUES (<id набора>, 0, 'mask_twigs', 1.0, 0, 30, 0, 6, 0.5, 1.0, 20, 360, 20, 1, 0);
+INSERT INTO ScatterLayerModels (layer, model, weight, cast_shadow) VALUES (<id слоя>, <id модели веточки>, 1, 0);
 INSERT INTO LevelScatterSets (level, scatter_set) VALUES (1, <id набора>);
 ```
 
