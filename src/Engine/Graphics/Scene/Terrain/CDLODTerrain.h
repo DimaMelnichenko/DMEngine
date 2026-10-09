@@ -9,6 +9,7 @@
 #include "TerrainMaterial.h"
 #include "TerrainHeightSource.h"
 #include "TerrainHydrology.h"
+#include "TerrainMasks.h"
 #include "ShaderProgram.h"
 #include "D3D\DMStructuredBuffer.h"
 
@@ -124,7 +125,7 @@ private:
 		DirectX::XMFLOAT3 max;
 	};
 
-	bool loadSettings( uint32_t terrainId, TerrainSettings& settings, std::string& splatMap );
+	bool loadSettings( uint32_t terrainId, TerrainSettings& settings );
 	// Эрозия карты field (нормированные высоты) — из кэша eroded\ или на GPU с записью кэша и карт эрозии
 	bool erode( HeightField& field, const TerrainErosionSettings& erosion );
 	// Подокно «Erosion»: параметры эрозии (применяются при следующей загрузке)
@@ -133,8 +134,12 @@ private:
 	// Копия карты высот с правками рельефа и мипами для вершинного шейдера и минимум / максимум высоты каждого узла по
 	// мипам его уровня; coverage — что правки делают, кроме высоты
 	bool buildHeightBounds( const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water, TerrainEditCoverage& coverage );
-	// Русла по m_streamCurves, копия на CPU, карта высот с мипами на GPU и границы узлов — по карте image (R32, после правок)
+	// Русла по m_streamCurves, слои и маски, копия на CPU, карта высот с мипами на GPU и границы узлов — по карте image
+	// (R32, после правок)
 	bool finishHeights( const DirectX::Image& image, const WaterSimulationSettings* water, TerrainEditCoverage& coverage );
+	// Слои и маски по итоговому рельефу (TerrainMasks): веса splat-карты — m_masks, маски — текстуры хранилища по имени,
+	// копия — файлы в m_generatedDirectory
+	bool buildMasks( const HeightField& finalField );
 	// Значения растровой правки (TerrainEdit::raster) из файла; false — файла нет или он не R32_FLOAT (строка в лог)
 	static bool loadEditRaster( TerrainEdit& edit );
 	// Маска очистки растительности правками (R8_UNORM размером с карту высот, без правок с очисткой — 1 × 1 ноль)
@@ -175,6 +180,12 @@ private:
 	std::string m_streamsKey;
 	bool m_streamsRegenerated = false;
 	std::string m_erodedDirectory;			// кэш и карты эрозии: Textures\<каталог карты высот>\eroded
+	std::string m_generatedDirectory;		// копия слоёв и масок правил: Textures\<каталог карты высот>\generated
+	// Карты эрозии (размыв, отложения, осыпь) — входы правил слоёв; без эрозии — пустые
+	std::vector<float> m_erosionWear;
+	std::vector<float> m_erosionDeposition;
+	std::vector<float> m_erosionTalus;
+	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
 	std::optional<TerrainErosionSettings> m_erosion;
 	PropertyContainer m_erosionProperties;	// «Erosion»
 	// Рельеф после эрозии, м: прежний (из кэша до пересчёта) и новый — для пересадки моделей, пока она не сделана

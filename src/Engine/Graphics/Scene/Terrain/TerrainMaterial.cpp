@@ -1,5 +1,6 @@
 #include "TerrainMaterial.h"
 #include "TerrainEdits.h"
+#include "TerrainMasks.h"
 #include "D3D\TextureImages.h"
 #include <algorithm>
 #include <cmath>
@@ -248,52 +249,40 @@ void paintSplatMap( ScratchImage& splat, const GS::TerrainEditCoverage& coverage
 	}
 }
 
-// Splat-карта — массив из splatSlices срезов RGBA (срез s — веса слоёв 4s…4s + 3). Срезов в файле меньше — остальные
-// нули: прежний файл из одной картинки читается как раньше. Нет файла — весь вес у слоя 0. Покраска правками — поверх
-bool loadSplatMap( const std::string& file, const GS::TerrainEditCoverage& coverage, uint32_t layerCount, Texture& texture,
-				   ShaderView& srv )
+// Splat-карта — массив из splatSlices срезов RGBA (срез s — веса слоёв 4s…4s + 3) по весам правил (TerrainMasks::splat:
+// пустой слой — нули; правил нет — весь вес у слоя 0). Покраска правками — поверх
+bool buildSplatMap( const GS::TerrainMasks& masks, const GS::TerrainEditCoverage& coverage, uint32_t layerCount, Texture& texture,
+					ShaderView& srv )
 {
 	constexpr size_t slices = GS::TerrainMaterial::splatSlices;
-	size_t width = 0;
-	size_t height = 0;
-	std::vector<ScratchImage> images;
-	ScratchImage loaded;
-	if( !file.empty() && ImageFile::load( GS::System::textures().path() + "\\" + file, loaded ) )
-	{
-		const size_t count = std::min( loaded.GetMetadata().arraySize, slices );
-		images.resize( count );
-		for( size_t i = 0; i < count; ++i )
-		{
-			if( !convertImage( *loaded.GetImage( 0, i, 0 ), width, height, images[i] ) )
-			{
-				images.clear();
-				break;
-			}
-		}
-	}
-	if( images.empty() )
-	{
-		LOG( "Terrain material: can`t load splat map " + file + ", placeholder is used" );
-		width = height = fallbackSize;
-	}
+	static_assert( GS::TerrainMasks::splatLayers == GS::TerrainMaterial::maxLayers, "splat layers" );
+	const size_t size = masks.size ? masks.size : fallbackSize;
 
 	ScratchImage splat;
-	if( FAILED( splat.Initialize2D( DXGI_FORMAT_R8G8B8A8_UNORM, width, height, slices, 1 ) ) )
+	if( FAILED( splat.Initialize2D( DXGI_FORMAT_R8G8B8A8_UNORM, size, size, slices, 1 ) ) )
 		return false;
-	for( size_t i = 0; i < slices; ++i )
+	for( size_t slice = 0; slice < slices; ++slice )
 	{
-		const Image& target = *splat.GetImage( 0, i, 0 );
-		if( i < images.size() )
+		const Image& target = *splat.GetImage( 0, slice, 0 );
+		if( masks.size == 0 )
 		{
-			const Image& source = *images[i].GetImage( 0, 0, 0 );
-			for( size_t y = 0; y < height; ++y )
-				std::memcpy( target.pixels + y * target.rowPitch, source.pixels + y * source.rowPitch, width * 4 );
+			if( slice == 0 )
+				fill( target, Fallback::firstLayer );
+			else
+				for( size_t y = 0; y < size; ++y )
+					std::memset( target.pixels + y * target.rowPitch, 0, size * 4 );
+			continue;
 		}
-		else if( i == 0 )
-			fill( target, Fallback::firstLayer );
-		else
-			for( size_t y = 0; y < height; ++y )
-				std::memset( target.pixels + y * target.rowPitch, 0, width * 4 );
+		for( size_t y = 0; y < size; ++y )
+		{
+			uint8_t* texel = target.pixels + y * target.rowPitch;
+			for( size_t x = 0; x < size; ++x, texel += 4 )
+				for( size_t c = 0; c < 4; ++c )
+				{
+					const std::vector<float>& layer = masks.splat[slice * 4 + c];
+					texel[c] = layer.empty() ? 0 : static_cast<uint8_t>( std::lround( std::clamp( layer[y * size + x], 0.0f, 1.0f ) * 255.0f ) );
+				}
+		}
 	}
 	if( coverage.paints() )
 		paintSplatMap( splat, coverage, layerCount );
@@ -319,7 +308,7 @@ void TerrainMaterial::setTiling( uint32_t layer, float tiling )
 	slice[layer % 4] = scale;
 }
 
-bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMap, const TerrainEditCoverage& coverage )
+bool TerrainMaterial::initialize( uint32_t terrainId, const TerrainMasks& masks, const TerrainEditCoverage& coverage )
 {
 	std::vector<Layer> layers;
 	if( !loadLayers( terrainId, layers ) )
@@ -343,11 +332,10 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 		if( !coverage.paint[layer].empty() )
 			LOG( "Terrain material: terrain edits paint layer " + std::to_string( layer ) + ", which TerrainLayers does not describe" );
 
-	m_splatMapFile = splatMap;
 	// Шаги прогресса загрузки — splat-карта и два массива слоёв (по файлу на шаг — buildArray)
 	SlowTask task( 1.0f );
 	task.enterProgressFrame( 0.1f, "Splat map" );
-	bool created = loadSplatMap( splatMap, coverage, m_layerCount, m_splatMapTexture, m_splatMap );
+	bool created = buildSplatMap( masks, coverage, m_layerCount, m_splatMapTexture, m_splatMap );
 	task.enterProgressFrame( 0.45f, "Albedo" );
 	created = created && buildArray( albedoFiles, Fallback::checker, true, m_albedoHeightTexture, m_albedoHeight );
 	task.enterProgressFrame( 0.45f, "Normals" );
@@ -364,9 +352,9 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 	return true;
 }
 
-bool TerrainMaterial::repaint( const TerrainEditCoverage& coverage )
+bool TerrainMaterial::repaint( const TerrainMasks& masks, const TerrainEditCoverage& coverage )
 {
-	if( !loadSplatMap( m_splatMapFile, coverage, m_layerCount, m_splatMapTexture, m_splatMap ) )
+	if( !buildSplatMap( masks, coverage, m_layerCount, m_splatMapTexture, m_splatMap ) )
 		return false;
 	DMD3D::instance().setName( m_splatMapTexture, "Terrain splat map" );
 	return true;

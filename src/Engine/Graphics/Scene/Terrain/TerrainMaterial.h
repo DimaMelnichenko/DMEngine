@@ -11,10 +11,11 @@ namespace GS
 {
 
 struct TerrainEditCoverage;
+struct TerrainMasks;
 
 // Материал террейна для Shaders\terrain.ps. Слои — строки таблицы TerrainLayers (до maxLayers), вес слоя — канал
-// splat-карты: она — массив из двух RGBA, как weightmap в UE Landscape (срез 0 — слои 0…3, срез 1 — 4…7; файл из
-// одного среза дополняется нулями). Текстуры слоёв при загрузке собираются в два массива текстур: «альбедо + высота»
+// splat-карты: она — массив из двух RGBA, как weightmap в UE Landscape (срез 0 — слои 0…3, срез 1 — 4…7); веса — от
+// правил по итоговому рельефу (TerrainMasks), покраска правками рельефа — поверх. Текстуры слоёв при загрузке собираются в два массива текстур: «альбедо + высота»
 // и «нормаль + шероховатость». Все слои приводятся к размеру первого загруженного и к R8G8B8A8: альбедо — sRGB
 // (R8G8B8A8_UNORM_SRGB, высота в альфе линейная), нормаль и шероховатость — UNORM; вместо ненайденного файла
 // подставляется шахматка (альбедо) или плоская нормаль. Слои из фото собирает Tools/pack_terrain_layer.py.
@@ -26,10 +27,10 @@ public:
 	static constexpr uint32_t maxLayers = 8;
 	static constexpr uint32_t splatSlices = maxLayers / 4;
 
-	// splatMap — файл относительно каталога текстур; coverage — покраска слоёв правками рельефа поверх файла
-	bool initialize( uint32_t terrainId, const std::string& splatMap, const TerrainEditCoverage& coverage );
-	// Splat-карта заново с новой покраской правок (русла перестроены без перезагрузки)
-	bool repaint( const TerrainEditCoverage& coverage );
+	// masks — веса слоёв от правил (TerrainMasks::splat); coverage — покраска слоёв правками рельефа поверх них
+	bool initialize( uint32_t terrainId, const TerrainMasks& masks, const TerrainEditCoverage& coverage );
+	// Splat-карта заново по новым весам и покраске (русла перестроены без перезагрузки)
+	bool repaint( const TerrainMasks& masks, const TerrainEditCoverage& coverage );
 	// Пиксельный шейдер: t1 — splat-карта, t2 — альбедо + высота, t3 — нормаль + шероховатость, t4 — шум
 	void bind() const;
 	// Повторов текстуры слоя на единицу мира (1 / tiling) по слоям, по четыре в XMFLOAT4
@@ -54,7 +55,6 @@ private:
 
 private:
 	// Текстуры и виды: массивы срезов (splat-карта — веса, слои — альбедо с высотой и нормаль с шероховатостью)
-	std::string m_splatMapFile;
 	Texture m_splatMapTexture;
 	Texture m_albedoHeightTexture;
 	Texture m_normalRoughnessTexture;

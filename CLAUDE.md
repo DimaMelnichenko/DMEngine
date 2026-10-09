@@ -122,10 +122,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   эрозии, секунды, numpy; карта может быть и из World Machine, Gaea) — `python Tools/gen_heightmap.py`; эрозию (капли,
   осыпание) делает движок при загрузке на GPU и пишет рельеф и карты эрозии в `Textures\terrain\eroded\` (`height`,
   `flow`, `wear`, `deposition`, `talus`; это и кэш), а экземпляры `LevelModels` пересаживает на новую землю — закрепить
-  «Save level»; затем текстуры слоёв `Textures\terrain\layers\*.dds`, splat-карту `Textures\terrain\splatmap.dds`, маски
-  расстановки и маски леса по типам (`mask_forest_spruce` / `pine` / `birch`, `mask_shrubs_riparian` / `slope`) по
-  `eroded\` — `python Tools/gen_terrain_textures.py` (нужен numpy; splat-карта и маски — обычные входные файлы, их можно
-  править в любой программе). Слои из фото-текстур (Poly Haven,
+  «Save level»; splat-карту и маски расстановки и леса по типам (`mask_grass`, `mask_forest_spruce` / `pine` / `birch`,
+  `mask_shrubs_riparian` / `slope` …) движок тоже считает сам — правилами по итоговому рельефу и руслам (`TerrainMasks`,
+  `docs/terrain.md`, «Слои и маски по рельефу»; копия — `Textures\terrain\generated\`); процедурные тестовые слои
+  `Textures\terrain\layers\*.dds` — `python Tools/gen_terrain_textures.py` (нужен numpy). Слои из фото-текстур (Poly Haven,
   freepbr; архивы — в `DownloadResources\`, не в git) собирает `Tools/pack_terrain_layer.py` через Blender — команды
   нынешних слоёв в `docs/terrain.md`. Тестовые модели уровня
   `Test` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
@@ -508,7 +508,11 @@ weightmap в UE Landscape; `albedo` и `normal` — файлы, `tiling` — м�
 Текстуры слоёв собираются при загрузке в два `Texture2DArray`: «альбедо RGB + высота A» и «нормаль RGB (соглашение
 DirectX) + шероховатость A»; все слои приводятся к размеру первого, альбедо — `R8G8B8A8_UNORM_SRGB` (фото в sRGB,
 высота в альфе линейная), нормаль — UNORM; вместо ненайденного файла подставляется шахматка или плоская нормаль. Мипы строятся без WIC (`TEX_FILTER_FORCE_NON_WIC`): WIC масштабирует
-с премультипликацией альфы, а в альфе здесь данные, поэтому splat-карту тоже грузит материал, а не хранилище текстур.
+с премультипликацией альфы, а в альфе здесь данные. Веса splat-карты дают правила по итоговому рельефу — последняя ступень
+конвейера рельефа и воды после русел (`TerrainMasks`, `Scene/Terrain/TerrainMasks.h`: скала, снег, осыпи, две травы по
+уклону, высоте, влажности TWI и картам эрозии; там же маски расстановки и леса — текстуры хранилища по имени,
+`DMTextureStorage::setGenerated`; пороги — `TerrainMaskSettings`; при перестройке русел вживую — заново; подробно —
+`docs/terrain.md`, «Слои и маски по рельефу»); покраска правками рельефа — поверх (`TerrainMaterial`).
 В шейдере нормаль рельефа считается по карте высот (мип под размер пикселя), текстура слоя проецируется сверху,
 а на крутых склонах ещё и вдоль X и Z (triplanar, нормали по UDN), вдали — ещё и в крупном масштабе (distance
 resampling, как в UE Landscape: мелкий повтор не складывается в сетку), слои смешиваются по высоте. Настраиваются
@@ -560,7 +564,7 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 `TerrainHeightSource` (`Scene/Terrain/TerrainHeightSource.h`, реализует `CDLODTerrain`; шейдерная часть —
 `Shaders/terrain_height.sh`), так что расстановка не зависит от устройства террейна. Как в Witcher 3 и UE5: у каждого
 типа своя сетка, дальность и плавное исчезание; крупные камни, о которые спотыкаются, — модели уровня, а не расстановка.
-Маски в координатах карты высот; тестовые создаёт `Tools/gen_terrain_textures.py`. Лес — постоянный слой
+Маски в координатах карты высот; их считает движок по рельефу (`TerrainMasks`, текстуры хранилища по имени). Лес — постоянный слой
 (`ScatterLayers.persistent`): раскладывается один раз на всю карту кластерами по 8 × 8 ячеек (`placeWorld`), каждый
 кадр отбираются видимые кластеры и их экземпляры в те же списки видов (`cullPlaced`); отсечение экземпляров — по сфере
 модели варианта (`ScatterPass::Variant::bounds`). Модели слоёв могут быть и моделями уровня: материал собирает вариант

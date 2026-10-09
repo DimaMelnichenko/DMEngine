@@ -47,8 +47,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	if( erosion )
 		m_erosion = *erosion;
 	TerrainSettings settings;
-	std::string splatMap;
-	if( !loadSettings( terrainId, settings, splatMap ) )
+	if( !loadSettings( terrainId, settings ) )
 		return false;
 	m_terrainId = terrainId;
 	m_heightMultiplier = settings.heightMultiplier;
@@ -65,9 +64,10 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	for( uint32_t level = 0; level < m_levelCount; ++level )
 		m_nodesPerSide[level] = static_cast<uint32_t>( std::ceil( m_worldSize / nodeSize( level ) ) );
 
-	// Доли — по времени загрузки (Release, Test): конвейер рельефа и воды ~0,5 с, слои материала (фото-текстуры с мипами) ~1,5 с
+	// Доли — по времени загрузки (Release, Test): конвейер рельефа и воды с правилами слоёв ~0,7 с, слои материала
+	// (фото-текстуры с мипами) ~1,5 с
 	SlowTask task( 1.0f );
-	task.enterProgressFrame( 0.25f );
+	task.enterProgressFrame( 0.3f );
 	TerrainEditCoverage coverage;
 	if( !buildHeightBounds( edits, water, coverage ) || !createFoliageClearMask( coverage ) )
 		return false;
@@ -75,8 +75,8 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	if( !createShader() )
 		return false;
 
-	task.enterProgressFrame( 0.75f, "Material layers" );
-	if( !m_material.initialize( terrainId, splatMap, coverage ) )
+	task.enterProgressFrame( 0.7f, "Material layers" );
+	if( !m_material.initialize( terrainId, m_masks, coverage ) )
 		return false;
 
 	m_patch.initialize( patchDim + 1, patchDim + 1 );
@@ -191,9 +191,10 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 	return height;
 }
 
-bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings, std::string& splatMap )
+bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 {
-	SQLite::Statement query( DBConnector::instance().db(), "select heightmap, splatmap, height_multiplier, height_offset, width_multiplier, "
+	// Колонка splatmap больше не читается: splat-карту дают правила по итоговому рельефу (TerrainMasks)
+	SQLite::Statement query( DBConnector::instance().db(), "select heightmap, height_multiplier, height_offset, width_multiplier, "
 														   "triplanar_sharpness, height_blend, far_texture_scale, far_blend_start, "
 														   "far_blend_end from Terrain where id = :id" );
 	query.bind( ":id", terrainId );
@@ -205,7 +206,6 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings, 
 	}
 
 	m_heightMapName = query.getColumn( "heightmap" ).getString();
-	splatMap = query.getColumn( "splatmap" ).getString();
 	settings.id = terrainId;
 	settings.heightMultiplier = static_cast<float>( query.getColumn( "height_multiplier" ).getDouble() );
 	// Материал: NULL — значения по умолчанию TerrainSettings
@@ -233,6 +233,7 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings, 
 		directory = slash == std::string::npos ? std::string() : path.substr( 0, slash );
 	}
 	m_erodedDirectory = "Textures\\" + ( directory.empty() ? std::string() : directory + "\\" ) + "eroded";
+	m_generatedDirectory = "Textures\\" + ( directory.empty() ? std::string() : directory + "\\" ) + "generated";
 	return true;
 }
 
@@ -400,7 +401,7 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 	m_hasHydrology = false;
 	// Те же шаги и при перестройке русел в кадре — там у SlowTask нет обработчика, и он ничего не делает
 	SlowTask task( 1.0f );
-	task.enterProgressFrame( 0.8f, "Rivers and lakes" );
+	task.enterProgressFrame( 0.6f, "Rivers and lakes" );
 	if( water )
 	{
 		const auto start = std::chrono::steady_clock::now();
@@ -421,8 +422,12 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 					   std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
 		LOG( text );
 	}
-	task.enterProgressFrame( 0.2f, "Detail ground" );
+	task.enterProgressFrame( 0.1f, "Detail ground" );
 	if( !createDetailTiles() )
+		return false;
+	// Слои и маски — по итоговому рельефу и руслам: последняя ступень конвейера до воды
+	task.enterProgressFrame( 0.3f, "Layers and masks" );
+	if( !buildMasks( field ) )
 		return false;
 
 	// Копия итоговой карты на CPU — высота поверхности для ходьбы (surfaceHeight); 1024² — 4 МБ
@@ -509,7 +514,66 @@ bool CDLODTerrain::rebuildChannels( const WaterSimulationSettings& water, const 
 		std::memcpy( target.pixels + row * target.rowPitch, &m_baseHeights[static_cast<size_t>( row ) * m_baseSize], m_baseSize * sizeof( float ) );
 	TerrainEditCoverage coverage = m_baseCoverage;
 	m_streamCurves = curves;
-	return finishHeights( target, &water, coverage ) && createFoliageClearMask( coverage ) && m_material.repaint( coverage );
+	return finishHeights( target, &water, coverage ) && createFoliageClearMask( coverage ) && m_material.repaint( m_masks, coverage );
+}
+
+bool CDLODTerrain::buildMasks( const HeightField& finalField )
+{
+	const auto start = std::chrono::steady_clock::now();
+	// Уклон, высота и водосбор — по рельефу до русел (после эрозии и ручных правок, m_baseHeights): борта русел 1:1 дали бы
+	// полосы скалы вдоль каждого ручья, а сток, собранный в узкие русла, — сухие луга. Русла и озёра — маской воды
+	HeightField field = finalField;
+	if( m_baseSize == finalField.size && !m_baseHeights.empty() )
+	{
+		field.heights = m_baseHeights.data();
+		field.rowPitch = m_baseSize;
+	}
+	const std::vector<float> catchment = TerrainHydrology::catchment( field );
+	std::vector<float> water;
+	if( m_hasHydrology && m_hydrology.size == field.size )
+	{
+		const size_t cells = static_cast<size_t>( field.size ) * field.size;
+		water.assign( cells, 0.0f );
+		for( size_t i = 0; i < cells; ++i )
+			if( ( i < m_hydrology.lowering.size() && m_hydrology.lowering[i] < -0.05f ) ||
+				( i < m_hydrology.staticWater.size() && m_hydrology.staticWater[i].w > -1e8f ) )
+				water[i] = 1.0f;
+	}
+	TerrainMaskInputs inputs;
+	inputs.field = field;
+	inputs.wear = &m_erosionWear;
+	inputs.deposition = &m_erosionDeposition;
+	inputs.talus = &m_erosionTalus;
+	inputs.catchment = &catchment;
+	inputs.water = water.empty() ? nullptr : &water;
+	if( !TerrainMasks::build( inputs, TerrainMaskSettings(), m_masks ) )
+	{
+		LOG( "CDLOD terrain: layers and masks are not built" );
+		return false;
+	}
+
+	// Маски — текстуры хранилища по имени (ScatterLayers.mask, ParticleEmitters.mask): пересоздаются на месте, виды у
+	// расстановки и частиц остаются верными
+	std::vector<uint8_t> bytes( static_cast<size_t>( m_masks.size ) * m_masks.size );
+	for( const TerrainMasks::Mask& mask : m_masks.masks )
+	{
+		for( size_t i = 0; i < bytes.size(); ++i )
+			bytes[i] = static_cast<uint8_t>( std::lround( std::clamp( mask.values[i], 0.0f, 1.0f ) * 255.0f ) );
+		TextureDesc desc;
+		desc.width = desc.height = m_masks.size;
+		desc.format = DXGI_FORMAT_R8_UNORM;
+		TextureData data;
+		data.data = bytes.data();
+		data.rowPitch = m_masks.size;
+		if( !System::textures().setGenerated( mask.name, desc, data ) )
+			LOG( "CDLOD terrain: mask " + mask.name + " is not created" );
+	}
+	if( !m_masks.save( m_generatedDirectory ) )
+		LOG( "CDLOD terrain: can`t write layers and masks to " + m_generatedDirectory );
+	char text[64];
+	std::snprintf( text, sizeof( text ), ", ms: %.1f", std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
+	LOG( "Terrain layers and masks: " + m_masks.summary() + text );
+	return true;
 }
 
 bool CDLODTerrain::createDetailTiles()
@@ -874,6 +938,10 @@ bool CDLODTerrain::erode( HeightField& field, const TerrainErosionSettings& eros
 	if( cachedKey == keyText && loadFloatDDS( heightPath, size, eroded ) )
 	{
 		LOG( "Terrain erosion: from cache " + directory );
+		// Карты эрозии — входы правил слоёв (TerrainMasks); нет файла — правило без карты
+		if( !loadFloatDDS( directory + "\\wear.dds", size, m_erosionWear ) || !loadFloatDDS( directory + "\\deposition.dds", size, m_erosionDeposition ) ||
+			!loadFloatDDS( directory + "\\talus.dds", size, m_erosionTalus ) )
+			LOG( "Terrain erosion: no erosion maps in " + directory + ", layer rules go without them" );
 	}
 	else
 	{
@@ -890,6 +958,9 @@ bool CDLODTerrain::erode( HeightField& field, const TerrainErosionSettings& eros
 			return false;
 		}
 		eroded = std::move( result.height );
+		m_erosionWear = result.wear;
+		m_erosionDeposition = result.deposition;
+		m_erosionTalus = result.talus;
 
 		// Кэш и карты эрозии для офлайн-сценариев (Tools/gen_terrain_textures.py): высота, водосбор, размыв, отложения, осыпь
 		std::vector<float> normalized( eroded.size() );

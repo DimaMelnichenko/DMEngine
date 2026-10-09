@@ -102,6 +102,17 @@ bool DMTextureStorage::createDefaults()
 		   createSolid( flatNormalId, "default_normal", 0xFFFF8080 );
 }
 
+bool DMTextureStorage::setGenerated( const std::string& name, const TextureDesc& desc, const TextureData& data )
+{
+	// Есть — пересоздать в том же объекте (вид srv() остаётся членом того же DMTexture), нет — новый id вне base.db3
+	if( exists( name ) )
+		return get( id( name ) )->create( desc, data );
+	auto texture = std::make_unique<DMTexture>( freeId(), name );
+	if( !texture->create( desc, data ) )
+		return false;
+	return insertResource( std::move( texture ) );
+}
+
 bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::string& file, bool generateMipMap, bool sRGB,
 							  float preserveAlphaCoverage )
 {
