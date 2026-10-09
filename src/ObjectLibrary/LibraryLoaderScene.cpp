@@ -29,6 +29,13 @@ const std::pair<const char*, float GS::WaterChannelsSettings::*> channelColumns[
 	{ "min_water_depth", &GS::WaterChannelsSettings::minWaterDepth },
 	{ "foam_slope", &GS::WaterChannelsSettings::foamSlope },
 	{ "ribbon_overlap", &GS::WaterChannelsSettings::ribbonOverlap },
+	{ "freeboard", &GS::WaterChannelsSettings::freeboard },
+	{ "lake_depth_ratio", &GS::WaterChannelsSettings::lakeDepthRatio },
+	{ "lake_min_depth", &GS::WaterChannelsSettings::lakeMinDepth },
+	{ "lake_max_depth", &GS::WaterChannelsSettings::lakeMaxDepth },
+	{ "lake_shelf_width", &GS::WaterChannelsSettings::lakeShelfWidth },
+	{ "lake_shelf_depth", &GS::WaterChannelsSettings::lakeShelfDepth },
+	{ "lake_drop_slope", &GS::WaterChannelsSettings::lakeDropSlope },
 };
 
 // Колонки TerrainErosion ↔ поля TerrainErosionSettings

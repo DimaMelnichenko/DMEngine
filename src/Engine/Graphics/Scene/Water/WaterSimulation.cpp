@@ -74,6 +74,13 @@ const ChannelParameter channelParameters[] = {
 	{ "Min water depth", &WaterChannelsSettings::minWaterDepth, 0.05f, 1.0f, "m", "Water over the bed at least" },
 	{ "Foam slope", &WaterChannelsSettings::foamSlope, 0.02f, 0.5f, "", "Steeper streams foam (fully at twice), m per m" },
 	{ "Ribbon overlap", &WaterChannelsSettings::ribbonOverlap, 0.0f, 2.0f, "m", "Ribbon beyond the trough edge, under the bank" },
+	{ "Freeboard", &WaterChannelsSettings::freeboard, 0.0f, 2.0f, "m", "Water stands this much below the bank top: the bed is cut for floods" },
+	{ "Lake depth ratio", &WaterChannelsSettings::lakeDepthRatio, 0.0f, 0.3f, "", "Deepest lake point per square root of the lake area" },
+	{ "Lake min depth", &WaterChannelsSettings::lakeMinDepth, 0.0f, 10.0f, "m", "Deepest point of a small lake at least" },
+	{ "Lake max depth", &WaterChannelsSettings::lakeMaxDepth, 0.0f, 50.0f, "m", "Deepest point of a large lake at most" },
+	{ "Lake shelf width", &WaterChannelsSettings::lakeShelfWidth, 0.0f, 20.0f, "m", "Shallow shelf along the shore" },
+	{ "Lake shelf depth", &WaterChannelsSettings::lakeShelfDepth, 0.0f, 3.0f, "m", "Water depth at the shelf edge" },
+	{ "Lake drop slope", &WaterChannelsSettings::lakeDropSlope, 0.05f, 2.0f, "", "Drop-off beyond the shelf, m per m" },
 };
 
 bool sameSources( const WaterSimulationSettings& a, const WaterSimulationSettings& b )

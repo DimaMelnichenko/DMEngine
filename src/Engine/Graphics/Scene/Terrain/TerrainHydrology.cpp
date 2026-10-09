@@ -268,6 +268,106 @@ std::vector<double> lakeLevels( const std::vector<double>& filled, const std::ve
 	return level;
 }
 
+// Чаша озера: у настоящего озера за узкой отмелью (литоралью) — свал к глубине, которая растёт с площадью, а не
+// сантиметры воды над плоским дном. Уровень озера не меняется (его задаёт порог перелива), опускается только дно: по
+// расстоянию от берега s — отмель до shelfDepth на ширине shelfWidth, дальше свал dropSlope м на м, не глубже
+// clamp(depthRatio · √площади, minDepth, maxDepth) с плавным скруглением. Где дно и так глубже — не трогается.
+// Возвращает опускание дна по клеткам, м (≥ 0)
+std::vector<double> lakeBasins( const std::vector<double>& level, const std::vector<double>& height, int n, double cell,
+								const WaterChannelsSettings& p )
+{
+	const size_t cells = level.size();
+	std::vector<double> lowering( cells, 0.0 );
+	// Расстояние до берега (до ближайшей клетки не озера), м: два прохода фаски (1, √2)
+	constexpr double unreached = 1e30;
+	std::vector<double> shore( cells, 0.0 );
+	for( size_t i = 0; i < cells; ++i )
+		shore[i] = std::isnan( level[i] ) ? 0.0 : unreached;
+	const double diagonal = std::sqrt( 2.0 );
+	auto relax = [&]( int row, int col, int dr, int dc, double step )
+	{
+		const int r = row + dr;
+		const int c = col + dc;
+		double& value = shore[static_cast<size_t>( row ) * n + col];
+		const double other = r < 0 || c < 0 || r >= n || c >= n ? 0.0 : shore[static_cast<size_t>( r ) * n + c];
+		value = std::min( value, other + step );
+	};
+	for( int row = 0; row < n; ++row )
+	{
+		for( int col = 0; col < n; ++col )
+		{
+			if( shore[static_cast<size_t>( row ) * n + col] == 0.0 )
+				continue;
+			relax( row, col, -1, -1, diagonal );
+			relax( row, col, -1, 0, 1.0 );
+			relax( row, col, -1, 1, diagonal );
+			relax( row, col, 0, -1, 1.0 );
+		}
+	}
+	for( int row = n - 1; row >= 0; --row )
+	{
+		for( int col = n - 1; col >= 0; --col )
+		{
+			if( shore[static_cast<size_t>( row ) * n + col] == 0.0 )
+				continue;
+			relax( row, col, 1, 1, diagonal );
+			relax( row, col, 1, 0, 1.0 );
+			relax( row, col, 1, -1, diagonal );
+			relax( row, col, 0, 1, 1.0 );
+		}
+	}
+	// Озёра — связные области одного уровня; площадь — по числу клеток
+	std::vector<int> label( cells, -1 );
+	std::vector<double> maxDepth;
+	std::vector<int> queue, component;
+	for( size_t start = 0; start < cells; ++start )
+	{
+		if( std::isnan( level[start] ) || label[start] >= 0 )
+			continue;
+		const int id = static_cast<int>( maxDepth.size() );
+		component.clear();
+		queue.assign( 1, static_cast<int>( start ) );
+		label[start] = id;
+		while( !queue.empty() )
+		{
+			const int i = queue.back();
+			queue.pop_back();
+			component.push_back( i );
+			for( int k = 0; k < 8; ++k )
+			{
+				const int r = i / n + neighbourRow[k];
+				const int c = i % n + neighbourCol[k];
+				if( r < 0 || c < 0 || r >= n || c >= n )
+					continue;
+				const int j = r * n + c;
+				if( label[j] < 0 && !std::isnan( level[j] ) && level[j] == level[i] )
+				{
+					label[j] = id;
+					queue.push_back( j );
+				}
+			}
+		}
+		const double area = component.size() * cell * cell;
+		maxDepth.push_back( std::clamp( p.lakeDepthRatio * std::sqrt( area ), static_cast<double>( p.lakeMinDepth ),
+										static_cast<double>( std::max( p.lakeMaxDepth, p.lakeMinDepth ) ) ) );
+	}
+	const double shelfWidth = std::max( static_cast<double>( p.lakeShelfWidth ), 1e-3 );
+	for( size_t i = 0; i < cells; ++i )
+	{
+		if( label[i] < 0 )
+			continue;
+		const double s = shore[i] * cell;
+		const double raw = s < shelfWidth ? p.lakeShelfDepth * s / shelfWidth : p.lakeShelfDepth + ( s - shelfWidth ) * p.lakeDropSlope;
+		// Плавный минимум с наибольшей глубиной: дно скругляется, а не обрывается в плоскость
+		const double limit = maxDepth[label[i]];
+		const double k = 0.25 * limit;
+		const double h = std::clamp( 0.5 + 0.5 * ( limit - raw ) / k, 0.0, 1.0 );
+		const double depth = raw * h + limit * ( 1.0 - h ) - k * h * ( 1.0 - h );
+		lowering[i] = std::max( height[i] - ( level[i] - depth ), 0.0 );
+	}
+	return lowering;
+}
+
 }
 
 namespace
@@ -455,12 +555,24 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( int k = 0; k < count; ++k )
 	{
 		half[k] = 0.5 * std::max( p.widthCoef * std::sqrt( q[k] ), static_cast<double>( p.minWidth ) ) / cell;
-		depth[k] = std::max( p.depthCoef * std::pow( q[k], 0.4 ), static_cast<double>( p.minIncision ) );
+		surface[k] = height.sample( position[k].x - 0.5, position[k].y - 0.5 );
+		// Русло прорезано под паводок: вода в межень (по Маннингу, уклон — по поверхности) стоит ниже бровки на freeboard.
+		// У оси дно глубже на тальвег, поэтому врез · (1 + thalweg) ≥ вода + запас
+		double surfaceSlope = p.minWaterSlope;
+		if( down[k] >= 0 )
+		{
+			const int d = down[k];
+			const double step = std::max( std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell, 1e-3 );
+			surfaceSlope = std::max( ( surface[k] - height.sample( position[d].x - 0.5, position[d].y - 0.5 ) ) / step, surfaceSlope );
+		}
+		const double waterEstimate = std::max( std::pow( q[k] * p.manning / ( 2.0 * half[k] * cell * std::sqrt( surfaceSlope ) ), 0.6 ),
+											   static_cast<double>( p.minWaterDepth ) );
+		depth[k] = std::max( { p.depthCoef * std::pow( q[k], 0.4 ), static_cast<double>( p.minIncision ),
+							   ( waterEstimate + p.freeboard ) / ( 1.0 + p.thalweg ) } );
 		if( lake[stream[k]] )
 			depth[k] = 0.0;
 		else if( !std::isnan( outletLevel[k] ) )
 			depth[k] = std::min( depth[k], outletDistance[k] * outletSlope );
-		surface[k] = height.sample( position[k].x - 0.5, position[k].y - 0.5 );
 		bed[k] = surface[k] - depth[k];
 	}
 	for( int k : nodeOrder )
@@ -513,9 +625,11 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			}
 		}
 	}
+	// В озёрах русло не режется, дно — чаша (lakeBasins)
+	const std::vector<double> basin = lakeBasins( lakeLevel, height.values, n, cell, p );
 	for( size_t i = 0; i < cells; ++i )
 		if( lake[i] )
-			carve[i] = 0.0;
+			carve[i] = basin[i];
 	result.size = static_cast<uint32_t>( n );
 	result.lowering.resize( cells );
 	result.carvedCells = 0;
@@ -574,6 +688,9 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			for( double dx : { -0.7, 0.0, 0.7 } )
 				actual[k] = std::min( actual[k], carved.sample( position[k].x - 0.5 + dx, position[k].y - 0.5 + dy ) );
 		level[k] = actual[k] + std::max( waterDepth, static_cast<double>( p.minWaterDepth ) );
+		// Вода ниже бровки на запас, но не мельче 5 см над дном
+		const double freeboard = std::isnan( outletLevel[k] ) ? p.freeboard : std::min( static_cast<double>( p.freeboard ), outletDistance[k] * outletSlope );
+		level[k] = std::max( std::min( level[k], surface[k] - freeboard ), actual[k] + 0.05 );
 		// Ручей из озера — не выше его уровня, а первый узел ниже берега — на уровне озера: вода выходит из озера ровно
 		if( !std::isnan( outletLevel[k] ) )
 		{

@@ -243,6 +243,14 @@ struct WaterChannelsSettings
 	float minWaterSlope = 0.005f;	// уклон в глубине воды — не меньше, м на м
 	float minSpeed = 0.4f;			// течение ленты — не медленнее, м/с
 	float minWaterDepth = 0.3f;		// вода над дном — не мельче, м
+	float freeboard = 0.4f;			// вода ниже бровки (русло прорезано под паводок), м
+	// Чаша озера: отмель, затем свал к глубине depthRatio · √площади в пределах min…max
+	float lakeDepthRatio = 0.05f;	// наибольшая глубина на √площади озера
+	float lakeMinDepth = 1.0f;		// м
+	float lakeMaxDepth = 8.0f;		// м
+	float lakeShelfWidth = 3.0f;	// отмель у берега (литораль), м
+	float lakeShelfDepth = 0.5f;	// глубина у края отмели, м
+	float lakeDropSlope = 0.4f;		// свал за отмелью, м на м
 	float foamSlope = 0.1f;			// круче — пена на ручье (полная — на вдвое большем), м на м
 	float ribbonOverlap = 0.4f;		// лента за край ложбины, под берег, м
 };
