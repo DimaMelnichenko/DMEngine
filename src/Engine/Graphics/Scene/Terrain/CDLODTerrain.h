@@ -46,6 +46,10 @@ public:
 	void releaseErosionChange() { m_previousEroded.clear(); m_previousEroded.shrink_to_fit(); m_eroded.clear(); m_eroded.shrink_to_fit(); }
 	// Русла, ручьи, растр статичной воды и приток — для WaterSimulation; nullptr — у уровня нет воды
 	const TerrainHydrology::Result* hydrology() const { return m_hasHydrology ? &m_hydrology : nullptr; }
+	// Кривые русел, по которым построены русла; сгенерированы заново при этой загрузке — их пишет в базу Scene
+	const std::vector<StreamCurve>& streamCurves() const { return m_streamCurves; }
+	bool streamsRegenerated() const { return m_streamsRegenerated; }
+	const std::string& streamsKey() const { return m_streamsKey; }
 	// Карта высот и её масштаб: по ним стоят расстановка травы и декора и частицы
 	TerrainHeight terrainHeight() const override;
 	bool surfaceHeight( float x, float z, float& height ) const override;
@@ -131,6 +135,9 @@ private:
 	uint32_t m_cpuSize = 0;
 	TerrainHydrology::Result m_hydrology;	// конвейер рельефа и воды: русла по итоговому рельефу
 	bool m_hasHydrology = false;
+	std::vector<StreamCurve> m_streamCurves;
+	std::string m_streamsKey;
+	bool m_streamsRegenerated = false;
 	std::string m_erodedDirectory;			// кэш и карты эрозии: Textures\<каталог карты высот>\eroded
 	std::optional<TerrainErosionSettings> m_erosion;
 	PropertyContainer m_erosionProperties;	// «Erosion»

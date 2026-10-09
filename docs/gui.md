@@ -127,7 +127,7 @@ Details строка «Saved with the level», у остальных — «Not s
 | Model instances | строки `LevelModels`: положение, поворот (кватернион из углов окна), масштаб ([models.md](models.md)); пересадка на рельеф после новой эрозии закрепляется — `eroded\previous.dds` удаляется |
 | CDLOD terrain | строка `Terrain` (множитель высоты, triplanar, смешение по высоте, второй масштаб), `tiling` строк `TerrainLayers` («Layer tiling») и строка `TerrainErosion` (подокно «Erosion»; новая эрозия — при следующей загрузке) |
 | Наборы расстановки | строки `ScatterLayers` (шаг, кольцо, исчезание, размер, разброс, поворот, выравнивание, тень) и `ScatterLayerModels` (вес и тень варианта) |
-| Water simulation | строка `WaterSimulation` уровня (источники, дождь, Маннинг, поверхность) |
+| Water simulation | строка `WaterSimulation` уровня (источники, дождь, Маннинг, поверхность), `WaterChannels` (подокно «Channels») и строки `Streams` (подокно «Streams»: включение и множители кривых русел; изменённая кривая помечается правленной — [water.md](water.md), «Кривые русел») |
 | Particles | строки `ParticleEmitters` (всё, кроме способа рождения, формы, маски и ёмкости) |
 
 Объекты сцены — `LibraryLoader::saveLevelScene` (`LibraryLoaderScene.cpp`), окружение и объекты — две транзакции подряд

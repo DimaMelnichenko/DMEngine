@@ -220,6 +220,34 @@ struct WaterStream
 	std::vector<WaterStreamPoint> points;
 };
 
+// Точка кривой русла: x, z мира; расход — м³/с, 0 — по водосбору под точкой (ручная кривая)
+struct StreamCurvePoint
+{
+	DirectX::XMFLOAT2 position = DirectX::XMFLOAT2( 0.0f, 0.0f );
+	float discharge = 0.0f;
+};
+
+// Кривая русла — данные, а не побочный результат (строки Streams и StreamPoints, docs/water.md, «Кривые русел»): ось ручья
+// от истока вниз, как Landscape Splines в UE. Генератор конвейера (TerrainHydrology::generate) предлагает кривые по стоку
+// и пишет их в базу; правленная (edited) и ручная (generated = false) при новой генерации остаются, сгенерированные в их
+// полосе обрезаются. Множители — к общим параметрам WaterChannels (1 — как у всех)
+struct StreamCurve
+{
+	uint32_t id = 0;				// строка Streams; 0 — ещё не в базе
+	std::string name;
+	bool generated = true;
+	bool edited = false;
+	bool enabled = true;
+	float widthScale = 1.0f;		// ширина дна
+	float depthScale = 1.0f;		// врез
+	float freeboardScale = 1.0f;	// запас бровки над водой
+	float bankSlopeScale = 1.0f;	// пологость бортов
+	float thalwegScale = 1.0f;		// тальвег
+	float roughnessScale = 1.0f;	// шероховатость дна (Маннинг): глубина воды
+	float dischargeScale = 1.0f;	// расход
+	std::vector<StreamCurvePoint> points;
+};
+
 // Русла и ручьи конвейера рельефа и воды (TerrainHydrology) — строка WaterChannels той же строки WaterSimulation;
 // без строки — значения по умолчанию. Применяются при загрузке уровня
 struct WaterChannelsSettings
@@ -290,6 +318,10 @@ struct WaterSimulationSettings
 	// рельефу (трубы, Маннинг)
 	bool staticWater = false;
 	WaterChannelsSettings channels;
+	// Кривые русел (строки Streams) и отпечаток, по которому они сгенерированы (StreamGeneration): не совпал с нынешним
+	// рельефом и параметрами — генерация заново
+	std::vector<StreamCurve> streams;
+	std::string streamsKey;
 };
 
 // Эмиттер частиц (строки ParticleEmitters и экземпляр LevelParticleEmitters, ParticleSystem, docs/particles.md)

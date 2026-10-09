@@ -4,7 +4,9 @@
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <cstdio>
 #include <queue>
+#include <string>
 #include <utility>
 
 namespace GS
@@ -388,6 +390,125 @@ Grid gridMetres( const HeightField& field )
 
 }
 
+namespace
+{
+
+// Сток и озёра по итоговому рельефу — общее для генерации кривых и постройки русел по ним
+struct Drainage
+{
+	Grid height;
+	std::vector<double> filled;
+	std::vector<int> receiver;
+	std::vector<int> order;
+	std::vector<double> area;		// водосбор, м²
+	std::vector<double> inflow;		// приток клетки, м³/с
+	std::vector<double> flow;		// расход, м³/с
+	std::vector<double> lakeLevel;	// уровень озера, м; NaN — не озеро
+	std::vector<uint8_t> lake;
+};
+
+Drainage drainage( const HeightField& field, const WaterSimulationSettings& water )
+{
+	const WaterChannelsSettings& p = water.channels;
+	const int n = static_cast<int>( field.size );
+	const size_t cells = static_cast<size_t>( n ) * n;
+	const double cell = field.texelSize;
+	Drainage d;
+	d.height = gridMetres( field );
+
+	// 1. Сток по заполненной карте и водосбор
+	d.filled = fillDepressions( d.height );
+	d.receiver = receivers( d.filled, n );
+	d.order = downhillOrder( d.filled );
+	d.area = accumulate( std::vector<double>( cells, cell * cell ), d.receiver, d.order );
+
+	// 2. Приток: доля «русла» по водосбору и помощники, весь расход помощника — в клетку центра; расход вниз по течению
+	d.inflow.resize( cells );
+	const double logStart = std::log10( std::max( water.flowStart, 1.0f ) );
+	const double logFull = std::log10( std::max( water.flowFull, 1.0f ) );
+	for( size_t i = 0; i < cells; ++i )
+		d.inflow[i] = smoothstep( logStart, logFull, std::log10( std::max( d.area[i], 1.0 ) ) ) * ( water.sourceRate / 1000.0 );
+	for( const WaterSource& source : water.sources )
+	{
+		const int col = static_cast<int>( std::clamp( source.position.x / cell, 0.0, n - 1.0 ) );
+		const int row = static_cast<int>( std::clamp( ( n * cell - source.position.y ) / cell, 0.0, n - 1.0 ) );
+		d.inflow[static_cast<size_t>( row ) * n + col] += source.rate / 1000.0;
+	}
+	d.flow = accumulate( d.inflow, d.receiver, d.order );
+
+	// Низины, которые заполнит вода (озёра), не режутся: русло кончается у берега. Низина меньше minLakeArea — не озеро, а
+	// ямка на дне ручья (извилина, тальвег, кривая правки рельефа): ручей идёт сквозь неё, иначе лента обрывалась бы у
+	// каждой ямки, а в ямке стояла бы своя плоская вода
+	d.lakeLevel = lakeLevels( d.filled, d.height.values, d.inflow, n, p.lakeDepth, p.minLakeArea / ( cell * cell ) );
+	d.lake.resize( cells );
+	for( size_t i = 0; i < cells; ++i )
+		d.lake[i] = std::isnan( d.lakeLevel[i] ) ? 0 : 1;
+	return d;
+}
+
+// Отпечаток (FNV-1a 64)
+struct Fingerprint
+{
+	uint64_t value = 1469598103934665603ull;
+	void add( const void* data, size_t size )
+	{
+		const uint8_t* bytes = static_cast<const uint8_t*>( data );
+		for( size_t i = 0; i < size; ++i )
+			value = ( value ^ bytes[i] ) * 1099511628211ull;
+	}
+	template<typename T> void add( const T& v ) { add( &v, sizeof( v ) ); }
+};
+
+// Клетка карты под точкой (столбец, строка — дробные)
+int cellIndex( const Point& point, int n )
+{
+	const int col = std::clamp( static_cast<int>( point.x ), 0, n - 1 );
+	const int row = std::clamp( static_cast<int>( point.y ), 0, n - 1 );
+	return row * n + col;
+}
+
+// Наибольшее значение в клетках 3 × 3 вокруг точки: расход и водосбор под ручной кривой, которая легла рядом со стоком D8
+double sampleMax( const std::vector<double>& values, const Point& point, int n )
+{
+	const int col = std::clamp( static_cast<int>( point.x ), 0, n - 1 );
+	const int row = std::clamp( static_cast<int>( point.y ), 0, n - 1 );
+	double result = 0.0;
+	for( int dy = -1; dy <= 1; ++dy )
+		for( int dx = -1; dx <= 1; ++dx )
+			result = std::max( result, values[static_cast<size_t>( std::clamp( row + dy, 0, n - 1 ) ) * n + std::clamp( col + dx, 0, n - 1 )] );
+	return result;
+}
+
+// Расстояние от точки до ломаной и ближайшая точка на ней (в единицах точек)
+double distanceToPolyline( const Point& point, const std::vector<Point>& line, Point* nearest = nullptr )
+{
+	double best = std::numeric_limits<double>::infinity();
+	for( size_t i = 0; i + 1 < line.size(); ++i )
+	{
+		const double sx = line[i + 1].x - line[i].x;
+		const double sy = line[i + 1].y - line[i].y;
+		const double length2 = std::max( sx * sx + sy * sy, 1e-12 );
+		const double t = std::clamp( ( ( point.x - line[i].x ) * sx + ( point.y - line[i].y ) * sy ) / length2, 0.0, 1.0 );
+		const Point on = { line[i].x + t * sx, line[i].y + t * sy };
+		const double distance = std::hypot( point.x - on.x, point.y - on.y );
+		if( distance < best )
+		{
+			best = distance;
+			if( nearest )
+				*nearest = on;
+		}
+	}
+	if( line.size() == 1 )
+	{
+		best = std::hypot( point.x - line[0].x, point.y - line[0].y );
+		if( nearest )
+			*nearest = line[0];
+	}
+	return best;
+}
+
+}
+
 std::vector<float> TerrainHydrology::catchment( const HeightField& field )
 {
 	if( field.size < 3 )
@@ -400,7 +521,35 @@ std::vector<float> TerrainHydrology::catchment( const HeightField& field )
 	return std::vector<float>( area.begin(), area.end() );
 }
 
-bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSettings& water, Result& result )
+std::string TerrainHydrology::generationKey( const HeightField& field, const WaterSimulationSettings& water )
+{
+	Fingerprint key;
+	const char version[] = "streams-v1";
+	key.add( version, sizeof( version ) );
+	key.add( field.size );
+	for( uint32_t row = 0; row < field.size; ++row )
+		key.add( field.heights + row * field.rowPitch, field.size * sizeof( float ) );
+	key.add( field.texelSize );
+	key.add( field.heightMultiplier );
+	key.add( field.heightOffset );
+	key.add( water.sourceRate );
+	key.add( water.flowStart );
+	key.add( water.flowFull );
+	for( const WaterSource& source : water.sources )
+	{
+		key.add( source.position );
+		key.add( source.rate );
+	}
+	const WaterChannelsSettings& p = water.channels;
+	for( float value : { p.minDischarge, p.meanderLength, p.meanderAmplitude, p.meanderMaxSlope, p.lakeDepth, p.minLakeArea } )
+		key.add( value );
+	key.add( p.smooth );
+	char text[32];
+	std::snprintf( text, sizeof( text ), "%016llx", static_cast<unsigned long long>( key.value ) );
+	return text;
+}
+
+bool TerrainHydrology::generate( const HeightField& field, const WaterSimulationSettings& water, std::vector<StreamCurve>& curves )
 {
 	const WaterChannelsSettings& p = water.channels;
 	const int n = static_cast<int>( field.size );
@@ -408,43 +557,20 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		return false;
 	const size_t cells = static_cast<size_t>( n ) * n;
 	const double cell = field.texelSize;
-
-	const Grid height = gridMetres( field );
-
-	// 1. Сток по заполненной карте и водосбор
-	const std::vector<double> filled = fillDepressions( height );
-	const std::vector<int> receiver = receivers( filled, n );
-	const std::vector<int> order = downhillOrder( filled );
-	const std::vector<double> area = accumulate( std::vector<double>( cells, cell * cell ), receiver, order );
-
-	// 2. Приток: доля «русла» по водосбору и помощники, весь расход помощника — в клетку центра; расход вниз по течению
-	std::vector<double> inflow( cells );
-	const double logStart = std::log10( std::max( water.flowStart, 1.0f ) );
-	const double logFull = std::log10( std::max( water.flowFull, 1.0f ) );
-	for( size_t i = 0; i < cells; ++i )
-		inflow[i] = smoothstep( logStart, logFull, std::log10( std::max( area[i], 1.0 ) ) ) * ( water.sourceRate / 1000.0 );
-	for( const WaterSource& source : water.sources )
-	{
-		const int col = static_cast<int>( std::clamp( source.position.x / cell, 0.0, n - 1.0 ) );
-		const int row = static_cast<int>( std::clamp( ( n * cell - source.position.y ) / cell, 0.0, n - 1.0 ) );
-		inflow[static_cast<size_t>( row ) * n + col] += source.rate / 1000.0;
-	}
-	const std::vector<double> flow = accumulate( inflow, receiver, order );
-	result.largestDischarge = static_cast<float>( *std::max_element( flow.begin(), flow.end() ) );
+	const Drainage dr = drainage( field, water );
 
 	// 3. Узлы оси: клетки с расходом выше порога, вниз — получатель, вверх — главный приток (наибольший расход)
 	std::vector<int> stream;
 	std::vector<int> nodeOf( cells, -1 );
 	for( size_t i = 0; i < cells; ++i )
 	{
-		if( flow[i] > p.minDischarge )
+		if( dr.flow[i] > p.minDischarge )
 		{
 			nodeOf[i] = static_cast<int>( stream.size() );
 			stream.push_back( static_cast<int>( i ) );
 		}
 	}
 	const int count = static_cast<int>( stream.size() );
-	result.nodes = stream.size();
 	std::vector<Point> position( count );
 	std::vector<int> down( count, -1 );
 	std::vector<double> q( count );
@@ -452,8 +578,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	{
 		const int i = stream[k];
 		position[k] = { i % n + 0.5, i / n + 0.5 };
-		down[k] = receiver[i] != i ? nodeOf[receiver[i]] : -1;
-		q[k] = flow[i];
+		down[k] = dr.receiver[i] != i ? nodeOf[dr.receiver[i]] : -1;
+		q[k] = dr.flow[i];
 	}
 	std::vector<int> up( count, -1 );
 	{
@@ -484,7 +610,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// Узлы от истоков вниз — по убыванию заполненной высоты (при равных — по номеру)
 	std::vector<int> nodeOrder( count );
 	std::iota( nodeOrder.begin(), nodeOrder.end(), 0 );
-	std::stable_sort( nodeOrder.begin(), nodeOrder.end(), [&]( int a, int b ) { return filled[stream[a]] > filled[stream[b]]; } );
+	std::stable_sort( nodeOrder.begin(), nodeOrder.end(), [&]( int a, int b ) { return dr.filled[stream[a]] > dr.filled[stream[b]]; } );
 
 	// Извилины: сдвиг поперёк течения волной вдоль пути от истока, амплитуда растёт с расходом и гаснет на уклоне
 	// (ось, сдвинутая с ложбины на склон, легла бы бортом под уровень воды) и у истока и устья
@@ -496,7 +622,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			if( d >= 0 && up[d] == k )
 				distance[d] = distance[k] + std::hypot( position[d].x - position[k].x, position[d].y - position[k].y );
 		}
-		Grid smooth = height;
+		Grid smooth = dr.height;
 		for( int pass = 0; pass < 3; ++pass )
 			smooth = boxBlur3( smooth );
 		std::vector<Point> shifted = position;
@@ -522,22 +648,358 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		position = std::move( shifted );
 	}
 
-	// Низины, которые заполнит вода (озёра), не режутся: русло кончается у берега. Низина меньше minLakeArea — не озеро, а
-	// ямка на дне ручья (извилина, тальвег, кривая правки рельефа): ручей идёт сквозь неё, иначе лента обрывалась бы у
-	// каждой ямки, а в ямке стояла бы своя плоская вода
-	const std::vector<double> lakeLevel = lakeLevels( filled, height.values, inflow, n, p.lakeDepth, p.minLakeArea / ( cell * cell ) );
-	std::vector<uint8_t> lake( cells );
-	for( size_t i = 0; i < cells; ++i )
-		lake[i] = std::isnan( lakeLevel[i] ) ? 0 : 1;
-	// Узлы ниже озера: путь от берега, м, и уровень озера, из которого течёт ручей (NaN — не из озера)
+	// Кривые — цепочки узлов от истока (или первого узла ниже озера) до слияния (узел главного — последняя точка), озера
+	// (узел в озере — последняя) или края; дальше слияния течёт главный ручей
+	curves.clear();
+	const double world = n * cell;
+	for( int k : nodeOrder )
+	{
+		const bool inLake = dr.lake[stream[k]] != 0;
+		if( inLake || ( up[k] >= 0 && !dr.lake[stream[up[k]]] ) )
+			continue;
+		std::vector<int> chain = { k };
+		while( true )
+		{
+			const int d = down[chain.back()];
+			if( d < 0 )
+				break;
+			chain.push_back( d );
+			if( up[d] != chain[chain.size() - 2] || dr.lake[stream[d]] )
+				break;
+		}
+		if( chain.size() < 2 )
+			continue;
+		StreamCurve& curve = curves.emplace_back();
+		curve.name = "Stream " + std::to_string( curves.size() );
+		for( int node : chain )
+		{
+			StreamCurvePoint& point = curve.points.emplace_back();
+			point.position = DirectX::XMFLOAT2( static_cast<float>( position[node].x * cell ), static_cast<float>( world - position[node].y * cell ) );
+			point.discharge = static_cast<float>( q[node] );
+		}
+	}
+	return true;
+}
+
+std::vector<StreamCurve> TerrainHydrology::merge( const std::vector<StreamCurve>& generated, const std::vector<StreamCurve>& existing,
+												  const WaterChannelsSettings& channels )
+{
+	// Правленные и ручные — как есть
+	std::vector<StreamCurve> result;
+	for( const StreamCurve& curve : existing )
+		if( !curve.generated || curve.edited )
+			result.push_back( curve );
+	struct Corridor
+	{
+		std::vector<Point> line;
+		double radius = 0.0;
+	};
+	std::vector<Corridor> corridors;
+	for( const StreamCurve& curve : result )
+	{
+		if( !curve.enabled )
+			continue;
+		Corridor& corridor = corridors.emplace_back();
+		for( const StreamCurvePoint& point : curve.points )
+			corridor.line.push_back( { point.position.x, point.position.y } );
+		corridor.radius = 0.5 * channels.minWidth * curve.widthScale + 3.0;
+	}
+	// Сгенерированные — без участков в полосе правленных: остаток кончается на правленной (примыкает к ней)
+	int index = 0;
+	for( const StreamCurve& curve : generated )
+	{
+		// В полосе правленной; nearest — ближайшая точка её кривой (вершина: конец обрезанной совпадёт с узлом правленной)
+		auto covered = [&]( const StreamCurvePoint& point, Point* nearest )
+		{
+			const Point at = { point.position.x, point.position.y };
+			for( const Corridor& corridor : corridors )
+			{
+				if( distanceToPolyline( at, corridor.line ) >= corridor.radius )
+					continue;
+				double best = std::numeric_limits<double>::infinity();
+				for( const Point& vertex : corridor.line )
+				{
+					const double distance = std::hypot( vertex.x - at.x, vertex.y - at.y );
+					if( distance < best )
+					{
+						best = distance;
+						*nearest = vertex;
+					}
+				}
+				return true;
+			}
+			return false;
+		};
+		StreamCurve piece = curve;
+		piece.points.clear();
+		auto flush = [&]()
+		{
+			if( piece.points.size() >= 2 )
+			{
+				piece.name = "Stream " + std::to_string( ++index );
+				result.push_back( piece );
+			}
+			piece.points.clear();
+		};
+		for( const StreamCurvePoint& point : curve.points )
+		{
+			Point nearest;
+			if( !covered( point, &nearest ) )
+			{
+				piece.points.push_back( point );
+				continue;
+			}
+			// Вошла в полосу правленной: конец — в ближайшей точке её кривой
+			if( !piece.points.empty() )
+			{
+				StreamCurvePoint end = point;
+				end.position = DirectX::XMFLOAT2( static_cast<float>( nearest.x ), static_cast<float>( nearest.y ) );
+				piece.points.push_back( end );
+			}
+			flush();
+		}
+		flush();
+	}
+	return result;
+}
+
+bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSettings& water, const std::vector<StreamCurve>& curves,
+							  Result& result )
+{
+	const WaterChannelsSettings& p = water.channels;
+	const int n = static_cast<int>( field.size );
+	if( n < 3 )
+		return false;
+	const size_t cells = static_cast<size_t>( n ) * n;
+	const double cell = field.texelSize;
+	const double world = n * cell;
+	const Drainage dr = drainage( field, water );
+	const Grid& height = dr.height;
+	const std::vector<double>& lakeLevel = dr.lakeLevel;
+	const std::vector<uint8_t>& lake = dr.lake;
+	result.largestDischarge = static_cast<float>( *std::max_element( dr.flow.begin(), dr.flow.end() ) );
+	result.warnings.clear();
+
+	// 3. Узлы оси — по кривым: точки в клетках, длинные отрезки (ручная кривая) — через клетку. Последняя точка, совпавшая
+	// с точкой другой кривой (сгенерированный приток кончается узлом главного), — это узел той кривой
+	struct CurvePoints
+	{
+		const StreamCurve* curve = nullptr;
+		std::vector<Point> points;
+		std::vector<double> discharge;
+		int target = -1;			// последняя точка — точка этой кривой …
+		size_t targetPoint = 0;		// … с этим номером
+	};
+	std::vector<CurvePoints> lines;
+	for( const StreamCurve& curve : curves )
+	{
+		if( !curve.enabled || curve.points.size() < 2 )
+			continue;
+		CurvePoints& line = lines.emplace_back();
+		line.curve = &curve;
+		for( size_t i = 0; i < curve.points.size(); ++i )
+		{
+			const Point point = { curve.points[i].position.x / cell, ( world - curve.points[i].position.y ) / cell };
+			if( !line.points.empty() )
+			{
+				const Point previous = line.points.back();
+				const double previousDischarge = line.discharge.back();
+				const int steps = static_cast<int>( std::ceil( std::hypot( point.x - previous.x, point.y - previous.y ) / 1.5 ) );
+				for( int s = 1; s < steps; ++s )
+				{
+					const double f = static_cast<double>( s ) / steps;
+					line.points.push_back( { previous.x + ( point.x - previous.x ) * f, previous.y + ( point.y - previous.y ) * f } );
+					line.discharge.push_back( previousDischarge + ( curve.points[i].discharge - previousDischarge ) * f );
+				}
+			}
+			line.points.push_back( point );
+			line.discharge.push_back( curve.points[i].discharge );
+		}
+	}
+	for( size_t a = 0; a < lines.size(); ++a )
+	{
+		const Point end = lines[a].points.back();
+		if( lake[cellIndex( end, n )] )
+			continue;
+		for( size_t b = 0; b < lines.size() && lines[a].target < 0; ++b )
+		{
+			if( a == b )
+				continue;
+			for( size_t i = 0; i < lines[b].points.size(); ++i )
+			{
+				if( std::hypot( lines[b].points[i].x - end.x, lines[b].points[i].y - end.y ) < 0.25 )
+				{
+					lines[a].target = static_cast<int>( b );
+					lines[a].targetPoint = i;
+					break;
+				}
+			}
+		}
+	}
+	std::vector<Point> position;
+	std::vector<double> q, nodeArea;
+	std::vector<int> down, curveOf;
+	std::vector<std::vector<int>> lineNodes( lines.size() );
+	for( size_t a = 0; a < lines.size(); ++a )
+	{
+		const CurvePoints& line = lines[a];
+		const size_t own = line.points.size() - ( line.target >= 0 ? 1 : 0 );
+		for( size_t i = 0; i < own; ++i )
+		{
+			const int k = static_cast<int>( position.size() );
+			position.push_back( line.points[i] );
+			const double discharge = line.discharge[i] > 0.0 ? line.discharge[i] : sampleMax( dr.flow, line.points[i], n );
+			q.push_back( discharge * line.curve->dischargeScale );
+			nodeArea.push_back( sampleMax( dr.area, line.points[i], n ) );
+			down.push_back( -1 );
+			curveOf.push_back( static_cast<int>( a ) );
+			if( i > 0 )
+				down[k - 1] = k;
+			lineNodes[a].push_back( k );
+		}
+	}
+	const int count = static_cast<int>( position.size() );
+	result.nodes = position.size();
+	// Концы: слившийся — узлом той кривой; правленная и ручная — в ближайший узел другой кривой в пределах трёх клеток
+	// (её конец могли сдвинуть, сгенерированная обрезана у правленной); в озере и у края — никуда
+	for( size_t a = 0; a < lines.size(); ++a )
+	{
+		if( lineNodes[a].empty() )
+			continue;
+		const int last = lineNodes[a].back();
+		if( lines[a].target >= 0 )
+		{
+			const std::vector<int>& target = lineNodes[lines[a].target];
+			if( lines[a].targetPoint < target.size() )
+				down[last] = target[lines[a].targetPoint];
+			continue;
+		}
+		// Конец сгенерированной кривой известен: слияние (совпавшая точка), озеро или край карты
+		const StreamCurve& curve = *lines[a].curve;
+		if( ( curve.generated && !curve.edited ) || lake[cellIndex( position[last], n )] )
+			continue;
+		double best = 3.0;
+		for( int k = 0; k < count; ++k )
+		{
+			if( curveOf[k] == static_cast<int>( a ) )
+				continue;
+			const double distance = std::hypot( position[k].x - position[last].x, position[k].y - position[last].y );
+			if( distance < best )
+			{
+				best = distance;
+				down[last] = k;
+			}
+		}
+	}
+	// От истоков вниз — топологический порядок (Kahn); связи, замкнувшие круг, рвутся
+	std::vector<int> nodeOrder;
+	{
+		std::vector<int> incoming( count, 0 );
+		for( int k = 0; k < count; ++k )
+			if( down[k] >= 0 )
+				++incoming[down[k]];
+		std::vector<int> ready;
+		for( int k = count - 1; k >= 0; --k )
+			if( incoming[k] == 0 )
+				ready.push_back( k );
+		while( !ready.empty() )
+		{
+			const int k = ready.back();
+			ready.pop_back();
+			nodeOrder.push_back( k );
+			const int d = down[k];
+			if( d >= 0 && --incoming[d] == 0 )
+				ready.push_back( d );
+		}
+		if( static_cast<int>( nodeOrder.size() ) < count )
+		{
+			for( int k = 0; k < count; ++k )
+			{
+				if( incoming[k] > 0 )
+				{
+					down[k] = -1;
+					nodeOrder.push_back( k );
+				}
+			}
+			result.warnings.push_back( "stream curves link into a loop: the loop is cut" );
+		}
+	}
+	// Расход вниз по течению не убывает (ручная кривая с расходом по водосбору)
+	for( int k : nodeOrder )
+		if( down[k] >= 0 )
+			q[down[k]] = std::max( q[down[k]], q[k] );
+	std::vector<int> up( count, -1 );
+	{
+		std::vector<double> upFlow( count, 0.0 );
+		for( int k = 0; k < count; ++k )
+		{
+			const int d = down[k];
+			if( d >= 0 && q[k] > upFlow[d] )
+			{
+				upFlow[d] = q[k];
+				up[d] = k;
+			}
+		}
+	}
+	std::vector<int> cellOf( count );
+	for( int k = 0; k < count; ++k )
+		cellOf[k] = cellIndex( position[k], n );
+	auto inLake = [&]( int k ) { return lake[cellOf[k]] != 0; };
+
+	// Параметры русла узла — общие, умноженные на множители его кривой
+	struct Shape
+	{
+		double widthCoef, minWidth, depthCoef, minIncision, freeboard, bankSlope, thalweg, manning;
+	};
+	std::vector<Shape> shape( count );
+	for( int k = 0; k < count; ++k )
+	{
+		const StreamCurve& curve = *lines[curveOf[k]].curve;
+		shape[k] = { p.widthCoef * curve.widthScale, p.minWidth * curve.widthScale, p.depthCoef * curve.depthScale,
+					 p.minIncision * curve.depthScale, p.freeboard * curve.freeboardScale, p.bankSlope * curve.bankSlopeScale,
+					 p.thalweg * curve.thalwegScale, p.manning * curve.roughnessScale };
+	}
+
+	// Узлы ниже озера: путь от берега, м, и уровень озера, из которого течёт ручей (NaN — не из озера). Кривая, которая
+	// начинается у берега, — из озера
 	std::vector<double> outletDistance( count, std::numeric_limits<double>::infinity() );
 	std::vector<double> outletLevel( count, std::numeric_limits<double>::quiet_NaN() );
+	std::vector<uint8_t> lakeStart( count, 0 );
+	for( size_t a = 0; a < lines.size(); ++a )
+	{
+		if( lineNodes[a].empty() )
+			continue;
+		const int k = lineNodes[a].front();
+		if( up[k] >= 0 || inLake( k ) )
+			continue;
+		const int col = cellOf[k] % n;
+		const int row = cellOf[k] / n;
+		double best = 3.0;
+		for( int dy = -3; dy <= 3; ++dy )
+		{
+			for( int dx = -3; dx <= 3; ++dx )
+			{
+				const int r = row + dy;
+				const int c = col + dx;
+				if( r < 0 || c < 0 || r >= n || c >= n || !lake[static_cast<size_t>( r ) * n + c] )
+					continue;
+				const double distance = std::hypot( c + 0.5 - position[k].x, r + 0.5 - position[k].y );
+				if( distance < best )
+				{
+					best = distance;
+					outletDistance[k] = distance * cell;
+					outletLevel[k] = lakeLevel[static_cast<size_t>( r ) * n + c];
+					lakeStart[k] = 1;
+				}
+			}
+		}
+	}
 	for( int k : nodeOrder )
 	{
 		const int d = down[k];
-		if( d < 0 || lake[stream[d]] )
+		if( d < 0 || inLake( d ) )
 			continue;
-		const bool fromLake = lake[stream[k]] != 0;
+		const bool fromLake = inLake( k );
 		if( !fromLake && std::isnan( outletLevel[k] ) )
 			continue;
 		const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
@@ -545,7 +1007,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		if( distance < outletDistance[d] )
 		{
 			outletDistance[d] = distance;
-			outletLevel[d] = fromLake ? lakeLevel[stream[k]] : outletLevel[k];
+			outletLevel[d] = fromLake ? lakeLevel[cellOf[k]] : outletLevel[k];
 		}
 	}
 
@@ -554,7 +1016,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	std::vector<double> half( count ), depth( count ), bed( count ), bank( count ), surface( count );
 	for( int k = 0; k < count; ++k )
 	{
-		half[k] = 0.5 * std::max( p.widthCoef * std::sqrt( q[k] ), static_cast<double>( p.minWidth ) ) / cell;
+		const Shape& s = shape[k];
+		half[k] = 0.5 * std::max( s.widthCoef * std::sqrt( q[k] ), s.minWidth ) / cell;
 		surface[k] = height.sample( position[k].x - 0.5, position[k].y - 0.5 );
 		// Русло прорезано под паводок: вода в межень (по Маннингу, уклон — по поверхности) стоит ниже бровки на freeboard.
 		// У оси дно глубже на тальвег, поэтому врез · (1 + thalweg) ≥ вода + запас
@@ -565,11 +1028,10 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			const double step = std::max( std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell, 1e-3 );
 			surfaceSlope = std::max( ( surface[k] - height.sample( position[d].x - 0.5, position[d].y - 0.5 ) ) / step, surfaceSlope );
 		}
-		const double waterEstimate = std::max( std::pow( q[k] * p.manning / ( 2.0 * half[k] * cell * std::sqrt( surfaceSlope ) ), 0.6 ),
+		const double waterEstimate = std::max( std::pow( q[k] * s.manning / ( 2.0 * half[k] * cell * std::sqrt( surfaceSlope ) ), 0.6 ),
 											   static_cast<double>( p.minWaterDepth ) );
-		depth[k] = std::max( { p.depthCoef * std::pow( q[k], 0.4 ), static_cast<double>( p.minIncision ),
-							   ( waterEstimate + p.freeboard ) / ( 1.0 + p.thalweg ) } );
-		if( lake[stream[k]] )
+		depth[k] = std::max( { s.depthCoef * std::pow( q[k], 0.4 ), s.minIncision, ( waterEstimate + s.freeboard ) / ( 1.0 + s.thalweg ) } );
+		if( inLake( k ) )
 			depth[k] = 0.0;
 		else if( !std::isnan( outletLevel[k] ) )
 			depth[k] = std::min( depth[k], outletDistance[k] * outletSlope );
@@ -578,7 +1040,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( int k : nodeOrder )
 	{
 		const int d = down[k];
-		if( d >= 0 && !lake[stream[k]] )
+		if( d >= 0 && !inLake( k ) )
 		{
 			const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
 			bed[d] = std::min( bed[d], bed[k] - p.minSlope * step );
@@ -587,7 +1049,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( int k = 0; k < count; ++k )
 	{
 		depth[k] = surface[k] - bed[k];
-		bank[k] = depth[k] * p.bankSlope / cell;
+		bank[k] = depth[k] * shape[k].bankSlope / cell;
 	}
 	std::vector<double> carve( cells, 0.0 );
 	for( int k = 0; k < count; ++k )
@@ -616,9 +1078,10 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 				const double w = half[k] + ( half[d] - half[k] ) * t;
 				const double dep = depth[k] + ( depth[d] - depth[k] ) * t;
 				const double bw = std::max( bank[k] + ( bank[d] - bank[k] ) * t, 1e-3 );
+				const double thalwegShare = shape[k].thalweg + ( shape[d].thalweg - shape[k].thalweg ) * t;
 				// Ложе U: к середине дно глубже (тальвег) — малый расход собирается в середине, а не плёнкой по ширине
 				const double inner = std::clamp( distance / std::max( w, 1e-3 ), 0.0, 1.0 );
-				const double thalweg = p.thalweg * dep * ( 1.0 - inner * inner );
+				const double thalweg = thalwegShare * dep * ( 1.0 - inner * inner );
 				const double profile = dep * ( 1.0 - smoothstep( 0.0, 1.0, ( distance - w ) / bw ) ) + thalweg;
 				double& value = carve[static_cast<size_t>( row ) * n + col];
 				value = std::max( value, profile );
@@ -650,11 +1113,11 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		reach[k] = ( half[k] + bank[k] ) * cell;
 	}
 
-	// Водосбор вдоль оси русла — приток симуляции (режим simulated): площадь узла переносится на сдвинутую ось шагами по
-	// полметра, иначе приток лился бы вдоль прежних прямых линий D8 рядом с руслом
-	result.channelFlow.assign( area.begin(), area.end() );
+	// Водосбор вдоль оси русла — приток симуляции (режим simulated): площадь узла переносится на ось шагами по полметра,
+	// иначе приток лился бы вдоль прежних прямых линий D8 рядом с руслом
+	result.channelFlow.assign( dr.area.begin(), dr.area.end() );
 	for( int k = 0; k < count; ++k )
-		result.channelFlow[stream[k]] = 0.0f;
+		result.channelFlow[cellOf[k]] = 0.0f;
 	for( int k = 0; k < count; ++k )
 	{
 		const int d = down[k] >= 0 ? down[k] : k;
@@ -667,7 +1130,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			const int col = static_cast<int>( std::clamp( a.x + ( b.x - a.x ) * f, 0.0, n - 1.0 ) );
 			const int row = static_cast<int>( std::clamp( a.y + ( b.y - a.y ) * f, 0.0, n - 1.0 ) );
 			float& value = result.channelFlow[static_cast<size_t>( row ) * n + col];
-			value = std::max( value, static_cast<float>( area[stream[k]] ) );
+			value = std::max( value, static_cast<float>( nodeArea[k] ) );
 		}
 	}
 
@@ -682,26 +1145,26 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			const double step = std::max( std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell, 1e-3 );
 			slope[k] = std::max( ( bed[k] - bed[d] ) / step, static_cast<double>( p.minWaterSlope ) );
 		}
-		const double waterDepth = std::pow( q[k] * p.manning / ( width[k] * std::sqrt( slope[k] ) ), 0.6 );
+		const double waterDepth = std::pow( q[k] * shape[k].manning / ( width[k] * std::sqrt( slope[k] ) ), 0.6 );
 		actual[k] = std::numeric_limits<double>::infinity();
 		for( double dy : { -0.7, 0.0, 0.7 } )
 			for( double dx : { -0.7, 0.0, 0.7 } )
 				actual[k] = std::min( actual[k], carved.sample( position[k].x - 0.5 + dx, position[k].y - 0.5 + dy ) );
 		level[k] = actual[k] + std::max( waterDepth, static_cast<double>( p.minWaterDepth ) );
 		// Вода ниже бровки на запас, но не мельче 5 см над дном
-		const double freeboard = std::isnan( outletLevel[k] ) ? p.freeboard : std::min( static_cast<double>( p.freeboard ), outletDistance[k] * outletSlope );
+		const double freeboard = std::isnan( outletLevel[k] ) ? shape[k].freeboard : std::min( shape[k].freeboard, outletDistance[k] * outletSlope );
 		level[k] = std::max( std::min( level[k], surface[k] - freeboard ), actual[k] + 0.05 );
 		// Ручей из озера — не выше его уровня, а первый узел ниже берега — на уровне озера: вода выходит из озера ровно
 		if( !std::isnan( outletLevel[k] ) )
 		{
-			const bool first = up[k] >= 0 && lake[stream[up[k]]];
+			const bool first = lakeStart[k] || ( up[k] >= 0 && inLake( up[k] ) );
 			level[k] = first ? std::max( outletLevel[k], actual[k] ) : std::min( level[k], outletLevel[k] );
 		}
 	}
 	for( int k : nodeOrder )
 	{
 		const int d = down[k];
-		if( d >= 0 && !lake[stream[k]] )
+		if( d >= 0 && !inLake( k ) )
 			level[d] = std::min( level[d], level[k] );
 	}
 	for( int k = 0; k < count; ++k )
@@ -710,24 +1173,55 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		foam[k] = std::clamp( ( slope[k] - p.foamSlope ) / ( 2.0 * p.foamSlope ), 0.0, 1.0 ) * 0.6;
 	}
 
-	// Ручьи — цепочки узлов от истока (или первого узла ниже озера) до слияния, озера или края; дальше слияния течёт
-	// главный ручей
-	std::vector<std::vector<int>> chains;
-	for( int k : nodeOrder )
+	// Правленная или ручная кривая, которая на нынешнем рельефе идёт в гору (земля под ней сменилась) — предупреждение:
+	// дно монотонно вниз, и русло там прорежется траншеей
+	for( size_t a = 0; a < lines.size(); ++a )
 	{
-		const bool inLake = lake[stream[k]] != 0;
-		if( inLake || ( up[k] >= 0 && !lake[stream[up[k]]] ) )
+		const StreamCurve& curve = *lines[a].curve;
+		if( ( curve.generated && !curve.edited ) || lineNodes[a].empty() )
 			continue;
-		std::vector<int> chain = { k };
-		while( true )
+		double lowest = std::numeric_limits<double>::infinity();
+		double rise = 0.0;
+		int at = lineNodes[a].front();
+		for( int k : lineNodes[a] )
 		{
-			const int d = down[chain.back()];
-			if( d < 0 )
-				break;
-			chain.push_back( d );
-			if( up[d] != chain[chain.size() - 2] || lake[stream[d]] )
-				break;
+			if( surface[k] - lowest > rise )
+			{
+				rise = surface[k] - lowest;
+				at = k;
+			}
+			lowest = std::min( lowest, surface[k] );
 		}
+		if( rise > 0.5 )
+		{
+			char text[256];
+			std::snprintf( text, sizeof( text ), "stream \"%s\" runs uphill by %.1f m near %.0f, %.0f: the terrain under the edited curve changed?",
+						   curve.name.c_str(), rise, position[at].x * cell, world - position[at].y * cell );
+			result.warnings.push_back( text );
+		}
+	}
+
+	// Ленты — по кривым: от истока (или узла ниже озера) до слияния, озера или края; кривая, проходящая озеро, рвётся в нём
+	std::vector<std::vector<int>> chains;
+	for( size_t a = 0; a < lineNodes.size(); ++a )
+	{
+		std::vector<int> chain;
+		for( int k : lineNodes[a] )
+		{
+			if( inLake( k ) )
+			{
+				if( !chain.empty() )
+				{
+					chain.push_back( k );
+					chains.push_back( std::move( chain ) );
+				}
+				chain.clear();
+				continue;
+			}
+			chain.push_back( k );
+		}
+		if( !chain.empty() && down[chain.back()] >= 0 )
+			chain.push_back( down[chain.back()] );
 		if( chain.size() >= 2 )
 			chains.push_back( std::move( chain ) );
 	}
@@ -737,7 +1231,6 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( size_t i = 0; i < cells; ++i )
 		result.staticWater[i].w = lake[i] ? static_cast<float>( lakeLevel[i] ) : -1e9f;
 	std::vector<double> nearest( cells, std::numeric_limits<double>::infinity() );
-	const double world = n * cell;
 	result.streams.clear();
 	result.points = 0;
 	for( const std::vector<int>& chain : chains )
@@ -752,7 +1245,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			points[i] = position[chain[i]];
 		const int last = chain.back();
 		const int previous = chain[chain.size() - 2];
-		if( up[last] != previous && !lake[stream[last]] )
+		if( up[last] != previous && !lake[cellOf[last]] )
 		{
 			const Point centre = position[last];
 			// Урез главного: дно шириной half, выше — борт; вода стоит на глубине level − actual над дном
@@ -793,9 +1286,9 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		std::vector<double> pointLevel( points.size() );
 		for( size_t i = 0; i < points.size(); ++i )
 			pointLevel[i] = level[nodes[i]];
-		if( lake[stream[nodes.back()]] )
+		if( lake[cellOf[nodes.back()]] )
 		{
-			const double lakeSurface = lakeLevel[stream[nodes.back()]];
+			const double lakeSurface = lakeLevel[cellOf[nodes.back()]];
 			points.pop_back();
 			nodes.pop_back();
 			pointLevel.pop_back();

@@ -83,6 +83,24 @@ const ChannelParameter channelParameters[] = {
 	{ "Lake drop slope", &WaterChannelsSettings::lakeDropSlope, 0.05f, 2.0f, "", "Drop-off beyond the shelf, m per m" },
 };
 
+// Множители кривой русла в подокне «Streams»: имя свойства, поле, подсказка
+struct StreamScale
+{
+	const char* name;
+	float StreamCurve::* field;
+	const char* tooltip;
+};
+
+const StreamScale streamScales[] = {
+	{ "Width scale", &StreamCurve::widthScale, "Bed width of this stream, times the common one" },
+	{ "Depth scale", &StreamCurve::depthScale, "Incision of this stream, times the common one" },
+	{ "Freeboard scale", &StreamCurve::freeboardScale, "Bank above the water, times the common one" },
+	{ "Bank slope scale", &StreamCurve::bankSlopeScale, "Gentler (> 1) or steeper (< 1) banks" },
+	{ "Thalweg scale", &StreamCurve::thalwegScale, "Deeper middle of the bed, times the common one" },
+	{ "Roughness scale", &StreamCurve::roughnessScale, "Bed roughness (Manning): deeper, slower water at > 1" },
+	{ "Discharge scale", &StreamCurve::dischargeScale, "Water of this stream: wider, deeper bed at > 1" },
+};
+
 bool sameSources( const WaterSimulationSettings& a, const WaterSimulationSettings& b )
 {
 	return a.sourceRate == b.sourceRate && a.flowStart == b.flowStart && a.flowFull == b.flowFull && a.sourceRadius == b.sourceRadius;
@@ -150,6 +168,24 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	paint->setHigh( 7.0f );
 	paint->setTooltip( "Terrain material layer of the bed and banks (TerrainLayers.layer); applied at the next level load" );
 	m_properties.addSubContainer( &m_channelsProperties );
+
+	// Кривые русел: подокно на кривую — включение и множители; правка помечает кривую правленной («Save level»):
+	// новая генерация её не заменит
+	m_streamsProperties.setName( "Streams" );
+	m_streamProperties.clear();
+	for( const StreamCurve& curve : settings.streams )
+	{
+		auto container = std::make_unique<PropertyContainer>();
+		container->setName( curve.name + ( curve.generated ? "" : " (manual)" ) + ( curve.edited ? " (edited)" : "" ) + " #" +
+							std::to_string( curve.id ) );
+		container->insert( "Enabled", curve.enabled )->setTooltip( "Off - no channel and no water; applied at the next level load" );
+		for( const StreamScale& scale : streamScales )
+			addSlider( *container, scale.name, curve.*scale.field, 0.1f, 4.0f )
+				->setTooltip( std::string( scale.tooltip ) + "; applied at the next level load" );
+		m_streamsProperties.addSubContainer( container.get() );
+		m_streamProperties.push_back( std::move( container ) );
+	}
+	m_properties.addSubContainer( &m_streamsProperties );
 
 	DMD3D& d3d = DMD3D::instance();
 	if( !m_sourcesShader.Initialize( "Shaders\\water_simulation.cs", "mainSources" ) ||
@@ -578,6 +614,20 @@ WaterSimulation::Settings WaterSimulation::settings() const
 		settings.channels.*parameter.field = m_channelsProperties[parameter.name].data<float>();
 	settings.channels.smooth = m_channelsProperties["Smooth passes"].data<int32_t>();
 	settings.channels.paintLayer = m_channelsProperties["Paint layer"].data<int32_t>();
+	for( size_t i = 0; i < settings.streams.size() && i < m_streamProperties.size(); ++i )
+	{
+		StreamCurve& curve = settings.streams[i];
+		const StreamCurve& initial = m_initial.streams[i];
+		const PropertyContainer& properties = *m_streamProperties[i];
+		curve.enabled = properties["Enabled"].data<bool>();
+		for( const StreamScale& scale : streamScales )
+			curve.*scale.field = properties[scale.name].data<float>();
+		// Правка в окне — кривая правленная: новая генерация её не заменит
+		bool changed = curve.enabled != initial.enabled;
+		for( const StreamScale& scale : streamScales )
+			changed = changed || curve.*scale.field != initial.*scale.field;
+		curve.edited = initial.edited || changed;
+	}
 	return settings;
 }
 

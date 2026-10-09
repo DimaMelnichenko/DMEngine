@@ -75,7 +75,7 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName 
 	return true;
 }
 
-bool Scene::initialize( bool particles )
+bool Scene::initialize( LibraryLoader& library, bool particles )
 {
 	LOG( "Create light driver" );
 	if( !m_lightDriver.Initialize() )
@@ -138,6 +138,14 @@ bool Scene::initialize( bool particles )
 	const bool hasWater = m_level.terrain && m_level.waterSimulation;
 	if( m_level.waterSimulation && !m_level.terrain )
 		LOG( "Water simulation needs a terrain, skipped" );
+	// Кривые русел сгенерированы заново — в базу (это данные: их правят окно «Streams» и Tools/stream_edit.py)
+	if( hasWater && m_terrain.streamsRegenerated() && m_level.waterSimulationId )
+	{
+		m_level.waterSimulation->streams = m_terrain.streamCurves();
+		m_level.waterSimulation->streamsKey = m_terrain.streamsKey();
+		if( !library.saveGeneratedStreams( *m_level.waterSimulationId, m_level.waterSimulation->streamsKey, m_level.waterSimulation->streams ) )
+			LOG( "Stream curves are not saved to the database" );
+	}
 	if( hasWater && ( !m_terrain.hydrology() || !m_water.initialize( *m_level.waterSimulation, m_terrain, *m_terrain.hydrology() ) ) )
 		return false;
 

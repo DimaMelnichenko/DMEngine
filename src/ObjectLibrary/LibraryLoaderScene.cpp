@@ -100,6 +100,120 @@ void LibraryLoader::loadWaterChannels( uint32_t waterSimulationId, GS::WaterChan
 		channels.paintLayer = query.getColumn( "paint_layer" ).getInt();
 }
 
+// Множители кривой русла ↔ колонки Streams — одна таблица для загрузки и сохранения
+const std::pair<const char*, float GS::StreamCurve::*> streamScaleColumns[] = {
+	{ "width_scale", &GS::StreamCurve::widthScale },
+	{ "depth_scale", &GS::StreamCurve::depthScale },
+	{ "freeboard_scale", &GS::StreamCurve::freeboardScale },
+	{ "bank_slope_scale", &GS::StreamCurve::bankSlopeScale },
+	{ "thalweg_scale", &GS::StreamCurve::thalwegScale },
+	{ "roughness_scale", &GS::StreamCurve::roughnessScale },
+	{ "discharge_scale", &GS::StreamCurve::dischargeScale },
+};
+
+void LibraryLoader::loadStreams( uint32_t waterSimulationId, GS::WaterSimulationSettings& water )
+{
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "Streams" ) || !db.tableExists( "StreamPoints" ) )
+		return;
+	SQLite::Statement query( db, "SELECT * FROM Streams WHERE water_simulation = :id ORDER BY id" );
+	query.bind( ":id", waterSimulationId );
+	while( query.executeStep() )
+	{
+		GS::StreamCurve& curve = water.streams.emplace_back();
+		curve.id = static_cast<uint32_t>( query.getColumn( "id" ).getInt() );
+		curve.name = query.getColumn( "name" ).getString();
+		curve.generated = query.getColumn( "generated" ).getInt() != 0;
+		curve.edited = query.getColumn( "edited" ).getInt() != 0;
+		curve.enabled = query.getColumn( "enabled" ).getInt() != 0;
+		for( const auto& [column, field] : streamScaleColumns )
+			if( !query.getColumn( column ).isNull() )
+				curve.*field = static_cast<float>( query.getColumn( column ).getDouble() );
+		SQLite::Statement points( db, "SELECT x, z, discharge FROM StreamPoints WHERE stream = :stream ORDER BY point" );
+		points.bind( ":stream", static_cast<int64_t>( curve.id ) );
+		while( points.executeStep() )
+		{
+			GS::StreamCurvePoint& point = curve.points.emplace_back();
+			point.position = DirectX::XMFLOAT2( static_cast<float>( points.getColumn( 0 ).getDouble() ),
+												static_cast<float>( points.getColumn( 1 ).getDouble() ) );
+			point.discharge = points.getColumn( 2 ).isNull() ? 0.0f : static_cast<float>( points.getColumn( 2 ).getDouble() );
+		}
+	}
+	if( db.tableExists( "StreamGeneration" ) )
+	{
+		SQLite::Statement key( db, "SELECT key FROM StreamGeneration WHERE water_simulation = :id" );
+		key.bind( ":id", waterSimulationId );
+		if( key.executeStep() )
+			water.streamsKey = key.getColumn( 0 ).getString();
+	}
+}
+
+bool LibraryLoader::saveGeneratedStreams( uint32_t waterSimulationId, const std::string& key, std::vector<GS::StreamCurve>& curves )
+{
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "Streams" ) || !db.tableExists( "StreamPoints" ) || !db.tableExists( "StreamGeneration" ) )
+		return false;
+	try
+	{
+		SQLite::Transaction transaction( db );
+		SQLite::Statement removePoints( db, "DELETE FROM StreamPoints WHERE stream IN (SELECT id FROM Streams WHERE water_simulation = :id "
+											"AND generated != 0 AND edited = 0)" );
+		removePoints.bind( ":id", waterSimulationId );
+		removePoints.exec();
+		SQLite::Statement removeStreams( db, "DELETE FROM Streams WHERE water_simulation = :id AND generated != 0 AND edited = 0" );
+		removeStreams.bind( ":id", waterSimulationId );
+		removeStreams.exec();
+		std::string columns = "water_simulation, name, generated, edited, enabled";
+		std::string values = ":water, :name, :generated, :edited, :enabled";
+		for( const auto& [column, field] : streamScaleColumns )
+		{
+			columns += std::string( ", " ) + column;
+			values += std::string( ", :" ) + column;
+		}
+		SQLite::Statement insertStream( db, "INSERT INTO Streams (" + columns + ") VALUES (" + values + ")" );
+		SQLite::Statement insertPoint( db, "INSERT INTO StreamPoints (stream, point, x, z, discharge) VALUES (:stream, :point, :x, :z, :discharge)" );
+		for( GS::StreamCurve& curve : curves )
+		{
+			if( curve.id != 0 )
+				continue;
+			insertStream.bind( ":water", waterSimulationId );
+			insertStream.bind( ":name", curve.name );
+			insertStream.bind( ":generated", curve.generated ? 1 : 0 );
+			insertStream.bind( ":edited", curve.edited ? 1 : 0 );
+			insertStream.bind( ":enabled", curve.enabled ? 1 : 0 );
+			for( const auto& [column, field] : streamScaleColumns )
+				insertStream.bind( std::string( ":" ) + column, static_cast<double>( curve.*field ) );
+			insertStream.exec();
+			insertStream.reset();
+			curve.id = static_cast<uint32_t>( db.getLastInsertRowid() );
+			for( size_t i = 0; i < curve.points.size(); ++i )
+			{
+				insertPoint.bind( ":stream", static_cast<int64_t>( curve.id ) );
+				insertPoint.bind( ":point", static_cast<int64_t>( i ) );
+				insertPoint.bind( ":x", static_cast<double>( curve.points[i].position.x ) );
+				insertPoint.bind( ":z", static_cast<double>( curve.points[i].position.y ) );
+				if( curve.points[i].discharge > 0.0f )
+					insertPoint.bind( ":discharge", static_cast<double>( curve.points[i].discharge ) );
+				else
+					insertPoint.bind( ":discharge" );
+				insertPoint.exec();
+				insertPoint.reset();
+			}
+		}
+		SQLite::Statement saveKey( db, "INSERT OR REPLACE INTO StreamGeneration (water_simulation, key) VALUES (:id, :key)" );
+		saveKey.bind( ":id", waterSimulationId );
+		saveKey.bind( ":key", key );
+		saveKey.exec();
+		transaction.commit();
+	}
+	catch( const std::exception& error )
+	{
+		LOG( std::string( "Can`t save stream curves: " ) + error.what() );
+		return false;
+	}
+	return true;
+}
+
 // Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterLayers и ScatterLayerModels,
 // WaterSimulation, ParticleEmitters. Только колонки, которые правятся в окнах; состав (какие слои, модели, эмиттеры)
 // не меняется
@@ -263,6 +377,27 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 			for( const auto& [column, field] : channelColumns )
 				saveChannels.bind( std::string( ":" ) + column, dbValue( water->channels.*field ) );
 			saveChannels.exec();
+
+			// Кривые русел: включение, правка и множители (точки правит Tools/stream_edit.py)
+			if( db.tableExists( "Streams" ) )
+			{
+				std::string assignments = "enabled = :enabled, edited = :edited";
+				for( const auto& [column, field] : streamScaleColumns )
+					assignments += std::string( ", " ) + column + " = :" + column;
+				SQLite::Statement updateStream( db, "UPDATE Streams SET " + assignments + " WHERE id = :id" );
+				for( const GS::StreamCurve& curve : water->streams )
+				{
+					if( curve.id == 0 )
+						continue;
+					updateStream.bind( ":enabled", curve.enabled ? 1 : 0 );
+					updateStream.bind( ":edited", curve.edited ? 1 : 0 );
+					for( const auto& [column, field] : streamScaleColumns )
+						updateStream.bind( std::string( ":" ) + column, dbValue( curve.*field ) );
+					updateStream.bind( ":id", static_cast<int64_t>( curve.id ) );
+					updateStream.exec();
+					updateStream.reset();
+				}
+			}
 		}
 
 		// Эмиттер — тип (ParticleEmitters), экземпляры уровня ссылаются на него: у двух экземпляров одного типа

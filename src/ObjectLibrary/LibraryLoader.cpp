@@ -482,6 +482,7 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 	// Режим: static — ручьи лентами и озёра без шагов, simulated — вода течёт; русла и ручьи строит конвейер рельефа и воды
 	water.staticWater = query.getColumn( "mode" ).getString() == "static";
 	loadWaterChannels( *level.waterSimulationId, water.channels );
+	loadStreams( *level.waterSimulationId, water );
 	return true;
 }
 

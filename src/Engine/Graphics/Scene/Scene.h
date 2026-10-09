@@ -31,7 +31,7 @@ public:
 	bool loadResources( LibraryLoader& library, const std::string& levelName );
 	// Создаёт объекты сцены и свет; вызывается после loadResources() и Renderer::initialize()
 	// particles — частицы уровня (-noparticles: нет, кадры с одной точки совпадают)
-	bool initialize( bool particles = true );
+	bool initialize( LibraryLoader& library, bool particles = true );
 
 	// Раз за кадр до update(): правки источников в GUI и время суток, затем свет солнца у земли — через атмосферу
 	// seconds — время кадра: с ним идёт время суток

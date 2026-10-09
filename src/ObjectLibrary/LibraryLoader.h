@@ -56,6 +56,10 @@ public:
 
 	void save();
 
+	// Сгенерированные заново кривые: прежние несправленные строки удаляются, новые (id 0) вставляются и получают id,
+	// правленные и ручные не трогаются; отпечаток — в StreamGeneration
+	bool saveGeneratedStreams( uint32_t waterSimulationId, const std::string& key, std::vector<GS::StreamCurve>& curves );
+
 private:
 	// Загружает текстуры из строк запроса вида "SELECT id, name, file, generate_mipmap, sRGB FROM Textures ..."
 	bool loadTextures( SQLite::Statement& queryTexture );
@@ -66,6 +70,8 @@ private:
 	bool loadWaterSimulation( LevelDescription& level );
 	// Строка WaterChannels строки WaterSimulation (LibraryLoaderScene.cpp); нет таблицы или строки — по умолчанию
 	void loadWaterChannels( uint32_t waterSimulationId, GS::WaterChannelsSettings& channels );
+	// Кривые русел строки WaterSimulation (Streams, StreamPoints) и отпечаток их генерации (StreamGeneration)
+	void loadStreams( uint32_t waterSimulationId, GS::WaterSimulationSettings& water );
 	// Строка TerrainErosion, на которую ссылается Terrain.erosion (LibraryLoaderScene.cpp); нет колонки или NULL — эрозии нет
 	void loadTerrainErosion( uint32_t terrainId, LevelDescription& level );
 	// Эмиттеры частиц уровня (LevelParticleEmitters → ParticleEmitters); таблиц нет — эмиттеров нет

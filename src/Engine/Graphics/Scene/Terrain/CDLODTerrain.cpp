@@ -345,13 +345,35 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 	if( water )
 	{
 		const auto start = std::chrono::steady_clock::now();
-		if( !TerrainHydrology::build( field, *water, m_hydrology ) )
+		// Кривые русел — из базы; рельеф или параметры генератора сменились (отпечаток не совпал) — генерация заново:
+		// прежние несправленные заменяются, правленные и ручные остаются (Scene пишет новые в базу)
+		m_streamCurves = water->streams;
+		m_streamsKey = TerrainHydrology::generationKey( field, *water );
+		m_streamsRegenerated = m_streamsKey != water->streamsKey;
+		if( m_streamsRegenerated )
+		{
+			std::vector<StreamCurve> generated;
+			if( !TerrainHydrology::generate( field, *water, generated ) )
+			{
+				LOG( "CDLOD terrain: stream curves are not generated" );
+				return false;
+			}
+			m_streamCurves = TerrainHydrology::merge( generated, water->streams, water->channels );
+			size_t kept = 0;
+			for( const StreamCurve& curve : m_streamCurves )
+				kept += curve.generated && !curve.edited ? 0 : 1;
+			LOG( "Terrain hydrology: stream curves generated: " + std::to_string( m_streamCurves.size() - kept ) + ", edited and manual kept: " +
+				 std::to_string( kept ) );
+		}
+		if( !TerrainHydrology::build( field, *water, m_streamCurves, m_hydrology ) )
 		{
 			LOG( "CDLOD terrain: water channels are not built" );
 			return false;
 		}
 		applyTerrainEdits( field, { TerrainHydrology::loweringEdit( m_hydrology, water->channels ) }, &coverage );
 		m_hasHydrology = true;
+		for( const std::string& warning : m_hydrology.warnings )
+			LOG( "Terrain hydrology: " + warning );
 		char text[256];
 		std::snprintf( text, sizeof( text ), "Terrain hydrology: largest discharge %.3f m3/s, channel nodes %zu, carved cells %zu, "
 					   "deepest %.2f m, streams %zu, points %zu, ms: %.1f", m_hydrology.largestDischarge, m_hydrology.nodes,

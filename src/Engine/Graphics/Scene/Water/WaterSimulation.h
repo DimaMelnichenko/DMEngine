@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+#include <vector>
 #include "SceneObject.h"
 #include "DMComputeShader.h"
 #include "ShaderProgram.h"
@@ -143,6 +145,9 @@ private:
 	ShaderView m_staticWaterView;
 	const ShaderView* m_staticWaterMap = nullptr;
 	PropertyContainer m_channelsProperties;	// «Channels»: WaterChannelsSettings — при следующей загрузке
+	// «Streams»: кривые русел — включение и множители, подокно на кривую (порядок — как m_initial.streams)
+	PropertyContainer m_streamsProperties;
+	std::vector<std::unique_ptr<PropertyContainer>> m_streamProperties;
 	StreamRibbons m_streams;
 	Buffer m_constantBuffer;
 
