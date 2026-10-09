@@ -8,6 +8,7 @@
 #include "Engine/Input/Input.h"
 #include "Engine\Console\PropertyCommands.h"
 #include "Utils\utilites.h"
+#include "Utils\SlowTask.h"
 
 using namespace DirectX;
 
@@ -76,15 +77,41 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		return false;
 	}
 
+	// Экран загрузки: GUI — сразу после устройства, задачи загрузки (SlowTask) рисуют кадр с прогрессом; обработчик
+	// снимается в конце Initialize и при выходе с ошибкой
+	m_GUI.Initialize( m_hwnd );
+	m_loadingTitle = "Loading level " + m_config.levelName();
+	m_loadingStart = std::chrono::steady_clock::now();
+	SlowTask::setHandler( [this]( const std::string& task, float progress ) { drawLoadingFrame( task, progress ); } );
+	struct LoadingScreenGuard
+	{
+		~LoadingScreenGuard() { SlowTask::setHandler( {} ); }
+	} loadingScreenGuard;
+	// Части загрузки — по времени (Release, уровень Test): текстуры ~1,8 с, сцена (террейн, русла, вода) ~2,8 с, импостеры
+	// ~2 с; в лог — сколько заняла каждая (и шаги дольше 100 мс — drawLoadingFrame)
+	SlowTask loading( 6.7f );
+	std::string stageName;
+	auto stageStart = TIME_POINT();
+	auto stage = [&]( float work, const char* name )
+	{
+		if( !stageName.empty() )
+			LOG( "Loading: " + stageName + " ms: " + TIME_PRINT( stageStart ) );
+		stageName = name;
+		stageStart = TIME_POINT();
+		loading.enterProgressFrame( work, name );
+	};
+
 	// Заглушки создаются до загрузки ресурсов и подставляются вместо всего, что не загрузилось
 	RET_FALSE( System::textures().createPlaceholder() );
 	RET_FALSE( System::textures().createDefaults() );
 	RET_FALSE( System::meshes().createPlaceholder() );
 	RET_FALSE( System::meshes().createDefaults() );
 
+	stage( 1.8f, "Materials, models and textures" );
 	RET_FALSE( m_scene.loadResources( *m_library, m_config.levelName() ) );
 
 	// Создаем общий буфер вершин и индексов
+	stage( 0.05f, "Renderer" );
 	RET_FALSE( m_renderer.initialize( m_scene.level().postProcess, m_scene.level().heightFog, m_config.shadowMapResolution(),
 									  m_config.depthPrepass() ) );
 
@@ -98,11 +125,15 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	m_timer.Initialize();
 
+	stage( 2.8f, "Scene" );
 	RET_FALSE( m_scene.initialize( *m_library, m_config.particles() ) );
 	// Импостеры расстановки — рендером моделей в кадры, до прогрева: их материалы прогреются вместе со всеми
+	stage( 2.0f, "Impostors" );
 	RET_FALSE( m_renderer.bake( m_scene ) );
 	// Пайплайны материалов и объектов для проходов кадра — когда объекты созданы, а свет уровня известен (смещение теней)
+	stage( 0.05f, "Pipelines" );
 	m_renderer.warmPipelines( m_scene );
+	stage( 0.0f, "Editor" );
 
 	// -nowind: растения неподвижны — кадры с одной точки совпадают до пикселя. До регистрации в GUI: выключенный ветер —
 	// исходное состояние окна, а не правка
@@ -177,12 +208,12 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	debugView( "Water on terrain", m_scene.terrain().properties(), "Show water" );
 	debugView( "Shadow cascades", m_renderer.shadowProperties(), "Show cascades" );
 
-	m_GUI.Initialize( m_hwnd );
 	m_GUI.setCommandNames( m_console.names() );
 	m_showGUI = m_config.showGUI();
 	if( !m_config.mouseLook() )
 		ShowCursor( FALSE );
 
+	LOG( "Loading: " + stageName + " ms: " + TIME_PRINT( stageStart ) );
 	LOG( "Total init ms: " + TIME_PRINT( timeStartInit ) );
 
 	bindingKeys();
@@ -284,6 +315,49 @@ bool DMGraphics::Render( const FrameContext& frame )
 	DMD3D::instance().endFrame();
 
 	return true;
+}
+
+void DMGraphics::drawLoadingFrame( const std::string& task, float progress )
+{
+	// Сообщения окна — при каждом шаге: без них Windows через 5 с помечает окно «не отвечает». Закрыли окно — выход сразу
+	// после загрузки (WM_SIZE до конца Initialize не применяется — DMGraphics::resize)
+	MSG message;
+	while( PeekMessage( &message, nullptr, 0, 0, PM_REMOVE ) )
+	{
+		if( message.message == WM_QUIT )
+		{
+			m_exitRequested = true;
+			continue;
+		}
+		TranslateMessage( &message );
+		DispatchMessage( &message );
+	}
+
+	// Шаги дольше 100 мс — в лог: на что уходит загрузка (и доли SlowTask)
+	const auto now = std::chrono::steady_clock::now();
+	if( task != m_loadingStep )
+	{
+		const double stepMs = std::chrono::duration<double, std::milli>( now - m_loadingStepStart ).count();
+		if( !m_loadingStep.empty() && stepMs >= 100.0 )
+			LOG( "Loading step: " + m_loadingStep + ", ms: " + std::to_string( stepMs ) );
+		m_loadingStep = task;
+		m_loadingStepStart = now;
+	}
+
+	// Кадр — не чаще 30 раз в секунду: он выполняет и ждёт записанные команды загрузки (beginFrame); новая задача — сразу
+	const double sinceDrawn = std::chrono::duration<double>( now - m_loadingDrawn ).count();
+	if( sinceDrawn < ( task == m_loadingTask ? 1.0 / 30.0 : 1.0 / 120.0 ) )
+		return;
+	m_loadingTask = task;
+	m_loadingDrawn = now;
+
+	DMD3D& d3d = DMD3D::instance();
+	d3d.beginFrame();
+	d3d.beginPass( PassDesc{ "Loading screen", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight() } );
+	m_GUI.drawLoadingScreen( m_loadingTitle, task, progress,
+							 static_cast<float>( std::chrono::duration<double>( now - m_loadingStart ).count() ) );
+	d3d.endFrame();
+	d3d.resumeLoading();
 }
 
 void DMGraphics::beforeExit()

@@ -217,6 +217,7 @@ add_executable(DMEngine WIN32
     src/Engine/Input/KeyEventNotifier.cpp
     src/main.cpp
     src/Common/Utils/DMTimer.cpp
+    src/Common/Utils/SlowTask.cpp
     src/Common/Utils/utilites.cpp
     src/Engine/Graphics/Scene/Texture/ImageFile.cpp
     src/Engine/Graphics/Scene/Texture/ImageMips.cpp

@@ -9,6 +9,7 @@
 
 #include "DBConnector.h"
 #include "Logger\Logger.h"
+#include "Utils\SlowTask.h"
 
 using namespace DirectX;
 
@@ -27,8 +28,10 @@ LibraryLoader::~LibraryLoader()
 bool LibraryLoader::loadAllTextures()
 {
 	LOG( "Load all textures" );
+	SQLite::Statement queryCount( DBConnector::instance().db(), "SELECT COUNT(*) FROM Textures" );
+	const uint32_t count = queryCount.executeStep() ? queryCount.getColumn( 0 ).getUInt() : 0;
 	SQLite::Statement queryTexture( DBConnector::instance().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage FROM Textures" );
-	return loadTextures( queryTexture );
+	return loadTextures( queryTexture, count );
 }
 
 bool LibraryLoader::loadTexture( uint32_t idTexture )
@@ -41,15 +44,18 @@ bool LibraryLoader::loadTexture( uint32_t idTexture )
 	return loadTextures( queryTexture );
 }
 
-bool LibraryLoader::loadTextures( SQLite::Statement& queryTexture )
+bool LibraryLoader::loadTextures( SQLite::Statement& queryTexture, uint32_t count )
 {
+	SlowTask task( static_cast<float>( std::max( count, 1u ) ) );
 	while( queryTexture.executeStep() )
 	{
 		auto startTime = std::chrono::high_resolution_clock::now();
 		uint32_t id = queryTexture.getColumn( 0 );
 		const std::string& textureName = queryTexture.getColumn( 1 ).getString();
 		const std::string& fileName = queryTexture.getColumn( 2 ).getString();
-		
+		if( count > 0 )
+			task.enterProgressFrame( 1.0f, fileName );
+
 		const float preserveAlphaCoverage = queryTexture.getColumn( 5 ).isNull() ? 0.0f : static_cast<float>( queryTexture.getColumn( 5 ).getDouble() );
 		if( !GS::System::textures().load( id, textureName, fileName, queryTexture.getColumn( 3 ).getInt(), queryTexture.getColumn( 4 ).getInt(),
 										  preserveAlphaCoverage ) )

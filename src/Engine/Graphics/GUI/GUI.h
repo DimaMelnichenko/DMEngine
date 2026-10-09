@@ -31,6 +31,8 @@ public:
 	// Окна кадра: stats — счётчики кадра, camera — главная камера (панель Camera)
 	void Begin( const GS::FrameStats& stats, DMCamera& camera );
 	void End();
+	// Кадр экрана загрузки целиком (вместо Begin / End): заголовок, что делается, полоса прогресса 0…1 и секунды с начала
+	void drawLoadingScreen( const std::string& title, const std::string& task, float progress, float seconds );
 
 	// Окно свойств: в Outliner — в разделе category; у объекта сцены — флажок видимости; saved — правки пишет в базу
 	// «Save level». Значения при регистрации — «сохранённые» (Details отмечает изменённые после них)

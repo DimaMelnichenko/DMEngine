@@ -5,6 +5,8 @@
 // INCLUDES //
 //////////////
 #include <windows.h>
+#include <chrono>
+#include <string>
 #include <unordered_map>
 #include <memory>
 
@@ -64,12 +66,22 @@ private:
 	void takeScreenshots( bool withGui );
 	// Задний буфер в файл (PNG или JPG по расширению) — в кадре до endFrame
 	bool saveScreenshot( const std::wstring& path );
+	// Экран загрузки — обработчик SlowTask на время Initialize: сообщения окна (иначе Windows считает его зависшим) и кадр с
+	// тем, что делается, и полосой прогресса
+	void drawLoadingFrame( const std::string& task, float progress );
 
 private:
 	float m_screenWidth;
 	float m_screenHeight;
 	HWND m_hwnd;
 	bool m_initialized = false;	// WM_SIZE приходит и при создании окна, до Initialize
+	// Экран загрузки: заголовок, начало загрузки, последний кадр и его задача; текущий шаг и его начало (долгие — в лог)
+	std::string m_loadingTitle;
+	std::chrono::steady_clock::time_point m_loadingStart;
+	std::chrono::steady_clock::time_point m_loadingDrawn;
+	std::string m_loadingTask;
+	std::string m_loadingStep;
+	std::chrono::steady_clock::time_point m_loadingStepStart;
 
 	std::unordered_map<std::string, DMCamera> m_cameraPool;
 

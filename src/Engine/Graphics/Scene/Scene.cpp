@@ -4,6 +4,7 @@
 #include <chrono>
 #include "System.h"
 #include "Logger\Logger.h"
+#include "Utils\SlowTask.h"
 
 using namespace DirectX;
 
@@ -23,6 +24,9 @@ namespace GS
 
 bool Scene::loadResources( LibraryLoader& library, const std::string& levelName )
 {
+	// Доли — по времени загрузки: текстуры (PNG моделей с мипами на CPU) — почти всё
+	SlowTask task( 1.0f );
+	task.enterProgressFrame( 0.02f, "Materials" );
 	LOG( "Load materials" );
 	auto timeStart = std::chrono::high_resolution_clock::now();
 	if( !library.loadAllMaterials() )
@@ -33,6 +37,7 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName 
 		return false;
 	LOG( "Level: " + m_level.name );
 
+	task.enterProgressFrame( 0.03f, "Models" );
 	LOG( "Load models" );
 	timeStart = std::chrono::high_resolution_clock::now();
 	for( const LevelDescription::ModelInstance& instance : m_level.modelInstances )
@@ -58,6 +63,7 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName 
 	}
 	LOG( "Load models for ms: " + elapsedMs( timeStart ) );
 
+	task.enterProgressFrame( 0.95f, "Textures" );
 	LOG( "Load textures" );
 	timeStart = std::chrono::high_resolution_clock::now();
 	try
@@ -77,6 +83,9 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName 
 
 bool Scene::initialize( LibraryLoader& library, bool particles )
 {
+	// Доли — по времени (Release, уровень Test): террейн с эрозией, руслами и слоями материала ~2 с, течение озёр ~0,6 с
+	SlowTask task( 2.8f );
+	task.enterProgressFrame( 0.1f, "Sky" );
 	LOG( "Create light driver" );
 	if( !m_lightDriver.Initialize() )
 		return false;
@@ -127,6 +136,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 
 	// Расстановка, вода и частицы стоят на террейне и читают его карту высот (TerrainHeightSource)
 	auto timeStart = std::chrono::high_resolution_clock::now();
+	task.enterProgressFrame( 2.0f, "Terrain" );
 	if( m_level.terrain )
 	{
 		// Рельеф с ручными правками, затем русла и ручьи по нему (конвейер рельефа и воды) — если у уровня есть вода
@@ -146,8 +156,10 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		if( !library.saveGeneratedStreams( *m_level.waterSimulationId, m_level.waterSimulation->streamsKey, m_level.waterSimulation->streams ) )
 			LOG( "Stream curves are not saved to the database" );
 	}
+	task.enterProgressFrame( 0.6f, "Water" );
 	if( hasWater && ( !m_terrain.hydrology() || !m_water.initialize( *m_level.waterSimulation, m_terrain, *m_terrain.hydrology() ) ) )
 		return false;
+	task.enterProgressFrame( 0.1f, "Models, scatter and particles" );
 
 	if( m_level.sky )
 		m_sky.setModel( *m_level.sky );

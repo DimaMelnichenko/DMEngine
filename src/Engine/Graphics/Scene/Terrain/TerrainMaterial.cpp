@@ -9,6 +9,7 @@
 #include "DBConnector.h"
 #include "D3D\DMD3D.h"
 #include "Logger\Logger.h"
+#include "Utils\SlowTask.h"
 #include "Texture\ImageFile.h"
 
 using namespace DirectX;
@@ -126,8 +127,10 @@ bool createArraySRV( const ScratchImage& layers, Texture& texture, ShaderView& s
 bool buildArrayFromFileMips( const std::vector<std::string>& files, bool srgb, Texture& texture, ShaderView& srv )
 {
 	std::vector<ScratchImage> images( files.size() );
+	SlowTask task( static_cast<float>( files.size() ) );
 	for( size_t i = 0; i < files.size(); ++i )
 	{
+		task.enterProgressFrame( 1.0f, files[i] );
 		if( files[i].empty() || !ImageFile::load( GS::System::textures().path() + "\\" + files[i], images[i] ) )
 			return false;
 		const TexMetadata& meta = images[i].GetMetadata();
@@ -171,8 +174,11 @@ bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool 
 	size_t width = 0;
 	size_t height = 0;
 
+	// Запасной путь (у слоя нет файла с мипами): файлы, затем мипы на CPU — в Debug секунды
+	SlowTask task( static_cast<float>( files.size() ) * 2.0f );
 	for( size_t i = 0; i < files.size(); ++i )
 	{
+		task.enterProgressFrame( 1.0f, files[i] );
 		loaded[i] = loadImage( files[i], width, height, images[i] );
 		if( !loaded[i] && !files[i].empty() )
 			LOG( "Terrain material: can`t load " + files[i] + ", placeholder is used" );
@@ -202,6 +208,7 @@ bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool 
 	if( srgb && FAILED( layers.OverrideFormat( DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ) ) )
 		return false;
 
+	task.enterProgressFrame( static_cast<float>( files.size() ), "Mipmaps" );
 	ScratchImage mips;
 	if( FAILED( GenerateMipMaps( layers.GetImages(), layers.GetImageCount(), layers.GetMetadata(), mipFilter, 0, mips ) ) )
 		return false;
@@ -337,9 +344,15 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 			LOG( "Terrain material: terrain edits paint layer " + std::to_string( layer ) + ", which TerrainLayers does not describe" );
 
 	m_splatMapFile = splatMap;
-	if( !loadSplatMap( splatMap, coverage, m_layerCount, m_splatMapTexture, m_splatMap ) ||
-		!buildArray( albedoFiles, Fallback::checker, true, m_albedoHeightTexture, m_albedoHeight ) ||
-		!buildArray( normalFiles, Fallback::flatNormal, false, m_normalRoughnessTexture, m_normalRoughness ) )
+	// Шаги прогресса загрузки — splat-карта и два массива слоёв (по файлу на шаг — buildArray)
+	SlowTask task( 1.0f );
+	task.enterProgressFrame( 0.1f, "Splat map" );
+	bool created = loadSplatMap( splatMap, coverage, m_layerCount, m_splatMapTexture, m_splatMap );
+	task.enterProgressFrame( 0.45f, "Albedo" );
+	created = created && buildArray( albedoFiles, Fallback::checker, true, m_albedoHeightTexture, m_albedoHeight );
+	task.enterProgressFrame( 0.45f, "Normals" );
+	created = created && buildArray( normalFiles, Fallback::flatNormal, false, m_normalRoughnessTexture, m_normalRoughness );
+	if( !created )
 	{
 		LOG( "Terrain material: can`t create textures" );
 		return false;

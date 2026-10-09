@@ -10,6 +10,7 @@
 #include "ConstantBuffers.h"
 #include "Shaders\lod_transition.h"
 #include "Logger\Logger.h"
+#include "Utils\SlowTask.h"
 #include "Materials\ImpostorMaterial.h"
 
 using namespace DirectX;
@@ -203,6 +204,12 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 
 bool Scatterer::bake( const BakeContext& context )
 {
+	// Импостер — шаг прогресса загрузки (запекание модели ~0,5 с); между импостерами состояние GPU не переходит
+	uint32_t impostors = 0;
+	for( const Layer& layer : m_layers )
+		for( const LayerVariant& variant : layer.variants )
+			impostors += variant.impostor ? 1 : 0;
+	SlowTask task( static_cast<float>( std::max( impostors, 1u ) ) );
 	for( Layer& layer : m_layers )
 	for( LayerVariant& variant : layer.variants )
 	{
@@ -210,6 +217,7 @@ bool Scatterer::bake( const BakeContext& context )
 			continue;
 		// Материал импостера — на модель, общий для всех наборов (настройки запекания — первого слоя с этой моделью)
 		const std::string name = "Impostor " + variant.model->properties()->name();
+		task.enterProgressFrame( 1.0f, variant.model->properties()->name() );
 		MaterialStorage& materials = System::materials();
 		Material* material = materials.exists( name ) ? materials[name].get() : nullptr;
 		if( !material )

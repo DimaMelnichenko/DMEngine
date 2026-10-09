@@ -61,8 +61,9 @@ public:
 	bool saveGeneratedStreams( uint32_t waterSimulationId, const std::string& key, std::vector<GS::StreamCurve>& curves );
 
 private:
-	// Загружает текстуры из строк запроса вида "SELECT id, name, file, generate_mipmap, sRGB FROM Textures ..."
-	bool loadTextures( SQLite::Statement& queryTexture );
+	// Загружает текстуры из строк запроса вида "SELECT id, name, file, generate_mipmap, sRGB FROM Textures ..."; count — строк
+	// в запросе: тогда каждая текстура — шаг прогресса загрузки (SlowTask)
+	bool loadTextures( SQLite::Statement& queryTexture, uint32_t count = 0 );
 	void loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set );
 	// Правки рельефа террейна уровня (включённые, по порядку слоёв)
 	void loadTerrainEdits( uint32_t terrainId, LevelDescription& level );

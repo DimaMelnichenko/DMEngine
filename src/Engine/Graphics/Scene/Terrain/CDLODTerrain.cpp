@@ -16,6 +16,7 @@
 #include "ConstantBuffers.h"
 #include "DBConnector.h"
 #include "Logger\Logger.h"
+#include "Utils\SlowTask.h"
 
 using namespace DirectX;
 
@@ -64,6 +65,9 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	for( uint32_t level = 0; level < m_levelCount; ++level )
 		m_nodesPerSide[level] = static_cast<uint32_t>( std::ceil( m_worldSize / nodeSize( level ) ) );
 
+	// Доли — по времени загрузки (Release, Test): конвейер рельефа и воды ~0,5 с, слои материала (фото-текстуры с мипами) ~1,5 с
+	SlowTask task( 1.0f );
+	task.enterProgressFrame( 0.25f );
 	TerrainEditCoverage coverage;
 	if( !buildHeightBounds( edits, water, coverage ) || !createFoliageClearMask( coverage ) )
 		return false;
@@ -71,6 +75,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	if( !createShader() )
 		return false;
 
+	task.enterProgressFrame( 0.75f, "Material layers" );
 	if( !m_material.initialize( terrainId, splatMap, coverage ) )
 		return false;
 
@@ -271,6 +276,9 @@ void CDLODTerrain::warmPipelines( const PassStates& states )
 
 bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water, TerrainEditCoverage& coverage )
 {
+	// Почти всё — русла и озёра (finishHeights); эрозия из кэша — чтение файла, заново — секунды на большой карте
+	SlowTask task( 1.0f );
+	task.enterProgressFrame( 0.05f, "Height map" );
 	ScratchImage captured;
 	if( !GpuImages::captureTexture( System::textures().get( m_heightMapName )->texture(), captured ) )
 	{
@@ -331,8 +339,10 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 	field.heightMultiplier = m_heightMultiplier;
 	field.heightOffset = m_heightOffset;
 	// Первая ступень — эрозия исходной карты (до правок: правки — поверх размытого рельефа)
+	task.enterProgressFrame( 0.1f, "Erosion" );
 	if( m_erosion && !erode( field, *m_erosion ) )
 		return false;
+	task.enterProgressFrame( 0.02f, "Terrain edits" );
 	if( !edits.empty() )
 	{
 		std::vector<TerrainEdit> loaded = edits;
@@ -350,6 +360,7 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 	m_baseCoverage = coverage;
 
 	m_hasHydrology = false;
+	task.enterProgressFrame( 0.03f, "Stream curves" );
 	if( water )
 	{
 		// Кривые русел — из базы; рельеф или параметры генератора сменились (отпечаток не совпал) — генерация заново:
@@ -373,6 +384,7 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 				 std::to_string( kept ) );
 		}
 	}
+	task.enterProgressFrame( 0.8f );
 	return finishHeights( *image, water, coverage );
 }
 
@@ -386,6 +398,9 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 	field.heightMultiplier = m_heightMultiplier;
 	field.heightOffset = m_heightOffset;
 	m_hasHydrology = false;
+	// Те же шаги и при перестройке русел в кадре — там у SlowTask нет обработчика, и он ничего не делает
+	SlowTask task( 1.0f );
+	task.enterProgressFrame( 0.8f, "Rivers and lakes" );
 	if( water )
 	{
 		const auto start = std::chrono::steady_clock::now();
@@ -406,6 +421,7 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 					   std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
 		LOG( text );
 	}
+	task.enterProgressFrame( 0.2f, "Detail ground" );
 	if( !createDetailTiles() )
 		return false;
 

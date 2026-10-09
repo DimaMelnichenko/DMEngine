@@ -10,6 +10,7 @@
 #include "Texture\DMTextureStorage.h"
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
+#include "Utils\SlowTask.h"
 #include "D3D\TextureImages.h"
 
 namespace GS
@@ -313,7 +314,13 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	if( m_static )
 		m_staticWaterMap = &m_staticWaterView;
 	buildSources( settings );
+	// Доли — по времени загрузки (Release, Test: растр русел и источники ~0,16 с — до этих шагов, течение ~0,5 с):
+	// течение озёр (static) или налив озёр и прогрев (simulated) — почти всё
+	SlowTask task( 1.0f );
+	task.enterProgressFrame( 0.1f, "Water surface" );
 	// Режим simulated: озёра до уровня перелива, затем до установившегося течения — порциями с ожиданием GPU
+	if( !m_static )
+		task.enterProgressFrame( 0.3f, "Lakes" );
 	if( !m_static && !fillLakes() )
 		return false;
 	if( m_static )
@@ -321,6 +328,7 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		// Статичная вода: озёра и ручьи — одно поле из растра; шагов нет, течение озёр — установившийся расчёт
 		if( !buildStaticWater( settings ) || !createFlowResources() )
 			return false;
+		task.enterProgressFrame( 0.9f, "Lake flow" );
 		solveFlow( settings.flow );
 		buildSurface();
 		m_surfaceDirty = false;
@@ -335,8 +343,12 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		LOG( "Water simulation: warm-up is cut to " + std::to_string( validationWarmupSteps ) + " steps under GPU-based validation" );
 		warmupSteps = validationWarmupSteps;
 	}
+	task.enterProgressFrame( 0.6f, "Warm-up" );
+	SlowTask warmup( static_cast<float>( std::max( warmupSteps, 1u ) ) );
 	for( uint32_t done = 0; done < warmupSteps; done += warmupStepsPerSubmit )
 	{
+		// Порция — граница шага прогресса: параметры и привязки она ставит сама
+		warmup.enterProgressFrame( static_cast<float>( std::min( warmupStepsPerSubmit, warmupSteps - done ) ) );
 		setParameters( settings );
 		step( std::min( warmupStepsPerSubmit, warmupSteps - done ) );
 		d3d.waitForGpu();
@@ -692,14 +704,19 @@ void WaterSimulation::solveFlow( const Settings::Flow& flow )
 		d3d.setUAV( 5, m_outputUAV );
 		shader.dispatchGroups( groups, 1, 1 );
 	};
+	// Порция шагов — шаг прогресса загрузки: после ожидания GPU проход и привязки ставит begin. Под GPU-based validation
+	// шаг — ~0,5 с, порции мельче: экран загрузки обновляется, окно не «зависает»
+	const uint32_t stepsPerSubmit = d3d.gpuValidation() ? 2 : flowStepsPerSubmit;
+	SlowTask task( static_cast<float>( std::max( steps, 1u ) ) );
 	begin();
 	dispatch( m_flowInitShader );
 	dispatch( m_flowFacesShader );
 	for( uint32_t step = 0; step < steps; ++step )
 	{
-		if( step > 0 && step % flowStepsPerSubmit == 0 )
+		if( step > 0 && step % stepsPerSubmit == 0 )
 		{
 			d3d.waitForGpu();
+			task.enterProgressFrame( static_cast<float>( stepsPerSubmit ) );
 			begin();
 		}
 		dispatch( m_flowAdvectShader );

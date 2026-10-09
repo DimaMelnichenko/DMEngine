@@ -1,6 +1,7 @@
 #include "GUI.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include "imgui.h"
 #ifdef IMGUI_HAS_DOCK
 #include "imgui_internal.h"
@@ -188,6 +189,44 @@ void GUI::Begin( const GS::FrameStats& stats, DMCamera& camera )
 void GUI::End()
 {
 	m_itemActive = ImGui::IsAnyItemActive();
+	ImGui::Render();
+	ImGui_ImplDX12_RenderDrawData( ImGui::GetDrawData(), DMD3D::instance().commandList() );
+}
+
+void GUI::drawLoadingScreen( const std::string& title, const std::string& task, float progress, float seconds )
+{
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	// Фон — заливка всего заднего буфера (кадр загрузки ничего больше не рисует); панель по центру окна: ширина — доля
+	// экрана, не уже 420 точек по DPI
+	const ImGuiViewport* viewport = ImGui::GetMainViewport();
+	ImGui::GetBackgroundDrawList()->AddRectFilled( viewport->Pos, ImVec2( viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y ),
+												   ImGui::GetColorU32( ImGuiCol_MenuBarBg ) );
+	const float scale = ImGui::GetStyle().FontScaleDpi;
+	const float width = std::max( viewport->WorkSize.x * 0.4f, 420.0f * scale );
+	ImGui::SetNextWindowPos( ImVec2( viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + viewport->WorkSize.y * 0.5f ),
+							 ImGuiCond_Always, ImVec2( 0.5f, 0.5f ) );
+	ImGui::SetNextWindowSize( ImVec2( width, 0.0f ) );
+	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+								   ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize;
+	ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 16.0f * scale, 14.0f * scale ) );
+	if( ImGui::Begin( "##Loading", nullptr, flags ) )
+	{
+		ImGui::TextUnformatted( title.c_str() );
+		ImGui::Spacing();
+		ImGui::TextDisabled( "%s", task.empty() ? "..." : task.c_str() );
+		char overlay[32];
+		std::snprintf( overlay, sizeof( overlay ), "%.0f %%  ·  %.1f s", progress * 100.0f, seconds );
+		// Полоса — акцентом темы (синим), а не жёлтым ImGui по умолчанию
+		ImGui::PushStyleColor( ImGuiCol_PlotHistogram, ImGui::GetStyleColorVec4( ImGuiCol_SliderGrab ) );
+		ImGui::ProgressBar( progress, ImVec2( -FLT_MIN, 0.0f ), overlay );
+		ImGui::PopStyleColor();
+	}
+	ImGui::End();
+	ImGui::PopStyleVar();
+
 	ImGui::Render();
 	ImGui_ImplDX12_RenderDrawData( ImGui::GetDrawData(), DMD3D::instance().commandList() );
 }
