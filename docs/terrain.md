@@ -51,13 +51,15 @@
 | 0 — трава | `patchy_meadow1` | 4 | freepbr, `DownloadResources/patchy-meadow1-bl.zip` |
 | 1 — осыпи | `rocky_terrain_03` | 20 (снято 90 × 90 м, сжато) | Poly Haven, `DownloadResources/polyhaven/rocky_terrain_03_*` |
 | 2 — скала | `rock_face_03` | 2,7 | Poly Haven, `DownloadResources/polyhaven/rock_face_03_*` |
-| 3 — снег | `crusted_snow2` | 4 | FreePBR, `DownloadResources/Crusted_snow2-bl.zip` |
+| 3 — снег | `snow_packed12` | 4 | FreePBR, `DownloadResources/snow-packed12-UE.zip` (варианта `bl` нет; нормаль DirectX) |
 | 4 — вторая трава | `wispy_grass_meadow` | 4 | FreePBR, `DownloadResources/whispy-grass-meadow-bl.zip` |
 | 5 — галька русла | `dry_river_pebbles` | 2 | Poly Haven (CC0), `DownloadResources/dry_river_pebbles_2k.blend.zip` |
 
 Две травы лежат вперемешку крупными пятнами (см. «Splat-карта и маски»), чтобы луг издалека не был одного тона.
 Слоя 5 нет в splat-карте генератора: им дно русел красят правки рельефа (`paint_layer`, «Правка рельефа»).
-Прежний снег `snow_02` (следы на снегу) заменён настом, его файлы остались в `Textures\terrain\layers\`. Лицензия
+Снег — `snow_packed12` (утоптанный); до него были `snow_02` (следы на снегу) и наст `crusted_snow2`. Архивы FreePBR
+скачиваются POST-формой страницы товара (`somdn_download_multi_single`: `somdn_product`, номер файла, ключ со
+страницы). Лицензия
 FreePBR запрещает распространять сами файлы — архивы и собранные DDS в git не попадают (`DownloadResources/` и
 `Textures/` вне git).
 
@@ -93,10 +95,10 @@ B --name rocky_terrain_03 --albedo D/polyhaven/rocky_terrain_03_diff_2k.jpg
   --height D/polyhaven/rocky_terrain_03_disp_2k.exr --layer 1 --tiling 20
 B --name rock_face_03 --albedo D/polyhaven/rock_face_03_diff_2k.jpg --normal D/polyhaven/rock_face_03_nor_gl_2k.jpg
   --roughness D/polyhaven/rock_face_03_arm_2k.jpg:g --height D/polyhaven/rock_face_03_disp_2k.exr --layer 2 --tiling 2.7
-B --name crusted_snow2 --albedo D/Crusted_snow2-bl.zip:Crusted_snow2-bl/Crusted_snow2_Base_Color.png
-  --normal D/Crusted_snow2-bl.zip:Crusted_snow2-bl/Crusted_snow2_Normal-ogl.png
-  --roughness D/Crusted_snow2-bl.zip:Crusted_snow2-bl/Crusted_snow2_Roughness.png
-  --height D/Crusted_snow2-bl.zip:Crusted_snow2-bl/Crusted_snow2_Height.png --layer 3 --tiling 4
+B --name snow_packed12 --albedo D/snow-packed12-UE.zip:snow-packed12-Base_Color.png
+  --normal D/snow-packed12-UE.zip:snow-packed12-Normal-dx.png --normal-convention dx
+  --roughness D/snow-packed12-UE.zip:snow-packed12-Roughness.png
+  --height D/snow-packed12-UE.zip:snow-packed12-Height.png --layer 3 --tiling 4
 B --name wispy_grass_meadow --albedo D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png
   --normal D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_normal-ogl.png
   --roughness D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_roughness.png
