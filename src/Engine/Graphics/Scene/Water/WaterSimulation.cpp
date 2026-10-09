@@ -1112,6 +1112,8 @@ void WaterSimulation::compute( const FrameContext& frame )
 	// подсветке «Show water»
 	DMD3D::instance().setSRV( SLOT_WATER, m_outputView );
 	DMD3D::instance().setSRV( SLOT_WATER_SOURCES, m_sourcesView );
+	// Уровень поверхности — глубине в точке (урез внутри клетки): мокрая земля, галька дна, трава в воде
+	DMD3D::instance().setSRV( SLOT_WATER_LEVEL, m_levelView );
 }
 
 bool WaterSimulation::exportState( const std::string& prefix, std::string& reason )

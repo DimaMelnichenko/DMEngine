@@ -307,7 +307,8 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 машин рельеф чуть разный) или по `Tools/stream_edit.py regenerate`, правленные и ручные остаются; правка — точки во вьюпорте (View →
 «Stream curves»: гизмо с мягким выделением, Insert / Delete), подокна «Streams» и «Channels» — с перестройкой русел, воды и
 леса без перезагрузки (`Scene::rebuildChannels`), и `Tools/stream_edit.py`; приток симуляции — водосбор вдоль оси русел; выгрузка — команда `terrain hydrology`); глубина с памятью ~30 с — для травы и мокрой земли; текстура воды —
-слот сцены `SLOT_WATER`, t109, `Shaders/water.sh`; строка `WaterSimulation` уровня, `Levels.water_simulation`;
+слот сцены `SLOT_WATER`, t109, `Shaders/water.sh`; уровень поверхности — `SLOT_WATER_LEVEL`, t115: по нему глубина в
+точке (`waterDepthAt`, урез внутри клетки) — мокрая земля, галька дна озёр, трава в воде; строка `WaterSimulation` уровня, `Levels.water_simulation`;
 поверхность — свой вызов в `transparent` с цветом и глубиной сцены: тайлы сетки с водой отбирает compute, один
 ExecuteIndirect, берег — пересечение продолженной за урез плоскости воды с рельефом, `water.vs` / `water.ps`: поглощение
 по толщине, экранные отражения, блик, рябь и пена, которые несёт течение; террейн по воде темнеет и блестит — мокрая

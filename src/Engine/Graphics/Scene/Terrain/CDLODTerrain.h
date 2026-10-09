@@ -120,7 +120,8 @@ private:
 		uint32_t showWater;		// подсветка воды симуляции (SLOT_WATER) — отладка, «Show water»
 		float detailTile;		// сторона детальной плитки, м; 0 — детальной земли нет
 		int32_t channelLayer;	// слой гальки русел в детальных плитках (−1 — нет)
-		float padding[2];
+		int32_t waterBedLayer;	// слой гальки под водой режима static — по глубине в точке (−1 — нет)
+		float padding;
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1, −2: начало морфинга и 1 / длина зоны
 	};
 
@@ -224,6 +225,7 @@ private:
 	ShaderView m_detailIndexView;
 	float m_detailTileSize = 0.0f;			// сторона плитки, м; 0 — плиток нет
 	int32_t m_channelLayer = -1;			// слой гальки русел (WaterChannelsSettings::paintLayer)
+	bool m_staticWater = false;				// вода режима static: дно озёр красит шейдер по глубине в точке
 	uint32_t m_detailSide = 0;				// текселей плитки по стороне (с полями)
 	uint32_t m_detailTilesPerSide = 0;
 	std::vector<int> m_detailIndex;			// плитка (x + z · m_detailTilesPerSide) → срез, −1 — нет

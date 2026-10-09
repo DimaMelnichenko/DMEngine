@@ -82,8 +82,9 @@ public:
 	// Водосбор каждой клетки, м²: сток D8 по карте с заполненными низинами (тот же, что у build) — для карт эрозии
 	static std::vector<float> catchment( const HeightField& field );
 	// Растровые правки рельефа по опусканию: опускание и (вне детальных плиток) покраска дна галькой и очистка
-	// растительности; в плитках покраска и очистка — в шейдерах по детальному врезу
-	static std::vector<TerrainEdit> loweringEdits( const Result& result, const WaterChannelsSettings& channels );
+	// растительности; в плитках покраска и очистка — в шейдерах по детальному врезу, у озёр при shaderLakeBeds (режим
+	// static) — в шейдерах по глубине в точке
+	static std::vector<TerrainEdit> loweringEdits( const Result& result, const WaterChannelsSettings& channels, bool shaderLakeBeds );
 };
 
 }

@@ -88,7 +88,7 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 		{
 			// Плотность маски, без воды (пыльца и хвоя не рождаются над озером)
 			chance = ( g_hasMask != 0 ? g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ) : 1.0f ) *
-					 ( 1.0f - waterFoliageClear( uv ) );
+					 ( 1.0f - waterFoliageClear( uv, base ) );
 		}
 		else
 		{

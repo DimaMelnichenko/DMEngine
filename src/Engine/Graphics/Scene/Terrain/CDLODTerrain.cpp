@@ -462,8 +462,9 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 			LOG( "CDLOD terrain: water channels are not built" );
 			return false;
 		}
-		applyTerrainEdits( field, TerrainHydrology::loweringEdits( m_hydrology, water->channels ), &coverage );
+		applyTerrainEdits( field, TerrainHydrology::loweringEdits( m_hydrology, water->channels, water->staticWater ), &coverage );
 		m_channelLayer = water->channels.paintLayer;
+		m_staticWater = water->staticWater;
 		m_hasHydrology = true;
 		for( const std::string& warning : m_hydrology.warnings )
 			LOG( "Terrain hydrology: " + warning );
@@ -1365,6 +1366,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
 		params.detailTile = m_detailTileSize;
 		params.channelLayer = m_detailTileSize > 0.0f && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
+		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
 	} );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );

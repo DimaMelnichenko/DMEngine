@@ -61,13 +61,16 @@
 // Детальная земля у русел (terrain_detail.sh, CDLODTerrain): массив плиток высот и индекс плиток по сетке мира
 #define SLOT_TERRAIN_DETAIL	113
 #define SLOT_TERRAIN_DETAIL_INDEX	114
+// Уровень поверхности воды (water.sh, WaterSimulation — water_surface.cs, mainSurface): на сетке карты высот, м; у клеток
+// с водой и кольца за урезом, остальное — −1e30. По нему глубина в точке — уровень минус её высота (урез внутри клетки)
+#define SLOT_WATER_LEVEL	115
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	15
+#define SLOT_SCENE_COUNT	16
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту
 #define DM_BINDING_UAV_BASE		17	// u0…u7 → 17…24
-#define DM_BINDING_SCENE_BASE	25	// t100…t114 → 25…39
-#define DM_BINDING_COUNT		40	// кратно 4 (uint4 в bindless.sh); с CBV и b9 — 60 из 64 DWORD root signature
+#define DM_BINDING_SCENE_BASE	25	// t100…t115 → 25…40
+#define DM_BINDING_COUNT		44	// кратно 4 (uint4 в bindless.sh); с CBV и b9 — 64 из 64 DWORD root signature
 
 // Сэмплеры — статические в root signature: s0…s7 общие (samplers.sh, DMSamplerState)
 #define SLOT_SAMPLER_SHADOW	DM_REGISTER( s, 8 )		// сравнение глубины для карты теней (PCF 2×2)

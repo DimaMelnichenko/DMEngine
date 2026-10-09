@@ -11,6 +11,7 @@
 
 DM_SRV( Texture2D<float4>, g_waterState, SLOT_WATER );	// глубина, м; скорость по X и Z мира, м/с; глубина с памятью, м
 DM_SRV( Texture2D<float>, g_waterSources, SLOT_WATER_SOURCES );	// приток источников, м/с слоя воды
+DM_SRV( Texture2D<float>, g_waterLevel, SLOT_WATER_LEVEL );	// уровень поверхности, м; −1e30 — нет воды
 
 struct WaterSample
 {
@@ -60,19 +61,55 @@ float smoothedRememberedDepth( float2 uv )
 	return depth / 3.0f;
 }
 
-// Влажность земли: под водой и полосой в ячейку-две вокруг неё; плёнка тоньше 5 мм — сухо, от 2 см — мокро. По глубине
-// с памятью: земля, по которой прошла вода, сохнет не сразу
-float waterWetness( float2 uv )
+// Глубина воды над точкой высоты height, м: уровень поверхности у точки минус её высота — урез проходит внутри клетки по
+// рельефу, а не по границам клеток сетки 1 м. Уровень — билинейно по четырём клеткам вокруг точки (уровень есть у клеток
+// с водой и у кольца за урезом, mainSurface); у клетки без уровня — наименьший из соседних (у озера все равны, у ручья
+// на склоне — ниже по течению). < 0 — точка выше воды на столько; воды рядом нет (или нет симуляции) — −1e30
+float waterDepthAt( float2 uv, float height )
 {
-	return smoothstep( 0.005f, 0.02f, smoothedRememberedDepth( uv ) );
+	uint width, height2;
+	g_waterLevel.GetDimensions( width, height2 );
+	if( width == 0 || height2 == 0 )
+		return -1e30f;
+	const float2 position = uv * float2( width, height2 ) - 0.5f;
+	const int2 base = (int2)floor( position );
+	const float2 f = position - (float2)base;
+	float levels[4];
+	float lowest = 1e30f;
+	[unroll] for( int k = 0; k < 4; ++k )
+	{
+		const int2 cell = clamp( base + int2( k & 1, k >> 1 ), 0, int2( width, height2 ) - 1 );
+		levels[k] = g_waterLevel.Load( int3( cell, 0 ) );
+		if( levels[k] > -1e29f )
+			lowest = min( lowest, levels[k] );
+	}
+	if( lowest > 1e29f )
+		return -1e30f;
+	[unroll] for( int j = 0; j < 4; ++j )
+		levels[j] = levels[j] > -1e29f ? levels[j] : lowest;
+	const float level = lerp( lerp( levels[0], levels[1], f.x ), lerp( levels[2], levels[3], f.x ), f.y );
+	return level - height;
 }
 
-// Доля растительности, которую убирает вода (расстановка, scatter.cs): в воде глубже 1–3 см не растёт ничего —
-// ни трава, ни деревья; мокрый берег не трогается. По глубине с памятью: перекатывающийся край мелкой воды не заставляет
-// траву исчезать и вырастать каждые несколько секунд
-float waterFoliageClear( float2 uv )
+// Вода ушла недавно (simulated: глубина с памятью ~30 с больше нынешней), м; у static — 0
+float recededWaterDepth( float2 uv )
 {
-	return smoothstep( 0.01f, 0.03f, smoothedRememberedDepth( uv ) );
+	return max( smoothedRememberedDepth( uv ) - smoothedWaterDepth( uv ), 0.0f );
+}
+
+// Влажность земли в точке высоты height: под водой и узкой каймой выше уреза (до 2 см над уровнем — вода по капиллярам),
+// урез — по глубине в точке (waterDepthAt); и где вода недавно ушла — сохнет не сразу
+float waterWetness( float2 uv, float height )
+{
+	return max( smoothstep( -0.02f, 0.0f, waterDepthAt( uv, height ) ), smoothstep( 0.005f, 0.02f, recededWaterDepth( uv ) ) );
+}
+
+// Доля растительности, которую убирает вода в точке высоты height (расстановка, scatter.cs, частицы): в воде глубже
+// 1–3 см не растёт ничего — ни трава, ни деревья; мокрый берег не трогается. Где вода недавно ушла — тоже (simulated:
+// перекатывающийся край мелкой воды не заставляет траву исчезать и вырастать каждые несколько секунд)
+float waterFoliageClear( float2 uv, float height )
+{
+	return max( smoothstep( 0.01f, 0.03f, waterDepthAt( uv, height ) ), smoothstep( 0.01f, 0.03f, recededWaterDepth( uv ) ) );
 }
 
 #endif
