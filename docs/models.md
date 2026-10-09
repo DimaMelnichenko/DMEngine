@@ -269,7 +269,7 @@ python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --lod-ra
   в соглашении OpenGL (glTF). Соглашение карты нормалей определяется по самой карте: наклоны поверхности по карте,
   прочитанной как OpenGL, — производные одной функции высоты, и их ротор мал; у карты DirectX, прочитанной как OpenGL,
   мал ротор с другим знаком (сравнение на непрозрачной части; неясный случай — ошибка, тогда `--normal-convention gl|dx`).
-  У Rough Meadow Grass — OpenGL (ротор 0,066 против 0,107). Картинки — до `--texture-size` (2048); двусторонние;
+  У Rough Meadow Grass — OpenGL (ротор 0,066 против 0,107), у Tall Grass — тоже (0,021 против 0,051). Картинки — до `--texture-size` (2048); двусторонние;
 - billboard Megascans — одна плоская карточка по силуэту (5–9 треугольников): в UE её поворачивает к камере материал,
   у нас такого материала нет, поэтому сценарий делает из неё крест — копию, повёрнутую на 90° вокруг вертикали
   (`--no-billboard-cross` — оставить одну);
@@ -278,16 +278,19 @@ python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --lod-ra
   (0,4) и цвет из карты `_Translucency` (как Subsurface Color у Two Sided Foliage в UE; есть и у billboard);
   `KHR_materials_specular` — `specularFactor` = 2 × среднее карты `_Specular` по непрозрачной части (Specular в UE s →
   F0 = 0,08 s; у billboard своей карты нет — значение основного). У Rough Meadow Grass `Specular` ≈ 0,025 →
-  `specularFactor` 0,05: без него отблеск неба F0 = 0,04 на тёмном скане (альбедо линейно ≈ 0,025) делал траву
+  `specularFactor` 0,05 (у Tall Grass — 0,07): без него отблеск неба F0 = 0,04 на тёмном скане (альбедо линейно ≈ 0,025) делал траву
   серо-чёрной;
 - цвета вершин не экспортируются (движок их не читает), параметры движка — `--material-param`, как у Poly Haven.
 
-Rough Meadow Grass (5 вариантов × 3 LOD) — слой `Meadow` ([scatter.md](scatter.md), «Трава Megascans»):
+Tall Grass (`tall_grass_rbeki`, 3 варианта × 3 LOD) — слой `Meadow` ([scatter.md](scatter.md), «Трава Megascans»):
 
 ```
-blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/rough_meadow_grass_skfjj_high.zip --name rough_meadow_grass --out Meshes/source/rough_meadow_grass.glb --material-param WindWeight=1 --material-param DitheredLODTransition=true
-python Tools/import_gltf.py Meshes/source/rough_meadow_grass.glb --scatter --lod-ranges 6,18
+blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/tall_grass_rbeki_high.zip --name tall_grass --out Meshes/source/tall_grass.glb --material-param WindWeight=1 --material-param DitheredLODTransition=true
+python Tools/import_gltf.py Meshes/source/tall_grass.glb --scatter --lod-ranges 6,18
 ```
+
+Прежняя Rough Meadow Grass (5 вариантов × 3 LOD; в базе, слоем не используется) — так же из
+`DownloadResources/rough_meadow_grass_skfjj_high.zip` с `--name rough_meadow_grass`.
 
 ## Ель
 

@@ -17,8 +17,8 @@
 #   - печатает габариты вариантов (м, ось Z Blender вверх) и треугольники LOD, экспортирует .glb без цветов вершин
 #     (движок их не читает).
 # Запуск из корня проекта:
-#   blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/rough_meadow_grass_skfjj_high.zip
-#       --name rough_meadow_grass --out Meshes/source/rough_meadow_grass.glb [--texture-size 2048] [--material-param WindWeight=1]
+#   blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/tall_grass_rbeki_high.zip
+#       --name tall_grass --out Meshes/source/tall_grass.glb [--texture-size 2048] [--material-param WindWeight=1]
 import argparse
 import json
 import os

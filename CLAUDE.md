@@ -140,7 +140,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   скачать — `python Tools/polyhaven_download.py <ассет> --resolution 2k`) — `Tools/export_polyhaven.py` через Blender,
   затем `import_gltf.py --scatter`, команды — в `docs/models.md`; без архива травы высокие пучки подменяет
   `Tools/blender_grass_tall.py` (импорт в копию базы, `base.db3` не меняется). Растения Megascans с Fab (трава
-  `rough_meadow_grass`; архив FBX — в `DownloadResources\`) — `Tools/export_megascans.py` через Blender, затем
+  `tall_grass_rbeki`; архив FBX — в `DownloadResources\`) — `Tools/export_megascans.py` через Blender, затем
   `import_gltf.py --scatter`, команды — в `docs/models.md`. Ели уровня
 `Test` (`Fir_A`, `Fir_B`, `Fir_C`: своя геометрия, кора и карточки хвои из `fir_tree_01` Poly Haven) —
 `blender -b --factory-startup --python Tools/blender_fir.py -- --archive DownloadResources/fir_tree_01_2k.blend.zip --out Meshes/source/fir.glb`,
@@ -417,7 +417,7 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн,
 наборы `Meadow` (трава — пучки `GrassClump` из Blender вперемешку с высокими пучками Poly Haven `grass_medium_01`,
-крупные пучки Megascans `rough_meadow_grass` своим слоем вдоль ручьёв — `mask_grass_riparian` и одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
+крупные пучки Megascans `tall_grass` своим слоем вдоль ручьёв — `mask_grass_riparian` и одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`
 (две секции: панель и металлическая рамка), к северу от луга — роща елей (`Fir_A/B/C`, 23 экземпляра), на склонах — лес:
