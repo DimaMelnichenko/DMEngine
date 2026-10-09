@@ -147,7 +147,15 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 	const float4 splat0 = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 0.0f ) );
 	const float4 splat1 = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 1.0f ) );
-	const float weights[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
+	float weights[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
+	// Галька русел в детальных плитках — по врезу в точке (0,25 м), а не по клеткам splat-карты
+	float2 detail;
+	[branch] if( g_channelLayer >= 0 && sampleTerrainDetail2( position.xz, g_detailTile, detail ) )
+	{
+		const float channel = smoothstep( 0.03f, 0.15f, detail.y );
+		[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
+			weights[layer] = weights[layer] * ( 1.0f - channel ) + ( layer == (uint)g_channelLayer ? channel : 0.0f );
+	}
 
 	// Четыре самых весомых слоя по убыванию веса; слои, которых нет в TerrainLayers, веса не получают
 	float4 splat = 0.0f;

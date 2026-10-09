@@ -1141,12 +1141,34 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		outletDistance[d] = std::min( outletDistance[d], ( fromLake ? 0.0 : outletDistance[k] ) + step );
 	}
 
+	// Родник: путь от истока ручья (узел без притока, не из озера) вниз по главному течению, м — наименьшие ширина, врез,
+	// вода и запас бровки нарастают на source_taper метрах: ручей начинается мокрой канавкой, а не готовым руслом
+	std::vector<double> fromSource( count, std::numeric_limits<double>::infinity() );
+	for( int k : nodeOrder )
+	{
+		if( up[k] < 0 )
+			fromSource[k] = std::isfinite( outletDistance[k] ) || inLake( k ) ? std::numeric_limits<double>::infinity() : 0.0;
+		const int d = down[k];
+		if( d >= 0 && up[d] == k )
+			fromSource[d] = fromSource[k] + std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
+	}
+	std::vector<double> sourceShare( count, 1.0 );
+	for( int k = 0; k < count; ++k )
+		if( p.sourceTaper > 0.0f && std::isfinite( fromSource[k] ) )
+			sourceShare[k] = smoothstep( 0.0, p.sourceTaper, fromSource[k] );
+
 	// 4. Ложе: дно монотонно вниз по течению, профиль по отрезкам оси — дно, тальвег, борта. В озере ложа нет (дно озера),
 	// и оно не тянет дно ниже по течению; ниже озера врез нарастает от порога (outletSlope)
 	std::vector<double> half( count ), depth( count ), bed( count ), bank( count ), surface( count );
 	for( int k = 0; k < count; ++k )
 	{
-		const Shape& s = shape[k];
+		Shape s = shape[k];
+		// У родника — от трети наименьших ширины, вреза, воды и запаса бровки (вода и у родника ниже бровки)
+		const double grow = 0.33 + 0.67 * sourceShare[k];
+		s.minWidth *= grow;
+		s.minIncision *= grow;
+		s.freeboard *= grow;
+		shape[k].freeboard = s.freeboard;
 		half[k] = 0.5 * std::max( s.widthCoef * std::sqrt( q[k] ), s.minWidth ) / cell;
 		surface[k] = height.sample( position[k].x - 0.5, position[k].y - 0.5 );
 		// Русло прорезано под паводок: вода в межень (по Маннингу, уклон — по поверхности) стоит ниже бровки на freeboard.
@@ -1159,7 +1181,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			surfaceSlope = std::max( ( surface[k] - height.sample( position[d].x - 0.5, position[d].y - 0.5 ) ) / step, surfaceSlope );
 		}
 		const double waterEstimate = std::max( std::pow( q[k] * s.manning / ( 2.0 * half[k] * cell * std::sqrt( surfaceSlope ) ), 0.6 ),
-											   static_cast<double>( p.minWaterDepth ) );
+											   p.minWaterDepth * grow );
 		depth[k] = std::max( { s.depthCoef * std::pow( q[k], 0.4 ), s.minIncision, ( waterEstimate + s.freeboard ) / ( 1.0 + s.thalweg ) } );
 		if( inLake( k ) )
 			depth[k] = 0.0;
@@ -1361,21 +1383,29 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		const int side = tileCells * samples + 2;
 		const int tiles = ( n + tileCells - 1 ) / tileCells;
 		const double step = 1.0 / samples;	// клеток на тексель
+		// Плитки — где проходит русло (рамка отрезка оси): узкое русло может не задеть центры клеток карты
 		std::vector<int> tileIndex( static_cast<size_t>( tiles ) * tiles, -1 );
-		for( int row = 0; row < n; ++row )
+		for( int k = 0; k < count; ++k )
 		{
-			for( int col = 0; col < n; ++col )
+			if( down[k] < 0 || ( inLake( k ) && inLake( down[k] ) ) )
+				continue;
+			double xMin, xMax, yMin, yMax;
+			segmentBox( k, xMin, xMax, yMin, yMax );
+			const int tx0 = std::max( static_cast<int>( std::floor( xMin / tileCells ) ), 0 );
+			const int tx1 = std::min( static_cast<int>( std::floor( xMax / tileCells ) ), tiles - 1 );
+			const int tz0 = std::max( static_cast<int>( std::floor( ( n - yMax ) / tileCells ) ), 0 );
+			const int tz1 = std::min( static_cast<int>( std::floor( ( n - yMin ) / tileCells ) ), tiles - 1 );
+			for( int tz = tz0; tz <= tz1; ++tz )
 			{
-				const size_t i = static_cast<size_t>( row ) * n + col;
-				if( lake[i] || carve[i] <= 0.001 )
-					continue;
-				const size_t tile = static_cast<size_t>( ( n - 1 - row ) / tileCells ) * tiles + col / tileCells;
-				if( tileIndex[tile] < 0 )
+				for( int tx = tx0; tx <= tx1; ++tx )
 				{
-					tileIndex[tile] = static_cast<int>( result.detailTiles.size() );
+					int& index = tileIndex[static_cast<size_t>( tz ) * tiles + tx];
+					if( index >= 0 )
+						continue;
+					index = static_cast<int>( result.detailTiles.size() );
 					DetailTile& detail = result.detailTiles.emplace_back();
-					detail.x = static_cast<uint32_t>( col / tileCells );
-					detail.z = static_cast<uint32_t>( ( n - 1 - row ) / tileCells );
+					detail.x = static_cast<uint32_t>( tx );
+					detail.z = static_cast<uint32_t>( tz );
 				}
 			}
 		}
@@ -1409,10 +1439,13 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		// озере — чаша
 		std::vector<size_t> order( result.detailTiles.size() );
 		std::iota( order.begin(), order.end(), size_t( 0 ) );
+		std::vector<std::vector<float>> tileBase( result.detailTiles.size() );
 		std::for_each( std::execution::par, order.begin(), order.end(), [&]( size_t t )
 		{
 			DetailTile& tile = result.detailTiles[t];
 			tile.heights.resize( static_cast<size_t>( side ) * side );
+			tile.carve.assign( tile.heights.size(), 0.0f );
+			tileBase[t].assign( tile.heights.size(), 0.0f );
 			std::vector<double> carved( tile.heights.size(), 0.0 );
 			for( int k : tileSegments[t] )
 			{
@@ -1428,9 +1461,10 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 					for( int i = i0; i <= i1; ++i )
 					{
 						const Point at = texelCell( tile, i, j );
-						double& value = carved[static_cast<size_t>( j ) * side + i];
+						const size_t index = static_cast<size_t>( j ) * side + i;
 						double base = 0.0;
-						value = std::max( value, segmentProfile( k, at.x, at.y, base ) );
+						carved[index] = std::max( carved[index], segmentProfile( k, at.x, at.y, base ) );
+						tileBase[t][index] = std::max( tileBase[t][index], static_cast<float>( base ) );
 					}
 				}
 			}
@@ -1444,9 +1478,33 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 					const size_t index = static_cast<size_t>( j ) * side + i;
 					const double lowering = lake[static_cast<size_t>( row ) * n + col] ? basinGrid.sample( at.x - 0.5, at.y - 0.5 ) : carved[index];
 					tile.heights[index] = static_cast<float>( catmullRom( height, at.x - 0.5, at.y - 0.5 ) - lowering );
+					tile.carve[index] = static_cast<float>( lowering );
 				}
 			}
 		} );
+		// Клетка карты — не выше самой низкой детальной точки в ней: узкое русло, которое не задело центр клетки, всё равно
+		// опускает её — уровень воды (дно у оси) и глубина воды на сетке 1 м — по детальному ложу
+		for( size_t t = 0; t < result.detailTiles.size(); ++t )
+		{
+			const DetailTile& tile = result.detailTiles[t];
+			for( int j = 1; j < side - 1; ++j )
+			{
+				for( int i = 1; i < side - 1; ++i )
+				{
+					const Point at = texelCell( tile, i, j );
+					const int col = static_cast<int>( at.x );
+					const int row = static_cast<int>( at.y );
+					if( col < 0 || row < 0 || col >= n || row >= n )
+						continue;
+					const size_t cellIndex = static_cast<size_t>( row ) * n + col;
+					if( lake[cellIndex] )
+						continue;
+					const size_t index = static_cast<size_t>( j ) * side + i;
+					carve[cellIndex] = std::max( carve[cellIndex], static_cast<double>( tile.carve[index] ) );
+					carveBase[cellIndex] = std::max( carveBase[cellIndex], static_cast<double>( tileBase[t][index] ) );
+				}
+			}
+		}
 	}
 	result.size = static_cast<uint32_t>( n );
 	result.lowering.resize( cells );
@@ -1520,14 +1578,32 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			slope[k] = std::max( ( bed[k] - bed[d] ) / step, static_cast<double>( p.minWaterSlope ) );
 		}
 		const double waterDepth = std::pow( q[k] * shape[k].manning / ( width[k] * std::sqrt( slope[k] ) ), 0.6 );
+		// Дно у оси — наименьшее поперёк течения (тальвег мог уйти от оси), но не вдоль: на крутом точка ниже по склону
+		// опустила бы воду под землю своей клетки
 		actual[k] = std::numeric_limits<double>::infinity();
-		for( double dy : { -0.7, 0.0, 0.7 } )
-			for( double dx : { -0.7, 0.0, 0.7 } )
-				actual[k] = std::min( actual[k], carved.sample( position[k].x - 0.5 + dx, position[k].y - 0.5 + dy ) );
+		{
+			const Point& from = position[up[k] >= 0 ? up[k] : k];
+			const Point& to = position[d >= 0 ? d : k];
+			double tx = to.x - from.x;
+			double ty = to.y - from.y;
+			const double length = std::hypot( tx, ty );
+			if( length < 1e-6 )
+			{
+				tx = 1.0;
+				ty = 0.0;
+			}
+			else
+			{
+				tx /= length;
+				ty /= length;
+			}
+			for( double offset : { -0.7, -0.35, 0.0, 0.35, 0.7 } )
+				actual[k] = std::min( actual[k], carved.sample( position[k].x - 0.5 - ty * offset, position[k].y - 0.5 + tx * offset ) );
+		}
 		// У истока и устья наименьшая глубина и запас бровки нарастают от берега озера (как врез у истока): на пороге вода —
 		// тонкий слив, в устье — подпор озера
 		const double ramp = std::min( outletDistance[k], inflowDistance[k] ) * outletSlope;
-		const double minDepth = std::min( static_cast<double>( p.minWaterDepth ), ramp );
+		const double minDepth = std::min( p.minWaterDepth * ( 0.33 + 0.67 * sourceShare[k] ), ramp );
 		const double freeboard = std::min( shape[k].freeboard, ramp );
 		level[k] = actual[k] + std::max( waterDepth, minDepth );
 		level[k] = std::max( std::min( level[k], surface[k] - freeboard ), actual[k] + std::min( 0.05, minDepth ) );
@@ -1767,19 +1843,38 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	return true;
 }
 
-TerrainEdit TerrainHydrology::loweringEdit( const Result& result, const WaterChannelsSettings& channels )
+std::vector<TerrainEdit> TerrainHydrology::loweringEdits( const Result& result, const WaterChannelsSettings& channels )
 {
-	TerrainEdit edit;
-	edit.name = "channels";
-	edit.raise = false;
-	edit.lower = true;
-	edit.relative = false;
-	edit.clearFoliage = 1.0f;
-	edit.paintLayer = channels.paintLayer;
-	edit.raster = "(water channels)";
-	edit.rasterValues = result.lowering;
-	edit.rasterSize = result.size;
-	return edit;
+	TerrainEdit lower;
+	lower.name = "channels";
+	lower.raise = false;
+	lower.lower = true;
+	lower.relative = false;
+	lower.raster = "(water channels)";
+	lower.rasterValues = result.lowering;
+	lower.rasterSize = result.size;
+	// Покраска галькой и очистка растительности — по опусканию, но только вне детальных плиток: в плитках их делают шейдеры
+	// по детальному врезу (terrain.ps, scatter.cs — terrain_detail.sh), точнее клетки 1 м
+	TerrainEdit paint = lower;
+	paint.name = "channels paint";
+	paint.lower = false;
+	paint.clearFoliage = 1.0f;
+	paint.paintLayer = channels.paintLayer;
+	const uint32_t n = result.size;
+	for( const DetailTile& tile : result.detailTiles )
+	{
+		for( uint32_t j = 0; j < detailTileCells; ++j )
+		{
+			for( uint32_t i = 0; i < detailTileCells; ++i )
+			{
+				const uint32_t col = tile.x * detailTileCells + i;
+				const uint32_t z = tile.z * detailTileCells + j;
+				if( col < n && z < n )
+					paint.rasterValues[static_cast<size_t>( n - 1 - z ) * n + col] = 0.0f;
+			}
+		}
+	}
+	return { lower, paint };
 }
 
 }

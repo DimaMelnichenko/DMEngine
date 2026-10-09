@@ -302,8 +302,18 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	// Маска слоя без того, что убрали правки рельефа, и без воды симуляции (SLOT_WATER: её привязывает WaterSimulation,
 	// объект сцены раньше расстановки; без воды у уровня — нули). Кольцевые слои следуют за водой каждый кадр, постоянные
 	// (лес) — по воде первого кадра
+	// В детальной плитке у русла — по врезу (0,25 м) и по воде над детальной землёй: уровень воды (сетка 1 м — земля карты
+	// и глубина) против высоты точки — узкий ручей и мелкий слив из озера не выкашивают метровую полосу и не зарастают
+	const float channelClear = terrainChannelClear( worldXZ );
+	float waterClear = waterFoliageClear( uv );
+	if( channelClear >= 0.0f )
+	{
+		const float coarseGround = g_terrainHeightMap.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * g_terrainHeightMultiplier +
+								   g_terrainHeightOffset;
+		waterClear = smoothstep( 0.01f, 0.03f, coarseGround + sampleWater( uv ).depth - terrainHeight( worldXZ ) );
+	}
 	float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - terrainFoliageClear( uv ) ) *
-					( 1.0f - waterFoliageClear( uv ) );
+					( 1.0f - max( channelClear, 0.0f ) ) * ( 1.0f - waterClear );
 	if( random( cell, seed + 2 ) >= density )
 		return false;
 

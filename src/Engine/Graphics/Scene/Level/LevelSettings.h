@@ -240,7 +240,7 @@ struct WaterChannelsSettings
 {
 	float minDischarge = 0.002f;	// м³/с: отсюда начинается русло
 	float widthCoef = 3.0f;			// ширина дна w = a · Q^0,5, м
-	float minWidth = 3.0f;			// самое узкое дно, м (уже сетка 1 м не покажет)
+	float minWidth = 1.0f;			// самое узкое дно, м (у русел — детальная земля 0,25 м)
 	float depthCoef = 1.0f;			// врез d = c · Q^0,4, м
 	float minIncision = 0.4f;		// самый мелкий врез, м
 	float bankSlope = 1.0f;			// борт: метров по горизонтали на метр вреза
@@ -258,6 +258,7 @@ struct WaterChannelsSettings
 	float minSpeed = 0.4f;			// течение ленты — не медленнее, м/с
 	float minWaterDepth = 0.3f;		// вода над дном — не мельче, м
 	float freeboard = 0.4f;			// вода ниже бровки (русло прорезано под паводок), м
+	float sourceTaper = 20.0f;		// от родника наименьшие ширина, врез, вода и запас нарастают на столько метров
 	// Профиль русла (TerrainHydrology, docs/water.md, «Профиль русла»)
 	float bedShape = 2.0f;			// форма дна: 2 — V (тальвег острый), больше — плоский U
 	float bankRoundness = 1.0f;		// борт: 1 — скруглённые бровка и подошва, 0 — прямой откос с резкой бровкой

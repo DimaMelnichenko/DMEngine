@@ -394,7 +394,8 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 			LOG( "CDLOD terrain: water channels are not built" );
 			return false;
 		}
-		applyTerrainEdits( field, { TerrainHydrology::loweringEdit( m_hydrology, water->channels ) }, &coverage );
+		applyTerrainEdits( field, TerrainHydrology::loweringEdits( m_hydrology, water->channels ), &coverage );
+		m_channelLayer = water->channels.paintLayer;
 		m_hasHydrology = true;
 		for( const std::string& warning : m_hydrology.warnings )
 			LOG( "Terrain hydrology: " + warning );
@@ -512,7 +513,7 @@ bool CDLODTerrain::createDetailTiles()
 	// Массив: срез — плитка, нормированные высоты (как карта высот); без плиток — один нулевой срез
 	const size_t slices = std::max<size_t>( tiles.size(), 1 );
 	ScratchImage array;
-	if( FAILED( array.Initialize2D( DXGI_FORMAT_R32_FLOAT, tiles.empty() ? 1 : side, tiles.empty() ? 1 : side, slices, 1 ) ) )
+	if( FAILED( array.Initialize2D( DXGI_FORMAT_R32G32_FLOAT, tiles.empty() ? 1 : side, tiles.empty() ? 1 : side, slices, 1 ) ) )
 		return false;
 	if( tiles.empty() )
 		std::memset( array.GetPixels(), 0, array.GetPixelsSize() );
@@ -529,7 +530,15 @@ bool CDLODTerrain::createDetailTiles()
 		}
 		const Image& target = *array.GetImage( 0, t, 0 );
 		for( uint32_t row = 0; row < side; ++row )
-			std::memcpy( target.pixels + row * target.rowPitch, &heights[static_cast<size_t>( row ) * side], side * sizeof( float ) );
+		{
+			float* line = reinterpret_cast<float*>( target.pixels + row * target.rowPitch );
+			for( uint32_t col = 0; col < side; ++col )
+			{
+				const size_t index = static_cast<size_t>( row ) * side + col;
+				line[2 * col] = heights[index];
+				line[2 * col + 1] = index < tile.carve.size() ? tile.carve[index] : 0.0f;
+			}
+		}
 		if( tile.x < m_detailTilesPerSide && tile.z < m_detailTilesPerSide )
 			m_detailIndex[static_cast<size_t>( tile.z ) * m_detailTilesPerSide + tile.x] = static_cast<int>( t );
 	}
@@ -564,7 +573,7 @@ bool CDLODTerrain::createDetailTiles()
 	DMD3D::instance().setName( m_detailIndexTexture, "Terrain detail tile index" );
 	if( !tiles.empty() )
 		LOG( "CDLOD terrain: detail tiles " + std::to_string( tiles.size() ) + " (" + std::to_string( side ) + "x" + std::to_string( side ) +
-			 ", " + std::to_string( tiles.size() * side * side * sizeof( float ) / 1024 / 1024 ) + " MB)" );
+			 ", " + std::to_string( tiles.size() * side * side * 2 * sizeof( float ) / 1024 / 1024 ) + " MB)" );
 	return true;
 }
 
@@ -1143,6 +1152,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.farBlendEnd = std::max( m_properties["Far blend end"].data<float>(), params.farBlendStart + 1.0f );
 		params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
 		params.detailTile = m_detailTileSize;
+		params.channelLayer = m_detailTileSize > 0.0f && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
 	} );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );

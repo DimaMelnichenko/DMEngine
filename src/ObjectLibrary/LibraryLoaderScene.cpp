@@ -29,6 +29,7 @@ const std::pair<const char*, float GS::WaterChannelsSettings::*> channelColumns[
 	{ "min_water_depth", &GS::WaterChannelsSettings::minWaterDepth },
 	{ "foam_slope", &GS::WaterChannelsSettings::foamSlope },
 	{ "freeboard", &GS::WaterChannelsSettings::freeboard },
+	{ "source_taper", &GS::WaterChannelsSettings::sourceTaper },
 	{ "bed_shape", &GS::WaterChannelsSettings::bedShape },
 	{ "bank_roundness", &GS::WaterChannelsSettings::bankRoundness },
 	{ "bend_asymmetry", &GS::WaterChannelsSettings::bendAsymmetry },

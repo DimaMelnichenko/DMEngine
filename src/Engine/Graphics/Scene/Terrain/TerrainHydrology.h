@@ -42,6 +42,7 @@ public:
 		uint32_t x = 0;					// плитка по x и z мира (z — от ближнего края карты)
 		uint32_t z = 0;
 		std::vector<float> heights;		// высота, м; строки — по z мира вверх, тексели — по x
+		std::vector<float> carve;		// врез русла (или чаши озера), м: покраска галькой и очистка растительности в шейдерах
 	};
 
 	struct Result
@@ -80,9 +81,9 @@ public:
 					   Result& result );
 	// Водосбор каждой клетки, м²: сток D8 по карте с заполненными низинами (тот же, что у build) — для карт эрозии
 	static std::vector<float> catchment( const HeightField& field );
-	// Растровая правка рельефа по опусканию: опускает, красит дно галькой и убирает растительность (как правка
-	// channels прежнего сценария); имя — для лога
-	static TerrainEdit loweringEdit( const Result& result, const WaterChannelsSettings& channels );
+	// Растровые правки рельефа по опусканию: опускание и (вне детальных плиток) покраска дна галькой и очистка
+	// растительности; в плитках покраска и очистка — в шейдерах по детальному врезу
+	static std::vector<TerrainEdit> loweringEdits( const Result& result, const WaterChannelsSettings& channels );
 };
 
 }

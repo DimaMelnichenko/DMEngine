@@ -113,7 +113,8 @@ private:
 		uint32_t layerCount;
 		uint32_t showWater;		// подсветка воды симуляции (SLOT_WATER) — отладка, «Show water»
 		float detailTile;		// сторона детальной плитки, м; 0 — детальной земли нет
-		float padding[3];
+		int32_t channelLayer;	// слой гальки русел в детальных плитках (−1 — нет)
+		float padding[2];
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1, −2: начало морфинга и 1 / длина зоны
 	};
 
@@ -191,13 +192,14 @@ private:
 	DirectX::XMFLOAT4 m_morphConsts[maxLevels] = {};
 	float m_detailRanges[detailLevels] = {};
 	DirectX::XMFLOAT4 m_detailMorph[detailLevels] = {};
-	// Детальная земля у русел: массив плиток (нормированные высоты, поле в тексель) и индекс плитка → срез + 1; на CPU —
+	// Детальная земля у русел: массив плиток (x — нормированная высота, y — врез, м; поле в тексель) и индекс плитка → срез + 1; на CPU —
 	// те же значения для ходьбы и границы плиток (min / max) для отбора узлов
 	Texture m_detailTexture;
 	ShaderView m_detailView;
 	Texture m_detailIndexTexture;
 	ShaderView m_detailIndexView;
 	float m_detailTileSize = 0.0f;			// сторона плитки, м; 0 — плиток нет
+	int32_t m_channelLayer = -1;			// слой гальки русел (WaterChannelsSettings::paintLayer)
 	uint32_t m_detailSide = 0;				// текселей плитки по стороне (с полями)
 	uint32_t m_detailTilesPerSide = 0;
 	std::vector<int> m_detailIndex;			// плитка (x + z · m_detailTilesPerSide) → срез, −1 — нет

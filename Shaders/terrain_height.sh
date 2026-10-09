@@ -39,6 +39,16 @@ float terrainHeight( float2 worldXZ )
 	return normalized * g_terrainHeightMultiplier + g_terrainHeightOffset;
 }
 
+// Растительность в детальной плитке у русла: −1 — плитки нет (решают маски 1 м), иначе доля, которую убирает врез русла
+// (0,25 м: узкий ручей не выкашивает метровую полосу)
+float terrainChannelClear( float2 worldXZ )
+{
+	float2 detail;
+	if( !sampleTerrainDetail2( worldXZ, g_terrainDetailTile, detail ) )
+		return -1.0f;
+	return smoothstep( 0.02f, 0.08f, detail.y );
+}
+
 // Доля растительности, которую убрали правки рельефа (русло, площадка): 0 — не тронута, 1 — убрана вся
 float terrainFoliageClear( float2 uv )
 {

@@ -29,7 +29,8 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	uint   g_layerCount;			// слоёв в массивах текстур (TerrainLayers)
 	uint   g_showWater;				// подсветка воды симуляции (water.sh) — отладка, «Show water»
 	float  g_detailTile;			// сторона детальной плитки, м (terrain_detail.sh); 0 — детальной земли нет
-	float3 g_cdlodPadding;
+	int    g_channelLayer;			// слой гальки русел: в детальных плитках красится по врезу (−1 — нет)
+	float2 g_cdlodPadding;
 	float4 g_detailMorph[2];		// уровни мельче листа (−1, −2): x — начало морфинга, y — 1 / длина зоны
 };
 

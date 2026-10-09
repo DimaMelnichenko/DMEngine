@@ -2,7 +2,7 @@
 // Поверхность воды: что рисовать и где (класс WaterSimulation, docs/water.md). Сетка поверхности — центры ячеек
 // симуляции, тайлами по WATER_TILE ячеек:
 //   mainSurface    — после шагов симуляции: уровень воды в ячейке (рельеф + глубина) там, где воды видно (глубже
-//                    g_visibleDepth). У сухой ячейки рядом с водой — средний уровень мокрых соседей: плоскость воды
+//                    g_visibleDepth). У сухой ячейки рядом с водой — наименьший уровень мокрых соседей: плоскость воды
 //                    продолжается за урез и уходит под рельеф, берег — линия их пересечения (её даёт проверка
 //                    глубины), плавно внутри ячейки, а не по её границе. Остальное сухое — без уровня; глубина < 0 —
 //                    воду ячейки рисует лента ручья (static), там поверхности нет. Заодно — границы
@@ -69,22 +69,20 @@ void mainSurface( uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint
 			level = terrain( cell ) + depth;
 		else if( depth >= 0.0f )	// < 0 — воду клетки рисует другое (лента ручья в режиме static)
 		{
-			float sum = 0.0f;
-			float count = 0.0f;
+			// Наименьший уровень мокрых соседей: у озера все равны, у ручья на склоне — сосед ниже по течению, иначе плоскость
+			// от соседа выше по склону легла бы плёнкой на берег
+			float lowest = 1e30f;
 			for( int y = -1; y <= 1; ++y )
 			{
 				for( int x = -1; x <= 1; ++x )
 				{
 					const int2 neighbor = cell + int2( x, y );
 					if( inside( neighbor ) && g_waterDepth[neighbor] >= g_visibleDepth )
-					{
-						sum += terrain( neighbor ) + g_waterDepth[neighbor];
-						count += 1.0f;
-					}
+						lowest = min( lowest, terrain( neighbor ) + g_waterDepth[neighbor] );
 				}
 			}
-			if( count > 0.0f )
-				level = sum / count;
+			if( lowest < 1e29f )
+				level = lowest;
 		}
 		g_level[cell] = level;
 	}

@@ -74,6 +74,7 @@ const ChannelParameter channelParameters[] = {
 	{ "Min water depth", &WaterChannelsSettings::minWaterDepth, 0.05f, 1.0f, "m", "Water over the bed at least" },
 	{ "Foam slope", &WaterChannelsSettings::foamSlope, 0.02f, 0.5f, "", "Steeper streams foam (fully at twice), m per m" },
 	{ "Freeboard", &WaterChannelsSettings::freeboard, 0.0f, 2.0f, "m", "Water stands this much below the bank top: the bed is cut for floods" },
+	{ "Source taper", &WaterChannelsSettings::sourceTaper, 0.0f, 100.0f, "m", "From a spring the narrowest bed, incision, water and freeboard grow over this length" },
 	{ "Bed shape", &WaterChannelsSettings::bedShape, 1.0f, 12.0f, "", "Bed cross-section: 2 - V (sharp thalweg), more - flat U" },
 	{ "Bank roundness", &WaterChannelsSettings::bankRoundness, 0.0f, 1.0f, "", "1 - rounded bank top and toe, 0 - straight bank with a sharp edge" },
 	{ "Bend asymmetry", &WaterChannelsSettings::bendAsymmetry, 0.0f, 1.0f, "", "Outer bank of a bend deeper and steeper, inner - a gentle bar" },
