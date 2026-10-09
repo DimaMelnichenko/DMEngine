@@ -101,6 +101,15 @@ const StreamScale streamScales[] = {
 	{ "Discharge scale", &StreamCurve::dischargeScale, "Water of this stream: wider, deeper bed at > 1" },
 };
 
+// Параметры генератора кривых русел: их правка генерирует кривые заново при следующей загрузке (отпечаток), а не перестраивает
+// русла сразу
+bool generatorParameter( float WaterChannelsSettings::* field )
+{
+	return field == &WaterChannelsSettings::minDischarge || field == &WaterChannelsSettings::meanderLength ||
+		   field == &WaterChannelsSettings::meanderAmplitude || field == &WaterChannelsSettings::meanderMaxSlope ||
+		   field == &WaterChannelsSettings::lakeDepth || field == &WaterChannelsSettings::minLakeArea;
+}
+
 bool sameSources( const WaterSimulationSettings& a, const WaterSimulationSettings& b )
 {
 	return a.sourceRate == b.sourceRate && a.flowStart == b.flowStart && a.flowFull == b.flowFull && a.sourceRadius == b.sourceRadius;
@@ -158,30 +167,38 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	m_channelsProperties.setName( "Channels" );
 	for( const ChannelParameter& parameter : channelParameters )
 		addSlider( m_channelsProperties, parameter.name, settings.channels.*parameter.field, parameter.low, parameter.high, parameter.unit )
-			->setTooltip( std::string( parameter.tooltip ) + "; applied at the next level load" );
+			->setTooltip( std::string( parameter.tooltip ) +
+						  ( generatorParameter( parameter.field ) ? "; generates the stream curves anew at the next level load" :
+																	"; the channels are rebuilt on change" ) );
 	Property* smooth = m_channelsProperties.insert( "Smooth passes", settings.channels.smooth );
 	smooth->setLow( 0.0f );
 	smooth->setHigh( 20.0f );
-	smooth->setTooltip( "Smoothing passes of the channel axis along the flow; applied at the next level load" );
+	smooth->setTooltip( "Smoothing passes of the channel axis along the flow; generates the stream curves anew at the next level load" );
 	Property* paint = m_channelsProperties.insert( "Paint layer", settings.channels.paintLayer );
 	paint->setLow( 0.0f );
 	paint->setHigh( 7.0f );
-	paint->setTooltip( "Terrain material layer of the bed and banks (TerrainLayers.layer); applied at the next level load" );
+	paint->setTooltip( "Terrain material layer of the bed and banks (TerrainLayers.layer); the channels are rebuilt on change" );
 	m_properties.addSubContainer( &m_channelsProperties );
 
 	// Кривые русел: подокно на кривую — включение и множители; правка помечает кривую правленной («Save level»):
 	// новая генерация её не заменит
 	m_streamsProperties.setName( "Streams" );
 	m_streamProperties.clear();
-	for( const StreamCurve& curve : settings.streams )
+	m_curves = settings.streams;
+	m_builtCurves = settings.streams;
+	m_builtChannels = settings.channels;
+	m_curvesDirty = false;
+	// Кривые живут в m_curves: settings() их не копирует (его зовут каждый кадр)
+	m_initial.streams.clear();
+	for( const StreamCurve& curve : m_curves )
 	{
 		auto container = std::make_unique<PropertyContainer>();
 		container->setName( curve.name + ( curve.generated ? "" : " (manual)" ) + ( curve.edited ? " (edited)" : "" ) + " #" +
 							std::to_string( curve.id ) );
-		container->insert( "Enabled", curve.enabled )->setTooltip( "Off - no channel and no water; applied at the next level load" );
+		container->insert( "Enabled", curve.enabled )->setTooltip( "Off - no channel and no water; the channels are rebuilt on change" );
 		for( const StreamScale& scale : streamScales )
 			addSlider( *container, scale.name, curve.*scale.field, 0.1f, 4.0f )
-				->setTooltip( std::string( scale.tooltip ) + "; applied at the next level load" );
+				->setTooltip( std::string( scale.tooltip ) + "; the channels are rebuilt on change" );
 		m_streamsProperties.addSubContainer( container.get() );
 		m_streamProperties.push_back( std::move( container ) );
 	}
@@ -614,21 +631,119 @@ WaterSimulation::Settings WaterSimulation::settings() const
 		settings.channels.*parameter.field = m_channelsProperties[parameter.name].data<float>();
 	settings.channels.smooth = m_channelsProperties["Smooth passes"].data<int32_t>();
 	settings.channels.paintLayer = m_channelsProperties["Paint layer"].data<int32_t>();
-	for( size_t i = 0; i < settings.streams.size() && i < m_streamProperties.size(); ++i )
-	{
-		StreamCurve& curve = settings.streams[i];
-		const StreamCurve& initial = m_initial.streams[i];
-		const PropertyContainer& properties = *m_streamProperties[i];
-		curve.enabled = properties["Enabled"].data<bool>();
-		for( const StreamScale& scale : streamScales )
-			curve.*scale.field = properties[scale.name].data<float>();
-		// Правка в окне — кривая правленная: новая генерация её не заменит
-		bool changed = curve.enabled != initial.enabled;
-		for( const StreamScale& scale : streamScales )
-			changed = changed || curve.*scale.field != initial.*scale.field;
-		curve.edited = initial.edited || changed;
-	}
 	return settings;
+}
+
+std::vector<StreamCurve> WaterSimulation::streamCurves() const
+{
+	std::vector<StreamCurve> curves = m_curves;
+	for( size_t i = 0; i < curves.size() && i < m_streamProperties.size(); ++i )
+	{
+		StreamCurve& curve = curves[i];
+		const PropertyContainer& properties = *m_streamProperties[i];
+		const bool enabled = properties["Enabled"].data<bool>();
+		bool changed = enabled != curve.enabled;
+		curve.enabled = enabled;
+		for( const StreamScale& scale : streamScales )
+		{
+			const float value = properties[scale.name].data<float>();
+			changed = changed || value != curve.*scale.field;
+			curve.*scale.field = value;
+		}
+		// Правка в окне — кривая правленная: новая генерация её не заменит
+		curve.edited = curve.edited || changed;
+	}
+	return curves;
+}
+
+void WaterSimulation::setCurvePoint( size_t curve, size_t point, DirectX::XMFLOAT2 position )
+{
+	if( curve < m_curves.size() && point < m_curves[curve].points.size() )
+		m_curves[curve].points[point].position = position;
+}
+
+bool WaterSimulation::insertCurvePoint( size_t curve, int after, DirectX::XMFLOAT2 position )
+{
+	if( curve >= m_curves.size() || after < -1 || after >= static_cast<int>( m_curves[curve].points.size() ) )
+		return false;
+	std::vector<StreamCurvePoint>& points = m_curves[curve].points;
+	// Расход новой точки — как у соседней выше по течению (у первой — у прежней первой)
+	StreamCurvePoint point = points[std::max( after, 0 )];
+	point.position = position;
+	points.insert( points.begin() + ( after + 1 ), point );
+	finishCurveEdit( curve );
+	return true;
+}
+
+bool WaterSimulation::removeCurvePoint( size_t curve, size_t point )
+{
+	if( curve >= m_curves.size() || point >= m_curves[curve].points.size() || m_curves[curve].points.size() <= 2 )
+		return false;
+	m_curves[curve].points.erase( m_curves[curve].points.begin() + point );
+	finishCurveEdit( curve );
+	return true;
+}
+
+void WaterSimulation::finishCurveEdit( size_t curve )
+{
+	if( curve >= m_curves.size() )
+		return;
+	m_curves[curve].edited = true;
+	m_curves[curve].pointsChanged = true;
+	m_curvesDirty = true;
+}
+
+PropertyContainer* WaterSimulation::curveProperties( size_t curve )
+{
+	return curve < m_streamProperties.size() ? m_streamProperties[curve].get() : nullptr;
+}
+
+bool WaterSimulation::rebuildRequested() const
+{
+	if( !m_initialized )
+		return false;
+	if( m_curvesDirty )
+		return true;
+	for( size_t i = 0; i < m_builtCurves.size() && i < m_streamProperties.size(); ++i )
+	{
+		const PropertyContainer& properties = *m_streamProperties[i];
+		if( properties["Enabled"].data<bool>() != m_builtCurves[i].enabled )
+			return true;
+		for( const StreamScale& scale : streamScales )
+			if( properties[scale.name].data<float>() != m_builtCurves[i].*scale.field )
+				return true;
+	}
+	const Settings current = settings();
+	for( const ChannelParameter& parameter : channelParameters )
+		if( !generatorParameter( parameter.field ) && current.channels.*parameter.field != m_builtChannels.*parameter.field )
+			return true;
+	return current.channels.paintLayer != m_builtChannels.paintLayer;
+}
+
+bool WaterSimulation::rebuild( const TerrainHydrology::Result& hydrology )
+{
+	const auto start = std::chrono::high_resolution_clock::now();
+	m_builtCurves = streamCurves();
+	const Settings current = settings();
+	m_builtChannels = current.channels;
+	m_curvesDirty = false;
+	if( !createHydrologyTextures( hydrology ) )
+		return false;
+	if( m_static )
+		m_staticWaterMap = &m_staticWaterView;
+	buildSources( current );
+	if( m_static )
+	{
+		if( !buildStaticWater( current ) || !m_streams.initialize( hydrology.streams ) )
+			return false;
+		buildSurface();
+		m_surfaceDirty = false;
+	}
+	else
+		m_surfaceDirty = true;
+	LOG( "Water rebuilt for the edited channels, ms: " +
+		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() ) );
+	return true;
 }
 
 void WaterSimulation::setParameters( const Settings& settings )

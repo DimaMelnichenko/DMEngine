@@ -259,6 +259,13 @@ float Scene::skyLightScale()
 	return skyScale() * m_skyLight.normalization();
 }
 
+void Scene::applyEditorChanges()
+{
+	// Правили кривые русел или форму русел в редакторе — русла, вода и расстановка заново, без перезагрузки уровня
+	if( m_level.terrain && m_level.waterSimulation && m_water.rebuildRequested() )
+		rebuildChannels();
+}
+
 void Scene::update( const FrameContext& frame )
 {
 	for( SceneObject* object : m_objects )
@@ -318,7 +325,10 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	}
 	std::optional<WaterSimulationSettings> water;
 	if( m_level.terrain && m_level.waterSimulation )
+	{
 		water = m_water.settings();
+		water->streams = m_water.streamCurves();
+	}
 	std::vector<ParticleEmitterSettings> emitters;
 	if( m_particles.initialized() )
 		emitters = m_particles.emitterSettings();
@@ -327,6 +337,23 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	// Экземпляры моделей в базе — на нынешней земле: пересадка после эрозии закреплена
 	if( m_level.terrain )
 		m_terrain.confirmErosionChange();
+	return true;
+}
+
+bool Scene::rebuildChannels()
+{
+	const auto start = std::chrono::high_resolution_clock::now();
+	WaterSimulationSettings water = m_water.settings();
+	water.streams = m_water.streamCurves();
+	if( !m_terrain.rebuildChannels( water, water.streams ) || !m_terrain.hydrology() || !m_water.rebuild( *m_terrain.hydrology() ) )
+	{
+		LOG( "Water channels are not rebuilt" );
+		return false;
+	}
+	// Постоянные слои (лес) разложены по прежней земле и воде — раскладка заново; трава раскладывается каждый кадр
+	for( const auto& scatterer : m_scatterers )
+		scatterer->terrainChanged();
+	LOG( "Water channels rebuilt without reload, ms: " + elapsedMs( start ) );
 	return true;
 }
 

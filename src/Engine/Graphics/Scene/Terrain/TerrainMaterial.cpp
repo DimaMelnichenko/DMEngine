@@ -336,6 +336,7 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 		if( !coverage.paint[layer].empty() )
 			LOG( "Terrain material: terrain edits paint layer " + std::to_string( layer ) + ", which TerrainLayers does not describe" );
 
+	m_splatMapFile = splatMap;
 	if( !loadSplatMap( splatMap, coverage, m_layerCount, m_splatMapTexture, m_splatMap ) ||
 		!buildArray( albedoFiles, Fallback::checker, true, m_albedoHeightTexture, m_albedoHeight ) ||
 		!buildArray( normalFiles, Fallback::flatNormal, false, m_normalRoughnessTexture, m_normalRoughness ) )
@@ -347,6 +348,14 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const std::string& splatMa
 	DMD3D::instance().setName( m_albedoHeightTexture, "Terrain albedo + height" );
 	DMD3D::instance().setName( m_normalRoughnessTexture, "Terrain normal + roughness" );
 
+	return true;
+}
+
+bool TerrainMaterial::repaint( const TerrainEditCoverage& coverage )
+{
+	if( !loadSplatMap( m_splatMapFile, coverage, m_layerCount, m_splatMapTexture, m_splatMap ) )
+		return false;
+	DMD3D::instance().setName( m_splatMapTexture, "Terrain splat map" );
 	return true;
 }
 

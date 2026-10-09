@@ -396,6 +396,27 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 					updateStream.bind( ":id", static_cast<int64_t>( curve.id ) );
 					updateStream.exec();
 					updateStream.reset();
+					// Точки правили во вьюпорте — переписать
+					if( curve.pointsChanged )
+					{
+						SQLite::Statement removePoints( db, "DELETE FROM StreamPoints WHERE stream = :stream" );
+						removePoints.bind( ":stream", static_cast<int64_t>( curve.id ) );
+						removePoints.exec();
+						SQLite::Statement insertPoint( db, "INSERT INTO StreamPoints (stream, point, x, z, discharge) VALUES (:stream, :point, :x, :z, :discharge)" );
+						for( size_t i = 0; i < curve.points.size(); ++i )
+						{
+							insertPoint.bind( ":stream", static_cast<int64_t>( curve.id ) );
+							insertPoint.bind( ":point", static_cast<int64_t>( i ) );
+							insertPoint.bind( ":x", static_cast<double>( curve.points[i].position.x ) );
+							insertPoint.bind( ":z", static_cast<double>( curve.points[i].position.y ) );
+							if( curve.points[i].discharge > 0.0f )
+								insertPoint.bind( ":discharge", static_cast<double>( curve.points[i].discharge ) );
+							else
+								insertPoint.bind( ":discharge" );
+							insertPoint.exec();
+							insertPoint.reset();
+						}
+					}
 				}
 			}
 		}

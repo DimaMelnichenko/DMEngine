@@ -187,6 +187,7 @@ void GUI::Begin( const GS::FrameStats& stats, DMCamera& camera )
 
 void GUI::End()
 {
+	m_itemActive = ImGui::IsAnyItemActive();
 	ImGui::Render();
 	ImGui_ImplDX12_RenderDrawData( ImGui::GetDrawData(), DMD3D::instance().commandList() );
 }

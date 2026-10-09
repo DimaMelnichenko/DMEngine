@@ -162,6 +162,9 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_GUI.addToggle( { "Fly mode (mouse look)", "I", [this] { return m_flyMode; }, press( DIK_I ) } );
 	m_GUI.addToggle( { "Walk on terrain", "F", [this] { return m_walk.enabled(); }, press( DIK_F ) } );
 	m_GUI.addToggle( { "Game view (hide editor)", "G", [this] { return !m_showGUI; }, press( DIK_G ) } );
+	// Кривые русел во вьюпорте: точки — гизмо, Insert / Delete (Viewport); русла перестраиваются после правки
+	m_GUI.addToggle( { "Stream curves", "", [this] { return m_viewport.streamMode(); },
+					   [this] { m_viewport.setStreamMode( !m_viewport.streamMode() ); } } );
 	// Отладочные виды — флажки окон объектов одним списком View → Debug views
 	auto debugView = [this]( const char* name, PropertyContainer* properties, const char* property )
 	{
@@ -229,6 +232,9 @@ bool DMGraphics::Frame()
 	m_scene.lights().shadowLight( toShadowLight, shadowSettings );
 	m_gameTime += elapsedTime / 1000.0;
 	const FrameContext frame{ mainView, elapsedTime, static_cast<float>( m_gameTime ), toShadowLight };
+	// Перестройка по правкам редактора (кривые русел) — не пока тянут ползунок в окне
+	if( !m_GUI.itemActive() )
+		m_scene.applyEditorChanges();
 
 	// Сначала состояние сцены на CPU, затем команды GPU
 	TIME_CHECK( m_scene.update( frame ), "Scene Update = %.3f ms" );
@@ -265,7 +271,8 @@ bool DMGraphics::Render( const FrameContext& frame )
 		m_GUI.Begin( m_frameStats, m_cameraPool["main"] );
 		// Вьюпорт — в кадре ImGui: выбор кликом по сцене, рамка выбранного; пока камера смотрит мышью — без кликов
 		if( !m_mouseLook )
-			m_viewport.update( m_cameraPool["main"], m_scene.models(), m_GUI );
+			m_viewport.update( m_cameraPool["main"], m_scene.models(), m_GUI, m_scene.water().initialized() ? &m_scene.water() : nullptr,
+							   &m_scene.terrain() );
 		m_GUI.End();
 		auto guiFinish = TIME_POINT();
 		m_guiRenderTime = TIME_DIFF( guiStart, guiFinish );
@@ -557,15 +564,62 @@ void DMGraphics::registerCommands()
 		else
 			reply->error( "select: no window " + args[0] );
 	} );
-	m_console.registerCommand( "pick", "<x> <y> - select a model instance under a window point, as a click in the viewport",
+	m_console.registerCommand( "pick", "<x> <y> - select under a window point, as a click in the viewport (a stream curve point in "
+							   "the Stream curves mode, else a model instance)",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		if( args.size() != 2 )
 			return reply->error( "usage: pick <x> <y>" );
-		const int instance = m_viewport.pickAt( m_cameraPool["main"], m_scene.models(), m_GUI, std::stof( args[0] ), std::stof( args[1] ) );
-		if( instance < 0 )
-			return reply->ok( "nothing" );
-		reply->ok( m_scene.models().instanceName( instance ) );
+		const std::string picked = m_viewport.clickAt( m_cameraPool["main"], m_scene.models(), m_GUI,
+													   m_scene.water().initialized() ? &m_scene.water() : nullptr, &m_scene.terrain(),
+													   std::stof( args[0] ), std::stof( args[1] ) );
+		reply->ok( picked.empty() ? "nothing" : picked );
+	} );
+	m_console.registerCommand( "toggle", "\"<name>\" - switch a View menu toggle (Stream curves, Wireframe...)",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( args.size() != 1 )
+			return reply->error( "usage: toggle \"<name>\"" );
+		for( const Editor::Toggle& toggle : m_GUI.toggles() )
+		{
+			if( toggle.name == args[0] )
+			{
+				toggle.toggle();
+				return reply->ok( toggle.state() ? "on" : "off" );
+			}
+		}
+		reply->error( "toggle: no toggle " + args[0] );
+	} );
+	m_console.registerCommand( "stream", "move <x,z> | insert | delete | falloff <m> - edit the selected stream curve point (pick it "
+							   "in the Stream curves mode), as the gizmo, Insert / Delete and Falloff in the viewport",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( args.empty() || !m_scene.water().initialized() )
+			return reply->error( "usage: stream move <x,z> | insert | delete (the level needs water)" );
+		WaterSimulation& water = m_scene.water();
+		bool done = false;
+		if( args[0] == "move" && args.size() == 2 )
+		{
+			const size_t comma = args[1].find( ',' );
+			if( comma == std::string::npos )
+				return reply->error( "usage: stream move <x,z>" );
+			done = m_viewport.moveStreamPoint( water, std::stof( args[1].substr( 0, comma ) ), std::stof( args[1].substr( comma + 1 ) ) );
+		}
+		else if( args[0] == "insert" )
+			done = m_viewport.insertStreamPoint( water );
+		else if( args[0] == "delete" )
+			done = m_viewport.removeStreamPoint( water );
+		else if( args[0] == "falloff" && args.size() == 2 )
+		{
+			m_viewport.setStreamFalloff( std::stof( args[1] ) );
+			return reply->ok();
+		}
+		else
+			return reply->error( "usage: stream move <x,z> | insert | delete" );
+		if( done )
+			reply->ok();
+		else
+			reply->error( "stream: select a stream curve point first (pick in the Stream curves mode)" );
 	} );
 	m_console.registerCommand( "quit", "- exit the engine normally (log is written to the end)",
 							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )

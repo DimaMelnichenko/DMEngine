@@ -69,6 +69,12 @@ public:
 	bool savedWithLevel() const override { return true; }
 	// Слои с настройками из GUI — для сохранения уровня (строки ScatterLayers и ScatterLayerModels)
 	std::vector<ScatterLayerRecord> layerRecords() const;
+	// Земля или вода изменились без перезагрузки (русла перестроены): постоянные слои — раскладка заново
+	void terrainChanged()
+	{
+		for( Layer& layer : m_layers )
+			layer.placed = false;
+	}
 
 private:
 	// cbuffer TerrainHeightBuffer в Shaders\terrain_height.sh

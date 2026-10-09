@@ -44,7 +44,9 @@ python Tools/engine.py stop
 | `key клавиша` | нажатие горячей клавиши (буква, цифра или скан-код DirectInput): `G`, `Q`, `1`, `3`, `4`… |
 | `gui on\|off` | окна редактора, как клавиша G |
 | `action "имя"` | действие меню File редактора: `"Save level"` — правки окон в базу, `"Exit"` ([gui.md](gui.md)) |
-| `pick x y` | выбрать экземпляр модели под точкой окна (пиксели), как клик во вьюпорте; ответ — его имя или `nothing` ([gui.md](gui.md)) |
+| `pick x y` | выбрать под точкой окна (пиксели), как клик во вьюпорте: в режиме «Stream curves» — точку кривой русла, иначе экземпляр модели; ответ — `Stream 7, point 3`, имя экземпляра или `nothing` ([gui.md](gui.md)) |
+| `toggle "имя"` | переключатель меню View (`Stream curves`, `Wireframe`…); ответ — `on` / `off` |
+| `stream move x,z` / `insert` / `delete` / `falloff м` | правка выбранной точки кривой русла, как гизмо (с мягким выделением), Insert, Delete и ползунок «Falloff»; русла перестраиваются в следующем кадре ([water.md](water.md), «Кривые русел») |
 | `select "окно"` | выбрать окно свойств в Outliner — Details показывает его (снимки редактора сценарием: `screenshot файл.png gui`) |
 | `wait кадров` | пропустить столько кадров |
 | `water discharge файл.dds` | расход воды ячеек симуляции, м³/с, в DDS `R32_FLOAT` (`WaterSimulation::exportDischarge`) — для проверки |

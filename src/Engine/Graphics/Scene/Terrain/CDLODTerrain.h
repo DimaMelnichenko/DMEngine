@@ -12,6 +12,11 @@
 #include "ShaderProgram.h"
 #include "D3D\DMStructuredBuffer.h"
 
+namespace DirectX
+{
+struct Image;
+}
+
 namespace GS
 {
 
@@ -50,6 +55,10 @@ public:
 	const std::vector<StreamCurve>& streamCurves() const { return m_streamCurves; }
 	bool streamsRegenerated() const { return m_streamsRegenerated; }
 	const std::string& streamsKey() const { return m_streamsKey; }
+	// Русла заново по кривым без перезагрузки уровня (правка кривой или параметров русел в редакторе): рельеф после эрозии
+	// и ручных правок — из памяти, затем русла, карта высот с мипами, границы узлов, маска очистки растительности и
+	// покраска splat-карты. Воду, расстановку и частицы перестраивает Scene
+	bool rebuildChannels( const WaterSimulationSettings& water, const std::vector<StreamCurve>& curves );
 	// Карта высот и её масштаб: по ним стоят расстановка травы и декора и частицы
 	TerrainHeight terrainHeight() const override;
 	bool surfaceHeight( float x, float z, float& height ) const override;
@@ -112,6 +121,8 @@ private:
 	// Копия карты высот с правками рельефа и мипами для вершинного шейдера и минимум / максимум высоты каждого узла по
 	// мипам его уровня; coverage — что правки делают, кроме высоты
 	bool buildHeightBounds( const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water, TerrainEditCoverage& coverage );
+	// Русла по m_streamCurves, копия на CPU, карта высот с мипами на GPU и границы узлов — по карте image (R32, после правок)
+	bool finishHeights( const DirectX::Image& image, const WaterSimulationSettings* water, TerrainEditCoverage& coverage );
 	// Значения растровой правки (TerrainEdit::raster) из файла; false — файла нет или он не R32_FLOAT (строка в лог)
 	static bool loadEditRaster( TerrainEdit& edit );
 	// Маска очистки растительности правками (R8_UNORM размером с карту высот, без правок с очисткой — 1 × 1 ноль)
@@ -136,6 +147,10 @@ private:
 	TerrainHydrology::Result m_hydrology;	// конвейер рельефа и воды: русла по итоговому рельефу
 	bool m_hasHydrology = false;
 	std::vector<StreamCurve> m_streamCurves;
+	// Основа перестройки русел: рельеф после эрозии и ручных правок (нормированный, m_baseSize²) и покрытие правок
+	std::vector<float> m_baseHeights;
+	uint32_t m_baseSize = 0;
+	TerrainEditCoverage m_baseCoverage;
 	std::string m_streamsKey;
 	bool m_streamsRegenerated = false;
 	std::string m_erodedDirectory;			// кэш и карты эрозии: Textures\<каталог карты высот>\eroded

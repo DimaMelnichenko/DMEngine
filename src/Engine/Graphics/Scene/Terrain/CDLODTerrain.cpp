@@ -341,10 +341,16 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 		const size_t changed = applyTerrainEdits( field, loaded, &coverage );
 		LOG( "CDLOD terrain: " + std::to_string( edits.size() ) + " terrain edits, texels changed: " + std::to_string( changed ) );
 	}
+	// Основа для перестройки русел без перезагрузки (rebuildChannels): рельеф после эрозии и ручных правок и их покрытие
+	m_baseSize = field.size;
+	m_baseHeights.resize( static_cast<size_t>( field.size ) * field.size );
+	for( uint32_t row = 0; row < field.size; ++row )
+		std::memcpy( &m_baseHeights[static_cast<size_t>( row ) * field.size], field.heights + row * field.rowPitch, field.size * sizeof( float ) );
+	m_baseCoverage = coverage;
+
 	m_hasHydrology = false;
 	if( water )
 	{
-		const auto start = std::chrono::steady_clock::now();
 		// Кривые русел — из базы; рельеф или параметры генератора сменились (отпечаток не совпал) — генерация заново:
 		// прежние несправленные заменяются, правленные и ручные остаются (Scene пишет новые в базу)
 		m_streamCurves = water->streams;
@@ -365,6 +371,23 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 			LOG( "Terrain hydrology: stream curves generated: " + std::to_string( m_streamCurves.size() - kept ) + ", edited and manual kept: " +
 				 std::to_string( kept ) );
 		}
+	}
+	return finishHeights( *image, water, coverage );
+}
+
+bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSettings* water, TerrainEditCoverage& coverage )
+{
+	HeightField field;
+	field.heights = reinterpret_cast<float*>( image.pixels );
+	field.size = static_cast<uint32_t>( image.width );
+	field.rowPitch = image.rowPitch / sizeof( float );
+	field.texelSize = m_texelSize;
+	field.heightMultiplier = m_heightMultiplier;
+	field.heightOffset = m_heightOffset;
+	m_hasHydrology = false;
+	if( water )
+	{
+		const auto start = std::chrono::steady_clock::now();
 		if( !TerrainHydrology::build( field, *water, m_streamCurves, m_hydrology ) )
 		{
 			LOG( "CDLOD terrain: water channels are not built" );
@@ -383,14 +406,14 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 	}
 
 	// Копия итоговой карты на CPU — высота поверхности для ходьбы (surfaceHeight); 1024² — 4 МБ
-	m_cpuSize = static_cast<uint32_t>( image->width );
-	m_cpuHeights.resize( static_cast<size_t>( m_cpuSize ) * image->height );
-	for( size_t row = 0; row < image->height; ++row )
-		std::memcpy( &m_cpuHeights[row * m_cpuSize], image->pixels + row * image->rowPitch, m_cpuSize * sizeof( float ) );
+	m_cpuSize = static_cast<uint32_t>( image.width );
+	m_cpuHeights.resize( static_cast<size_t>( m_cpuSize ) * image.height );
+	for( size_t row = 0; row < image.height; ++row )
+		std::memcpy( &m_cpuHeights[row * m_cpuSize], image.pixels + row * image.rowPitch, m_cpuSize * sizeof( float ) );
 
 	// Вершины уровня L читают мипы L и L + 1, поэтому вершинному шейдеру нужна карта высот с полной цепочкой мипов
 	ScratchImage mipChain;
-	if( FAILED( GenerateMipMaps( *image, TEX_FILTER_DEFAULT, 0, mipChain ) ) )
+	if( FAILED( GenerateMipMaps( image, TEX_FILTER_DEFAULT, 0, mipChain ) ) )
 	{
 		LOG( "CDLOD terrain: can`t generate heightmap mips" );
 		return false;
@@ -451,6 +474,22 @@ bool CDLODTerrain::buildHeightBounds( const std::vector<TerrainEdit>& edits, con
 	}
 
 	return true;
+}
+
+bool CDLODTerrain::rebuildChannels( const WaterSimulationSettings& water, const std::vector<StreamCurve>& curves )
+{
+	if( m_baseHeights.empty() )
+		return false;
+	// Рельеф после эрозии и правок — заново, русла по нынешним кривым поверх
+	ScratchImage image;
+	if( FAILED( image.Initialize2D( DXGI_FORMAT_R32_FLOAT, m_baseSize, m_baseSize, 1, 1 ) ) )
+		return false;
+	const Image& target = *image.GetImage( 0, 0, 0 );
+	for( uint32_t row = 0; row < m_baseSize; ++row )
+		std::memcpy( target.pixels + row * target.rowPitch, &m_baseHeights[static_cast<size_t>( row ) * m_baseSize], m_baseSize * sizeof( float ) );
+	TerrainEditCoverage coverage = m_baseCoverage;
+	m_streamCurves = curves;
+	return finishHeights( target, &water, coverage ) && createFoliageClearMask( coverage ) && m_material.repaint( coverage );
 }
 
 bool CDLODTerrain::createFoliageClearMask( const TerrainEditCoverage& coverage )

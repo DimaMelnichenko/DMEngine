@@ -41,8 +41,28 @@ public:
 	void warmPipelines( const PassStates& states ) override;
 	PropertyContainer* properties() override;
 	bool savedWithLevel() const override { return true; }
-	// Настройки с правками GUI — для сохранения уровня (строка WaterSimulation)
+	// Настройки с правками GUI — для сохранения уровня (строка WaterSimulation); кривые русел — streamCurves()
 	Settings settings() const;
+
+	// Кривые русел (редактор: подокно «Streams» и точки во вьюпорте). streamCurves — с множителями и включением из окна и
+	// флагом правки; curves — как есть (точки для вьюпорта)
+	std::vector<StreamCurve> streamCurves() const;
+	const std::vector<StreamCurve>& curves() const { return m_curves; }
+	bool initialized() const { return m_initialized; }
+	// Точка кривой — x, z мира (перетаскивание: русла не перестраиваются до finishCurveEdit)
+	void setCurvePoint( size_t curve, size_t point, DirectX::XMFLOAT2 position );
+	// Новая точка после after (−1 — в начало: перед первой); удаление — если останется не меньше двух
+	bool insertCurvePoint( size_t curve, int after, DirectX::XMFLOAT2 position );
+	bool removeCurvePoint( size_t curve, size_t point );
+	// Правка кривой закончена (отпустили гизмо, вставили или удалили точку): кривая правленная, русла — перестроить
+	void finishCurveEdit( size_t curve );
+	// Подокно кривой в «Streams» — для выбора в Details
+	PropertyContainer* curveProperties( size_t curve );
+	// Русла надо перестроить: правили кривые, множители ручьёв или форму русел в «Channels» (параметры генератора —
+	// при следующей загрузке); сбрасывается rebuild
+	bool rebuildRequested() const;
+	// Вода по перестроенным руслам (CDLODTerrain::rebuildChannels): растр, ленты, приток, поверхность
+	bool rebuild( const TerrainHydrology::Result& hydrology );
 	// Расход ячеек, м³/с (сумма оттоков к соседям), — в DDS R32_FLOAT на сетке карты высот (строка 0 — дальний край
 	// по z) — для проверки. Ждёт GPU; false — воды нет или файл не записан (reason)
 	bool exportDischarge( const std::string& file, std::string& reason );
@@ -148,6 +168,12 @@ private:
 	// «Streams»: кривые русел — включение и множители, подокно на кривую (порядок — как m_initial.streams)
 	PropertyContainer m_streamsProperties;
 	std::vector<std::unique_ptr<PropertyContainer>> m_streamProperties;
+	// Кривые русел: нынешние (точки правит вьюпорт) и как построены — по ним видно, что множители, включение и форма
+	// русел изменились (rebuildRequested)
+	std::vector<StreamCurve> m_curves;
+	std::vector<StreamCurve> m_builtCurves;
+	WaterChannelsSettings m_builtChannels;
+	bool m_curvesDirty = false;
 	StreamRibbons m_streams;
 	Buffer m_constantBuffer;
 

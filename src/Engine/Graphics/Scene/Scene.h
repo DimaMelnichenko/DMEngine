@@ -46,6 +46,10 @@ public:
 	// Множитель объёма воздушной перспективы (cb_aerialPerspectiveScale): cb_skyScale × нормировка объёма
 	float aerialPerspectiveScale();
 	void update( const FrameContext& frame );
+	// Правки редактора, которые требуют тяжёлой перестройки (русла по кривым), — когда правка закончена (ползунок отпущен)
+	void applyEditorChanges();
+	// Русла заново по кривым (правка в редакторе): террейн, вода, раскладка постоянных слоёв расстановки
+	bool rebuildChannels();
 
 	const std::vector<SceneObject*>& objects() const;
 	DMLightDriver& lights();

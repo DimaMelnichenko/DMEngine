@@ -246,6 +246,7 @@ struct StreamCurve
 	float roughnessScale = 1.0f;	// шероховатость дна (Маннинг): глубина воды
 	float dischargeScale = 1.0f;	// расход
 	std::vector<StreamCurvePoint> points;
+	bool pointsChanged = false;		// точки правили в редакторе — «Save level» перепишет StreamPoints (в базе колонки нет)
 };
 
 // Русла и ручьи конвейера рельефа и воды (TerrainHydrology) — строка WaterChannels той же строки WaterSimulation;

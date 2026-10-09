@@ -44,6 +44,9 @@ public:
 	// Выбрать окно свойств в Outliner по имени (команда select — снимки Details сценарием); false — нет такого
 	bool select( const std::string& name );
 	const std::vector<Editor::Action>& actions() const { return m_actions; }
+	const std::vector<Editor::Toggle>& toggles() const { return m_toggles; }
+	// В прошлом кадре держали элемент окна (тянут ползунок, набирают число): тяжёлую перестройку по правке — после
+	bool itemActive() const { return m_itemActive; }
 	// Переключатель меню View
 	void addToggle( Editor::Toggle toggle );
 	// Выбрать в Outliner запись, где лежит container (сама или подокно), и раскрыть его в Details (выбор во вьюпорте);
@@ -112,6 +115,7 @@ private:
 	bool m_showOverlay = true;
 	bool m_showHotkeys = false;
 	bool m_resetLayout = false;
+	bool m_itemActive = false;
 	bool m_firstFrame = true;
 
 	std::string m_notice;

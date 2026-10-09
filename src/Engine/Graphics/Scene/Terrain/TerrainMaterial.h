@@ -28,6 +28,8 @@ public:
 
 	// splatMap — файл относительно каталога текстур; coverage — покраска слоёв правками рельефа поверх файла
 	bool initialize( uint32_t terrainId, const std::string& splatMap, const TerrainEditCoverage& coverage );
+	// Splat-карта заново с новой покраской правок (русла перестроены без перезагрузки)
+	bool repaint( const TerrainEditCoverage& coverage );
 	// Пиксельный шейдер: t1 — splat-карта, t2 — альбедо + высота, t3 — нормаль + шероховатость, t4 — шум
 	void bind() const;
 	// Повторов текстуры слоя на единицу мира (1 / tiling) по слоям, по четыре в XMFLOAT4
@@ -52,6 +54,7 @@ private:
 
 private:
 	// Текстуры и виды: массивы срезов (splat-карта — веса, слои — альбедо с высотой и нормаль с шероховатостью)
+	std::string m_splatMapFile;
 	Texture m_splatMapTexture;
 	Texture m_albedoHeightTexture;
 	Texture m_normalRoughnessTexture;
