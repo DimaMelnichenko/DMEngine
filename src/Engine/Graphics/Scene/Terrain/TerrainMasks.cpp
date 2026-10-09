@@ -331,7 +331,7 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 							  fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 91 ) };
 	const Field riparianNoise = fbm( size, texel, { { 32, 0.5f }, { 16, 0.5f } }, 101 );
 	const Field shrubPatches = fbm( size, texel, { { 32, 0.5f }, { 16, 0.3f }, { 8, 0.2f } }, 111 );
-	Field spruce( cells ), pine( cells ), birch( cells ), riparian( cells ), shrubsSlope( cells );
+	Field spruce( cells ), pine( cells ), birch( cells ), riparian( cells ), riparianGrass( cells ), shrubsSlope( cells );
 	forRows( size, [&]( uint32_t row )
 	{
 		for( uint32_t col = 0; col < size; ++col )
@@ -368,6 +368,9 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 			// У русла — до кромки (размытая полоса русла гасит не целиком), в самой воде — нет
 			riparian[i] = banks * ( 1.0f - 0.7f * stream[i] ) * ( 1.0f - at( inputs.water, i ) ) *
 						  smoothstep( 0.30f, 0.50f, riparianNoise[i] + 0.2f * moisture[i] );
+			// Высокая трава у воды — та же полоса берегов, но сплошная: шум её только прореживает
+			riparianGrass[i] = banks * ( 1.0f - 0.7f * stream[i] ) * ( 1.0f - at( inputs.water, i ) ) *
+							   ( 0.5f + 0.5f * smoothstep( 0.25f, 0.55f, riparianNoise[i] + 0.2f * moisture[i] ) );
 			const float krummholz = smoothstep( 0.73f, 0.78f, h + 0.08f * forestNoise[i] + 0.04f * north[i] ) * smoothstep( 0.84f, 0.79f, h );
 			const float dryGaps = ( 1.0f - clearings ) * smoothstep( 12.0f, 20.0f, slope[i] ) * ( 1.0f - moisture[i] ) * ( 1.0f - floor );
 			shrubsSlope[i] = std::max( krummholz * smoothstep( 0.40f, 0.60f, shrubPatches[i] ), 0.5f * dryGaps ) * ground * steep * ( 1.0f - stream[i] );
@@ -377,6 +380,7 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	result.masks.push_back( { "mask_forest_pine", std::move( pine ) } );
 	result.masks.push_back( { "mask_forest_birch", std::move( birch ) } );
 	result.masks.push_back( { "mask_shrubs_riparian", std::move( riparian ) } );
+	result.masks.push_back( { "mask_grass_riparian", std::move( riparianGrass ) } );
 	result.masks.push_back( { "mask_shrubs_slope", std::move( shrubsSlope ) } );
 	return true;
 }
