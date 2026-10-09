@@ -460,6 +460,12 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 	water.flowPeriod = value( "flow_period" );
 	water.foamSpeed = value( "foam_speed" );
 	water.foamShear = value( "foam_shear" );
+	water.flow.settleTime = value( "flow_settle_time" );
+	water.flow.timeStep = value( "flow_time_step" );
+	water.flow.viscosity = value( "flow_viscosity" );
+	water.flow.manning = value( "flow_manning" );
+	water.flow.iterations = query.getColumn( "flow_iterations" ).getInt();
+	water.flow.layer = value( "flow_layer" );
 
 	// Источники-помощники (Tools/water_source.py); таблицы может не быть у базы, где их не ставили
 	SQLite::Database& db = DBConnector::instance().db();

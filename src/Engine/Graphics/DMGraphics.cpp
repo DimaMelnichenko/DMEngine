@@ -500,16 +500,20 @@ void DMGraphics::registerCommands()
 		reply->ok();
 	} );
 
-	m_console.registerCommand( "water", "discharge <file.dds> - water discharge of the cells, m3/s, as R32_FLOAT DDS",
+	m_console.registerCommand( "water", "discharge <file.dds> - water discharge of the cells, m3/s, as R32_FLOAT DDS; "
+							   "state <prefix> - water for the shaders as R32_FLOAT DDS: <prefix>_depth.dds (m), <prefix>_vx.dds and "
+							   "<prefix>_vz.dds (flow along world X and Z, m/s)",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
-		if( args.size() != 2 || args[0] != "discharge" )
+		if( args.size() != 2 || ( args[0] != "discharge" && args[0] != "state" ) )
 		{
-			reply->error( "usage: water discharge <file.dds>" );
+			reply->error( "usage: water discharge <file.dds> | water state <prefix>" );
 			return;
 		}
 		std::string reason;
-		if( m_scene.water().exportDischarge( args[1], reason ) )
+		const bool written = args[0] == "discharge" ? m_scene.water().exportDischarge( args[1], reason ) :
+													 m_scene.water().exportState( args[1], reason );
+		if( written )
 			reply->ok( "written " + args[1] );
 		else
 			reply->error( reason );

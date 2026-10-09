@@ -346,7 +346,9 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 											   "scatter_strength = :scatterStrength, roughness = :roughness, "
 											   "ripple_scale = :rippleScale, ripple_strength = :rippleStrength, "
 											   "calm_ripple = :calmRipple, refraction = :refraction, flow_period = :flowPeriod, "
-											   "foam_speed = :foamSpeed, foam_shear = :foamShear WHERE id = :id" );
+											   "foam_speed = :foamSpeed, foam_shear = :foamShear, flow_settle_time = :flowSettleTime, "
+											   "flow_time_step = :flowTimeStep, flow_viscosity = :flowViscosity, "
+											   "flow_manning = :flowManning, flow_iterations = :flowIterations, flow_layer = :flowLayer WHERE id = :id" );
 			updateWater.bind( ":timeScale", dbValue( water->timeScale ) );
 			updateWater.bind( ":sourceRate", dbValue( water->sourceRate ) );
 			updateWater.bind( ":flowStart", dbValue( water->flowStart ) );
@@ -366,6 +368,12 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 			updateWater.bind( ":flowPeriod", dbValue( water->flowPeriod ) );
 			updateWater.bind( ":foamSpeed", dbValue( water->foamSpeed ) );
 			updateWater.bind( ":foamShear", dbValue( water->foamShear ) );
+			updateWater.bind( ":flowSettleTime", dbValue( water->flow.settleTime ) );
+			updateWater.bind( ":flowTimeStep", dbValue( water->flow.timeStep ) );
+			updateWater.bind( ":flowViscosity", dbValue( water->flow.viscosity ) );
+			updateWater.bind( ":flowManning", dbValue( water->flow.manning ) );
+			updateWater.bind( ":flowIterations", water->flow.iterations );
+			updateWater.bind( ":flowLayer", dbValue( water->flow.layer ) );
 			updateWater.bind( ":id", *level.waterSimulationId );
 			updateWater.exec();
 

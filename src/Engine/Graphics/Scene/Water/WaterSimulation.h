@@ -23,7 +23,8 @@ namespace GS
 // (Shaders/water_surface.cs), — один косвенный вызов (water.vs, water.ps).
 // Режим static (WaterSimulationSettings::staticWater): вода не течёт — озёра и ручьи из конвейера рельефа и воды
 // (TerrainHydrology) одним полем уровня — растр (mainStatic): по нему та же поверхность тайлов, что у симуляции, трава,
-// мокрая земля и брызги. Симуляция остаётся инструментом — режим simulated
+// мокрая земля и брызги; течение озёр — установившийся расчёт при загрузке (solveFlow, Shaders/water_flow.cs).
+// Симуляция остаётся инструментом — режим simulated
 class WaterSimulation : public SceneObject
 {
 public:
@@ -62,9 +63,14 @@ public:
 	bool rebuildRequested() const;
 	// Вода по перестроенным руслам (CDLODTerrain::rebuildChannels): растр, ленты, приток, поверхность
 	bool rebuild( const TerrainHydrology::Result& hydrology );
+	// Правили подокно «Flow» — течение озёр заново (режим static); зовётся, когда редактор не тянет ползунок
+	void applyFlowChanges();
 	// Расход ячеек, м³/с (сумма оттоков к соседям), — в DDS R32_FLOAT на сетке карты высот (строка 0 — дальний край
 	// по z) — для проверки. Ждёт GPU; false — воды нет или файл не записан (reason)
 	bool exportDischarge( const std::string& file, std::string& reason );
+	// Текстура воды для шейдеров (SLOT_WATER) — в DDS R32_FLOAT: <prefix>_depth.dds (глубина, м), <prefix>_vx.dds и
+	// <prefix>_vz.dds (течение по X и Z мира, м/с); строка 0 — дальний край по z. Ждёт GPU
+	bool exportState( const std::string& prefix, std::string& reason );
 
 private:
 	// Раскладка — cbuffer WaterSimulationBuffer (b4) в water_simulation.cs
@@ -117,6 +123,21 @@ private:
 		float padding[2];
 	};
 
+	// Раскладка — cbuffer WaterFlowBuffer (b5) в water_flow.cs
+	struct alignas( 16 ) FlowParameters
+	{
+		uint32_t tileCount;
+		uint32_t tilesPadding[3];
+		float timeStep;
+		float viscosity;
+		float friction;
+		float minDepth;
+		float screen;
+		float relaxation;
+		float layer;
+		float padding;
+	};
+
 	void setParameters( const Settings& settings );
 	// Приток ячеек по карте водосбора — при загрузке и при смене настроек источников
 	void buildSources( const Settings& settings );
@@ -133,11 +154,15 @@ private:
 	void cullTiles( const RenderView& view );
 	// Режим static: озёра и ручьи в текстуру для шейдеров (mainStatic)
 	bool buildStaticWater( const Settings& settings );
-	// Текстуры из данных конвейера: водосбор вдоль русел и растр статичной воды
+	// Текстуры из данных конвейера: водосбор вдоль русел и растр статичной воды; тайлы озёр — область счёта течения
 	bool createHydrologyTextures( const TerrainHydrology::Result& hydrology );
+	// Режим static: установившееся течение озёр (water_flow.cs) поверх mainStatic — порциями с ожиданием GPU
+	bool createFlowResources();
+	void solveFlow( const Settings::Flow& flow );
 
 	PropertyContainer m_properties;
 	PropertyContainer m_surfaceProperties;	// подокно «Surface» — материал поверхности
+	PropertyContainer m_flowProperties;		// подокно «Flow» — течение статичной воды
 	Settings m_initial;
 	Settings m_sourcesBuilt;		// настройки, по которым посчитаны источники
 	const TerrainHeightSource* m_terrain = nullptr;
@@ -191,6 +216,32 @@ private:
 	Buffer m_helpers;				// float4 на источник-помощник: x, z, расход м³/с, σ м (WaterSources)
 	ShaderView m_helpersView;
 	uint32_t m_helperCount = 0;
+
+	// Течение статичной воды (water_flow.cs): только в рамке озёр с полем
+	DMComputeShader m_flowInitShader;
+	DMComputeShader m_flowFacesShader;
+	DMComputeShader m_flowAdvectShader;
+	DMComputeShader m_flowDivergenceShader;
+	DMComputeShader m_flowRedShader;
+	DMComputeShader m_flowBlackShader;
+	DMComputeShader m_flowProjectShader;
+	DMComputeShader m_flowOutputShader;
+	Buffer m_flowBuffer;			// FlowParameters
+	Texture m_flowInfo;				// R32G32B32A32_FLOAT: заданная скорость, вид ячейки, глубина
+	Texture m_flowVelocity;			// R32G32_FLOAT: скорость на восточной и южной грани
+	Texture m_flowAdvected;			// R32G32_FLOAT: после переноса — до давления
+	Texture m_flowPressure;			// R32_FLOAT
+	Texture m_flowDivergence;		// R32_FLOAT
+	StorageView m_flowInfoUAV;
+	StorageView m_flowVelocityUAV;
+	StorageView m_flowAdvectedUAV;
+	StorageView m_flowPressureUAV;
+	StorageView m_flowDivergenceUAV;
+	// Тайлы счёта 8 × 8 (x, y тайла): с ячейками озёр и соседние — ручьи у берега и сухой берег вокруг; пусто — озёр нет
+	std::vector<DirectX::XMUINT2> m_flowTileList;
+	Buffer m_flowTiles;
+	ShaderView m_flowTilesView;
+	Settings::Flow m_flowBuilt;		// по каким настройкам посчитано течение
 
 	// Поверхность
 	DMComputeShader m_surfaceShader;

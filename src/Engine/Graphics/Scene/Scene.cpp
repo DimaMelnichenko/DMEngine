@@ -264,6 +264,9 @@ void Scene::applyEditorChanges()
 	// Правили кривые русел или форму русел в редакторе — русла, вода и расстановка заново, без перезагрузки уровня
 	if( m_level.terrain && m_level.waterSimulation && m_water.rebuildRequested() )
 		rebuildChannels();
+	// Правили течение статичной воды (подокно «Flow») — течение озёр заново
+	if( m_level.waterSimulation )
+		m_water.applyFlowChanges();
 }
 
 void Scene::update( const FrameContext& frame )

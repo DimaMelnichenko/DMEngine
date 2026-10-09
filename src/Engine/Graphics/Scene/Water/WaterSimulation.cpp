@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <tuple>
+#include <DirectXPackedVector.h>
 #include "System.h"
 #include "ConstantBuffers.h"
 #include "Texture\DMTextureStorage.h"
@@ -32,6 +33,20 @@ constexpr uint32_t tileCells = 32;				// WATER_TILE в water_surface.cs / water_
 constexpr float visibleDepth = 0.01f;			// м: мельче воды не видно — только мокрая земля
 constexpr float wetDepth = 0.01f;				// м: ячейка с водой в сводке (logWaterSummary)
 constexpr float mmPerHour = 0.001f / 3600.0f;	// мм/ч → м/с
+// Течение статичной воды (water_flow.cs)
+constexpr uint32_t flowStepsPerSubmit = 50;		// шагов в одной отправке GPU при загрузке
+constexpr uint32_t validationFlowSteps = 20;	// под GPU-based validation шаг в десятки раз дольше
+constexpr uint32_t flowTile = 8;				// тайл счёта течения — группа потоков 8 × 8 (water_flow.cs)
+constexpr float flowMinDepth = 0.05f;			// м: мельче — берег (скорость 0)
+constexpr float flowScreen = 1e-3f;				// экранирование давления, м: озеро без истока тоже решается
+constexpr float maxViscosityShare = 0.2f;		// ν · dt / l² — не больше: явная вязкость устойчива
+constexpr float flowRelaxation = 1.8f;			// верхняя релаксация давления: сходится быстрее Гаусса-Зейделя
+
+bool sameFlow( const WaterSimulationSettings::Flow& a, const WaterSimulationSettings::Flow& b )
+{
+	return a.settleTime == b.settleTime && a.timeStep == b.timeStep && a.viscosity == b.viscosity && a.manning == b.manning &&
+		   a.iterations == b.iterations && a.layer == b.layer;
+}
 
 Property* addSlider( PropertyContainer& properties, const char* name, float value, float low, float high, const char* unit = "" )
 {
@@ -170,6 +185,25 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	addSlider( m_surfaceProperties, "Foam shear", settings.foamShear, 0.1f, 10.0f, "1/s" );
 	m_properties.addSubContainer( &m_surfaceProperties );
 
+	// Течение статичной воды: установившийся расчёт при загрузке, правка — расчёт заново
+	m_flowProperties.setName( "Flow" );
+	const char* recomputed = "; the lake flow is recomputed on change (static water)";
+	addSlider( m_flowProperties, "Settle time", settings.flow.settleTime, 0.0f, 3600.0f, "s" )
+		->setTooltip( std::string( "Lake flow is computed this long towards its steady state" ) + recomputed );
+	addSlider( m_flowProperties, "Time step", settings.flow.timeStep, 0.1f, 2.0f, "s" )
+		->setTooltip( std::string( "Step of the flow computation" ) + recomputed );
+	addSlider( m_flowProperties, "Viscosity", settings.flow.viscosity, 0.0f, 1.0f, "m2/s" )
+		->setTooltip( std::string( "Eddy viscosity: a wider, shorter jet of an inflowing stream" ) + recomputed );
+	addSlider( m_flowProperties, "Lake roughness", settings.flow.manning, 0.0f, 0.1f, "s/m^(1/3)" )
+		->setTooltip( std::string( "Manning roughness of the lake bed: the jet fades sooner at more" ) + recomputed );
+	addSlider( m_flowProperties, "Surface layer", settings.flow.layer, 0.1f, 5.0f, "m" )
+		->setTooltip( std::string( "Depth of the flowing layer: a stream spreads over a lake near the surface" ) + recomputed );
+	Property* iterations = m_flowProperties.insert( "Pressure iterations", settings.flow.iterations );
+	iterations->setLow( 1.0f );
+	iterations->setHigh( 100.0f );
+	iterations->setTooltip( std::string( "Pressure solver iterations per step" ) + recomputed );
+	m_properties.addSubContainer( &m_flowProperties );
+
 	// Русла и ручьи строит конвейер рельефа при загрузке — правки применяются при следующей загрузке уровня
 	m_channelsProperties.setName( "Channels" );
 	for( const ChannelParameter& parameter : channelParameters )
@@ -284,9 +318,10 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		return false;
 	if( m_static )
 	{
-		// Статичная вода: озёра налиты, ручьи — лентами и растром; шагов нет
-		if( !buildStaticWater( settings ) )
+		// Статичная вода: озёра и ручьи — одно поле из растра; шагов нет, течение озёр — установившийся расчёт
+		if( !buildStaticWater( settings ) || !createFlowResources() )
 			return false;
+		solveFlow( settings.flow );
 		buildSurface();
 		m_surfaceDirty = false;
 		m_initialized = true;
@@ -485,7 +520,44 @@ bool WaterSimulation::createHydrologyTextures( const TerrainHydrology::Result& h
 		LOG( "Water simulation: water channels differ from the height map in size" );
 		return false;
 	}
+	// Тайлы счёта течения (solveFlow): с ячейками озёр и восемь соседних — ручьи у берега и сухой берег вокруг
+	const uint32_t tiles = ( m_size + flowTile - 1 ) / flowTile;
+	std::vector<uint8_t> lakeTile( static_cast<size_t>( tiles ) * tiles, 0 );
+	for( uint32_t row = 0; row < m_size; ++row )
+		for( uint32_t col = 0; col < m_size; ++col )
+			if( hydrology.staticWater[static_cast<size_t>( row ) * m_size + col].w > -1e8f )
+				lakeTile[static_cast<size_t>( row / flowTile ) * tiles + col / flowTile] = 1;
+	m_flowTileList.clear();
+	for( uint32_t ty = 0; ty < tiles; ++ty )
+		for( uint32_t tx = 0; tx < tiles; ++tx )
+		{
+			bool adjacent = false;
+			for( int dy = -1; dy <= 1 && !adjacent; ++dy )
+				for( int dx = -1; dx <= 1 && !adjacent; ++dx )
+				{
+					const int x = static_cast<int>( tx ) + dx;
+					const int y = static_cast<int>( ty ) + dy;
+					adjacent = x >= 0 && y >= 0 && x < static_cast<int>( tiles ) && y < static_cast<int>( tiles ) &&
+						   lakeTile[static_cast<size_t>( y ) * tiles + x];
+				}
+			if( adjacent )
+				m_flowTileList.emplace_back( tx, ty );
+		}
+
 	DMD3D& d3d = DMD3D::instance();
+	if( !m_flowTileList.empty() )
+	{
+		BufferDesc desc;
+		desc.size = static_cast<uint32_t>( m_flowTileList.size() * sizeof( DirectX::XMUINT2 ) );
+		desc.stride = sizeof( DirectX::XMUINT2 );
+		desc.usage = BufferUsage::shaderResource | BufferUsage::structured;
+		if( !d3d.createBuffer( desc, m_flowTileList.data(), m_flowTiles ) || !d3d.createShaderView( m_flowTiles, {}, m_flowTilesView ) )
+		{
+			LOG( "Failed to create water flow tiles" );
+			return false;
+		}
+		d3d.setName( m_flowTiles, "Water flow tiles" );
+	}
 	auto create = [&]( DXGI_FORMAT format, const void* data, uint32_t texelBytes, const char* name, Texture& texture, ShaderView& view )
 	{
 		TextureDesc desc;
@@ -527,6 +599,169 @@ bool WaterSimulation::buildStaticWater( const Settings& settings )
 	const uint32_t groups = ( m_size + groupSize - 1 ) / groupSize;
 	m_staticShader.dispatchGroups( groups, groups, 1 );
 	return true;
+}
+
+bool WaterSimulation::createFlowResources()
+{
+	DMD3D& d3d = DMD3D::instance();
+	const char* file = "Shaders\\water_flow.cs";
+	if( !m_flowInitShader.Initialize( file, "mainFlowInit" ) || !m_flowFacesShader.Initialize( file, "mainFlowFaces" ) ||
+		!m_flowAdvectShader.Initialize( file, "mainFlowAdvect" ) ||
+		!m_flowDivergenceShader.Initialize( file, "mainFlowDivergence" ) || !m_flowRedShader.Initialize( file, "mainFlowRed" ) ||
+		!m_flowBlackShader.Initialize( file, "mainFlowBlack" ) || !m_flowProjectShader.Initialize( file, "mainFlowProject" ) ||
+		!m_flowOutputShader.Initialize( file, "mainFlowOutput" ) || !d3d.createShaderConstantBuffer( sizeof( FlowParameters ), m_flowBuffer ) )
+		return false;
+	for( auto [texture, uav, format, name] :
+		 { std::tuple{ &m_flowInfo, &m_flowInfoUAV, DXGI_FORMAT_R32G32B32A32_FLOAT, "Water flow cells" },
+		   std::tuple{ &m_flowVelocity, &m_flowVelocityUAV, DXGI_FORMAT_R32G32_FLOAT, "Water flow velocity" },
+		   std::tuple{ &m_flowAdvected, &m_flowAdvectedUAV, DXGI_FORMAT_R32G32_FLOAT, "Water flow advected" },
+		   std::tuple{ &m_flowPressure, &m_flowPressureUAV, DXGI_FORMAT_R32_FLOAT, "Water flow pressure" },
+		   std::tuple{ &m_flowDivergence, &m_flowDivergenceUAV, DXGI_FORMAT_R32_FLOAT, "Water flow divergence" } } )
+	{
+		TextureDesc desc;
+		desc.width = m_size;
+		desc.height = m_size;
+		desc.format = format;
+		desc.usage = TextureUsage::unorderedAccess;
+		if( !d3d.createTexture( desc, nullptr, *texture ) || !d3d.createStorageView( *texture, {}, *uav ) )
+		{
+			LOG( std::string( "Failed to create water flow texture " ) + name );
+			return false;
+		}
+		d3d.setName( *texture, name );
+	}
+	return true;
+}
+
+void WaterSimulation::solveFlow( const Settings::Flow& flow )
+{
+	m_flowBuilt = flow;
+	if( !m_static || m_flowTileList.empty() )
+		return;
+	const auto start = std::chrono::high_resolution_clock::now();
+	DMD3D& d3d = DMD3D::instance();
+	const float timeStep = std::max( flow.timeStep, 0.01f );
+	uint32_t steps = flow.settleTime > 0.0f ? static_cast<uint32_t>( std::ceil( flow.settleTime / timeStep ) ) : 0;
+	if( d3d.gpuValidation() && steps > validationFlowSteps )
+	{
+		LOG( "Water flow: " + std::to_string( steps ) + " steps are cut to " + std::to_string( validationFlowSteps ) +
+			 " under GPU-based validation" );
+		steps = validationFlowSteps;
+	}
+	const uint32_t iterations = static_cast<uint32_t>( std::clamp( flow.iterations, 1, 200 ) );
+
+	FlowParameters params = {};
+	params.tileCount = static_cast<uint32_t>( m_flowTileList.size() );
+	params.timeStep = timeStep;
+	params.viscosity = std::min( flow.viscosity * timeStep / ( m_cellSize * m_cellSize ), maxViscosityShare );
+	params.friction = timeStep * gravity * flow.manning * flow.manning;
+	params.minDepth = flowMinDepth;
+	params.layer = std::max( flow.layer, flowMinDepth );
+	params.screen = flowScreen;
+	params.relaxation = flowRelaxation;
+
+	// Тайлы прошлого расчёта (другие русла) — сухие: соседи за краем тайлов читаются нулями
+	for( StorageView* uav : { &m_flowInfoUAV, &m_flowVelocityUAV, &m_flowAdvectedUAV, &m_flowPressureUAV, &m_flowDivergenceUAV } )
+		d3d.clearStorageView( *uav );
+	const ShaderView& heightMap = *m_terrain->terrainHeight().heightMap;
+	auto begin = [&]()
+	{
+		PassDesc pass;
+		pass.name = "Water flow";
+		pass.reads = { { &heightMap, "height map" }, { &m_staticWaterView, "static water" }, { &m_flowTilesView, "flow tiles" } };
+		pass.writes = { { &m_flowInfoUAV, "flow cells" },	   { &m_flowVelocityUAV, "flow velocity" },
+						{ &m_flowAdvectedUAV, "flow advected" }, { &m_flowPressureUAV, "flow pressure" },
+						{ &m_flowDivergenceUAV, "flow divergence" }, { &m_outputUAV, "water state" } };
+		d3d.beginPass( pass );
+		setParameters( m_initial );
+		Device::updateResourceData( m_flowBuffer, params );
+		d3d.setConstantBuffer( 5, m_flowBuffer );
+		d3d.setSRV( 0, heightMap );
+		d3d.setSRV( 3, m_staticWaterView );
+		d3d.setSRV( 5, m_flowTilesView );
+	};
+	// Привязка UAV после dispatch ставит барьер UAV → UAV: следующий проход видит записанное предыдущим
+	const uint32_t groups = static_cast<uint32_t>( m_flowTileList.size() );
+	auto dispatch = [&]( DMComputeShader& shader )
+	{
+		d3d.setUAV( 0, m_flowInfoUAV );
+		d3d.setUAV( 1, m_flowVelocityUAV );
+		d3d.setUAV( 2, m_flowAdvectedUAV );
+		d3d.setUAV( 3, m_flowPressureUAV );
+		d3d.setUAV( 4, m_flowDivergenceUAV );
+		d3d.setUAV( 5, m_outputUAV );
+		shader.dispatchGroups( groups, 1, 1 );
+	};
+	begin();
+	dispatch( m_flowInitShader );
+	dispatch( m_flowFacesShader );
+	for( uint32_t step = 0; step < steps; ++step )
+	{
+		if( step > 0 && step % flowStepsPerSubmit == 0 )
+		{
+			d3d.waitForGpu();
+			begin();
+		}
+		dispatch( m_flowAdvectShader );
+		dispatch( m_flowDivergenceShader );
+		for( uint32_t i = 0; i < iterations; ++i )
+		{
+			dispatch( m_flowRedShader );
+			dispatch( m_flowBlackShader );
+		}
+		dispatch( m_flowProjectShader );
+	}
+	dispatch( m_flowOutputShader );
+	d3d.waitForGpu();
+
+	// Сводка: ячеек озёр, средняя и наибольшая скорость — установилось ли течение (сравнить с расчётом подольше)
+	std::vector<DMD3D::SubresourceCopy> infoCopies, velocityCopies;
+	std::vector<uint8_t> infoBytes, velocityBytes;
+	double sum = 0.0;
+	float peak = 0.0f;
+	uint32_t cells = 0;
+	if( d3d.captureTexture( m_flowInfo, infoCopies, infoBytes ) && d3d.captureTexture( m_flowVelocity, velocityCopies, velocityBytes ) &&
+		!infoCopies.empty() && !velocityCopies.empty() )
+	{
+		for( uint32_t row = 0; row < m_size; ++row )
+		{
+			const float* info = reinterpret_cast<const float*>( infoBytes.data() + infoCopies[0].offset + row * infoCopies[0].rowPitch );
+			const float* velocity =
+				reinterpret_cast<const float*>( velocityBytes.data() + velocityCopies[0].offset + row * velocityCopies[0].rowPitch );
+			const float* above = row > 0 ? reinterpret_cast<const float*>( velocityBytes.data() + velocityCopies[0].offset +
+																		   ( row - 1 ) * velocityCopies[0].rowPitch ) :
+										   nullptr;
+			for( uint32_t col = 0; col < m_size; ++col )
+			{
+				if( info[col * 4 + 2] != 1.0f )
+					continue;
+				// Скорость ячейки — средняя её граней (скорость хранится на восточной и южной грани, mainFlowOutput)
+				const float x = 0.5f * ( velocity[col * 2] + ( col > 0 ? velocity[col * 2 - 2] : 0.0f ) );
+				const float y = 0.5f * ( velocity[col * 2 + 1] + ( above ? above[col * 2 + 1] : 0.0f ) );
+				const float speed = std::hypot( x, y );
+				sum += speed;
+				peak = std::max( peak, speed );
+				++cells;
+			}
+		}
+	}
+	char text[200];
+	snprintf( text, sizeof( text ), "Water flow: %u steps x %u iterations over %zu tiles 8x8, lake cells %u, mean speed %.3f m/s, max %.3f m/s, ms: %.1f",
+			  steps, iterations, m_flowTileList.size(), cells, cells ? sum / cells : 0.0, peak,
+			  std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() );
+	LOG( text );
+}
+
+void WaterSimulation::applyFlowChanges()
+{
+	if( !m_initialized || !m_static )
+		return;
+	const Settings current = settings();
+	if( sameFlow( current.flow, m_flowBuilt ) )
+		return;
+	// mainStatic заново: у озёр нули течения, ручьи — как в растре; затем течение озёр
+	if( buildStaticWater( current ) )
+		solveFlow( current.flow );
 }
 
 bool WaterSimulation::fillLakes()
@@ -631,6 +866,12 @@ WaterSimulation::Settings WaterSimulation::settings() const
 	settings.flowPeriod = m_surfaceProperties["Flow period"].data<float>();
 	settings.foamSpeed = m_surfaceProperties["Foam speed"].data<float>();
 	settings.foamShear = m_surfaceProperties["Foam shear"].data<float>();
+	settings.flow.settleTime = m_flowProperties["Settle time"].data<float>();
+	settings.flow.timeStep = m_flowProperties["Time step"].data<float>();
+	settings.flow.viscosity = m_flowProperties["Viscosity"].data<float>();
+	settings.flow.manning = m_flowProperties["Lake roughness"].data<float>();
+	settings.flow.iterations = m_flowProperties["Pressure iterations"].data<int32_t>();
+	settings.flow.layer = m_flowProperties["Surface layer"].data<float>();
 	for( const ChannelParameter& parameter : channelParameters )
 		settings.channels.*parameter.field = m_channelsProperties[parameter.name].data<float>();
 	settings.channels.smooth = m_channelsProperties["Smooth passes"].data<int32_t>();
@@ -740,6 +981,7 @@ bool WaterSimulation::rebuild( const TerrainHydrology::Result& hydrology )
 	{
 		if( !buildStaticWater( current ) )
 			return false;
+		solveFlow( current.flow );
 		buildSurface();
 		m_surfaceDirty = false;
 	}
@@ -853,6 +1095,43 @@ void WaterSimulation::compute( const FrameContext& frame )
 	// подсветке «Show water»
 	DMD3D::instance().setSRV( SLOT_WATER, m_outputView );
 	DMD3D::instance().setSRV( SLOT_WATER_SOURCES, m_sourcesView );
+}
+
+bool WaterSimulation::exportState( const std::string& prefix, std::string& reason )
+{
+	if( !m_initialized )
+	{
+		reason = "the level has no water simulation";
+		return false;
+	}
+	std::vector<DMD3D::SubresourceCopy> copies;
+	std::vector<uint8_t> bytes;
+	if( !DMD3D::instance().captureTexture( m_output, copies, bytes ) || copies.empty() )
+	{
+		reason = "water state readback failed";
+		return false;
+	}
+	const size_t cells = static_cast<size_t>( m_size ) * m_size;
+	std::vector<float> channels[3] = { std::vector<float>( cells ), std::vector<float>( cells ), std::vector<float>( cells ) };
+	for( uint32_t row = 0; row < m_size; ++row )
+	{
+		const auto* texel = reinterpret_cast<const DirectX::PackedVector::HALF*>( bytes.data() + copies[0].offset + row * copies[0].rowPitch );
+		for( uint32_t col = 0; col < m_size; ++col )
+			for( int c = 0; c < 3; ++c )
+				channels[c][static_cast<size_t>( row ) * m_size + col] = DirectX::PackedVector::XMConvertHalfToFloat( texel[col * 4 + c] );
+	}
+	const char* names[3] = { "_depth.dds", "_vx.dds", "_vz.dds" };
+	for( int c = 0; c < 3; ++c )
+	{
+		const std::string file = prefix + names[c];
+		if( !GpuImages::saveFloatDDS( std::wstring( file.begin(), file.end() ), m_size, m_size, channels[c].data() ) )
+		{
+			reason = "cannot write " + file;
+			return false;
+		}
+	}
+	LOG( "Water state: " + prefix + "_depth.dds, _vx.dds, _vz.dds" );
+	return true;
 }
 
 bool WaterSimulation::exportDischarge( const std::string& file, std::string& reason )
