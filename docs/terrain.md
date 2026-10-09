@@ -49,7 +49,7 @@
 | Слой (`layer`) | Сейчас | Повтор, м | Источник |
 |---|---|---|---|
 | 0 — трава | `patchy_meadow1` | 4 | freepbr, `DownloadResources/patchy-meadow1-bl.zip` |
-| 1 — осыпи | `rocky_terrain_03` | 20 (снято 90 × 90 м, сжато) | Poly Haven, `rocky_terrain_03_2k.gltf.zip` + disp |
+| 1 — осыпи | `rocky_terrain_03` | 20 (снято 90 × 90 м, сжато) | Poly Haven, `DownloadResources/polyhaven/rocky_terrain_03_*` |
 | 2 — скала | `rock_face_03` | 2,7 | Poly Haven, `DownloadResources/polyhaven/rock_face_03_*` |
 | 3 — снег | `crusted_snow2` | 4 | FreePBR, `DownloadResources/Crusted_snow2-bl.zip` |
 | 4 — вторая трава | `wispy_grass_meadow` | 4 | FreePBR, `DownloadResources/whispy-grass-meadow-bl.zip` |
@@ -88,9 +88,8 @@ B --name patchy_meadow1 --albedo D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patch
   --normal D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patchy-meadow1_normal-ogl.png
   --roughness D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patchy-meadow1_roughness.png
   --height D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patchy-meadow1_height.png --layer 0 --tiling 4
-B --name rocky_terrain_03 --albedo D/rocky_terrain_03_2k.gltf.zip:textures/rocky_terrain_03_diff_2k.jpg
-  --normal D/rocky_terrain_03_2k.gltf.zip:textures/rocky_terrain_03_nor_gl_2k.jpg
-  --roughness D/rocky_terrain_03_2k.gltf.zip:textures/rocky_terrain_03_arm_2k.jpg:g
+B --name rocky_terrain_03 --albedo D/polyhaven/rocky_terrain_03_diff_2k.jpg
+  --normal D/polyhaven/rocky_terrain_03_nor_gl_2k.jpg --roughness D/polyhaven/rocky_terrain_03_arm_2k.jpg:g
   --height D/polyhaven/rocky_terrain_03_disp_2k.exr --layer 1 --tiling 20
 B --name rock_face_03 --albedo D/polyhaven/rock_face_03_diff_2k.jpg --normal D/polyhaven/rock_face_03_nor_gl_2k.jpg
   --roughness D/polyhaven/rock_face_03_arm_2k.jpg:g --height D/polyhaven/rock_face_03_disp_2k.exr --layer 2 --tiling 2.7
