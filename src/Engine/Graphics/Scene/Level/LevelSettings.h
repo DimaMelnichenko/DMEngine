@@ -273,6 +273,14 @@ struct WaterChannelsSettings
 	float minSpeed = 0.4f;			// течение ленты — не медленнее, м/с
 	float minWaterDepth = 0.3f;		// вода над дном — не мельче, м
 	float freeboard = 0.4f;			// вода ниже бровки (русло прорезано под паводок), м
+	// Профиль русла (TerrainHydrology, docs/water.md, «Профиль русла»)
+	float bedShape = 2.0f;			// форма дна: 2 — V (тальвег острый), больше — плоский U
+	float bankRoundness = 1.0f;		// борт: 1 — скруглённые бровка и подошва, 0 — прямой откос с резкой бровкой
+	float bendAsymmetry = 0.7f;		// на изгибах: внешний берег глубже и круче, внутренний — пологая отмель (0 — симметрично)
+	float poolDepth = 0.3f;			// плёсы глубже на долю вреза (0 — без плёсов)
+	float poolSpacing = 6.0f;		// плёс и перекат — через столько ширин русла
+	float bedNoise = 0.08f;			// неровность дна и бортов, м
+	float bedNoiseScale = 1.5f;		// размер неровностей, м
 	// Чаша озера: отмель, затем свал к глубине depthRatio · √площади в пределах min…max
 	float lakeDepthRatio = 0.05f;	// наибольшая глубина на √площади озера
 	float lakeMinDepth = 1.0f;		// м

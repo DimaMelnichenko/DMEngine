@@ -61,6 +61,29 @@ struct Grid
 	}
 };
 
+// Гладкий шум значений −1…1 по решётке с шагом 1 (хеш узлов, smoothstep между ними): неровность дна и бортов русла —
+// одинаковая у клеток карты и точек детальной земли (аргумент — метры мира)
+double valueNoise( double x, double y )
+{
+	auto hash = []( int64_t ix, int64_t iy )
+	{
+		uint64_t h = static_cast<uint64_t>( ix ) * 0x9E3779B97F4A7C15ull ^ static_cast<uint64_t>( iy ) * 0xC2B2AE3D27D4EB4Full;
+		h ^= h >> 31;
+		h *= 0xBF58476D1CE4E5B9ull;
+		h ^= h >> 29;
+		return static_cast<double>( h >> 11 ) / static_cast<double>( 1ull << 53 ) * 2.0 - 1.0;
+	};
+	const double fx = std::floor( x );
+	const double fy = std::floor( y );
+	const int64_t ix = static_cast<int64_t>( fx );
+	const int64_t iy = static_cast<int64_t>( fy );
+	const double u = smoothstep( 0.0, 1.0, x - fx );
+	const double v = smoothstep( 0.0, 1.0, y - fy );
+	const double bottom = hash( ix, iy ) + ( hash( ix + 1, iy ) - hash( ix, iy ) ) * u;
+	const double top = hash( ix, iy + 1 ) + ( hash( ix + 1, iy + 1 ) - hash( ix, iy + 1 ) ) * u;
+	return bottom + ( top - bottom ) * v;
+}
+
 // Бикубическая (Catmull-Rom) выборка сетки в дробных (столбец, строка) центров клеток: гладкий рельеф между клетками
 // (детальная земля), проходит через значения клеток
 double catmullRom( const Grid& grid, double x, double y )
@@ -1087,26 +1110,91 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		depth[k] = surface[k] - bed[k];
 		bank[k] = depth[k] * shape[k].bankSlope / cell;
 	}
-	// Врез отрезка k → down[k] в точке (cx, cy) клеток (центр клетки — +0,5): дно, тальвег, борта. Его же считают и клетки
-	// карты, и точки детальной земли
-	// Врез по отрезку оси a → b, параметры — от узла k к down[k] в долях t0…t1 (часть отрезка — у гладкой оси детальной земли)
-	auto pieceProfile = [&]( int k, Point a, Point b, double t0, double t1, double cx, double cy )
+	// Изгиб русла в узле — кривизна оси × ширина (−1…1, > 0 — поворот влево в клетках карты), сглаженная вдоль течения:
+	// у внешнего берега излучины глубже и круче, у внутреннего — пологая отмель
+	std::vector<double> bend( count, 0.0 );
+	for( int k = 0; k < count; ++k )
+	{
+		if( up[k] < 0 || down[k] < 0 )
+			continue;
+		const Point in = { position[k].x - position[up[k]].x, position[k].y - position[up[k]].y };
+		const Point out = { position[down[k]].x - position[k].x, position[down[k]].y - position[k].y };
+		const double turn = std::atan2( in.x * out.y - in.y * out.x, in.x * out.x + in.y * out.y );
+		const double length = 0.5 * ( std::hypot( in.x, in.y ) + std::hypot( out.x, out.y ) ) * cell;
+		bend[k] = turn / std::max( length, 1e-3 ) * 2.0 * half[k] * cell * 2.0;
+	}
+	for( int pass = 0; pass < 6; ++pass )
+	{
+		std::vector<double> smoothed = bend;
+		for( int k = 0; k < count; ++k )
+			if( up[k] >= 0 && down[k] >= 0 )
+				smoothed[k] = 0.25 * bend[up[k]] + 0.5 * bend[k] + 0.25 * bend[down[k]];
+		bend = std::move( smoothed );
+	}
+	for( double& value : bend )
+		value = std::clamp( value, -1.0, 1.0 );
+	// Плёсы и перекаты: фаза вдоль главного течения, период — pool_spacing ширин русла (Leopold, Wolman 1957: 5–7 ширин)
+	std::vector<double> poolPhase( count, 0.0 );
+	for( int k : nodeOrder )
+	{
+		const int d = down[k];
+		if( d >= 0 && up[d] == k )
+		{
+			const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
+			poolPhase[d] = poolPhase[k] + step / std::max( p.poolSpacing * 2.0 * half[k] * cell, 1.0 );
+		}
+	}
+
+	// Врез отрезка k → down[k] в точке (cx, cy) клеток (центр клетки — +0,5). Его же считают и клетки карты, и точки
+	// детальной земли. Врез по отрезку оси a → b, параметры — от узла k к down[k] в долях t0…t1 (часть отрезка — у гладкой оси
+	// детальной земли). Профиль поперёк: дно шириной w с тальвегом (форма — bed_shape: 2 — V, больше — плоский U), борта
+	// шириной bw (bank_roundness: 1 — скруглённые бровка и подошва, 0 — прямой откос с резкой бровкой); на изгибе тальвег
+	// сдвигается к внешнему берегу, внешний борт круче и глубже, внутренний — пологая отмель (bend_asymmetry); плёсы — глубже
+	// (pool_depth); шум дна и бортов (bed_noise). base — тот же врез без плёсов и шума: по нему уровень воды (в плёсе вода
+	// глубже, а не ниже)
+	auto pieceProfile = [&]( int k, Point a, Point b, double t0, double t1, double cx, double cy, double& base )
 	{
 		const int d = down[k];
 		const double sx = b.x - a.x;
 		const double sy = b.y - a.y;
 		const double length2 = std::max( sx * sx + sy * sy, 1e-9 );
 		const double local = std::clamp( ( ( cx - a.x ) * sx + ( cy - a.y ) * sy ) / length2, 0.0, 1.0 );
-		const double distance = std::hypot( cx - ( a.x + local * sx ), cy - ( a.y + local * sy ) );
+		const double offsetX = cx - ( a.x + local * sx );
+		const double offsetY = cy - ( a.y + local * sy );
+		const double distance = std::hypot( offsetX, offsetY );
+		// Сторона: > 0 — слева по течению (в клетках карты)
+		const double side = sx * offsetY - sy * offsetX;
 		const double t = t0 + ( t1 - t0 ) * local;
 		const double w = half[k] + ( half[d] - half[k] ) * t;
 		const double dep = depth[k] + ( depth[d] - depth[k] ) * t;
 		const double bw = std::max( bank[k] + ( bank[d] - bank[k] ) * t, 1e-3 );
 		const double thalwegShare = shape[k].thalweg + ( shape[d].thalweg - shape[k].thalweg ) * t;
-		// Ложе U: к середине дно глубже (тальвег) — малый расход собирается в середине, а не плёнкой по ширине
-		const double inner = std::clamp( distance / std::max( w, 1e-3 ), 0.0, 1.0 );
-		const double thalweg = thalwegShare * dep * ( 1.0 - inner * inner );
-		return dep * ( 1.0 - smoothstep( 0.0, 1.0, ( distance - w ) / bw ) ) + thalweg;
+		const double bendHere = bend[k] + ( bend[d] - bend[k] ) * t;
+		// Асимметрия: внутренний берег — со стороны центра поворота (bend > 0 — слева)
+		const double asym = std::clamp( p.bendAsymmetry * std::abs( bendHere ), 0.0, 1.0 );
+		const bool innerSide = side * bendHere > 0.0;
+		const double sideWidth = innerSide ? w * ( 1.0 - 0.3 * asym ) : w;
+		const double sideBank = innerSide ? bw * ( 1.0 + 2.0 * asym ) : bw * std::max( 1.0 - 0.6 * asym, 0.3 );
+		const double sideDepth = innerSide ? dep : dep * ( 1.0 + 0.3 * asym );
+		// Тальвег — к внешнему берегу на долю ширины
+		const double lateral = ( side >= 0.0 ? distance : -distance );
+		const double thalwegCenter = ( bendHere > 0.0 ? -1.0 : 1.0 ) * asym * 0.5 * w;
+		const double inner = std::clamp( std::abs( lateral - thalwegCenter ) / std::max( w, 1e-3 ), 0.0, 1.0 );
+		const double thalweg = thalwegShare * sideDepth * ( 1.0 - std::pow( inner, std::max( static_cast<double>( p.bedShape ), 1.0 ) ) );
+		// Борт: от подошвы (0) к бровке (1) — скруглённый (smoothstep) или прямой
+		const double slope = std::clamp( ( distance - sideWidth ) / sideBank, 0.0, 1.0 );
+		const double roundness = std::clamp( static_cast<double>( p.bankRoundness ), 0.0, 1.0 );
+		const double rise = slope + ( smoothstep( 0.0, 1.0, slope ) - slope ) * roundness;
+		const double profile = sideDepth * ( 1.0 - rise ) + thalweg;
+		base = profile;
+		// Плёс — глубже на pool_depth вреза, пол-периода; перекат — как есть
+		const double phase = poolPhase[k] + ( poolPhase[d] - poolPhase[k] ) * t;
+		const double pool = 1.0 + p.poolDepth * 0.5 * ( 1.0 + std::sin( 2.0 * pi * phase ) );
+		const double fill = profile / std::max( sideDepth * ( 1.0 + thalwegShare ), 1e-3 );	// 0 у бровки, 1 у тальвега
+		const double noise = p.bedNoise * fill *
+							 ( valueNoise( cx * cell / p.bedNoiseScale, cy * cell / p.bedNoiseScale ) +
+							   0.5 * valueNoise( cx * cell * 2.1 / p.bedNoiseScale + 17.3, cy * cell * 2.1 / p.bedNoiseScale - 5.1 ) );
+		return std::max( profile * ( 1.0 + ( pool - 1.0 ) * fill ) + noise, 0.0 );
 	};
 	// Ось — сплайн Catmull-Rom через узлы (до — главный приток, после — получатель получателя), четыре части на отрезок: по
 	// ломаной на каждом изломе внутренний борт сходился бы складкой (фестоны вдоль бровки через метр)
@@ -1133,12 +1221,18 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			spline[k][s] = { blend( p0.x, p1.x, p2.x, p3.x ), blend( p0.y, p1.y, p2.y, p3.y ) };
 		}
 	}
-	auto segmentProfile = [&]( int k, double cx, double cy )
+	// Врез отрезка в точке — наибольший по частям сплайна; base — без плёсов и шума
+	auto segmentProfile = [&]( int k, double cx, double cy, double& base )
 	{
 		double value = 0.0;
+		base = 0.0;
 		for( int s = 0; s < pieces; ++s )
+		{
+			double pieceBase = 0.0;
 			value = std::max( value, pieceProfile( k, spline[k][s], spline[k][s + 1], static_cast<double>( s ) / pieces,
-												   static_cast<double>( s + 1 ) / pieces, cx, cy ) );
+												   static_cast<double>( s + 1 ) / pieces, cx, cy, pieceBase ) );
+			base = std::max( base, pieceBase );
+		}
 		return value;
 	};
 	auto segmentReach = [&]( int k ) { return std::max( half[k] + bank[k], half[down[k]] + bank[down[k]] ); };
@@ -1157,6 +1251,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		}
 	};
 	std::vector<double> carve( cells, 0.0 );
+	std::vector<double> carveBase( cells, 0.0 );	// без плёсов и шума: по нему уровень воды
 	for( int k = 0; k < count; ++k )
 	{
 		const int d = down[k];
@@ -1172,8 +1267,10 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		{
 			for( int col = c0; col <= c1; ++col )
 			{
-				double& value = carve[static_cast<size_t>( row ) * n + col];
-				value = std::max( value, segmentProfile( k, col + 0.5, row + 0.5 ) );
+				const size_t i = static_cast<size_t>( row ) * n + col;
+				double base = 0.0;
+				carve[i] = std::max( carve[i], segmentProfile( k, col + 0.5, row + 0.5, base ) );
+				carveBase[i] = std::max( carveBase[i], base );
 			}
 		}
 	}
@@ -1181,7 +1278,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	const std::vector<double> basin = lakeBasins( lakeLevel, height.values, n, cell, p );
 	for( size_t i = 0; i < cells; ++i )
 		if( lake[i] )
-			carve[i] = basin[i];
+			carve[i] = carveBase[i] = basin[i];
 
 	// Детальная земля у русел: плитки по detailTileCells клеток, где русло режет рельеф (озёра — нет: дно под водой);
 	// точка — рельеф до вреза Catmull-Rom (через центры клеток) минус тот же профиль русла, что у клеток, в самой точке;
@@ -1261,7 +1358,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 					{
 						const Point at = texelCell( tile, i, j );
 						double& value = carved[static_cast<size_t>( j ) * side + i];
-						value = std::max( value, segmentProfile( k, at.x, at.y ) );
+						double base = 0.0;
+						value = std::max( value, segmentProfile( k, at.x, at.y, base ) );
 					}
 				}
 			}
@@ -1287,7 +1385,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( size_t i = 0; i < cells; ++i )
 	{
 		result.lowering[i] = static_cast<float>( -carve[i] );
-		carved.values[i] -= carve[i];
+		carved.values[i] -= carveBase[i];
 		if( carve[i] > 0.01 )
 			++result.carvedCells;
 		result.deepestLowering = std::min( result.deepestLowering, result.lowering[i] );
