@@ -360,7 +360,7 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 
 		SQLite::Statement updateScatter( db, "UPDATE ScatterLayers SET cell_size = :cellSize, near_border = :nearBorder, "
 											 "far_border = :farBorder, near_fade = :nearFade, far_fade = :farFade, "
-											 "size_multiplier = :size, jitter = :jitter, rotation_x = :rotationX, "
+											 "size_multiplier = :size, size_variation = :sizeVariation, jitter = :jitter, rotation_x = :rotationX, "
 											 "rotation_y = :rotationY, rotation_z = :rotationZ, align_to_terrain = :align, "
 											 "cast_shadow = :castShadow, shadow_impostor_distance = :shadowImpostor WHERE id = :id" );
 		SQLite::Statement updateScatterModel( db, "UPDATE ScatterLayerModels SET weight = :weight, cast_shadow = :castShadow WHERE id = :id" );
@@ -375,6 +375,7 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 			updateScatter.bind( ":nearFade", dbValue( layer.nearFade ) );
 			updateScatter.bind( ":farFade", dbValue( layer.farFade ) );
 			updateScatter.bind( ":size", dbValue( layer.sizeMultiplier ) );
+			updateScatter.bind( ":sizeVariation", dbValue( layer.sizeVariation ) );
 			updateScatter.bind( ":jitter", dbValue( layer.jitter ) );
 			updateScatter.bind( ":rotationX", dbValue( layer.rotationRange.x ) );
 			updateScatter.bind( ":rotationY", dbValue( layer.rotationRange.y ) );

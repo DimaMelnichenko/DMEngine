@@ -132,7 +132,8 @@
 2. Маска: случайное число сравнивается с плотностью маски в этой точке (без того, что убрали правки рельефа:
    × `1 − terrainFoliageClear`, `Shaders/terrain_height.sh`) — так маска задаёт вероятность.
 3. Высота из карты высот; если расстояние до камеры вне `near_border…far_border` — пропуск.
-4. Размер: `size_multiplier` × случайный множитель 0,7…1 × (0,6…1 по плотности маски) × исчезание у границ кольца.
+4. Размер: `size_multiplier` × случайный множитель (1 − `size_variation`)…1 × (0,6…1 по плотности маски) × исчезание
+   у границ кольца.
 5. Отсечение: сфера радиусом в размер объекта над точкой проверяется по шести плоскостям frustum.
 6. Поворот: случайные углы вокруг Y, X и Z в пределах `rotation_y`, `rotation_x`, `rotation_z` (полный размах:
    360 — любой угол, 30 — ±15°); при `align_to_terrain` ось Y объекта затем доворачивается к нормали рельефа.
@@ -322,6 +323,7 @@
 | `near_border`, `far_border` | м | кольцо дальности |
 | `near_fade`, `far_fade` | м | ширина плавного исчезания у ближней и дальней границы |
 | `size_multiplier` | — | масштаб меша |
+| `size_variation` | 0…1 | разброс размера (Scale min/max у Foliage Type в UE): экземпляр — `size_multiplier` × случайное от 1 − разброс до 1; по умолчанию 0,3 (0,7…1), 0 — все одного размера |
 | `jitter` | доля шага | смещение внутри ячейки: 0 — строго по сетке, 1 — в пределах всей ячейки |
 | `rotation_x`, `rotation_y`, `rotation_z` | градусы | полный размах случайного поворота вокруг оси |
 | `align_to_terrain` | 0 / 1 | ось Y объекта по нормали рельефа |
@@ -416,7 +418,9 @@ Tall Grass с Fab (Quixel Megascans, `tall_grass_rbeki`; экспорт и им�
 наклон до ±8°, тень. Варианты `tall_grass_VarA…C` с весами 2, 1, 1 (`VarA` — небольшой пучок, 1,4 тыс. треугольников;
 `VarB`, `VarC` — широкие, 4,8–5,1 тыс.). LOD — сканы Megascans: 1,4–5,1 тыс. треугольников до 6 м, 0,5–1,9 тыс. до 18 м,
 дальше billboard Megascans (крест из двух карточек, 12–16 треугольников). Цвет: отражение — `SpecularFactor` 0,07 из
-карты `Specular` скана, просвет — карта `Translucency`; альбедо линейно ≈ 0,05. У ручья (Release,
+карты `Specular` скана, просвет — карта `Translucency`; альбедо линейно ≈ 0,05, яркость — как у Two Sided Foliage
+в UE (экспорт масштабирует альбедо и просвет, [models.md](models.md), «Модели Megascans»): пиксели слоя с точки
+скриншота 0 — яркость 78 из 255 против 55 до этого, луг под ними — 84. У ручья (Release,
 `camera 472,14,190,10,0`) слой закрывает ≈ 1,9 % кадра, кадр 8,5 мс. Шаг, размер и веса — в окне набора (подокно
 «2: tall_grass_VarA + 2»), сохраняются «Save level».
 
@@ -499,7 +503,7 @@ Outliner → Scene → имя набора. «Shadow LOD scale» — у набо
 | Свойство | Колонка | Что при правке |
 |---|---|---|
 | Cell size, Near border, Far border, Size | `cell_size`, `near_border`, `far_border`, `size_multiplier` | буферы слоя заново (`Scatterer::rebuildPass`: ёмкость списков — по кольцу и дальностям LOD); прежние GPU отпустит, когда закончит кадры с ними |
-| Near fade, Far fade, Jitter, Rotation, Align to terrain | `near_fade`, `far_fade`, `jitter`, `rotation_x/y/z`, `align_to_terrain` | константы раскладки |
+| Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain` | константы раскладки |
 | Cast shadow, Shadow impostor distance | `cast_shadow`, `shadow_impostor_distance` | сразу |
 
 Подокно варианта (модель) — «Weight» и «Cast shadow» (`ScatterLayerModels`); вес — тоже пересборка буферов. Постоянный

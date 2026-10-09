@@ -179,6 +179,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	number( "Near fade", settings.nearFade, 0.0f, 100.0f, "m", "Instances shrink to zero over this width at the near border" );
 	number( "Far fade", settings.farFade, 0.0f, 200.0f, "m", "Instances shrink to zero over this width at the far border" );
 	number( "Size", settings.sizeMultiplier, 0.05f, 10.0f, "", "Size multiplier of the models" )->setLogarithmic();
+	number( "Size variation", settings.sizeVariation, 0.0f, 1.0f, "",
+			"Random size spread: an instance is Size x (1 - variation ... 1)" );
 	number( "Jitter", settings.jitter, 0.0f, 1.0f, "", "Random offset inside the cell, share of the cell size" );
 	Property* rotation = layer.properties->insert( "Rotation", settings.rotationRange );
 	rotation->setLow( 0.0f );
@@ -551,6 +553,7 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.farFade = settings.farFade;
 	params.sizeMultiplier = settings.sizeMultiplier;
 	params.jitter = settings.jitter;
+	params.sizeVariation = settings.sizeVariation;
 	params.rotationRange = XMFLOAT3( XMConvertToRadians( settings.rotationRange.x ), XMConvertToRadians( settings.rotationRange.y ),
 									 XMConvertToRadians( settings.rotationRange.z ) );
 	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
@@ -572,6 +575,7 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 	settings.nearFade = std::max( properties["Near fade"].data<float>(), 0.0f );
 	settings.farFade = std::max( properties["Far fade"].data<float>(), 0.0f );
 	settings.sizeMultiplier = std::max( properties["Size"].data<float>(), 0.01f );
+	settings.sizeVariation = std::clamp( properties["Size variation"].data<float>(), 0.0f, 1.0f );
 	settings.jitter = std::max( properties["Jitter"].data<float>(), 0.0f );
 	settings.rotationRange = properties["Rotation"].data<XMFLOAT3>();
 	settings.alignToTerrain = properties["Align to terrain"].data<bool>();
@@ -601,7 +605,8 @@ void Scatterer::applyProperties( Layer& layer )
 	const bool buffers = weights || settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
 						 settings.farBorder != applied.farBorder || settings.sizeMultiplier != applied.sizeMultiplier;
 	const bool placement = settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ||
-						   settings.jitter != applied.jitter || settings.alignToTerrain != applied.alignToTerrain ||
+						   settings.jitter != applied.jitter || settings.sizeVariation != applied.sizeVariation ||
+						   settings.alignToTerrain != applied.alignToTerrain ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
 	layer.settings = settings;
@@ -621,6 +626,7 @@ void Scatterer::applyProperties( Layer& layer )
 		params.nearFade = fresh.nearFade;
 		params.farFade = fresh.farFade;
 		params.jitter = fresh.jitter;
+		params.sizeVariation = fresh.sizeVariation;
 		params.rotationRange = fresh.rotationRange;
 		params.alignToTerrain = fresh.alignToTerrain;
 		params.castShadow = castShadow;

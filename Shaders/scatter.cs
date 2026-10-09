@@ -64,6 +64,8 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	uint   g_clusterCount;
 	uint   g_placedCapacity;
 	float  g_clusterMargin;
+	float  g_sizeVariation;		// разброс размера: случайный множитель от 1 − разброс до 1
+	float3 g_layerPadding;
 };
 
 // ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex
@@ -338,7 +340,7 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	// Широкая модель (куртина травы) — ещё и по следу основания: корень на бровке, а пучки куртины над врезом русла висели
 	// бы в воздухе (как проверка границ точки в PCG UE). Размер — наибольший при этой ячейке, след поворачивается с моделью
 	const float4 footprint = g_footprints[variant];
-	const float sizeBound = g_sizeMultiplier * lerp( 0.7f, 1.0f, random( cell, seed + 3 ) );
+	const float sizeBound = g_sizeMultiplier * lerp( 1.0f - g_sizeVariation, 1.0f, random( cell, seed + 3 ) );
 	const float footprintRadius = footprint.z * sizeBound;
 	if( footprintRadius > footprintCheckRadius )
 	{
@@ -358,8 +360,8 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	}
 
 	item.position = float3( worldXZ.x, terrainHeight( worldXZ ), worldXZ.y );
-	// Размер: разброс и плотность маски
-	item.size = g_sizeMultiplier * lerp( 0.7f, 1.0f, random( cell, seed + 3 ) ) * lerp( 0.6f, 1.0f, density );
+	// Размер: разброс слоя (Size variation) и плотность маски
+	item.size = sizeBound * lerp( 0.6f, 1.0f, density );
 
 	item.rotation = quaternionMul( quaternionAxisAngle( float3( 0.0f, 1.0f, 0.0f ), angles.y ),
 								   quaternionMul( quaternionAxisAngle( float3( 1.0f, 0.0f, 0.0f ), angles.x ),

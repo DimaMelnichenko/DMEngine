@@ -275,11 +275,16 @@ python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --lod-ra
   (`--no-billboard-cross` — оставить одну);
 - просвет и отражение — расширения glTF, которых экспортёр Blender не пишет: сценарий дописывает их в `.glb` после
   экспорта (картинка — новый bufferView в BIN). `KHR_materials_diffuse_transmission` — доля `--diffuse-transmission`
-  (0,4) и цвет из карты `_Translucency` (как Subsurface Color у Two Sided Foliage в UE; есть и у billboard);
+  t (0,5) и цвет из карты `_Translucency` (как Subsurface Color у Two Sided Foliage в UE; есть и у billboard);
   `KHR_materials_specular` — `specularFactor` = 2 × среднее карты `_Specular` по непрозрачной части (Specular в UE s →
   F0 = 0,08 s; у billboard своей карты нет — значение основного). У Rough Meadow Grass `Specular` ≈ 0,025 →
   `specularFactor` 0,05 (у Tall Grass — 0,07): без него отблеск неба F0 = 0,04 на тёмном скане (альбедо линейно ≈ 0,025) делал траву
   серо-чёрной;
+- яркость — как у Two Sided Foliage в UE: альбедо скана — уже доля отражённого света, просвет — карта `_Translucency`
+  целиком, а в glTF базовый цвет делится: отражается (1 − t), насквозь — t × цвет просвета. Поэтому сценарий
+  масштабирует картинки `BaseColor` и `Translucency` в линейном пространстве на 1 / (1 − t) и 1 / t (при t = 0,5 — × 2;
+  выше 1 обрезается, доля печатается: у Tall Grass — 0 % и 0,17 %, у светлой карты просвета billboard — 28 %). Без
+  этого лицевая сторона была темнее скана на t, а просвет — ещё и × t: трава выходила заметно темнее превью Fab;
 - цвета вершин не экспортируются (движок их не читает), параметры движка — `--material-param`, как у Poly Haven.
 
 Tall Grass (`tall_grass_rbeki`, 3 варианта × 3 LOD) — слой `Meadow` ([scatter.md](scatter.md), «Трава Megascans»):

@@ -10,9 +10,13 @@
 #     определяется по интегрируемости поля нормалей или задаётся --normal-convention); картинки — до --texture-size;
 #     двусторонние; карточка billboard — крестом из двух (--no-billboard-cross — одна);
 #   - просвет и отражение — расширения glTF, которые экспортёр Blender не пишет, сценарий дописывает их в .glb сам:
-#     KHR_materials_diffuse_transmission — доля --diffuse-transmission (0,4) и цвет из карты Translucency (как Subsurface
+#     KHR_materials_diffuse_transmission — доля --diffuse-transmission t (0,5) и цвет из карты Translucency (как Subsurface
 #     Color у Two Sided Foliage в UE), KHR_materials_specular — specularFactor из карты Specular (Specular UE s → F0 =
 #     0,08 s, множитель к 0,04 — 2 s; среднее по непрозрачной части; у billboard своей карты нет — значение основного);
+#   - яркость — как у Two Sided Foliage в UE: альбедо скана — уже доля отражённого света, а просвет — карта Translucency
+#     целиком; в glTF базовый цвет делится — отражается (1 − t), проходит t × цвет просвета. Поэтому картинки BaseColor
+#     и Translucency масштабируются в линейном пространстве на 1 / (1 − t) и 1 / t (при t = 0,5 — × 2; что выше 1 —
+#     обрезается, доля печатается), иначе лицевая сторона темнее скана на t, а просвет — ещё и × t;
 #   - параметры движка, которых нет в glTF, — --material-param ИМЯ=ЗНАЧЕНИЕ (повторяется) обоим материалам: extras glTF;
 #   - печатает габариты вариантов (м, ось Z Blender вверх) и треугольники LOD, экспортирует .glb без цветов вершин
 #     (движок их не читает).
@@ -94,7 +98,17 @@ def normal_convention(folder):
     return 'gl' if curl_gl < curl_dx else 'dx'
 
 
-def build_material(name, folder, prefix, size, convention, params):
+def scale_linear(rgba, scale, label):
+    """Цвет sRGB картинки × scale в линейном пространстве (альфа не меняется); печатает долю обрезанных текселей"""
+    rgb = rgba[..., :3]
+    linear = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4) * scale
+    clipped = float(np.mean(np.any(linear > 1.0, axis=-1)[rgba[..., 3] > 0.5]))
+    linear = np.clip(linear, 0.0, 1.0)
+    rgba[..., :3] = np.where(linear <= 0.0031308, linear * 12.92, 1.055 * linear ** (1.0 / 2.4) - 0.055)
+    print('%s: x%.2f in linear, clipped %.2f%% of opaque texels' % (label, scale, 100.0 * clipped))
+
+
+def build_material(name, folder, prefix, size, convention, params, transmission):
     """Материал по картам с префиксом ('' — основные, 'Billboard_' — карточки); картинки — по префиксу и карте
     (BaseColor, Billboard_Normal): импортёр называет текстуры <ассет>_<картинка>"""
     base_path = find_map(folder, prefix + 'BaseColor')
@@ -103,14 +117,20 @@ def build_material(name, folder, prefix, size, convention, params):
     base = load_pixels(base_path, size)
     opacity_path = find_map(folder, prefix + 'Opacity')
     base[..., 3] = load_pixels(opacity_path, size)[..., 0] if opacity_path else 1.0
+    # Альбедо скана — отражённая доля; в glTF отражается baseColor × (1 − t)
+    translucency_path = find_map(folder, prefix + 'Translucency')
+    if translucency_path and transmission < 1.0:
+        scale_linear(base, 1.0 / (1.0 - transmission), prefix + 'BaseColor')
     rough_path = find_map(folder, prefix + 'Roughness')
     rough = load_pixels(rough_path, size)[..., 0] if rough_path else np.full(base.shape[:2], 0.8, np.float32)
     mr = np.stack([np.ones_like(rough), rough, np.zeros_like(rough), np.ones_like(rough)], axis=-1)
     # Просвет и отражение — для расширений glTF, которые сценарий допишет в .glb (add_extensions)
     extras = {'translucency': None, 'specular': None}
-    translucency_path = find_map(folder, prefix + 'Translucency')
     if translucency_path:
         translucency = load_pixels(translucency_path, size)
+        translucency[..., 3] = base[..., 3]
+        if transmission > 0.0:
+            scale_linear(translucency, 1.0 / transmission, prefix + 'Translucency')
         translucency[..., 3] = 1.0
         save_png(prefix + 'Translucency', translucency, folder, True)
         extras['translucency'] = os.path.join(folder, prefix + 'Translucency.png')
@@ -228,7 +248,7 @@ def main():
     parser.add_argument('--billboard-lod', type=int, help='LOD with the billboard maps (after --lod-offset); default — the last')
     parser.add_argument('--normal-convention', choices=('gl', 'dx'), help='normal map convention; default — detected from the normal map')
     parser.add_argument('--no-billboard-cross', action='store_true', help='keep the billboard LOD a single card')
-    parser.add_argument('--diffuse-transmission', type=float, default=0.4,
+    parser.add_argument('--diffuse-transmission', type=float, default=0.5,
                         help='share of diffuse light passing through (KHR_materials_diffuse_transmission); color - Translucency map')
     parser.add_argument('--material-param', action='append', default=[], metavar='NAME=VALUE',
                         help='engine material parameter for both materials (glTF extras)')
@@ -271,12 +291,13 @@ def main():
     if convention is None:
         raise SystemExit('error: normal map convention is not detected, pass --normal-convention gl|dx')
     params = [material_param(text) for text in args.material_param]
-    main_mat, main_extras = build_material(args.name, folder, '', args.texture_size, convention, params)
+    main_mat, main_extras = build_material(args.name, folder, '', args.texture_size, convention, params,
+                                           args.diffuse_transmission)
     material_extras = {main_mat.name: main_extras}
     billboard_mat = None
     if find_map(folder, 'Billboard_BaseColor'):
         billboard_mat, billboard_extras = build_material(args.name + '_billboard', folder, 'Billboard_', args.texture_size,
-                                                         convention, params)
+                                                         convention, params, args.diffuse_transmission)
         if billboard_extras['specular'] is None:
             billboard_extras['specular'] = main_extras['specular']
         material_extras[billboard_mat.name] = billboard_extras

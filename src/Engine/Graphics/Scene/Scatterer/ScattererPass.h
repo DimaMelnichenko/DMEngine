@@ -135,8 +135,10 @@ public:
 		uint32_t clusterCount;
 		uint32_t placedCapacity;
 		float clusterMargin;
+		float sizeVariation;	// разброс размера: случайный множитель от 1 − разброс до 1
+		float padding[3];
 	} m_populateParams;
-	static_assert( sizeof( PopulateParams ) == 80, "ScatterLayerBuffer layout" );
+	static_assert( sizeof( PopulateParams ) == 96, "ScatterLayerBuffer layout" );
 
 	PopulateParams& populateParams();
 

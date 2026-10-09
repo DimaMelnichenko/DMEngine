@@ -426,6 +426,7 @@ struct ScatterLayerSettings
 	float nearFade = 0.0f;			// ширина плавного исчезания у ближней и дальней границы
 	float farFade = 0.0f;
 	float sizeMultiplier = 1.0f;
+	float sizeVariation = 0.3f;		// разброс размера: экземпляр — sizeMultiplier × случайное от 1 − разброс до 1
 	float jitter = 0.0f;			// смещение внутри ячейки, доля шага
 	DirectX::XMFLOAT3 rotationRange = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
 	bool alignToTerrain = false;	// ось Y инстанса по нормали террейна
