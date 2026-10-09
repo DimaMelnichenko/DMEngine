@@ -1859,6 +1859,47 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		result.warnings.push_back( text );
 	}
 
+	// Кривая, которая обрывается: последний узел не переходит в другое русло, не в озере и не у его берега (endLake — в трёх
+	// клетках) и не у края карты. Так бывает, когда рельеф сменился после генерации (там было озеро или слияние): вода ниже
+	// идёт без русла. Правленные и ручные — по одной, сгенерированные — одной строкой с подсказкой, как «в гору»
+	constexpr int edgeCells = 3;
+	size_t generatedDangling = 0;
+	std::string danglingExamples;
+	for( size_t a = 0; a < lines.size(); ++a )
+	{
+		if( lineNodes[a].empty() )
+			continue;
+		const int last = lineNodes[a].back();
+		if( down[last] >= 0 || inLake( last ) || endLake[last] >= 0 )
+			continue;
+		const int col = cellOf[last] % n;
+		const int row = cellOf[last] / n;
+		if( col < edgeCells || row < edgeCells || col >= n - edgeCells || row >= n - edgeCells )
+			continue;
+		const StreamCurve& curve = *lines[a].curve;
+		char text[256];
+		if( curve.generated && !curve.edited )
+		{
+			if( ++generatedDangling <= 5 )
+			{
+				std::snprintf( text, sizeof( text ), "%s\"%s\" at %.0f, %.0f", danglingExamples.empty() ? "" : "; ", curve.name.c_str(),
+							   position[last].x * cell, world - position[last].y * cell );
+				danglingExamples += text;
+			}
+			continue;
+		}
+		std::snprintf( text, sizeof( text ), "stream \"%s\" ends near %.0f, %.0f not at a confluence, lake or map edge: the water "
+					   "below runs without a channel", curve.name.c_str(), position[last].x * cell, world - position[last].y * cell );
+		result.warnings.push_back( text );
+	}
+	if( generatedDangling > 0 )
+	{
+		std::string text = std::to_string( generatedDangling ) + " generated stream curves end not at a confluence, lake or map edge (" +
+						   danglingExamples + ( generatedDangling > 5 ? "; ..." : "" ) + "): the terrain changed since they were "
+						   "generated? Regenerate: python Tools/stream_edit.py regenerate";
+		result.warnings.push_back( text );
+	}
+
 	// Ручьи растра — по кривым: от истока (или узла ниже озера) до слияния, озера или края; кривая, проходящая озеро, рвётся в нём
 	std::vector<std::vector<int>> chains;
 	for( size_t a = 0; a < lineNodes.size(); ++a )
