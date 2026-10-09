@@ -65,6 +65,32 @@ struct TerrainErosionSettings
 	float thermalRate = 0.25f;		// доля излишка, сползающая за шаг
 };
 
+// Правила слоёв и масок по рельефу (TerrainMasks, docs/terrain.md, «Слои и маски по рельефу») — строка TerrainLayerRules
+// террейна (нет строки или колонки — значения по умолчанию), подокно «Layer rules» с пересчётом вживую. Высоты — доли
+// height_multiplier (0…1, как исходная карта), уклоны — градусы; диапазон — переход smoothstep от from к to
+struct TerrainLayerRules
+{
+	struct Range
+	{
+		float from;
+		float to;
+	};
+	Range rockSlope{ 27.0f, 37.0f };		// скала — крутые склоны (± шум 10°)
+	Range bedrockWear{ 1.0f, 3.0f };		// и коренная порода в промоинах (размыв эрозии) на средних уклонах
+	Range bedrockSlope{ 14.0f, 24.0f };
+	Range snowHeight{ 0.80f, 0.88f };		// снег — по высоте, на северных склонах ниже на snowNorth
+	float snowNorth = 0.06f;
+	Range talusMap{ 0.15f, 0.8f };			// осыпь эрозии у подножий скал
+	Range boulderSlope{ 18.0f, 25.0f };		// и камни на крутоватых склонах
+	Range gullyFlow{ 3.3f, 4.0f };			// галька промоин: log10 водосбора, м², на склонах gullySlope
+	Range gullySlope{ 6.0f, 12.0f };
+	Range moistureTwi{ 4.0f, 8.0f };		// влажность — TWI = ln( a / tan β )
+	Range treeline{ 0.72f, 0.79f };			// граница леса (на северных склонах ниже)
+	Range forestSlope{ 30.0f, 38.0f };		// круче — леса нет
+	Range valleyFloorHeight{ 0.32f, 0.22f };// дно долины — луга с редкими рощами
+	Range valleyFloorSlope{ 9.0f, 4.0f };
+};
+
 // Материал и высота террейна — колонки строки Terrain и tiling строк TerrainLayers: читает CDLODTerrain, правки окна
 // террейна пишет «Save level»
 struct TerrainSettings
@@ -78,6 +104,7 @@ struct TerrainSettings
 	float farBlendEnd = 120.0f;
 	std::vector<float> layerTiling;		// метров на повтор по номеру слоя (TerrainLayers.layer); 0 — слоя нет
 	std::optional<TerrainErosionSettings> erosion;	// строка TerrainErosion — правки подокна «Erosion»
+	TerrainLayerRules layerRules;					// строка TerrainLayerRules — правки подокна «Layer rules»
 };
 
 // Строка SkyAtmosphere; без неё — значения по умолчанию

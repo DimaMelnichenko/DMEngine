@@ -23,7 +23,7 @@ float smoothstep( float a, float b, float x )
 	return t * t * ( 3.0f - 2.0f * t );
 }
 
-float smoothstep( const TerrainMaskSettings::Range& range, float x )
+float smoothstep( const TerrainLayerRules::Range& range, float x )
 {
 	return smoothstep( range.from, range.to, x );
 }
@@ -187,9 +187,24 @@ bool saveImage( const ScratchImage& image, const std::string& path )
 	return SUCCEEDED( SaveToDDSFile( image.GetImages(), image.GetImageCount(), image.GetMetadata(), DDS_FLAGS_NONE, wide.c_str() ) );
 }
 
+constexpr const char* roleNames[terrainLayerRoleCount] = { "grass_dry", "talus", "rock", "snow", "grass_wet" };
+
 }
 
-bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainMaskSettings& s, TerrainMasks& result )
+const char* terrainLayerRoleName( TerrainLayerRole role )
+{
+	return role < TerrainLayerRole::count ? roleNames[static_cast<uint32_t>( role )] : "";
+}
+
+TerrainLayerRole terrainLayerRole( const std::string& name )
+{
+	for( uint32_t role = 0; role < terrainLayerRoleCount; ++role )
+		if( name == roleNames[role] )
+			return static_cast<TerrainLayerRole>( role );
+	return TerrainLayerRole::count;
+}
+
+bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRules& s, TerrainMasks& result )
 {
 	const HeightField& field = inputs.field;
 	const uint32_t size = field.size;
@@ -269,19 +284,28 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainMaskSett
 
 	// Две травы: сочная — на влажном, суше — выше, граница — пятнами (~30–130 м); мягкий край — смешивание по высоте в шейдере
 	const Field meadowNoise = fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 31 );
+	const Field byRole[terrainLayerRoleCount] = {
+		generate( size, [&]( size_t i ) { return grass[i] * ( 1.0f - smoothstep( 0.4f, 0.6f, 0.6f * moisture[i] + 0.4f * meadowNoise[i] ) ); } ),
+		boulders,
+		rock,
+		snow,
+		generate( size, [&]( size_t i ) { return grass[i] * smoothstep( 0.4f, 0.6f, 0.6f * moisture[i] + 0.4f * meadowNoise[i] ); } ) };
+	// Вес роли — в её слой; слоя с ролью нет — сухой траве, нет и её — слою 0 (сумма весов остаётся 1)
 	for( Field& layer : result.splat )
 		layer.clear();
-	result.splat[s.layers.rock] = rock;
-	result.splat[s.layers.snow] = snow;
-	result.splat[s.layers.talus] = boulders;
-	result.splat[s.layers.grassDry] = generate( size, [&]( size_t i )
+	const int32_t fallback = inputs.layerOf[static_cast<uint32_t>( TerrainLayerRole::grassDry )] >= 0
+								 ? inputs.layerOf[static_cast<uint32_t>( TerrainLayerRole::grassDry )] : 0;
+	for( uint32_t role = 0; role < terrainLayerRoleCount; ++role )
 	{
-		return grass[i] * ( 1.0f - smoothstep( 0.4f, 0.6f, 0.6f * moisture[i] + 0.4f * meadowNoise[i] ) );
-	} );
-	result.splat[s.layers.grassWet] = generate( size, [&]( size_t i )
-	{
-		return grass[i] * smoothstep( 0.4f, 0.6f, 0.6f * moisture[i] + 0.4f * meadowNoise[i] );
-	} );
+		const int32_t wanted = inputs.layerOf[role];
+		const uint32_t layer = static_cast<uint32_t>( wanted >= 0 && wanted < static_cast<int32_t>( splatLayers ) ? wanted : fallback );
+		Field& target = result.splat[layer];
+		if( target.empty() )
+			target = byRole[role];
+		else
+			for( size_t i = 0; i < cells; ++i )
+				target[i] += byRole[role][i];
+	}
 
 	// Маски расстановки: трава — на обеих травах, ромашки — пятнами в траве, гуще на влажном, камни — на осыпях
 	const Field flowerNoise = fbm( size, texel, { { 32, 0.5f }, { 16, 0.3f }, { 8, 0.2f } }, 41 );

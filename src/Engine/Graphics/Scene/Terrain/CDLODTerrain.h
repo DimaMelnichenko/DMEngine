@@ -41,9 +41,14 @@ public:
 	// высот при загрузке: её читают вершины, узлы квадродерева и всё, что стоит на рельефе; их очистка растительности —
 	// маска для расстановки, покраска — в splat-карту материала). water — вода уровня: после правок по итоговому рельефу
 	// конвейер (TerrainHydrology) режет русла и строит ручьи и маску озёр; nullptr — воды нет. erosion — эрозия исходной
-	// карты до правок (TerrainErosion, кэш — каталог eroded\ рядом с картой высот); nullptr — карта уже готова
+	// карты до правок (TerrainErosion, кэш — каталог eroded\ рядом с картой высот); nullptr — карта уже готова. layerRules —
+	// правила слоёв и масок по рельефу (TerrainMasks)
 	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {}, const WaterSimulationSettings* water = nullptr,
-					 const TerrainErosionSettings* erosion = nullptr );
+					 const TerrainErosionSettings* erosion = nullptr, const TerrainLayerRules& layerRules = {} );
+	// Правили «Layer rules» в редакторе — слои и маски заново (без русел), splat-карта с покраской правок; расстановку (лес)
+	// перестраивает Scene. false — правил не меняли или пересчёт не удался
+	bool layerRulesChanged() const;
+	bool rebuildMasks();
 	// Рельеф после эрозии сменился, а пересадка моделей на него ещё не сохранена (eroded\\previous.dds — прежний рельеф):
 	// модели уровня пересаживаются при каждой загрузке, пока «Save level» не закрепит (confirmErosionChange).
 	// Разница «самой высокой точки земли под моделью» (круг radius вокруг x, z) между новым и прежним рельефом после эрозии, м
@@ -130,6 +135,10 @@ private:
 	bool erode( HeightField& field, const TerrainErosionSettings& erosion );
 	// Подокно «Erosion»: параметры эрозии (применяются при следующей загрузке)
 	void addErosionProperties( const TerrainErosionSettings& erosion );
+	// Подокно «Layer rules»: пороги правил слоёв и масок (пересчёт вживую — layerRulesChanged / rebuildMasks) и правила по
+	// его свойствам
+	void addLayerRulesProperties( const TerrainLayerRules& rules );
+	TerrainLayerRules layerRulesFromProperties() const;
 	bool createShader();
 	// Копия карты высот с правками рельефа и мипами для вершинного шейдера и минимум / максимум высоты каждого узла по
 	// мипам его уровня; coverage — что правки делают, кроме высоты
@@ -186,6 +195,10 @@ private:
 	std::vector<float> m_erosionDeposition;
 	std::vector<float> m_erosionTalus;
 	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
+	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
+	PropertyContainer m_layerRulesProperties;	// «Layer rules»
+	std::array<int32_t, terrainLayerRoleCount> m_layerOf{ -1, -1, -1, -1, -1 };	// слой каждой роли (TerrainLayers.role)
+	TerrainEditCoverage m_coverage;			// покрытие правок рельефа и русел последней сборки — покраска при пересчёте правил
 	std::optional<TerrainErosionSettings> m_erosion;
 	PropertyContainer m_erosionProperties;	// «Erosion»
 	// Рельеф после эрозии, м: прежний (из кэша до пересчёта) и новый — для пересадки моделей, пока она не сделана

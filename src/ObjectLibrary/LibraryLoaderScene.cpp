@@ -66,6 +66,46 @@ const std::pair<const char*, int32_t GS::TerrainErosionSettings::*> erosionIntCo
 	{ "thermal_iterations", &GS::TerrainErosionSettings::thermalIterations },
 };
 
+// Колонки TerrainLayerRules ↔ диапазоны TerrainLayerRules: <колонка>_from, <колонка>_to
+const std::pair<const char*, GS::TerrainLayerRules::Range GS::TerrainLayerRules::*> layerRuleColumns[] = {
+	{ "rock_slope", &GS::TerrainLayerRules::rockSlope },
+	{ "bedrock_wear", &GS::TerrainLayerRules::bedrockWear },
+	{ "bedrock_slope", &GS::TerrainLayerRules::bedrockSlope },
+	{ "snow_height", &GS::TerrainLayerRules::snowHeight },
+	{ "talus_map", &GS::TerrainLayerRules::talusMap },
+	{ "boulder_slope", &GS::TerrainLayerRules::boulderSlope },
+	{ "gully_flow", &GS::TerrainLayerRules::gullyFlow },
+	{ "gully_slope", &GS::TerrainLayerRules::gullySlope },
+	{ "moisture_twi", &GS::TerrainLayerRules::moistureTwi },
+	{ "treeline", &GS::TerrainLayerRules::treeline },
+	{ "forest_slope", &GS::TerrainLayerRules::forestSlope },
+	{ "valley_floor_height", &GS::TerrainLayerRules::valleyFloorHeight },
+	{ "valley_floor_slope", &GS::TerrainLayerRules::valleyFloorSlope },
+};
+
+}
+
+void LibraryLoader::loadTerrainLayerRules( uint32_t terrainId, LevelDescription& level )
+{
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "TerrainLayerRules" ) )
+		return;
+	SQLite::Statement query( db, "SELECT * FROM TerrainLayerRules WHERE terrain = :terrain" );
+	query.bind( ":terrain", terrainId );
+	if( !query.executeStep() )
+		return;
+	GS::TerrainLayerRules& rules = level.terrainLayerRules;
+	for( const auto& [column, field] : layerRuleColumns )
+	{
+		const std::string from = std::string( column ) + "_from";
+		const std::string to = std::string( column ) + "_to";
+		if( !query.getColumn( from.c_str() ).isNull() )
+			( rules.*field ).from = static_cast<float>( query.getColumn( from.c_str() ).getDouble() );
+		if( !query.getColumn( to.c_str() ).isNull() )
+			( rules.*field ).to = static_cast<float>( query.getColumn( to.c_str() ).getDouble() );
+	}
+	if( !query.getColumn( "snow_north" ).isNull() )
+		rules.snowNorth = static_cast<float>( query.getColumn( "snow_north" ).getDouble() );
 }
 
 void LibraryLoader::loadTerrainErosion( uint32_t terrainId, LevelDescription& level )
@@ -282,6 +322,27 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 					updateErosion.bind( std::string( ":" ) + column, ( *terrain->erosion ).*field );
 				updateErosion.bind( ":id", terrain->erosion->id );
 				updateErosion.exec();
+			}
+
+			// Правила слоёв: строка TerrainLayerRules террейна (нет — появится)
+			if( db.tableExists( "TerrainLayerRules" ) )
+			{
+				std::string columns = "terrain, snow_north";
+				std::string values = ":terrain, :snow_north";
+				for( const auto& [column, field] : layerRuleColumns )
+				{
+					columns += std::string( ", " ) + column + "_from, " + column + "_to";
+					values += std::string( ", :" ) + column + "_from, :" + column + "_to";
+				}
+				SQLite::Statement updateRules( db, "INSERT OR REPLACE INTO TerrainLayerRules (" + columns + ") VALUES (" + values + ")" );
+				updateRules.bind( ":terrain", terrain->id );
+				updateRules.bind( ":snow_north", dbValue( terrain->layerRules.snowNorth ) );
+				for( const auto& [column, field] : layerRuleColumns )
+				{
+					updateRules.bind( std::string( ":" ) + column + "_from", dbValue( ( terrain->layerRules.*field ).from ) );
+					updateRules.bind( std::string( ":" ) + column + "_to", dbValue( ( terrain->layerRules.*field ).to ) );
+				}
+				updateRules.exec();
 			}
 
 			SQLite::Statement updateLayer( db, "UPDATE TerrainLayers SET tiling = :tiling WHERE terrain = :terrain AND layer = :layer" );

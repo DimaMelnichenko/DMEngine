@@ -23,6 +23,32 @@ using namespace DirectX;
 namespace
 {
 
+// Диапазоны правил слоёв ↔ свойства подокна «Layer rules» (от, до): подокно, чтение свойств и сравнение с применёнными
+struct LayerRuleRange
+{
+	const char* name;
+	GS::TerrainLayerRules::Range GS::TerrainLayerRules::* field;
+	float low;
+	float high;
+	const char* unit;
+	const char* tooltip;
+};
+const LayerRuleRange layerRuleRanges[] = {
+	{ "Rock slope", &GS::TerrainLayerRules::rockSlope, 0.0f, 90.0f, "deg", "Rock on steep slopes: from, to (noise +-10 deg)" },
+	{ "Bedrock wear", &GS::TerrainLayerRules::bedrockWear, 0.0f, 10.0f, "", "Rock where the erosion wore the ground away: from, to" },
+	{ "Bedrock slope", &GS::TerrainLayerRules::bedrockSlope, 0.0f, 90.0f, "deg", "Worn bedrock only on slopes: from, to" },
+	{ "Snow height", &GS::TerrainLayerRules::snowHeight, 0.0f, 1.0f, "", "Snow above, share of the height multiplier: from, to" },
+	{ "Talus map", &GS::TerrainLayerRules::talusMap, 0.0f, 2.0f, "", "Scree of the erosion talus map: from, to" },
+	{ "Boulder slope", &GS::TerrainLayerRules::boulderSlope, 0.0f, 90.0f, "deg", "Stones on steepish slopes: from, to" },
+	{ "Gully flow", &GS::TerrainLayerRules::gullyFlow, 0.0f, 8.0f, "", "Gravel in gullies: log10 of the catchment, m2: from, to" },
+	{ "Gully slope", &GS::TerrainLayerRules::gullySlope, 0.0f, 90.0f, "deg", "Gully gravel only on slopes: from, to" },
+	{ "Moisture TWI", &GS::TerrainLayerRules::moistureTwi, 0.0f, 20.0f, "", "Wet ground by the topographic wetness index ln(a / tan b): from, to" },
+	{ "Treeline", &GS::TerrainLayerRules::treeline, 0.0f, 1.0f, "", "Forest ends higher, share of the height multiplier: from, to" },
+	{ "Forest slope", &GS::TerrainLayerRules::forestSlope, 0.0f, 90.0f, "deg", "No forest steeper: from, to" },
+	{ "Valley floor height", &GS::TerrainLayerRules::valleyFloorHeight, 0.0f, 1.0f, "", "Meadows of the valley floor lower: from, to" },
+	{ "Valley floor slope", &GS::TerrainLayerRules::valleyFloorSlope, 0.0f, 90.0f, "deg", "Valley floor only on flat ground: from, to" },
+};
+
 bool sphereIntersectsBox( const XMFLOAT3& center, float radius, const XMFLOAT3& boxMin, const XMFLOAT3& boxMax )
 {
 	float dx = std::max( { boxMin.x - center.x, 0.0f, center.x - boxMax.x } );
@@ -42,10 +68,11 @@ CDLODTerrain::CDLODTerrain() :
 }
 
 bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water,
-							   const TerrainErosionSettings* erosion )
+							   const TerrainErosionSettings* erosion, const TerrainLayerRules& layerRules )
 {
 	if( erosion )
 		m_erosion = *erosion;
+	m_layerRules = layerRules;
 	TerrainSettings settings;
 	if( !loadSettings( terrainId, settings ) )
 		return false;
@@ -71,6 +98,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	TerrainEditCoverage coverage;
 	if( !buildHeightBounds( edits, water, coverage ) || !createFoliageClearMask( coverage ) )
 		return false;
+	m_coverage = coverage;
 
 	if( !createShader() )
 		return false;
@@ -144,6 +172,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	m_properties.addSubContainer( &m_layerProperties );
 	if( m_erosion )
 		addErosionProperties( *m_erosion );
+	addLayerRulesProperties( m_layerRules );
 
 	m_properties.insert( "Wireframe", false );
 	m_properties.insert( "Show LOD", false );
@@ -234,6 +263,29 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 	}
 	m_erodedDirectory = "Textures\\" + ( directory.empty() ? std::string() : directory + "\\" ) + "eroded";
 	m_generatedDirectory = "Textures\\" + ( directory.empty() ? std::string() : directory + "\\" ) + "generated";
+
+	// Роли слоёв в правилах слоёв (TerrainLayers.role): какой слой красят скала, снег, осыпи и травы
+	m_layerOf.fill( -1 );
+	if( DBConnector::instance().db().tableExists( "TerrainLayers" ) )
+	{
+		SQLite::Statement roles( DBConnector::instance().db(), "select layer, role from TerrainLayers where terrain = :terrain and role is not null" );
+		roles.bind( ":terrain", terrainId );
+		while( roles.executeStep() )
+		{
+			const std::string name = roles.getColumn( "role" ).getString();
+			const TerrainLayerRole role = terrainLayerRole( name );
+			if( role == TerrainLayerRole::count )
+			{
+				LOG( "CDLOD terrain: unknown layer role " + name + " in TerrainLayers" );
+				continue;
+			}
+			m_layerOf[static_cast<uint32_t>( role )] = roles.getColumn( "layer" ).getInt();
+		}
+	}
+	for( uint32_t role = 0; role < terrainLayerRoleCount; ++role )
+		if( m_layerOf[role] < 0 )
+			LOG( std::string( "CDLOD terrain: no layer with role " ) + terrainLayerRoleName( static_cast<TerrainLayerRole>( role ) ) +
+				 " in TerrainLayers, its weight goes to grass_dry" );
 	return true;
 }
 
@@ -514,7 +566,42 @@ bool CDLODTerrain::rebuildChannels( const WaterSimulationSettings& water, const 
 		std::memcpy( target.pixels + row * target.rowPitch, &m_baseHeights[static_cast<size_t>( row ) * m_baseSize], m_baseSize * sizeof( float ) );
 	TerrainEditCoverage coverage = m_baseCoverage;
 	m_streamCurves = curves;
-	return finishHeights( target, &water, coverage ) && createFoliageClearMask( coverage ) && m_material.repaint( m_masks, coverage );
+	if( !finishHeights( target, &water, coverage ) )
+		return false;
+	m_coverage = coverage;
+	return createFoliageClearMask( coverage ) && m_material.repaint( m_masks, coverage );
+}
+
+bool CDLODTerrain::layerRulesChanged() const
+{
+	if( !m_initialized )
+		return false;
+	const TerrainLayerRules rules = layerRulesFromProperties();
+	for( const LayerRuleRange& range : layerRuleRanges )
+		if( ( rules.*range.field ).from != ( m_layerRules.*range.field ).from || ( rules.*range.field ).to != ( m_layerRules.*range.field ).to )
+			return true;
+	return rules.snowNorth != m_layerRules.snowNorth;
+}
+
+bool CDLODTerrain::rebuildMasks()
+{
+	if( m_cpuHeights.empty() )
+		return false;
+	const auto start = std::chrono::steady_clock::now();
+	m_layerRules = layerRulesFromProperties();
+	// Итоговая карта на CPU — размеры и масштаб; уклоны и водосбор правила берут с рельефа до русел (buildMasks)
+	HeightField field;
+	field.heights = m_cpuHeights.data();
+	field.size = m_cpuSize;
+	field.rowPitch = m_cpuSize;
+	field.texelSize = m_texelSize;
+	field.heightMultiplier = m_heightMultiplier;
+	field.heightOffset = m_heightOffset;
+	if( !buildMasks( field ) || !m_material.repaint( m_masks, m_coverage ) )
+		return false;
+	LOG( "Terrain layers and masks rebuilt without reload, ms: " +
+		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() ) );
+	return true;
 }
 
 bool CDLODTerrain::buildMasks( const HeightField& finalField )
@@ -546,7 +633,8 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 	inputs.talus = &m_erosionTalus;
 	inputs.catchment = &catchment;
 	inputs.water = water.empty() ? nullptr : &water;
-	if( !TerrainMasks::build( inputs, TerrainMaskSettings(), m_masks ) )
+	inputs.layerOf = m_layerOf;
+	if( !TerrainMasks::build( inputs, m_layerRules, m_masks ) )
 	{
 		LOG( "CDLOD terrain: layers and masks are not built" );
 		return false;
@@ -1050,6 +1138,42 @@ void CDLODTerrain::addErosionProperties( const TerrainErosionSettings& erosion )
 	m_properties.addSubContainer( &m_erosionProperties );
 }
 
+void CDLODTerrain::addLayerRulesProperties( const TerrainLayerRules& rules )
+{
+	m_layerRulesProperties.setName( "Layer rules" );
+	for( const LayerRuleRange& range : layerRuleRanges )
+	{
+		const TerrainLayerRules::Range& value = rules.*range.field;
+		Property* property = m_layerRulesProperties.insert( range.name, XMFLOAT2( value.from, value.to ) );
+		property->setLow( range.low );
+		property->setHigh( range.high );
+		property->setTooltip( std::string( range.tooltip ) + "; the layers and masks are rebuilt when the edit ends" );
+		if( range.unit[0] )
+			property->setUnit( range.unit );
+	}
+	Property* north = m_layerRulesProperties.insert( "Snow north", rules.snowNorth );
+	north->setLow( 0.0f );
+	north->setHigh( 0.3f );
+	north->setTooltip( "Snow lower on north slopes, share of the height multiplier" );
+	m_properties.addSubContainer( &m_layerRulesProperties );
+}
+
+TerrainLayerRules CDLODTerrain::layerRulesFromProperties() const
+{
+	TerrainLayerRules rules = m_layerRules;
+	const PropertyContainer& p = m_layerRulesProperties;
+	for( const LayerRuleRange& range : layerRuleRanges )
+	{
+		if( !p.exists( range.name ) )
+			continue;
+		const XMFLOAT2 value = p[range.name].data<XMFLOAT2>();
+		rules.*range.field = { value.x, value.y };
+	}
+	if( p.exists( "Snow north" ) )
+		rules.snowNorth = p["Snow north"].data<float>();
+	return rules;
+}
+
 TerrainSettings CDLODTerrain::settings() const
 {
 	TerrainSettings settings;
@@ -1085,6 +1209,7 @@ TerrainSettings CDLODTerrain::settings() const
 		erosion.thermalIterations = std::max( p["Thermal iterations"].data<int32_t>(), 0 );
 		erosion.thermalRate = p["Thermal rate"].data<float>();
 	}
+	settings.layerRules = layerRulesFromProperties();
 	return settings;
 }
 
