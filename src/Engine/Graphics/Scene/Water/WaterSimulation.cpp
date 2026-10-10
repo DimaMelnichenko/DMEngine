@@ -42,6 +42,11 @@ constexpr uint32_t flowTile = 8;				// тайл счёта течения — г
 constexpr float flowMinDepth = 0.05f;			// м: мельче — берег (скорость 0)
 constexpr float flowScreen = 1e-3f;				// экранирование давления, м: озеро без истока тоже решается
 constexpr float maxViscosityShare = 0.2f;		// ν · dt / l² — не больше: явная вязкость устойчива
+// Камни русла в течении: высота над дном — доля поперечника (камень утоплен на четверть, Scatterer::stoneEmbed), и
+// коэффициент сопротивления (обтекаемый камень — 0,5–1,2)
+constexpr float stoneHeight = 0.5f;
+constexpr float stoneDragCoefficient = 1.0f;
+constexpr int stoneSpread = 2;	// клеток: среднее сопротивление камней — по квадрату (2 · 2 + 1)² клеток ручья вокруг
 constexpr float flowRelaxation = 1.8f;			// верхняя релаксация давления: сходится быстрее Гаусса-Зейделя
 
 bool sameFlow( const WaterSimulationSettings::Flow& a, const WaterSimulationSettings::Flow& b )
@@ -105,6 +110,11 @@ const ChannelParameter channelParameters[] = {
 	{ "Lake shelf width", &WaterChannelsSettings::lakeShelfWidth, 0.0f, 20.0f, "m", "Shallow shelf along the shore" },
 	{ "Lake shelf depth", &WaterChannelsSettings::lakeShelfDepth, 0.0f, 3.0f, "m", "Water depth at the shelf edge" },
 	{ "Lake drop slope", &WaterChannelsSettings::lakeDropSlope, 0.05f, 2.0f, "", "Drop-off beyond the shelf, m per m" },
+	{ "Stone density", &WaterChannelsSettings::stoneDensity, 0.0f, 5.0f, "1/m", "Stones per metre of a stream (bed and banks): denser on riffles and steep reaches" },
+	{ "Stone size", &WaterChannelsSettings::stoneSize, 0.05f, 1.0f, "m", "Typical stone diameter" },
+	{ "Bank stones", &WaterChannelsSettings::bankStones, 0.0f, 1.0f, "", "Share of the stones at the banks, near the water edge" },
+	{ "Boulder density", &WaterChannelsSettings::boulderDensity, 0.0f, 0.5f, "1/m", "Boulders per metre of a stream: more on steep reaches" },
+	{ "Boulder size", &WaterChannelsSettings::boulderSize, 0.3f, 3.0f, "m", "Boulder diameter" },
 };
 
 // Множители кривой русла в подокне «Streams»: имя свойства, поле, подсказка
@@ -123,6 +133,7 @@ const StreamScale streamScales[] = {
 	{ "Thalweg scale", &StreamCurve::thalwegScale, "Deeper middle of the bed, times the common one" },
 	{ "Roughness scale", &StreamCurve::roughnessScale, "Bed roughness (Manning): deeper, slower water at > 1" },
 	{ "Discharge scale", &StreamCurve::dischargeScale, "Water of this stream: wider, deeper bed at > 1" },
+	{ "Stone scale", &StreamCurve::stoneScale, "Stones and boulders of this stream, times the common density" },
 };
 
 // Параметры генератора кривых русел: их правка генерирует кривые заново при следующей загрузке (отпечаток), а не перестраивает
@@ -530,6 +541,7 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_surfaceBuffer );
 	d3d.setSRV( 0, m_levelView );
 	d3d.setSRV( 1, m_rippleView );
+	d3d.setSRV( 2, m_stoneDragView );
 	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
 	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
 }
@@ -600,9 +612,49 @@ bool WaterSimulation::createHydrologyTextures( const TerrainHydrology::Result& h
 		d3d.setName( texture, name );
 		return true;
 	};
+	// Камни русел тормозят течение (water_flow.cs, mainFlowAdvect): у клетки — площадь камней поперёк потока на квадратный
+	// метр дна, только погружённая часть — до уровня воды, — и её среднее по клеткам ручья вокруг (stoneSpread)
+	std::vector<float> stoneArea( static_cast<size_t>( m_size ) * m_size, 0.0f );
+	const float worldSize = m_cellSize * m_size;
+	for( const TerrainHydrology::Stone& stone : hydrology.stones )
+	{
+		const int col = static_cast<int>( stone.position.x / m_cellSize );
+		const int row = static_cast<int>( ( worldSize - stone.position.z ) / m_cellSize );
+		if( col < 0 || row < 0 || col >= static_cast<int>( m_size ) || row >= static_cast<int>( m_size ) )
+			continue;
+		const size_t index = static_cast<size_t>( row ) * m_size + col;
+		const float level = std::max( hydrology.staticWater[index].x, hydrology.staticWater[index].w );
+		const float submerged = std::clamp( level - stone.position.y, 0.0f, stoneHeight * stone.size );
+		stoneArea[index] += stone.size * submerged / ( m_cellSize * m_cellSize );
+	}
+	std::vector<DirectX::XMFLOAT2> stoneDrag( stoneArea.size(), DirectX::XMFLOAT2( 0.0f, 0.0f ) );
+	for( int row = 0; row < static_cast<int>( m_size ); ++row )
+		for( int col = 0; col < static_cast<int>( m_size ); ++col )
+		{
+			const size_t index = static_cast<size_t>( row ) * m_size + col;
+			if( hydrology.staticWater[index].x <= -1e8f )
+				continue;
+			float sum = 0.0f;
+			int cells = 0;
+			for( int dr = -stoneSpread; dr <= stoneSpread; ++dr )
+				for( int dc = -stoneSpread; dc <= stoneSpread; ++dc )
+				{
+					const int r = row + dr;
+					const int c = col + dc;
+					if( r < 0 || c < 0 || r >= static_cast<int>( m_size ) || c >= static_cast<int>( m_size ) )
+						continue;
+					const size_t around = static_cast<size_t>( r ) * m_size + c;
+					if( hydrology.staticWater[around].x <= -1e8f )
+						continue;
+					sum += stoneArea[around];
+					++cells;
+				}
+			stoneDrag[index] = DirectX::XMFLOAT2( stoneArea[index], cells > 0 ? sum / cells : 0.0f );
+		}
 	return create( DXGI_FORMAT_R32_FLOAT, hydrology.channelFlow.data(), sizeof( float ), "Water channel flow", m_flowTexture, m_flowView ) &&
 		   create( DXGI_FORMAT_R32G32B32A32_FLOAT, hydrology.staticWater.data(), sizeof( DirectX::XMFLOAT4 ), "Water static streams",
-				   m_staticWaterTexture, m_staticWaterView );
+				   m_staticWaterTexture, m_staticWaterView ) &&
+		   create( DXGI_FORMAT_R32G32_FLOAT, stoneDrag.data(), sizeof( DirectX::XMFLOAT2 ), "Water stone drag", m_stoneDrag, m_stoneDragView );
 }
 
 bool WaterSimulation::buildStaticWater( const Settings& settings )
@@ -683,6 +735,7 @@ void WaterSimulation::solveFlow( const Settings::Flow& flow )
 	params.layer = std::max( flow.layer, flowMinDepth );
 	params.screen = flowScreen;
 	params.relaxation = flowRelaxation;
+	params.stoneDrag = timeStep * 0.5f * stoneDragCoefficient;
 
 	// Тайлы прошлого расчёта (другие русла) — сухие: соседи за краем тайлов читаются нулями
 	for( StorageView* uav : { &m_flowInfoUAV, &m_flowVelocityUAV, &m_flowAdvectedUAV, &m_flowPressureUAV, &m_flowDivergenceUAV } )
@@ -692,7 +745,8 @@ void WaterSimulation::solveFlow( const Settings::Flow& flow )
 	{
 		PassDesc pass;
 		pass.name = "Water flow";
-		pass.reads = { { &heightMap, "height map" }, { &m_staticWaterView, "static water" }, { &m_flowTilesView, "flow tiles" } };
+		pass.reads = { { &heightMap, "height map" }, { &m_staticWaterView, "static water" }, { &m_flowTilesView, "flow tiles" },
+					   { &m_stoneDragView, "stone drag" } };
 		pass.writes = { { &m_flowInfoUAV, "flow cells" },	   { &m_flowVelocityUAV, "flow velocity" },
 						{ &m_flowAdvectedUAV, "flow advected" }, { &m_flowPressureUAV, "flow pressure" },
 						{ &m_flowDivergenceUAV, "flow divergence" }, { &m_outputUAV, "water state" } };
@@ -703,6 +757,7 @@ void WaterSimulation::solveFlow( const Settings::Flow& flow )
 		d3d.setSRV( 0, heightMap );
 		d3d.setSRV( 3, m_staticWaterView );
 		d3d.setSRV( 5, m_flowTilesView );
+		d3d.setSRV( 6, m_stoneDragView );
 	};
 	// Привязка UAV после dispatch ставит барьер UAV → UAV: следующий проход видит записанное предыдущим
 	const uint32_t groups = static_cast<uint32_t>( m_flowTileList.size() );

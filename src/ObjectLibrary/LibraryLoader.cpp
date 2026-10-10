@@ -540,7 +540,7 @@ void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& leve
 
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
 {
-	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, mask, cell_size, near_border, far_border, near_fade, "
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, placement, mask, cell_size, near_border, far_border, near_fade, "
 														   "far_fade, size_multiplier, size_variation, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow, persistent, "
 														   "impostor_distance, shadow_impostor_distance, impostor_density, impostor_occlusion "
 														   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
@@ -554,7 +554,12 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 
 		LevelDescription::ScatterLayer layer;
 		layer.settings.id = query.getColumn( "id" ).getUInt();
-		layer.mask = query.getColumn( "mask" ).getString();
+		layer.mask = query.getColumn( "mask" ).isNull() ? std::string() : query.getColumn( "mask" ).getString();
+		const std::string placement = query.getColumn( "placement" ).isNull() ? std::string() : query.getColumn( "placement" ).getString();
+		if( placement == "stream_stones" )
+			layer.settings.placement = GS::ScatterPlacement::streamStones;
+		else if( !placement.empty() && placement != "mask" )
+			LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": unknown placement '" + placement + "', mask is used" );
 		layer.settings.cellSize = value( "cell_size" );
 		layer.settings.nearBorder = value( "near_border" );
 		layer.settings.farBorder = value( "far_border" );

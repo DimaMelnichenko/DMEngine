@@ -43,6 +43,11 @@ const std::pair<const char*, float GS::WaterChannelsSettings::*> channelColumns[
 	{ "lake_shelf_width", &GS::WaterChannelsSettings::lakeShelfWidth },
 	{ "lake_shelf_depth", &GS::WaterChannelsSettings::lakeShelfDepth },
 	{ "lake_drop_slope", &GS::WaterChannelsSettings::lakeDropSlope },
+	{ "stone_density", &GS::WaterChannelsSettings::stoneDensity },
+	{ "stone_size", &GS::WaterChannelsSettings::stoneSize },
+	{ "bank_stones", &GS::WaterChannelsSettings::bankStones },
+	{ "boulder_density", &GS::WaterChannelsSettings::boulderDensity },
+	{ "boulder_size", &GS::WaterChannelsSettings::boulderSize },
 };
 
 // Колонки TerrainErosion ↔ поля TerrainErosionSettings
@@ -156,6 +161,7 @@ const std::pair<const char*, float GS::StreamCurve::*> streamScaleColumns[] = {
 	{ "thalweg_scale", &GS::StreamCurve::thalwegScale },
 	{ "roughness_scale", &GS::StreamCurve::roughnessScale },
 	{ "discharge_scale", &GS::StreamCurve::dischargeScale },
+	{ "stone_scale", &GS::StreamCurve::stoneScale },
 };
 
 void LibraryLoader::loadStreams( uint32_t waterSimulationId, GS::WaterSimulationSettings& water )

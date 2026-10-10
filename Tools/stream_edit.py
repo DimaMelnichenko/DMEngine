@@ -30,7 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, 'base.db3')
 
 SCALES = ['width_scale', 'depth_scale', 'freeboard_scale', 'bank_slope_scale', 'thalweg_scale', 'roughness_scale',
-          'discharge_scale']
+          'discharge_scale', 'stone_scale']
 
 
 def water_simulation(db, level):

@@ -9,6 +9,7 @@
 #include <execution>
 #include <queue>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 namespace GS
@@ -34,6 +35,28 @@ struct Point
 {
 	double x = 0.0;	// столбец (дробный, центр клетки — +0,5)
 	double y = 0.0;	// строка
+};
+
+// Случайные числа камней русла (splitmix64): последовательность — от положения отрезка, а не от номера узла, поэтому
+// камень на своём месте и после правки других кривых
+struct StoneRandom
+{
+	uint64_t state;
+	explicit StoneRandom( uint64_t seed ) : state( seed ) {}
+	uint32_t next()
+	{
+		uint64_t z = ( state += 0x9E3779B97F4A7C15ull );
+		z = ( z ^ ( z >> 30 ) ) * 0xBF58476D1CE4E5B9ull;
+		z = ( z ^ ( z >> 27 ) ) * 0x94D049BB133111EBull;
+		return static_cast<uint32_t>( ( z ^ ( z >> 31 ) ) >> 32 );
+	}
+	double uniform() { return next() / 4294967296.0; }
+	// Нормальное (Бокс — Мюллер)
+	double gauss()
+	{
+		const double u = std::max( uniform(), 1e-12 );
+		return std::sqrt( -2.0 * std::log( u ) ) * std::cos( 2.0 * 3.14159265358979323846 * uniform() );
+	}
 };
 
 double smoothstep( double edge0, double edge1, double x )
@@ -1531,7 +1554,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// Параметры русла узла — общие, умноженные на множители его кривой
 	struct Shape
 	{
-		double widthCoef, minWidth, depthCoef, minIncision, freeboard, bankSlope, thalweg, manning;
+		double widthCoef, minWidth, depthCoef, minIncision, freeboard, bankSlope, thalweg, manning, stones;
 	};
 	std::vector<Shape> shape( count );
 	for( int k = 0; k < count; ++k )
@@ -1539,7 +1562,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		const StreamCurve& curve = *lines[curveOf[k]].curve;
 		shape[k] = { p.widthCoef * curve.widthScale, p.minWidth * curve.widthScale, p.depthCoef * curve.depthScale,
 					 p.minIncision * curve.depthScale, p.freeboard * curve.freeboardScale, p.bankSlope * curve.bankSlopeScale,
-					 p.thalweg * curve.thalwegScale, p.manning * curve.roughnessScale };
+					 p.thalweg * curve.thalwegScale, p.manning * curve.roughnessScale, curve.stoneScale };
 	}
 
 	// Озёра — связные области одного уровня заполнения: номер озера у клетки (−1 — не озеро)
@@ -2441,6 +2464,103 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 								 shape[k].manning,
 							 static_cast<double>( p.minSpeed ) );
 		foam[k] = std::clamp( ( slope[k] - p.foamSlope ) / ( 2.0 * p.foamSlope ), 0.0, 1.0 ) * 0.6;
+	}
+
+	// 6. Камни русла — часть кривой: на дне (гуще на перекатах и на крутом), у бортов — у уреза, и редкие валуны. Место
+	// случайное, но от положения отрезка: тот же камень на том же месте при каждой загрузке и после правки других кривых;
+	// внахлёст не ставятся. Высота — самое низкое детальное дно под камнем: на борту камень не висит над склоном
+	result.stones.clear();
+	{
+		std::vector<Point> stoneCells;		// центры камней в клетках карты и радиусы, клеток — проверка нахлёста
+		std::vector<double> stoneRadii;
+		std::unordered_map<int64_t, std::vector<size_t>> buckets;
+		auto bucket = [n]( int col, int row ) { return static_cast<int64_t>( row + 1 ) * ( n + 2 ) + col + 1; };
+		auto overlaps = [&]( const Point& at, double radius )
+		{
+			const int col = static_cast<int>( std::floor( at.x ) );
+			const int row = static_cast<int>( std::floor( at.y ) );
+			for( int dr = -2; dr <= 2; ++dr )
+				for( int dc = -2; dc <= 2; ++dc )
+					if( const auto it = buckets.find( bucket( col + dc, row + dr ) ); it != buckets.end() )
+						for( size_t i : it->second )
+							if( std::hypot( stoneCells[i].x - at.x, stoneCells[i].y - at.y ) < 0.9 * ( stoneRadii[i] + radius ) )
+								return true;
+			return false;
+		};
+		for( int k = 0; k < count; ++k )
+		{
+			const int d = down[k];
+			if( d < 0 || inLake( k ) || inLake( d ) )
+				continue;
+			const Point a = position[k];
+			const Point b = position[d];
+			const double length = std::hypot( b.x - a.x, b.y - a.y );
+			if( length < 1e-6 )
+				continue;
+			const double tx = ( b.x - a.x ) / length;
+			const double ty = ( b.y - a.y ) / length;
+			StoneRandom random( static_cast<uint64_t>( std::llround( a.x * 16.0 ) ) * 73856093ull ^
+								static_cast<uint64_t>( std::llround( a.y * 16.0 ) ) * 19349663ull );
+			// Перекат — где фаза плёсов у дна выше (Leopold, Wolman 1957: на перекатах крупнее и гуще); крутое русло —
+			// ступенчатое, камней больше; у родника — реже и мельче; у истока из озера и в устье — почти нет: там слив и подпор
+			const double riffle = 0.5 * ( 1.0 - std::sin( 2.0 * pi * poolPhase[k] ) );
+			const double steep = std::clamp( slope[k] / 0.1, 0.0, 2.0 );
+			const double ramp = std::clamp( std::min( outletDistance[k], inflowDistance[k] ) / 3.0, 0.0, 1.0 );
+			const double share = ( 0.3 + 0.7 * sourceShare[k] ) * shape[k].stones * ramp;
+			const double metres = length * cell;
+			const double expected[3] = {
+				metres * p.stoneDensity * share * ( 1.0 - p.bankStones ) * ( 0.3 + 0.7 * riffle ) * ( 0.6 + 0.7 * steep ),
+				metres * p.stoneDensity * share * p.bankStones,
+				metres * p.boulderDensity * share * ( 0.5 + 0.75 * steep ) };
+			for( int kind = 0; kind < 3; ++kind )
+			{
+				const int stones = static_cast<int>( std::floor( expected[kind] + random.uniform() ) );
+				for( int i = 0; i < stones; ++i )
+				{
+					const double t = random.uniform();
+					// Поперёк оси (клетки, > 0 — слева по течению): дно — по ширине дна; борт — у подошвы и чуть выше, к урезу;
+					// валун — ближе к середине. Размер — около stone_size с разбросом, на перекате и на крутом крупнее; камень
+					// дна — не шире 0,9 дна, валун — не шире дна: в узком ручье он не перегораживает русло целиком
+					double offset = 0.0;
+					double size = 0.0;
+					if( kind == 0 )
+					{
+						offset = ( 2.0 * random.uniform() - 1.0 ) * 0.85 * half[k];
+						size = p.stoneSize * std::exp( 0.35 * random.gauss() ) * ( 0.8 + 0.4 * riffle ) * ( 0.85 + 0.25 * steep );
+						size = std::min( size, 0.9 * 2.0 * half[k] * cell );
+					}
+					else if( kind == 1 )
+					{
+						const double side = random.uniform() < 0.5 ? -1.0 : 1.0;
+						offset = side * ( half[k] * ( 0.8 + 0.25 * random.uniform() ) + bank[k] * 0.3 * random.uniform() );
+						size = p.stoneSize * 1.3 * std::exp( 0.35 * random.gauss() );
+					}
+					else
+					{
+						offset = ( 2.0 * random.uniform() - 1.0 ) * 0.6 * half[k];
+						size = std::min( p.boulderSize * ( 0.75 + 0.5 * random.uniform() ), 2.0 * half[k] * cell );
+					}
+					size = std::clamp( size, 0.06, 3.0 );
+					const uint32_t seed = random.next();
+					const Point at{ a.x + ( b.x - a.x ) * t - ty * offset, a.y + ( b.y - a.y ) * t + tx * offset };
+					if( at.x < 1.0 || at.y < 1.0 || at.x > n - 1.0 || at.y > n - 1.0 || lake[cellIndex( at, n )] )
+						continue;
+					const double radius = 0.5 * size / cell;
+					if( overlaps( at, radius ) )
+						continue;
+					double bottom = bedAt( at.x, at.y );
+					for( const Point& around : { Point{ radius * 0.5, 0.0 }, Point{ -radius * 0.5, 0.0 }, Point{ 0.0, radius * 0.5 },
+												 Point{ 0.0, -radius * 0.5 } } )
+						bottom = std::min( bottom, bedAt( at.x + around.x, at.y + around.y ) );
+					result.stones.push_back( { DirectX::XMFLOAT3( static_cast<float>( at.x * cell ), static_cast<float>( bottom ),
+																  static_cast<float>( ( n - at.y ) * cell ) ),
+											   static_cast<float>( size ), seed } );
+					buckets[bucket( static_cast<int>( std::floor( at.x ) ), static_cast<int>( std::floor( at.y ) ) )].push_back( stoneCells.size() );
+					stoneCells.push_back( at );
+					stoneRadii.push_back( radius );
+				}
+			}
+		}
 	}
 
 	// Кривая, которая на нынешнем рельефе идёт в гору (земля под ней сменилась: новая эрозия, другая карта, другая машина) —

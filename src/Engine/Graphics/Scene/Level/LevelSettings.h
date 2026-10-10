@@ -257,6 +257,7 @@ struct StreamCurve
 	float thalwegScale = 1.0f;		// тальвег
 	float roughnessScale = 1.0f;	// шероховатость дна (Маннинг): глубина воды
 	float dischargeScale = 1.0f;	// расход
+	float stoneScale = 1.0f;		// камней в русле (и валунов)
 	std::vector<StreamCurvePoint> points;
 	bool pointsChanged = false;		// точки правили в редакторе — «Save level» перепишет StreamPoints (в базе колонки нет)
 };
@@ -302,6 +303,13 @@ struct WaterChannelsSettings
 	float lakeShelfDepth = 0.5f;	// глубина у края отмели, м
 	float lakeDropSlope = 0.4f;		// свал за отмелью, м на м
 	float foamSlope = 0.1f;			// круче — пена на ручье (полная — на вдвое большем), м на м
+	// Камни русла (TerrainHydrology, docs/water.md, «Камни в русле»): раскладывает конвейер, ставит слой расстановки
+	// с placement stream_stones, течение тормозится о них
+	float stoneDensity = 1.5f;		// камней на метр ручья (дно и борта); на перекатах и на крутом — гуще
+	float stoneSize = 0.4f;			// типичный поперечник камня, м
+	float bankStones = 0.35f;		// доля камней у бортов, у уреза
+	float boulderDensity = 0.05f;	// валунов на метр ручья (на крутом — больше)
+	float boulderSize = 1.0f;		// поперечник валуна, м
 };
 
 // Строка WaterSimulation: вода на сетке карты высот (WaterSimulation, docs/water.md). Приток — по водосбору, который
@@ -417,9 +425,18 @@ struct SunPositionSettings
 
 // Параметры слоя расстановки — колонки строки ScatterLayers; Scatterer::addLayer переводит их в константы раскладки
 // (ScatterPass::PopulateParams)
+// Откуда слой расстановки берёт экземпляры (ScatterLayers.placement): по маске плотности на сетке мира (mask) или камни
+// русел (stream_stones: их раскладывает конвейер рельефа и воды — TerrainHydrology, — слой постоянный, маска не нужна)
+enum class ScatterPlacement
+{
+	mask,
+	streamStones
+};
+
 struct ScatterLayerSettings
 {
 	uint32_t id = 0;				// строка ScatterLayers — куда пишет «Save level»
+	ScatterPlacement placement = ScatterPlacement::mask;
 	float cellSize = 1.0f;			// шаг сетки, метры
 	float nearBorder = 0.0f;		// кольцо вокруг камеры, метры
 	float farBorder = 0.0f;

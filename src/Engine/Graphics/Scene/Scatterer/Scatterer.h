@@ -11,6 +11,7 @@
 #include "ScattererPass.h"
 #include "SceneObject.h"
 #include "Terrain\TerrainHeightSource.h"
+#include "Terrain\TerrainHydrology.h"
 
 namespace GS
 {
@@ -29,7 +30,10 @@ namespace GS
 // transparent. Слой с cast_shadow рисуется и в проход теней — списками видов каскадов. Постоянный слой (persistent,
 // лес) раскладывается не кольцом каждый кадр, а один раз на всю карту кластерами; каждый кадр отбираются видимые кластеры
 // и их экземпляры — в те же списки видов. Модели слоя — и модели уровня (ель): материал собирает вариант для экземпляров
-// расстановки (Material::enablePlacedInstances). Расчёт и отрисовка всех наборов переключаются клавишами 3 и 4
+// расстановки (Material::enablePlacedInstances). Слой камней русел (placement stream_stones) — постоянный, но раскладывает
+// его не маска на GPU, а конвейер рельефа и воды (TerrainHydrology::Result::stones): модель — по весам, размер — по
+// поперечнику камня, поворот — случайный; экземпляры загружаются в постоянный пул с CPU (ScatterPass::placeInstances).
+// Расчёт и отрисовка всех наборов переключаются клавишами 3 и 4
 class Scatterer : public SceneObject
 {
 public:
@@ -75,6 +79,8 @@ public:
 		for( Layer& layer : m_layers )
 			layer.placed = false;
 	}
+	// Камни русел конвейера (при загрузке и после перестройки русел): слои stream_stones раскладываются заново
+	void setStreamStones( const std::vector<TerrainHydrology::Stone>& stones );
 
 private:
 	// cbuffer TerrainHeightBuffer в Shaders\terrain_height.sh
@@ -119,6 +125,7 @@ private:
 		bool impostor = false;
 		std::unique_ptr<DMModel::Section> impostorSection;
 		bool castShadow = true;
+		DirectX::BoundingBox box;	// границы LOD0 модели: по ним размер и посадка камня русла
 		// Смена LOD дизерингом: у всех секций материал с DitheredLODTransition; обновляет compute() — флаг материала
 		// меняется в GUI
 		bool ditheredLodTransition = false;
@@ -170,6 +177,13 @@ private:
 	// Буферы слоя заново по layer.settings и layer.passVariants: прежние GPU отпустит, когда закончит кадры с ними
 	bool rebuildPass( Layer& layer );
 	static float maxHeight( const Layer& layer );
+	// Слой камней русел: экземпляры по камням конвейера — в постоянный пул
+	void placeStreamStones( Layer& layer );
+	// Ёмкость постоянного пула слоя: у камней русел — их наибольшее число, у прочих — экземпляр на ячейку мира
+	static uint32_t placedCapacity( const ScatterLayerSettings& settings )
+	{
+		return settings.placement == ScatterPlacement::streamStones ? maxStreamStones : 0;
+	}
 
 	// Секция варианта отбрасывает тень: флаги слоя и варианта и вариант её материала «только глубина»
 	bool castsShadow( const Layer& layer, const LayerVariant& variant, const LayerSection& section ) const;
@@ -182,10 +196,16 @@ private:
 
 	// Больше потоков на слой не запускаем: при мелком шаге сетка покроет не всё кольцо, а только его середину
 	static constexpr uint16_t maxGridDim = 1024;
+	// Камней русел в слое — не больше (постоянный пул на 3 МБ); камень утоплен в дно на эту долю высоты модели, наклонён
+	// не больше чем на столько радиан
+	static constexpr uint32_t maxStreamStones = 65536;
+	static constexpr float stoneEmbed = 0.25f;
+	static constexpr float stoneTilt = 0.3f;
 
 	bool m_computeEnabled = true;
 	float m_shadowLength = 0.0f;	// длина тени на метр высоты инстанса в этом кадре — запас дальности каскада
 	const TerrainHeightSource* m_terrain = nullptr;
+	std::vector<TerrainHydrology::Stone> m_streamStones;
 	std::vector<Layer> m_layers;
 	DMComputeShader m_computeShader;
 	DMComputeShader m_commandShader;	// buildCommands в Shaders\scatter.cs

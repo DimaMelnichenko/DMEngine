@@ -209,6 +209,10 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		}
 		m_scatterers.push_back( std::move( scatterer ) );
 	}
+	// Камни русел — часть конвейера рельефа и воды: их ставят слои stream_stones
+	if( m_terrain.hydrology() )
+		for( const auto& scatterer : m_scatterers )
+			scatterer->setStreamStones( m_terrain.hydrology()->stones );
 	LOG( "Scatter init ms: " + elapsedMs( timeStart ) );
 
 	if( particles && !m_level.particleEmitters.empty() &&
@@ -375,9 +379,13 @@ bool Scene::rebuildChannels()
 		LOG( "Water channels are not rebuilt" );
 		return false;
 	}
-	// Постоянные слои (лес) разложены по прежней земле и воде — раскладка заново; трава раскладывается каждый кадр
+	// Постоянные слои (лес) разложены по прежней земле и воде — раскладка заново; трава раскладывается каждый кадр; камни
+	// русел — новые
 	for( const auto& scatterer : m_scatterers )
+	{
+		scatterer->setStreamStones( m_terrain.hydrology()->stones );
 		scatterer->terrainChanged();
+	}
 	LOG( "Water channels rebuilt without reload, ms: " + elapsedMs( start ) );
 	return true;
 }

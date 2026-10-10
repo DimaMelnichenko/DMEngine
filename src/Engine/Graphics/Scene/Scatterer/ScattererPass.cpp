@@ -253,16 +253,16 @@ PassDesc ScatterPass::passDesc( const char* name ) const
 	return pass;
 }
 
-bool ScatterPass::createPersistent( float worldSize, float margin )
+bool ScatterPass::createPersistent( float worldSize, float margin, uint32_t capacity )
 {
 	const float cellSize = std::max( m_populateParams.cellSize, 1e-3f );
 	const uint32_t cells = static_cast<uint32_t>( std::ceil( std::max( worldSize, 0.0f ) / cellSize ) );
 	const uint32_t clustersX = std::max( 1u, ( cells + clusterCells - 1 ) / clusterCells );
 	m_populateParams.clustersX = clustersX;
 	m_populateParams.clusterCount = clustersX * clustersX;
-	// Не больше одного экземпляра на ячейку
+	// Не больше одного экземпляра на ячейку (или сколько задано)
 	const uint64_t cellCount = static_cast<uint64_t>( clustersX * clusterCells ) * ( clustersX * clusterCells );
-	m_populateParams.placedCapacity = static_cast<uint32_t>( std::min<uint64_t>( cellCount, maxPlaced ) );
+	m_populateParams.placedCapacity = static_cast<uint32_t>( std::min<uint64_t>( capacity > 0 ? capacity : cellCount, maxPlaced ) );
 	m_populateParams.clusterMargin = margin;
 
 	DMD3D& d3d = DMD3D::instance();
@@ -302,6 +302,68 @@ void ScatterPass::place( DMComputeShader& shader )
 	shader.setUAVBuffer( 7, m_placedCounterUAV );
 	// Группа — кластер clusterCells² ячеек
 	shader.dispatchGroups( m_populateParams.clustersX, m_populateParams.clustersX, 1 );
+}
+
+size_t ScatterPass::placeInstances( const std::vector<PlacedInstance>& instances, const std::vector<Variant>& variants )
+{
+	// Кластер экземпляра — по сетке мира clusterCells × cellSize от начала координат (как у placeWorld)
+	const uint32_t clustersX = m_populateParams.clustersX;
+	const float clusterSize = clusterCells * std::max( m_populateParams.cellSize, 1e-3f );
+	std::vector<std::pair<uint32_t, uint32_t>> order;	// кластер, экземпляр
+	order.reserve( instances.size() );
+	for( uint32_t i = 0; i < instances.size(); ++i )
+	{
+		const int cx = static_cast<int>( std::floor( instances[i].position.x / clusterSize ) );
+		const int cz = static_cast<int>( std::floor( instances[i].position.z / clusterSize ) );
+		if( cx < 0 || cz < 0 || cx >= static_cast<int>( clustersX ) || cz >= static_cast<int>( clustersX ) )
+			continue;
+		order.emplace_back( static_cast<uint32_t>( cz ) * clustersX + static_cast<uint32_t>( cx ), i );
+	}
+	std::sort( order.begin(), order.end() );
+	const size_t placedCount = std::min<size_t>( order.size(), m_populateParams.placedCapacity );
+
+	// Кластер — {начало, число, наименьшая и наибольшая высота (как orderedFloat в Shaders\scatter.cs)}: высоты — по сфере
+	// модели варианта с запасом на поворот
+	auto ordered = []( float value )
+	{
+		uint32_t bits;
+		std::memcpy( &bits, &value, sizeof( bits ) );
+		return ( bits & 0x80000000u ) ? ~bits : ( bits | 0x80000000u );
+	};
+	std::vector<uint32_t> clusters( static_cast<size_t>( m_populateParams.clusterCount ) * 4, 0 );
+	std::vector<PlacedItem> placed( std::max<size_t>( placedCount, 1 ) );
+	float margin = 0.0f;
+	for( size_t i = 0; i < placedCount; ++i )
+	{
+		const auto [cluster, index] = order[i];
+		const PlacedInstance& instance = instances[index];
+		PlacedItem& item = placed[i];
+		item.item.position = instance.position;
+		item.item.size = instance.size;
+		item.item.rotation = instance.rotation;
+		item.variant = std::min( instance.variant, m_populateParams.variantCount - 1 );
+		item.lodScale = instance.lodScale;
+		const XMFLOAT4 bounds = item.variant < variants.size() ? variants[item.variant].bounds : XMFLOAT4( 0.0f, 0.5f, 0.0f, 0.5f );
+		const float reach = ( bounds.w + std::abs( bounds.x ) + std::abs( bounds.z ) ) * instance.size;
+		const float low = std::min( instance.position.y, instance.position.y + ( bounds.y - bounds.w - std::abs( bounds.x ) - std::abs( bounds.z ) ) * instance.size );
+		const float high = instance.position.y + ( std::abs( bounds.y ) + bounds.w + std::abs( bounds.x ) + std::abs( bounds.z ) ) * instance.size;
+		margin = std::max( margin, reach );
+		uint32_t* range = &clusters[static_cast<size_t>( cluster ) * 4];
+		if( range[1] == 0 )
+		{
+			range[0] = static_cast<uint32_t>( i );
+			range[2] = ordered( low );
+			range[3] = ordered( high );
+		}
+		++range[1];
+		range[2] = std::min( range[2], ordered( low ) );
+		range[3] = std::max( range[3], ordered( high ) );
+	}
+	m_populateParams.clusterMargin = std::max( m_populateParams.clusterMargin, margin );
+	DMD3D& d3d = DMD3D::instance();
+	d3d.updateBuffer( m_placed.buffer, placed.data(), placed.size() * sizeof( PlacedItem ) );
+	d3d.updateBuffer( m_clusters.buffer, clusters.data(), clusters.size() * sizeof( uint32_t ) );
+	return order.size() - placedCount;
 }
 
 void ScatterPass::cull( DMComputeShader& shader )

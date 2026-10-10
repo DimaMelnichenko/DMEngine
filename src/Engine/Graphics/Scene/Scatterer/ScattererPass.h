@@ -85,12 +85,25 @@ public:
 	void buildCommands( DMComputeShader& shader );
 
 	// Постоянный слой: пул и кластеры на мир worldSize × worldSize м (после createBuffers); margin — наибольший радиус
-	// экземпляра, запас границ кластера по XZ
-	bool createPersistent( float worldSize, float margin );
+	// экземпляра, запас границ кластера по XZ; capacity — ёмкость пула (0 — экземпляр на ячейку мира, как у раскладки по маске)
+	bool createPersistent( float worldSize, float margin, uint32_t capacity = 0 );
 	bool persistent() const { return m_populateParams.clusterCount > 0; }
 	// Объявление прохода раскладки на карту (пишет постоянный пул, кластеры и их счётчик) и сама раскладка (placeWorld)
 	PassDesc placeDesc( const char* name ) const;
 	void place( DMComputeShader& shader );
+	// Экземпляр постоянного слоя, разложенный не по маске, а на CPU (камни русел): положение основания, размер — множитель
+	// модели, поворот кватернионом, вариант и своя доля дальностей LOD
+	struct PlacedInstance
+	{
+		DirectX::XMFLOAT3 position;
+		float size;
+		DirectX::XMFLOAT4 rotation;
+		uint32_t variant;
+		float lodScale;
+	};
+	// Вместо place: экземпляры — кластерами по сетке мира в постоянный пул, их высоты — по сферам вариантов; запас границ
+	// кластера — по самому широкому экземпляру. Сколько не поместилось в пул — в возврат (0 — все)
+	size_t placeInstances( const std::vector<PlacedInstance>& instances, const std::vector<Variant>& variants );
 	// Каждый кадр: экземпляры видимых кластеров — в пул кадра и списки видов (cullPlaced); что читает — placedReads
 	void cull( DMComputeShader& shader );
 	std::vector<PassDesc::Read> placedReads() const;

@@ -135,7 +135,7 @@ private:
 		float screen;
 		float relaxation;
 		float layer;
-		float padding;
+		float stoneDrag;	// dt · Cd / 2: сопротивление камней русла
 	};
 
 	void setParameters( const Settings& settings );
@@ -187,6 +187,8 @@ private:
 	ShaderView m_flowView;
 	Texture m_staticWaterTexture;
 	ShaderView m_staticWaterView;
+	Texture m_stoneDrag;			// R32G32_FLOAT: площадь камней поперёк потока на м² дна — своя и средняя вокруг (water_flow.cs)
+	ShaderView m_stoneDragView;
 	const ShaderView* m_staticWaterMap = nullptr;
 	PropertyContainer m_channelsProperties;	// «Channels»: WaterChannelsSettings — при следующей загрузке
 	// «Streams»: кривые русел — включение и множители, подокно на кривую (порядок — как m_initial.streams)

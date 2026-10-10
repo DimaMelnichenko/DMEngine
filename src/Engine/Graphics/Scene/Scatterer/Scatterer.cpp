@@ -44,10 +44,14 @@ void Scatterer::setTerrain( const TerrainHeightSource* terrain )
 	m_terrain = terrain;
 }
 
-bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterLayerSettings& settings )
+bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterLayerSettings& layerSettings )
 {
 	if( models.empty() )
 		return false;
+	// Камни русел — постоянный слой: раскладывается раз, по камням конвейера
+	ScatterLayerSettings settings = layerSettings;
+	if( settings.placement == ScatterPlacement::streamStones )
+		settings.persistent = true;
 
 	Layer layer;
 	layer.mask = mask;
@@ -79,6 +83,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			layer.modelTop = std::max( layer.modelTop, box.Center.y + radius );
 		}
 		LayerVariant variant;
+		if( DMModel::LodBlock* lod0 = model->getLodById( 0 ) )
+			variant.box = lod0->bounds;
 		variant.castShadow = models[v].castShadow;
 		variant.id = models[v].id;
 		variant.properties = std::make_unique<PropertyContainer>( model->properties()->name() );
@@ -155,7 +161,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 				return false;
 			m_persistentShaders = true;
 		}
-		if( !layer.pass->createPersistent( m_terrain->terrainHeight().worldSize, maxRadius * settings.sizeMultiplier ) )
+		if( !layer.pass->createPersistent( m_terrain->terrainHeight().worldSize, maxRadius * settings.sizeMultiplier, placedCapacity( settings ) ) )
 			return false;
 	}
 
@@ -404,6 +410,11 @@ void Scatterer::compute( const FrameContext& frame )
 		// кадра и списки видов
 		if( layer.pass->persistent() )
 		{
+			if( !layer.placed && layer.settings.placement == ScatterPlacement::streamStones )
+			{
+				placeStreamStones( layer );
+				layer.placed = true;
+			}
 			if( !layer.placed )
 			{
 				PassDesc place = layer.pass->placeDesc( "Scatter placement" );
@@ -645,13 +656,78 @@ bool Scatterer::rebuildPass( Layer& layer )
 		variant.lodEnd[variant.lodCount - 1] = settings.farBorder;
 	if( !pass->createBuffers( layer.passVariants, settings.persistent ) )
 		return false;
-	if( settings.persistent && ( !m_terrain || !pass->createPersistent( m_terrain->terrainHeight().worldSize, layer.maxRadius * settings.sizeMultiplier ) ) )
+	if( settings.persistent && ( !m_terrain || !pass->createPersistent( m_terrain->terrainHeight().worldSize, layer.maxRadius * settings.sizeMultiplier,
+																		  placedCapacity( settings ) ) ) )
 		return false;
 	// Прежний пул и списки ещё в кадрах GPU: ресурсы отпускаются отложенно (DMD3D::deferRelease)
 	layer.pass = std::move( pass );
 	layer.maxHeight = maxHeight( layer );
 	layer.placed = false;
 	return true;
+}
+
+void Scatterer::setStreamStones( const std::vector<TerrainHydrology::Stone>& stones )
+{
+	m_streamStones = stones;
+	for( Layer& layer : m_layers )
+		if( layer.settings.placement == ScatterPlacement::streamStones )
+			layer.placed = false;
+}
+
+void Scatterer::placeStreamStones( Layer& layer )
+{
+	// Веса вариантов — из окна (как у раскладки по маске)
+	std::vector<float> weights;
+	float total = 0.0f;
+	for( const LayerVariant& variant : layer.variants )
+	{
+		weights.push_back( std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f ) );
+		total += weights.back();
+	}
+	std::vector<ScatterPass::PlacedInstance> instances;
+	instances.reserve( m_streamStones.size() );
+	float tallest = 0.0f;
+	for( const TerrainHydrology::Stone& stone : m_streamStones )
+	{
+		// Случайные числа камня — PCG от его числа (Jarzynski, Olano 2020): одна и та же модель и поворот при каждой загрузке
+		uint32_t state = stone.seed;
+		auto random = [&state]()
+		{
+			state = state * 747796405u + 2891336453u;
+			const uint32_t word = ( ( state >> ( ( state >> 28u ) + 4u ) ) ^ state ) * 277803737u;
+			return static_cast<float>( ( ( word >> 22u ) ^ word ) / 4294967296.0 );
+		};
+		float pick = random() * total;
+		uint32_t v = 0;
+		while( v + 1 < layer.variants.size() && pick >= weights[v] )
+			pick -= weights[v++];
+		const BoundingBox& box = layer.variants[v].box;
+		// Поперечник модели — средний по X и Z; камень утоплен в дно на долю своей высоты
+		const float width = std::max( box.Extents.x + box.Extents.z, 1e-3f );
+		const float scale = stone.size / width * layer.settings.sizeMultiplier;
+		const float bottom = box.Center.y - box.Extents.y;
+		ScatterPass::PlacedInstance instance;
+		instance.position = stone.position;
+		instance.position.y -= ( bottom + stoneEmbed * 2.0f * box.Extents.y ) * scale;
+		instance.size = scale;
+		// Поворот: вокруг вертикали — любой, наклон — небольшой вокруг случайной горизонтальной оси
+		const float yaw = random() * XM_2PI;
+		const float axis = random() * XM_2PI;
+		const float tilt = ( random() - 0.5f ) * 2.0f * stoneTilt;
+		const XMVECTOR rotation = XMQuaternionMultiply( XMQuaternionRotationAxis( XMVectorSet( std::cos( axis ), 0.0f, std::sin( axis ), 0.0f ), tilt ),
+														XMQuaternionRotationAxis( XMVectorSet( 0.0f, 1.0f, 0.0f, 0.0f ), yaw ) );
+		XMStoreFloat4( &instance.rotation, rotation );
+		instance.variant = v;
+		// Своя доля дальностей LOD, как у раскладки по маске (Shaders\lod_transition.h)
+		instance.lodScale = 1.0f - ( LOD_JITTER_RANDOM + LOD_JITTER_NOISE ) * random();
+		tallest = std::max( tallest, ( box.Center.y + box.Extents.y - bottom ) * scale );
+		instances.push_back( instance );
+	}
+	const size_t dropped = layer.pass->placeInstances( instances, layer.passVariants );
+	// Длина тени — по самому высокому камню
+	layer.maxHeight = std::max( 1.0f, tallest );
+	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": stream stones " + std::to_string( instances.size() - dropped ) +
+		 ( dropped > 0 ? ", " + std::to_string( dropped ) + " do not fit" : std::string() ) );
 }
 
 std::vector<ScatterLayerRecord> Scatterer::layerRecords() const

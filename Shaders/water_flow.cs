@@ -28,6 +28,7 @@
 
 DM_SRV( Texture2D<float4>, g_staticWater, 3 );	// уровень ручья (x), течение по X и Z мира (y, z), уровень озера (w)
 DM_SRV( StructuredBuffer<uint2>, g_flowTiles, 5 );	// тайлы счёта 8 × 8 (группа потоков — тайл): с озером и соседние
+DM_SRV( Texture2D<float2>, g_stoneArea, 6 );		// камни русла: площадь поперёк потока на м² дна (погружённая часть) — своя и средняя вокруг
 
 DM_UAV( RWTexture2D<float4>, g_info, 0 );		// x, y — скорость ручья по Маннингу u₀ (оси текселей), z — вид ячейки, w — глубина текущего слоя
 DM_UAV( RWTexture2D<float2>, g_velocity, 1 );	// скорость на восточной (x) и южной (y) грани, м/с
@@ -48,7 +49,7 @@ cbuffer WaterFlowBuffer : register( b5 )
 	float g_flowScreen;			// экранирование давления, м: озеро без истока решается, вода «уходит в грунт»
 	float g_flowRelaxation;		// верхняя релаксация давления (1 — Гаусс-Зейдель)
 	float g_flowLayer;			// толщина текущего слоя, м: глубже течение не считается
-	float g_flowPadding;
+	float g_flowStoneDrag;		// dt · Cd / 2: сопротивление камней русла
 };
 
 static const float kindDry = 0.0f;
@@ -213,8 +214,15 @@ void mainFlowAdvect( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 		// трение отнимает у скорости u₀: тогда u₀ — равновесие (на ровном участке поле — по Маннингу), отклонения от него
 		// (инерция на изгибе и слиянии, обход препятствия) гаснут за время трения
 		const float drag = g_flowFriction / pow( max( f.depth, g_flowMinDepth ), 4.0f / 3.0f );
+		// Камни русла — сопротивление формы: Cd / 2 · a / h · |u| u (a — площадь камней поперёк потока на м² дна у грани).
+		// Шероховатость дна по Маннингу уже держит камни участка в среднем, поэтому сила тяжести возмещает среднее
+		// сопротивление камней вокруг: у камня течение медленнее u₀, между камнями — быстрее, средняя по участку — u₀
+		const int2 next = cell + axes[axis];
+		const float2 area = 0.5f * ( g_stoneArea[cell] + ( inside( next ) ? g_stoneArea[next] : 0.0f ) );
+		const float stones = g_flowStoneDrag * area.x / max( f.depth, g_flowMinDepth );
+		const float stonesAround = g_flowStoneDrag * area.y / max( f.depth, g_flowMinDepth );
 		const float speed = length( axis == 0 ? float2( value, velocity.y ) : float2( velocity.x, value ) );
-		value = ( value + drag * length( f.base ) * f.base[axis] ) / ( 1.0f + drag * speed );
+		value = ( value + ( drag + stonesAround ) * length( f.base ) * f.base[axis] ) / ( 1.0f + ( drag + stones ) * speed );
 		result[axis] = value;
 	}
 	g_advected[cell] = result;
