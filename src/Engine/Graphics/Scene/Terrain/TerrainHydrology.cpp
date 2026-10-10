@@ -22,6 +22,9 @@ constexpr double pi = 3.14159265358979323846;
 // Врез ручья, вытекающего из озера, нарастает от порога не круче этого уклона: вода уходит из озера через порог, а не
 // обрывом — иначе у берега вода ручья стояла бы на полметра ниже озера рядом
 constexpr double outletSlope = 0.05;
+// Уклон поверхности для скорости ручья — по уровню воды на столько метров вверх и вниз по сети: шаг узлов ~1 м, а плёсы и
+// перекаты — через pool_spacing (6 м), окно короче него
+constexpr double speedSpan = 2.0;
 // Восемь соседей (строка, столбец) и расстояние в шагах — порядок как в Tools/erosion.py (при равном уклоне берётся первый)
 constexpr int neighbourRow[8] = { -1, -1, -1, 0, 0, 1, 1, 1 };
 constexpr int neighbourCol[8] = { -1, 0, 1, -1, 1, -1, 0, 1 };
@@ -2328,9 +2331,33 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it )
 		if( down[*it] >= 0 )
 			level[*it] = std::max( level[*it], level[down[*it]] );
+	// Скорость — по Маннингу от видимой глубины и уклона поверхности: v = R^(2/3)·√S / n, R = w·h / (w + 2h). Не Q / (w·h):
+	// глубина не мельче min_water_depth (воду видно), а расход водосбора карты 1 км на такой глубине — сантиметры в секунду,
+	// и вся сеть упиралась в min_speed — одна скорость на крутом и на ровном (2026-10-10). Где глубина — по расходу (крупный
+	// ручей), это то же Q / (w·h). Уклон — по уровню воды на ±speedSpan вдоль сети: перекат быстрее, плёс и подпор у озера
+	// медленнее
+	auto walk = [&]( int from, const std::vector<int>& next, double& distance )
+	{
+		distance = 0.0;
+		while( distance < speedSpan && next[from] >= 0 )
+		{
+			const int to = next[from];
+			distance += std::hypot( position[to].x - position[from].x, position[to].y - position[from].y ) * cell;
+			from = to;
+		}
+		return from;
+	};
 	for( int k = 0; k < count; ++k )
 	{
-		speed[k] = std::max( q[k] / ( width[k] * std::max( level[k] - actual[k], 1e-3 ) ), static_cast<double>( p.minSpeed ) );
+		double below = 0.0, above = 0.0;
+		const int lower = walk( k, down, below );
+		const int upper = walk( k, up, above );
+		const double surfaceSlope = below + above > 1e-3 ? ( level[upper] - level[lower] ) / ( below + above ) : slope[k];
+		const double depth = std::max( level[k] - actual[k], 1e-3 );
+		const double radius = width[k] * depth / ( width[k] + 2.0 * depth );
+		speed[k] = std::max( std::pow( radius, 2.0 / 3.0 ) * std::sqrt( std::max( surfaceSlope, static_cast<double>( p.minWaterSlope ) ) ) /
+								 shape[k].manning,
+							 static_cast<double>( p.minSpeed ) );
 		foam[k] = std::clamp( ( slope[k] - p.foamSlope ) / ( 2.0 * p.foamSlope ), 0.0, 1.0 ) * 0.6;
 	}
 
