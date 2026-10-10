@@ -23,9 +23,11 @@
 #define SLOT_CB_PASS		DM_REGISTER( b, 2 )	// параметры прохода без материала (небо, постобработка, compute — DMComputeShader)
 #define SLOT_CB_SHADOW		DM_REGISTER( b, 3 )	// каскады теней солнца (shadows.sh, ShadowCascades) — пиксельные шейдеры
 // b4…b7 — свои буферы прохода (compute расстановки и частиц); b8 — таблица привязок вызова (bindless.sh); b9 —
-// root-константы вызова из команды ExecuteIndirect (начало списка индексов инстансов — instance.sh, scatter.cs)
+// root-константы вызова из команды ExecuteIndirect (начало списка индексов инстансов — instance.sh, scatter.cs); b10 —
+// индексы ресурсов сцены (bindless.sh: копия в кольце констант при смене, как uniform buffer текстур сцены в UE)
 #define SLOT_CB_BINDINGS	DM_REGISTER( b, 8 )
 #define SLOT_CB_DRAW		DM_REGISTER( b, 9 )
+#define SLOT_CB_SCENE_BINDINGS	DM_REGISTER( b, 10 )
 #define SLOT_CB_COUNT		8						// root CBV b0…b7
 #define DM_DRAW_CONSTANT_COUNT 4					// DWORD root-констант b9
 
@@ -67,10 +69,12 @@
 #define SLOT_SCENE_FIRST	100
 #define SLOT_SCENE_COUNT	16
 
-// Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту
+// Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
+// не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,
+// b9 и b10 подпись — 50 из 64 DWORD
 #define DM_BINDING_UAV_BASE		17	// u0…u7 → 17…24
-#define DM_BINDING_SCENE_BASE	25	// t100…t115 → 25…40
-#define DM_BINDING_COUNT		44	// кратно 4 (uint4 в bindless.sh); с CBV и b9 — 64 из 64 DWORD root signature
+#define DM_BINDING_COUNT		28	// кратно 4 (uint4 в bindless.sh)
+#define DM_SCENE_BINDING_COUNT	( ( SLOT_SCENE_COUNT + 3 ) / 4 * 4 )	// t100… → 0…, кратно 4
 
 // Сэмплеры — статические в root signature: s0…s7 общие (samplers.sh, DMSamplerState)
 #define SLOT_SAMPLER_SHADOW	DM_REGISTER( s, 8 )		// сравнение глубины для карты теней (PCF 2×2)

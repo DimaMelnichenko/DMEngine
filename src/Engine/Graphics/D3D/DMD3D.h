@@ -334,6 +334,8 @@ private:
 	// Root-аргументы (таблица привязок и CBV), изменившиеся с прошлого вызова, — в командный список перед вызовом
 	void flushGraphicsRoot();
 	void flushComputeRoot();
+	// Индексы ресурсов сцены изменились — копия в кольцо констант; true — адрес копии новый (CBV b10 ставить заново)
+	bool flushSceneBindings();
 	void setBinding( uint32_t index, uint32_t descriptorIndex );
 	// Ресурс из аллокатора; desc — буфера или текстуры
 	bool createResource( const D3D12_RESOURCE_DESC1& desc, D3D12_HEAP_TYPE heap, D3D12_BARRIER_LAYOUT initialLayout,
@@ -409,6 +411,14 @@ private:
 	// Root-аргументы вызова: таблица привязок (индексы дескрипторов по слотам) и адреса root CBV; ставятся перед
 	// вызовом, если менялись (у графики и compute — свои наборы)
 	uint32_t m_bindings[DM_BINDING_COUNT] = {};
+	// Ресурсы сцены (t100…): индексы дескрипторов и адрес их копии в кольце констант (root CBV b10); копия — при первом
+	// вызове после изменения, поэтому у каждого вызова — индексы на момент вызова, как у root-констант
+	uint32_t m_sceneBindings[DM_SCENE_BINDING_COUNT] = {};
+	static constexpr uint32_t sceneBindingsParameter = 2 + SLOT_CB_COUNT;	// root CBV b10 (createRootSignature)
+	D3D12_GPU_VIRTUAL_ADDRESS m_sceneBindingsAddress = 0;
+	bool m_sceneBindingsChanged = true;
+	bool m_sceneBindingsDirtyGraphics = true;
+	bool m_sceneBindingsDirtyCompute = true;
 	D3D12_GPU_VIRTUAL_ADDRESS m_rootCBV[SLOT_CB_COUNT] = {};
 	bool m_bindingsDirtyGraphics = true;
 	bool m_bindingsDirtyCompute = true;

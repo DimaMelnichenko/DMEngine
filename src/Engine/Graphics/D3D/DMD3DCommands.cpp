@@ -9,18 +9,21 @@
 #endif
 #include <pix3.h>
 #include <algorithm>
+#include <cstring>
 #include <string>
 
 namespace
 {
 
-// Слот таблицы привязок для слота SRV (Shaders/bindless.sh); −1 — слот вне таблицы
+// Индекс в привязках для слота SRV (Shaders/bindless.sh): таблица вызова — 0…, ресурсы сцены — sceneBindingFlag + номер;
+// −1 — слот вне таблиц
+constexpr int sceneBindingFlag = 0x10000;
 int bindingIndex( uint16_t slot )
 {
 	if( slot < SLOT_TRANSIENT_COUNT )
 		return slot;
 	if( slot >= SLOT_SCENE_FIRST && slot < SLOT_SCENE_FIRST + SLOT_SCENE_COUNT )
-		return DM_BINDING_SCENE_BASE + slot - SLOT_SCENE_FIRST;
+		return sceneBindingFlag + slot - SLOT_SCENE_FIRST;
 	return -1;
 }
 
@@ -28,10 +31,35 @@ int bindingIndex( uint16_t slot )
 
 void DMD3D::setBinding( uint32_t index, uint32_t descriptorIndex )
 {
+	if( index >= sceneBindingFlag )
+	{
+		const uint32_t scene = index - sceneBindingFlag;
+		if( scene >= DM_SCENE_BINDING_COUNT || m_sceneBindings[scene] == descriptorIndex )
+			return;
+		m_sceneBindings[scene] = descriptorIndex;
+		m_sceneBindingsChanged = true;
+		return;
+	}
 	if( index >= DM_BINDING_COUNT || m_bindings[index] == descriptorIndex )
 		return;
 	m_bindings[index] = descriptorIndex;
 	m_bindingsDirtyGraphics = m_bindingsDirtyCompute = true;
+}
+
+bool DMD3D::flushSceneBindings()
+{
+	if( !m_sceneBindingsChanged )
+		return false;
+	uint32_t offset = 0, bytes = 0;
+	void* data = m_constantRing.beginWrite( sizeof( m_sceneBindings ), offset, bytes );
+	if( !data )
+		return false;
+	std::memcpy( data, m_sceneBindings, sizeof( m_sceneBindings ) );
+	m_constantRing.finishWrite();
+	m_sceneBindingsAddress = m_constantRing.address( offset );
+	m_sceneBindingsChanged = false;
+	m_sceneBindingsDirtyGraphics = m_sceneBindingsDirtyCompute = true;
+	return true;
 }
 
 bool DMD3D::setConstantBuffer( uint16_t slot, const Buffer& buffer )
@@ -153,6 +181,12 @@ void DMD3D::flushGraphicsRoot()
 		m_commandList->SetGraphicsRoot32BitConstants( 0, DM_BINDING_COUNT, m_bindings, 0 );
 		m_bindingsDirtyGraphics = false;
 	}
+	flushSceneBindings();
+	if( m_sceneBindingsDirtyGraphics && m_sceneBindingsAddress )
+	{
+		m_commandList->SetGraphicsRootConstantBufferView( sceneBindingsParameter, m_sceneBindingsAddress );
+		m_sceneBindingsDirtyGraphics = false;
+	}
 	for( uint32_t slot = 0; slot < SLOT_CB_COUNT && m_cbvDirtyGraphics; ++slot )
 	{
 		if( ( m_cbvDirtyGraphics & ( 1u << slot ) ) && m_rootCBV[slot] )
@@ -167,6 +201,12 @@ void DMD3D::flushComputeRoot()
 	{
 		m_commandList->SetComputeRoot32BitConstants( 0, DM_BINDING_COUNT, m_bindings, 0 );
 		m_bindingsDirtyCompute = false;
+	}
+	flushSceneBindings();
+	if( m_sceneBindingsDirtyCompute && m_sceneBindingsAddress )
+	{
+		m_commandList->SetComputeRootConstantBufferView( sceneBindingsParameter, m_sceneBindingsAddress );
+		m_sceneBindingsDirtyCompute = false;
 	}
 	for( uint32_t slot = 0; slot < SLOT_CB_COUNT && m_cbvDirtyCompute; ++slot )
 	{

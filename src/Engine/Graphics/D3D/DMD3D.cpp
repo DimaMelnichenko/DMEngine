@@ -431,10 +431,11 @@ bool DMD3D::createRootSignature()
 {
 	// [0] — root-константы таблицы привязок вызова (b8, DM_BINDING_COUNT DWORD: индексы дескрипторов по слотам —
 	// Shaders/bindless.sh); [1…SLOT_CB_COUNT] — root CBV b0…b7 (кольцо констант и буферы проходов); [1 + SLOT_CB_COUNT] —
-	// root-константы вызова b9 (их пишет команда ExecuteIndirect — начало списка инстансов); сэмплеры статические
+	// root-константы вызова b9 (их пишет команда ExecuteIndirect — начало списка инстансов); [2 + SLOT_CB_COUNT] — root
+	// CBV b10 — индексы ресурсов сцены (копия в кольце констант, flushSceneBindings); сэмплеры статические
 	DMSamplerState samplers;
 	samplers.initialize();
-	D3D12_ROOT_PARAMETER1 parameters[2 + SLOT_CB_COUNT] = {};
+	D3D12_ROOT_PARAMETER1 parameters[3 + SLOT_CB_COUNT] = {};
 	parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
 	parameters[0].Constants.ShaderRegister = SLOT_CB_BINDINGS;
 	parameters[0].Constants.Num32BitValues = DM_BINDING_COUNT;
@@ -450,6 +451,10 @@ bool DMD3D::createRootSignature()
 	parameters[drawConstantsParameter].Constants.ShaderRegister = SLOT_CB_DRAW;
 	parameters[drawConstantsParameter].Constants.Num32BitValues = DM_DRAW_CONSTANT_COUNT;
 	parameters[drawConstantsParameter].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	parameters[sceneBindingsParameter].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	parameters[sceneBindingsParameter].Descriptor.ShaderRegister = SLOT_CB_SCENE_BINDINGS;
+	parameters[sceneBindingsParameter].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE;
+	parameters[sceneBindingsParameter].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc = {};
 	desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
 	desc.Desc_1_1.NumParameters = static_cast<UINT>( std::size( parameters ) );
@@ -648,6 +653,8 @@ void DMD3D::openCommandList( FrameResources& frame )
 	m_commandList->SetGraphicsRoot32BitConstants( drawConstantsParameter, DM_DRAW_CONSTANT_COUNT, drawConstants, 0 );
 	m_bindingsDirtyGraphics = m_bindingsDirtyCompute = true;
 	m_cbvDirtyGraphics = m_cbvDirtyCompute = ( 1u << SLOT_CB_COUNT ) - 1;
+	// Ресурсы сцены живут между кадрами, а кольцо констант — нет: их копия в кольце этого кадра — заново
+	m_sceneBindingsChanged = true;
 	m_graphicsPipelineValid = m_computePipelineValid = false;
 	m_recording = true;
 }

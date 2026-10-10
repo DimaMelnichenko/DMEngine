@@ -221,8 +221,8 @@ void DMD3D::beginPass( const PassDesc& pass )
 		m_commandList->RSSetScissorRects( 1, &scissor );
 	}
 
-	// Слоты вызова таблицы привязок — чистые (дескриптор 0 — пустой SRV); слоты сцены живут до следующего кадра
-	for( uint32_t i = 0; i < DM_BINDING_SCENE_BASE; ++i )
+	// Слоты вызова таблицы привязок — чистые (дескриптор 0 — пустой SRV); слоты сцены (b10) живут до следующего кадра
+	for( uint32_t i = 0; i < DM_BINDING_COUNT; ++i )
 		m_bindings[i] = 0;
 	m_bindingsDirtyGraphics = m_bindingsDirtyCompute = true;
 
