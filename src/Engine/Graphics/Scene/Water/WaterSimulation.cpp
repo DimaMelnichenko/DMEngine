@@ -7,11 +7,11 @@
 #include <DirectXPackedVector.h>
 #include "System.h"
 #include "ConstantBuffers.h"
-#include "Texture\DMTextureStorage.h"
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "D3D\TextureImages.h"
+#include "WaterRipples.h"
 
 namespace GS
 {
@@ -32,6 +32,7 @@ constexpr int32_t maxSourceRadius = 8;			// ячеек: размытие ист�
 constexpr float gravity = 9.81f;
 constexpr uint32_t tileCells = 32;				// WATER_TILE в water_surface.cs / water_surface.sh
 constexpr float visibleDepth = 0.01f;			// м: мельче воды не видно — только мокрая земля
+constexpr uint32_t rippleSize = 256;			// текселей карты ряби по стороне (WaterRipples)
 constexpr float wetDepth = 0.01f;				// м: ячейка с водой в сводке (logWaterSummary)
 constexpr float mmPerHour = 0.001f / 3600.0f;	// мм/ч → м/с
 // Течение статичной воды (water_flow.cs)
@@ -181,7 +182,8 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	addSlider( m_surfaceProperties, "Ripple strength", settings.rippleStrength, 0.0f, 4.0f );
 	addSlider( m_surfaceProperties, "Calm ripple", settings.calmRipple, 0.0f, 2.0f );
 	addSlider( m_surfaceProperties, "Refraction", settings.refraction, 0.0f, 0.1f );
-	addSlider( m_surfaceProperties, "Flow period", settings.flowPeriod, 0.2f, 5.0f, "s" );
+	addSlider( m_surfaceProperties, "Ripple stretch", settings.rippleStretch, 1.0f, 6.0f )
+		->setTooltip( "How many times the ripple pattern is longer along the flow than across it on running water" );
 	addSlider( m_surfaceProperties, "Foam speed", settings.foamSpeed, 0.1f, 5.0f, "m/s" );
 	addSlider( m_surfaceProperties, "Foam shear", settings.foamShear, 0.1f, 10.0f, "1/s" );
 	m_properties.addSubContainer( &m_surfaceProperties );
@@ -375,6 +377,12 @@ bool WaterSimulation::createSurface()
 		!d3d.createShaderConstantBuffer( sizeof( TilesParameters ), m_tilesBuffer ) ||
 		!d3d.createShaderConstantBuffer( sizeof( SurfaceParameters ), m_surfaceBuffer ) )
 		return false;
+	if( !WaterRipples::create( rippleSize, m_ripple, m_rippleView ) )
+	{
+		LOG( "Failed to create the water ripple texture" );
+		return false;
+	}
+	d3d.setName( m_ripple, "Water ripple" );
 
 	TextureDesc levelDesc;
 	levelDesc.width = m_size;
@@ -503,7 +511,7 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	params.tilesPerSide = m_tilesPerSide;
 	const Settings current = settings();
 	params.absorption = current.absorption;
-	params.flowPeriod = std::max( current.flowPeriod, 0.01f );
+	params.rippleStretch = std::max( current.rippleStretch, 1.0f );
 	params.scatterColor = DirectX::XMFLOAT3( current.scatterColor.x * current.scatterStrength, current.scatterColor.y * current.scatterStrength,
 											 current.scatterColor.z * current.scatterStrength );
 	params.rippleScale = std::max( current.rippleScale, 0.01f );
@@ -521,7 +529,7 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	m_surfaceProgram.setPass( m_surfacePhase );
 	d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_surfaceBuffer );
 	d3d.setSRV( 0, m_levelView );
-	d3d.setSRV( 1, System::textures().get( DMTextureStorage::noiseId )->srv() );
+	d3d.setSRV( 1, m_rippleView );
 	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
 	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
 }
@@ -914,7 +922,7 @@ WaterSimulation::Settings WaterSimulation::settings() const
 	settings.rippleStrength = m_surfaceProperties["Ripple strength"].data<float>();
 	settings.calmRipple = m_surfaceProperties["Calm ripple"].data<float>();
 	settings.refraction = m_surfaceProperties["Refraction"].data<float>();
-	settings.flowPeriod = m_surfaceProperties["Flow period"].data<float>();
+	settings.rippleStretch = m_surfaceProperties["Ripple stretch"].data<float>();
 	settings.foamSpeed = m_surfaceProperties["Foam speed"].data<float>();
 	settings.foamShear = m_surfaceProperties["Foam shear"].data<float>();
 	settings.flow.settleTime = m_flowProperties["Settle time"].data<float>();

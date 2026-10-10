@@ -464,7 +464,7 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 	water.rippleStrength = value( "ripple_strength" );
 	water.calmRipple = value( "calm_ripple" );
 	water.refraction = value( "refraction" );
-	water.flowPeriod = value( "flow_period" );
+	water.rippleStretch = value( "ripple_stretch" );
 	water.foamSpeed = value( "foam_speed" );
 	water.foamShear = value( "foam_shear" );
 	water.flow.settleTime = value( "flow_settle_time" );

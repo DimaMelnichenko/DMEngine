@@ -111,7 +111,7 @@ private:
 		float worldSize;
 		uint32_t tilesPerSide;
 		DirectX::XMFLOAT3 absorption;
-		float flowPeriod;
+		float rippleStretch;
 		DirectX::XMFLOAT3 scatterColor;
 		float rippleScale;
 		float rippleStrength;
@@ -265,6 +265,8 @@ private:
 	StorageView m_drawArgsUAV;
 	Buffer m_tilesBuffer;			// TilesParameters
 	Buffer m_surfaceBuffer;			// SurfaceParameters
+	Texture m_ripple;				// карта ряби (WaterRipples)
+	ShaderView m_rippleView;
 };
 
 }

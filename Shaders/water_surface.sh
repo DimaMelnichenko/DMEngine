@@ -17,7 +17,7 @@ cbuffer WaterSurfaceBuffer : register( SLOT_CB_MATERIAL )
 	float  g_worldSize;			// м
 	uint   g_tilesPerSide;
 	float3 g_absorption;		// поглощение в воде по каналам, 1/м
-	float  g_flowPeriod;		// фаза текстуры течения, с (Vlachos 2010)
+	float  g_rippleStretch;		// рябь быстрой воды вытянута вдоль течения во столько раз
 	float3 g_scatterColor;		// цвет рассеяния в толще воды (доля освещённости неба)
 	float  g_rippleScale;		// метров на повтор текстуры ряби
 	float  g_rippleStrength;	// наклон нормали ряби на быстрой воде

@@ -324,11 +324,11 @@ struct WaterSimulationSettings
 	DirectX::XMFLOAT3 scatterColor = DirectX::XMFLOAT3( 0.25f, 1.0f, 1.0f );	// цвет рассеяния в толще
 	float scatterStrength = 0.016f;	// доля освещённости неба, рассеянная толщей к камере
 	float roughness = 0.06f;		// шероховатость поверхности: размытие отражения, ширина блика
-	float rippleScale = 6.0f;		// метров на повтор ряби
+	float rippleScale = 2.5f;		// метров на повтор ряби
 	float rippleStrength = 1.0f;	// рябь быстрой воды
 	float calmRipple = 0.25f;		// рябь стоячей (ветер)
 	float refraction = 0.02f;		// сдвиг преломления, доля высоты экрана на метр толщины
-	float flowPeriod = 1.5f;		// период фазы течения текстуры, с (Vlachos 2010)
+	float rippleStretch = 2.5f;		// рябь быстрой воды вытянута вдоль течения во столько раз
 	float foamSpeed = 1.0f;			// пена — быстрее этого, м/с
 	float foamShear = 1.5f;			// и где сдвиг скорости больше, 1/с
 
