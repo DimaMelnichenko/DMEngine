@@ -188,15 +188,16 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 
 	// Течение статичной воды: установившийся расчёт при загрузке, правка — расчёт заново
 	m_flowProperties.setName( "Flow" );
-	const char* recomputed = "; the lake flow is recomputed on change (static water)";
+	const char* recomputed = "; the flow of streams and lakes is recomputed on change (static water)";
 	addSlider( m_flowProperties, "Settle time", settings.flow.settleTime, 0.0f, 3600.0f, "s" )
-		->setTooltip( std::string( "Lake flow is computed this long towards its steady state" ) + recomputed );
+		->setTooltip( std::string( "Flow of streams and lakes is computed this long towards its steady state" ) + recomputed );
 	addSlider( m_flowProperties, "Time step", settings.flow.timeStep, 0.1f, 2.0f, "s" )
 		->setTooltip( std::string( "Step of the flow computation" ) + recomputed );
 	addSlider( m_flowProperties, "Viscosity", settings.flow.viscosity, 0.0f, 1.0f, "m2/s" )
 		->setTooltip( std::string( "Eddy viscosity: a wider, shorter jet of an inflowing stream" ) + recomputed );
-	addSlider( m_flowProperties, "Lake roughness", settings.flow.manning, 0.0f, 0.1f, "s/m^(1/3)" )
-		->setTooltip( std::string( "Manning roughness of the lake bed: the jet fades sooner at more" ) + recomputed );
+	addSlider( m_flowProperties, "Bed roughness", settings.flow.manning, 0.0f, 0.1f, "s/m^(1/3)" )
+		->setTooltip( std::string( "Manning roughness of the bed of streams and lakes: a jet, a bend or a confluence settles "
+								   "back to the Manning flow sooner at more" ) + recomputed );
 	addSlider( m_flowProperties, "Surface layer", settings.flow.layer, 0.1f, 5.0f, "m" )
 		->setTooltip( std::string( "Depth of the flowing layer: a stream spreads over a lake near the surface" ) + recomputed );
 	Property* iterations = m_flowProperties.insert( "Pressure iterations", settings.flow.iterations );
@@ -328,7 +329,7 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		// Статичная вода: озёра и ручьи — одно поле из растра; шагов нет, течение озёр — установившийся расчёт
 		if( !buildStaticWater( settings ) || !createFlowResources() )
 			return false;
-		task.enterProgressFrame( 0.9f, "Lake flow" );
+		task.enterProgressFrame( 0.9f, "Flow" );
 		solveFlow( settings.flow );
 		buildSurface();
 		m_surfaceDirty = false;
@@ -532,13 +533,16 @@ bool WaterSimulation::createHydrologyTextures( const TerrainHydrology::Result& h
 		LOG( "Water simulation: water channels differ from the height map in size" );
 		return false;
 	}
-	// Тайлы счёта течения (solveFlow): с ячейками озёр и восемь соседних — ручьи у берега и сухой берег вокруг
+	// Тайлы счёта течения (solveFlow): с ячейками озёр и ручьёв и восемь соседних — сухой берег вокруг
 	const uint32_t tiles = ( m_size + flowTile - 1 ) / flowTile;
 	std::vector<uint8_t> lakeTile( static_cast<size_t>( tiles ) * tiles, 0 );
 	for( uint32_t row = 0; row < m_size; ++row )
 		for( uint32_t col = 0; col < m_size; ++col )
-			if( hydrology.staticWater[static_cast<size_t>( row ) * m_size + col].w > -1e8f )
+		{
+			const DirectX::XMFLOAT4& water = hydrology.staticWater[static_cast<size_t>( row ) * m_size + col];
+			if( water.w > -1e8f || water.x > -1e8f )
 				lakeTile[static_cast<size_t>( row / flowTile ) * tiles + col / flowTile] = 1;
+		}
 	m_flowTileList.clear();
 	for( uint32_t ty = 0; ty < tiles; ++ty )
 		for( uint32_t tx = 0; tx < tiles; ++tx )
@@ -731,12 +735,13 @@ void WaterSimulation::solveFlow( const Settings::Flow& flow )
 	dispatch( m_flowOutputShader );
 	d3d.waitForGpu();
 
-	// Сводка: ячеек озёр, средняя и наибольшая скорость — установилось ли течение (сравнить с расчётом подольше)
+	// Сводка: ячеек озёр и ручьёв, средняя и наибольшая скорость — установилось ли течение (сравнить с расчётом подольше);
+	// у ручьёв — насколько поле отошло от скорости по Маннингу u₀ (у слияний, изгибов, впадений)
 	std::vector<DMD3D::SubresourceCopy> infoCopies, velocityCopies;
 	std::vector<uint8_t> infoBytes, velocityBytes;
-	double sum = 0.0;
-	float peak = 0.0f;
-	uint32_t cells = 0;
+	double lakeSum = 0.0, streamSum = 0.0, baseSum = 0.0, deviationSum = 0.0;
+	float lakePeak = 0.0f, streamPeak = 0.0f;
+	uint32_t lakeCells = 0, streamCells = 0;
 	if( d3d.captureTexture( m_flowInfo, infoCopies, infoBytes ) && d3d.captureTexture( m_flowVelocity, velocityCopies, velocityBytes ) &&
 		!infoCopies.empty() && !velocityCopies.empty() )
 	{
@@ -750,21 +755,50 @@ void WaterSimulation::solveFlow( const Settings::Flow& flow )
 										   nullptr;
 			for( uint32_t col = 0; col < m_size; ++col )
 			{
-				if( info[col * 4 + 2] != 1.0f )
+				const float kind = info[col * 4 + 2];
+				if( kind != 1.0f && kind != 2.0f )
 					continue;
-				// Скорость ячейки — средняя её граней (скорость хранится на восточной и южной грани, mainFlowOutput)
-				const float x = 0.5f * ( velocity[col * 2] + ( col > 0 ? velocity[col * 2 - 2] : 0.0f ) );
-				const float y = 0.5f * ( velocity[col * 2 + 1] + ( above ? above[col * 2 + 1] : 0.0f ) );
+				// Скорость ячейки — средняя её открытых граней (скорость хранится на восточной и южной грани; грань открыта,
+				// если сосед мокрый — как mainFlowOutput)
+				auto wet = [&]( int64_t r, int64_t c )
+				{
+					if( r < 0 || c < 0 || r >= m_size || c >= m_size )
+						return false;
+					const float* line = reinterpret_cast<const float*>( infoBytes.data() + infoCopies[0].offset + r * infoCopies[0].rowPitch );
+					return line[c * 4 + 2] != 0.0f;
+				};
+				auto average = [&]( bool first, float a, bool second, float b )
+				{
+					const int open = ( first ? 1 : 0 ) + ( second ? 1 : 0 );
+					return open ? ( ( first ? a : 0.0f ) + ( second ? b : 0.0f ) ) / open : 0.0f;
+				};
+				const float x = average( wet( row, col + 1 ), velocity[col * 2], wet( row, static_cast<int64_t>( col ) - 1 ), col > 0 ? velocity[col * 2 - 2] : 0.0f );
+				const float y = average( wet( row + 1, col ), velocity[col * 2 + 1], wet( static_cast<int64_t>( row ) - 1, col ), above ? above[col * 2 + 1] : 0.0f );
 				const float speed = std::hypot( x, y );
-				sum += speed;
-				peak = std::max( peak, speed );
-				++cells;
+				if( kind == 1.0f )
+				{
+					lakeSum += speed;
+					lakePeak = std::max( lakePeak, speed );
+					++lakeCells;
+				}
+				else if( info[col * 4 + 3] >= flowMinDepth )
+				{
+					streamSum += speed;
+					streamPeak = std::max( streamPeak, speed );
+					baseSum += std::hypot( info[col * 4], info[col * 4 + 1] );
+					deviationSum += std::hypot( x - info[col * 4], y - info[col * 4 + 1] );
+					++streamCells;
+				}
 			}
 		}
 	}
-	char text[200];
-	snprintf( text, sizeof( text ), "Water flow: %u steps x %u iterations over %zu tiles 8x8, lake cells %u, mean speed %.3f m/s, max %.3f m/s, ms: %.1f",
-			  steps, iterations, m_flowTileList.size(), cells, cells ? sum / cells : 0.0, peak,
+	char text[320];
+	snprintf( text, sizeof( text ),
+			  "Water flow: %u steps x %u iterations over %zu tiles 8x8; lake cells %u, mean speed %.3f m/s, max %.3f m/s; stream cells %u, "
+			  "mean speed %.3f m/s (Manning %.3f), max %.3f m/s, off Manning %.0f%%, ms: %.1f",
+			  steps, iterations, m_flowTileList.size(), lakeCells, lakeCells ? lakeSum / lakeCells : 0.0, lakePeak, streamCells,
+			  streamCells ? streamSum / streamCells : 0.0, streamCells ? baseSum / streamCells : 0.0, streamPeak,
+			  baseSum > 0.0 ? 100.0 * deviationSum / baseSum : 0.0,
 			  std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() );
 	LOG( text );
 }
@@ -886,7 +920,7 @@ WaterSimulation::Settings WaterSimulation::settings() const
 	settings.flow.settleTime = m_flowProperties["Settle time"].data<float>();
 	settings.flow.timeStep = m_flowProperties["Time step"].data<float>();
 	settings.flow.viscosity = m_flowProperties["Viscosity"].data<float>();
-	settings.flow.manning = m_flowProperties["Lake roughness"].data<float>();
+	settings.flow.manning = m_flowProperties["Bed roughness"].data<float>();
 	settings.flow.iterations = m_flowProperties["Pressure iterations"].data<int32_t>();
 	settings.flow.layer = m_flowProperties["Surface layer"].data<float>();
 	for( const ChannelParameter& parameter : channelParameters )
