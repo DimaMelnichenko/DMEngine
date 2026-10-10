@@ -2254,7 +2254,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		}
 	}
 
-	// 5. Вода — одно поле уровня по сети: в узле — своя вода (дно у оси — наименьшее в клетке вокруг точки — плюс глубина по
+	// 5. Вода — одно поле уровня по сети: в узле — своя вода (дно у оси — тальвег детальной земли в узле — плюс глубина по
 	// Маннингу для прямоугольного русла h = (Q·n / (w·√S))^(3/5), не мельче min_water_depth и ниже бровки на запас), но не
 	// ниже воды ниже по течению — подпор. Озеро — вода ниже по течению у впадающих в него ручьёв и уровень его истока:
 	// ручьи в нём и у берега — на том же уровне подпором, а не правилами на стыках
@@ -2276,6 +2276,42 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			inflowDistance[k] = inLake( d ) ? step : inflowDistance[d] + step;
 		}
 	}
+	// Дно, от которого стоит вода, — видимое, детальное (билинейно по текселям плитки; вне плиток — сетка 1 м), а не клетки
+	// карты: клетка опущена до самой низкой детальной точки в ней, на крутом это её нижний край — вода выходила на
+	// 10–20 см мельче, и гребень переката оставался почти сухим (2026-10-10). Тальвег — наименьшее поперёк направления
+	// (tx, ty) на ±0,75 клетки (тальвег мог уйти от оси), но не вдоль: на крутом точка ниже по склону опустила бы воду под
+	// землю
+	const int detailTiles = static_cast<int>( ( n + detailTileCells - 1 ) / detailTileCells );
+	std::vector<int> detailIndex( static_cast<size_t>( detailTiles ) * detailTiles, -1 );
+	for( size_t t = 0; t < result.detailTiles.size(); ++t )
+		detailIndex[static_cast<size_t>( result.detailTiles[t].z ) * detailTiles + result.detailTiles[t].x] = static_cast<int>( t );
+	auto bedAt = [&]( double x, double y )
+	{
+		const int tx = static_cast<int>( std::floor( x / detailTileCells ) );
+		const int tz = static_cast<int>( std::floor( ( n - y ) / detailTileCells ) );
+		if( tx < 0 || tz < 0 || tx >= detailTiles || tz >= detailTiles || detailIndex[static_cast<size_t>( tz ) * detailTiles + tx] < 0 )
+			return carved.sample( x - 0.5, y - 0.5 );
+		const DetailTile& tile = result.detailTiles[detailIndex[static_cast<size_t>( tz ) * detailTiles + tx]];
+		// Тексель (i, j) — в клетках ( x · tileCells + ( i − 0,5 ) / samples, n − z · tileCells − ( j − 0,5 ) / samples )
+		const int side = static_cast<int>( detailTileCells * detailSamples + 2 );
+		const double fi = ( x - static_cast<double>( tile.x * detailTileCells ) ) * detailSamples + 0.5;
+		const double fj = ( n - y - static_cast<double>( tile.z * detailTileCells ) ) * detailSamples + 0.5;
+		const int i = std::clamp( static_cast<int>( std::floor( fi ) ), 0, side - 2 );
+		const int j = std::clamp( static_cast<int>( std::floor( fj ) ), 0, side - 2 );
+		const double u = std::clamp( fi - i, 0.0, 1.0 );
+		const double v = std::clamp( fj - j, 0.0, 1.0 );
+		auto texel = [&]( int a, int b ) { return static_cast<double>( tile.heights[static_cast<size_t>( b ) * side + a] ); };
+		return ( texel( i, j ) * ( 1.0 - u ) + texel( i + 1, j ) * u ) * ( 1.0 - v ) +
+			   ( texel( i, j + 1 ) * ( 1.0 - u ) + texel( i + 1, j + 1 ) * u ) * v;
+	};
+	auto thalweg = [&]( const Point& at, double tx, double ty )
+	{
+		double lowest = std::numeric_limits<double>::infinity();
+		for( double offset : { -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75 } )
+			lowest = std::min( lowest, bedAt( at.x - ty * offset, at.y + tx * offset ) );
+		return lowest;
+	};
+	std::vector<double> needDepth( count, 0.0 );
 	for( int k = 0; k < count; ++k )
 	{
 		const int d = down[k];
@@ -2285,9 +2321,6 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			slope[k] = std::max( ( bed[k] - bed[d] ) / step, static_cast<double>( p.minWaterSlope ) );
 		}
 		const double waterDepth = std::pow( q[k] * shape[k].manning / ( width[k] * std::sqrt( slope[k] ) ), 0.6 );
-		// Дно у оси — наименьшее поперёк течения (тальвег мог уйти от оси), но не вдоль: на крутом точка ниже по склону
-		// опустила бы воду под землю своей клетки
-		actual[k] = std::numeric_limits<double>::infinity();
 		{
 			const Point& from = position[up[k] >= 0 ? up[k] : k];
 			const Point& to = position[d >= 0 ? d : k];
@@ -2304,13 +2337,13 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 				tx /= length;
 				ty /= length;
 			}
-			for( double offset : { -0.7, -0.35, 0.0, 0.35, 0.7 } )
-				actual[k] = std::min( actual[k], carved.sample( position[k].x - 0.5 - ty * offset, position[k].y - 0.5 + tx * offset ) );
+			actual[k] = thalweg( position[k], tx, ty );
 		}
 		// У истока и устья наименьшая глубина и запас бровки нарастают от берега озера (как врез у истока): на пороге вода —
 		// тонкий слив, в устье — подпор озера
 		const double ramp = std::min( outletDistance[k], inflowDistance[k] ) * outletSlope;
 		const double minDepth = std::min( p.minWaterDepth * ( 0.33 + 0.67 * sourceShare[k] ), ramp );
+		needDepth[k] = minDepth;
 		const double freeboard = std::min( shape[k].freeboard, ramp );
 		level[k] = actual[k] + std::max( waterDepth, minDepth );
 		level[k] = std::max( std::min( level[k], surface[k] - freeboard ), actual[k] + std::min( 0.05, minDepth ) );
@@ -2327,10 +2360,59 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( int label = 0; label < lakeCount; ++label )
 		if( lakeOutlet[label] >= 0 )
 			level[lakeOutlet[label]] = lakeSurface[label];
-	// Подпор: снизу вверх по сети уровень — не ниже воды ниже по течению
-	for( auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it )
-		if( down[*it] >= 0 )
-			level[*it] = std::max( level[*it], level[down[*it]] );
+	// Подпор: снизу вверх по сети уровень — не ниже воды ниже по течению. Между узлами уровень растра — прямая, а дно под ней
+	// — детальное: гребень переката посреди отрезка выходил выше воды, и вода «проходила сквозь» подъём русла (2026-10-10).
+	// Поэтому тальвег отрезка проверяется через тексель детальной земли: под прямой уровня он не мельче наименьшей глубины
+	// концов; нехватку добирает ближний конец (верхний — с запасом 1 / (1 − f), нижний — 1 / f). Подъём нижнего снова
+	// поднимает подпором верхние — проходы до устойчивого. Уровень узлов в озере и истока на пороге — перелив, не поднимается
+	std::vector<uint8_t> pinned( count, 0 );
+	for( int k = 0; k < count; ++k )
+		pinned[k] = inLake( k ) ? 1 : 0;
+	for( int label = 0; label < lakeCount; ++label )
+		if( lakeOutlet[label] >= 0 )
+			pinned[lakeOutlet[label]] = 1;
+	for( int pass = 0; pass < 8; ++pass )
+	{
+		bool raisedBelow = false;
+		for( auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it )
+		{
+			const int k = *it;
+			const int d = down[k];
+			if( d < 0 )
+				continue;
+			level[k] = std::max( level[k], level[d] );
+			if( inLake( k ) || inLake( d ) )
+				continue;
+			const Point a = position[k];
+			const Point b = position[d];
+			const double length = std::hypot( b.x - a.x, b.y - a.y );
+			if( length < 1e-6 )
+				continue;
+			const double tx = ( b.x - a.x ) / length;
+			const double ty = ( b.y - a.y ) / length;
+			const int steps = std::max( static_cast<int>( std::ceil( length * detailSamples ) ), 1 );
+			for( int s = 1; s < steps; ++s )
+			{
+				const double f = static_cast<double>( s ) / steps;
+				const Point at{ a.x + ( b.x - a.x ) * f, a.y + ( b.y - a.y ) * f };
+				const double need = thalweg( at, tx, ty ) + needDepth[k] + ( needDepth[d] - needDepth[k] ) * f;
+				const double shortfall = need - ( level[k] + ( level[d] - level[k] ) * f );
+				if( shortfall <= 1e-4 )
+					continue;
+				// Нижний — если гребень ближе к нему и подъём не выше верхнего (вода в гору не течёт)
+				const bool raiseLower = f > 0.5 && !pinned[d] && level[d] + shortfall / f <= level[k];
+				if( !raiseLower && !pinned[k] )
+					level[k] += shortfall / ( 1.0 - f );
+				else if( raiseLower )
+				{
+					level[d] += shortfall / f;
+					raisedBelow = true;
+				}
+			}
+		}
+		if( !raisedBelow )
+			break;
+	}
 	// Скорость — по Маннингу от видимой глубины и уклона поверхности: v = R^(2/3)·√S / n, R = w·h / (w + 2h). Не Q / (w·h):
 	// глубина не мельче min_water_depth (воду видно), а расход водосбора карты 1 км на такой глубине — сантиметры в секунду,
 	// и вся сеть упиралась в min_speed — одна скорость на крутом и на ровном (2026-10-10). Где глубина — по расходу (крупный
