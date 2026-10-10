@@ -79,7 +79,8 @@ public:
 	// приток, помощники, параметры русел
 	static bool build( const HeightField& field, const WaterSimulationSettings& water, const std::vector<StreamCurve>& curves,
 					   Result& result );
-	// Водосбор каждой клетки, м²: сток D8 по карте с заполненными низинами (тот же, что у build) — для карт эрозии
+	// Водосбор каждой клетки, м²: обычный сток D8 по карте с заполненными низинами (у build и generate — без прямых по
+	// сетке, flowDirections) — для карт эрозии
 	static std::vector<float> catchment( const HeightField& field );
 	// Растровые правки рельефа по опусканию: опускание и (вне детальных плиток) покраска дна галькой и очистка
 	// растительности; в плитках покраска и очистка — в шейдерах по детальному врезу, у озёр при shaderLakeBeds (режим

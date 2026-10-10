@@ -118,8 +118,10 @@ double catmullRom( const Grid& grid, double x, double y )
 	return result;
 }
 
-// Priority-Flood с уклоном (Barnes, Lehman, Mulla 2014): обход от края по возрастанию, при равной высоте — по индексу
-std::vector<double> fillDepressions( const Grid& height )
+// Priority-Flood с уклоном (Barnes, Lehman, Mulla 2014): обход от края по возрастанию, при равной высоте — по индексу.
+// epsilon 0 — низины заполнены точно ровно (для поиска ровных мест, flowDirections). ascending — клетки в порядке обхода:
+// по возрастанию заполненной высоты
+std::vector<double> fillDepressions( const Grid& height, double epsilon = fillEpsilon, std::vector<int>* ascending = nullptr )
 {
 	const int n = height.size;
 	std::vector<double> filled = height.values;
@@ -142,10 +144,17 @@ std::vector<double> fillDepressions( const Grid& height )
 		seed( 0, col );
 		seed( n - 1, col );
 	}
+	if( ascending )
+	{
+		ascending->clear();
+		ascending->reserve( filled.size() );
+	}
 	while( !heap.empty() )
 	{
 		const auto [z, i] = heap.top();
 		heap.pop();
+		if( ascending )
+			ascending->push_back( i );
 		const int row = i / n;
 		const int col = i % n;
 		for( int k = 0; k < 8; ++k )
@@ -158,7 +167,7 @@ std::vector<double> fillDepressions( const Grid& height )
 			if( closed[j] )
 				continue;
 			closed[j] = 1;
-			const double value = height.values[j] > z + fillEpsilon ? height.values[j] : z + fillEpsilon;
+			const double value = height.values[j] > z + epsilon ? height.values[j] : z + epsilon;
 			filled[j] = value;
 			heap.push( { value, j } );
 		}
@@ -202,6 +211,307 @@ std::vector<int> downhillOrder( const std::vector<double>& filled )
 	std::stable_sort( order.begin(), order.end(), [&filled]( int a, int b ) { return filled[a] < filled[b]; } );
 	std::reverse( order.begin(), order.end() );
 	return order;
+}
+
+// Клетки «каждая раньше своего получателя» (Кан): порядок для накопления вниз по течению при любых получателях — и там,
+// где получатель не ниже по заполненной карте (ровные места, flowDirections)
+std::vector<int> upstreamOrder( const std::vector<int>& receiver )
+{
+	const size_t cells = receiver.size();
+	std::vector<int> pending( cells, 0 );
+	for( size_t i = 0; i < cells; ++i )
+		if( receiver[i] != static_cast<int>( i ) )
+			++pending[receiver[i]];
+	std::vector<int> order;
+	order.reserve( cells );
+	for( size_t i = 0; i < cells; ++i )
+		if( pending[i] == 0 )
+			order.push_back( static_cast<int>( i ) );
+	for( size_t head = 0; head < order.size(); ++head )
+	{
+		const int i = order[head];
+		const int r = receiver[i];
+		if( r != i && --pending[r] == 0 )
+			order.push_back( r );
+	}
+	return order;
+}
+
+// Направления стока без прямых линий по сетке — для кривых русел и расхода (drainage).
+// - Ровные места (клетки точно ровной заполненной карты level без соседа ниже: заполненные низины, дно долины) — как у
+//   Barnes, Lehman, Mulla 2014 («An efficient assignment of drainage direction over flat surfaces in raster digital
+//   elevation models»): к краю ровного места, откуда можно стечь (расстояние × 2), и прочь от высокого берега; вода
+//   сходится к выходу по середине, а не идёт волной от порога прямыми под 0° и 45°.
+// - Склоны — D8-LTD (Orlandini и др. 2003, «Path-based methods for the determination of nondispersive drainage directions
+//   in grid-based digital elevation models»): направление уклона по граням (D∞, Tarboton 1997), из двух соседей грани —
+//   тот, при котором накопленное поперечное отклонение пути от направления уклона меньше; отклонение несётся вниз от
+//   главного притока (больший водосбор plainArea по обычному D8). Сток — в одну клетку, но путь в среднем идёт по склону,
+//   а не вдоль строк и диагоналей.
+// Получатель — сосед ниже по level (на ровном месте — того же уровня, с меньшей маской); сама клетка — сток за край.
+// ascending — клетки по возрастанию level (обход Priority-Flood)
+std::vector<int> flowDirections( const std::vector<double>& level, const std::vector<int>& ascending,
+								 const std::vector<double>& plainArea, int n )
+{
+	const size_t cells = level.size();
+	auto inside = [n]( int r, int c ) { return r >= 0 && c >= 0 && r < n && c < n; };
+	auto onEdge = [n]( int r, int c ) { return r == 0 || c == 0 || r == n - 1 || c == n - 1; };
+
+	// Ровные клетки: нет соседа ниже (у края — сток за карту, не ровная)
+	std::vector<uint8_t> flat( cells, 0 );
+	for( int row = 0; row < n; ++row )
+	{
+		for( int col = 0; col < n; ++col )
+		{
+			if( onEdge( row, col ) )
+				continue;
+			const size_t i = static_cast<size_t>( row ) * n + col;
+			bool lower = false;
+			for( int k = 0; k < 8 && !lower; ++k )
+				lower = level[static_cast<size_t>( row + neighbourRow[k] ) * n + col + neighbourCol[k]] < level[i];
+			flat[i] = lower ? 0 : 1;
+		}
+	}
+
+	// Barnes 2014: к выходу — обход от «нижних краёв» (не ровных клеток того же уровня рядом с ровными), прочь от берега —
+	// от ровных клеток рядом с выше; у ровного места своё наибольшее расстояние от берега
+	constexpr int unreached = -1;
+	std::vector<int> towards( cells, unreached ), away( cells, unreached ), label( cells, -1 );
+	std::vector<int> queue;
+	for( int row = 1; row < n - 1; ++row )
+	{
+		for( int col = 1; col < n - 1; ++col )
+		{
+			const size_t i = static_cast<size_t>( row ) * n + col;
+			if( !flat[i] )
+				continue;
+			for( int k = 0; k < 8; ++k )
+			{
+				const size_t j = static_cast<size_t>( row + neighbourRow[k] ) * n + col + neighbourCol[k];
+				if( !flat[j] && level[j] == level[i] && towards[j] == unreached )
+				{
+					towards[j] = 0;
+					queue.push_back( static_cast<int>( j ) );
+				}
+			}
+		}
+	}
+	for( size_t head = 0; head < queue.size(); ++head )
+	{
+		const int i = queue[head];
+		const int row = i / n, col = i % n;
+		for( int k = 0; k < 8; ++k )
+		{
+			const int r = row + neighbourRow[k], c = col + neighbourCol[k];
+			if( !inside( r, c ) )
+				continue;
+			const size_t j = static_cast<size_t>( r ) * n + c;
+			if( flat[j] && towards[j] == unreached && level[j] == level[i] )
+			{
+				towards[j] = towards[i] + 1;
+				queue.push_back( static_cast<int>( j ) );
+			}
+		}
+	}
+	// Ровные места — связные области одного уровня; наибольшее расстояние от берега у каждой
+	std::vector<int> farthest;
+	for( size_t start = 0; start < cells; ++start )
+	{
+		if( !flat[start] || label[start] >= 0 )
+			continue;
+		const int id = static_cast<int>( farthest.size() );
+		farthest.push_back( 0 );
+		queue.assign( 1, static_cast<int>( start ) );
+		label[start] = id;
+		std::vector<int> high;
+		for( size_t head = 0; head < queue.size(); ++head )
+		{
+			const int i = queue[head];
+			const int row = i / n, col = i % n;
+			bool nextToHigher = false;
+			for( int k = 0; k < 8; ++k )
+			{
+				const size_t j = static_cast<size_t>( row + neighbourRow[k] ) * n + col + neighbourCol[k];
+				if( level[j] > level[i] )
+					nextToHigher = true;
+				else if( flat[j] && label[j] < 0 && level[j] == level[i] )
+				{
+					label[j] = id;
+					queue.push_back( static_cast<int>( j ) );
+				}
+			}
+			if( nextToHigher )
+				high.push_back( i );
+		}
+		for( int i : high )
+			away[i] = 1;
+		for( size_t head = 0; head < high.size(); ++head )
+		{
+			const int i = high[head];
+			farthest[id] = std::max( farthest[id], away[i] );
+			const int row = i / n, col = i % n;
+			for( int k = 0; k < 8; ++k )
+			{
+				const size_t j = static_cast<size_t>( row + neighbourRow[k] ) * n + col + neighbourCol[k];
+				if( flat[j] && label[j] == id && away[j] == unreached )
+				{
+					away[j] = away[i] + 1;
+					high.push_back( static_cast<int>( j ) );
+				}
+			}
+		}
+	}
+	// Маска ровного места: меньше — ближе к выходу и дальше от берега (у нижних краёв — −1: в них стекают)
+	auto mask = [&]( size_t i ) -> double
+	{
+		if( !flat[i] )
+			return -1.0;
+		const int toward = towards[i] == unreached ? 1 << 20 : towards[i];
+		const int fromHigh = away[i] == unreached ? 0 : farthest[label[i]] - away[i];
+		return 2.0 * toward + fromHigh;
+	};
+
+	// Направление уклона склона по граням D∞ (Tarboton 1997) — у клеток независимо, параллельно: самая крутая грань, её соседи
+	// по стороне e1 и по диагонали e2 и направление v (в клетках: x — столбец, y — строка). Без тригонометрии: внутри грани
+	// v = s1 · e1 + s2 · (e2 − e1) (уклоны вдоль стороны и поперёк), у её сторон — e1 или e2
+	constexpr int facetCardinal[8] = { 4, 1, 1, 3, 3, 6, 6, 4 };
+	constexpr int facetDiagonal[8] = { 2, 2, 0, 0, 5, 5, 7, 7 };
+	std::vector<int8_t> facetFirst( cells, -1 ), facetSecond( cells, -1 );
+	std::vector<float> facetX( cells, 0.0f ), facetY( cells, 0.0f );
+	std::vector<int> rows( n );
+	std::iota( rows.begin(), rows.end(), 0 );
+	std::for_each( std::execution::par, rows.begin(), rows.end(), [&]( int row )
+	{
+		for( int col = 0; col < n; ++col )
+		{
+			const size_t i = static_cast<size_t>( row ) * n + col;
+			if( flat[i] )
+				continue;
+			double steepest = 0.0;
+			for( int f = 0; f < 8; ++f )
+			{
+				const int k1 = facetCardinal[f], k2 = facetDiagonal[f];
+				const int r1 = row + neighbourRow[k1], c1 = col + neighbourCol[k1];
+				const int r2 = row + neighbourRow[k2], c2 = col + neighbourCol[k2];
+				if( !inside( r1, c1 ) || !inside( r2, c2 ) )
+					continue;
+				const double z0 = level[i], z1 = level[static_cast<size_t>( r1 ) * n + c1], z2 = level[static_cast<size_t>( r2 ) * n + c2];
+				const double s1 = z0 - z1, s2 = z1 - z2;
+				const double ux = neighbourCol[k1], uy = neighbourRow[k1];
+				const double px = neighbourCol[k2] - neighbourCol[k1], py = neighbourRow[k2] - neighbourRow[k1];
+				double slope, dx, dy;
+				if( s2 <= 0.0 )
+				{
+					slope = s1;
+					dx = ux;
+					dy = uy;
+				}
+				else if( s2 >= s1 )
+				{
+					slope = ( z0 - z2 ) / std::sqrt( 2.0 );
+					dx = ( ux + px ) / std::sqrt( 2.0 );
+					dy = ( uy + py ) / std::sqrt( 2.0 );
+				}
+				else
+				{
+					slope = std::sqrt( s1 * s1 + s2 * s2 );
+					dx = ( s1 * ux + s2 * px ) / slope;
+					dy = ( s1 * uy + s2 * py ) / slope;
+				}
+				if( slope <= steepest )
+					continue;
+				steepest = slope;
+				facetFirst[i] = static_cast<int8_t>( k1 );
+				facetSecond[i] = static_cast<int8_t>( k2 );
+				facetX[i] = static_cast<float>( dx );
+				facetY[i] = static_cast<float>( dy );
+			}
+		}
+	} );
+
+	// Обход сверху вниз по level: у склона — D8-LTD с отклонением, принесённым главным притоком
+	std::vector<int> receiver( cells );
+	std::vector<double> deviation( cells, 0.0 );		// накопленное отклонение, пришедшее в клетку, клетки
+	std::vector<double> donorArea( cells, -1.0 );		// водосбор притока, от которого оно пришло
+	for( auto it = ascending.rbegin(); it != ascending.rend(); ++it )
+	{
+		const int i = *it;
+		const int row = i / n, col = i % n;
+		receiver[i] = i;
+		double carried = 0.0;
+		if( flat[i] )
+		{
+			// Ровное место: сосед того же уровня с наименьшей маской (по шагу)
+			double best = 0.0;
+			const double here = mask( i );
+			for( int k = 0; k < 8; ++k )
+			{
+				const size_t j = static_cast<size_t>( row + neighbourRow[k] ) * n + col + neighbourCol[k];
+				if( level[j] != level[i] )
+					continue;
+				const double drop = ( here - mask( j ) ) / neighbourDistance[k];
+				if( drop > best )
+				{
+					best = drop;
+					receiver[i] = static_cast<int>( j );
+				}
+			}
+		}
+		else
+		{
+			// Склон: самая крутая грань — направление уклона v; соседи грани e1 (сторона), e2 (диагональ)
+			const int first = facetFirst[i], second = facetSecond[i];
+			const double vx = facetX[i], vy = facetY[i];
+			int chosen = -1;
+			if( first >= 0 )
+			{
+				// Поперечное отклонение шага от линии уклона (векторное произведение) — накопленное с пришедшим
+				const double d1 = deviation[i] + ( vx * neighbourRow[first] - vy * neighbourCol[first] );
+				const double d2 = deviation[i] + ( vx * neighbourRow[second] - vy * neighbourCol[second] );
+				const size_t j1 = static_cast<size_t>( row + neighbourRow[first] ) * n + col + neighbourCol[first];
+				const size_t j2 = static_cast<size_t>( row + neighbourRow[second] ) * n + col + neighbourCol[second];
+				const bool lower1 = level[j1] < level[i], lower2 = level[j2] < level[i];
+				if( lower1 && ( !lower2 || std::abs( d1 ) <= std::abs( d2 ) ) )
+				{
+					chosen = static_cast<int>( j1 );
+					carried = d1;
+				}
+				else if( lower2 )
+				{
+					chosen = static_cast<int>( j2 );
+					carried = d2;
+				}
+			}
+			if( chosen < 0 )
+			{
+				// Грани не дали соседа ниже (край карты, седловина) — обычный D8
+				double best = 0.0;
+				for( int k = 0; k < 8; ++k )
+				{
+					const int r = row + neighbourRow[k], c = col + neighbourCol[k];
+					if( !inside( r, c ) )
+						continue;
+					const size_t j = static_cast<size_t>( r ) * n + c;
+					const double drop = ( level[i] - level[j] ) / neighbourDistance[k];
+					if( drop > best )
+					{
+						best = drop;
+						chosen = static_cast<int>( j );
+					}
+				}
+				carried = 0.0;
+			}
+			if( chosen >= 0 )
+				receiver[i] = chosen;
+		}
+		// Отклонение — получателю, если этот приток у него главный (больший водосбор); с ровного места — с нуля
+		const int r = receiver[i];
+		if( r != i && plainArea[i] > donorArea[r] )
+		{
+			donorArea[r] = plainArea[i];
+			deviation[r] = carried;
+		}
+	}
+	return receiver;
 }
 
 // Сумма вниз по D8: каждая клетка отдаёт накопленное получателю
@@ -505,10 +815,17 @@ Drainage drainage( const HeightField& field, const WaterSimulationSettings& wate
 	Drainage d;
 	d.height = gridMetres( field );
 
-	// 1. Сток по заполненной карте и водосбор
-	d.filled = fillDepressions( d.height );
-	d.receiver = receivers( d.filled, n );
-	d.order = downhillOrder( d.filled );
+	// 1. Сток по заполненной карте и водосбор: направления без прямых по сетке (flowDirections — по точно ровной заполненной
+	// карте; главный приток — по водосбору обычного D8), порядок накопления — по получателям
+	std::vector<int> ascending;
+	d.filled = fillDepressions( d.height, fillEpsilon, &ascending );
+	const std::vector<int> plainReceiver = receivers( d.filled, n );
+	// Обход Priority-Flood — по возрастанию заполненной высоты: с конца — сверху вниз, как downhillOrder
+	const std::vector<int> plainOrder( ascending.rbegin(), ascending.rend() );
+	const std::vector<double> plainArea = accumulate( std::vector<double>( cells, cell * cell ), plainReceiver, plainOrder );
+	const std::vector<double> exact = fillDepressions( d.height, 0.0, &ascending );
+	d.receiver = flowDirections( exact, ascending, plainArea, n );
+	d.order = upstreamOrder( d.receiver );
 	d.area = accumulate( std::vector<double>( cells, cell * cell ), d.receiver, d.order );
 
 	// 2. Приток: доля «русла» по водосбору и помощники, весь расход помощника — в клетку центра; расход вниз по течению
@@ -617,8 +934,10 @@ std::string TerrainHydrology::generationKey( const HeightField& field, const Wat
 	// высот кривые генерировались бы заново на каждой машине и переписывали базу. Сменился рельеф — предупреждение «идёт
 	// в гору» (build), генерация заново — Tools/stream_edit.py regenerate
 	Fingerprint key;
-	// v3 — приток кончается у оси главного, а не в узле слияния по стоку D8 (ось главного сдвинута извилинами)
-	const char version[] = "streams-v3";
+	// v3 — приток кончается у оси главного, а не в узле слияния по стоку D8 (ось главного сдвинута извилинами); v4 — сток
+	// без прямых по сетке (flowDirections: Barnes 2014 на ровных местах, D8-LTD на склонах); v5 — размах извилин по зазору
+	// до чужого ручья (русла не пересекаются); v6 — соседние ветви в клетку-две сливаются (русла не ложатся одно на другое)
+	const char version[] = "streams-v6";
 	key.add( version, sizeof( version ) );
 	key.add( field.size );
 	key.add( field.texelSize );
@@ -651,12 +970,65 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 	const double cell = field.texelSize;
 	const Drainage dr = drainage( field, water );
 
+	// Соседние ручьи сливаются: сток в одну клетку (flowDirections) оставляет параллельные ветви в клетку-две друг от друга,
+	// и их русла легли бы одно на другое. Клетка русла ближе mergeReach клеток к клетке другой ветви с не меньшим расходом,
+	// куда вода может стечь (не выше), впадает в неё; без петель (та ветвь не течёт обратно в эту) и не в свой же путь.
+	// Расход — заново по новой сети: ниже места слияния прежняя ветвь теряет приток и под порогом перестаёт быть руслом
+	std::vector<int> receiver = dr.receiver;
+	std::vector<double> flow = dr.flow;
+	{
+		constexpr int mergeReach = 2;
+		constexpr int ownPath = 8;		// шагов вниз — свой путь (сливаться не с чем)
+		auto reaches = [&]( int from, int target, int limit )
+		{
+			for( int i = from, steps = 0; steps < limit; ++steps )
+			{
+				if( i == target )
+					return true;
+				const int next = receiver[i];
+				if( next == i )
+					return false;
+				i = next;
+			}
+			return false;
+		};
+		const int unlimited = static_cast<int>( cells );
+		for( int a : dr.order )
+		{
+			if( dr.flow[a] <= p.minDischarge || dr.lake[a] || receiver[a] == a )
+				continue;
+			const int row = a / n, col = a % n;
+			int best = -1;
+			double bestDistance = mergeReach + 0.5;
+			for( int dy = -mergeReach; dy <= mergeReach; ++dy )
+			{
+				for( int dx = -mergeReach; dx <= mergeReach; ++dx )
+				{
+					const int r = row + dy, c = col + dx;
+					if( r < 0 || c < 0 || r >= n || c >= n || ( dx == 0 && dy == 0 ) )
+						continue;
+					const int b = r * n + c;
+					const double distance = std::hypot( dx, dy );
+					if( distance >= bestDistance || dr.flow[b] <= p.minDischarge || dr.flow[b] < dr.flow[a] ||
+						dr.filled[b] > dr.filled[a] || reaches( a, b, ownPath ) || reaches( b, a, unlimited ) )
+						continue;
+					best = b;
+					bestDistance = distance;
+				}
+			}
+			if( best >= 0 )
+				receiver[a] = best;
+		}
+		flow = accumulate( dr.inflow, receiver, upstreamOrder( receiver ) );
+	}
+	const std::vector<int> order = upstreamOrder( receiver );
+
 	// 3. Узлы оси: клетки с расходом выше порога, вниз — получатель, вверх — главный приток (наибольший расход)
 	std::vector<int> stream;
 	std::vector<int> nodeOf( cells, -1 );
 	for( size_t i = 0; i < cells; ++i )
 	{
-		if( dr.flow[i] > p.minDischarge )
+		if( flow[i] > p.minDischarge )
 		{
 			nodeOf[i] = static_cast<int>( stream.size() );
 			stream.push_back( static_cast<int>( i ) );
@@ -670,8 +1042,8 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 	{
 		const int i = stream[k];
 		position[k] = { i % n + 0.5, i / n + 0.5 };
-		down[k] = dr.receiver[i] != i ? nodeOf[dr.receiver[i]] : -1;
-		q[k] = dr.flow[i];
+		down[k] = receiver[i] != i ? nodeOf[receiver[i]] : -1;
+		q[k] = flow[i];
 	}
 	std::vector<int> up( count, -1 );
 	{
@@ -699,14 +1071,47 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 		}
 		position = std::move( smoothed );
 	}
-	// Узлы от истоков вниз — по убыванию заполненной высоты (при равных — по номеру)
+	// Узлы от истоков вниз — в порядке накопления стока (каждый раньше получателя; на ровном месте получатель не ниже)
+	std::vector<int> rank( cells );
+	for( size_t position = 0; position < order.size(); ++position )
+		rank[order[position]] = static_cast<int>( position );
 	std::vector<int> nodeOrder( count );
 	std::iota( nodeOrder.begin(), nodeOrder.end(), 0 );
-	std::stable_sort( nodeOrder.begin(), nodeOrder.end(), [&]( int a, int b ) { return dr.filled[stream[a]] > dr.filled[stream[b]]; } );
+	std::stable_sort( nodeOrder.begin(), nodeOrder.end(), [&]( int a, int b ) { return rank[stream[a]] < rank[stream[b]]; } );
 
 	// Извилины: сдвиг поперёк течения волной вдоль пути от истока, амплитуда растёт с расходом и гаснет на уклоне
-	// (ось, сдвинутая с ложбины на склон, легла бы бортом под уровень воды) и у истока и устья
+	// (ось, сдвинутая с ложбины на склон, легла бы бортом под уровень воды) и у истока и устья. Размах — не больше
+	// meanderClearance зазора до ближайшего узла чужого ручья (не своего пути на meanderRelated узлов вверх и вниз): сдвиги
+	// у двух близких ручьёв навстречу друг другу оставляют между ними зазор, и русла не переезжают одно через другое
 	{
+		constexpr double meanderClearance = 0.35;
+		constexpr int meanderRelated = 12;
+		const double reach = p.meanderAmplitude / cell / meanderClearance + 1.0;	// дальше зазор размах не ограничит, клетки
+		const int radius = static_cast<int>( std::ceil( reach ) );
+		std::vector<double> clearance( count, reach );
+		std::vector<int> related;
+		for( int k = 0; k < count; ++k )
+		{
+			related.clear();
+			for( int j = down[k], steps = 0; j >= 0 && steps < meanderRelated; j = down[j], ++steps )
+				related.push_back( j );
+			for( int j = up[k], steps = 0; j >= 0 && steps < meanderRelated; j = up[j], ++steps )
+				related.push_back( j );
+			const int row = stream[k] / n, col = stream[k] % n;
+			for( int dy = -radius; dy <= radius; ++dy )
+			{
+				for( int dx = -radius; dx <= radius; ++dx )
+				{
+					const int r = row + dy, c = col + dx;
+					if( r < 0 || c < 0 || r >= n || c >= n )
+						continue;
+					const int j = nodeOf[static_cast<size_t>( r ) * n + c];
+					if( j < 0 || j == k || std::find( related.begin(), related.end(), j ) != related.end() )
+						continue;
+					clearance[k] = std::min( clearance[k], std::hypot( position[j].x - position[k].x, position[j].y - position[k].y ) );
+				}
+			}
+		}
 		std::vector<double> distance( count, 0.0 );
 		for( int k : nodeOrder )
 		{
@@ -732,6 +1137,7 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 			double amplitude = std::min( p.meanderAmplitude * std::sqrt( q[k] / 0.1 ), static_cast<double>( p.meanderAmplitude ) ) / cell;
 			const int i = stream[k];
 			amplitude *= std::clamp( 1.0 - gradientSlope( smooth, i / n, i % n, cell ) / p.meanderMaxSlope, 0.0, 1.0 );
+			amplitude = std::min( amplitude, meanderClearance * clearance[k] );
 			const double edge = down[k] < 0 ? 0.0 : std::min( distance[k] / p.meanderLength, 1.0 );
 			const double offset = wave * amplitude * edge;
 			shifted[k].x = position[k].x - ty * offset;
