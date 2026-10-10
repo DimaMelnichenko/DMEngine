@@ -22,6 +22,10 @@ struct TerrainHeight
 	float heightOffset = 0.0f;
 	// Детальная земля у русел — ресурс сцены (SLOT_TERRAIN_DETAIL, terrain_detail.sh): сторона плитки, м; 0 — её нет
 	float detailTileSize = 0.0f;
+	// Массив плиток и индекс (те же, что в слотах сцены) — тем, кто считает по ним при загрузке, до первого compute
+	// террейна (детальная вода у русел, WaterSimulation)
+	const ShaderView* detailTiles = nullptr;
+	const ShaderView* detailIndex = nullptr;
 };
 
 class TerrainHeightSource

@@ -66,8 +66,11 @@
 // Уровень поверхности воды (water.sh, WaterSimulation — water_surface.cs, mainSurface): на сетке карты высот, м; у клеток
 // с водой и кольца за урезом, остальное — −1e30. По нему глубина в точке — уровень минус её высота (урез внутри клетки)
 #define SLOT_WATER_LEVEL	115
+// Детальная вода у русел (water.sh, WaterSimulation — water_detail.cs): массив плиток, как у детальной земли (тот же
+// индекс SLOT_TERRAIN_DETAIL_INDEX), x — уровень поверхности, м (−1e30 — нет), y, z — течение по X и Z мира, м/с, w — глубина, м
+#define SLOT_WATER_DETAIL	116
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	16
+#define SLOT_SCENE_COUNT	17
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

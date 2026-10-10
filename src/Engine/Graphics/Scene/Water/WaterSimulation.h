@@ -69,8 +69,12 @@ public:
 	// по z) — для проверки. Ждёт GPU; false — воды нет или файл не записан (reason)
 	bool exportDischarge( const std::string& file, std::string& reason );
 	// Текстура воды для шейдеров (SLOT_WATER) — в DDS R32_FLOAT: <prefix>_depth.dds (глубина, м), <prefix>_vx.dds и
-	// <prefix>_vz.dds (течение по X и Z мира, м/с); строка 0 — дальний край по z. Ждёт GPU
+	// <prefix>_vz.dds (течение по X и Z мира, м/с); строка 0 — дальний край по z. Детальная вода у русел — так же, растром
+	// 0,25 м на весь мир (−1e9 — плитки нет): <prefix>_detail_level.dds (уровень поверхности), _detail_depth, _detail_vx,
+	// _detail_vz. Ждёт GPU
 	bool exportState( const std::string& prefix, std::string& reason );
+	// Детальная вода у русел — константы кадра (cb_waterDetail, water.sh): размер мира, м, и сторона плитки, м (0 — её нет)
+	DirectX::XMFLOAT4 detailParameters() const;
 
 private:
 	// Раскладка — cbuffer WaterSimulationBuffer (b4) в water_simulation.cs
@@ -101,6 +105,22 @@ private:
 		uint32_t tilesPerSide;
 		float visibleDepth;
 		float worldSize;
+		DirectX::XMFLOAT3 cameraPosition;	// главного вида: ближе detailDistance — детальная поверхность
+		float detailDistance;				// м; 0 — детальной воды нет
+		uint32_t detailIndexCount;			// индексов сетки детальной плитки
+		uint32_t detailPadding[3];
+	};
+
+	// Раскладка — cbuffer WaterDetailBuffer (b5) в Shaders/water_detail.cs
+	struct alignas( 16 ) DetailParameters
+	{
+		float heightMultiplier;
+		float heightOffset;
+		float worldSize;
+		float tileSize;
+		float visibleDepth;
+		uint32_t side;		// текселей плитки по стороне (с полем)
+		float padding[2];
 	};
 
 	// Раскладка — cbuffer WaterSurfaceBuffer (b2) в Shaders/water_surface.sh
@@ -120,7 +140,8 @@ private:
 		float roughness;
 		float foamSpeed;
 		float foamShear;
-		float padding[2];
+		float detailDistance;	// м: ближе — детальная поверхность у русел (0 — её нет)
+		float padding;
 	};
 
 	// Раскладка — cbuffer WaterFlowBuffer (b5) в water_flow.cs
@@ -269,6 +290,35 @@ private:
 	Buffer m_surfaceBuffer;			// SurfaceParameters
 	Texture m_ripple;				// карта ряби (WaterRipples)
 	ShaderView m_rippleView;
+
+	// Детальная вода у русел (режим static, Shaders/water_detail.cs): плитки — те же, что у детальной земли
+	// (TerrainHydrology::DetailTile, тот же индекс SLOT_TERRAIN_DETAIL_INDEX), 0,25 м с полем в тексель
+	void buildDetailSurface();
+	// Массивы детальной воды по плиткам конвейера (createHydrologyTextures): статичная вода плиток и цель детальной поверхности
+	bool createDetailTextures( const TerrainHydrology::Result& hydrology );
+	uint32_t m_detailTileCount = 0;
+	uint32_t m_detailSide = 0;
+	float m_detailTileSize = 0.0f;
+	Texture m_detailStatic;			// RGBA32F массив: уровень ручья, u₀ по X и Z мира, уровень озера (DetailTile::water)
+	ShaderView m_detailStaticView;
+	Texture m_detailWater;			// RGBA32F массив: уровень поверхности, течение X, Z, глубина — SLOT_WATER_DETAIL
+	StorageView m_detailWaterUAV;
+	ShaderView m_detailWaterView;
+	std::vector<DirectX::XMUINT2> m_detailCoords;	// плитка среза по сетке мира (x, z) — выгрузка
+	Buffer m_detailTileCoords;		// uint2 на срез: плитка по сетке мира (x, z)
+	ShaderView m_detailTileCoordsView;
+	Buffer m_detailBounds;			// на плитку: ~наименьший и наибольший уровень (orderedBits) — отбор mainTiles
+	StorageView m_detailBoundsUAV;
+	ShaderView m_detailBoundsView;
+	Buffer m_detailTileList;		// uint на видимую детальную плитку — экземпляры её вызова
+	StorageView m_detailTileListUAV;
+	ShaderView m_detailTileListView;
+	Buffer m_detailDrawArgs;		// команда ExecuteIndirect и число команд
+	StorageView m_detailDrawArgsUAV;
+	Buffer m_detailBuffer;			// DetailParameters
+	DMComputeShader m_detailSurfaceShader;
+	GridMesh m_detailMesh;			// сетка детальной плитки: вершина на тексель (с полем)
+	int m_detailPhase = -1;
 };
 
 }

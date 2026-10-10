@@ -467,6 +467,7 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 	water.rippleStretch = value( "ripple_stretch" );
 	water.foamSpeed = value( "foam_speed" );
 	water.foamShear = value( "foam_shear" );
+	water.detailDistance = value( "detail_distance" );
 	water.flow.settleTime = value( "flow_settle_time" );
 	water.flow.timeStep = value( "flow_time_step" );
 	water.flow.viscosity = value( "flow_viscosity" );

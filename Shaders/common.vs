@@ -43,6 +43,8 @@ cbuffer FrameConstantBuffer : register( SLOT_CB_FRAME )
 	// Тень облаков (Shaders/cloud_shadow.sh, VolumetricCloud): начало карты по X и Z мира, м; 1 / её размер, 1/м (0 —
 	// облаков нет); высота плоскости карты — середина облачного слоя, м
 	float4 cb_cloudShadow;
+	// Детальная вода у русел (water.sh, WaterSimulation): x — размер мира, м; y — сторона плитки, м (0 — её нет)
+	float4 cb_waterDetail;
 };
 
 // Раскладка — ConstantBuffers::ShaderModelConstant

@@ -395,6 +395,11 @@ DirectX::XMFLOAT4 Scene::cloudShadow( const RenderView& view )
 	return m_clouds.initialized() ? m_clouds.shadowParameters( view ) : DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 }
 
+DirectX::XMFLOAT4 Scene::waterDetail() const
+{
+	return m_water.detailParameters();
+}
+
 DirectX::BoundingBox Scene::bounds() const
 {
 	DirectX::BoundingBox result( XMFLOAT3( 0.0f, 0.0f, 0.0f ), XMFLOAT3( 1.0f, 1.0f, 1.0f ) );

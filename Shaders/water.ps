@@ -18,6 +18,24 @@ static const float stoneFoamArea = 0.08f;
 
 float4 main( WaterPixelInput input ) : SV_TARGET
 {
+	const float tileSize = WATER_TILE * g_cellSize;
+#ifdef WATER_DETAIL
+	// Детальная плитка рисует только свою площадь: поле в тексель с каждой стороны — у соседней плитки
+	const float2 local = input.worldPosition.xz / tileSize - waterDetailTile( input.tile );
+	if( any( local < 0.0f ) || any( local >= 1.0f ) )
+		discard;
+#else
+	// Где поверхность рисует детальная плитка (у русел, вблизи камеры), грубой нет — то же правило, что у отбора тайлов
+	if( g_detailDistance > 0.0f )
+	{
+		const int2 detailTile = int2( floor( input.worldPosition.xz / tileSize ) );
+		uint tilesX, tilesZ;
+		g_terrainDetailIndex.GetDimensions( tilesX, tilesZ );
+		if( all( detailTile >= 0 ) && detailTile.x < (int)tilesX && detailTile.y < (int)tilesZ &&
+			waterDetailRendered( detailTile, g_terrainDetailIndex.Load( int3( detailTile, 0 ) ), cb_cameraPosition ) )
+			discard;
+	}
+#endif
 	const WaterSample water = sampleWater( input.uv );
 	const float speed = length( water.velocity );
 	const float texel = 1.0f / g_size;

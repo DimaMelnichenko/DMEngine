@@ -8,10 +8,12 @@
 //                    воду ячейки рисует лента ручья (static), там поверхности нет. Заодно — границы
 //                    уровня каждого тайла (группа потоков = тайл);
 //   mainTilesReset — аргументы косвенного вызова: ни одного экземпляра;
-//   mainTiles      — каждый кадр: тайлы с уровнем в frustum главного вида — в список экземпляров вызова
+//   mainTiles      — каждый кадр: тайлы с уровнем в frustum главного вида — в список экземпляров вызова; тайл с детальной
+//                    землёй ближе detailDistance — ещё и в список детальных плиток (их уровни — свои, water_detail.cs)
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "water_simulation.sh"
+#include "terrain_detail.sh"
 
 #define WATER_TILE 32
 
@@ -22,6 +24,9 @@ DM_UAV( RWTexture2D<float>, g_level, 0 );					// уровень поверхно
 DM_UAV( RWStructuredBuffer<float2>, g_tileBounds, 1 );
 DM_UAV( RWByteAddressBuffer, g_drawArgs, 2 );				// команда ExecuteIndirect (24 байта) и число команд
 DM_UAV( RWStructuredBuffer<uint>, g_tileList, 3 );			// номера видимых тайлов — экземпляры вызова
+DM_UAV( RWByteAddressBuffer, g_detailDrawArgs, 4 );			// то же у детальных плиток
+DM_UAV( RWStructuredBuffer<uint>, g_detailTileList, 5 );
+DM_SRV( ByteAddressBuffer, g_detailBounds, 6 );				// mainTiles: ~наименьший и наибольший уровень детальной плитки
 
 // Раскладка — WaterSimulation::TilesParameters
 cbuffer WaterTilesBuffer : register( b5 )
@@ -31,6 +36,10 @@ cbuffer WaterTilesBuffer : register( b5 )
 	uint   g_tilesPerSide;
 	float  g_visibleDepth;		// мельче — воды не видно (только мокрая земля), м
 	float  g_worldSize;
+	float3 g_cameraPosition;	// главного вида
+	float  g_detailDistance;	// м: ближе — детальная плитка (0 — детальной воды нет)
+	uint   g_detailIndexCount;	// индексов сетки детальной плитки
+	uint3  g_tilesPadding;
 };
 
 static const float noLevel = -1e30f;
@@ -109,6 +118,26 @@ void mainTilesReset()
 	g_drawArgs.Store4( 4, uint4( g_indexCount, 0, 0, 0 ) );
 	g_drawArgs.Store( 20, 0 );
 	g_drawArgs.Store( 24, 1 );
+	g_detailDrawArgs.Store( 0, 0 );
+	g_detailDrawArgs.Store4( 4, uint4( g_detailIndexCount, 0, 0, 0 ) );
+	g_detailDrawArgs.Store( 20, 0 );
+	g_detailDrawArgs.Store( 24, 1 );
+}
+
+// Ящик тайла по высотам bounds в frustum главного вида
+bool tileVisible( float2 boundsMin, float2 boundsMax, float2 levels )
+{
+	const float3 boxMin = float3( boundsMin.x, levels.x, boundsMin.y );
+	const float3 boxMax = float3( boundsMax.x, levels.y, boundsMax.y );
+	const float3 center = 0.5f * ( boxMin + boxMax );
+	const float3 extent = 0.5f * ( boxMax - boxMin );
+	[unroll] for( int i = 0; i < 6; ++i )
+	{
+		const float4 plane = g_planes[i];
+		if( dot( plane.xyz, center ) + plane.w < -dot( abs( plane.xyz ), extent ) )
+			return false;
+	}
+	return true;
 }
 
 [numthreads( 64, 1, 1 )]
@@ -116,25 +145,39 @@ void mainTiles( uint3 id : SV_DispatchThreadID )
 {
 	if( id.x >= g_tilesPerSide * g_tilesPerSide )
 		return;
+	const uint2 tile = uint2( id.x % g_tilesPerSide, id.x / g_tilesPerSide );
+
+	// Детальная плитка: свои уровни; грубая поверхность в ней отсечена в water.ps (тем же правилом waterDetailRendered)
+	if( g_detailDistance > 0.0f )
+	{
+		const int2 detailTile = int2( tile.x, g_tilesPerSide - 1 - tile.y );
+		const uint index = g_terrainDetailIndex.Load( int3( detailTile, 0 ) );
+		const float tileSize = WATER_TILE * g_cellSize;
+		if( index > 0 && distance( ( detailTile + 0.5f ) * tileSize, g_cameraPosition.xz ) < g_detailDistance )
+		{
+			const uint2 bits = g_detailBounds.Load2( ( index - 1 ) * 8 );
+			// Плитка с полем в тексель (четверть клетки) — с запасом в клетку
+			const float margin = g_cellSize;
+			if( bits.y != 0u && tileVisible( detailTile * tileSize - margin, ( detailTile + 1 ) * tileSize + margin,
+											 float2( fromOrderedBits( ~bits.x ), fromOrderedBits( bits.y ) ) ) )
+			{
+				uint slot;
+				g_detailDrawArgs.InterlockedAdd( 8, 1, slot );
+				g_detailTileList[slot] = id.x;
+			}
+		}
+	}
+
 	const float2 bounds = g_tileBoundsIn[id.x];
 	if( bounds.x > bounds.y )
 		return;
 
 	// Тайл — ячейки tile · WATER_TILE … + WATER_TILE (последний ряд — общий с соседом); ячейка (i, j) — точка
 	// ((i + 0,5) · l, worldSize − (j + 0,5) · l): ось j текстуры идёт против Z мира
-	const uint2 tile = uint2( id.x % g_tilesPerSide, id.x / g_tilesPerSide );
 	const float2 first = ( tile * WATER_TILE + 0.5f ) * g_cellSize;
 	const float2 last = first + WATER_TILE * g_cellSize;
-	const float3 boxMin = float3( first.x, bounds.x, g_worldSize - last.y );
-	const float3 boxMax = float3( last.x, bounds.y, g_worldSize - first.y );
-	const float3 center = 0.5f * ( boxMin + boxMax );
-	const float3 extent = 0.5f * ( boxMax - boxMin );
-	[unroll] for( int i = 0; i < 6; ++i )
-	{
-		const float4 plane = g_planes[i];
-		if( dot( plane.xyz, center ) + plane.w < -dot( abs( plane.xyz ), extent ) )
-			return;
-	}
+	if( !tileVisible( float2( first.x, g_worldSize - last.y ), float2( last.x, g_worldSize - first.y ), bounds ) )
+		return;
 
 	uint slot;
 	g_drawArgs.InterlockedAdd( 8, 1, slot );

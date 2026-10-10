@@ -2676,6 +2676,21 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// озера (ниже); поверхность воды по нему рисует WaterSimulation (тайлы)
 	result.staticWater.assign( cells, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, -1e9f ) );
 	std::vector<double> nearest( cells, std::numeric_limits<double>::infinity() );
+	// Детальная вода — тем же обходом отрезков по текселям детальных плиток (0,25 м, с полем в тексель): уровень и
+	// течение ближайшего отрезка; уровень озера — после заливки озёр
+	const int detailSide = static_cast<int>( detailTileCells * detailSamples + 2 );
+	const double detailStep = 1.0 / detailSamples;
+	std::vector<std::vector<double>> detailNearest( result.detailTiles.size() );
+	for( size_t t = 0; t < result.detailTiles.size(); ++t )
+	{
+		result.detailTiles[t].water.assign( static_cast<size_t>( detailSide ) * detailSide, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, -1e9f ) );
+		detailNearest[t].assign( static_cast<size_t>( detailSide ) * detailSide, std::numeric_limits<double>::infinity() );
+	}
+	auto detailTexel = [&]( const DetailTile& tile, int i, int j )
+	{
+		return Point{ tile.x * static_cast<double>( detailTileCells ) + ( i - 0.5 ) * detailStep,
+					  n - ( tile.z * static_cast<double>( detailTileCells ) + ( j - 0.5 ) * detailStep ) };
+	};
 	result.streamCount = 0;
 	result.points = 0;
 	for( const std::vector<int>& chain : chains )
@@ -2773,6 +2788,48 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 					texel.z = static_cast<float>( -sy / length * v );
 				}
 			}
+			// Тексели детальных плиток в рамке отрезка
+			const double xMin = std::min( a.x, b.x ) - radius;
+			const double xMax = std::max( a.x, b.x ) + radius;
+			const double yMin = std::min( a.y, b.y ) - radius;
+			const double yMax = std::max( a.y, b.y ) + radius;
+			const int tileCells = static_cast<int>( detailTileCells );
+			const int tx0 = std::max( static_cast<int>( std::floor( ( xMin - detailStep ) / tileCells ) ), 0 );
+			const int tx1 = std::min( static_cast<int>( std::floor( ( xMax + detailStep ) / tileCells ) ), detailTiles - 1 );
+			const int tz0 = std::max( static_cast<int>( std::floor( ( n - yMax - detailStep ) / tileCells ) ), 0 );
+			const int tz1 = std::min( static_cast<int>( std::floor( ( n - yMin + detailStep ) / tileCells ) ), detailTiles - 1 );
+			for( int tz = tz0; tz <= tz1; ++tz )
+			{
+				for( int tx = tx0; tx <= tx1; ++tx )
+				{
+					const int slice = detailIndex[static_cast<size_t>( tz ) * detailTiles + tx];
+					if( slice < 0 )
+						continue;
+					DetailTile& tile = result.detailTiles[slice];
+					const int i0 = std::max( static_cast<int>( std::floor( ( xMin - tx * tileCells ) / detailStep + 0.5 ) ), 0 );
+					const int i1 = std::min( static_cast<int>( std::ceil( ( xMax - tx * tileCells ) / detailStep + 0.5 ) ), detailSide - 1 );
+					const int j0 = std::max( static_cast<int>( std::floor( ( n - yMax - tz * tileCells ) / detailStep + 0.5 ) ), 0 );
+					const int j1 = std::min( static_cast<int>( std::ceil( ( n - yMin - tz * tileCells ) / detailStep + 0.5 ) ), detailSide - 1 );
+					for( int j = j0; j <= j1; ++j )
+					{
+						for( int ii = i0; ii <= i1; ++ii )
+						{
+							const Point at = detailTexel( tile, ii, j );
+							const double t = std::clamp( ( ( at.x - a.x ) * sx + ( at.y - a.y ) * sy ) / length2, 0.0, 1.0 );
+							const double distance = std::hypot( at.x - ( a.x + t * sx ), at.y - ( a.y + t * sy ) );
+							const size_t index = static_cast<size_t>( j ) * detailSide + ii;
+							if( distance >= radius || distance >= detailNearest[slice][index] )
+								continue;
+							detailNearest[slice][index] = distance;
+							const double v = speed[k] + ( speed[d] - speed[k] ) * t;
+							DirectX::XMFLOAT4& texel = tile.water[index];
+							texel.x = static_cast<float>( pointLevel[i] + ( pointLevel[i + 1] - pointLevel[i] ) * t );
+							texel.y = static_cast<float>( sx / length * v );
+							texel.z = static_cast<float>( -sy / length * v );
+						}
+					}
+				}
+			}
 		}
 
 		++result.streamCount;
@@ -2827,6 +2884,35 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		}
 		for( size_t i = 0; i < cells; ++i )
 			lake[i] = result.staticWater[i].w > -1e8f ? 1 : 0;
+	}
+
+	// Уровень озера у текселей детальных плиток: своей клетки или соседней (урез — по детальной земле внутри клетки, а не
+	// по клеткам 1 м), но не там, где вода ручья ниже озера (исток уходит вниз от порога)
+	for( DetailTile& tile : result.detailTiles )
+	{
+		for( int j = 0; j < detailSide; ++j )
+		{
+			for( int i = 0; i < detailSide; ++i )
+			{
+				const Point at = detailTexel( tile, i, j );
+				const int col = std::clamp( static_cast<int>( std::floor( at.x ) ), 0, n - 1 );
+				const int row = std::clamp( static_cast<int>( std::floor( at.y ) ), 0, n - 1 );
+				const DirectX::XMFLOAT4& own = result.staticWater[static_cast<size_t>( row ) * n + col];
+				float lakeLevel = own.w;
+				if( lakeLevel <= -1e8f )
+					for( int k = 0; k < 8; ++k )
+					{
+						const int r = row + neighbourRow[k];
+						const int c = col + neighbourCol[k];
+						if( r < 0 || c < 0 || r >= n || c >= n )
+							continue;
+						const float w = result.staticWater[static_cast<size_t>( r ) * n + c].w;
+						if( w > -1e8f && !( own.x > -1e8f && own.x < w - 0.01f ) )
+							lakeLevel = std::max( lakeLevel, w );
+					}
+				tile.water[static_cast<size_t>( j ) * detailSide + i].w = lakeLevel;
+			}
+		}
 	}
 
 	return true;

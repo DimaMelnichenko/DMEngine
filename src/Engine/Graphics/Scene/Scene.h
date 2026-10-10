@@ -62,6 +62,8 @@ public:
 					const std::optional<HeightFogSettings>& heightFog );
 	// Тень облаков для констант кадра (cb_cloudShadow); облаков нет — нули
 	DirectX::XMFLOAT4 cloudShadow( const RenderView& view );
+	// Детальная вода у русел для констант кадра (cb_waterDetail); её нет — нули
+	DirectX::XMFLOAT4 waterDetail() const;
 
 	CDLODTerrain& terrain();
 	// Экземпляры моделей уровня (LevelModels)

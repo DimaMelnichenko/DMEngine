@@ -197,6 +197,9 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		->setTooltip( "How many times the ripple pattern is longer along the flow than across it on running water" );
 	addSlider( m_surfaceProperties, "Foam speed", settings.foamSpeed, 0.1f, 5.0f, "m/s" );
 	addSlider( m_surfaceProperties, "Foam shear", settings.foamShear, 0.1f, 10.0f, "1/s" );
+	addSlider( m_surfaceProperties, "Detail distance", settings.detailDistance, 0.0f, 1000.0f, "m" )
+		->setTooltip( "Nearer the water surface of streams is drawn by the detail tiles (0.25 m): farther the 1 m grid differs by less "
+					  "than a pixel, and a detail tile has 16 times as many triangles; 0 - the 1 m grid only" );
 	m_properties.addSubContainer( &m_surfaceProperties );
 
 	// Течение статичной воды: установившийся расчёт при загрузке, правка — расчёт заново
@@ -432,13 +435,31 @@ bool WaterSimulation::createSurface()
 	m_tileMesh.initialize( tileCells + 1, tileCells + 1 );
 	m_surfaceProgram.setLayoutDesc( { { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0 } } );
 	if( !m_surfaceProgram.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\water.vs" ) ||
-		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water.ps" ) )
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water.ps" ) ||
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\water.vs", "WATER_DETAIL" ) ||
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water.ps", "WATER_DETAIL" ) )
 	{
 		LOG( "Water surface: shader compilation failed" );
 		return false;
 	}
 	m_surfacePhase = m_surfaceProgram.createPhase( 0, 0 );
-	return m_surfacePhase >= 0;
+	m_detailPhase = m_surfaceProgram.createPhase( 1, 1 );
+
+	// Детальная поверхность у русел: сетка плитки — вершина на тексель плитки с полем, свои список экземпляров и команда
+	const uint32_t side = TerrainHydrology::detailTileCells * TerrainHydrology::detailSamples + 2;
+	m_detailMesh.initialize( static_cast<uint16_t>( side ), static_cast<uint16_t>( side ) );
+	if( !m_detailSurfaceShader.Initialize( "Shaders\\water_detail.cs", "mainDetailSurface" ) ||
+		!d3d.createShaderConstantBuffer( sizeof( DetailParameters ), m_detailBuffer ) ||
+		!d3d.createBuffer( listDesc, nullptr, m_detailTileList ) || !d3d.createStorageView( m_detailTileList, {}, m_detailTileListUAV ) ||
+		!d3d.createShaderView( m_detailTileList, {}, m_detailTileListView ) ||
+		!d3d.createBuffer( argsDesc, nullptr, m_detailDrawArgs ) || !d3d.createStorageView( m_detailDrawArgs, rawView, m_detailDrawArgsUAV ) )
+	{
+		LOG( "Failed to create water detail surface resources" );
+		return false;
+	}
+	d3d.setName( m_detailTileList, "Water visible detail tiles" );
+	d3d.setName( m_detailDrawArgs, "Water detail indirect command" );
+	return m_surfacePhase >= 0 && m_detailPhase >= 0;
 }
 
 void WaterSimulation::buildSurface()
@@ -464,6 +485,48 @@ void WaterSimulation::buildSurface()
 	d3d.setUAV( 1, m_tileBoundsUAV );
 	m_surfaceShader.dispatchGroups( m_tilesPerSide, m_tilesPerSide, 1 );
 	m_surfaceDirty = false;
+	if( m_detailTileCount > 0 )
+		buildDetailSurface();
+}
+
+void WaterSimulation::buildDetailSurface()
+{
+	DMD3D& d3d = DMD3D::instance();
+	const TerrainHeight height = m_terrain->terrainHeight();
+	if( !height.detailTiles )
+		return;
+	PassDesc pass;
+	pass.name = "Water detail surface";
+	pass.reads = { { &m_detailStaticView, "detail static water" }, { height.detailTiles, "terrain detail tiles" },
+				   { &m_outputView, "water state" }, { &m_detailTileCoordsView, "detail tile coordinates" } };
+	pass.writes = { { &m_detailWaterUAV, "detail water" }, { &m_detailBoundsUAV, "detail tile bounds" } };
+	d3d.beginPass( pass );
+	DetailParameters params = {};
+	params.heightMultiplier = height.heightMultiplier;
+	params.heightOffset = height.heightOffset;
+	params.worldSize = height.worldSize;
+	params.tileSize = m_detailTileSize;
+	params.visibleDepth = visibleDepth;
+	params.side = m_detailSide;
+	Device::updateResourceData( m_detailBuffer, params );
+	d3d.setConstantBuffer( 5, m_detailBuffer );
+	// Границы уровней плиток — наибольшие значения (атомарный max с нуля): нули — плитка без воды
+	d3d.clearStorageView( m_detailBoundsUAV );
+	d3d.setSRV( 0, m_detailStaticView );
+	d3d.setSRV( 1, *height.detailTiles );
+	d3d.setSRV( 2, m_outputView );
+	d3d.setSRV( 3, m_detailTileCoordsView );
+	d3d.setUAV( 0, m_detailWaterUAV );
+	d3d.setUAV( 1, m_detailBoundsUAV );
+	const uint32_t groups = ( m_detailSide + 7 ) / 8;
+	m_detailSurfaceShader.dispatchGroups( groups, groups, m_detailTileCount );
+}
+
+DirectX::XMFLOAT4 WaterSimulation::detailParameters() const
+{
+	if( !m_initialized || m_detailTileCount == 0 )
+		return DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	return DirectX::XMFLOAT4( m_terrain->terrainHeight().worldSize, m_detailTileSize, 0.0f, 0.0f );
 }
 
 void WaterSimulation::cullTiles( const RenderView& view )
@@ -472,7 +535,10 @@ void WaterSimulation::cullTiles( const RenderView& view )
 	PassDesc pass;
 	pass.name = "Water tiles";
 	pass.reads = { { &m_tileBoundsView, "water tile bounds" } };
-	pass.writes = { { &m_drawArgsUAV, "water indirect command" }, { &m_tileListUAV, "water visible tiles" } };
+	pass.writes = { { &m_drawArgsUAV, "water indirect command" }, { &m_tileListUAV, "water visible tiles" },
+					{ &m_detailDrawArgsUAV, "water detail indirect command" }, { &m_detailTileListUAV, "water visible detail tiles" } };
+	if( m_detailTileCount > 0 )
+		pass.reads.push_back( { &m_detailBoundsView, "detail tile bounds" } );
 	d3d.beginPass( pass );
 	TilesParameters tiles = {};
 	for( int i = 0; i < 6; ++i )
@@ -481,14 +547,22 @@ void WaterSimulation::cullTiles( const RenderView& view )
 	tiles.visibleDepth = visibleDepth;
 	tiles.worldSize = m_terrain->terrainHeight().worldSize;
 	tiles.indexCount = m_tileMesh.indexCount();
+	tiles.cameraPosition = view.position;
+	tiles.detailDistance = m_detailTileCount > 0 ? std::max( settings().detailDistance, 0.0f ) : 0.0f;
+	tiles.detailIndexCount = m_detailMesh.indexCount();
 	Device::updateResourceData( m_tilesBuffer, tiles );
 	d3d.setConstantBuffer( 5, m_tilesBuffer );
 	setParameters( settings() );
 	d3d.setUAV( 2, m_drawArgsUAV );
+	d3d.setUAV( 4, m_detailDrawArgsUAV );
 	m_tilesResetShader.dispatchGroups( 1, 1, 1 );
 	d3d.setSRV( 4, m_tileBoundsView );
+	if( m_detailTileCount > 0 )
+		d3d.setSRV( 6, m_detailBoundsView );
 	d3d.setUAV( 2, m_drawArgsUAV );
 	d3d.setUAV( 3, m_tileListUAV );
+	d3d.setUAV( 4, m_detailDrawArgsUAV );
+	d3d.setUAV( 5, m_detailTileListUAV );
 	const uint32_t tileCount = m_tilesPerSide * m_tilesPerSide;
 	m_tilesShader.dispatchGroups( ( tileCount + 63 ) / 64, 1, 1 );
 }
@@ -506,7 +580,7 @@ void WaterSimulation::warmPipelines( const PassStates& states )
 		return;
 	m_surfaceProgram.warmPipelines( { { RasterState::solid, DepthState::readOnly, BlendState::alpha },
 									  { RasterState::wireframe, DepthState::readOnly, BlendState::alpha } },
-									states.scene, { m_surfacePhase } );
+									states.scene, { m_surfacePhase, m_detailPhase } );
 }
 
 void WaterSimulation::renderCustom( const RenderContext& context )
@@ -532,6 +606,7 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	params.roughness = current.roughness;
 	params.foamSpeed = std::max( current.foamSpeed, 0.01f );
 	params.foamShear = std::max( current.foamShear, 0.01f );
+	params.detailDistance = m_detailTileCount > 0 ? std::max( current.detailDistance, 0.0f ) : 0.0f;
 	Device::updateResourceData( m_surfaceBuffer, params );
 
 	ScopedRenderState state( context.frameRaster );
@@ -544,6 +619,19 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	d3d.setSRV( 2, m_stoneDragView );
 	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
 	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
+	// Детальные плитки у русел: своя сетка (0,25 м); уровень и течение — детальная вода (SLOT_WATER_DETAIL); грубая
+	// поверхность в этих плитках отсечена в water.ps
+	if( m_detailTileCount > 0 )
+	{
+		d3d.setVertexBuffer( m_detailMesh.vertexBuffer(), sizeof( DirectX::XMFLOAT3 ) );
+		d3d.setIndexBuffer( m_detailMesh.indexBuffer(), DXGI_FORMAT_R32_UINT );
+		m_surfaceProgram.setPass( m_detailPhase );
+		d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_surfaceBuffer );
+		d3d.setSRV( 1, m_rippleView );
+		d3d.setSRV( 2, m_stoneDragView );
+		d3d.setSRV( SLOT_INSTANCE_DATA, m_detailTileListView );
+		d3d.drawIndexedInstancedIndirectCount( m_detailDrawArgs, 0, 1, m_detailDrawArgs, 24 );
+	}
 }
 
 bool WaterSimulation::createHydrologyTextures( const TerrainHydrology::Result& hydrology )
@@ -651,10 +739,80 @@ bool WaterSimulation::createHydrologyTextures( const TerrainHydrology::Result& h
 				}
 			stoneDrag[index] = DirectX::XMFLOAT2( stoneArea[index], cells > 0 ? sum / cells : 0.0f );
 		}
+	if( !createDetailTextures( hydrology ) )
+		return false;
 	return create( DXGI_FORMAT_R32_FLOAT, hydrology.channelFlow.data(), sizeof( float ), "Water channel flow", m_flowTexture, m_flowView ) &&
 		   create( DXGI_FORMAT_R32G32B32A32_FLOAT, hydrology.staticWater.data(), sizeof( DirectX::XMFLOAT4 ), "Water static streams",
 				   m_staticWaterTexture, m_staticWaterView ) &&
 		   create( DXGI_FORMAT_R32G32_FLOAT, stoneDrag.data(), sizeof( DirectX::XMFLOAT2 ), "Water stone drag", m_stoneDrag, m_stoneDragView );
+}
+
+bool WaterSimulation::createDetailTextures( const TerrainHydrology::Result& hydrology )
+{
+	// Детальная вода — только у статичной: срез — плитка детальной земли (тот же порядок, что у CDLODTerrain)
+	m_detailTileCount = 0;
+	const uint32_t side = TerrainHydrology::detailTileCells * TerrainHydrology::detailSamples + 2;
+	const size_t texels = static_cast<size_t>( side ) * side;
+	if( !m_static || hydrology.detailTiles.empty() )
+		return true;
+	for( const TerrainHydrology::DetailTile& tile : hydrology.detailTiles )
+		if( tile.water.size() != texels )
+		{
+			LOG( "Water simulation: detail water differs from the detail tiles in size, no detail water" );
+			return true;
+		}
+	DMD3D& d3d = DMD3D::instance();
+	const uint32_t count = static_cast<uint32_t>( hydrology.detailTiles.size() );
+	std::vector<TextureData> slices( count );
+	for( uint32_t t = 0; t < count; ++t )
+	{
+		slices[t].data = hydrology.detailTiles[t].water.data();
+		slices[t].rowPitch = side * static_cast<uint32_t>( sizeof( DirectX::XMFLOAT4 ) );
+		slices[t].slicePitch = slices[t].rowPitch * side;
+	}
+	TextureDesc desc;
+	desc.width = side;
+	desc.height = side;
+	desc.arraySize = count;
+	desc.format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	TextureViewDesc arrayView;
+	arrayView.kind = TextureViewDesc::Kind::texture2DArray;
+	BufferDesc boundsDesc;
+	boundsDesc.size = count * 2 * static_cast<uint32_t>( sizeof( uint32_t ) );
+	boundsDesc.usage = BufferUsage::unorderedAccess | BufferUsage::shaderResource | BufferUsage::raw;
+	BufferViewDesc rawView;
+	rawView.raw = true;
+	TextureDesc target = desc;
+	target.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
+	std::vector<DirectX::XMUINT2>& coords = m_detailCoords;
+	coords.clear();
+	for( const TerrainHydrology::DetailTile& tile : hydrology.detailTiles )
+		coords.emplace_back( tile.x, tile.z );
+	BufferDesc coordsDesc;
+	coordsDesc.size = count * static_cast<uint32_t>( sizeof( DirectX::XMUINT2 ) );
+	coordsDesc.stride = sizeof( DirectX::XMUINT2 );
+	coordsDesc.usage = BufferUsage::shaderResource | BufferUsage::structured;
+	if( !d3d.createBuffer( coordsDesc, coords.data(), m_detailTileCoords ) || !d3d.createShaderView( m_detailTileCoords, {}, m_detailTileCoordsView ) ||
+		!d3d.createTexture( desc, slices.data(), m_detailStatic ) || !d3d.createShaderView( m_detailStatic, arrayView, m_detailStaticView ) ||
+		!d3d.createTexture( target, nullptr, m_detailWater ) || !d3d.createStorageView( m_detailWater, arrayView, m_detailWaterUAV ) ||
+		!d3d.createShaderView( m_detailWater, arrayView, m_detailWaterView ) ||
+		!d3d.createBuffer( boundsDesc, nullptr, m_detailBounds ) || !d3d.createStorageView( m_detailBounds, rawView, m_detailBoundsUAV ) ||
+		!d3d.createShaderView( m_detailBounds, rawView, m_detailBoundsView ) )
+	{
+		LOG( "Failed to create water detail tiles" );
+		return false;
+	}
+	d3d.setName( m_detailStatic, "Water detail static" );
+	d3d.setName( m_detailWater, "Water detail tiles" );
+	d3d.setName( m_detailBounds, "Water detail tile bounds" );
+	// Без начальных данных память не обнулена: первая операция — очистка
+	d3d.clearStorageView( m_detailWaterUAV );
+	m_detailTileCount = count;
+	m_detailSide = side;
+	m_detailTileSize = TerrainHydrology::detailTileCells * m_cellSize;
+	LOG( "Water detail tiles " + std::to_string( count ) + " (" + std::to_string( side ) + "x" + std::to_string( side ) + ", " +
+		 std::to_string( 2 * texels * count * sizeof( DirectX::XMFLOAT4 ) / 1024 / 1024 ) + " MB)" );
+	return true;
 }
 
 bool WaterSimulation::buildStaticWater( const Settings& settings )
@@ -980,6 +1138,7 @@ WaterSimulation::Settings WaterSimulation::settings() const
 	settings.rippleStretch = m_surfaceProperties["Ripple stretch"].data<float>();
 	settings.foamSpeed = m_surfaceProperties["Foam speed"].data<float>();
 	settings.foamShear = m_surfaceProperties["Foam shear"].data<float>();
+	settings.detailDistance = m_surfaceProperties["Detail distance"].data<float>();
 	settings.flow.settleTime = m_flowProperties["Settle time"].data<float>();
 	settings.flow.timeStep = m_flowProperties["Time step"].data<float>();
 	settings.flow.viscosity = m_flowProperties["Viscosity"].data<float>();
@@ -1211,6 +1370,9 @@ void WaterSimulation::compute( const FrameContext& frame )
 	DMD3D::instance().setSRV( SLOT_WATER_SOURCES, m_sourcesView );
 	// Уровень поверхности — глубине в точке (урез внутри клетки): мокрая земля, галька дна, трава в воде
 	DMD3D::instance().setSRV( SLOT_WATER_LEVEL, m_levelView );
+	// Детальная вода у русел — тем же потребителям (water.sh: по индексу плиток детальной земли)
+	if( m_detailTileCount > 0 )
+		DMD3D::instance().setSRV( SLOT_WATER_DETAIL, m_detailWaterView );
 }
 
 bool WaterSimulation::exportState( const std::string& prefix, std::string& reason )
@@ -1247,6 +1409,53 @@ bool WaterSimulation::exportState( const std::string& prefix, std::string& reaso
 		}
 	}
 	LOG( "Water state: " + prefix + "_depth.dds, _vx.dds, _vz.dds" );
+
+	// Детальная вода: плитки — в растр мира (внутренние тексели, без поля), строка 0 — дальний край по z
+	if( m_detailTileCount == 0 )
+		return true;
+	copies.clear();
+	bytes.clear();
+	if( !DMD3D::instance().captureTexture( m_detailWater, copies, bytes ) || copies.size() < m_detailTileCount )
+	{
+		reason = "water detail readback failed";
+		return false;
+	}
+	const uint32_t inner = m_detailSide - 2;
+	const uint32_t side = static_cast<uint32_t>( std::lround( m_terrain->terrainHeight().worldSize / m_detailTileSize ) ) * inner;
+	std::vector<float> detail[4];
+	detail[0].assign( static_cast<size_t>( side ) * side, -1e9f );
+	for( int c = 1; c < 4; ++c )
+		detail[c].assign( static_cast<size_t>( side ) * side, 0.0f );
+	for( uint32_t t = 0; t < m_detailTileCount; ++t )
+	{
+		for( uint32_t j = 1; j <= inner; ++j )
+		{
+			const float* texel = reinterpret_cast<const float*>( bytes.data() + copies[t].offset + j * copies[t].rowPitch );
+			const uint32_t z = m_detailCoords[t].y * inner + j - 1;
+			if( z >= side )
+				continue;
+			for( uint32_t i = 1; i <= inner; ++i )
+			{
+				const uint32_t x = m_detailCoords[t].x * inner + i - 1;
+				if( x >= side )
+					continue;
+				const size_t index = static_cast<size_t>( side - 1 - z ) * side + x;
+				for( int c = 0; c < 4; ++c )
+					detail[c][index] = texel[i * 4 + c];
+			}
+		}
+	}
+	const char* detailNames[4] = { "_detail_level.dds", "_detail_vx.dds", "_detail_vz.dds", "_detail_depth.dds" };
+	for( int c = 0; c < 4; ++c )
+	{
+		const std::string file = prefix + detailNames[c];
+		if( !GpuImages::saveFloatDDS( std::wstring( file.begin(), file.end() ), side, side, detail[c].data() ) )
+		{
+			reason = "cannot write " + file;
+			return false;
+		}
+	}
+	LOG( "Water detail state: " + prefix + "_detail_level.dds, _detail_vx.dds, _detail_vz.dds, _detail_depth.dds" );
 	return true;
 }
 

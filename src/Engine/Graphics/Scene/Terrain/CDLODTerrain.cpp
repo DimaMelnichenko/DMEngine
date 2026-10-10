@@ -217,6 +217,8 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 	height.heightMultiplier = m_initialized ? m_properties["Height multiplier"].data<float>() : m_heightMultiplier;
 	height.heightOffset = m_heightOffset;
 	height.detailTileSize = m_detailTileSize;
+	height.detailTiles = &m_detailView;
+	height.detailIndex = &m_detailIndexView;
 	return height;
 }
 
