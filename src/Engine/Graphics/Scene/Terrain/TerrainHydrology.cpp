@@ -1824,7 +1824,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			stepLength[k] = std::clamp( p.stepHeight / ( steepness * std::max( reachSlope, 1e-4 ) ), std::max( 0.5 * width, 0.5 ), 4.0 * width );
 			const double share = smoothstep( 0.67 * p.stepMinSlope, p.stepMinSlope, reachSlope ) *
 								 std::clamp( std::min( outletDistance[k], inflowDistance[k] ) / ( 2.0 * stepLength[k] ), 0.0, 1.0 );
-			stepHeight[k] = steepness * reachSlope * stepLength[k] * share;
+			// Не выше вреза у оси: у родника и на мелком русле уступ поднимал бы воду плёса выше берега
+			stepHeight[k] = std::min( steepness * reachSlope * stepLength[k], depth[k] * ( 1.0 + shape[k].thalweg ) ) * share;
 		}
 		for( int k : nodeOrder )
 		{
@@ -1858,9 +1859,12 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	{
 		return Section{ half[k], depth[k], bank[k], shape[k].thalweg, bend[k], poolPhase[k], stepPhase[k], stepLength[k], stepHeight[k], stepSeed[k] };
 	};
-	// Подъём дна ступенями над гладким дном в доле t отрезка, м: от котла под уступом (фаза — целое) дно поднимается к гребню
-	// следующего уступа, затем уступ длиной stepFace вниз — к котлу. Высота уступа — step_height с разбросом ±30 % у каждого
-	// (свой у ручья); подъём круче уклона (step_steepness > 1), поэтому котёл за уступом — глубже гладкого дна
+	// Подъём дна ступенями над гладким дном в доле t отрезка, м (≤ 0 почти везде): от котла под уступом (фаза — целое) дно
+	// поднимается к гребню следующего уступа, затем уступ длиной stepFace вниз — к котлу. Высота уступа — step_height с
+	// разбросом ±30 % у каждого (свой у ручья); подъём круче уклона (step_steepness > 1), поэтому котёл за уступом — глубже
+	// гладкого дна. Ступени врезаны вниз: гребень — на гладком дне (± разброс), котлы — ниже. С гребнем выше гладкого дна
+	// (вниз и вверх поровну) уровень плёса за ним поднимался над прежним, и у мелкого русла вода выходила на берег тонким
+	// слоем — разлив по траве (2026-10-11)
 	auto stepOffset = [&]( const Section& s0, const Section& s1, double t )
 	{
 		const double height = s0.stepHeight + ( s1.stepHeight - s0.stepHeight ) * t;
@@ -1879,9 +1883,10 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		const double here = 0.5 * height * jitter( index );
 		const double next = 0.5 * height * jitter( index + 1.0 );
 		const double face = std::clamp( stepFace / std::max( length, 1e-3 ), 0.05, 0.4 );
+		const double down = 0.5 * height;
 		if( f < 1.0 - face )
-			return -here + 2.0 * here * f / ( 1.0 - face );
-		return here - ( here + next ) * smoothstep( 0.0, 1.0, ( f - ( 1.0 - face ) ) / face );
+			return -here + 2.0 * here * f / ( 1.0 - face ) - down;
+		return here - ( here + next ) * smoothstep( 0.0, 1.0, ( f - ( 1.0 - face ) ) / face ) - down;
 	};
 	auto pieceProfile = [&]( const Section& s0, const Section& s1, Point a, Point b, double t0, double t1, double cx, double cy,
 							 double& base )
