@@ -50,7 +50,8 @@ struct WaterSample
 	float remembered;	// наибольшая глубина за последние ~30 с, м: где вода была недавно
 };
 
-WaterSample sampleWater( float2 uv )
+// Вода в точке uv; detail, texel — тексель детальной воды (waterDetailTexel), если его уже нашли
+WaterSample sampleWater( float2 uv, bool detail, float3 texel )
 {
 	const float4 state = g_waterState.SampleLevel( g_SamplerLinearClamp, uv, 0.0f );
 	WaterSample water;
@@ -59,17 +60,23 @@ WaterSample sampleWater( float2 uv )
 	water.inflow = g_waterSources.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ) * 1000.0f;
 	water.remembered = state.w;
 	// У русел — детальная вода (только у статичной: память о воде — её глубина)
-	float3 texel;
-	if( waterDetailTexel( uv, texel ) )
+	if( detail )
 	{
 		uint width, height, slices;
 		g_waterDetail.GetDimensions( width, height, slices );
-		const float4 detail = g_waterDetail.SampleLevel( g_SamplerLinearClamp, float3( texel.xy / float2( width, height ), texel.z ), 0.0f );
-		water.depth = detail.w;
-		water.velocity = detail.yz;
-		water.remembered = detail.w;
+		const float4 fine = g_waterDetail.SampleLevel( g_SamplerLinearClamp, float3( texel.xy / float2( width, height ), texel.z ), 0.0f );
+		water.depth = fine.w;
+		water.velocity = fine.yz;
+		water.remembered = fine.w;
 	}
 	return water;
+}
+
+WaterSample sampleWater( float2 uv )
+{
+	float3 texel;
+	const bool detail = waterDetailTexel( uv, texel );
+	return sampleWater( uv, detail, texel );
 }
 
 // Глубина, сглаженная по соседям в полутора ячейках (край без ступенек сетки), × 2: у самого уреза, где вода только

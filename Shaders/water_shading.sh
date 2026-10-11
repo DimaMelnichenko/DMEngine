@@ -4,7 +4,8 @@
 // со сдвигом по нормали — преломление) с поглощением по пути луча в воде (глубина сцены, SLOT_SCENE_DEPTH) и рассеянием
 // в толще. Сверху — отражение: блик солнца с тенью, отражённое небо и экранные отражения — луч по буферу глубины сцены
 // (сама вода в глубину не пишет и себя не отражает). Рябь — гладкий полосовой узор (карта WaterRipples) на плитках по
-// клеткам сетки воды: в плитке узор повёрнут по течению в её центре, вытянут вдоль него и плывёт с его скоростью, соседние
+// клеткам сетки воды (1 м; в детальной воде у русел — 0,5 м): в плитке узор повёрнут по течению в её центре, вытянут
+// вдоль него и плывёт с его скоростью, соседние
 // плитки смешиваются без потери контраста (Tiled Directional Flow, van Hoesel 2011; смешение — Heitz, Neyret 2018): узор
 // не сбрасывается фазами и показывает, куда течёт вода. Пена — где течение быстрое, неоднородное или ручей круто падает;
 // её узор несёт то же течение. Тонкая вода у берега прозрачнее и без отражения — кромка мягкая. Константы —
@@ -48,6 +49,11 @@ static const float calmSpeed = 0.5f;			// м/с
 // Узор пены — наклон крупной октавы по U (разброс 1/√2) втрое мельче ряби, приведённый к разбросу 0,43 доли пены
 static const float foamFrequency = 3.0f;
 static const float foamPatternScale = 0.43f * 1.41421356f;
+// Плитки ряби в детальной воде у русел — две ячейки её сетки: течение там мельче метра (обход камня, профиль поперёк
+// русла), а ячейка 0,25 м меньше волны ряби (~20 см) — узор рассыпался бы. У края набора детальных плиток рябь переходит
+// в плитки 1 м на этой полосе — без шва
+static const float detailRippleCell = 0.5f;
+static const float detailRippleFade = 1.0f;		// м
 
 // Плитка ряби — клетка сетки воды: узор в ней повёрнут по течению в её центре, вытянут вдоль него и плывёт с его
 // скоростью (Tiled Directional Flow, van Hoesel 2011). Поворот в плитке один, поэтому узор не закручивается и не
@@ -107,6 +113,69 @@ RippleTiles rippleTiles( float2 xz, float2 velocity )
 	}
 	result.normalization = rsqrt( max( weights, 1e-4f ) );
 	return result;
+}
+
+// Плитки детальной воды вокруг точки xz: клетка detailRippleCell по сетке мира, течение — детальной воды у центра плитки
+// (ячейка у угла центра: выборка RGBA32F с фильтрацией вдвое дороже). texel — тексель точки (water.sh, waterDetailTexel:
+// x, y — в текселях плитки, z — срез): центр соседней плитки берётся из той же плитки — из её поля в тексель, за ним —
+// с края (поле — копия ячеек соседа)
+RippleTiles detailRippleTiles( float2 xz, float2 velocity, float3 texel )
+{
+	uint width, height, slices;
+	g_waterDetail.GetDimensions( width, height, slices );
+	const float2 size = float2( width, height );
+	const float step = cb_waterDetail.y / ( width - 2 );
+	const float2 position = xz / detailRippleCell - 0.5f;
+	const int2 base = (int2)floor( position );
+	const float2 f = position - (float2)base;
+	RippleTiles result;
+	float weights = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 corner = int2( k & 1, k >> 1 );
+		const int2 cell = base + corner;
+		RippleTile tile;
+		tile.center = ( cell + 0.5f ) * detailRippleCell;
+		const int2 at = clamp( int2( floor( texel.xy + ( tile.center - xz ) / step - 0.5f ) ), 0, int2( size ) - 1 );
+		const float4 state = g_waterDetail.Load( int4( at, texel.z, 0 ) );
+		const float2 flow = state.w > 0.0f ? state.yz : velocity;
+		const float speed = length( flow );
+		tile.along = speed > 1e-4f ? flow / speed : float2( 1.0f, 0.0f );
+		tile.stretch = lerp( 1.0f, g_rippleStretch, saturate( speed / rippleStretchSpeed ) );
+		tile.rate = speed / ( g_rippleScale * tile.stretch );
+		const uint hash = rippleHash( (uint)cell.x + rippleHash( (uint)cell.y + 0x9e3779b9u ) );
+		tile.offset = float2( hash & 0xffffu, hash >> 16u ) / 65536.0f;
+		tile.weight = ( corner.x ? f.x : 1.0f - f.x ) * ( corner.y ? f.y : 1.0f - f.y );
+		weights += tile.weight * tile.weight;
+		result.tiles[k] = tile;
+	}
+	result.normalization = rsqrt( max( weights, 1e-4f ) );
+	return result;
+}
+
+// Доля ряби по плиткам детальной воды в точке xz детальной плитки: 1, к краю набора плиток (за краем плитки нет) — до 0
+// на полосе detailRippleFade
+float detailRippleWeight( float2 xz )
+{
+	const float tileSize = cb_waterDetail.y;
+	uint tilesX, tilesZ;
+	g_terrainDetailIndex.GetDimensions( tilesX, tilesZ );
+	const int2 tile = int2( floor( xz / tileSize ) );
+	const float2 local = xz - tile * tileSize;
+	float weight = 1.0f;
+	[unroll] for( int k = 0; k < 4; ++k )
+	{
+		const int2 side = k == 0 ? int2( -1, 0 ) : k == 1 ? int2( 1, 0 ) : k == 2 ? int2( 0, -1 ) : int2( 0, 1 );
+		const float distance = k == 0 ? local.x : k == 1 ? tileSize - local.x : k == 2 ? local.y : tileSize - local.y;
+		if( distance >= detailRippleFade )
+			continue;
+		const int2 neighbor = tile + side;
+		const bool present = all( neighbor >= 0 ) && neighbor.x < (int)tilesX && neighbor.y < (int)tilesZ &&
+							 g_terrainDetailIndex.Load( int3( neighbor, 0 ) ) != 0;
+		if( !present )
+			weight = min( weight, distance / detailRippleFade );
+	}
+	return saturate( weight );
 }
 
 // Рябь течения: наклон крупной (xy) и мелкой (zw) октавы по X и Z мира; frequency — во сколько раз узор мельче повтора
@@ -225,7 +294,23 @@ struct WaterShading
 	float  depth;			// глубина воды в точке, м: у уреза — кромка
 	float  foam;			// доля пены 0…1 до кромки и узора (быстро, сдвиг скорости, перекат)
 	float  ripple;			// сила ряби течения не меньше этой доли (ручей неспокоен и при малой скорости); 0 — по скорости
+	// Детальная вода у русел: тексель точки (waterDetailTexel) и доля ряби по её плиткам 0,5 м (detailRippleWeight;
+	// 0 — плитки 1 м)
+	float3 detailTexel;
+	float  detailRipple;
 };
+
+// Рябь (flow) и узор пены (foamNoise, если foam) по набору плиток — с весом weight
+void addRipple( RippleTiles tiles, float2 xz, float2 dX, float2 dY, bool foam, float weight, inout float4 flow, inout float foamNoise )
+{
+	float pattern;
+	flow += weight * flowRipple( tiles, xz, 1.0f, dX, dY, pattern );
+	[branch] if( foam )
+	{
+		flowRipple( tiles, xz, foamFrequency, dX, dY, pattern );
+		foamNoise += weight * pattern;
+	}
+}
 
 // Расстояние вдоль оси взгляда до сцены за пикселем; над небом — далеко
 float sceneViewDepthAt( float4 position )
@@ -255,14 +340,22 @@ float4 shadeWater( WaterShading input )
 	float foam = 0.0f;
 	[branch] if( flowStrength > rippleMinSlope || foamAmount > 0.0f )
 	{
-		const RippleTiles tiles = rippleTiles( input.worldPosition.xz, input.velocity );
-		float flowPattern;
-		flow = flowRipple( tiles, input.worldPosition.xz, 1.0f, dX, dY, flowPattern ) * flowStrength;
-		[branch] if( foamAmount > 0.0f )
+		// Плитки 0,5 м детальной воды и 1 м — у края набора детальных плиток вместе: узоры несвязаны, смешение — с делением
+		// на √Σw², как у плиток
+		const float w = input.detailRipple;
+		const bool needFoam = foamAmount > 0.0f;
+		float foamNoise = 0.0f;
+		[branch] if( w > 0.0f )
+			addRipple( detailRippleTiles( input.worldPosition.xz, input.velocity, input.detailTexel ), input.worldPosition.xz, dX, dY,
+					   needFoam, w, flow, foamNoise );
+		[branch] if( w < 1.0f )
+			addRipple( rippleTiles( input.worldPosition.xz, input.velocity ), input.worldPosition.xz, dX, dY, needFoam, 1.0f - w, flow,
+					   foamNoise );
+		const float normalization = rsqrt( w * w + ( 1.0f - w ) * ( 1.0f - w ) );
+		flow *= normalization * flowStrength;
+		[branch] if( needFoam )
 		{
-			float foamNoise;
-			flowRipple( tiles, input.worldPosition.xz, foamFrequency, dX, dY, foamNoise );
-			const float pattern = 0.5f + 0.5f * foamPatternScale * foamNoise;
+			const float pattern = 0.5f + 0.5f * foamPatternScale * foamNoise * normalization;
 			// На тонкой воде пена реже и прозрачнее: в пару сантиметров ей не на чем держаться
 			foam = smoothstep( 1.0f - foamAmount, 1.2f - foamAmount, pattern ) * foamAmount * saturate( input.depth / 0.05f );
 		}
