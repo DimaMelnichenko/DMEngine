@@ -18,7 +18,8 @@ cbuffer NightSkyParameters : register( b4 )
 	float3 g_moonDiskLuminance;		// яркость диска полной луны (Ломмель — Зелигер: ровный диск), с цветом луны; 0 — луны нет
 	float  g_moonDiskBrightnessLimit;	// предел яркости полного диска после экспозиции; 0 — физическая яркость
 	float2 g_viewportSize;			// размер цели фона, пиксели
-	float2 g_nightSkyPadding;
+	float  g_milkyWayLuminance;		// средняя яркость карты Млечного Пути (её среднее по сфере — 1); 0 — его нет или день
+	float  g_nightSkyPadding;
 };
 
 #endif

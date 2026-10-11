@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Фон кадра — небо: таблицы Sky-View по направлению взгляда со свечением ночного неба и землёй под горизонтом
-// (skyLuminance, Shaders/sky_view.sh), диски солнца и луны. Рисуется после непрозрачных на дальней плоскости — только
-// там, где сцена ничего не нарисовала; звёзды — поверх него своим вызовом (Shaders/sky_stars.vs)
+// (skyLuminance, Shaders/sky_view.sh), диски солнца и луны, ночью — Млечный Путь. Рисуется после непрозрачных на дальней
+// плоскости — только там, где сцена ничего не нарисовала; звёзды — поверх него своим вызовом (Shaders/sky_stars.vs)
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
@@ -14,6 +14,8 @@
 #include "bindless.sh"
 
 DM_SRV( Texture2D, g_moonAlbedo, 5 );	// карта луны: равнопромежуточная, долгота 0 — в центре (видимая сторона)
+// Млечный Путь: равнопромежуточная по RA/Dec J2000, RA 0 — в центре и растёт влево, как на картах неба; среднее по сфере — 1
+DM_SRV( Texture2D, g_milkyWay, 7 );
 
 struct PixelInputType
 {
@@ -63,6 +65,18 @@ float3 moonLight( float3 direction )
 	return g_moonDiskLuminance * albedo * ( 2.0f * lommelSeeliger ) * coverage;
 }
 
+// Свет звёзд слабее каталога (Shaders/sky_stars.vs) — карта яркости в экваториальных координатах; мип — под размер
+// пикселя pixelAngle (радианы): явно, иначе на стыке RA 0/360° производные u скачут и выборка уходит в последний мип
+float3 milkyWayLight( float3 direction, float pixelAngle )
+{
+	const float3 d = float3( dot( direction, g_equatorialX ), dot( direction, g_equatorialY ), dot( direction, g_equatorialZ ) );
+	const float2 uv = float2( 0.5f - atan2( d.y, d.x ) / ( 2.0f * atmospherePi ), 0.5f - asin( clamp( d.z, -1.0f, 1.0f ) ) / atmospherePi );
+	uint width, height, mips;
+	g_milkyWay.GetDimensions( 0, width, height, mips );
+	const float mip = log2( max( pixelAngle * width / ( 2.0f * atmospherePi ), 1.0f ) );
+	return g_milkyWay.SampleLevel( g_SamplerLinearWrap, uv, mip ).rgb * g_milkyWayLuminance;
+}
+
 float4 main( PixelInputType input ) : SV_TARGET
 {
 	// Луч взгляда: из экранных координат в пространство камеры (левое, взгляд по +Z), затем в мир
@@ -100,6 +114,11 @@ float4 main( PixelInputType input ) : SV_TARGET
 		}
 		lights += moonLight( direction ) * moonScale;
 	}
+
+	// Размер пикселя в радианах — до ветвления: производные внутри него не определены
+	const float pixelAngle = max( max( length( ddx( direction ) ), length( ddy( direction ) ) ), 1e-6f );
+	[branch] if( g_milkyWayLuminance > 0.0f && direction.y > -0.05f )
+		lights += milkyWayLight( direction, pixelAngle );
 
 	color += lights * transmittance;
 	// Туман уровня — между камерой и небом (Shaders/height_fog.sh)

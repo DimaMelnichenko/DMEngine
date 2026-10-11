@@ -2,10 +2,17 @@
 #include "Shaders\slots.h"
 #include "Shaders\atmosphere_constants.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <DirectXTex.h>
 #include "D3D\DMD3D.h"
+#include "D3D\TextureImages.h"
 #include "SceneTargets.h"
+#include "Texture\ImageFile.h"
+#include "Utils\Fingerprint.h"
 #include "Light\DMLightDriver.h"
 #include "Logger\Logger.h"
 #include "System.h"
@@ -35,6 +42,10 @@ constexpr uint32_t skyViewSlot = 3;
 constexpr uint32_t skyViewMoonSlot = 4;
 constexpr uint32_t moonAlbedoSlot = 5;	// фон
 constexpr uint32_t starsSlot = 6;		// звёзды
+constexpr uint32_t milkyWaySlot = 7;	// фон
+// Кэш готовой карты Млечного Пути; версия — в отпечатке: сменился способ сборки — карта соберётся заново
+constexpr const char* milkyWayCacheDirectory = "cache\\sky";
+constexpr uint32_t milkyWayCacheVersion = 1;
 // Освещённость от звезды величины m — 10^(−0,4·(m + 14,18)) лк, как у луны в SunPosition::computeMoon
 constexpr float starMagnitudeOffset = 14.18f;
 
@@ -71,6 +82,106 @@ XMFLOAT3 starColor( float colorIndex )
 						static_cast<float>( std::max( 0.0557 * x - 0.2040 * y + 1.0570 * z, 0.0 ) ) );
 	const float scale = 1.0f / std::max( luminance( rgb ), 1e-30f );
 	return XMFLOAT3( rgb.x * scale, rgb.y * scale, rgb.z * scale );
+}
+
+// Карта Млечного Пути для фона из файла path: float → сводка в лог → нормировка на среднее по сфере 1 → мипы →
+// R9G9B9E5 (общая экспонента: 4 байта на тексель, точности хватает на ровный свет без насыщенных цветов)
+bool buildMilkyWay( const std::string& path, ScratchImage& packed )
+{
+	ScratchImage image;
+	if( !ImageFile::load( path, image ) )
+		return false;
+	constexpr DXGI_FORMAT floatFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	if( image.GetMetadata().format != floatFormat )
+	{
+		ScratchImage converted;
+		const HRESULT hr = IsCompressed( image.GetMetadata().format ) ?
+			Decompress( image.GetImages(), image.GetImageCount(), image.GetMetadata(), floatFormat, converted ) :
+			Convert( image.GetImages(), image.GetImageCount(), image.GetMetadata(), floatFormat, TEX_FILTER_DEFAULT,
+					 TEX_THRESHOLD_DEFAULT, converted );
+		if( FAILED( hr ) )
+		{
+			LOG( "Sky atmosphere: can't convert the Milky Way " + path + " to float" );
+			return false;
+		}
+		image = std::move( converted );
+	}
+
+	// Сводка по телесному углу (строка карты — склонение, вес cos δ): среднее по сфере, полоса Галактики |b| < 10° и её
+	// полюса |b| > 60°, центр Галактики и Большое Магелланово Облако — проверка ориентации (RA растёт влево:
+	// u = 0,5 − RA / 360°; у зеркальной карты оба ≈ среднему)
+	const Image& level = *image.GetImage( 0, 0, 0 );
+	const size_t width = level.width;
+	const size_t height = level.height;
+	auto texel = [&]( size_t x, size_t y ) -> XMFLOAT4& { return reinterpret_cast<XMFLOAT4*>( level.pixels + y * level.rowPitch )[x]; };
+	const XMVECTOR galacticPole = XMVectorSet( -0.8676661f, -0.1980764f, 0.4559838f, 0.0f );	// RA 192,86°, Dec 27,13°
+	const float sinBand = std::sin( XMConvertToRadians( 10.0f ) );
+	const float sinPoles = std::sin( XMConvertToRadians( 60.0f ) );
+	double sum = 0.0, weightSum = 0.0, plane = 0.0, planeWeight = 0.0, poles = 0.0, polesWeight = 0.0;
+	for( size_t y = 0; y < height; ++y )
+	{
+		const float declination = ( 0.5f - ( y + 0.5f ) / height ) * XM_PI;
+		const float weight = std::cos( declination );
+		for( size_t x = 0; x < width; ++x )
+		{
+			const XMFLOAT4& value = texel( x, y );
+			const float weighted = luminance( XMFLOAT3( value.x, value.y, value.z ) ) * weight;
+			const float rightAscension = ( 0.5f - ( x + 0.5f ) / width ) * XM_2PI;
+			const XMVECTOR direction = XMVectorSet( weight * std::cos( rightAscension ), weight * std::sin( rightAscension ),
+													std::sin( declination ), 0.0f );
+			const float sinLatitude = std::abs( XMVectorGetX( XMVector3Dot( direction, galacticPole ) ) );
+			sum += weighted;
+			weightSum += weight;
+			if( sinLatitude < sinBand )
+			{
+				plane += weighted;
+				planeWeight += weight;
+			}
+			else if( sinLatitude > sinPoles )
+			{
+				poles += weighted;
+				polesWeight += weight;
+			}
+		}
+	}
+	const float mean = static_cast<float>( sum / std::max( weightSum, 1e-30 ) );
+	if( mean <= 0.0f )
+	{
+		LOG( "Sky atmosphere: the Milky Way " + path + " is black" );
+		return false;
+	}
+	auto relativeAt = [&]( float rightAscension, float declination )
+	{
+		const float u = 0.5f - rightAscension / 360.0f;
+		const size_t x = static_cast<size_t>( ( u - std::floor( u ) ) * width ) % width;
+		const size_t y = std::min( static_cast<size_t>( ( 0.5f - declination / 180.0f ) * height ), height - 1 );
+		const XMFLOAT4& value = texel( x, y );
+		return luminance( XMFLOAT3( value.x, value.y, value.z ) ) / mean;
+	};
+	LOG( "Sky atmosphere: Milky Way " + path + " " + std::to_string( width ) + "x" + std::to_string( height ) + ", mean " +
+		 std::to_string( mean ) + "; galactic plane (|b| < 10) " + std::to_string( plane / std::max( planeWeight, 1e-30 ) / mean ) +
+		 " x mean, poles (|b| > 60) " + std::to_string( poles / std::max( polesWeight, 1e-30 ) / mean ) + " x mean, galactic center " +
+		 std::to_string( relativeAt( 266.4f, -28.9f ) ) + " x mean, LMC " + std::to_string( relativeAt( 80.9f, -69.8f ) ) + " x mean" );
+
+	// Нормировка на среднее 1: яркость задаёт milky_way_luminance уровня
+	const float scale = 1.0f / mean;
+	for( size_t y = 0; y < height; ++y )
+	{
+		for( size_t x = 0; x < width; ++x )
+		{
+			XMFLOAT4& value = texel( x, y );
+			value = XMFLOAT4( value.x * scale, value.y * scale, value.z * scale, 1.0f );
+		}
+	}
+	ScratchImage mips;
+	if( FAILED( GenerateMipMaps( *image.GetImage( 0, 0, 0 ), TEX_FILTER_BOX | TEX_FILTER_FORCE_NON_WIC, 0, mips ) ) ||
+		FAILED( Convert( mips.GetImages(), mips.GetImageCount(), mips.GetMetadata(), DXGI_FORMAT_R9G9B9E5_SHAREDEXP,
+						 TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT, packed ) ) )
+	{
+		LOG( "Sky atmosphere: can't build mips of the Milky Way " + path );
+		return false;
+	}
+	return true;
 }
 
 // Расстояния до входа и выхода луча из сферы с центром в начале координат; y < 0 — промах или сфера позади
@@ -123,6 +234,9 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( NightSkyParameters ), m_nightSkyConstants ) ||
 		!createStars( stars ) )
 		return false;
+	m_milkyWayFile = settings.milkyWay;
+	if( !m_milkyWayFile.empty() )
+		m_hasMilkyWay = loadMilkyWay( m_milkyWayFile );
 
 	// Карта луны: нет в базе — белая текстура, диск ровный
 	if( System::textures().exists( moonAlbedoTexture ) )
@@ -160,6 +274,13 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	prop->setHigh( 0.01f );
 	prop->setControlType( GUIControlType::DRAG );
 
+	// Млечный Путь — средняя по сфере яркость его карты (в полосе Галактики — втрое ярче); видно ночью, как звёзды
+	prop = m_properties.insert( "Milky Way luminance", settings.milkyWayLuminance );
+	prop->setLow( 0.0f );
+	prop->setHigh( 0.001f );
+	prop->setControlType( GUIControlType::DRAG );
+	prop->setUnit( "cd/m²" )->setTooltip( "Mean over the whole sky; the galactic plane is about three times brighter" );
+
 	// Во сколько раз диск луны больше настоящего (0,52°), как Source Angle у источника в UE: по умолчанию вдвое, как
 	// диск солнца (Shaders/sky_background.ps), чтобы был заметен на экране; освещённость от луны не меняется
 	prop = m_properties.insert( "Moon disk scale", 2.0f );
@@ -194,6 +315,8 @@ SkyAtmosphere::Settings SkyAtmosphere::settings()
 	settings.groundAlbedo = m_properties["Ground albedo"].data<float>();
 	settings.aerialPerspectiveViewDistanceScale = m_properties["Aerial perspective view distance scale"].data<float>();
 	settings.nightSkyLuminance = m_properties["Night sky luminance (cd/m2)"].data<float>();
+	settings.milkyWay = m_milkyWayFile;
+	settings.milkyWayLuminance = m_properties["Milky Way luminance"].data<float>();
 	return settings;
 }
 
@@ -232,6 +355,59 @@ bool SkyAtmosphere::createStars( const std::vector<StarRecord>& stars )
 	m_starCount = static_cast<uint32_t>( data.size() );
 	LOG( "Sky atmosphere: " + std::to_string( m_starCount ) + " stars, brightest V " + std::to_string( brightest->magnitude ) +
 		 " at RA " + std::to_string( brightest->rightAscension ) + ", Dec " + std::to_string( brightest->declination ) );
+	return true;
+}
+
+bool SkyAtmosphere::loadMilkyWay( const std::string& file )
+{
+	const auto start = std::chrono::high_resolution_clock::now();
+	const std::string path = "Textures\\" + file;
+	std::error_code error;
+	const uintmax_t size = std::filesystem::file_size( path, error );
+	if( error )
+	{
+		LOG( "Sky atmosphere: no Milky Way " + path + ", the night sky is without it" );
+		return false;
+	}
+
+	// Готовая карта (нормировка, мипы, R9G9B9E5) — в кэше по отпечатку файла: сборка из EXR 4096 × 2048 — ~1 с
+	Fingerprint key;
+	key.add( file.data(), file.size() );
+	key.add( size );
+	key.add( std::filesystem::last_write_time( path, error ).time_since_epoch().count() );
+	key.add( milkyWayCacheVersion );
+	char name[64];
+	snprintf( name, sizeof( name ), "milky_way_%016llx.dds", static_cast<unsigned long long>( key.value ) );
+	const std::string cachePath = std::string( milkyWayCacheDirectory ) + "\\" + name;
+
+	ScratchImage packed;
+	const bool cached = std::filesystem::exists( cachePath, error ) && ImageFile::load( cachePath, packed ) &&
+						packed.GetMetadata().format == DXGI_FORMAT_R9G9B9E5_SHAREDEXP;
+	if( !cached )
+	{
+		if( !buildMilkyWay( path, packed ) )
+		{
+			LOG( "Sky atmosphere: can't load the Milky Way " + path + ", the night sky is without it" );
+			return false;
+		}
+		// Прежние варианты карты — удалить: один файл на карту
+		std::filesystem::create_directories( milkyWayCacheDirectory, error );
+		for( const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator( milkyWayCacheDirectory, error ) )
+			if( entry.is_regular_file() && entry.path().filename().string().rfind( "milky_way_", 0 ) == 0 )
+				std::filesystem::remove( entry.path(), error );
+		const std::wstring wide( cachePath.begin(), cachePath.end() );
+		if( FAILED( SaveToDDSFile( packed.GetImages(), packed.GetImageCount(), packed.GetMetadata(), DDS_FLAGS_NONE, wide.c_str() ) ) )
+			LOG( "Sky atmosphere: can't write the Milky Way cache " + cachePath );
+	}
+	if( !GpuImages::createTexture( packed, m_milkyWayTexture, m_milkyWay ) )
+	{
+		LOG( "Sky atmosphere: can't create the Milky Way texture from " + path );
+		return false;
+	}
+	DMD3D::instance().setName( m_milkyWayTexture, "Milky Way" );
+	const auto elapsed = std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count();
+	LOG( "Sky atmosphere: Milky Way " + std::string( cached ? "from cache " + cachePath : "built from " + path ) + ", ms " +
+		 std::to_string( elapsed ) );
 	return true;
 }
 
@@ -367,6 +543,9 @@ SkyAtmosphere::NightSkyParameters SkyAtmosphere::currentNightSky( const Paramete
 	night.moonDiskBrightnessLimit = m_properties["Moon disk brightness limit"].data<float>();
 	night.viewportSize = XMFLOAT2( static_cast<float>( DMD3D::instance().backBufferWidth() ),
 								   static_cast<float>( DMD3D::instance().backBufferHeight() ) );
+	// Млечный Путь — ночью, как звёзды
+	if( m_hasMilkyWay )
+		night.milkyWayLuminance = m_properties["Milky Way luminance"].data<float>() * night.starIlluminanceScale;
 
 	// Диск луны: яркость полного диска — настоящая (освещённость от полной луны / телесный угол настоящего диска),
 	// фазу даёт освещение шара. Увеличенный диск светит той же яркостью: он только в фоне, сцену освещает источник
@@ -564,6 +743,8 @@ void SkyAtmosphere::renderCustom( const RenderContext& )
 	d3d.setSRV( skyViewSlot, m_skyViewLut.srv() );
 	d3d.setSRV( skyViewMoonSlot, m_skyViewMoonLut.srv() );
 	d3d.setSRV( moonAlbedoSlot, m_moonAlbedo->srv() );
+	if( m_hasMilkyWay )
+		d3d.setSRV( milkyWaySlot, m_milkyWay );
 	NightSkyParameters night = currentNightSky( m_frameParams );
 	Device::updateResourceData<NightSkyParameters>( m_nightSkyConstants, night );
 	d3d.setConstantBuffer( 4, m_nightSkyConstants );

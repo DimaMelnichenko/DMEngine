@@ -28,8 +28,8 @@ namespace GS
 // - при смене солнца (первый включённый направленный источник уровня) или настроек — cubemap неба из Sky-View
 //   (Shaders/sky_cube.ps) с мипами для SkyLight: гармоники рассеянного света и префильтр отражений (Shaders/ibl.sh,
 //   слоты PS t101…t103) — по шагу за кадр, как Real Time Capture у Sky Light в UE.
-// Свой вызов в проходе sky рисует небо фоном кадра — из Sky-View (Shaders/sky_background.ps), ночью поверх него — звёзды
-// каталога (таблица Stars, Shaders/sky_stars.vs). Пропускание к солнцу для его света у земли
+// Свой вызов в проходе sky рисует небо фоном кадра — из Sky-View (Shaders/sky_background.ps; ночью с Млечным Путём по
+// карте уровня), ночью поверх него — звёзды каталога (таблица Stars, Shaders/sky_stars.vs). Пропускание к солнцу для его света у земли
 // (Atmosphere Sun Light) считает на CPU по той же модели — sunTransmittance. Настройки — строка таблицы SkyAtmosphere,
 // на которую ссылается уровень (Levels.atmosphere), и окно GUI «Sky atmosphere»
 class SkyAtmosphere : public SceneObject
@@ -102,7 +102,8 @@ private:
 		DirectX::XMFLOAT3 moonDiskLuminance;
 		float moonDiskBrightnessLimit;	// предел яркости полного диска после экспозиции; 0 — без предела
 		DirectX::XMFLOAT2 viewportSize;
-		DirectX::XMFLOAT2 padding;
+		float milkyWayLuminance;		// средняя яркость карты Млечного Пути, в единицах запекания; 0 — его нет
+		float padding;
 	};
 
 	// Звезда в буфере GPU — Star в Shaders/sky_stars.vs
@@ -118,6 +119,9 @@ private:
 	bool createAerialPerspectiveVolume();
 	// Буфер звёзд: направление, освещённость по звёздной величине и цвет по показателю B − V
 	bool createStars( const std::vector<StarRecord>& stars );
+	// Карта Млечного Пути (file от Textures\): нормированная на среднее по сфере 1, с мипами; сводка — в лог. Нет файла —
+	// фон без него
+	bool loadMilkyWay( const std::string& file );
 	Parameters currentParameters() const;
 	// Звёзды и диск луны для фона: экваториальный базис, размер и яркость диска — по SunPosition уровня
 	NightSkyParameters currentNightSky( const Parameters& params ) const;
@@ -156,6 +160,10 @@ private:
 	Buffer m_stars;
 	ShaderView m_starsView;
 	uint32_t m_starCount = 0;
+	std::string m_milkyWayFile;			// для сохранения уровня; пусто — Млечного Пути нет
+	Texture m_milkyWayTexture;
+	ShaderView m_milkyWay;
+	bool m_hasMilkyWay = false;
 
 	// Таблицы проходов неба: t1 — Ψ, t2 — пропускание, t3 — Sky-View солнца, t4 — луны
 	RenderTarget m_transmittanceLut;

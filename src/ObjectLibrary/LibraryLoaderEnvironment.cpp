@@ -93,7 +93,7 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 	if( level.atmosphereId )
 	{
 		SQLite::Statement query( DBConnector::instance().db(), "SELECT sky_intensity, haze, ground_albedo, aerial_perspective_view_distance_scale, "
-															   "night_sky_luminance FROM SkyAtmosphere WHERE id = :id" );
+															   "night_sky_luminance, milky_way, milky_way_luminance FROM SkyAtmosphere WHERE id = :id" );
 		query.bind( ":id", *level.atmosphereId );
 		if( !query.executeStep() )
 		{
@@ -106,6 +106,8 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		level.atmosphere.aerialPerspectiveViewDistanceScale =
 			static_cast<float>( query.getColumn( "aerial_perspective_view_distance_scale" ).getDouble() );
 		level.atmosphere.nightSkyLuminance = static_cast<float>( query.getColumn( "night_sky_luminance" ).getDouble() );
+		level.atmosphere.milkyWay = query.getColumn( "milky_way" ).getString();
+		level.atmosphere.milkyWayLuminance = static_cast<float>( query.getColumn( "milky_way_luminance" ).getDouble() );
 	}
 
 	if( level.windId )
@@ -342,12 +344,13 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 			}
 			SQLite::Statement updateAtmosphere( db, "UPDATE SkyAtmosphere SET sky_intensity = :intensity, haze = :haze, "
 													"ground_albedo = :albedo, aerial_perspective_view_distance_scale = :aerialScale, "
-													"night_sky_luminance = :nightSky WHERE id = :id" );
+													"night_sky_luminance = :nightSky, milky_way_luminance = :milkyWay WHERE id = :id" );
 			updateAtmosphere.bind( ":intensity", dbValue( atmosphere->skyIntensity ) );
 			updateAtmosphere.bind( ":haze", dbValue( atmosphere->haze ) );
 			updateAtmosphere.bind( ":albedo", dbValue( atmosphere->groundAlbedo ) );
 			updateAtmosphere.bind( ":aerialScale", dbValue( atmosphere->aerialPerspectiveViewDistanceScale ) );
 			updateAtmosphere.bind( ":nightSky", dbValue( atmosphere->nightSkyLuminance ) );
+			updateAtmosphere.bind( ":milkyWay", dbValue( atmosphere->milkyWayLuminance ) );
 			updateAtmosphere.bind( ":id", *level.atmosphereId );
 			updateAtmosphere.exec();
 
