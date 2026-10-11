@@ -27,6 +27,9 @@ constexpr double outletSlope = 0.05;
 // Уклон поверхности для скорости ручья — по уровню воды на столько метров вверх и вниз по сети: шаг узлов ~1 м, а плёсы и
 // перекаты — через pool_spacing (6 м), окно короче него
 constexpr double speedSpan = 2.0;
+// Ступени русла: уклон участка — по дну на столько метров вверх и вниз по сети; длина уступа (стенки) вдоль течения, м
+constexpr double stepSlopeSpan = 5.0;
+constexpr double stepFace = 0.3;
 // Восемь соседей (строка, столбец) и расстояние в шагах — порядок как в Tools/erosion.py (при равном уклоне берётся первый)
 constexpr int neighbourRow[8] = { -1, -1, -1, 0, 0, 1, 1, 1 };
 constexpr int neighbourCol[8] = { -1, 0, 1, -1, 1, -1, 0, 1 };
@@ -1771,6 +1774,71 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			poolPhase[d] = poolPhase[k] + step / std::max( p.poolSpacing * 2.0 * half[k] * cell, 1.0 );
 		}
 	}
+	// Путь до берега озера ниже по течению, м: у впадения, как у истока, наименьшая глубина и запас нарастают от берега —
+	// в устье вода ручья переходит в озеро, а не стоит над ним ступенькой
+	std::vector<double> inflowDistance( count, std::numeric_limits<double>::infinity() );
+	for( auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it )
+	{
+		const int k = *it;
+		const int d = down[k];
+		if( inLake( k ) )
+			continue;
+		if( endLake[k] >= 0 )
+			inflowDistance[k] = 0.0;
+		else if( d >= 0 )
+		{
+			const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
+			inflowDistance[k] = inLake( d ) ? step : inflowDistance[d] + step;
+		}
+	}
+	// Ступени и плёсы на крутом (step-pool, каскад; Montgomery, Buffington 1997: ступени — с ~3 % уклона, каскад — круче
+	// 6,5 %): уступ step_height, шаг L — чтобы крутизна ступеней H / L была step_steepness уклона участка (Abrahams, Atkinson
+	// 1995), но 0,5…4 ширины дна (Chin 1999: 0,4–2,4 ширины; положе — уступ ниже и сходит на нет). Уклон участка — по дну
+	// на ±stepSlopeSpan вдоль сети: у узла дно идёт по рельефу, и уклон одного отрезка шумит. У истока из озера и в устье
+	// ступеней нет (там уровень озера), положе step_min_slope — тоже (плёсы и перекаты)
+	std::vector<double> stepLength( count, 1.0 ), stepHeight( count, 0.0 ), stepPhase( count, 0.0 );
+	std::vector<uint32_t> stepSeed( count, 0 );
+	if( p.stepHeight > 0.0f )
+	{
+		auto walkBed = [&]( int from, const std::vector<int>& next, double& distance )
+		{
+			distance = 0.0;
+			while( distance < stepSlopeSpan && next[from] >= 0 && !inLake( next[from] ) )
+			{
+				const int to = next[from];
+				distance += std::hypot( position[to].x - position[from].x, position[to].y - position[from].y ) * cell;
+				from = to;
+			}
+			return from;
+		};
+		for( int k = 0; k < count; ++k )
+		{
+			if( inLake( k ) )
+				continue;
+			double below = 0.0, above = 0.0;
+			const int lower = walkBed( k, down, below );
+			const int upper = walkBed( k, up, above );
+			const double reachSlope = below + above > 1e-3 ? std::max( ( bed[upper] - bed[lower] ) / ( below + above ), 0.0 ) : 0.0;
+			const double width = 2.0 * half[k] * cell;
+			const double steepness = std::max( static_cast<double>( p.stepSteepness ), 0.1 );
+			stepLength[k] = std::clamp( p.stepHeight / ( steepness * std::max( reachSlope, 1e-4 ) ), std::max( 0.5 * width, 0.5 ), 4.0 * width );
+			const double share = smoothstep( 0.67 * p.stepMinSlope, p.stepMinSlope, reachSlope ) *
+								 std::clamp( std::min( outletDistance[k], inflowDistance[k] ) / ( 2.0 * stepLength[k] ), 0.0, 1.0 );
+			stepHeight[k] = steepness * reachSlope * stepLength[k] * share;
+		}
+		for( int k : nodeOrder )
+		{
+			if( up[k] < 0 )
+				stepSeed[k] = static_cast<uint32_t>( std::llround( position[k].x * 16.0 ) * 73856093ll ^ std::llround( position[k].y * 16.0 ) * 19349663ll );
+			const int d = down[k];
+			if( d >= 0 && up[d] == k )
+			{
+				const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
+				stepPhase[d] = stepPhase[k] + step / stepLength[k];
+				stepSeed[d] = stepSeed[k];
+			}
+		}
+	}
 
 	// Врез отрезка k → down[k] в точке (cx, cy) клеток (центр клетки — +0,5). Его же считают и клетки карты, и точки
 	// детальной земли. Врез по отрезку оси a → b, параметры — от узла k к down[k] в долях t0…t1 (часть отрезка — у гладкой оси
@@ -1783,8 +1851,38 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	struct Section
 	{
 		double half, depth, bank, thalweg, bend, phase;
+		double stepPhase, stepLength, stepHeight;	// ступени: фаза (целое — котёл под уступом), шаг, м, высота уступа, м
+		uint32_t stepSeed;							// разброс высоты уступов — свой у каждого ручья
 	};
-	auto section = [&]( int k ) { return Section{ half[k], depth[k], bank[k], shape[k].thalweg, bend[k], poolPhase[k] }; };
+	auto section = [&]( int k )
+	{
+		return Section{ half[k], depth[k], bank[k], shape[k].thalweg, bend[k], poolPhase[k], stepPhase[k], stepLength[k], stepHeight[k], stepSeed[k] };
+	};
+	// Подъём дна ступенями над гладким дном в доле t отрезка, м: от котла под уступом (фаза — целое) дно поднимается к гребню
+	// следующего уступа, затем уступ длиной stepFace вниз — к котлу. Высота уступа — step_height с разбросом ±30 % у каждого
+	// (свой у ручья); подъём круче уклона (step_steepness > 1), поэтому котёл за уступом — глубже гладкого дна
+	auto stepOffset = [&]( const Section& s0, const Section& s1, double t )
+	{
+		const double height = s0.stepHeight + ( s1.stepHeight - s0.stepHeight ) * t;
+		if( height <= 0.0 )
+			return 0.0;
+		const double phase = s0.stepPhase + ( s1.stepPhase - s0.stepPhase ) * t;
+		const double length = s0.stepLength + ( s1.stepLength - s0.stepLength ) * t;
+		const double index = std::floor( phase );
+		const double f = phase - index;
+		auto jitter = [&]( double i )
+		{
+			uint32_t h = static_cast<uint32_t>( static_cast<int64_t>( i ) ) * 747796405u + s0.stepSeed;
+			h = ( ( h >> ( ( h >> 28u ) + 4u ) ) ^ h ) * 277803737u;
+			return 0.7 + 0.6 * static_cast<double>( ( h >> 22u ) ^ h ) / 4294967295.0;
+		};
+		const double here = 0.5 * height * jitter( index );
+		const double next = 0.5 * height * jitter( index + 1.0 );
+		const double face = std::clamp( stepFace / std::max( length, 1e-3 ), 0.05, 0.4 );
+		if( f < 1.0 - face )
+			return -here + 2.0 * here * f / ( 1.0 - face );
+		return here - ( here + next ) * smoothstep( 0.0, 1.0, ( f - ( 1.0 - face ) ) / face );
+	};
 	auto pieceProfile = [&]( const Section& s0, const Section& s1, Point a, Point b, double t0, double t1, double cx, double cy,
 							 double& base )
 	{
@@ -1818,11 +1916,15 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		const double slope = std::clamp( ( distance - sideWidth ) / sideBank, 0.0, 1.0 );
 		const double roundness = std::clamp( static_cast<double>( p.bankRoundness ), 0.0, 1.0 );
 		const double rise = slope + ( smoothstep( 0.0, 1.0, slope ) - slope ) * roundness;
-		const double profile = sideDepth * ( 1.0 - rise ) + thalweg;
+		// Ступени — поперёк всего дна, к бровке сходят на нет; по ним и уровень воды (base): в плёсе вода ровная, на уступе
+		// — перелив
+		const double step = stepOffset( s0, s1, t );
+		const double profile = std::max( sideDepth * ( 1.0 - rise ) + thalweg - step * ( 1.0 - rise ), 0.0 );
 		base = profile;
-		// Плёс — глубже на pool_depth вреза, пол-периода; перекат — как есть
+		// Плёс — глубже на pool_depth вреза, пол-периода; перекат — как есть. На ступенчатом участке плёсы — котлы ступеней
 		const double phase = s0.phase + ( s1.phase - s0.phase ) * t;
-		const double pool = 1.0 + p.poolDepth * 0.5 * ( 1.0 + std::sin( 2.0 * pi * phase ) );
+		const double stepped = std::clamp( std::max( s0.stepHeight, s1.stepHeight ) / std::max( static_cast<double>( p.stepHeight ), 1e-3 ), 0.0, 1.0 );
+		const double pool = 1.0 + p.poolDepth * ( 1.0 - stepped ) * 0.5 * ( 1.0 + std::sin( 2.0 * pi * phase ) );
 		const double fill = profile / std::max( sideDepth * ( 1.0 + thalwegShare ), 1e-3 );	// 0 у бровки, 1 у тальвега
 		const double noise = p.bedNoise * fill *
 							 ( valueNoise( cx * cell / p.bedNoiseScale, cy * cell / p.bedNoiseScale ) +
@@ -1992,6 +2094,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 				return section( k );
 			Section result = section( k );
 			result.bend = 0.0;
+			result.stepHeight = 0.0;
 			result.depth = std::max( height.sample( kept[v].x - 0.5, kept[v].y - 0.5 ) - ( bed[k] - p.minSlope * along[v] * cell ), 0.0 );
 			result.phase += along[v] * cell / std::max( p.poolSpacing * 2.0 * half[k] * cell, 1.0 );
 			return result;
@@ -2271,23 +2374,6 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// ручьи в нём и у берега — на том же уровне подпором, а не правилами на стыках
 	std::vector<double> slope( count, p.minWaterSlope ), level( count ), speed( count ), foam( count ), actual( count );
 	std::vector<double> hydraulicRadius( count, 0.0 );	// R русла у узла, м — течение детальной воды (water_flow.cs)
-	// Путь до берега озера ниже по течению, м: у впадения, как у истока, наименьшая глубина и запас нарастают от берега —
-	// в устье вода ручья переходит в озеро, а не стоит над ним ступенькой
-	std::vector<double> inflowDistance( count, std::numeric_limits<double>::infinity() );
-	for( auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it )
-	{
-		const int k = *it;
-		const int d = down[k];
-		if( inLake( k ) )
-			continue;
-		if( endLake[k] >= 0 )
-			inflowDistance[k] = 0.0;
-		else if( d >= 0 )
-		{
-			const double step = std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
-			inflowDistance[k] = inLake( d ) ? step : inflowDistance[d] + step;
-		}
-	}
 	// Дно, от которого стоит вода, — видимое, детальное (билинейно по текселям плитки; вне плиток — сетка 1 м), а не клетки
 	// карты: клетка опущена до самой низкой детальной точки в ней, на крутом это её нижний край — вода выходила на
 	// 10–20 см мельче, и гребень переката оставался почти сухим (2026-10-10). Тальвег — наименьшее поперёк направления
@@ -2430,10 +2516,10 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// и вся сеть упиралась в min_speed — одна скорость на крутом и на ровном (2026-10-10). Где глубина — по расходу (крупный
 	// ручей), это то же Q / (w·h). Уклон — по уровню воды на ±speedSpan вдоль сети: перекат быстрее, плёс и подпор у озера
 	// медленнее
-	auto walk = [&]( int from, const std::vector<int>& next, double& distance )
+	auto walk = [&]( int from, const std::vector<int>& next, double span, double& distance )
 	{
 		distance = 0.0;
-		while( distance < speedSpan && next[from] >= 0 )
+		while( distance < span && next[from] >= 0 )
 		{
 			const int to = next[from];
 			distance += std::hypot( position[to].x - position[from].x, position[to].y - position[from].y ) * cell;
@@ -2444,21 +2530,42 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( int k = 0; k < count; ++k )
 	{
 		double below = 0.0, above = 0.0;
-		const int lower = walk( k, down, below );
-		const int upper = walk( k, up, above );
+		// На ступенчатом участке — не короче шага ступеней: на уступе уровень обрывается, и уклон по нему — не уклон участка
+		const double span = stepHeight[k] > 0.0 ? std::max( speedSpan, stepLength[k] ) : speedSpan;
+		const int lower = walk( k, down, span, below );
+		const int upper = walk( k, up, span, above );
 		const double surfaceSlope = below + above > 1e-3 ? ( level[upper] - level[lower] ) / ( below + above ) : slope[k];
+		// По Маннингу — для опорной глубины участка (в том же окне), у узла — по неразрывности: расход участка (скорость ×
+		// опорная глубина) на его глубину. Опорная — средняя, на ступенчатом участке — над гребнем (наименьшая): расход
+		// ступеней задают гребни уступов (там поток проходит критическую глубину), плёсы его не ускоряют. В плёсе вода
+		// глубже — медленнее, на гребне — быстрее (не больше чем вдвое); на ровном участке глубина узла — средняя, и скорость
+		// — по Маннингу, как была. По глубине узла Маннинг давал обратное: в плёсе за уступом вода текла быстрее, и средняя
+		// по ручьям со ступенями выросла с 1,08 до 1,33 м/с (по средней глубине — до 1,43)
 		const double depth = std::max( level[k] - actual[k], 1e-3 );
-		const double radius = width[k] * depth / ( width[k] + 2.0 * depth );
-		hydraulicRadius[k] = radius;
-		speed[k] = std::max( std::pow( radius, 2.0 / 3.0 ) * std::sqrt( std::max( surfaceSlope, static_cast<double>( p.minWaterSlope ) ) ) /
-								 shape[k].manning,
-							 static_cast<double>( p.minSpeed ) );
+		double depthSum = 0.0, lengthSum = 0.0, shallowest = depth;
+		for( int at = upper; at != lower && down[at] >= 0; at = down[at] )
+		{
+			const int next = down[at];
+			const double step = std::hypot( position[next].x - position[at].x, position[next].y - position[at].y ) * cell;
+			depthSum += 0.5 * ( std::max( level[at] - actual[at], 0.0 ) + std::max( level[next] - actual[next], 0.0 ) ) * step;
+			lengthSum += step;
+			shallowest = std::min( shallowest, std::max( level[next] - actual[next], 1e-3 ) );
+		}
+		const double stepped = std::clamp( stepHeight[k] / std::max( static_cast<double>( p.stepHeight ), 1e-3 ), 0.0, 1.0 );
+		const double average = lengthSum > 1e-3 ? std::max( depthSum / lengthSum, 1e-3 ) : depth;
+		const double mean = average + ( shallowest - average ) * stepped;
+		const double meanRadius = width[k] * mean / ( width[k] + 2.0 * mean );
+		hydraulicRadius[k] = width[k] * depth / ( width[k] + 2.0 * depth );
+		const double meanSpeed = std::pow( meanRadius, 2.0 / 3.0 ) *
+								 std::sqrt( std::max( surfaceSlope, static_cast<double>( p.minWaterSlope ) ) ) / shape[k].manning;
+		speed[k] = std::max( meanSpeed * mean / std::max( depth, 0.5 * mean ), static_cast<double>( p.minSpeed ) );
 		foam[k] = std::clamp( ( slope[k] - p.foamSlope ) / ( 2.0 * p.foamSlope ), 0.0, 1.0 ) * 0.6;
 	}
 
-	// 6. Камни русла — часть кривой: на дне (гуще на перекатах и на крутом), у бортов — у уреза, и редкие валуны. Место
-	// случайное, но от положения отрезка: тот же камень на том же месте при каждой загрузке и после правки других кривых;
-	// внахлёст не ставятся. Высота — самое низкое детальное дно под камнем: на борту камень не висит над склоном
+	// 6. Камни русла — часть кривой: уступы ступеней, на дне (гуще на перекатах и на крутом), у бортов — у уреза, и редкие
+	// валуны. Место случайное, но от положения отрезка: тот же камень на том же месте при каждой загрузке и после правки
+	// других кривых; внахлёст не ставятся. Высота — самое низкое детальное дно под камнем: на борту камень не висит над
+	// склоном
 	result.stones.clear();
 	{
 		std::vector<Point> stoneCells;		// центры камней в клетках карты и радиусы, клеток — проверка нахлёста
@@ -2477,6 +2584,69 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 								return true;
 			return false;
 		};
+		auto addStone = [&]( const Point& at, double size, uint32_t seed, double bottom )
+		{
+			result.stones.push_back( { DirectX::XMFLOAT3( static_cast<float>( at.x * cell ), static_cast<float>( bottom ),
+														  static_cast<float>( ( n - at.y ) * cell ) ),
+									   static_cast<float>( size ), seed } );
+			buckets[bucket( static_cast<int>( std::floor( at.x ) ), static_cast<int>( std::floor( at.y ) ) )].push_back( stoneCells.size() );
+			stoneCells.push_back( at );
+			stoneRadii.push_back( 0.5 * size / cell );
+		};
+		// Камни-ступени: уступ ступени сложен камнями (keystones) — ряд поперёк дна на стенке уступа, каждый — около 1,4
+		// высоты уступа (не меньше stone_size, не больше boulder_size), с пропусками: ступень не ровная стенка. Раньше
+		// остальных камней — они не займут места на уступе. Высота — дно под центром и по бокам поперёк течения (не вдоль:
+		// камень на стенке опустился бы в котёл)
+		for( int k = 0; k < count; ++k )
+		{
+			const int d = down[k];
+			if( d < 0 || inLake( k ) || inLake( d ) || up[d] != k || std::max( stepHeight[k], stepHeight[d] ) <= 0.0 )
+				continue;
+			const Point a = position[k];
+			const Point b = position[d];
+			const double length = std::hypot( b.x - a.x, b.y - a.y );
+			if( length < 1e-6 || stepPhase[d] <= stepPhase[k] )
+				continue;
+			const double tx = ( b.x - a.x ) / length;
+			const double ty = ( b.y - a.y ) / length;
+			// Середина стенки уступа — фаза m − face / 2 (уступ — перед целой фазой)
+			const double face = std::clamp( stepFace / std::max( stepLength[k], 1e-3 ), 0.05, 0.4 );
+			for( double m = std::floor( stepPhase[k] + 0.5 * face ) + 1.0; m - 0.5 * face < stepPhase[d]; m += 1.0 )
+			{
+				const double t = ( m - 0.5 * face - stepPhase[k] ) / ( stepPhase[d] - stepPhase[k] );
+				if( t < 0.0 || t >= 1.0 )
+					continue;
+				const double height = stepHeight[k] + ( stepHeight[d] - stepHeight[k] ) * t;
+				const double halfWidth = half[k] + ( half[d] - half[k] ) * t;
+				if( height < 0.05 )
+					continue;
+				StoneRandom random( static_cast<uint64_t>( std::llround( a.x * 16.0 ) ) * 73856093ull ^
+									static_cast<uint64_t>( std::llround( a.y * 16.0 ) ) * 19349663ull ^ static_cast<uint64_t>( m ) * 83492791ull );
+				const double size = std::clamp( 1.4 * height * ( 0.85 + 0.3 * random.uniform() ), static_cast<double>( p.stoneSize ),
+												std::max( static_cast<double>( p.boulderSize ), static_cast<double>( p.stoneSize ) ) );
+				const double width = 2.0 * halfWidth * cell;
+				const int stones = std::max( static_cast<int>( std::lround( width / ( 0.85 * size ) ) ), 1 );
+				const Point centre{ a.x + ( b.x - a.x ) * t, a.y + ( b.y - a.y ) * t };
+				for( int i = 0; i < stones; ++i )
+				{
+					if( random.uniform() < 0.15 )
+						continue;
+					const double stoneSize = size * ( 0.8 + 0.4 * random.uniform() );
+					const double across = stones > 1 ? ( ( i + 0.5 ) / stones * 2.0 - 1.0 ) * ( halfWidth - 0.5 * stoneSize / cell ) : 0.0;
+					const double along = ( random.uniform() - 0.5 ) * 0.2 * stoneSize / cell;
+					const Point at{ centre.x - ty * across + tx * along, centre.y + tx * across + ty * along };
+					if( at.x < 1.0 || at.y < 1.0 || at.x > n - 1.0 || at.y > n - 1.0 || lake[cellIndex( at, n )] )
+						continue;
+					const double radius = 0.5 * stoneSize / cell;
+					if( overlaps( at, radius ) )
+						continue;
+					double bottom = bedAt( at.x, at.y );
+					for( const double side : { -0.5, 0.5 } )
+						bottom = std::min( bottom, bedAt( at.x - ty * radius * side, at.y + tx * radius * side ) );
+					addStone( at, stoneSize, random.next(), bottom );
+				}
+			}
+		}
 		for( int k = 0; k < count; ++k )
 		{
 			const int d = down[k];
@@ -2542,12 +2712,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 					for( const Point& around : { Point{ radius * 0.5, 0.0 }, Point{ -radius * 0.5, 0.0 }, Point{ 0.0, radius * 0.5 },
 												 Point{ 0.0, -radius * 0.5 } } )
 						bottom = std::min( bottom, bedAt( at.x + around.x, at.y + around.y ) );
-					result.stones.push_back( { DirectX::XMFLOAT3( static_cast<float>( at.x * cell ), static_cast<float>( bottom ),
-																  static_cast<float>( ( n - at.y ) * cell ) ),
-											   static_cast<float>( size ), seed } );
-					buckets[bucket( static_cast<int>( std::floor( at.x ) ), static_cast<int>( std::floor( at.y ) ) )].push_back( stoneCells.size() );
-					stoneCells.push_back( at );
-					stoneRadii.push_back( radius );
+					addStone( at, size, seed, bottom );
 				}
 			}
 		}

@@ -295,6 +295,12 @@ struct WaterChannelsSettings
 	float poolSpacing = 6.0f;		// плёс и перекат — через столько ширин русла
 	float bedNoise = 0.08f;			// неровность дна и бортов, м
 	float bedNoiseScale = 1.5f;		// размер неровностей, м
+	// Ступени и плёсы на крутом (step-pool и каскад, Montgomery, Buffington 1997): уступ высотой stepHeight, шаг — чтобы
+	// крутизна ступеней H / L была stepSteepness уклона (Abrahams, Atkinson 1995: 1–1,5), но 0,5…4 ширины дна; положе
+	// stepMinSlope ступеней нет (там плёсы и перекаты)
+	float stepHeight = 0.4f;		// м; 0 — без ступеней
+	float stepSteepness = 1.25f;
+	float stepMinSlope = 0.03f;		// м на м
 	// Чаша озера: отмель, затем свал к глубине depthRatio · √площади в пределах min…max
 	float lakeDepthRatio = 0.05f;	// наибольшая глубина на √площади озера
 	float lakeMinDepth = 1.0f;		// м
