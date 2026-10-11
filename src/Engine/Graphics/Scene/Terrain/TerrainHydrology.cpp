@@ -2841,6 +2841,27 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		result.detailTiles[t].water.assign( static_cast<size_t>( detailSide ) * detailSide, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, 0.0f ) );
 		detailNearest[t].assign( static_cast<size_t>( detailSide ) * detailSide, std::numeric_limits<double>::infinity() );
 	}
+	// Доля перепада уровня отрезка k → d в доле t: на ступенчатом участке перепад — на стенке уступа (там же, где уступ дна,
+	// stepOffset: от гребня до котла), а не по прямой на весь отрезок: в плёсе вода ровная, на уступе — слив каскадом.
+	// Где ступени сходят на нет, — к прямой. Узлы разных ручьёв (приток у слияния) — прямая: фазы ступеней у них свои
+	auto levelShare = [&]( int k, int d, double t )
+	{
+		const double stepped = std::clamp( std::max( stepHeight[k], stepHeight[d] ) / std::max( static_cast<double>( p.stepHeight ), 1e-3 ), 0.0, 1.0 );
+		if( stepped <= 0.0 || up[d] != k )
+			return t;
+		const double face = std::clamp( stepFace / std::max( stepLength[k], 1e-3 ), 0.05, 0.4 );
+		auto passed = [&]( double phase )
+		{
+			const double index = std::floor( phase );
+			return index + smoothstep( 1.0 - face, 1.0, phase - index );
+		};
+		const double from = passed( stepPhase[k] );
+		const double to = passed( stepPhase[d] );
+		if( to - from < 1e-3 )
+			return t;
+		const double share = ( passed( stepPhase[k] + ( stepPhase[d] - stepPhase[k] ) * t ) - from ) / ( to - from );
+		return t + ( share - t ) * stepped;
+	};
 	auto detailTexel = [&]( const DetailTile& tile, int i, int j )
 	{
 		return Point{ tile.x * static_cast<double>( detailTileCells ) + ( i - 0.5 ) * detailStep,
@@ -2978,7 +2999,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 							detailNearest[slice][index] = distance;
 							const double v = speed[k] + ( speed[d] - speed[k] ) * t;
 							DirectX::XMFLOAT4& texel = tile.water[index];
-							texel.x = static_cast<float>( pointLevel[i] + ( pointLevel[i + 1] - pointLevel[i] ) * t );
+							texel.x = static_cast<float>( pointLevel[i] + ( pointLevel[i + 1] - pointLevel[i] ) * levelShare( k, d, t ) );
 							texel.y = static_cast<float>( sx / length * v );
 							texel.z = static_cast<float>( -sy / length * v );
 							texel.w = static_cast<float>(

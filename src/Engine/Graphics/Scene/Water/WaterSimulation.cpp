@@ -110,7 +110,8 @@ const ChannelParameter channelParameters[] = {
 	{ "Min water slope", &WaterChannelsSettings::minWaterSlope, 0.001f, 0.05f, "", "Slope in the water depth at least, m per m" },
 	{ "Min speed", &WaterChannelsSettings::minSpeed, 0.0f, 2.0f, "m/s", "Stream flow at least" },
 	{ "Min water depth", &WaterChannelsSettings::minWaterDepth, 0.05f, 1.0f, "m", "Water over the bed at least" },
-	{ "Foam slope", &WaterChannelsSettings::foamSlope, 0.02f, 0.5f, "", "Steeper streams foam (fully at twice), m per m" },
+	{ "Foam slope", &WaterChannelsSettings::foamSlope, 0.02f, 0.5f, "",
+	  "Steeper water surface foams: cascades over steps and the pool below them (fully at three times), m per m" },
 	{ "Freeboard", &WaterChannelsSettings::freeboard, 0.0f, 2.0f, "m", "Water stands this much below the bank top: the bed is cut for floods" },
 	{ "Source taper", &WaterChannelsSettings::sourceTaper, 0.0f, 100.0f, "m", "From a spring the narrowest bed, incision, water and freeboard grow over this length" },
 	{ "Bed shape", &WaterChannelsSettings::bedShape, 1.0f, 12.0f, "", "Bed cross-section: 2 - V (sharp thalweg), more - flat U" },
@@ -629,6 +630,7 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	params.foamSpeed = std::max( current.foamSpeed, 0.01f );
 	params.foamShear = std::max( current.foamShear, 0.01f );
 	params.detailDistance = m_detailTileCount > 0 ? std::max( current.detailDistance, 0.0f ) : 0.0f;
+	params.foamSlope = std::max( current.channels.foamSlope, 0.01f );
 	Device::updateResourceData( m_surfaceBuffer, params );
 
 	ScopedRenderState state( context.frameRaster );

@@ -2,7 +2,8 @@
 // Поверхность воды на сетке симуляции — озёра и вода, которая течёт по рельефу (класс WaterSimulation, docs/water.md).
 // Материал — Shaders/water_shading.sh; здесь — вода из текстуры симуляции (режим static — одно поле озёр и ручьёв):
 // течение и пена по скорости и сдвигу скорости между соседними ячейками (перекаты, у камней, слив из озера; у русел — по
-// ячейкам детальной воды 0,25 м) и у камней русла, которые выходят к поверхности; глубина — до сцены под поверхностью
+// ячейкам детальной воды 0,25 м), у камней русла, которые выходят к поверхности, и на сливе — где поверхность детальной
+// воды круто падает (каскад на уступе ступени) и в котле под ним; глубина — до сцены под поверхностью
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "water_shading.sh"
@@ -15,6 +16,28 @@ DM_SRV( Texture2D<float2>, g_stones, 2 );	// камни русла: площад
 // площадь камней клетки, при которой пена полная (камень 0,4 м, погружённый на 0,2 м, — 0,08)
 static const float stoneFoamDepth = 0.12f;
 static const float stoneFoamArea = 0.08f;
+// Пена слива: на стенке уступа — до fallFoam (узор пены даёт белые полосы по течению, а не сплошное пятно), в котле —
+// от уклона поверхности на plungeDistance выше по течению (вода падает и взбивается) — до plungeFoam
+static const float fallFoam = 0.6f;
+static const float plungeDistance = 0.6f;
+static const float plungeFoam = 0.45f;
+
+// Уклон поверхности детальной воды в точке texel (в текселях плитки, с полем; срез — z): по уровню ±1 тексель, билинейно
+// (точечно — уклон по квадратам 0,25 м, пена квадратами); за урезом (выборка задела ячейку без уровня, −1e30) — свой
+float detailSurfaceSlope( float3 texel, float2 size, float step )
+{
+	const float here = g_waterDetail.SampleLevel( g_SamplerLinearClamp, float3( texel.xy / size, texel.z ), 0.0f ).x;
+	if( here < -1e3f )
+		return 0.0f;
+	float levels[4];
+	[unroll] for( int k = 0; k < 4; ++k )
+	{
+		const float2 offset = k == 0 ? float2( 1.0f, 0.0f ) : k == 1 ? float2( -1.0f, 0.0f ) : k == 2 ? float2( 0.0f, 1.0f ) : float2( 0.0f, -1.0f );
+		const float level = g_waterDetail.SampleLevel( g_SamplerLinearClamp, float3( ( texel.xy + offset ) / size, texel.z ), 0.0f ).x;
+		levels[k] = level < -1e3f ? here : level;
+	}
+	return length( float2( levels[0] - levels[1], levels[2] - levels[3] ) ) / ( 2.0f * step );
+}
 
 float4 main( WaterPixelInput input ) : SV_TARGET
 {
@@ -61,6 +84,21 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 		dz = sampleWater( input.uv + float2( 0.0f, texel ) ).velocity - sampleWater( input.uv - float2( 0.0f, texel ) ).velocity;
 	}
 	const float shear = ( length( dx ) + length( dz ) ) / ( 2.0f * g_cellSize );
+	// Слив: поверхность детальной воды круче g_foamSlope — каскад на уступе ступени; ниже по течению — котёл, куда падает
+	// вода (по уклону выше по течению на plungeDistance)
+	float fall = 0.0f;
+	if( detail )
+	{
+		uint width, height, slices;
+		g_waterDetail.GetDimensions( width, height, slices );
+		const float2 size = float2( width, height );
+		const float step = cb_waterDetail.y / ( width - 2 );
+		const float here = detailSurfaceSlope( detailTexel, size, step );
+		const float2 along = length( water.velocity ) > 1e-3f ? normalize( water.velocity ) : 0.0f;
+		const float above = detailSurfaceSlope( float3( detailTexel.xy - along * ( plungeDistance / step ), detailTexel.z ), size, step );
+		fall = max( fallFoam * saturate( ( here - g_foamSlope ) / ( 2.0f * g_foamSlope ) ),
+					plungeFoam * saturate( ( above - g_foamSlope ) / ( 2.0f * g_foamSlope ) ) );
+	}
 
 	// Глубина в пикселе — от поверхности до сцены под ней по вертикали (глубина сцены), а не по сетке 1 м: урез по земле,
 	// которую видно (детальная земля у русел — U-ложе), плавный
@@ -81,6 +119,6 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	// У камня, выходящего к поверхности, вода бурлит: кромка пены, где слой воды над ним тонкий, — сильнее на быстрой воде
 	const float stones = saturate( g_stones.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).x / stoneFoamArea );
 	const float contact = stones * saturate( 1.0f - shading.depth / stoneFoamDepth ) * saturate( speed / 0.5f );
-	shading.foam = saturate( ( speed - g_foamSpeed ) / g_foamSpeed ) + saturate( shear / g_foamShear - 0.5f ) + contact;
+	shading.foam = saturate( ( speed - g_foamSpeed ) / g_foamSpeed ) + saturate( shear / g_foamShear - 0.5f ) + contact + fall;
 	return shadeWater( shading );
 }

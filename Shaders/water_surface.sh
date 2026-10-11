@@ -27,7 +27,7 @@ cbuffer WaterSurfaceBuffer : register( SLOT_CB_MATERIAL )
 	float  g_foamSpeed;			// пена — быстрее этого, м/с (полная — вдвое быстрее)
 	float  g_foamShear;			// и там, где сдвиг скорости больше, 1/с
 	float  g_detailDistance;	// м: ближе — поверхность у русел рисует детальная плитка (0 — её нет)
-	float  g_surfacePadding;
+	float  g_foamSlope;			// пена слива — где поверхность детальной воды круче, м на м (полная — втрое круче)
 };
 
 struct WaterPixelInput

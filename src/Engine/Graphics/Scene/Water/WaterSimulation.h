@@ -141,7 +141,7 @@ private:
 		float foamSpeed;
 		float foamShear;
 		float detailDistance;	// м: ближе — детальная поверхность у русел (0 — её нет)
-		float padding;
+		float foamSlope;		// пена слива — где поверхность детальной воды круче, м на м (WaterChannelsSettings::foamSlope)
 	};
 
 	// Раскладка — cbuffer WaterFlowBuffer (b5) в water_flow.cs

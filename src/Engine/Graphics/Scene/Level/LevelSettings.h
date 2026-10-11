@@ -308,7 +308,7 @@ struct WaterChannelsSettings
 	float lakeShelfWidth = 3.0f;	// отмель у берега (литораль), м
 	float lakeShelfDepth = 0.5f;	// глубина у края отмели, м
 	float lakeDropSlope = 0.4f;		// свал за отмелью, м на м
-	float foamSlope = 0.1f;			// круче — пена на ручье (полная — на вдвое большем), м на м
+	float foamSlope = 0.1f;			// поверхность воды круче — пена слива (каскады на уступах и котёл под ними), м на м
 	// Камни русла (TerrainHydrology, docs/water.md, «Камни в русле»): раскладывает конвейер, ставит слой расстановки
 	// с placement stream_stones, течение тормозится о них
 	float stoneDensity = 1.5f;		// камней на метр ручья (дно и борта); на перекатах и на крутом — гуще
