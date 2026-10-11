@@ -30,6 +30,8 @@ constexpr double speedSpan = 2.0;
 // Ступени русла: уклон участка — по дну на столько метров вверх и вниз по сети; длина уступа (стенки) вдоль течения, м
 constexpr double stepSlopeSpan = 5.0;
 constexpr double stepFace = 0.3;
+// Валуны русла — только где дно не уже, м: в узком ручье у родника крупный камень загораживает русло
+constexpr double boulderMinBedWidth = 1.5;
 // Восемь соседей (строка, столбец) и расстояние в шагах — порядок как в Tools/erosion.py (при равном уклоне берётся первый)
 constexpr int neighbourRow[8] = { -1, -1, -1, 0, 0, 1, 1, 1 };
 constexpr int neighbourCol[8] = { -1, 0, 1, -1, 1, -1, 0, 1 };
@@ -2599,9 +2601,10 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			stoneRadii.push_back( 0.5 * size / cell );
 		};
 		// Камни-ступени: уступ ступени сложен камнями (keystones) — ряд поперёк дна на стенке уступа, каждый — около 1,4
-		// высоты уступа (не меньше stone_size, не больше boulder_size), с пропусками: ступень не ровная стенка. Раньше
-		// остальных камней — они не займут места на уступе. Высота — дно под центром и по бокам поперёк течения (не вдоль:
-		// камень на стенке опустился бы в котёл)
+		// высоты уступа (не меньше stone_size, не больше boulder_size и половины дна), с пропусками: ступень не ровная
+		// стенка. Камень шире половины дна в узком русле у родника стоял один посередине и загораживал ручей (2026-10-11).
+		// Раньше остальных камней — они не займут места на уступе. Высота — дно под центром и по бокам поперёк течения
+		// (не вдоль: камень на стенке опустился бы в котёл)
 		for( int k = 0; k < count; ++k )
 		{
 			const int d = down[k];
@@ -2627,16 +2630,17 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 					continue;
 				StoneRandom random( static_cast<uint64_t>( std::llround( a.x * 16.0 ) ) * 73856093ull ^
 									static_cast<uint64_t>( std::llround( a.y * 16.0 ) ) * 19349663ull ^ static_cast<uint64_t>( m ) * 83492791ull );
-				const double size = std::clamp( 1.4 * height * ( 0.85 + 0.3 * random.uniform() ), static_cast<double>( p.stoneSize ),
-												std::max( static_cast<double>( p.boulderSize ), static_cast<double>( p.stoneSize ) ) );
 				const double width = 2.0 * halfWidth * cell;
+				const double size = std::min( std::clamp( 1.4 * height * ( 0.85 + 0.3 * random.uniform() ), static_cast<double>( p.stoneSize ),
+														  std::max( static_cast<double>( p.boulderSize ), static_cast<double>( p.stoneSize ) ) ),
+											  0.5 * width );
 				const int stones = std::max( static_cast<int>( std::lround( width / ( 0.85 * size ) ) ), 1 );
 				const Point centre{ a.x + ( b.x - a.x ) * t, a.y + ( b.y - a.y ) * t };
 				for( int i = 0; i < stones; ++i )
 				{
 					if( random.uniform() < 0.15 )
 						continue;
-					const double stoneSize = size * ( 0.8 + 0.4 * random.uniform() );
+					const double stoneSize = std::min( size * ( 0.8 + 0.4 * random.uniform() ), 0.5 * width );
 					const double across = stones > 1 ? ( ( i + 0.5 ) / stones * 2.0 - 1.0 ) * ( halfWidth - 0.5 * stoneSize / cell ) : 0.0;
 					const double along = ( random.uniform() - 0.5 ) * 0.2 * stoneSize / cell;
 					const Point at{ centre.x - ty * across + tx * along, centre.y + tx * across + ty * along };
@@ -2676,7 +2680,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			const double expected[3] = {
 				metres * p.stoneDensity * share * ( 1.0 - p.bankStones ) * ( 0.3 + 0.7 * riffle ) * ( 0.6 + 0.7 * steep ),
 				metres * p.stoneDensity * share * p.bankStones,
-				metres * p.boulderDensity * share * ( 0.5 + 0.75 * steep ) };
+				metres * p.boulderDensity * share * ( 0.5 + 0.75 * steep ) * ( 2.0 * half[k] * cell >= boulderMinBedWidth ? 1.0 : 0.0 ) };
 			for( int kind = 0; kind < 3; ++kind )
 			{
 				const int stones = static_cast<int>( std::floor( expected[kind] + random.uniform() ) );
@@ -2684,26 +2688,32 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 				{
 					const double t = random.uniform();
 					// Поперёк оси (клетки, > 0 — слева по течению): дно — по ширине дна; борт — у подошвы и чуть выше, к урезу;
-					// валун — ближе к середине. Размер — около stone_size с разбросом, на перекате и на крутом крупнее; камень
-					// дна — не шире 0,9 дна, валун — не шире дна: в узком ручье он не перегораживает русло целиком
+					// валун — у борта: край — у подошвы. Размер — около stone_size с разбросом, на перекате и на крутом крупнее;
+					// камень дна и валун — не шире половины дна, камень борта — не шире дна (он наполовину на борту): русло
+					// камень не загораживает
 					double offset = 0.0;
 					double size = 0.0;
 					if( kind == 0 )
 					{
 						offset = ( 2.0 * random.uniform() - 1.0 ) * 0.85 * half[k];
 						size = p.stoneSize * std::exp( 0.35 * random.gauss() ) * ( 0.8 + 0.4 * riffle ) * ( 0.85 + 0.25 * steep );
-						size = std::min( size, 0.9 * 2.0 * half[k] * cell );
+						size = std::min( size, half[k] * cell );
 					}
 					else if( kind == 1 )
 					{
 						const double side = random.uniform() < 0.5 ? -1.0 : 1.0;
-						offset = side * ( half[k] * ( 0.8 + 0.25 * random.uniform() ) + bank[k] * 0.3 * random.uniform() );
-						size = p.stoneSize * 1.3 * std::exp( 0.35 * random.gauss() );
+						// Случайные числа — отдельными операторами: порядок вычисления слагаемых не задан, и Debug и Release
+						// брали их в разном порядке — камни и ключ кэша течения расходились
+						const double toe = 0.8 + 0.25 * random.uniform();
+						const double up = 0.3 * random.uniform();
+						offset = side * ( half[k] * toe + bank[k] * up );
+						size = std::min( p.stoneSize * 1.3 * std::exp( 0.35 * random.gauss() ), 2.0 * half[k] * cell );
 					}
 					else
 					{
-						offset = ( 2.0 * random.uniform() - 1.0 ) * 0.6 * half[k];
-						size = std::min( p.boulderSize * ( 0.75 + 0.5 * random.uniform() ), 2.0 * half[k] * cell );
+						size = std::min( p.boulderSize * ( 0.75 + 0.5 * random.uniform() ), half[k] * cell );
+						const double side = random.uniform() < 0.5 ? -1.0 : 1.0;
+						offset = side * std::max( half[k] - 0.5 * size / cell * ( 0.8 + 0.4 * random.uniform() ), 0.0 );
 					}
 					size = std::clamp( size, 0.06, 3.0 );
 					const uint32_t seed = random.next();
