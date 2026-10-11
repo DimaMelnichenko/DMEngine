@@ -121,6 +121,16 @@ struct SkyAtmosphereSettings
 	float nightSkyLuminance = 2e-4f;
 };
 
+// Звезда фона неба — строка таблицы Stars (Yale Bright Star Catalogue, Tools/star_catalog.py): положение на эпоху J2000
+// и блеск. Каталог общий для всех уровней с атмосферой
+struct StarRecord
+{
+	float rightAscension = 0.0f;	// прямое восхождение, градусы
+	float declination = 0.0f;		// склонение, градусы
+	float magnitude = 0.0f;			// видимая звёздная величина V
+	float colorIndex = 0.65f;		// показатель цвета B − V (0,65 — как у Солнца)
+};
+
 // Строка HDRIBackdrop
 struct HDRIBackdropSettings
 {

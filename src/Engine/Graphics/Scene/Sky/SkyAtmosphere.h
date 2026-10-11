@@ -28,7 +28,8 @@ namespace GS
 // - при смене солнца (первый включённый направленный источник уровня) или настроек — cubemap неба из Sky-View
 //   (Shaders/sky_cube.ps) с мипами для SkyLight: гармоники рассеянного света и префильтр отражений (Shaders/ibl.sh,
 //   слоты PS t101…t103) — по шагу за кадр, как Real Time Capture у Sky Light в UE.
-// Свой вызов в проходе sky рисует небо фоном кадра — из Sky-View (Shaders/sky_background.ps). Пропускание к солнцу для его света у земли
+// Свой вызов в проходе sky рисует небо фоном кадра — из Sky-View (Shaders/sky_background.ps), ночью поверх него — звёзды
+// каталога (таблица Stars, Shaders/sky_stars.vs). Пропускание к солнцу для его света у земли
 // (Atmosphere Sun Light) считает на CPU по той же модели — sunTransmittance. Настройки — строка таблицы SkyAtmosphere,
 // на которую ссылается уровень (Levels.atmosphere), и окно GUI «Sky atmosphere»
 class SkyAtmosphere : public SceneObject
@@ -44,8 +45,9 @@ public:
 
 	SkyAtmosphere();
 
-	// skyLight — освещение окружением сцены: атмосфера отдаёт в него cubemap неба
-	bool initialize( const DMLightDriver& lights, const Settings& settings, SkyLight& skyLight );
+	// skyLight — освещение окружением сцены: атмосфера отдаёт в него cubemap неба; stars — звёзды фона (таблица Stars)
+	bool initialize( const DMLightDriver& lights, const Settings& settings, const std::vector<StarRecord>& stars,
+					 SkyLight& skyLight );
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
 	// Фон не рисуется, если у уровня своя модель неба (SkySphere); освещение окружением остаётся
@@ -88,7 +90,7 @@ private:
 		int32_t skyViewLight;		// проход Sky-View: 0 — таблица солнца, 1 — луны
 	};
 
-	// Константный буфер b4 фона — NightSkyParameters в Shaders/sky_background.ps
+	// Константный буфер b4 фона и звёзд — NightSkyParameters в Shaders/night_sky.sh
 	struct alignas( 16 ) NightSkyParameters
 	{
 		DirectX::XMFLOAT3 equatorialX;
@@ -96,12 +98,26 @@ private:
 		DirectX::XMFLOAT3 equatorialY;
 		float starIlluminanceScale;
 		DirectX::XMFLOAT3 equatorialZ;
-		float padding;
+		float starTwinkle;
 		DirectX::XMFLOAT3 moonDiskLuminance;
 		float moonDiskBrightnessLimit;	// предел яркости полного диска после экспозиции; 0 — без предела
+		DirectX::XMFLOAT2 viewportSize;
+		DirectX::XMFLOAT2 padding;
 	};
 
+	// Звезда в буфере GPU — Star в Shaders/sky_stars.vs
+	struct StarData
+	{
+		DirectX::XMFLOAT3 direction;	// экваториальные координаты J2000
+		float illuminance;				// над атмосферой, лк
+		DirectX::XMFLOAT3 color;		// линейный, яркость 1
+		float padding;
+	};
+	static_assert( sizeof( StarData ) == 32, "StarData must match Star in Shaders/sky_stars.vs" );
+
 	bool createAerialPerspectiveVolume();
+	// Буфер звёзд: направление, освещённость по звёздной величине и цвет по показателю B − V
+	bool createStars( const std::vector<StarRecord>& stars );
 	Parameters currentParameters() const;
 	// Звёзды и диск луны для фона: экваториальный базис, размер и яркость диска — по SunPosition уровня
 	NightSkyParameters currentNightSky( const Parameters& params ) const;
@@ -131,11 +147,15 @@ private:
 	FullscreenShader m_skyViewShader;
 	FullscreenShader m_cubeShader;
 	FullscreenShader m_backgroundShader;
+	ShaderProgram m_starShader;
 	DMComputeShader m_aerialPerspectiveShader;
 	Buffer m_constantBuffer;
 	Buffer m_aerialPerspectiveConstants;	// b4 compute-прохода, AerialPerspectiveBuffer
 	Buffer m_nightSkyConstants;			// b4 фона, NightSkyParameters
 	const DMTexture* m_moonAlbedo = nullptr;
+	Buffer m_stars;
+	ShaderView m_starsView;
+	uint32_t m_starCount = 0;
 
 	// Таблицы проходов неба: t1 — Ψ, t2 — пропускание, t3 — Sky-View солнца, t4 — луны
 	RenderTarget m_transmittanceLut;

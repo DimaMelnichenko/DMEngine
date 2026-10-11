@@ -8,7 +8,7 @@
 using namespace DirectX;
 
 // Свет и окружение уровня: строки LevelLights, SunPosition, SkyAtmosphere, Wind, HDRIBackdrop, PostProcessSettings,
-// ExponentialHeightFog, VolumetricCloud —
+// ExponentialHeightFog, VolumetricCloud и звёзды неба (Stars) —
 // загрузка в LevelDescription и сохранение правок из GUI («Save level»)
 
 void LibraryLoader::loadLevelLights( LevelDescription& level )
@@ -230,6 +230,28 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 			level.postProcess.exposureCompensationCurve = GS::curveFromText( curve.getString() );
 	}
 	return true;
+}
+
+void LibraryLoader::loadStars( LevelDescription& level )
+{
+	try
+	{
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT ra, dec, magnitude, color_index FROM Stars ORDER BY hr" );
+		while( query.executeStep() )
+		{
+			GS::StarRecord star;
+			star.rightAscension = static_cast<float>( query.getColumn( "ra" ).getDouble() );
+			star.declination = static_cast<float>( query.getColumn( "dec" ).getDouble() );
+			star.magnitude = static_cast<float>( query.getColumn( "magnitude" ).getDouble() );
+			star.colorIndex = static_cast<float>( query.getColumn( "color_index" ).getDouble() );
+			level.stars.push_back( star );
+		}
+	}
+	catch( const std::exception& e )
+	{
+		LOG( std::string( "No stars in the sky (table Stars, Tools/star_catalog.py): " ) + e.what() );
+		level.stars.clear();
+	}
 }
 
 double LibraryLoader::dbValue( float value )

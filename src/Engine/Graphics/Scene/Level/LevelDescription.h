@@ -65,6 +65,7 @@ struct LevelDescription
 	std::optional<GS::SunPositionSettings> sunPosition;
 	std::optional<uint32_t> atmosphereId;		// строка SkyAtmosphere
 	GS::SkyAtmosphereSettings atmosphere;
+	std::vector<GS::StarRecord> stars;			// таблица Stars — звёзды фона атмосферы, общие для уровней
 	std::optional<uint32_t> hdriBackdropId;		// строка HDRIBackdrop: панорама вместо атмосферы
 	std::optional<GS::HDRIBackdropSettings> hdriBackdrop;
 	std::optional<uint32_t> postProcessId;		// строка PostProcessSettings

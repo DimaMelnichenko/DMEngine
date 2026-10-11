@@ -81,6 +81,8 @@ private:
 	void loadParticleEmitters( LevelDescription& level );
 	void loadLevelLights( LevelDescription& level );
 	bool loadLevelEnvironment( LevelDescription& level );
+	// Звёзды фона неба из таблицы Stars; нет таблицы — без звёзд, строка в логе
+	void loadStars( LevelDescription& level );
 	// Материал экземпляра (MaterialInstance.id_material); false — экземпляра нет
 	bool instanceMaterial( uint32_t idInstance, uint32_t& idMaterial );
 	// Число для базы — с короткой записью (%g), как векторы: float 0.1 не превращается в 0.10000000149011612

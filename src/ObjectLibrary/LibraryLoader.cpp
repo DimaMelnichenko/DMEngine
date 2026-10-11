@@ -321,6 +321,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 		loadLevelLights( level );
 		if( !loadLevelEnvironment( level ) )
 			return false;
+		loadStars( level );
 
 		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, position, rotation, scale FROM LevelModels "
 																	 "WHERE level = :level ORDER BY id" );

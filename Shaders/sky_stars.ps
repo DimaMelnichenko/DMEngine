@@ -1,0 +1,20 @@
+////////////////////////////////////////////////////////////////////////////////
+// Звезда каталога — пятно гаусса в ~пиксель (Shaders/sky_stars.vs): площадь пятна в пикселях — 1, поэтому сумма по
+// пикселям — освещённость от звезды, делённая на телесный угол пикселя
+////////////////////////////////////////////////////////////////////////////////
+
+static const float starSigma = 0.6f;	// пикселя
+static const float starPi = 3.14159265f;
+
+struct StarVertex
+{
+	float4 position : SV_POSITION;
+	float2 offset : TEXCOORD0;
+	nointerpolation float3 color : COLOR0;
+};
+
+float4 main( StarVertex input ) : SV_TARGET
+{
+	const float spot = exp( -0.5f * dot( input.offset, input.offset ) / ( starSigma * starSigma ) ) / ( 2.0f * starPi * starSigma * starSigma );
+	return float4( input.color * spot, 0.0f );
+}

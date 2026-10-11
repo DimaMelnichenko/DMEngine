@@ -112,7 +112,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		m_hdri.setBackgroundVisible( !m_level.sky );
 	else
 	{
-		if( !m_atmosphere.initialize( m_lightDriver, m_level.atmosphere, m_skyLight ) )
+		if( !m_atmosphere.initialize( m_lightDriver, m_level.atmosphere, m_level.stars, m_skyLight ) )
 		{
 			LOG( "Fail to initialize sky atmosphere" );
 			return false;

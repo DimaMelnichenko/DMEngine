@@ -34,10 +34,43 @@ constexpr uint32_t transmittanceSlot = 2;
 constexpr uint32_t skyViewSlot = 3;
 constexpr uint32_t skyViewMoonSlot = 4;
 constexpr uint32_t moonAlbedoSlot = 5;	// фон
+constexpr uint32_t starsSlot = 6;		// звёзды
+// Освещённость от звезды величины m — 10^(−0,4·(m + 14,18)) лк, как у луны в SunPosition::computeMoon
+constexpr float starMagnitudeOffset = 14.18f;
 
 float luminance( const XMFLOAT3& color )
 {
 	return 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
+}
+
+// Лепесток аппроксимации функций сложения цветов CIE 1931: гаусс с разной шириной слева и справа от пика, нм
+double colorMatchingLobe( double wavelength, double mean, double left, double right )
+{
+	const double t = ( wavelength - mean ) / ( wavelength < mean ? left : right );
+	return std::exp( -0.5 * t * t );
+}
+
+// Цвет звезды по показателю B − V: температура (Ballesteros 2012) → излучение чёрного тела (Планк) → XYZ (функции сложения
+// CIE 1931 по Wyman, Sloan, Shirley 2013) → линейный Rec.709 с яркостью 1
+XMFLOAT3 starColor( float colorIndex )
+{
+	const double bv = std::clamp( colorIndex, -0.4f, 2.0f );
+	const double temperature = 4600.0 * ( 1.0 / ( 0.92 * bv + 1.7 ) + 1.0 / ( 0.92 * bv + 0.62 ) );
+	double x = 0.0, y = 0.0, z = 0.0;
+	for( double wavelength = 380.0; wavelength <= 780.0; wavelength += 5.0 )
+	{
+		const double meters = wavelength * 1e-9;
+		const double planck = 1.0 / ( std::pow( meters, 5.0 ) * ( std::exp( 1.4388e-2 / ( meters * temperature ) ) - 1.0 ) );
+		x += planck * ( 1.056 * colorMatchingLobe( wavelength, 599.8, 37.9, 31.0 ) + 0.362 * colorMatchingLobe( wavelength, 442.0, 16.0, 26.7 ) -
+						0.065 * colorMatchingLobe( wavelength, 501.1, 20.4, 26.2 ) );
+		y += planck * ( 0.821 * colorMatchingLobe( wavelength, 568.8, 46.9, 40.5 ) + 0.286 * colorMatchingLobe( wavelength, 530.9, 16.3, 31.1 ) );
+		z += planck * ( 1.217 * colorMatchingLobe( wavelength, 437.0, 11.8, 36.0 ) + 0.681 * colorMatchingLobe( wavelength, 459.0, 26.0, 13.8 ) );
+	}
+	const XMFLOAT3 rgb( static_cast<float>( std::max( 3.2406 * x - 1.5372 * y - 0.4986 * z, 0.0 ) ),
+						static_cast<float>( std::max( -0.9689 * x + 1.8758 * y + 0.0415 * z, 0.0 ) ),
+						static_cast<float>( std::max( 0.0557 * x - 0.2040 * y + 1.0570 * z, 0.0 ) ) );
+	const float scale = 1.0f / std::max( luminance( rgb ), 1e-30f );
+	return XMFLOAT3( rgb.x * scale, rgb.y * scale, rgb.z * scale );
 }
 
 // Расстояния до входа и выхода луча из сферы с центром в начале координат; y < 0 — промах или сфера позади
@@ -59,7 +92,8 @@ SkyAtmosphere::SkyAtmosphere() :
 {
 }
 
-bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& settings, SkyLight& skyLight )
+bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& settings, const std::vector<StarRecord>& stars,
+								SkyLight& skyLight )
 {
 	m_lights = &lights;
 	m_skyLight = &skyLight;
@@ -70,8 +104,13 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 		!m_skyViewShader.load( "Shaders\\sky_view.ps", TargetFormats::colorTarget( skyFormat ) ) ||
 		!m_cubeShader.load( "Shaders\\sky_cube.ps", TargetFormats::colorTarget( skyFormat ) ) ||
 		!m_backgroundShader.load( "Shaders\\sky_background.ps", SceneTargets::formats() ) ||
-		!m_aerialPerspectiveShader.Initialize( "Shaders\\aerial_perspective.cs", "main" ) )
+		!m_aerialPerspectiveShader.Initialize( "Shaders\\aerial_perspective.cs", "main" ) ||
+		!m_starShader.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\sky_stars.vs" ) ||
+		!m_starShader.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\sky_stars.ps" ) ||
+		m_starShader.createPhase( 0, 0 ) < 0 )
 		return false;
+	m_starShader.warmPipelines( { { RasterState::noCulling, DepthState::readOnlyNearOrEqual, BlendState::additive } },
+								SceneTargets::formats() );
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
 		!SkyLight::createSource( m_skyCube ) ||
@@ -81,7 +120,8 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 		!m_skyViewMoonLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat, "Sky-View moon LUT" ) ||
 		!createAerialPerspectiveVolume() ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_aerialPerspectiveConstants ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( NightSkyParameters ), m_nightSkyConstants ) )
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( NightSkyParameters ), m_nightSkyConstants ) ||
+		!createStars( stars ) )
 		return false;
 
 	// Карта луны: нет в базе — белая текстура, диск ровный
@@ -136,6 +176,13 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	prop->setHigh( 20.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
+	// Мерцание звёзд (Shaders/sky_stars.vs): 1 — по воздушной массе, в зените почти нет, у горизонта сильное и разноцветное;
+	// 0 — не мерцают (ночные кадры совпадают при сравнении)
+	prop = m_properties.insert( "Star twinkle", 1.0f );
+	prop->setLow( 0.0f );
+	prop->setHigh( 3.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
 	return true;
 }
 
@@ -148,6 +195,44 @@ SkyAtmosphere::Settings SkyAtmosphere::settings()
 	settings.aerialPerspectiveViewDistanceScale = m_properties["Aerial perspective view distance scale"].data<float>();
 	settings.nightSkyLuminance = m_properties["Night sky luminance (cd/m2)"].data<float>();
 	return settings;
+}
+
+bool SkyAtmosphere::createStars( const std::vector<StarRecord>& stars )
+{
+	if( stars.empty() )
+	{
+		LOG( "Sky atmosphere: no stars (table Stars is empty, Tools/star_catalog.py)" );
+		return true;
+	}
+	std::vector<StarData> data;
+	data.reserve( stars.size() );
+	const StarRecord* brightest = &stars.front();
+	for( const StarRecord& star : stars )
+	{
+		const float rightAscension = XMConvertToRadians( star.rightAscension );
+		const float declination = XMConvertToRadians( star.declination );
+		StarData item = {};
+		item.direction = XMFLOAT3( std::cos( declination ) * std::cos( rightAscension ), std::cos( declination ) * std::sin( rightAscension ),
+								   std::sin( declination ) );
+		item.illuminance = std::pow( 10.0f, -0.4f * ( star.magnitude + starMagnitudeOffset ) );
+		item.color = starColor( star.colorIndex );
+		data.push_back( item );
+		if( star.magnitude < brightest->magnitude )
+			brightest = &star;
+	}
+
+	BufferDesc desc;
+	desc.size = static_cast<uint32_t>( data.size() * sizeof( StarData ) );
+	desc.stride = sizeof( StarData );
+	desc.usage = BufferUsage::shaderResource | BufferUsage::structured;
+	DMD3D& d3d = DMD3D::instance();
+	if( !d3d.createBuffer( desc, data.data(), m_stars ) || !d3d.createShaderView( m_stars, BufferViewDesc(), m_starsView ) )
+		return false;
+	d3d.setName( m_stars, "Stars" );
+	m_starCount = static_cast<uint32_t>( data.size() );
+	LOG( "Sky atmosphere: " + std::to_string( m_starCount ) + " stars, brightest V " + std::to_string( brightest->magnitude ) +
+		 " at RA " + std::to_string( brightest->rightAscension ) + ", Dec " + std::to_string( brightest->declination ) );
+	return true;
 }
 
 bool SkyAtmosphere::createAerialPerspectiveVolume()
@@ -278,7 +363,10 @@ SkyAtmosphere::NightSkyParameters SkyAtmosphere::currentNightSky( const Paramete
 	const float sunIlluminance = luminance( sunColor );
 	const float bakeScale = sunIlluminance > 0.0f ? 1.0f / sunIlluminance : 0.0f;
 	night.starIlluminanceScale = sunDirection.y > starsMaxSunSin ? 0.0f : bakeScale;
+	night.starTwinkle = m_properties["Star twinkle"].data<float>();
 	night.moonDiskBrightnessLimit = m_properties["Moon disk brightness limit"].data<float>();
+	night.viewportSize = XMFLOAT2( static_cast<float>( DMD3D::instance().backBufferWidth() ),
+								   static_cast<float>( DMD3D::instance().backBufferHeight() ) );
 
 	// Диск луны: яркость полного диска — настоящая (освещённость от полной луны / телесный угол настоящего диска),
 	// фазу даёт освещение шара. Увеличенный диск светит той же яркостью: он только в фоне, сцену освещает источник
@@ -481,6 +569,15 @@ void SkyAtmosphere::renderCustom( const RenderContext& )
 	d3d.setConstantBuffer( 4, m_nightSkyConstants );
 	// На дальней плоскости: только там, где сцена ничего не нарисовала
 	m_backgroundShader.draw( BlendState::opaque, DepthState::readOnlyNearOrEqual );
+
+	// Звёзды — поверх фона сложением, пока солнце под горизонтом: 6 вершин на звезду
+	if( m_starCount > 0 && night.starIlluminanceScale > 0.0f )
+	{
+		d3d.setSRV( starsSlot, m_starsView );
+		ScopedRenderState state( RasterState::noCulling, DepthState::readOnlyNearOrEqual, BlendState::additive );
+		m_starShader.setPass( 0 );
+		d3d.draw( 6 * m_starCount, 0 );
+	}
 }
 
 PropertyContainer* SkyAtmosphere::properties()
