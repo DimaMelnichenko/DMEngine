@@ -188,10 +188,18 @@ private:
 	bool createHydrologyTextures( const TerrainHydrology::Result& hydrology );
 	// Режим static: установившееся течение озёр (water_flow.cs) поверх mainStatic — порциями с ожиданием GPU
 	bool createFlowResources();
-	void solveFlow( const Settings::Flow& flow );
+	// Сводка расчёта (она же — в лог); пусто — расчёта не было
+	std::string solveFlow( const Settings::Flow& flow );
 	// Течение на детальной сетке у русел (water_flow.cs с FLOW_DETAIL) — после solveFlow и buildSurface: решение 1 м —
 	// начало и граница, итог — течение мокрых ячеек детальной воды (m_detailWater). Массивы счёта — только на время расчёта
-	void solveDetailFlow( const Settings::Flow& flow );
+	std::string solveDetailFlow( const Settings::Flow& flow );
+	// Течение статичной воды целиком — solveFlow, поверхность, solveDetailFlow — или из кэша на диске (после
+	// buildStaticWater): файл cache\water\flow_<ключ>.bin, ключ — отпечаток входа (m_flowInputKey), настройки «Flow»,
+	// высота рельефа, шейдер течения и версия расчёта. При загрузке, перестройке русел и правке «Flow»
+	void solveStaticFlow( const Settings::Flow& flow );
+	std::string flowCachePath( const Settings::Flow& flow ) const;
+	bool loadFlowCache( const std::string& path );
+	void saveFlowCache( const std::string& path, const std::string& coarseSummary, const std::string& detailSummary );
 
 	PropertyContainer m_properties;
 	PropertyContainer m_surfaceProperties;	// подокно «Surface» — материал поверхности
@@ -278,6 +286,10 @@ private:
 	Buffer m_flowTiles;
 	ShaderView m_flowTilesView;
 	Settings::Flow m_flowBuilt;		// по каким настройкам посчитано течение
+	// Отпечаток входа течения (createHydrologyTextures): итоговый рельеф, растр статичной воды, камни, плитки детальной
+	// земли и воды; 0 — кэша нет (нет карты высот на CPU)
+	uint64_t m_flowInputKey = 0;
+	DMComputeShader m_flowRestoreShader;
 
 	// Поверхность
 	DMComputeShader m_surfaceShader;
@@ -351,6 +363,7 @@ private:
 	DMComputeShader m_detailFlowProjectShader;
 	DMComputeShader m_detailFlowOutputShader;
 	Buffer m_detailFlowBuffer;		// DetailFlowParameters
+	DMComputeShader m_detailFlowRestoreShader;
 };
 
 }

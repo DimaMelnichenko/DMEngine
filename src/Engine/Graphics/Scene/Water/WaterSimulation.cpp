@@ -3,6 +3,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <tuple>
 #include <DirectXPackedVector.h>
 #include "System.h"
@@ -10,6 +13,7 @@
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
+#include "Utils\Fingerprint.h"
 #include "D3D\TextureImages.h"
 #include "WaterRipples.h"
 
@@ -49,6 +53,11 @@ constexpr float flowScreen = 1e-3f;				// экранирование давле�
 constexpr float maxViscosityShare = 0.2f;		// ν · dt / l² — не больше: явная вязкость устойчива
 // Детальная сетка: шаг — доля шага сетки 1 м (ячейка вчетверо мельче, перенос за шаг — не дальше пары ячеек при 2 м/с)
 constexpr float detailTimeStepShare = 0.5f;
+// Кэш течения на диске (solveStaticFlow): каталог и версия расчёта — поднять при правке расчёта в C++ (константы, порядок
+// проходов, состав сохранённого); правку шейдера течения ключ видит сам. Хранятся последние flowCacheFiles файлов
+constexpr const char* flowCacheDirectory = "cache\\water";
+constexpr uint32_t flowCacheVersion = 1;
+constexpr size_t flowCacheFiles = 4;
 // Камни русла в течении: высота над дном — доля поперечника (камень утоплен на четверть, Scatterer::stoneEmbed), и
 // коэффициент сопротивления (обтекаемый камень — 0,5–1,2)
 constexpr float stoneHeight = 0.5f;
@@ -355,12 +364,8 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		// Статичная вода: озёра и ручьи — одно поле из растра; шагов нет, течение озёр — установившийся расчёт
 		if( !buildStaticWater( settings ) || !createFlowResources() )
 			return false;
-		task.enterProgressFrame( 0.6f, "Flow" );
-		solveFlow( settings.flow );
-		buildSurface();
-		m_surfaceDirty = false;
-		task.enterProgressFrame( 0.3f, "Detail flow" );
-		solveDetailFlow( settings.flow );
+		task.enterProgressFrame( 0.9f, "Flow" );
+		solveStaticFlow( settings.flow );
 		m_initialized = true;
 		logWaterSummary();
 		return true;
@@ -753,6 +758,34 @@ bool WaterSimulation::createHydrologyTextures( const TerrainHydrology::Result& h
 		}
 	if( !createDetailTextures( hydrology ) )
 		return false;
+
+	// Отпечаток входа течения — ключ кэша (solveStaticFlow): итоговый рельеф, растр статичной воды, камни, плитки детальной
+	// земли и воды; остальное, что читает расчёт (сопротивление камней, тайлы, блоки), из них выводится
+	m_flowInputKey = 0;
+	const TerrainHeight height = m_terrain->terrainHeight();
+	if( const float* heights = m_terrain->cpuHeights() )
+	{
+		Fingerprint key;
+		key.add( m_size );
+		key.add( m_cellSize );
+		key.add( height.mapSize );
+		key.addWords( heights, static_cast<size_t>( height.mapSize ) * height.mapSize * sizeof( float ) );
+		key.addWords( hydrology.staticWater.data(), hydrology.staticWater.size() * sizeof( DirectX::XMFLOAT4 ) );
+		for( const TerrainHydrology::Stone& stone : hydrology.stones )
+		{
+			key.add( stone.position );
+			key.add( stone.size );
+			key.add( stone.seed );
+		}
+		for( const TerrainHydrology::DetailTile& tile : hydrology.detailTiles )
+		{
+			key.add( tile.x );
+			key.add( tile.z );
+			key.addWords( tile.heights.data(), tile.heights.size() * sizeof( float ) );
+			key.addWords( tile.water.data(), tile.water.size() * sizeof( DirectX::XMFLOAT4 ) );
+		}
+		m_flowInputKey = std::max<uint64_t>( key.value, 1 );
+	}
 	return create( DXGI_FORMAT_R32_FLOAT, hydrology.channelFlow.data(), sizeof( float ), "Water channel flow", m_flowTexture, m_flowView ) &&
 		   create( DXGI_FORMAT_R32G32B32A32_FLOAT, hydrology.staticWater.data(), sizeof( DirectX::XMFLOAT4 ), "Water static streams",
 				   m_staticWaterTexture, m_staticWaterView ) &&
@@ -905,7 +938,7 @@ bool WaterSimulation::createFlowResources()
 		!m_flowDivergenceShader.Initialize( file, "mainFlowDivergence", same ) ||
 		!m_flowRedShader.Initialize( file, "mainFlowRed", same ) || !m_flowBlackShader.Initialize( file, "mainFlowBlack", same ) ||
 		!m_flowProjectShader.Initialize( file, "mainFlowProject", same ) ||
-		!m_flowOutputShader.Initialize( file, "mainFlowOutput", same ) ||
+		!m_flowOutputShader.Initialize( file, "mainFlowOutput", same ) || !m_flowRestoreShader.Initialize( file, "mainFlowRestore", same ) ||
 		!d3d.createShaderConstantBuffer( sizeof( FlowParameters ), m_flowBuffer ) )
 		return false;
 	// Детальная сетка — тот же шейдер с FLOW_DETAIL
@@ -920,6 +953,7 @@ bool WaterSimulation::createFlowResources()
 		!m_detailFlowBlackShader.Initialize( file, "mainFlowBlack", same, detail ) ||
 		!m_detailFlowProjectShader.Initialize( file, "mainFlowProject", same, detail ) ||
 		!m_detailFlowOutputShader.Initialize( file, "mainFlowOutput", same, detail ) ||
+		!m_detailFlowRestoreShader.Initialize( file, "mainFlowRestore", same, detail ) ||
 		!d3d.createShaderConstantBuffer( sizeof( DetailFlowParameters ), m_detailFlowBuffer ) )
 		return false;
 	for( auto [texture, uav, format, name] :
@@ -944,11 +978,11 @@ bool WaterSimulation::createFlowResources()
 	return true;
 }
 
-void WaterSimulation::solveFlow( const Settings::Flow& flow )
+std::string WaterSimulation::solveFlow( const Settings::Flow& flow )
 {
 	m_flowBuilt = flow;
 	if( !m_static || m_flowTileList.empty() )
-		return;
+		return {};
 	const auto start = std::chrono::high_resolution_clock::now();
 	DMD3D& d3d = DMD3D::instance();
 	const float timeStep = std::max( flow.timeStep, 0.01f );
@@ -1100,15 +1134,16 @@ void WaterSimulation::solveFlow( const Settings::Flow& flow )
 			  baseSum > 0.0 ? 100.0 * deviationSum / baseSum : 0.0,
 			  std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() );
 	LOG( text );
+	return text;
 }
 
-void WaterSimulation::solveDetailFlow( const Settings::Flow& flow )
+std::string WaterSimulation::solveDetailFlow( const Settings::Flow& flow )
 {
 	if( !m_static || m_detailTileCount == 0 || m_detailBlockList.empty() || flow.detailSettleTime <= 0.0f )
-		return;
+		return {};
 	const TerrainHeight height = m_terrain->terrainHeight();
 	if( !height.detailTiles || !height.detailIndex )
-		return;
+		return {};
 	const auto start = std::chrono::high_resolution_clock::now();
 	DMD3D& d3d = DMD3D::instance();
 	const uint32_t side = m_detailSide;
@@ -1196,7 +1231,7 @@ void WaterSimulation::solveDetailFlow( const Settings::Flow& flow )
 		if( !d3d.createTexture( desc, nullptr, *texture ) || !d3d.createStorageView( *texture, arrayView, *uav ) )
 		{
 			LOG( std::string( "Failed to create water detail flow texture " ) + name );
-			return;
+			return {};
 		}
 		d3d.setName( *texture, name );
 	}
@@ -1213,7 +1248,7 @@ void WaterSimulation::solveDetailFlow( const Settings::Flow& flow )
 	if( !d3d.createTexture( stonesDesc, slices.data(), stoneTops ) || !d3d.createShaderView( stoneTops, arrayView, stonesView ) )
 	{
 		LOG( "Failed to create water detail stones" );
-		return;
+		return {};
 	}
 	d3d.setName( stoneTops, "Water detail stones" );
 
@@ -1380,6 +1415,235 @@ void WaterSimulation::solveDetailFlow( const Settings::Flow& flow )
 			  lakeCells ? lakeSum / lakeCells : 0.0, peak,
 			  std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count(), solveMs );
 	LOG( text );
+	return text;
+}
+
+std::string WaterSimulation::flowCachePath( const Settings::Flow& flow ) const
+{
+	if( m_flowInputKey == 0 )
+		return {};
+	Fingerprint key;
+	key.add( flowCacheVersion );
+	key.add( m_flowInputKey );
+	key.add( flow.settleTime );
+	key.add( flow.timeStep );
+	key.add( flow.viscosity );
+	key.add( flow.manning );
+	key.add( flow.iterations );
+	key.add( flow.layer );
+	key.add( flow.detailSettleTime );
+	const TerrainHeight height = m_terrain->terrainHeight();
+	key.add( height.heightMultiplier );
+	key.add( height.heightOffset );
+	// Код расчёта — шейдер течения и его include: правка любого — расчёт заново
+	for( const char* file : { "Shaders\\water_flow.cs", "Shaders\\water_simulation.sh", "Shaders\\bindless.sh", "Shaders\\slots.h" } )
+	{
+		std::ifstream in( file, std::ios::binary );
+		const std::string text( ( std::istreambuf_iterator<char>( in ) ), std::istreambuf_iterator<char>() );
+		key.add( text.data(), text.size() );
+	}
+	char name[64];
+	snprintf( name, sizeof( name ), "\\flow_%016llx.bin", static_cast<unsigned long long>( key.value ) );
+	return std::string( flowCacheDirectory ) + name;
+}
+
+namespace
+{
+
+// Файл кэша течения: заголовок, течение сетки 1 м (X, Z мира — half, как в текстуре воды), детальной воды (X, Z — float,
+// у всех текселей плиток с полем; нет — если течения детальной сетки не было), сводки расчётов
+struct FlowCacheHeader
+{
+	char magic[4] = { 'D', 'M', 'W', 'F' };
+	uint32_t version = flowCacheVersion;
+	uint32_t size = 0;
+	uint32_t detailSide = 0;
+	uint32_t detailSlices = 0;
+	uint32_t coarseSummary = 0;		// длина строки сводки, байт
+	uint32_t detailSummary = 0;
+	uint32_t padding = 0;
+};
+
+}
+
+bool WaterSimulation::loadFlowCache( const std::string& path )
+{
+	std::ifstream in( path, std::ios::binary );
+	FlowCacheHeader header;
+	if( !in.read( reinterpret_cast<char*>( &header ), sizeof( header ) ) || std::memcmp( header.magic, "DMWF", 4 ) != 0 ||
+		header.version != flowCacheVersion || header.size != m_size ||
+		( header.detailSlices != 0 && ( header.detailSlices != m_detailTileCount || header.detailSide != m_detailSide ) ) )
+		return false;
+	std::vector<uint16_t> coarse( static_cast<size_t>( m_size ) * m_size * 2 );
+	std::vector<float> detail( static_cast<size_t>( header.detailSide ) * header.detailSide * header.detailSlices * 2 );
+	std::string coarseSummary( header.coarseSummary, ' ' ), detailSummary( header.detailSummary, ' ' );
+	if( !in.read( reinterpret_cast<char*>( coarse.data() ), coarse.size() * sizeof( uint16_t ) ) ||
+		!in.read( reinterpret_cast<char*>( detail.data() ), detail.size() * sizeof( float ) ) ||
+		!in.read( coarseSummary.data(), coarseSummary.size() ) || !in.read( detailSummary.data(), detailSummary.size() ) )
+		return false;
+
+	DMD3D& d3d = DMD3D::instance();
+	Texture coarseTexture, detailTexture;
+	ShaderView coarseView, detailView;
+	TextureDesc desc;
+	desc.width = m_size;
+	desc.height = m_size;
+	desc.format = DXGI_FORMAT_R16G16_FLOAT;
+	TextureData coarseData;
+	coarseData.data = coarse.data();
+	coarseData.rowPitch = m_size * 2 * static_cast<uint32_t>( sizeof( uint16_t ) );
+	coarseData.slicePitch = coarseData.rowPitch * m_size;
+	if( !d3d.createTexture( desc, &coarseData, coarseTexture ) || !d3d.createShaderView( coarseTexture, {}, coarseView ) )
+		return false;
+	TextureViewDesc arrayView;
+	arrayView.kind = TextureViewDesc::Kind::texture2DArray;
+	if( header.detailSlices != 0 )
+	{
+		std::vector<TextureData> slices( header.detailSlices );
+		const size_t sliceFloats = static_cast<size_t>( header.detailSide ) * header.detailSide * 2;
+		for( uint32_t t = 0; t < header.detailSlices; ++t )
+		{
+			slices[t].data = detail.data() + t * sliceFloats;
+			slices[t].rowPitch = header.detailSide * 2 * static_cast<uint32_t>( sizeof( float ) );
+			slices[t].slicePitch = slices[t].rowPitch * header.detailSide;
+		}
+		TextureDesc detailDesc;
+		detailDesc.width = header.detailSide;
+		detailDesc.height = header.detailSide;
+		detailDesc.arraySize = header.detailSlices;
+		detailDesc.format = DXGI_FORMAT_R32G32_FLOAT;
+		if( !d3d.createTexture( detailDesc, slices.data(), detailTexture ) || !d3d.createShaderView( detailTexture, arrayView, detailView ) )
+			return false;
+	}
+
+	// Сетка 1 м — поверх mainStatic, затем поверхность (детальная берёт течение 1 м) и детальная вода поверх неё
+	PassDesc pass;
+	pass.name = "Water flow from cache";
+	pass.reads = { { &coarseView, "cached flow" } };
+	pass.writes = { { &m_outputUAV, "water state" } };
+	d3d.beginPass( pass );
+	setParameters( m_initial );
+	d3d.setSRV( 11, coarseView );
+	d3d.setUAV( 5, m_outputUAV );
+	const uint32_t groups = ( m_size + 7 ) / 8;
+	m_flowRestoreShader.dispatchGroups( groups, groups, 1 );
+	buildSurface();
+	m_surfaceDirty = false;
+	if( header.detailSlices != 0 )
+	{
+		PassDesc detailPass;
+		detailPass.name = "Water detail flow from cache";
+		detailPass.reads = { { &detailView, "cached detail flow" } };
+		detailPass.writes = { { &m_detailWaterUAV, "detail water" } };
+		d3d.beginPass( detailPass );
+		d3d.setSRV( 11, detailView );
+		d3d.setUAV( 5, m_detailWaterUAV );
+		const uint32_t detailGroups = ( header.detailSide + 7 ) / 8;
+		m_detailFlowRestoreShader.dispatchGroups( detailGroups, detailGroups, header.detailSlices );
+	}
+	// Временные текстуры освобождаются при выходе: GPU должен закончить с ними
+	d3d.waitForGpu();
+	if( !coarseSummary.empty() )
+		LOG( "  cached: " + coarseSummary );
+	if( !detailSummary.empty() )
+		LOG( "  cached: " + detailSummary );
+	return true;
+}
+
+void WaterSimulation::saveFlowCache( const std::string& path, const std::string& coarseSummary, const std::string& detailSummary )
+{
+	DMD3D& d3d = DMD3D::instance();
+	std::vector<DMD3D::SubresourceCopy> coarseCopies, detailCopies;
+	std::vector<uint8_t> coarseBytes, detailBytes;
+	if( !d3d.captureTexture( m_output, coarseCopies, coarseBytes ) || coarseCopies.empty() )
+	{
+		LOG( "Water flow: cache not written, readback failed" );
+		return;
+	}
+	FlowCacheHeader header;
+	header.size = m_size;
+	header.coarseSummary = static_cast<uint32_t>( coarseSummary.size() );
+	header.detailSummary = static_cast<uint32_t>( detailSummary.size() );
+	// m_output — R16G16B16A16_FLOAT: течение — каналы 1, 2
+	std::vector<uint16_t> coarse( static_cast<size_t>( m_size ) * m_size * 2 );
+	for( uint32_t row = 0; row < m_size; ++row )
+	{
+		const uint16_t* line = reinterpret_cast<const uint16_t*>( coarseBytes.data() + coarseCopies[0].offset + row * coarseCopies[0].rowPitch );
+		for( uint32_t col = 0; col < m_size; ++col )
+		{
+			coarse[( static_cast<size_t>( row ) * m_size + col ) * 2] = line[col * 4 + 1];
+			coarse[( static_cast<size_t>( row ) * m_size + col ) * 2 + 1] = line[col * 4 + 2];
+		}
+	}
+	std::vector<float> detail;
+	if( !detailSummary.empty() && d3d.captureTexture( m_detailWater, detailCopies, detailBytes ) && detailCopies.size() >= m_detailTileCount )
+	{
+		header.detailSide = m_detailSide;
+		header.detailSlices = m_detailTileCount;
+		detail.resize( static_cast<size_t>( m_detailSide ) * m_detailSide * m_detailTileCount * 2 );
+		for( uint32_t t = 0; t < m_detailTileCount; ++t )
+			for( uint32_t j = 0; j < m_detailSide; ++j )
+			{
+				const float* line = reinterpret_cast<const float*>( detailBytes.data() + detailCopies[t].offset + j * detailCopies[t].rowPitch );
+				float* out = detail.data() + ( ( static_cast<size_t>( t ) * m_detailSide + j ) * m_detailSide ) * 2;
+				for( uint32_t i = 0; i < m_detailSide; ++i )
+				{
+					out[i * 2] = line[i * 4 + 1];
+					out[i * 2 + 1] = line[i * 4 + 2];
+				}
+			}
+	}
+	std::error_code error;
+	std::filesystem::create_directories( flowCacheDirectory, error );
+	{
+		std::ofstream out( path, std::ios::binary | std::ios::trunc );
+		out.write( reinterpret_cast<const char*>( &header ), sizeof( header ) );
+		out.write( reinterpret_cast<const char*>( coarse.data() ), coarse.size() * sizeof( uint16_t ) );
+		out.write( reinterpret_cast<const char*>( detail.data() ), detail.size() * sizeof( float ) );
+		out.write( coarseSummary.data(), coarseSummary.size() );
+		out.write( detailSummary.data(), detailSummary.size() );
+		if( !out )
+		{
+			LOG( "Water flow: can`t write cache " + path );
+			return;
+		}
+	}
+	// Хранятся последние flowCacheFiles: русла правят вживую, и каждый вариант — свой файл
+	std::vector<std::filesystem::directory_entry> files;
+	for( const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator( flowCacheDirectory, error ) )
+		if( entry.is_regular_file() && entry.path().filename().string().rfind( "flow_", 0 ) == 0 )
+			files.push_back( entry );
+	std::sort( files.begin(), files.end(), []( const auto& a, const auto& b ) { return a.last_write_time() > b.last_write_time(); } );
+	for( size_t i = flowCacheFiles; i < files.size(); ++i )
+		std::filesystem::remove( files[i].path(), error );
+	LOG( "Water flow: cache written " + path );
+}
+
+void WaterSimulation::solveStaticFlow( const Settings::Flow& flow )
+{
+	const auto start = std::chrono::high_resolution_clock::now();
+	const std::string path = flowCachePath( flow );
+	SlowTask task( 1.0f );
+	if( !path.empty() )
+	{
+		task.enterProgressFrame( 0.0f, "Cache" );
+		if( loadFlowCache( path ) )
+		{
+			m_flowBuilt = flow;
+			LOG( "Water flow: from cache " + path + ", ms: " +
+				 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() ) );
+			return;
+		}
+	}
+	task.enterProgressFrame( 0.5f, "1 m grid" );
+	const std::string coarse = solveFlow( flow );
+	buildSurface();
+	m_surfaceDirty = false;
+	task.enterProgressFrame( 0.5f, "Detail grid" );
+	const std::string detail = solveDetailFlow( flow );
+	// Под GPU-based validation расчёт урезан — такой в кэш не пишется
+	if( !path.empty() && !coarse.empty() && !DMD3D::instance().gpuValidation() )
+		saveFlowCache( path, coarse, detail );
 }
 
 void WaterSimulation::applyFlowChanges()
@@ -1391,12 +1655,8 @@ void WaterSimulation::applyFlowChanges()
 		return;
 	// mainStatic заново: у озёр нули течения, ручьи — как в растре; затем течение озёр и ручьёв, поверхность (детальная
 	// вода берёт течение сетки 1 м) и течение детальной сетки
-	if( !buildStaticWater( current ) )
-		return;
-	solveFlow( current.flow );
-	buildSurface();
-	m_surfaceDirty = false;
-	solveDetailFlow( current.flow );
+	if( buildStaticWater( current ) )
+		solveStaticFlow( current.flow );
 }
 
 bool WaterSimulation::fillLakes()
@@ -1618,10 +1878,7 @@ bool WaterSimulation::rebuild( const TerrainHydrology::Result& hydrology )
 	{
 		if( !buildStaticWater( current ) )
 			return false;
-		solveFlow( current.flow );
-		buildSurface();
-		m_surfaceDirty = false;
-		solveDetailFlow( current.flow );
+		solveStaticFlow( current.flow );
 	}
 	else
 		m_surfaceDirty = true;

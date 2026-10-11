@@ -1,4 +1,5 @@
 #include "TerrainHydrology.h"
+#include "Utils\Fingerprint.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -877,19 +878,6 @@ Drainage drainage( const HeightField& field, const WaterSimulationSettings& wate
 		d.lake[i] = std::isnan( d.lakeLevel[i] ) ? 0 : 1;
 	return d;
 }
-
-// Отпечаток (FNV-1a 64)
-struct Fingerprint
-{
-	uint64_t value = 1469598103934665603ull;
-	void add( const void* data, size_t size )
-	{
-		const uint8_t* bytes = static_cast<const uint8_t*>( data );
-		for( size_t i = 0; i < size; ++i )
-			value = ( value ^ bytes[i] ) * 1099511628211ull;
-	}
-	template<typename T> void add( const T& v ) { add( &v, sizeof( v ) ); }
-};
 
 // Клетка карты под точкой (столбец, строка — дробные)
 int cellIndex( const Point& point, int n )

@@ -17,6 +17,7 @@
 #include "DBConnector.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
+#include "Utils\Fingerprint.h"
 
 using namespace DirectX;
 
@@ -932,19 +933,6 @@ bool CDLODTerrain::surfaceHeight( float x, float z, float& height ) const
 
 namespace
 {
-
-// Отпечаток FNV-1a 64 — ключ кэша эрозии
-struct Fingerprint
-{
-	uint64_t value = 1469598103934665603ull;
-	void add( const void* data, size_t size )
-	{
-		const uint8_t* bytes = static_cast<const uint8_t*>( data );
-		for( size_t i = 0; i < size; ++i )
-			value = ( value ^ bytes[i] ) * 1099511628211ull;
-	}
-	template<typename T> void add( const T& v ) { add( &v, sizeof( v ) ); }
-};
 
 bool loadFloatDDS( const std::string& path, uint32_t size, std::vector<float>& values )
 {

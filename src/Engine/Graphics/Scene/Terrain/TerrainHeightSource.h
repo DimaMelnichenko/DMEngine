@@ -37,6 +37,9 @@ public:
 	// Высота поверхности в точке (x, z) мира, как её рисует террейн вблизи — треугольники сетки LOD 0 по итоговой карте, м;
 	// false — точка вне карты или высот на CPU нет. Для того, кто ходит по земле (WalkMode)
 	virtual bool surfaceHeight( float x, float z, float& height ) const { return false; }
+	// Итоговая карта высот на CPU — нормированная, как текстура (строки сверху вниз, mapSize²); nullptr — её нет. Для
+	// отпечатка того, что посчитано по рельефу (кэш течения воды, WaterSimulation)
+	virtual const float* cpuHeights() const { return nullptr; }
 };
 
 }

@@ -70,6 +70,7 @@ public:
 	// Карта высот и её масштаб: по ним стоят расстановка травы и декора и частицы
 	TerrainHeight terrainHeight() const override;
 	bool surfaceHeight( float x, float z, float& height ) const override;
+	const float* cpuHeights() const override { return m_cpuHeights.empty() ? nullptr : m_cpuHeights.data(); }
 
 	void update( const FrameContext& frame ) override;
 	// Детальная земля у русел — ресурс сцены кадра (SLOT_TERRAIN_DETAIL, SLOT_TERRAIN_DETAIL_INDEX): её читают вершины и

@@ -23,6 +23,7 @@
 //   mainFlowRed/Black  — давление: ∇·(h ∇p) = ∇·(h u), красно-чёрный Гаусс-Зейдель с верхней релаксацией на месте
 //                        (давление прошлого шага — начальное приближение);
 //   mainFlowProject    — u − ∇p.
+// mainFlowRestore — скорость для шейдеров из кэша на диске (WaterSimulation::solveStaticFlow) вместо расчёта.
 // Ячейки: сухие (берег), озеро и ручей (обе считаются; у ручья — u₀). Грани: закрыта (берег) или свободна (между двумя
 // мокрыми); у грани с ручьём — заданная скорость u₀ (два ручья — средняя, ручей и озеро — ручья). Класс WaterSimulation
 // (solveFlow), docs/water.md, «Течение»
@@ -74,6 +75,9 @@ DM_UAV( FLOW_TEXTURE( float ), g_divergence, 4 );	// ∇·(h (u − u₀)), м/�
 DM_UAV( FLOW_TEXTURE( float4 ), g_output, 5 );		// для шейдеров (SLOT_WATER; FLOW_DETAIL — детальная вода): скорость — в y, z
 #ifdef FLOW_DETAIL
 DM_UAV( RWTexture2DArray<float2>, g_info2, 6 );		// x — R русла (0 — не ручей), y — глубина без камней (текущий слой)
+DM_SRV( Texture2DArray<float2>, g_cachedFlow, 11 );	// mainFlowRestore: течение X, Z мира
+#else
+DM_SRV( Texture2D<float2>, g_cachedFlow, 11 );
 #endif
 
 // Раскладка — WaterSimulation::FlowParameters
@@ -710,5 +714,27 @@ void mainFlowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	float4 state = g_output[address];
 	state.yz = world;
 	g_output[address] = state;
+#endif
+}
+
+// Скорость для шейдеров (y, z) — из кэша, у всех текселей: сетка 1 м — после mainStatic, детальная — после
+// mainDetailSurface (тексели без расчёта держат там то же, что дал бы расчёт)
+[numthreads( 8, 8, 1 )]
+void mainFlowRestore( uint3 id : SV_DispatchThreadID )
+{
+#ifdef FLOW_DETAIL
+	uint width, height, slices;
+	g_output.GetDimensions( width, height, slices );
+	if( id.x >= width || id.y >= height || id.z >= slices )
+		return;
+	float4 state = g_output[id];
+	state.yz = g_cachedFlow.Load( int4( id, 0 ) );
+	g_output[id] = state;
+#else
+	if( any( id.xy >= g_size ) )
+		return;
+	float4 state = g_output[id.xy];
+	state.yz = g_cachedFlow.Load( int3( id.xy, 0 ) );
+	g_output[id.xy] = state;
 #endif
 }
