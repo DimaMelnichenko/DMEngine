@@ -2,17 +2,18 @@
 // Детальная вода у русел (класс WaterSimulation, docs/water.md, «Детальная вода у русел»): плитки — те же, что у
 // детальной земли (TerrainHydrology::DetailTile, CDLODTerrain), 0,25 м с полем в тексель с каждой стороны, тексели по x и
 // z мира (строка растёт с z).
-//   mainDetailSurface — после расчёта течения: глубина над детальной землёй (уровень ручья ближайшего отрезка или уровень
-//                       озера, что выше), уровень поверхности там, где воды видно, у сухого текселя рядом с водой — наименьший
-//                       уровень мокрых соседей (как mainSurface у сетки 1 м: плоскость воды уходит под землю, урез — их
-//                       пересечение); течение — с сетки 1 м (билинейно); границы уровней плиток — для отбора
+//   mainDetailSurface — после расчёта течения: глубина над детальной землёй (уровень воды — ручья ближайшего отрезка или
+//                       озера, что выше, его даёт конвейер), уровень поверхности там, где воды видно, у сухого текселя рядом
+//                       с водой — наименьший уровень мокрых соседей (как mainSurface у сетки 1 м: плоскость воды уходит под
+//                       землю, урез — их пересечение); течение — с сетки 1 м (билинейно), у мокрых ячеек его затем заменяет
+//                       расчёт на детальной сетке (water_flow.cs, FLOW_DETAIL); границы уровней плиток — для отбора
 // Группа потоков — 8 × 8 текселей плитки, z — плитка (срез)
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "samplers.sh"
 #include "bindless.sh"
 
-DM_SRV( Texture2DArray<float4>, g_detailStatic, 0 );		// уровень ручья, u₀ по X и Z мира, уровень озера (−1e9 — нет)
+DM_SRV( Texture2DArray<float4>, g_detailStatic, 0 );		// уровень воды (−1e9 — нет), u₀ по X и Z мира, R русла (DetailTile::water)
 DM_SRV( Texture2DArray<float2>, g_terrainDetailTiles, 1 );	// детальная земля: нормированная высота, врез
 DM_SRV( Texture2D<float4>, g_coarseWater, 2 );				// вода на сетке 1 м (SLOT_WATER): глубина, течение X, Z
 DM_SRV( StructuredBuffer<uint2>, g_detailTileCoords, 3 );	// плитка среза — x, z по сетке плиток мира
@@ -46,7 +47,7 @@ float detailDepth( int2 texel, uint slice, out float level )
 {
 	const float bed = g_terrainDetailTiles.Load( int4( texel, slice, 0 ) ).x * g_heightMultiplier + g_heightOffset;
 	const float4 water = g_detailStatic.Load( int4( texel, slice, 0 ) );
-	level = max( water.x, water.w );
+	level = water.x;
 	return level > -1e8f ? level - bed : -1e30f;
 }
 

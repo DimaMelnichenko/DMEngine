@@ -315,7 +315,8 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 слот сцены `SLOT_WATER`, t109, `Shaders/water.sh`; уровень поверхности — `SLOT_WATER_LEVEL`, t115: по нему глубина в
 точке (`waterDepthAt`, урез внутри клетки) — мокрая земля, галька дна озёр, трава в воде; у русел (режим `static`) вода —
 на плитках детальной земли 0,25 м (`SLOT_WATER_DETAIL`, t116, `cb_waterDetail`; `Shaders/water_detail.cs`, второй
-ExecuteIndirect поверхности ближе `detail_distance`), течение в них пока — с сетки 1 м; строка `WaterSimulation` уровня, `Levels.water_simulation`;
+ExecuteIndirect поверхности ближе `detail_distance`), течение в них — тот же расчёт на детальной сетке, вложенный в
+сетку 1 м (`water_flow.cs` с `FLOW_DETAIL`: камни — поднятое дно, крупный масштаб тянется к сетке 1 м); строка `WaterSimulation` уровня, `Levels.water_simulation`;
 поверхность — свой вызов в `transparent` с цветом и глубиной сцены: тайлы сетки с водой отбирает compute, один
 ExecuteIndirect, берег — пересечение продолженной за урез плоскости воды с рельефом, `water.vs` / `water.ps`: поглощение
 по толщине, экранные отражения, блик, рябь и пена, которые несёт течение (рябь — плитками, повёрнутыми и вытянутыми по

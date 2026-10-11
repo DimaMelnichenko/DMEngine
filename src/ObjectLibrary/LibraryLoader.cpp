@@ -474,6 +474,7 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 	water.flow.manning = value( "flow_manning" );
 	water.flow.iterations = query.getColumn( "flow_iterations" ).getInt();
 	water.flow.layer = value( "flow_layer" );
+	water.flow.detailSettleTime = value( "flow_detail_settle_time" );
 
 	// Источники-помощники (Tools/water_source.py); таблицы может не быть у базы, где их не ставили
 	SQLite::Database& db = DBConnector::instance().db();

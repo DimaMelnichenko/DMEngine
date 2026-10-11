@@ -159,6 +159,15 @@ private:
 		float stoneDrag;	// dt · Cd / 2: сопротивление камней русла
 	};
 
+	// Раскладка — cbuffer WaterDetailFlowBuffer (b6) в water_flow.cs (FLOW_DETAIL)
+	struct alignas( 16 ) DetailFlowParameters
+	{
+		uint32_t cells;			// ячеек плитки по стороне (без поля)
+		uint32_t tilesPerSide;	// плиток по стороне мира
+		float step;				// сторона ячейки, м
+		float wetDepth;			// ячейка вне плиток мокрая, если по сетке 1 м глубже, м
+	};
+
 	void setParameters( const Settings& settings );
 	// Приток ячеек по карте водосбора — при загрузке и при смене настроек источников
 	void buildSources( const Settings& settings );
@@ -180,6 +189,9 @@ private:
 	// Режим static: установившееся течение озёр (water_flow.cs) поверх mainStatic — порциями с ожиданием GPU
 	bool createFlowResources();
 	void solveFlow( const Settings::Flow& flow );
+	// Течение на детальной сетке у русел (water_flow.cs с FLOW_DETAIL) — после solveFlow и buildSurface: решение 1 м —
+	// начало и граница, итог — течение мокрых ячеек детальной воды (m_detailWater). Массивы счёта — только на время расчёта
+	void solveDetailFlow( const Settings::Flow& flow );
 
 	PropertyContainer m_properties;
 	PropertyContainer m_surfaceProperties;	// подокно «Surface» — материал поверхности
@@ -244,6 +256,7 @@ private:
 	DMComputeShader m_flowInitShader;
 	DMComputeShader m_flowFacesShader;
 	DMComputeShader m_flowAdvectShader;
+	DMComputeShader m_flowViscosityShader;
 	DMComputeShader m_flowDivergenceShader;
 	DMComputeShader m_flowRedShader;
 	DMComputeShader m_flowBlackShader;
@@ -252,7 +265,7 @@ private:
 	Buffer m_flowBuffer;			// FlowParameters
 	Texture m_flowInfo;				// R32G32B32A32_FLOAT: заданная скорость, вид ячейки, глубина
 	Texture m_flowVelocity;			// R32G32_FLOAT: скорость на восточной и южной грани
-	Texture m_flowAdvected;			// R32G32_FLOAT: после переноса — до давления
+	Texture m_flowAdvected;			// R32G32_FLOAT: после переноса — до вязкости и трения
 	Texture m_flowPressure;			// R32_FLOAT
 	Texture m_flowDivergence;		// R32_FLOAT
 	StorageView m_flowInfoUAV;
@@ -299,7 +312,7 @@ private:
 	uint32_t m_detailTileCount = 0;
 	uint32_t m_detailSide = 0;
 	float m_detailTileSize = 0.0f;
-	Texture m_detailStatic;			// RGBA32F массив: уровень ручья, u₀ по X и Z мира, уровень озера (DetailTile::water)
+	Texture m_detailStatic;			// RGBA32F массив: уровень воды, u₀ по X и Z мира, R русла (DetailTile::water)
 	ShaderView m_detailStaticView;
 	Texture m_detailWater;			// RGBA32F массив: уровень поверхности, течение X, Z, глубина — SLOT_WATER_DETAIL
 	StorageView m_detailWaterUAV;
@@ -319,6 +332,25 @@ private:
 	DMComputeShader m_detailSurfaceShader;
 	GridMesh m_detailMesh;			// сетка детальной плитки: вершина на тексель (с полем)
 	int m_detailPhase = -1;
+	// Течение детальной сетки (solveDetailFlow): блоки 8 × 8 плиток с водой и сухим текселем вокруг — срез и номер блока
+	// в плитке (строка блоков — по Z мира); плитка мира → срез (−1 — нет); камни русла — препятствия
+	std::vector<DirectX::XMUINT2> m_detailBlockList;
+	Buffer m_detailBlocks;
+	ShaderView m_detailBlocksView;
+	std::vector<int32_t> m_detailSliceOf;
+	uint32_t m_detailTilesPerSide = 0;
+	std::vector<TerrainHydrology::Stone> m_detailStones;
+	DMComputeShader m_detailFlowInitShader;
+	DMComputeShader m_detailFlowFacesShader;
+	DMComputeShader m_detailFlowAdvectShader;
+	DMComputeShader m_detailFlowViscosityShader;
+	DMComputeShader m_detailFlowNudgeShader;
+	DMComputeShader m_detailFlowDivergenceShader;
+	DMComputeShader m_detailFlowRedShader;
+	DMComputeShader m_detailFlowBlackShader;
+	DMComputeShader m_detailFlowProjectShader;
+	DMComputeShader m_detailFlowOutputShader;
+	Buffer m_detailFlowBuffer;		// DetailFlowParameters
 };
 
 }

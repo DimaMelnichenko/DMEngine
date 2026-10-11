@@ -2282,6 +2282,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// ниже воды ниже по течению — подпор. Озеро — вода ниже по течению у впадающих в него ручьёв и уровень его истока:
 	// ручьи в нём и у берега — на том же уровне подпором, а не правилами на стыках
 	std::vector<double> slope( count, p.minWaterSlope ), level( count ), speed( count ), foam( count ), actual( count );
+	std::vector<double> hydraulicRadius( count, 0.0 );	// R русла у узла, м — течение детальной воды (water_flow.cs)
 	// Путь до берега озера ниже по течению, м: у впадения, как у истока, наименьшая глубина и запас нарастают от берега —
 	// в устье вода ручья переходит в озеро, а не стоит над ним ступенькой
 	std::vector<double> inflowDistance( count, std::numeric_limits<double>::infinity() );
@@ -2460,6 +2461,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		const double surfaceSlope = below + above > 1e-3 ? ( level[upper] - level[lower] ) / ( below + above ) : slope[k];
 		const double depth = std::max( level[k] - actual[k], 1e-3 );
 		const double radius = width[k] * depth / ( width[k] + 2.0 * depth );
+		hydraulicRadius[k] = radius;
 		speed[k] = std::max( std::pow( radius, 2.0 / 3.0 ) * std::sqrt( std::max( surfaceSlope, static_cast<double>( p.minWaterSlope ) ) ) /
 								 shape[k].manning,
 							 static_cast<double>( p.minSpeed ) );
@@ -2676,14 +2678,14 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// озера (ниже); поверхность воды по нему рисует WaterSimulation (тайлы)
 	result.staticWater.assign( cells, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, -1e9f ) );
 	std::vector<double> nearest( cells, std::numeric_limits<double>::infinity() );
-	// Детальная вода — тем же обходом отрезков по текселям детальных плиток (0,25 м, с полем в тексель): уровень и
-	// течение ближайшего отрезка; уровень озера — после заливки озёр
+	// Детальная вода — тем же обходом отрезков по текселям детальных плиток (0,25 м, с полем в тексель): уровень, течение
+	// и гидравлический радиус ближайшего отрезка; уровень озера — после заливки озёр
 	const int detailSide = static_cast<int>( detailTileCells * detailSamples + 2 );
 	const double detailStep = 1.0 / detailSamples;
 	std::vector<std::vector<double>> detailNearest( result.detailTiles.size() );
 	for( size_t t = 0; t < result.detailTiles.size(); ++t )
 	{
-		result.detailTiles[t].water.assign( static_cast<size_t>( detailSide ) * detailSide, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, -1e9f ) );
+		result.detailTiles[t].water.assign( static_cast<size_t>( detailSide ) * detailSide, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, 0.0f ) );
 		detailNearest[t].assign( static_cast<size_t>( detailSide ) * detailSide, std::numeric_limits<double>::infinity() );
 	}
 	auto detailTexel = [&]( const DetailTile& tile, int i, int j )
@@ -2826,6 +2828,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 							texel.x = static_cast<float>( pointLevel[i] + ( pointLevel[i + 1] - pointLevel[i] ) * t );
 							texel.y = static_cast<float>( sx / length * v );
 							texel.z = static_cast<float>( -sy / length * v );
+							texel.w = static_cast<float>(
+								std::max( hydraulicRadius[k] + ( hydraulicRadius[d] - hydraulicRadius[k] ) * t, 1e-3 ) );
 						}
 					}
 				}
@@ -2887,7 +2891,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	}
 
 	// Уровень озера у текселей детальных плиток: своей клетки или соседней (урез — по детальной земле внутри клетки, а не
-	// по клеткам 1 м), но не там, где вода ручья ниже озера (исток уходит вниз от порога)
+	// по клеткам 1 м), но не там, где вода ручья ниже озера (исток уходит вниз от порога). Где озеро не ниже ручья, тексель —
+	// озеро: уровень озера, без течения и R
 	for( DetailTile& tile : result.detailTiles )
 	{
 		for( int j = 0; j < detailSide; ++j )
@@ -2910,7 +2915,9 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 						if( w > -1e8f && !( own.x > -1e8f && own.x < w - 0.01f ) )
 							lakeLevel = std::max( lakeLevel, w );
 					}
-				tile.water[static_cast<size_t>( j ) * detailSide + i].w = lakeLevel;
+				DirectX::XMFLOAT4& texel = tile.water[static_cast<size_t>( j ) * detailSide + i];
+				if( lakeLevel > -1e8f && ( texel.x <= -1e8f || lakeLevel >= texel.x ) )
+					texel = DirectX::XMFLOAT4( lakeLevel, 0.0f, 0.0f, 0.0f );
 			}
 		}
 	}
