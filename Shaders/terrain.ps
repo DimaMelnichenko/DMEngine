@@ -205,7 +205,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	LayerSample mixed = (LayerSample)0;
 	[unroll] for( uint n = 0; n < activeLayers; ++n )
 	{
-		mixed.albedo += layers[n].albedo * blend[n];
+		mixed.albedo += layers[n].albedo * g_layerTint[layerIndex[n]].xyz * blend[n];
 		mixed.detail += layers[n].detail * blend[n];
 		mixed.roughness += layers[n].roughness * blend[n];
 	}

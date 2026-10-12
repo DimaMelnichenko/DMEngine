@@ -365,6 +365,14 @@ void TerrainMaterial::setTiling( uint32_t layer, float tiling )
 	slice[layer % 4] = scale;
 }
 
+void TerrainMaterial::setTint( uint32_t layer, const XMFLOAT3& tint )
+{
+	if( layer >= m_layerCount )
+		return;
+	m_tint[layer] = tint;
+	m_layerTint[layer] = XMFLOAT4( tint.x, tint.y, tint.z, 0.0f );
+}
+
 bool TerrainMaterial::initialize( uint32_t terrainId, const TerrainMasks& masks, const TerrainEditCoverage& coverage )
 {
 	std::vector<Layer> layers;
@@ -377,12 +385,15 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const TerrainMasks& masks,
 	std::vector<std::string> normalFiles;
 	m_layerNames.assign( m_layerCount, {} );
 	m_tiling.assign( m_layerCount, 1.0f );
+	m_tint.assign( m_layerCount, XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
+	m_layerTint.fill( XMFLOAT4( 1.0f, 1.0f, 1.0f, 0.0f ) );
 	for( uint32_t i = 0; i < m_layerCount; ++i )
 	{
 		albedoFiles.push_back( layers[i].albedo );
 		normalFiles.push_back( layers[i].normal );
 		m_layerNames[i] = layers[i].name;
 		setTiling( i, layers[i].tiling );
+		setTint( i, layers[i].tint );
 	}
 
 	for( uint32_t layer = m_layerCount; layer < TerrainEditCoverage::paintLayers; ++layer )
@@ -424,7 +435,7 @@ bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers
 
 	try
 	{
-		SQLite::Statement query( DBConnector::instance().db(), "select layer, name, albedo, normal, tiling from TerrainLayers where terrain = :terrain" );
+		SQLite::Statement query( DBConnector::instance().db(), "select * from TerrainLayers where terrain = :terrain" );
 		query.bind( ":terrain", terrainId );
 
 		while( query.executeStep() )
@@ -441,6 +452,10 @@ bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers
 			layer.albedo = query.getColumn( "albedo" ).getString();
 			layer.normal = query.getColumn( "normal" ).getString();
 			layer.tiling = static_cast<float>( query.getColumn( "tiling" ).getDouble() );
+			// albedo_tint — "r,g,b"; колонки нет или NULL — текстура как есть
+			for( int column = 0; column < query.getColumnCount(); ++column )
+				if( std::string( query.getColumnName( column ) ) == "albedo_tint" && !query.getColumn( column ).isNull() )
+					strToVec3( query.getColumn( column ).getString(), layer.tint );
 		}
 	}
 	catch( const std::exception& e )

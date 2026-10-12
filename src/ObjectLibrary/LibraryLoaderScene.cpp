@@ -382,12 +382,13 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 				updateRules.exec();
 			}
 
-			SQLite::Statement updateLayer( db, "UPDATE TerrainLayers SET tiling = :tiling WHERE terrain = :terrain AND layer = :layer" );
+			SQLite::Statement updateLayer( db, "UPDATE TerrainLayers SET tiling = :tiling, albedo_tint = :tint WHERE terrain = :terrain AND layer = :layer" );
 			for( uint32_t layer = 0; layer < terrain->layerTiling.size(); ++layer )
 			{
 				if( terrain->layerTiling[layer] <= 0.0f )
 					continue;
 				updateLayer.bind( ":tiling", dbValue( terrain->layerTiling[layer] ) );
+				updateLayer.bind( ":tint", layer < terrain->layerTint.size() ? vec3ToStr( terrain->layerTint[layer] ) : std::string( "1,1,1" ) );
 				updateLayer.bind( ":terrain", terrain->id );
 				updateLayer.bind( ":layer", layer );
 				updateLayer.exec();

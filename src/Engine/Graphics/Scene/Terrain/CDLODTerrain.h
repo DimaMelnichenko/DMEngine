@@ -143,6 +143,7 @@ private:
 		int32_t waterBedLayer;	// слой гальки под водой режима static — по глубине в точке (−1 — нет)
 		uint32_t showWind;		// поле ветра на рельефе (SLOT_WIND_FIELD) — отладка, «Show wind»
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1, −2: начало морфинга и 1 / длина зоны
+		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
 	};
 
 	struct NodeBox
@@ -232,6 +233,7 @@ private:
 	// Рельеф после эрозии, м: прежний (из кэша до пересчёта) и новый — для пересадки моделей, пока она не сделана
 	std::vector<float> m_previousEroded;
 	std::vector<float> m_eroded;
+	PropertyContainer m_layerTintProperties;	// «Layer tint»: множитель альбедо по слоям (TerrainLayers.albedo_tint)
 	PropertyContainer m_layerProperties;	// «Layer tiling»: метров на повтор по слоям — подокно окна террейна
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;

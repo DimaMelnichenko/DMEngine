@@ -41,6 +41,11 @@ public:
 	const std::string& layerName( uint32_t layer ) const { return m_layerNames[layer]; }
 	float tiling( uint32_t layer ) const { return m_tiling[layer]; }
 	void setTiling( uint32_t layer, float tiling );
+	// Множитель альбедо слоя (TerrainLayers.albedo_tint, как Layer Tint у материалов Landscape в UE): фото-текстура темнее
+	// или другого оттенка, чем нужно уровню, — цвет подбирается в окне террейна без перепаковки; по слоям для шейдера — xyz
+	const DirectX::XMFLOAT3& tint( uint32_t layer ) const { return m_tint[layer]; }
+	void setTint( uint32_t layer, const DirectX::XMFLOAT3& tint );
+	const std::array<DirectX::XMFLOAT4, maxLayers>& layerTint() const { return m_layerTint; }
 
 private:
 	struct Layer
@@ -49,6 +54,7 @@ private:
 		std::string albedo;
 		std::string normal;
 		float tiling = 1.0f;
+		DirectX::XMFLOAT3 tint = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	};
 
 	bool loadLayers( uint32_t terrainId, std::vector<Layer>& layers );
@@ -65,6 +71,8 @@ private:
 	uint32_t m_layerCount = 0;
 	std::vector<std::string> m_layerNames;
 	std::vector<float> m_tiling;
+	std::vector<DirectX::XMFLOAT3> m_tint;
+	std::array<DirectX::XMFLOAT4, maxLayers> m_layerTint = {};
 };
 
 }

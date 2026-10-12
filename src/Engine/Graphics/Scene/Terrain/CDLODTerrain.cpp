@@ -151,6 +151,18 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 		prop->setLogarithmic()->setUnit( "m" )->setTooltip( "Metres per texture repeat" );
 	}
 	m_properties.addSubContainer( &m_layerProperties );
+	// Множитель альбедо слоя (TerrainLayers.albedo_tint): 1 — текстура как есть, больше — светлее
+	m_layerTintProperties.setName( "Layer tint" );
+	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
+	{
+		if( m_material.layerName( layer ).empty() )
+			continue;
+		prop = m_layerTintProperties.insert( std::to_string( layer ) + ": " + m_material.layerName( layer ), m_material.tint( layer ) );
+		prop->setLow( 0.0f );
+		prop->setHigh( 4.0f );
+		prop->setTooltip( "Albedo multiplier of the layer, R G B (Layer Tint in UE Landscape materials): 1 - the texture as is" );
+	}
+	m_properties.addSubContainer( &m_layerTintProperties );
 	if( m_erosion )
 		addErosionProperties( *m_erosion );
 	addLayerRulesProperties( m_layerRules );
@@ -1166,6 +1178,11 @@ void CDLODTerrain::update( const FrameContext& frame )
 		const std::string name = std::to_string( layer ) + ": " + m_material.layerName( layer );
 		if( m_layerProperties.exists( name ) )
 			m_material.setTiling( layer, std::max( m_layerProperties[name].data<float>(), 0.01f ) );
+		if( m_layerTintProperties.exists( name ) )
+		{
+			const XMFLOAT3 tint = m_layerTintProperties[name].data<XMFLOAT3>();
+			m_material.setTint( layer, XMFLOAT3( std::max( tint.x, 0.0f ), std::max( tint.y, 0.0f ), std::max( tint.z, 0.0f ) ) );
+		}
 	}
 }
 
@@ -1448,9 +1465,13 @@ TerrainSettings CDLODTerrain::settings() const
 	settings.farBlendStart = farBlend.x;
 	settings.farBlendEnd = farBlend.y;
 	settings.layerTiling.assign( m_material.layerCount(), 0.0f );
+	settings.layerTint.assign( m_material.layerCount(), XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
 		if( !m_material.layerName( layer ).empty() )
+		{
 			settings.layerTiling[layer] = m_material.tiling( layer );
+			settings.layerTint[layer] = m_material.tint( layer );
+		}
 	if( m_erosion )
 	{
 		TerrainErosionSettings& erosion = settings.erosion.emplace( *m_erosion );
@@ -1618,6 +1639,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.gridDim = static_cast<float>( patchDim );
 		std::copy( std::begin( m_morphConsts ), std::end( m_morphConsts ), params.morphConsts );
 		std::copy( m_material.layerScale().begin(), m_material.layerScale().end(), params.layerScale );
+		std::copy( m_material.layerTint().begin(), m_material.layerTint().end(), params.layerTint );
 		params.layerCount = m_material.layerCount();
 		params.texelSize = m_texelSize;
 		params.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();

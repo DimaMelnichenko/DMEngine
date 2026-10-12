@@ -543,7 +543,8 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 
 **Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До восьми слоёв из
 таблицы `TerrainLayers` (`layer` 0…7 — канал `layer % 4` среза `layer / 4` splat-карты: она — массив из двух RGBA, как
-weightmap в UE Landscape; `albedo` и `normal` — файлы, `tiling` — метров на повтор; сейчас шесть: две травы вперемешку
+weightmap в UE Landscape; `albedo` и `normal` — файлы, `tiling` — метров на повтор, `albedo_tint` — множитель альбедо,
+как Layer Tint в UE, подокно «Layer tint»; сейчас шесть: две травы вперемешку
 пятнами по шуму, осыпи, скала, снег и галька русел — роль `channel_bed`, ею красят русла конвейера и правки рельефа). Шейдер читает текстуры только четырёх самых весомых слоёв пикселя.
 Текстуры слоёв собираются при загрузке в два `Texture2DArray`: «альбедо RGB + высота A» и «нормаль RGB (соглашение
 DirectX) + шероховатость A»; все слои приводятся к размеру первого, альбедо — `R8G8B8A8_UNORM_SRGB` (фото в sRGB,

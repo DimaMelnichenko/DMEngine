@@ -67,7 +67,9 @@ FreePBR запрещает распространять сами файлы — 
 `Textures/` вне git).
 
 Слой — строка `TerrainLayers` (`terrain`, `layer` 0…7 — канал `layer % 4` среза `layer / 4` splat-карты, `name`,
-`albedo`, `normal` — файлы от `Textures\`, `tiling` — метров на повтор). Файлы слоя:
+`albedo`, `normal` — файлы от `Textures\`, `tiling` — метров на повтор, `albedo_tint` — множитель альбедо `r,g,b`, NULL —
+1, как Layer Tint в материалах UE Landscape: фото-текстура темнее или другого оттенка, чем нужно уровню, — цвет
+подбирается в движке без перепаковки). Файлы слоя:
 
 - `<имя>_albedo.dds` — RGB альбедо в sRGB (`R8G8B8A8_UNORM_SRGB`), A — высота для смешивания слоёв, 0…1;
 - `<имя>_normal.dds` — RGB нормаль в соглашении DirectX (G — вниз по картинке), A — шероховатость.
@@ -445,13 +447,19 @@ smoothstep; «от» больше «до» — убывание), правка �
    цена второго масштаба растёт с её шириной. Полоса — пара полей «начало — конец» (конец не уходит за
    начало), в `set` — `60,150`; в базе — колонки `Terrain.far_blend_start` / `far_blend_end`.
 5. **Смешивание по высоте** (Mishkinis): к весу слоя прибавляется его высота, виден слой с наибольшей суммой, переход —
-   «Height blend»; так камни осыпей проступают сквозь траву.
+   «Height blend»; так камни осыпей проступают сквозь траву. Альбедо слоя при смешивании × его множитель
+   (`g_layerTint`, `albedo_tint`).
 6. Крупные пятна яркости по шуму (40 и 13 м), затем `evaluateLighting` ([lighting.md](lighting.md)).
 
 Всё перечисленное в кавычках — ползунки окна террейна в GUI (Outliner → Scene → CDLOD terrain), значения — колонки
 строки `Terrain`: `triplanar_sharpness` (8), `height_blend` (0,2), `far_texture_scale` (8), `far_blend_start` (40),
 `far_blend_end` (120); NULL — значение в скобках. Подокно «Layer tiling» — метров на повтор каждого слоя
-(`TerrainLayers.tiling`). «Save level» (Ctrl+S) пишет их и «Height multiplier» в базу ([gui.md](gui.md)).
+(`TerrainLayers.tiling`), «Layer tint» — множитель альбедо слоя R, G, B (`TerrainLayers.albedo_tint`, 0…4, вживую).
+«Save level» (Ctrl+S) пишет их и «Height multiplier» в базу ([gui.md](gui.md)).
+
+Множитель на `Test` (2026-10-12): фото-трава FreePBR тёмная — среднее альбедо `patchy_meadow1` 0,044, `wispy_grass_meadow`
+0,052 (линейное; меши травы — 0,12–0,17, скала — 0,16), и склоны под лесом выходили почти чёрными рядом со светлой
+травой-мешами. Множители: сухая трава 2,2 / 2,6 / 2,2 (альбедо ~0,11), сочная 2 / 2,2 / 2,4 (~0,11), осыпи 1,4.
 
 ## Производительность
 

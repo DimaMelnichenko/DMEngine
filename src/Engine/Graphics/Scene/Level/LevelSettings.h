@@ -179,6 +179,7 @@ struct TerrainSettings
 	float farBlendStart = 40.0f;		// полоса перехода ко второму масштабу, м
 	float farBlendEnd = 120.0f;
 	std::vector<float> layerTiling;		// метров на повтор по номеру слоя (TerrainLayers.layer); 0 — слоя нет
+	std::vector<DirectX::XMFLOAT3> layerTint;	// множитель альбедо по номеру слоя (TerrainLayers.albedo_tint)
 	std::optional<TerrainErosionSettings> erosion;	// строка TerrainErosion — правки подокна «Erosion»
 	TerrainLayerRules layerRules;					// строка TerrainLayerRules — правки подокна «Layer rules»
 };
