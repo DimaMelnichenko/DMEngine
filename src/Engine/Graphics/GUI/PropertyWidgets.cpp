@@ -4,6 +4,7 @@
 #include <cfloat>
 #include <cmath>
 #include "imgui.h"
+#include "imgui_internal.h"
 
 using namespace DirectX;
 
@@ -56,36 +57,120 @@ std::string numberFormat( const Property& property, float value, bool unit = tru
 	return format;
 }
 
-// Ячейка «ползунок | поле ввода числа»: поле — под «-0000.000» (не уже «-0.000»), ползунок — остальное. В узкой
-// ячейке (панель Camera) ползунку места нет — только поле. true — ползунок рисовать (ширина уже задана)
-bool beginWithNumberField()
+// Шаг стрелок и привязки (Ctrl): степень десяти около трёх пикселей перетаскивания — у доли 0…1 на поле в 200 пикселей
+// 0,01, у метров 0…200 — 1, как шаги полей Blender
+double stepFor( double speed )
 {
-	const float padding = ImGui::GetStyle().FramePadding.x * 2.0f;
-	const float avail = ImGui::GetContentRegionAvail().x;
-	const float field = std::clamp( avail * 0.4f, ImGui::CalcTextSize( "-0.000" ).x + padding, ImGui::CalcTextSize( "-0000.000" ).x + padding );
-	const float slider = avail - field - ImGui::GetStyle().ItemInnerSpacing.x;
-	if( slider < ImGui::GetFontSize() * 2.5f )
-		return false;
-	ImGui::SetNextItemWidth( slider );
-	return true;
+	return std::pow( 10.0, std::floor( std::log10( std::max( speed * 3.0, 1e-9 ) ) ) );
 }
 
-// Поле ввода числа: точное значение без ползунка (за границы ползунка — можно); afterSlider — в той же строке
-void numberField( const Property& property, float* value, bool afterSlider )
+// Формат с точностью шага: при Ctrl ImGui округляет значение по формату, а остаток перетаскивания копит сам — значение
+// идёт шагами и не застревает
+std::string snappedFormat( double step, const std::string& unit )
 {
-	if( afterSlider )
-		ImGui::SameLine( 0.0f, ImGui::GetStyle().ItemInnerSpacing.x );
-	ImGui::SetNextItemWidth( -FLT_MIN );
-	const std::string format = numberFormat( property, *value, !afterSlider );
-	ImGui::InputFloat( "##number", value, 0.0f, 0.0f, format.c_str(), ImGuiInputTextFlags_CharsScientific );
+	const int decimals = std::max( 0, -static_cast<int>( std::floor( std::log10( step ) + 1e-6 ) ) );
+	return "%." + std::to_string( decimals ) + "f" + ( unit.empty() ? "" : " " + unit );
 }
 
-void intField( int32_t* value, bool afterSlider )
+// Общее у чисел: фон и заливка под полем, поле ImGui (DragScalar с вводом по клику — io.ConfigDragClickToInputText),
+// стрелки при наведении
+template<class TYPE>
+bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const char* format, const NumberOptions& options )
 {
-	if( afterSlider )
-		ImGui::SameLine( 0.0f, ImGui::GetStyle().ItemInnerSpacing.x );
-	ImGui::SetNextItemWidth( -FLT_MIN );
-	ImGui::InputInt( "##number", value, 0, 0 );
+	const ImGuiIO& io = ImGui::GetIO();
+	const ImGuiStyle& style = ImGui::GetStyle();
+	const float width = ImGui::CalcItemWidth();
+	const ImVec2 min = ImGui::GetCursorScreenPos();
+	const ImVec2 max( min.x + width, min.y + ImGui::GetFrameHeight() );
+	const double low = options.low;
+	const double high = options.high;
+	const bool bounded = high > low;
+	const bool integer = type == ImGuiDataType_S32;
+	double speed = options.speed > 0.0f ? options.speed :
+				   bounded ? ( high - low ) / std::max( width, 1.0f ) : std::max( std::fabs( static_cast<double>( *value ) ) * 0.005, 1e-4 );
+	const double step = integer ? std::max( 1.0, std::round( stepFor( speed ) ) ) : stepFor( speed );
+	if( io.KeyShift )
+		speed *= 0.1;
+	if( integer )
+		speed = std::max( speed, 0.05 );
+
+	// Фон поля и заливка доли — под ним: у самого поля фон прозрачный, подсветка наведения и правки — поверх
+	ImDrawList* draw = ImGui::GetWindowDrawList();
+	draw->AddRectFilled( min, max, ImGui::GetColorU32( ImGuiCol_FrameBg ), style.FrameRounding );
+	if( options.fill && bounded )
+	{
+		const double v = static_cast<double>( *value );
+		double share = options.logarithmic && low > 0.0 ? std::log( std::max( v, low ) / low ) / std::log( high / low ) : ( v - low ) / ( high - low );
+		share = std::clamp( share, 0.0, 1.0 );
+		if( share > 0.0 )
+			draw->AddRectFilled( min, ImVec2( min.x + static_cast<float>( width * share ), max.y ),
+								 ImGui::GetColorU32( ImGuiCol_SliderGrab, 0.45f ), style.FrameRounding );
+	}
+	ImGui::PushStyleColor( ImGuiCol_FrameBg, IM_COL32( 0, 0, 0, 0 ) );
+	ImGui::PushStyleColor( ImGuiCol_FrameBgHovered, ImGui::GetColorU32( ImGuiCol_Text, 0.06f ) );
+	ImGui::PushStyleColor( ImGuiCol_FrameBgActive, ImGui::GetColorU32( ImGuiCol_Text, 0.10f ) );
+	const std::string snapped = io.KeyCtrl && !integer ? snappedFormat( step, options.unit ) : format;
+	const TYPE typedLow = static_cast<TYPE>( low );
+	const TYPE typedHigh = static_cast<TYPE>( high );
+	ImGuiSliderFlags flags = ImGuiSliderFlags_NoSpeedTweaks;
+	if( options.logarithmic )
+		flags |= ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat;
+	ImGui::SetNextItemAllowOverlap();
+	ImGui::SetNextItemWidth( width );
+	bool changed = ImGui::DragScalar( id, type, value, static_cast<float>( speed ), bounded ? &typedLow : nullptr, bounded ? &typedHigh : nullptr,
+									  snapped.c_str(), flags );
+	ImGui::PopStyleColor( 3 );
+	const ImGuiID item = ImGui::GetItemID();
+	// Стрелки — кнопки поверх поля: пока одну из них держат, она активна, и поле «под курсором» только с этим разрешением
+	ImGui::PushID( id );
+	const ImGuiID less = ImGui::GetID( "##less" );
+	const ImGuiID more = ImGui::GetID( "##more" );
+	ImGui::PopID();
+	const ImGuiID active = ImGui::GetActiveID();
+	const bool hovered = ImGui::IsItemHovered( ImGuiHoveredFlags_AllowWhenOverlappedByItem | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem ) &&
+						 ( active == 0 || active == item || active == less || active == more );
+	const bool textInput = ImGui::TempInputIsActive( item );
+	if( textInput || !hovered || ImGui::IsItemActive() )
+	{
+		if( hovered && !textInput )
+			ImGui::SetMouseCursor( ImGuiMouseCursor_ResizeEW );
+		return changed;
+	}
+
+	// Стрелки по краям — шаг вниз и вверх (кнопки поверх поля: у поля AllowOverlap)
+	const ImVec2 after = ImGui::GetCursorScreenPos();
+	const float arrow = ImGui::GetFrameHeight() * 0.8f;
+	bool arrowHovered = false;
+	ImGui::PushID( id );
+	for( int side = 0; side < 2; ++side )
+	{
+		const ImVec2 at( side == 0 ? min.x : max.x - arrow, min.y );
+		ImGui::SetCursorScreenPos( at );
+		if( ImGui::InvisibleButton( side == 0 ? "##less" : "##more", ImVec2( arrow, max.y - min.y ) ) )
+		{
+			double v = static_cast<double>( *value ) + ( side == 0 ? -step : step );
+			if( bounded )
+				v = std::clamp( v, low, high );
+			*value = static_cast<TYPE>( integer ? std::round( v ) : v );
+			changed = true;
+			ImGui::MarkItemEdited( item );
+		}
+		const bool over = ImGui::IsItemHovered();
+		arrowHovered = arrowHovered || over;
+		const float size = ImGui::GetFontSize() * 0.55f;
+		const ImVec2 center( at.x + arrow * 0.5f, ( min.y + max.y ) * 0.5f );
+		const ImU32 color = ImGui::GetColorU32( ImGuiCol_Text, over ? 1.0f : 0.5f );
+		if( side == 0 )
+			draw->AddTriangleFilled( ImVec2( center.x - size * 0.4f, center.y ), ImVec2( center.x + size * 0.3f, center.y - size * 0.5f ),
+									 ImVec2( center.x + size * 0.3f, center.y + size * 0.5f ), color );
+		else
+			draw->AddTriangleFilled( ImVec2( center.x + size * 0.4f, center.y ), ImVec2( center.x - size * 0.3f, center.y + size * 0.5f ),
+									 ImVec2( center.x - size * 0.3f, center.y - size * 0.5f ), color );
+	}
+	ImGui::PopID();
+	ImGui::SetCursorScreenPos( after );
+	ImGui::SetMouseCursor( arrowHovered ? ImGuiMouseCursor_Hand : ImGuiMouseCursor_ResizeEW );
+	return changed;
 }
 
 // Шаг перетаскивания: доля диапазона, но не меньше доли самого значения
@@ -95,6 +180,12 @@ float dragSpeed( const Property& property, float value )
 		return property.dragSpeed();
 	const float range = property.high() - property.low();
 	return std::max( { std::fabs( value ) * 0.005f, range > 0.0f ? range * 0.001f : 0.0f, 1e-5f } );
+}
+
+// Векторы и полоса: тот же шаг, Shift — вдесятеро точнее (как у чисел, numberField)
+float vectorSpeed( const Property& property, float value )
+{
+	return dragSpeed( property, value ) * ( ImGui::GetIO().KeyShift ? 0.1f : 1.0f );
 }
 
 void labelCell( const std::string& name, Property& property )
@@ -131,7 +222,9 @@ void controlCell( const std::string& name, Property& property )
 	ImGui::SetNextItemWidth( -FLT_MIN );
 	const std::string id = "##" + name;
 	const char* label = id.c_str();
-	const ImGuiSliderFlags flags = property.logarithmic() ? ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat : 0;
+	// Векторы и полоса — перетаскиванием, клик — ввод (io.ConfigDragClickToInputText); Shift — точнее, как у чисел
+	const ImGuiSliderFlags flags = ImGuiSliderFlags_NoSpeedTweaks |
+								   ( property.logarithmic() ? ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat : 0 );
 	switch( property.valueType() )
 	{
 		case ValueType::BOOL:
@@ -141,30 +234,21 @@ void controlCell( const std::string& name, Property& property )
 		{
 			float* value = property.dataPtr<float>();
 			const std::string format = numberFormat( property, *value );
-			ImGui::PushID( label );
-			switch( property.controlType() )
+			if( property.controlType() == GUIControlType::LABEL )
 			{
-				case GUIControlType::DRAG:
-				{
-					const bool slider = beginWithNumberField();
-					if( slider )
-						ImGui::DragFloat( label, value, dragSpeed( property, *value ), property.low(), property.high(), format.c_str(), flags );
-					numberField( property, value, slider );
-					break;
-				}
-				case GUIControlType::LABEL:
-					ImGui::Text( format.c_str(), *value );
-					break;
-				default:
-				{
-					const bool slider = beginWithNumberField();
-					if( slider )
-						ImGui::SliderFloat( label, value, property.low(), property.high(), format.c_str(), flags );
-					numberField( property, value, slider );
-					break;
-				}
+				ImGui::Text( format.c_str(), *value );
+				break;
 			}
-			ImGui::PopID();
+			// Числовое поле как в Blender (numberField): у SLIDER — заливка доли диапазона, весь диапазон на ширину поля;
+			// у DRAG — шаг по величине значения
+			NumberOptions options;
+			options.low = property.low();
+			options.high = property.high();
+			options.fill = property.controlType() != GUIControlType::DRAG;
+			options.speed = property.controlType() == GUIControlType::DRAG ? dragSpeed( property, *value ) : 0.0f;
+			options.logarithmic = property.logarithmic();
+			options.unit = property.unit();
+			numberField( label, value, format.c_str(), options );
 			break;
 		}
 		// Векторы — перетаскиванием (у ползунка — границы): двойной клик по полю — ввод числа
@@ -175,11 +259,11 @@ void controlCell( const std::string& name, Property& property )
 			{
 				// Полоса: x — начало, y — конец; ImGui не даёт им перейти друг через друга
 				const std::string format = numberFormat( property, value[1] );
-				ImGui::DragFloatRange2( label, &value[0], &value[1], dragSpeed( property, value[1] ), property.low(), property.high(),
+				ImGui::DragFloatRange2( label, &value[0], &value[1], vectorSpeed( property, value[1] ), property.low(), property.high(),
 										format.c_str(), nullptr, flags | ImGuiSliderFlags_AlwaysClamp );
 			}
 			else
-				ImGui::DragFloat2( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
+				ImGui::DragFloat2( label, value, vectorSpeed( property, value[0] ), property.low(), property.high(), "%.3f", flags );
 			break;
 		}
 		case ValueType::VECTOR3:
@@ -191,7 +275,7 @@ void controlCell( const std::string& name, Property& property )
 					ImGui::ColorEdit3( label, value, ImGuiColorEditFlags_Float );
 					break;
 				default:
-					ImGui::DragFloat3( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
+					ImGui::DragFloat3( label, value, vectorSpeed( property, value[0] ), property.low(), property.high(), "%.3f", flags );
 					break;
 			}
 			break;
@@ -205,22 +289,19 @@ void controlCell( const std::string& name, Property& property )
 					ImGui::ColorEdit4( label, value, ImGuiColorEditFlags_Float );
 					break;
 				default:
-					ImGui::DragFloat4( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
+					ImGui::DragFloat4( label, value, vectorSpeed( property, value[0] ), property.low(), property.high(), "%.3f", flags );
 					break;
 			}
 			break;
 		}
 		case ValueType::INT:
 		{
-			int32_t* value = property.dataPtr<int32_t>();
-			ImGui::PushID( label );
-			const bool slider = beginWithNumberField();
-			if( slider && property.controlType() == GUIControlType::DRAG )
-				ImGui::DragInt( label, value, 1.0f, static_cast<int>( property.low() ), static_cast<int>( property.high() ) );
-			else if( slider )
-				ImGui::SliderInt( label, value, static_cast<int>( property.low() ), static_cast<int>( property.high() ) );
-			intField( value, slider );
-			ImGui::PopID();
+			NumberOptions options;
+			options.low = property.low();
+			options.high = property.high();
+			options.fill = property.controlType() != GUIControlType::DRAG;
+			options.speed = property.controlType() == GUIControlType::DRAG ? 0.1f : 0.0f;
+			numberField( label, property.dataPtr<int32_t>(), options );
 			break;
 		}
 		case ValueType::UINT:
@@ -295,7 +376,8 @@ void drawContainerImpl( PropertyContainer& container, const std::string& filter,
 		if( !containerMatches && !hasMatches( *sub, filter ) )
 			continue;
 		ImGui::PushID( sub );
-		const std::string title = sub->modified() ? sub->name() + "  *" : sub->name();
+		// «*» — изменено; ID заголовка — постоянный («###»), иначе первая же правка внутри меняла его и сворачивала подокно
+		const std::string title = ( sub->modified() ? sub->name() + "  *" : sub->name() ) + "###header";
 		// Под фильтром — раскрыты: видно, что нашлось
 		if( !filter.empty() )
 			ImGui::SetNextItemOpen( true, ImGuiCond_Always );
@@ -345,6 +427,16 @@ bool hasMatches( PropertyContainer& container, const std::string& filter )
 void drawContainer( PropertyContainer& container, const std::string& filter, PropertyContainer* focus )
 {
 	drawContainerImpl( container, filter, false, focus );
+}
+
+bool numberField( const char* id, float* value, const char* format, const NumberOptions& options )
+{
+	return numberFieldImpl( id, value, ImGuiDataType_Float, format, options );
+}
+
+bool numberField( const char* id, int32_t* value, const NumberOptions& options )
+{
+	return numberFieldImpl( id, value, ImGuiDataType_S32, "%d", options );
 }
 
 void endFrame()

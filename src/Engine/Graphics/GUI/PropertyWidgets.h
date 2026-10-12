@@ -12,6 +12,24 @@ namespace PropertyWidgets
 // Подстрока без учёта регистра (латиница); пустой образец подходит ко всему
 bool matches( const std::string& text, const std::string& pattern );
 
+// Числовое поле как в Blender — общее для всех контролов чисел: перетаскивание вбок меняет значение от движения мыши (без
+// прыжка к точке клика), клик без движения — ввод числа (Enter — принять, Esc — отменить), стрелки по краям при
+// наведении — шаг вниз и вверх, Shift при перетаскивании — вдесятеро точнее, Ctrl — шагами. low < high — границы
+// перетаскивания и стрелок (ввод числом — за ними можно); fill — заливка доли диапазона, как у фактор-слайдеров Blender;
+// speed — изменение на пиксель (0 — у границ весь диапазон на ширину поля, без них — по величине значения). Ширина —
+// как у прочих контролов (SetNextItemWidth); id с «##» — без подписи справа
+struct NumberOptions
+{
+	float low = 0.0f;
+	float high = 0.0f;
+	float speed = 0.0f;
+	bool fill = false;
+	bool logarithmic = false;
+	std::string unit;	// для формата при Ctrl (шагами); в format — уже с единицами
+};
+bool numberField( const char* id, float* value, const char* format, const NumberOptions& options );
+bool numberField( const char* id, int32_t* value, const NumberOptions& options );
+
 // Свойства контейнера и его подконтейнеры (сворачиваемые заголовки); filter — подстрока имени свойства или подконтейнера;
 // focus — подконтейнер, который раскрыть (с родителями) и прокрутить к нему, прочие свернуть; nullptr — как есть
 void drawContainer( PropertyContainer& container, const std::string& filter, PropertyContainer* focus = nullptr );

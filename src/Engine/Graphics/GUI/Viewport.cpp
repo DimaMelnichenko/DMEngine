@@ -4,6 +4,7 @@
 #include "imgui_internal.h"
 #include "ImGuizmo.h"
 #include "GUI.h"
+#include "PropertyWidgets.h"
 #include "Scene\Camera\DMCamera.h"
 #include "Scene\Model\ModelInstances.h"
 #include "Scene\Terrain\TerrainHeightSource.h"
@@ -299,7 +300,11 @@ void Viewport::editStreamPoint( const DMCamera& camera, GS::WaterSimulation& wat
 		ImGui::Text( "%s, point %d of %d: drag the gizmo - move, Insert - add after, Delete - remove", curve.name.c_str(), m_streamPoint + 1,
 					 static_cast<int>( curve.points.size() ) );
 		ImGui::SetNextItemWidth( 160.0f );
-		ImGui::SliderFloat( "Falloff", &m_streamFalloff, 0.0f, 60.0f, "%.0f m" );
+		PropertyWidgets::NumberOptions falloff;
+		falloff.high = 60.0f;
+		falloff.fill = true;
+		falloff.unit = "m";
+		PropertyWidgets::numberField( "Falloff", &m_streamFalloff, "%.0f m", falloff );
 		ImGui::SetItemTooltip( "Neighbour points along the curve this close move too, less towards the edge (0 - the point only)" );
 	}
 	ImGui::End();

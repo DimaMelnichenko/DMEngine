@@ -57,6 +57,8 @@ void GUI::Initialize( HWND hwnd )
 #ifdef IMGUI_HAS_DOCK
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 #endif
+	// Числа — как в Blender: клик без перетаскивания — ввод значения (PropertyWidgets::numberField)
+	io.ConfigDragClickToInputText = true;
 
 	ImGui_ImplWin32_Init( hwnd );
 	// Бэкенд DX12: шрифт и картинки GUI — дескрипторы из общей shader-visible кучи движка (callback'и), кадров в полёте

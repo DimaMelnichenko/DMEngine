@@ -16,7 +16,12 @@ void TextureLibraryPanel::draw( bool* open )
 	ImGui::InputTextWithHint( "##filter", "Search", &m_filter );
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth( -FLT_MIN );
-	ImGui::SliderFloat( "##size", &m_thumbnail, 48.0f, 256.0f, "%.0f px" );
+	PropertyWidgets::NumberOptions size;
+	size.low = 48.0f;
+	size.high = 256.0f;
+	size.fill = true;
+	size.unit = "px";
+	PropertyWidgets::numberField( "##size", &m_thumbnail, "%.0f px", size );
 
 	ImGui::BeginChild( "textures" );
 	const float spacing = ImGui::GetStyle().ItemSpacing.x;

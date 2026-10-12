@@ -196,7 +196,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (`LibraryLoader::saveLevelScene`, `ObjectLibrary/LibraryLoaderScene.cpp`); объект отдаёт настройки по своим свойствам,
   о базе не знает. Имя свойства — без «/» (разделитель пути `set`), единицы — `Property::setUnit`. Экземпляры моделей —
   окно «Model instances» (`ModelInstances::instanceProperties`: положение, поворот углами, масштаб → `LevelModels`).
-  У числа — поле ввода справа от ползунка, векторы — перетаскиванием с вводом по двойному клику. Вьюпорт
+  Числа — поля как в Blender (`PropertyWidgets::numberField`, один шаблон контролов `controlCell` на все окна):
+  перетаскивание вбок, клик — ввод, стрелки по краям — шаг, Shift — точнее, Ctrl — шагами; у свойства с границами —
+  заливка доли. Вьюпорт
   (`GUI/Viewport.h`, вызывается между `GUI::Begin` и `End`): клик по сцене — луч к границам экземпляров
   (`ModelInstances::pick`), рамка, подокно в Details (`GUI::focusProperties`), гизмо ImGuizmo пишет в те же свойства;
   отладочные виды — View → Debug views; команда `pick x y` — выбор сценарием.
@@ -534,7 +536,7 @@ DirectX) + шероховатость A»; все слои приводятся 
 В шейдере нормаль рельефа считается по карте высот (мип под размер пикселя), текстура слоя проецируется сверху,
 а на крутых склонах ещё и вдоль X и Z (triplanar, нормали по UDN), вдали — ещё и в крупном масштабе (distance
 resampling, как в UE Landscape: мелкий повтор не складывается в сетку), слои смешиваются по высоте. Настраиваются
-в GUI: «Triplanar sharpness», «Height blend», «Far texture scale», «Far blend» (полоса «начало — конец» двойным ползунком). Подробно — `docs/terrain.md`.
+в GUI: «Triplanar sharpness», «Height blend», «Far texture scale», «Far blend» (полоса «начало — конец» парой полей). Подробно — `docs/terrain.md`.
 
 Эрозия — первая ступень конвейера рельефа и воды (`Scene/Terrain/TerrainErosion.h`, `Shaders/terrain_erosion.cs`, как
 Erosion в World Machine и Gaea): капли (Beyer 2015, целочисленные атомики — результат одинаков от запуска к запуску) и
