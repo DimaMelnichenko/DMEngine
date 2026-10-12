@@ -81,6 +81,9 @@ cbuffer ScatterVariantsBuffer : register( b7 )
 	// теней последний LOD (импостер; 0 — LOD как у главного вида)
 	float4 g_variants[maxVariants];
 	float4 g_lodEnd[maxVariants];	// дальности LOD 0…2 варианта, м: дальше — следующий LOD
+	// Они же у видов теней: границы LOD модели × её «Shadow LOD scale» (DMModel::shadowLodScale), переход к импостеру — как
+	// в кадре (у теней его сдвигает w в g_variants)
+	float4 g_shadowLodEnd[maxVariants];
 	float4 g_bounds[maxVariants];	// сфера модели (LOD0) в её координатах: xyz — центр, w — радиус (при размере 1)
 	float4 g_footprints[maxVariants];	// след основания (LOD0): xy — центр по X и Z, z — радиус по XZ (при размере 1)
 	uint4  g_lists[MAX_LISTS];		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
@@ -448,6 +451,9 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 	const uint lodCount = (uint)g_variants[variant].y;
 	const bool dithered = g_variants[variant].z > 0.5f;
 	const float4 lodEnd = g_lodEnd[variant] * lodScale;
+	const float4 shadowLodEnd = g_shadowLodEnd[variant] * lodScale;
+	// Свои дальности у теней — свой выбор LOD, и долю перехода с главным видом не разделить: переход без дизеринга
+	const bool ownShadowLods = any( g_shadowLodEnd[variant].xyz != g_lodEnd[variant].xyz );
 	const float shadowLastLod = g_variants[variant].w * lodScale;
 	// Расстояние до точки LOD — у всех видов кадра одна, главная камера (RenderView::lodOrigin)
 	const float distanceToLodOrigin = distanceToCamera;
@@ -463,15 +469,18 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 			continue;
 		uint lod;
 		float transition;
-		const bool viewDithered = dithered && g_viewParams[view].y > 0.5f;
-		selectLod( distanceToLodOrigin, lodEnd * g_viewParams[view].x, lodCount, viewDithered, lod, transition );
+		const bool shadowView = view > 0;
+		const bool setDithered = dithered && g_viewParams[view].y > 0.5f;
+		const bool viewDithered = setDithered && !( shadowView && ownShadowLods );
+		selectLod( distanceToLodOrigin, ( shadowView ? shadowLodEnd : lodEnd ) * g_viewParams[view].x, lodCount, viewDithered,
+				   lod, transition );
 
 		// Тень дальнего экземпляра — последним LOD раньше, чем в кадре (импостер леса); в полосе вокруг этой дальности —
 		// переход дизерингом от LOD кадра к последнему своей парой: тень меняется так же плавно, как экземпляр в кадре
 		if( view > 0 && shadowLastLod > 0.0f && lod + 1 < lodCount )
 		{
 			const float start = shadowLastLod * g_viewParams[view].x;
-			const float halfBand = viewDithered ? start * ( LOD_TRANSITION_WIDTH * 0.5f ) : 0.0f;
+			const float halfBand = setDithered ? start * ( LOD_TRANSITION_WIDTH * 0.5f ) : 0.0f;
 			if( distanceToLodOrigin >= start + halfBand )
 			{
 				lod = lodCount - 1;

@@ -77,6 +77,7 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 		m_variants.variants[v] = XMFLOAT4( v + 1 == variantCount ? 1.0f : cumulative, static_cast<float>( lodCount ), 0.0f,
 										   variant.shadowLastLodDistance );
 		m_variants.lodEnd[v] = XMFLOAT4( variant.lodEnd[0], variant.lodEnd[1], variant.lodEnd[2], variant.lodEnd[3] );
+		m_variants.shadowLodEnd[v] = m_variants.lodEnd[v];
 		m_variants.bounds[v] = variant.bounds;
 		m_variants.footprints[v] = variant.footprint;
 
@@ -190,6 +191,22 @@ void ScatterPass::setShadowLastLodDistance( uint32_t variant, float distance )
 	if( variant < m_populateParams.variantCount && m_variants.variants[variant].w != distance )
 	{
 		m_variants.variants[variant].w = distance;
+		m_variantsChanged = true;
+	}
+}
+
+void ScatterPass::setShadowLodScale( uint32_t variant, float scale, uint32_t modelBoundaries )
+{
+	if( variant >= m_populateParams.variantCount )
+		return;
+	const XMFLOAT4& lodEnd = m_variants.lodEnd[variant];
+	const float factors[4] = { modelBoundaries > 0 ? scale : 1.0f, modelBoundaries > 1 ? scale : 1.0f,
+							   modelBoundaries > 2 ? scale : 1.0f, 1.0f };
+	const XMFLOAT4 shadowLodEnd( lodEnd.x * factors[0], lodEnd.y * factors[1], lodEnd.z * factors[2], lodEnd.w * factors[3] );
+	XMFLOAT4& current = m_variants.shadowLodEnd[variant];
+	if( current.x != shadowLodEnd.x || current.y != shadowLodEnd.y || current.z != shadowLodEnd.z || current.w != shadowLodEnd.w )
+	{
+		current = shadowLodEnd;
 		m_variantsChanged = true;
 	}
 }

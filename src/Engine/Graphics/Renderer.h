@@ -87,9 +87,10 @@ private:
 	void renderShadows( Scene& scene, const FrameContext& frame );
 	// depthFromPrepass — глубина вида уже записана depth prepass (RenderContext::depthFromPrepass)
 	void executePass( MeshPass pass, const RenderView& view, RasterState frameRaster, bool depthFromPrepass = false );
-	// Команды прохода сериями по объектам; measureOwners — строка времени CPU и GPU на каждую серию
+	// Команды прохода сериями по объектам; measureOwners — строка времени CPU и GPU на каждую серию, ownerPrefix — к имени
+	// объекта в ней (у каскадов теней «Shadow: »: одноимённые области кадра складываются — время объекта во всех каскадах)
 	void executeCommands( const MeshCollector& collector, const std::vector<DrawCommand>& commands,
-						  const RenderContext& context, bool measureOwners );
+						  const RenderContext& context, bool measureOwners, const char* ownerPrefix = "" );
 	// Единственное место, где рисуется MeshBatch: вариант шейдера (в проходе теней — «только глубина»), параметры,
 	// растеризатор, матрица, вызов
 	void drawMesh( const MeshBatch& batch, const RenderContext& context );

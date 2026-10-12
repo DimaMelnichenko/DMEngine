@@ -610,12 +610,14 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 
 	LOG( "Load model: " + std::to_string( idModel ) );
 
-	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name FROM Models where id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, shadow_lod_scale FROM Models where id = :id" );
 	query.bind( ":id", idModel );
+	float shadowLodScale = 1.0f;
 	while( query.executeStep() )
 	{	
 		if( !GS::System::models().createModel( query.getColumn( 0 ), query.getColumn( 1 ) ) )
 			return false;
+		shadowLodScale = static_cast<float>( query.getColumn( "shadow_lod_scale" ).getDouble() );
 	}
 
 	if( !GS::System::models().exists( idModel ) )
@@ -706,6 +708,9 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 										 " (" + material + ")" );
 		}
 	}
+	// Множитель LOD теней — свойство окна «Models» только у моделей с несколькими LOD
+	if( model->lodCount() > 1 )
+		model->setShadowLodScale( shadowLodScale > 0.0f ? shadowLodScale : 1.0f );
 
 	return true;
 }

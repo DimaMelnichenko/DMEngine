@@ -66,6 +66,21 @@ uint16_t DMModel::lodCount()
 	return m_lods.size();
 }
 
+float DMModel::shadowLodScale() const
+{
+	return m_properties.exists( "Shadow LOD scale" ) ? m_properties["Shadow LOD scale"].data<float>() : 1.0f;
+}
+
+void DMModel::setShadowLodScale( float scale )
+{
+	Property* property = m_properties.insert( "Shadow LOD scale", scale );
+	property->setData( scale );
+	property->setLow( 0.1f );
+	property->setHigh( 1.0f );
+	property->setTooltip( "LOD distances in shadow views are multiplied by it: < 1 - a coarser LOD casts the shadow closer "
+						  "(Models.shadow_lod_scale, not saved with the level)" );
+}
+
 
 PropertyContainer* DMModel::properties()
 {

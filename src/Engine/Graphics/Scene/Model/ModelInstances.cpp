@@ -414,11 +414,14 @@ void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& colle
 		const float distance = XMVectorGetX( XMVector3Length( position - viewPosition ) );
 
 		// LOD i — до своей дальности; в полосе дальность × (1 ± LOD_TRANSITION_WIDTH / 2) — вместе со следующим (за
-		// последним — с пустотой), t — доля перехода от начала полосы
+		// последним — с пустотой), t — доля перехода от начала полосы. У видов теней дальности моделей с «Shadow LOD
+		// scale» < 1 ближе (DMModel::shadowLodScale): тень дальних — более грубым LOD; переход у каждого вида свой
 		const uint16_t lodCount = instance.model->lodCount();
+		const float lodScale = view.index > 0 ? instance.model->shadowLodScale() : 1.0f;
 		for( uint16_t i = 0; i < lodCount; ++i )
 		{
-			const float range = instance.model->lodRange( i );
+			// Дальность последнего LOD — конец модели: её множитель не сдвигает
+			const float range = instance.model->lodRange( i ) * ( i + 1 < lodCount ? lodScale : 1.0f );
 			const float halfBand = range * LOD_TRANSITION_WIDTH * 0.5f;
 			if( lodDistance >= range + halfBand )
 				continue;

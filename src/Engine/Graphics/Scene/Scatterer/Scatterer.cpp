@@ -354,8 +354,9 @@ void Scatterer::compute( const FrameContext& frame )
 	const XMFLOAT3& toSun = frame.toShadowLight;
 	m_shadowLength = toSun.y > 0.0f ? std::min( 1.0f / toSun.y, 10.0f ) : 0.0f;
 
-	// Виды кадра: главный и каскады теней; у видов теней — множитель дальностей LOD, с ним < 1 переход дизерингом
-	// выключен (доля перехода в пуле одна на все виды)
+	// Виды кадра: главный и каскады теней; у видов теней — множитель дальностей LOD набора (× множитель модели
+	// варианта — ScatterPass::setShadowLodScale), с ним < 1 переход дизерингом выключен (доля перехода в пуле одна на
+	// все виды)
 	const float shadowLodScale = m_properties["Shadow LOD scale"].data<float>();
 	Device::updateResource<FrustumParams>( m_frustumBuffer, [&]( FrustumParams& params )
 	{
@@ -398,6 +399,9 @@ void Scatterer::compute( const FrameContext& frame )
 				variant.ditheredLodTransition = variant.ditheredLodTransition && section.material &&
 												section.material->renderState( section.section->params ).ditheredLodTransition;
 			layer.pass->setDitheredLodTransition( v, variant.ditheredLodTransition );
+			// Множитель LOD теней модели — только для её границ LOD: переход к импостеру у теней задаёт слой
+			const uint32_t modelLods = static_cast<uint32_t>( variant.lods.size() ) - ( variant.impostor ? 1 : 0 );
+			layer.pass->setShadowLodScale( v, variant.model ? variant.model->shadowLodScale() : 1.0f, modelLods > 0 ? modelLods - 1 : 0 );
 			if( variant.impostor )
 				layer.pass->setShadowLastLodDistance( v, ( *layer.properties )["Shadow impostor distance"].data<float>() );
 		}

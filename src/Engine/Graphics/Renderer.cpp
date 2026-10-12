@@ -573,7 +573,8 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 	// Состояние прохода теней — растеризатор теней со смещением глубины солнца (часть пайплайнов, warmShadowPipelines)
 	ScopedRenderState shadowState( m_shadows.renderState() );
 
-	// Время — одной областью на каскад: имена объектов в строке «GPU average» остаются за проходами сцены
+	// Время — областью на каскад и в ней по объектам под именами «Shadow: <объект>»: в строке «GPU average» они складываются
+	// по всем каскадам (время объекта в тенях), а имена объектов без приставки остаются за проходами сцены
 	m_gpuProfiler.beginScope( "Shadow depths" );
 	for( uint32_t cascade = 0; cascade < ShadowCascades::cascadeCount; ++cascade )
 	{
@@ -586,7 +587,7 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 		m_gpuProfiler.beginScope( "Shadow cascade " + std::to_string( cascade ) );
 		const RenderContext context{ view, MeshPass::csmShadowDepth, RasterState::csmShadowDepth,
 									 m_constants, m_vertexPool };
-		executeCommands( m_shadowCollector, m_shadowCommands, context, false );
+		executeCommands( m_shadowCollector, m_shadowCommands, context, true, "Shadow: " );
 		m_gpuProfiler.endScope();
 	}
 	m_gpuProfiler.endScope();
@@ -639,7 +640,7 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 }
 
 void Renderer::executeCommands( const MeshCollector& collector, const std::vector<DrawCommand>& commands,
-								const RenderContext& context, bool measureOwners )
+								const RenderContext& context, bool measureOwners, const char* ownerPrefix )
 {
 	const std::vector<MeshBatch>& meshes = collector.meshes();
 	const std::vector<CustomBatch>& customs = collector.customs();
@@ -699,7 +700,7 @@ void Renderer::executeCommands( const MeshCollector& collector, const std::vecto
 			}
 		};
 		if( measureOwners )
-			measure( owner->name(), run );
+			measure( ownerPrefix + owner->name(), run );
 		else
 			run();
 		begin = end;

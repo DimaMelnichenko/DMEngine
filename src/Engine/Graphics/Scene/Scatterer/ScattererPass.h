@@ -70,6 +70,9 @@ public:
 	void setDitheredLodTransition( uint32_t variant, bool dithered );
 	// Дальность последнего LOD у видов теней (Variant::shadowLastLodDistance) — из GUI; буфер вариантов — при смене
 	void setShadowLastLodDistance( uint32_t variant, float distance );
+	// Дальности LOD варианта у видов теней: первые modelBoundaries границ (границы LOD модели, без перехода к импостеру и
+	// конца кольца) × scale (DMModel::shadowLodScale, из GUI). Со своими дальностями переход у видов теней — без дизеринга
+	void setShadowLodScale( uint32_t variant, float scale, uint32_t modelBoundaries );
 	// Секция списка: её меш и группа (0…maxGroups − 1, Scatterer::groups); таблицы секций и групп уходят на GPU в
 	// populate, только когда менялись
 	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset, uint32_t group );
@@ -193,6 +196,7 @@ private:
 		// видов теней последний LOD (Variant::shadowLastLodDistance; 0 — как у главного)
 		DirectX::XMFLOAT4 variants[maxVariants];
 		DirectX::XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
+		DirectX::XMFLOAT4 shadowLodEnd[maxVariants];	// они же у видов теней (setShadowLodScale)
 		DirectX::XMFLOAT4 bounds[maxVariants];		// сфера модели варианта (Variant::bounds)
 		DirectX::XMFLOAT4 footprints[maxVariants];	// след основания варианта (Variant::footprint)
 		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
