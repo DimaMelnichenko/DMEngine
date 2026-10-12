@@ -6,6 +6,8 @@
 #include "GUI.h"
 #include "PropertyWidgets.h"
 #include "Scene\Camera\DMCamera.h"
+#include "Scene\Light\DMLightDriver.h"
+#include "Scene\Light\SunPosition.h"
 #include "Scene\Model\ModelInstances.h"
 #include "Scene\Terrain\TerrainHeightSource.h"
 #include "Scene\Water\WaterSimulation.h"
@@ -47,6 +49,34 @@ bool toScreen( const XMMATRIX& transform, float x, float y, float z, ImVec2& scr
 	return true;
 }
 
+// Источники света: значок ловится кликом ближе этого, пиксели; значок направленного — в небе на этом расстоянии от камеры
+// (ближе дальней плоскости)
+constexpr float lightPickPixels = 14.0f;
+constexpr float lightSkyDistance = 1000.0f;
+
+// Луч из камеры через точку окна (пиксели), нормированный; начало — на ближней плоскости
+void screenRay( const DMCamera& camera, float x, float y, XMVECTOR& origin, XMVECTOR& direction )
+{
+	// Точки на ближней (z = 1, глубина обратная) и дальней (z = 0) плоскостях
+	const ImVec2 size = ImGui::GetIO().DisplaySize;
+	const float ndcX = 2.0f * x / size.x - 1.0f;
+	const float ndcY = 1.0f - 2.0f * y / size.y;
+	const XMMATRIX inverse = XMMatrixInverse( nullptr, viewProjection( camera ) );
+	origin = XMVector3TransformCoord( XMVectorSet( ndcX, ndcY, 1.0f, 1.0f ), inverse );
+	const XMVECTOR farPoint = XMVector3TransformCoord( XMVectorSet( ndcX, ndcY, 0.0f, 1.0f ), inverse );
+	direction = XMVector3Normalize( farPoint - origin );
+}
+
+// Цвет значка источника: его цвет, приведённый к яркости 1 (тёплое солнце — тёплое), выключенный — серый
+ImU32 lightColor( const DMLight& light )
+{
+	if( !light.enabled() )
+		return IM_COL32( 140, 140, 140, 200 );
+	const XMFLOAT3 color = light.color();
+	const float peak = std::max( { color.x, color.y, color.z, 1e-4f } );
+	return ImGui::ColorConvertFloat4ToU32( ImVec4( color.x / peak, color.y / peak, color.z / peak, 1.0f ) );
+}
+
 // Высота точки кривой для показа — над поверхностью земли (дно русла), чтобы точку не закрывала вода
 float streamPointHeight( const GS::TerrainHeightSource& terrain, float x, float z )
 {
@@ -78,10 +108,12 @@ void Viewport::setStreamMode( bool enabled )
 }
 
 void Viewport::update( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, GS::WaterSimulation* water,
-					   const GS::TerrainHeightSource* terrain )
+					   const GS::TerrainHeightSource* terrain, DMLightDriver* lights )
 {
 	if( m_selected >= static_cast<int>( models.instanceCount() ) )
 		m_selected = -1;
+	if( !lights || m_selectedLight >= static_cast<int>( lights->lights().size() ) )
+		m_selectedLight = -1;
 	const bool streams = m_streamMode && water && terrain;
 	if( streams && ( m_streamCurve >= static_cast<int>( water->curves().size() ) ||
 					 ( m_streamCurve >= 0 && m_streamPoint >= static_cast<int>( water->curves()[m_streamCurve].points.size() ) ) ) )
@@ -92,7 +124,9 @@ void Viewport::update( const DMCamera& camera, GS::ModelInstances& models, GUI& 
 
 	ImGuizmo::BeginFrame();
 	if( sceneClicked() )
-		clickAt( camera, models, gui, water, terrain, ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y );
+		clickAt( camera, models, gui, water, terrain, ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y, lights );
+	if( lights )
+		drawLights( camera, *lights );
 	if( streams )
 	{
 		drawStreams( camera, *water, *terrain );
@@ -105,15 +139,14 @@ void Viewport::update( const DMCamera& camera, GS::ModelInstances& models, GUI& 
 		drawToolbar();
 		manipulate( camera, models, gui );
 	}
-	else if( m_usingGizmo )
-	{
-		gui.history().end();
-		m_usingGizmo = false;
-	}
+	else if( m_selectedLight >= 0 )
+		editLight( camera, *lights, gui );
+	else
+		trackGizmo( false, gui, {}, {} );
 }
 
 std::string Viewport::clickAt( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, GS::WaterSimulation* water,
-								const GS::TerrainHeightSource* terrain, float x, float y )
+								const GS::TerrainHeightSource* terrain, float x, float y, DMLightDriver* lights )
 {
 	// В режиме кривых клик сначала ловит точку кривой, мимо — экземпляр модели
 	if( m_streamMode && water && terrain && pickStreamPoint( camera, *water, *terrain, x, y ) )
@@ -125,6 +158,16 @@ std::string Viewport::clickAt( const DMCamera& camera, GS::ModelInstances& model
 	}
 	m_streamCurve = -1;
 	m_streamPoint = -1;
+	// Значок источника света — раньше экземпляров: значок мал и рисуется поверх сцены
+	m_selectedLight = lights ? pickLight( camera, *lights, x, y ) : -1;
+	if( m_selectedLight >= 0 )
+	{
+		m_selected = -1;
+		PropertyContainer* properties = lights->lightProperties( m_selectedLight );
+		if( properties )
+			gui.focusProperties( properties );
+		return properties ? properties->name() : lights->lights()[m_selectedLight].name;
+	}
 	const int instance = pickAt( camera, models, gui, x, y );
 	return instance >= 0 ? models.instanceName( instance ) : std::string();
 }
@@ -348,7 +391,7 @@ void Viewport::editStreamPoint( const DMCamera& camera, GS::WaterSimulation& wat
 	m_draggingPoint = using_;
 }
 
-void Viewport::drawToolbar()
+void Viewport::drawToolbar( bool rotate, bool scale, bool localAxes )
 {
 	const ImGuiIO& io = ImGui::GetIO();
 	if( !io.WantTextInput )
@@ -360,6 +403,9 @@ void Viewport::drawToolbar()
 		if( ImGui::IsKeyPressed( ImGuiKey_7, false ) )
 			m_gizmo = Gizmo::scale;
 	}
+	// Режима нет у выбранного (масштаб у источника света) — перемещение
+	if( ( m_gizmo == Gizmo::rotate && !rotate ) || ( m_gizmo == Gizmo::scale && !scale ) )
+		m_gizmo = Gizmo::move;
 
 	// Над сценой по центру, под меню
 	const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -378,11 +424,18 @@ void Viewport::drawToolbar()
 			ImGui::SetItemTooltip( "%s", tooltip );
 			ImGui::SameLine();
 		};
-		mode( "Move", Gizmo::move, "Move the selected instance (5)" );
-		mode( "Rotate", Gizmo::rotate, "Rotate the selected instance (6)" );
-		mode( "Scale", Gizmo::scale, "Scale the selected instance (7)" );
-		ImGui::Checkbox( "Local axes", &m_localAxes );
-		ImGui::SetItemTooltip( "Axes of the instance instead of the world" );
+		mode( "Move", Gizmo::move, "Move the selected (5)" );
+		if( rotate )
+			mode( "Rotate", Gizmo::rotate, "Rotate the selected (6)" );
+		if( scale )
+			mode( "Scale", Gizmo::scale, "Scale the selected instance (7)" );
+		if( localAxes )
+		{
+			ImGui::Checkbox( "Local axes", &m_localAxes );
+			ImGui::SetItemTooltip( "Axes of the instance instead of the world" );
+		}
+		else
+			ImGui::NewLine();
 	}
 	ImGui::End();
 }
@@ -391,12 +444,7 @@ void Viewport::manipulate( const DMCamera& camera, GS::ModelInstances& models, G
 {
 	// Свойства экземпляра до гизмо этого кадра: если его сейчас возьмут, это — «до» правки
 	const std::vector<Property*> properties = Editor::EditHistory::collect( *models.instanceProperties( m_selected ) );
-	if( !m_usingGizmo )
-	{
-		m_gizmoBefore.clear();
-		for( const Property* property : properties )
-			m_gizmoBefore.push_back( property->value() );
-	}
+	snapshotGizmo( properties );
 
 	XMMATRIX view;
 	XMMATRIX projection;
@@ -424,28 +472,280 @@ void Viewport::manipulate( const DMCamera& camera, GS::ModelInstances& models, G
 	if( ImGuizmo::Manipulate( &viewData._11, &projectionData._11, operation, mode, &world._11 ) )
 		models.setInstanceMatrix( m_selected, XMLoadFloat4x4( &world ) );
 	// Перетаскивание гизмо — одна правка истории: от взятия до отпускания
-	const bool using_ = ImGuizmo::IsUsing();
+	const char* action = m_gizmo == Gizmo::move ? "Move " : m_gizmo == Gizmo::rotate ? "Rotate " : "Scale ";
+	trackGizmo( ImGuizmo::IsUsing(), gui, properties, action + models.instanceProperties( m_selected )->name() );
+}
+
+void Viewport::snapshotGizmo( const std::vector<Property*>& properties )
+{
+	if( m_usingGizmo )
+		return;
+	m_gizmoBefore.clear();
+	for( const Property* property : properties )
+		m_gizmoBefore.push_back( property->value() );
+}
+
+void Viewport::trackGizmo( bool using_, GUI& gui, const std::vector<Property*>& properties, const std::string& name )
+{
 	if( using_ && !m_usingGizmo )
-	{
-		const char* action = m_gizmo == Gizmo::move ? "Move " : m_gizmo == Gizmo::rotate ? "Rotate " : "Scale ";
-		gui.history().begin( action + models.instanceProperties( m_selected )->name(), properties, &m_gizmoBefore );
-	}
+		gui.history().begin( name, properties, &m_gizmoBefore );
 	else if( !using_ && m_usingGizmo )
 		gui.history().end();
 	m_usingGizmo = using_;
 }
 
+bool Viewport::lightScreen( const DMCamera& camera, const DMLightDriver& lights, size_t index, XMFLOAT2& screen ) const
+{
+	const DMLight& light = lights.lights()[index];
+	XMFLOAT3 at = light.position();
+	if( light.type() == DMLight::Dir )
+	{
+		// Направленный — в небе, откуда идёт свет: против направления, далеко от камеры
+		const XMFLOAT3& eye = camera.position();
+		const XMFLOAT3 direction = light.direction();
+		at = XMFLOAT3( eye.x - direction.x * lightSkyDistance, eye.y - direction.y * lightSkyDistance, eye.z - direction.z * lightSkyDistance );
+	}
+	ImVec2 point;
+	if( !toScreen( viewProjection( camera ), at.x, at.y, at.z, point ) )
+		return false;
+	screen = XMFLOAT2( point.x, point.y );
+	return true;
+}
+
+int Viewport::pickLight( const DMCamera& camera, const DMLightDriver& lights, float x, float y ) const
+{
+	int nearest = -1;
+	float nearestDistance = lightPickPixels;
+	for( size_t i = 0; i < lights.lights().size(); ++i )
+	{
+		XMFLOAT2 screen;
+		if( !lightScreen( camera, lights, i, screen ) )
+			continue;
+		const float distance = std::hypot( screen.x - x, screen.y - y );
+		if( distance < nearestDistance )
+		{
+			nearestDistance = distance;
+			nearest = static_cast<int>( i );
+		}
+	}
+	return nearest;
+}
+
+void Viewport::drawLights( const DMCamera& camera, const DMLightDriver& lights ) const
+{
+	ImDrawList* draw = ImGui::GetBackgroundDrawList();
+	const XMMATRIX transform = viewProjection( camera );
+	const ImU32 outline = IM_COL32( 0, 0, 0, 160 );
+	for( size_t i = 0; i < lights.lights().size(); ++i )
+	{
+		XMFLOAT2 at;
+		if( !lightScreen( camera, lights, i, at ) )
+			continue;
+		const DMLight& light = lights.lights()[i];
+		const ImVec2 center( at.x, at.y );
+		const ImU32 color = lightColor( light );
+		const bool selected = static_cast<int>( i ) == m_selectedLight;
+		if( light.type() == DMLight::Dir && light.atmosphereSunLightIndex() == 1 )
+		{
+			// Луна — серп: диск и тёмный диск со сдвигом
+			draw->AddCircleFilled( center, 8.0f, outline );
+			draw->AddCircleFilled( center, 7.0f, color );
+			draw->AddCircleFilled( ImVec2( center.x + 3.5f, center.y - 2.5f ), 6.0f, IM_COL32( 20, 24, 36, 255 ) );
+		}
+		else if( light.type() == DMLight::Dir )
+		{
+			// Солнце — диск с лучами
+			draw->AddCircleFilled( center, 7.0f, outline );
+			draw->AddCircleFilled( center, 6.0f, color );
+			for( int ray = 0; ray < 8; ++ray )
+			{
+				const float angle = ray * XM_PIDIV4;
+				const ImVec2 from( center.x + std::cos( angle ) * 8.5f, center.y + std::sin( angle ) * 8.5f );
+				const ImVec2 to( center.x + std::cos( angle ) * 12.5f, center.y + std::sin( angle ) * 12.5f );
+				draw->AddLine( from, to, outline, 3.5f );
+				draw->AddLine( from, to, color, 1.8f );
+			}
+		}
+		else
+		{
+			// Точечный и прожектор — диск с кольцом; у прожектора — линия направления на 2 м
+			if( light.type() == DMLight::Spot )
+			{
+				const XMFLOAT3& p = light.position();
+				const XMFLOAT3 d = light.direction();
+				ImVec2 tip;
+				if( toScreen( transform, p.x + d.x * 2.0f, p.y + d.y * 2.0f, p.z + d.z * 2.0f, tip ) )
+				{
+					draw->AddLine( center, tip, outline, 4.0f );
+					draw->AddLine( center, tip, color, 2.0f );
+					draw->AddCircleFilled( tip, 3.0f, color );
+				}
+			}
+			draw->AddCircleFilled( center, 6.0f, outline );
+			draw->AddCircleFilled( center, 5.0f, color );
+			draw->AddCircle( center, 9.0f, outline, 0, 3.0f );
+			draw->AddCircle( center, 9.0f, color, 0, 1.5f );
+		}
+		if( selected )
+		{
+			draw->AddCircle( center, 15.0f, IM_COL32( 255, 170, 40, 255 ), 0, 2.0f );
+			const PropertyContainer* properties = const_cast<DMLightDriver&>( lights ).lightProperties( i );
+			const std::string name = properties ? const_cast<PropertyContainer*>( properties )->name() : light.name;
+			draw->AddText( ImVec2( center.x + 18.0f, center.y - 8.0f ), IM_COL32( 255, 170, 40, 255 ), name.c_str() );
+		}
+	}
+}
+
+void Viewport::editLight( const DMCamera& camera, DMLightDriver& lights, GUI& gui )
+{
+	const DMLight& light = lights.lights()[m_selectedLight];
+	PropertyContainer* properties = lights.lightProperties( m_selectedLight );
+	if( !properties )
+		return;
+	if( light.type() == DMLight::Dir )
+	{
+		dragDirectionalLight( camera, lights, gui );
+		return;
+	}
+
+	// Точечный и прожектор — гизмо: перенос, у прожектора ещё поворот (ось +Z гизмо — направление света)
+	const bool spot = light.type() == DMLight::Spot;
+	drawToolbar( spot, false, false );
+	const std::vector<Property*> history = Editor::EditHistory::collect( *properties );
+	snapshotGizmo( history );
+
+	const XMVECTOR forward = XMVector3Normalize( XMLoadFloat3( &light.direction() ) );
+	const XMVECTOR up = std::abs( XMVectorGetY( forward ) ) > 0.99f ? XMVectorSet( 1.0f, 0.0f, 0.0f, 0.0f ) : XMVectorSet( 0.0f, 1.0f, 0.0f, 0.0f );
+	const XMVECTOR right = XMVector3Normalize( XMVector3Cross( up, forward ) );
+	const XMVECTOR upAxis = XMVector3Cross( forward, right );
+	XMMATRIX basis( right, upAxis, forward, XMVectorSet( 0.0f, 0.0f, 0.0f, 1.0f ) );
+	basis.r[3] = XMVectorSetW( XMLoadFloat3( &light.position() ), 1.0f );
+
+	XMMATRIX view;
+	XMMATRIX projection;
+	camera.viewMatrix( &view );
+	camera.projectionMatrix( &projection );
+	XMFLOAT4X4 viewData;
+	XMFLOAT4X4 projectionData;
+	XMFLOAT4X4 world;
+	XMStoreFloat4x4( &viewData, view );
+	XMStoreFloat4x4( &projectionData, projection );
+	XMStoreFloat4x4( &world, basis );
+	const ImGuiIO& io = ImGui::GetIO();
+	ImGuizmo::SetOrthographic( false );
+	ImGuizmo::SetDrawlist( ImGui::GetBackgroundDrawList() );
+	ImGuizmo::SetRect( 0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y );
+	ImGuizmo::Enable( ImGuizmo::IsUsing() || !overPanels() );
+	const bool rotating = spot && m_gizmo == Gizmo::rotate;
+	if( ImGuizmo::Manipulate( &viewData._11, &projectionData._11, rotating ? ImGuizmo::ROTATE : ImGuizmo::TRANSLATE,
+							  rotating ? ImGuizmo::LOCAL : ImGuizmo::WORLD, &world._11 ) )
+	{
+		( *properties )["Position"].setData( XMFLOAT3( world._41, world._42, world._43 ) );
+		if( rotating )
+		{
+			XMFLOAT3 direction;
+			XMStoreFloat3( &direction, XMVector3Normalize( XMVectorSet( world._31, world._32, world._33, 0.0f ) ) );
+			const XMFLOAT2 rotation = DMLightDriver::rotationFromDirection( direction );
+			( *properties )["Pitch"].setData( rotation.x );
+			( *properties )["Yaw"].setData( rotation.y );
+		}
+	}
+	trackGizmo( ImGuizmo::IsUsing(), gui, history, ( rotating ? "Rotate " : "Move " ) + properties->name() );
+}
+
+void Viewport::dragDirectionalLight( const DMCamera& camera, DMLightDriver& lights, GUI& gui )
+{
+	// Направленный: значок в небе тянут мышью — свет идёт из-под курсора. Солнце и луну при SunPosition ведёт время
+	// суток: тянут вдоль их дуги — время, при котором светило ближе всего к курсору
+	const size_t index = static_cast<size_t>( m_selectedLight );
+	PropertyContainer* properties = lights.lightProperties( index );
+	PropertyContainer* sunPosition = lights.directionFromTime( index ) ? lights.sunPositionProperties() : nullptr;
+	const bool byTime = sunPosition && lights.sunPosition();
+	const ImGuiIO& io = ImGui::GetIO();
+
+	const ImGuiViewport* viewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos( ImVec2( viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + ImGui::GetFrameHeight() * 2.0f ),
+							 ImGuiCond_Always, ImVec2( 0.5f, 0.0f ) );
+	ImGui::SetNextWindowBgAlpha( 0.7f );
+	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+								   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDocking |
+								   ImGuiWindowFlags_NoMove;
+	if( ImGui::Begin( "##light toolbar", nullptr, flags ) )
+		ImGui::TextUnformatted( byTime ? "Drag the icon along its path: Time of day follows" : "Drag the icon across the sky: the light comes from there" );
+	ImGui::End();
+
+	XMFLOAT2 icon;
+	const bool visible = lightScreen( camera, lights, index, icon );
+	if( !m_draggingLight && ImGui::IsMouseClicked( ImGuiMouseButton_Left ) && !overPanels() && visible &&
+		std::hypot( io.MousePos.x - icon.x, io.MousePos.y - icon.y ) < lightPickPixels )
+	{
+		m_draggingLight = true;
+		const std::vector<Property*> edited = byTime ? std::vector<Property*>{ &( *sunPosition )["Time of day (h)"] } :
+													   std::vector<Property*>{ &( *properties )["Pitch"], &( *properties )["Yaw"] };
+		gui.history().begin( ( byTime ? "Time of day: " : "Rotate " ) + properties->name(), edited );
+	}
+	if( !m_draggingLight )
+		return;
+	if( !ImGui::IsMouseDown( ImGuiMouseButton_Left ) )
+	{
+		m_draggingLight = false;
+		gui.history().end();
+		return;
+	}
+	ImGui::SetMouseCursor( ImGuiMouseCursor_ResizeAll );
+	XMVECTOR origin;
+	XMVECTOR ray;
+	screenRay( camera, io.MousePos.x, io.MousePos.y, origin, ray );
+	XMFLOAT3 toLight;
+	XMStoreFloat3( &toLight, ray );
+	if( !byTime )
+	{
+		const XMFLOAT2 rotation = DMLightDriver::rotationFromDirection( XMFLOAT3( -toLight.x, -toLight.y, -toLight.z ) );
+		( *properties )["Pitch"].setData( rotation.x );
+		( *properties )["Yaw"].setData( rotation.y );
+		return;
+	}
+	// Время суток, при котором светило ближе всего к лучу: сутки по 5 минут, затем вокруг лучшего по 10 секунд
+	SunPosition::Settings settings = lights.sunPosition()->settings();
+	const bool moon = lights.moonFromTime( index );
+	auto closeness = [&]( double hours )
+	{
+		settings.timeOfDay = static_cast<float>( std::fmod( hours + 24.0, 24.0 ) );
+		const SunPosition::Angles angles = moon ? SunPosition::computeMoon( settings ).angles : SunPosition::compute( settings );
+		const XMFLOAT3 body = SunPosition::direction( angles, settings.northOffset );
+		return body.x * toLight.x + body.y * toLight.y + body.z * toLight.z;
+	};
+	double best = 0.0;
+	double bestCloseness = -2.0;
+	for( double hours = 0.0; hours < 24.0; hours += 1.0 / 12.0 )
+	{
+		const double c = closeness( hours );
+		if( c > bestCloseness )
+		{
+			bestCloseness = c;
+			best = hours;
+		}
+	}
+	const double coarse = best;
+	for( double hours = coarse - 1.0 / 12.0; hours <= coarse + 1.0 / 12.0; hours += 1.0 / 360.0 )
+	{
+		const double c = closeness( hours );
+		if( c > bestCloseness )
+		{
+			bestCloseness = c;
+			best = hours;
+		}
+	}
+	( *sunPosition )["Time of day (h)"].setData( static_cast<float>( std::fmod( best + 24.0, 24.0 ) ) );
+}
+
 int Viewport::pickAt( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, float x, float y )
 {
-	// Луч через точку: на ближней (z = 1, глубина обратная) и дальней (z = 0) плоскостях
-	const ImVec2 size = ImGui::GetIO().DisplaySize;
-	const float ndcX = 2.0f * x / size.x - 1.0f;
-	const float ndcY = 1.0f - 2.0f * y / size.y;
-	const XMMATRIX inverse = XMMatrixInverse( nullptr, viewProjection( camera ) );
-	const XMVECTOR nearPoint = XMVector3TransformCoord( XMVectorSet( ndcX, ndcY, 1.0f, 1.0f ), inverse );
-	const XMVECTOR farPoint = XMVector3TransformCoord( XMVectorSet( ndcX, ndcY, 0.0f, 1.0f ), inverse );
+	XMVECTOR origin;
+	XMVECTOR direction;
+	screenRay( camera, x, y, origin, direction );
 	float distance = 0.0f;
-	m_selected = models.pick( nearPoint, XMVector3Normalize( farPoint - nearPoint ), distance );
+	m_selected = models.pick( origin, direction, distance );
 	if( m_selected >= 0 )
 		gui.focusProperties( models.instanceProperties( m_selected ) );
 	return m_selected;

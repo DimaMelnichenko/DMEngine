@@ -61,6 +61,18 @@ public:
 	const DMLight* moon() const;
 	PropertyContainer* properties();
 
+	// Вьюпорт редактора (выбор и гизмо источников, Viewport): подокно свойств источника index в окне «Lights»; солнце и
+	// луну при SunPosition ведёт время суток (directionFromTime, луна — moonFromTime): их тянут временем — свойство
+	// «Time of day (h)» подокна «Sun position» (sunPositionProperties; nullptr — места и времени у уровня нет)
+	PropertyContainer* lightProperties( size_t index );
+	bool directionFromTime( size_t index ) const;
+	bool moonFromTime( size_t index ) const;
+	PropertyContainer* sunPositionProperties();
+	// Направление по углам, как Rotation у источника в UE: Pitch < 0 — свет идёт вниз, Yaw — поворот вокруг вертикали
+	// от +Z к +X, градусы
+	static DirectX::XMFLOAT3 directionFromRotation( const DirectX::XMFLOAT2& rotation );
+	static DirectX::XMFLOAT2 rotationFromDirection( const DirectX::XMFLOAT3& direction );
+
 private:
 	// Направление запасного света, когда источников нет
 	static DirectX::XMFLOAT3 fallbackDirection();

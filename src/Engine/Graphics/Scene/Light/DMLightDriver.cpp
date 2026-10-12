@@ -9,21 +9,6 @@ using namespace DirectX;
 namespace
 {
 
-// Направление по углам, как Rotation у источника в UE: Pitch < 0 — свет идёт вниз, Yaw — поворот вокруг вертикали
-// от +Z к +X, градусы
-XMFLOAT3 directionFromRotation( const XMFLOAT2& rotation )
-{
-	const float pitch = XMConvertToRadians( rotation.x );
-	const float yaw = XMConvertToRadians( rotation.y );
-	return XMFLOAT3( std::cos( pitch ) * std::sin( yaw ), std::sin( pitch ), std::cos( pitch ) * std::cos( yaw ) );
-}
-
-XMFLOAT2 rotationFromDirection( const XMFLOAT3& direction )
-{
-	return XMFLOAT2( XMConvertToDegrees( std::asin( std::clamp( direction.y, -1.0f, 1.0f ) ) ),
-					 XMConvertToDegrees( std::atan2( direction.x, direction.z ) ) );
-}
-
 template<class TYPE>
 void addControl( PropertyContainer& properties, const char* name, const TYPE& value, GUIControlType control, float low, float high )
 {
@@ -112,6 +97,39 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 
 	if( m_light_list.size() > maxLights )
 		LOG( "Level has " + std::to_string( m_light_list.size() ) + " lights, only " + std::to_string( maxLights ) + " enabled ones are used" );
+}
+
+XMFLOAT3 DMLightDriver::directionFromRotation( const XMFLOAT2& rotation )
+{
+	const float pitch = XMConvertToRadians( rotation.x );
+	const float yaw = XMConvertToRadians( rotation.y );
+	return XMFLOAT3( std::cos( pitch ) * std::sin( yaw ), std::sin( pitch ), std::cos( pitch ) * std::cos( yaw ) );
+}
+
+XMFLOAT2 DMLightDriver::rotationFromDirection( const XMFLOAT3& direction )
+{
+	return XMFLOAT2( XMConvertToDegrees( std::asin( std::clamp( direction.y, -1.0f, 1.0f ) ) ),
+					 XMConvertToDegrees( std::atan2( direction.x, direction.z ) ) );
+}
+
+PropertyContainer* DMLightDriver::lightProperties( size_t index )
+{
+	return index < m_controls.size() ? m_controls[index].properties.get() : nullptr;
+}
+
+bool DMLightDriver::directionFromTime( size_t index ) const
+{
+	return static_cast<int>( index ) == m_sunPositionLight || static_cast<int>( index ) == m_moonPositionLight;
+}
+
+bool DMLightDriver::moonFromTime( size_t index ) const
+{
+	return static_cast<int>( index ) == m_moonPositionLight;
+}
+
+PropertyContainer* DMLightDriver::sunPositionProperties()
+{
+	return m_sunPosition ? m_sunPosition->properties() : nullptr;
 }
 
 void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
