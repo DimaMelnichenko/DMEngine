@@ -509,6 +509,7 @@ struct ScatterModelSettings
 	uint32_t id = 0;
 	float weight = 1.0f;
 	bool castShadow = true;
+	std::vector<float> lodDistances;	// свои границы LOD модели у слоя, м; пусто — дальности модели (NULL в базе)
 };
 
 // Слой расстановки для сохранения уровня: строка ScatterLayers и строки её моделей

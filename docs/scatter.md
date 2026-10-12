@@ -383,6 +383,7 @@
 |---|---|
 | `layer` | слой (`ScatterLayers.id`) |
 | `model` | модель — растение со всеми её LOD (не больше 4); дальности LOD — `ModelProperties.range` |
+| `lod_distances` | свои границы LOD модели у слоя, м, текстом через запятую («6,14» — LOD0 до 6 м, LOD1 до 14 м); NULL — дальности модели. Конец последнего LOD модели — `impostor_distance` слоя или край кольца. Пишет «Save level» из окна слоя («LOD N up to»), совпадают с моделью — NULL |
 | `weight` | вес, по умолчанию 1: доля ячеек слоя — вес / сумма весов слоя |
 | `cast_shadow` | 0 / 1, по умолчанию 1: вариант отбрасывает тень, если она включена у слоя (Cast Shadow в дескрипторе Mesh Entry у PCG UE) |
 
@@ -557,15 +558,22 @@ Outliner → Scene → имя набора. «Shadow LOD scale» — у набо
 
 | Свойство | Колонка | Что при правке |
 |---|---|---|
-| Cell size, Near border, Far border, Size | `cell_size`, `near_border`, `far_border`, `size_multiplier` | буферы слоя заново (`Scatterer::rebuildPass`: ёмкость списков — по кольцу и дальностям LOD), один раз — когда ползунок отпустили или ввод числа закончен (`Property::editing`); прежние GPU отпустит, когда закончит кадры с ними; в лог — «buffers rebuilt after an edit» |
+| Cell size, Near border, Far border, Size, Impostor distance | `cell_size`, `near_border`, `far_border`, `size_multiplier`, `impostor_distance` | буферы слоя заново (`Scatterer::rebuildPass`: ёмкость списков — по кольцу и дальностям LOD), один раз — когда ползунок отпустили или ввод числа закончен (`Property::editing`); прежние GPU отпустит, когда закончит кадры с ними; в лог — «buffers rebuilt after an edit» |
 | Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain` | константы раскладки |
 | Cast shadow, Shadow impostor distance, Impostor shadow, Impostor base shade | `cast_shadow`, `shadow_impostor_distance`, `impostor_cast_shadow`, `impostor_base_shade` | сразу (плоский импостер или со смещением глубины — по `impostor_cast_shadow` при загрузке) |
 
-Подокно варианта (модель) — «Weight» и «Cast shadow» (`ScatterLayerModels`); вес — тоже пересборка буферов, после
-правки. Постоянный слой (лес) после любой правки раскладки раскладывается на карту заново (`placed`) — тоже один раз, когда
+Подокно варианта (модель) — «Weight» и «Cast shadow» (`ScatterLayerModels`) и **кольца LOD**: «LOD 0 up to», «LOD 1
+up to»… — границы LOD модели у этого слоя, м (`lod_distances`; подсказка — дальность самой модели), надписи — до куда
+последний LOD модели (дальность импостера или край кольца), «Impostor up to» (край кольца) и тень: «Shadow from LOD» —
+не детальнее какого LOD («Shadow min LOD» модели), «Shadow up to» — до какой дальности (0 — без тени; у импостера без
+тени — его дальность). Границы идут по возрастанию и не дальше конца последнего LOD: поле упирается, а опущенная ниже
+них дальность импостера прижимает их к себе. Вес и границы LOD — тоже пересборка буферов, после правки; у каждого
+экземпляра своя дальность — на 0–20 % ближе (см. «Плавная смена LOD»). Постоянный слой (лес) после любой правки раскладки раскладывается на карту заново (`placed`) — тоже один раз, когда
 правка закончилась; у обычного слоя константы раскладки идут на лету. Команда `set` применяет сразу. «Save level» (Ctrl+S) пишет окно в
-строки слоёв и вариантов по `id` ([gui.md](gui.md)); не правятся в окне `persistent`, `impostor_distance` и запекание
-импостеров — они задают варианты и материалы при загрузке.
+строки слоёв и вариантов по `id` ([gui.md](gui.md)); не правятся в окне `persistent` и запекание импостеров (есть ли
+импостер у слоя, плоский ли он) — они задают варианты и материалы при загрузке. LOD модели, которые при загрузке
+начинались не ближе `impostor_distance`, отброшены: дальность импостера, поднятая выше них, вернёт их только после
+перезагрузки.
 
 ## Ограничения
 

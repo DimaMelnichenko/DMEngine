@@ -400,8 +400,10 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 											 "size_multiplier = :size, size_variation = :sizeVariation, jitter = :jitter, rotation_x = :rotationX, "
 											 "rotation_y = :rotationY, rotation_z = :rotationZ, align_to_terrain = :align, "
 											 "cast_shadow = :castShadow, shadow_impostor_distance = :shadowImpostor, "
-											 "impostor_cast_shadow = :impostorShadow, impostor_base_shade = :baseShade WHERE id = :id" );
-		SQLite::Statement updateScatterModel( db, "UPDATE ScatterLayerModels SET weight = :weight, cast_shadow = :castShadow WHERE id = :id" );
+											 "impostor_cast_shadow = :impostorShadow, impostor_base_shade = :baseShade, impostor_distance = :impostorDistance "
+											 "WHERE id = :id" );
+		SQLite::Statement updateScatterModel( db, "UPDATE ScatterLayerModels SET weight = :weight, cast_shadow = :castShadow, "
+												  "lod_distances = :lods WHERE id = :id" );
 		for( const GS::ScatterLayerRecord& record : scatterLayers )
 		{
 			const GS::ScatterLayerSettings& layer = record.settings;
@@ -423,6 +425,7 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			updateScatter.bind( ":shadowImpostor", dbValue( layer.shadowImpostorDistance ) );
 			updateScatter.bind( ":impostorShadow", layer.impostorCastShadow ? 1 : 0 );
 			updateScatter.bind( ":baseShade", dbValue( layer.impostorBaseShade ) );
+			updateScatter.bind( ":impostorDistance", dbValue( layer.impostorDistance ) );
 			updateScatter.bind( ":id", layer.id );
 			updateScatter.exec();
 			updateScatter.reset();
@@ -433,6 +436,20 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 					continue;
 				updateScatterModel.bind( ":weight", dbValue( model.weight ) );
 				updateScatterModel.bind( ":castShadow", model.castShadow ? 1 : 0 );
+				// Свои границы LOD — текстом «6,14»; совпадают с моделью — NULL
+				if( model.lodDistances.empty() )
+					updateScatterModel.bind( ":lods" );
+				else
+				{
+					std::string lods;
+					for( float distance : model.lodDistances )
+					{
+						char text[32];
+						snprintf( text, sizeof( text ), "%g", distance );
+						lods += ( lods.empty() ? "" : "," ) + std::string( text );
+					}
+					updateScatterModel.bind( ":lods", lods );
+				}
 				updateScatterModel.bind( ":id", model.id );
 				updateScatterModel.exec();
 				updateScatterModel.reset();

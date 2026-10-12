@@ -52,6 +52,7 @@ public:
 		float weight = 1.0f;
 		bool castShadow = true;
 		uint32_t id = 0;	// строка ScatterLayerModels — куда пишет «Save level»
+		std::vector<float> lodDistances;	// свои границы LOD модели у слоя, м (ScatterLayerModels.lod_distances); пусто — модели
 	};
 	// models — варианты растения (все их LOD, не больше ScatterPass::maxLods; вариантов — не больше
 	// ScatterPass::maxVariants); mask — маска плотности в хранилище текстур, в координатах карты высот террейна
@@ -129,6 +130,7 @@ private:
 		bool impostor = false;
 		std::unique_ptr<DMModel::Section> impostorSection;
 		ImpostorMaterial* impostorMaterial = nullptr;	// после bake: затемнение низа — из окна слоя каждый кадр
+		uint32_t modelLods = 0;	// LOD модели у варианта (без импостера): границ LOD модели — modelLods − 1
 		bool castShadow = true;
 		DirectX::BoundingBox box;	// границы LOD0 модели: по ним размер и посадка камня русла
 		// Смена LOD дизерингом: у всех секций материал с DitheredLODTransition; обновляет compute() — флаг материала

@@ -197,7 +197,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 					LOG( "Scatter set " + set.name + ": model " + std::to_string( variant.model ) + " has no LOD" );
 					return false;
 				}
-				models.push_back( { model, variant.weight, variant.castShadow, variant.id } );
+				models.push_back( { model, variant.weight, variant.castShadow, variant.id, variant.lodDistances } );
 			}
 			if( models.empty() )
 			{

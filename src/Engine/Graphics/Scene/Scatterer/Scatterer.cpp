@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <optional>
 #include "D3D\DMD3D.h"
@@ -38,6 +39,28 @@ bool Scatterer::Initialize()
 
 	return DMD3D::instance().createShaderConstantBuffer( sizeof( TerrainParams ), m_terrainBuffer ) &&
 		   DMD3D::instance().createShaderConstantBuffer( sizeof( FrustumParams ), m_frustumBuffer );
+}
+
+namespace
+{
+
+// Свойство границы LOD варианта: «LOD 1 up to»
+std::string lodRangeName( uint32_t lod )
+{
+	return "LOD " + std::to_string( lod ) + " up to";
+}
+
+// Надпись окна (GUIControlType::LABEL) — значение считает объект: правкой не отмечается
+template<class TYPE>
+void setLabel( Property& property, const TYPE& value )
+{
+	if( property.data<TYPE>() != value )
+	{
+		property.setData( value );
+		property.markSaved();
+	}
+}
+
 }
 
 void Scatterer::setTerrain( const TerrainHeightSource* terrain )
@@ -96,10 +119,16 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		variant.properties->insert( "Cast shadow", models[v].castShadow )->setTooltip( "If the layer casts a shadow" );
 		// Импостер — ещё один LOD после последнего LOD модели (если есть место): модель — до impostor_distance. LOD модели,
 		// которые начинаются не ближе impostor_distance, не нужны: импостер сменяет предыдущий сразу, с дизерингом
+		// Границы LOD модели: свои у варианта слоя (ScatterLayerModels.lod_distances), иначе — дальности модели
+		const std::vector<float>& ownRanges = models[v].lodDistances;
+		auto modelRange = [&]( uint32_t lod )
+		{
+			return lod < ownRanges.size() ? ownRanges[lod] : model->lodRange( static_cast<uint16_t>( lod ) );
+		};
 		uint32_t modelLods = passVariant.lodCount;
 		variant.model = model;
 		variant.impostor = settings.impostorDistance > 0.0f;
-		while( variant.impostor && modelLods > 1 && model->lodRange( static_cast<uint16_t>( modelLods - 2 ) ) >= settings.impostorDistance )
+		while( variant.impostor && modelLods > 1 && modelRange( modelLods - 2 ) >= settings.impostorDistance )
 			--modelLods;
 		passVariant.lodCount = modelLods;
 		if( variant.impostor && modelLods >= ScatterPass::maxLods )
@@ -109,8 +138,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		}
 		for( uint32_t i = 0; i < modelLods; ++i )
 		{
-			passVariant.lodEnd[i] = i + 1 < modelLods ? model->lodRange( static_cast<uint16_t>( i ) ) :
-									variant.impostor ? settings.impostorDistance : params.farBorder;
+			passVariant.lodEnd[i] = i + 1 < modelLods ? modelRange( i ) : variant.impostor ? settings.impostorDistance : params.farBorder;
 			LayerLod lod;
 			DMModel::LodBlock* block = model->getLodById( static_cast<uint16_t>( i ) );
 			const size_t sectionCount = std::min<size_t>( block->sections.size(), ScatterPass::maxSections );
@@ -142,6 +170,35 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			passVariant.shadowLastLodDistance = settings.shadowImpostorDistance;
 			variant.lods.push_back( lod );
 		}
+		// Кольца LOD варианта в окне слоя: границы LOD модели правятся (свои у слоя — «Save level» пишет их в
+		// ScatterLayerModels.lod_distances), конец последнего LOD модели — дальность импостера слоя или край кольца,
+		// у импостера — край кольца; тень — с какого LOD и до какой дальности. Надписи обновляет compute
+		variant.modelLods = modelLods;
+		for( uint32_t i = 0; i + 1 < modelLods; ++i )
+		{
+			Property* range = variant.properties->insert( lodRangeName( i ), passVariant.lodEnd[i] );
+			range->setLow( 0.1f );
+			range->setHigh( std::max( 200.0f, passVariant.lodEnd[i] * 2.0f ) );
+			char tooltip[160];
+			snprintf( tooltip, sizeof( tooltip ), "LOD %u is drawn up to this distance, then LOD %u (each instance switches up to "
+					  "20 %% closer); the model has %g m", i, i + 1, model->lodRange( static_cast<uint16_t>( i ) ) );
+			range->setUnit( "m" )->setTooltip( tooltip );
+		}
+		Property* lastRange = variant.properties->insert( lodRangeName( modelLods - 1 ), passVariant.lodEnd[modelLods - 1] );
+		lastRange->setControlType( GUIControlType::LABEL );
+		lastRange->setUnit( "m" )->setTooltip( variant.impostor ? "The last LOD of the model: up to the impostor distance of the layer" :
+															   "The last LOD of the model: up to the far border of the layer" );
+		if( variant.impostor )
+		{
+			Property* impostorRange = variant.properties->insert( "Impostor up to", params.farBorder );
+			impostorRange->setControlType( GUIControlType::LABEL );
+			impostorRange->setUnit( "m" )->setTooltip( "Impostor: from the impostor distance up to the far border of the layer" );
+		}
+		variant.properties->insert( "Shadow from LOD", 0u )->setTooltip(
+			"Shadow views draw at most this detailed LOD (Shadow min LOD of the model)" );
+		Property* shadowRange = variant.properties->insert( "Shadow up to", 0.0f );
+		shadowRange->setControlType( GUIControlType::LABEL );
+		shadowRange->setUnit( "m" )->setTooltip( "The instances cast a shadow up to this distance (0 - no shadow)" );
 		layer.variants.push_back( std::move( variant ) );
 		passVariants.push_back( passVariant );
 	}
@@ -199,6 +256,11 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	layer.impostorOcclusion = settings.impostorOcclusion;
 	if( settings.impostorDistance > 0.0f )
 	{
+		Property* impostorDistance = layer.properties->insert( "Impostor distance", settings.impostorDistance );
+		impostorDistance->setLow( 0.1f );
+		impostorDistance->setHigh( std::max( settings.farBorder, settings.impostorDistance ) );
+		impostorDistance->setUnit( "m" )->setTooltip( "From this distance an instance is an impostor (the last LOD of the model - "
+													  "up to it); model LODs that started beyond it at loading are not used" );
 		// С какого расстояния тень — импостером (0 — как в кадре); до impostor_distance — раньше, чем в кадре
 		Property* shadowImpostor = layer.properties->insert( "Shadow impostor distance", settings.shadowImpostorDistance );
 		shadowImpostor->setLow( 0.0f );
@@ -420,6 +482,31 @@ void Scatterer::compute( const FrameContext& frame )
 				layer.pass->setShadowLastLodDistance( v, ( *layer.properties )["Shadow impostor distance"].data<float>() );
 			if( variant.impostorMaterial )
 				variant.impostorMaterial->setBaseShade( ( *layer.properties )["Impostor base shade"].data<float>() );
+
+			// Надписи колец LOD: конец последнего LOD модели, импостера и тень — с какого LOD и до куда
+			PropertyContainer& variantProperties = *variant.properties;
+			const ScatterPass::Variant& passVariant = layer.passVariants[v];
+			const float farBorder = layer.settings.farBorder;
+			if( modelLods > 0 )
+				setLabel( variantProperties[lodRangeName( modelLods - 1 )], passVariant.lodEnd[modelLods - 1] );
+			if( variant.impostor )
+				setLabel( variantProperties["Impostor up to"], farBorder );
+			const bool casts = variant.castShadow && ( *layer.properties )["Cast shadow"].data<bool>();
+			float shadowEnd = 0.0f;
+			if( casts )
+			{
+				shadowEnd = farBorder;
+				if( shadowLods.castingLods < passVariant.lodCount && modelLods > 0 )
+				{
+					// Импостер без тени: тень — до дальности импостера (у теней — не дальше их своей)
+					const float shadowImpostor = ( *layer.properties )["Shadow impostor distance"].data<float>();
+					shadowEnd = passVariant.lodEnd[modelLods - 1];
+					if( shadowImpostor > 0.0f )
+						shadowEnd = std::min( shadowEnd, shadowImpostor );
+				}
+			}
+			setLabel( variantProperties["Shadow from LOD"], casts ? shadowLods.minLod : 0u );
+			setLabel( variantProperties["Shadow up to"], shadowEnd );
 		}
 		assignGroups( layer );
 
@@ -614,6 +701,7 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 	settings.castShadow = properties["Cast shadow"].data<bool>();
 	if( properties.exists( "Shadow impostor distance" ) )
 	{
+		settings.impostorDistance = properties["Impostor distance"].data<float>();
 		settings.shadowImpostorDistance = properties["Shadow impostor distance"].data<float>();
 		settings.impostorCastShadow = properties["Impostor shadow"].data<bool>();
 		settings.impostorBaseShade = std::clamp( properties["Impostor base shade"].data<float>(), 0.0f, 1.0f );
@@ -635,7 +723,37 @@ void Scatterer::applyProperties( Layer& layer )
 		if( v < layer.passVariants.size() && weight != layer.passVariants[v].weight )
 			weights = true;
 	}
-	const bool buffers = weights || settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
+	// Кольца LOD: дальность импостера — до края кольца, границы LOD модели у варианта — по возрастанию и не дальше конца
+	// последнего LOD модели (дальность импостера или край кольца); выход за пределы поле упирается, как в границу
+	bool lods = false;
+	ScatterLayerSettings clamped = settings;
+	if( layer.properties->exists( "Impostor distance" ) )
+	{
+		clamped.impostorDistance = std::clamp( settings.impostorDistance, 0.1f, settings.farBorder );
+		if( clamped.impostorDistance != settings.impostorDistance )
+			( *layer.properties )["Impostor distance"].setData( clamped.impostorDistance );
+		( *layer.properties )["Impostor distance"].setHigh( settings.farBorder );
+		( *layer.properties )["Shadow impostor distance"].setHigh( clamped.impostorDistance );
+	}
+	for( uint32_t v = 0; v < layer.variants.size() && v < layer.passVariants.size(); ++v )
+	{
+		LayerVariant& variant = layer.variants[v];
+		ScatterPass::Variant& passVariant = layer.passVariants[v];
+		const float end = variant.impostor ? clamped.impostorDistance : clamped.farBorder;
+		float previous = 0.0f;
+		for( uint32_t i = 0; i + 1 < variant.modelLods; ++i )
+		{
+			Property& range = ( *variant.properties )[lodRangeName( i )];
+			const float value = std::clamp( range.data<float>(), previous, end );
+			if( value != range.data<float>() )
+				range.setData( value );
+			lods = lods || value != passVariant.lodEnd[i];
+			previous = value;
+		}
+		if( variant.impostor && variant.modelLods > 0 )
+			lods = lods || passVariant.lodEnd[variant.modelLods - 1] != clamped.impostorDistance;
+	}
+	const bool buffers = weights || lods || settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
 						 settings.farBorder != applied.farBorder || settings.sizeMultiplier != applied.sizeMultiplier;
 	const bool placement = settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ||
 						   settings.jitter != applied.jitter || settings.sizeVariation != applied.sizeVariation ||
@@ -648,8 +766,16 @@ void Scatterer::applyProperties( Layer& layer )
 	if( ( buffers || ( placement && settings.persistent ) ) && layer.properties->editing() )
 		return;
 	for( uint32_t v = 0; v < layer.variants.size() && v < layer.passVariants.size(); ++v )
-		layer.passVariants[v].weight = std::max( ( *layer.variants[v].properties )["Weight"].data<float>(), 0.0f );
-	layer.settings = settings;
+	{
+		LayerVariant& variant = layer.variants[v];
+		ScatterPass::Variant& passVariant = layer.passVariants[v];
+		passVariant.weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
+		for( uint32_t i = 0; i + 1 < variant.modelLods; ++i )
+			passVariant.lodEnd[i] = ( *variant.properties )[lodRangeName( i )].data<float>();
+		if( variant.impostor && variant.modelLods > 0 )
+			passVariant.lodEnd[variant.modelLods - 1] = clamped.impostorDistance;
+	}
+	layer.settings = clamped;
 	if( buffers )
 	{
 		const bool rebuilt = rebuildPass( layer );
@@ -780,6 +906,16 @@ std::vector<ScatterLayerRecord> Scatterer::layerRecords() const
 			model.id = variant.id;
 			model.weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
 			model.castShadow = ( *variant.properties )["Cast shadow"].data<bool>();
+			// Свои границы LOD — если хоть одна отличается от модели; иначе пусто (в базе NULL — дальности модели)
+			bool own = false;
+			for( uint32_t i = 0; i + 1 < variant.modelLods; ++i )
+			{
+				const float range = ( *variant.properties )[lodRangeName( i )].data<float>();
+				model.lodDistances.push_back( range );
+				own = own || std::fabs( range - variant.model->lodRange( static_cast<uint16_t>( i ) ) ) > 1e-3f;
+			}
+			if( !own )
+				model.lodDistances.clear();
 			record.models.push_back( model );
 		}
 		records.push_back( std::move( record ) );

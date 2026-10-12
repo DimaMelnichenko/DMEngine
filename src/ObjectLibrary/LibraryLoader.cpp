@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <sstream>
 
 #include "DBConnector.h"
 #include "Logger\Logger.h"
@@ -590,7 +591,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.settings.impostorBaseShade = value( "impostor_base_shade" );
 
 		// Модели слоя — варианты растения с весами, в порядке строк
-		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, weight, cast_shadow FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
+		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, weight, cast_shadow, lod_distances FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
 		queryModels.bind( ":layer", query.getColumn( "id" ).getUInt() );
 		while( queryModels.executeStep() )
 		{
@@ -599,6 +600,15 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 			model.model = queryModels.getColumn( "model" ).getUInt();
 			model.weight = static_cast<float>( queryModels.getColumn( "weight" ).getDouble() );
 			model.castShadow = queryModels.getColumn( "cast_shadow" ).getInt() != 0;
+			// Свои границы LOD у слоя: «6,14»; NULL — дальности модели
+			if( !queryModels.getColumn( "lod_distances" ).isNull() )
+			{
+				std::stringstream distances( queryModels.getColumn( "lod_distances" ).getString() );
+				std::string distance;
+				while( std::getline( distances, distance, ',' ) )
+					if( !distance.empty() )
+						model.lodDistances.push_back( std::stof( distance ) );
+			}
 			layer.models.push_back( model );
 		}
 		set.layers.push_back( layer );
