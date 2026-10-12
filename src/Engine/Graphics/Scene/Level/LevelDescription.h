@@ -42,6 +42,7 @@ struct LevelDescription
 	struct ScatterSet
 	{
 		std::string name;
+		GS::ScatterSetSettings settings;	// строка ScatterSets
 		std::vector<ScatterLayer> layers;
 	};
 

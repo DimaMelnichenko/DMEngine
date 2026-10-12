@@ -347,7 +347,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.modelInstances.push_back( instance );
 		}
 
-		SQLite::Statement querySets( DBConnector::instance().db(), "SELECT s.id, s.name "
+		SQLite::Statement querySets( DBConnector::instance().db(), "SELECT s.id, s.name, s.shadow_lod_scale "
 																   "FROM LevelScatterSets l JOIN ScatterSets s ON s.id = l.scatter_set "
 																   "WHERE l.level = :level ORDER BY l.id" );
 		querySets.bind( ":level", level.id );
@@ -355,7 +355,9 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 		{
 			LevelDescription::ScatterSet set;
 			set.name = querySets.getColumn( "name" ).getString();
-			loadScatterLayers( querySets.getColumn( "id" ).getUInt(), set );
+			set.settings.id = querySets.getColumn( "id" ).getUInt();
+			set.settings.shadowLodScale = static_cast<float>( querySets.getColumn( "shadow_lod_scale" ).getDouble() );
+			loadScatterLayers( set.settings.id, set );
 			level.scatterSets.push_back( std::move( set ) );
 		}
 

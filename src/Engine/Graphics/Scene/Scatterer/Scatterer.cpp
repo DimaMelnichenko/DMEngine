@@ -18,11 +18,12 @@ using namespace DirectX;
 namespace GS
 {
 
-Scatterer::Scatterer( const std::string& name ) :
-	SceneObject( name )
+Scatterer::Scatterer( const std::string& name, const ScatterSetSettings& settings ) :
+	SceneObject( name ),
+	m_setId( settings.id )
 {
 	m_properties.setName( name );
-	Property* shadowLod = m_properties.insert( "Shadow LOD scale", 1.0f );
+	Property* shadowLod = m_properties.insert( "Shadow LOD scale", settings.shadowLodScale );
 	shadowLod->setLow( 0.1f );
 	shadowLod->setHigh( 1.0f );
 }
@@ -728,6 +729,14 @@ void Scatterer::placeStreamStones( Layer& layer )
 	layer.maxHeight = std::max( 1.0f, tallest );
 	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": stream stones " + std::to_string( instances.size() - dropped ) +
 		 ( dropped > 0 ? ", " + std::to_string( dropped ) + " do not fit" : std::string() ) );
+}
+
+ScatterSetSettings Scatterer::settings() const
+{
+	ScatterSetSettings settings;
+	settings.id = m_setId;
+	settings.shadowLodScale = m_properties["Shadow LOD scale"].data<float>();
+	return settings;
 }
 
 std::vector<ScatterLayerRecord> Scatterer::layerRecords() const

@@ -45,10 +45,11 @@ public:
 							   const std::optional<GS::HeightFogSettings>& heightFog,
 							   const std::optional<GS::VolumetricCloudSettings>& cloud );
 	// Правки объектов сцены одной транзакцией (LibraryLoaderScene.cpp): строки LevelModels по id (положение, поворот,
-	// масштаб), строка Terrain и tiling TerrainLayers, строки ScatterLayers и ScatterLayerModels по id, строка
+	// масштаб), строка Terrain и tiling TerrainLayers, строки ScatterSets, ScatterLayers и ScatterLayerModels по id, строка
 	// WaterSimulation уровня, строки ParticleEmitters по id
 	bool saveLevelScene( const LevelDescription& level, const std::vector<LevelDescription::ModelInstance>& models,
 						 const std::optional<GS::TerrainSettings>& terrain,
+						 const std::vector<GS::ScatterSetSettings>& scatterSets,
 						 const std::vector<GS::ScatterLayerRecord>& scatterLayers,
 						 const std::optional<GS::WaterSimulationSettings>& water,
 						 const std::vector<GS::ParticleEmitterSettings>& particleEmitters );

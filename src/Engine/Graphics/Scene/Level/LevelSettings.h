@@ -460,6 +460,14 @@ enum class ScatterPlacement
 	streamStones
 };
 
+// Строка ScatterSets — набор расстановки целиком
+struct ScatterSetSettings
+{
+	uint32_t id = 0;
+	// Множитель дальностей LOD у видов теней: < 1 — тень более грубым LOD (как смещение LOD теней в UE), 1 — как в кадре
+	float shadowLodScale = 1.0f;
+};
+
 struct ScatterLayerSettings
 {
 	uint32_t id = 0;				// строка ScatterLayers — куда пишет «Save level»

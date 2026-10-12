@@ -181,7 +181,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 			continue;
 		}
 
-		auto scatterer = std::make_unique<Scatterer>( set.name );
+		auto scatterer = std::make_unique<Scatterer>( set.name, set.settings );
 		if( !scatterer->Initialize() )
 			return false;
 		scatterer->setTerrain( &m_terrain );
@@ -346,9 +346,11 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	std::optional<TerrainSettings> terrain;
 	if( m_level.terrain )
 		terrain = m_terrain.settings();
+	std::vector<ScatterSetSettings> scatterSets;
 	std::vector<ScatterLayerRecord> scatterLayers;
 	for( const auto& scatterer : m_scatterers )
 	{
+		scatterSets.push_back( scatterer->settings() );
 		std::vector<ScatterLayerRecord> layers = scatterer->layerRecords();
 		scatterLayers.insert( scatterLayers.end(), layers.begin(), layers.end() );
 	}
@@ -361,7 +363,7 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	std::vector<ParticleEmitterSettings> emitters;
 	if( m_particles.initialized() )
 		emitters = m_particles.emitterSettings();
-	if( !library.saveLevelScene( m_level, m_models.instances(), terrain, scatterLayers, water, emitters ) )
+	if( !library.saveLevelScene( m_level, m_models.instances(), terrain, scatterSets, scatterLayers, water, emitters ) )
 		return false;
 	// Экземпляры моделей в базе — на нынешней земле: пересадка после эрозии закреплена
 	if( m_level.terrain )

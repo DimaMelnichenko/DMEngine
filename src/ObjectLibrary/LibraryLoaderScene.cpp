@@ -270,12 +270,13 @@ bool LibraryLoader::saveGeneratedStreams( uint32_t waterSimulationId, const std:
 	return true;
 }
 
-// Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterLayers и ScatterLayerModels,
+// Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterSets, ScatterLayers и ScatterLayerModels,
 // WaterSimulation, ParticleEmitters. Только колонки, которые правятся в окнах; состав (какие слои, модели, эмиттеры)
 // не меняется
 
 bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::vector<LevelDescription::ModelInstance>& models,
 									const std::optional<GS::TerrainSettings>& terrain,
+									const std::vector<GS::ScatterSetSettings>& scatterSets,
 									const std::vector<GS::ScatterLayerRecord>& scatterLayers,
 									const std::optional<GS::WaterSimulationSettings>& water,
 									const std::vector<GS::ParticleEmitterSettings>& particleEmitters )
@@ -365,6 +366,17 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 				updateLayer.exec();
 				updateLayer.reset();
 			}
+		}
+
+		SQLite::Statement updateSet( db, "UPDATE ScatterSets SET shadow_lod_scale = :shadowLodScale WHERE id = :id" );
+		for( const GS::ScatterSetSettings& set : scatterSets )
+		{
+			if( set.id == 0 )
+				continue;
+			updateSet.bind( ":shadowLodScale", dbValue( set.shadowLodScale ) );
+			updateSet.bind( ":id", set.id );
+			updateSet.exec();
+			updateSet.reset();
 		}
 
 		SQLite::Statement updateScatter( db, "UPDATE ScatterLayers SET cell_size = :cellSize, near_border = :nearBorder, "

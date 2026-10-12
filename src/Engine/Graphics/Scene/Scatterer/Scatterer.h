@@ -37,7 +37,8 @@ namespace GS
 class Scatterer : public SceneObject
 {
 public:
-	explicit Scatterer( const std::string& name );
+	// settings — строка ScatterSets: «Shadow LOD scale» из базы, id — для сохранения уровня
+	Scatterer( const std::string& name, const ScatterSetSettings& settings );
 
 	bool Initialize();
 	void setTerrain( const TerrainHeightSource* terrain );
@@ -71,7 +72,8 @@ public:
 	// меняет константы раскладки; постоянный слой после любой правки раскладывается заново
 	PropertyContainer* properties() override;
 	bool savedWithLevel() const override { return true; }
-	// Слои с настройками из GUI — для сохранения уровня (строки ScatterLayers и ScatterLayerModels)
+	// Набор и слои с настройками из GUI — для сохранения уровня (строки ScatterSets, ScatterLayers и ScatterLayerModels)
+	ScatterSetSettings settings() const;
 	std::vector<ScatterLayerRecord> layerRecords() const;
 	// Земля или вода изменились без перезагрузки (русла перестроены): постоянные слои — раскладка заново
 	void terrainChanged()
@@ -202,6 +204,7 @@ private:
 	static constexpr float stoneEmbed = 0.25f;
 	static constexpr float stoneTilt = 0.3f;
 
+	uint32_t m_setId = 0;				// строка ScatterSets — для сохранения уровня
 	bool m_computeEnabled = true;
 	float m_shadowLength = 0.0f;	// длина тени на метр высоты инстанса в этом кадре — запас дальности каскада
 	const TerrainHeightSource* m_terrain = nullptr;
