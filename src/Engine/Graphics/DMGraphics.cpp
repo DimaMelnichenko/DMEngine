@@ -157,6 +157,8 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_GUI.addPropertyWatching( m_renderer.properties(), Category::rendering );
 	m_GUI.addPropertyWatching( m_walk.properties(), Category::rendering );
 	m_GUI.addPropertyWatching( m_renderer.shadowProperties(), Category::rendering );
+	// Камера — и в Outliner (и командам list / get / set): поле зрения, плоскости, скорость; не сохраняется с уровнем
+	m_GUI.addPropertyWatching( &camera.m_properties, Category::rendering );
 	// Правки окон, сохраняемых с уровнем, — в его строки (LevelLights, SkyAtmosphere, PostProcessSettings,
 	// ExponentialHeightFog, Terrain, ScatterLayers, WaterSimulation, ParticleEmitters…). Первое действие — по Ctrl+S
 	m_GUI.addAction( "Save level", "Ctrl+S", [this]

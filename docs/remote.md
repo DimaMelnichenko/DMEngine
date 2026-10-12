@@ -63,7 +63,7 @@ python Tools/engine.py stop
 дополняет имена команд и пути свойств.
 
 Значения свойств: `true` / `false` (или `1` / `0`, `on` / `off`), числа, векторы `x,y,z`. Путь — имена окон, как в GUI:
-`set "CDLOD terrain/Far blend" 60,150`, `list Lights`, `get "Meadow/0: GrassClump + 3/Cast shadow"`.
+`set "CDLOD terrain/Far blend" 60,150`, `set "Camera/Field of view" 30`, `list Lights`, `get "Meadow/0: GrassClump + 3/Cast shadow"`.
 
 ## Сценарий: серия кадров за один запуск
 

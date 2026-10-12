@@ -26,6 +26,7 @@ void DMCamera::Initialize( CameraType _type, float width, float height, float _n
 	m_fieldOfView = fieldOfView;
 	setViewport( width, height );
 
+	m_properties.setName( "Camera" );
 	auto prop = m_properties.insert( "Camera speed", 1.0f );
 	prop->setLow( 1.0f );
 	prop->setHigh( 100.0f );
