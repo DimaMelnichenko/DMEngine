@@ -184,8 +184,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   активного окна, курсор спрятан и закреплён `ClipCursor` на месте, после Alt+Tab свободен); пока
   в окнах редактора набирается текст, горячие клавиши и WASD молчат (`Input::setKeyboardBlocked`).
 - **Редактор** (`src/Engine/Graphics/GUI/`, подробно — `docs/gui.md`), как редактор UE: главное меню (File — действия
-  `GUI::addAction`, их же вызывает команда `action`; View — переключатели `addToggle`; Window — панели и «Reset layout»;
-  Help), докинг панелей: Outliner (окна свойств по разделам Environment / Scene / Rendering, флажок видимости объекта),
+  `GUI::addAction`, их же вызывает команда `action`; Edit — отмена и повтор правок, Ctrl+Z / Ctrl+Y, `Editor::EditHistory`,
+  команды `undo` / `redo`; View — переключатели `addToggle`; Window — панели и «Reset layout»; Help), докинг панелей: Outliner (окна свойств по разделам Environment / Scene / Rendering, флажок видимости объекта),
   Details (свойства выбранного таблицей: поиск, единицы, подсказки, отметка изменённого после загрузки или сохранения и
   сброс — `Property::markSaved` / `modified` / `resetToSaved`), Output (консоль на `ConsoleCommands` с историей и
   дополнением; лог — `Logger::recent`), Stats, Camera, Texture Library; оверлей FPS и времени кадра. Раскладка по

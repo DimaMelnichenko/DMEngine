@@ -134,6 +134,7 @@ add_executable(DMEngine WIN32
     ${imguizmo_SOURCE_DIR}/src/ImGuizmo.cpp
     src/Engine/Graphics/GUI/GUI.cpp
     src/Engine/Graphics/GUI/PropertyWidgets.cpp
+    src/Engine/Graphics/GUI/EditHistory.cpp
     src/Engine/Graphics/GUI/OutlinerPanel.cpp
     src/Engine/Graphics/GUI/DetailsPanel.cpp
     src/Engine/Graphics/GUI/StatsPanel.cpp

@@ -59,6 +59,7 @@ void GUI::Initialize( HWND hwnd )
 #endif
 	// Числа — как в Blender: клик без перетаскивания — ввод значения (PropertyWidgets::numberField)
 	io.ConfigDragClickToInputText = true;
+	PropertyWidgets::setHistory( &m_history );
 
 	ImGui_ImplWin32_Init( hwnd );
 	// Бэкенд DX12: шрифт и картинки GUI — дескрипторы из общей shader-visible кучи движка (callback'и), кадров в полёте
@@ -157,6 +158,13 @@ void GUI::Begin( const GS::FrameStats& stats, DMCamera& camera )
 		m_showOutput = true;
 		m_console.focusInput();
 	}
+	// Ctrl+Z / Ctrl+Y (и Ctrl+Shift+Z) — отмена и повтор правок свойств. В поле ввода текста Ctrl+Z — у самого поля
+	// (маршрут фокуса важнее глобального)
+	if( ImGui::Shortcut( ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat ) )
+		undo();
+	if( ImGui::Shortcut( ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat ) ||
+		ImGui::Shortcut( ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat ) )
+		redo();
 
 	drawMenu();
 	float sceneX = 0.0f;
@@ -246,6 +254,16 @@ void GUI::drawMenu()
 			if( ImGui::MenuItem( action.name.c_str(), action.shortcut.empty() ? nullptr : action.shortcut.c_str() ) )
 				action.run();
 		}
+		ImGui::EndMenu();
+	}
+	if( ImGui::BeginMenu( "Edit" ) )
+	{
+		const std::string undoLabel = m_history.canUndo() ? "Undo " + m_history.undoName() : "Undo";
+		const std::string redoLabel = m_history.canRedo() ? "Redo " + m_history.redoName() : "Redo";
+		if( ImGui::MenuItem( undoLabel.c_str(), "Ctrl+Z", false, m_history.canUndo() ) )
+			undo();
+		if( ImGui::MenuItem( redoLabel.c_str(), "Ctrl+Y", false, m_history.canRedo() ) )
+			redo();
 		ImGui::EndMenu();
 	}
 	if( ImGui::BeginMenu( "View" ) )
@@ -461,6 +479,28 @@ bool GUI::select( const std::string& name )
 		}
 	}
 	return false;
+}
+
+bool GUI::undo( std::string* name )
+{
+	std::string undone;
+	if( !m_history.undo( &undone ) )
+		return false;
+	notify( "Undo: " + undone );
+	if( name )
+		*name = undone;
+	return true;
+}
+
+bool GUI::redo( std::string* name )
+{
+	std::string redone;
+	if( !m_history.redo( &redone ) )
+		return false;
+	notify( "Redo: " + redone );
+	if( name )
+		*name = redone;
+	return true;
 }
 
 bool GUI::runAction( const std::string& name )

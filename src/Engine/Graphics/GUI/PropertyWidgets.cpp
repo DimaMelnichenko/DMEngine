@@ -5,6 +5,7 @@
 #include <cmath>
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "EditHistory.h"
 
 using namespace DirectX;
 
@@ -19,6 +20,7 @@ const ImVec4 modifiedColor( 1.0f, 0.75f, 0.3f, 1.0f );
 // Свойство, которое правят (активный контрол), и рисовался ли его контрол в этом кадре — endFrame
 Property* editedProperty = nullptr;
 bool editedPropertyDrawn = false;
+Editor::EditHistory* editHistory = nullptr;
 
 // Правка идёт, пока контрол свойства активен (у числа — ползунок или поле ввода: группа)
 void markEditing( Property& property, bool active )
@@ -230,7 +232,8 @@ void labelCell( const std::string& name, Property& property )
 	}
 }
 
-void controlCell( const std::string& name, Property& property )
+// owner — имя окна или подокна свойства: так правка называется в истории («Meadow / 0: GrassClump + 3: Far border»)
+void controlCell( const std::string& name, Property& property, const std::string& owner )
 {
 	ImGui::TableNextColumn();
 	// Группа: у числа ползунок и поле ввода — один контрол для IsItemActive (правка идёт, пока активен любой)
@@ -327,7 +330,19 @@ void controlCell( const std::string& name, Property& property )
 			break;
 	}
 	ImGui::EndGroup();
-	markEditing( property, ImGui::IsItemActive() );
+	// Правка — пока контрол (поле, стрелка, флажок, цвет) активен: одна запись истории. По состоянию, а не по событиям
+	// ImGui: после клика по полю оно на кадр неактивно, пока включается ввод числа, — пустая правка отбрасывается, а ввод
+	// начинает свою
+	const bool wasEditing = property.editing();
+	const bool active = ImGui::IsItemActive();
+	markEditing( property, active );
+	if( editHistory )
+	{
+		if( active && !wasEditing )
+			editHistory->begin( owner + ": " + name, { &property } );
+		else if( !active && wasEditing && editHistory->editing() )
+			editHistory->end();
+	}
 }
 
 void resetCell( const std::string& name, Property& property )
@@ -337,7 +352,13 @@ void resetCell( const std::string& name, Property& property )
 		return;
 	ImGui::PushID( name.c_str() );
 	if( ImGui::SmallButton( "reset" ) )
+	{
+		if( editHistory )
+			editHistory->begin( "Reset " + name, { &property } );
 		property.resetToSaved();
+		if( editHistory )
+			editHistory->end();
+	}
 	ImGui::PopID();
 }
 
@@ -366,7 +387,7 @@ void drawProperties( PropertyContainer& container, const std::string& filter, bo
 		Property& property = container.property( name );
 		ImGui::TableNextRow();
 		labelCell( name, property );
-		controlCell( name, property );
+		controlCell( name, property, container.name() );
 		resetCell( name, property );
 	}
 	ImGui::EndTable();
@@ -462,8 +483,20 @@ void endFrame()
 	{
 		editedProperty->setEditing( false );
 		editedProperty = nullptr;
+		if( editHistory && editHistory->editing() )
+			editHistory->end();
 	}
 	editedPropertyDrawn = false;
+}
+
+void setHistory( Editor::EditHistory* history )
+{
+	editHistory = history;
+}
+
+Editor::EditHistory* history()
+{
+	return editHistory;
 }
 
 }

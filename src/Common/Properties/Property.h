@@ -37,8 +37,11 @@ enum class ValueType : int
 
 class Property
 {
+public:
+	// Значение любого типа свойства — для истории правок (отмена: значение целиком «до» и «после»)
+	using Value = std::variant<bool, float, DirectX::XMFLOAT2, DirectX::XMFLOAT3, DirectX::XMFLOAT4, int32_t, uint32_t>;
 private:
-	using Container = std::variant<bool, float, DirectX::XMFLOAT2, DirectX::XMFLOAT3, DirectX::XMFLOAT4, int32_t, uint32_t>;
+	using Container = Value;
 public:
 	Property();
 
@@ -74,6 +77,8 @@ public:
 	{
 		m_value = value;
 	}
+	const Value& value() const { return m_value; }
+	void setValue( const Value& value ) { m_value = value; }
 	float low() const;
 	float high() const;
 	GUIControlType controlType();

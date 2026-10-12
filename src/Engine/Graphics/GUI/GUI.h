@@ -13,6 +13,7 @@
 #include "ConsolePanel.h"
 #include "CameraPanel.h"
 #include "TextureLibraryPanel.h"
+#include "EditHistory.h"
 
 class DMCamera;
 
@@ -40,9 +41,14 @@ public:
 							  GS::SceneObject* object = nullptr, bool saved = false );
 	// Окна свойств в порядке регистрации — для команд list / get / set удалённого управления
 	const std::vector<PropertyContainer*>& propertyContainers() const { return m_containers; }
+	// История правок свойств: Ctrl+Z / Ctrl+Y, меню Edit, команды undo / redo
+	Editor::EditHistory& history() { return m_history; }
 	// Действие меню File (сохранение, выход); его же вызывает команда action. false — нет такого
 	void addAction( const std::string& name, const std::string& shortcut, std::function<void()> run );
 	bool runAction( const std::string& name );
+	// Отмена и повтор последней правки (Ctrl+Z / Ctrl+Y): false — нечего; name — её имя
+	bool undo( std::string* name = nullptr );
+	bool redo( std::string* name = nullptr );
 	// Выбрать окно свойств в Outliner по имени (команда select — снимки Details сценарием); false — нет такого
 	bool select( const std::string& name );
 	const std::vector<Editor::Action>& actions() const { return m_actions; }
@@ -95,6 +101,7 @@ private:
 	std::vector<Place> m_places;	// места окон раскладки без докинга, кадра
 	std::vector<Editor::Entry> m_entries;
 	std::vector<PropertyContainer*> m_containers;
+	Editor::EditHistory m_history;
 	int m_selected = -1;
 	PropertyContainer* m_focus = nullptr;	// раскрыть в Details в следующем кадре (focusProperties)
 	std::vector<Editor::Action> m_actions;

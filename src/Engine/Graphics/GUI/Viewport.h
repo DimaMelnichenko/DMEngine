@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "DirectX.h"
+#include "Properties/Property.h"
 
 class DMCamera;
 class GUI;
@@ -54,7 +55,7 @@ private:
 	void drawSelection( const DMCamera& camera, const GS::ModelInstances& models ) const;
 	// Кнопки режима гизмо над сценой и клавиши 5 / 6 / 7
 	void drawToolbar();
-	void manipulate( const DMCamera& camera, GS::ModelInstances& models );
+	void manipulate( const DMCamera& camera, GS::ModelInstances& models, GUI& gui );
 	// Кривые русел: точка на экране; выбор ближайшей к курсору; линии и точки; гизмо и клавиши выбранной
 	bool pickStreamPoint( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain, float x, float y );
 	void drawStreams( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain ) const;
@@ -77,6 +78,9 @@ private:
 	int m_streamCurve = -1;		// выбранная кривая русла и точка (−1 — нет)
 	int m_streamPoint = -1;
 	bool m_draggingPoint = false;
+	// Гизмо экземпляра тянут; свойства экземпляра до кадра, в котором его взяли, — «до» правки в истории (Ctrl+Z)
+	bool m_usingGizmo = false;
+	std::vector<Property::Value> m_gizmoBefore;
 	float m_streamFalloff = 8.0f;
 	std::vector<DirectX::XMFLOAT2> m_dragStart;	// точки кривой в начале перетаскивания
 };

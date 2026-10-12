@@ -103,7 +103,12 @@ void Viewport::update( const DMCamera& camera, GS::ModelInstances& models, GUI& 
 	if( m_selected >= 0 )
 	{
 		drawToolbar();
-		manipulate( camera, models );
+		manipulate( camera, models, gui );
+	}
+	else if( m_usingGizmo )
+	{
+		gui.history().end();
+		m_usingGizmo = false;
 	}
 }
 
@@ -382,8 +387,17 @@ void Viewport::drawToolbar()
 	ImGui::End();
 }
 
-void Viewport::manipulate( const DMCamera& camera, GS::ModelInstances& models )
+void Viewport::manipulate( const DMCamera& camera, GS::ModelInstances& models, GUI& gui )
 {
+	// Свойства экземпляра до гизмо этого кадра: если его сейчас возьмут, это — «до» правки
+	const std::vector<Property*> properties = Editor::EditHistory::collect( *models.instanceProperties( m_selected ) );
+	if( !m_usingGizmo )
+	{
+		m_gizmoBefore.clear();
+		for( const Property* property : properties )
+			m_gizmoBefore.push_back( property->value() );
+	}
+
 	XMMATRIX view;
 	XMMATRIX projection;
 	camera.viewMatrix( &view );
@@ -409,6 +423,16 @@ void Viewport::manipulate( const DMCamera& camera, GS::ModelInstances& models )
 	const ImGuizmo::MODE mode = m_localAxes || m_gizmo == Gizmo::scale ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
 	if( ImGuizmo::Manipulate( &viewData._11, &projectionData._11, operation, mode, &world._11 ) )
 		models.setInstanceMatrix( m_selected, XMLoadFloat4x4( &world ) );
+	// Перетаскивание гизмо — одна правка истории: от взятия до отпускания
+	const bool using_ = ImGuizmo::IsUsing();
+	if( using_ && !m_usingGizmo )
+	{
+		const char* action = m_gizmo == Gizmo::move ? "Move " : m_gizmo == Gizmo::rotate ? "Rotate " : "Scale ";
+		gui.history().begin( action + models.instanceProperties( m_selected )->name(), properties, &m_gizmoBefore );
+	}
+	else if( !using_ && m_usingGizmo )
+		gui.history().end();
+	m_usingGizmo = using_;
 }
 
 int Viewport::pickAt( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, float x, float y )

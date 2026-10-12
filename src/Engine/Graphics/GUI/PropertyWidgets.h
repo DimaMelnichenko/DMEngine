@@ -3,6 +3,11 @@
 #include <string>
 #include "Properties/PropertyContainer.h"
 
+namespace Editor
+{
+class EditHistory;
+}
+
 // Контролы свойств (система свойств, src/Common/Properties) — общие для панелей редактора: таблица «подпись | контрол |
 // сброс», как Details panel в UE. Подпись длиннее колонки обрезается, полная — с подсказкой и единицами во всплывающем
 // окне; изменённое после загрузки или сохранения отмечено и сбрасывается кнопкой
@@ -39,7 +44,11 @@ void drawContainer( PropertyContainer& container, const std::string& filter, Pro
 bool hasMatches( PropertyContainer& container, const std::string& filter );
 
 // Конец кадра GUI: правка свойства, контрол которого в этом кадре не рисовался (окно закрыли, свернули подконтейнер
-// посреди перетаскивания), закончена — Property::editing не залипает
+// посреди перетаскивания), закончена — Property::editing не залипает, запись истории закрыта
 void endFrame();
+
+// История правок (Ctrl+Z): контролы пишут в неё правку от активации до отпускания, кнопки reset — сброс. Ставит GUI
+void setHistory( Editor::EditHistory* history );
+Editor::EditHistory* history();
 
 }

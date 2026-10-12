@@ -2,6 +2,7 @@
 #include "imgui.h"
 #include "imgui_stdlib.h"
 #include "PropertyWidgets.h"
+#include "EditHistory.h"
 
 void DetailsPanel::draw( Editor::Entry* entry, bool* open, PropertyContainer* focus )
 {
@@ -25,7 +26,15 @@ void DetailsPanel::draw( Editor::Entry* entry, bool* open, PropertyContainer* fo
 		const float button = ImGui::CalcTextSize( "Reset all" ).x + ImGui::GetStyle().FramePadding.x * 2.0f;
 		ImGui::SameLine( ImGui::GetWindowContentRegionMax().x - button );
 		if( ImGui::Button( "Reset all" ) )
+		{
+			// Сброс окна целиком — одна правка истории
+			Editor::EditHistory* history = PropertyWidgets::history();
+			if( history )
+				history->begin( "Reset all: " + properties.name(), Editor::EditHistory::collect( properties ) );
 			properties.resetToSaved();
+			if( history )
+				history->end();
+		}
 	}
 	if( entry->saved )
 		ImGui::TextDisabled( "Saved with the level: File > Save level (Ctrl+S)" );

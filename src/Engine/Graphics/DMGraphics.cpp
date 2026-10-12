@@ -176,7 +176,15 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	// На землю (End, как в UE): выбранный во вьюпорте экземпляр модели
 	m_GUI.addAction( "Snap to terrain", "End", [this]
 	{
-		if( !m_scene.models().snapToTerrain( m_viewport.selected(), m_scene.terrain() ) )
+		// Одна правка истории (Ctrl+Z вернёт на прежнюю высоту)
+		const int selected = m_viewport.selected();
+		PropertyContainer* instance = selected >= 0 ? m_scene.models().instanceProperties( selected ) : nullptr;
+		if( instance )
+			m_GUI.history().begin( "Snap to terrain: " + instance->name(), Editor::EditHistory::collect( *instance ) );
+		const bool snapped = m_scene.models().snapToTerrain( selected, m_scene.terrain() );
+		if( instance )
+			m_GUI.history().end();
+		if( !snapped )
 			m_GUI.notify( "Select a model instance over the terrain first", true );
 	} );
 	m_GUI.addAction( "Exit", "Esc", [this] { m_exitRequested = true; } );
@@ -718,6 +726,25 @@ void DMGraphics::registerCommands()
 			reply->ok();
 		else
 			reply->error( "stream: select a stream curve point first (pick in the Stream curves mode)" );
+	} );
+	// История правок редактора, как Ctrl+Z / Ctrl+Y: ответ — имя отменённой или повторённой правки
+	m_console.registerCommand( "undo", "- undo the last edit of the editor (Ctrl+Z)",
+							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
+	{
+		std::string name;
+		if( m_GUI.undo( &name ) )
+			reply->ok( name );
+		else
+			reply->error( "undo: nothing to undo" );
+	} );
+	m_console.registerCommand( "redo", "- redo the last undone edit (Ctrl+Y)",
+							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
+	{
+		std::string name;
+		if( m_GUI.redo( &name ) )
+			reply->ok( name );
+		else
+			reply->error( "redo: nothing to redo" );
 	} );
 	m_console.registerCommand( "quit", "- exit the engine normally (log is written to the end)",
 							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
