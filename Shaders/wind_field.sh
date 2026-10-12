@@ -22,6 +22,17 @@ float4 windFieldSample( float2 uv )
 	return g_windFieldMap.SampleLevel( g_SamplerLinearClamp, uv, 0.0f );
 }
 
+// Цвет множителя скорости для отладочных видов: синий — штиль, голубой — половина, зелёный — как ветер уровня, жёлтый —
+// в полтора раза быстрее, красный — вдвое и больше
+float3 windSpeedColor( float speed )
+{
+	const float3 ramp[5] = { float3( 0.05f, 0.15f, 1.0f ), float3( 0.0f, 0.75f, 1.0f ), float3( 0.1f, 0.85f, 0.1f ), float3( 1.0f, 0.85f, 0.0f ),
+							 float3( 1.0f, 0.08f, 0.04f ) };
+	const float t = saturate( speed * 0.5f ) * 4.0f;
+	const uint i = min( uint( t ), 3u );
+	return lerp( ramp[i], ramp[i + 1], t - i );
+}
+
 // Ветер в точке мира по полю: direction — куда дует (нормированное x, z), speed — множитель скорости ветра уровня,
 // vertical — вертикальная доля (+ вверх по склону), turbulence — порывистость 0…1. Без поля (cb_windFieldScale 0) и за
 // краем карты — ровный ветер уровня

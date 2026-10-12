@@ -246,16 +246,18 @@ float4 main( PixelInputType input ) : SV_TARGET
 		surface.emissive = float3( 1.0f, 0.35f, 0.02f ) * source * 0.02f * ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
 	}
 
-	// Отладка поля ветра («Show wind»): цвет — множитель скорости против ветра уровня (синий — тише, белый — как ветер
-	// уровня, красный — вдвое быстрее), стрелки в клетках 8 м — направление в центре клетки, светлые — вверх по склону,
-	// тёмные — вниз; порывистость — жёлтым краем стрелки. Без освещения — свечением поверх приглушённой земли
+	// Отладка поля ветра («Show wind»): стрелки — направление в центре клетки, цвет — множитель скорости против ветра уровня
+	// (windSpeedColor: синий — штиль, зелёный — как ветер уровня, красный — вдвое быстрее), кайма — вертикаль (белая — вверх
+	// по склону, чёрная — вниз); клетка — 8 м у камеры, вдали крупнее (по блокам 64 м, стрелки не режутся); земля — серая,
+	// чуть тонированная тем же цветом, порывистость — тёмной штриховкой. Без освещения — свечением поверх земли
 	[branch] if( g_showWind )
 	{
 		const float4 wind = windFieldSample( input.uv );
-		const float speed = length( wind.xz );
-		const float3 calm = float3( 0.05f, 0.2f, 0.9f ), even = float3( 0.9f, 0.9f, 0.9f ), fast = float3( 0.95f, 0.1f, 0.05f );
-		float3 color = speed < 1.0f ? lerp( calm, even, saturate( speed ) ) : lerp( even, fast, saturate( speed - 1.0f ) );
-		const float arrowCell = 8.0f;
+		const float hatch = frac( ( position.x + position.z ) * 0.5f ) < 0.5f ? 1.0f : 0.0f;
+		float3 color = lerp( float3( 0.3f, 0.3f, 0.3f ), windSpeedColor( length( wind.xz ) ), 0.25f ) * ( 1.0f - 0.5f * hatch * saturate( wind.w ) );
+		const float2 block = ( floor( position.xz / 64.0f ) + 0.5f ) * 64.0f;
+		const float blockDistance = length( float3( block.x, position.y, block.y ) - cb_cameraPosition );
+		const float arrowCell = clamp( exp2( floor( log2( max( blockDistance, 1.0f ) / 12.0f ) ) ), 8.0f, 64.0f );
 		const float2 cellCenter = ( floor( position.xz / arrowCell ) + 0.5f ) * arrowCell;
 		const float4 centerWind = windFieldSample( float2( cellCenter.x, g_worldSize - cellCenter.y ) / g_worldSize );
 		const float centerSpeed = length( centerWind.xz );
@@ -266,18 +268,20 @@ float4 main( PixelInputType input ) : SV_TARGET
 			const float a = dot( local, along ) / arrowCell;
 			const float b = abs( dot( local, float2( -along.y, along.x ) ) ) / arrowCell;
 			const float length01 = saturate( 0.25f + 0.2f * centerSpeed );
-			const bool shaft = a > -length01 && a < length01 - 0.12f && b < 0.035f;
-			const bool head = a >= length01 - 0.12f && a < length01 + 0.06f && b < ( length01 + 0.06f - a ) * 0.8f;
+			const float headWidth = ( length01 + 0.06f - a ) * 0.8f;
+			const bool shaft = a > -length01 && a < length01 - 0.12f && b < 0.04f;
+			const bool head = a >= length01 - 0.12f && a < length01 + 0.06f && b < headWidth;
 			if( shaft || head )
 			{
-				const float lift = centerWind.y / max( centerSpeed, 1e-3f );
-				color = lerp( float3( 0.02f, 0.02f, 0.02f ), float3( 1.0f, 1.0f, 0.85f ), saturate( 0.5f + lift * 2.0f ) );
-				color = lerp( color, float3( 1.0f, 0.85f, 0.0f ), saturate( centerWind.w ) * ( b > 0.02f ? 1.0f : 0.0f ) );
+				const bool inner = shaft ? b < 0.028f && a > -length01 + 0.015f : b < headWidth - 0.02f;
+				const float lift = centerWind.y / centerSpeed;
+				color = inner ? windSpeedColor( centerSpeed ) : lerp( float3( 0.0f, 0.0f, 0.0f ), float3( 1.0f, 1.0f, 1.0f ), saturate( 0.5f + lift * 2.0f ) );
 			}
 		}
 		surface.baseColor = color * 0.6f;
 		surface.roughness = 1.0f;
-		surface.emissive = color * 1.5f * ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
+		// Яркость — от неба, цвет — свой: голубое небо иначе тонирует все стрелки в синий
+		surface.emissive = color * 2.0f * dot( ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) ), float3( 0.2126f, 0.7152f, 0.0722f ) );
 	}
 
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)

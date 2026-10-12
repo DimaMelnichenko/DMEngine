@@ -159,8 +159,9 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	m_properties.insert( "Show LOD", false );
 	// Вода симуляции (WaterSimulation, SLOT_WATER) поверх земли: синее — глубже, светлее — быстрее
 	m_properties.insert( "Show water", false );
-	m_properties.insert( "Show wind", false )->setTooltip( "Wind field on the ground: color - speed against the wind of the level "
-														   "(blue slower, red faster), arrows - direction (light - up the slope)" );
+	m_properties.insert( "Show wind", false )->setTooltip( "Wind field on the ground: arrows - direction, their color - speed against the "
+														   "wind of the level (blue calm, green even, red twice faster), white edge - up the slope, "
+														   "black - down; hatching - gusty" );
 
 	LOG( "CDLOD terrain: heightmap " + std::to_string( mapSize ) + ", LOD levels " + std::to_string( m_levelCount ) );
 
