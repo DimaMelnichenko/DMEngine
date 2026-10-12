@@ -30,6 +30,7 @@ public:
 
 private:
 	PropertyContainer m_properties;
+	PropertyContainer m_fieldProperties;	// подокно «Field» — поле ветра по рельефу (WindFieldSettings, TerrainWind)
 };
 
 }

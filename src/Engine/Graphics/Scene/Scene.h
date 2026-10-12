@@ -78,6 +78,9 @@ public:
 	ParticleSystem& particles();
 
 private:
+	// Препятствия поля ветра — экземпляры моделей уровня выше 3 м (ели рощи, постройки) кругом по габариту
+	std::vector<WindObstacle> windObstacles() const;
+
 	LevelDescription m_level;
 	DMLightDriver m_lightDriver;
 	Wind m_wind;

@@ -259,6 +259,22 @@ void ModelInstances::update( const FrameContext& frame )
 		updateBounds();
 }
 
+std::vector<DirectX::BoundingBox> ModelInstances::tallBounds( float minHeight ) const
+{
+	std::vector<DirectX::BoundingBox> result;
+	for( const Instance& instance : m_instances )
+	{
+		const DMModel::LodBlock* lod = instance.model->getLodById( 0 );
+		if( !lod )
+			continue;
+		DirectX::BoundingBox bounds;
+		lod->bounds.Transform( bounds, instance.transform.worldMatrix() );
+		if( bounds.Extents.y * 2.0f >= minHeight )
+			result.push_back( bounds );
+	}
+	return result;
+}
+
 void ModelInstances::updateBounds()
 {
 	bool first = true;

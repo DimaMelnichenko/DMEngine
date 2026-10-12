@@ -129,6 +129,23 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		wind.minGustAmount = static_cast<float>( query.getColumn( "min_gust_amount" ).getDouble() );
 		wind.maxGustAmount = static_cast<float>( query.getColumn( "max_gust_amount" ).getDouble() );
 		wind.gustSize = static_cast<float>( query.getColumn( "gust_size" ).getDouble() );
+		// Поле ветра по рельефу — колонки field_* по таблице настроек; нет колонки или NULL — значение по умолчанию
+		SQLite::Statement field( DBConnector::instance().db(), "SELECT * FROM Wind WHERE id = :id" );
+		field.bind( ":id", *level.windId );
+		if( field.executeStep() )
+			for( const GS::WindFieldParameter& parameter : GS::windFieldParameters() )
+			{
+				try
+				{
+					const int index = field.getColumnIndex( parameter.column );
+					if( !field.getColumn( index ).isNull() )
+						wind.field.*parameter.value = static_cast<float>( field.getColumn( index ).getDouble() );
+				}
+				catch( const SQLite::Exception& )
+				{
+					LOG( std::string( "Wind: no column " ) + parameter.column + ", the default is used" );
+				}
+			}
 	}
 
 	if( level.heightFogId )
@@ -450,6 +467,15 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 		updateWind.bind( ":gustSize", dbValue( wind.gustSize ) );
 		updateWind.bind( ":id", *level.windId );
 		updateWind.exec();
+		// Поле ветра — колонки field_* по таблице настроек
+		std::string fieldColumns;
+		for( const GS::WindFieldParameter& parameter : GS::windFieldParameters() )
+			fieldColumns += std::string( fieldColumns.empty() ? "" : ", " ) + parameter.column + " = :" + parameter.column;
+		SQLite::Statement updateField( db, "UPDATE Wind SET " + fieldColumns + " WHERE id = :id" );
+		for( const GS::WindFieldParameter& parameter : GS::windFieldParameters() )
+			updateField.bind( std::string( ":" ) + parameter.column, dbValue( wind.field.*parameter.value ) );
+		updateField.bind( ":id", *level.windId );
+		updateField.exec();
 		SQLite::Statement updateLevelWind( db, "UPDATE Levels SET wind = :wind WHERE id = :id" );
 		updateLevelWind.bind( ":wind", *level.windId );
 		updateLevelWind.bind( ":id", level.id );

@@ -31,7 +31,7 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	float  g_detailTile;			// сторона детальной плитки, м (terrain_detail.sh); 0 — детальной земли нет
 	int    g_channelLayer;			// слой гальки русел: в детальных плитках красится по врезу (−1 — нет)
 	int    g_waterBedLayer;			// слой гальки под водой (режим static): по глубине в точке (−1 — нет)
-	float  g_cdlodPadding;
+	uint   g_showWind;				// поле ветра на рельефе (wind_field.sh) — отладка, «Show wind»
 	float4 g_detailMorph[2];		// уровни мельче листа (−1, −2): x — начало морфинга, y — 1 / длина зоны
 };
 

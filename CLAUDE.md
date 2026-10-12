@@ -424,6 +424,8 @@ Exponential Height Fog с Volumetric Fog в UE: два слоя по высот�
 NULL — облаков нет), ветер — строка `Wind` (`Levels.wind`, как Wind Directional Source
 в UE: направление, сила, порывы волнами; класс `Wind` у `Scene`, константы кадра `cb_wind*` и время игры `cb_gameTime` —
 шагами кадра, изгиб в `vertexWorldPosition` у материалов с `WindWeight` > 0 — `Shaders/wind.sh`, подробно — `docs/wind.md`;
+поле ветра по рельефу — ступень конвейера `TerrainWind` после масок и моделей (поток над рельефом, подветренная тень,
+вертикаль, лес), ресурс сцены `SLOT_WIND_FIELD`, подокно «Field» окна «Wind», кэш `generated\wind.dds`;
 деревья — материал `PBRTree` (define `WIND_TREE`): слои Games wind SpeedTree по данным второго потока вершин `VertexPool` —
 начала и веса ветвей двух уровней, доля высоты, рябь, атрибуты glTF `_WIND_*`, блок `WIND` файла меша).
 В GUI это окна «Lights» (подокно на источник, Pitch / Yaw

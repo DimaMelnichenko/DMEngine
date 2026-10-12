@@ -38,6 +38,19 @@ void Wind::initialize( const std::optional<Settings>& settings )
 	addSlider( m_properties, "Min gust amount", initial.minGustAmount, 0.0f, 2.0f );
 	addSlider( m_properties, "Max gust amount", initial.maxGustAmount, 0.0f, 2.0f );
 	addSlider( m_properties, "Gust size (m)", initial.gustSize, 1.0f, 200.0f );
+	// Поле ветра по рельефу — подокно «Field» по таблице настроек (windFieldParameters): правка пересчитывает поле, когда
+	// закончилась (Scene::applyEditorChanges)
+	m_fieldProperties.setName( "Field" );
+	for( const WindFieldParameter& parameter : windFieldParameters() )
+	{
+		Property* property = m_fieldProperties.insert( parameter.name, initial.field.*parameter.value );
+		property->setLow( parameter.low );
+		property->setHigh( parameter.high );
+		property->setTooltip( std::string( parameter.tooltip ) + "; the wind field is rebuilt when the edit ends" );
+		if( parameter.unit[0] )
+			property->setUnit( parameter.unit );
+	}
+	m_properties.addSubContainer( &m_fieldProperties );
 }
 
 Wind::Settings Wind::settings()
@@ -50,6 +63,9 @@ Wind::Settings Wind::settings()
 	settings.minGustAmount = m_properties["Min gust amount"].data<float>();
 	settings.maxGustAmount = m_properties["Max gust amount"].data<float>();
 	settings.gustSize = m_properties["Gust size (m)"].data<float>();
+	for( const WindFieldParameter& parameter : windFieldParameters() )
+		if( m_fieldProperties.exists( parameter.name ) )
+			settings.field.*parameter.value = m_fieldProperties[parameter.name].data<float>();
 	return settings;
 }
 

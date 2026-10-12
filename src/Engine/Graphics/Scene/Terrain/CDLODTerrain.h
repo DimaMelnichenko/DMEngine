@@ -11,6 +11,7 @@
 #include "TerrainHeightSource.h"
 #include "TerrainHydrology.h"
 #include "TerrainMasks.h"
+#include "TerrainWind.h"
 #include "ShaderProgram.h"
 #include "D3D\DMStructuredBuffer.h"
 
@@ -48,6 +49,15 @@ public:
 	// слоёв. До initialize; после — сменился (changed) — слои и маски заново перестраивает Scene
 	void setPrevailingWind( const DirectX::XMFLOAT3& direction );
 	bool prevailingWindChanged( const DirectX::XMFLOAT3& direction ) const;
+	// Поле ветра по рельефу (TerrainWind, docs/wind.md): настройки (WindSettings::field) — до buildWindField; сменились
+	// (changed) — rebuildWindField. buildWindField — после масок и моделей уровня (obstacles — экземпляры выше нескольких
+	// метров), его зовёт Scene; rebuildMasks и rebuildChannels пересчитывают поле сами. Текстура — ресурс сцены
+	// SLOT_WIND_FIELD (Shaders/wind_field.sh), копия на CPU — windField()
+	void setWindField( const WindFieldSettings& settings );
+	bool windFieldChanged( const WindFieldSettings& settings ) const;
+	bool buildWindField( const std::vector<WindObstacle>& obstacles );
+	bool rebuildWindField();
+	const std::vector<TerrainWind::Cell>& windField() const { return m_wind; }
 	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {}, const WaterSimulationSettings* water = nullptr,
 					 const TerrainErosionSettings* erosion = nullptr, const TerrainLayerRules& layerRules = {} );
 	// Правили «Layer rules» в редакторе — слои и маски заново (без русел), splat-карта с покраской правок; расстановку (лес)
@@ -127,7 +137,7 @@ private:
 		float detailTile;		// сторона детальной плитки, м; 0 — детальной земли нет
 		int32_t channelLayer;	// слой гальки русел в детальных плитках (−1 — нет)
 		int32_t waterBedLayer;	// слой гальки под водой режима static — по глубине в точке (−1 — нет)
-		float padding;
+		uint32_t showWind;		// поле ветра на рельефе (SLOT_WIND_FIELD) — отладка, «Show wind»
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1, −2: начало морфинга и 1 / длина зоны
 	};
 
@@ -230,6 +240,15 @@ private:
 	// те же значения для ходьбы и границы плиток (min / max) для отбора узлов
 	Texture m_detailTexture;
 	ShaderView m_detailView;
+	// Поле ветра: настройки, препятствия (модели уровня), рельефная часть и её ключ (полог пересчитывается без неё), итог на
+	// CPU и текстура R16G16B16A16_FLOAT
+	WindFieldSettings m_windSettings;
+	std::vector<WindObstacle> m_windObstacles;
+	std::vector<TerrainWind::Cell> m_windTerrain;
+	uint64_t m_windTerrainKey = 0;
+	std::vector<TerrainWind::Cell> m_wind;
+	Texture m_windTexture;
+	ShaderView m_windView;
 	Texture m_detailIndexTexture;
 	ShaderView m_detailIndexView;
 	float m_detailTileSize = 0.0f;			// сторона плитки, м; 0 — плиток нет

@@ -1,4 +1,5 @@
 #include "TerrainMasks.h"
+#include "TerrainFields.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -15,26 +16,16 @@ namespace GS
 namespace
 {
 
-using Field = std::vector<float>;
+using Field = TerrainField;
 
 float smoothstep( float a, float b, float x )
 {
-	const float t = std::clamp( ( x - a ) / ( b - a ), 0.0f, 1.0f );
-	return t * t * ( 3.0f - 2.0f * t );
+	return fieldSmoothstep( a, b, x );
 }
 
 float smoothstep( const TerrainLayerRules::Range& range, float x )
 {
 	return smoothstep( range.from, range.to, x );
-}
-
-// Строки поля параллельно: fn( row )
-template<typename Fn>
-void forRows( uint32_t size, Fn fn )
-{
-	std::vector<uint32_t> rows( size );
-	std::iota( rows.begin(), rows.end(), 0u );
-	std::for_each( std::execution::par, rows.begin(), rows.end(), fn );
 }
 
 // Поле по формуле в каждом текселе: fn( i ) → значение
@@ -51,47 +42,6 @@ Field generate( uint32_t size, Fn fn )
 		}
 	} );
 	return result;
-}
-
-// Три прохода box-фильтра по строкам и столбцам ≈ гауссово размытие; за краем карты повторяется крайний тексель
-Field blur( Field values, uint32_t size, int radius, int passes = 3 )
-{
-	if( radius <= 0 || values.empty() )
-		return values;
-	const int n = static_cast<int>( size );
-	const float scale = 1.0f / ( 2 * radius + 1 );
-	Field temp( values.size() );
-	for( int pass = 0; pass < passes; ++pass )
-	{
-		// По строкам: скользящая сумма
-		forRows( size, [&]( uint32_t row )
-		{
-			const float* in = &values[static_cast<size_t>( row ) * n];
-			float* out = &temp[static_cast<size_t>( row ) * n];
-			float sum = 0.0f;
-			for( int k = -radius; k <= radius; ++k )
-				sum += in[std::clamp( k, 0, n - 1 )];
-			for( int col = 0; col < n; ++col )
-			{
-				out[col] = sum * scale;
-				sum += in[std::min( col + radius + 1, n - 1 )] - in[std::max( col - radius, 0 )];
-			}
-		} );
-		// По столбцам
-		forRows( size, [&]( uint32_t col )
-		{
-			float sum = 0.0f;
-			for( int k = -radius; k <= radius; ++k )
-				sum += temp[static_cast<size_t>( std::clamp( k, 0, n - 1 ) ) * n + col];
-			for( int row = 0; row < n; ++row )
-			{
-				values[static_cast<size_t>( row ) * n + col] = sum * scale;
-				sum += temp[static_cast<size_t>( std::min( row + radius + 1, n - 1 ) ) * n + col] -
-					   temp[static_cast<size_t>( std::max( row - radius, 0 ) ) * n + col];
-			}
-		} );
-	}
-	return values;
 }
 
 // Максимум по квадрату ( 2·radius + 1 )²: тонкие линии (русла) расширяются, а не гаснут, как при размытии
@@ -248,8 +198,8 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 			northRaw[i] = std::clamp( dz / std::max( length, 1e-6f ), 0.0f, 1.0f ) * smoothstep( 5.0f, 15.0f, slopeRaw[i] );
 		}
 	} );
-	const Field slope = blur( slopeRaw, size, blurRadius( s.slopeBlur ) );
-	const Field north = blur( northRaw, size, blurRadius( s.slopeBlur ) );
+	const Field slope = blurField( slopeRaw, size, blurRadius( s.slopeBlur ) );
+	const Field north = blurField( northRaw, size, blurRadius( s.slopeBlur ) );
 
 	// Шумы: зерно — номер шума; длины волн — как прежние периоды сценария на карте 1 км
 	const Field noise = generate( size, [&, base = fbm( size, texel, { { 128, 0.35f }, { 64, 0.3f }, { 32, 0.2f }, { 16, 0.1f }, { 8, 0.05f } }, 11,
@@ -265,35 +215,9 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	const float windLength = std::hypot( inputs.windX, inputs.windZ );
 	if( windLength > 1e-3f )
 	{
-		// В текселях карты: x — столбцы, +z мира — к меньшим строкам; навстречу ветру — против направления
-		const float upCol = -inputs.windX / windLength;
-		const float upRow = inputs.windZ / windLength;
-		struct Sample
-		{
-			int dCol;
-			int dRow;
-			float distance;		// м
-		};
-		constexpr int fan = 3;
-		constexpr float fanAngle = 0.2618f;	// 15°
-		std::vector<Sample> samples[fan];
-		const float reach = std::max( s.windReach / texel, 2.0f );
-		for( int f = 0; f < fan; ++f )
-		{
-			const float angle = ( f - ( fan - 1 ) * 0.5f ) * fanAngle;
-			const float c = std::cos( angle );
-			const float sn = std::sin( angle );
-			const float dirCol = upCol * c - upRow * sn;
-			const float dirRow = upCol * sn + upRow * c;
-			for( float d = 1.5f; d <= reach; d = std::max( d * 1.12f, d + 1.0f ) )
-			{
-				const int dCol = static_cast<int>( std::lround( dirCol * d ) );
-				const int dRow = static_cast<int>( std::lround( dirRow * d ) );
-				samples[f].push_back( { dCol, dRow, std::hypot( static_cast<float>( dCol ), static_cast<float>( dRow ) ) * texel } );
-			}
-		}
 		const float metres = field.heightMultiplier;
-		const Field smooth = blur( height, size, blurRadius( s.ridgeRadius / texel ) );
+		const Field horizon = upwindHorizon( height, size, texel, metres, inputs.windX, inputs.windZ, s.windReach );
+		const Field smooth = blurField( height, size, blurRadius( s.ridgeRadius / texel ) );
 		forRows( size, [&]( uint32_t row )
 		{
 			const int r = static_cast<int>( row );
@@ -301,15 +225,7 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 			{
 				const size_t i = static_cast<size_t>( r ) * n + col;
 				const float h = height[i];
-				float sx = 0.0f;
-				for( int f = 0; f < fan; ++f )
-				{
-					float steepest = -1e9f;
-					for( const Sample& sample : samples[f] )
-						steepest = std::max( steepest, ( heightAt( r + sample.dRow, col + sample.dCol ) - h ) * metres / std::max( sample.distance, 1e-3f ) );
-					sx += std::atan( steepest ) * 57.29578f;
-				}
-				sx /= fan;
+				const float sx = horizon[i];
 				const float open = smoothstep( s.windOpen, sx );
 				const float shelter = smoothstep( s.windShelter, sx );
 				const float tpi = ( h - smooth[i] ) * metres;
@@ -325,10 +241,10 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	// Водосбор: log10, м²; влажность — топографический индекс TWI = ln( a / tan β ) (Beven, Kirkby 1979; a — водосбор на
 	// метр ширины склона): низины, дно долины, русла; плюс конусы выноса (отложения эрозии)
 	const Field logFlow = generate( size, [&]( size_t i ) { return std::log10( std::max( at( inputs.catchment, i ), cellArea ) ); } );
-	const Field wear = blur( inputs.wear && !inputs.wear->empty() ? *inputs.wear : Field( cells, 0.0f ), size, blurRadius( s.erosionBlur ) );
-	const Field talusMap = blur( inputs.talus && !inputs.talus->empty() ? *inputs.talus : Field( cells, 0.0f ), size, blurRadius( s.erosionBlur ) );
-	const Field gully = blur( logFlow, size, 1 );
-	const Field moisture = blur( generate( size, [&]( size_t i )
+	const Field wear = blurField( inputs.wear && !inputs.wear->empty() ? *inputs.wear : Field( cells, 0.0f ), size, blurRadius( s.erosionBlur ) );
+	const Field talusMap = blurField( inputs.talus && !inputs.talus->empty() ? *inputs.talus : Field( cells, 0.0f ), size, blurRadius( s.erosionBlur ) );
+	const Field gully = blurField( logFlow, size, 1 );
+	const Field moisture = blurField( generate( size, [&]( size_t i )
 	{
 		const float twi = std::log( std::max( at( inputs.catchment, i ), cellArea ) / texel / std::max( gradient[i], 1e-3f ) );
 		return std::max( smoothstep( s.moistureTwi, twi ), smoothstep( 0.1f, 0.5f, at( inputs.deposition, i ) ) );
@@ -405,11 +321,11 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	const Field forestNoise = generate( size, [&, base = fbm( size, texel, { { 128, 0.4f }, { 64, 0.3f }, { 32, 0.2f }, { 16, 0.1f } }, 51,
 															  forestScale )]( size_t i ) { return base[i] - 0.5f; } );
 	const bool hasWater = inputs.water && !inputs.water->empty();
-	const Field stream = hasWater ? blur( dilate( *inputs.water, size, 1 ), size, 1 )
-								  : generate( size, [&, flow = blur( dilate( logFlow, size, 1 ), size, 1 )]( size_t i ) { return smoothstep( 3.6f, 4.2f, flow[i] ); } );
+	const Field stream = hasWater ? blurField( dilate( *inputs.water, size, 1 ), size, 1 )
+								  : generate( size, [&, flow = blurField( dilate( logFlow, size, 1 ), size, 1 )]( size_t i ) { return smoothstep( 3.6f, 4.2f, flow[i] ); } );
 	// Берега — полоса в несколько метров по обе стороны русла (ольха, ива)
 	const int bankWidth = blurRadius( s.bankWidth );
-	const Field banksRaw = hasWater ? blur( dilate( *inputs.water, size, bankWidth ), size, 2 ) : blur( dilate( logFlow, size, bankWidth ), size, 2 );
+	const Field banksRaw = hasWater ? blurField( dilate( *inputs.water, size, bankWidth ), size, 2 ) : blurField( dilate( logFlow, size, bankWidth ), size, 2 );
 	const Field clearingNoise = fbm( size, texel, { { 64, 0.5f }, { 32, 0.3f }, { 16, 0.2f } }, 61, forestScale );
 	const Field stands[3] = { fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 71, forestScale ),
 							  fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 81, forestScale ),

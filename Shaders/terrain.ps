@@ -12,6 +12,7 @@
 #include "cdlod.sh"
 #include "bindless.sh"
 #include "water.sh"
+#include "wind_field.sh"
 
 DM_SRV( Texture2DArray, g_splatMap, 1 );		// срез 0 — веса слоёв 0…3, срез 1 — 4…7
 DM_SRV( Texture2DArray, g_albedoHeight, 2 );
@@ -243,6 +244,40 @@ float4 main( PixelInputType input ) : SV_TARGET
 		const float source = saturate( log10( max( water.inflow, 1e-4f ) / 0.01f ) * 0.5f );
 		surface.baseColor = lerp( surface.baseColor, float3( 1.0f, 0.35f, 0.02f ), source );
 		surface.emissive = float3( 1.0f, 0.35f, 0.02f ) * source * 0.02f * ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
+	}
+
+	// Отладка поля ветра («Show wind»): цвет — множитель скорости против ветра уровня (синий — тише, белый — как ветер
+	// уровня, красный — вдвое быстрее), стрелки в клетках 8 м — направление в центре клетки, светлые — вверх по склону,
+	// тёмные — вниз; порывистость — жёлтым краем стрелки. Без освещения — свечением поверх приглушённой земли
+	[branch] if( g_showWind )
+	{
+		const float4 wind = windFieldSample( input.uv );
+		const float speed = length( wind.xz );
+		const float3 calm = float3( 0.05f, 0.2f, 0.9f ), even = float3( 0.9f, 0.9f, 0.9f ), fast = float3( 0.95f, 0.1f, 0.05f );
+		float3 color = speed < 1.0f ? lerp( calm, even, saturate( speed ) ) : lerp( even, fast, saturate( speed - 1.0f ) );
+		const float arrowCell = 8.0f;
+		const float2 cellCenter = ( floor( position.xz / arrowCell ) + 0.5f ) * arrowCell;
+		const float4 centerWind = windFieldSample( float2( cellCenter.x, g_worldSize - cellCenter.y ) / g_worldSize );
+		const float centerSpeed = length( centerWind.xz );
+		if( centerSpeed > 1e-3f )
+		{
+			const float2 along = centerWind.xz / centerSpeed;
+			const float2 local = position.xz - cellCenter;
+			const float a = dot( local, along ) / arrowCell;
+			const float b = abs( dot( local, float2( -along.y, along.x ) ) ) / arrowCell;
+			const float length01 = saturate( 0.25f + 0.2f * centerSpeed );
+			const bool shaft = a > -length01 && a < length01 - 0.12f && b < 0.035f;
+			const bool head = a >= length01 - 0.12f && a < length01 + 0.06f && b < ( length01 + 0.06f - a ) * 0.8f;
+			if( shaft || head )
+			{
+				const float lift = centerWind.y / max( centerSpeed, 1e-3f );
+				color = lerp( float3( 0.02f, 0.02f, 0.02f ), float3( 1.0f, 1.0f, 0.85f ), saturate( 0.5f + lift * 2.0f ) );
+				color = lerp( color, float3( 1.0f, 0.85f, 0.0f ), saturate( centerWind.w ) * ( b > 0.02f ? 1.0f : 0.0f ) );
+			}
+		}
+		surface.baseColor = color * 0.6f;
+		surface.roughness = 1.0f;
+		surface.emissive = color * 1.5f * ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
 	}
 
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps)

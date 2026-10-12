@@ -12,6 +12,7 @@
 #include <fstream>
 #include <filesystem>
 #include <DirectXTex.h>
+#include <DirectXPackedVector.h>
 #include "System.h"
 #include "ConstantBuffers.h"
 #include "DBConnector.h"
@@ -150,6 +151,8 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	m_properties.insert( "Show LOD", false );
 	// Вода симуляции (WaterSimulation, SLOT_WATER) поверх земли: синее — глубже, светлее — быстрее
 	m_properties.insert( "Show water", false );
+	m_properties.insert( "Show wind", false )->setTooltip( "Wind field on the ground: color - speed against the wind of the level "
+														   "(blue slower, red faster), arrows - direction (light - up the slope)" );
 
 	LOG( "CDLOD terrain: heightmap " + std::to_string( mapSize ) + ", LOD levels " + std::to_string( m_levelCount ) );
 
@@ -547,7 +550,12 @@ bool CDLODTerrain::rebuildChannels( const WaterSimulationSettings& water, const 
 	if( !finishHeights( target, &water, coverage ) )
 		return false;
 	m_coverage = coverage;
-	return createFoliageClearMask( coverage ) && m_material.repaint( m_masks, coverage );
+	if( !createFoliageClearMask( coverage ) || !m_material.repaint( m_masks, coverage ) )
+		return false;
+	// Рельеф у русел и лес сменились — поле ветра заново
+	if( !m_wind.empty() )
+		rebuildWindField();
+	return true;
 }
 
 bool CDLODTerrain::layerRulesChanged() const
@@ -575,6 +583,159 @@ bool CDLODTerrain::prevailingWindChanged( const XMFLOAT3& direction ) const
 	return direction.x != m_prevailingWind.x || direction.z != m_prevailingWind.y;
 }
 
+void CDLODTerrain::setWindField( const WindFieldSettings& settings )
+{
+	m_windSettings = settings;
+}
+
+bool CDLODTerrain::windFieldChanged( const WindFieldSettings& settings ) const
+{
+	for( const WindFieldParameter& parameter : windFieldParameters() )
+		if( settings.*parameter.value != m_windSettings.*parameter.value )
+			return true;
+	return false;
+}
+
+bool CDLODTerrain::buildWindField( const std::vector<WindObstacle>& obstacles )
+{
+	m_windObstacles = obstacles;
+	return rebuildWindField();
+}
+
+bool CDLODTerrain::rebuildWindField()
+{
+	if( m_cpuHeights.empty() )
+		return false;
+	const auto start = std::chrono::steady_clock::now();
+	if( std::hypot( m_prevailingWind.x, m_prevailingWind.y ) <= 1e-3f )
+	{
+		// Без ветра у уровня — поля нет: шейдеры берут ровный ветер уровня
+		m_wind.clear();
+		m_windTexture = Texture();
+		m_windView = ShaderView();
+		return true;
+	}
+	const uint32_t size = m_cpuSize;
+	TerrainField heights( m_cpuHeights.size() );
+	for( size_t i = 0; i < heights.size(); ++i )
+		heights[i] = m_cpuHeights[i] * m_heightMultiplier;
+
+	// Рельефная часть — по итоговому рельефу, направлению и настройкам рельефа; та же — прежний расчёт из памяти
+	Fingerprint terrainKey;
+	const char* stamp = TerrainWind::codeStamp();
+	terrainKey.add( stamp, std::strlen( stamp ) );
+	terrainKey.add( size );
+	terrainKey.add( m_texelSize );
+	terrainKey.addWords( heights.data(), heights.size() * sizeof( float ) );
+	terrainKey.add( m_prevailingWind );
+	for( float WindFieldSettings::* field : { &WindFieldSettings::layerHeight, &WindFieldSettings::layerSmoothing, &WindFieldSettings::maxSpeedup,
+											   &WindFieldSettings::reach, &WindFieldSettings::shelterFrom, &WindFieldSettings::shelterTo,
+											   &WindFieldSettings::leeSlowdown, &WindFieldSettings::turbulence } )
+		terrainKey.add( m_windSettings.*field );
+
+	// Полог: маски леса и модели уровня; итог — в кэш на диске рядом с масками (generated\wind.dds, ключ — wind_key.txt)
+	std::vector<const TerrainField*> forest;
+	for( const TerrainMasks::Mask& mask : m_masks.masks )
+		if( mask.name.rfind( "mask_forest_", 0 ) == 0 )
+			forest.push_back( &mask.values );
+	const TerrainField canopy = TerrainWind::canopy( forest, size, m_worldSize, m_windObstacles );
+	Fingerprint key = terrainKey;
+	key.addWords( canopy.data(), canopy.size() * sizeof( float ) );
+	for( const WindFieldParameter& parameter : windFieldParameters() )
+		key.add( m_windSettings.*parameter.value );
+	char keyText[32];
+	std::snprintf( keyText, sizeof( keyText ), "%016llx", static_cast<unsigned long long>( key.value ) );
+	const std::string path = m_generatedDirectory + "\\wind.dds";
+	const std::string keyPath = m_generatedDirectory + "\\wind_key.txt";
+	std::string cachedKey;
+	{
+		std::ifstream keyFile( keyPath );
+		std::getline( keyFile, cachedKey );
+	}
+	std::vector<DirectX::PackedVector::HALF> halves;
+	bool cached = false;
+	if( cachedKey == keyText )
+	{
+		const std::wstring wide( path.begin(), path.end() );
+		ScratchImage image;
+		if( SUCCEEDED( LoadFromDDSFile( wide.c_str(), DDS_FLAGS_NONE, nullptr, image ) ) && image.GetMetadata().format == DXGI_FORMAT_R16G16B16A16_FLOAT &&
+			image.GetMetadata().width == size && image.GetMetadata().height == size )
+		{
+			const Image& source = *image.GetImage( 0, 0, 0 );
+			halves.resize( static_cast<size_t>( size ) * size * 4 );
+			for( uint32_t row = 0; row < size; ++row )
+				std::memcpy( &halves[static_cast<size_t>( row ) * size * 4], source.pixels + row * source.rowPitch, size * 4 * sizeof( uint16_t ) );
+			cached = true;
+		}
+	}
+	if( !cached )
+	{
+		if( terrainKey.value != m_windTerrainKey || m_windTerrain.empty() )
+		{
+			if( !TerrainWind::solveTerrain( heights, size, m_texelSize, m_prevailingWind.x, m_prevailingWind.y, m_windSettings, m_windTerrain ) )
+			{
+				LOG( "CDLOD terrain: wind field is not solved" );
+				return false;
+			}
+			m_windTerrainKey = terrainKey.value;
+		}
+		std::vector<TerrainWind::Cell> field;
+		TerrainWind::applyCanopy( m_windTerrain, size, m_texelSize, canopy, m_windSettings, field );
+		halves.resize( field.size() * 4 );
+		for( size_t i = 0; i < field.size(); ++i )
+		{
+			halves[i * 4 + 0] = DirectX::PackedVector::XMConvertFloatToHalf( field[i].x );
+			halves[i * 4 + 1] = DirectX::PackedVector::XMConvertFloatToHalf( field[i].y );
+			halves[i * 4 + 2] = DirectX::PackedVector::XMConvertFloatToHalf( field[i].z );
+			halves[i * 4 + 3] = DirectX::PackedVector::XMConvertFloatToHalf( field[i].w );
+		}
+		// Ключ — после файла, прежний убирается до него (прервали запись — промах)
+		std::error_code error;
+		std::filesystem::remove( keyPath, error );
+		std::filesystem::create_directories( m_generatedDirectory, error );
+		ScratchImage image;
+		if( SUCCEEDED( image.Initialize2D( DXGI_FORMAT_R16G16B16A16_FLOAT, size, size, 1, 1 ) ) )
+		{
+			const Image& target = *image.GetImage( 0, 0, 0 );
+			for( uint32_t row = 0; row < size; ++row )
+				std::memcpy( target.pixels + row * target.rowPitch, &halves[static_cast<size_t>( row ) * size * 4], size * 4 * sizeof( uint16_t ) );
+			const std::wstring wide( path.begin(), path.end() );
+			if( SUCCEEDED( SaveToDDSFile( image.GetImages(), image.GetImageCount(), image.GetMetadata(), DDS_FLAGS_NONE, wide.c_str() ) ) )
+				std::ofstream( keyPath ) << keyText << "\n";
+		}
+	}
+	// Копия на CPU — те же половинные значения, что у текстуры
+	m_wind.resize( static_cast<size_t>( size ) * size );
+	for( size_t i = 0; i < m_wind.size(); ++i )
+		m_wind[i] = TerrainWind::Cell( DirectX::PackedVector::XMConvertHalfToFloat( halves[i * 4 + 0] ), DirectX::PackedVector::XMConvertHalfToFloat( halves[i * 4 + 1] ),
+									   DirectX::PackedVector::XMConvertHalfToFloat( halves[i * 4 + 2] ), DirectX::PackedVector::XMConvertHalfToFloat( halves[i * 4 + 3] ) );
+
+	DMD3D& d3d = DMD3D::instance();
+	TextureDesc desc;
+	desc.width = desc.height = size;
+	desc.format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	desc.usage = TextureUsage::shaderResource;
+	TextureData data;
+	data.data = halves.data();
+	data.rowPitch = size * 4 * sizeof( uint16_t );
+	data.slicePitch = data.rowPitch * size;
+	Texture texture;
+	ShaderView view;
+	if( !d3d.createTexture( desc, &data, texture ) || !d3d.createShaderView( texture, {}, view ) )
+	{
+		LOG( "CDLOD terrain: wind field texture is not created" );
+		return false;
+	}
+	d3d.setName( texture, "Wind field" );
+	m_windTexture = std::move( texture );
+	m_windView = std::move( view );
+	char text[64];
+	std::snprintf( text, sizeof( text ), ", ms: %.1f", std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
+	LOG( std::string( "Wind field" ) + ( cached ? " (from cache)" : "" ) + ": " + TerrainWind::summary( m_wind ) + ", obstacles " +
+		 std::to_string( m_windObstacles.size() ) + text );
+	return true;
+}
+
 bool CDLODTerrain::rebuildMasks()
 {
 	if( m_cpuHeights.empty() )
@@ -591,6 +752,9 @@ bool CDLODTerrain::rebuildMasks()
 	field.heightOffset = m_heightOffset;
 	if( !buildMasks( field ) || !m_material.repaint( m_masks, m_coverage ) )
 		return false;
+	// Лес в масках сменился (и ветер мог повернуть) — поле ветра заново
+	if( !m_windObstacles.empty() || !m_wind.empty() )
+		rebuildWindField();
 	LOG( "Terrain layers and masks rebuilt without reload, ms: " +
 		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() ) );
 	return true;
@@ -847,6 +1011,8 @@ void CDLODTerrain::compute( const FrameContext& frame )
 		return;
 	DMD3D::instance().setSRV( SLOT_TERRAIN_DETAIL, m_detailView );
 	DMD3D::instance().setSRV( SLOT_TERRAIN_DETAIL_INDEX, m_detailIndexView );
+	if( m_windView.valid() )
+		DMD3D::instance().setSRV( SLOT_WIND_FIELD, m_windView );
 }
 
 bool CDLODTerrain::createFoliageClearMask( const TerrainEditCoverage& coverage )
@@ -1412,6 +1578,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.farBlendStart = farBlend.x;
 		params.farBlendEnd = std::max( farBlend.y, farBlend.x + 1.0f );
 		params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
+		params.showWind = m_properties["Show wind"].data<bool>() && m_windView.valid() ? 1 : 0;
 		params.detailTile = m_detailTileSize;
 		params.channelLayer = m_detailTileSize > 0.0f && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;

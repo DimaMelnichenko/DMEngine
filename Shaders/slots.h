@@ -69,8 +69,11 @@
 // Детальная вода у русел (water.sh, WaterSimulation — water_detail.cs): массив плиток, как у детальной земли (тот же
 // индекс SLOT_TERRAIN_DETAIL_INDEX), x — уровень поверхности, м (−1e30 — нет), y, z — течение по X и Z мира, м/с, w — глубина, м
 #define SLOT_WATER_DETAIL	116
+// Поле ветра по рельефу (TerrainWind, CDLODTerrain): R16G16B16A16_FLOAT в координатах карты высот — xz скорость по X и Z
+// мира в долях ветра уровня, y — вертикальная вдоль рельефа, w — порывистость (wind_field.sh)
+#define SLOT_WIND_FIELD		117
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	17
+#define SLOT_SCENE_COUNT	18
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

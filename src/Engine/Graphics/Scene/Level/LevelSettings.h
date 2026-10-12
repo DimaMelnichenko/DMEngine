@@ -273,6 +273,44 @@ std::vector<DirectX::XMFLOAT2> curveFromText( const std::string& text );
 std::string curveText( const std::vector<DirectX::XMFLOAT2>& curve );
 
 // Строка Wind
+// Поле ветра по рельефу (TerrainWind, docs/wind.md, «Поле ветра по рельефу») — колонки field_* строки Wind, подокно
+// «Field» окна «Wind». Ветер уровня — над ровным открытым местом; рельеф, лес и постройки меняют его в каждой точке
+struct WindFieldSettings
+{
+	// Рельеф — массово-согласованный поток в слое воздуха над рельефом, сглаженным на layerSmoothing: толщина слоя над
+	// сглаженным — layerHeight; где рельеф выше сглаженного (гребень, скала у прохода), слой тоньше — ветер быстрее
+	float layerHeight = 100.0f;			// м
+	float layerSmoothing = 300.0f;		// м
+	float maxSpeedup = 2.0f;			// множитель скорости — не больше
+	// Подветренная тень: угол горизонта навстречу ветру Sx (как у снега в правилах слоёв) на reach — от shelterFrom до
+	// shelterTo градусов скорость падает до leeSlowdown, а порывистость растёт. На пологом подветренном склоне поток
+	// прилегает к рельефу, отрывается — за перегибами круче ~15–20°
+	float reach = 100.0f;				// м: ближняя зона за гребнем; дальше поток снова прилегает к рельефу
+	float shelterFrom = 15.0f;			// градусы
+	float shelterTo = 30.0f;
+	float leeSlowdown = 0.5f;
+	// Лес и постройки (полог): в полном лесу скорость × ( 1 − forestDamping ); к этому — за forestLength по ветру, обратно к
+	// скорости рельефа над полем и водой — за recoveryLength
+	float forestDamping = 0.7f;
+	float forestLength = 15.0f;			// м
+	float recoveryLength = 60.0f;		// м
+	float turbulence = 1.0f;			// порывистость за гребнями и на опушках, 0…1
+};
+
+// Поле настроек поля ветра: колонка строки Wind, свойство подокна «Field», границы, единица, подсказка — одна таблица
+// для окна, загрузки, «Save level» и проверки, сменились ли настройки
+struct WindFieldParameter
+{
+	const char* column;
+	const char* name;
+	float WindFieldSettings::* value;
+	float low;
+	float high;
+	const char* unit;
+	const char* tooltip;
+};
+const std::vector<WindFieldParameter>& windFieldParameters();
+
 struct WindSettings
 {
 	DirectX::XMFLOAT3 direction = DirectX::XMFLOAT3( 0.0f, 0.0f, 1.0f );	// куда дует, горизонтально (y не учитывается)
@@ -281,6 +319,7 @@ struct WindSettings
 	float minGustAmount = 0.3f;		// порыв между волнами и на гребне волны — доли силы (Min / Max Gust Amount в UE)
 	float maxGustAmount = 1.0f;
 	float gustSize = 25.0f;			// длина волны порыва, м
+	WindFieldSettings field;
 };
 
 // Строка VolumetricCloud (как Volumetric Cloud в UE5): слой облаков над долиной, Shaders/volumetric_cloud.sh

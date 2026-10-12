@@ -62,6 +62,8 @@ public:
 	const std::string& instanceName( int instance ) const { return m_instances[instance].name; }
 	// Границы всех экземпляров (меш LOD 0 в мировых координатах); false — экземпляров нет
 	bool bounds( DirectX::BoundingBox& bounds ) const;
+	// Границы в мире (LOD0) экземпляров не ниже minHeight, м: ели рощи, постройки — препятствия ветру (поле ветра)
+	std::vector<DirectX::BoundingBox> tallBounds( float minHeight ) const;
 
 	// Добавление и удаление в редакторе. У экземпляра — ключ, постоянный в сеансе (по нему его находят выбор вьюпорта и
 	// отмена: номер после добавления и удаления сдвигается). Новый — в конец списка, без поворота, масштаб 1; убранный

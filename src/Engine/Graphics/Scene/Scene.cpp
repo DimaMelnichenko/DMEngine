@@ -143,6 +143,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		// уровня — господствующий: от него открытость ветру в правилах слоёв (снег, граница леса); без ветра — без неё.
 		// Направление — из окна «Wind» (угол Yaw), как потом его сравнивает applyEditorChanges
 		m_terrain.setPrevailingWind( m_level.wind ? m_wind.settings().direction : XMFLOAT3( 0.0f, 0.0f, 0.0f ) );
+		m_terrain.setWindField( m_wind.settings().field );
 		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits, m_level.waterSimulation ? &*m_level.waterSimulation : nullptr,
 								   m_level.terrainErosion ? &*m_level.terrainErosion : nullptr, m_level.terrainLayerRules ) )
 			return false;
@@ -174,6 +175,9 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		LOG( "Model instances moved to the new eroded terrain: " + std::to_string( moved ) + " (File > Save level keeps it)" );
 		m_terrain.releaseErosionChange();
 	}
+	// Поле ветра по рельефу — после масок леса и моделей уровня: ели рощи и постройки (выше 3 м) — препятствия
+	if( m_level.terrain && m_level.wind && !m_terrain.buildWindField( windObstacles() ) )
+		LOG( "Wind field is not built, the wind of the level is even" );
 
 	timeStart = std::chrono::high_resolution_clock::now();
 	for( const LevelDescription::ScatterSet& set : m_level.scatterSets )
@@ -292,10 +296,17 @@ void Scene::applyEditorChanges()
 	bool windTurned = false;
 	if( m_level.terrain && m_level.wind && !m_wind.properties()->editing() )
 	{
-		const XMFLOAT3 direction = m_wind.settings().direction;
-		windTurned = m_terrain.prevailingWindChanged( direction );
+		const Wind::Settings wind = m_wind.settings();
+		windTurned = m_terrain.prevailingWindChanged( wind.direction );
 		if( windTurned )
-			m_terrain.setPrevailingWind( direction );
+			m_terrain.setPrevailingWind( wind.direction );
+		// Правили подокно «Field» — поле ветра заново (поворот ветра пересчитает его вместе с масками ниже)
+		if( m_terrain.windFieldChanged( wind.field ) )
+		{
+			m_terrain.setWindField( wind.field );
+			if( !windTurned && !m_terrain.rebuildWindField() )
+				LOG( "Wind field is not rebuilt" );
+		}
 	}
 	if( m_level.terrain && ( windTurned || m_terrain.layerRulesChanged() ) )
 	{
@@ -413,6 +424,14 @@ bool Scene::rebuildChannels()
 	}
 	LOG( "Water channels rebuilt without reload, ms: " + elapsedMs( start ) );
 	return true;
+}
+
+std::vector<WindObstacle> Scene::windObstacles() const
+{
+	std::vector<WindObstacle> obstacles;
+	for( const DirectX::BoundingBox& bounds : m_models.tallBounds( 3.0f ) )
+		obstacles.push_back( { bounds.Center.x, bounds.Center.z, std::max( bounds.Extents.x, bounds.Extents.z ) } );
+	return obstacles;
 }
 
 DirectX::XMFLOAT4 Scene::cloudShadow( const RenderView& view )

@@ -8,6 +8,26 @@ using namespace DirectX;
 namespace GS
 {
 
+const std::vector<WindFieldParameter>& windFieldParameters()
+{
+	using W = WindFieldSettings;
+	static const std::vector<WindFieldParameter> parameters = {
+		{ "field_layer_height", "Layer height", &W::layerHeight, 10.0f, 1000.0f, "m",
+		  "Air layer above the smoothed ground: where the ground rises above it (ridges, rocks by a gap) the layer is thinner and the wind faster" },
+		{ "field_layer_smoothing", "Layer smoothing", &W::layerSmoothing, 10.0f, 2000.0f, "m", "The top of the air layer follows the ground smoothed this wide" },
+		{ "field_max_speedup", "Max speedup", &W::maxSpeedup, 1.0f, 5.0f, "", "The wind is at most this many times faster than the wind of the level" },
+		{ "field_reach", "Lee reach", &W::reach, 10.0f, 1000.0f, "m", "The horizon against the wind is searched this far (lee shelter)" },
+		{ "field_shelter_from", "Lee shelter from", &W::shelterFrom, -30.0f, 30.0f, "deg", "Horizon angle against the wind where the lee shelter starts" },
+		{ "field_shelter_to", "Lee shelter to", &W::shelterTo, -30.0f, 30.0f, "deg", "Horizon angle against the wind of the full lee shelter" },
+		{ "field_lee_slowdown", "Lee slowdown", &W::leeSlowdown, 0.0f, 1.0f, "", "Share of the wind speed in the full lee shelter" },
+		{ "field_forest_damping", "Forest damping", &W::forestDamping, 0.0f, 1.0f, "", "The wind in a dense forest is slower by this share" },
+		{ "field_forest_length", "Forest length", &W::forestLength, 1.0f, 200.0f, "m", "The wind slows down this far into the forest" },
+		{ "field_recovery_length", "Recovery length", &W::recoveryLength, 1.0f, 500.0f, "m", "Past the forest the wind speeds up again this far over fields and water" },
+		{ "field_turbulence", "Turbulence", &W::turbulence, 0.0f, 1.0f, "", "Gustiness behind ridges and at forest edges" },
+	};
+	return parameters;
+}
+
 const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
 {
 	using R = TerrainLayerRules;

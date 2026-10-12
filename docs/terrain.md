@@ -137,7 +137,8 @@ B --name dry_river_pebbles --albedo D/dry_river_pebbles_2k.blend.zip:textures/dr
 (до мипов: его видят вершины, узлы, расстановка, вода и частицы):
 
 **исходная карта** → **эрозия** (`TerrainErosion`, GPU) → **ручные правки** (`TerrainEdits`, ниже) → **русла, ручьи и
-озёра** (`TerrainHydrology`, [water.md](water.md)) → вода.
+озёра** (`TerrainHydrology`, [water.md](water.md)) → вода → **слои и маски** (`TerrainMasks`, ниже) → **поле ветра**
+(`TerrainWind`, после моделей уровня: ели и постройки — препятствия; [wind.md](wind.md), «Поле ветра по рельефу»).
 
 Исходная карта — любая: `Terrain.heightmap` (R16, R32 и другие форматы DDS, 0…1 × `height_multiplier` +
 `height_offset`). Её можно сделать в World Machine, Gaea или нарисовать; тестовую долину строит

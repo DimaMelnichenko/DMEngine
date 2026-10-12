@@ -212,6 +212,8 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Terrain/TerrainHydrology.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainMasks.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainErosion.cpp
+    src/Engine/Graphics/Scene/Terrain/TerrainFields.cpp
+    src/Engine/Graphics/Scene/Terrain/TerrainWind.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainMaterial.cpp
     src/Engine/Graphics/Scene/Texture/DMTexture.cpp
     src/Engine/Graphics/Scene/Texture/DMTextureStorage.cpp
