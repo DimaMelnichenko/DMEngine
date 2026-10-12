@@ -263,6 +263,7 @@ target_link_libraries(DMEngine PRIVATE
     ${dxc_SOURCE_DIR}/lib/x64/dxcompiler.lib
     ${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.lib
     d3d12 dxgi dxguid winmm windowscodecs
+    dbghelp     # стек зависшего главного потока (FrameWatchdog)
     d3dcompiler # только шейдеры imgui_impl_dx12 (D3DCompile); шейдеры движка — DXC
 )
 

@@ -248,6 +248,22 @@ bool DMD3D::createDevice( bool gpuValidation )
 		m_infoQueue = make_com_ptr<ID3D12InfoQueue1>( infoQueuePtr );
 		m_infoQueue->RegisterMessageCallback( messageCallback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, this, &m_messageCookie );
 	}
+	// GPU-based validation — только учёт состояний ресурсов (барьеры, layout), без правки шейдеров: правку (проверку индексов
+	// дескрипторов и границ в самих шейдерах) слой делает при первой SetPipelineState, и на compute расстановки
+	// (scatter.cs) она не кончается — кадр стоял минутами (сторож кадра, 2026-10-12; TODO.md, «Решить или проверить»)
+	if( m_gpuValidation )
+	{
+		ID3D12DebugDevice1* debugDevicePtr = nullptr;
+		if( SUCCEEDED( m_device->QueryInterface( __uuidof( ID3D12DebugDevice1 ), (void**)&debugDevicePtr ) ) )
+		{
+			auto debugDevice = make_com_ptr<ID3D12DebugDevice1>( debugDevicePtr );
+			D3D12_DEBUG_DEVICE_GPU_BASED_VALIDATION_SETTINGS settings = {};
+			settings.MaxMessagesPerCommandList = 256;
+			settings.DefaultShaderPatchMode = D3D12_GPU_BASED_VALIDATION_SHADER_PATCH_MODE_STATE_TRACKING_ONLY;
+			settings.PipelineStateCreateFlags = D3D12_GPU_BASED_VALIDATION_PIPELINE_STATE_CREATE_FLAG_NONE;
+			debugDevice->SetDebugParameter( D3D12_DEBUG_DEVICE_PARAMETER_GPU_BASED_VALIDATION_SETTINGS, &settings, sizeof( settings ) );
+		}
+	}
 #endif
 
 	// Память ресурсов — D3D12MA: блоки куч под ресурсы, без своего аллокатора

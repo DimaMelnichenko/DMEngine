@@ -11,8 +11,9 @@
 // Сторож кадра (как детектор зависаний ThreadHeartBeat в UE): главный поток отмечает шаги кадра (stage, Scope), свой
 // поток дважды в секунду смотрит, сколько длится текущий шаг. Дольше limit — строка «Frame watchdog» в лог: кадр, шаг,
 // сколько стоит, последняя начатая метка (event: проходы и объекты кадра — DMD3D::beginEvent) и что скажет probe (у
-// DMGraphics — ход GPU по fence); пока стоит — снова раз в limit × 3, и строка, когда кадр пошёл. Зависание видно в
-// log.txt без отладчика, а Tools/engine.py и Tools/run.ps1 по таймауту печатают эти строки
+// DMGraphics — ход GPU по fence); в первый раз — ещё стек главного потока с символами (PDB рядом с exe), как отчёт
+// о зависании в UE. Пока стоит — снова раз в limit × 3, и строка, когда кадр пошёл. Зависание видно в log.txt без
+// отладчика, а Tools/engine.py и Tools/run.ps1 по таймауту печатают эти строки
 class FrameWatchdog
 {
 public:
@@ -43,6 +44,7 @@ public:
 private:
 	FrameWatchdog() = default;
 	void run();
+	void logMainThreadStack();
 	static int64_t now();	// мкс steady_clock
 
 	std::atomic<const char*> m_stage{ nullptr };
@@ -53,6 +55,7 @@ private:
 	std::mutex m_eventMutex;
 	char m_event[96] = {};
 	std::thread m_thread;
+	void* m_mainThread = nullptr;	// HANDLE главного потока — того, что зовёт start
 	std::mutex m_mutex;
 	std::condition_variable m_wake;
 	bool m_stopping = false;
