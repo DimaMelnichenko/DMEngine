@@ -5,7 +5,7 @@
 
 Пишет файлы мешей (Meshes\\models\\<ассет>\\<модель>_LOD<N>[_S<секция>].bin, формат MeshLoader), картинки текстур
 (Textures\\models\\<ассет>\\) и строки base.db3: Meshes, Models, ModelProperties, Textures, MaterialInstance +
-MaterialParameterInstance, по --level — LevelModels. Всё в одной транзакции; повторный импорт того же файла обновляет
+MaterialParameterInstance, по --level — LevelModels и LevelLights. Всё в одной транзакции; повторный импорт того же файла обновляет
 строки и файлы (reimport), лишние LOD удаляет. Подробно — docs/models.md.
 
 - Объект (узел с мешем) — модель; суффикс _LOD<N> в имени — LOD N модели с именем без суффикса.
@@ -29,6 +29,13 @@ MaterialParameterInstance, по --level — LevelModels. Всё в одной т
   export_extras) с именами параметров PBR; значение-строка с именем текстуры материала (BaseColor) — та же текстура.
 - --snap-to-terrain ставит экземпляры на землю уровня, как Drop to surface в UE: высота — террейн в точке (x, z)
   плюс высота объекта над нулём в Blender (Tools/terrain.py).
+- Источники света (KHR_lights_punctual: в Blender — флажок Punctual Lights при экспорте) с --level — строки LevelLights,
+  как источники в уровне UE: тип, цвет, интенсивность (единицы glTF — у направленного люксы, у точечного и прожектора
+  канделы — те же, что у LevelLights), range → attenuation_radius (нет — без обрезания), конус прожектора (радианы →
+  градусы), место узла относительно --position (с --snap-to-terrain — над землёй, как экземпляры), направление — ось −Z
+  узла. Повторный импорт обновляет строку источника уровня с тем же именем (имя узла), прочие колонки (тени, включён)
+  остаются; новый направленный — без атмосферы и теней, если у уровня уже есть направленный (солнце уровня — первый),
+  иначе он и есть солнце: с атмосферой и тенями. Источник, убранный в Blender, на уровне остаётся.
 - Ветер дерева (docs/wind.md) — собственные атрибуты glTF, как входы Games wind SpeedTree: _WIND_BRANCH1 и
   _WIND_BRANCH2 (VEC4: начало ветви xyz в пространстве позиций и вес), _WIND_WEIGHTS (VEC2: доля высоты дерева, вес
   ряби). Пишутся блоком WIND в конце файла меша; материал секций с ними — PBRTree (id 13).
@@ -98,7 +105,8 @@ class Gltf:
         else:
             self.json = json.loads(data.decode('utf-8'))
 
-        required = set(self.json.get('extensionsRequired', []))
+        # Источники света экспортёр Blender помечает обязательными — их скрипт читает (collect_lights)
+        required = set(self.json.get('extensionsRequired', [])) - {'KHR_lights_punctual'}
         if required:
             raise SystemExit('error: required glTF extensions are not supported: %s. Export without compression '
                              '(Draco, meshopt) and without image formats other than PNG/JPEG' % ', '.join(sorted(required)))
@@ -217,8 +225,8 @@ def decompose(matrix):
     return {'position': matrix[:3, 3] * MIRROR, 'rotation': np.array([-x, -y, z, w]), 'scale': scale}
 
 
-def mesh_nodes(gltf):
-    """Узлы с мешем и их мировые матрицы (обход сцены по умолчанию)."""
+def scene_nodes(gltf):
+    """Все узлы сцены по умолчанию и их мировые матрицы."""
     nodes = gltf.json.get('nodes', [])
     scenes = gltf.json.get('scenes', [])
     roots = scenes[gltf.json.get('scene', 0)]['nodes'] if scenes else range(len(nodes))
@@ -227,14 +235,44 @@ def mesh_nodes(gltf):
     def visit(index, parent):
         node = nodes[index]
         world = parent @ node_matrix(node)
-        if 'mesh' in node:
-            found.append((index, node, world))
+        found.append((index, node, world))
         for child in node.get('children', []):
             visit(child, world)
 
     for root in roots:
         visit(root, np.eye(4))
     return found
+
+
+def mesh_nodes(gltf):
+    """Узлы с мешем и их мировые матрицы (обход сцены по умолчанию)."""
+    return [(index, node, world) for index, node, world in scene_nodes(gltf) if 'mesh' in node]
+
+
+def collect_lights(gltf):
+    """Источники KHR_lights_punctual узлов сцены в координатах движка: место, направление (ось −Z узла — куда идёт
+    свет), тип, цвет, интенсивность, радиус и конус прожектора в градусах."""
+    definitions = gltf.json.get('extensions', {}).get('KHR_lights_punctual', {}).get('lights', [])
+    lights = []
+    for index, node, world in scene_nodes(gltf):
+        reference = node.get('extensions', {}).get('KHR_lights_punctual')
+        if reference is None:
+            continue
+        light = definitions[reference['light']]
+        direction = world[:3, :3] @ np.array([0.0, 0.0, -1.0])
+        direction = direction / max(np.linalg.norm(direction), 1e-12) * MIRROR
+        spot = light.get('spot', {})
+        lights.append({
+            'name': node.get('name') or light.get('name') or 'Light%d' % index,
+            'type': light['type'],
+            'color': np.array(light.get('color', [1.0, 1.0, 1.0])),
+            'intensity': float(light.get('intensity', 1.0)),
+            'range': float(light.get('range', 0.0)),
+            'inner': np.degrees(spot.get('innerConeAngle', 0.0)),
+            'outer': np.degrees(spot.get('outerConeAngle', np.pi / 4.0)),
+            'position': world[:3, 3] * MIRROR,
+            'direction': direction})
+    return lights
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -693,6 +731,28 @@ class Database:
                 self.cursor.execute('DELETE FROM Meshes WHERE id = ?', (mesh_id,))
         return model_id
 
+    def light(self, level_id, light):
+        """Источник уровня по имени: есть строка — обновляются тип, цвет, интенсивность, место, направление, радиус и
+        конус (тени, включён и атмосфера — как настроили на уровне); нет — новая строка. Возвращает (id, новая ли)."""
+        def text(vector):
+            return ','.join('%g' % (round(float(c), 6) + 0.0) for c in vector)
+        values = (light['type'], text(light['color']), light['intensity'], text(light['position']), text(light['direction']),
+                  light['range'], round(float(light['inner']), 4), round(float(light['outer']), 4))
+        light_id = self.one('SELECT id FROM LevelLights WHERE level = ? AND name = ?', (level_id, light['name']))
+        if light_id is not None:
+            self.cursor.execute('UPDATE LevelLights SET type = ?, color = ?, intensity = ?, position = ?, direction = ?, '
+                                'attenuation_radius = ?, inner_cone_angle = ?, outer_cone_angle = ? WHERE id = ?',
+                                values + (light_id,))
+            return light_id, False
+        # Солнце уровня — первый направленный: новый направленный при солнце — без атмосферы и теней
+        sun = light['type'] == 'directional' and self.one(
+            "SELECT COUNT(*) FROM LevelLights WHERE level = ? AND type = 'directional'", (level_id,)) == 0
+        self.cursor.execute('INSERT INTO LevelLights (level, name, type, color, intensity, position, direction, '
+                            'attenuation_radius, inner_cone_angle, outer_cone_angle, cast_shadows, atmosphere_sun_light) '
+                            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                            (level_id, light['name']) + values + (int(sun), int(sun)))
+        return self.cursor.lastrowid, True
+
     def place(self, level_id, model_id, instances):
         """Экземпляры модели на уровне: повторный импорт заменяет прежние строки этой модели."""
         def text(vector, digits):
@@ -754,8 +814,11 @@ def main():
     asset = sanitize(args.asset or os.path.splitext(os.path.basename(args.file))[0])
     materials = MaterialConverter(gltf, asset)
     models = collect_models(gltf, asset, materials, args.name, args.scatter, args.scale)
-    if not models:
-        raise SystemExit('error: no meshes in %s' % args.file)
+    lights = collect_lights(gltf)
+    if not models and not lights:
+        raise SystemExit('error: no meshes and no lights in %s' % args.file)
+    if lights and not args.level:
+        warn('%d lights are skipped: lights are level data, import them with --level' % len(lights))
     if materials.double_sided:
         print('Double-sided materials (drawn without back-face culling): %s. A closed mesh does not need it: '
               'enable Backface Culling in the Blender material' % ', '.join(materials.double_sided))
@@ -833,6 +896,27 @@ def main():
                     (args.level,) + tuple(instance['position']) + tuple(instance['rotation']) +
                     tuple(instance['scale'])))
 
+    if level_id is not None:
+        for light in lights:
+            # Как экземпляры: место относительно --position с масштабом --scale, с --snap-to-terrain — над землёй
+            light['position'] = position + light['position'] * args.scale
+            if ground is not None and light['type'] != 'directional':
+                heights, cell = ground
+                x, _, z = light['position']
+                light['position'][1] = terrain.sample(heights, x, z, cell) + (light['position'][1] - position[1])
+            light_id, new = db.light(level_id, light)
+            details = ''
+            if light['type'] != 'directional':
+                details += ' position %.2f,%.2f,%.2f' % tuple(light['position'])
+                details += ' range %g' % light['range'] if light['range'] > 0.0 else ' no range'
+            if light['type'] != 'point':
+                details += ' direction %.3f,%.3f,%.3f' % tuple(light['direction'])
+            if light['type'] == 'spot':
+                details += ' cone %.1f..%.1f deg' % (light['inner'], light['outer'])
+            print('Light %s (%s, id %d, %s): %g %s, color %.3f,%.3f,%.3f%s' % (
+                light['name'], light['type'], light_id, 'new' if new else 'updated', light['intensity'],
+                'lx' if light['type'] == 'directional' else 'cd', *light['color'], details))
+
     db.remove_replaced_instances(instances)
     for name in sorted(tree_instances):
         if not args.scatter:
@@ -840,7 +924,8 @@ def main():
 
     if args.dry_run:
         db.connection.rollback()
-        print('Dry run: nothing written (%d files, %d models)' % (len(files), len(models)))
+        print('Dry run: nothing written (%d files, %d models, %d lights)' % (len(files), len(models),
+                                                                           len(lights) if level_id is not None else 0))
         return
 
     for path, data in files.items():
@@ -849,8 +934,8 @@ def main():
         with open(full, 'wb') as out:
             out.write(data)
     db.connection.commit()
-    print('Imported %d models, %d files%s' % (len(models), len(files),
-                                              ', %d warnings' % len(warnings) if warnings else ''))
+    print('Imported %d models, %d lights, %d files%s' % (len(models), len(lights) if level_id is not None else 0, len(files),
+                                                         ', %d warnings' % len(warnings) if warnings else ''))
 
 
 if __name__ == '__main__':
