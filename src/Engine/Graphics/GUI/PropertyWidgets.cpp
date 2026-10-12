@@ -150,7 +150,15 @@ void controlCell( const std::string& name, Property& property )
 		case ValueType::VECTOR2:
 		{
 			float* value = reinterpret_cast<float*>( property.dataPtr<XMFLOAT2>() );
-			ImGui::DragFloat2( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
+			if( property.controlType() == GUIControlType::RANGE )
+			{
+				// Полоса: x — начало, y — конец; ImGui не даёт им перейти друг через друга
+				const std::string format = numberFormat( property, value[1] );
+				ImGui::DragFloatRange2( label, &value[0], &value[1], dragSpeed( property, value[1] ), property.low(), property.high(),
+										format.c_str(), nullptr, flags | ImGuiSliderFlags_AlwaysClamp );
+			}
+			else
+				ImGui::DragFloat2( label, value, dragSpeed( property, value[0] ), property.low(), property.high() );
 			break;
 		}
 		case ValueType::VECTOR3:

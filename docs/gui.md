@@ -148,7 +148,9 @@ Details строка «Saved with the level», у остальных — «Not s
 его в Outliner (`GUI::addPropertyWatching( контейнер, раздел, объект, сохраняется )`). Раздел Environment у объекта —
 `SceneObject::environment()`, сохранение с уровнем — `SceneObject::savedWithLevel()` (у окружения — всегда): объект
 отдаёт настройки по своим свойствам (`settings()`, `layerRecords()`), а `Scene::saveLevel` передаёт их загрузчику —
-объекты о базе не знают. Контролы панель строит сама по типу значения и `GUIControlType`. Необязательно:
+объекты о базе не знают. Контролы панель строит сама по типу значения и `GUIControlType` (у числа — ползунок или
+перетаскивание с полем ввода, `LABEL` — только чтение, у `XMFLOAT2` с `RANGE` — полоса «начало — конец» одним двойным
+ползунком `DragFloatRange2`: конец не уходит за начало). Необязательно:
 
 ```cpp
 properties.insert( "Density", density )->setLow( 0.0f );            // как раньше

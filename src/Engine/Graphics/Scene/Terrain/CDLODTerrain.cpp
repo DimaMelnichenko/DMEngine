@@ -147,17 +147,14 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	prop->setControlType( GUIControlType::SLIDER );
 	prop->setTooltip( "Texture repeat multiplier far away: the small repeat does not fold into a grid" );
 
-	prop = m_properties.insert( "Far blend start", settings.farBlendStart );
+	// Полоса перехода ко второму масштабу — начало и конец одним двойным ползунком. Обе выборки — на всём её протяжении,
+	// поэтому цена второго масштаба растёт с её шириной
+	prop = m_properties.insert( "Far blend", XMFLOAT2( settings.farBlendStart, settings.farBlendEnd ) );
 	prop->setLow( 0.0f );
-	prop->setHigh( 500.0f );
-	prop->setControlType( GUIControlType::SLIDER );
-	prop->setUnit( "m" );
-
-	prop = m_properties.insert( "Far blend end", settings.farBlendEnd );
-	prop->setLow( 1.0f );
 	prop->setHigh( 1000.0f );
-	prop->setControlType( GUIControlType::SLIDER );
+	prop->setControlType( GUIControlType::RANGE );
 	prop->setUnit( "m" );
+	prop->setTooltip( "Distance band where the far texture scale replaces the near one: both scales are sampled along it" );
 
 	// Метров на повтор текстуры слоя (TerrainLayers.tiling)
 	m_layerProperties.setName( "Layer tiling" );
@@ -1174,8 +1171,9 @@ TerrainSettings CDLODTerrain::settings() const
 	settings.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();
 	settings.heightBlend = m_properties["Height blend"].data<float>();
 	settings.farTextureScale = m_properties["Far texture scale"].data<float>();
-	settings.farBlendStart = m_properties["Far blend start"].data<float>();
-	settings.farBlendEnd = m_properties["Far blend end"].data<float>();
+	const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
+	settings.farBlendStart = farBlend.x;
+	settings.farBlendEnd = farBlend.y;
 	settings.layerTiling.assign( m_material.layerCount(), 0.0f );
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
 		if( !m_material.layerName( layer ).empty() )
@@ -1352,8 +1350,9 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();
 		params.heightBlendDepth = m_properties["Height blend"].data<float>();
 		params.farTextureScale = m_properties["Far texture scale"].data<float>();
-		params.farBlendStart = m_properties["Far blend start"].data<float>();
-		params.farBlendEnd = std::max( m_properties["Far blend end"].data<float>(), params.farBlendStart + 1.0f );
+		const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
+		params.farBlendStart = farBlend.x;
+		params.farBlendEnd = std::max( farBlend.y, farBlend.x + 1.0f );
 		params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
 		params.detailTile = m_detailTileSize;
 		params.channelLayer = m_detailTileSize > 0.0f && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;

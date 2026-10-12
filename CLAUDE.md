@@ -531,7 +531,7 @@ DirectX) + шероховатость A»; все слои приводятся 
 В шейдере нормаль рельефа считается по карте высот (мип под размер пикселя), текстура слоя проецируется сверху,
 а на крутых склонах ещё и вдоль X и Z (triplanar, нормали по UDN), вдали — ещё и в крупном масштабе (distance
 resampling, как в UE Landscape: мелкий повтор не складывается в сетку), слои смешиваются по высоте. Настраиваются
-в GUI: «Triplanar sharpness», «Height blend», «Far texture scale», «Far blend start / end». Подробно — `docs/terrain.md`.
+в GUI: «Triplanar sharpness», «Height blend», «Far texture scale», «Far blend» (полоса «начало — конец» двойным ползунком). Подробно — `docs/terrain.md`.
 
 Эрозия — первая ступень конвейера рельефа и воды (`Scene/Terrain/TerrainErosion.h`, `Shaders/terrain_erosion.cs`, как
 Erosion в World Machine и Gaea): капли (Beyer 2015, целочисленные атомики — результат одинаков от запуска к запуску) и
