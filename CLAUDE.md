@@ -72,10 +72,12 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Папки `cmake-build-debug*` принадлежат профилям CLion: в них из терминала не собирать, иначе сборка
   сталкивается с перезагрузкой CMake в CLion («Permission denied»).
 - **Проверка изменений рендера** — по `docs/d3d12.md` §4 «Как проверять»: снимки четырёх контрольных камер совпадают
-  с эталоном ±1, «GPU average» не хуже, Debug-сборка с GPU-based validation молчит в `log.txt`. Эталон D3D11 — коммит
-  `0aadc42` в истории git.
+  с эталоном ±1, «GPU average» не хуже, Debug-сборка молчит в `log.txt` (debug-слой D3D12; GPU-based validation —
+  `-GpuValidation` у `run.ps1`, `--gpu-validation` у `engine.py` — только для правок слоя D3D12: ресурсы, барьеры,
+  дескрипторы, проходы). Эталон D3D11 — коммит `0aadc42` в истории git.
 - **Запуск для проверки** — `.\Tools\run.ps1 [-Config Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,4]
-  [-Camera x,y,z,pitch,yaw] [-Level имя] [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
+  [-Camera x,y,z,pitch,yaw] [-Level имя] [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
+  [-GpuValidation]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
   Запускает exe из корня проекта с удалённым управлением (`-remote`), ждёт конца инициализации и ещё `-Seconds`, по
   желанию нажимает клавиши (команда `key`, скан-коды `DIK_*`, как в DirectInput: 2 — «1», 4 — «3», 5 — «4») и снимает
   задний буфер (команда `screenshot`, с окнами ImGui, если нет `-NoGui`), закрывает движок штатно (`quit`, лог дописан;
@@ -97,6 +99,11 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `--pix`; разбор — `Tools/pix_events.py`, `docs/d3d12.md` §4), `key G`, `timestep 0.0166`
   (фиксированный шаг времени для серий кадров), — по одной или
   сценарием (`python Tools/engine.py run файл.txt`), и `python Tools/engine.py stop` (штатный выход, ошибки из лога).
+  Ответ на команду — не дольше 60 с (`--timeout`; `run.ps1` — тоже 60 с): не ответил — главный цикл стоит, скрипт
+  печатает строки сторожа кадра и выходит с кодом 2, `start` (проверяет первый кадр командой `wait 1`) и `stop` такой
+  движок закрывают. Сторож кадра — `FrameWatchdog` (`Utils/FrameWatchdog.h`, как ThreadHeartBeat в UE): шаг кадра
+  дольше 10 с — строка «Frame watchdog» в `log.txt`: шаг (`stage` в `DMGraphics::Frame`, ожидания GPU и swap chain,
+  создание PSO), последняя метка (`DMD3D::beginEvent`: проходы, объекты в compute) и ход GPU по fence.
   Движок с `-remote` слушает канал `\\.\pipe\DMEngine`, команды выполняет главный поток в начале кадра. Снимок —
   задний буфер. Окно и задний буфер — `Resolution` в секции `[General]` `settings.ini` или параметр `-resolution`:
   `desktop` (по умолчанию) — окно без рамки на весь основной монитор в его разрешении (на этой машине 3840×2160);
@@ -113,9 +120,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   в последних коммитах, это временно выключенные фичи. Например, закомментированное тело
   `LibraryLoader::save`. Не удаляйте такой код без согласования: сначала проверьте `git blame`, когда его
   выключили.
-- Debug-сборка создаёт устройство с debug-слоем D3D12 и GPU-based validation (слой — из redist Agility SDK рядом с
-  exe, компонент Windows «Средства графики» не нужен; `GpuValidation=false` в `settings.ini` оставляет только слой,
-  когда валидация слишком медленна). Ошибки и предупреждения слоя приходят callback'ом `ID3D12InfoQueue1` и пишутся
+- Debug-сборка создаёт устройство с debug-слоем D3D12 (слой — из redist Agility SDK рядом с exe, компонент Windows
+  «Средства графики» не нужен); GPU-based validation — по `GpuValidation=true` в `settings.ini` или параметру
+  `-gpuvalidation` (медленно, для правок слоя D3D12; сейчас с ней кадр стоит в compute `Meadow` — `TODO.md`). Ошибки
+  и предупреждения слоя приходят callback'ом `ID3D12InfoQueue1` и пишутся
   в `log.txt` (одинаковые — первые три раза): без отладчика их больше нигде не видно; при потере устройства в лог
   уходят последние команды (DRED). Release-сборка создаёт устройство без слоя. Крах в Release: смещение из журнала
   Windows (`Get-WinEvent`, Id 1000) ищется в `DMEngine.map` рядом с exe (линкер с `/MAP`).

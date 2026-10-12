@@ -229,9 +229,13 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	// Compute — при главном виде в константах кадра: кольцо расстановки считается вокруг камеры
 	measure( "Compute Pass", [&]
 	{
+		// Метка на объект — в захвате PIX и у сторожа кадра (FrameWatchdog: на каком объекте стоит кадр)
+		DMD3D& d3d = DMD3D::instance();
 		for( SceneObject* object : scene.objects() )
 		{
+			d3d.beginEvent( object->name().c_str() );
 			object->compute( computeFrame );
+			d3d.endEvent();
 		}
 	} );
 	// Пересчёт освещения окружением мог закончиться в compute неба: масштаб — по показанному результату

@@ -1,6 +1,6 @@
 # Запуск DMEngine для проверки изменений:
 #   .\Tools\run.ps1 [-Config Debug|Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,3] [-Camera x,y,z,pitch,yaw] [-Level имя]
-#                    [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
+#                    [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles] [-GpuValidation]
 # Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные) с удалённым
 # управлением (-remote, канал \\.\pipe\DMEngine, docs/remote.md), ждёт конца инициализации, затем Seconds секунд работы,
 # при необходимости нажимает клавиши и снимает кадр, закрывает движок штатно (команда quit: DMGraphics::beforeExit,
@@ -19,6 +19,10 @@
 # чтобы случайное движение мыши не сдвигало кадр.
 # NoWind — без ветра (параметр движка -nowind): трава неподвижна, снимки с одной точки совпадают до пикселя.
 # NoParticles — без частиц (параметр движка -noparticles): они движутся, и снимки с одной точки иначе не совпадут.
+# GpuValidation — Debug с GPU-based validation (параметр движка -gpuvalidation): для правок слоя D3D12 (ресурсы, барьеры,
+# дескрипторы, проходы); без него Debug — только debug-слой, загрузка и кадр в разы быстрее.
+# Каждая команда ждёт ответа не дольше 60 с: не ответил — главный цикл движка стоит (в log.txt — «Frame watchdog»), процесс
+# закрывается принудительно.
 param(
     [ValidateSet('Debug', 'Release')] [string]$Config = 'Debug',
     [int]$Seconds = 8,
@@ -30,7 +34,8 @@ param(
     [switch]$NoGui,
     [switch]$NoMouse,
     [switch]$NoWind,
-    [switch]$NoParticles
+    [switch]$NoParticles,
+    [switch]$GpuValidation
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,12 +67,20 @@ if ($probe) {
     $probe.Dispose()
     throw 'An engine with -remote is already running (Tools\engine.py stop closes it)'
 }
+# Ответ — не дольше 60 с: иначе главный цикл движка стоит, и ждать дальше незачем ($script:stuck — команда без ответа)
+$script:stuck = $null
 function Send-Command([string]$line) {
+    if ($script:stuck) { return $false }
     $bytes = [Text.Encoding]::UTF8.GetBytes($line + "`n")
     $script:pipe.Write($bytes, 0, $bytes.Length)
     $script:pipe.Flush()
     while ($true) {
-        $reply = $script:reader.ReadLine()
+        $task = $script:reader.ReadLineAsync()
+        if (-not $task.Wait(60000)) {
+            $script:stuck = $line
+            return $false
+        }
+        $reply = $task.Result
         if ($null -eq $reply) { throw "The engine closed the connection after: $line" }
         if ($reply -eq 'ok') { return $true }
         if ($reply.StartsWith('error: ')) {
@@ -94,6 +107,7 @@ if ($NoGui) { $engineArgs += '-nogui' }
 if ($NoMouse -or $Screenshot) { $engineArgs += '-nomouse' }
 if ($NoWind) { $engineArgs += '-nowind' }
 if ($NoParticles) { $engineArgs += '-noparticles' }
+if ($GpuValidation) { $engineArgs += '-gpuvalidation' }
 $process = Start-Process -FilePath $exe -WorkingDirectory $root -PassThru -ArgumentList ($engineArgs -join ' ')
 $begin = Get-Date
 
@@ -126,10 +140,19 @@ else {
         Send-Command 'quit' | Out-Null
     }
     finally {
-        $reader.Dispose()
-        $pipe.Dispose()
+        # Зависший движок: чтение ответа ещё ждёт в потоке — канал закрывается вместе с процессом
+        if (-not $script:stuck) {
+            $reader.Dispose()
+            $pipe.Dispose()
+        }
     }
-    if ($process.WaitForExit(30000)) {
+    if ($script:stuck) {
+        # Где стоит кадр — строки сторожа кадра (FrameWatchdog) из лога
+        Write-Output "DMEngine did not answer '$($script:stuck)' in 60 s: its main loop is stuck, killed"
+        Stop-Process -Id $process.Id -Force
+        Get-Content (Join-Path $root 'log.txt') -Encoding UTF8 | Where-Object { $_ -match 'Frame watchdog' } | Select-Object -Last 5
+    }
+    elseif ($process.WaitForExit(30000)) {
         Write-Output ([string]::Format([Globalization.CultureInfo]::InvariantCulture,
                       'DMEngine initialized in {0:F1} s, ran for {1} s, exited normally', $initSeconds, $Seconds))
     }

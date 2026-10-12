@@ -9,7 +9,7 @@
 ## Как запустить
 
 ```
-python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles]
+python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--gpu-validation]
 python Tools/engine.py camera 567,58.1,212,8,35
 python Tools/engine.py screenshot кадр.png
 python Tools/engine.py stat gpu 3
@@ -22,8 +22,13 @@ python Tools/engine.py stop
   1920 × 1080, снимки и замеры сравнимы между запусками и с прежними цифрами (`--resolution desktop` — окно без рамки
   на весь монитор, как у движка без параметра; любое `ШxВ` — своё окно). Кадры с одной точки совпадают до пикселя, если
   не движется трава: `--nowind` (параметр движка `-nowind`) или `set "Wind/Enabled" false` ([wind.md](wind.md)), и нет
-  частиц: `--noparticles` (`-noparticles`, [particles.md](particles.md)). Затем ждёт,
-  пока движок откроет канал, то есть конца инициализации.
+  частиц: `--noparticles` (`-noparticles`, [particles.md](particles.md)). `--gpu-validation` (`-gpuvalidation`) — Debug с
+  GPU-based validation ([d3d12.md](d3d12.md) §4). Затем ждёт, пока движок откроет канал, то есть конца инициализации, и
+  первого кадра (`wait 1`).
+- **Ответ — не дольше 60 с** (`python Tools/engine.py --timeout 120 <команда>` — своё время; у `stat gpu N` — ещё N, у
+  `pix` — 300): не ответил — главный цикл движка стоит. Скрипт печатает строки «Frame watchdog» из `log.txt` (сторож
+  кадра `FrameWatchdog`: шаг кадра дольше 10 с, последняя метка, ход GPU — [d3d12.md](d3d12.md) §4) и выходит с кодом 2,
+  не закрывая канал; `start` и `stop` такой движок закрывают принудительно (`stop` — и тот, что не вышел за 20 с).
 - Одна команда — `python Tools/engine.py <команда …>`: печатает ответ, при `error` код выхода 1. Слова с пробелами — в
   кавычках, как в командной строке.
 - `run` — команды из файла по строке за одно подключение; `#` — комментарий. Каждая строка печатается с `>`, за ней ответ.
@@ -31,7 +36,9 @@ python Tools/engine.py stop
   печатает `run.ps1`. Выход штатный: `DMGraphics::beforeExit` выполняется, лог дописан.
 - `Tools/run.ps1` (PowerShell, без Python) — тот же канал на один запуск: `-remote`, ожидание конца инициализации и
   `-Seconds`, клавиши — `key 0x..` (скан-код в hex: одиночная цифра у `key` — клавиша, а не скан-код), снимок —
-  `screenshot` (задний буфер, `gui` без `-NoGui`), выход — `quit`; принудительно — только если движок не вышел за 30 с.
+  `screenshot` (задний буфер, `gui` без `-NoGui`), выход — `quit`; принудительно — только если движок не вышел за 30 с
+  или не ответил на команду за 60 с (тогда — строки «Frame watchdog» из лога); `-GpuValidation` — Debug с GPU-based
+  validation.
 
 Путь снимка клиент переводит в абсолютный от текущей папки. У самого движка рабочая папка — корень проекта.
 

@@ -1,5 +1,6 @@
 // DMD3D: состояния, пайплайны (PSO из PipelineDesc, compute-пайплайны) и их кэш на диске — ID3D12PipelineLibrary
 #include "DMD3D.h"
+#include "Utils\FrameWatchdog.h"
 #include "Logger\Logger.h"
 #include <d3dx12.h>
 #include <cstdio>
@@ -278,6 +279,7 @@ bool DMD3D::createPipelineObject( Pipeline& pipeline )
 		hr = m_pipelineLibrary->LoadPipeline( name.c_str(), &streamDesc, __uuidof( ID3D12PipelineState ), reinterpret_cast<void**>( &object ) );
 	if( FAILED( hr ) )
 	{
+		FrameWatchdog::Scope scope( "creating a pipeline (PSO)" );
 		hr = m_device->CreatePipelineState( &streamDesc, __uuidof( ID3D12PipelineState ), reinterpret_cast<void**>( &object ) );
 		if( FAILED( hr ) )
 		{
@@ -312,6 +314,7 @@ ID3D12PipelineState* DMD3D::computePipeline( const ShaderStage& stage )
 		hr = m_pipelineLibrary->LoadComputePipeline( name, &desc, __uuidof( ID3D12PipelineState ), reinterpret_cast<void**>( &object ) );
 	if( FAILED( hr ) )
 	{
+		FrameWatchdog::Scope scope( "creating a compute pipeline (PSO)" );
 		hr = m_device->CreateComputePipelineState( &desc, __uuidof( ID3D12PipelineState ), reinterpret_cast<void**>( &object ) );
 		if( FAILED( hr ) )
 		{

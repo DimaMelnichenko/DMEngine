@@ -11,6 +11,7 @@
 #include "Engine\Console\PropertyCommands.h"
 #include "Utils\utilites.h"
 #include "Utils\SlowTask.h"
+#include "Utils\FrameWatchdog.h"
 
 using namespace DirectX;
 
@@ -47,6 +48,7 @@ DMGraphics::DMGraphics() :
 
 DMGraphics::~DMGraphics()
 {
+	FrameWatchdog::instance().stop();
 	System::destroy();
 	// DMD3D::destroy — в main после DMSystem: члены DMGraphics ещё держат ресурсы GPU
 }
@@ -254,6 +256,9 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	// Набор пайплайнов собран (материалы — Renderer::warmPipelines, свои — объекты при инициализации): дальше — «ленивые»
 	DMD3D::instance().markPipelinesWarm();
 	m_initialized = true;
+	// Сторож кадра: шаг кадра дольше 10 с — строка в лог с ходом GPU (зависание видно без отладчика, Tools/engine.py
+	// печатает его строки по таймауту команды)
+	FrameWatchdog::instance().start( std::chrono::seconds( 10 ), [] { return DMD3D::instance().gpuProgress(); } );
 	return true;
 }
 
@@ -261,8 +266,11 @@ bool DMGraphics::Frame()
 {
 	// Кадр начинается, когда swap chain готов принять его (ввод и камера ниже берутся с меньшей задержкой), кольцо
 	// констант — с чистого участка
+	FrameWatchdog& watchdog = FrameWatchdog::instance();
+	watchdog.stage( "begin frame", true );
 	DMD3D::instance().beginFrame();
 	// Команды удалённого управления — до кадра: камера, свойства и клавиши действуют уже в нём
+	watchdog.stage( "remote and console commands" );
 	m_remote.poll( m_console );
 	// Команды консоли редактора — там же, где удалённые: в начале кадра, ответ — в окно Output
 	for( const std::string& line : m_GUI.takeConsoleCommands() )
@@ -270,6 +278,7 @@ bool DMGraphics::Frame()
 	m_console.tick();
 	m_framesSinceCut = std::min( m_framesSinceCut + 1, settleFrames );
 
+	watchdog.stage( "camera and lights" );
 	m_timer.Frame();
 	// Время кадра, мс: по таймеру или фиксированным шагом (timestep)
 	const float elapsedTime = m_fixedTimeStep > 0.0f ? m_fixedTimeStep * 1000.0f : static_cast<float>( m_timer.GetTime() );
@@ -292,18 +301,26 @@ bool DMGraphics::Frame()
 	m_gameTime += elapsedTime / 1000.0;
 	const FrameContext frame{ mainView, elapsedTime, static_cast<float>( m_gameTime ), toShadowLight };
 	// Перестройка по правкам редактора (кривые русел) — не пока тянут ползунок в окне
+	watchdog.stage( "editor changes" );
 	if( !m_GUI.itemActive() )
 		m_scene.applyEditorChanges();
 
 	// Сначала состояние сцены на CPU, затем команды GPU
+	watchdog.stage( "scene update" );
 	TIME_CHECK( m_scene.update( frame ), "Scene Update = %.3f ms" );
 
-	return Render( frame );
+	const bool rendered = Render( frame );
+	// Между кадрами — сообщения окна (DMSystem::Run); перетаскивание окна держит их цикл
+	watchdog.stage( "between frames (window messages)" );
+	return rendered;
 }
 
 bool DMGraphics::Render( const FrameContext& frame )
 {
+	FrameWatchdog& watchdog = FrameWatchdog::instance();
+	watchdog.stage( "render" );
 	m_renderer.render( m_scene, frame, m_wireframe );
+	watchdog.stage( "screenshots" );
 	takeScreenshots( false );
 
 	if( m_showGUI )
@@ -323,6 +340,7 @@ bool DMGraphics::Render( const FrameContext& frame )
 		m_frameStats.add( "Barriers per frame = %.0f", static_cast<float>( DMD3D::instance().barrierCount() ) );
 		m_frameStats.add( "Indirect draws per frame = %.0f", static_cast<float>( DMD3D::instance().indirectDrawCount() ) );
 
+		watchdog.stage( "GUI" );
 		auto guiStart = TIME_POINT();
 		// Проход GUI: задний буфер поверх тонмаппинга
 		DMD3D& d3d = DMD3D::instance();
@@ -339,6 +357,7 @@ bool DMGraphics::Render( const FrameContext& frame )
 	m_frameStats.clear();
 	takeScreenshots( true );
 
+	watchdog.stage( "end frame (submit and present)" );
 	DMD3D::instance().endFrame();
 
 	return true;
@@ -466,6 +485,7 @@ void DMGraphics::drawLoadingFrame( const std::string& task, float progress )
 
 void DMGraphics::beforeExit()
 {
+	FrameWatchdog::instance().stop();
 	m_library->save();
 	// Ответ на quit поток канала дописывает до выхода
 	m_remote.stop();

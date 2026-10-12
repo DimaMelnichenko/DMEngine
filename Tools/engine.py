@@ -1,14 +1,19 @@
 """Удалённое управление запущенным DMEngine — как консоль и Remote Control API в UE (docs/remote.md).
 
-    python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles] [--pix]
-    python Tools/engine.py <команда ...>         одна команда, печатает ответ; код выхода 1 при error
-    python Tools/engine.py run сценарий.txt       команды из файла по строке (# — комментарий), за одно подключение
+    python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles] [--pix] [--gpu-validation]
+    python Tools/engine.py [--timeout с] <команда ...>    одна команда, печатает ответ; код выхода 1 при error
+    python Tools/engine.py [--timeout с] run сценарий.txt  команды из файла по строке (# — комментарий), за одно подключение
     python Tools/engine.py stop                   quit, ожидание выхода, ошибки из log.txt
 
 start запускает cmake-build-cli-<config>\\DMEngine.exe из корня проекта с -remote (канал \\\\.\\pipe\\DMEngine),
 -nomouse (без --mouse: камера не следует за мышью) и -resolution (по умолчанию 1920x1080 — окно с заголовком, кадры
-и замеры сравнимы между машинами; desktop — без рамки на весь монитор) и ждёт конца инициализации. Команды
-движка — help; путь снимка (screenshot файл) считается от текущей папки. Сообщения скрипта — ASCII (правило Tools/).
+и замеры сравнимы между машинами; desktop — без рамки на весь монитор) и ждёт конца инициализации и первого кадра
+(команда wait 1). Команды движка — help; путь снимка (screenshot файл) считается от текущей папки. Сообщения скрипта —
+ASCII (правило Tools/).
+
+Ответ на команду — не дольше --timeout (60 с; у stat gpu N — ещё N, у pix — 300): не ответил — главный цикл движка стоит
+(в log.txt — строки «Frame watchdog»: на каком шаге кадра), скрипт печатает их и выходит с кодом 2; start и stop такой
+движок закрывают принудительно. --gpu-validation — Debug с GPU-based validation (-gpuvalidation): для правок слоя D3D12.
 """
 import argparse
 import ctypes
@@ -17,11 +22,17 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PIPE = r'\\.\pipe\DMEngine'
 PID_FILE = os.path.join(tempfile.gettempdir(), 'dmengine_remote.pid')
+TIMEOUT = 60.0     # ответ на команду, с (--timeout)
+
+
+class Stuck(Exception):
+    """Нет ответа за отведённое время: главный цикл движка стоит"""
 
 
 def connect(timeout=10.0):
@@ -36,8 +47,41 @@ def connect(timeout=10.0):
             time.sleep(0.1)
 
 
+def command_timeout(line):
+    """Сколько ждать ответа: команды, которые сами ждут секунды, — дольше"""
+    words = line.split()
+    if len(words) >= 3 and words[0] == 'stat':
+        try:
+            return TIMEOUT + float(words[2])
+        except ValueError:
+            pass
+    if words and words[0] == 'pix':
+        return max(TIMEOUT, 300.0)
+    return TIMEOUT
+
+
 def command(pipe, line):
-    """Команда и ответ: строки, последняя - ok или error: ..."""
+    """Команда и ответ: строки, последняя - ok или error: ...; нет ответа за command_timeout - Stuck. Чтение канала
+    блокирующее, поэтому - в потоке: зависший движок держит его до выхода скрипта"""
+    result = []
+
+    def exchange():
+        try:
+            result.append(exchange_lines(pipe, line))
+        except BaseException as error:   # и SystemExit: движок закрыл канал
+            result.append(error)
+
+    worker = threading.Thread(target=exchange, daemon=True)
+    worker.start()
+    worker.join(command_timeout(line))
+    if not result:
+        raise Stuck(line)
+    if isinstance(result[0], BaseException):
+        raise result[0]
+    return result[0]
+
+
+def exchange_lines(pipe, line):
     pipe.write((line + '\n').encode('utf-8'))
     data = b''
     while True:
@@ -83,6 +127,33 @@ def send(pipe, words):
     for line in lines:
         print(line)
     return not lines[-1].startswith('error')
+
+
+def abandon_stuck(line, pid=None):
+    """Нет ответа: строки сторожа кадра из лога и выход без закрытия канала (его держит поток чтения, а CRT закрыл бы
+    канал только после чтения, то есть никогда); с pid — движок закрывается принудительно"""
+    print('error: DMEngine did not answer "%s" in %.0f s: its main loop is stuck' % (line, command_timeout(line)))
+    try:
+        with open(os.path.join(ROOT, 'log.txt'), encoding='utf-8', errors='replace') as f:
+            watchdog = [entry for entry in f.read().splitlines() if 'Frame watchdog' in entry]
+    except OSError:
+        watchdog = []
+    for entry in watchdog[-5:]:
+        print(entry)
+    if not watchdog:
+        print('(no Frame watchdog lines in log.txt yet: the frame is stuck for less than its limit)')
+    if pid:
+        kill(pid)
+        print('DMEngine killed (main loop stuck)')
+    sys.stdout.flush()
+    os._exit(2)
+
+
+def kill(pid):
+    handle = ctypes.windll.kernel32.OpenProcess(0x0001, False, pid)   # PROCESS_TERMINATE
+    if handle:
+        ctypes.windll.kernel32.TerminateProcess(handle, 1)
+        ctypes.windll.kernel32.CloseHandle(handle)
 
 
 def process_alive(pid):
@@ -139,6 +210,8 @@ def start(args):
         engine_args.append('-noparticles')
     if args.pix:
         engine_args.append('-pix')
+    if args.gpu_validation:
+        engine_args.append('-gpuvalidation')
     if args.camera:
         engine_args += ['-camera', args.camera]
     if args.level:
@@ -156,6 +229,11 @@ def start(args):
             return 1
         pipe = connect(timeout=0)
         if pipe:
+            # Канал открыт в конце инициализации; первый кадр — команда wait 1: главный цикл идёт
+            try:
+                command(pipe, 'wait 1')
+            except Stuck:
+                abandon_stuck('wait 1', process.pid)
             pipe.close()
             print('DMEngine started (%s, pid %d) in %.1f s' % (args.config, process.pid, time.time() - begin))
             return 0
@@ -173,14 +251,18 @@ def stop():
         pass
     pipe = connect(timeout=2)
     if pipe:
-        with pipe:
+        try:
             send(pipe, ['quit'])
+        except Stuck:
+            abandon_stuck('quit', pid)
+        pipe.close()
     elif not (pid and process_alive(pid)):
         print('DMEngine is not running')
         print_log()
         return 0
     if pid and not wait_exit(pid, 20):
-        print('error: DMEngine did not exit in 20 s')
+        kill(pid)
+        print('error: DMEngine did not exit in 20 s, killed (log.txt may be incomplete)')
         return 1
     print('DMEngine exited')
     print_log()
@@ -192,19 +274,27 @@ def run_script(path):
     if not pipe:
         raise SystemExit('error: no engine, start it: python Tools/engine.py start')
     ok = True
-    with pipe, open(path, encoding='utf-8') as script:
+    with open(path, encoding='utf-8') as script:
         for raw in script:
             line = raw.strip()
             if not line or line.startswith('#'):
                 continue
             print('> ' + line)
-            ok = send(pipe, split_line(line)) and ok
+            try:
+                ok = send(pipe, split_line(line)) and ok
+            except Stuck:
+                abandon_stuck(line)
+    pipe.close()
     return 0 if ok else 1
 
 
 def main():
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(errors='replace')
+    global TIMEOUT
+    if len(sys.argv) >= 3 and sys.argv[1] == '--timeout':
+        TIMEOUT = float(sys.argv[2])
+        del sys.argv[1:3]
     if len(sys.argv) < 2:
         print(__doc__)
         return 1
@@ -220,6 +310,8 @@ def main():
         parser.add_argument('--nowind', action='store_true', help='no wind: vegetation still, frames repeat to the pixel')
         parser.add_argument('--noparticles', action='store_true', help='no particles: frames repeat to the pixel')
         parser.add_argument('--pix', action='store_true', help='load the PIX GPU capturer: command pix takes captures')
+        parser.add_argument('--gpu-validation', action='store_true',
+                            help='Debug: GPU-based validation of the D3D12 debug layer (slow; for changes of the D3D12 layer)')
         return start(parser.parse_args(sys.argv[2:]))
     if sys.argv[1] == 'stop':
         return stop()
@@ -231,8 +323,12 @@ def main():
     pipe = connect()
     if not pipe:
         raise SystemExit('error: no engine, start it: python Tools/engine.py start')
-    with pipe:
-        return 0 if send(pipe, sys.argv[1:]) else 1
+    try:
+        ok = send(pipe, sys.argv[1:])
+    except Stuck as stuck:
+        abandon_stuck(str(stuck))
+    pipe.close()
+    return 0 if ok else 1
 
 
 if __name__ == '__main__':

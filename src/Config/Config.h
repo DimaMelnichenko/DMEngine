@@ -25,7 +25,8 @@ public:
 	uint32_t shadowMapResolution() const	{ return m_shadowMapResolution; }
 	// Depth prepass (DepthPrepass, как r.EarlyZPass в UE): глубина непрозрачных до прохода цвета. Нет строки — включён
 	bool depthPrepass() const				{ return m_depthPrepass; }
-	// GPU-based validation debug-слоя D3D12 в Debug-сборке (GpuValidation; медленно). Нет строки — включена
+	// GPU-based validation debug-слоя D3D12 в Debug-сборке (GpuValidation=true или -gpuvalidation; медленно — для правок
+	// слоя D3D12: ресурсы, барьеры, дескрипторы, проходы). Нет строки — выключена: обычный Debug — только слой
 	bool gpuValidation() const				{ return m_gpuValidation; }
 	// Стартовая камера: положение и поворот (тангаж, рыскание) в градусах, секция [Camera]
 	const DirectX::XMFLOAT3& cameraPosition() const	{ return m_cameraPosition; }
@@ -53,7 +54,7 @@ private:
 	uint32_t m_windowHeight = 0;
 	uint32_t m_shadowMapResolution = 2048;
 	bool m_depthPrepass = true;
-	bool m_gpuValidation = true;
+	bool m_gpuValidation = false;
 	DirectX::XMFLOAT3 m_cameraPosition = DirectX::XMFLOAT3( 0.0f, 0.0f, -1.0f );
 	DirectX::XMFLOAT2 m_cameraRotation = DirectX::XMFLOAT2( 0.0f, 0.0f );
 	std::string m_levelName;

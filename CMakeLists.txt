@@ -224,6 +224,7 @@ add_executable(DMEngine WIN32
     src/main.cpp
     src/Common/Utils/DMTimer.cpp
     src/Common/Utils/SlowTask.cpp
+    src/Common/Utils/FrameWatchdog.cpp
     src/Common/Utils/utilites.cpp
     src/Engine/Graphics/Scene/Texture/ImageFile.cpp
     src/Engine/Graphics/Scene/Texture/ImageMips.cpp

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DirectX.h"
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -140,6 +141,9 @@ public:
 		uint64_t budgetBytes = 0;
 	};
 	VideoMemory videoMemory() const;
+	// Ход GPU для сторожа кадра (FrameWatchdog, зовётся из его потока): fence — выполнено из отправленного, и не потеряно
+	// ли устройство
+	std::string gpuProgress() const;
 	uint32_t shaderDescriptorCount() const { return m_shaderHeap.used(); }
 	uint32_t barrierCount() const { return m_lastFrameBarriers; }	// барьеров за прошлый кадр
 	uint32_t indirectDrawCount() const { return m_lastFrameIndirectDraws; }	// ExecuteIndirect за прошлый кадр
@@ -382,6 +386,7 @@ private:
 	bool m_inFrame = false;								// между beginFrame и endFrame: задний буфер — цель кадра
 	com_unique_ptr<ID3D12Fence> m_fence;
 	uint64_t m_fenceValue = 0;
+	std::atomic<uint64_t> m_signaledFence{ 0 };		// копия m_fenceValue для потока сторожа кадра
 	HANDLE m_fenceEvent = nullptr;
 	FrameResources m_frames[frameCount];
 	uint32_t m_frameIndex = 0;

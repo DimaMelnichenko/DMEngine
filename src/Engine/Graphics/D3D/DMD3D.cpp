@@ -4,6 +4,7 @@
 #include "Shaders\slots.h"
 #include "Utils\utilites.h"
 #include "Logger\Logger.h"
+#include "Utils\FrameWatchdog.h"
 #include "DMSamplerState.h"
 #include <D3D12MemAlloc.h>
 #include <algorithm>
@@ -168,7 +169,8 @@ bool DMD3D::createDevice( bool gpuValidation )
 {
 #ifdef _DEBUG
 	// Debug-слой и GPU-based validation (состояния ресурсов, индексы дескрипторов, барьеры — то, что D3D11 прощал)
-	// только в Debug-сборке: они заметно замедляют кадр. GpuValidation=false в settings.ini оставляет только слой.
+	// только в Debug-сборке: они заметно замедляют кадр. Validation — по GpuValidation=true в settings.ini или -gpuvalidation,
+	// иначе только слой.
 	// Слой — из redist Agility SDK (D3D12\d3d12SDKLayers.dll), компонент Windows «Средства графики» не нужен
 	ID3D12Debug* debugPtr = nullptr;
 	if( SUCCEEDED( D3D12GetDebugInterface( __uuidof( ID3D12Debug ), (void**)&debugPtr ) ) )
@@ -685,6 +687,7 @@ uint64_t DMD3D::signalFence()
 {
 	++m_fenceValue;
 	m_directQueue->Signal( m_fence.get(), m_fenceValue );
+	m_signaledFence.store( m_fenceValue, std::memory_order_relaxed );
 	return m_fenceValue;
 }
 
@@ -692,14 +695,32 @@ void DMD3D::waitForFence( uint64_t value )
 {
 	if( value == 0 || m_fence->GetCompletedValue() >= value )
 		return;
+	FrameWatchdog::Scope scope( "waiting for the GPU (fence)" );
 	if( SUCCEEDED( m_fence->SetEventOnCompletion( value, m_fenceEvent ) ) )
 		WaitForSingleObject( m_fenceEvent, INFINITE );
 }
 
 void DMD3D::waitForNextFrame()
 {
+	FrameWatchdog::Scope scope( "waiting for the swap chain (frame latency)" );
 	if( m_frameLatencyWaitable )
 		WaitForSingleObjectEx( m_frameLatencyWaitable, 1000, TRUE );
+}
+
+std::string DMD3D::gpuProgress() const
+{
+	if( !m_fence || !m_device )
+		return "no device";
+	const uint64_t completed = m_fence->GetCompletedValue();
+	std::string text = "GPU fence: done " + std::to_string( completed ) + " of " + std::to_string( m_signaledFence.load( std::memory_order_relaxed ) );
+	const HRESULT removed = m_device->GetDeviceRemovedReason();
+	if( FAILED( removed ) )
+	{
+		char code[32];
+		std::snprintf( code, sizeof( code ), "0x%08lX", static_cast<unsigned long>( removed ) );
+		text += std::string( ", device removed (" ) + code + ")";
+	}
+	return text;
 }
 
 void DMD3D::waitForGpu()

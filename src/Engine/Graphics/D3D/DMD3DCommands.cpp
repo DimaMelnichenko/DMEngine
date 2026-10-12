@@ -1,6 +1,7 @@
 // DMD3D: привязка (таблица привязок вызова, root CBV, буферы вершин и индексов), вызовы и dispatch, запросы времени
 // GPU и метки PIX
 #include "DMD3D.h"
+#include "Utils\FrameWatchdog.h"
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
 // Метки PIX и в Release: без захвата это только запись маркеров в командный список
@@ -317,6 +318,7 @@ void DMD3D::beginEvent( const char* name )
 	if( !m_recording )
 		return;
 	// Цвет — по глубине вложенности: проходы кадра и объекты внутри них различимы в захвате
+	FrameWatchdog::instance().event( name );
 	PIXBeginEvent( m_commandList.get(), PIX_COLOR_INDEX( static_cast<BYTE>( m_eventDepth % 7 + 1 ) ), "%s", name ? name : "" );
 	++m_eventDepth;
 }

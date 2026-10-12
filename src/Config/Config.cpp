@@ -73,7 +73,7 @@ bool Config::readConfig( const std::string& file )
 		if( const int32_t resolution = iniInt( file, "General", "ShadowMapResolution" ); resolution > 0 )
 			m_shadowMapResolution = static_cast<uint32_t>( resolution );
 		m_depthPrepass = iniString( file, "General", "DepthPrepass" ) != "false";
-		m_gpuValidation = iniString( file, "General", "GpuValidation" ) != "false";
+		m_gpuValidation = iniString( file, "General", "GpuValidation" ) == "true";
 
 		strToVec3( iniString( file, "Camera", "Position" ), m_cameraPosition );
 		strToVec2( iniString( file, "Camera", "Rotation" ), m_cameraRotation );
@@ -115,6 +115,10 @@ void Config::parseCommandLine( const std::string& commandLine )
 		else if( args[i] == "-pix" )
 		{
 			m_pixCapture = true;
+		}
+		else if( args[i] == "-gpuvalidation" )
+		{
+			m_gpuValidation = true;
 		}
 		else if( i + 1 >= args.size() )
 		{
