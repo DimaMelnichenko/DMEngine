@@ -27,6 +27,8 @@ public:
 	// Для сравнения кадров с одной точки (-nowind): растения неподвижны
 	void disable();
 	PropertyContainer* properties();
+	// Флажок «Use field» подокна «Field»: трава, деревья, рябь и частицы берут поле ветра по рельефу (не сохраняется)
+	bool fieldEnabled();
 
 private:
 	PropertyContainer m_properties;

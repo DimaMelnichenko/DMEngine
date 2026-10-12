@@ -451,6 +451,8 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	frameParameters.gameTime = frame.gameTime;
 	frameParameters.deltaTime = frame.elapsedTime / 1000.0f;
 	frameParameters.wind = scene.wind().parameters();
+	// Поле ветра по рельефу — у террейна (TerrainWind); флажок «Use field» окна «Wind» выключает его для сравнения
+	frameParameters.wind.fieldScale = scene.wind().fieldEnabled() ? scene.terrain().windFieldScale() : 0.0f;
 	// Туман: свет в объёме — в долях яркости, которую экспозиция делает белой (EV100 с отставанием в несколько кадров)
 	frameParameters.fog = m_fog.frameParameters( frame.view, 1.2f * std::exp2( m_postProcess.ev100() ) );
 	// Тень облаков: карту считает их compute(), константы — уже сейчас (её читают все приёмники тени солнца)

@@ -22,6 +22,55 @@ float4 windFieldSample( float2 uv )
 	return g_windFieldMap.SampleLevel( g_SamplerLinearClamp, uv, 0.0f );
 }
 
+// Ветер в точке мира по полю: direction — куда дует (нормированное x, z), speed — множитель скорости ветра уровня,
+// vertical — вертикальная доля (+ вверх по склону), turbulence — порывистость 0…1. Без поля (cb_windFieldScale 0) и за
+// краем карты — ровный ветер уровня
+struct WindSample
+{
+	float2 direction;
+	float  speed;
+	float  vertical;
+	float  turbulence;
+};
+
+WindSample windAt( float2 worldXZ )
+{
+	WindSample result;
+	result.direction = cb_windDirection;
+	result.speed = 1.0f;
+	result.vertical = 0.0f;
+	result.turbulence = 0.0f;
+	[branch] if( cb_windFieldScale > 0.0f )
+	{
+		float2 uv = worldXZ * cb_windFieldScale;
+		uv.y = 1.0f - uv.y;
+		if( all( uv >= 0.0f ) && all( uv <= 1.0f ) )
+		{
+			const float4 field = windFieldSample( uv );
+			result.speed = length( field.xz );
+			result.direction = result.speed > 1e-4f ? field.xz / result.speed : cb_windDirection;
+			result.vertical = field.y;
+			result.turbulence = field.w;
+		}
+	}
+	return result;
+}
+
+// Нагрузка ветра на растение — как давление, растёт с квадратом скорости (не больше втрое против ветра уровня)
+float windLoad( WindSample wind )
+{
+	return min( wind.speed * wind.speed, 3.0f );
+}
+
+// Порывистость (за гребнем, на опушке): направление качается вокруг поля до ±45° × порывистость, своё колебание у точки
+float2 windSwirl( WindSample wind, float phase )
+{
+	const float angle = wind.turbulence * 0.8f * sin( windTwoPi * ( cb_gameTime * ( 0.6f + 0.5f * phase ) + phase ) );
+	float s, c;
+	sincos( angle, s, c );
+	return float2( wind.direction.x * c - wind.direction.y * s, wind.direction.x * s + wind.direction.y * c );
+}
+
 // Порыв в точке мира: доля силы между cb_windGustMin (между волнами) и cb_windGustMax (на гребне). Две волны вдоль
 // ветра с разной длиной и фронт, изогнутый поперёк ветра, — не ровные полосы; бегут со скоростью cb_windSpeed
 float windGust( float2 worldXZ )

@@ -361,8 +361,10 @@ float4 shadeWater( WaterShading input )
 		}
 	}
 	// Ветровая рябь — пятнами порывов поля ветра («кошачьи лапы» бегут по воде); в штиль (сила 0: флажок ветра, -nowind)
-	// её нет, рябь течения остаётся
-	const float wind = cb_windStrength > 0.0f ? windGust( input.worldPosition.xz ) : 0.0f;
+	// её нет, рябь течения остаётся. Сила — по полю ветра по рельефу (× множитель²): у подветренного леса вода гладкая,
+	// на открытом озере рябь сильнее; узор бежит по ветру уровня (поле над водой почти однородно, а направление, меняющееся
+	// от точки к точке, со временем растянуло бы узор)
+	const float wind = cb_windStrength > 0.0f ? windGust( input.worldPosition.xz ) * windLoad( windAt( input.worldPosition.xz ) ) : 0.0f;
 	const float calmStrength = rippleSlope * g_calmRipple * wind;
 	float4 calm = 0.0f;
 	[branch] if( calmStrength > 0.0f )

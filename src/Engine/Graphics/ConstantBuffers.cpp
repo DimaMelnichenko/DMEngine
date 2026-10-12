@@ -63,7 +63,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.windGustMin = wind.gustMin;
 		data.windGustMax = wind.gustMax;
 		data.windGustSize = wind.gustSize;
-		data.framePadding = 0.0f;
+		data.windFieldScale = wind.fieldScale;
 		const FogParameters& fog = m_frame.fog;
 		data.fogLayer0 = fog.layer0;
 		data.fogLayer1 = fog.layer1;

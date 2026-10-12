@@ -178,8 +178,10 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 
 	if( alive && particle.landed == 0.0f )
 	{
-		// Скорость воздуха: ветер уровня с порывами (без ветра, -nowind, — штиль) и вихри; у воды — её течение
-		const float3 wind = float3( cb_windDirection.x, 0.0f, cb_windDirection.y ) * cb_windSpeed *
+		// Скорость воздуха: поле ветра по рельефу (вверх по наветренному склону, тише в лесу) с порывами (без ветра, -nowind, —
+		// штиль) и вихри; у воды — её течение
+		const WindSample field = windAt( particle.position.xz );
+		const float3 wind = float3( field.direction.x * field.speed, field.vertical, field.direction.y * field.speed ) * cb_windSpeed *
 							windGust( particle.position.xz ) * ( cb_windStrength > 0.0f ? g_wind : 0.0f );
 		float3 target = wind + curlNoise( particle.position ) * g_curl;
 		if( waterDepth > 0.01f && particle.position.y < ground + waterDepth + 0.5f )

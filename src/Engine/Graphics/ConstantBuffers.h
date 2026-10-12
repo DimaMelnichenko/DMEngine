@@ -20,6 +20,7 @@ struct WindParameters
 	float gustMin = 0.0f;
 	float gustMax = 0.0f;
 	float gustSize = 1.0f;		// м
+	float fieldScale = 0.0f;	// поле ветра по рельефу (SLOT_WIND_FIELD): 1 / сторона карты; 0 — поля нет
 };
 
 // Туман уровня кадра (VolumetricFog::frameParameters) — cb_fog* в Shaders/common.vs, Shaders/height_fog.sh
@@ -100,7 +101,7 @@ private:
 		float windGustMin;
 		float windGustMax;
 		float windGustSize;
-		float framePadding;
+		float windFieldScale;
 		DirectX::XMFLOAT4 fogLayer0;
 		DirectX::XMFLOAT4 fogLayer1;
 		DirectX::XMFLOAT3 fogAlbedo;

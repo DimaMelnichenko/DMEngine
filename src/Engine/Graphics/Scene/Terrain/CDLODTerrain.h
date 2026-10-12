@@ -58,6 +58,8 @@ public:
 	bool buildWindField( const std::vector<WindObstacle>& obstacles );
 	bool rebuildWindField();
 	const std::vector<TerrainWind::Cell>& windField() const { return m_wind; }
+	// Для констант кадра (cb_windFieldScale): 1 / сторона карты, если поле есть, иначе 0
+	float windFieldScale() const { return m_windView.valid() && m_worldSize > 0.0f ? 1.0f / m_worldSize : 0.0f; }
 	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {}, const WaterSimulationSettings* water = nullptr,
 					 const TerrainErosionSettings* erosion = nullptr, const TerrainLayerRules& layerRules = {} );
 	// Правили «Layer rules» в редакторе — слои и маски заново (без русел), splat-карта с покраской правок; расстановку (лес)

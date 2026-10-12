@@ -41,6 +41,8 @@ void Wind::initialize( const std::optional<Settings>& settings )
 	// Поле ветра по рельефу — подокно «Field» по таблице настроек (windFieldParameters): правка пересчитывает поле, когда
 	// закончилась (Scene::applyEditorChanges)
 	m_fieldProperties.setName( "Field" );
+	m_fieldProperties.insert( "Use field", true )->setTooltip( "Off - plants, ripples and particles take the even wind of the level "
+															   "(to compare); not saved with the level" );
 	for( const WindFieldParameter& parameter : windFieldParameters() )
 	{
 		Property* property = m_fieldProperties.insert( parameter.name, initial.field.*parameter.value );
@@ -85,6 +87,11 @@ WindParameters Wind::parameters()
 void Wind::disable()
 {
 	m_properties["Enabled"].setData( false );
+}
+
+bool Wind::fieldEnabled()
+{
+	return m_fieldProperties["Use field"].data<bool>();
 }
 
 PropertyContainer* Wind::properties()

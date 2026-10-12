@@ -31,7 +31,7 @@ cbuffer FrameConstantBuffer : register( SLOT_CB_FRAME )
 	float  cb_windGustMin;		// порыв между волнами и на гребне — доли силы
 	float  cb_windGustMax;
 	float  cb_windGustSize;		// длина волны порыва, м
-	float  cb_framePadding;
+	float  cb_windFieldScale;	// поле ветра по рельефу (wind_field.sh): 1 / сторона карты, 1/м; 0 — поля нет, ветер ровный
 	// Туман по высоте (Shaders/height_fog.sh, VolumetricFog). Слой: плотность — коэффициент ослабления, 1/м; высота, ниже
 	// которой она ровная, м; спад выше неё, 1/м
 	float4 cb_fogLayer0;		// w — расстояние до фона неба, м (дальняя плоскость вида)
