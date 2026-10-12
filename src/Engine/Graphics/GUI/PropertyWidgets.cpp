@@ -57,20 +57,18 @@ std::string numberFormat( const Property& property, float value, bool unit = tru
 	return format;
 }
 
-// Шаг стрелок и привязки (Ctrl): степень десяти около трёх пикселей перетаскивания — у доли 0…1 на поле в 200 пикселей
-// 0,01, у метров 0…200 — 1, как шаги полей Blender
+// Шаг стрелок и привязки (Ctrl) без заданного у свойства: степень десяти около трёх пикселей перетаскивания — у доли 0…1
+// на поле в 200 пикселей 0,01, у метров 0…200 — 1
 double stepFor( double speed )
 {
 	return std::pow( 10.0, std::floor( std::log10( std::max( speed * 3.0, 1e-9 ) ) ) );
 }
 
-// Формат с точностью шага: при Ctrl ImGui округляет значение по формату, а остаток перетаскивания копит сам — значение
-// идёт шагами и не застревает
-std::string snappedFormat( double step, const std::string& unit )
-{
-	const int decimals = std::max( 0, -static_cast<int>( std::floor( std::log10( step ) + 1e-6 ) ) );
-	return "%." + std::to_string( decimals ) + "f" + ( unit.empty() ? "" : " " + unit );
-}
+// Привязка Ctrl: перетаскивание копится в «сыром» значении поля, которое сейчас тянут, а на поле — оно, округлённое до
+// кратного шагу. Округлять само значение нельзя: ImGui прибавляет к нему движение мыши, и мелкие движения округлялись бы
+// обратно — значение стояло бы на месте
+ImGuiID snapItem = 0;
+double snapRaw = 0.0;
 
 // Общее у чисел: фон и заливка под полем, поле ImGui (DragScalar с вводом по клику — io.ConfigDragClickToInputText),
 // стрелки при наведении
@@ -88,7 +86,8 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 	const bool integer = type == ImGuiDataType_S32;
 	double speed = options.speed > 0.0f ? options.speed :
 				   bounded ? ( high - low ) / std::max( width, 1.0f ) : std::max( std::fabs( static_cast<double>( *value ) ) * 0.005, 1e-4 );
-	const double step = integer ? std::max( 1.0, std::round( stepFor( speed ) ) ) : stepFor( speed );
+	const double autoStep = options.step > 0.0f ? options.step : stepFor( speed );
+	const double step = integer ? std::max( 1.0, std::round( autoStep ) ) : autoStep;
 	if( io.KeyShift )
 		speed *= 0.1;
 	if( integer )
@@ -109,7 +108,7 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 	ImGui::PushStyleColor( ImGuiCol_FrameBg, IM_COL32( 0, 0, 0, 0 ) );
 	ImGui::PushStyleColor( ImGuiCol_FrameBgHovered, ImGui::GetColorU32( ImGuiCol_Text, 0.06f ) );
 	ImGui::PushStyleColor( ImGuiCol_FrameBgActive, ImGui::GetColorU32( ImGuiCol_Text, 0.10f ) );
-	const std::string snapped = io.KeyCtrl && !integer ? snappedFormat( step, options.unit ) : format;
+	const TYPE before = *value;
 	const TYPE typedLow = static_cast<TYPE>( low );
 	const TYPE typedHigh = static_cast<TYPE>( high );
 	ImGuiSliderFlags flags = ImGuiSliderFlags_NoSpeedTweaks;
@@ -118,9 +117,26 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 	ImGui::SetNextItemAllowOverlap();
 	ImGui::SetNextItemWidth( width );
 	bool changed = ImGui::DragScalar( id, type, value, static_cast<float>( speed ), bounded ? &typedLow : nullptr, bounded ? &typedHigh : nullptr,
-									  snapped.c_str(), flags );
+									  format, flags );
 	ImGui::PopStyleColor( 3 );
 	const ImGuiID item = ImGui::GetItemID();
+	if( ImGui::IsItemActive() && !ImGui::TempInputIsActive( item ) )
+	{
+		if( snapItem != item )
+		{
+			snapItem = item;
+			snapRaw = static_cast<double>( before );
+		}
+		snapRaw += static_cast<double>( *value ) - static_cast<double>( before );
+		double v = io.KeyCtrl ? std::round( snapRaw / step ) * step : snapRaw;
+		if( bounded )
+			v = std::clamp( v, low, high );
+		const TYPE snapped = static_cast<TYPE>( integer ? std::round( v ) : v );
+		changed = changed || snapped != *value;
+		*value = snapped;
+	}
+	else if( snapItem == item )
+		snapItem = 0;
 	// Стрелки — кнопки поверх поля: пока одну из них держат, она активна, и поле «под курсором» только с этим разрешением
 	ImGui::PushID( id );
 	const ImGuiID less = ImGui::GetID( "##less" );
@@ -246,8 +262,8 @@ void controlCell( const std::string& name, Property& property )
 			options.high = property.high();
 			options.fill = property.controlType() != GUIControlType::DRAG;
 			options.speed = property.controlType() == GUIControlType::DRAG ? dragSpeed( property, *value ) : 0.0f;
+			options.step = property.step();
 			options.logarithmic = property.logarithmic();
-			options.unit = property.unit();
 			numberField( label, value, format.c_str(), options );
 			break;
 		}
@@ -301,6 +317,7 @@ void controlCell( const std::string& name, Property& property )
 			options.high = property.high();
 			options.fill = property.controlType() != GUIControlType::DRAG;
 			options.speed = property.controlType() == GUIControlType::DRAG ? 0.1f : 0.0f;
+			options.step = property.step();
 			numberField( label, property.dataPtr<int32_t>(), options );
 			break;
 		}

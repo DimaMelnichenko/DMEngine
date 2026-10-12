@@ -16,16 +16,17 @@ bool matches( const std::string& text, const std::string& pattern );
 // прыжка к точке клика), клик без движения — ввод числа (Enter — принять, Esc — отменить), стрелки по краям при
 // наведении — шаг вниз и вверх, Shift при перетаскивании — вдесятеро точнее, Ctrl — шагами. low < high — границы
 // перетаскивания и стрелок (ввод числом — за ними можно); fill — заливка доли диапазона, как у фактор-слайдеров Blender;
-// speed — изменение на пиксель (0 — у границ весь диапазон на ширину поля, без них — по величине значения). Ширина —
-// как у прочих контролов (SetNextItemWidth); id с «##» — без подписи справа
+// speed — изменение на пиксель (0 — у границ весь диапазон на ширину поля, без них — по величине значения); step — шаг
+// стрелок и Ctrl (0 — подбор по speed, Property::setStep). Ширина — как у прочих контролов (SetNextItemWidth); id с «##» —
+// без подписи справа
 struct NumberOptions
 {
 	float low = 0.0f;
 	float high = 0.0f;
 	float speed = 0.0f;
+	float step = 0.0f;
 	bool fill = false;
 	bool logarithmic = false;
-	std::string unit;	// для формата при Ctrl (шагами); в format — уже с единицами
 };
 bool numberField( const char* id, float* value, const char* format, const NumberOptions& options );
 bool numberField( const char* id, int32_t* value, const NumberOptions& options );

@@ -91,6 +91,10 @@ public:
 	// Шаг перетаскивания (GUIControlType::DRAG) на пиксель; 0 — по величине значения и диапазону
 	Property* setDragSpeed( float speed ) { m_dragSpeed = speed; return this; }
 	float dragSpeed() const { return m_dragSpeed; }
+	// Шаг числа, как step у свойств Blender: стрелки по краям поля и Ctrl при перетаскивании (значение — кратное шагу);
+	// 0 — подбор по диапазону и величине (степень десяти около трёх пикселей перетаскивания)
+	Property* setStep( float step ) { m_step = step; return this; }
+	float step() const { return m_step; }
 	const std::string& tooltip() const { return m_tooltip; }
 	const std::string& unit() const { return m_unit; }
 	const std::string& format() const { return m_format; }
@@ -121,6 +125,7 @@ private:
 	std::string m_format;
 	bool m_logarithmic = false;
 	float m_dragSpeed = 0.0f;
+	float m_step = 0.0f;
 	bool m_editing = false;
 };
 

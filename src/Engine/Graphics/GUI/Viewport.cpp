@@ -303,7 +303,7 @@ void Viewport::editStreamPoint( const DMCamera& camera, GS::WaterSimulation& wat
 		PropertyWidgets::NumberOptions falloff;
 		falloff.high = 60.0f;
 		falloff.fill = true;
-		falloff.unit = "m";
+		falloff.step = 1.0f;
 		PropertyWidgets::numberField( "Falloff", &m_streamFalloff, "%.0f m", falloff );
 		ImGui::SetItemTooltip( "Neighbour points along the curve this close move too, less towards the edge (0 - the point only)" );
 	}

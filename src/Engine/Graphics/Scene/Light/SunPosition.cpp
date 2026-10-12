@@ -106,6 +106,7 @@ SunPosition::SunPosition( const Settings& settings ) :
 	addControl( m_properties, "Month", settings.month, 1.0f, 12.0f );
 	addControl( m_properties, "Day", settings.day, 1.0f, 31.0f );
 	addControl( m_properties, "Time of day (h)", settings.timeOfDay, 0.0f, 24.0f );
+	m_properties["Time of day (h)"].setStep( 0.25f );	// стрелки и Ctrl — по четверти часа
 	Property* timeScale = m_properties.insert( "Time scale", settings.timeScale );
 	timeScale->setControlType( GUIControlType::DRAG );
 	timeScale->setLow( 0.0f );

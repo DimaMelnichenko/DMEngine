@@ -35,7 +35,7 @@ void DMCamera::Initialize( CameraType _type, float width, float height, float _n
 	prop = m_properties.insert( "Field of view", XMConvertToDegrees( fieldOfView ) );
 	prop->setLow( 20.0f );
 	prop->setHigh( 120.0f );
-	prop->setUnit( "deg" )->setTooltip( "Vertical field of view" );
+	prop->setUnit( "deg" )->setStep( 1.0f )->setTooltip( "Vertical field of view" );
 	prop = m_properties.insert( "Near plane", _near );
 	prop->setLow( 0.01f );
 	prop->setHigh( 10.0f );

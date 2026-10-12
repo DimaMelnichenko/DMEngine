@@ -20,7 +20,7 @@ void TextureLibraryPanel::draw( bool* open )
 	size.low = 48.0f;
 	size.high = 256.0f;
 	size.fill = true;
-	size.unit = "px";
+	size.step = 16.0f;
 	PropertyWidgets::numberField( "##size", &m_thumbnail, "%.0f px", size );
 
 	ImGui::BeginChild( "textures" );
