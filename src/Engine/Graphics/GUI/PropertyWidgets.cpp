@@ -158,16 +158,20 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 		return changed;
 	}
 
-	// Стрелки по краям — шаг вниз и вверх (кнопки поверх поля: у поля AllowOverlap)
-	const ImVec2 after = ImGui::GetCursorScreenPos();
+	// Стрелки по краям — шаг вниз и вверх: кнопки поверх поля (у поля AllowOverlap) по своему прямоугольнику, без
+	// раскладки — курсор не двигается (как крестик вкладки в ImGui; SetCursorScreenPos туда и обратно без элемента после
+	// него ImGui считает попыткой раздвинуть ячейку)
 	const float arrow = ImGui::GetFrameHeight() * 0.8f;
 	bool arrowHovered = false;
-	ImGui::PushID( id );
 	for( int side = 0; side < 2; ++side )
 	{
 		const ImVec2 at( side == 0 ? min.x : max.x - arrow, min.y );
-		ImGui::SetCursorScreenPos( at );
-		if( ImGui::InvisibleButton( side == 0 ? "##less" : "##more", ImVec2( arrow, max.y - min.y ) ) )
+		const ImRect rect( at, ImVec2( at.x + arrow, max.y ) );
+		const ImGuiID arrowId = side == 0 ? less : more;
+		ImGui::ItemAdd( rect, arrowId );
+		bool over = false;
+		bool held = false;
+		if( ImGui::ButtonBehavior( rect, arrowId, &over, &held ) )
 		{
 			double v = static_cast<double>( *value ) + ( side == 0 ? -step : step );
 			if( bounded )
@@ -176,7 +180,6 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 			changed = true;
 			ImGui::MarkItemEdited( item );
 		}
-		const bool over = ImGui::IsItemHovered();
 		arrowHovered = arrowHovered || over;
 		const float size = ImGui::GetFontSize() * 0.55f;
 		const ImVec2 center( at.x + arrow * 0.5f, ( min.y + max.y ) * 0.5f );
@@ -188,8 +191,6 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 			draw->AddTriangleFilled( ImVec2( center.x + size * 0.4f, center.y ), ImVec2( center.x - size * 0.3f, center.y + size * 0.5f ),
 									 ImVec2( center.x - size * 0.3f, center.y - size * 0.5f ), color );
 	}
-	ImGui::PopID();
-	ImGui::SetCursorScreenPos( after );
 	ImGui::SetMouseCursor( arrowHovered ? ImGuiMouseCursor_Hand : ImGuiMouseCursor_ResizeEW );
 	return changed;
 }
