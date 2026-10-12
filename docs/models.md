@@ -162,8 +162,10 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
 В редакторе — окно «Model instances» (Outliner → Scene): подокно на экземпляр `id: модель` с «Position» (м), «Rotation»
 (градусы: Pitch вокруг X, Yaw вокруг Y, Roll вокруг Z — порядок `XMQuaternionRotationRollPitchYaw`, как Rotation в
 Details UE) и «Scale». Правка сразу двигает экземпляр, его тень и границы сцены; «Save level» (Ctrl+S) пишет строки
-`LevelModels` по `id`, поворот — кватернионом из углов ([gui.md](gui.md)). Окно «Models» — параметры материалов секций
-моделей, они не сохраняются.
+`LevelModels` по `id`, поворот — кватернионом из углов ([gui.md](gui.md)). Подокно «Add» — кнопка на модель уровня: новый
+экземпляр перед камерой на земле; «Delete» у подокна экземпляра и Delete во вьюпорте — убрать (Ctrl+Z вернёт); «Save
+level» вставляет новые строки `LevelModels` и удаляет строки убранных ([gui.md](gui.md), «Вьюпорт»). Окно «Models» —
+параметры материалов секций моделей, они не сохраняются.
 
 ## Геометрия: из glTF в движок
 

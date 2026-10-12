@@ -69,8 +69,13 @@ private:
 	// Экран загрузки — обработчик SlowTask на время Initialize: сообщения окна (иначе Windows считает его зависшим) и кадр с
 	// тем, что делается, и полосой прогресса
 	void drawLoadingFrame( const std::string& task, float progress );
+	// Место нового перед камерой, как Quick Add в UE: там, где центр взгляда упирается в землю (ближе 200 м), иначе в 10 м
+	// по взгляду; true — на земле
+	bool placementInFront( DirectX::XMFLOAT3& position );
 	// Кнопки «Add … light» окна «Lights»: новый источник перед камерой, выбран во вьюпорте; отмена — убрать его
 	PropertyContainer::ButtonAction addLight( DMLight::LightType type );
+	// Кнопки подокна «Add» окна «Model instances»: экземпляр модели палитры перед камерой на земле, выбран во вьюпорте
+	PropertyContainer::ButtonAction addModelInstance( uint32_t model );
 
 private:
 	float m_screenWidth;

@@ -195,7 +195,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (`LibraryLoader::saveLevelEnvironment`) и объекты сцены — террейн, расстановку, воду, частицы
   (`LibraryLoader::saveLevelScene`, `ObjectLibrary/LibraryLoaderScene.cpp`); объект отдаёт настройки по своим свойствам,
   о базе не знает. Имя свойства — без «/» (разделитель пути `set`), единицы — `Property::setUnit`. Экземпляры моделей —
-  окно «Model instances» (`ModelInstances::instanceProperties`: положение, поворот углами, масштаб → `LevelModels`).
+  окно «Model instances» (`ModelInstances::instanceProperties`: положение, поворот углами, масштаб → `LevelModels`;
+  подокно «Add» — экземпляр модели уровня перед камерой, «Delete» — убрать; «Save level» вставляет и удаляет строки).
   Числа — поля как в Blender (`PropertyWidgets::numberField`, один шаблон контролов `controlCell` на все окна):
   перетаскивание вбок, клик — ввод, стрелки по краям — шаг, Shift — точнее, Ctrl — шагами; у свойства с границами —
   заливка доли. Кнопки окна — `PropertyContainer::addButton` (как CallInEditor в UE; действие с отменой —

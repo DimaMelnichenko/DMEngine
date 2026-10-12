@@ -22,7 +22,9 @@ class TerrainHeightSource;
 // LOD (Shaders/lod_transition.h) экземпляр отдаёт оба LOD с долями дизеринга, если материал секции это умеет
 // (DitheredLODTransition, как Dithered LOD Transition в UE); за последним LOD он так же исчезает.
 // Окно «Models» — свойства моделей (параметры материалов секций, не сохраняются); окно «Model instances» — подокно на
-// экземпляр: положение, поворот углами (Pitch, Yaw, Roll, как Rotation в Details UE) и масштаб, сохраняются в LevelModels
+// экземпляр: положение, поворот углами (Pitch, Yaw, Roll, как Rotation в Details UE) и масштаб, сохраняются в LevelModels.
+// Экземпляры добавляются и убираются в редакторе, как источники света (DMLightDriver): подокно «Add» — кнопка на модель
+// палитры, «Delete» у подокна экземпляра и Delete во вьюпорте
 class ModelInstances : public SceneObject
 {
 public:
@@ -61,12 +63,37 @@ public:
 	// Границы всех экземпляров (меш LOD 0 в мировых координатах); false — экземпляров нет
 	bool bounds( DirectX::BoundingBox& bounds ) const;
 
+	// Добавление и удаление в редакторе. У экземпляра — ключ, постоянный в сеансе (по нему его находят выбор вьюпорта и
+	// отмена: номер после добавления и удаления сдвигается). Новый — в конец списка, без поворота, масштаб 1; убранный
+	// хранится с подокном до выхода — restoreInstance возвращает его на прежнее место, история правок его свойств остаётся
+	// верной. Строки LevelModels — «Save level»: новые (id 0) вставляются, убранные удаляются (removedIds, markSaved).
+	// terrain — поставить новый на землю низом границ LOD 0, как End (snapToTerrain)
+	uint32_t addInstance( uint32_t model, const DirectX::XMFLOAT3& position, const TerrainHeightSource* terrain = nullptr );
+	bool removeInstance( uint32_t key );
+	bool restoreInstance( uint32_t key );
+	// Ключ экземпляра (0 — нет такого) и номер по ключу (−1 — убран или нет такого)
+	uint32_t key( int instance ) const;
+	int indexOf( uint32_t key ) const;
+	// Модели, экземпляры которых можно добавить: модели экземпляров уровня при загрузке (у моделей расстановки материал
+	// пула — экземпляром уровня их не нарисовать; новые модели — Tools/import_gltf.py). Подокно «Add» окна экземпляров —
+	// кнопки моделей палитры ставит редактор (место — перед камерой)
+	const std::vector<uint32_t>& palette() const { return m_palette; }
+	const std::string& modelName( uint32_t model ) const;
+	PropertyContainer* addProperties() { return &m_addProperties; }
+	// Строки LevelModels убранных экземпляров, которые ещё есть в базе
+	std::vector<uint32_t> removedIds() const;
+	// Уровень сохранён: saved — instances() с id вставленных строк; убранных в базе больше нет
+	void markSaved( const std::vector<LevelDescription::ModelInstance>& saved );
+	// Кнопка подокна экземпляра, которая его убирает (с отменой); её же нажимает Delete во вьюпорте
+	static constexpr const char* deleteButton = "Delete";
+
 private:
 	struct Instance
 	{
 		DMModel* model = nullptr;
 		uint32_t modelId = 0;
-		uint32_t id = 0;	// строка LevelModels
+		uint32_t id = 0;	// строка LevelModels; 0 — новый, в базе ещё нет
+		uint32_t key = 0;
 		DMTransform transform;
 		DirectX::XMFLOAT3 angles = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// применённый поворот: pitch, yaw, roll, градусы
 		std::unique_ptr<PropertyContainer> properties;	// «Position», «Rotation», «Scale»
@@ -81,11 +108,20 @@ private:
 
 	// Границы всех экземпляров: при загрузке и после правки
 	void updateBounds();
+	// Подокно экземпляра: положение, поворот, масштаб и кнопка Delete
+	void createProperties( Instance& instance );
+	// После добавления и удаления: подокна по порядку с именами («id: модель», у нового — «new ключ: модель»), отметка
+	// несохранённого (новый экземпляр, убранный из базы), границы
+	void updateStructure();
 
 	std::vector<Instance> m_instances;
+	std::vector<Instance> m_removed;	// убранные — до выхода (отмена удаления)
+	std::vector<uint32_t> m_palette;
+	uint32_t m_nextKey = 1;
 	DirectX::BoundingBox m_bounds;
 	PropertyContainer m_properties;
 	PropertyContainer m_instanceProperties;
+	PropertyContainer m_addProperties;
 };
 
 }

@@ -156,8 +156,15 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 			m_GUI.addPropertyWatching( object->properties(), object->environment() ? Category::environment : Category::scene, object,
 									   object->savedWithLevel() );
 	}
-	// Экземпляры моделей — своё окно: положение сохраняется, а параметры материалов окна «Models» — нет
+	// Экземпляры моделей — своё окно: положение сохраняется, а параметры материалов окна «Models» — нет. Добавляются
+	// кнопками подокна «Add» (модель палитры перед камерой), убираются — кнопкой Delete своего подокна (ModelInstances)
 	m_GUI.addPropertyWatching( m_scene.models().instanceProperties(), Category::scene, nullptr, true );
+	for( uint32_t model : m_scene.models().palette() )
+	{
+		m_scene.models().addProperties()->addButton( m_scene.models().modelName( model ),
+													 "New instance of the model in front of the camera, on the ground (Save level writes it, Ctrl+Z removes it)",
+													 [this, model] { return addModelInstance( model ); } );
+	}
 	m_GUI.addPropertyWatching( m_renderer.fogProperties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_renderer.postProcessProperties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_scene.wind().properties(), Category::environment, nullptr, true );
@@ -333,28 +340,37 @@ bool DMGraphics::Render( const FrameContext& frame )
 	return true;
 }
 
-PropertyContainer::ButtonAction DMGraphics::addLight( DMLight::LightType type )
+bool DMGraphics::placementInFront( XMFLOAT3& position )
 {
-	DMLightDriver& lights = m_scene.lights();
 	const DMCamera& camera = m_cameraPool["main"];
 	const XMFLOAT3 eye = camera.position();
 	XMFLOAT3 forward;
 	camera.viewDirection( &forward );
-	// Перед камерой, как Quick Add в UE: там, где центр взгляда упирается в землю (ближе 200 м), иначе в 10 м; точечный —
-	// не ниже 1,5 м над землёй, прожектор — 3 м и светит вниз; направленный — под 45° вниз в сторону взгляда
 	const TerrainHeightSource& terrain = m_scene.terrain();
 	float ground = 0.0f;
-	float distance = 10.0f;
 	for( float t = 0.5f; t < 200.0f; t += 0.5f )
 	{
 		if( terrain.surfaceHeight( eye.x + forward.x * t, eye.z + forward.z * t, ground ) && eye.y + forward.y * t <= ground )
 		{
-			distance = t;
-			break;
+			position = XMFLOAT3( eye.x + forward.x * t, ground, eye.z + forward.z * t );
+			return true;
 		}
 	}
-	XMFLOAT3 position( eye.x + forward.x * distance, eye.y + forward.y * distance, eye.z + forward.z * distance );
-	if( terrain.surfaceHeight( position.x, position.z, ground ) )
+	position = XMFLOAT3( eye.x + forward.x * 10.0f, eye.y + forward.y * 10.0f, eye.z + forward.z * 10.0f );
+	return false;
+}
+
+PropertyContainer::ButtonAction DMGraphics::addLight( DMLight::LightType type )
+{
+	DMLightDriver& lights = m_scene.lights();
+	XMFLOAT3 forward;
+	m_cameraPool["main"].viewDirection( &forward );
+	// Перед камерой (placementInFront); точечный — не ниже 1,5 м над землёй, прожектор — 3 м и светит вниз; направленный —
+	// под 45° вниз в сторону взгляда
+	XMFLOAT3 position;
+	placementInFront( position );
+	float ground = 0.0f;
+	if( m_scene.terrain().surfaceHeight( position.x, position.z, ground ) )
 		position.y = std::max( position.y, ground + ( type == DMLight::Spot ? 3.0f : 1.5f ) );
 	XMFLOAT3 direction( 0.0f, -1.0f, 0.0f );
 	const float horizontal = std::sqrt( forward.x * forward.x + forward.z * forward.z );
@@ -377,6 +393,28 @@ PropertyContainer::ButtonAction DMGraphics::addLight( DMLight::LightType type )
 				 m_viewport.selectLight( lights, key );
 			 },
 			 "Add " + ( properties ? properties->name() : std::string( DMLight::typeName( type ) ) ) };
+}
+
+PropertyContainer::ButtonAction DMGraphics::addModelInstance( uint32_t model )
+{
+	ModelInstances& models = m_scene.models();
+	// Перед камерой (placementInFront) низом границ LOD 0 на землю, как End; без поворота, масштаб 1
+	XMFLOAT3 position;
+	const bool onGround = placementInFront( position );
+	const uint32_t key = models.addInstance( model, position, onGround ? &m_scene.terrain() : nullptr );
+	const int index = models.indexOf( key );
+	PropertyContainer* properties = models.instanceProperties( index );
+	m_viewport.selectInstance( models, key );
+	m_GUI.focusProperties( properties );
+	const std::string name = models.instanceName( index );
+	LOG( "Model instance added: " + name );
+	return { [&models, key] { models.removeInstance( key ); },
+			 [this, &models, key]
+			 {
+				 models.restoreInstance( key );
+				 m_viewport.selectInstance( models, key );
+			 },
+			 "Add " + name };
 }
 
 void DMGraphics::drawLoadingFrame( const std::string& task, float progress )

@@ -371,8 +371,11 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	std::vector<ParticleEmitterSettings> emitters;
 	if( m_particles.initialized() )
 		emitters = m_particles.emitterSettings();
-	if( !library.saveLevelScene( m_level, m_models.instances(), terrain, scatterSets, scatterLayers, water, emitters ) )
+	// Экземпляры — копией: id новых строк вернутся в неё и уйдут в экземпляры
+	std::vector<LevelDescription::ModelInstance> models = m_models.instances();
+	if( !library.saveLevelScene( m_level, models, m_models.removedIds(), terrain, scatterSets, scatterLayers, water, emitters ) )
 		return false;
+	m_models.markSaved( models );
 	// Экземпляры моделей в базе — на нынешней земле: пересадка после эрозии закреплена
 	if( m_level.terrain )
 		m_terrain.confirmErosionChange();

@@ -60,6 +60,7 @@ ModelInstances::ModelInstances() :
 {
 	m_properties.setName( "Models" );
 	m_instanceProperties.setName( "Model instances" );
+	m_addProperties.setName( "Add" );
 }
 
 void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstance>& instances )
@@ -72,35 +73,158 @@ void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstan
 		instance.model = System::models().get( description.model ).get();
 		instance.modelId = description.model;
 		instance.id = description.id;
+		instance.key = m_nextKey++;
 		instance.transform.setPosition( description.position );
 		instance.transform.setRotation( description.rotation );
 		instance.transform.setScale( description.scale );
 		instance.angles = quaternionToAngles( instance.transform.rotation() );
 
 		if( withProperties.insert( description.model ).second )
+		{
 			m_properties.addSubContainer( instance.model->properties() );
-
-		instance.name = std::to_string( description.id ) + ": " + instance.model->properties()->name();
-		instance.properties = std::make_unique<PropertyContainer>( instance.name );
-		Property* position = instance.properties->insert( "Position", instance.transform.position() );
-		// Перетаскивание без границ (low = high), шаг — на пиксель
-		position->setControlType( GUIControlType::DRAG );
-		position->setLow( 0.0f );
-		position->setHigh( 0.0f );
-		position->setUnit( "m" )->setDragSpeed( 0.05f );
-		Property* rotation = instance.properties->insert( "Rotation", instance.angles );
-		rotation->setControlType( GUIControlType::DRAG );
-		rotation->setLow( 0.0f );
-		rotation->setHigh( 0.0f );
-		rotation->setUnit( "deg" )->setDragSpeed( 0.5f )->setTooltip( "Pitch (around X), yaw (around Y), roll (around Z)" );
-		Property* scale = instance.properties->insert( "Scale", instance.transform.scale() );
-		scale->setControlType( GUIControlType::DRAG );
-		scale->setLow( 0.001f );
-		scale->setHigh( 1000.0f );
-		scale->setDragSpeed( 0.01f );
-		m_instanceProperties.addSubContainer( instance.properties.get() );
+			m_palette.push_back( description.model );
+		}
+		createProperties( instance );
 		m_instances.push_back( std::move( instance ) );
 	}
+	// Палитра — по имени модели
+	std::sort( m_palette.begin(), m_palette.end(), [this]( uint32_t a, uint32_t b ) { return modelName( a ) < modelName( b ); } );
+	updateStructure();
+}
+
+void ModelInstances::createProperties( Instance& instance )
+{
+	// Имя с id — updateStructure
+	instance.properties = std::make_unique<PropertyContainer>( instance.model->properties()->name() );
+	Property* position = instance.properties->insert( "Position", instance.transform.position() );
+	// Перетаскивание без границ (low = high), шаг — на пиксель
+	position->setControlType( GUIControlType::DRAG );
+	position->setLow( 0.0f );
+	position->setHigh( 0.0f );
+	position->setUnit( "m" )->setDragSpeed( 0.05f );
+	Property* rotation = instance.properties->insert( "Rotation", instance.angles );
+	rotation->setControlType( GUIControlType::DRAG );
+	rotation->setLow( 0.0f );
+	rotation->setHigh( 0.0f );
+	rotation->setUnit( "deg" )->setDragSpeed( 0.5f )->setTooltip( "Pitch (around X), yaw (around Y), roll (around Z)" );
+	Property* scale = instance.properties->insert( "Scale", instance.transform.scale() );
+	scale->setControlType( GUIControlType::DRAG );
+	scale->setLow( 0.001f );
+	scale->setHigh( 1000.0f );
+	scale->setDragSpeed( 0.01f );
+
+	const uint32_t key = instance.key;
+	instance.properties->addButton( deleteButton, "Remove the instance from the level (Delete in the viewport; Save level deletes its row, Ctrl+Z returns it)",
+									[this, key]() -> PropertyContainer::ButtonAction
+	{
+		const int index = indexOf( key );
+		if( index < 0 )
+			return {};
+		const std::string name = "Delete " + m_instances[index].name;
+		removeInstance( key );
+		return { [this, key] { restoreInstance( key ); }, [this, key] { removeInstance( key ); }, name };
+	} );
+}
+
+uint32_t ModelInstances::addInstance( uint32_t model, const XMFLOAT3& position, const TerrainHeightSource* terrain )
+{
+	Instance instance;
+	instance.model = System::models().get( model ).get();
+	instance.modelId = model;
+	instance.key = m_nextKey++;
+	instance.transform.setPosition( position );
+	createProperties( instance );
+	const uint32_t key = instance.key;
+	m_instances.push_back( std::move( instance ) );
+	if( terrain )
+		snapToTerrain( static_cast<int>( m_instances.size() ) - 1, *terrain );
+	// Значения при добавлении — «сохранённые»: Details отмечает правки после них, а сам новый экземпляр — до «Save level»
+	// (отметку состава ставит updateStructure)
+	m_instances.back().properties->markSaved();
+	updateStructure();
+	return key;
+}
+
+bool ModelInstances::removeInstance( uint32_t key )
+{
+	const int index = indexOf( key );
+	if( index < 0 )
+		return false;
+	m_removed.push_back( std::move( m_instances[index] ) );
+	m_instances.erase( m_instances.begin() + index );
+	updateStructure();
+	return true;
+}
+
+bool ModelInstances::restoreInstance( uint32_t key )
+{
+	const auto removed = std::find_if( m_removed.begin(), m_removed.end(), [key]( const Instance& instance ) { return instance.key == key; } );
+	if( removed == m_removed.end() )
+		return false;
+	// На прежнее место: список упорядочен по ключу (порядок базы, затем добавленные)
+	const auto at = std::find_if( m_instances.begin(), m_instances.end(), [key]( const Instance& instance ) { return instance.key > key; } );
+	m_instances.insert( at, std::move( *removed ) );
+	m_removed.erase( removed );
+	updateStructure();
+	return true;
+}
+
+uint32_t ModelInstances::key( int instance ) const
+{
+	return instance >= 0 && instance < static_cast<int>( m_instances.size() ) ? m_instances[instance].key : 0;
+}
+
+int ModelInstances::indexOf( uint32_t key ) const
+{
+	for( size_t i = 0; i < m_instances.size(); ++i )
+	{
+		if( key != 0 && m_instances[i].key == key )
+			return static_cast<int>( i );
+	}
+	return -1;
+}
+
+const std::string& ModelInstances::modelName( uint32_t model ) const
+{
+	return System::models().get( model )->properties()->name();
+}
+
+std::vector<uint32_t> ModelInstances::removedIds() const
+{
+	std::vector<uint32_t> ids;
+	for( const Instance& instance : m_removed )
+	{
+		if( instance.id != 0 )
+			ids.push_back( instance.id );
+	}
+	return ids;
+}
+
+void ModelInstances::markSaved( const std::vector<LevelDescription::ModelInstance>& saved )
+{
+	for( size_t i = 0; i < m_instances.size() && i < saved.size(); ++i )
+		m_instances[i].id = saved[i].id;
+	// Строк убранных больше нет: вернёт отмена — вставится заново
+	for( Instance& instance : m_removed )
+		instance.id = 0;
+	updateStructure();
+}
+
+void ModelInstances::updateStructure()
+{
+	m_instanceProperties.subContainer().clear();
+	m_instanceProperties.addSubContainer( &m_addProperties );
+	for( Instance& instance : m_instances )
+	{
+		// Нового в базе ещё нет: вместо id — «new» и ключ (имя различает подокна в пути команд set / press)
+		instance.name = ( instance.id != 0 ? std::to_string( instance.id ) : "new " + std::to_string( instance.key ) ) + ": " +
+						modelName( instance.modelId );
+		instance.properties->setName( instance.name );
+		instance.properties->setStructureModified( instance.id == 0 );
+		m_instanceProperties.addSubContainer( instance.properties.get() );
+	}
+	// Убранный экземпляр ещё есть в базе — окно изменено до «Save level»
+	m_instanceProperties.setStructureModified( std::any_of( m_removed.begin(), m_removed.end(), []( const Instance& instance ) { return instance.id != 0; } ) );
 	updateBounds();
 }
 

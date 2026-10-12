@@ -440,7 +440,7 @@ void GUI::drawHotkeys()
 			{ "Ctrl+S", "save level environment" },
 			{ "`", "console" },
 			{ "Ctrl + click on a slider", "type a value" },
-			{ "Delete", "remove the light selected in the viewport" },
+			{ "Delete", "remove the model instance or light selected in the viewport" },
 			{ "Esc", "exit" } };
 		if( ImGui::BeginTable( "keys", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit ) )
 		{

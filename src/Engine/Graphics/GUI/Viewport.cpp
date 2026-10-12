@@ -123,9 +123,10 @@ void Viewport::update( const DMCamera& camera, GS::Scene& scene, GUI& gui )
 	const GS::TerrainHeightSource* terrain = &scene.terrain();
 	DMLightDriver* lights = &scene.lights();
 	GS::ParticleSystem* particles = scene.particles().initialized() ? &scene.particles() : nullptr;
-	if( m_selected >= static_cast<int>( models.instanceCount() ) )
-		m_selected = -1;
-	// Источник — по ключу: номер мог сдвинуться, сам источник — убран
+	// Экземпляр и источник — по ключу: номер мог сдвинуться, сам выбранный — убран
+	m_selected = models.indexOf( m_selectedKey );
+	if( m_selected < 0 )
+		m_selectedKey = 0;
 	m_selectedLight = lights->indexOf( m_selectedLightKey );
 	if( m_selectedLight < 0 )
 		m_selectedLightKey = 0;
@@ -152,40 +153,53 @@ void Viewport::update( const DMCamera& camera, GS::Scene& scene, GUI& gui )
 			editStreamPoint( camera, *water, *terrain, gui );
 	}
 	drawSelection( camera, models );
+	// Delete — кнопка Delete подокна выбранного экземпляра или источника: убрать с отменой, как в Details
+	PropertyContainer* removable = m_selected >= 0 ? models.instanceProperties( m_selected ) :
+								   m_selectedLight >= 0 ? lights->lightProperties( m_selectedLight ) : nullptr;
+	const char* deleteButton = m_selected >= 0 ? GS::ModelInstances::deleteButton : DMLightDriver::deleteButton;
+	if( removable && !m_usingGizmo && !m_draggingLight && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed( ImGuiKey_Delete, false ) )
+	{
+		gui.press( *removable, deleteButton );
+		clearSelection();
+		trackGizmo( false, gui, {}, {} );
+		return;
+	}
 	if( m_selected >= 0 )
 	{
 		drawToolbar();
 		manipulate( camera, models, gui );
 	}
 	else if( m_selectedLight >= 0 )
-	{
-		// Delete — кнопка Delete подокна источника: убрать с отменой, как в Details
-		const bool dragging = m_usingGizmo || m_draggingLight;
-		if( !dragging && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed( ImGuiKey_Delete, false ) )
-		{
-			if( PropertyContainer* properties = lights->lightProperties( m_selectedLight ) )
-				gui.press( *properties, DMLightDriver::deleteButton );
-			m_selectedLight = -1;
-			m_selectedLightKey = 0;
-			trackGizmo( false, gui, {}, {} );
-		}
-		else
-			editLight( camera, *lights, gui );
-	}
+		editLight( camera, *lights, gui );
 	else if( m_selectedEmitter >= 0 )
 		editEmitter( camera, *particles, gui );
 	else
 		trackGizmo( false, gui, {}, {} );
 }
 
-void Viewport::selectLight( const DMLightDriver& lights, uint32_t key )
+void Viewport::clearSelection()
 {
-	m_selectedLightKey = key;
-	m_selectedLight = lights.indexOf( key );
 	m_selected = -1;
+	m_selectedKey = 0;
+	m_selectedLight = -1;
+	m_selectedLightKey = 0;
 	m_selectedEmitter = -1;
 	m_streamCurve = -1;
 	m_streamPoint = -1;
+}
+
+void Viewport::selectLight( const DMLightDriver& lights, uint32_t key )
+{
+	clearSelection();
+	m_selectedLightKey = key;
+	m_selectedLight = lights.indexOf( key );
+}
+
+void Viewport::selectInstance( const GS::ModelInstances& models, uint32_t key )
+{
+	clearSelection();
+	m_selectedKey = key;
+	m_selected = models.indexOf( key );
 }
 
 std::string Viewport::clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gui, float x, float y )
@@ -194,19 +208,14 @@ std::string Viewport::clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gu
 	GS::WaterSimulation* water = scene.water().initialized() ? &scene.water() : nullptr;
 	DMLightDriver& lights = scene.lights();
 	GS::ParticleSystem* particles = scene.particles().initialized() ? &scene.particles() : nullptr;
-	m_selectedLight = -1;
-	m_selectedLightKey = 0;
-	m_selectedEmitter = -1;
+	clearSelection();
 	// В режиме кривых клик сначала ловит точку кривой, мимо — экземпляр модели
 	if( m_streamMode && water && pickStreamPoint( camera, *water, scene.terrain(), x, y ) )
 	{
-		m_selected = -1;
 		if( PropertyContainer* properties = water->curveProperties( m_streamCurve ) )
 			gui.focusProperties( properties );
 		return water->curves()[m_streamCurve].name + ", point " + std::to_string( m_streamPoint );
 	}
-	m_streamCurve = -1;
-	m_streamPoint = -1;
 	// Значки источников света и эмиттеров — раньше экземпляров: значок мал и рисуется поверх сцены. Из двух — ближайший к
 	// точке (у костра источник и искры стоят рядом)
 	float lightDistance = 0.0f;
@@ -216,7 +225,6 @@ std::string Viewport::clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gu
 	if( emitter >= 0 && ( light < 0 || emitterDistance < lightDistance ) )
 	{
 		m_selectedEmitter = emitter;
-		m_selected = -1;
 		PropertyContainer* properties = particles->emitterProperties( emitter );
 		gui.focusProperties( properties );
 		return properties->name();
@@ -225,7 +233,6 @@ std::string Viewport::clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gu
 	{
 		m_selectedLight = light;
 		m_selectedLightKey = lights.key( light );
-		m_selected = -1;
 		PropertyContainer* properties = lights.lightProperties( light );
 		if( properties )
 			gui.focusProperties( properties );
@@ -919,6 +926,7 @@ int Viewport::pickAt( const DMCamera& camera, GS::ModelInstances& models, GUI& g
 	screenRay( camera, x, y, origin, direction );
 	float distance = 0.0f;
 	m_selected = models.pick( origin, direction, distance );
+	m_selectedKey = models.key( m_selected );
 	if( m_selected >= 0 )
 		gui.focusProperties( models.instanceProperties( m_selected ) );
 	return m_selected;

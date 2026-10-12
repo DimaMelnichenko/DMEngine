@@ -271,11 +271,11 @@ bool LibraryLoader::saveGeneratedStreams( uint32_t waterSimulationId, const std:
 }
 
 // Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterSets, ScatterLayers и ScatterLayerModels,
-// WaterSimulation, ParticleEmitters и место LevelParticleEmitters. Только колонки, которые правятся в окнах; состав (какие слои, модели, эмиттеры)
-// не меняется
+// WaterSimulation, ParticleEmitters и место LevelParticleEmitters. Только колонки, которые правятся в окнах; состав (какие слои,
+// эмиттеры) не меняется, кроме экземпляров моделей: новые строки LevelModels вставляются, убранные удаляются
 
-bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::vector<LevelDescription::ModelInstance>& models,
-									const std::optional<GS::TerrainSettings>& terrain,
+bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<LevelDescription::ModelInstance>& models,
+									const std::vector<uint32_t>& removedModels, const std::optional<GS::TerrainSettings>& terrain,
 									const std::vector<GS::ScatterSetSettings>& scatterSets,
 									const std::vector<GS::ScatterLayerRecord>& scatterLayers,
 									const std::optional<GS::WaterSimulationSettings>& water,
@@ -286,11 +286,27 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 		SQLite::Database& db = DBConnector::instance().db();
 		SQLite::Transaction transaction( db );
 
+		// Убранные в редакторе экземпляры — строки удаляются; добавленные (id 0) — новые строки уровня, id — обратно в
+		// экземпляры: после сохранения они правятся по id, как загруженные
+		SQLite::Statement deleteModel( db, "DELETE FROM LevelModels WHERE id = :id" );
+		for( uint32_t id : removedModels )
+		{
+			deleteModel.bind( ":id", id );
+			deleteModel.exec();
+			deleteModel.reset();
+		}
+		SQLite::Statement insertModel( db, "INSERT INTO LevelModels (level, model) VALUES (:level, :model)" );
 		SQLite::Statement updateModel( db, "UPDATE LevelModels SET position = :position, rotation = :rotation, scale = :scale WHERE id = :id" );
-		for( const LevelDescription::ModelInstance& model : models )
+		for( LevelDescription::ModelInstance& model : models )
 		{
 			if( model.id == 0 )
-				continue;
+			{
+				insertModel.bind( ":level", level.id );
+				insertModel.bind( ":model", model.model );
+				insertModel.exec();
+				insertModel.reset();
+				model.id = static_cast<uint32_t>( db.getLastInsertRowid() );
+			}
 			char rotation[96];
 			std::snprintf( rotation, sizeof( rotation ), "%g,%g,%g,%g", model.rotation.x, model.rotation.y, model.rotation.z, model.rotation.w );
 			updateModel.bind( ":position", vec3ToStr( model.position ) );
