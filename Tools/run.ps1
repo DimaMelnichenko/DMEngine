@@ -1,6 +1,6 @@
 # Запуск DMEngine для проверки изменений:
 #   .\Tools\run.ps1 [-Config Debug|Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,3] [-Camera x,y,z,pitch,yaw] [-Level имя]
-#                    [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
+#                    [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
 # Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные) с удалённым
 # управлением (-remote, канал \\.\pipe\DMEngine, docs/remote.md), ждёт конца инициализации, затем Seconds секунд работы,
 # при необходимости нажимает клавиши и снимает кадр, закрывает движок штатно (команда quit: DMGraphics::beforeExit,
@@ -12,6 +12,8 @@
 # -NoGui; у Debug с GPU-based validation тоже (захват экрана давал там чёрный кадр).
 # Camera — стартовая камера вместо секции [Camera] в settings.ini: положение и поворот в градусах (тангаж, рыскание).
 # Level — уровень из таблицы Levels вместо секции [Level] в settings.ini.
+# Resolution — окно и задний буфер (параметр движка -resolution): по умолчанию 1920x1080 — окно с заголовком, снимки
+# и замеры сравнимы между запусками и машинами; desktop — окно без рамки на весь монитор, как у движка без параметра.
 # NoGui — без окон ImGui (параметр движка -nogui), чтобы они не закрывали кадр; в движке их прячет и клавиша G.
 # NoMouse — камера не следует за мышью, указатель скрыт (параметр движка -nomouse); со -Screenshot включается сам,
 # чтобы случайное движение мыши не сдвигало кадр.
@@ -24,6 +26,7 @@ param(
     [string]$Keys,
     [string]$Camera,
     [string]$Level,
+    [string]$Resolution = '1920x1080',
     [switch]$NoGui,
     [switch]$NoMouse,
     [switch]$NoWind,
@@ -74,7 +77,8 @@ function Send-Command([string]$line) {
     }
 }
 
-$engineArgs = @('-remote')
+if ($Resolution -notmatch '^(desktop|\d+[xX]\d+)$') { throw "-Resolution: expected WxH or desktop" }
+$engineArgs = @('-remote', "-resolution $Resolution")
 if ($Camera) {
     # Разделитель дробной части — точка при любой локали
     $invariant = [Globalization.CultureInfo]::InvariantCulture

@@ -75,7 +75,6 @@ public:
 		uint32_t backBufferWidth = 1920;
 		uint32_t backBufferHeight = 1080;
 		bool vsync = false;
-		bool fullscreen = false;
 		bool gpuValidation = true;	// Debug-сборка: GPU-based validation поверх debug-слоя
 	};
 
@@ -297,7 +296,7 @@ private:
 	bool createDescriptorHeaps();
 	bool createRootSignature();
 	bool createCommandSignature();
-	bool createSwapChain( HWND hwnd, bool fullscreen );
+	bool createSwapChain( HWND hwnd );
 	bool createBackBufferTargets();
 	void releaseBackBufferTargets();
 	// Объект состояния пайплайна из описания: из библиотеки на диске или собрать (и положить в библиотеку)

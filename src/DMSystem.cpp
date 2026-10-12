@@ -162,11 +162,10 @@ LRESULT DMSystem::wndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 {
 	WNDCLASSEX wc;
-	DEVMODE dmScreenSettings;
 	int posX, posY;
 
 	// Пиксели окна — физические: без этого Windows с масштабом экрана 150 % растягивает окно 1920 × 1080 до 2880 × 1620,
-	// больше экрана 2560 × 1440, и картинка размыта. Задний буфер от этого не зависит (BackBufferWidth в settings.ini)
+	// больше экрана 2560 × 1440, и картинка размыта; «desktop» — настоящее разрешение монитора
 	SetProcessDpiAwarenessContext( DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 );
 
 	// Get the instance of this application.
@@ -192,36 +191,30 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	// Register the window class.
 	RegisterClassEx( &wc );
 
-	// Determine the resolution of the clients desktop screen.
-	screenWidth = GetSystemMetrics( SM_CXSCREEN );
-	screenHeight = GetSystemMetrics( SM_CYSCREEN );
-
-	// Setup the screen settings depending on whether it is running in full screen or in windowed mode.
 	DWORD style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_POPUP;
-	int windowWidth = screenWidth;
-	int windowHeight = screenHeight;
-	if( m_config.fullScreen() )
+	int windowWidth = 0;
+	int windowHeight = 0;
+	if( m_config.desktopResolution() )
 	{
-		// If full screen set the screen to maximum size of the users desktop and 32bit.
-		memset( &dmScreenSettings, 0, sizeof( dmScreenSettings ) );
-		dmScreenSettings.dmSize = sizeof( dmScreenSettings );
-		dmScreenSettings.dmPelsWidth = (unsigned long)screenWidth;
-		dmScreenSettings.dmPelsHeight = (unsigned long)screenHeight;
-		dmScreenSettings.dmBitsPerPel = 32;
-		dmScreenSettings.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
-
-		// Change the display settings to full screen.
-		ChangeDisplaySettings( &dmScreenSettings, CDS_FULLSCREEN );
-
-		// Set the position of the window to the top left corner.
-		posX = posY = 0;
+		// По умолчанию — окно без рамки на весь основной монитор в его разрешении (borderless, «оконный полноэкранный»
+		// режим игр): режим монитора не меняется, Alt+Tab мгновенный, а flip model у окна на весь экран отдаёт кадр
+		// монитору без композиции
+		MONITORINFO monitor = {};
+		monitor.cbSize = sizeof( monitor );
+		GetMonitorInfo( MonitorFromPoint( POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY ), &monitor );
+		posX = monitor.rcMonitor.left;
+		posY = monitor.rcMonitor.top;
+		windowWidth = monitor.rcMonitor.right - monitor.rcMonitor.left;
+		windowHeight = monitor.rcMonitor.bottom - monitor.rcMonitor.top;
+		screenWidth = static_cast<int16_t>( windowWidth );
+		screenHeight = static_cast<int16_t>( windowHeight );
 	}
 	else
 	{
-		// Оконный режим — обычное окно с заголовком (перетаскивается, не закрывает экран) и клиентской областью
-		// ScreenWidth × ScreenHeight из settings.ini; размер не меняется, окно — в рабочей области по центру
-		screenWidth = m_config.screenWidth();
-		screenHeight = m_config.screenHeight();
+		// Заданное разрешение (Resolution=1920x1080, -resolution) — обычное окно с заголовком (перетаскивается, не
+		// закрывает экран) и такой клиентской областью; размер не меняется, окно — в рабочей области по центру
+		screenWidth = static_cast<int16_t>( m_config.windowWidth() );
+		screenHeight = static_cast<int16_t>( m_config.windowHeight() );
 		style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 		RECT frame = { 0, 0, screenWidth, screenHeight };
 		AdjustWindowRectExForDpi( &frame, style, FALSE, WS_EX_APPWINDOW, GetDpiForSystem() );
@@ -245,12 +238,6 @@ void DMSystem::ShutdownWindows( )
 	// Курсор виден и свободен (выход посреди поворота мышью — ClipCursor в DMGraphics::updateMouseLook)
 	ClipCursor( nullptr );
 	ShowCursor( true );
-
-	// Fix the display settings if leaving full screen mode.
-	if( m_config.fullScreen() )
-	{
-		ChangeDisplaySettings( nullptr, 0 );
-	}
 
 	// Remove the window.
 	DestroyWindow( m_hwnd );

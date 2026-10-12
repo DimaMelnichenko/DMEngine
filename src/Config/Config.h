@@ -9,23 +9,18 @@ public:
 	~Config();
 
 	bool readConfig( const std::string& file );
-	// Параметры командной строки поверх settings.ini: -camera x,y,z[,pitch,yaw], -level имя, -nogui, -nomouse, -remote
+	// Параметры командной строки поверх settings.ini: -camera x,y,z[,pitch,yaw], -level имя, -resolution desktop|WxH,
+	// -nogui, -nomouse, -remote
 	void parseCommandLine( const std::string& commandLine );
 
-	bool fullScreen() const		{ return m_fullScreen; }
 	bool vSync() const			{ return m_vSync; }
 	float screenDepth() const	{ return m_screenDepth; }
 	float screenNear() const	{ return m_screenNear; }
-	float screenWidth() const	{ return m_screenWidth; }
-	float screenHeight()  const	{ return m_screenHeight; }	
-	float backBufferWidth() const
-	{
-		return m_backBufferWidth;
-	}
-	float backBufferHeight()  const
-	{
-		return m_backBufferHeight;
-	}
+	// Окно и задний буфер (Resolution в settings.ini, -resolution): desktop — окно без рамки на весь основной монитор в его
+	// разрешении; W×H — окно с заголовком и клиентской областью W×H (физические пиксели). Задний буфер — клиентская область
+	bool desktopResolution() const	{ return m_windowWidth == 0 || m_windowHeight == 0; }
+	uint32_t windowWidth() const	{ return m_windowWidth; }
+	uint32_t windowHeight() const	{ return m_windowHeight; }
 	// Размер среза каскадной карты теней, текселей (ShadowMapResolution) — настройка качества, а не данные уровня
 	uint32_t shadowMapResolution() const	{ return m_shadowMapResolution; }
 	// Depth prepass (DepthPrepass, как r.EarlyZPass в UE): глубина непрозрачных до прохода цвета. Нет строки — включён
@@ -49,14 +44,11 @@ public:
 	bool remoteControl() const				{ return m_remoteControl; }
 
 private:
-	bool m_fullScreen = false;
 	bool m_vSync = true;
 	float m_screenDepth = 2000.0f;
 	float m_screenNear = 1.0f;
-	float m_screenWidth = 1024.0f;
-	float m_screenHeight = 576.0f;
-	float m_backBufferWidth = 1920.0f;
-	float m_backBufferHeight = 1080.0f;
+	uint32_t m_windowWidth = 0;		// 0 — desktop
+	uint32_t m_windowHeight = 0;
 	uint32_t m_shadowMapResolution = 2048;
 	bool m_depthPrepass = true;
 	bool m_gpuValidation = true;

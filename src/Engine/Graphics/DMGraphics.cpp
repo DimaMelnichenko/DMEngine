@@ -63,10 +63,10 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 
 	timeStart = TIME_POINT();
 	DMD3D::Settings d3dSettings;
-	d3dSettings.backBufferWidth = static_cast<uint32_t>( m_config.backBufferWidth() );
-	d3dSettings.backBufferHeight = static_cast<uint32_t>( m_config.backBufferHeight() );
+	// Задний буфер — клиентская область окна (Resolution в settings.ini, -resolution)
+	d3dSettings.backBufferWidth = static_cast<uint32_t>( screenWidth );
+	d3dSettings.backBufferHeight = static_cast<uint32_t>( screenHeight );
 	d3dSettings.vsync = m_config.vSync();
-	d3dSettings.fullscreen = m_config.fullScreen();
 	d3dSettings.gpuValidation = m_config.gpuValidation();
 	result = DMD3D::instance().initialize( d3dSettings, hwnd );
 	LOG( "Initialize the Direct3D object ms: " + TIME_PRINT( timeStart ) );

@@ -96,7 +96,7 @@ bool DMD3D::initialize( const Settings& settings, HWND hwnd )
 	m_vsync = settings.vsync;
 
 	if( !selectAdapter() || !createDevice( settings.gpuValidation ) || !createQueuesAndFrames() || !createDescriptorHeaps() ||
-		!createSwapChain( hwnd, settings.fullscreen ) || !createBackBufferTargets() || !createRootSignature() || !createCommandSignature() )
+		!createSwapChain( hwnd ) || !createBackBufferTargets() || !createRootSignature() || !createCommandSignature() )
 		return false;
 	if( !m_constantRing.initialize( m_device.get(), constantRingBytes, frameCount ) )
 		return false;
@@ -520,24 +520,22 @@ bool DMD3D::createCommandSignature()
 	return true;
 }
 
-bool DMD3D::createSwapChain( HWND hwnd, bool fullscreen )
+bool DMD3D::createSwapChain( HWND hwnd )
 {
 	// Swap chain — flip model (единственная в D3D12): кадр отдаётся композитору без копирования, задних буферов два.
 	// Без vsync — DXGI_PRESENT_ALLOW_TEARING, иначе flip model упёрлась бы в частоту монитора. Waitable object —
-	// кадр начинается, когда очередь кадров короче предела (waitForNextFrame). Оба флага — только в окне
-	const bool windowed = !fullscreen;
+	// кадр начинается, когда очередь кадров короче предела (waitForNextFrame). Окно всегда оконное: «на весь экран» —
+	// окно без рамки размером с монитор (DMSystem::InitializeWindows), без исключительного полноэкранного режима
 	m_allowTearing = false;
 	IDXGIFactory5* factory5Ptr = nullptr;
-	if( windowed && SUCCEEDED( m_factory->QueryInterface( __uuidof( IDXGIFactory5 ), (void**)&factory5Ptr ) ) )
+	if( SUCCEEDED( m_factory->QueryInterface( __uuidof( IDXGIFactory5 ), (void**)&factory5Ptr ) ) )
 	{
 		auto factory5 = make_com_ptr<IDXGIFactory5>( factory5Ptr );
 		BOOL allowTearing = FALSE;
 		if( SUCCEEDED( factory5->CheckFeatureSupport( DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof( allowTearing ) ) ) )
 			m_allowTearing = allowTearing != FALSE;
 	}
-	m_swapChainFlags = 0;
-	if( windowed )
-		m_swapChainFlags = ( m_allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0 ) | DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+	m_swapChainFlags = ( m_allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0 ) | DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
 	DXGI_SWAP_CHAIN_DESC1 desc = {};
 	desc.Width = m_backBufferWidth;
@@ -551,11 +549,10 @@ bool DMD3D::createSwapChain( HWND hwnd, bool fullscreen )
 	desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
 	desc.Flags = m_swapChainFlags;
 
-	// Частота обновления в полноэкранном режиме — какую выберет DXGI (0 / 1)
 	DXGI_SWAP_CHAIN_FULLSCREEN_DESC fullscreenDesc = {};
 	fullscreenDesc.RefreshRate.Numerator = 0;
 	fullscreenDesc.RefreshRate.Denominator = 1;
-	fullscreenDesc.Windowed = windowed;
+	fullscreenDesc.Windowed = TRUE;
 
 	IDXGISwapChain1* swapChain1 = nullptr;
 	if( FAILED( m_factory->CreateSwapChainForHwnd( m_directQueue.get(), hwnd, &desc, &fullscreenDesc, nullptr, &swapChain1 ) ) )

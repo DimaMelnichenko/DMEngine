@@ -1,13 +1,14 @@
 """Удалённое управление запущенным DMEngine — как консоль и Remote Control API в UE (docs/remote.md).
 
-    python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles]
+    python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles]
     python Tools/engine.py <команда ...>         одна команда, печатает ответ; код выхода 1 при error
     python Tools/engine.py run сценарий.txt       команды из файла по строке (# — комментарий), за одно подключение
     python Tools/engine.py stop                   quit, ожидание выхода, ошибки из log.txt
 
-start запускает cmake-build-cli-<config>\\DMEngine.exe из корня проекта с -remote (канал \\\\.\\pipe\\DMEngine) и
--nomouse (без --mouse: камера не следует за мышью) и ждёт конца инициализации. Команды движка — help; путь снимка
-(screenshot файл) считается от текущей папки. Сообщения скрипта — ASCII (правило Tools/).
+start запускает cmake-build-cli-<config>\\DMEngine.exe из корня проекта с -remote (канал \\\\.\\pipe\\DMEngine),
+-nomouse (без --mouse: камера не следует за мышью) и -resolution (по умолчанию 1920x1080 — окно с заголовком, кадры
+и замеры сравнимы между машинами; desktop — без рамки на весь монитор) и ждёт конца инициализации. Команды
+движка — help; путь снимка (screenshot файл) считается от текущей папки. Сообщения скрипта — ASCII (правило Tools/).
 """
 import argparse
 import ctypes
@@ -127,7 +128,7 @@ def start(args):
     exe = os.path.join(ROOT, 'cmake-build-cli-%s' % args.config.lower(), 'DMEngine.exe')
     if not os.path.exists(exe):
         raise SystemExit('error: not found %s, build it first: Tools\\build.cmd %s' % (exe, args.config.lower()))
-    engine_args = ['-remote']
+    engine_args = ['-remote', '-resolution', args.resolution]
     if not args.mouse:
         engine_args.append('-nomouse')
     if args.nogui:
@@ -210,6 +211,8 @@ def main():
         parser.add_argument('--config', choices=['Debug', 'Release'], default='Release')
         parser.add_argument('--camera', help='x,y,z[,pitch,yaw] start camera')
         parser.add_argument('--level', help='level from Levels')
+        parser.add_argument('--resolution', default='1920x1080',
+                            help='window and back buffer: WxH (window with a title) or desktop (borderless, whole monitor)')
         parser.add_argument('--nogui', action='store_true', help='no ImGui windows')
         parser.add_argument('--mouse', action='store_true', help='camera follows the mouse (no -nomouse)')
         parser.add_argument('--nowind', action='store_true', help='no wind: vegetation still, frames repeat to the pixel')
