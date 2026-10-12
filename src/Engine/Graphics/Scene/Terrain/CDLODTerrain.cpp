@@ -24,32 +24,6 @@ using namespace DirectX;
 namespace
 {
 
-// Диапазоны правил слоёв ↔ свойства подокна «Layer rules» (от, до): подокно, чтение свойств и сравнение с применёнными
-struct LayerRuleRange
-{
-	const char* name;
-	GS::TerrainLayerRules::Range GS::TerrainLayerRules::* field;
-	float low;
-	float high;
-	const char* unit;
-	const char* tooltip;
-};
-const LayerRuleRange layerRuleRanges[] = {
-	{ "Rock slope", &GS::TerrainLayerRules::rockSlope, 0.0f, 90.0f, "deg", "Rock on steep slopes: from, to (noise +-10 deg)" },
-	{ "Bedrock wear", &GS::TerrainLayerRules::bedrockWear, 0.0f, 10.0f, "", "Rock where the erosion wore the ground away: from, to" },
-	{ "Bedrock slope", &GS::TerrainLayerRules::bedrockSlope, 0.0f, 90.0f, "deg", "Worn bedrock only on slopes: from, to" },
-	{ "Snow height", &GS::TerrainLayerRules::snowHeight, 0.0f, 1.0f, "", "Snow above, share of the height multiplier: from, to" },
-	{ "Talus map", &GS::TerrainLayerRules::talusMap, 0.0f, 2.0f, "", "Scree of the erosion talus map: from, to" },
-	{ "Boulder slope", &GS::TerrainLayerRules::boulderSlope, 0.0f, 90.0f, "deg", "Stones on steepish slopes: from, to" },
-	{ "Gully flow", &GS::TerrainLayerRules::gullyFlow, 0.0f, 8.0f, "", "Gravel in gullies: log10 of the catchment, m2: from, to" },
-	{ "Gully slope", &GS::TerrainLayerRules::gullySlope, 0.0f, 90.0f, "deg", "Gully gravel only on slopes: from, to" },
-	{ "Moisture TWI", &GS::TerrainLayerRules::moistureTwi, 0.0f, 20.0f, "", "Wet ground by the topographic wetness index ln(a / tan b): from, to" },
-	{ "Treeline", &GS::TerrainLayerRules::treeline, 0.0f, 1.0f, "", "Forest ends higher, share of the height multiplier: from, to" },
-	{ "Forest slope", &GS::TerrainLayerRules::forestSlope, 0.0f, 90.0f, "deg", "No forest steeper: from, to" },
-	{ "Valley floor height", &GS::TerrainLayerRules::valleyFloorHeight, 0.0f, 1.0f, "", "Meadows of the valley floor lower: from, to" },
-	{ "Valley floor slope", &GS::TerrainLayerRules::valleyFloorSlope, 0.0f, 90.0f, "deg", "Valley floor only on flat ground: from, to" },
-};
-
 bool sphereIntersectsBox( const XMFLOAT3& center, float radius, const XMFLOAT3& boxMin, const XMFLOAT3& boxMax )
 {
 	float dx = std::max( { boxMin.x - center.x, 0.0f, center.x - boxMax.x } );
@@ -264,7 +238,7 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 	m_erodedDirectory = "Textures\\" + ( directory.empty() ? std::string() : directory + "\\" ) + "eroded";
 	m_generatedDirectory = "Textures\\" + ( directory.empty() ? std::string() : directory + "\\" ) + "generated";
 
-	// Роли слоёв в правилах слоёв (TerrainLayers.role): какой слой красят скала, снег, осыпи и травы
+	// Роли слоёв (TerrainLayers.role): какой слой красят скала, снег, осыпи и травы правил слоёв и галька русел
 	m_layerOf.fill( -1 );
 	if( DBConnector::instance().db().tableExists( "TerrainLayers" ) )
 	{
@@ -282,10 +256,13 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 			m_layerOf[static_cast<uint32_t>( role )] = roles.getColumn( "layer" ).getInt();
 		}
 	}
-	for( uint32_t role = 0; role < terrainLayerRoleCount; ++role )
+	for( uint32_t role = 0; role < terrainRuleRoleCount; ++role )
 		if( m_layerOf[role] < 0 )
 			LOG( std::string( "CDLOD terrain: no layer with role " ) + terrainLayerRoleName( static_cast<TerrainLayerRole>( role ) ) +
 				 " in TerrainLayers, its weight goes to grass_dry" );
+	m_channelLayer = m_layerOf[static_cast<uint32_t>( TerrainLayerRole::channelBed )];
+	if( m_channelLayer < 0 )
+		LOG( "CDLOD terrain: no layer with role channel_bed in TerrainLayers, channel beds are not painted" );
 	return true;
 }
 
@@ -462,8 +439,7 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 			LOG( "CDLOD terrain: water channels are not built" );
 			return false;
 		}
-		applyTerrainEdits( field, TerrainHydrology::loweringEdits( m_hydrology, water->channels, water->staticWater ), &coverage );
-		m_channelLayer = water->channels.paintLayer;
+		applyTerrainEdits( field, TerrainHydrology::loweringEdits( m_hydrology, water->staticWater, m_channelLayer ), &coverage );
 		m_staticWater = water->staticWater;
 		m_hasHydrology = true;
 		for( const std::string& warning : m_hydrology.warnings )
@@ -579,10 +555,14 @@ bool CDLODTerrain::layerRulesChanged() const
 	if( !m_initialized )
 		return false;
 	const TerrainLayerRules rules = layerRulesFromProperties();
-	for( const LayerRuleRange& range : layerRuleRanges )
-		if( ( rules.*range.field ).from != ( m_layerRules.*range.field ).from || ( rules.*range.field ).to != ( m_layerRules.*range.field ).to )
+	for( const TerrainLayerRuleField& field : terrainLayerRuleFields() )
+	{
+		if( field.range ? ( rules.*field.range ).from != ( m_layerRules.*field.range ).from ||
+						  ( rules.*field.range ).to != ( m_layerRules.*field.range ).to
+						: rules.*field.value != m_layerRules.*field.value )
 			return true;
-	return rules.snowNorth != m_layerRules.snowNorth;
+	}
+	return false;
 }
 
 bool CDLODTerrain::rebuildMasks()
@@ -617,7 +597,6 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 		field.heights = m_baseHeights.data();
 		field.rowPitch = m_baseSize;
 	}
-	const std::vector<float> catchment = TerrainHydrology::catchment( field );
 	std::vector<float> water;
 	if( m_hasHydrology && m_hydrology.size == field.size )
 	{
@@ -628,18 +607,61 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 				( i < m_hydrology.staticWater.size() && m_hydrology.staticWater[i].w > -1e8f ) )
 				water[i] = 1.0f;
 	}
-	TerrainMaskInputs inputs;
-	inputs.field = field;
-	inputs.wear = &m_erosionWear;
-	inputs.deposition = &m_erosionDeposition;
-	inputs.talus = &m_erosionTalus;
-	inputs.catchment = &catchment;
-	inputs.water = water.empty() ? nullptr : &water;
-	inputs.layerOf = m_layerOf;
-	if( !TerrainMasks::build( inputs, m_layerRules, m_masks ) )
+
+	// Кэш правил, как eroded\: отпечаток входов — рельеф до русел, карты эрозии, вода, роли слоёв, поля правил и сборка
+	// TerrainMasks.cpp (правка формул меняет его сама); совпал — слои и маски из копии в generated\ (key.txt: ключ и имена
+	// масок). Веса округляются до 8 бит и после расчёта (TerrainMasks::quantize) — из кэша выходит то же самое
+	Fingerprint key;
+	const char* stamp = TerrainMasks::codeStamp();
+	key.add( stamp, std::strlen( stamp ) );
+	key.add( field.size );
+	key.add( field.texelSize );
+	key.add( field.heightMultiplier );
+	for( uint32_t row = 0; row < field.size; ++row )
+		key.addWords( field.heights + static_cast<size_t>( row ) * field.rowPitch, field.size * sizeof( float ) );
+	for( const std::vector<float>* map : { &m_erosionWear, &m_erosionDeposition, &m_erosionTalus, &water } )
 	{
-		LOG( "CDLOD terrain: layers and masks are not built" );
-		return false;
+		key.add( map->size() );
+		key.addWords( map->data(), map->size() * sizeof( float ) );
+	}
+	key.add( m_layerOf );
+	for( const TerrainLayerRuleField& rule : terrainLayerRuleFields() )
+	{
+		if( rule.range )
+			key.add( m_layerRules.*rule.range );
+		else
+			key.add( m_layerRules.*rule.value );
+	}
+	char keyText[32];
+	std::snprintf( keyText, sizeof( keyText ), "%016llx", static_cast<unsigned long long>( key.value ) );
+	const std::string keyPath = m_generatedDirectory + "\\key.txt";
+	std::string cachedKey;
+	std::vector<std::string> cachedNames;
+	{
+		std::ifstream keyFile( keyPath );
+		std::getline( keyFile, cachedKey );
+		for( std::string name; std::getline( keyFile, name ); )
+			if( !name.empty() )
+				cachedNames.push_back( name );
+	}
+	const bool cached = cachedKey == keyText && !cachedNames.empty() && m_masks.load( m_generatedDirectory, field.size, cachedNames );
+	if( !cached )
+	{
+		const std::vector<float> catchment = TerrainHydrology::catchment( field );
+		TerrainMaskInputs inputs;
+		inputs.field = field;
+		inputs.wear = &m_erosionWear;
+		inputs.deposition = &m_erosionDeposition;
+		inputs.talus = &m_erosionTalus;
+		inputs.catchment = &catchment;
+		inputs.water = water.empty() ? nullptr : &water;
+		inputs.layerOf = m_layerOf;
+		if( !TerrainMasks::build( inputs, m_layerRules, m_masks ) )
+		{
+			LOG( "CDLOD terrain: layers and masks are not built" );
+			return false;
+		}
+		m_masks.quantize();
 	}
 
 	// Маски — текстуры хранилища по имени (ScatterLayers.mask, ParticleEmitters.mask): пересоздаются на месте, виды у
@@ -658,11 +680,24 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 		if( !System::textures().setGenerated( mask.name, desc, data ) )
 			LOG( "CDLOD terrain: mask " + mask.name + " is not created" );
 	}
-	if( !m_masks.save( m_generatedDirectory ) )
-		LOG( "CDLOD terrain: can`t write layers and masks to " + m_generatedDirectory );
+	if( !cached )
+	{
+		// Копия на диске — и кэш: ключ пишется после файлов, а прежний убирается до них (прервали запись — промах)
+		std::error_code error;
+		std::filesystem::remove( keyPath, error );
+		if( m_masks.save( m_generatedDirectory ) )
+		{
+			std::ofstream keyFile( keyPath );
+			keyFile << keyText << "\n";
+			for( const TerrainMasks::Mask& mask : m_masks.masks )
+				keyFile << mask.name << "\n";
+		}
+		else
+			LOG( "CDLOD terrain: can`t write layers and masks to " + m_generatedDirectory );
+	}
 	char text[64];
 	std::snprintf( text, sizeof( text ), ", ms: %.1f", std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
-	LOG( "Terrain layers and masks: " + m_masks.summary() + text );
+	LOG( std::string( "Terrain layers and masks" ) + ( cached ? " (from cache)" : "" ) + ": " + m_masks.summary() + text );
 	return true;
 }
 
@@ -1129,37 +1164,47 @@ void CDLODTerrain::addErosionProperties( const TerrainErosionSettings& erosion )
 
 void CDLODTerrain::addLayerRulesProperties( const TerrainLayerRules& rules )
 {
+	// Поля правил — одной таблицей (terrainLayerRuleFields): подокно на группу, диапазон — парой полей «от, до»
 	m_layerRulesProperties.setName( "Layer rules" );
-	for( const LayerRuleRange& range : layerRuleRanges )
+	for( const TerrainLayerRuleField& field : terrainLayerRuleFields() )
 	{
-		const TerrainLayerRules::Range& value = rules.*range.field;
-		Property* property = m_layerRulesProperties.insert( range.name, XMFLOAT2( value.from, value.to ) );
-		property->setLow( range.low );
-		property->setHigh( range.high );
-		property->setTooltip( std::string( range.tooltip ) + "; the layers and masks are rebuilt when the edit ends" );
-		if( range.unit[0] )
-			property->setUnit( range.unit );
+		auto group = std::find_if( m_layerRuleGroups.begin(), m_layerRuleGroups.end(),
+								   [&field]( const auto& entry ) { return entry.first == field.group; } );
+		if( group == m_layerRuleGroups.end() )
+		{
+			m_layerRuleGroups.emplace_back( field.group, std::make_unique<PropertyContainer>( field.group ) );
+			m_layerRulesProperties.addSubContainer( m_layerRuleGroups.back().second.get() );
+			group = m_layerRuleGroups.end() - 1;
+		}
+		Property* property = field.range ? group->second->insert( field.name, XMFLOAT2( ( rules.*field.range ).from, ( rules.*field.range ).to ) )
+										 : group->second->insert( field.name, rules.*field.value );
+		property->setLow( field.low );
+		property->setHigh( field.high );
+		property->setTooltip( std::string( field.tooltip ) + "; the layers and masks are rebuilt when the edit ends" );
+		if( field.unit[0] )
+			property->setUnit( field.unit );
 	}
-	Property* north = m_layerRulesProperties.insert( "Snow north", rules.snowNorth );
-	north->setLow( 0.0f );
-	north->setHigh( 0.3f );
-	north->setTooltip( "Snow lower on north slopes, share of the height multiplier" );
 	m_properties.addSubContainer( &m_layerRulesProperties );
 }
 
 TerrainLayerRules CDLODTerrain::layerRulesFromProperties() const
 {
 	TerrainLayerRules rules = m_layerRules;
-	const PropertyContainer& p = m_layerRulesProperties;
-	for( const LayerRuleRange& range : layerRuleRanges )
+	for( const TerrainLayerRuleField& field : terrainLayerRuleFields() )
 	{
-		if( !p.exists( range.name ) )
+		const auto group = std::find_if( m_layerRuleGroups.begin(), m_layerRuleGroups.end(),
+										 [&field]( const auto& entry ) { return entry.first == field.group; } );
+		if( group == m_layerRuleGroups.end() || !group->second->exists( field.name ) )
 			continue;
-		const XMFLOAT2 value = p[range.name].data<XMFLOAT2>();
-		rules.*range.field = { value.x, value.y };
+		const Property& property = ( *group->second )[field.name];
+		if( field.range )
+		{
+			const XMFLOAT2 value = property.data<XMFLOAT2>();
+			rules.*field.range = { value.x, value.y };
+		}
+		else
+			rules.*field.value = property.data<float>();
 	}
-	if( p.exists( "Snow north" ) )
-		rules.snowNorth = p["Snow north"].data<float>();
 	return rules;
 }
 

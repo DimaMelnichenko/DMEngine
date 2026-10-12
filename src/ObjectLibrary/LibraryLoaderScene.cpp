@@ -74,23 +74,6 @@ const std::pair<const char*, int32_t GS::TerrainErosionSettings::*> erosionIntCo
 	{ "thermal_iterations", &GS::TerrainErosionSettings::thermalIterations },
 };
 
-// Колонки TerrainLayerRules ↔ диапазоны TerrainLayerRules: <колонка>_from, <колонка>_to
-const std::pair<const char*, GS::TerrainLayerRules::Range GS::TerrainLayerRules::*> layerRuleColumns[] = {
-	{ "rock_slope", &GS::TerrainLayerRules::rockSlope },
-	{ "bedrock_wear", &GS::TerrainLayerRules::bedrockWear },
-	{ "bedrock_slope", &GS::TerrainLayerRules::bedrockSlope },
-	{ "snow_height", &GS::TerrainLayerRules::snowHeight },
-	{ "talus_map", &GS::TerrainLayerRules::talusMap },
-	{ "boulder_slope", &GS::TerrainLayerRules::boulderSlope },
-	{ "gully_flow", &GS::TerrainLayerRules::gullyFlow },
-	{ "gully_slope", &GS::TerrainLayerRules::gullySlope },
-	{ "moisture_twi", &GS::TerrainLayerRules::moistureTwi },
-	{ "treeline", &GS::TerrainLayerRules::treeline },
-	{ "forest_slope", &GS::TerrainLayerRules::forestSlope },
-	{ "valley_floor_height", &GS::TerrainLayerRules::valleyFloorHeight },
-	{ "valley_floor_slope", &GS::TerrainLayerRules::valleyFloorSlope },
-};
-
 }
 
 void LibraryLoader::loadTerrainLayerRules( uint32_t terrainId, LevelDescription& level )
@@ -102,18 +85,33 @@ void LibraryLoader::loadTerrainLayerRules( uint32_t terrainId, LevelDescription&
 	query.bind( ":terrain", terrainId );
 	if( !query.executeStep() )
 		return;
+	// Колонки — по таблице полей правил (GS::terrainLayerRuleFields): диапазон — <колонка>_from и _to; нет колонки или NULL —
+	// значение по умолчанию
 	GS::TerrainLayerRules& rules = level.terrainLayerRules;
-	for( const auto& [column, field] : layerRuleColumns )
+	auto read = [&query]( const std::string& column, float& value )
 	{
-		const std::string from = std::string( column ) + "_from";
-		const std::string to = std::string( column ) + "_to";
-		if( !query.getColumn( from.c_str() ).isNull() )
-			( rules.*field ).from = static_cast<float>( query.getColumn( from.c_str() ).getDouble() );
-		if( !query.getColumn( to.c_str() ).isNull() )
-			( rules.*field ).to = static_cast<float>( query.getColumn( to.c_str() ).getDouble() );
+		const int index = query.getColumnIndex( column.c_str() );
+		if( !query.getColumn( index ).isNull() )
+			value = static_cast<float>( query.getColumn( index ).getDouble() );
+	};
+	for( const GS::TerrainLayerRuleField& field : GS::terrainLayerRuleFields() )
+	{
+		const std::string column = field.column;
+		try
+		{
+			if( field.range )
+			{
+				read( column + "_from", ( rules.*field.range ).from );
+				read( column + "_to", ( rules.*field.range ).to );
+			}
+			else
+				read( column, rules.*field.value );
+		}
+		catch( const SQLite::Exception& )
+		{
+			LOG( "TerrainLayerRules: no column " + column + ", the default is used" );
+		}
 	}
-	if( !query.getColumn( "snow_north" ).isNull() )
-		rules.snowNorth = static_cast<float>( query.getColumn( "snow_north" ).getDouble() );
 }
 
 void LibraryLoader::loadTerrainErosion( uint32_t terrainId, LevelDescription& level )
@@ -151,8 +149,6 @@ void LibraryLoader::loadWaterChannels( uint32_t waterSimulationId, GS::WaterChan
 			channels.*field = static_cast<float>( query.getColumn( column ).getDouble() );
 	if( !query.getColumn( "smooth" ).isNull() )
 		channels.smooth = query.getColumn( "smooth" ).getInt();
-	if( !query.getColumn( "paint_layer" ).isNull() )
-		channels.paintLayer = query.getColumn( "paint_layer" ).getInt();
 }
 
 // Множители кривой русла ↔ колонки Streams — одна таблица для загрузки и сохранения
@@ -353,20 +349,35 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			// Правила слоёв: строка TerrainLayerRules террейна (нет — появится)
 			if( db.tableExists( "TerrainLayerRules" ) )
 			{
-				std::string columns = "terrain, snow_north";
-				std::string values = ":terrain, :snow_north";
-				for( const auto& [column, field] : layerRuleColumns )
+				// Колонки — по таблице полей правил (GS::terrainLayerRuleFields)
+				std::string columns = "terrain";
+				std::string values = ":terrain";
+				for( const GS::TerrainLayerRuleField& field : GS::terrainLayerRuleFields() )
 				{
-					columns += std::string( ", " ) + column + "_from, " + column + "_to";
-					values += std::string( ", :" ) + column + "_from, :" + column + "_to";
+					const std::string column = field.column;
+					if( field.range )
+					{
+						columns += ", " + column + "_from, " + column + "_to";
+						values += ", :" + column + "_from, :" + column + "_to";
+					}
+					else
+					{
+						columns += ", " + column;
+						values += ", :" + column;
+					}
 				}
 				SQLite::Statement updateRules( db, "INSERT OR REPLACE INTO TerrainLayerRules (" + columns + ") VALUES (" + values + ")" );
 				updateRules.bind( ":terrain", terrain->id );
-				updateRules.bind( ":snow_north", dbValue( terrain->layerRules.snowNorth ) );
-				for( const auto& [column, field] : layerRuleColumns )
+				for( const GS::TerrainLayerRuleField& field : GS::terrainLayerRuleFields() )
 				{
-					updateRules.bind( std::string( ":" ) + column + "_from", dbValue( ( terrain->layerRules.*field ).from ) );
-					updateRules.bind( std::string( ":" ) + column + "_to", dbValue( ( terrain->layerRules.*field ).to ) );
+					const std::string column = field.column;
+					if( field.range )
+					{
+						updateRules.bind( ":" + column + "_from", dbValue( ( terrain->layerRules.*field.range ).from ) );
+						updateRules.bind( ":" + column + "_to", dbValue( ( terrain->layerRules.*field.range ).to ) );
+					}
+					else
+						updateRules.bind( ":" + column, dbValue( terrain->layerRules.*field.value ) );
 				}
 				updateRules.exec();
 			}
@@ -500,8 +511,8 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			updateWater.exec();
 
 			// Русла конвейера: строка на строку WaterSimulation (нет — создаётся)
-			std::string columns = "water_simulation, smooth, paint_layer";
-			std::string values = ":id, :smooth, :paintLayer";
+			std::string columns = "water_simulation, smooth";
+			std::string values = ":id, :smooth";
 			for( const auto& [column, field] : channelColumns )
 			{
 				columns += std::string( ", " ) + column;
@@ -510,7 +521,6 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			SQLite::Statement saveChannels( db, "INSERT OR REPLACE INTO WaterChannels (" + columns + ") VALUES (" + values + ")" );
 			saveChannels.bind( ":id", *level.waterSimulationId );
 			saveChannels.bind( ":smooth", water->channels.smooth );
-			saveChannels.bind( ":paintLayer", water->channels.paintLayer );
 			for( const auto& [column, field] : channelColumns )
 				saveChannels.bind( std::string( ":" ) + column, dbValue( water->channels.*field ) );
 			saveChannels.exec();

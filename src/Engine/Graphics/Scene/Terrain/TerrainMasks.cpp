@@ -155,9 +155,12 @@ struct Octave
 	float weight;
 };
 
-Field fbm( uint32_t size, float texelSize, std::initializer_list<Octave> octaves, uint32_t seed )
+// scale — множитель длин волн всех октав (масштаб шума в окне правил)
+Field fbm( uint32_t size, float texelSize, std::initializer_list<Octave> octaves, uint32_t seed, float scale = 1.0f )
 {
-	const std::vector<Octave> list( octaves );
+	std::vector<Octave> list( octaves );
+	for( Octave& octave : list )
+		octave.wavelength *= std::max( scale, 1e-3f );
 	Field result = generate( size, [&]( size_t i )
 	{
 		const float x = ( i % size ) * texelSize;
@@ -176,6 +179,12 @@ Field fbm( uint32_t size, float texelSize, std::initializer_list<Octave> octaves
 	return result;
 }
 
+// Радиус размытия из поля правил (тексели, дробное — к ближнему целому)
+int blurRadius( float texels )
+{
+	return std::max( static_cast<int>( std::lround( texels ) ), 0 );
+}
+
 float at( const std::vector<float>* field, size_t i )
 {
 	return field && !field->empty() ? ( *field )[i] : 0.0f;
@@ -187,7 +196,7 @@ bool saveImage( const ScratchImage& image, const std::string& path )
 	return SUCCEEDED( SaveToDDSFile( image.GetImages(), image.GetImageCount(), image.GetMetadata(), DDS_FLAGS_NONE, wide.c_str() ) );
 }
 
-constexpr const char* roleNames[terrainLayerRoleCount] = { "grass_dry", "talus", "rock", "snow", "grass_wet" };
+constexpr const char* roleNames[terrainLayerRoleCount] = { "grass_dry", "talus", "rock", "snow", "grass_wet", "channel_bed" };
 
 }
 
@@ -239,24 +248,25 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 			northRaw[i] = std::clamp( dz / std::max( length, 1e-6f ), 0.0f, 1.0f ) * smoothstep( 5.0f, 15.0f, slopeRaw[i] );
 		}
 	} );
-	const Field slope = blur( slopeRaw, size, 3 );
-	const Field north = blur( northRaw, size, 3 );
+	const Field slope = blur( slopeRaw, size, blurRadius( s.slopeBlur ) );
+	const Field north = blur( northRaw, size, blurRadius( s.slopeBlur ) );
 
 	// Шумы: зерно — номер шума; длины волн — как прежние периоды сценария на карте 1 км
-	const Field noise = generate( size, [&, base = fbm( size, texel, { { 128, 0.35f }, { 64, 0.3f }, { 32, 0.2f }, { 16, 0.1f }, { 8, 0.05f } }, 11 )]( size_t i ) { return base[i] - 0.5f; } );
-	const Field patches = fbm( size, texel, { { 64, 0.5f }, { 32, 0.3f }, { 16, 0.2f } }, 21 );
+	const Field noise = generate( size, [&, base = fbm( size, texel, { { 128, 0.35f }, { 64, 0.3f }, { 32, 0.2f }, { 16, 0.1f }, { 8, 0.05f } }, 11,
+															s.layerNoiseScale )]( size_t i ) { return base[i] - 0.5f; } );
+	const Field patches = fbm( size, texel, { { 64, 0.5f }, { 32, 0.3f }, { 16, 0.2f } }, 21, s.layerNoiseScale );
 
 	// Водосбор: log10, м²; влажность — топографический индекс TWI = ln( a / tan β ) (Beven, Kirkby 1979; a — водосбор на
 	// метр ширины склона): низины, дно долины, русла; плюс конусы выноса (отложения эрозии)
 	const Field logFlow = generate( size, [&]( size_t i ) { return std::log10( std::max( at( inputs.catchment, i ), cellArea ) ); } );
-	const Field wear = blur( inputs.wear && !inputs.wear->empty() ? *inputs.wear : Field( cells, 0.0f ), size, 2 );
-	const Field talusMap = blur( inputs.talus && !inputs.talus->empty() ? *inputs.talus : Field( cells, 0.0f ), size, 2 );
+	const Field wear = blur( inputs.wear && !inputs.wear->empty() ? *inputs.wear : Field( cells, 0.0f ), size, blurRadius( s.erosionBlur ) );
+	const Field talusMap = blur( inputs.talus && !inputs.talus->empty() ? *inputs.talus : Field( cells, 0.0f ), size, blurRadius( s.erosionBlur ) );
 	const Field gully = blur( logFlow, size, 1 );
 	const Field moisture = blur( generate( size, [&]( size_t i )
 	{
 		const float twi = std::log( std::max( at( inputs.catchment, i ), cellArea ) / texel / std::max( gradient[i], 1e-3f ) );
 		return std::max( smoothstep( s.moistureTwi, twi ), smoothstep( 0.1f, 0.5f, at( inputs.deposition, i ) ) );
-	} ), size, 6 );
+	} ), size, blurRadius( s.moistureBlur ) );
 
 	// Скала: крутые склоны и коренная порода там, где вода сняла грунт; снег — вершины, на северных склонах ниже; осыпи —
 	// у подножий скал, крутоватые склоны, галька промоин на склонах (на дне долины — луг); остальное — трава
@@ -267,11 +277,12 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 		{
 			const size_t i = static_cast<size_t>( row ) * size + col;
 			const float bedrock = smoothstep( s.bedrockWear, wear[i] ) * smoothstep( s.bedrockSlope, slope[i] );
-			rock[i] = std::max( smoothstep( s.rockSlope, slope[i] + noise[i] * 10.0f ), 0.8f * bedrock );
-			snow[i] = smoothstep( s.snowHeight, height[i] + noise[i] * 0.08f + s.snowNorth * north[i] ) * ( 1.0f - 0.7f * rock[i] );
+			rock[i] = std::max( smoothstep( s.rockSlope, slope[i] + noise[i] * s.rockNoise ), s.bedrockShare * bedrock );
+			snow[i] = smoothstep( s.snowHeight, height[i] + noise[i] * s.snowNoise + s.snowNorth * north[i] ) * ( 1.0f - s.rockClearsSnow * rock[i] );
 			const float channel = smoothstep( s.gullyFlow, gully[i] ) * smoothstep( s.gullySlope, slope[i] );
-			boulders[i] = std::max( { smoothstep( s.talusMap, talusMap[i] ), 0.7f * smoothstep( s.boulderSlope, slope[i] + noise[i] * 6.0f ),
-									  0.8f * channel, 0.6f * smoothstep( 0.62f, 0.72f, patches[i] ) * smoothstep( 8.0f, 16.0f, slope[i] ) } ) *
+			boulders[i] = std::max( { smoothstep( s.talusMap, talusMap[i] ), s.boulderShare * smoothstep( s.boulderSlope, slope[i] + noise[i] * s.boulderNoise ),
+									  s.gullyShare * channel,
+									  s.pebblePatchShare * smoothstep( s.pebblePatches, patches[i] ) * smoothstep( s.pebblePatchSlope, slope[i] ) } ) *
 						  ( 1.0f - rock[i] ) * ( 1.0f - snow[i] );
 			grass[i] = std::max( 1.0f - rock[i] - snow[i] - boulders[i], 0.0f );
 			const float sum = std::max( rock[i] + snow[i] + boulders[i] + grass[i], 1e-6f );
@@ -283,19 +294,23 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	} );
 
 	// Две травы: сочная — на влажном, суше — выше, граница — пятнами (~30–130 м); мягкий край — смешивание по высоте в шейдере
-	const Field meadowNoise = fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 31 );
-	const Field byRole[terrainLayerRoleCount] = {
-		generate( size, [&]( size_t i ) { return grass[i] * ( 1.0f - smoothstep( 0.4f, 0.6f, 0.6f * moisture[i] + 0.4f * meadowNoise[i] ) ); } ),
+	const Field meadowNoise = fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 31, s.meadowNoiseScale );
+	const auto wetness = [&]( size_t i )
+	{
+		return smoothstep( s.wetGrass, s.wetGrassMoisture * moisture[i] + ( 1.0f - s.wetGrassMoisture ) * meadowNoise[i] );
+	};
+	const Field byRole[terrainRuleRoleCount] = {
+		generate( size, [&]( size_t i ) { return grass[i] * ( 1.0f - wetness( i ) ); } ),
 		boulders,
 		rock,
 		snow,
-		generate( size, [&]( size_t i ) { return grass[i] * smoothstep( 0.4f, 0.6f, 0.6f * moisture[i] + 0.4f * meadowNoise[i] ); } ) };
+		generate( size, [&]( size_t i ) { return grass[i] * wetness( i ); } ) };
 	// Вес роли — в её слой; слоя с ролью нет — сухой траве, нет и её — слою 0 (сумма весов остаётся 1)
 	for( Field& layer : result.splat )
 		layer.clear();
 	const int32_t fallback = inputs.layerOf[static_cast<uint32_t>( TerrainLayerRole::grassDry )] >= 0
 								 ? inputs.layerOf[static_cast<uint32_t>( TerrainLayerRole::grassDry )] : 0;
-	for( uint32_t role = 0; role < terrainLayerRoleCount; ++role )
+	for( uint32_t role = 0; role < terrainRuleRoleCount; ++role )
 	{
 		const int32_t wanted = inputs.layerOf[role];
 		const uint32_t layer = static_cast<uint32_t>( wanted >= 0 && wanted < static_cast<int32_t>( splatLayers ) ? wanted : fallback );
@@ -308,29 +323,32 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	}
 
 	// Маски расстановки: трава — на обеих травах, ромашки — пятнами в траве, гуще на влажном, камни — на осыпях
-	const Field flowerNoise = fbm( size, texel, { { 32, 0.5f }, { 16, 0.3f }, { 8, 0.2f } }, 41 );
+	const Field flowerNoise = fbm( size, texel, { { 32, 0.5f }, { 16, 0.3f }, { 8, 0.2f } }, 41, s.meadowNoiseScale );
 	result.masks.clear();
 	result.masks.push_back( { "mask_grass", grass } );
 	result.masks.push_back( { "mask_camomile", generate( size, [&]( size_t i )
 	{
-		return grass[i] * smoothstep( 0.62f, 0.72f, flowerNoise[i] + 0.15f * moisture[i] );
+		return grass[i] * smoothstep( s.flowers, flowerNoise[i] + s.flowersMoisture * moisture[i] );
 	} ) } );
 	result.masks.push_back( { "mask_pebbles", boulders } );
 
 	// Лес (как в Valley Benchmark: ель, сосна, берёза, кусты): не на скале, снегу и осыпях, не круче forestSlope, ниже границы
 	// леса, не в руслах и озёрах (их даёт конвейер; без воды уровня — сток больше ~4000 м²), на дне долины — луга с рощами
-	const Field forestNoise = generate( size, [&, base = fbm( size, texel, { { 128, 0.4f }, { 64, 0.3f }, { 32, 0.2f }, { 16, 0.1f } }, 51 )]( size_t i ) { return base[i] - 0.5f; } );
+	const float forestScale = s.forestNoiseScale;
+	const Field forestNoise = generate( size, [&, base = fbm( size, texel, { { 128, 0.4f }, { 64, 0.3f }, { 32, 0.2f }, { 16, 0.1f } }, 51,
+															  forestScale )]( size_t i ) { return base[i] - 0.5f; } );
 	const bool hasWater = inputs.water && !inputs.water->empty();
 	const Field stream = hasWater ? blur( dilate( *inputs.water, size, 1 ), size, 1 )
 								  : generate( size, [&, flow = blur( dilate( logFlow, size, 1 ), size, 1 )]( size_t i ) { return smoothstep( 3.6f, 4.2f, flow[i] ); } );
 	// Берега — полоса в несколько метров по обе стороны русла (ольха, ива)
-	const Field banksRaw = hasWater ? blur( dilate( *inputs.water, size, 3 ), size, 2 ) : blur( dilate( logFlow, size, 3 ), size, 2 );
-	const Field clearingNoise = fbm( size, texel, { { 64, 0.5f }, { 32, 0.3f }, { 16, 0.2f } }, 61 );
-	const Field stands[3] = { fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 71 ),
-							  fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 81 ),
-							  fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 91 ) };
-	const Field riparianNoise = fbm( size, texel, { { 32, 0.5f }, { 16, 0.5f } }, 101 );
-	const Field shrubPatches = fbm( size, texel, { { 32, 0.5f }, { 16, 0.3f }, { 8, 0.2f } }, 111 );
+	const int bankWidth = blurRadius( s.bankWidth );
+	const Field banksRaw = hasWater ? blur( dilate( *inputs.water, size, bankWidth ), size, 2 ) : blur( dilate( logFlow, size, bankWidth ), size, 2 );
+	const Field clearingNoise = fbm( size, texel, { { 64, 0.5f }, { 32, 0.3f }, { 16, 0.2f } }, 61, forestScale );
+	const Field stands[3] = { fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 71, forestScale ),
+							  fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 81, forestScale ),
+							  fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 91, forestScale ) };
+	const Field riparianNoise = fbm( size, texel, { { 32, 0.5f }, { 16, 0.5f } }, 101, forestScale );
+	const Field shrubPatches = fbm( size, texel, { { 32, 0.5f }, { 16, 0.3f }, { 8, 0.2f } }, 111, forestScale );
 	Field spruce( cells ), pine( cells ), birch( cells ), riparian( cells ), riparianGrass( cells ), shrubsSlope( cells );
 	forRows( size, [&]( uint32_t row )
 	{
@@ -338,24 +356,25 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 		{
 			const size_t i = static_cast<size_t>( row ) * size + col;
 			const float h = height[i];
-			const float treeline = 1.0f - smoothstep( s.treeline, h + 0.08f * forestNoise[i] + 0.04f * north[i] );
-			const float ground = ( 1.0f - rock[i] ) * ( 1.0f - snow[i] ) * ( 1.0f - 0.8f * smoothstep( 0.45f, 0.85f, boulders[i] ) );
-			const float steep = 1.0f - smoothstep( s.forestSlope, slope[i] + 6.0f * forestNoise[i] );
+			const float treelineHeight = h + s.treelineNoise * forestNoise[i] + s.treelineNorth * north[i];
+			const float treeline = 1.0f - smoothstep( s.treeline, treelineHeight );
+			const float ground = ( 1.0f - rock[i] ) * ( 1.0f - snow[i] ) * ( 1.0f - s.stonesClearForest * smoothstep( 0.45f, 0.85f, boulders[i] ) );
+			const float steep = 1.0f - smoothstep( s.forestSlope, slope[i] + s.forestSlopeNoise * forestNoise[i] );
 			const float floor = smoothstep( s.valleyFloorHeight, h ) * smoothstep( s.valleyFloorSlope, slope[i] );
-			const float clearings = smoothstep( 0.30f, 0.46f, clearingNoise[i] + 0.13f - 0.42f * floor );
+			const float clearings = smoothstep( s.clearings, clearingNoise[i] - s.valleyClearings * floor );
 			const float forest = ground * steep * treeline * ( 1.0f - stream[i] ) * clearings;
 
 			// Типы по месту: ель — выше и на северных склонах, сосна — на средних сухих склонах к солнцу, берёза — во влажных
 			// низинах; у каждого свой шум древостоев (~30–130 м), степень 3 — чистые древостои с узкой смешанной полосой
 			float types[3] = {
-				( 0.35f + 0.65f * smoothstep( 0.25f, 0.55f, h + 0.1f * forestNoise[i] ) ) * ( 0.7f + 0.3f * north[i] ) * ( 0.4f + 1.2f * stands[0][i] ),
-				smoothstep( 8.0f, 20.0f, slope[i] ) * ( 1.1f - moisture[i] ) * ( 1.0f - 0.6f * north[i] ) * smoothstep( 0.66f, 0.45f, h ) *
+				( 0.35f + 0.65f * smoothstep( s.spruceHeight, h + 0.1f * forestNoise[i] ) ) * ( 0.7f + 0.3f * north[i] ) * ( 0.4f + 1.2f * stands[0][i] ),
+				smoothstep( s.pineSlope, slope[i] ) * ( 1.1f - moisture[i] ) * ( 1.0f - 0.6f * north[i] ) * smoothstep( s.pineHeight, h ) *
 					( 0.4f + 1.2f * stands[1][i] ),
-				smoothstep( 0.2f, 0.7f, moisture[i] ) * smoothstep( 0.45f, 0.25f, h ) * smoothstep( 20.0f, 8.0f, slope[i] ) * ( 0.4f + 1.2f * stands[2][i] ) };
+				smoothstep( s.birchMoisture, moisture[i] ) * smoothstep( s.birchHeight, h ) * smoothstep( s.birchSlope, slope[i] ) * ( 0.4f + 1.2f * stands[2][i] ) };
 			float total = 0.0f;
 			for( float& type : types )
 			{
-				type = std::pow( std::max( type, 0.0f ) + 1e-4f, 3.0f );
+				type = std::pow( std::max( type, 0.0f ) + 1e-4f, s.standContrast );
 				total += type;
 			}
 			spruce[i] = forest * types[0] / total;
@@ -364,16 +383,16 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 
 			// Кусты: у русел — полоса шире самого русла; на склонах — стланик над границей леса и прогалины сухих склонов
 			const float banks = ( hasWater ? smoothstep( 0.25f, 0.75f, banksRaw[i] ) : smoothstep( 3.5f, 3.9f, banksRaw[i] ) ) * ground *
-								smoothstep( 0.78f, 0.70f, h );
+								smoothstep( s.riparianHeight, h );
 			// У русла — до кромки (размытая полоса русла гасит не целиком), в самой воде — нет
 			riparian[i] = banks * ( 1.0f - 0.7f * stream[i] ) * ( 1.0f - at( inputs.water, i ) ) *
-						  smoothstep( 0.30f, 0.50f, riparianNoise[i] + 0.2f * moisture[i] );
+						  smoothstep( s.riparianDensity, riparianNoise[i] + 0.2f * moisture[i] );
 			// Высокая трава у воды — та же полоса берегов, но сплошная: шум её только прореживает
 			riparianGrass[i] = banks * ( 1.0f - 0.7f * stream[i] ) * ( 1.0f - at( inputs.water, i ) ) *
-							   ( 0.5f + 0.5f * smoothstep( 0.25f, 0.55f, riparianNoise[i] + 0.2f * moisture[i] ) );
-			const float krummholz = smoothstep( 0.73f, 0.78f, h + 0.08f * forestNoise[i] + 0.04f * north[i] ) * smoothstep( 0.84f, 0.79f, h );
-			const float dryGaps = ( 1.0f - clearings ) * smoothstep( 12.0f, 20.0f, slope[i] ) * ( 1.0f - moisture[i] ) * ( 1.0f - floor );
-			shrubsSlope[i] = std::max( krummholz * smoothstep( 0.40f, 0.60f, shrubPatches[i] ), 0.5f * dryGaps ) * ground * steep * ( 1.0f - stream[i] );
+							   ( 0.5f + 0.5f * smoothstep( s.riparianGrass, riparianNoise[i] + 0.2f * moisture[i] ) );
+			const float krummholz = smoothstep( s.krummholzHeight, treelineHeight ) * smoothstep( s.krummholzTop, h );
+			const float dryGaps = ( 1.0f - clearings ) * smoothstep( s.dryGapsSlope, slope[i] ) * ( 1.0f - moisture[i] ) * ( 1.0f - floor );
+			shrubsSlope[i] = std::max( krummholz * smoothstep( 0.40f, 0.60f, shrubPatches[i] ), s.dryGapsShare * dryGaps ) * ground * steep * ( 1.0f - stream[i] );
 		}
 	} );
 	result.masks.push_back( { "mask_forest_spruce", std::move( spruce ) } );
@@ -382,6 +401,78 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	result.masks.push_back( { "mask_shrubs_riparian", std::move( riparian ) } );
 	result.masks.push_back( { "mask_grass_riparian", std::move( riparianGrass ) } );
 	result.masks.push_back( { "mask_shrubs_slope", std::move( shrubsSlope ) } );
+	return true;
+}
+
+const char* TerrainMasks::codeStamp()
+{
+	return __DATE__ " " __TIME__;
+}
+
+void TerrainMasks::quantize()
+{
+	auto round8 = []( std::vector<float>& values )
+	{
+		for( float& value : values )
+			value = static_cast<float>( std::lround( std::clamp( value, 0.0f, 1.0f ) * 255.0f ) ) / 255.0f;
+	};
+	for( std::vector<float>& layer : splat )
+		round8( layer );
+	for( Mask& mask : masks )
+		round8( mask.values );
+}
+
+bool TerrainMasks::load( const std::string& directory, uint32_t expectedSize, const std::vector<std::string>& names )
+{
+	auto read = [expectedSize]( const std::string& path, DXGI_FORMAT format, size_t slices, ScratchImage& image )
+	{
+		const std::wstring wide( path.begin(), path.end() );
+		if( FAILED( LoadFromDDSFile( wide.c_str(), DDS_FLAGS_NONE, nullptr, image ) ) )
+			return false;
+		const TexMetadata& meta = image.GetMetadata();
+		return meta.format == format && meta.width == expectedSize && meta.height == expectedSize && meta.arraySize == slices;
+	};
+	const size_t cells = static_cast<size_t>( expectedSize ) * expectedSize;
+	ScratchImage splatImage;
+	constexpr size_t slices = splatLayers / 4;
+	if( !read( directory + "\\splatmap.dds", DXGI_FORMAT_R8G8B8A8_UNORM, slices, splatImage ) )
+		return false;
+	TerrainMasks loaded;
+	loaded.size = expectedSize;
+	for( size_t slice = 0; slice < slices; ++slice )
+	{
+		const Image& image = *splatImage.GetImage( 0, slice, 0 );
+		for( size_t c = 0; c < 4; ++c )
+		{
+			std::vector<float>& layer = loaded.splat[slice * 4 + c];
+			layer.resize( cells );
+			bool used = false;
+			for( uint32_t y = 0; y < expectedSize; ++y )
+			{
+				const uint8_t* texel = image.pixels + y * image.rowPitch + c;
+				for( uint32_t x = 0; x < expectedSize; ++x, texel += 4 )
+				{
+					layer[static_cast<size_t>( y ) * expectedSize + x] = *texel / 255.0f;
+					used = used || *texel != 0;
+				}
+			}
+			if( !used )
+				layer.clear();
+		}
+	}
+	for( const std::string& name : names )
+	{
+		ScratchImage maskImage;
+		if( !read( directory + "\\" + name + ".dds", DXGI_FORMAT_R8_UNORM, 1, maskImage ) )
+			return false;
+		const Image& image = *maskImage.GetImage( 0, 0, 0 );
+		Mask mask{ name, std::vector<float>( cells ) };
+		for( uint32_t y = 0; y < expectedSize; ++y )
+			for( uint32_t x = 0; x < expectedSize; ++x )
+				mask.values[static_cast<size_t>( y ) * expectedSize + x] = image.pixels[y * image.rowPitch + x] / 255.0f;
+		loaded.masks.push_back( std::move( mask ) );
+	}
+	*this = std::move( loaded );
 	return true;
 }
 

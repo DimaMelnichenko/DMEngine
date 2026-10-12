@@ -651,7 +651,7 @@ const WaterSample water = sampleWater( uv );	// water.depth, water.velocity
 
 **Галька по дну** (режим `static`): клетки озёр в покраске правки `channels` — без гальки и без очистки растительности
 (`TerrainHydrology::loweringEdits`, `shaderLakeBeds`), их красит `terrain.ps` по глубине в точке — слой гальки русел
-(`g_waterBedLayer`) от 3 до 15 см воды; в simulated — по опусканию, как прежде.
+(роль `channel_bed` в `TerrainLayers.role`, `g_waterBedLayer`) от 3 до 15 см воды; в simulated — по опусканию, как прежде.
 
 ### Растительность
 

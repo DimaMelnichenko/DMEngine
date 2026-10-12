@@ -75,21 +75,85 @@ struct TerrainLayerRules
 		float from;
 		float to;
 	};
-	Range rockSlope{ 27.0f, 37.0f };		// скала — крутые склоны (± шум 10°)
-	Range bedrockWear{ 1.0f, 3.0f };		// и коренная порода в промоинах (размыв эрозии) на средних уклонах
+	// Скала и снег
+	Range rockSlope{ 27.0f, 37.0f };		// скала — крутые склоны, уклон ± шум rockNoise, градусы
+	float rockNoise = 10.0f;
+	Range bedrockWear{ 1.0f, 3.0f };		// и коренная порода в промоинах (размыв эрозии) на средних уклонах — доля bedrockShare
 	Range bedrockSlope{ 14.0f, 24.0f };
-	Range snowHeight{ 0.80f, 0.88f };		// снег — по высоте, на северных склонах ниже на snowNorth
+	float bedrockShare = 0.8f;
+	Range snowHeight{ 0.80f, 0.88f };		// снег — по высоте ± шум snowNoise, на северных склонах ниже на snowNorth
 	float snowNorth = 0.06f;
+	float snowNoise = 0.08f;
+	float rockClearsSnow = 0.7f;			// доля снега, которую убирает скала
+	// Камни и галька (слой осыпей)
 	Range talusMap{ 0.15f, 0.8f };			// осыпь эрозии у подножий скал
-	Range boulderSlope{ 18.0f, 25.0f };		// и камни на крутоватых склонах
-	Range gullyFlow{ 3.3f, 4.0f };			// галька промоин: log10 водосбора, м², на склонах gullySlope
+	Range boulderSlope{ 18.0f, 25.0f };		// и камни на крутоватых склонах (уклон ± шум boulderNoise) — доля boulderShare
+	float boulderNoise = 6.0f;
+	float boulderShare = 0.7f;
+	Range gullyFlow{ 3.3f, 4.0f };			// галька промоин: log10 водосбора, м², на склонах gullySlope — доля gullyShare
 	Range gullySlope{ 6.0f, 12.0f };
+	float gullyShare = 0.8f;
+	Range pebblePatches{ 0.62f, 0.72f };	// пятна гальки по шуму (0…1) на склонах pebblePatchSlope — доля pebblePatchShare
+	Range pebblePatchSlope{ 8.0f, 16.0f };
+	float pebblePatchShare = 0.6f;
+	// Травы и цветы
 	Range moistureTwi{ 4.0f, 8.0f };		// влажность — TWI = ln( a / tan β )
-	Range treeline{ 0.72f, 0.79f };			// граница леса (на северных склонах ниже)
-	Range forestSlope{ 30.0f, 38.0f };		// круче — леса нет
+	Range wetGrass{ 0.4f, 0.6f };			// сочная трава: влажность × wetGrassMoisture + шум × ( 1 − wetGrassMoisture )
+	float wetGrassMoisture = 0.6f;
+	Range flowers{ 0.62f, 0.72f };			// цветы (mask_camomile): шум + влажность × flowersMoisture
+	float flowersMoisture = 0.15f;
+	// Лес
+	Range treeline{ 0.72f, 0.79f };			// граница леса: высота + шум × treelineNoise + север × treelineNorth
+	float treelineNoise = 0.08f;
+	float treelineNorth = 0.04f;
+	Range forestSlope{ 30.0f, 38.0f };		// круче (± шум forestSlopeNoise) — леса нет
+	float forestSlopeNoise = 6.0f;
+	float stonesClearForest = 0.8f;			// доля леса, которую убирают осыпи
 	Range valleyFloorHeight{ 0.32f, 0.22f };// дно долины — луга с редкими рощами
 	Range valleyFloorSlope{ 9.0f, 4.0f };
+	Range clearings{ 0.17f, 0.33f };		// поляны: шум − дно долины × valleyClearings; ниже from — поляна
+	float valleyClearings = 0.42f;
+	Range spruceHeight{ 0.25f, 0.55f };		// ель — выше (и на северных склонах)
+	Range pineSlope{ 8.0f, 20.0f };			// сосна — на средних сухих склонах к солнцу
+	Range pineHeight{ 0.66f, 0.45f };
+	Range birchMoisture{ 0.2f, 0.7f };		// берёза — во влажных низинах
+	Range birchHeight{ 0.45f, 0.25f };
+	Range birchSlope{ 20.0f, 8.0f };
+	float standContrast = 3.0f;				// степень доли типа: больше — чище древостои, уже смешанная полоса
+	// Кусты
+	float bankWidth = 3.0f;					// полоса берегов — на столько текселей шире русла
+	Range riparianDensity{ 0.30f, 0.50f };	// кусты у русел — пятнами по шуму + влажности × 0,2
+	Range riparianGrass{ 0.25f, 0.55f };	// высокая трава у воды — та же полоса, шум только прореживает
+	Range riparianHeight{ 0.78f, 0.70f };	// кусты и трава у воды — ниже этой высоты
+	Range krummholzHeight{ 0.73f, 0.78f };	// стланик над границей леса — от, до верха krummholzTop
+	Range krummholzTop{ 0.84f, 0.79f };
+	Range dryGapsSlope{ 12.0f, 20.0f };		// кусты прогалин сухих склонов — доля dryGapsShare
+	float dryGapsShare = 0.5f;
+	// Форма: сглаживание (тексели) и масштабы шумов (множитель длин волн)
+	float slopeBlur = 3.0f;
+	float moistureBlur = 6.0f;
+	float erosionBlur = 2.0f;				// карты эрозии — размыв и осыпь
+	float layerNoiseScale = 1.0f;			// шум скалы, снега и камней, пятна гальки
+	float meadowNoiseScale = 1.0f;			// граница двух трав и цветы
+	float forestNoiseScale = 1.0f;			// граница леса, поляны, древостои, кусты
 };
+
+// Поле правил слоёв: колонка строки TerrainLayerRules (у диапазона — <колонка>_from и <колонка>_to), подокно и свойство
+// окна «Layer rules», границы, единица и подсказка. Одна таблица для окна, загрузки, «Save level» и проверки, сменились ли
+// правила: новое поле правил — поле в TerrainLayerRules и строка здесь (и колонка в базе)
+struct TerrainLayerRuleField
+{
+	const char* column;
+	const char* group;
+	const char* name;
+	TerrainLayerRules::Range TerrainLayerRules::* range;	// диапазон (от, до) или
+	float TerrainLayerRules::* value;					// число
+	float low;
+	float high;
+	const char* unit;
+	const char* tooltip;
+};
+const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields();
 
 // Материал и высота террейна — колонки строки Terrain и tiling строк TerrainLayers: читает CDLODTerrain, правки окна
 // террейна пишет «Save level»
@@ -295,7 +359,6 @@ struct WaterChannelsSettings
 	float minSlope = 0.002f;		// дно вниз по течению — не меньше, м на м
 	float lakeDepth = 0.05f;		// низина глубже — озеро: не режется, ручей в нём кончается, м
 	float minLakeArea = 50.0f;		// низина меньше — не озеро, а часть русла (ямка на дне ручья), м²
-	int32_t paintLayer = 5;			// слой материала террейна (TerrainLayers.layer) дна и бортов — галька
 	float thalweg = 0.3f;			// тальвег: добавка вреза к середине дна, доля вреза
 	float manning = 0.06f;			// шероховатость дна ручья по Маннингу, с/м^(1/3) (галька)
 	float minWaterSlope = 0.005f;	// уклон в глубине воды — не меньше, м на м

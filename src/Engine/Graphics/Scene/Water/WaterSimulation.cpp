@@ -258,10 +258,6 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	smooth->setLow( 0.0f );
 	smooth->setHigh( 20.0f );
 	smooth->setTooltip( "Smoothing passes of the channel axis along the flow; generates the stream curves anew at the next level load" );
-	Property* paint = m_channelsProperties.insert( "Paint layer", settings.channels.paintLayer );
-	paint->setLow( 0.0f );
-	paint->setHigh( 7.0f );
-	paint->setTooltip( "Terrain material layer of the bed and banks (TerrainLayers.layer); the channels are rebuilt on change" );
 	m_properties.addSubContainer( &m_channelsProperties );
 
 	// Кривые русел: подокно на кривую — включение и множители; правка помечает кривую правленной («Save level»):
@@ -1779,7 +1775,6 @@ WaterSimulation::Settings WaterSimulation::settings() const
 	for( const ChannelParameter& parameter : channelParameters )
 		settings.channels.*parameter.field = m_channelsProperties[parameter.name].data<float>();
 	settings.channels.smooth = m_channelsProperties["Smooth passes"].data<int32_t>();
-	settings.channels.paintLayer = m_channelsProperties["Paint layer"].data<int32_t>();
 	return settings;
 }
 
@@ -1866,7 +1861,7 @@ bool WaterSimulation::rebuildRequested() const
 	for( const ChannelParameter& parameter : channelParameters )
 		if( !generatorParameter( parameter.field ) && current.channels.*parameter.field != m_builtChannels.*parameter.field )
 			return true;
-	return current.channels.paintLayer != m_builtChannels.paintLayer;
+	return false;
 }
 
 bool WaterSimulation::rebuild( const TerrainHydrology::Result& hydrology )

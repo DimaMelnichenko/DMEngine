@@ -3239,7 +3239,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	return true;
 }
 
-std::vector<TerrainEdit> TerrainHydrology::loweringEdits( const Result& result, const WaterChannelsSettings& channels, bool shaderLakeBeds )
+std::vector<TerrainEdit> TerrainHydrology::loweringEdits( const Result& result, bool shaderLakeBeds, int32_t bedLayer )
 {
 	TerrainEdit lower;
 	lower.name = "channels";
@@ -3255,7 +3255,7 @@ std::vector<TerrainEdit> TerrainHydrology::loweringEdits( const Result& result, 
 	paint.name = "channels paint";
 	paint.lower = false;
 	paint.clearFoliage = 1.0f;
-	paint.paintLayer = channels.paintLayer;
+	paint.paintLayer = bedLayer;
 	const uint32_t n = result.size;
 	// Клетки озёр (static): галька по дну и трава в воде — в шейдерах по глубине в точке (урез внутри клетки, water.sh),
 	// по клеткам граница озера по диагонали шла лесенкой

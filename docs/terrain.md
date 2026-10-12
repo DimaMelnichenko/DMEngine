@@ -58,7 +58,8 @@
 | 5 — галька русла | `dry_river_pebbles` | 2 | Poly Haven (CC0), `DownloadResources/dry_river_pebbles_2k.blend.zip` |
 
 Две травы лежат вперемешку крупными пятнами (см. «Слои и маски по рельефу»), чтобы луг издалека не был одного тона.
-Слоя 5 нет в правилах слоёв: им дно русел красят правки рельефа и русла конвейера (`paint_layer`, «Правка рельефа»).
+Слоя 5 нет в правилах слоёв: у него роль `channel_bed` — им дно и борта русел и дно озёр красят русла конвейера (и по
+врезу в детальных плитках — шейдер), а ручные правки рельефа — своим `paint_layer` («Правка рельефа»).
 Снег — `snow_packed12` (утоптанный); до него были `snow_02` (следы на снегу) и наст `crusted_snow2`. Архивы FreePBR
 скачиваются POST-формой страницы товара (`somdn_download_multi_single`: `somdn_product`, номер файла, ключ со
 страницы). Лицензия
@@ -325,13 +326,26 @@ Gaea / World Machine. Поэтому правки рельефа и русла �
 - **вода конвейера** — клетки русел (опускание ложа больше 5 см) и озёр `TerrainHydrology`: в ней и у неё не растёт
   лес, вдоль неё — кусты; без воды у уровня — по порогу водосбора, как раньше.
 
-**Пороги правил** — строка `TerrainLayerRules` террейна (`terrain`, диапазоны колонками `<имя>_from` / `<имя>_to`:
-`rock_slope`, `bedrock_wear`, `bedrock_slope`, `snow_height`, `talus_map`, `boulder_slope`, `gully_flow`, `gully_slope`,
-`moisture_twi`, `treeline`, `forest_slope`, `valley_floor_height`, `valley_floor_slope`, и `snow_north`; нет строки или
-колонки — значения по умолчанию, `TerrainLayerRules` в `Scene/Level/LevelSettings.h`). В редакторе — подокно «Layer
-rules» окна террейна: диапазон — пара «от, до» (переход smoothstep; «от» больше «до» — убывание), правка пересчитывает
-слои и маски, когда ползунок отпущен (`CDLODTerrain::layerRulesChanged` / `rebuildMasks` из `Scene::applyEditorChanges`;
-~0,5 с, русла не трогаются), лес раскладывается заново; «Save level» пишет строку.
+**Поля правил** — строка `TerrainLayerRules` террейна (`terrain`; диапазон — колонки `<имя>_from` / `<имя>_to`, число —
+`<имя>`; нет строки, колонки или NULL — значение по умолчанию). Все поля — одной таблицей `terrainLayerRuleFields`
+(`Scene/Level/LevelSettings.h/.cpp`: колонка, подокно, имя свойства, границы, подсказка): по ней строятся окно, загрузка,
+«Save level» и проверка, сменились ли правила, — новое поле правил — поле `TerrainLayerRules` и строка таблицы (и колонка в
+базе). В редакторе — подокно «Layer rules» окна террейна с подокнами по группам: диапазон — пара «от, до» (переход
+smoothstep; «от» больше «до» — убывание), правка пересчитывает слои и маски, когда ползунок отпущен
+(`CDLODTerrain::layerRulesChanged` / `rebuildMasks` из `Scene::applyEditorChanges`; ~0,5 с, русла не трогаются), лес
+раскладывается заново; «Save level» пишет строку.
+
+| Подокно | Поля (колонки) |
+|---|---|
+| Rock and snow | уклон скалы и его шум (`rock_slope`, `rock_noise`), коренная порода в промоинах — размыв, уклон, доля (`bedrock_wear`, `bedrock_slope`, `bedrock_share`), снег — высота, ниже на севере, шум, сколько снега убирает скала (`snow_height`, `snow_north`, `snow_noise`, `rock_clears_snow`) |
+| Stones | осыпь эрозии (`talus_map`), камни на крутоватых склонах — уклон, шум, доля (`boulder_slope`, `boulder_noise`, `boulder_share`), галька промоин — водосбор, уклон, доля (`gully_flow`, `gully_slope`, `gully_share`), пятна гальки — порог шума, уклон, доля (`pebble_patches`, `pebble_patch_slope`, `pebble_patch_share`) |
+| Grass and flowers | влажность TWI (`moisture_twi`), сочная трава — порог и доля влажности против шума (`wet_grass`, `wet_grass_moisture`), цветы `mask_camomile` (`flowers`, `flowers_moisture`) |
+| Forest | граница леса, её шум и север (`treeline`, `treeline_noise`, `treeline_north`), уклон и его шум (`forest_slope`, `forest_slope_noise`), осыпи убирают лес (`stones_clear_forest`), дно долины (`valley_floor_height`, `valley_floor_slope`), поляны (`clearings`, `valley_clearings`), типы — высота ели, уклон и высота сосны, влажность, высота и уклон берёзы (`spruce_height`, `pine_slope`, `pine_height`, `birch_moisture`, `birch_height`, `birch_slope`), чистота древостоев (`stand_contrast`) |
+| Shrubs | ширина берегов (`bank_width`, тексели), кусты и высокая трава у воды (`riparian_density`, `riparian_grass`, `riparian_height`), стланик (`krummholz_height`, `krummholz_top`), кусты сухих прогалин (`dry_gaps_slope`, `dry_gaps_share`) |
+| Shape | сглаживание уклона, влажности и карт эрозии (`slope_blur`, `moisture_blur`, `erosion_blur`, тексели), масштабы шумов — скалы и камней, трав и цветов, леса и кустов (`layer_noise_scale`, `meadow_noise_scale`, `forest_noise_scale`: множитель длин волн) |
+
+В коде остались формы правил: веса внутри типов леса (у ели 0,35 + 0,65 по высоте, север 0,3 и т. п.), прибавка
+влажности к шуму кустов (0,2), полоса воды без русел по водосбору, состав октав шумов и пороги отложений эрозии.
 
 **Правила** (высота — доли `height_multiplier`, уклон — градусы, шумы — value noise с длиной волны в метрах мира, на
 любой карте пятна одного размера):
@@ -345,9 +359,12 @@ rules» окна террейна: диапазон — пара «от, до» 
   эрозии (конусы выноса).
 
 **Роли слоёв** — колонка `TerrainLayers.role`: какой слой красит правило — `grass_dry`, `talus`, `rock`, `snow`,
-`grass_wet` (`TerrainLayerRole`, `TerrainMasks.h`); на `Test` — слои 0…4 по порядку. Слой без роли правила не красят
-(галька русел, слой 5, — покраска правками рельефа поверх, `TerrainMaterial`). Роли нет ни у одного слоя — её вес
-уходит сухой траве (или слою 0), строка в логе.
+`grass_wet` (`TerrainLayerRole`, `TerrainMasks.h`); на `Test` — слои 0…4 по порядку. Роль `channel_bed` (на `Test` —
+слой 5, галька) правила не красят: это слой дна и бортов русел и дна озёр — им красят русла конвейера
+(`TerrainHydrology::loweringEdits`) и шейдер по врезу в детальных плитках и по глубине воды (`CDLODTerrain::m_channelLayer`;
+до 2026-10-12 — колонка `WaterChannels.paint_layer`). Слой без роли красят только ручные правки рельефа
+(`TerrainEdits.paint_layer`, поверх, `TerrainMaterial`). Роли правила нет ни у одного слоя — её вес уходит сухой траве (или
+слою 0), строка в логе; нет `channel_bed` — русла не красятся, строка в логе.
 
 **Маски** — по именам, которые указывают `ScatterLayers.mask` и `ParticleEmitters.mask`: `mask_grass` (обе травы),
 `mask_camomile` (пятна цветов в траве, гуще на влажном), `mask_pebbles` (осыпи) и маски леса по типам, как зонирование
@@ -365,7 +382,14 @@ rules» окна террейна: диапазон — пара «от, до» 
 
 На `Test` (2026-10-09): сухая трава ~52 %, осыпи ~14 %, скала ~12 %, снег ~8 %, сочная трава ~15 % карты; ель ~22 %,
 сосна ~14 %, берёза ~4 %, кусты у воды ~3 %, на склонах ~5 % (доля, где маска > 0,5) — сводка в логе, строка
-`Terrain layers and masks` (с временем: ~0,45 с в Release, на CPU параллельно).
+`Terrain layers and masks` (с временем: ~0,5 с в Release, на CPU параллельно; из кэша — `(from cache)`, ~0,07 с).
+
+**Кэш** — как у эрозии (`eroded\`): ключ — отпечаток входов (рельеф до русел, карты эрозии, вода, роли слоёв, все поля
+правил и сборка `TerrainMasks.cpp` — дата и время её компиляции, `TerrainMasks::codeStamp`: правка формул меняет ключ
+сама) в `generated\key.txt` вместе с именами масок. Совпал — слои и маски читаются из копии `generated\`
+(`TerrainMasks::load`) вместо расчёта: запуск на ~0,45 с быстрее. Веса после расчёта округляются до 8 бит
+(`TerrainMasks::quantize`) — как в копии и на GPU, поэтому из кэша выходит ровно то же. Правка правил вживую и перестройка
+русел пишут копию и новый ключ; у Debug и Release отпечаток сборки свой — после смены сборки правила считаются заново.
 
 **Куда идёт результат**:
 - веса слоёв — `TerrainMaterial` (splat-карта — массив из двух RGBA, как weightmap в UE Landscape: срез 0 — слои 0…3,
@@ -373,7 +397,7 @@ rules» окна террейна: диапазон — пара «от, до» 
 - маски — текстуры `R8_UNORM` хранилища по имени (`DMTextureStorage::setGenerated`): при перестройке пересоздаются в том
   же объекте, поэтому расстановка (вид маски каждый кадр) и частицы (вид при загрузке) видят новые; строк масок в
   таблице `Textures` больше нет;
-- копия — `Textures\terrain\generated\`: `splatmap.dds` и `mask_*.dds`, для просмотра; движок их не читает. Подменить
+- копия — `Textures\terrain\generated\`: `splatmap.dds` и `mask_*.dds`, для просмотра и кэш (см. выше). Подменить
   слой своим файлом и рисовать по маскам кистью (слой ручной правки поверх правил, как у Landscape в UE) — следующий
   шаг (`TODO.md`, этап 8); колонка `Terrain.splatmap` пока не читается.
 

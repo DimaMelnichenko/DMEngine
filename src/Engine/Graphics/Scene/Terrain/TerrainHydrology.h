@@ -102,7 +102,7 @@ public:
 	// Растровые правки рельефа по опусканию: опускание и (вне детальных плиток) покраска дна галькой и очистка
 	// растительности; в плитках покраска и очистка — в шейдерах по детальному врезу, у озёр при shaderLakeBeds (режим
 	// static) — в шейдерах по глубине в точке
-	static std::vector<TerrainEdit> loweringEdits( const Result& result, const WaterChannelsSettings& channels, bool shaderLakeBeds );
+	static std::vector<TerrainEdit> loweringEdits( const Result& result, bool shaderLakeBeds, int32_t bedLayer );
 };
 
 }

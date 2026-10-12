@@ -2,6 +2,7 @@
 
 #include "Level\LevelSettings.h"
 #include <array>
+#include <memory>
 #include <optional>
 #include <vector>
 #include "SceneObject.h"
@@ -199,7 +200,9 @@ private:
 	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
 	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
 	PropertyContainer m_layerRulesProperties;	// «Layer rules»
-	std::array<int32_t, terrainLayerRoleCount> m_layerOf{ -1, -1, -1, -1, -1 };	// слой каждой роли (TerrainLayers.role)
+	// Подокна «Layer rules» по группам полей (TerrainLayerRuleField::group): имя группы и подокно
+	std::vector<std::pair<std::string, std::unique_ptr<PropertyContainer>>> m_layerRuleGroups;
+	std::array<int32_t, terrainLayerRoleCount> m_layerOf{ -1, -1, -1, -1, -1, -1 };	// слой каждой роли (TerrainLayers.role)
 	TerrainEditCoverage m_coverage;			// покрытие правок рельефа и русел последней сборки — покраска при пересчёте правил
 	std::optional<TerrainErosionSettings> m_erosion;
 	PropertyContainer m_erosionProperties;	// «Erosion»
@@ -225,7 +228,7 @@ private:
 	Texture m_detailIndexTexture;
 	ShaderView m_detailIndexView;
 	float m_detailTileSize = 0.0f;			// сторона плитки, м; 0 — плиток нет
-	int32_t m_channelLayer = -1;			// слой гальки русел (WaterChannelsSettings::paintLayer)
+	int32_t m_channelLayer = -1;			// слой гальки русел — роль channel_bed (TerrainLayers.role)
 	bool m_staticWater = false;				// вода режима static: дно озёр красит шейдер по глубине в точке
 	uint32_t m_detailSide = 0;				// текселей плитки по стороне (с полями)
 	uint32_t m_detailTilesPerSide = 0;
