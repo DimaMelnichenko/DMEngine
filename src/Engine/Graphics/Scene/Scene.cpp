@@ -293,22 +293,24 @@ void Scene::applyEditorChanges()
 	// Правили правила слоёв (подокно «Layer rules» террейна) или повернули ветер (окно «Wind», когда правка закончилась) —
 	// слои и маски заново; постоянные слои (лес) разложены по прежним маскам — раскладка заново, кольцевые читают маски
 	// каждый кадр
-	bool windTurned = false;
+	bool windTurned = false, windTerrainChanged = false;
 	if( m_level.terrain && m_level.wind && !m_wind.properties()->editing() )
 	{
 		const Wind::Settings wind = m_wind.settings();
 		windTurned = m_terrain.prevailingWindChanged( wind.direction );
 		if( windTurned )
 			m_terrain.setPrevailingWind( wind.direction );
-		// Правили подокно «Field» — поле ветра заново (поворот ветра пересчитает его вместе с масками ниже)
+		// Правили подокно «Field» — поле ветра заново; поворот ветра и настройки рельефной части (по ней снег) пересчитают его
+		// вместе с масками ниже
 		if( m_terrain.windFieldChanged( wind.field ) )
 		{
+			windTerrainChanged = m_terrain.windTerrainChanged( wind.field );
 			m_terrain.setWindField( wind.field );
-			if( !windTurned && !m_terrain.rebuildWindField() )
+			if( !windTurned && !windTerrainChanged && !m_terrain.rebuildWindField() )
 				LOG( "Wind field is not rebuilt" );
 		}
 	}
-	if( m_level.terrain && ( windTurned || m_terrain.layerRulesChanged() ) )
+	if( m_level.terrain && ( windTurned || windTerrainChanged || m_terrain.layerRulesChanged() ) )
 	{
 		if( m_terrain.rebuildMasks() )
 			for( const auto& scatterer : m_scatterers )

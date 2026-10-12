@@ -45,16 +45,18 @@ public:
 	// конвейер (TerrainHydrology) режет русла и строит ручьи и маску озёр; nullptr — воды нет. erosion — эрозия исходной
 	// карты до правок (TerrainErosion, кэш — каталог eroded\ рядом с картой высот); nullptr — карта уже готова. layerRules —
 	// правила слоёв и масок по рельефу (TerrainMasks)
-	// Господствующий ветер — куда дует (WindSettings::direction; y не учитывается): от него открытость ветру в правилах
-	// слоёв. До initialize; после — сменился (changed) — слои и маски заново перестраивает Scene
+	// Господствующий ветер — куда дует (WindSettings::direction; y не учитывается): по нему поле ветра, а по его рельефной
+	// части — снег в правилах слоёв. До initialize; после — сменился (changed) — слои и маски с полем заново перестраивает Scene
 	void setPrevailingWind( const DirectX::XMFLOAT3& direction );
 	bool prevailingWindChanged( const DirectX::XMFLOAT3& direction ) const;
 	// Поле ветра по рельефу (TerrainWind, docs/wind.md): настройки (WindSettings::field) — до buildWindField; сменились
-	// (changed) — rebuildWindField. buildWindField — после масок и моделей уровня (obstacles — экземпляры выше нескольких
-	// метров), его зовёт Scene; rebuildMasks и rebuildChannels пересчитывают поле сами. Текстура — ресурс сцены
-	// SLOT_WIND_FIELD (Shaders/wind_field.sh), копия на CPU — windField()
+	// (changed) — rebuildWindField, а сменились настройки рельефной части (windTerrainChanged: поток и тень — по ним снег) —
+	// rebuildMasks. buildWindField — после масок и моделей уровня (obstacles — экземпляры выше нескольких метров), его зовёт
+	// Scene; rebuildMasks и rebuildChannels пересчитывают поле сами. Текстура — ресурс сцены SLOT_WIND_FIELD
+	// (Shaders/wind_field.sh), копия на CPU — windField()
 	void setWindField( const WindFieldSettings& settings );
 	bool windFieldChanged( const WindFieldSettings& settings ) const;
+	bool windTerrainChanged( const WindFieldSettings& settings ) const;
 	bool buildWindField( const std::vector<WindObstacle>& obstacles );
 	bool rebuildWindField();
 	const std::vector<TerrainWind::Cell>& windField() const { return m_wind; }
@@ -168,6 +170,10 @@ private:
 	// Слои и маски по итоговому рельефу (TerrainMasks): веса splat-карты — m_masks, маски — текстуры хранилища по имени,
 	// копия — файлы в m_generatedDirectory
 	bool buildMasks( const HeightField& finalField );
+	// Рельефная часть поля ветра (поток и подветренная тень, без леса) по итоговому рельефу field: ключ и расчёт, если ключ
+	// сменился (m_windTerrain). Её читают правила слоёв (снег) и итоговое поле
+	uint64_t windTerrainKey( const HeightField& field, TerrainField& metres ) const;
+	bool ensureWindTerrain( const HeightField& field );
 	// Значения растровой правки (TerrainEdit::raster) из файла; false — файла нет или он не R32_FLOAT (строка в лог)
 	static bool loadEditRaster( TerrainEdit& edit );
 	// Маска очистки растительности правками (R8_UNORM размером с карту высот, без правок с очисткой — 1 × 1 ноль)

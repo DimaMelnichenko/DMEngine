@@ -45,9 +45,9 @@ struct TerrainMaskInputs
 	const std::vector<float>* water = nullptr;		// 1 — русло или озеро конвейера (TerrainHydrology), 0 — суша
 	// Слой материала (TerrainLayers.layer) каждой роли; −1 — слоя с этой ролью нет: его вес — сухой траве (или слою 0)
 	std::array<int32_t, terrainLayerRoleCount> layerOf{ -1, -1, -1, -1, -1, -1 };
-	// Господствующий ветер — куда дует, по X и Z мира (WindSettings::direction); 0 — без открытости ветру
-	float windX = 0.0f;
-	float windZ = 0.0f;
+	// Множитель скорости ветра по рельефу — поле ветра без леса (TerrainWind: поток и подветренная тень); nullptr — без
+	// ветра у уровня: снег и лес без него
+	const std::vector<float>* windSpeed = nullptr;
 };
 
 struct TerrainMasks

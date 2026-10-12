@@ -206,17 +206,16 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 															s.layerNoiseScale )]( size_t i ) { return base[i] - 0.5f; } );
 	const Field patches = fbm( size, texel, { { 64, 0.5f }, { 32, 0.3f }, { 16, 0.2f } }, 21, s.layerNoiseScale );
 
-	// Открытость ветру (господствующий ветер уровня): угол горизонта навстречу ветру Sx — наибольший угол подъёма рельефа
-	// на windReach против ветра, среднее по вееру ±15° (Winstral 2002: Sx > 0 — укрытие, < 0 — открытый наветренный склон,
-	// ровное место — около 0, ни то ни другое),
-	// выборки — с растущим шагом; гребни и ложбины — высота над рельефом, сглаженным на ridgeRadius (TPI, м). Открыто —
-	// наветренное и гребни; намело — в укрытии ниже гребня и в ложбинах; открытые наветренные гребни — для леса
+	// Ветер — поле ветра по рельефу (TerrainWind, без леса): где ветер быстрее ветра уровня (перевалы, проходы, наветренные
+	// склоны) — снег сдувает, где тише (подветренная тень за гребнем) — наметает. Гребни и ложбины — высота над рельефом,
+	// сглаженным на ridgeRadius (TPI, м): мелкие гребни поле (слой воздуха ~100 м) не различает — с них сдувает всегда, в
+	// ложбинах наметает в любом ветре; гребни, где ветер не тише ветра уровня (между началами наметания и сдувания), — для
+	// леса
 	Field exposure( cells, 0.0f ), deposit( cells, 0.0f ), ridgeExposure( cells, 0.0f );
-	const float windLength = std::hypot( inputs.windX, inputs.windZ );
-	if( windLength > 1e-3f )
+	if( inputs.windSpeed && inputs.windSpeed->size() == cells )
 	{
 		const float metres = field.heightMultiplier;
-		const Field horizon = upwindHorizon( height, size, texel, metres, inputs.windX, inputs.windZ, s.windReach );
+		const Field& speed = *inputs.windSpeed;
 		const Field smooth = blurField( height, size, blurRadius( s.ridgeRadius / texel ) );
 		forRows( size, [&]( uint32_t row )
 		{
@@ -225,15 +224,14 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 			{
 				const size_t i = static_cast<size_t>( r ) * n + col;
 				const float h = height[i];
-				const float sx = horizon[i];
-				const float open = smoothstep( s.windOpen, sx );
-				const float shelter = smoothstep( s.windShelter, sx );
+				const float scour = smoothstep( s.snowScourSpeed, speed[i] );
+				const float drift = smoothstep( s.snowDriftSpeed, speed[i] );
 				const float tpi = ( h - smooth[i] ) * metres;
 				const float crest = smoothstep( s.ridge, tpi );
 				const float hollow = smoothstep( s.hollow, tpi );
-				exposure[i] = std::max( open, crest );
-				deposit[i] = std::max( shelter * ( 1.0f - crest ), hollow );
-				ridgeExposure[i] = open * crest;
+				exposure[i] = std::max( scour, crest );
+				deposit[i] = std::max( drift * ( 1.0f - crest ), hollow );
+				ridgeExposure[i] = crest * smoothstep( s.snowDriftSpeed.from, s.snowScourSpeed.from, speed[i] );
 			}
 		} );
 	}

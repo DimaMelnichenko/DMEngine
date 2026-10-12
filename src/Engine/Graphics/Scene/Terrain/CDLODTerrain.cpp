@@ -33,6 +33,14 @@ bool sphereIntersectsBox( const XMFLOAT3& center, float radius, const XMFLOAT3& 
 	return dx * dx + dy * dy + dz * dz <= radius * radius;
 }
 
+// Настройки рельефной части поля ветра (поток и подветренная тень, TerrainWind::solveTerrain); лес — остальные. Их правка
+// меняет и снег в правилах слоёв
+using WindSetting = float GS::WindFieldSettings::*;
+constexpr WindSetting windTerrainSettings[] = { &GS::WindFieldSettings::layerHeight, &GS::WindFieldSettings::layerSmoothing,
+												&GS::WindFieldSettings::maxSpeedup, &GS::WindFieldSettings::reach,
+												&GS::WindFieldSettings::shelterFrom, &GS::WindFieldSettings::shelterTo,
+												&GS::WindFieldSettings::leeSlowdown, &GS::WindFieldSettings::turbulence };
+
 }
 
 namespace GS
@@ -596,10 +604,48 @@ bool CDLODTerrain::windFieldChanged( const WindFieldSettings& settings ) const
 	return false;
 }
 
+bool CDLODTerrain::windTerrainChanged( const WindFieldSettings& settings ) const
+{
+	for( float WindFieldSettings::* setting : windTerrainSettings )
+		if( settings.*setting != m_windSettings.*setting )
+			return true;
+	return false;
+}
+
 bool CDLODTerrain::buildWindField( const std::vector<WindObstacle>& obstacles )
 {
 	m_windObstacles = obstacles;
 	return rebuildWindField();
+}
+
+uint64_t CDLODTerrain::windTerrainKey( const HeightField& field, TerrainField& metres ) const
+{
+	metres.resize( static_cast<size_t>( field.size ) * field.size );
+	for( uint32_t row = 0; row < field.size; ++row )
+		for( uint32_t col = 0; col < field.size; ++col )
+			metres[static_cast<size_t>( row ) * field.size + col] = field.heights[static_cast<size_t>( row ) * field.rowPitch + col] * field.heightMultiplier;
+	Fingerprint key;
+	const char* stamp = TerrainWind::codeStamp();
+	key.add( stamp, std::strlen( stamp ) );
+	key.add( field.size );
+	key.add( field.texelSize );
+	key.addWords( metres.data(), metres.size() * sizeof( float ) );
+	key.add( m_prevailingWind );
+	for( float WindFieldSettings::* setting : windTerrainSettings )
+		key.add( m_windSettings.*setting );
+	return key.value;
+}
+
+bool CDLODTerrain::ensureWindTerrain( const HeightField& field )
+{
+	TerrainField metres;
+	const uint64_t key = windTerrainKey( field, metres );
+	if( key == m_windTerrainKey && !m_windTerrain.empty() )
+		return true;
+	if( !TerrainWind::solveTerrain( metres, field.size, field.texelSize, m_prevailingWind.x, m_prevailingWind.y, m_windSettings, m_windTerrain ) )
+		return false;
+	m_windTerrainKey = key;
+	return true;
 }
 
 bool CDLODTerrain::rebuildWindField()
@@ -616,22 +662,16 @@ bool CDLODTerrain::rebuildWindField()
 		return true;
 	}
 	const uint32_t size = m_cpuSize;
-	TerrainField heights( m_cpuHeights.size() );
-	for( size_t i = 0; i < heights.size(); ++i )
-		heights[i] = m_cpuHeights[i] * m_heightMultiplier;
-
-	// Рельефная часть — по итоговому рельефу, направлению и настройкам рельефа; та же — прежний расчёт из памяти
-	Fingerprint terrainKey;
-	const char* stamp = TerrainWind::codeStamp();
-	terrainKey.add( stamp, std::strlen( stamp ) );
-	terrainKey.add( size );
-	terrainKey.add( m_texelSize );
-	terrainKey.addWords( heights.data(), heights.size() * sizeof( float ) );
-	terrainKey.add( m_prevailingWind );
-	for( float WindFieldSettings::* field : { &WindFieldSettings::layerHeight, &WindFieldSettings::layerSmoothing, &WindFieldSettings::maxSpeedup,
-											   &WindFieldSettings::reach, &WindFieldSettings::shelterFrom, &WindFieldSettings::shelterTo,
-											   &WindFieldSettings::leeSlowdown, &WindFieldSettings::turbulence } )
-		terrainKey.add( m_windSettings.*field );
+	// Рельефная часть — по итоговому рельефу (то же, что видели правила слоёв: ключ совпадёт, расчёт — из памяти)
+	HeightField finalField;
+	finalField.heights = m_cpuHeights.data();
+	finalField.size = m_cpuSize;
+	finalField.rowPitch = m_cpuSize;
+	finalField.texelSize = m_texelSize;
+	finalField.heightMultiplier = m_heightMultiplier;
+	finalField.heightOffset = m_heightOffset;
+	TerrainField heights;
+	const uint64_t terrainKeyValue = windTerrainKey( finalField, heights );
 
 	// Полог: маски леса и модели уровня; итог — в кэш на диске рядом с масками (generated\wind.dds, ключ — wind_key.txt)
 	std::vector<const TerrainField*> forest;
@@ -639,7 +679,8 @@ bool CDLODTerrain::rebuildWindField()
 		if( mask.name.rfind( "mask_forest_", 0 ) == 0 )
 			forest.push_back( &mask.values );
 	const TerrainField canopy = TerrainWind::canopy( forest, size, m_worldSize, m_windObstacles );
-	Fingerprint key = terrainKey;
+	Fingerprint key;
+	key.add( terrainKeyValue );
 	key.addWords( canopy.data(), canopy.size() * sizeof( float ) );
 	for( const WindFieldParameter& parameter : windFieldParameters() )
 		key.add( m_windSettings.*parameter.value );
@@ -670,14 +711,10 @@ bool CDLODTerrain::rebuildWindField()
 	}
 	if( !cached )
 	{
-		if( terrainKey.value != m_windTerrainKey || m_windTerrain.empty() )
+		if( !ensureWindTerrain( finalField ) )
 		{
-			if( !TerrainWind::solveTerrain( heights, size, m_texelSize, m_prevailingWind.x, m_prevailingWind.y, m_windSettings, m_windTerrain ) )
-			{
-				LOG( "CDLOD terrain: wind field is not solved" );
-				return false;
-			}
-			m_windTerrainKey = terrainKey.value;
+			LOG( "CDLOD terrain: wind field is not solved" );
+			return false;
 		}
 		std::vector<TerrainWind::Cell> field;
 		TerrainWind::applyCanopy( m_windTerrain, size, m_texelSize, canopy, m_windSettings, field );
@@ -800,6 +837,11 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 	}
 	key.add( m_layerOf );
 	key.add( m_prevailingWind );
+	// Снег — по рельефной части поля ветра: её ключ (рельеф, направление, настройки поля) — в ключ масок
+	const bool hasWind = std::hypot( m_prevailingWind.x, m_prevailingWind.y ) > 1e-3f;
+	TerrainField windMetres;
+	if( hasWind )
+		key.add( windTerrainKey( finalField, windMetres ) );
 	for( const TerrainLayerRuleField& rule : terrainLayerRuleFields() )
 	{
 		if( rule.range )
@@ -831,8 +873,14 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 		inputs.catchment = &catchment;
 		inputs.water = water.empty() ? nullptr : &water;
 		inputs.layerOf = m_layerOf;
-		inputs.windX = m_prevailingWind.x;
-		inputs.windZ = m_prevailingWind.y;
+		TerrainField windSpeed;
+		if( hasWind && ensureWindTerrain( finalField ) )
+		{
+			windSpeed.resize( m_windTerrain.size() );
+			for( size_t i = 0; i < windSpeed.size(); ++i )
+				windSpeed[i] = std::hypot( m_windTerrain[i].x, m_windTerrain[i].z );
+		}
+		inputs.windSpeed = windSpeed.size() == static_cast<size_t>( field.size ) * field.size ? &windSpeed : nullptr;
 		if( !TerrainMasks::build( inputs, m_layerRules, m_masks ) )
 		{
 			LOG( "CDLOD terrain: layers and masks are not built" );
