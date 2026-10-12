@@ -47,7 +47,7 @@ public:
 							   const std::optional<GS::VolumetricCloudSettings>& cloud );
 	// Правки объектов сцены одной транзакцией (LibraryLoaderScene.cpp): строки LevelModels по id (положение, поворот,
 	// масштаб), строка Terrain и tiling TerrainLayers, строки ScatterSets, ScatterLayers и ScatterLayerModels по id, строка
-	// WaterSimulation уровня, строки ParticleEmitters по id
+	// WaterSimulation уровня, строки ParticleEmitters по id и место экземпляров LevelParticleEmitters (instanceId)
 	bool saveLevelScene( const LevelDescription& level, const std::vector<LevelDescription::ModelInstance>& models,
 						 const std::optional<GS::TerrainSettings>& terrain,
 						 const std::vector<GS::ScatterSetSettings>& scatterSets,

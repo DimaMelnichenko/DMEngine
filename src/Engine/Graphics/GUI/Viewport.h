@@ -12,6 +12,8 @@ class GUI;
 namespace GS
 {
 class ModelInstances;
+class ParticleSystem;
+class Scene;
 class TerrainHeightSource;
 class WaterSimulation;
 }
@@ -22,7 +24,8 @@ class WaterSimulation;
 // значками (точечный и прожектор — на месте, направленный — в небе, откуда идёт свет); клик выбирает источник (его
 // подокно — в Details), гизмо двигает точечный и прожектор и поворачивает прожектор, значок направленного тянут по небу
 // (у солнца и луны при SunPosition — временем суток), Delete убирает выбранный (кнопка Delete его подокна, с отменой).
-// Режим гизмо — кнопки над
+// Эмиттеры частиц с местом (в точке и в шаре) — тоже значками: клик выбирает (подокно в окне «Particles»), гизмо двигает
+// (свойство Position), у шара видна его граница. Режим гизмо — кнопки над
 // сценой и клавиши 5 / 6 / 7, оси — мира или экземпляра. Режим «Stream curves» (View): кривые русел ближе 250 м — линии и
 // точки; клик по точке выбирает её (подокно кривой — в Details), гизмо двигает её по X и Z, Insert — новая точка после
 // выбранной, Delete — удалить; русла перестраиваются, когда правка закончена (WaterSimulation::finishCurveEdit).
@@ -30,21 +33,21 @@ class WaterSimulation;
 class Viewport
 {
 public:
-	// water и terrain — для режима кривых русел (nullptr — у уровня нет воды); lights — значки и гизмо источников
-	void update( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, GS::WaterSimulation* water = nullptr,
-				 const GS::TerrainHeightSource* terrain = nullptr, DMLightDriver* lights = nullptr );
+	// Кадр вьюпорта: scene — что показывать и править (экземпляры моделей, кривые русел, источники света, эмиттеры)
+	void update( const DMCamera& camera, GS::Scene& scene, GUI& gui );
 	bool streamMode() const { return m_streamMode; }
 	void setStreamMode( bool enabled );
-	// Клик по точке окна (мышь и команда pick): в режиме кривых — сначала точка кривой, затем значок источника света,
-	// мимо — экземпляр модели. Возвращает описание выбранного («Stream 7, point 3», подокно источника или имя экземпляра);
-	// пусто — мимо
-	std::string clickAt( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, GS::WaterSimulation* water,
-						 const GS::TerrainHeightSource* terrain, float x, float y, DMLightDriver* lights = nullptr );
+	// Клик по точке окна (мышь и команда pick): в режиме кривых — сначала точка кривой, затем ближайший значок источника
+	// света или эмиттера, мимо — экземпляр модели. Возвращает описание выбранного («Stream 7, point 3», подокно источника
+	// или эмиттера, имя экземпляра); пусто — мимо
+	std::string clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gui, float x, float y );
 	// Выбранный источник света (номер в DMLightDriver::lights), −1 — ничего. Выбор хранится ключом источника
 	// (DMLightDriver::key): номер сдвигается, когда источники добавляют и убирают; убрали выбранный — выбора нет
 	int selectedLight() const { return m_selectedLight; }
 	// Выбрать источник по ключу (новый источник — кнопки окна «Lights»); экземпляр и точка кривой — не выбраны
 	void selectLight( const DMLightDriver& lights, uint32_t key );
+	// Выбранный эмиттер частиц (номер в ParticleSystem), −1 — ничего
+	int selectedEmitter() const { return m_selectedEmitter; }
 	// Правка выбранной точки кривой (клавиши и команда stream): перенос в x, z и конец правки; новая точка после выбранной;
 	// удаление. false — точка не выбрана или правка невозможна
 	bool moveStreamPoint( GS::WaterSimulation& water, float x, float z );
@@ -74,11 +77,21 @@ private:
 	void trackGizmo( bool using_, GUI& gui, const std::vector<Property*>& properties, const std::string& name );
 	// Источники света: место значка на экране (направленный — в небе, откуда идёт свет); false — за камерой
 	bool lightScreen( const DMCamera& camera, const DMLightDriver& lights, size_t index, DirectX::XMFLOAT2& screen ) const;
-	int pickLight( const DMCamera& camera, const DMLightDriver& lights, float x, float y ) const;
+	// Ближайший к точке значок ближе lightPickPixels (−1 — нет); distance — до него, пиксели
+	int pickLight( const DMCamera& camera, const DMLightDriver& lights, float x, float y, float& distance ) const;
 	void drawLights( const DMCamera& camera, const DMLightDriver& lights ) const;
 	// Правка выбранного источника: гизмо у точечного и прожектора, перетаскивание значка направленного по небу
 	void editLight( const DMCamera& camera, DMLightDriver& lights, GUI& gui );
 	void dragDirectionalLight( const DMCamera& camera, DMLightDriver& lights, GUI& gui );
+	// Эмиттеры частиц с местом: значок на экране (false — за камерой или места нет), выбор ближайшего к точке (расстояние
+	// в пикселях — в distance), значки и граница шара выбранного, гизмо перемещения
+	bool emitterScreen( const DMCamera& camera, const GS::ParticleSystem& particles, size_t index, DirectX::XMFLOAT2& screen ) const;
+	int pickEmitter( const DMCamera& camera, const GS::ParticleSystem& particles, float x, float y, float& distance ) const;
+	void drawEmitters( const DMCamera& camera, GS::ParticleSystem& particles ) const;
+	void editEmitter( const DMCamera& camera, GS::ParticleSystem& particles, GUI& gui );
+	// Гизмо источника и эмиттера над матрицей world (строки DirectXMath: оси и место): перенос по осям мира или поворот по
+	// своим осям (rotate); true — гизмо изменил матрицу в этом кадре
+	bool manipulatePoint( const DMCamera& camera, DirectX::XMFLOAT4X4& world, bool rotate );
 	// Кривые русел: точка на экране; выбор ближайшей к курсору; линии и точки; гизмо и клавиши выбранной
 	bool pickStreamPoint( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain, float x, float y );
 	void drawStreams( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain ) const;
@@ -96,6 +109,7 @@ private:
 	int m_selected = -1;
 	uint32_t m_selectedLightKey = 0;	// 0 — источник не выбран
 	int m_selectedLight = -1;			// его номер в этом кадре
+	int m_selectedEmitter = -1;			// эмиттеры не добавляются и не убираются: номер постоянен
 	bool m_draggingLight = false;	// значок направленного источника тянут по небу
 	bool m_pressedOverScene = false;
 	Gizmo m_gizmo = Gizmo::move;

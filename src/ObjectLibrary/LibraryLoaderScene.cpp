@@ -271,7 +271,7 @@ bool LibraryLoader::saveGeneratedStreams( uint32_t waterSimulationId, const std:
 }
 
 // Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterSets, ScatterLayers и ScatterLayerModels,
-// WaterSimulation, ParticleEmitters. Только колонки, которые правятся в окнах; состав (какие слои, модели, эмиттеры)
+// WaterSimulation, ParticleEmitters и место LevelParticleEmitters. Только колонки, которые правятся в окнах; состав (какие слои, модели, эмиттеры)
 // не меняется
 
 bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::vector<LevelDescription::ModelInstance>& models,
@@ -563,6 +563,18 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, const std::ve
 			updateEmitter.bind( ":id", emitter.id );
 			updateEmitter.exec();
 			updateEmitter.reset();
+		}
+		// Место экземпляра — у эмиттера в точке и в шаре (гизмо вьюпорта, свойство Position); у поля вокруг камеры его нет
+		SQLite::Statement updateInstance( db, "UPDATE LevelParticleEmitters SET position = :position WHERE id = :id" );
+		for( const GS::ParticleEmitterSettings& emitter : particleEmitters )
+		{
+			using Spawn = GS::ParticleEmitterSettings::Spawn;
+			if( emitter.instanceId == 0 || ( emitter.spawn != Spawn::point && emitter.spawn != Spawn::sphere ) )
+				continue;
+			updateInstance.bind( ":position", vec3ToStr( emitter.position ) );
+			updateInstance.bind( ":id", emitter.instanceId );
+			updateInstance.exec();
+			updateInstance.reset();
 		}
 
 		transaction.commit();

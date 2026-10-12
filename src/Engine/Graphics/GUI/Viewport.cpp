@@ -9,6 +9,8 @@
 #include "Scene\Light\DMLightDriver.h"
 #include "Scene\Light\SunPosition.h"
 #include "Scene\Model\ModelInstances.h"
+#include "Scene\Particle\ParticleSystem.h"
+#include "Scene\Scene.h"
 #include "Scene\Terrain\TerrainHeightSource.h"
 #include "Scene\Water\WaterSimulation.h"
 
@@ -67,15 +69,22 @@ void screenRay( const DMCamera& camera, float x, float y, XMVECTOR& origin, XMVE
 	direction = XMVector3Normalize( farPoint - origin );
 }
 
-// Цвет значка источника: его цвет, приведённый к яркости 1 (тёплое солнце — тёплое), выключенный — серый
-ImU32 lightColor( const DMLight& light )
+// Цвет значка: цвет источника или частиц, приведённый к яркости 1 (тёплое солнце — тёплое), выключенного — серый
+ImU32 iconColor( const XMFLOAT3& color, bool enabled )
 {
-	if( !light.enabled() )
+	if( !enabled )
 		return IM_COL32( 140, 140, 140, 200 );
-	const XMFLOAT3 color = light.color();
 	const float peak = std::max( { color.x, color.y, color.z, 1e-4f } );
 	return ImGui::ColorConvertFloat4ToU32( ImVec4( color.x / peak, color.y / peak, color.z / peak, 1.0f ) );
 }
+
+ImU32 lightColor( const DMLight& light )
+{
+	return iconColor( light.color(), light.enabled() );
+}
+
+// Выбранный значок: обводка и подпись
+const ImU32 selectedColor = IM_COL32( 255, 170, 40, 255 );
 
 // Высота точки кривой для показа — над поверхностью земли (дно русла), чтобы точку не закрывала вода
 float streamPointHeight( const GS::TerrainHeightSource& terrain, float x, float z )
@@ -107,15 +116,21 @@ void Viewport::setStreamMode( bool enabled )
 	m_streamPoint = -1;
 }
 
-void Viewport::update( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, GS::WaterSimulation* water,
-					   const GS::TerrainHeightSource* terrain, DMLightDriver* lights )
+void Viewport::update( const DMCamera& camera, GS::Scene& scene, GUI& gui )
 {
+	GS::ModelInstances& models = scene.models();
+	GS::WaterSimulation* water = scene.water().initialized() ? &scene.water() : nullptr;
+	const GS::TerrainHeightSource* terrain = &scene.terrain();
+	DMLightDriver* lights = &scene.lights();
+	GS::ParticleSystem* particles = scene.particles().initialized() ? &scene.particles() : nullptr;
 	if( m_selected >= static_cast<int>( models.instanceCount() ) )
 		m_selected = -1;
 	// Источник — по ключу: номер мог сдвинуться, сам источник — убран
-	m_selectedLight = lights ? lights->indexOf( m_selectedLightKey ) : -1;
+	m_selectedLight = lights->indexOf( m_selectedLightKey );
 	if( m_selectedLight < 0 )
 		m_selectedLightKey = 0;
+	if( !particles || m_selectedEmitter >= static_cast<int>( particles->emitterCount() ) )
+		m_selectedEmitter = -1;
 	const bool streams = m_streamMode && water && terrain;
 	if( streams && ( m_streamCurve >= static_cast<int>( water->curves().size() ) ||
 					 ( m_streamCurve >= 0 && m_streamPoint >= static_cast<int>( water->curves()[m_streamCurve].points.size() ) ) ) )
@@ -126,9 +141,10 @@ void Viewport::update( const DMCamera& camera, GS::ModelInstances& models, GUI& 
 
 	ImGuizmo::BeginFrame();
 	if( sceneClicked() )
-		clickAt( camera, models, gui, water, terrain, ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y, lights );
-	if( lights )
-		drawLights( camera, *lights );
+		clickAt( camera, scene, gui, ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y );
+	drawLights( camera, *lights );
+	if( particles )
+		drawEmitters( camera, *particles );
 	if( streams )
 	{
 		drawStreams( camera, *water, *terrain );
@@ -156,6 +172,8 @@ void Viewport::update( const DMCamera& camera, GS::ModelInstances& models, GUI& 
 		else
 			editLight( camera, *lights, gui );
 	}
+	else if( m_selectedEmitter >= 0 )
+		editEmitter( camera, *particles, gui );
 	else
 		trackGizmo( false, gui, {}, {} );
 }
@@ -165,35 +183,53 @@ void Viewport::selectLight( const DMLightDriver& lights, uint32_t key )
 	m_selectedLightKey = key;
 	m_selectedLight = lights.indexOf( key );
 	m_selected = -1;
+	m_selectedEmitter = -1;
 	m_streamCurve = -1;
 	m_streamPoint = -1;
 }
 
-std::string Viewport::clickAt( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, GS::WaterSimulation* water,
-								const GS::TerrainHeightSource* terrain, float x, float y, DMLightDriver* lights )
+std::string Viewport::clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gui, float x, float y )
 {
+	GS::ModelInstances& models = scene.models();
+	GS::WaterSimulation* water = scene.water().initialized() ? &scene.water() : nullptr;
+	DMLightDriver& lights = scene.lights();
+	GS::ParticleSystem* particles = scene.particles().initialized() ? &scene.particles() : nullptr;
+	m_selectedLight = -1;
+	m_selectedLightKey = 0;
+	m_selectedEmitter = -1;
 	// В режиме кривых клик сначала ловит точку кривой, мимо — экземпляр модели
-	if( m_streamMode && water && terrain && pickStreamPoint( camera, *water, *terrain, x, y ) )
+	if( m_streamMode && water && pickStreamPoint( camera, *water, scene.terrain(), x, y ) )
 	{
 		m_selected = -1;
-		m_selectedLight = -1;
-		m_selectedLightKey = 0;
 		if( PropertyContainer* properties = water->curveProperties( m_streamCurve ) )
 			gui.focusProperties( properties );
 		return water->curves()[m_streamCurve].name + ", point " + std::to_string( m_streamPoint );
 	}
 	m_streamCurve = -1;
 	m_streamPoint = -1;
-	// Значок источника света — раньше экземпляров: значок мал и рисуется поверх сцены
-	m_selectedLight = lights ? pickLight( camera, *lights, x, y ) : -1;
-	m_selectedLightKey = m_selectedLight >= 0 ? lights->key( m_selectedLight ) : 0;
-	if( m_selectedLight >= 0 )
+	// Значки источников света и эмиттеров — раньше экземпляров: значок мал и рисуется поверх сцены. Из двух — ближайший к
+	// точке (у костра источник и искры стоят рядом)
+	float lightDistance = 0.0f;
+	float emitterDistance = 0.0f;
+	const int light = pickLight( camera, lights, x, y, lightDistance );
+	const int emitter = particles ? pickEmitter( camera, *particles, x, y, emitterDistance ) : -1;
+	if( emitter >= 0 && ( light < 0 || emitterDistance < lightDistance ) )
 	{
+		m_selectedEmitter = emitter;
 		m_selected = -1;
-		PropertyContainer* properties = lights->lightProperties( m_selectedLight );
+		PropertyContainer* properties = particles->emitterProperties( emitter );
+		gui.focusProperties( properties );
+		return properties->name();
+	}
+	if( light >= 0 )
+	{
+		m_selectedLight = light;
+		m_selectedLightKey = lights.key( light );
+		m_selected = -1;
+		PropertyContainer* properties = lights.lightProperties( light );
 		if( properties )
 			gui.focusProperties( properties );
-		return properties ? properties->name() : lights->lights()[m_selectedLight].name;
+		return properties ? properties->name() : lights.lights()[light].name;
 	}
 	const int instance = pickAt( camera, models, gui, x, y );
 	return instance >= 0 ? models.instanceName( instance ) : std::string();
@@ -539,19 +575,19 @@ bool Viewport::lightScreen( const DMCamera& camera, const DMLightDriver& lights,
 	return true;
 }
 
-int Viewport::pickLight( const DMCamera& camera, const DMLightDriver& lights, float x, float y ) const
+int Viewport::pickLight( const DMCamera& camera, const DMLightDriver& lights, float x, float y, float& distance ) const
 {
 	int nearest = -1;
-	float nearestDistance = lightPickPixels;
+	distance = lightPickPixels;
 	for( size_t i = 0; i < lights.lights().size(); ++i )
 	{
 		XMFLOAT2 screen;
 		if( !lightScreen( camera, lights, i, screen ) )
 			continue;
-		const float distance = std::hypot( screen.x - x, screen.y - y );
-		if( distance < nearestDistance )
+		const float d = std::hypot( screen.x - x, screen.y - y );
+		if( d < distance )
 		{
-			nearestDistance = distance;
+			distance = d;
 			nearest = static_cast<int>( i );
 		}
 	}
@@ -615,10 +651,10 @@ void Viewport::drawLights( const DMCamera& camera, const DMLightDriver& lights )
 		}
 		if( selected )
 		{
-			draw->AddCircle( center, 15.0f, IM_COL32( 255, 170, 40, 255 ), 0, 2.0f );
+			draw->AddCircle( center, 15.0f, selectedColor, 0, 2.0f );
 			const PropertyContainer* properties = const_cast<DMLightDriver&>( lights ).lightProperties( i );
 			const std::string name = properties ? const_cast<PropertyContainer*>( properties )->name() : light.name;
-			draw->AddText( ImVec2( center.x + 18.0f, center.y - 8.0f ), IM_COL32( 255, 170, 40, 255 ), name.c_str() );
+			draw->AddText( ImVec2( center.x + 18.0f, center.y - 8.0f ), selectedColor, name.c_str() );
 		}
 	}
 }
@@ -648,24 +684,10 @@ void Viewport::editLight( const DMCamera& camera, DMLightDriver& lights, GUI& gu
 	XMMATRIX basis( right, upAxis, forward, XMVectorSet( 0.0f, 0.0f, 0.0f, 1.0f ) );
 	basis.r[3] = XMVectorSetW( XMLoadFloat3( &light.position() ), 1.0f );
 
-	XMMATRIX view;
-	XMMATRIX projection;
-	camera.viewMatrix( &view );
-	camera.projectionMatrix( &projection );
-	XMFLOAT4X4 viewData;
-	XMFLOAT4X4 projectionData;
 	XMFLOAT4X4 world;
-	XMStoreFloat4x4( &viewData, view );
-	XMStoreFloat4x4( &projectionData, projection );
 	XMStoreFloat4x4( &world, basis );
-	const ImGuiIO& io = ImGui::GetIO();
-	ImGuizmo::SetOrthographic( false );
-	ImGuizmo::SetDrawlist( ImGui::GetBackgroundDrawList() );
-	ImGuizmo::SetRect( 0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y );
-	ImGuizmo::Enable( ImGuizmo::IsUsing() || !overPanels() );
 	const bool rotating = spot && m_gizmo == Gizmo::rotate;
-	if( ImGuizmo::Manipulate( &viewData._11, &projectionData._11, rotating ? ImGuizmo::ROTATE : ImGuizmo::TRANSLATE,
-							  rotating ? ImGuizmo::LOCAL : ImGuizmo::WORLD, &world._11 ) )
+	if( manipulatePoint( camera, world, rotating ) )
 	{
 		( *properties )["Position"].setData( XMFLOAT3( world._41, world._42, world._43 ) );
 		if( rotating )
@@ -678,6 +700,130 @@ void Viewport::editLight( const DMCamera& camera, DMLightDriver& lights, GUI& gu
 		}
 	}
 	trackGizmo( ImGuizmo::IsUsing(), gui, history, ( rotating ? "Rotate " : "Move " ) + properties->name() );
+}
+
+bool Viewport::manipulatePoint( const DMCamera& camera, XMFLOAT4X4& world, bool rotate )
+{
+	XMMATRIX view;
+	XMMATRIX projection;
+	camera.viewMatrix( &view );
+	camera.projectionMatrix( &projection );
+	XMFLOAT4X4 viewData;
+	XMFLOAT4X4 projectionData;
+	XMStoreFloat4x4( &viewData, view );
+	XMStoreFloat4x4( &projectionData, projection );
+	const ImGuiIO& io = ImGui::GetIO();
+	ImGuizmo::SetOrthographic( false );
+	ImGuizmo::SetDrawlist( ImGui::GetBackgroundDrawList() );
+	ImGuizmo::SetRect( 0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y );
+	ImGuizmo::Enable( ImGuizmo::IsUsing() || !overPanels() );
+	return ImGuizmo::Manipulate( &viewData._11, &projectionData._11, rotate ? ImGuizmo::ROTATE : ImGuizmo::TRANSLATE,
+								 rotate ? ImGuizmo::LOCAL : ImGuizmo::WORLD, &world._11 );
+}
+
+bool Viewport::emitterScreen( const DMCamera& camera, const GS::ParticleSystem& particles, size_t index, XMFLOAT2& screen ) const
+{
+	const GS::ParticleEmitterSettings settings = particles.emitterSettings( index );
+	ImVec2 point;
+	if( !GS::ParticleSystem::placed( settings ) ||
+		!toScreen( viewProjection( camera ), settings.position.x, settings.position.y, settings.position.z, point ) )
+		return false;
+	screen = XMFLOAT2( point.x, point.y );
+	return true;
+}
+
+int Viewport::pickEmitter( const DMCamera& camera, const GS::ParticleSystem& particles, float x, float y, float& distance ) const
+{
+	int nearest = -1;
+	distance = lightPickPixels;
+	for( size_t i = 0; i < particles.emitterCount(); ++i )
+	{
+		XMFLOAT2 screen;
+		if( !emitterScreen( camera, particles, i, screen ) )
+			continue;
+		const float d = std::hypot( screen.x - x, screen.y - y );
+		if( d < distance )
+		{
+			distance = d;
+			nearest = static_cast<int>( i );
+		}
+	}
+	return nearest;
+}
+
+void Viewport::drawEmitters( const DMCamera& camera, GS::ParticleSystem& particles ) const
+{
+	ImDrawList* draw = ImGui::GetBackgroundDrawList();
+	const XMMATRIX transform = viewProjection( camera );
+	const ImU32 outline = IM_COL32( 0, 0, 0, 160 );
+	for( size_t i = 0; i < particles.emitterCount(); ++i )
+	{
+		XMFLOAT2 at;
+		if( !emitterScreen( camera, particles, i, at ) )
+			continue;
+		const GS::ParticleEmitterSettings settings = particles.emitterSettings( i );
+		const ImVec2 center( at.x, at.y );
+		const ImU32 color = iconColor( settings.color, particles.emitterEnabled( i ) );
+		// Значок — брызги: точка и шесть точек вокруг (как спрайт эмиттера Niagara в UE)
+		draw->AddCircleFilled( center, 4.5f, outline );
+		draw->AddCircleFilled( center, 3.5f, color );
+		for( int k = 0; k < 6; ++k )
+		{
+			const float angle = k * XM_PI / 3.0f + XM_PI / 6.0f;
+			const ImVec2 dot( center.x + std::cos( angle ) * 9.0f, center.y + std::sin( angle ) * 9.0f );
+			draw->AddCircleFilled( dot, 2.8f, outline );
+			draw->AddCircleFilled( dot, 2.0f, color );
+		}
+		if( static_cast<int>( i ) != m_selectedEmitter )
+			continue;
+		// Шар рождения выбранного — три окружности по плоскостям мира
+		if( settings.spawn == GS::ParticleEmitterSettings::Spawn::sphere && settings.radius > 0.0f )
+		{
+			constexpr int segments = 48;
+			const XMFLOAT3& p = settings.position;
+			for( int plane = 0; plane < 3; ++plane )
+			{
+				ImVec2 previous;
+				bool hasPrevious = false;
+				for( int s = 0; s <= segments; ++s )
+				{
+					const float angle = XM_2PI * s / segments;
+					const float a = std::cos( angle ) * settings.radius;
+					const float b = std::sin( angle ) * settings.radius;
+					const XMFLOAT3 point = plane == 0 ? XMFLOAT3( p.x + a, p.y + b, p.z ) : plane == 1 ? XMFLOAT3( p.x + a, p.y, p.z + b ) :
+																							XMFLOAT3( p.x, p.y + a, p.z + b );
+					ImVec2 screen;
+					const bool visible = toScreen( transform, point.x, point.y, point.z, screen );
+					if( visible && hasPrevious )
+						draw->AddLine( previous, screen, selectedColor, 1.5f );
+					previous = screen;
+					hasPrevious = visible;
+				}
+			}
+		}
+		draw->AddCircle( center, 15.0f, selectedColor, 0, 2.0f );
+		draw->AddText( ImVec2( center.x + 18.0f, center.y - 8.0f ), selectedColor, particles.emitterProperties( i )->name().c_str() );
+	}
+}
+
+void Viewport::editEmitter( const DMCamera& camera, GS::ParticleSystem& particles, GUI& gui )
+{
+	PropertyContainer* properties = particles.emitterProperties( m_selectedEmitter );
+	if( !properties || !properties->exists( "Position" ) )
+	{
+		trackGizmo( false, gui, {}, {} );
+		return;
+	}
+	// Гизмо перемещения: место пишется в свойство Position, как правка в Details
+	drawToolbar( false, false, false );
+	const std::vector<Property*> history = Editor::EditHistory::collect( *properties );
+	snapshotGizmo( history );
+	const XMFLOAT3 position = ( *properties )["Position"].data<XMFLOAT3>();
+	XMFLOAT4X4 world;
+	XMStoreFloat4x4( &world, XMMatrixTranslation( position.x, position.y, position.z ) );
+	if( manipulatePoint( camera, world, false ) )
+		( *properties )["Position"].setData( XMFLOAT3( world._41, world._42, world._43 ) );
+	trackGizmo( ImGuizmo::IsUsing(), gui, history, "Move " + properties->name() );
 }
 
 void Viewport::dragDirectionalLight( const DMCamera& camera, DMLightDriver& lights, GUI& gui )

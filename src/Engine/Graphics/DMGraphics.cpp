@@ -319,8 +319,7 @@ bool DMGraphics::Render( const FrameContext& frame )
 		m_GUI.Begin( m_frameStats, m_cameraPool["main"] );
 		// Вьюпорт — в кадре ImGui: выбор кликом по сцене, рамка выбранного; пока камера смотрит мышью — без кликов
 		if( !m_mouseLook )
-			m_viewport.update( m_cameraPool["main"], m_scene.models(), m_GUI, m_scene.water().initialized() ? &m_scene.water() : nullptr,
-							   &m_scene.terrain(), &m_scene.lights() );
+			m_viewport.update( m_cameraPool["main"], m_scene, m_GUI );
 		m_GUI.End();
 		auto guiFinish = TIME_POINT();
 		m_guiRenderTime = TIME_DIFF( guiStart, guiFinish );
@@ -724,14 +723,12 @@ void DMGraphics::registerCommands()
 			reply->error( "select: no window " + args[0] );
 	} );
 	m_console.registerCommand( "pick", "<x> <y> - select under a window point, as a click in the viewport (a stream curve point in "
-							   "the Stream curves mode, a light icon, else a model instance)",
+							   "the Stream curves mode, a light or particle emitter icon, else a model instance)",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		if( args.size() != 2 )
 			return reply->error( "usage: pick <x> <y>" );
-		const std::string picked = m_viewport.clickAt( m_cameraPool["main"], m_scene.models(), m_GUI,
-													   m_scene.water().initialized() ? &m_scene.water() : nullptr, &m_scene.terrain(),
-													   std::stof( args[0] ), std::stof( args[1] ), &m_scene.lights() );
+		const std::string picked = m_viewport.clickAt( m_cameraPool["main"], m_scene, m_GUI, std::stof( args[0] ), std::stof( args[1] ) );
 		reply->ok( picked.empty() ? "nothing" : picked );
 	} );
 	m_console.registerCommand( "toggle", "\"<name>\" - switch a View menu toggle (Stream curves, Wireframe...)",

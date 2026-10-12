@@ -74,6 +74,8 @@ public:
 	DirectX::BoundingBox bounds() const;
 	// Наборы расстановки уровня: трава, камешки
 	const std::vector<std::unique_ptr<Scatterer>>& scatterers() const;
+	// Частицы уровня; без эмиттеров (или с -noparticles) объект не инициализирован
+	ParticleSystem& particles();
 
 private:
 	LevelDescription m_level;

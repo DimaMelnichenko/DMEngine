@@ -38,6 +38,15 @@ public:
 	// Эмиттеры с настройками из GUI — для сохранения уровня (строки ParticleEmitters)
 	std::vector<Settings> emitterSettings() const;
 
+	// Вьюпорт редактора (значки и гизмо эмиттеров, Viewport): число эмиттеров, настройки эмиттера index по окну GUI (место —
+	// свойство «Position»), включён ли он и его подокно. Место есть у эмиттера в точке и в шаре (placed): поле вокруг
+	// камеры и брызги на воде рождаются вокруг камеры
+	size_t emitterCount() const { return m_emitters.size(); }
+	Settings emitterSettings( size_t index ) const;
+	bool emitterEnabled( size_t index ) const;
+	PropertyContainer* emitterProperties( size_t index );
+	static bool placed( const Settings& settings );
+
 private:
 	// Раскладка — cbuffer ParticleEmitterBuffer (b4) в Shaders/particles.sh
 	struct alignas( 16 ) EmitterParameters

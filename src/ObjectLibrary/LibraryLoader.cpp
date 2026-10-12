@@ -378,7 +378,7 @@ void LibraryLoader::loadParticleEmitters( LevelDescription& level )
 	SQLite::Database& db = DBConnector::instance().db();
 	if( !db.tableExists( "LevelParticleEmitters" ) || !db.tableExists( "ParticleEmitters" ) )
 		return;
-	SQLite::Statement query( db, "SELECT e.*, l.position AS instance_position FROM LevelParticleEmitters l "
+	SQLite::Statement query( db, "SELECT e.*, l.id AS instance_id, l.position AS instance_position FROM LevelParticleEmitters l "
 								 "JOIN ParticleEmitters e ON e.id = l.emitter WHERE l.level = :level AND l.enabled = 1 ORDER BY l.id" );
 	query.bind( ":level", level.id );
 	while( query.executeStep() )
@@ -392,6 +392,7 @@ void LibraryLoader::loadParticleEmitters( LevelDescription& level )
 		};
 		GS::ParticleEmitterSettings& emitter = level.particleEmitters.emplace_back();
 		emitter.id = query.getColumn( "id" ).getUInt();
+		emitter.instanceId = query.getColumn( "instance_id" ).getUInt();
 		emitter.name = query.getColumn( "name" ).getString();
 		const std::string spawn = query.getColumn( "spawn" ).getString();
 		emitter.spawn = spawn == "sphere" ? GS::ParticleEmitterSettings::Spawn::sphere :

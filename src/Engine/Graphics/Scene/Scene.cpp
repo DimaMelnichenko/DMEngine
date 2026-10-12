@@ -313,6 +313,11 @@ DMLightDriver& Scene::lights()
 	return m_lightDriver;
 }
 
+ParticleSystem& Scene::particles()
+{
+	return m_particles;
+}
+
 const LevelDescription& Scene::level() const
 {
 	return m_level;

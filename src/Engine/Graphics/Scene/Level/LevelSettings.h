@@ -404,6 +404,7 @@ struct ParticleEmitterSettings
 	enum class Shape { dot, needle };
 
 	uint32_t id = 0;				// строка ParticleEmitters — куда пишет «Save level»
+	uint32_t instanceId = 0;		// строка LevelParticleEmitters (экземпляр уровня) — туда «Save level» пишет position
 	std::string name;
 	Spawn spawn = Spawn::point;
 	Shape shape = Shape::dot;

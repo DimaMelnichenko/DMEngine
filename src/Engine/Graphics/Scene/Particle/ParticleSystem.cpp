@@ -129,6 +129,15 @@ bool ParticleSystem::createEmitter( Emitter& emitter, uint32_t index )
 	properties.setName( settings.name );
 	// Всё, кроме способа рождения, формы, маски и ёмкости пула (они задают буферы и ресурсы эмиттера)
 	properties.insert( "Enabled", true )->setTooltip( "Off - the emitter stops; not saved with the level" );
+	// Место экземпляра (LevelParticleEmitters.position) — у эмиттера в точке и в шаре; его же двигает гизмо вьюпорта
+	if( placed( settings ) )
+	{
+		Property* position = properties.insert( "Position", settings.position );
+		position->setLow( 0.0f );
+		position->setHigh( 0.0f );
+		position->setControlType( GUIControlType::DRAG );
+		position->setUnit( "m" )->setTooltip( "Where the particles are born (the viewport gizmo moves it)" );
+	}
 	const bool field = settings.spawn == Settings::Spawn::camera || settings.spawn == Settings::Spawn::water;
 	addSlider( properties, "Rate", settings.rate, 0.0f, std::max( settings.rate * 4.0f, 10.0f ), field ? "1/s per 100 m2" : "1/s" );
 	addSlider( properties, "Radius", settings.radius, 0.0f, std::max( settings.radius * 4.0f, 10.0f ), "m" )
@@ -179,6 +188,8 @@ ParticleSystem::Settings ParticleSystem::current( const Emitter& emitter ) const
 	Settings settings = emitter.settings;
 	const PropertyContainer& properties = emitter.properties;
 	auto value = [&properties]( const char* name ) { return properties[name].data<float>(); };
+	if( properties.exists( "Position" ) )
+		settings.position = properties["Position"].data<XMFLOAT3>();
 	settings.rate = std::max( value( "Rate" ), 0.0f );
 	settings.radius = std::max( value( "Radius" ), 0.0f );
 	settings.heightMin = value( "Height min" );
@@ -217,6 +228,26 @@ std::vector<ParticleSystem::Settings> ParticleSystem::emitterSettings() const
 bool ParticleSystem::enabled( const Emitter& emitter ) const
 {
 	return emitter.properties["Enabled"].data<bool>();
+}
+
+ParticleSystem::Settings ParticleSystem::emitterSettings( size_t index ) const
+{
+	return index < m_emitters.size() ? current( *m_emitters[index] ) : Settings();
+}
+
+bool ParticleSystem::emitterEnabled( size_t index ) const
+{
+	return index < m_emitters.size() && enabled( *m_emitters[index] );
+}
+
+PropertyContainer* ParticleSystem::emitterProperties( size_t index )
+{
+	return index < m_emitters.size() ? &m_emitters[index]->properties : nullptr;
+}
+
+bool ParticleSystem::placed( const Settings& settings )
+{
+	return settings.spawn == Settings::Spawn::point || settings.spawn == Settings::Spawn::sphere;
 }
 
 void ParticleSystem::setParameters( Emitter& emitter, uint32_t index, uint32_t spawnCount, float timeStep )
