@@ -299,6 +299,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			loadTerrainEdits( *level.terrain, level );
 			loadTerrainErosion( *level.terrain, level );
 			loadTerrainLayerRules( *level.terrain, level );
+			loadTerrainPaint( *level.terrain, level );
 		}
 		if( !query.getColumn( "sky" ).isNull() )
 			level.sky = query.getColumn( "sky" ).getUInt();

@@ -12,6 +12,7 @@
 #include "TerrainHydrology.h"
 #include "TerrainMasks.h"
 #include "TerrainWind.h"
+#include "TerrainPaint.h"
 #include "ShaderProgram.h"
 #include "D3D\DMStructuredBuffer.h"
 
@@ -54,6 +55,18 @@ public:
 	// rebuildMasks. buildWindField — после масок и моделей уровня (obstacles — экземпляры выше нескольких метров), его зовёт
 	// Scene; rebuildMasks и rebuildChannels пересчитывают поле сами. Текстура — ресурс сцены SLOT_WIND_FIELD
 	// (Shaders/wind_field.sh), копия на CPU — windField()
+	// Мазки кисти поверх правил слоёв и масок (TerrainPaint, строки TerrainPaint) — до initialize; применяются в buildMasks
+	void setPaint( const std::vector<TerrainPaintTile>& tiles ) { m_paintTiles = tiles; }
+	// Мазок из одного касания (команда terrain paint, потом — кисть вьюпорта): цель — «layer N» или имя маски; текстуры цели —
+	// сразу, полог поля ветра — в конце мазка. false — нет цели или правил
+	bool paintStroke( const std::string& target, TerrainPaint::Mode mode, float value, float x, float z, float radius, float falloff,
+					  std::string& reason );
+	bool clearPaint( const std::string& target );
+	const TerrainPaint& paint() const { return m_paint; }
+	// Итог цели в точке: правила, поправка, итог (для проверки команд); false — нет цели
+	bool paintProbe( const std::string& target, float x, float z, float& rule, float& delta, float& result ) const;
+	// Мазок изменил маски: постоянные слои расстановки (лес) раскладываются заново — флаг для Scene, сбрасывается
+	bool takePaintedMasks() { const bool changed = m_paintedMasksChanged; m_paintedMasksChanged = false; return changed; }
 	void setWindField( const WindFieldSettings& settings );
 	bool windFieldChanged( const WindFieldSettings& settings ) const;
 	bool windTerrainChanged( const WindFieldSettings& settings ) const;
@@ -171,6 +184,12 @@ private:
 	// Слои и маски по итоговому рельефу (TerrainMasks): веса splat-карты — m_masks, маски — текстуры хранилища по имени,
 	// копия — файлы в m_generatedDirectory
 	bool buildMasks( const HeightField& finalField );
+	// Правила с мазками: m_painted — копия m_masks с поправками целей (пересчёт цели в прямоугольнике или всего); маски и
+	// splat-карта на GPU берутся отсюда (paintedMasks)
+	const TerrainMasks& paintedMasks() const { return m_paintActive ? m_painted : m_masks; }
+	void refreshPainted();
+	void refreshPaintedTarget( const std::string& target, const TerrainPaint::Rect& rect );
+	bool uploadMask( const TerrainMasks::Mask& mask );
 	// Рельефная часть поля ветра (поток и подветренная тень, без леса) по итоговому рельефу field: ключ и расчёт, если ключ
 	// сменился (m_windTerrain). Её читают правила слоёв (снег) и итоговое поле
 	uint64_t windTerrainKey( const HeightField& field, TerrainField& metres ) const;
@@ -220,6 +239,11 @@ private:
 	std::vector<float> m_erosionWear;
 	std::vector<float> m_erosionDeposition;
 	std::vector<float> m_erosionTalus;
+	TerrainPaint m_paint;
+	std::vector<TerrainPaintTile> m_paintTiles;	// мазки из базы — до первой сборки масок
+	TerrainMasks m_painted;
+	bool m_paintActive = false;					// есть мазки — m_painted
+	bool m_paintedMasksChanged = false;
 	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
 	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
 	DirectX::XMFLOAT2 m_prevailingWind = DirectX::XMFLOAT2( 0.0f, 0.0f );	// куда дует ветер, X и Z (setPrevailingWind)

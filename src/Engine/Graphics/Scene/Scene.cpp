@@ -144,6 +144,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		// Направление — из окна «Wind» (угол Yaw), как потом его сравнивает applyEditorChanges
 		m_terrain.setPrevailingWind( m_level.wind ? m_wind.settings().direction : XMFLOAT3( 0.0f, 0.0f, 0.0f ) );
 		m_terrain.setWindField( m_wind.settings().field );
+	m_terrain.setPaint( m_level.terrainPaint );
 		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits, m_level.waterSimulation ? &*m_level.waterSimulation : nullptr,
 								   m_level.terrainErosion ? &*m_level.terrainErosion : nullptr, m_level.terrainLayerRules ) )
 			return false;
@@ -310,6 +311,10 @@ void Scene::applyEditorChanges()
 				LOG( "Wind field is not rebuilt" );
 		}
 	}
+	// Мазок кисти изменил маски — постоянные слои (лес) раскладываются заново
+	if( m_level.terrain && m_terrain.takePaintedMasks() )
+		for( const auto& scatterer : m_scatterers )
+			scatterer->terrainChanged();
 	if( m_level.terrain && ( windTurned || windTerrainChanged || m_terrain.layerRulesChanged() ) )
 	{
 		if( m_terrain.rebuildMasks() )

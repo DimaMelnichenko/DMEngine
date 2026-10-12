@@ -88,7 +88,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 		return false;
 
 	task.enterProgressFrame( 0.7f, "Material layers" );
-	if( !m_material.initialize( terrainId, m_masks, coverage ) )
+	if( !m_material.initialize( terrainId, paintedMasks(), coverage ) )
 		return false;
 
 	m_patch.initialize( patchDim + 1, patchDim + 1 );
@@ -571,7 +571,7 @@ bool CDLODTerrain::rebuildChannels( const WaterSimulationSettings& water, const 
 	if( !finishHeights( target, &water, coverage ) )
 		return false;
 	m_coverage = coverage;
-	if( !createFoliageClearMask( coverage ) || !m_material.repaint( m_masks, coverage ) )
+	if( !createFoliageClearMask( coverage ) || !m_material.repaint( paintedMasks(), coverage ) )
 		return false;
 	// Рельеф у русел и лес сменились — поле ветра заново
 	if( !m_wind.empty() )
@@ -688,7 +688,7 @@ bool CDLODTerrain::rebuildWindField()
 
 	// Полог: маски леса и модели уровня; итог — в кэш на диске рядом с масками (generated\wind.dds, ключ — wind_key.txt)
 	std::vector<const TerrainField*> forest;
-	for( const TerrainMasks::Mask& mask : m_masks.masks )
+	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
 		if( mask.name.rfind( "mask_forest_", 0 ) == 0 )
 			forest.push_back( &mask.values );
 	const TerrainField canopy = TerrainWind::canopy( forest, size, m_worldSize, m_windObstacles );
@@ -800,13 +800,206 @@ bool CDLODTerrain::rebuildMasks()
 	field.texelSize = m_texelSize;
 	field.heightMultiplier = m_heightMultiplier;
 	field.heightOffset = m_heightOffset;
-	if( !buildMasks( field ) || !m_material.repaint( m_masks, m_coverage ) )
+	if( !buildMasks( field ) || !m_material.repaint( paintedMasks(), m_coverage ) )
 		return false;
 	// Лес в масках сменился (и ветер мог повернуть) — поле ветра заново
 	if( !m_windObstacles.empty() || !m_wind.empty() )
 		rebuildWindField();
 	LOG( "Terrain layers and masks rebuilt without reload, ms: " +
 		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() ) );
+	return true;
+}
+
+bool CDLODTerrain::uploadMask( const TerrainMasks::Mask& mask )
+{
+	// Маски — текстуры хранилища по имени (ScatterLayers.mask, ParticleEmitters.mask): пересоздаются на месте, виды у
+	// расстановки и частиц остаются верными
+	const uint32_t size = paintedMasks().size;
+	std::vector<uint8_t> bytes( static_cast<size_t>( size ) * size );
+	for( size_t i = 0; i < bytes.size() && i < mask.values.size(); ++i )
+		bytes[i] = static_cast<uint8_t>( std::lround( std::clamp( mask.values[i], 0.0f, 1.0f ) * 255.0f ) );
+	TextureDesc desc;
+	desc.width = desc.height = size;
+	desc.format = DXGI_FORMAT_R8_UNORM;
+	TextureData data;
+	data.data = bytes.data();
+	data.rowPitch = size;
+	if( System::textures().setGenerated( mask.name, desc, data ) )
+		return true;
+	LOG( "CDLOD terrain: mask " + mask.name + " is not created" );
+	return false;
+}
+
+void CDLODTerrain::refreshPainted()
+{
+	m_paintActive = !m_paint.targets().empty();
+	if( !m_paintActive )
+	{
+		m_painted = TerrainMasks();
+		return;
+	}
+	m_painted = m_masks;
+	for( const auto& [target, tiles] : m_paint.targets() )
+	{
+		const int32_t layer = TerrainPaint::layerOf( target );
+		if( layer < 0 )
+			refreshPaintedTarget( target, m_paint.whole() );
+		// Слой, которого правила не красили, — нулями: мазок даёт ему вес
+		else if( static_cast<uint32_t>( layer ) < TerrainMasks::splatLayers && m_painted.splat[layer].empty() )
+			m_painted.splat[layer].assign( static_cast<size_t>( m_masks.size ) * m_masks.size, 0.0f );
+	}
+	m_paint.applyLayers( m_masks.splat, m_painted.splat, TerrainMasks::splatLayers, m_paint.whole() );
+}
+
+void CDLODTerrain::refreshPaintedTarget( const std::string& target, const TerrainPaint::Rect& rect )
+{
+	const uint32_t size = m_masks.size;
+	auto copyRect = [&]( const std::vector<float>& from, std::vector<float>& to )
+	{
+		if( from.size() != to.size() )
+			return;
+		for( uint32_t row = rect.row0; row < rect.row1; ++row )
+			std::copy( from.begin() + static_cast<size_t>( row ) * size + rect.x0, from.begin() + static_cast<size_t>( row ) * size + rect.x1,
+					   to.begin() + static_cast<size_t>( row ) * size + rect.x0 );
+	};
+	const int32_t layer = TerrainPaint::layerOf( target );
+	if( layer >= 0 )
+	{
+		// Слои — все вместе: поправка одного меняет веса остальных; слой, которого правила не красили, — нулями
+		if( static_cast<uint32_t>( layer ) < TerrainMasks::splatLayers && m_painted.splat[layer].empty() )
+			m_painted.splat[layer].assign( static_cast<size_t>( size ) * size, 0.0f );
+		for( uint32_t i = 0; i < TerrainMasks::splatLayers; ++i )
+		{
+			if( !m_masks.splat[i].empty() )
+				copyRect( m_masks.splat[i], m_painted.splat[i] );
+			else if( !m_painted.splat[i].empty() )
+				for( uint32_t row = rect.row0; row < rect.row1; ++row )
+					std::fill( m_painted.splat[i].begin() + static_cast<size_t>( row ) * size + rect.x0,
+							   m_painted.splat[i].begin() + static_cast<size_t>( row ) * size + rect.x1, 0.0f );
+		}
+		m_paint.applyLayers( m_masks.splat, m_painted.splat, TerrainMasks::splatLayers, rect );
+		return;
+	}
+	for( size_t i = 0; i < m_masks.masks.size(); ++i )
+		if( m_masks.masks[i].name == target && i < m_painted.masks.size() )
+		{
+			copyRect( m_masks.masks[i].values, m_painted.masks[i].values );
+			m_paint.applyMask( target, m_masks.masks[i].values, m_painted.masks[i].values, rect );
+		}
+}
+
+bool CDLODTerrain::paintStroke( const std::string& target, TerrainPaint::Mode mode, float value, float x, float z, float radius,
+								float falloff, std::string& reason )
+{
+	if( !m_paint.initialized() )
+	{
+		reason = "terrain paint: no layers and masks";
+		return false;
+	}
+	const int32_t layer = TerrainPaint::layerOf( target );
+	const std::vector<float>* rules = nullptr;
+	if( layer >= 0 )
+	{
+		if( static_cast<uint32_t>( layer ) >= m_material.layerCount() || m_material.layerName( layer ).empty() )
+		{
+			reason = "terrain paint: no layer " + std::to_string( layer ) + " in TerrainLayers";
+			return false;
+		}
+		rules = &m_masks.splat[layer];
+	}
+	else
+	{
+		for( const TerrainMasks::Mask& mask : m_masks.masks )
+			if( mask.name == target )
+				rules = &mask.values;
+		if( !rules )
+		{
+			reason = "terrain paint: no mask " + target;
+			return false;
+		}
+	}
+	const bool wasActive = m_paintActive;
+	m_paint.beginStroke( target, mode, value, rules );
+	m_paint.dab( x, z, radius, falloff );
+	const TerrainPaint::Rect touched = m_paint.endStroke();
+	if( touched.empty() )
+	{
+		reason = "terrain paint: the brush is outside the map";
+		return false;
+	}
+	// Первая цель с мазками — копия правил целиком, дальше — только задетый прямоугольник цели
+	if( !wasActive )
+		refreshPainted();
+	else
+	{
+		m_paintActive = true;
+		if( m_painted.size == 0 )
+			refreshPainted();
+		else
+			refreshPaintedTarget( target, touched );
+	}
+	if( layer >= 0 )
+		return m_material.repaint( paintedMasks(), m_coverage );
+	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
+		if( mask.name == target )
+			uploadMask( mask );
+	m_paintedMasksChanged = true;
+	// Лес — полог поля ветра
+	if( target.rfind( "mask_forest_", 0 ) == 0 && !m_wind.empty() )
+		rebuildWindField();
+	return true;
+}
+
+bool CDLODTerrain::clearPaint( const std::string& target )
+{
+	if( !m_paint.has( target ) )
+		return false;
+	m_paint.clear( target );
+	refreshPainted();
+	m_material.repaint( paintedMasks(), m_coverage );
+	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
+		if( mask.name == target )
+			uploadMask( mask );
+	if( TerrainPaint::layerOf( target ) < 0 )
+	{
+		m_paintedMasksChanged = true;
+		if( target.rfind( "mask_forest_", 0 ) == 0 && !m_wind.empty() )
+			rebuildWindField();
+	}
+	return true;
+}
+
+bool CDLODTerrain::paintProbe( const std::string& target, float x, float z, float& rule, float& delta, float& result ) const
+{
+	const uint32_t size = m_masks.size;
+	if( size == 0 )
+		return false;
+	const int32_t column = static_cast<int32_t>( std::floor( x / m_texelSize ) );
+	const int32_t row = static_cast<int32_t>( std::floor( ( size * m_texelSize - z ) / m_texelSize ) );
+	if( column < 0 || row < 0 || column >= static_cast<int32_t>( size ) || row >= static_cast<int32_t>( size ) )
+		return false;
+	const size_t i = static_cast<size_t>( row ) * size + column;
+	const int32_t layer = TerrainPaint::layerOf( target );
+	const TerrainMasks& painted = paintedMasks();
+	if( layer >= 0 )
+	{
+		if( static_cast<uint32_t>( layer ) >= TerrainMasks::splatLayers )
+			return false;
+		rule = m_masks.splat[layer].empty() ? 0.0f : m_masks.splat[layer][i];
+		result = painted.splat[layer].empty() ? 0.0f : painted.splat[layer][i];
+	}
+	else
+	{
+		size_t found = m_masks.masks.size();
+		for( size_t m = 0; m < m_masks.masks.size(); ++m )
+			if( m_masks.masks[m].name == target )
+				found = m;
+		if( found == m_masks.masks.size() )
+			return false;
+		rule = m_masks.masks[found].values[i];
+		result = painted.masks[found].values[i];
+	}
+	delta = m_paint.delta( target, static_cast<uint32_t>( column ), static_cast<uint32_t>( row ) );
 	return true;
 }
 
@@ -902,22 +1095,12 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 		m_masks.quantize();
 	}
 
-	// Маски — текстуры хранилища по имени (ScatterLayers.mask, ParticleEmitters.mask): пересоздаются на месте, виды у
-	// расстановки и частиц остаются верными
-	std::vector<uint8_t> bytes( static_cast<size_t>( m_masks.size ) * m_masks.size );
-	for( const TerrainMasks::Mask& mask : m_masks.masks )
-	{
-		for( size_t i = 0; i < bytes.size(); ++i )
-			bytes[i] = static_cast<uint8_t>( std::lround( std::clamp( mask.values[i], 0.0f, 1.0f ) * 255.0f ) );
-		TextureDesc desc;
-		desc.width = desc.height = m_masks.size;
-		desc.format = DXGI_FORMAT_R8_UNORM;
-		TextureData data;
-		data.data = bytes.data();
-		data.rowPitch = m_masks.size;
-		if( !System::textures().setGenerated( mask.name, desc, data ) )
-			LOG( "CDLOD terrain: mask " + mask.name + " is not created" );
-	}
+	// Мазки кисти — поверх правил (кэш выше — только правила): при первой сборке — из базы, потом — нынешние
+	if( !m_paint.initialized() || m_paint.whole().x1 != m_masks.size )
+		m_paint.initialize( m_masks.size, field.texelSize, m_paintTiles );
+	refreshPainted();
+	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
+		uploadMask( mask );
 	if( !cached )
 	{
 		// Копия на диске — и кэш: ключ пишется после файлов, а прежний убирается до них (прервали запись — промах)
@@ -1464,6 +1647,7 @@ TerrainSettings CDLODTerrain::settings() const
 	const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
 	settings.farBlendStart = farBlend.x;
 	settings.farBlendEnd = farBlend.y;
+	settings.paint = m_paint.initialized() ? m_paint.tiles() : m_paintTiles;
 	settings.layerTiling.assign( m_material.layerCount(), 0.0f );
 	settings.layerTint.assign( m_material.layerCount(), XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )

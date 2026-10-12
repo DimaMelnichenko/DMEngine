@@ -167,6 +167,16 @@ struct TerrainLayerRuleField
 };
 const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields();
 
+// Плитка ручной правки слоя земли или маски поверх правил (TerrainPaint, строки таблицы TerrainPaint): цель — «layer N»
+// или имя маски; поправки TerrainPaint::tileSize² по строкам (строка 0 — дальний край по z, как у масок), −127…127 → −1…1
+struct TerrainPaintTile
+{
+	std::string target;
+	int32_t tileX = 0;
+	int32_t tileZ = 0;
+	std::vector<int8_t> delta;
+};
+
 // Материал и высота террейна — колонки строки Terrain и tiling строк TerrainLayers: читает CDLODTerrain, правки окна
 // террейна пишет «Save level»
 struct TerrainSettings
@@ -182,6 +192,7 @@ struct TerrainSettings
 	std::vector<DirectX::XMFLOAT3> layerTint;	// множитель альбедо по номеру слоя (TerrainLayers.albedo_tint)
 	std::optional<TerrainErosionSettings> erosion;	// строка TerrainErosion — правки подокна «Erosion»
 	TerrainLayerRules layerRules;					// строка TerrainLayerRules — правки подокна «Layer rules»
+	std::vector<TerrainPaintTile> paint;			// мазки кисти — строки TerrainPaint террейна
 };
 
 // Строка SkyAtmosphere; без неё — значения по умолчанию

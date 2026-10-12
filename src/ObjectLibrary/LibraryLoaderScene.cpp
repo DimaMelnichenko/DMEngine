@@ -114,6 +114,26 @@ void LibraryLoader::loadTerrainLayerRules( uint32_t terrainId, LevelDescription&
 	}
 }
 
+void LibraryLoader::loadTerrainPaint( uint32_t terrainId, LevelDescription& level )
+{
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "TerrainPaint" ) )
+		return;
+	SQLite::Statement query( db, "SELECT target, tile_x, tile_z, delta FROM TerrainPaint WHERE terrain = :terrain" );
+	query.bind( ":terrain", terrainId );
+	while( query.executeStep() )
+	{
+		GS::TerrainPaintTile tile;
+		tile.target = query.getColumn( 0 ).getString();
+		tile.tileX = query.getColumn( 1 ).getInt();
+		tile.tileZ = query.getColumn( 2 ).getInt();
+		const SQLite::Column delta = query.getColumn( 3 );
+		const int8_t* bytes = static_cast<const int8_t*>( delta.getBlob() );
+		tile.delta.assign( bytes, bytes + delta.getBytes() );
+		level.terrainPaint.push_back( std::move( tile ) );
+	}
+}
+
 void LibraryLoader::loadTerrainErosion( uint32_t terrainId, LevelDescription& level )
 {
 	SQLite::Database& db = DBConnector::instance().db();
@@ -380,6 +400,26 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 						updateRules.bind( ":" + column, dbValue( terrain->layerRules.*field.value ) );
 				}
 				updateRules.exec();
+			}
+
+			// Мазки кисти: плитки террейна заново (убранные мазки — убранные строки)
+			if( db.tableExists( "TerrainPaint" ) )
+			{
+				SQLite::Statement removePaint( db, "DELETE FROM TerrainPaint WHERE terrain = :terrain" );
+				removePaint.bind( ":terrain", terrain->id );
+				removePaint.exec();
+				SQLite::Statement insertPaint( db, "INSERT INTO TerrainPaint (terrain, target, tile_x, tile_z, delta) "
+												   "VALUES (:terrain, :target, :x, :z, :delta)" );
+				for( const GS::TerrainPaintTile& tile : terrain->paint )
+				{
+					insertPaint.bind( ":terrain", terrain->id );
+					insertPaint.bind( ":target", tile.target );
+					insertPaint.bind( ":x", tile.tileX );
+					insertPaint.bind( ":z", tile.tileZ );
+					insertPaint.bind( ":delta", tile.delta.data(), static_cast<int>( tile.delta.size() ) );
+					insertPaint.exec();
+					insertPaint.reset();
+				}
 			}
 
 			SQLite::Statement updateLayer( db, "UPDATE TerrainLayers SET tiling = :tiling, albedo_tint = :tint WHERE terrain = :terrain AND layer = :layer" );
