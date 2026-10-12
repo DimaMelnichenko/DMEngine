@@ -3,8 +3,11 @@
 #include "TerrainMasks.h"
 #include "D3D\TextureImages.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <DirectXTex.h>
 #include "System.h"
 #include "DBConnector.h"
@@ -12,6 +15,7 @@
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "Texture\ImageFile.h"
+#include "Utils\Fingerprint.h"
 
 using namespace DirectX;
 
@@ -23,6 +27,10 @@ namespace
 constexpr size_t fallbackSize = 256;
 constexpr size_t checkerCell = 32;
 constexpr TEX_FILTER_FLAGS mipFilter = TEX_FILTER_BOX | TEX_FILTER_FORCE_NON_WIC;
+// Готовые массивы слоёв (мипы, BC7) — рядом с готовыми текстурами моделей (DMTextureStorage::load), как cook в UE.
+// Меняется сборка массива или сжатие — поднять версию: массивы приготовятся заново
+constexpr const char* cookedDirectory = "cache\\textures";
+constexpr uint32_t cookVersion = 1;
 
 enum class Fallback
 {
@@ -125,7 +133,7 @@ bool createArraySRV( const ScratchImage& layers, Texture& texture, ShaderView& s
 
 // Массив из готовых мипов файлов слоёв (Tools/pack_terrain_layer.py и генератор пишут полную цепочку): у всех слоёв
 // один размер, R8G8B8A8 и полная цепочка — без GenerateMipMaps, которые на CPU стоят секунды (в Debug — ещё больше)
-bool buildArrayFromFileMips( const std::vector<std::string>& files, bool srgb, Texture& texture, ShaderView& srv )
+bool loadArrayFromFileMips( const std::vector<std::string>& files, bool srgb, ScratchImage& layers )
 {
 	std::vector<ScratchImage> images( files.size() );
 	SlowTask task( static_cast<float>( files.size() ) );
@@ -146,7 +154,6 @@ bool buildArrayFromFileMips( const std::vector<std::string>& files, bool srgb, T
 	}
 
 	const TexMetadata& meta = images[0].GetMetadata();
-	ScratchImage layers;
 	if( FAILED( layers.Initialize2D( srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM, meta.width,
 									 meta.height, files.size(), meta.mipLevels ) ) )
 		return false;
@@ -160,14 +167,14 @@ bool buildArrayFromFileMips( const std::vector<std::string>& files, bool srgb, T
 				std::memcpy( target.pixels + y * target.rowPitch, source.pixels + y * source.rowPitch, source.width * 4 );
 		}
 	}
-	return createArraySRV( layers, texture, srv );
+	return true;
 }
 
-// Массив текстур из файлов слоёв; пустое имя — слой не описан. srgb — RGB в sRGB (альбедо): массив R8G8B8A8_UNORM_SRGB,
-// выборка возвращает линейный цвет, мипы фильтруются в линейном; альфа (высота) остаётся линейной
-bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool srgb, Texture& texture, ShaderView& srv )
+// Массив текстур из файлов слоёв с мипами (несжатый); пустое имя — слой не описан. srgb — RGB в sRGB (альбедо): массив
+// R8G8B8A8_UNORM_SRGB, выборка возвращает линейный цвет, мипы фильтруются в линейном; альфа (высота) остаётся линейной
+bool loadArray( const std::vector<std::string>& files, Fallback fallback, bool srgb, ScratchImage& result )
 {
-	if( buildArrayFromFileMips( files, srgb, texture, srv ) )
+	if( loadArrayFromFileMips( files, srgb, result ) )
 		return true;
 
 	std::vector<ScratchImage> images( files.size() );
@@ -210,11 +217,61 @@ bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool 
 		return false;
 
 	task.enterProgressFrame( static_cast<float>( files.size() ), "Mipmaps" );
-	ScratchImage mips;
-	if( FAILED( GenerateMipMaps( layers.GetImages(), layers.GetImageCount(), layers.GetMetadata(), mipFilter, 0, mips ) ) )
-		return false;
+	return SUCCEEDED( GenerateMipMaps( layers.GetImages(), layers.GetImageCount(), layers.GetMetadata(), mipFilter, 0, result ) );
+}
 
-	return createArraySRV( mips, texture, srv );
+// Массив слоёв на GPU в BC7 (sRGB — у альбедо; альфа — высота или шероховатость — линейная в обоих): в 4 раза меньше
+// памяти и чтения в terrain.ps. Готовый массив — в кэше cache\textures\<name>.<отпечаток>.dds: отпечаток — файлы слоёв
+// (путь, размер, время правки), sRGB и cookVersion; сменились — массив собирается и сжимается заново, прежний удаляется
+bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool srgb, const char* name, Texture& texture, ShaderView& srv )
+{
+	Fingerprint stamp;
+	std::error_code error;
+	for( const std::string& file : files )
+	{
+		const std::string path = GS::System::textures().path() + "\\" + file;
+		stamp.add( path.data(), path.size() );
+		stamp.add( static_cast<uint64_t>( std::filesystem::file_size( path, error ) ) );
+		stamp.add( std::filesystem::last_write_time( path, error ).time_since_epoch().count() );
+	}
+	stamp.add( srgb );
+	stamp.add( fallback );
+	stamp.add( cookVersion );
+	char stampText[20];
+	std::snprintf( stampText, sizeof( stampText ), "%016llx", static_cast<unsigned long long>( stamp.value ) );
+	const std::string cookedPath = std::string( cookedDirectory ) + "\\" + name + "." + stampText + ".dds";
+
+	const DXGI_FORMAT compressed = srgb ? DXGI_FORMAT_BC7_UNORM_SRGB : DXGI_FORMAT_BC7_UNORM;
+	ScratchImage layers;
+	if( std::filesystem::exists( cookedPath, error ) && ImageFile::load( cookedPath, layers ) &&
+		layers.GetMetadata().format == compressed && layers.GetMetadata().arraySize == files.size() )
+		return createArraySRV( layers, texture, srv );
+
+	const auto start = std::chrono::steady_clock::now();
+	if( !loadArray( files, fallback, srgb, layers ) )
+		return false;
+	// Сжатие блоками 4 × 4: сторона — кратная 4 (правило D3D12); иначе — как есть
+	const TexMetadata& metadata = layers.GetMetadata();
+	if( metadata.width % 4 == 0 && metadata.height % 4 == 0 )
+	{
+		ScratchImage bc7;
+		if( SUCCEEDED( Compress( layers.GetImages(), layers.GetImageCount(), metadata, compressed,
+								 TEX_COMPRESS_PARALLEL | TEX_COMPRESS_BC7_QUICK, TEX_THRESHOLD_DEFAULT, bc7 ) ) )
+			layers = std::move( bc7 );
+		else
+			LOG( std::string( "Terrain material: can`t compress " ) + name + ", it stays uncompressed" );
+	}
+	std::filesystem::create_directories( cookedDirectory, error );
+	const std::string prefix = std::string( name ) + ".";
+	for( const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator( cookedDirectory, error ) )
+		if( entry.is_regular_file() && entry.path().filename().string().rfind( prefix, 0 ) == 0 )
+			std::filesystem::remove( entry.path(), error );
+	const std::wstring wide( cookedPath.begin(), cookedPath.end() );
+	if( FAILED( SaveToDDSFile( layers.GetImages(), layers.GetImageCount(), layers.GetMetadata(), DDS_FLAGS_NONE, wide.c_str() ) ) )
+		LOG( "Terrain material: can`t write the cooked array " + cookedPath );
+	const auto ms = std::chrono::duration<float, std::milli>( std::chrono::steady_clock::now() - start ).count();
+	LOG( std::string( "Terrain material: " ) + name + " cooked to " + cookedPath + ", ms: " + std::to_string( ms ) );
+	return createArraySRV( layers, texture, srv );
 }
 
 // Покраска правками рельефа (TerrainEdits.paint_layer, как Paint Layer у Landscape Splines): вес слоя i = вес файла ×
@@ -337,9 +394,10 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const TerrainMasks& masks,
 	task.enterProgressFrame( 0.1f, "Splat map" );
 	bool created = buildSplatMap( masks, coverage, m_layerCount, m_splatMapTexture, m_splatMap );
 	task.enterProgressFrame( 0.45f, "Albedo" );
-	created = created && buildArray( albedoFiles, Fallback::checker, true, m_albedoHeightTexture, m_albedoHeight );
+	created = created && buildArray( albedoFiles, Fallback::checker, true, "terrain_albedo_height", m_albedoHeightTexture, m_albedoHeight );
 	task.enterProgressFrame( 0.45f, "Normals" );
-	created = created && buildArray( normalFiles, Fallback::flatNormal, false, m_normalRoughnessTexture, m_normalRoughness );
+	created = created && buildArray( normalFiles, Fallback::flatNormal, false, "terrain_normal_roughness", m_normalRoughnessTexture,
+									 m_normalRoughness );
 	if( !created )
 	{
 		LOG( "Terrain material: can`t create textures" );
