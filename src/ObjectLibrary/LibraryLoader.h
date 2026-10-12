@@ -35,9 +35,10 @@ public:
 	bool loadShader( uint32_t idMaterial, GS::Material* material );
 	// Состав уровня name (пустое имя — первый уровень таблицы Levels). Модели уровня не загружает
 	bool loadLevel( const std::string& name, LevelDescription& level );
-	// Свет и окружение уровня обратно в базу одной транзакцией: строки LevelLights — по id, настройки неба
+	// Свет и окружение уровня обратно в базу одной транзакцией: строки LevelLights — по id (источник с id 0 — новая
+	// строка уровня, её id пишется в lights; removedLights — строки убранных источников, удаляются), настройки неба
 	// и постобработки — в строки уровня (нет строки — создаётся и привязывается к Levels, id пишется в level)
-	bool saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,
+	bool saveLevelEnvironment( LevelDescription& level, std::vector<DMLight>& lights, const std::vector<uint32_t>& removedLights,
 							   const std::optional<GS::SunPositionSettings>& sunPosition,
 							   const std::optional<GS::SkyAtmosphereSettings>& atmosphere,
 							   const std::optional<GS::HDRIBackdropSettings>& hdri,

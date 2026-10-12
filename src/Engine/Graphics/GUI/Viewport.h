@@ -21,7 +21,8 @@ class WaterSimulation;
 // выбранного — гизмо перемещения, поворота и масштаба (ImGuizmo), правит те же свойства окна. Источники света —
 // значками (точечный и прожектор — на месте, направленный — в небе, откуда идёт свет); клик выбирает источник (его
 // подокно — в Details), гизмо двигает точечный и прожектор и поворачивает прожектор, значок направленного тянут по небу
-// (у солнца и луны при SunPosition — временем суток). Режим гизмо — кнопки над
+// (у солнца и луны при SunPosition — временем суток), Delete убирает выбранный (кнопка Delete его подокна, с отменой).
+// Режим гизмо — кнопки над
 // сценой и клавиши 5 / 6 / 7, оси — мира или экземпляра. Режим «Stream curves» (View): кривые русел ближе 250 м — линии и
 // точки; клик по точке выбирает её (подокно кривой — в Details), гизмо двигает её по X и Z, Insert — новая точка после
 // выбранной, Delete — удалить; русла перестраиваются, когда правка закончена (WaterSimulation::finishCurveEdit).
@@ -39,8 +40,11 @@ public:
 	// пусто — мимо
 	std::string clickAt( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, GS::WaterSimulation* water,
 						 const GS::TerrainHeightSource* terrain, float x, float y, DMLightDriver* lights = nullptr );
-	// Выбранный источник света (номер в DMLightDriver::lights), −1 — ничего
+	// Выбранный источник света (номер в DMLightDriver::lights), −1 — ничего. Выбор хранится ключом источника
+	// (DMLightDriver::key): номер сдвигается, когда источники добавляют и убирают; убрали выбранный — выбора нет
 	int selectedLight() const { return m_selectedLight; }
+	// Выбрать источник по ключу (новый источник — кнопки окна «Lights»); экземпляр и точка кривой — не выбраны
+	void selectLight( const DMLightDriver& lights, uint32_t key );
 	// Правка выбранной точки кривой (клавиши и команда stream): перенос в x, z и конец правки; новая точка после выбранной;
 	// удаление. false — точка не выбрана или правка невозможна
 	bool moveStreamPoint( GS::WaterSimulation& water, float x, float z );
@@ -90,7 +94,8 @@ private:
 	};
 
 	int m_selected = -1;
-	int m_selectedLight = -1;
+	uint32_t m_selectedLightKey = 0;	// 0 — источник не выбран
+	int m_selectedLight = -1;			// его номер в этом кадре
 	bool m_draggingLight = false;	// значок направленного источника тянут по небу
 	bool m_pressedOverScene = false;
 	Gizmo m_gizmo = Gizmo::move;

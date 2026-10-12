@@ -93,7 +93,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `-NoGui` (`-nogui` у exe) снимает кадр без окон ImGui — для сравнения картинки лучше с ним.
 - **Серия проверок за один запуск** — удалённое управление (`docs/remote.md`, как консоль и Remote Control в UE):
   `python Tools/engine.py start [--config Release] [--nogui]`, затем команды — `camera x,y,z,pitch,yaw`,
-  `screenshot файл.png [кадров]`, `stat gpu 3`, `list` / `get` / `set "окно/свойство" значение`, `key G`, `timestep 0.0166`
+  `screenshot файл.png [кадров]`, `stat gpu 3`, `list` / `get` / `set "окно/свойство" значение`, `press "окно/кнопка"`, `key G`, `timestep 0.0166`
   (фиксированный шаг времени для серий кадров), — по одной или
   сценарием (`python Tools/engine.py run файл.txt`), и `python Tools/engine.py stop` (штатный выход, ошибки из лога).
   Движок с `-remote` слушает канал `\\.\pipe\DMEngine`, команды выполняет главный поток в начале кадра. Снимок —
@@ -198,7 +198,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   окно «Model instances» (`ModelInstances::instanceProperties`: положение, поворот углами, масштаб → `LevelModels`).
   Числа — поля как в Blender (`PropertyWidgets::numberField`, один шаблон контролов `controlCell` на все окна):
   перетаскивание вбок, клик — ввод, стрелки по краям — шаг, Shift — точнее, Ctrl — шагами; у свойства с границами —
-  заливка доли. Вьюпорт
+  заливка доли. Кнопки окна — `PropertyContainer::addButton` (как CallInEditor в UE; действие с отменой —
+  `EditHistory::record`, команда `press "окно/кнопка"`): так добавляются и убираются источники света. Вьюпорт
   (`GUI/Viewport.h`, вызывается между `GUI::Begin` и `End`): клик по сцене — луч к границам экземпляров
   (`ModelInstances::pick`), рамка, подокно в Details (`GUI::focusProperties`), гизмо ImGuizmo пишет в те же свойства;
   отладочные виды — View → Debug views; команда `pick x y` — выбор сценарием.
@@ -419,7 +420,8 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 деревья — материал `PBRTree` (define `WIND_TREE`): слои Games wind SpeedTree по данным второго потока вершин `VertexPool` —
 начала и веса ветвей двух уровней, доля высоты, рябь, атрибуты glTF `_WIND_*`, блок `WIND` файла меша).
 В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
-вместо вектора; «Sun position» — время суток), «Sky atmosphere» или «HDRI backdrop», «Volumetric cloud», «Post process», «Height fog», «Wind»; кнопка «Save level»
+вместо вектора; «Sun position» — время суток; кнопки «Add … light» и «Delete» — новый источник перед камерой и удаление,
+«Save level» вставляет и удаляет строки `LevelLights`), «Sky atmosphere» или «HDRI backdrop», «Volumetric cloud», «Post process», «Height fog», «Wind»; кнопка «Save level»
 (`GUI::addAction`) пишет их обратно вместе с окнами объектов сцены (`LibraryLoader::saveLevelEnvironment`; чтение и запись окружения — `ObjectLibrary/LibraryLoaderEnvironment.cpp`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
 уровень). Источники раз за кадр обновляет `Scene::updateLights` в `DMGraphics::Frame` (правки GUI и время
 суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`

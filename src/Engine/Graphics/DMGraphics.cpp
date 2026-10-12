@@ -143,6 +143,13 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	// сцены с savedWithLevel: их пишет «Save level»
 	using Editor::Category;
 	m_GUI.addPropertyWatching( m_scene.lights().properties(), Category::environment, nullptr, true );
+	// Источники света добавляются кнопками окна «Lights» (удаляются — кнопкой Delete своего подокна, DMLightDriver)
+	for( DMLight::LightType type : { DMLight::Dir, DMLight::Point, DMLight::Spot } )
+	{
+		m_scene.lights().properties()->addButton( std::string( "Add " ) + DMLight::typeName( type ) + " light",
+												  "New light in front of the camera, selected in the viewport (Save level writes it, Ctrl+Z removes it)",
+												  [this, type] { return addLight( type ); } );
+	}
 	for( SceneObject* object : m_scene.objects() )
 	{
 		if( object->properties() )
@@ -325,6 +332,52 @@ bool DMGraphics::Render( const FrameContext& frame )
 	DMD3D::instance().endFrame();
 
 	return true;
+}
+
+PropertyContainer::ButtonAction DMGraphics::addLight( DMLight::LightType type )
+{
+	DMLightDriver& lights = m_scene.lights();
+	const DMCamera& camera = m_cameraPool["main"];
+	const XMFLOAT3 eye = camera.position();
+	XMFLOAT3 forward;
+	camera.viewDirection( &forward );
+	// Перед камерой, как Quick Add в UE: там, где центр взгляда упирается в землю (ближе 200 м), иначе в 10 м; точечный —
+	// не ниже 1,5 м над землёй, прожектор — 3 м и светит вниз; направленный — под 45° вниз в сторону взгляда
+	const TerrainHeightSource& terrain = m_scene.terrain();
+	float ground = 0.0f;
+	float distance = 10.0f;
+	for( float t = 0.5f; t < 200.0f; t += 0.5f )
+	{
+		if( terrain.surfaceHeight( eye.x + forward.x * t, eye.z + forward.z * t, ground ) && eye.y + forward.y * t <= ground )
+		{
+			distance = t;
+			break;
+		}
+	}
+	XMFLOAT3 position( eye.x + forward.x * distance, eye.y + forward.y * distance, eye.z + forward.z * distance );
+	if( terrain.surfaceHeight( position.x, position.z, ground ) )
+		position.y = std::max( position.y, ground + ( type == DMLight::Spot ? 3.0f : 1.5f ) );
+	XMFLOAT3 direction( 0.0f, -1.0f, 0.0f );
+	const float horizontal = std::sqrt( forward.x * forward.x + forward.z * forward.z );
+	if( type == DMLight::Dir && horizontal > 1e-3f )
+	{
+		const float component = 1.0f / std::sqrt( 2.0f );
+		direction = XMFLOAT3( forward.x / horizontal * component, -component, forward.z / horizontal * component );
+	}
+
+	const uint32_t key = lights.addLight( lights.newLight( type, position, direction ) );
+	m_viewport.selectLight( lights, key );
+	PropertyContainer* properties = lights.lightProperties( lights.indexOf( key ) );
+	if( properties )
+		m_GUI.focusProperties( properties );
+	LOG( "Light added: " + ( properties ? properties->name() : std::string() ) );
+	return { [&lights, key] { lights.removeLight( key ); },
+			 [this, &lights, key]
+			 {
+				 lights.restoreLight( key );
+				 m_viewport.selectLight( lights, key );
+			 },
+			 "Add " + ( properties ? properties->name() : std::string( DMLight::typeName( type ) ) ) };
 }
 
 void DMGraphics::drawLoadingFrame( const std::string& task, float progress )
@@ -753,7 +806,11 @@ void DMGraphics::registerCommands()
 		reply->ok();
 	} );
 
-	registerPropertyCommands( m_console, [this]() -> const std::vector<PropertyContainer*>& { return m_GUI.propertyContainers(); } );
+	registerPropertyCommands( m_console, [this]() -> const std::vector<PropertyContainer*>& { return m_GUI.propertyContainers(); },
+							  [this]( PropertyContainer& container, const std::string& button, std::string* name )
+							  {
+								  return m_GUI.press( container, button, name );
+							  } );
 }
 
 void DMGraphics::updateMouseLook()

@@ -263,7 +263,7 @@ double LibraryLoader::dbValue( float value )
 	return std::atof( text );
 }
 
-bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::vector<DMLight>& lights,
+bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<DMLight>& lights, const std::vector<uint32_t>& removedLights,
 										  const std::optional<GS::SunPositionSettings>& sunPosition,
 										  const std::optional<GS::SkyAtmosphereSettings>& atmosphere,
 										  const std::optional<GS::HDRIBackdropSettings>& hdri,
@@ -275,6 +275,29 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, const std::ve
 	{
 		SQLite::Database& db = DBConnector::instance().db();
 		SQLite::Transaction transaction( db );
+
+		// Убранные в редакторе источники — строки удаляются; добавленные — новые строки уровня (тип и номер светила
+		// атмосферы в GUI не меняются, остальное пишет UPDATE ниже). id новых строк — в источники: после сохранения
+		// они правятся по id, как загруженные
+		SQLite::Statement deleteLight( db, "DELETE FROM LevelLights WHERE id = :id" );
+		for( uint32_t id : removedLights )
+		{
+			deleteLight.bind( ":id", id );
+			deleteLight.exec();
+			deleteLight.reset();
+		}
+		SQLite::Statement insertLight( db, "INSERT INTO LevelLights (level, type, atmosphere_sun_light_index) VALUES (:level, :type, :index)" );
+		for( DMLight& light : lights )
+		{
+			if( light.id != 0 )
+				continue;
+			insertLight.bind( ":level", level.id );
+			insertLight.bind( ":type", std::string( DMLight::typeName( light.type() ) ) );
+			insertLight.bind( ":index", light.atmosphereSunLightIndex() );
+			insertLight.exec();
+			insertLight.reset();
+			light.id = static_cast<uint32_t>( db.getLastInsertRowid() );
+		}
 
 		SQLite::Statement updateLight( db, "UPDATE LevelLights SET name = :name, enabled = :enabled, color = :color, "
 										   "intensity = :intensity, position = :position, direction = :direction, "

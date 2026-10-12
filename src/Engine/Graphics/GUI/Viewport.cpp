@@ -112,8 +112,10 @@ void Viewport::update( const DMCamera& camera, GS::ModelInstances& models, GUI& 
 {
 	if( m_selected >= static_cast<int>( models.instanceCount() ) )
 		m_selected = -1;
-	if( !lights || m_selectedLight >= static_cast<int>( lights->lights().size() ) )
-		m_selectedLight = -1;
+	// Источник — по ключу: номер мог сдвинуться, сам источник — убран
+	m_selectedLight = lights ? lights->indexOf( m_selectedLightKey ) : -1;
+	if( m_selectedLight < 0 )
+		m_selectedLightKey = 0;
 	const bool streams = m_streamMode && water && terrain;
 	if( streams && ( m_streamCurve >= static_cast<int>( water->curves().size() ) ||
 					 ( m_streamCurve >= 0 && m_streamPoint >= static_cast<int>( water->curves()[m_streamCurve].points.size() ) ) ) )
@@ -140,9 +142,31 @@ void Viewport::update( const DMCamera& camera, GS::ModelInstances& models, GUI& 
 		manipulate( camera, models, gui );
 	}
 	else if( m_selectedLight >= 0 )
-		editLight( camera, *lights, gui );
+	{
+		// Delete — кнопка Delete подокна источника: убрать с отменой, как в Details
+		const bool dragging = m_usingGizmo || m_draggingLight;
+		if( !dragging && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed( ImGuiKey_Delete, false ) )
+		{
+			if( PropertyContainer* properties = lights->lightProperties( m_selectedLight ) )
+				gui.press( *properties, DMLightDriver::deleteButton );
+			m_selectedLight = -1;
+			m_selectedLightKey = 0;
+			trackGizmo( false, gui, {}, {} );
+		}
+		else
+			editLight( camera, *lights, gui );
+	}
 	else
 		trackGizmo( false, gui, {}, {} );
+}
+
+void Viewport::selectLight( const DMLightDriver& lights, uint32_t key )
+{
+	m_selectedLightKey = key;
+	m_selectedLight = lights.indexOf( key );
+	m_selected = -1;
+	m_streamCurve = -1;
+	m_streamPoint = -1;
 }
 
 std::string Viewport::clickAt( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, GS::WaterSimulation* water,
@@ -152,6 +176,8 @@ std::string Viewport::clickAt( const DMCamera& camera, GS::ModelInstances& model
 	if( m_streamMode && water && terrain && pickStreamPoint( camera, *water, *terrain, x, y ) )
 	{
 		m_selected = -1;
+		m_selectedLight = -1;
+		m_selectedLightKey = 0;
 		if( PropertyContainer* properties = water->curveProperties( m_streamCurve ) )
 			gui.focusProperties( properties );
 		return water->curves()[m_streamCurve].name + ", point " + std::to_string( m_streamPoint );
@@ -160,6 +186,7 @@ std::string Viewport::clickAt( const DMCamera& camera, GS::ModelInstances& model
 	m_streamPoint = -1;
 	// Значок источника света — раньше экземпляров: значок мал и рисуется поверх сцены
 	m_selectedLight = lights ? pickLight( camera, *lights, x, y ) : -1;
+	m_selectedLightKey = m_selectedLight >= 0 ? lights->key( m_selectedLight ) : 0;
 	if( m_selectedLight >= 0 )
 	{
 		m_selected = -1;

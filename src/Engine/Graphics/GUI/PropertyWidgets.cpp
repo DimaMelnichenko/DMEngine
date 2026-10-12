@@ -21,6 +21,9 @@ const ImVec4 modifiedColor( 1.0f, 0.75f, 0.3f, 1.0f );
 Property* editedProperty = nullptr;
 bool editedPropertyDrawn = false;
 Editor::EditHistory* editHistory = nullptr;
+// Нажатая кнопка окна — до takePressedButton
+PropertyContainer* pressedContainer = nullptr;
+std::string pressedButton;
 
 // Правка идёт, пока контрол свойства активен (у числа — ползунок или поле ввода: группа)
 void markEditing( Property& property, bool active )
@@ -405,10 +408,33 @@ bool contains( PropertyContainer& container, const PropertyContainer* target )
 	return false;
 }
 
+// Кнопки окна — строкой под его свойствами, с переносом по ширине панели
+void drawButtons( PropertyContainer& container, const std::string& filter, bool containerMatches )
+{
+	bool first = true;
+	for( const PropertyContainer::Button& button : container.buttons() )
+	{
+		if( !containerMatches && !matches( button.name, filter ) )
+			continue;
+		const float width = ImGui::CalcTextSize( button.name.c_str() ).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+		if( !first && ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + width < ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x )
+			ImGui::SameLine();
+		first = false;
+		if( ImGui::Button( button.name.c_str() ) )
+		{
+			pressedContainer = &container;
+			pressedButton = button.name;
+		}
+		if( !button.tooltip.empty() )
+			ImGui::SetItemTooltip( "%s", button.tooltip.c_str() );
+	}
+}
+
 void drawContainerImpl( PropertyContainer& container, const std::string& filter, bool parentMatches, PropertyContainer* focus )
 {
 	const bool containerMatches = parentMatches || ( !filter.empty() && matches( container.name(), filter ) );
 	drawProperties( container, filter, containerMatches );
+	drawButtons( container, filter, containerMatches );
 	for( PropertyContainer* sub : container.subContainer() )
 	{
 		if( !containerMatches && !hasMatches( *sub, filter ) )
@@ -454,6 +480,11 @@ bool hasMatches( PropertyContainer& container, const std::string& filter )
 		if( matches( name, filter ) )
 			return true;
 	}
+	for( const PropertyContainer::Button& button : container.buttons() )
+	{
+		if( matches( button.name, filter ) )
+			return true;
+	}
 	for( PropertyContainer* sub : container.subContainer() )
 	{
 		if( hasMatches( *sub, filter ) )
@@ -465,6 +496,17 @@ bool hasMatches( PropertyContainer& container, const std::string& filter )
 void drawContainer( PropertyContainer& container, const std::string& filter, PropertyContainer* focus )
 {
 	drawContainerImpl( container, filter, false, focus );
+}
+
+bool takePressedButton( PropertyContainer*& container, std::string& button )
+{
+	if( !pressedContainer )
+		return false;
+	container = pressedContainer;
+	button = std::move( pressedButton );
+	pressedContainer = nullptr;
+	pressedButton.clear();
+	return true;
 }
 
 bool numberField( const char* id, float* value, const char* format, const NumberOptions& options )

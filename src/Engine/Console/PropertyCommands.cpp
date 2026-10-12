@@ -153,9 +153,10 @@ bool resolve( const std::vector<PropertyContainer*>& roots, const std::string& p
 
 }
 
-void registerPropertyCommands( ConsoleCommands& commands, std::function<const std::vector<PropertyContainer*>&()> roots )
+void registerPropertyCommands( ConsoleCommands& commands, std::function<const std::vector<PropertyContainer*>&()> roots,
+							   PressButton press )
 {
-	commands.registerCommand( "list", "[window/subwindow] - property windows, their subwindows and properties",
+	commands.registerCommand( "list", "[window/subwindow] - property windows, their subwindows, properties and [buttons]",
 							  [roots]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		if( args.empty() )
@@ -171,7 +172,24 @@ void registerPropertyCommands( ConsoleCommands& commands, std::function<const st
 			reply->line( sub->name() + "/" );
 		for( const std::string& name : resolved.container->names() )
 			reply->line( name + " = " + toString( resolved.container->property( name ) ) );
+		for( const PropertyContainer::Button& button : resolved.container->buttons() )
+			reply->line( "[" + button.name + "]" );
 		reply->ok();
+	} );
+
+	commands.registerCommand( "press", "<window/button> - press a button of a properties window, as in Details (Lights/Add point light)",
+							  [roots, press]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		const size_t slash = args.empty() ? std::string::npos : args[0].rfind( '/' );
+		if( args.size() != 1 || slash == std::string::npos )
+			return reply->error( "usage: press \"<window/button>\"" );
+		Resolved resolved;
+		if( !resolve( roots(), args[0].substr( 0, slash ), resolved ) || resolved.property )
+			return reply->error( "no window " + args[0].substr( 0, slash ) );
+		std::string name;
+		if( !press( *resolved.container, args[0].substr( slash + 1 ), &name ) )
+			return reply->error( "no button " + args[0] );
+		reply->ok( name );
 	} );
 
 	commands.registerCommand( "get", "<window/property> - property value",

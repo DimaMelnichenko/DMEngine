@@ -36,9 +36,14 @@ struct NumberOptions
 bool numberField( const char* id, float* value, const char* format, const NumberOptions& options );
 bool numberField( const char* id, int32_t* value, const NumberOptions& options );
 
-// Свойства контейнера и его подконтейнеры (сворачиваемые заголовки); filter — подстрока имени свойства или подконтейнера;
-// focus — подконтейнер, который раскрыть (с родителями) и прокрутить к нему, прочие свернуть; nullptr — как есть
+// Свойства контейнера, его кнопки (PropertyContainer::addButton) и подконтейнеры (сворачиваемые заголовки); filter —
+// подстрока имени свойства, кнопки или подконтейнера; focus — подконтейнер, который раскрыть (с родителями) и прокрутить
+// к нему, прочие свернуть; nullptr — как есть
 void drawContainer( PropertyContainer& container, const std::string& filter, PropertyContainer* focus = nullptr );
+
+// Нажатая в этом кадре кнопка окна: её действие выполняет GUI после отрисовки панелей (оно может перестроить подокна,
+// которые рисовались). false — не нажимали; нажатие забирается
+bool takePressedButton( PropertyContainer*& container, std::string& button );
 
 // Есть ли в контейнере что показать под фильтром
 bool hasMatches( PropertyContainer& container, const std::string& filter );

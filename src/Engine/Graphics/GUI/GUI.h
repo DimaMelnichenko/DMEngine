@@ -46,6 +46,9 @@ public:
 	// Действие меню File (сохранение, выход); его же вызывает команда action. false — нет такого
 	void addAction( const std::string& name, const std::string& shortcut, std::function<void()> run );
 	bool runAction( const std::string& name );
+	// Нажать кнопку окна свойств (PropertyContainer::addButton): кнопка в Details, команда press, Delete во вьюпорте.
+	// Действие с отменой — правка истории (Ctrl+Z); ответ — её имя. false — кнопки с таким именем у окна нет
+	bool press( PropertyContainer& container, const std::string& button, std::string* name = nullptr );
 	// Отмена и повтор последней правки (Ctrl+Z / Ctrl+Y): false — нечего; name — её имя
 	bool undo( std::string* name = nullptr );
 	bool redo( std::string* name = nullptr );

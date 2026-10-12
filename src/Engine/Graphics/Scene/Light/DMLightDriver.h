@@ -73,6 +73,27 @@ public:
 	static DirectX::XMFLOAT3 directionFromRotation( const DirectX::XMFLOAT2& rotation );
 	static DirectX::XMFLOAT2 rotationFromDirection( const DirectX::XMFLOAT3& direction );
 
+	// Добавление и удаление в редакторе (кнопки окна «Lights», Delete во вьюпорте). У источника — ключ, постоянный в
+	// сеансе (по нему его находят отмена и вьюпорт: номер в списке после добавления и удаления сдвигается). Новый встаёт
+	// в конец своего типа; убранный хранится до выхода вместе с подокном — restoreLight возвращает его на прежнее место,
+	// и история правок его свойств остаётся верной. Солнце и луна времени суток остаются ими и после возврата; убрали
+	// солнце — время суток никого не ведёт (солнцем неба становится первый включённый направленный, как при выключении).
+	// Строки базы — «Save level»: новые (id 0) вставляются, убранные удаляются (removedIds, markSaved)
+	uint32_t addLight( DMLight light );
+	bool removeLight( uint32_t key );
+	bool restoreLight( uint32_t key );
+	// Новый источник с настройками по умолчанию, как у новых источников в UE, и незанятым именем («Point light 2»)
+	DMLight newLight( DMLight::LightType type, const DirectX::XMFLOAT3& position, const DirectX::XMFLOAT3& direction ) const;
+	// Ключ источника index (0 — нет такого) и номер по ключу (−1 — убран или нет такого)
+	uint32_t key( size_t index ) const;
+	int indexOf( uint32_t key ) const;
+	// Строки LevelLights убранных источников, которые ещё есть в базе
+	std::vector<uint32_t> removedIds() const;
+	// Уровень сохранён: saved — копия lights() с id вставленных строк; убранных в базе больше нет
+	void markSaved( const LightList& saved );
+	// Кнопка подокна источника, которая его убирает (с отменой); её же нажимает Delete во вьюпорте
+	static constexpr const char* deleteButton = "Delete";
+
 private:
 	// Направление запасного света, когда источников нет
 	static DirectX::XMFLOAT3 fallbackDirection();
@@ -85,19 +106,35 @@ private:
 	static constexpr float negligibleFraction = 1e-5f;
 	// Цвет светила атмосферы в буфере: яркость, у земли — с пропусканием атмосферы к нему
 	DirectX::XMFLOAT3 sunRadiance( const DMLight& light ) const;
-	void createProperties( const DMLight& light, uint32_t index );
 
-	LightList m_light_list;
+	// Какое светило времени суток (SunPosition) ведёт направление источника
+	enum class TimeRole { none, sun, moon };
 	// Свойства источника в GUI; адрес не меняется: его хранит GUI
 	struct LightControls
 	{
 		std::unique_ptr<PropertyContainer> properties;
 		DirectX::XMFLOAT2 rotation;	// Pitch / Yaw, по которым последний раз задано направление
+		uint32_t key = 0;
+		TimeRole role = TimeRole::none;
 	};
+	LightControls createProperties( const DMLight& light, uint32_t key, TimeRole role );
+	// После добавления и удаления: номера светил времени суток, подокна по порядку с номерами в именах, отметка
+	// несохранённого (новый источник, убранный из базы)
+	void updateStructure();
+
+	LightList m_light_list;
 	std::vector<LightControls> m_controls;
+	// Убранные источники — до выхода (отмена удаления)
+	struct RemovedLight
+	{
+		DMLight light;
+		LightControls controls;
+	};
+	std::vector<RemovedLight> m_removed;
+	uint32_t m_nextKey = 1;
 	PropertyContainer m_properties;
 	std::unique_ptr<SunPosition> m_sunPosition;
-	int m_sunPositionLight = -1;	// источник, направление которого задаёт m_sunPosition: первый направленный
+	int m_sunPositionLight = -1;	// источник, направление которого задаёт m_sunPosition: первый направленный уровня
 	int m_moonPositionLight = -1;	// луна, которую ведёт m_sunPosition: направленный с atmosphereSunLightIndex 1
 	DirectX::XMFLOAT3 m_atmosphereTransmittance[2] = { { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f } };
 

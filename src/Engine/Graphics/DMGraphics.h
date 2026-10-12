@@ -69,6 +69,8 @@ private:
 	// Экран загрузки — обработчик SlowTask на время Initialize: сообщения окна (иначе Windows считает его зависшим) и кадр с
 	// тем, что делается, и полосой прогресса
 	void drawLoadingFrame( const std::string& task, float progress );
+	// Кнопки «Add … light» окна «Lights»: новый источник перед камерой, выбран во вьюпорте; отмена — убрать его
+	PropertyContainer::ButtonAction addLight( DMLight::LightType type );
 
 private:
 	float m_screenWidth;

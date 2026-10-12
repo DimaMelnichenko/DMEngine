@@ -48,7 +48,7 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 	m_light_list = std::move( lights );
 
 	m_controls.clear();
-	m_properties.subContainer().clear();
+	m_removed.clear();
 	m_sunPosition.reset();
 	m_sunPositionLight = -1;
 	m_moonPositionLight = -1;
@@ -58,7 +58,6 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 		{
 			m_sunPosition = std::make_unique<SunPosition>( *sunPosition );
 			m_sunPositionLight = 0;
-			m_properties.addSubContainer( m_sunPosition->properties() );
 			const SunPosition::Angles angles = m_sunPosition->angles();
 			LOG( "Sun position: elevation " + std::to_string( angles.elevation ) + ", azimuth " + std::to_string( angles.azimuth ) );
 			for( uint32_t i = 1; i < m_light_list.size(); ++i )
@@ -93,7 +92,12 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 			LOG( "Level has a sun position, but no directional light to move" );
 	}
 	for( uint32_t i = 0; i < m_light_list.size(); ++i )
-		createProperties( m_light_list[i], i );
+	{
+		const TimeRole role = static_cast<int>( i ) == m_sunPositionLight ? TimeRole::sun :
+							  static_cast<int>( i ) == m_moonPositionLight ? TimeRole::moon : TimeRole::none;
+		m_controls.push_back( createProperties( m_light_list[i], m_nextKey++, role ) );
+	}
+	updateStructure();
 
 	if( m_light_list.size() > maxLights )
 		LOG( "Level has " + std::to_string( m_light_list.size() ) + " lights, only " + std::to_string( maxLights ) + " enabled ones are used" );
@@ -132,12 +136,13 @@ PropertyContainer* DMLightDriver::sunPositionProperties()
 	return m_sunPosition ? m_sunPosition->properties() : nullptr;
 }
 
-void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
+DMLightDriver::LightControls DMLightDriver::createProperties( const DMLight& light, uint32_t key, TimeRole role )
 {
 	LightControls controls;
-	const std::string name = light.name.empty() ? DMLight::typeName( light.type() ) : light.name;
-	controls.properties = std::make_unique<PropertyContainer>( std::to_string( index ) + ": " + name + " (" +
-															   DMLight::typeName( light.type() ) + ")" );
+	controls.key = key;
+	controls.role = role;
+	// Имя с номером в списке — updateStructure
+	controls.properties = std::make_unique<PropertyContainer>( light.name );
 	PropertyContainer& properties = *controls.properties;
 
 	properties.insert( "Enabled", light.enabled() );
@@ -147,13 +152,12 @@ void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
 	// Направленный — люксы (полуденное солнце ~100 000), точечный и прожектор — канделы (лампа 100 Вт ~130).
 	// Освещённость от луны при SunPosition — расчётная (фаза, расстояние): только для чтения
 	addControl( properties, light.type() == DMLight::Dir ? "Intensity (lx)" : "Intensity (cd)", light.intensity(),
-				static_cast<int>( index ) == m_moonPositionLight ? GUIControlType::LABEL : GUIControlType::SLIDER, 0.0f,
+				role == TimeRole::moon ? GUIControlType::LABEL : GUIControlType::SLIDER, 0.0f,
 				light.type() == DMLight::Dir ? 150000.0f : 20000.0f );
 
 	controls.rotation = rotationFromDirection( light.direction() );
 	// Направление солнца и луны со временем суток задаёт SunPosition
-	if( light.type() != DMLight::Point && static_cast<int>( index ) != m_sunPositionLight &&
-		static_cast<int>( index ) != m_moonPositionLight )
+	if( light.type() != DMLight::Point && role == TimeRole::none )
 	{
 		addControl( properties, "Pitch", controls.rotation.x, GUIControlType::SLIDER, -90.0f, 90.0f );
 		addControl( properties, "Yaw", controls.rotation.y, GUIControlType::SLIDER, -180.0f, 180.0f );
@@ -182,8 +186,150 @@ void DMLightDriver::createProperties( const DMLight& light, uint32_t index )
 		addControl( properties, "Shadow slope bias", shadows.shadowSlopeBias, GUIControlType::SLIDER, 0.0f, 8.0f );
 	}
 
-	m_properties.addSubContainer( controls.properties.get() );
-	m_controls.push_back( std::move( controls ) );
+	properties.addButton( deleteButton, "Remove the light from the level (Delete in the viewport; Save level deletes its row, Ctrl+Z returns it)",
+						  [this, key]() -> PropertyContainer::ButtonAction
+	{
+		const int index = indexOf( key );
+		if( index < 0 )
+			return {};
+		const std::string name = "Delete " + m_controls[index].properties->name();
+		removeLight( key );
+		return { [this, key] { restoreLight( key ); }, [this, key] { removeLight( key ); }, name };
+	} );
+	return controls;
+}
+
+DMLight DMLightDriver::newLight( DMLight::LightType type, const XMFLOAT3& position, const XMFLOAT3& direction ) const
+{
+	DMLight light( type );
+	// Имя по типу, с номером, если такое уже есть (и у убранных: их вернёт отмена)
+	const std::string base = type == DMLight::Dir ? "Directional light" : type == DMLight::Spot ? "Spot light" : "Point light";
+	auto taken = [this]( const std::string& name )
+	{
+		return std::any_of( m_light_list.begin(), m_light_list.end(), [&name]( const DMLight& other ) { return other.name == name; } ) ||
+			   std::any_of( m_removed.begin(), m_removed.end(), [&name]( const RemovedLight& other ) { return other.light.name == name; } );
+	};
+	light.name = base;
+	for( int number = 2; taken( light.name ); ++number )
+		light.name = base + " " + std::to_string( number );
+	light.setPosition( position );
+	light.setDirection( direction );
+	// Как новые источники в UE: направленный — 10 лк, без атмосферы и теней (солнце уровня — свой источник); точечный и
+	// прожектор — лампа ~100 Вт (100 кд) с радиусом 10 м, конус прожектора 0…44°
+	light.setIntensity( type == DMLight::Dir ? 10.0f : 100.0f );
+	light.setAttenuationRadius( type == DMLight::Dir ? 0.0f : 10.0f );
+	light.setConeAngles( 0.0f, 44.0f );
+	light.setAtmosphereSunLight( false );
+	return light;
+}
+
+uint32_t DMLightDriver::addLight( DMLight light )
+{
+	light.id = 0;
+	const uint32_t key = m_nextKey++;
+	LightControls controls = createProperties( light, key, TimeRole::none );
+	// Значения по умолчанию — «сохранённые»: Details отмечает правки после них, а сам новый источник — до «Save level»
+	controls.properties->markSaved();
+	// В конец своего типа: направленные — первыми, солнце остаётся первым
+	size_t at = 0;
+	while( at < m_light_list.size() && (int)m_light_list[at].type() <= (int)light.type() )
+		++at;
+	m_light_list.insert( m_light_list.begin() + at, std::move( light ) );
+	m_controls.insert( m_controls.begin() + at, std::move( controls ) );
+	updateStructure();
+	return key;
+}
+
+bool DMLightDriver::removeLight( uint32_t key )
+{
+	const int index = indexOf( key );
+	if( index < 0 )
+		return false;
+	m_removed.push_back( { std::move( m_light_list[index] ), std::move( m_controls[index] ) } );
+	m_light_list.erase( m_light_list.begin() + index );
+	m_controls.erase( m_controls.begin() + index );
+	updateStructure();
+	return true;
+}
+
+bool DMLightDriver::restoreLight( uint32_t key )
+{
+	const auto removed = std::find_if( m_removed.begin(), m_removed.end(), [key]( const RemovedLight& light ) { return light.controls.key == key; } );
+	if( removed == m_removed.end() )
+		return false;
+	// На прежнее место: список упорядочен по типу, внутри типа — по ключу (порядок базы, затем добавленные)
+	const int type = (int)removed->light.type();
+	size_t at = 0;
+	while( at < m_light_list.size() && ( (int)m_light_list[at].type() < type ||
+										 ( (int)m_light_list[at].type() == type && m_controls[at].key < key ) ) )
+		++at;
+	m_light_list.insert( m_light_list.begin() + at, std::move( removed->light ) );
+	m_controls.insert( m_controls.begin() + at, std::move( removed->controls ) );
+	m_removed.erase( removed );
+	updateStructure();
+	return true;
+}
+
+uint32_t DMLightDriver::key( size_t index ) const
+{
+	return index < m_controls.size() ? m_controls[index].key : 0;
+}
+
+int DMLightDriver::indexOf( uint32_t key ) const
+{
+	for( size_t i = 0; i < m_controls.size(); ++i )
+	{
+		if( key != 0 && m_controls[i].key == key )
+			return static_cast<int>( i );
+	}
+	return -1;
+}
+
+std::vector<uint32_t> DMLightDriver::removedIds() const
+{
+	std::vector<uint32_t> ids;
+	for( const RemovedLight& removed : m_removed )
+	{
+		if( removed.light.id != 0 )
+			ids.push_back( removed.light.id );
+	}
+	return ids;
+}
+
+void DMLightDriver::markSaved( const LightList& saved )
+{
+	for( size_t i = 0; i < m_light_list.size() && i < saved.size(); ++i )
+		m_light_list[i].id = saved[i].id;
+	// Строк убранных больше нет: вернёт отмена — вставится заново
+	for( RemovedLight& removed : m_removed )
+		removed.light.id = 0;
+	updateStructure();
+}
+
+void DMLightDriver::updateStructure()
+{
+	m_sunPositionLight = -1;
+	m_moonPositionLight = -1;
+	m_properties.subContainer().clear();
+	if( m_sunPosition )
+		m_properties.addSubContainer( m_sunPosition->properties() );
+	for( size_t i = 0; i < m_controls.size(); ++i )
+	{
+		const DMLight& light = m_light_list[i];
+		LightControls& controls = m_controls[i];
+		if( controls.role == TimeRole::sun )
+			m_sunPositionLight = static_cast<int>( i );
+		else if( controls.role == TimeRole::moon )
+			m_moonPositionLight = static_cast<int>( i );
+		// Номер в имени — путь команд set / press различает одноимённые
+		const std::string name = light.name.empty() ? DMLight::typeName( light.type() ) : light.name;
+		controls.properties->setName( std::to_string( i ) + ": " + name + " (" + DMLight::typeName( light.type() ) + ")" );
+		// Нового источника в базе ещё нет
+		controls.properties->setStructureModified( light.id == 0 );
+		m_properties.addSubContainer( controls.properties.get() );
+	}
+	// Убранный источник ещё есть в базе — окно изменено до «Save level»
+	m_properties.setStructureModified( std::any_of( m_removed.begin(), m_removed.end(), []( const RemovedLight& removed ) { return removed.light.id != 0; } ) );
 }
 
 void DMLightDriver::update( float seconds )

@@ -194,6 +194,11 @@ void GUI::Begin( const GS::FrameStats& stats, DMCamera& camera )
 		drawHotkeys();
 	drawNotification();
 	PropertyWidgets::endFrame();
+	// Кнопка окна — после отрисовки панелей: её действие может убрать подокно, которое только что рисовалось
+	PropertyContainer* pressedContainer = nullptr;
+	std::string pressedButton;
+	if( PropertyWidgets::takePressedButton( pressedContainer, pressedButton ) )
+		press( *pressedContainer, pressedButton );
 	m_resetLayout = false;
 	m_firstFrame = false;
 }
@@ -435,6 +440,7 @@ void GUI::drawHotkeys()
 			{ "Ctrl+S", "save level environment" },
 			{ "`", "console" },
 			{ "Ctrl + click on a slider", "type a value" },
+			{ "Delete", "remove the light selected in the viewport" },
 			{ "Esc", "exit" } };
 		if( ImGui::BeginTable( "keys", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit ) )
 		{
@@ -500,6 +506,22 @@ bool GUI::redo( std::string* name )
 	notify( "Redo: " + redone );
 	if( name )
 		*name = redone;
+	return true;
+}
+
+bool GUI::press( PropertyContainer& container, const std::string& button, std::string* name )
+{
+	const PropertyContainer::Button* pressed = container.button( button );
+	if( !pressed )
+		return false;
+	// Имя правки — до действия: оно может переименовать окно
+	const std::string defaultName = button + ": " + container.name();
+	PropertyContainer::ButtonAction action = pressed->run();
+	const std::string done = action.name.empty() ? defaultName : action.name;
+	if( action.undo && action.redo )
+		m_history.record( done, std::move( action.undo ), std::move( action.redo ) );
+	if( name )
+		*name = done;
 	return true;
 }
 

@@ -339,9 +339,12 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	std::optional<VolumetricCloud::Settings> cloud;
 	if( m_clouds.initialized() )
 		cloud = m_clouds.settings();
-	if( !library.saveLevelEnvironment( m_level, m_lightDriver.lights(), sunPosition, atmosphere, hdri, postProcess,
+	// Источники — копией: id новых строк вернутся в неё и уйдут в источники
+	DMLightDriver::LightList lights = m_lightDriver.lights();
+	if( !library.saveLevelEnvironment( m_level, lights, m_lightDriver.removedIds(), sunPosition, atmosphere, hdri, postProcess,
 									   m_wind.settings(), heightFog, cloud ) )
 		return false;
+	m_lightDriver.markSaved( lights );
 
 	std::optional<TerrainSettings> terrain;
 	if( m_level.terrain )

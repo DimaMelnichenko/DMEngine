@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 #include "Properties/PropertyContainer.h"
@@ -10,8 +11,10 @@ namespace Editor
 // История правок свойств — отмена и повтор (Ctrl+Z / Ctrl+Y), как Transactions в UE. Правка — группа свойств со значениями
 // «до» и «после»: контрол панели Details от активации до отпускания, кнопки reset, перетаскивание гизмо экземпляра,
 // «на землю» (End). Отмена ставит «до» через систему свойств — объекты об отмене не знают: они читают свойства каждый кадр.
-// Свойства хранятся указателями: контейнеры живут весь сеанс (создаются при загрузке уровня); объект, который пересоздаёт
-// свой контейнер во время работы, сбрасывает историю (clear). Команда set удалённого управления в историю не попадает
+// Действие кнопки окна (добавить, удалить источник света) — правка с функциями отмены и повтора (record).
+// Свойства хранятся указателями: контейнеры живут весь сеанс (создаются при загрузке уровня; убранное подокно объект
+// держит до выхода — его вернёт отмена); объект, который пересоздаёт свой контейнер во время работы, сбрасывает историю
+// (clear). Команда set удалённого управления в историю не попадает
 class EditHistory
 {
 public:
@@ -21,6 +24,8 @@ public:
 	// Конец правки: значения «после»; ничего не изменилось — правка не записывается
 	void end();
 	bool editing() const { return m_editing; }
+	// Сделанное действие: undo возвращает как было, redo делает снова
+	void record( const std::string& name, std::function<void()> undo, std::function<void()> redo );
 
 	bool canUndo() const { return !m_undo.empty() && !m_editing; }
 	bool canRedo() const { return !m_redo.empty() && !m_editing; }
@@ -46,7 +51,10 @@ private:
 	{
 		std::string name;
 		std::vector<Change> changes;
+		std::function<void()> undo;	// действие (record) вместо значений свойств
+		std::function<void()> redo;
 	};
+	void push( Transaction transaction );
 	static constexpr size_t maxTransactions = 200;
 
 	std::vector<Transaction> m_undo;

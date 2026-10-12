@@ -61,6 +61,21 @@ void EditHistory::end()
 	m_pending.changes.clear();
 	if( transaction.changes.empty() )
 		return;
+	push( std::move( transaction ) );
+}
+
+void EditHistory::record( const std::string& name, std::function<void()> undo, std::function<void()> redo )
+{
+	end();
+	Transaction transaction;
+	transaction.name = name;
+	transaction.undo = std::move( undo );
+	transaction.redo = std::move( redo );
+	push( std::move( transaction ) );
+}
+
+void EditHistory::push( Transaction transaction )
+{
 	m_undo.push_back( std::move( transaction ) );
 	if( m_undo.size() > maxTransactions )
 		m_undo.erase( m_undo.begin() );
@@ -83,6 +98,8 @@ bool EditHistory::undo( std::string* name )
 		return false;
 	Transaction transaction = std::move( m_undo.back() );
 	m_undo.pop_back();
+	if( transaction.undo )
+		transaction.undo();
 	for( const Change& change : transaction.changes )
 		change.property->setValue( change.before );
 	if( name )
@@ -97,6 +114,8 @@ bool EditHistory::redo( std::string* name )
 		return false;
 	Transaction transaction = std::move( m_redo.back() );
 	m_redo.pop_back();
+	if( transaction.redo )
+		transaction.redo();
 	for( const Change& change : transaction.changes )
 		change.property->setValue( change.after );
 	if( name )
