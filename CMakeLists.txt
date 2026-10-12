@@ -19,12 +19,13 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 # Все зависимости скачиваются при первом configure (нужны сеть и git). Версии — docs/d3d12.md §2
 include(FetchContent)
 
-# DirectXTex (загрузка текстур, мипы на CPU, запись снимков через WIC): только часть D3D12
+# DirectXTex (загрузка текстур, мипы и сжатие BC7 / BC5 на CPU, запись снимков через WIC): только часть D3D12. OpenMP —
+# сжатие текстур при их приготовлении (cache\textures) на всех ядрах, как в texconv
 set(BUILD_TOOLS OFF)
 set(BUILD_SAMPLE OFF)
 set(BUILD_DX11 OFF)
 set(BUILD_DX12 ON)
-set(BC_USE_OPENMP OFF)
+set(BC_USE_OPENMP ON)
 FetchContent_Declare(DirectXTex
     GIT_REPOSITORY https://github.com/microsoft/DirectXTex.git
     GIT_TAG        may2026

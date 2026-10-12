@@ -30,7 +30,8 @@ bool LibraryLoader::loadAllTextures()
 	LOG( "Load all textures" );
 	SQLite::Statement queryCount( DBConnector::instance().db(), "SELECT COUNT(*) FROM Textures" );
 	const uint32_t count = queryCount.executeStep() ? queryCount.getColumn( 0 ).getUInt() : 0;
-	SQLite::Statement queryTexture( DBConnector::instance().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage FROM Textures" );
+	SQLite::Statement queryTexture( DBConnector::instance().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage, "
+																   "compression FROM Textures" );
 	return loadTextures( queryTexture, count );
 }
 
@@ -39,7 +40,8 @@ bool LibraryLoader::loadTexture( uint32_t idTexture )
 	if( GS::System::textures().exists( idTexture ) )
 		return true;
 
-	SQLite::Statement queryTexture( DBConnector::instance().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage FROM Textures where id = :id" );
+	SQLite::Statement queryTexture( DBConnector::instance().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage, "
+																   "compression FROM Textures where id = :id" );
 	queryTexture.bind( ":id", idTexture );
 	return loadTextures( queryTexture );
 }
@@ -57,8 +59,10 @@ bool LibraryLoader::loadTextures( SQLite::Statement& queryTexture, uint32_t coun
 			task.enterProgressFrame( 1.0f, fileName );
 
 		const float preserveAlphaCoverage = queryTexture.getColumn( 5 ).isNull() ? 0.0f : static_cast<float>( queryTexture.getColumn( 5 ).getDouble() );
+		// Сжатие на GPU, как Compression Settings в UE: default — BC7, normalmap — BC5, none — без сжатия
+		const GS::TextureCompression compression = GS::DMTextureStorage::compressionFromName( queryTexture.getColumn( 6 ).getString() );
 		if( !GS::System::textures().load( id, textureName, fileName, queryTexture.getColumn( 3 ).getInt(), queryTexture.getColumn( 4 ).getInt(),
-										  preserveAlphaCoverage ) )
+										  preserveAlphaCoverage, compression ) )
 		{
 			LOG( "Can`t load texture " + textureName + " (" + fileName + "), placeholder is used" );
 			continue;

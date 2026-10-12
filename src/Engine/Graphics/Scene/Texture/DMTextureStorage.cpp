@@ -1,4 +1,7 @@
 #include "DMTextureStorage.h"
+#include <cctype>
+#include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <random>
 #include "ImageFile.h"
@@ -10,6 +13,13 @@ using namespace DirectX;
 
 namespace GS
 {
+
+namespace
+{
+
+constexpr const char* cookedDirectory = "cache\\textures";
+
+}
 
 DMTextureStorage::DMTextureStorage( const std::string& path ) : DMResourceStorage( path )
 {
@@ -115,39 +125,105 @@ bool DMTextureStorage::setGenerated( const std::string& name, const TextureDesc&
 	return insertResource( std::move( texture ) );
 }
 
+TextureCompression DMTextureStorage::compressionFromName( const std::string& name )
+{
+	if( name == "default" )
+		return TextureCompression::standard;
+	if( name == "normalmap" )
+		return TextureCompression::normalMap;
+	return TextureCompression::none;
+}
+
 bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::string& file, bool generateMipMap, bool sRGB,
-							  float preserveAlphaCoverage )
+							  float preserveAlphaCoverage, TextureCompression compression )
 {
 	if( exists( id ) || exists( name ) )
 		return true;
 
 	std::string fullPath = path() + "\\" + file;
-
-	ScratchImage baseImage;
-	if( !ImageFile::load( fullPath, baseImage ) )
-		return false;
-
-	// Цветовое пространство задаёт колонка Textures.sRGB, а не метаданные файла: байты те же, меняется только
-	// толкование формата (цвет — sRGB, данные вроде нормалей и масок — линейно). До генерации мипов,
-	// чтобы они фильтровались в линейном пространстве
-	const DXGI_FORMAT fileFormat = baseImage.GetMetadata().format;
-	baseImage.OverrideFormat( sRGB ? MakeSRGB( fileFormat ) : MakeLinear( fileFormat ) );
-
-	if( generateMipMap && !ImageMips::generate( baseImage, preserveAlphaCoverage ) && preserveAlphaCoverage > 0.0f )
-		LOG( "Can`t preserve alpha coverage in mips of texture " + name + ": the format is not 8-bit RGBA" );
-
-	auto texture = std::make_unique<DMTexture>( id, name );
-	if( !texture->create( baseImage ) )
-		return false;
-	// Отпечаток источника — для кэшей, которые зависят от картинки (кадры импостеров)
-	Fingerprint stamp;
 	std::error_code error;
+	if( !std::filesystem::exists( fullPath, error ) )
+	{
+		LOG( "Can`t find texture file " + fullPath );
+		return false;
+	}
+
+	// Отпечаток источника и того, как он готовится: ключ готовой текстуры в кэше и кэшей, которые зависят от картинки
+	// (кадры импостеров)
+	Fingerprint stamp;
 	stamp.add( fullPath.data(), fullPath.size() );
 	stamp.add( static_cast<uint64_t>( std::filesystem::file_size( fullPath, error ) ) );
 	stamp.add( std::filesystem::last_write_time( fullPath, error ).time_since_epoch().count() );
 	stamp.add( sRGB );
 	stamp.add( generateMipMap );
 	stamp.add( preserveAlphaCoverage );
+	stamp.add( compression );
+	stamp.add( cookVersion );
+
+	// Готовить есть что (мипы, сжатие) — готовая текстура в кэше: <имя>.<отпечаток>.dds, в имени точек нет, поэтому
+	// прежние варианты этой текстуры — файлы «<имя>.*»
+	const bool cook = generateMipMap || compression != TextureCompression::none;
+	std::string cookedName = name;
+	for( char& c : cookedName )
+		if( !std::isalnum( static_cast<unsigned char>( c ) ) )
+			c = '_';
+	char stampText[20];
+	std::snprintf( stampText, sizeof( stampText ), "%016llx", static_cast<unsigned long long>( stamp.value ) );
+	const std::string cookedPath = std::string( cookedDirectory ) + "\\" + cookedName + "." + stampText + ".dds";
+
+	ScratchImage baseImage;
+	const bool cached = cook && std::filesystem::exists( cookedPath, error ) && ImageFile::load( cookedPath, baseImage );
+	if( !cached )
+	{
+		const auto start = std::chrono::steady_clock::now();
+		if( !ImageFile::load( fullPath, baseImage ) )
+			return false;
+
+		// Цветовое пространство задаёт колонка Textures.sRGB, а не метаданные файла: байты те же, меняется только
+		// толкование формата (цвет — sRGB, данные вроде нормалей и масок — линейно). До генерации мипов,
+		// чтобы они фильтровались в линейном пространстве
+		const DXGI_FORMAT fileFormat = baseImage.GetMetadata().format;
+		baseImage.OverrideFormat( sRGB ? MakeSRGB( fileFormat ) : MakeLinear( fileFormat ) );
+
+		if( generateMipMap && !ImageMips::generate( baseImage, preserveAlphaCoverage ) && preserveAlphaCoverage > 0.0f )
+			LOG( "Can`t preserve alpha coverage in mips of texture " + name + ": the format is not 8-bit RGBA" );
+
+		// Сжатие блоками 4 × 4: верхний мип — кратный 4 (правило D3D12); иначе — как есть
+		const TexMetadata& metadata = baseImage.GetMetadata();
+		if( compression != TextureCompression::none && !IsCompressed( metadata.format ) && metadata.width % 4 == 0 && metadata.height % 4 == 0 )
+		{
+			const DXGI_FORMAT format = compression == TextureCompression::normalMap ? DXGI_FORMAT_BC5_UNORM :
+									   sRGB ? DXGI_FORMAT_BC7_UNORM_SRGB : DXGI_FORMAT_BC7_UNORM;
+			ScratchImage compressed;
+			if( SUCCEEDED( Compress( baseImage.GetImages(), baseImage.GetImageCount(), metadata, format,
+									 TEX_COMPRESS_PARALLEL | TEX_COMPRESS_BC7_QUICK, TEX_THRESHOLD_DEFAULT, compressed ) ) )
+				baseImage = std::move( compressed );
+			else
+				LOG( "Can`t compress texture " + name + ", it stays uncompressed" );
+		}
+		else if( compression != TextureCompression::none && !IsCompressed( metadata.format ) )
+			LOG( "Texture " + name + " is not compressed: its size is not a multiple of 4" );
+
+		if( cook )
+		{
+			std::filesystem::create_directories( cookedDirectory, error );
+			const std::string prefix = cookedName + ".";
+			for( const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator( cookedDirectory, error ) )
+				if( entry.is_regular_file() && entry.path().filename().string().rfind( prefix, 0 ) == 0 )
+					std::filesystem::remove( entry.path(), error );
+			const std::wstring wide( cookedPath.begin(), cookedPath.end() );
+			if( FAILED( SaveToDDSFile( baseImage.GetImages(), baseImage.GetImageCount(), baseImage.GetMetadata(), DDS_FLAGS_NONE, wide.c_str() ) ) )
+				LOG( "Can`t write the cooked texture " + cookedPath );
+			const auto ms = std::chrono::duration<float, std::milli>( std::chrono::steady_clock::now() - start ).count();
+			LOG( "Texture " + name + " cooked to " + cookedPath + " (" + std::to_string( baseImage.GetMetadata().width ) + "x" +
+				 std::to_string( baseImage.GetMetadata().height ) + ", " + std::to_string( baseImage.GetMetadata().mipLevels ) + " mips, " +
+				 ( IsCompressed( baseImage.GetMetadata().format ) ? "compressed" : "uncompressed" ) + "), ms: " + std::to_string( ms ) );
+		}
+	}
+
+	auto texture = std::make_unique<DMTexture>( id, name );
+	if( !texture->create( baseImage ) )
+		return false;
 	texture->setSourceStamp( stamp.value );
 
 	return insertResource( std::move( texture ) );

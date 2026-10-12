@@ -37,7 +37,10 @@ float3 surfaceNormal( PixelInputType input )
 	// Задняя грань двусторонней геометрии (карточки без отсечения граней) освещается как передняя
 	float3 normal = input.isFrontFace ? input.normal : -input.normal;
 
-	float3 n = g_texNormal.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * 2.0f - 1.0f;
+	// Z — из X и Y (нормаль карты единичной длины): у карт в BC5 (Textures.compression = normalmap) хранятся только они
+	float3 n;
+	n.xy = g_texNormal.Sample( g_SamplerAnisotropicWrap, input.tex ).rg * 2.0f - 1.0f;
+	n.z = sqrt( saturate( 1.0f - dot( n.xy, n.xy ) ) );
 	n.xy *= g_normalScale;
 	// Бинормаль меша — направление роста v, то есть вниз по картинке (соглашение DirectX)
 	n.y = g_normalGreenUp > 0.5f ? -n.y : n.y;

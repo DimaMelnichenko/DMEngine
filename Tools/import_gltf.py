@@ -441,10 +441,12 @@ class MaterialConverter:
             if image_name in self.image_names:   # две картинки с одним именем — разные файлы
                 image_name = '%s_%d' % (image_name, source)
             self.image_names.add(image_name)
+            # Сжатие на GPU (Textures.compression, как Compression Settings в UE): карта нормалей — BC5, прочее — BC7
             self.textures[source] = {
                 'name': '%s_%s' % (self.asset, image_name),
                 'file': 'models\\%s\\%s.%s' % (self.asset, image_name, extension),
-                'srgb': srgb, 'data': data, 'coverage': None}
+                'srgb': srgb, 'data': data, 'coverage': None,
+                'compression': 'normalmap' if slot == 'normalTexture' else 'default'}
         elif self.textures[source]['srgb'] != srgb:
             warn('image %s is used both as color and as data, it is read as %s'
                  % (self.textures[source]['name'], 'sRGB' if self.textures[source]['srgb'] else 'linear'))
@@ -657,14 +659,14 @@ class Database:
         row = self.cursor.execute(sql, args).fetchone()
         return row[0] if row else None
 
-    def texture(self, name, file, srgb, coverage):
+    def texture(self, name, file, srgb, coverage, compression):
         texture_id = self.one('SELECT id FROM Textures WHERE name = ?', (name,))
         if texture_id is None:
-            self.cursor.execute('INSERT INTO Textures (name, file, generate_mipmap, sRGB, preserve_alpha_coverage) '
-                                'VALUES (?, ?, 1, ?, ?)', (name, file, int(srgb), coverage))
+            self.cursor.execute('INSERT INTO Textures (name, file, generate_mipmap, sRGB, preserve_alpha_coverage, compression) '
+                                'VALUES (?, ?, 1, ?, ?, ?)', (name, file, int(srgb), coverage, compression))
             return self.cursor.lastrowid
-        self.cursor.execute('UPDATE Textures SET file = ?, generate_mipmap = 1, sRGB = ?, preserve_alpha_coverage = ? '
-                            'WHERE id = ?', (file, int(srgb), coverage, texture_id))
+        self.cursor.execute('UPDATE Textures SET file = ?, generate_mipmap = 1, sRGB = ?, preserve_alpha_coverage = ?, '
+                            'compression = ? WHERE id = ?', (file, int(srgb), coverage, compression, texture_id))
         return texture_id
 
     def instance(self, name, params, texture_ids, material_id=None):
@@ -840,11 +842,12 @@ def main():
     files = {}   # путь относительно корня → байты
     texture_ids = {}
     for texture in materials.textures.values():
-        texture_ids[texture['name']] = db.texture(texture['name'], texture['file'], texture['srgb'], texture['coverage'])
+        texture_ids[texture['name']] = db.texture(texture['name'], texture['file'], texture['srgb'], texture['coverage'],
+                                                  texture['compression'])
         files[os.path.join('Textures', texture['file'])] = texture['data']
         coverage = ', alpha coverage %g' % texture['coverage'] if texture['coverage'] is not None else ''
-        print('Texture %s -> Textures\\%s (%s%s)' % (texture['name'], texture['file'],
-                                                      'sRGB' if texture['srgb'] else 'linear', coverage))
+        print('Texture %s -> Textures\\%s (%s, %s%s)' % (texture['name'], texture['file'],
+                                                          'sRGB' if texture['srgb'] else 'linear', texture['compression'], coverage))
 
     # Экземпляр материала, у сеток которого есть данные ветра дерева, — PBRTree
     tree_instances = {section['instance'] for model in models for sections in model['lods'] for section in sections

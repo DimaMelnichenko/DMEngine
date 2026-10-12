@@ -390,7 +390,9 @@ Static Mesh в UE и primitives glTF, `DMModel::Section`). Материалы г
 (`MaterialParameterDef.default_value`). Экземпляр 12 — наследие старой схемы, где эта колонка означала
 `Materials.id`; у SkySphere — свой экземпляр `Texture` с `Albedo` = `sky3`. Подробно — `docs/materials.md`. Цветовое
 пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла; мипы с сохранением
-покрытия альфы (для Masked: трава, лепестки) — `Textures.preserve_alpha_coverage` (порог). Новые ассеты добавляются
+покрытия альфы (для Masked: трава, лепестки) — `Textures.preserve_alpha_coverage` (порог); сжатие на GPU —
+`Textures.compression` (`default` — BC7, `normalmap` — BC5, `none`), готовая текстура — в `cache\textures\` по отпечатку
+файла и настроек (`docs/materials.md`). Новые ассеты добавляются
 строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
 моделей, LOD, экземпляров материала `PBR`, расстановки: положение, поворот и масштаб объекта Blender — экземпляр
 в `LevelModels`, связанные дубликаты — экземпляры одной модели; источники `KHR_lights_punctual` — строки `LevelLights` по
