@@ -104,6 +104,14 @@ private:
 		DirectX::XMFLOAT2 viewportSize;
 		float milkyWayLuminance;		// средняя яркость карты Млечного Пути, в единицах запекания; 0 — его нет
 		float padding;
+		// Базис тела луны в мире (либрация и позиционный угол оси): ось вращения, к нулевому меридиану, к 90° восточной
+		// селенографической долготы (Море Кризисов)
+		DirectX::XMFLOAT3 moonNorth;
+		float earthshine;				// освещённость луны Землёй / солнцем: пепельный свет; 0 — нет
+		DirectX::XMFLOAT3 moonPrime;
+		float earthshineBrightnessLimit;	// предел яркости пепельного света после экспозиции; 0 — физическая
+		DirectX::XMFLOAT3 moonEast;
+		float padding2;
 	};
 
 	// Звезда в буфере GPU — Star в Shaders/sky_stars.vs
@@ -123,7 +131,8 @@ private:
 	// фон без него
 	bool loadMilkyWay( const std::string& file );
 	Parameters currentParameters() const;
-	// Звёзды и диск луны для фона: экваториальный базис, размер и яркость диска — по SunPosition уровня
+	// Звёзды и диск луны для фона: экваториальный базис, размер, яркость, поворот диска и пепельный свет — по SunPosition
+	// уровня
 	NightSkyParameters currentNightSky( const Parameters& params ) const;
 	// Таблицы, зависящие только от атмосферы: пропускание, затем Ψ по нему
 	void updateAtmosphereLuts();

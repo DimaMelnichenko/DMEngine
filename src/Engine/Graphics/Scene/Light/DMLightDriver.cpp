@@ -87,6 +87,8 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 			const SunPosition::Moon moon = m_sunPosition->moon();
 			LOG( "Moon: elevation " + std::to_string( moon.angles.elevation ) + ", azimuth " + std::to_string( moon.angles.azimuth ) +
 				 ", illuminated " + std::to_string( moon.illuminatedFraction ) + ", " + std::to_string( moon.illuminance ) + " lx" +
+				 ", libration " + std::to_string( moon.librationLongitude ) + ", " + std::to_string( moon.librationLatitude ) +
+				 ", axis " + std::to_string( moon.positionAngle ) +
 				 ( m_moonPositionLight < 0 ? " (no light with atmosphere_sun_light_index 1)" : "" ) );
 			// Проверка рядов по примеру 47.a Meeus: 12.04.1992 0h TD — λ 133,16°, β −3,23°, Δ 368 410 км
 			SunPosition::Settings check;
@@ -97,6 +99,10 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 			const SunPosition::Moon example = SunPosition::computeMoon( check );
 			LOG( "Moon check (Meeus 47.a: 133.16, -3.23, 368410): " + std::to_string( example.eclipticLongitude ) + ", " +
 				 std::to_string( example.eclipticLatitude ) + ", " + std::to_string( example.distance ) );
+			// Либрация и позиционный угол оси — пример 53.a того же момента: l −1,206°, b 4,194°, P 15,08° (с точной долготой
+			// луны; у наших рядов долгота на 0,09° больше — l на ~0,09° больше)
+			LOG( "Moon libration check (Meeus 53.a: -1.206, 4.194, 15.08): " + std::to_string( example.librationLongitude ) + ", " +
+				 std::to_string( example.librationLatitude ) + ", " + std::to_string( example.positionAngle ) );
 		}
 		else
 			LOG( "Level has a sun position, but no directional light to move" );

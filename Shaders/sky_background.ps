@@ -26,10 +26,12 @@ struct PixelInputType
 // Угловой радиус солнца — вдвое больше настоящего (0,27°), чтобы диск был заметен на экране
 static const float sunAngularRadius = 0.0093f;
 
-// Диск луны: шар, освещённый солнцем (фаза и терминатор — сами), альбедо — карта NASA по селенографическим координатам;
-// север луны — к северному полюсу мира на небе. Ломмель — Зелигер (μ₀ / (μ₀ + μ)): полная луна — ровный диск без
-// потемнения к краю, как настоящая
-float3 moonLight( float3 direction )
+// Диск луны: шар, освещённый солнцем (фаза и терминатор — сами), альбедо — карта NASA по селенографическим координатам в
+// базисе тела луны (либрация и позиционный угол оси). Ломмель — Зелигер (μ₀ / (μ₀ + μ)): полная луна — ровный диск без
+// потемнения к краю, как настоящая. Пепельный свет — тёмная часть, освещённая Землёй: Земля почти там же, где
+// наблюдатель, поэтому по Ломмелю — Зелигеру он ровный по всему диску, с морями. sunScale и earthScale — приглушение
+// освещённой солнцем части и пепельного света после экспозиции; pixelAngle — размер пикселя, рад (мип карты)
+float3 moonLight( float3 direction, float pixelAngle, float sunScale, float earthScale )
 {
 	const float3 toMoon = g_moonDirection;
 	const float cosAngle = dot( direction, toMoon );
@@ -37,6 +39,7 @@ float3 moonLight( float3 direction )
 	if( cosAngle < cos( g_moonAngularRadius * 1.05f ) )
 		return 0.0f;
 
+	// Координаты на диске — в любом базисе плоскости неба: север неба и запад
 	float3 north = g_equatorialZ - toMoon * dot( g_equatorialZ, toMoon );
 	north = dot( north, north ) > 1e-8f ? normalize( north ) : float3( 0.0f, 1.0f, 0.0f );
 	const float3 west = cross( north, toMoon );
@@ -47,22 +50,25 @@ float3 moonLight( float3 direction )
 	if( coverage <= 0.0f )
 		return 0.0f;
 
-	// Нормаль поверхности луны к наблюдателю; селенографическая долгота растёт к западу неба (море Кризисов — справа)
+	// Нормаль поверхности луны к наблюдателю; селенографические координаты — по базису тела (долгота растёт к Морю Кризисов)
 	const float3 normal = disk.x * west + disk.y * north - sqrt( saturate( 1.0f - r2 ) ) * toMoon;
-	const float latitude = asin( clamp( dot( normal, north ), -1.0f, 1.0f ) );
-	const float longitude = atan2( dot( normal, west ), dot( normal, -toMoon ) );
+	const float latitude = asin( clamp( dot( normal, g_moonNorth ), -1.0f, 1.0f ) );
+	const float longitude = atan2( dot( normal, g_moonEast ), dot( normal, g_moonPrime ) );
 	const float2 uv = float2( 0.5f + longitude / ( 2.0f * atmospherePi ), 0.5f - latitude / atmospherePi );
 	uint width, height, mips;
 	g_moonAlbedo.GetDimensions( 0, width, height, mips );
+	// Мип — под размер диска на экране: в центре диска тексель карты (2π / width рад) — это радиус диска в пикселях × 2π / width
+	const float diskRadiusPixels = g_moonAngularRadius / pixelAngle;
+	const float mip = log2( max( width / ( 2.0f * atmospherePi * diskRadiusPixels ), 1.0f ) );
 	// Альбедо относительно среднего по карте (последний мип): яркость задаёт освещённость, карта — только узор
-	const float3 albedo = g_moonAlbedo.SampleLevel( g_SamplerLinearWrap, uv, 0.0f ).rgb /
+	const float3 albedo = g_moonAlbedo.SampleLevel( g_SamplerLinearWrap, uv, mip ).rgb /
 						  max( g_moonAlbedo.SampleLevel( g_SamplerLinearWrap, float2( 0.5f, 0.5f ), mips - 1 ).rgb, 1e-3f );
 
 	const float incidence = saturate( dot( normal, g_sunDirection ) );
 	const float emission = saturate( -dot( normal, toMoon ) );
 	const float lommelSeeliger = incidence / max( incidence + emission, 1e-4f );
-	// Полная луна: μ₀ = μ, ровно 1/2 по диску — отсюда множитель 2 к яркости полного диска
-	return g_moonDiskLuminance * albedo * ( 2.0f * lommelSeeliger ) * coverage;
+	// Полная луна: μ₀ = μ, ровно 1/2 по диску — отсюда множитель 2 к яркости полного диска; у пепельного света μ₀ ≈ μ
+	return g_moonDiskLuminance * albedo * ( 2.0f * lommelSeeliger * sunScale + g_earthshine * earthScale ) * coverage;
 }
 
 // Свет звёзд слабее каталога (Shaders/sky_stars.vs) — карта яркости в экваториальных координатах; мип — под размер
@@ -101,22 +107,22 @@ float4 main( PixelInputType input ) : SV_TARGET
 		lights += g_sunColor / solidAngle * disk;
 	}
 
+	// Размер пикселя в радианах — до ветвлений: производные внутри них не определены
+	const float pixelAngle = max( max( length( ddx( direction ) ), length( ddy( direction ) ) ), 1e-6f );
+
 	[branch] if( any( g_moonDiskLuminance > 0.0f ) )
 	{
 		// Ночью экспозиция — для пейзажа, диск в ~10⁵ раз ярче и у камеры ушёл бы в засветку и bloom, как солнце;
 		// глаз видит белый диск с морями. Диск приглушается целиком (узор морей сохраняется), чтобы полный диск после
-		// экспозиции был не ярче предела. Днём луна тусклее неба — множитель 1
-		float moonScale = 1.0f;
-		[branch] if( g_moonDiskBrightnessLimit > 0.0f )
-		{
-			const float fullDisk = dot( g_moonDiskLuminance, float3( 0.2126f, 0.7152f, 0.0722f ) ) * cb_skyScale * preExposure();
-			moonScale = min( 1.0f, g_moonDiskBrightnessLimit / max( fullDisk, 1e-20f ) );
-		}
-		lights += moonLight( direction ) * moonScale;
+		// экспозиции был не ярче предела. Днём луна тусклее неба — множитель 1. Пепельный свет — так же, своим пределом:
+		// глаз видит его тусклым серым диском рядом с белым серпом, хотя он в ~10⁴ раз темнее серпа
+		const float fullDisk = dot( g_moonDiskLuminance, float3( 0.2126f, 0.7152f, 0.0722f ) ) * cb_skyScale * preExposure();
+		const float sunScale = g_moonDiskBrightnessLimit > 0.0f ? min( 1.0f, g_moonDiskBrightnessLimit / max( fullDisk, 1e-20f ) ) : 1.0f;
+		const float earthScale = g_earthshineBrightnessLimit > 0.0f ?
+			min( 1.0f, g_earthshineBrightnessLimit / max( fullDisk * g_earthshine, 1e-20f ) ) : 1.0f;
+		lights += moonLight( direction, pixelAngle, sunScale, earthScale );
 	}
 
-	// Размер пикселя в радианах — до ветвления: производные внутри него не определены
-	const float pixelAngle = max( max( length( ddx( direction ) ), length( ddy( direction ) ) ), 1e-6f );
 	[branch] if( g_milkyWayLuminance > 0.0f && direction.y > -0.05f )
 		lights += milkyWayLight( direction, pixelAngle );
 

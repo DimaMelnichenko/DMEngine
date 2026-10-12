@@ -32,6 +32,9 @@ constexpr DXGI_FORMAT skyFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
 // Луна светит в небе, пока она выше −10°: ниже её свет в атмосфере — ноль (тень Земли), таблицу луны не считаем
 constexpr float moonSkyMinSin = -0.1736f;
 constexpr float moonRadiusKm = 1737.4f;
+// Пепельный свет: Земля — ламбертов шар с геометрическим альбедо ~0,3 (Goode et al. 2001, по самому пепельному свету)
+constexpr float earthRadiusKm = 6371.0f;
+constexpr float earthAlbedo = 0.3f;
 // Звёзды не видны, пока солнце выше горизонта: фон их не считает (~0,2 мс на кадр неба)
 constexpr float starsMaxSunSin = 0.0f;
 
@@ -52,6 +55,32 @@ constexpr float starMagnitudeOffset = 14.18f;
 float luminance( const XMFLOAT3& color )
 {
 	return 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
+}
+
+// Базис тела луны в мире по направлению на неё, полюсу мира и ориентации (Meeus, гл. 53, градусы): ось вращения, к нулевому
+// меридиану и к 90° восточной селенографической долготы. Ось на диске повёрнута от севера неба к востоку на позиционный
+// угол и наклонена к наблюдателю на либрацию по широте, центр диска — на либрацию по долготе от нулевого меридиана.
+// Без либрации и наклона оси: север неба на диске, к наблюдателю и запад неба (запад — cross( север, на луну ), как в
+// Shaders/sky_background.ps)
+void moonBodyFrame( const XMFLOAT3& toMoon, const XMFLOAT3& celestialPole, float librationLongitude, float librationLatitude,
+					float positionAngle, XMFLOAT3& north, XMFLOAT3& prime, XMFLOAT3& east )
+{
+	const XMVECTOR view = XMVector3Normalize( XMLoadFloat3( &toMoon ) );
+	const XMVECTOR observer = XMVectorNegate( view );
+	const XMVECTOR pole = XMLoadFloat3( &celestialPole );
+	XMVECTOR skyNorth = XMVectorSubtract( pole, XMVectorScale( view, XMVectorGetX( XMVector3Dot( pole, view ) ) ) );
+	skyNorth = XMVectorGetX( XMVector3LengthSq( skyNorth ) ) > 1e-8f ? XMVector3Normalize( skyNorth ) : XMVectorSet( 0.0f, 1.0f, 0.0f, 0.0f );
+	const XMVECTOR skyEast = XMVectorNegate( XMVector3Cross( skyNorth, view ) );
+	const float angle = XMConvertToRadians( positionAngle );
+	const float latitude = XMConvertToRadians( librationLatitude );
+	const float longitude = XMConvertToRadians( librationLongitude );
+	const XMVECTOR axisOnSky = XMVectorAdd( XMVectorScale( skyNorth, std::cos( angle ) ), XMVectorScale( skyEast, std::sin( angle ) ) );
+	const XMVECTOR axis = XMVectorAdd( XMVectorScale( axisOnSky, std::cos( latitude ) ), XMVectorScale( observer, std::sin( latitude ) ) );
+	const XMVECTOR center = XMVector3Normalize( XMVectorSubtract( observer, XMVectorScale( axis, std::sin( latitude ) ) ) );
+	const XMVECTOR side = XMVector3Cross( center, axis );
+	XMStoreFloat3( &north, axis );
+	XMStoreFloat3( &prime, XMVectorSubtract( XMVectorScale( center, std::cos( longitude ) ), XMVectorScale( side, std::sin( longitude ) ) ) );
+	XMStoreFloat3( &east, XMVectorAdd( XMVectorScale( center, std::sin( longitude ) ), XMVectorScale( side, std::cos( longitude ) ) ) );
 }
 
 // Лепесток аппроксимации функций сложения цветов CIE 1931: гаусс с разной шириной слева и справа от пика, нм
@@ -297,6 +326,15 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	prop->setHigh( 20.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
+	// Пепельный свет — тёмная часть луны, освещённая Землёй: в ~10⁴ раз тусклее освещённой солнцем, но в сумерках и ночью
+	// ярче неба вокруг. Глаз видит его серым диском рядом с белым серпом — свой предел яркости после экспозиции (диск
+	// приглушается целиком отдельно от серпа; 0,05 — вдвое светлее ночного неба на экране и вчетверо темнее серпа).
+	// 0 — физическая яркость: ночью диск почти как серп
+	prop = m_properties.insert( "Earthshine brightness limit", 0.05f );
+	prop->setLow( 0.0f );
+	prop->setHigh( 3.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+
 	// Мерцание звёзд (Shaders/sky_stars.vs): 1 — по воздушной массе, в зените почти нет, у горизонта сильное и разноцветное;
 	// 0 — не мерцают (ночные кадры совпадают при сравнении)
 	prop = m_properties.insert( "Star twinkle", 1.0f );
@@ -525,12 +563,18 @@ SkyAtmosphere::NightSkyParameters SkyAtmosphere::currentNightSky( const Paramete
 	night.equatorialZ = XMFLOAT3( 0.0f, 1.0f, 0.0f );
 	float moonDistance = 384400.0f;
 	float fullIlluminance = 0.0f;
+	float librationLongitude = 0.0f;
+	float librationLatitude = 0.0f;
+	float positionAngle = 0.0f;
 	if( const SunPosition* position = m_lights->sunPosition() )
 	{
 		position->equatorialFrame( night.equatorialX, night.equatorialY, night.equatorialZ );
 		const SunPosition::Moon moon = position->moon();
 		moonDistance = moon.distance;
 		fullIlluminance = moon.fullIlluminance;
+		librationLongitude = moon.librationLongitude;
+		librationLatitude = moon.librationLatitude;
+		positionAngle = moon.positionAngle;
 	}
 
 	XMFLOAT3 sunDirection;
@@ -552,6 +596,7 @@ SkyAtmosphere::NightSkyParameters SkyAtmosphere::currentNightSky( const Paramete
 	// луны, а тусклый большой диск терялся бы днём в небе. Без времени суток — освещённость источника луны
 	XMFLOAT3 toMoon;
 	XMFLOAT3 moonColor;
+	night.earthshineBrightnessLimit = m_properties["Earthshine brightness limit"].data<float>();
 	const float realRadius = std::asin( moonRadiusKm / moonDistance );
 	night.moonAngularRadius = realRadius * m_properties["Moon disk scale"].data<float>();
 	if( m_lights->moonLight( toMoon, moonColor ) )
@@ -562,6 +607,17 @@ SkyAtmosphere::NightSkyParameters SkyAtmosphere::currentNightSky( const Paramete
 		const float solidAngle = 3.14159265f * realRadius * realRadius;
 		const float scale = moonLuminance > 0.0f ? fullIlluminance / moonLuminance / solidAngle * bakeScale : 0.0f;
 		night.moonDiskLuminance = XMFLOAT3( moonColor.x * scale, moonColor.y * scale, moonColor.z * scale );
+
+		// Поворот диска: либрация и позиционный угол оси — по SunPosition; без времени суток — север луны к полюсу мира
+		moonBodyFrame( toMoon, night.equatorialZ, librationLongitude, librationLatitude, positionAngle, night.moonNorth,
+					   night.moonPrime, night.moonEast );
+		// Пепельный свет: освещённость луны от Земли относительно солнечной — p⊕·(R⊕ / d)²·Φ(α⊕), Φ — фаза ламбертова шара,
+		// угол фазы Земли с луны — элонгация луны от солнца (новолуние — полная Земля, ~8·10⁻⁵); солнце — то же, что
+		// освещает диск в шейдере
+		const XMFLOAT3& toSun = params.sunDirection;
+		const float elongation = std::acos( std::clamp( toMoon.x * toSun.x + toMoon.y * toSun.y + toMoon.z * toSun.z, -1.0f, 1.0f ) );
+		const float phase = ( std::sin( elongation ) + ( XM_PI - elongation ) * std::cos( elongation ) ) / XM_PI;
+		night.earthshine = earthAlbedo * ( earthRadiusKm / moonDistance ) * ( earthRadiusKm / moonDistance ) * phase;
 	}
 	return night;
 }

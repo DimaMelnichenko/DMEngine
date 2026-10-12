@@ -248,6 +248,23 @@ SunPosition::Moon SunPosition::computeMoon( const Settings& settings )
 	moon.eclipticLongitude = static_cast<float>( degrees( std::fmod( longitude, 2.0 * pi ) + ( longitude < 0.0 ? 2.0 * pi : 0.0 ) ) );
 	moon.eclipticLatitude = static_cast<float>( degrees( latitude ) );
 
+	// Либрация и позиционный угол оси (Meeus, гл. 53): ось луны наклонена к эклиптике на I, узел её экватора совпадает
+	// с восходящим узлом орбиты Ω. Нутация в W сокращается (у нас долгота без неё), в V и ε — сотые градуса
+	const double inclination = radians( 1.54242 );
+	const double node = angle( 125.0445479 - 1934.1362891 * t );
+	const double w = longitude - node;
+	const double a = std::atan2( std::sin( w ) * std::cos( latitude ) * std::cos( inclination ) - std::sin( latitude ) * std::sin( inclination ),
+								 std::cos( w ) * std::cos( latitude ) );
+	const double librationLatitude = std::asin( -std::sin( w ) * std::cos( latitude ) * std::sin( inclination ) -
+												std::sin( latitude ) * std::cos( inclination ) );
+	const double x = std::sin( inclination ) * std::sin( node );
+	const double y = std::sin( inclination ) * std::cos( node ) * std::cos( obliquity ) - std::cos( inclination ) * std::sin( obliquity );
+	const double axis = std::atan2( x, y );
+	moon.librationLongitude = static_cast<float>( std::remainder( degrees( a - f ), 360.0 ) );
+	moon.librationLatitude = static_cast<float>( degrees( librationLatitude ) );
+	moon.positionAngle = static_cast<float>( degrees( std::asin( std::clamp(
+		std::sqrt( x * x + y * y ) * std::cos( rightAscension - axis ) / std::cos( librationLatitude ), -1.0, 1.0 ) ) ) );
+
 	// Фаза (Meeus, гл. 48): элонгация от солнца и угол фазы; освещённость — по звёздной величине луны
 	// (m = −12,73 + 0,026·i + 4·10⁻⁹·i⁴, Allen) и расстоянию; освещённость от звезды m — 10^(−0,4·(m + 14,18)) лк
 	const double sunDistance = 149597870.7 * ( 1.00014 - 0.01671 * std::cos( sunMeanAnomaly ) );

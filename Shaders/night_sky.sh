@@ -20,6 +20,14 @@ cbuffer NightSkyParameters : register( b4 )
 	float2 g_viewportSize;			// размер цели фона, пиксели
 	float  g_milkyWayLuminance;		// средняя яркость карты Млечного Пути (её среднее по сфере — 1); 0 — его нет или день
 	float  g_nightSkyPadding;
+	// Базис тела луны в мире (либрация и позиционный угол оси, SunPosition::computeMoon): ось вращения, к нулевому
+	// меридиану, к 90° восточной селенографической долготы (Море Кризисов)
+	float3 g_moonNorth;
+	float  g_earthshine;			// освещённость луны Землёй относительно солнечной (пепельный свет); 0 — нет
+	float3 g_moonPrime;
+	float  g_earthshineBrightnessLimit;	// предел яркости пепельного света после экспозиции; 0 — физическая
+	float3 g_moonEast;
+	float  g_nightSkyPadding2;
 };
 
 #endif
