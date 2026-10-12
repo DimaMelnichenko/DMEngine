@@ -15,6 +15,25 @@ namespace
 
 const ImVec4 modifiedColor( 1.0f, 0.75f, 0.3f, 1.0f );
 
+// Свойство, которое правят (активный контрол), и рисовался ли его контрол в этом кадре — endFrame
+Property* editedProperty = nullptr;
+bool editedPropertyDrawn = false;
+
+// Правка идёт, пока контрол свойства активен (у числа — ползунок или поле ввода: группа)
+void markEditing( Property& property, bool active )
+{
+	property.setEditing( active );
+	if( active )
+	{
+		if( editedProperty && editedProperty != &property )
+			editedProperty->setEditing( false );
+		editedProperty = &property;
+		editedPropertyDrawn = true;
+	}
+	else if( editedProperty == &property )
+		editedProperty = nullptr;
+}
+
 // Формат числа: заданный у свойства или по величине значения — 128000 без экспоненты, 0,0003 — не в ноль; unit —
 // с единицами (у поля ввода их нет)
 std::string numberFormat( const Property& property, float value, bool unit = true )
@@ -107,6 +126,8 @@ void labelCell( const std::string& name, Property& property )
 void controlCell( const std::string& name, Property& property )
 {
 	ImGui::TableNextColumn();
+	// Группа: у числа ползунок и поле ввода — один контрол для IsItemActive (правка идёт, пока активен любой)
+	ImGui::BeginGroup();
 	ImGui::SetNextItemWidth( -FLT_MIN );
 	const std::string id = "##" + name;
 	const char* label = id.c_str();
@@ -207,6 +228,8 @@ void controlCell( const std::string& name, Property& property )
 			ImGui::Text( "%u", property.data<uint32_t>() );
 			break;
 	}
+	ImGui::EndGroup();
+	markEditing( property, ImGui::IsItemActive() );
 }
 
 void resetCell( const std::string& name, Property& property )
@@ -322,6 +345,16 @@ bool hasMatches( PropertyContainer& container, const std::string& filter )
 void drawContainer( PropertyContainer& container, const std::string& filter, PropertyContainer* focus )
 {
 	drawContainerImpl( container, filter, false, focus );
+}
+
+void endFrame()
+{
+	if( editedProperty && !editedPropertyDrawn )
+	{
+		editedProperty->setEditing( false );
+		editedProperty = nullptr;
+	}
+	editedPropertyDrawn = false;
 }
 
 }

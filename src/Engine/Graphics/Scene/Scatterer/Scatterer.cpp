@@ -609,10 +609,7 @@ void Scatterer::applyProperties( Layer& layer )
 		variant.castShadow = ( *variant.properties )["Cast shadow"].data<bool>();
 		const float weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
 		if( v < layer.passVariants.size() && weight != layer.passVariants[v].weight )
-		{
-			layer.passVariants[v].weight = weight;
 			weights = true;
-		}
 	}
 	const bool buffers = weights || settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
 						 settings.farBorder != applied.farBorder || settings.sizeMultiplier != applied.sizeMultiplier;
@@ -621,11 +618,18 @@ void Scatterer::applyProperties( Layer& layer )
 						   settings.alignToTerrain != applied.alignToTerrain ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
+	// Пока ползунок тянут или в поле набирают число (Property::editing), дорогое ждёт: новые буферы слоя (шаг, кольцо,
+	// размер, веса — иначе каждый кадр новые буферы, а прежние живут до конца кадров в полёте) и раскладка постоянного слоя
+	// на всю карту. Применяется один раз, когда правка закончилась; раскладка обычного слоя — константы, на лету
+	if( ( buffers || ( placement && settings.persistent ) ) && layer.properties->editing() )
+		return;
+	for( uint32_t v = 0; v < layer.variants.size() && v < layer.passVariants.size(); ++v )
+		layer.passVariants[v].weight = std::max( ( *layer.variants[v].properties )["Weight"].data<float>(), 0.0f );
 	layer.settings = settings;
 	if( buffers )
 	{
-		if( !rebuildPass( layer ) )
-			LOG( "Scatter layer " + layer.mask + ": buffers are not rebuilt" );
+		const bool rebuilt = rebuildPass( layer );
+		LOG( "Scatter layer " + layer.mask + ( rebuilt ? ": buffers rebuilt after an edit" : ": buffers are not rebuilt" ) );
 		return;
 	}
 	if( placement )

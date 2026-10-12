@@ -72,6 +72,21 @@ void PropertyContainer::markSaved()
 		sub->markSaved();
 }
 
+bool PropertyContainer::editing() const
+{
+	for( const auto& [name, property] : m_propertyMap )
+	{
+		if( property.editing() )
+			return true;
+	}
+	for( const PropertyContainer* sub : m_subContainer )
+	{
+		if( sub->editing() )
+			return true;
+	}
+	return false;
+}
+
 bool PropertyContainer::modified() const
 {
 	for( const auto& [name, property] : m_propertyMap )

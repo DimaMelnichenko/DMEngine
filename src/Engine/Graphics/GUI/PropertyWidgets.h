@@ -19,4 +19,8 @@ void drawContainer( PropertyContainer& container, const std::string& filter, Pro
 // Есть ли в контейнере что показать под фильтром
 bool hasMatches( PropertyContainer& container, const std::string& filter );
 
+// Конец кадра GUI: правка свойства, контрол которого в этом кадре не рисовался (окно закрыли, свернули подконтейнер
+// посреди перетаскивания), закончена — Property::editing не залипает
+void endFrame();
+
 }

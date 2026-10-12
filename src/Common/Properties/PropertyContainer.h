@@ -45,6 +45,8 @@ public:
 	void markSaved();
 	bool modified() const;
 	void resetToSaved();
+	// Правят ли сейчас какое-то его свойство (Property::editing), со всеми подконтейнерами
+	bool editing() const;
 
 private:
     PropertyMap m_propertyMap;

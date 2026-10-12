@@ -101,6 +101,12 @@ public:
 	void markSaved();
 	bool modified() const;
 	void resetToSaved();
+
+	// Правка идёт: контрол панели Details активен — ползунок тянут, в поле набирают число (ставит панель,
+	// PropertyWidgets). Объект, которому правка дорога (пересборка буферов, раскладка заново), применяет её, когда она
+	// закончилась, а дешёвое — на лету. Команда set удалённого управления правит сразу: у неё editing() — false
+	bool editing() const { return m_editing; }
+	void setEditing( bool editing ) { m_editing = editing; }
 private:
 	std::string m_name;
 	float m_lowBorder = 0.0;
@@ -115,5 +121,6 @@ private:
 	std::string m_format;
 	bool m_logarithmic = false;
 	float m_dragSpeed = 0.0f;
+	bool m_editing = false;
 };
 

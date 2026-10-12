@@ -512,12 +512,13 @@ Outliner → Scene → имя набора. «Shadow LOD scale» — у набо
 
 | Свойство | Колонка | Что при правке |
 |---|---|---|
-| Cell size, Near border, Far border, Size | `cell_size`, `near_border`, `far_border`, `size_multiplier` | буферы слоя заново (`Scatterer::rebuildPass`: ёмкость списков — по кольцу и дальностям LOD); прежние GPU отпустит, когда закончит кадры с ними |
+| Cell size, Near border, Far border, Size | `cell_size`, `near_border`, `far_border`, `size_multiplier` | буферы слоя заново (`Scatterer::rebuildPass`: ёмкость списков — по кольцу и дальностям LOD), один раз — когда ползунок отпустили или ввод числа закончен (`Property::editing`); прежние GPU отпустит, когда закончит кадры с ними; в лог — «buffers rebuilt after an edit» |
 | Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain` | константы раскладки |
 | Cast shadow, Shadow impostor distance | `cast_shadow`, `shadow_impostor_distance` | сразу |
 
-Подокно варианта (модель) — «Weight» и «Cast shadow» (`ScatterLayerModels`); вес — тоже пересборка буферов. Постоянный
-слой (лес) после любой правки раскладки раскладывается на карту заново (`placed`). «Save level» (Ctrl+S) пишет окно в
+Подокно варианта (модель) — «Weight» и «Cast shadow» (`ScatterLayerModels`); вес — тоже пересборка буферов, после
+правки. Постоянный слой (лес) после любой правки раскладки раскладывается на карту заново (`placed`) — тоже один раз, когда
+правка закончилась; у обычного слоя константы раскладки идут на лету. Команда `set` применяет сразу. «Save level» (Ctrl+S) пишет окно в
 строки слоёв и вариантов по `id` ([gui.md](gui.md)); не правятся в окне `persistent`, `impostor_distance` и запекание
 импостеров — они задают варианты и материалы при загрузке.
 

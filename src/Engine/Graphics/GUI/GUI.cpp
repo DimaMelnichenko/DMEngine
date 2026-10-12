@@ -10,6 +10,7 @@
 #include "backends/imgui_impl_win32.h"
 #include "D3D\DMD3D.h"
 #include "Camera\DMCamera.h"
+#include "PropertyWidgets.h"
 
 namespace
 {
@@ -182,6 +183,7 @@ void GUI::Begin( const GS::FrameStats& stats, DMCamera& camera )
 	if( m_showHotkeys )
 		drawHotkeys();
 	drawNotification();
+	PropertyWidgets::endFrame();
 	m_resetLayout = false;
 	m_firstFrame = false;
 }
