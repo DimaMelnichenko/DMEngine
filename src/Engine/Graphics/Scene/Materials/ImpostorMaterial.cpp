@@ -1,20 +1,66 @@
 #include "ImpostorMaterial.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdio>
+#include <filesystem>
+#include <variant>
 #include <vector>
 #include "Shaders\slots.h"
 #include "ConstantBuffers.h"
 #include "SceneObject.h"
 #include "Scene\VertexPool.h"
 #include "System.h"
+#include "D3D\ShaderCompiler.h"
 #include "D3D\TextureImages.h"
+#include "Texture\ImageFile.h"
 #include "Texture\ImageMips.h"
 #include "Logger\Logger.h"
+#include "Utils\Fingerprint.h"
 
 using namespace DirectX;
 
 namespace
 {
+
+constexpr const char* cacheDirectory = "cache\\impostors";
+const char* const cacheParts[3] = { "_color.dds", "_normal.dds", "_offset.dds" };
+
+// Кадры из кэша: все три файла есть и совпадают с запеканием форматом и размером (иначе — запечь заново)
+bool loadFrames( const std::string& base, ScratchImage* images[3], uint32_t frames, uint32_t frameSize )
+{
+	const DXGI_FORMAT formats[3] = { DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R16G16_UNORM };
+	std::error_code error;
+	for( int i = 0; i < 3; ++i )
+	{
+		const std::string path = base + cacheParts[i];
+		if( !std::filesystem::exists( path, error ) || !ImageFile::load( path, *images[i] ) )
+			return false;
+		const TexMetadata& metadata = images[i]->GetMetadata();
+		if( metadata.format != formats[i] || metadata.width != frameSize || metadata.height != frameSize ||
+			metadata.arraySize != frames * frames || metadata.mipLevels < 2 )
+			return false;
+	}
+	return true;
+}
+
+// Кадры — в кэш, в папку модели: прежние варианты (другой ключ) удаляются, на модель — один набор файлов
+void saveFrames( const std::string& folder, const std::string& base, ScratchImage* images[3] )
+{
+	std::error_code error;
+	std::filesystem::create_directories( folder, error );
+	for( const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator( folder, error ) )
+		if( entry.is_regular_file() )
+			std::filesystem::remove( entry.path(), error );
+	for( int i = 0; i < 3; ++i )
+	{
+		const std::string path = base + cacheParts[i];
+		const std::wstring wide( path.begin(), path.end() );
+		if( FAILED( SaveToDDSFile( images[i]->GetImages(), images[i]->GetImageCount(), images[i]->GetMetadata(), DDS_FLAGS_NONE,
+								   wide.c_str() ) ) )
+			LOG( "Impostor: can't write the cache " + path );
+	}
+}
 
 float srgbToLinear( float value )
 {
@@ -332,116 +378,175 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 		}
 	}
 
-	// Цели запекания: кадр — срез массива (цвет sRGB, нормаль и глубина поверхности — смещение глубины), буфер глубины
-	// общий; сторона — со сверхвыборкой
-	DMD3D& d3d = DMD3D::instance();
-	const uint32_t count = frames * frames;
-	const uint32_t bakeSize = frameSize * bakeSamples;
-	TextureDesc colorDesc;
-	colorDesc.width = colorDesc.height = bakeSize;
-	colorDesc.arraySize = count;
-	colorDesc.format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-	colorDesc.usage = TextureUsage::renderTarget | TextureUsage::shaderResource;
-	colorDesc.hasClearColor = true;
-	TextureDesc normalDesc = colorDesc;
-	normalDesc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	const float clearNormal[4] = { 0.5f, 0.5f, 1.0f, 0.0f };
-	std::copy( std::begin( clearNormal ), std::end( clearNormal ), normalDesc.clearColor );
-	TextureDesc offsetDesc = colorDesc;
-	offsetDesc.format = DXGI_FORMAT_R16_UNORM;
-	const float clearOffset[4] = { 0.5f, 0.0f, 0.0f, 0.0f };	// плоскость через центр
-	std::copy( std::begin( clearOffset ), std::end( clearOffset ), offsetDesc.clearColor );
-	TextureDesc depthDesc;
-	depthDesc.width = depthDesc.height = bakeSize;
-	depthDesc.format = DXGI_FORMAT_D32_FLOAT;
-	depthDesc.usage = TextureUsage::depthStencil;
-	Texture color, normal, offset, depth;
-	TargetView depthTarget;
-	if( !d3d.createTexture( colorDesc, nullptr, color ) || !d3d.createTexture( normalDesc, nullptr, normal ) ||
-		!d3d.createTexture( offsetDesc, nullptr, offset ) || !d3d.createTexture( depthDesc, nullptr, depth ) ||
-		!d3d.createTargetView( depth, {}, depthTarget ) )
+	// Кадры — из кэша на диске, если ключ тот же (cacheVersion): запекание — ~0,35 с на модель, в Debug — ~1,5 с
+	Fingerprint key;
+	key.add( cacheVersion );
+	key.add( frames );
+	key.add( frameSize );
+	key.add( bakeSamples );
+	key.add( settings.density );
+	key.add( settings.occlusion );
+	key.add( m_params );
+#ifdef _DEBUG
+	key.add( true );
+#endif
+	key.add( ShaderCompiler::instance().shadersStamp() );
+	for( const auto& [section, material] : sections )
 	{
-		LOG( name() + ": can't create bake targets" );
-		return false;
-	}
-	const float clearColor[4] = {};
-	for( uint32_t y = 0; y < frames; ++y )
-	for( uint32_t x = 0; x < frames; ++x )
-	{
-		// Виды целей — на кадр: дескриптор RTV читается при записи команды, а куча RTV мала для всех срезов сразу
-		const uint32_t slice = y * frames + x;
-		TextureViewDesc target;
-		target.kind = TextureViewDesc::Kind::texture2DArray;
-		target.firstSlice = slice;
-		target.sliceCount = 1;
-		TargetView colorTarget;
-		TargetView normalTarget;
-		TargetView offsetTarget;
-		if( !d3d.createTargetView( color, target, colorTarget ) || !d3d.createTargetView( normal, target, normalTarget ) ||
-			!d3d.createTargetView( offset, target, offsetTarget ) )
+		key.add( material->id() );
+		key.add( material->name().data(), material->name().size() );
+		const PropertyContainer& params = section->params;
+		for( const std::string& param : params.names() )
 		{
-			LOG( name() + ": can't create frame target views" );
-			return false;
+			key.add( param.data(), param.size() );
+			const Property::Value& value = params[param].value();
+			key.add( value.index() );
+			std::visit( [&key]( const auto& item ) { key.add( item ); }, value );
+			// Текстура материала (параметр — id в хранилище) — отпечатком её файла
+			const uint32_t* texture = std::get_if<uint32_t>( &value );
+			if( texture && *texture != 0 && System::textures().exists( *texture ) )
+				key.add( System::textures().get( *texture )->sourceStamp() );
 		}
-		PassDesc pass;
-		pass.name = "Impostor bake";
-		pass.colors = { { &colorTarget, "impostor color" }, { &normalTarget, "impostor normal" }, { &offsetTarget, "impostor offset" } };
-		pass.depth = { &depthTarget, "impostor depth" };
-		pass.width = pass.height = bakeSize;
-		d3d.beginPass( pass );
-		d3d.clearTarget( colorTarget, clearColor );
-		d3d.clearTarget( normalTarget, clearNormal );
-		d3d.clearTarget( offsetTarget, clearOffset );
-		d3d.clearDepth( depthTarget, 0.0f );
-		context.constants.setViewBuffer( frameView( x, y ) );
-		context.constants.setPerObjectBuffer( XMMatrixIdentity() );
-		context.vertexPool.setBuffers();
-		for( const auto& [section, material] : sections )
-		{
-			const MaterialRenderState state = material->renderState( section->params );
-			ScopedRenderState scoped( materialRasterState( state.twoSided, false, RasterState::solid ), DepthState::enabled, BlendState::opaque );
-			ShaderPhaseOptions options;
-			options.impostorBake = true;
-			if( !material->setPass( material->phaseFor( section->params, options ) ) )
-				continue;
-			material->setParams( section->params );
-			const AbstractMesh* mesh = System::meshes().get( section->mesh ).get();
-			d3d.drawIndexed( mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
-		}
+		AbstractMesh* mesh = System::meshes().get( section->mesh ).get();
+		key.add( mesh->vertexCount() );
+		if( mesh->vertexCount() > 0 )
+			key.addWords( mesh->getVertices(), static_cast<size_t>( mesh->vertexCount() ) * mesh->vertexStride() );
+		key.addWords( mesh->getIndices().data(), mesh->getIndices().size() * sizeof( uint32_t ) );
+		key.addWords( mesh->wind().data(), mesh->wind().size() * sizeof( VertexData::Wind ) );
 	}
+	// Папка — на сборку и модель (имя — буквы, цифры и «_»): переход Debug ↔ Release не стирает кадры другой; файлы — по
+	// ключу
+	std::string folderName = model.properties()->name();
+	for( char& c : folderName )
+		if( !std::isalnum( static_cast<unsigned char>( c ) ) )
+			c = '_';
+#ifdef _DEBUG
+	const char* build = "debug";
+#else
+	const char* build = "release";
+#endif
+	const std::string folder = std::string( cacheDirectory ) + "\\" + build + "\\" + folderName;
+	char keyText[20];
+	std::snprintf( keyText, sizeof( keyText ), "%016llx", static_cast<unsigned long long>( key.value ) );
+	const std::string cacheBase = folder + "\\" + keyText;
 
-	// Кадры — на CPU (ждёт GPU): сверхвыборка — в кадр frameSize с долей покрытия (× плотность), затенение окружающего
-	// света по глубине кадров, цвет в прозрачные тексели от соседних (без тёмной каймы на мипах), мипы с сохранением
-	// покрытия при пороге отсечения, обратно на GPU текстурами хранилища
-	ScratchImage bakedColor;
-	ScratchImage bakedNormal;
-	ScratchImage bakedOffset;
-	if( !GpuImages::captureTexture( color, bakedColor ) || !GpuImages::captureTexture( normal, bakedNormal ) ||
-		!GpuImages::captureTexture( offset, bakedOffset ) )
-	{
-		LOG( name() + ": can't read frames back" );
-		return false;
-	}
 	ScratchImage colorImage;
 	ScratchImage normalImage;
 	ScratchImage offsetImage;
-	if( !downsampleFrames( bakedColor, bakedNormal, bakedOffset, frameSize, bakeSamples, std::max( settings.density, 0.0f ),
-						   colorImage, normalImage, offsetImage ) )
+	ScratchImage* images[3] = { &colorImage, &normalImage, &offsetImage };
+	const bool cached = loadFrames( cacheBase, images, frames, frameSize );
+	if( !cached )
 	{
-		LOG( name() + ": can't downsample frames" );
-		return false;
+		// Цели запекания: кадр — срез массива (цвет sRGB, нормаль и глубина поверхности — смещение глубины), буфер глубины
+		// общий; сторона — со сверхвыборкой
+		DMD3D& d3d = DMD3D::instance();
+		const uint32_t count = frames * frames;
+		const uint32_t bakeSize = frameSize * bakeSamples;
+		TextureDesc colorDesc;
+		colorDesc.width = colorDesc.height = bakeSize;
+		colorDesc.arraySize = count;
+		colorDesc.format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+		colorDesc.usage = TextureUsage::renderTarget | TextureUsage::shaderResource;
+		colorDesc.hasClearColor = true;
+		TextureDesc normalDesc = colorDesc;
+		normalDesc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		const float clearNormal[4] = { 0.5f, 0.5f, 1.0f, 0.0f };
+		std::copy( std::begin( clearNormal ), std::end( clearNormal ), normalDesc.clearColor );
+		TextureDesc offsetDesc = colorDesc;
+		offsetDesc.format = DXGI_FORMAT_R16_UNORM;
+		const float clearOffset[4] = { 0.5f, 0.0f, 0.0f, 0.0f };	// плоскость через центр
+		std::copy( std::begin( clearOffset ), std::end( clearOffset ), offsetDesc.clearColor );
+		TextureDesc depthDesc;
+		depthDesc.width = depthDesc.height = bakeSize;
+		depthDesc.format = DXGI_FORMAT_D32_FLOAT;
+		depthDesc.usage = TextureUsage::depthStencil;
+		Texture color, normal, offset, depth;
+		TargetView depthTarget;
+		if( !d3d.createTexture( colorDesc, nullptr, color ) || !d3d.createTexture( normalDesc, nullptr, normal ) ||
+			!d3d.createTexture( offsetDesc, nullptr, offset ) || !d3d.createTexture( depthDesc, nullptr, depth ) ||
+			!d3d.createTargetView( depth, {}, depthTarget ) )
+		{
+			LOG( name() + ": can't create bake targets" );
+			return false;
+		}
+		const float clearColor[4] = {};
+		for( uint32_t y = 0; y < frames; ++y )
+		for( uint32_t x = 0; x < frames; ++x )
+		{
+			// Виды целей — на кадр: дескриптор RTV читается при записи команды, а куча RTV мала для всех срезов сразу
+			const uint32_t slice = y * frames + x;
+			TextureViewDesc target;
+			target.kind = TextureViewDesc::Kind::texture2DArray;
+			target.firstSlice = slice;
+			target.sliceCount = 1;
+			TargetView colorTarget;
+			TargetView normalTarget;
+			TargetView offsetTarget;
+			if( !d3d.createTargetView( color, target, colorTarget ) || !d3d.createTargetView( normal, target, normalTarget ) ||
+				!d3d.createTargetView( offset, target, offsetTarget ) )
+			{
+				LOG( name() + ": can't create frame target views" );
+				return false;
+			}
+			PassDesc pass;
+			pass.name = "Impostor bake";
+			pass.colors = { { &colorTarget, "impostor color" }, { &normalTarget, "impostor normal" }, { &offsetTarget, "impostor offset" } };
+			pass.depth = { &depthTarget, "impostor depth" };
+			pass.width = pass.height = bakeSize;
+			d3d.beginPass( pass );
+			d3d.clearTarget( colorTarget, clearColor );
+			d3d.clearTarget( normalTarget, clearNormal );
+			d3d.clearTarget( offsetTarget, clearOffset );
+			d3d.clearDepth( depthTarget, 0.0f );
+			context.constants.setViewBuffer( frameView( x, y ) );
+			context.constants.setPerObjectBuffer( XMMatrixIdentity() );
+			context.vertexPool.setBuffers();
+			for( const auto& [section, material] : sections )
+			{
+				const MaterialRenderState state = material->renderState( section->params );
+				ScopedRenderState scoped( materialRasterState( state.twoSided, false, RasterState::solid ), DepthState::enabled, BlendState::opaque );
+				ShaderPhaseOptions options;
+				options.impostorBake = true;
+				if( !material->setPass( material->phaseFor( section->params, options ) ) )
+					continue;
+				material->setParams( section->params );
+				const AbstractMesh* mesh = System::meshes().get( section->mesh ).get();
+				d3d.drawIndexed( mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
+			}
+		}
+
+		// Кадры — на CPU (ждёт GPU): сверхвыборка — в кадр frameSize с долей покрытия (× плотность), затенение окружающего
+		// света по глубине кадров, цвет в прозрачные тексели от соседних (без тёмной каймы на мипах), мипы с сохранением
+		// покрытия при пороге отсечения, обратно на GPU текстурами хранилища
+		ScratchImage bakedColor;
+		ScratchImage bakedNormal;
+		ScratchImage bakedOffset;
+		if( !GpuImages::captureTexture( color, bakedColor ) || !GpuImages::captureTexture( normal, bakedNormal ) ||
+			!GpuImages::captureTexture( offset, bakedOffset ) )
+		{
+			LOG( name() + ": can't read frames back" );
+			return false;
+		}
+		if( !downsampleFrames( bakedColor, bakedNormal, bakedOffset, frameSize, bakeSamples, std::max( settings.density, 0.0f ),
+							   colorImage, normalImage, offsetImage ) )
+		{
+			LOG( name() + ": can't downsample frames" );
+			return false;
+		}
+		if( m_params.occlusion > 0.0f )
+			bakeOcclusion( colorImage, offsetImage, frames, frameSize );
+		ImageMips::dilateTransparent( normalImage, 8, &colorImage );
+		ImageMips::dilateTransparent( offsetImage, 8, &colorImage );
+		ImageMips::dilateTransparent( colorImage, 8 );
+		if( !ImageMips::generate( colorImage, m_params.alphaCutoff ) || !ImageMips::generate( normalImage ) ||
+			!ImageMips::generate( offsetImage ) )
+		{
+			LOG( name() + ": can't build mips" );
+			return false;
+		}
+		saveFrames( folder, cacheBase, images );
 	}
-	if( m_params.occlusion > 0.0f )
-		bakeOcclusion( colorImage, offsetImage, frames, frameSize );
-	ImageMips::dilateTransparent( normalImage, 8, &colorImage );
-	ImageMips::dilateTransparent( offsetImage, 8, &colorImage );
-	ImageMips::dilateTransparent( colorImage, 8 );
-	if( !ImageMips::generate( colorImage, m_params.alphaCutoff ) || !ImageMips::generate( normalImage ) ||
-		!ImageMips::generate( offsetImage ) )
-	{
-		LOG( name() + ": can't build mips" );
-		return false;
-	}
+	LOG( name() + ( cached ? ": frames from cache " : ": frames baked and cached in " ) + cacheBase );
 
 	DMTextureStorage& textures = System::textures();
 	auto colorTexture = std::make_unique<DMTexture>( textures.freeId(), name() + " color" );
@@ -466,7 +571,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	BufferDesc constants;
 	constants.size = sizeof( Params );
 	constants.usage = BufferUsage::constant;
-	return d3d.createBuffer( constants, &m_params, m_constantBuffer );
+	return DMD3D::instance().createBuffer( constants, &m_params, m_constantBuffer );
 }
 
 }

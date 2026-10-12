@@ -238,3 +238,9 @@ void ShaderCompiler::logSummary() const
 {
 	LOG( "Shaders: " + std::to_string( m_compiled ) + " compiled by DXC, " + std::to_string( m_fromCache ) + " from cache/shaders" );
 }
+
+uint64_t ShaderCompiler::shadersStamp()
+{
+	initialize();
+	return m_stamp;
+}

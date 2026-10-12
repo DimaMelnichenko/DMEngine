@@ -30,6 +30,9 @@ public:
 	static std::string profile( ShaderStageType type );
 	// Сколько шейдеров скомпилировано и сколько взято из кэша с начала работы — строка в лог
 	void logSummary() const;
+	// Отпечаток каталога Shaders\ — тот же, что в ключах cache/shaders: ключ кэшей с данными, которые считают шейдеры
+	// (кадры импостеров)
+	uint64_t shadersStamp();
 
 private:
 	ShaderCompiler() = default;

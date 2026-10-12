@@ -1,8 +1,10 @@
 #include "DMTextureStorage.h"
+#include <filesystem>
 #include <random>
 #include "ImageFile.h"
 #include "ImageMips.h"
 #include "Logger\Logger.h"
+#include "Utils\Fingerprint.h"
 
 using namespace DirectX;
 
@@ -137,6 +139,16 @@ bool DMTextureStorage::load( uint32_t id, const std::string& name, const std::st
 	auto texture = std::make_unique<DMTexture>( id, name );
 	if( !texture->create( baseImage ) )
 		return false;
+	// Отпечаток источника — для кэшей, которые зависят от картинки (кадры импостеров)
+	Fingerprint stamp;
+	std::error_code error;
+	stamp.add( fullPath.data(), fullPath.size() );
+	stamp.add( static_cast<uint64_t>( std::filesystem::file_size( fullPath, error ) ) );
+	stamp.add( std::filesystem::last_write_time( fullPath, error ).time_since_epoch().count() );
+	stamp.add( sRGB );
+	stamp.add( generateMipMap );
+	stamp.add( preserveAlphaCoverage );
+	texture->setSourceStamp( stamp.value );
 
 	return insertResource( std::move( texture ) );
 }

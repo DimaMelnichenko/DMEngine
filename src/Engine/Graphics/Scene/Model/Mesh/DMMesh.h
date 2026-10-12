@@ -51,6 +51,11 @@ public:
 		return m_vertices.size();
 	}
 
+	uint32_t vertexStride() const override
+	{
+		return sizeof( VertexTypeStruct );
+	}
+
 private:
 	std::vector<VertexTypeStruct> m_vertices;
 };

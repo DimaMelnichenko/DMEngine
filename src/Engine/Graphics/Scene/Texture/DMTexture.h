@@ -25,9 +25,15 @@ public:
 	uint32_t width() const { return m_texture.width(); }
 	uint32_t height() const { return m_texture.height(); }
 
+	// Отпечаток источника: файл (путь, размер, время правки) и как он прочитан (sRGB, мипы) — DMTextureStorage::load;
+	// 0 — процедурная или запечённая текстура. Ключ кэшей, которые зависят от картинки (кадры импостеров)
+	uint64_t sourceStamp() const { return m_sourceStamp; }
+	void setSourceStamp( uint64_t stamp ) { m_sourceStamp = stamp; }
+
 private:
 	Texture m_texture;
 	ShaderView m_srv;
+	uint64_t m_sourceStamp = 0;
 };
 
 }

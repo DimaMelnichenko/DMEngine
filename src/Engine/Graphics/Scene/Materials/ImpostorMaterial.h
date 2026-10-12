@@ -25,6 +25,11 @@ public:
 	// Сверхвыборка запекания: кадр рисуется со стороной frameSize × bakeSamples и усредняется — альфа становится долей
 	// покрытия, а не попаданием тонкой хвоинки в центр текселя
 	static constexpr uint32_t bakeSamples = 4;
+	// Кадры — в кэше на диске (cache\impostors\<debug|release>\<модель>\<ключ>_color|normal|offset.dds), как DDC в UE: ключ — вершины и
+	// индексы мешей секций LOD0, их материалы (параметры секций, отпечатки файлов текстур), настройки запекания, отпечаток
+	// Shaders\ и сборка (Debug и Release — свои кадры: оптимизация шейдеров меняет округление). Меняется код запекания,
+	// которого нет в ключе (defines варианта запекания, обработка кадров на CPU), — поднять версию
+	static constexpr uint32_t cacheVersion = 1;
 
 	// Настройки запекания (ScatterLayers.impostor_density / impostor_occlusion)
 	struct BakeSettings

@@ -22,7 +22,9 @@ public:
 	virtual uint32_t vertexCount() const = 0;
 	uint32_t indexCount() const;
 
+	// Вершины на CPU (vertexCount × vertexStride байт): их же копирует VertexPool
 	virtual char* getVertices() = 0;
+	virtual uint32_t vertexStride() const = 0;
 	const std::vector<uint32_t>& getIndices() const;
 
 	// Границы в координатах меша (считаются при загрузке): по ним экземпляры отсекаются по frustum
