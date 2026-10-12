@@ -225,6 +225,9 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	// Кривые русел во вьюпорте: точки — гизмо, Insert / Delete (Viewport); русла перестраиваются после правки
 	m_GUI.addToggle( { "Stream curves", "", [this] { return m_viewport.streamMode(); },
 					   [this] { m_viewport.setStreamMode( !m_viewport.streamMode() ); } } );
+	// Кисть слоёв и масок: подокно «Paint» окна террейна
+	m_GUI.addToggle( { "Terrain paint", "", [this] { return m_viewport.paintMode(); },
+					   [this] { m_viewport.setPaintMode( !m_viewport.paintMode() ); } } );
 	// Отладочные виды — флажки окон объектов одним списком View → Debug views
 	auto debugView = [this]( const char* name, PropertyContainer* properties, const char* property )
 	{
@@ -915,6 +918,41 @@ void DMGraphics::registerCommands()
 			return reply->error( "usage: pick <x> <y>" );
 		const std::string picked = m_viewport.clickAt( m_cameraPool["main"], m_scene, m_GUI, std::stof( args[0] ), std::stof( args[1] ) );
 		reply->ok( picked.empty() ? "nothing" : picked );
+	} );
+	m_console.registerCommand( "brush", "<x> <y> [<x> <y> ...] [shift] [ctrl] - a stroke of the terrain brush (Paint of the terrain window) "
+							   "through window points, as the mouse with the left button held in the Terrain paint mode; undoable",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		std::vector<ImVec2> points;
+		bool shift = false, ctrl = false;
+		std::vector<float> numbers;
+		for( const std::string& arg : args )
+		{
+			if( arg == "shift" )
+				shift = true;
+			else if( arg == "ctrl" )
+				ctrl = true;
+			else
+			{
+				try
+				{
+					numbers.push_back( std::stof( arg ) );
+				}
+				catch( const std::exception& )
+				{
+					return reply->error( "usage: brush <x> <y> [<x> <y> ...] [shift] [ctrl]" );
+				}
+			}
+		}
+		if( numbers.size() < 2 || numbers.size() % 2 )
+			return reply->error( "usage: brush <x> <y> [<x> <y> ...] [shift] [ctrl]" );
+		for( size_t i = 0; i < numbers.size(); i += 2 )
+			points.emplace_back( numbers[i], numbers[i + 1] );
+		const std::string result = m_viewport.brushStroke( m_cameraPool["main"], m_scene.terrain(), m_GUI, points, shift, ctrl );
+		if( result.rfind( "error: ", 0 ) == 0 )
+			reply->error( result.substr( 7 ) );
+		else
+			reply->ok( result );
 	} );
 	m_console.registerCommand( "toggle", "\"<name>\" - switch a View menu toggle (Stream curves, Wireframe...)",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )

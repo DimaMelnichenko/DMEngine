@@ -319,6 +319,25 @@ void controlCell( const std::string& name, Property& property, const std::string
 		}
 		case ValueType::INT:
 		{
+			if( property.controlType() == GUIControlType::COMBO )
+			{
+				const std::vector<std::string>& items = property.items();
+				int32_t* value = property.dataPtr<int32_t>();
+				const char* preview = *value >= 0 && static_cast<size_t>( *value ) < items.size() ? items[*value].c_str() : "";
+				if( ImGui::BeginCombo( label, preview ) )
+				{
+					for( size_t i = 0; i < items.size(); ++i )
+					{
+						const bool selected = static_cast<size_t>( *value ) == i;
+						if( ImGui::Selectable( items[i].c_str(), selected ) )
+							*value = static_cast<int32_t>( i );
+						if( selected )
+							ImGui::SetItemDefaultFocus();
+					}
+					ImGui::EndCombo();
+				}
+				break;
+			}
 			NumberOptions options;
 			options.low = property.low();
 			options.high = property.high();

@@ -70,6 +70,8 @@ public:
 	// Состав отличается от сохранённого (подокно добавили или убрали; объекта окна ещё нет в базе): окно изменено, как
 	// после правки свойства, до markSaved. Ставит владелец окна; resetToSaved состав не возвращает
 	void setStructureModified( bool modified );
+	// Не данные уровня (кисть, переключатели для сравнения): правки окна не делают уровень изменённым (modified — false)
+	void setTransient( bool transient ) { m_transient = transient; }
 	// Правят ли сейчас какое-то его свойство (Property::editing), со всеми подконтейнерами
 	bool editing() const;
 
@@ -80,6 +82,7 @@ private:
 	std::vector<PropertyContainer*> m_subContainer;
 	std::vector<Button> m_buttons;
 	bool m_structureModified = false;
+	bool m_transient = false;
 };
 
 

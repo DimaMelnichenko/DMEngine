@@ -228,6 +228,20 @@ void TerrainPaint::clear( const std::string& target )
 	m_targets.erase( target );
 }
 
+TerrainPaint::TileMap TerrainPaint::targetTiles( const std::string& target ) const
+{
+	const auto found = m_targets.find( target );
+	return found == m_targets.end() ? TileMap() : found->second;
+}
+
+void TerrainPaint::setTargetTiles( const std::string& target, const TileMap& tiles )
+{
+	if( tiles.empty() )
+		m_targets.erase( target );
+	else
+		m_targets[target] = tiles;
+}
+
 void TerrainPaint::applyMask( const std::string& target, const std::vector<float>& rules, std::vector<float>& out, const Rect& rect ) const
 {
 	const auto found = m_targets.find( target );

@@ -22,6 +22,8 @@ class TerrainPaint
 public:
 	static constexpr uint32_t tileSize = 64;
 	enum class Mode { value, step, unstep, erase };
+	// Плитки цели: (tile x, tile z-строка) → поправки tileSize² — снимки для отмены мазка
+	using TileMap = std::map<std::pair<int32_t, int32_t>, std::vector<int8_t>>;
 	// Прямоугольник текселей [x0, x1) × [row0, row1); строка 0 — дальний край по z, как у масок
 	struct Rect
 	{
@@ -49,6 +51,9 @@ public:
 	Rect endStroke();
 	bool stroking() const { return m_stroke.active; }
 	void clear( const std::string& target );
+	// Плитки цели целиком — снимок до и после мазка (отмена и повтор: EditHistory)
+	TileMap targetTiles( const std::string& target ) const;
+	void setTargetTiles( const std::string& target, const TileMap& tiles );
 
 	// Поправка в текселе (−1…1)
 	float delta( const std::string& target, uint32_t x, uint32_t row ) const;
@@ -64,7 +69,7 @@ public:
 
 private:
 	using Tile = std::vector<int8_t>;
-	using Tiles = std::map<std::pair<int32_t, int32_t>, Tile>;	// (tile x, tile z-строка) → поправки
+	using Tiles = TileMap;
 	const Tile* findTile( const std::string& target, uint32_t x, uint32_t row ) const;
 	static float decode( int8_t value ) { return value / 127.0f; }
 	static int8_t encode( float value );

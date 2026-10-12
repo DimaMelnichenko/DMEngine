@@ -166,6 +166,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	if( m_erosion )
 		addErosionProperties( *m_erosion );
 	addLayerRulesProperties( m_layerRules );
+	addPaintProperties();
 
 	m_properties.insert( "Wireframe", false );
 	m_properties.insert( "Show LOD", false );
@@ -888,8 +889,7 @@ void CDLODTerrain::refreshPaintedTarget( const std::string& target, const Terrai
 		}
 }
 
-bool CDLODTerrain::paintStroke( const std::string& target, TerrainPaint::Mode mode, float value, float x, float z, float radius,
-								float falloff, std::string& reason )
+bool CDLODTerrain::beginPaintStroke( const std::string& target, TerrainPaint::Mode mode, float value, std::string& reason )
 {
 	if( !m_paint.initialized() )
 	{
@@ -918,36 +918,168 @@ bool CDLODTerrain::paintStroke( const std::string& target, TerrainPaint::Mode mo
 			return false;
 		}
 	}
-	const bool wasActive = m_paintActive;
+	m_strokeBefore = m_paint.targetTiles( target );
 	m_paint.beginStroke( target, mode, value, rules );
-	m_paint.dab( x, z, radius, falloff );
+	m_strokeTarget = target;
+	m_splatPending = false;
+	return true;
+}
+
+void CDLODTerrain::paintDab( float x, float z, float radius, float falloff )
+{
+	if( !m_paint.stroking() )
+		return;
+	const TerrainPaint::Rect changed = m_paint.dab( x, z, radius, falloff );
+	if( changed.empty() )
+		return;
+	// Первая цель с мазками — копия правил целиком, дальше — только задетый прямоугольник цели
+	if( !m_paintActive || m_painted.size == 0 )
+		refreshPainted();
+	else
+		refreshPaintedTarget( m_strokeTarget, changed );
+	// Вживую: маска — сразу на GPU (её читает кольцевая трава), splat-карта с мипами — не чаще 10 раз в секунду
+	if( TerrainPaint::layerOf( m_strokeTarget ) >= 0 )
+	{
+		m_splatPending = true;
+		const auto now = std::chrono::steady_clock::now();
+		if( now - m_splatUploaded > std::chrono::milliseconds( 100 ) )
+		{
+			m_material.repaint( paintedMasks(), m_coverage );
+			m_splatUploaded = now;
+			m_splatPending = false;
+		}
+		return;
+	}
+	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
+		if( mask.name == m_strokeTarget )
+			uploadMask( mask );
+}
+
+CDLODTerrain::PaintEdit CDLODTerrain::endPaintStroke()
+{
+	PaintEdit edit;
+	if( !m_paint.stroking() )
+		return edit;
 	const TerrainPaint::Rect touched = m_paint.endStroke();
-	if( touched.empty() )
+	edit.target = m_strokeTarget;
+	edit.before = std::move( m_strokeBefore );
+	edit.after = m_paint.targetTiles( m_strokeTarget );
+	edit.changed = !touched.empty();
+	m_strokeBefore.clear();
+	// Плитки без поправок убраны — копия с мазками заново, если целей не осталось
+	if( !m_paint.has( m_strokeTarget ) )
+		refreshPainted();
+	paintTargetChanged( m_strokeTarget );
+	m_strokeTarget.clear();
+	return edit;
+}
+
+void CDLODTerrain::paintTargetChanged( const std::string& target )
+{
+	// Мазки — данные уровня: окно террейна изменено до «Save level»
+	m_properties.setStructureModified( true );
+	if( TerrainPaint::layerOf( target ) >= 0 )
+	{
+		m_material.repaint( paintedMasks(), m_coverage );
+		m_splatUploaded = std::chrono::steady_clock::now();
+		m_splatPending = false;
+		return;
+	}
+	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
+		if( mask.name == target )
+			uploadMask( mask );
+	// Постоянные слои (лес) — раскладка заново (Scene), лес — ещё полог поля ветра
+	m_paintedMasksChanged = true;
+	if( target.rfind( "mask_forest_", 0 ) == 0 && !m_wind.empty() )
+		rebuildWindField();
+}
+
+void CDLODTerrain::setPaintTiles( const std::string& target, const TerrainPaint::TileMap& tiles )
+{
+	m_paint.setTargetTiles( target, tiles );
+	refreshPainted();
+	paintTargetChanged( target );
+}
+
+bool CDLODTerrain::paintStroke( const std::string& target, TerrainPaint::Mode mode, float value, float x, float z, float radius,
+								float falloff, std::string& reason )
+{
+	if( !beginPaintStroke( target, mode, value, reason ) )
+		return false;
+	paintDab( x, z, radius, falloff );
+	if( !endPaintStroke().changed )
 	{
 		reason = "terrain paint: the brush is outside the map";
 		return false;
 	}
-	// Первая цель с мазками — копия правил целиком, дальше — только задетый прямоугольник цели
-	if( !wasActive )
-		refreshPainted();
-	else
-	{
-		m_paintActive = true;
-		if( m_painted.size == 0 )
-			refreshPainted();
-		else
-			refreshPaintedTarget( target, touched );
-	}
-	if( layer >= 0 )
-		return m_material.repaint( paintedMasks(), m_coverage );
-	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
-		if( mask.name == target )
-			uploadMask( mask );
-	m_paintedMasksChanged = true;
-	// Лес — полог поля ветра
-	if( target.rfind( "mask_forest_", 0 ) == 0 && !m_wind.empty() )
-		rebuildWindField();
 	return true;
+}
+
+std::vector<std::string> CDLODTerrain::paintTargets() const
+{
+	// Слои — по номерам TerrainLayers, затем маски (без отладочной открытости ветру)
+	std::vector<std::string> targets;
+	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
+		if( !m_material.layerName( layer ).empty() )
+			targets.push_back( TerrainPaint::layerTarget( layer ) );
+	for( const TerrainMasks::Mask& mask : m_masks.masks )
+		if( mask.name != "mask_wind_exposure" )
+			targets.push_back( mask.name );
+	return targets;
+}
+
+CDLODTerrain::PaintBrush CDLODTerrain::paintBrush( bool shift, bool ctrl ) const
+{
+	PaintBrush brush;
+	const PropertyContainer& p = m_paintProperties;
+	if( !p.exists( "Target" ) )
+		return brush;
+	const std::vector<std::string> targets = paintTargets();
+	const int32_t target = p["Target"].data<int32_t>();
+	if( target >= 0 && static_cast<size_t>( target ) < targets.size() )
+		brush.target = targets[target];
+	const bool step = p["Mode"].data<int32_t>() == 1;
+	brush.mode = ctrl ? TerrainPaint::Mode::erase : !step ? TerrainPaint::Mode::value :
+				 shift ? TerrainPaint::Mode::unstep : TerrainPaint::Mode::step;
+	brush.value = p["Value"].data<float>();
+	brush.radius = std::max( p["Radius"].data<float>(), 0.5f );
+	brush.falloff = p["Falloff"].data<float>();
+	return brush;
+}
+
+bool CDLODTerrain::raycast( const XMFLOAT3& origin, const XMFLOAT3& direction, float maxDistance, float& distance ) const
+{
+	// Шаг — тексель карты, над землёй / под землёй сменилось — уточнение делением пополам
+	if( m_cpuHeights.empty() )
+		return false;
+	auto above = [&]( float t, bool& inside )
+	{
+		const float x = origin.x + direction.x * t;
+		const float z = origin.z + direction.z * t;
+		float height = 0.0f;
+		inside = surfaceHeight( x, z, height );
+		return origin.y + direction.y * t - height;
+	};
+	const float step = m_texelSize;
+	bool inside = false;
+	float previous = above( 0.0f, inside );
+	for( float t = step; t <= maxDistance; t += step )
+	{
+		const float current = above( t, inside );
+		if( inside && previous > 0.0f && current <= 0.0f )
+		{
+			float low = t - step, high = t;
+			for( int i = 0; i < 16; ++i )
+			{
+				const float middle = 0.5f * ( low + high );
+				( above( middle, inside ) > 0.0f ? low : high ) = middle;
+			}
+			distance = 0.5f * ( low + high );
+			return true;
+		}
+		previous = current;
+	}
+	return false;
 }
 
 bool CDLODTerrain::clearPaint( const std::string& target )
@@ -956,16 +1088,7 @@ bool CDLODTerrain::clearPaint( const std::string& target )
 		return false;
 	m_paint.clear( target );
 	refreshPainted();
-	m_material.repaint( paintedMasks(), m_coverage );
-	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
-		if( mask.name == target )
-			uploadMask( mask );
-	if( TerrainPaint::layerOf( target ) < 0 )
-	{
-		m_paintedMasksChanged = true;
-		if( target.rfind( "mask_forest_", 0 ) == 0 && !m_wind.empty() )
-			rebuildWindField();
-	}
+	paintTargetChanged( target );
 	return true;
 }
 
@@ -1588,6 +1711,36 @@ void CDLODTerrain::addErosionProperties( const TerrainErosionSettings& erosion )
 	integer( "Thermal iterations", erosion.thermalIterations, 0.0f, 200.0f, "Steps of the scree sliding" );
 	number( "Thermal rate", erosion.thermalRate, 0.0f, 1.0f, "Share of the excess sliding per step" );
 	m_properties.addSubContainer( &m_erosionProperties );
+}
+
+void CDLODTerrain::addPaintProperties()
+{
+	// Кисть слоёв и масок (View → «Terrain paint», вьюпорт): с уровнем не сохраняется
+	m_paintProperties.setName( "Paint" );
+	m_paintProperties.setTransient( true );
+	std::vector<std::string> names;
+	for( const std::string& target : paintTargets() )
+	{
+		const int32_t layer = TerrainPaint::layerOf( target );
+		names.push_back( layer >= 0 ? target + ": " + m_material.layerName( layer ) : target );
+	}
+	m_paintProperties.insert( "Target", static_cast<int32_t>( 0 ) )->setItems( names )
+		->setTooltip( "What the brush paints: a ground layer or a mask (grass, flowers, forest by kind, shrubs)" );
+	m_paintProperties.insert( "Mode", static_cast<int32_t>( 0 ) )->setItems( { "Value", "Step" } )
+		->setTooltip( "Value - a stroke takes the result to Value and no further; Step - every stroke adds Value (Shift - subtracts). "
+					  "Ctrl - erase the paint back to the rules" );
+	Property* prop = m_paintProperties.insert( "Value", 1.0f );
+	prop->setLow( 0.0f );
+	prop->setHigh( 1.0f );
+	prop = m_paintProperties.insert( "Radius", 10.0f );
+	prop->setLow( 1.0f );
+	prop->setHigh( 200.0f );
+	prop->setLogarithmic()->setUnit( "m" );
+	prop = m_paintProperties.insert( "Falloff", 0.5f );
+	prop->setLow( 0.0f );
+	prop->setHigh( 1.0f );
+	prop->setTooltip( "Soft edge, share of the radius" );
+	m_properties.addSubContainer( &m_paintProperties );
 }
 
 void CDLODTerrain::addLayerRulesProperties( const TerrainLayerRules& rules )

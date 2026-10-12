@@ -2,6 +2,7 @@
 
 #include "Level\LevelSettings.h"
 #include <array>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -61,6 +62,35 @@ public:
 	// сразу, полог поля ветра — в конце мазка. false — нет цели или правил
 	bool paintStroke( const std::string& target, TerrainPaint::Mode mode, float value, float x, float z, float radius, float falloff,
 					  std::string& reason );
+	// Мазок кисти по частям (вьюпорт): начало, касание каждый кадр (цель — на GPU вживую: маска сразу, splat-карта — не чаще
+	// 10 раз в секунду), конец — снимки плиток цели до и после для отмены (EditHistory) и раскладка леса
+	bool beginPaintStroke( const std::string& target, TerrainPaint::Mode mode, float value, std::string& reason );
+	void paintDab( float x, float z, float radius, float falloff );
+	struct PaintEdit
+	{
+		std::string target;
+		TerrainPaint::TileMap before;
+		TerrainPaint::TileMap after;
+		bool changed = false;
+	};
+	PaintEdit endPaintStroke();
+	bool painting() const { return m_paint.stroking(); }
+	// Отмена и повтор мазка: плитки цели целиком
+	void setPaintTiles( const std::string& target, const TerrainPaint::TileMap& tiles );
+	// Кисть подокна «Paint»: цель, режим (Shift — убавить в режиме «Step», Ctrl — стереть), значение, радиус, мягкость
+	struct PaintBrush
+	{
+		std::string target;
+		TerrainPaint::Mode mode = TerrainPaint::Mode::value;
+		float value = 1.0f;
+		float radius = 10.0f;
+		float falloff = 0.5f;
+	};
+	PaintBrush paintBrush( bool shift, bool ctrl ) const;
+	// Цели кисти: «layer N» по TerrainLayers, затем маски
+	std::vector<std::string> paintTargets() const;
+	// Луч к рельефу (итоговая карта на CPU, как ходьба): distance — до точки на земле; false — мимо
+	bool raycast( const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& direction, float maxDistance, float& distance ) const;
 	bool clearPaint( const std::string& target );
 	const TerrainPaint& paint() const { return m_paint; }
 	// Итог цели в точке: правила, поправка, итог (для проверки команд); false — нет цели
@@ -190,6 +220,9 @@ private:
 	void refreshPainted();
 	void refreshPaintedTarget( const std::string& target, const TerrainPaint::Rect& rect );
 	bool uploadMask( const TerrainMasks::Mask& mask );
+	// Цель после мазка, отмены, повтора: на GPU; маска — флаг раскладки леса, лес — полог поля ветра
+	void paintTargetChanged( const std::string& target );
+	void addPaintProperties();
 	// Рельефная часть поля ветра (поток и подветренная тень, без леса) по итоговому рельефу field: ключ и расчёт, если ключ
 	// сменился (m_windTerrain). Её читают правила слоёв (снег) и итоговое поле
 	uint64_t windTerrainKey( const HeightField& field, TerrainField& metres ) const;
@@ -244,6 +277,11 @@ private:
 	TerrainMasks m_painted;
 	bool m_paintActive = false;					// есть мазки — m_painted
 	bool m_paintedMasksChanged = false;
+	PropertyContainer m_paintProperties;		// подокно «Paint» — кисть
+	std::string m_strokeTarget;
+	TerrainPaint::TileMap m_strokeBefore;
+	bool m_splatPending = false;
+	std::chrono::steady_clock::time_point m_splatUploaded;
 	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
 	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
 	DirectX::XMFLOAT2 m_prevailingWind = DirectX::XMFLOAT2( 0.0f, 0.0f );	// куда дует ветер, X и Z (setPrevailingWind)

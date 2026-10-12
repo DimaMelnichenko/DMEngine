@@ -3,6 +3,7 @@
 #include "DirectX.h"
 #include <memory>
 #include <string>
+#include <vector>
 #include <unordered_map>
 #include <cassert>
 #include <variant>
@@ -19,7 +20,8 @@ enum class GUIControlType : int
 	DRAG = 3,
 	TEXTURE = 4,
 	LABEL = 5,	// только для чтения: значение считает объект (у числа — текст вместо ползунка)
-	RANGE = 6	// у VECTOR2 — полоса «начало — конец» одним двойным ползунком: конец не уходит за начало
+	RANGE = 6,	// у VECTOR2 — полоса «начало — конец» одним двойным ползунком: конец не уходит за начало
+	COMBO = 7	// у INT — выпадающий список имён (Property::setItems), значение — номер имени
 };
 
 enum class ValueType : int
@@ -99,6 +101,9 @@ public:
 	// Шаг числа, как step у свойств Blender: стрелки по краям поля и Ctrl при перетаскивании (значение — кратное шагу);
 	// 0 — подбор по диапазону и величине (степень десяти около трёх пикселей перетаскивания)
 	Property* setStep( float step ) { m_step = step; return this; }
+	// Выпадающий список (GUIControlType::COMBO): имена по номерам — значение int32 выбирает одно
+	Property* setItems( std::vector<std::string> items ) { m_items = std::move( items ); m_controlType = GUIControlType::COMBO; return this; }
+	const std::vector<std::string>& items() const { return m_items; }
 	float step() const { return m_step; }
 	const std::string& tooltip() const { return m_tooltip; }
 	const std::string& unit() const { return m_unit; }
@@ -131,6 +136,7 @@ private:
 	bool m_logarithmic = false;
 	float m_dragSpeed = 0.0f;
 	float m_step = 0.0f;
+	std::vector<std::string> m_items;
 	bool m_editing = false;
 };
 

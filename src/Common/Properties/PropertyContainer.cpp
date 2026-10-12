@@ -115,6 +115,8 @@ bool PropertyContainer::editing() const
 
 bool PropertyContainer::modified() const
 {
+	if( m_transient )
+		return false;
 	if( m_structureModified )
 		return true;
 	for( const auto& [name, property] : m_propertyMap )
