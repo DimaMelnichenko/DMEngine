@@ -565,6 +565,16 @@ bool CDLODTerrain::layerRulesChanged() const
 	return false;
 }
 
+void CDLODTerrain::setPrevailingWind( const XMFLOAT3& direction )
+{
+	m_prevailingWind = XMFLOAT2( direction.x, direction.z );
+}
+
+bool CDLODTerrain::prevailingWindChanged( const XMFLOAT3& direction ) const
+{
+	return direction.x != m_prevailingWind.x || direction.z != m_prevailingWind.y;
+}
+
 bool CDLODTerrain::rebuildMasks()
 {
 	if( m_cpuHeights.empty() )
@@ -625,6 +635,7 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 		key.addWords( map->data(), map->size() * sizeof( float ) );
 	}
 	key.add( m_layerOf );
+	key.add( m_prevailingWind );
 	for( const TerrainLayerRuleField& rule : terrainLayerRuleFields() )
 	{
 		if( rule.range )
@@ -656,6 +667,8 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 		inputs.catchment = &catchment;
 		inputs.water = water.empty() ? nullptr : &water;
 		inputs.layerOf = m_layerOf;
+		inputs.windX = m_prevailingWind.x;
+		inputs.windZ = m_prevailingWind.y;
 		if( !TerrainMasks::build( inputs, m_layerRules, m_masks ) )
 		{
 			LOG( "CDLOD terrain: layers and masks are not built" );

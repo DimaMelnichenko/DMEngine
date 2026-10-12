@@ -44,6 +44,10 @@ public:
 	// конвейер (TerrainHydrology) режет русла и строит ручьи и маску озёр; nullptr — воды нет. erosion — эрозия исходной
 	// карты до правок (TerrainErosion, кэш — каталог eroded\ рядом с картой высот); nullptr — карта уже готова. layerRules —
 	// правила слоёв и масок по рельефу (TerrainMasks)
+	// Господствующий ветер — куда дует (WindSettings::direction; y не учитывается): от него открытость ветру в правилах
+	// слоёв. До initialize; после — сменился (changed) — слои и маски заново перестраивает Scene
+	void setPrevailingWind( const DirectX::XMFLOAT3& direction );
+	bool prevailingWindChanged( const DirectX::XMFLOAT3& direction ) const;
 	bool initialize( uint32_t terrainId, const std::vector<TerrainEdit>& edits = {}, const WaterSimulationSettings* water = nullptr,
 					 const TerrainErosionSettings* erosion = nullptr, const TerrainLayerRules& layerRules = {} );
 	// Правили «Layer rules» в редакторе — слои и маски заново (без русел), splat-карта с покраской правок; расстановку (лес)
@@ -199,6 +203,7 @@ private:
 	std::vector<float> m_erosionTalus;
 	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
 	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
+	DirectX::XMFLOAT2 m_prevailingWind = DirectX::XMFLOAT2( 0.0f, 0.0f );	// куда дует ветер, X и Z (setPrevailingWind)
 	PropertyContainer m_layerRulesProperties;	// «Layer rules»
 	// Подокна «Layer rules» по группам полей (TerrainLayerRuleField::group): имя группы и подокно
 	std::vector<std::pair<std::string, std::unique_ptr<PropertyContainer>>> m_layerRuleGroups;

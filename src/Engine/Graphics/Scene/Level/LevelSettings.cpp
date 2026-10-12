@@ -26,6 +26,7 @@ const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
 	static const char* grass = "Grass and flowers";
 	static const char* forest = "Forest";
 	static const char* shrubs = "Shrubs";
+	static const char* wind = "Wind";
 	static const char* shape = "Shape";
 	static const std::vector<TerrainLayerRuleField> fields = {
 		range( "rock_slope", rock, "Rock slope", &R::rockSlope, 0.0f, 90.0f, "deg", "Rock on steep slopes: from, to" ),
@@ -77,6 +78,16 @@ const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
 		range( "krummholz_top", shrubs, "Krummholz top", &R::krummholzTop, 0.0f, 1.0f, "", "Krummholz ends higher: from, to" ),
 		range( "dry_gaps_slope", shrubs, "Dry gaps slope", &R::dryGapsSlope, 0.0f, 90.0f, "deg", "Shrubs in the gaps of dry slopes: from, to" ),
 		value( "dry_gaps_share", shrubs, "Dry gaps share", &R::dryGapsShare, 0.0f, 1.0f, "", "Weight of the shrubs in the gaps of dry slopes" ),
+		value( "wind_reach", wind, "Wind reach", &R::windReach, 10.0f, 1000.0f, "m", "The horizon against the prevailing wind (Wind of the level) is searched this far" ),
+		range( "wind_open", wind, "Wind open", &R::windOpen, -30.0f, 30.0f, "deg", "Open to the wind where the horizon angle against the wind falls: from, to" ),
+		range( "wind_shelter", wind, "Wind shelter", &R::windShelter, -30.0f, 30.0f, "deg", "Sheltered where the horizon angle against the wind rises: from, to" ),
+		value( "ridge_radius", wind, "Ridge radius", &R::ridgeRadius, 2.0f, 200.0f, "m", "Ridges and hollows - against the ground smoothed this wide" ),
+		range( "ridge", wind, "Ridge", &R::ridge, -10.0f, 20.0f, "m", "Ridge - above the smoothed ground: from, to" ),
+		range( "hollow", wind, "Hollow", &R::hollow, -20.0f, 10.0f, "m", "Hollow - below the smoothed ground: from, to" ),
+		value( "snow_scour", wind, "Snow scour", &R::snowScour, 0.0f, 0.3f, "", "Snow higher where it is open to the wind (blown away), share of the height multiplier" ),
+		value( "snow_drift", wind, "Snow drift", &R::snowDrift, 0.0f, 0.3f, "", "Snow lower in the lee and in hollows (drifts), share of the height multiplier" ),
+		value( "wind_treeline", wind, "Wind treeline", &R::windTreeline, 0.0f, 0.3f, "", "Treeline lower on ridges open to the wind, share of the height multiplier" ),
+		value( "wind_thins_forest", wind, "Wind thins forest", &R::windThinsForest, 0.0f, 1.0f, "", "Forest sparser and smaller on ridges open to the wind" ),
 		value( "slope_blur", shape, "Slope blur", &R::slopeBlur, 0.0f, 16.0f, "texels", "Smoothing of the slope and north facing" ),
 		value( "moisture_blur", shape, "Moisture blur", &R::moistureBlur, 0.0f, 16.0f, "texels", "Smoothing of the moisture" ),
 		value( "erosion_blur", shape, "Erosion blur", &R::erosionBlur, 0.0f, 16.0f, "texels", "Smoothing of the erosion maps (wear, talus)" ),

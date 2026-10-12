@@ -139,7 +139,10 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 	task.enterProgressFrame( 2.0f, "Terrain" );
 	if( m_level.terrain )
 	{
-		// Рельеф с ручными правками, затем русла и ручьи по нему (конвейер рельефа и воды) — если у уровня есть вода
+		// Рельеф с ручными правками, затем русла и ручьи по нему (конвейер рельефа и воды) — если у уровня есть вода. Ветер
+		// уровня — господствующий: от него открытость ветру в правилах слоёв (снег, граница леса); без ветра — без неё.
+		// Направление — из окна «Wind» (угол Yaw), как потом его сравнивает applyEditorChanges
+		m_terrain.setPrevailingWind( m_level.wind ? m_wind.settings().direction : XMFLOAT3( 0.0f, 0.0f, 0.0f ) );
 		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits, m_level.waterSimulation ? &*m_level.waterSimulation : nullptr,
 								   m_level.terrainErosion ? &*m_level.terrainErosion : nullptr, m_level.terrainLayerRules ) )
 			return false;
@@ -283,9 +286,18 @@ void Scene::applyEditorChanges()
 	// Правили течение статичной воды (подокно «Flow») — течение озёр заново
 	if( m_level.waterSimulation )
 		m_water.applyFlowChanges();
-	// Правили правила слоёв (подокно «Layer rules» террейна) — слои и маски заново; постоянные слои (лес) разложены по
-	// прежним маскам — раскладка заново, кольцевые читают маски каждый кадр
-	if( m_level.terrain && m_terrain.layerRulesChanged() )
+	// Правили правила слоёв (подокно «Layer rules» террейна) или повернули ветер (окно «Wind», когда правка закончилась) —
+	// слои и маски заново; постоянные слои (лес) разложены по прежним маскам — раскладка заново, кольцевые читают маски
+	// каждый кадр
+	bool windTurned = false;
+	if( m_level.terrain && m_level.wind && !m_wind.properties()->editing() )
+	{
+		const XMFLOAT3 direction = m_wind.settings().direction;
+		windTurned = m_terrain.prevailingWindChanged( direction );
+		if( windTurned )
+			m_terrain.setPrevailingWind( direction );
+	}
+	if( m_level.terrain && ( windTurned || m_terrain.layerRulesChanged() ) )
 	{
 		if( m_terrain.rebuildMasks() )
 			for( const auto& scatterer : m_scatterers )

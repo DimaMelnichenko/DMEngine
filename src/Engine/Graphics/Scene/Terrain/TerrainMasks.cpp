@@ -256,6 +256,72 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 															s.layerNoiseScale )]( size_t i ) { return base[i] - 0.5f; } );
 	const Field patches = fbm( size, texel, { { 64, 0.5f }, { 32, 0.3f }, { 16, 0.2f } }, 21, s.layerNoiseScale );
 
+	// Открытость ветру (господствующий ветер уровня): угол горизонта навстречу ветру Sx — наибольший угол подъёма рельефа
+	// на windReach против ветра, среднее по вееру ±15° (Winstral 2002: Sx > 0 — укрытие, < 0 — открытый наветренный склон,
+	// ровное место — около 0, ни то ни другое),
+	// выборки — с растущим шагом; гребни и ложбины — высота над рельефом, сглаженным на ridgeRadius (TPI, м). Открыто —
+	// наветренное и гребни; намело — в укрытии ниже гребня и в ложбинах; открытые наветренные гребни — для леса
+	Field exposure( cells, 0.0f ), deposit( cells, 0.0f ), ridgeExposure( cells, 0.0f );
+	const float windLength = std::hypot( inputs.windX, inputs.windZ );
+	if( windLength > 1e-3f )
+	{
+		// В текселях карты: x — столбцы, +z мира — к меньшим строкам; навстречу ветру — против направления
+		const float upCol = -inputs.windX / windLength;
+		const float upRow = inputs.windZ / windLength;
+		struct Sample
+		{
+			int dCol;
+			int dRow;
+			float distance;		// м
+		};
+		constexpr int fan = 3;
+		constexpr float fanAngle = 0.2618f;	// 15°
+		std::vector<Sample> samples[fan];
+		const float reach = std::max( s.windReach / texel, 2.0f );
+		for( int f = 0; f < fan; ++f )
+		{
+			const float angle = ( f - ( fan - 1 ) * 0.5f ) * fanAngle;
+			const float c = std::cos( angle );
+			const float sn = std::sin( angle );
+			const float dirCol = upCol * c - upRow * sn;
+			const float dirRow = upCol * sn + upRow * c;
+			for( float d = 1.5f; d <= reach; d = std::max( d * 1.12f, d + 1.0f ) )
+			{
+				const int dCol = static_cast<int>( std::lround( dirCol * d ) );
+				const int dRow = static_cast<int>( std::lround( dirRow * d ) );
+				samples[f].push_back( { dCol, dRow, std::hypot( static_cast<float>( dCol ), static_cast<float>( dRow ) ) * texel } );
+			}
+		}
+		const float metres = field.heightMultiplier;
+		const Field smooth = blur( height, size, blurRadius( s.ridgeRadius / texel ) );
+		forRows( size, [&]( uint32_t row )
+		{
+			const int r = static_cast<int>( row );
+			for( int col = 0; col < n; ++col )
+			{
+				const size_t i = static_cast<size_t>( r ) * n + col;
+				const float h = height[i];
+				float sx = 0.0f;
+				for( int f = 0; f < fan; ++f )
+				{
+					float steepest = -1e9f;
+					for( const Sample& sample : samples[f] )
+						steepest = std::max( steepest, ( heightAt( r + sample.dRow, col + sample.dCol ) - h ) * metres / std::max( sample.distance, 1e-3f ) );
+					sx += std::atan( steepest ) * 57.29578f;
+				}
+				sx /= fan;
+				const float open = smoothstep( s.windOpen, sx );
+				const float shelter = smoothstep( s.windShelter, sx );
+				const float tpi = ( h - smooth[i] ) * metres;
+				const float crest = smoothstep( s.ridge, tpi );
+				const float hollow = smoothstep( s.hollow, tpi );
+				exposure[i] = std::max( open, crest );
+				deposit[i] = std::max( shelter * ( 1.0f - crest ), hollow );
+				ridgeExposure[i] = open * crest;
+			}
+		} );
+	}
+
 	// Водосбор: log10, м²; влажность — топографический индекс TWI = ln( a / tan β ) (Beven, Kirkby 1979; a — водосбор на
 	// метр ширины склона): низины, дно долины, русла; плюс конусы выноса (отложения эрозии)
 	const Field logFlow = generate( size, [&]( size_t i ) { return std::log10( std::max( at( inputs.catchment, i ), cellArea ) ); } );
@@ -278,7 +344,8 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 			const size_t i = static_cast<size_t>( row ) * size + col;
 			const float bedrock = smoothstep( s.bedrockWear, wear[i] ) * smoothstep( s.bedrockSlope, slope[i] );
 			rock[i] = std::max( smoothstep( s.rockSlope, slope[i] + noise[i] * s.rockNoise ), s.bedrockShare * bedrock );
-			snow[i] = smoothstep( s.snowHeight, height[i] + noise[i] * s.snowNoise + s.snowNorth * north[i] ) * ( 1.0f - s.rockClearsSnow * rock[i] );
+			snow[i] = smoothstep( s.snowHeight, height[i] + noise[i] * s.snowNoise + s.snowNorth * north[i] + s.snowDrift * deposit[i] -
+											   s.snowScour * exposure[i] ) * ( 1.0f - s.rockClearsSnow * rock[i] );
 			const float channel = smoothstep( s.gullyFlow, gully[i] ) * smoothstep( s.gullySlope, slope[i] );
 			boulders[i] = std::max( { smoothstep( s.talusMap, talusMap[i] ), s.boulderShare * smoothstep( s.boulderSlope, slope[i] + noise[i] * s.boulderNoise ),
 									  s.gullyShare * channel,
@@ -356,13 +423,13 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 		{
 			const size_t i = static_cast<size_t>( row ) * size + col;
 			const float h = height[i];
-			const float treelineHeight = h + s.treelineNoise * forestNoise[i] + s.treelineNorth * north[i];
+			const float treelineHeight = h + s.treelineNoise * forestNoise[i] + s.treelineNorth * north[i] + s.windTreeline * ridgeExposure[i];
 			const float treeline = 1.0f - smoothstep( s.treeline, treelineHeight );
 			const float ground = ( 1.0f - rock[i] ) * ( 1.0f - snow[i] ) * ( 1.0f - s.stonesClearForest * smoothstep( 0.45f, 0.85f, boulders[i] ) );
 			const float steep = 1.0f - smoothstep( s.forestSlope, slope[i] + s.forestSlopeNoise * forestNoise[i] );
 			const float floor = smoothstep( s.valleyFloorHeight, h ) * smoothstep( s.valleyFloorSlope, slope[i] );
 			const float clearings = smoothstep( s.clearings, clearingNoise[i] - s.valleyClearings * floor );
-			const float forest = ground * steep * treeline * ( 1.0f - stream[i] ) * clearings;
+			const float forest = ground * steep * treeline * ( 1.0f - stream[i] ) * clearings * ( 1.0f - s.windThinsForest * ridgeExposure[i] );
 
 			// Типы по месту: ель — выше и на северных склонах, сосна — на средних сухих склонах к солнцу, берёза — во влажных
 			// низинах; у каждого свой шум древостоев (~30–130 м), степень 3 — чистые древостои с узкой смешанной полосой
@@ -401,6 +468,8 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	result.masks.push_back( { "mask_shrubs_riparian", std::move( riparian ) } );
 	result.masks.push_back( { "mask_grass_riparian", std::move( riparianGrass ) } );
 	result.masks.push_back( { "mask_shrubs_slope", std::move( shrubsSlope ) } );
+	// Открытость ветру — для просмотра и тех, кому она пригодится (снег, частицы, ветер по рельефу)
+	result.masks.push_back( { "mask_wind_exposure", std::move( exposure ) } );
 	return true;
 }
 

@@ -45,6 +45,9 @@ struct TerrainMaskInputs
 	const std::vector<float>* water = nullptr;		// 1 — русло или озеро конвейера (TerrainHydrology), 0 — суша
 	// Слой материала (TerrainLayers.layer) каждой роли; −1 — слоя с этой ролью нет: его вес — сухой траве (или слою 0)
 	std::array<int32_t, terrainLayerRoleCount> layerOf{ -1, -1, -1, -1, -1, -1 };
+	// Господствующий ветер — куда дует, по X и Z мира (WindSettings::direction); 0 — без открытости ветру
+	float windX = 0.0f;
+	float windZ = 0.0f;
 };
 
 struct TerrainMasks
@@ -58,7 +61,7 @@ struct TerrainMasks
 
 	uint32_t size = 0;
 	std::vector<float> splat[splatLayers];	// веса слоёв 0…1, сумма — 1; пустой — слой не красится
-	std::vector<Mask> masks;				// mask_grass, mask_camomile, mask_pebbles, mask_forest_*, mask_shrubs_*
+	std::vector<Mask> masks;				// mask_grass, mask_camomile, mask_pebbles, mask_forest_*, mask_shrubs_*, mask_wind_exposure
 
 	static bool build( const TerrainMaskInputs& inputs, const TerrainLayerRules& rules, TerrainMasks& result );
 	// Веса слоёв и масок — к 8 битам (k / 255), как в копии на диске и на GPU: слои и маски из кэша (load) те же, что
