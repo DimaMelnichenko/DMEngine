@@ -1,9 +1,15 @@
 # Запуск DMEngine для проверки изменений:
 #   .\Tools\run.ps1 [-Config Debug|Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,3] [-Camera x,y,z,pitch,yaw] [-Level имя]
 #                    [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
-# Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные),
-# ждёт Seconds секунд, при необходимости нажимает клавиши и снимает окно, затем закрывает движок и печатает
-# из log.txt ошибки и время инициализации. Keys — скан-коды клавиш (DIK_*, как в DirectInput): 2 — клавиша «1», 4 — «3», 5 — «4», 16 — Q, 23 — I.
+# Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные) с удалённым
+# управлением (-remote, канал \\.\pipe\DMEngine, docs/remote.md), ждёт конца инициализации, затем Seconds секунд работы,
+# при необходимости нажимает клавиши и снимает кадр, закрывает движок штатно (команда quit: DMGraphics::beforeExit,
+# лог дописан до конца) и печатает из log.txt ошибки, время инициализации и строки «GPU average». Принудительно процесс
+# закрывается, только если не вышел сам за 30 с.
+# Keys — скан-коды клавиш (DIK_*, как в DirectInput): 2 — клавиша «1», 4 — «3», 5 — «4», 16 — Q, 23 — I; нажимает их
+# команда key (окну не нужен передний план).
+# Screenshot — задний буфер (команда screenshot): ровно то, что рисует движок, без рамки окна, с окнами ImGui, если нет
+# -NoGui; у Debug с GPU-based validation тоже (захват экрана давал там чёрный кадр).
 # Camera — стартовая камера вместо секции [Camera] в settings.ini: положение и поворот в градусах (тангаж, рыскание).
 # Level — уровень из таблицы Levels вместо секции [Level] в settings.ini.
 # NoGui — без окон ImGui (параметр движка -nogui), чтобы они не закрывали кадр; в движке их прячет и клавиша G.
@@ -38,25 +44,37 @@ $exe = Join-Path $root "cmake-build-cli-$($Config.ToLower())\DMEngine.exe"
 if (-not (Test-Path $exe)) {
     throw "Not found: $exe. Build it first: Tools\build.cmd $($Config.ToLower())"
 }
+# Путь снимка — от текущей папки PowerShell (у процесса она может быть другой)
+$screenshotPath = if ($Screenshot) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Screenshot) }
 
-Add-Type -AssemblyName System.Drawing
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class DMEngineWindow {
-    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
-    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
-    [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+# Канал удалённого управления: одно подключение за раз, команда — строка, ответ — строки до ok или error: ...
+function Connect-Engine([int]$timeoutMs) {
+    $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', 'DMEngine', [System.IO.Pipes.PipeDirection]::InOut)
+    try { $pipe.Connect($timeoutMs) }
+    catch { $pipe.Dispose(); return $null }
+    return $pipe
 }
-"@
-# Координаты окна в физических пикселях, иначе при масштабе экрана не 100% снимок съезжает
-[DMEngineWindow]::SetProcessDPIAware() | Out-Null
+$probe = Connect-Engine 0
+if ($probe) {
+    $probe.Dispose()
+    throw 'An engine with -remote is already running (Tools\engine.py stop closes it)'
+}
+function Send-Command([string]$line) {
+    $bytes = [Text.Encoding]::UTF8.GetBytes($line + "`n")
+    $script:pipe.Write($bytes, 0, $bytes.Length)
+    $script:pipe.Flush()
+    while ($true) {
+        $reply = $script:reader.ReadLine()
+        if ($null -eq $reply) { throw "The engine closed the connection after: $line" }
+        if ($reply -eq 'ok') { return $true }
+        if ($reply.StartsWith('error: ')) {
+            Write-Output "$line -> $reply"
+            return $false
+        }
+    }
+}
 
-$startArgs = @{ FilePath = $exe; WorkingDirectory = $root; PassThru = $true }
-$engineArgs = @()
+$engineArgs = @('-remote')
 if ($Camera) {
     # Разделитель дробной части — точка при любой локали
     $invariant = [Globalization.CultureInfo]::InvariantCulture
@@ -72,56 +90,49 @@ if ($NoGui) { $engineArgs += '-nogui' }
 if ($NoMouse -or $Screenshot) { $engineArgs += '-nomouse' }
 if ($NoWind) { $engineArgs += '-nowind' }
 if ($NoParticles) { $engineArgs += '-noparticles' }
-if ($engineArgs.Count -gt 0) { $startArgs.ArgumentList = $engineArgs -join ' ' }
-$process = Start-Process @startArgs
-Start-Sleep -Seconds $Seconds
+$process = Start-Process -FilePath $exe -WorkingDirectory $root -PassThru -ArgumentList ($engineArgs -join ' ')
+$begin = Get-Date
 
-if ($process.HasExited) {
-    Write-Output "DMEngine exited early, exit code $($process.ExitCode)"
+# Конец инициализации — канал открылся (Debug с GPU-based validation грузится до минуты)
+$pipe = $null
+while (-not $pipe -and -not $process.HasExited -and ((Get-Date) - $begin).TotalSeconds -lt 300) {
+    $pipe = Connect-Engine 200
+}
+if (-not $pipe) {
+    if ($process.HasExited) { Write-Output "DMEngine exited during initialization, exit code $($process.ExitCode)" }
+    else {
+        Write-Output 'DMEngine did not finish initialization in 300 s, killed'
+        Stop-Process -Id $process.Id -Force
+    }
 }
 else {
-    if ($scanCodes.Count -gt 0 -or $Screenshot) {
-        $process.Refresh()
-        $window = $process.MainWindowHandle
-        # Нажатия (Raw Input) получает только окно на переднем плане, а фоновому процессу Windows не всегда даёт
-        # вывести окно вперёд. Нажатие Alt перед SetForegroundWindow снимает этот запрет (VK_MENU = 0x12)
-        for ($attempt = 0; $attempt -lt 5 -and [DMEngineWindow]::GetForegroundWindow() -ne $window; $attempt++) {
-            [DMEngineWindow]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
-            [DMEngineWindow]::SetForegroundWindow($window) | Out-Null
-            [DMEngineWindow]::keybd_event(0x12, 0, 0x2, [UIntPtr]::Zero)
-            Start-Sleep -Milliseconds 200
-        }
-        if ([DMEngineWindow]::GetForegroundWindow() -ne $window) {
-            Write-Output "Warning: DMEngine window is not in the foreground, keys may be lost"
-        }
-        Start-Sleep -Milliseconds 700
-
-        # Движок читает скан-коды: KEYEVENTF_SCANCODE = 0x8, KEYEVENTF_KEYUP = 0x2
+    $initSeconds = ((Get-Date) - $begin).TotalSeconds
+    $reader = New-Object System.IO.StreamReader($pipe, [Text.Encoding]::UTF8)
+    try {
+        Start-Sleep -Seconds $Seconds
         foreach ($key in $scanCodes) {
-            [DMEngineWindow]::keybd_event(0, $key, 0x8, [UIntPtr]::Zero)
-            Start-Sleep -Milliseconds 150
-            [DMEngineWindow]::keybd_event(0, $key, 0xA, [UIntPtr]::Zero)
-            Start-Sleep -Milliseconds 400
+            Send-Command ('key 0x{0:X2}' -f $key) | Out-Null
         }
-        if ($scanCodes.Count -gt 0) { Start-Sleep -Milliseconds 800 }
-
+        # Кадр после нажатий — с их результатом
+        if ($scanCodes.Count -gt 0) { Send-Command 'wait 5' | Out-Null }
         if ($Screenshot) {
-            $rect = New-Object DMEngineWindow+RECT
-            [DMEngineWindow]::GetWindowRect($window, [ref]$rect) | Out-Null
-            $width = $rect.Right - $rect.Left
-            $height = $rect.Bottom - $rect.Top
-            $bitmap = New-Object System.Drawing.Bitmap $width, $height
-            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-            $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
-            $path = [System.IO.Path]::GetFullPath($Screenshot)
-            $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-            $graphics.Dispose()
-            $bitmap.Dispose()
-            Write-Output "Screenshot: $path (${width}x$height)"
+            $gui = if ($NoGui) { '' } else { ' gui' }
+            if (Send-Command "screenshot `"$screenshotPath`"$gui") { Write-Output "Screenshot: $screenshotPath" }
         }
+        Send-Command 'quit' | Out-Null
     }
-    Stop-Process -Id $process.Id -Force
-    Write-Output "DMEngine ran for $Seconds s"
+    finally {
+        $reader.Dispose()
+        $pipe.Dispose()
+    }
+    if ($process.WaitForExit(30000)) {
+        Write-Output ([string]::Format([Globalization.CultureInfo]::InvariantCulture,
+                      'DMEngine initialized in {0:F1} s, ran for {1} s, exited normally', $initSeconds, $Seconds))
+    }
+    else {
+        Write-Output 'DMEngine did not exit in 30 s after quit, killed (log may be incomplete)'
+        Stop-Process -Id $process.Id -Force
+    }
 }
 
 $log = Get-Content (Join-Path $root 'log.txt') -Encoding UTF8
