@@ -42,6 +42,8 @@ public:
 	bool particles() const					{ return m_particles; }
 	// Удалённое управление по каналу \\.\pipe\DMEngine (-remote, клиент — Tools/engine.py)
 	bool remoteControl() const				{ return m_remoteControl; }
+	// -pix: захват кадров PIX из самого движка (команда pix), как -attachPIX в UE: захватчик PIX грузится до устройства
+	bool pixCapture() const					{ return m_pixCapture; }
 
 private:
 	bool m_vSync = true;
@@ -56,6 +58,7 @@ private:
 	DirectX::XMFLOAT2 m_cameraRotation = DirectX::XMFLOAT2( 0.0f, 0.0f );
 	std::string m_levelName;
 	bool m_showGUI = true;
+	bool m_pixCapture = false;
 	bool m_mouseLook = true;
 	bool m_wind = true;
 	bool m_particles = true;

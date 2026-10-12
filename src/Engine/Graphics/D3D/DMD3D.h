@@ -76,6 +76,8 @@ public:
 		uint32_t backBufferHeight = 1080;
 		bool vsync = false;
 		bool gpuValidation = true;	// Debug-сборка: GPU-based validation поверх debug-слоя
+		// Захватчик PIX (WinPixGpuCapturer.dll из установленного PIX) — до создания устройства: captureFrames пишет захват
+		bool pixCapture = false;
 	};
 
 	static DMD3D& instance();
@@ -256,6 +258,10 @@ public:
 	// Область в захвате PIX (PIXBeginEvent / PIXEndEvent в командном списке); вкладываются
 	void beginEvent( const char* name );
 	void endEvent();
+	// Захват PIX следующих frames кадров в файл .wpix (PIXGpuCaptureNextFrames), как pix в консоли UE; false — захватчик
+	// не загружен (Settings::pixCapture) или захват не начат (лог). Разбор — PIX или pixtool (docs/d3d12.md §4)
+	bool captureFrames( const std::wstring& path, uint32_t frames = 1 );
+	bool pixCaptureReady() const { return m_pixCapturer; }
 	// Имя ресурса — в сообщениях debug-слоя и захвате PIX
 	void setName( const Buffer& buffer, const std::string& name );
 	void setName( const Texture& texture, const std::string& name );
@@ -292,6 +298,8 @@ private:
 
 	bool selectAdapter();
 	bool createDevice( bool gpuValidation );
+	// Захватчик PIX — до D3D12CreateDevice: иначе он не видит устройство
+	void loadPixCapturer();
 	bool createQueuesAndFrames();
 	bool createDescriptorHeaps();
 	bool createRootSignature();
@@ -370,6 +378,7 @@ private:
 	bool m_recording = false;							// командный список открыт
 	bool m_frameStarted = false;						// был первый beginFrame: до него команды — список загрузки
 	bool m_gpuValidation = false;
+	bool m_pixCapturer = false;		// WinPixGpuCapturer.dll загружен
 	bool m_inFrame = false;								// между beginFrame и endFrame: задний буфер — цель кадра
 	com_unique_ptr<ID3D12Fence> m_fence;
 	uint64_t m_fenceValue = 0;

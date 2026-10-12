@@ -328,3 +328,31 @@ void DMD3D::endEvent()
 	--m_eventDepth;
 	PIXEndEvent( m_commandList.get() );
 }
+
+void DMD3D::loadPixCapturer()
+{
+	// Последняя версия из установленного PIX (%ProgramFiles%\Microsoft PIX\<версия>\WinPixGpuCapturer.dll)
+	m_pixCapturer = PIXLoadLatestWinPixGpuCapturerLibrary() != nullptr;
+	LOG( m_pixCapturer ? "PIX GPU capturer is loaded: command pix takes captures" :
+						 "PIX GPU capturer is not found (install PIX), -pix is ignored" );
+#ifdef _DEBUG
+	if( m_pixCapturer )
+		LOG( "PIX capture with the debug layer: GPU-based validation slows the frame, capture the Release build for timings" );
+#endif
+}
+
+bool DMD3D::captureFrames( const std::wstring& path, uint32_t frames )
+{
+	if( !m_pixCapturer )
+	{
+		LOG( "PIX capture: the capturer is not loaded, start the engine with -pix" );
+		return false;
+	}
+	const HRESULT result = PIXGpuCaptureNextFrames( path.c_str(), std::max( frames, 1u ) );
+	if( FAILED( result ) )
+	{
+		LOG( "PIX capture is not started, HRESULT " + std::to_string( static_cast<long>( result ) ) );
+		return false;
+	}
+	return true;
+}

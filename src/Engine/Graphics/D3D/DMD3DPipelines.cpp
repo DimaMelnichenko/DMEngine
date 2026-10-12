@@ -362,7 +362,8 @@ bool DMD3D::loadPipelineLibrary()
 
 void DMD3D::savePipelineLibrary()
 {
-	if( !m_pipelineLibrary || !m_pipelineLibraryDirty )
+	// С захватчиком PIX (-pix) библиотека — не драйвера: следующий запуск без него её бы отбросил (предупреждение слоя)
+	if( !m_pipelineLibrary || !m_pipelineLibraryDirty || m_pixCapturer )
 		return;
 	const SIZE_T size = m_pipelineLibrary->GetSerializedSize();
 	std::vector<uint8_t> data( size );

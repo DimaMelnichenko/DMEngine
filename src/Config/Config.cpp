@@ -112,6 +112,10 @@ void Config::parseCommandLine( const std::string& commandLine )
 		{
 			m_remoteControl = true;
 		}
+		else if( args[i] == "-pix" )
+		{
+			m_pixCapture = true;
+		}
 		else if( i + 1 >= args.size() )
 		{
 			// Параметры ниже ждут значение

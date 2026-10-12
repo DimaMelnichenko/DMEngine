@@ -1,6 +1,6 @@
 """Удалённое управление запущенным DMEngine — как консоль и Remote Control API в UE (docs/remote.md).
 
-    python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles]
+    python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles] [--pix]
     python Tools/engine.py <команда ...>         одна команда, печатает ответ; код выхода 1 при error
     python Tools/engine.py run сценарий.txt       команды из файла по строке (# — комментарий), за одно подключение
     python Tools/engine.py stop                   quit, ожидание выхода, ошибки из log.txt
@@ -137,6 +137,8 @@ def start(args):
         engine_args.append('-nowind')
     if args.noparticles:
         engine_args.append('-noparticles')
+    if args.pix:
+        engine_args.append('-pix')
     if args.camera:
         engine_args += ['-camera', args.camera]
     if args.level:
@@ -217,6 +219,7 @@ def main():
         parser.add_argument('--mouse', action='store_true', help='camera follows the mouse (no -nomouse)')
         parser.add_argument('--nowind', action='store_true', help='no wind: vegetation still, frames repeat to the pixel')
         parser.add_argument('--noparticles', action='store_true', help='no particles: frames repeat to the pixel')
+        parser.add_argument('--pix', action='store_true', help='load the PIX GPU capturer: command pix takes captures')
         return start(parser.parse_args(sys.argv[2:]))
     if sys.argv[1] == 'stop':
         return stop()

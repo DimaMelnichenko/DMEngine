@@ -1,5 +1,7 @@
 #include "DMGraphics.h"
 #include "ObjectLibrary\LibraryLoader.h"
+#include <ctime>
+#include <filesystem>
 #include <string>
 #include "../Input/Input.h"
 #include <chrono>
@@ -68,6 +70,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	d3dSettings.backBufferHeight = static_cast<uint32_t>( screenHeight );
 	d3dSettings.vsync = m_config.vSync();
 	d3dSettings.gpuValidation = m_config.gpuValidation();
+	d3dSettings.pixCapture = m_config.pixCapture();
 	result = DMD3D::instance().initialize( d3dSettings, hwnd );
 	LOG( "Initialize the Direct3D object ms: " + TIME_PRINT( timeStart ) );
 
@@ -596,6 +599,74 @@ void DMGraphics::registerCommands()
 			request.frames = static_cast<uint32_t>( frames );
 		}
 		m_screenshots.push_back( std::move( request ) );
+	} );
+
+	// Захват PIX (движок с -pix, как -attachPIX и консоль UE): кадры после того, как кадр устоится, — в файл .wpix; ответ —
+	// когда захват записан. Разбор — PIX (WinPix.exe) или pixtool: docs/d3d12.md §4
+	m_console.registerCommand( "pix", "[file.wpix] [frames] - PIX GPU capture of the next frames after the frame settles (engine "
+							   "with -pix); default captures\\<date_time>.wpix; the reply comes when the file is written",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( !DMD3D::instance().pixCaptureReady() )
+			return reply->error( "pix: start the engine with -pix (PIX must be installed)" );
+		std::filesystem::path path;
+		if( !args.empty() )
+			path = utf8ToWide( args[0] );
+		else
+		{
+			char name[64];
+			const std::time_t now = std::time( nullptr );
+			std::tm local = {};
+			localtime_s( &local, &now );
+			std::strftime( name, sizeof( name ), "captures\\%Y%m%d_%H%M%S.wpix", &local );
+			path = name;
+		}
+		const int frames = args.size() > 1 ? std::atoi( args[1].c_str() ) : 1;
+		if( frames <= 0 || frames > 100 )
+			return reply->error( "pix: expected 1..100 frames" );
+		std::error_code error;
+		path = std::filesystem::absolute( path, error );
+		if( path.has_parent_path() )
+			std::filesystem::create_directories( path.parent_path(), error );
+		std::filesystem::remove( path, error );
+		// Шаг 0 — ждать, пока кадр устоится, и начать захват; дальше — пока файл не появится и не перестанет расти
+		struct State
+		{
+			int step = 0;
+			uintmax_t size = 0;
+			int stable = 0;
+			int waited = 0;
+		};
+		auto state = std::make_shared<State>();
+		m_console.addFrameTask( [this, reply, path, frames, state]
+		{
+			std::error_code error;
+			if( state->step == 0 )
+			{
+				if( m_framesSinceCut < settleFrames )
+					return false;
+				if( !DMD3D::instance().captureFrames( path.wstring(), static_cast<uint32_t>( frames ) ) )
+				{
+					reply->error( "pix: capture is not started, see log.txt" );
+					return true;
+				}
+				state->step = 1;
+				return false;
+			}
+			if( ++state->waited > 3000 )
+			{
+				reply->error( "pix: no capture file after 3000 frames: " + path.string() );
+				return true;
+			}
+			const uintmax_t size = std::filesystem::exists( path, error ) ? std::filesystem::file_size( path, error ) : 0;
+			state->stable = size > 0 && size == state->size ? state->stable + 1 : 0;
+			state->size = size;
+			if( state->stable < 30 )
+				return false;
+			LOG( "PIX capture is written: " + path.string() + ", " + std::to_string( size / 1024 ) + " KB" );
+			reply->ok( path.string() );
+			return true;
+		} );
 	} );
 
 	m_console.registerCommand( "timestep", "[seconds|off] - fixed frame time step (as -UseFixedTimeStep in UE); no arguments - current",

@@ -93,7 +93,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `-NoGui` (`-nogui` у exe) снимает кадр без окон ImGui — для сравнения картинки лучше с ним.
 - **Серия проверок за один запуск** — удалённое управление (`docs/remote.md`, как консоль и Remote Control в UE):
   `python Tools/engine.py start [--config Release] [--nogui]`, затем команды — `camera x,y,z,pitch,yaw`,
-  `screenshot файл.png [кадров]`, `stat gpu 3`, `list` / `get` / `set "окно/свойство" значение`, `press "окно/кнопка"`, `key G`, `timestep 0.0166`
+  `screenshot файл.png [кадров]`, `stat gpu 3`, `list` / `get` / `set "окно/свойство" значение`, `press "окно/кнопка"`, `pix [файл.wpix]` (захват PIX, движок с
+  `--pix`; разбор — `Tools/pix_events.py`, `docs/d3d12.md` §4), `key G`, `timestep 0.0166`
   (фиксированный шаг времени для серий кадров), — по одной или
   сценарием (`python Tools/engine.py run файл.txt`), и `python Tools/engine.py stop` (штатный выход, ошибки из лога).
   Движок с `-remote` слушает канал `\\.\pipe\DMEngine`, команды выполняет главный поток в начале кадра. Снимок —

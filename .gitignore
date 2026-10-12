@@ -24,3 +24,6 @@ __pycache__/
 # Раскладка окон редактора (строится кодом, Window > Reset layout) и прежний файл ImGui
 /imgui_editor.ini
 /imgui.ini
+# Захваты PIX (команда pix, docs/d3d12.md §4)
+/captures/
+*.wpix

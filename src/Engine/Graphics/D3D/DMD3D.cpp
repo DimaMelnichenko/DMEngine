@@ -95,6 +95,8 @@ bool DMD3D::initialize( const Settings& settings, HWND hwnd )
 	m_hWnd = hwnd;
 	m_vsync = settings.vsync;
 
+	if( settings.pixCapture )
+		loadPixCapturer();
 	if( !selectAdapter() || !createDevice( settings.gpuValidation ) || !createQueuesAndFrames() || !createDescriptorHeaps() ||
 		!createSwapChain( hwnd ) || !createBackBufferTargets() || !createRootSignature() || !createCommandSignature() )
 		return false;

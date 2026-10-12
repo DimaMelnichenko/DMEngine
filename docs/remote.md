@@ -54,6 +54,7 @@ python Tools/engine.py stop
 | `pick x y` | выбрать под точкой окна (пиксели), как клик во вьюпорте: в режиме «Stream curves» — точку кривой русла, затем значок источника света или эмиттера частиц, иначе экземпляр модели; ответ — `Stream 7, point 3`, имя экземпляра или `nothing` ([gui.md](gui.md)) |
 | `toggle "имя"` | переключатель меню View (`Stream curves`, `Wireframe`…); ответ — `on` / `off` |
 | `stream move x,z` / `insert` / `delete` / `falloff м` | правка выбранной точки кривой русла, как гизмо (с мягким выделением), Insert, Delete и ползунок «Falloff»; русла перестраиваются в следующем кадре ([water.md](water.md), «Кривые русел») |
+| `pix [файл.wpix] [кадров]` | захват PIX следующих кадров (движок с `-pix`, `engine.py start --pix`), после того как кадр устоится; ответ — путь, когда файл записан; по умолчанию `captures\<дата_время>.wpix`. Разбор — `Tools/pix_events.py` ([d3d12.md](d3d12.md) §4) |
 | `select "окно"` | выбрать окно свойств в Outliner — Details показывает его (снимки редактора сценарием: `screenshot файл.png gui`) |
 | `wait кадров` | пропустить столько кадров |
 | `water discharge файл.dds` | расход воды ячеек симуляции, м³/с, в DDS `R32_FLOAT` (`WaterSimulation::exportDischarge`) — для проверки |
