@@ -140,7 +140,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `--level`: после новой долины экземпляры пересажены на землю). Параметры движка, которых нет в glTF (ветер,
   пропускание, смена LOD), — в сценариях и опциях `--material-param` (`extras` glTF), см. `docs/models.md`. Пучок травы
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
-  затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 16`; ромашка (`Camomile`, альфа-лепестки) — так же
+  затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 6,14 --shadow-min-lod 2`; ромашка (`Camomile`, альфа-лепестки) — так же
   со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Модели Poly Haven в расстановке
   (пучки `grass_medium_01`, одуванчики `dandelion_01`, камни `rock_moss_set_01`; архивы `.blend` — в `DownloadResources\`,
   скачать — `python Tools/polyhaven_download.py <ассет> --resolution 2k`) — `Tools/export_polyhaven.py` через Blender,
@@ -443,6 +443,7 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн,
 наборы `Meadow` (трава — пучки `GrassClump` из Blender вперемешку с высокими пучками Poly Haven `grass_medium_01`,
+три LOD до 30 м с тенью от LOD2, дальше до 45 м — плоские импостеры без тени,
 крупные пучки Megascans `tall_grass` своим слоем вдоль ручьёв — `mask_grass_riparian` и одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`: галька по маске и камни русел — слой `stream_stones`, ~7 тыс.), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
 `PBR_Metal_R01…R09`: roughness 0,1…0,9), слева от неё импортированные из glTF `TestRock` (два LOD) и `TestPanel`

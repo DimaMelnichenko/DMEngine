@@ -81,9 +81,10 @@ cbuffer ScatterVariantsBuffer : register( b7 )
 	// теней последний LOD (импостер; 0 — LOD как у главного вида)
 	float4 g_variants[maxVariants];
 	float4 g_lodEnd[maxVariants];	// дальности LOD 0…2 варианта, м: дальше — следующий LOD
-	// Они же у видов теней: границы LOD модели × её «Shadow LOD scale» (DMModel::shadowLodScale), переход к импостеру — как
-	// в кадре (у теней его сдвигает w в g_variants)
+	// Они же у видов теней (ScatterPass::setShadowLods): границы LOD модели × «Shadow LOD scale» модели и набора, детальнее
+	// «Shadow min LOD» модели — 0; переход к импостеру — как в кадре (у теней его сдвигает w в g_variants)
 	float4 g_shadowLodEnd[maxVariants];
+	float4 g_shadowCasting[maxVariants];	// x — с этого LOD у видов теней экземпляра нет (импостер без тени); = числу LOD — у всех
 	float4 g_bounds[maxVariants];	// сфера модели (LOD0) в её координатах: xyz — центр, w — радиус (при размере 1)
 	float4 g_footprints[maxVariants];	// след основания (LOD0): xy — центр по X и Z, z — радиус по XZ (при размере 1)
 	uint4  g_lists[MAX_LISTS];		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
@@ -93,8 +94,8 @@ cbuffer ScatterVariantsBuffer : register( b7 )
 cbuffer FrustumBuffer : register( b6 )
 {
 	float4 g_frustumPlanes[MAX_VIEWS * 6];
-	// x — множитель дальностей LOD (< 1 — LOD грубее), y — 1: списки перехода у вида; у каскада теней z, w — полоса
-	// расстояний от камеры (RenderView::cascadeNear / cascadeFar): тень инстанса ложится не дальше её длины от него
+	// x, y — запас; у каскада теней z, w — полоса расстояний от камеры (RenderView::cascadeNear / cascadeFar): тень
+	// инстанса ложится не дальше её длины от него
 	float4 g_viewParams[MAX_VIEWS];
 	// У каскада теней: xy — полоса глубины взгляда, пиксели которой читают каскад (cascadeNear, cascadeDepthFar)
 	float4 g_viewDepths[MAX_VIEWS];
@@ -454,6 +455,7 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 	const float4 shadowLodEnd = g_shadowLodEnd[variant] * lodScale;
 	// Свои дальности у теней — свой выбор LOD, и долю перехода с главным видом не разделить: переход без дизеринга
 	const bool ownShadowLods = any( g_shadowLodEnd[variant].xyz != g_lodEnd[variant].xyz );
+	const uint shadowLods = (uint)g_shadowCasting[variant].x;
 	const float shadowLastLod = g_variants[variant].w * lodScale;
 	// Расстояние до точки LOD — у всех видов кадра одна, главная камера (RenderView::lodOrigin)
 	const float distanceToLodOrigin = distanceToCamera;
@@ -470,17 +472,17 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 		uint lod;
 		float transition;
 		const bool shadowView = view > 0;
-		const bool setDithered = dithered && g_viewParams[view].y > 0.5f;
-		const bool viewDithered = setDithered && !( shadowView && ownShadowLods );
-		selectLod( distanceToLodOrigin, ( shadowView ? shadowLodEnd : lodEnd ) * g_viewParams[view].x, lodCount, viewDithered,
-				   lod, transition );
+		const bool viewDithered = dithered && !( shadowView && ownShadowLods );
+		selectLod( distanceToLodOrigin, shadowView ? shadowLodEnd : lodEnd, lodCount, viewDithered, lod, transition );
+		// LOD, с которого у теней экземпляра нет (импостер без тени): в полосе перехода к нему — только уходящий LOD
+		const uint castingLods = shadowView ? shadowLods : lodCount;
 
 		// Тень дальнего экземпляра — последним LOD раньше, чем в кадре (импостер леса); в полосе вокруг этой дальности —
 		// переход дизерингом от LOD кадра к последнему своей парой: тень меняется так же плавно, как экземпляр в кадре
-		if( view > 0 && shadowLastLod > 0.0f && lod + 1 < lodCount )
+		if( shadowView && shadowLastLod > 0.0f && lod + 1 < lodCount )
 		{
-			const float start = shadowLastLod * g_viewParams[view].x;
-			const float halfBand = setDithered ? start * ( LOD_TRANSITION_WIDTH * 0.5f ) : 0.0f;
+			const float start = shadowLastLod;
+			const float halfBand = dithered ? start * ( LOD_TRANSITION_WIDTH * 0.5f ) : 0.0f;
 			if( distanceToLodOrigin >= start + halfBand )
 			{
 				lod = lodCount - 1;
@@ -491,19 +493,24 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 				const float shadowTransition = ( distanceToLodOrigin - ( start - halfBand ) ) / ( 2.0f * halfBand );
 				if( reserveTransition( item, shadowTransition, shadowTransitionIndex ) )
 				{
-					pushIndex( view, listIndex( variant, lod, true ), shadowTransitionIndex );
-					pushIndex( view, listIndex( variant, lodCount - 1, true ), shadowTransitionIndex + 1 );
+					if( lod < castingLods )
+						pushIndex( view, listIndex( variant, lod, true ), shadowTransitionIndex );
+					if( lodCount - 1 < castingLods )
+						pushIndex( view, listIndex( variant, lodCount - 1, true ), shadowTransitionIndex + 1 );
 					continue;
 				}
 				transition = 0.0f;
 			}
 		}
+		if( lod >= castingLods )
+			continue;
 
 		// Нет места в пуле перехода — экземпляр в этом виде идёт обычным списком своего LOD
 		if( transition > 0.0f && reserveTransition( item, transition, transitionIndex ) )
 		{
 			pushIndex( view, listIndex( variant, lod, true ), transitionIndex );
-			pushIndex( view, listIndex( variant, lod + 1, true ), transitionIndex + 1 );
+			if( lod + 1 < castingLods )
+				pushIndex( view, listIndex( variant, lod + 1, true ), transitionIndex + 1 );
 			continue;
 		}
 

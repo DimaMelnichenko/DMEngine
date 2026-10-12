@@ -7,7 +7,9 @@
 // opaqueDepthRead: глубину уже записал mainDepth, пиксель освещается, только если записана его глубина (глубина сцены,
 // SLOT_SCENE_DEPTH), — закрытый соседней елью отбрасывается до освещения; отсечение по покрытию и дизеринг — как в
 // prepass. С LOD_DITHER — доля пикселей смены LOD.
-// mainDepth — тени и depth prepass
+// mainDepth — тени и depth prepass.
+// С IMPOSTOR_FLAT — плоский импостер (трава без тени, ImpostorMaterial::flat): точка и глубина — самой карточки, без
+// смещения глубины; после prepass — обычный проход opaque с тестом EQUAL, без чтения глубины сцены
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "slots.h"
@@ -51,7 +53,7 @@ float impostorDepth( ImpostorPixelInput input, float3 position )
 	return depth;
 }
 
-#ifdef ALPHA_MASK
+#if defined(ALPHA_MASK) && !defined(IMPOSTOR_FLAT)
 float4 main( ImpostorPixelInput input, out float depth : SV_DepthLessEqual ) : SV_TARGET
 #else
 float4 main( ImpostorPixelInput input ) : SV_TARGET
@@ -60,7 +62,14 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 #ifdef LOD_DITHER
 	clipLodTransition( input.position.xy, input.lodDither );
 #endif
+#ifdef IMPOSTOR_FLAT
+	// Без prepass — отсечение по покрытию; после него пиксель уже выбран тестом глубины EQUAL
+	const float4 color = sampleFrames( g_impostorColor, input );
 #ifdef ALPHA_MASK
+	clip( color.a - g_impostorAlphaCutoff );
+#endif
+	const float3 position = input.worldPosition;
+#elif defined(ALPHA_MASK)
 	const float4 color = sampleFrames( g_impostorColor, input );
 	clip( color.a - g_impostorAlphaCutoff );
 	const float3 position = impostorSurface( input );
@@ -83,28 +92,37 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 #endif
 	const float4 packed = sampleFrames( g_impostorNormal, input );
 	const float3 normal = normalize( impostorRotate( normalize( packed.xyz * 2.0f - 1.0f ), input.rotation ) );
+	// Затемнение низа — по высоте точки поверхности над корнем экземпляра: у травы вдали без тени
+	const float height = saturate( ( position.y - input.heightRange.x ) * input.heightRange.y );
+	const float3 baseColor = color.rgb * lerp( 1.0f - g_impostorShade.x, 1.0f, height );
 
 	Surface surface;
 	surface.position = position;
 	surface.normal = normal;
 	surface.geometricNormal = normal;
-	surface.baseColor = color.rgb;
+	surface.baseColor = baseColor;
 	surface.metallic = 0.0f;
 	surface.specular = 1.0f;
 	surface.roughness = g_impostorRoughness;
 	surface.occlusion = lerp( 1.0f, sampleFrames( g_impostorDepth, input ).y, g_impostorOcclusion );
 	surface.emissive = 0.0f;
 	surface.transmission = saturate( packed.w * g_impostorTransmission.w );
-	surface.transmissionColor = color.rgb * g_impostorTransmission.xyz;
+	surface.transmissionColor = baseColor * g_impostorTransmission.xyz;
 	return float4( evaluateLighting( surface ), 1.0f );
 }
 
-// Тени и depth prepass: глубина — точки поверхности (у каскада — вдоль света)
+// Тени и depth prepass: глубина — точки поверхности (у каскада — вдоль света); у плоского — карточки
+#ifdef IMPOSTOR_FLAT
+void mainDepth( ImpostorPixelInput input )
+#else
 void mainDepth( ImpostorPixelInput input, out float depth : SV_DepthLessEqual )
+#endif
 {
 #ifdef LOD_DITHER
 	clipLodTransition( input.position.xy, input.lodDither );
 #endif
 	clip( sampleFrames( g_impostorColor, input ).a - g_impostorAlphaCutoff );
+#ifndef IMPOSTOR_FLAT
 	depth = impostorDepth( input, impostorSurface( input ) );
+#endif
 }

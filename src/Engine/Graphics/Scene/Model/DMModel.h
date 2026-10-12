@@ -55,6 +55,10 @@ public:
 	// затеняет), дальнего — грубее: у ели LOD0 втрое тяжелее LOD1, а его мелкие карточки хвои в тени не видны
 	float shadowLodScale() const;
 	void setShadowLodScale( float scale );
+	// LOD у видов теней не детальнее этого (Models.shadow_min_lod, свойство «Shadow min LOD»; 0 — как в кадре): тень
+	// травы — её самым грубым LOD и у ближних пучков, мелких травинок в тени не видно. Не дальше последнего LOD
+	uint32_t shadowMinLod() const;
+	void setShadowMinLod( uint32_t lod );
 
 	PropertyContainer* properties();
 private:

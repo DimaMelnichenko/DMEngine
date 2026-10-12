@@ -1,8 +1,8 @@
 """Импорт моделей glTF 2.0 (.glb, .gltf) в DMEngine — как импорт FBX/glTF в редакторе UE.
 
     python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--snap-to-terrain]] [--scale s]
-                                           [--lod-ranges 25,60] [--shadow-lod-scale 0.5] [--name Имя] [--scatter]
-                                           [--dry-run]
+                                           [--lod-ranges 25,60] [--shadow-lod-scale 0.5] [--shadow-min-lod 2]
+                                           [--name Имя] [--scatter] [--dry-run]
 
 Пишет файлы мешей (Meshes\\models\\<ассет>\\<модель>_LOD<N>[_S<секция>].bin, формат MeshLoader), картинки текстур
 (Textures\\models\\<ассет>\\) и строки base.db3: Meshes, Models, ModelProperties, Textures, MaterialInstance +
@@ -711,15 +711,19 @@ class Database:
         self.cursor.execute('UPDATE Meshes SET file = ?, primitive = ? WHERE id = ?', (file, FALLBACK_PRIMITIVE, mesh_id))
         return mesh_id
 
-    def model(self, name, lods, render, shadow_lod_scale=None):
+    def model(self, name, lods, render, shadow_lod_scale=None, shadow_min_lod=None):
         """lods — по LOD: ([(секция, id меша, id экземпляра материала)], дальность); строка ModelProperties — секция.
-        shadow_lod_scale — Models.shadow_lod_scale (None — не менять, у новой модели 1)"""
+        shadow_lod_scale, shadow_min_lod — Models.shadow_lod_scale и shadow_min_lod (None — не менять, у новой модели
+        1 и 0)"""
         model_id = self.one('SELECT id FROM Models WHERE name = ?', (name,))
         if model_id is None:
             self.cursor.execute('INSERT INTO Models (name) VALUES (?)', (name,))
             model_id = self.cursor.lastrowid
         if shadow_lod_scale is not None:
             self.cursor.execute('UPDATE Models SET shadow_lod_scale = ? WHERE id = ?', (shadow_lod_scale, model_id))
+        if shadow_min_lod is not None:
+            self.cursor.execute('UPDATE Models SET shadow_min_lod = ? WHERE id = ?',
+                                (min(shadow_min_lod, len(lods) - 1), model_id))
         old_meshes = [r[0] for r in self.cursor.execute('SELECT mesh_id FROM ModelProperties WHERE model_id = ?',
                                                         (model_id,))]
         self.cursor.execute('DELETE FROM ModelProperties WHERE model_id = ?', (model_id,))
@@ -809,6 +813,9 @@ def main():
     parser.add_argument('--shadow-lod-scale', type=float,
                         help='LOD distances in shadow views are multiplied by it, e.g. 0.5: a coarser LOD casts the shadow '
                              'closer (Models.shadow_lod_scale; default: keep, 1 for a new model)')
+    parser.add_argument('--shadow-min-lod', type=int,
+                        help='shadow views draw at most this detailed LOD, e.g. 2: grass casts its shadow with the '
+                             'coarsest LOD (Models.shadow_min_lod; default: keep, 0 for a new model)')
     parser.add_argument('--scatter', action='store_true', help='model for scatter layers: PBRInstance, render = 0')
     parser.add_argument('--dry-run', action='store_true', help='print what would be written, write nothing')
     parser.add_argument('--db', default=os.path.join(ROOT, 'base.db3'))
@@ -820,6 +827,8 @@ def main():
         raise SystemExit('error: --snap-to-terrain needs --level')
     if args.shadow_lod_scale is not None and not 0.1 <= args.shadow_lod_scale <= 1.0:
         raise SystemExit('error: --shadow-lod-scale expects a value in 0.1..1')
+    if args.shadow_min_lod is not None and args.shadow_min_lod < 0:
+        raise SystemExit('error: --shadow-min-lod expects a LOD number >= 0')
 
     gltf = Gltf(args.file)
     asset = sanitize(args.asset or os.path.splitext(os.path.basename(args.file))[0])
@@ -881,7 +890,7 @@ def main():
                 rows.append((section['slot'], db.mesh(mesh_name, mesh_file), instances[section['instance']]))
                 files[os.path.join('Meshes', mesh_file)] = mesh_bytes(section['mesh'])
             lods.append((rows, ranges[lod]))
-        model_id = db.model(model['name'], lods, 0 if args.scatter else 1, args.shadow_lod_scale)
+        model_id = db.model(model['name'], lods, 0 if args.scatter else 1, args.shadow_lod_scale, args.shadow_min_lod)
 
         positions = np.concatenate([section['mesh'][0] for section in model['lods'][0]])
         lo, hi = positions.min(axis=0), positions.max(axis=0)

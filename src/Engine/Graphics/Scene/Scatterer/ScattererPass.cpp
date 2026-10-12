@@ -78,6 +78,7 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 										   variant.shadowLastLodDistance );
 		m_variants.lodEnd[v] = XMFLOAT4( variant.lodEnd[0], variant.lodEnd[1], variant.lodEnd[2], variant.lodEnd[3] );
 		m_variants.shadowLodEnd[v] = m_variants.lodEnd[v];
+		m_variants.shadowCasting[v] = XMFLOAT4( static_cast<float>( lodCount ), 0.0f, 0.0f, 0.0f );
 		m_variants.bounds[v] = variant.bounds;
 		m_variants.footprints[v] = variant.footprint;
 
@@ -195,18 +196,23 @@ void ScatterPass::setShadowLastLodDistance( uint32_t variant, float distance )
 	}
 }
 
-void ScatterPass::setShadowLodScale( uint32_t variant, float scale, uint32_t modelBoundaries )
+void ScatterPass::setShadowLods( uint32_t variant, const ShadowLods& lods )
 {
 	if( variant >= m_populateParams.variantCount )
 		return;
 	const XMFLOAT4& lodEnd = m_variants.lodEnd[variant];
-	const float factors[4] = { modelBoundaries > 0 ? scale : 1.0f, modelBoundaries > 1 ? scale : 1.0f,
-							   modelBoundaries > 2 ? scale : 1.0f, 1.0f };
-	const XMFLOAT4 shadowLodEnd( lodEnd.x * factors[0], lodEnd.y * factors[1], lodEnd.z * factors[2], lodEnd.w * factors[3] );
-	XMFLOAT4& current = m_variants.shadowLodEnd[variant];
-	if( current.x != shadowLodEnd.x || current.y != shadowLodEnd.y || current.z != shadowLodEnd.z || current.w != shadowLodEnd.w )
+	float ends[maxLods] = { lodEnd.x, lodEnd.y, lodEnd.z, lodEnd.w };
+	for( uint32_t i = 0; i < maxLods; ++i )
+		ends[i] = i < lods.minLod ? 0.0f : i < lods.modelBoundaries ? ends[i] * lods.scale : ends[i];
+	const XMFLOAT4 shadowLodEnd( ends[0], ends[1], ends[2], ends[3] );
+	const XMFLOAT4 casting( static_cast<float>( std::min( lods.castingLods, maxLods ) ), 0.0f, 0.0f, 0.0f );
+	XMFLOAT4& currentEnd = m_variants.shadowLodEnd[variant];
+	XMFLOAT4& currentCasting = m_variants.shadowCasting[variant];
+	if( currentEnd.x != shadowLodEnd.x || currentEnd.y != shadowLodEnd.y || currentEnd.z != shadowLodEnd.z ||
+		currentEnd.w != shadowLodEnd.w || currentCasting.x != casting.x )
 	{
-		current = shadowLodEnd;
+		currentEnd = shadowLodEnd;
+		currentCasting = casting;
 		m_variantsChanged = true;
 	}
 }

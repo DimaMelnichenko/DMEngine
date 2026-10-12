@@ -81,6 +81,20 @@ void DMModel::setShadowLodScale( float scale )
 						  "(Models.shadow_lod_scale, not saved with the level)" );
 }
 
+uint32_t DMModel::shadowMinLod() const
+{
+	return m_properties.exists( "Shadow min LOD" ) ? m_properties["Shadow min LOD"].data<uint32_t>() : 0;
+}
+
+void DMModel::setShadowMinLod( uint32_t lod )
+{
+	Property* property = m_properties.insert( "Shadow min LOD", lod );
+	property->setData( lod );
+	property->setLow( 0.0f );
+	property->setHigh( static_cast<float>( m_lods.empty() ? 0 : m_lods.size() - 1 ) );
+	property->setTooltip( "Shadow views draw at most this detailed LOD: 2 - the shadow of grass is its coarsest LOD even "
+						  "next to the camera (Models.shadow_min_lod, not saved with the level)" );
+}
 
 PropertyContainer* DMModel::properties()
 {

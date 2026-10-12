@@ -30,6 +30,22 @@ std::string withDefine( const std::string& defines, const char* define )
 	return defines.empty() ? std::string( define ) : defines + "," + define;
 }
 
+// Defines без экземпляров (INST_*): у материала расстановки экземпляр — из пула, а запеканию нужна матрица объекта
+std::string withoutInstances( const std::string& defines )
+{
+	std::string result;
+	size_t begin = 0;
+	while( begin <= defines.size() )
+	{
+		const size_t end = std::min( defines.find( ',', begin ), defines.size() );
+		const std::string define = defines.substr( begin, end - begin );
+		if( !define.empty() && define.rfind( "INST_", 0 ) != 0 )
+			result += ( result.empty() ? "" : "," ) + define;
+		begin = end + 1;
+	}
+	return result;
+}
+
 }
 
 PBRMaterial::PBRMaterial( uint32_t id, const std::string& name ) : Material( id, name )
@@ -175,9 +191,18 @@ bool PBRMaterial::enableImpostorBake()
 	if( !pixel || !addShaderPassFromFile( ShaderStageType::pixel, "mainBake", pixel->file, pixel->defines ) ||
 		!addShaderPassFromFile( ShaderStageType::pixel, "mainBake", pixel->file, withDefine( pixel->defines, "ALPHA_MASK=1" ) ) )
 		return false;
-	// Вершинный шейдер — из базы (0): мировая матрица запекания — константа объекта
-	m_bakePhases[0] = createPhase( 0, first );
-	m_bakePhases[1] = createPhase( 0, first + 1 );
+	// Вершинный шейдер — из базы (0): мировая матрица запекания — константа объекта. У материала расстановки
+	// (PBRInstance: в базе INST_*) база берёт экземпляр из пула, которого при запекании нет, — свой вариант без них
+	int vertexShader = 0;
+	if( !m_instancing )
+	{
+		const std::optional<ShaderSource> vertex = shaderSource( ShaderStageType::vertex );
+		if( !vertex || !addShaderPassFromFile( ShaderStageType::vertex, vertex->function, vertex->file, withoutInstances( vertex->defines ) ) )
+			return false;
+		vertexShader = m_vertexShaderCount++;
+	}
+	m_bakePhases[0] = createPhase( vertexShader, first );
+	m_bakePhases[1] = createPhase( vertexShader, first + 1 );
 	return m_bakePhases[0] >= 0 && m_bakePhases[1] >= 0;
 }
 

@@ -105,8 +105,8 @@ REPEAT, цвета вершин и остальные расширения ма�
 
 ```
 python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--snap-to-terrain]] [--scale s]
-                                       [--lod-ranges 25,60] [--shadow-lod-scale 0.5] [--name Имя] [--asset папка]
-                                       [--scatter] [--dry-run]
+                                       [--lod-ranges 25,60] [--shadow-lod-scale 0.5] [--shadow-min-lod 2] [--name Имя]
+                                       [--asset папка] [--scatter] [--dry-run]
 ```
 
 | Параметр | Что делает |
@@ -116,6 +116,7 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
 | `--scale` | равномерный масштаб на уровне (и положений объектов тоже); с `--scatter` — запекается в вершины |
 | `--lod-ranges` | дальности LOD в метрах: на один меньше числа LOD (последний — 10000) или по одной на каждый |
 | `--shadow-lod-scale` | множитель дальностей LOD у теней (`Models.shadow_lod_scale`, 0,1…1; без опции не меняется, у новой модели 1) — см. «LOD теней» |
+| `--shadow-min-lod` | LOD у теней не детальнее этого (`Models.shadow_min_lod`; без опции не меняется, у новой модели 0) — см. «LOD теней» |
 | `--name` | имя модели вместо имени объекта — для файла с одной моделью |
 | `--asset` | папка и префикс файлов и текстур вместо имени файла |
 | `--scatter` | модель для слоёв расстановки: материал `PBRInstance`, `render = 0`, без `--level`; дальности LOD (`--lod-ranges`) расстановка тоже берёт из модели (см. [scatter.md](scatter.md)) |
@@ -133,7 +134,7 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
 | `Meshes` | строка на секцию LOD: имя `<модель>_LOD<N>[_S<k>]`, файл, `primitive = box` — заглушка, если файла нет (каталог не в git) |
 | `Textures` | имя `<ассет>_<картинка>`, файл, мипы, `sRGB` — 1 для базового цвета и свечения, 0 для остального; `compression` — `normalmap` (BC5) у карты нормалей, `default` (BC7) у прочих ([materials.md](materials.md), «Сжатие и приготовление текстур») |
 | `MaterialInstance`, `MaterialParameterInstance` | экземпляр `<ассет>/<материал>` материала `PBR` (12) или `PBRInstance` (9) и его значения |
-| `Models`, `ModelProperties` | модель (`shadow_lod_scale` — множитель LOD теней) и её LOD: строка на секцию (`lod`, `section`) — меш, материал, экземпляр; дальность и `render` LOD — у секции 0 |
+| `Models`, `ModelProperties` | модель (`shadow_lod_scale`, `shadow_min_lod` — LOD теней) и её LOD: строка на секцию (`lod`, `section`) — меш, материал, экземпляр; дальность и `render` LOD — у секции 0 |
 | `LevelModels` | с `--level`: экземпляры модели на уровне — положение, поворот, масштаб (см. ниже) |
 | `LevelLights` | с `--level`: источники света файла (`KHR_lights_punctual`) — см. «Источники света из Blender» |
 
@@ -192,7 +193,8 @@ Details UE) и «Scale». Правка сразу двигает экземпл�
 `LevelModels` по `id`, поворот — кватернионом из углов ([gui.md](gui.md)). Подокно «Add» — кнопка на модель уровня: новый
 экземпляр перед камерой на земле; «Delete» у подокна экземпляра и Delete во вьюпорте — убрать (Ctrl+Z вернёт); «Save
 level» вставляет новые строки `LevelModels` и удаляет строки убранных ([gui.md](gui.md), «Вьюпорт»). Окно «Models» —
-параметры материалов секций моделей и «Shadow LOD scale» у моделей с несколькими LOD, они не сохраняются.
+параметры материалов секций моделей и «Shadow LOD scale» / «Shadow min LOD» у моделей с несколькими LOD, они не
+сохраняются.
 
 **LOD теней.** В каскадах теней дальности LOD модели умножаются на `Models.shadow_lod_scale` («Shadow LOD scale» окна
 «Models», `DMModel::shadowLodScale`; дальность последнего LOD — конец модели — не меняется): 0,5 — тень более грубым LOD
@@ -201,7 +203,9 @@ level» вставляет новые строки `LevelModels` и удаляе
 камеры (`RenderView::lodOrigin`), полоса перехода — с дизерингом у каждого вида своя (`ModelInstances::collectMeshes`).
 Множитель берёт и расстановка: у варианта слоя — для границ LOD модели, вместе с множителем набора
 ([scatter.md](scatter.md), «LOD теней»). Значение — опция `--shadow-lod-scale` импорта или правка строки `Models`; в окне
-«Models» — подбор вживую. Сейчас 0,5 — у елей (см. «Ель»).
+«Models» — подбор вживую. Сейчас 0,5 — у елей (см. «Ель»). `Models.shadow_min_lod` («Shadow min LOD») — тень не
+детальнее этого LOD и у ближних экземпляров (`--shadow-min-lod`; не дальше последнего LOD): у травы 2 — тень луга от
+самого грубого LOD пучков ([scatter.md](scatter.md), «Трава: пучок из Blender»).
 
 ## Геометрия: из glTF в движок
 

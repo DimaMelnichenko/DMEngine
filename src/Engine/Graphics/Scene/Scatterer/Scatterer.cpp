@@ -204,6 +204,13 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		shadowImpostor->setLow( 0.0f );
 		shadowImpostor->setHigh( settings.impostorDistance );
 		shadowImpostor->setUnit( "m" );
+		layer.properties->insert( "Impostor shadow", settings.impostorCastShadow )->setTooltip(
+			"If impostors cast a shadow: off - shadow views skip them (far grass)" );
+		Property* baseShade = layer.properties->insert( "Impostor base shade", settings.impostorBaseShade );
+		baseShade->setLow( 0.0f );
+		baseShade->setHigh( 1.0f );
+		baseShade->setTooltip( "Impostor color at the root x (1 - shade), up to the model top - none: far grass without "
+							   "a shadow is not lighter than the shadowed grass next to it" );
 	}
 	for( LayerVariant& variant : layer.variants )
 		layer.properties->addSubContainer( variant.properties.get() );
@@ -234,7 +241,8 @@ bool Scatterer::bake( const BakeContext& context )
 		if( !material )
 		{
 			const auto start = std::chrono::steady_clock::now();
-			auto impostor = std::make_unique<ImpostorMaterial>( materials.freeId(), name );
+			// Импостер без тени (трава) — плоский: по настройке слоя при загрузке
+			auto impostor = std::make_unique<ImpostorMaterial>( materials.freeId(), name, !layer.settings.impostorCastShadow );
 			impostor->setLayoutDesc( impostor->initLayouts() );
 			ImpostorMaterial::BakeSettings bakeSettings;
 			bakeSettings.density = layer.impostorDensity;
@@ -252,6 +260,7 @@ bool Scatterer::bake( const BakeContext& context )
 		}
 		variant.impostorSection->material = material->id();
 		variant.lods.back().sections.back().material = material;
+		variant.impostorMaterial = dynamic_cast<ImpostorMaterial*>( material );
 	}
 	return true;
 }
@@ -354,9 +363,8 @@ void Scatterer::compute( const FrameContext& frame )
 	const XMFLOAT3& toSun = frame.toShadowLight;
 	m_shadowLength = toSun.y > 0.0f ? std::min( 1.0f / toSun.y, 10.0f ) : 0.0f;
 
-	// Виды кадра: главный и каскады теней; у видов теней — множитель дальностей LOD набора (× множитель модели
-	// варианта — ScatterPass::setShadowLodScale), с ним < 1 переход дизерингом выключен (доля перехода в пуле одна на
-	// все виды)
+	// Виды кадра: главный и каскады теней. Дальности LOD у видов теней — у вариантов (ScatterPass::setShadowLods):
+	// множитель набора × множитель модели, «Shadow min LOD» модели, импостер без тени
 	const float shadowLodScale = m_properties["Shadow LOD scale"].data<float>();
 	Device::updateResource<FrustumParams>( m_frustumBuffer, [&]( FrustumParams& params )
 	{
@@ -367,8 +375,7 @@ void Scatterer::compute( const FrameContext& frame )
 			const RenderView& view = frame.viewCount ? *frame.views[v] : frame.view;
 			for( int i = 0; i < 6; ++i )
 				XMStoreFloat4( &params.planes[v * 6 + i], view.frustum.planes()[i] );
-			const float lodScale = v == 0 ? 1.0f : shadowLodScale;
-			params.viewParams[v] = XMFLOAT4( lodScale, lodScale >= 0.999f ? 1.0f : 0.0f, view.cascadeNear, view.cascadeFar );
+			params.viewParams[v] = XMFLOAT4( 0.0f, 0.0f, view.cascadeNear, view.cascadeFar );
 			params.viewDepths[v] = XMFLOAT4( view.cascadeNear, view.cascadeDepthFar, 0.0f, 0.0f );
 		}
 		params.viewCount = count;
@@ -399,11 +406,20 @@ void Scatterer::compute( const FrameContext& frame )
 				variant.ditheredLodTransition = variant.ditheredLodTransition && section.material &&
 												section.material->renderState( section.section->params ).ditheredLodTransition;
 			layer.pass->setDitheredLodTransition( v, variant.ditheredLodTransition );
-			// Множитель LOD теней модели — только для её границ LOD: переход к импостеру у теней задаёт слой
+			// LOD теней: множители набора и модели — только для границ LOD модели (переход к импостеру у теней задаёт
+			// слой), «Shadow min LOD» модели, импостер без тени — флаг слоя
 			const uint32_t modelLods = static_cast<uint32_t>( variant.lods.size() ) - ( variant.impostor ? 1 : 0 );
-			layer.pass->setShadowLodScale( v, variant.model ? variant.model->shadowLodScale() : 1.0f, modelLods > 0 ? modelLods - 1 : 0 );
+			ScatterPass::ShadowLods shadowLods;
+			shadowLods.scale = shadowLodScale * ( variant.model ? variant.model->shadowLodScale() : 1.0f );
+			shadowLods.minLod = variant.model ? std::min( variant.model->shadowMinLod(), modelLods > 0 ? modelLods - 1 : 0u ) : 0;
+			shadowLods.modelBoundaries = modelLods > 0 ? modelLods - 1 : 0;
+			if( variant.impostor && !( *layer.properties )["Impostor shadow"].data<bool>() )
+				shadowLods.castingLods = modelLods;
+			layer.pass->setShadowLods( v, shadowLods );
 			if( variant.impostor )
 				layer.pass->setShadowLastLodDistance( v, ( *layer.properties )["Shadow impostor distance"].data<float>() );
+			if( variant.impostorMaterial )
+				variant.impostorMaterial->setBaseShade( ( *layer.properties )["Impostor base shade"].data<float>() );
 		}
 		assignGroups( layer );
 
@@ -597,7 +613,11 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 	settings.alignToTerrain = properties["Align to terrain"].data<bool>();
 	settings.castShadow = properties["Cast shadow"].data<bool>();
 	if( properties.exists( "Shadow impostor distance" ) )
+	{
 		settings.shadowImpostorDistance = properties["Shadow impostor distance"].data<float>();
+		settings.impostorCastShadow = properties["Impostor shadow"].data<bool>();
+		settings.impostorBaseShade = std::clamp( properties["Impostor base shade"].data<float>(), 0.0f, 1.0f );
+	}
 	return settings;
 }
 

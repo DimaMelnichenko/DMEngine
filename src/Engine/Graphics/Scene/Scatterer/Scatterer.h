@@ -16,6 +16,8 @@
 namespace GS
 {
 
+class ImpostorMaterial;
+
 // Набор расстановки по террейну: трава, цветы, камешки, веточки (таблица ScatterSets). Слой набора — растение:
 // одна или несколько моделей со всеми их LOD и весами (ScatterLayerModels, как Mesh Entries у Static Mesh Spawner в
 // PCG UE), маска плотности и параметры (таблица ScatterLayers). Каждый кадр compute-шейдер Shaders\scatter.cs
@@ -126,6 +128,7 @@ private:
 		// Импостер — последний LOD (lods.back()): его секция — карточка, материал — после bake
 		bool impostor = false;
 		std::unique_ptr<DMModel::Section> impostorSection;
+		ImpostorMaterial* impostorMaterial = nullptr;	// после bake: затемнение низа — из окна слоя каждый кадр
 		bool castShadow = true;
 		DirectX::BoundingBox box;	// границы LOD0 модели: по ним размер и посадка камня русла
 		// Смена LOD дизерингом: у всех секций материал с DitheredLODTransition; обновляет compute() — флаг материала

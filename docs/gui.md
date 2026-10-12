@@ -191,7 +191,7 @@ Details строка «Saved with the level», у остальных — «Not s
 Объекты сцены — `LibraryLoader::saveLevelScene` (`LibraryLoaderScene.cpp`), окружение и объекты — две транзакции подряд
 (`Scene::saveLevel`). Состав уровня (какие слои, модели, эмиттеры) не меняется, только колонки строк, — кроме источников
 света и экземпляров моделей: их добавляют и убирают кнопками окон «Lights» и «Model instances». Не сохраняются:
-окна Renderer, Shadows, Camera, Models (параметры материалов и «Shadow LOD scale» моделей), «Enabled» у ветра и
+окна Renderer, Shadows, Camera, Models (параметры материалов, «Shadow LOD scale» и «Shadow min LOD» моделей), «Enabled» у ветра и
 эмиттеров — выключатели кадра: `-nowind` снимает «Enabled» у ветра, а сила остаётся, поэтому сохранение с `-nowind` её
 не затирает.
 

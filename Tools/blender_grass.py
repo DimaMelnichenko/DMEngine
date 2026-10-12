@@ -1,13 +1,15 @@
 # Пучок травы для слоёв расстановки (набор Meadow). Запускается внутри Blender без окна:
 #   blender -b --factory-startup --python Tools/blender_grass.py -- <выход.glb>
 # Затем импорт моделью для расстановки:
-#   python Tools/import_gltf.py <выход.glb> --scatter
+#   python Tools/import_gltf.py <выход.glb> --scatter --lod-ranges 6,14 --shadow-min-lod 2
 # Сцена:
 #   GrassClump — пучок из 36 травинок геометрией (без альфа-карточек, как трава вблизи в Ghost of Tsushima):
 #     каждая — сужающаяся изогнутая полоска из 4 сегментов с вершиной-кончиком; корни в круге радиусом 5 см,
 #     внешние травинки наклонены сильнее, к кончику травинка клонится (изгиб растёт квадратично);
-#   GrassClump_LOD1 — те же первые 16 травинок из 2 сегментов, в 2,6 раза шире: вдали тонкая травинка меньше
-#     пикселя, и пучок выглядел бы редким — для дальнего кольца.
+#   GrassClump_LOD1 — первые 24 травинки из 3 сегментов, в 1,5 раза шире (то же покрытие) — средний LOD;
+#   GrassClump_LOD2 — первые 16 травинок из 2 сегментов, в 2,6 раза шире: вдали тонкая травинка меньше пикселя, и пучок
+#     выглядел бы редким — для дальнего кольца; им же трава отбрасывает тень и вблизи (Models.shadow_min_lod = 2),
+#     а дальше — импостер без тени (ScatterLayers.impostor_distance, docs/scatter.md).
 # Материал GrassMat двусторонний (Backface Culling выключен → doubleSided в glTF): у тонкой травинки видны обе
 # стороны. Базовый цвет — текстура GrassColor: 8 столбцов оттенков (у каждой травинки свой), по высоте — градиент
 # от тёмного корня к светлому, чуть выгоревшему кончику; тон подтянут к траве Poly Haven множителем (узел Mix,
@@ -23,7 +25,8 @@ import bpy
 import numpy as np
 
 BLADES = 36
-LOD1_BLADES = 16
+# LOD пучка: травинок (первые из общего списка), сегментов, множитель ширины
+LODS = [(36, 4, 1.0), (24, 3, 1.5), (16, 2, 2.6)]
 COLUMNS = 8          # оттенков в текстуре
 SEED = 7
 BASE_COLOR_FACTOR = (0.977, 0.8, 1.0, 1.0)   # тон — к траве Poly Haven grass_medium_01 рядом в том же слое
@@ -185,9 +188,10 @@ def main():
     clear_scene()
     material = grass_material(grass_color(folder))
     blades = blade_params(np.random.default_rng(SEED))
-    make_clump('GrassClump', blades, 4, 1.0, material, (0.0, 0.0, 0.0))
-    # LOD1 стоит в стороне, как обычно в Blender: импортёр берёт LOD относительно своего origin
-    make_clump('GrassClump_LOD1', blades[:LOD1_BLADES], 2, 2.6, material, (1.0, 0.0, 0.0))
+    # LOD стоят в стороне друг от друга, как обычно в Blender: импортёр берёт LOD относительно своего origin
+    for lod, (count, segments, width_scale) in enumerate(LODS):
+        name = 'GrassClump' + ('_LOD%d' % lod if lod else '')
+        make_clump(name, blades[:count], segments, width_scale, material, (float(lod), 0.0, 0.0))
 
     bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_yup=True, export_apply=True,
                               export_tangents=True, export_image_format='AUTO', export_materials='EXPORT',

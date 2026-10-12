@@ -399,7 +399,8 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 											 "far_border = :farBorder, near_fade = :nearFade, far_fade = :farFade, "
 											 "size_multiplier = :size, size_variation = :sizeVariation, jitter = :jitter, rotation_x = :rotationX, "
 											 "rotation_y = :rotationY, rotation_z = :rotationZ, align_to_terrain = :align, "
-											 "cast_shadow = :castShadow, shadow_impostor_distance = :shadowImpostor WHERE id = :id" );
+											 "cast_shadow = :castShadow, shadow_impostor_distance = :shadowImpostor, "
+											 "impostor_cast_shadow = :impostorShadow, impostor_base_shade = :baseShade WHERE id = :id" );
 		SQLite::Statement updateScatterModel( db, "UPDATE ScatterLayerModels SET weight = :weight, cast_shadow = :castShadow WHERE id = :id" );
 		for( const GS::ScatterLayerRecord& record : scatterLayers )
 		{
@@ -420,6 +421,8 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			updateScatter.bind( ":align", layer.alignToTerrain ? 1 : 0 );
 			updateScatter.bind( ":castShadow", layer.castShadow ? 1 : 0 );
 			updateScatter.bind( ":shadowImpostor", dbValue( layer.shadowImpostorDistance ) );
+			updateScatter.bind( ":impostorShadow", layer.impostorCastShadow ? 1 : 0 );
+			updateScatter.bind( ":baseShade", dbValue( layer.impostorBaseShade ) );
 			updateScatter.bind( ":id", layer.id );
 			updateScatter.exec();
 			updateScatter.reset();

@@ -232,7 +232,7 @@ void bakeOcclusion( const ScratchImage& color, ScratchImage& offset, uint32_t fr
 namespace GS
 {
 
-ImpostorMaterial::ImpostorMaterial( uint32_t id, const std::string& name ) : Material( id, name )
+ImpostorMaterial::ImpostorMaterial( uint32_t id, const std::string& name, bool flat ) : Material( id, name ), m_flat( flat )
 {
 }
 
@@ -250,16 +250,22 @@ bool ImpostorMaterial::initialize()
 	// Вершинные шейдеры: экземпляр расстановки, 1 — со сменой LOD дизерингом. Пиксельные: 0 — с отсечением по покрытию и
 	// глубиной поверхности (без depth prepass), 1 — после prepass: видимость по глубине сцены (проход opaqueDepthRead),
 	// 2 — как 0 с дизерингом, 3 — глубина (prepass и тени), 4 — глубина с дизерингом, 5 — как 1 с дизерингом
+	// Плоский импостер — тем же набором с IMPOSTOR_FLAT
+	const std::string flat = m_flat ? "IMPOSTOR_FLAT=1" : "";
+	auto defines = [&flat]( const std::string& own )
+	{
+		return own.empty() ? flat : flat.empty() ? own : own + "," + flat;
+	};
 	const std::string placed = "INST_POS=1,INST_SCALE=1,INST_ROTATE=1";
 	const std::string placedDither = placed + ",LOD_DITHER=1";
-	if( !addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\impostor.vs", placed ) ||
-		!addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\impostor.vs", placedDither ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", "ALPHA_MASK=1" ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps" ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", "ALPHA_MASK=1,LOD_DITHER=1" ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps" ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", "LOD_DITHER=1" ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", "LOD_DITHER=1" ) )
+	if( !addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\impostor.vs", defines( placed ) ) ||
+		!addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\impostor.vs", defines( placedDither ) ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", defines( "ALPHA_MASK=1" ) ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", defines( "" ) ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", defines( "ALPHA_MASK=1,LOD_DITHER=1" ) ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", defines( "" ) ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", defines( "LOD_DITHER=1" ) ) ||
+		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", defines( "LOD_DITHER=1" ) ) )
 		return false;
 
 	for( int dither = 0; dither < 2; ++dither )
@@ -304,6 +310,16 @@ int ImpostorMaterial::depthPhaseFor( const PropertyContainer&, const ShaderPhase
 std::vector<int> ImpostorMaterial::depthPhases() const
 {
 	return { m_depthPhases[0], m_depthPhases[1] };
+}
+
+void ImpostorMaterial::setBaseShade( float shade )
+{
+	shade = std::min( std::max( shade, 0.0f ), 1.0f );
+	if( m_params.shade.x == shade )
+		return;
+	m_params.shade.x = shade;
+	if( m_constantBuffer.valid() )
+		DMD3D::instance().updateBuffer( m_constantBuffer, &m_params, sizeof( m_params ) );
 }
 
 void ImpostorMaterial::setParams( const PropertyContainer& )
@@ -357,6 +373,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	m_params.alphaCutoff = 0.5f;
 	m_params.roughness = 0.8f;
 	m_params.occlusion = std::min( std::max( settings.occlusion, 0.0f ), 1.0f );
+	m_params.shade = XMFLOAT4( m_params.shade.x, box.Center.y + box.Extents.y, 0.0f, 0.0f );
 
 	// Секции LOD0 и их материалы с вариантом запекания; цвет пропускания — у секции, которая пропускает свет (хвоя)
 	std::vector<std::pair<DMModel::Section*, Material*>> sections;

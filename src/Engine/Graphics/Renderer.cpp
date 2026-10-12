@@ -634,8 +634,9 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 	ScopedRenderState passState;
 	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
 	const RenderContext context{ view, pass, frameRaster, m_constants, m_vertexPool, depthFromPrepass };
-	// Depth prepass — одной областью, как тени: строки объектов в «Statistic» и «GPU average» — их проходы цвета
-	executeCommands( m_collector, m_commands[static_cast<uint32_t>( pass )], context, pass != MeshPass::depthPrepass );
+	// Объекты depth prepass — под именами «Prepass: <объект>», как в тенях: имена без приставки — их проходы цвета
+	executeCommands( m_collector, m_commands[static_cast<uint32_t>( pass )], context, true,
+					 pass == MeshPass::depthPrepass ? "Prepass: " : "" );
 	m_gpuProfiler.endScope();
 }
 

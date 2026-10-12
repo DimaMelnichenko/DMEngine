@@ -21,6 +21,9 @@ cbuffer ImpostorBuffer : register( SLOT_CB_MATERIAL )
 	float  g_impostorAlphaCutoff;
 	float  g_impostorRoughness;
 	float  g_impostorOcclusion;		// сила затенения окружающего света по запечённому (G глубины кадров)
+	// x — затемнение низа: цвет у корня × (1 − x), к верху модели — без затемнения (ImpostorMaterial::setBaseShade);
+	// y — высота верха модели над её началом координат (ящик LOD0)
+	float4 g_impostorShade;
 };
 
 // Выход вершинного шейдера: карточка перед сферой (position), её точка в плоскости вида через центр сферы
@@ -38,6 +41,7 @@ struct ImpostorPixelInput
 	nointerpolation float4 rotation : TEXCOORD5;	// кватернион экземпляра: нормаль модели — в мир
 	nointerpolation float4 viewer : TEXCOORD6;		// xyz — направление на зрителя, w — радиус сферы, м
 	precise float planeOffset : TEXCOORD7;
+	nointerpolation float2 heightRange : TEXCOORD9;	// x — высота начала координат модели в мире, y — 1 / высота модели, м
 #ifdef LOD_DITHER
 	nointerpolation float lodDither : TEXCOORD8;
 #endif

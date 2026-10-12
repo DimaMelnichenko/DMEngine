@@ -81,12 +81,17 @@ ImpostorPixelInput main( VertexInputType input )
 	// взгляда), плоскость по-прежнему параллельна экрану, поэтому worldPosition и planeOffset интерполируются по ней точно.
 	// Глубину пишет запечённая поверхность (impostor.ps), и она только дальше карточки; камера ближе радиуса к центру —
 	// карточка не ближе половины его глубины
+#ifdef IMPOSTOR_FLAT
+	// Плоский импостер (трава без тени): глубина — самой карточки в плоскости через центр, без смещения
+	const float3 cardPosition = worldPosition;
+#else
 	float3 cardPosition = worldPosition - cb_viewDirection * radius;
 	if( !orthographic )
 	{
 		const float centerDepth = max( dot( center - cb_cameraPosition, cb_viewDirection ), 1e-3f );
 		cardPosition = cb_cameraPosition + ( worldPosition - cb_cameraPosition ) * ( max( centerDepth - radius, centerDepth * 0.5f ) / centerDepth );
 	}
+#endif
 
 	ImpostorPixelInput output;
 	output.position = mul( float4( cardPosition, 1.0f ), cb_viewProjectionMatrix );
@@ -98,6 +103,7 @@ ImpostorPixelInput main( VertexInputType input )
 	output.frames = uint3( frame0.y * frames + frame0.x, frame1.y * frames + frame1.x, frame2.y * frames + frame2.x );
 	output.weights = weights;
 	output.rotation = instance.rotation;
+	output.heightRange = float2( instance.position.y, 1.0f / max( g_impostorShade.y * scale, 1e-4f ) );
 #ifdef LOD_DITHER
 	output.lodDither = instance.lodDither;
 #endif

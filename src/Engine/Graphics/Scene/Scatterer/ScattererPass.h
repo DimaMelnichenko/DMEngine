@@ -70,9 +70,17 @@ public:
 	void setDitheredLodTransition( uint32_t variant, bool dithered );
 	// Дальность последнего LOD у видов теней (Variant::shadowLastLodDistance) — из GUI; буфер вариантов — при смене
 	void setShadowLastLodDistance( uint32_t variant, float distance );
-	// Дальности LOD варианта у видов теней: первые modelBoundaries границ (границы LOD модели, без перехода к импостеру и
-	// конца кольца) × scale (DMModel::shadowLodScale, из GUI). Со своими дальностями переход у видов теней — без дизеринга
-	void setShadowLodScale( uint32_t variant, float scale, uint32_t modelBoundaries );
+	// LOD варианта у видов теней (из GUI каждый кадр): границы LOD модели (первые modelBoundaries — без перехода к
+	// импостеру и конца кольца) × scale, детальнее minLod — нет (границы 0), с castingLods — экземпляра у теней нет
+	// (импостер без тени). Со своими дальностями переход у видов теней — без дизеринга
+	struct ShadowLods
+	{
+		float scale = 1.0f;					// DMModel::shadowLodScale × «Shadow LOD scale» набора
+		uint32_t minLod = 0;				// DMModel::shadowMinLod
+		uint32_t modelBoundaries = 0;
+		uint32_t castingLods = maxLods;
+	};
+	void setShadowLods( uint32_t variant, const ShadowLods& lods );
 	// Секция списка: её меш и группа (0…maxGroups − 1, Scatterer::groups); таблицы секций и групп уходят на GPU в
 	// populate, только когда менялись
 	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset, uint32_t group );
@@ -196,7 +204,8 @@ private:
 		// видов теней последний LOD (Variant::shadowLastLodDistance; 0 — как у главного)
 		DirectX::XMFLOAT4 variants[maxVariants];
 		DirectX::XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
-		DirectX::XMFLOAT4 shadowLodEnd[maxVariants];	// они же у видов теней (setShadowLodScale)
+		DirectX::XMFLOAT4 shadowLodEnd[maxVariants];	// они же у видов теней (setShadowLods)
+		DirectX::XMFLOAT4 shadowCasting[maxVariants];	// x — с этого LOD у видов теней экземпляра нет (setShadowLods)
 		DirectX::XMFLOAT4 bounds[maxVariants];		// сфера модели варианта (Variant::bounds)
 		DirectX::XMFLOAT4 footprints[maxVariants];	// след основания варианта (Variant::footprint)
 		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида

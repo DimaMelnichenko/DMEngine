@@ -552,7 +552,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 {
 	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, placement, mask, cell_size, near_border, far_border, near_fade, "
 														   "far_fade, size_multiplier, size_variation, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow, persistent, "
-														   "impostor_distance, shadow_impostor_distance, impostor_density, impostor_occlusion "
+														   "impostor_distance, shadow_impostor_distance, impostor_density, impostor_occlusion, impostor_cast_shadow, impostor_base_shade "
 														   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
 	while( query.executeStep() )
@@ -586,6 +586,8 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.settings.shadowImpostorDistance = value( "shadow_impostor_distance" );
 		layer.settings.impostorDensity = value( "impostor_density" );
 		layer.settings.impostorOcclusion = value( "impostor_occlusion" );
+		layer.settings.impostorCastShadow = query.getColumn( "impostor_cast_shadow" ).getInt() != 0;
+		layer.settings.impostorBaseShade = value( "impostor_base_shade" );
 
 		// Модели слоя — варианты растения с весами, в порядке строк
 		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, weight, cast_shadow FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
@@ -610,14 +612,16 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 
 	LOG( "Load model: " + std::to_string( idModel ) );
 
-	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, shadow_lod_scale FROM Models where id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, shadow_lod_scale, shadow_min_lod FROM Models where id = :id" );
 	query.bind( ":id", idModel );
 	float shadowLodScale = 1.0f;
+	uint32_t shadowMinLod = 0;
 	while( query.executeStep() )
 	{	
 		if( !GS::System::models().createModel( query.getColumn( 0 ), query.getColumn( 1 ) ) )
 			return false;
 		shadowLodScale = static_cast<float>( query.getColumn( "shadow_lod_scale" ).getDouble() );
+		shadowMinLod = static_cast<uint32_t>( std::max( query.getColumn( "shadow_min_lod" ).getInt(), 0 ) );
 	}
 
 	if( !GS::System::models().exists( idModel ) )
@@ -708,9 +712,12 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 										 " (" + material + ")" );
 		}
 	}
-	// Множитель LOD теней — свойство окна «Models» только у моделей с несколькими LOD
+	// LOD теней — свойства окна «Models» только у моделей с несколькими LOD
 	if( model->lodCount() > 1 )
+	{
 		model->setShadowLodScale( shadowLodScale > 0.0f ? shadowLodScale : 1.0f );
+		model->setShadowMinLod( std::min<uint32_t>( shadowMinLod, model->lodCount() - 1u ) );
+	}
 
 	return true;
 }

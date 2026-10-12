@@ -29,7 +29,7 @@ public:
 	// индексы мешей секций LOD0, их материалы (параметры секций, отпечатки файлов текстур), настройки запекания, отпечаток
 	// Shaders\ и сборка (Debug и Release — свои кадры: оптимизация шейдеров меняет округление). Меняется код запекания,
 	// которого нет в ключе (defines варианта запекания, обработка кадров на CPU), — поднять версию
-	static constexpr uint32_t cacheVersion = 1;
+	static constexpr uint32_t cacheVersion = 2;
 
 	// Настройки запекания (ScatterLayers.impostor_density / impostor_occlusion)
 	struct BakeSettings
@@ -38,7 +38,10 @@ public:
 		float occlusion = 0.0f;	// сила затенения окружающего света внутри кроны, 0…1
 	};
 
-	ImpostorMaterial( uint32_t id, const std::string& name );
+	// flat — плоский импостер (у слоя импостер без тени, трава): глубина — самой карточки, без смещения глубины и без
+	// чтения глубины сцены — после prepass обычный проход opaque; у травы до горизонта сотни карточек на пиксель, и
+	// глубина из шейдера с проверкой по глубине сцены стоила дороже мешей, которые импостер заменил
+	ImpostorMaterial( uint32_t id, const std::string& name, bool flat = false );
 
 	bool initialize() override;
 	std::vector<VertexElement> initLayouts() override;
@@ -46,6 +49,10 @@ public:
 	bool bake( DMModel& model, const BakeContext& context, const BakeSettings& settings = {} );
 
 	void setParams( const PropertyContainer& ) override;
+	// Затемнение низа (ScatterLayers.impostor_base_shade, свойство слоя «Impostor base shade»): цвет у корня × (1 − shade),
+	// к верху модели — без затемнения. Импостер без тени (трава вдали) так не выглядит светлее травы с тенями рядом. Буфер
+	// констант — при смене
+	void setBaseShade( float shade );
 	// Masked без отсечения граней (карточка всегда к виду), со сменой LOD дизерингом
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
 	int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
@@ -54,7 +61,7 @@ public:
 	// Экземпляры — всегда из пула расстановки
 	bool enablePlacedInstances() override { return true; }
 	// Глубина пикселя — запечённой поверхности: после depth prepass видимость — по глубине сцены (проход opaqueDepthRead)
-	bool readsSceneDepth() const override { return true; }
+	bool readsSceneDepth() const override { return !m_flat; }
 
 private:
 	// cbuffer ImpostorBuffer в Shaders/impostor.sh
@@ -67,14 +74,17 @@ private:
 		float alphaCutoff;
 		float roughness;
 		float occlusion;		// сила затенения окружающего света по запечённому (BakeSettings::occlusion)
+		// x — затемнение низа (setBaseShade), y — высота верха модели над её началом координат (ящик LOD0), zw — запас
+		DirectX::XMFLOAT4 shade;
 	};
-	static_assert( sizeof( Params ) == 64, "ImpostorBuffer layout" );
+	static_assert( sizeof( Params ) == 80, "ImpostorBuffer layout" );
 
 	// Вид кадра запекания frame (номер по сторонам сетки): ортография на сферу модели со стороны его направления
 	RenderView frameView( uint32_t x, uint32_t y ) const;
 
 	// Фазы: цвет — [вершинный с LOD_DITHER][без depth prepass: ALPHA_MASK и глубина поверхности; иначе — видимость по
 	// глубине сцены][отсечение дизерингом], глубина — [LOD_DITHER]
+	bool m_flat = false;
 	int m_colorPhases[2][2][2] = {};
 	int m_depthPhases[2] = {};
 	Params m_params = {};
