@@ -2570,11 +2570,36 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( int label = 0; label < lakeCount; ++label )
 		if( lakeOutlet[label] >= 0 )
 			level[lakeOutlet[label]] = lakeSurface[label];
-	// Подпор: снизу вверх по сети уровень — не ниже воды ниже по течению. Между узлами уровень растра — прямая, а дно под ней
-	// — детальное: гребень переката посреди отрезка выходил выше воды, и вода «проходила сквозь» подъём русла (2026-10-10).
-	// Поэтому тальвег отрезка проверяется через тексель детальной земли: под прямой уровня он не мельче наименьшей глубины
-	// концов; нехватку добирает ближний конец (верхний — с запасом 1 / (1 − f), нижний — 1 / f). Подъём нижнего снова
-	// поднимает подпором верхние — проходы до устойчивого. Уровень узлов в озере и истока на пороге — перелив, не поднимается
+	// Доля перепада уровня отрезка k → d в доле t: на ступенчатом участке перепад — на стенке уступа (там же, где уступ дна,
+	// stepOffset: от гребня до котла), а не по прямой на весь отрезок: в плёсе вода ровная, на уступе — слив каскадом.
+	// Где ступени сходят на нет, — к прямой. Узлы разных ручьёв (приток у слияния) — прямая: фазы ступеней у них свои
+	auto levelShare = [&]( int k, int d, double t )
+	{
+		const double stepped = std::clamp( std::max( stepHeight[k], stepHeight[d] ) / std::max( static_cast<double>( p.stepHeight ), 1e-3 ), 0.0, 1.0 );
+		if( stepped <= 0.0 || up[d] != k )
+			return t;
+		const double face = std::clamp( stepFace / std::max( stepLength[k], 1e-3 ), 0.05, 0.4 );
+		auto passed = [&]( double phase )
+		{
+			const double index = std::floor( phase );
+			return index + smoothstep( 1.0 - face, 1.0, phase - index );
+		};
+		const double from = passed( stepPhase[k] );
+		const double to = passed( stepPhase[d] );
+		if( to - from < 1e-3 )
+			return t;
+		const double share = ( passed( stepPhase[k] + ( stepPhase[d] - stepPhase[k] ) * t ) - from ) / ( to - from );
+		return t + ( share - t ) * stepped;
+	};
+	// Подпор: снизу вверх по сети уровень — не ниже воды ниже по течению. Между узлами уровень растра — по levelShare (на
+	// ступенях — ровный плёс и перепад на стенке уступа, иначе прямая), а дно под ним — детальное: гребень переката посреди
+	// отрезка выходил выше воды, и вода «проходила сквозь» подъём русла (2026-10-10). Поэтому тальвег отрезка проверяется
+	// через тексель детальной земли: под уровнем он не мельче наименьшей глубины концов; нехватку добирает ближний конец
+	// (w — доля перепада в точке: до половины — верхний с запасом 1 / (1 − w), дальше — плёс до гребня, если гребень выше
+	// него, и нижний с запасом 1 / w, но не выше верхнего). Проверка по прямой на ступенях видела
+	// нехватку у гребня там, где вода плёса его покрывает, и поднимала плёс выше бровки — вода выходила на склон
+	// (2026-10-13, 651,143). Подъём нижнего снова поднимает подпором верхние — проходы до устойчивого. Уровень узлов в
+	// озере и истока на пороге — уровень озера, не поднимается
 	std::vector<uint8_t> pinned( count, 0 );
 	for( int k = 0; k < count; ++k )
 		pinned[k] = inLake( k ) ? 1 : 0;
@@ -2605,17 +2630,26 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			{
 				const double f = static_cast<double>( s ) / steps;
 				const Point at{ a.x + ( b.x - a.x ) * f, a.y + ( b.y - a.y ) * f };
+				const double w = std::clamp( levelShare( k, d, f ), 0.0, 1.0 );
 				const double need = thalweg( at, tx, ty ) + needDepth[k] + ( needDepth[d] - needDepth[k] ) * f;
-				const double shortfall = need - ( level[k] + ( level[d] - level[k] ) * f );
+				const double shortfall = need - ( level[k] + ( level[d] - level[k] ) * w );
 				if( shortfall <= 1e-4 )
 					continue;
-				// Нижний — если гребень ближе к нему и подъём не выше верхнего (вода в гору не течёт)
-				const bool raiseLower = f > 0.5 && !pinned[d] && level[d] + shortfall / f <= level[k];
-				if( !raiseLower && !pinned[k] )
-					level[k] += shortfall / ( 1.0 - f );
-				else if( raiseLower )
+				if( w <= 0.5 )
 				{
-					level[d] += shortfall / f;
+					// Гребень ближе к верхнему: его подъём — не больше двойной нехватки
+					if( !pinned[k] )
+						level[k] += shortfall / ( 1.0 - w );
+					continue;
+				}
+				// Ближе к нижнему (на стенке уступа w → 1 — подъём верхнего на нехватку / (1 − w) взлетал на метры): гребень выше
+				// плёса — плёс до гребня, остальное — нижний, но не выше верхнего (вода в гору не течёт)
+				if( !pinned[k] && need > level[k] )
+					level[k] = need;
+				const double rest = need - ( level[k] + ( level[d] - level[k] ) * w );
+				if( rest > 1e-4 && !pinned[d] && level[d] < level[k] )
+				{
+					level[d] = std::min( level[d] + rest / w, level[k] );
 					raisedBelow = true;
 				}
 			}
@@ -2961,27 +2995,6 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		result.detailTiles[t].water.assign( static_cast<size_t>( detailSide ) * detailSide, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, 0.0f ) );
 		detailNearest[t].assign( static_cast<size_t>( detailSide ) * detailSide, std::numeric_limits<double>::infinity() );
 	}
-	// Доля перепада уровня отрезка k → d в доле t: на ступенчатом участке перепад — на стенке уступа (там же, где уступ дна,
-	// stepOffset: от гребня до котла), а не по прямой на весь отрезок: в плёсе вода ровная, на уступе — слив каскадом.
-	// Где ступени сходят на нет, — к прямой. Узлы разных ручьёв (приток у слияния) — прямая: фазы ступеней у них свои
-	auto levelShare = [&]( int k, int d, double t )
-	{
-		const double stepped = std::clamp( std::max( stepHeight[k], stepHeight[d] ) / std::max( static_cast<double>( p.stepHeight ), 1e-3 ), 0.0, 1.0 );
-		if( stepped <= 0.0 || up[d] != k )
-			return t;
-		const double face = std::clamp( stepFace / std::max( stepLength[k], 1e-3 ), 0.05, 0.4 );
-		auto passed = [&]( double phase )
-		{
-			const double index = std::floor( phase );
-			return index + smoothstep( 1.0 - face, 1.0, phase - index );
-		};
-		const double from = passed( stepPhase[k] );
-		const double to = passed( stepPhase[d] );
-		if( to - from < 1e-3 )
-			return t;
-		const double share = ( passed( stepPhase[k] + ( stepPhase[d] - stepPhase[k] ) * t ) - from ) / ( to - from );
-		return t + ( share - t ) * stepped;
-	};
 	auto detailTexel = [&]( const DetailTile& tile, int i, int j )
 	{
 		return Point{ tile.x * static_cast<double>( detailTileCells ) + ( i - 0.5 ) * detailStep,
