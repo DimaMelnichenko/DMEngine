@@ -35,4 +35,9 @@ bool DMTexture::create( const TextureDesc& desc, const TextureData& data )
 	return true;
 }
 
+bool DMTexture::update( const TextureRegion& region, const void* data, uint32_t rowPitch )
+{
+	return DMD3D::instance().updateTexture( m_texture, region, data, rowPitch );
+}
+
 }

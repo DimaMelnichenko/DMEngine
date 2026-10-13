@@ -37,6 +37,8 @@ public:
 	// Текстура, которую считает сам движок (маски правил слоёв, TerrainMasks), по имени: есть — пересоздаётся на месте
 	// (кто держит &srv(), видит новую), нет — добавляется с id вне base.db3
 	bool setGenerated( const std::string& name, const TextureDesc& desc, const TextureData& data );
+	// Участок такой текстуры заново, без пересоздания (кисть масок): false — её нет или участок не подошёл
+	bool updateGenerated( const std::string& name, const TextureRegion& region, const void* data, uint32_t rowPitch );
 
 	static constexpr uint32_t noiseId = 1000000;
 	static constexpr uint32_t whiteId = 1000001;

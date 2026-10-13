@@ -125,6 +125,11 @@ bool DMTextureStorage::setGenerated( const std::string& name, const TextureDesc&
 	return insertResource( std::move( texture ) );
 }
 
+bool DMTextureStorage::updateGenerated( const std::string& name, const TextureRegion& region, const void* data, uint32_t rowPitch )
+{
+	return exists( name ) && get( id( name ) )->update( region, data, rowPitch );
+}
+
 TextureCompression DMTextureStorage::compressionFromName( const std::string& name )
 {
 	if( name == "default" )

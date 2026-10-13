@@ -91,6 +91,18 @@ struct TextureData
 	uint32_t slicePitch = 0;
 };
 
+// Участок одного подресурса для DMD3D::updateTexture: мип, срез и прямоугольник в текселях мипа (width или height 0 —
+// до края мипа); у сжатых форматов начало и размер кратны блоку 4 × 4 (размер — или до края мипа)
+struct TextureRegion
+{
+	uint32_t mip = 0;
+	uint32_t slice = 0;
+	uint32_t x = 0;
+	uint32_t y = 0;
+	uint32_t width = 0;
+	uint32_t height = 0;
+};
+
 // Вид на текстуру: какой (automatic — по её описанию: массив, куб, объём или 2D), формат (UNKNOWN — формат текстуры;
 // у typeless — обязателен), мипы и срезы. У цели рендера и UAV мип один — firstMip
 struct TextureViewDesc

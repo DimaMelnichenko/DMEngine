@@ -576,6 +576,93 @@ void DMD3D::updateBuffer( Buffer& buffer, const void* data, size_t size )
 		barrier( buffer.handle(), steadyAccess( buffer.desc().usage ) );
 }
 
+bool DMD3D::updateTexture( Texture& texture, const TextureRegion& region, const void* data, uint32_t rowPitch )
+{
+	ID3D12Resource* destination = texture.handle();
+	const TextureDesc& desc = texture.desc();
+	if( !destination || !data || desc.depth > 1 || region.mip >= desc.mipCount || region.slice >= desc.arraySize )
+		return false;
+	const uint32_t mipWidth = std::max( desc.width >> region.mip, 1u );
+	const uint32_t mipHeight = std::max( desc.height >> region.mip, 1u );
+	const uint32_t width = region.width ? region.width : mipWidth - std::min( region.x, mipWidth );
+	const uint32_t height = region.height ? region.height : mipHeight - std::min( region.y, mipHeight );
+	if( width == 0 || height == 0 || region.x + width > mipWidth || region.y + height > mipHeight )
+	{
+		LOG( "updateTexture: the region is out of the mip" );
+		return false;
+	}
+
+	// Раскладка участка в upload-памяти — как у текстуры его размера: шаг строк с выравниванием 256 байт, у сжатых
+	// форматов строки — блоков
+	D3D12_RESOURCE_DESC regionDesc = destination->GetDesc();
+	regionDesc.Width = width;
+	regionDesc.Height = height;
+	regionDesc.DepthOrArraySize = 1;
+	regionDesc.MipLevels = 1;
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout = {};
+	UINT rows = 0;
+	UINT64 rowBytes = 0, total = 0;
+	m_device->GetCopyableFootprints( &regionDesc, 0, 1, 0, &layout, &rows, &rowBytes, &total );
+	if( total == UINT64_MAX || rows == 0 )
+		return false;
+	const uint64_t sourcePitch = rowPitch ? rowPitch : rowBytes;
+
+	// В кадре небольшие участки — через кольцо кадра (живёт, пока GPU не закончит кадр), иначе — отдельный upload-буфер с
+	// отложенным отпуском
+	ensureRecording();
+	ID3D12Resource* staging = nullptr;
+	D3D12MA::Allocation* allocation = nullptr;
+	uint8_t* mapped = nullptr;
+	uint32_t offset = 0, bytes = 0;
+	if( m_frameStarted && !m_writingBuffer && total <= constantRingBytes / frameCount / 4 )
+	{
+		mapped = static_cast<uint8_t*>( m_constantRing.beginWrite( static_cast<uint32_t>( total ), offset, bytes,
+																	D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT ) );
+		if( mapped )
+			staging = m_constantRing.handle();
+	}
+	if( !staging )
+	{
+		void* memory = nullptr;
+		if( !createStaging( total, D3D12_HEAP_TYPE_UPLOAD, &staging, &allocation, &memory ) )
+			return false;
+		mapped = static_cast<uint8_t*>( memory );
+		offset = 0;
+	}
+	for( UINT row = 0; row < rows; ++row )
+		memcpy( mapped + static_cast<uint64_t>( row ) * layout.Footprint.RowPitch, static_cast<const uint8_t*>( data ) + row * sourcePitch,
+				rowBytes );
+	if( allocation )
+		staging->Unmap( 0, nullptr );
+	else
+		m_constantRing.finishWrite();
+
+	// Только этот подресурс — в копию и обратно для шейдеров; барьеры сразу, чтобы следующая правка того же подресурса
+	// в кадре шла отдельным вызовом Barrier после этого
+	const SubresourceRange range = { region.mip, 1, region.slice, 1 };
+	barrier( destination, D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_COPY_DEST, &range );
+	flushBarriers();
+	D3D12_TEXTURE_COPY_LOCATION target = {};
+	target.pResource = destination;
+	target.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	target.SubresourceIndex = region.mip + region.slice * desc.mipCount;
+	D3D12_TEXTURE_COPY_LOCATION source = {};
+	source.pResource = staging;
+	source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+	source.PlacedFootprint = layout;
+	source.PlacedFootprint.Offset = offset;
+	m_commandList->CopyTextureRegion( &target, region.x, region.y, 0, &source, nullptr );
+	barrier( destination, D3D12_BARRIER_ACCESS_SHADER_RESOURCE, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, &range );
+	flushBarriers();
+	if( allocation )
+	{
+		m_states.erase( staging );
+		deferRelease( staging );
+		deferRelease( allocation );
+	}
+	return true;
+}
+
 void DMD3D::copyBuffer( Buffer& destination, const Buffer& source )
 {
 	if( !destination.handle() || !source.handle() )

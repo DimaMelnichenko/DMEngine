@@ -19,6 +19,8 @@ public:
 	bool create( const DirectX::ScratchImage& image );
 	// Из данных одного мипа: процедурные текстуры
 	bool create( const TextureDesc& desc, const TextureData& data );
+	// Участок подресурса заново, без пересоздания (DMD3D::updateTexture): живые правки сгенерированных текстур
+	bool update( const TextureRegion& region, const void* data, uint32_t rowPitch );
 
 	const ShaderView& srv() const { return m_srv; }
 	const Texture& texture() const { return m_texture; }

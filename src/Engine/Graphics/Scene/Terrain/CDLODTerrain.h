@@ -219,7 +219,8 @@ private:
 	const TerrainMasks& paintedMasks() const { return m_paintActive ? m_painted : m_masks; }
 	void refreshPainted();
 	void refreshPaintedTarget( const std::string& target, const TerrainPaint::Rect& rect );
-	bool uploadMask( const TerrainMasks::Mask& mask );
+	// Маска — на GPU: прямоугольник rect участком текстуры (касание кисти), без него — целиком; текстуры ещё нет — создаётся
+	bool uploadMask( const TerrainMasks::Mask& mask, const TerrainPaint::Rect* rect = nullptr );
 	// Цель после мазка, отмены, повтора: на GPU; маска — флаг раскладки леса, лес — полог поля ветра
 	void paintTargetChanged( const std::string& target );
 	void addPaintProperties();

@@ -811,14 +811,33 @@ bool CDLODTerrain::rebuildMasks()
 	return true;
 }
 
-bool CDLODTerrain::uploadMask( const TerrainMasks::Mask& mask )
+bool CDLODTerrain::uploadMask( const TerrainMasks::Mask& mask, const TerrainPaint::Rect* rect )
 {
-	// Маски — текстуры хранилища по имени (ScatterLayers.mask, ParticleEmitters.mask): пересоздаются на месте, виды у
-	// расстановки и частиц остаются верными
+	// Маски — текстуры хранилища по имени (ScatterLayers.mask, ParticleEmitters.mask): есть — пишется участок на месте
+	// (DMD3D::updateTexture), нет — создаётся; виды у расстановки и частиц остаются верными
 	const uint32_t size = paintedMasks().size;
+	if( mask.values.size() != static_cast<size_t>( size ) * size )
+		return false;
+	const auto byte = []( float value ) { return static_cast<uint8_t>( std::lround( std::clamp( value, 0.0f, 1.0f ) * 255.0f ) ); };
+	const TerrainPaint::Rect area = rect && !rect->empty() ? *rect : TerrainPaint::Rect{ 0, 0, size, size };
+	if( System::textures().exists( mask.name ) && System::textures().get( System::textures().id( mask.name ) )->width() == size )
+	{
+		const uint32_t width = area.x1 - area.x0;
+		std::vector<uint8_t> bytes( static_cast<size_t>( width ) * ( area.row1 - area.row0 ) );
+		for( uint32_t row = area.row0; row < area.row1; ++row )
+			for( uint32_t x = area.x0; x < area.x1; ++x )
+				bytes[static_cast<size_t>( row - area.row0 ) * width + x - area.x0] = byte( mask.values[static_cast<size_t>( row ) * size + x] );
+		TextureRegion region;
+		region.x = area.x0;
+		region.y = area.row0;
+		region.width = width;
+		region.height = area.row1 - area.row0;
+		if( System::textures().updateGenerated( mask.name, region, bytes.data(), width ) )
+			return true;
+	}
 	std::vector<uint8_t> bytes( static_cast<size_t>( size ) * size );
-	for( size_t i = 0; i < bytes.size() && i < mask.values.size(); ++i )
-		bytes[i] = static_cast<uint8_t>( std::lround( std::clamp( mask.values[i], 0.0f, 1.0f ) * 255.0f ) );
+	for( size_t i = 0; i < bytes.size(); ++i )
+		bytes[i] = byte( mask.values[i] );
 	TextureDesc desc;
 	desc.width = desc.height = size;
 	desc.format = DXGI_FORMAT_R8_UNORM;
@@ -952,7 +971,7 @@ void CDLODTerrain::paintDab( float x, float z, float radius, float falloff )
 	}
 	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
 		if( mask.name == m_strokeTarget )
-			uploadMask( mask );
+			uploadMask( mask, &changed );
 }
 
 CDLODTerrain::PaintEdit CDLODTerrain::endPaintStroke()
