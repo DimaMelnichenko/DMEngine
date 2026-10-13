@@ -1363,6 +1363,7 @@ TerrainDetailSplat::Source CDLODTerrain::detailSplatSource() const
 	source.edits = &m_baseCoverage;
 	source.layerCount = m_material.layerCount();
 	source.channelLayer = m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
+	source.staticWater = m_staticWater;
 	return source;
 }
 
@@ -2041,6 +2042,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.showWind = m_properties["Show wind"].data<bool>() && m_windView.valid() ? 1 : 0;
 		params.detailTile = m_detailTileSize;
 		params.splatDetailTile = m_detailSplat.tileSize();
+		params.wetnessBaked = m_staticWater && m_detailSplat.tileSize() > 0.0f ? 1 : 0;
 		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
 	} );

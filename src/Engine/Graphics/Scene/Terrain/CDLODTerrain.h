@@ -186,6 +186,8 @@ private:
 		float splatDetailTile;	// сторона плитки детального слоя весов, м (TerrainDetailSplat); 0 — плиток нет
 		int32_t waterBedLayer;	// слой гальки под водой режима static — по глубине в точке (−1 — нет)
 		uint32_t showWind;		// поле ветра на рельефе (SLOT_WIND_FIELD) — отладка, «Show wind»
+		uint32_t wetnessBaked;	// мокрость от воды static — в плитках детального слоя весов (TerrainDetailSplat)
+		float parametersPadding[3];
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1, −2: начало морфинга и 1 / длина зоны
 		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
 	};

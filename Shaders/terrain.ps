@@ -59,11 +59,13 @@ float3 fineNormal( float2 worldXZ, float offset )
 	return normalize( float3( left - right, 2.0f * offset, back - front ) );
 }
 
-// Веса восьми слоёв детального слоя в точке (0,25 м): галька русел по врезу и дно под водой уже в них; false — плитки нет
-bool sampleSplatDetail( float2 worldXZ, out float4 weights0, out float4 weights1 )
+// Детальный слой в точке (0,25 м): веса восьми слоёв (галька русел по врезу и дно под водой уже в них) и срез не весов
+// (x — мокрость от воды static); false — плитки нет
+bool sampleSplatDetail( float2 worldXZ, out float4 weights0, out float4 weights1, out float4 extra )
 {
 	weights0 = 0.0f;
 	weights1 = 0.0f;
+	extra = 0.0f;
 	if( g_splatDetailTile <= 0.0f )
 		return false;
 	uint tilesX, tilesZ;
@@ -79,9 +81,10 @@ bool sampleSplatDetail( float2 worldXZ, out float4 weights0, out float4 weights1
 	// Тексель i плитки — центр в tile + ( i − 1 + 0,5 ) · cell: поле в тексель с каждой стороны
 	const float cell = g_splatDetailTile / ( width - 2 );
 	const float2 uv = ( ( worldXZ - tile * g_splatDetailTile ) / cell + 1.0f ) / float2( width, height );
-	const float slice = 2.0f * ( index - 1 );
+	const float slice = 3.0f * ( index - 1 );
 	weights0 = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, slice ), 0.0f );
 	weights1 = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, slice + 1.0f ), 0.0f );
+	extra = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, slice + 2.0f ), 0.0f );
 	return true;
 }
 
@@ -179,23 +182,32 @@ float4 main( PixelInputType input ) : SV_TARGET
 	const float4 splat0 = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 0.0f ) );
 	const float4 splat1 = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 1.0f ) );
 	float weights[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
-	// У русел — детальный слой весов (0,25 м: галька по врезу), пока пиксель не крупнее двух текселей карты высот, к четырём
-	// — splat-карта 1 м (в ней галька русел по клеткам), как у нормали. Мипов у плиток нет, а в мипах splat-карты узкое
-	// русло растворяется в траве: веса меньше соседних слоёв проигрывают им и при смешивании по высоте
-	float4 fine0, fine1;
-	[branch] if( footprint < 4.0f * g_texelSize && sampleSplatDetail( position.xz, fine0, fine1 ) )
+	// У русел — детальный слой весов (0,25 м: галька по врезу и дно под водой, мокрость), пока пиксель не крупнее двух
+	// текселей карты высот, к четырём — splat-карта 1 м (в ней галька русел по клеткам), как у нормали. Мипов у плиток нет,
+	// а в мипах splat-карты узкое русло растворяется в траве: веса меньше соседних слоёв проигрывают им и при смешивании по
+	// высоте
+	float detailShare = 0.0f;
+	float bakedWetness = 0.0f;
+	float4 fine0, fine1, fineExtra;
+	[branch] if( footprint < 4.0f * g_texelSize && sampleSplatDetail( position.xz, fine0, fine1, fineExtra ) )
 	{
-		const float detailShare = saturate( 2.0f - footprint / ( 2.0f * g_texelSize ) );
+		detailShare = saturate( 2.0f - footprint / ( 2.0f * g_texelSize ) );
 		const float fine[maxLayers] = { fine0.x, fine0.y, fine0.z, fine0.w, fine1.x, fine1.y, fine1.z, fine1.w };
 		[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
 			weights[layer] = lerp( weights[layer], fine[layer], detailShare );
+		bakedWetness = fineExtra.x;
 	}
+	// Вода в точке — над точной землёй (детальная плитка или карта высот), как урез у воды (water.ps) и в плитках: вдали
+	// рельеф рисуется грубее, а урез один. Где плитка с запечённой водой static — не нужна
+	const bool liveWater = detailShare < 1.0f || g_wetnessBaked == 0 || g_showWater != 0;
+	float waterDepth = -1e30f;
+	[branch] if( liveWater )
+		waterDepth = waterDepthAt( input.uv, sampleFineHeight( position.xz ) );
 	// Дно под водой (режим static: озёра) — галька по глубине в точке, урез внутри клетки (в splat-карте клеток озёр нет);
-	// и у детального слоя — по высоте нарисованного рельефа, как край воды: вдали рельеф грубее плитки
-	const float waterDepth = waterDepthAt( input.uv, position.y );
+	// в детальном слое оно уже в весах
 	[branch] if( g_waterBedLayer >= 0 && waterDepth > 0.03f )
 	{
-		const float bed = smoothstep( 0.03f, 0.15f, waterDepth );
+		const float bed = smoothstep( 0.03f, 0.15f, waterDepth ) * ( 1.0f - detailShare );
 		[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
 			weights[layer] = weights[layer] * ( 1.0f - bed ) + ( layer == (uint)g_waterBedLayer ? bed : 0.0f );
 	}
@@ -261,8 +273,13 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.occlusion = 1.0f;
 	surface.emissive = 0.0f;
 
-	// Мокрая земля у воды и под ней (симуляция, water.sh): вода в порах — темнее и глаже (блик), как wet в материалах UE
-	const float wet = waterWetness( input.uv, position.y );
+	// Мокрая земля у воды и под ней: вода в порах — темнее и глаже (блик), как wet в материалах UE. У воды static в плитках —
+	// запечённая (детальный слой весов), иначе — по глубине в точке над точной землёй, как waterWetness, и где вода недавно
+	// ушла (simulated) — сохнет не сразу
+	float liveWetness = 0.0f;
+	[branch] if( liveWater )
+		liveWetness = max( smoothstep( -0.02f, 0.0f, waterDepth ), smoothstep( 0.005f, 0.02f, recededWaterDepth( input.uv ) ) );
+	const float wet = g_wetnessBaked != 0 ? lerp( liveWetness, bakedWetness, detailShare ) : max( liveWetness, bakedWetness * detailShare );
 	surface.baseColor *= lerp( 1.0f, 0.6f, wet );
 	surface.roughness = lerp( surface.roughness, 0.2f, wet );
 

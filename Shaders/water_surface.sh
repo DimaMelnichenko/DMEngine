@@ -28,6 +28,11 @@ cbuffer WaterSurfaceBuffer : register( SLOT_CB_MATERIAL )
 	float  g_foamShear;			// и там, где сдвиг скорости больше, 1/с
 	float  g_detailDistance;	// м: ближе — поверхность у русел рисует детальная плитка (0 — её нет)
 	float  g_foamSlope;			// пена слива — где поверхность детальной воды круче, м на м (полная — втрое круче)
+	// Точная земля — урез по ней (water.ps): карта высот (слот 3) в метры и детальная плитка (terrain_detail.sh)
+	float  g_terrainHeightMultiplier;
+	float  g_terrainHeightOffset;
+	float  g_terrainDetailTile;	// сторона детальной плитки, м; 0 — её нет
+	float  g_surfacePadding;
 };
 
 struct WaterPixelInput

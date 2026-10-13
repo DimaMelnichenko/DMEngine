@@ -38,6 +38,9 @@ public:
 	// клетку (0,25 м при клетке 1 м) и поле в тексель с каждой стороны: (detailTileCells · detailSamples + 2)² точек
 	static constexpr uint32_t detailTileCells = 32;
 	static constexpr uint32_t detailSamples = 4;
+	// Мельче воды не видно — только мокрая земля, м: уровень поверхности детальной воды (water_detail.cs) и дно под водой
+	// с мокрой землёй детального слоя весов (TerrainDetailSplat) — по одному правилу
+	static constexpr float visibleWaterDepth = 0.01f;
 	struct DetailTile
 	{
 		uint32_t x = 0;					// плитка по x и z мира (z — от ближнего края карты)

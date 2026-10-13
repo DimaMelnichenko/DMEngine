@@ -17,7 +17,9 @@ namespace
 {
 
 constexpr uint32_t layers = TerrainMasks::splatLayers;
-constexpr uint32_t slicesPerTile = layers / 4;
+constexpr uint32_t weightSlices = layers / 4;
+constexpr uint32_t slicesPerTile = weightSlices + 1;	// и срез мокрости
+constexpr float noLevel = -1e30f;
 
 float smoothstep( float from, float to, float x )
 {
@@ -36,6 +38,40 @@ void TerrainDetailSplat::computeTile( const TerrainHydrology::DetailTile& tile, 
 	const float worldSize = masks.size * source.texelSize;
 	const float cell = m_tileSize / ( side - 2 );
 	const bool channels = source.channelLayer >= 0 && tile.carve.size() == texels;
+
+	// Уровень поверхности воды в текселях — как у детальной воды (water_detail.cs, mainDetailSurface): свой, если вода
+	// видна, иначе наименьший у мокрых соседей
+	std::vector<float> level;
+	if( source.staticWater && tile.water.size() == texels && tile.heights.size() == texels )
+	{
+		level.assign( texels, noLevel );
+		const auto depth = [&]( int i, int j, float& waterLevel )
+		{
+			const size_t k = static_cast<size_t>( j ) * side + i;
+			waterLevel = tile.water[k].x;
+			return waterLevel > -1e8f ? waterLevel - tile.heights[k] : noLevel;
+		};
+		for( int j = 0; j < side; ++j )
+			for( int i = 0; i < side; ++i )
+			{
+				float own;
+				if( depth( i, j, own ) >= TerrainHydrology::visibleWaterDepth )
+				{
+					level[static_cast<size_t>( j ) * side + i] = own;
+					continue;
+				}
+				float lowest = 1e30f;
+				for( int y = -1; y <= 1; ++y )
+					for( int x = -1; x <= 1; ++x )
+					{
+						float neighbor;
+						if( depth( std::clamp( i + x, 0, side - 1 ), std::clamp( j + y, 0, side - 1 ), neighbor ) >= TerrainHydrology::visibleWaterDepth )
+							lowest = std::min( lowest, neighbor );
+					}
+				if( lowest < 1e29f )
+					level[static_cast<size_t>( j ) * side + i] = lowest;
+			}
+	}
 
 	for( int j = 0; j < side; ++j )
 	{
@@ -91,12 +127,38 @@ void TerrainDetailSplat::computeTile( const TerrainHydrology::DetailTile& tile, 
 			};
 			if( channels )
 				paint( smoothstep( 0.03f, 0.15f, tile.carve[k] ) );
-			for( uint32_t slice = 0; slice < slicesPerTile; ++slice )
+			// Дно под водой и мокрая земля — по глубине в центре текселя, как waterDepthAt: уровень текселя, нет — наименьший
+			// из 2 × 2
+			float wetness = 0.0f;
+			if( !level.empty() )
+			{
+				float waterLevel = level[k];
+				if( waterLevel < -1e29f )
+				{
+					float lowest = 1e30f;
+					for( int n = 1; n < 4; ++n )
+					{
+						const float neighbor = level[static_cast<size_t>( std::min( j + ( n >> 1 ), side - 1 ) ) * side + std::min( i + ( n & 1 ), side - 1 )];
+						if( neighbor > -1e29f )
+							lowest = std::min( lowest, neighbor );
+					}
+					waterLevel = lowest < 1e29f ? lowest : noLevel;
+				}
+				const float waterDepth = waterLevel > -1e29f ? waterLevel - tile.heights[k] : noLevel;
+				if( source.channelLayer >= 0 && waterDepth > 0.03f )
+					paint( smoothstep( 0.03f, 0.15f, waterDepth ) );
+				wetness = smoothstep( -0.02f, 0.0f, waterDepth );
+			}
+			const auto store = []( float value ) { return static_cast<uint8_t>( std::lround( std::clamp( value, 0.0f, 1.0f ) * 255.0f ) ); };
+			for( uint32_t slice = 0; slice < weightSlices; ++slice )
 			{
 				uint8_t* texel = out + ( slice * texels + k ) * 4;
 				for( uint32_t c = 0; c < 4; ++c )
-					texel[c] = static_cast<uint8_t>( std::lround( std::clamp( weights[slice * 4 + c], 0.0f, 1.0f ) * 255.0f ) );
+					texel[c] = store( weights[slice * 4 + c] );
 			}
+			uint8_t* extra = out + ( weightSlices * texels + k ) * 4;
+			extra[0] = store( wetness );
+			extra[1] = extra[2] = extra[3] = 0;
 		}
 	}
 }
@@ -109,7 +171,7 @@ bool TerrainDetailSplat::build( const std::vector<TerrainHydrology::DetailTile>&
 	m_tileSize = any ? TerrainHydrology::detailTileCells * source.texelSize : 0.0f;
 	m_tileCount = any ? tiles.size() : 0;
 
-	// Веса всех плиток — параллельно по плиткам; без плиток — два нулевых среза 1 × 1
+	// Веса всех плиток — параллельно по плиткам; без плиток — нулевые срезы 1 × 1
 	const size_t sliceBytes = any ? static_cast<size_t>( m_side ) * m_side * 4 : 4;
 	const size_t slices = std::max<size_t>( m_tileCount, 1 ) * slicesPerTile;
 	std::vector<uint8_t> weights( slices * sliceBytes, 0 );

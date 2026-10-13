@@ -142,6 +142,11 @@ private:
 		float foamShear;
 		float detailDistance;	// м: ближе — детальная поверхность у русел (0 — её нет)
 		float foamSlope;		// пена слива — где поверхность детальной воды круче, м на м (WaterChannelsSettings::foamSlope)
+		// Точная земля — урез по ней (water.ps): карта высот (слот 3) в метры и детальная плитка (terrain_detail.sh)
+		float terrainHeightMultiplier;
+		float terrainHeightOffset;
+		float terrainDetailTile;	// сторона детальной плитки, м; 0 — её нет
+		float surfacePadding;
 	};
 
 	// Раскладка — cbuffer WaterFlowBuffer (b5) в water_flow.cs

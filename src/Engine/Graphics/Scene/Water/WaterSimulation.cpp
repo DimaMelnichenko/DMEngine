@@ -35,7 +35,7 @@ constexpr uint32_t validationWarmupSteps = 600;	// при загрузке — �
 constexpr int32_t maxSourceRadius = 8;			// ячеек: размытие источников — цикл (2r + 1)² в шейдере
 constexpr float gravity = 9.81f;
 constexpr uint32_t tileCells = 32;				// WATER_TILE в water_surface.cs / water_surface.sh
-constexpr float visibleDepth = 0.01f;			// м: мельче воды не видно — только мокрая земля
+constexpr float visibleDepth = TerrainHydrology::visibleWaterDepth;	// м: мельче воды не видно — только мокрая земля
 constexpr uint32_t rippleSize = 256;			// текселей карты ряби по стороне (WaterRipples)
 constexpr float wetDepth = 0.01f;				// м: ячейка с водой в сводке (logWaterSummary)
 constexpr float mmPerHour = 0.001f / 3600.0f;	// мм/ч → м/с
@@ -627,6 +627,9 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	params.foamShear = std::max( current.foamShear, 0.01f );
 	params.detailDistance = m_detailTileCount > 0 ? std::max( current.detailDistance, 0.0f ) : 0.0f;
 	params.foamSlope = std::max( current.channels.foamSlope, 0.01f );
+	params.terrainHeightMultiplier = height.heightMultiplier;
+	params.terrainHeightOffset = height.heightOffset;
+	params.terrainDetailTile = height.detailTileSize;
 	Device::updateResourceData( m_surfaceBuffer, params );
 
 	ScopedRenderState state( context.frameRaster );
@@ -637,6 +640,8 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 	d3d.setSRV( 0, m_levelView );
 	d3d.setSRV( 1, m_rippleView );
 	d3d.setSRV( 2, m_stoneDragView );
+	if( height.heightMap )
+		d3d.setSRV( 3, *height.heightMap );
 	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
 	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
 	// Детальные плитки у русел: своя сетка (0,25 м); уровень и течение — детальная вода (SLOT_WATER_DETAIL); грубая
@@ -649,6 +654,8 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 		d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_surfaceBuffer );
 		d3d.setSRV( 1, m_rippleView );
 		d3d.setSRV( 2, m_stoneDragView );
+		if( height.heightMap )
+			d3d.setSRV( 3, *height.heightMap );
 		d3d.setSRV( SLOT_INSTANCE_DATA, m_detailTileListView );
 		d3d.drawIndexedInstancedIndirectCount( m_detailDrawArgs, 0, 1, m_detailDrawArgs, 24 );
 	}
