@@ -1935,6 +1935,8 @@ void CDLODTerrain::addPaintProperties()
 	prop->setLow( 0.0f );
 	prop->setHigh( 1.0f );
 	prop->setTooltip( "Soft edge, share of the radius" );
+	m_paintProperties.insert( "Show target", true )->setTooltip( "In the Terrain paint mode - the brush target over the ground: orange by "
+																 "its value (layer weight, wetness, mask), dark lines every 0.25" );
 	m_properties.addSubContainer( &m_paintProperties );
 }
 
@@ -2163,7 +2165,25 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		DMD3D::instance().setState( RasterState::wireframe );
 	}
 
-	Device::updateResource<Parameters>( m_constantBuffer, [this]( Parameters& params )
+	// Цель кисти поверх земли: слой, мокрость или маска (её текстура хранилища — t7)
+	int32_t paintPreview = -1;
+	const ShaderView* paintMask = nullptr;
+	if( !depthOnly && m_paintPreview && m_paintProperties.exists( "Show target" ) && m_paintProperties["Show target"].data<bool>() )
+	{
+		const std::string target = paintBrush( false, false ).target;
+		const int32_t layer = TerrainPaint::layerOf( target );
+		if( layer >= 0 && static_cast<uint32_t>( layer ) < TerrainMaterial::maxLayers )
+			paintPreview = layer;
+		else if( target == TerrainPaint::wetnessTarget )
+			paintPreview = static_cast<int32_t>( TerrainMaterial::maxLayers );
+		else if( !target.empty() && System::textures().exists( target ) )
+		{
+			paintPreview = static_cast<int32_t>( TerrainMaterial::maxLayers ) + 1;
+			paintMask = &System::textures().get( System::textures().id( target ) )->srv();
+		}
+	}
+
+	Device::updateResource<Parameters>( m_constantBuffer, [this, paintPreview]( Parameters& params )
 	{
 		params.worldSize = m_worldSize;
 		params.heightMultiplier = m_heightMultiplier;
@@ -2185,6 +2205,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.detailTile = m_detailTileSize;
 		params.splatDetailTile = m_detailSplat.tileSize();
 		params.wetnessBaked = m_staticWater && m_detailSplat.tileSize() > 0.0f ? 1 : 0;
+		params.paintPreview = paintPreview;
 		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
 	} );
@@ -2199,6 +2220,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	{
 		m_material.bind();
 		m_detailSplat.bind();
+		if( paintMask )
+			DMD3D::instance().setSRV( 7, *paintMask );
 	}
 
 	context.constants.setPerObjectBuffer( XMMatrixIdentity() );

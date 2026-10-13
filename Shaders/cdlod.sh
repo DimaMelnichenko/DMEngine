@@ -33,7 +33,8 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	int    g_waterBedLayer;			// слой гальки под водой (режим static): по глубине в точке (−1 — нет)
 	uint   g_showWind;				// поле ветра на рельефе (wind_field.sh) — отладка, «Show wind»
 	uint   g_wetnessBaked;			// мокрость от воды static запечена в плитках детального слоя весов (terrain.ps)
-	float3 g_parametersPadding;
+	int    g_paintPreview;			// цель кисти поверх земли: −1 — нет, 0…7 — слой, 8 — мокрость, 9 — маска (terrain.ps)
+	float2 g_parametersPadding;
 	float4 g_detailMorph[2];		// уровни мельче листа (−1, −2): x — начало морфинга, y — 1 / длина зоны
 	float4 g_layerTint[8];			// множитель альбедо по слоям (xyz; TerrainLayers.albedo_tint, окно «Layer tint»)
 };

@@ -91,6 +91,9 @@ public:
 		float falloff = 0.5f;
 	};
 	PaintBrush paintBrush( bool shift, bool ctrl ) const;
+	// Режим кисти во вьюпорте (View → «Terrain paint»): пока включён, цель кисти видна поверх земли, если в подокне «Paint»
+	// отмечено «Show target»
+	void setPaintPreview( bool enabled ) { m_paintPreview = enabled; }
 	// Цели кисти: «layer N» по TerrainLayers, мокрость, затем маски
 	std::vector<std::string> paintTargets() const;
 	// Луч к рельефу (итоговая карта на CPU, как ходьба): distance — до точки на земле; false — мимо
@@ -190,7 +193,10 @@ private:
 		int32_t waterBedLayer;	// слой гальки под водой режима static — по глубине в точке (−1 — нет)
 		uint32_t showWind;		// поле ветра на рельефе (SLOT_WIND_FIELD) — отладка, «Show wind»
 		uint32_t wetnessBaked;	// мокрость от воды static — в плитках детального слоя весов (TerrainDetailSplat)
-		float parametersPadding[3];
+		// Цель кисти поверх земли (режим «Terrain paint», «Show target»): −1 — нет, 0…7 — слой земли, 8 — мокрость, 9 — маска
+		// (t7 пиксельного шейдера)
+		int32_t paintPreview;
+		float parametersPadding[2];
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1, −2: начало морфинга и 1 / длина зоны
 		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
 	};
@@ -301,6 +307,7 @@ private:
 	PropertyContainer m_paintProperties;		// подокно «Paint» — кисть
 	std::string m_strokeTarget;
 	TerrainPaint::TileMap m_strokeBefore;
+	bool m_paintPreview = false;				// режим кисти во вьюпорте: цель кисти поверх земли
 	bool m_splatPending = false;				// мазки тонкой сетки сменились — splat-карта заново
 	std::set<TerrainDetailSplat::TileKey> m_dirtySplatTiles;	// плитки детального слоя весов, задетые мазком с прошлой выгрузки
 	std::chrono::steady_clock::time_point m_splatUploaded;

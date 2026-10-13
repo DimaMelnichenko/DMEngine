@@ -226,8 +226,11 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_GUI.addToggle( { "Stream curves", "", [this] { return m_viewport.streamMode(); },
 					   [this] { m_viewport.setStreamMode( !m_viewport.streamMode() ); } } );
 	// Кисть слоёв и масок: подокно «Paint» окна террейна
-	m_GUI.addToggle( { "Terrain paint", "", [this] { return m_viewport.paintMode(); },
-					   [this] { m_viewport.setPaintMode( !m_viewport.paintMode() ); } } );
+	m_GUI.addToggle( { "Terrain paint", "", [this] { return m_viewport.paintMode(); }, [this]
+					   {
+						   m_viewport.setPaintMode( !m_viewport.paintMode() );
+						   m_scene.terrain().setPaintPreview( m_viewport.paintMode() );
+					   } } );
 	// Отладочные виды — флажки окон объектов одним списком View → Debug views
 	auto debugView = [this]( const char* name, PropertyContainer* properties, const char* property )
 	{

@@ -22,6 +22,7 @@ DM_SRV( Texture2D, g_noise, 4 );		// белый шум 256×256, R8_SNORM
 // 2t — веса слоёв 0…3 плитки t, 2t + 1 — 4…7. Индекс: плитка (x, z) мира → номер + 1, 0 — плитки нет
 DM_SRV( Texture2DArray, g_splatDetail, 5 );
 DM_SRV( Texture2D<uint>, g_splatDetailIndex, 6 );
+DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти (g_paintPreview 9), в UV карты высот
 
 static const uint maxLayers = 8;
 // Слоёв с выборкой текстур в пикселе: больше трёх-четырёх в одной точке не бывает, а массив из восьми LayerSample
@@ -298,6 +299,33 @@ float4 main( PixelInputType input ) : SV_TARGET
 		const float source = saturate( log10( max( water.inflow, 1e-4f ) / 0.01f ) * 0.5f );
 		surface.baseColor = lerp( surface.baseColor, float3( 1.0f, 0.35f, 0.02f ), source );
 		surface.emissive = float3( 1.0f, 0.35f, 0.02f ) * source * 0.02f * ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
+	}
+
+	// Цель кисти (режим «Terrain paint», «Show target» подокна «Paint»): итог цели в точке — оранжевым поверх земли, сила —
+	// значение (вес слоя среди слоёв пикселя, мокрость, маска), тёмные изолинии через 0,25 — читать «Value»; свечение — от
+	// неба, как у «Show wind»: в тени видно так же
+	[branch] if( g_paintPreview >= 0 )
+	{
+		float value = 0.0f;
+		if( g_paintPreview < (int)maxLayers )
+		{
+			float total = 0.0f;
+			[unroll] for( uint i = 0; i < maxLayers; ++i )
+				total += i < g_layerCount ? weights[i] : 0.0f;
+			value = weights[g_paintPreview] / max( total, 1e-5f );
+		}
+		else if( g_paintPreview == (int)maxLayers )
+			value = wet;
+		else
+			value = g_paintMask.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).r;
+		value = saturate( value );
+		const float steps = value * 4.0f;
+		const float slope = fwidth( steps );
+		const float isoline = slope > 1e-4f ? 1.0f - saturate( abs( frac( steps + 0.5f ) - 0.5f ) / ( 1.5f * slope ) ) : 0.0f;
+		const float3 highlight = float3( 1.0f, 0.38f, 0.04f );
+		surface.baseColor = lerp( surface.baseColor, highlight * 0.6f, 0.75f * value ) * ( 1.0f - 0.7f * isoline );
+		surface.emissive += highlight * value * ( 1.0f - isoline ) * 0.6f *
+							dot( ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) ), float3( 0.2126f, 0.7152f, 0.0722f ) );
 	}
 
 	// Отладка поля ветра («Show wind»): стрелки — направление в центре клетки, цвет — множитель скорости против ветра уровня
