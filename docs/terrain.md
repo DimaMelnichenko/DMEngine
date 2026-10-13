@@ -397,7 +397,7 @@ smoothstep; «от» больше «до» — убывание), правка �
 | Grass and flowers | влажность TWI (`moisture_twi`), сочная трава — порог и доля влажности против шума (`wet_grass`, `wet_grass_moisture`), цветы `mask_camomile` (`flowers`, `flowers_moisture`) |
 | Forest | граница леса, её шум и север (`treeline`, `treeline_noise`, `treeline_north`), уклон и его шум (`forest_slope`, `forest_slope_noise`), осыпи убирают лес (`stones_clear_forest`), дно долины (`valley_floor_height`, `valley_floor_slope`), поляны (`clearings`, `valley_clearings`), типы — высота ели, уклон и высота сосны, влажность, высота и уклон берёзы (`spruce_height`, `pine_slope`, `pine_height`, `birch_moisture`, `birch_height`, `birch_slope`), чистота древостоев (`stand_contrast`) |
 | Wind | где снег сдувает и наметает — множитель скорости поля ветра по рельефу (`snow_scour_speed`, `snow_drift_speed`: от, до), гребни и ложбины — радиус сглаживания и пороги высоты над ним (`ridge_radius`, `ridge`, `hollow`, м), снег — выше на открытом и ниже в укрытии (`snow_scour`, `snow_drift`), лес на открытых гребнях — граница ниже и реже (`wind_treeline`, `wind_thins_forest`) |
-| Water banks | полоса у ручьёв и озёр для `mask_shrubs_riparian` и `mask_grass_riparian`: ширина — на столько текселей шире русла, целыми («Bank width», `bank_width`), кусты по ней пятнами («Bank shrubs», `riparian_density`), трава — шум прореживает до половины («Bank grass», `riparian_grass`), полоса только ниже высоты («Bank height», `riparian_height`) |
+| Water banks | полоса у ручьёв и озёр для `mask_shrubs_riparian` и `mask_grass_riparian`: ширина — на столько текселей шире русла, целыми («Bank width», `bank_width`), кусты по ней пятнами («Bank shrubs», `riparian_density`), трава — шум прореживает до половины («Bank grass», `riparian_grass`), полоса только ниже высоты («Bank height», `riparian_height`), отступ от воды — маска от 0 у воды до полной на столько метров, у травы и кустов свой («Bank grass gap», `bank_grass_gap`, 0 — до уреза; «Bank shrubs gap», `bank_shrubs_gap`, 2 м) |
 | Slope shrubs | стланик (`krummholz_height`, `krummholz_top`), кусты сухих прогалин (`dry_gaps_slope`, `dry_gaps_share`) |
 | Shape | сглаживание уклона, влажности и карт эрозии (`slope_blur`, `moisture_blur`, `erosion_blur`, тексели), масштабы шумов — скалы и камней, трав и цветов, леса и кустов (`layer_noise_scale`, `meadow_noise_scale`, `forest_noise_scale`: множитель длин волн) |
 
@@ -451,10 +451,12 @@ smoothstep; «от» больше «до» — убывание), правка �
 - **типы**: `mask_forest_spruce` — ель, выше и на северных склонах; `mask_forest_pine` — сосна, на средних сухих склонах
   к солнцу; `mask_forest_birch` — берёза, во влажных низинах. Предпочтения мягкие, у каждого типа свой шум древостоев,
   вес в кубе: мозаика чистых древостоев с узкой смешанной полосой;
-- **кусты**: `mask_shrubs_riparian` — ольха и ива полосой в несколько метров вдоль русел и по берегам озёр (в самой воде —
-  нет); `mask_shrubs_slope` — стланик над границей леса (0,73–0,84) и кусты на сухих прогалинах склонов;
+- **кусты**: `mask_shrubs_riparian` — ольха и ива полосой в несколько метров вдоль русел и по берегам озёр, с отступом от
+  воды `bank_shrubs_gap` (2 м); `mask_shrubs_slope` — стланик над границей леса (0,73–0,84) и кусты на сухих прогалинах склонов;
 - **трава у воды**: `mask_grass_riparian` — та же полоса берегов, что у кустов, но сплошная (шум её только прореживает
-  до половины): высокая трава Megascans `Meadow` растёт только вдоль ручьёв и озёр.
+  до половины), отступ `bank_grass_gap` (0 — до самого уреза: в воде и в русле траву убирает расстановка по глубине в
+  точке и по врезу 0,25 м). Отступ — по расстоянию до клетки воды (фаска по восьми соседям), плавно; до 2026-10-13 обе
+  маски гасились у воды по клеткам 1 м (размытая полоса русла), и у травы оставалось 2–3 м голой земли у кромки: высокая трава Megascans `Meadow` растёт только вдоль ручьёв и озёр.
 
 На `Test` (2026-10-09): сухая трава ~52 %, осыпи ~14 %, скала ~12 %, снег ~8 %, сочная трава ~15 % карты; ель ~22 %,
 сосна ~14 %, берёза ~4 %, кусты у воды ~3 %, на склонах ~5 % (доля, где маска > 0,5) — сводка в логе, строка

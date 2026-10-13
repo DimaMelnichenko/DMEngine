@@ -125,6 +125,10 @@ struct TerrainLayerRules
 	Range riparianDensity{ 0.30f, 0.50f };	// кусты у русел — пятнами по шуму + влажности × 0,2
 	Range riparianGrass{ 0.25f, 0.55f };	// высокая трава у воды — та же полоса, шум только прореживает
 	Range riparianHeight{ 0.78f, 0.70f };	// кусты и трава у воды — ниже этой высоты
+	// Отступ от воды, м: маска нарастает от 0 у воды до полной на этом расстоянии (0 — до самого уреза: в воде и в русле
+	// растения убирает расстановка по глубине и врезу)
+	float bankGrassGap = 0.0f;
+	float bankShrubsGap = 2.0f;
 	Range krummholzHeight{ 0.73f, 0.78f };	// стланик над границей леса — от, до верха krummholzTop
 	Range krummholzTop{ 0.84f, 0.79f };
 	Range dryGapsSlope{ 12.0f, 20.0f };		// кусты прогалин сухих склонов — доля dryGapsShare

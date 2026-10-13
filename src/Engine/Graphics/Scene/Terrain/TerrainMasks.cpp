@@ -45,6 +45,49 @@ Field generate( uint32_t size, Fn fn )
 }
 
 // Максимум по квадрату ( 2·radius + 1 )²: тонкие линии (русла) расширяются, а не гаснут, как при размытии
+// Расстояние до ближайшей клетки воды (значение > 0,5), в текселях: два прохода фаски по восьми соседям (1 и √2, Borgefors
+// 1986), у воды — 0; воды нет — очень большое
+Field waterDistance( const Field& water, uint32_t size )
+{
+	const int n = static_cast<int>( size );
+	const float diagonal = 1.41421356f;
+	Field d( water.size() );
+	for( size_t i = 0; i < d.size(); ++i )
+		d[i] = water[i] > 0.5f ? 0.0f : 1e9f;
+	auto at = [&]( int row, int col ) -> float& { return d[static_cast<size_t>( row ) * n + col]; };
+	for( int row = 0; row < n; ++row )
+		for( int col = 0; col < n; ++col )
+		{
+			float& v = at( row, col );
+			if( col > 0 )
+				v = std::min( v, at( row, col - 1 ) + 1.0f );
+			if( row > 0 )
+			{
+				v = std::min( v, at( row - 1, col ) + 1.0f );
+				if( col > 0 )
+					v = std::min( v, at( row - 1, col - 1 ) + diagonal );
+				if( col + 1 < n )
+					v = std::min( v, at( row - 1, col + 1 ) + diagonal );
+			}
+		}
+	for( int row = n - 1; row >= 0; --row )
+		for( int col = n - 1; col >= 0; --col )
+		{
+			float& v = at( row, col );
+			if( col + 1 < n )
+				v = std::min( v, at( row, col + 1 ) + 1.0f );
+			if( row + 1 < n )
+			{
+				v = std::min( v, at( row + 1, col ) + 1.0f );
+				if( col + 1 < n )
+					v = std::min( v, at( row + 1, col + 1 ) + diagonal );
+				if( col > 0 )
+					v = std::min( v, at( row + 1, col - 1 ) + diagonal );
+			}
+		}
+	return d;
+}
+
 Field dilate( const Field& values, uint32_t size, int radius )
 {
 	const int n = static_cast<int>( size );
@@ -324,6 +367,8 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	// Берега — полоса в несколько метров по обе стороны русла (ольха, ива)
 	const int bankWidth = blurRadius( s.bankWidth );
 	const Field banksRaw = hasWater ? blurField( dilate( *inputs.water, size, bankWidth ), size, 2 ) : blurField( dilate( logFlow, size, bankWidth ), size, 2 );
+	// Расстояние до воды (без воды конвейера — до полосы русел по стоку), м: отступ кустов и травы у воды
+	const Field toWater = waterDistance( hasWater ? *inputs.water : stream, size );
 	const Field clearingNoise = fbm( size, texel, { { 64, 0.5f }, { 32, 0.3f }, { 16, 0.2f } }, 61, forestScale );
 	const Field stands[3] = { fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 71, forestScale ),
 							  fbm( size, texel, { { 128, 0.5f }, { 64, 0.3f }, { 32, 0.2f } }, 81, forestScale ),
@@ -365,11 +410,14 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 			// Кусты: у русел — полоса шире самого русла; на склонах — стланик над границей леса и прогалины сухих склонов
 			const float banks = ( hasWater ? smoothstep( 0.25f, 0.75f, banksRaw[i] ) : smoothstep( 3.5f, 3.9f, banksRaw[i] ) ) * ground *
 								smoothstep( s.riparianHeight, h );
-			// У русла — до кромки (размытая полоса русла гасит не целиком), в самой воде — нет
-			riparian[i] = banks * ( 1.0f - 0.7f * stream[i] ) * ( 1.0f - at( inputs.water, i ) ) *
-						  smoothstep( s.riparianDensity, riparianNoise[i] + 0.2f * moisture[i] );
-			// Высокая трава у воды — та же полоса берегов, но сплошная: шум её только прореживает
-			riparianGrass[i] = banks * ( 1.0f - 0.7f * stream[i] ) * ( 1.0f - at( inputs.water, i ) ) *
+			// Отступ от воды — параметром у каждой маски: от 0 у воды до полной на gap м (0 — до самого уреза: в воде и в русле
+			// растения убирает расстановка по глубине в точке и по врезу 0,25 м, scatter.cs, foliageClear). Прежде у обеих — по
+			// клеткам 1 м (размытая полоса русла и клетки опускания), у травы это оставляло 2–3 м голой земли у кромки (2026-10-13)
+			const float distance = toWater[i] * texel;
+			const auto gapFade = [distance]( float gap ) { return gap > 0.0f ? smoothstep( 0.0f, gap, distance ) : 1.0f; };
+			riparian[i] = banks * gapFade( s.bankShrubsGap ) * smoothstep( s.riparianDensity, riparianNoise[i] + 0.2f * moisture[i] );
+			// Трава у воды — та же полоса берегов, но сплошная: шум её только прореживает
+			riparianGrass[i] = banks * gapFade( s.bankGrassGap ) *
 							   ( 0.5f + 0.5f * smoothstep( s.riparianGrass, riparianNoise[i] + 0.2f * moisture[i] ) );
 			const float krummholz = smoothstep( s.krummholzHeight, treelineHeight ) * smoothstep( s.krummholzTop, h );
 			const float dryGaps = ( 1.0f - clearings ) * smoothstep( s.dryGapsSlope, slope[i] ) * ( 1.0f - moisture[i] ) * ( 1.0f - floor );
