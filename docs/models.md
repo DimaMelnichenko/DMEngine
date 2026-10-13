@@ -298,7 +298,8 @@ python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --lod-ra
 ## Модели Megascans (Fab)
 
 Растения Quixel Megascans из библиотеки Fab скачиваются архивом `.zip` в формате FBX в `DownloadResources\` (не в git;
-у ассета на Fab — «Скачать», формат FBX, качество High): в архиве на каждый вариант и LOD — `<Ассет>_<Вар>_LOD<N>.fbx`,
+у ассета на Fab — «Скачать», формат FBX, качество High); Unreal Launcher (Fab в лаунчере) кладёт ассет сразу распакованной
+папкой (`Grass-d6846008\fbx\mid\…` — качество Mid, карты 2K, json ассета) — сценарий принимает и её: в архиве на каждый вариант и LOD — `<Ассет>_<Вар>_LOD<N>.fbx`,
 карты JPG (`_BaseColor`, `_Opacity`, `_Roughness`, `_Normal` и т. д.), у растений — ещё карты карточки дальнего LOD
 (`_Billboard_*`). Вариант качества Raw — только LOD0 сканов (13–52 тыс. треугольников) с картами 8K, для расстановки
 не годится. `Tools/export_megascans.py` (Blender без окна) готовит из архива `.glb` для импорта с `--scatter`:
@@ -329,12 +330,20 @@ python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --lod-ra
   этого лицевая сторона была темнее скана на t, а просвет — ещё и × t: трава выходила заметно темнее превью Fab;
 - цвета вершин не экспортируются (движок их не читает), параметры движка — `--material-param`, как у Poly Haven.
 
-Tall Grass (`tall_grass_rbeki`, 3 варианта × 3 LOD) — слой `Meadow` ([scatter.md](scatter.md), «Трава Megascans»):
+Grass (Megascans `sltiN`, сухая трава пучками, 6 вариантов × 4 LOD, папка из Unreal Launcher) — слой `Meadow` вдоль
+ручьёв ([scatter.md](scatter.md), «Трава Megascans»):
 
 ```
-blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/tall_grass_rbeki_high.zip --name tall_grass --out Meshes/source/tall_grass.glb --material-param WindWeight=1 --material-param DitheredLODTransition=true
-python Tools/import_gltf.py Meshes/source/tall_grass.glb --scatter --lod-ranges 6,18
+blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/Grass-d6846008 --name dry_grass --out Meshes/source/dry_grass.glb --material-param WindWeight=1 --material-param DitheredLODTransition=true
+python Tools/import_gltf.py Meshes/source/dry_grass.glb --scatter --lod-ranges 4,10,20
 ```
+
+Пучки 0,17–0,28 м в поперечнике и 0,30–0,61 м высотой; LOD0 — 0,5–1,7 тыс. треугольников, LOD1 и LOD2 — половина и
+четверть, LOD3 — billboard крестом (6–14). Отражение — `SpecularFactor` 0,053; при × 2 обрезается 1,9 % альбедо и 14 %
+просвета карточки.
+
+Прежняя Tall Grass (`tall_grass_rbeki`, 3 варианта × 3 LOD; модели 64–66 в базе без слоя) — так же из
+`DownloadResources/tall_grass_rbeki_high.zip` с `--name tall_grass` и `--lod-ranges 6,18`.
 
 Прежняя Rough Meadow Grass (5 вариантов × 3 LOD; в базе, слоем не используется) — так же из
 `DownloadResources/rough_meadow_grass_skfjj_high.zip` с `--name rough_meadow_grass`.

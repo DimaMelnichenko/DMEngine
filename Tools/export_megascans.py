@@ -1,6 +1,7 @@
 # Растения Megascans с Fab (архив .zip формата FBX: <Ассет>_<Вар>_LOD<N>.fbx и карты JPG) → .glb для
 # Tools/import_gltf.py --scatter. Сценарий:
-#   - распаковывает архив во временную папку и импортирует FBX вариантов (--variants — регулярное выражение по VarA…);
+#   - распаковывает архив (или копирует распакованную загрузку Fab — папку) во временную папку и импортирует FBX вариантов
+#     (--variants — регулярное выражение по VarA…);
 #   - называет объекты <имя>_<Вар>_LOD<N> (имя — --name): вариант — модель, LOD — суффикс _LOD<N> (его понимает
 #     импортёр), --lod-offset k отбрасывает LOD ниже k и нумерует оставшиеся с нуля;
 #   - собирает два материала простым Principled BSDF: основной — карты <Ассет>_<размер>_BaseColor / Opacity / Roughness
@@ -30,6 +31,7 @@ import struct
 import re
 import sys
 import tempfile
+import shutil
 import zipfile
 
 import bmesh
@@ -239,7 +241,7 @@ def add_extensions(path, materials, transmission):
 def main():
     argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
     parser = argparse.ArgumentParser(prog='export_megascans.py')
-    parser.add_argument('--archive', required=True, help='Fab / Megascans .zip with FBX and maps')
+    parser.add_argument('--archive', required=True, help='Fab / Megascans .zip with FBX and maps, or its unpacked folder')
     parser.add_argument('--name', required=True, help='model name prefix: <name>_VarA …')
     parser.add_argument('--out', required=True, help='output .glb')
     parser.add_argument('--variants', default=r'.', help='regular expression for variants (VarA, VarB …)')
@@ -254,9 +256,14 @@ def main():
                         help='engine material parameter for both materials (glTF extras)')
     args = parser.parse_args(argv)
 
+    # Архив — распаковка во временную папку; распакованная загрузка Fab (папка) — копия туда же: сценарий пишет рядом с
+    # картами свои картинки, а загрузку не меняет
     folder = tempfile.mkdtemp(prefix='dm_megascans_')
-    with zipfile.ZipFile(args.archive) as zf:
-        zf.extractall(folder)
+    if os.path.isdir(args.archive):
+        shutil.copytree(args.archive, os.path.join(folder, 'asset'))
+    else:
+        with zipfile.ZipFile(args.archive) as zf:
+            zf.extractall(folder)
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
     variants = re.compile(args.variants, re.I)
