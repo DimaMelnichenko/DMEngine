@@ -100,6 +100,14 @@ def normal_convention(folder):
     return 'gl' if curl_gl < curl_dx else 'dx'
 
 
+def to_linear(rgb):
+    return np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+
+
+def to_srgb(linear):
+    return np.where(linear <= 0.0031308, linear * 12.92, 1.055 * np.maximum(linear, 0.0) ** (1.0 / 2.4) - 0.055)
+
+
 def scale_linear(rgba, scale, label):
     """Цвет sRGB картинки × scale в линейном пространстве (альфа не меняется); печатает долю обрезанных текселей"""
     rgb = rgba[..., :3]
@@ -119,6 +127,8 @@ def build_material(name, folder, prefix, size, convention, params, transmission)
     base = load_pixels(base_path, size)
     opacity_path = find_map(folder, prefix + 'Opacity')
     base[..., 3] = load_pixels(opacity_path, size)[..., 0] if opacity_path else 1.0
+    opaque = base[..., 3] > 0.5
+    albedo = base[..., :3].copy()  # до масштаба просвета — цвет для серой карты просвета
     # Альбедо скана — отражённая доля; в glTF отражается baseColor × (1 − t)
     translucency_path = find_map(folder, prefix + 'Translucency')
     if translucency_path and transmission < 1.0:
@@ -130,6 +140,16 @@ def build_material(name, folder, prefix, size, convention, params, transmission)
     extras = {'translucency': None, 'specular': None}
     if translucency_path:
         translucency = load_pixels(translucency_path, size)
+        # Серая карта просвета (у billboard Megascans — доля, а не цвет: у Grass sltiN 0,36 во всех каналах при зелёной
+        # основной) — цвет альбедо с её яркостью по текселям, средняя — как у альбедо: иначе карточки вдали просвечивали
+        # белым
+        rgb = translucency[..., :3]
+        chroma = float(np.mean((rgb.max(axis=-1) - rgb.min(axis=-1))[opaque])) if opaque.any() else 1.0
+        if chroma < 0.03:
+            gray = to_linear(rgb.mean(axis=-1))
+            share = gray / max(float(np.mean(gray[opaque])), 1e-4)
+            translucency[..., :3] = np.clip(to_srgb(to_linear(albedo) * share[..., None]), 0.0, 1.0)
+            print('%sTranslucency: gray map (chroma %.3f) - tinted by the base color' % (prefix, chroma))
         translucency[..., 3] = base[..., 3]
         if transmission > 0.0:
             scale_linear(translucency, 1.0 / transmission, prefix + 'Translucency')
@@ -138,7 +158,6 @@ def build_material(name, folder, prefix, size, convention, params, transmission)
         extras['translucency'] = os.path.join(folder, prefix + 'Translucency.png')
     specular_path = find_map(folder, prefix + 'Specular')
     if specular_path:
-        opaque = base[..., 3] > 0.5
         specular = load_pixels(specular_path, size)[..., 0]
         extras['specular'] = 2.0 * float(np.mean(specular[opaque] if opaque.any() else specular))
 
@@ -164,8 +183,13 @@ def build_material(name, folder, prefix, size, convention, params, transmission)
     links.new(split.outputs['Blue'], bsdf.inputs['Metallic'])
 
     normal_path = find_map(folder, prefix + 'Normal')
+    normal = load_pixels(normal_path, size) if normal_path else None
+    if normal is not None and opaque.any() and float(np.mean(normal[..., 2][opaque])) < 0.75:
+        # Не касательные нормали (у billboard Megascans синий в среднем ~0,47 — нормали почти в плоскости карточки:
+        # карта для камерной карточки UE, а не для креста): с ней свет неба ложился иначе, чем на ближние LOD — без неё
+        print('%sNormal: not a tangent-space map (mean blue %.2f) - dropped' % (prefix, float(np.mean(normal[..., 2][opaque]))))
+        normal_path = None
     if normal_path:
-        normal = load_pixels(normal_path, size)
         if convention == 'dx':
             normal[..., 1] = 1.0 - normal[..., 1]
         normal[..., 3] = 1.0
