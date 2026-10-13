@@ -297,7 +297,9 @@ bool DMGraphics::Frame()
 		m_walk.update( elapsedTime / 1000.0f, camera, m_scene.terrain() );
 	TIME_CHECK( camera.Update( elapsedTime, !m_mouseLook ), "Camera Update = %.3f ms" );
 
-	const RenderView mainView = RenderView::fromCamera( camera );
+	RenderView mainView = RenderView::fromCamera( camera );
+	// При ходьбе LOD террейна — от отрезка «глаза — ноги»: самая мелкая сетка вокруг ног, а не только у глаз
+	mainView.lodEyeHeight = m_walk.eyeAboveFeet();
 	// Правки источников в GUI и время суток — до кадра: по солнцу считаются тени, расстановка и небо
 	m_scene.updateLights( elapsedTime / 1000.0f );
 	// Тени — от солнца, ночью — от луны; нет источника теней — направление вниз, как светило под горизонтом

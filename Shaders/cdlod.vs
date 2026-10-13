@@ -23,6 +23,16 @@ struct NodeInstance
 
 DM_SRV( StructuredBuffer<NodeInstance>, g_instances, SLOT_INSTANCE_DATA );	// слот данных объекта: t1 занят splat-картой пиксельного шейдера
 
+// Расстояние LOD: от отрезка «глаза — ноги» под точкой LOD (g_lodEyeHeight — при ходьбе, в полёте 0) — земля под ногами
+// рядом, а не в росте от глаз: самая мелкая сетка лежит вокруг ног. Так же узлы отбирает CDLODTerrain (lodRangeHitsBox);
+// функция расстояния до выпуклого множества — у соседних уровней морфинг сходится, как от точки
+float lodDistance( float3 position )
+{
+	const float3 offset = position - cb_lodOrigin;
+	const float vertical = max( max( offset.y, -offset.y - g_lodEyeHeight ), 0.0f );
+	return length( float3( offset.x, vertical, offset.z ) );
+}
+
 struct VertexInputType
 {
 	float3 position : POSITION;
@@ -41,7 +51,7 @@ PixelInputType main( VertexInputType input )
 	float3 approxPosition = float3( worldXZ.x, detail ? sampleFineHeight( worldXZ ) : sampleHeight( worldXZ, node.level ), worldXZ.y );
 	float4 morph = detail ? g_detailMorph[(uint)( -node.level ) - 1] : g_morphConsts[(uint)node.level];
 	// От точки LOD вида, а не от его камеры: в видах теней геометрия та же, что у главного вида
-	float morphK = saturate( ( distance( approxPosition, cb_lodOrigin ) - morph.x ) * morph.y );
+	float morphK = saturate( ( lodDistance( approxPosition ) - morph.x ) * morph.y );
 
 	// У нечётных вершин frac( gridPos * 0.5 ) = 0.5: при morphK = 1 они совпадают с чётными соседями
 	worldXZ -= frac( gridPos * 0.5f ) * 2.0f * quadSize * morphK;
@@ -57,11 +67,11 @@ PixelInputType main( VertexInputType input )
 	const float3 basePosition = worldPosition.xyz;
 	// Дисплейсмент у точки LOD (а не у камеры вида: в видах теней земля та же) — на любом уровне, сходит на нет к
 	// g_displacementEnd; вдоль нормали самой детальной земли
-	const float lodDistance = distance( basePosition, cb_lodOrigin );
-	[branch] if( lodDistance < g_displacementEnd )
+	const float distanceLOD = lodDistance( basePosition );
+	[branch] if( distanceLOD < g_displacementEnd )
 	{
 		const float3 normal = fineNormal( worldXZ, 0.5f );
-		worldPosition.xyz += normal * terrainDisplacement( basePosition, normal, lodDistance );
+		worldPosition.xyz += normal * terrainDisplacement( basePosition, normal, distanceLOD );
 	}
 
 	PixelInputType output;

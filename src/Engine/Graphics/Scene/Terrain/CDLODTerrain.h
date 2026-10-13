@@ -162,7 +162,8 @@ private:
 	static constexpr uint32_t maxPatches = 8192;
 	static constexpr float morphStartRatio = 0.66f;	// с какой доли диапазона уровня начинается морфинг
 	// Уровни мельче листа: до шага детальной плитки (tileLevels: 0,5 и 0,25 м) и ещё четыре — под дисплейсмент (0,125,
-	// 0,0625, 0,03125 и 0,015625 м у камеры); сколько из них рисовать — «Finest mesh» (m_meshLevels)
+	// 0,0625, 0,03125 и 0,015625 м у камеры); сколько из них рисовать — «Finest mesh» (m_meshLevels), радиус самого мелкого —
+	// «Finest mesh radius»
 	static constexpr uint32_t detailLevels = 6;
 	static constexpr uint32_t tileLevels = 2;
 	static_assert( ( 1u << tileLevels ) == TerrainHydrology::detailSamples, "tile levels reach the detail tile step" );
@@ -200,6 +201,8 @@ private:
 		int32_t paintPreview;
 		float displacementStart;	// дисплейсмент: полный ближе, м, к displacementEnd — нет (0 — выключен)
 		float displacementEnd;
+		float lodEyeHeight;			// ноги ниже точки LOD, м (RenderView::lodEyeHeight): LOD — от отрезка «глаза — ноги»
+		float lodPadding[3];
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1…−6: начало морфинга и 1 / длина зоны
 		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
 		DirectX::XMFLOAT4 layerDisplacement[TerrainMaterial::splatSlices];	// размах дисплейсмента по слоям, м
@@ -368,8 +371,8 @@ private:
 	std::vector<std::vector<float>> m_detailHeights;
 	std::vector<DirectX::XMFLOAT2> m_detailBounds;
 
-	// Выбранные патчи на каждый вид кадра (RenderView::index): главный и каскады теней. Деление узлов — от lodOrigin,
-	// общего у всех видов, frustum вида только отсекает, поэтому рельеф в тени и на экране один и тот же
+	// Выбранные патчи на каждый вид кадра (RenderView::index): главный и каскады теней. Деление узлов — от lodOrigin (и
+	// отрезка до ног — lodEyeHeight), общих у всех видов, frustum вида только отсекает, поэтому рельеф в тени и на экране один
 	std::array<std::vector<PatchInstance>, maxRenderViews> m_patches;
 	GridMesh m_patch;
 	ShaderProgram m_shader;

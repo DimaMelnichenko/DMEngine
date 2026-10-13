@@ -26,6 +26,8 @@ public:
 	void setEnabled( bool enabled, DMCamera& camera, const TerrainHeightSource* terrain );
 	// Шаг ходьбы: seconds — время кадра; ставит положение камеры (направление взгляда — её, по мыши)
 	void update( float seconds, DMCamera& camera, const TerrainHeightSource& terrain );
+	// Глаза над ногами, м (рост и запаздывание взгляда на ступеньке); не идём — 0. По нему LOD террейна (RenderView::lodEyeHeight)
+	float eyeAboveFeet() const;
 
 	// Окно «Walk»: скорости, рост, прыжок, гравитация, предел уклона, ступенька
 	PropertyContainer* properties() { return &m_properties; }

@@ -24,7 +24,7 @@ static const float3 g_levelColors[levelColorCount] =
 
 float4 main( PixelInputType input ) : SV_TARGET
 {
-	// Уровни мельче листа (−1…−4) — цвета с конца таблицы
+	// Уровни мельче листа (−1…−6) — цвета с конца таблицы
 	int level = (int)round( input.lodDebug.x );
 	uint index = level < 0 ? (uint)( (int)levelColorCount + level ) : (uint)level;
 	uint next = level < 0 ? (uint)( (int)levelColorCount + level + 1 ) % levelColorCount : (uint)( level + 1 );

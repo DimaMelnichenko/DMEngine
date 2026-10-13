@@ -65,6 +65,11 @@ void WalkMode::setEnabled( bool enabled, DMCamera& camera, const TerrainHeightSo
 	m_eyeLift = 0.0f;
 }
 
+float WalkMode::eyeAboveFeet() const
+{
+	return m_enabled ? m_properties["Eye height"].data<float>() + m_eyeLift : 0.0f;
+}
+
 XMFLOAT3 WalkMode::surfaceNormal( float x, float z, const TerrainHeightSource& terrain ) const
 {
 	const TerrainHeight height = terrain.terrainHeight();

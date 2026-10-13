@@ -143,6 +143,7 @@ bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSe
 		XMStoreFloat3( &view.position, eye );
 		XMStoreFloat3( &view.direction, forward );
 		view.lodOrigin = mainView.lodOrigin;	// LOD и морфинг — как у главного вида
+		view.lodEyeHeight = mainView.lodEyeHeight;
 		view.nearPlane = 0.0f;
 		view.farPlane = depthFar - depthNear;
 		view.frustum = DMFrustum( view.viewProjection );

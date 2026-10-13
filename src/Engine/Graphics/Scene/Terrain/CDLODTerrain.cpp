@@ -25,11 +25,13 @@ using namespace DirectX;
 namespace
 {
 
-bool sphereIntersectsBox( const XMFLOAT3& center, float radius, const XMFLOAT3& boxMin, const XMFLOAT3& boxMax )
+// Узел ближе диапазона LOD: расстояние от отрезка «глаза — ноги» (origin и на eyeHeight ниже; в полёте — точка) до коробки
+// узла не больше radius — как lodDistance в cdlod.vs
+bool lodRangeHitsBox( const XMFLOAT3& origin, float eyeHeight, float radius, const XMFLOAT3& boxMin, const XMFLOAT3& boxMax )
 {
-	float dx = std::max( { boxMin.x - center.x, 0.0f, center.x - boxMax.x } );
-	float dy = std::max( { boxMin.y - center.y, 0.0f, center.y - boxMax.y } );
-	float dz = std::max( { boxMin.z - center.z, 0.0f, center.z - boxMax.z } );
+	float dx = std::max( { boxMin.x - origin.x, 0.0f, origin.x - boxMax.x } );
+	float dy = std::max( { boxMin.y - origin.y, 0.0f, origin.y - eyeHeight - boxMax.y } );
+	float dz = std::max( { boxMin.z - origin.z, 0.0f, origin.z - boxMax.z } );
 	return dx * dx + dy * dy + dz * dz <= radius * radius;
 }
 
@@ -142,7 +144,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	prop->setUnit( "m" );
 	prop->setTooltip( "Distance band where the far texture scale replaces the near one: both scales are sampled along it" );
 
-	// Дисплейсмент у камеры (сетка до 6,25 см): полный ближе начала полосы, к концу сходит на нет
+	// Дисплейсмент у камеры (сетка — «Finest mesh»): полный ближе начала полосы, к концу сходит на нет
 	prop = m_properties.insert( "Displacement distance", XMFLOAT2( settings.displacementStart, settings.displacementEnd ) );
 	prop->setLow( 0.0f );
 	prop->setHigh( 64.0f );
@@ -152,10 +154,19 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 					  "terrain mesh near the camera - Finest mesh" );
 	// Самый мелкий квад сетки у камеры — качество (не данные уровня): мельче — камешки выдавливаются ровнее, дороже вершины
 	m_properties.insert( "Finest mesh", static_cast<int32_t>( detailLevels - tileLevels ) )
-		->setItems( { "25 cm", "12.5 cm (to 16 m)", "6.25 cm (to 8 m)", "3.1 cm (to 4 m)", "1.6 cm (to 2 m)" } )
+		->setItems( { "25 cm", "12.5 cm", "6.25 cm", "3.1 cm", "1.6 cm" } )
 		->setTransient()
-		->setTooltip( "Finest quad of the terrain mesh near the camera (each level - half the quad and the distance): finer - "
-					  "the displacement shapes small stones, the vertex cost grows by about the same per level" );
+		->setTooltip( "Finest quad of the terrain mesh near the camera; each level halves the quad and the distance (at LOD "
+					  "distance 128 m: 12.5 cm to 16 m, 6.25 cm to 8 m, 3.1 cm to 4 m, 1.6 cm to 2 m). Finer - the displacement "
+					  "shapes small stones, the vertex cost grows by about the same per level" );
+	// Где самая мелкая сетка полная — тоже качество. При ходьбе — вокруг ног: LOD считается от отрезка «глаза — ноги»
+	prop = m_properties.insert( "Finest mesh radius", 1.5f );
+	prop->setLow( 0.0f );
+	prop->setHigh( 8.0f );
+	prop->setUnit( "m" );
+	prop->setTransient();
+	prop->setTooltip( "The finest mesh is full nearer, farther it morphs into the next level (up to 1.5 times the radius): "
+					  "around the feet when walking, around the camera in flight. Not less than the LOD distance gives" );
 
 	// Метров на повтор текстуры слоя (TerrainLayers.tiling)
 	m_layerProperties.setName( "Layer tiling" );
@@ -1659,22 +1670,34 @@ void CDLODTerrain::calcRanges()
 		range *= 2.0f;
 	}
 
-	// Уровни мельче листа: диапазон −1 — половина диапазона листа, −2 — четверть, не меньше диагонали узла / morphStartRatio
-	// (условие без трещин, как выше). Морфинг листа начинается дальше 0,66 его диапазона — за диапазоном −1
+	// Уровни мельче листа — от самого мелкого из рисуемых (m_meshLevels) к −1: диапазон −1 — половина диапазона листа, каждый
+	// следующий — вдвое меньше (при «LOD distance» 128 м — 64, 32 … 2 м); самый мелкий полон в «Finest mesh radius» (вокруг ног
+	// при ходьбе), его диапазон — не меньше радиуса / morphStartRatio. Без трещин (как выше): граница уровня с более крупным —
+	// не дальше его диапазона и диагонали узла (склон до 45° и запас на дисплейсмент), морфинг крупного начинается через
+	// morphStartRatio разницы диапазонов — она не меньше диагонали / morphStartRatio. Морфинг листа — дальше 0,66 его
+	// диапазона, за диапазоном −1
+	const float finestRadius = std::max( m_properties["Finest mesh radius"].data<float>(), 0.0f );
+	const float margin = m_material.maxDisplacement();
 	float detailPrevious = 0.0f;
-	float detailRange[detailLevels];
-	for( uint32_t depth = 1; depth <= detailLevels; ++depth )
-	{
-		const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
-		detailRange[depth - 1] = std::max( m_ranges[0] / static_cast<float>( 1u << depth ), std::sqrt( 2.0f ) * size / morphStartRatio );
-	}
+	float previousDiagonal = 0.0f;
 	for( uint32_t depth = detailLevels; depth >= 1; --depth )
 	{
-		const float rangeAt = std::min( detailRange[depth - 1], m_ranges[0] * 0.5f );
+		if( depth > m_meshLevels )
+		{
+			m_detailRanges[depth - 1] = 0.0f;	// не рисуется
+			m_detailMorph[depth - 1] = XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+			continue;
+		}
+		float rangeAt = m_ranges[0] / static_cast<float>( 1u << depth );
+		if( depth == m_meshLevels )
+			rangeAt = std::max( rangeAt, finestRadius / morphStartRatio );
+		rangeAt = std::min( std::max( rangeAt, detailPrevious + previousDiagonal / morphStartRatio ), m_ranges[0] * 0.5f );
 		const float morphStart = detailPrevious + ( rangeAt - detailPrevious ) * morphStartRatio;
 		m_detailRanges[depth - 1] = rangeAt;
 		m_detailMorph[depth - 1] = XMFLOAT4( morphStart, 1.0f / std::max( rangeAt - morphStart, 1e-3f ), 0.0f, 0.0f );
 		detailPrevious = rangeAt;
+		const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
+		previousDiagonal = std::sqrt( 2.0f * size * size + ( size + margin ) * ( size + margin ) );
 	}
 }
 
@@ -2099,8 +2122,9 @@ bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t 
 {
 	const NodeBox box = nodeBox( level, x, z );
 	const XMFLOAT3& cameraPosition = view.lodOrigin;
+	const float eyeHeight = view.lodEyeHeight;
 
-	if( !sphereIntersectsBox( cameraPosition, m_ranges[level], box.min, box.max ) )
+	if( !lodRangeHitsBox( cameraPosition, eyeHeight, m_ranges[level], box.min, box.max ) )
 		return false;
 
 	// Невидимый узел считается обработанным: рисовать его не нужно ни ему, ни родителю
@@ -2108,14 +2132,14 @@ bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t 
 		return true;
 
 	// Лист у камеры — уровни мельче листа (−1, −2) везде: квадродерево однородно, переходы без трещин
-	if( level == 0 && sphereIntersectsBox( cameraPosition, m_detailRanges[0], box.min, box.max ) )
+	if( level == 0 && lodRangeHitsBox( cameraPosition, eyeHeight, m_detailRanges[0], box.min, box.max ) )
 	{
 		for( uint32_t quarter = 0; quarter < 4; ++quarter )
 			if( !selectDetailNode( view, 1, x * 2 + ( quarter & 1 ), z * 2 + ( quarter >> 1 ), patches ) )
 				addPatch( 0, x, z, quarter, patches );
 		return true;
 	}
-	if( level == 0 || !sphereIntersectsBox( cameraPosition, m_ranges[level - 1], box.min, box.max ) )
+	if( level == 0 || !lodRangeHitsBox( cameraPosition, eyeHeight, m_ranges[level - 1], box.min, box.max ) )
 	{
 		for( uint32_t quarter = 0; quarter < 4; ++quarter )
 			addPatch( level, x, z, quarter, patches );
@@ -2170,11 +2194,11 @@ bool CDLODTerrain::selectDetailNode( const RenderView& view, uint32_t depth, uin
 	const XMFLOAT3 boxMax( std::min( ( nx + 1 ) * size, m_worldSize ), bounds.y * m_heightMultiplier + m_heightOffset + margin,
 						   std::min( ( nz + 1 ) * size, m_worldSize ) );
 	const XMFLOAT3& origin = view.lodOrigin;
-	if( !sphereIntersectsBox( origin, m_detailRanges[depth - 1], boxMin, boxMax ) )
+	if( !lodRangeHitsBox( origin, view.lodEyeHeight, m_detailRanges[depth - 1], boxMin, boxMax ) )
 		return false;
 	if( !view.frustum.checkBox( boxMin, boxMax ) )
 		return true;
-	if( depth >= m_meshLevels || !sphereIntersectsBox( origin, m_detailRanges[depth], boxMin, boxMax ) )
+	if( depth >= m_meshLevels || !lodRangeHitsBox( origin, view.lodEyeHeight, m_detailRanges[depth], boxMin, boxMax ) )
 	{
 		for( uint32_t quarter = 0; quarter < 4; ++quarter )
 			addDetailPatch( depth, nx, nz, quarter, patches );
@@ -2227,7 +2251,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		}
 	}
 
-	Device::updateResource<Parameters>( m_constantBuffer, [this, paintPreview]( Parameters& params )
+	const float lodEyeHeight = context.view.lodEyeHeight;
+	Device::updateResource<Parameters>( m_constantBuffer, [this, paintPreview, lodEyeHeight]( Parameters& params )
 	{
 		params.worldSize = m_worldSize;
 		params.heightMultiplier = m_heightMultiplier;
@@ -2253,6 +2278,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		const XMFLOAT2 displacement = m_properties["Displacement distance"].data<XMFLOAT2>();
 		params.displacementEnd = m_material.maxDisplacement() > 0.0f ? std::max( displacement.y, 0.0f ) : 0.0f;
 		params.displacementStart = std::min( std::max( displacement.x, 0.0f ), params.displacementEnd );
+		params.lodEyeHeight = lodEyeHeight;
 		std::copy( m_material.layerDisplacement().begin(), m_material.layerDisplacement().end(), params.layerDisplacement );
 		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
