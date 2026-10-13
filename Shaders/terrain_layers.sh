@@ -140,8 +140,8 @@ float terrainDisplacement( float3 position, float3 normal, float distance )
 	uint4 layerIndex;
 	selectLayers( weights, splat, layerIndex );
 
-	// Шаг сетки у вершины — от 6,25 см у камеры, мип высоты слоя — по нему
-	const float spacing = max( 0.0625f, distance / 128.0f );
+	// Шаг сетки у вершины — от 1,56 см у камеры (около ⅛ расстояния / 16, как диапазоны уровней), мип высоты слоя — по нему
+	const float spacing = max( 0.015625f, distance / 128.0f );
 	const float3 projection = projectionWeights( normal );
 	float4 heights = 0.0f;
 	[unroll] for( uint j = 0; j < activeLayers; ++j )

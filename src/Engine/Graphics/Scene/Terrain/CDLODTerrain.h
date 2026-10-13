@@ -161,10 +161,9 @@ private:
 	static constexpr uint32_t maxLevels = 16;
 	static constexpr uint32_t maxPatches = 8192;
 	static constexpr float morphStartRatio = 0.66f;	// с какой доли диапазона уровня начинается морфинг
-	// Уровней мельче листа: −1 и −2 (квад 0,5 и 0,25 текселя) — шаг детальной земли (TerrainHydrology::detailSamples)
-	// Уровни мельче листа: до шага детальной плитки (tileLevels: 0,5 и 0,25 м) и ещё два — под дисплейсмент (0,125 и
-	// 0,0625 м у камеры)
-	static constexpr uint32_t detailLevels = 4;
+	// Уровни мельче листа: до шага детальной плитки (tileLevels: 0,5 и 0,25 м) и ещё четыре — под дисплейсмент (0,125,
+	// 0,0625, 0,03125 и 0,015625 м у камеры); сколько из них рисовать — «Finest mesh» (m_meshLevels)
+	static constexpr uint32_t detailLevels = 6;
 	static constexpr uint32_t tileLevels = 2;
 	static_assert( ( 1u << tileLevels ) == TerrainHydrology::detailSamples, "tile levels reach the detail tile step" );
 
@@ -201,7 +200,7 @@ private:
 		int32_t paintPreview;
 		float displacementStart;	// дисплейсмент: полный ближе, м, к displacementEnd — нет (0 — выключен)
 		float displacementEnd;
-		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1…−4: начало морфинга и 1 / длина зоны
+		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1…−6: начало морфинга и 1 / длина зоны
 		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
 		DirectX::XMFLOAT4 layerDisplacement[TerrainMaterial::splatSlices];	// размах дисплейсмента по слоям, м
 	};
@@ -343,6 +342,7 @@ private:
 	float m_ranges[maxLevels] = {};
 	DirectX::XMFLOAT4 m_morphConsts[maxLevels] = {};
 	float m_detailRanges[detailLevels] = {};
+	uint32_t m_meshLevels = detailLevels;		// уровней мельче листа рисуется («Finest mesh»): tileLevels…detailLevels
 	DirectX::XMFLOAT4 m_detailMorph[detailLevels] = {};
 	// Детальная земля у русел: массив плиток (x — нормированная высота, y — врез, м; поле в тексель) и индекс плитка → срез + 1; на CPU —
 	// те же значения для ходьбы и границы плиток (min / max) для отбора узлов

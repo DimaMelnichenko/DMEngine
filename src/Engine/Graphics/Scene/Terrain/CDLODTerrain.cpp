@@ -149,7 +149,13 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	prop->setControlType( GUIControlType::RANGE );
 	prop->setUnit( "m" );
 	prop->setTooltip( "Displacement by the layer heights: full nearer than the start, fades out to the end (end 0 - off); the "
-					  "terrain mesh is 6.25 cm near the camera" );
+					  "terrain mesh near the camera - Finest mesh" );
+	// Самый мелкий квад сетки у камеры — качество (не данные уровня): мельче — камешки выдавливаются ровнее, дороже вершины
+	m_properties.insert( "Finest mesh", static_cast<int32_t>( detailLevels - tileLevels ) )
+		->setItems( { "25 cm", "12.5 cm (to 16 m)", "6.25 cm (to 8 m)", "3.1 cm (to 4 m)", "1.6 cm (to 2 m)" } )
+		->setTransient()
+		->setTooltip( "Finest quad of the terrain mesh near the camera (each level - half the quad and the distance): finer - "
+					  "the displacement shapes small stones, the vertex cost grows by about the same per level" );
 
 	// Метров на повтор текстуры слоя (TerrainLayers.tiling)
 	m_layerProperties.setName( "Layer tiling" );
@@ -1698,6 +1704,8 @@ void CDLODTerrain::update( const FrameContext& frame )
 		return;
 
 	m_heightMultiplier = m_properties["Height multiplier"].data<float>();
+	m_meshLevels = tileLevels + static_cast<uint32_t>( std::clamp( m_properties["Finest mesh"].data<int32_t>(), 0,
+																  static_cast<int32_t>( detailLevels - tileLevels ) ) );
 	calcRanges();
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
 	{
@@ -2166,7 +2174,7 @@ bool CDLODTerrain::selectDetailNode( const RenderView& view, uint32_t depth, uin
 		return false;
 	if( !view.frustum.checkBox( boxMin, boxMax ) )
 		return true;
-	if( depth == detailLevels || !sphereIntersectsBox( origin, m_detailRanges[depth], boxMin, boxMax ) )
+	if( depth >= m_meshLevels || !sphereIntersectsBox( origin, m_detailRanges[depth], boxMin, boxMax ) )
 	{
 		for( uint32_t quarter = 0; quarter < 4; ++quarter )
 			addDetailPatch( depth, nx, nz, quarter, patches );

@@ -36,7 +36,7 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	int    g_paintPreview;			// цель кисти поверх земли: −1 — нет, 0…7 — слой, 8 — мокрость, 9 — маска (terrain.ps)
 	float  g_displacementStart;		// дисплейсмент (cdlod.vs, terrain_layers.sh): полный ближе, м,
 	float  g_displacementEnd;		// к этому расстоянию от точки LOD — нет; 0 — выключен
-	float4 g_detailMorph[4];		// уровни мельче листа (−1…−4): x — начало морфинга, y — 1 / длина зоны
+	float4 g_detailMorph[6];		// уровни мельче листа (−1…−6): x — начало морфинга, y — 1 / длина зоны
 	float4 g_layerTint[8];			// множитель альбедо по слоям (xyz; TerrainLayers.albedo_tint, окно «Layer tint»)
 	float4 g_layerDisplacement[2];	// размах смещения по слоям, по четыре, м (TerrainLayers.displacement, «Layer displacement»)
 };

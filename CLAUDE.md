@@ -593,7 +593,7 @@ Debug и Release, строгий IEEE (`ShaderCompiler::compile( …, reproducib
 
 Детальная земля у русел — плитки высот с шагом 0,25 м там, где русло режет рельеф (`TerrainHydrology::DetailTile`: рельеф
 Catmull-Rom минус профиль русла по сплайну оси), массив и индекс — ресурсы сцены t113 / t114 (`Shaders/terrain_detail.sh`);
-квадродерево у камеры делится ещё на четыре уровня мельче листа (−1…−4: до 6,25 см) везде, высота их вершин — плитка или
+квадродерево у камеры делится ещё на шесть уровней мельче листа (−1…−6: до 1,6 см, «Finest mesh») везде, высота их вершин — плитка или
 карта (`sampleFineHeight`); её же читают нормаль, расстановка и частицы (`terrainHeight`) и ходьба (`surfaceHeight`); подробно —
 `docs/terrain.md`, «Детальная земля у русел». У камеры вершины ещё сдвигаются по высоте слоёв — дисплейсмент
 (`terrainDisplacement`, `Shaders/terrain_layers.sh`; размах слоя — `TerrainLayers.displacement`, дальность — «Displacement
