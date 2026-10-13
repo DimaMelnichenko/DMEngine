@@ -54,6 +54,14 @@ void ConstantRing::beginFrame( uint32_t frameIndex )
 	m_head = m_frameStart;
 }
 
+uint32_t ConstantRing::available( uint32_t alignment ) const
+{
+	alignment = std::max( alignment, 4u );
+	const uint32_t start = ( m_head + alignment - 1 ) / alignment * alignment;
+	const uint32_t end = m_frameStart + m_frameBytes;
+	return start < end ? end - start : 0;
+}
+
 void* ConstantRing::beginWrite( uint32_t size, uint32_t& offset, uint32_t& bytes, uint32_t alignment )
 {
 	if( !m_mapped || m_writing || size == 0 )

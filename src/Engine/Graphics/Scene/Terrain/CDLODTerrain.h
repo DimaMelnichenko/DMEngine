@@ -14,6 +14,7 @@
 #include "TerrainMasks.h"
 #include "TerrainWind.h"
 #include "TerrainPaint.h"
+#include "TerrainDetailSplat.h"
 #include "ShaderProgram.h"
 #include "D3D\DMStructuredBuffer.h"
 
@@ -182,7 +183,7 @@ private:
 		uint32_t layerCount;
 		uint32_t showWater;		// подсветка воды симуляции (SLOT_WATER) — отладка, «Show water»
 		float detailTile;		// сторона детальной плитки, м; 0 — детальной земли нет
-		int32_t channelLayer;	// слой гальки русел в детальных плитках (−1 — нет)
+		float splatDetailTile;	// сторона плитки детального слоя весов, м (TerrainDetailSplat); 0 — плиток нет
 		int32_t waterBedLayer;	// слой гальки под водой режима static — по глубине в точке (−1 — нет)
 		uint32_t showWind;		// поле ветра на рельефе (SLOT_WIND_FIELD) — отладка, «Show wind»
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1, −2: начало морфинга и 1 / длина зоны
@@ -221,8 +222,14 @@ private:
 	void refreshPaintedTarget( const std::string& target, const TerrainPaint::Rect& rect );
 	// Маска — на GPU: прямоугольник rect участком текстуры (касание кисти), без него — целиком; текстуры ещё нет — создаётся
 	bool uploadMask( const TerrainMasks::Mask& mask, const TerrainPaint::Rect* rect = nullptr );
-	// Цель после мазка, отмены, повтора: на GPU; маска — флаг раскладки леса, лес — полог поля ветра
-	void paintTargetChanged( const std::string& target );
+	// Цель после мазка, отмены, повтора: на GPU; маска — флаг раскладки леса, лес — полог поля ветра; слой — splat-карта и
+	// плитки детального слоя весов в прямоугольнике changed (сетка масок; нет — все)
+	void paintTargetChanged( const std::string& target, const TerrainPaint::Rect* changed = nullptr );
+	// Детальный слой весов (TerrainDetailSplat): откуда веса, все плитки заново (русла, правила) и плитки в прямоугольнике
+	// сетки масок (мазок слоя)
+	TerrainDetailSplat::Source detailSplatSource() const;
+	bool buildDetailSplat();
+	void refreshDetailSplat( const TerrainPaint::Rect& rect );
 	void addPaintProperties();
 	// Рельефная часть поля ветра (поток и подветренная тень, без леса) по итоговому рельефу field: ключ и расчёт, если ключ
 	// сменился (m_windTerrain). Её читают правила слоёв (снег) и итоговое поле
@@ -282,6 +289,7 @@ private:
 	std::string m_strokeTarget;
 	TerrainPaint::TileMap m_strokeBefore;
 	bool m_splatPending = false;
+	TerrainPaint::Rect m_splatDirty;			// мазок слоя: где веса сменились после последней выгрузки splat-карты
 	std::chrono::steady_clock::time_point m_splatUploaded;
 	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
 	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
@@ -342,6 +350,7 @@ private:
 	int m_lodPhase = 0;
 	int m_depthPhase = 0;
 	TerrainMaterial m_material;
+	TerrainDetailSplat m_detailSplat;		// веса слоёв 0,25 м у русел поверх splat-карты
 	DMStructuredBuffer m_patchBuffer;
 	Buffer m_constantBuffer;
 	PropertyContainer m_properties;

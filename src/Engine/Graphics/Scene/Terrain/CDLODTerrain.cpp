@@ -88,7 +88,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 		return false;
 
 	task.enterProgressFrame( 0.7f, "Material layers" );
-	if( !m_material.initialize( terrainId, paintedMasks(), coverage ) )
+	if( !m_material.initialize( terrainId, paintedMasks(), coverage ) || !buildDetailSplat() )
 		return false;
 
 	m_patch.initialize( patchDim + 1, patchDim + 1 );
@@ -572,7 +572,7 @@ bool CDLODTerrain::rebuildChannels( const WaterSimulationSettings& water, const 
 	if( !finishHeights( target, &water, coverage ) )
 		return false;
 	m_coverage = coverage;
-	if( !createFoliageClearMask( coverage ) || !m_material.repaint( paintedMasks(), coverage ) )
+	if( !createFoliageClearMask( coverage ) || !m_material.repaint( paintedMasks(), coverage ) || !buildDetailSplat() )
 		return false;
 	// Рельеф у русел и лес сменились — поле ветра заново
 	if( !m_wind.empty() )
@@ -801,7 +801,7 @@ bool CDLODTerrain::rebuildMasks()
 	field.texelSize = m_texelSize;
 	field.heightMultiplier = m_heightMultiplier;
 	field.heightOffset = m_heightOffset;
-	if( !buildMasks( field ) || !m_material.repaint( paintedMasks(), m_coverage ) )
+	if( !buildMasks( field ) || !m_material.repaint( paintedMasks(), m_coverage ) || !buildDetailSplat() )
 		return false;
 	// Лес в масках сменился (и ветер мог повернуть) — поле ветра заново
 	if( !m_windObstacles.empty() || !m_wind.empty() )
@@ -941,6 +941,7 @@ bool CDLODTerrain::beginPaintStroke( const std::string& target, TerrainPaint::Mo
 	m_paint.beginStroke( target, mode, value, rules );
 	m_strokeTarget = target;
 	m_splatPending = false;
+	m_splatDirty = {};
 	return true;
 }
 
@@ -960,12 +961,15 @@ void CDLODTerrain::paintDab( float x, float z, float radius, float falloff )
 	if( TerrainPaint::layerOf( m_strokeTarget ) >= 0 )
 	{
 		m_splatPending = true;
+		m_splatDirty.add( changed );
 		const auto now = std::chrono::steady_clock::now();
 		if( now - m_splatUploaded > std::chrono::milliseconds( 100 ) )
 		{
 			m_material.repaint( paintedMasks(), m_coverage );
+			refreshDetailSplat( m_splatDirty );
 			m_splatUploaded = now;
 			m_splatPending = false;
+			m_splatDirty = {};
 		}
 		return;
 	}
@@ -988,18 +992,24 @@ CDLODTerrain::PaintEdit CDLODTerrain::endPaintStroke()
 	// Плитки без поправок убраны — копия с мазками заново, если целей не осталось
 	if( !m_paint.has( m_strokeTarget ) )
 		refreshPainted();
-	paintTargetChanged( m_strokeTarget );
+	paintTargetChanged( m_strokeTarget, &m_splatDirty );
+	m_splatDirty = {};
 	m_strokeTarget.clear();
 	return edit;
 }
 
-void CDLODTerrain::paintTargetChanged( const std::string& target )
+void CDLODTerrain::paintTargetChanged( const std::string& target, const TerrainPaint::Rect* changed )
 {
 	// Мазки — данные уровня: окно террейна изменено до «Save level»
 	m_properties.setStructureModified( true );
 	if( TerrainPaint::layerOf( target ) >= 0 )
 	{
 		m_material.repaint( paintedMasks(), m_coverage );
+		// Отмена, повтор, очистка — все плитки (массив заново одной загрузкой), мазок — задетые участками
+		if( !changed )
+			buildDetailSplat();
+		else if( !changed->empty() )
+			refreshDetailSplat( *changed );
 		m_splatUploaded = std::chrono::steady_clock::now();
 		m_splatPending = false;
 		return;
@@ -1343,6 +1353,29 @@ bool CDLODTerrain::createDetailTiles()
 		LOG( "CDLOD terrain: detail tiles " + std::to_string( tiles.size() ) + " (" + std::to_string( side ) + "x" + std::to_string( side ) +
 			 ", " + std::to_string( tiles.size() * side * side * 2 * sizeof( float ) / 1024 / 1024 ) + " MB)" );
 	return true;
+}
+
+TerrainDetailSplat::Source CDLODTerrain::detailSplatSource() const
+{
+	TerrainDetailSplat::Source source;
+	source.masks = &paintedMasks();
+	source.texelSize = m_texelSize;
+	source.edits = &m_baseCoverage;
+	source.layerCount = m_material.layerCount();
+	source.channelLayer = m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
+	return source;
+}
+
+bool CDLODTerrain::buildDetailSplat()
+{
+	static const std::vector<TerrainHydrology::DetailTile> none;
+	return m_detailSplat.build( m_hasHydrology ? m_hydrology.detailTiles : none, m_detailTilesPerSide, detailSplatSource() );
+}
+
+void CDLODTerrain::refreshDetailSplat( const TerrainPaint::Rect& rect )
+{
+	if( m_hasHydrology && !rect.empty() )
+		m_detailSplat.refresh( m_hydrology.detailTiles, detailSplatSource(), rect.x0, rect.row0, rect.x1, rect.row1 );
 }
 
 float CDLODTerrain::fineHeight( float x, float z ) const
@@ -2007,7 +2040,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
 		params.showWind = m_properties["Show wind"].data<bool>() && m_windView.valid() ? 1 : 0;
 		params.detailTile = m_detailTileSize;
-		params.channelLayer = m_detailTileSize > 0.0f && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
+		params.splatDetailTile = m_detailSplat.tileSize();
 		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
 	} );
@@ -2019,7 +2052,10 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	// Карта высот — вершинному шейдеру и пиксельному: по ней считается нормаль рельефа
 	DMD3D::instance().setSRV( 0, m_heightMap );
 	if( !depthOnly )
+	{
 		m_material.bind();
+		m_detailSplat.bind();
+	}
 
 	context.constants.setPerObjectBuffer( XMMatrixIdentity() );
 

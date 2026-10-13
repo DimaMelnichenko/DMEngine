@@ -3249,12 +3249,12 @@ std::vector<TerrainEdit> TerrainHydrology::loweringEdits( const Result& result, 
 	lower.raster = "(water channels)";
 	lower.rasterValues = result.lowering;
 	lower.rasterSize = result.size;
-	// Покраска галькой и очистка растительности — по опусканию, но только вне детальных плиток: в плитках их делают шейдеры
-	// по детальному врезу (terrain.ps, scatter.cs — terrain_detail.sh), точнее клетки 1 м
+	// Покраска галькой — по опусканию везде: splat-карта 1 м — основа и вдали, вблизи у русел её заменяет детальный слой
+	// весов по детальному врезу (TerrainDetailSplat). Очистка растительности — только вне детальных плиток: в плитках её
+	// делает расстановка по детальному врезу (scatter.cs — terrain_detail.sh), точнее клетки 1 м
 	TerrainEdit paint = lower;
 	paint.name = "channels paint";
 	paint.lower = false;
-	paint.clearFoliage = 1.0f;
 	paint.paintLayer = bedLayer;
 	const uint32_t n = result.size;
 	// Клетки озёр (static): галька по дну и трава в воде — в шейдерах по глубине в точке (урез внутри клетки, water.sh),
@@ -3263,6 +3263,10 @@ std::vector<TerrainEdit> TerrainHydrology::loweringEdits( const Result& result, 
 		for( size_t i = 0; i < paint.rasterValues.size(); ++i )
 			if( result.staticWater[i].w > -1e8f )
 				paint.rasterValues[i] = 0.0f;
+	TerrainEdit clear = paint;
+	clear.name = "channels foliage";
+	clear.clearFoliage = 1.0f;
+	clear.paintLayer = -1;
 	for( const DetailTile& tile : result.detailTiles )
 	{
 		for( uint32_t j = 0; j < detailTileCells; ++j )
@@ -3272,11 +3276,11 @@ std::vector<TerrainEdit> TerrainHydrology::loweringEdits( const Result& result, 
 				const uint32_t col = tile.x * detailTileCells + i;
 				const uint32_t z = tile.z * detailTileCells + j;
 				if( col < n && z < n )
-					paint.rasterValues[static_cast<size_t>( n - 1 - z ) * n + col] = 0.0f;
+					clear.rasterValues[static_cast<size_t>( n - 1 - z ) * n + col] = 0.0f;
 			}
 		}
 	}
-	return { lower, paint };
+	return { lower, paint, clear };
 }
 
 }

@@ -28,6 +28,9 @@ public:
 	// bytes — где он лежит
 	void* beginWrite( uint32_t size, uint32_t& offset, uint32_t& bytes, uint32_t alignment = constantAlignment );
 	void finishWrite();
+	// Сколько байт ещё войдёт в часть текущего кадра без переполнения, если участок начать с выравниванием alignment
+	uint32_t available( uint32_t alignment = constantAlignment ) const;
+	uint32_t frameBytes() const { return m_frameBytes; }
 	// GPU-адрес участка по его смещению
 	D3D12_GPU_VIRTUAL_ADDRESS address( uint32_t offset ) const { return m_gpuAddress + offset; }
 	ID3D12Resource* handle() const { return m_buffer.get(); }

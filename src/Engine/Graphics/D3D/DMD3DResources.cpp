@@ -116,10 +116,12 @@ bool DMD3D::uploadToBuffer( ID3D12Resource* destination, uint64_t destinationOff
 	ensureRecording();
 	barrier( destination, D3D12_BARRIER_ACCESS_COPY_DEST, D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr, true );
 
-	// В кадре небольшие данные идут через участок кольца (он живёт, пока GPU не закончит кадр); до первого кадра и
-	// большие — отдельный upload-буфер, отпускается, когда GPU закончит копирование
+	// В кадре небольшие данные идут через участок кольца (он живёт, пока GPU не закончит кадр), если он войдёт в часть
+	// кадра без переполнения и с запасом в половину части под константы кадра; до первого кадра, большие и когда кольцо
+	// занято — отдельный upload-буфер, отпускается, когда GPU закончит копирование
 	uint32_t offset = 0, bytes = 0;
-	if( m_frameStarted && !m_writingBuffer && size <= constantRingBytes / frameCount / 4 )
+	if( m_frameStarted && !m_writingBuffer && size <= constantRingBytes / frameCount / 4 &&
+		m_constantRing.available() >= size + m_constantRing.frameBytes() / 2 )
 	{
 		if( void* slice = m_constantRing.beginWrite( static_cast<uint32_t>( size ), offset, bytes ) )
 		{
@@ -607,14 +609,16 @@ bool DMD3D::updateTexture( Texture& texture, const TextureRegion& region, const 
 		return false;
 	const uint64_t sourcePitch = rowPitch ? rowPitch : rowBytes;
 
-	// В кадре небольшие участки — через кольцо кадра (живёт, пока GPU не закончит кадр), иначе — отдельный upload-буфер с
-	// отложенным отпуском
+	// В кадре небольшие участки — через кольцо кадра (живёт, пока GPU не закончит кадр), как у uploadToBuffer: без
+	// переполнения части кадра (иначе новый участок затрёт ещё не скопированный — много правок за кадр) и с запасом под
+	// константы; иначе — отдельный upload-буфер с отложенным отпуском
 	ensureRecording();
 	ID3D12Resource* staging = nullptr;
 	D3D12MA::Allocation* allocation = nullptr;
 	uint8_t* mapped = nullptr;
 	uint32_t offset = 0, bytes = 0;
-	if( m_frameStarted && !m_writingBuffer && total <= constantRingBytes / frameCount / 4 )
+	if( m_frameStarted && !m_writingBuffer && total <= constantRingBytes / frameCount / 4 &&
+		m_constantRing.available( D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT ) >= total + m_constantRing.frameBytes() / 2 )
 	{
 		mapped = static_cast<uint8_t*>( m_constantRing.beginWrite( static_cast<uint32_t>( total ), offset, bytes,
 																	D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT ) );
