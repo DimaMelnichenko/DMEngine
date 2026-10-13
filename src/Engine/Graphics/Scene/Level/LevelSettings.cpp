@@ -45,7 +45,10 @@ const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
 	static const char* stones = "Stones";
 	static const char* grass = "Grass and flowers";
 	static const char* forest = "Forest";
-	static const char* shrubs = "Shrubs";
+	// Полоса у воды (кусты и трава по берегам) и кусты склонов — разными подокнами: «Shrubs» одним списком не говорил, что
+	// ширина берегов здесь
+	static const char* banks = "Water banks";
+	static const char* shrubs = "Slope shrubs";
 	static const char* wind = "Wind";
 	static const char* shape = "Shape";
 	static const std::vector<TerrainLayerRuleField> fields = {
@@ -90,10 +93,14 @@ const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
 		range( "birch_height", forest, "Birch height", &R::birchHeight, 0.0f, 1.0f, "", "Birch lower, share of the height multiplier: from, to" ),
 		range( "birch_slope", forest, "Birch slope", &R::birchSlope, 0.0f, 90.0f, "deg", "Birch on gentle slopes: from, to" ),
 		value( "stand_contrast", forest, "Stand contrast", &R::standContrast, 1.0f, 8.0f, "", "Power of the tree type shares: higher - purer stands, narrower mixed bands" ),
-		value( "bank_width", shrubs, "Bank width", &R::bankWidth, 0.0f, 10.0f, "texels", "Bank strip wider than the channel" ),
-		range( "riparian_density", shrubs, "Riparian density", &R::riparianDensity, 0.0f, 1.0f, "", "Shrubs by the streams in patches by noise 0..1: from, to" ),
-		range( "riparian_grass", shrubs, "Riparian grass", &R::riparianGrass, 0.0f, 1.0f, "", "Tall grass by the water, thinned by noise 0..1: from, to" ),
-		range( "riparian_height", shrubs, "Riparian height", &R::riparianHeight, 0.0f, 1.0f, "", "Shrubs and tall grass by the water lower: from, to" ),
+		value( "bank_width", banks, "Bank width", &R::bankWidth, 0.0f, 10.0f, "texels",
+			   "Strip along the streams and lakes for the bank shrubs and grass: this many texels wider than the channel, whole texels" ),
+		range( "riparian_density", banks, "Bank shrubs", &R::riparianDensity, 0.0f, 1.0f, "",
+			   "Shrubs on the bank strip (mask_shrubs_riparian) in patches by noise 0..1: from, to" ),
+		range( "riparian_grass", banks, "Bank grass", &R::riparianGrass, 0.0f, 1.0f, "",
+			   "Grass on the bank strip (mask_grass_riparian), thinned by noise 0..1 to a half at most: from, to" ),
+		range( "riparian_height", banks, "Bank height", &R::riparianHeight, 0.0f, 1.0f, "",
+			   "Bank strip only lower, share of the height multiplier: from, to" ),
 		range( "krummholz_height", shrubs, "Krummholz height", &R::krummholzHeight, 0.0f, 1.0f, "", "Krummholz above the treeline: from, to" ),
 		range( "krummholz_top", shrubs, "Krummholz top", &R::krummholzTop, 0.0f, 1.0f, "", "Krummholz ends higher: from, to" ),
 		range( "dry_gaps_slope", shrubs, "Dry gaps slope", &R::dryGapsSlope, 0.0f, 90.0f, "deg", "Shrubs in the gaps of dry slopes: from, to" ),
