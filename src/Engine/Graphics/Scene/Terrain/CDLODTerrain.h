@@ -202,10 +202,12 @@ private:
 		float displacementStart;	// дисплейсмент: полный ближе, м, к displacementEnd — нет (0 — выключен)
 		float displacementEnd;
 		float lodEyeHeight;			// ноги ниже точки LOD, м (RenderView::lodEyeHeight): LOD — от отрезка «глаза — ноги»
-		float lodPadding[3];
+		float microShadows;			// микротени прямого света по AO слоёв, 0…1 («Micro shadows»)
+		float padding[2];
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1…−6: начало морфинга и 1 / длина зоны
 		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
 		DirectX::XMFLOAT4 layerDisplacement[TerrainMaterial::splatSlices];	// размах дисплейсмента по слоям, м
+		DirectX::XMFLOAT4 layerOcclusion[TerrainMaterial::splatSlices];		// сила AO по слоям, 0…1
 	};
 
 	struct NodeBox
@@ -334,6 +336,7 @@ private:
 	std::vector<float> m_eroded;
 	PropertyContainer m_layerTintProperties;	// «Layer tint»: множитель альбедо по слоям (TerrainLayers.albedo_tint)
 	PropertyContainer m_layerDisplacementProperties;	// «Layer displacement»: размах смещения по слоям (TerrainLayers.displacement)
+	PropertyContainer m_layerOcclusionProperties;		// «Layer occlusion»: сила AO по слоям (TerrainLayers.occlusion)
 	PropertyContainer m_layerProperties;	// «Layer tiling»: метров на повтор по слоям — подокно окна террейна
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;

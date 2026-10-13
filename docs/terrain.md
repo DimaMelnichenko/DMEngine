@@ -80,10 +80,12 @@ FreePBR запрещает распространять сами файлы — 
 Слой — строка `TerrainLayers` (`terrain`, `layer` 0…7 — канал `layer % 4` среза `layer / 4` splat-карты, `name`,
 `albedo`, `normal` — файлы от `Textures\`, `tiling` — метров на повтор, `albedo_tint` — множитель альбедо `r,g,b`, NULL —
 1, как Layer Tint в материалах UE Landscape: фото-текстура темнее или другого оттенка, чем нужно уровню, — цвет
-подбирается в движке без перепаковки; `displacement` — размах дисплейсмента, м, NULL — 0, «Дисплейсмент»). Файлы слоя:
+подбирается в движке без перепаковки; `displacement` — размах дисплейсмента, м, NULL — 0, «Дисплейсмент»; `occlusion` —
+сила AO слоя 0…1, NULL — 1, «Затенение окружением слоёв»). Файлы слоя:
 
 - `<имя>_albedo.dds` — RGB альбедо в sRGB (`R8G8B8A8_UNORM_SRGB`), A — высота для смешивания слоёв, 0…1;
-- `<имя>_normal.dds` — RGB нормаль в соглашении DirectX (G — вниз по картинке), A — шероховатость.
+- `<имя>_normal.dds` — RG нормаль в соглашении DirectX (G — вниз по картинке; Z шейдер не читает), B — затенение
+  окружением (AO), A — шероховатость.
 
 При загрузке слои собираются в два `Texture2DArray` одного размера (по первому слою), по срезу на слой до наибольшего
 описанного `layer` (пропуск в номерах — заглушка): альбедо — sRGB, выборка отдаёт
@@ -98,6 +100,33 @@ FreePBR запрещает распространять сами файлы — 
 `terrain_normal_roughness.<…>.dds`, как текстуры моделей ([materials.md](materials.md), «Сжатие и приготовление текстур»):
 отпечаток — файлы слоёв (путь, размер, время правки), sRGB, заглушка и `cookVersion` в `TerrainMaterial.cpp`; сменились —
 массив собирается, сжимается и записывается заново (шесть слоёв 2048² — ~15 с на массив, разово), прежний файл удаляется.
+
+### Затенение окружением слоёв
+
+Дисплейсмент поднимает камни, но без затенения щелей картинка плосковата: свет неба одинаков в щели и на макушке камня.
+AO слоя — в канале B массива нормалей, на месте Z, который шейдер не читает: выборка та же, цена кадра — 0 (у гальки у
+ручья 1,63 мс с AO и без).
+
+- **Откуда** (`pack_terrain_layer.py`): карта AO слоя — `--ao файл[:канал]` (у ARM Poly Haven — `:r`, у FreePBR — `_ao`);
+  карты нет — `--ao-from-height <перепад, м> --tiling <м>`: горизонт по бесшовной карте высоты в 16 направлениях в
+  радиусе `--ao-radius` (0,15 м), видимая доля неба с косинусным весом — cos² угла горизонта (`height_ao`); ни того, ни
+  другого — 1. Так собрана галька русел (у `dry_river_pebbles` Poly Haven в архиве `.blend` карты AO нет): перепад 0,1 м,
+  повтор 2 м — среднее AO 0,80. Средние у остальных: `patchy_meadow1` 0,82, `rocky_terrain_03` 0,76, `rock_face_03`
+  0,92, `snow_packed12` 0,97, `wispy_grass_meadow` 0,85.
+- **Сила слоя** — `TerrainLayers.occlusion` (0…1, NULL — 1), подокно «Layer occlusion» окна террейна, «Save level». В
+  `terrain.ps` AO четырёх слоёв пикселя смешивается теми же долями, что цвет: occlusion = 1 − Σ blend · (1 − AO) · сила;
+  гасит свет неба (`Surface::occlusion`, [lighting.md](lighting.md)).
+- **Микротени** — «Micro shadows» окна террейна (`Terrain.micro_shadows`, 0…1, 1): прямой свет в щели доходит только под
+  крутым углом — множитель saturate(|N·L| + 2·AO² − 1) (Brinck, Maximov 2016, «The Technical Art of Uncharted 4»;
+  `Surface::microShadows` в `lighting.sh`, у моделей и воды 0). Тень солнца каскадами — от формы рельефа и дисплейсмента,
+  микротени — от того, что мельче сетки.
+- Вдали AO — мип текстуры (среднее по повтору): земля в целом чуть темнее, ровно (обзор — средняя яркость кадра 108,9 →
+  107,3).
+
+Проверка (2026-10-13, Release, 1920 × 1080): средняя яркость кадра без AO / свет неба / с микротенями — галька у ручья
+107,3 / 97,1 / 97,2, плиты на гребне (камера скриншота дисплейсмента) 97,9 / 95,0 / 93,9, луг 99,6 / 99,5 / 99,5; щели
+между камнями и края плит темнее, камни отделяются друг от друга. Перепаковка детерминирована: R, G, A нормалей совпали с
+прежними до бита.
 Замер 2026-10-12 (Release, 1920×1080, попеременно со сборкой без сжатия): видеопамять массивов 256 → 67 МБ, рельеф в проходе
 цвета 0,48 → 0,46 мс в обзоре, 0,54 → 0,46 на склоне, 0,15 → 0,11 у рощи (выборки текстур — 4 слоя × до 3 проекций × 2
 массива на пиксель), запуск 2,06 → 1,84 с; кадры на глаз те же.
@@ -162,29 +191,34 @@ B --name patchy_meadow1 --albedo D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patch
   --normal D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patchy-meadow1_normal-ogl.png
   --roughness D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patchy-meadow1_roughness.png
   --height D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patchy-meadow1_height.png --layer 0 --tiling 4
+  --ao D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patchy-meadow1_ao.png
 B --name rocky_terrain_03 --albedo D/polyhaven/rocky_terrain_03_diff_2k.jpg
   --normal D/polyhaven/rocky_terrain_03_nor_gl_2k.jpg --roughness D/polyhaven/rocky_terrain_03_arm_2k.jpg:g
-  --height D/polyhaven/rocky_terrain_03_disp_2k.exr --layer 1 --tiling 20
+  --height D/polyhaven/rocky_terrain_03_disp_2k.exr --layer 1 --tiling 20 --ao D/polyhaven/rocky_terrain_03_arm_2k.jpg:r
 B --name rock_face_03 --albedo D/polyhaven/rock_face_03_diff_2k.jpg --normal D/polyhaven/rock_face_03_nor_gl_2k.jpg
   --roughness D/polyhaven/rock_face_03_arm_2k.jpg:g --height D/polyhaven/rock_face_03_disp_2k.exr --layer 2 --tiling 2.7
+  --ao D/polyhaven/rock_face_03_arm_2k.jpg:r
 B --name snow_packed12 --albedo D/snow-packed12-UE.zip:snow-packed12-Base_Color.png
   --normal D/snow-packed12-UE.zip:snow-packed12-Normal-dx.png --normal-convention dx
   --roughness D/snow-packed12-UE.zip:snow-packed12-Roughness.png
-  --height D/snow-packed12-UE.zip:snow-packed12-Height.png --layer 3 --tiling 4
+  --height D/snow-packed12-UE.zip:snow-packed12-Height.png --layer 3 --tiling 4 --ao D/snow-packed12-UE.zip:snow-packed12-ao.png
 B --name wispy_grass_meadow --albedo D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png
   --normal D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_normal-ogl.png
   --roughness D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_roughness.png
   --height D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_height.png --layer 4 --tiling 4
+  --ao D/whispy-grass-meadow-bl.zip:whispy-grass-meadow-bl/wispy-grass-meadow_ao.png
 B --name dry_river_pebbles --albedo D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_diff_2k.jpg
   --normal D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_nor_gl_2k.exr
   --roughness D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_rough_2k.exr
   --height D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_disp_2k.png --layer 5 --tiling 2
+  --ao-from-height 0.1 --ao-radius 0.15
 ```
 
 Архив `dry_river_pebbles` — `python Tools/polyhaven_download.py dry_river_pebbles --resolution 2k` (у текстур Poly Haven
 тоже есть вариант `.blend` с картами в `textures/`).
 
-У ARM Poly Haven шероховатость — канал G (`:g`), у отдельной карты шероховатости — R (по умолчанию). Размер —
+У ARM Poly Haven шероховатость — канал G (`:g`), AO — R (`:r`), у отдельных карт — R (по умолчанию). Без `--layer`
+сценарий только пишет файлы (база не меняется). Размер —
 `--size` (2048). Нормаль DirectX — `--normal-convention dx`. Настоящий размер текстуры Poly Haven отдаёт API
 (`https://api.polyhaven.com/info/<имя>`, поле `dimensions`, мм) — от него повтор.
 

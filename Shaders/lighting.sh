@@ -34,6 +34,9 @@ struct Surface
 					// Specular в UE — вдвое меньше: 0,5 ↔ 1)
 	float  roughness;	// «на глаз» (perceptual), 0…1
 	float  occlusion;	// затенение освещения окружением, 0…1
+	// Микротени прямого света по occlusion (Brinck, Maximov 2016, «The Technical Art of Uncharted 4»): в щели свет
+	// проходит только под крутым углом — доля 0…1, 0 — нет (модели, вода); terrain.ps — «Micro shadows» окна террейна
+	float  microShadows;
 	float3 emissive;
 	// Пропускание тонкой поверхностью — листья, травинки (KHR_materials_diffuse_transmission в glTF, Two Sided Foliage
 	// в UE): доля рассеянного света, прошедшая насквозь по Ламберту, и её цвет; 0 — не пропускает
@@ -61,6 +64,8 @@ float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 d
 		sunShadowFactor = sunShadow( surface.position, normalTowardLight( surface.geometricNormal, toSun ), toSun );
 	}
 	const bool transmits = any( transmissionColor > 0.0f );
+	// Раствор конуса видимости по occlusion: 2·AO² (Brinck, Maximov 2016)
+	const float aperture = 2.0f * surface.occlusion * surface.occlusion;
 
 	float3 result = 0.0f;
 	[loop] for( int i = 0; i < (int)cb_lightCount; ++i )
@@ -85,6 +90,8 @@ float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 d
 				attenuation *= spotAttenuation( toLight, light );
 		}
 
+		// Микротень: свет, пологий к поверхности, не доходит до дна щели (AO 1 — не гасит)
+		attenuation *= lerp( 1.0f, saturate( abs( dot( surface.normal, toLight ) ) + aperture - 1.0f ), surface.microShadows );
 		[branch] if( attenuation > 0.0f )
 		{
 			result += CookTorrance_GGX( surface.normal, toLight, view, F0, roughness, diffuseColor ) * light.color * attenuation;

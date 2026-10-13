@@ -37,9 +37,11 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	float  g_displacementStart;		// дисплейсмент (cdlod.vs, terrain_layers.sh): полный ближе, м,
 	float  g_displacementEnd;		// к этому расстоянию от точки LOD — нет; 0 — выключен
 	float  g_lodEyeHeight;			// ноги ниже точки LOD, м (ходьба; в полёте 0): LOD — от отрезка «глаза — ноги» (cdlod.vs)
+	float  g_microShadows;			// микротени прямого света по AO слоёв, 0…1 (terrain.ps, «Micro shadows»)
 	float4 g_detailMorph[6];		// уровни мельче листа (−1…−6): x — начало морфинга, y — 1 / длина зоны
 	float4 g_layerTint[8];			// множитель альбедо по слоям (xyz; TerrainLayers.albedo_tint, окно «Layer tint»)
 	float4 g_layerDisplacement[2];	// размах смещения по слоям, по четыре, м (TerrainLayers.displacement, «Layer displacement»)
+	float4 g_layerOcclusion[2];		// сила AO по слоям, по четыре, 0…1 (TerrainLayers.occlusion, «Layer occlusion»)
 };
 
 // Копия карты высот в R32_FLOAT с полной цепочкой мипов, в вершинном и пиксельном шейдерах

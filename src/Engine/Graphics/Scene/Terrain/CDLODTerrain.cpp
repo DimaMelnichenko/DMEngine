@@ -144,6 +144,14 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	prop->setUnit( "m" );
 	prop->setTooltip( "Distance band where the far texture scale replaces the near one: both scales are sampled along it" );
 
+	// Микротени прямого света по AO слоёв (lighting.sh): в щели между камнями солнце светит только под крутым углом
+	prop = m_properties.insert( "Micro shadows", settings.microShadows );
+	prop->setLow( 0.0f );
+	prop->setHigh( 1.0f );
+	prop->setControlType( GUIControlType::SLIDER );
+	prop->setTooltip( "Direct light in the crevices of the layer AO: it reaches their bottom only from steep angles (micro "
+					  "shadowing of Uncharted 4); 0 - AO darkens the sky light only" );
+
 	// Дисплейсмент у камеры (сетка — «Finest mesh»): полный ближе начала полосы, к концу сходит на нет
 	prop = m_properties.insert( "Displacement distance", XMFLOAT2( settings.displacementStart, settings.displacementEnd ) );
 	prop->setLow( 0.0f );
@@ -206,6 +214,21 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 										  "along the normal near the camera (0 - flat)" );
 	}
 	m_properties.addSubContainer( &m_layerDisplacementProperties );
+	// Сила затенения окружением слоя (TerrainLayers.occlusion): AO из B массива нормалей — pack_terrain_layer.py
+	m_layerOcclusionProperties.setName( "Layer occlusion" );
+	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
+	{
+		if( m_material.layerName( layer ).empty() )
+			continue;
+		prop = m_layerOcclusionProperties.insert( std::to_string( layer ) + ": " + m_material.layerName( layer ),
+												  m_material.occlusion( layer ) );
+		prop->setLow( 0.0f );
+		prop->setHigh( 1.0f );
+		prop->setControlType( GUIControlType::SLIDER );
+		prop->setTooltip( "Ambient occlusion of the layer texture: 1 - as baked, 0 - none. Darkens the sky light in the crevices "
+						  "and, with Micro shadows, the sun" );
+	}
+	m_properties.addSubContainer( &m_layerOcclusionProperties );
 	if( m_erosion )
 		addErosionProperties( *m_erosion );
 	addLayerRulesProperties( m_layerRules );
@@ -267,7 +290,7 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 	// Колонка splatmap больше не читается: splat-карту дают правила по итоговому рельефу (TerrainMasks)
 	SQLite::Statement query( DBConnector::instance().db(), "select heightmap, height_multiplier, height_offset, width_multiplier, "
 														   "triplanar_sharpness, height_blend, far_texture_scale, far_blend_start, "
-														   "far_blend_end, displacement_start, displacement_end from Terrain where id = :id" );
+														   "far_blend_end, displacement_start, displacement_end, micro_shadows from Terrain where id = :id" );
 	query.bind( ":id", terrainId );
 
 	if( !query.executeStep() )
@@ -292,6 +315,7 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 	material( "far_blend_end", settings.farBlendEnd );
 	material( "displacement_start", settings.displacementStart );
 	material( "displacement_end", settings.displacementEnd );
+	material( "micro_shadows", settings.microShadows );
 	m_heightOffset = static_cast<float>( query.getColumn( "height_offset" ).getDouble() );
 	m_texelSize = static_cast<float>( query.getColumn( "width_multiplier" ).getDouble() );
 
@@ -1742,6 +1766,8 @@ void CDLODTerrain::update( const FrameContext& frame )
 		}
 		if( m_layerDisplacementProperties.exists( name ) )
 			m_material.setDisplacement( layer, m_layerDisplacementProperties[name].data<float>() );
+		if( m_layerOcclusionProperties.exists( name ) )
+			m_material.setOcclusion( layer, m_layerOcclusionProperties[name].data<float>() );
 	}
 	// Мазок тонкой сетки — плитки детального слоя весов раз в кадр, splat-карта — не чаще 10 раз в секунду
 	flushPaint( false );
@@ -2061,16 +2087,19 @@ TerrainSettings CDLODTerrain::settings() const
 	const XMFLOAT2 displacement = m_properties["Displacement distance"].data<XMFLOAT2>();
 	settings.displacementStart = displacement.x;
 	settings.displacementEnd = displacement.y;
+	settings.microShadows = m_properties["Micro shadows"].data<float>();
 	settings.paint = m_paint.initialized() ? m_paint.tiles() : m_paintTiles;
 	settings.layerTiling.assign( m_material.layerCount(), 0.0f );
 	settings.layerTint.assign( m_material.layerCount(), XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
 	settings.layerDisplacement.assign( m_material.layerCount(), 0.0f );
+	settings.layerOcclusion.assign( m_material.layerCount(), 1.0f );
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
 		if( !m_material.layerName( layer ).empty() )
 		{
 			settings.layerTiling[layer] = m_material.tiling( layer );
 			settings.layerTint[layer] = m_material.tint( layer );
 			settings.layerDisplacement[layer] = m_material.displacement( layer );
+			settings.layerOcclusion[layer] = m_material.occlusion( layer );
 		}
 	if( m_erosion )
 	{
@@ -2279,6 +2308,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.displacementEnd = m_material.maxDisplacement() > 0.0f ? std::max( displacement.y, 0.0f ) : 0.0f;
 		params.displacementStart = std::min( std::max( displacement.x, 0.0f ), params.displacementEnd );
 		params.lodEyeHeight = lodEyeHeight;
+		params.microShadows = std::clamp( m_properties["Micro shadows"].data<float>(), 0.0f, 1.0f );
+		std::copy( m_material.layerOcclusion().begin(), m_material.layerOcclusion().end(), params.layerOcclusion );
 		std::copy( m_material.layerDisplacement().begin(), m_material.layerDisplacement().end(), params.layerDisplacement );
 		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );

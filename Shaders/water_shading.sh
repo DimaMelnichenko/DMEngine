@@ -406,6 +406,7 @@ float4 shadeWater( WaterShading input )
 	surface.specular = 1.0f;
 	surface.roughness = g_roughness;
 	surface.occlusion = 1.0f;
+	surface.microShadows = 0.0f;
 	surface.emissive = 0.0f;
 	surface.transmission = 0.0f;
 	surface.transmissionColor = 0.0f;

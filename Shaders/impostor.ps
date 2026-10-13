@@ -105,6 +105,7 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 	surface.specular = 1.0f;
 	surface.roughness = g_impostorRoughness;
 	surface.occlusion = lerp( 1.0f, sampleFrames( g_impostorDepth, input ).y, g_impostorOcclusion );
+	surface.microShadows = 0.0f;
 	surface.emissive = 0.0f;
 	surface.transmission = saturate( packed.w * g_impostorTransmission.w );
 	surface.transmissionColor = baseColor * g_impostorTransmission.xyz;

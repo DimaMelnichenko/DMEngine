@@ -36,7 +36,7 @@ constexpr uint32_t cookVersion = 1;
 enum class Fallback
 {
 	checker,	// альбедо: пурпурно-чёрная шахматка, как у отсутствующих текстур
-	flatNormal,	// нормаль (0, 0, 1), шероховатость 0.9
+	flatNormal,	// нормаль (0, 0, 1), AO 1, шероховатость 0.9
 	firstLayer	// splat-карта: весь вес у слоя 0
 };
 
@@ -349,6 +349,15 @@ void TerrainMaterial::setDisplacement( uint32_t layer, float displacement )
 	slice[layer % 4] = m_displacement[layer];
 }
 
+void TerrainMaterial::setOcclusion( uint32_t layer, float occlusion )
+{
+	if( layer >= m_layerCount )
+		return;
+	m_occlusion[layer] = std::clamp( occlusion, 0.0f, 1.0f );
+	float* slice = &m_layerOcclusion[layer / 4].x;
+	slice[layer % 4] = m_occlusion[layer];
+}
+
 float TerrainMaterial::maxDisplacement() const
 {
 	float result = 0.0f;
@@ -373,6 +382,8 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const SplatWeights& weight
 	m_layerTint.fill( XMFLOAT4( 1.0f, 1.0f, 1.0f, 0.0f ) );
 	m_displacement.assign( m_layerCount, 0.0f );
 	m_layerDisplacement.fill( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
+	m_occlusion.assign( m_layerCount, 1.0f );
+	m_layerOcclusion.fill( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
 	for( uint32_t i = 0; i < m_layerCount; ++i )
 	{
 		albedoFiles.push_back( layers[i].albedo );
@@ -381,6 +392,7 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const SplatWeights& weight
 		setTiling( i, layers[i].tiling );
 		setTint( i, layers[i].tint );
 		setDisplacement( i, layers[i].displacement );
+		setOcclusion( i, layers[i].occlusion );
 	}
 
 	// Шаги прогресса загрузки — splat-карта и два массива слоёв (по файлу на шаг — buildArray)
@@ -435,7 +447,8 @@ bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers
 			layer.albedo = query.getColumn( "albedo" ).getString();
 			layer.normal = query.getColumn( "normal" ).getString();
 			layer.tiling = static_cast<float>( query.getColumn( "tiling" ).getDouble() );
-			// albedo_tint — "r,g,b"; колонки нет или NULL — текстура как есть; displacement — м, NULL — без смещения
+			// albedo_tint — "r,g,b"; колонки нет или NULL — текстура как есть; displacement — м, NULL — без смещения;
+			// occlusion — сила AO, NULL — 1
 			for( int column = 0; column < query.getColumnCount(); ++column )
 			{
 				const std::string name = query.getColumnName( column );
@@ -445,6 +458,8 @@ bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers
 					strToVec3( query.getColumn( column ).getString(), layer.tint );
 				else if( name == "displacement" )
 					layer.displacement = static_cast<float>( query.getColumn( column ).getDouble() );
+				else if( name == "occlusion" )
+					layer.occlusion = static_cast<float>( query.getColumn( column ).getDouble() );
 			}
 		}
 	}

@@ -1,7 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Материал террейна CDLOD (TerrainMaterial). Нормаль рельефа считается по карте высот, веса до восьми слоёв
 // берутся из каналов splat-карты — массива из двух RGBA, как weightmap в UE Landscape. Текстуры читаются только у
-// четырёх самых весомых слоёв пикселя. Слой — пара текстур из массивов: альбедо + высота и нормаль + шероховатость.
+// четырёх самых весомых слоёв пикселя. Слой — пара текстур из массивов: альбедо + высота и нормаль (RG) + AO (B) +
+// шероховатость. AO гасит свет неба в щелях между камнями и даёт микротени прямого света (lighting.sh).
 // Текстура слоя проецируется сверху, а на крутых склонах ещё и вдоль осей X и Z (triplanar), поэтому на скалах
 // не растягивается. Слои смешиваются по высоте: где веса близки, видна более высокая текстура (камни из травы).
 // Вдали повтор текстуры крупнее (distance resampling, как в материалах UE Landscape): мелкий повтор (скала, снег)
@@ -25,6 +26,7 @@ struct LayerSample
 	float  height;
 	float3 detail;		// отклонение нормали по карте нормалей, в мировых координатах
 	float  roughness;
+	float  occlusion;	// затенение окружением слоя (B массива нормалей)
 };
 
 // tangent и bitangent — направления роста u и v проекции в мире. Отклонение нормали добавляется к нормали рельефа
@@ -40,6 +42,7 @@ void addProjection( inout LayerSample result, float weight, float layer, float2 
 	result.height += albedoHeight.a * weight;
 	result.detail += ( tangent * slope.x + bitangent * slope.y ) * weight;
 	result.roughness += normalRoughness.a * weight;
+	result.occlusion += normalRoughness.b * weight;
 }
 
 // Проекции слоя с повтором scale (повторов на метр), вклад — с весом weight.
@@ -153,11 +156,14 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 	float4 blend = heightBlend( splat, heights );
 	LayerSample mixed = (LayerSample)0;
+	float occlusion = 1.0f;
 	[unroll] for( uint n = 0; n < activeLayers; ++n )
 	{
 		mixed.albedo += layers[n].albedo * g_layerTint[layerIndex[n]].xyz * blend[n];
 		mixed.detail += layers[n].detail * blend[n];
 		mixed.roughness += layers[n].roughness * blend[n];
+		// AO слоя с его силой, смешанный теми же долями, что цвет
+		occlusion -= ( 1.0f - layers[n].occlusion ) * g_layerOcclusion[layerIndex[n] / 4][layerIndex[n] % 4] * blend[n];
 	}
 
 	// Крупные пятна яркости (тексели шума по 40 и 13 м), чтобы вдали не было заметно повторение текстур
@@ -174,7 +180,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.metallic = 0.0f;
 	surface.specular = 1.0f;
 	surface.roughness = mixed.roughness;
-	surface.occlusion = 1.0f;
+	surface.occlusion = saturate( occlusion );
+	surface.microShadows = g_microShadows;
 	surface.emissive = 0.0f;
 
 	// Мокрая земля у воды и под ней: вода в порах — темнее и глаже (блик), как wet в материалах UE. У воды static в плитках —

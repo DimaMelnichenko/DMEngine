@@ -2,8 +2,9 @@
 # собираются в два файла формата слоя (TerrainMaterial, Textures\terrain\layers):
 #   <имя>_albedo.dds — RGB альбедо в sRGB, как в фото (R8G8B8A8_UNORM_SRGB), A — высота для смешивания слоёв,
 #                      растянутая на 0…1 по 1-му и 99-му процентилю (у разных материалов разный разброс disp-карт);
-#   <имя>_normal.dds — RGB нормаль в соглашении DirectX (у карты OpenGL — nor_gl — зелёный канал переворачивается),
-#                      A — шероховатость.
+#   <имя>_normal.dds — RG нормаль в соглашении DirectX (у карты OpenGL — nor_gl — зелёный канал переворачивается;
+#                      Z шейдер не читает), B — затенение окружением (AO: карта --ao, по карте высоты --ao-from-height
+#                      или 1 — без затенения), A — шероховатость.
 # Файлы — с полной цепочкой мипов (альбедо фильтруется в линейном): движок не строит их при загрузке.
 # С --layer обновляет строку TerrainLayers террейна (имя, файлы, повтор в метрах). Картинки читает Blender (JPG, PNG,
 # EXR), поэтому запуск — через него, из корня проекта. Файл внутри архива — «архив.zip:путь внутри»:
@@ -12,7 +13,8 @@
 #       --normal DownloadResources/leafy_grass_2k.gltf.zip:textures/leafy_grass_nor_gl_2k.jpg --normal-convention gl
 #       --roughness DownloadResources/leafy_grass_2k.gltf.zip:textures/leafy_grass_arm_2k.jpg:g
 #       --height DownloadResources/polyhaven/leafy_grass_disp_2k.exr --layer 0 --tiling 2
-# Шероховатость — «файл:канал» (r, g, b, a; по умолчанию r): у ARM Poly Haven — g. Размер — --size (2048).
+# Шероховатость — «файл:канал» (r, g, b, a; по умолчанию r): у ARM Poly Haven — g. AO — так же (у ARM — r); карты нет —
+# --ao-from-height <перепад, м> --tiling <м>: горизонт по бесшовной карте высоты в радиусе --ao-radius. Размер — --size (2048).
 import argparse
 import os
 import sqlite3
@@ -74,6 +76,27 @@ def normalized_height(values):
     return np.clip((values - low) / (high - low), 0.0, 1.0)
 
 
+def height_ao(height, relief, radius, directions=16, steps=12):
+    """Затенение окружением по бесшовной карте высоты (0…1 → relief текселей перепада): в каждом из directions направлений
+    — наибольший подъём горизонта в радиусе radius текселей, видимая доля неба с косинусным весом — cos² угла горизонта"""
+    h = height.astype(np.float32) * relief
+    visibility = np.zeros_like(h)
+    for d in range(directions):
+        angle = 2.0 * np.pi * (d + 0.5) / directions
+        slope = np.zeros_like(h)
+        seen = set()
+        for s in range(1, steps + 1):
+            distance = radius * (s / steps) ** 1.5     # чаще у точки: мелкие камни рядом
+            offset = (int(round(np.sin(angle) * distance)), int(round(np.cos(angle) * distance)))
+            if offset == (0, 0) or offset in seen:
+                continue
+            seen.add(offset)
+            neighbour = np.roll(h, (-offset[0], -offset[1]), axis=(0, 1))
+            slope = np.maximum(slope, (neighbour - h) / np.hypot(*offset))
+        visibility += 1.0 / (1.0 + slope * slope)
+    return visibility / directions
+
+
 def update_layer(terrain, layer, name, albedo_file, normal_file, tiling):
     db = sqlite3.connect('base.db3')
     try:
@@ -103,6 +126,10 @@ def main():
     parser.add_argument('--normal-convention', choices=['gl', 'dx'], default='gl', help='gl: green up (glTF, Poly Haven nor_gl)')
     parser.add_argument('--roughness', required=True, help='roughness map, file[:channel]')
     parser.add_argument('--height', required=True, help='height (displacement) map')
+    parser.add_argument('--ao', help='ambient occlusion map, file[:channel] (ARM of Poly Haven - :r)')
+    parser.add_argument('--ao-from-height', type=float, metavar='RELIEF',
+                        help='no AO map: AO from the height map, RELIEF - metres of its full range (needs --tiling)')
+    parser.add_argument('--ao-radius', type=float, default=0.15, help='horizon search radius for --ao-from-height, m')
     parser.add_argument('--size', type=int, default=2048)
     parser.add_argument('--layer', type=int, choices=range(8), help='TerrainLayers.layer to update (0..7)')
     parser.add_argument('--tiling', type=float, help='meters per texture repeat for --layer')
@@ -110,6 +137,8 @@ def main():
     args = parser.parse_args(argv)
     if args.layer is not None and not args.tiling:
         raise SystemExit('error: --layer needs --tiling')
+    if args.ao_from_height and not args.tiling:
+        raise SystemExit('error: --ao-from-height needs --tiling (metres per texture repeat)')
 
     albedo = load(args.albedo, args.size)[..., :3]
     normal = load(args.normal, args.size)[..., :3].copy()
@@ -118,6 +147,16 @@ def main():
     roughness_file, roughness_channel = split_channel(args.roughness, 0)
     roughness = load(roughness_file, args.size)[..., roughness_channel]
     height = normalized_height(load(args.height, args.size)[..., 0])
+    if args.ao:
+        ao_file, ao_channel = split_channel(args.ao, 0)
+        occlusion = load(ao_file, args.size)[..., ao_channel]
+    elif args.ao_from_height:
+        texel = args.tiling / args.size
+        occlusion = height_ao(height, args.ao_from_height / texel, args.ao_radius / texel)
+    else:
+        occlusion = np.ones_like(height)
+    print('AO mean %.3f, 5%% %.3f' % (float(occlusion.mean()), float(np.percentile(occlusion, 5))))
+    normal[..., 2] = occlusion
 
     albedo_path = os.path.join(LAYERS_DIR, args.name + '_albedo.dds')
     normal_path = os.path.join(LAYERS_DIR, args.name + '_normal.dds')

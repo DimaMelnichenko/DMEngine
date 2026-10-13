@@ -2,7 +2,8 @@
 # Каждый слой — две бесшовные текстуры 512×512 RGBA8 без сжатия (Textures\terrain\layers):
 #   <слой>_albedo.dds — RGB альбедо в sRGB (R8G8B8A8_UNORM_SRGB), A высота (по ней слои смешиваются: камни проступают
 #   сквозь траву);
-#   <слой>_normal.dds — RGB нормаль (соглашение DirectX: G смотрит вдоль +v, вниз по картинке), A шероховатость.
+#   <слой>_normal.dds — RG нормаль (соглашение DirectX: G смотрит вдоль +v, вниз по картинке), B — затенение
+#   окружением (здесь 1 — без него), A шероховатость.
 # Splat-карту и маски расстановки и леса считает движок при загрузке по итоговому рельефу и руслам (TerrainMasks,
 # docs/terrain.md, «Слои и маски по рельефу»); здесь их больше нет. Результат детерминирован. Нужен numpy. Запускать из
 # корня проекта:
@@ -85,7 +86,9 @@ def mix(a, b, t):
 def write_layer(name, albedo, height, roughness, depth):
     # Цвет задан линейным, в файле — sRGB, как у фото (слои из фото — Tools/pack_terrain_layer.py)
     albedo_height = np.concatenate([dds.linear_to_srgb(albedo), height[..., None]], axis=-1)
-    normal_roughness = np.concatenate([normals(height, depth) * 0.5 + 0.5, roughness[..., None]], axis=-1)
+    normal = normals(height, depth) * 0.5 + 0.5
+    normal[..., 2] = 1.0   # B — AO слоя (TerrainMaterial), Z нормали шейдер не читает
+    normal_roughness = np.concatenate([normal, roughness[..., None]], axis=-1)
     dds.write_rgba8(os.path.join(LAYERS_DIR, name + '_albedo.dds'), albedo_height, srgb=True, mips=True)
     dds.write_rgba8(os.path.join(LAYERS_DIR, name + '_normal.dds'), normal_roughness, mips=True)
 

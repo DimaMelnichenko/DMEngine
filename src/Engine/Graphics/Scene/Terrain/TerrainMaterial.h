@@ -13,7 +13,7 @@ namespace GS
 // Материал террейна для Shaders\terrain.ps. Слои — строки таблицы TerrainLayers (до maxLayers), вес слоя — канал
 // splat-карты: она — массив RGBA, как weightmap в UE Landscape (срез 0 — слои 0…3, срез 1 — 4…7, срез 2 — не веса: R —
 // мокрость, G, B, A — запас под дождь); веса клеток считает CDLODTerrain (правила, правки рельефа, русла, мазки кисти). Текстуры слоёв при загрузке собираются в два массива текстур: «альбедо + высота»
-// и «нормаль + шероховатость». Все слои приводятся к размеру первого загруженного и к R8G8B8A8: альбедо — sRGB
+// и «нормаль (RG) + затенение окружением (B) + шероховатость». Все слои приводятся к размеру первого загруженного и к R8G8B8A8: альбедо — sRGB
 // (R8G8B8A8_UNORM_SRGB, высота в альфе линейная), нормаль и шероховатость — UNORM; вместо ненайденного файла
 // подставляется шахматка (альбедо) или плоская нормаль. Слои из фото собирает Tools/pack_terrain_layer.py.
 // Мипы строятся без WIC: WIC масштабирует с премультипликацией альфы, а в альфе здесь данные (высота,
@@ -58,6 +58,11 @@ public:
 	void setDisplacement( uint32_t layer, float displacement );
 	const std::array<DirectX::XMFLOAT4, splatSlices>& layerDisplacement() const { return m_layerDisplacement; }
 	float maxDisplacement() const;
+	// Сила затенения окружением слоя (TerrainLayers.occlusion, NULL — 1): AO из B массива нормалей — 1 как в текстуре, 0 —
+	// без него; по слоям для шейдера — по четыре в XMFLOAT4
+	float occlusion( uint32_t layer ) const { return m_occlusion[layer]; }
+	void setOcclusion( uint32_t layer, float occlusion );
+	const std::array<DirectX::XMFLOAT4, splatSlices>& layerOcclusion() const { return m_layerOcclusion; }
 
 private:
 	struct Layer
@@ -68,6 +73,7 @@ private:
 		float tiling = 1.0f;
 		DirectX::XMFLOAT3 tint = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );
 		float displacement = 0.0f;
+		float occlusion = 1.0f;
 	};
 
 	bool loadLayers( uint32_t terrainId, std::vector<Layer>& layers );
@@ -87,6 +93,8 @@ private:
 	std::vector<DirectX::XMFLOAT3> m_tint;
 	std::vector<float> m_displacement;
 	std::array<DirectX::XMFLOAT4, splatSlices> m_layerDisplacement = {};
+	std::vector<float> m_occlusion;
+	std::array<DirectX::XMFLOAT4, splatSlices> m_layerOcclusion = {};
 	std::array<DirectX::XMFLOAT4, maxLayers> m_layerTint = {};
 };
 

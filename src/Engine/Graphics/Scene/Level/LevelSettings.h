@@ -194,9 +194,11 @@ struct TerrainSettings
 	float farBlendEnd = 120.0f;
 	float displacementStart = 12.0f;	// дисплейсмент: полный ближе, м,
 	float displacementEnd = 24.0f;		// к этому расстоянию — нет (0 — выключен)
+	float microShadows = 1.0f;			// микротени прямого света по AO слоёв, 0…1
 	std::vector<float> layerTiling;		// метров на повтор по номеру слоя (TerrainLayers.layer); 0 — слоя нет
 	std::vector<DirectX::XMFLOAT3> layerTint;	// множитель альбедо по номеру слоя (TerrainLayers.albedo_tint)
 	std::vector<float> layerDisplacement;		// размах дисплейсмента по номеру слоя, м (TerrainLayers.displacement)
+	std::vector<float> layerOcclusion;			// сила AO по номеру слоя, 0…1 (TerrainLayers.occlusion)
 	std::optional<TerrainErosionSettings> erosion;	// строка TerrainErosion — правки подокна «Erosion»
 	TerrainLayerRules layerRules;					// строка TerrainLayerRules — правки подокна «Layer rules»
 	std::vector<TerrainPaintTile> paint;			// мазки кисти — строки TerrainPaint террейна
