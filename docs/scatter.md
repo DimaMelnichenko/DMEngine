@@ -559,6 +559,7 @@ Outliner → Scene → имя набора. «Shadow LOD scale» — у набо
 
 | Свойство | Колонка | Что при правке |
 |---|---|---|
+| Visible | — (не сохраняется) | слой скрыт: не раскладывается и не рисуется, и в тенях (`Scatterer::layerVisible`) — посмотреть на остальные (траву убрать — видны одуванчики); правка не делает уровень изменённым (`Property::setTransient`); `set "Meadow/0: GrassClump + 3/Visible" false` |
 | Cell size, Near border, Far border, Size, Impostor distance | `cell_size`, `near_border`, `far_border`, `size_multiplier`, `impostor_distance` | буферы слоя заново (`Scatterer::rebuildPass`: ёмкость списков — по кольцу и дальностям LOD), один раз — когда ползунок отпустили или ввод числа закончен (`Property::editing`); прежние GPU отпустит, когда закончит кадры с ними; в лог — «buffers rebuilt after an edit» |
 | Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain` | константы раскладки |
 | Cast shadow, Shadow impostor distance, Impostor shadow, Impostor base shade | `cast_shadow`, `shadow_impostor_distance`, `impostor_cast_shadow`, `impostor_base_shade` | сразу (плоский импостер или со смещением глубины — по `impostor_cast_shadow` при загрузке) |

@@ -55,7 +55,7 @@ void Property::markSaved()
 
 bool Property::modified() const
 {
-	if( !m_hasSaved || m_saved.index() != m_value.index() )
+	if( m_transient || !m_hasSaved || m_saved.index() != m_value.index() )
 		return false;
 	// Значения — простые типы без указателей: сравнение по байтам (у XMFLOAT* нет operator==)
 	return std::visit( [this]( const auto& saved )

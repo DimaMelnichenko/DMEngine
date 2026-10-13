@@ -115,6 +115,9 @@ public:
 	void markSaved();
 	bool modified() const;
 	void resetToSaved();
+	// Не данные уровня (переключатель вида: слой расстановки скрыт): правка не делает окно изменённым и не сохраняется
+	Property* setTransient( bool transient = true ) { m_transient = transient; return this; }
+	bool transient() const { return m_transient; }
 
 	// Правка идёт: контрол панели Details активен — ползунок тянут, в поле набирают число (ставит панель,
 	// PropertyWidgets). Объект, которому правка дорога (пересборка буферов, раскладка заново), применяет её, когда она
@@ -138,5 +141,6 @@ private:
 	float m_step = 0.0f;
 	std::vector<std::string> m_items;
 	bool m_editing = false;
+	bool m_transient = false;
 };
 

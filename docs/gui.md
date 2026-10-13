@@ -216,7 +216,7 @@ Details строка «Saved with the level», у остальных — «Not s
 `DRAG` — без них), `LABEL` — только чтение, у `XMFLOAT2` с `RANGE` — полоса «начало — конец» парой полей
 `DragFloatRange2`: конец не уходит за начало, у `int32` с `COMBO` — выпадающий список имён (`Property::setItems`, значение —
 номер имени; `set` — тоже номер). Подокно, которое не данные уровня (кисть), — `PropertyContainer::setTransient`: его правки
-не делают уровень изменённым. Необязательно:
+не делают уровень изменённым; отдельное такое свойство (флажок «Visible» слоя расстановки) — `Property::setTransient`. Необязательно:
 
 ```cpp
 properties.insert( "Density", density )->setLow( 0.0f );            // как раньше

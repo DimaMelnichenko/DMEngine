@@ -236,6 +236,10 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		property->setUnit( unit )->setTooltip( tooltip );
 		return property;
 	};
+	// Скрыть слой — посмотреть на другие (траву убрать — видны одуванчики): не считается и не рисуется, с уровнем не
+	// сохраняется
+	layer.properties->insert( "Visible", true )->setTransient()->setTooltip(
+		"Show the layer: off - it is neither placed nor drawn (to see the other layers); not saved with the level" );
 	const float ringHigh = std::max( 200.0f, settings.farBorder * 2.0f );
 	number( "Cell size", settings.cellSize, 0.05f, 20.0f, "m", "Grid step: at most one instance per cell" )->setLogarithmic();
 	number( "Near border", settings.nearBorder, 0.0f, ringHigh, "m", "Ring around the camera where the layer grows" );
@@ -325,6 +329,11 @@ bool Scatterer::bake( const BakeContext& context )
 		variant.impostorMaterial = dynamic_cast<ImpostorMaterial*>( material );
 	}
 	return true;
+}
+
+bool Scatterer::layerVisible( const Layer& layer )
+{
+	return !layer.properties->exists( "Visible" ) || ( *layer.properties )["Visible"].data<bool>();
 }
 
 uint64_t Scatterer::hashParams( const PropertyContainer& params )
@@ -447,6 +456,8 @@ void Scatterer::compute( const FrameContext& frame )
 
 	for( Layer& layer : m_layers )
 	{
+		if( !layerVisible( layer ) )
+			continue;
 		applyProperties( layer );
 		const ScatterPass::PopulateParams& params = layer.pass->populateParams();
 		if( params.cellSize <= 0.0f || params.farBorder <= 0.0f )
@@ -583,6 +594,8 @@ void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 	uint32_t passMask = 0;
 	for( const Layer& layer : m_layers )
 	{
+		if( !layerVisible( layer ) )
+			continue;
 		for( const LayerVariant& variant : layer.variants )
 		for( const LayerLod& lod : variant.lods )
 		for( const LayerSection& section : lod.sections )
@@ -614,6 +627,8 @@ void Scatterer::renderCustom( const RenderContext& context )
 	const uint32_t view = std::min( context.view.index, ScatterPass::maxViews - 1 );
 	for( Layer& layer : m_layers )
 	{
+		if( !layerVisible( layer ) )
+			continue;
 		const ScatterPass::PopulateParams& params = layer.pass->populateParams();
 		// Инстансы слоя — не дальше кольца от камеры, их тень — не дальше её длины: каскад дальше этого их теней не содержит
 		if( shadow && ( params.castShadow < 0.5f || context.view.cascadeNear >= params.farBorder + layer.maxHeight * m_shadowLength ) )

@@ -200,6 +200,8 @@ private:
 	void assignGroups( Layer& layer );
 	// Отпечаток параметров материала: секции с равными параметрами рисуются одной группой
 	static uint64_t hashParams( const PropertyContainer& params );
+	// Флажок «Visible» окна слоя: скрытый слой не раскладывается и не рисуется (и в тенях)
+	static bool layerVisible( const Layer& layer );
 
 	// Больше потоков на слой не запускаем: при мелком шаге сетка покроет не всё кольцо, а только его середину
 	static constexpr uint16_t maxGridDim = 1024;
