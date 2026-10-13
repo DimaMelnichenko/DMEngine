@@ -10,12 +10,9 @@
 namespace GS
 {
 
-struct TerrainEditCoverage;
-struct TerrainMasks;
-
 // Материал террейна для Shaders\terrain.ps. Слои — строки таблицы TerrainLayers (до maxLayers), вес слоя — канал
-// splat-карты: она — массив из двух RGBA, как weightmap в UE Landscape (срез 0 — слои 0…3, срез 1 — 4…7); веса — от
-// правил по итоговому рельефу (TerrainMasks), покраска правками рельефа — поверх. Текстуры слоёв при загрузке собираются в два массива текстур: «альбедо + высота»
+// splat-карты: она — массив RGBA, как weightmap в UE Landscape (срез 0 — слои 0…3, срез 1 — 4…7, срез 2 — не веса: R —
+// мокрость, G, B, A — запас под дождь); веса клеток считает CDLODTerrain (правила, правки рельефа, русла, мазки кисти). Текстуры слоёв при загрузке собираются в два массива текстур: «альбедо + высота»
 // и «нормаль + шероховатость». Все слои приводятся к размеру первого загруженного и к R8G8B8A8: альбедо — sRGB
 // (R8G8B8A8_UNORM_SRGB, высота в альфе линейная), нормаль и шероховатость — UNORM; вместо ненайденного файла
 // подставляется шахматка (альбедо) или плоская нормаль. Слои из фото собирает Tools/pack_terrain_layer.py.
@@ -26,11 +23,20 @@ class TerrainMaterial
 public:
 	static constexpr uint32_t maxLayers = 8;
 	static constexpr uint32_t splatSlices = maxLayers / 4;
+	static constexpr uint32_t splatTextureSlices = splatSlices + 1;	// и срез не весов (мокрость)
 
-	// masks — веса слоёв от правил (TerrainMasks::splat); coverage — покраска слоёв правками рельефа поверх них
-	bool initialize( uint32_t terrainId, const TerrainMasks& masks, const TerrainEditCoverage& coverage );
-	// Splat-карта заново по новым весам и покраске (русла перестроены без перезагрузки)
-	bool repaint( const TerrainMasks& masks, const TerrainEditCoverage& coverage );
+	// Итог клеток splat-карты (size², строка 0 — дальний край по z): веса слоёв 0…1 (пустой — слоя нет) и мокрость 0…1
+	// (пустая — 0); size 0 — весь вес у слоя 0
+	struct SplatWeights
+	{
+		uint32_t size = 0;
+		std::array<std::vector<float>, maxLayers> layers;
+		std::vector<float> wetness;
+	};
+
+	bool initialize( uint32_t terrainId, const SplatWeights& weights );
+	// Splat-карта заново (русла, правила, мазки)
+	bool repaint( const SplatWeights& weights );
 	// Пиксельный шейдер: t1 — splat-карта, t2 — альбедо + высота, t3 — нормаль + шероховатость, t4 — шум
 	void bind() const;
 	// Повторов текстуры слоя на единицу мира (1 / tiling) по слоям, по четыре в XMFLOAT4

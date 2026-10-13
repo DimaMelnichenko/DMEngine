@@ -5,6 +5,7 @@
 #include <chrono>
 #include <memory>
 #include <optional>
+#include <set>
 #include <vector>
 #include "SceneObject.h"
 #include "GridMesh.h"
@@ -59,12 +60,14 @@ public:
 	// (Shaders/wind_field.sh), копия на CPU — windField()
 	// Мазки кисти поверх правил слоёв и масок (TerrainPaint, строки TerrainPaint) — до initialize; применяются в buildMasks
 	void setPaint( const std::vector<TerrainPaintTile>& tiles ) { m_paintTiles = tiles; }
-	// Мазок из одного касания (команда terrain paint, потом — кисть вьюпорта): цель — «layer N» или имя маски; текстуры цели —
-	// сразу, полог поля ветра — в конце мазка. false — нет цели или правил
+	// Мазок из одного касания (команда terrain paint, потом — кисть вьюпорта): цель — «layer N», «wetness» (тонкая сетка
+	// 0,25 м: детальный слой весов) или имя маски (1 м); текстуры цели — сразу, полог поля ветра — в конце мазка. false — нет
+	// цели или правил
 	bool paintStroke( const std::string& target, TerrainPaint::Mode mode, float value, float x, float z, float radius, float falloff,
 					  std::string& reason );
-	// Мазок кисти по частям (вьюпорт): начало, касание каждый кадр (цель — на GPU вживую: маска сразу, splat-карта — не чаще
-	// 10 раз в секунду), конец — снимки плиток цели до и после для отмены (EditHistory) и раскладка леса
+	// Мазок кисти по частям (вьюпорт): начало, касание каждый кадр (цель — на GPU вживую: маска сразу, плитки детального слоя
+	// весов — раз в кадр (update), splat-карта — не чаще 10 раз в секунду), конец — снимки плиток цели до и после для отмены
+	// (EditHistory) и раскладка леса
 	bool beginPaintStroke( const std::string& target, TerrainPaint::Mode mode, float value, std::string& reason );
 	void paintDab( float x, float z, float radius, float falloff );
 	struct PaintEdit
@@ -88,7 +91,7 @@ public:
 		float falloff = 0.5f;
 	};
 	PaintBrush paintBrush( bool shift, bool ctrl ) const;
-	// Цели кисти: «layer N» по TerrainLayers, затем маски
+	// Цели кисти: «layer N» по TerrainLayers, мокрость, затем маски
 	std::vector<std::string> paintTargets() const;
 	// Луч к рельефу (итоговая карта на CPU, как ходьба): distance — до точки на земле; false — мимо
 	bool raycast( const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& direction, float maxDistance, float& distance ) const;
@@ -224,14 +227,22 @@ private:
 	void refreshPaintedTarget( const std::string& target, const TerrainPaint::Rect& rect );
 	// Маска — на GPU: прямоугольник rect участком текстуры (касание кисти), без него — целиком; текстуры ещё нет — создаётся
 	bool uploadMask( const TerrainMasks::Mask& mask, const TerrainPaint::Rect* rect = nullptr );
-	// Цель после мазка, отмены, повтора: на GPU; маска — флаг раскладки леса, лес — полог поля ветра; слой — splat-карта и
-	// плитки детального слоя весов в прямоугольнике changed (сетка масок; нет — все)
+	// Цель после мазка, отмены, повтора: на GPU; маска — флаг раскладки леса, лес — полог поля ветра; цель тонкой сетки —
+	// плитки детального слоя весов в прямоугольнике changed её сетки (нет плиток — создаются; нет прямоугольника — все) и
+	// splat-карта
 	void paintTargetChanged( const std::string& target, const TerrainPaint::Rect* changed = nullptr );
-	// Детальный слой весов (TerrainDetailSplat): откуда веса, все плитки заново (русла, правила) и плитки в прямоугольнике
-	// сетки масок (мазок слоя)
+	// Детальный слой весов (TerrainDetailSplat): откуда веса; все плитки заново (русла, правила) — и плитки мазков тонкой сетки
 	TerrainDetailSplat::Source detailSplatSource() const;
 	bool buildDetailSplat();
-	void refreshDetailSplat( const TerrainPaint::Rect& rect );
+	// Мазки тонкой сетки — на GPU: плитки, задетые с прошлого раза (m_dirtySplatTiles), и splat-карта — не чаще 10 раз в
+	// секунду (force — сейчас)
+	void flushPaint( bool force );
+	// Splat-карта 1 м: правила → покраска правками рельефа и руслами → мазки тонкой сетки в среднем по клетке; мокрость — мазки
+	TerrainMaterial::SplatWeights baseSplat() const;
+	bool repaintSplat();
+	// Уровень поверхности воды static на сетке 1 м, как mainStatic и mainSurface (water_simulation.cs, water_surface.cs): дно и
+	// мокрость плиток мазков вне детальной земли (TerrainDetailSplat)
+	void computeWaterLevel();
 	void addPaintProperties();
 	// Рельефная часть поля ветра (поток и подветренная тень, без леса) по итоговому рельефу field: ключ и расчёт, если ключ
 	// сменился (m_windTerrain). Её читают правила слоёв (снег) и итоговое поле
@@ -290,9 +301,10 @@ private:
 	PropertyContainer m_paintProperties;		// подокно «Paint» — кисть
 	std::string m_strokeTarget;
 	TerrainPaint::TileMap m_strokeBefore;
-	bool m_splatPending = false;
-	TerrainPaint::Rect m_splatDirty;			// мазок слоя: где веса сменились после последней выгрузки splat-карты
+	bool m_splatPending = false;				// мазки тонкой сетки сменились — splat-карта заново
+	std::set<TerrainDetailSplat::TileKey> m_dirtySplatTiles;	// плитки детального слоя весов, задетые мазком с прошлой выгрузки
 	std::chrono::steady_clock::time_point m_splatUploaded;
+	std::vector<float> m_waterLevel;			// уровень воды static на сетке 1 м (computeWaterLevel), −1e30 — нет
 	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
 	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
 	DirectX::XMFLOAT2 m_prevailingWind = DirectX::XMFLOAT2( 0.0f, 0.0f );	// куда дует ветер, X и Z (setPrevailingWind)

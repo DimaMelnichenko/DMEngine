@@ -14,7 +14,7 @@
 #include "water.sh"
 #include "wind_field.sh"
 
-DM_SRV( Texture2DArray, g_splatMap, 1 );		// срез 0 — веса слоёв 0…3, срез 1 — 4…7
+DM_SRV( Texture2DArray, g_splatMap, 1 );		// срез 0 — веса слоёв 0…3, срез 1 — 4…7, срез 2 — не веса: R — мокрость
 DM_SRV( Texture2DArray, g_albedoHeight, 2 );
 DM_SRV( Texture2DArray, g_normalRoughness, 3 );
 DM_SRV( Texture2D, g_noise, 4 );		// белый шум 256×256, R8_SNORM
@@ -279,7 +279,10 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float liveWetness = 0.0f;
 	[branch] if( liveWater )
 		liveWetness = max( smoothstep( -0.02f, 0.0f, waterDepth ), smoothstep( 0.005f, 0.02f, recededWaterDepth( input.uv ) ) );
-	const float wet = g_wetnessBaked != 0 ? lerp( liveWetness, bakedWetness, detailShare ) : max( liveWetness, bakedWetness * detailShare );
+	// Мокрость кисти вдали — splat-карта (мазки в среднем по клетке), вблизи — в плитке
+	const float baseWetness = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 2.0f ) ).x;
+	const float wet = g_wetnessBaked != 0 ? lerp( max( liveWetness, baseWetness ), bakedWetness, detailShare ) :
+											max( liveWetness, lerp( baseWetness, bakedWetness, detailShare ) );
 	surface.baseColor *= lerp( 1.0f, 0.6f, wet );
 	surface.roughness = lerp( surface.roughness, 0.2f, wet );
 

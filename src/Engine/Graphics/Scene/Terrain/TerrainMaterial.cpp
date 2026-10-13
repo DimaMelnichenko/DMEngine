@@ -20,6 +20,7 @@
 using namespace DirectX;
 
 static_assert( GS::TerrainEditCoverage::paintLayers == GS::TerrainMaterial::maxLayers, "terrain edits paint TerrainMaterial layers" );
+static_assert( GS::TerrainMasks::splatLayers == GS::TerrainMaterial::maxLayers, "splat layers" );
 
 namespace
 {
@@ -274,54 +275,22 @@ bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool 
 	return createArraySRV( layers, texture, srv );
 }
 
-// Покраска правками рельефа (TerrainEdits.paint_layer, как Paint Layer у Landscape Splines): вес слоя i = вес файла ×
-// remaining + paint[i] по полям покрытия в UV текселя splat-карты; слоёв дальше layerCount нет в массивах — их покраска
-// пропускается
-void paintSplatMap( ScratchImage& splat, const GS::TerrainEditCoverage& coverage, uint32_t layerCount )
+// Splat-карта — массив из splatTextureSlices срезов RGBA (срез s < splatSlices — веса слоёв 4s…4s + 3, последний — R
+// мокрость); весов нет — весь вес у слоя 0
+bool buildSplatMap( const GS::TerrainMaterial::SplatWeights& weights, Texture& texture, ShaderView& srv )
 {
-	const TexMetadata& metadata = splat.GetMetadata();
-	const size_t width = metadata.width;
-	const size_t height = metadata.height;
-	for( size_t y = 0; y < height; ++y )
-	{
-		const float v = ( y + 0.5f ) / height;
-		for( size_t x = 0; x < width; ++x )
-		{
-			const float u = ( x + 0.5f ) / width;
-			const float remaining = coverage.sample( coverage.remaining, u, v );
-			if( remaining >= 1.0f )
-				continue;
-			for( size_t slice = 0; slice < GS::TerrainMaterial::splatSlices; ++slice )
-			{
-				uint8_t* texel = splat.GetImage( 0, slice, 0 )->pixels + y * splat.GetImage( 0, slice, 0 )->rowPitch + x * 4;
-				for( size_t c = 0; c < 4; ++c )
-				{
-					const size_t layer = slice * 4 + c;
-					const float painted = layer < layerCount ? coverage.sample( coverage.paint[layer], u, v ) : 0.0f;
-					const float weight = texel[c] / 255.0f * remaining + painted;
-					texel[c] = static_cast<uint8_t>( std::lround( std::clamp( weight, 0.0f, 1.0f ) * 255.0f ) );
-				}
-			}
-		}
-	}
-}
-
-// Splat-карта — массив из splatSlices срезов RGBA (срез s — веса слоёв 4s…4s + 3) по весам правил (TerrainMasks::splat:
-// пустой слой — нули; правил нет — весь вес у слоя 0). Покраска правками — поверх
-bool buildSplatMap( const GS::TerrainMasks& masks, const GS::TerrainEditCoverage& coverage, uint32_t layerCount, Texture& texture,
-					ShaderView& srv )
-{
-	constexpr size_t slices = GS::TerrainMaterial::splatSlices;
-	static_assert( GS::TerrainMasks::splatLayers == GS::TerrainMaterial::maxLayers, "splat layers" );
-	const size_t size = masks.size ? masks.size : fallbackSize;
+	constexpr size_t slices = GS::TerrainMaterial::splatTextureSlices;
+	constexpr size_t weightSlices = GS::TerrainMaterial::splatSlices;
+	const size_t size = weights.size ? weights.size : fallbackSize;
 
 	ScratchImage splat;
 	if( FAILED( splat.Initialize2D( DXGI_FORMAT_R8G8B8A8_UNORM, size, size, slices, 1 ) ) )
 		return false;
+	const auto store = []( float value ) { return static_cast<uint8_t>( std::lround( std::clamp( value, 0.0f, 1.0f ) * 255.0f ) ); };
 	for( size_t slice = 0; slice < slices; ++slice )
 	{
 		const Image& target = *splat.GetImage( 0, slice, 0 );
-		if( masks.size == 0 )
+		if( weights.size == 0 )
 		{
 			if( slice == 0 )
 				fill( target, Fallback::firstLayer );
@@ -336,13 +305,11 @@ bool buildSplatMap( const GS::TerrainMasks& masks, const GS::TerrainEditCoverage
 			for( size_t x = 0; x < size; ++x, texel += 4 )
 				for( size_t c = 0; c < 4; ++c )
 				{
-					const std::vector<float>& layer = masks.splat[slice * 4 + c];
-					texel[c] = layer.empty() ? 0 : static_cast<uint8_t>( std::lround( std::clamp( layer[y * size + x], 0.0f, 1.0f ) * 255.0f ) );
+					const std::vector<float>& values = slice < weightSlices ? weights.layers[slice * 4 + c] : weights.wetness;
+					texel[c] = ( slice < weightSlices || c == 0 ) && !values.empty() ? store( values[y * size + x] ) : 0;
 				}
 		}
 	}
-	if( coverage.paints() )
-		paintSplatMap( splat, coverage, layerCount );
 
 	ScratchImage mips;
 	if( FAILED( GenerateMipMaps( splat.GetImages(), splat.GetImageCount(), splat.GetMetadata(), mipFilter, 0, mips ) ) )
@@ -373,7 +340,7 @@ void TerrainMaterial::setTint( uint32_t layer, const XMFLOAT3& tint )
 	m_layerTint[layer] = XMFLOAT4( tint.x, tint.y, tint.z, 0.0f );
 }
 
-bool TerrainMaterial::initialize( uint32_t terrainId, const TerrainMasks& masks, const TerrainEditCoverage& coverage )
+bool TerrainMaterial::initialize( uint32_t terrainId, const SplatWeights& weights )
 {
 	std::vector<Layer> layers;
 	if( !loadLayers( terrainId, layers ) )
@@ -396,14 +363,10 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const TerrainMasks& masks,
 		setTint( i, layers[i].tint );
 	}
 
-	for( uint32_t layer = m_layerCount; layer < TerrainEditCoverage::paintLayers; ++layer )
-		if( !coverage.paint[layer].empty() )
-			LOG( "Terrain material: terrain edits paint layer " + std::to_string( layer ) + ", which TerrainLayers does not describe" );
-
 	// Шаги прогресса загрузки — splat-карта и два массива слоёв (по файлу на шаг — buildArray)
 	SlowTask task( 1.0f );
 	task.enterProgressFrame( 0.1f, "Splat map" );
-	bool created = buildSplatMap( masks, coverage, m_layerCount, m_splatMapTexture, m_splatMap );
+	bool created = buildSplatMap( weights, m_splatMapTexture, m_splatMap );
 	task.enterProgressFrame( 0.45f, "Albedo" );
 	created = created && buildArray( albedoFiles, Fallback::checker, true, "terrain_albedo_height", m_albedoHeightTexture, m_albedoHeight );
 	task.enterProgressFrame( 0.45f, "Normals" );
@@ -421,9 +384,9 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const TerrainMasks& masks,
 	return true;
 }
 
-bool TerrainMaterial::repaint( const TerrainMasks& masks, const TerrainEditCoverage& coverage )
+bool TerrainMaterial::repaint( const SplatWeights& weights )
 {
-	if( !buildSplatMap( masks, coverage, m_layerCount, m_splatMapTexture, m_splatMap ) )
+	if( !buildSplatMap( weights, m_splatMapTexture, m_splatMap ) )
 		return false;
 	DMD3D::instance().setName( m_splatMapTexture, "Terrain splat map" );
 	return true;

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
@@ -9,21 +10,27 @@
 namespace GS
 {
 
-// Ручная правка слоёв земли и масок поверх правил (TerrainMasks) — кисть, как покраска слоёв Landscape в UE, но поправкой:
-// у цели (слой земли «layer N» или маска по имени) — плитки tileSize² поправок int8 (−127…127 → −1…1) в текселях масок,
-// хранятся только закрашенные (строки TerrainPaint, «Save level»). Правила пересчитали — мазки остаются поправкой к новому
-// результату. Маска: итог = правила + поправка (0…1). Слой земли: поправка d > 0 тянет веса к «только этот слой»
-// (w = (1 − d)·w + d·eₖ), d < 0 — вес слоя × (1 + d), освободившееся — остальным пропорционально; сумма весов — 1.
-// Мазок считается за мазок, а не за время: карта покрытия (наибольший вес кисти в точке за мазок), поправка — от снимка
-// до мазка и покрытия (value — итог к значению, step / unstep — ± значение, erase — к нулю), как непрозрачность мазка
-// в Photoshop и Krita
+// Ручная правка слоёв земли, мокрости и масок поверх правил (TerrainMasks) — кисть, как покраска слоёв Landscape в UE, но
+// поправкой: у цели (слой земли «layer N», мокрость «wetness» или маска по имени) — плитки tileSize² поправок int8
+// (−127…127 → −1…1) в текселях её сетки, хранятся только закрашенные (строки TerrainPaint, «Save level»). Сетка цели: у
+// масок — их тексели (1 м), у слоёв земли и мокрости — тонкая, fineScale текселей на тексель масок (0,25 м: детальный
+// слой весов, TerrainDetailSplat). Правила пересчитали — мазки остаются поправкой к новому результату. Маска и мокрость:
+// итог = до мазков + поправка (0…1). Слой земли: поправка d > 0 тянет веса к «только этот слой» (w = (1 − d)·w + d·eₖ),
+// d < 0 — вес слоя × (1 + d), освободившееся — остальным пропорционально; сумма весов — 1.
+// Мазок считается за мазок, а не за время: покрытие (наибольший вес кисти в точке за мазок, плитками — только где кисть
+// была), поправка — от снимка до мазка и покрытия (value — итог к значению, step / unstep — ± значение, erase — к нулю),
+// как непрозрачность мазка в Photoshop и Krita
 class TerrainPaint
 {
 public:
 	static constexpr uint32_t tileSize = 64;
+	static constexpr uint32_t fineScale = 4;
+	static constexpr const char* wetnessTarget = "wetness";
 	enum class Mode { value, step, unstep, erase };
 	// Плитки цели: (tile x, tile z-строка) → поправки tileSize² — снимки для отмены мазка
 	using TileMap = std::map<std::pair<int32_t, int32_t>, std::vector<int8_t>>;
+	// Значение цели до мазков в текселе её сетки (x, row) — у слоя земли его вес: по нему value считает поправку
+	using Rule = std::function<float( uint32_t x, uint32_t row )>;
 	// Прямоугольник текселей [x0, x1) × [row0, row1); строка 0 — дальний край по z, как у масок
 	struct Rect
 	{
@@ -31,22 +38,28 @@ public:
 		bool empty() const { return x0 >= x1 || row0 >= row1; }
 		void add( const Rect& other );
 	};
-	// Цель — слой земли («layer N»): номер слоя, иначе −1 — маска
+	// Цель — слой земли («layer N»): номер слоя, иначе −1
 	static int32_t layerOf( const std::string& target );
 	static std::string layerTarget( uint32_t layer ) { return "layer " + std::to_string( layer ); }
+	// Цель на тонкой сетке — слой земли или мокрость (детальный слой весов), иначе маска на сетке масок
+	static bool isFine( const std::string& target ) { return layerOf( target ) >= 0 || target == wetnessTarget; }
 
-	// Карта масок: size² текселей по texel м; плитки из базы (другой размер плитки — пропускается, строка в лог)
+	// Карта масок: size² текселей по texel м; плитки из базы (не по сетке цели — пропускается, строка в лог)
 	void initialize( uint32_t size, float texel, const std::vector<TerrainPaintTile>& tiles );
 	bool initialized() const { return m_size != 0; }
+	// Сетка цели: текселей по стороне и тексель, м
+	uint32_t gridSize( const std::string& target ) const { return isFine( target ) ? m_size * fineScale : m_size; }
+	float gridTexel( const std::string& target ) const { return isFine( target ) ? m_texel / fineScale : m_texel; }
 	std::vector<TerrainPaintTile> tiles() const;
 	// Цели с мазками и число их плиток
 	std::vector<std::pair<std::string, size_t>> targets() const;
 	bool has( const std::string& target ) const;
 
-	// Мазок: rules — значения правил цели (у слоя земли — его вес, сумма слоёв — 1), по ним value считает поправку
-	void beginStroke( const std::string& target, Mode mode, float value, const std::vector<float>* rules );
-	// Касание кисти в точке мира (x, z): радиус, м, falloff — доля радиуса с мягким краем; изменённые тексели
+	void beginStroke( const std::string& target, Mode mode, float value, Rule rule );
+	// Касание кисти в точке мира (x, z): радиус, м, falloff — доля радиуса с мягким краем; изменённые тексели сетки цели
 	Rect dab( float x, float z, float radius, float falloff );
+	// Тексели сетки цели, которые задело бы касание (круг кисти в прямоугольнике) — без изменений
+	Rect dabRect( const std::string& target, float x, float z, float radius ) const;
 	// Конец мазка: затронутые тексели всего мазка
 	Rect endStroke();
 	bool stroking() const { return m_stroke.active; }
@@ -54,22 +67,33 @@ public:
 	// Плитки цели целиком — снимок до и после мазка (отмена и повтор: EditHistory)
 	TileMap targetTiles( const std::string& target ) const;
 	void setTargetTiles( const std::string& target, const TileMap& tiles );
+	// Тексели сетки цели, которые покрывают плитки tiles (снимок: отмена, очистка)
+	Rect tilesRect( const std::string& target, const TileMap& tiles ) const;
 
-	// Поправка в текселе (−1…1)
+	// Поправка в текселе сетки цели (−1…1)
 	float delta( const std::string& target, uint32_t x, uint32_t row ) const;
-	// Итог маски: clamp( правила + поправка ) в прямоугольнике (out — той же раскладки, что rules)
+	// Поправки цели в прямоугольнике её сетки [x0, x0 + width) × [row0, row0 + height) (за краем сетки — 0) — в out, строки
+	// по row; false — поправок там нет (out не тронут)
+	bool deltas( const std::string& target, int32_t x0, int32_t row0, uint32_t width, uint32_t height, std::vector<float>& out ) const;
+	// Итог маски: clamp( правила + поправка ) в прямоугольнике сетки масок (out — той же раскладки, что rules)
 	void applyMask( const std::string& target, const std::vector<float>& rules, std::vector<float>& out, const Rect& rect ) const;
-	// Итог слоёв земли: веса splat (по слою; пустой — слоя нет) в прямоугольнике — поправки слоёв по порядку номеров
-	void applyLayers( const std::vector<float>* rules, std::vector<float>* out, uint32_t layers, const Rect& rect ) const;
+	// Слои земли и мокрость с мазками тонкой сетки — в среднем по её fineScale² текселям в клетке масок (splat-карта 1 м:
+	// вдали): веса клеток weights (по слою; пустой — слоя нет, с мазками — нули) поправками слоёв по порядку номеров,
+	// мокрость wetness (size²; пустая — нули, если есть её мазки) — их положительная часть; в прямоугольнике rect сетки масок
+	void applyFineAverage( std::vector<float>* weights, uint32_t layers, std::vector<float>& wetness, const Rect& rect ) const;
 	Rect whole() const { return Rect{ 0, 0, m_size, m_size }; }
 
-	// Итог одной цели от правила и поправки, и обратное — поправка, при которой итог равен value
+	// Итог одной цели от значения до мазков и поправки, и обратное — поправка, при которой итог равен value
 	static float result( bool layer, float rule, float delta );
 	static float deltaFor( bool layer, float rule, float value );
+	// Поправка d слоя k к весам слоёв weights (layers штук): d > 0 — к «только этот слой», d < 0 — вес слоя × (1 + d),
+	// освободившееся — остальным пропорционально (остальных нет — первому другому слою)
+	static void applyLayerDelta( float* weights, uint32_t layers, uint32_t k, float d );
 
 private:
 	using Tile = std::vector<int8_t>;
 	using Tiles = TileMap;
+	using Key = std::pair<int32_t, int32_t>;
 	const Tile* findTile( const std::string& target, uint32_t x, uint32_t row ) const;
 	static float decode( int8_t value ) { return value / 127.0f; }
 	static int8_t encode( float value );
@@ -84,9 +108,11 @@ private:
 		std::string target;
 		Mode mode = Mode::value;
 		float value = 0.0f;
-		const std::vector<float>* rules = nullptr;
-		Tiles before;					// плитки цели до мазка (нет плитки — поправка 0)
-		std::vector<float> coverage;	// наибольший вес кисти за мазок, size²
+		Rule rule;
+		uint32_t size = 0;					// сетка цели
+		float texel = 1.0f;
+		Tiles before;						// плитки цели до мазка (нет плитки — поправка 0)
+		std::map<Key, std::vector<float>> coverage;	// наибольший вес кисти за мазок — плитками tileSize², где кисть была
 		Rect touched;
 	} m_stroke;
 };

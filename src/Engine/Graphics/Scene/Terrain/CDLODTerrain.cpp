@@ -88,8 +88,11 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 		return false;
 
 	task.enterProgressFrame( 0.7f, "Material layers" );
-	if( !m_material.initialize( terrainId, paintedMasks(), coverage ) || !buildDetailSplat() )
+	if( !m_material.initialize( terrainId, {} ) || !repaintSplat() || !buildDetailSplat() )
 		return false;
+	for( uint32_t layer = m_material.layerCount(); layer < TerrainEditCoverage::paintLayers; ++layer )
+		if( !coverage.paint[layer].empty() )
+			LOG( "CDLOD terrain: terrain edits paint layer " + std::to_string( layer ) + ", which TerrainLayers does not describe" );
 
 	m_patch.initialize( patchDim + 1, patchDim + 1 );
 	m_patchBuffer.createBuffer( sizeof( PatchInstance ), maxPatches, "Terrain patches" );
@@ -490,6 +493,7 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 	m_cpuHeights.resize( static_cast<size_t>( m_cpuSize ) * image.height );
 	for( size_t row = 0; row < image.height; ++row )
 		std::memcpy( &m_cpuHeights[row * m_cpuSize], image.pixels + row * image.rowPitch, m_cpuSize * sizeof( float ) );
+	computeWaterLevel();
 
 	// Вершины уровня L читают мипы L и L + 1, поэтому вершинному шейдеру нужна карта высот с полной цепочкой мипов
 	ScratchImage mipChain;
@@ -572,7 +576,7 @@ bool CDLODTerrain::rebuildChannels( const WaterSimulationSettings& water, const 
 	if( !finishHeights( target, &water, coverage ) )
 		return false;
 	m_coverage = coverage;
-	if( !createFoliageClearMask( coverage ) || !m_material.repaint( paintedMasks(), coverage ) || !buildDetailSplat() )
+	if( !createFoliageClearMask( coverage ) || !repaintSplat() || !buildDetailSplat() )
 		return false;
 	// Рельеф у русел и лес сменились — поле ветра заново
 	if( !m_wind.empty() )
@@ -801,7 +805,7 @@ bool CDLODTerrain::rebuildMasks()
 	field.texelSize = m_texelSize;
 	field.heightMultiplier = m_heightMultiplier;
 	field.heightOffset = m_heightOffset;
-	if( !buildMasks( field ) || !m_material.repaint( paintedMasks(), m_coverage ) || !buildDetailSplat() )
+	if( !buildMasks( field ) || !repaintSplat() || !buildDetailSplat() )
 		return false;
 	// Лес в масках сменился (и ветер мог повернуть) — поле ветра заново
 	if( !m_windObstacles.empty() || !m_wind.empty() )
@@ -852,7 +856,10 @@ bool CDLODTerrain::uploadMask( const TerrainMasks::Mask& mask, const TerrainPain
 
 void CDLODTerrain::refreshPainted()
 {
-	m_paintActive = !m_paint.targets().empty();
+	// Маски с мазками — копия правил с поправками; слои земли и мокрость — не здесь (тонкая сетка: детальный слой весов)
+	m_paintActive = false;
+	for( const auto& [target, tiles] : m_paint.targets() )
+		m_paintActive = m_paintActive || !TerrainPaint::isFine( target );
 	if( !m_paintActive )
 	{
 		m_painted = TerrainMasks();
@@ -860,15 +867,8 @@ void CDLODTerrain::refreshPainted()
 	}
 	m_painted = m_masks;
 	for( const auto& [target, tiles] : m_paint.targets() )
-	{
-		const int32_t layer = TerrainPaint::layerOf( target );
-		if( layer < 0 )
+		if( !TerrainPaint::isFine( target ) )
 			refreshPaintedTarget( target, m_paint.whole() );
-		// Слой, которого правила не красили, — нулями: мазок даёт ему вес
-		else if( static_cast<uint32_t>( layer ) < TerrainMasks::splatLayers && m_painted.splat[layer].empty() )
-			m_painted.splat[layer].assign( static_cast<size_t>( m_masks.size ) * m_masks.size, 0.0f );
-	}
-	m_paint.applyLayers( m_masks.splat, m_painted.splat, TerrainMasks::splatLayers, m_paint.whole() );
 }
 
 void CDLODTerrain::refreshPaintedTarget( const std::string& target, const TerrainPaint::Rect& rect )
@@ -882,24 +882,8 @@ void CDLODTerrain::refreshPaintedTarget( const std::string& target, const Terrai
 			std::copy( from.begin() + static_cast<size_t>( row ) * size + rect.x0, from.begin() + static_cast<size_t>( row ) * size + rect.x1,
 					   to.begin() + static_cast<size_t>( row ) * size + rect.x0 );
 	};
-	const int32_t layer = TerrainPaint::layerOf( target );
-	if( layer >= 0 )
-	{
-		// Слои — все вместе: поправка одного меняет веса остальных; слой, которого правила не красили, — нулями
-		if( static_cast<uint32_t>( layer ) < TerrainMasks::splatLayers && m_painted.splat[layer].empty() )
-			m_painted.splat[layer].assign( static_cast<size_t>( size ) * size, 0.0f );
-		for( uint32_t i = 0; i < TerrainMasks::splatLayers; ++i )
-		{
-			if( !m_masks.splat[i].empty() )
-				copyRect( m_masks.splat[i], m_painted.splat[i] );
-			else if( !m_painted.splat[i].empty() )
-				for( uint32_t row = rect.row0; row < rect.row1; ++row )
-					std::fill( m_painted.splat[i].begin() + static_cast<size_t>( row ) * size + rect.x0,
-							   m_painted.splat[i].begin() + static_cast<size_t>( row ) * size + rect.x1, 0.0f );
-		}
-		m_paint.applyLayers( m_masks.splat, m_painted.splat, TerrainMasks::splatLayers, rect );
+	if( TerrainPaint::isFine( target ) )
 		return;
-	}
 	for( size_t i = 0; i < m_masks.masks.size(); ++i )
 		if( m_masks.masks[i].name == target && i < m_painted.masks.size() )
 		{
@@ -915,33 +899,47 @@ bool CDLODTerrain::beginPaintStroke( const std::string& target, TerrainPaint::Mo
 		reason = "terrain paint: no layers and masks";
 		return false;
 	}
+	// Значение до мазков в текселе сетки цели — для режима «Value»: у тонкой сетки — копия «до кисти» плитки детального слоя
+	// весов (плитки под касанием создаются до него, paintDab), у маски — правила
 	const int32_t layer = TerrainPaint::layerOf( target );
-	const std::vector<float>* rules = nullptr;
-	if( layer >= 0 )
+	TerrainPaint::Rule rule;
+	if( TerrainPaint::isFine( target ) )
 	{
-		if( static_cast<uint32_t>( layer ) >= m_material.layerCount() || m_material.layerName( layer ).empty() )
+		if( layer >= 0 && ( static_cast<uint32_t>( layer ) >= m_material.layerCount() || m_material.layerName( layer ).empty() ) )
 		{
 			reason = "terrain paint: no layer " + std::to_string( layer ) + " in TerrainLayers";
 			return false;
 		}
-		rules = &m_masks.splat[layer];
+		if( m_detailSplat.tileSize() <= 0.0f )
+		{
+			reason = "terrain paint: no detail splat";
+			return false;
+		}
+		const uint32_t channel = layer >= 0 ? static_cast<uint32_t>( layer ) : TerrainDetailSplat::wetnessChannel;
+		rule = [this, channel]( uint32_t x, uint32_t row )
+		{
+			float value = 0.0f;
+			m_detailSplat.sourceAt( x, row, channel, value );
+			return value;
+		};
 	}
 	else
 	{
+		const std::vector<float>* values = nullptr;
 		for( const TerrainMasks::Mask& mask : m_masks.masks )
 			if( mask.name == target )
-				rules = &mask.values;
-		if( !rules )
+				values = &mask.values;
+		if( !values )
 		{
 			reason = "terrain paint: no mask " + target;
 			return false;
 		}
+		const uint32_t size = m_masks.size;
+		rule = [values, size]( uint32_t x, uint32_t row ) { return ( *values )[static_cast<size_t>( row ) * size + x]; };
 	}
 	m_strokeBefore = m_paint.targetTiles( target );
-	m_paint.beginStroke( target, mode, value, rules );
+	m_paint.beginStroke( target, mode, value, std::move( rule ) );
 	m_strokeTarget = target;
-	m_splatPending = false;
-	m_splatDirty = {};
 	return true;
 }
 
@@ -949,6 +947,21 @@ void CDLODTerrain::paintDab( float x, float z, float radius, float falloff )
 {
 	if( !m_paint.stroking() )
 		return;
+	// Тонкая сетка: плитки детального слоя весов под касанием — до него (их «до кисти» — значение для «Value»); задетые —
+	// на GPU раз в кадр (flushPaint из update), splat-карта — не чаще 10 раз в секунду
+	if( TerrainPaint::isFine( m_strokeTarget ) )
+	{
+		const TerrainPaint::Rect area = m_paint.dabRect( m_strokeTarget, x, z, radius );
+		if( !area.empty() )
+			m_detailSplat.ensure( detailSplatSource(), m_detailSplat.tilesOf( area.x0, area.row0, area.x1, area.row1, false, false ) );
+		const TerrainPaint::Rect changed = m_paint.dab( x, z, radius, falloff );
+		if( changed.empty() )
+			return;
+		for( const TerrainDetailSplat::TileKey& tile : m_detailSplat.tilesOf( changed.x0, changed.row0, changed.x1, changed.row1, true, true ) )
+			m_dirtySplatTiles.insert( tile );
+		m_splatPending = true;
+		return;
+	}
 	const TerrainPaint::Rect changed = m_paint.dab( x, z, radius, falloff );
 	if( changed.empty() )
 		return;
@@ -957,22 +970,7 @@ void CDLODTerrain::paintDab( float x, float z, float radius, float falloff )
 		refreshPainted();
 	else
 		refreshPaintedTarget( m_strokeTarget, changed );
-	// Вживую: маска — сразу на GPU (её читает кольцевая трава), splat-карта с мипами — не чаще 10 раз в секунду
-	if( TerrainPaint::layerOf( m_strokeTarget ) >= 0 )
-	{
-		m_splatPending = true;
-		m_splatDirty.add( changed );
-		const auto now = std::chrono::steady_clock::now();
-		if( now - m_splatUploaded > std::chrono::milliseconds( 100 ) )
-		{
-			m_material.repaint( paintedMasks(), m_coverage );
-			refreshDetailSplat( m_splatDirty );
-			m_splatUploaded = now;
-			m_splatPending = false;
-			m_splatDirty = {};
-		}
-		return;
-	}
+	// Вживую: маска — сразу на GPU (её читает кольцевая трава)
 	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
 		if( mask.name == m_strokeTarget )
 			uploadMask( mask, &changed );
@@ -992,8 +990,7 @@ CDLODTerrain::PaintEdit CDLODTerrain::endPaintStroke()
 	// Плитки без поправок убраны — копия с мазками заново, если целей не осталось
 	if( !m_paint.has( m_strokeTarget ) )
 		refreshPainted();
-	paintTargetChanged( m_strokeTarget, &m_splatDirty );
-	m_splatDirty = {};
+	paintTargetChanged( m_strokeTarget, &touched );
 	m_strokeTarget.clear();
 	return edit;
 }
@@ -1002,16 +999,20 @@ void CDLODTerrain::paintTargetChanged( const std::string& target, const TerrainP
 {
 	// Мазки — данные уровня: окно террейна изменено до «Save level»
 	m_properties.setStructureModified( true );
-	if( TerrainPaint::layerOf( target ) >= 0 )
+	if( TerrainPaint::isFine( target ) )
 	{
-		m_material.repaint( paintedMasks(), m_coverage );
-		// Отмена, повтор, очистка — все плитки (массив заново одной загрузкой), мазок — задетые участками
+		// Плитки в прямоугольнике (нет — создаются: повтор мазка), остальное — массив заново; splat-карта — сейчас
 		if( !changed )
 			buildDetailSplat();
 		else if( !changed->empty() )
-			refreshDetailSplat( *changed );
-		m_splatUploaded = std::chrono::steady_clock::now();
-		m_splatPending = false;
+		{
+			const TerrainDetailSplat::Source source = detailSplatSource();
+			m_detailSplat.ensure( source, m_detailSplat.tilesOf( changed->x0, changed->row0, changed->x1, changed->row1, false, false ) );
+			for( const TerrainDetailSplat::TileKey& tile : m_detailSplat.tilesOf( changed->x0, changed->row0, changed->x1, changed->row1, true, true ) )
+				m_dirtySplatTiles.insert( tile );
+		}
+		m_splatPending = true;
+		flushPaint( true );
 		return;
 	}
 	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
@@ -1025,9 +1026,121 @@ void CDLODTerrain::paintTargetChanged( const std::string& target, const TerrainP
 
 void CDLODTerrain::setPaintTiles( const std::string& target, const TerrainPaint::TileMap& tiles )
 {
+	// Задеты плитки прежнего и нового снимка
+	TerrainPaint::Rect rect = m_paint.tilesRect( target, m_paint.targetTiles( target ) );
+	rect.add( m_paint.tilesRect( target, tiles ) );
 	m_paint.setTargetTiles( target, tiles );
 	refreshPainted();
-	paintTargetChanged( target );
+	paintTargetChanged( target, &rect );
+}
+
+void CDLODTerrain::flushPaint( bool force )
+{
+	if( !m_dirtySplatTiles.empty() )
+	{
+		m_detailSplat.refresh( detailSplatSource(), std::vector<TerrainDetailSplat::TileKey>( m_dirtySplatTiles.begin(), m_dirtySplatTiles.end() ) );
+		m_dirtySplatTiles.clear();
+	}
+	const auto now = std::chrono::steady_clock::now();
+	if( m_splatPending && ( force || now - m_splatUploaded > std::chrono::milliseconds( 100 ) ) )
+	{
+		repaintSplat();
+		m_splatUploaded = now;
+		m_splatPending = false;
+	}
+}
+
+TerrainMaterial::SplatWeights CDLODTerrain::baseSplat() const
+{
+	TerrainMaterial::SplatWeights base;
+	const uint32_t size = m_masks.size;
+	base.size = size;
+	if( size == 0 )
+		return base;
+	const size_t cells = static_cast<size_t>( size ) * size;
+	const uint32_t layers = std::min( m_material.layerCount(), TerrainMaterial::maxLayers );
+	for( uint32_t layer = 0; layer < TerrainMaterial::maxLayers; ++layer )
+		base.layers[layer] = m_masks.splat[layer];
+	// Покраска правками рельефа и руслами — поверх правил: вес × remaining + покраска слоя (слоёв дальше layerCount в
+	// массивах нет — их покраски нет); покрытие — по центрам клеток
+	if( m_coverage.paints() )
+	{
+		for( uint32_t layer = 0; layer < layers; ++layer )
+			if( base.layers[layer].empty() && !m_coverage.paint[layer].empty() )
+				base.layers[layer].assign( cells, 0.0f );
+		const bool same = m_coverage.size == size;
+		for( uint32_t row = 0; row < size; ++row )
+			for( uint32_t col = 0; col < size; ++col )
+			{
+				const size_t i = static_cast<size_t>( row ) * size + col;
+				const float u = ( col + 0.5f ) / size;
+				const float v = ( row + 0.5f ) / size;
+				const float remaining = same ? m_coverage.remaining[i] : m_coverage.sample( m_coverage.remaining, u, v );
+				if( remaining >= 1.0f )
+					continue;
+				for( uint32_t layer = 0; layer < TerrainMaterial::maxLayers; ++layer )
+				{
+					if( base.layers[layer].empty() )
+						continue;
+					const std::vector<float>& painted = m_coverage.paint[layer];
+					const float paint = layer < layers && !painted.empty() ? ( same ? painted[i] : m_coverage.sample( painted, u, v ) ) : 0.0f;
+					base.layers[layer][i] = base.layers[layer][i] * remaining + paint;
+				}
+			}
+	}
+	// Мазки тонкой сетки — в среднем по клетке (вдали; вблизи — детальный слой весов)
+	m_paint.applyFineAverage( base.layers.data(), layers, base.wetness, m_paint.whole() );
+	return base;
+}
+
+bool CDLODTerrain::repaintSplat()
+{
+	return m_material.repaint( baseSplat() );
+}
+
+void CDLODTerrain::computeWaterLevel()
+{
+	m_waterLevel.clear();
+	const uint32_t n = m_cpuSize;
+	const size_t cells = static_cast<size_t>( n ) * n;
+	if( !m_hasHydrology || !m_staticWater || m_hydrology.staticWater.size() != cells || m_cpuHeights.size() != cells )
+		return;
+	// Глубина клетки — наибольшая из озера и ручья над итоговым рельефом (mainStatic); уровень — где вода видна, у сухой
+	// клетки рядом — наименьший уровень мокрых соседей (mainSurface), остальное — без уровня
+	std::vector<float> ground( cells ), depth( cells );
+	for( size_t i = 0; i < cells; ++i )
+	{
+		ground[i] = m_cpuHeights[i] * m_heightMultiplier + m_heightOffset;
+		const XMFLOAT4& water = m_hydrology.staticWater[i];
+		const float lake = water.w > -1e8f ? std::max( water.w - ground[i], 0.0f ) : 0.0f;
+		const float stream = water.x > -1e8f ? std::max( water.x - ground[i], 0.0f ) : 0.0f;
+		depth[i] = std::max( lake, stream );
+	}
+	m_waterLevel.assign( cells, -1e30f );
+	const int32_t size = static_cast<int32_t>( n );
+	for( int32_t row = 0; row < size; ++row )
+		for( int32_t col = 0; col < size; ++col )
+		{
+			const size_t i = static_cast<size_t>( row ) * n + col;
+			if( depth[i] >= TerrainHydrology::visibleWaterDepth )
+			{
+				m_waterLevel[i] = ground[i] + depth[i];
+				continue;
+			}
+			float lowest = 1e30f;
+			for( int32_t y = -1; y <= 1; ++y )
+				for( int32_t x = -1; x <= 1; ++x )
+				{
+					const int32_t r = row + y, c = col + x;
+					if( r < 0 || c < 0 || r >= size || c >= size )
+						continue;
+					const size_t j = static_cast<size_t>( r ) * n + c;
+					if( depth[j] >= TerrainHydrology::visibleWaterDepth )
+						lowest = std::min( lowest, ground[j] + depth[j] );
+				}
+			if( lowest < 1e29f )
+				m_waterLevel[i] = lowest;
+		}
 }
 
 bool CDLODTerrain::paintStroke( const std::string& target, TerrainPaint::Mode mode, float value, float x, float z, float radius,
@@ -1046,11 +1159,12 @@ bool CDLODTerrain::paintStroke( const std::string& target, TerrainPaint::Mode mo
 
 std::vector<std::string> CDLODTerrain::paintTargets() const
 {
-	// Слои — по номерам TerrainLayers, затем маски (без отладочной открытости ветру)
+	// Слои — по номерам TerrainLayers, мокрость, затем маски (без отладочной открытости ветру)
 	std::vector<std::string> targets;
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
 		if( !m_material.layerName( layer ).empty() )
 			targets.push_back( TerrainPaint::layerTarget( layer ) );
+	targets.push_back( TerrainPaint::wetnessTarget );
 	for( const TerrainMasks::Mask& mask : m_masks.masks )
 		if( mask.name != "mask_wind_exposure" )
 			targets.push_back( mask.name );
@@ -1115,9 +1229,10 @@ bool CDLODTerrain::clearPaint( const std::string& target )
 {
 	if( !m_paint.has( target ) )
 		return false;
+	const TerrainPaint::Rect rect = m_paint.tilesRect( target, m_paint.targetTiles( target ) );
 	m_paint.clear( target );
 	refreshPainted();
-	paintTargetChanged( target );
+	paintTargetChanged( target, &rect );
 	return true;
 }
 
@@ -1133,12 +1248,22 @@ bool CDLODTerrain::paintProbe( const std::string& target, float x, float z, floa
 	const size_t i = static_cast<size_t>( row ) * size + column;
 	const int32_t layer = TerrainPaint::layerOf( target );
 	const TerrainMasks& painted = paintedMasks();
-	if( layer >= 0 )
+	if( TerrainPaint::isFine( target ) )
 	{
-		if( static_cast<uint32_t>( layer ) >= TerrainMasks::splatLayers )
+		// Тонкая сетка: до кисти — копия плитки детального слоя весов (нет плитки — 0), итог — с поправкой этой цели
+		if( layer >= static_cast<int32_t>( TerrainMasks::splatLayers ) )
 			return false;
-		rule = m_masks.splat[layer].empty() ? 0.0f : m_masks.splat[layer][i];
-		result = painted.splat[layer].empty() ? 0.0f : painted.splat[layer][i];
+		const float texel = m_paint.gridTexel( target );
+		const uint32_t fine = m_paint.gridSize( target );
+		const int32_t fineColumn = static_cast<int32_t>( std::floor( x / texel ) );
+		const int32_t fineRow = static_cast<int32_t>( std::floor( ( fine * texel - z ) / texel ) );
+		if( fineColumn < 0 || fineRow < 0 || fineColumn >= static_cast<int32_t>( fine ) || fineRow >= static_cast<int32_t>( fine ) )
+			return false;
+		rule = 0.0f;
+		m_detailSplat.sourceAt( fineColumn, fineRow, layer >= 0 ? static_cast<uint32_t>( layer ) : TerrainDetailSplat::wetnessChannel, rule );
+		delta = m_paint.delta( target, static_cast<uint32_t>( fineColumn ), static_cast<uint32_t>( fineRow ) );
+		result = TerrainPaint::result( layer >= 0, rule, delta );
+		return true;
 	}
 	else
 	{
@@ -1364,19 +1489,34 @@ TerrainDetailSplat::Source CDLODTerrain::detailSplatSource() const
 	source.layerCount = m_material.layerCount();
 	source.channelLayer = m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 	source.staticWater = m_staticWater;
+	source.hydrology = m_hasHydrology ? &m_hydrology.detailTiles : nullptr;
+	source.heights = m_cpuSize == m_masks.size && !m_cpuHeights.empty() ? m_cpuHeights.data() : nullptr;
+	source.heightMultiplier = m_heightMultiplier;
+	source.heightOffset = m_heightOffset;
+	source.waterLevel = &m_waterLevel;
+	source.paint = &m_paint;
 	return source;
 }
 
 bool CDLODTerrain::buildDetailSplat()
 {
-	static const std::vector<TerrainHydrology::DetailTile> none;
-	return m_detailSplat.build( m_hasHydrology ? m_hydrology.detailTiles : none, m_detailTilesPerSide, detailSplatSource() );
-}
-
-void CDLODTerrain::refreshDetailSplat( const TerrainPaint::Rect& rect )
-{
-	if( m_hasHydrology && !rect.empty() )
-		m_detailSplat.refresh( m_hydrology.detailTiles, detailSplatSource(), rect.x0, rect.row0, rect.x1, rect.row1 );
+	// Плитки мазков тонкой сетки: плитка поправок (tileSize её текселей) лежит в одной плитке детального слоя (сторона —
+	// detailTileCells · fineScale текселей, строки тонкой сетки — от дальнего края)
+	std::set<TerrainDetailSplat::TileKey> extra;
+	const uint32_t fine = m_masks.size * TerrainPaint::fineScale;
+	const uint32_t tile = TerrainHydrology::detailTileCells * TerrainPaint::fineScale;
+	for( const auto& [target, count] : m_paint.targets() )
+		if( TerrainPaint::isFine( target ) )
+			for( const auto& [key, delta] : m_paint.targetTiles( target ) )
+			{
+				const uint32_t x = static_cast<uint32_t>( key.first ) * TerrainPaint::tileSize;
+				const uint32_t row = static_cast<uint32_t>( key.second ) * TerrainPaint::tileSize;
+				if( x < fine && row < fine )
+					extra.insert( { x / tile, ( fine - 1 - row ) / tile } );
+			}
+	m_dirtySplatTiles.clear();
+	return m_detailSplat.build( detailSplatSource(), m_detailTilesPerSide,
+								std::vector<TerrainDetailSplat::TileKey>( extra.begin(), extra.end() ) );
 }
 
 float CDLODTerrain::fineHeight( float x, float z ) const
@@ -1543,6 +1683,8 @@ void CDLODTerrain::update( const FrameContext& frame )
 			m_material.setTint( layer, XMFLOAT3( std::max( tint.x, 0.0f ), std::max( tint.y, 0.0f ), std::max( tint.z, 0.0f ) ) );
 		}
 	}
+	// Мазок тонкой сетки — плитки детального слоя весов раз в кадр, splat-карта — не чаще 10 раз в секунду
+	flushPaint( false );
 }
 
 bool CDLODTerrain::surfaceHeight( float x, float z, float& height ) const
