@@ -1643,6 +1643,11 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( size_t i = 0; i < cells; ++i )
 		if( lakeLabel[i] >= 0 )
 			fillLevel[lakeLabel[i]] = lakeLevel[i];
+	// Вода озера — ниже перелива на запас берега (lake_freeboard): рельеф (чаша, берег у изолинии) — по переливу, вода
+	// (уровни сети, растр, детальная вода) — по lakeSurface
+	std::vector<double> lakeSurface( fillLevel );
+	for( double& value : lakeSurface )
+		value -= std::max( static_cast<double>( p.lakeFreeboard ), 0.0 );
 	// Узлы ниже озера: путь от берега, м (бесконечность — не из озера). Кривая, которая начинается у берега (озеро в трёх
 	// клетках), — исток этого озера; у озера с несколькими — ниже всех по земле (порог перелива)
 	std::vector<double> outletDistance( count, std::numeric_limits<double>::infinity() );
@@ -1773,7 +1778,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		if( inLake( k ) )
 			depth[k] = 0.0;
 		else if( std::isfinite( outletDistance[k] ) )
-			depth[k] = std::min( depth[k], outletDistance[k] * outletSlope );
+			depth[k] = std::min( depth[k], std::max( static_cast<double>( p.lakeFreeboard ), 0.0 ) + outletDistance[k] * outletSlope );
 		bed[k] = surface[k] - depth[k];
 	}
 	for( int k : nodeOrder )
@@ -2553,9 +2558,9 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		level[k] = actual[k] + std::max( waterDepth, minDepth );
 		level[k] = std::max( std::min( level[k], surface[k] - freeboard ), actual[k] + std::min( 0.05, minDepth ) );
 	}
-	// Озеро стоит до перелива своей низины (fillLevel): это вода ниже по течению у узлов в озере и у ручьёв, которые в него
-	// впадают; исток на пороге — тоже на уровне перелива (дальше вода сходит по истоку вниз)
-	const std::vector<double>& lakeSurface = fillLevel;
+	// Озеро стоит до перелива своей низины без запаса берега (lakeSurface): это вода ниже по течению у узлов в озере и у
+	// ручьёв, которые в него впадают; исток на пороге — тоже на уровне озера (порог прорезан на запас, дальше вода сходит по
+	// истоку вниз)
 	for( int k = 0; k < count; ++k )
 	{
 		const int label = inLake( k ) ? lakeLabel[cellOf[k]] : endLake[k];

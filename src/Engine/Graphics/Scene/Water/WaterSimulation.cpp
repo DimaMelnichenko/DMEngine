@@ -132,6 +132,8 @@ const ChannelParameter channelParameters[] = {
 	{ "Lake shelf width", &WaterChannelsSettings::lakeShelfWidth, 0.0f, 20.0f, "m", "Shallow shelf along the shore" },
 	{ "Lake shelf depth", &WaterChannelsSettings::lakeShelfDepth, 0.0f, 3.0f, "m", "Water depth at the shelf edge" },
 	{ "Lake drop slope", &WaterChannelsSettings::lakeDropSlope, 0.05f, 2.0f, "", "Drop-off beyond the shelf, m per m" },
+	{ "Lake freeboard", &WaterChannelsSettings::lakeFreeboard, 0.0f, 1.0f, "m",
+	  "Lake water stands this much below the spill level of its basin: the shore is above the water, the outlet cuts the sill" },
 	{ "Stone density", &WaterChannelsSettings::stoneDensity, 0.0f, 5.0f, "1/m", "Stones per metre of a stream (bed and banks): denser on riffles and steep reaches" },
 	{ "Stone size", &WaterChannelsSettings::stoneSize, 0.05f, 1.0f, "m", "Typical stone diameter" },
 	{ "Bank stones", &WaterChannelsSettings::bankStones, 0.0f, 1.0f, "", "Share of the stones at the banks, near the water edge" },

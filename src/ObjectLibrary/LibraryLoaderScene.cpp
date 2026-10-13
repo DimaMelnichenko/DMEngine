@@ -46,6 +46,7 @@ const std::pair<const char*, float GS::WaterChannelsSettings::*> channelColumns[
 	{ "lake_shelf_width", &GS::WaterChannelsSettings::lakeShelfWidth },
 	{ "lake_shelf_depth", &GS::WaterChannelsSettings::lakeShelfDepth },
 	{ "lake_drop_slope", &GS::WaterChannelsSettings::lakeDropSlope },
+	{ "lake_freeboard", &GS::WaterChannelsSettings::lakeFreeboard },
 	{ "stone_density", &GS::WaterChannelsSettings::stoneDensity },
 	{ "stone_size", &GS::WaterChannelsSettings::stoneSize },
 	{ "bank_stones", &GS::WaterChannelsSettings::bankStones },
