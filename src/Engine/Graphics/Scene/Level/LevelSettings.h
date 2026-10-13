@@ -192,8 +192,11 @@ struct TerrainSettings
 	float farTextureScale = 8.0f;		// второй масштаб текстур вдали (distance resampling)
 	float farBlendStart = 40.0f;		// полоса перехода ко второму масштабу, м
 	float farBlendEnd = 120.0f;
+	float displacementStart = 12.0f;	// дисплейсмент: полный ближе, м,
+	float displacementEnd = 24.0f;		// к этому расстоянию — нет (0 — выключен)
 	std::vector<float> layerTiling;		// метров на повтор по номеру слоя (TerrainLayers.layer); 0 — слоя нет
 	std::vector<DirectX::XMFLOAT3> layerTint;	// множитель альбедо по номеру слоя (TerrainLayers.albedo_tint)
+	std::vector<float> layerDisplacement;		// размах дисплейсмента по номеру слоя, м (TerrainLayers.displacement)
 	std::optional<TerrainErosionSettings> erosion;	// строка TerrainErosion — правки подокна «Erosion»
 	TerrainLayerRules layerRules;					// строка TerrainLayerRules — правки подокна «Layer rules»
 	std::vector<TerrainPaintTile> paint;			// мазки кисти — строки TerrainPaint террейна

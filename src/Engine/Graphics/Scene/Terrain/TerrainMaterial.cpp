@@ -340,6 +340,23 @@ void TerrainMaterial::setTint( uint32_t layer, const XMFLOAT3& tint )
 	m_layerTint[layer] = XMFLOAT4( tint.x, tint.y, tint.z, 0.0f );
 }
 
+void TerrainMaterial::setDisplacement( uint32_t layer, float displacement )
+{
+	if( layer >= m_layerCount )
+		return;
+	m_displacement[layer] = std::max( displacement, 0.0f );
+	float* slice = &m_layerDisplacement[layer / 4].x;
+	slice[layer % 4] = m_displacement[layer];
+}
+
+float TerrainMaterial::maxDisplacement() const
+{
+	float result = 0.0f;
+	for( float value : m_displacement )
+		result = std::max( result, value );
+	return result;
+}
+
 bool TerrainMaterial::initialize( uint32_t terrainId, const SplatWeights& weights )
 {
 	std::vector<Layer> layers;
@@ -354,6 +371,8 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const SplatWeights& weight
 	m_tiling.assign( m_layerCount, 1.0f );
 	m_tint.assign( m_layerCount, XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
 	m_layerTint.fill( XMFLOAT4( 1.0f, 1.0f, 1.0f, 0.0f ) );
+	m_displacement.assign( m_layerCount, 0.0f );
+	m_layerDisplacement.fill( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
 	for( uint32_t i = 0; i < m_layerCount; ++i )
 	{
 		albedoFiles.push_back( layers[i].albedo );
@@ -361,6 +380,7 @@ bool TerrainMaterial::initialize( uint32_t terrainId, const SplatWeights& weight
 		m_layerNames[i] = layers[i].name;
 		setTiling( i, layers[i].tiling );
 		setTint( i, layers[i].tint );
+		setDisplacement( i, layers[i].displacement );
 	}
 
 	// Шаги прогресса загрузки — splat-карта и два массива слоёв (по файлу на шаг — buildArray)
@@ -415,10 +435,17 @@ bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers
 			layer.albedo = query.getColumn( "albedo" ).getString();
 			layer.normal = query.getColumn( "normal" ).getString();
 			layer.tiling = static_cast<float>( query.getColumn( "tiling" ).getDouble() );
-			// albedo_tint — "r,g,b"; колонки нет или NULL — текстура как есть
+			// albedo_tint — "r,g,b"; колонки нет или NULL — текстура как есть; displacement — м, NULL — без смещения
 			for( int column = 0; column < query.getColumnCount(); ++column )
-				if( std::string( query.getColumnName( column ) ) == "albedo_tint" && !query.getColumn( column ).isNull() )
+			{
+				const std::string name = query.getColumnName( column );
+				if( query.getColumn( column ).isNull() )
+					continue;
+				if( name == "albedo_tint" )
 					strToVec3( query.getColumn( column ).getString(), layer.tint );
+				else if( name == "displacement" )
+					layer.displacement = static_cast<float>( query.getColumn( column ).getDouble() );
+			}
 		}
 	}
 	catch( const std::exception& e )

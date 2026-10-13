@@ -3,12 +3,15 @@
 // (четверть узла квадродерева), высота читается из мипа карты высот, равного уровню LOD. К концу
 // диапазона своего уровня нечётные вершины съезжают на сетку следующего, вдвое более грубого уровня,
 // а высота перетекает в мип следующего уровня, поэтому соседние уровни стыкуются без трещин и скачков.
-// Уровни мельче листа (−1 и −2: квад 0,5 и 0,25 м) — у камеры везде: высоту вершина берёт по своему положению из детальной
-// плитки у русла или из карты высот (sampleFineHeight); уровень −1 к концу диапазона перетекает в мип 0 карты высот.
+// Уровни мельче листа (−1…−4: квад 0,5, 0,25, 0,125 и 0,0625 м) — у камеры везде: высоту вершина берёт по своему положению
+// из детальной плитки у русла или из карты высот (sampleFineHeight; мельче 0,25 м — билинейно); уровень −1 к концу диапазона
+// перетекает в мип 0 карты высот. У камеры вершина ещё сдвигается вдоль нормали рельефа по высотам слоёв — дисплейсмент
+// (terrain_layers.sh): так плиты и камни слоёв получают силуэт и тень.
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
 #include "cdlod.sh"
+#include "terrain_layers.sh"
 #include "bindless.sh"
 
 struct NodeInstance
@@ -51,10 +54,20 @@ PixelInputType main( VertexInputType input )
 	else
 		height = lerp( sampleHeight( worldXZ, node.level ), sampleHeight( worldXZ, node.level + 1.0f ), morphK );
 	float4 worldPosition = float4( worldXZ.x, height, worldXZ.y, 1.0f );
+	const float3 basePosition = worldPosition.xyz;
+	// Дисплейсмент у точки LOD (а не у камеры вида: в видах теней земля та же) — на любом уровне, сходит на нет к
+	// g_displacementEnd; вдоль нормали самой детальной земли
+	const float lodDistance = distance( basePosition, cb_lodOrigin );
+	[branch] if( lodDistance < g_displacementEnd )
+	{
+		const float3 normal = fineNormal( worldXZ, 0.5f );
+		worldPosition.xyz += normal * terrainDisplacement( basePosition, normal, lodDistance );
+	}
 
 	PixelInputType output;
 	output.position = mul( worldPosition, cb_viewProjectionMatrix );
 	output.worldPosition = worldPosition.xyz;
+	output.basePosition = basePosition;
 	output.uv = heightMapUV( worldPosition.xz );
 	output.lodDebug = float2( node.level, morphK );
 

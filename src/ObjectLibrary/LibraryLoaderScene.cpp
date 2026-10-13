@@ -338,14 +338,16 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 		{
 			SQLite::Statement updateTerrain( db, "UPDATE Terrain SET height_multiplier = :heightMultiplier, "
 												 "triplanar_sharpness = :triplanar, height_blend = :heightBlend, "
-												 "far_texture_scale = :farScale, far_blend_start = :farStart, far_blend_end = :farEnd "
-												 "WHERE id = :id" );
+												 "far_texture_scale = :farScale, far_blend_start = :farStart, far_blend_end = :farEnd, "
+												 "displacement_start = :displacementStart, displacement_end = :displacementEnd WHERE id = :id" );
 			updateTerrain.bind( ":heightMultiplier", dbValue( terrain->heightMultiplier ) );
 			updateTerrain.bind( ":triplanar", dbValue( terrain->triplanarSharpness ) );
 			updateTerrain.bind( ":heightBlend", dbValue( terrain->heightBlend ) );
 			updateTerrain.bind( ":farScale", dbValue( terrain->farTextureScale ) );
 			updateTerrain.bind( ":farStart", dbValue( terrain->farBlendStart ) );
 			updateTerrain.bind( ":farEnd", dbValue( terrain->farBlendEnd ) );
+			updateTerrain.bind( ":displacementStart", dbValue( terrain->displacementStart ) );
+			updateTerrain.bind( ":displacementEnd", dbValue( terrain->displacementEnd ) );
 			updateTerrain.bind( ":id", terrain->id );
 			updateTerrain.exec();
 
@@ -423,13 +425,15 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 				}
 			}
 
-			SQLite::Statement updateLayer( db, "UPDATE TerrainLayers SET tiling = :tiling, albedo_tint = :tint WHERE terrain = :terrain AND layer = :layer" );
+			SQLite::Statement updateLayer( db, "UPDATE TerrainLayers SET tiling = :tiling, albedo_tint = :tint, displacement = :displacement "
+											   "WHERE terrain = :terrain AND layer = :layer" );
 			for( uint32_t layer = 0; layer < terrain->layerTiling.size(); ++layer )
 			{
 				if( terrain->layerTiling[layer] <= 0.0f )
 					continue;
 				updateLayer.bind( ":tiling", dbValue( terrain->layerTiling[layer] ) );
 				updateLayer.bind( ":tint", layer < terrain->layerTint.size() ? vec3ToStr( terrain->layerTint[layer] ) : std::string( "1,1,1" ) );
+				updateLayer.bind( ":displacement", dbValue( layer < terrain->layerDisplacement.size() ? terrain->layerDisplacement[layer] : 0.0f ) );
 				updateLayer.bind( ":terrain", terrain->id );
 				updateLayer.bind( ":layer", layer );
 				updateLayer.exec();

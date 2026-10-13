@@ -52,6 +52,12 @@ public:
 	const DirectX::XMFLOAT3& tint( uint32_t layer ) const { return m_tint[layer]; }
 	void setTint( uint32_t layer, const DirectX::XMFLOAT3& tint );
 	const std::array<DirectX::XMFLOAT4, maxLayers>& layerTint() const { return m_layerTint; }
+	// Размах дисплейсмента слоя, м (TerrainLayers.displacement, NULL — 0): высота текстуры 0…1 сдвигает вершину на
+	// (высота − 0,5) × размах; по слоям для шейдера — по четыре в XMFLOAT4; наибольший — запас границ узлов
+	float displacement( uint32_t layer ) const { return m_displacement[layer]; }
+	void setDisplacement( uint32_t layer, float displacement );
+	const std::array<DirectX::XMFLOAT4, splatSlices>& layerDisplacement() const { return m_layerDisplacement; }
+	float maxDisplacement() const;
 
 private:
 	struct Layer
@@ -61,6 +67,7 @@ private:
 		std::string normal;
 		float tiling = 1.0f;
 		DirectX::XMFLOAT3 tint = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );
+		float displacement = 0.0f;
 	};
 
 	bool loadLayers( uint32_t terrainId, std::vector<Layer>& layers );
@@ -78,6 +85,8 @@ private:
 	std::vector<std::string> m_layerNames;
 	std::vector<float> m_tiling;
 	std::vector<DirectX::XMFLOAT3> m_tint;
+	std::vector<float> m_displacement;
+	std::array<DirectX::XMFLOAT4, splatSlices> m_layerDisplacement = {};
 	std::array<DirectX::XMFLOAT4, maxLayers> m_layerTint = {};
 };
 

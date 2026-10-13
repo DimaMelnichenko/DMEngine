@@ -142,6 +142,15 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	prop->setUnit( "m" );
 	prop->setTooltip( "Distance band where the far texture scale replaces the near one: both scales are sampled along it" );
 
+	// Дисплейсмент у камеры (сетка до 6,25 см): полный ближе начала полосы, к концу сходит на нет
+	prop = m_properties.insert( "Displacement distance", XMFLOAT2( settings.displacementStart, settings.displacementEnd ) );
+	prop->setLow( 0.0f );
+	prop->setHigh( 64.0f );
+	prop->setControlType( GUIControlType::RANGE );
+	prop->setUnit( "m" );
+	prop->setTooltip( "Displacement by the layer heights: full nearer than the start, fades out to the end (end 0 - off); the "
+					  "terrain mesh is 6.25 cm near the camera" );
+
 	// Метров на повтор текстуры слоя (TerrainLayers.tiling)
 	m_layerProperties.setName( "Layer tiling" );
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
@@ -166,6 +175,20 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 		prop->setTooltip( "Albedo multiplier of the layer, R G B (Layer Tint in UE Landscape materials): 1 - the texture as is" );
 	}
 	m_properties.addSubContainer( &m_layerTintProperties );
+	// Размах дисплейсмента слоя (TerrainLayers.displacement): высота текстуры сдвигает землю на ±половину
+	m_layerDisplacementProperties.setName( "Layer displacement" );
+	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
+	{
+		if( m_material.layerName( layer ).empty() )
+			continue;
+		prop = m_layerDisplacementProperties.insert( std::to_string( layer ) + ": " + m_material.layerName( layer ),
+													 m_material.displacement( layer ) );
+		prop->setLow( 0.0f );
+		prop->setHigh( 0.5f );
+		prop->setUnit( "m" )->setTooltip( "Displacement range of the layer: its height map moves the ground by +-half of it "
+										  "along the normal near the camera (0 - flat)" );
+	}
+	m_properties.addSubContainer( &m_layerDisplacementProperties );
 	if( m_erosion )
 		addErosionProperties( *m_erosion );
 	addLayerRulesProperties( m_layerRules );
@@ -227,7 +250,7 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 	// Колонка splatmap больше не читается: splat-карту дают правила по итоговому рельефу (TerrainMasks)
 	SQLite::Statement query( DBConnector::instance().db(), "select heightmap, height_multiplier, height_offset, width_multiplier, "
 														   "triplanar_sharpness, height_blend, far_texture_scale, far_blend_start, "
-														   "far_blend_end from Terrain where id = :id" );
+														   "far_blend_end, displacement_start, displacement_end from Terrain where id = :id" );
 	query.bind( ":id", terrainId );
 
 	if( !query.executeStep() )
@@ -250,6 +273,8 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 	material( "far_texture_scale", settings.farTextureScale );
 	material( "far_blend_start", settings.farBlendStart );
 	material( "far_blend_end", settings.farBlendEnd );
+	material( "displacement_start", settings.displacementStart );
+	material( "displacement_end", settings.displacementEnd );
 	m_heightOffset = static_cast<float>( query.getColumn( "height_offset" ).getDouble() );
 	m_texelSize = static_cast<float>( query.getColumn( "width_multiplier" ).getDouble() );
 
@@ -1657,10 +1682,12 @@ CDLODTerrain::NodeBox CDLODTerrain::nodeBox( uint32_t level, uint32_t x, uint32_
 	const float size = nodeSize( level );
 	const XMFLOAT2& bounds = m_heightBounds[level][z * m_nodesPerSide[level] + x];
 
+	// С запасом на дисплейсмент (± половина наибольшего размаха): frustum и дальности не обрезают поднятые камни
+	const float margin = 0.5f * m_material.maxDisplacement();
 	NodeBox box;
-	box.min = XMFLOAT3( x * size, bounds.x * m_heightMultiplier + m_heightOffset, z * size );
+	box.min = XMFLOAT3( x * size, bounds.x * m_heightMultiplier + m_heightOffset - margin, z * size );
 	box.max = XMFLOAT3( std::min( ( x + 1 ) * size, m_worldSize ),
-						bounds.y * m_heightMultiplier + m_heightOffset,
+						bounds.y * m_heightMultiplier + m_heightOffset + margin,
 						std::min( ( z + 1 ) * size, m_worldSize ) );
 	return box;
 }
@@ -1682,6 +1709,8 @@ void CDLODTerrain::update( const FrameContext& frame )
 			const XMFLOAT3 tint = m_layerTintProperties[name].data<XMFLOAT3>();
 			m_material.setTint( layer, XMFLOAT3( std::max( tint.x, 0.0f ), std::max( tint.y, 0.0f ), std::max( tint.z, 0.0f ) ) );
 		}
+		if( m_layerDisplacementProperties.exists( name ) )
+			m_material.setDisplacement( layer, m_layerDisplacementProperties[name].data<float>() );
 	}
 	// Мазок тонкой сетки — плитки детального слоя весов раз в кадр, splat-карта — не чаще 10 раз в секунду
 	flushPaint( false );
@@ -1691,9 +1720,10 @@ bool CDLODTerrain::surfaceHeight( float x, float z, float& height ) const
 {
 	if( m_cpuHeights.empty() || x < 0.0f || z < 0.0f || x > m_worldSize || z > m_worldSize )
 		return false;
-	// Самый детальный уровень у камеры (−2): квад — четверть текселя, вершина — высота детальной земли в своей точке
-	// (плитка у русла или карта высот билинейно), диагональ квада — от (0, 0) к (1, 1), как в GridMesh
-	const float quad = m_texelSize / static_cast<float>( 1u << detailLevels );
+	// Уровень шага детальной плитки (−2): квад — четверть текселя, вершина — высота детальной земли в своей точке (плитка
+	// у русла или карта высот билинейно), диагональ квада — от (0, 0) к (1, 1), как в GridMesh. Мельче (−3, −4) — та же
+	// земля билинейно и дисплейсмент у камеры: ходьба его не видит (±несколько сантиметров)
+	const float quad = m_texelSize / static_cast<float>( 1u << tileLevels );
 	const float gx = x / quad;
 	const float gz = z / quad;
 	const float kx = std::floor( gx );
@@ -1997,14 +2027,19 @@ TerrainSettings CDLODTerrain::settings() const
 	const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
 	settings.farBlendStart = farBlend.x;
 	settings.farBlendEnd = farBlend.y;
+	const XMFLOAT2 displacement = m_properties["Displacement distance"].data<XMFLOAT2>();
+	settings.displacementStart = displacement.x;
+	settings.displacementEnd = displacement.y;
 	settings.paint = m_paint.initialized() ? m_paint.tiles() : m_paintTiles;
 	settings.layerTiling.assign( m_material.layerCount(), 0.0f );
 	settings.layerTint.assign( m_material.layerCount(), XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
+	settings.layerDisplacement.assign( m_material.layerCount(), 0.0f );
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
 		if( !m_material.layerName( layer ).empty() )
 		{
 			settings.layerTiling[layer] = m_material.tiling( layer );
 			settings.layerTint[layer] = m_material.tint( layer );
+			settings.layerDisplacement[layer] = m_material.displacement( layer );
 		}
 	if( m_erosion )
 	{
@@ -2122,8 +2157,9 @@ bool CDLODTerrain::selectDetailNode( const RenderView& view, uint32_t depth, uin
 			bounds = XMFLOAT2( std::min( bounds.x, m_detailBounds[slice].x ), std::max( bounds.y, m_detailBounds[slice].y ) );
 	}
 	const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
-	const XMFLOAT3 boxMin( nx * size, bounds.x * m_heightMultiplier + m_heightOffset, nz * size );
-	const XMFLOAT3 boxMax( std::min( ( nx + 1 ) * size, m_worldSize ), bounds.y * m_heightMultiplier + m_heightOffset,
+	const float margin = 0.5f * m_material.maxDisplacement();
+	const XMFLOAT3 boxMin( nx * size, bounds.x * m_heightMultiplier + m_heightOffset - margin, nz * size );
+	const XMFLOAT3 boxMax( std::min( ( nx + 1 ) * size, m_worldSize ), bounds.y * m_heightMultiplier + m_heightOffset + margin,
 						   std::min( ( nz + 1 ) * size, m_worldSize ) );
 	const XMFLOAT3& origin = view.lodOrigin;
 	if( !sphereIntersectsBox( origin, m_detailRanges[depth - 1], boxMin, boxMax ) )
@@ -2206,6 +2242,10 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.splatDetailTile = m_detailSplat.tileSize();
 		params.wetnessBaked = m_staticWater && m_detailSplat.tileSize() > 0.0f ? 1 : 0;
 		params.paintPreview = paintPreview;
+		const XMFLOAT2 displacement = m_properties["Displacement distance"].data<XMFLOAT2>();
+		params.displacementEnd = m_material.maxDisplacement() > 0.0f ? std::max( displacement.y, 0.0f ) : 0.0f;
+		params.displacementStart = std::min( std::max( displacement.x, 0.0f ), params.displacementEnd );
+		std::copy( m_material.layerDisplacement().begin(), m_material.layerDisplacement().end(), params.layerDisplacement );
 		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
 	} );
@@ -2216,13 +2256,11 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 
 	// Карта высот — вершинному шейдеру и пиксельному: по ней считается нормаль рельефа
 	DMD3D::instance().setSRV( 0, m_heightMap );
-	if( !depthOnly )
-	{
-		m_material.bind();
-		m_detailSplat.bind();
-		if( paintMask )
-			DMD3D::instance().setSRV( 7, *paintMask );
-	}
+	// Слои — и в проходах только глубины: их читает дисплейсмент вершинного шейдера (тени и prepass — та же земля)
+	m_material.bind();
+	m_detailSplat.bind();
+	if( !depthOnly && paintMask )
+		DMD3D::instance().setSRV( 7, *paintMask );
 
 	context.constants.setPerObjectBuffer( XMMatrixIdentity() );
 

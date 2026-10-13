@@ -34,9 +34,11 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	uint   g_showWind;				// поле ветра на рельефе (wind_field.sh) — отладка, «Show wind»
 	uint   g_wetnessBaked;			// мокрость от воды static запечена в плитках детального слоя весов (terrain.ps)
 	int    g_paintPreview;			// цель кисти поверх земли: −1 — нет, 0…7 — слой, 8 — мокрость, 9 — маска (terrain.ps)
-	float2 g_parametersPadding;
-	float4 g_detailMorph[2];		// уровни мельче листа (−1, −2): x — начало морфинга, y — 1 / длина зоны
+	float  g_displacementStart;		// дисплейсмент (cdlod.vs, terrain_layers.sh): полный ближе, м,
+	float  g_displacementEnd;		// к этому расстоянию от точки LOD — нет; 0 — выключен
+	float4 g_detailMorph[4];		// уровни мельче листа (−1…−4): x — начало морфинга, y — 1 / длина зоны
 	float4 g_layerTint[8];			// множитель альбедо по слоям (xyz; TerrainLayers.albedo_tint, окно «Layer tint»)
+	float4 g_layerDisplacement[2];	// размах смещения по слоям, по четыре, м (TerrainLayers.displacement, «Layer displacement»)
 };
 
 // Копия карты высот в R32_FLOAT с полной цепочкой мипов, в вершинном и пиксельном шейдерах
@@ -45,7 +47,8 @@ DM_SRV( Texture2D, g_heightMap, 0 );
 struct PixelInputType
 {
 	float4 position : SV_POSITION;
-	float3 worldPosition : WORLDPOS0;
+	float3 worldPosition : WORLDPOS0;	// со смещением (дисплейсмент): свет, тень, туман
+	float3 basePosition : WORLDPOS1;	// без смещения: текстуры, веса и проекции слоёв (текстура не плывёт по смещённой земле)
 	float2 uv : TEXCOORD0;			// координаты карты высот и splat-карты
 	float2 lodDebug : TEXCOORD1;	// x — уровень LOD, y — коэффициент морфинга
 };
@@ -70,6 +73,28 @@ float sampleFineHeight( float2 worldXZ )
 	if( sampleTerrainDetail( worldXZ, g_detailTile, detail ) )
 		return detail * g_heightMultiplier + g_heightOffset;
 	return sampleHeight( worldXZ, 0.0f );
+}
+
+// Нормаль рельефа: центральные разности в мипе карты высот, тексель которого примерно равен пикселю экрана.
+// Геометрия вдали грубее карты высот, но освещение по такой нормали остаётся детальным
+float3 terrainNormal( float2 worldXZ, float mip )
+{
+	float offset = g_texelSize * exp2( mip );
+	float left  = sampleHeight( worldXZ - float2( offset, 0.0f ), mip );
+	float right = sampleHeight( worldXZ + float2( offset, 0.0f ), mip );
+	float back  = sampleHeight( worldXZ - float2( 0.0f, offset ), mip );
+	float front = sampleHeight( worldXZ + float2( 0.0f, offset ), mip );
+	return normalize( float3( left - right, 2.0f * offset, back - front ) );
+}
+
+// Нормаль по самой детальной земле (плитка у русла или карта высот) — центральные разности через offset, м
+float3 fineNormal( float2 worldXZ, float offset )
+{
+	float left  = sampleFineHeight( worldXZ - float2( offset, 0.0f ) );
+	float right = sampleFineHeight( worldXZ + float2( offset, 0.0f ) );
+	float back  = sampleFineHeight( worldXZ - float2( 0.0f, offset ) );
+	float front = sampleFineHeight( worldXZ + float2( 0.0f, offset ) );
+	return normalize( float3( left - right, 2.0f * offset, back - front ) );
 }
 
 #endif

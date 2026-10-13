@@ -162,8 +162,11 @@ private:
 	static constexpr uint32_t maxPatches = 8192;
 	static constexpr float morphStartRatio = 0.66f;	// с какой доли диапазона уровня начинается морфинг
 	// Уровней мельче листа: −1 и −2 (квад 0,5 и 0,25 текселя) — шаг детальной земли (TerrainHydrology::detailSamples)
-	static constexpr uint32_t detailLevels = 2;
-	static_assert( ( 1u << detailLevels ) == TerrainHydrology::detailSamples, "detail levels reach the detail tile step" );
+	// Уровни мельче листа: до шага детальной плитки (tileLevels: 0,5 и 0,25 м) и ещё два — под дисплейсмент (0,125 и
+	// 0,0625 м у камеры)
+	static constexpr uint32_t detailLevels = 4;
+	static constexpr uint32_t tileLevels = 2;
+	static_assert( ( 1u << tileLevels ) == TerrainHydrology::detailSamples, "tile levels reach the detail tile step" );
 
 	struct PatchInstance
 	{
@@ -196,9 +199,11 @@ private:
 		// Цель кисти поверх земли (режим «Terrain paint», «Show target»): −1 — нет, 0…7 — слой земли, 8 — мокрость, 9 — маска
 		// (t7 пиксельного шейдера)
 		int32_t paintPreview;
-		float parametersPadding[2];
-		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1, −2: начало морфинга и 1 / длина зоны
+		float displacementStart;	// дисплейсмент: полный ближе, м, к displacementEnd — нет (0 — выключен)
+		float displacementEnd;
+		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1…−4: начало морфинга и 1 / длина зоны
 		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
+		DirectX::XMFLOAT4 layerDisplacement[TerrainMaterial::splatSlices];	// размах дисплейсмента по слоям, м
 	};
 
 	struct NodeBox
@@ -326,6 +331,7 @@ private:
 	std::vector<float> m_previousEroded;
 	std::vector<float> m_eroded;
 	PropertyContainer m_layerTintProperties;	// «Layer tint»: множитель альбедо по слоям (TerrainLayers.albedo_tint)
+	PropertyContainer m_layerDisplacementProperties;	// «Layer displacement»: размах смещения по слоям (TerrainLayers.displacement)
 	PropertyContainer m_layerProperties;	// «Layer tiling»: метров на повтор по слоям — подокно окна террейна
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;
