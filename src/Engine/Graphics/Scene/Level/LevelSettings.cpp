@@ -49,6 +49,7 @@ const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
 	// ширина берегов здесь
 	static const char* banks = "Water banks";
 	static const char* shrubs = "Slope shrubs";
+	static const char* beds = "Water beds";
 	static const char* wind = "Wind";
 	static const char* shape = "Shape";
 	static const std::vector<TerrainLayerRuleField> fields = {
@@ -105,6 +106,17 @@ const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
 			   "The bank grass grows from 0 at the water to full this far from it (0 - up to the waterline: in the water the scatter clears it)" ),
 		value( "bank_shrubs_gap", banks, "Bank shrubs gap", &R::bankShrubsGap, 0.0f, 5.0f, "m",
 			   "The bank shrubs grow from 0 at the water to full this far from it" ),
+		range( "lake_sediment_height", beds, "Lake sediment height", &R::lakeSedimentHeight, 0.0f, 1.0f, "",
+			   "Silt and gravel on the bottom of the lakes lower than this (water level, share of the height multiplier): from, to; "
+			   "higher lakes keep pebbles" ),
+		range( "lake_gravel_depth", beds, "Lake gravel depth", &R::lakeGravelDepth, 0.0f, 3.0f, "m",
+			   "Pebbles of the wave zone give way to gravel (lake_gravel) this deep: from, to" ),
+		range( "lake_silt_depth", beds, "Lake silt depth", &R::lakeSiltDepth, 0.0f, 5.0f, "m",
+			   "Gravel gives way to silt (lake_silt) this deep: from, to" ),
+		range( "stream_gravel_speed", beds, "Stream gravel speed", &R::streamGravelSpeed, 0.0f, 2.0f, "m/s",
+			   "Gravel on the bottom of the streams where the current is slower (pools): from, to" ),
+		range( "stream_gravel_depth", beds, "Stream gravel depth", &R::streamGravelDepth, 0.0f, 1.0f, "m",
+			   "Stream gravel only where the water is deeper (the middle of the bed): from, to" ),
 		range( "krummholz_height", shrubs, "Krummholz height", &R::krummholzHeight, 0.0f, 1.0f, "", "Krummholz above the treeline: from, to" ),
 		range( "krummholz_top", shrubs, "Krummholz top", &R::krummholzTop, 0.0f, 1.0f, "", "Krummholz ends higher: from, to" ),
 		range( "dry_gaps_slope", shrubs, "Dry gaps slope", &R::dryGapsSlope, 0.0f, 90.0f, "deg", "Shrubs in the gaps of dry slopes: from, to" ),

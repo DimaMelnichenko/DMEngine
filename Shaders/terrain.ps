@@ -83,6 +83,27 @@ LayerSample sampleLayer( uint layer, float far, float3 position, float3 position
 	return result;
 }
 
+// Доля диапазона: 0 при from, 1 при to (в любую сторону), плавно; from = to — ступень
+float ramp( float from, float to, float x )
+{
+	const float range = to - from;
+	const float t = abs( range ) > 1e-6f ? saturate( ( x - from ) / range ) : ( x >= from ? 1.0f : 0.0f );
+	return t * t * ( 3.0f - 2.0f * t );
+}
+
+// Наносы на дне озера (правила «Water beds»): x — доля дресвы, y — ила, остальное — галька. У нижних озёр (уровень воды
+// level ниже g_lakeSedimentLevel) волны не вымывают мелочь глубже уреза: галька у берега, глубже дресва, ещё глубже ил.
+// Как TerrainDetailSplat (CPU, детальный слой весов у русел); слоя нет — его доля гальке (ила нет — дресве)
+float2 lakeBedShares( float depth, float level )
+{
+	if( g_lakeGravelLayer < 0 )
+		return 0.0f;
+	const float sediment = ramp( g_lakeSedimentLevel.x, g_lakeSedimentLevel.y, level );
+	const float gravel = sediment * ramp( g_lakeBedDepths.x, g_lakeBedDepths.y, depth );
+	const float silt = g_lakeSiltLayer >= 0 ? min( sediment * ramp( g_lakeBedDepths.z, g_lakeBedDepths.w, depth ), gravel ) : 0.0f;
+	return float2( gravel - silt, silt );
+}
+
 float4 main( PixelInputType input ) : SV_TARGET
 {
 	// Текстуры, веса и проекции — по точке без смещения (дисплейсмент сдвигает вершины вдоль нормали, текстура остаётся на
@@ -125,15 +146,27 @@ float4 main( PixelInputType input ) : SV_TARGET
 	// рельеф рисуется грубее, а урез один. Где плитка с запечённой водой static — не нужна
 	const bool liveWater = detailShare < 1.0f || g_wetnessBaked == 0 || g_showWater != 0;
 	float waterDepth = -1e30f;
+	float groundHeight = 0.0f;
 	[branch] if( liveWater )
-		waterDepth = waterDepthAt( input.uv, sampleFineHeight( position.xz ) );
-	// Дно под водой (режим static: озёра) — галька по глубине в точке, урез внутри клетки (в splat-карте клеток озёр нет);
-	// в детальном слое оно уже в весах
+	{
+		groundHeight = sampleFineHeight( position.xz );
+		waterDepth = waterDepthAt( input.uv, groundHeight );
+	}
+	// Дно под водой (режим static: озёра) — галька по глубине в точке, урез внутри клетки (в splat-карте клеток озёр нет), у
+	// нижних озёр глубже — наносы: дресва, затем ил (lakeBedShares); в детальном слое оно уже в весах. Вне детальных плиток
+	// вода — озёра: у ручьёв плитки есть всегда
 	[branch] if( g_waterBedLayer >= 0 && waterDepth > 0.03f )
 	{
 		const float bed = smoothstep( 0.03f, 0.15f, waterDepth ) * ( 1.0f - detailShare );
+		const float2 sediment = lakeBedShares( waterDepth, waterDepth + groundHeight );
+		const float pebbles = 1.0f - sediment.x - sediment.y;
 		[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
-			weights[layer] = weights[layer] * ( 1.0f - bed ) + ( layer == (uint)g_waterBedLayer ? bed : 0.0f );
+		{
+			const int index = (int)layer;
+			const float share = ( index == g_waterBedLayer ? pebbles : 0.0f ) + ( index == g_lakeGravelLayer ? sediment.x : 0.0f ) +
+								( index == g_lakeSiltLayer ? sediment.y : 0.0f );
+			weights[layer] = weights[layer] * ( 1.0f - bed ) + bed * share;
+		}
 	}
 
 	float4 splat;

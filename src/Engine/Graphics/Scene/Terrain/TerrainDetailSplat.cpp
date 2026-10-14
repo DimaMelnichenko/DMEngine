@@ -29,6 +29,14 @@ float smoothstep( float from, float to, float x )
 	return t * t * ( 3.0f - 2.0f * t );
 }
 
+// Доля диапазона правила: 0 при from, 1 при to (в любую сторону), плавно; from = to — ступень
+float ramp( const TerrainLayerRules::Range& range, float x )
+{
+	if( std::fabs( range.to - range.from ) < 1e-6f )
+		return x >= range.from ? 1.0f : 0.0f;
+	return smoothstep( range.from, range.to, x );
+}
+
 uint8_t store( float value )
 {
 	return static_cast<uint8_t>( std::lround( std::clamp( value, 0.0f, 1.0f ) * 255.0f ) );
@@ -212,11 +220,19 @@ void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 										 ( layer < source.layerCount && !painted.empty() ? edits->sample( painted, eu, ev ) : 0.0f );
 					}
 			}
-			const auto paint = [&]( float share )
+			// Дно на долю share: галька русел, из неё — доли дресвы и ила (наносы)
+			const auto paintBed = [&]( float share, float gravel, float silt )
 			{
+				const float pebbles = 1.0f - gravel - silt;
 				for( uint32_t layer = 0; layer < layers; ++layer )
-					weights[layer] = weights[layer] * ( 1.0f - share ) + ( static_cast<int32_t>( layer ) == source.channelLayer ? share : 0.0f );
+				{
+					const int32_t index = static_cast<int32_t>( layer );
+					const float bed = ( index == source.channelLayer ? pebbles : 0.0f ) + ( index == source.gravelLayer ? gravel : 0.0f ) +
+									  ( index == source.siltLayer ? silt : 0.0f );
+					weights[layer] = weights[layer] * ( 1.0f - share ) + share * bed;
+				}
 			};
+			const auto paint = [&]( float share ) { paintBed( share, 0.0f, 0.0f ); };
 			// Галька русел — по врезу в текселе
 			if( channels )
 				paint( smoothstep( 0.03f, 0.15f, hydrology->carve[k] ) );
@@ -226,7 +242,30 @@ void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 			{
 				const float waterDepth = level[k] > -1e29f && ground[k] < 1e29f ? level[k] - ground[k] : noLevel;
 				if( source.channelLayer >= 0 && waterDepth > 0.03f )
-					paint( smoothstep( 0.03f, 0.15f, waterDepth ) );
+				{
+					// Наносы (как lakeBedShares в terrain.ps): у озера — по глубине, если озеро нижнее; у ручья — дресва на дне
+					// медленного участка. Озеро или ручей — по детальной воде текселя: у озера течения и R нет; уровень от
+					// соседей (урез) — галька. Плитка мазка без русел — озеро
+					float gravel = 0.0f, silt = 0.0f;
+					if( source.bedRules && source.gravelLayer >= 0 )
+					{
+						const TerrainLayerRules& rules = *source.bedRules;
+						const DirectX::XMFLOAT4 own = hydrology && hydrology->water.size() == texels ? hydrology->water[k] : DirectX::XMFLOAT4( level[k], 0.0f, 0.0f, 0.0f );
+						if( own.x > -1e8f && own.w <= 0.0f )
+						{
+							const float height = ( level[k] - source.heightOffset ) / std::max( source.heightMultiplier, 1e-6f );
+							const float sediment = ramp( rules.lakeSedimentHeight, height );
+							gravel = sediment * ramp( rules.lakeGravelDepth, waterDepth );
+							silt = std::min( sediment * ramp( rules.lakeSiltDepth, waterDepth ), gravel );
+							if( source.siltLayer < 0 )
+								silt = 0.0f;
+							gravel -= silt;
+						}
+						else if( own.x > -1e8f )
+							gravel = ramp( rules.streamGravelSpeed, std::hypot( own.y, own.z ) ) * ramp( rules.streamGravelDepth, waterDepth );
+					}
+					paintBed( smoothstep( 0.03f, 0.15f, waterDepth ), gravel, silt );
+				}
 				wetness = smoothstep( -0.02f, 0.0f, waterDepth );
 			}
 			for( uint32_t slice = 0; slice < weightSlices; ++slice )

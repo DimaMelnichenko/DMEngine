@@ -189,7 +189,8 @@ bool saveImage( const ScratchImage& image, const std::string& path )
 	return SUCCEEDED( SaveToDDSFile( image.GetImages(), image.GetImageCount(), image.GetMetadata(), DDS_FLAGS_NONE, wide.c_str() ) );
 }
 
-constexpr const char* roleNames[terrainLayerRoleCount] = { "grass_dry", "talus", "rock", "snow", "grass_wet", "channel_bed" };
+constexpr const char* roleNames[terrainLayerRoleCount] = { "grass_dry", "talus", "rock", "snow", "grass_wet", "channel_bed",
+															  "lake_gravel", "lake_silt" };
 
 }
 

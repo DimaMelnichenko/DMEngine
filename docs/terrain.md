@@ -67,8 +67,11 @@
 | 3 — снег | `snow_packed12` | 4 | FreePBR, `DownloadResources/snow-packed12-UE.zip` (варианта `bl` нет; нормаль DirectX) |
 | 4 — вторая трава | `wispy_grass_meadow` | 4 | FreePBR, `DownloadResources/whispy-grass-meadow-bl.zip` |
 | 5 — галька русла | `dry_river_pebbles` | 2 | Poly Haven (CC0), `DownloadResources/dry_river_pebbles_2k.blend.zip` |
+| 6 — дресва (отмель нижних озёр, дно медленных ручьёв) | `ground_gravel_coarse_02` | 2 | Megascans (Fab) Desert Western Ground Gravel Coarse 02, `DownloadResources/Desert_Western_Ground_Gravel_Coarse_02-5a980794/` (красноватый песчаник Юты: множитель альбедо 0,8 / 1,05 / 1,25) |
+| 7 — ил (глубже в нижних озёрах) | `soil_mud` | 2 | Megascans (Fab) Soil Mud, `DownloadResources/Soil_Mud-594f71d6/` |
 
 Две травы лежат вперемешку крупными пятнами (см. «Слои и маски по рельефу»), чтобы луг издалека не был одного тона.
+Слоёв 6 и 7 тоже нет в правилах: роли `lake_gravel` и `lake_silt` — наносы на дне («Наносы на дне» ниже).
 Слоя 5 нет в правилах слоёв: у него роль `channel_bed` — им дно и борта русел и дно озёр красят русла конвейера (и по
 врезу у русел — детальный слой весов), а ручные правки рельефа — своим `paint_layer` («Правка рельефа»).
 Снег — `snow_packed12` (утоптанный); до него были `snow_02` (следы на снегу) и наст `crusted_snow2`. Архивы FreePBR
@@ -212,7 +215,22 @@ B --name dry_river_pebbles --albedo D/dry_river_pebbles_2k.blend.zip:textures/dr
   --roughness D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_rough_2k.exr
   --height D/dry_river_pebbles_2k.blend.zip:textures/dry_river_pebbles_disp_2k.png --layer 5 --tiling 2
   --ao-from-height 0.1 --ao-radius 0.15
+B --name ground_gravel_coarse_02
+  --albedo D/Desert_Western_Ground_Gravel_Coarse_02-5a980794/gltf/high/Textures/T_xglmbct_4K_B.png
+  --normal D/Desert_Western_Ground_Gravel_Coarse_02-5a980794/gltf/high/Textures/T_xglmbct_4K_N.png --normal-convention gl
+  --roughness D/Desert_Western_Ground_Gravel_Coarse_02-5a980794/gltf/high/Textures/T_xglmbct_4K_ORM.png:g
+  --ao D/Desert_Western_Ground_Gravel_Coarse_02-5a980794/gltf/high/Textures/T_xglmbct_4K_ORM.png:r
+  --height D/Desert_Western_Ground_Gravel_Coarse_02-5a980794/gltf/high/Textures/T_xglmbct_4K_H.png --layer 6 --tiling 2
+B --name soil_mud --albedo D/Soil_Mud-594f71d6/gltf/high/Textures/T_peDhI20_4K_B.png
+  --normal D/Soil_Mud-594f71d6/gltf/high/Textures/T_peDhI20_4K_N.png --normal-convention gl
+  --roughness D/Soil_Mud-594f71d6/gltf/high/Textures/T_peDhI20_4K_ORM.png:g --ao D/Soil_Mud-594f71d6/gltf/high/Textures/T_peDhI20_4K_ORM.png:r
+  --height D/Soil_Mud-594f71d6/gltf/high/Textures/T_peDhI20_4K_H.png --layer 7 --tiling 2
 ```
+
+Поверхности Megascans с Fab (папка `gltf/high` скачанного ассета) — те же отдельные файлы: `B` — цвет, `N` — нормаль
+OpenGL, `ORM` — R затенение, G шероховатость, B металличность, `H` — высота (только в 4K; `--size` по умолчанию сжимает
+до 2048). Размер куска — `semanticTags.minSize` в `*.json` ассета (у обоих 2 м). Роль, множитель альбедо, размах
+дисплейсмента и сила AO — колонки `TerrainLayers` (`role`, `albedo_tint`, `displacement`, `occlusion`), скрипт их не пишет.
 
 Архив `dry_river_pebbles` — `python Tools/polyhaven_download.py dry_river_pebbles --resolution 2k` (у текстур Poly Haven
 тоже есть вариант `.blend` с картами в `textures/`).
@@ -484,7 +502,8 @@ smoothstep; «от» больше «до» — убывание), правка �
 (`CDLODTerrain::m_channelLayer`;
 до 2026-10-12 — колонка `WaterChannels.paint_layer`). Слой без роли красят только ручные правки рельефа
 (`TerrainEdits.paint_layer`, поверх, `TerrainMaterial`). Роли правила нет ни у одного слоя — её вес уходит сухой траве (или
-слою 0), строка в логе; нет `channel_bed` — русла не красятся, строка в логе.
+слою 0), строка в логе; нет `channel_bed` — русла не красятся, строка в логе. Роли `lake_gravel` и `lake_silt` (на
+`Test` — слои 6 и 7) правила тоже не красят: это наносы на дне под водой («Наносы на дне»); нет их — дно галечное.
 
 **Маски** — по именам, которые указывают `ScatterLayers.mask` и `ParticleEmitters.mask`: `mask_grass` (обе травы),
 `mask_camomile` (пятна цветов в траве, гуще на влажном), `mask_pebbles` (осыпи), `mask_wind_exposure` (открытость ветру) и маски леса по типам, как зонирование
@@ -521,6 +540,27 @@ smoothstep; «от» больше «до» — убывание), правка �
   таблице `Textures` больше нет;
 - копия — `Textures\terrain\generated\`: `splatmap.dds` и `mask_*.dds`, для просмотра и кэш (см. выше): только правила,
   без мазков кисти; колонка `Terrain.splatmap` не читается.
+
+### Наносы на дне
+
+Дно под водой (режим `static`) красится не правилами, а по воде в точке: в шейдере (`terrain.ps`, вне детальных плиток —
+там вода только озёрная, у ручьёв плитки есть всегда) и в детальном слое весов у русел (`TerrainDetailSplat`, тексели
+плиток) — одним правилом, пороги — поля правил слоёв, подокно «Layer rules» → «Water beds» (`TerrainLayerRules`, «Save
+level», правка — пересчёт вживую). Галька (`channel_bed`) — от 3 до 15 см воды, как раньше; поверх неё — наносы (Dimok,
+2026-10-14: «наносной слой должен скрывать гальку»):
+- **нижние озёра** — у озёр с уровнем воды ниже «Lake sediment height» (доля высоты: на `Test` 0,35 → 0,25, то есть ниже
+  25 м — полностью, выше 35 м — нет; горные озёра остаются галечными). У уреза волны вымывают мелочь — галька; глубже
+  «Lake gravel depth» (0,10 → 0,25 м) — дресва (`lake_gravel`), глубже «Lake silt depth» (0,50 → 0,90 м) — ил
+  (`lake_silt`): как зоны дна в лимнологии — размыв у берега, накопление глубже волн. Озеро в плитке — тексель детальной
+  воды без течения и R (`TerrainHydrology`: уровень озера), уровень у соседей (урез) — галька;
+- **медленные ручьи** — дно ручья, где течение медленнее «Stream gravel speed» (0,5 → 0,3 м/с: скорость расчёта русел,
+  по Маннингу, у текселя детальной воды) и вода глубже «Stream gravel depth» (0,05 → 0,15 м: середина дна, не края) —
+  дресва (песок оседает на плёсах и в подпоре перед озером, Hjulström). На `Test` ручьи горные: медленнее 0,4 м/с — ~5 %
+  дна, 0,4…0,8 — 35 %, остальное быстрее, поэтому дресва — в устьях у озёр и на плёсах долины.
+
+Диапазоны — от 0 при «from» к 1 при «to» в любую сторону; переходы зубчатые по высотам текстур (смешивание по высоте).
+Слоя роли нет — его доля гальке (нет ила — дресве). Вдали, где детальной плитки нет (пиксель больше 4 текселей карты),
+ручьи красит шейдер по правилу озёр: у нижних — дресва, только если ручей глубже «Lake gravel depth».
 
 ### Ручная правка слоёв и масок (кисть)
 

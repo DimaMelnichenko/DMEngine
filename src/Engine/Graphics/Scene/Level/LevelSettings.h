@@ -129,6 +129,14 @@ struct TerrainLayerRules
 	// растения убирает расстановка по глубине и врезу)
 	float bankGrassGap = 0.0f;
 	float bankShrubsGap = 2.0f;
+	// Дно под водой (наносы; не маски, а покраска дна — TerrainDetailSplat и terrain.ps): у нижних озёр мелочь, которую волны
+	// не вымывают, ложится глубже уреза — галька у берега, глубже дресва (lake_gravel), ещё глубже ил (lake_silt); у
+	// медленных участков ручьёв дно глубже краёв — дресва. Диапазоны — от 0 при from к 1 при to
+	Range lakeSedimentHeight{ 0.35f, 0.25f };	// наносы у озёр с уровнем воды ниже, доля высоты: верхние озёра каменистые
+	Range lakeGravelDepth{ 0.10f, 0.25f };		// галька → дресва по глубине воды, м
+	Range lakeSiltDepth{ 0.50f, 0.90f };		// дресва → ил по глубине воды, м
+	Range streamGravelSpeed{ 0.50f, 0.30f };	// дресва на дне ручья, где течение медленнее, м/с (плёсы, подпор у озера)
+	Range streamGravelDepth{ 0.05f, 0.15f };	// и вода глубже (середина дна, не края), м
 	Range krummholzHeight{ 0.73f, 0.78f };	// стланик над границей леса — от, до верха krummholzTop
 	Range krummholzTop{ 0.84f, 0.79f };
 	Range dryGapsSlope{ 12.0f, 20.0f };		// кусты прогалин сухих склонов — доля dryGapsShare

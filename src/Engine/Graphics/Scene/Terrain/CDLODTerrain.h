@@ -130,6 +130,12 @@ public:
 	const TerrainHydrology::Result* hydrology() const { return m_hasHydrology ? &m_hydrology : nullptr; }
 	// Слой материала каждой роли (TerrainLayers.role), −1 — нет: по ним фильтр слоёв земли у расстановки
 	const std::array<int32_t, terrainLayerRoleCount>& layersOfRoles() const { return m_layerOf; }
+	// Слой роли, если он есть в массивах материала; иначе −1
+	int32_t roleLayer( TerrainLayerRole role ) const
+	{
+		const int32_t layer = m_layerOf[static_cast<uint32_t>( role )];
+		return layer < static_cast<int32_t>( m_material.layerCount() ) ? layer : -1;
+	}
 	// Кривые русел, по которым построены русла; сгенерированы заново при этой загрузке — их пишет в базу Scene
 	const std::vector<StreamCurve>& streamCurves() const { return m_streamCurves; }
 	bool streamsRegenerated() const { return m_streamsRegenerated; }
@@ -218,7 +224,13 @@ private:
 		// (t7 пиксельного шейдера)
 		int32_t paintPreview;
 		float microShadows;			// микротени прямого света по AO слоёв, 0…1 («Micro shadows»)
-		float padding;
+		// Наносы на дне озёр (правила «Water beds», TerrainBedRules): слой дресвы и ила (−1 — нет), глубина воды
+		// перехода гальки к дресве и дресвы к илу (x, y и z, w), уровень озера, м мира: наносы — у озёр ниже (from, to)
+		int32_t lakeGravelLayer;
+		DirectX::XMFLOAT4 lakeBedDepths;
+		DirectX::XMFLOAT2 lakeSedimentLevel;
+		int32_t lakeSiltLayer;
+		float bedPadding;
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1…−6: начало морфинга и 1 / длина зоны
 		DirectX::XMFLOAT4 layerOcclusion[TerrainMaterial::splatSlices];		// сила AO по слоям, 0…1
 		LayerConstants layers;	// та же раскладка, что у ресурса сцены (cbuffer дешевле у каждой вершины и пикселя)
@@ -344,7 +356,7 @@ private:
 	PropertyContainer m_layerRulesProperties;	// «Layer rules»
 	// Подокна «Layer rules» по группам полей (TerrainLayerRuleField::group): имя группы и подокно
 	std::vector<std::pair<std::string, std::unique_ptr<PropertyContainer>>> m_layerRuleGroups;
-	std::array<int32_t, terrainLayerRoleCount> m_layerOf{ -1, -1, -1, -1, -1, -1 };	// слой каждой роли (TerrainLayers.role)
+	std::array<int32_t, terrainLayerRoleCount> m_layerOf{ -1, -1, -1, -1, -1, -1, -1, -1 };	// слой каждой роли (TerrainLayers.role)
 	TerrainEditCoverage m_coverage;			// покрытие правок рельефа и русел последней сборки — покраска при пересчёте правил
 	std::optional<TerrainErosionSettings> m_erosion;
 	PropertyContainer m_erosionProperties;	// «Erosion»

@@ -35,6 +35,13 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	uint   g_wetnessBaked;			// мокрость от воды static запечена в плитках детального слоя весов (terrain.ps)
 	int    g_paintPreview;			// цель кисти поверх земли: −1 — нет, 0…7 — слой, 8 — мокрость, 9 — маска (terrain.ps)
 	float  g_microShadows;			// микротени прямого света по AO слоёв, 0…1 (terrain.ps, «Micro shadows»)
+	// Наносы на дне нижних озёр (terrain.ps, lakeBedShares; правила «Water beds»): слой дресвы (−1 — нет), глубина воды
+	// перехода гальки к дресве (x → y) и дресвы к илу (z → w), м; уровень озера, м мира: от x к y наносы сходят на нет;
+	// слой ила (−1 — нет)
+	int    g_lakeGravelLayer;
+	float4 g_lakeBedDepths;
+	float2 g_lakeSedimentLevel;
+	int    g_lakeSiltLayer;
 	float  g_cdlodPadding;
 	float4 g_detailMorph[6];		// уровни мельче листа (−1…−6): x — начало морфинга, y — 1 / длина зоны
 	float4 g_layerOcclusion[2];		// сила AO по слоям, по четыре, 0…1 (TerrainLayers.occlusion, «Layer occlusion»)

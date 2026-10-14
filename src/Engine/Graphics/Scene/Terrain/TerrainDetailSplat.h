@@ -41,6 +41,11 @@ public:
 		const TerrainEditCoverage* edits = nullptr;
 		uint32_t layerCount = 0;				// слоёв в массивах материала: покраска слоёв дальше пропускается
 		int32_t channelLayer = -1;				// слой гальки русел (роль channel_bed); −1 — не красить
+		// Наносы на дне (правила «Water beds»): слои дресвы и ила (роли lake_gravel, lake_silt; −1 — нет) и пороги правил —
+		// у нижних озёр по глубине, у медленных ручьёв по течению; без правил — галька, как раньше
+		int32_t gravelLayer = -1;
+		int32_t siltLayer = -1;
+		const TerrainLayerRules* bedRules = nullptr;
 		bool staticWater = false;				// вода режима static: дно под водой и мокрость
 		const std::vector<TerrainHydrology::DetailTile>* hydrology = nullptr;	// детальная земля у русел
 		// Точная земля и вода вне детальной земли (плитки мазков): итоговая карта высот (нормированная, строки как у масок) и

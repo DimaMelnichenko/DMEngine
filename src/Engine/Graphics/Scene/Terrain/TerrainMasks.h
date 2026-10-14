@@ -24,6 +24,10 @@ enum class TerrainLayerRole : uint32_t
 	snow,		// snow
 	grassWet,	// grass_wet — на влажном
 	channelBed,	// channel_bed — галька дна и бортов русел и дна озёр: красят русла конвейера и шейдеры по врезу, не правила
+	// Наносы на дне (не правила, а дно под водой — TerrainDetailSplat и terrain.ps): дресва — отмель нижних озёр и дно
+	// медленных ручьёв, ил — глубже в нижних озёрах (поля «Water beds» правил слоёв)
+	lakeGravel,	// lake_gravel
+	lakeSilt,	// lake_silt
 	count
 };
 constexpr uint32_t terrainLayerRoleCount = static_cast<uint32_t>( TerrainLayerRole::count );

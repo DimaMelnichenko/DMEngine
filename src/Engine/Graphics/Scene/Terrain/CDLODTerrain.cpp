@@ -1557,6 +1557,9 @@ TerrainDetailSplat::Source CDLODTerrain::detailSplatSource() const
 	source.edits = &m_baseCoverage;
 	source.layerCount = m_material.layerCount();
 	source.channelLayer = m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
+	source.gravelLayer = roleLayer( TerrainLayerRole::lakeGravel );
+	source.siltLayer = roleLayer( TerrainLayerRole::lakeSilt );
+	source.bedRules = &m_layerRules;
 	source.staticWater = m_staticWater;
 	source.hydrology = m_hasHydrology ? &m_hydrology.detailTiles : nullptr;
 	source.heights = m_cpuSize == m_masks.size && !m_cpuHeights.empty() ? m_cpuHeights.data() : nullptr;
@@ -2334,6 +2337,13 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.microShadows = std::clamp( m_properties["Micro shadows"].data<float>(), 0.0f, 1.0f );
 		std::copy( m_material.layerOcclusion().begin(), m_material.layerOcclusion().end(), params.layerOcclusion );
 		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
+		// Наносы на дне нижних озёр — те же правила, что у детального слоя весов (TerrainDetailSplat): уровень — в м мира
+		params.lakeGravelLayer = params.waterBedLayer >= 0 ? roleLayer( TerrainLayerRole::lakeGravel ) : -1;
+		params.lakeSiltLayer = params.waterBedLayer >= 0 ? roleLayer( TerrainLayerRole::lakeSilt ) : -1;
+		params.lakeBedDepths = XMFLOAT4( m_layerRules.lakeGravelDepth.from, m_layerRules.lakeGravelDepth.to,
+										 m_layerRules.lakeSiltDepth.from, m_layerRules.lakeSiltDepth.to );
+		params.lakeSedimentLevel = XMFLOAT2( m_heightOffset + m_layerRules.lakeSedimentHeight.from * m_heightMultiplier,
+											 m_heightOffset + m_layerRules.lakeSedimentHeight.to * m_heightMultiplier );
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
 	} );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
