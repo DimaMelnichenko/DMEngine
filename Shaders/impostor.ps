@@ -18,6 +18,7 @@
 #include "lod_dither.sh"
 #include "bindless.sh"
 #include "impostor.sh"
+#include "scatter_ground.sh"
 
 DM_SRV( Texture2DArray, g_impostorColor, 0 );	// sRGB: цвет и покрытие, срез — кадр
 DM_SRV( Texture2DArray, g_impostorNormal, 1 );	// нормаль модели × 0,5 + 0,5 и доля пропускания
@@ -94,7 +95,11 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 	const float3 normal = normalize( impostorRotate( normalize( packed.xyz * 2.0f - 1.0f ), input.rotation ) );
 	// Затемнение низа — по высоте точки поверхности над корнем экземпляра: у травы вдали без тени
 	const float height = saturate( ( position.y - input.heightRange.x ) * input.heightRange.y );
-	const float3 baseColor = color.rgb * lerp( 1.0f - g_impostorShade.x, 1.0f, height );
+	// Цвет земли под экземпляром — как у модели (LightShader.vs): по высоте точки поверхности над корнем
+	float4 ground;
+	float groundBrightness;
+	scatterGround( input.ground, max( position.y - input.heightRange.x, 0.0f ), ground, groundBrightness );
+	const float3 baseColor = lerp( color.rgb * lerp( 1.0f - g_impostorShade.x, 1.0f, height ) * groundBrightness, ground.rgb, ground.a );
 
 	Surface surface;
 	surface.position = position;

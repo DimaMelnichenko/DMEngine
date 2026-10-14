@@ -1,6 +1,12 @@
 
 #include "slots.h"
 #include "bindless.sh"
+#include "scatter_ground.sh"
+
+// Экземпляр расстановки (Scatterer: положение, размер и поворот) — ScatterPass::ScatterItem, с цветом земли под ним
+#if defined(INST_POS) && defined(INST_SCALE) && defined(INST_ROTATE)
+#define INST_SCATTER
+#endif
 
 #ifdef INST_MATRIX
 // Экземпляры моделей уровня одним вызовом (Renderer::drawMeshInstanced): мировая матрица и матрица нормалей
@@ -28,6 +34,9 @@ struct InstanceParam
 #endif
 #ifdef INST_ROTATE
 	float4 rotation;	// кватернион
+#endif
+#ifdef INST_SCATTER
+	uint4  ground;		// цвет земли под экземпляром (scatter_ground.sh)
 #endif
 #ifdef INST_TEX
 	float2 texCoord;

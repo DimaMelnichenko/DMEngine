@@ -484,13 +484,13 @@ bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers
 void TerrainMaterial::bind() const
 {
 	DMD3D::instance().setSRV( 3, m_normalRoughness );
-	DMD3D::instance().setSRV( 4, System::textures().get( DMTextureStorage::noiseId )->srv() );
 }
 
 void TerrainMaterial::bindScene() const
 {
 	DMD3D::instance().setSRV( SLOT_TERRAIN_SPLAT, m_splatMap );
 	DMD3D::instance().setSRV( SLOT_TERRAIN_ALBEDO_HEIGHT, m_albedoHeight );
+	DMD3D::instance().setSRV( SLOT_TERRAIN_NOISE, System::textures().get( DMTextureStorage::noiseId )->srv() );
 }
 
 }

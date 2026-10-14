@@ -17,7 +17,6 @@
 #include "terrain_layers.sh"
 
 DM_SRV( Texture2DArray, g_normalRoughness, 3 );
-DM_SRV( Texture2D, g_noise, 4 );		// белый шум 256×256, R8_SNORM
 DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти (g_paintPreview 9), в UV карты высот
 
 struct LayerSample
@@ -159,16 +158,12 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float occlusion = 1.0f;
 	[unroll] for( uint n = 0; n < activeLayers; ++n )
 	{
-		mixed.albedo += layers[n].albedo * g_layerTint[layerIndex[n]].xyz * blend[n];
+		mixed.albedo += layers[n].albedo * terrainLayers().layerTint[layerIndex[n]].xyz * blend[n];
 		mixed.detail += layers[n].detail * blend[n];
 		mixed.roughness += layers[n].roughness * blend[n];
 		// AO слоя с его силой, смешанный теми же долями, что цвет
 		occlusion -= ( 1.0f - layers[n].occlusion ) * g_layerOcclusion[layerIndex[n] / 4][layerIndex[n] % 4] * blend[n];
 	}
-
-	// Крупные пятна яркости (тексели шума по 40 и 13 м), чтобы вдали не было заметно повторение текстур
-	float variation = g_noise.Sample( g_SamplerLinearWrap, position.xz / 10240.0f ).r * 0.6f +
-					  g_noise.Sample( g_SamplerLinearWrap, position.xz / 3328.0f ).r * 0.4f;
 
 	Surface surface;
 	surface.transmission = 0.0f;
@@ -176,7 +171,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.position = input.worldPosition;
 	surface.normal = normalize( normal + mixed.detail );
 	surface.geometricNormal = normal;
-	surface.baseColor = mixed.albedo * ( 1.0f + 0.15f * variation );
+	// Крупные пятна яркости — общие с травой на земле (terrain_layers.sh)
+	surface.baseColor = mixed.albedo * terrainBrightness( position.xz );
 	surface.metallic = 0.0f;
 	surface.specular = 1.0f;
 	surface.roughness = mixed.roughness;

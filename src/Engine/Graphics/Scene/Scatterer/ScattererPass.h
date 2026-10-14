@@ -160,21 +160,28 @@ public:
 		uint32_t placedCapacity;
 		float clusterMargin;
 		float sizeVariation;	// разброс размера: случайный множитель от 1 − разброс до 1
+		// Цвет земли у растения (Shaders\scatter_ground.sh): доля у корня, высота перехода, м, доля вдали, разброс яркости
+		float groundColor;
+		float groundColorHeight;
+		float groundColorFar;
+		float colorVariation;
 		float padding[3];
 	} m_populateParams;
-	static_assert( sizeof( PopulateParams ) == 96, "ScatterLayerBuffer layout" );
+	static_assert( sizeof( PopulateParams ) == 112, "ScatterLayerBuffer layout" );
 
 	PopulateParams& populateParams();
 
 private:
 
-	// Совпадает с InstanceParam в Shaders\instance.sh при INST_POS, INST_SCALE и INST_ROTATE
+	// Совпадает с InstanceParam в Shaders\instance.sh при INST_POS, INST_SCALE и INST_ROTATE (INST_SCATTER)
 	struct ScatterItem
 	{
 		DirectX::XMFLOAT3 position;
 		float size;
 		DirectX::XMFLOAT4 rotation;	// кватернион
+		uint32_t ground[4] = {};	// цвет земли под экземпляром (Shaders\scatter_ground.sh); нули — свой цвет
 	};
+	static_assert( sizeof( ScatterItem ) == 48, "ScatterItem in Shaders\\scatter.cs" );
 
 	// Экземпляр постоянного пула — PlacedItem в Shaders\scatter.cs: размер без исчезания у краёв кольца, вариант и своя
 	// доля дальностей LOD

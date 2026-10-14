@@ -104,6 +104,7 @@ ImpostorPixelInput main( VertexInputType input )
 	output.weights = weights;
 	output.rotation = instance.rotation;
 	output.heightRange = float2( instance.position.y, 1.0f / max( g_impostorShade.y * scale, 1e-4f ) );
+	output.ground = instance.ground;
 #ifdef LOD_DITHER
 	output.lodDither = instance.lodDither;
 #endif

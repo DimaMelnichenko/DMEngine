@@ -80,8 +80,10 @@
 #define SLOT_TERRAIN_SPLAT_DETAIL	120
 #define SLOT_TERRAIN_SPLAT_DETAIL_INDEX	121
 #define SLOT_TERRAIN_LAYER_CONSTANTS	122
+// Шум пятен яркости земли (terrain_layers.sh, terrainBrightness): белый шум 256², R8_SNORM — у террейна и травы на нём
+#define SLOT_TERRAIN_NOISE	123
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	23
+#define SLOT_SCENE_COUNT	24
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

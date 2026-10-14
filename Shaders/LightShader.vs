@@ -42,6 +42,10 @@ struct PixelInputType
 	float3 tangent : TANGENT0;
 	float3 binormal : BINORMAL0;
 	float3 worldPosition : TEXCOORD1;
+	// Цвет земли у растения расстановки (scatter_ground.sh): rgb — цвет, a — доля в вершине; brightness — множитель своего
+	// цвета. У остальных — 0 и 1
+	float4 ground : TEXCOORD3;
+	float groundBrightness : TEXCOORD4;
 	// Перед instanceIndex: пиксельный шейдер без дизеринга читает начало выхода
 #ifdef LOD_DITHER
 	nointerpolation float lodDither : TEXCOORD2;
@@ -164,6 +168,14 @@ PixelInputType main(VertexInputType input)
 
 	float4 worldPosition = vertexWorldPosition( input );
 	output.worldPosition = worldPosition.xyz;
+#ifdef INST_SCATTER
+	// Высота вершины над корнем экземпляра — в покое (без ветра): у корня цвет земли, к высоте перехода — свой
+	const InstanceParam instance = g_instanceData[instanceIndex];
+	scatterGround( instance.ground, max( input.position.y * instance.scale, 0.0f ), output.ground, output.groundBrightness );
+#else
+	output.ground = 0.0f;
+	output.groundBrightness = 1.0f;
+#endif
     output.position = mul( mul( worldPosition, cb_viewMatrix ), cb_projectionMatrix );
 
 	float4x4 worldMatrix = objectWorldMatrix( instanceIndex );

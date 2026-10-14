@@ -24,6 +24,7 @@ DM_SRV( Texture2DArray, g_albedoHeight, SLOT_TERRAIN_ALBEDO_HEIGHT );	// аль�
 // срез 3s — веса слоёв 0…3 места s, 3s + 1 — 4…7, 3s + 2 — мокрость. Индекс: плитка (x, z) мира → место + 1, 0 — нет
 DM_SRV( Texture2DArray, g_splatDetail, SLOT_TERRAIN_SPLAT_DETAIL );
 DM_SRV( Texture2D<uint>, g_splatDetailIndex, SLOT_TERRAIN_SPLAT_DETAIL_INDEX );
+DM_SRV( Texture2D, g_terrainNoise, SLOT_TERRAIN_NOISE );	// белый шум 256², R8_SNORM — пятна яркости земли
 
 // Константы слоёв: читаются там, где нужны (без террейна слот пуст — не читать)
 TerrainLayerConstants terrainLayers()
@@ -135,6 +136,54 @@ float4 heightBlend( float4 splat, float4 heights )
 	return blend / max( dot( blend, 1.0f ), 1e-5f );
 }
 
+// Крупные пятна яркости земли (тексели шума по 40 и 13 м: вдали не заметно повторение текстур) — множитель альбедо, общий
+// у террейна и растений на нём (scatter.cs: над светлым пятном и трава светлее)
+float terrainBrightness( float2 worldXZ )
+{
+	const float variation = g_terrainNoise.SampleLevel( g_SamplerLinearWrap, worldXZ / 10240.0f, 0.0f ).r * 0.6f +
+							g_terrainNoise.SampleLevel( g_SamplerLinearWrap, worldXZ / 3328.0f, 0.0f ).r * 0.4f;
+	return 1.0f + 0.15f * variation;
+}
+
+// Веса четырёх самых весомых слоёв в точке: splat-карта, у русел и мазков — детальный слой весов (плитка целиком: те, кто
+// его читает, — у камеры, пиксель мельче текселя карты)
+void terrainLayerWeights( float2 worldXZ, out float4 splat, out uint4 layerIndex )
+{
+	const float2 uv = terrainLayerUV( worldXZ );
+	const float4 splat0 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 0.0f ), 0.0f );
+	const float4 splat1 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 1.0f ), 0.0f );
+	float weights[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
+	float4 fine0, fine1, extra;
+	[branch] if( sampleSplatDetail( worldXZ, fine0, fine1, extra ) )
+	{
+		const float fine[maxLayers] = { fine0.x, fine0.y, fine0.z, fine0.w, fine1.x, fine1.y, fine1.z, fine1.w };
+		[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
+			weights[layer] = fine[layer];
+	}
+	selectLayers( weights, splat, layerIndex );
+}
+
+// Цвет земли в точке, каким его видит издали тот, кто на ней стоит: средний цвет слоёв (последний мип массива альбедо —
+// 1 × 1) по весам, с множителем слоя («Layer tint») и пятнами яркости, линейный. Его берут растения у корня (scatter.cs):
+// перекрасили слой — трава подстроилась, рисовать ничего не нужно
+float3 terrainGroundColor( float2 worldXZ )
+{
+	float4 splat;
+	uint4 layerIndex;
+	terrainLayerWeights( worldXZ, splat, layerIndex );
+	uint width, height, slices, mips;
+	g_albedoHeight.GetDimensions( 0, width, height, slices, mips );
+	const TerrainLayerConstants layers = terrainLayers();
+	float3 color = 0.0f;
+	[unroll] for( uint k = 0; k < activeLayers; ++k )
+	{
+		[branch] if( splat[k] > minWeight )
+			color += splat[k] * layers.layerTint[layerIndex[k]].xyz *
+					 g_albedoHeight.SampleLevel( g_SamplerLinearClamp, float3( 0.5f, 0.5f, layerIndex[k] ), mips - 1 ).rgb;
+	}
+	return color * terrainBrightness( worldXZ );
+}
+
 // Повторов текстуры слоя на метр
 float layerScale( uint layer )
 {
@@ -170,21 +219,9 @@ float terrainDisplacement( float3 position, float3 normal, float distance )
 	const float fade = 1.0f - smoothstep( layers.displacementStart, layers.displacementEnd, distance );
 	[branch] if( fade <= 0.0f )
 		return 0.0f;
-	const float2 uv = terrainLayerUV( position.xz );
-	const float4 splat0 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 0.0f ), 0.0f );
-	const float4 splat1 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 1.0f ), 0.0f );
-	float weights[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
-	// У русел и мазков — детальный слой весов (в пределах дисплейсмента пиксель всегда мельче текселя карты: плитка целиком)
-	float4 fine0, fine1, extra;
-	[branch] if( sampleSplatDetail( position.xz, fine0, fine1, extra ) )
-	{
-		const float fine[maxLayers] = { fine0.x, fine0.y, fine0.z, fine0.w, fine1.x, fine1.y, fine1.z, fine1.w };
-		[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
-			weights[layer] = fine[layer];
-	}
 	float4 splat;
 	uint4 layerIndex;
-	selectLayers( weights, splat, layerIndex );
+	terrainLayerWeights( position.xz, splat, layerIndex );
 
 	// Шаг сетки у вершины — от 1,56 см у камеры (около ⅛ расстояния / 16, как диапазоны уровней), мип высоты слоя — по нему
 	const float spacing = max( 0.015625f, distance / 128.0f );

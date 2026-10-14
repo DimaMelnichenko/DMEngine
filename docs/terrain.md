@@ -637,8 +637,9 @@ Grass Type в UE, `TODO.md`, этап 8). Мазки — данные уровн
 - **Проходы** — цвет, depth prepass и тени — один вершинный шейдер.
 - **Данные — ресурсы сцены** (`CDLODTerrain::compute`, `Shaders/terrain_layers.sh`): splat-карта, массив «альбедо +
   высота», детальный слой весов (плитки и индекс) и константы слоёв — `SLOT_TERRAIN_SPLAT`, `…_ALBEDO_HEIGHT`,
-  `…_SPLAT_DETAIL`, `…_SPLAT_DETAIL_INDEX`, `…_LAYER_CONSTANTS` (t118…t122). Константы (`CDLODTerrain::LayerConstants`:
-  повтор и размах слоёв, точка LOD главного вида и рост, смешивание, дальность; раскладка —
+  `…_SPLAT_DETAIL`, `…_SPLAT_DETAIL_INDEX`, `…_LAYER_CONSTANTS` (t118…t122) и шум пятен яркости `SLOT_TERRAIN_NOISE`
+  (t123). Константы (`CDLODTerrain::LayerConstants`: повтор, размах и множитель альбедо слоёв, точка LOD главного вида и
+  рост, смешивание, дальность; раскладка —
   `Shaders/terrain_layer_constants.sh`) заполняет одна `layerConstants`: в буфер сцены (структурный, один элемент) для
   расстановки и частиц и копией в cbuffer террейна (`TERRAIN_LAYERS_IN_CBUFFER`: у каждой вершины и пикселя он дешевле —
   через буфер проход рельефа стоил на 0,04 мс больше).
@@ -677,7 +678,9 @@ Grass Type в UE, `TODO.md`, этап 8). Мазки — данные уровн
 5. **Смешивание по высоте** (Mishkinis): к весу слоя прибавляется его высота, виден слой с наибольшей суммой, переход —
    «Height blend»; так камни осыпей проступают сквозь траву. Альбедо слоя при смешивании × его множитель
    (`g_layerTint`, `albedo_tint`).
-6. Крупные пятна яркости по шуму (40 и 13 м), затем `evaluateLighting` ([lighting.md](lighting.md)).
+6. Крупные пятна яркости по шуму (40 и 13 м; `terrainBrightness` в `terrain_layers.sh` — общие с травой на земле:
+   над светлым пятном и она светлее, [scatter.md](scatter.md), «Цвет земли у растений»), затем `evaluateLighting`
+   ([lighting.md](lighting.md)).
 
 Всё перечисленное в кавычках — ползунки окна террейна в GUI (Outliner → Scene → CDLOD terrain), значения — колонки
 строки `Terrain`: `triplanar_sharpness` (8), `height_blend` (0,2), `far_texture_scale` (8), `far_blend_start` (40),

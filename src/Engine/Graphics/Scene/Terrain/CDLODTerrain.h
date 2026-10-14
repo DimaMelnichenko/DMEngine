@@ -192,8 +192,9 @@ private:
 		float displacementStart;		// дисплейсмент: полный ближе, м, к displacementEnd — нет (0 — выключен)
 		float displacementEnd;
 		float padding;
+		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
 	};
-	static_assert( sizeof( LayerConstants ) == 112, "TerrainLayerConstants in Shaders/terrain_layer_constants.sh" );
+	static_assert( sizeof( LayerConstants ) == 240, "TerrainLayerConstants in Shaders/terrain_layer_constants.sh" );
 
 	struct alignas( 16 ) Parameters
 	{
@@ -217,7 +218,6 @@ private:
 		float microShadows;			// микротени прямого света по AO слоёв, 0…1 («Micro shadows»)
 		float padding;
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1…−6: начало морфинга и 1 / длина зоны
-		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
 		DirectX::XMFLOAT4 layerOcclusion[TerrainMaterial::splatSlices];		// сила AO по слоям, 0…1
 		LayerConstants layers;	// та же раскладка, что у ресурса сцены (cbuffer дешевле у каждой вершины и пикселя)
 	};

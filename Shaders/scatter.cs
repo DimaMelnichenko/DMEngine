@@ -29,6 +29,7 @@
 #include "samplers.sh"
 #include "common.vs"
 #include "terrain_height.sh"
+#include "scatter_ground.sh"
 #include "water.sh"
 #include "lod_transition.h"
 #include "bindless.sh"
@@ -65,6 +66,12 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	uint   g_placedCapacity;
 	float  g_clusterMargin;
 	float  g_sizeVariation;		// разброс размера: случайный множитель от 1 − разброс до 1
+	// Цвет земли у растения (scatter_ground.sh): доля у корня, высота перехода к своему цвету (м), доля по всему растению у
+	// дальней границы кольца, разброс яркости по экземплярам (±)
+	float  g_groundColor;
+	float  g_groundColorHeight;
+	float  g_groundColorFar;
+	float  g_colorVariation;
 	float3 g_layerPadding;
 };
 
@@ -128,6 +135,7 @@ struct ScatterItem
 	float3 position;
 	float  size;
 	float4 rotation;	// кватернион
+	uint4  ground;		// цвет земли под экземпляром (scatter_ground.sh); нули — свой цвет
 };
 
 // Экземпляр списка перехода — ScatterPass::ScatterTransitionItem, InstanceParam с LOD_DITHER в instance.sh
@@ -537,6 +545,19 @@ float ringFade( float distanceToCamera )
 		   saturate( ( distanceToCamera - g_nearBorder ) / max( g_nearFade, 1e-3f ) );
 }
 
+// Цвет земли под экземпляром кольцевого слоя (scatter_ground.sh): средний цвет слоёв террейна в точке с их множителем и
+// пятнами яркости — растение берёт его у корня, вдали (вторая половина кольца) — и выше; свой цвет — с теми же пятнами
+// яркости и разбросом по экземплярам (по случайному числу ячейки: у экземпляра всегда тот же)
+uint4 groundColor( float3 position, float distanceToCamera, int2 cell, uint seed )
+{
+	if( g_groundColor <= 0.0f && g_groundColorFar <= 0.0f && g_colorVariation <= 0.0f )
+		return 0;
+	const float3 ground = g_groundColor > 0.0f || g_groundColorFar > 0.0f ? terrainGroundColor( position.xz ) : 0.0f;
+	const float brightness = terrainBrightness( position.xz ) * ( 1.0f + g_colorVariation * ( 2.0f * random( cell, seed + 10 ) - 1.0f ) );
+	const float far = g_groundColorFar * smoothstep( 0.5f * g_farBorder, g_farBorder, distanceToCamera );
+	return packScatterGround( ground, brightness, g_groundColor, g_groundColorHeight, far );
+}
+
 // Кольцевой слой: ячейки квадрата 2 · far вокруг камеры
 [numthreads( 32, 32, 1 )]
 void main( uint3 dispatchThreadId : SV_DispatchThreadID )
@@ -565,6 +586,7 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	item.size *= ringFade( distanceToCamera );
 	if( item.size <= 0.0f )
 		return;
+	item.ground = groundColor( item.position, distanceToCamera, cell, seed );
 
 	emitInstance( item, variant, lodScale, distanceToCamera, 0xffffffffU );
 }

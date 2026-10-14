@@ -37,7 +37,6 @@ cbuffer CDLODBuffer : register( SLOT_CB_MATERIAL )
 	float  g_microShadows;			// микротени прямого света по AO слоёв, 0…1 (terrain.ps, «Micro shadows»)
 	float  g_cdlodPadding;
 	float4 g_detailMorph[6];		// уровни мельче листа (−1…−6): x — начало морфинга, y — 1 / длина зоны
-	float4 g_layerTint[8];			// множитель альбедо по слоям (xyz; TerrainLayers.albedo_tint, окно «Layer tint»)
 	float4 g_layerOcclusion[2];		// сила AO по слоям, по четыре, 0…1 (TerrainLayers.occlusion, «Layer occlusion»)
 	TerrainLayerConstants g_terrainLayers;	// то же, что ресурс сцены SLOT_TERRAIN_LAYER_CONSTANTS (terrain_layers.sh)
 };

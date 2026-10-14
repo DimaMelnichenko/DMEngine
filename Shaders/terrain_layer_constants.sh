@@ -21,6 +21,7 @@ struct TerrainLayerConstants
 	float  displacementStart;		// дисплейсмент: полный ближе, м,
 	float  displacementEnd;			// к этому расстоянию от точки LOD — нет; 0 — выключен
 	float  padding;
+	float4 layerTint[8];			// множитель альбедо по слоям (xyz; TerrainLayers.albedo_tint, окно «Layer tint»)
 };
 
 #endif

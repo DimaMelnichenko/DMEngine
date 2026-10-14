@@ -250,6 +250,15 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	number( "Size variation", settings.sizeVariation, 0.0f, 1.0f, "",
 			"Random size spread: an instance is Size x (1 - variation ... 1)" );
 	number( "Jitter", settings.jitter, 0.0f, 1.0f, "", "Random offset inside the cell, share of the cell size" );
+	// Цвет земли у растения: трава на пожелтевшей земле не сочно-зелёная, вдали пучки не выделяются тёмными корнями
+	number( "Ground color", settings.groundColor, 0.0f, 1.0f, "",
+			"Share of the ground color under the plant at its root (the terrain layers by weight, with their tint): 0 - own color" );
+	number( "Ground color height", settings.groundColorHeight, 0.0f, 2.0f, "m",
+			"Height above the root where the ground color fades out to the plant's own color" );
+	number( "Ground color far", settings.groundColorFar, 0.0f, 1.0f, "",
+			"Share of the ground color over the whole plant at the far border (from half the ring): far plants blend into the ground" );
+	number( "Color variation", settings.colorVariation, 0.0f, 0.5f, "",
+			"Random brightness spread between plants (+-); the ground brightness spots of the terrain apply too" );
 	Property* rotation = layer.properties->insert( "Rotation", settings.rotationRange );
 	rotation->setLow( 0.0f );
 	rotation->setHigh( 360.0f );
@@ -688,6 +697,10 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.sizeMultiplier = settings.sizeMultiplier;
 	params.jitter = settings.jitter;
 	params.sizeVariation = settings.sizeVariation;
+	params.groundColor = settings.groundColor;
+	params.groundColorHeight = settings.groundColorHeight;
+	params.groundColorFar = settings.groundColorFar;
+	params.colorVariation = settings.colorVariation;
 	params.rotationRange = XMFLOAT3( XMConvertToRadians( settings.rotationRange.x ), XMConvertToRadians( settings.rotationRange.y ),
 									 XMConvertToRadians( settings.rotationRange.z ) );
 	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
@@ -711,6 +724,10 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 	settings.sizeMultiplier = std::max( properties["Size"].data<float>(), 0.01f );
 	settings.sizeVariation = std::clamp( properties["Size variation"].data<float>(), 0.0f, 1.0f );
 	settings.jitter = std::max( properties["Jitter"].data<float>(), 0.0f );
+	settings.groundColor = std::clamp( properties["Ground color"].data<float>(), 0.0f, 1.0f );
+	settings.groundColorHeight = std::max( properties["Ground color height"].data<float>(), 0.0f );
+	settings.groundColorFar = std::clamp( properties["Ground color far"].data<float>(), 0.0f, 1.0f );
+	settings.colorVariation = std::clamp( properties["Color variation"].data<float>(), 0.0f, 1.0f );
 	settings.rotationRange = properties["Rotation"].data<XMFLOAT3>();
 	settings.alignToTerrain = properties["Align to terrain"].data<bool>();
 	settings.castShadow = properties["Cast shadow"].data<bool>();
@@ -772,6 +789,8 @@ void Scatterer::applyProperties( Layer& layer )
 						 settings.farBorder != applied.farBorder || settings.sizeMultiplier != applied.sizeMultiplier;
 	const bool placement = settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ||
 						   settings.jitter != applied.jitter || settings.sizeVariation != applied.sizeVariation ||
+						   settings.groundColor != applied.groundColor || settings.groundColorHeight != applied.groundColorHeight ||
+						   settings.groundColorFar != applied.groundColorFar || settings.colorVariation != applied.colorVariation ||
 						   settings.alignToTerrain != applied.alignToTerrain ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
@@ -808,6 +827,10 @@ void Scatterer::applyProperties( Layer& layer )
 		params.farFade = fresh.farFade;
 		params.jitter = fresh.jitter;
 		params.sizeVariation = fresh.sizeVariation;
+		params.groundColor = fresh.groundColor;
+		params.groundColorHeight = fresh.groundColorHeight;
+		params.groundColorFar = fresh.groundColorFar;
+		params.colorVariation = fresh.colorVariation;
 		params.rotationRange = fresh.rotationRange;
 		params.alignToTerrain = fresh.alignToTerrain;
 		params.castShadow = castShadow;

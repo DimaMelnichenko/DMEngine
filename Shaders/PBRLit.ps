@@ -26,6 +26,8 @@ struct PixelInputType
 	float3 tangent : TANGENT0;
 	float3 binormal : BINORMAL0;
 	float3 worldPosition : TEXCOORD1;
+	float4 ground : TEXCOORD3;			// цвет земли у растения расстановки и его доля (LightShader.vs, scatter_ground.sh)
+	float groundBrightness : TEXCOORD4;	// множитель своего цвета
 #ifdef LOD_DITHER
 	nointerpolation float lodDither : TEXCOORD2;
 #endif
@@ -70,7 +72,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.position = input.worldPosition;
 	surface.normal = surfaceNormal( input );
 	surface.geometricNormal = normalize( input.isFrontFace ? input.normal : -input.normal );
-	surface.baseColor = baseColor.rgb;
+	// Растение расстановки: у корня — цвет земли под ним, вдали — и выше (у остальных доля 0, множитель 1)
+	surface.baseColor = lerp( baseColor.rgb * input.groundBrightness, input.ground.rgb, input.ground.a );
 	surface.metallic = saturate( g_metallic * metallicRoughness.b );
 	surface.specular = g_specularFactor;
 	surface.roughness = g_roughness * metallicRoughness.g;

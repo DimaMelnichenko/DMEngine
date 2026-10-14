@@ -1739,6 +1739,7 @@ CDLODTerrain::LayerConstants CDLODTerrain::layerConstants( const RenderView& vie
 	LayerConstants constants = {};
 	std::copy( m_material.layerScale().begin(), m_material.layerScale().end(), constants.layerScale );
 	std::copy( m_material.layerDisplacement().begin(), m_material.layerDisplacement().end(), constants.layerDisplacement );
+	std::copy( m_material.layerTint().begin(), m_material.layerTint().end(), constants.layerTint );
 	constants.lodOrigin = view.lodOrigin;
 	constants.lodEyeHeight = view.lodEyeHeight;
 	constants.worldSize = m_worldSize;
@@ -2316,7 +2317,6 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.heightOffset = m_heightOffset;
 		params.gridDim = static_cast<float>( patchDim );
 		std::copy( std::begin( m_morphConsts ), std::end( m_morphConsts ), params.morphConsts );
-		std::copy( m_material.layerTint().begin(), m_material.layerTint().end(), params.layerTint );
 		params.texelSize = m_texelSize;
 		params.farTextureScale = m_properties["Far texture scale"].data<float>();
 		const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();

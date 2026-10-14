@@ -618,6 +618,12 @@ struct ScatterLayerSettings
 	float farFade = 0.0f;
 	float sizeMultiplier = 1.0f;
 	float sizeVariation = 0.3f;		// разброс размера: экземпляр — sizeMultiplier × случайное от 1 − разброс до 1
+	// Цвет земли у растения (кольцевой слой): доля цвета земли под ним у корня (0 — свой цвет), высота, к которой она сходит
+	// на нет, м, доля по всему растению у дальней границы кольца и разброс яркости по экземплярам (±доля)
+	float groundColor = 0.0f;
+	float groundColorHeight = 0.0f;
+	float groundColorFar = 0.0f;
+	float colorVariation = 0.0f;
 	float jitter = 0.0f;			// смещение внутри ячейки, доля шага
 	DirectX::XMFLOAT3 rotationRange = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
 	bool alignToTerrain = false;	// ось Y инстанса по нормали террейна

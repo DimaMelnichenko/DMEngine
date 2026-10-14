@@ -42,6 +42,7 @@ struct ImpostorPixelInput
 	nointerpolation float4 viewer : TEXCOORD6;		// xyz — направление на зрителя, w — радиус сферы, м
 	precise float planeOffset : TEXCOORD7;
 	nointerpolation float2 heightRange : TEXCOORD9;	// x — высота начала координат модели в мире, y — 1 / высота модели, м
+	nointerpolation uint4 ground : TEXCOORD10;		// цвет земли под экземпляром (scatter_ground.sh)
 #ifdef LOD_DITHER
 	nointerpolation float lodDither : TEXCOORD8;
 #endif
