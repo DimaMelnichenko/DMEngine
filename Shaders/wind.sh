@@ -25,11 +25,11 @@ struct WindFrame
 
 // Изгиб растения с корнем root и откликом weight — вектор s, 1/м (по ветру): вершина на высоте h над корнем сдвигается на
 // (s h², −½ |s|² h³) — как консоль под нагрузкой, верх не удлиняется: вместе со сдвигом вбок опускается (дуга). Дрожь ±25 %
-// с частотой 1,5–2,5 Гц, фаза — своя у каждого растения (хеш корня). Направление и сила — поле ветра в корне (windAt): в
-// лесу и за гребнем тише, на гребне сильнее; порывисто — дрожь сильнее и направление мечется
-float2 windBendVector( float3 root, float weight )
+// с частотой 1,5–2,5 Гц, phase 0…1 — своя у каждого растения (vertexWorldPosition: у экземпляра расстановки — по его
+// повороту, не по корню: корень на земле с дисплейсментом сдвигается с камерой). Направление и сила — поле ветра в корне
+// (windAt): в лесу и за гребнем тише, на гребне сильнее; порывисто — дрожь сильнее и направление мечется
+float2 windBendVector( float3 root, float weight, float phase )
 {
-	const float phase = frac( sin( dot( root.xz, float2( 12.9898f, 78.233f ) ) ) * 43758.5453f );
 	const WindSample wind = windAt( root.xz );
 	const float flutter = 0.25f * ( 1.0f + 2.0f * wind.turbulence ) * sin( windTwoPi * ( cb_gameTime * ( 1.5f + phase ) + phase ) );
 	const float bend = cb_windStrength * weight * windGust( root.xz ) * windLoad( wind ) * ( 1.0f + flutter );	// 1/м

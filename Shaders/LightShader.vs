@@ -131,22 +131,30 @@ float4 vertexWorldPosition( VertexInputType input, inout WindFrame frame )
 		#endif
 		// Высота растёт вдоль оси Y экземпляра (наклон по земле, случайный поворот)
 		const float3 up = normalize( mul( calcInstanceDirection( float3( 0.0f, 1.0f, 0.0f ), instanceIndex ), (float3x3)world ) );
+		// Своё случайное число растения — по его повороту, а не по месту: кольцевой слой стоит на земле с дисплейсментом
+		// (terrainSurfacePoint), и корень сдвигается вместе с камерой — хеш места прыгал бы, и трава дрожала бы на ходу
+		#ifdef INST_ROTATE
+			const float phase = windPhase( instance.rotation.xyz );
+		#else
+			const float phase = windPhase( float3( instance.position.x, 0.0f, instance.position.z ) );
+		#endif
 	#else
 		const float3 root = world[3].xyz;
 		const float height = max( worldPosition.y - root.y, 0.0f );
 		const float3 up = float3( 0.0f, 1.0f, 0.0f );
+		const float phase = windPhase( root );
 	#endif
 		// След в корне: придавленное растение ветер качает меньше, затем оно наклоняется вокруг корня целиком (вместе с изгибом)
 		const float2 push = foliagePushAt( root );
 		const float pressed = length( push );
 		[branch] if( cb_windStrength > 0.0f )
 		{
-			const float2 bend = windBendVector( root, g_windWeight ) * ( 1.0f - 0.8f * pressed );
+			const float2 bend = windBendVector( root, g_windWeight, phase ) * ( 1.0f - 0.8f * pressed );
 			worldPosition.xyz += windOffset( bend, height );
 			windBendFrame( bend, height, up, frame );
 		}
 		[branch] if( pressed > 0.01f )
-			worldPosition.xyz = foliageTrample( worldPosition.xyz, root, up, push, frame );
+			worldPosition.xyz = foliageTrample( worldPosition.xyz, root, up, push, phase, frame );
 	}
 #endif
 	return worldPosition;

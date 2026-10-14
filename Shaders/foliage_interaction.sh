@@ -35,12 +35,12 @@ float2 foliagePushAt( float3 root )
 }
 
 // Наклон точки p растения вокруг корня root (up — куда растёт, единичный) по вектору push (foliagePushAt): к его
-// направлению на «Max angle» × |push|, у каждого растения своё отклонение (хеш корня: ±20° направления, 85–100 % угла) —
-// трава под ногами ложится не строем. Поворот вокруг оси поперёк up: стебли не удлиняются, базис — тем же поворотом
-float3 foliageTrample( float3 p, float3 root, float3 up, float2 push, inout WindFrame frame )
+// направлению на «Max angle» × |push|, у каждого растения своё отклонение (phase 0…1 — его случайное число, постоянное:
+// ±20° направления, 85–100 % угла) — трава под ногами ложится не строем. Поворот вокруг оси поперёк up: стебли не
+// удлиняются, базис — тем же поворотом
+float3 foliageTrample( float3 p, float3 root, float3 up, float2 push, float phase, inout WindFrame frame )
 {
 	const float amount = length( push );
-	const float phase = windPhase( root );
 	float turnSin, turnCos;
 	sincos( ( phase - 0.5f ) * 0.7f, turnSin, turnCos );
 	const float2 direction = push / amount;
