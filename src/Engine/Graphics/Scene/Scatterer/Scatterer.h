@@ -53,6 +53,7 @@ public:
 		bool castShadow = true;
 		uint32_t id = 0;	// строка ScatterLayerModels — куда пишет «Save level»
 		std::vector<float> lodDistances;	// свои границы LOD модели у слоя, м (ScatterLayerModels.lod_distances); пусто — модели
+		ScatterVariantPlacement placement;	// свои размер, разброс, наклон и группа куртин (NULL в базе — как у слоя)
 	};
 	// models — варианты растения (все их LOD, не больше ScatterPass::maxLods; вариантов — не больше
 	// ScatterPass::maxVariants); mask — маска плотности в хранилище текстур, в координатах карты высот террейна
@@ -137,7 +138,7 @@ private:
 		// меняется в GUI
 		bool ditheredLodTransition = false;
 		uint32_t id = 0;	// строка ScatterLayerModels
-		std::unique_ptr<PropertyContainer> properties;	// «Weight», «Cast shadow» — подокно слоя
+		std::unique_ptr<PropertyContainer> properties;	// «Weight», «Cast shadow», своя раскладка, кольца LOD — подокно слоя
 	};
 
 	// Группа секций списков с одним материалом, параметрами и состоянием: один ExecuteIndirect на вид
@@ -171,8 +172,6 @@ private:
 		// моделей — для пересборки буферов слоя при смене шага, кольца, размера и весов
 		ScatterLayerSettings settings;
 		std::vector<ScatterPass::Variant> passVariants;
-		float maxRadius = 0.0f;		// наибольший радиус сферы LOD0 вариантов, м (без размера слоя)
-		float modelTop = 0.0f;		// наибольшая высота верха сферы LOD0, м (без размера слоя)
 	};
 
 	// Константы раскладки из настроек слоя (ёмкости и число вариантов заполняет ScatterPass::createBuffers)
@@ -184,6 +183,8 @@ private:
 	// Буферы слоя заново по layer.settings и layer.passVariants: прежние GPU отпустит, когда закончит кадры с ними
 	bool rebuildPass( Layer& layer );
 	static float maxHeight( const Layer& layer );
+	// Наибольший радиус экземпляра (сфера LOD0 × размер слоя и варианта), м: запас границ кластера постоянного слоя
+	static float maxRadius( const Layer& layer );
 	// Слой камней русел: экземпляры по камням конвейера — в постоянный пул
 	void placeStreamStones( Layer& layer );
 	// Ёмкость постоянного пула слоя: у камней русел — их наибольшее число, у прочих — экземпляр на ячейку мира

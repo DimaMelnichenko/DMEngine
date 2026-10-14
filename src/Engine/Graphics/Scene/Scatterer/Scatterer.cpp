@@ -50,6 +50,48 @@ std::string lodRangeName( uint32_t lod )
 	return "LOD " + std::to_string( lod ) + " up to";
 }
 
+// Своя раскладка варианта: свойства подокна варианта ↔ ScatterVariantPlacement. Разброс — «Own size variation» и
+// значение, наклон — список «As layer / Off / On», группа куртин — 0: своя
+void addPlacementProperties( PropertyContainer& properties, const ScatterVariantPlacement& placement, float layerSizeVariation )
+{
+	Property* size = properties.insert( "Size", placement.sizeMultiplier );
+	size->setLow( 0.05f );
+	size->setHigh( 10.0f );
+	size->setLogarithmic()->setTooltip( "Size multiplier of this model on top of the layer Size" );
+	properties.insert( "Own size variation", placement.sizeVariation >= 0.0f )->setTooltip(
+		"Own random size spread of this model; off - the layer Size variation" );
+	Property* variation = properties.insert( "Size variation", placement.sizeVariation >= 0.0f ? placement.sizeVariation : layerSizeVariation );
+	variation->setLow( 0.0f );
+	variation->setHigh( 1.0f );
+	variation->setTooltip( "Random size spread of this model (with Own size variation): Size x (1 - variation ... 1)" );
+	properties.insert( "Align to terrain", static_cast<int32_t>( placement.alignToTerrain + 1 ) )->setItems( { "As layer", "Off", "On" } )
+		->setTooltip( "Instance Y axis along the terrain normal: as the layer, vertical or along the normal" );
+	Property* group = properties.insert( "Patch group", placement.patchGroup );
+	group->setLow( 0.0f );
+	group->setHigh( static_cast<float>( ScatterPass::maxVariants ) );
+	group->setTooltip( "Patches (Patch size of the layer): models of one group are one species and grow in the same patches; "
+					   "0 - own patches" );
+}
+
+ScatterVariantPlacement placementFromProperties( const PropertyContainer& properties )
+{
+	ScatterVariantPlacement placement;
+	placement.sizeMultiplier = std::max( properties["Size"].data<float>(), 0.01f );
+	placement.sizeVariation = properties["Own size variation"].data<bool>() ? std::clamp( properties["Size variation"].data<float>(), 0.0f, 1.0f ) : -1.0f;
+	placement.alignToTerrain = std::clamp( properties["Align to terrain"].data<int32_t>(), 0, 2 ) - 1;
+	placement.patchGroup = std::clamp( properties["Patch group"].data<int32_t>(), 0, static_cast<int32_t>( ScatterPass::maxVariants ) );
+	return placement;
+}
+
+// Своя раскладка — в вариант раскладки; группа куртин — номер узора шума: своя — номер варианта, общая — после них
+void applyPlacement( const ScatterVariantPlacement& placement, uint32_t index, ScatterPass::Variant& variant )
+{
+	variant.sizeMultiplier = placement.sizeMultiplier;
+	variant.sizeVariation = placement.sizeVariation;
+	variant.alignToTerrain = static_cast<float>( placement.alignToTerrain );
+	variant.patchGroup = placement.patchGroup >= 1 ? ScatterPass::maxVariants + static_cast<uint32_t>( placement.patchGroup ) : index;
+}
+
 // Надпись окна (GUIControlType::LABEL) — значение считает объект: правкой не отмечается
 template<class TYPE>
 void setLabel( Property& property, const TYPE& value )
@@ -88,7 +130,6 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	// Дальности LOD — из модели, как у моделей уровня; последний LOD рисуется до конца кольца. Границы — сфера LOD0:
 	// по ней отсечение экземпляров (у деревьев — десятки метров) и длина их тени
 	std::vector<ScatterPass::Variant> passVariants;
-	float maxRadius = 0.0f;
 	const size_t variantCount = std::min<size_t>( models.size(), ScatterPass::maxVariants );
 	for( size_t v = 0; v < variantCount; ++v )
 	{
@@ -103,9 +144,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			passVariant.bounds = XMFLOAT4( box.Center.x, box.Center.y, box.Center.z, radius );
 			const BoundingBox& base = lod0->baseBounds;
 			passVariant.footprint = XMFLOAT4( base.Center.x, base.Center.z, std::hypot( base.Extents.x, base.Extents.z ), 0.0f );
-			maxRadius = std::max( maxRadius, radius );
-			layer.modelTop = std::max( layer.modelTop, box.Center.y + radius );
 		}
+		applyPlacement( models[v].placement, static_cast<uint32_t>( v ), passVariant );
 		LayerVariant variant;
 		if( DMModel::LodBlock* lod0 = model->getLodById( 0 ) )
 			variant.box = lod0->bounds;
@@ -117,6 +157,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		weight->setHigh( std::max( 10.0f, models[v].weight * 2.0f ) );
 		weight->setTooltip( "Share of the layer cells: weight / sum of the weights" );
 		variant.properties->insert( "Cast shadow", models[v].castShadow )->setTooltip( "If the layer casts a shadow" );
+		addPlacementProperties( *variant.properties, models[v].placement, settings.sizeVariation );
 		// Импостер — ещё один LOD после последнего LOD модели (если есть место): модель — до impostor_distance. LOD модели,
 		// которые начинаются не ближе impostor_distance, не нужны: импостер сменяет предыдущий сразу, с дизерингом
 		// Границы LOD модели: свои у варианта слоя (ScatterLayerModels.lod_distances), иначе — дальности модели
@@ -202,9 +243,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		layer.variants.push_back( std::move( variant ) );
 		passVariants.push_back( passVariant );
 	}
-	layer.maxRadius = maxRadius;
-	layer.maxHeight = maxHeight( layer );
 	layer.passVariants = passVariants;
+	layer.maxHeight = maxHeight( layer );
 	if( !layer.pass->createBuffers( passVariants, settings.persistent ) )
 		return false;
 
@@ -219,7 +259,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 				return false;
 			m_persistentShaders = true;
 		}
-		if( !layer.pass->createPersistent( m_terrain->terrainHeight().worldSize, maxRadius * settings.sizeMultiplier, placedCapacity( settings ) ) )
+		if( !layer.pass->createPersistent( m_terrain->terrainHeight().worldSize, maxRadius( layer ), placedCapacity( settings ) ) )
 			return false;
 	}
 
@@ -271,6 +311,12 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	number( "Thinning", settings.thinning, 0.0f, 0.95f, "",
 			"Share of instances removed at the far border (the same ones always; the rest are bigger - the cover stays): fewer "
 			"instances far away; 0 - none" );
+	// Куртины: модели слоя — виды, растут пятнами (окно варианта: «Patch group» — модели одного вида в одних пятнах)
+	number( "Patch size", settings.patchScale, 0.0f, 100.0f, "m",
+			"Patches of the layer models (species): size of the world noise spots where a model group outnumbers the others; "
+			"0 - the models are mixed evenly by weight" );
+	number( "Patch strength", settings.patchStrength, 0.0f, 1.0f, "",
+			"How strongly a model group outnumbers the others in its patches: weight x e^(4 x strength x noise)" );
 	Property* rotation = layer.properties->insert( "Rotation", settings.rotationRange );
 	rotation->setLow( 0.0f );
 	rotation->setHigh( 360.0f );
@@ -717,6 +763,8 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.thinStart = settings.thinStart;
 	params.thinning = settings.thinning;
 	params.ditherFade = settings.ditherFade ? 1.0f : 0.0f;
+	params.patchScale = settings.patchScale;
+	params.patchStrength = settings.patchStrength;
 	params.rotationRange = XMFLOAT3( XMConvertToRadians( settings.rotationRange.x ), XMConvertToRadians( settings.rotationRange.y ),
 									 XMConvertToRadians( settings.rotationRange.z ) );
 	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
@@ -725,7 +773,21 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 
 float Scatterer::maxHeight( const Layer& layer )
 {
-	return std::max( { 1.0f, layer.modelTop * layer.settings.sizeMultiplier, layer.settings.sizeMultiplier } );
+	float height = 1.0f;
+	for( const ScatterPass::Variant& variant : layer.passVariants )
+	{
+		const float size = layer.settings.sizeMultiplier * variant.sizeMultiplier;
+		height = std::max( { height, ( variant.bounds.y + variant.bounds.w ) * size, size } );
+	}
+	return height;
+}
+
+float Scatterer::maxRadius( const Layer& layer )
+{
+	float radius = 0.0f;
+	for( const ScatterPass::Variant& variant : layer.passVariants )
+		radius = std::max( radius, variant.bounds.w * variant.sizeMultiplier );
+	return radius * layer.settings.sizeMultiplier;
 }
 
 ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) const
@@ -748,6 +810,8 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 	settings.thinStart = std::max( properties["Thinning start"].data<float>(), 0.0f );
 	settings.thinning = std::clamp( properties["Thinning"].data<float>(), 0.0f, 0.95f );
 	settings.ditherFade = properties["Dither fade"].data<bool>();
+	settings.patchScale = std::max( properties["Patch size"].data<float>(), 0.0f );
+	settings.patchStrength = std::clamp( properties["Patch strength"].data<float>(), 0.0f, 1.0f );
 	settings.rotationRange = properties["Rotation"].data<XMFLOAT3>();
 	settings.alignToTerrain = properties["Align to terrain"].data<bool>();
 	settings.castShadow = properties["Cast shadow"].data<bool>();
@@ -767,13 +831,26 @@ void Scatterer::applyProperties( Layer& layer )
 	const ScatterLayerSettings& applied = layer.settings;
 
 	bool weights = false;
+	bool variantSizes = false;		// размер варианта: высота тени и запас кластеров постоянного слоя
+	bool variantPlacement = false;	// разброс, наклон, группа куртин — константы раскладки
+	bool patchGroups = false;		// группа куртин при куртинах — ёмкость списков
+	const bool patches = settings.patchScale > 0.0f && settings.patchStrength > 0.0f;
+	const bool appliedPatches = applied.patchScale > 0.0f && applied.patchStrength > 0.0f;
 	for( uint32_t v = 0; v < layer.variants.size(); ++v )
 	{
 		LayerVariant& variant = layer.variants[v];
 		variant.castShadow = ( *variant.properties )["Cast shadow"].data<bool>();
 		const float weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
-		if( v < layer.passVariants.size() && weight != layer.passVariants[v].weight )
-			weights = true;
+		if( v >= layer.passVariants.size() )
+			continue;
+		const ScatterPass::Variant& current = layer.passVariants[v];
+		weights = weights || weight != current.weight;
+		ScatterPass::Variant edited = current;
+		applyPlacement( placementFromProperties( *variant.properties ), v, edited );
+		variantSizes = variantSizes || edited.sizeMultiplier != current.sizeMultiplier;
+		variantPlacement = variantPlacement || edited.sizeVariation != current.sizeVariation || edited.alignToTerrain != current.alignToTerrain ||
+						   edited.patchGroup != current.patchGroup;
+		patchGroups = patchGroups || ( patches && edited.patchGroup != current.patchGroup );
 	}
 	// Кольца LOD: дальность импостера — до края кольца, границы LOD модели у варианта — по возрастанию и не дальше конца
 	// последнего LOD модели (дальность импостера или край кольца); выход за пределы поле упирается, как в границу
@@ -809,14 +886,16 @@ void Scatterer::applyProperties( Layer& layer )
 	const bool fadeBands = settings.ditherFade != applied.ditherFade ||
 						   ( settings.ditherFade && ( settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ||
 													  settings.thinStart != applied.thinStart || settings.thinning != applied.thinning ) );
-	const bool buffers = weights || lods || fadeBands || settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
+	const bool buffers = weights || lods || fadeBands || variantSizes || patchGroups || patches != appliedPatches ||
+						 settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
 						 settings.farBorder != applied.farBorder || settings.sizeMultiplier != applied.sizeMultiplier;
 	const bool placement = settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ||
 						   settings.jitter != applied.jitter || settings.sizeVariation != applied.sizeVariation ||
 						   settings.groundColor != applied.groundColor || settings.groundColorHeight != applied.groundColorHeight ||
 						   settings.groundColorFar != applied.groundColorFar || settings.colorVariation != applied.colorVariation ||
 						   settings.edgeSpread != applied.edgeSpread || settings.thinStart != applied.thinStart ||
-						   settings.thinning != applied.thinning ||
+						   settings.thinning != applied.thinning || variantPlacement ||
+						   settings.patchScale != applied.patchScale || settings.patchStrength != applied.patchStrength ||
 						   settings.alignToTerrain != applied.alignToTerrain ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
@@ -830,6 +909,7 @@ void Scatterer::applyProperties( Layer& layer )
 		LayerVariant& variant = layer.variants[v];
 		ScatterPass::Variant& passVariant = layer.passVariants[v];
 		passVariant.weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
+		applyPlacement( placementFromProperties( *variant.properties ), v, passVariant );
 		for( uint32_t i = 0; i + 1 < variant.modelLods; ++i )
 			passVariant.lodEnd[i] = ( *variant.properties )[lodRangeName( i )].data<float>();
 		if( variant.impostor && variant.modelLods > 0 )
@@ -860,9 +940,13 @@ void Scatterer::applyProperties( Layer& layer )
 		params.edgeSpread = fresh.edgeSpread;
 		params.thinStart = fresh.thinStart;
 		params.thinning = fresh.thinning;
+		params.patchScale = fresh.patchScale;
+		params.patchStrength = fresh.patchStrength;
 		params.rotationRange = fresh.rotationRange;
 		params.alignToTerrain = fresh.alignToTerrain;
 		params.castShadow = castShadow;
+		for( uint32_t v = 0; v < layer.passVariants.size(); ++v )
+			layer.pass->setVariantPlacement( v, layer.passVariants[v] );
 		// Постоянный слой разложен один раз — раскладка заново
 		layer.placed = false;
 	}
@@ -878,8 +962,7 @@ bool Scatterer::rebuildPass( Layer& layer )
 		variant.lodEnd[variant.lodCount - 1] = settings.farBorder;
 	if( !pass->createBuffers( layer.passVariants, settings.persistent ) )
 		return false;
-	if( settings.persistent && ( !m_terrain || !pass->createPersistent( m_terrain->terrainHeight().worldSize, layer.maxRadius * settings.sizeMultiplier,
-																		  placedCapacity( settings ) ) ) )
+	if( settings.persistent && ( !m_terrain || !pass->createPersistent( m_terrain->terrainHeight().worldSize, maxRadius( layer ), placedCapacity( settings ) ) ) )
 		return false;
 	// Прежний пул и списки ещё в кадрах GPU: ресурсы отпускаются отложенно (DMD3D::deferRelease)
 	layer.pass = std::move( pass );
@@ -926,7 +1009,7 @@ void Scatterer::placeStreamStones( Layer& layer )
 		const BoundingBox& box = layer.variants[v].box;
 		// Поперечник модели — средний по X и Z; камень утоплен в дно на долю своей высоты
 		const float width = std::max( box.Extents.x + box.Extents.z, 1e-3f );
-		const float scale = stone.size / width * layer.settings.sizeMultiplier;
+		const float scale = stone.size / width * layer.settings.sizeMultiplier * layer.passVariants[v].sizeMultiplier;
 		const float bottom = box.Center.y - box.Extents.y;
 		ScatterPass::PlacedInstance instance;
 		instance.position = stone.position;
@@ -973,6 +1056,7 @@ std::vector<ScatterLayerRecord> Scatterer::layerRecords() const
 			model.id = variant.id;
 			model.weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
 			model.castShadow = ( *variant.properties )["Cast shadow"].data<bool>();
+			model.placement = placementFromProperties( *variant.properties );
 			// Свои границы LOD — если хоть одна отличается от модели; иначе пусто (в базе NULL — дальности модели)
 			bool own = false;
 			for( uint32_t i = 0; i + 1 < variant.modelLods; ++i )

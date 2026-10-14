@@ -50,6 +50,12 @@ public:
 		// С этого расстояния виды теней берут последний LOD (у леса — импостер), без перехода дизерингом, м; 0 — LOD
 		// как у главного вида
 		float shadowLastLodDistance = 0.0f;
+		// Своя раскладка (ScatterVariantPlacement): × размер слоя, разброс размера (< 0 — слоя), наклон по земле (< 0 —
+		// слоя, 0 / 1) и группа куртин (номер узора шума: у моделей одного вида — один)
+		float sizeMultiplier = 1.0f;
+		float sizeVariation = -1.0f;
+		float alignToTerrain = -1.0f;
+		uint32_t patchGroup = 0;
 	};
 
 	ScatterPass();
@@ -81,6 +87,9 @@ public:
 		uint32_t castingLods = maxLods;
 	};
 	void setShadowLods( uint32_t variant, const ShadowLods& lods );
+	// Своя раскладка варианта (Variant::sizeMultiplier … patchGroup) — из GUI; буфер вариантов — при смене. Группа куртин
+	// меняет ёмкость списков при куртинах — после неё буферы заново (createBuffers)
+	void setVariantPlacement( uint32_t variant, const Variant& placement );
 	// Секция списка: её меш и группа (0…maxGroups − 1, Scatterer::groups); таблицы секций и групп уходят на GPU в
 	// populate, только когда менялись
 	void setSectionArgs( uint32_t list, uint32_t section, uint32_t indexCount, uint32_t indexOffset, uint32_t vertexOffset, uint32_t group );
@@ -171,7 +180,10 @@ public:
 		float thinStart;
 		float thinning;
 		float ditherFade;	// 1 — у краёв кольца исчезание долей пикселей (дизеринг): экземпляры полосы — в пуле перехода
-		float padding[3];
+		// Куртины (ScatterLayerSettings::patchScale, patchStrength): размер пятен шума, м (0 — без куртин), и сила 0…1
+		float patchScale;
+		float patchStrength;
+		float padding;
 	} m_populateParams;
 	static_assert( sizeof( PopulateParams ) == 128, "ScatterLayerBuffer layout" );
 
@@ -221,6 +233,10 @@ private:
 		DirectX::XMFLOAT4 shadowCasting[maxVariants];	// x — с этого LOD у видов теней экземпляра нет (setShadowLods)
 		DirectX::XMFLOAT4 bounds[maxVariants];		// сфера модели варианта (Variant::bounds)
 		DirectX::XMFLOAT4 footprints[maxVariants];	// след основания варианта (Variant::footprint)
+		// Своя раскладка: x — вес (≥ 0), y — × размер слоя, z — разброс размера (< 0 — слоя), w — наклон по земле (< 0 —
+		// слоя, 0 / 1)
+		DirectX::XMFLOAT4 placement[maxVariants];
+		uint32_t patchGroups[maxVariants][4];		// x — группа куртин (номер узора шума)
 		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 		uint32_t lists[maxLists][4];
 	};

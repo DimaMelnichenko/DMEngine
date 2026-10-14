@@ -553,7 +553,7 @@ void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& leve
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
 {
 	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, placement, mask, cell_size, near_border, far_border, near_fade, "
-														   "far_fade, size_multiplier, size_variation, ground_color, ground_color_height, ground_color_far, color_variation, edge_spread, thinning_start, thinning, dither_fade, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow, persistent, "
+														   "far_fade, size_multiplier, size_variation, ground_color, ground_color_height, ground_color_far, color_variation, edge_spread, thinning_start, thinning, dither_fade, patch_scale, patch_strength, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow, persistent, "
 														   "impostor_distance, shadow_impostor_distance, impostor_density, impostor_occlusion, impostor_cast_shadow, impostor_base_shade "
 														   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
@@ -589,6 +589,9 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.settings.thinStart = value( "thinning_start" );
 		layer.settings.thinning = value( "thinning" );
 		layer.settings.ditherFade = query.getColumn( "dither_fade" ).getInt() != 0;
+		// Куртины: NULL — 0, без куртин
+		layer.settings.patchScale = value( "patch_scale" );
+		layer.settings.patchStrength = value( "patch_strength" );
 		layer.settings.jitter = value( "jitter" );
 		layer.settings.rotationRange = XMFLOAT3( value( "rotation_x" ), value( "rotation_y" ), value( "rotation_z" ) );
 		layer.settings.alignToTerrain = query.getColumn( "align_to_terrain" ).getInt() != 0;
@@ -602,7 +605,9 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.settings.impostorBaseShade = value( "impostor_base_shade" );
 
 		// Модели слоя — варианты растения с весами, в порядке строк
-		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, weight, cast_shadow, lod_distances FROM ScatterLayerModels WHERE layer = :layer ORDER BY id" );
+		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, weight, cast_shadow, lod_distances, size_multiplier, "
+																	 "size_variation, align_to_terrain, patch_group FROM ScatterLayerModels "
+																	 "WHERE layer = :layer ORDER BY id" );
 		queryModels.bind( ":layer", query.getColumn( "id" ).getUInt() );
 		while( queryModels.executeStep() )
 		{
@@ -620,6 +625,15 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 					if( !distance.empty() )
 						model.lodDistances.push_back( std::stof( distance ) );
 			}
+			// Своя раскладка модели: NULL — как у слоя
+			if( !queryModels.getColumn( "size_multiplier" ).isNull() )
+				model.placement.sizeMultiplier = static_cast<float>( queryModels.getColumn( "size_multiplier" ).getDouble() );
+			if( !queryModels.getColumn( "size_variation" ).isNull() )
+				model.placement.sizeVariation = static_cast<float>( queryModels.getColumn( "size_variation" ).getDouble() );
+			if( !queryModels.getColumn( "align_to_terrain" ).isNull() )
+				model.placement.alignToTerrain = queryModels.getColumn( "align_to_terrain" ).getInt() != 0 ? 1 : 0;
+			if( !queryModels.getColumn( "patch_group" ).isNull() )
+				model.placement.patchGroup = queryModels.getColumn( "patch_group" ).getInt();
 			layer.models.push_back( model );
 		}
 		set.layers.push_back( layer );

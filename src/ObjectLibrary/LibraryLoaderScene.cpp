@@ -463,13 +463,15 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 											 "size_multiplier = :size, size_variation = :sizeVariation, ground_color = :groundColor, "
 											 "ground_color_height = :groundColorHeight, ground_color_far = :groundColorFar, "
 											 "color_variation = :colorVariation, edge_spread = :edgeSpread, thinning_start = :thinStart, "
-											 "thinning = :thinning, dither_fade = :ditherFade, jitter = :jitter, rotation_x = :rotationX, "
+											 "thinning = :thinning, dither_fade = :ditherFade, patch_scale = :patchScale, "
+											 "patch_strength = :patchStrength, jitter = :jitter, rotation_x = :rotationX, "
 											 "rotation_y = :rotationY, rotation_z = :rotationZ, align_to_terrain = :align, "
 											 "cast_shadow = :castShadow, shadow_impostor_distance = :shadowImpostor, "
 											 "impostor_cast_shadow = :impostorShadow, impostor_base_shade = :baseShade, impostor_distance = :impostorDistance "
 											 "WHERE id = :id" );
 		SQLite::Statement updateScatterModel( db, "UPDATE ScatterLayerModels SET weight = :weight, cast_shadow = :castShadow, "
-												  "lod_distances = :lods WHERE id = :id" );
+												  "lod_distances = :lods, size_multiplier = :size, size_variation = :sizeVariation, "
+												  "align_to_terrain = :align, patch_group = :patchGroup WHERE id = :id" );
 		for( const GS::ScatterLayerRecord& record : scatterLayers )
 		{
 			const GS::ScatterLayerSettings& layer = record.settings;
@@ -490,6 +492,8 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			updateScatter.bind( ":thinStart", dbValue( layer.thinStart ) );
 			updateScatter.bind( ":thinning", dbValue( layer.thinning ) );
 			updateScatter.bind( ":ditherFade", layer.ditherFade ? 1 : 0 );
+			updateScatter.bind( ":patchScale", dbValue( layer.patchScale ) );
+			updateScatter.bind( ":patchStrength", dbValue( layer.patchStrength ) );
 			updateScatter.bind( ":jitter", dbValue( layer.jitter ) );
 			updateScatter.bind( ":rotationX", dbValue( layer.rotationRange.x ) );
 			updateScatter.bind( ":rotationY", dbValue( layer.rotationRange.y ) );
@@ -524,6 +528,24 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 					}
 					updateScatterModel.bind( ":lods", lods );
 				}
+				// Своя раскладка: как у слоя — NULL
+				const GS::ScatterVariantPlacement& placement = model.placement;
+				if( placement.sizeMultiplier == 1.0f )
+					updateScatterModel.bind( ":size" );
+				else
+					updateScatterModel.bind( ":size", dbValue( placement.sizeMultiplier ) );
+				if( placement.sizeVariation < 0.0f )
+					updateScatterModel.bind( ":sizeVariation" );
+				else
+					updateScatterModel.bind( ":sizeVariation", dbValue( placement.sizeVariation ) );
+				if( placement.alignToTerrain < 0 )
+					updateScatterModel.bind( ":align" );
+				else
+					updateScatterModel.bind( ":align", placement.alignToTerrain );
+				if( placement.patchGroup < 1 )
+					updateScatterModel.bind( ":patchGroup" );
+				else
+					updateScatterModel.bind( ":patchGroup", placement.patchGroup );
 				updateScatterModel.bind( ":id", model.id );
 				updateScatterModel.exec();
 				updateScatterModel.reset();

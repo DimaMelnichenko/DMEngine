@@ -51,6 +51,17 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 	float totalWeight = 0.0f;
 	for( uint32_t v = 0; v < variantCount && v < variants.size(); ++v )
 		totalWeight += std::max( variants[v].weight, 0.0f );
+	// С куртинами вид у камеры может занять почти всё кольцо ближнего LOD (пятно больше полосы): ёмкость — по доле варианта
+	// в своей группе куртин, а не во всём слое, иначе его список переполнялся бы, и трава пропадала пятнами
+	const bool patches = m_populateParams.patchScale > 0.0f && m_populateParams.patchStrength > 0.0f;
+	auto groupWeight = [&]( uint32_t variant )
+	{
+		float weight = 0.0f;
+		for( uint32_t v = 0; v < variantCount && v < variants.size(); ++v )
+			if( variants[v].patchGroup == variants[variant].patchGroup )
+				weight += std::max( variants[v].weight, 0.0f );
+		return weight;
+	};
 	const float nearBorder = m_populateParams.nearBorder;
 	const float farBorder = m_populateParams.farBorder;
 	const float ringArea = std::max( farBorder * farBorder - nearBorder * nearBorder, 1e-3f );
@@ -73,6 +84,8 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 		const Variant variant = v < variants.size() ? variants[v] : Variant();
 		const float share = totalWeight > 0.0f ? std::max( variant.weight, 0.0f ) / totalWeight : 1.0f / variantCount;
 		cumulative += share;
+		const float group = v < variants.size() ? groupWeight( v ) : 0.0f;
+		const float listShare = patches && group > 0.0f ? std::max( variant.weight, 0.0f ) / group : share;
 		const uint32_t lodCount = std::max( 1u, std::min( variant.lodCount, maxLods ) );
 		m_variants.variants[v] = XMFLOAT4( v + 1 == variantCount ? 1.0f : cumulative, static_cast<float>( lodCount ), 0.0f,
 										   variant.shadowLastLodDistance );
@@ -81,6 +94,8 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 		m_variants.shadowCasting[v] = XMFLOAT4( static_cast<float>( lodCount ), 0.0f, 0.0f, 0.0f );
 		m_variants.bounds[v] = variant.bounds;
 		m_variants.footprints[v] = variant.footprint;
+		m_variants.placement[v] = XMFLOAT4( std::max( variant.weight, 0.0f ), variant.sizeMultiplier, variant.sizeVariation, variant.alignToTerrain );
+		m_variants.patchGroups[v][0] = variant.patchGroup;
 
 		for( uint32_t lod = 0; lod < lodCount; ++lod )
 		{
@@ -114,8 +129,8 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 				const float area = transition ? transitionArea : bandArea( bandNear, bandFar );
 				// Ячеек в полосе — π · area / cell²; с запасом на разброс доли варианта
 				const float cellArea = std::max( m_populateParams.cellSize * m_populateParams.cellSize, 1e-6f );
-				const float expected = cellBound ? std::min( 3.14159265f * area / cellArea * share * 1.1f, static_cast<float>( capacity ) ) :
-										capacity * share * area / ringArea;
+				const float expected = cellBound ? std::min( 3.14159265f * area / cellArea * listShare * 1.1f, static_cast<float>( capacity ) ) :
+										capacity * listShare * area / ringArea;
 				const uint32_t listCapacity = std::max( minListCapacity, static_cast<uint32_t>( expected ) );
 				uint32_t* list = m_variants.lists[listIndex( v, lod, transition != 0 )];
 				list[1] = listCapacity;
@@ -205,6 +220,21 @@ void ScatterPass::setShadowLastLodDistance( uint32_t variant, float distance )
 	if( variant < m_populateParams.variantCount && m_variants.variants[variant].w != distance )
 	{
 		m_variants.variants[variant].w = distance;
+		m_variantsChanged = true;
+	}
+}
+
+void ScatterPass::setVariantPlacement( uint32_t variant, const Variant& placement )
+{
+	if( variant >= m_populateParams.variantCount )
+		return;
+	const XMFLOAT4 value( std::max( placement.weight, 0.0f ), placement.sizeMultiplier, placement.sizeVariation, placement.alignToTerrain );
+	XMFLOAT4& current = m_variants.placement[variant];
+	if( current.x != value.x || current.y != value.y || current.z != value.z || current.w != value.w ||
+		m_variants.patchGroups[variant][0] != placement.patchGroup )
+	{
+		current = value;
+		m_variants.patchGroups[variant][0] = placement.patchGroup;
 		m_variantsChanged = true;
 	}
 }

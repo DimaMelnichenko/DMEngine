@@ -78,7 +78,10 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	float  g_thinStart;
 	float  g_thinning;
 	float  g_ditherFade;		// 1 — у краёв кольца экземпляр исчезает долей пикселей (дизеринг), а не размером
-	float3 g_layerPadding;
+	// Куртины: размер пятен шума, м (0 — без куртин), и сила 0…1 — вес вида × e^(4 · сила · шум его группы)
+	float  g_patchScale;
+	float  g_patchStrength;
+	float  g_layerPadding;
 };
 
 // ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex
@@ -100,6 +103,10 @@ cbuffer ScatterVariantsBuffer : register( b7 )
 	float4 g_shadowCasting[maxVariants];	// x — с этого LOD у видов теней экземпляра нет (импостер без тени); = числу LOD — у всех
 	float4 g_bounds[maxVariants];	// сфера модели (LOD0) в её координатах: xyz — центр, w — радиус (при размере 1)
 	float4 g_footprints[maxVariants];	// след основания (LOD0): xy — центр по X и Z, z — радиус по XZ (при размере 1)
+	// Своя раскладка варианта: x — вес, y — × размер слоя, z — разброс размера (< 0 — слоя), w — наклон по земле (< 0 —
+	// слоя, 0 / 1)
+	float4 g_placement[maxVariants];
+	uint4  g_patchGroups[maxVariants];	// x — группа куртин: номер узора шума (у моделей одного вида — один)
 	uint4  g_lists[MAX_LISTS];		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 };
 
@@ -207,6 +214,36 @@ float worldNoise( float2 position, float size, uint index )
 	const float bottom = lerp( random( node, index ), random( node + int2( 1, 0 ), index ), f.x );
 	const float top = lerp( random( node + int2( 0, 1 ), index ), random( node + int2( 1, 1 ), index ), f.x );
 	return lerp( bottom, top, f.y ) * 2.0f - 1.0f;
+}
+
+// Куртины: шум группы −1…1 — пятна размером g_patchScale и их неровный край (второй слой втрое мельче); узор — свой у
+// группы и слоя (seed)
+float patchNoise( float2 worldXZ, uint group, uint seed )
+{
+	const uint index = seed + 32 + group * 2;
+	return 0.7f * worldNoise( worldXZ, g_patchScale, index ) + 0.3f * worldNoise( worldXZ, g_patchScale * 0.35f, index + 1 );
+}
+
+// Вариант ячейки с куртинами: доля вида — вес × e^(4 · сила · шум его группы), порог — случайное число ячейки pick (то
+// же, что без куртин): пятна на месте мира, виды не «пересаживаются» при движении камеры
+uint pickPatchVariant( float2 worldXZ, float pick, uint seed )
+{
+	float weights[maxVariants];
+	float total = 0.0f;
+	[loop] for( uint v = 0; v < g_variantCount; ++v )
+	{
+		weights[v] = g_placement[v].x > 0.0f ? g_placement[v].x * exp( 4.0f * g_patchStrength * patchNoise( worldXZ, g_patchGroups[v].x, seed ) ) : 0.0f;
+		total += weights[v];
+	}
+	float threshold = pick * total;
+	uint variant = 0;
+	[loop] for( ; variant + 1 < g_variantCount; ++variant )
+	{
+		threshold -= weights[variant];
+		if( threshold < 0.0f )
+			break;
+	}
+	return variant;
 }
 
 // Место по счётчику с ёмкостью: полон — счётчик возвращается, чтобы отрисовка не читала за концом
@@ -342,17 +379,23 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	if( chance >= density )
 		return false;
 
-	// Вариант — по накопленным долям весов; отдельное случайное число ячейки (прежние 0…6 от вариантов не зависят)
-	float pick = random( cell, seed + 7 );
-	[loop] for( uint v = 0; v + 1 < g_variantCount; ++v )
-		variant += pick >= g_variants[v].x ? 1 : 0;
+	// Вариант — по накопленным долям весов; отдельное случайное число ячейки (прежние 0…6 от вариантов не зависят). С
+	// куртинами — по весам × шум групп в точке (pickPatchVariant)
+	const float pick = random( cell, seed + 7 );
+	if( g_patchScale > 0.0f && g_patchStrength > 0.0f )
+		variant = pickPatchVariant( worldXZ, pick, seed );
+	else
+		[loop] for( uint v = 0; v + 1 < g_variantCount; ++v )
+			variant += pick >= g_variants[v].x ? 1 : 0;
+	const float4 placement = g_placement[variant];
 
 	float3 angles = ( float3( random( cell, seed + 4 ), random( cell, seed + 5 ), random( cell, seed + 6 ) ) - 0.5f ) * g_rotationRange;
 
 	// Широкая модель (куртина травы) — ещё и по следу основания: корень на бровке, а пучки куртины над врезом русла висели
 	// бы в воздухе (как проверка границ точки в PCG UE). Размер — наибольший при этой ячейке, след поворачивается с моделью
 	const float4 footprint = g_footprints[variant];
-	const float sizeBound = g_sizeMultiplier * lerp( 1.0f - g_sizeVariation, 1.0f, random( cell, seed + 3 ) );
+	const float sizeVariation = placement.z >= 0.0f ? placement.z : g_sizeVariation;
+	const float sizeBound = g_sizeMultiplier * placement.y * lerp( 1.0f - sizeVariation, 1.0f, random( cell, seed + 3 ) );
 	const float footprintRadius = footprint.z * sizeBound;
 	if( footprintRadius > footprintCheckRadius )
 	{
@@ -372,13 +415,13 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	}
 
 	item.position = float3( worldXZ.x, terrainHeight( worldXZ ), worldXZ.y );
-	// Размер: разброс слоя (Size variation) и плотность маски
+	// Размер: размер и разброс слоя и варианта (Size, Size variation) и плотность маски
 	item.size = sizeBound * lerp( 0.6f, 1.0f, density );
 
 	item.rotation = quaternionMul( quaternionAxisAngle( float3( 0.0f, 1.0f, 0.0f ), angles.y ),
 								   quaternionMul( quaternionAxisAngle( float3( 1.0f, 0.0f, 0.0f ), angles.x ),
 												  quaternionAxisAngle( float3( 0.0f, 0.0f, 1.0f ), angles.z ) ) );
-	if( g_alignToTerrain > 0.5f )
+	if( placement.w >= 0.0f ? placement.w > 0.5f : g_alignToTerrain > 0.5f )
 		item.rotation = quaternionMul( quaternionFromTo( float3( 0.0f, 1.0f, 0.0f ), terrainNormal( worldXZ ) ), item.rotation );
 
 	// Дальности LOD — свои у экземпляра: у модели, ближе на долю по случайному числу ячейки и шуму мира

@@ -30,6 +30,7 @@ struct LevelDescription
 		bool castShadow = true;
 		// Свои границы LOD модели у слоя, м (ScatterLayerModels.lod_distances: «6,14»); пусто — дальности модели
 		std::vector<float> lodDistances;
+		GS::ScatterVariantPlacement placement;	// свои размер, разброс, наклон и группа куртин; NULL — как у слоя
 	};
 
 	// Слой расстановки — растение: модели-варианты со всеми их LOD, маска плотности и параметры (таблица ScatterLayers)

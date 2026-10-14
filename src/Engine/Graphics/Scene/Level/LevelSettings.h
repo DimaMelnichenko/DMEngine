@@ -637,6 +637,11 @@ struct ScatterLayerSettings
 	// Исчезание у краёв кольца долей пикселей (дизеринг, как Foliage в UE), а не размером: трава не «вырастает» на краю.
 	// Нужен вариант со сменой LOD дизерингом (материалы с DitheredLODTransition); иначе — размером
 	bool ditherFade = false;
+	// Куртины (несколько видов в слое): доля вида — его вес × e^(4 · сила · шум), шум мира — гладкий, с пятнами размером
+	// patchScale, свой у каждой группы куртин (ScatterVariantPlacement::patchGroup): виды растут пятнами, а не вперемешку
+	// по ячейкам; размер, м (0 — без куртин), и сила 0…1
+	float patchScale = 0.0f;
+	float patchStrength = 0.0f;
 	float jitter = 0.0f;			// смещение внутри ячейки, доля шага
 	DirectX::XMFLOAT3 rotationRange = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
 	bool alignToTerrain = false;	// ось Y инстанса по нормали террейна
@@ -660,13 +665,24 @@ struct ScatterLayerSettings
 	float impostorBaseShade = 0.0f;
 };
 
-// Вариант слоя расстановки — строка ScatterLayerModels: доля ячеек и тень (то, что пишет «Save level»)
+// Своя раскладка вида (модели) слоя расстановки — колонки ScatterLayerModels; не задано (NULL в базе) — как у слоя
+struct ScatterVariantPlacement
+{
+	float sizeMultiplier = 1.0f;	// × размер слоя (size_multiplier)
+	float sizeVariation = -1.0f;	// свой разброс размера 0…1 (size_variation); < 0 — как у слоя
+	int32_t alignToTerrain = -1;	// −1 — как у слоя, 0 — ось Y вертикально, 1 — по нормали террейна (align_to_terrain)
+	// Группа куртин (patch_group): модели одной группы — один вид, растут в одних пятнах; < 1 — своя группа у модели
+	int32_t patchGroup = 0;
+};
+
+// Вариант слоя расстановки — строка ScatterLayerModels: доля ячеек, тень и своя раскладка (то, что пишет «Save level»)
 struct ScatterModelSettings
 {
 	uint32_t id = 0;
 	float weight = 1.0f;
 	bool castShadow = true;
 	std::vector<float> lodDistances;	// свои границы LOD модели у слоя, м; пусто — дальности модели (NULL в базе)
+	ScatterVariantPlacement placement;
 };
 
 // Слой расстановки для сохранения уровня: строка ScatterLayers и строки её моделей
