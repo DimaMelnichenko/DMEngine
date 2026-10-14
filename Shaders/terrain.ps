@@ -76,7 +76,7 @@ void addProjections( inout LayerSample result, float weight, uint layer, float s
 LayerSample sampleLayer( uint layer, float far, float3 position, float3 positionDX, float3 positionDY, float3 projection )
 {
 	LayerSample result = (LayerSample)0;
-	const float scale = g_layerScale[layer / 4][layer % 4];
+	const float scale = layerScale( layer );
 	[branch] if( far < 1.0f )
 		addProjections( result, 1.0f - far, layer, scale, position, positionDX, positionDY, projection );
 	[branch] if( far > 0.0f )
@@ -221,7 +221,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 		{
 			float total = 0.0f;
 			[unroll] for( uint i = 0; i < maxLayers; ++i )
-				total += i < g_layerCount ? weights[i] : 0.0f;
+				total += i < terrainLayers().layerCount ? weights[i] : 0.0f;
 			value = weights[g_paintPreview] / max( total, 1e-5f );
 		}
 		else if( g_paintPreview == (int)maxLayers )

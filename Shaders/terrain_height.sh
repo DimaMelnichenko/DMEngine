@@ -2,7 +2,8 @@
 // Высота рельефа для тех, кто на нём стоит (расстановка, частицы), без привязки к устройству террейна:
 // параметры приходят из TerrainHeightSource (Scene\Terrain\TerrainHeightSource.h). Карта высот покрывает
 // квадрат [0, worldSize] по X и Z, ось Z идёт по текстуре снизу вверх — как heightMapUV в cdlod.sh. Слоты SRV 0 и 1 —
-// карта высот и маска очистки растительности правками рельефа (TerrainHeight::foliageClearMask)
+// карта высот и маска очистки растительности правками рельефа (TerrainHeight::foliageClearMask). Земля со смещением
+// дисплейсмента (terrainSurfacePoint) — по слоям материала, ресурсам сцены террейна (terrain_layers.sh)
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef TERRAIN_HEIGHT_SH
@@ -11,6 +12,7 @@
 #include "samplers.sh"
 #include "bindless.sh"
 #include "terrain_detail.sh"
+#include "terrain_layers.sh"
 
 cbuffer TerrainHeightBuffer : register( b5 )
 {
@@ -67,6 +69,31 @@ float3 terrainNormal( float2 worldXZ )
 	float back  = terrainHeight( worldXZ - float2( 0.0f, offset ) );
 	float front = terrainHeight( worldXZ + float2( 0.0f, offset ) );
 	return normalize( float3( left - right, 2.0f * offset, back - front ) );
+}
+
+// Нормаль самой детальной земли — разностями через offset, м, как fineNormal в cdlod.sh
+float3 terrainFineNormal( float2 worldXZ, float offset )
+{
+	float left  = terrainHeight( worldXZ - float2( offset, 0.0f ) );
+	float right = terrainHeight( worldXZ + float2( offset, 0.0f ) );
+	float back  = terrainHeight( worldXZ - float2( 0.0f, offset ) );
+	float front = terrainHeight( worldXZ + float2( 0.0f, offset ) );
+	return normalize( float3( left - right, 2.0f * offset, back - front ) );
+}
+
+// Точка земли над worldXZ со смещением дисплейсмента — как вершину сдвигает cdlod.vs: вдоль нормали самой детальной земли
+// (0,5 м), по высотам слоёв, у точки LOD главного вида (полное ближе displacementStart, к displacementEnd — нет). Для
+// того, что меняется с камерой (кольцо расстановки, частицы); постоянные слои раскладываются раз — по terrainHeight
+float3 terrainSurfacePoint( float2 worldXZ )
+{
+	float3 position = float3( worldXZ.x, terrainHeight( worldXZ ), worldXZ.y );
+	const float distance = lodDistance( position );
+	[branch] if( distance < terrainLayers().displacementEnd )
+	{
+		const float3 normal = terrainFineNormal( worldXZ, 0.5f );
+		position += normal * terrainDisplacement( position, normal, distance );
+	}
+	return position;
 }
 
 #endif

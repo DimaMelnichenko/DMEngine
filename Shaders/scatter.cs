@@ -554,6 +554,9 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	float lodScale;
 	if( !placeInCell( cell, seed, item, variant, lodScale ) )
 		return;
+	// На земле со смещением дисплейсмента (камни слоёв у камеры): трава и камешки не тонут в поднятых камнях и не висят
+	// над щелями. Постоянный слой (placeWorld) — без него: раскладка раз, а смещение зависит от камеры
+	item.position = terrainSurfacePoint( item.position.xz );
 
 	float distanceToCamera = distance( item.position, cb_cameraPosition );
 	if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )

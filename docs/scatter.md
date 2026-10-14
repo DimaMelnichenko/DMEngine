@@ -131,7 +131,9 @@
 1. Точка: центр ячейки плюс случайное смещение до `jitter / 2` шага по X и Z. Вне террейна — пропуск.
 2. Маска: случайное число сравнивается с плотностью маски в этой точке (без того, что убрали правки рельефа:
    × `1 − terrainFoliageClear`, `Shaders/terrain_height.sh`) — так маска задаёт вероятность.
-3. Высота из карты высот; если расстояние до камеры вне `near_border…far_border` — пропуск.
+3. Высота из карты высот, у кольцевого слоя — со смещением дисплейсмента рельефа (`terrainSurfacePoint`: та же функция,
+   что у вершин `cdlod.vs`, ближе «Displacement distance» — трава стоит на поднятых камнях слоёв, [terrain.md](terrain.md),
+   «Дисплейсмент»; постоянный слой — без него); если расстояние до камеры вне `near_border…far_border` — пропуск.
 4. Размер: `size_multiplier` × случайный множитель (1 − `size_variation`)…1 × (0,6…1 по плотности маски) × исчезание
    у границ кольца.
 5. Отсечение: сфера радиусом в размер объекта над точкой проверяется по шести плоскостям frustum.
@@ -615,7 +617,7 @@ up to»… — границы LOD модели у этого слоя, м (`lod_
 | `Shaders/scatter.cs` | расстановка слоя: экземпляр ячейки (`placeInCell`), пул кадра и списки видов (`emitInstance`), кольцевой слой (`main`), постоянный — раскладка кластерами (`placeWorld`) и отбор кластеров кадра (`cullPlaced`), команды `ExecuteIndirect` по группам (`buildCommands`) |
 | `src/Engine/Graphics/Scene/Materials/ImpostorMaterial.h/.cpp`, `Shaders/impostor.sh` / `.vs` / `.ps` | импостер: запекание модели в кадры (цвет, нормаль, глубина) и карточка с тремя кадрами, смещение глубины, видимость по глубине сцены |
 | `Shaders/lod_transition.h`, `Shaders/lod_dither.sh` | полоса перехода и разброс дальностей LOD (общие с C++), маска дизеринга |
-| `Shaders/terrain_height.sh` | высота, нормаль и UV масок по карте высот |
+| `Shaders/terrain_height.sh` | высота, нормаль и UV масок по карте высот; земля со смещением дисплейсмента (`terrainSurfacePoint`) |
 | `Shaders/instance.sh` | данные инстанса в вершинных шейдерах; `instanceSlot` — индекс в пуле по списку вида и root-константе b9 |
 | `src/ObjectLibrary/LibraryLoader.cpp` (`loadLevel`, `loadScatterLayers`), `Scene/Level/LevelDescription.h`, `Scene/Level/LevelSettings.h` (`ScatterLayerSettings` — колонки `ScatterLayers`; в константы раскладки их переводит `Scatterer::addLayer`) | чтение наборов и слоёв из базы |
 | `src/Engine/Graphics/Scene/Scene.cpp` | создание наборов уровня |

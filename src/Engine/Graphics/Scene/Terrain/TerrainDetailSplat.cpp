@@ -514,8 +514,8 @@ bool TerrainDetailSplat::sourceAt( uint32_t x, uint32_t row, uint32_t channel, f
 
 void TerrainDetailSplat::bind() const
 {
-	DMD3D::instance().setSRV( 5, m_view );
-	DMD3D::instance().setSRV( 6, m_indexView );
+	DMD3D::instance().setSRV( SLOT_TERRAIN_SPLAT_DETAIL, m_view );
+	DMD3D::instance().setSRV( SLOT_TERRAIN_SPLAT_DETAIL_INDEX, m_indexView );
 }
 
 }

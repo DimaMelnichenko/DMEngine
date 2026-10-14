@@ -21,17 +21,7 @@ struct NodeInstance
 	float  level;	// уровень LOD, 0 — самый детальный
 };
 
-DM_SRV( StructuredBuffer<NodeInstance>, g_instances, SLOT_INSTANCE_DATA );	// слот данных объекта: t1 занят splat-картой пиксельного шейдера
-
-// Расстояние LOD: от отрезка «глаза — ноги» под точкой LOD (g_lodEyeHeight — при ходьбе, в полёте 0) — земля под ногами
-// рядом, а не в росте от глаз: самая мелкая сетка лежит вокруг ног. Так же узлы отбирает CDLODTerrain (lodRangeHitsBox);
-// функция расстояния до выпуклого множества — у соседних уровней морфинг сходится, как от точки
-float lodDistance( float3 position )
-{
-	const float3 offset = position - cb_lodOrigin;
-	const float vertical = max( max( offset.y, -offset.y - g_lodEyeHeight ), 0.0f );
-	return length( float3( offset.x, vertical, offset.z ) );
-}
+DM_SRV( StructuredBuffer<NodeInstance>, g_instances, SLOT_INSTANCE_DATA );
 
 struct VertexInputType
 {
@@ -66,9 +56,10 @@ PixelInputType main( VertexInputType input )
 	float4 worldPosition = float4( worldXZ.x, height, worldXZ.y, 1.0f );
 	const float3 basePosition = worldPosition.xyz;
 	// Дисплейсмент у точки LOD (а не у камеры вида: в видах теней земля та же) — на любом уровне, сходит на нет к
-	// g_displacementEnd; вдоль нормали самой детальной земли
+	// displacementEnd; вдоль нормали самой детальной земли. Так же землю со смещением видят расстановка и частицы
+	// (terrainSurfacePoint в terrain_height.sh)
 	const float distanceLOD = lodDistance( basePosition );
-	[branch] if( distanceLOD < g_displacementEnd )
+	[branch] if( distanceLOD < terrainLayers().displacementEnd )
 	{
 		const float3 normal = fineNormal( worldXZ, 0.5f );
 		worldPosition.xyz += normal * terrainDisplacement( basePosition, normal, distanceLOD );

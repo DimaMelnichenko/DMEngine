@@ -98,6 +98,7 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 
 	m_patch.initialize( patchDim + 1, patchDim + 1 );
 	m_patchBuffer.createBuffer( sizeof( PatchInstance ), maxPatches, "Terrain patches" );
+	m_layerConstants.createBuffer( sizeof( LayerConstants ), 1, "Terrain layer constants" );
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) )
 		return false;
@@ -1639,6 +1640,14 @@ void CDLODTerrain::compute( const FrameContext& frame )
 	DMD3D::instance().setSRV( SLOT_TERRAIN_DETAIL_INDEX, m_detailIndexView );
 	if( m_windView.valid() )
 		DMD3D::instance().setSRV( SLOT_WIND_FIELD, m_windView );
+
+	// Слои материала — ресурсы сцены (terrain_layers.sh): выбор слоёв и дисплейсмент у шейдеров террейна, расстановки и
+	// частиц — по одним данным, смещение земли одно. Точка LOD — главного вида (у видов теней та же)
+	const LayerConstants constants = layerConstants( frame.view );
+	m_layerConstants.updateData( &constants, sizeof( constants ) );
+	m_layerConstants.setToSlot( SLOT_TERRAIN_LAYER_CONSTANTS );
+	m_material.bindScene();
+	m_detailSplat.bind();
 }
 
 bool CDLODTerrain::createFoliageClearMask( const TerrainEditCoverage& coverage )
@@ -1723,6 +1732,24 @@ void CDLODTerrain::calcRanges()
 		const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
 		previousDiagonal = std::sqrt( 2.0f * size * size + ( size + margin ) * ( size + margin ) );
 	}
+}
+
+CDLODTerrain::LayerConstants CDLODTerrain::layerConstants( const RenderView& view ) const
+{
+	LayerConstants constants = {};
+	std::copy( m_material.layerScale().begin(), m_material.layerScale().end(), constants.layerScale );
+	std::copy( m_material.layerDisplacement().begin(), m_material.layerDisplacement().end(), constants.layerDisplacement );
+	constants.lodOrigin = view.lodOrigin;
+	constants.lodEyeHeight = view.lodEyeHeight;
+	constants.worldSize = m_worldSize;
+	constants.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();
+	constants.heightBlendDepth = m_properties["Height blend"].data<float>();
+	constants.layerCount = m_material.layerCount();
+	constants.splatDetailTile = m_detailSplat.tileSize();
+	const XMFLOAT2 displacement = m_properties["Displacement distance"].data<XMFLOAT2>();
+	constants.displacementEnd = m_material.maxDisplacement() > 0.0f ? std::max( displacement.y, 0.0f ) : 0.0f;
+	constants.displacementStart = std::min( std::max( displacement.x, 0.0f ), constants.displacementEnd );
+	return constants;
 }
 
 float CDLODTerrain::nodeSize( uint32_t level ) const
@@ -2280,20 +2307,17 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		}
 	}
 
-	const float lodEyeHeight = context.view.lodEyeHeight;
-	Device::updateResource<Parameters>( m_constantBuffer, [this, paintPreview, lodEyeHeight]( Parameters& params )
+	const LayerConstants layers = layerConstants( context.view );
+	Device::updateResource<Parameters>( m_constantBuffer, [this, paintPreview, &layers]( Parameters& params )
 	{
+		params.layers = layers;
 		params.worldSize = m_worldSize;
 		params.heightMultiplier = m_heightMultiplier;
 		params.heightOffset = m_heightOffset;
 		params.gridDim = static_cast<float>( patchDim );
 		std::copy( std::begin( m_morphConsts ), std::end( m_morphConsts ), params.morphConsts );
-		std::copy( m_material.layerScale().begin(), m_material.layerScale().end(), params.layerScale );
 		std::copy( m_material.layerTint().begin(), m_material.layerTint().end(), params.layerTint );
-		params.layerCount = m_material.layerCount();
 		params.texelSize = m_texelSize;
-		params.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();
-		params.heightBlendDepth = m_properties["Height blend"].data<float>();
 		params.farTextureScale = m_properties["Far texture scale"].data<float>();
 		const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
 		params.farBlendStart = farBlend.x;
@@ -2301,16 +2325,10 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
 		params.showWind = m_properties["Show wind"].data<bool>() && m_windView.valid() ? 1 : 0;
 		params.detailTile = m_detailTileSize;
-		params.splatDetailTile = m_detailSplat.tileSize();
 		params.wetnessBaked = m_staticWater && m_detailSplat.tileSize() > 0.0f ? 1 : 0;
 		params.paintPreview = paintPreview;
-		const XMFLOAT2 displacement = m_properties["Displacement distance"].data<XMFLOAT2>();
-		params.displacementEnd = m_material.maxDisplacement() > 0.0f ? std::max( displacement.y, 0.0f ) : 0.0f;
-		params.displacementStart = std::min( std::max( displacement.x, 0.0f ), params.displacementEnd );
-		params.lodEyeHeight = lodEyeHeight;
 		params.microShadows = std::clamp( m_properties["Micro shadows"].data<float>(), 0.0f, 1.0f );
 		std::copy( m_material.layerOcclusion().begin(), m_material.layerOcclusion().end(), params.layerOcclusion );
-		std::copy( m_material.layerDisplacement().begin(), m_material.layerDisplacement().end(), params.layerDisplacement );
 		params.waterBedLayer = m_staticWater && m_channelLayer < static_cast<int32_t>( m_material.layerCount() ) ? m_channelLayer : -1;
 		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
 	} );
@@ -2321,9 +2339,10 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 
 	// Карта высот — вершинному шейдеру и пиксельному: по ней считается нормаль рельефа
 	DMD3D::instance().setSRV( 0, m_heightMap );
-	// Слои — и в проходах только глубины: их читает дисплейсмент вершинного шейдера (тени и prepass — та же земля)
-	m_material.bind();
-	m_detailSplat.bind();
+	// Нормали и шум слоёв — пиксельному шейдеру; splat-карта, альбедо с высотой и детальный слой весов — ресурсы сцены
+	// (compute): их читает и дисплейсмент вершинного шейдера в проходах только глубины
+	if( !depthOnly )
+		m_material.bind();
 	if( !depthOnly && paintMask )
 		DMD3D::instance().setSRV( 7, *paintMask );
 

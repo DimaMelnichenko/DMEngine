@@ -64,7 +64,7 @@ public:
 	// Значение «до кисти» в текселе тонкой сетки: слои 0…7 — веса, wetnessChannel — мокрость; плитки нет — false
 	bool sourceAt( uint32_t x, uint32_t row, uint32_t channel, float& value ) const;
 	static constexpr uint32_t wetnessChannel = 8;
-	// Пиксельному шейдеру террейна (terrain.ps): t5 — массив плиток, t6 — индекс
+	// Ресурсы сцены (terrain_layers.sh): массив плиток и индекс — их читают террейн, расстановка и частицы
 	void bind() const;
 	// Сторона плитки, м; 0 — плиток нет
 	float tileSize() const { return m_tileSize; }

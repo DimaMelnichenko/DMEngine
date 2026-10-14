@@ -72,8 +72,16 @@
 // Поле ветра по рельефу (TerrainWind, CDLODTerrain): R16G16B16A16_FLOAT в координатах карты высот — xz скорость по X и Z
 // мира в долях ветра уровня, y — вертикальная вдоль рельефа, w — порывистость (wind_field.sh)
 #define SLOT_WIND_FIELD		117
+// Слои материала террейна (terrain_layers.sh, CDLODTerrain): то, что нужно выбору слоёв и дисплейсменту всем, кто читает
+// землю, — шейдерам террейна, расстановке и частицам (terrain_height.sh): splat-карта, массив «альбедо + высота»,
+// детальный слой весов у русел и мазков (плитки и индекс) и константы слоёв (структурный буфер из одного элемента)
+#define SLOT_TERRAIN_SPLAT	118
+#define SLOT_TERRAIN_ALBEDO_HEIGHT	119
+#define SLOT_TERRAIN_SPLAT_DETAIL	120
+#define SLOT_TERRAIN_SPLAT_DETAIL_INDEX	121
+#define SLOT_TERRAIN_LAYER_CONSTANTS	122
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	18
+#define SLOT_SCENE_COUNT	23
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

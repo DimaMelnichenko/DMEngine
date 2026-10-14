@@ -175,6 +175,26 @@ private:
 		float level;
 	};
 
+	// Константы слоёв (TerrainLayerConstants в Shaders/terrain_layer_constants.sh): выбор слоёв и дисплейсмент — ресурс сцены
+	// SLOT_TERRAIN_LAYER_CONSTANTS для расстановки и частиц и копия в Parameters для шейдеров террейна; заполняет одна
+	// layerConstants — смещение у всех одно
+	struct LayerConstants
+	{
+		DirectX::XMFLOAT4 layerScale[TerrainMaterial::splatSlices];			// повторов текстуры на метр по слоям
+		DirectX::XMFLOAT4 layerDisplacement[TerrainMaterial::splatSlices];	// размах дисплейсмента по слоям, м
+		DirectX::XMFLOAT3 lodOrigin;	// точка LOD главного вида
+		float lodEyeHeight;				// ноги ниже точки LOD, м (RenderView::lodEyeHeight): LOD — от отрезка «глаза — ноги»
+		float worldSize;
+		float triplanarSharpness;
+		float heightBlendDepth;
+		uint32_t layerCount;
+		float splatDetailTile;			// сторона плитки детального слоя весов, м (TerrainDetailSplat); 0 — плиток нет
+		float displacementStart;		// дисплейсмент: полный ближе, м, к displacementEnd — нет (0 — выключен)
+		float displacementEnd;
+		float padding;
+	};
+	static_assert( sizeof( LayerConstants ) == 112, "TerrainLayerConstants in Shaders/terrain_layer_constants.sh" );
+
 	struct alignas( 16 ) Parameters
 	{
 		float worldSize;
@@ -182,33 +202,26 @@ private:
 		float heightOffset;
 		float gridDim;
 		DirectX::XMFLOAT4 morphConsts[maxLevels];
-		DirectX::XMFLOAT4 layerScale[TerrainMaterial::splatSlices];
 		float texelSize;
-		float triplanarSharpness;
-		float heightBlendDepth;
 		float farTextureScale;
 		float farBlendStart;
 		float farBlendEnd;
-		uint32_t layerCount;
 		uint32_t showWater;		// подсветка воды симуляции (SLOT_WATER) — отладка, «Show water»
 		float detailTile;		// сторона детальной плитки, м; 0 — детальной земли нет
-		float splatDetailTile;	// сторона плитки детального слоя весов, м (TerrainDetailSplat); 0 — плиток нет
 		int32_t waterBedLayer;	// слой гальки под водой режима static — по глубине в точке (−1 — нет)
 		uint32_t showWind;		// поле ветра на рельефе (SLOT_WIND_FIELD) — отладка, «Show wind»
 		uint32_t wetnessBaked;	// мокрость от воды static — в плитках детального слоя весов (TerrainDetailSplat)
 		// Цель кисти поверх земли (режим «Terrain paint», «Show target»): −1 — нет, 0…7 — слой земли, 8 — мокрость, 9 — маска
 		// (t7 пиксельного шейдера)
 		int32_t paintPreview;
-		float displacementStart;	// дисплейсмент: полный ближе, м, к displacementEnd — нет (0 — выключен)
-		float displacementEnd;
-		float lodEyeHeight;			// ноги ниже точки LOD, м (RenderView::lodEyeHeight): LOD — от отрезка «глаза — ноги»
 		float microShadows;			// микротени прямого света по AO слоёв, 0…1 («Micro shadows»)
-		float padding[2];
+		float padding;
 		DirectX::XMFLOAT4 detailMorph[detailLevels];	// уровни −1…−6: начало морфинга и 1 / длина зоны
 		DirectX::XMFLOAT4 layerTint[TerrainMaterial::maxLayers];	// множитель альбедо по слоям (xyz)
-		DirectX::XMFLOAT4 layerDisplacement[TerrainMaterial::splatSlices];	// размах дисплейсмента по слоям, м
 		DirectX::XMFLOAT4 layerOcclusion[TerrainMaterial::splatSlices];		// сила AO по слоям, 0…1
+		LayerConstants layers;	// та же раскладка, что у ресурса сцены (cbuffer дешевле у каждой вершины и пикселя)
 	};
+
 
 	struct NodeBox
 	{
@@ -268,6 +281,8 @@ private:
 	// Маска очистки растительности правками (R8_UNORM размером с карту высот, без правок с очисткой — 1 × 1 ноль)
 	bool createFoliageClearMask( const TerrainEditCoverage& coverage );
 	void calcRanges();
+	// Константы слоёв для вида: точка LOD — его (у видов теней — главного)
+	LayerConstants layerConstants( const RenderView& view ) const;
 	NodeBox nodeBox( uint32_t level, uint32_t x, uint32_t z ) const;
 	float nodeSize( uint32_t level ) const;
 	// false — узел дальше диапазона своего уровня, и его площадь рисует родитель
@@ -385,6 +400,7 @@ private:
 	TerrainMaterial m_material;
 	TerrainDetailSplat m_detailSplat;		// веса слоёв 0,25 м у русел поверх splat-карты
 	DMStructuredBuffer m_patchBuffer;
+	DMStructuredBuffer m_layerConstants;	// LayerConstants кадра — ресурс сцены (compute)
 	Buffer m_constantBuffer;
 	PropertyContainer m_properties;
 	bool m_initialized = false;

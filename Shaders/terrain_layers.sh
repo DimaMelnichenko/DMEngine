@@ -1,28 +1,64 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Слои материала террейна — общее для пиксельного шейдера (terrain.ps) и вершинного (cdlod.vs, дисплейсмент): веса восьми
-// слоёв (splat-карта и детальный слой весов у русел и мазков), четыре самых весомых, проекции triplanar, смешивание по
-// высоте и смещение вершины по высоте слоёв (дисплейсмент, docs/terrain.md, «Дисплейсмент»)
+// Слои материала террейна — общее для всех, кто читает землю: пиксельный (terrain.ps) и вершинный (cdlod.vs,
+// дисплейсмент) шейдеры террейна, расстановка и частицы (terrain_height.sh — земля со смещением). Веса восьми слоёв
+// (splat-карта и детальный слой весов у русел и мазков), четыре самых весомых, проекции triplanar, смешивание по высоте,
+// расстояние LOD и смещение вершины по высоте слоёв (дисплейсмент, docs/terrain.md, «Дисплейсмент»). Всё — ресурсы сцены
+// (CDLODTerrain::compute); без террейна слоты пусты: читать их можно только у уровня с террейном. Шейдеры террейна берут
+// константы из своего cbuffer (TERRAIN_LAYERS_IN_CBUFFER, cdlod.sh): у каждой вершины и пикселя он дешевле буфера
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef TERRAIN_LAYERS_SH
 #define TERRAIN_LAYERS_SH
 
-#include "cdlod.sh"
+#include "slots.h"
 #include "samplers.sh"
 #include "bindless.sh"
+#include "terrain_layer_constants.sh"
 
-DM_SRV( Texture2DArray, g_splatMap, 1 );		// срез 0 — веса слоёв 0…3, срез 1 — 4…7, срез 2 — не веса: R — мокрость
-DM_SRV( Texture2DArray, g_albedoHeight, 2 );	// альбедо RGB, высота A (0…1 — 1-й…99-й перцентиль карты высоты слоя)
+#ifndef TERRAIN_LAYERS_IN_CBUFFER
+DM_SRV( StructuredBuffer<TerrainLayerConstants>, g_terrainLayerConstants, SLOT_TERRAIN_LAYER_CONSTANTS );
+#endif
+DM_SRV( Texture2DArray, g_splatMap, SLOT_TERRAIN_SPLAT );			// срез 0 — веса слоёв 0…3, срез 1 — 4…7, срез 2 — не веса: R — мокрость
+DM_SRV( Texture2DArray, g_albedoHeight, SLOT_TERRAIN_ALBEDO_HEIGHT );	// альбедо RGB, высота A (0…1 — 1-й…99-й перцентиль карты высоты слоя)
 // Детальный слой весов (TerrainDetailSplat): плитки 0,25 м у русел и мазков по сетке детальной земли, с полем в тексель;
 // срез 3s — веса слоёв 0…3 места s, 3s + 1 — 4…7, 3s + 2 — мокрость. Индекс: плитка (x, z) мира → место + 1, 0 — нет
-DM_SRV( Texture2DArray, g_splatDetail, 5 );
-DM_SRV( Texture2D<uint>, g_splatDetailIndex, 6 );
+DM_SRV( Texture2DArray, g_splatDetail, SLOT_TERRAIN_SPLAT_DETAIL );
+DM_SRV( Texture2D<uint>, g_splatDetailIndex, SLOT_TERRAIN_SPLAT_DETAIL_INDEX );
+
+// Константы слоёв: читаются там, где нужны (без террейна слот пуст — не читать)
+TerrainLayerConstants terrainLayers()
+{
+#ifdef TERRAIN_LAYERS_IN_CBUFFER
+	return g_terrainLayers;
+#else
+	return g_terrainLayerConstants[0];
+#endif
+}
 
 static const uint maxLayers = 8;
 // Слоёв с выборкой текстур в пикселе: больше трёх-четырёх в одной точке не бывает, а массив из восьми LayerSample
 // занял бы регистры и снизил занятость GPU
 static const uint activeLayers = 4;
 static const float minWeight = 0.01f;	// слой или проекцию с меньшим вкладом не читаем
+
+// UV splat-карты (и карты высот): ось z мира идёт по текстуре снизу вверх
+float2 terrainLayerUV( float2 worldXZ )
+{
+	float2 uv = worldXZ / terrainLayers().worldSize;
+	uv.y = 1.0f - uv.y;
+	return uv;
+}
+
+// Расстояние LOD: от отрезка «глаза — ноги» под точкой LOD — земля под ногами рядом, а не в росте от глаз: самая мелкая
+// сетка лежит вокруг ног. Так же узлы отбирает CDLODTerrain (lodRangeHitsBox); функция расстояния до выпуклого множества —
+// у соседних уровней морфинг сходится, как от точки
+float lodDistance( float3 position )
+{
+	const TerrainLayerConstants layers = terrainLayers();
+	const float3 offset = position - layers.lodOrigin;
+	const float vertical = max( max( offset.y, -offset.y - layers.lodEyeHeight ), 0.0f );
+	return length( float3( offset.x, vertical, offset.z ) );
+}
 
 // Детальный слой в точке (0,25 м): веса восьми слоёв (галька русел по врезу и дно под водой уже в них) и срез не весов
 // (x — мокрость от воды static); false — плитки нет
@@ -31,11 +67,12 @@ bool sampleSplatDetail( float2 worldXZ, out float4 weights0, out float4 weights1
 	weights0 = 0.0f;
 	weights1 = 0.0f;
 	extra = 0.0f;
-	if( g_splatDetailTile <= 0.0f )
+	const float tileSize = terrainLayers().splatDetailTile;
+	if( tileSize <= 0.0f )
 		return false;
 	uint tilesX, tilesZ;
 	g_splatDetailIndex.GetDimensions( tilesX, tilesZ );
-	const int2 tile = int2( floor( worldXZ / g_splatDetailTile ) );
+	const int2 tile = int2( floor( worldXZ / tileSize ) );
 	if( any( tile < 0 ) || tile.x >= (int)tilesX || tile.y >= (int)tilesZ )
 		return false;
 	const uint index = g_splatDetailIndex.Load( int3( tile, 0 ) );
@@ -44,8 +81,8 @@ bool sampleSplatDetail( float2 worldXZ, out float4 weights0, out float4 weights1
 	uint width, height, slices;
 	g_splatDetail.GetDimensions( width, height, slices );
 	// Тексель i плитки — центр в tile + ( i − 1 + 0,5 ) · cell: поле в тексель с каждой стороны
-	const float cell = g_splatDetailTile / ( width - 2 );
-	const float2 uv = ( ( worldXZ - tile * g_splatDetailTile ) / cell + 1.0f ) / float2( width, height );
+	const float cell = tileSize / ( width - 2 );
+	const float2 uv = ( ( worldXZ - tile * tileSize ) / cell + 1.0f ) / float2( width, height );
 	const float slice = 3.0f * ( index - 1 );
 	weights0 = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, slice ), 0.0f );
 	weights1 = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, slice + 1.0f ), 0.0f );
@@ -56,7 +93,7 @@ bool sampleSplatDetail( float2 worldXZ, out float4 weights0, out float4 weights1
 // Веса проекций triplanar по нормали рельефа; малые отбрасываются
 float3 projectionWeights( float3 normal )
 {
-	float3 weights = pow( abs( normal ), g_triplanarSharpness );
+	float3 weights = pow( abs( normal ), terrainLayers().triplanarSharpness );
 	weights /= dot( weights, 1.0f );
 	weights *= step( minWeight, weights );
 	return weights / dot( weights, 1.0f );
@@ -65,11 +102,12 @@ float3 projectionWeights( float3 normal )
 // Четыре самых весомых слоя по убыванию веса, веса нормированы; слои, которых нет в TerrainLayers, веса не получают
 void selectLayers( float weights[maxLayers], out float4 splat, out uint4 layerIndex )
 {
+	const uint layerCount = terrainLayers().layerCount;
 	splat = 0.0f;
 	layerIndex = 0;
 	[unroll] for( uint i = 0; i < maxLayers; ++i )
 	{
-		float weight = i < g_layerCount ? weights[i] : 0.0f;
+		float weight = i < layerCount ? weights[i] : 0.0f;
 		uint layer = i;
 		[unroll] for( uint k = 0; k < activeLayers; ++k )
 		{
@@ -88,20 +126,26 @@ void selectLayers( float weights[maxLayers], out float4 splat, out uint4 layerIn
 }
 
 // Смешивание по высоте (A. Mishkinis, «Advanced Terrain Texture Splatting»): к весу слоя из splat-карты
-// прибавляется высота его текстуры, и виден только тот слой, чья сумма не ниже максимума больше чем на g_heightBlendDepth
+// прибавляется высота его текстуры, и виден только тот слой, чья сумма не ниже максимума больше чем на heightBlendDepth
 float4 heightBlend( float4 splat, float4 heights )
 {
 	float4 level = splat + heights;
-	float threshold = max( max( level.x, level.y ), max( level.z, level.w ) ) - g_heightBlendDepth;
+	float threshold = max( max( level.x, level.y ), max( level.z, level.w ) ) - terrainLayers().heightBlendDepth;
 	float4 blend = max( level - threshold, 0.0f ) * step( minWeight, splat );
 	return blend / max( dot( blend, 1.0f ), 1e-5f );
 }
 
+// Повторов текстуры слоя на метр
+float layerScale( uint layer )
+{
+	return terrainLayers().layerScale[layer / 4][layer % 4];
+}
+
 // Высота слоя в точке по проекциям triplanar (как addProjections в terrain.ps), мип — шагом spacing, м: без производных
-// (вершинный шейдер), мип по шагу сетки — мельче её высота дала бы шум
+// (вершинный и compute-шейдеры), мип по шагу сетки — мельче её высота дала бы шум
 float layerHeight( uint layer, float3 position, float3 projection, float spacing )
 {
-	const float scale = g_layerScale[layer / 4][layer % 4];
+	const float scale = layerScale( layer );
 	uint width, height, slices;
 	g_albedoHeight.GetDimensions( width, height, slices );
 	const float lod = max( log2( spacing * scale * width ), 0.0f );
@@ -117,14 +161,16 @@ float layerHeight( uint layer, float3 position, float3 projection, float spacing
 
 // Дисплейсмент (как Nanite-тесселяция Landscape в UE5): смещение вершины вдоль нормали, м — высоты тех же четырёх слоёв и
 // то же смешивание по высоте, что видит пиксель (камни поднимаются там, где нарисованы), вокруг середины высоты: Σ blend ·
-// (высота − 0,5) · размах слоя. distance — до точки LOD вида: полное ближе g_displacementStart, к g_displacementEnd — нет.
-// Всё — функция положения и расстояния: у общих вершин соседних уровней и в видах теней смещение одно, трещин нет
+// (высота − 0,5) · размах слоя. distance — lodDistance: полное ближе displacementStart, к displacementEnd — нет.
+// Всё — функция положения и расстояния: у общих вершин соседних уровней, в видах теней и у тех, кто стоит на земле
+// (terrainSurfacePoint), смещение одно
 float terrainDisplacement( float3 position, float3 normal, float distance )
 {
-	const float fade = 1.0f - smoothstep( g_displacementStart, g_displacementEnd, distance );
+	const TerrainLayerConstants layers = terrainLayers();
+	const float fade = 1.0f - smoothstep( layers.displacementStart, layers.displacementEnd, distance );
 	[branch] if( fade <= 0.0f )
 		return 0.0f;
-	const float2 uv = heightMapUV( position.xz );
+	const float2 uv = terrainLayerUV( position.xz );
 	const float4 splat0 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 0.0f ), 0.0f );
 	const float4 splat1 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 1.0f ), 0.0f );
 	float weights[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
@@ -152,7 +198,7 @@ float terrainDisplacement( float3 position, float3 normal, float distance )
 	const float4 blend = heightBlend( splat, heights );
 	float displacement = 0.0f;
 	[unroll] for( uint n = 0; n < activeLayers; ++n )
-		displacement += blend[n] * ( heights[n] - 0.5f ) * g_layerDisplacement[layerIndex[n] / 4][layerIndex[n] % 4];
+		displacement += blend[n] * ( heights[n] - 0.5f ) * layers.layerDisplacement[layerIndex[n] / 4][layerIndex[n] % 4];
 	return displacement * fade;
 }
 

@@ -170,7 +170,8 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 	if( g_hasTerrain != 0 )
 	{
 		const float2 uv = terrainUV( particle.position.xz );
-		ground = terrainHeight( particle.position.xz );
+		// Земля со смещением дисплейсмента: хвоя ложится на поднятые камни слоёв, а не уходит в них
+		ground = terrainSurfacePoint( particle.position.xz ).y;
 		const WaterSample water = sampleWater( uv );
 		waterDepth = water.depth;
 		waterVelocity = water.velocity;
