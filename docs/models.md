@@ -269,6 +269,13 @@ blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive Dow
 python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-ranges 8,20
 ```
 
+Цвет просвета из той же текстуры, что базовый цвет (`DiffuseTransmissionColor=BaseColor`: трава и одуванчики Poly Haven,
+`GrassClump` из `blender_grass.py`), — импортёр умножает `BaseColorFactor` на 1 / (1 − t) (`compensate_transmission`,
+строка в выводе): фото — отражённый цвет, а движок, как KHR_materials_diffuse_transmission, отражает базовый цвет × (1 − t),
+и растение темнело бы на долю пропускания (у травы t = 0,4 — × 0,6). Как у Megascans (там — в `export_megascans.py`
+картинками) и Two Sided Foliage в UE: отражённое — как на фото, прошедшее — t × цвет просвета. Отдельная карта просвета
+не трогается.
+
 Пучки травы Poly Haven в 15–20 см; `--scale 1.7` доводит высокие до роста GrassClump (0,4–0,55 м). Базовый цвет
 у материала `MASK` импортёр помечает `Textures.preserve_alpha_coverage` = `alphaCutoff`: мипы сохраняют покрытие
 альфы ([materials.md](materials.md)), иначе пучки-карточки и лепестки тают в нескольких метрах.

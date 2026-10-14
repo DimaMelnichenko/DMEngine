@@ -542,7 +542,31 @@ class MaterialConverter:
                 params[key] = textures[value]
             else:
                 params[key] = str(value)
+        compensate_transmission(name, params, textures)
         return '%s/%s' % (self.asset, sanitize(name)), params
+
+
+_compensated = set()   # материалы, о поправке которых уже сказано (convert зовётся на каждую секцию)
+
+
+def compensate_transmission(name, params, textures):
+    """Пропускание с цветом просвета из той же текстуры, что базовый цвет (DiffuseTransmissionColor = BaseColor: трава и
+    цветы Poly Haven, свои пучки из Blender). Фото — отражённый цвет, а движок, как KHR_materials_diffuse_transmission,
+    отражает базовый цвет x (1 - t) — растение темнело бы на долю пропускания. BaseColorFactor x 1 / (1 - t): отражённое — как
+    на фото, прошедшее — t x цвет просвета (как Two Sided Foliage в UE). Отдельная карта просвета (Megascans) — уже учтено в
+    export_megascans.py (альбедо x 1 / (1 - t)), здесь не трогается."""
+    base = textures.get('BaseColor')
+    share = float(params.get('DiffuseTransmissionFactor', '0'))
+    if not base or params.get('DiffuseTransmissionColor') != base or not 0.0 < share < 1.0:
+        return
+    factor = [float(v) for v in params['BaseColorFactor'].split(',')]
+    factor[:3] = [v / (1.0 - share) for v in factor[:3]]
+    params['BaseColorFactor'] = ','.join('%g' % v for v in factor)
+    if name in _compensated:
+        return
+    _compensated.add(name)
+    print('material %s: BaseColorFactor x %.3g - the reflected share of the base color photo stays as photographed '
+          '(diffuse transmission %g)' % (name, 1.0 / (1.0 - share), share))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
