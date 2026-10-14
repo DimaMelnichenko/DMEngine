@@ -472,7 +472,8 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 											 "WHERE id = :id" );
 		SQLite::Statement updateScatterModel( db, "UPDATE ScatterLayerModels SET weight = :weight, cast_shadow = :castShadow, "
 												  "lod_distances = :lods, size_multiplier = :size, size_variation = :sizeVariation, "
-												  "align_to_terrain = :align, patch_group = :patchGroup WHERE id = :id" );
+												  "align_to_terrain = :align, patch_group = :patchGroup, ground_layers = :groundLayers, "
+												  "ground_preference = :groundPreference WHERE id = :id" );
 		for( const GS::ScatterLayerRecord& record : scatterLayers )
 		{
 			const GS::ScatterLayerSettings& layer = record.settings;
@@ -552,6 +553,16 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 					updateScatterModel.bind( ":patchGroup" );
 				else
 					updateScatterModel.bind( ":patchGroup", placement.patchGroup );
+				if( placement.groundLayers.empty() )
+				{
+					updateScatterModel.bind( ":groundLayers" );
+					updateScatterModel.bind( ":groundPreference" );
+				}
+				else
+				{
+					updateScatterModel.bind( ":groundLayers", placement.groundLayers );
+					updateScatterModel.bind( ":groundPreference", dbValue( placement.groundPreference ) );
+				}
 				updateScatterModel.bind( ":id", model.id );
 				updateScatterModel.exec();
 				updateScatterModel.reset();

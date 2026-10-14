@@ -142,6 +142,7 @@ private:
 		bool ditheredLodTransition = false;
 		uint32_t id = 0;	// строка ScatterLayerModels
 		std::unique_ptr<PropertyContainer> properties;	// «Weight», «Cast shadow», своя раскладка, кольца LOD — подокно слоя
+		std::unique_ptr<PropertyContainer> prefersProperties;	// «Prefers»: флажок на роль слоя земли (предпочтение вида)
 	};
 
 	// Группа секций списков с одним материалом, параметрами и состоянием: один ExecuteIndirect на вид

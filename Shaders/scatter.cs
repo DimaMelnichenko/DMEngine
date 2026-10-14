@@ -85,7 +85,8 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	// порог — доля этих слоёв в весах земли, при которой плотность вдвое меньше (от удвоенной — полная)
 	uint   g_groundLayers;
 	float  g_groundThreshold;
-	float3 g_layerPadding;
+	float  g_groundPreferences;	// 1 — у какого-то варианта предпочтение слоёв земли: вариант — по весам в точке
+	float2 g_layerPadding;
 };
 
 // ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex
@@ -110,7 +111,9 @@ cbuffer ScatterVariantsBuffer : register( b7 )
 	// Своя раскладка варианта: x — вес, y — × размер слоя, z — разброс размера (< 0 — слоя), w — наклон по земле (< 0 —
 	// слоя, 0 / 1)
 	float4 g_placement[maxVariants];
-	uint4  g_patchGroups[maxVariants];	// x — группа куртин: номер узора шума (у моделей одного вида — один)
+	// x — группа куртин: номер узора шума (у моделей одного вида — один); y — биты слоёв земли, которые вид предпочитает
+	// (0 — нет), z — сила предпочтения (asfloat)
+	uint4  g_variantInfo[maxVariants];
 	uint4  g_lists[MAX_LISTS];		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 };
 
@@ -228,16 +231,26 @@ float patchNoise( float2 worldXZ, uint group, uint seed )
 	return 0.7f * worldNoise( worldXZ, g_patchScale, index ) + 0.3f * worldNoise( worldXZ, g_patchScale * 0.35f, index + 1 );
 }
 
-// Вариант ячейки с куртинами: доля вида — вес × e^(4 · сила · шум его группы), порог — случайное число ячейки pick (то
-// же, что без куртин): пятна на месте мира, виды не «пересаживаются» при движении камеры
-uint pickPatchVariant( float2 worldXZ, float pick, uint seed )
+// Вариант ячейки по весам в точке: с куртинами — вес × e^(4 · сила · шум его группы), с предпочтением слоёв земли —
+// × (1 − сила + сила × доля слоёв вида в весах земли). Порог — случайное число ячейки pick (то же, что без них): пятна и
+// слои на месте мира, виды не «пересаживаются» при движении камеры
+uint pickWeightedVariant( float2 worldXZ, float pick, uint seed )
 {
+	const bool patches = g_patchScale > 0.0f && g_patchStrength > 0.0f;
+	float4 ground0 = 0.0f, ground1 = 0.0f;
+	[branch] if( g_groundPreferences > 0.5f )
+		terrainLayerWeights8( worldXZ, ground0, ground1 );
 	float weights[maxVariants];
 	float total = 0.0f;
 	[loop] for( uint v = 0; v < g_variantCount; ++v )
 	{
-		weights[v] = g_placement[v].x > 0.0f ? g_placement[v].x * exp( 4.0f * g_patchStrength * patchNoise( worldXZ, g_patchGroups[v].x, seed ) ) : 0.0f;
-		total += weights[v];
+		float weight = g_placement[v].x;
+		[branch] if( weight > 0.0f && patches )
+			weight *= exp( 4.0f * g_patchStrength * patchNoise( worldXZ, g_variantInfo[v].x, seed ) );
+		[branch] if( weight > 0.0f && g_variantInfo[v].y != 0 )
+			weight *= lerp( 1.0f, layerMaskShare( ground0, ground1, g_variantInfo[v].y ), asfloat( g_variantInfo[v].z ) );
+		weights[v] = weight;
+		total += weight;
 	}
 	float threshold = pick * total;
 	uint variant = 0;
@@ -396,10 +409,10 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 		return false;
 
 	// Вариант — по накопленным долям весов; отдельное случайное число ячейки (прежние 0…6 от вариантов не зависят). С
-	// куртинами — по весам × шум групп в точке (pickPatchVariant)
+	// куртинами и предпочтением слоёв земли — по весам в точке (pickWeightedVariant)
 	const float pick = random( cell, seed + 7 );
-	if( g_patchScale > 0.0f && g_patchStrength > 0.0f )
-		variant = pickPatchVariant( worldXZ, pick, seed );
+	if( ( g_patchScale > 0.0f && g_patchStrength > 0.0f ) || g_groundPreferences > 0.5f )
+		variant = pickWeightedVariant( worldXZ, pick, seed );
 	else
 		[loop] for( uint v = 0; v + 1 < g_variantCount; ++v )
 			variant += pick >= g_variants[v].x ? 1 : 0;

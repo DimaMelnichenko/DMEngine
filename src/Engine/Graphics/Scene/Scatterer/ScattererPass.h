@@ -56,6 +56,9 @@ public:
 		float sizeVariation = -1.0f;
 		float alignToTerrain = -1.0f;
 		uint32_t patchGroup = 0;
+		// Предпочтение слоёв земли: бит — слой материала террейна (0 — нет) и сила 0…1: вес × (1 − сила + сила × доля слоёв)
+		uint32_t groundLayers = 0;
+		float groundPreference = 0.0f;
 	};
 
 	ScatterPass();
@@ -87,8 +90,8 @@ public:
 		uint32_t castingLods = maxLods;
 	};
 	void setShadowLods( uint32_t variant, const ShadowLods& lods );
-	// Своя раскладка варианта (Variant::sizeMultiplier … patchGroup) — из GUI; буфер вариантов — при смене. Группа куртин
-	// меняет ёмкость списков при куртинах — после неё буферы заново (createBuffers)
+	// Своя раскладка варианта (Variant::sizeMultiplier … groundPreference) — из GUI; буфер вариантов — при смене. Группа
+	// куртин и предпочтение слоёв меняют ёмкость списков — после них буферы заново (createBuffers)
 	void setVariantPlacement( uint32_t variant, const Variant& placement );
 	// Секция списка: её меш и группа (0…maxGroups − 1, Scatterer::groups); таблицы секций и групп уходят на GPU в
 	// populate, только когда менялись
@@ -187,7 +190,8 @@ public:
 		// бит 31 — фильтр включён (0 — без фильтра), и порог — доля этих слоёв, при которой плотность вдвое меньше
 		uint32_t groundLayers;
 		float groundThreshold;
-		float padding[3];
+		float groundPreferences;	// 1 — у какого-то варианта предпочтение слоёв земли (createBuffers): выбор по весам в точке
+		float padding[2];
 	} m_populateParams;
 	static_assert( sizeof( PopulateParams ) == 144, "ScatterLayerBuffer layout" );
 
@@ -240,7 +244,8 @@ private:
 		// Своя раскладка: x — вес (≥ 0), y — × размер слоя, z — разброс размера (< 0 — слоя), w — наклон по земле (< 0 —
 		// слоя, 0 / 1)
 		DirectX::XMFLOAT4 placement[maxVariants];
-		uint32_t patchGroups[maxVariants][4];		// x — группа куртин (номер узора шума)
+		// x — группа куртин (номер узора шума), y — биты слоёв земли предпочтения, z — его сила (биты float)
+		uint32_t info[maxVariants][4];
 		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
 		uint32_t lists[maxLists][4];
 	};

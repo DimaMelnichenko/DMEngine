@@ -51,9 +51,74 @@ std::string lodRangeName( uint32_t lod )
 	return "LOD " + std::to_string( lod ) + " up to";
 }
 
+// Роли слоёв земли — имена через запятую («grass_dry,grass_wet»); «none» — ни одной
+std::vector<std::string> filterRoles( const std::string& filter )
+{
+	std::vector<std::string> roles;
+	size_t begin = 0;
+	while( begin <= filter.size() )
+	{
+		const size_t end = std::min( filter.find( ',', begin ), filter.size() );
+		std::string name = filter.substr( begin, end - begin );
+		name.erase( 0, name.find_first_not_of( ' ' ) );
+		name.erase( name.find_last_not_of( ' ' ) + 1 );
+		if( !name.empty() && name != "none" )
+			roles.push_back( name );
+		begin = end + 1;
+	}
+	return roles;
+}
+
+// Биты слоёв материала террейна по ролям (groundLayers — слой каждой роли, Scatterer::setGroundLayers)
+uint32_t roleLayerBits( const std::string& roles, const std::vector<int32_t>& groundLayers )
+{
+	uint32_t bits = 0;
+	for( const std::string& name : filterRoles( roles ) )
+	{
+		const uint32_t role = static_cast<uint32_t>( terrainLayerRole( name ) );
+		if( role < groundLayers.size() && groundLayers[role] >= 0 && groundLayers[role] < 8 )
+			bits |= 1u << groundLayers[role];
+	}
+	return bits;
+}
+
+// Флажки ролей слоёв земли, у которых есть слой («Grows on» слоя, «Prefers» вида): включён — роль в списке roles
+void addRoleFlags( PropertyContainer& container, const std::vector<int32_t>& groundLayers, const std::vector<std::string>& roles,
+				   bool allWhenEmpty, const char* tooltip )
+{
+	for( uint32_t role = 0; role < groundLayers.size() && role < terrainLayerRoleCount; ++role )
+	{
+		if( groundLayers[role] < 0 )
+			continue;
+		const std::string name = terrainLayerRoleName( static_cast<TerrainLayerRole>( role ) );
+		const bool on = ( allWhenEmpty && roles.empty() ) || std::find( roles.begin(), roles.end(), name ) != roles.end();
+		container.insert( name, on )->setTooltip( tooltip );
+	}
+}
+
+// Включённые роли флажков через запятую; all — все включены
+std::string rolesFromFlags( const PropertyContainer& container, const std::vector<int32_t>& groundLayers, bool& all )
+{
+	std::string roles;
+	all = true;
+	for( uint32_t role = 0; role < groundLayers.size() && role < terrainLayerRoleCount; ++role )
+	{
+		const std::string name = terrainLayerRoleName( static_cast<TerrainLayerRole>( role ) );
+		if( groundLayers[role] < 0 || !container.exists( name ) )
+			continue;
+		if( container[name].data<bool>() )
+			roles += ( roles.empty() ? "" : "," ) + name;
+		else
+			all = false;
+	}
+	return roles;
+}
+
 // Своя раскладка варианта: свойства подокна варианта ↔ ScatterVariantPlacement. Разброс — «Own size variation» и
-// значение, наклон — список «As layer / Off / On», группа куртин — 0: своя
-void addPlacementProperties( PropertyContainer& properties, const ScatterVariantPlacement& placement, float layerSizeVariation )
+// значение, наклон — список «As layer / Off / On», группа куртин — 0: своя; предпочтение слоёв земли — подокно «Prefers»
+// (флажки ролей, ни одного — нет) и «Ground preference»
+void addPlacementProperties( PropertyContainer& properties, std::unique_ptr<PropertyContainer>& prefers, const ScatterVariantPlacement& placement,
+							 float layerSizeVariation, const std::vector<int32_t>& groundLayers )
 {
 	Property* size = properties.insert( "Size", placement.sizeMultiplier );
 	size->setLow( 0.05f );
@@ -72,25 +137,49 @@ void addPlacementProperties( PropertyContainer& properties, const ScatterVariant
 	group->setHigh( static_cast<float>( ScatterPass::maxVariants ) );
 	group->setTooltip( "Patches (Patch size of the layer): models of one group are one species and grow in the same patches; "
 					   "0 - own patches" );
+	if( std::any_of( groundLayers.begin(), groundLayers.end(), []( int32_t layer ) { return layer >= 0; } ) )
+	{
+		Property* preference = properties.insert( "Ground preference", placement.groundPreference );
+		preference->setLow( 0.0f );
+		preference->setHigh( 1.0f );
+		preference->setTooltip( "How strongly the model keeps to its Prefers terrain layers: weight x (1 - preference + preference x "
+								"their share at the point); 1 - only there, 0 - evenly" );
+		prefers = std::make_unique<PropertyContainer>( "Prefers" );
+		addRoleFlags( *prefers, groundLayers, filterRoles( placement.groundLayers ), false,
+					  "The model grows more on this terrain layer (its share among the layer models follows the layer weights); "
+					  "none on - evenly everywhere" );
+		properties.addSubContainer( prefers.get() );
+	}
 }
 
-ScatterVariantPlacement placementFromProperties( const PropertyContainer& properties )
+ScatterVariantPlacement placementFromProperties( const PropertyContainer& properties, const PropertyContainer* prefers,
+												const std::vector<int32_t>& groundLayers )
 {
 	ScatterVariantPlacement placement;
 	placement.sizeMultiplier = std::max( properties["Size"].data<float>(), 0.01f );
 	placement.sizeVariation = properties["Own size variation"].data<bool>() ? std::clamp( properties["Size variation"].data<float>(), 0.0f, 1.0f ) : -1.0f;
 	placement.alignToTerrain = std::clamp( properties["Align to terrain"].data<int32_t>(), 0, 2 ) - 1;
 	placement.patchGroup = std::clamp( properties["Patch group"].data<int32_t>(), 0, static_cast<int32_t>( ScatterPass::maxVariants ) );
+	if( prefers )
+	{
+		bool all = false;
+		placement.groundLayers = rolesFromFlags( *prefers, groundLayers, all );
+		placement.groundPreference = std::clamp( properties["Ground preference"].data<float>(), 0.0f, 1.0f );
+	}
 	return placement;
 }
 
-// Своя раскладка — в вариант раскладки; группа куртин — номер узора шума: своя — номер варианта, общая — после них
-void applyPlacement( const ScatterVariantPlacement& placement, uint32_t index, ScatterPass::Variant& variant )
+// Своя раскладка — в вариант раскладки; группа куртин — номер узора шума: своя — номер варианта, общая — после них;
+// предпочтение — биты слоёв по ролям
+void applyPlacement( const ScatterVariantPlacement& placement, uint32_t index, ScatterPass::Variant& variant,
+					 const std::vector<int32_t>& groundLayers )
 {
 	variant.sizeMultiplier = placement.sizeMultiplier;
 	variant.sizeVariation = placement.sizeVariation;
 	variant.alignToTerrain = static_cast<float>( placement.alignToTerrain );
 	variant.patchGroup = placement.patchGroup >= 1 ? ScatterPass::maxVariants + static_cast<uint32_t>( placement.patchGroup ) : index;
+	variant.groundLayers = roleLayerBits( placement.groundLayers, groundLayers );
+	variant.groundPreference = variant.groundLayers != 0 ? std::clamp( placement.groundPreference, 0.0f, 1.0f ) : 0.0f;
 }
 
 // Надпись окна (GUIControlType::LABEL) — значение считает объект: правкой не отмечается
@@ -116,41 +205,9 @@ void Scatterer::setGroundLayers( const std::vector<int32_t>& layersOfRoles )
 	m_groundLayers = layersOfRoles;
 }
 
-namespace
-{
-
-// Роли фильтра слоёв земли — имена через запятую («grass_dry,grass_wet»); «none» — ни одной
-std::vector<std::string> filterRoles( const std::string& filter )
-{
-	std::vector<std::string> roles;
-	size_t begin = 0;
-	while( begin <= filter.size() )
-	{
-		const size_t end = std::min( filter.find( ',', begin ), filter.size() );
-		std::string name = filter.substr( begin, end - begin );
-		name.erase( 0, name.find_first_not_of( ' ' ) );
-		name.erase( name.find_last_not_of( ' ' ) + 1 );
-		if( !name.empty() && name != "none" )
-			roles.push_back( name );
-		begin = end + 1;
-	}
-	return roles;
-}
-
-}
-
 uint32_t Scatterer::groundLayerMask( const ScatterLayerSettings& settings ) const
 {
-	if( settings.layerFilter.empty() )
-		return 0;
-	uint32_t mask = 1u << 31;
-	for( const std::string& name : filterRoles( settings.layerFilter ) )
-	{
-		const uint32_t role = static_cast<uint32_t>( terrainLayerRole( name ) );
-		if( role < m_groundLayers.size() && m_groundLayers[role] >= 0 && m_groundLayers[role] < 8 )
-			mask |= 1u << m_groundLayers[role];
-	}
-	return mask;
+	return settings.layerFilter.empty() ? 0 : ( 1u << 31 ) | roleLayerBits( settings.layerFilter, m_groundLayers );
 }
 
 bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterLayerSettings& layerSettings )
@@ -188,7 +245,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			const BoundingBox& base = lod0->baseBounds;
 			passVariant.footprint = XMFLOAT4( base.Center.x, base.Center.z, std::hypot( base.Extents.x, base.Extents.z ), 0.0f );
 		}
-		applyPlacement( models[v].placement, static_cast<uint32_t>( v ), passVariant );
+		applyPlacement( models[v].placement, static_cast<uint32_t>( v ), passVariant, m_groundLayers );
 		LayerVariant variant;
 		if( DMModel::LodBlock* lod0 = model->getLodById( 0 ) )
 			variant.box = lod0->bounds;
@@ -200,7 +257,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		weight->setHigh( std::max( 10.0f, models[v].weight * 2.0f ) );
 		weight->setTooltip( "Share of the layer cells: weight / sum of the weights" );
 		variant.properties->insert( "Cast shadow", models[v].castShadow )->setTooltip( "If the layer casts a shadow" );
-		addPlacementProperties( *variant.properties, models[v].placement, settings.sizeVariation );
+		addPlacementProperties( *variant.properties, variant.prefersProperties, models[v].placement, settings.sizeVariation, m_groundLayers );
 		// Импостер — ещё один LOD после последнего LOD модели (если есть место): модель — до impostor_distance. LOD модели,
 		// которые начинаются не ближе impostor_distance, не нужны: импостер сменяет предыдущий сразу, с дизерингом
 		// Границы LOD модели: свои у варианта слоя (ScatterLayerModels.lod_distances), иначе — дальности модели
@@ -364,15 +421,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			if( terrainLayerRole( name ) == TerrainLayerRole::count )
 				LOG( "Scatter layer " + layer.mask + ": unknown terrain layer role " + name + " in layer_filter" );
 		layer.groundProperties = std::make_unique<PropertyContainer>( "Grows on" );
-		for( uint32_t role = 0; role < m_groundLayers.size() && role < terrainLayerRoleCount; ++role )
-		{
-			if( m_groundLayers[role] < 0 )
-				continue;
-			const std::string name = terrainLayerRoleName( static_cast<TerrainLayerRole>( role ) );
-			const bool on = settings.layerFilter.empty() || std::find( roles.begin(), roles.end(), name ) != roles.end();
-			layer.groundProperties->insert( name, on )->setTooltip(
-				"The layer grows on this terrain layer (by its weight in the splat map and the detail weights); all on - no filter" );
-		}
+		addRoleFlags( *layer.groundProperties, m_groundLayers, settings.layerFilter == "none" ? std::vector<std::string>{ "none" } : roles,
+					  true, "The layer grows on this terrain layer (by its weight in the splat map and the detail weights); all on - no filter" );
 		number( "Ground threshold", settings.layerFilterThreshold, 0.0f, 0.5f, "",
 				"Share of the Grows on terrain layers where the density is half; from twice the share - full, at 0 - none "
 				"(a snow or pebble stroke over a meadow removes the grass); 0 - any share of them" );
@@ -885,18 +935,8 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 	// Фильтр слоёв земли: все флажки — без фильтра, ни одного — «none»
 	if( layer.groundProperties )
 	{
-		std::string filter;
-		bool all = true;
-		for( uint32_t role = 0; role < m_groundLayers.size() && role < terrainLayerRoleCount; ++role )
-		{
-			const std::string name = terrainLayerRoleName( static_cast<TerrainLayerRole>( role ) );
-			if( m_groundLayers[role] < 0 || !layer.groundProperties->exists( name ) )
-				continue;
-			if( ( *layer.groundProperties )[name].data<bool>() )
-				filter += ( filter.empty() ? "" : "," ) + name;
-			else
-				all = false;
-		}
+		bool all = false;
+		const std::string filter = rolesFromFlags( *layer.groundProperties, m_groundLayers, all );
 		settings.layerFilter = all ? std::string() : filter.empty() ? std::string( "none" ) : filter;
 		settings.layerFilterThreshold = std::clamp( properties["Ground threshold"].data<float>(), 0.0f, 0.5f );
 	}
@@ -934,11 +974,13 @@ void Scatterer::applyProperties( Layer& layer )
 		const ScatterPass::Variant& current = layer.passVariants[v];
 		weights = weights || weight != current.weight;
 		ScatterPass::Variant edited = current;
-		applyPlacement( placementFromProperties( *variant.properties ), v, edited );
+		applyPlacement( placementFromProperties( *variant.properties, variant.prefersProperties.get(), m_groundLayers ), v, edited, m_groundLayers );
 		variantSizes = variantSizes || edited.sizeMultiplier != current.sizeMultiplier;
 		variantPlacement = variantPlacement || edited.sizeVariation != current.sizeVariation || edited.alignToTerrain != current.alignToTerrain ||
 						   edited.patchGroup != current.patchGroup;
-		patchGroups = patchGroups || ( patches && edited.patchGroup != current.patchGroup );
+		// Группа куртин при куртинах и предпочтение слоёв меняют ёмкость списков — буферы заново
+		patchGroups = patchGroups || ( patches && edited.patchGroup != current.patchGroup ) || edited.groundLayers != current.groundLayers ||
+					  edited.groundPreference != current.groundPreference;
 	}
 	// Кольца LOD: дальность импостера — до края кольца, границы LOD модели у варианта — по возрастанию и не дальше конца
 	// последнего LOD модели (дальность импостера или край кольца); выход за пределы поле упирается, как в границу
@@ -998,7 +1040,7 @@ void Scatterer::applyProperties( Layer& layer )
 		LayerVariant& variant = layer.variants[v];
 		ScatterPass::Variant& passVariant = layer.passVariants[v];
 		passVariant.weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
-		applyPlacement( placementFromProperties( *variant.properties ), v, passVariant );
+		applyPlacement( placementFromProperties( *variant.properties, variant.prefersProperties.get(), m_groundLayers ), v, passVariant, m_groundLayers );
 		for( uint32_t i = 0; i + 1 < variant.modelLods; ++i )
 			passVariant.lodEnd[i] = ( *variant.properties )[lodRangeName( i )].data<float>();
 		if( variant.impostor && variant.modelLods > 0 )
@@ -1147,7 +1189,7 @@ std::vector<ScatterLayerRecord> Scatterer::layerRecords() const
 			model.id = variant.id;
 			model.weight = std::max( ( *variant.properties )["Weight"].data<float>(), 0.0f );
 			model.castShadow = ( *variant.properties )["Cast shadow"].data<bool>();
-			model.placement = placementFromProperties( *variant.properties );
+			model.placement = placementFromProperties( *variant.properties, variant.prefersProperties.get(), m_groundLayers );
 			// Свои границы LOD — если хоть одна отличается от модели; иначе пусто (в базе NULL — дальности модели)
 			bool own = false;
 			for( uint32_t i = 0; i + 1 < variant.modelLods; ++i )

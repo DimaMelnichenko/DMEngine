@@ -612,7 +612,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 
 		// Модели слоя — варианты растения с весами, в порядке строк
 		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, weight, cast_shadow, lod_distances, size_multiplier, "
-																	 "size_variation, align_to_terrain, patch_group FROM ScatterLayerModels "
+																	 "size_variation, align_to_terrain, patch_group, ground_layers, ground_preference FROM ScatterLayerModels "
 																	 "WHERE layer = :layer ORDER BY id" );
 		queryModels.bind( ":layer", query.getColumn( "id" ).getUInt() );
 		while( queryModels.executeStep() )
@@ -640,6 +640,10 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 				model.placement.alignToTerrain = queryModels.getColumn( "align_to_terrain" ).getInt() != 0 ? 1 : 0;
 			if( !queryModels.getColumn( "patch_group" ).isNull() )
 				model.placement.patchGroup = queryModels.getColumn( "patch_group" ).getInt();
+			if( !queryModels.getColumn( "ground_layers" ).isNull() )
+				model.placement.groundLayers = queryModels.getColumn( "ground_layers" ).getString();
+			if( !queryModels.getColumn( "ground_preference" ).isNull() )
+				model.placement.groundPreference = static_cast<float>( queryModels.getColumn( "ground_preference" ).getDouble() );
 			layer.models.push_back( model );
 		}
 		set.layers.push_back( layer );

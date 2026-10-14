@@ -686,6 +686,10 @@ struct ScatterVariantPlacement
 	int32_t alignToTerrain = -1;	// −1 — как у слоя, 0 — ось Y вертикально, 1 — по нормали террейна (align_to_terrain)
 	// Группа куртин (patch_group): модели одной группы — один вид, растут в одних пятнах; < 1 — своя группа у модели
 	int32_t patchGroup = 0;
+	// Предпочтение слоёв земли (ground_layers, ground_preference): роли слоёв материала (TerrainLayers.role) через запятую,
+	// где вид растёт охотнее, — вес вида × (1 − сила + сила × доля этих слоёв в точке); пусто — вес везде одинаков
+	std::string groundLayers;
+	float groundPreference = 1.0f;
 };
 
 // Вариант слоя расстановки — строка ScatterLayerModels: доля ячеек, тень и своя раскладка (то, что пишет «Save level»)

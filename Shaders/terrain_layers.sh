@@ -163,23 +163,35 @@ void terrainLayerWeights( float2 worldXZ, out float4 splat, out uint4 layerIndex
 	selectLayers( weights, splat, layerIndex );
 }
 
-// Доля слоёв маски (бит — номер слоя) в весах земли точки: splat-карта, у русел и мазков — детальный слой весов. Фильтр
-// слоёв земли у расстановки (scatter.cs, groundFilter)
-float terrainLayerShare( float2 worldXZ, uint mask )
+// Веса восьми слоёв земли в точке, нормированные: splat-карта, у русел и мазков — детальный слой весов
+void terrainLayerWeights8( float2 worldXZ, out float4 weights0, out float4 weights1 )
 {
 	const float2 uv = terrainLayerUV( worldXZ );
-	float4 weights0 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 0.0f ), 0.0f );
-	float4 weights1 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 1.0f ), 0.0f );
+	weights0 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 0.0f ), 0.0f );
+	weights1 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 1.0f ), 0.0f );
 	float4 fine0, fine1, extra;
 	[branch] if( sampleSplatDetail( worldXZ, fine0, fine1, extra ) )
 	{
 		weights0 = fine0;
 		weights1 = fine1;
 	}
-	const float4 bits0 = float4( ( mask >> uint4( 0, 1, 2, 3 ) ) & 1u );
-	const float4 bits1 = float4( ( mask >> uint4( 4, 5, 6, 7 ) ) & 1u );
-	const float total = dot( weights0, 1.0f ) + dot( weights1, 1.0f );
-	return ( dot( weights0, bits0 ) + dot( weights1, bits1 ) ) / max( total, 1e-5f );
+	const float total = max( dot( weights0, 1.0f ) + dot( weights1, 1.0f ), 1e-5f );
+	weights0 /= total;
+	weights1 /= total;
+}
+
+// Доля слоёв маски (бит — номер слоя) в нормированных весах земли (terrainLayerWeights8)
+float layerMaskShare( float4 weights0, float4 weights1, uint mask )
+{
+	return dot( weights0, float4( ( mask >> uint4( 0, 1, 2, 3 ) ) & 1u ) ) + dot( weights1, float4( ( mask >> uint4( 4, 5, 6, 7 ) ) & 1u ) );
+}
+
+// Доля слоёв маски в весах земли точки. Фильтр слоёв земли у расстановки (scatter.cs, groundFilter)
+float terrainLayerShare( float2 worldXZ, uint mask )
+{
+	float4 weights0, weights1;
+	terrainLayerWeights8( worldXZ, weights0, weights1 );
+	return layerMaskShare( weights0, weights1, mask );
 }
 
 // Цвет земли в точке, каким его видит издали тот, кто на ней стоит: средний цвет слоёв (последний мип массива альбедо —

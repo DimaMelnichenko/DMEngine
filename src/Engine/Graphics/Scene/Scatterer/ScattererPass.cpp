@@ -16,6 +16,14 @@ namespace
 // Меньше списку не даём: у LOD с узкой полосой кольца инстансов мало, но участок нужен
 constexpr uint32_t minListCapacity = 256;
 
+// Биты float — в uint4 буфера вариантов (asfloat в шейдере)
+uint32_t asUint( float value )
+{
+	uint32_t bits;
+	std::memcpy( &bits, &value, sizeof( bits ) );
+	return bits;
+}
+
 }
 
 ScatterPass::ScatterPass()
@@ -51,17 +59,30 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 	float totalWeight = 0.0f;
 	for( uint32_t v = 0; v < variantCount && v < variants.size(); ++v )
 		totalWeight += std::max( variants[v].weight, 0.0f );
-	// С куртинами вид у камеры может занять почти всё кольцо ближнего LOD (пятно больше полосы): ёмкость — по доле варианта
-	// в своей группе куртин, а не во всём слое, иначе его список переполнялся бы, и трава пропадала пятнами
+	// С куртинами и предпочтением слоёв земли вид у камеры может занять почти всё кольцо ближнего LOD (пятно больше
+	// полосы): ёмкость — по наибольшей доле варианта в точке, а не по средней, иначе его список переполнялся бы, и трава
+	// пропадала пятнами. Наибольшая — при его множителе 1 и наименьших у остальных: куртины чужой группы — до 0 (у своей
+	// шум тот же), предпочтение слоёв — до 1 − сила
 	const bool patches = m_populateParams.patchScale > 0.0f && m_populateParams.patchStrength > 0.0f;
-	auto groupWeight = [&]( uint32_t variant )
+	auto maxShare = [&]( uint32_t variant )
 	{
-		float weight = 0.0f;
+		const float own = std::max( variants[variant].weight, 0.0f );
+		float others = 0.0f;
 		for( uint32_t v = 0; v < variantCount && v < variants.size(); ++v )
-			if( variants[v].patchGroup == variants[variant].patchGroup )
-				weight += std::max( variants[v].weight, 0.0f );
-		return weight;
+		{
+			if( v == variant )
+				continue;
+			float least = variants[v].groundLayers != 0 ? 1.0f - std::clamp( variants[v].groundPreference, 0.0f, 1.0f ) : 1.0f;
+			if( patches && variants[v].patchGroup != variants[variant].patchGroup )
+				least = 0.0f;
+			others += std::max( variants[v].weight, 0.0f ) * least;
+		}
+		return own + others > 0.0f ? own / ( own + others ) : 1.0f / variantCount;
 	};
+	m_populateParams.groundPreferences = 0.0f;
+	for( uint32_t v = 0; v < variantCount && v < variants.size(); ++v )
+		if( variants[v].groundLayers != 0 && variants[v].groundPreference > 0.0f )
+			m_populateParams.groundPreferences = 1.0f;
 	const float nearBorder = m_populateParams.nearBorder;
 	const float farBorder = m_populateParams.farBorder;
 	const float ringArea = std::max( farBorder * farBorder - nearBorder * nearBorder, 1e-3f );
@@ -84,8 +105,7 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 		const Variant variant = v < variants.size() ? variants[v] : Variant();
 		const float share = totalWeight > 0.0f ? std::max( variant.weight, 0.0f ) / totalWeight : 1.0f / variantCount;
 		cumulative += share;
-		const float group = v < variants.size() ? groupWeight( v ) : 0.0f;
-		const float listShare = patches && group > 0.0f ? std::max( variant.weight, 0.0f ) / group : share;
+		const float listShare = v < variants.size() ? maxShare( v ) : share;
 		const uint32_t lodCount = std::max( 1u, std::min( variant.lodCount, maxLods ) );
 		m_variants.variants[v] = XMFLOAT4( v + 1 == variantCount ? 1.0f : cumulative, static_cast<float>( lodCount ), 0.0f,
 										   variant.shadowLastLodDistance );
@@ -95,7 +115,9 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 		m_variants.bounds[v] = variant.bounds;
 		m_variants.footprints[v] = variant.footprint;
 		m_variants.placement[v] = XMFLOAT4( std::max( variant.weight, 0.0f ), variant.sizeMultiplier, variant.sizeVariation, variant.alignToTerrain );
-		m_variants.patchGroups[v][0] = variant.patchGroup;
+		m_variants.info[v][0] = variant.patchGroup;
+		m_variants.info[v][1] = variant.groundLayers;
+		m_variants.info[v][2] = asUint( std::clamp( variant.groundPreference, 0.0f, 1.0f ) );
 
 		for( uint32_t lod = 0; lod < lodCount; ++lod )
 		{
@@ -230,11 +252,15 @@ void ScatterPass::setVariantPlacement( uint32_t variant, const Variant& placemen
 		return;
 	const XMFLOAT4 value( std::max( placement.weight, 0.0f ), placement.sizeMultiplier, placement.sizeVariation, placement.alignToTerrain );
 	XMFLOAT4& current = m_variants.placement[variant];
+	const uint32_t preference = asUint( std::clamp( placement.groundPreference, 0.0f, 1.0f ) );
+	uint32_t* info = m_variants.info[variant];
 	if( current.x != value.x || current.y != value.y || current.z != value.z || current.w != value.w ||
-		m_variants.patchGroups[variant][0] != placement.patchGroup )
+		info[0] != placement.patchGroup || info[1] != placement.groundLayers || info[2] != preference )
 	{
 		current = value;
-		m_variants.patchGroups[variant][0] = placement.patchGroup;
+		info[0] = placement.patchGroup;
+		info[1] = placement.groundLayers;
+		info[2] = preference;
 		m_variantsChanged = true;
 	}
 }

@@ -620,7 +620,8 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 теней, `FrameContext::views`, — и один `ExecuteIndirect` со счётчиком на группу секций с одним материалом, команды пишет
 compute) — растение: одна или несколько моделей со всеми LOD и весами (`ScatterLayerModels`, как Mesh Entries у Static Mesh
 Spawner в PCG UE: модель ячейки — по весам и случайному числу ячейки, с куртинами — веса × шум мира своей группы, виды
-растут пятнами (`patch_scale`, `patch_strength`, `ScatterLayerModels.patch_group`); у модели свои размер, разброс и
+растут пятнами (`patch_scale`, `patch_strength`, `ScatterLayerModels.patch_group`), вес вида — и по слоям земли под ним
+(`ground_layers`, `ground_preference`: сухая трава — на сухом лугу); у модели свои размер, разброс и
 наклон по земле — `ScatterLayerModels.size_multiplier`, `size_variation`, `align_to_terrain`, NULL — как у слоя; фильтр по
 слоям земли — `ScatterLayers.layer_filter` (роли `TerrainLayers.role`, как Landscape Grass Type в UE: трава — только на
 травяных слоях, мазок снега по лугу её убирает); LOD экземпляра — по расстоянию и дальностям LOD
