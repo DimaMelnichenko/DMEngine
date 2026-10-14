@@ -80,6 +80,21 @@
 объектов плавно уходит в ноль на ширине `near_fade` и `far_fade`. Расстояние считается в пространстве, а не по
 земле: если поднять камеру выше `far_border`, слой исчезнет.
 
+**Рваный край и прореживание** (`ringFade`, `thinOut` в `scatter.cs`; кольцевые и постоянные слои):
+- `edge_spread` (0…1) — у каждого экземпляра своя дальность исчезания в полосе `far_fade` (у ближней границы — `near_fade`):
+  его случайное число (ячейки; у постоянного слоя — по месту) и крупный шум мира 40 и 13 м — граница не ровная дуга
+  вокруг камеры, а рваная, растения исчезают по одному (как случайная дальность отсечения экземпляра у травы и Foliage в
+  UE). Размер сходит в ноль за треть полосы до своего порога (`edgeShrink`); 0 — как раньше: все уменьшаются вместе по
+  всей полосе.
+- `thinning_start` (м) и `thinning` (0…0,95) — прореживание вдали (редеющие дальние тайлы Ghost of Tsushima, Density
+  Scaling у травы UE): доля оставшихся — от 1 у `thinning_start` до 1 − `thinning` у дальней границы; уходят одни и те же
+  (порог — своё случайное число экземпляра), без мерцания; оставшиеся крупнее — размер × доля^−0,25 (`thinGrowth`: при
+  0,5 — покрытие то же, но пучок растёт и в высоту, сверху дальние — кочками).
+
+На `Test`: трава и сухая трава у ручьёв — `edge_spread` 1, прореживание с 25 м до 0,4; одуванчики — 1, с 15 м до 0,3;
+камешки — `edge_spread` 1. В траве (`530,12.8,250,8,210`) при 0,5 с 20 м кадр 2,60 → 2,53 мс (prepass 0,50 → 0,48, цвет
+0,64 → 0,61, тени 0,61 → 0,60): дальнее кольцо — в основном импостеры, они и так дёшевы.
+
 **Маска плотности** — текстура в координатах карты высот: красный канал 0…1 — вероятность, что в ячейке появится
 объект, и множитель его размера. Её умножает на `1 − очистка` маска очистки правок рельефа (русло, площадка —
 `TerrainEdits.clear_foliage`, [terrain.md](terrain.md), «Правка рельефа»): общая для всех слоёв, кольцевых и леса.
@@ -134,8 +149,8 @@
 3. Высота из карты высот, у кольцевого слоя — со смещением дисплейсмента рельефа (`terrainSurfacePoint`: та же функция,
    что у вершин `cdlod.vs`, ближе «Displacement distance» — трава стоит на поднятых камнях слоёв, [terrain.md](terrain.md),
    «Дисплейсмент»; постоянный слой — без него); если расстояние до камеры вне `near_border…far_border` — пропуск.
-4. Размер: `size_multiplier` × случайный множитель (1 − `size_variation`)…1 × (0,6…1 по плотности маски) × исчезание
-   у границ кольца.
+4. Прореживание вдали (`thinning`) — пропуск или размер крупнее; размер: `size_multiplier` × случайный множитель
+   (1 − `size_variation`)…1 × (0,6…1 по плотности маски) × исчезание у границ кольца (со своим порогом — `edge_spread`).
 5. Отсечение: сфера радиусом в размер объекта над точкой проверяется по шести плоскостям frustum.
 6. Поворот: случайные углы вокруг Y, X и Z в пределах `rotation_y`, `rotation_x`, `rotation_z` (полный размах:
    360 — любой угол, 30 — ±15°); при `align_to_terrain` ось Y объекта затем доворачивается к нормали рельефа.
@@ -394,6 +409,8 @@
 | `ground_color_height` | м | высота над корнем, к которой доля цвета земли сходит на нет |
 | `ground_color_far` | 0…1 | доля цвета земли по всему растению у дальней границы кольца (растёт от половины кольца) |
 | `color_variation` | ± доля | разброс яркости по экземплярам; с ним (и с цветом земли) — и пятна яркости земли |
+| `edge_spread` | 0…1 | рваный край: своя дальность исчезания экземпляра в полосе `far_fade` / `near_fade`; NULL — 0, все уменьшаются вместе |
+| `thinning_start`, `thinning` | м, 0…0,95 | прореживание вдали: с этого расстояния доля оставшихся падает до 1 − `thinning` у дальней границы; NULL — нет |
 | `jitter` | доля шага | смещение внутри ячейки: 0 — строго по сетке, 1 — в пределах всей ячейки |
 | `rotation_x`, `rotation_y`, `rotation_z` | градусы | полный размах случайного поворота вокруг оси |
 | `align_to_terrain` | 0 / 1 | ось Y объекта по нормали рельефа |
@@ -590,7 +607,7 @@ Outliner → Scene → имя набора. «Shadow LOD scale» — у набо
 |---|---|---|
 | Visible | — (не сохраняется) | слой скрыт: не раскладывается и не рисуется, и в тенях (`Scatterer::layerVisible`) — посмотреть на остальные (траву убрать — видны одуванчики); правка не делает уровень изменённым (`Property::setTransient`); `set "Meadow/0: GrassClump + 3/Visible" false` |
 | Cell size, Near border, Far border, Size, Impostor distance | `cell_size`, `near_border`, `far_border`, `size_multiplier`, `impostor_distance` | буферы слоя заново (`Scatterer::rebuildPass`: ёмкость списков — по кольцу и дальностям LOD), один раз — когда ползунок отпустили или ввод числа закончен (`Property::editing`); прежние GPU отпустит, когда закончит кадры с ними; в лог — «buffers rebuilt after an edit» |
-| Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain, Ground color, Ground color height, Ground color far, Color variation | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain`, `ground_color`, `ground_color_height`, `ground_color_far`, `color_variation` | константы раскладки |
+| Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain, Ground color, Ground color height, Ground color far, Color variation, Edge spread, Thinning start, Thinning | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain`, `ground_color`, `ground_color_height`, `ground_color_far`, `color_variation`, `edge_spread`, `thinning_start`, `thinning` | константы раскладки |
 | Cast shadow, Shadow impostor distance, Impostor shadow, Impostor base shade | `cast_shadow`, `shadow_impostor_distance`, `impostor_cast_shadow`, `impostor_base_shade` | сразу (плоский импостер или со смещением глубины — по `impostor_cast_shadow` при загрузке) |
 
 Подокно варианта (модель) — «Weight» и «Cast shadow» (`ScatterLayerModels`) и **кольца LOD**: «LOD 0 up to», «LOD 1

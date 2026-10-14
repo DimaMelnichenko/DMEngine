@@ -72,7 +72,11 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	float  g_groundColorHeight;
 	float  g_groundColorFar;
 	float  g_colorVariation;
-	float3 g_layerPadding;
+	// Края кольца и прореживание: доля полосы исчезания, по которой разбросаны свои дальности экземпляров (0 — все исчезают
+	// вместе); с какого расстояния прореживать, м, и доля убранных у дальней границы (0 — не прореживать)
+	float  g_edgeSpread;
+	float  g_thinStart;
+	float  g_thinning;
 };
 
 // ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex
@@ -538,11 +542,54 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 	return true;
 }
 
-// Исчезание у краёв кольца: множитель размера по расстоянию до камеры
-float ringFade( float distanceToCamera )
+// Доля полосы исчезания, за которую экземпляр с рваным краем сходит в ноль размером: исчезают по одному, а не все разом, и
+// не кочками полного размера у самого порога
+static const float edgeShrink = 0.35f;
+// Насколько крупнее остаются экземпляры при прореживании: размер × доля оставшихся ^ −thinGrowth (0,5 — покрытие то же, но
+// пучок растёт и в высоту — сверху дальние пучки кочками; 0,25 — половина покрытия возвращается)
+static const float thinGrowth = 0.25f;
+
+// Своё случайное число экземпляра 0…1 — у кольцевого слоя по ячейке, у постоянного по его месту (раскладка одна и та же)
+float instanceRandom( int2 cell, uint seed, uint index )
 {
-	return saturate( ( g_farBorder - distanceToCamera ) / max( g_farFade, 1e-3f ) ) *
-		   saturate( ( distanceToCamera - g_nearBorder ) / max( g_nearFade, 1e-3f ) );
+	return random( cell, seed + index );
+}
+float instanceRandom( float3 position, uint seed, uint index )
+{
+	return random( int2( asint( position.x ), asint( position.z ) ), seed + index );
+}
+
+// Исчезание у краёв кольца: множитель размера по расстоянию до камеры. С g_edgeSpread у каждого экземпляра своя дальность
+// исчезания в полосе g_farFade (g_nearFade — у ближней): его случайное число и крупный шум мира (40 и 13 м — граница рваная,
+// а не ровная дуга вокруг камеры, как случайная дальность отсечения экземпляра у травы и Foliage в UE); размер сходит в ноль
+// только у самого порога. Ячейка та же, поэтому без мерцания и «пересадки»; 0 — все уменьшаются вместе по всей полосе
+float ringFade( float distanceToCamera, float random01, float2 worldXZ )
+{
+	float threshold = 0.0f;
+	[branch] if( g_edgeSpread > 0.0f )
+	{
+		const float noise = worldNoise( worldXZ, 40.0f, 13 ) * 0.6f + worldNoise( worldXZ, 13.0f, 14 ) * 0.4f;
+		threshold = g_edgeSpread * saturate( 0.65f * random01 + 0.35f * ( 0.5f + 0.5f * noise ) );
+	}
+	const float width = lerp( 1.0f, edgeShrink, g_edgeSpread );
+	const float farEnd = g_farBorder - g_farFade * threshold;
+	const float nearStart = g_nearBorder + g_nearFade * threshold;
+	return saturate( ( farEnd - distanceToCamera ) / max( g_farFade * width, 1e-3f ) ) *
+		   saturate( ( distanceToCamera - nearStart ) / max( g_nearFade * width, 1e-3f ) );
+}
+
+// Прореживание вдали (как редеющие дальние тайлы травы Ghost of Tsushima и Density Scaling в UE): доля оставшихся — от 1 у
+// g_thinStart до 1 − g_thinning у дальней границы; остаются одни и те же (порог — своё случайное число экземпляра), а
+// оставшиеся немного крупнее (thinGrowth) — луг редеет меньше. false — экземпляр убран
+bool thinOut( float distanceToCamera, float random01, inout float size )
+{
+	[branch] if( g_thinning <= 0.0f || g_thinStart >= g_farBorder )
+		return true;
+	const float keep = 1.0f - g_thinning * smoothstep( g_thinStart, g_farBorder, distanceToCamera );
+	if( random01 >= keep )
+		return false;
+	size *= pow( max( keep, 0.05f ), -thinGrowth );
+	return true;
 }
 
 // Цвет земли под экземпляром кольцевого слоя (scatter_ground.sh): средний цвет слоёв террейна в точке с их множителем и
@@ -582,8 +629,10 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	float distanceToCamera = distance( item.position, cb_cameraPosition );
 	if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )
 		return;
+	if( !thinOut( distanceToCamera, instanceRandom( cell, seed, 12 ), item.size ) )
+		return;
 
-	item.size *= ringFade( distanceToCamera );
+	item.size *= ringFade( distanceToCamera, instanceRandom( cell, seed, 11 ), item.position.xz );
 	if( item.size <= 0.0f )
 		return;
 	item.ground = groundColor( item.position, distanceToCamera, cell, seed );
@@ -691,6 +740,7 @@ void cullPlaced( uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex )
 	const uint views = gs_clusterViews;
 	if( views == 0 )
 		return;
+	const uint seed = asuint( g_cellSize ) ^ hash( asuint( g_farBorder ) ^ hash( asuint( g_sizeMultiplier ) ) );
 	[loop] for( uint i = threadIndex; i < range.y; i += 64 )
 	{
 		const PlacedItem placed = g_placedItems[range.x + i];
@@ -698,7 +748,9 @@ void cullPlaced( uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex )
 		const float distanceToCamera = distance( item.position, cb_cameraPosition );
 		if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )
 			continue;
-		item.size *= ringFade( distanceToCamera );
+		if( !thinOut( distanceToCamera, instanceRandom( item.position, seed, 12 ), item.size ) )
+			continue;
+		item.size *= ringFade( distanceToCamera, instanceRandom( item.position, seed, 11 ), item.position.xz );
 		if( item.size <= 0.0f )
 			continue;
 		if( !emitInstance( item, placed.variant, placed.lodScale, distanceToCamera, views ) )

@@ -165,7 +165,11 @@ public:
 		float groundColorHeight;
 		float groundColorFar;
 		float colorVariation;
-		float padding[3];
+		// Края кольца и прореживание (Shaders\scatter.cs: ringFade, thinOut): разброс своих дальностей исчезания по полосе
+		// исчезания (0…1), начало прореживания, м, и доля убранных у дальней границы
+		float edgeSpread;
+		float thinStart;
+		float thinning;
 	} m_populateParams;
 	static_assert( sizeof( PopulateParams ) == 112, "ScatterLayerBuffer layout" );
 

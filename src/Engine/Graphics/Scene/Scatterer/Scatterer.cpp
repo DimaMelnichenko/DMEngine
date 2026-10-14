@@ -259,6 +259,15 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			"Share of the ground color over the whole plant at the far border (from half the ring): far plants blend into the ground" );
 	number( "Color variation", settings.colorVariation, 0.0f, 0.5f, "",
 			"Random brightness spread between plants (+-); the ground brightness spots of the terrain apply too" );
+	// Края кольца и прореживание вдали: граница не ровной дугой, вдали меньше экземпляров
+	number( "Edge spread", settings.edgeSpread, 0.0f, 1.0f, "",
+			"Own fade distance of each instance over the fade bands (and a coarse world noise): the ring edge is ragged, "
+			"plants vanish one by one; 0 - all shrink together" );
+	number( "Thinning start", settings.thinStart, 0.0f, std::max( settings.farBorder, 1.0f ), "m",
+			"Distance where thinning starts" );
+	number( "Thinning", settings.thinning, 0.0f, 0.95f, "",
+			"Share of instances removed at the far border (the same ones always; the rest are bigger - the cover stays): fewer "
+			"instances far away; 0 - none" );
 	Property* rotation = layer.properties->insert( "Rotation", settings.rotationRange );
 	rotation->setLow( 0.0f );
 	rotation->setHigh( 360.0f );
@@ -701,6 +710,9 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.groundColorHeight = settings.groundColorHeight;
 	params.groundColorFar = settings.groundColorFar;
 	params.colorVariation = settings.colorVariation;
+	params.edgeSpread = settings.edgeSpread;
+	params.thinStart = settings.thinStart;
+	params.thinning = settings.thinning;
 	params.rotationRange = XMFLOAT3( XMConvertToRadians( settings.rotationRange.x ), XMConvertToRadians( settings.rotationRange.y ),
 									 XMConvertToRadians( settings.rotationRange.z ) );
 	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
@@ -728,6 +740,9 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 	settings.groundColorHeight = std::max( properties["Ground color height"].data<float>(), 0.0f );
 	settings.groundColorFar = std::clamp( properties["Ground color far"].data<float>(), 0.0f, 1.0f );
 	settings.colorVariation = std::clamp( properties["Color variation"].data<float>(), 0.0f, 1.0f );
+	settings.edgeSpread = std::clamp( properties["Edge spread"].data<float>(), 0.0f, 1.0f );
+	settings.thinStart = std::max( properties["Thinning start"].data<float>(), 0.0f );
+	settings.thinning = std::clamp( properties["Thinning"].data<float>(), 0.0f, 0.95f );
 	settings.rotationRange = properties["Rotation"].data<XMFLOAT3>();
 	settings.alignToTerrain = properties["Align to terrain"].data<bool>();
 	settings.castShadow = properties["Cast shadow"].data<bool>();
@@ -791,6 +806,8 @@ void Scatterer::applyProperties( Layer& layer )
 						   settings.jitter != applied.jitter || settings.sizeVariation != applied.sizeVariation ||
 						   settings.groundColor != applied.groundColor || settings.groundColorHeight != applied.groundColorHeight ||
 						   settings.groundColorFar != applied.groundColorFar || settings.colorVariation != applied.colorVariation ||
+						   settings.edgeSpread != applied.edgeSpread || settings.thinStart != applied.thinStart ||
+						   settings.thinning != applied.thinning ||
 						   settings.alignToTerrain != applied.alignToTerrain ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
@@ -831,6 +848,9 @@ void Scatterer::applyProperties( Layer& layer )
 		params.groundColorHeight = fresh.groundColorHeight;
 		params.groundColorFar = fresh.groundColorFar;
 		params.colorVariation = fresh.colorVariation;
+		params.edgeSpread = fresh.edgeSpread;
+		params.thinStart = fresh.thinStart;
+		params.thinning = fresh.thinning;
 		params.rotationRange = fresh.rotationRange;
 		params.alignToTerrain = fresh.alignToTerrain;
 		params.castShadow = castShadow;

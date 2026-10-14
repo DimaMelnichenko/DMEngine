@@ -624,6 +624,12 @@ struct ScatterLayerSettings
 	float groundColorHeight = 0.0f;
 	float groundColorFar = 0.0f;
 	float colorVariation = 0.0f;
+	// Края кольца: доля полосы исчезания, по которой разбросаны свои дальности экземпляров (0 — все уменьшаются вместе,
+	// 1 — каждый исчезает у своего порога); прореживание вдали: с какого расстояния, м, и доля убранных у дальней границы
+	// (0 — нет; оставшиеся крупнее)
+	float edgeSpread = 0.0f;
+	float thinStart = 0.0f;
+	float thinning = 0.0f;
 	float jitter = 0.0f;			// смещение внутри ячейки, доля шага
 	DirectX::XMFLOAT3 rotationRange = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
 	bool alignToTerrain = false;	// ось Y инстанса по нормали террейна
