@@ -622,7 +622,8 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 `ground_color_height`, `ground_color_far`, `color_variation`: средний цвет слоёв террейна под экземпляром с пятнами
 яркости земли — у корня и вдали, `terrainGroundColor`, `Shaders/scatter_ground.sh`, `docs/scatter.md`, «Цвет земли у
 растений»), рваный край кольца и прореживание вдали (`edge_spread`, `thinning_start`, `thinning`: своя дальность
-исчезания экземпляра, вдали меньше экземпляров — `ringFade`, `thinOut`), `align_to_terrain` и `cast_shadow` (тень
+исчезания экземпляра, вдали меньше экземпляров — `ringFade`, `thinOut`; `dither_fade` — исчезание долей пикселей, а не
+размером, `edgeFade`), `align_to_terrain` и `cast_shadow` (тень
 солнца; флажок «Cast shadow» в окне набора — `Scatterer::properties`; у варианта ещё свой `ScatterLayerModels.cast_shadow`). Трава, ромашки, камешки — слои. Каждый кадр `Shaders/scatter.cs`
 раскладывает инстансы слоя по сетке, привязанной к миру (смещение, размер и поворот — хеш координат ячейки, поэтому
 при движении камеры они на месте), маска даёт вероятность и размер, отсечение — по плоскостям frustum каждого вида

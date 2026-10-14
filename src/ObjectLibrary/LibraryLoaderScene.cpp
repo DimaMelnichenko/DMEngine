@@ -460,7 +460,7 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 											 "size_multiplier = :size, size_variation = :sizeVariation, ground_color = :groundColor, "
 											 "ground_color_height = :groundColorHeight, ground_color_far = :groundColorFar, "
 											 "color_variation = :colorVariation, edge_spread = :edgeSpread, thinning_start = :thinStart, "
-											 "thinning = :thinning, jitter = :jitter, rotation_x = :rotationX, "
+											 "thinning = :thinning, dither_fade = :ditherFade, jitter = :jitter, rotation_x = :rotationX, "
 											 "rotation_y = :rotationY, rotation_z = :rotationZ, align_to_terrain = :align, "
 											 "cast_shadow = :castShadow, shadow_impostor_distance = :shadowImpostor, "
 											 "impostor_cast_shadow = :impostorShadow, impostor_base_shade = :baseShade, impostor_distance = :impostorDistance "
@@ -486,6 +486,7 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			updateScatter.bind( ":edgeSpread", dbValue( layer.edgeSpread ) );
 			updateScatter.bind( ":thinStart", dbValue( layer.thinStart ) );
 			updateScatter.bind( ":thinning", dbValue( layer.thinning ) );
+			updateScatter.bind( ":ditherFade", layer.ditherFade ? 1 : 0 );
 			updateScatter.bind( ":jitter", dbValue( layer.jitter ) );
 			updateScatter.bind( ":rotationX", dbValue( layer.rotationRange.x ) );
 			updateScatter.bind( ":rotationY", dbValue( layer.rotationRange.y ) );

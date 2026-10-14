@@ -77,6 +77,8 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	float  g_edgeSpread;
 	float  g_thinStart;
 	float  g_thinning;
+	float  g_ditherFade;		// 1 — у краёв кольца экземпляр исчезает долей пикселей (дизеринг), а не размером
+	float3 g_layerPadding;
 };
 
 // ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex
@@ -424,9 +426,32 @@ bool reserveTransition( ScatterItem item, float transition, inout uint index )
 	return index != 0xfffffffeU;
 }
 
+// Экземпляр у края кольца, исчезающий дизерингом: одно место в пуле перехода с долей fadeOut (остаются пиксели с порогом
+// выше неё — Shaders/lod_dither.sh), общее для видов. index — как у reserveTransition
+bool reserveFade( ScatterItem item, float fadeOut, inout uint index )
+{
+	if( index == 0xffffffffU )
+	{
+		uint slot;
+		if( reserve( COUNTER_TRANSITIONS, g_transitionCapacity, slot ) )
+		{
+			ScatterTransitionItem fading;
+			fading.item = item;
+			fading.lodDither = fadeOut;
+			fading.padding = 0.0f;
+			g_transitions[slot] = fading;
+			index = slot;
+		}
+		else
+			index = 0xfffffffeU;
+	}
+	return index != 0xfffffffeU;
+}
+
 // Экземпляр — в пул кадра и списки видов, где он виден: видимость по видам кадра (views — какие виды вообще проверять),
-// LOD вида и переход дизерингом. false — пул полон
-bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanceToCamera, uint views )
+// LOD вида и переход дизерингом. fadeOut (0; 1) — экземпляр у края кольца исчезает долей пикселей (g_ditherFade): в
+// списке перехода своего LOD, смена LOD в этой полосе — без перехода. false — пул полон
+bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanceToCamera, uint views, float fadeOut )
 {
 	// Видимость по видам. Главный вид — сфера вокруг инстанса в его frustum. Каскады теней (у слоя с тенью): инстанс
 	// нужен им, только если он или его тень попадает в кадр — сфера, охватывающая путь луча от него до земли
@@ -477,6 +502,7 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 	uint itemIndex = 0xffffffffU;
 	uint transitionIndex = 0xffffffffU;
 	uint shadowTransitionIndex = 0xffffffffU;
+	uint fadeIndex = 0xffffffffU;
 	[loop] for( uint view = 0; view < viewCount; ++view )
 	{
 		if( ( visibleMask & ( 1u << view ) ) == 0 )
@@ -488,6 +514,21 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 		selectLod( distanceToLodOrigin, shadowView ? shadowLodEnd : lodEnd, lodCount, viewDithered, lod, transition );
 		// LOD, с которого у теней экземпляра нет (импостер без тени): в полосе перехода к нему — только уходящий LOD
 		const uint castingLods = shadowView ? shadowLods : lodCount;
+
+		// Исчезает у края кольца: долей пикселей своего LOD; нет места в пуле перехода — обычным списком целиком
+		[branch] if( fadeOut > 0.0f )
+		{
+			if( shadowView && shadowLastLod > 0.0f && distanceToLodOrigin >= shadowLastLod )
+				lod = lodCount - 1;
+			if( lod >= castingLods )
+				continue;
+			if( reserveFade( item, fadeOut, fadeIndex ) )
+			{
+				pushIndex( view, listIndex( variant, lod, true ), fadeIndex );
+				continue;
+			}
+			transition = 0.0f;
+		}
 
 		// Тень дальнего экземпляра — последним LOD раньше, чем в кадре (импостер леса); в полосе вокруг этой дальности —
 		// переход дизерингом от LOD кадра к последнему своей парой: тень меняется так же плавно, как экземпляр в кадре
@@ -543,8 +584,9 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 }
 
 // Доля полосы исчезания, за которую экземпляр с рваным краем сходит в ноль размером: исчезают по одному, а не все разом, и
-// не кочками полного размера у самого порога
+// не кочками полного размера у самого порога; дизерингом — дольше: доля пикселей сразу не видна
 static const float edgeShrink = 0.35f;
+static const float edgeDither = 0.6f;
 // Насколько крупнее остаются экземпляры при прореживании: размер × доля оставшихся ^ −thinGrowth (0,5 — покрытие то же, но
 // пучок растёт и в высоту — сверху дальние пучки кочками; 0,25 — половина покрытия возвращается)
 static const float thinGrowth = 0.25f;
@@ -571,11 +613,24 @@ float ringFade( float distanceToCamera, float random01, float2 worldXZ )
 		const float noise = worldNoise( worldXZ, 40.0f, 13 ) * 0.6f + worldNoise( worldXZ, 13.0f, 14 ) * 0.4f;
 		threshold = g_edgeSpread * saturate( 0.65f * random01 + 0.35f * ( 0.5f + 0.5f * noise ) );
 	}
-	const float width = lerp( 1.0f, edgeShrink, g_edgeSpread );
+	const float width = lerp( 1.0f, g_ditherFade > 0.5f ? edgeDither : edgeShrink, g_edgeSpread );
 	const float farEnd = g_farBorder - g_farFade * threshold;
 	const float nearStart = g_nearBorder + g_nearFade * threshold;
 	return saturate( ( farEnd - distanceToCamera ) / max( g_farFade * width, 1e-3f ) ) *
 		   saturate( ( distanceToCamera - nearStart ) / max( g_nearFade * width, 1e-3f ) );
+}
+
+// Исчезание у края кольца: размером (size × fade) или, с g_ditherFade и вариантом со сменой LOD дизерингом, долей пикселей —
+// экземпляр полного размера проступает из прозрачности (как PerInstanceFadeAmount у Foliage в UE), без «вырастания» травы.
+// Возвращает долю исчезнувших пикселей (0 — весь), 1 — экземпляра нет
+float edgeFade( float fade, uint variant, inout float size )
+{
+	if( fade <= 0.0f )
+		return 1.0f;
+	if( g_ditherFade > 0.5f && g_variants[variant].z > 0.5f )
+		return 1.0f - fade;
+	size *= fade;
+	return 0.0f;
 }
 
 // Прореживание вдали (как редеющие дальние тайлы травы Ghost of Tsushima и Density Scaling в UE): доля оставшихся — от 1 у
@@ -632,12 +687,13 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	if( !thinOut( distanceToCamera, instanceRandom( cell, seed, 12 ), item.size ) )
 		return;
 
-	item.size *= ringFade( distanceToCamera, instanceRandom( cell, seed, 11 ), item.position.xz );
-	if( item.size <= 0.0f )
+	const float fade = ringFade( distanceToCamera, instanceRandom( cell, seed, 11 ), item.position.xz );
+	const float fadeOut = edgeFade( fade, variant, item.size );
+	if( item.size <= 0.0f || fadeOut >= 1.0f )
 		return;
 	item.ground = groundColor( item.position, distanceToCamera, cell, seed );
 
-	emitInstance( item, variant, lodScale, distanceToCamera, 0xffffffffU );
+	emitInstance( item, variant, lodScale, distanceToCamera, 0xffffffffU, fadeOut );
 }
 
 // Постоянный слой, раз при загрузке: группа — кластер PLACED_CLUSTER_CELLS² ячеек сетки мира от начала координат.
@@ -750,10 +806,11 @@ void cullPlaced( uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex )
 			continue;
 		if( !thinOut( distanceToCamera, instanceRandom( item.position, seed, 12 ), item.size ) )
 			continue;
-		item.size *= ringFade( distanceToCamera, instanceRandom( item.position, seed, 11 ), item.position.xz );
-		if( item.size <= 0.0f )
+		const float fade = ringFade( distanceToCamera, instanceRandom( item.position, seed, 11 ), item.position.xz );
+		const float fadeOut = edgeFade( fade, placed.variant, item.size );
+		if( item.size <= 0.0f || fadeOut >= 1.0f )
 			continue;
-		if( !emitInstance( item, placed.variant, placed.lodScale, distanceToCamera, views ) )
+		if( !emitInstance( item, placed.variant, placed.lodScale, distanceToCamera, views, fadeOut ) )
 			return;
 	}
 }

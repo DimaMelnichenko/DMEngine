@@ -170,8 +170,10 @@ public:
 		float edgeSpread;
 		float thinStart;
 		float thinning;
+		float ditherFade;	// 1 — у краёв кольца исчезание долей пикселей (дизеринг): экземпляры полосы — в пуле перехода
+		float padding[3];
 	} m_populateParams;
-	static_assert( sizeof( PopulateParams ) == 112, "ScatterLayerBuffer layout" );
+	static_assert( sizeof( PopulateParams ) == 128, "ScatterLayerBuffer layout" );
 
 	PopulateParams& populateParams();
 

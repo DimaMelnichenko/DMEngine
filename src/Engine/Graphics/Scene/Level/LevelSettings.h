@@ -630,6 +630,9 @@ struct ScatterLayerSettings
 	float edgeSpread = 0.0f;
 	float thinStart = 0.0f;
 	float thinning = 0.0f;
+	// Исчезание у краёв кольца долей пикселей (дизеринг, как Foliage в UE), а не размером: трава не «вырастает» на краю.
+	// Нужен вариант со сменой LOD дизерингом (материалы с DitheredLODTransition); иначе — размером
+	bool ditherFade = false;
 	float jitter = 0.0f;			// смещение внутри ячейки, доля шага
 	DirectX::XMFLOAT3 rotationRange = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
 	bool alignToTerrain = false;	// ось Y инстанса по нормали террейна

@@ -91,8 +91,18 @@
   (порог — своё случайное число экземпляра), без мерцания; оставшиеся крупнее — размер × доля^−0,25 (`thinGrowth`: при
   0,5 — покрытие то же, но пучок растёт и в высоту, сверху дальние — кочками).
 
+- `dither_fade` (0 / 1) — исчезание у краёв кольца долей пикселей, а не размером: экземпляр полного размера проступает из
+  прозрачности (как PerInstanceFadeAmount у Foliage в UE) — трава не «вырастает» на противоположном берегу (Dimok,
+  2026-10-14). `edgeFade` в `scatter.cs`: доля исчезнувших пикселей 1 − множитель исчезания, экземпляр — одним местом в
+  пуле перехода (`reserveFade`) в списке перехода своего LOD, отсечение — тот же `clipLodTransition`, что у смены LOD
+  (`Shaders/lod_dither.sh`), в цвете, prepass и тенях; своя полоса экземпляра длиннее (`edgeDither` 0,6 полосы против
+  0,35 у размера). Нужен вариант со сменой LOD дизерингом (`DitheredLODTransition` у материалов секций; у импостеров
+  есть), иначе — размером. Ёмкость списков перехода — с полосами исчезания (`ScatterPass::createBuffers`), поэтому
+  «Dither fade», «Near fade», «Far fade» при нём — пересборка буферов слоя. Без TAA доля пикселей видна мелкой рябью
+  (как смена LOD), на месте не мерцает.
+
 На `Test`: трава и сухая трава у ручьёв — `edge_spread` 1, прореживание с 25 м до 0,4; одуванчики — 1, с 15 м до 0,3;
-камешки — `edge_spread` 1. В траве (`530,12.8,250,8,210`) при 0,5 с 20 м кадр 2,60 → 2,53 мс (prepass 0,50 → 0,48, цвет
+камешки — `edge_spread` 1; у всех четырёх — `dither_fade` 1 (лес — размером). В траве (`530,12.8,250,8,210`) при 0,5 с 20 м кадр 2,60 → 2,53 мс (prepass 0,50 → 0,48, цвет
 0,64 → 0,61, тени 0,61 → 0,60): дальнее кольцо — в основном импостеры, они и так дёшевы.
 
 **Маска плотности** — текстура в координатах карты высот: красный канал 0…1 — вероятность, что в ячейке появится
@@ -410,6 +420,7 @@
 | `ground_color_far` | 0…1 | доля цвета земли по всему растению у дальней границы кольца (растёт от половины кольца) |
 | `color_variation` | ± доля | разброс яркости по экземплярам; с ним (и с цветом земли) — и пятна яркости земли |
 | `edge_spread` | 0…1 | рваный край: своя дальность исчезания экземпляра в полосе `far_fade` / `near_fade`; NULL — 0, все уменьшаются вместе |
+| `dither_fade` | 0 / 1 | исчезание у краёв кольца долей пикселей (дизеринг), а не размером; NULL — размером |
 | `thinning_start`, `thinning` | м, 0…0,95 | прореживание вдали: с этого расстояния доля оставшихся падает до 1 − `thinning` у дальней границы; NULL — нет |
 | `jitter` | доля шага | смещение внутри ячейки: 0 — строго по сетке, 1 — в пределах всей ячейки |
 | `rotation_x`, `rotation_y`, `rotation_z` | градусы | полный размах случайного поворота вокруг оси |
@@ -607,7 +618,7 @@ Outliner → Scene → имя набора. «Shadow LOD scale» — у набо
 |---|---|---|
 | Visible | — (не сохраняется) | слой скрыт: не раскладывается и не рисуется, и в тенях (`Scatterer::layerVisible`) — посмотреть на остальные (траву убрать — видны одуванчики); правка не делает уровень изменённым (`Property::setTransient`); `set "Meadow/0: GrassClump + 3/Visible" false` |
 | Cell size, Near border, Far border, Size, Impostor distance | `cell_size`, `near_border`, `far_border`, `size_multiplier`, `impostor_distance` | буферы слоя заново (`Scatterer::rebuildPass`: ёмкость списков — по кольцу и дальностям LOD), один раз — когда ползунок отпустили или ввод числа закончен (`Property::editing`); прежние GPU отпустит, когда закончит кадры с ними; в лог — «buffers rebuilt after an edit» |
-| Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain, Ground color, Ground color height, Ground color far, Color variation, Edge spread, Thinning start, Thinning | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain`, `ground_color`, `ground_color_height`, `ground_color_far`, `color_variation`, `edge_spread`, `thinning_start`, `thinning` | константы раскладки |
+| Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain, Ground color, Ground color height, Ground color far, Color variation, Edge spread, Thinning start, Thinning, Dither fade | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain`, `ground_color`, `ground_color_height`, `ground_color_far`, `color_variation`, `edge_spread`, `thinning_start`, `thinning`, `dither_fade` | константы раскладки (`dither_fade` и полосы исчезания при нём — пересборка буферов) |
 | Cast shadow, Shadow impostor distance, Impostor shadow, Impostor base shade | `cast_shadow`, `shadow_impostor_distance`, `impostor_cast_shadow`, `impostor_base_shade` | сразу (плоский импостер или со смещением глубины — по `impostor_cast_shadow` при загрузке) |
 
 Подокно варианта (модель) — «Weight» и «Cast shadow» (`ScatterLayerModels`) и **кольца LOD**: «LOD 0 up to», «LOD 1

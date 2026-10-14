@@ -265,6 +265,9 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			"plants vanish one by one; 0 - all shrink together" );
 	number( "Thinning start", settings.thinStart, 0.0f, std::max( settings.farBorder, 1.0f ), "m",
 			"Distance where thinning starts" );
+	layer.properties->insert( "Dither fade", settings.ditherFade )->setTooltip(
+		"At the ring borders an instance fades in from transparency (a share of its pixels, like foliage in UE) instead of "
+		"growing from zero size; needs materials with dithered LOD transition" );
 	number( "Thinning", settings.thinning, 0.0f, 0.95f, "",
 			"Share of instances removed at the far border (the same ones always; the rest are bigger - the cover stays): fewer "
 			"instances far away; 0 - none" );
@@ -713,6 +716,7 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.edgeSpread = settings.edgeSpread;
 	params.thinStart = settings.thinStart;
 	params.thinning = settings.thinning;
+	params.ditherFade = settings.ditherFade ? 1.0f : 0.0f;
 	params.rotationRange = XMFLOAT3( XMConvertToRadians( settings.rotationRange.x ), XMConvertToRadians( settings.rotationRange.y ),
 									 XMConvertToRadians( settings.rotationRange.z ) );
 	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
@@ -743,6 +747,7 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 	settings.edgeSpread = std::clamp( properties["Edge spread"].data<float>(), 0.0f, 1.0f );
 	settings.thinStart = std::max( properties["Thinning start"].data<float>(), 0.0f );
 	settings.thinning = std::clamp( properties["Thinning"].data<float>(), 0.0f, 0.95f );
+	settings.ditherFade = properties["Dither fade"].data<bool>();
 	settings.rotationRange = properties["Rotation"].data<XMFLOAT3>();
 	settings.alignToTerrain = properties["Align to terrain"].data<bool>();
 	settings.castShadow = properties["Cast shadow"].data<bool>();
@@ -800,7 +805,10 @@ void Scatterer::applyProperties( Layer& layer )
 		if( variant.impostor && variant.modelLods > 0 )
 			lods = lods || passVariant.lodEnd[variant.modelLods - 1] != clamped.impostorDistance;
 	}
-	const bool buffers = weights || lods || settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
+	// Исчезание дизерингом — экземпляры полос исчезания в пуле перехода: его ёмкость зависит от полос
+	const bool fadeBands = settings.ditherFade != applied.ditherFade ||
+						   ( settings.ditherFade && ( settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ) );
+	const bool buffers = weights || lods || fadeBands || settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
 						 settings.farBorder != applied.farBorder || settings.sizeMultiplier != applied.sizeMultiplier;
 	const bool placement = settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ||
 						   settings.jitter != applied.jitter || settings.sizeVariation != applied.sizeVariation ||

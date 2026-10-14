@@ -94,6 +94,16 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 				transitionArea += bandArea( variant.lodEnd[lod - 1] * minScale, variant.lodEnd[lod - 1] * maxScale );
 			if( hasNext )
 				transitionArea += bandArea( variant.lodEnd[lod] * minScale, variant.lodEnd[lod] * maxScale );
+			// Исчезание у краёв кольца дизерингом — экземпляры полос исчезания этого LOD тоже в списке перехода
+			if( m_populateParams.ditherFade > 0.5f )
+			{
+				const auto overlap = [&]( float from, float to )
+				{
+					return bandArea( std::max( from, bandNear ), std::min( to, bandFar ) );
+				};
+				transitionArea += overlap( nearBorder, nearBorder + m_populateParams.nearFade ) +
+								  overlap( farBorder - m_populateParams.farFade, farBorder );
+			}
 
 			const uint32_t sections = std::max( 1u, std::min( variant.sectionCount[lod], maxSections ) );
 			for( uint32_t transition = 0; transition < 2; ++transition )
