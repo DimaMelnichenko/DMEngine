@@ -807,7 +807,8 @@ void Scatterer::applyProperties( Layer& layer )
 	}
 	// Исчезание дизерингом — экземпляры полос исчезания в пуле перехода: его ёмкость зависит от полос
 	const bool fadeBands = settings.ditherFade != applied.ditherFade ||
-						   ( settings.ditherFade && ( settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ) );
+						   ( settings.ditherFade && ( settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ||
+													  settings.thinStart != applied.thinStart || settings.thinning != applied.thinning ) );
 	const bool buffers = weights || lods || fadeBands || settings.cellSize != applied.cellSize || settings.nearBorder != applied.nearBorder ||
 						 settings.farBorder != applied.farBorder || settings.sizeMultiplier != applied.sizeMultiplier;
 	const bool placement = settings.nearFade != applied.nearFade || settings.farFade != applied.farFade ||

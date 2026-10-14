@@ -634,17 +634,17 @@ float edgeFade( float fade, uint variant, inout float size )
 }
 
 // Прореживание вдали (как редеющие дальние тайлы травы Ghost of Tsushima и Density Scaling в UE): доля оставшихся — от 1 у
-// g_thinStart до 1 − g_thinning у дальней границы; остаются одни и те же (порог — своё случайное число экземпляра), а
-// оставшиеся немного крупнее (thinGrowth) — луг редеет меньше. false — экземпляр убран
-bool thinOut( float distanceToCamera, float random01, inout float size )
+// g_thinStart до 1 − g_thinning у дальней границы; уходят одни и те же (порог — своё случайное число экземпляра), а
+// оставшиеся немного крупнее (thinGrowth) — луг редеет меньше. Экземпляр не пропадает разом (с 14 см шага пучок посреди
+// луга возникал целиком), а исчезает, пока доля уходит ниже его числа на THINNING_SOFTNESS: множитель 0…1 — как у края
+// кольца (edgeFade: дизерингом или размером); 0 — экземпляр убран
+float thinOut( float distanceToCamera, float random01, inout float size )
 {
 	[branch] if( g_thinning <= 0.0f || g_thinStart >= g_farBorder )
-		return true;
+		return 1.0f;
 	const float keep = 1.0f - g_thinning * smoothstep( g_thinStart, g_farBorder, distanceToCamera );
-	if( random01 >= keep )
-		return false;
 	size *= pow( max( keep, 0.05f ), -thinGrowth );
-	return true;
+	return saturate( ( keep - random01 ) / THINNING_SOFTNESS );
 }
 
 // Цвет земли под экземпляром кольцевого слоя (scatter_ground.sh): средний цвет слоёв террейна в точке с их множителем и
@@ -684,10 +684,11 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	float distanceToCamera = distance( item.position, cb_cameraPosition );
 	if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )
 		return;
-	if( !thinOut( distanceToCamera, instanceRandom( cell, seed, 12 ), item.size ) )
+	const float thin = thinOut( distanceToCamera, instanceRandom( cell, seed, 12 ), item.size );
+	if( thin <= 0.0f )
 		return;
 
-	const float fade = ringFade( distanceToCamera, instanceRandom( cell, seed, 11 ), item.position.xz );
+	const float fade = ringFade( distanceToCamera, instanceRandom( cell, seed, 11 ), item.position.xz ) * thin;
 	const float fadeOut = edgeFade( fade, variant, item.size );
 	if( item.size <= 0.0f || fadeOut >= 1.0f )
 		return;
@@ -804,9 +805,10 @@ void cullPlaced( uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex )
 		const float distanceToCamera = distance( item.position, cb_cameraPosition );
 		if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )
 			continue;
-		if( !thinOut( distanceToCamera, instanceRandom( item.position, seed, 12 ), item.size ) )
+		const float thin = thinOut( distanceToCamera, instanceRandom( item.position, seed, 12 ), item.size );
+		if( thin <= 0.0f )
 			continue;
-		const float fade = ringFade( distanceToCamera, instanceRandom( item.position, seed, 11 ), item.position.xz );
+		const float fade = ringFade( distanceToCamera, instanceRandom( item.position, seed, 11 ), item.position.xz ) * thin;
 		const float fadeOut = edgeFade( fade, placed.variant, item.size );
 		if( item.size <= 0.0f || fadeOut >= 1.0f )
 			continue;

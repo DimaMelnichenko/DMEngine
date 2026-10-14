@@ -103,6 +103,9 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 				};
 				transitionArea += overlap( nearBorder, nearBorder + m_populateParams.nearFade ) +
 								  overlap( farBorder - m_populateParams.farFade, farBorder );
+				// и исчезающие при прореживании — доля THINNING_SOFTNESS экземпляров его полосы
+				if( m_populateParams.thinning > 0.0f )
+					transitionArea += THINNING_SOFTNESS * overlap( m_populateParams.thinStart, farBorder );
 			}
 
 			const uint32_t sections = std::max( 1u, std::min( variant.sectionCount[lod], maxSections ) );

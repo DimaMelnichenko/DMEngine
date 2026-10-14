@@ -24,4 +24,9 @@
 #define LOD_DISTANCE_MIN_SCALE	( LOD_JITTER_MIN_SCALE - LOD_TRANSITION_WIDTH * 0.5f )
 #define LOD_DISTANCE_MAX_SCALE	( 1.0f + LOD_TRANSITION_WIDTH * 0.5f )
 
+// Прореживание вдали (ScatterLayers.thinning): экземпляр не пропадает разом, когда доля оставшихся проходит его случайное
+// число, а исчезает, пока она уходит ниже на эту долю (дизерингом или размером, как у края кольца). Ёмкость списков
+// перехода (ScatterPass) — с этой долей экземпляров полосы прореживания
+#define THINNING_SOFTNESS		0.15f
+
 #endif
