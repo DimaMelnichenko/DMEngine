@@ -114,6 +114,8 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 	surface.emissive = 0.0f;
 	surface.transmission = saturate( packed.w * g_impostorTransmission.w );
 	surface.transmissionColor = baseColor * g_impostorTransmission.xyz;
+	surface.transmissionForward = g_impostorTransmissionForward.x;
+	surface.transmissionForwardRoughness = g_impostorTransmissionForward.y;
 	return float4( evaluateLighting( surface ), 1.0f );
 }
 

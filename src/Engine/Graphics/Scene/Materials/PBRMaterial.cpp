@@ -294,6 +294,8 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.specularFactor = materialValue( params, "SpecularFactor", 1.0f );
 	param.diffuseTransmissionColorFactor = materialValue( params, "DiffuseTransmissionColorFactor", XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
 	param.diffuseTransmissionFactor = materialValue( params, "DiffuseTransmissionFactor", 0.0f );
+	param.transmissionForward = materialValue( params, "TransmissionForward", defaultTransmissionForward );
+	param.transmissionForwardRoughness = materialValue( params, "TransmissionForwardRoughness", defaultTransmissionForwardRoughness );
 	param.windGlobalAngle = XMConvertToRadians( materialValue( params, "WindGlobalAngle", 1.5f ) );
 	param.windGlobalExponent = materialValue( params, "WindGlobalExponent", 1.5f );
 	param.windGlobalFrequency = materialValue( params, "WindGlobalFrequency", 0.25f );

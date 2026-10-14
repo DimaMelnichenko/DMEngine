@@ -85,6 +85,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	[branch] if( surface.transmission > 0.0f )
 		surface.transmissionColor = g_texDiffuseTransmissionColor.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb *
 									g_diffuseTransmissionColorFactor;
+	surface.transmissionForward = g_transmissionForward;
+	surface.transmissionForwardRoughness = g_transmissionForwardRoughness;
 
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps). Альфа нужна только
 	// полупрозрачному (AlphaMode BLEND): у непрозрачных блендинг выключен

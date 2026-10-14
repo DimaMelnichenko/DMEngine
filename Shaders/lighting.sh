@@ -39,9 +39,14 @@ struct Surface
 	float  microShadows;
 	float3 emissive;
 	// Пропускание тонкой поверхностью — листья, травинки (KHR_materials_diffuse_transmission в glTF, Two Sided Foliage
-	// в UE): доля рассеянного света, прошедшая насквозь по Ламберту, и её цвет; 0 — не пропускает
+	// в UE): доля рассеянного света, прошедшая насквозь, и её цвет; 0 — не пропускает
 	float  transmission;
 	float3 transmissionColor;	// линейный
+	// Какая часть прошедшего света рассеивается вперёд — пиком вокруг луча источника, продолженного сквозь лист (против
+	// солнца лист светится ярче), остальное — по Ламберту, во все стороны одинаково; 0 — только Ламберт (как в glTF).
+	// Ширина пика — шероховатость GGX «на глаз», как roughness
+	float  transmissionForward;
+	float  transmissionForwardRoughness;
 };
 
 // Нормаль, повёрнутая к свету: тонкая поверхность освещается с обеих сторон, и выборка тени смещается по нормали
@@ -50,6 +55,26 @@ struct Surface
 float3 normalTowardLight( float3 normal, float3 toLight )
 {
 	return dot( normal, toLight ) < 0.0f ? -normal : normal;
+}
+
+// Прошедший сквозь тонкую поверхность свет к камере на единицу освещённости источника (без цвета). По Ламберту —
+// saturate(−N·L) / π. Пик вперёд (как Two Sided Foliage в UE: GGX по −V·L) — распределение GGX D(μ) по косинусу μ угла
+// между взглядом и лучом источника, продолженным сквозь лист, × c / Nₐ(c), c = saturate(−N·L): Nₐ(c) — сколько пик
+// с косинусом падения c отдаёт за лист (интеграл D по задней полусфере с косинусом к нормали), поэтому пик пропускает
+// столько же, сколько Ламберт, — энергия сохраняется при любом наклоне листа. Nₐ(c) ≈ lerp( α(1 + α) / 2, 1, c^1,2 ) —
+// приближение численного интеграла (α 0,25…1: расхождение до 3 %); при c → 0 пик гаснет вместе с Ламбертом
+float transmissionLobe( Surface surface, float3 view, float3 toLight )
+{
+	const float incidence = saturate( -dot( surface.normal, toLight ) );
+	const float lambert = incidence / PI;
+	const float forward = saturate( surface.transmissionForward );
+	[branch] if( forward <= 0.0f )
+		return lambert;
+	const float roughness = clamp( surface.transmissionForwardRoughness, minRoughness, 1.0f );
+	const float alpha = roughness * roughness;
+	const float lobeEnergy = lerp( 0.5f * alpha * ( 1.0f + alpha ), 1.0f, pow( incidence, 1.2f ) );
+	const float scatter = GGX_Distribution( saturate( -dot( view, toLight ) ), alpha ) * incidence / lobeEnergy;
+	return lerp( lambert, scatter, forward );
 }
 
 // diffuseColor — отражаемая доля рассеянного цвета, transmissionColor — пропускаемая (у непрозрачных 0)
@@ -95,9 +120,10 @@ float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 d
 		[branch] if( attenuation > 0.0f )
 		{
 			result += CookTorrance_GGX( surface.normal, toLight, view, F0, roughness, diffuseColor ) * light.color * attenuation;
-			// Свет с обратной стороны проходит насквозь по Ламберту (diffuse BTDF KHR_materials_diffuse_transmission)
+			// Свет с обратной стороны проходит насквозь: по Ламберту (diffuse BTDF KHR_materials_diffuse_transmission)
+			// и пиком вперёд
 			[branch] if( transmits )
-				result += transmissionColor * ( saturate( -dot( surface.normal, toLight ) ) / PI ) * light.color * attenuation;
+				result += transmissionColor * transmissionLobe( surface, view, toLight ) * light.color * attenuation;
 		}
 	}
 	return result;
@@ -126,9 +152,16 @@ float3 evaluateLighting( Surface surface )
 	float3 ambient = diffuseColor * ambientIrradiance( surface.normal ) +
 					 ambientSpecular( reflect( -view, surface.normal ), roughness ) *
 					 ( F0 * environment.x + saturate( 50.0f * F0.g ) * environment.y );
-	// Небо с обратной стороны тоже просвечивает (как Subsurface Color × гармоники по −N у Two Sided Foliage в UE)
+	// Небо с обратной стороны тоже просвечивает: по Ламберту — гармоники по −N (как Subsurface Color у Two Sided Foliage
+	// в UE), пиком вперёд — небо за листом по взгляду, префильтр отражений с шириной пика (тот же GGX)
 	[branch] if( transmission > 0.0f )
-		ambient += transmissionColor * ambientIrradiance( -surface.normal );
+	{
+		float3 behind = ambientIrradiance( -surface.normal );
+		const float forward = saturate( surface.transmissionForward );
+		[branch] if( forward > 0.0f )
+			behind = lerp( behind, ambientSpecular( -view, clamp( surface.transmissionForwardRoughness, minRoughness, 1.0f ) ), forward );
+		ambient += transmissionColor * behind;
+	}
 
 	// Освещение окружением тень не гасит (как в UE без затенения окружения)
 	const float3 color = ( direct + ambient * surface.occlusion + surface.emissive ) * shadowCascadeTint( surface.position );

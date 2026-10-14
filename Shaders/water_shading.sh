@@ -410,6 +410,8 @@ float4 shadeWater( WaterShading input )
 	surface.emissive = 0.0f;
 	surface.transmission = 0.0f;
 	surface.transmissionColor = 0.0f;
+	surface.transmissionForward = 0.0f;
+	surface.transmissionForwardRoughness = 1.0f;
 	const float roughness = clamp( g_roughness, minRoughness, 1.0f );
 	const float3 sun = evaluateDirectLighting( surface, view, waterF0, 0.0f, 0.0f, roughness );
 	const float3 r = reflect( -view, normal );

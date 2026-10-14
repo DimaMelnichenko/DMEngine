@@ -70,6 +70,8 @@ private:
 		DirectX::XMFLOAT4 bounds;			// сфера модели: центр в её координатах, радиус
 		DirectX::XMFLOAT4 extents;			// половины ящика LOD0 (центр — центр сферы)
 		DirectX::XMFLOAT4 transmission;		// цвет пропускания (множитель альбедо), множитель доли
+		// доля прошедшего света, рассеянная вперёд пиком, и ширина пика (как у секции модели), zw — запас
+		DirectX::XMFLOAT4 transmissionForward;
 		uint32_t frames;
 		float alphaCutoff;
 		float roughness;
@@ -77,7 +79,7 @@ private:
 		// x — затемнение низа (setBaseShade), y — высота верха модели над её началом координат (ящик LOD0), zw — запас
 		DirectX::XMFLOAT4 shade;
 	};
-	static_assert( sizeof( Params ) == 80, "ImpostorBuffer layout" );
+	static_assert( sizeof( Params ) == 96, "ImpostorBuffer layout" );
 
 	// Вид кадра запекания frame (номер по сторонам сетки): ортография на сферу модели со стороны его направления
 	RenderView frameView( uint32_t x, uint32_t y ) const;

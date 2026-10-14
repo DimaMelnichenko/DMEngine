@@ -168,6 +168,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	Surface surface;
 	surface.transmission = 0.0f;
 	surface.transmissionColor = 0.0f;
+	surface.transmissionForward = 0.0f;
+	surface.transmissionForwardRoughness = 1.0f;
 	surface.position = input.worldPosition;
 	surface.normal = normalize( normal + mixed.detail );
 	surface.geometricNormal = normal;

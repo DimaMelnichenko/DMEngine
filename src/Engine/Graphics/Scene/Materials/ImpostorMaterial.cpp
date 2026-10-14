@@ -1,4 +1,5 @@
 #include "ImpostorMaterial.h"
+#include "PBRMaterial.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -369,6 +370,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	m_params.bounds = XMFLOAT4( box.Center.x, box.Center.y, box.Center.z, radius );
 	m_params.extents = XMFLOAT4( box.Extents.x * 1.02f, box.Extents.y * 1.02f, box.Extents.z * 1.02f, 0.0f );
 	m_params.transmission = XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );
+	m_params.transmissionForward = XMFLOAT4( PBRMaterial::defaultTransmissionForward, PBRMaterial::defaultTransmissionForwardRoughness, 0.0f, 0.0f );
 	m_params.frames = frames;
 	m_params.alphaCutoff = 0.5f;
 	m_params.roughness = 0.8f;
@@ -392,6 +394,10 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 		{
 			const XMFLOAT3 tint = params["DiffuseTransmissionColorFactor"].data<XMFLOAT3>();
 			m_params.transmission = XMFLOAT4( tint.x, tint.y, tint.z, 1.0f );
+			if( params.exists( "TransmissionForward" ) )
+				m_params.transmissionForward.x = params["TransmissionForward"].data<float>();
+			if( params.exists( "TransmissionForwardRoughness" ) )
+				m_params.transmissionForward.y = params["TransmissionForwardRoughness"].data<float>();
 		}
 	}
 

@@ -35,6 +35,11 @@ public:
 	// Фазы «только глубина» всех вариантов, в том числе с пиксельным шейдером mainDepth (Masked)
 	std::vector<int> depthPhases() const override;
 
+	// Пропускание вперёд по умолчанию (TransmissionForward, TransmissionForwardRoughness; как default_value
+	// в MaterialParameterDef): у всех пропускающих материалов уровня — листья, травинки, лепестки
+	static constexpr float defaultTransmissionForward = 0.75f;
+	static constexpr float defaultTransmissionForwardRoughness = 0.775f;
+
 private:
 	// Константный буфер b2 (PS и VS), раскладка как у PBRMaterialBuffer в Shaders/pbr_material.sh
 	struct alignas( 16 ) PSParam
@@ -49,7 +54,7 @@ private:
 		float alphaCutoff;
 		float windWeight;	// отклик на ветер уровня; вершинному шейдеру (Shaders/wind.sh)
 		float specularFactor;	// F0 диэлектрика = 0,04 × множитель (KHR_materials_specular)
-		float padding;
+		float transmissionForward;	// доля прошедшего света, рассеянная вперёд пиком (Shaders/lighting.sh)
 		DirectX::XMFLOAT3 diffuseTransmissionColorFactor;
 		float diffuseTransmissionFactor;
 		// Ветер дерева (материал PBRTree, define WIND_TREE, Shaders/wind.sh): углы — радианы при силе ветра 1, частоты — Гц
@@ -62,7 +67,8 @@ private:
 		float windTwigFrequency;
 		float windRippleAmplitude;	// м
 		float windRippleFrequency;
-		float windPadding[3];
+		float transmissionForwardRoughness;	// ширина пика пропускания вперёд
+		float padding[2];
 	};
 	static_assert( sizeof( PSParam ) == 128, "PBRMaterialBuffer layout" );
 
