@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Property.h"
+#include <cassert>
 #include <functional>
 #include <unordered_map>
 #include <type_traits>
@@ -35,10 +36,12 @@ public:
 	const Property& property( const std::string& name ) const;
 	Property& property( const std::string& name );
 	
-	// Свойство с таким именем уже есть — возвращается оно, значение не меняется
+	// Свойство с таким именем уже есть — возвращается оно, значение не меняется. Имя — без «/» (разделитель пути команд
+	// list / get / set) и без единицы: её пишет окно по Property::setUnit
 	template<class TYPE>
 	Property* insert( const std::string& name, const TYPE& value )
 	{
+		assert( name.find( '/' ) == std::string::npos && "a property name can't contain '/': it separates the path of set" );
 		auto [it, inserted] = m_propertyMap.insert( { name, Property( name, value ) } );
 		if( inserted )
 			m_order.push_back( name );

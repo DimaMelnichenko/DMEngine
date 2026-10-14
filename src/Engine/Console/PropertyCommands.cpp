@@ -170,8 +170,12 @@ void registerPropertyCommands( ConsoleCommands& commands, std::function<const st
 			return reply->error( "no window " + args[0] );
 		for( PropertyContainer* sub : resolved.container->subContainer() )
 			reply->line( sub->name() + "/" );
+		// Значение и единица свойства (Property::setUnit), как в окне: «Far border = 45 m»
 		for( const std::string& name : resolved.container->names() )
-			reply->line( name + " = " + toString( resolved.container->property( name ) ) );
+		{
+			Property& property = resolved.container->property( name );
+			reply->line( name + " = " + toString( property ) + ( property.unit().empty() ? std::string() : " " + property.unit() ) );
+		}
 		for( const PropertyContainer::Button& button : resolved.container->buttons() )
 			reply->line( "[" + button.name + "]" );
 		reply->ok();

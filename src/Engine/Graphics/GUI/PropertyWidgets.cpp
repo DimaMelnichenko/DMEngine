@@ -61,7 +61,7 @@ std::string numberFormat( const Property& property, float value )
 }
 
 // Название в окне: единица свойства (Property::setUnit) — в скобках после имени, «Far border (m)», у любого контрола
-// (числа, пары «от, до», векторы, надписи). Имя уже кончается ею («Time of day (h)» — так их зовут команды set) — как есть
+// (числа, пары «от, до», векторы, надписи). Имя уже кончается ею — как есть (у пары с разными единицами они в имени: «Compensation curve key 1 (EV100, EV)»)
 std::string displayName( const std::string& name, const Property& property )
 {
 	const std::string& unit = property.unit();

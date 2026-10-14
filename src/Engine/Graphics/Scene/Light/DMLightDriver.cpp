@@ -10,12 +10,14 @@ namespace
 {
 
 template<class TYPE>
-void addControl( PropertyContainer& properties, const char* name, const TYPE& value, GUIControlType control, float low, float high )
+void addControl( PropertyContainer& properties, const char* name, const TYPE& value, GUIControlType control, float low, float high,
+				 const char* unit = "" )
 {
 	Property* property = properties.insert( name, value );
 	property->setControlType( control );
 	property->setLow( low );
 	property->setHigh( high );
+	property->setUnit( unit );
 }
 
 }
@@ -151,38 +153,37 @@ DMLightDriver::LightControls DMLightDriver::createProperties( const DMLight& lig
 	addControl( properties, "Color", light.color(), GUIControlType::COLOR, 0.0f, 1.0f );
 	// Направленный — люксы (полуденное солнце ~100 000), точечный и прожектор — канделы (лампа 100 Вт ~130).
 	// Освещённость от луны при SunPosition — расчётная (фаза, расстояние): только для чтения
-	addControl( properties, light.type() == DMLight::Dir ? "Intensity (lx)" : "Intensity (cd)", light.intensity(),
-				role == TimeRole::moon ? GUIControlType::LABEL : GUIControlType::SLIDER, 0.0f,
-				light.type() == DMLight::Dir ? 150000.0f : 20000.0f );
+	addControl( properties, "Intensity", light.intensity(), role == TimeRole::moon ? GUIControlType::LABEL : GUIControlType::SLIDER, 0.0f,
+				light.type() == DMLight::Dir ? 150000.0f : 20000.0f, light.type() == DMLight::Dir ? "lx" : "cd" );
 
 	controls.rotation = rotationFromDirection( light.direction() );
 	// Направление солнца и луны со временем суток задаёт SunPosition
 	if( light.type() != DMLight::Point && role == TimeRole::none )
 	{
-		addControl( properties, "Pitch", controls.rotation.x, GUIControlType::SLIDER, -90.0f, 90.0f );
-		addControl( properties, "Yaw", controls.rotation.y, GUIControlType::SLIDER, -180.0f, 180.0f );
+		addControl( properties, "Pitch", controls.rotation.x, GUIControlType::SLIDER, -90.0f, 90.0f, "deg" );
+		addControl( properties, "Yaw", controls.rotation.y, GUIControlType::SLIDER, -180.0f, 180.0f, "deg" );
 	}
 	if( light.type() != DMLight::Dir )
 	{
 		// Границы 0, 0 — без ограничения
-		addControl( properties, "Position", light.position(), GUIControlType::DRAG, 0.0f, 0.0f );
-		addControl( properties, "Attenuation radius", light.attenuationRadius(), GUIControlType::SLIDER, 0.0f, 500.0f );
+		addControl( properties, "Position", light.position(), GUIControlType::DRAG, 0.0f, 0.0f, "m" );
+		addControl( properties, "Attenuation radius", light.attenuationRadius(), GUIControlType::SLIDER, 0.0f, 500.0f, "m" );
 	}
 	if( light.type() == DMLight::Spot )
 	{
-		addControl( properties, "Inner cone angle", light.innerConeAngle(), GUIControlType::SLIDER, 0.0f, 89.0f );
-		addControl( properties, "Outer cone angle", light.outerConeAngle(), GUIControlType::SLIDER, 0.0f, 89.0f );
+		addControl( properties, "Inner cone angle", light.innerConeAngle(), GUIControlType::SLIDER, 0.0f, 89.0f, "deg" );
+		addControl( properties, "Outer cone angle", light.outerConeAngle(), GUIControlType::SLIDER, 0.0f, 89.0f, "deg" );
 	}
 	if( light.type() == DMLight::Dir )
 	{
 		const DMLight::ShadowSettings& shadows = light.shadowSettings();
 		properties.insert( "Cast shadows", shadows.castShadows );
-		addControl( properties, "Dynamic shadow distance", shadows.dynamicShadowDistance, GUIControlType::SLIDER, 20.0f, 1000.0f );
+		addControl( properties, "Dynamic shadow distance", shadows.dynamicShadowDistance, GUIControlType::SLIDER, 20.0f, 1000.0f, "m" );
 		addControl( properties, "Cascade distribution exponent", shadows.cascadeDistributionExponent, GUIControlType::SLIDER, 1.0f, 6.0f );
 		addControl( properties, "Cascade transition fraction", shadows.cascadeTransitionFraction, GUIControlType::SLIDER, 0.0f, 0.5f );
 		addControl( properties, "Shadow distance fadeout fraction", shadows.shadowDistanceFadeoutFraction, GUIControlType::SLIDER, 0.0f, 0.5f );
-		addControl( properties, "Shadow bias", shadows.shadowBias, GUIControlType::SLIDER, 0.0f, 5.0f );
-		addControl( properties, "Normal bias", shadows.normalBias, GUIControlType::SLIDER, 0.0f, 5.0f );
+		addControl( properties, "Shadow bias", shadows.shadowBias, GUIControlType::SLIDER, 0.0f, 5.0f, "texels" );
+		addControl( properties, "Normal bias", shadows.normalBias, GUIControlType::SLIDER, 0.0f, 5.0f, "texels" );
 		addControl( properties, "Shadow slope bias", shadows.shadowSlopeBias, GUIControlType::SLIDER, 0.0f, 8.0f );
 	}
 
@@ -345,11 +346,11 @@ void DMLightDriver::update( float seconds )
 
 		// Освещённость от луны — по её фазе и расстоянию, как направление; в GUI — расчётная
 		if( static_cast<int>( i ) == m_moonPositionLight )
-			properties["Intensity (lx)"].setData( m_sunPosition->moon().illuminance );
+			properties["Intensity"].setData( m_sunPosition->moon().illuminance );
 
 		light.setEnabled( properties["Enabled"].data<bool>() );
 		light.setColor( properties["Color"].data<XMFLOAT3>() );
-		light.setIntensity( properties[light.type() == DMLight::Dir ? "Intensity (lx)" : "Intensity (cd)"].data<float>() );
+		light.setIntensity( properties["Intensity"].data<float>() );
 		if( static_cast<int>( i ) == m_sunPositionLight )
 		{
 			const XMFLOAT3 toSun = m_sunPosition->toSun();

@@ -298,17 +298,18 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	prop->setHigh( 16.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 
-	prop = m_properties.insert( "Night sky luminance (cd/m2)", settings.nightSkyLuminance );
+	prop = m_properties.insert( "Night sky luminance", settings.nightSkyLuminance );
 	prop->setLow( 0.0f );
 	prop->setHigh( 0.01f );
 	prop->setControlType( GUIControlType::DRAG );
+	prop->setUnit( "cd/m2" );
 
 	// Млечный Путь — средняя по сфере яркость его карты (в полосе Галактики — втрое ярче); видно ночью, как звёзды
 	prop = m_properties.insert( "Milky Way luminance", settings.milkyWayLuminance );
 	prop->setLow( 0.0f );
 	prop->setHigh( 0.001f );
 	prop->setControlType( GUIControlType::DRAG );
-	prop->setUnit( "cd/m²" )->setTooltip( "Mean over the whole sky; the galactic plane is about three times brighter" );
+	prop->setUnit( "cd/m2" )->setTooltip( "Mean over the whole sky; the galactic plane is about three times brighter" );
 
 	// Во сколько раз диск луны больше настоящего (0,52°), как Source Angle у источника в UE: по умолчанию вдвое, как
 	// диск солнца (Shaders/sky_background.ps), чтобы был заметен на экране; освещённость от луны не меняется
@@ -352,7 +353,7 @@ SkyAtmosphere::Settings SkyAtmosphere::settings()
 	settings.haze = m_properties["Haze"].data<float>();
 	settings.groundAlbedo = m_properties["Ground albedo"].data<float>();
 	settings.aerialPerspectiveViewDistanceScale = m_properties["Aerial perspective view distance scale"].data<float>();
-	settings.nightSkyLuminance = m_properties["Night sky luminance (cd/m2)"].data<float>();
+	settings.nightSkyLuminance = m_properties["Night sky luminance"].data<float>();
 	settings.milkyWay = m_milkyWayFile;
 	settings.milkyWayLuminance = m_properties["Milky Way luminance"].data<float>();
 	return settings;
@@ -537,7 +538,7 @@ SkyAtmosphere::Parameters SkyAtmosphere::currentParameters() const
 
 	// Луна и ночное свечение — в тех же единицах: яркость, делённая на освещённость от солнца (cb_skyLightScale)
 	const float bakeScale = lightLuminance > 0.0f ? 1.0f / lightLuminance : 0.0f;
-	params.nightSkyLuminance = m_properties["Night sky luminance (cd/m2)"].data<float>() * bakeScale;
+	params.nightSkyLuminance = m_properties["Night sky luminance"].data<float>() * bakeScale;
 	XMFLOAT3 moonColor;
 	params.moonDirection = XMFLOAT3( 0.0f, -1.0f, 0.0f );
 	if( m_lights->moonLight( params.moonDirection, moonColor ) && params.moonDirection.y > moonSkyMinSin )

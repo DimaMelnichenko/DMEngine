@@ -31,12 +31,14 @@ constexpr uint32_t shapeSlot = 6;
 constexpr uint32_t detailSlot = 7;
 constexpr uint32_t weatherSlot = 8;
 
-void addSlider( PropertyContainer& properties, const char* name, float value, float low, float high )
+Property* addSlider( PropertyContainer& properties, const char* name, float value, float low, float high, const char* unit = "" )
 {
 	Property* property = properties.insert( name, value );
 	property->setLow( low );
 	property->setHigh( high );
 	property->setControlType( GUIControlType::SLIDER );
+	property->setUnit( unit );
+	return property;
 }
 
 bool createVolume( uint32_t width, uint32_t height, uint32_t depth, DXGI_FORMAT format, const char* name, Texture& texture,
@@ -79,17 +81,17 @@ bool VolumetricCloud::initialize( const Settings& settings, SkyAtmosphere& atmos
 
 	m_properties.setName( "Volumetric cloud" );
 	m_properties.insert( "Enabled", true );
-	addSlider( m_properties, "Layer bottom altitude", settings.layerBottomAltitude, 200.0f, 8000.0f );
-	addSlider( m_properties, "Layer height", settings.layerHeight, 100.0f, 10000.0f );
+	addSlider( m_properties, "Layer bottom altitude", settings.layerBottomAltitude, 200.0f, 8000.0f, "m" );
+	addSlider( m_properties, "Layer height", settings.layerHeight, 100.0f, 10000.0f, "m" );
 	addSlider( m_properties, "Coverage", settings.coverage, 0.0f, 1.0f );
-	addSlider( m_properties, "Density", settings.density, 0.0f, 0.2f );
+	addSlider( m_properties, "Density", settings.density, 0.0f, 0.2f, "1/m" );
 	m_properties.insert( "Albedo", settings.albedo )->setControlType( GUIControlType::COLOR );
-	addSlider( m_properties, "Shape scale", settings.shapeScale, 1000.0f, 40000.0f );
-	addSlider( m_properties, "Detail scale", settings.detailScale, 100.0f, 5000.0f );
-	addSlider( m_properties, "Weather scale", settings.weatherScale, 5000.0f, 200000.0f );
-	addSlider( m_properties, "Wind speed", settings.windSpeed, 0.0f, 50.0f );
+	addSlider( m_properties, "Shape scale", settings.shapeScale, 1000.0f, 40000.0f, "m" );
+	addSlider( m_properties, "Detail scale", settings.detailScale, 100.0f, 5000.0f, "m" );
+	addSlider( m_properties, "Weather scale", settings.weatherScale, 5000.0f, 200000.0f, "m" );
+	addSlider( m_properties, "Wind speed", settings.windSpeed, 0.0f, 50.0f, "m/s" );
 	addSlider( m_properties, "Shadow strength", settings.shadowStrength, 0.0f, 4.0f );
-	addSlider( m_properties, "Tracing max distance", settings.tracingMaxDistance, 5000.0f, 200000.0f );
+	addSlider( m_properties, "Tracing max distance", settings.tracingMaxDistance, 5000.0f, 200000.0f, "m" );
 	m_initialized = true;
 	return true;
 }

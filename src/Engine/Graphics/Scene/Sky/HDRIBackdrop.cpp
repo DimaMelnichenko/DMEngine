@@ -91,12 +91,14 @@ void logStatistics( const Image& image, float rotationDegrees )
 }
 
 template<class TYPE>
-void addControl( PropertyContainer& properties, const char* name, const TYPE& value, GUIControlType control, float low, float high )
+void addControl( PropertyContainer& properties, const char* name, const TYPE& value, GUIControlType control, float low, float high,
+				 const char* unit = "" )
 {
 	Property* property = properties.insert( name, value );
 	property->setControlType( control );
 	property->setLow( low );
 	property->setHigh( high );
+	property->setUnit( unit );
 }
 
 }
@@ -123,8 +125,8 @@ bool HDRIBackdrop::initialize( const Settings& settings, SkyLight& skyLight )
 
 	m_properties.setName( "HDRI backdrop" );
 	// Границы 0, 0 — без ограничения
-	addControl( m_properties, "Intensity", settings.intensity, GUIControlType::DRAG, 0.0f, 0.0f );
-	addControl( m_properties, "Rotation", settings.rotation, GUIControlType::SLIDER, -180.0f, 180.0f );
+	addControl( m_properties, "Intensity", settings.intensity, GUIControlType::DRAG, 0.0f, 0.0f, "cd/m2" );
+	addControl( m_properties, "Rotation", settings.rotation, GUIControlType::SLIDER, -180.0f, 180.0f, "deg" );
 	addControl( m_properties, "Max luminance", settings.maxLuminance, GUIControlType::DRAG, 0.0f, 0.0f );
 	return true;
 }

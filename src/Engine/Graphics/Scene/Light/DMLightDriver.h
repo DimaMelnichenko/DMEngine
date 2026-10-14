@@ -63,7 +63,7 @@ public:
 
 	// Вьюпорт редактора (выбор и гизмо источников, Viewport): подокно свойств источника index в окне «Lights»; солнце и
 	// луну при SunPosition ведёт время суток (directionFromTime, луна — moonFromTime): их тянут временем — свойство
-	// «Time of day (h)» подокна «Sun position» (sunPositionProperties; nullptr — места и времени у уровня нет)
+	// «Time of day» подокна «Sun position» (sunPositionProperties; nullptr — места и времени у уровня нет)
 	PropertyContainer* lightProperties( size_t index );
 	bool directionFromTime( size_t index ) const;
 	bool moonFromTime( size_t index ) const;

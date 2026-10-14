@@ -109,6 +109,8 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	prop->setLow( nodeSize( 0 ) );
 	prop->setHigh( nodeSize( 0 ) * 64.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+	prop->setUnit( "m" )->setTooltip( "Range of the finest regular level (leaf nodes); each coarser level reaches twice as far, "
+									  "the finer detail levels near the camera - half, a quarter..." );
 
 	prop = m_properties.insert( "Height multiplier", settings.heightMultiplier );
 	prop->setLow( 1.0f );
@@ -2011,7 +2013,7 @@ void CDLODTerrain::addErosionProperties( const TerrainErosionSettings& erosion )
 	};
 	integer( "Droplets", erosion.droplets, 0.0f, 4000000.0f, "Water droplets of the hydraulic erosion" );
 	integer( "Seed", static_cast<int32_t>( erosion.seed ), 0.0f, 1000.0f, "Random numbers of the droplets" );
-	integer( "Lifetime", erosion.lifetime, 1.0f, 300.0f, "Steps of a droplet, a texel each" );
+	integer( "Lifetime", erosion.lifetime, 1.0f, 300.0f, "Steps of a droplet, a texel each" )->setUnit( "steps" );
 	number( "Inertia", erosion.inertia, 0.0f, 1.0f, "Share of the previous direction" );
 	number( "Capacity", erosion.capacity, 0.0f, 8.0f, "Sediment capacity: slope * speed * water * capacity" );
 	number( "Min slope", erosion.minSlope, 0.0f, 0.1f, "Slope in the capacity at least" );
@@ -2019,8 +2021,8 @@ void CDLODTerrain::addErosionProperties( const TerrainErosionSettings& erosion )
 	number( "Deposit speed", erosion.depositSpeed, 0.0f, 1.0f, "Share of the excess sediment deposited per step" );
 	number( "Evaporation", erosion.evaporation, 0.0f, 0.1f, "Water evaporated per step" );
 	number( "Gravity", erosion.gravity, 0.0f, 20.0f, "Speed-up downhill" );
-	integer( "Radius", erosion.radius, 1.0f, 12.0f, "Erosion brush, texels" );
-	number( "Rain scale", erosion.rainScale, 10.0f, 2000.0f, "Size of the rain patches, m" )->setUnit( "m" );
+	integer( "Radius", erosion.radius, 1.0f, 12.0f, "Erosion brush" )->setUnit( "texels" );
+	number( "Rain scale", erosion.rainScale, 10.0f, 2000.0f, "Size of the rain patches" )->setUnit( "m" );
 	number( "Rain min", erosion.rainMin, 0.0f, 1.0f, "Rain share in dry places (1 - even rain)" );
 	number( "Talus angle", erosion.talusAngle, 10.0f, 80.0f, "Angle of repose of the scree" )->setUnit( "deg" );
 	integer( "Thermal iterations", erosion.thermalIterations, 0.0f, 200.0f, "Steps of the scree sliding" );

@@ -118,7 +118,7 @@ const ChannelParameter channelParameters[] = {
 	{ "Bank roundness", &WaterChannelsSettings::bankRoundness, 0.0f, 1.0f, "", "1 - rounded bank top and toe, 0 - straight bank with a sharp edge" },
 	{ "Bend asymmetry", &WaterChannelsSettings::bendAsymmetry, 0.0f, 1.0f, "", "Outer bank of a bend deeper and steeper, inner - a gentle bar" },
 	{ "Pool depth", &WaterChannelsSettings::poolDepth, 0.0f, 1.0f, "", "Pools deeper by this share of the incision (0 - no pools)" },
-	{ "Pool spacing", &WaterChannelsSettings::poolSpacing, 2.0f, 15.0f, "", "Pool and riffle every this many channel widths" },
+	{ "Pool spacing", &WaterChannelsSettings::poolSpacing, 2.0f, 15.0f, "widths", "Pool and riffle every this many channel widths" },
 	{ "Bed noise", &WaterChannelsSettings::bedNoise, 0.0f, 0.5f, "m", "Unevenness of the bed and banks" },
 	{ "Bed noise scale", &WaterChannelsSettings::bedNoiseScale, 0.3f, 5.0f, "m", "Size of the bed unevenness" },
 	{ "Step height", &WaterChannelsSettings::stepHeight, 0.0f, 2.0f, "m",
@@ -203,7 +203,7 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	addSlider( m_properties, "Source radius", settings.sourceRadius, 0.0f, 16.0f, "m" );
 	addSlider( m_properties, "Rain", settings.rain, 0.0f, 50.0f, "mm/h" );
 	addSlider( m_properties, "Evaporation", settings.evaporation, 0.0f, 50.0f, "mm/h" );
-	addSlider( m_properties, "Manning roughness", settings.manning, 0.0f, 0.2f );
+	addSlider( m_properties, "Manning roughness", settings.manning, 0.0f, 0.2f, "s/m^(1/3)" );
 
 	Property* property = m_surfaceProperties.insert( "Absorption", settings.absorption );
 	property->setLow( 0.0f );
@@ -216,7 +216,8 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	addSlider( m_surfaceProperties, "Ripple scale", settings.rippleScale, 0.5f, 20.0f, "m" );
 	addSlider( m_surfaceProperties, "Ripple strength", settings.rippleStrength, 0.0f, 4.0f );
 	addSlider( m_surfaceProperties, "Calm ripple", settings.calmRipple, 0.0f, 2.0f );
-	addSlider( m_surfaceProperties, "Refraction", settings.refraction, 0.0f, 0.1f );
+	addSlider( m_surfaceProperties, "Refraction", settings.refraction, 0.0f, 0.1f, "1/m" )
+		->setTooltip( "Refraction offset, share of the screen height per metre of water" );
 	addSlider( m_surfaceProperties, "Ripple stretch", settings.rippleStretch, 1.0f, 6.0f )
 		->setTooltip( "How many times the ripple pattern is longer along the flow than across it on running water" );
 	addSlider( m_surfaceProperties, "Foam speed", settings.foamSpeed, 0.1f, 5.0f, "m/s" );

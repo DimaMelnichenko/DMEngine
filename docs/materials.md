@@ -240,7 +240,8 @@ WHERE model_id = <id модели>;
 
 Новый параметр материала — строка `MaterialParameterDef`: `value_type` (0 BOOL, 1 FLOAT, 2 VECTOR2, 3 VECTOR3,
 4 VECTOR4, 5 INT, 6 UINT — id текстуры), `control_type` для GUI (1 ползунок, 2 выбор цвета, 3 перетаскивание,
-4 текстура), `low` / `high` — границы ползунка, `default_value` — строка значения по умолчанию.
+4 текстура), `low` / `high` — границы ползунка, `default_value` — строка значения по умолчанию, `unit` — единица
+в окне («WindBranchAngle (deg)», у углов ветра `PBRTree` — deg, частот — Hz, ряби — m; NULL — без единицы).
 
 ## Управление
 

@@ -1020,7 +1020,7 @@ void Viewport::dragDirectionalLight( const DMCamera& camera, DMLightDriver& ligh
 		std::hypot( io.MousePos.x - icon.x, io.MousePos.y - icon.y ) < lightPickPixels )
 	{
 		m_draggingLight = true;
-		const std::vector<Property*> edited = byTime ? std::vector<Property*>{ &( *sunPosition )["Time of day (h)"] } :
+		const std::vector<Property*> edited = byTime ? std::vector<Property*>{ &( *sunPosition )["Time of day"] } :
 													   std::vector<Property*>{ &( *properties )["Pitch"], &( *properties )["Yaw"] };
 		gui.history().begin( ( byTime ? "Time of day: " : "Rotate " ) + properties->name(), edited );
 	}
@@ -1076,7 +1076,7 @@ void Viewport::dragDirectionalLight( const DMCamera& camera, DMLightDriver& ligh
 			best = hours;
 		}
 	}
-	( *sunPosition )["Time of day (h)"].setData( static_cast<float>( std::fmod( best + 24.0, 24.0 ) ) );
+	( *sunPosition )["Time of day"].setData( static_cast<float>( std::fmod( best + 24.0, 24.0 ) ) );
 }
 
 int Viewport::pickAt( const DMCamera& camera, GS::ModelInstances& models, GUI& gui, float x, float y )

@@ -83,12 +83,13 @@ SunPosition::Angles horizontal( double hourAngle, double declination, double lat
 }
 
 template<class TYPE>
-void addControl( PropertyContainer& properties, const char* name, const TYPE& value, float low, float high )
+void addControl( PropertyContainer& properties, const char* name, const TYPE& value, float low, float high, const char* unit = "" )
 {
 	Property* property = properties.insert( name, value );
 	property->setControlType( GUIControlType::SLIDER );
 	property->setLow( low );
 	property->setHigh( high );
+	property->setUnit( unit );
 }
 
 }
@@ -99,14 +100,14 @@ SunPosition::SunPosition( const Settings& settings ) :
 	m_hours( settings.timeOfDay ),
 	m_hoursShown( settings.timeOfDay )
 {
-	addControl( m_properties, "Latitude", settings.latitude, -90.0f, 90.0f );
-	addControl( m_properties, "Longitude", settings.longitude, -180.0f, 180.0f );
-	addControl( m_properties, "Time zone", settings.timeZone, -12.0f, 14.0f );
-	addControl( m_properties, "North offset", settings.northOffset, -180.0f, 180.0f );
+	addControl( m_properties, "Latitude", settings.latitude, -90.0f, 90.0f, "deg" );
+	addControl( m_properties, "Longitude", settings.longitude, -180.0f, 180.0f, "deg" );
+	addControl( m_properties, "Time zone", settings.timeZone, -12.0f, 14.0f, "h" );
+	addControl( m_properties, "North offset", settings.northOffset, -180.0f, 180.0f, "deg" );
 	addControl( m_properties, "Month", settings.month, 1.0f, 12.0f );
 	addControl( m_properties, "Day", settings.day, 1.0f, 31.0f );
-	addControl( m_properties, "Time of day (h)", settings.timeOfDay, 0.0f, 24.0f );
-	m_properties["Time of day (h)"].setStep( 0.25f );	// стрелки и Ctrl — по четверти часа
+	addControl( m_properties, "Time of day", settings.timeOfDay, 0.0f, 24.0f, "h" );
+	m_properties["Time of day"].setStep( 0.25f );	// стрелки и Ctrl — по четверти часа
 	Property* timeScale = m_properties.insert( "Time scale", settings.timeScale );
 	timeScale->setControlType( GUIControlType::DRAG );
 	timeScale->setLow( 0.0f );
@@ -116,7 +117,7 @@ SunPosition::SunPosition( const Settings& settings ) :
 
 void SunPosition::advance( float seconds )
 {
-	const float shown = m_properties["Time of day (h)"].data<float>();
+	const float shown = m_properties["Time of day"].data<float>();
 	if( shown != m_hoursShown )
 		m_hours = shown;
 
@@ -147,7 +148,7 @@ void SunPosition::advance( float seconds )
 		m_properties["Day"].setData( day );
 	}
 	m_hoursShown = static_cast<float>( m_hours );
-	m_properties["Time of day (h)"].setData( m_hoursShown );
+	m_properties["Time of day"].setData( m_hoursShown );
 }
 
 SunPosition::Settings SunPosition::settings() const
@@ -160,7 +161,7 @@ SunPosition::Settings SunPosition::settings() const
 	settings.year = m_year;
 	settings.month = m_properties["Month"].data<int32_t>();
 	settings.day = m_properties["Day"].data<int32_t>();
-	settings.timeOfDay = m_properties["Time of day (h)"].data<float>();
+	settings.timeOfDay = m_properties["Time of day"].data<float>();
 	settings.timeScale = m_properties["Time scale"].data<float>();
 	return settings;
 }

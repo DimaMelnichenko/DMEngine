@@ -10,12 +10,14 @@ namespace GS
 namespace
 {
 
-void addSlider( PropertyContainer& properties, const char* name, float value, float low, float high )
+Property* addSlider( PropertyContainer& properties, const char* name, float value, float low, float high, const char* unit = "" )
 {
 	Property* property = properties.insert( name, value );
 	property->setLow( low );
 	property->setHigh( high );
 	property->setControlType( GUIControlType::SLIDER );
+	property->setUnit( unit );
+	return property;
 }
 
 }
@@ -32,12 +34,12 @@ void Wind::initialize( const std::optional<Settings>& settings )
 	// Выключатель кадра, не данные уровня: -nowind останавливает ветер им, а сила остаётся — сохранение её не затрёт
 	m_properties.insert( "Enabled", true )->setTooltip( "Off - plants and clouds stand still (-nowind); not saved with the level" );
 	// Направление в GUI — Yaw, как у источников света: 0 — на север (+Z), 90 — на восток (+X)
-	addSlider( m_properties, "Yaw", XMConvertToDegrees( std::atan2( initial.direction.x, initial.direction.z ) ), -180.0f, 180.0f );
+	addSlider( m_properties, "Yaw", XMConvertToDegrees( std::atan2( initial.direction.x, initial.direction.z ) ), -180.0f, 180.0f, "deg" );
 	addSlider( m_properties, "Strength", initial.strength, 0.0f, 2.0f );
-	addSlider( m_properties, "Speed (m/s)", initial.speed, 0.0f, 20.0f );
+	addSlider( m_properties, "Speed", initial.speed, 0.0f, 20.0f, "m/s" );
 	addSlider( m_properties, "Min gust amount", initial.minGustAmount, 0.0f, 2.0f );
 	addSlider( m_properties, "Max gust amount", initial.maxGustAmount, 0.0f, 2.0f );
-	addSlider( m_properties, "Gust size (m)", initial.gustSize, 1.0f, 200.0f );
+	addSlider( m_properties, "Gust size", initial.gustSize, 1.0f, 200.0f, "m" );
 	// Поле ветра по рельефу — подокно «Field» по таблице настроек (windFieldParameters): правка пересчитывает поле, когда
 	// закончилась (Scene::applyEditorChanges)
 	m_fieldProperties.setName( "Field" );
@@ -61,10 +63,10 @@ Wind::Settings Wind::settings()
 	const float yaw = XMConvertToRadians( m_properties["Yaw"].data<float>() );
 	settings.direction = XMFLOAT3( std::sin( yaw ), 0.0f, std::cos( yaw ) );
 	settings.strength = m_properties["Strength"].data<float>();
-	settings.speed = m_properties["Speed (m/s)"].data<float>();
+	settings.speed = m_properties["Speed"].data<float>();
 	settings.minGustAmount = m_properties["Min gust amount"].data<float>();
 	settings.maxGustAmount = m_properties["Max gust amount"].data<float>();
-	settings.gustSize = m_properties["Gust size (m)"].data<float>();
+	settings.gustSize = m_properties["Gust size"].data<float>();
 	for( const WindFieldParameter& parameter : windFieldParameters() )
 		if( m_fieldProperties.exists( parameter.name ) )
 			settings.field.*parameter.value = m_fieldProperties[parameter.name].data<float>();
