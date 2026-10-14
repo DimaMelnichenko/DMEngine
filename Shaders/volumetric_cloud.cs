@@ -217,7 +217,9 @@ void mainShadow( uint3 id : SV_DispatchThreadID )
 		[loop] for( int i = 0; i < steps; ++i )
 		{
 			const float3 world = float3( plane.x, middle, plane.y ) + g_lightDirection * ( start + stepLength * ( i + 0.5f ) );
-			depth += cloudDensity( world, world.y, false ) * stepLength;
+			// С мелким шумом, как у видимых облаков: без него тонкие края и рыхлые части не размыты, и тень ложится и там,
+			// где на небе просвет (ослабляла солнце на треть при ясном небе у солнца)
+			depth += cloudDensity( world, world.y, true ) * stepLength;
 		}
 		shadow = exp( -depth * g_shadowStrength );
 	}

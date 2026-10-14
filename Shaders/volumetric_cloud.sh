@@ -47,7 +47,8 @@ float cloudRemap( float value, float low, float high, float newLow, float newHig
 }
 
 // Плотность (коэффициент ослабления, 1/м) в точке мира world на высоте height над землёй. detail — с мелким шумом
-// по краям (дорого; без него — для лучей к солнцу и тени)
+// по краям: он съедает тонкие и рыхлые части, поэтому всё, что должно совпасть с видимыми облаками (карта тени), — с ним;
+// без него (дешевле) — дальние шаги луча к солнцу внутри облака
 float cloudDensity( float3 world, float height, bool detail )
 {
 	const float h = ( height - g_layerBottom ) / ( g_layerTop - g_layerBottom );
