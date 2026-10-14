@@ -161,19 +161,17 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	prop->setUnit( "m" );
 	prop->setTooltip( "Displacement by the layer heights: full nearer than the start, fades out to the end (end 0 - off); the "
 					  "terrain mesh near the camera - Finest mesh" );
-	// Самый мелкий квад сетки у камеры — качество (не данные уровня): мельче — камешки выдавливаются ровнее, дороже вершины
-	m_properties.insert( "Finest mesh", static_cast<int32_t>( detailLevels - tileLevels ) )
+	// Самый мелкий квад сетки у камеры (Terrain.finest_mesh): мельче — камешки выдавливаются ровнее, дороже вершины
+	m_properties.insert( "Finest mesh", std::clamp( settings.finestMesh, 0, static_cast<int32_t>( detailLevels - tileLevels ) ) )
 		->setItems( { "25 cm", "12.5 cm", "6.25 cm", "3.1 cm", "1.6 cm" } )
-		->setTransient()
 		->setTooltip( "Finest quad of the terrain mesh near the camera; each level halves the quad and the distance (at LOD "
 					  "distance 128 m: 12.5 cm to 16 m, 6.25 cm to 8 m, 3.1 cm to 4 m, 1.6 cm to 2 m). Finer - the displacement "
 					  "shapes small stones, the vertex cost grows by about the same per level" );
-	// Где самая мелкая сетка полная — тоже качество. При ходьбе — вокруг ног: LOD считается от отрезка «глаза — ноги»
-	prop = m_properties.insert( "Finest mesh radius", 1.5f );
+	// Где самая мелкая сетка полная (Terrain.finest_mesh_radius). При ходьбе — вокруг ног: LOD от отрезка «глаза — ноги»
+	prop = m_properties.insert( "Finest mesh radius", settings.finestMeshRadius );
 	prop->setLow( 0.0f );
 	prop->setHigh( 8.0f );
 	prop->setUnit( "m" );
-	prop->setTransient();
 	prop->setTooltip( "The finest mesh is full nearer, farther it morphs into the next level (up to 1.5 times the radius): "
 					  "around the feet when walking, around the camera in flight. Not less than the LOD distance gives" );
 
@@ -291,7 +289,8 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 	// Колонка splatmap больше не читается: splat-карту дают правила по итоговому рельефу (TerrainMasks)
 	SQLite::Statement query( DBConnector::instance().db(), "select heightmap, height_multiplier, height_offset, width_multiplier, "
 														   "triplanar_sharpness, height_blend, far_texture_scale, far_blend_start, "
-														   "far_blend_end, displacement_start, displacement_end, micro_shadows from Terrain where id = :id" );
+														   "far_blend_end, displacement_start, displacement_end, micro_shadows, finest_mesh, "
+														   "finest_mesh_radius from Terrain where id = :id" );
 	query.bind( ":id", terrainId );
 
 	if( !query.executeStep() )
@@ -317,6 +316,9 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 	material( "displacement_start", settings.displacementStart );
 	material( "displacement_end", settings.displacementEnd );
 	material( "micro_shadows", settings.microShadows );
+	material( "finest_mesh_radius", settings.finestMeshRadius );
+	if( !query.getColumn( "finest_mesh" ).isNull() )
+		settings.finestMesh = query.getColumn( "finest_mesh" ).getInt();
 	m_heightOffset = static_cast<float>( query.getColumn( "height_offset" ).getDouble() );
 	m_texelSize = static_cast<float>( query.getColumn( "width_multiplier" ).getDouble() );
 
@@ -2116,6 +2118,8 @@ TerrainSettings CDLODTerrain::settings() const
 	settings.displacementStart = displacement.x;
 	settings.displacementEnd = displacement.y;
 	settings.microShadows = m_properties["Micro shadows"].data<float>();
+	settings.finestMesh = m_properties["Finest mesh"].data<int32_t>();
+	settings.finestMeshRadius = m_properties["Finest mesh radius"].data<float>();
 	settings.paint = m_paint.initialized() ? m_paint.tiles() : m_paintTiles;
 	settings.layerTiling.assign( m_material.layerCount(), 0.0f );
 	settings.layerTint.assign( m_material.layerCount(), XMFLOAT3( 1.0f, 1.0f, 1.0f ) );

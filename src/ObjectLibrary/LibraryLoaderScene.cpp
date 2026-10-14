@@ -340,7 +340,8 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 												 "triplanar_sharpness = :triplanar, height_blend = :heightBlend, "
 												 "far_texture_scale = :farScale, far_blend_start = :farStart, far_blend_end = :farEnd, "
 												 "displacement_start = :displacementStart, displacement_end = :displacementEnd, "
-												 "micro_shadows = :microShadows WHERE id = :id" );
+												 "micro_shadows = :microShadows, finest_mesh = :finestMesh, "
+												 "finest_mesh_radius = :finestMeshRadius WHERE id = :id" );
 			updateTerrain.bind( ":heightMultiplier", dbValue( terrain->heightMultiplier ) );
 			updateTerrain.bind( ":triplanar", dbValue( terrain->triplanarSharpness ) );
 			updateTerrain.bind( ":heightBlend", dbValue( terrain->heightBlend ) );
@@ -350,6 +351,8 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			updateTerrain.bind( ":displacementStart", dbValue( terrain->displacementStart ) );
 			updateTerrain.bind( ":displacementEnd", dbValue( terrain->displacementEnd ) );
 			updateTerrain.bind( ":microShadows", dbValue( terrain->microShadows ) );
+			updateTerrain.bind( ":finestMesh", terrain->finestMesh );
+			updateTerrain.bind( ":finestMeshRadius", dbValue( terrain->finestMeshRadius ) );
 			updateTerrain.bind( ":id", terrain->id );
 			updateTerrain.exec();
 

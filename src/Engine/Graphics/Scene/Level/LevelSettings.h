@@ -195,6 +195,10 @@ struct TerrainSettings
 	float displacementStart = 12.0f;	// дисплейсмент: полный ближе, м,
 	float displacementEnd = 24.0f;		// к этому расстоянию — нет (0 — выключен)
 	float microShadows = 1.0f;			// микротени прямого света по AO слоёв, 0…1
+	// Сетка у камеры: самый мелкий рисуемый уровень мельче листа (номер «Finest mesh»: 0 — 25 см … 4 — 1,6 см) и радиус, в
+	// котором он полон (вокруг ног при ходьбе), м
+	int32_t finestMesh = 4;
+	float finestMeshRadius = 1.5f;
 	std::vector<float> layerTiling;		// метров на повтор по номеру слоя (TerrainLayers.layer); 0 — слоя нет
 	std::vector<DirectX::XMFLOAT3> layerTint;	// множитель альбедо по номеру слоя (TerrainLayers.albedo_tint)
 	std::vector<float> layerDisplacement;		// размах дисплейсмента по номеру слоя, м (TerrainLayers.displacement)
