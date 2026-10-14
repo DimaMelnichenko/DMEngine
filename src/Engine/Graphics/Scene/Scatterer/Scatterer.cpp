@@ -13,6 +13,7 @@
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "Materials\ImpostorMaterial.h"
+#include "Terrain\TerrainMasks.h"
 
 using namespace DirectX;
 
@@ -108,6 +109,48 @@ void setLabel( Property& property, const TYPE& value )
 void Scatterer::setTerrain( const TerrainHeightSource* terrain )
 {
 	m_terrain = terrain;
+}
+
+void Scatterer::setGroundLayers( const std::vector<int32_t>& layersOfRoles )
+{
+	m_groundLayers = layersOfRoles;
+}
+
+namespace
+{
+
+// Роли фильтра слоёв земли — имена через запятую («grass_dry,grass_wet»); «none» — ни одной
+std::vector<std::string> filterRoles( const std::string& filter )
+{
+	std::vector<std::string> roles;
+	size_t begin = 0;
+	while( begin <= filter.size() )
+	{
+		const size_t end = std::min( filter.find( ',', begin ), filter.size() );
+		std::string name = filter.substr( begin, end - begin );
+		name.erase( 0, name.find_first_not_of( ' ' ) );
+		name.erase( name.find_last_not_of( ' ' ) + 1 );
+		if( !name.empty() && name != "none" )
+			roles.push_back( name );
+		begin = end + 1;
+	}
+	return roles;
+}
+
+}
+
+uint32_t Scatterer::groundLayerMask( const ScatterLayerSettings& settings ) const
+{
+	if( settings.layerFilter.empty() )
+		return 0;
+	uint32_t mask = 1u << 31;
+	for( const std::string& name : filterRoles( settings.layerFilter ) )
+	{
+		const uint32_t role = static_cast<uint32_t>( terrainLayerRole( name ) );
+		if( role < m_groundLayers.size() && m_groundLayers[role] >= 0 && m_groundLayers[role] < 8 )
+			mask |= 1u << m_groundLayers[role];
+	}
+	return mask;
 }
 
 bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterLayerSettings& layerSettings )
@@ -311,6 +354,29 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	number( "Thinning", settings.thinning, 0.0f, 0.95f, "",
 			"Share of instances removed at the far border (the same ones always; the rest are bigger - the cover stays): fewer "
 			"instances far away; 0 - none" );
+	// Фильтр по слоям земли (как Landscape Grass Type в UE): подокно «Grows on» — флажок на роль слоя материала террейна.
+	// У камней русел нет: их кладёт CPU по камням конвейера, не раскладка по маске
+	if( settings.placement != ScatterPlacement::streamStones &&
+		std::any_of( m_groundLayers.begin(), m_groundLayers.end(), []( int32_t layer ) { return layer >= 0; } ) )
+	{
+		const std::vector<std::string> roles = filterRoles( settings.layerFilter );
+		for( const std::string& name : roles )
+			if( terrainLayerRole( name ) == TerrainLayerRole::count )
+				LOG( "Scatter layer " + layer.mask + ": unknown terrain layer role " + name + " in layer_filter" );
+		layer.groundProperties = std::make_unique<PropertyContainer>( "Grows on" );
+		for( uint32_t role = 0; role < m_groundLayers.size() && role < terrainLayerRoleCount; ++role )
+		{
+			if( m_groundLayers[role] < 0 )
+				continue;
+			const std::string name = terrainLayerRoleName( static_cast<TerrainLayerRole>( role ) );
+			const bool on = settings.layerFilter.empty() || std::find( roles.begin(), roles.end(), name ) != roles.end();
+			layer.groundProperties->insert( name, on )->setTooltip(
+				"The layer grows on this terrain layer (by its weight in the splat map and the detail weights); all on - no filter" );
+		}
+		number( "Ground threshold", settings.layerFilterThreshold, 0.0f, 0.5f, "",
+				"Share of the Grows on terrain layers where the density is half; from twice the share - full, at 0 - none "
+				"(a snow or pebble stroke over a meadow removes the grass); 0 - any share of them" );
+	}
 	// Куртины: модели слоя — виды, растут пятнами (окно варианта: «Patch group» — модели одного вида в одних пятнах)
 	number( "Patch size", settings.patchScale, 0.0f, 100.0f, "m",
 			"Patches of the layer models (species): size of the world noise spots where a model group outnumbers the others; "
@@ -345,6 +411,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		baseShade->setTooltip( "Impostor color at the root x (1 - shade), up to the model top - none: far grass without "
 							   "a shadow is not lighter than the shadowed grass next to it" );
 	}
+	if( layer.groundProperties )
+		layer.properties->addSubContainer( layer.groundProperties.get() );
 	for( LayerVariant& variant : layer.variants )
 		layer.properties->addSubContainer( variant.properties.get() );
 	m_properties.addSubContainer( layer.properties.get() );
@@ -744,7 +812,7 @@ PropertyContainer* Scatterer::properties()
 	return &m_properties;
 }
 
-void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLayerSettings& settings )
+void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLayerSettings& settings ) const
 {
 	params = {};
 	params.cellSize = settings.cellSize;
@@ -765,6 +833,8 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.ditherFade = settings.ditherFade ? 1.0f : 0.0f;
 	params.patchScale = settings.patchScale;
 	params.patchStrength = settings.patchStrength;
+	params.groundLayers = groundLayerMask( settings );
+	params.groundThreshold = settings.layerFilterThreshold;
 	params.rotationRange = XMFLOAT3( XMConvertToRadians( settings.rotationRange.x ), XMConvertToRadians( settings.rotationRange.y ),
 									 XMConvertToRadians( settings.rotationRange.z ) );
 	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
@@ -812,6 +882,24 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 	settings.ditherFade = properties["Dither fade"].data<bool>();
 	settings.patchScale = std::max( properties["Patch size"].data<float>(), 0.0f );
 	settings.patchStrength = std::clamp( properties["Patch strength"].data<float>(), 0.0f, 1.0f );
+	// Фильтр слоёв земли: все флажки — без фильтра, ни одного — «none»
+	if( layer.groundProperties )
+	{
+		std::string filter;
+		bool all = true;
+		for( uint32_t role = 0; role < m_groundLayers.size() && role < terrainLayerRoleCount; ++role )
+		{
+			const std::string name = terrainLayerRoleName( static_cast<TerrainLayerRole>( role ) );
+			if( m_groundLayers[role] < 0 || !layer.groundProperties->exists( name ) )
+				continue;
+			if( ( *layer.groundProperties )[name].data<bool>() )
+				filter += ( filter.empty() ? "" : "," ) + name;
+			else
+				all = false;
+		}
+		settings.layerFilter = all ? std::string() : filter.empty() ? std::string( "none" ) : filter;
+		settings.layerFilterThreshold = std::clamp( properties["Ground threshold"].data<float>(), 0.0f, 0.5f );
+	}
 	settings.rotationRange = properties["Rotation"].data<XMFLOAT3>();
 	settings.alignToTerrain = properties["Align to terrain"].data<bool>();
 	settings.castShadow = properties["Cast shadow"].data<bool>();
@@ -896,6 +984,7 @@ void Scatterer::applyProperties( Layer& layer )
 						   settings.edgeSpread != applied.edgeSpread || settings.thinStart != applied.thinStart ||
 						   settings.thinning != applied.thinning || variantPlacement ||
 						   settings.patchScale != applied.patchScale || settings.patchStrength != applied.patchStrength ||
+						   settings.layerFilter != applied.layerFilter || settings.layerFilterThreshold != applied.layerFilterThreshold ||
 						   settings.alignToTerrain != applied.alignToTerrain ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
@@ -942,6 +1031,8 @@ void Scatterer::applyProperties( Layer& layer )
 		params.thinning = fresh.thinning;
 		params.patchScale = fresh.patchScale;
 		params.patchStrength = fresh.patchStrength;
+		params.groundLayers = fresh.groundLayers;
+		params.groundThreshold = fresh.groundThreshold;
 		params.rotationRange = fresh.rotationRange;
 		params.alignToTerrain = fresh.alignToTerrain;
 		params.castShadow = castShadow;

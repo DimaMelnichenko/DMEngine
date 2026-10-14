@@ -44,6 +44,9 @@ public:
 
 	bool Initialize();
 	void setTerrain( const TerrainHeightSource* terrain );
+	// Слой материала террейна каждой роли (TerrainLayers.role, порядок TerrainLayerRole; −1 — нет) — до addLayer: по ним
+	// фильтр слоёв земли у слоя (ScatterLayerSettings::layerFilter) и его флажки в окне
+	void setGroundLayers( const std::vector<int32_t>& layersOfRoles );
 	// Модель слоя (вариант растения), её вес — доля ячеек слоя — и тень: вариант отбрасывает её, если она включена
 	// у слоя (как Cast Shadow в дескрипторе Mesh Entry у PCG UE: тень только у крупных вариантов дешевле)
 	struct LayerModel
@@ -168,6 +171,7 @@ private:
 		float impostorDensity = 1.0f;
 		float impostorOcclusion = 0.0f;
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
+		std::unique_ptr<PropertyContainer> groundProperties;	// «Grows on»: флажок на роль слоя земли (фильтр слоёв)
 		// Применённые настройки: с ними сравниваются свойства окна. Варианты раскладки (веса, дальности LOD) и размеры
 		// моделей — для пересборки буферов слоя при смене шага, кольца, размера и весов
 		ScatterLayerSettings settings;
@@ -175,7 +179,9 @@ private:
 	};
 
 	// Константы раскладки из настроек слоя (ёмкости и число вариантов заполняет ScatterPass::createBuffers)
-	static void fillParams( ScatterPass::PopulateParams& params, const ScatterLayerSettings& settings );
+	void fillParams( ScatterPass::PopulateParams& params, const ScatterLayerSettings& settings ) const;
+	// Фильтр слоёв земли — биты слоёв материала по ролям из layerFilter (бит 31 — фильтр включён), 0 — без фильтра
+	uint32_t groundLayerMask( const ScatterLayerSettings& settings ) const;
 	// Настройки слоя по свойствам окна (у прочих колонок — применённые)
 	ScatterLayerSettings settingsFromProperties( const Layer& layer ) const;
 	// Правки окна слоя — в раскладку: константы или новые буферы (rebuildPass)
@@ -216,6 +222,7 @@ private:
 	bool m_computeEnabled = true;
 	float m_shadowLength = 0.0f;	// длина тени на метр высоты инстанса в этом кадре — запас дальности каскада
 	const TerrainHeightSource* m_terrain = nullptr;
+	std::vector<int32_t> m_groundLayers;	// слой материала каждой роли (setGroundLayers)
 	std::vector<TerrainHydrology::Stone> m_streamStones;
 	std::vector<Layer> m_layers;
 	DMComputeShader m_computeShader;

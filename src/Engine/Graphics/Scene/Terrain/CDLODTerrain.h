@@ -128,6 +128,8 @@ public:
 	void releaseErosionChange() { m_previousEroded.clear(); m_previousEroded.shrink_to_fit(); m_eroded.clear(); m_eroded.shrink_to_fit(); }
 	// Русла, ручьи, растр статичной воды и приток — для WaterSimulation; nullptr — у уровня нет воды
 	const TerrainHydrology::Result* hydrology() const { return m_hasHydrology ? &m_hydrology : nullptr; }
+	// Слой материала каждой роли (TerrainLayers.role), −1 — нет: по ним фильтр слоёв земли у расстановки
+	const std::array<int32_t, terrainLayerRoleCount>& layersOfRoles() const { return m_layerOf; }
 	// Кривые русел, по которым построены русла; сгенерированы заново при этой загрузке — их пишет в базу Scene
 	const std::vector<StreamCurve>& streamCurves() const { return m_streamCurves; }
 	bool streamsRegenerated() const { return m_streamsRegenerated; }

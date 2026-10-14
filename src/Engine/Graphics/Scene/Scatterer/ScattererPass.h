@@ -183,9 +183,13 @@ public:
 		// Куртины (ScatterLayerSettings::patchScale, patchStrength): размер пятен шума, м (0 — без куртин), и сила 0…1
 		float patchScale;
 		float patchStrength;
-		float padding;
+		// Фильтр по слоям земли (ScatterLayerSettings::layerFilter): бит — слой материала террейна, на котором слой растёт,
+		// бит 31 — фильтр включён (0 — без фильтра), и порог — доля этих слоёв, при которой плотность вдвое меньше
+		uint32_t groundLayers;
+		float groundThreshold;
+		float padding[3];
 	} m_populateParams;
-	static_assert( sizeof( PopulateParams ) == 128, "ScatterLayerBuffer layout" );
+	static_assert( sizeof( PopulateParams ) == 144, "ScatterLayerBuffer layout" );
 
 	PopulateParams& populateParams();
 

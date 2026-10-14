@@ -81,7 +81,11 @@ cbuffer ScatterLayerBuffer : register( b4 )
 	// Куртины: размер пятен шума, м (0 — без куртин), и сила 0…1 — вес вида × e^(4 · сила · шум его группы)
 	float  g_patchScale;
 	float  g_patchStrength;
-	float  g_layerPadding;
+	// Фильтр по слоям земли: бит — слой материала террейна, на котором слой растёт, бит 31 — фильтр включён (0 — на любых);
+	// порог — доля этих слоёв в весах земли, при которой плотность вдвое меньше (от удвоенной — полная)
+	uint   g_groundLayers;
+	float  g_groundThreshold;
+	float3 g_layerPadding;
 };
 
 // ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex
@@ -355,6 +359,17 @@ float foliageClear( float2 worldXZ )
 	return 1.0f - ( 1.0f - terrainFoliageClear( uv ) ) * ( 1.0f - max( channelClear, 0.0f ) ) * ( 1.0f - waterClear );
 }
 
+// Фильтр по слоям земли (как Landscape Grass Type в UE): множитель плотности по доле слоёв g_groundLayers в весах земли
+// — splat-карта, у русел и мазков детальный слой весов. Плавный порог, а не доля: маска правил травы и так — вес травяных
+// слоёв, и плотность «маска × доля» на краю луга была бы её квадратом; мазок снега или гальки по лугу гасит траву
+float groundFilter( float2 worldXZ )
+{
+	if( g_groundLayers == 0 )
+		return 1.0f;
+	const float share = terrainLayerShare( worldXZ, g_groundLayers & 0xffu );
+	return g_groundThreshold > 0.0f ? smoothstep( 0.0f, 2.0f * g_groundThreshold, share ) : ( share > minWeight ? 1.0f : 0.0f );
+}
+
 // След шире детальной плитки у русла (0,25 м) проверяется по краю: центр следа и четыре точки на его окружности
 static const float footprintCheckRadius = 0.25f;
 
@@ -374,7 +389,8 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	if( any( uv < 0.0f ) || any( uv > 1.0f ) )
 		return false;
 
-	const float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - foliageClear( worldXZ ) );
+	const float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - foliageClear( worldXZ ) ) *
+						  groundFilter( worldXZ );
 	const float chance = random( cell, seed + 2 );
 	if( chance >= density )
 		return false;

@@ -111,6 +111,19 @@
 камешки — `edge_spread` 1; у всех четырёх — `dither_fade` 1 (лес — размером). В траве (`530,12.8,250,8,210`) при 0,5 с 20 м кадр 2,60 → 2,53 мс (prepass 0,50 → 0,48, цвет
 0,64 → 0,61, тени 0,61 → 0,60): дальнее кольцо — в основном импостеры, они и так дёшевы.
 
+**Фильтр по слоям земли** (как Landscape Grass Type в UE): слой растёт только на заданных слоях материала террейна —
+`layer_filter`, роли слоёв (`TerrainLayers.role`) через запятую: трава и цветы — `grass_dry,grass_wet`; мазок снега или
+гальки по лугу (кисть, [terrain.md](terrain.md), «Ручная правка слоёв и масок») убирает их сам, без правки масок; камням
+и лесу фильтр не нужен (камень под снегом остаётся). Доля этих слоёв в весах земли — splat-карта, у русел и мазков —
+детальный слой весов 0,25 м (`terrainLayerShare`, `Shaders/terrain_layers.sh`) — даёт множитель плотности
+`smoothstep(0, 2 · порог, доля)` (`groundFilter` в `scatter.cs`): при доле, равной порогу (`layer_filter_threshold`), —
+вдвое реже, от удвоенной — полная, к нулю — нет; порог 0 — растёт везде, где у этих слоёв есть хоть какой-то вес.
+Плавный порог, а не доля как множитель (у UE): маска правил травы и так — вес травяных слоёв, и «маска × доля» на краю
+луга была бы её квадратом. Роли без слоя у террейна пропускаются, неизвестные — строка в логе. На `Test` у травы, цветов
+и сухой травы у ручьёв — `grass_dry,grass_wet`, порог 0,15: на лугу без мазков картинка та же (маски правил совпадают с
+весами), на скалистых склонах ушли редкие пучки, торчавшие из скалы и осыпи (у `251,578` — большая часть); мазок снега
+радиусом 3 м по лугу — круг без травы с мягким краем. Слой расстановки читает веса каждый кадр: мазок виден сразу.
+
 **Несколько видов в слое** (Dimok, 2026-10-13: несколько видов травы — одной маской). Модели слоя — виды растений (как
 Mesh Entries у Static Mesh Spawner в PCG UE, только с куртинами):
 - **свои настройки вида** — колонки `ScatterLayerModels`, NULL — как у слоя (`ScatterVariantPlacement`): `size_multiplier`
@@ -180,7 +193,8 @@ Mesh Entries у Static Mesh Spawner в PCG UE, только с куртинам�
 
 1. Точка: центр ячейки плюс случайное смещение до `jitter / 2` шага по X и Z. Вне террейна — пропуск.
 2. Маска: случайное число сравнивается с плотностью маски в этой точке (без того, что убрали правки рельефа:
-   × `1 − terrainFoliageClear`, `Shaders/terrain_height.sh`) — так маска задаёт вероятность.
+   × `1 − terrainFoliageClear`, `Shaders/terrain_height.sh`, и × фильтр по слоям земли `layer_filter`) — так маска задаёт
+   вероятность.
 3. Высота из карты высот, у кольцевого слоя — со смещением дисплейсмента рельефа (`terrainSurfacePoint`: та же функция,
    что у вершин `cdlod.vs`, ближе «Displacement distance» — трава стоит на поднятых камнях слоёв, [terrain.md](terrain.md),
    «Дисплейсмент»; постоянный слой — без него); если расстояние до камеры вне `near_border…far_border` — пропуск.
@@ -449,6 +463,8 @@ Mesh Entries у Static Mesh Spawner в PCG UE, только с куртинам�
 | `dither_fade` | 0 / 1 | исчезание у краёв кольца долей пикселей (дизеринг), а не размером; NULL — размером |
 | `thinning_start`, `thinning` | м, 0…0,95 | прореживание вдали: с этого расстояния доля оставшихся падает до 1 − `thinning` у дальней границы; NULL — нет |
 | `patch_scale`, `patch_strength` | м, 0…1 | куртины: размер пятен шума и сила перевеса вида в своём пятне («Несколько видов в слое»); NULL или 0 — модели вперемешку по весам |
+| `layer_filter` | роли через запятую | на каких слоях земли слой растёт («Фильтр по слоям земли»): `grass_dry,grass_wet`; `none` — ни на каких; NULL — на любых |
+| `layer_filter_threshold` | 0…0,5 | доля этих слоёв в весах земли, при которой плотность вдвое меньше (от удвоенной — полная); NULL или 0 — любая доля больше 1 % |
 | `jitter` | доля шага | смещение внутри ячейки: 0 — строго по сетке, 1 — в пределах всей ячейки |
 | `rotation_x`, `rotation_y`, `rotation_z` | градусы | полный размах случайного поворота вокруг оси |
 | `align_to_terrain` | 0 / 1 | ось Y объекта по нормали рельефа |
@@ -650,6 +666,7 @@ Outliner → Scene → имя набора. «Shadow LOD scale» — у набо
 | Visible | — (не сохраняется) | слой скрыт: не раскладывается и не рисуется, и в тенях (`Scatterer::layerVisible`) — посмотреть на остальные (траву убрать — видны одуванчики); правка не делает уровень изменённым (`Property::setTransient`); `set "Meadow/0: GrassClump + 3/Visible" false` |
 | Cell size, Near border, Far border, Size, Impostor distance | `cell_size`, `near_border`, `far_border`, `size_multiplier`, `impostor_distance` | буферы слоя заново (`Scatterer::rebuildPass`: ёмкость списков — по кольцу и дальностям LOD), один раз — когда ползунок отпустили или ввод числа закончен (`Property::editing`); прежние GPU отпустит, когда закончит кадры с ними; в лог — «buffers rebuilt after an edit» |
 | Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain, Ground color, Ground color height, Ground color far, Color variation, Edge spread, Thinning start, Thinning, Dither fade | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain`, `ground_color`, `ground_color_height`, `ground_color_far`, `color_variation`, `edge_spread`, `thinning_start`, `thinning`, `dither_fade` | константы раскладки (`dither_fade` и полосы исчезания при нём — пересборка буферов) |
+| Grows on (подокно: флажок на роль слоя земли, все — без фильтра; у камней русел нет), Ground threshold | `layer_filter`, `layer_filter_threshold` | константы раскладки (у постоянного слоя — раскладка заново) |
 | Patch size, Patch strength | `patch_scale`, `patch_strength` | константы раскладки; включение и выключение куртин — пересборка буферов (ёмкость списков — по группам) |
 | Cast shadow, Shadow impostor distance, Impostor shadow, Impostor base shade | `cast_shadow`, `shadow_impostor_distance`, `impostor_cast_shadow`, `impostor_base_shade` | сразу (плоский импостер или со смещением глубины — по `impostor_cast_shadow` при загрузке) |
 

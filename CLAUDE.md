@@ -618,7 +618,9 @@ LOD из практики ушла (UE5 её удалил, Far Cry 5 отказ�
 compute) — растение: одна или несколько моделей со всеми LOD и весами (`ScatterLayerModels`, как Mesh Entries у Static Mesh
 Spawner в PCG UE: модель ячейки — по весам и случайному числу ячейки, с куртинами — веса × шум мира своей группы, виды
 растут пятнами (`patch_scale`, `patch_strength`, `ScatterLayerModels.patch_group`); у модели свои размер, разброс и
-наклон по земле — `ScatterLayerModels.size_multiplier`, `size_variation`, `align_to_terrain`, NULL — как у слоя; LOD экземпляра — по расстоянию и дальностям LOD
+наклон по земле — `ScatterLayerModels.size_multiplier`, `size_variation`, `align_to_terrain`, NULL — как у слоя; фильтр по
+слоям земли — `ScatterLayers.layer_filter` (роли `TerrainLayers.role`, как Landscape Grass Type в UE: трава — только на
+травяных слоях, мазок снега по лугу её убирает); LOD экземпляра — по расстоянию и дальностям LOD
 модели `ModelProperties.range`, как у моделей уровня, но ближе на случайную долю у каждого экземпляра; меняется только
 меш, экземпляр на месте; в полосе перехода экземпляр — в списках перехода обоих LOD с дизерингом), маска плотности, шаг сетки `cell_size`, кольцо `near_border…far_border` вокруг камеры с плавным исчезанием (`*_fade`),
 размер, `jitter`, предел случайного поворота по осям `rotation_x/y/z` (градусы), цвет земли у растения (`ground_color`,

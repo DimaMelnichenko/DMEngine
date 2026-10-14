@@ -193,6 +193,8 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		if( !scatterer->Initialize() )
 			return false;
 		scatterer->setTerrain( &m_terrain );
+		const auto& layersOfRoles = m_terrain.layersOfRoles();
+		scatterer->setGroundLayers( std::vector<int32_t>( layersOfRoles.begin(), layersOfRoles.end() ) );
 
 		for( const LevelDescription::ScatterLayer& layer : set.layers )
 		{

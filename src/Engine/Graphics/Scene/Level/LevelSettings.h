@@ -642,6 +642,11 @@ struct ScatterLayerSettings
 	// по ячейкам; размер, м (0 — без куртин), и сила 0…1
 	float patchScale = 0.0f;
 	float patchStrength = 0.0f;
+	// Фильтр по слоям земли (как Landscape Grass Type в UE): роли слоёв материала террейна (TerrainLayers.role) через
+	// запятую, на которых слой растёт, — «grass_dry,grass_wet»; пусто — растёт на любых. Порог — доля этих слоёв в весах
+	// земли, при которой плотность вдвое меньше; от удвоенной — полная, к нулю — нет (мазок снега по лугу гасит траву)
+	std::string layerFilter;
+	float layerFilterThreshold = 0.0f;
 	float jitter = 0.0f;			// смещение внутри ячейки, доля шага
 	DirectX::XMFLOAT3 rotationRange = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
 	bool alignToTerrain = false;	// ось Y инстанса по нормали террейна

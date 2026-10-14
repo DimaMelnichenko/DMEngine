@@ -553,7 +553,7 @@ void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& leve
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
 {
 	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, placement, mask, cell_size, near_border, far_border, near_fade, "
-														   "far_fade, size_multiplier, size_variation, ground_color, ground_color_height, ground_color_far, color_variation, edge_spread, thinning_start, thinning, dither_fade, patch_scale, patch_strength, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow, persistent, "
+														   "far_fade, size_multiplier, size_variation, ground_color, ground_color_height, ground_color_far, color_variation, edge_spread, thinning_start, thinning, dither_fade, patch_scale, patch_strength, layer_filter, layer_filter_threshold, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow, persistent, "
 														   "impostor_distance, shadow_impostor_distance, impostor_density, impostor_occlusion, impostor_cast_shadow, impostor_base_shade "
 														   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
@@ -592,6 +592,9 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		// Куртины: NULL — 0, без куртин
 		layer.settings.patchScale = value( "patch_scale" );
 		layer.settings.patchStrength = value( "patch_strength" );
+		// Фильтр по слоям земли: NULL — растёт на любых
+		layer.settings.layerFilter = query.getColumn( "layer_filter" ).isNull() ? std::string() : query.getColumn( "layer_filter" ).getString();
+		layer.settings.layerFilterThreshold = value( "layer_filter_threshold" );
 		layer.settings.jitter = value( "jitter" );
 		layer.settings.rotationRange = XMFLOAT3( value( "rotation_x" ), value( "rotation_y" ), value( "rotation_z" ) );
 		layer.settings.alignToTerrain = query.getColumn( "align_to_terrain" ).getInt() != 0;

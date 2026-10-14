@@ -464,7 +464,8 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 											 "ground_color_height = :groundColorHeight, ground_color_far = :groundColorFar, "
 											 "color_variation = :colorVariation, edge_spread = :edgeSpread, thinning_start = :thinStart, "
 											 "thinning = :thinning, dither_fade = :ditherFade, patch_scale = :patchScale, "
-											 "patch_strength = :patchStrength, jitter = :jitter, rotation_x = :rotationX, "
+											 "patch_strength = :patchStrength, layer_filter = :layerFilter, "
+											 "layer_filter_threshold = :layerFilterThreshold, jitter = :jitter, rotation_x = :rotationX, "
 											 "rotation_y = :rotationY, rotation_z = :rotationZ, align_to_terrain = :align, "
 											 "cast_shadow = :castShadow, shadow_impostor_distance = :shadowImpostor, "
 											 "impostor_cast_shadow = :impostorShadow, impostor_base_shade = :baseShade, impostor_distance = :impostorDistance "
@@ -494,6 +495,11 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			updateScatter.bind( ":ditherFade", layer.ditherFade ? 1 : 0 );
 			updateScatter.bind( ":patchScale", dbValue( layer.patchScale ) );
 			updateScatter.bind( ":patchStrength", dbValue( layer.patchStrength ) );
+			if( layer.layerFilter.empty() )
+				updateScatter.bind( ":layerFilter" );
+			else
+				updateScatter.bind( ":layerFilter", layer.layerFilter );
+			updateScatter.bind( ":layerFilterThreshold", dbValue( layer.layerFilterThreshold ) );
 			updateScatter.bind( ":jitter", dbValue( layer.jitter ) );
 			updateScatter.bind( ":rotationX", dbValue( layer.rotationRange.x ) );
 			updateScatter.bind( ":rotationY", dbValue( layer.rotationRange.y ) );
