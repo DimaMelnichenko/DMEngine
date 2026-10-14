@@ -45,6 +45,9 @@ cbuffer FrameConstantBuffer : register( SLOT_CB_FRAME )
 	float4 cb_cloudShadow;
 	// Детальная вода у русел (water.sh, WaterSimulation): x — размер мира, м; y — сторона плитки, м (0 — её нет)
 	float4 cb_waterDetail;
+	// Следы в траве (foliage_interaction.sh, FoliageInteraction): xy — начало окна поля по X и Z мира, м; z — 1 / его сторона,
+	// 1/м (0 — поля нет); w — наклон полностью придавленного растения, рад
+	float4 cb_foliageInteraction;
 };
 
 // Раскладка — ConstantBuffers::ShaderModelConstant

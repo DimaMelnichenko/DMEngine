@@ -1,7 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Filename: light.vs
 // Вершинный шейдер материала PBR. С define DEPTH_ONLY — вариант «только глубина» (Shaders/depth_only.sh): позиция и UV
-// без нормалей, для проходов без цвета. Растения с WindWeight > 0 гнутся ветром уровня (Shaders/wind.sh). С define
+// без нормалей, для проходов без цвета. Растения с WindWeight > 0 гнутся ветром уровня (Shaders/wind.sh) и расступаются
+// по следам в траве (Shaders/foliage_interaction.sh). С define
 // LOD_DITHER — экземпляр в полосе смены LOD: отдаёт пиксельному шейдеру долю перехода (Shaders/lod_dither.sh). С define
 // WIND_TREE (материал PBRTree) — ветер дерева по данным второго потока вершин (VertexData::Wind), а не изгиб травы
 ////////////////////////////////////////////////////////////////////////////////
@@ -13,6 +14,7 @@
 #include "depth_only.sh"
 #include "pbr_material.sh"
 #include "wind.sh"
+#include "foliage_interaction.sh"
 
 //////////////
 // TYPEDEFS //
@@ -116,7 +118,8 @@ float4 vertexWorldPosition( VertexInputType input, inout WindFrame frame )
 											  input.windWeights, normalize( mul( normal, (float3x3)world ) ), g_windWeight, frame );
 	}
 #else
-	[branch] if( g_windWeight > 0.0f && cb_windStrength > 0.0f )
+	// Растение (не дерево): ветер и следы в траве (foliage_interaction.sh) — следы есть и без ветра (-nowind)
+	[branch] if( g_windWeight > 0.0f )
 	{
 	#if defined(INST_POS)
 		const InstanceParam instance = g_instanceData[instanceIndex];
@@ -133,9 +136,17 @@ float4 vertexWorldPosition( VertexInputType input, inout WindFrame frame )
 		const float height = max( worldPosition.y - root.y, 0.0f );
 		const float3 up = float3( 0.0f, 1.0f, 0.0f );
 	#endif
-		const float2 bend = windBendVector( root, g_windWeight );
-		worldPosition.xyz += windOffset( bend, height );
-		windBendFrame( bend, height, up, frame );
+		// След в корне: придавленное растение ветер качает меньше, затем оно наклоняется вокруг корня целиком (вместе с изгибом)
+		const float2 push = foliagePushAt( root );
+		const float pressed = length( push );
+		[branch] if( cb_windStrength > 0.0f )
+		{
+			const float2 bend = windBendVector( root, g_windWeight ) * ( 1.0f - 0.8f * pressed );
+			worldPosition.xyz += windOffset( bend, height );
+			windBendFrame( bend, height, up, frame );
+		}
+		[branch] if( pressed > 0.01f )
+			worldPosition.xyz = foliageTrample( worldPosition.xyz, root, up, push, frame );
 	}
 #endif
 	return worldPosition;

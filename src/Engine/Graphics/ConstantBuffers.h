@@ -56,6 +56,9 @@ struct FrameParameters
 	DirectX::XMFLOAT4 cloudShadow = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 	// Детальная вода у русел (WaterSimulation::detailParameters, water.sh): размер мира, м; сторона плитки, м (0 — её нет)
 	DirectX::XMFLOAT4 waterDetail = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	// Следы в траве (FoliageInteraction::frameParameters, foliage_interaction.sh): начало окна X, Z; 1 / сторона (0 — поля
+	// нет); наибольший наклон, рад
+	DirectX::XMFLOAT4 foliageInteraction = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 };
 
 class ConstantBuffers
@@ -110,9 +113,10 @@ private:
 		float fogVolumeDistance;
 		DirectX::XMFLOAT4 cloudShadow;
 		DirectX::XMFLOAT4 waterDetail;
+		DirectX::XMFLOAT4 foliageInteraction;
 	};
 	// Раскладка — cbuffer FrameConstantBuffer в Shaders/common.vs
-	static_assert( sizeof( ShaderFrameConstant ) == 448, "FrameConstantBuffer layout" );
+	static_assert( sizeof( ShaderFrameConstant ) == 464, "FrameConstantBuffer layout" );
 
 	// Раскладка — cbuffer WorldBuffer в Shaders/common.vs
 	struct alignas( 16 ) ShaderModelConstant

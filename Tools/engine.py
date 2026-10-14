@@ -1,6 +1,6 @@
 """Удалённое управление запущенным DMEngine — как консоль и Remote Control API в UE (docs/remote.md).
 
-    python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles] [--pix] [--gpu-validation]
+    python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles] [--pix] [--gpu-validation]
     python Tools/engine.py [--timeout с] <команда ...>    одна команда, печатает ответ; код выхода 1 при error
     python Tools/engine.py [--timeout с] run сценарий.txt  команды из файла по строке (# — комментарий), за одно подключение
     python Tools/engine.py stop                   quit, ожидание выхода, ошибки из log.txt
@@ -13,7 +13,8 @@ ASCII (правило Tools/).
 
 Ответ на команду — не дольше --timeout (60 с; у stat gpu N — ещё N, у pix — 300): не ответил — главный цикл движка стоит
 (в log.txt — строки «Frame watchdog»: на каком шаге кадра), скрипт печатает их и выходит с кодом 2; start и stop такой
-движок закрывают принудительно. --gpu-validation — Debug с GPU-based validation (-gpuvalidation): для правок слоя D3D12.
+движок закрывают принудительно. --config — сборка, по умолчанию Release; --gpu-validation — GPU-based validation
+(-gpuvalidation) для правок слоя D3D12, только в Debug: без --config запускает Debug, с --config Release — ошибка.
 """
 import argparse
 import ctypes
@@ -196,6 +197,11 @@ def start(args):
     if probe:
         probe.close()
         raise SystemExit('error: an engine with -remote is already running')
+    # Слой проверки есть только в Debug: --gpu-validation без --config — Debug, иначе Release без проверки шёл бы молча
+    if args.config is None:
+        args.config = 'Debug' if args.gpu_validation else 'Release'
+    elif args.gpu_validation and args.config == 'Release':
+        raise SystemExit('error: --gpu-validation needs the Debug build (--config Debug)')
     exe = os.path.join(ROOT, 'cmake-build-cli-%s' % args.config.lower(), 'DMEngine.exe')
     if not os.path.exists(exe):
         raise SystemExit('error: not found %s, build it first: Tools\\build.cmd %s' % (exe, args.config.lower()))
@@ -300,7 +306,8 @@ def main():
         return 1
     if sys.argv[1] == 'start':
         parser = argparse.ArgumentParser(prog='engine.py start')
-        parser.add_argument('--config', choices=['Debug', 'Release'], default='Release')
+        parser.add_argument('--config', choices=['Debug', 'Release'], default=None,
+                            help='build to run: Release by default, Debug with --gpu-validation')
         parser.add_argument('--camera', help='x,y,z[,pitch,yaw] start camera')
         parser.add_argument('--level', help='level from Levels')
         parser.add_argument('--resolution', default='1920x1080',

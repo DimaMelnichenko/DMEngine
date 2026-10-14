@@ -462,6 +462,8 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	// Тень облаков: карту считает их compute(), константы — уже сейчас (её читают все приёмники тени солнца)
 	frameParameters.cloudShadow = scene.cloudShadow( frame.view );
 	frameParameters.waterDetail = scene.waterDetail();
+	// Следы в траве: окно поля сдвинул Scene::update, поле запишет compute() этого кадра
+	frameParameters.foliageInteraction = scene.foliageInteraction().frameParameters();
 	m_constants.beginFrame( frameParameters );
 	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
 	m_postProcess.bindExposure();

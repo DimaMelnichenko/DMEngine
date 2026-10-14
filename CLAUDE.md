@@ -94,7 +94,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Списки (`-Keys`, `-Camera`) скрипт разбирает сам: через `powershell -File` они приходят одной строкой.
   `-NoGui` (`-nogui` у exe) снимает кадр без окон ImGui — для сравнения картинки лучше с ним.
 - **Серия проверок за один запуск** — удалённое управление (`docs/remote.md`, как консоль и Remote Control в UE):
-  `python Tools/engine.py start [--config Release] [--nogui]`, затем команды — `camera x,y,z,pitch,yaw`,
+  `python Tools/engine.py start [--config Debug] [--nogui]` (по умолчанию — Release), затем команды — `camera x,y,z,pitch,yaw`,
   `screenshot файл.png [кадров]`, `stat gpu 3`, `list` / `get` / `set "окно/свойство" значение`, `press "окно/кнопка"`, `pix [файл.wpix]` (захват PIX, движок с
   `--pix`; разбор — `Tools/pix_events.py`, `docs/d3d12.md` §4), `key G`, `timestep 0.0166`
   (фиксированный шаг времени для серий кадров), — по одной или
@@ -316,6 +316,10 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 дизерингом, если у материала `DitheredLODTransition`; у каскадов теней дальности × `Models.shadow_lod_scale` — у елей 0,5,
 его же берёт расстановка; отсечение по frustum вида — границы
 меша `AbstractMesh::bounds` считаются при загрузке, меши в список отрисовки),
+`FoliageInteraction` (трава расступается: поле следов 48 м вокруг камеры — compute `Shaders/foliage_interaction.cs`,
+ресурс сцены `SLOT_FOLIAGE_INTERACTION`, t124, окно — `cb_foliageInteraction`; растения с `WindWeight` > 0 наклоняются от
+корня в `vertexWorldPosition` — `Shaders/foliage_interaction.sh`; давит камера у земли, звери — `addInteractor`; окно
+«Foliage interaction», не сохраняется; `docs/wind.md`),
 `WaterSimulation` (вода; режим строки `mode`: `static` — на `Test`, как реки-сплайны и озёра UE Water, но одним полем:
 уровень ручьёв (Маннинг) и озёр (перелив) — одно поле по сети с подпором, растр, поверхность — те же тайлы, что у
 симуляции; вода для травы и мокрой земли — тот же растр, всё из конвейера рельефа и воды (`TerrainHydrology`), без шагов;

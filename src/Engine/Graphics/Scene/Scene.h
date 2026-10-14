@@ -14,6 +14,7 @@
 #include "Light\DMLightDriver.h"
 #include "Wind\Wind.h"
 #include "Water\WaterSimulation.h"
+#include "Foliage\FoliageInteraction.h"
 #include "Level\LevelDescription.h"
 
 class LibraryLoader;
@@ -76,6 +77,8 @@ public:
 	const std::vector<std::unique_ptr<Scatterer>>& scatterers() const;
 	// Частицы уровня; без эмиттеров (или с -noparticles) объект не инициализирован
 	ParticleSystem& particles();
+	// Следы в траве (константы кадра cb_foliageInteraction); без террейна объект не инициализирован
+	FoliageInteraction& foliageInteraction();
 
 private:
 	// Препятствия поля ветра — экземпляры моделей уровня выше 3 м (ели рощи, постройки) кругом по габариту
@@ -96,6 +99,7 @@ private:
 	ModelInstances m_models;
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;
 	ParticleSystem m_particles;	// частицы уровня (LevelParticleEmitters); -noparticles — нет
+	FoliageInteraction m_foliageInteraction;	// трава расступается у камеры (только с террейном)
 
 	std::vector<SceneObject*> m_objects;
 };

@@ -9,7 +9,7 @@
 ## Как запустить
 
 ```
-python Tools/engine.py start [--config Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--gpu-validation]
+python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--gpu-validation]
 python Tools/engine.py camera 567,58.1,212,8,35
 python Tools/engine.py screenshot кадр.png
 python Tools/engine.py stat gpu 3
@@ -22,8 +22,9 @@ python Tools/engine.py stop
   1920 × 1080, снимки и замеры сравнимы между запусками и с прежними цифрами (`--resolution desktop` — окно без рамки
   на весь монитор, как у движка без параметра; любое `ШxВ` — своё окно). Кадры с одной точки совпадают до пикселя, если
   не движется трава: `--nowind` (параметр движка `-nowind`) или `set "Wind/Enabled" false` ([wind.md](wind.md)), и нет
-  частиц: `--noparticles` (`-noparticles`, [particles.md](particles.md)). `--gpu-validation` (`-gpuvalidation`) — Debug с
-  GPU-based validation ([d3d12.md](d3d12.md) §4). Затем ждёт, пока движок откроет канал, то есть конца инициализации, и
+  частиц: `--noparticles` (`-noparticles`, [particles.md](particles.md)). `--gpu-validation` (`-gpuvalidation`) —
+  GPU-based validation ([d3d12.md](d3d12.md) §4), только в Debug: без `--config` запускает Debug, с `--config Release` —
+  ошибка (Release без слоя проверки шёл бы молча). Затем ждёт, пока движок откроет канал, то есть конца инициализации, и
   первого кадра (`wait 1`).
 - **Ответ — не дольше 60 с** (`python Tools/engine.py --timeout 120 <команда>` — своё время; у `stat gpu N` — ещё N, у
   `pix` — 300): не ответил — главный цикл движка стоит. Скрипт печатает строки «Frame watchdog» из `log.txt` (сторож

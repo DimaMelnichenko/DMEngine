@@ -232,9 +232,15 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		return false;
 	}
 
+	// Следы в траве — по земле под камерой; без поля растения просто не расступаются
+	if( m_level.terrain && !m_foliageInteraction.initialize( &m_terrain ) )
+		LOG( "Foliage interaction is not initialized" );
+
 	// Небо первым: его compute() готовит освещение окружением для всех, render() рисует фон
 	SceneObject* sky = m_useHDRI ? static_cast<SceneObject*>( &m_hdri ) : &m_atmosphere;
 	m_objects = { sky, &m_sky, &m_terrain, &m_models };
+	if( m_foliageInteraction.initialized() )
+		m_objects.push_back( &m_foliageInteraction );
 	// Облака — сразу после неба: их compute() читает таблицы атмосферы и освещение окружением, фон рисуют поверх неба
 	if( m_clouds.initialized() )
 		m_objects.insert( m_objects.begin() + 1, &m_clouds );
@@ -493,6 +499,11 @@ ModelInstances& Scene::models()
 WaterSimulation& Scene::water()
 {
 	return m_water;
+}
+
+FoliageInteraction& Scene::foliageInteraction()
+{
+	return m_foliageInteraction;
 }
 
 const std::vector<std::unique_ptr<Scatterer>>& Scene::scatterers() const
