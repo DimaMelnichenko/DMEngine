@@ -709,14 +709,15 @@ float edgeFade( float fade, uint variant, inout float size )
 // g_thinStart до 1 − g_thinning у дальней границы; уходят одни и те же (порог — своё случайное число экземпляра), а
 // оставшиеся немного крупнее (thinGrowth) — луг редеет меньше. Экземпляр не пропадает разом (с 14 см шага пучок посреди
 // луга возникал целиком), а исчезает, пока доля уходит ниже его числа на THINNING_SOFTNESS: множитель 0…1 — как у края
-// кольца (edgeFade: дизерингом или размером); 0 — экземпляр убран
+// кольца (edgeFade: дизерингом или размером); 0 — экземпляр убран. Число экземпляра — в 0…1 − THINNING_SOFTNESS: до
+// g_thinStart (доля 1) все целиком, иначе экземпляры с числом у единицы просвечивали бы дизерингом по всему кольцу
 float thinOut( float distanceToCamera, float random01, inout float size )
 {
 	[branch] if( g_thinning <= 0.0f || g_thinStart >= g_farBorder )
 		return 1.0f;
 	const float keep = 1.0f - g_thinning * smoothstep( g_thinStart, g_farBorder, distanceToCamera );
 	size *= pow( max( keep, 0.05f ), -thinGrowth );
-	return saturate( ( keep - random01 ) / THINNING_SOFTNESS );
+	return saturate( ( keep - random01 * ( 1.0f - THINNING_SOFTNESS ) ) / THINNING_SOFTNESS );
 }
 
 // Цвет земли под экземпляром кольцевого слоя (scatter_ground.sh): средний цвет слоёв террейна в точке с их множителем и
