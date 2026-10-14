@@ -40,9 +40,9 @@ void markEditing( Property& property, bool active )
 		editedProperty = nullptr;
 }
 
-// Формат числа: заданный у свойства или по величине значения — 128000 без экспоненты, 0,0003 — не в ноль; unit —
-// с единицами (у поля ввода их нет)
-std::string numberFormat( const Property& property, float value, bool unit = true )
+// Формат числа: заданный у свойства или по величине значения — 128000 без экспоненты, 0,0003 — не в ноль. Единица — в
+// названии (displayName), а не в значении: у полей пар и векторов её и не было, а узкое поле с ней обрезается
+std::string numberFormat( const Property& property, float value )
 {
 	std::string format = property.format();
 	if( format.empty() )
@@ -57,9 +57,20 @@ std::string numberFormat( const Property& property, float value, bool unit = tru
 		else
 			format = "%.3e";
 	}
-	if( unit && !property.unit().empty() )
-		format += " " + property.unit();
 	return format;
+}
+
+// Название в окне: единица свойства (Property::setUnit) — в скобках после имени, «Far border (m)», у любого контрола
+// (числа, пары «от, до», векторы, надписи). Имя уже кончается ею («Time of day (h)» — так их зовут команды set) — как есть
+std::string displayName( const std::string& name, const Property& property )
+{
+	const std::string& unit = property.unit();
+	if( unit.empty() )
+		return name;
+	const std::string suffix = " (" + unit + ")";
+	if( name.size() >= suffix.size() && name.compare( name.size() - suffix.size(), suffix.size(), suffix ) == 0 )
+		return name;
+	return name + suffix;
 }
 
 // Шаг стрелок и привязки (Ctrl) без заданного у свойства: степень десяти около трёх пикселей перетаскивания — у доли 0…1
@@ -214,16 +225,34 @@ void labelCell( const std::string& name, Property& property )
 {
 	ImGui::TableNextColumn();
 	ImGui::AlignTextToFramePadding();
+	const std::string full = displayName( name, property );
+	// Не влезает в колонку — сокращается имя, единица остаётся целиком: «Displacement dist... (m)» (полное — в подсказке)
+	std::string shown = full;
+	const float width = ImGui::GetContentRegionAvail().x;
+	if( ImGui::CalcTextSize( shown.c_str() ).x > width )
+	{
+		const std::string suffix = full.substr( name.size() );
+		std::string head = name;
+		while( !head.empty() && ImGui::CalcTextSize( ( head + "..." + suffix ).c_str() ).x > width )
+		{
+			// Символ UTF-8 целиком (байты продолжения, затем первый) и пробелы перед многоточием
+			while( !head.empty() && ( static_cast<unsigned char>( head.back() ) & 0xC0 ) == 0x80 )
+				head.pop_back();
+			if( !head.empty() )
+				head.pop_back();
+			while( !head.empty() && head.back() == ' ' )
+				head.pop_back();
+		}
+		shown = head + "..." + suffix;
+	}
 	if( property.modified() )
-		ImGui::TextColored( modifiedColor, "%s", name.c_str() );
+		ImGui::TextColored( modifiedColor, "%s", shown.c_str() );
 	else
-		ImGui::TextUnformatted( name.c_str() );
+		ImGui::TextUnformatted( shown.c_str() );
 	if( ImGui::IsItemHovered( ImGuiHoveredFlags_DelayShort ) )
 	{
 		ImGui::BeginTooltip();
-		ImGui::TextUnformatted( name.c_str() );
-		if( !property.unit().empty() )
-			ImGui::TextDisabled( "unit: %s", property.unit().c_str() );
+		ImGui::TextUnformatted( full.c_str() );
 		if( !property.tooltip().empty() )
 		{
 			ImGui::PushTextWrapPos( ImGui::GetFontSize() * 30.0f );
