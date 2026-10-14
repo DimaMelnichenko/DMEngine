@@ -152,10 +152,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
   затем `python Tools/import_gltf.py Meshes/source/grass.glb --scatter --lod-ranges 6,14 --shadow-min-lod 2`; ромашка (`Camomile`, альфа-лепестки) — так же
   со скриптом `Tools/blender_camomile.py` и файлом `Meshes/source/camomile.glb`. Модели Poly Haven в расстановке
-  (пучки `grass_medium_01`, одуванчики `dandelion_01`, камни `rock_moss_set_01`; архивы `.blend` — в `DownloadResources\`,
+  (одуванчики `dandelion_01`, камни `rock_moss_set_01`; архивы `.blend` — в `DownloadResources\`,
   скачать — `python Tools/polyhaven_download.py <ассет> --resolution 2k`) — `Tools/export_polyhaven.py` через Blender,
-  затем `import_gltf.py --scatter`, команды — в `docs/models.md`; без архива травы высокие пучки подменяет
-  `Tools/blender_grass_tall.py` (импорт в копию базы, `base.db3` не меняется). Растения Megascans с Fab (трава
+  затем `import_gltf.py --scatter`, команды — в `docs/models.md`. Растения Megascans с Fab (трава
   `Grass` sltiN — `dry_grass`; архив FBX или папка из Unreal Launcher — в `DownloadResources\`) —
   `Tools/export_megascans.py` через Blender, затем
   `import_gltf.py --scatter`, команды — в `docs/models.md`. Ели уровня
@@ -458,7 +457,7 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн,
-наборы `Meadow` (трава — пучки `GrassClump` из Blender вперемешку с высокими пучками Poly Haven `grass_medium_01`,
+наборы `Meadow` (трава — пучки `GrassClump` из Blender,
 три LOD до 30 м с тенью от LOD2, дальше до 45 м — плоские импостеры без тени,
 пучки сухой травы Megascans `dry_grass` своим слоем вдоль ручьёв — `mask_grass_riparian` и одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`: галька по маске и камни русел — слой `stream_stones`, ~7 тыс.), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,

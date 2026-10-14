@@ -16,8 +16,8 @@
 #     (повторяется) всем материалам: Custom Properties → extras glTF → экземпляр материала при импорте;
 #   - экспортирует .glb (Apply Modifiers, касательные).
 # Запуск из корня проекта:
-#   blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/grass_medium_01_4k.blend.zip
-#       --objects "grass_medium_01_(mid_b|tall_a)_LOD\d" --out Meshes/source/grass_medium_01.glb [--texture-size 2048]
+#   blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/dandelion_01_2k.blend.zip
+#       --objects "^dandelion_01_" --lod-offset 1 --out Meshes/source/dandelion_01.glb [--texture-size 2048]
 import argparse
 import os
 import re

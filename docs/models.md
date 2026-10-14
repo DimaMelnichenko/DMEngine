@@ -261,46 +261,29 @@ glTF их не понимает: материалы собраны на узла
 Нынешние модели расстановки уровня `Test`:
 
 ```
-blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/grass_medium_01_4k.blend.zip --objects "^grass_medium_01_(small_a|mid_b|mid_c|tall_a|tall_b|tall_c)_LOD" --out Meshes/source/grass_medium_01.glb --material-param WindWeight=1 --material-param DiffuseTransmissionFactor=0.4 --material-param DiffuseTransmissionColorFactor=1,1,0.6 --material-param DiffuseTransmissionColor=BaseColor --material-param DitheredLODTransition=true
-python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --scale 1.7 --lod-ranges 4,12
 blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/dandelion_01_2k.blend.zip --objects "^dandelion_01_" --lod-offset 1 --out Meshes/source/dandelion_01.glb --material-param WindWeight=1.5 --material-param DiffuseTransmissionFactor=0.35 --material-param DiffuseTransmissionColorFactor=1,1,0.6 --material-param DiffuseTransmissionColor=BaseColor --material-param DitheredLODTransition=true
 python Tools/import_gltf.py Meshes/source/dandelion_01.glb --scatter --lod-ranges 3,8
 blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/rock_moss_set_01_2k.blend.zip --objects "^rock_moss_set_01_rock0\d$" --decimate-tris 1500,400,100 --single-sided --out Meshes/source/rock_moss_set_01.glb --material-param DitheredLODTransition=true
 python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-ranges 8,20
 ```
 
-Цвет просвета из той же текстуры, что базовый цвет (`DiffuseTransmissionColor=BaseColor`: трава и одуванчики Poly Haven,
+Цвет просвета из той же текстуры, что базовый цвет (`DiffuseTransmissionColor=BaseColor`: одуванчики Poly Haven,
 `GrassClump` из `blender_grass.py`), — импортёр умножает `BaseColorFactor` на 1 / (1 − t) (`compensate_transmission`,
 строка в выводе): фото — отражённый цвет, а движок, как KHR_materials_diffuse_transmission, отражает базовый цвет × (1 − t),
 и растение темнело бы на долю пропускания (у травы t = 0,4 — × 0,6). Как у Megascans (там — в `export_megascans.py`
 картинками) и Two Sided Foliage в UE: отражённое — как на фото, прошедшее — t × цвет просвета. Отдельная карта просвета
 не трогается.
 
-Пучки травы Poly Haven в 15–20 см; `--scale 1.7` доводит высокие до роста GrassClump (0,4–0,55 м). Базовый цвет
-у материала `MASK` импортёр помечает `Textures.preserve_alpha_coverage` = `alphaCutoff`: мипы сохраняют покрытие
+Базовый цвет у материала `MASK` импортёр помечает `Textures.preserve_alpha_coverage` = `alphaCutoff`: мипы сохраняют покрытие
 альфы ([materials.md](materials.md)), иначе пучки-карточки и лепестки тают в нескольких метрах.
 
-В архиве травы 17 пучков; `--objects` берёт шесть, которые есть в базе (в слое `Meadow` — три высоких `tall_*`).
 Параметры движка, которых нет в glTF, — в командах (`--material-param`), у своих моделей — в сценариях:
 `blender_grass.py` (ветер, пропускание, смена LOD и тон травы множителем базового цвета), `blender_camomile.py`
 (ветер, пропускание), `blender_test_model.py` (смена LOD у камня). Повторный импорт их не теряет.
 
-Без архива травы слой `Meadow` рисует вместо трёх высоких пучков кубы-заглушки (примитив `box` строки `Meshes`),
-и замер нагрузки луга ничего не значит. Подмена — `Tools/blender_grass_tall.py`: три пучка травинок-полосок без
-альфы, как `GrassClump`, но 0,55–1,0 м и с тремя LOD (~700 / 160 / 35 треугольников), объекты и картинка названы как у
-настоящего ассета (`grass_medium_01_tall_a`, `grass_medium_01_BaseColor`), поэтому файлы ложатся на пути из
-`base.db3`, а строки базы не меняются — импорт идёт в копию базы:
-
-```
-blender -b --factory-startup --python Tools/blender_grass_tall.py -- Meshes/source/grass_medium_01.glb
-copy base.db3 %TEMP%\base_sandbox.db3
-python Tools/import_gltf.py Meshes/source/grass_medium_01.glb --scatter --lod-ranges 4,12 --db %TEMP%\base_sandbox.db3
-```
-
-Карты `MetallicRoughness` и `Normal` экземпляра материала (строки `Textures` 52, 53) — плоские PNG 4 × 4 рядом с
-`grass_medium_01_BaseColor.png` (G 0,6 — шероховатость, B 0 — металличность; нормаль 128, 128, 255). Материал
-настоящего ассета Masked с порогом 0,5: у подмены альфа везде 1, отсечение ничего не режет, а стоимость варианта
-с `clip` та же, что у карточек Poly Haven. Настоящий ассет возвращают команды выше — файлы перезапишутся.
+Трава Poly Haven `grass_medium_01` (пучки в 15–20 см, высокие — `--scale 1.7`, и подмена без архива
+`Tools/blender_grass_tall.py`) удалена 2026-10-14 (решение Dimok: на лугу почти не отличалась от `GrassClump`; траву
+получше добавим отдельно) — строки базы, файлы и сценарий подмены есть в истории git.
 
 ## Модели Megascans (Fab)
 

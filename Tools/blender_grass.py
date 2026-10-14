@@ -29,7 +29,7 @@ BLADES = 36
 LODS = [(36, 4, 1.0), (24, 3, 1.5), (16, 2, 2.6)]
 COLUMNS = 8          # оттенков в текстуре
 SEED = 7
-BASE_COLOR_FACTOR = (0.977, 0.8, 1.0, 1.0)   # тон — к траве Poly Haven grass_medium_01 рядом в том же слое
+BASE_COLOR_FACTOR = (0.977, 0.8, 1.0, 1.0)   # тон травы (подбирался к пучкам Poly Haven, удалённым 2026-10-14)
 
 
 def output_path():

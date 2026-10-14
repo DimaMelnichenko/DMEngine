@@ -63,7 +63,7 @@
 | `gust_size` | м | 25 | длина волны порыва |
 
 Параметр материала `WindWeight` (`PBR`, `PBRInstance`; 0…2, по умолчанию 0) — отклик на ветер, как Wind Weight
-у SimpleGrassWind: `grass/GrassMat` и `grass_medium_01` — 1, `dandelion_01` — 1,5 (стебли тоньше, растения ниже),
+у SimpleGrassWind: `grass/GrassMat` — 1, `dandelion_01` — 1,5 (стебли тоньше, растения ниже),
 `camomile` — 1. Меняется в GUI у секции модели ([materials.md](materials.md)).
 
 ## Ветер дерева — схема SpeedTree
