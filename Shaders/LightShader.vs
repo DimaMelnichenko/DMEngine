@@ -83,8 +83,9 @@ float3 meshToWorld( float3 position, uint instanceIndex, float4x4 world )
 	return mul( float4( position, 1.0f ), world ).xyz;
 }
 
-// Положение вершины в мире — один путь у полного варианта и «только глубина»
-float4 vertexWorldPosition( VertexInputType input )
+// Положение вершины в мире — один путь у полного варианта и «только глубина»; frame — базис вершины в мире: ветер гнёт его
+// вместе с вершиной (на положение он не влияет, у «только глубина» не нужен)
+float4 vertexWorldPosition( VertexInputType input, inout WindFrame frame )
 {
 	float4 position = float4( input.position.xyz, 1.0f );
 	// Номер инстанса вызова → индекс в данных инстансов (у расстановки — через список вида, instance.sh)
@@ -112,7 +113,7 @@ float4 vertexWorldPosition( VertexInputType input )
 		worldPosition.xyz = treeWindPosition( worldPosition.xyz, meshToWorld( float3( 0.0f, 0.0f, 0.0f ), instanceIndex, world ),
 											  meshToWorld( input.windBranch1.xyz, instanceIndex, world ), input.windBranch1.w,
 											  meshToWorld( input.windBranch2.xyz, instanceIndex, world ), input.windBranch2.w,
-											  input.windWeights, normalize( mul( normal, (float3x3)world ) ), g_windWeight );
+											  input.windWeights, normalize( mul( normal, (float3x3)world ) ), g_windWeight, frame );
 	}
 #else
 	[branch] if( g_windWeight > 0.0f && cb_windStrength > 0.0f )
@@ -121,15 +122,20 @@ float4 vertexWorldPosition( VertexInputType input )
 		const InstanceParam instance = g_instanceData[instanceIndex];
 		const float3 root = mul( float4( instance.position, 1.0f ), world ).xyz;
 		#ifdef INST_SCALE
-			const float height = input.position.y * instance.scale;
+			const float height = max( input.position.y * instance.scale, 0.0f );
 		#else
-			const float height = input.position.y;
+			const float height = max( input.position.y, 0.0f );
 		#endif
+		// Высота растёт вдоль оси Y экземпляра (наклон по земле, случайный поворот)
+		const float3 up = normalize( mul( calcInstanceDirection( float3( 0.0f, 1.0f, 0.0f ), instanceIndex ), (float3x3)world ) );
 	#else
 		const float3 root = world[3].xyz;
-		const float height = worldPosition.y - root.y;
+		const float height = max( worldPosition.y - root.y, 0.0f );
+		const float3 up = float3( 0.0f, 1.0f, 0.0f );
 	#endif
-		worldPosition.xyz += windOffset( root, max( height, 0.0f ), g_windWeight );
+		const float2 bend = windBendVector( root, g_windWeight );
+		worldPosition.xyz += windOffset( bend, height );
+		windBendFrame( bend, height, up, frame );
 	}
 #endif
 	return worldPosition;
@@ -144,7 +150,8 @@ float4 vertexWorldPosition( VertexInputType input )
 DepthOnlyVertexOutput main( VertexInputType input )
 {
 	DepthOnlyVertexOutput output;
-	output.position = mul( mul( vertexWorldPosition( input ), cb_viewMatrix ), cb_projectionMatrix );
+	WindFrame frame = (WindFrame)0;	// базис здесь не нужен
+	output.position = mul( mul( vertexWorldPosition( input, frame ), cb_viewMatrix ), cb_projectionMatrix );
 	output.tex = input.tex;
 #ifdef LOD_DITHER
 	output.lodDither = lodDither( instanceSlot( input.instanceIndex ) );
@@ -166,7 +173,27 @@ PixelInputType main(VertexInputType input)
 	output.lodDither = lodDither( instanceIndex );
 #endif
 
-	float4 worldPosition = vertexWorldPosition( input );
+	// Базис вершины в мире — до ветра: касательная и бинормаль лежат в поверхности и преобразуются как точки, нормаль —
+	// обратной транспонированной; ветер гнёт его вместе с вершиной (vertexWorldPosition)
+	float4x4 worldMatrix = objectWorldMatrix( instanceIndex );
+	float3x3 normalMatrix = (float3x3)cb_worldInverseTransposeMatrix;
+#ifdef INST_MATRIX
+	normalMatrix = (float3x3)g_instanceTransforms[instanceIndex].worldInverseTranspose;
+#endif
+	float3 normal = input.normal;
+	float3 tangent = input.tangent;
+	float3 binormal = input.binormal;
+	#if defined(INSTANCE_INCLUDE)
+		normal = calcInstanceDirection( normal, instanceIndex );
+		tangent = calcInstanceDirection( tangent, instanceIndex );
+		binormal = calcInstanceDirection( binormal, instanceIndex );
+	#endif
+	WindFrame frame;
+	frame.normal = normalize( mul( normal, normalMatrix ) );
+	frame.tangent = normalize( mul( tangent, (float3x3)worldMatrix ) );
+	frame.binormal = normalize( mul( binormal, (float3x3)worldMatrix ) );
+
+	float4 worldPosition = vertexWorldPosition( input, frame );
 	output.worldPosition = worldPosition.xyz;
 #ifdef INST_SCATTER
 	// Высота вершины над корнем экземпляра — в покое (без ветра): у корня цвет земли, к высоте перехода — свой
@@ -177,26 +204,9 @@ PixelInputType main(VertexInputType input)
 	output.groundBrightness = 1.0f;
 #endif
     output.position = mul( mul( worldPosition, cb_viewMatrix ), cb_projectionMatrix );
-
-	float4x4 worldMatrix = objectWorldMatrix( instanceIndex );
-	float3x3 normalMatrix = (float3x3)cb_worldInverseTransposeMatrix;
-#ifdef INST_MATRIX
-	normalMatrix = (float3x3)g_instanceTransforms[instanceIndex].worldInverseTranspose;
-#endif
-
-	float3 normal = input.normal;
-	float3 tangent = input.tangent;
-	float3 binormal = input.binormal;
-	#if defined(INSTANCE_INCLUDE)
-		normal = calcInstanceDirection( normal, instanceIndex );
-		tangent = calcInstanceDirection( tangent, instanceIndex );
-		binormal = calcInstanceDirection( binormal, instanceIndex );
-	#endif
-
-	// Касательная и бинормаль лежат в поверхности и преобразуются как точки, нормаль — обратной транспонированной
-	output.normal = normalize( mul( normal, normalMatrix ) );
-	output.tangent = normalize( mul( tangent, (float3x3)worldMatrix ) );
-	output.binormal = normalize( mul( binormal, (float3x3)worldMatrix ) );
+	output.normal = frame.normal;
+	output.tangent = frame.tangent;
+	output.binormal = frame.binormal;
 
 
     return output;
