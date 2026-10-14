@@ -1004,8 +1004,9 @@ std::string TerrainHydrology::generationKey( const HeightField& field, const Wat
 	// v3 — приток кончается у оси главного, а не в узле слияния по стоку D8 (ось главного сдвинута извилинами); v4 — сток
 	// без прямых по сетке (flowDirections: Barnes 2014 на ровных местах, D8-LTD на склонах); v5 — размах извилин по зазору
 	// до чужого ручья (русла не пересекаются); v6 — соседние ветви в клетку-две сливаются (русла не ложатся одно на другое);
-	// v7 — ось спускается поперёк течения к дну ложбины (не режет её борт)
-	const char version[] = "streams-v7";
+	// v7 — ось спускается поперёк течения к дну ложбины (не режет её борт); v8 — исток из озера на месте, у берега (как
+	// родник: без сглаживания, спуска ко дну и извилин)
+	const char version[] = "streams-v8";
 	key.add( version, sizeof( version ) );
 	key.add( field.size );
 	key.add( field.texelSize );
@@ -1126,13 +1127,17 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 			}
 		}
 	}
+	// Исток из озера — первый узел ниже него (главный приток — в озере): на месте, у берега, как родник. Сглаживание, спуск ко
+	// дну ложбины и извилины уводили его на 2–6 м от озера: между водой и врезом истока оставалась перемычка, а дальше
+	// 3 клеток исток озера не узнавался вовсе — у перелива между озёрами у 560,485 (Dimok, 2026-10-14)
+	auto fixedNode = [&]( int k ) { return down[k] < 0 || up[k] < 0 || ( dr.lake[stream[up[k]]] && !dr.lake[stream[k]] ); };
 	// Сглаживание вдоль главного притока: боковые притоки на ось не тянут
 	auto smoothAxis = [&]()
 	{
 		std::vector<Point> smoothed = position;
 		for( int k = 0; k < count; ++k )
 		{
-			if( down[k] < 0 || up[k] < 0 )
+			if( fixedNode( k ) )
 				continue;
 			smoothed[k].x = 0.25 * position[up[k]].x + 0.5 * position[k].x + 0.25 * position[down[k]].x;
 			smoothed[k].y = 0.25 * position[up[k]].y + 0.5 * position[k].y + 0.25 * position[down[k]].y;
@@ -1161,7 +1166,7 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 			std::vector<Point> moved = position;
 			for( int k = 0; k < count; ++k )
 			{
-				if( down[k] < 0 || up[k] < 0 || dr.lake[stream[k]] )
+				if( fixedNode( k ) || dr.lake[stream[k]] )
 					continue;
 				double tx = position[down[k]].x - position[up[k]].x;
 				double ty = position[down[k]].y - position[up[k]].y;
@@ -1245,12 +1250,13 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 				}
 			}
 		}
+		// Путь — от истока или от озера выше по течению: у истока из озера извилины тоже нарастают с нуля
 		std::vector<double> distance( count, 0.0 );
 		for( int k : nodeOrder )
 		{
 			const int d = down[k];
 			if( d >= 0 && up[d] == k )
-				distance[d] = distance[k] + std::hypot( position[d].x - position[k].x, position[d].y - position[k].y );
+				distance[d] = dr.lake[stream[k]] ? 0.0 : distance[k] + std::hypot( position[d].x - position[k].x, position[d].y - position[k].y );
 		}
 		Grid smooth = dr.height;
 		for( int pass = 0; pass < 3; ++pass )
@@ -2267,6 +2273,69 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		};
 		for( size_t v = 0; v + 1 < kept.size(); ++v )
 			mouths.push_back( { kept[v], kept[v + 1], sectionAt( v ), sectionAt( v + 1 ) } );	}
+	// Прорез порога у истока — то же продолжение русла, но назад, в озеро. Исток начинается у изолинии перелива (сглаживание
+	// и извилины сдвигают первый узел ещё на метр-три от озера), а вода озера стоит ниже перелива на запас берега
+	// (lake_freeboard): между водой и врезом истока оставался гребень земли на 5–22 см над водой — перемычка, а вода в русле
+	// за ней — на уровне озера, будто из него (Dimok, 2026-10-14, у 515,517; так — у истоков всех семи озёр со стоком).
+	// Прорез — прямо от первого узла истока к ближайшей клетке озера, где чаша глубже продолжения дна (не дальше
+	// outletReach), и ещё на ширину русла; сечение — истока, дно — вниз к озеру не положе min_slope: вода озера заходит в
+	// прорез и переходит в исток
+	constexpr double outletReach = 12.0;	// клетки
+	for( int label = 0; label < lakeCount; ++label )
+	{
+		const int k = lakeOutlet[label];
+		if( k < 0 )
+			continue;
+		const double thalwegFactor = 1.0 + shape[k].thalweg;
+		auto bedAlong = [&]( double along ) { return bed[k] - p.minSlope * along * cell; };
+		const int radius = static_cast<int>( std::ceil( outletReach ) );
+		const int col = cellOf[k] % n;
+		const int row = cellOf[k] / n;
+		Point target{ 0.0, 0.0 };
+		double best = std::numeric_limits<double>::infinity();
+		for( int dy = -radius; dy <= radius; ++dy )
+		{
+			for( int dx = -radius; dx <= radius; ++dx )
+			{
+				const int r = row + dy;
+				const int c = col + dx;
+				if( r < 0 || c < 0 || r >= n || c >= n )
+					continue;
+				const size_t i = static_cast<size_t>( r ) * n + c;
+				const Point q{ c + 0.5, r + 0.5 };
+				const double distance = std::hypot( q.x - position[k].x, q.y - position[k].y );
+				if( lakeLabel[i] != label || distance > outletReach || distance >= best ||
+					basin[i] < ( height.values[i] - bedAlong( distance ) ) * thalwegFactor )
+					continue;
+				best = distance;
+				target = q;
+			}
+		}
+		if( !std::isfinite( best ) || best < 1e-3 )
+			continue;
+		const double dirX = ( target.x - position[k].x ) / best;
+		const double dirY = ( target.y - position[k].y ) / best;
+		const double length = best + half[k] + bank[k];
+		const int steps = std::max( static_cast<int>( std::ceil( length ) ), 1 );
+		auto sectionAt = [&]( double along )
+		{
+			Section result = section( k );
+			if( along <= 0.0 )
+				return result;
+			const Point q{ position[k].x + dirX * along, position[k].y + dirY * along };
+			result.bend = 0.0;
+			result.stepHeight = 0.0;
+			result.depth = std::max( height.sample( q.x - 0.5, q.y - 0.5 ) - bedAlong( along ), 0.0 );
+			return result;
+		};
+		for( int s = 0; s < steps; ++s )
+		{
+			const double a = length * s / steps;
+			const double b = length * ( s + 1 ) / steps;
+			mouths.push_back( { { position[k].x + dirX * a, position[k].y + dirY * a }, { position[k].x + dirX * b, position[k].y + dirY * b },
+								sectionAt( a ), sectionAt( b ) } );
+		}
+	}
 	auto mouthBox = [&]( const MouthExtension& mouth, double& xMin, double& xMax, double& yMin, double& yMax )
 	{
 		const double reach = std::max( mouth.s0.half + mouth.s0.bank, mouth.s1.half + mouth.s1.bank );
@@ -2279,7 +2348,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	{
 		return pieceProfile( mouth.s0, mouth.s1, mouth.a, mouth.b, 0.0, 1.0, cx, cy, base );
 	};
-	// Врез подводных русел — отдельно: в клетках озера он спорит с чашей, а не с руслами
+	// Врез подводных русел и прорезов порога — отдельно: в клетках озера он спорит с чашей, а не с руслами
 	std::vector<double> mouthCarve( cells, 0.0 );
 	std::vector<double> mouthBase( cells, 0.0 );
 	for( const MouthExtension& mouth : mouths )
