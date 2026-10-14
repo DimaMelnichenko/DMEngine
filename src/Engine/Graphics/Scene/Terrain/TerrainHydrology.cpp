@@ -1003,8 +1003,9 @@ std::string TerrainHydrology::generationKey( const HeightField& field, const Wat
 	Fingerprint key;
 	// v3 — приток кончается у оси главного, а не в узле слияния по стоку D8 (ось главного сдвинута извилинами); v4 — сток
 	// без прямых по сетке (flowDirections: Barnes 2014 на ровных местах, D8-LTD на склонах); v5 — размах извилин по зазору
-	// до чужого ручья (русла не пересекаются); v6 — соседние ветви в клетку-две сливаются (русла не ложатся одно на другое)
-	const char version[] = "streams-v6";
+	// до чужого ручья (русла не пересекаются); v6 — соседние ветви в клетку-две сливаются (русла не ложатся одно на другое);
+	// v7 — ось спускается поперёк течения к дну ложбины (не режет её борт)
+	const char version[] = "streams-v7";
 	key.add( version, sizeof( version ) );
 	key.add( field.size );
 	key.add( field.texelSize );
@@ -1126,7 +1127,7 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 		}
 	}
 	// Сглаживание вдоль главного притока: боковые притоки на ось не тянут
-	for( int pass = 0; pass < p.smooth; ++pass )
+	auto smoothAxis = [&]()
 	{
 		std::vector<Point> smoothed = position;
 		for( int k = 0; k < count; ++k )
@@ -1137,6 +1138,71 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 			smoothed[k].y = 0.25 * position[up[k]].y + 0.5 * position[k].y + 0.25 * position[down[k]].y;
 		}
 		position = std::move( smoothed );
+	};
+	for( int pass = 0; pass < p.smooth; ++pass )
+		smoothAxis();
+	// Ось — к дну ложбины: путь стока по клеткам (D8-LTD) и сглаживание местами уводят её на борт — на изгибе лощины
+	// поперёк склона до 7 м в сторону и на 2,5 м выше дна (Dimok, 2026-10-14: русло прорезало стенку лощины, а вода по
+	// дну ушла из него). Узел спускается поперёк течения к ближайшему низу рельефа (без заполнения низин) — только к
+	// настоящему дну: спуск кончается подъёмом не дальше valleySnapReach клеток (на ровном склоне спуск не кончается — ось
+	// не сползает по нему), низ ниже на valleySnapDrop (на ровном месте ось не дёргается), и узел уходит от пути стока не
+	// дальше valleySnapReach; за проход — половина пути, затем сглаживание (как активный контур). Исток, конец и узлы в
+	// озере — на месте
+	{
+		constexpr int valleySnapPasses = 6;
+		constexpr double valleySnapReach = 8.0;
+		constexpr double valleySnapStep = 0.25;
+		constexpr double valleySnapDrop = 0.05;
+		const Grid& ground = dr.height;
+		const std::vector<Point> flowPath = position;
+		auto heightAt = [&]( const Point& at ) { return ground.sample( at.x - 0.5, at.y - 0.5 ); };
+		for( int pass = 0; pass < valleySnapPasses; ++pass )
+		{
+			std::vector<Point> moved = position;
+			for( int k = 0; k < count; ++k )
+			{
+				if( down[k] < 0 || up[k] < 0 || dr.lake[stream[k]] )
+					continue;
+				double tx = position[down[k]].x - position[up[k]].x;
+				double ty = position[down[k]].y - position[up[k]].y;
+				const double length = std::hypot( tx, ty );
+				if( length < 1e-6 )
+					continue;
+				tx /= length;
+				ty /= length;
+				const double start = heightAt( position[k] );
+				double bestOffset = 0.0;
+				double bestDrop = valleySnapDrop;
+				for( double side : { 1.0, -1.0 } )
+				{
+					double offset = 0.0;
+					double lowest = start;
+					bool bottom = false;
+					while( offset + valleySnapStep <= valleySnapReach )
+					{
+						const double next = offset + valleySnapStep;
+						const double h = heightAt( { position[k].x - ty * side * next, position[k].y + tx * side * next } );
+						if( h >= lowest )
+						{
+							bottom = true;
+							break;
+						}
+						lowest = h;
+						offset = next;
+					}
+					if( bottom && start - lowest > bestDrop )
+					{
+						bestDrop = start - lowest;
+						bestOffset = side * offset;
+					}
+				}
+				const Point target = { position[k].x - ty * 0.5 * bestOffset, position[k].y + tx * 0.5 * bestOffset };
+				if( std::hypot( target.x - flowPath[k].x, target.y - flowPath[k].y ) <= valleySnapReach )
+					moved[k] = target;
+			}
+			position = std::move( moved );
+			smoothAxis();
+		}
 	}
 	// Узлы от истоков вниз — в порядке накопления стока (каждый раньше получателя; на ровном месте получатель не ниже)
 	std::vector<int> rank( cells );
@@ -1241,7 +1307,8 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 		if( atConfluence )
 		{
 			constexpr double confluenceReach = 1.5;	// клетки
-			constexpr int mainReach = 12;				// узлов главного вверх и вниз от узла слияния
+			// узлов главного вверх и вниз от узла слияния: ось у дна ложбины — приток подходит к главному и в 15 узлах от слияния
+			constexpr int mainReach = 24;
 			std::vector<int> mainNodes = { last };
 			// Узлы в озере — не точки кривых (кривая кончается первым из них): только вне озера
 			for( int k2 = up[last], steps = 0; k2 >= 0 && steps < mainReach && !dr.lake[stream[k2]]; k2 = up[k2], ++steps )
@@ -1751,7 +1818,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 
 	// 4. Ложе: дно монотонно вниз по течению, профиль по отрезкам оси — дно, тальвег, борта. В озере ложа нет (дно озера),
 	// и оно не тянет дно ниже по течению; ниже озера врез нарастает от порога (outletSlope)
-	std::vector<double> half( count ), depth( count ), bed( count ), bank( count ), surface( count );
+	std::vector<double> half( count ), depth( count ), bed( count ), bank( count ), surface( count ), rim( count );
 	for( int k = 0; k < count; ++k )
 	{
 		Shape s = shape[k];
@@ -1775,11 +1842,29 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		const double waterEstimate = std::max( std::pow( q[k] * s.manning / ( 2.0 * half[k] * cell * std::sqrt( surfaceSlope ) ), 0.6 ),
 											   p.minWaterDepth * grow );
 		depth[k] = std::max( { s.depthCoef * std::pow( q[k], 0.4 ), s.minIncision, ( waterEstimate + s.freeboard ) / ( 1.0 + s.thalweg ) } );
+		// Бровка — по нижнему берегу: ось на борту ложбины (правленая или ручная кривая поперёк склона) — берег под горку
+		// ниже земли у оси, и вода «ниже бровки на запас» от земли у оси выходила через него на склон. Земля у бровок — на
+		// полуширину дна и борт вреза в обе стороны поперёк течения; дно и вода — от нижней из них
+		rim[k] = surface[k];
+		if( !inLake( k ) && !std::isfinite( outletDistance[k] ) && up[k] >= 0 && down[k] >= 0 )
+		{
+			double tx = position[down[k]].x - position[up[k]].x;
+			double ty = position[down[k]].y - position[up[k]].y;
+			const double length = std::hypot( tx, ty );
+			if( length > 1e-6 )
+			{
+				tx /= length;
+				ty /= length;
+				const double reach = half[k] + depth[k] * s.bankSlope / cell;
+				for( double side : { 1.0, -1.0 } )
+					rim[k] = std::min( rim[k], height.sample( position[k].x - ty * side * reach - 0.5, position[k].y + tx * side * reach - 0.5 ) );
+			}
+		}
 		if( inLake( k ) )
 			depth[k] = 0.0;
 		else if( std::isfinite( outletDistance[k] ) )
 			depth[k] = std::min( depth[k], std::max( static_cast<double>( p.lakeFreeboard ), 0.0 ) + outletDistance[k] * outletSlope );
-		bed[k] = surface[k] - depth[k];
+		bed[k] = rim[k] - depth[k];
 	}
 	for( int k : nodeOrder )
 	{
@@ -2556,7 +2641,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		needDepth[k] = minDepth;
 		const double freeboard = std::min( shape[k].freeboard, ramp );
 		level[k] = actual[k] + std::max( waterDepth, minDepth );
-		level[k] = std::max( std::min( level[k], surface[k] - freeboard ), actual[k] + std::min( 0.05, minDepth ) );
+		// Ниже нижней бровки на запас (rim — нижний берег, а не земля у оси)
+		level[k] = std::max( std::min( level[k], rim[k] - freeboard ), actual[k] + std::min( 0.05, minDepth ) );
 	}
 	// Озеро стоит до перелива своей низины без запаса берега (lakeSurface): это вода ниже по течению у узлов в озере и у
 	// ручьёв, которые в него впадают; исток на пороге — тоже на уровне озера (порог прорезан на запас, дальше вода сходит по
