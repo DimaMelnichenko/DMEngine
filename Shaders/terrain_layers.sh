@@ -13,7 +13,7 @@
 #include "slots.h"
 #include "samplers.sh"
 #include "bindless.sh"
-#include "terrain_layer_constants.sh"
+#include "terrain_layer_constants.h"
 
 #ifndef TERRAIN_LAYERS_IN_CBUFFER
 DM_SRV( StructuredBuffer<TerrainLayerConstants>, g_terrainLayerConstants, SLOT_TERRAIN_LAYER_CONSTANTS );

@@ -6,6 +6,7 @@
 #include "D3D\DMD3D.h"
 #include "DMComputeShader.h"
 #include "Logger\Logger.h"
+#include "Shaders\terrain_erosion_constants.h"
 
 namespace GS
 {
@@ -17,33 +18,6 @@ constexpr uint32_t dropletGroup = 64;	// DROPLET_GROUP в terrain_erosion.cs
 constexpr uint32_t cellGroup = 8;		// CELL_GROUP
 constexpr uint32_t batchSize = 65536;	// капель в пакете: внутри шага друг друга не видят
 
-// Раскладка — cbuffer TerrainErosionBuffer (b4) в terrain_erosion.cs
-struct alignas( 16 ) Parameters
-{
-	uint32_t size;
-	uint32_t padded;
-	uint32_t pad;
-	int32_t radius;
-	float cell;
-	float inertia;
-	float capacity;
-	float minSlope;
-	float erodeSpeed;
-	float depositSpeed;
-	float evaporation;
-	float gravity;
-	float brushSum;
-	uint32_t dropletCount;
-	uint32_t batch;
-	uint32_t seed;
-	float padding0;
-	float rainScale;
-	float rainMin;
-	float talusTangent;
-	float thermalRate;
-	float padding[3];
-};
-static_assert( sizeof( Parameters ) == 96, "TerrainErosionBuffer layout" );
 
 // Droplet в terrain_erosion.cs
 struct Droplet
@@ -140,7 +114,7 @@ bool TerrainErosion::run( const std::vector<float>& heights, uint32_t size, floa
 			if( x * x + y * y <= radius * radius )
 				brushSum += std::max( radius - std::sqrt( static_cast<double>( x * x + y * y ) ), 0.0 );
 
-	Parameters params = {};
+	TerrainErosionBuffer params = {};
 	params.size = size;
 	params.padded = padded;
 	params.pad = pad;
@@ -160,7 +134,7 @@ bool TerrainErosion::run( const std::vector<float>& heights, uint32_t size, floa
 	params.talusTangent = std::tan( settings.talusAngle * 3.14159265f / 180.0f );
 	params.thermalRate = settings.thermalRate;
 	Buffer constants;
-	if( !d3d.createShaderConstantBuffer( sizeof( Parameters ), constants ) )
+	if( !d3d.createShaderConstantBuffer( sizeof( TerrainErosionBuffer ), constants ) )
 		return false;
 	auto setParameters = [&]
 	{

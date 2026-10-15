@@ -80,20 +80,7 @@ DM_SRV( Texture2DArray<float2>, g_cachedFlow, 11 );	// mainFlowRestore: тече
 DM_SRV( Texture2D<float2>, g_cachedFlow, 11 );
 #endif
 
-// Раскладка — StaticWater::FlowParameters
-cbuffer WaterFlowBuffer : register( b5 )
-{
-	uint  g_flowTileCount;		// групп в g_flowTiles
-	uint3 g_flowTilesPadding;
-	float g_flowTimeStep;		// с
-	float g_flowViscosity;		// вихревая вязкость · dt / l² — доля, не больше 0,2 (устойчивость)
-	float g_flowFriction;		// dt · g · n²: трение дна по Маннингу (и ручьёв, и озёр)
-	float g_flowMinDepth;		// мельче — берег, м
-	float g_flowScreen;			// экранирование давления, м: озеро без истока решается, вода «уходит в грунт»
-	float g_flowRelaxation;		// верхняя релаксация давления (1 — Гаусс-Зейдель)
-	float g_flowLayer;			// толщина текущего слоя, м: глубже течение не считается
-	float g_flowStoneDrag;		// dt · Cd / 2: сопротивление камней русла (сетка 1 м)
-};
+#include "water_flow_constants.h"
 
 static const float kindDry = 0.0f;
 static const float kindLake = 1.0f;
@@ -102,14 +89,7 @@ static const float kindOutside = 3.0f;	// FLOW_DETAIL: ячейка вне пл�
 static const int2 axes[2] = { int2( 1, 0 ), int2( 0, 1 ) };
 
 #ifdef FLOW_DETAIL
-// Раскладка — StaticWater::DetailFlowParameters
-cbuffer WaterDetailFlowBuffer : register( b6 )
-{
-	uint  g_detailCells;			// ячеек плитки по стороне (без поля)
-	uint  g_detailTilesPerSide;		// плиток по стороне мира
-	float g_detailStep;				// сторона ячейки, м
-	float g_detailWetDepth;			// ячейка вне плиток — мокрая, если по сетке 1 м глубже, м
-};
+#include "water_detail_flow_constants.h"
 
 static const float stoneDepthShare = 0.5f;		// камень отнимает у глубины не больше этой доли
 static const float nudgeTime = 2.0f;			// с: средняя блока тянется к решению 1 м за это время

@@ -19,32 +19,7 @@
 #define DROPLET_GROUP 64
 #define CELL_GROUP 8
 
-// Раскладка — TerrainErosion::Parameters
-cbuffer TerrainErosionBuffer : register( b4 )
-{
-	uint  g_size;				// клеток карты по стороне (без продолжения)
-	uint  g_padded;				// клеток по стороне с продолжением за край
-	uint  g_pad;
-	int   g_radius;				// радиус кисти размыва, клетки
-	float g_cell;				// шаг сетки, м
-	float g_inertia;
-	float g_capacity;
-	float g_minSlope;
-	float g_erodeSpeed;
-	float g_depositSpeed;
-	float g_evaporation;
-	float g_gravity;
-	float g_brushSum;			// сумма весов кисти — веса нормируются к 1
-	uint  g_dropletCount;		// капель в пакете
-	uint  g_batch;				// номер пакета (mainSpawn)
-	uint  g_seed;
-	float g_erosionPadding0;
-	float g_rainScale;			// размер пятен дождя, м
-	float g_rainMin;			// доля дождя в сухих местах
-	float g_talusTangent;		// тангенс угла откоса
-	float g_thermalRate;
-	float3 g_erosionPadding;
-};
+#include "terrain_erosion_constants.h"
 
 struct Droplet
 {

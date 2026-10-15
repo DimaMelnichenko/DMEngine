@@ -6,6 +6,7 @@
 #include <vector>
 #include "DirectX.h"
 #include "Utils\utilites.h"
+#include "Shaders\terrain_layer_constants.h"
 
 namespace GS
 {
@@ -21,7 +22,7 @@ namespace GS
 class TerrainMaterial
 {
 public:
-	static constexpr uint32_t maxLayers = 8;
+	static constexpr uint32_t maxLayers = TERRAIN_MAX_LAYERS;
 	static constexpr uint32_t splatSlices = maxLayers / 4;
 	static constexpr uint32_t splatTextureSlices = splatSlices + 1;	// и срез не весов (мокрость)
 

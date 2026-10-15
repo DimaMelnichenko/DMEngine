@@ -575,7 +575,7 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 (`heightmap` — имя текстуры в таблице `Textures`, `splatmap` — файл, `height_multiplier`, `height_offset`,
 `width_multiplier`). Свойство «Show LOD» раскрашивает уровни (`Shaders/cdlod_lod.ps`), «Show water» подсвечивает воду
 симуляции (`docs/water.md`). Общее для шейдеров террейна
-(constant buffer `CDLODTerrain::Parameters`, выборка карты высот, выход VS) — `Shaders/cdlod.sh`.
+(константы `CDLODBuffer` — `Shaders/cdlod_constants.h`, выборка карты высот, выход VS) — `Shaders/cdlod.sh`.
 
 **Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До восьми слоёв из
 таблицы `TerrainLayers` (`layer` 0…7 — канал `layer % 4` среза `layer / 4` splat-карты: она — массив из двух RGBA, как
@@ -635,7 +635,7 @@ Catmull-Rom минус профиль русла по сплайну оси), м
 `docs/terrain.md`, «Детальная земля у русел». У камеры вершины ещё сдвигаются по высоте слоёв — дисплейсмент
 (`terrainDisplacement`, `Shaders/terrain_layers.sh`; размах слоя — `TerrainLayers.displacement`, дальность — «Displacement
 distance»; текстуры в пикселе — по точке без смещения); данные слоёв — ресурсы сцены t118…t123 (splat-карта, альбедо с
-высотой, детальный слой весов, константы слоёв `CDLODTerrain::LayerConstants`, у шейдеров террейна — копия в cbuffer, шум
+высотой, детальный слой весов, константы слоёв `TerrainLayerConstants` (`Shaders/terrain_layer_constants.h`), у шейдеров террейна — копия в cbuffer, шум
 пятен яркости), по
 ним на смещённой земле стоят кольцевые слои расстановки и частицы (`terrainSurfacePoint`, `terrain_height.sh`; постоянные
 слои — без смещения), `docs/terrain.md`, «Дисплейсмент».

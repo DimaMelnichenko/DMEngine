@@ -5,6 +5,9 @@
 #include <vector>
 #include "WaterField.h"
 #include "DMComputeShader.h"
+#include "Shaders\water_flow_constants.h"
+#include "Shaders\water_detail_flow_constants.h"
+#include "Shaders\water_detail_constants.h"
 
 namespace GS
 {
@@ -48,41 +51,8 @@ public:
 	bool exportDetail( const std::string& prefix, std::string& reason );
 
 private:
-	// Раскладка — cbuffer WaterFlowBuffer (b5) в water_flow.cs
-	struct alignas( 16 ) FlowParameters
-	{
-		uint32_t tileCount;
-		uint32_t tilesPadding[3];
-		float timeStep;
-		float viscosity;
-		float friction;
-		float minDepth;
-		float screen;
-		float relaxation;
-		float layer;
-		float stoneDrag;	// dt · Cd / 2: сопротивление камней русла
-	};
 
-	// Раскладка — cbuffer WaterDetailFlowBuffer (b6) в water_flow.cs (FLOW_DETAIL)
-	struct alignas( 16 ) DetailFlowParameters
-	{
-		uint32_t cells;			// ячеек плитки по стороне (без поля)
-		uint32_t tilesPerSide;	// плиток по стороне мира
-		float step;				// сторона ячейки, м
-		float wetDepth;			// ячейка вне плиток мокрая, если по сетке 1 м глубже, м
-	};
 
-	// Раскладка — cbuffer WaterDetailBuffer (b5) в Shaders/water_detail.cs
-	struct alignas( 16 ) DetailParameters
-	{
-		float heightMultiplier;
-		float heightOffset;
-		float worldSize;
-		float tileSize;
-		float visibleDepth;
-		uint32_t side;		// текселей плитки по стороне (с полем)
-		float padding[2];
-	};
 
 	// Массивы детальной воды по плиткам конвейера: статичная вода плиток и детальная вода; блоки счёта течения
 	bool createDetailTextures( const TerrainHydrology::Result& hydrology );

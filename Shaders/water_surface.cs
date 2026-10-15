@@ -28,19 +28,7 @@ DM_UAV( RWByteAddressBuffer, g_detailDrawArgs, 4 );			// то же у детал
 DM_UAV( RWStructuredBuffer<uint>, g_detailTileList, 5 );
 DM_SRV( ByteAddressBuffer, g_detailBounds, 6 );				// mainTiles: ~наименьший и наибольший уровень детальной плитки
 
-// Раскладка — WaterSurface::TilesParameters
-cbuffer WaterTilesBuffer : register( b5 )
-{
-	float4 g_planes[6];			// frustum главного вида: нормали внутрь
-	uint   g_indexCount;		// индексов сетки тайла
-	uint   g_tilesPerSide;
-	float  g_visibleDepth;		// мельче — воды не видно (только мокрая земля), м
-	float  g_worldSize;
-	float3 g_cameraPosition;	// главного вида
-	float  g_detailDistance;	// м: ближе — детальная плитка (0 — детальной воды нет)
-	uint   g_detailIndexCount;	// индексов сетки детальной плитки
-	uint3  g_tilesPadding;
-};
+#include "water_tiles_constants.h"
 
 static const float noLevel = -1e30f;
 

@@ -75,7 +75,7 @@ bool StaticWater::initialize( WaterField& field, const WaterSimulationSettings& 
 	DMD3D& d3d = DMD3D::instance();
 	return m_staticShader.Initialize( "Shaders\\water_simulation.cs", "mainStatic" ) &&
 		   m_detailSurfaceShader.Initialize( "Shaders\\water_detail.cs", "mainDetailSurface" ) &&
-		   d3d.createShaderConstantBuffer( sizeof( DetailParameters ), m_detailBuffer );
+		   d3d.createShaderConstantBuffer( sizeof( WaterDetailBuffer ), m_detailBuffer );
 }
 
 bool StaticWater::createTextures( const TerrainHydrology::Result& hydrology, bool enabled )
@@ -366,7 +366,7 @@ bool StaticWater::createFlowResources()
 		!m_flowRedShader.Initialize( file, "mainFlowRed", same ) || !m_flowBlackShader.Initialize( file, "mainFlowBlack", same ) ||
 		!m_flowProjectShader.Initialize( file, "mainFlowProject", same ) ||
 		!m_flowOutputShader.Initialize( file, "mainFlowOutput", same ) || !m_flowRestoreShader.Initialize( file, "mainFlowRestore", same ) ||
-		!d3d.createShaderConstantBuffer( sizeof( FlowParameters ), m_flowBuffer ) )
+		!d3d.createShaderConstantBuffer( sizeof( WaterFlowBuffer ), m_flowBuffer ) )
 		return false;
 	// Детальная сетка — тот же шейдер с FLOW_DETAIL
 	const char* detail = "FLOW_DETAIL";
@@ -381,7 +381,7 @@ bool StaticWater::createFlowResources()
 		!m_detailFlowProjectShader.Initialize( file, "mainFlowProject", same, detail ) ||
 		!m_detailFlowOutputShader.Initialize( file, "mainFlowOutput", same, detail ) ||
 		!m_detailFlowRestoreShader.Initialize( file, "mainFlowRestore", same, detail ) ||
-		!d3d.createShaderConstantBuffer( sizeof( DetailFlowParameters ), m_detailFlowBuffer ) )
+		!d3d.createShaderConstantBuffer( sizeof( WaterDetailFlowBuffer ), m_detailFlowBuffer ) )
 		return false;
 	for( auto [texture, uav, format, name] :
 		 { std::tuple{ &m_flowInfo, &m_flowInfoUAV, DXGI_FORMAT_R32G32B32A32_FLOAT, "Water flow cells" },
@@ -422,16 +422,16 @@ std::string StaticWater::solveFlow( const Flow& flow )
 	}
 	const uint32_t iterations = static_cast<uint32_t>( std::clamp( flow.iterations, 1, 200 ) );
 
-	FlowParameters params = {};
-	params.tileCount = static_cast<uint32_t>( m_flowTileList.size() );
-	params.timeStep = timeStep;
-	params.viscosity = std::min( flow.viscosity * timeStep / ( m_field->cellSize * m_field->cellSize ), maxViscosityShare );
-	params.friction = timeStep * gravity * flow.manning * flow.manning;
-	params.minDepth = flowMinDepth;
-	params.layer = std::max( flow.layer, flowMinDepth );
-	params.screen = flowScreen;
-	params.relaxation = flowRelaxation;
-	params.stoneDrag = timeStep * 0.5f * stoneDragCoefficient;
+	WaterFlowBuffer params = {};
+	params.flowTileCount = static_cast<uint32_t>( m_flowTileList.size() );
+	params.flowTimeStep = timeStep;
+	params.flowViscosity = std::min( flow.viscosity * timeStep / ( m_field->cellSize * m_field->cellSize ), maxViscosityShare );
+	params.flowFriction = timeStep * gravity * flow.manning * flow.manning;
+	params.flowMinDepth = flowMinDepth;
+	params.flowLayer = std::max( flow.layer, flowMinDepth );
+	params.flowScreen = flowScreen;
+	params.flowRelaxation = flowRelaxation;
+	params.flowStoneDrag = timeStep * 0.5f * stoneDragCoefficient;
 
 	// Тайлы прошлого расчёта (другие русла) — сухие: соседи за краем тайлов читаются нулями
 	for( StorageView* uav : { &m_flowInfoUAV, &m_flowVelocityUAV, &m_flowAdvectedUAV, &m_flowPressureUAV, &m_flowDivergenceUAV } )
@@ -679,20 +679,20 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 	}
 	d3d.setName( stoneTops, "Water detail stones" );
 
-	FlowParameters params = {};
-	params.tileCount = blocks;
-	params.timeStep = timeStep;
-	params.viscosity = std::min( flow.viscosity * timeStep / ( step * step ), maxViscosityShare );
-	params.friction = timeStep * gravity * flow.manning * flow.manning;
-	params.minDepth = flowMinDepth;
-	params.layer = std::max( flow.layer, flowMinDepth );
-	params.screen = flowScreen;
-	params.relaxation = flowRelaxation;
-	DetailFlowParameters detailParams = {};
-	detailParams.cells = cells;
-	detailParams.tilesPerSide = m_detailTilesPerSide;
-	detailParams.step = step;
-	detailParams.wetDepth = flowMinDepth;
+	WaterFlowBuffer params = {};
+	params.flowTileCount = blocks;
+	params.flowTimeStep = timeStep;
+	params.flowViscosity = std::min( flow.viscosity * timeStep / ( step * step ), maxViscosityShare );
+	params.flowFriction = timeStep * gravity * flow.manning * flow.manning;
+	params.flowMinDepth = flowMinDepth;
+	params.flowLayer = std::max( flow.layer, flowMinDepth );
+	params.flowScreen = flowScreen;
+	params.flowRelaxation = flowRelaxation;
+	WaterDetailFlowBuffer detailParams = {};
+	detailParams.detailCells = cells;
+	detailParams.detailTilesPerSide = m_detailTilesPerSide;
+	detailParams.detailStep = step;
+	detailParams.detailWetDepth = flowMinDepth;
 
 	// Блоки прошлого расчёта и ячейки вне блоков — сухие
 	for( StorageView* uav : { &infoUAV, &info2UAV, &velocityUAV, &advectedUAV, &pressureUAV, &divergenceUAV } )
@@ -1060,7 +1060,7 @@ void StaticWater::buildDetailSurface()
 				   { &m_field->stateView, "water state" }, { &m_detailTileCoordsView, "detail tile coordinates" } };
 	pass.writes = { { &m_detailWaterUAV, "detail water" }, { &m_detailBoundsUAV, "detail tile bounds" } };
 	d3d.beginPass( pass );
-	DetailParameters params = {};
+	WaterDetailBuffer params = {};
 	params.heightMultiplier = height.heightMultiplier;
 	params.heightOffset = height.heightOffset;
 	params.worldSize = height.worldSize;

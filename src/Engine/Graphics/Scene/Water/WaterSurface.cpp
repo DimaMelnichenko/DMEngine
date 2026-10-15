@@ -26,8 +26,8 @@ bool WaterSurface::initialize( WaterField& field )
 	if( !m_surfaceShader.Initialize( "Shaders\\water_surface.cs", "mainSurface" ) ||
 		!m_tilesResetShader.Initialize( "Shaders\\water_surface.cs", "mainTilesReset" ) ||
 		!m_tilesShader.Initialize( "Shaders\\water_surface.cs", "mainTiles" ) ||
-		!d3d.createShaderConstantBuffer( sizeof( TilesParameters ), m_tilesBuffer ) ||
-		!d3d.createShaderConstantBuffer( sizeof( SurfaceParameters ), m_surfaceBuffer ) )
+		!d3d.createShaderConstantBuffer( sizeof( WaterTilesBuffer ), m_tilesBuffer ) ||
+		!d3d.createShaderConstantBuffer( sizeof( WaterSurfaceBuffer ), m_surfaceBuffer ) )
 		return false;
 	if( !WaterRipples::create( rippleSize, m_ripple, m_rippleView ) )
 	{
@@ -108,7 +108,7 @@ void WaterSurface::build( const WaterSimulationSettings& settings )
 	pass.writes = { { &m_levelUAV, "water level" }, { &m_tileBoundsUAV, "water tile bounds" } };
 	d3d.beginPass( pass );
 	m_field->setParameters( settings );
-	TilesParameters tiles = {};
+	WaterTilesBuffer tiles = {};
 	tiles.tilesPerSide = m_tilesPerSide;
 	tiles.visibleDepth = visibleDepth;
 	tiles.worldSize = m_field->terrain->terrainHeight().worldSize;
@@ -134,7 +134,7 @@ void WaterSurface::cull( const RenderView& view, const WaterSimulationSettings& 
 	if( water.detailTileCount() > 0 )
 		pass.reads.push_back( { &water.detailBoundsView(), "detail tile bounds" } );
 	d3d.beginPass( pass );
-	TilesParameters tiles = {};
+	WaterTilesBuffer tiles = {};
 	for( int i = 0; i < 6; ++i )
 		DirectX::XMStoreFloat4( &tiles.planes[i], view.frustum.planes()[i] );
 	tiles.tilesPerSide = m_tilesPerSide;
@@ -172,7 +172,7 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 {
 	DMD3D& d3d = DMD3D::instance();
 	const TerrainHeight height = m_field->terrain->terrainHeight();
-	SurfaceParameters params = {};
+	WaterSurfaceBuffer params = {};
 	params.size = m_field->size;
 	params.cellSize = m_field->cellSize;
 	params.worldSize = height.worldSize;

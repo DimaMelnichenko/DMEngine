@@ -55,9 +55,9 @@ bool CDLODTerrain::initialize( const TerrainSettings& settings, TerrainPipeline&
 
 	m_patch.initialize( patchDim + 1, patchDim + 1 );
 	m_patchBuffer.createBuffer( sizeof( PatchInstance ), maxPatches, "Terrain patches" );
-	m_layerConstants.createBuffer( sizeof( LayerConstants ), 1, "Terrain layer constants" );
+	m_layerConstants.createBuffer( sizeof( TerrainLayerConstants ), 1, "Terrain layer constants" );
 
-	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) )
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( CDLODBuffer ), m_constantBuffer ) )
 		return false;
 
 	m_properties.setName( "CDLOD terrain" );
@@ -202,7 +202,7 @@ void CDLODTerrain::compute( const FrameContext& frame )
 		return;
 	// Слои материала — ресурсы сцены (terrain_layers.sh): выбор слоёв и дисплейсмент у шейдеров террейна, расстановки и
 	// частиц — по одним данным, смещение земли одно. Точка LOD — главного вида (у видов теней та же)
-	const LayerConstants constants = layerConstants( frame.view );
+	const TerrainLayerConstants constants = layerConstants( frame.view );
 	m_layerConstants.updateData( &constants, sizeof( constants ) );
 	m_layerConstants.setToSlot( SLOT_TERRAIN_LAYER_CONSTANTS );
 }
@@ -276,9 +276,9 @@ void CDLODTerrain::calcRanges()
 	}
 }
 
-CDLODTerrain::LayerConstants CDLODTerrain::layerConstants( const RenderView& view ) const
+TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) const
 {
-	LayerConstants constants = {};
+	TerrainLayerConstants constants = {};
 	std::copy( m_pipeline->material().layerScale().begin(), m_pipeline->material().layerScale().end(), constants.layerScale );
 	std::copy( m_pipeline->material().layerDisplacement().begin(), m_pipeline->material().layerDisplacement().end(), constants.layerDisplacement );
 	std::copy( m_pipeline->material().layerTint().begin(), m_pipeline->material().layerTint().end(), constants.layerTint );
@@ -452,10 +452,10 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	const ShaderView* paintMask = nullptr;
 	const int32_t paintPreview = depthOnly ? -1 : m_paintTool->previewTarget( paintMask );
 
-	const LayerConstants layers = layerConstants( context.view );
-	Device::updateResource<Parameters>( m_constantBuffer, [this, paintPreview, &layers]( Parameters& params )
+	const TerrainLayerConstants layers = layerConstants( context.view );
+	Device::updateResource<CDLODBuffer>( m_constantBuffer, [this, paintPreview, &layers]( CDLODBuffer& params )
 	{
-		params.layers = layers;
+		params.terrainLayers = layers;
 		params.worldSize = m_pipeline->worldSize();
 		params.heightMultiplier = m_pipeline->heightMultiplier();
 		params.heightOffset = m_pipeline->heightOffset();

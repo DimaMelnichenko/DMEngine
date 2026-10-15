@@ -5,6 +5,8 @@
 #include "DMComputeShader.h"
 #include "ShaderProgram.h"
 #include "Terrain\GridMesh.h"
+#include "Shaders\water_tiles_constants.h"
+#include "Shaders\water_surface_constants.h"
 
 namespace GS
 {
@@ -33,45 +35,7 @@ public:
 	const ShaderView& levelView() const { return m_levelView; }
 
 private:
-	// Раскладка — cbuffer WaterTilesBuffer (b5) в water_surface.cs
-	struct alignas( 16 ) TilesParameters
-	{
-		DirectX::XMFLOAT4 planes[6];
-		uint32_t indexCount;
-		uint32_t tilesPerSide;
-		float visibleDepth;
-		float worldSize;
-		DirectX::XMFLOAT3 cameraPosition;	// главного вида: ближе detailDistance — детальная поверхность
-		float detailDistance;				// м; 0 — детальной воды нет
-		uint32_t detailIndexCount;			// индексов сетки детальной плитки
-		uint32_t detailPadding[3];
-	};
 
-	// Раскладка — cbuffer WaterSurfaceBuffer (b2) в Shaders/water_surface.sh
-	struct alignas( 16 ) SurfaceParameters
-	{
-		uint32_t size;
-		float cellSize;
-		float worldSize;
-		uint32_t tilesPerSide;
-		DirectX::XMFLOAT3 absorption;
-		float rippleStretch;
-		DirectX::XMFLOAT3 scatterColor;
-		float rippleScale;
-		float rippleStrength;
-		float calmRipple;
-		float refraction;
-		float roughness;
-		float foamSpeed;
-		float foamShear;
-		float detailDistance;	// м: ближе — детальная поверхность у русел (0 — её нет)
-		float foamSlope;		// пена слива — где поверхность детальной воды круче, м на м (WaterChannelsSettings::foamSlope)
-		// Точная земля — урез по ней (water.ps): карта высот (слот 3) в метры и детальная плитка (terrain_detail.sh)
-		float terrainHeightMultiplier;
-		float terrainHeightOffset;
-		float terrainDetailTile;	// сторона детальной плитки, м; 0 — её нет
-		float surfacePadding;
-	};
 
 	WaterField* m_field = nullptr;
 	DMComputeShader m_surfaceShader;

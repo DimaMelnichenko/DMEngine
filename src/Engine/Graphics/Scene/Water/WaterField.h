@@ -4,6 +4,7 @@
 #include "Level\LevelSettings.h"
 #include "Terrain\TerrainHeightSource.h"
 #include "Terrain\TerrainHydrology.h"
+#include "Shaders\water_simulation_constants.h"
 
 namespace GS
 {
@@ -35,25 +36,6 @@ struct WaterField
 	ShaderView stateView;
 
 private:
-	// Раскладка — cbuffer WaterSimulationBuffer (b4) в water_simulation.cs
-	struct alignas( 16 ) Parameters
-	{
-		uint32_t size;
-		float cellSize;
-		float timeStep;
-		float gravity;
-		float rain;
-		float evaporation;
-		float sourceRate;
-		float heightMultiplier;
-		float heightOffset;
-		float logFlowStart;
-		float logFlowFull;
-		int32_t sourceRadius;
-		float manning;
-		uint32_t helperCount;		// источников-помощников в буфере притока
-		float padding[2];
-	};
 };
 
 }

@@ -688,9 +688,9 @@ Grass Type в UE, `TODO.md`, этап 8). Мазки — данные уровн
 - **Данные — ресурсы сцены** (`TerrainPipeline::compute`, константы — `CDLODTerrain::compute`, `Shaders/terrain_layers.sh`): splat-карта, массив «альбедо +
   высота», детальный слой весов (плитки и индекс) и константы слоёв — `SLOT_TERRAIN_SPLAT`, `…_ALBEDO_HEIGHT`,
   `…_SPLAT_DETAIL`, `…_SPLAT_DETAIL_INDEX`, `…_LAYER_CONSTANTS` (t118…t122) и шум пятен яркости `SLOT_TERRAIN_NOISE`
-  (t123). Константы (`CDLODTerrain::LayerConstants`: повтор, размах и множитель альбедо слоёв, точка LOD главного вида и
+  (t123). Константы (`TerrainLayerConstants`, `Shaders/terrain_layer_constants.h`: повтор, размах и множитель альбедо слоёв, точка LOD главного вида и
   рост, смешивание, дальность; раскладка —
-  `Shaders/terrain_layer_constants.sh`) заполняет одна `layerConstants`: в буфер сцены (структурный, один элемент) для
+  `Shaders/terrain_layer_constants.h`) заполняет одна `layerConstants`: в буфер сцены (структурный, один элемент) для
   расстановки и частиц и копией в cbuffer террейна (`TERRAIN_LAYERS_IN_CBUFFER`: у каждой вершины и пикселя он дешевле —
   через буфер проход рельефа стоил на 0,04 мс больше).
 - **Расстановка и частицы на смещённой земле** (`terrainSurfacePoint` в `Shaders/terrain_height.sh`): точка над XZ

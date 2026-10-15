@@ -21,17 +21,7 @@ DM_SRV( StructuredBuffer<uint2>, g_detailTileCoords, 3 );	// плитка сре
 DM_UAV( RWTexture2DArray<float4>, g_detailWater, 0 );		// уровень поверхности (−1e30 — нет), течение X, Z, глубина
 DM_UAV( RWByteAddressBuffer, g_detailBounds, 1 );			// на плитку: ~наименьший и наибольший уровень (orderedBits)
 
-// Раскладка — StaticWater::DetailParameters
-cbuffer WaterDetailBuffer : register( b5 )
-{
-	float g_heightMultiplier;
-	float g_heightOffset;
-	float g_worldSize;
-	float g_tileSize;			// сторона плитки, м
-	float g_visibleDepth;		// мельче — воды не видно (мокрая земля), м
-	uint  g_side;				// текселей плитки по стороне (с полем)
-	float2 g_detailPadding;
-};
+#include "water_detail_constants.h"
 
 static const float noLevel = -1e30f;
 

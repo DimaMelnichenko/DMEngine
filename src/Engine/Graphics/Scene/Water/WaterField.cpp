@@ -27,7 +27,7 @@ bool WaterField::initialize( const TerrainHeightSource& source )
 		return false;
 	}
 	DMD3D& d3d = DMD3D::instance();
-	if( !d3d.createShaderConstantBuffer( sizeof( Parameters ), constants ) )
+	if( !d3d.createShaderConstantBuffer( sizeof( WaterSimulationBuffer ), constants ) )
 		return false;
 	auto create = [&]( DXGI_FORMAT format, const char* name, Texture& texture, StorageView& uav, ShaderView& srv )
 	{
@@ -53,7 +53,7 @@ bool WaterField::initialize( const TerrainHeightSource& source )
 void WaterField::setParameters( const WaterSimulationSettings& settings )
 {
 	const TerrainHeight height = terrain->terrainHeight();
-	Parameters params = {};
+	WaterSimulationBuffer params = {};
 	params.size = size;
 	params.cellSize = cellSize;
 	params.timeStep = settings.timeStep;

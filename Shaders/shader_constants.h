@@ -18,6 +18,10 @@
 // она совпадала, поля идут группами по 16 байт (float3 + float, float2 + float2…), элементы массивов — 4-компонентные
 // (float4, uint4, matrix). Расхождение покажет Debug-сборка: ShaderCompiler сверяет раскладку каждого буфера
 // констант по отражению шейдера (строка «Constant buffer … differs from C++» в log.txt)
+//
+// Структура, общая для C++ и HLSL (поле буфера констант — DM_FIELD_STRUCT, элемент структурного буфера):
+// DM_STRUCT( имя ), члены — DM_MEMBER( тип, имя ) / DM_MEMBER_ARRAY без приставки, DM_STRUCT_END. В C++ она
+// alignas( 16 ), как структура в буфере констант HLSL, поэтому её члены тоже заполняют строки по 16 байт целиком
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef DM_SHADER_CONSTANTS_H
@@ -50,6 +54,12 @@
 #define DM_CONSTANTS_END }
 #define DM_FIELD( type, name ) DM_TYPE_##type name
 #define DM_ARRAY( type, name, count ) DM_TYPE_##type name[count]
+#define DM_FIELD_STRUCT( type, name ) type name
+
+#define DM_STRUCT( name ) namespace GS { struct alignas( 16 ) name
+#define DM_STRUCT_END }
+#define DM_MEMBER( type, name ) DM_TYPE_##type name
+#define DM_MEMBER_ARRAY( type, name, count ) DM_TYPE_##type name[count]
 
 #else
 
@@ -57,6 +67,12 @@
 #define DM_CONSTANTS_END
 #define DM_FIELD( type, name ) type DM_PASTE( DM_FIELD_PREFIX, name )
 #define DM_ARRAY( type, name, count ) type DM_PASTE( DM_FIELD_PREFIX, name )[count]
+#define DM_FIELD_STRUCT( type, name ) type DM_PASTE( DM_FIELD_PREFIX, name )
+
+#define DM_STRUCT( name ) struct name
+#define DM_STRUCT_END
+#define DM_MEMBER( type, name ) type name
+#define DM_MEMBER_ARRAY( type, name, count ) type name[count]
 
 #endif
 
