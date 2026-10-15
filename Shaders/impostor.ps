@@ -129,8 +129,18 @@ void mainDepth( ImpostorPixelInput input, out float depth : SV_DepthLessEqual )
 #ifdef LOD_DITHER
 	clipLodTransition( input.position.xy, input.lodDither );
 #endif
+#ifdef IMPOSTOR_FLAT
+	// Покрытие — одним кадром из трёх, выбранным для пикселя по весам порогом дизеринга: одна выборка вместо трёх (у травы
+	// вдали — десятки почти прозрачных карточек на пиксель, prepass упирается в них), переход между кадрами — долей
+	// пикселей, без скачка формы. Проход цвета после prepass покрытие не проверяет (тест EQUAL), поэтому оно — только отсюда.
+	// Шум сдвинут относительно порога смены LOD: иначе в полосе перехода кадр выбирали бы только оставшиеся пиксели
+	const float pick = lodDitherThreshold( input.position.xy + float2( 13.0f, 7.0f ) );
+	const float3 frame = pick < input.weights.x ? float3( input.frameUV01.xy, input.frames.x ) :
+						 pick < input.weights.x + input.weights.y ? float3( input.frameUV01.zw, input.frames.y ) :
+						 float3( input.frameUV2, input.frames.z );
+	clip( g_impostorColor.Sample( g_SamplerLinearClamp, frame ).a - g_impostorAlphaCutoff );
+#else
 	clip( sampleFrames( g_impostorColor, input ).a - g_impostorAlphaCutoff );
-#ifndef IMPOSTOR_FLAT
 	depth = impostorDepth( input, impostorSurface( input ) );
 #endif
 }
