@@ -248,41 +248,40 @@ std::vector<VertexElement> ImpostorMaterial::initLayouts()
 
 bool ImpostorMaterial::initialize()
 {
-	// Вершинные шейдеры: экземпляр расстановки, 1 — со сменой LOD дизерингом. Пиксельные: 0 — с отсечением по покрытию и
-	// глубиной поверхности (без depth prepass), 1 — после prepass: видимость по глубине сцены (проход opaqueDepthRead),
-	// 2 — как 0 с дизерингом, 3 — глубина (prepass и тени), 4 — глубина с дизерингом, 5 — как 1 с дизерингом
-	// Плоский импостер — тем же набором с IMPOSTOR_FLAT
-	const std::string flat = m_flat ? "IMPOSTOR_FLAT=1" : "";
-	auto defines = [&flat]( const std::string& own )
+	// Перестановки: цвет без depth prepass и после него, «только глубина» — и всё то же со сменой LOD дизерингом
+	using namespace ShaderPermutation;
+	for( uint32_t dither : { 0u, lodDither | clipDither } )
 	{
-		return own.empty() ? flat : flat.empty() ? own : own + "," + flat;
-	};
-	const std::string placed = "INST_POS=1,INST_SCALE=1,INST_ROTATE=1";
-	const std::string placedDither = placed + ",LOD_DITHER=1";
-	if( !addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\impostor.vs", defines( placed ) ) ||
-		!addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\impostor.vs", defines( placedDither ) ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", defines( "ALPHA_MASK=1" ) ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", defines( "" ) ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", defines( "ALPHA_MASK=1,LOD_DITHER=1" ) ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", defines( "" ) ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", "Shaders\\impostor.ps", defines( "LOD_DITHER=1" ) ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\impostor.ps", defines( "LOD_DITHER=1" ) ) )
-		return false;
-
-	for( int dither = 0; dither < 2; ++dither )
-	{
-		m_colorPhases[dither][1][0] = createPhase( dither, 0 );
-		m_colorPhases[dither][0][0] = createPhase( dither, 1 );
-		m_colorPhases[dither][1][1] = dither ? createPhase( dither, 2 ) : m_colorPhases[dither][1][0];
-		m_colorPhases[dither][0][1] = dither ? createPhase( dither, 5 ) : m_colorPhases[dither][0][0];
-		m_depthPhases[dither] = createPhase( dither, dither ? 4 : 3 );
+		if( !createPermutation( placed | dither | clipAlpha ) || !createPermutation( placed | dither ) ||
+			!createPermutation( placed | dither | depthOnly | clipAlpha ) )
+			return false;
 	}
-	for( const auto& variant : m_colorPhases )
-		for( const auto& masked : variant )
-			for( int phase : masked )
-				if( phase < 0 )
-					return false;
-	return m_depthPhases[0] >= 0 && m_depthPhases[1] >= 0;
+	return true;
+}
+
+bool ImpostorMaterial::createPermutation( uint32_t key )
+{
+	using namespace ShaderPermutation;
+	// Плоский импостер — тем же набором с IMPOSTOR_FLAT
+	auto defines = [this]( std::string own )
+	{
+		if( m_flat )
+			own += own.empty() ? "IMPOSTOR_FLAT=1" : ",IMPOSTOR_FLAT=1";
+		return own;
+	};
+	const bool dither = key & lodDither;
+	const bool depth = key & depthOnly;
+	const int vertex = shader( ShaderStageType::vertex, "main", "Shaders\\impostor.vs",
+							   defines( dither ? "INST_POS=1,INST_SCALE=1,INST_ROTATE=1,LOD_DITHER=1" : "INST_POS=1,INST_SCALE=1,INST_ROTATE=1" ) );
+	// Отсечение по покрытию: у цвета — ALPHA_MASK (без depth prepass), mainDepth отсекает всегда
+	std::string own = ( key & clipAlpha ) && !depth ? "ALPHA_MASK=1" : "";
+	if( key & clipDither )
+		own += own.empty() ? "LOD_DITHER=1" : ",LOD_DITHER=1";
+	const int pixel = shader( ShaderStageType::pixel, depth ? "mainDepth" : "main", "Shaders\\impostor.ps", defines( own ) );
+	if( vertex < 0 || pixel < 0 )
+		return false;
+	setPermutation( key, createPhase( vertex, pixel ) );
+	return permutation( key ) >= 0;
 }
 
 MaterialRenderState ImpostorMaterial::renderState( const PropertyContainer& ) const
@@ -294,23 +293,12 @@ MaterialRenderState ImpostorMaterial::renderState( const PropertyContainer& ) co
 	return state;
 }
 
-int ImpostorMaterial::phaseFor( const PropertyContainer&, const ShaderPhaseOptions& options ) const
+uint32_t ImpostorMaterial::permutationKey( const PropertyContainer& params, const ShaderPhaseOptions& options, bool depth ) const
 {
-	// После depth prepass — вариант с видимостью по глубине сцены (проход opaqueDepthRead), покрытие и дизеринг в нём
-	// отсекаются, как в prepass
-	const bool clipAlpha = !options.depthFromPrepass;
-	const bool clipDither = options.lodDither;
-	return m_colorPhases[options.lodDither ? 1 : 0][clipAlpha ? 1 : 0][clipDither ? 1 : 0];
-}
-
-int ImpostorMaterial::depthPhaseFor( const PropertyContainer&, const ShaderPhaseOptions& options ) const
-{
-	return m_depthPhases[options.lodDither ? 1 : 0];
-}
-
-std::vector<int> ImpostorMaterial::depthPhases() const
-{
-	return { m_depthPhases[0], m_depthPhases[1] };
+	uint32_t key = Material::permutationKey( params, options, depth ) | ShaderPermutation::placed;
+	if( options.lodDither )
+		key |= ShaderPermutation::clipDither;
+	return key;
 }
 
 void ImpostorMaterial::setShading( float baseShade, float selfShadow )

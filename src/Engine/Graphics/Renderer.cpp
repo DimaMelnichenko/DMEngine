@@ -47,15 +47,16 @@ bool inDepthPrepass( const MeshBatch& batch )
 	return batch.state.blendMode != BlendMode::translucent && batch.material->depthPhaseFor( *batch.params ) >= 0;
 }
 
-// Ключ непрозрачной команды: объекты в порядке сцены, внутри — материал, вариант шейдера, растеризатор; группа (меш
-// с параметрами) последней — одинаковые меши встают подряд для инстансного вызова
+// Ключ непрозрачной команды: объекты в порядке сцены (8 бит), внутри — материал (16), его фаза — вариант шейдера (8:
+// у PBR с экземплярами расстановки и запеканием их ~26), растеризатор (4); группа (меш с параметрами, 28 бит) последней
+// — одинаковые меши встают подряд для инстансного вызова
 uint64_t opaqueKey( const MeshBatch& batch, int phase )
 {
 	const uint64_t raster = static_cast<uint64_t>( materialRasterState( batch.state.twoSided, batch.mirrored,
 																	   RasterState::solid ) ) & 0xF;
 	return ( static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56 ) |
 		   ( static_cast<uint64_t>( batch.materialId & 0xFFFF ) << 40 ) |
-		   ( ( static_cast<uint64_t>( phase ) & 0xF ) << 36 ) | ( raster << 32 ) | batch.instanceGroup;
+		   ( ( static_cast<uint64_t>( phase ) & 0xFF ) << 32 ) | ( raster << 28 ) | ( batch.instanceGroup & 0x0FFFFFFF );
 }
 
 // Ключ прозрачной команды: дальние раньше, при равном расстоянии — порядок объектов сцены и номер

@@ -15,7 +15,9 @@ bool ColorMaterial::initialize()
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer ) )
 		return false;
 
-	return createPhase( 0, 0 ) >= 0;
+	// Одна фаза на все вызовы: ключ без признаков
+	setPermutation( 0, createPhase( 0, 0 ) );
+	return permutation( 0 ) >= 0;
 }
 
 std::vector<VertexElement> ColorMaterial::initLayouts()

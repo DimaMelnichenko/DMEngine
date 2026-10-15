@@ -155,6 +155,20 @@ Color в UE), множитель 1, доля 0,5, а альбедо и прос�
 Материал сообщает режим методом `Material::renderState( params )`, нужный вариант шейдера — `phaseFor( params, options )`:
 `ShaderPhaseOptions` — то, что зависит не от параметров, а от вызова (инстансы, глубина из prepass, смена LOD
 дизерингом).
+
+**Перестановки.** Варианты шейдеров материала — перестановки по ключу, как permutation domains в UE: признаки варианта —
+биты `ShaderPermutation` (`MaterialRenderState.h`: `instanced`, `placed`, `lodDither` — вершинный шейдер; `clipAlpha`,
+`clipDither` — отсечение в пиксельном; `depthOnly` — тени и depth prepass; `impostorBake` — запекание). Материал при загрузке
+собирает фазы по ключам (`ShaderProgram::setPermutation`; шейдер с тем же файлом, точкой входа и defines берётся готовый —
+`ShaderProgram::shader`), вызов находит свою фазу по ключу: `Material::permutationKey` собирает его из `ShaderPhaseOptions`
+и режима материала (`phaseFor`, `depthPhaseFor` — общие у всех материалов; свои правила ключа — переопределить
+`permutationKey`, как у импостера: дизеринг отсекается и после prepass). Ключ, которого у материала нет, — фаза −1 (варианта
+нет: например, экземпляров расстановки у модели, для которой их не включили). Разные ключи могут вести к одной фазе:
+признак, которого у материала нет, ничего не добавляет (инстансный ключ у `PBRInstance`). Прогрев — по видам ключей:
+`colorPhases`, `depthPhases` (без цели цвета), `bakePhases` (свои цели, в проходы кадра не идут). У `PBR` defines
+перестановки — исходные из базы плюс признаки ключа (`PBRMaterial::vertexDefines` / `pixelDefines`). Новый признак (скиннинг
+`SKINNED`) — бит в `ShaderPermutation`, defines у материала и набор ключей, который он собирает, а не ещё одно измерение
+массивов фаз.
 Модели отдают секции с режимом в список отрисовки (`MeshBatch` — секция), и `Renderer` сам кладёт их в проход и рисует
 одной функцией `drawMesh`: `setPass( phaseFor( params ) )`, затем `setParams( params )`, растеризатор, матрица.
 Расстановка выбирает проход и отсечение граней по материалу секции (а не набора) в своём вызове. Для прохода теней материал
@@ -294,9 +308,10 @@ Instance в UE): он общий у всех секций моделей, кот
 
 | Файл | Что там |
 |---|---|
-| `src/Engine/Graphics/Scene/Materials/Material.h/.cpp` | базовый класс материала: ресурс хранилища, определения параметров, `setParams` / `renderState` / `phaseFor` / `depthPhaseFor`; программа шейдеров — `ShaderProgram` (`Graphics/ShaderProgram.h`: стадии, фазы, `setPass`, прогрев) |
+| `src/Engine/Graphics/Scene/Materials/Material.h/.cpp` | базовый класс материала: ресурс хранилища, определения параметров, `setParams` / `renderState`, фаза по ключу перестановки — `phaseFor` / `depthPhaseFor` / `permutationKey`; программа шейдеров — `ShaderProgram` (`Graphics/ShaderProgram.h`: стадии, фазы, перестановки, `setPass`, прогрев) |
+| `src/Engine/Graphics/Scene/Materials/MaterialRenderState.h` | режим материала, `ShaderPhaseOptions` вызова, биты ключа перестановки `ShaderPermutation` |
 | `src/Engine/Graphics/Scene/Materials/MaterialStorage.h/.cpp` | хранилище `System::materials()`: класс материала по колонке `Materials.class` |
-| `src/Engine/Graphics/Scene/Materials/PBRMaterial.h/.cpp` | класс материала `PBR`: параметры → текстуры t0…t4 и константный буфер PS b2, режим, вариант с отсечением |
+| `src/Engine/Graphics/Scene/Materials/PBRMaterial.h/.cpp` | класс материала `PBR`: параметры → текстуры t0…t4 и константный буфер PS b2, режим, перестановки (defines по ключу) |
 | `src/Engine/Graphics/Scene/Materials/MaterialRenderState.h` | режим материала (`BlendMode`), двусторонность, смена LOD дизерингом; `ShaderPhaseOptions` — вариант шейдера вызова |
 | `Shaders/lod_dither.sh` | маска дизеринга смены LOD (`clipLodTransition`) |
 | `Shaders/PBRLit.ps` | пиксельный шейдер PBR: текстуры и параметры → `Surface` |

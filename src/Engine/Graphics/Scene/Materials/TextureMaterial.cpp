@@ -10,7 +10,9 @@ TextureMaterial::TextureMaterial( uint32_t id, const std::string& name ) : Mater
 
 bool TextureMaterial::initialize()
 {
-	return createPhase( 0, 0 ) >= 0;
+	// Одна фаза на все вызовы: ключ без признаков
+	setPermutation( 0, createPhase( 0, 0 ) );
+	return permutation( 0 ) >= 0;
 }
 
 std::vector<VertexElement> TextureMaterial::initLayouts()

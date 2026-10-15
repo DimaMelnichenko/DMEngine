@@ -33,8 +33,9 @@ public:
 	// проход и отсечение граней. По умолчанию — непрозрачный односторонний
 	virtual MaterialRenderState renderState( const PropertyContainer& params ) const { return {}; }
 	// Фаза (набор шейдеров) для этих параметров — например, вариант с отсечением по альфе — и вызова (options: инстансы,
-	// глубина из depth prepass, смена LOD дизерингом). Рисуют так: setPass( phaseFor( params ) ), затем setParams( params )
-	virtual int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const { return 0; }
+	// глубина из depth prepass, смена LOD дизерингом): перестановка по ключу permutationKey, −1 — такого варианта у
+	// материала нет. Рисуют так: setPass( phaseFor( params ) ), затем setParams( params )
+	int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const;
 	// Есть ли вариант для инстансинга моделей: иначе одинаковые меши рисуются по одному
 	virtual bool supportsInstancing() const { return false; }
 	// Собрать варианты для экземпляров расстановки (ShaderPhaseOptions::placed) — при загрузке, до прогрева пайплайнов
@@ -51,19 +52,24 @@ public:
 	// transparent рендерер копирует HDR-буфер, а глубина в проходе — только для чтения и тоже видна (SLOT_SCENE_DEPTH)
 	virtual bool readsSceneColor() const { return false; }
 	// Фаза «только глубина» для теней и depth prepass (без пиксельного шейдера или только с отсечением — по альфе,
-	// дизерингом смены LOD) или −1: материал тень не отбрасывает и в prepass не рисуется. Из options важны instanced
-	// и lodDither
-	virtual int depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const { return -1; }
+	// дизерингом смены LOD) или −1: материал тень не отбрасывает и в prepass не рисуется (полупрозрачный или без
+	// такой перестановки). Из options важны instanced, placed и lodDither
+	int depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const;
+	// Ключ перестановки вызова (биты ShaderPermutation): признаки из options и режима материала с этими параметрами,
+	// depth — тени и depth prepass. Экземпляры расстановки — свой вершинный шейдер, инстансный вызов — только вне смены
+	// LOD; после depth prepass проход цвета не отсекает (маска и дизеринг уже в глубине, проверка EQUAL)
+	virtual uint32_t permutationKey( const PropertyContainer& params, const ShaderPhaseOptions& options, bool depth ) const;
 
-	// Фазы «только глубина» (тени, depth prepass) — для прогрева без цели цвета: по умолчанию — без пиксельного шейдера;
-	// материал с пиксельным шейдером отсечения (mainDepth) перечисляет свои сам
-	virtual std::vector<int> depthPhases() const;
-	// Фазы запекания импостера — у них свои цели (ImpostorMaterial::bake), в прогрев проходов кадра они не идут
-	virtual std::vector<int> bakePhases() const { return {}; }
-	// Остальные фазы — рисуют цвет
+	// Фазы перестановок по видам — для прогрева: «только глубина» (тени, depth prepass) — без цели цвета, запекание
+	// импостера — со своими целями (ImpostorMaterial::bake, в прогрев проходов кадра не идёт), остальные рисуют цвет
+	std::vector<int> depthPhases() const;
+	std::vector<int> bakePhases() const;
 	std::vector<int> colorPhases() const;
 
 private:
+	// Фазы перестановок, у ключа которых из битов mask стоят ровно bits (без повторов)
+	std::vector<int> permutationPhases( uint32_t mask, uint32_t bits ) const;
+
 	PropertyContainer m_parameters;
 };
 

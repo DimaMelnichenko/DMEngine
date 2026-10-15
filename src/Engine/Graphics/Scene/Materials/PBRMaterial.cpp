@@ -71,158 +71,105 @@ std::vector<VertexElement> PBRMaterial::initLayouts()
 
 bool PBRMaterial::initialize()
 {
-	// Пиксельные шейдеры: 0 — из базы, 1 — он же с отсечением по альфе, 2 — только отсечение по альфе (глубина MASK);
-	// с дизерингом смены LOD: 3 — цвет, 4 — цвет с отсечением по альфе, 5 — глубина, 6 — глубина MASK
-	const std::optional<ShaderSource> pixel = shaderSource( ShaderStageType::pixel );
-	if( !pixel )
-		return false;
-	const std::string maskDefines = withDefine( pixel->defines, "ALPHA_MASK=1" );
-	const std::string pixelDitherDefines = withDefine( pixel->defines, "LOD_DITHER=1" );
-	const std::string maskDitherDefines = withDefine( maskDefines, "LOD_DITHER=1" );
-	if( !addShaderPassFromFile( ShaderStageType::pixel, pixel->function, pixel->file, maskDefines ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", pixel->file, maskDefines ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, pixel->function, pixel->file, pixelDitherDefines ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, pixel->function, pixel->file, maskDitherDefines ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", pixel->file, pixelDitherDefines ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainDepth", pixel->file, maskDitherDefines ) )
-		return false;
-
-	// Вершинные шейдеры по [вариант][только глубина]: 0 — из базы, инстансный вариант (INST_MATRIX) — у моделей
-	// уровня (у материала расстановки, defines INST_*, свои инстансы), вариант смены LOD дизерингом (LOD_DITHER: у
-	// расстановки доля перехода — в экземплярах её списков перехода, у моделей — в константах объекта; без инстансинга
-	// моделей) и те же «только глубина» (DEPTH_ONLY: позиция и UV, Shaders/depth_only.sh). Без инстансинга инстансные
-	// номера совпадают с обычными. Варианты экземпляров расстановки — enablePlacedInstances; у материала расстановки
-	// (вершинный шейдер из базы с INST_POS) они — обычные
+	// Перестановки — от шейдеров из базы: вершинный — обычный, с матрицами экземпляров (у моделей уровня; у материала
+	// расстановки, defines INST_*, свои экземпляры — тогда инстансный ключ ведёт к обычной фазе) и со сменой LOD
+	// дизерингом (у расстановки доля перехода — в экземплярах её списков перехода, у моделей — в константах объекта);
+	// каждый — с перестановками «только глубина» (DEPTH_ONLY: позиция и UV, Shaders/depth_only.sh). Экземпляры расстановки
+	// — enablePlacedInstances; у материала расстановки (вершинный шейдер из базы с INST_POS) они — те же фазы
 	const std::optional<ShaderSource> vertex = shaderSource( ShaderStageType::vertex );
-	if( !vertex )
+	const std::optional<ShaderSource> pixel = shaderSource( ShaderStageType::pixel );
+	if( !vertex || !pixel )
 		return false;
+	m_vertexSource = *vertex;
+	m_pixelSource = *pixel;
 	m_instancing = vertex->defines.find( "INST_" ) == std::string::npos;
-	m_vertexShaderCount = 1;
-	const auto addVertexShader = [&]( const std::string& defines )
-	{
-		return addShaderPassFromFile( ShaderStageType::vertex, vertex->function, vertex->file, defines ) ? m_vertexShaderCount++ : -1;
-	};
-	int vertexShaders[vertexLodDither + 1][2] = {};
-	vertexShaders[vertexDefault][1] = addVertexShader( withDefine( vertex->defines, "DEPTH_ONLY=1" ) );
-	if( m_instancing )
-	{
-		const std::string instancedDefines = withDefine( vertex->defines, "INST_MATRIX=1" );
-		vertexShaders[vertexInstanced][0] = addVertexShader( instancedDefines );
-		vertexShaders[vertexInstanced][1] = addVertexShader( withDefine( instancedDefines, "DEPTH_ONLY=1" ) );
-	}
-	else
-	{
-		vertexShaders[vertexInstanced][0] = vertexShaders[vertexDefault][0];
-		vertexShaders[vertexInstanced][1] = vertexShaders[vertexDefault][1];
-	}
-	const std::string vertexDitherDefines = withDefine( vertex->defines, "LOD_DITHER=1" );
-	vertexShaders[vertexLodDither][0] = addVertexShader( vertexDitherDefines );
-	vertexShaders[vertexLodDither][1] = addVertexShader( withDefine( vertexDitherDefines, "DEPTH_ONLY=1" ) );
 
-	for( int variant = vertexDefault; variant <= vertexLodDither; ++variant )
+	using namespace ShaderPermutation;
+	for( uint32_t features : { 0u, instanced, lodDither } )
 	{
-		if( !createVariantPhases( static_cast<VertexVariant>( variant ), vertexShaders[variant][0], vertexShaders[variant][1] ) )
+		if( !addVertexVariant( features ) )
 			return false;
 	}
-
-	// Экземпляры расстановки: у материала расстановки — его же фазы, у остальных — пока нет (−1)
-	m_placed = vertex->defines.find( "INST_POS" ) != std::string::npos;
-	for( int placed : { vertexPlaced, vertexPlacedLodDither } )
-	{
-		const int source = placed == vertexPlaced ? vertexDefault : vertexLodDither;
-		for( int masked = 0; masked < 2; ++masked )
-		{
-			for( int dither = 0; dither < 2; ++dither )
-				m_colorPhases[placed][masked][dither] = m_placed ? m_colorPhases[source][masked][dither] : -1;
-			m_depthPhases[placed][masked] = m_placed ? m_depthPhases[source][masked] : -1;
-		}
-	}
+	if( vertex->defines.find( "INST_POS" ) != std::string::npos && !enablePlacedInstances() )
+		return false;
 
 	DMD3D::instance().createShaderConstantBuffer( sizeof( PSParam ), m_psCB );
 
 	return true;
 }
 
-bool PBRMaterial::createVariantPhases( VertexVariant variant, int colorShader, int depthShader )
+bool PBRMaterial::addVertexVariant( uint32_t features )
 {
-	if( colorShader < 0 || depthShader < 0 )
-		return false;
-	const bool dither = variant == vertexLodDither || variant == vertexPlacedLodDither;
-	for( int masked = 0; masked < 2; ++masked )
+	using namespace ShaderPermutation;
+	const uint32_t dither = ( features & lodDither ) ? clipDither : 0;
+	for( uint32_t alpha : { 0u, clipAlpha } )
 	{
-		int* colorPhases = m_colorPhases[variant][masked];
-		colorPhases[0] = createPhase( colorShader, masked );
-		colorPhases[1] = dither ? createPhase( colorShader, masked ? 4 : 3 ) : colorPhases[0];
-		m_depthPhases[variant][masked] = dither ? createPhase( depthShader, masked ? 6 : 5 ) : createPhase( depthShader, masked ? 2 : -1 );
-		if( colorPhases[0] < 0 || colorPhases[1] < 0 || m_depthPhases[variant][masked] < 0 )
+		if( !createPermutation( features | alpha ) || ( dither && !createPermutation( features | alpha | dither ) ) ||
+			!createPermutation( features | depthOnly | alpha | dither ) )
 			return false;
 	}
 	return true;
 }
 
+bool PBRMaterial::createPermutation( uint32_t key )
+{
+	using namespace ShaderPermutation;
+	const int vertex = shader( ShaderStageType::vertex, m_vertexSource.function, m_vertexSource.file, vertexDefines( key ) );
+	// «Только глубина» без отсечения — без пиксельного шейдера; с отсечением — точка входа mainDepth (только clip)
+	const bool noPixel = ( key & depthOnly ) && !( key & ( clipAlpha | clipDither ) );
+	const std::string function = ( key & impostorBake ) ? "mainBake" : ( key & depthOnly ) ? "mainDepth" : m_pixelSource.function;
+	const int pixel = noPixel ? -1 : shader( ShaderStageType::pixel, function, m_pixelSource.file, pixelDefines( key ) );
+	if( vertex < 0 || ( !noPixel && pixel < 0 ) )
+		return false;
+	setPermutation( key, createPhase( vertex, pixel ) );
+	return permutation( key ) >= 0;
+}
+
+std::string PBRMaterial::vertexDefines( uint32_t key ) const
+{
+	using namespace ShaderPermutation;
+	const std::string& base = m_vertexSource.defines;
+	// Запекание: мировая матрица — константа объекта; у материала расстановки (PBRInstance: в базе INST_*) база берёт
+	// экземпляр из пула, которого при запекании нет, — вариант без них
+	if( key & impostorBake )
+		return withoutInstances( base );
+	std::string defines = base;
+	// Экземпляр — положение, размер и поворот из пула расстановки (Shaders/instance.sh, ScatterPass::ScatterItem)
+	if( ( key & placed ) && base.find( "INST_POS" ) == std::string::npos )
+		defines = withDefine( defines, "INST_POS=1,INST_SCALE=1,INST_ROTATE=1" );
+	if( ( key & instanced ) && m_instancing )
+		defines = withDefine( defines, "INST_MATRIX=1" );
+	if( key & lodDither )
+		defines = withDefine( defines, "LOD_DITHER=1" );
+	if( key & depthOnly )
+		defines = withDefine( defines, "DEPTH_ONLY=1" );
+	return defines;
+}
+
+std::string PBRMaterial::pixelDefines( uint32_t key ) const
+{
+	using namespace ShaderPermutation;
+	std::string defines = m_pixelSource.defines;
+	if( key & clipAlpha )
+		defines = withDefine( defines, "ALPHA_MASK=1" );
+	// Запекание рисует модель целиком: дизеринга смены LOD нет
+	if( ( key & clipDither ) && !( key & impostorBake ) )
+		defines = withDefine( defines, "LOD_DITHER=1" );
+	return defines;
+}
+
 bool PBRMaterial::enablePlacedInstances()
 {
-	if( m_placed )
-		return true;
-	const std::optional<ShaderSource> vertex = shaderSource( ShaderStageType::vertex );
-	if( !vertex )
-		return false;
-	// Экземпляр — положение, размер и поворот из пула расстановки (Shaders/instance.sh, ScatterPass::ScatterItem)
-	const std::string placedDefines = withDefine( vertex->defines, "INST_POS=1,INST_SCALE=1,INST_ROTATE=1" );
-	const std::string placedDitherDefines = withDefine( placedDefines, "LOD_DITHER=1" );
-	const auto addVertexShader = [&]( const std::string& defines )
-	{
-		return addShaderPassFromFile( ShaderStageType::vertex, vertex->function, vertex->file, defines ) ? m_vertexShaderCount++ : -1;
-	};
-	const int color = addVertexShader( placedDefines );
-	const int depth = addVertexShader( withDefine( placedDefines, "DEPTH_ONLY=1" ) );
-	const int ditherColor = addVertexShader( placedDitherDefines );
-	const int ditherDepth = addVertexShader( withDefine( placedDitherDefines, "DEPTH_ONLY=1" ) );
-	m_placed = createVariantPhases( vertexPlaced, color, depth ) && createVariantPhases( vertexPlacedLodDither, ditherColor, ditherDepth );
+	using namespace ShaderPermutation;
+	if( !m_placed )
+		m_placed = addVertexVariant( placed ) && addVertexVariant( placed | lodDither );
 	return m_placed;
 }
 
 bool PBRMaterial::enableImpostorBake()
 {
-	if( m_bakePhases[0] >= 0 )
-		return true;
-	const std::optional<ShaderSource> pixel = shaderSource( ShaderStageType::pixel );
-	const int first = stageCount( ShaderStageType::pixel );
-	if( !pixel || !addShaderPassFromFile( ShaderStageType::pixel, "mainBake", pixel->file, pixel->defines ) ||
-		!addShaderPassFromFile( ShaderStageType::pixel, "mainBake", pixel->file, withDefine( pixel->defines, "ALPHA_MASK=1" ) ) )
-		return false;
-	// Вершинный шейдер — из базы (0): мировая матрица запекания — константа объекта. У материала расстановки
-	// (PBRInstance: в базе INST_*) база берёт экземпляр из пула, которого при запекании нет, — свой вариант без них
-	int vertexShader = 0;
-	if( !m_instancing )
-	{
-		const std::optional<ShaderSource> vertex = shaderSource( ShaderStageType::vertex );
-		if( !vertex || !addShaderPassFromFile( ShaderStageType::vertex, vertex->function, vertex->file, withoutInstances( vertex->defines ) ) )
-			return false;
-		vertexShader = m_vertexShaderCount++;
-	}
-	m_bakePhases[0] = createPhase( vertexShader, first );
-	m_bakePhases[1] = createPhase( vertexShader, first + 1 );
-	return m_bakePhases[0] >= 0 && m_bakePhases[1] >= 0;
-}
-
-std::vector<int> PBRMaterial::bakePhases() const
-{
-	std::vector<int> phases;
-	for( int phase : m_bakePhases )
-		if( phase >= 0 )
-			phases.push_back( phase );
-	return phases;
-}
-
-std::vector<int> PBRMaterial::depthPhases() const
-{
-	std::vector<int> phases;
-	for( const auto& variant : m_depthPhases )
-		for( int phase : variant )
-			if( phase >= 0 && std::find( phases.begin(), phases.end(), phase ) == phases.end() )
-				phases.push_back( phase );
-	return phases;
+	using namespace ShaderPermutation;
+	return permutation( impostorBake ) >= 0 || ( createPermutation( impostorBake ) && createPermutation( impostorBake | clipAlpha ) );
 }
 
 MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) const
@@ -239,34 +186,9 @@ MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) 
 	return state;
 }
 
-PBRMaterial::VertexVariant PBRMaterial::vertexVariant( const ShaderPhaseOptions& options )
-{
-	if( options.placed )
-		return options.lodDither ? vertexPlacedLodDither : vertexPlaced;
-	return options.lodDither ? vertexLodDither : options.instanced ? vertexInstanced : vertexDefault;
-}
-
-int PBRMaterial::phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options ) const
-{
-	if( options.impostorBake )
-		return m_bakePhases[renderState( params ).blendMode == BlendMode::masked ? 1 : 0];
-	// После depth prepass отсечения нет: маска и дизеринг уже в глубине, проверка EQUAL
-	const bool clipAlpha = renderState( params ).blendMode == BlendMode::masked && !options.depthFromPrepass;
-	const bool clipDither = options.lodDither && !options.depthFromPrepass;
-	return m_colorPhases[vertexVariant( options )][clipAlpha ? 1 : 0][clipDither ? 1 : 0];
-}
-
 bool PBRMaterial::supportsInstancing() const
 {
 	return m_instancing;
-}
-
-int PBRMaterial::depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options ) const
-{
-	const MaterialRenderState state = renderState( params );
-	if( state.blendMode == BlendMode::translucent )
-		return -1;
-	return m_depthPhases[vertexVariant( options )][state.blendMode == BlendMode::masked ? 1 : 0];
 }
 
 void PBRMaterial::setParams( const PropertyContainer& params )

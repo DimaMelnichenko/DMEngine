@@ -18,15 +18,24 @@ public:
 	// Компиляция стадии из файла (DXC → DXIL SM 6.6 с кэшем на диске, D3D/ShaderCompiler.h; ошибки — в лог и
 	// shader-error.txt). Номер шейдера в фазе (createPhase) — порядок добавления среди шейдеров этой стадии
 	bool addShaderPassFromFile( ShaderStageType type, const std::string& funcName, const std::string& fileName, const std::string& defines = "" );
+	// Номер шейдера стадии с этим исходником: уже скомпилированного (тот же файл, точка входа и defines) или нового —
+	// варианты собираются по исходникам, а не по порядку добавления. −1 — не скомпилировался
+	int shader( ShaderStageType type, const std::string& funcName, const std::string& fileName, const std::string& defines );
 	// Фаза — набор шейдеров стадий (номера в порядке addShaderPassFromFile, −1 — стадии нет). Возвращает номер фазы
 	// для setPass: новой или уже существующей с теми же шейдерами; −1 — такого шейдера нет. Номер надо хранить:
 	// у совпавшей фазы он не следующий по порядку
 	int createPhase( int index_vs, int index_ps, int index_gs = -1 );
 	int phaseCount() const { return static_cast<int>( m_phases.size() ); }
-	// Шейдеров стадии в программе — номер следующего добавленного (addShaderPassFromFile)
-	int stageCount( ShaderStageType type ) const;
-	// Фаза без пиксельного шейдера — «только глубина» (тени, depth prepass)
-	bool hasPixelShader( int phase ) const { return m_phases[phase].index_ps >= 0; }
+
+	// Перестановки — фазы по ключу признаков варианта (биты ShaderPermutation у материалов; как permutation domains в UE):
+	// разные ключи могут вести к одной фазе (признак, которого у программы нет, ничего не меняет). −1 — такой нет
+	void setPermutation( uint32_t key, int phase );
+	int permutation( uint32_t key ) const
+	{
+		return key < m_permutations.size() ? m_permutations[key] : -1;
+	}
+	// Фазы по ключам: номер — ключ, −1 — перестановки нет
+	const std::vector<int>& permutations() const { return m_permutations; }
 
 	// Раскладка вершин — до первого вершинного шейдера (она создаётся вместе с ним)
 	void setLayoutDesc( std::vector<VertexElement>&& layoutDesc );
@@ -78,6 +87,7 @@ private:
 	}
 
 	std::vector<Phase> m_phases;
+	std::vector<int> m_permutations;	// фаза по ключу перестановки, −1 — нет
 	// Скомпилированные стадии по типу; номера в фазах — индексы в этих списках
 	std::vector<ShaderStage> m_vertexShader;
 	std::vector<ShaderStage> m_pixelShader;

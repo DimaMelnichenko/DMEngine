@@ -58,9 +58,9 @@ public:
 	void setShading( float baseShade, float selfShadow );
 	// Masked без отсечения граней (карточка всегда к виду), со сменой LOD дизерингом
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
-	int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
-	int depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
-	std::vector<int> depthPhases() const override;
+	// Экземпляры — всегда из пула; после depth prepass (проход opaqueDepthRead — видимость по глубине сцены) дизеринг
+	// смены LOD отсекается, как в prepass
+	uint32_t permutationKey( const PropertyContainer& params, const ShaderPhaseOptions& options, bool depth ) const override;
 	// Экземпляры — всегда из пула расстановки
 	bool enablePlacedInstances() override { return true; }
 	// Глубина пикселя — запечённой поверхности: после depth prepass видимость — по глубине сцены (проход opaqueDepthRead)
@@ -88,11 +88,12 @@ private:
 	// Вид кадра запекания frame (номер по сторонам сетки): ортография на сферу модели со стороны его направления
 	RenderView frameView( uint32_t x, uint32_t y ) const;
 
-	// Фазы: цвет — [вершинный с LOD_DITHER][без depth prepass: ALPHA_MASK и глубина поверхности; иначе — видимость по
-	// глубине сцены][отсечение дизерингом], глубина — [LOD_DITHER]
+	// Шейдеры перестановки key (компилируются, если таких ещё нет) и её фаза: вершинный — экземпляр расстановки, с
+	// LOD_DITHER при смене LOD; пиксельный цвета — без depth prepass с отсечением по покрытию и глубиной поверхности
+	// (ALPHA_MASK), после него — видимость по глубине сцены; «только глубина» — mainDepth (prepass и тени)
+	bool createPermutation( uint32_t key );
+
 	bool m_flat = false;
-	int m_colorPhases[2][2][2] = {};
-	int m_depthPhases[2] = {};
 	Params m_params = {};
 	uint32_t m_colorTexture = 0;
 	uint32_t m_normalTexture = 0;

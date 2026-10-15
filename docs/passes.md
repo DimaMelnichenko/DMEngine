@@ -157,7 +157,7 @@ Release, 1920 × 1080, время GPU, мс (частицы в уровнях в
 | `src/Engine/Graphics/SceneTargets.h/.cpp` | буфер сцены: глубина с видом для шейдеров и целью только для чтения |
 | `src/Engine/Graphics/Scene/SceneObject.h` | `RenderContext::depthFromPrepass` |
 | `src/Engine/Graphics/D3D/DMD3DPipelines.cpp`, `DMD3DPasses.cpp` | `DepthState::readOnlyEqual`, `beginPass` — цели прохода по `PassDesc` (`D3D/GpuPass.h`) |
-| `src/Engine/Graphics/Scene/Materials/PBRMaterial.cpp` | `phaseFor( params, options )`, фазы глубины |
+| `src/Engine/Graphics/Scene/Materials/Material.cpp`, `PBRMaterial.cpp` | `phaseFor( params, options )` и `depthPhaseFor` — фаза по ключу перестановки; перестановки `PBR` |
 | `src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp`, `Scatterer/Scatterer.cpp` | свои вызовы в prepass |
 | `Shaders/LightShader.vs`, `Shaders/depth_only.sh` | вариант «только глубина» с `precise`-позицией |
 | `settings.ini`, `src/Config/Config.cpp` | `DepthPrepass` |

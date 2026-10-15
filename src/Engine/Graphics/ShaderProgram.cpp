@@ -105,15 +105,26 @@ bool ShaderProgram::createShaderPass( ShaderStageType type, const std::vector<ui
 	return true;
 }
 
-int ShaderProgram::stageCount( ShaderStageType type ) const
+int ShaderProgram::shader( ShaderStageType type, const std::string& funcName, const std::string& fileName, const std::string& defines )
 {
-	switch( type )
+	// Номер шейдера стадии — его место среди исходников этой стадии (m_sources — в порядке добавления)
+	int index = 0;
+	for( const ShaderSource& source : m_sources )
 	{
-		case ShaderStageType::vertex: return static_cast<int>( m_vertexShader.size() );
-		case ShaderStageType::pixel: return static_cast<int>( m_pixelShader.size() );
-		case ShaderStageType::geometry: return static_cast<int>( m_geometryShader.size() );
-		default: return 0;
+		if( source.type != type )
+			continue;
+		if( source.function == funcName && source.file == fileName && source.defines == defines )
+			return index;
+		++index;
 	}
+	return addShaderPassFromFile( type, funcName, fileName, defines ) ? index : -1;
+}
+
+void ShaderProgram::setPermutation( uint32_t key, int phase )
+{
+	if( key >= m_permutations.size() )
+		m_permutations.resize( key + 1, -1 );
+	m_permutations[key] = phase;
 }
 
 int ShaderProgram::createPhase( int index_vs, int index_ps, int index_gs )

@@ -500,8 +500,10 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 как в glTF (сила отражения диэлектрика — `SpecularFactor`, KHR_materials_specular); материал 9 `PBRInstance` — его инстансный вариант для расстановки. Режим материала — тоже параметры
 с именами glTF: `AlphaMode` (0 OPAQUE, 1 MASK, 2 BLEND — Blend Mode в UE), `AlphaCutoff`, `DoubleSided`; материал
 сообщает его `Material::renderState( params )` (`Scene/Materials/MaterialRenderState.h`), вариант шейдера —
-`phaseFor( params, options )`: `PBRMaterial` сам собирает второй пиксельный шейдер с `clip` (define `ALPHA_MASK`), у непрозрачных
-отсечения нет; `ShaderPhaseOptions` — что зависит от вызова: инстансы, глубина из prepass (цвет без `clip`), смена LOD
+`phaseFor( params, options )` — фаза по ключу перестановки (биты `ShaderPermutation`: экземпляры, смена LOD, отсечение, только
+глубина, запекание; ключ вызова — `Material::permutationKey`, фазы по ключам собирает материал — `ShaderProgram::setPermutation`,
+как permutation domains в UE; `docs/materials.md`, «Перестановки»): `PBRMaterial` сам собирает второй пиксельный шейдер с
+`clip` (define `ALPHA_MASK`), у непрозрачных отсечения нет; `ShaderPhaseOptions` — что зависит от вызова: инстансы, глубина из prepass (цвет без `clip`), смена LOD
 дизерингом (`LOD_DITHER`, `Shaders/lod_dither.sh`, как Dithered LOD Transition в UE; флаг материала
 `DitheredLODTransition`). Рисуют `setPass( phaseFor( params ) )`, затем `setParams( params )`, двусторонние — без отсечения граней
 (`materialRasterState`). Прочие классы — `Texture`, `Color`

@@ -8,13 +8,13 @@ namespace GS
 // Материал PBR metallic/roughness (как Default Lit в UE5 и материал glTF 2.0), шейдер Shaders/PBRLit.ps.
 // Параметры названы как в glTF: текстуры BaseColor, MetallicRoughness (G — roughness, B — metallic), Normal,
 // Occlusion (R), Emissive и множители к ним. Текстура 0 — «не задана»: вместо неё белая или плоская нормаль.
-// Режим — тоже как в glTF: AlphaMode (0 OPAQUE, 1 MASK, 2 BLEND), AlphaCutoff, DoubleSided. Для MASK материал
-// сам собирает второй вариант пиксельного шейдера с отсечением (define ALPHA_MASK): у непрозрачных отсечения нет,
-// и ранняя проверка глубины работает. Так же — вариант вершинного шейдера для инстансинга (define INST_MATRIX)
-// и фазы «только глубина» для теней: вершинный шейдер с define DEPTH_ONLY (позиция и UV, без нормалей), непрозрачные —
-// без пиксельного шейдера, MASK — точка входа mainDepth (только clip). Смена LOD дизерингом (DitheredLODTransition, как
-// Dithered LOD Transition в UE) — ещё варианты с define LOD_DITHER: вершинный шейдер отдаёт долю перехода, пиксельные
-// отсекают свою долю пикселей (Shaders/lod_dither.sh)
+// Режим — тоже как в glTF: AlphaMode (0 OPAQUE, 1 MASK, 2 BLEND), AlphaCutoff, DoubleSided. Варианты шейдеров —
+// перестановки по ключу (биты ShaderPermutation, defines — vertexDefines / pixelDefines): для MASK — пиксельный шейдер
+// с отсечением (define ALPHA_MASK; у непрозрачных отсечения нет, и ранняя проверка глубины работает), вершинный для
+// инстансинга (INST_MATRIX), «только глубина» для теней и depth prepass — вершинный DEPTH_ONLY (позиция и UV, без
+// нормалей), непрозрачные — без пиксельного шейдера, MASK — точка входа mainDepth (только clip). Смена LOD дизерингом
+// (DitheredLODTransition, как Dithered LOD Transition в UE) — LOD_DITHER: вершинный шейдер отдаёт долю перехода,
+// пиксельные отсекают свою долю пикселей (Shaders/lod_dither.sh)
 class PBRMaterial : public Material
 {
 public:
@@ -23,17 +23,12 @@ public:
 	std::vector<VertexElement> initLayouts() override;
 	void setParams( const PropertyContainer& ) override;
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
-	int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
 	bool supportsInstancing() const override;
-	// Вершинные шейдеры с INST_POS, INST_SCALE, INST_ROTATE (обычный и LOD_DITHER, у каждого — «только глубина») и их
-	// фазы; у материала, вершинный шейдер которого из базы уже такой (PBRInstance), — он сам
+	// Перестановки экземпляров расстановки — вершинный шейдер с INST_POS, INST_SCALE, INST_ROTATE (обычный и LOD_DITHER,
+	// у каждого — «только глубина»); у материала, вершинный шейдер которого из базы уже такой (PBRInstance), — он сам
 	bool enablePlacedInstances() override;
-	// Пиксельный шейдер mainBake (и с отсечением по альфе) с обычным вершинным шейдером
+	// Перестановки запекания: пиксельный шейдер mainBake (и с отсечением по альфе) с обычным вершинным шейдером
 	bool enableImpostorBake() override;
-	std::vector<int> bakePhases() const override;
-	int depthPhaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
-	// Фазы «только глубина» всех вариантов, в том числе с пиксельным шейдером mainDepth (Masked)
-	std::vector<int> depthPhases() const override;
 
 	// Пропускание вперёд по умолчанию (TransmissionForward, TransmissionForwardRoughness; как default_value
 	// в MaterialParameterDef): у всех пропускающих материалов уровня — листья, травинки, лепестки
@@ -74,23 +69,21 @@ private:
 	};
 	static_assert( sizeof( PSParam ) == 128, "PBRMaterialBuffer layout" );
 
-	// Вершинный шейдер фазы: обычный, с матрицами экземпляров (INST_MATRIX), со сменой LOD дизерингом (LOD_DITHER) и
-	// экземпляры расстановки (INST_POS, INST_SCALE, INST_ROTATE) — обычный и с дизерингом
-	enum VertexVariant { vertexDefault, vertexInstanced, vertexLodDither, vertexPlaced, vertexPlacedLodDither, vertexVariantCount };
-	static VertexVariant vertexVariant( const ShaderPhaseOptions& options );
-	// Фазы варианта: цвет — пиксельный шейдер 0 или 1 (отсечение по альфе), с дизерингом — 3 или 4; глубина — без
-	// пиксельного шейдера или с mainDepth (2), с дизерингом — всегда с mainDepth (5 или 6)
-	bool createVariantPhases( VertexVariant variant, int colorShader, int depthShader );
+	// Перестановки вершинного шейдера с признаками features (instanced, placed, lodDither): цвет — с отсечением по
+	// альфе и без, при смене LOD — ещё с отсечением дизерингом и без (после depth prepass); «только глубина» — с
+	// отсечением по альфе и без (Masked), при смене LOD — всегда с дизерингом
+	bool addVertexVariant( uint32_t features );
+	// Шейдеры перестановки key (компилируются, если таких ещё нет) и её фаза
+	bool createPermutation( uint32_t key );
+	// Defines перестановки: исходные из базы плюс признаки ключа (у материала без инстансинга или с экземплярами
+	// расстановки в базе лишние признаки ничего не добавляют — ключ ведёт к той же фазе)
+	std::string vertexDefines( uint32_t key ) const;
+	std::string pixelDefines( uint32_t key ) const;
 
-	// Номера фаз (ShaderProgram::createPhase): цвет — по [вершинный шейдер][отсечение по альфе][отсечение дизерингом],
-	// глубина — по [вершинный шейдер][Masked]: вершинный «только глубина» без пиксельного шейдера или с mainDepth.
-	// Дизеринг пиксельного шейдера — только с вершинным шейдером LOD_DITHER. −1 — варианта нет (placed не включён)
-	bool m_instancing = false;
-	bool m_placed = false;		// варианты экземпляров расстановки есть
-	int m_vertexShaderCount = 0;	// вершинных шейдеров в программе — номер следующего
-	int m_colorPhases[vertexVariantCount][2][2] = {};
-	int m_depthPhases[vertexVariantCount][2] = {};
-	int m_bakePhases[2] = { -1, -1 };	// запекание импостера: [Masked]
+	ShaderSource m_vertexSource;	// шейдеры из базы — основа перестановок
+	ShaderSource m_pixelSource;
+	bool m_instancing = false;	// вершинный шейдер из базы без экземпляров (INST_*): есть вариант INST_MATRIX
+	bool m_placed = false;		// перестановки экземпляров расстановки есть
 
 	Buffer m_psCB;
 };
