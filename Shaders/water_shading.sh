@@ -90,6 +90,23 @@ uint rippleHash( uint value )
 	return ( word >> 22u ) ^ word;
 }
 
+// Плитка без воды (за урезом или клетка грубой сетки, где тонкий слой по крутому видит только детальная вода) берёт
+// течение пикселя: оно разное у каждого пикселя, и снос узора со временем растащил бы его в нити (узкий жёлоб у берега).
+// Поэтому у сухой плитки узор повёрнут по течению пикселя, но не плывёт (rate 0), а если есть плитки с водой — она узора не
+// даёт: вес 0, смешение по плиткам с водой
+void dropDryTiles( inout RippleTiles result, bool wet[4] )
+{
+	const bool anyWet = wet[0] || wet[1] || wet[2] || wet[3];
+	float weights = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		if( anyWet && !wet[k] )
+			result.tiles[k].weight = 0.0f;
+		weights += result.tiles[k].weight * result.tiles[k].weight;
+	}
+	result.normalization = rsqrt( max( weights, 1e-4f ) );
+}
+
 // Плитки вокруг точки xz; velocity — течение в точке: у плитки без воды (за урезом) — оно
 RippleTiles rippleTiles( float2 xz, float2 velocity )
 {
@@ -98,26 +115,26 @@ RippleTiles rippleTiles( float2 xz, float2 velocity )
 	const int2 base = (int2)floor( position );
 	const float2 f = position - (float2)base;
 	RippleTiles result;
-	float weights = 0.0f;
+	bool wet[4];
 	[unroll] for( uint k = 0; k < 4; ++k )
 	{
 		const int2 corner = int2( k & 1, k >> 1 );
 		const int2 cell = clamp( base + corner, 0, (int)g_size - 1 );
 		const float4 state = g_waterState.Load( int3( cell, 0 ) );
-		const float2 flow = state.x > 0.0f ? state.yz : velocity;
+		wet[k] = state.x > 0.0f;
+		const float2 flow = wet[k] ? state.yz : velocity;
 		const float speed = length( flow );
 		RippleTile tile;
 		tile.center = float2( ( cell.x + 0.5f ) * g_cellSize, g_worldSize - ( cell.y + 0.5f ) * g_cellSize );
 		tile.along = speed > 1e-4f ? flow / speed : float2( 1.0f, 0.0f );
 		tile.stretch = lerp( 1.0f, g_rippleStretch, saturate( speed / rippleStretchSpeed ) );
-		tile.rate = speed / ( g_rippleScale * tile.stretch );
+		tile.rate = wet[k] ? speed / ( g_rippleScale * tile.stretch ) : 0.0f;
 		const uint hash = rippleHash( (uint)cell.x + rippleHash( (uint)cell.y ) );
 		tile.offset = float2( hash & 0xffffu, hash >> 16u ) / 65536.0f;
 		tile.weight = ( corner.x ? f.x : 1.0f - f.x ) * ( corner.y ? f.y : 1.0f - f.y );
-		weights += tile.weight * tile.weight;
 		result.tiles[k] = tile;
 	}
-	result.normalization = rsqrt( max( weights, 1e-4f ) );
+	dropDryTiles( result, wet );
 	return result;
 }
 
@@ -135,7 +152,7 @@ RippleTiles detailRippleTiles( float2 xz, float2 velocity, float3 texel )
 	const int2 base = (int2)floor( position );
 	const float2 f = position - (float2)base;
 	RippleTiles result;
-	float weights = 0.0f;
+	bool wet[4];
 	[unroll] for( uint k = 0; k < 4; ++k )
 	{
 		const int2 corner = int2( k & 1, k >> 1 );
@@ -144,18 +161,18 @@ RippleTiles detailRippleTiles( float2 xz, float2 velocity, float3 texel )
 		tile.center = ( cell + 0.5f ) * detailRippleCell;
 		const int2 at = clamp( int2( floor( texel.xy + ( tile.center - xz ) / step - 0.5f ) ), 0, int2( size ) - 1 );
 		const float4 state = g_waterDetail.Load( int4( at, texel.z, 0 ) );
-		const float2 flow = state.w > 0.0f ? state.yz : velocity;
+		wet[k] = state.w > 0.0f;
+		const float2 flow = wet[k] ? state.yz : velocity;
 		const float speed = length( flow );
 		tile.along = speed > 1e-4f ? flow / speed : float2( 1.0f, 0.0f );
 		tile.stretch = lerp( 1.0f, g_rippleStretch, saturate( speed / rippleStretchSpeed ) );
-		tile.rate = speed / ( g_rippleScale * tile.stretch );
+		tile.rate = wet[k] ? speed / ( g_rippleScale * tile.stretch ) : 0.0f;
 		const uint hash = rippleHash( (uint)cell.x + rippleHash( (uint)cell.y + 0x9e3779b9u ) );
 		tile.offset = float2( hash & 0xffffu, hash >> 16u ) / 65536.0f;
 		tile.weight = ( corner.x ? f.x : 1.0f - f.x ) * ( corner.y ? f.y : 1.0f - f.y );
-		weights += tile.weight * tile.weight;
 		result.tiles[k] = tile;
 	}
-	result.normalization = rsqrt( max( weights, 1e-4f ) );
+	dropDryTiles( result, wet );
 	return result;
 }
 
