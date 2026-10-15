@@ -1473,25 +1473,25 @@ std::vector<StreamCurve> TerrainHydrology::merge( const std::vector<StreamCurve>
 	return result;
 }
 
-bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSettings& water, const std::vector<StreamCurve>& curves,
-							  Result& result )
+// Постройка русел, ручьёв и озёр по кривым (build) — ступенями с общими данными: узлы оси (3), ложе (4), вода (5), камни
+// русла и детальная вода (6); каждая видит итог предыдущих. Члены — данные, которые переходят из ступени в ступень, под
+// именами прежних переменных одной функции (без m_): тела ступеней перенесены дословно; данные одной ступени — её
+// локальные переменные. Озеро узла, смещение уступа, дно детальной земли в точке и доля уровня на ступенях — методы
+struct TerrainHydrology::Build
 {
-	const WaterChannelsSettings& p = water.channels;
-	const int n = static_cast<int>( field.size );
-	if( n < 3 )
-		return false;
-	const size_t cells = static_cast<size_t>( n ) * n;
-	const double cell = field.texelSize;
-	const double world = n * cell;
-	const Drainage dr = drainage( field, water );
-	const Grid& height = dr.height;
-	const std::vector<double>& lakeLevel = dr.lakeLevel;
-	std::vector<uint8_t> lake = dr.lake;	// до заливки по итоговому уровню — низины заполнения
-	result.largestDischarge = static_cast<float>( *std::max_element( dr.flow.begin(), dr.flow.end() ) );
-	result.warnings.clear();
+	Build( const HeightField& field, const WaterSimulationSettings& water, const std::vector<StreamCurve>& curves, Result& result );
+	// 3. Узлы оси по кривым и сеть узлов (вниз и вверх по течению), форма русла узла, озёра — номера, уровень, выход, доля
+	// воды от истока
+	bool buildAxis();
+	// 4. Ложе: сечения, плёсы и ступени, профиль по отрезкам оси и врез, устья в озёрах, чаши озёр, детальная земля у русел
+	bool buildBed();
+	// 5. Вода — одно поле уровня по сети с подпором: уровень, скорость и пена узлов, гидравлический радиус, растр
+	bool buildWater();
+	// 6. Камни русла и детальная вода плиток
+	bool buildStones();
 
-	// 3. Узлы оси — по кривым: точки в клетках, длинные отрезки (ручная кривая) — через клетку. Последняя точка, совпавшая
-	// с точкой другой кривой (сгенерированный приток кончается узлом главного), — это узел той кривой
+	// Точки кривой по клеткам и расход в них; последняя может совпасть с точкой другой кривой (сгенерированный приток
+	// кончается узлом главного)
 	struct CurvePoints
 	{
 		const StreamCurve* curve = nullptr;
@@ -1500,7 +1500,99 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		int target = -1;			// последняя точка — точка этой кривой …
 		size_t targetPoint = 0;		// … с этим номером
 	};
+
+	// Параметры русла узла — общие, умноженные на множители его кривой
+	struct Shape
+	{
+		double widthCoef, minWidth, depthCoef, minIncision, freeboard, bankSlope, thalweg, manning, stones;
+	};
+
+	// Сечение русла в узле: полуширина дна и ширина борта (клетки), врез (м), доля тальвега, изгиб, фаза плёсов
+	struct Section
+	{
+		double half, depth, bank, thalweg, bend, phase;
+		double stepPhase, stepLength, stepHeight;	// ступени: фаза (целое — котёл под уступом), шаг, м, высота уступа, м
+		uint32_t stepSeed;							// разброс высоты уступов — свой у каждого ручья
+	};
+
+	bool inLake( int k ) const { return lake[cellOf[k]] != 0; }
+	double stepOffset( const Section& s0, const Section& s1, double t ) const;
+	double bedAt( double x, double y ) const;
+	double levelShare( int k, int d, double t ) const;
+
+	const HeightField& field;
+	const WaterSimulationSettings& water;
+	const std::vector<StreamCurve>& curves;
+	Result& result;
+	const WaterChannelsSettings& p;
+	const int n;
+	const size_t cells;
+	const double cell;
+	const double world;
+	const Drainage dr;
+	const Grid& height;
+	const std::vector<double>& lakeLevel;
+	std::vector<uint8_t> lake;	// до заливки по итоговому уровню — низины заполнения
+	// 3. Узлы оси
 	std::vector<CurvePoints> lines;
+	std::vector<Point> position;
+	std::vector<double> q, nodeArea;
+	std::vector<int> down, curveOf;
+	std::vector<std::vector<int>> lineNodes;
+	int count = 0;
+	std::vector<int> nodeOrder;
+	std::vector<int> up;
+	std::vector<int> cellOf;
+	std::vector<Shape> shape;
+	std::vector<int> lakeLabel;
+	int lakeCount = 0;
+	std::vector<double> fillLevel;
+	std::vector<double> lakeSurface;
+	std::vector<double> outletDistance;
+	std::vector<int> lakeOutlet;
+	std::vector<int> endLake;
+	std::vector<double> sourceShare;
+	// 4. Ложе
+	std::vector<double> half, depth, bed, bank, surface, rim;
+	std::vector<double> poolPhase;
+	std::vector<double> inflowDistance;
+	std::vector<double> stepLength, stepHeight, stepPhase;
+	std::vector<double> carve;
+	Grid shoreShare;
+	std::vector<std::vector<float>> tileStream;	// русло у текселей плиток (pieceChannel): берег и уровень озера в нём — по клеткам
+	Grid carved;
+	std::vector<double> width, reach;
+	// 5. Вода
+	std::vector<double> slope, level, speed, foam, actual;
+	std::vector<double> hydraulicRadius;	// R русла у узла, м — течение детальной воды (water_flow.cs)
+	int detailTiles = 0;
+	std::vector<int> detailIndex;
+};
+
+TerrainHydrology::Build::Build( const HeightField& field, const WaterSimulationSettings& water, const std::vector<StreamCurve>& curves,
+								Result& result ) :
+	field( field ), water( water ), curves( curves ), result( result ), p( water.channels ), n( static_cast<int>( field.size ) ),
+	cells( static_cast<size_t>( n ) * n ), cell( field.texelSize ), world( n * cell ), dr( drainage( field, water ) ), height( dr.height ),
+	lakeLevel( dr.lakeLevel ), lake( dr.lake )
+{
+	result.largestDischarge = static_cast<float>( *std::max_element( dr.flow.begin(), dr.flow.end() ) );
+	result.warnings.clear();
+}
+
+bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSettings& water, const std::vector<StreamCurve>& curves,
+							  Result& result )
+{
+	if( static_cast<int>( field.size ) < 3 )
+		return false;
+	// Ступени по порядку: каждая видит итог предыдущих
+	Build build( field, water, curves, result );
+	return build.buildAxis() && build.buildBed() && build.buildWater() && build.buildStones();
+}
+
+bool TerrainHydrology::Build::buildAxis()
+{
+	// 3. Узлы оси — по кривым: точки в клетках, длинные отрезки (ручная кривая) — через клетку. Последняя точка, совпавшая
+	// с точкой другой кривой (сгенерированный приток кончается узлом главного), — это узел той кривой
 	for( const StreamCurve& curve : curves )
 	{
 		if( !curve.enabled || curve.points.size() < 2 )
@@ -1553,10 +1645,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			}
 		}
 	}
-	std::vector<Point> position;
-	std::vector<double> q, nodeArea;
-	std::vector<int> down, curveOf;
-	std::vector<std::vector<int>> lineNodes( lines.size() );
+	lineNodes.resize( lines.size() );
 	for( size_t a = 0; a < lines.size(); ++a )
 	{
 		const CurvePoints& line = lines[a];
@@ -1575,7 +1664,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			lineNodes[a].push_back( k );
 		}
 	}
-	const int count = static_cast<int>( position.size() );
+	count = static_cast<int>( position.size() );
 	result.nodes = position.size();
 	// Концы: слившийся — узлом той кривой; правленная и ручная — в ближайший узел другой кривой в пределах трёх клеток
 	// (её конец могли сдвинуть, сгенерированная обрезана у правленной); в озере и у края — никуда
@@ -1609,7 +1698,6 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		}
 	}
 	// От истоков вниз — топологический порядок (Kahn); связи, замкнувшие круг, рвутся
-	std::vector<int> nodeOrder;
 	{
 		std::vector<int> incoming( count, 0 );
 		for( int k = 0; k < count; ++k )
@@ -1645,7 +1733,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( int k : nodeOrder )
 		if( down[k] >= 0 )
 			q[down[k]] = std::max( q[down[k]], q[k] );
-	std::vector<int> up( count, -1 );
+	up.assign( count, -1 );
 	{
 		std::vector<double> upFlow( count, 0.0 );
 		for( int k = 0; k < count; ++k )
@@ -1658,17 +1746,11 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			}
 		}
 	}
-	std::vector<int> cellOf( count );
+	cellOf.resize( count );
 	for( int k = 0; k < count; ++k )
 		cellOf[k] = cellIndex( position[k], n );
-	auto inLake = [&]( int k ) { return lake[cellOf[k]] != 0; };
 
-	// Параметры русла узла — общие, умноженные на множители его кривой
-	struct Shape
-	{
-		double widthCoef, minWidth, depthCoef, minIncision, freeboard, bankSlope, thalweg, manning, stones;
-	};
-	std::vector<Shape> shape( count );
+	shape.resize( count );
 	for( int k = 0; k < count; ++k )
 	{
 		const StreamCurve& curve = *lines[curveOf[k]].curve;
@@ -1678,8 +1760,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	}
 
 	// Озёра — связные области одного уровня заполнения: номер озера у клетки (−1 — не озеро)
-	std::vector<int> lakeLabel( cells, -1 );
-	int lakeCount = 0;
+	lakeLabel.assign( cells, -1 );
+	lakeCount = 0;
 	{
 		std::vector<int> stack;
 		for( size_t start = 0; start < cells; ++start )
@@ -1710,19 +1792,19 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		}
 	}
 	// Уровень заполнения низины озера (перелив) — по номеру
-	std::vector<double> fillLevel( lakeCount, 0.0 );
+	fillLevel.assign( lakeCount, 0.0 );
 	for( size_t i = 0; i < cells; ++i )
 		if( lakeLabel[i] >= 0 )
 			fillLevel[lakeLabel[i]] = lakeLevel[i];
 	// Вода озера — ниже перелива на запас берега (lake_freeboard): рельеф (чаша, берег у изолинии) — по переливу, вода
 	// (уровни сети, растр, детальная вода) — по lakeSurface
-	std::vector<double> lakeSurface( fillLevel );
+	lakeSurface = fillLevel;
 	for( double& value : lakeSurface )
 		value -= std::max( static_cast<double>( p.lakeFreeboard ), 0.0 );
 	// Узлы ниже озера: путь от берега, м (бесконечность — не из озера). Кривая, которая начинается у берега (озеро в трёх
 	// клетках), — исток этого озера; у озера с несколькими — ниже всех по земле (порог перелива)
-	std::vector<double> outletDistance( count, std::numeric_limits<double>::infinity() );
-	std::vector<int> lakeOutlet( lakeCount, -1 );
+	outletDistance.assign( count, std::numeric_limits<double>::infinity() );
+	lakeOutlet.assign( lakeCount, -1 );
 	std::vector<uint8_t> lakeStart( count, 0 );
 	for( size_t a = 0; a < lines.size(); ++a )
 	{
@@ -1764,7 +1846,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	}
 	// Ручей, который кончается в озере или у его берега (озеро в трёх клетках), впадает в него: уровень озера — его вода ниже
 	// по течению (подпор)
-	std::vector<int> endLake( count, -1 );
+	endLake.assign( count, -1 );
 	for( size_t a = 0; a < lines.size(); ++a )
 	{
 		if( lineNodes[a].empty() )
@@ -1815,14 +1897,47 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		if( d >= 0 && up[d] == k )
 			fromSource[d] = fromSource[k] + std::hypot( position[d].x - position[k].x, position[d].y - position[k].y ) * cell;
 	}
-	std::vector<double> sourceShare( count, 1.0 );
+	sourceShare.assign( count, 1.0 );
 	for( int k = 0; k < count; ++k )
 		if( p.sourceTaper > 0.0f && std::isfinite( fromSource[k] ) )
 			sourceShare[k] = smoothstep( 0.0, p.sourceTaper, fromSource[k] );
+	return true;
+}
 
+double TerrainHydrology::Build::stepOffset( const Section& s0, const Section& s1, double t ) const
+{
+	const double height = s0.stepHeight + ( s1.stepHeight - s0.stepHeight ) * t;
+	if( height <= 0.0 )
+		return 0.0;
+	const double phase = s0.stepPhase + ( s1.stepPhase - s0.stepPhase ) * t;
+	const double length = s0.stepLength + ( s1.stepLength - s0.stepLength ) * t;
+	const double index = std::floor( phase );
+	const double f = phase - index;
+	auto jitter = [&]( double i )
+	{
+		uint32_t h = static_cast<uint32_t>( static_cast<int64_t>( i ) ) * 747796405u + s0.stepSeed;
+		h = ( ( h >> ( ( h >> 28u ) + 4u ) ) ^ h ) * 277803737u;
+		return 0.7 + 0.6 * static_cast<double>( ( h >> 22u ) ^ h ) / 4294967295.0;
+	};
+	const double here = 0.5 * height * jitter( index );
+	const double next = 0.5 * height * jitter( index + 1.0 );
+	const double face = std::clamp( stepFace / std::max( length, 1e-3 ), 0.05, 0.4 );
+	const double down = 0.5 * height;
+	if( f < 1.0 - face )
+		return -here + 2.0 * here * f / ( 1.0 - face ) - down;
+	return here - ( here + next ) * smoothstep( 0.0, 1.0, ( f - ( 1.0 - face ) ) / face ) - down;
+}
+
+bool TerrainHydrology::Build::buildBed()
+{
 	// 4. Ложе: дно монотонно вниз по течению, профиль по отрезкам оси — дно, тальвег, борта. В озере ложа нет (дно озера),
 	// и оно не тянет дно ниже по течению; ниже озера врез нарастает от порога (outletSlope)
-	std::vector<double> half( count ), depth( count ), bed( count ), bank( count ), surface( count ), rim( count );
+	half.resize( count );
+	depth.resize( count );
+	bed.resize( count );
+	bank.resize( count );
+	surface.resize( count );
+	rim.resize( count );
 	for( int k = 0; k < count; ++k )
 	{
 		Shape s = shape[k];
@@ -1908,7 +2023,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	for( double& value : bend )
 		value = std::clamp( value, -1.0, 1.0 );
 	// Плёсы и перекаты: фаза вдоль главного течения, период — pool_spacing ширин русла (Leopold, Wolman 1957: 5–7 ширин)
-	std::vector<double> poolPhase( count, 0.0 );
+	poolPhase.assign( count, 0.0 );
 	for( int k : nodeOrder )
 	{
 		const int d = down[k];
@@ -1920,7 +2035,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	}
 	// Путь до берега озера ниже по течению, м: у впадения, как у истока, наименьшая глубина и запас нарастают от берега —
 	// в устье вода ручья переходит в озеро, а не стоит над ним ступенькой
-	std::vector<double> inflowDistance( count, std::numeric_limits<double>::infinity() );
+	inflowDistance.assign( count, std::numeric_limits<double>::infinity() );
 	for( auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it )
 	{
 		const int k = *it;
@@ -1940,7 +2055,9 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// 1995), но 0,5…4 ширины дна (Chin 1999: 0,4–2,4 ширины; положе — уступ ниже и сходит на нет). Уклон участка — по дну
 	// на ±stepSlopeSpan вдоль сети: у узла дно идёт по рельефу, и уклон одного отрезка шумит. У истока из озера и в устье
 	// ступеней нет (там уровень озера), положе step_min_slope — тоже (плёсы и перекаты)
-	std::vector<double> stepLength( count, 1.0 ), stepHeight( count, 0.0 ), stepPhase( count, 0.0 );
+	stepLength.assign( count, 1.0 );
+	stepHeight.assign( count, 0.0 );
+	stepPhase.assign( count, 0.0 );
 	std::vector<uint32_t> stepSeed( count, 0 );
 	if( p.stepHeight > 0.0f )
 	{
@@ -1992,13 +2109,6 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// сдвигается к внешнему берегу, внешний борт круче и глубже, внутренний — пологая отмель (bend_asymmetry); плёсы — глубже
 	// (pool_depth); шум дна и бортов (bed_noise). base — тот же врез без плёсов и шума: по нему уровень воды (в плёсе вода
 	// глубже, а не ниже)
-	// Сечение русла в узле: полуширина дна и ширина борта (клетки), врез (м), доля тальвега, изгиб, фаза плёсов
-	struct Section
-	{
-		double half, depth, bank, thalweg, bend, phase;
-		double stepPhase, stepLength, stepHeight;	// ступени: фаза (целое — котёл под уступом), шаг, м, высота уступа, м
-		uint32_t stepSeed;							// разброс высоты уступов — свой у каждого ручья
-	};
 	auto section = [&]( int k )
 	{
 		return Section{ half[k], depth[k], bank[k], shape[k].thalweg, bend[k], poolPhase[k], stepPhase[k], stepLength[k], stepHeight[k], stepSeed[k] };
@@ -2009,29 +2119,6 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// гладкого дна. Ступени врезаны вниз: гребень — на гладком дне (± разброс), котлы — ниже. С гребнем выше гладкого дна
 	// (вниз и вверх поровну) уровень плёса за ним поднимался над прежним, и у мелкого русла вода выходила на берег тонким
 	// слоем — разлив по траве (2026-10-11)
-	auto stepOffset = [&]( const Section& s0, const Section& s1, double t )
-	{
-		const double height = s0.stepHeight + ( s1.stepHeight - s0.stepHeight ) * t;
-		if( height <= 0.0 )
-			return 0.0;
-		const double phase = s0.stepPhase + ( s1.stepPhase - s0.stepPhase ) * t;
-		const double length = s0.stepLength + ( s1.stepLength - s0.stepLength ) * t;
-		const double index = std::floor( phase );
-		const double f = phase - index;
-		auto jitter = [&]( double i )
-		{
-			uint32_t h = static_cast<uint32_t>( static_cast<int64_t>( i ) ) * 747796405u + s0.stepSeed;
-			h = ( ( h >> ( ( h >> 28u ) + 4u ) ) ^ h ) * 277803737u;
-			return 0.7 + 0.6 * static_cast<double>( ( h >> 22u ) ^ h ) / 4294967295.0;
-		};
-		const double here = 0.5 * height * jitter( index );
-		const double next = 0.5 * height * jitter( index + 1.0 );
-		const double face = std::clamp( stepFace / std::max( length, 1e-3 ), 0.05, 0.4 );
-		const double down = 0.5 * height;
-		if( f < 1.0 - face )
-			return -here + 2.0 * here * f / ( 1.0 - face ) - down;
-		return here - ( here + next ) * smoothstep( 0.0, 1.0, ( f - ( 1.0 - face ) ) / face ) - down;
-	};
 	auto pieceProfile = [&]( const Section& s0, const Section& s1, Point a, Point b, double t0, double t1, double cx, double cy,
 							 double& base )
 	{
@@ -2157,7 +2244,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			yMax = std::max( yMax, point.y + reach );
 		}
 	};
-	std::vector<double> carve( cells, 0.0 );
+	carve.assign( cells, 0.0 );
 	std::vector<double> carveBase( cells, 0.0 );	// без плёсов и шума: по нему уровень воды
 	for( int k = 0; k < count; ++k )
 	{
@@ -2391,10 +2478,9 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// изолинии подводится к профилю отмели — уровень озера на изолинии, внутрь ниже, наружу выше на lake_shelf_depth /
 	// lake_shelf_width на метр (как подгонка ландшафта у Water Body Lake в UE), но только где она в пределах shoreGate от
 	// уровня и не в русле; уровень озера у текселей — по той же изолинии (ниже, после заливки озёр)
-	const Grid shoreShare = lakeShare( lake, n );
+	shoreShare = lakeShare( lake, n );
 	const std::vector<double> shoreLevel = nearbyLakeLevel( lakeLevel, n );
 	const double shoreSlope = p.lakeShelfDepth / std::max( static_cast<double>( p.lakeShelfWidth ), 1e-3 );
-	std::vector<std::vector<float>> tileStream;	// русло у текселей плиток (pieceChannel): берег и уровень озера в нём — по клеткам
 	result.detailTiles.clear();
 	{
 		const int tileCells = static_cast<int>( detailTileCells );
@@ -2595,7 +2681,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	result.lowering.resize( cells );
 	result.carvedCells = 0;
 	result.deepestLowering = 0.0f;
-	Grid carved = height;
+	carved = height;
 	for( size_t i = 0; i < cells; ++i )
 	{
 		result.lowering[i] = static_cast<float>( -carve[i] );
@@ -2604,7 +2690,8 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			++result.carvedCells;
 		result.deepestLowering = std::min( result.deepestLowering, result.lowering[i] );
 	}
-	std::vector<double> width( count ), reach( count );
+	width.resize( count );
+	reach.resize( count );
 	for( int k = 0; k < count; ++k )
 	{
 		width[k] = 2.0 * half[k] * cell;
@@ -2631,41 +2718,69 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 			value = std::max( value, static_cast<float>( nodeArea[k] ) );
 		}
 	}
+	return true;
+}
 
+double TerrainHydrology::Build::bedAt( double x, double y ) const
+{
+	const int tx = static_cast<int>( std::floor( x / detailTileCells ) );
+	const int tz = static_cast<int>( std::floor( ( n - y ) / detailTileCells ) );
+	if( tx < 0 || tz < 0 || tx >= detailTiles || tz >= detailTiles || detailIndex[static_cast<size_t>( tz ) * detailTiles + tx] < 0 )
+		return carved.sample( x - 0.5, y - 0.5 );
+	const DetailTile& tile = result.detailTiles[detailIndex[static_cast<size_t>( tz ) * detailTiles + tx]];
+	// Тексель (i, j) — в клетках ( x · tileCells + ( i − 0,5 ) / samples, n − z · tileCells − ( j − 0,5 ) / samples )
+	const int side = static_cast<int>( detailTileCells * detailSamples + 2 );
+	const double fi = ( x - static_cast<double>( tile.x * detailTileCells ) ) * detailSamples + 0.5;
+	const double fj = ( n - y - static_cast<double>( tile.z * detailTileCells ) ) * detailSamples + 0.5;
+	const int i = std::clamp( static_cast<int>( std::floor( fi ) ), 0, side - 2 );
+	const int j = std::clamp( static_cast<int>( std::floor( fj ) ), 0, side - 2 );
+	const double u = std::clamp( fi - i, 0.0, 1.0 );
+	const double v = std::clamp( fj - j, 0.0, 1.0 );
+	auto texel = [&]( int a, int b ) { return static_cast<double>( tile.heights[static_cast<size_t>( b ) * side + a] ); };
+	return ( texel( i, j ) * ( 1.0 - u ) + texel( i + 1, j ) * u ) * ( 1.0 - v ) +
+		   ( texel( i, j + 1 ) * ( 1.0 - u ) + texel( i + 1, j + 1 ) * u ) * v;
+}
+
+double TerrainHydrology::Build::levelShare( int k, int d, double t ) const
+{
+	const double stepped = std::clamp( std::max( stepHeight[k], stepHeight[d] ) / std::max( static_cast<double>( p.stepHeight ), 1e-3 ), 0.0, 1.0 );
+	if( stepped <= 0.0 || up[d] != k )
+		return t;
+	const double face = std::clamp( stepFace / std::max( stepLength[k], 1e-3 ), 0.05, 0.4 );
+	auto passed = [&]( double phase )
+	{
+		const double index = std::floor( phase );
+		return index + smoothstep( 1.0 - face, 1.0, phase - index );
+	};
+	const double from = passed( stepPhase[k] );
+	const double to = passed( stepPhase[d] );
+	if( to - from < 1e-3 )
+		return t;
+	const double share = ( passed( stepPhase[k] + ( stepPhase[d] - stepPhase[k] ) * t ) - from ) / ( to - from );
+	return t + ( share - t ) * stepped;
+}
+
+bool TerrainHydrology::Build::buildWater()
+{
 	// 5. Вода — одно поле уровня по сети: в узле — своя вода (дно у оси — тальвег детальной земли в узле — плюс глубина по
 	// Маннингу для прямоугольного русла h = (Q·n / (w·√S))^(3/5), не мельче min_water_depth и ниже бровки на запас), но не
 	// ниже воды ниже по течению — подпор. Озеро — вода ниже по течению у впадающих в него ручьёв и уровень его истока:
 	// ручьи в нём и у берега — на том же уровне подпором, а не правилами на стыках
-	std::vector<double> slope( count, p.minWaterSlope ), level( count ), speed( count ), foam( count ), actual( count );
-	std::vector<double> hydraulicRadius( count, 0.0 );	// R русла у узла, м — течение детальной воды (water_flow.cs)
+	slope.assign( count, p.minWaterSlope );
+	level.resize( count );
+	speed.resize( count );
+	foam.resize( count );
+	actual.resize( count );
+	hydraulicRadius.assign( count, 0.0 );
 	// Дно, от которого стоит вода, — видимое, детальное (билинейно по текселям плитки; вне плиток — сетка 1 м), а не клетки
 	// карты: клетка опущена до самой низкой детальной точки в ней, на крутом это её нижний край — вода выходила на
 	// 10–20 см мельче, и гребень переката оставался почти сухим (2026-10-10). Тальвег — наименьшее поперёк направления
 	// (tx, ty) на ±0,75 клетки (тальвег мог уйти от оси), но не вдоль: на крутом точка ниже по склону опустила бы воду под
 	// землю
-	const int detailTiles = static_cast<int>( ( n + detailTileCells - 1 ) / detailTileCells );
-	std::vector<int> detailIndex( static_cast<size_t>( detailTiles ) * detailTiles, -1 );
+	detailTiles = static_cast<int>( ( n + detailTileCells - 1 ) / detailTileCells );
+	detailIndex.assign( static_cast<size_t>( detailTiles ) * detailTiles, -1 );
 	for( size_t t = 0; t < result.detailTiles.size(); ++t )
 		detailIndex[static_cast<size_t>( result.detailTiles[t].z ) * detailTiles + result.detailTiles[t].x] = static_cast<int>( t );
-	auto bedAt = [&]( double x, double y )
-	{
-		const int tx = static_cast<int>( std::floor( x / detailTileCells ) );
-		const int tz = static_cast<int>( std::floor( ( n - y ) / detailTileCells ) );
-		if( tx < 0 || tz < 0 || tx >= detailTiles || tz >= detailTiles || detailIndex[static_cast<size_t>( tz ) * detailTiles + tx] < 0 )
-			return carved.sample( x - 0.5, y - 0.5 );
-		const DetailTile& tile = result.detailTiles[detailIndex[static_cast<size_t>( tz ) * detailTiles + tx]];
-		// Тексель (i, j) — в клетках ( x · tileCells + ( i − 0,5 ) / samples, n − z · tileCells − ( j − 0,5 ) / samples )
-		const int side = static_cast<int>( detailTileCells * detailSamples + 2 );
-		const double fi = ( x - static_cast<double>( tile.x * detailTileCells ) ) * detailSamples + 0.5;
-		const double fj = ( n - y - static_cast<double>( tile.z * detailTileCells ) ) * detailSamples + 0.5;
-		const int i = std::clamp( static_cast<int>( std::floor( fi ) ), 0, side - 2 );
-		const int j = std::clamp( static_cast<int>( std::floor( fj ) ), 0, side - 2 );
-		const double u = std::clamp( fi - i, 0.0, 1.0 );
-		const double v = std::clamp( fj - j, 0.0, 1.0 );
-		auto texel = [&]( int a, int b ) { return static_cast<double>( tile.heights[static_cast<size_t>( b ) * side + a] ); };
-		return ( texel( i, j ) * ( 1.0 - u ) + texel( i + 1, j ) * u ) * ( 1.0 - v ) +
-			   ( texel( i, j + 1 ) * ( 1.0 - u ) + texel( i + 1, j + 1 ) * u ) * v;
-	};
 	auto thalweg = [&]( const Point& at, double tx, double ty )
 	{
 		double lowest = std::numeric_limits<double>::infinity();
@@ -2726,24 +2841,6 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 	// Доля перепада уровня отрезка k → d в доле t: на ступенчатом участке перепад — на стенке уступа (там же, где уступ дна,
 	// stepOffset: от гребня до котла), а не по прямой на весь отрезок: в плёсе вода ровная, на уступе — слив каскадом.
 	// Где ступени сходят на нет, — к прямой. Узлы разных ручьёв (приток у слияния) — прямая: фазы ступеней у них свои
-	auto levelShare = [&]( int k, int d, double t )
-	{
-		const double stepped = std::clamp( std::max( stepHeight[k], stepHeight[d] ) / std::max( static_cast<double>( p.stepHeight ), 1e-3 ), 0.0, 1.0 );
-		if( stepped <= 0.0 || up[d] != k )
-			return t;
-		const double face = std::clamp( stepFace / std::max( stepLength[k], 1e-3 ), 0.05, 0.4 );
-		auto passed = [&]( double phase )
-		{
-			const double index = std::floor( phase );
-			return index + smoothstep( 1.0 - face, 1.0, phase - index );
-		};
-		const double from = passed( stepPhase[k] );
-		const double to = passed( stepPhase[d] );
-		if( to - from < 1e-3 )
-			return t;
-		const double share = ( passed( stepPhase[k] + ( stepPhase[d] - stepPhase[k] ) * t ) - from ) / ( to - from );
-		return t + ( share - t ) * stepped;
-	};
 	// Подпор: снизу вверх по сети уровень — не ниже воды ниже по течению. Между узлами уровень растра — по levelShare (на
 	// ступенях — ровный плёс и перепад на стенке уступа, иначе прямая), а дно под ним — детальное: гребень переката посреди
 	// отрезка выходил выше воды, и вода «проходила сквозь» подъём русла (2026-10-10). Поэтому тальвег отрезка проверяется
@@ -2860,7 +2957,11 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		speed[k] = std::max( meanSpeed * mean / std::max( depth, 0.5 * mean ), static_cast<double>( p.minSpeed ) );
 		foam[k] = std::clamp( ( slope[k] - p.foamSlope ) / ( 2.0 * p.foamSlope ), 0.0, 1.0 ) * 0.6;
 	}
+	return true;
+}
 
+bool TerrainHydrology::Build::buildStones()
+{
 	// 6. Камни русла — часть кривой: уступы ступеней, на дне (гуще на перекатах и на крутом), у бортов — у уреза, и редкие
 	// валуны. Место случайное, но от положения отрезка: тот же камень на том же месте при каждой загрузке и после правки
 	// других кривых; внахлёст не ставятся. Высота — самое низкое детальное дно под камнем: на борту камень не висит над
@@ -2870,7 +2971,7 @@ bool TerrainHydrology::build( const HeightField& field, const WaterSimulationSet
 		std::vector<Point> stoneCells;		// центры камней в клетках карты и радиусы, клеток — проверка нахлёста
 		std::vector<double> stoneRadii;
 		std::unordered_map<int64_t, std::vector<size_t>> buckets;
-		auto bucket = [n]( int col, int row ) { return static_cast<int64_t>( row + 1 ) * ( n + 2 ) + col + 1; };
+		auto bucket = [this]( int col, int row ) { return static_cast<int64_t>( row + 1 ) * ( n + 2 ) + col + 1; };
 		auto overlaps = [&]( const Point& at, double radius )
 		{
 			const int col = static_cast<int>( std::floor( at.x ) );

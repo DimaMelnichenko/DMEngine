@@ -107,6 +107,10 @@ public:
 	// делают шейдеры по детальному врезу; у озёр при shaderLakeBeds (режим static) покраски и очистки нет — галька дна и
 	// трава в воде по глубине в точке
 	static std::vector<TerrainEdit> loweringEdits( const Result& result, bool shaderLakeBeds, int32_t bedLayer );
+
+private:
+	// Постройка русел ступенями с общими данными (TerrainHydrology.cpp)
+	struct Build;
 };
 
 }
