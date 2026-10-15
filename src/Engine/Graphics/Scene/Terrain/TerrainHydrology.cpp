@@ -1020,10 +1020,8 @@ std::string TerrainHydrology::generationKey( const HeightField& field, const Wat
 		key.add( source.position );
 		key.add( source.rate );
 	}
-	const WaterChannelsSettings& p = water.channels;
-	for( float value : { p.minDischarge, p.meanderLength, p.meanderAmplitude, p.meanderMaxSlope, p.lakeDepth, p.minLakeArea } )
-		key.add( value );
-	key.add( p.smooth );
+	// Параметры генератора — группа streamGeneratorGroup описания русел
+	forEachSettingValue( waterChannelsSchema(), water.channels, [&key]( const auto& value ) { key.add( value ); }, streamGeneratorGroup );
 	char text[32];
 	std::snprintf( text, sizeof( text ), "%016llx", static_cast<unsigned long long>( key.value ) );
 	return text;

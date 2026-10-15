@@ -27,6 +27,16 @@ const SettingsSchema<VolumetricCloudSettings>& volumetricCloudSchema()
 	return schema;
 }
 
+const SettingsSchema<ScatterSetSettings>& scatterSetSchema()
+{
+	using Settings = ScatterSetSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "shadow_lod_scale", "Shadow LOD scale", DM_SETTING( shadowLodScale ), 0.1f, 1.0f, "",
+		  "LOD distances of the shadow views, times: less - the shadow from a coarser LOD (with the model Shadow LOD scale)" },
+	};
+	return schema;
+}
+
 const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 {
 	using Settings = ScatterLayerSettings;
@@ -110,38 +120,228 @@ const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 	return schema;
 }
 
-const std::vector<WindFieldParameter>& windFieldParameters()
+const SettingsSchema<WindFieldSettings>& windFieldSchema()
 {
-	using W = WindFieldSettings;
-	static const std::vector<WindFieldParameter> parameters = {
-		{ "field_layer_height", "Layer height", &W::layerHeight, 10.0f, 1000.0f, "m",
-		  "Air layer above the smoothed ground: where the ground rises above it (ridges, rocks by a gap) the layer is thinner and the wind faster" },
-		{ "field_layer_smoothing", "Layer smoothing", &W::layerSmoothing, 10.0f, 2000.0f, "m", "The top of the air layer follows the ground smoothed this wide" },
-		{ "field_max_speedup", "Max speedup", &W::maxSpeedup, 1.0f, 5.0f, "", "The wind is at most this many times faster than the wind of the level" },
-		{ "field_reach", "Lee reach", &W::reach, 10.0f, 1000.0f, "m", "The horizon against the wind is searched this far (lee shelter)" },
-		{ "field_shelter_from", "Lee shelter from", &W::shelterFrom, -30.0f, 30.0f, "deg", "Horizon angle against the wind where the lee shelter starts" },
-		{ "field_shelter_to", "Lee shelter to", &W::shelterTo, -30.0f, 30.0f, "deg", "Horizon angle against the wind of the full lee shelter" },
-		{ "field_lee_slowdown", "Lee slowdown", &W::leeSlowdown, 0.0f, 1.0f, "", "Share of the wind speed in the full lee shelter" },
-		{ "field_forest_damping", "Forest damping", &W::forestDamping, 0.0f, 1.0f, "", "The wind in a dense forest is slower by this share" },
-		{ "field_forest_length", "Forest length", &W::forestLength, 1.0f, 200.0f, "m", "The wind slows down this far into the forest" },
-		{ "field_recovery_length", "Recovery length", &W::recoveryLength, 1.0f, 500.0f, "m", "Past the forest the wind speeds up again this far over fields and water" },
-		{ "field_turbulence", "Turbulence", &W::turbulence, 0.0f, 1.0f, "", "Gustiness behind ridges and at forest edges" },
+	using Settings = WindFieldSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "field_layer_height", "Layer height", DM_SETTING( layerHeight ), 10.0f, 1000.0f, "m",
+		  "Air layer above the smoothed ground: where the ground rises above it (ridges, rocks by a gap) the layer is thinner and the wind "
+		  "faster; the wind field is rebuilt when the edit ends" },
+		{ "field_layer_smoothing", "Layer smoothing", DM_SETTING( layerSmoothing ), 10.0f, 2000.0f, "m",
+		  "The top of the air layer follows the ground smoothed this wide; the wind field is rebuilt when the edit ends" },
+		{ "field_max_speedup", "Max speedup", DM_SETTING( maxSpeedup ), 1.0f, 5.0f, "",
+		  "The wind is at most this many times faster than the wind of the level; the wind field is rebuilt when the edit ends" },
+		{ "field_reach", "Lee reach", DM_SETTING( reach ), 10.0f, 1000.0f, "m",
+		  "The horizon against the wind is searched this far (lee shelter); the wind field is rebuilt when the edit ends" },
+		{ "field_shelter_from", "Lee shelter from", DM_SETTING( shelterFrom ), -30.0f, 30.0f, "deg",
+		  "Horizon angle against the wind where the lee shelter starts; the wind field is rebuilt when the edit ends" },
+		{ "field_shelter_to", "Lee shelter to", DM_SETTING( shelterTo ), -30.0f, 30.0f, "deg",
+		  "Horizon angle against the wind of the full lee shelter; the wind field is rebuilt when the edit ends" },
+		{ "field_lee_slowdown", "Lee slowdown", DM_SETTING( leeSlowdown ), 0.0f, 1.0f, "",
+		  "Share of the wind speed in the full lee shelter; the wind field is rebuilt when the edit ends" },
+		{ "field_forest_damping", "Forest damping", DM_SETTING( forestDamping ), 0.0f, 1.0f, "",
+		  "The wind in a dense forest is slower by this share; the wind field is rebuilt when the edit ends" },
+		{ "field_forest_length", "Forest length", DM_SETTING( forestLength ), 1.0f, 200.0f, "m",
+		  "The wind slows down this far into the forest; the wind field is rebuilt when the edit ends" },
+		{ "field_recovery_length", "Recovery length", DM_SETTING( recoveryLength ), 1.0f, 500.0f, "m",
+		  "Past the forest the wind speeds up again this far over fields and water; the wind field is rebuilt when the edit ends" },
+		{ "field_turbulence", "Turbulence", DM_SETTING( turbulence ), 0.0f, 1.0f, "",
+		  "Gustiness behind ridges and at forest edges; the wind field is rebuilt when the edit ends" },
 	};
-	return parameters;
+	return schema;
 }
 
-const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
+const SettingsSchema<WindSettings>& windSchema()
+{
+	using Settings = WindSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "strength", "Strength", DM_SETTING( strength ), 0.0f, 2.0f },
+		{ "speed", "Speed", DM_SETTING( speed ), 0.0f, 20.0f, "m/s" },
+		{ "min_gust_amount", "Min gust amount", DM_SETTING( minGustAmount ), 0.0f, 2.0f },
+		{ "max_gust_amount", "Max gust amount", DM_SETTING( maxGustAmount ), 0.0f, 2.0f },
+		{ "gust_size", "Gust size", DM_SETTING( gustSize ), 1.0f, 200.0f, "m" },
+	};
+	return schema;
+}
+
+const SettingsSchema<HeightFogSettings>& heightFogSchema()
+{
+	using Settings = HeightFogSettings;
+	static const SettingsSchema<Settings> schema = {
+		// Плотность — от тысячных до сотых 1/м: логарифмический ползунок
+		{ "density", "Density", DM_SETTING( layer.density ), 0.0f, 0.02f, "1/m",
+		  "Haze over the valley: extinction coefficient; visibility in the layer is about 3 / density", settingLogarithmic },
+		{ "height", "Height", DM_SETTING( layer.height ), -100.0f, 500.0f, "m", "Below this height the layer is uniform, above it thins out" },
+		{ "height_falloff", "Height falloff", DM_SETTING( layer.heightFalloff ), 0.0f, 0.5f, "1/m",
+		  "Above the height the density drops e times every 1 / falloff metres" },
+		{ "second_density", "Second density", DM_SETTING( secondLayer.density ), 0.0f, 0.2f, "1/m", "Fog poured into the lowlands",
+		  settingLogarithmic },
+		{ "second_height", "Second height", DM_SETTING( secondLayer.height ), -100.0f, 500.0f, "m" },
+		{ "second_height_falloff", "Second height falloff", DM_SETTING( secondLayer.heightFalloff ), 0.0f, 1.0f, "1/m" },
+		{ "albedo", "Albedo", DM_SETTING( albedo ), 0.0f, 0.0f, "", "", settingColor },
+		{ "scattering_distribution", "Scattering distribution", DM_SETTING( scatteringDistribution ), -0.9f, 0.9f, "",
+		  "Henyey-Greenstein g: > 0 - fog glows around the sun" },
+		{ "volumetric", "Volumetric", DM_SETTING( volumetric ), 0.0f, 0.0f, "", "Froxel volume with sun shadows and lamps; off - analytic fog only" },
+		{ "view_distance", "View distance", DM_SETTING( viewDistance ), 20.0f, 1000.0f, "m",
+		  "Depth of the froxel volume; beyond it the fog is analytic, without shadows" },
+	};
+	return schema;
+}
+
+const SettingsSchema<SkyAtmosphereSettings>& skyAtmosphereSchema()
+{
+	using Settings = SkyAtmosphereSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "sky_intensity", "Sky intensity", DM_SETTING( skyIntensity ), 0.0f, 10.0f },
+		{ "haze", "Haze", DM_SETTING( haze ), 0.0f, 10.0f },
+		{ "ground_albedo", "Ground albedo", DM_SETTING( groundAlbedo ), 0.0f, 1.0f },
+		{ "aerial_perspective_view_distance_scale", "Aerial perspective view distance scale", DM_SETTING( aerialPerspectiveViewDistanceScale ),
+		  0.0f, 16.0f },
+		{ "night_sky_luminance", "Night sky luminance", DM_SETTING( nightSkyLuminance ), 0.0f, 0.01f, "cd/m2", "", settingDrag },
+		// Млечный Путь: файл — только в базе (загружается при запуске), в окне — яркость: средняя по сфере (в полосе Галактики
+		// — втрое ярче); видно ночью, как звёзды
+		{ "milky_way", nullptr, DM_SETTING( milkyWay ) },
+		{ "milky_way_luminance", "Milky Way luminance", DM_SETTING( milkyWayLuminance ), 0.0f, 0.001f, "cd/m2",
+		  "Mean over the whole sky; the galactic plane is about three times brighter", settingDrag },
+	};
+	return schema;
+}
+
+const SettingsSchema<HDRIBackdropSettings>& hdriBackdropSchema()
+{
+	using Settings = HDRIBackdropSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "texture", nullptr, DM_SETTING( texture ) },
+		{ "intensity", "Intensity", DM_SETTING( intensity ), 0.0f, 0.0f, "cd/m2", "", settingDrag },
+		{ "rotation", "Rotation", DM_SETTING( rotation ), -180.0f, 180.0f, "deg" },
+		{ "max_luminance", "Max luminance", DM_SETTING( maxLuminance ), 0.0f, 0.0f, "", "", settingDrag },
+	};
+	return schema;
+}
+
+const SettingsSchema<PostProcessSettings>& postProcessSchema()
+{
+	using Settings = PostProcessSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "manual_ev100", "Manual EV100", DM_SETTING( manualEV100 ), -10.0f, 20.0f },
+		{ "exposure_compensation", "Exposure compensation", DM_SETTING( exposureCompensation ), -6.0f, 6.0f, "EV" },
+		{ "min_ev100", "Min EV100", DM_SETTING( minEV100 ), -10.0f, 20.0f, "", "", 0, "exposure" },
+		{ "max_ev100", "Max EV100", DM_SETTING( maxEV100 ), -10.0f, 20.0f, "", "", 0, "exposure" },
+		{ "histogram_low_percent", "Histogram low percent", DM_SETTING( histogramLowPercent ), 0.0f, 100.0f, "%", "", 0, "exposure" },
+		{ "histogram_high_percent", "Histogram high percent", DM_SETTING( histogramHighPercent ), 0.0f, 100.0f, "%", "", 0, "exposure" },
+		{ "speed_up", "Speed up", DM_SETTING( speedUp ), 0.0f, 20.0f, "1/s", "", 0, "exposure" },
+		{ "speed_down", "Speed down", DM_SETTING( speedDown ), 0.0f, 20.0f, "1/s", "", 0, "exposure" },
+		{ "bloom_intensity", "Bloom intensity", DM_SETTING( bloomIntensity ), 0.0f, 8.0f, "", "", 0, "bloom" },
+		{ "bloom_threshold", "Bloom threshold", DM_SETTING( bloomThreshold ), -1.0f, 10.0f, "", "", 0, "bloom" },
+		{ "purkinje_shift", "Purkinje shift", DM_SETTING( purkinjeShift ), 0.0f, 1.0f, "", "", 0, "bloom" },
+		// Экранное затенение окружением (AmbientOcclusion) — до проходов цвета, но настройки здесь, как в UE
+		{ "ambient_occlusion_intensity", "Ambient occlusion intensity", DM_SETTING( ambientOcclusion.intensity ), 0.0f, 1.0f, "",
+		  "Screen space ambient occlusion (GTAO): how much it darkens the sky light; 0 - off", 0, "bloom" },
+		{ "ambient_occlusion_radius", "Ambient occlusion radius", DM_SETTING( ambientOcclusion.radius ), 0.1f, 5.0f, "m", "", 0, "bloom" },
+		{ "ambient_occlusion_power", "Ambient occlusion power", DM_SETTING( ambientOcclusion.power ), 0.5f, 4.0f, "",
+		  "Visibility^power: stronger in crevices, weaker in the open", 0, "bloom" },
+	};
+	return schema;
+}
+
+const SettingsSchema<SunPositionSettings>& sunPositionSchema()
+{
+	using Settings = SunPositionSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "latitude", "Latitude", DM_SETTING( latitude ), -90.0f, 90.0f, "deg" },
+		{ "longitude", "Longitude", DM_SETTING( longitude ), -180.0f, 180.0f, "deg" },
+		{ "time_zone", "Time zone", DM_SETTING( timeZone ), -12.0f, 14.0f, "h" },
+		{ "north_offset", "North offset", DM_SETTING( northOffset ), -180.0f, 180.0f, "deg" },
+		// Месяц и день — в окне; в базе — дата текстом (колонка date, у SunPosition вместе с годом)
+		{ "", "Month", DM_SETTING( month ), 1.0f, 12.0f },
+		{ "", "Day", DM_SETTING( day ), 1.0f, 31.0f },
+		{ "time_of_day", "Time of day", DM_SETTING( timeOfDay ), 0.0f, 24.0f, "h" },
+		{ "time_scale", "Time scale", DM_SETTING( timeScale ), 0.0f, 100000.0f, "", "", settingDrag },
+	};
+	return schema;
+}
+
+const SettingsSchema<TerrainErosionSettings>& terrainErosionSchema()
+{
+	using Settings = TerrainErosionSettings;
+	// Эрозия считается при загрузке уровня — к подсказке
+	const std::string load = "; applied at the next level load";
+	static const SettingsSchema<Settings> schema = {
+		{ "droplets", "Droplets", DM_SETTING( droplets ), 0.0f, 4000000.0f, "", "Water droplets of the hydraulic erosion" + load, settingClampLow },
+		{ "seed", "Seed", DM_SETTING( seed ), 0.0f, 1000.0f, "", "Random numbers of the droplets" + load },
+		{ "lifetime", "Lifetime", DM_SETTING( lifetime ), 1.0f, 300.0f, "steps", "Steps of a droplet, a texel each" + load, settingClampLow },
+		{ "inertia", "Inertia", DM_SETTING( inertia ), 0.0f, 1.0f, "", "Share of the previous direction" + load },
+		{ "capacity", "Capacity", DM_SETTING( capacity ), 0.0f, 8.0f, "", "Sediment capacity: slope * speed * water * capacity" + load },
+		{ "min_slope", "Min slope", DM_SETTING( minSlope ), 0.0f, 0.1f, "", "Slope in the capacity at least" + load },
+		{ "erode_speed", "Erode speed", DM_SETTING( erodeSpeed ), 0.0f, 1.0f, "", "Share of the missing capacity eroded per step" + load },
+		{ "deposit_speed", "Deposit speed", DM_SETTING( depositSpeed ), 0.0f, 1.0f, "", "Share of the excess sediment deposited per step" + load },
+		{ "evaporation", "Evaporation", DM_SETTING( evaporation ), 0.0f, 0.1f, "", "Water evaporated per step" + load },
+		{ "gravity", "Gravity", DM_SETTING( gravity ), 0.0f, 20.0f, "", "Speed-up downhill" + load },
+		{ "radius", "Radius", DM_SETTING( radius ), 1.0f, 12.0f, "texels", "Erosion brush" + load, settingClampLow },
+		{ "rain_scale", "Rain scale", DM_SETTING( rainScale ), 10.0f, 2000.0f, "m", "Size of the rain patches" + load },
+		{ "rain_min", "Rain min", DM_SETTING( rainMin ), 0.0f, 1.0f, "", "Rain share in dry places (1 - even rain)" + load },
+		{ "talus_angle", "Talus angle", DM_SETTING( talusAngle ), 10.0f, 80.0f, "deg", "Angle of repose of the scree" + load },
+		{ "thermal_iterations", "Thermal iterations", DM_SETTING( thermalIterations ), 0.0f, 200.0f, "", "Steps of the scree sliding" + load,
+		  settingClampLow },
+		{ "thermal_rate", "Thermal rate", DM_SETTING( thermalRate ), 0.0f, 1.0f, "", "Share of the excess sliding per step" + load },
+	};
+	return schema;
+}
+
+const SettingsSchema<TerrainSettings>& terrainSchema()
+{
+	using Settings = TerrainSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "height_multiplier", "Height multiplier", DM_SETTING( heightMultiplier ), 1.0f, 5000.0f, "m",
+		  "Height of the heightmap value 1; the scatter and particles follow, the terrain edits do not" },
+		{ "triplanar_sharpness", "Triplanar sharpness", DM_SETTING( triplanarSharpness ), 1.0f, 32.0f, "",
+		  "How sharply steep slopes switch from the top projection to the side ones" },
+		{ "height_blend", "Height blend", DM_SETTING( heightBlend ), 0.01f, 1.0f, "", "Depth of the height-based blend between layers" },
+		// Второй масштаб текстур вдали (distance resampling, как в материалах UE Landscape): мелкий повтор слоёв издалека
+		// складывается в сетку
+		{ "far_texture_scale", "Far texture scale", DM_SETTING( farTextureScale ), 1.0f, 32.0f, "",
+		  "Texture repeat multiplier far away: the small repeat does not fold into a grid" },
+		// Полоса перехода ко второму масштабу — начало и конец одним двойным полем. Обе выборки — на всём её протяжении, поэтому
+		// цена второго масштаба растёт с её шириной
+		{ "far_blend_start,far_blend_end", "Far blend", DM_SETTING( farBlend ), 0.0f, 1000.0f, "m",
+		  "Distance band where the far texture scale replaces the near one: both scales are sampled along it", settingRangeControl },
+		// Микротени прямого света по AO слоёв (lighting.sh): в щели между камнями солнце светит только под крутым углом
+		{ "micro_shadows", "Micro shadows", DM_SETTING( microShadows ), 0.0f, 1.0f, "",
+		  "Direct light in the crevices of the layer AO: it reaches their bottom only from steep angles (micro shadowing of "
+		  "Uncharted 4); 0 - AO darkens the sky light only" },
+		// Дисплейсмент у камеры (сетка — «Finest mesh»): полный ближе начала полосы, к концу сходит на нет
+		{ "displacement_start,displacement_end", "Displacement distance", DM_SETTING( displacement ), 0.0f, 64.0f, "m",
+		  "Displacement by the layer heights: full nearer than the start, fades out to the end (end 0 - off); the terrain mesh "
+		  "near the camera - Finest mesh", settingRangeControl },
+		// Самый мелкий квад сетки у камеры: мельче — камешки выдавливаются ровнее, дороже вершины. Номера — уровни мельче
+		// детальной плитки (CDLODTerrain::detailLevels − tileLevels + 1 значений)
+		{ "finest_mesh", "Finest mesh", DM_SETTING( finestMesh ), 0.0f, 0.0f, "",
+		  "Finest quad of the terrain mesh near the camera; each level halves the quad and the distance (at LOD distance 128 m: "
+		  "12.5 cm to 16 m, 6.25 cm to 8 m, 3.1 cm to 4 m, 1.6 cm to 2 m). Finer - the displacement shapes small stones, the vertex "
+		  "cost grows by about the same per level", 0, "", { 0, 1, 2, 3, 4 }, { "25 cm", "12.5 cm", "6.25 cm", "3.1 cm", "1.6 cm" } },
+		// Где самая мелкая сетка полная. При ходьбе — вокруг ног: LOD от отрезка «глаза — ноги»
+		{ "finest_mesh_radius", "Finest mesh radius", DM_SETTING( finestMeshRadius ), 0.0f, 8.0f, "m",
+		  "The finest mesh is full nearer, farther it morphs into the next level (up to 1.5 times the radius): around the feet "
+		  "when walking, around the camera in flight. Not less than the LOD distance gives" },
+	};
+	return schema;
+}
+
+const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema()
 {
 	using R = TerrainLayerRules;
+	// Правки применяются по концу правки — к подсказке; диапазон — колонки <колонка>_from и <колонка>_to
+	static const char* rebuilt = "; the layers and masks are rebuilt when the edit ends";
 	auto range = []( const char* column, const char* group, const char* name, R::Range R::* field, float low, float high,
 					 const char* unit, const char* tooltip )
 	{
-		return TerrainLayerRuleField{ column, group, name, field, nullptr, low, high, unit, tooltip };
+		const std::string base = column;
+		return SettingField<R>{ base + "_from," + base + "_to", name, field, low, high, unit, tooltip + std::string( rebuilt ), 0, group };
 	};
 	auto value = []( const char* column, const char* group, const char* name, float R::* field, float low, float high,
 					 const char* unit, const char* tooltip )
 	{
-		return TerrainLayerRuleField{ column, group, name, nullptr, field, low, high, unit, tooltip };
+		return SettingField<R>{ column, name, field, low, high, unit, tooltip + std::string( rebuilt ), 0, group };
 	};
 	static const char* rock = "Rock and snow";
 	static const char* stones = "Stones";
@@ -154,7 +354,7 @@ const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
 	static const char* beds = "Water beds";
 	static const char* wind = "Wind";
 	static const char* shape = "Shape";
-	static const std::vector<TerrainLayerRuleField> fields = {
+	static const SettingsSchema<R> schema = {
 		range( "rock_slope", rock, "Rock slope", &R::rockSlope, 0.0f, 90.0f, "deg", "Rock on steep slopes: from, to" ),
 		value( "rock_noise", rock, "Rock slope noise", &R::rockNoise, 0.0f, 30.0f, "deg", "Noise added to the slope of the rock rule" ),
 		range( "bedrock_wear", rock, "Bedrock wear", &R::bedrockWear, 0.0f, 10.0f, "", "Rock where the erosion wore the ground away: from, to" ),
@@ -241,7 +441,214 @@ const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields()
 		value( "meadow_noise_scale", shape, "Meadow noise scale", &R::meadowNoiseScale, 0.1f, 8.0f, "", "Wavelengths of the two grasses and flowers noise" ),
 		value( "forest_noise_scale", shape, "Forest noise scale", &R::forestNoiseScale, 0.1f, 8.0f, "", "Wavelengths of the treeline, clearings, stands and shrubs noise" ),
 	};
-	return fields;
+	return schema;
+}
+
+const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
+{
+	using Settings = WaterSimulationSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "time_scale", "Time scale", DM_SETTING( timeScale ), 0.0f, 100.0f },
+		{ "source_rate", "Source rate", DM_SETTING( sourceRate ), 0.0f, 2.0f, "l/s" },
+		{ "flow_start", "Flow start", DM_SETTING( flowStart ), 100.0f, 100000.0f, "m2" },
+		{ "flow_full", "Flow full", DM_SETTING( flowFull ), 100.0f, 1000000.0f, "m2" },
+		{ "source_radius", "Source radius", DM_SETTING( sourceRadius ), 0.0f, 16.0f, "m" },
+		{ "rain", "Rain", DM_SETTING( rain ), 0.0f, 50.0f, "mm/h" },
+		{ "evaporation", "Evaporation", DM_SETTING( evaporation ), 0.0f, 50.0f, "mm/h" },
+		{ "manning", "Manning roughness", DM_SETTING( manning ), 0.0f, 0.2f, "s/m^(1/3)" },
+		// Шаг и прогрев симуляции — только в базе
+		{ "time_step", nullptr, DM_SETTING( timeStep ) },
+		{ "warmup_time", nullptr, DM_SETTING( warmupTime ) },
+		// Материал поверхности — подокно «Surface»
+		{ "absorption", "Absorption", DM_SETTING( absorption ), 0.0f, 5.0f, "1/m", "Absorption per channel R, G, B", settingDrag, "surface" },
+		{ "scatter_color", "Scatter color", DM_SETTING( scatterColor ), 0.0f, 0.0f, "", "", settingColor, "surface" },
+		{ "scatter_strength", "Scatter strength", DM_SETTING( scatterStrength ), 0.0f, 0.1f, "", "", 0, "surface" },
+		{ "roughness", "Roughness", DM_SETTING( roughness ), 0.0f, 0.5f, "", "", 0, "surface" },
+		{ "ripple_scale", "Ripple scale", DM_SETTING( rippleScale ), 0.5f, 20.0f, "m", "", 0, "surface" },
+		{ "ripple_strength", "Ripple strength", DM_SETTING( rippleStrength ), 0.0f, 4.0f, "", "", 0, "surface" },
+		{ "calm_ripple", "Calm ripple", DM_SETTING( calmRipple ), 0.0f, 2.0f, "", "", 0, "surface" },
+		{ "refraction", "Refraction", DM_SETTING( refraction ), 0.0f, 0.1f, "1/m", "Refraction offset, share of the screen height per metre of water",
+		  0, "surface" },
+		{ "ripple_stretch", "Ripple stretch", DM_SETTING( rippleStretch ), 1.0f, 6.0f, "",
+		  "How many times the ripple pattern is longer along the flow than across it on running water", 0, "surface" },
+		{ "foam_speed", "Foam speed", DM_SETTING( foamSpeed ), 0.1f, 5.0f, "m/s", "", 0, "surface" },
+		{ "foam_shear", "Foam shear", DM_SETTING( foamShear ), 0.1f, 10.0f, "1/s", "", 0, "surface" },
+		{ "detail_distance", "Detail distance", DM_SETTING( detailDistance ), 0.0f, 1000.0f, "m",
+		  "Nearer the water surface of streams is drawn by the detail tiles (0.25 m): farther the 1 m grid differs by less than a "
+		  "pixel, and a detail tile has 16 times as many triangles; 0 - the 1 m grid only", 0, "surface" },
+	};
+	return schema;
+}
+
+const SettingsSchema<WaterSimulationSettings::Flow>& waterFlowSchema()
+{
+	using Settings = WaterSimulationSettings::Flow;
+	// Течение — установившийся расчёт при загрузке: правка — расчёт заново
+	const std::string recomputed = "; the flow of streams and lakes is recomputed on change (static water)";
+	static const SettingsSchema<Settings> schema = {
+		{ "flow_settle_time", "Settle time", DM_SETTING( settleTime ), 0.0f, 3600.0f, "s",
+		  "Flow of streams and lakes is computed this long towards its steady state" + recomputed },
+		{ "flow_time_step", "Time step", DM_SETTING( timeStep ), 0.1f, 2.0f, "s", "Step of the flow computation" + recomputed },
+		{ "flow_viscosity", "Viscosity", DM_SETTING( viscosity ), 0.0f, 1.0f, "m2/s",
+		  "Eddy viscosity: a wider, shorter jet of an inflowing stream" + recomputed },
+		{ "flow_manning", "Bed roughness", DM_SETTING( manning ), 0.0f, 0.1f, "s/m^(1/3)",
+		  "Manning roughness of the bed of streams and lakes: a jet, a bend or a confluence settles back to the Manning flow sooner "
+		  "at more" + recomputed },
+		{ "flow_layer", "Surface layer", DM_SETTING( layer ), 0.1f, 5.0f, "m",
+		  "Depth of the flowing layer: a stream spreads over a lake near the surface" + recomputed },
+		{ "flow_iterations", "Pressure iterations", DM_SETTING( iterations ), 1.0f, 100.0f, "", "Pressure solver iterations per step" + recomputed },
+		{ "flow_detail_settle_time", "Detail settle time", DM_SETTING( detailSettleTime ), 0.0f, 600.0f, "s",
+		  "Flow on the detail grid of the streams (0.25 m) is computed this long from the 1 m flow: around the stones, faster at the "
+		  "axis than at the banks; 0 - the 1 m flow" + recomputed },
+	};
+	return schema;
+}
+
+const SettingsSchema<WaterChannelsSettings>& waterChannelsSchema()
+{
+	using Settings = WaterChannelsSettings;
+	// Параметры генератора кривых (группа streamGeneratorGroup) применяются при следующей загрузке, остальные перестраивают
+	// русла сразу — к подсказке
+	const std::string rebuilt = "; the channels are rebuilt on change";
+	const std::string generated = "; generates the stream curves anew at the next level load";
+	static const SettingsSchema<Settings> schema = {
+		{ "min_discharge", "Min discharge", DM_SETTING( minDischarge ), 0.0005f, 0.05f, "m3/s",
+		  "A channel starts where the discharge is larger" + generated, 0, streamGeneratorGroup },
+		{ "width_coef", "Width coef", DM_SETTING( widthCoef ), 0.5f, 10.0f, "", "Bed width w = a * Q^0.5, m" + rebuilt },
+		{ "min_width", "Min width", DM_SETTING( minWidth ), 0.5f, 10.0f, "m", "Narrowest bed" + rebuilt },
+		{ "depth_coef", "Depth coef", DM_SETTING( depthCoef ), 0.1f, 5.0f, "", "Incision d = c * Q^0.4, m" + rebuilt },
+		{ "min_incision", "Min incision", DM_SETTING( minIncision ), 0.0f, 3.0f, "m", "Shallowest incision" + rebuilt },
+		{ "bank_slope", "Bank slope", DM_SETTING( bankSlope ), 0.2f, 5.0f, "", "Bank: horizontal metres per metre of incision" + rebuilt },
+		{ "meander_length", "Meander length", DM_SETTING( meanderLength ), 5.0f, 200.0f, "m",
+		  "Meander wavelength along the stream" + generated, 0, streamGeneratorGroup },
+		{ "meander_amplitude", "Meander amplitude", DM_SETTING( meanderAmplitude ), 0.0f, 10.0f, "m",
+		  "Lateral shift at Q >= 0.1 m3/s" + generated, 0, streamGeneratorGroup },
+		{ "meander_max_slope", "Meander max slope", DM_SETTING( meanderMaxSlope ), 0.005f, 0.3f, "",
+		  "Steeper terrain has no meanders, m per m" + generated, 0, streamGeneratorGroup },
+		{ "min_slope", "Min slope", DM_SETTING( minSlope ), 0.0f, 0.05f, "", "Bed drop downstream at least, m per m" + rebuilt },
+		{ "lake_depth", "Lake depth", DM_SETTING( lakeDepth ), 0.01f, 1.0f, "m",
+		  "Deeper filled depressions are lakes: not carved, streams end there" + generated, 0, streamGeneratorGroup },
+		{ "min_lake_area", "Min lake area", DM_SETTING( minLakeArea ), 0.0f, 1000.0f, "m2",
+		  "Smaller depressions are a part of the stream bed, not lakes" + generated, 0, streamGeneratorGroup },
+		{ "thalweg", "Thalweg", DM_SETTING( thalweg ), 0.0f, 1.0f, "",
+		  "Extra incision in the bed middle, share of the incision" + rebuilt },
+		{ "manning", "Manning", DM_SETTING( manning ), 0.02f, 0.15f, "s/m^(1/3)",
+		  "Stream bed roughness: water depth of the ribbons" + rebuilt },
+		{ "min_water_slope", "Min water slope", DM_SETTING( minWaterSlope ), 0.001f, 0.05f, "",
+		  "Slope in the water depth at least, m per m" + rebuilt },
+		{ "min_speed", "Min speed", DM_SETTING( minSpeed ), 0.0f, 2.0f, "m/s", "Stream flow at least" + rebuilt },
+		{ "min_water_depth", "Min water depth", DM_SETTING( minWaterDepth ), 0.05f, 1.0f, "m", "Water over the bed at least" + rebuilt },
+		{ "foam_slope", "Foam slope", DM_SETTING( foamSlope ), 0.02f, 0.5f, "",
+		  "Steeper water surface foams: cascades over steps and the pool below them (fully at three times), m per m" + rebuilt },
+		{ "freeboard", "Freeboard", DM_SETTING( freeboard ), 0.0f, 2.0f, "m",
+		  "Water stands this much below the bank top: the bed is cut for floods" + rebuilt },
+		{ "source_taper", "Source taper", DM_SETTING( sourceTaper ), 0.0f, 100.0f, "m",
+		  "From a spring the narrowest bed, incision, water and freeboard grow over this length" + rebuilt },
+		{ "bed_shape", "Bed shape", DM_SETTING( bedShape ), 1.0f, 12.0f, "",
+		  "Bed cross-section: 2 - V (sharp thalweg), more - flat U" + rebuilt },
+		{ "bank_roundness", "Bank roundness", DM_SETTING( bankRoundness ), 0.0f, 1.0f, "",
+		  "1 - rounded bank top and toe, 0 - straight bank with a sharp edge" + rebuilt },
+		{ "bend_asymmetry", "Bend asymmetry", DM_SETTING( bendAsymmetry ), 0.0f, 1.0f, "",
+		  "Outer bank of a bend deeper and steeper, inner - a gentle bar" + rebuilt },
+		{ "pool_depth", "Pool depth", DM_SETTING( poolDepth ), 0.0f, 1.0f, "",
+		  "Pools deeper by this share of the incision (0 - no pools)" + rebuilt },
+		{ "pool_spacing", "Pool spacing", DM_SETTING( poolSpacing ), 2.0f, 15.0f, "widths",
+		  "Pool and riffle every this many channel widths" + rebuilt },
+		{ "bed_noise", "Bed noise", DM_SETTING( bedNoise ), 0.0f, 0.5f, "m", "Unevenness of the bed and banks" + rebuilt },
+		{ "bed_noise_scale", "Bed noise scale", DM_SETTING( bedNoiseScale ), 0.3f, 5.0f, "m", "Size of the bed unevenness" + rebuilt },
+		{ "step_height", "Step height", DM_SETTING( stepHeight ), 0.0f, 2.0f, "m",
+		  "Steep reaches are stepped (step-pool, cascade): drop of a step, a pool below it (0 - no steps)" + rebuilt },
+		{ "step_steepness", "Step steepness", DM_SETTING( stepSteepness ), 0.5f, 2.5f, "",
+		  "Step height per step spacing in units of the reach slope (1-1.5 in nature): the spacing" + rebuilt },
+		{ "step_min_slope", "Step min slope", DM_SETTING( stepMinSlope ), 0.005f, 0.2f, "",
+		  "Gentler reaches have no steps (pools and riffles), m per m" + rebuilt },
+		{ "lake_depth_ratio", "Lake depth ratio", DM_SETTING( lakeDepthRatio ), 0.0f, 0.3f, "",
+		  "Deepest lake point per square root of the lake area" + rebuilt },
+		{ "lake_min_depth", "Lake min depth", DM_SETTING( lakeMinDepth ), 0.0f, 10.0f, "m",
+		  "Deepest point of a small lake at least" + rebuilt },
+		{ "lake_max_depth", "Lake max depth", DM_SETTING( lakeMaxDepth ), 0.0f, 50.0f, "m",
+		  "Deepest point of a large lake at most" + rebuilt },
+		{ "lake_shelf_width", "Lake shelf width", DM_SETTING( lakeShelfWidth ), 0.0f, 20.0f, "m",
+		  "Shallow shelf along the shore" + rebuilt },
+		{ "lake_shelf_depth", "Lake shelf depth", DM_SETTING( lakeShelfDepth ), 0.0f, 3.0f, "m",
+		  "Water depth at the shelf edge" + rebuilt },
+		{ "lake_drop_slope", "Lake drop slope", DM_SETTING( lakeDropSlope ), 0.05f, 2.0f, "",
+		  "Drop-off beyond the shelf, m per m" + rebuilt },
+		{ "lake_freeboard", "Lake freeboard", DM_SETTING( lakeFreeboard ), 0.0f, 1.0f, "m",
+		  "Lake water stands this much below the spill level of its basin: the shore is above the water, the outlet cuts the sill" + rebuilt },
+		{ "stone_density", "Stone density", DM_SETTING( stoneDensity ), 0.0f, 5.0f, "1/m",
+		  "Stones per metre of a stream (bed and banks): denser on riffles and steep reaches" + rebuilt },
+		{ "stone_size", "Stone size", DM_SETTING( stoneSize ), 0.05f, 1.0f, "m", "Typical stone diameter" + rebuilt },
+		{ "bank_stones", "Bank stones", DM_SETTING( bankStones ), 0.0f, 1.0f, "",
+		  "Share of the stones at the banks, near the water edge" + rebuilt },
+		{ "boulder_density", "Boulder density", DM_SETTING( boulderDensity ), 0.0f, 0.5f, "1/m",
+		  "Boulders per metre of a stream: more on steep reaches" + rebuilt },
+		{ "boulder_size", "Boulder size", DM_SETTING( boulderSize ), 0.3f, 3.0f, "m", "Boulder diameter" + rebuilt },
+		{ "smooth", "Smooth passes", DM_SETTING( smooth ), 0.0f, 20.0f, "", "Smoothing passes of the channel axis along the flow" + generated, 0,
+		  streamGeneratorGroup },
+	};
+	return schema;
+}
+
+const SettingsSchema<StreamCurve>& streamCurveSchema()
+{
+	using Settings = StreamCurve;
+	const std::string rebuilt = "; the channels are rebuilt on change";
+	static const SettingsSchema<Settings> schema = {
+		{ "enabled", "Enabled", DM_SETTING( enabled ), 0.0f, 0.0f, "", "Off - no channel and no water" + rebuilt },
+		{ "width_scale", "Width scale", DM_SETTING( widthScale ), 0.1f, 4.0f, "", "Bed width of this stream, times the common one" + rebuilt },
+		{ "depth_scale", "Depth scale", DM_SETTING( depthScale ), 0.1f, 4.0f, "", "Incision of this stream, times the common one" + rebuilt },
+		{ "freeboard_scale", "Freeboard scale", DM_SETTING( freeboardScale ), 0.1f, 4.0f, "", "Bank above the water, times the common one" + rebuilt },
+		{ "bank_slope_scale", "Bank slope scale", DM_SETTING( bankSlopeScale ), 0.1f, 4.0f, "", "Gentler (> 1) or steeper (< 1) banks" + rebuilt },
+		{ "thalweg_scale", "Thalweg scale", DM_SETTING( thalwegScale ), 0.1f, 4.0f, "", "Deeper middle of the bed, times the common one" + rebuilt },
+		{ "roughness_scale", "Roughness scale", DM_SETTING( roughnessScale ), 0.1f, 4.0f, "",
+		  "Bed roughness (Manning): deeper, slower water at > 1" + rebuilt },
+		{ "discharge_scale", "Discharge scale", DM_SETTING( dischargeScale ), 0.1f, 4.0f, "",
+		  "Water of this stream: wider, deeper bed at > 1" + rebuilt },
+		{ "stone_scale", "Stone scale", DM_SETTING( stoneScale ), 0.1f, 4.0f, "",
+		  "Stones and boulders of this stream, times the common density" + rebuilt },
+	};
+	return schema;
+}
+
+const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
+{
+	using Settings = ParticleEmitterSettings;
+	static const SettingsSchema<Settings> schema = {
+		// Место экземпляра — колонка position строки LevelParticleEmitters (её пишет «Save level» отдельно); в окне — у эмиттера
+		// в точке и в шаре
+		{ "", "Position", DM_SETTING( position ), 0.0f, 0.0f, "m", "Where the particles are born (the viewport gizmo moves it)",
+		  settingDrag, "placed" },
+		// Единица частоты и подсказка радиуса — по способу рождения (ParticleSystem)
+		{ "rate", "Rate", DM_SETTING( rate ), 0.0f, 10.0f, "1/s", "", settingClampLow | settingWideHigh },
+		{ "radius", "Radius", DM_SETTING( radius ), 0.0f, 10.0f, "m", "", settingClampLow | settingWideHigh },
+		{ "height_min", "Height min", DM_SETTING( heightMin ), -10.0f, 50.0f, "m", "Above the terrain or the water surface" },
+		{ "height_max", "Height max", DM_SETTING( heightMax ), -10.0f, 50.0f, "m" },
+		// Маска и ёмкость пула задают ресурсы эмиттера — только в базе
+		{ "mask", nullptr, DM_SETTING( mask ) },
+		{ "max_particles", nullptr, DM_SETTING( maxParticles ) },
+		{ "lifetime_min", "Lifetime min", DM_SETTING( lifetimeMin ), 0.0f, 10.0f, "s", "", settingClampLow | settingWideHigh },
+		{ "lifetime_max", "Lifetime max", DM_SETTING( lifetimeMax ), 0.0f, 10.0f, "s", "", settingClampLow | settingWideHigh },
+		{ "size_start", "Size start", DM_SETTING( sizeStart ), 0.001f, 0.1f, "m", "", settingWideHigh },
+		{ "size_end", "Size end", DM_SETTING( sizeEnd ), 0.001f, 0.1f, "m", "", settingWideHigh },
+		{ "color", "Color", DM_SETTING( color ), 0.0f, 0.0f, "", "", settingColor },
+		{ "alpha", "Alpha", DM_SETTING( alpha ), 0.0f, 1.0f },
+		{ "fade_in", "Fade in", DM_SETTING( fadeIn ), 0.0f, 1.0f, "", "Share of the life" },
+		{ "fade_out", "Fade out", DM_SETTING( fadeOut ), 0.0f, 1.0f, "", "Share of the life" },
+		{ "velocity", "Velocity", DM_SETTING( velocity ), -20.0f, 20.0f, "m/s", "Initial velocity", settingDrag },
+		{ "velocity_spread", "Velocity spread", DM_SETTING( velocitySpread ), 0.0f, 10.0f, "m/s" },
+		{ "gravity", "Gravity", DM_SETTING( gravity ), 0.0f, 20.0f, "m/s2" },
+		{ "drag", "Drag", DM_SETTING( drag ), 0.0f, 20.0f, "1/s", "Velocity tends to the air (wind) and water velocity" },
+		{ "wind", "Wind", DM_SETTING( wind ), 0.0f, 2.0f, "", "Share of the level wind" },
+		{ "curl", "Curl", DM_SETTING( curl ), 0.0f, 5.0f, "m/s", "Strength of the curl noise vortices" },
+		{ "curl_scale", "Curl scale", DM_SETTING( curlScale ), 0.1f, 50.0f, "m", "Size of the vortices", settingLogarithmic | settingClampLow },
+		{ "water_flow", "Water flow", DM_SETTING( waterFlow ), 0.0f, 2.0f, "", "Share of the water velocity under the particle" },
+		{ "water_speed", "Water speed", DM_SETTING( waterSpeed ), 0.0f, 5.0f, "m/s", "Spawn on water faster than this" },
+		{ "collide", "Collide", DM_SETTING( collide ), 0.0f, 0.0f, "", "With the terrain: needles lie down, dots die" },
+		{ "transmission", "Transmission", DM_SETTING( transmission ), 0.0f, 4.0f, "", "Glow against the sun (pollen, fluff)" },
+		{ "emissive", "Emissive", DM_SETTING( emissive ), 0.0f, 10.0f, "cd/m2", "", settingWideHigh },
+	};
+	return schema;
 }
 
 Tonemapper tonemapperFromName( const std::string& name )

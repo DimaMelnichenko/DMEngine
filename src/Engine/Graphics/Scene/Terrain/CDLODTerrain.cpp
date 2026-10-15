@@ -19,6 +19,8 @@
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "Utils\Fingerprint.h"
+#include "Properties\SettingsProperties.h"
+#include "ObjectLibrary\SettingsDatabase.h"
 
 using namespace DirectX;
 
@@ -112,70 +114,9 @@ bool CDLODTerrain::initialize( uint32_t terrainId, const std::vector<TerrainEdit
 	prop->setUnit( "m" )->setTooltip( "Range of the finest regular level (leaf nodes); each coarser level reaches twice as far, "
 									  "the finer detail levels near the camera - half, a quarter..." );
 
-	prop = m_properties.insert( "Height multiplier", settings.heightMultiplier );
-	prop->setLow( 1.0f );
-	prop->setHigh( 5000.0f );
-	prop->setControlType( GUIControlType::SLIDER );
-	prop->setUnit( "m" )->setTooltip( "Height of the heightmap value 1; the scatter and particles follow, the terrain edits do not" );
-
-	prop = m_properties.insert( "Triplanar sharpness", settings.triplanarSharpness );
-	prop->setLow( 1.0f );
-	prop->setHigh( 32.0f );
-	prop->setControlType( GUIControlType::SLIDER );
-	prop->setTooltip( "How sharply steep slopes switch from the top projection to the side ones" );
-
-	prop = m_properties.insert( "Height blend", settings.heightBlend );
-	prop->setLow( 0.01f );
-	prop->setHigh( 1.0f );
-	prop->setControlType( GUIControlType::SLIDER );
-	prop->setTooltip( "Depth of the height-based blend between layers" );
-
-	// Второй масштаб текстур вдали (distance resampling, как в материалах UE Landscape): мелкий повтор слоёв
-	// издалека складывается в сетку
-	prop = m_properties.insert( "Far texture scale", settings.farTextureScale );
-	prop->setLow( 1.0f );
-	prop->setHigh( 32.0f );
-	prop->setControlType( GUIControlType::SLIDER );
-	prop->setTooltip( "Texture repeat multiplier far away: the small repeat does not fold into a grid" );
-
-	// Полоса перехода ко второму масштабу — начало и конец одним двойным ползунком. Обе выборки — на всём её протяжении,
-	// поэтому цена второго масштаба растёт с её шириной
-	prop = m_properties.insert( "Far blend", XMFLOAT2( settings.farBlendStart, settings.farBlendEnd ) );
-	prop->setLow( 0.0f );
-	prop->setHigh( 1000.0f );
-	prop->setControlType( GUIControlType::RANGE );
-	prop->setUnit( "m" );
-	prop->setTooltip( "Distance band where the far texture scale replaces the near one: both scales are sampled along it" );
-
-	// Микротени прямого света по AO слоёв (lighting.sh): в щели между камнями солнце светит только под крутым углом
-	prop = m_properties.insert( "Micro shadows", settings.microShadows );
-	prop->setLow( 0.0f );
-	prop->setHigh( 1.0f );
-	prop->setControlType( GUIControlType::SLIDER );
-	prop->setTooltip( "Direct light in the crevices of the layer AO: it reaches their bottom only from steep angles (micro "
-					  "shadowing of Uncharted 4); 0 - AO darkens the sky light only" );
-
-	// Дисплейсмент у камеры (сетка — «Finest mesh»): полный ближе начала полосы, к концу сходит на нет
-	prop = m_properties.insert( "Displacement distance", XMFLOAT2( settings.displacementStart, settings.displacementEnd ) );
-	prop->setLow( 0.0f );
-	prop->setHigh( 64.0f );
-	prop->setControlType( GUIControlType::RANGE );
-	prop->setUnit( "m" );
-	prop->setTooltip( "Displacement by the layer heights: full nearer than the start, fades out to the end (end 0 - off); the "
-					  "terrain mesh near the camera - Finest mesh" );
-	// Самый мелкий квад сетки у камеры (Terrain.finest_mesh): мельче — камешки выдавливаются ровнее, дороже вершины
-	m_properties.insert( "Finest mesh", std::clamp( settings.finestMesh, 0, static_cast<int32_t>( detailLevels - tileLevels ) ) )
-		->setItems( { "25 cm", "12.5 cm", "6.25 cm", "3.1 cm", "1.6 cm" } )
-		->setTooltip( "Finest quad of the terrain mesh near the camera; each level halves the quad and the distance (at LOD "
-					  "distance 128 m: 12.5 cm to 16 m, 6.25 cm to 8 m, 3.1 cm to 4 m, 1.6 cm to 2 m). Finer - the displacement "
-					  "shapes small stones, the vertex cost grows by about the same per level" );
-	// Где самая мелкая сетка полная (Terrain.finest_mesh_radius). При ходьбе — вокруг ног: LOD от отрезка «глаза — ноги»
-	prop = m_properties.insert( "Finest mesh radius", settings.finestMeshRadius );
-	prop->setLow( 0.0f );
-	prop->setHigh( 8.0f );
-	prop->setUnit( "m" );
-	prop->setTooltip( "The finest mesh is full nearer, farther it morphs into the next level (up to 1.5 times the radius): "
-					  "around the feet when walking, around the camera in flight. Not less than the LOD distance gives" );
+	// Материал и сетка у камеры — по описанию полей строки Terrain (terrainSchema)
+	addSettingProperties( m_properties, terrainSchema(), settings );
+	static_assert( detailLevels - tileLevels == 4, "Finest mesh: values of terrainSchema" );
 
 	// Метров на повтор текстуры слоя (TerrainLayers.tiling)
 	m_layerProperties.setName( "Layer tiling" );
@@ -294,10 +235,7 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 {
 	// Колонка splatmap больше не читается: splat-карту дают правила по итоговому рельефу (TerrainMasks)
-	SQLite::Statement query( DBConnector::instance().db(), "select heightmap, height_multiplier, height_offset, width_multiplier, "
-														   "triplanar_sharpness, height_blend, far_texture_scale, far_blend_start, "
-														   "far_blend_end, displacement_start, displacement_end, micro_shadows, finest_mesh, "
-														   "finest_mesh_radius from Terrain where id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM Terrain WHERE id = :id" );
 	query.bind( ":id", terrainId );
 
 	if( !query.executeStep() )
@@ -308,24 +246,8 @@ bool CDLODTerrain::loadSettings( uint32_t terrainId, TerrainSettings& settings )
 
 	m_heightMapName = query.getColumn( "heightmap" ).getString();
 	settings.id = terrainId;
-	settings.heightMultiplier = static_cast<float>( query.getColumn( "height_multiplier" ).getDouble() );
-	// Материал: NULL — значения по умолчанию TerrainSettings
-	auto material = [&query]( const char* column, float& value )
-	{
-		if( !query.getColumn( column ).isNull() )
-			value = static_cast<float>( query.getColumn( column ).getDouble() );
-	};
-	material( "triplanar_sharpness", settings.triplanarSharpness );
-	material( "height_blend", settings.heightBlend );
-	material( "far_texture_scale", settings.farTextureScale );
-	material( "far_blend_start", settings.farBlendStart );
-	material( "far_blend_end", settings.farBlendEnd );
-	material( "displacement_start", settings.displacementStart );
-	material( "displacement_end", settings.displacementEnd );
-	material( "micro_shadows", settings.microShadows );
-	material( "finest_mesh_radius", settings.finestMeshRadius );
-	if( !query.getColumn( "finest_mesh" ).isNull() )
-		settings.finestMesh = query.getColumn( "finest_mesh" ).getInt();
+	// Материал и сетка — по описанию полей (terrainSchema): NULL — значения по умолчанию TerrainSettings
+	readSettings( query, terrainSchema(), settings, "Terrain " + std::to_string( terrainId ) );
 	m_heightOffset = static_cast<float>( query.getColumn( "height_offset" ).getDouble() );
 	m_texelSize = static_cast<float>( query.getColumn( "width_multiplier" ).getDouble() );
 
@@ -665,15 +587,7 @@ bool CDLODTerrain::layerRulesChanged() const
 {
 	if( !m_initialized )
 		return false;
-	const TerrainLayerRules rules = layerRulesFromProperties();
-	for( const TerrainLayerRuleField& field : terrainLayerRuleFields() )
-	{
-		if( field.range ? ( rules.*field.range ).from != ( m_layerRules.*field.range ).from ||
-						  ( rules.*field.range ).to != ( m_layerRules.*field.range ).to
-						: rules.*field.value != m_layerRules.*field.value )
-			return true;
-	}
-	return false;
+	return !settingsEqual( terrainLayerRulesSchema(), layerRulesFromProperties(), m_layerRules );
 }
 
 void CDLODTerrain::setPrevailingWind( const XMFLOAT3& direction )
@@ -693,10 +607,7 @@ void CDLODTerrain::setWindField( const WindFieldSettings& settings )
 
 bool CDLODTerrain::windFieldChanged( const WindFieldSettings& settings ) const
 {
-	for( const WindFieldParameter& parameter : windFieldParameters() )
-		if( settings.*parameter.value != m_windSettings.*parameter.value )
-			return true;
-	return false;
+	return !settingsEqual( windFieldSchema(), settings, m_windSettings );
 }
 
 bool CDLODTerrain::windTerrainChanged( const WindFieldSettings& settings ) const
@@ -777,8 +688,7 @@ bool CDLODTerrain::rebuildWindField()
 	Fingerprint key;
 	key.add( terrainKeyValue );
 	key.addWords( canopy.data(), canopy.size() * sizeof( float ) );
-	for( const WindFieldParameter& parameter : windFieldParameters() )
-		key.add( m_windSettings.*parameter.value );
+	forEachSettingValue( windFieldSchema(), m_windSettings, [&key]( const auto& value ) { key.add( value ); } );
 	char keyText[32];
 	std::snprintf( keyText, sizeof( keyText ), "%016llx", static_cast<unsigned long long>( key.value ) );
 	const std::string path = m_generatedDirectory + "\\wind.dds";
@@ -1402,13 +1312,7 @@ bool CDLODTerrain::buildMasks( const HeightField& finalField )
 	TerrainField windMetres;
 	if( hasWind )
 		key.add( windTerrainKey( finalField, windMetres ) );
-	for( const TerrainLayerRuleField& rule : terrainLayerRuleFields() )
-	{
-		if( rule.range )
-			key.add( m_layerRules.*rule.range );
-		else
-			key.add( m_layerRules.*rule.value );
-	}
+	forEachSettingValue( terrainLayerRulesSchema(), m_layerRules, [&key]( const auto& value ) { key.add( value ); } );
 	char keyText[32];
 	std::snprintf( keyText, sizeof( keyText ), "%016llx", static_cast<unsigned long long>( key.value ) );
 	const std::string keyPath = m_generatedDirectory + "\\key.txt";
@@ -2001,38 +1905,7 @@ void CDLODTerrain::confirmErosionChange()
 void CDLODTerrain::addErosionProperties( const TerrainErosionSettings& erosion )
 {
 	m_erosionProperties.setName( "Erosion" );
-	auto number = [this]( const char* name, float value, float low, float high, const char* tooltip )
-	{
-		Property* property = m_erosionProperties.insert( name, value );
-		property->setLow( low );
-		property->setHigh( std::max( high, value ) );
-		property->setTooltip( std::string( tooltip ) + "; applied at the next level load" );
-		return property;
-	};
-	auto integer = [this]( const char* name, int32_t value, float low, float high, const char* tooltip )
-	{
-		Property* property = m_erosionProperties.insert( name, value );
-		property->setLow( low );
-		property->setHigh( std::max( high, static_cast<float>( value ) ) );
-		property->setTooltip( std::string( tooltip ) + "; applied at the next level load" );
-		return property;
-	};
-	integer( "Droplets", erosion.droplets, 0.0f, 4000000.0f, "Water droplets of the hydraulic erosion" );
-	integer( "Seed", static_cast<int32_t>( erosion.seed ), 0.0f, 1000.0f, "Random numbers of the droplets" );
-	integer( "Lifetime", erosion.lifetime, 1.0f, 300.0f, "Steps of a droplet, a texel each" )->setUnit( "steps" );
-	number( "Inertia", erosion.inertia, 0.0f, 1.0f, "Share of the previous direction" );
-	number( "Capacity", erosion.capacity, 0.0f, 8.0f, "Sediment capacity: slope * speed * water * capacity" );
-	number( "Min slope", erosion.minSlope, 0.0f, 0.1f, "Slope in the capacity at least" );
-	number( "Erode speed", erosion.erodeSpeed, 0.0f, 1.0f, "Share of the missing capacity eroded per step" );
-	number( "Deposit speed", erosion.depositSpeed, 0.0f, 1.0f, "Share of the excess sediment deposited per step" );
-	number( "Evaporation", erosion.evaporation, 0.0f, 0.1f, "Water evaporated per step" );
-	number( "Gravity", erosion.gravity, 0.0f, 20.0f, "Speed-up downhill" );
-	integer( "Radius", erosion.radius, 1.0f, 12.0f, "Erosion brush" )->setUnit( "texels" );
-	number( "Rain scale", erosion.rainScale, 10.0f, 2000.0f, "Size of the rain patches" )->setUnit( "m" );
-	number( "Rain min", erosion.rainMin, 0.0f, 1.0f, "Rain share in dry places (1 - even rain)" );
-	number( "Talus angle", erosion.talusAngle, 10.0f, 80.0f, "Angle of repose of the scree" )->setUnit( "deg" );
-	integer( "Thermal iterations", erosion.thermalIterations, 0.0f, 200.0f, "Steps of the scree sliding" );
-	number( "Thermal rate", erosion.thermalRate, 0.0f, 1.0f, "Share of the excess sliding per step" );
+	addSettingProperties( m_erosionProperties, terrainErosionSchema(), erosion );
 	m_properties.addSubContainer( &m_erosionProperties );
 }
 
@@ -2070,25 +1943,15 @@ void CDLODTerrain::addPaintProperties()
 
 void CDLODTerrain::addLayerRulesProperties( const TerrainLayerRules& rules )
 {
-	// Поля правил — одной таблицей (terrainLayerRuleFields): подокно на группу, диапазон — парой полей «от, до»
+	// Поля правил — одним описанием (terrainLayerRulesSchema): подокно на группу, диапазон — парой полей «от, до»
 	m_layerRulesProperties.setName( "Layer rules" );
-	for( const TerrainLayerRuleField& field : terrainLayerRuleFields() )
+	for( const SettingField<TerrainLayerRules>& field : terrainLayerRulesSchema() )
 	{
-		auto group = std::find_if( m_layerRuleGroups.begin(), m_layerRuleGroups.end(),
-								   [&field]( const auto& entry ) { return entry.first == field.group; } );
-		if( group == m_layerRuleGroups.end() )
-		{
-			m_layerRuleGroups.emplace_back( field.group, std::make_unique<PropertyContainer>( field.group ) );
-			m_layerRulesProperties.addSubContainer( m_layerRuleGroups.back().second.get() );
-			group = m_layerRuleGroups.end() - 1;
-		}
-		Property* property = field.range ? group->second->insert( field.name, XMFLOAT2( ( rules.*field.range ).from, ( rules.*field.range ).to ) )
-										 : group->second->insert( field.name, rules.*field.value );
-		property->setLow( field.low );
-		property->setHigh( field.high );
-		property->setTooltip( std::string( field.tooltip ) + "; the layers and masks are rebuilt when the edit ends" );
-		if( field.unit[0] )
-			property->setUnit( field.unit );
+		if( std::any_of( m_layerRuleGroups.begin(), m_layerRuleGroups.end(), [&field]( const auto& entry ) { return entry.first == field.group; } ) )
+			continue;
+		m_layerRuleGroups.emplace_back( field.group, std::make_unique<PropertyContainer>( field.group ) );
+		m_layerRulesProperties.addSubContainer( m_layerRuleGroups.back().second.get() );
+		addSettingProperties( *m_layerRuleGroups.back().second, terrainLayerRulesSchema(), rules, field.group.c_str() );
 	}
 	m_properties.addSubContainer( &m_layerRulesProperties );
 }
@@ -2096,21 +1959,8 @@ void CDLODTerrain::addLayerRulesProperties( const TerrainLayerRules& rules )
 TerrainLayerRules CDLODTerrain::layerRulesFromProperties() const
 {
 	TerrainLayerRules rules = m_layerRules;
-	for( const TerrainLayerRuleField& field : terrainLayerRuleFields() )
-	{
-		const auto group = std::find_if( m_layerRuleGroups.begin(), m_layerRuleGroups.end(),
-										 [&field]( const auto& entry ) { return entry.first == field.group; } );
-		if( group == m_layerRuleGroups.end() || !group->second->exists( field.name ) )
-			continue;
-		const Property& property = ( *group->second )[field.name];
-		if( field.range )
-		{
-			const XMFLOAT2 value = property.data<XMFLOAT2>();
-			rules.*field.range = { value.x, value.y };
-		}
-		else
-			rules.*field.value = property.data<float>();
-	}
+	for( const auto& [group, properties] : m_layerRuleGroups )
+		readSettingProperties( *properties, terrainLayerRulesSchema(), rules, group.c_str() );
 	return rules;
 }
 
@@ -2118,19 +1968,7 @@ TerrainSettings CDLODTerrain::settings() const
 {
 	TerrainSettings settings;
 	settings.id = m_terrainId;
-	settings.heightMultiplier = m_properties["Height multiplier"].data<float>();
-	settings.triplanarSharpness = m_properties["Triplanar sharpness"].data<float>();
-	settings.heightBlend = m_properties["Height blend"].data<float>();
-	settings.farTextureScale = m_properties["Far texture scale"].data<float>();
-	const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
-	settings.farBlendStart = farBlend.x;
-	settings.farBlendEnd = farBlend.y;
-	const XMFLOAT2 displacement = m_properties["Displacement distance"].data<XMFLOAT2>();
-	settings.displacementStart = displacement.x;
-	settings.displacementEnd = displacement.y;
-	settings.microShadows = m_properties["Micro shadows"].data<float>();
-	settings.finestMesh = m_properties["Finest mesh"].data<int32_t>();
-	settings.finestMeshRadius = m_properties["Finest mesh radius"].data<float>();
+	readSettingProperties( m_properties, terrainSchema(), settings );
 	settings.paint = m_paint.initialized() ? m_paint.tiles() : m_paintTiles;
 	settings.layerTiling.assign( m_material.layerCount(), 0.0f );
 	settings.layerTint.assign( m_material.layerCount(), XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
@@ -2146,24 +1984,7 @@ TerrainSettings CDLODTerrain::settings() const
 		}
 	if( m_erosion )
 	{
-		TerrainErosionSettings& erosion = settings.erosion.emplace( *m_erosion );
-		const PropertyContainer& p = m_erosionProperties;
-		erosion.droplets = std::max( p["Droplets"].data<int32_t>(), 0 );
-		erosion.seed = static_cast<uint32_t>( std::max( p["Seed"].data<int32_t>(), 0 ) );
-		erosion.lifetime = std::max( p["Lifetime"].data<int32_t>(), 1 );
-		erosion.inertia = p["Inertia"].data<float>();
-		erosion.capacity = p["Capacity"].data<float>();
-		erosion.minSlope = p["Min slope"].data<float>();
-		erosion.erodeSpeed = p["Erode speed"].data<float>();
-		erosion.depositSpeed = p["Deposit speed"].data<float>();
-		erosion.evaporation = p["Evaporation"].data<float>();
-		erosion.gravity = p["Gravity"].data<float>();
-		erosion.radius = std::max( p["Radius"].data<int32_t>(), 1 );
-		erosion.rainScale = p["Rain scale"].data<float>();
-		erosion.rainMin = p["Rain min"].data<float>();
-		erosion.talusAngle = p["Talus angle"].data<float>();
-		erosion.thermalIterations = std::max( p["Thermal iterations"].data<int32_t>(), 0 );
-		erosion.thermalRate = p["Thermal rate"].data<float>();
+		readSettingProperties( m_erosionProperties, terrainErosionSchema(), settings.erosion.emplace( *m_erosion ) );
 	}
 	settings.layerRules = layerRulesFromProperties();
 	return settings;

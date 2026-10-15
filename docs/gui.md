@@ -239,32 +239,64 @@ property->setStep( 0.25f );                                         // шаг с
 
 **Настройки уровня — описанием полей** (`SettingsSchema`, как UPROPERTY в UE): у строки базы, которую окно правит и
 «Save level» пишет, параметр описывается один раз — колонка базы, имя свойства, член структуры настроек, границы,
-единицы, подсказка, флаги (`settingLogarithmic`, `settingColor`, `settingClamp` / `settingClampLow` — пределы при чтении
-из окна, `settingTransient`), часть окна (`group` — добавляется по условию) и выбор из значений (`choices` — список в
-окне). По описанию строятся свойства окна (`addSettingProperties`, `Properties/SettingsProperties.h`) и структура из них
-(`readSettingProperties`), читается строка базы (`readSettings`, NULL — значение по умолчанию структуры) и пишется
-`UPDATE` (`updateSettings` / `settingsAssignments` + `bindSettings`, `ObjectLibrary/SettingsDatabase.h`). Описания — рядом
-с данными, в `Scene/Level/LevelSettings.cpp`:
+единицы, подсказка, флаги, часть окна и выбор из значений. По описанию строятся свойства окна (`addSettingProperties`,
+`Properties/SettingsProperties.h`) и структура из них (`readSettingProperties`), читается строка базы (`readSettings`,
+`SELECT *`: NULL — значение по умолчанию структуры, нет колонки — тоже, со строкой в лог) и пишется `UPDATE`
+(`updateSettings` или `settingsAssignments` + `bindSettings`; `INSERT` — по `settingsColumns`, `ObjectLibrary/SettingsDatabase.h`).
+Описания — рядом с данными, в `Scene/Level/LevelSettings.cpp` (тени солнца — `DMLight::shadowSchema`):
 
 ```cpp
-const SettingsSchema<VolumetricCloudSettings>& volumetricCloudSchema()
+const SettingsSchema<TerrainSettings>& terrainSchema()
 {
-	using Settings = VolumetricCloudSettings;
+	using Settings = TerrainSettings;
 	static const SettingsSchema<Settings> schema = {
-		{ "coverage", "Coverage", DM_SETTING( coverage ), 0.0f, 1.0f },
-		{ "density", "Density", DM_SETTING( density ), 0.0f, 0.2f, "1/m" },
-		{ "albedo", "Albedo", DM_SETTING( albedo ), 0.0f, 0.0f, "", "", settingColor },
-		// вектор в колонках компонент, часть окна по условию
-		{ "rotation_x,rotation_y,rotation_z", "Rotation", DM_SETTING( rotationRange ), 0.0f, 360.0f, "deg", "", 0, "placement" },
+		{ "height_blend", "Height blend", DM_SETTING( heightBlend ), 0.01f, 1.0f, "", "Depth of the height-based blend between layers" },
+		// полоса «от — до» (SettingRange) в двух колонках, в окне — одно двойное поле
+		{ "far_blend_start,far_blend_end", "Far blend", DM_SETTING( farBlend ), 0.0f, 1000.0f, "m", "…", settingRangeControl },
+		// целое списком с подписями; часть окна "" — основная
+		{ "finest_mesh", "Finest mesh", DM_SETTING( finestMesh ), 0.0f, 0.0f, "", "…", 0, "", { 0, 1, 2, 3, 4 },
+		  { "25 cm", "12.5 cm", "6.25 cm", "3.1 cm", "1.6 cm" } },
 	};
 	return schema;
 }
+
+addSettingProperties( m_properties, terrainSchema(), settings );	// окно
+readSettingProperties( m_properties, terrainSchema(), settings );	// структура из окна
+readSettings( query, terrainSchema(), settings, "Terrain 1" );		// строка SELECT *
+updateSettings( db, "Terrain", id, terrainSchema(), settings );		// «Save level»
 ```
 
-Новый параметр — поле структуры, строка описания и колонка в базе; окно, загрузка и «Save level» подхватят его сами. Так
-переведены облака (`volumetricCloudSchema`) и слои расстановки (`scatterLayerSchema`); остальные строки уровня пока
-вручную (`TODO.md`, A1). Особое (фильтр по ролям земли флажками, связи полей вроде «дальняя граница не ближе ближней +
-шаг») объект дописывает после чтения по описанию.
+Поле:
+- **колонка** — одна или колонки компонент через запятую (вектор; полоса `SettingRange` — `slope_from,slope_to`), у вектора
+  можно одну текстом «x,y,z»; пусто — поле хранится не в этой строке (месяц и день солнца — в колонке `date`, место
+  эмиттера — в строке экземпляра); имя `nullptr` — только в базе (файл панорамы, шаг симуляции воды, маска эмиттера);
+- **доступ** — указатель на член (`&TerrainLayerRules::rockSlope` — в таблицах, построенных циклом) или `DM_SETTING( член )`,
+  в том числе вложенный (`DM_SETTING( layer.density )` у тумана);
+- **флаги**: `settingLogarithmic`, `settingColor`, `settingDrag` (поле без заливки доли — значения на порядки),
+  `settingRangeControl` (полоса одним двойным полем), `settingClamp` / `settingClampLow` (пределы при чтении из окна),
+  `settingWideHigh` (верхняя граница — не меньше 4 × значения: частота и размер частиц), `settingTransient`;
+- **часть окна** `group`: подокно (правила слоёв по группам, «Surface» воды), то, что объект добавляет по условию (место
+  эмиттера в точке и в шаре, импостер слоя расстановки), или признак поля (`streamGeneratorGroup` — параметры генератора
+  кривых русел: применяются при следующей загрузке и составляют отпечаток генерации); `addSettingProperties` и
+  `readSettingProperties` берут все поля или одну часть;
+- **выбор** `choices` с подписями `labels`: целое — списком в окне («Finest mesh» террейна, размер кадра импостера).
+
+Целые в окне — `int32` (контрол числа один на оба типа; `uint32` из окна — не меньше 0). Те же описания дают сравнение
+(`settingsEqual`, одно поле — `settingFieldEqual`: сменились ли правила слоёв, поле ветра, течение, кривая русла) и обход
+значений (`forEachSettingValue` — ключи кэшей масок, поля ветра, течения и отпечаток генерации кривых русел: новое поле
+попадает в ключ само). Чтение — без копии структуры (у воды в ней кривые и источники).
+
+Новый параметр — поле структуры, строка описания и колонка в базе; окно, загрузка, «Save level», проверка изменений и ключ
+кэша подхватят его сами. Описанием переведены все строки настроек уровня: облака, туман, небо, панорама, постобработка,
+солнце (`SunPosition`), ветер и поле ветра, тени солнца, террейн (`Terrain`), эрозия, правила слоёв, вода
+(`WaterSimulation`, течение, `WaterChannels`, кривые `Streams`), эмиттеры частиц, наборы и слои расстановки. Объект
+дописывает только то, что хранится иначе, чем показывается: направление ветра (в окне — Yaw), дату солнца (месяц и день),
+перечисления постобработки (имена) и кривую компенсации (текст), единицу частоты и смысл радиуса эмиттера по способу
+рождения; связи полей (дальняя граница слоя не ближе ближней + шаг) и фильтр по ролям земли флажками. Вручную остались
+строки, у которых окно — не «поле ↔ колонка» (`TODO.md`, A1b): варианты слоя расстановки (`ScatterLayerModels`: NULL —
+«как у слоя», роли флажками, границы LOD по числу LOD модели), сам источник света (`DMLight` — класс, окно по типу
+источника), слои материала террейна (`TerrainLayers`: подокна по свойству на все слои) и экземпляры материалов
+(параметры — по определениям материала).
 
 **Кнопки окна** — `PropertyContainer::addButton( имя, подсказка, действие )`: действие возвращает
 `PropertyContainer::ButtonAction` — функции отмены и повтора (пустые — не отменяется) и имя правки; так источники света

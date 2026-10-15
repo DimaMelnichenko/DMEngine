@@ -357,7 +357,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			level.modelInstances.push_back( instance );
 		}
 
-		SQLite::Statement querySets( DBConnector::instance().db(), "SELECT s.id, s.name, s.shadow_lod_scale "
+		SQLite::Statement querySets( DBConnector::instance().db(), "SELECT s.* "
 																   "FROM LevelScatterSets l JOIN ScatterSets s ON s.id = l.scatter_set "
 																   "WHERE l.level = :level ORDER BY l.id" );
 		querySets.bind( ":level", level.id );
@@ -366,7 +366,7 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			LevelDescription::ScatterSet set;
 			set.name = querySets.getColumn( "name" ).getString();
 			set.settings.id = querySets.getColumn( "id" ).getUInt();
-			set.settings.shadowLodScale = static_cast<float>( querySets.getColumn( "shadow_lod_scale" ).getDouble() );
+			readSettings( querySets, GS::scatterSetSchema(), set.settings, "Scatter set " + set.name );
 			loadScatterLayers( set.settings.id, set );
 			level.scatterSets.push_back( std::move( set ) );
 		}
@@ -393,13 +393,6 @@ void LibraryLoader::loadParticleEmitters( LevelDescription& level )
 	query.bind( ":level", level.id );
 	while( query.executeStep() )
 	{
-		auto value = [&query]( const char* column ) { return static_cast<float>( query.getColumn( column ).getDouble() ); };
-		auto vector = [&query]( const char* column, XMFLOAT3& result )
-		{
-			const std::string text = query.getColumn( column ).getString();
-			if( !text.empty() && !strToVec3( text, result ) )
-				LOG( "Particle emitter " + query.getColumn( "name" ).getString() + ": wrong " + column + " '" + text + "'" );
-		};
 		GS::ParticleEmitterSettings& emitter = level.particleEmitters.emplace_back();
 		emitter.id = query.getColumn( "id" ).getUInt();
 		emitter.instanceId = query.getColumn( "instance_id" ).getUInt();
@@ -410,33 +403,11 @@ void LibraryLoader::loadParticleEmitters( LevelDescription& level )
 						spawn == "water" ? GS::ParticleEmitterSettings::Spawn::water : GS::ParticleEmitterSettings::Spawn::point;
 		emitter.shape = query.getColumn( "shape" ).getString() == "needle" ? GS::ParticleEmitterSettings::Shape::needle :
 																			  GS::ParticleEmitterSettings::Shape::dot;
-		vector( "instance_position", emitter.position );
-		emitter.radius = value( "radius" );
-		emitter.heightMin = value( "height_min" );
-		emitter.heightMax = value( "height_max" );
-		emitter.mask = query.getColumn( "mask" ).isNull() ? std::string() : query.getColumn( "mask" ).getString();
-		emitter.rate = value( "rate" );
-		emitter.maxParticles = query.getColumn( "max_particles" ).getUInt();
-		emitter.lifetimeMin = value( "lifetime_min" );
-		emitter.lifetimeMax = value( "lifetime_max" );
-		emitter.sizeStart = value( "size_start" );
-		emitter.sizeEnd = value( "size_end" );
-		vector( "color", emitter.color );
-		emitter.alpha = value( "alpha" );
-		emitter.fadeIn = value( "fade_in" );
-		emitter.fadeOut = value( "fade_out" );
-		vector( "velocity", emitter.velocity );
-		emitter.velocitySpread = value( "velocity_spread" );
-		emitter.gravity = value( "gravity" );
-		emitter.drag = value( "drag" );
-		emitter.wind = value( "wind" );
-		emitter.curl = value( "curl" );
-		emitter.curlScale = value( "curl_scale" );
-		emitter.waterFlow = value( "water_flow" );
-		emitter.waterSpeed = value( "water_speed" );
-		emitter.collide = query.getColumn( "collide" ).getInt() != 0;
-		emitter.transmission = value( "transmission" );
-		emitter.emissive = value( "emissive" );
+		const std::string position = query.getColumn( "instance_position" ).getString();
+		if( !position.empty() && !strToVec3( position, emitter.position ) )
+			LOG( "Particle emitter " + emitter.name + ": wrong instance position '" + position + "'" );
+		// Остальное — по описанию полей (particleEmitterSchema): NULL — значения по умолчанию
+		readSettings( query, GS::particleEmitterSchema(), emitter, "Particle emitter " + emitter.name );
 	}
 }
 
@@ -449,46 +420,11 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 		LOG( "Water simulation " + std::to_string( *level.waterSimulationId ) + " is not found in table WaterSimulation" );
 		return false;
 	}
-	auto value = [&query]( const char* column )
-	{
-		return static_cast<float>( query.getColumn( column ).getDouble() );
-	};
+	// Поля строки — по описаниям (waterSimulationSchema, waterFlowSchema): NULL — значения по умолчанию
 	GS::WaterSimulationSettings& water = level.waterSimulation.emplace();
-	water.sourceRate = value( "source_rate" );
-	water.flowStart = value( "flow_start" );
-	water.flowFull = value( "flow_full" );
-	water.sourceRadius = value( "source_radius" );
-	water.rain = value( "rain" );
-	water.evaporation = value( "evaporation" );
-	water.manning = value( "manning" );
-	water.timeStep = value( "time_step" );
-	water.warmupTime = value( "warmup_time" );
-	water.timeScale = value( "time_scale" );
-	auto vector = [&]( const char* column, DirectX::XMFLOAT3& result )
-	{
-		const std::string text = query.getColumn( column ).getString();
-		if( !strToVec3( text, result ) )
-			LOG( "Water simulation " + std::to_string( *level.waterSimulationId ) + ": wrong " + column + " '" + text + "'" );
-	};
-	vector( "absorption", water.absorption );
-	vector( "scatter_color", water.scatterColor );
-	water.scatterStrength = value( "scatter_strength" );
-	water.roughness = value( "roughness" );
-	water.rippleScale = value( "ripple_scale" );
-	water.rippleStrength = value( "ripple_strength" );
-	water.calmRipple = value( "calm_ripple" );
-	water.refraction = value( "refraction" );
-	water.rippleStretch = value( "ripple_stretch" );
-	water.foamSpeed = value( "foam_speed" );
-	water.foamShear = value( "foam_shear" );
-	water.detailDistance = value( "detail_distance" );
-	water.flow.settleTime = value( "flow_settle_time" );
-	water.flow.timeStep = value( "flow_time_step" );
-	water.flow.viscosity = value( "flow_viscosity" );
-	water.flow.manning = value( "flow_manning" );
-	water.flow.iterations = query.getColumn( "flow_iterations" ).getInt();
-	water.flow.layer = value( "flow_layer" );
-	water.flow.detailSettleTime = value( "flow_detail_settle_time" );
+	const std::string what = "Water simulation " + std::to_string( *level.waterSimulationId );
+	readSettings( query, GS::waterSimulationSchema(), water, what );
+	readSettings( query, GS::waterFlowSchema(), water.flow, what );
 
 	// Источники-помощники (Tools/water_source.py); таблицы может не быть у базы, где их не ставили
 	SQLite::Database& db = DBConnector::instance().db();

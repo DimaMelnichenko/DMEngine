@@ -26,9 +26,7 @@ Scatterer::Scatterer( const std::string& name, const ScatterSetSettings& setting
 	m_setId( settings.id )
 {
 	m_properties.setName( name );
-	Property* shadowLod = m_properties.insert( "Shadow LOD scale", settings.shadowLodScale );
-	shadowLod->setLow( 0.1f );
-	shadowLod->setHigh( 1.0f );
+	addSettingProperties( m_properties, scatterSetSchema(), settings );
 }
 
 bool Scatterer::Initialize()
@@ -1185,7 +1183,7 @@ ScatterSetSettings Scatterer::settings() const
 {
 	ScatterSetSettings settings;
 	settings.id = m_setId;
-	settings.shadowLodScale = m_properties["Shadow LOD scale"].data<float>();
+	readSettingProperties( m_properties, scatterSetSchema(), settings );
 	return settings;
 }
 

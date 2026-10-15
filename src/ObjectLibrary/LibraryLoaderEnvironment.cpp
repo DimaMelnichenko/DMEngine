@@ -47,18 +47,7 @@ void LibraryLoader::loadLevelLights( LevelDescription& level )
 		light.setConeAngles( value( "inner_cone_angle" ), value( "outer_cone_angle" ) );
 
 		DMLight::ShadowSettings shadows;
-		shadows.castShadows = query.getColumn( "cast_shadows" ).getInt() != 0;
-		shadows.dynamicShadowDistance = value( "dynamic_shadow_distance" );
-		shadows.cascadeDistributionExponent = value( "cascade_distribution_exponent" );
-		shadows.cascadeTransitionFraction = value( "cascade_transition_fraction" );
-		shadows.shadowDistanceFadeoutFraction = value( "shadow_distance_fadeout_fraction" );
-		shadows.shadowBias = value( "shadow_bias" );
-		shadows.normalBias = value( "normal_bias" );
-		shadows.shadowSlopeBias = value( "shadow_slope_bias" );
-		if( !query.getColumn( "far_shadows" ).isNull() )
-			shadows.farShadows = query.getColumn( "far_shadows" ).getInt() != 0;
-		if( !query.getColumn( "far_shadow_penumbra" ).isNull() )
-			shadows.farShadowPenumbra = value( "far_shadow_penumbra" );
+		readSettings( query, DMLight::shadowSchema(), shadows, "Level light " + query.getColumn( "id" ).getString() );
 		light.setShadowSettings( shadows );
 		light.setAtmosphereSunLight( query.getColumn( "atmosphere_sun_light" ).getInt() != 0 );
 		light.setAtmosphereSunLightIndex( query.getColumn( "atmosphere_sun_light_index" ).getInt() );
@@ -78,17 +67,8 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 			LOG( "Sun position " + std::to_string( *level.sunPositionId ) + " is not found in table SunPosition" );
 			return false;
 		}
-		auto value = [&query]( const char* column )
-		{
-			return static_cast<float>( query.getColumn( column ).getDouble() );
-		};
 		GS::SunPositionSettings& settings = level.sunPosition.emplace();
-		settings.latitude = value( "latitude" );
-		settings.longitude = value( "longitude" );
-		settings.timeZone = value( "time_zone" );
-		settings.northOffset = value( "north_offset" );
-		settings.timeOfDay = value( "time_of_day" );
-		settings.timeScale = value( "time_scale" );
+		readSettings( query, GS::sunPositionSchema(), settings, "Sun position " + std::to_string( *level.sunPositionId ) );
 		// Дата — как в SQLite: YYYY-MM-DD
 		const std::string date = query.getColumn( "date" ).getString();
 		if( sscanf_s( date.c_str(), "%d-%d-%d", &settings.year, &settings.month, &settings.day ) != 3 )
@@ -97,28 +77,19 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 
 	if( level.atmosphereId )
 	{
-		SQLite::Statement query( DBConnector::instance().db(), "SELECT sky_intensity, haze, ground_albedo, aerial_perspective_view_distance_scale, "
-															   "night_sky_luminance, milky_way, milky_way_luminance FROM SkyAtmosphere WHERE id = :id" );
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM SkyAtmosphere WHERE id = :id" );
 		query.bind( ":id", *level.atmosphereId );
 		if( !query.executeStep() )
 		{
 			LOG( "Sky atmosphere " + std::to_string( *level.atmosphereId ) + " is not found in table SkyAtmosphere" );
 			return false;
 		}
-		level.atmosphere.skyIntensity = static_cast<float>( query.getColumn( "sky_intensity" ).getDouble() );
-		level.atmosphere.haze = static_cast<float>( query.getColumn( "haze" ).getDouble() );
-		level.atmosphere.groundAlbedo = static_cast<float>( query.getColumn( "ground_albedo" ).getDouble() );
-		level.atmosphere.aerialPerspectiveViewDistanceScale =
-			static_cast<float>( query.getColumn( "aerial_perspective_view_distance_scale" ).getDouble() );
-		level.atmosphere.nightSkyLuminance = static_cast<float>( query.getColumn( "night_sky_luminance" ).getDouble() );
-		level.atmosphere.milkyWay = query.getColumn( "milky_way" ).getString();
-		level.atmosphere.milkyWayLuminance = static_cast<float>( query.getColumn( "milky_way_luminance" ).getDouble() );
+		readSettings( query, GS::skyAtmosphereSchema(), level.atmosphere, "Sky atmosphere " + std::to_string( *level.atmosphereId ) );
 	}
 
 	if( level.windId )
 	{
-		SQLite::Statement query( DBConnector::instance().db(), "SELECT direction, strength, speed, min_gust_amount, max_gust_amount, gust_size "
-															   "FROM Wind WHERE id = :id" );
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM Wind WHERE id = :id" );
 		query.bind( ":id", *level.windId );
 		if( !query.executeStep() )
 		{
@@ -129,28 +100,10 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		const std::string direction = query.getColumn( "direction" ).getString();
 		if( !strToVec3( direction, wind.direction ) )
 			LOG( "Wind " + std::to_string( *level.windId ) + ": wrong direction '" + direction + "'" );
-		wind.strength = static_cast<float>( query.getColumn( "strength" ).getDouble() );
-		wind.speed = static_cast<float>( query.getColumn( "speed" ).getDouble() );
-		wind.minGustAmount = static_cast<float>( query.getColumn( "min_gust_amount" ).getDouble() );
-		wind.maxGustAmount = static_cast<float>( query.getColumn( "max_gust_amount" ).getDouble() );
-		wind.gustSize = static_cast<float>( query.getColumn( "gust_size" ).getDouble() );
-		// Поле ветра по рельефу — колонки field_* по таблице настроек; нет колонки или NULL — значение по умолчанию
-		SQLite::Statement field( DBConnector::instance().db(), "SELECT * FROM Wind WHERE id = :id" );
-		field.bind( ":id", *level.windId );
-		if( field.executeStep() )
-			for( const GS::WindFieldParameter& parameter : GS::windFieldParameters() )
-			{
-				try
-				{
-					const int index = field.getColumnIndex( parameter.column );
-					if( !field.getColumn( index ).isNull() )
-						wind.field.*parameter.value = static_cast<float>( field.getColumn( index ).getDouble() );
-				}
-				catch( const SQLite::Exception& )
-				{
-					LOG( std::string( "Wind: no column " ) + parameter.column + ", the default is used" );
-				}
-			}
+		const std::string what = "Wind " + std::to_string( *level.windId );
+		readSettings( query, GS::windSchema(), wind, what );
+		// Поле ветра по рельефу — колонки field_*: нет колонки или NULL — значение по умолчанию
+		readSettings( query, GS::windFieldSchema(), wind.field, what );
 	}
 
 	if( level.heightFogId )
@@ -162,19 +115,7 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 			LOG( "Height fog " + std::to_string( *level.heightFogId ) + " is not found in table ExponentialHeightFog" );
 			return false;
 		}
-		auto value = [&query]( const char* column )
-		{
-			return static_cast<float>( query.getColumn( column ).getDouble() );
-		};
-		GS::HeightFogSettings& fog = level.heightFog.emplace();
-		fog.layer = { value( "density" ), value( "height" ), value( "height_falloff" ) };
-		fog.secondLayer = { value( "second_density" ), value( "second_height" ), value( "second_height_falloff" ) };
-		const std::string albedo = query.getColumn( "albedo" ).getString();
-		if( !strToVec3( albedo, fog.albedo ) )
-			LOG( "Height fog " + std::to_string( *level.heightFogId ) + ": wrong albedo '" + albedo + "'" );
-		fog.scatteringDistribution = value( "scattering_distribution" );
-		fog.volumetric = query.getColumn( "volumetric" ).getInt() != 0;
-		fog.viewDistance = value( "view_distance" );
+		readSettings( query, GS::heightFogSchema(), level.heightFog.emplace(), "Height fog " + std::to_string( *level.heightFogId ) );
 	}
 
 	if( level.volumetricCloudId )
@@ -192,18 +133,14 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 
 	if( level.hdriBackdropId )
 	{
-		SQLite::Statement query( DBConnector::instance().db(), "SELECT texture, intensity, rotation, max_luminance FROM HDRIBackdrop WHERE id = :id" );
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM HDRIBackdrop WHERE id = :id" );
 		query.bind( ":id", *level.hdriBackdropId );
 		if( !query.executeStep() )
 		{
 			LOG( "HDRI backdrop " + std::to_string( *level.hdriBackdropId ) + " is not found in table HDRIBackdrop" );
 			return false;
 		}
-		GS::HDRIBackdropSettings& hdri = level.hdriBackdrop.emplace();
-		hdri.texture = query.getColumn( "texture" ).getString();
-		hdri.intensity = static_cast<float>( query.getColumn( "intensity" ).getDouble() );
-		hdri.rotation = static_cast<float>( query.getColumn( "rotation" ).getDouble() );
-		hdri.maxLuminance = static_cast<float>( query.getColumn( "max_luminance" ).getDouble() );
+		readSettings( query, GS::hdriBackdropSchema(), level.hdriBackdrop.emplace(), "HDRI backdrop " + std::to_string( *level.hdriBackdropId ) );
 	}
 
 	if( level.postProcessId )
@@ -215,32 +152,11 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 			LOG( "Post process settings " + std::to_string( *level.postProcessId ) + " are not found in table PostProcessSettings" );
 			return false;
 		}
-		auto value = [&query]( const char* column )
-		{
-			return static_cast<float>( query.getColumn( column ).getDouble() );
-		};
 		GS::PostProcessSettings& settings = level.postProcess;
+		readSettings( query, GS::postProcessSchema(), settings, "Post process settings " + std::to_string( *level.postProcessId ) );
+		// Перечисления — именами, кривая — текстом
 		settings.meteringMode = GS::meteringModeFromName( query.getColumn( "metering_mode" ).getString() );
-		settings.manualEV100 = value( "manual_ev100" );
-		settings.minEV100 = value( "min_ev100" );
-		settings.maxEV100 = value( "max_ev100" );
-		settings.histogramLowPercent = value( "histogram_low_percent" );
-		settings.histogramHighPercent = value( "histogram_high_percent" );
-		settings.speedUp = value( "speed_up" );
-		settings.speedDown = value( "speed_down" );
-		level.postProcess.exposureCompensation = static_cast<float>( query.getColumn( "exposure_compensation" ).getDouble() );
-		level.postProcess.tonemapper = GS::tonemapperFromName( query.getColumn( "tonemapper" ).getString() );
-		level.postProcess.bloomIntensity = static_cast<float>( query.getColumn( "bloom_intensity" ).getDouble() );
-		level.postProcess.bloomThreshold = static_cast<float>( query.getColumn( "bloom_threshold" ).getDouble() );
-		level.postProcess.purkinjeShift = value( "purkinje_shift" );
-		auto optional = [&query, &value]( const char* column, float& target )
-		{
-			if( !query.getColumn( column ).isNull() )
-				target = value( column );
-		};
-		optional( "ambient_occlusion_intensity", level.postProcess.ambientOcclusion.intensity );
-		optional( "ambient_occlusion_radius", level.postProcess.ambientOcclusion.radius );
-		optional( "ambient_occlusion_power", level.postProcess.ambientOcclusion.power );
+		settings.tonemapper = GS::tonemapperFromName( query.getColumn( "tonemapper" ).getString() );
 		const SQLite::Column curve = query.getColumn( "exposure_compensation_curve" );
 		if( !curve.isNull() )
 			level.postProcess.exposureCompensationCurve = GS::curveFromText( curve.getString() );
@@ -313,13 +229,9 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 
 		SQLite::Statement updateLight( db, "UPDATE LevelLights SET name = :name, enabled = :enabled, color = :color, "
 										   "intensity = :intensity, position = :position, direction = :direction, "
-										   "attenuation_radius = :radius, inner_cone_angle = :inner, outer_cone_angle = :outer, "
-										   "cast_shadows = :castShadows, dynamic_shadow_distance = :distance, "
-										   "cascade_distribution_exponent = :exponent, cascade_transition_fraction = :transition, "
-										   "shadow_distance_fadeout_fraction = :fadeout, shadow_bias = :shadowBias, "
-										   "normal_bias = :normalBias, shadow_slope_bias = :slopeBias, "
-										   "far_shadows = :farShadows, far_shadow_penumbra = :farPenumbra, "
-										   "atmosphere_sun_light = :atmosphereSunLight WHERE id = :id" );
+										   "attenuation_radius = :radius, inner_cone_angle = :inner, outer_cone_angle = :outer, " +
+										   settingsAssignments( DMLight::shadowSchema() ) +
+										   ", atmosphere_sun_light = :atmosphereSunLight WHERE id = :id" );
 		for( const DMLight& light : lights )
 		{
 			if( light.id == 0 )
@@ -334,16 +246,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 			updateLight.bind( ":radius", dbValue( light.attenuationRadius() ) );
 			updateLight.bind( ":inner", dbValue( light.innerConeAngle() ) );
 			updateLight.bind( ":outer", dbValue( light.outerConeAngle() ) );
-			updateLight.bind( ":castShadows", shadows.castShadows ? 1 : 0 );
-			updateLight.bind( ":distance", dbValue( shadows.dynamicShadowDistance ) );
-			updateLight.bind( ":exponent", dbValue( shadows.cascadeDistributionExponent ) );
-			updateLight.bind( ":transition", dbValue( shadows.cascadeTransitionFraction ) );
-			updateLight.bind( ":fadeout", dbValue( shadows.shadowDistanceFadeoutFraction ) );
-			updateLight.bind( ":shadowBias", dbValue( shadows.shadowBias ) );
-			updateLight.bind( ":normalBias", dbValue( shadows.normalBias ) );
-			updateLight.bind( ":slopeBias", dbValue( shadows.shadowSlopeBias ) );
-			updateLight.bind( ":farShadows", shadows.farShadows ? 1 : 0 );
-			updateLight.bind( ":farPenumbra", dbValue( shadows.farShadowPenumbra ) );
+			bindSettings( updateLight, DMLight::shadowSchema(), shadows );
 			updateLight.bind( ":atmosphereSunLight", light.atmosphereSunLight() ? 1 : 0 );
 			updateLight.bind( ":id", light.id );
 			updateLight.exec();
@@ -355,16 +258,10 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 		{
 			char date[16];
 			std::snprintf( date, sizeof( date ), "%04d-%02d-%02d", sunPosition->year, sunPosition->month, sunPosition->day );
-			SQLite::Statement updateSun( db, "UPDATE SunPosition SET latitude = :latitude, longitude = :longitude, "
-											 "time_zone = :timeZone, north_offset = :northOffset, date = :date, "
-											 "time_of_day = :timeOfDay, time_scale = :timeScale WHERE id = :id" );
-			updateSun.bind( ":latitude", dbValue( sunPosition->latitude ) );
-			updateSun.bind( ":longitude", dbValue( sunPosition->longitude ) );
-			updateSun.bind( ":timeZone", dbValue( sunPosition->timeZone ) );
-			updateSun.bind( ":northOffset", dbValue( sunPosition->northOffset ) );
+			SQLite::Statement updateSun( db, "UPDATE SunPosition SET " + settingsAssignments( GS::sunPositionSchema() ) +
+											 ", date = :date WHERE id = :id" );
+			bindSettings( updateSun, GS::sunPositionSchema(), *sunPosition );
 			updateSun.bind( ":date", std::string( date ) );
-			updateSun.bind( ":timeOfDay", dbValue( sunPosition->timeOfDay ) );
-			updateSun.bind( ":timeScale", dbValue( sunPosition->timeScale ) );
 			updateSun.bind( ":id", *level.sunPositionId );
 			updateSun.exec();
 		}
@@ -380,17 +277,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 				insert.exec();
 				level.atmosphereId = static_cast<uint32_t>( db.getLastInsertRowid() );
 			}
-			SQLite::Statement updateAtmosphere( db, "UPDATE SkyAtmosphere SET sky_intensity = :intensity, haze = :haze, "
-													"ground_albedo = :albedo, aerial_perspective_view_distance_scale = :aerialScale, "
-													"night_sky_luminance = :nightSky, milky_way_luminance = :milkyWay WHERE id = :id" );
-			updateAtmosphere.bind( ":intensity", dbValue( atmosphere->skyIntensity ) );
-			updateAtmosphere.bind( ":haze", dbValue( atmosphere->haze ) );
-			updateAtmosphere.bind( ":albedo", dbValue( atmosphere->groundAlbedo ) );
-			updateAtmosphere.bind( ":aerialScale", dbValue( atmosphere->aerialPerspectiveViewDistanceScale ) );
-			updateAtmosphere.bind( ":nightSky", dbValue( atmosphere->nightSkyLuminance ) );
-			updateAtmosphere.bind( ":milkyWay", dbValue( atmosphere->milkyWayLuminance ) );
-			updateAtmosphere.bind( ":id", *level.atmosphereId );
-			updateAtmosphere.exec();
+			updateSettings( db, "SkyAtmosphere", *level.atmosphereId, GS::skyAtmosphereSchema(), *atmosphere );
 
 			SQLite::Statement updateLevel( db, "UPDATE Levels SET atmosphere = :atmosphere WHERE id = :id" );
 			updateLevel.bind( ":atmosphere", *level.atmosphereId );
@@ -399,13 +286,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 		}
 		if( hdri && level.hdriBackdropId )
 		{
-			SQLite::Statement updateHDRI( db, "UPDATE HDRIBackdrop SET intensity = :intensity, rotation = :rotation, "
-											  "max_luminance = :maxLuminance WHERE id = :id" );
-			updateHDRI.bind( ":intensity", dbValue( hdri->intensity ) );
-			updateHDRI.bind( ":rotation", dbValue( hdri->rotation ) );
-			updateHDRI.bind( ":maxLuminance", dbValue( hdri->maxLuminance ) );
-			updateHDRI.bind( ":id", *level.hdriBackdropId );
-			updateHDRI.exec();
+			updateSettings( db, "HDRIBackdrop", *level.hdriBackdropId, GS::hdriBackdropSchema(), *hdri );
 		}
 
 		if( !level.postProcessId )
@@ -415,30 +296,12 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 			insert.exec();
 			level.postProcessId = static_cast<uint32_t>( db.getLastInsertRowid() );
 		}
-		SQLite::Statement updatePostProcess( db, "UPDATE PostProcessSettings SET exposure_compensation = :exposure, "
-												 "tonemapper = :tonemapper, bloom_intensity = :bloomIntensity, "
-												 "bloom_threshold = :bloomThreshold, metering_mode = :meteringMode, "
-												 "manual_ev100 = :manualEV100, min_ev100 = :minEV100, max_ev100 = :maxEV100, "
-												 "histogram_low_percent = :lowPercent, histogram_high_percent = :highPercent, "
-												 "speed_up = :speedUp, speed_down = :speedDown, purkinje_shift = :purkinjeShift, "
-												 "exposure_compensation_curve = :curve, ambient_occlusion_intensity = :aoIntensity, "
-												 "ambient_occlusion_radius = :aoRadius, ambient_occlusion_power = :aoPower WHERE id = :id" );
-		updatePostProcess.bind( ":exposure", dbValue( postProcess.exposureCompensation ) );
+		SQLite::Statement updatePostProcess( db, "UPDATE PostProcessSettings SET " + settingsAssignments( GS::postProcessSchema() ) +
+												 ", tonemapper = :tonemapper, metering_mode = :meteringMode, "
+												 "exposure_compensation_curve = :curve WHERE id = :id" );
+		bindSettings( updatePostProcess, GS::postProcessSchema(), postProcess );
 		updatePostProcess.bind( ":tonemapper", GS::tonemapperName( postProcess.tonemapper ) );
-		updatePostProcess.bind( ":bloomIntensity", dbValue( postProcess.bloomIntensity ) );
-		updatePostProcess.bind( ":bloomThreshold", dbValue( postProcess.bloomThreshold ) );
 		updatePostProcess.bind( ":meteringMode", GS::meteringModeName( postProcess.meteringMode ) );
-		updatePostProcess.bind( ":manualEV100", dbValue( postProcess.manualEV100 ) );
-		updatePostProcess.bind( ":minEV100", dbValue( postProcess.minEV100 ) );
-		updatePostProcess.bind( ":maxEV100", dbValue( postProcess.maxEV100 ) );
-		updatePostProcess.bind( ":lowPercent", dbValue( postProcess.histogramLowPercent ) );
-		updatePostProcess.bind( ":highPercent", dbValue( postProcess.histogramHighPercent ) );
-		updatePostProcess.bind( ":speedUp", dbValue( postProcess.speedUp ) );
-		updatePostProcess.bind( ":speedDown", dbValue( postProcess.speedDown ) );
-		updatePostProcess.bind( ":purkinjeShift", dbValue( postProcess.purkinjeShift ) );
-		updatePostProcess.bind( ":aoIntensity", dbValue( postProcess.ambientOcclusion.intensity ) );
-		updatePostProcess.bind( ":aoRadius", dbValue( postProcess.ambientOcclusion.radius ) );
-		updatePostProcess.bind( ":aoPower", dbValue( postProcess.ambientOcclusion.power ) );
 		if( postProcess.exposureCompensationCurve.empty() )
 			updatePostProcess.bind( ":curve" );
 		else
@@ -459,25 +322,14 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 			insert.exec();
 			level.windId = static_cast<uint32_t>( db.getLastInsertRowid() );
 		}
-		SQLite::Statement updateWind( db, "UPDATE Wind SET direction = :direction, strength = :strength, speed = :speed, "
-										  "min_gust_amount = :minGust, max_gust_amount = :maxGust, gust_size = :gustSize WHERE id = :id" );
+		// Ветер и поле ветра (колонки field_*) — по описаниям, направление — вектором (в окне — Yaw)
+		SQLite::Statement updateWind( db, "UPDATE Wind SET " + settingsAssignments( GS::windSchema() ) + ", " +
+										  settingsAssignments( GS::windFieldSchema() ) + ", direction = :direction WHERE id = :id" );
+		bindSettings( updateWind, GS::windSchema(), wind );
+		bindSettings( updateWind, GS::windFieldSchema(), wind.field );
 		updateWind.bind( ":direction", vec3ToStr( wind.direction ) );
-		updateWind.bind( ":strength", dbValue( wind.strength ) );
-		updateWind.bind( ":speed", dbValue( wind.speed ) );
-		updateWind.bind( ":minGust", dbValue( wind.minGustAmount ) );
-		updateWind.bind( ":maxGust", dbValue( wind.maxGustAmount ) );
-		updateWind.bind( ":gustSize", dbValue( wind.gustSize ) );
 		updateWind.bind( ":id", *level.windId );
 		updateWind.exec();
-		// Поле ветра — колонки field_* по таблице настроек
-		std::string fieldColumns;
-		for( const GS::WindFieldParameter& parameter : GS::windFieldParameters() )
-			fieldColumns += std::string( fieldColumns.empty() ? "" : ", " ) + parameter.column + " = :" + parameter.column;
-		SQLite::Statement updateField( db, "UPDATE Wind SET " + fieldColumns + " WHERE id = :id" );
-		for( const GS::WindFieldParameter& parameter : GS::windFieldParameters() )
-			updateField.bind( std::string( ":" ) + parameter.column, dbValue( wind.field.*parameter.value ) );
-		updateField.bind( ":id", *level.windId );
-		updateField.exec();
 		SQLite::Statement updateLevelWind( db, "UPDATE Levels SET wind = :wind WHERE id = :id" );
 		updateLevelWind.bind( ":wind", *level.windId );
 		updateLevelWind.bind( ":id", level.id );
@@ -493,23 +345,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 				insert.exec();
 				level.heightFogId = static_cast<uint32_t>( db.getLastInsertRowid() );
 			}
-			SQLite::Statement updateFog( db, "UPDATE ExponentialHeightFog SET density = :density, height = :height, "
-											 "height_falloff = :falloff, second_density = :secondDensity, second_height = :secondHeight, "
-											 "second_height_falloff = :secondFalloff, albedo = :albedo, "
-											 "scattering_distribution = :distribution, volumetric = :volumetric, "
-											 "view_distance = :viewDistance WHERE id = :id" );
-			updateFog.bind( ":density", dbValue( heightFog->layer.density ) );
-			updateFog.bind( ":height", dbValue( heightFog->layer.height ) );
-			updateFog.bind( ":falloff", dbValue( heightFog->layer.heightFalloff ) );
-			updateFog.bind( ":secondDensity", dbValue( heightFog->secondLayer.density ) );
-			updateFog.bind( ":secondHeight", dbValue( heightFog->secondLayer.height ) );
-			updateFog.bind( ":secondFalloff", dbValue( heightFog->secondLayer.heightFalloff ) );
-			updateFog.bind( ":albedo", vec3ToStr( heightFog->albedo ) );
-			updateFog.bind( ":distribution", dbValue( heightFog->scatteringDistribution ) );
-			updateFog.bind( ":volumetric", heightFog->volumetric ? 1 : 0 );
-			updateFog.bind( ":viewDistance", dbValue( heightFog->viewDistance ) );
-			updateFog.bind( ":id", *level.heightFogId );
-			updateFog.exec();
+			updateSettings( db, "ExponentialHeightFog", *level.heightFogId, GS::heightFogSchema(), *heightFog );
 			SQLite::Statement updateLevelFog( db, "UPDATE Levels SET height_fog = :fog WHERE id = :id" );
 			updateLevelFog.bind( ":fog", *level.heightFogId );
 			updateLevelFog.bind( ":id", level.id );

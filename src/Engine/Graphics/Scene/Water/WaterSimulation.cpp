@@ -14,6 +14,7 @@
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "Utils\Fingerprint.h"
+#include "Properties\SettingsProperties.h"
 #include "D3D\TextureImages.h"
 #include "WaterRipples.h"
 
@@ -65,110 +66,6 @@ constexpr float stoneDragCoefficient = 1.0f;
 constexpr int stoneSpread = 2;	// клеток: среднее сопротивление камней — по квадрату (2 · 2 + 1)² клеток ручья вокруг
 constexpr float flowRelaxation = 1.8f;			// верхняя релаксация давления: сходится быстрее Гаусса-Зейделя
 
-bool sameFlow( const WaterSimulationSettings::Flow& a, const WaterSimulationSettings::Flow& b )
-{
-	return a.settleTime == b.settleTime && a.timeStep == b.timeStep && a.viscosity == b.viscosity && a.manning == b.manning &&
-		   a.iterations == b.iterations && a.layer == b.layer && a.detailSettleTime == b.detailSettleTime;
-}
-
-Property* addSlider( PropertyContainer& properties, const char* name, float value, float low, float high, const char* unit = "" )
-{
-	Property* property = properties.insert( name, value );
-	property->setLow( low );
-	property->setHigh( std::max( high, value ) );
-	property->setControlType( GUIControlType::SLIDER );
-	property->setUnit( unit );
-	return property;
-}
-
-// Русла конвейера (WaterChannelsSettings) в подокне «Channels»: имя свойства, поле, границы, единицы, подсказка
-struct ChannelParameter
-{
-	const char* name;
-	float WaterChannelsSettings::* field;
-	float low;
-	float high;
-	const char* unit;
-	const char* tooltip;
-};
-
-const ChannelParameter channelParameters[] = {
-	{ "Min discharge", &WaterChannelsSettings::minDischarge, 0.0005f, 0.05f, "m3/s", "A channel starts where the discharge is larger" },
-	{ "Width coef", &WaterChannelsSettings::widthCoef, 0.5f, 10.0f, "", "Bed width w = a * Q^0.5, m" },
-	{ "Min width", &WaterChannelsSettings::minWidth, 0.5f, 10.0f, "m", "Narrowest bed" },
-	{ "Depth coef", &WaterChannelsSettings::depthCoef, 0.1f, 5.0f, "", "Incision d = c * Q^0.4, m" },
-	{ "Min incision", &WaterChannelsSettings::minIncision, 0.0f, 3.0f, "m", "Shallowest incision" },
-	{ "Bank slope", &WaterChannelsSettings::bankSlope, 0.2f, 5.0f, "", "Bank: horizontal metres per metre of incision" },
-	{ "Meander length", &WaterChannelsSettings::meanderLength, 5.0f, 200.0f, "m", "Meander wavelength along the stream" },
-	{ "Meander amplitude", &WaterChannelsSettings::meanderAmplitude, 0.0f, 10.0f, "m", "Lateral shift at Q >= 0.1 m3/s" },
-	{ "Meander max slope", &WaterChannelsSettings::meanderMaxSlope, 0.005f, 0.3f, "", "Steeper terrain has no meanders, m per m" },
-	{ "Min slope", &WaterChannelsSettings::minSlope, 0.0f, 0.05f, "", "Bed drop downstream at least, m per m" },
-	{ "Lake depth", &WaterChannelsSettings::lakeDepth, 0.01f, 1.0f, "m", "Deeper filled depressions are lakes: not carved, streams end there" },
-	{ "Min lake area", &WaterChannelsSettings::minLakeArea, 0.0f, 1000.0f, "m2", "Smaller depressions are a part of the stream bed, not lakes" },
-	{ "Thalweg", &WaterChannelsSettings::thalweg, 0.0f, 1.0f, "", "Extra incision in the bed middle, share of the incision" },
-	{ "Manning", &WaterChannelsSettings::manning, 0.02f, 0.15f, "s/m^(1/3)", "Stream bed roughness: water depth of the ribbons" },
-	{ "Min water slope", &WaterChannelsSettings::minWaterSlope, 0.001f, 0.05f, "", "Slope in the water depth at least, m per m" },
-	{ "Min speed", &WaterChannelsSettings::minSpeed, 0.0f, 2.0f, "m/s", "Stream flow at least" },
-	{ "Min water depth", &WaterChannelsSettings::minWaterDepth, 0.05f, 1.0f, "m", "Water over the bed at least" },
-	{ "Foam slope", &WaterChannelsSettings::foamSlope, 0.02f, 0.5f, "",
-	  "Steeper water surface foams: cascades over steps and the pool below them (fully at three times), m per m" },
-	{ "Freeboard", &WaterChannelsSettings::freeboard, 0.0f, 2.0f, "m", "Water stands this much below the bank top: the bed is cut for floods" },
-	{ "Source taper", &WaterChannelsSettings::sourceTaper, 0.0f, 100.0f, "m", "From a spring the narrowest bed, incision, water and freeboard grow over this length" },
-	{ "Bed shape", &WaterChannelsSettings::bedShape, 1.0f, 12.0f, "", "Bed cross-section: 2 - V (sharp thalweg), more - flat U" },
-	{ "Bank roundness", &WaterChannelsSettings::bankRoundness, 0.0f, 1.0f, "", "1 - rounded bank top and toe, 0 - straight bank with a sharp edge" },
-	{ "Bend asymmetry", &WaterChannelsSettings::bendAsymmetry, 0.0f, 1.0f, "", "Outer bank of a bend deeper and steeper, inner - a gentle bar" },
-	{ "Pool depth", &WaterChannelsSettings::poolDepth, 0.0f, 1.0f, "", "Pools deeper by this share of the incision (0 - no pools)" },
-	{ "Pool spacing", &WaterChannelsSettings::poolSpacing, 2.0f, 15.0f, "widths", "Pool and riffle every this many channel widths" },
-	{ "Bed noise", &WaterChannelsSettings::bedNoise, 0.0f, 0.5f, "m", "Unevenness of the bed and banks" },
-	{ "Bed noise scale", &WaterChannelsSettings::bedNoiseScale, 0.3f, 5.0f, "m", "Size of the bed unevenness" },
-	{ "Step height", &WaterChannelsSettings::stepHeight, 0.0f, 2.0f, "m",
-	  "Steep reaches are stepped (step-pool, cascade): drop of a step, a pool below it (0 - no steps)" },
-	{ "Step steepness", &WaterChannelsSettings::stepSteepness, 0.5f, 2.5f, "",
-	  "Step height per step spacing in units of the reach slope (1-1.5 in nature): the spacing" },
-	{ "Step min slope", &WaterChannelsSettings::stepMinSlope, 0.005f, 0.2f, "", "Gentler reaches have no steps (pools and riffles), m per m" },
-	{ "Lake depth ratio", &WaterChannelsSettings::lakeDepthRatio, 0.0f, 0.3f, "", "Deepest lake point per square root of the lake area" },
-	{ "Lake min depth", &WaterChannelsSettings::lakeMinDepth, 0.0f, 10.0f, "m", "Deepest point of a small lake at least" },
-	{ "Lake max depth", &WaterChannelsSettings::lakeMaxDepth, 0.0f, 50.0f, "m", "Deepest point of a large lake at most" },
-	{ "Lake shelf width", &WaterChannelsSettings::lakeShelfWidth, 0.0f, 20.0f, "m", "Shallow shelf along the shore" },
-	{ "Lake shelf depth", &WaterChannelsSettings::lakeShelfDepth, 0.0f, 3.0f, "m", "Water depth at the shelf edge" },
-	{ "Lake drop slope", &WaterChannelsSettings::lakeDropSlope, 0.05f, 2.0f, "", "Drop-off beyond the shelf, m per m" },
-	{ "Lake freeboard", &WaterChannelsSettings::lakeFreeboard, 0.0f, 1.0f, "m",
-	  "Lake water stands this much below the spill level of its basin: the shore is above the water, the outlet cuts the sill" },
-	{ "Stone density", &WaterChannelsSettings::stoneDensity, 0.0f, 5.0f, "1/m", "Stones per metre of a stream (bed and banks): denser on riffles and steep reaches" },
-	{ "Stone size", &WaterChannelsSettings::stoneSize, 0.05f, 1.0f, "m", "Typical stone diameter" },
-	{ "Bank stones", &WaterChannelsSettings::bankStones, 0.0f, 1.0f, "", "Share of the stones at the banks, near the water edge" },
-	{ "Boulder density", &WaterChannelsSettings::boulderDensity, 0.0f, 0.5f, "1/m", "Boulders per metre of a stream: more on steep reaches" },
-	{ "Boulder size", &WaterChannelsSettings::boulderSize, 0.3f, 3.0f, "m", "Boulder diameter" },
-};
-
-// Множители кривой русла в подокне «Streams»: имя свойства, поле, подсказка
-struct StreamScale
-{
-	const char* name;
-	float StreamCurve::* field;
-	const char* tooltip;
-};
-
-const StreamScale streamScales[] = {
-	{ "Width scale", &StreamCurve::widthScale, "Bed width of this stream, times the common one" },
-	{ "Depth scale", &StreamCurve::depthScale, "Incision of this stream, times the common one" },
-	{ "Freeboard scale", &StreamCurve::freeboardScale, "Bank above the water, times the common one" },
-	{ "Bank slope scale", &StreamCurve::bankSlopeScale, "Gentler (> 1) or steeper (< 1) banks" },
-	{ "Thalweg scale", &StreamCurve::thalwegScale, "Deeper middle of the bed, times the common one" },
-	{ "Roughness scale", &StreamCurve::roughnessScale, "Bed roughness (Manning): deeper, slower water at > 1" },
-	{ "Discharge scale", &StreamCurve::dischargeScale, "Water of this stream: wider, deeper bed at > 1" },
-	{ "Stone scale", &StreamCurve::stoneScale, "Stones and boulders of this stream, times the common density" },
-};
-
-// Параметры генератора кривых русел: их правка генерирует кривые заново при следующей загрузке (отпечаток), а не перестраивает
-// русла сразу
-bool generatorParameter( float WaterChannelsSettings::* field )
-{
-	return field == &WaterChannelsSettings::minDischarge || field == &WaterChannelsSettings::meanderLength ||
-		   field == &WaterChannelsSettings::meanderAmplitude || field == &WaterChannelsSettings::meanderMaxSlope ||
-		   field == &WaterChannelsSettings::lakeDepth || field == &WaterChannelsSettings::minLakeArea;
-}
-
 bool sameSources( const WaterSimulationSettings& a, const WaterSimulationSettings& b )
 {
 	return a.sourceRate == b.sourceRate && a.flowStart == b.flowStart && a.flowFull == b.flowFull && a.sourceRadius == b.sourceRadius;
@@ -196,71 +93,19 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		return false;
 	}
 
-	addSlider( m_properties, "Time scale", settings.timeScale, 0.0f, 100.0f );
-	addSlider( m_properties, "Source rate", settings.sourceRate, 0.0f, 2.0f, "l/s" );
-	addSlider( m_properties, "Flow start", settings.flowStart, 100.0f, 100000.0f, "m2" );
-	addSlider( m_properties, "Flow full", settings.flowFull, 100.0f, 1000000.0f, "m2" );
-	addSlider( m_properties, "Source radius", settings.sourceRadius, 0.0f, 16.0f, "m" );
-	addSlider( m_properties, "Rain", settings.rain, 0.0f, 50.0f, "mm/h" );
-	addSlider( m_properties, "Evaporation", settings.evaporation, 0.0f, 50.0f, "mm/h" );
-	addSlider( m_properties, "Manning roughness", settings.manning, 0.0f, 0.2f, "s/m^(1/3)" );
-
-	Property* property = m_surfaceProperties.insert( "Absorption", settings.absorption );
-	property->setLow( 0.0f );
-	property->setHigh( 5.0f );
-	property->setControlType( GUIControlType::DRAG );
-	property->setUnit( "1/m" )->setTooltip( "Absorption per channel R, G, B" );
-	m_surfaceProperties.insert( "Scatter color", settings.scatterColor )->setControlType( GUIControlType::COLOR );
-	addSlider( m_surfaceProperties, "Scatter strength", settings.scatterStrength, 0.0f, 0.1f );
-	addSlider( m_surfaceProperties, "Roughness", settings.roughness, 0.0f, 0.5f );
-	addSlider( m_surfaceProperties, "Ripple scale", settings.rippleScale, 0.5f, 20.0f, "m" );
-	addSlider( m_surfaceProperties, "Ripple strength", settings.rippleStrength, 0.0f, 4.0f );
-	addSlider( m_surfaceProperties, "Calm ripple", settings.calmRipple, 0.0f, 2.0f );
-	addSlider( m_surfaceProperties, "Refraction", settings.refraction, 0.0f, 0.1f, "1/m" )
-		->setTooltip( "Refraction offset, share of the screen height per metre of water" );
-	addSlider( m_surfaceProperties, "Ripple stretch", settings.rippleStretch, 1.0f, 6.0f )
-		->setTooltip( "How many times the ripple pattern is longer along the flow than across it on running water" );
-	addSlider( m_surfaceProperties, "Foam speed", settings.foamSpeed, 0.1f, 5.0f, "m/s" );
-	addSlider( m_surfaceProperties, "Foam shear", settings.foamShear, 0.1f, 10.0f, "1/s" );
-	addSlider( m_surfaceProperties, "Detail distance", settings.detailDistance, 0.0f, 1000.0f, "m" )
-		->setTooltip( "Nearer the water surface of streams is drawn by the detail tiles (0.25 m): farther the 1 m grid differs by less "
-					  "than a pixel, and a detail tile has 16 times as many triangles; 0 - the 1 m grid only" );
+	// Приток и поверхность, течение, русла — по описаниям полей (waterSimulationSchema, waterFlowSchema, waterChannelsSchema)
+	addSettingProperties( m_properties, waterSimulationSchema(), settings, "" );
+	addSettingProperties( m_surfaceProperties, waterSimulationSchema(), settings, "surface" );
 	m_properties.addSubContainer( &m_surfaceProperties );
 
 	// Течение статичной воды: установившийся расчёт при загрузке, правка — расчёт заново
 	m_flowProperties.setName( "Flow" );
-	const char* recomputed = "; the flow of streams and lakes is recomputed on change (static water)";
-	addSlider( m_flowProperties, "Settle time", settings.flow.settleTime, 0.0f, 3600.0f, "s" )
-		->setTooltip( std::string( "Flow of streams and lakes is computed this long towards its steady state" ) + recomputed );
-	addSlider( m_flowProperties, "Time step", settings.flow.timeStep, 0.1f, 2.0f, "s" )
-		->setTooltip( std::string( "Step of the flow computation" ) + recomputed );
-	addSlider( m_flowProperties, "Viscosity", settings.flow.viscosity, 0.0f, 1.0f, "m2/s" )
-		->setTooltip( std::string( "Eddy viscosity: a wider, shorter jet of an inflowing stream" ) + recomputed );
-	addSlider( m_flowProperties, "Bed roughness", settings.flow.manning, 0.0f, 0.1f, "s/m^(1/3)" )
-		->setTooltip( std::string( "Manning roughness of the bed of streams and lakes: a jet, a bend or a confluence settles "
-								   "back to the Manning flow sooner at more" ) + recomputed );
-	addSlider( m_flowProperties, "Surface layer", settings.flow.layer, 0.1f, 5.0f, "m" )
-		->setTooltip( std::string( "Depth of the flowing layer: a stream spreads over a lake near the surface" ) + recomputed );
-	Property* iterations = m_flowProperties.insert( "Pressure iterations", settings.flow.iterations );
-	iterations->setLow( 1.0f );
-	iterations->setHigh( 100.0f );
-	iterations->setTooltip( std::string( "Pressure solver iterations per step" ) + recomputed );
-	addSlider( m_flowProperties, "Detail settle time", settings.flow.detailSettleTime, 0.0f, 600.0f, "s" )
-		->setTooltip( std::string( "Flow on the detail grid of the streams (0.25 m) is computed this long from the 1 m flow: "
-								   "around the stones, faster at the axis than at the banks; 0 - the 1 m flow" ) + recomputed );
+	addSettingProperties( m_flowProperties, waterFlowSchema(), settings.flow );
 	m_properties.addSubContainer( &m_flowProperties );
 
 	// Русла и ручьи строит конвейер рельефа при загрузке — правки применяются при следующей загрузке уровня
 	m_channelsProperties.setName( "Channels" );
-	for( const ChannelParameter& parameter : channelParameters )
-		addSlider( m_channelsProperties, parameter.name, settings.channels.*parameter.field, parameter.low, parameter.high, parameter.unit )
-			->setTooltip( std::string( parameter.tooltip ) +
-						  ( generatorParameter( parameter.field ) ? "; generates the stream curves anew at the next level load" :
-																	"; the channels are rebuilt on change" ) );
-	Property* smooth = m_channelsProperties.insert( "Smooth passes", settings.channels.smooth );
-	smooth->setLow( 0.0f );
-	smooth->setHigh( 20.0f );
-	smooth->setTooltip( "Smoothing passes of the channel axis along the flow; generates the stream curves anew at the next level load" );
+	addSettingProperties( m_channelsProperties, waterChannelsSchema(), settings.channels );
 	m_properties.addSubContainer( &m_channelsProperties );
 
 	// Кривые русел: подокно на кривую — включение и множители; правка помечает кривую правленной («Save level»):
@@ -278,10 +123,7 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		auto container = std::make_unique<PropertyContainer>();
 		container->setName( curve.name + ( curve.generated ? "" : " (manual)" ) + ( curve.edited ? " (edited)" : "" ) + " #" +
 							std::to_string( curve.id ) );
-		container->insert( "Enabled", curve.enabled )->setTooltip( "Off - no channel and no water; the channels are rebuilt on change" );
-		for( const StreamScale& scale : streamScales )
-			addSlider( *container, scale.name, curve.*scale.field, 0.1f, 4.0f )
-				->setTooltip( std::string( scale.tooltip ) + "; the channels are rebuilt on change" );
+		addSettingProperties( *container, streamCurveSchema(), curve );
 		m_streamsProperties.addSubContainer( container.get() );
 		m_streamProperties.push_back( std::move( container ) );
 	}
@@ -1438,13 +1280,7 @@ std::string WaterSimulation::flowCachePath( const Settings::Flow& flow ) const
 	Fingerprint key;
 	key.add( flowCacheVersion );
 	key.add( m_flowInputKey );
-	key.add( flow.settleTime );
-	key.add( flow.timeStep );
-	key.add( flow.viscosity );
-	key.add( flow.manning );
-	key.add( flow.iterations );
-	key.add( flow.layer );
-	key.add( flow.detailSettleTime );
+	forEachSettingValue( waterFlowSchema(), flow, [&key]( const auto& value ) { key.add( value ); } );
 	const TerrainHeight height = m_terrain->terrainHeight();
 	key.add( height.heightMultiplier );
 	key.add( height.heightOffset );
@@ -1664,7 +1500,7 @@ void WaterSimulation::applyFlowChanges()
 	if( !m_initialized || !m_static )
 		return;
 	const Settings current = settings();
-	if( sameFlow( current.flow, m_flowBuilt ) )
+	if( settingsEqual( waterFlowSchema(), current.flow, m_flowBuilt ) )
 		return;
 	// mainStatic заново: у озёр нули течения, ручьи — как в растре; затем течение озёр и ручьёв, поверхность (детальная
 	// вода берёт течение сетки 1 м) и течение детальной сетки
@@ -1755,36 +1591,10 @@ void WaterSimulation::logWaterSummary()
 WaterSimulation::Settings WaterSimulation::settings() const
 {
 	Settings settings = m_initial;
-	settings.timeScale = m_properties["Time scale"].data<float>();
-	settings.sourceRate = m_properties["Source rate"].data<float>();
-	settings.flowStart = m_properties["Flow start"].data<float>();
-	settings.flowFull = m_properties["Flow full"].data<float>();
-	settings.sourceRadius = m_properties["Source radius"].data<float>();
-	settings.rain = m_properties["Rain"].data<float>();
-	settings.evaporation = m_properties["Evaporation"].data<float>();
-	settings.manning = m_properties["Manning roughness"].data<float>();
-	settings.absorption = m_surfaceProperties["Absorption"].data<DirectX::XMFLOAT3>();
-	settings.scatterColor = m_surfaceProperties["Scatter color"].data<DirectX::XMFLOAT3>();
-	settings.scatterStrength = m_surfaceProperties["Scatter strength"].data<float>();
-	settings.roughness = m_surfaceProperties["Roughness"].data<float>();
-	settings.rippleScale = m_surfaceProperties["Ripple scale"].data<float>();
-	settings.rippleStrength = m_surfaceProperties["Ripple strength"].data<float>();
-	settings.calmRipple = m_surfaceProperties["Calm ripple"].data<float>();
-	settings.refraction = m_surfaceProperties["Refraction"].data<float>();
-	settings.rippleStretch = m_surfaceProperties["Ripple stretch"].data<float>();
-	settings.foamSpeed = m_surfaceProperties["Foam speed"].data<float>();
-	settings.foamShear = m_surfaceProperties["Foam shear"].data<float>();
-	settings.detailDistance = m_surfaceProperties["Detail distance"].data<float>();
-	settings.flow.settleTime = m_flowProperties["Settle time"].data<float>();
-	settings.flow.timeStep = m_flowProperties["Time step"].data<float>();
-	settings.flow.viscosity = m_flowProperties["Viscosity"].data<float>();
-	settings.flow.manning = m_flowProperties["Bed roughness"].data<float>();
-	settings.flow.iterations = m_flowProperties["Pressure iterations"].data<int32_t>();
-	settings.flow.layer = m_flowProperties["Surface layer"].data<float>();
-	settings.flow.detailSettleTime = m_flowProperties["Detail settle time"].data<float>();
-	for( const ChannelParameter& parameter : channelParameters )
-		settings.channels.*parameter.field = m_channelsProperties[parameter.name].data<float>();
-	settings.channels.smooth = m_channelsProperties["Smooth passes"].data<int32_t>();
+	readSettingProperties( m_properties, waterSimulationSchema(), settings, "" );
+	readSettingProperties( m_surfaceProperties, waterSimulationSchema(), settings, "surface" );
+	readSettingProperties( m_flowProperties, waterFlowSchema(), settings.flow );
+	readSettingProperties( m_channelsProperties, waterChannelsSchema(), settings.channels );
 	return settings;
 }
 
@@ -1794,18 +1604,11 @@ std::vector<StreamCurve> WaterSimulation::streamCurves() const
 	for( size_t i = 0; i < curves.size() && i < m_streamProperties.size(); ++i )
 	{
 		StreamCurve& curve = curves[i];
-		const PropertyContainer& properties = *m_streamProperties[i];
-		const bool enabled = properties["Enabled"].data<bool>();
-		bool changed = enabled != curve.enabled;
-		curve.enabled = enabled;
-		for( const StreamScale& scale : streamScales )
-		{
-			const float value = properties[scale.name].data<float>();
-			changed = changed || value != curve.*scale.field;
-			curve.*scale.field = value;
-		}
 		// Правка в окне — кривая правленная: новая генерация её не заменит
-		curve.edited = curve.edited || changed;
+		StreamCurve window;
+		readSettingProperties( *m_streamProperties[i], streamCurveSchema(), window );
+		curve.edited = curve.edited || !settingsEqual( streamCurveSchema(), window, curve );
+		readSettingProperties( *m_streamProperties[i], streamCurveSchema(), curve );
 	}
 	return curves;
 }
@@ -1860,16 +1663,15 @@ bool WaterSimulation::rebuildRequested() const
 		return true;
 	for( size_t i = 0; i < m_builtCurves.size() && i < m_streamProperties.size(); ++i )
 	{
-		const PropertyContainer& properties = *m_streamProperties[i];
-		if( properties["Enabled"].data<bool>() != m_builtCurves[i].enabled )
+		StreamCurve window;
+		readSettingProperties( *m_streamProperties[i], streamCurveSchema(), window );
+		if( !settingsEqual( streamCurveSchema(), window, m_builtCurves[i] ) )
 			return true;
-		for( const StreamScale& scale : streamScales )
-			if( properties[scale.name].data<float>() != m_builtCurves[i].*scale.field )
-				return true;
 	}
+	// Параметры генератора кривых — при следующей загрузке (отпечаток), остальные — перестройка русел
 	const Settings current = settings();
-	for( const ChannelParameter& parameter : channelParameters )
-		if( !generatorParameter( parameter.field ) && current.channels.*parameter.field != m_builtChannels.*parameter.field )
+	for( const SettingField<WaterChannelsSettings>& field : waterChannelsSchema() )
+		if( field.group != streamGeneratorGroup && !settingFieldEqual( field, current.channels, m_builtChannels ) )
 			return true;
 	return false;
 }

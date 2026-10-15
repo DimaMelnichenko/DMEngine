@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Properties\SettingsSchema.h"
 #include <string>
 #include "DirectX.h"
 
@@ -27,6 +28,8 @@ public:
 		bool farShadows = true;
 		float farShadowPenumbra = 1.0f;
 	};
+	// Поля теней — колонки LevelLights и подокно направленного источника в «Lights» (SettingsSchema)
+	static const SettingsSchema<ShadowSettings>& shadowSchema();
 
 public:
 	DMLight( LightType );

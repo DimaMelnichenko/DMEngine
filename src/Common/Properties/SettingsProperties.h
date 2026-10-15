@@ -10,31 +10,35 @@
 template<typename T>
 void addSettingProperties( PropertyContainer& container, const SettingsSchema<T>& schema, const T& values, const char* group = nullptr )
 {
-	T copy = values;
 	for( const SettingField<T>& field : schema )
 	{
-		if( !field.name || ( group && std::string( field.group ) != group ) )
+		if( !field.name || ( group && field.group != group ) )
 			continue;
 		Property* property = std::visit( [&]( auto access ) -> Property*
 		{
-			using Value = std::remove_reference_t<decltype( access( copy ) )>;
+			const auto& value = settingRef( access, values );
+			using Value = std::remove_cv_t<std::remove_reference_t<decltype( value )>>;
 			if constexpr( std::is_same_v<Value, std::string> )
 				return nullptr;		// строк в окне нет: у такого поля свой контрол у объекта
+			else if constexpr( std::is_same_v<Value, SettingRange> )
+				return container.insert( field.name, DirectX::XMFLOAT2( value.from, value.to ) );
 			else if constexpr( std::is_same_v<Value, int32_t> || std::is_same_v<Value, uint32_t> )
 			{
 				if( !field.choices.empty() )
 				{
 					// Номер ближайшего значения из списка
-					const int32_t index = nearestSettingChoice( field.choices, static_cast<int32_t>( access( copy ) ) );
-					std::vector<std::string> items;
-					for( int32_t choice : field.choices )
-						items.push_back( std::to_string( choice ) );
+					const int32_t index = nearestSettingChoice( field.choices, static_cast<int32_t>( value ) );
+					std::vector<std::string> items = field.labels;
+					if( items.empty() )
+						for( int32_t choice : field.choices )
+							items.push_back( std::to_string( choice ) );
 					return container.insert( field.name, index )->setItems( items );
 				}
-				return container.insert( field.name, access( copy ) );
+				// Целые в окне — int32 (контрол числа один на оба типа)
+				return container.insert( field.name, static_cast<int32_t>( value ) );
 			}
 			else
-				return container.insert( field.name, access( copy ) );
+				return container.insert( field.name, value );
 		}, field.access );
 		if( !property )
 			continue;
@@ -42,46 +46,66 @@ void addSettingProperties( PropertyContainer& container, const SettingsSchema<T>
 		{
 			float high = field.high;
 			if( const float* value = property->dataPtr<float>() )
-				high = std::max( high, *value );
+				high = std::max( high, ( field.flags & settingWideHigh ) ? *value * 4.0f : *value );
+			else if( const int32_t* integer = property->dataPtr<int32_t>(); integer && field.choices.empty() )
+				high = std::max( high, static_cast<float>( *integer ) );
 			property->setLow( field.low );
 			property->setHigh( high );
 		}
 		if( *field.unit )
 			property->setUnit( field.unit );
-		if( *field.tooltip )
+		if( !field.tooltip.empty() )
 			property->setTooltip( field.tooltip );
 		if( field.flags & settingLogarithmic )
 			property->setLogarithmic();
 		if( field.flags & settingColor )
 			property->setControlType( GUIControlType::COLOR );
+		if( field.flags & settingDrag )
+			property->setControlType( GUIControlType::DRAG );
+		if( field.flags & settingRangeControl )
+			property->setControlType( GUIControlType::RANGE );
 		if( field.flags & settingTransient )
 			property->setTransient();
 	}
 }
 
-// Поля из свойств окна — те, что в нём есть (часть по условию могла не добавиться: у поля остаётся значение values)
+// Поля из свойств окна — те, что в нём есть (часть по условию могла не добавиться: у поля остаётся значение values); group —
+// только поля этой части (подокно правил слоёв: имена в разных подокнах могут совпадать)
 template<typename T>
-void readSettingProperties( const PropertyContainer& container, const SettingsSchema<T>& schema, T& values )
+void readSettingProperties( const PropertyContainer& container, const SettingsSchema<T>& schema, T& values, const char* group = nullptr )
 {
 	for( const SettingField<T>& field : schema )
 	{
-		if( !field.name || !container.exists( field.name ) )
+		if( !field.name || ( group && field.group != group ) || !container.exists( field.name ) )
 			continue;
 		const Property& property = container[field.name];
 		std::visit( [&]( auto access )
 		{
-			using Value = std::remove_reference_t<decltype( access( values ) )>;
+			auto& target = settingRef( access, values );
+			using Value = std::remove_reference_t<decltype( target )>;
 			if constexpr( std::is_same_v<Value, std::string> )
 				return;
+			else if constexpr( std::is_same_v<Value, SettingRange> )
+			{
+				const DirectX::XMFLOAT2 range = property.data<DirectX::XMFLOAT2>();
+				target = { range.x, range.y };
+			}
 			else if constexpr( std::is_same_v<Value, int32_t> || std::is_same_v<Value, uint32_t> )
 			{
 				if( !field.choices.empty() )
 				{
 					const int32_t index = std::clamp( property.data<int32_t>(), 0, static_cast<int32_t>( field.choices.size() ) - 1 );
-					access( values ) = static_cast<Value>( field.choices[index] );
+					target = static_cast<Value>( field.choices[index] );
+					return;
 				}
-				else
-					access( values ) = property.data<Value>();
+				int32_t value = property.data<int32_t>();
+				if( ( field.flags & settingClamp ) && field.low < field.high )
+					value = std::clamp( value, static_cast<int32_t>( field.low ), static_cast<int32_t>( field.high ) );
+				else if( field.flags & settingClampLow )
+					value = std::max( value, static_cast<int32_t>( field.low ) );
+				if constexpr( std::is_same_v<Value, uint32_t> )
+					value = std::max( value, 0 );
+				target = static_cast<Value>( value );
 			}
 			else if constexpr( std::is_same_v<Value, float> )
 			{
@@ -90,10 +114,10 @@ void readSettingProperties( const PropertyContainer& container, const SettingsSc
 					value = std::clamp( value, field.low, field.high );
 				else if( field.flags & settingClampLow )
 					value = std::max( value, field.low );
-				access( values ) = value;
+				target = value;
 			}
 			else
-				access( values ) = property.data<Value>();
+				target = property.data<Value>();
 		}, field.access );
 	}
 }

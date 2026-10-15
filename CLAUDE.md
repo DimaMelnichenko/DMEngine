@@ -548,7 +548,8 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 строки уровня — описанием полей (`SettingsSchema`, `Properties/SettingsSchema.h`, как UPROPERTY в UE): колонка, имя
 свойства, член структуры, границы, единицы, подсказка — одной строкой в `Scene/Level/LevelSettings.cpp`; окно
 (`addSettingProperties` / `readSettingProperties`) и база (`readSettings` / `updateSettings`, `ObjectLibrary/SettingsDatabase.h`)
-— по нему; новый параметр — строка описания, а не пять мест (переведены облака и слои расстановки, `docs/gui.md`).
+— по нему, как и проверки «сменилось ли» и ключи кэшей (`settingsEqual`, `forEachSettingValue`); новый параметр — строка
+описания, а не пять мест (переведены все строки настроек уровня; что осталось вручную — `docs/gui.md`).
 
 **Террейн** — `CDLODTerrain` (`Scene/Terrain/`, Strugar 2009): квадродерево над картой высот,
 корень покрывает весь террейн, лист — 32 текселя, диапазон каждого уровня вдвое больше предыдущего. Узлы выбираются
@@ -582,7 +583,7 @@ DirectX) + затенение окружением B + шероховатост�
 с премультипликацией альфы, а в альфе здесь данные. Веса splat-карты дают правила по итоговому рельефу — последняя ступень
 конвейера рельефа и воды после русел (`TerrainMasks`, `Scene/Terrain/TerrainMasks.h`: скала, снег, осыпи, две травы по
 уклону, высоте, влажности TWI и картам эрозии; там же маски расстановки и леса — текстуры хранилища по имени,
-`DMTextureStorage::setGenerated`; открытость ветру — от направления ветра уровня, `mask_wind_exposure`; поля правил — строка `TerrainLayerRules`, одна таблица полей `terrainLayerRuleFields`, и
+`DMTextureStorage::setGenerated`; открытость ветру — от направления ветра уровня, `mask_wind_exposure`; поля правил — строка `TerrainLayerRules`, описание полей `terrainLayerRulesSchema`, и
 подокно «Layer rules» с пересчётом вживую; какой слой красит правило — роль `TerrainLayers.role`; кэш результата —
 `generated\key.txt` по отпечатку входов; при перестройке русел вживую — заново; подробно —
 `docs/terrain.md`, «Слои и маски по рельефу»); поверх правил — мазки кисти (`TerrainPaint`: поправка ± к слою земли или мокрости — сетка 0,25 м, к маске — 1 м,

@@ -65,17 +65,15 @@ struct TerrainErosionSettings
 	int32_t thermalIterations = 40;	// шагов осыпания
 	float thermalRate = 0.25f;		// доля излишка, сползающая за шаг
 };
+// Поля строки TerrainErosion (SettingsSchema), подокно «Erosion»
+const SettingsSchema<TerrainErosionSettings>& terrainErosionSchema();
 
 // Правила слоёв и масок по рельефу (TerrainMasks, docs/terrain.md, «Слои и маски по рельефу») — строка TerrainLayerRules
 // террейна (нет строки или колонки — значения по умолчанию), подокно «Layer rules» с пересчётом вживую. Высоты — доли
 // height_multiplier (0…1, как исходная карта), уклоны — градусы; диапазон — переход smoothstep от from к to
 struct TerrainLayerRules
 {
-	struct Range
-	{
-		float from;
-		float to;
-	};
+	using Range = SettingRange;
 	// Скала и снег
 	Range rockSlope{ 27.0f, 37.0f };		// скала — крутые склоны, уклон ± шум rockNoise, градусы
 	float rockNoise = 10.0f;
@@ -163,22 +161,10 @@ struct TerrainLayerRules
 	float forestNoiseScale = 1.0f;			// граница леса, поляны, древостои, кусты
 };
 
-// Поле правил слоёв: колонка строки TerrainLayerRules (у диапазона — <колонка>_from и <колонка>_to), подокно и свойство
-// окна «Layer rules», границы, единица и подсказка. Одна таблица для окна, загрузки, «Save level» и проверки, сменились ли
-// правила: новое поле правил — поле в TerrainLayerRules и строка здесь (и колонка в базе)
-struct TerrainLayerRuleField
-{
-	const char* column;
-	const char* group;
-	const char* name;
-	TerrainLayerRules::Range TerrainLayerRules::* range;	// диапазон (от, до) или
-	float TerrainLayerRules::* value;					// число
-	float low;
-	float high;
-	const char* unit;
-	const char* tooltip;
-};
-const std::vector<TerrainLayerRuleField>& terrainLayerRuleFields();
+// Поля правил слоёв (SettingsSchema): колонки строки TerrainLayerRules (у диапазона — <колонка>_from и <колонка>_to), группы
+// полей — подокна окна «Layer rules». Одно описание для окна, загрузки, «Save level», проверки, сменились ли правила, и ключа
+// кэша масок: новое поле правил — поле в TerrainLayerRules и строка описания (и колонка в базе)
+const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema();
 
 // Плитка ручной правки слоя земли или маски поверх правил (TerrainPaint, строки таблицы TerrainPaint): цель — «layer N»
 // или имя маски; поправки TerrainPaint::tileSize² по строкам (строка 0 — дальний край по z, как у масок), −127…127 → −1…1
@@ -199,10 +185,8 @@ struct TerrainSettings
 	float triplanarSharpness = 8.0f;	// резкость смены проекций triplanar на склонах
 	float heightBlend = 0.2f;			// глубина смешения слоёв по высоте
 	float farTextureScale = 8.0f;		// второй масштаб текстур вдали (distance resampling)
-	float farBlendStart = 40.0f;		// полоса перехода ко второму масштабу, м
-	float farBlendEnd = 120.0f;
-	float displacementStart = 12.0f;	// дисплейсмент: полный ближе, м,
-	float displacementEnd = 24.0f;		// к этому расстоянию — нет (0 — выключен)
+	SettingRange farBlend{ 40.0f, 120.0f };		// полоса перехода ко второму масштабу, м
+	SettingRange displacement{ 12.0f, 24.0f };	// дисплейсмент: полный ближе from, м, к to — нет (to 0 — выключен)
 	float microShadows = 1.0f;			// микротени прямого света по AO слоёв, 0…1
 	// Сетка у камеры: самый мелкий рисуемый уровень мельче листа (номер «Finest mesh»: 0 — 25 см … 4 — 1,6 см) и радиус, в
 	// котором он полон (вокруг ног при ходьбе), м
@@ -216,6 +200,10 @@ struct TerrainSettings
 	TerrainLayerRules layerRules;					// строка TerrainLayerRules — правки подокна «Layer rules»
 	std::vector<TerrainPaintTile> paint;			// мазки кисти — строки TerrainPaint террейна
 };
+// Поля строки Terrain (SettingsSchema), окно террейна: материал и сетка у камеры. Не в описании — карта высот, смещение и шаг
+// (читает CDLODTerrain::loadSettings, в окне их нет), слои (строки TerrainLayers по номеру слоя), эрозия и правила (свои
+// описания), мазки
+const SettingsSchema<TerrainSettings>& terrainSchema();
 
 // Строка SkyAtmosphere; без неё — значения по умолчанию
 struct SkyAtmosphereSettings
@@ -340,17 +328,6 @@ struct WindFieldSettings
 
 // Поле настроек поля ветра: колонка строки Wind, свойство подокна «Field», границы, единица, подсказка — одна таблица
 // для окна, загрузки, «Save level» и проверки, сменились ли настройки
-struct WindFieldParameter
-{
-	const char* column;
-	const char* name;
-	float WindFieldSettings::* value;
-	float low;
-	float high;
-	const char* unit;
-	const char* tooltip;
-};
-const std::vector<WindFieldParameter>& windFieldParameters();
 
 struct WindSettings
 {
@@ -438,6 +415,8 @@ struct StreamCurve
 	std::vector<StreamCurvePoint> points;
 	bool pointsChanged = false;		// точки правили в редакторе — «Save level» перепишет StreamPoints (в базе колонки нет)
 };
+// Поля строки Streams (SettingsSchema): включение и множители — подокно кривой в «Streams»
+const SettingsSchema<StreamCurve>& streamCurveSchema();
 
 // Русла и ручьи конвейера рельефа и воды (TerrainHydrology) — строка WaterChannels той же строки WaterSimulation;
 // без строки — значения по умолчанию. Применяются при загрузке уровня
@@ -496,6 +475,11 @@ struct WaterChannelsSettings
 	float boulderDensity = 0.05f;	// валунов на метр ручья (на крутом — больше)
 	float boulderSize = 1.0f;		// поперечник валуна, м
 };
+// Поля строки WaterChannels (SettingsSchema), подокно «Channels». Параметры генератора кривых русел — группа
+// streamGeneratorGroup: их правка генерирует кривые заново при следующей загрузке (они же — отпечаток StreamGeneration,
+// TerrainHydrology::generationKey), правка остальных перестраивает русла сразу
+constexpr const char* streamGeneratorGroup = "generator";
+const SettingsSchema<WaterChannelsSettings>& waterChannelsSchema();
 
 // Строка WaterSimulation: вода на сетке карты высот (WaterSimulation, docs/water.md). Приток — по водосбору, который
 // считает конвейер рельефа и воды (TerrainHydrology) по итоговому рельефу: нарастает от flowStart до flowFull м²
@@ -556,6 +540,11 @@ struct WaterSimulationSettings
 	std::vector<StreamCurve> streams;
 	std::string streamsKey;
 };
+// Поля строки WaterSimulation (SettingsSchema): части окна "" — приток и испарение, "surface" — подокно «Surface»; шаг и
+// прогрев — только в базе. Течение — колонки flow_*, подокно «Flow» (и ключ кэша течения). Не в описании — режим (mode),
+// источники, русла и кривые (свои строки)
+const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema();
+const SettingsSchema<WaterSimulationSettings::Flow>& waterFlowSchema();
 
 // Эмиттер частиц (строки ParticleEmitters и экземпляр LevelParticleEmitters, ParticleSystem, docs/particles.md)
 struct ParticleEmitterSettings
@@ -599,6 +588,9 @@ struct ParticleEmitterSettings
 	float transmission = 0.0f;		// просвет на солнце (пыльца, пух светятся против солнца)
 	float emissive = 0.0f;			// свечение, кд/м² (светлячки)
 };
+// Поля строки ParticleEmitters (SettingsSchema), подокно эмиттера; часть "placed" — место экземпляра (у эмиттера в точке и в
+// шаре; в базе — LevelParticleEmitters.position). Не в описании — имя, способ рождения и форма (имена в базе)
+const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema();
 
 // Строка SunPosition
 struct SunPositionSettings
@@ -631,6 +623,8 @@ struct ScatterSetSettings
 	// Множитель дальностей LOD у видов теней: < 1 — тень более грубым LOD (как смещение LOD теней в UE), 1 — как в кадре
 	float shadowLodScale = 1.0f;
 };
+// Поля строки ScatterSets (SettingsSchema), окно набора
+const SettingsSchema<ScatterSetSettings>& scatterSetSchema();
 
 struct ScatterLayerSettings
 {
@@ -733,5 +727,19 @@ struct ScatterLayerRecord
 	ScatterLayerSettings settings;
 	std::vector<ScatterModelSettings> models;
 };
+
+// Описания полей строк уровня (SettingsSchema, LevelSettings.cpp): колонки базы и окна. Не в описании и у объекта вручную —
+// то, что хранится иначе, чем показывается: у ветра направление (в окне — Yaw), у солнца дата (в окне — месяц и день,
+// в базе — текст), у постобработки перечисления (имена) и кривая компенсации (текст), у неба и панорамы — файлы
+const SettingsSchema<HeightFogSettings>& heightFogSchema();
+const SettingsSchema<SkyAtmosphereSettings>& skyAtmosphereSchema();
+const SettingsSchema<HDRIBackdropSettings>& hdriBackdropSchema();
+// Части окна «Post process»: "" — экспозиция до кривой, "exposure" — пределы и адаптация, "bloom" — bloom, ночное зрение и
+// затенение окружением (между частями — кривая и тонмаппинг у PostProcess)
+const SettingsSchema<PostProcessSettings>& postProcessSchema();
+const SettingsSchema<SunPositionSettings>& sunPositionSchema();
+const SettingsSchema<WindSettings>& windSchema();
+// Поле ветра по рельефу — колонки field_* строки Wind, подокно «Field» окна «Wind»
+const SettingsSchema<WindFieldSettings>& windFieldSchema();
 
 }

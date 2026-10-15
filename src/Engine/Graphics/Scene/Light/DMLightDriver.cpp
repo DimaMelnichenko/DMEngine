@@ -1,4 +1,5 @@
 #include "DMLightDriver.h"
+#include "Properties\SettingsProperties.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -177,18 +178,7 @@ DMLightDriver::LightControls DMLightDriver::createProperties( const DMLight& lig
 	if( light.type() == DMLight::Dir )
 	{
 		const DMLight::ShadowSettings& shadows = light.shadowSettings();
-		properties.insert( "Cast shadows", shadows.castShadows );
-		addControl( properties, "Dynamic shadow distance", shadows.dynamicShadowDistance, GUIControlType::SLIDER, 20.0f, 1000.0f, "m" );
-		addControl( properties, "Cascade distribution exponent", shadows.cascadeDistributionExponent, GUIControlType::SLIDER, 1.0f, 6.0f );
-		addControl( properties, "Cascade transition fraction", shadows.cascadeTransitionFraction, GUIControlType::SLIDER, 0.0f, 0.5f );
-		addControl( properties, "Shadow distance fadeout fraction", shadows.shadowDistanceFadeoutFraction, GUIControlType::SLIDER, 0.0f, 0.5f );
-		addControl( properties, "Shadow bias", shadows.shadowBias, GUIControlType::SLIDER, 0.0f, 5.0f, "texels" );
-		addControl( properties, "Normal bias", shadows.normalBias, GUIControlType::SLIDER, 0.0f, 5.0f, "texels" );
-		addControl( properties, "Shadow slope bias", shadows.shadowSlopeBias, GUIControlType::SLIDER, 0.0f, 8.0f );
-		properties.insert( "Far shadows", shadows.farShadows )->setTooltip(
-			"Shadows beyond the dynamic shadow distance: the forest - by a far cascade over the whole map, the terrain - "
-			"by a map of the shadow edge height (Far Shadow Cascades in UE)" );
-		addControl( properties, "Far shadow penumbra", shadows.farShadowPenumbra, GUIControlType::SLIDER, 0.1f, 5.0f, "deg" );
+		addSettingProperties( properties, DMLight::shadowSchema(), shadows );
 	}
 
 	properties.addButton( deleteButton, "Remove the light from the level (Delete in the viewport; Save level deletes its row, Ctrl+Z returns it)",
@@ -386,16 +376,7 @@ void DMLightDriver::update( float seconds )
 		{
 			light.setAtmosphereSunLight( properties["Atmosphere sun light"].data<bool>() );
 			DMLight::ShadowSettings shadows;
-			shadows.castShadows = properties["Cast shadows"].data<bool>();
-			shadows.dynamicShadowDistance = properties["Dynamic shadow distance"].data<float>();
-			shadows.cascadeDistributionExponent = properties["Cascade distribution exponent"].data<float>();
-			shadows.cascadeTransitionFraction = properties["Cascade transition fraction"].data<float>();
-			shadows.shadowDistanceFadeoutFraction = properties["Shadow distance fadeout fraction"].data<float>();
-			shadows.shadowBias = properties["Shadow bias"].data<float>();
-			shadows.normalBias = properties["Normal bias"].data<float>();
-			shadows.shadowSlopeBias = properties["Shadow slope bias"].data<float>();
-			shadows.farShadows = properties["Far shadows"].data<bool>();
-			shadows.farShadowPenumbra = properties["Far shadow penumbra"].data<float>();
+			readSettingProperties( properties, DMLight::shadowSchema(), shadows );
 			light.setShadowSettings( shadows );
 		}
 	}

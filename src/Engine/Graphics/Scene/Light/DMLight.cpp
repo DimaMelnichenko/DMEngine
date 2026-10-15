@@ -4,6 +4,26 @@
 using namespace DirectX;
 
 
+const SettingsSchema<DMLight::ShadowSettings>& DMLight::shadowSchema()
+{
+	using Settings = ShadowSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "cast_shadows", "Cast shadows", DM_SETTING( castShadows ) },
+		{ "dynamic_shadow_distance", "Dynamic shadow distance", DM_SETTING( dynamicShadowDistance ), 20.0f, 1000.0f, "m" },
+		{ "cascade_distribution_exponent", "Cascade distribution exponent", DM_SETTING( cascadeDistributionExponent ), 1.0f, 6.0f },
+		{ "cascade_transition_fraction", "Cascade transition fraction", DM_SETTING( cascadeTransitionFraction ), 0.0f, 0.5f },
+		{ "shadow_distance_fadeout_fraction", "Shadow distance fadeout fraction", DM_SETTING( shadowDistanceFadeoutFraction ), 0.0f, 0.5f },
+		{ "shadow_bias", "Shadow bias", DM_SETTING( shadowBias ), 0.0f, 5.0f, "texels" },
+		{ "normal_bias", "Normal bias", DM_SETTING( normalBias ), 0.0f, 5.0f, "texels" },
+		{ "shadow_slope_bias", "Shadow slope bias", DM_SETTING( shadowSlopeBias ), 0.0f, 8.0f },
+		{ "far_shadows", "Far shadows", DM_SETTING( farShadows ), 0.0f, 0.0f, "",
+		  "Shadows beyond the dynamic shadow distance: the forest - by a far cascade over the whole map, the terrain - by a map of the "
+		  "shadow edge height (Far Shadow Cascades in UE)" },
+		{ "far_shadow_penumbra", "Far shadow penumbra", DM_SETTING( farShadowPenumbra ), 0.1f, 5.0f, "deg" },
+	};
+	return schema;
+}
+
 DMLight::DMLight( LightType type ) :
 	m_type( type )
 {

@@ -1,4 +1,5 @@
 #include "HDRIBackdrop.h"
+#include "Properties\SettingsProperties.h"
 #include "D3D\TextureImages.h"
 #include "Shaders\slots.h"
 #include <algorithm>
@@ -90,17 +91,6 @@ void logStatistics( const Image& image, float rotationDegrees )
 	LOG( text );
 }
 
-template<class TYPE>
-void addControl( PropertyContainer& properties, const char* name, const TYPE& value, GUIControlType control, float low, float high,
-				 const char* unit = "" )
-{
-	Property* property = properties.insert( name, value );
-	property->setControlType( control );
-	property->setLow( low );
-	property->setHigh( high );
-	property->setUnit( unit );
-}
-
 }
 
 HDRIBackdrop::HDRIBackdrop() :
@@ -125,9 +115,7 @@ bool HDRIBackdrop::initialize( const Settings& settings, SkyLight& skyLight )
 
 	m_properties.setName( "HDRI backdrop" );
 	// Границы 0, 0 — без ограничения
-	addControl( m_properties, "Intensity", settings.intensity, GUIControlType::DRAG, 0.0f, 0.0f, "cd/m2" );
-	addControl( m_properties, "Rotation", settings.rotation, GUIControlType::SLIDER, -180.0f, 180.0f, "deg" );
-	addControl( m_properties, "Max luminance", settings.maxLuminance, GUIControlType::DRAG, 0.0f, 0.0f );
+	addSettingProperties( m_properties, hdriBackdropSchema(), settings );
 	return true;
 }
 
@@ -183,10 +171,8 @@ bool HDRIBackdrop::loadPanorama( const std::string& path, float rotation )
 HDRIBackdrop::Settings HDRIBackdrop::settings()
 {
 	Settings settings;
+	readSettingProperties( m_properties, hdriBackdropSchema(), settings );
 	settings.texture = m_texture;
-	settings.intensity = m_properties["Intensity"].data<float>();
-	settings.rotation = m_properties["Rotation"].data<float>();
-	settings.maxLuminance = m_properties["Max luminance"].data<float>();
 	return settings;
 }
 

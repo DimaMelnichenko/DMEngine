@@ -1,4 +1,5 @@
 #include "PostProcess.h"
+#include "Properties\SettingsProperties.h"
 #include "Shaders\slots.h"
 #include <algorithm>
 #include <cmath>
@@ -13,16 +14,6 @@ namespace GS
 
 namespace
 {
-
-Property* addSlider( PropertyContainer& properties, const char* name, float value, float low, float high, const char* unit = "" )
-{
-	Property* property = properties.insert( name, value );
-	property->setLow( low );
-	property->setHigh( high );
-	property->setControlType( GUIControlType::SLIDER );
-	property->setUnit( unit );
-	return property;
-}
 
 // Экспозиция по EV100 — как exposureFromEV100 в Shaders/exposure.sh
 float exposureFromEV100( float ev100 )
@@ -61,8 +52,7 @@ bool PostProcess::initialize( const Settings& settings )
 
 	m_properties.setName( "Post process" );
 	m_properties.insert( meteringModeProperty, static_cast<int32_t>( settings.meteringMode ) )->setItems( { "Manual", "Auto histogram" } );
-	addSlider( m_properties, "Manual EV100", settings.manualEV100, -10.0f, 20.0f );
-	addSlider( m_properties, "Exposure compensation", settings.exposureCompensation, -6.0f, 6.0f, "EV" );
+	addSettingProperties( m_properties, postProcessSchema(), settings, "" );
 	// Ключи кривой — столько, сколько в базе: (EV100 сцены, поправка EV)
 	for( size_t i = 0; i < settings.exposureCompensationCurve.size(); ++i )
 	{
@@ -72,22 +62,9 @@ bool PostProcess::initialize( const Settings& settings )
 		key->setHigh( 20.0f );
 		key->setControlType( GUIControlType::DRAG );
 	}
-	addSlider( m_properties, "Min EV100", settings.minEV100, -10.0f, 20.0f );
-	addSlider( m_properties, "Max EV100", settings.maxEV100, -10.0f, 20.0f );
-	addSlider( m_properties, "Histogram low percent", settings.histogramLowPercent, 0.0f, 100.0f, "%" );
-	addSlider( m_properties, "Histogram high percent", settings.histogramHighPercent, 0.0f, 100.0f, "%" );
-	addSlider( m_properties, "Speed up", settings.speedUp, 0.0f, 20.0f, "1/s" );
-	addSlider( m_properties, "Speed down", settings.speedDown, 0.0f, 20.0f, "1/s" );
+	addSettingProperties( m_properties, postProcessSchema(), settings, "exposure" );
 	m_properties.insert( tonemapperProperty, static_cast<int32_t>( settings.tonemapper ) )->setItems( { "None", "ACES", "AgX" } );
-	addSlider( m_properties, "Bloom intensity", settings.bloomIntensity, 0.0f, 8.0f );
-	addSlider( m_properties, "Bloom threshold", settings.bloomThreshold, -1.0f, 10.0f );
-	addSlider( m_properties, "Purkinje shift", settings.purkinjeShift, 0.0f, 1.0f );
-	// Экранное затенение окружением (AmbientOcclusion) — до проходов цвета, но настройки здесь, как в UE
-	addSlider( m_properties, "Ambient occlusion intensity", settings.ambientOcclusion.intensity, 0.0f, 1.0f )->setTooltip(
-		"Screen space ambient occlusion (GTAO): how much it darkens the sky light; 0 - off" );
-	addSlider( m_properties, "Ambient occlusion radius", settings.ambientOcclusion.radius, 0.1f, 5.0f, "m" );
-	addSlider( m_properties, "Ambient occlusion power", settings.ambientOcclusion.power, 0.5f, 4.0f )->setTooltip(
-		"Visibility^power: stronger in crevices, weaker in the open" );
+	addSettingProperties( m_properties, postProcessSchema(), settings, "bloom" );
 	// Отладка (View → Debug views): кадр — само затенение серым; не сохраняется
 	m_properties.insert( "Show ambient occlusion", false )->setTransient();
 
@@ -154,26 +131,13 @@ PostProcess::Settings PostProcess::settings()
 {
 	Settings settings;
 	settings.meteringMode = static_cast<MeteringMode>( std::clamp( m_properties[meteringModeProperty].data<int32_t>(), 0, 1 ) );
-	settings.manualEV100 = m_properties["Manual EV100"].data<float>();
-	settings.exposureCompensation = m_properties["Exposure compensation"].data<float>();
+	readSettingProperties( m_properties, postProcessSchema(), settings );
 	// Ключ, сдвинутый в GUI за соседний, встаёт на своё место
 	for( const std::string& name : m_curveKeyNames )
 		settings.exposureCompensationCurve.push_back( m_properties[name].data<XMFLOAT2>() );
 	std::sort( settings.exposureCompensationCurve.begin(), settings.exposureCompensationCurve.end(),
 			   []( const XMFLOAT2& a, const XMFLOAT2& b ) { return a.x < b.x; } );
-	settings.minEV100 = m_properties["Min EV100"].data<float>();
-	settings.maxEV100 = m_properties["Max EV100"].data<float>();
-	settings.histogramLowPercent = m_properties["Histogram low percent"].data<float>();
-	settings.histogramHighPercent = m_properties["Histogram high percent"].data<float>();
-	settings.speedUp = m_properties["Speed up"].data<float>();
-	settings.speedDown = m_properties["Speed down"].data<float>();
 	settings.tonemapper = static_cast<Tonemapper>( std::clamp( m_properties[tonemapperProperty].data<int32_t>(), 0, 2 ) );
-	settings.bloomIntensity = m_properties["Bloom intensity"].data<float>();
-	settings.bloomThreshold = m_properties["Bloom threshold"].data<float>();
-	settings.purkinjeShift = m_properties["Purkinje shift"].data<float>();
-	settings.ambientOcclusion.intensity = m_properties["Ambient occlusion intensity"].data<float>();
-	settings.ambientOcclusion.radius = m_properties["Ambient occlusion radius"].data<float>();
-	settings.ambientOcclusion.power = m_properties["Ambient occlusion power"].data<float>();
 	return settings;
 }
 

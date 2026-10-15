@@ -354,7 +354,7 @@ private:
 	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
 	DirectX::XMFLOAT2 m_prevailingWind = DirectX::XMFLOAT2( 0.0f, 0.0f );	// куда дует ветер, X и Z (setPrevailingWind)
 	PropertyContainer m_layerRulesProperties;	// «Layer rules»
-	// Подокна «Layer rules» по группам полей (TerrainLayerRuleField::group): имя группы и подокно
+	// Подокна «Layer rules» по группам полей (SettingField::group у terrainLayerRulesSchema): имя группы и подокно
 	std::vector<std::pair<std::string, std::unique_ptr<PropertyContainer>>> m_layerRuleGroups;
 	std::array<int32_t, terrainLayerRoleCount> m_layerOf{ -1, -1, -1, -1, -1, -1, -1, -1 };	// слой каждой роли (TerrainLayers.role)
 	TerrainEditCoverage m_coverage;			// покрытие правок рельефа и русел последней сборки — покраска при пересчёте правил
