@@ -37,15 +37,13 @@ public:
 	// Раз за кадр до update(): правки источников в GUI и время суток, затем свет солнца у земли — через атмосферу
 	// seconds — время кадра: с ним идёт время суток
 	void updateLights( float seconds = 0.0f );
-	// Небо уровня — процедурная атмосфера (с воздушной перспективой) или HDRI-панорама
-	bool hasAtmosphere() const;
+	// Константы кадра от сцены по главному виду: масштабы неба и освещения окружением, воздушная перспектива, ветер и
+	// вклад объектов (SceneObject::frameConstants: тень облаков, детальная вода, следы в траве, поле ветра). Рендерер
+	// добавляет своё (свет, время, туман, затенение окружением) и о самих объектах не знает
+	void frameConstants( const RenderView& view, FrameParameters& constants );
 	// Масштаб неба и освещения окружением (cb_skyLightScale): освещённость от солнца над атмосферой, лк, или
-	// интенсивность панорамы
+	// интенсивность панорамы; после compute неба — по показанному результату пересчёта
 	float skyLightScale();
-	// Масштаб фона неба (cb_skyScale): освещённость от солнца над атмосферой, лк, или интенсивность панорамы
-	float skyScale();
-	// Множитель объёма воздушной перспективы (cb_aerialPerspectiveScale): cb_skyScale × нормировка объёма
-	float aerialPerspectiveScale();
 	void update( const FrameContext& frame );
 	// Правки редактора, которые требуют тяжёлой перестройки (русла по кривым), — когда правка закончена (ползунок отпущен)
 	void applyEditorChanges();
@@ -61,15 +59,13 @@ public:
 	// террейн, расстановка, вода и частицы
 	bool saveLevel( LibraryLoader& library, const PostProcessSettings& postProcess,
 					const std::optional<HeightFogSettings>& heightFog );
-	// Тень облаков для констант кадра (cb_cloudShadow); облаков нет — нули
-	DirectX::XMFLOAT4 cloudShadow( const RenderView& view );
-	// Детальная вода у русел для констант кадра (cb_waterDetail); её нет — нули
-	DirectX::XMFLOAT4 waterDetail() const;
 
 	// Отрисовка рельефа (окно террейна, видимость) и его данные — конвейер рельефа и воды: запросы высоты, русла, маски,
 	// кисть, поле ветра
 	CDLODTerrain& terrain();
 	TerrainPipeline& terrainPipeline();
+	// Высоты рельефа для тех, кому нужна только земля (тень рельефа у рендерера): конвейер как TerrainHeightSource
+	const TerrainHeightSource& terrainHeightSource() const;
 	// Кисть слоёв земли и масок (вьюпорт, команда terrain paint)
 	TerrainPaintTool& terrainPaint();
 	// Экземпляры моделей уровня (LevelModels)
@@ -82,10 +78,14 @@ public:
 	const std::vector<std::unique_ptr<Scatterer>>& scatterers() const;
 	// Частицы уровня; без эмиттеров (или с -noparticles) объект не инициализирован
 	ParticleSystem& particles();
-	// Следы в траве (константы кадра cb_foliageInteraction); без террейна объект не инициализирован
-	FoliageInteraction& foliageInteraction();
 
 private:
+	// Небо уровня — процедурная атмосфера (с воздушной перспективой) или HDRI-панорама
+	bool hasAtmosphere() const;
+	// Масштаб фона неба (cb_skyScale): освещённость от солнца над атмосферой, лк, или интенсивность панорамы
+	float skyScale();
+	// Множитель объёма воздушной перспективы (cb_aerialPerspectiveScale): cb_skyScale × нормировка объёма
+	float aerialPerspectiveScale();
 	// Препятствия поля ветра — экземпляры моделей уровня выше 3 м (ели рощи, постройки) кругом по габариту
 	std::vector<WindObstacle> windObstacles() const;
 

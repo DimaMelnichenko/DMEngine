@@ -283,7 +283,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 их меши. Вид кадра — `RenderView` (`Scene/RenderView.h`, ≈ FSceneView: матрицы, положение, `DMFrustum`, `lodOrigin` —
 откуда считаются LOD; `index` — номер вида в кадре): главная камера (0), четыре каскада теней (1…4, `lodOrigin` —
 главной камеры) и дальний каскад (5, `RenderView::farShadow`: только лес расстановки). Объект сцены наследует `GS::SceneObject`
-(`Scene/SceneObject.h`): `update` / `compute` (кадр — `FrameContext`: главный вид и время) / `collectMeshes( view,
+(`Scene/SceneObject.h`): `update` / `frameConstants` (вклад в константы кадра `FrameParameters` — то, что читают чужие
+шейдеры: тень облаков, детальная вода, следы в траве, поле ветра; собирает `Scene::frameConstants` по главному виду до
+compute, рендерер о самих объектах не знает) / `compute` (кадр — `FrameContext`: главный вид и время) / `collectMeshes( view,
 collector )` / `renderCustom( context )` / `properties`, видимость. За каждый вид (`collectMeshes` зовётся на каждый
 вид кадра: выбор, зависящий от вида, объект хранит по `view.index`, как `CDLODTerrain`) объект отдаёт в `MeshCollector`
 (`Scene/MeshBatch.h`) секции мешей — `MeshBatch` (≈ FMeshBatch: меш секции в `VertexPool`, материал, параметры, мировая матрица,

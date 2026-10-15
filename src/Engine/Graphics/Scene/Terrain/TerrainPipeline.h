@@ -78,8 +78,6 @@ public:
 	bool rebuildWindField();
 	const std::vector<TerrainWind::Cell>& windField() const { return m_wind; }
 	bool hasWindField() const { return m_windView.valid(); }
-	// Для констант кадра (cb_windFieldScale): 1 / сторона карты, если поле есть, иначе 0
-	float windFieldScale() const { return m_windView.valid() && m_worldSize > 0.0f ? 1.0f / m_worldSize : 0.0f; }
 
 	// Мазки кисти поверх правил слоёв и масок (TerrainPaint, строки TerrainPaint) — до initialize; применяются в buildMasks
 	void setPaint( const std::vector<TerrainPaintTile>& tiles ) { m_paintTiles = tiles; }
@@ -173,6 +171,8 @@ public:
 	void update( const FrameContext& frame ) override;
 	// Ресурсы сцены кадра: детальная земля у русел (SLOT_TERRAIN_DETAIL, SLOT_TERRAIN_DETAIL_INDEX — её читают вершины и
 	// нормаль террейна, расстановка и частицы, terrain_height.sh), поле ветра, слои материала и детальный слой весов
+	// Поле ветра в константах кадра (cb_windFieldScale): 1 / сторона карты, если поле есть (иначе не трогает — 0)
+	void frameConstants( const RenderView& view, FrameParameters& constants ) override;
 	void compute( const FrameContext& frame ) override;
 	// Мешей нет: рельеф рисует CDLODTerrain
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override {}

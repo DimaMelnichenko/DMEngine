@@ -35,11 +35,9 @@ public:
 	bool initialized() const { return m_initialized; }
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
-	// Тень облаков для констант кадра (cb_cloudShadow, Shaders/cloud_shadow.sh): начало карты X, Z; 1 / размер;
-	// высота плоскости. Облака выключены — нули
-	DirectX::XMFLOAT4 shadowParameters( const RenderView& view );
-
 	void update( const FrameContext& frame ) override;
+	// Тень облаков в константах кадра (cb_cloudShadow, Shaders/cloud_shadow.sh): её читают все приёмники тени солнца
+	void frameConstants( const RenderView& view, FrameParameters& constants ) override;
 	void compute( const FrameContext& frame ) override;
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	void renderCustom( const RenderContext& context ) override;
@@ -49,6 +47,8 @@ public:
 private:
 
 
+	// Тень облаков (cb_cloudShadow): начало карты X, Z; 1 / размер; высота плоскости. Облака выключены — нули
+	DirectX::XMFLOAT4 shadowParameters( const RenderView& view );
 	bool createNoise();
 	bool createTraceTargets( uint32_t width, uint32_t height );
 	void generateNoise();

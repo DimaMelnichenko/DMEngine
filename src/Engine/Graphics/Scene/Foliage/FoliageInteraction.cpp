@@ -4,6 +4,7 @@
 #include <cmath>
 #include "D3D\DMD3D.h"
 #include "Logger\Logger.h"
+#include "ConstantBuffers.h"
 
 using namespace DirectX;
 
@@ -202,11 +203,11 @@ void FoliageInteraction::compute( const FrameContext& frame )
 	m_cleared = true;
 }
 
-XMFLOAT4 FoliageInteraction::frameParameters() const
+void FoliageInteraction::frameConstants( const RenderView&, FrameParameters& constants )
 {
 	if( !enabled() )
-		return XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
-	return XMFLOAT4( static_cast<float>( m_origin[0] ) * fieldCellSize, static_cast<float>( m_origin[1] ) * fieldCellSize,
+		return;
+	constants.foliageInteraction = XMFLOAT4( static_cast<float>( m_origin[0] ) * fieldCellSize, static_cast<float>( m_origin[1] ) * fieldCellSize,
 					 1.0f / ( static_cast<float>( fieldResolution ) * fieldCellSize ),
 					 XMConvertToRadians( m_properties["Max angle"].data<float>() ) );
 }

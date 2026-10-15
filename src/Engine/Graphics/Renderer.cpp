@@ -222,7 +222,7 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	m_shadowsActive = m_shadows.update( frame.view, shadowSettings, frame.toShadowLight, scene.bounds() );
 	// Тень рельефа дальше каскадов — до compute и проходов сцены (её читают туман и все приёмники тени)
 	if( m_shadowsActive )
-		measure( "Terrain sun shadow", [&] { m_shadows.updateTerrainShadow( scene.terrainPipeline().terrainHeight(), frame.toShadowLight ); } );
+		measure( "Terrain sun shadow", [&] { m_shadows.updateTerrainShadow( scene.terrainHeightSource().terrainHeight(), frame.toShadowLight ); } );
 	// Смещение теней сменилось (слайдер в GUI, тени перешли на луну) — пайплайны теней заново до прохода
 	if( m_shadows.renderState() != m_warmedShadowState )
 		warmShadowPipelines( scene );
@@ -461,26 +461,16 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 {
 	// установка источников света
 	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS );
-	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры)
-	// Масштаб неба и освещения окружением; воздушная перспектива — только у атмосферы
+	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры). Небо, ветер и
+	// вклад объектов сцены (тень облаков, детальная вода, следы в траве, поле ветра) — от сцены: их карты и поля объекты
+	// посчитают в compute() этого кадра, а константы нужны уже сейчас
 	FrameParameters frameParameters;
 	frameParameters.lightsCount = lightCount;
-	frameParameters.skyLightScale = scene.skyLightScale();
-	frameParameters.skyScale = scene.skyScale();
-	frameParameters.aerialPerspectiveDistance = scene.hasAtmosphere() ? frame.view.farPlane : 0.0f;
-	frameParameters.aerialPerspectiveScale = scene.aerialPerspectiveScale();
 	frameParameters.gameTime = frame.gameTime;
 	frameParameters.deltaTime = frame.elapsedTime / 1000.0f;
-	frameParameters.wind = scene.wind().parameters();
-	// Поле ветра по рельефу — у террейна (TerrainWind); флажок «Use field» окна «Wind» выключает его для сравнения
-	frameParameters.wind.fieldScale = scene.wind().fieldEnabled() ? scene.terrainPipeline().windFieldScale() : 0.0f;
+	scene.frameConstants( frame.view, frameParameters );
 	// Туман: свет в объёме — в долях яркости, которую экспозиция делает белой (EV100 с отставанием в несколько кадров)
 	frameParameters.fog = m_fog.frameParameters( frame.view, 1.2f * std::exp2( m_postProcess.ev100() ) );
-	// Тень облаков: карту считает их compute(), константы — уже сейчас (её читают все приёмники тени солнца)
-	frameParameters.cloudShadow = scene.cloudShadow( frame.view );
-	frameParameters.waterDetail = scene.waterDetail();
-	// Следы в траве: окно поля сдвинул Scene::update, поле запишет compute() этого кадра
-	frameParameters.foliageInteraction = scene.foliageInteraction().frameParameters();
 	// Затенение окружением посчитает render() после depth prepass, константы — уже сейчас
 	frameParameters.ambientOcclusion = m_ambientOcclusion.frameParameters( m_ambientOcclusionSettings, m_ambientOcclusionActive,
 																		   ( *m_postProcess.properties() )["Show ambient occlusion"].data<bool>() );

@@ -20,6 +20,7 @@
 #include "Utils\Fingerprint.h"
 #include "Properties\SettingsProperties.h"
 #include "ObjectLibrary\SettingsDatabase.h"
+#include "ConstantBuffers.h"
 
 using namespace DirectX;
 
@@ -245,6 +246,12 @@ void TerrainPipeline::update( const FrameContext& frame )
 	}
 	// Мазок тонкой сетки — плитки детального слоя весов раз в кадр, splat-карта — не чаще 10 раз в секунду
 	flushPaint( false );
+}
+
+void TerrainPipeline::frameConstants( const RenderView&, FrameParameters& constants )
+{
+	if( m_windView.valid() && m_worldSize > 0.0f )
+		constants.wind.fieldScale = 1.0f / m_worldSize;
 }
 
 void TerrainPipeline::compute( const FrameContext& frame )

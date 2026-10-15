@@ -41,13 +41,13 @@ public:
 
 	// Окно поля вокруг камеры и следы кадра — до констант кадра (их пишет Renderer::preparePipeline после Scene::update)
 	void update( const FrameContext& frame ) override;
+	// Константы кадра cb_foliageInteraction: начало окна X, Z, м; 1 / его сторона, 1/м (0 — поля нет); наибольший наклон, рад
+	void frameConstants( const RenderView& view, FrameParameters& constants ) override;
 	void compute( const FrameContext& frame ) override;
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override {}
 	PropertyContainer* properties() override { return &m_properties; }
 	// Ещё один след в этом кадре (звери, позже), до compute
 	void addInteractor( const Interactor& interactor );
-	// Константы кадра cb_foliageInteraction: начало окна X, Z, м; 1 / его сторона, 1/м (0 — поля нет); наибольший наклон, рад
-	DirectX::XMFLOAT4 frameParameters() const;
 
 private:
 

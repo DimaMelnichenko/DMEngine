@@ -7,6 +7,7 @@
 #include "Utils\SlowTask.h"
 #include "Properties\SettingsProperties.h"
 #include "D3D\TextureImages.h"
+#include "ConstantBuffers.h"
 
 namespace GS
 {
@@ -103,11 +104,10 @@ void WaterSimulation::buildSurface()
 	m_staticWater.buildDetailSurface();
 }
 
-DirectX::XMFLOAT4 WaterSimulation::detailParameters() const
+void WaterSimulation::frameConstants( const RenderView&, FrameParameters& constants )
 {
-	if( !m_initialized || m_staticWater.detailTileCount() == 0 )
-		return DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
-	return DirectX::XMFLOAT4( m_field.terrain->terrainHeight().worldSize, m_staticWater.detailTileSize(), 0.0f, 0.0f );
+	if( m_initialized && m_staticWater.detailTileCount() > 0 )
+		constants.waterDetail = DirectX::XMFLOAT4( m_field.terrain->terrainHeight().worldSize, m_staticWater.detailTileSize(), 0.0f, 0.0f );
 }
 
 void WaterSimulation::collectMeshes( const RenderView& view, MeshCollector& collector )

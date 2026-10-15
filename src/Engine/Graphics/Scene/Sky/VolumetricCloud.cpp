@@ -7,6 +7,7 @@
 #include "Wind\Wind.h"
 #include "D3D\DMD3D.h"
 #include "Properties\SettingsProperties.h"
+#include "ConstantBuffers.h"
 
 using namespace DirectX;
 
@@ -109,6 +110,11 @@ VolumetricCloud::Settings VolumetricCloud::settings()
 	Settings settings;
 	readSettingProperties( m_properties, volumetricCloudSchema(), settings );
 	return settings;
+}
+
+void VolumetricCloud::frameConstants( const RenderView& view, FrameParameters& constants )
+{
+	constants.cloudShadow = shadowParameters( view );
 }
 
 XMFLOAT4 VolumetricCloud::shadowParameters( const RenderView& view )

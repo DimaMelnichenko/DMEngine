@@ -12,6 +12,7 @@ namespace GS
 
 class ConstantBuffers;
 class VertexPool;
+struct FrameParameters;
 
 // Данные кадра, общие для всех объектов сцены: главный вид (камера, frustum) и время
 struct FrameContext
@@ -69,6 +70,10 @@ public:
 	virtual ~SceneObject() = default;
 
 	virtual void update( const FrameContext& frame ) {}
+	// Вклад объекта в константы кадра (FrameParameters → cb_* в Shaders/frame_constants.h, как View uniform buffer в UE):
+	// своё поле — то, что читают чужие шейдеры (тень облаков, детальная вода, следы в траве, поле ветра). Рендерер
+	// собирает их по главному виду через Scene::frameConstants до compute() и о самих объектах не знает
+	virtual void frameConstants( const RenderView& view, FrameParameters& constants ) {}
 	// Вызывается каждый кадр независимо от видимости
 	virtual void compute( const FrameContext& frame ) {}
 	// Что объект рисует с вида: меши (MeshBatch) и / или свой вызов (CustomBatch) — как GetDynamicMeshElements в UE.

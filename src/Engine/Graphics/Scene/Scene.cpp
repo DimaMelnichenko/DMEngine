@@ -5,6 +5,7 @@
 #include "System.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
+#include "ConstantBuffers.h"
 
 using namespace DirectX;
 
@@ -468,14 +469,18 @@ std::vector<WindObstacle> Scene::windObstacles() const
 	return obstacles;
 }
 
-DirectX::XMFLOAT4 Scene::cloudShadow( const RenderView& view )
+void Scene::frameConstants( const RenderView& view, FrameParameters& constants )
 {
-	return m_clouds.initialized() ? m_clouds.shadowParameters( view ) : DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
-}
-
-DirectX::XMFLOAT4 Scene::waterDetail() const
-{
-	return m_water.detailParameters();
+	constants.skyLightScale = skyLightScale();
+	constants.skyScale = skyScale();
+	constants.aerialPerspectiveDistance = hasAtmosphere() ? view.farPlane : 0.0f;
+	constants.aerialPerspectiveScale = aerialPerspectiveScale();
+	constants.wind = m_wind.parameters();
+	for( SceneObject* object : m_objects )
+		object->frameConstants( view, constants );
+	// Поле ветра по рельефу даёт конвейер (TerrainWind); флажок «Use field» окна «Wind» выключает его для сравнения
+	if( !m_wind.fieldEnabled() )
+		constants.wind.fieldScale = 0.0f;
 }
 
 DirectX::BoundingBox Scene::bounds() const
@@ -515,6 +520,11 @@ TerrainPipeline& Scene::terrainPipeline()
 	return m_terrainPipeline;
 }
 
+const TerrainHeightSource& Scene::terrainHeightSource() const
+{
+	return m_terrainPipeline;
+}
+
 TerrainPaintTool& Scene::terrainPaint()
 {
 	return m_terrainPaint;
@@ -528,11 +538,6 @@ ModelInstances& Scene::models()
 WaterSimulation& Scene::water()
 {
 	return m_water;
-}
-
-FoliageInteraction& Scene::foliageInteraction()
-{
-	return m_foliageInteraction;
 }
 
 const std::vector<std::unique_ptr<Scatterer>>& Scene::scatterers() const

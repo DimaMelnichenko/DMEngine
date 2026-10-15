@@ -33,6 +33,8 @@ public:
 	// hydrology — конвейер рельефа и воды (TerrainPipeline::hydrology): приток вдоль русел, ленты ручьёв и растр статичной воды
 	bool initialize( const Settings& settings, const TerrainHeightSource& terrain, const TerrainHydrology::Result& hydrology );
 
+	// Детальная вода у русел в константах кадра (cb_waterDetail, water.sh): размер мира, м, и сторона плитки, м (0 — её нет)
+	void frameConstants( const RenderView& view, FrameParameters& constants ) override;
 	void compute( const FrameContext& frame ) override;
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	void renderCustom( const RenderContext& context ) override;
@@ -61,8 +63,6 @@ public:
 	// 0,25 м на весь мир (−1e9 — плитки нет): <prefix>_detail_level.dds (уровень поверхности), _detail_depth, _detail_vx,
 	// _detail_vz. Ждёт GPU
 	bool exportState( const std::string& prefix, std::string& reason );
-	// Детальная вода у русел — константы кадра (cb_waterDetail, water.sh): размер мира, м, и сторона плитки, м (0 — её нет)
-	DirectX::XMFLOAT4 detailParameters() const;
 
 private:
 	// Настройки из окна для кадра (compute, отрисовка): заново — только когда окно правили (PropertyContainer::revision)
