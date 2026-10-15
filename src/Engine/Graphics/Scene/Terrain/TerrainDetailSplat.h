@@ -49,7 +49,7 @@ public:
 		bool staticWater = false;				// вода режима static: дно под водой и мокрость
 		const std::vector<TerrainHydrology::DetailTile>* hydrology = nullptr;	// детальная земля у русел
 		// Точная земля и вода вне детальной земли (плитки мазков): итоговая карта высот (нормированная, строки как у масок) и
-		// уровень поверхности воды сетки 1 м (−1e30 — нет; CDLODTerrain::waterSurfaceLevel)
+		// уровень поверхности воды сетки 1 м (−1e30 — нет; TerrainPipeline::computeWaterLevel)
 		const float* heights = nullptr;
 		float heightMultiplier = 1.0f;
 		float heightOffset = 0.0f;

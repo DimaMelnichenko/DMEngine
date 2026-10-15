@@ -649,7 +649,7 @@ bool WaterSimulation::createHydrologyTextures( const TerrainHydrology::Result& h
 
 bool WaterSimulation::createDetailTextures( const TerrainHydrology::Result& hydrology )
 {
-	// Детальная вода — только у статичной: срез — плитка детальной земли (тот же порядок, что у CDLODTerrain)
+	// Детальная вода — только у статичной: срез — плитка детальной земли (тот же порядок, что у TerrainPipeline)
 	m_detailTileCount = 0;
 	const uint32_t side = TerrainHydrology::detailTileCells * TerrainHydrology::detailSamples + 2;
 	const size_t texels = static_cast<size_t>( side ) * side;

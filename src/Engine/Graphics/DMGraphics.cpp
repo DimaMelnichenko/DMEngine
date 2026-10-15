@@ -200,7 +200,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 		PropertyContainer* instance = selected >= 0 ? m_scene.models().instanceProperties( selected ) : nullptr;
 		if( instance )
 			m_GUI.history().begin( "Snap to terrain: " + instance->name(), Editor::EditHistory::collect( *instance ) );
-		const bool snapped = m_scene.models().snapToTerrain( selected, m_scene.terrain() );
+		const bool snapped = m_scene.models().snapToTerrain( selected, m_scene.terrainPipeline() );
 		if( instance )
 			m_GUI.history().end();
 		if( !snapped )
@@ -229,7 +229,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_GUI.addToggle( { "Terrain paint", "", [this] { return m_viewport.paintMode(); }, [this]
 					   {
 						   m_viewport.setPaintMode( !m_viewport.paintMode() );
-						   m_scene.terrain().setPaintPreview( m_viewport.paintMode() );
+						   m_scene.terrainPipeline().setPaintPreview( m_viewport.paintMode() );
 					   } } );
 	// Отладочные виды — флажки окон объектов одним списком View → Debug views
 	auto debugView = [this]( const char* name, PropertyContainer* properties, const char* property )
@@ -295,7 +295,7 @@ bool DMGraphics::Frame()
 	updateMouseLook();
 	// Ходьба ставит камеру на землю до её Update (поворот мышью — как в полёте)
 	if( m_walk.enabled() )
-		m_walk.update( elapsedTime / 1000.0f, camera, m_scene.terrain() );
+		m_walk.update( elapsedTime / 1000.0f, camera, m_scene.terrainPipeline() );
 	TIME_CHECK( camera.Update( elapsedTime, !m_mouseLook ), "Camera Update = %.3f ms" );
 
 	RenderView mainView = RenderView::fromCamera( camera );
@@ -378,7 +378,7 @@ bool DMGraphics::placementInFront( XMFLOAT3& position )
 	const XMFLOAT3 eye = camera.position();
 	XMFLOAT3 forward;
 	camera.viewDirection( &forward );
-	const TerrainHeightSource& terrain = m_scene.terrain();
+	const TerrainHeightSource& terrain = m_scene.terrainPipeline();
 	float ground = 0.0f;
 	for( float t = 0.5f; t < 200.0f; t += 0.5f )
 	{
@@ -402,7 +402,7 @@ PropertyContainer::ButtonAction DMGraphics::addLight( DMLight::LightType type )
 	XMFLOAT3 position;
 	placementInFront( position );
 	float ground = 0.0f;
-	if( m_scene.terrain().surfaceHeight( position.x, position.z, ground ) )
+	if( m_scene.terrainPipeline().surfaceHeight( position.x, position.z, ground ) )
 		position.y = std::max( position.y, ground + ( type == DMLight::Spot ? 3.0f : 1.5f ) );
 	XMFLOAT3 direction( 0.0f, -1.0f, 0.0f );
 	const float horizontal = std::sqrt( forward.x * forward.x + forward.z * forward.z );
@@ -433,7 +433,7 @@ PropertyContainer::ButtonAction DMGraphics::addModelInstance( uint32_t model )
 	// Перед камерой (placementInFront) низом границ LOD 0 на землю, как End; без поворота, масштаб 1
 	XMFLOAT3 position;
 	const bool onGround = placementInFront( position );
-	const uint32_t key = models.addInstance( model, position, onGround ? &m_scene.terrain() : nullptr );
+	const uint32_t key = models.addInstance( model, position, onGround ? &m_scene.terrainPipeline() : nullptr );
 	const int index = models.indexOf( key );
 	PropertyContainer* properties = models.instanceProperties( index );
 	m_viewport.selectInstance( models, key );
@@ -494,7 +494,7 @@ void DMGraphics::drawLoadingFrame( const std::string& task, float progress )
 
 void DMGraphics::paintCommand( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 {
-	CDLODTerrain& terrain = m_scene.terrain();
+	TerrainPipeline& terrain = m_scene.terrainPipeline();
 	auto number = []( const std::string& text, float& value )
 	{
 		try
@@ -855,7 +855,7 @@ void DMGraphics::registerCommands()
 			return paintCommand( args, reply );
 		if( args.size() != 2 || args[0] != "hydrology" )
 			return reply->error( "usage: terrain hydrology <prefix> | terrain paint ..." );
-		const TerrainHydrology::Result* hydrology = m_scene.terrain().hydrology();
+		const TerrainHydrology::Result* hydrology = m_scene.terrainPipeline().hydrology();
 		if( !hydrology )
 			return reply->error( "terrain hydrology: the level has no water" );
 		const size_t cells = static_cast<size_t>( hydrology->size ) * hydrology->size;
@@ -954,7 +954,7 @@ void DMGraphics::registerCommands()
 			return reply->error( "usage: brush <x> <y> [<x> <y> ...] [shift] [ctrl]" );
 		for( size_t i = 0; i < numbers.size(); i += 2 )
 			points.emplace_back( numbers[i], numbers[i + 1] );
-		const std::string result = m_viewport.brushStroke( m_cameraPool["main"], m_scene.terrain(), m_GUI, points, shift, ctrl );
+		const std::string result = m_viewport.brushStroke( m_cameraPool["main"], m_scene.terrainPipeline(), m_GUI, points, shift, ctrl );
 		if( result.rfind( "error: ", 0 ) == 0 )
 			reply->error( result.substr( 7 ) );
 		else
@@ -1139,7 +1139,7 @@ void DMGraphics::bindingKeys()
 	Input::instance().notifier().registerTrigger( DIK_F, [this]( bool )
 	{
 		const bool walk = !m_walk.enabled() && m_scene.level().terrain.has_value();
-		m_walk.setEnabled( walk, m_cameraPool["main"], walk ? &m_scene.terrain() : nullptr );
+		m_walk.setEnabled( walk, m_cameraPool["main"], walk ? &m_scene.terrainPipeline() : nullptr );
 		LOG( walk ? "Walk mode" : "Fly mode" );
 	} );
 }

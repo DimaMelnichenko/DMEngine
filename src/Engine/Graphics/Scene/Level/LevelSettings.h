@@ -37,7 +37,7 @@ struct TerrainEdit
 	std::vector<TerrainEditPoint> points;
 	// Растровая правка (как растровые Edit Layers в UE) вместо кривой: файл карты сдвига высоты, м (< 0 — опустить),
 	// R32_FLOAT квадратом, от Textures\ (TerrainEdits.raster); русла — такая же правка в памяти (TerrainHydrology). Значения читает
-	// CDLODTerrain перед наложением; размер может отличаться от карты высот — выборка билинейная
+	// TerrainPipeline перед наложением; размер может отличаться от карты высот — выборка билинейная
 	std::string raster;
 	std::vector<float> rasterValues;
 	uint32_t rasterSize = 0;
@@ -176,7 +176,7 @@ struct TerrainPaintTile
 	std::vector<int8_t> delta;
 };
 
-// Материал и высота террейна — колонки строки Terrain и tiling строк TerrainLayers: читает CDLODTerrain, правки окна
+// Материал и высота террейна — колонки строки Terrain и tiling строк TerrainLayers: читает TerrainPipeline, правки окна
 // террейна пишет «Save level»
 struct TerrainSettings
 {
@@ -201,7 +201,7 @@ struct TerrainSettings
 	std::vector<TerrainPaintTile> paint;			// мазки кисти — строки TerrainPaint террейна
 };
 // Поля строки Terrain (SettingsSchema), окно террейна: материал и сетка у камеры. Не в описании — карта высот, смещение и шаг
-// (читает CDLODTerrain::loadSettings, в окне их нет), слои (строки TerrainLayers по номеру слоя), эрозия и правила (свои
+// (читает TerrainPipeline::loadSettings, в окне их нет), слои (строки TerrainLayers по номеру слоя), эрозия и правила (свои
 // описания), мазки
 const SettingsSchema<TerrainSettings>& terrainSchema();
 

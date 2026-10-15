@@ -73,7 +73,7 @@ struct TerrainMasks
 	void quantize();
 	// Копия для просмотра и правки: splatmap.dds (два среза RGBA8, как прежний файл) и маски R8 — в directory
 	bool save( const std::string& directory ) const;
-	// Та же копия как результат правил — кэш CDLODTerrain::buildMasks: names — маски по порядку; нет файла или не тот
+	// Та же копия как результат правил — кэш TerrainPipeline::buildMasks: names — маски по порядку; нет файла или не тот
 	// размер — false. Слой без веса нигде — пустой, как после расчёта
 	bool load( const std::string& directory, uint32_t size, const std::vector<std::string>& names );
 	// Отпечаток сборки правил — дата и время компиляции TerrainMasks.cpp: в ключе кэша правка формул меняет его сама

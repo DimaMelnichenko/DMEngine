@@ -32,7 +32,7 @@ public:
 
 	WaterSimulation();
 	// После террейна: сетка — его итоговая карта высот (с правками рельефа)
-	// hydrology — конвейер рельефа и воды (CDLODTerrain::hydrology): приток вдоль русел, ленты ручьёв и растр статичной воды
+	// hydrology — конвейер рельефа и воды (TerrainPipeline::hydrology): приток вдоль русел, ленты ручьёв и растр статичной воды
 	bool initialize( const Settings& settings, const TerrainHeightSource& terrain, const TerrainHydrology::Result& hydrology );
 
 	void compute( const FrameContext& frame ) override;
@@ -61,7 +61,7 @@ public:
 	// Русла надо перестроить: правили кривые, множители ручьёв или форму русел в «Channels» (параметры генератора —
 	// при следующей загрузке); сбрасывается rebuild
 	bool rebuildRequested() const;
-	// Вода по перестроенным руслам (CDLODTerrain::rebuildChannels): растр, ленты, приток, поверхность
+	// Вода по перестроенным руслам (TerrainPipeline::rebuildChannels): растр, ленты, приток, поверхность
 	bool rebuild( const TerrainHydrology::Result& hydrology );
 	// Правили подокно «Flow» — течение озёр заново (режим static); зовётся, когда редактор не тянет ползунок
 	void applyFlowChanges();

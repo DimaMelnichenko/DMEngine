@@ -155,7 +155,7 @@
 
 Результат — текстура `R16G16B16A16_FLOAT` в координатах карты высот, ресурс сцены `SLOT_WIND_FIELD` (t117,
 `windFieldSample` в `Shaders/wind_field.sh`): xz — скорость по X и Z мира в долях ветра уровня (направление × множитель),
-y — вертикальная, w — порывистость 0…1; копия на CPU — `CDLODTerrain::windField`. Сводка — в лог: строки
+y — вертикальная, w — порывистость 0…1; копия на CPU — `TerrainPipeline::windField`. Сводка — в лог: строки
 `Wind field over the terrain` (невязка, ровная скорость), `Wind field, flow over the terrain only` (поток и тень без леса)
 и `Wind field` (итог). На `Test` (ветер на восток-северо-восток): поток по рельефу — средний 1,06, на гребнях до 1,43;
 с тенью — 1,00; итог — 0,56 (лес — 42 % карты): в ельнике 0,4, на лугах за лесным поясом 0,6–0,75, на склонах выше
@@ -163,11 +163,11 @@ y — вертикальная, w — порывистость 0…1; копия
 
 **Кэш** — `Textures\terrain\generated\wind.dds` и `wind_key.txt`: ключ — итоговый рельеф, направление ветра, полог,
 настройки и сборка `TerrainWind.cpp` (`TerrainWind::codeStamp`). Рельефная часть (шаги 1–3) ещё и в памяти
-(`CDLODTerrain::ensureWindTerrain`): её считают правила слоёв до масок (по ней снег), итоговое поле берёт её оттуда; правка
+(`TerrainPipeline::ensureWindTerrain`): её считают правила слоёв до масок (по ней снег), итоговое поле берёт её оттуда; правка
 полога или настроек леса пересчитывает только полог (~0,1 с). Промах — ~0,6 с.
 
 **Когда пересчитывается**: при загрузке — после масок леса и моделей уровня (`Scene::initialize` →
-`CDLODTerrain::buildWindField`); поворот ветра в окне «Wind» и правка настроек потока и тени подокна «Field» — вместе со
+`TerrainPipeline::buildWindField`); поворот ветра в окне «Wind» и правка настроек потока и тени подокна «Field» — вместе со
 слоями и масками (снег, ~1,1 с), настроек леса — только поле; правка правил слоёв и русел — тоже; всё — когда правка
 закончилась. Без строки `Wind` у уровня поля нет.
 
@@ -302,7 +302,7 @@ GPU-based validation — лог чист.
 | `Shaders/common.vs`, `src/Engine/Graphics/ConstantBuffers.h/.cpp` | константы кадра: `cb_gameTime`, `cb_wind*` |
 | `src/Engine/Graphics/Scene/Terrain/TerrainWind.h/.cpp` | поле ветра по рельефу: поток, подветренная тень, вертикаль, полог |
 | `src/Engine/Graphics/Scene/Terrain/TerrainFields.h/.cpp` | общее для полей конвейера на CPU: строки параллельно, размытие, угол горизонта Sx |
-| `src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp` (`rebuildWindField`) | кэш поля, текстура `SLOT_WIND_FIELD`, отладочный вид |
+| `src/Engine/Graphics/Scene/Terrain/TerrainPipeline.cpp` (`rebuildWindField`) | кэш поля, текстура `SLOT_WIND_FIELD`, отладочный вид |
 | `Shaders/wind_field.sh` | порывы (`windGust`) и выборка поля (`windFieldSample`) |
 | `src/Engine/Graphics/Scene/Foliage/FoliageInteraction.h/.cpp` | следы в траве: окно поля вокруг камеры, кто давит, окно GUI, константы кадра |
 | `Shaders/foliage_interaction.cs` | поле следов за кадр: распрямление, капсулы, тороидальная адресация |

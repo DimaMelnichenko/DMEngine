@@ -142,11 +142,14 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		// Рельеф с ручными правками, затем русла и ручьи по нему (конвейер рельефа и воды) — если у уровня есть вода. Ветер
 		// уровня — господствующий: от него открытость ветру в правилах слоёв (снег, граница леса); без ветра — без неё.
 		// Направление — из окна «Wind» (угол Yaw), как потом его сравнивает applyEditorChanges
-		m_terrain.setPrevailingWind( m_level.wind ? m_wind.settings().direction : XMFLOAT3( 0.0f, 0.0f, 0.0f ) );
-		m_terrain.setWindField( m_wind.settings().field );
-	m_terrain.setPaint( m_level.terrainPaint );
-		if( !m_terrain.initialize( *m_level.terrain, m_level.terrainEdits, m_level.waterSimulation ? &*m_level.waterSimulation : nullptr,
-								   m_level.terrainErosion ? &*m_level.terrainErosion : nullptr, m_level.terrainLayerRules ) )
+		m_terrainPipeline.setPrevailingWind( m_level.wind ? m_wind.settings().direction : XMFLOAT3( 0.0f, 0.0f, 0.0f ) );
+		m_terrainPipeline.setWindField( m_wind.settings().field );
+		m_terrainPipeline.setPaint( m_level.terrainPaint );
+		TerrainSettings terrainSettings;
+		if( !m_terrainPipeline.initialize( *m_level.terrain, terrainSettings, m_level.terrainEdits,
+										   m_level.waterSimulation ? &*m_level.waterSimulation : nullptr,
+										   m_level.terrainErosion ? &*m_level.terrainErosion : nullptr, m_level.terrainLayerRules ) ||
+			!m_terrain.initialize( terrainSettings, m_terrainPipeline ) )
 			return false;
 		LOG( "Terrain init ms: " + elapsedMs( timeStart ) );
 	}
@@ -154,15 +157,16 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 	if( m_level.waterSimulation && !m_level.terrain )
 		LOG( "Water simulation needs a terrain, skipped" );
 	// Кривые русел сгенерированы заново — в базу (это данные: их правят окно «Streams» и Tools/stream_edit.py)
-	if( hasWater && m_terrain.streamsRegenerated() && m_level.waterSimulationId )
+	if( hasWater && m_terrainPipeline.streamsRegenerated() && m_level.waterSimulationId )
 	{
-		m_level.waterSimulation->streams = m_terrain.streamCurves();
-		m_level.waterSimulation->streamsKey = m_terrain.streamsKey();
+		m_level.waterSimulation->streams = m_terrainPipeline.streamCurves();
+		m_level.waterSimulation->streamsKey = m_terrainPipeline.streamsKey();
 		if( !library.saveGeneratedStreams( *m_level.waterSimulationId, m_level.waterSimulation->streamsKey, m_level.waterSimulation->streams ) )
 			LOG( "Stream curves are not saved to the database" );
 	}
 	task.enterProgressFrame( 0.6f, "Water" );
-	if( hasWater && ( !m_terrain.hydrology() || !m_water.initialize( *m_level.waterSimulation, m_terrain, *m_terrain.hydrology() ) ) )
+	if( hasWater && ( !m_terrainPipeline.hydrology() ||
+					  !m_water.initialize( *m_level.waterSimulation, m_terrainPipeline, *m_terrainPipeline.hydrology() ) ) )
 		return false;
 	task.enterProgressFrame( 0.1f, "Models, scatter and particles" );
 
@@ -170,14 +174,14 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		m_sky.setModel( *m_level.sky );
 	m_models.initialize( m_level.modelInstances );
 	// Эрозия посчитана заново — экземпляры моделей на новую землю (правка окна «Model instances», в базу — «Save level»)
-	if( m_terrain.erosionChanged() )
+	if( m_terrainPipeline.erosionChanged() )
 	{
-		const size_t moved = m_models.reseat( [this]( float x, float z, float radius ) { return m_terrain.erosionShift( x, z, radius ); } );
+		const size_t moved = m_models.reseat( [this]( float x, float z, float radius ) { return m_terrainPipeline.erosionShift( x, z, radius ); } );
 		LOG( "Model instances moved to the new eroded terrain: " + std::to_string( moved ) + " (File > Save level keeps it)" );
-		m_terrain.releaseErosionChange();
+		m_terrainPipeline.releaseErosionChange();
 	}
 	// Поле ветра по рельефу — после масок леса и моделей уровня: ели рощи и постройки (выше 3 м) — препятствия
-	if( m_level.terrain && m_level.wind && !m_terrain.buildWindField( windObstacles() ) )
+	if( m_level.terrain && m_level.wind && !m_terrainPipeline.buildWindField( windObstacles() ) )
 		LOG( "Wind field is not built, the wind of the level is even" );
 
 	timeStart = std::chrono::high_resolution_clock::now();
@@ -192,8 +196,8 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		auto scatterer = std::make_unique<Scatterer>( set.name, set.settings );
 		if( !scatterer->Initialize() )
 			return false;
-		scatterer->setTerrain( &m_terrain );
-		const auto& layersOfRoles = m_terrain.layersOfRoles();
+		scatterer->setTerrain( &m_terrainPipeline );
+		const auto& layersOfRoles = m_terrainPipeline.layersOfRoles();
 		scatterer->setGroundLayers( std::vector<int32_t>( layersOfRoles.begin(), layersOfRoles.end() ) );
 
 		for( const LevelDescription::ScatterLayer& layer : set.layers )
@@ -220,25 +224,26 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		m_scatterers.push_back( std::move( scatterer ) );
 	}
 	// Камни русел — часть конвейера рельефа и воды: их ставят слои stream_stones
-	if( m_terrain.hydrology() )
+	if( m_terrainPipeline.hydrology() )
 		for( const auto& scatterer : m_scatterers )
-			scatterer->setStreamStones( m_terrain.hydrology()->stones );
+			scatterer->setStreamStones( m_terrainPipeline.hydrology()->stones );
 	LOG( "Scatter init ms: " + elapsedMs( timeStart ) );
 
 	if( particles && !m_level.particleEmitters.empty() &&
-		!m_particles.initialize( m_level.particleEmitters, m_level.terrain ? &m_terrain : nullptr ) )
+		!m_particles.initialize( m_level.particleEmitters, m_level.terrain ? &m_terrainPipeline : nullptr ) )
 	{
 		LOG( "Fail to initialize particles" );
 		return false;
 	}
 
 	// Следы в траве — по земле под камерой; без поля растения просто не расступаются
-	if( m_level.terrain && !m_foliageInteraction.initialize( &m_terrain ) )
+	if( m_level.terrain && !m_foliageInteraction.initialize( &m_terrainPipeline ) )
 		LOG( "Foliage interaction is not initialized" );
 
 	// Небо первым: его compute() готовит освещение окружением для всех, render() рисует фон
 	SceneObject* sky = m_useHDRI ? static_cast<SceneObject*>( &m_hdri ) : &m_atmosphere;
-	m_objects = { sky, &m_sky, &m_terrain, &m_models };
+	// Конвейер рельефа — до тех, кто читает его ресурсы сцены (рельеф, расстановка, частицы): его compute() их привязывает
+	m_objects = { sky, &m_sky, &m_terrainPipeline, &m_terrain, &m_models };
 	if( m_foliageInteraction.initialized() )
 		m_objects.push_back( &m_foliageInteraction );
 	// Облака — сразу после неба: их compute() читает таблицы атмосферы и освещение окружением, фон рисуют поверх неба
@@ -306,16 +311,16 @@ void Scene::applyEditorChanges()
 	if( m_level.terrain && m_level.wind && !m_wind.properties()->editing() )
 	{
 		const Wind::Settings wind = m_wind.settings();
-		windTurned = m_terrain.prevailingWindChanged( wind.direction );
+		windTurned = m_terrainPipeline.prevailingWindChanged( wind.direction );
 		if( windTurned )
-			m_terrain.setPrevailingWind( wind.direction );
+			m_terrainPipeline.setPrevailingWind( wind.direction );
 		// Правили подокно «Field» — поле ветра заново; поворот ветра и настройки рельефной части (по ней снег) пересчитают его
 		// вместе с масками ниже
-		if( m_terrain.windFieldChanged( wind.field ) )
+		if( m_terrainPipeline.windFieldChanged( wind.field ) )
 		{
-			windTerrainChanged = m_terrain.windTerrainChanged( wind.field );
-			m_terrain.setWindField( wind.field );
-			if( !windTurned && !windTerrainChanged && !m_terrain.rebuildWindField() )
+			windTerrainChanged = m_terrainPipeline.windTerrainChanged( wind.field );
+			m_terrainPipeline.setWindField( wind.field );
+			if( !windTurned && !windTerrainChanged && !m_terrainPipeline.rebuildWindField() )
 				LOG( "Wind field is not rebuilt" );
 		}
 	}
@@ -323,12 +328,12 @@ void Scene::applyEditorChanges()
 	for( const auto& scatterer : m_scatterers )
 		scatterer->rebakeChangedImpostors();
 	// Мазок кисти изменил маски — постоянные слои (лес) раскладываются заново
-	if( m_level.terrain && m_terrain.takePaintedMasks() )
+	if( m_level.terrain && m_terrainPipeline.takePaintedMasks() )
 		for( const auto& scatterer : m_scatterers )
 			scatterer->terrainChanged();
-	if( m_level.terrain && ( windTurned || windTerrainChanged || m_terrain.layerRulesChanged() ) )
+	if( m_level.terrain && ( windTurned || windTerrainChanged || m_terrainPipeline.layerRulesChanged() ) )
 	{
-		if( m_terrain.rebuildMasks() )
+		if( m_terrainPipeline.rebuildMasks() )
 			for( const auto& scatterer : m_scatterers )
 				scatterer->terrainChanged();
 		else
@@ -394,7 +399,10 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 
 	std::optional<TerrainSettings> terrain;
 	if( m_level.terrain )
+	{
 		terrain = m_terrain.settings();
+		m_terrainPipeline.settings( *terrain );
+	}
 	std::vector<ScatterSetSettings> scatterSets;
 	std::vector<ScatterLayerRecord> scatterLayers;
 	for( const auto& scatterer : m_scatterers )
@@ -422,7 +430,7 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 		return false;
 	// Экземпляры моделей в базе — на нынешней земле: пересадка после эрозии закреплена
 	if( m_level.terrain )
-		m_terrain.confirmErosionChange();
+		m_terrainPipeline.confirmErosionChange();
 	return true;
 }
 
@@ -431,7 +439,8 @@ bool Scene::rebuildChannels()
 	const auto start = std::chrono::high_resolution_clock::now();
 	WaterSimulationSettings water = m_water.settings();
 	water.streams = m_water.streamCurves();
-	if( !m_terrain.rebuildChannels( water, water.streams ) || !m_terrain.hydrology() || !m_water.rebuild( *m_terrain.hydrology() ) )
+	if( !m_terrainPipeline.rebuildChannels( water, water.streams ) || !m_terrainPipeline.hydrology() ||
+		!m_water.rebuild( *m_terrainPipeline.hydrology() ) )
 	{
 		LOG( "Water channels are not rebuilt" );
 		return false;
@@ -440,7 +449,7 @@ bool Scene::rebuildChannels()
 	// русел — новые
 	for( const auto& scatterer : m_scatterers )
 	{
-		scatterer->setStreamStones( m_terrain.hydrology()->stones );
+		scatterer->setStreamStones( m_terrainPipeline.hydrology()->stones );
 		scatterer->terrainChanged();
 	}
 	LOG( "Water channels rebuilt without reload, ms: " + elapsedMs( start ) );
@@ -472,7 +481,7 @@ DirectX::BoundingBox Scene::bounds() const
 	if( m_level.terrain )
 	{
 		// Высота рельефа — значение карты 0…1, умноженное на множитель, плюс смещение
-		const TerrainHeight height = m_terrain.terrainHeight();
+		const TerrainHeight height = m_terrainPipeline.terrainHeight();
 		const float low = height.heightOffset + std::min( height.heightMultiplier, 0.0f );
 		const float high = height.heightOffset + std::max( height.heightMultiplier, 0.0f );
 		const XMFLOAT3 boxMin( 0.0f, low, 0.0f );
@@ -495,6 +504,11 @@ DirectX::BoundingBox Scene::bounds() const
 CDLODTerrain& Scene::terrain()
 {
 	return m_terrain;
+}
+
+TerrainPipeline& Scene::terrainPipeline()
+{
+	return m_terrainPipeline;
 }
 
 ModelInstances& Scene::models()

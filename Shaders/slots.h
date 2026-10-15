@@ -60,7 +60,7 @@
 #define SLOT_CLOUD_SHADOW	111
 // Приток источников воды (water.sh, WaterSimulation): м/с слоя воды на сетке карты высот — подсветка «Show water»
 #define SLOT_WATER_SOURCES	112
-// Детальная земля у русел (terrain_detail.sh, CDLODTerrain): массив плиток высот и индекс плиток по сетке мира
+// Детальная земля у русел (terrain_detail.sh, TerrainPipeline): массив плиток высот и индекс плиток по сетке мира
 #define SLOT_TERRAIN_DETAIL	113
 #define SLOT_TERRAIN_DETAIL_INDEX	114
 // Уровень поверхности воды (water.sh, WaterSimulation — water_surface.cs, mainSurface): на сетке карты высот, м; у клеток
@@ -69,10 +69,10 @@
 // Детальная вода у русел (water.sh, WaterSimulation — water_detail.cs): массив плиток, как у детальной земли (тот же
 // индекс SLOT_TERRAIN_DETAIL_INDEX), x — уровень поверхности, м (−1e30 — нет), y, z — течение по X и Z мира, м/с, w — глубина, м
 #define SLOT_WATER_DETAIL	116
-// Поле ветра по рельефу (TerrainWind, CDLODTerrain): R16G16B16A16_FLOAT в координатах карты высот — xz скорость по X и Z
+// Поле ветра по рельефу (TerrainWind, TerrainPipeline): R16G16B16A16_FLOAT в координатах карты высот — xz скорость по X и Z
 // мира в долях ветра уровня, y — вертикальная вдоль рельефа, w — порывистость (wind_field.sh)
 #define SLOT_WIND_FIELD		117
-// Слои материала террейна (terrain_layers.sh, CDLODTerrain): то, что нужно выбору слоёв и дисплейсменту всем, кто читает
+// Слои материала террейна (terrain_layers.sh, TerrainPipeline и константы — CDLODTerrain): то, что нужно выбору слоёв и дисплейсменту всем, кто читает
 // землю, — шейдерам террейна, расстановке и частицам (terrain_height.sh): splat-карта, массив «альбедо + высота»,
 // детальный слой весов у русел и мазков (плитки и индекс) и константы слоёв (структурный буфер из одного элемента)
 #define SLOT_TERRAIN_SPLAT	118

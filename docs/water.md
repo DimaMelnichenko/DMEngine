@@ -124,7 +124,7 @@ const WaterSample water = sampleWater( uv );	// water.depth, water.velocity
 ## Конвейер рельефа и воды
 
 Рельеф и вода собираются при загрузке уровня в одном месте и по порядку — как Edit Layers и Water в UE, граф Gaea:
-каждая ступень видит итог предыдущих (`CDLODTerrain::buildHeightBounds`):
+каждая ступень видит итог предыдущих (`TerrainPipeline::buildHeights`):
 
 1. **Исходная карта высот** — из любого источника: World Machine, Gaea, тестовая долина `Tools/gen_heightmap.py`.
 2. **Эрозия** — `TerrainErosion` на GPU: капли и осыпание, кэш и карты эрозии в `eroded\` рядом с картой; у террейна
@@ -367,7 +367,7 @@ const WaterSample water = sampleWater( uv );	// water.depth, water.velocity
   включение и множители. **Форма русел** — подокно «Channels» (параметры генератора — `min_discharge`, сглаживание,
   извилины, `lake_depth`, `min_lake_area` — генерируют кривые заново при следующей загрузке).
 - **Перестройка** (`Scene::rebuildChannels`), когда правка закончена (гизмо или ползунок отпущены — `GUI::itemActive`):
-  рельеф после эрозии и ручных правок хранится на CPU (`CDLODTerrain::rebuildChannels`), поверх — русла по нынешним
+  рельеф после эрозии и ручных правок хранится на CPU (`TerrainPipeline::rebuildChannels`), поверх — русла по нынешним
   кривым, карта высот с мипами, границы узлов, маска очистки растительности и покраска splat-карты
   (`TerrainMaterial::repaint`); вода — растр, приток, поверхность (`WaterSimulation::rebuild`); постоянные слои
   расстановки (лес) — раскладка заново (`Scatterer::terrainChanged`), камни русел — новые (`Scatterer::setStreamStones`);

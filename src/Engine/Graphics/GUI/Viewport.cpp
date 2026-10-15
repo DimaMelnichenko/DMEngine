@@ -116,10 +116,10 @@ void Viewport::setPaintMode( bool enabled )
 		clearSelection();
 }
 
-void Viewport::paintTerrain( const DMCamera& camera, GS::CDLODTerrain& terrain, GUI& gui )
+void Viewport::paintTerrain( const DMCamera& camera, GS::TerrainPipeline& terrain, GUI& gui )
 {
 	const ImGuiIO& io = ImGui::GetIO();
-	const GS::CDLODTerrain::PaintBrush brush = terrain.paintBrush( io.KeyShift, io.KeyCtrl );
+	const GS::TerrainPipeline::PaintBrush brush = terrain.paintBrush( io.KeyShift, io.KeyCtrl );
 	// Точка под курсором — луч к рельефу; над окнами редактора кисти нет
 	XMFLOAT3 point = {};
 	const bool hit = !overPanels() && terrainPoint( camera, terrain, io.MousePos.x, io.MousePos.y, point );
@@ -188,7 +188,7 @@ void Viewport::paintTerrain( const DMCamera& camera, GS::CDLODTerrain& terrain, 
 	drawList->AddText( ImVec2( io.MousePos.x + 16.0f, io.MousePos.y + 12.0f ), color, label );
 }
 
-bool Viewport::terrainPoint( const DMCamera& camera, const GS::CDLODTerrain& terrain, float x, float y, XMFLOAT3& point ) const
+bool Viewport::terrainPoint( const DMCamera& camera, const GS::TerrainPipeline& terrain, float x, float y, XMFLOAT3& point ) const
 {
 	XMVECTOR origin, direction;
 	screenRay( camera, x, y, origin, direction );
@@ -202,7 +202,7 @@ bool Viewport::terrainPoint( const DMCamera& camera, const GS::CDLODTerrain& ter
 	return true;
 }
 
-void Viewport::dabTo( GS::CDLODTerrain& terrain, float radius, float falloff, const XMFLOAT3& point )
+void Viewport::dabTo( GS::TerrainPipeline& terrain, float radius, float falloff, const XMFLOAT3& point )
 {
 	// Между касаниями — промежуточные с шагом в ¼ радиуса: быстрый взмах мышью — сплошной мазок, а не пятна
 	const float step = std::max( radius * 0.25f, 0.25f );
@@ -215,12 +215,12 @@ void Viewport::dabTo( GS::CDLODTerrain& terrain, float radius, float falloff, co
 		m_lastDab = XMFLOAT2( point.x, point.z );
 }
 
-std::string Viewport::brushStroke( const DMCamera& camera, GS::CDLODTerrain& terrain, GUI& gui, const std::vector<ImVec2>& points, bool shift,
+std::string Viewport::brushStroke( const DMCamera& camera, GS::TerrainPipeline& terrain, GUI& gui, const std::vector<ImVec2>& points, bool shift,
 								   bool ctrl )
 {
 	if( m_painting )
 		return "error: a stroke is going on";
-	const GS::CDLODTerrain::PaintBrush brush = terrain.paintBrush( shift, ctrl );
+	const GS::TerrainPipeline::PaintBrush brush = terrain.paintBrush( shift, ctrl );
 	std::vector<XMFLOAT3> hits;
 	for( const ImVec2& screen : points )
 	{
@@ -245,15 +245,15 @@ std::string Viewport::brushStroke( const DMCamera& camera, GS::CDLODTerrain& ter
 	return text;
 }
 
-void Viewport::finishPaintStroke( GS::CDLODTerrain& terrain, GUI& gui )
+void Viewport::finishPaintStroke( GS::TerrainPipeline& terrain, GUI& gui )
 {
 	m_painting = false;
-	const GS::CDLODTerrain::PaintEdit edit = terrain.endPaintStroke();
+	const GS::TerrainPipeline::PaintEdit edit = terrain.endPaintStroke();
 	if( !edit.changed )
 		return;
 	// Отмена и повтор — плитки цели целиком
-	auto shared = std::make_shared<GS::CDLODTerrain::PaintEdit>( edit );
-	GS::CDLODTerrain* target = &terrain;
+	auto shared = std::make_shared<GS::TerrainPipeline::PaintEdit>( edit );
+	GS::TerrainPipeline* target = &terrain;
 	gui.history().record( "Paint " + edit.target, [target, shared] { target->setPaintTiles( shared->target, shared->before ); },
 						  [target, shared] { target->setPaintTiles( shared->target, shared->after ); } );
 }
@@ -269,7 +269,7 @@ void Viewport::update( const DMCamera& camera, GS::Scene& scene, GUI& gui )
 {
 	GS::ModelInstances& models = scene.models();
 	GS::WaterSimulation* water = scene.water().initialized() ? &scene.water() : nullptr;
-	const GS::TerrainHeightSource* terrain = &scene.terrain();
+	const GS::TerrainHeightSource* terrain = &scene.terrainPipeline();
 	DMLightDriver* lights = &scene.lights();
 	GS::ParticleSystem* particles = scene.particles().initialized() ? &scene.particles() : nullptr;
 	// Экземпляр и источник — по ключу: номер мог сдвинуться, сам выбранный — убран
@@ -293,13 +293,13 @@ void Viewport::update( const DMCamera& camera, GS::Scene& scene, GUI& gui )
 	// Кисть: клик по сцене — мазок, а не выбор
 	if( m_paintMode )
 	{
-		paintTerrain( camera, scene.terrain(), gui );
+		paintTerrain( camera, scene.terrainPipeline(), gui );
 		sceneClicked();
 	}
 	else
 	{
 		if( m_painting )
-			finishPaintStroke( scene.terrain(), gui );
+			finishPaintStroke( scene.terrainPipeline(), gui );
 		if( sceneClicked() )
 			clickAt( camera, scene, gui, ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y );
 	}
@@ -370,7 +370,7 @@ std::string Viewport::clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gu
 	GS::ParticleSystem* particles = scene.particles().initialized() ? &scene.particles() : nullptr;
 	clearSelection();
 	// В режиме кривых клик сначала ловит точку кривой, мимо — экземпляр модели
-	if( m_streamMode && water && pickStreamPoint( camera, *water, scene.terrain(), x, y ) )
+	if( m_streamMode && water && pickStreamPoint( camera, *water, scene.terrainPipeline(), x, y ) )
 	{
 		if( PropertyContainer* properties = water->curveProperties( m_streamCurve ) )
 			gui.focusProperties( properties );

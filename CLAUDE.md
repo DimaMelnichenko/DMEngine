@@ -313,7 +313,8 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 приёмники тени солнца) и луч главного вида через слой в половине кадра, в проходе `sky` — поверх фона неба; плывут по
 ветру уровня, `-nowind` их останавливает; `docs/clouds.md`),
 `SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
-растягивается до 0,9 дальней плоскости вида, `RenderView::farPlane`), `CDLODTerrain`,
+растягивается до 0,9 дальней плоскости вида, `RenderView::farPlane`), `TerrainPipeline` (данные рельефа — конвейер
+рельефа и воды, мешей нет: его `compute()` привязывает ресурсы сцены рельефа), `CDLODTerrain` (отрисовка рельефа),
 `ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида — в полосе перехода оба LOD с
 дизерингом, если у материала `DitheredLODTransition`; у каскадов теней дальности × `Models.shadow_lod_scale` — у елей 0,5,
 его же берёт расстановка; отсечение по frustum вида — границы
@@ -335,7 +336,7 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 источники по карте водосбора и помощники — родник, ледниковое озеро (строки `WaterSources`, `Tools/water_source.py`),
 озёра до уровня перелива и прогрев при загрузке, шаги по времени кадра; русла горных ручьёв — растровая правка рельефа `channels` по
 сети стока D8 — ступень конвейера рельефа и воды при загрузке (`Scene/Terrain/TerrainHydrology.h`, вызывает
-`CDLODTerrain::buildHeightBounds`: карта высот → эрозия `TerrainErosion` → ручные правки `TerrainEdits` → русла, ручьи и озёра по итоговому рельефу →
+`TerrainPipeline::buildHeights`: карта высот → эрозия `TerrainErosion` → ручные правки `TerrainEdits` → русла, ручьи и озёра по итоговому рельефу →
 вода; узкое дно, врез с крутыми бортами, извилины на пологом, ступени и плёсы на крутом (step-pool, уступы из камней), галька и без травы; настройки — строка `WaterChannels`,
 подокно «Channels»; русла — по кривым из базы (`Streams` / `StreamPoints`, как Landscape Splines): генератор предлагает их
 по стоку, когда сменился отпечаток (`StreamGeneration`: параметры генератора и приток из базы, без высот рельефа — у разных
@@ -551,10 +552,15 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 — по нему, как и проверки «сменилось ли» и ключи кэшей (`settingsEqual`, `forEachSettingValue`); новый параметр — строка
 описания, а не пять мест (переведены все строки настроек уровня; что осталось вручную — `docs/gui.md`).
 
-**Террейн** — `CDLODTerrain` (`Scene/Terrain/`, Strugar 2009): квадродерево над картой высот,
+**Террейн** — данные и отрисовка отдельно. Данные — конвейер рельефа и воды `TerrainPipeline` (`Scene/Terrain/TerrainPipeline.h`:
+исходная карта → эрозия → правки → русла → слои и маски → материал слоёв → поле ветра, кэши по отпечаткам, итоговая карта
+на CPU и GPU, детальные плитки, кисть; реализует `TerrainHeightSource` — к нему обращаются расстановка, вода, частицы,
+ходьба, тень рельефа; правки окон перестраивают ступени без перезагрузки — `rebuildMasks`, `rebuildChannels`,
+`rebuildWindField`). Отрисовка — `CDLODTerrain` (`Scene/Terrain/`, Strugar 2009): квадродерево над картой высот конвейера,
 корень покрывает весь террейн, лист — 32 текселя, диапазон каждого уровня вдвое больше предыдущего. Узлы выбираются
-на CPU в `update()` по расстоянию до AABB и frustum. При загрузке карта высот копируется с GPU (`GpuImages::captureTexture`),
-из копии строится текстура R32_FLOAT с мипами для вершинного шейдера и min/max высот узлов. Рисуются одним
+на CPU на каждый вид (`collectMeshes`) по расстоянию до AABB и frustum. При загрузке конвейер копирует карту высот с GPU
+(`GpuImages::captureTexture`) и строит из итоговой карты текстуру R32_FLOAT с мипами для вершинного шейдера; min/max высот
+узлов `CDLODTerrain` считает по тем же мипам на CPU (`buildNodeBounds`, заново — по новому `heightRevision`). Рисуются одним
 `DrawIndexedInstanced` патча 16×16 (`GridMesh`). Вершина уровня L читает мип L; к концу диапазона уровня морфинг
 в `Shaders/cdlod.vs` сдвигает её на сетку уровня L + 1 и переводит высоту в мип L + 1, поэтому уровни стыкуются без
 скачков и трещин. Условие отсутствия трещин — диапазон уровня не меньше диагонали его узла / `morphStartRatio`,
@@ -606,7 +612,7 @@ Debug и Release, строгий IEEE (`ShaderCompiler::compile( …, reproducib
 Правка рельефа — слои правок поверх карты высот (как Edit Layers и Landscape Splines в UE): строки `TerrainEdits` и
 `TerrainEditPoints` (кривая Catmull-Rom через точки — русло, насыпь; одна точка — площадка; ширина, полоса перехода,
 `raise_terrain` / `lower_terrain`, высоты абсолютные или от рельефа), загрузчик — в `LevelDescription::terrainEdits`,
-наложение — `Scene/Terrain/TerrainEdits` на копию карты в `CDLODTerrain::buildHeightBounds` до мипов: итоговый рельеф
+наложение — `Scene/Terrain/TerrainEdits` на копию карты в `TerrainPipeline::buildHeights` до мипов: итоговый рельеф
 видят вершины, узлы, расстановка и частицы (`TerrainHeight::heightMap` — вид итоговой карты). Та же полоса правки убирает
 растительность (`clear_foliage`: маска `TerrainHeight::foliageClearMask`, её читает `scatter.cs` у всех слоёв, и у леса)
 и красит слой splat-карты (`paint_layer`, как Paint Layer у Landscape Splines: `TerrainMaterial` смешивает до мипов;
@@ -655,7 +661,7 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 при движении камеры они на месте), маска даёт вероятность и размер, отсечение — по плоскостям frustum каждого вида
 (`DMFrustum::planes`; у каскадов ещё полоса расстояний и тень в кадр), поворот — кватернион (`Shaders/instance.sh`,
 `INST_ROTATE`; инстанс вершинный шейдер берёт из пула по списку вида и root-константе b9 — `instanceSlot`). Высоту и UV масок даёт
-`TerrainHeightSource` (`Scene/Terrain/TerrainHeightSource.h`, реализует `CDLODTerrain`; шейдерная часть —
+`TerrainHeightSource` (`Scene/Terrain/TerrainHeightSource.h`, реализует `TerrainPipeline`; шейдерная часть —
 `Shaders/terrain_height.sh`), так что расстановка не зависит от устройства террейна. Как в Witcher 3 и UE5: у каждого
 типа своя сетка, дальность и плавное исчезание; крупные камни, о которые спотыкаются, — модели уровня, а не расстановка.
 Маски в координатах карты высот; их считает движок по рельефу (`TerrainMasks`, текстуры хранилища по имени). Лес — постоянный слой
@@ -676,7 +682,7 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 глубине сцены); в каскадах теней импостер — уже дальше `ScatterLayers.shadow_impostor_distance` (у леса 65 м). Подробно —
 `docs/scatter.md`.
 
-**Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`CDLODTerrain`), `Scatterer` (расстановка, см. выше),
+**Подсистемы сцены** (`src/Engine/Graphics/Scene/`): `Terrain` (`TerrainPipeline` — данные, `CDLODTerrain` — отрисовка), `Scatterer` (расстановка, см. выше),
 `Water` (`WaterSimulation`),
 `Particle` (`ParticleSystem`), `Sky` (`SkySphere`, `SkyAtmosphere`, `VolumetricCloud`), `Light` (`DMLightDriver`, свет в structured buffer), `Camera`,
 `Texture` (`DMTexture` — текстура GPU и вид, `DMTextureStorage`, чтение файлов — `ImageFile::load`), `Model`/`Mesh`
