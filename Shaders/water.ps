@@ -28,10 +28,12 @@ float groundHeight( float2 worldXZ, float2 uv )
 static const float stoneFoamDepth = 0.12f;
 static const float stoneFoamArea = 0.08f;
 // Пена слива: на стенке уступа — до fallFoam (узор пены даёт белые полосы по течению, а не сплошное пятно), в котле —
-// от уклона поверхности на plungeDistance выше по течению (вода падает и взбивается) — до plungeFoam
+// от уклона поверхности выше по течению (вода падает и взбивается) — до plungeFoam: на plungeDistance полная, дальше по
+// течению пена тянется хвостом и тает (уклон на тех расстояниях выше по течению с весами plungeTrailWeight)
 static const float fallFoam = 0.6f;
-static const float plungeDistance = 0.6f;
 static const float plungeFoam = 0.45f;
+static const float plungeDistance[3] = { 0.6f, 1.2f, 2.0f };	// м выше по течению
+static const float plungeTrailWeight[3] = { 1.0f, 0.6f, 0.3f };
 
 // Уклон поверхности детальной воды в точке texel (в текселях плитки, с полем; срез — z): по уровню ±1 тексель, билинейно
 // (точечно — уклон по квадратам 0,25 м, пена квадратами); за урезом (выборка задела ячейку без уровня, −1e30) — свой
@@ -96,7 +98,7 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	}
 	const float shear = ( length( dx ) + length( dz ) ) / ( 2.0f * g_cellSize );
 	// Слив: поверхность детальной воды круче g_foamSlope — каскад на уступе ступени; ниже по течению — котёл, куда падает
-	// вода (по уклону выше по течению на plungeDistance)
+	// вода, и хвост пены за ним (по уклону выше по течению на plungeDistance)
 	float fall = 0.0f;
 	if( detail )
 	{
@@ -106,9 +108,13 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 		const float step = cb_waterDetail.y / ( width - 2 );
 		const float here = detailSurfaceSlope( detailTexel, size, step );
 		const float2 along = length( water.velocity ) > 1e-3f ? normalize( water.velocity ) : 0.0f;
-		const float above = detailSurfaceSlope( float3( detailTexel.xy - along * ( plungeDistance / step ), detailTexel.z ), size, step );
-		fall = max( fallFoam * saturate( ( here - g_foamSlope ) / ( 2.0f * g_foamSlope ) ),
-					plungeFoam * saturate( ( above - g_foamSlope ) / ( 2.0f * g_foamSlope ) ) );
+		float plunge = 0.0f;
+		[unroll] for( int i = 0; i < 3; ++i )
+		{
+			const float above = detailSurfaceSlope( float3( detailTexel.xy - along * ( plungeDistance[i] / step ), detailTexel.z ), size, step );
+			plunge = max( plunge, plungeTrailWeight[i] * saturate( ( above - g_foamSlope ) / ( 2.0f * g_foamSlope ) ) );
+		}
+		fall = max( fallFoam * saturate( ( here - g_foamSlope ) / ( 2.0f * g_foamSlope ) ), plungeFoam * plunge );
 	}
 
 	// Глубина в пикселе — от поверхности до сцены под ней по вертикали (глубина сцены), а не по сетке 1 м: урез по земле,

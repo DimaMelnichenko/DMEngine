@@ -1,13 +1,15 @@
 # Текстура пены воды из фото или картинки без альфы (белая пена на воде): маска пены и нормаль по ней — в один файл
 # Textures\water\foam.dds (R8G8B8A8_UNORM, данные, с цепочкой мипов). Шейдер воды (water_shading.sh) несёт маску течением,
-# как рябь, и порогом по доле пены оставляет где только узлы кружева, где сплошную пену (docs/water.md, «Пена»).
+# как рябь, и порогом по доле пены оставляет где только узлы кружева, где сплошную пену (docs/water.md, «Материал»).
 #   python Tools/pack_water_foam.py DownloadResources/foam.png [--out Textures/water/foam.dds] [--db base.db3]
 # Маска: цвет просвета (тёмные --gap-percent % пикселей по яркости) — 0, цвет пены (светлые) — 1, пиксель — проекция на
 # ось между ними: она учитывает и яркость, и оттенок (просветы зеленоватые, пена белая). Картинку, которая не повторяется
 # без шва, сценарий делает бесшовной: у краёв — смешение с копией, сдвинутой на полкартинки, с сохранением разброса
-# (деление на sqrt(w^2 + (1 - w)^2), как у плиток ряби), полоса --seam-band пикселей; --check-seam печатает разрыв на
+# (деление на sqrt(w^2 + (1 - w)^2), как у плиток ряби), полоса --seam-band пикселей; строка seam печатает разрыв на
 # краях до и после. Каналы: R — маска (толщина пены 0…1), G, B — нормаль по размытой маске (0,5 + 0,5 · n, x и y в
-# координатах картинки, --bump — крутизна), A — 1. С --db — строка water_foam в Textures (sRGB 0, без сжатия, свои мипы).
+# координатах картинки, --bump — крутизна), A — шум растворения:
+# бесшовные пятна (две октавы, --dissolve-cells пятен по стороне), равномерно 0…1 — им шейдер сдвигает порог пены, и у
+# края она тает кусками на разных расстояниях. С --db — строка water_foam в Textures (sRGB 0, без сжатия, свои мипы).
 # Нужны numpy и Pillow. Сообщения — ASCII (правило Tools/).
 import argparse
 import os
@@ -62,6 +64,26 @@ def blur(values, sigma):
     return result
 
 
+def blob_noise(size, cells, rng):
+    """Бесшовные пятна: белый шум, сглаженный гауссом в частотах (FFT периодично по построению); cells — пятен по стороне"""
+    frequency = np.fft.fftfreq(size)
+    fx, fy = np.meshgrid(frequency, frequency)
+    sigma = cells / size
+    spectrum = np.fft.fft2(rng.standard_normal((size, size))) * np.exp(-(fx * fx + fy * fy) / (2.0 * sigma * sigma))
+    noise = np.real(np.fft.ifft2(spectrum))
+    return (noise - noise.mean()) / noise.std()
+
+
+def dissolve_noise(size, cells, seed=7):
+    """Шум растворения: крупные пятна и мелкие в треть их, распределение — равномерное 0…1 (по рангу): сдвиг порога
+    пены линейный"""
+    rng = np.random.default_rng(seed)
+    noise = blob_noise(size, cells, rng) + 0.5 * blob_noise(size, cells * 3, rng)
+    ranks = np.empty(noise.size)
+    ranks[np.argsort(noise, axis=None)] = np.arange(noise.size)
+    return (ranks / (noise.size - 1)).reshape(noise.shape)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Water foam texture: foam mask and normal from an image without alpha')
     parser.add_argument('image')
@@ -71,6 +93,7 @@ def main():
     parser.add_argument('--seam-band', type=int, default=128, help='seam blend band at the edges, pixels (0 - image is seamless)')
     parser.add_argument('--bump', type=float, default=4.0, help='normal steepness: mask height per pixel step')
     parser.add_argument('--blur', type=float, default=1.5, help='mask blur for the normal, pixels')
+    parser.add_argument('--dissolve-cells', type=float, default=6.0, help='dissolve noise blobs per texture side')
     parser.add_argument('--db', help='base.db3: insert or update Textures row ' + TEXTURE_NAME)
     args = parser.parse_args()
 
@@ -94,7 +117,10 @@ def main():
     dy = 0.5 * (np.roll(height, -1, axis=0) - np.roll(height, 1, axis=0))
     normal = np.stack([-dx, -dy, np.ones_like(dx)], axis=-1)
     normal /= np.linalg.norm(normal, axis=-1, keepdims=True)
-    rgba = np.stack([mask, 0.5 + 0.5 * normal[..., 0], 0.5 + 0.5 * normal[..., 1], np.ones_like(mask)], axis=-1)
+    if mask.shape[0] != mask.shape[1]:
+        raise SystemExit('error: the image must be square (the dissolve noise is square)')
+    dissolve = dissolve_noise(mask.shape[0], args.dissolve_cells)
+    rgba = np.stack([mask, 0.5 + 0.5 * normal[..., 0], 0.5 + 0.5 * normal[..., 1], dissolve], axis=-1)
     dds.write_rgba8(args.out, rgba, srgb=False, mips=True)
 
     if args.db:

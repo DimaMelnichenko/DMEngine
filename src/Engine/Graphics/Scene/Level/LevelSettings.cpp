@@ -478,6 +478,9 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		  "like the ripple", 0, "surface" },
 		{ "foam_softness", "Foam softness", DM_SETTING( foamSoftness ), 0.05f, 1.0f, "",
 		  "Width of the foam texture edge: thin foam strands are translucent", 0, "surface" },
+		{ "foam_dissolve", "Foam dissolve", DM_SETTING( foamDissolve ), 0.0f, 1.0f, "",
+		  "Where the foam fades out it dissolves in pieces at different distances (the threshold is shifted by the noise of the "
+		  "foam texture); 0 - along a line", 0, "surface" },
 		{ "detail_distance", "Detail distance", DM_SETTING( detailDistance ), 0.0f, 1000.0f, "m",
 		  "Nearer the water surface of streams is drawn by the detail tiles (0.25 m): farther the 1 m grid differs by less than a "
 		  "pixel, and a detail tile has 16 times as many triangles; 0 - the 1 m grid only", 0, "surface" },
