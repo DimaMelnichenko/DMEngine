@@ -582,7 +582,14 @@ bool TerrainPipeline::layerRulesChanged() const
 {
 	if( !m_initialized )
 		return false;
-	return !settingsEqual( terrainLayerRulesSchema(), layerRulesFromProperties(), m_layerRules );
+	// Подокно «Layer rules» не правили с прошлой сверки — сверять нечего
+	const uint64_t revision = m_layerRulesProperties.revision();
+	if( revision == m_layerRulesRevision )
+		return false;
+	if( !settingsEqual( terrainLayerRulesSchema(), layerRulesFromProperties(), m_layerRules ) )
+		return true;
+	m_layerRulesRevision = revision;
+	return false;
 }
 
 void TerrainPipeline::setPrevailingWind( const XMFLOAT3& direction )
@@ -779,6 +786,7 @@ bool TerrainPipeline::rebuildMasks()
 		return false;
 	const auto start = std::chrono::steady_clock::now();
 	m_layerRules = layerRulesFromProperties();
+	m_layerRulesRevision = m_layerRulesProperties.revision();
 	// Итоговая карта на CPU — размеры и масштаб; уклоны и водосбор правила берут с рельефа до русел (buildMasks)
 	HeightField field;
 	field.heights = m_cpuHeights.data();

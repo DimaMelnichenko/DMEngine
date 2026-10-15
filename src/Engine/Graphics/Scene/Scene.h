@@ -92,6 +92,7 @@ private:
 	LevelDescription m_level;
 	DMLightDriver m_lightDriver;
 	Wind m_wind;
+	uint64_t m_windRevision = ~0ull;	// номер правки окна «Wind», по которому сверены направление и поле ветра (applyEditorChanges)
 
 	SkyLight m_skyLight;		// освещение окружением: из неба атмосферы или панорамы
 	SkyAtmosphere m_atmosphere;	// процедурное небо, от него — освещение окружением и воздушная перспектива

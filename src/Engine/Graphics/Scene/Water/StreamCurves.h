@@ -51,6 +51,8 @@ private:
 	std::vector<StreamCurve> m_builtCurves;
 	WaterChannelsSettings m_builtChannels;
 	bool m_curvesDirty = false;
+	// Номер правки подокон, по которому сверены кривые и форма русел (rebuildRequested): не сменился — сверять нечего
+	mutable uint64_t m_checkedRevision = ~0ull;
 };
 
 }

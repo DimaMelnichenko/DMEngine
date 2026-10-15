@@ -546,7 +546,9 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 именованная карта свойств с вложенными контейнерами. Объекты, которые нужно крутить в рантайме
 (террейн, модели, частицы), отдают `properties()`, а `DMGraphics` регистрирует их через
 `m_GUI.addPropertyWatching( контейнер, раздел Outliner, объект )`. После этого панель Details (`GUI/PropertyWidgets.cpp`)
-сама строит контролы по типу свойства; необязательно — `setUnit`, `setTooltip`, `setFormat`, `setLogarithmic`. Настройки
+сама строит контролы по типу свойства; необязательно — `setUnit`, `setTooltip`, `setFormat`, `setLogarithmic`. Правили ли
+окно — номер правки (`Property::revision`, растёт при смене значения любым путём; `PropertyContainer::revision` — с вложенными
+окнами): объект хранит номер, по которому применил настройки, и сравнивает одно число, а не настройки целиком. Настройки
 строки уровня — описанием полей (`SettingsSchema`, `Properties/SettingsSchema.h`, как UPROPERTY в UE): колонка, имя
 свойства, член структуры, границы, единицы, подсказка — одной строкой в `Scene/Level/LevelSettings.cpp`; окно
 (`addSettingProperties` / `readSettingProperties`) и база (`readSettings` / `updateSettings`, `ObjectLibrary/SettingsDatabase.h`)

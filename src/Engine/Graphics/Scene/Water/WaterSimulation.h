@@ -65,6 +65,8 @@ public:
 	DirectX::XMFLOAT4 detailParameters() const;
 
 private:
+	// Настройки из окна для кадра (compute, отрисовка): заново — только когда окно правили (PropertyContainer::revision)
+	const Settings& currentSettings() const;
 	// Уровень поверхности и границы тайлов, затем детальная вода у русел
 	void buildSurface();
 	// Объём воды, наибольшая глубина и число мокрых ячеек — в лог (ждёт GPU)
@@ -76,6 +78,9 @@ private:
 	Settings m_initial;
 	bool m_staticMode = false;				// режим static: шагов нет
 	bool m_initialized = false;
+	mutable Settings m_current;				// настройки кадра (currentSettings) и номер правки окна, по которому они прочитаны
+	mutable uint64_t m_currentRevision = ~0ull;
+	uint64_t m_flowRevision = ~0ull;		// номер правки «Flow», по которому сверено течение (applyFlowChanges)
 
 	WaterField m_field;
 	WaterPipes m_pipes;

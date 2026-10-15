@@ -180,6 +180,10 @@ private:
 		// моделей — для пересборки буферов слоя при смене шага, кольца, размера и весов
 		ScatterLayerSettings settings;
 		std::vector<ScatterPass::Variant> passVariants;
+		// Номер правки окна слоя (с вариантами, слоями земли и материалами, PropertyContainer::revision), по которому
+		// применены настройки и сверены отпечатки импостеров: не сменился — сверять нечего
+		uint64_t appliedRevision = ~0ull;
+		uint64_t bakeRevision = ~0ull;
 	};
 
 	// Константы раскладки из настроек слоя (ёмкости и число вариантов заполняет ScatterPass::createBuffers)

@@ -273,6 +273,7 @@ private:
 	std::vector<float> m_waterLevel;			// уровень воды static на сетке 1 м (computeWaterLevel), −1e30 — нет
 	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
 	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
+	mutable uint64_t m_layerRulesRevision = ~0ull;	// номер правки «Layer rules», по которому сверены правила (layerRulesChanged)
 	DirectX::XMFLOAT2 m_prevailingWind = DirectX::XMFLOAT2( 0.0f, 0.0f );	// куда дует ветер, X и Z (setPrevailingWind)
 	PropertyContainer m_layerRulesProperties;	// «Layer rules»
 	// Подокна «Layer rules» по группам полей (SettingField::group у terrainLayerRulesSchema): имя группы и подокно

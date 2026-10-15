@@ -269,6 +269,8 @@ void labelCell( const std::string& name, Property& property )
 void controlCell( const std::string& name, Property& property, const std::string& owner )
 {
 	ImGui::TableNextColumn();
+	// Контролы пишут значение через указатель (dataPtr): сменилось — новый номер правки (Property::revision)
+	const Property::Value before = property.value();
 	// Группа: у числа ползунок и поле ввода — один контрол для IsItemActive (правка идёт, пока активен любой)
 	ImGui::BeginGroup();
 	ImGui::SetNextItemWidth( -FLT_MIN );
@@ -382,6 +384,7 @@ void controlCell( const std::string& name, Property& property, const std::string
 			break;
 	}
 	ImGui::EndGroup();
+	property.touchIfChanged( before );
 	// Правка — пока контрол (поле, стрелка, флажок, цвет) активен: одна запись истории. По состоянию, а не по событиям
 	// ImGui: после клика по полю оно на кадр неактивно, пока включается ввод числа, — пустая правка отбрасывается, а ввод
 	// начинает свою

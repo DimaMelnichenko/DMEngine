@@ -7,9 +7,20 @@
 //--------------------------------------------------
 // Property
 
-Property::Property()
+Property::Property() : m_revision( ++s_revisionClock )
 {
 
+}
+
+bool Property::sameValue( const Value& a, const Value& b )
+{
+	if( a.index() != b.index() )
+		return false;
+	return std::visit( [&b]( const auto& value )
+	{
+		using Type = std::decay_t<decltype( value )>;
+		return std::memcmp( &value, &std::get<Type>( b ), sizeof( Type ) ) == 0;
+	}, a );
 }
 
 ValueType Property::valueType()
@@ -57,18 +68,13 @@ bool Property::modified() const
 {
 	if( m_transient || !m_hasSaved || m_saved.index() != m_value.index() )
 		return false;
-	// Значения — простые типы без указателей: сравнение по байтам (у XMFLOAT* нет operator==)
-	return std::visit( [this]( const auto& saved )
-	{
-		using Type = std::decay_t<decltype( saved )>;
-		return std::memcmp( &saved, &std::get<Type>( m_value ), sizeof( Type ) ) != 0;
-	}, m_saved );
+	return !sameValue( m_saved, m_value );
 }
 
 void Property::resetToSaved()
 {
 	if( m_hasSaved )
-		m_value = m_saved;
+		setValue( m_saved );
 }
 
 

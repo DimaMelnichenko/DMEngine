@@ -310,8 +310,10 @@ void Scene::applyEditorChanges()
 	// слои и маски заново; постоянные слои (лес) разложены по прежним маскам — раскладка заново, кольцевые читают маски
 	// каждый кадр
 	bool windTurned = false, windTerrainChanged = false;
-	if( m_level.terrain && m_level.wind && !m_wind.properties()->editing() )
+	// Окно «Wind» не правили с прошлой сверки — сверять нечего
+	if( m_level.terrain && m_level.wind && !m_wind.properties()->editing() && m_wind.properties()->revision() != m_windRevision )
 	{
+		m_windRevision = m_wind.properties()->revision();
 		const Wind::Settings wind = m_wind.settings();
 		windTurned = m_terrainPipeline.prevailingWindChanged( wind.direction );
 		if( windTurned )

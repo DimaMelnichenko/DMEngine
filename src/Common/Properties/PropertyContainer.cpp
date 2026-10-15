@@ -1,4 +1,5 @@
 #include "PropertyContainer.h"
+#include <algorithm>
 #include <functional>
 
 
@@ -96,6 +97,16 @@ void PropertyContainer::markSaved()
 		property.markSaved();
 	for( PropertyContainer* sub : m_subContainer )
 		sub->markSaved();
+}
+
+uint64_t PropertyContainer::revision() const
+{
+	uint64_t revision = 0;
+	for( const auto& [name, property] : m_propertyMap )
+		revision = std::max( revision, property.revision() );
+	for( const PropertyContainer* sub : m_subContainer )
+		revision = std::max( revision, sub->revision() );
+	return revision;
 }
 
 bool PropertyContainer::editing() const

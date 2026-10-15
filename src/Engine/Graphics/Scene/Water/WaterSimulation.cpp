@@ -86,9 +86,20 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	return true;
 }
 
+const WaterSimulation::Settings& WaterSimulation::currentSettings() const
+{
+	const uint64_t revision = m_properties.revision();
+	if( revision != m_currentRevision )
+	{
+		m_current = settings();
+		m_currentRevision = revision;
+	}
+	return m_current;
+}
+
 void WaterSimulation::buildSurface()
 {
-	m_surface.build( settings() );
+	m_surface.build( currentSettings() );
 	m_staticWater.buildDetailSurface();
 }
 
@@ -117,13 +128,18 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 {
 	if( context.pass != MeshPass::transparent )
 		return;
-	m_surface.render( context, settings(), m_staticWater );
+	m_surface.render( context, currentSettings(), m_staticWater );
 }
 
 void WaterSimulation::applyFlowChanges()
 {
 	if( !m_initialized || !m_staticMode )
 		return;
+	// Подокно «Flow» не правили с прошлой сверки — сверять нечего
+	const uint64_t revision = m_flowProperties.revision();
+	if( revision == m_flowRevision )
+		return;
+	m_flowRevision = revision;
 	const Settings current = settings();
 	if( settingsEqual( waterFlowSchema(), current.flow, m_staticWater.flowBuilt() ) )
 		return;
@@ -194,7 +210,7 @@ void WaterSimulation::compute( const FrameContext& frame )
 {
 	if( !m_initialized )
 		return;
-	const Settings current = settings();
+	const Settings& current = currentSettings();
 	// Трубы: приток по настройкам и шаги по времени кадра — поверхность заново
 	if( !m_staticMode && m_pipes.advance( frame, current ) )
 		m_surface.setDirty();

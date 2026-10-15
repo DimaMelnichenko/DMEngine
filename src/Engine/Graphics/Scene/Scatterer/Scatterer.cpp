@@ -515,25 +515,38 @@ void Scatterer::rebakeChangedImpostors()
 		const auto withImpostor = []( const LayerVariant& variant ) { return variant.impostorMaterial != nullptr; };
 		if( std::none_of( layer.variants.begin(), layer.variants.end(), withImpostor ) || layer.properties->editing() )
 			continue;
+		// Окно слоя (в нём и параметры материалов его растений) не правили с прошлой сверки — отпечатки те же
+		const uint64_t revision = layer.properties->revision();
+		if( revision == layer.bakeRevision )
+			continue;
 		// По окну слоя: правка запекания — новый отпечаток
 		const ScatterLayerSettings settings = settingsFromProperties( layer );
-	for( LayerVariant& variant : layer.variants )
-	{
-		if( !variant.impostorMaterial || paramsEditing( *variant.model ) )
-			continue;
-		const uint64_t hash = bakeSourceHash( *variant.model, settings );
-		if( hash == variant.bakedParamsHash )
-			continue;
-		variant.bakedParamsHash = hash;
-		if( std::find( rebaked.begin(), rebaked.end(), variant.impostorMaterial ) != rebaked.end() )
-			continue;
-		rebaked.push_back( variant.impostorMaterial );
-		const auto start = std::chrono::steady_clock::now();
-		const bool baked = variant.impostorMaterial->bake( *variant.model, *m_bakeContext, bakeSettings( settings ) );
-		const auto ms = std::chrono::duration<float, std::milli>( std::chrono::steady_clock::now() - start ).count();
-		LOG( "Impostor " + variant.model->properties()->name() + ( baked ? " rebaked after an edit, ms: " + std::to_string( ms ) :
-																	  std::string( " is not rebaked" ) ) );
-	}
+		bool waiting = false;
+		for( LayerVariant& variant : layer.variants )
+		{
+			if( !variant.impostorMaterial )
+				continue;
+			// Параметры правят в другом окне (окно модели) — ждём, сверка — когда правка закончится
+			if( paramsEditing( *variant.model ) )
+			{
+				waiting = true;
+				continue;
+			}
+			const uint64_t hash = bakeSourceHash( *variant.model, settings );
+			if( hash == variant.bakedParamsHash )
+				continue;
+			variant.bakedParamsHash = hash;
+			if( std::find( rebaked.begin(), rebaked.end(), variant.impostorMaterial ) != rebaked.end() )
+				continue;
+			rebaked.push_back( variant.impostorMaterial );
+			const auto start = std::chrono::steady_clock::now();
+			const bool baked = variant.impostorMaterial->bake( *variant.model, *m_bakeContext, bakeSettings( settings ) );
+			const auto ms = std::chrono::duration<float, std::milli>( std::chrono::steady_clock::now() - start ).count();
+			LOG( "Impostor " + variant.model->properties()->name() + ( baked ? " rebaked after an edit, ms: " + std::to_string( ms ) :
+																		  std::string( " is not rebaked" ) ) );
+		}
+		if( !waiting )
+			layer.bakeRevision = revision;
 	}
 }
 
@@ -966,6 +979,9 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 
 void Scatterer::applyProperties( Layer& layer )
 {
+	// Окно слоя не правили с прошлого применения — сверять нечего
+	if( layer.properties->revision() == layer.appliedRevision )
+		return;
 	const ScatterLayerSettings settings = settingsFromProperties( layer );
 	const ScatterLayerSettings& applied = layer.settings;
 
@@ -1046,6 +1062,9 @@ void Scatterer::applyProperties( Layer& layer )
 	// на всю карту. Применяется один раз, когда правка закончилась; раскладка обычного слоя — константы, на лету
 	if( ( buffers || ( placement && settings.persistent ) ) && layer.properties->editing() )
 		return;
+	// Применено (номер — после поправок окна выше: границы LOD, дальность импостера); пока правка шла, номер не запоминается —
+	// сверка повторится, когда она закончится
+	layer.appliedRevision = layer.properties->revision();
 	for( uint32_t v = 0; v < layer.variants.size() && v < layer.passVariants.size(); ++v )
 	{
 		LayerVariant& variant = layer.variants[v];

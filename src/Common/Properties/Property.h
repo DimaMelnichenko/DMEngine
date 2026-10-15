@@ -6,6 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cassert>
+#include <cstdint>
 #include <variant>
 #include "Logger\Logger.h"
 
@@ -48,7 +49,7 @@ public:
 	Property();
 
 	template<class TYPE>
-	Property( const std::string& name, const TYPE& value ) : m_name(name), m_value(value)
+	Property( const std::string& name, const TYPE& value ) : m_name(name), m_value(value), m_revision( ++s_revisionClock )
 	{
 
 	}
@@ -77,10 +78,30 @@ public:
 	template<class TYPE>
 	void setData( const TYPE& value )
 	{
-		m_value = value;
+		setValue( Value( value ) );
 	}
 	const Value& value() const { return m_value; }
-	void setValue( const Value& value ) { m_value = value; }
+	void setValue( const Value& value )
+	{
+		if( !sameValue( m_value, value ) )
+		{
+			m_value = value;
+			touch();
+		}
+	}
+	// Номер правки значения — из общего счётчика: растёт, когда значение сменилось (setData, setValue, сброс к сохранённому,
+	// правка в окне — touchIfChanged, ImGui пишет через dataPtr). По нему объект видит, что окно правили, сравнением одного
+	// числа (PropertyContainer::revision), а не настроек целиком; у нового свойства — тоже новый номер
+	uint64_t revision() const { return m_revision; }
+	void touch() { m_revision = ++s_revisionClock; }
+	// Значение сменилось после before (правка через dataPtr) — новый номер правки
+	void touchIfChanged( const Value& before )
+	{
+		if( !sameValue( before, m_value ) )
+			touch();
+	}
+	// Значения — простые типы без указателей: сравнение по байтам (у XMFLOAT* нет operator==)
+	static bool sameValue( const Value& a, const Value& b );
 	float low() const;
 	float high() const;
 	GUIControlType controlType();
@@ -142,5 +163,7 @@ private:
 	std::vector<std::string> m_items;
 	bool m_editing = false;
 	bool m_transient = false;
+	uint64_t m_revision = 0;
+	inline static uint64_t s_revisionClock = 0;
 };
 

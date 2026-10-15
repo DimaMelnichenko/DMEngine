@@ -1,4 +1,5 @@
 #include "StreamCurves.h"
+#include <algorithm>
 #include "Properties\SettingsProperties.h"
 
 namespace GS
@@ -100,6 +101,10 @@ bool StreamCurves::rebuildRequested() const
 {
 	if( m_curvesDirty )
 		return true;
+	// Подокна «Channels» и «Streams» не правили с прошлой сверки — сверять нечего
+	const uint64_t revision = std::max( m_channelsProperties.revision(), m_streamsProperties.revision() );
+	if( revision == m_checkedRevision )
+		return false;
 	for( size_t i = 0; i < m_builtCurves.size() && i < m_streamProperties.size(); ++i )
 	{
 		StreamCurve window;
@@ -112,6 +117,7 @@ bool StreamCurves::rebuildRequested() const
 	for( const SettingField<WaterChannelsSettings>& field : waterChannelsSchema() )
 		if( field.group != streamGeneratorGroup && !settingFieldEqual( field, current, m_builtChannels ) )
 			return true;
+	m_checkedRevision = revision;
 	return false;
 }
 
@@ -120,6 +126,7 @@ void StreamCurves::markBuilt()
 	m_builtCurves = streamCurves();
 	m_builtChannels = channels();
 	m_curvesDirty = false;
+	m_checkedRevision = std::max( m_channelsProperties.revision(), m_streamsProperties.revision() );
 }
 
 }
