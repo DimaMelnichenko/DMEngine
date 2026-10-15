@@ -6,6 +6,7 @@
 #include "Properties\PropertyContainer.h"
 #include "Scene\Level\LevelSettings.h"
 #include "Scene\RenderView.h"
+#include "Shaders\volumetric_fog_constants.h"
 
 namespace GS
 {
@@ -41,18 +42,6 @@ public:
 	PropertyContainer* properties() { return &m_properties; }
 
 private:
-	// Константный буфер CS b4, раскладка как у VolumetricFogBuffer в Shaders/volumetric_fog.cs
-	struct alignas( 16 ) Parameters
-	{
-		DirectX::XMMATRIX previousViewProjection;
-		DirectX::XMFLOAT3 jitter;
-		float historyWeight;
-		uint32_t gridSize[3];
-		float historyScale;
-		float inverseScale;
-		float padding[3];
-	};
-	static_assert( sizeof( Parameters ) == 112, "VolumetricFogBuffer layout" );
 
 	bool createVolumes();
 	bool enabled();

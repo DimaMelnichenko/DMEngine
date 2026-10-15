@@ -4,6 +4,7 @@
 #include "D3D\GpuResources.h"
 #include "DMComputeShader.h"
 #include "Terrain\TerrainHeightSource.h"
+#include "Shaders\terrain_sun_shadow_constants.h"
 
 namespace GS
 {
@@ -27,22 +28,6 @@ public:
 	uint32_t updates() const { return m_updates; }
 
 private:
-	// cbuffer TerrainSunShadowBuffer в Shaders/terrain_sun_shadow.cs
-	struct alignas( 16 ) Parameters
-	{
-		DirectX::XMFLOAT2 sunAzimuth;
-		float sunSlope;
-		float texelSize;
-		float heightMultiplier;
-		float heightOffset;
-		float worldSize;
-		float maxHeight;
-		float mapTexel;
-		float startDistance;
-		uint32_t size;
-		float padding;
-	};
-	static_assert( sizeof( Parameters ) == 48, "TerrainSunShadowBuffer layout" );
 
 	// Сдвиг источника, после которого карта считается заново: край тени горы в 500 м смещается на ~0,4 м — меньше текселя
 	static constexpr float changeAngle = 0.05f;	// градусы

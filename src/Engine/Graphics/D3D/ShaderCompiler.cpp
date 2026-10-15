@@ -2,6 +2,7 @@
 #include "GpuResources.h"
 #include "DirectX.h"
 #include <dxcapi.h>
+#include <d3d12shader.h>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -53,6 +54,88 @@ const wchar_t* const reproducibleArguments[] =
 {
 	L"-O3", L"-Gis", L"-Qstrip_reflect", L"-HV", L"2021",
 };
+
+uint32_t alignUp( uint32_t value, uint32_t alignment )
+{
+	return ( value + alignment - 1 ) / alignment * alignment;
+}
+
+// Тип поля в C++ (shader_constants.h): скаляры и векторы — по 4 байта без выравнивания, матрица 4 × 4 — XMMATRIX
+// (выравнивание 16), структура — alignas( 16 ) с теми же полями подряд
+struct CppField
+{
+	uint32_t size = 0;
+	uint32_t alignment = 4;
+	std::string problem;	// раскладка внутри структуры расходится с HLSL или у типа нет пары в C++
+};
+
+// Следующее поле name типа type — в C++ после end: смещение там должно совпасть с HLSL (offset); false — нет (problem)
+bool placeField( ID3D12ShaderReflectionType* type, const std::string& name, uint32_t offset, uint32_t& end, std::string& problem );
+
+CppField cppField( ID3D12ShaderReflectionType* type, const std::string& name )
+{
+	CppField field;
+	D3D12_SHADER_TYPE_DESC desc = {};
+	if( FAILED( type->GetDesc( &desc ) ) )
+		field.problem = name + ": no reflection";
+	else if( desc.Class == D3D_SVC_SCALAR || desc.Class == D3D_SVC_VECTOR )
+		field.size = 4 * desc.Columns;
+	else if( ( desc.Class == D3D_SVC_MATRIX_COLUMNS || desc.Class == D3D_SVC_MATRIX_ROWS ) && desc.Rows == 4 && desc.Columns == 4 )
+	{
+		field.size = 64;
+		field.alignment = 16;
+	}
+	else if( desc.Class == D3D_SVC_STRUCT )
+	{
+		uint32_t end = 0;
+		for( UINT i = 0; i < desc.Members && field.problem.empty(); ++i )
+		{
+			ID3D12ShaderReflectionType* member = type->GetMemberTypeByIndex( i );
+			D3D12_SHADER_TYPE_DESC memberDesc = {};
+			member->GetDesc( &memberDesc );
+			placeField( member, name + "." + type->GetMemberTypeName( i ), memberDesc.Offset, end, field.problem );
+		}
+		field.size = alignUp( end, 16 );
+		field.alignment = 16;
+	}
+	else
+		field.problem = name + ": the type has no C++ counterpart in shader_constants.h";
+	return field;
+}
+
+bool placeField( ID3D12ShaderReflectionType* type, const std::string& name, uint32_t offset, uint32_t& end, std::string& problem )
+{
+	const CppField field = cppField( type, name );
+	D3D12_SHADER_TYPE_DESC desc = {};
+	type->GetDesc( &desc );
+	if( !field.problem.empty() )
+		problem = field.problem;
+	else if( desc.Elements > 0 && field.size % 16 != 0 )
+		problem = name + ": array elements are 16 bytes apart in HLSL, " + std::to_string( field.size ) + " in C++ — use 4-component elements";
+	else if( alignUp( end, field.alignment ) != offset )
+		problem = name + " is at offset " + std::to_string( offset ) + " in HLSL and " + std::to_string( alignUp( end, field.alignment ) ) +
+				  " in C++: a vector must not cross a 16-byte boundary — pad the previous fields";
+	else
+		end = offset + field.size * std::max( desc.Elements, 1u );
+	return problem.empty();
+}
+
+// Чем раскладка буфера констант по правилам HLSL отличается от тех же полей подряд в C++; пусто — совпадает
+std::string constantLayoutProblem( ID3D12ShaderReflectionConstantBuffer* buffer, const D3D12_SHADER_BUFFER_DESC& desc )
+{
+	std::string problem;
+	uint32_t end = 0;	// конец предыдущего поля в C++
+	for( UINT i = 0; i < desc.Variables && problem.empty(); ++i )
+	{
+		ID3D12ShaderReflectionVariable* variable = buffer->GetVariableByIndex( i );
+		D3D12_SHADER_VARIABLE_DESC field = {};
+		variable->GetDesc( &field );
+		placeField( variable->GetType(), field.Name, field.StartOffset, end, problem );
+	}
+	if( problem.empty() && alignUp( end, 16 ) != desc.Size )
+		problem = "size " + std::to_string( desc.Size ) + " in HLSL and " + std::to_string( alignUp( end, 16 ) ) + " in C++";
+	return problem;
+}
 
 }
 
@@ -150,6 +233,7 @@ bool ShaderCompiler::compile( const std::string& file, const std::string& entry,
 			if( !bytecode.empty() )
 			{
 				++m_fromCache;
+				checkConstantLayouts( bytecode, file );
 				return true;
 			}
 		}
@@ -227,6 +311,7 @@ bool ShaderCompiler::compile( const std::string& file, const std::string& entry,
 	object->Release();
 	result->Release();
 	++m_compiled;
+	checkConstantLayouts( bytecode, file );
 
 	std::ofstream cached( cachePath, std::ios::binary );
 	if( cached )
@@ -234,9 +319,35 @@ bool ShaderCompiler::compile( const std::string& file, const std::string& entry,
 	return true;
 }
 
+void ShaderCompiler::checkConstantLayouts( const std::vector<uint8_t>& bytecode, const std::string& file )
+{
+	const DxcBuffer buffer = { bytecode.data(), bytecode.size(), 0 };
+	ID3D12ShaderReflection* reflection = nullptr;
+	if( FAILED( m_utils->CreateReflection( &buffer, __uuidof( ID3D12ShaderReflection ), reinterpret_cast<void**>( &reflection ) ) ) )
+		return;		// отражение вырезано (Release, шейдеры reproducible)
+	D3D12_SHADER_DESC desc = {};
+	if( SUCCEEDED( reflection->GetDesc( &desc ) ) )
+	{
+		for( UINT i = 0; i < desc.ConstantBuffers; ++i )
+		{
+			ID3D12ShaderReflectionConstantBuffer* constants = reflection->GetConstantBufferByIndex( i );
+			D3D12_SHADER_BUFFER_DESC constantsDesc = {};
+			// Буфер, поля которого шейдер не читает, приходит без имени и полей — его проверит другой шейдер
+			if( FAILED( constants->GetDesc( &constantsDesc ) ) || constantsDesc.Type != D3D_CT_CBUFFER ||
+				constantsDesc.Variables == 0 || !m_checkedLayouts.insert( constantsDesc.Name ).second )
+				continue;
+			const std::string problem = constantLayoutProblem( constants, constantsDesc );
+			if( !problem.empty() )
+				LOG( "Constant buffer " + std::string( constantsDesc.Name ) + " (" + file + ") differs from C++: " + problem );
+		}
+	}
+	reflection->Release();
+}
+
 void ShaderCompiler::logSummary() const
 {
-	LOG( "Shaders: " + std::to_string( m_compiled ) + " compiled by DXC, " + std::to_string( m_fromCache ) + " from cache/shaders" );
+	LOG( "Shaders: " + std::to_string( m_compiled ) + " compiled by DXC, " + std::to_string( m_fromCache ) + " from cache/shaders" +
+		 ( m_checkedLayouts.empty() ? "" : ", constant buffer layouts checked against C++: " + std::to_string( m_checkedLayouts.size() ) ) );
 }
 
 uint64_t ShaderCompiler::shadersStamp()

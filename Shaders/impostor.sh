@@ -11,23 +11,7 @@
 
 #include "slots.h"
 
-// ImpostorMaterial::Params
-cbuffer ImpostorBuffer : register( SLOT_CB_MATERIAL )
-{
-	float4 g_impostorBounds;		// сфера модели: xyz — центр в её координатах, w — радиус
-	float4 g_impostorExtents;		// xyz — половины ящика LOD0 модели (центр — центр сферы): по ним размер карточки
-	float4 g_impostorTransmission;	// xyz — цвет пропускания (множитель альбедо), w — множитель доли
-	// x — доля прошедшего света, рассеянная вперёд пиком, y — ширина пика (TransmissionForward, TransmissionForwardRoughness
-	// секции модели, которая пропускает свет), zw — запас
-	float4 g_impostorTransmissionForward;
-	uint   g_impostorFrames;		// кадров по стороне сетки
-	float  g_impostorAlphaCutoff;
-	float  g_impostorRoughness;
-	float  g_impostorOcclusion;		// сила затенения окружающего света по запечённому (G глубины кадров)
-	// x — затемнение низа: цвет у корня × (1 − x), к верху модели — без затемнения (ImpostorMaterial::setShading);
-	// y — высота верха модели над её началом координат (ящик LOD0); z — сила самотени кроны (impostor.ps), w — запас
-	float4 g_impostorShade;
-};
+#include "impostor_constants.h"
 
 // Выход вершинного шейдера: карточка перед сферой (position), её точка в плоскости вида через центр сферы
 // (worldPosition), UV в трёх кадрах, их срезы и веса, поворот экземпляра; для точки поверхности — направление на

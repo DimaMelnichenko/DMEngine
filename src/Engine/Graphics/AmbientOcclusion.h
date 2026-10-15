@@ -5,6 +5,7 @@
 #include "DMComputeShader.h"
 #include "RenderView.h"
 #include "Level\LevelSettings.h"
+#include "Shaders\ambient_occlusion_constants.h"
 
 namespace GS
 {
@@ -30,23 +31,6 @@ public:
 	DirectX::XMFLOAT4 frameParameters( const Settings& settings, bool active, bool show ) const;
 
 private:
-	// cbuffer AmbientOcclusionBuffer в Shaders/gtao.cs
-	struct alignas( 16 ) Parameters
-	{
-		DirectX::XMFLOAT2 tanHalfFov;
-		DirectX::XMFLOAT2 depthLinearize;
-		uint32_t fullSize[2];
-		uint32_t halfSize[2];
-		float radius;
-		float falloffMul;
-		float falloffAdd;
-		float pixelsPerMeter;
-		float finalPower;
-		float maxPixelRadius;
-		float depthTolerance;
-		float padding;
-	};
-	static_assert( sizeof( Parameters ) == 64, "AmbientOcclusionBuffer layout" );
 
 	DMComputeShader m_shader;
 	DMComputeShader m_denoiseShader;

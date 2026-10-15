@@ -12,14 +12,7 @@
 DM_SRV( Texture2D<float4>, g_sceneColor, 0 );
 DM_SRV( Texture2D<float4>, g_bloom, 1 );	// самый крупный уровень bloom (половина кадра), уже с добавленными меньшими
 
-// Раскладка — PostProcess::Parameters
-cbuffer PostProcessBuffer : register( SLOT_CB_PASS )
-{
-	int   g_tonemapper;		// 0 — без тонмаппинга, 1 — ACES, 2 — AgX
-	float g_bloomScale;		// Bloom Intensity / сумма весов уровней: уровень хранит взвешенную сумму всех уровней
-	float g_purkinjeShift;	// сила ночного зрения 0…1
-	float g_padding;
-};
+#include "tonemap_constants.h"
 
 struct PixelInputType
 {

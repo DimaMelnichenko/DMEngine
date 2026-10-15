@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Material.h"
+#include "Shaders\pbr_material_constants.h"
 
 namespace GS
 {
@@ -36,39 +37,6 @@ public:
 	static constexpr float defaultTransmissionForwardRoughness = 0.775f;
 
 private:
-	// Константный буфер b2 (PS и VS), раскладка как у PBRMaterialBuffer в Shaders/pbr_material.sh
-	struct alignas( 16 ) PSParam
-	{
-		DirectX::XMFLOAT4 baseColorFactor;
-		DirectX::XMFLOAT3 emissiveFactor;
-		float metallic;
-		float roughness;
-		float normalScale;
-		float normalGreenUp;
-		float occlusionStrength;
-		float alphaCutoff;
-		float windWeight;	// отклик на ветер уровня; вершинному шейдеру (Shaders/wind.sh)
-		float specularFactor;	// F0 диэлектрика = 0,04 × множитель (KHR_materials_specular)
-		float transmissionForward;	// доля прошедшего света, рассеянная вперёд пиком (Shaders/lighting.sh)
-		DirectX::XMFLOAT3 diffuseTransmissionColorFactor;
-		float diffuseTransmissionFactor;
-		// Ветер дерева (материал PBRTree, define WIND_TREE, Shaders/wind.sh): углы — радианы при силе ветра 1, частоты — Гц
-		float windGlobalAngle;
-		float windGlobalExponent;
-		float windGlobalFrequency;
-		float windBranchAngle;
-		float windBranchFrequency;
-		float windTwigAngle;
-		float windTwigFrequency;
-		float windRippleAmplitude;	// м
-		float windRippleFrequency;
-		float transmissionForwardRoughness;	// ширина пика пропускания вперёд
-		// Следы в траве (Shaders/foliage_interaction.sh): отклик на след и длина изгиба от корня, м модели
-		float trampleWeight;
-		float trampleBendLength;
-	};
-	static_assert( sizeof( PSParam ) == 128, "PBRMaterialBuffer layout" );
-
 	// Перестановки вершинного шейдера с признаками features (instanced, placed, lodDither): цвет — с отсечением по
 	// альфе и без, при смене LOD — ещё с отсечением дизерингом и без (после depth prepass); «только глубина» — с
 	// отсечением по альфе и без (Masked), при смене LOD — всегда с дизерингом
@@ -85,7 +53,7 @@ private:
 	bool m_instancing = false;	// вершинный шейдер из базы без экземпляров (INST_*): есть вариант INST_MATRIX
 	bool m_placed = false;		// перестановки экземпляров расстановки есть
 
-	Buffer m_psCB;
+	Buffer m_psCB;	// PBRMaterialBuffer (b2): пиксельному и вершинному шейдеру
 };
 
 }

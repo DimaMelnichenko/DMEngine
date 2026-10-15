@@ -13,17 +13,7 @@
 #include "height_fog.sh"
 #include "bindless.sh"
 
-// Раскладка — VolumetricFog::Parameters
-cbuffer VolumetricFogBuffer : register( b4 )
-{
-	matrix g_previousViewProjection;	// главный вид прошлого кадра
-	float3 g_jitter;			// сдвиг точки в ячейке этого кадра, 0…1
-	float  g_historyWeight;		// доля прошлого кадра; 0 — смена плана, прошлого нет
-	uint3  g_gridSize;
-	float  g_historyScale;		// нормировка прошлого кадра / нынешняя
-	float  g_inverseScale;		// 1 / cb_fogScale: объём хранит свет, делённый на нормировку
-	float3 g_fogPadding;
-};
+#include "volumetric_fog_constants.h"
 
 DM_SRV( Texture3D<float4>, g_history, 0 );		// свет и плотность ячеек прошлого кадра
 DM_SRV( Texture3D<float4>, g_lighting, 1 );		// свет и плотность ячеек этого кадра (mainIntegrate)

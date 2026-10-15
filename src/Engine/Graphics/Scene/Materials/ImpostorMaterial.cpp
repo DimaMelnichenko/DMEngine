@@ -305,10 +305,10 @@ void ImpostorMaterial::setShading( float baseShade, float selfShadow )
 {
 	baseShade = std::min( std::max( baseShade, 0.0f ), 1.0f );
 	selfShadow = std::min( std::max( selfShadow, 0.0f ), 1.0f );
-	if( m_params.shade.x == baseShade && m_params.shade.z == selfShadow )
+	if( m_params.impostorShade.x == baseShade && m_params.impostorShade.z == selfShadow )
 		return;
-	m_params.shade.x = baseShade;
-	m_params.shade.z = selfShadow;
+	m_params.impostorShade.x = baseShade;
+	m_params.impostorShade.z = selfShadow;
 	if( m_constantBuffer.valid() )
 		DMD3D::instance().updateBuffer( m_constantBuffer, &m_params, sizeof( m_params ) );
 }
@@ -327,8 +327,8 @@ RenderView ImpostorMaterial::frameView( uint32_t x, uint32_t y ) const
 	// Направление кадра — точка сетки на полуоктаэдре, базис — как impostorFrameBasis в Shaders/impostor.sh
 	const FrameBasis basis = frameBasis( x, y, frames );
 	const XMVECTOR direction = basis.direction;
-	const float radius = m_params.bounds.w;
-	const XMVECTOR center = XMVectorSet( m_params.bounds.x, m_params.bounds.y, m_params.bounds.z, 1.0f );
+	const float radius = m_params.impostorBounds.w;
+	const XMVECTOR center = XMVectorSet( m_params.impostorBounds.x, m_params.impostorBounds.y, m_params.impostorBounds.z, 1.0f );
 	const XMVECTOR eye = XMVectorAdd( center, XMVectorScale( direction, 2.0f * radius ) );
 
 	RenderView view;
@@ -357,15 +357,15 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	const BoundingBox& box = lod0->bounds;
 	// Сфера с запасом: кадр не обрезает кончики ветвей
 	const float radius = XMVectorGetX( XMVector3Length( XMLoadFloat3( &box.Extents ) ) ) * 1.02f;
-	m_params.bounds = XMFLOAT4( box.Center.x, box.Center.y, box.Center.z, radius );
-	m_params.extents = XMFLOAT4( box.Extents.x * 1.02f, box.Extents.y * 1.02f, box.Extents.z * 1.02f, 0.0f );
-	m_params.transmission = XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );
-	m_params.transmissionForward = XMFLOAT4( PBRMaterial::defaultTransmissionForward, PBRMaterial::defaultTransmissionForwardRoughness, 0.0f, 0.0f );
-	m_params.frames = frames;
-	m_params.alphaCutoff = 0.5f;
-	m_params.roughness = 0.8f;
-	m_params.occlusion = std::min( std::max( settings.occlusion, 0.0f ), 1.0f );
-	m_params.shade = XMFLOAT4( m_params.shade.x, box.Center.y + box.Extents.y, m_params.shade.z, 0.0f );
+	m_params.impostorBounds = XMFLOAT4( box.Center.x, box.Center.y, box.Center.z, radius );
+	m_params.impostorExtents = XMFLOAT4( box.Extents.x * 1.02f, box.Extents.y * 1.02f, box.Extents.z * 1.02f, 0.0f );
+	m_params.impostorTransmission = XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );
+	m_params.impostorTransmissionForward = XMFLOAT4( PBRMaterial::defaultTransmissionForward, PBRMaterial::defaultTransmissionForwardRoughness, 0.0f, 0.0f );
+	m_params.impostorFrames = frames;
+	m_params.impostorAlphaCutoff = 0.5f;
+	m_params.impostorRoughness = 0.8f;
+	m_params.impostorOcclusion = std::min( std::max( settings.occlusion, 0.0f ), 1.0f );
+	m_params.impostorShade = XMFLOAT4( m_params.impostorShade.x, box.Center.y + box.Extents.y, m_params.impostorShade.z, 0.0f );
 
 	// Секции LOD0 и их материалы с вариантом запекания; цвет пропускания — у секции, которая пропускает свет (хвоя)
 	std::vector<std::pair<DMModel::Section*, Material*>> sections;
@@ -383,11 +383,11 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 			params.exists( "DiffuseTransmissionColorFactor" ) )
 		{
 			const XMFLOAT3 tint = params["DiffuseTransmissionColorFactor"].data<XMFLOAT3>();
-			m_params.transmission = XMFLOAT4( tint.x, tint.y, tint.z, 1.0f );
+			m_params.impostorTransmission = XMFLOAT4( tint.x, tint.y, tint.z, 1.0f );
 			if( params.exists( "TransmissionForward" ) )
-				m_params.transmissionForward.x = params["TransmissionForward"].data<float>();
+				m_params.impostorTransmissionForward.x = params["TransmissionForward"].data<float>();
 			if( params.exists( "TransmissionForwardRoughness" ) )
-				m_params.transmissionForward.y = params["TransmissionForwardRoughness"].data<float>();
+				m_params.impostorTransmissionForward.y = params["TransmissionForwardRoughness"].data<float>();
 		}
 	}
 
@@ -547,12 +547,12 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 			LOG( name() + ": can't downsample frames" );
 			return false;
 		}
-		if( m_params.occlusion > 0.0f )
+		if( m_params.impostorOcclusion > 0.0f )
 			bakeOcclusion( colorImage, offsetImage, frames, frameSize );
 		ImageMips::dilateTransparent( normalImage, 8, &colorImage );
 		ImageMips::dilateTransparent( offsetImage, 8, &colorImage );
 		ImageMips::dilateTransparent( colorImage, 8 );
-		if( !ImageMips::generate( colorImage, m_params.alphaCutoff ) || !ImageMips::generate( normalImage ) ||
+		if( !ImageMips::generate( colorImage, m_params.impostorAlphaCutoff ) || !ImageMips::generate( normalImage ) ||
 			!ImageMips::generate( offsetImage ) )
 		{
 			LOG( name() + ": can't build mips" );
@@ -584,7 +584,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	}
 
 	BufferDesc constants;
-	constants.size = sizeof( Params );
+	constants.size = sizeof( ImpostorBuffer );
 	constants.usage = BufferUsage::constant;
 	return DMD3D::instance().createBuffer( constants, &m_params, m_constantBuffer );
 }

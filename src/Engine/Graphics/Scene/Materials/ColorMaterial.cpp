@@ -12,7 +12,7 @@ ColorMaterial::ColorMaterial( uint32_t id, const std::string& name ) : Material(
 
 bool ColorMaterial::initialize()
 {
-	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_constantBuffer ) )
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( ColorMaterialBuffer ), m_constantBuffer ) )
 		return false;
 
 	// Одна фаза на все вызовы: ключ без признаков
@@ -27,10 +27,10 @@ std::vector<VertexElement> ColorMaterial::initLayouts()
 
 void ColorMaterial::setParams( const PropertyContainer& params )
 {
-	Device::updateResource<XMFLOAT4>( m_constantBuffer, [&]( XMFLOAT4& v )
+	Device::updateResource<ColorMaterialBuffer>( m_constantBuffer, [&]( ColorMaterialBuffer& data )
 	{
 		const XMFLOAT4* color = params.exists( "Color" ) ? params["Color"].dataPtr<XMFLOAT4>() : nullptr;
-		v = color ? *color : XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );
+		data.objectColor = color ? *color : XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );
 	} );
 
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );

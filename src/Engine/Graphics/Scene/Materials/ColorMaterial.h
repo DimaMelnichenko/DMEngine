@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Material.h"
+#include "Shaders\color_material_constants.h"
 
 namespace GS
 {

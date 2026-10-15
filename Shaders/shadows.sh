@@ -13,28 +13,8 @@
 #include "cloud_shadow.sh"
 #include "bindless.sh"
 
-#define SHADOW_CASCADE_COUNT 4
 
-// Раскладка — ShadowCascades::ShaderShadowConstants
-cbuffer ShadowConstants : register( SLOT_CB_SHADOW )
-{
-	matrix g_cascadeViewProjection[SHADOW_CASCADE_COUNT];
-	matrix g_farViewProjection;	// дальний каскад: срез SHADOW_CASCADE_COUNT карты
-	float4 g_cascadeSplits;		// дальняя граница каскада по глубине взгляда, м
-	float4 g_cascadeTexelSize;	// размер текселя каскада в мире, м
-	float4 g_farShadow;			// x — тексель дальнего каскада, м; y — 1: он есть
-	// Тень рельефа дальше каскадов: x — 1 / сторона карты, м⁻¹ (0 — карты нет); y — тангенс угла полутени; z — наименьшая
-	// полутень, м
-	float4 g_terrainShadow;
-	float  g_cascadeTransition;	// доля каскада в его конце, где он смешивается со следующим
-	float  g_shadowFadeStart;	// отсюда тень плавно уходит…
-	float  g_shadowDistance;	// …и здесь заканчивается (Dynamic Shadow Distance), м
-	float  g_shadowNormalBias;	// сдвиг точки по нормали, в текселях каскада
-	int    g_shadowSunIndex;	// индекс солнца в g_lights, −1 — теней нет
-	int    g_showCascades;		// 1 — подкрасить каскады
-	float  g_shadowMapSize;		// размер среза, текселей
-	float  g_shadowDepthBias;	// сдвиг точки к солнцу, в текселях каскада
-};
+#include "shadow_constants.h"
 
 DM_SRV( Texture2DArray<float>, g_shadowMap, SLOT_SHADOW_MAP );
 // x — запас земли над краем тени, м (отрицательный — земля в тени); y — расстояние до заслона, м; z — высота земли, м

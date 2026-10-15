@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,10 @@ private:
 	ShaderCompiler() = default;
 	bool initialize();
 	uint64_t sourcesStamp() const;
+	// Раскладка констант по правилам HLSL — та же, что у тех же полей подряд в C++ (общие описания
+	// Shaders\shader_constants.h): поле не пересекает границу 16 байт, элементы массивов — по 16 байт. Проверка — по
+	// отражению байткода (оно есть в Debug, -Qstrip_reflect его вырезает); расхождение — строка в лог, раз на буфер
+	void checkConstantLayouts( const std::vector<uint8_t>& bytecode, const std::string& file );
 
 	IDxcCompiler3* m_compiler = nullptr;
 	IDxcUtils* m_utils = nullptr;
@@ -47,4 +52,5 @@ private:
 	uint64_t m_stamp = 0;
 	uint32_t m_compiled = 0;
 	uint32_t m_fromCache = 0;
+	std::set<std::string> m_checkedLayouts;	// буферы констант, раскладка которых проверена
 };

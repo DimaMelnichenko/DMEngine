@@ -13,30 +13,11 @@
 #include "bindless.sh"
 
 #define HISTOGRAM_BINS 64
-#define MAX_CURVE_KEYS 8	// PostProcess::maxCurveKeys
 
 DM_SRV( ByteAddressBuffer, g_histogram, 0 );
 DM_UAV( RWStructuredBuffer<ExposureState>, g_state, 0 );
 
-// Раскладка — PostProcess::AdaptParameters
-cbuffer AdaptBuffer : register( b4 )
-{
-	int   g_meteringMode;			// 0 — Manual, 1 — Auto Exposure Histogram
-	float g_manualEV100;
-	float g_exposureCompensation;	// EV
-	float g_deltaTime;				// с
-	float g_minEV100;
-	float g_maxEV100;
-	float g_lowPercent;				// доля 0…1: темнее — не в среднем
-	float g_highPercent;			// доля 0…1: ярче — не в среднем
-	float g_speedUp;				// скорость адаптации, 1/с
-	float g_speedDown;
-	float g_minLog2Luminance;		// диапазон гистограммы — как у exposure_histogram.cs
-	float g_log2LuminanceRange;
-	int   g_curveKeyCount;			// ключей кривой компенсации; 0 — без кривой
-	float3 g_adaptPadding;
-	float4 g_curveKeys[MAX_CURVE_KEYS / 2];	// по два ключа (EV100 сцены, поправка EV), по возрастанию EV100
-};
+#include "exposure_adapt_constants.h"
 
 float2 curveKey( int index )
 {

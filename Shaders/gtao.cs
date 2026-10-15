@@ -12,21 +12,7 @@
 
 #include "bindless.sh"
 
-cbuffer AmbientOcclusionBuffer : register( b4 )
-{
-	float2 g_tanHalfFov;		// тангенсы половин угла обзора по X и Y
-	float2 g_depthLinearize;	// _33 и _43 проекции: глубина вида z = _43 / ( d − _33 ), d — обратная глубина буфера
-	uint2  g_fullSize;			// буфер глубины, пикселей
-	uint2  g_halfSize;			// затенение, пикселей
-	float  g_radius;			// радиус, м
-	float  g_falloffMul;		// спад веса точки к краю радиуса: saturate( расстояние × mul + add )
-	float  g_falloffAdd;
-	float  g_pixelsPerMeter;	// пикселей полного кадра на метр на глубине 1 м: (высота / 2) / tg(половины угла по Y)
-	float  g_finalPower;		// видимость^power: сильнее в щелях, слабее на открытом
-	float  g_maxPixelRadius;	// радиус на экране не больше, пикселей полного кадра (кэш и цена у самой камеры)
-	float  g_depthTolerance;	// фильтр: доля глубины, при которой сосед ещё та же поверхность
-	float  g_padding;
-};
+#include "ambient_occlusion_constants.h"
 
 DM_SRV( Texture2D<float>, g_depth, 0 );		// глубина сцены (обратная: 1 — у камеры, 0 — небо)
 DM_SRV( Texture2D<float2>, g_noisy, 1 );		// mainDenoise: результат main

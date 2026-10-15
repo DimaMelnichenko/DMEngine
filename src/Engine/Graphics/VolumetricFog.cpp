@@ -43,7 +43,7 @@ bool VolumetricFog::initialize( const std::optional<Settings>& settings )
 {
 	if( !m_lightShader.Initialize( "Shaders\\volumetric_fog.cs", "mainLight" ) ||
 		!m_integrateShader.Initialize( "Shaders\\volumetric_fog.cs", "mainIntegrate" ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constants ) ||
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( VolumetricFogBuffer ), m_constants ) ||
 		!createVolumes() )
 		return false;
 
@@ -150,15 +150,15 @@ void VolumetricFog::render( const RenderView& view, const ShaderView& shadowMap 
 	m_current ^= 1;
 
 	// Раскладка — VolumetricFogBuffer в Shaders/volumetric_fog.cs
-	Parameters params = {};
+	VolumetricFogBuffer params = {};
 	params.previousViewProjection = XMMatrixTranspose( m_previousViewProjection );
 	const uint32_t jitter = m_jitterIndex % jitterPeriod + 1;
 	params.jitter = XMFLOAT3( halton( jitter, 2 ), halton( jitter, 3 ), halton( jitter, 5 ) );
 	params.historyWeight = m_historyValid ? historyWeight : 0.0f;
-	std::copy( std::begin( m_gridSize ), std::end( m_gridSize ), params.gridSize );
+	params.gridSize = XMUINT3( m_gridSize[0], m_gridSize[1], m_gridSize[2] );
 	params.historyScale = m_previousScale / m_scale;
 	params.inverseScale = 1.0f / m_scale;
-	Device::updateResourceData<Parameters>( m_constants, params );
+	Device::updateResourceData<VolumetricFogBuffer>( m_constants, params );
 
 	DMD3D& d3d = DMD3D::instance();
 	// Свет в ячейках: карта теней — после её прохода и привязки, прошлый кадр — для смешения

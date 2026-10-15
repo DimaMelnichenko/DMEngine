@@ -37,10 +37,10 @@ bool PostProcess::initialize( const Settings& settings )
 		return false;
 
 	DMD3D& d3d = DMD3D::instance();
-	if( !d3d.createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
-		!d3d.createShaderConstantBuffer( sizeof( BloomParameters ), m_bloomConstants ) ||
-		!d3d.createShaderConstantBuffer( sizeof( HistogramParameters ), m_histogramConstants ) ||
-		!d3d.createShaderConstantBuffer( sizeof( AdaptParameters ), m_adaptConstants ) )
+	if( !d3d.createShaderConstantBuffer( sizeof( PostProcessBuffer ), m_constantBuffer ) ||
+		!d3d.createShaderConstantBuffer( sizeof( BloomBuffer ), m_bloomConstants ) ||
+		!d3d.createShaderConstantBuffer( sizeof( HistogramBuffer ), m_histogramConstants ) ||
+		!d3d.createShaderConstantBuffer( sizeof( AdaptBuffer ), m_adaptConstants ) )
 		return false;
 
 	if( !createBloomTargets() )
@@ -166,7 +166,7 @@ void PostProcess::render( const ShaderView& sceneColor, GpuProfiler& profiler, f
 	profiler.beginScope( "Tonemap" );
 	d3d.beginPass( PassDesc{ "Tonemap", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight(),
 							 { { &sceneColor, "scene color" }, { &m_bloom[0].srv(), "bloom 1/2" }, { &m_exposureSRV, "exposure" } } } );
-	Parameters params = {};
+	PostProcessBuffer params = {};
 	params.tonemapper = static_cast<int32_t>( current.tonemapper );
 	// Уровень 1/2 хранит сумму уровней с весами 1, f, f², …: деление на неё — Bloom Intensity как доля энергии
 	float weightSum = 0.0f;
@@ -174,7 +174,7 @@ void PostProcess::render( const ShaderView& sceneColor, GpuProfiler& profiler, f
 		weightSum += std::pow( bloomLevelFalloff, static_cast<float>( level ) );
 	params.bloomScale = std::max( current.bloomIntensity, 0.0f ) / weightSum;
 	params.purkinjeShift = std::clamp( current.purkinjeShift, 0.0f, 1.0f );
-	Device::updateResourceData<Parameters>( m_constantBuffer, params );
+	Device::updateResourceData<PostProcessBuffer>( m_constantBuffer, params );
 	d3d.setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
 	d3d.setSRV( 0, sceneColor );
 	d3d.setSRV( 1, m_bloom[0].srv() );
@@ -200,8 +200,8 @@ void PostProcess::renderExposure( const ShaderView& sceneColor, float deltaTime 
 	{
 		d3d.clearStorageView( m_histogramUAV );
 
-		HistogramParameters histogram = { d3d.backBufferWidth(), d3d.backBufferHeight(), minLog2Luminance, log2LuminanceRange };
-		Device::updateResourceData<HistogramParameters>( m_histogramConstants, histogram );
+		HistogramBuffer histogram = { XMUINT2( d3d.backBufferWidth(), d3d.backBufferHeight() ), minLog2Luminance, log2LuminanceRange };
+		Device::updateResourceData<HistogramBuffer>( m_histogramConstants, histogram );
 		d3d.setConstantBuffer( 4, m_histogramConstants );
 		d3d.setSRV( 0, sceneColor );
 		d3d.setSRV( SLOT_EXPOSURE, m_exposureSRV );
@@ -210,7 +210,7 @@ void PostProcess::renderExposure( const ShaderView& sceneColor, float deltaTime 
 		m_histogramShader.dispatchGroups( ( d3d.backBufferWidth() + 31 ) / 32, ( d3d.backBufferHeight() + 31 ) / 32, 1 );
 	}
 
-	AdaptParameters adapt = {};
+	AdaptBuffer adapt = {};
 	adapt.meteringMode = static_cast<int32_t>( current.meteringMode );
 	adapt.manualEV100 = current.manualEV100;
 	adapt.exposureCompensation = current.exposureCompensation;
@@ -236,7 +236,7 @@ void PostProcess::renderExposure( const ShaderView& sceneColor, float deltaTime 
 	}
 	// Адаптация пишет состояние экспозиции: beginPass снимает его со входов пиксельных шейдеров (t105)
 	d3d.beginPass( PassDesc{ "Exposure adapt", {}, {}, 0, 0, { { &m_histogramSRV, "histogram" } }, { { &m_exposureUAV, "exposure" } } } );
-	Device::updateResourceData<AdaptParameters>( m_adaptConstants, adapt );
+	Device::updateResourceData<AdaptBuffer>( m_adaptConstants, adapt );
 	d3d.setConstantBuffer( 4, m_adaptConstants );
 	d3d.setSRV( 0, m_histogramSRV );
 	m_adaptShader.setUAVBuffer( 0, m_exposureUAV );
@@ -259,7 +259,7 @@ void PostProcess::readBackExposure()
 void PostProcess::renderBloom( const ShaderView& sceneColor, float threshold )
 {
 	DMD3D& d3d = DMD3D::instance();
-	BloomParameters params = {};
+	BloomBuffer params = {};
 	params.threshold = threshold;
 	params.radius = 1.0f;
 	params.weight = bloomLevelFalloff;
@@ -286,11 +286,11 @@ void PostProcess::renderBloom( const ShaderView& sceneColor, float threshold )
 }
 
 void PostProcess::drawPass( const char* name, FullscreenShader& shader, const RenderTarget& target,
-							const ShaderView& source, BloomParameters params, BlendState blend )
+							const ShaderView& source, BloomBuffer params, BlendState blend )
 {
 	DMD3D& d3d = DMD3D::instance();
 	d3d.beginPass( PassDesc{ name, { { &target.target(), "bloom level" } }, {}, target.width(), target.height(), { { &source, "source" } } } );
-	Device::updateResourceData<BloomParameters>( m_bloomConstants, params );
+	Device::updateResourceData<BloomBuffer>( m_bloomConstants, params );
 	d3d.setConstantBuffer( SLOT_CB_PASS, m_bloomConstants );
 	d3d.setSRV( 0, source );
 

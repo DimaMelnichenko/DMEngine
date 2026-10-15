@@ -93,7 +93,7 @@ bool PBRMaterial::initialize()
 	if( vertex->defines.find( "INST_POS" ) != std::string::npos && !enablePlacedInstances() )
 		return false;
 
-	DMD3D::instance().createShaderConstantBuffer( sizeof( PSParam ), m_psCB );
+	DMD3D::instance().createShaderConstantBuffer( sizeof( PBRMaterialBuffer ), m_psCB );
 
 	return true;
 }
@@ -203,7 +203,7 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	DMD3D::instance().setSRV( 4, materialTexture( params, "Emissive", white ) );
 	DMD3D::instance().setSRV( 5, materialTexture( params, "DiffuseTransmissionColor", white ) );
 
-	PSParam param;
+	PBRMaterialBuffer param;
 	param.baseColorFactor = materialValue( params, "BaseColorFactor", XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f ) );
 	param.emissiveFactor = materialValue( params, "EmissiveFactor", XMFLOAT3( 0.0f, 0.0f, 0.0f ) );
 	param.metallic = materialValue( params, "Metallic", 0.0f );
@@ -230,7 +230,7 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.trampleWeight = materialValue( params, "TrampleWeight", 1.0f );
 	param.trampleBendLength = materialValue( params, "TrampleBendLength", 0.25f );
 
-	Device::updateResourceData<PSParam>( m_psCB, param );
+	Device::updateResourceData<PBRMaterialBuffer>( m_psCB, param );
 	// b2 читают и пиксельный, и вершинный шейдер (отклик на ветер)
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_psCB );
 }

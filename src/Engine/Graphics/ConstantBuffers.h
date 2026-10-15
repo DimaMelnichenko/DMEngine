@@ -3,6 +3,7 @@
 #include "Utils\utilites.h"
 #include "D3D\GpuResources.h"
 #include "Scene\RenderView.h"
+#include "Shaders\frame_constants.h"
 
 namespace GS
 {
@@ -84,53 +85,6 @@ public:
 	void setPerObjectBuffer( const DirectX::XMMATRIX& world, float lodDither = 0.0f );
 
 private:
-	struct alignas( 16 ) ShaderFrameConstant
-	{
-		DirectX::XMMATRIX view;
-		DirectX::XMMATRIX viewInverse;
-		DirectX::XMMATRIX projection;
-		DirectX::XMMATRIX viewProjection;
-		DirectX::XMFLOAT3 cameraPosition;
-		float gameTime;
-		DirectX::XMFLOAT3 viewDirection;
-		float deltaTime;
-		float lightsCount;
-		DirectX::XMFLOAT3 lodOrigin;
-		float skyLightScale;
-		float aerialPerspectiveDistance;
-		float aerialPerspectiveScale;
-		float skyScale;
-		DirectX::XMFLOAT2 windDirection;
-		float windStrength;
-		float windSpeed;
-		float windGustMin;
-		float windGustMax;
-		float windGustSize;
-		float windFieldScale;
-		DirectX::XMFLOAT4 fogLayer0;
-		DirectX::XMFLOAT4 fogLayer1;
-		DirectX::XMFLOAT3 fogAlbedo;
-		float fogScale;
-		DirectX::XMFLOAT3 fogGridZ;
-		float fogVolumeDistance;
-		DirectX::XMFLOAT4 cloudShadow;
-		DirectX::XMFLOAT4 waterDetail;
-		DirectX::XMFLOAT4 foliageInteraction;
-		DirectX::XMFLOAT4 ambientOcclusion;
-	};
-	// Раскладка — cbuffer FrameConstantBuffer в Shaders/common.vs
-	static_assert( sizeof( ShaderFrameConstant ) == 480, "FrameConstantBuffer layout" );
-
-	// Раскладка — cbuffer WorldBuffer в Shaders/common.vs
-	struct alignas( 16 ) ShaderModelConstant
-	{
-		DirectX::XMMATRIX world;
-		DirectX::XMMATRIX worldInverseTranspose;
-		float lodDither;
-		DirectX::XMFLOAT3 padding;
-	};
-	static_assert( sizeof( ShaderModelConstant ) == 144, "WorldBuffer layout" );
-
 	FrameParameters m_frame;
 	Buffer m_frameConstant;
 	Buffer m_modelConstant;

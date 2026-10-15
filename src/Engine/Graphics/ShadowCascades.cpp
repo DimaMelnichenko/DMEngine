@@ -56,7 +56,7 @@ bool ShadowCascades::createResources()
 		return false;
 
 	// Сэмплер сравнения — общий s8 (DMSamplerState::shadowCompare)
-	return d3d.createShaderConstantBuffer( sizeof( ShaderShadowConstants ), m_constantBuffer );
+	return d3d.createShaderConstantBuffer( sizeof( ShadowConstants ), m_constantBuffer );
 }
 
 bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSettings& settings, const XMFLOAT3& toSun,
@@ -237,7 +237,7 @@ void ShadowCascades::bindForReceivers( int sunLightIndex )
 	const float distance = m_settings.dynamicShadowDistance;
 	const float fadeout = m_settings.shadowDistanceFadeoutFraction;
 
-	ShaderShadowConstants constants = {};
+	ShadowConstants constants = {};
 	for( uint32_t cascade = 0; cascade < cascadeCount; ++cascade )
 		constants.cascadeViewProjection[cascade] = XMMatrixTranspose( m_views[cascade].viewProjection );
 	const bool distant = farActive();
@@ -249,14 +249,14 @@ void ShadowCascades::bindForReceivers( int sunLightIndex )
 	constants.cascadeSplits = XMFLOAT4( m_splits[0], m_splits[1], m_splits[2], m_splits[3] );
 	constants.cascadeTexelSize = XMFLOAT4( m_texelSize[0], m_texelSize[1], m_texelSize[2], m_texelSize[3] );
 	constants.cascadeTransition = m_settings.cascadeTransitionFraction;
-	constants.fadeStart = distance * ( 1.0f - fadeout );
+	constants.shadowFadeStart = distance * ( 1.0f - fadeout );
 	constants.shadowDistance = distance;
-	constants.normalBias = m_settings.normalBias;
-	constants.sunLightIndex = m_active ? sunLightIndex : -1;
+	constants.shadowNormalBias = m_settings.normalBias;
+	constants.shadowSunIndex = m_active ? sunLightIndex : -1;
 	constants.showCascades = m_properties["Show cascades"].data<bool>() ? 1 : 0;
-	constants.mapSize = static_cast<float>( m_resolution );
-	constants.depthBias = m_settings.shadowBias;
-	Device::updateResourceData<ShaderShadowConstants>( m_constantBuffer, constants );
+	constants.shadowMapSize = static_cast<float>( m_resolution );
+	constants.shadowDepthBias = m_settings.shadowBias;
+	Device::updateResourceData<ShadowConstants>( m_constantBuffer, constants );
 
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setConstantBuffer( SLOT_CB_SHADOW, m_constantBuffer );

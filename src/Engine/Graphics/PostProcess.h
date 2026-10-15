@@ -9,6 +9,10 @@
 #include "D3D\GpuProfiler.h"
 #include "Properties\PropertyContainer.h"
 #include "Scene\Level\LevelSettings.h"
+#include "Shaders\tonemap_constants.h"
+#include "Shaders\bloom_constants.h"
+#include "Shaders\exposure_histogram_constants.h"
+#include "Shaders\exposure_adapt_constants.h"
 
 namespace GS
 {
@@ -38,7 +42,8 @@ public:
 	// к широкому примерно вшестеро, как веса Bloom1…Bloom6 Tint в UE
 	static constexpr float bloomLevelFalloff = 0.6f;
 	static constexpr uint32_t histogramBinCount = 64;	// HISTOGRAM_BINS в Shaders/exposure_*.cs
-	static constexpr uint32_t maxCurveKeys = maxExposureCurveKeys;	// MAX_CURVE_KEYS в Shaders/exposure_adapt.cs
+	static constexpr uint32_t maxCurveKeys = maxExposureCurveKeys;
+	static_assert( maxCurveKeys == MAX_CURVE_KEYS, "MAX_CURVE_KEYS in Shaders/exposure_adapt_constants.h" );
 
 	// Строка PostProcessSettings (Level/LevelSettings.h)
 	using Settings = PostProcessSettings;
@@ -71,54 +76,9 @@ private:
 		float padding;
 	};
 
-	// Константный буфер CS b4, раскладка как у HistogramBuffer в Shaders/exposure_histogram.cs
-	struct alignas( 16 ) HistogramParameters
-	{
-		uint32_t sceneWidth;
-		uint32_t sceneHeight;
-		float minLog2Luminance;
-		float log2LuminanceRange;
-	};
 
-	// Константный буфер CS b4, раскладка как у AdaptBuffer в Shaders/exposure_adapt.cs
-	struct alignas( 16 ) AdaptParameters
-	{
-		int32_t meteringMode;
-		float manualEV100;
-		float exposureCompensation;
-		float deltaTime;
-		float minEV100;
-		float maxEV100;
-		float lowPercent;
-		float highPercent;
-		float speedUp;
-		float speedDown;
-		float minLog2Luminance;
-		float log2LuminanceRange;
-		int32_t curveKeyCount;
-		float adaptPadding[3];
-		DirectX::XMFLOAT4 curveKeys[maxCurveKeys / 2];	// по два ключа (EV100, EV) на float4
-	};
 
-	// Константный буфер PS b2, раскладка как у PostProcessBuffer в Shaders/tonemap.ps
-	struct alignas( 16 ) Parameters
-	{
-		int32_t tonemapper;
-		float bloomScale;	// Bloom Intensity / сумма весов уровней
-		float purkinjeShift;
-		float padding;
-	};
 
-	// Константный буфер PS b2 проходов bloom, раскладка как у BloomBuffer в Shaders/bloom_*.ps
-	struct alignas( 16 ) BloomParameters
-	{
-		DirectX::XMFLOAT2 sourceTexelSize;
-		float threshold;
-		int32_t firstPass;
-		float radius;
-		float weight;
-		float padding[2];
-	};
 
 	bool createExposureResources( float initialEV100, float exposureCompensation );
 	bool createBloomTargets();
@@ -126,7 +86,7 @@ private:
 	void readBackExposure();
 	void renderBloom( const ShaderView& sceneColor, float threshold );
 	void drawPass( const char* name, FullscreenShader& shader, const RenderTarget& target, const ShaderView& source,
-				   BloomParameters params, BlendState blend );
+				   BloomBuffer params, BlendState blend );
 
 	FullscreenShader m_shader;
 	FullscreenShader m_bloomDownsample;

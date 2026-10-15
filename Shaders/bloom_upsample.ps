@@ -11,16 +11,7 @@
 
 DM_SRV( Texture2D<float4>, g_source, 0 );
 
-// Раскладка — PostProcess::BloomParameters
-cbuffer BloomBuffer : register( SLOT_CB_PASS )
-{
-	float2 g_sourceTexelSize;	// 1 / размер источника
-	float  g_threshold;			// Bloom Threshold, яркость после экспозиции; < 0 — без порога
-	int    g_firstPass;			// 1 — источник — цвет сцены
-	float  g_radius;			// для увеличения: радиус тента в текселях источника
-	float  g_weight;			// для увеличения: вес добавляемого уровня
-	float2 g_padding;
-};
+#include "bloom_constants.h"
 
 struct PixelInputType
 {

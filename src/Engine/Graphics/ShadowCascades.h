@@ -10,6 +10,7 @@
 #include "Light\DMLight.h"
 #include "Properties/PropertyContainer.h"
 #include "TerrainSunShadow.h"
+#include "Shaders\shadow_constants.h"
 
 namespace GS
 {
@@ -28,7 +29,7 @@ namespace GS
 class ShadowCascades
 {
 public:
-	static constexpr uint32_t cascadeCount = 4;
+	static constexpr uint32_t cascadeCount = SHADOW_CASCADE_COUNT;
 	static constexpr uint32_t farViewIndex = cascadeCount + 1;	// RenderView::index дальнего каскада
 
 	// resolution — размер среза карты, текселей
@@ -65,26 +66,6 @@ public:
 	PropertyContainer* properties();
 
 private:
-	// Раскладка — cbuffer ShadowConstants в Shaders/shadows.sh
-	struct alignas( 16 ) ShaderShadowConstants
-	{
-		DirectX::XMMATRIX cascadeViewProjection[cascadeCount];
-		DirectX::XMMATRIX farViewProjection;
-		DirectX::XMFLOAT4 cascadeSplits;		// дальняя граница каскада по глубине взгляда, м
-		DirectX::XMFLOAT4 cascadeTexelSize;	// размер текселя каскада в мире, м
-		DirectX::XMFLOAT4 farShadow;			// x — тексель дальнего каскада, м; y — 1: он есть
-		// Тень рельефа: x — 1 / сторона карты, м⁻¹ (0 — карты нет); y — тангенс угла полутени; z — наименьшая полутень, м
-		DirectX::XMFLOAT4 terrainShadow;
-		float cascadeTransition;
-		float fadeStart;
-		float shadowDistance;
-		float normalBias;
-		int32_t sunLightIndex;
-		int32_t showCascades;
-		float mapSize;
-		float depthBias;
-	};
-	static_assert( sizeof( ShaderShadowConstants ) == 416, "ShaderShadowConstants must match cbuffer ShadowConstants in Shaders/shadows.sh" );
 
 	bool createResources();
 	// Дальний каскад: вид вдоль света на всю сцену (её границы поперёк света), центр — на сетке текселей

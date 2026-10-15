@@ -2,6 +2,7 @@
 
 #include "Material.h"
 #include "RenderView.h"
+#include "Shaders\impostor_constants.h"
 
 namespace GS
 {
@@ -67,23 +68,6 @@ public:
 	bool readsSceneDepth() const override { return !m_flat; }
 
 private:
-	// cbuffer ImpostorBuffer в Shaders/impostor.sh
-	struct alignas( 16 ) Params
-	{
-		DirectX::XMFLOAT4 bounds;			// сфера модели: центр в её координатах, радиус
-		DirectX::XMFLOAT4 extents;			// половины ящика LOD0 (центр — центр сферы)
-		DirectX::XMFLOAT4 transmission;		// цвет пропускания (множитель альбедо), множитель доли
-		// доля прошедшего света, рассеянная вперёд пиком, и ширина пика (как у секции модели), zw — запас
-		DirectX::XMFLOAT4 transmissionForward;
-		uint32_t frames;
-		float alphaCutoff;
-		float roughness;
-		float occlusion;		// сила затенения окружающего света по запечённому (BakeSettings::occlusion)
-		// x — затемнение низа, y — высота верха модели над её началом координат (ящик LOD0), z — сила самотени кроны
-		// (setShading), w — запас
-		DirectX::XMFLOAT4 shade;
-	};
-	static_assert( sizeof( Params ) == 96, "ImpostorBuffer layout" );
 
 	// Вид кадра запекания frame (номер по сторонам сетки): ортография на сферу модели со стороны его направления
 	RenderView frameView( uint32_t x, uint32_t y ) const;
@@ -94,7 +78,7 @@ private:
 	bool createPermutation( uint32_t key );
 
 	bool m_flat = false;
-	Params m_params = {};
+	ImpostorBuffer m_params = {};
 	uint32_t m_colorTexture = 0;
 	uint32_t m_normalTexture = 0;
 	uint32_t m_offsetTexture = 0;	// глубина поверхности кадров (смещение глубины) и затенение окружающего света, R16G16

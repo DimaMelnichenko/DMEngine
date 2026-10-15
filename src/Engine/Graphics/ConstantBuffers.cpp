@@ -28,8 +28,8 @@ ConstantBuffers::~ConstantBuffers()
 
 void ConstantBuffers::initBuffers()
 {
-	DMD3D::instance().createShaderConstantBuffer( sizeof( ShaderFrameConstant ), m_frameConstant );
-	DMD3D::instance().createShaderConstantBuffer( sizeof( ShaderModelConstant ), m_modelConstant );
+	DMD3D::instance().createShaderConstantBuffer( sizeof( FrameConstantBuffer ), m_frameConstant );
+	DMD3D::instance().createShaderConstantBuffer( sizeof( WorldBuffer ), m_modelConstant );
 }
 
 void ConstantBuffers::beginFrame( const FrameParameters& frame )
@@ -40,17 +40,17 @@ void ConstantBuffers::beginFrame( const FrameParameters& frame )
 void ConstantBuffers::setViewBuffer( const RenderView& view )
 {
 	// HLSL читает матрицы по столбцам: транспонирование даёт ту же запись mul( v, M ), что и в C++
-	Device::updateResource<ShaderFrameConstant>( m_frameConstant, [&]( ShaderFrameConstant& data )
+	Device::updateResource<FrameConstantBuffer>( m_frameConstant, [&]( FrameConstantBuffer& data )
 	{
-		data.view = XMMatrixTranspose( view.view );
-		data.projection = XMMatrixTranspose( view.projection );
-		data.viewInverse = XMMatrixTranspose( view.viewInverse );
-		data.viewProjection = XMMatrixTranspose( view.viewProjection );
+		data.viewMatrix = XMMatrixTranspose( view.view );
+		data.projectionMatrix = XMMatrixTranspose( view.projection );
+		data.viewInverseMatrix = XMMatrixTranspose( view.viewInverse );
+		data.viewProjectionMatrix = XMMatrixTranspose( view.viewProjection );
 		data.cameraPosition = view.position;
 		data.viewDirection = view.direction;
 		data.gameTime = m_frame.gameTime;
 		data.deltaTime = m_frame.deltaTime;
-		data.lightsCount = static_cast<float>( m_frame.lightsCount );
+		data.lightCount = static_cast<float>( m_frame.lightsCount );
 		data.lodOrigin = view.lodOrigin;
 		data.skyLightScale = m_frame.skyLightScale;
 		data.aerialPerspectiveDistance = m_frame.aerialPerspectiveDistance;
@@ -84,12 +84,12 @@ void ConstantBuffers::setPerObjectBuffer( const XMMATRIX& world, float lodDither
 {
 	// HLSL читает матрицы по столбцам: транспонирование даёт ту же запись mul( v, M ), что и в C++
 	const XMMATRIX normals = normalMatrix( world );
-	Device::updateResource<ShaderModelConstant>( m_modelConstant, [&]( ShaderModelConstant& data )
+	Device::updateResource<WorldBuffer>( m_modelConstant, [&]( WorldBuffer& data )
 	{
-		data.world = XMMatrixTranspose( world );
-		data.worldInverseTranspose = XMMatrixTranspose( normals );
+		data.worldMatrix = XMMatrixTranspose( world );
+		data.worldInverseTransposeMatrix = XMMatrixTranspose( normals );
 		data.lodDither = lodDither;
-		data.padding = XMFLOAT3( 0.0f, 0.0f, 0.0f );
+		data.objectPadding = XMFLOAT3( 0.0f, 0.0f, 0.0f );
 	} );
 
 	DMD3D::instance().setConstantBuffer( SLOT_CB_OBJECT, m_modelConstant );

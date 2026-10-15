@@ -12,20 +12,7 @@
 #include "bindless.sh"
 #include "samplers.sh"
 
-cbuffer TerrainSunShadowBuffer : register( b4 )
-{
-	float2 g_sunAzimuth;		// направление на солнце в плоскости XZ мира, нормированное
-	float  g_sunSlope;			// тангенс высоты солнца
-	float  g_texelSize;			// м на тексель результата
-	float  g_heightMultiplier;	// высота = значение карты × множитель + сдвиг (TerrainHeight)
-	float  g_heightOffset;
-	float  g_worldSize;			// сторона карты, м (начало — 0, 0; v = 1 − z / сторона)
-	float  g_maxHeight;			// наибольшая высота рельефа, м: выше луча ничего нет — дальше не идти
-	float  g_mapTexel;			// м на тексель карты высот (мип 0)
-	float  g_startDistance;		// с какого расстояния заслоняет (соседние тексели — нет: свет на склоне даёт N·L)
-	uint   g_size;				// текселей результата по стороне
-	float  g_padding;
-};
+#include "terrain_sun_shadow_constants.h"
 
 DM_SRV( Texture2D<float>, g_heightMap, 0 );
 DM_UAV( RWTexture2D<float4>, g_result, 0 );

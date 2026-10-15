@@ -13,13 +13,7 @@
 DM_SRV( Texture2D<float4>, g_sceneColor, 0 );
 DM_UAV( RWByteAddressBuffer, g_histogram, 0 );	// HISTOGRAM_BINS чисел uint
 
-// Раскладка — PostProcess::HistogramParameters
-cbuffer HistogramBuffer : register( b4 )
-{
-	uint2 g_sceneSize;
-	float g_minLog2Luminance;	// log₂ яркости нижней границы первой корзины
-	float g_log2LuminanceRange;	// log₂-ширина всех корзин
-};
+#include "exposure_histogram_constants.h"
 
 groupshared uint g_localBins[HISTOGRAM_BINS];
 

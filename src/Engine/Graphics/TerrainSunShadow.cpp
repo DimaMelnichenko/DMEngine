@@ -12,7 +12,7 @@ namespace GS
 bool TerrainSunShadow::initialize()
 {
 	if( !m_shader.Initialize( "Shaders\\terrain_sun_shadow.cs", "main" ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constants ) )
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( TerrainSunShadowBuffer ), m_constants ) )
 	{
 		LOG( "Terrain sun shadow: shader or constants are not created" );
 		return false;
@@ -60,7 +60,7 @@ void TerrainSunShadow::update( const TerrainHeight& terrain, const XMFLOAT3& toL
 		terrain.heightMultiplier == m_heightMultiplier && terrain.heightOffset == m_heightOffset )
 		return;
 
-	Parameters params = {};
+	TerrainSunShadowBuffer params = {};
 	const float horizontal = std::sqrt( toLight.x * toLight.x + toLight.z * toLight.z );
 	// Источник в зените: азимута нет, и заслонять нечему
 	params.sunAzimuth = horizontal > 1e-4f ? XMFLOAT2( toLight.x / horizontal, toLight.z / horizontal ) : XMFLOAT2( 1.0f, 0.0f );
@@ -75,7 +75,7 @@ void TerrainSunShadow::update( const TerrainHeight& terrain, const XMFLOAT3& toL
 	params.size = size;
 
 	DMD3D& d3d = DMD3D::instance();
-	Device::updateResourceData<Parameters>( m_constants, params );
+	Device::updateResourceData<TerrainSunShadowBuffer>( m_constants, params );
 	d3d.beginPass( PassDesc{ "Terrain sun shadow", {}, {}, 0, 0, { { terrain.heightMap, "terrain height map" } },
 							 { { &m_storageView, "terrain sun shadow" } } } );
 	d3d.setConstantBuffer( 4, m_constants );

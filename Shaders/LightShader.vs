@@ -12,7 +12,7 @@
 #include "samplers.sh"
 #include "instance.sh"
 #include "depth_only.sh"
-#include "pbr_material.sh"
+#include "pbr_material_constants.h"
 #include "wind.sh"
 #include "foliage_interaction.sh"
 

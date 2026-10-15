@@ -4,10 +4,7 @@
 
 #include "slots.h"
 
-cbuffer ShaderConstantBuffer : register( SLOT_CB_MATERIAL )
-{
-	float4 ObjectColor;
-}
+#include "color_material_constants.h"
 
 //////////////
 // TYPEDEFS //
@@ -22,6 +19,6 @@ struct PixelInputType
 ////////////////////////////////////////////////////////////////////////////////
 float4 main(PixelInputType input) : SV_TARGET
 {
-    return ObjectColor;
+    return g_objectColor;
 }
 

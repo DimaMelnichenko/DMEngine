@@ -12,7 +12,7 @@ namespace GS
 bool AmbientOcclusion::initialize()
 {
 	if( !m_shader.Initialize( "Shaders\\gtao.cs", "main" ) || !m_denoiseShader.Initialize( "Shaders\\gtao.cs", "mainDenoise" ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constants ) )
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( AmbientOcclusionBuffer ), m_constants ) )
 	{
 		LOG( "Ambient occlusion: shaders or constants are not created" );
 		return false;
@@ -53,24 +53,22 @@ void AmbientOcclusion::render( const RenderView& view, const ShaderView& sceneDe
 	XMFLOAT4X4 projection;
 	XMStoreFloat4x4( &projection, view.projection );
 
-	Parameters params = {};
+	AmbientOcclusionBuffer params = {};
 	params.tanHalfFov = XMFLOAT2( 1.0f / projection._11, 1.0f / projection._22 );
 	params.depthLinearize = XMFLOAT2( projection._33, projection._43 );
-	params.fullSize[0] = d3d.backBufferWidth();
-	params.fullSize[1] = d3d.backBufferHeight();
-	params.halfSize[0] = m_width;
-	params.halfSize[1] = m_height;
+	params.fullSize = XMUINT2( d3d.backBufferWidth(), d3d.backBufferHeight() );
+	params.halfSize = XMUINT2( m_width, m_height );
 	params.radius = std::max( settings.radius, 0.01f );
 	// Спад к краю радиуса — как в XeGTAO: последние 61,5 % радиуса вес точки падает до нуля
 	const float falloffRange = 0.615f * params.radius;
 	const float falloffFrom = params.radius - falloffRange;
 	params.falloffMul = -1.0f / falloffRange;
 	params.falloffAdd = falloffFrom / falloffRange + 1.0f;
-	params.pixelsPerMeter = 0.5f * static_cast<float>( params.fullSize[1] ) * projection._22;
+	params.pixelsPerMeter = 0.5f * static_cast<float>( params.fullSize.y ) * projection._22;
 	params.finalPower = std::max( settings.power, 0.1f );
-	params.maxPixelRadius = 0.125f * static_cast<float>( params.fullSize[1] );
+	params.maxPixelRadius = 0.125f * static_cast<float>( params.fullSize.y );
 	params.depthTolerance = 0.03f;
-	Device::updateResourceData<Parameters>( m_constants, params );
+	Device::updateResourceData<AmbientOcclusionBuffer>( m_constants, params );
 
 	const uint32_t groupsX = ( m_width + 7 ) / 8;
 	const uint32_t groupsY = ( m_height + 7 ) / 8;
