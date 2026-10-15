@@ -469,7 +469,9 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 											 "layer_filter_threshold = :layerFilterThreshold, jitter = :jitter, rotation_x = :rotationX, "
 											 "rotation_y = :rotationY, rotation_z = :rotationZ, align_to_terrain = :align, "
 											 "cast_shadow = :castShadow, shadow_impostor_distance = :shadowImpostor, "
-											 "impostor_cast_shadow = :impostorShadow, impostor_base_shade = :baseShade, impostor_distance = :impostorDistance "
+											 "impostor_cast_shadow = :impostorShadow, impostor_base_shade = :baseShade, impostor_distance = :impostorDistance, "
+											 "impostor_density = :impostorDensity, impostor_occlusion = :impostorOcclusion, "
+											 "impostor_frame_size = :impostorFrameSize "
 											 "WHERE id = :id" );
 		SQLite::Statement updateScatterModel( db, "UPDATE ScatterLayerModels SET weight = :weight, cast_shadow = :castShadow, "
 												  "lod_distances = :lods, size_multiplier = :size, size_variation = :sizeVariation, "
@@ -512,6 +514,9 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			updateScatter.bind( ":impostorShadow", layer.impostorCastShadow ? 1 : 0 );
 			updateScatter.bind( ":baseShade", dbValue( layer.impostorBaseShade ) );
 			updateScatter.bind( ":impostorDistance", dbValue( layer.impostorDistance ) );
+			updateScatter.bind( ":impostorDensity", dbValue( layer.impostorDensity ) );
+			updateScatter.bind( ":impostorOcclusion", dbValue( layer.impostorOcclusion ) );
+			updateScatter.bind( ":impostorFrameSize", static_cast<int64_t>( layer.impostorFrameSize ) );
 			updateScatter.bind( ":id", layer.id );
 			updateScatter.exec();
 			updateScatter.reset();

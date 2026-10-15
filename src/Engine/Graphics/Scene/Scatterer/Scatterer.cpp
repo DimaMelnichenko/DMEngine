@@ -45,6 +45,32 @@ bool Scatterer::Initialize()
 namespace
 {
 
+// Сторона кадра импостера — степень двойки 16…512; в окне — список, значение свойства — номер
+const std::vector<std::string> frameSizeItems = { "16", "32", "64", "128", "256", "512" };
+
+uint32_t frameSizeIndex( uint32_t size )
+{
+	uint32_t index = 0;
+	while( index + 1 < frameSizeItems.size() && ( 16u << index ) < size )
+		++index;
+	return index;
+}
+
+uint32_t frameSizeFromIndex( int32_t index )
+{
+	return 16u << std::clamp( index, 0, static_cast<int32_t>( frameSizeItems.size() ) - 1 );
+}
+
+// Настройки запекания импостера слоя («Impostor frame size», «Impostor density», «Impostor occlusion»)
+GS::ImpostorMaterial::BakeSettings bakeSettings( const GS::ScatterLayerSettings& settings )
+{
+	GS::ImpostorMaterial::BakeSettings bake;
+	bake.density = settings.impostorDensity;
+	bake.occlusion = settings.impostorOcclusion;
+	bake.frameSize = settings.impostorFrameSize;
+	return bake;
+}
+
 // Свойство границы LOD варианта: «LOD 1 up to»
 std::string lodRangeName( uint32_t lod )
 {
@@ -218,6 +244,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	ScatterLayerSettings settings = layerSettings;
 	if( settings.placement == ScatterPlacement::streamStones )
 		settings.persistent = true;
+	// Кадр импостера — из списка окна (степень двойки 16…512): запечённое при загрузке совпадёт с окном
+	settings.impostorFrameSize = frameSizeFromIndex( static_cast<int32_t>( frameSizeIndex( settings.impostorFrameSize ) ) );
 
 	Layer layer;
 	layer.mask = mask;
@@ -440,8 +468,6 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	rotation->setUnit( "deg" )->setTooltip( "Random rotation limit around X, Y, Z" );
 	layer.properties->insert( "Align to terrain", settings.alignToTerrain )->setTooltip( "Instance Y axis along the terrain normal" );
 	layer.properties->insert( "Cast shadow", params.castShadow > 0.5f );
-	layer.impostorDensity = settings.impostorDensity;
-	layer.impostorOcclusion = settings.impostorOcclusion;
 	if( settings.impostorDistance > 0.0f )
 	{
 		Property* impostorDistance = layer.properties->insert( "Impostor distance", settings.impostorDistance );
@@ -456,6 +482,20 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		shadowImpostor->setUnit( "m" );
 		layer.properties->insert( "Impostor shadow", settings.impostorCastShadow )->setTooltip(
 			"If impostors cast a shadow: off - shadow views skip them (far grass)" );
+		// Запекание импостера: правка — кадры заново, когда ползунок отпущен (rebakeChangedImpostors)
+		Property* frameSize = layer.properties->insert( "Impostor frame size", static_cast<int32_t>( frameSizeIndex( settings.impostorFrameSize ) ) );
+		frameSize->setItems( frameSizeItems );
+		frameSize->setUnit( "texels" )->setTooltip( "Side of an impostor frame (8 x 8 frames): smaller - less memory and a faster bake "
+													"(64 - a quarter of 128); the impostor is rebaked" );
+		Property* density = layer.properties->insert( "Impostor density", settings.impostorDensity );
+		density->setLow( 0.25f );
+		density->setHigh( 4.0f );
+		density->setTooltip( "Coverage multiplier of the bake: > 1 - denser (thin blades and needles far away merge instead of "
+							 "being cut by the alpha test); rebaked when the edit ends" );
+		Property* occlusion = layer.properties->insert( "Impostor occlusion", settings.impostorOcclusion );
+		occlusion->setLow( 0.0f );
+		occlusion->setHigh( 1.0f );
+		occlusion->setTooltip( "Sky light occlusion inside the crown, baked from the frames depth; rebaked when the edit ends" );
 		Property* baseShade = layer.properties->insert( "Impostor base shade", settings.impostorBaseShade );
 		baseShade->setLow( 0.0f );
 		baseShade->setHigh( 1.0f );
@@ -512,10 +552,7 @@ bool Scatterer::bake( const BakeContext& context )
 			// Импостер без тени (трава) — плоский: по настройке слоя при загрузке
 			auto impostor = std::make_unique<ImpostorMaterial>( materials.freeId(), name, !layer.settings.impostorCastShadow );
 			impostor->setLayoutDesc( impostor->initLayouts() );
-			ImpostorMaterial::BakeSettings bakeSettings;
-			bakeSettings.density = layer.impostorDensity;
-			bakeSettings.occlusion = layer.impostorOcclusion;
-			if( !impostor->initialize() || !impostor->bake( *variant.model, context, bakeSettings ) )
+			if( !impostor->initialize() || !impostor->bake( *variant.model, context, bakeSettings( layer.settings ) ) )
 			{
 				// Без импостера дальний LOD варианта не рисуется (группы пропускают секции без материала)
 				LOG( "Scatter layer " + layer.mask + ": impostor of model " + variant.model->properties()->name() + " is not baked" );
@@ -529,18 +566,25 @@ bool Scatterer::bake( const BakeContext& context )
 		variant.impostorSection->material = material->id();
 		variant.lods.back().sections.back().material = material;
 		variant.impostorMaterial = dynamic_cast<ImpostorMaterial*>( material );
-		variant.bakedParamsHash = bakeSourceHash( *variant.model );
+		variant.bakedParamsHash = bakeSourceHash( *variant.model, layer.settings );
 	}
 	m_bakeContext = std::make_unique<BakeContext>( context );
 	return true;
 }
 
-uint64_t Scatterer::bakeSourceHash( DMModel& model )
+uint64_t Scatterer::bakeSourceHash( DMModel& model, const ScatterLayerSettings& settings )
 {
-	uint64_t hash = 0;
+	uint64_t hash = 14695981039346656037ull;
+	const auto mix = [&hash]( uint64_t value ) { hash = ( hash ^ value ) * 1099511628211ull; };
 	if( DMModel::LodBlock* lod0 = model.getLodById( 0 ) )
 		for( const auto& section : lod0->sections )
-			hash = hash * 1099511628211ull ^ hashParams( *section->params );
+			mix( hashParams( *section->params ) );
+	uint32_t bits;
+	std::memcpy( &bits, &settings.impostorDensity, sizeof( bits ) );
+	mix( bits );
+	std::memcpy( &bits, &settings.impostorOcclusion, sizeof( bits ) );
+	mix( bits );
+	mix( settings.impostorFrameSize );
 	return hash;
 }
 
@@ -549,13 +593,20 @@ void Scatterer::rebakeChangedImpostors()
 	if( !m_bakeContext )
 		return;
 	// Материал импостера — на модель, общий для слоёв: запекается раз, отпечаток обновляется у всех её вариантов
+	// Пока ползунок тянут (окно слоя или параметры материала), ждём: запекание — ~0,3 с на модель
 	std::vector<ImpostorMaterial*> rebaked;
 	for( Layer& layer : m_layers )
+	{
+		const auto withImpostor = []( const LayerVariant& variant ) { return variant.impostorMaterial != nullptr; };
+		if( std::none_of( layer.variants.begin(), layer.variants.end(), withImpostor ) || layer.properties->editing() )
+			continue;
+		// По окну слоя: правка запекания — новый отпечаток
+		const ScatterLayerSettings settings = settingsFromProperties( layer );
 	for( LayerVariant& variant : layer.variants )
 	{
-		if( !variant.impostorMaterial )
+		if( !variant.impostorMaterial || paramsEditing( *variant.model ) )
 			continue;
-		const uint64_t hash = bakeSourceHash( *variant.model );
+		const uint64_t hash = bakeSourceHash( *variant.model, settings );
 		if( hash == variant.bakedParamsHash )
 			continue;
 		variant.bakedParamsHash = hash;
@@ -563,14 +614,21 @@ void Scatterer::rebakeChangedImpostors()
 			continue;
 		rebaked.push_back( variant.impostorMaterial );
 		const auto start = std::chrono::steady_clock::now();
-		ImpostorMaterial::BakeSettings settings;
-		settings.density = layer.impostorDensity;
-		settings.occlusion = layer.impostorOcclusion;
-		const bool baked = variant.impostorMaterial->bake( *variant.model, *m_bakeContext, settings );
+		const bool baked = variant.impostorMaterial->bake( *variant.model, *m_bakeContext, bakeSettings( settings ) );
 		const auto ms = std::chrono::duration<float, std::milli>( std::chrono::steady_clock::now() - start ).count();
-		LOG( "Impostor " + variant.model->properties()->name() + ( baked ? " rebaked after a material edit, ms: " + std::to_string( ms ) :
+		LOG( "Impostor " + variant.model->properties()->name() + ( baked ? " rebaked after an edit, ms: " + std::to_string( ms ) :
 																	  std::string( " is not rebaked" ) ) );
 	}
+	}
+}
+
+bool Scatterer::paramsEditing( DMModel& model )
+{
+	if( DMModel::LodBlock* lod0 = model.getLodById( 0 ) )
+		for( const auto& section : lod0->sections )
+			if( section->params->editing() )
+				return true;
+	return false;
 }
 
 bool Scatterer::layerVisible( const Layer& layer )
@@ -1006,6 +1064,9 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 		settings.shadowImpostorDistance = properties["Shadow impostor distance"].data<float>();
 		settings.impostorCastShadow = properties["Impostor shadow"].data<bool>();
 		settings.impostorBaseShade = std::clamp( properties["Impostor base shade"].data<float>(), 0.0f, 1.0f );
+		settings.impostorFrameSize = frameSizeFromIndex( properties["Impostor frame size"].data<int32_t>() );
+		settings.impostorDensity = std::max( properties["Impostor density"].data<float>(), 0.0f );
+		settings.impostorOcclusion = std::clamp( properties["Impostor occlusion"].data<float>(), 0.0f, 1.0f );
 	}
 	return settings;
 }

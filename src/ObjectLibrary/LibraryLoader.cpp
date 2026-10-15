@@ -557,7 +557,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 {
 	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, placement, mask, cell_size, near_border, far_border, near_fade, "
 														   "far_fade, size_multiplier, size_variation, ground_color, ground_color_height, ground_color_far, color_variation, edge_spread, thinning_start, thinning, dither_fade, patch_scale, patch_strength, layer_filter, layer_filter_threshold, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow, persistent, "
-														   "impostor_distance, shadow_impostor_distance, impostor_density, impostor_occlusion, impostor_cast_shadow, impostor_base_shade "
+														   "impostor_distance, shadow_impostor_distance, impostor_density, impostor_occlusion, impostor_frame_size, impostor_cast_shadow, impostor_base_shade "
 														   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
 	while( query.executeStep() )
@@ -607,6 +607,8 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		layer.settings.shadowImpostorDistance = value( "shadow_impostor_distance" );
 		layer.settings.impostorDensity = value( "impostor_density" );
 		layer.settings.impostorOcclusion = value( "impostor_occlusion" );
+		if( !query.getColumn( "impostor_frame_size" ).isNull() )
+			layer.settings.impostorFrameSize = query.getColumn( "impostor_frame_size" ).getUInt();
 		layer.settings.impostorCastShadow = query.getColumn( "impostor_cast_shadow" ).getInt() != 0;
 		layer.settings.impostorBaseShade = value( "impostor_base_shade" );
 

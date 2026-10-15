@@ -405,6 +405,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	Fingerprint key;
 	key.add( cacheVersion );
 	key.add( frames );
+	const uint32_t frameSize = settings.frameSize;
 	key.add( frameSize );
 	key.add( bakeSamples );
 	key.add( settings.density );

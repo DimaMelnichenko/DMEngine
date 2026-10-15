@@ -21,7 +21,7 @@ class ImpostorMaterial : public Material
 {
 public:
 	static constexpr uint32_t frames = 8;		// кадров по стороне сетки (g_impostorFrames в Shaders/impostor.sh)
-	static constexpr uint32_t frameSize = 128;	// кадр, текселей
+	static constexpr uint32_t defaultFrameSize = 128;	// кадр, текселей (BakeSettings::frameSize)
 	// Сверхвыборка запекания: кадр рисуется со стороной frameSize × bakeSamples и усредняется — альфа становится долей
 	// покрытия, а не попаданием тонкой хвоинки в центр текселя
 	static constexpr uint32_t bakeSamples = 4;
@@ -31,11 +31,13 @@ public:
 	// которого нет в ключе (defines варианта запекания, обработка кадров на CPU), — поднять версию
 	static constexpr uint32_t cacheVersion = 2;
 
-	// Настройки запекания (ScatterLayers.impostor_density / impostor_occlusion)
+	// Настройки запекания (ScatterLayers.impostor_density / impostor_occlusion / impostor_frame_size)
 	struct BakeSettings
 	{
 		float density = 1.0f;	// множитель доли покрытия: > 1 — крона плотнее
 		float occlusion = 0.0f;	// сила затенения окружающего света внутри кроны, 0…1
+		// Сторона кадра, текселей (степень двойки 16…512): пучку травы вдали хватит 64 — вчетверо меньше памяти и запекания
+		uint32_t frameSize = defaultFrameSize;
 	};
 
 	// flat — плоский импостер (у слоя импостер без тени, трава): глубина — самой карточки, без смещения глубины и без

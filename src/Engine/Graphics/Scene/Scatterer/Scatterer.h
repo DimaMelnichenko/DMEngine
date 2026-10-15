@@ -172,9 +172,6 @@ private:
 		bool placed = false;		// постоянный слой разложен на карту (раз, в первом compute)
 		// Наибольшая высота экземпляра (границы моделей × размер слоя), м: длина его тени — запас дальности каскада
 		float maxHeight = 1.0f;
-		// Запекание импостеров слоя (ScatterLayers.impostor_density / impostor_occlusion, ImpostorMaterial::BakeSettings)
-		float impostorDensity = 1.0f;
-		float impostorOcclusion = 0.0f;
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
 		std::unique_ptr<PropertyContainer> groundProperties;	// «Grows on»: флажок на роль слоя земли (фильтр слоёв)
 		// «Materials»: экземпляры материалов растений слоя (общие с моделями, System::materialInstances) — правка вживую
@@ -214,8 +211,11 @@ private:
 	void assignGroups( Layer& layer );
 	// Отпечаток параметров материала: секции с равными параметрами рисуются одной группой
 	static uint64_t hashParams( const PropertyContainer& params );
-	// Отпечаток параметров секций LOD0 модели — то, из чего запечён её импостер
-	static uint64_t bakeSourceHash( DMModel& model );
+	// Отпечаток того, из чего запечён импостер модели: параметры секций LOD0 и настройки запекания слоя (размер кадра,
+	// плотность, затенение)
+	static uint64_t bakeSourceHash( DMModel& model, const ScatterLayerSettings& settings );
+	// Параметры секций LOD0 модели правятся сейчас (ползунок тянут)
+	static bool paramsEditing( DMModel& model );
 	// Флажок «Visible» окна слоя: скрытый слой не раскладывается и не рисуется (и в тенях)
 	static bool layerVisible( const Layer& layer );
 
