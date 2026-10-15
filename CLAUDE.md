@@ -366,7 +366,8 @@ ExecuteIndirect поверхности ближе `detail_distance`), течен
 поверхность — свой вызов в `transparent` с цветом и глубиной сцены: тайлы сетки с водой отбирает compute, один
 ExecuteIndirect, берег — пересечение продолженной за урез плоскости воды с рельефом, `water.vs` / `water.ps`: поглощение
 по толщине, экранные отражения, блик, рябь и пена, которые несёт течение (рябь — плитками, повёрнутыми и вытянутыми по
-течению, карта `WaterRipples`); террейн по воде темнеет и блестит — мокрая земля, `waterWetness`; расстановка в воде
+течению, карта `WaterRipples`; пена — текстура `water_foam` на тех же плитках, `Tools/pack_water_foam.py`, без неё —
+узор по ряби); террейн по воде темнеет и блестит — мокрая земля, `waterWetness`; расстановка в воде
 не растёт — `waterFoliageClear` в `scatter.cs`; подсветка «Show water» у террейна; `docs/water.md`),
 `Scatterer` (по объекту на набор расстановки уровня: трава, камешки), `ParticleSystem` (частицы на GPU, как Niagara в UE:
 эмиттеры уровня — строки `LevelParticleEmitters` → `ParticleEmitters`, `Tools/particle_emitter.py`; пул, стек мёртвых и

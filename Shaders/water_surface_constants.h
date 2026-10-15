@@ -32,7 +32,11 @@ DM_CONSTANTS( WaterSurfaceBuffer, SLOT_CB_MATERIAL )
 	DM_FIELD( float, terrainHeightMultiplier );
 	DM_FIELD( float, terrainHeightOffset );
 	DM_FIELD( float, terrainDetailTile );	// сторона детальной плитки, м; 0 — её нет
-	DM_FIELD( float, surfacePadding );
+	// Пена из текстуры (Textures: water_foam, Tools/pack_water_foam.py): метров на повтор поперёк течения (0 — текстуры
+	// нет, пена — узор по ряби) и ширина края по маске
+	DM_FIELD( float, foamTextureRepeat );
+	DM_FIELD( float, foamSoftness );
+	DM_FIELD( float3, surfacePadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

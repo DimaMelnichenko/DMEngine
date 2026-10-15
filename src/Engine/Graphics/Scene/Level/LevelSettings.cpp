@@ -473,6 +473,11 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		  "How many times the ripple pattern is longer along the flow than across it on running water", 0, "surface" },
 		{ "foam_speed", "Foam speed", DM_SETTING( foamSpeed ), 0.1f, 5.0f, "m/s", "", 0, "surface" },
 		{ "foam_shear", "Foam shear", DM_SETTING( foamShear ), 0.1f, 10.0f, "1/s", "", 0, "surface" },
+		{ "foam_texture_repeat", "Foam texture repeat", DM_SETTING( foamTextureRepeat ), 0.1f, 4.0f, "m",
+		  "The foam texture (Textures: water_foam) repeats every so many metres across the flow; along it the pattern is longer, "
+		  "like the ripple", 0, "surface" },
+		{ "foam_softness", "Foam softness", DM_SETTING( foamSoftness ), 0.05f, 1.0f, "",
+		  "Width of the foam texture edge: thin foam strands are translucent", 0, "surface" },
 		{ "detail_distance", "Detail distance", DM_SETTING( detailDistance ), 0.0f, 1000.0f, "m",
 		  "Nearer the water surface of streams is drawn by the detail tiles (0.25 m): farther the 1 m grid differs by less than a "
 		  "pixel, and a detail tile has 16 times as many triangles; 0 - the 1 m grid only", 0, "surface" },

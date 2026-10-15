@@ -537,6 +537,10 @@ struct WaterSimulationSettings
 	float rippleStretch = 2.5f;		// рябь быстрой воды вытянута вдоль течения во столько раз
 	float foamSpeed = 1.5f;			// пена — быстрее этого, м/с
 	float foamShear = 1.5f;			// и где сдвиг скорости больше, 1/с
+	// Пена из текстуры (строка water_foam в Textures, Tools/pack_water_foam.py; нет — узор по ряби): метров на повтор поперёк
+	// течения (вдоль — длиннее, как рябь) и ширина края по маске — тонкие нити полупрозрачны
+	float foamTextureRepeat = 0.7f;
+	float foamSoftness = 0.35f;
 	// Ближе — поверхность воды у русел рисует детальная плитка (0,25 м, режим static), м; 0 — только сетка 1 м
 	float detailDistance = 150.0f;
 

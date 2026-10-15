@@ -4,6 +4,7 @@
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
 #include "WaterRipples.h"
+#include "System.h"
 
 namespace GS
 {
@@ -14,6 +15,7 @@ namespace
 constexpr float visibleDepth = WaterField::visibleDepth;
 constexpr uint32_t tileCells = 32;				// WATER_TILE в water_surface.cs / water_surface.sh
 constexpr uint32_t rippleSize = 256;			// текселей карты ряби по стороне (WaterRipples)
+constexpr const char* foamTextureName = "water_foam";	// текстура пены в Textures (Tools/pack_water_foam.py)
 
 }
 
@@ -200,6 +202,10 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	params.terrainHeightMultiplier = height.heightMultiplier;
 	params.terrainHeightOffset = height.heightOffset;
 	params.terrainDetailTile = height.detailTileSize;
+	// Пена из текстуры (строка water_foam в Textures, Tools/pack_water_foam.py); нет её — узор пены по ряби
+	const bool foamTexture = System::textures().exists( foamTextureName );
+	params.foamTextureRepeat = foamTexture ? std::max( current.foamTextureRepeat, 0.05f ) : 0.0f;
+	params.foamSoftness = std::max( current.foamSoftness, 0.01f );
 	Device::updateResourceData( m_surfaceBuffer, params );
 
 	ScopedRenderState state( context.frameRaster );
@@ -212,6 +218,8 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	d3d.setSRV( 2, water.stoneDragView() );
 	if( height.heightMap )
 		d3d.setSRV( 3, *height.heightMap );
+	if( foamTexture )
+		d3d.setSRV( 4, System::textures().get( foamTextureName )->srv() );
 	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
 	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
 	// Детальные плитки у русел: своя сетка (0,25 м); уровень и течение — детальная вода (SLOT_WATER_DETAIL); грубая
