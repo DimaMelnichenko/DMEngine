@@ -1,6 +1,6 @@
 """Удалённое управление запущенным DMEngine — как консоль и Remote Control API в UE (docs/remote.md).
 
-    python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles] [--pix] [--gpu-validation]
+    python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--pix] [--gpu-validation]
     python Tools/engine.py [--timeout с] <команда ...>    одна команда, печатает ответ; код выхода 1 при error
     python Tools/engine.py [--timeout с] run сценарий.txt  команды из файла по строке (# — комментарий), за одно подключение
     python Tools/engine.py stop                   quit, ожидание выхода, ошибки из log.txt
@@ -214,6 +214,8 @@ def start(args):
         engine_args.append('-nowind')
     if args.noparticles:
         engine_args.append('-noparticles')
+    if args.freezetime:
+        engine_args.append('-freezetime')
     if args.pix:
         engine_args.append('-pix')
     if args.gpu_validation:
@@ -316,6 +318,8 @@ def main():
         parser.add_argument('--mouse', action='store_true', help='camera follows the mouse (no -nomouse)')
         parser.add_argument('--nowind', action='store_true', help='no wind: vegetation still, frames repeat to the pixel')
         parser.add_argument('--noparticles', action='store_true', help='no particles: frames repeat to the pixel')
+        parser.add_argument('--freezetime', action='store_true',
+                            help='game time stands at zero (water ripples): frames repeat between runs')
         parser.add_argument('--pix', action='store_true', help='load the PIX GPU capturer: command pix takes captures')
         parser.add_argument('--gpu-validation', action='store_true',
                             help='Debug: GPU-based validation of the D3D12 debug layer (slow; for changes of the D3D12 layer)')

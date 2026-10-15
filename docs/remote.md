@@ -9,7 +9,7 @@
 ## Как запустить
 
 ```
-python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--gpu-validation]
+python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--gpu-validation]
 python Tools/engine.py camera 567,58.1,212,8,35
 python Tools/engine.py screenshot кадр.png
 python Tools/engine.py stat gpu 3
@@ -21,8 +21,10 @@ python Tools/engine.py stop
   `-remote`, `-nomouse` (без `--mouse`: камера не следует за мышью) и `-resolution 1920x1080` — окно с заголовком
   1920 × 1080, снимки и замеры сравнимы между запусками и с прежними цифрами (`--resolution desktop` — окно без рамки
   на весь монитор, как у движка без параметра; любое `ШxВ` — своё окно). Кадры с одной точки совпадают до пикселя, если
-  не движется трава: `--nowind` (параметр движка `-nowind`) или `set "Wind/Enabled" false` ([wind.md](wind.md)), и нет
-  частиц: `--noparticles` (`-noparticles`, [particles.md](particles.md)). `--gpu-validation` (`-gpuvalidation`) —
+  не движется трава: `--nowind` (параметр движка `-nowind`) или `set "Wind/Enabled" false` ([wind.md](wind.md)), нет
+  частиц: `--noparticles` (`-noparticles`, [particles.md](particles.md)) и стоит рябь воды: `--freezetime` (`-freezetime`:
+  время игры на нуле — иначе снимок делается в разный момент игры). Сверка кадров и времени GPU с эталоном одной
+  командой — `Tools/check_frames.py` ([d3d12.md](d3d12.md) §4). `--gpu-validation` (`-gpuvalidation`) —
   GPU-based validation ([d3d12.md](d3d12.md) §4), только в Debug: без `--config` запускает Debug, с `--config Release` —
   ошибка (Release без слоя проверки шёл бы молча). Затем ждёт, пока движок откроет канал, то есть конца инициализации, и
   первого кадра (`wait 1`).
@@ -184,3 +186,4 @@ m_console.registerCommand( "имя", "<аргументы> - что делает
 | `src/Engine/Graphics/Scene/SceneCommands.cpp` | `terrain` (кисть, выгрузка русел), `water` |
 | `src/Engine/Graphics/Renderer.cpp` (`measureGpu`) | замеры времени GPU: после прогрева — в лог, по команде — в ответ |
 | `Tools/engine.py` | клиент: запуск, команды, сценарий, выход |
+| `Tools/check_frames.py` | контрольные камеры против эталона: кадры, время GPU, debug-слой ([d3d12.md](d3d12.md) §4) |

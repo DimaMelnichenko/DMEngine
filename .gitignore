@@ -27,3 +27,5 @@ __pycache__/
 # Захваты PIX (команда pix, docs/d3d12.md §4)
 /captures/
 *.wpix
+# Эталон контрольных камер (Tools/check_frames.py): кадры зависят от Textures\ и Meshes\ этой машины
+/reference/

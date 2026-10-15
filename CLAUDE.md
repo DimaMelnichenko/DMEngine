@@ -74,10 +74,11 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 - **Проверка изменений рендера** — по `docs/d3d12.md` §4 «Как проверять»: снимки четырёх контрольных камер совпадают
   с эталоном ±1, «GPU average» не хуже, Debug-сборка молчит в `log.txt` (debug-слой D3D12; GPU-based validation —
   `-GpuValidation` у `run.ps1`, `--gpu-validation` у `engine.py` — только для правок слоя D3D12: ресурсы, барьеры,
-  дескрипторы, проходы). Эталон D3D11 — коммит `0aadc42` в истории git.
+  дескрипторы, проходы). Одной командой — `python Tools/check_frames.py` (эталон до правки — `check_frames.py
+  reference`; `--config Debug` — с проверкой debug-слоя). Эталон D3D11 — коммит `0aadc42` в истории git.
 - **Запуск для проверки** — `.\Tools\run.ps1 [-Config Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,4]
   [-Camera x,y,z,pitch,yaw] [-Level имя] [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
-  [-GpuValidation]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
+  [-FreezeTime] [-GpuValidation]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
   Запускает exe из корня проекта с удалённым управлением (`-remote`), ждёт конца инициализации и ещё `-Seconds`, по
   желанию нажимает клавиши (команда `key`, скан-коды `DIK_*`, как в DirectInput: 2 — «1», 4 — «3», 5 — «4») и снимает
   задний буфер (команда `screenshot`, с окнами ImGui, если нет `-NoGui`), закрывает движок штатно (`quit`, лог дописан;
@@ -88,8 +89,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   не ждут окончания работы, и часть работы объекта (пиксели террейна) попадает в время следующего.
   Обычно камера поворачивается мышью; `-NoMouse` (`-nomouse` у exe) отключает это и скрывает указатель, со `-Screenshot`
   он включается сам — снимки с одной точки совпадают до пикселя, если не движется трава: ветер уровня качает её, для
-  сравнения кадров — `-NoWind` (`-nowind` у exe, `--nowind` у `engine.py start`, в сессии `set "Wind/Enabled" false`) и
-  `-NoParticles` (`-noparticles`, `--noparticles`: частицы движутся). Ближняя и дальняя плоскости камеры — `ScreenNear` / `ScreenDepth` в секции `[General]` `settings.ini` (0,1 и 4000 м; от дальней зависят сфера неба и слои воздушной перспективы). Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
+  сравнения кадров — `-NoWind` (`-nowind` у exe, `--nowind` у `engine.py start`, в сессии `set "Wind/Enabled" false`),
+  `-NoParticles` (`-noparticles`, `--noparticles`: частицы движутся) и `-FreezeTime` (`-freezetime`, `--freezetime`: время
+  игры стоит — рябь воды на месте, снимки с водой совпадают между запусками). Ближняя и дальняя плоскости камеры — `ScreenNear` / `ScreenDepth` в секции `[General]` `settings.ini` (0,1 и 4000 м; от дальней зависят сфера неба и слои воздушной перспективы). Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
   `Rotation=pitch,yaw` в градусах, pitch > 0 — взгляд вниз), уровень — секция `[Level]` (`Name`); параметры `-Camera`
   и `-Level` скрипта (`-camera`, `-level` у exe) их переопределяют, так что снимок с нужной точки не требует правки кода.
   Списки (`-Keys`, `-Camera`) скрипт разбирает сам: через `powershell -File` они приходят одной строкой.
@@ -130,7 +132,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   в `log.txt` (одинаковые — первые три раза): без отладчика их больше нигде не видно; при потере устройства в лог
   уходят последние команды (DRED). Release-сборка создаёт устройство без слоя. Крах в Release: смещение из журнала
   Windows (`Get-WinEvent`, Id 1000) ищется в `DMEngine.map` рядом с exe (линкер с `/MAP`).
-- Тестов и линтера нет. Проверка изменений — сборка и запуск приложения.
+- Тестов и линтера нет. Проверка изменений — сборка и запуск приложения; кадры и время GPU контрольных камер против
+  эталона — `Tools/check_frames.py`.
 - Запускать из корня проекта: все пути относительные к рабочей папке (`settings.ini`, `base.db3`,
   `Shaders\`, `Textures\`, `Meshes\`). Для CLion это задаёт общая
   конфигурация запуска `.run/DMEngine.run.xml`. Каталоги `Textures\` и `Meshes\` в git не хранятся;

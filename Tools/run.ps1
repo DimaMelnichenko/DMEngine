@@ -1,6 +1,6 @@
 # Запуск DMEngine для проверки изменений:
 #   .\Tools\run.ps1 [-Config Debug|Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,3] [-Camera x,y,z,pitch,yaw] [-Level имя]
-#                    [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles] [-GpuValidation]
+#                    [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles] [-FreezeTime] [-GpuValidation]
 # Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные) с удалённым
 # управлением (-remote, канал \\.\pipe\DMEngine, docs/remote.md), ждёт конца инициализации, затем Seconds секунд работы,
 # при необходимости нажимает клавиши и снимает кадр, закрывает движок штатно (команда quit: Engine::beforeExit,
@@ -19,6 +19,8 @@
 # чтобы случайное движение мыши не сдвигало кадр.
 # NoWind — без ветра (параметр движка -nowind): трава неподвижна, снимки с одной точки совпадают до пикселя.
 # NoParticles — без частиц (параметр движка -noparticles): они движутся, и снимки с одной точки иначе не совпадут.
+# FreezeTime — время игры стоит на нуле (параметр движка -freezetime): рябь воды в том же месте, снимки совпадают между
+# запусками.
 # GpuValidation — Debug с GPU-based validation (параметр движка -gpuvalidation): для правок слоя D3D12 (ресурсы, барьеры,
 # дескрипторы, проходы); без него Debug — только debug-слой, загрузка и кадр в разы быстрее.
 # Каждая команда ждёт ответа не дольше 60 с: не ответил — главный цикл движка стоит (в log.txt — «Frame watchdog»), процесс
@@ -35,6 +37,7 @@ param(
     [switch]$NoMouse,
     [switch]$NoWind,
     [switch]$NoParticles,
+    [switch]$FreezeTime,
     [switch]$GpuValidation
 )
 
@@ -107,6 +110,7 @@ if ($NoGui) { $engineArgs += '-nogui' }
 if ($NoMouse -or $Screenshot) { $engineArgs += '-nomouse' }
 if ($NoWind) { $engineArgs += '-nowind' }
 if ($NoParticles) { $engineArgs += '-noparticles' }
+if ($FreezeTime) { $engineArgs += '-freezetime' }
 if ($GpuValidation) { $engineArgs += '-gpuvalidation' }
 $process = Start-Process -FilePath $exe -WorkingDirectory $root -PassThru -ArgumentList ($engineArgs -join ' ')
 $begin = Get-Date

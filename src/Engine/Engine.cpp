@@ -315,7 +315,9 @@ bool Engine::tick()
 	XMFLOAT3 toShadowLight;
 	DMLight::ShadowSettings shadowSettings;
 	m_scene.lights().shadowLight( toShadowLight, shadowSettings );
-	m_gameTime += elapsedTime / 1000.0;
+	// -freezetime: время игры стоит — снимки с одной точки совпадают между запусками (Tools/check_frames.py)
+	if( m_config.gameTimeRunning() )
+		m_gameTime += elapsedTime / 1000.0;
 	const FrameContext frame{ mainView, elapsedTime, static_cast<float>( m_gameTime ), toShadowLight };
 	// Перестройка по правкам редактора (кривые русел) — не пока тянут ползунок в окне
 	watchdog.stage( "editor changes" );

@@ -41,6 +41,9 @@ public:
 	bool wind() const						{ return m_wind; }
 	// -noparticles: частицы уровня не создаются — кадры с одной точки совпадают до пикселя (частицы движутся)
 	bool particles() const					{ return m_particles; }
+	// -freezetime: время игры стоит на нуле (cb_gameTime: рябь и пена воды, звёзды) — снимки с одной точки совпадают
+	// между запусками, хотя загрузка и путь до снимка — разной длины. Время кадра, экспозиция и время суток идут как обычно
+	bool gameTimeRunning() const			{ return m_gameTimeRunning; }
 	// Удалённое управление по каналу \\.\pipe\DMEngine (-remote, клиент — Tools/engine.py)
 	bool remoteControl() const				{ return m_remoteControl; }
 	// -pix: захват кадров PIX из самого движка (команда pix), как -attachPIX в UE: захватчик PIX грузится до устройства
@@ -63,6 +66,7 @@ private:
 	bool m_mouseLook = true;
 	bool m_wind = true;
 	bool m_particles = true;
+	bool m_gameTimeRunning = true;
 	bool m_remoteControl = false;
 
 };
