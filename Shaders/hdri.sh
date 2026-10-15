@@ -12,14 +12,7 @@
 #include "cubemap.sh"
 #include "bindless.sh"
 
-// Раскладка — HDRIBackdrop::Parameters
-cbuffer HDRIParameters : register( SLOT_CB_PASS )
-{
-	int   g_face;			// грань cubemap освещения: 0…5 — +X, −X, +Y, −Y, +Z, −Z
-	float g_rotation;		// поворот панорамы вокруг вертикали, радианы
-	float g_maxLuminance;	// срез яркости для освещения окружением, в единицах панорамы; 0 — без среза
-	float g_lod;			// мип панорамы для граней cubemap
-};
+#include "hdri_constants.h"
 
 DM_SRV( Texture2D<float4>, g_panorama, 0 );
 

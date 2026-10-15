@@ -9,14 +9,7 @@
 #include "cubemap.sh"
 #include "bindless.sh"
 
-// Раскладка — SkyLight::BlendParameters
-cbuffer BlendParameters : register( SLOT_CB_PASS )
-{
-	int   g_face;
-	float g_mip;
-	float g_previousWeight;	// доля прежнего результата — с поправкой на его нормировку
-	float g_currentWeight;	// доля нового
-};
+#include "sky_light_blend_constants.h"
 
 DM_SRV( TextureCube, g_previous, 0 );
 DM_SRV( TextureCube, g_current, 1 );

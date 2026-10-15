@@ -12,30 +12,7 @@
 #include "samplers.sh"
 #include "bindless.sh"
 
-// Раскладка — VolumetricCloud::Parameters
-cbuffer VolumetricCloudBuffer : register( b4 )
-{
-	matrix g_previousViewProjection;	// главный вид прошлого кадра: перенос облаков по направлению
-	float  g_layerBottom;		// высота основания слоя над землёй мира (y = 0), м
-	float  g_layerTop;			// высота верха слоя, м
-	float  g_coverage;			// общее покрытие 0…1
-	float  g_cloudDensity;		// коэффициент ослабления облака полной плотности, 1/м
-	float3 g_cloudAlbedo;		// доля рассеянного в ослабленном
-	float  g_shapeScale;		// повторов шума формы на метр
-	float2 g_windOffset;		// снос облаков ветром, м (x, z)
-	float  g_detailScale;		// повторов мелкого шума на метр
-	float  g_weatherScale;		// повторов карты погоды на метр
-	float3 g_lightDirection;	// на светило облаков (солнце, ночью — луна)
-	float  g_historyWeight;		// доля прошлого кадра; 0 — смена плана
-	float3 g_lightColor;		// свет светила над атмосферой — в единицах запекания неба (на 1 лк солнца)
-	float  g_maxDistance;		// дальше облака не трассируются, м
-	float2 g_shadowOrigin;		// карта тени: начало по X и Z, м
-	float  g_shadowSize;		// её размер, м
-	float  g_shadowStrength;	// множитель оптической толщины тени: 0 — тени нет
-	uint2  g_traceSize;			// размер текстуры облаков (половина кадра)
-	uint   g_frameIndex;		// кадр с последней смены плана — сдвиг начала лучей
-	float  g_outputScale;		// 1 / нормировка неба (SkyAtmosphere::skyNormalization): ночью луна в половинной точности
-};
+#include "volumetric_cloud_constants.h"
 
 DM_SRV( Texture3D<float4>, g_cloudShape, 6 );
 DM_SRV( Texture3D<float4>, g_cloudDetail, 7 );

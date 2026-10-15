@@ -13,12 +13,7 @@
 
 DM_SRV( Texture2D<float4>, g_clouds, 0 );
 
-// Раскладка — VolumetricCloud::CompositeParameters
-cbuffer CloudCompositeBuffer : register( b4 )
-{
-	float  g_cloudScale;	// нормировка неба (SkyAtmosphere::skyNormalization): свет в текстуре × она × cb_skyScale — кд/м²
-	float3 g_compositePadding;
-};
+#include "cloud_composite_constants.h"
 
 struct PixelInputType
 {

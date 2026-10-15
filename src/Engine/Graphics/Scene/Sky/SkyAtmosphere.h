@@ -11,6 +11,9 @@
 #include "Properties\PropertyContainer.h"
 #include "Texture\DMTexture.h"
 #include "Level\LevelSettings.h"
+#include "Shaders\sky_atmosphere_constants.h"
+#include "Shaders\night_sky_constants.h"
+#include "Shaders\aerial_perspective_constants.h"
 
 class DMLightDriver;
 
@@ -75,44 +78,7 @@ public:
 	bool environment() const override { return true; }
 
 private:
-	// Константный буфер PS b2, раскладка как у SkyParameters в Shaders/atmosphere.sh
-	struct alignas( 16 ) Parameters
-	{
-		DirectX::XMFLOAT3 sunDirection;
-		float skyIntensity;
-		DirectX::XMFLOAT3 sunColor;
-		float haze;
-		DirectX::XMFLOAT3 groundAlbedo;
-		int32_t face;
-		DirectX::XMFLOAT3 moonDirection;
-		float nightSkyLuminance;	// в единицах запекания: кд/м², делённые на освещённость от солнца
-		DirectX::XMFLOAT3 moonColor;			// в единицах запекания; 0 — луны нет или она ниже −10° (её свет в небе — 0)
-		int32_t skyViewLight;		// проход Sky-View: 0 — таблица солнца, 1 — луны
-	};
 
-	// Константный буфер b4 фона и звёзд — NightSkyParameters в Shaders/night_sky.sh
-	struct alignas( 16 ) NightSkyParameters
-	{
-		DirectX::XMFLOAT3 equatorialX;
-		float moonAngularRadius;
-		DirectX::XMFLOAT3 equatorialY;
-		float starIlluminanceScale;
-		DirectX::XMFLOAT3 equatorialZ;
-		float starTwinkle;
-		DirectX::XMFLOAT3 moonDiskLuminance;
-		float moonDiskBrightnessLimit;	// предел яркости полного диска после экспозиции; 0 — без предела
-		DirectX::XMFLOAT2 viewportSize;
-		float milkyWayLuminance;		// средняя яркость карты Млечного Пути, в единицах запекания; 0 — его нет
-		float padding;
-		// Базис тела луны в мире (либрация и позиционный угол оси): ось вращения, к нулевому меридиану, к 90° восточной
-		// селенографической долготы (Море Кризисов)
-		DirectX::XMFLOAT3 moonNorth;
-		float earthshine;				// освещённость луны Землёй / солнцем: пепельный свет; 0 — нет
-		DirectX::XMFLOAT3 moonPrime;
-		float earthshineBrightnessLimit;	// предел яркости пепельного света после экспозиции; 0 — физическая
-		DirectX::XMFLOAT3 moonEast;
-		float padding2;
-	};
 
 	// Звезда в буфере GPU — Star в Shaders/sky_stars.vs
 	struct StarData
@@ -130,10 +96,10 @@ private:
 	// Карта Млечного Пути (file от Textures\): нормированная на среднее по сфере 1, с мипами; сводка — в лог. Нет файла —
 	// фон без него
 	bool loadMilkyWay( const std::string& file );
-	Parameters currentParameters() const;
+	SkyParameters currentParameters() const;
 	// Звёзды и диск луны для фона: экваториальный базис, размер, яркость, поворот диска и пепельный свет — по SunPosition
 	// уровня
-	NightSkyParameters currentNightSky( const Parameters& params ) const;
+	NightSkyParameters currentNightSky( const SkyParameters& params ) const;
 	// Таблицы, зависящие только от атмосферы: пропускание, затем Ψ по нему
 	void updateAtmosphereLuts();
 	// Небо вокруг камеры: таблица солнца, и луны — если она на небе
@@ -142,18 +108,18 @@ private:
 	void renderSkyCube();
 	// Объём воздушной перспективы для главного вида кадра (матрицы — в константах кадра)
 	void updateAerialPerspective();
-	void setParameters( const Parameters& params );
+	void setParameters( const SkyParameters& params );
 	void bindEnvironment();
 
 	const DMLightDriver* m_lights = nullptr;
 	SkyLight* m_skyLight = nullptr;
 	PropertyContainer m_properties;
 	bool m_backgroundVisible = true;
-	Parameters m_frameParams = {};		// солнце и настройки кадра: Sky-View, воздушная перспектива, фон
+	SkyParameters m_frameParams = {};		// солнце и настройки кадра: Sky-View, воздушная перспектива, фон
 	bool m_lutsValid = false;
-	Parameters m_lutsFor = {};			// для каких дымки и альбедо земли посчитаны пропускание и Ψ
+	SkyParameters m_lutsFor = {};			// для каких дымки и альбедо земли посчитаны пропускание и Ψ
 	bool m_environmentValid = false;
-	Parameters m_capturedFor = {};		// для чего начат последний пересчёт освещения окружением
+	SkyParameters m_capturedFor = {};		// для чего начат последний пересчёт освещения окружением
 
 	FullscreenShader m_transmittanceShader;
 	FullscreenShader m_multipleScatteringShader;

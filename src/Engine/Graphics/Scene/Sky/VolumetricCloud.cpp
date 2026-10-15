@@ -65,8 +65,8 @@ bool VolumetricCloud::initialize( const Settings& settings, SkyAtmosphere& atmos
 		!m_traceShader.Initialize( "Shaders\\volumetric_cloud.cs", "mainTrace" ) ||
 		!m_shadowShader.Initialize( "Shaders\\volumetric_cloud.cs", "mainShadow" ) ||
 		!m_compositeShader.load( "Shaders\\cloud_composite.ps", SceneTargets::formats() ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constants ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( CompositeParameters ), m_compositeConstants ) ||
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( VolumetricCloudBuffer ), m_constants ) ||
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( CloudCompositeBuffer ), m_compositeConstants ) ||
 		!createNoise() )
 		return false;
 
@@ -139,16 +139,16 @@ void VolumetricCloud::update( const FrameContext& frame )
 	m_windOffset.y -= wind.direction.y / length * distance;
 }
 
-VolumetricCloud::Parameters VolumetricCloud::currentParameters( const FrameContext& frame )
+VolumetricCloudBuffer VolumetricCloud::currentParameters( const FrameContext& frame )
 {
 	const Settings settings = this->settings();
-	Parameters params = {};
+	VolumetricCloudBuffer params = {};
 	params.previousViewProjection = XMMatrixTranspose( m_previousViewProjection );
 	params.layerBottom = settings.layerBottomAltitude;
 	params.layerTop = params.layerBottom + std::max( settings.layerHeight, 1.0f );
 	params.coverage = settings.coverage;
-	params.density = settings.density;
-	params.albedo = settings.albedo;
+	params.cloudDensity = settings.density;
+	params.cloudAlbedo = settings.albedo;
 	params.shapeScale = 1.0f / std::max( settings.shapeScale, 1.0f );
 	params.windOffset = m_windOffset;
 	params.detailScale = 1.0f / std::max( settings.detailScale, 1.0f );
@@ -160,8 +160,7 @@ VolumetricCloud::Parameters VolumetricCloud::currentParameters( const FrameConte
 	params.shadowOrigin = XMFLOAT2( shadow.x, shadow.y );
 	params.shadowSize = shadowMapWorldSize;
 	params.shadowStrength = settings.shadowStrength;
-	params.traceSize[0] = m_traceSize[0];
-	params.traceSize[1] = m_traceSize[1];
+	params.traceSize = XMUINT2( m_traceSize[0], m_traceSize[1] );
 	params.frameIndex = m_frameIndex;
 	params.outputScale = 1.0f / m_atmosphere->skyNormalization();
 	return params;
@@ -209,7 +208,7 @@ void VolumetricCloud::compute( const FrameContext& frame )
 		m_frameIndex = 0;
 	}
 
-	Parameters params = currentParameters( frame );
+	VolumetricCloudBuffer params = currentParameters( frame );
 	const std::vector<PassDesc::Read> noiseReads = { { &m_shapeSRV, "cloud shape noise" }, { &m_detailSRV, "cloud detail noise" },
 													 { &m_weatherSRV, "cloud weather map" } };
 	const auto bindNoise = [&]
@@ -221,9 +220,9 @@ void VolumetricCloud::compute( const FrameContext& frame )
 
 	// 1. Тень облаков — к источнику теней сцены (солнце, ночью — луна)
 	{
-		Parameters shadowParams = params;
+		VolumetricCloudBuffer shadowParams = params;
 		shadowParams.lightDirection = frame.toShadowLight;
-		Device::updateResourceData<Parameters>( m_constants, shadowParams );
+		Device::updateResourceData<VolumetricCloudBuffer>( m_constants, shadowParams );
 		d3d.beginPass( PassDesc{ "Cloud shadow", {}, {}, 0, 0, noiseReads, { { &m_shadowUAV, "cloud shadow" } } } );
 		d3d.setConstantBuffer( 4, m_constants );
 		bindNoise();
@@ -240,7 +239,7 @@ void VolumetricCloud::compute( const FrameContext& frame )
 	traceReads.push_back( { &m_cloudsSRV[previous], "cloud history" } );
 	traceReads.push_back( { &m_atmosphere->transmittanceLut(), "transmittance LUT" } );
 	traceReads.push_back( { &m_atmosphere->multipleScatteringLut(), "multiple scattering LUT" } );
-	Device::updateResourceData<Parameters>( m_constants, params );
+	Device::updateResourceData<VolumetricCloudBuffer>( m_constants, params );
 	d3d.beginPass( PassDesc{ "Volumetric cloud", {}, {}, 0, 0, traceReads, { { &m_cloudsUAV[m_current], "volumetric cloud" } } } );
 	d3d.setConstantBuffer( 4, m_constants );
 	m_atmosphere->bindForClouds();
@@ -266,9 +265,9 @@ void VolumetricCloud::collectMeshes( const RenderView& view, MeshCollector& coll
 void VolumetricCloud::renderCustom( const RenderContext& )
 {
 	// Свет в текстуре — в единицах запекания неба, делённый на нормировку: в кд/м² — × освещённость от солнца × нормировка
-	CompositeParameters params = {};
+	CloudCompositeBuffer params = {};
 	params.cloudScale = m_atmosphere->skyNormalization();
-	Device::updateResourceData<CompositeParameters>( m_compositeConstants, params );
+	Device::updateResourceData<CloudCompositeBuffer>( m_compositeConstants, params );
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setConstantBuffer( 4, m_compositeConstants );
 	d3d.setSRV( 0, m_cloudsSRV[m_current] );

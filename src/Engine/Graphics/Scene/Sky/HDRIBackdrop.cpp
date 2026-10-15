@@ -109,7 +109,7 @@ bool HDRIBackdrop::initialize( const Settings& settings, SkyLight& skyLight )
 	// Цели для прогрева: грани cubemap источника (формат SkyLight::createSource), фон — буфер сцены
 	if( !m_cubeShader.load( "Shaders\\hdri_cube.ps", TargetFormats::colorTarget( DXGI_FORMAT_R32G32B32A32_FLOAT ) ) ||
 		!m_backgroundShader.load( "Shaders\\hdri_background.ps", SceneTargets::formats() ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( HDRIParameters ), m_constantBuffer ) ||
 		!SkyLight::createSource( m_cube ) )
 		return false;
 
@@ -186,9 +186,9 @@ void HDRIBackdrop::setBackgroundVisible( bool visible )
 	m_backgroundVisible = visible;
 }
 
-HDRIBackdrop::Parameters HDRIBackdrop::currentParameters()
+HDRIParameters HDRIBackdrop::currentParameters()
 {
-	Parameters params = {};
+	HDRIParameters params = {};
 	params.rotation = XMConvertToRadians( m_properties["Rotation"].data<float>() );
 	params.maxLuminance = std::max( m_properties["Max luminance"].data<float>(), 0.0f );
 	// Мип панорамы, у которого тексель по долготе (2π / ширина) — как тексель грани у центра (π/2 / размер)
@@ -199,8 +199,8 @@ HDRIBackdrop::Parameters HDRIBackdrop::currentParameters()
 void HDRIBackdrop::compute( const FrameContext& )
 {
 	// Cubemap и освещение окружением — только при смене поворота или среза: интенсивность — множитель при выборке
-	const Parameters params = currentParameters();
-	if( !m_environmentValid || std::memcmp( &params, &m_computedFor, sizeof( Parameters ) ) != 0 )
+	const HDRIParameters params = currentParameters();
+	if( !m_environmentValid || std::memcmp( &params, &m_computedFor, sizeof( HDRIParameters ) ) != 0 )
 	{
 		updateEnvironment( params );
 		m_computedFor = params;
@@ -209,12 +209,12 @@ void HDRIBackdrop::compute( const FrameContext& )
 	m_skyLight->bind();
 }
 
-void HDRIBackdrop::updateEnvironment( const Parameters& params )
+void HDRIBackdrop::updateEnvironment( const HDRIParameters& params )
 {
 	DMD3D& d3d = DMD3D::instance();
 
 	// Грани cubemap из панорамы, затем освещение окружением (мипы строит SkyLight в compute)
-	Parameters faceParams = params;
+	HDRIParameters faceParams = params;
 	for( int32_t face = 0; face < 6; ++face )
 	{
 		faceParams.face = face;
@@ -228,10 +228,10 @@ void HDRIBackdrop::updateEnvironment( const Parameters& params )
 	m_skyLight->capture( m_cube );
 }
 
-void HDRIBackdrop::setParameters( const Parameters& params )
+void HDRIBackdrop::setParameters( const HDRIParameters& params )
 {
-	Parameters data = params;
-	Device::updateResourceData<Parameters>( m_constantBuffer, data );
+	HDRIParameters data = params;
+	Device::updateResourceData<HDRIParameters>( m_constantBuffer, data );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
 }
 

@@ -10,12 +10,7 @@
 DM_SRV( Texture2DArray<float4>, g_sky, 0 );	// грани cubemap окружения (один мип) как массив
 DM_UAV( RWStructuredBuffer<float4>, g_irradianceSH, 0 );
 
-// Раскладка — SkyLight::captureIrradiance
-cbuffer IrradianceParameters : register( b4 )
-{
-	float  g_outputScale;	// 1 / нормировка результата SkyLight
-	float3 g_irradiancePadding;
-};
+#include "sky_irradiance_constants.h"
 
 static const uint threadCount = 64;
 groupshared float3 s_sh[threadCount][9];

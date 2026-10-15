@@ -7,6 +7,7 @@
 #include "D3D\CubeTarget.h"
 #include "Properties\PropertyContainer.h"
 #include "Level\LevelSettings.h"
+#include "Shaders\hdri_constants.h"
 
 namespace GS
 {
@@ -42,27 +43,19 @@ public:
 	bool environment() const override { return true; }
 
 private:
-	// Константный буфер PS b2, раскладка как у HDRIParameters в Shaders/hdri.sh
-	struct alignas( 16 ) Parameters
-	{
-		int32_t face;
-		float rotation;		// радианы
-		float maxLuminance;
-		float lod;
-	};
 
 	// rotation — поворот панорамы, градусы: для направления на солнце в сводке
 	bool loadPanorama( const std::string& path, float rotation );
-	Parameters currentParameters();
-	void setParameters( const Parameters& params );
-	void updateEnvironment( const Parameters& params );
+	HDRIParameters currentParameters();
+	void setParameters( const HDRIParameters& params );
+	void updateEnvironment( const HDRIParameters& params );
 
 	SkyLight* m_skyLight = nullptr;
 	std::string m_texture;
 	PropertyContainer m_properties;
 	bool m_backgroundVisible = true;
 	bool m_environmentValid = false;
-	Parameters m_computedFor = {};
+	HDRIParameters m_computedFor = {};
 
 	FullscreenShader m_cubeShader;
 	FullscreenShader m_backgroundShader;

@@ -4,6 +4,9 @@
 #include "DMComputeShader.h"
 #include "D3D\CubeTarget.h"
 #include "D3D\RenderTarget.h"
+#include "Shaders\sky_prefilter_constants.h"
+#include "Shaders\sky_light_blend_constants.h"
+#include "Shaders\sky_irradiance_constants.h"
 
 namespace GS
 {
@@ -53,23 +56,6 @@ public:
 	static bool createSource( CubeTarget& source );
 
 private:
-	// Константный буфер PS b2, раскладка как у PrefilterParameters в Shaders/sky_prefilter.ps
-	struct alignas( 16 ) PrefilterParameters
-	{
-		int32_t face;
-		float roughness;
-		float sourceSize;
-		float outputScale;	// 1 / нормировка
-	};
-	// Константный буфер PS b2 — BlendParameters в Shaders/sky_light_blend.ps; CS b4 — sky_irradiance_blend.cs:
-	// результат = прежний × previousWeight + текущий × currentWeight (веса учитывают разные нормировки)
-	struct alignas( 16 ) BlendParameters
-	{
-		int32_t face;
-		float mip;
-		float previousWeight;
-		float currentWeight;
-	};
 
 	// Результат пересчёта: префильтр отражений и гармоники рассеянного света
 	struct Result

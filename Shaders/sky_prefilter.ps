@@ -10,14 +10,7 @@
 #include "ibl_sampling.sh"
 #include "bindless.sh"
 
-// Раскладка — SkyLight::PrefilterParameters
-cbuffer PrefilterParameters : register( SLOT_CB_PASS )
-{
-	int   g_face;			// грань: 0…5 — +X, −X, +Y, −Y, +Z, −Z
-	float g_roughness;		// шероховатость текущего мипа
-	float g_sourceSize;		// размер грани исходного cubemap в текселях
-	float g_outputScale;	// 1 / нормировка результата SkyLight: он в половинной точности
-};
+#include "sky_prefilter_constants.h"
 
 DM_SRV( TextureCube, g_sky, 0 );
 

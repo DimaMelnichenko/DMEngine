@@ -5,6 +5,8 @@
 #include "FullscreenShader.h"
 #include "Properties\PropertyContainer.h"
 #include "Level\LevelSettings.h"
+#include "Shaders\volumetric_cloud_constants.h"
+#include "Shaders\cloud_composite_constants.h"
 
 namespace GS
 {
@@ -45,44 +47,13 @@ public:
 	bool environment() const override { return true; }
 
 private:
-	// Константный буфер CS b4, раскладка как у VolumetricCloudBuffer в Shaders/volumetric_cloud.sh
-	struct alignas( 16 ) Parameters
-	{
-		DirectX::XMMATRIX previousViewProjection;
-		float layerBottom;
-		float layerTop;
-		float coverage;
-		float density;
-		DirectX::XMFLOAT3 albedo;
-		float shapeScale;
-		DirectX::XMFLOAT2 windOffset;
-		float detailScale;
-		float weatherScale;
-		DirectX::XMFLOAT3 lightDirection;
-		float historyWeight;
-		DirectX::XMFLOAT3 lightColor;
-		float maxDistance;
-		DirectX::XMFLOAT2 shadowOrigin;
-		float shadowSize;
-		float shadowStrength;
-		uint32_t traceSize[2];
-		uint32_t frameIndex;
-		float outputScale;
-	};
-	static_assert( sizeof( Parameters ) == 176, "VolumetricCloudBuffer layout" );
 
-	// Константный буфер PS b4, раскладка как у CloudCompositeBuffer в Shaders/cloud_composite.ps
-	struct alignas( 16 ) CompositeParameters
-	{
-		float cloudScale;
-		float padding[3];
-	};
 
 	bool createNoise();
 	bool createTraceTargets( uint32_t width, uint32_t height );
 	void generateNoise();
 	bool enabled();
-	Parameters currentParameters( const FrameContext& frame );
+	VolumetricCloudBuffer currentParameters( const FrameContext& frame );
 
 	SkyAtmosphere* m_atmosphere = nullptr;
 	Wind* m_wind = nullptr;

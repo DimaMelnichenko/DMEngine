@@ -3,16 +3,9 @@
 // (пара к Shaders/sky_light_blend.ps). Класс SkyLight
 ////////////////////////////////////////////////////////////////////////////////
 
-// Раскладка — SkyLight::BlendParameters, та же, что у Shaders/sky_light_blend.ps (грань и мип здесь не нужны)
 #include "bindless.sh"
-
-cbuffer IrradianceBlendParameters : register( b4 )
-{
-	int   g_face;
-	float g_mip;
-	float g_previousWeight;	// доля прежних гармоник — с поправкой на их нормировку
-	float g_currentWeight;	// доля новых
-};
+// Константы — те же, что у Shaders/sky_light_blend.ps (грань и мип здесь не нужны)
+#include "sky_light_blend_constants.h"
 
 DM_SRV( StructuredBuffer<float4>, g_previous, 0 );
 DM_SRV( StructuredBuffer<float4>, g_current, 1 );

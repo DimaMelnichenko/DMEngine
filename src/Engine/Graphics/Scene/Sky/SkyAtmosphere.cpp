@@ -253,14 +253,14 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	m_starShader.warmPipelines( { { RasterState::noCulling, DepthState::readOnlyNearOrEqual, BlendState::additive } },
 								SceneTargets::formats() );
 
-	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( Parameters ), m_constantBuffer ) ||
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( SkyParameters ), m_constantBuffer ) ||
 		!SkyLight::createSource( m_skyCube ) ||
 		!m_transmittanceLut.create( SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT, hdrFormat, "Transmittance LUT" ) ||
 		!m_multipleScattering.create( multipleScatteringSize, multipleScatteringSize, hdrFormat, "Multiple scattering LUT" ) ||
 		!m_skyViewLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat, "Sky-View LUT" ) ||
 		!m_skyViewMoonLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat, "Sky-View moon LUT" ) ||
 		!createAerialPerspectiveVolume() ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_aerialPerspectiveConstants ) ||
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( AerialPerspectiveBuffer ), m_aerialPerspectiveConstants ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( NightSkyParameters ), m_nightSkyConstants ) ||
 		!createStars( stars ) )
 		return false;
@@ -486,9 +486,9 @@ XMFLOAT3 SkyAtmosphere::sunTransmittance( const XMFLOAT3& toSun ) const
 	return XMFLOAT3( std::exp( -depth.x ) * visible, std::exp( -depth.y ) * visible, std::exp( -depth.z ) * visible );
 }
 
-SkyAtmosphere::Parameters SkyAtmosphere::currentParameters() const
+SkyParameters SkyAtmosphere::currentParameters() const
 {
-	Parameters params = {};
+	SkyParameters params = {};
 	XMFLOAT3 lightColor;
 	m_lights->directionalLight( params.sunDirection, lightColor );
 	// Небо линейно по солнцу: запекается для солнца 1 лк над атмосферой (его цветность — цвет источника, делённый
@@ -515,14 +515,14 @@ SkyAtmosphere::Parameters SkyAtmosphere::currentParameters() const
 
 float SkyAtmosphere::skyNormalization() const
 {
-	const Parameters params = currentParameters();
+	const SkyParameters params = currentParameters();
 	// Небо от солнца: 1 днём, в сумерках — ~в 2,5 раза меньше на градус высоты (до −20°)
 	const float sunElevation = XMConvertToDegrees( std::asin( std::clamp( params.sunDirection.y, -1.0f, 1.0f ) ) );
 	const float sun = std::pow( 10.0f, 0.4f * std::clamp( sunElevation, -20.0f, 0.0f ) );
 	return std::max( { sun, luminance( params.moonColor ), params.nightSkyLuminance, 1e-12f } );
 }
 
-SkyAtmosphere::NightSkyParameters SkyAtmosphere::currentNightSky( const Parameters& params ) const
+NightSkyParameters SkyAtmosphere::currentNightSky( const SkyParameters& params ) const
 {
 	NightSkyParameters night = {};
 	// Без места и времени — небо без поворота: полюс мира в зените
@@ -614,7 +614,7 @@ void SkyAtmosphere::compute( const FrameContext& )
 	{
 		m_skyLight->updateCapture();
 	}
-	else if( !m_environmentValid || std::memcmp( &m_frameParams, &m_capturedFor, sizeof( Parameters ) ) != 0 )
+	else if( !m_environmentValid || std::memcmp( &m_frameParams, &m_capturedFor, sizeof( SkyParameters ) ) != 0 )
 	{
 		renderSkyCube();
 		if( m_environmentValid )
@@ -660,7 +660,7 @@ void SkyAtmosphere::updateSkyView()
 	const XMFLOAT3& moonColor = m_frameParams.moonColor;
 	if( moonColor.x > 0.0f || moonColor.y > 0.0f || moonColor.z > 0.0f )
 	{
-		Parameters moonParams = m_frameParams;
+		SkyParameters moonParams = m_frameParams;
 		moonParams.skyViewLight = 1;
 		setParameters( moonParams );
 		d3d.beginPass( PassDesc{ "Sky-View LUT (moon)", { { &m_skyViewMoonLut.target(), "Sky-View moon LUT" } }, {}, SKY_VIEW_LUT_WIDTH,
@@ -678,7 +678,7 @@ void SkyAtmosphere::renderSkyCube()
 											   { &m_skyViewMoonLut.srv(), "Sky-View moon LUT" } };
 
 	// Грани мипа 0; цепочку мипов (для префильтра с выборкой мипа по плотности и гармоник) строит SkyLight в compute
-	Parameters faceParams = m_frameParams;
+	SkyParameters faceParams = m_frameParams;
 	for( int32_t face = 0; face < 6; ++face )
 	{
 		faceParams.face = face;
@@ -701,10 +701,10 @@ void SkyAtmosphere::updateAerialPerspective()
 							 { { &m_multipleScattering.srv(), "multiple scattering LUT" }, { &m_transmittanceLut.srv(), "transmittance LUT" } },
 							 { { &m_aerialPerspectiveUAV, "aerial perspective volume" } } } );
 
-	// Раскладка — AerialPerspectiveBuffer в Shaders/aerial_perspective.cs
-	XMFLOAT4 constants( m_properties["Aerial perspective view distance scale"].data<float>(), 1.0f / skyNormalization(),
-						0.0f, 0.0f );
-	Device::updateResourceData<XMFLOAT4>( m_aerialPerspectiveConstants, constants );
+	AerialPerspectiveBuffer constants = {};
+	constants.viewDistanceScale = m_properties["Aerial perspective view distance scale"].data<float>();
+	constants.outputScale = 1.0f / skyNormalization();
+	Device::updateResourceData<AerialPerspectiveBuffer>( m_aerialPerspectiveConstants, constants );
 	d3d.setConstantBuffer( 4, m_aerialPerspectiveConstants );
 	d3d.setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );	// параметры кадра — setParameters в compute()
 	d3d.setSRV( multipleScatteringSlot, m_multipleScattering.srv() );
@@ -740,10 +740,10 @@ void SkyAtmosphere::cloudLight( XMFLOAT3& direction, XMFLOAT3& color ) const
 	}
 }
 
-void SkyAtmosphere::setParameters( const Parameters& params )
+void SkyAtmosphere::setParameters( const SkyParameters& params )
 {
-	Parameters data = params;
-	Device::updateResourceData<Parameters>( m_constantBuffer, data );
+	SkyParameters data = params;
+	Device::updateResourceData<SkyParameters>( m_constantBuffer, data );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
 }
 

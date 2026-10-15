@@ -30,9 +30,9 @@ bool SkyLight::initialize()
 
 	DMD3D& d3d = DMD3D::instance();
 	return d3d.createShaderConstantBuffer( sizeof( PrefilterParameters ), m_constantBuffer ) &&
-		   d3d.createShaderConstantBuffer( sizeof( BlendParameters ), m_blendConstants ) &&
-		   d3d.createShaderConstantBuffer( sizeof( BlendParameters ), m_irradianceBlendConstants ) &&
-		   d3d.createShaderConstantBuffer( sizeof( XMFLOAT4 ), m_irradianceConstants ) &&
+		   d3d.createShaderConstantBuffer( sizeof( SkyLightBlendBuffer ), m_blendConstants ) &&
+		   d3d.createShaderConstantBuffer( sizeof( SkyLightBlendBuffer ), m_irradianceBlendConstants ) &&
+		   d3d.createShaderConstantBuffer( sizeof( IrradianceParameters ), m_irradianceConstants ) &&
 		   createResult( m_results[0] ) && createResult( m_results[1] ) && createResult( m_results[2] ) &&
 		   createResult( m_blended ) && m_brdfLut.create( brdfLutSize, brdfLutSize, DXGI_FORMAT_R16G16_FLOAT, "BRDF LUT" );
 }
@@ -130,8 +130,9 @@ void SkyLight::buildMips( const CubeTarget& source )
 void SkyLight::captureIrradiance( Result& result )
 {
 	// Рассеянный свет: гармоники по мипу irradianceSourceMip, делённые на нормировку
-	XMFLOAT4 constants( 1.0f / m_captureNormalization, 0.0f, 0.0f, 0.0f );
-	Device::updateResourceData<XMFLOAT4>( m_irradianceConstants, constants );
+	IrradianceParameters constants = {};
+	constants.outputScale = 1.0f / m_captureNormalization;
+	Device::updateResourceData<IrradianceParameters>( m_irradianceConstants, constants );
 	DMD3D::instance().setConstantBuffer( 4, m_irradianceConstants );
 	DMD3D::instance().beginPass( PassDesc{ "Sky light irradiance", {}, {}, 0, 0, { { &m_source->facesSRV(), "sky cube faces" } },
 										 { { &result.irradianceUAV, "irradiance SH" } } } );
@@ -170,11 +171,11 @@ void SkyLight::blendResults( float blend )
 	const Result& current = m_results[m_current];
 
 	// Гармоники: 9 коэффициентов одной группой
-	BlendParameters params = {};
+	SkyLightBlendBuffer params = {};
 	params.previousWeight = previousWeight;
 	params.currentWeight = blend;
-	Device::updateResourceData<BlendParameters>( m_irradianceBlendConstants, params );
-	d3d.setConstantBuffer( 4, m_irradianceBlendConstants );
+	Device::updateResourceData<SkyLightBlendBuffer>( m_irradianceBlendConstants, params );
+	d3d.setConstantBuffer( SLOT_CB_PASS, m_irradianceBlendConstants );
 	d3d.beginPass( PassDesc{ "Sky light blend irradiance", {}, {}, 0, 0,
 							 { { &previous.irradianceSRV, "previous irradiance SH" }, { &current.irradianceSRV, "current irradiance SH" } },
 							 { { &m_blended.irradianceUAV, "blended irradiance SH" } } } );
@@ -192,7 +193,7 @@ void SkyLight::blendResults( float blend )
 		{
 			params.face = face;
 			params.mip = static_cast<float>( mip );
-			Device::updateResourceData<BlendParameters>( m_blendConstants, params );
+			Device::updateResourceData<SkyLightBlendBuffer>( m_blendConstants, params );
 			d3d.setConstantBuffer( SLOT_CB_PASS, m_blendConstants );
 			const uint32_t size = m_blended.specular.mipSize( mip );
 			d3d.beginPass( PassDesc{ "Sky light blend specular", { { &m_blended.specular.target( mip, face ), "blended specular cube" } }, {},

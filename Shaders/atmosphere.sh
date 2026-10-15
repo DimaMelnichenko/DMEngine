@@ -16,22 +16,7 @@
 #include "samplers.sh"
 #include "bindless.sh"
 
-// Раскладка — SkyAtmosphere::Parameters. Небо запекается для солнца 1 лк над атмосферой (на освещённость от солнца
-// умножают при выборке — cb_skyLightScale), поэтому луна и ночное свечение здесь — в тех же единицах: их яркость,
-// делённая на освещённость от солнца (~10⁻⁶ и ~10⁻⁹; таблицы неба — во float32)
-cbuffer SkyParameters : register( SLOT_CB_PASS )
-{
-	float3 g_sunDirection;	// направление на солнце
-	float  g_skyIntensity;	// множитель рассеянного света (1 — по модели)
-	float3 g_sunColor;		// цветность солнца над атмосферой (яркость 1 — небо запекается для солнца 1 лк)
-	float  g_haze;			// множитель плотности аэрозоля (Ми): больше — дымка у горизонта и ореол вокруг солнца
-	float3 g_groundAlbedo;
-	int    g_face;			// грань cubemap неба: 0…5 — +X, −X, +Y, −Y, +Z, −Z (cubeDirection)
-	float3 g_moonDirection;	// направление на луну — второе светило атмосферы (Atmosphere Sun Light Index 1)
-	float  g_nightSkyLuminance;	// свечение ночного неба в зените
-	float3 g_moonColor;		// свет луны над атмосферой; 0 — луны нет
-	int    g_skyViewLight;	// какую таблицу Sky-View считает проход: 0 — солнца, 1 — луны
-};
+#include "sky_atmosphere_constants.h"
 
 static const float atmospherePi = 3.14159265f;
 static const float planetRadius = ATMOSPHERE_PLANET_RADIUS;

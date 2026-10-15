@@ -14,13 +14,7 @@
 
 DM_UAV( RWTexture3D<float4>, g_volume, 0 );
 
-// Раскладка — SkyAtmosphere::updateAerialPerspective
-cbuffer AerialPerspectiveBuffer : register( b4 )
-{
-	float  g_viewDistanceScale;	// Aerial Perspective View Distance Scale: во сколько раз путь в воздухе длиннее, 0 — выключено
-	float  g_outputScale;		// 1 / нормировка (SkyAtmosphere::aerialPerspectiveNormalization): объём — в половинной точности
-	float2 g_aerialPadding;
-};
+#include "aerial_perspective_constants.h"
 
 // Шагов интегрирования на слой (AerialPerspectiveLUTSampleCountMaxPerSlice в UE)
 static const int samplesPerSlice = 2;
