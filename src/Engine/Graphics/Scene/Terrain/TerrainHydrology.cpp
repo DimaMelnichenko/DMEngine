@@ -678,10 +678,10 @@ std::vector<double> lakeLevels( const std::vector<double>& filled, const std::ve
 // Чаша озера: у настоящего озера за узкой отмелью (литоралью) — свал к глубине, которая растёт с площадью, а не
 // сантиметры воды над плоским дном. Уровень озера не меняется (его задаёт порог перелива), опускается только дно: по
 // расстоянию от берега s — отмель до shelfDepth на ширине shelfWidth, дальше свал dropSlope м на м, не глубже
-// clamp(depthRatio · √площади, minDepth, maxDepth) с плавным скруглением. Где дно и так глубже — не трогается.
-// Возвращает опускание дна по клеткам, м (≥ 0)
-std::vector<double> lakeBasins( const std::vector<double>& level, const std::vector<double>& height, int n, double cell,
-								const WaterChannelsSettings& p )
+// clamp(depthRatio · √площади, minDepth, maxDepth) с плавным скруглением, но не мельче inflowDepth озера (label — номер
+// озера у клетки, −1 — не озеро). Где дно и так глубже — не трогается. Возвращает опускание дна по клеткам, м (≥ 0)
+std::vector<double> lakeBasins( const std::vector<double>& level, const std::vector<double>& height, const std::vector<int>& label,
+								const std::vector<double>& inflowDepth, int n, double cell, const WaterChannelsSettings& p )
 {
 	const size_t cells = level.size();
 	std::vector<double> lowering( cells, 0.0 );
@@ -723,41 +723,16 @@ std::vector<double> lakeBasins( const std::vector<double>& level, const std::vec
 			relax( row, col, 0, 1, 1.0 );
 		}
 	}
-	// Озёра — связные области одного уровня; площадь — по числу клеток
-	std::vector<int> label( cells, -1 );
-	std::vector<double> maxDepth;
-	std::vector<int> queue, component;
-	for( size_t start = 0; start < cells; ++start )
-	{
-		if( std::isnan( level[start] ) || label[start] >= 0 )
-			continue;
-		const int id = static_cast<int>( maxDepth.size() );
-		component.clear();
-		queue.assign( 1, static_cast<int>( start ) );
-		label[start] = id;
-		while( !queue.empty() )
-		{
-			const int i = queue.back();
-			queue.pop_back();
-			component.push_back( i );
-			for( int k = 0; k < 8; ++k )
-			{
-				const int r = i / n + neighbourRow[k];
-				const int c = i % n + neighbourCol[k];
-				if( r < 0 || c < 0 || r >= n || c >= n )
-					continue;
-				const int j = r * n + c;
-				if( label[j] < 0 && !std::isnan( level[j] ) && level[j] == level[i] )
-				{
-					label[j] = id;
-					queue.push_back( j );
-				}
-			}
-		}
-		const double area = component.size() * cell * cell;
-		maxDepth.push_back( std::clamp( p.lakeDepthRatio * std::sqrt( area ), static_cast<double>( p.lakeMinDepth ),
-										static_cast<double>( std::max( p.lakeMaxDepth, p.lakeMinDepth ) ) ) );
-	}
+	// Наибольшая глубина озера — по площади (числу клеток), но не мельче впадающих ручьёв
+	std::vector<double> area( inflowDepth.size(), 0.0 );
+	for( size_t i = 0; i < cells; ++i )
+		if( label[i] >= 0 )
+			area[label[i]] += cell * cell;
+	std::vector<double> maxDepth( inflowDepth.size() );
+	for( size_t lake = 0; lake < maxDepth.size(); ++lake )
+		maxDepth[lake] = std::max( std::clamp( p.lakeDepthRatio * std::sqrt( area[lake] ), static_cast<double>( p.lakeMinDepth ),
+											   static_cast<double>( std::max( p.lakeMaxDepth, p.lakeMinDepth ) ) ),
+								   inflowDepth[lake] );
 	const double shelfWidth = std::max( static_cast<double>( p.lakeShelfWidth ), 1e-3 );
 	std::vector<double> depth( cells, 0.0 );
 	for( size_t i = 0; i < cells; ++i )
@@ -2268,13 +2243,125 @@ bool TerrainHydrology::Build::buildBed()
 			}
 		}
 	}
-	// В озёрах русло не режется, дно — чаша (lakeBasins)
-	const std::vector<double> basin = lakeBasins( lakeLevel, height.values, n, cell, p );
+	// Дно ручья у впадения в озеро (последний узел вне озера — следующий в озере или конец кривой у берега): самое низкое
+	// по оси — на период плёсов выше узла и по отрезку от него до клеток озера, врез отрезка в точке (тальвег, плёс, шум
+	// дна). От него продолжается подводное русло (ниже), по нему — наименьшая глубина чаши озера
+	struct MouthStart
+	{
+		int node = -1;
+		double bottom = std::numeric_limits<double>::infinity();	// м
+		double along = 0.0;							// где — по оси от узла, клетки (< 0 — выше узла)
+		std::vector<std::pair<Point, double>> lead;	// ось от него до узла вниз по течению и along, если оно выше узла
+	};
+	std::vector<MouthStart> mouthStarts;
+	std::vector<double> inflowDepth( lakeCount, 0.0 );	// дно впадающих ручьёв под переливом озера, м
+	for( int k = 0; k < count; ++k )
+	{
+		if( inLake( k ) || up[k] < 0 )
+			continue;
+		const int label = down[k] >= 0 ? ( inLake( down[k] ) ? lakeLabel[cellOf[down[k]]] : -1 ) : endLake[k];
+		if( label < 0 )
+			continue;
+		MouthStart start;
+		start.node = k;
+		Point lowest = position[k];
+		// Дно в точке оси — наименьшее поперёк на ширину дна: на излучине тальвег у внешнего берега, и там глубже
+		auto consider = [&]( int segment, Point at, Point from, double along )
+		{
+			const double length = std::hypot( at.x - from.x, at.y - from.y );
+			if( length < 1e-6 )
+				return;
+			const double nx = -( at.y - from.y ) / length;
+			const double ny = ( at.x - from.x ) / length;
+			for( double offset : { -1.0, -0.5, 0.0, 0.5, 1.0 } )
+			{
+				const double x = at.x + nx * offset * half[k];
+				const double y = at.y + ny * offset * half[k];
+				double base = 0.0;
+				const double bottom = catmullRom( height, x - 0.5, y - 0.5 ) - segmentProfile( segment, x, y, base );
+				if( bottom < start.bottom )
+				{
+					start.bottom = bottom;
+					start.along = along;
+					lowest = at;
+				}
+			}
+		};
+		auto splineAt = [&]( int segment, int piece, double f )
+		{
+			const Point& a = spline[segment][piece];
+			const Point& b = spline[segment][piece + 1];
+			return Point{ a.x + ( b.x - a.x ) * f, a.y + ( b.y - a.y ) * f };
+		};
+		// Выше узла — против течения по четвертям частей сплайна; углы частей — путь продолжения от дна до узла
+		constexpr int subSteps = 4;
+		const double span = std::max( p.poolSpacing * 2.0 * half[k], 2.0 );	// клетки
+		std::vector<std::pair<Point, double>> corners;
+		consider( up[k], position[k], splineAt( up[k], pieces - 1, 0.0 ), 0.0 );
+		{
+			double along = 0.0;
+			Point previous = position[k];
+			for( int j = up[k]; j >= 0 && !inLake( j ) && -along < span; j = up[j] )
+			{
+				for( int piece = pieces - 1; piece >= 0 && -along < span; --piece )
+				{
+					for( int sub = subSteps - 1; sub >= 0; --sub )
+					{
+						const Point at = splineAt( j, piece, static_cast<double>( sub ) / subSteps );
+						along -= std::hypot( at.x - previous.x, at.y - previous.y );
+						consider( j, at, previous, along );
+						previous = at;
+						if( sub == 0 )
+							corners.push_back( { at, along } );
+					}
+				}
+			}
+		}
+		// Ниже узла — по отрезку до первой клетки озера
+		if( down[k] >= 0 )
+		{
+			double along = 0.0;
+			Point previous = position[k];
+			bool shore = false;
+			for( int piece = 0; piece < pieces && !shore; ++piece )
+			{
+				for( int sub = 1; sub <= subSteps; ++sub )
+				{
+					const Point at = splineAt( k, piece, static_cast<double>( sub ) / subSteps );
+					const int col = std::clamp( static_cast<int>( at.x ), 0, n - 1 );
+					const int row = std::clamp( static_cast<int>( at.y ), 0, n - 1 );
+					shore = lake[static_cast<size_t>( row ) * n + col] != 0;
+					if( shore )
+						break;
+					along += std::hypot( at.x - previous.x, at.y - previous.y );
+					consider( k, at, previous, along );
+					previous = at;
+				}
+			}
+		}
+		if( start.along < 0.0 )
+		{
+			start.lead.push_back( { lowest, start.along } );
+			for( auto it = corners.rbegin(); it != corners.rend(); ++it )
+				if( it->second > start.along + 1e-6 )
+					start.lead.push_back( *it );
+		}
+		inflowDepth[label] = std::max( inflowDepth[label], fillLevel[label] - start.bottom );
+		mouthStarts.push_back( std::move( start ) );
+	}
+	// В озёрах русло не режется, дно — чаша (lakeBasins): не мельче дна впадающих ручьёв плюс отмель — продолжение русла
+	// встречает чашу глубже себя
+	for( double& depth : inflowDepth )
+		if( depth > 0.0 )
+			depth += p.lakeShelfDepth;
+	const std::vector<double> basin = lakeBasins( lakeLevel, height.values, lakeLabel, inflowDepth, n, cell, p );
 
-	// Подводное русло: ручей, который впадает в озеро (последний узел вне озера — следующий в озере или конец кривой у
-	// берега), продолжается от этого узла с тем же сечением — по узлам кривой в озере, за концом кривой — прямо, дно — вниз
-	// не положе min_slope, пока чаша не станет глубже (и ещё на ширину русла — без стенки на конце). Иначе врез обрывался у
-	// озера: в клетках озера дно — чаша, а у берега она мелкая (отмель от нуля) — порог на дне между руслом и свалом
+	// Подводное русло: от самого низкого дна у впадения (MouthStart) — по оси до последнего узла вне озера, по узлам кривой
+	// в озере, за концом кривой — прямо, с сечением ручья без плёсов и ступеней; дно у оси — вниз не положе min_slope,
+	// пока чаша не станет глубже (и ещё на ширину русла — без стенки на конце). Иначе врез обрывался у озера: в клетках
+	// озера дно — чаша, а у берега она мелкая (отмель от нуля) — порог на дне между руслом и свалом. Продолжение от
+	// номинального дна узла (bed[k] — у борта, без тальвега и плёса) поднималось за плёсом у берега на 15–25 см — тот же
+	// порог, ручей упирался в край озера (Dimok, 2026-10-15, у 456,263)
 	struct MouthExtension
 	{
 		Point a, b;
@@ -2282,13 +2369,9 @@ bool TerrainHydrology::Build::buildBed()
 	};
 	std::vector<MouthExtension> mouths;
 	constexpr double mouthMaxLength = 40.0;	// м
-	for( int k = 0; k < count; ++k )
+	for( const MouthStart& start : mouthStarts )
 	{
-		if( inLake( k ) || up[k] < 0 )
-			continue;
-		const bool intoLake = down[k] >= 0 ? inLake( down[k] ) : endLake[k] >= 0;
-		if( !intoLake )
-			continue;
+		const int k = start.node;
 		// Путь: узлы кривой в озере; кривая кончилась (в озере или у берега) — дальше прямо по направлению последних узлов
 		// (у сгенерированной кривой точки через метр, ось извилиста). Ручей, который выходит из озера, — до последнего узла в нём
 		std::vector<Point> path = { position[k] };
@@ -2311,11 +2394,37 @@ bool TerrainHydrology::Build::buildBed()
 				for( double s = 1.0; ( curveCount - 1 + s ) * cell <= mouthMaxLength; s += 1.0 )
 					path.push_back( { position[last].x + dx / length * s, position[last].y + dy / length * s } );
 		}
-		// Вершины пути до места, где чаша глубже продолжения дна, и ещё на ширину русла; расстояние — по пути, клетки
-		const double thalwegFactor = 1.0 + shape[k].thalweg;
+		// Дно у оси на расстоянии along по пути от узла, клетки
+		auto bottomAt = [&]( double along ) { return start.bottom - p.minSlope * ( along - start.along ) * cell; };
+		// Чаша глубже дна — под дном русла (на полуширину дна и полклетки от оси): кривая, которая идёт по кромке озера вдоль
+		// берега, иначе прорезала бы жёлоб по отмели, хотя рядом уже свал
+		auto bowlBelow = [&]( Point q, double bottom )
+		{
+			const double radius = half[k] + 0.5;
+			const int c0 = std::max( static_cast<int>( std::floor( q.x - radius ) ), 0 );
+			const int c1 = std::min( static_cast<int>( std::floor( q.x + radius ) ), n - 1 );
+			const int r0 = std::max( static_cast<int>( std::floor( q.y - radius ) ), 0 );
+			const int r1 = std::min( static_cast<int>( std::floor( q.y + radius ) ), n - 1 );
+			for( int row = r0; row <= r1; ++row )
+				for( int col = c0; col <= c1; ++col )
+				{
+					const size_t j = static_cast<size_t>( row ) * n + col;
+					if( lake[j] && std::hypot( col + 0.5 - q.x, row + 0.5 - q.y ) <= radius && height.values[j] - basin[j] <= bottom )
+						return true;
+				}
+			return false;
+		};
+		// Вершины: от дна выше узла (если оно там), узел, путь до места, где чаша глубже продолжения дна, и ещё на ширину русла
 		const double tail = half[k] + bank[k];
-		std::vector<Point> kept = { path[0] };
-		std::vector<double> along = { 0.0 };
+		std::vector<Point> kept;
+		std::vector<double> along;
+		for( const auto& [point, distance] : start.lead )
+		{
+			kept.push_back( point );
+			along.push_back( distance );
+		}
+		kept.push_back( path[0] );
+		along.push_back( 0.0 );
 		bool entered = false;
 		double deepFrom = -1.0;
 		for( size_t v = 1; v < path.size(); ++v )
@@ -2336,8 +2445,7 @@ bool TerrainHydrology::Build::buildBed()
 			entered = true;
 			if( deepFrom < 0.0 )
 			{
-				const double need = ( height.sample( q.x - 0.5, q.y - 0.5 ) - ( bed[k] - p.minSlope * s * cell ) ) * thalwegFactor;
-				if( basin[i] >= need )
+				if( bowlBelow( q, bottomAt( s ) ) )
 					deepFrom = s;
 			}
 			else if( s >= deepFrom + tail )
@@ -2345,19 +2453,20 @@ bool TerrainHydrology::Build::buildBed()
 		}
 		if( !entered )
 			continue;
+		// Сечение ручья, врез у оси — до bottomAt: глубина у борта — врез / (1 + тальвег); фаза плёса 0,75 — sin = −1, без плёса
+		const double thalwegFactor = 1.0 + shape[k].thalweg;
 		auto sectionAt = [&]( size_t v )
 		{
-			if( v == 0 )
-				return section( k );
 			Section result = section( k );
 			result.bend = 0.0;
 			result.stepHeight = 0.0;
-			result.depth = std::max( height.sample( kept[v].x - 0.5, kept[v].y - 0.5 ) - ( bed[k] - p.minSlope * along[v] * cell ), 0.0 );
-			result.phase += along[v] * cell / std::max( p.poolSpacing * 2.0 * half[k] * cell, 1.0 );
+			result.phase = 0.75;
+			result.depth = std::max( catmullRom( height, kept[v].x - 0.5, kept[v].y - 0.5 ) - bottomAt( along[v] ), 0.0 ) / thalwegFactor;
 			return result;
 		};
 		for( size_t v = 0; v + 1 < kept.size(); ++v )
-			mouths.push_back( { kept[v], kept[v + 1], sectionAt( v ), sectionAt( v + 1 ) } );	}
+			mouths.push_back( { kept[v], kept[v + 1], sectionAt( v ), sectionAt( v + 1 ) } );
+	}
 	// Прорез порога у истока — то же продолжение русла, но назад, в озеро. Исток начинается у изолинии перелива (сглаживание
 	// и извилины сдвигают первый узел ещё на метр-три от озера), а вода озера стоит ниже перелива на запас берега
 	// (lake_freeboard): между водой и врезом истока оставался гребень земли на 5–22 см над водой — перемычка, а вода в русле
