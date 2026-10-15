@@ -299,6 +299,11 @@ void ParticleSystem::compute( const FrameContext& frame )
 		}
 		bind();
 		m_updateShader.dispatchGroups( groups( emitter.capacity ), 1, 1 );
+		// Дальше частицы, список живых и команда только читаются (проход transparent): барьеры — в очередь, группой в
+		// начале следующего прохода (DMD3D::prepareShaderRead)
+		d3d.prepareShaderRead( emitter.particlesView );
+		d3d.prepareShaderRead( emitter.aliveView );
+		d3d.prepareIndirectArgs( emitter.state );
 	}
 }
 

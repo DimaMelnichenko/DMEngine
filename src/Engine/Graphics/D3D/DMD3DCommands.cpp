@@ -115,6 +115,17 @@ void DMD3D::setUAV( uint16_t slot, const StorageView& view )
 	setBinding( DM_BINDING_UAV_BASE + slot, view.valid() ? view.index() : 0 );
 }
 
+void DMD3D::prepareShaderRead( const ShaderView& view )
+{
+	if( view.valid() )
+		barrier( view.resource(), D3D12_BARRIER_ACCESS_SHADER_RESOURCE, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, &view.range() );
+}
+
+void DMD3D::prepareIndirectArgs( const Buffer& buffer )
+{
+	barrier( buffer.handle(), D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT );
+}
+
 void DMD3D::clearStorageView( const StorageView& view )
 {
 	if( !view.valid() )

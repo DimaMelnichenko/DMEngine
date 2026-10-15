@@ -106,7 +106,9 @@ public:
 	PassDesc passDesc( const char* name ) const;
 	// Расставляет инстансы слоя: gridDim × gridDim ячеек сетки вокруг камеры
 	void populate( DMComputeShader& shader, uint16_t gridDim );
-	// После расстановки: команды ExecuteIndirect по видам и группам (Shaders\scatter.cs, buildCommands)
+	// После расстановки: команды ExecuteIndirect по видам и группам (Shaders\scatter.cs, buildCommands). Последняя запись
+	// слоя в кадре: пулы, списки видов, команды и счётчики дальше только читаются — их барьеры встают в очередь
+	// (DMD3D::prepareShaderRead) и уходят группой в начале следующего прохода, а не перед первым ExecuteIndirect в каскаде
 	void buildCommands( DMComputeShader& shader );
 
 	// Постоянный слой: пул и кластеры на мир worldSize × worldSize м (после createBuffers); margin — наибольший радиус

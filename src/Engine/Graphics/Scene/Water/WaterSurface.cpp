@@ -159,6 +159,12 @@ void WaterSurface::cull( const RenderView& view, const WaterSimulationSettings& 
 	d3d.setUAV( 5, m_detailTileListUAV );
 	const uint32_t tileCount = m_tilesPerSide * m_tilesPerSide;
 	m_tilesShader.dispatchGroups( ( tileCount + 63 ) / 64, 1, 1 );
+	// Дальше списки плиток и команды только читаются (проход transparent): барьеры — в очередь, группой в начале
+	// следующего прохода (DMD3D::prepareShaderRead)
+	d3d.prepareShaderRead( m_tileListView );
+	d3d.prepareIndirectArgs( m_drawArgs );
+	d3d.prepareShaderRead( m_detailTileListView );
+	d3d.prepareIndirectArgs( m_detailDrawArgs );
 }
 
 void WaterSurface::warmPipelines( const PassStates& states )

@@ -514,6 +514,12 @@ void ScatterPass::buildCommands( DMComputeShader& shader )
 	shader.setUAVBuffer( 0, m_countersUAV );
 	shader.setUAVBuffer( 4, m_commandsUAV );
 	shader.dispatchGroups( maxViews * maxLists * maxSections / 64, 1, 1 );
+	// Дальше — только чтение: вершинные шейдеры и ExecuteIndirect видов
+	d3d.prepareShaderRead( m_items.srv );
+	d3d.prepareShaderRead( m_transitions.srv );
+	d3d.prepareShaderRead( m_indices.srv );
+	d3d.prepareIndirectArgs( m_commands );
+	d3d.prepareIndirectArgs( m_counters );
 }
 
 ScatterPass::PopulateParams& ScatterPass::populateParams()

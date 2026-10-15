@@ -238,6 +238,12 @@ public:
 	void setSRV( uint16_t slot, const Buffer& ringBuffer );
 	void setUAV( uint16_t slot, const StorageView& view );		// compute
 	void clearStorageView( const StorageView& view );	// нули (uint) в буфер по UAV
+	// Ресурс, который записал compute, дальше только читается: барьер в чтение заранее — в очередь, он уходит группой с
+	// барьерами следующего beginPass или dispatch, а не поодиночке перед первым вызовом посреди прохода (списки и команды
+	// расстановки, частиц, плиток воды пишет compute объекта, рисуют проходы теней и сцены). Привязка и вызов потом
+	// барьера не ставят — ресурс уже в нужном состоянии
+	void prepareShaderRead( const ShaderView& view );
+	void prepareIndirectArgs( const Buffer& buffer );	// команды и счётчики ExecuteIndirect (BufferUsage::indirectArgs)
 	void setVertexBuffers( uint32_t count, const Buffer* const buffers[], const uint32_t strides[], const uint32_t offsets[] );
 	void setVertexBuffer( const Buffer& buffer, uint32_t stride, uint32_t offset = 0 );
 	void setIndexBuffer( const Buffer& buffer, DXGI_FORMAT format, uint32_t offset = 0 );
