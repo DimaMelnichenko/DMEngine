@@ -171,6 +171,11 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Graphics/Scene/Foliage/FoliageInteraction.cpp
     src/Engine/Graphics/Scene/Water/WaterSimulation.cpp
+    src/Engine/Graphics/Scene/Water/WaterField.cpp
+    src/Engine/Graphics/Scene/Water/WaterPipes.cpp
+    src/Engine/Graphics/Scene/Water/StaticWater.cpp
+    src/Engine/Graphics/Scene/Water/WaterSurface.cpp
+    src/Engine/Graphics/Scene/Water/StreamCurves.cpp
     src/Engine/Graphics/Scene/Water/WaterRipples.cpp
     src/Engine/Graphics/ShaderProgram.cpp
     src/Engine/Graphics/Scene/Materials/TextureMaterial.cpp

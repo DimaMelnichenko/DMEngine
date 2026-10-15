@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Общее для compute-шейдеров воды (water_simulation.cs, water_surface.cs): константы симуляции (b4,
-// WaterSimulation::Parameters), рельеф ячейки по итоговой карте высот (t0) и границы сетки
+// WaterField::Parameters), рельеф ячейки по итоговой карте высот (t0) и границы сетки
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef WATER_SIMULATION_SH
@@ -10,7 +10,7 @@
 
 DM_SRV( Texture2D<float>, g_heightMap, 0 );		// итоговая карта высот террейна (TerrainHeight::heightMap)
 
-// Раскладка — WaterSimulation::Parameters
+// Раскладка — WaterField::Parameters
 cbuffer WaterSimulationBuffer : register( b4 )
 {
 	uint  g_size;				// ячеек по стороне (= текселей карты высот)

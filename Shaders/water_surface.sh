@@ -9,7 +9,7 @@
 
 #define WATER_TILE 32
 
-// Раскладка — WaterSimulation::SurfaceParameters
+// Раскладка — WaterSurface::SurfaceParameters
 cbuffer WaterSurfaceBuffer : register( SLOT_CB_MATERIAL )
 {
 	uint   g_size;				// ячеек симуляции по стороне

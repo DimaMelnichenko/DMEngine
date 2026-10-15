@@ -323,11 +323,12 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 ресурс сцены `SLOT_FOLIAGE_INTERACTION`, t124, окно — `cb_foliageInteraction`; растения с `WindWeight` > 0 наклоняются от
 корня в `vertexWorldPosition` — `Shaders/foliage_interaction.sh`; давит камера у земли, звери — `addInteractor`; окно
 «Foliage interaction», не сохраняется; `docs/wind.md`),
-`WaterSimulation` (вода; режим строки `mode`: `static` — на `Test`, как реки-сплайны и озёра UE Water, но одним полем:
+`WaterSimulation` (вода — части на общем поле `WaterField`: трубы `WaterPipes`, статичная вода с течением и кэшем
+`StaticWater`, поверхность `WaterSurface`, кривые русел в редакторе `StreamCurves`; режим строки `mode`: `static` — на `Test`, как реки-сплайны и озёра UE Water, но одним полем:
 уровень ручьёв (Маннинг) и озёр (перелив) — одно поле по сети с подпором, растр, поверхность — те же тайлы, что у
 симуляции; вода для травы и мокрой земли — тот же растр, всё из конвейера рельефа и воды (`TerrainHydrology`), без шагов;
 течение ручьёв и озёр — установившийся расчёт при загрузке (или из кэша `cache\water\flow_<ключ>.bin` по отпечатку входа и
-настроек, `WaterSimulation::solveStaticFlow`), `Shaders/water_flow.cs`: мелкая вода под «жёсткой крышкой» на сетке MAC
+настроек, `StaticWater::solve`), `Shaders/water_flow.cs`: мелкая вода под «жёсткой крышкой» на сетке MAC
 одной областью, ручей держит сила тяжести вдоль уклона (равновесие — скорость по Маннингу), расход — от сети ручьёв; поток в
 руслах, слияния, струя ручья в озере и тяга к истоку, подокно «Flow»; камни русла — часть кривых (`TerrainHydrology`: дно,
 борта, валуны; ставит их слой расстановки с `ScatterLayers.placement` = `stream_stones`), тормозят течение и пенят воду

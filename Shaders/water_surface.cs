@@ -28,7 +28,7 @@ DM_UAV( RWByteAddressBuffer, g_detailDrawArgs, 4 );			// то же у детал
 DM_UAV( RWStructuredBuffer<uint>, g_detailTileList, 5 );
 DM_SRV( ByteAddressBuffer, g_detailBounds, 6 );				// mainTiles: ~наименьший и наибольший уровень детальной плитки
 
-// Раскладка — WaterSimulation::TilesParameters
+// Раскладка — WaterSurface::TilesParameters
 cbuffer WaterTilesBuffer : register( b5 )
 {
 	float4 g_planes[6];			// frustum главного вида: нормали внутрь

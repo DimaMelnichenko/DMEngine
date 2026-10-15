@@ -23,12 +23,12 @@
 //   mainFlowRed/Black  — давление: ∇·(h ∇p) = ∇·(h u), красно-чёрный Гаусс-Зейдель с верхней релаксацией на месте
 //                        (давление прошлого шага — начальное приближение);
 //   mainFlowProject    — u − ∇p.
-// mainFlowRestore — скорость для шейдеров из кэша на диске (WaterSimulation::solveStaticFlow) вместо расчёта.
+// mainFlowRestore — скорость для шейдеров из кэша на диске (StaticWater::solve) вместо расчёта.
 // Ячейки: сухие (берег), озеро и ручей (обе считаются; у ручья — u₀). Грани: закрыта (берег) или свободна (между двумя
 // мокрыми); у грани с ручьём — заданная скорость u₀ (два ручья — средняя, ручей и озеро — ручья). Класс WaterSimulation
 // (solveFlow), docs/water.md, «Течение»
 //
-// FLOW_DETAIL (define) — то же течение на детальной сетке у русел (WaterSimulation::solveDetailFlow, docs/water.md,
+// FLOW_DETAIL (define) — то же течение на детальной сетке у русел (StaticWater::solveDetailFlow, docs/water.md,
 // «Детальная вода у русел»): ячейка 0,25 м, сетка мира — по всем плиткам детальной земли сразу (ячейка → плитка по
 // индексу детальной земли → срез, тексель с полем), поэтому соседние плитки — одна область без швов; оси — X и Z мира
 // (y — по Z, а не против). Отличия от сетки 1 м:
@@ -80,7 +80,7 @@ DM_SRV( Texture2DArray<float2>, g_cachedFlow, 11 );	// mainFlowRestore: тече
 DM_SRV( Texture2D<float2>, g_cachedFlow, 11 );
 #endif
 
-// Раскладка — WaterSimulation::FlowParameters
+// Раскладка — StaticWater::FlowParameters
 cbuffer WaterFlowBuffer : register( b5 )
 {
 	uint  g_flowTileCount;		// групп в g_flowTiles
@@ -102,7 +102,7 @@ static const float kindOutside = 3.0f;	// FLOW_DETAIL: ячейка вне пл�
 static const int2 axes[2] = { int2( 1, 0 ), int2( 0, 1 ) };
 
 #ifdef FLOW_DETAIL
-// Раскладка — WaterSimulation::DetailFlowParameters
+// Раскладка — StaticWater::DetailFlowParameters
 cbuffer WaterDetailFlowBuffer : register( b6 )
 {
 	uint  g_detailCells;			// ячеек плитки по стороне (без поля)

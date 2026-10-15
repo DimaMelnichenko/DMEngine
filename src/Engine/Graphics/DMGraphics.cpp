@@ -981,19 +981,19 @@ void DMGraphics::registerCommands()
 	{
 		if( args.empty() || !m_scene.water().initialized() )
 			return reply->error( "usage: stream move <x,z> | insert | delete (the level needs water)" );
-		WaterSimulation& water = m_scene.water();
+		StreamCurves& streams = m_scene.water().streams();
 		bool done = false;
 		if( args[0] == "move" && args.size() == 2 )
 		{
 			const size_t comma = args[1].find( ',' );
 			if( comma == std::string::npos )
 				return reply->error( "usage: stream move <x,z>" );
-			done = m_viewport.moveStreamPoint( water, std::stof( args[1].substr( 0, comma ) ), std::stof( args[1].substr( comma + 1 ) ) );
+			done = m_viewport.moveStreamPoint( streams, std::stof( args[1].substr( 0, comma ) ), std::stof( args[1].substr( comma + 1 ) ) );
 		}
 		else if( args[0] == "insert" )
-			done = m_viewport.insertStreamPoint( water );
+			done = m_viewport.insertStreamPoint( streams );
 		else if( args[0] == "delete" )
-			done = m_viewport.removeStreamPoint( water );
+			done = m_viewport.removeStreamPoint( streams );
 		else if( args[0] == "falloff" && args.size() == 2 )
 		{
 			m_viewport.setStreamFalloff( std::stof( args[1] ) );

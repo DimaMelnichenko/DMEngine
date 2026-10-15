@@ -21,7 +21,7 @@ DM_SRV( StructuredBuffer<uint2>, g_detailTileCoords, 3 );	// плитка сре
 DM_UAV( RWTexture2DArray<float4>, g_detailWater, 0 );		// уровень поверхности (−1e30 — нет), течение X, Z, глубина
 DM_UAV( RWByteAddressBuffer, g_detailBounds, 1 );			// на плитку: ~наименьший и наибольший уровень (orderedBits)
 
-// Раскладка — WaterSimulation::DetailParameters
+// Раскладка — StaticWater::DetailParameters
 cbuffer WaterDetailBuffer : register( b5 )
 {
 	float g_heightMultiplier;

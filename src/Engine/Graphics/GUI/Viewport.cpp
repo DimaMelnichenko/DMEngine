@@ -268,7 +268,7 @@ void Viewport::setStreamMode( bool enabled )
 void Viewport::update( const DMCamera& camera, GS::Scene& scene, GUI& gui )
 {
 	GS::ModelInstances& models = scene.models();
-	GS::WaterSimulation* water = scene.water().initialized() ? &scene.water() : nullptr;
+	GS::StreamCurves* water = scene.water().initialized() ? &scene.water().streams() : nullptr;
 	const GS::TerrainHeightSource* terrain = &scene.terrainPipeline();
 	DMLightDriver* lights = &scene.lights();
 	GS::ParticleSystem* particles = scene.particles().initialized() ? &scene.particles() : nullptr;
@@ -365,7 +365,7 @@ void Viewport::selectInstance( const GS::ModelInstances& models, uint32_t key )
 std::string Viewport::clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gui, float x, float y )
 {
 	GS::ModelInstances& models = scene.models();
-	GS::WaterSimulation* water = scene.water().initialized() ? &scene.water() : nullptr;
+	GS::StreamCurves* water = scene.water().initialized() ? &scene.water().streams() : nullptr;
 	DMLightDriver& lights = scene.lights();
 	GS::ParticleSystem* particles = scene.particles().initialized() ? &scene.particles() : nullptr;
 	clearSelection();
@@ -402,19 +402,19 @@ std::string Viewport::clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gu
 	return instance >= 0 ? models.instanceName( instance ) : std::string();
 }
 
-bool Viewport::moveStreamPoint( GS::WaterSimulation& water, float x, float z )
+bool Viewport::moveStreamPoint( GS::StreamCurves& streams, float x, float z )
 {
 	if( m_streamCurve < 0 || m_streamPoint < 0 )
 		return false;
 	m_dragStart.clear();
-	for( const GS::StreamCurvePoint& point : water.curves()[m_streamCurve].points )
+	for( const GS::StreamCurvePoint& point : streams.curves()[m_streamCurve].points )
 		m_dragStart.push_back( point.position );
-	dragStreamPoint( water, DirectX::XMFLOAT2( x, z ) );
-	water.finishCurveEdit( m_streamCurve );
+	dragStreamPoint( streams, DirectX::XMFLOAT2( x, z ) );
+	streams.finishCurveEdit( m_streamCurve );
 	return true;
 }
 
-void Viewport::dragStreamPoint( GS::WaterSimulation& water, DirectX::XMFLOAT2 position )
+void Viewport::dragStreamPoint( GS::StreamCurves& streams, DirectX::XMFLOAT2 position )
 {
 	const size_t count = m_dragStart.size();
 	const size_t selected = static_cast<size_t>( m_streamPoint );
@@ -437,16 +437,16 @@ void Viewport::dragStreamPoint( GS::WaterSimulation& water, DirectX::XMFLOAT2 po
 			weight = 1.0f - t * t * ( 3.0f - 2.0f * t );
 		}
 		if( weight > 0.0f || i == selected )
-			water.setCurvePoint( m_streamCurve, i, DirectX::XMFLOAT2( m_dragStart[i].x + dx * weight, m_dragStart[i].y + dz * weight ) );
+			streams.setCurvePoint( m_streamCurve, i, DirectX::XMFLOAT2( m_dragStart[i].x + dx * weight, m_dragStart[i].y + dz * weight ) );
 	}
 }
 
-bool Viewport::insertStreamPoint( GS::WaterSimulation& water )
+bool Viewport::insertStreamPoint( GS::StreamCurves& streams )
 {
 	if( m_streamCurve < 0 || m_streamPoint < 0 )
 		return false;
 	// Посередине до следующей; у последней — продолжением кривой
-	const GS::StreamCurve& curve = water.curves()[m_streamCurve];
+	const GS::StreamCurve& curve = streams.curves()[m_streamCurve];
 	const DirectX::XMFLOAT2 point = curve.points[m_streamPoint].position;
 	DirectX::XMFLOAT2 position;
 	if( static_cast<size_t>( m_streamPoint ) + 1 < curve.points.size() )
@@ -459,28 +459,28 @@ bool Viewport::insertStreamPoint( GS::WaterSimulation& water )
 		const DirectX::XMFLOAT2 before = curve.points[m_streamPoint - 1].position;
 		position = DirectX::XMFLOAT2( 2.0f * point.x - before.x, 2.0f * point.y - before.y );
 	}
-	if( !water.insertCurvePoint( m_streamCurve, m_streamPoint, position ) )
+	if( !streams.insertCurvePoint( m_streamCurve, m_streamPoint, position ) )
 		return false;
 	++m_streamPoint;
 	return true;
 }
 
-bool Viewport::removeStreamPoint( GS::WaterSimulation& water )
+bool Viewport::removeStreamPoint( GS::StreamCurves& streams )
 {
-	if( m_streamCurve < 0 || m_streamPoint < 0 || !water.removeCurvePoint( m_streamCurve, m_streamPoint ) )
+	if( m_streamCurve < 0 || m_streamPoint < 0 || !streams.removeCurvePoint( m_streamCurve, m_streamPoint ) )
 		return false;
 	m_streamPoint = std::max( m_streamPoint - 1, 0 );
 	return true;
 }
 
-bool Viewport::pickStreamPoint( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain, float x, float y )
+bool Viewport::pickStreamPoint( const DMCamera& camera, const GS::StreamCurves& streams, const GS::TerrainHeightSource& terrain, float x, float y )
 {
 	const XMMATRIX transform = viewProjection( camera );
 	const XMFLOAT3& eye = camera.position();
 	float best = streamPickPixels;
 	int bestCurve = -1;
 	int bestPoint = -1;
-	const std::vector<GS::StreamCurve>& curves = water.curves();
+	const std::vector<GS::StreamCurve>& curves = streams.curves();
 	for( size_t c = 0; c < curves.size(); ++c )
 	{
 		for( size_t i = 0; i < curves[c].points.size(); ++i )
@@ -507,13 +507,13 @@ bool Viewport::pickStreamPoint( const DMCamera& camera, const GS::WaterSimulatio
 	return true;
 }
 
-void Viewport::drawStreams( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain ) const
+void Viewport::drawStreams( const DMCamera& camera, const GS::StreamCurves& streams, const GS::TerrainHeightSource& terrain ) const
 {
 	const XMMATRIX transform = viewProjection( camera );
 	const XMFLOAT3& eye = camera.position();
 	// Под окнами редактора, как рамка выбранного: видно только над сценой
 	ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-	const std::vector<GS::StreamCurve>& curves = water.curves();
+	const std::vector<GS::StreamCurve>& curves = streams.curves();
 	for( size_t c = 0; c < curves.size(); ++c )
 	{
 		const GS::StreamCurve& curve = curves[c];
@@ -543,9 +543,9 @@ void Viewport::drawStreams( const DMCamera& camera, const GS::WaterSimulation& w
 	}
 }
 
-void Viewport::editStreamPoint( const DMCamera& camera, GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain, GUI& gui )
+void Viewport::editStreamPoint( const DMCamera& camera, GS::StreamCurves& streams, const GS::TerrainHeightSource& terrain, GUI& gui )
 {
-	const GS::StreamCurve& curve = water.curves()[m_streamCurve];
+	const GS::StreamCurve& curve = streams.curves()[m_streamCurve];
 	const DirectX::XMFLOAT2 point = curve.points[m_streamPoint].position;
 
 	// Клавиши: Insert — точка после выбранной, Delete — удалить
@@ -554,12 +554,12 @@ void Viewport::editStreamPoint( const DMCamera& camera, GS::WaterSimulation& wat
 	{
 		if( ImGui::IsKeyPressed( ImGuiKey_Insert, false ) )
 		{
-			insertStreamPoint( water );
+			insertStreamPoint( streams );
 			return;
 		}
 		if( ImGui::IsKeyPressed( ImGuiKey_Delete, false ) )
 		{
-			if( !removeStreamPoint( water ) )
+			if( !removeStreamPoint( streams ) )
 				gui.notify( "A stream curve keeps two points at least", true );
 			return;
 		}
@@ -614,10 +614,10 @@ void Viewport::editStreamPoint( const DMCamera& camera, GS::WaterSimulation& wat
 			m_dragStart.push_back( curvePoint.position );
 	}
 	if( manipulated && using_ )
-		dragStreamPoint( water, DirectX::XMFLOAT2( world._41, world._43 ) );
+		dragStreamPoint( streams, DirectX::XMFLOAT2( world._41, world._43 ) );
 	// Отпустили гизмо — правка закончена: русла перестраиваются
 	if( m_draggingPoint && !using_ )
-		water.finishCurveEdit( m_streamCurve );
+		streams.finishCurveEdit( m_streamCurve );
 	m_draggingPoint = using_;
 }
 

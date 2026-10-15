@@ -19,6 +19,7 @@ class ParticleSystem;
 class Scene;
 class TerrainHeightSource;
 class WaterSimulation;
+class StreamCurves;
 }
 
 // Вьюпорт редактора, как в UE: клик по сцене выбирает экземпляр модели (луч из камеры к повёрнутым границам LOD 0
@@ -31,7 +32,7 @@ class WaterSimulation;
 // (свойство Position), у шара видна его граница. Режим гизмо — кнопки над
 // сценой и клавиши 5 / 6 / 7, оси — мира или экземпляра. Режим «Stream curves» (View): кривые русел ближе 250 м — линии и
 // точки; клик по точке выбирает её (подокно кривой — в Details), гизмо двигает её по X и Z, Insert — новая точка после
-// выбранной, Delete — удалить; русла перестраиваются, когда правка закончена (WaterSimulation::finishCurveEdit).
+// выбранной, Delete — удалить; русла перестраиваются, когда правка закончена (StreamCurves::finishCurveEdit).
 // Режим «Terrain paint» (View): кисть слоёв земли и масок поверх правил (TerrainPaintTool, подокно «Paint» окна террейна) —
 // круг кисти на рельефе под курсором, ЛКМ — мазок (Shift — убавить в режиме «Step», Ctrl — стереть мазок), мазок — одна
 // правка истории (Ctrl+Z); клик по сцене в этом режиме ничего не выбирает.
@@ -62,9 +63,9 @@ public:
 	int selectedEmitter() const { return m_selectedEmitter; }
 	// Правка выбранной точки кривой (клавиши и команда stream): перенос в x, z и конец правки; новая точка после выбранной;
 	// удаление. false — точка не выбрана или правка невозможна
-	bool moveStreamPoint( GS::WaterSimulation& water, float x, float z );
-	bool insertStreamPoint( GS::WaterSimulation& water );
-	bool removeStreamPoint( GS::WaterSimulation& water );
+	bool moveStreamPoint( GS::StreamCurves& streams, float x, float z );
+	bool insertStreamPoint( GS::StreamCurves& streams );
+	bool removeStreamPoint( GS::StreamCurves& streams );
 	// Мягкое выделение, как пропорциональное редактирование в Blender: соседние точки по длине кривой ближе radius, м,
 	// сдвигаются вместе с выбранной, плавно меньше к краю (0 — только выбранная)
 	float streamFalloff() const { return m_streamFalloff; }
@@ -108,16 +109,16 @@ private:
 	// своим осям (rotate); true — гизмо изменил матрицу в этом кадре
 	bool manipulatePoint( const DMCamera& camera, DirectX::XMFLOAT4X4& world, bool rotate );
 	// Кривые русел: точка на экране; выбор ближайшей к курсору; линии и точки; гизмо и клавиши выбранной
-	bool pickStreamPoint( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain, float x, float y );
-	void drawStreams( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain ) const;
+	bool pickStreamPoint( const DMCamera& camera, const GS::StreamCurves& streams, const GS::TerrainHeightSource& terrain, float x, float y );
+	void drawStreams( const DMCamera& camera, const GS::StreamCurves& streams, const GS::TerrainHeightSource& terrain ) const;
 	// Кисть: точка под курсором, круг, мазок мышью; конец мазка — в историю правок
 	void paintTerrain( const DMCamera& camera, GS::TerrainPaintTool& paint, const GS::TerrainPipeline& terrain, GUI& gui );
 	void finishPaintStroke( GS::TerrainPaintTool& paint, GUI& gui );
 	bool terrainPoint( const DMCamera& camera, const GS::TerrainPipeline& terrain, float x, float y, DirectX::XMFLOAT3& point ) const;
 	void dabTo( GS::TerrainPaintTool& paint, float radius, float falloff, const DirectX::XMFLOAT3& point );
-	void editStreamPoint( const DMCamera& camera, GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain, GUI& gui );
+	void editStreamPoint( const DMCamera& camera, GS::StreamCurves& streams, const GS::TerrainHeightSource& terrain, GUI& gui );
 	// Сдвиг выбранной точки так, чтобы она стала в position, — от положений в начале правки (m_dragStart), с мягким выделением
-	void dragStreamPoint( GS::WaterSimulation& water, DirectX::XMFLOAT2 position );
+	void dragStreamPoint( GS::StreamCurves& streams, DirectX::XMFLOAT2 position );
 
 	enum class Gizmo
 	{
