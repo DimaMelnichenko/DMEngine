@@ -59,6 +59,12 @@ uint64_t opaqueKey( const MeshBatch& batch, int phase )
 		   ( ( static_cast<uint64_t>( phase ) & 0xFF ) << 32 ) | ( raster << 28 ) | ( batch.instanceGroup & 0x0FFFFFFF );
 }
 
+// Миллисекунды с момента start — для счётчиков времени CPU кадра (FrameStats)
+float millisecondsSince( std::chrono::high_resolution_clock::time_point start )
+{
+	return std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::high_resolution_clock::now() - start ).count() / 1000.0f;
+}
+
 // Ключ прозрачной команды: дальние раньше, при равном расстоянии — порядок объектов сцены и номер
 uint64_t transparentKey( float distance, uint32_t ownerOrder, uint32_t sequence )
 {
@@ -222,12 +228,14 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	const FrameContext computeFrame = prepareShadows( scene, frame );
 	computeObjects( scene, computeFrame );
 
-	const auto collectStart = std::chrono::high_resolution_clock::now();
+	// Сбор мешей с главного вида и раскладка по проходам с сортировкой — отдельно: у первого растёт число объектов, у
+	// второго — мешей
+	auto start = std::chrono::high_resolution_clock::now();
 	collect( scene, frame.view, m_collector );
+	m_stats.add( "Collect main view = %.3f ms", millisecondsSince( start ) );
+	start = std::chrono::high_resolution_clock::now();
 	buildCommands( depthPrepass );
-	const auto collectEnd = std::chrono::high_resolution_clock::now();
-	m_stats.add( "Collect meshes = %.3f ms",
-						  std::chrono::duration_cast<std::chrono::microseconds>( collectEnd - collectStart ).count() / 1000.0f );
+	m_stats.add( "Build commands = %.3f ms", millisecondsSince( start ) );
 
 	renderShadows( scene, frame );
 	renderScene( scene, frame, wireframe, depthPrepass );
@@ -276,7 +284,9 @@ void Renderer::computeObjects( Scene& scene, const FrameContext& computeFrame )
 		for( SceneObject* object : scene.objects() )
 		{
 			d3d.beginEvent( object->name().c_str() );
+			const auto start = std::chrono::high_resolution_clock::now();
 			object->compute( computeFrame );
+			m_stats.add( "Compute: " + object->name() + " = %.3f ms", millisecondsSince( start ) );
 			d3d.endEvent();
 		}
 	} );
@@ -390,69 +400,24 @@ void Renderer::logGpuAverage( const std::string& line )
 
 void Renderer::measureGpu( float seconds, std::function<void( const std::string& )> done )
 {
-	GpuMeasure measure;
-	measure.start = std::chrono::steady_clock::now();
-	measure.duration = std::chrono::duration<float>( seconds );
-	measure.done = std::move( done );
-	measure.averages.push_back( { "frame" } );
-	m_gpuMeasures.push_back( std::move( measure ) );
+	m_gpuMeasures.start( seconds, std::move( done ) );
 }
 
 void Renderer::accumulateGpuMeasures()
 {
-	if( m_gpuMeasures.empty() || m_gpuProfiler.results().empty() )
+	if( !m_gpuMeasures.active() || m_gpuProfiler.results().empty() )
 		return;
-
-	// Одноимённые области кадра (объект в нескольких проходах) сначала складываются, потом усредняются по кадрам
-	std::vector<std::pair<std::string, float>> frameTimes;
+	FrameMeasures::Values values{ { "frame", m_gpuProfiler.frameMilliseconds() } };
 	for( const auto& [name, milliseconds] : m_gpuProfiler.results() )
-	{
-		auto it = std::find_if( frameTimes.begin(), frameTimes.end(), [&]( const auto& entry ) { return entry.first == name; } );
-		if( it == frameTimes.end() )
-			frameTimes.push_back( { name, milliseconds } );
-		else
-			it->second += milliseconds;
-	}
-
-	const auto now = std::chrono::steady_clock::now();
-	for( auto measure = m_gpuMeasures.begin(); measure != m_gpuMeasures.end(); )
-	{
-		std::vector<GpuAverage>& averages = measure->averages;
-		averages[0].sum += m_gpuProfiler.frameMilliseconds();
-		averages[0].count++;
-		for( const auto& [name, milliseconds] : frameTimes )
-		{
-			auto it = std::find_if( averages.begin(), averages.end(), [&]( const GpuAverage& a ) { return a.name == name; } );
-			if( it == averages.end() )
-			{
-				averages.push_back( { name } );
-				it = averages.end() - 1;
-			}
-			it->sum += milliseconds;
-			it->count++;
-		}
-
-		if( now - measure->start < measure->duration )
-		{
-			++measure;
-			continue;
-		}
-		measure->done( gpuMeasureLine( *measure ) );
-		measure = m_gpuMeasures.erase( measure );
-	}
+		values.push_back( { name, milliseconds } );
+	m_gpuMeasures.accumulate( values, [this] { return gpuMeasureTail(); } );
 }
 
-std::string Renderer::gpuMeasureLine( const GpuMeasure& measure ) const
+std::string Renderer::gpuMeasureTail() const
 {
 	char value[32];
-	std::string line = "GPU average over " + std::to_string( measure.averages[0].count ) + " frames, ms:";
-	for( const GpuAverage& average : measure.averages )
-	{
-		std::snprintf( value, sizeof( value ), "%.3f", average.sum / std::max( average.count, 1u ) );
-		line += " " + average.name + " " + value + ";";
-	}
-	line += " meshes " + std::to_string( m_meshCount ) + " in " + std::to_string( m_meshDraws ) + " draws; shadow meshes " +
-			std::to_string( m_shadowMeshCount ) + " in " + std::to_string( m_shadowDraws ) + " draws";
+	std::string line = " meshes " + std::to_string( m_meshCount ) + " in " + std::to_string( m_meshDraws ) + " draws; shadow meshes " +
+					   std::to_string( m_shadowMeshCount ) + " in " + std::to_string( m_shadowDraws ) + " draws";
 	std::snprintf( value, sizeof( value ), "%.2f", m_postProcess.ev100() );
 	line += std::string( "; EV100 " ) + value;
 	std::snprintf( value, sizeof( value ), "%.0f", m_sunGroundIlluminance );
@@ -620,8 +585,12 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 	for( uint32_t cascade = 0; cascade < ShadowCascades::cascadeCount; ++cascade )
 	{
 		const RenderView& view = m_shadows.cascadeView( cascade );
+		auto step = std::chrono::high_resolution_clock::now();
 		collect( scene, view, m_shadowCollector );
+		m_stats.add( "Collect shadow views = %.3f ms", millisecondsSince( step ) );
+		step = std::chrono::high_resolution_clock::now();
 		buildShadowCommands();
+		m_stats.add( "Build shadow commands = %.3f ms", millisecondsSince( step ) );
 
 		m_constants.setViewBuffer( view );
 		m_shadows.beginCascade( cascade );
@@ -636,8 +605,12 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 	if( m_shadows.farActive() )
 	{
 		const RenderView& view = m_shadows.farView();
+		auto step = std::chrono::high_resolution_clock::now();
 		collect( scene, view, m_shadowCollector );
+		m_stats.add( "Collect shadow views = %.3f ms", millisecondsSince( step ) );
+		step = std::chrono::high_resolution_clock::now();
 		buildShadowCommands();
+		m_stats.add( "Build shadow commands = %.3f ms", millisecondsSince( step ) );
 		m_constants.setViewBuffer( view );
 		m_shadows.beginFarCascade();
 		m_gpuProfiler.beginScope( "Shadow far" );
@@ -649,9 +622,7 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 
 	// Проходы сцены — снова с главного вида
 	m_constants.setViewBuffer( frame.view );
-	const auto end = std::chrono::high_resolution_clock::now();
-	m_stats.add( "Shadow depths = %.3f ms",
-						  std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() / 1000.0f );
+	m_stats.add( "Shadow depths = %.3f ms", millisecondsSince( start ) );
 }
 
 void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState frameRaster, bool depthFromPrepass )

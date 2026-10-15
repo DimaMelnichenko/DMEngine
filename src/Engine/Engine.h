@@ -25,6 +25,7 @@
 #include "Scene\Camera\WalkMode.h"
 #include "Scene\Scene.h"
 #include "Renderer.h"
+#include "FrameMeasures.h"
 #include "Engine\Console\ConsoleCommands.h"
 #include "Engine\Console\RemoteControlServer.h"
 
@@ -66,6 +67,10 @@ private:
 	// Команды движка в консоли и удалённом управлении (docs/remote.md): проходы, камера, снимок, захват PIX, шаг времени,
 	// замер GPU, клавиши, окна ImGui, выход — EngineCommands.cpp
 	void registerCommands();
+	// Счётчики времени CPU кадра («… ms» в «Statistic») и весь кадр — в замеры stat cpu, до очистки счётчиков
+	void accumulateCpuMeasures();
+	// Строка замера после прогрева — в log.txt (из лямбды LOG записал бы её имя вместо функции)
+	void logCpuAverage( const std::string& line );
 	// Снимки, заказанные командой screenshot, — в своей точке кадра: до окон ImGui или после них
 	void takeScreenshots( bool withGui );
 	// Задний буфер в файл (PNG или JPG по расширению) — в кадре до endFrame
@@ -116,6 +121,13 @@ private:
 	uint32_t m_framesSinceCut = 0;
 	static constexpr uint32_t settleFrames = 10;
 	bool m_exitRequested = false;
+	// Замер среднего времени CPU (stat cpu; после прогрева — строка «CPU average» в log.txt, её печатает run.ps1): кадр — от
+	// начала работы кадра (после ожидания swap chain) до конца записи команд, без ожидания и показа — они отдельными
+	// строками; отправка и показ — прошлого кадра
+	FrameMeasures m_cpuMeasures{ "CPU" };
+	std::chrono::high_resolution_clock::time_point m_frameWorkStart;
+	float m_presentMilliseconds = 0.0f;
+	uint32_t m_tickCount = 0;
 	// Фиксированный шаг времени кадра, с (команда timestep, как -UseFixedTimeStep в UE): время камеры, экспозиции,
 	// частиц и суток идёт шагами, сколько бы кадр ни длился, — серия снимков не сбивается записью файлов. 0 — таймер
 	float m_fixedTimeStep = 0.0f;

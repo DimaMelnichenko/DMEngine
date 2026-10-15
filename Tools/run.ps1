@@ -4,7 +4,7 @@
 # Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные) с удалённым
 # управлением (-remote, канал \\.\pipe\DMEngine, docs/remote.md), ждёт конца инициализации, затем Seconds секунд работы,
 # при необходимости нажимает клавиши и снимает кадр, закрывает движок штатно (команда quit: Engine::beforeExit,
-# лог дописан до конца) и печатает из log.txt ошибки, время инициализации и строки «GPU average». Принудительно процесс
+# лог дописан до конца) и печатает из log.txt ошибки, время инициализации и строки «GPU average» и «CPU average». Принудительно процесс
 # закрывается, только если не вышел сам за 30 с.
 # Keys — скан-коды клавиш (DIK_*, как в DirectInput): 2 — клавиша «1», 4 — «3», 5 — «4», 16 — Q, 23 — I; нажимает их
 # команда key (окну не нужен передний план).
@@ -165,4 +165,4 @@ else {
 $log = Get-Content (Join-Path $root 'log.txt') -Encoding UTF8
 $placeholders = @($log | Where-Object { $_ -match 'placeholder( [a-z]+)? is used' }).Count
 if ($placeholders -gt 0) { Write-Output "Missing resources replaced by placeholders: $placeholders" }
-$log | Where-Object { $_ -match 'error|fail|exception|unknown|Total init|GPU average' -and $_ -notmatch 'placeholder( [a-z]+)? is used' }
+$log | Where-Object { $_ -match 'error|fail|exception|unknown|Total init|GPU average|CPU average' -and $_ -notmatch 'placeholder( [a-z]+)? is used' }

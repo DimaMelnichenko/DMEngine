@@ -164,19 +164,27 @@ void Engine::registerCommands()
 		reply->ok( m_fixedTimeStep > 0.0f ? std::to_string( m_fixedTimeStep ) : "off" );
 	} );
 
-	m_console.registerCommand( "stat", "gpu [seconds=3] - average GPU time of the frame and passes, after the frame settles",
+	// Средние за несколько секунд, как stat gpu / stat unit в UE: gpu — время GPU кадра и проходов (области профайлера),
+	// cpu — время CPU кадра без ожидания swap chain и его шагов: update и compute объектов, сбор с видов, раскладка, запись
+	// команд по объектам и проходам, постобработка, GUI (счётчики «… ms» окна «Statistic»)
+	m_console.registerCommand( "stat", "gpu|cpu [seconds=3] - average GPU or CPU time of the frame and its parts, after the frame settles",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
-		if( args.empty() || args[0] != "gpu" )
-			return reply->error( "stat: only stat gpu is supported" );
+		if( args.empty() || ( args[0] != "gpu" && args[0] != "cpu" ) )
+			return reply->error( "stat: expected gpu or cpu" );
+		const bool gpu = args[0] == "gpu";
 		const float seconds = args.size() > 1 ? static_cast<float>( std::atof( args[1].c_str() ) ) : 3.0f;
 		if( seconds <= 0.0f )
-			return reply->error( "stat gpu: expected a positive number of seconds" );
-		m_console.addFrameTask( [this, reply, seconds]
+			return reply->error( "stat " + args[0] + ": expected a positive number of seconds" );
+		m_console.addFrameTask( [this, reply, seconds, gpu]
 		{
 			if( m_framesSinceCut < settleFrames )
 				return false;
-			m_renderer.measureGpu( seconds, [reply]( const std::string& line ) { reply->ok( line ); } );
+			auto done = [reply]( const std::string& line ) { reply->ok( line ); };
+			if( gpu )
+				m_renderer.measureGpu( seconds, done );
+			else
+				m_cpuMeasures.start( seconds, done );
 			return true;
 		} );
 	} );

@@ -17,6 +17,7 @@
 #include "FrameStats.h"
 #include "ConstantBuffers.h"
 #include "RenderFeature.h"
+#include "FrameMeasures.h"
 
 namespace GS
 {
@@ -176,26 +177,12 @@ private:
 
 	// Замер среднего времени GPU за несколько секунд: после прогрева — одной строкой в log.txt («GPU average», её
 	// печатает Tools/run.ps1, чтобы сравнивать производительность до и после изменений), и по команде stat gpu
-	struct GpuAverage
-	{
-		std::string name;
-		double sum = 0.0;
-		uint32_t count = 0;
-	};
-	struct GpuMeasure
-	{
-		std::vector<GpuAverage> averages;	// первый элемент — весь кадр
-		std::chrono::steady_clock::time_point start;
-		std::chrono::duration<float> duration;
-		std::function<void( const std::string& )> done;
-	};
-	// Кадр в замеры; законченные — строкой в done
+	FrameMeasures m_gpuMeasures{ "GPU" };
+	// Кадр в замеры; хвост строки — меши и вызовы, экспозиция, солнце
 	void accumulateGpuMeasures();
+	std::string gpuMeasureTail() const;
 	// Строка замера после прогрева — в log.txt (из лямбды LOG записал бы её имя вместо функции)
 	void logGpuAverage( const std::string& line );
-	std::string gpuMeasureLine( const GpuMeasure& measure ) const;
-
-	std::vector<GpuMeasure> m_gpuMeasures;
 	uint32_t m_frameIndex = 0;
 };
 

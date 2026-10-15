@@ -1,5 +1,7 @@
 #pragma once
 
+#include "FrameStats.h"
+
 #include <vector>
 #include <DirectXCollision.h>
 #include "SceneObject.h"
@@ -44,7 +46,8 @@ public:
 	// Масштаб неба и освещения окружением (cb_skyLightScale): освещённость от солнца над атмосферой, лк, или
 	// интенсивность панорамы; после compute неба — по показанному результату пересчёта
 	float skyLightScale();
-	void update( const FrameContext& frame );
+	// update() объектов сцены; время CPU каждого — в счётчики кадра («Update: <объект>», stat cpu)
+	void update( const FrameContext& frame, FrameStats& stats );
 	// Правки редактора, которые требуют тяжёлой перестройки (русла по кривым), — когда правка закончена (ползунок отпущен)
 	void applyEditorChanges();
 	// Русла заново по кривым (правка в редакторе): террейн, вода, раскладка постоянных слоёв расстановки

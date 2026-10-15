@@ -275,7 +275,15 @@ bool Engine::tick()
 	// констант — с чистого участка
 	FrameWatchdog& watchdog = FrameWatchdog::instance();
 	watchdog.stage( "begin frame", true );
+	const auto waitStart = TIME_POINT();
 	DMD3D::instance().beginFrame();
+	m_frameWorkStart = TIME_POINT();
+	m_frameStats.add( "Wait for frame = %.3f ms", TIME_DIFF( waitStart, m_frameWorkStart ) / 1000.0f );
+	m_frameStats.add( "Submit and present = %.3f ms", m_presentMilliseconds );
+	// Прогрев — первые кадры (пересчёт окружения неба, заполнение очередей) в среднее для лога не входят, как у GPU
+	constexpr uint32_t warmupFrames = 60;
+	if( ++m_tickCount == warmupFrames )
+		m_cpuMeasures.start( 3.0f, [this]( const std::string& line ) { logCpuAverage( line ); } );
 	// Команды удалённого управления — до кадра: камера, свойства и клавиши действуют уже в нём
 	watchdog.stage( "remote and console commands" );
 	m_remote.poll( m_console );
@@ -316,7 +324,7 @@ bool Engine::tick()
 
 	// Сначала состояние сцены на CPU, затем команды GPU
 	watchdog.stage( "scene update" );
-	TIME_CHECK( m_scene.update( frame ), "Scene Update = %.3f ms" );
+	TIME_CHECK( m_scene.update( frame, m_frameStats ), "Scene Update = %.3f ms" );
 
 	const bool rendered = render( frame );
 	// Между кадрами — сообщения окна (DMSystem::Run); перетаскивание окна держит их цикл
@@ -362,14 +370,39 @@ bool Engine::render( const FrameContext& frame )
 		auto guiFinish = TIME_POINT();
 		m_guiRenderTime = TIME_DIFF( guiStart, guiFinish );
 	}
-	// Счётчики показаны (или кадр без интерфейса) — следующий кадр собирает свои
+	// Счётчики показаны (или кадр без интерфейса) — в замеры CPU, следующий кадр собирает свои
+	accumulateCpuMeasures();
 	m_frameStats.clear();
 	takeScreenshots( true );
 
 	watchdog.stage( "end frame (submit and present)" );
+	const auto presentStart = TIME_POINT();
 	DMD3D::instance().endFrame();
+	m_presentMilliseconds = TIME_DIFF( presentStart, TIME_POINT() ) / 1000.0f;
 
 	return true;
+}
+
+void Engine::accumulateCpuMeasures()
+{
+	if( !m_cpuMeasures.active() )
+		return;
+	// Весь кадр первым, затем счётчики времени — строки «имя = %.3f ms», кроме времени GPU («GPU …», его усредняет stat gpu);
+	// одноимённые (объект в каскадах) складываются
+	FrameMeasures::Values values{ { "frame", TIME_DIFF( m_frameWorkStart, TIME_POINT() ) / 1000.0f } };
+	const std::string suffix = " = %.3f ms";
+	for( const auto& [format, value] : m_frameStats.counters )
+	{
+		if( format.size() > suffix.size() && format.compare( format.size() - suffix.size(), suffix.size(), suffix ) == 0 &&
+			format.rfind( "GPU ", 0 ) != 0 )
+			values.push_back( { format.substr( 0, format.size() - suffix.size() ), value } );
+	}
+	m_cpuMeasures.accumulate( values );
+}
+
+void Engine::logCpuAverage( const std::string& line )
+{
+	LOG( line );
 }
 
 void Engine::drawLoadingFrame( const std::string& task, float progress )

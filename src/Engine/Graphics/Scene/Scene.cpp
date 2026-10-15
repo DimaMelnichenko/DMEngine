@@ -346,11 +346,14 @@ void Scene::applyEditorChanges()
 	}
 }
 
-void Scene::update( const FrameContext& frame )
+void Scene::update( const FrameContext& frame, FrameStats& stats )
 {
 	for( SceneObject* object : m_objects )
 	{
+		const auto start = std::chrono::high_resolution_clock::now();
 		object->update( frame );
+		stats.add( "Update: " + object->name() + " = %.3f ms",
+				   std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::high_resolution_clock::now() - start ).count() / 1000.0f );
 	}
 }
 

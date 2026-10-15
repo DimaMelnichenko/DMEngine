@@ -176,7 +176,7 @@ def wait_exit(pid, timeout):
 
 
 def print_log():
-    """Как Tools/run.ps1: число заглушек, ошибки, время инициализации, строки GPU average"""
+    """Как Tools/run.ps1: число заглушек, ошибки, время инициализации, строки GPU average и CPU average"""
     try:
         with open(os.path.join(ROOT, 'log.txt'), encoding='utf-8', errors='replace') as f:
             log = f.read().splitlines()
@@ -186,7 +186,7 @@ def print_log():
     count = sum(1 for line in log if placeholder.search(line))
     if count:
         print('Missing resources replaced by placeholders: %d' % count)
-    report = re.compile(r'error|fail|exception|unknown|Total init|GPU average', re.I)
+    report = re.compile(r'error|fail|exception|unknown|Total init|GPU average|CPU average', re.I)
     for line in log:
         if report.search(line) and not placeholder.search(line):
             print(line)
