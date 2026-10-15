@@ -8,28 +8,13 @@
 #include <iterator>
 #include "Logger\Logger.h"
 #include "Utils\utilites.h"
+#include "Utils\Fingerprint.h"
 
 namespace
 {
 
 constexpr const char* cacheDirectory = "cache/shaders";
 constexpr const char* shadersDirectory = "Shaders";
-
-uint64_t fnv1a( const void* data, size_t size, uint64_t hash = 14695981039346656037ull )
-{
-	const uint8_t* bytes = static_cast<const uint8_t*>( data );
-	for( size_t i = 0; i < size; ++i )
-	{
-		hash ^= bytes[i];
-		hash *= 1099511628211ull;
-	}
-	return hash;
-}
-
-uint64_t fnv1a( const std::string& text, uint64_t hash )
-{
-	return fnv1a( text.data(), text.size(), hash );
-}
 
 std::string hex( uint64_t value )
 {
@@ -189,7 +174,7 @@ bool ShaderCompiler::initialize()
 uint64_t ShaderCompiler::sourcesStamp() const
 {
 	// Отпечаток каталога шейдеров: любая правка меняет ключи всех шейдеров — include-зависимости не отслеживаются
-	uint64_t hash = 14695981039346656037ull;
+	Fingerprint stamp( Fingerprint::fnvOffsetBasis );
 	std::error_code error;
 	std::vector<std::filesystem::directory_entry> entries;
 	for( const auto& entry : std::filesystem::directory_iterator( shadersDirectory, error ) )
@@ -198,13 +183,11 @@ uint64_t ShaderCompiler::sourcesStamp() const
 	std::sort( entries.begin(), entries.end(), []( const auto& a, const auto& b ) { return a.path() < b.path(); } );
 	for( const auto& entry : entries )
 	{
-		hash = fnv1a( entry.path().filename().string(), hash );
-		const uint64_t size = static_cast<uint64_t>( entry.file_size( error ) );
-		const int64_t time = entry.last_write_time( error ).time_since_epoch().count();
-		hash = fnv1a( &size, sizeof( size ), hash );
-		hash = fnv1a( &time, sizeof( time ), hash );
+		stamp.add( entry.path().filename().string() );
+		stamp.add( static_cast<uint64_t>( entry.file_size( error ) ) );
+		stamp.add( static_cast<int64_t>( entry.last_write_time( error ).time_since_epoch().count() ) );
 	}
-	return hash;
+	return stamp.value;
 }
 
 bool ShaderCompiler::compile( const std::string& file, const std::string& entry, const std::string& profile, const std::string& defines,
@@ -215,16 +198,17 @@ bool ShaderCompiler::compile( const std::string& file, const std::string& entry,
 		return false;
 
 	// Кэш на диске
-	uint64_t key = fnv1a( file, m_stamp );
-	key = fnv1a( entry, key );
-	key = fnv1a( profile, key );
-	key = fnv1a( defines, key );
+	Fingerprint key( m_stamp );
+	key.add( file );
+	key.add( entry );
+	key.add( profile );
+	key.add( defines );
 	const std::vector<const wchar_t*> compileFlags = reproducible ?
 		std::vector<const wchar_t*>( std::begin( reproducibleArguments ), std::end( reproducibleArguments ) ) :
 		std::vector<const wchar_t*>( std::begin( buildArguments ), std::end( buildArguments ) );
 	for( const wchar_t* argument : compileFlags )
-		key = fnv1a( argument, wcslen( argument ) * sizeof( wchar_t ), key );
-	const std::filesystem::path cachePath = std::filesystem::path( cacheDirectory ) / ( hex( key ) + ".dxil" );
+		key.add( argument, wcslen( argument ) * sizeof( wchar_t ) );
+	const std::filesystem::path cachePath = std::filesystem::path( cacheDirectory ) / ( hex( key.value ) + ".dxil" );
 	{
 		std::ifstream cached( cachePath, std::ios::binary );
 		if( cached )

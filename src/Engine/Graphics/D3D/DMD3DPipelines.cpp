@@ -1,9 +1,11 @@
 // DMD3D: состояния, пайплайны (PSO из PipelineDesc, compute-пайплайны) и их кэш на диске — ID3D12PipelineLibrary
 #include "DMD3D.h"
 #include "Utils\FrameWatchdog.h"
+#include "Utils\Fingerprint.h"
 #include "Logger\Logger.h"
 #include <d3dx12.h>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -84,22 +86,13 @@ TargetFormats DMD3D::backBufferFormats()
 
 std::wstring DMD3D::pipelineName( const PipelineDesc& desc ) const
 {
-	uint64_t hash = m_rootSignatureHash ? m_rootSignatureHash : 14695981039346656037ull;
-	const auto mix = [&hash]( uint64_t value )
-	{
-		for( int i = 0; i < 8; ++i )
-		{
-			hash ^= ( value >> ( i * 8 ) ) & 0xFF;
-			hash *= 1099511628211ull;
-		}
-	};
+	// Имя в библиотеке на диске (cache/pipelines.bin): от root signature, байткода стадий, раскладки, состояний и форматов
+	Fingerprint hash( m_rootSignatureHash ? m_rootSignatureHash : Fingerprint::fnvOffsetBasis );
+	const auto mix = [&hash]( uint64_t value ) { hash.add( value ); };
 	const auto mixText = [&hash]( const char* text )
 	{
-		for( ; text && *text; ++text )
-		{
-			hash ^= static_cast<uint8_t>( *text );
-			hash *= 1099511628211ull;
-		}
+		if( text )
+			hash.add( text, std::strlen( text ) );
 	};
 	mix( desc.vertex ? desc.vertex->hash() : 0 );
 	mix( desc.pixel ? desc.pixel->hash() : 0 );
@@ -120,7 +113,7 @@ std::wstring DMD3D::pipelineName( const PipelineDesc& desc ) const
 		mix( static_cast<uint64_t>( desc.formats.color[i] ) | static_cast<uint64_t>( i ) << 32 );
 	mix( static_cast<uint64_t>( desc.formats.depth ) | static_cast<uint64_t>( desc.formats.colorCount ) << 32 );
 	wchar_t name[24];
-	swprintf_s( name, L"p%016llx", static_cast<unsigned long long>( hash ) );
+	swprintf_s( name, L"p%016llx", static_cast<unsigned long long>( hash.value ) );
 	return name;
 }
 

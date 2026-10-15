@@ -5,6 +5,7 @@
 #include "Utils\utilites.h"
 #include "Logger\Logger.h"
 #include "Utils\FrameWatchdog.h"
+#include "Utils\Fingerprint.h"
 #include "DMSamplerState.h"
 #include <D3D12MemAlloc.h>
 #include <algorithm>
@@ -494,12 +495,9 @@ bool DMD3D::createRootSignature()
 	}
 	// Другая root signature — другие пайплайны: библиотека на диске хранит PSO по имени, и старое имя с новой сигнатурой
 	// она не приняла бы (предупреждение слоя «desc does not match»)
-	m_rootSignatureHash = 14695981039346656037ull;
-	for( size_t i = 0; i < blob->GetBufferSize(); ++i )
-	{
-		m_rootSignatureHash ^= static_cast<const uint8_t*>( blob->GetBufferPointer() )[i];
-		m_rootSignatureHash *= 1099511628211ull;
-	}
+	Fingerprint signature( Fingerprint::fnvOffsetBasis );
+	signature.add( blob->GetBufferPointer(), blob->GetBufferSize() );
+	m_rootSignatureHash = signature.value;
 	ID3D12RootSignature* rootSignature = nullptr;
 	const HRESULT hr = m_device->CreateRootSignature( 0, blob->GetBufferPointer(), blob->GetBufferSize(), __uuidof( ID3D12RootSignature ),
 													  reinterpret_cast<void**>( &rootSignature ) );

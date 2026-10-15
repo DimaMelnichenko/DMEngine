@@ -10,6 +10,7 @@
 #include <vector>
 #include "DirectX.h"
 #include "Utils\utilites.h"
+#include "Utils\Fingerprint.h"
 
 namespace D3D12MA
 {
@@ -475,12 +476,9 @@ public:
 	{
 		m_type = type;
 		m_bytecode.assign( static_cast<const uint8_t*>( bytecode ), static_cast<const uint8_t*>( bytecode ) + ( bytecode ? size : 0 ) );
-		m_hash = 14695981039346656037ull;
-		for( uint8_t byte : m_bytecode )
-		{
-			m_hash ^= byte;
-			m_hash *= 1099511628211ull;
-		}
+		Fingerprint hash( Fingerprint::fnvOffsetBasis );
+		hash.add( m_bytecode.data(), m_bytecode.size() );
+		m_hash = hash.value;
 	}
 
 private:

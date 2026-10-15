@@ -12,6 +12,7 @@
 #include "Shaders\lod_transition.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
+#include "Utils\Fingerprint.h"
 #include "Materials\ImpostorMaterial.h"
 #include "Properties\SettingsProperties.h"
 #include "Terrain\TerrainMasks.h"
@@ -489,18 +490,14 @@ bool Scatterer::bake( const BakeContext& context )
 
 uint64_t Scatterer::bakeSourceHash( DMModel& model, const ScatterLayerSettings& settings )
 {
-	uint64_t hash = 14695981039346656037ull;
-	const auto mix = [&hash]( uint64_t value ) { hash = ( hash ^ value ) * 1099511628211ull; };
+	Fingerprint hash;
 	if( DMModel::LodBlock* lod0 = model.getLodById( 0 ) )
 		for( const auto& section : lod0->sections )
-			mix( hashParams( *section->params ) );
-	uint32_t bits;
-	std::memcpy( &bits, &settings.impostorDensity, sizeof( bits ) );
-	mix( bits );
-	std::memcpy( &bits, &settings.impostorOcclusion, sizeof( bits ) );
-	mix( bits );
-	mix( settings.impostorFrameSize );
-	return hash;
+			hash.add( hashParams( *section->params ) );
+	hash.add( settings.impostorDensity );
+	hash.add( settings.impostorOcclusion );
+	hash.add( settings.impostorFrameSize );
+	return hash.value;
 }
 
 void Scatterer::rebakeChangedImpostors()
@@ -566,29 +563,21 @@ bool Scatterer::layerVisible( const Layer& layer )
 
 uint64_t Scatterer::hashParams( const PropertyContainer& params )
 {
-	// FNV-1a по именам и байтам значений в порядке добавления
-	uint64_t hash = 14695981039346656037ull;
-	const auto mix = [&hash]( const void* data, size_t size )
-	{
-		for( size_t i = 0; i < size; ++i )
-		{
-			hash ^= static_cast<const uint8_t*>( data )[i];
-			hash *= 1099511628211ull;
-		}
-	};
+	// Отпечаток имён и байтов значений в порядке добавления
+	Fingerprint hash;
 	for( const std::string& name : params.names() )
 	{
-		mix( name.data(), name.size() );
+		hash.add( name );
 		const Property& property = params.property( name );
-		if( const bool* v = property.dataPtr<bool>() ) mix( v, sizeof( *v ) );
-		else if( const float* f = property.dataPtr<float>() ) mix( f, sizeof( *f ) );
-		else if( const XMFLOAT2* f2 = property.dataPtr<XMFLOAT2>() ) mix( f2, sizeof( *f2 ) );
-		else if( const XMFLOAT3* f3 = property.dataPtr<XMFLOAT3>() ) mix( f3, sizeof( *f3 ) );
-		else if( const XMFLOAT4* f4 = property.dataPtr<XMFLOAT4>() ) mix( f4, sizeof( *f4 ) );
-		else if( const int32_t* i = property.dataPtr<int32_t>() ) mix( i, sizeof( *i ) );
-		else if( const uint32_t* u = property.dataPtr<uint32_t>() ) mix( u, sizeof( *u ) );
+		if( const bool* v = property.dataPtr<bool>() ) hash.add( *v );
+		else if( const float* f = property.dataPtr<float>() ) hash.add( *f );
+		else if( const XMFLOAT2* f2 = property.dataPtr<XMFLOAT2>() ) hash.add( *f2 );
+		else if( const XMFLOAT3* f3 = property.dataPtr<XMFLOAT3>() ) hash.add( *f3 );
+		else if( const XMFLOAT4* f4 = property.dataPtr<XMFLOAT4>() ) hash.add( *f4 );
+		else if( const int32_t* i = property.dataPtr<int32_t>() ) hash.add( *i );
+		else if( const uint32_t* u = property.dataPtr<uint32_t>() ) hash.add( *u );
 	}
-	return hash;
+	return hash.value;
 }
 
 void Scatterer::assignGroups( Layer& layer )

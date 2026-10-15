@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include "GpuResources.h"
+#include "Utils\Fingerprint.h"
 #include "RenderState.h"
 
 // Форматы целей прохода — часть PSO D3D12: одна фаза материала в проходе сцены (HDR + глубина), в каскаде теней
@@ -70,15 +71,8 @@ struct PipelineDesc
 	// Ключ кэша в памяти: FNV-1a по указателям стадий и раскладки (они живут, пока жив шейдер), состояниям и форматам
 	uint64_t key() const
 	{
-		uint64_t hash = 14695981039346656037ull;
-		const auto mix = [&hash]( uint64_t value )
-		{
-			for( int i = 0; i < 8; ++i )
-			{
-				hash ^= ( value >> ( i * 8 ) ) & 0xFF;
-				hash *= 1099511628211ull;
-			}
-		};
+		Fingerprint hash( Fingerprint::fnvOffsetBasis );
+		const auto mix = [&hash]( uint64_t value ) { hash.add( value ); };
 		mix( reinterpret_cast<uintptr_t>( vertex ) );
 		mix( reinterpret_cast<uintptr_t>( pixel ) );
 		mix( reinterpret_cast<uintptr_t>( geometry ) );
@@ -89,7 +83,7 @@ struct PipelineDesc
 		for( uint32_t i = 0; i < formats.colorCount; ++i )
 			mix( static_cast<uint64_t>( formats.color[i] ) | static_cast<uint64_t>( i ) << 32 );
 		mix( static_cast<uint64_t>( formats.depth ) | static_cast<uint64_t>( formats.colorCount ) << 32 );
-		return hash;
+		return hash.value;
 	}
 };
 
