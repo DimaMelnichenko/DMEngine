@@ -299,11 +299,13 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 		level.name = query.getColumn( "name" ).getString();
 		if( !query.getColumn( "terrain" ).isNull() )
 		{
-			level.terrain = query.getColumn( "terrain" ).getUInt();
-			loadTerrainEdits( *level.terrain, level );
-			loadTerrainErosion( *level.terrain, level );
-			loadTerrainLayerRules( *level.terrain, level );
-			loadTerrainPaint( *level.terrain, level );
+			const uint32_t terrainId = query.getColumn( "terrain" ).getUInt();
+			if( !loadTerrain( terrainId, level ) )
+				return false;
+			loadTerrainEdits( terrainId, level );
+			loadTerrainErosion( terrainId, level );
+			loadTerrainLayerRules( terrainId, level );
+			loadTerrainPaint( terrainId, level );
 		}
 		if( !query.getColumn( "sky" ).isNull() )
 			level.sky = query.getColumn( "sky" ).getUInt();

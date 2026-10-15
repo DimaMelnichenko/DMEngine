@@ -146,13 +146,12 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		m_terrainPipeline.setPrevailingWind( m_level.wind ? m_wind.settings().direction : XMFLOAT3( 0.0f, 0.0f, 0.0f ) );
 		m_terrainPipeline.setWindField( m_wind.settings().field );
 		m_terrainPipeline.setPaint( m_level.terrainPaint );
-		TerrainSettings terrainSettings;
-		if( !m_terrainPipeline.initialize( *m_level.terrain, terrainSettings, m_level.terrainEdits,
+		if( !m_terrainPipeline.initialize( *m_level.terrain, m_level.terrainEdits,
 										   m_level.waterSimulation ? &*m_level.waterSimulation : nullptr,
 										   m_level.terrainErosion ? &*m_level.terrainErosion : nullptr, m_level.terrainLayerRules ) )
 			return false;
 		m_terrainPaint.initialize( m_terrainPipeline );
-		if( !m_terrain.initialize( terrainSettings, m_terrainPipeline, m_terrainPaint ) )
+		if( !m_terrain.initialize( m_level.terrain->settings, m_terrainPipeline, m_terrainPaint ) )
 			return false;
 		LOG( "Terrain init ms: " + elapsedMs( timeStart ) );
 	}

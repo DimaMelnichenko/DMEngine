@@ -6,6 +6,7 @@
 #include "Logger\Logger.h"
 #include "Utils\utilites.h"
 #include "Materials\MaterialInstanceStorage.h"
+#include "Shaders\terrain_layer_constants.h"
 
 void LibraryLoader::loadTerrainLayerRules( uint32_t terrainId, LevelDescription& level )
 {
@@ -39,6 +40,78 @@ void LibraryLoader::loadTerrainPaint( uint32_t terrainId, LevelDescription& leve
 		tile.delta.assign( bytes, bytes + delta.getBytes() );
 		level.terrainPaint.push_back( std::move( tile ) );
 	}
+}
+
+bool LibraryLoader::loadTerrain( uint32_t terrainId, LevelDescription& level )
+{
+	// Колонка splatmap больше не читается: splat-карту дают правила по итоговому рельефу (TerrainMasks)
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM Terrain WHERE id = :id" );
+	query.bind( ":id", terrainId );
+	if( !query.executeStep() )
+	{
+		LOG( "Terrain: no row " + std::to_string( terrainId ) + " in table Terrain" );
+		return false;
+	}
+	GS::TerrainDescription terrain;
+	terrain.heightMap = query.getColumn( "heightmap" ).getString();
+	terrain.settings.id = terrainId;
+	// Материал и сетка — по описанию полей (terrainSchema): NULL — значения по умолчанию TerrainSettings
+	readSettings( query, GS::terrainSchema(), terrain.settings, "Terrain " + std::to_string( terrainId ) );
+	terrain.heightOffset = static_cast<float>( query.getColumn( "height_offset" ).getDouble() );
+	terrain.texelSize = static_cast<float>( query.getColumn( "width_multiplier" ).getDouble() );
+
+	SQLite::Statement file( DBConnector::instance().db(), "select file from Textures where name = :name" );
+	file.bind( ":name", terrain.heightMap );
+	if( file.executeStep() )
+		terrain.heightMapFile = file.getColumn( "file" ).getString();
+
+	// Слои материала: albedo_tint — "r,g,b"; колонки нет или NULL — текстура как есть; displacement — м, NULL — без смещения;
+	// occlusion — сила AO, NULL — 1; role — роль в правилах слоёв, NULL — никакой
+	std::vector<GS::TerrainLayerDescription>& layers = terrain.layers;
+	layers.assign( TERRAIN_MAX_LAYERS, {} );
+	if( DBConnector::instance().db().tableExists( "TerrainLayers" ) )
+	{
+		SQLite::Statement rows( DBConnector::instance().db(), "select * from TerrainLayers where terrain = :terrain" );
+		rows.bind( ":terrain", terrainId );
+		while( rows.executeStep() )
+		{
+			const int index = rows.getColumn( "layer" ).getInt();
+			if( index < 0 || index >= TERRAIN_MAX_LAYERS )
+			{
+				LOG( "Terrain material: layer " + std::to_string( index ) + " is out of range 0.." + std::to_string( TERRAIN_MAX_LAYERS - 1 ) );
+				continue;
+			}
+			GS::TerrainLayerDescription& layer = layers[index];
+			layer.name = rows.getColumn( "name" ).getString();
+			layer.albedo = rows.getColumn( "albedo" ).getString();
+			layer.normal = rows.getColumn( "normal" ).getString();
+			layer.tiling = static_cast<float>( rows.getColumn( "tiling" ).getDouble() );
+			for( int column = 0; column < rows.getColumnCount(); ++column )
+			{
+				const std::string name = rows.getColumnName( column );
+				if( rows.getColumn( column ).isNull() )
+					continue;
+				if( name == "albedo_tint" )
+					strToVec3( rows.getColumn( column ).getString(), layer.tint );
+				else if( name == "displacement" )
+					layer.displacement = static_cast<float>( rows.getColumn( column ).getDouble() );
+				else if( name == "occlusion" )
+					layer.occlusion = static_cast<float>( rows.getColumn( column ).getDouble() );
+				else if( name == "role" )
+					layer.role = rows.getColumn( column ).getString();
+			}
+		}
+	}
+	// Слоёв — до наибольшего описанного; пропуск в номерах — заглушка
+	while( layers.size() > 1 && layers.back().albedo.empty() && layers.back().normal.empty() )
+		layers.pop_back();
+	for( uint32_t i = 0; i < layers.size(); ++i )
+	{
+		if( layers[i].albedo.empty() && layers[i].normal.empty() )
+			LOG( "Terrain material: layer " + std::to_string( i ) + " is not described in TerrainLayers, placeholder is used" );
+	}
+	level.terrain = std::move( terrain );
+	return true;
 }
 
 void LibraryLoader::loadTerrainErosion( uint32_t terrainId, LevelDescription& level )

@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <DirectXTex.h>
 #include "System.h"
-#include "DBConnector.h"
 #include "D3D\DMD3D.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
@@ -366,12 +365,8 @@ float TerrainMaterial::maxDisplacement() const
 	return result;
 }
 
-bool TerrainMaterial::initialize( uint32_t terrainId, const SplatWeights& weights )
+bool TerrainMaterial::initialize( const std::vector<TerrainLayerDescription>& layers, const SplatWeights& weights )
 {
-	std::vector<Layer> layers;
-	if( !loadLayers( terrainId, layers ) )
-		return false;
-
 	// Массивы — по числу описанных слоёв, а не по maxLayers: срез 2048² с мипами — ~21 МБ на массив
 	m_layerCount = static_cast<uint32_t>( layers.size() );
 	std::vector<std::string> albedoFiles;
@@ -421,63 +416,6 @@ bool TerrainMaterial::repaint( const SplatWeights& weights )
 	if( !buildSplatMap( weights, m_splatMapTexture, m_splatMap ) )
 		return false;
 	DMD3D::instance().setName( m_splatMapTexture, "Terrain splat map" );
-	return true;
-}
-
-bool TerrainMaterial::loadLayers( uint32_t terrainId, std::vector<Layer>& layers )
-{
-	layers.assign( maxLayers, {} );
-
-	try
-	{
-		SQLite::Statement query( DBConnector::instance().db(), "select * from TerrainLayers where terrain = :terrain" );
-		query.bind( ":terrain", terrainId );
-
-		while( query.executeStep() )
-		{
-			const int index = query.getColumn( "layer" ).getInt();
-			if( index < 0 || index >= static_cast<int>( maxLayers ) )
-			{
-				LOG( "Terrain material: layer " + std::to_string( index ) + " is out of range 0.." + std::to_string( maxLayers - 1 ) );
-				continue;
-			}
-
-			Layer& layer = layers[index];
-			layer.name = query.getColumn( "name" ).getString();
-			layer.albedo = query.getColumn( "albedo" ).getString();
-			layer.normal = query.getColumn( "normal" ).getString();
-			layer.tiling = static_cast<float>( query.getColumn( "tiling" ).getDouble() );
-			// albedo_tint — "r,g,b"; колонки нет или NULL — текстура как есть; displacement — м, NULL — без смещения;
-			// occlusion — сила AO, NULL — 1
-			for( int column = 0; column < query.getColumnCount(); ++column )
-			{
-				const std::string name = query.getColumnName( column );
-				if( query.getColumn( column ).isNull() )
-					continue;
-				if( name == "albedo_tint" )
-					strToVec3( query.getColumn( column ).getString(), layer.tint );
-				else if( name == "displacement" )
-					layer.displacement = static_cast<float>( query.getColumn( column ).getDouble() );
-				else if( name == "occlusion" )
-					layer.occlusion = static_cast<float>( query.getColumn( column ).getDouble() );
-			}
-		}
-	}
-	catch( const std::exception& e )
-	{
-		LOG( std::string( "Terrain material: " ) + e.what() );
-		return false;
-	}
-
-	// Слоёв — до наибольшего описанного; пропуск в номерах — заглушка
-	while( layers.size() > 1 && layers.back().albedo.empty() && layers.back().normal.empty() )
-		layers.pop_back();
-	for( uint32_t i = 0; i < layers.size(); ++i )
-	{
-		if( layers[i].albedo.empty() && layers[i].normal.empty() )
-			LOG( "Terrain material: layer " + std::to_string( i ) + " is not described in TerrainLayers, placeholder is used" );
-	}
-
 	return true;
 }
 

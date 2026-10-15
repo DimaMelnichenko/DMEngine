@@ -43,13 +43,13 @@ class TerrainPipeline : public SceneObject, public TerrainHeightSource
 public:
 	TerrainPipeline();
 
-	// terrainId — строка таблицы Terrain (settings — её поля: окно террейна берёт их отсюда), edits — правки рельефа уровня по
+	// terrain — строка Terrain уровня и слои его материала (LibraryLoader: конвейер о базе не знает), edits — правки рельефа уровня по
 	// порядку слоёв (накладываются на копию карты высот при загрузке: её читают вершины, узлы квадродерева и всё, что стоит на
 	// рельефе; их очистка растительности — маска для расстановки, покраска — в splat-карту материала). water — вода уровня:
 	// после правок по итоговому рельефу конвейер (TerrainHydrology) режет русла и строит ручьи и маску озёр; nullptr — воды
 	// нет. erosion — эрозия исходной карты до правок (TerrainErosion, кэш — каталог eroded\ рядом с картой высот); nullptr —
 	// карта уже готова. layerRules — правила слоёв и масок по рельефу (TerrainMasks)
-	bool initialize( uint32_t terrainId, TerrainSettings& settings, const std::vector<TerrainEdit>& edits = {},
+	bool initialize( const TerrainDescription& terrain, const std::vector<TerrainEdit>& edits = {},
 					 const WaterSimulationSettings* water = nullptr, const TerrainErosionSettings* erosion = nullptr,
 					 const TerrainLayerRules& layerRules = {} );
 	// Части окна террейна: слои материала («Layer tiling», «Layer tint», «Layer displacement», «Layer occlusion»), «Erosion»,
@@ -182,7 +182,8 @@ public:
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override {}
 
 private:
-	bool loadSettings( uint32_t terrainId, TerrainSettings& settings );
+	// Карта высот, смещение и шаг, каталоги кэшей, роли слоёв (TerrainLayers.role) — из строки Terrain уровня
+	void applyDescription( const TerrainDescription& terrain );
 	// Эрозия карты field (нормированные высоты) — из кэша eroded\ или на GPU с записью кэша и карт эрозии
 	bool erode( HeightField& field, const TerrainErosionSettings& erosion );
 	// Подокна: слои материала (метров на повтор, оттенок, дисплейсмент, AO по слоям TerrainLayers), «Erosion» (параметры
@@ -244,7 +245,6 @@ private:
 	float m_texelSize = 1.0f;
 	float m_heightOffset = 0.0f;
 	float m_heightMultiplier = 1.0f;
-	uint32_t m_terrainId = 0;
 	PropertyContainer* m_window = nullptr;	// окно террейна (attachWindow): мазки отмечают его изменённым
 	// Итоговая карта (с правками рельефа) на CPU — значения 0…1 строками сверху вниз, как текстура: высота для ходьбы
 	std::vector<float> m_cpuHeights;

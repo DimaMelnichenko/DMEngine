@@ -72,6 +72,8 @@ private:
 	// в запросе: тогда каждая текстура — шаг прогресса загрузки (SlowTask)
 	bool loadTextures( SQLite::Statement& queryTexture, uint32_t count = 0 );
 	void loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set );
+	// Строка Terrain уровня и слои его материала (TerrainLayers) — в level.terrain (LibraryLoaderScene.cpp); false — строки нет
+	bool loadTerrain( uint32_t terrainId, LevelDescription& level );
 	// Правки рельефа террейна уровня (включённые, по порядку слоёв)
 	void loadTerrainEdits( uint32_t terrainId, LevelDescription& level );
 	// Строка WaterSimulation уровня (level.waterSimulationId); false — строки нет

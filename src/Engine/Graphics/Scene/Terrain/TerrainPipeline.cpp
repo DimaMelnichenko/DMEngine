@@ -14,7 +14,6 @@
 #include <DirectXTex.h>
 #include <DirectXPackedVector.h>
 #include "System.h"
-#include "DBConnector.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "Utils\Fingerprint.h"
@@ -96,16 +95,14 @@ TerrainPipeline::TerrainPipeline() :
 {
 }
 
-bool TerrainPipeline::initialize( uint32_t terrainId, TerrainSettings& settings, const std::vector<TerrainEdit>& edits,
+bool TerrainPipeline::initialize( const TerrainDescription& terrain, const std::vector<TerrainEdit>& edits,
 								  const WaterSimulationSettings* water, const TerrainErosionSettings* erosion, const TerrainLayerRules& layerRules )
 {
 	if( erosion )
 		m_erosion = *erosion;
 	m_layerRules = layerRules;
-	if( !loadSettings( terrainId, settings ) )
-		return false;
-	m_terrainId = terrainId;
-	m_heightMultiplier = settings.heightMultiplier;
+	applyDescription( terrain );
+	m_heightMultiplier = terrain.settings.heightMultiplier;
 
 	const uint32_t mapSize = System::textures().get( m_heightMapName )->width();
 	m_worldSize = mapSize * m_texelSize;
@@ -120,7 +117,7 @@ bool TerrainPipeline::initialize( uint32_t terrainId, TerrainSettings& settings,
 	m_coverage = coverage;
 
 	task.enterProgressFrame( 0.7f, "Material layers" );
-	if( !m_material.initialize( terrainId, {} ) || !repaintSplat() || !buildDetailSplat() )
+	if( !m_material.initialize( terrain.layers, {} ) || !repaintSplat() || !buildDetailSplat() )
 		return false;
 	for( uint32_t layer = m_material.layerCount(); layer < TerrainEditCoverage::paintLayers; ++layer )
 		if( !coverage.paint[layer].empty() )
@@ -308,55 +305,32 @@ bool TerrainPipeline::loadEditRaster( TerrainEdit& edit )
 	return true;
 }
 
-bool TerrainPipeline::loadSettings( uint32_t terrainId, TerrainSettings& settings )
+void TerrainPipeline::applyDescription( const TerrainDescription& terrain )
 {
-	// Колонка splatmap больше не читается: splat-карту дают правила по итоговому рельефу (TerrainMasks)
-	SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM Terrain WHERE id = :id" );
-	query.bind( ":id", terrainId );
-
-	if( !query.executeStep() )
-	{
-		LOG( "Terrain: no row " + std::to_string( terrainId ) + " in table Terrain" );
-		return false;
-	}
-
-	m_heightMapName = query.getColumn( "heightmap" ).getString();
-	settings.id = terrainId;
-	// Материал и сетка — по описанию полей (terrainSchema): NULL — значения по умолчанию TerrainSettings
-	readSettings( query, terrainSchema(), settings, "Terrain " + std::to_string( terrainId ) );
-	m_heightOffset = static_cast<float>( query.getColumn( "height_offset" ).getDouble() );
-	m_texelSize = static_cast<float>( query.getColumn( "width_multiplier" ).getDouble() );
+	m_heightMapName = terrain.heightMap;
+	m_heightOffset = terrain.heightOffset;
+	m_texelSize = terrain.texelSize;
 
 	// Кэш и карты эрозии — рядом с файлом карты высот: Textures\<его каталог>\eroded
-	SQLite::Statement file( DBConnector::instance().db(), "select file from Textures where name = :name" );
-	file.bind( ":name", m_heightMapName );
-	std::string directory;
-	if( file.executeStep() )
-	{
-		const std::string path = file.getColumn( "file" ).getString();
-		const size_t slash = path.find_last_of( "\\/" );
-		directory = slash == std::string::npos ? std::string() : path.substr( 0, slash );
-	}
+	const size_t slash = terrain.heightMapFile.find_last_of( "\\/" );
+	const std::string directory = slash == std::string::npos ? std::string() : terrain.heightMapFile.substr( 0, slash );
 	m_erodedDirectory = "Textures\\" + ( directory.empty() ? std::string() : directory + "\\" ) + "eroded";
 	m_generatedDirectory = "Textures\\" + ( directory.empty() ? std::string() : directory + "\\" ) + "generated";
 
 	// Роли слоёв (TerrainLayers.role): какой слой красят скала, снег, осыпи и травы правил слоёв и галька русел
 	m_layerOf.fill( -1 );
-	if( DBConnector::instance().db().tableExists( "TerrainLayers" ) )
+	for( size_t layer = 0; layer < terrain.layers.size(); ++layer )
 	{
-		SQLite::Statement roles( DBConnector::instance().db(), "select layer, role from TerrainLayers where terrain = :terrain and role is not null" );
-		roles.bind( ":terrain", terrainId );
-		while( roles.executeStep() )
+		const std::string& name = terrain.layers[layer].role;
+		if( name.empty() )
+			continue;
+		const TerrainLayerRole role = terrainLayerRole( name );
+		if( role == TerrainLayerRole::count )
 		{
-			const std::string name = roles.getColumn( "role" ).getString();
-			const TerrainLayerRole role = terrainLayerRole( name );
-			if( role == TerrainLayerRole::count )
-			{
-				LOG( "Terrain: unknown layer role " + name + " in TerrainLayers" );
-				continue;
-			}
-			m_layerOf[static_cast<uint32_t>( role )] = roles.getColumn( "layer" ).getInt();
+			LOG( "Terrain: unknown layer role " + name + " in TerrainLayers" );
+			continue;
 		}
+		m_layerOf[static_cast<uint32_t>( role )] = static_cast<int32_t>( layer );
 	}
 	for( uint32_t role = 0; role < terrainRuleRoleCount; ++role )
 		if( m_layerOf[role] < 0 )
@@ -365,7 +339,6 @@ bool TerrainPipeline::loadSettings( uint32_t terrainId, TerrainSettings& setting
 	m_channelLayer = m_layerOf[static_cast<uint32_t>( TerrainLayerRole::channelBed )];
 	if( m_channelLayer < 0 )
 		LOG( "Terrain: no layer with role channel_bed in TerrainLayers, channel beds are not painted" );
-	return true;
 }
 
 bool TerrainPipeline::buildHeights( const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water, TerrainEditCoverage& coverage )

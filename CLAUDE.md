@@ -470,7 +470,7 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 и загружает на GPU, только когда источники изменились.
 
 Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`, `Scene/Level/`): строка `Levels` ссылается на террейн (`Terrain`,
-слои материала — `TerrainLayers`), модель неба (`Models`); NULL — этого у уровня нет; эмиттеры частиц — строки
+слои материала — `TerrainLayers`; строка и слои — `TerrainDescription`: конвейер рельефа и материал о базе не знают), модель неба (`Models`); NULL — этого у уровня нет; эмиттеры частиц — строки
 `LevelParticleEmitters`. Экземпляры моделей уровня — `LevelModels`: строка на экземпляр (`position`, `rotation` —
 кватернион `x,y,z,w` как в glTF, `scale`), у модели их может быть сколько угодно. Модель (`DMModel`: LOD из секций —
 меш и материал) — общий ресурс без положения; положение держит экземпляр (`DMTransform` в `ModelInstances`, у неба — в

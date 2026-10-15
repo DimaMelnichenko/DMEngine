@@ -51,7 +51,7 @@ struct LevelDescription
 
 	uint32_t id = 0;
 	std::string name;
-	std::optional<uint32_t> terrain;	// строка таблицы Terrain
+	std::optional<GS::TerrainDescription> terrain;	// строка таблицы Terrain и слои его материала (TerrainLayers)
 	std::vector<GS::TerrainEdit> terrainEdits;	// правки его рельефа по порядку слоёв: таблицы TerrainEdits / TerrainEditPoints
 	std::optional<GS::TerrainErosionSettings> terrainErosion;	// эрозия его карты высот (Terrain.erosion); NULL — нет
 	GS::TerrainLayerRules terrainLayerRules;	// правила его слоёв и масок (строка TerrainLayerRules; нет — по умолчанию)

@@ -201,9 +201,38 @@ struct TerrainSettings
 	std::vector<TerrainPaintTile> paint;			// мазки кисти — строки TerrainPaint террейна
 };
 // Поля строки Terrain (SettingsSchema), окно террейна: материал и сетка у камеры. Не в описании — карта высот, смещение и шаг
-// (читает TerrainPipeline::loadSettings, в окне их нет), слои (строки TerrainLayers по номеру слоя), эрозия и правила (свои
+// (TerrainDescription, в окне их нет), слои (строки TerrainLayers по номеру слоя), эрозия и правила (свои
 // описания), мазки
 const SettingsSchema<TerrainSettings>& terrainSchema();
+
+// Слой материала террейна — строка TerrainLayers (номер слоя — место в TerrainDescription::layers): файлы альбедо с высотой и
+// нормали, метров на повтор, множитель альбедо, размах дисплейсмента, м, сила AO и роль в правилах слоёв (TerrainLayers.role,
+// TerrainLayerRole; пусто — никакой). Пустые файлы — слой не описан, вместо текстур заглушки
+struct TerrainLayerDescription
+{
+	std::string name;
+	std::string albedo;
+	std::string normal;
+	float tiling = 1.0f;
+	DirectX::XMFLOAT3 tint = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );
+	float displacement = 0.0f;
+	float occlusion = 1.0f;
+	std::string role;
+};
+
+// Строка Terrain уровня и его слои — читает LibraryLoader::loadLevel, конвейер рельефа (TerrainPipeline) и материал
+// (TerrainMaterial) о базе не знают
+struct TerrainDescription
+{
+	TerrainSettings settings;	// поля окна террейна (terrainSchema), id — строка Terrain
+	std::string heightMap;		// карта высот — имя текстуры (Terrain.heightmap → Textures.name)
+	// Её файл (Textures.file): кэш и карты эрозии, копия слоёв и масок — рядом, в каталогах eroded и generated
+	std::string heightMapFile;
+	float heightOffset = 0.0f;	// Terrain.height_offset, м
+	float texelSize = 1.0f;		// Terrain.width_multiplier: м на тексель карты высот
+	// Слои по номеру (TerrainLayers.layer) — до наибольшего описанного; пропуск в номерах — слой без файлов
+	std::vector<TerrainLayerDescription> layers;
+};
 
 // Строка SkyAtmosphere; без неё — значения по умолчанию
 struct SkyAtmosphereSettings

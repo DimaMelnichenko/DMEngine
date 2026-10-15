@@ -7,6 +7,7 @@
 #include "DirectX.h"
 #include "Utils\utilites.h"
 #include "Shaders\terrain_layer_constants.h"
+#include "Level\LevelSettings.h"
 
 namespace GS
 {
@@ -35,7 +36,8 @@ public:
 		std::vector<float> wetness;
 	};
 
-	bool initialize( uint32_t terrainId, const SplatWeights& weights );
+	// layers — слои уровня по номеру (TerrainDescription::layers, LibraryLoader): слой без файлов — заглушки
+	bool initialize( const std::vector<TerrainLayerDescription>& layers, const SplatWeights& weights );
 	// Splat-карта заново (русла, правила, мазки)
 	bool repaint( const SplatWeights& weights );
 	// Пиксельный шейдер: t3 — нормаль + AO + шероховатость
@@ -69,19 +71,6 @@ public:
 	const std::array<DirectX::XMFLOAT4, splatSlices>& layerOcclusion() const { return m_layerOcclusion; }
 
 private:
-	struct Layer
-	{
-		std::string name;
-		std::string albedo;
-		std::string normal;
-		float tiling = 1.0f;
-		DirectX::XMFLOAT3 tint = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );
-		float displacement = 0.0f;
-		float occlusion = 1.0f;
-	};
-
-	bool loadLayers( uint32_t terrainId, std::vector<Layer>& layers );
-
 private:
 	// Текстуры и виды: массивы срезов (splat-карта — веса, слои — альбедо с высотой и нормаль с шероховатостью)
 	Texture m_splatMapTexture;
