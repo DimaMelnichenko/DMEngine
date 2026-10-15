@@ -217,6 +217,20 @@ Details строка «Saved with the level», у остальных — «Not s
 эмиттеров — выключатели кадра: `-nowind` снимает «Enabled» у ветра, а сила остаётся, поэтому сохранение с `-nowind` её
 не затирает.
 
+**Пишутся только правки**, как несохранённые изменения в редакторе UE. `Scene` держит снимок окон уровня — `LevelSaveData`
+(`Scene/Level/LevelSaveData.h`): он снимается после загрузки, когда окна зарегистрированы (`Scene::markLevelSaved`, там же
+`Property::markSaved`), и после каждого сохранения. «Save level» собирает окна заново (`Scene::levelSaveData`) и пишет в
+строку только колонки, значение которых отличается от снимка (`RowUpdate`, `ObjectLibrary/SettingsDatabase.h`). Сравнение —
+в том виде, как значение ляжет в базу (число — `%g`, вектор — текст `x,y,z`), поэтому шум пересчёта углов окна в вектор
+правкой не считается. Остальное в строке не трогается: NULL (значение по умолчанию) остаётся NULL, значение, записанное
+сценарием `Tools/`, — тоже. Строка уровня, которой нет (постобработка, ветер, туман, атмосфера вместо незагруженной
+панорамы), создаётся, только если в её окне что-то поменяли. Производное не пишется: направление солнца и луны считает
+`SunPosition` по времени суток, освещённость луны — по фазе (`DMLightDriver::directionFromTime` / `moonFromTime`), — у
+строки, которая уже есть в базе, эти колонки остаются как были. Экземпляры моделей сравниваются с тем, что загружено из
+базы: пересадка на новую землю после эрозии — правка, «Save level» её закрепляет. Мазки кисти и точки кривых русел
+переписываются, только если их правили. «Save level» без правок на `Test` и `TestHDRI` не меняет в базе ничего
+(2026-10-15; было 33 и 31 колонка — NULL → число, у `TestHDRI` без файла панорамы ещё новая строка `SkyAtmosphere`).
+
 ## Как дать объекту свойства
 
 Объект сцены отдаёт `properties()` — `PropertyContainer` (`src/Common/Properties`); `Engine::initialize` регистрирует
@@ -263,7 +277,7 @@ const SettingsSchema<TerrainSettings>& terrainSchema()
 addSettingProperties( m_properties, terrainSchema(), settings );	// окно
 readSettingProperties( m_properties, terrainSchema(), settings );	// структура из окна
 readSettings( query, terrainSchema(), settings, "Terrain 1" );		// строка SELECT *
-updateSettings( db, "Terrain", id, terrainSchema(), settings );		// «Save level»
+updateSettings( db, "Terrain", id, terrainSchema(), settings, previous );	// «Save level»: поля, изменённые против снимка
 ```
 
 Поле:

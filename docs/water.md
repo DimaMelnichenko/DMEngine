@@ -380,7 +380,8 @@ const WaterSample water = sampleWater( uv );	// water.depth, water.velocity
   трава и частицы и так читают карту каждый кадр.
   Release — ~0,23 с (русла 0,2 с), Debug с GPU-based validation — ~1,4 с; строка `Water channels rebuilt without reload` в
   логе. Правка помечает кривую правленной.
-- **«Save level»** пишет флаги, множители и точки правленных во вьюпорте кривых (`StreamCurve::pointsChanged`).
+- **«Save level»** пишет изменённые флаги и множители кривых и точки кривых, которые правили во вьюпорте (точки не
+  совпадают со снимком после загрузки или прошлого сохранения, [gui.md](gui.md), «Сохранение уровня»).
 - **Сценарий** `Tools/stream_edit.py` (`list`, `show`, `set`, `move`, `insert`, `remove`, `add` — ручная кривая,
   `delete`, `reset` — снова сгенерированная, `regenerate`) — правка в базе, применяется при следующей загрузке.
 - **Удалённое управление** ([remote.md](remote.md)): `toggle "Stream curves"`, `pick x y` — точка кривой под точкой окна,

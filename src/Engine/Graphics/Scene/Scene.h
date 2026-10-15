@@ -18,6 +18,7 @@
 #include "Water\WaterSimulation.h"
 #include "Foliage\FoliageInteraction.h"
 #include "Level\LevelDescription.h"
+#include "Level\LevelSaveData.h"
 
 class LibraryLoader;
 
@@ -59,9 +60,13 @@ public:
 	Wind& wind();
 	const LevelDescription& level() const;
 	// Правки GUI — в строки уровня в base.db3 («Save level»): свет, небо, облака, постобработка, туман, ветер, затем
-	// террейн, расстановка, вода и частицы
+	// террейн, расстановка, вода и частицы. Пишутся только колонки, изменённые после загрузки или прошлого сохранения
+	// (снимок — markLevelSaved, LevelSaveData); производное (направление светил по времени суток) — нет
 	bool saveLevel( LibraryLoader& library, const PostProcessSettings& postProcess,
 					const std::optional<HeightFogSettings>& heightFog );
+	// Снимок окон уровня, с которым сравнивает «Save level» — после загрузки, когда окна зарегистрированы в GUI (их
+	// Property::markSaved): постобработку и туман отдаёт рендерер
+	void markLevelSaved( const PostProcessSettings& postProcess, const std::optional<HeightFogSettings>& heightFog );
 
 	// Отрисовка рельефа (окно террейна, видимость) и его данные — конвейер рельефа и воды: запросы высоты, русла, маски,
 	// кисть, поле ветра
@@ -91,8 +96,11 @@ private:
 	float aerialPerspectiveScale();
 	// Препятствия поля ветра — экземпляры моделей уровня выше 3 м (ели рощи, постройки) кругом по габариту
 	std::vector<WindObstacle> windObstacles() const;
+	// Окна уровня, собранные в данные для «Save level»
+	LevelSaveData levelSaveData( const PostProcessSettings& postProcess, const std::optional<HeightFogSettings>& heightFog );
 
 	LevelDescription m_level;
+	LevelSaveData m_savedLevel;		// снимок после загрузки или прошлого «Save level» — с ним сравнивается следующее
 	DMLightDriver m_lightDriver;
 	Wind m_wind;
 	uint64_t m_windRevision = ~0ull;	// номер правки окна «Wind», по которому сверены направление и поле ветра (applyEditorChanges)

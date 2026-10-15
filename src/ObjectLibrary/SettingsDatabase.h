@@ -4,6 +4,9 @@
 #include <cstdlib>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 #include <SQLiteCpp/SQLiteCpp.h>
 #include "Properties\SettingsSchema.h"
 #include "Logger\Logger.h"
@@ -174,19 +177,45 @@ std::vector<std::string> settingsColumns( const SettingsSchema<T>& schema )
 	return result;
 }
 
-// «col = :col, …» — присваивания UPDATE для полей описания
-template<typename T>
-std::string settingsAssignments( const SettingsSchema<T>& schema )
+// Значение колонки для записи: NULL, целое, число (REAL короткой записью — settingsDatabaseFloat), текст. Правка ли это,
+// решается в этом виде — как значение ляжет в базу: шум ниже записи (пересчёт углов в вектор) правкой не считается
+using DbValue = std::variant<std::nullptr_t, int64_t, double, std::string>;
+using DbColumns = std::vector<std::pair<std::string, DbValue>>;
+
+inline DbValue dbFloat( float value )
 {
-	std::string result;
-	for( const std::string& name : settingsColumns( schema ) )
-		result += ( result.empty() ? "" : ", " ) + name + " = :" + name;
-	return result;
+	return settingsDatabaseFloat( value );
 }
 
-// Значения полей — в параметры :col запроса (settingsAssignments или INSERT со списком settingsColumns)
+inline DbValue dbInt( int64_t value )
+{
+	return value;
+}
+
+// Текст; пустой — NULL
+inline DbValue dbText( const std::string& text )
+{
+	return text.empty() ? DbValue( nullptr ) : DbValue( text );
+}
+
+template<typename Key>
+void bindDbValue( SQLite::Statement& statement, const Key& parameter, const DbValue& value )
+{
+	std::visit( [&]( const auto& v )
+	{
+		using V = std::decay_t<decltype( v )>;
+		if constexpr( std::is_same_v<V, std::nullptr_t> )
+			statement.bind( parameter );
+		else if constexpr( std::is_same_v<V, int64_t> )
+			statement.bind( parameter, static_cast<long long>( v ) );
+		else
+			statement.bind( parameter, v );
+	}, value );
+}
+
+// Колонки и значения полей описания по порядку (у вектора и полосы — колонки компонент или текст «x,y,z»)
 template<typename T>
-void bindSettings( SQLite::Statement& statement, const SettingsSchema<T>& schema, const T& values )
+void settingsColumnValues( const SettingsSchema<T>& schema, const T& values, DbColumns& out )
 {
 	using namespace SettingsDatabaseDetail;
 	for( const SettingField<T>& field : schema )
@@ -198,20 +227,14 @@ void bindSettings( SQLite::Statement& statement, const SettingsSchema<T>& schema
 		{
 			const auto& value = settingRef( access, values );
 			using Value = std::remove_cv_t<std::remove_reference_t<decltype( value )>>;
-			const std::string parameter = ":" + names[0];
 			if constexpr( std::is_same_v<Value, float> )
-				statement.bind( parameter, settingsDatabaseFloat( value ) );
+				out.emplace_back( names[0], dbFloat( value ) );
 			else if constexpr( std::is_same_v<Value, bool> )
-				statement.bind( parameter, value ? 1 : 0 );
+				out.emplace_back( names[0], dbInt( value ? 1 : 0 ) );
 			else if constexpr( std::is_same_v<Value, int32_t> || std::is_same_v<Value, uint32_t> )
-				statement.bind( parameter, static_cast<int64_t>( value ) );
+				out.emplace_back( names[0], dbInt( static_cast<int64_t>( value ) ) );
 			else if constexpr( std::is_same_v<Value, std::string> )
-			{
-				if( value.empty() )
-					statement.bind( parameter );
-				else
-					statement.bind( parameter, value );
-			}
+				out.emplace_back( names[0], dbText( value ) );
 			else
 			{
 				constexpr uint32_t count = componentCount<Value>();
@@ -219,7 +242,7 @@ void bindSettings( SQLite::Statement& statement, const SettingsSchema<T>& schema
 				if( names.size() == count )
 				{
 					for( uint32_t i = 0; i < count; ++i )
-						statement.bind( ":" + names[i], settingsDatabaseFloat( parts[i] ) );
+						out.emplace_back( names[i], dbFloat( parts[i] ) );
 					return;
 				}
 				std::string text;
@@ -229,18 +252,118 @@ void bindSettings( SQLite::Statement& statement, const SettingsSchema<T>& schema
 					std::snprintf( number, sizeof( number ), "%g", parts[i] );
 					text += ( i ? "," : "" ) + std::string( number );
 				}
-				statement.bind( parameter, text );
+				out.emplace_back( names[0], DbValue( text ) );
 			}
 		}, field.access );
 	}
 }
 
-// UPDATE строки id таблицы table по описанию
+// Значения полей — в параметры :col запроса (INSERT со списком settingsColumns)
 template<typename T>
-void updateSettings( SQLite::Database& db, const char* table, int64_t id, const SettingsSchema<T>& schema, const T& values )
+void bindSettings( SQLite::Statement& statement, const SettingsSchema<T>& schema, const T& values )
 {
-	SQLite::Statement update( db, std::string( "UPDATE " ) + table + " SET " + settingsAssignments( schema ) + " WHERE id = :id" );
-	bindSettings( update, schema, values );
-	update.bind( ":id", id );
-	update.exec();
+	DbColumns columns;
+	settingsColumnValues( schema, values, columns );
+	for( const auto& [name, value] : columns )
+		bindDbValue( statement, ":" + name, value );
+}
+
+// Запись строки только изменёнными колонками — «Save level» пишет правки, а не окна целиком (LevelSaveData): колонка
+// пишется, если её значение отличается от прежнего (загруженного или сохранённого прошлым «Save level») или прежнего
+// нет (новая строка). Остальные колонки строки не трогаются: NULL (значение по умолчанию) остаётся NULL, запись скриптом
+// остаётся
+class RowUpdate
+{
+public:
+	// Колонка: значение и прежнее (nullptr — прежнего нет, пишется)
+	RowUpdate& set( const std::string& column, const DbValue& value, const DbValue* previous = nullptr )
+	{
+		if( !previous || *previous != value )
+			m_columns.emplace_back( column, value );
+		return *this;
+	}
+	// Колонка из объекта: value( объект ) против value( *previous )
+	template<typename T, typename F>
+	RowUpdate& set( const std::string& column, const T& object, const T* previous, F value )
+	{
+		const DbValue current = value( object );
+		if( !previous )
+			return set( column, current );
+		const DbValue before = value( *previous );
+		return set( column, current, &before );
+	}
+	// Поля описания против прежних значений (nullptr — все поля)
+	template<typename T>
+	RowUpdate& settings( const SettingsSchema<T>& schema, const T& values, const T* previous )
+	{
+		DbColumns current, before;
+		settingsColumnValues( schema, values, current );
+		if( previous )
+			settingsColumnValues( schema, *previous, before );
+		for( size_t i = 0; i < current.size(); ++i )
+			set( current[i].first, current[i].second, previous ? &before[i].second : nullptr );
+		return *this;
+	}
+	bool empty() const { return m_columns.empty(); }
+
+	// UPDATE table SET <колонки> WHERE <ключ>; писать нечего — без запроса. Возврат — изменено строк (0 — строки нет)
+	int update( SQLite::Database& db, const std::string& table, const DbColumns& key ) const
+	{
+		if( m_columns.empty() )
+			return 0;
+		std::string sql = "UPDATE " + table + " SET ";
+		for( size_t i = 0; i < m_columns.size(); ++i )
+			sql += ( i ? ", " : "" ) + m_columns[i].first + " = ?";
+		sql += " WHERE ";
+		for( size_t i = 0; i < key.size(); ++i )
+			sql += ( i ? " AND " : "" ) + key[i].first + " = ?";
+		SQLite::Statement statement( db, sql );
+		int index = 1;
+		for( const auto& column : m_columns )
+			bindDbValue( statement, index++, column.second );
+		for( const auto& column : key )
+			bindDbValue( statement, index++, column.second );
+		return statement.exec();
+	}
+	// Строка на ключ (правила слоёв террейна, русла воды): UPDATE, а строки нет — INSERT ключа и колонок
+	void upsert( SQLite::Database& db, const std::string& table, const DbColumns& key ) const
+	{
+		if( m_columns.empty() || update( db, table, key ) > 0 )
+			return;
+		std::string names, values;
+		DbColumns all = key;
+		all.insert( all.end(), m_columns.begin(), m_columns.end() );
+		for( size_t i = 0; i < all.size(); ++i )
+		{
+			names += ( i ? ", " : "" ) + all[i].first;
+			values += i ? ", ?" : "?";
+		}
+		SQLite::Statement statement( db, "INSERT INTO " + table + " (" + names + ") VALUES (" + values + ")" );
+		for( size_t i = 0; i < all.size(); ++i )
+			bindDbValue( statement, static_cast<int>( i + 1 ), all[i].second );
+		statement.exec();
+	}
+
+private:
+	DbColumns m_columns;
+};
+
+// UPDATE строки id таблицы table по описанию: только поля, изменённые против previous (nullptr — все)
+template<typename T>
+void updateSettings( SQLite::Database& db, const char* table, int64_t id, const SettingsSchema<T>& schema, const T& values,
+					 const T* previous )
+{
+	RowUpdate().settings( schema, values, previous ).update( db, table, { { "id", dbInt( id ) } } );
+}
+
+// Прежнее значение строки по id из снимка (LevelSaveData); id 0 — новая строка, прежнего нет
+template<typename T, typename F>
+const T* findPrevious( const std::vector<T>& previous, uint32_t id, F idOf )
+{
+	if( id == 0 )
+		return nullptr;
+	for( const T& item : previous )
+		if( idOf( item ) == id )
+			return &item;
+	return nullptr;
 }

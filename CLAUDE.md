@@ -211,7 +211,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   сохраняемые с уровнем (`SceneObject::savedWithLevel`; Details пишет «Saved with the level»): окружение
   (`LibraryLoader::saveLevelEnvironment`) и объекты сцены — террейн, расстановку, воду, частицы
   (`LibraryLoader::saveLevelScene`, `ObjectLibrary/LibraryLoaderScene.cpp`); объект отдаёт настройки по своим свойствам,
-  о базе не знает. Имя свойства — без «/» (разделитель пути `set`), единицы — `Property::setUnit` (окно пишет их в скобках
+  о базе не знает; пишутся только колонки, изменённые после загрузки или прошлого сохранения (снимок `LevelSaveData`,
+  `RowUpdate` в `ObjectLibrary/SettingsDatabase.h`): NULL в базе остаётся NULL, производное (направление светил по времени
+  суток) не пишется. Имя свойства — без «/» (разделитель пути `set`), единицы — `Property::setUnit` (окно пишет их в скобках
 после имени, «Far border (m)»). Экземпляры моделей —
   окно «Model instances» (`ModelInstances::instanceProperties`: положение, поворот углами, масштаб → `LevelModels`;
   подокно «Add» — экземпляр модели уровня перед камерой, «Delete» — убрать; «Save level» вставляет и удаляет строки).

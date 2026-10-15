@@ -191,13 +191,45 @@ double LibraryLoader::dbValue( float value )
 	return settingsDatabaseFloat( value );
 }
 
-bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<DMLight>& lights, const std::vector<uint32_t>& removedLights,
-										  const std::optional<GS::SunPositionSettings>& sunPosition,
-										  const std::optional<GS::SkyAtmosphereSettings>& atmosphere,
-										  const std::optional<GS::HDRIBackdropSettings>& hdri,
-										  const GS::PostProcessSettings& postProcess, const GS::WindSettings& wind,
-										  const std::optional<GS::HeightFogSettings>& heightFog,
-										  const std::optional<GS::VolumetricCloudSettings>& cloud )
+namespace
+{
+
+// Прежнее значение необязательной строки (снимок без неё — прежнего нет)
+template<typename T>
+const T* previousOf( const std::optional<T>& previous )
+{
+	return previous ? &*previous : nullptr;
+}
+
+// Строка окружения уровня, которой у него может не быть (постобработка, ветер, туман, атмосфера вместо панорамы): есть
+// что писать, а строки нет — создаётся с именем уровня и привязывается к Levels.<levelColumn>
+void updateLevelRow( SQLite::Database& db, const RowUpdate& update, const char* table, const char* levelColumn,
+					 const LevelDescription& level, std::optional<uint32_t>& rowId )
+{
+	if( update.empty() )
+		return;
+	if( !rowId )
+	{
+		SQLite::Statement insert( db, std::string( "INSERT INTO " ) + table + " (name) VALUES (:name)" );
+		insert.bind( ":name", level.name );
+		insert.exec();
+		rowId = static_cast<uint32_t>( db.getLastInsertRowid() );
+		SQLite::Statement link( db, std::string( "UPDATE Levels SET " ) + levelColumn + " = :row WHERE id = :id" );
+		link.bind( ":row", *rowId );
+		link.bind( ":id", level.id );
+		link.exec();
+	}
+	update.update( db, table, { { "id", dbInt( *rowId ) } } );
+}
+
+DbValue vectorValue( const XMFLOAT3& value )
+{
+	return vec3ToStr( value );
+}
+
+}
+
+bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, LevelSaveData& data, const LevelSaveData& previous )
 {
 	try
 	{
@@ -205,18 +237,20 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 		SQLite::Transaction transaction( db );
 
 		// Убранные в редакторе источники — строки удаляются; добавленные — новые строки уровня (тип и номер светила
-		// атмосферы в GUI не меняются, остальное пишет UPDATE ниже). id новых строк — в источники: после сохранения
-		// они правятся по id, как загруженные
+		// атмосферы в GUI не меняются, остальное пишет UPDATE ниже — у новой строки все колонки). id новых строк — в
+		// источники: после сохранения они правятся по id, как загруженные
 		SQLite::Statement deleteLight( db, "DELETE FROM LevelLights WHERE id = :id" );
-		for( uint32_t id : removedLights )
+		for( uint32_t id : data.removedLights )
 		{
 			deleteLight.bind( ":id", id );
 			deleteLight.exec();
 			deleteLight.reset();
 		}
 		SQLite::Statement insertLight( db, "INSERT INTO LevelLights (level, type, atmosphere_sun_light_index) VALUES (:level, :type, :index)" );
-		for( DMLight& light : lights )
+		std::vector<bool> inserted( data.lights.size(), false );
+		for( size_t i = 0; i < data.lights.size(); ++i )
 		{
+			DMLight& light = data.lights[i];
 			if( light.id != 0 )
 				continue;
 			insertLight.bind( ":level", level.id );
@@ -225,138 +259,99 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 			insertLight.exec();
 			insertLight.reset();
 			light.id = static_cast<uint32_t>( db.getLastInsertRowid() );
+			inserted[i] = true;
 		}
 
-		SQLite::Statement updateLight( db, "UPDATE LevelLights SET name = :name, enabled = :enabled, color = :color, "
-										   "intensity = :intensity, position = :position, direction = :direction, "
-										   "attenuation_radius = :radius, inner_cone_angle = :inner, outer_cone_angle = :outer, " +
-										   settingsAssignments( DMLight::shadowSchema() ) +
-										   ", atmosphere_sun_light = :atmosphereSunLight WHERE id = :id" );
-		for( const DMLight& light : lights )
+		for( size_t i = 0; i < data.lights.size(); ++i )
 		{
-			if( light.id == 0 )
-				continue;
-			const DMLight::ShadowSettings& shadows = light.shadowSettings();
-			updateLight.bind( ":name", light.name );
-			updateLight.bind( ":enabled", light.enabled() ? 1 : 0 );
-			updateLight.bind( ":color", vec3ToStr( light.color() ) );
-			updateLight.bind( ":intensity", dbValue( light.intensity() ) );
-			updateLight.bind( ":position", vec3ToStr( light.position() ) );
-			updateLight.bind( ":direction", vec3ToStr( light.direction() ) );
-			updateLight.bind( ":radius", dbValue( light.attenuationRadius() ) );
-			updateLight.bind( ":inner", dbValue( light.innerConeAngle() ) );
-			updateLight.bind( ":outer", dbValue( light.outerConeAngle() ) );
-			bindSettings( updateLight, DMLight::shadowSchema(), shadows );
-			updateLight.bind( ":atmosphereSunLight", light.atmosphereSunLight() ? 1 : 0 );
-			updateLight.bind( ":id", light.id );
-			updateLight.exec();
-			updateLight.reset();
+			const DMLight& light = data.lights[i];
+			// Прежнее — по id; у вставленной сейчас строки его нет (id мог достаться от удалённой)
+			const DMLight* before = inserted[i] ? nullptr : findPrevious( previous.lights, light.id, []( const DMLight& l ) { return l.id; } );
+			RowUpdate update;
+			update.set( "name", light, before, []( const DMLight& l ) { return DbValue( l.name ); } );
+			update.set( "enabled", light, before, []( const DMLight& l ) { return dbInt( l.enabled() ? 1 : 0 ); } );
+			update.set( "color", light, before, []( const DMLight& l ) { return vectorValue( l.color() ); } );
+			// Что считает SunPosition (направление светил, освещённость луны по фазе), у строки в базе не пишется
+			if( !before || i >= data.intensityFromTime.size() || !data.intensityFromTime[i] )
+				update.set( "intensity", light, before, []( const DMLight& l ) { return dbFloat( l.intensity() ); } );
+			update.set( "position", light, before, []( const DMLight& l ) { return vectorValue( l.position() ); } );
+			if( !before || i >= data.directionFromTime.size() || !data.directionFromTime[i] )
+				update.set( "direction", light, before, []( const DMLight& l ) { return vectorValue( l.direction() ); } );
+			update.set( "attenuation_radius", light, before, []( const DMLight& l ) { return dbFloat( l.attenuationRadius() ); } );
+			update.set( "inner_cone_angle", light, before, []( const DMLight& l ) { return dbFloat( l.innerConeAngle() ); } );
+			update.set( "outer_cone_angle", light, before, []( const DMLight& l ) { return dbFloat( l.outerConeAngle() ); } );
+			update.settings( DMLight::shadowSchema(), light.shadowSettings(), before ? &before->shadowSettings() : nullptr );
+			update.set( "atmosphere_sun_light", light, before, []( const DMLight& l ) { return dbInt( l.atmosphereSunLight() ? 1 : 0 ); } );
+			update.update( db, "LevelLights", { { "id", dbInt( light.id ) } } );
 		}
 
 		// Место и время — только если строка у уровня есть: без неё солнце светит по своему направлению
-		if( sunPosition && level.sunPositionId )
+		if( data.sunPosition && level.sunPositionId )
 		{
-			char date[16];
-			std::snprintf( date, sizeof( date ), "%04d-%02d-%02d", sunPosition->year, sunPosition->month, sunPosition->day );
-			SQLite::Statement updateSun( db, "UPDATE SunPosition SET " + settingsAssignments( GS::sunPositionSchema() ) +
-											 ", date = :date WHERE id = :id" );
-			bindSettings( updateSun, GS::sunPositionSchema(), *sunPosition );
-			updateSun.bind( ":date", std::string( date ) );
-			updateSun.bind( ":id", *level.sunPositionId );
-			updateSun.exec();
-		}
-
-		// Строки неба и постобработки: нет у уровня — создаются с его именем. Небо — то, что у уровня работает:
-		// атмосфера или панорама (строку панорамы задают в базе, без неё небо — атмосфера)
-		if( atmosphere )
-		{
-			if( !level.atmosphereId )
+			const auto date = []( const GS::SunPositionSettings& sun )
 			{
-				SQLite::Statement insert( db, "INSERT INTO SkyAtmosphere (name) VALUES (:name)" );
-				insert.bind( ":name", level.name );
-				insert.exec();
-				level.atmosphereId = static_cast<uint32_t>( db.getLastInsertRowid() );
-			}
-			updateSettings( db, "SkyAtmosphere", *level.atmosphereId, GS::skyAtmosphereSchema(), *atmosphere );
-
-			SQLite::Statement updateLevel( db, "UPDATE Levels SET atmosphere = :atmosphere WHERE id = :id" );
-			updateLevel.bind( ":atmosphere", *level.atmosphereId );
-			updateLevel.bind( ":id", level.id );
-			updateLevel.exec();
+				char text[16];
+				std::snprintf( text, sizeof( text ), "%04d-%02d-%02d", sun.year, sun.month, sun.day );
+				return DbValue( std::string( text ) );
+			};
+			const GS::SunPositionSettings* before = previousOf( previous.sunPosition );
+			RowUpdate update;
+			update.settings( GS::sunPositionSchema(), *data.sunPosition, before );
+			update.set( "date", *data.sunPosition, before, date );
+			update.update( db, "SunPosition", { { "id", dbInt( *level.sunPositionId ) } } );
 		}
-		if( hdri && level.hdriBackdropId )
+
+		// Небо — то, что у уровня работает: атмосфера или панорама (строку панорамы задают в базе, без неё небо —
+		// атмосфера). Атмосфера вместо незагруженной панорамы получает строку, только если её правили
+		if( data.atmosphere )
 		{
-			updateSettings( db, "HDRIBackdrop", *level.hdriBackdropId, GS::hdriBackdropSchema(), *hdri );
+			RowUpdate update;
+			update.settings( GS::skyAtmosphereSchema(), *data.atmosphere, previousOf( previous.atmosphere ) );
+			updateLevelRow( db, update, "SkyAtmosphere", "atmosphere", level, level.atmosphereId );
 		}
+		if( data.hdri && level.hdriBackdropId )
+			updateSettings( db, "HDRIBackdrop", *level.hdriBackdropId, GS::hdriBackdropSchema(), *data.hdri, previousOf( previous.hdri ) );
 
-		if( !level.postProcessId )
+		// Постобработка: поля описания, перечисления — именами, кривая компенсации — текстом (пустая — NULL)
 		{
-			SQLite::Statement insert( db, "INSERT INTO PostProcessSettings (name) VALUES (:name)" );
-			insert.bind( ":name", level.name );
-			insert.exec();
-			level.postProcessId = static_cast<uint32_t>( db.getLastInsertRowid() );
+			const GS::PostProcessSettings& postProcess = data.postProcess;
+			const GS::PostProcessSettings* before = &previous.postProcess;
+			RowUpdate update;
+			update.settings( GS::postProcessSchema(), postProcess, before );
+			update.set( "tonemapper", postProcess, before,
+						[]( const GS::PostProcessSettings& p ) { return DbValue( std::string( GS::tonemapperName( p.tonemapper ) ) ); } );
+			update.set( "metering_mode", postProcess, before,
+						[]( const GS::PostProcessSettings& p ) { return DbValue( std::string( GS::meteringModeName( p.meteringMode ) ) ); } );
+			update.set( "exposure_compensation_curve", postProcess, before, []( const GS::PostProcessSettings& p )
+			{
+				return p.exposureCompensationCurve.empty() ? DbValue( nullptr ) : DbValue( GS::curveText( p.exposureCompensationCurve ) );
+			} );
+			updateLevelRow( db, update, "PostProcessSettings", "post_process", level, level.postProcessId );
 		}
-		SQLite::Statement updatePostProcess( db, "UPDATE PostProcessSettings SET " + settingsAssignments( GS::postProcessSchema() ) +
-												 ", tonemapper = :tonemapper, metering_mode = :meteringMode, "
-												 "exposure_compensation_curve = :curve WHERE id = :id" );
-		bindSettings( updatePostProcess, GS::postProcessSchema(), postProcess );
-		updatePostProcess.bind( ":tonemapper", GS::tonemapperName( postProcess.tonemapper ) );
-		updatePostProcess.bind( ":meteringMode", GS::meteringModeName( postProcess.meteringMode ) );
-		if( postProcess.exposureCompensationCurve.empty() )
-			updatePostProcess.bind( ":curve" );
-		else
-			updatePostProcess.bind( ":curve", GS::curveText( postProcess.exposureCompensationCurve ) );
-		updatePostProcess.bind( ":id", *level.postProcessId );
-		updatePostProcess.exec();
 
-		SQLite::Statement updateLevel( db, "UPDATE Levels SET post_process = :postProcess WHERE id = :id" );
-		updateLevel.bind( ":postProcess", *level.postProcessId );
-		updateLevel.bind( ":id", level.id );
-		updateLevel.exec();
-
-		// Ветер: нет строки — создаётся и привязывается к уровню, как у постобработки
-		if( !level.windId )
-		{
-			SQLite::Statement insert( db, "INSERT INTO Wind (name) VALUES (:name)" );
-			insert.bind( ":name", level.name );
-			insert.exec();
-			level.windId = static_cast<uint32_t>( db.getLastInsertRowid() );
-		}
 		// Ветер и поле ветра (колонки field_*) — по описаниям, направление — вектором (в окне — Yaw)
-		SQLite::Statement updateWind( db, "UPDATE Wind SET " + settingsAssignments( GS::windSchema() ) + ", " +
-										  settingsAssignments( GS::windFieldSchema() ) + ", direction = :direction WHERE id = :id" );
-		bindSettings( updateWind, GS::windSchema(), wind );
-		bindSettings( updateWind, GS::windFieldSchema(), wind.field );
-		updateWind.bind( ":direction", vec3ToStr( wind.direction ) );
-		updateWind.bind( ":id", *level.windId );
-		updateWind.exec();
-		SQLite::Statement updateLevelWind( db, "UPDATE Levels SET wind = :wind WHERE id = :id" );
-		updateLevelWind.bind( ":wind", *level.windId );
-		updateLevelWind.bind( ":id", level.id );
-		updateLevelWind.exec();
+		{
+			const GS::WindSettings& wind = data.wind;
+			const GS::WindSettings* before = &previous.wind;
+			RowUpdate update;
+			update.settings( GS::windSchema(), wind, before );
+			update.settings( GS::windFieldSchema(), wind.field, &before->field );
+			update.set( "direction", wind, before, []( const GS::WindSettings& w ) { return vectorValue( w.direction ); } );
+			updateLevelRow( db, update, "Wind", "wind", level, level.windId );
+		}
 
 		// Туман: строка создаётся, только если его включили в GUI; выключенный остаётся строкой с нулевой плотностью
-		if( heightFog )
+		if( data.heightFog )
 		{
-			if( !level.heightFogId )
-			{
-				SQLite::Statement insert( db, "INSERT INTO ExponentialHeightFog (name) VALUES (:name)" );
-				insert.bind( ":name", level.name );
-				insert.exec();
-				level.heightFogId = static_cast<uint32_t>( db.getLastInsertRowid() );
-			}
-			updateSettings( db, "ExponentialHeightFog", *level.heightFogId, GS::heightFogSchema(), *heightFog );
-			SQLite::Statement updateLevelFog( db, "UPDATE Levels SET height_fog = :fog WHERE id = :id" );
-			updateLevelFog.bind( ":fog", *level.heightFogId );
-			updateLevelFog.bind( ":id", level.id );
-			updateLevelFog.exec();
+			RowUpdate update;
+			update.settings( GS::heightFogSchema(), *data.heightFog, previousOf( previous.heightFog ) );
+			updateLevelRow( db, update, "ExponentialHeightFog", "height_fog", level, level.heightFogId );
 		}
 
 		// Облака — только в свою строку: без строки у уровня облаков нет, и окна тоже
-		if( cloud && level.volumetricCloudId )
-		{
-			updateSettings( db, "VolumetricCloud", *level.volumetricCloudId, GS::volumetricCloudSchema(), *cloud );
-		}
+		if( data.cloud && level.volumetricCloudId )
+			updateSettings( db, "VolumetricCloud", *level.volumetricCloudId, GS::volumetricCloudSchema(), *data.cloud,
+							previousOf( previous.cloud ) );
 
 		transaction.commit();
 	}

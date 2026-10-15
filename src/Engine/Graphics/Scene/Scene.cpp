@@ -381,63 +381,82 @@ Wind& Scene::wind()
 	return m_wind;
 }
 
+LevelSaveData Scene::levelSaveData( const PostProcessSettings& postProcess, const std::optional<HeightFogSettings>& heightFog )
+{
+	LevelSaveData data;
+	// Источники — копией: id новых строк вернутся в неё и уйдут в источники
+	data.lights = m_lightDriver.lights();
+	data.removedLights = m_lightDriver.removedIds();
+	for( size_t i = 0; i < data.lights.size(); ++i )
+	{
+		data.directionFromTime.push_back( m_lightDriver.directionFromTime( i ) );
+		data.intensityFromTime.push_back( m_lightDriver.moonFromTime( i ) );
+	}
+	if( const SunPosition* position = m_lightDriver.sunPosition() )
+		data.sunPosition = position->settings();
+	// Небо — строка того, что у уровня работает: атмосферы или панорамы
+	if( m_useHDRI )
+		data.hdri = m_hdri.settings();
+	else
+		data.atmosphere = m_atmosphere.settings();
+	if( m_clouds.initialized() )
+		data.cloud = m_clouds.settings();
+	data.postProcess = postProcess;
+	data.wind = m_wind.settings();
+	data.heightFog = heightFog;
+
+	// Экземпляры — копией: id новых строк вернутся в неё и уйдут в экземпляры
+	data.models = m_models.instances();
+	data.removedModels = m_models.removedIds();
+	if( m_level.terrain )
+	{
+		data.terrain = m_terrain.settings();
+		m_terrainPipeline.settings( *data.terrain );
+	}
+	for( const auto& scatterer : m_scatterers )
+	{
+		data.scatterSets.push_back( scatterer->settings() );
+		std::vector<ScatterLayerRecord> layers = scatterer->layerRecords();
+		data.scatterLayers.insert( data.scatterLayers.end(), layers.begin(), layers.end() );
+	}
+	if( m_level.terrain && m_level.waterSimulation )
+	{
+		data.water = m_water.settings();
+		data.water->streams = m_water.streamCurves();
+	}
+	if( m_particles.initialized() )
+		data.emitters = m_particles.emitterSettings();
+	return data;
+}
+
+void Scene::markLevelSaved( const PostProcessSettings& postProcess, const std::optional<HeightFogSettings>& heightFog )
+{
+	m_savedLevel = levelSaveData( postProcess, heightFog );
+	// Экземпляры моделей — как в базе: пересадка на новую землю после эрозии (ModelInstances::reseat при загрузке) —
+	// правка, её закрепляет «Save level»
+	m_savedLevel.models = m_level.modelInstances;
+}
+
 bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postProcess,
 						const std::optional<HeightFogSettings>& heightFog )
 {
-	std::optional<SunPosition::Settings> sunPosition;
-	if( const SunPosition* position = m_lightDriver.sunPosition() )
-		sunPosition = position->settings();
-	// Небо — строка того, что у уровня работает: атмосферы или панорамы
-	std::optional<SkyAtmosphere::Settings> atmosphere;
-	std::optional<HDRIBackdrop::Settings> hdri;
-	if( m_useHDRI )
-		hdri = m_hdri.settings();
-	else
-		atmosphere = m_atmosphere.settings();
-	std::optional<VolumetricCloud::Settings> cloud;
-	if( m_clouds.initialized() )
-		cloud = m_clouds.settings();
-	// Источники — копией: id новых строк вернутся в неё и уйдут в источники
-	DMLightDriver::LightList lights = m_lightDriver.lights();
-	if( !library.saveLevelEnvironment( m_level, lights, m_lightDriver.removedIds(), sunPosition, atmosphere, hdri, postProcess,
-									   m_wind.settings(), heightFog, cloud ) )
+	LevelSaveData data = levelSaveData( postProcess, heightFog );
+	if( !library.saveLevelEnvironment( m_level, data, m_savedLevel ) )
 		return false;
-	m_lightDriver.markSaved( lights );
-
-	std::optional<TerrainSettings> terrain;
-	if( m_level.terrain )
-	{
-		terrain = m_terrain.settings();
-		m_terrainPipeline.settings( *terrain );
-	}
-	std::vector<ScatterSetSettings> scatterSets;
-	std::vector<ScatterLayerRecord> scatterLayers;
-	for( const auto& scatterer : m_scatterers )
-	{
-		scatterSets.push_back( scatterer->settings() );
-		std::vector<ScatterLayerRecord> layers = scatterer->layerRecords();
-		scatterLayers.insert( scatterLayers.end(), layers.begin(), layers.end() );
-	}
-	std::optional<WaterSimulationSettings> water;
-	if( m_level.terrain && m_level.waterSimulation )
-	{
-		water = m_water.settings();
-		water->streams = m_water.streamCurves();
-	}
-	std::vector<ParticleEmitterSettings> emitters;
-	if( m_particles.initialized() )
-		emitters = m_particles.emitterSettings();
-	// Экземпляры — копией: id новых строк вернутся в неё и уйдут в экземпляры
-	std::vector<LevelDescription::ModelInstance> models = m_models.instances();
-	if( !library.saveLevelScene( m_level, models, m_models.removedIds(), terrain, scatterSets, scatterLayers, water, emitters ) )
+	m_lightDriver.markSaved( data.lights );
+	if( !library.saveLevelScene( m_level, data, m_savedLevel ) )
 		return false;
-	m_models.markSaved( models );
+	m_models.markSaved( data.models );
 	// Параметры экземпляров материалов (окна «Models» и «Materials» слоёв расстановки) — изменённые
 	if( !library.saveMaterialInstances( System::materialInstances() ) )
 		return false;
 	// Экземпляры моделей в базе — на нынешней земле: пересадка после эрозии закреплена
 	if( m_level.terrain )
 		m_terrainPipeline.confirmErosionChange();
+	// Сохранённое — новое прежнее: следующее «Save level» пишет правки после него
+	data.removedLights.clear();
+	data.removedModels.clear();
+	m_savedLevel = std::move( data );
 	return true;
 }
 

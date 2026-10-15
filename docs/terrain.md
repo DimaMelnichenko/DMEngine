@@ -600,7 +600,7 @@ level», правка — пересчёт вживую). Галька (`channel
 
 **Хранение** — таблица `TerrainPaint` (`terrain`, `target`, `tile_x`, `tile_z`, `delta` — BLOB 64 × 64 int8, −127…127),
 только закрашенные плитки по 64 текселя сетки цели (у слоёв и мокрости — 16 м, у масок — 64 м): мазки — данные уровня, сделанные руками, как кривые русел и экземпляры моделей;
-«Save level» пишет плитки террейна заново (`LibraryLoader::saveLevelScene`), загрузка — `loadTerrainPaint` →
+«Save level» пишет плитки террейна заново, если мазки правили (`LibraryLoader::saveLevelScene`), загрузка — `loadTerrainPaint` →
 `LevelDescription::terrainPaint` → `TerrainPipeline::setPaint`.
 
 **Конвейер масок**: правила (`m_masks`, кэш `generated\` — без мазков) → копия с поправками (`m_painted`, только когда

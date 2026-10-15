@@ -188,6 +188,8 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 		else
 			m_GUI.notify( "Level is not saved, see Log", true );
 	} );
+	// С чем сравнивает «Save level» — окна уровня сейчас, после регистрации (как Property::markSaved): пишутся правки
+	m_scene.markLevelSaved( m_renderer.postProcessSettings(), m_renderer.fogSettings() );
 	// На землю (End, как в UE): выбранный во вьюпорте экземпляр модели
 	m_GUI.addAction( "Snap to terrain", "End", [this]
 	{

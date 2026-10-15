@@ -238,16 +238,61 @@ bool LibraryLoader::saveGeneratedStreams( uint32_t waterSimulationId, const std:
 	return true;
 }
 
-// Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterSets, ScatterLayers и ScatterLayerModels,
-// WaterSimulation, ParticleEmitters и место LevelParticleEmitters. Только колонки, которые правятся в окнах; состав (какие слои,
-// эмиттеры) не меняется, кроме экземпляров моделей: новые строки LevelModels вставляются, убранные удаляются
+// Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterSets, ScatterLayers
+// и ScatterLayerModels, WaterSimulation, ParticleEmitters и место LevelParticleEmitters. Только колонки, которые правятся в
+// окнах, и только изменённые против снимка previous (RowUpdate); состав (какие слои, эмиттеры) не меняется, кроме
+// экземпляров моделей: новые строки LevelModels вставляются, убранные удаляются
 
-bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<LevelDescription::ModelInstance>& models,
-									const std::vector<uint32_t>& removedModels, const std::optional<GS::TerrainSettings>& terrain,
-									const std::vector<GS::ScatterSetSettings>& scatterSets,
-									const std::vector<GS::ScatterLayerRecord>& scatterLayers,
-									const std::optional<GS::WaterSimulationSettings>& water,
-									const std::vector<GS::ParticleEmitterSettings>& particleEmitters )
+namespace
+{
+
+template<typename T>
+const T* previousOf( const std::optional<T>& previous )
+{
+	return previous ? &*previous : nullptr;
+}
+
+// Значение по номеру слоя (TerrainLayers) или fallback, если слоя в списке нет
+template<typename T>
+T layerValue( const std::vector<T>& values, uint32_t layer, const T& fallback )
+{
+	return layer < values.size() ? values[layer] : fallback;
+}
+
+bool samePaint( const std::vector<GS::TerrainPaintTile>& a, const std::vector<GS::TerrainPaintTile>& b )
+{
+	if( a.size() != b.size() )
+		return false;
+	for( size_t i = 0; i < a.size(); ++i )
+		if( a[i].target != b[i].target || a[i].tileX != b[i].tileX || a[i].tileZ != b[i].tileZ || a[i].delta != b[i].delta )
+			return false;
+	return true;
+}
+
+bool samePoints( const std::vector<GS::StreamCurvePoint>& a, const std::vector<GS::StreamCurvePoint>& b )
+{
+	if( a.size() != b.size() )
+		return false;
+	for( size_t i = 0; i < a.size(); ++i )
+		if( a[i].position.x != b[i].position.x || a[i].position.y != b[i].position.y || a[i].discharge != b[i].discharge )
+			return false;
+	return true;
+}
+
+// Своя раскладка варианта слоя (ScatterLayerModels): как у слоя — NULL
+DbValue optionalFloat( bool asLayer, float value )
+{
+	return asLayer ? DbValue( nullptr ) : dbFloat( value );
+}
+
+DbValue optionalInt( bool asLayer, int32_t value )
+{
+	return asLayer ? DbValue( nullptr ) : dbInt( value );
+}
+
+}
+
+bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData& data, const LevelSaveData& previous )
 {
 	try
 	{
@@ -255,18 +300,19 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 		SQLite::Transaction transaction( db );
 
 		// Убранные в редакторе экземпляры — строки удаляются; добавленные (id 0) — новые строки уровня, id — обратно в
-		// экземпляры: после сохранения они правятся по id, как загруженные
+		// экземпляры: после сохранения они правятся по id, как загруженные. Прежнее у экземпляров — как в базе (снимок —
+		// LevelDescription::modelInstances): пересадка на новую землю после эрозии — правка, «Save level» её закрепляет
 		SQLite::Statement deleteModel( db, "DELETE FROM LevelModels WHERE id = :id" );
-		for( uint32_t id : removedModels )
+		for( uint32_t id : data.removedModels )
 		{
 			deleteModel.bind( ":id", id );
 			deleteModel.exec();
 			deleteModel.reset();
 		}
 		SQLite::Statement insertModel( db, "INSERT INTO LevelModels (level, model) VALUES (:level, :model)" );
-		SQLite::Statement updateModel( db, "UPDATE LevelModels SET position = :position, rotation = :rotation, scale = :scale WHERE id = :id" );
-		for( LevelDescription::ModelInstance& model : models )
+		for( LevelDescription::ModelInstance& model : data.models )
 		{
+			const LevelDescription::ModelInstance* before = nullptr;
 			if( model.id == 0 )
 			{
 				insertModel.bind( ":level", level.id );
@@ -275,50 +321,47 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 				insertModel.reset();
 				model.id = static_cast<uint32_t>( db.getLastInsertRowid() );
 			}
-			char rotation[96];
-			std::snprintf( rotation, sizeof( rotation ), "%g,%g,%g,%g", model.rotation.x, model.rotation.y, model.rotation.z, model.rotation.w );
-			updateModel.bind( ":position", vec3ToStr( model.position ) );
-			updateModel.bind( ":rotation", std::string( rotation ) );
-			updateModel.bind( ":scale", vec3ToStr( model.scale ) );
-			updateModel.bind( ":id", model.id );
-			updateModel.exec();
-			updateModel.reset();
+			else
+				before = findPrevious( previous.models, model.id, []( const LevelDescription::ModelInstance& m ) { return m.id; } );
+			using Instance = LevelDescription::ModelInstance;
+			RowUpdate update;
+			update.set( "position", model, before, []( const Instance& m ) { return DbValue( vec3ToStr( m.position ) ); } );
+			update.set( "rotation", model, before, []( const Instance& m )
+			{
+				char rotation[96];
+				std::snprintf( rotation, sizeof( rotation ), "%g,%g,%g,%g", m.rotation.x, m.rotation.y, m.rotation.z, m.rotation.w );
+				return DbValue( std::string( rotation ) );
+			} );
+			update.set( "scale", model, before, []( const Instance& m ) { return DbValue( vec3ToStr( m.scale ) ); } );
+			update.update( db, "LevelModels", { { "id", dbInt( model.id ) } } );
 		}
 
-		if( terrain && terrain->id )
+		if( data.terrain && data.terrain->id )
 		{
+			const GS::TerrainSettings& terrain = *data.terrain;
+			const GS::TerrainSettings* before = previousOf( previous.terrain );
 			// Строка Terrain, эрозия и правила слоёв — по описаниям полей
-			updateSettings( db, "Terrain", terrain->id, GS::terrainSchema(), *terrain );
-			if( terrain->erosion && terrain->erosion->id )
-				updateSettings( db, "TerrainErosion", terrain->erosion->id, GS::terrainErosionSchema(), *terrain->erosion );
+			updateSettings( db, "Terrain", terrain.id, GS::terrainSchema(), terrain, before );
+			if( terrain.erosion && terrain.erosion->id )
+				updateSettings( db, "TerrainErosion", terrain.erosion->id, GS::terrainErosionSchema(), *terrain.erosion,
+								before ? previousOf( before->erosion ) : nullptr );
 
 			// Правила слоёв: строка TerrainLayerRules террейна (нет — появится)
 			if( db.tableExists( "TerrainLayerRules" ) )
-			{
-				std::string columns = "terrain";
-				std::string values = ":terrain";
-				for( const std::string& column : settingsColumns( GS::terrainLayerRulesSchema() ) )
-				{
-					columns += ", " + column;
-					values += ", :" + column;
-				}
-				SQLite::Statement updateRules( db, "INSERT OR REPLACE INTO TerrainLayerRules (" + columns + ") VALUES (" + values + ")" );
-				updateRules.bind( ":terrain", terrain->id );
-				bindSettings( updateRules, GS::terrainLayerRulesSchema(), terrain->layerRules );
-				updateRules.exec();
-			}
+				RowUpdate().settings( GS::terrainLayerRulesSchema(), terrain.layerRules, before ? &before->layerRules : nullptr )
+					.upsert( db, "TerrainLayerRules", { { "terrain", dbInt( terrain.id ) } } );
 
-			// Мазки кисти: плитки террейна заново (убранные мазки — убранные строки)
-			if( db.tableExists( "TerrainPaint" ) )
+			// Мазки кисти: правили — плитки террейна заново (убранные мазки — убранные строки)
+			if( db.tableExists( "TerrainPaint" ) && !( before && samePaint( terrain.paint, before->paint ) ) )
 			{
 				SQLite::Statement removePaint( db, "DELETE FROM TerrainPaint WHERE terrain = :terrain" );
-				removePaint.bind( ":terrain", terrain->id );
+				removePaint.bind( ":terrain", terrain.id );
 				removePaint.exec();
 				SQLite::Statement insertPaint( db, "INSERT INTO TerrainPaint (terrain, target, tile_x, tile_z, delta) "
 												   "VALUES (:terrain, :target, :x, :z, :delta)" );
-				for( const GS::TerrainPaintTile& tile : terrain->paint )
+				for( const GS::TerrainPaintTile& tile : terrain.paint )
 				{
-					insertPaint.bind( ":terrain", terrain->id );
+					insertPaint.bind( ":terrain", terrain.id );
 					insertPaint.bind( ":target", tile.target );
 					insertPaint.bind( ":x", tile.tileX );
 					insertPaint.bind( ":z", tile.tileZ );
@@ -328,149 +371,126 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 				}
 			}
 
-			SQLite::Statement updateLayer( db, "UPDATE TerrainLayers SET tiling = :tiling, albedo_tint = :tint, displacement = :displacement, "
-											   "occlusion = :occlusion WHERE terrain = :terrain AND layer = :layer" );
-			for( uint32_t layer = 0; layer < terrain->layerTiling.size(); ++layer )
+			// Слои материала: повтор, оттенок, дисплейсмент, затенение — по номеру слоя
+			for( uint32_t layer = 0; layer < terrain.layerTiling.size(); ++layer )
 			{
-				if( terrain->layerTiling[layer] <= 0.0f )
+				if( terrain.layerTiling[layer] <= 0.0f )
 					continue;
-				updateLayer.bind( ":tiling", dbValue( terrain->layerTiling[layer] ) );
-				updateLayer.bind( ":tint", layer < terrain->layerTint.size() ? vec3ToStr( terrain->layerTint[layer] ) : std::string( "1,1,1" ) );
-				updateLayer.bind( ":displacement", dbValue( layer < terrain->layerDisplacement.size() ? terrain->layerDisplacement[layer] : 0.0f ) );
-				updateLayer.bind( ":occlusion", dbValue( layer < terrain->layerOcclusion.size() ? terrain->layerOcclusion[layer] : 1.0f ) );
-				updateLayer.bind( ":terrain", terrain->id );
-				updateLayer.bind( ":layer", layer );
-				updateLayer.exec();
-				updateLayer.reset();
+				const auto tiling = [layer]( const GS::TerrainSettings& t ) { return dbFloat( layerValue( t.layerTiling, layer, 0.0f ) ); };
+				const auto tint = [layer]( const GS::TerrainSettings& t )
+				{
+					return DbValue( vec3ToStr( layerValue( t.layerTint, layer, DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f ) ) ) );
+				};
+				const auto displacement = [layer]( const GS::TerrainSettings& t ) { return dbFloat( layerValue( t.layerDisplacement, layer, 0.0f ) ); };
+				const auto occlusion = [layer]( const GS::TerrainSettings& t ) { return dbFloat( layerValue( t.layerOcclusion, layer, 1.0f ) ); };
+				RowUpdate update;
+				update.set( "tiling", terrain, before, tiling );
+				update.set( "albedo_tint", terrain, before, tint );
+				update.set( "displacement", terrain, before, displacement );
+				update.set( "occlusion", terrain, before, occlusion );
+				update.update( db, "TerrainLayers", { { "terrain", dbInt( terrain.id ) }, { "layer", dbInt( layer ) } } );
 			}
 		}
 
-		for( const GS::ScatterSetSettings& set : scatterSets )
+		for( const GS::ScatterSetSettings& set : data.scatterSets )
 			if( set.id != 0 )
-				updateSettings( db, "ScatterSets", set.id, GS::scatterSetSchema(), set );
+				updateSettings( db, "ScatterSets", set.id, GS::scatterSetSchema(), set,
+								findPrevious( previous.scatterSets, set.id, []( const GS::ScatterSetSettings& s ) { return s.id; } ) );
 
-		// Слой — по описанию полей (scatterLayerSchema)
-		SQLite::Statement updateScatter( db, "UPDATE ScatterLayers SET " + settingsAssignments( GS::scatterLayerSchema() ) + " WHERE id = :id" );
-		SQLite::Statement updateScatterModel( db, "UPDATE ScatterLayerModels SET weight = :weight, cast_shadow = :castShadow, "
-												  "lod_distances = :lods, size_multiplier = :size, size_variation = :sizeVariation, "
-												  "align_to_terrain = :align, patch_group = :patchGroup, ground_layers = :groundLayers, "
-												  "ground_preference = :groundPreference WHERE id = :id" );
-		for( const GS::ScatterLayerRecord& record : scatterLayers )
+		// Слой — по описанию полей (scatterLayerSchema), его варианты — колонки ScatterLayerModels
+		for( const GS::ScatterLayerRecord& record : data.scatterLayers )
 		{
 			const GS::ScatterLayerSettings& layer = record.settings;
 			if( layer.id == 0 )
 				continue;
-			bindSettings( updateScatter, GS::scatterLayerSchema(), layer );
-			updateScatter.bind( ":id", layer.id );
-			updateScatter.exec();
-			updateScatter.reset();
+			const GS::ScatterLayerRecord* before = findPrevious( previous.scatterLayers, layer.id,
+																 []( const GS::ScatterLayerRecord& r ) { return r.settings.id; } );
+			updateSettings( db, "ScatterLayers", layer.id, GS::scatterLayerSchema(), layer, before ? &before->settings : nullptr );
 
-			for( const GS::ScatterModelSettings& model : record.models )
+			using Model = GS::ScatterModelSettings;
+			for( const Model& model : record.models )
 			{
 				if( model.id == 0 )
 					continue;
-				updateScatterModel.bind( ":weight", dbValue( model.weight ) );
-				updateScatterModel.bind( ":castShadow", model.castShadow ? 1 : 0 );
+				const Model* modelBefore = before ? findPrevious( before->models, model.id, []( const Model& m ) { return m.id; } ) : nullptr;
+				RowUpdate update;
+				update.set( "weight", model, modelBefore, []( const Model& m ) { return dbFloat( m.weight ); } );
+				update.set( "cast_shadow", model, modelBefore, []( const Model& m ) { return dbInt( m.castShadow ? 1 : 0 ); } );
 				// Свои границы LOD — текстом «6,14»; совпадают с моделью — NULL
-				if( model.lodDistances.empty() )
-					updateScatterModel.bind( ":lods" );
-				else
+				update.set( "lod_distances", model, modelBefore, []( const Model& m )
 				{
 					std::string lods;
-					for( float distance : model.lodDistances )
+					for( float distance : m.lodDistances )
 					{
 						char text[32];
 						snprintf( text, sizeof( text ), "%g", distance );
 						lods += ( lods.empty() ? "" : "," ) + std::string( text );
 					}
-					updateScatterModel.bind( ":lods", lods );
-				}
+					return dbText( lods );
+				} );
 				// Своя раскладка: как у слоя — NULL
-				const GS::ScatterVariantPlacement& placement = model.placement;
-				if( placement.sizeMultiplier == 1.0f )
-					updateScatterModel.bind( ":size" );
-				else
-					updateScatterModel.bind( ":size", dbValue( placement.sizeMultiplier ) );
-				if( placement.sizeVariation < 0.0f )
-					updateScatterModel.bind( ":sizeVariation" );
-				else
-					updateScatterModel.bind( ":sizeVariation", dbValue( placement.sizeVariation ) );
-				if( placement.alignToTerrain < 0 )
-					updateScatterModel.bind( ":align" );
-				else
-					updateScatterModel.bind( ":align", placement.alignToTerrain );
-				if( placement.patchGroup < 1 )
-					updateScatterModel.bind( ":patchGroup" );
-				else
-					updateScatterModel.bind( ":patchGroup", placement.patchGroup );
-				if( placement.groundLayers.empty() )
+				update.set( "size_multiplier", model, modelBefore,
+							[]( const Model& m ) { return optionalFloat( m.placement.sizeMultiplier == 1.0f, m.placement.sizeMultiplier ); } );
+				update.set( "size_variation", model, modelBefore,
+							[]( const Model& m ) { return optionalFloat( m.placement.sizeVariation < 0.0f, m.placement.sizeVariation ); } );
+				update.set( "align_to_terrain", model, modelBefore,
+							[]( const Model& m ) { return optionalInt( m.placement.alignToTerrain < 0, m.placement.alignToTerrain ); } );
+				update.set( "patch_group", model, modelBefore,
+							[]( const Model& m ) { return optionalInt( m.placement.patchGroup < 1, m.placement.patchGroup ); } );
+				update.set( "ground_layers", model, modelBefore, []( const Model& m ) { return dbText( m.placement.groundLayers ); } );
+				update.set( "ground_preference", model, modelBefore, []( const Model& m )
 				{
-					updateScatterModel.bind( ":groundLayers" );
-					updateScatterModel.bind( ":groundPreference" );
-				}
-				else
-				{
-					updateScatterModel.bind( ":groundLayers", placement.groundLayers );
-					updateScatterModel.bind( ":groundPreference", dbValue( placement.groundPreference ) );
-				}
-				updateScatterModel.bind( ":id", model.id );
-				updateScatterModel.exec();
-				updateScatterModel.reset();
+					return optionalFloat( m.placement.groundLayers.empty(), m.placement.groundPreference );
+				} );
+				update.update( db, "ScatterLayerModels", { { "id", dbInt( model.id ) } } );
 			}
 		}
 
-		if( water && level.waterSimulationId )
+		if( data.water && level.waterSimulationId )
 		{
-			updateSettings( db, "WaterSimulation", *level.waterSimulationId, GS::waterSimulationSchema(), *water );
-			updateSettings( db, "WaterSimulation", *level.waterSimulationId, GS::waterFlowSchema(), water->flow );
+			const GS::WaterSimulationSettings& water = *data.water;
+			const GS::WaterSimulationSettings* before = previousOf( previous.water );
+			const int64_t waterId = *level.waterSimulationId;
+			updateSettings( db, "WaterSimulation", waterId, GS::waterSimulationSchema(), water, before );
+			updateSettings( db, "WaterSimulation", waterId, GS::waterFlowSchema(), water.flow, before ? &before->flow : nullptr );
 
-			// Русла конвейера: строка на строку WaterSimulation (нет — создаётся)
-			std::string columns = "water_simulation";
-			std::string values = ":id";
-			for( const std::string& column : settingsColumns( GS::waterChannelsSchema() ) )
-			{
-				columns += ", " + column;
-				values += ", :" + column;
-			}
-			SQLite::Statement saveChannels( db, "INSERT OR REPLACE INTO WaterChannels (" + columns + ") VALUES (" + values + ")" );
-			saveChannels.bind( ":id", *level.waterSimulationId );
-			bindSettings( saveChannels, GS::waterChannelsSchema(), water->channels );
-			saveChannels.exec();
+			// Русла конвейера: строка на строку WaterSimulation (нет — появится)
+			RowUpdate().settings( GS::waterChannelsSchema(), water.channels, before ? &before->channels : nullptr )
+				.upsert( db, "WaterChannels", { { "water_simulation", dbInt( waterId ) } } );
 
-			// Кривые русел: включение, правка и множители (точки правит Tools/stream_edit.py)
+			// Кривые русел: включение, правка и множители, точки — если их правили во вьюпорте (Tools/stream_edit.py правит их
+			// в базе)
 			if( db.tableExists( "Streams" ) )
 			{
-				SQLite::Statement updateStream( db, "UPDATE Streams SET edited = :edited, " + settingsAssignments( GS::streamCurveSchema() ) +
-													" WHERE id = :id" );
-				for( const GS::StreamCurve& curve : water->streams )
+				for( const GS::StreamCurve& curve : water.streams )
 				{
 					if( curve.id == 0 )
 						continue;
-					updateStream.bind( ":edited", curve.edited ? 1 : 0 );
-					bindSettings( updateStream, GS::streamCurveSchema(), curve );
-					updateStream.bind( ":id", static_cast<int64_t>( curve.id ) );
-					updateStream.exec();
-					updateStream.reset();
-					// Точки правили во вьюпорте — переписать
-					if( curve.pointsChanged )
+					const GS::StreamCurve* curveBefore = before ? findPrevious( before->streams, curve.id,
+																			   []( const GS::StreamCurve& c ) { return c.id; } ) : nullptr;
+					RowUpdate update;
+					update.set( "edited", curve, curveBefore, []( const GS::StreamCurve& c ) { return dbInt( c.edited ? 1 : 0 ); } );
+					update.settings( GS::streamCurveSchema(), curve, curveBefore );
+					update.update( db, "Streams", { { "id", dbInt( curve.id ) } } );
+					const bool pointsEdited = curveBefore ? !samePoints( curve.points, curveBefore->points ) : curve.pointsChanged;
+					if( !pointsEdited )
+						continue;
+					SQLite::Statement removePoints( db, "DELETE FROM StreamPoints WHERE stream = :stream" );
+					removePoints.bind( ":stream", static_cast<int64_t>( curve.id ) );
+					removePoints.exec();
+					SQLite::Statement insertPoint( db, "INSERT INTO StreamPoints (stream, point, x, z, discharge) VALUES (:stream, :point, :x, :z, :discharge)" );
+					for( size_t i = 0; i < curve.points.size(); ++i )
 					{
-						SQLite::Statement removePoints( db, "DELETE FROM StreamPoints WHERE stream = :stream" );
-						removePoints.bind( ":stream", static_cast<int64_t>( curve.id ) );
-						removePoints.exec();
-						SQLite::Statement insertPoint( db, "INSERT INTO StreamPoints (stream, point, x, z, discharge) VALUES (:stream, :point, :x, :z, :discharge)" );
-						for( size_t i = 0; i < curve.points.size(); ++i )
-						{
-							insertPoint.bind( ":stream", static_cast<int64_t>( curve.id ) );
-							insertPoint.bind( ":point", static_cast<int64_t>( i ) );
-							insertPoint.bind( ":x", static_cast<double>( curve.points[i].position.x ) );
-							insertPoint.bind( ":z", static_cast<double>( curve.points[i].position.y ) );
-							if( curve.points[i].discharge > 0.0f )
-								insertPoint.bind( ":discharge", static_cast<double>( curve.points[i].discharge ) );
-							else
-								insertPoint.bind( ":discharge" );
-							insertPoint.exec();
-							insertPoint.reset();
-						}
+						insertPoint.bind( ":stream", static_cast<int64_t>( curve.id ) );
+						insertPoint.bind( ":point", static_cast<int64_t>( i ) );
+						insertPoint.bind( ":x", static_cast<double>( curve.points[i].position.x ) );
+						insertPoint.bind( ":z", static_cast<double>( curve.points[i].position.y ) );
+						if( curve.points[i].discharge > 0.0f )
+							insertPoint.bind( ":discharge", static_cast<double>( curve.points[i].discharge ) );
+						else
+							insertPoint.bind( ":discharge" );
+						insertPoint.exec();
+						insertPoint.reset();
 					}
 				}
 			}
@@ -478,20 +498,20 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 
 		// Эмиттер — тип (ParticleEmitters), экземпляры уровня ссылаются на него: у двух экземпляров одного типа
 		// сохранится последний
-		for( const GS::ParticleEmitterSettings& emitter : particleEmitters )
+		using Emitter = GS::ParticleEmitterSettings;
+		for( const Emitter& emitter : data.emitters )
 			if( emitter.id != 0 )
-				updateSettings( db, "ParticleEmitters", emitter.id, GS::particleEmitterSchema(), emitter );
+				updateSettings( db, "ParticleEmitters", emitter.id, GS::particleEmitterSchema(), emitter,
+								findPrevious( previous.emitters, emitter.instanceId, []( const Emitter& e ) { return e.instanceId; } ) );
 		// Место экземпляра — у эмиттера в точке и в шаре (гизмо вьюпорта, свойство Position); у поля вокруг камеры его нет
-		SQLite::Statement updateInstance( db, "UPDATE LevelParticleEmitters SET position = :position WHERE id = :id" );
-		for( const GS::ParticleEmitterSettings& emitter : particleEmitters )
+		for( const Emitter& emitter : data.emitters )
 		{
-			using Spawn = GS::ParticleEmitterSettings::Spawn;
-			if( emitter.instanceId == 0 || ( emitter.spawn != Spawn::point && emitter.spawn != Spawn::sphere ) )
+			if( emitter.instanceId == 0 || ( emitter.spawn != Emitter::Spawn::point && emitter.spawn != Emitter::Spawn::sphere ) )
 				continue;
-			updateInstance.bind( ":position", vec3ToStr( emitter.position ) );
-			updateInstance.bind( ":id", emitter.instanceId );
-			updateInstance.exec();
-			updateInstance.reset();
+			const Emitter* before = findPrevious( previous.emitters, emitter.instanceId, []( const Emitter& e ) { return e.instanceId; } );
+			RowUpdate()
+				.set( "position", emitter, before, []( const Emitter& e ) { return DbValue( vec3ToStr( e.position ) ); } )
+				.update( db, "LevelParticleEmitters", { { "id", dbInt( emitter.instanceId ) } } );
 		}
 
 		transaction.commit();

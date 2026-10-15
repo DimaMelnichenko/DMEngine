@@ -6,6 +6,7 @@
 #include <vector>
 #include "Properties\PropertyContainer.h"
 #include "Level\LevelDescription.h"
+#include "Level\LevelSaveData.h"
 
 namespace SQLite
 {
@@ -36,25 +37,19 @@ public:
 	bool loadShader( uint32_t idMaterial, GS::Material* material );
 	// Состав уровня name (пустое имя — первый уровень таблицы Levels). Модели уровня не загружает
 	bool loadLevel( const std::string& name, LevelDescription& level );
-	// Свет и окружение уровня обратно в базу одной транзакцией: строки LevelLights — по id (источник с id 0 — новая
-	// строка уровня, её id пишется в lights; removedLights — строки убранных источников, удаляются), настройки неба
-	// и постобработки — в строки уровня (нет строки — создаётся и привязывается к Levels, id пишется в level)
-	bool saveLevelEnvironment( LevelDescription& level, std::vector<DMLight>& lights, const std::vector<uint32_t>& removedLights,
-							   const std::optional<GS::SunPositionSettings>& sunPosition,
-							   const std::optional<GS::SkyAtmosphereSettings>& atmosphere,
-							   const std::optional<GS::HDRIBackdropSettings>& hdri,
-							   const GS::PostProcessSettings& postProcess, const GS::WindSettings& wind,
-							   const std::optional<GS::HeightFogSettings>& heightFog,
-							   const std::optional<GS::VolumetricCloudSettings>& cloud );
-	// Правки объектов сцены одной транзакцией (LibraryLoaderScene.cpp): строки LevelModels по id (положение, поворот,
-	// масштаб; экземпляр с id 0 — новая строка уровня, её id пишется в models; removedModels — строки убранных, удаляются), строка Terrain и tiling TerrainLayers, строки ScatterSets, ScatterLayers и ScatterLayerModels по id, строка
-	// WaterSimulation уровня, строки ParticleEmitters по id и место экземпляров LevelParticleEmitters (instanceId)
-	bool saveLevelScene( const LevelDescription& level, std::vector<LevelDescription::ModelInstance>& models,
-						 const std::vector<uint32_t>& removedModels, const std::optional<GS::TerrainSettings>& terrain,
-						 const std::vector<GS::ScatterSetSettings>& scatterSets,
-						 const std::vector<GS::ScatterLayerRecord>& scatterLayers,
-						 const std::optional<GS::WaterSimulationSettings>& water,
-						 const std::vector<GS::ParticleEmitterSettings>& particleEmitters );
+	// «Save level» пишет правки, а не окна целиком: в строки — только колонки, которые отличаются от previous (снимок
+	// после загрузки или прошлого сохранения, LevelSaveData; RowUpdate). Строки уровня, которой нет (постобработка,
+	// ветер, туман, атмосфера вместо незагруженной панорамы), — создаётся, только если в окне что-то поменяли.
+	// Свет и окружение одной транзакцией: строки LevelLights — по id (источник с id 0 — новая строка уровня, её id пишется
+	// в data.lights; removedLights — удаляются; направление и освещённость, которые считает SunPosition, не пишутся),
+	// настройки неба, постобработки, ветра, тумана и облаков — в строки уровня (новая строка — id в level)
+	bool saveLevelEnvironment( LevelDescription& level, LevelSaveData& data, const LevelSaveData& previous );
+	// Объекты сцены одной транзакцией (LibraryLoaderScene.cpp): строки LevelModels по id (положение, поворот, масштаб;
+	// экземпляр с id 0 — новая строка уровня, её id пишется в data.models; removedModels — удаляются), строки Terrain,
+	// TerrainErosion, TerrainLayerRules, TerrainLayers и мазки TerrainPaint, ScatterSets, ScatterLayers и
+	// ScatterLayerModels по id, WaterSimulation, WaterChannels и Streams уровня, ParticleEmitters по id и место
+	// экземпляров LevelParticleEmitters (instanceId)
+	bool saveLevelScene( const LevelDescription& level, LevelSaveData& data, const LevelSaveData& previous );
 	// Правки параметров экземпляров материалов (окна моделей и слоёв расстановки) — в MaterialParameterInstance одной
 	// транзакцией: только изменённые с загрузки или сохранения (Property::modified), строка на параметр — заменяется.
 	// Экземпляр — ресурс, а не данные уровня (как ассет Material Instance в UE), но пишется той же «Save level»
