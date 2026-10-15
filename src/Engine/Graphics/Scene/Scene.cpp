@@ -319,6 +319,9 @@ void Scene::applyEditorChanges()
 				LOG( "Wind field is not rebuilt" );
 		}
 	}
+	// Правили материал растения (подокно «Materials» слоя, окно модели) — импостеры этих моделей запекаются заново
+	for( const auto& scatterer : m_scatterers )
+		scatterer->rebakeChangedImpostors();
 	// Мазок кисти изменил маски — постоянные слои (лес) раскладываются заново
 	if( m_level.terrain && m_terrain.takePaintedMasks() )
 		for( const auto& scatterer : m_scatterers )

@@ -571,25 +571,26 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	}
 	LOG( name() + ( cached ? ": frames from cache " : ": frames baked and cached in " ) + cacheBase );
 
+	// Текстуры кадров — в хранилище; при перезапекании (правка материала растения) — на месте прежних: id те же, прежние
+	// ресурсы GPU отпустит, когда закончит кадры с ними (отложенное освобождение)
 	DMTextureStorage& textures = System::textures();
-	auto colorTexture = std::make_unique<DMTexture>( textures.freeId(), name() + " color" );
-	if( !colorTexture->create( colorImage ) )
+	auto store = [&]( uint32_t& id, const char* suffix, const ScratchImage& image )
+	{
+		if( id != 0 && textures.exists( id ) )
+			return textures.get( id )->create( image );
+		auto texture = std::make_unique<DMTexture>( textures.freeId(), name() + suffix );
+		if( !texture->create( image ) )
+			return false;
+		id = texture->id();
+		textures.insertResource( std::move( texture ) );
+		return true;
+	};
+	if( !store( m_colorTexture, " color", colorImage ) || !store( m_normalTexture, " normal", normalImage ) ||
+		!store( m_offsetTexture, " depth", offsetImage ) )
 	{
 		LOG( name() + ": can't create textures" );
 		return false;
 	}
-	m_colorTexture = colorTexture->id();
-	textures.insertResource( std::move( colorTexture ) );
-	auto normalTexture = std::make_unique<DMTexture>( textures.freeId(), name() + " normal" );
-	if( !normalTexture->create( normalImage ) )
-		return false;
-	m_normalTexture = normalTexture->id();
-	textures.insertResource( std::move( normalTexture ) );
-	auto offsetTexture = std::make_unique<DMTexture>( textures.freeId(), name() + " depth" );
-	if( !offsetTexture->create( offsetImage ) )
-		return false;
-	m_offsetTexture = offsetTexture->id();
-	textures.insertResource( std::move( offsetTexture ) );
 
 	BufferDesc constants;
 	constants.size = sizeof( Params );

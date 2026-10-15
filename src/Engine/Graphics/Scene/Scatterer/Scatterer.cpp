@@ -468,7 +468,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		layer.properties->addSubContainer( variant.properties.get() );
 	// «Materials» — материалы растений слоя: экземпляры материалов секций их моделей, каждый один раз (общие у всех моделей
 	// и LOD с ним, System::materialInstances). Правка — вживую: группы и их параметры слой берёт каждый кадр; «Save level»
-	// пишет изменённое в MaterialParameterInstance. Кадры импостеров — по параметрам при загрузке (до перезапуска прежние)
+	// пишет изменённое в MaterialParameterInstance. Импостеры — запекаются заново, когда правка закончилась
+	// (rebakeChangedImpostors)
 	layer.materialProperties = std::make_unique<PropertyContainer>( "Materials" );
 	for( const LayerVariant& variant : layer.variants )
 		for( const LayerLod& lod : variant.lods )
@@ -528,8 +529,48 @@ bool Scatterer::bake( const BakeContext& context )
 		variant.impostorSection->material = material->id();
 		variant.lods.back().sections.back().material = material;
 		variant.impostorMaterial = dynamic_cast<ImpostorMaterial*>( material );
+		variant.bakedParamsHash = bakeSourceHash( *variant.model );
 	}
+	m_bakeContext = std::make_unique<BakeContext>( context );
 	return true;
+}
+
+uint64_t Scatterer::bakeSourceHash( DMModel& model )
+{
+	uint64_t hash = 0;
+	if( DMModel::LodBlock* lod0 = model.getLodById( 0 ) )
+		for( const auto& section : lod0->sections )
+			hash = hash * 1099511628211ull ^ hashParams( *section->params );
+	return hash;
+}
+
+void Scatterer::rebakeChangedImpostors()
+{
+	if( !m_bakeContext )
+		return;
+	// Материал импостера — на модель, общий для слоёв: запекается раз, отпечаток обновляется у всех её вариантов
+	std::vector<ImpostorMaterial*> rebaked;
+	for( Layer& layer : m_layers )
+	for( LayerVariant& variant : layer.variants )
+	{
+		if( !variant.impostorMaterial )
+			continue;
+		const uint64_t hash = bakeSourceHash( *variant.model );
+		if( hash == variant.bakedParamsHash )
+			continue;
+		variant.bakedParamsHash = hash;
+		if( std::find( rebaked.begin(), rebaked.end(), variant.impostorMaterial ) != rebaked.end() )
+			continue;
+		rebaked.push_back( variant.impostorMaterial );
+		const auto start = std::chrono::steady_clock::now();
+		ImpostorMaterial::BakeSettings settings;
+		settings.density = layer.impostorDensity;
+		settings.occlusion = layer.impostorOcclusion;
+		const bool baked = variant.impostorMaterial->bake( *variant.model, *m_bakeContext, settings );
+		const auto ms = std::chrono::duration<float, std::milli>( std::chrono::steady_clock::now() - start ).count();
+		LOG( "Impostor " + variant.model->properties()->name() + ( baked ? " rebaked after a material edit, ms: " + std::to_string( ms ) :
+																	  std::string( " is not rebaked" ) ) );
+	}
 }
 
 bool Scatterer::layerVisible( const Layer& layer )

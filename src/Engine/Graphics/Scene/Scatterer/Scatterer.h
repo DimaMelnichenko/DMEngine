@@ -69,6 +69,9 @@ public:
 	void renderCustom( const RenderContext& context ) override;
 	// Импостеры вариантов слоёв с impostor_distance: материал на модель (общий для наборов — по имени в хранилище)
 	bool bake( const BakeContext& context ) override;
+	// Правка материала растения (подокно «Materials»): импостеры, у чьих моделей изменились параметры секций LOD0, — кадры
+	// заново (Scene::applyEditorChanges: когда ползунок отпущен, в начале кадра); контекст запекания — с загрузки
+	void rebakeChangedImpostors();
 
 	void setComputeEnabled( bool enabled );
 	bool computeEnabled() const;
@@ -140,6 +143,7 @@ private:
 		// Смена LOD дизерингом: у всех секций материал с DitheredLODTransition; обновляет compute() — флаг материала
 		// меняется в GUI
 		bool ditheredLodTransition = false;
+		uint64_t bakedParamsHash = 0;	// параметры секций LOD0 модели, по которым запечён импостер (rebakeChangedImpostors)
 		uint32_t id = 0;	// строка ScatterLayerModels
 		std::unique_ptr<PropertyContainer> properties;	// «Weight», «Cast shadow», своя раскладка, кольца LOD — подокно слоя
 		std::unique_ptr<PropertyContainer> prefersProperties;	// «Prefers»: флажок на роль слоя земли (предпочтение вида)
@@ -210,6 +214,8 @@ private:
 	void assignGroups( Layer& layer );
 	// Отпечаток параметров материала: секции с равными параметрами рисуются одной группой
 	static uint64_t hashParams( const PropertyContainer& params );
+	// Отпечаток параметров секций LOD0 модели — то, из чего запечён её импостер
+	static uint64_t bakeSourceHash( DMModel& model );
 	// Флажок «Visible» окна слоя: скрытый слой не раскладывается и не рисуется (и в тенях)
 	static bool layerVisible( const Layer& layer );
 
@@ -237,6 +243,9 @@ private:
 	Buffer m_terrainBuffer;
 	Buffer m_frustumBuffer;
 	PropertyContainer m_properties;
+	// Контекст запекания с загрузки (константы и общий буфер вершин рендерера — живут, пока жив рендерер): перезапекание
+	// импостеров по правке материала
+	std::unique_ptr<BakeContext> m_bakeContext;
 };
 
 }
