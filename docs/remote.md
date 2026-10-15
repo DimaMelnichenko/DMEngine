@@ -34,7 +34,7 @@ python Tools/engine.py stop
   кавычках, как в командной строке.
 - `run` — команды из файла по строке за одно подключение; `#` — комментарий. Каждая строка печатается с `>`, за ней ответ.
 - `stop` — `quit`, ожидание выхода процесса, затем из `log.txt` ошибки, время инициализации и строки «GPU average», как
-  печатает `run.ps1`. Выход штатный: `DMGraphics::beforeExit` выполняется, лог дописан.
+  печатает `run.ps1`. Выход штатный: `Engine::beforeExit` выполняется, лог дописан.
 - `Tools/run.ps1` (PowerShell, без Python) — тот же канал на один запуск: `-remote`, ожидание конца инициализации и
   `-Seconds`, клавиши — `key 0x..` (скан-код в hex: одиночная цифра у `key` — клавиша, а не скан-код), снимок —
   `screenshot` (задний буфер, `gui` без `-NoGui`), выход — `quit`; принудительно — только если движок не вышел за 30 с
@@ -129,7 +129,7 @@ timestep off
 - **Протокол** — строки UTF-8: команда до `\n`, ответ — строки текста, последняя `ok` или `error: …`. Следующую
   команду соединения сервер читает только после ответа на предыдущую, поэтому сценарий выполняется строго по порядку.
 - **Потоки.** Канал читает свой поток и кладёт команду в очередь; выполняет её главный поток в начале кадра
-  (`DMGraphics::Frame`). Поэтому камера, свойства и клавиши действуют уже в этом кадре, а гонок с отрисовкой нет.
+  (`Engine::tick`). Поэтому камера, свойства и клавиши действуют уже в этом кадре, а гонок с отрисовкой нет.
   Долгая команда держит ответ (`ConsoleReply`) и завершает его в своей точке кадра: снимок — перед окнами ImGui или после
   них и до `Present` (после него содержимое заднего буфера не определено); замер — когда истечёт время
   (`Renderer::measureGpu`). `wait` — задача на кадры (`ConsoleCommands::addFrameTask`).
@@ -142,11 +142,11 @@ timestep off
 ## Как добавить команду
 
 Команду регистрирует её подсистема, как консольные команды модулей UE: движок — свои (проходы, камера, снимок, PIX, шаг
-времени, замер, клавиши, окна ImGui, выход — `DMGraphics::registerCommands`, `DMGraphicsCommands.cpp`), редактор —
+времени, замер, клавиши, окна ImGui, выход — `Engine::registerCommands`, `EngineCommands.cpp`), редактор —
 `GUI::registerCommands` (`action`, `select`, `toggle`, `undo`, `redo` и свойства окон — `registerPropertyCommands`),
 вьюпорт — `Viewport::registerCommands` (`pick`, `brush`, `stream`), подсистемы сцены — `registerSceneCommands`
 (`Scene/SceneCommands.cpp`: `terrain`, `water`; разбор аргументов там, дело — у подсистемы). Регистрацию всех вызывает
-`DMGraphics::Initialize`, затем отдаёт имена дополнению консоли редактора:
+`Engine::initialize`, затем отдаёт имена дополнению консоли редактора:
 
 ```cpp
 m_console.registerCommand( "имя", "<аргументы> - что делает", [this]( const std::vector<std::string>& args,
@@ -169,7 +169,7 @@ m_console.registerCommand( "имя", "<аргументы> - что делает
 2. **`start` ждёт и выходит с ошибкой инициализации** — причина в выведенных строках `log.txt`, как у `run.ps1`.
 3. **Кадр с другой экспозицией** — снимок сделан раньше, чем устоялась адаптация. Перед `screenshot` должна быть
    `camera` (смена плана); при медленной смене света (время суток) добавьте `wait`.
-4. **`key` отвечает `nothing is bound`** — на эту клавишу нет обработчика в `DMGraphics::bindingKeys`.
+4. **`key` отвечает `nothing is bound`** — на эту клавишу нет обработчика в `Engine::bindingKeys`.
 
 ## Файлы
 
@@ -178,7 +178,7 @@ m_console.registerCommand( "имя", "<аргументы> - что делает
 | `src/Engine/Console/ConsoleCommands.h/.cpp` | реестр команд, ответ `ConsoleReply`, разбор строки, задачи на кадры, `help`, `wait` |
 | `src/Engine/Console/RemoteControlServer.h/.cpp` | именованный канал, поток, очередь команд |
 | `src/Engine/Console/PropertyCommands.h/.cpp` | `list`, `get`, `set`, `press` над окнами свойств GUI |
-| `src/Engine/Graphics/DMGraphicsCommands.cpp`, `DMGraphics.cpp` (`takeScreenshots`) | проходы, камера, снимок, PIX, шаг времени, замер, клавиши, GUI, выход |
+| `src/Engine/EngineCommands.cpp`, `Engine.cpp` (`takeScreenshots`) | проходы, камера, снимок, PIX, шаг времени, замер, клавиши, GUI, выход |
 | `src/Engine/Graphics/GUI/GUICommands.cpp`, `ViewportCommands.cpp` | команды редактора и вьюпорта |
 | `src/Engine/Graphics/Scene/SceneCommands.cpp` | `terrain` (кисть, выгрузка русел), `water` |
 | `src/Engine/Graphics/Renderer.cpp` (`measureGpu`) | замеры времени GPU: после прогрева — в лог, по команде — в ответ |

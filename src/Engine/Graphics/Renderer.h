@@ -48,10 +48,10 @@ public:
 	// Запекание объектов сцены при загрузке (SceneObject::bake: импостеры) — после Scene::initialize, до warmPipelines
 	bool bake( Scene& scene );
 
-	// Рисует сцену в HDR-буфер (SceneTargets) и тонмаппинг в задний буфер; дальше DMGraphics рисует GUI и вызывает endFrame
+	// Рисует сцену в HDR-буфер (SceneTargets) и тонмаппинг в задний буфер; дальше Engine рисует GUI и вызывает endFrame
 	void render( Scene& scene, const FrameContext& frame, bool wireframe );
 	// Возможности рендерера — свои проходы со своими ресурсами (тени, туман, затенение окружением, постобработка) в порядке
-	// кадра: их окна свойств регистрирует DMGraphics
+	// кадра: их окна свойств регистрирует Engine
 	const std::vector<RenderFeature*>& features() const { return m_features; }
 	// Окна постобработки и теней — для отладочных видов (View → Debug views); properties — окно «Renderer»: проходы кадра
 	// («Depth prepass»)

@@ -2,7 +2,7 @@
 
 #include <windows.h>
 #include <memory>
-#include "Engine\Graphics\DMGraphics.h"
+#include "Engine\Engine.h"
 #include "Config\Config.h"
 
 
@@ -27,7 +27,7 @@ private:
 	LPCSTR m_applicationName;
 	HINSTANCE m_hinstance;
 	HWND m_hwnd;
-	GS::DMGraphics m_graphics;
+	GS::Engine m_engine;
 	Config m_config;
 	bool m_exit;
 };

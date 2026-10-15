@@ -102,7 +102,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Ответ на команду — не дольше 60 с (`--timeout`; `run.ps1` — тоже 60 с): не ответил — главный цикл стоит, скрипт
   печатает строки сторожа кадра и выходит с кодом 2, `start` (проверяет первый кадр командой `wait 1`) и `stop` такой
   движок закрывают. Сторож кадра — `FrameWatchdog` (`Utils/FrameWatchdog.h`, как ThreadHeartBeat в UE): шаг кадра
-  дольше 10 с — строка «Frame watchdog» в `log.txt`: шаг (`stage` в `DMGraphics::Frame`, ожидания GPU и swap chain,
+  дольше 10 с — строка «Frame watchdog» в `log.txt`: шаг (`stage` в `Engine::tick`, ожидания GPU и swap chain,
   создание PSO), последняя метка (`DMD3D::beginEvent`: проходы, объекты в compute), ход GPU по fence и в первый раз —
   стек главного потока с символами (dbghelp, PDB рядом с exe).
   Движок с `-remote` слушает канал `\\.\pipe\DMEngine`, команды выполняет главный поток в начале кадра. Снимок —
@@ -185,7 +185,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `FullscreenShader::load` и террейн — со своими форматами) и кэшируются на диске `ID3D12PipelineLibrary`
   (`cache/pipelines.bin`, пишется при штатном выходе); собранный в кадре пайплайн — «ленивый»: строка в лог и
   счётчик в «Statistic» — дополните список прогрева.
-- Горячие клавиши (`DMGraphics::bindingKeys`): Esc — выход, Q — wireframe, P — скриншот (кадр с окнами ImGui в
+- Горячие клавиши (`Engine::bindingKeys`): Esc — выход, Q — wireframe, P — скриншот (кадр с окнами ImGui в
   `screenshot<N>.jpg`; ставится в ту же очередь, что команда `screenshot`: копировать задний буфер можно только в кадре),
   1 — видимость террейна, 3 / 4 — расчёт / отрисовка всех наборов расстановки (трава, камешки; по умолчанию включены),
   I — режим полёта (камера смотрит мышью всегда), G — вид игры без редактора, Ctrl+S — сохранить уровень (правки окон),
@@ -193,7 +193,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   экземпляр на землю («Snap to terrain», `ModelInstances::snapToTerrain`), F — полёт ↔
   ходьба по рельефу (`Scene/Camera/WalkMode.h`: высота — `TerrainHeightSource::surfaceHeight`, итоговая карта на CPU;
   без столкновений; включение в воздухе — падение до земли),
-  `` ` `` — консоль. Камера смотрит мышью при зажатой правой кнопке над сценой (`DMGraphics::updateMouseLook`: только у
+  `` ` `` — консоль. Камера смотрит мышью при зажатой правой кнопке над сценой (`Engine::updateMouseLook`: только у
   активного окна, курсор спрятан и закреплён `ClipCursor` на месте, после Alt+Tab свободен); пока
   в окнах редактора набирается текст, горячие клавиши и WASD молчат (`Input::setKeyboardBlocked`).
 - **Редактор** (`src/Engine/Graphics/GUI/`, подробно — `docs/gui.md`), как редактор UE: главное меню (File — действия
@@ -223,10 +223,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 ## Архитектура
 
 **Цикл.** `main.cpp` → `DMSystem` (окно, `Config` из `settings.ini`, `DBConnector::instance().init()`, `Input::instance()`)
-→ `GS::DMGraphics::Initialize` / `Frame`. Пока `Initialize` грузит уровень, окно показывает экран загрузки: шаги
-объявляет код загрузки — `SlowTask` (`Utils/SlowTask.h`, как `FScopedSlowTask` в UE), рисует `DMGraphics::drawLoadingFrame`;
+→ `GS::Engine::initialize` / `tick`. Пока `initialize` грузит уровень, окно показывает экран загрузки: шаги
+объявляет код загрузки — `SlowTask` (`Utils/SlowTask.h`, как `FScopedSlowTask` в UE), рисует `Engine::drawLoadingFrame`;
 новый долгий этап загрузки — часть или задача `SlowTask` на границе этапа (`docs/gui.md`, «Экран загрузки»).
-`DMGraphics` владеет окном, камерой, GUI и горячими клавишами, а содержимое уровня и отрисовку отдаёт двум классам:
+`Engine` владеет окном, камерой, GUI и горячими клавишами, а содержимое уровня и отрисовку отдаёт двум классам:
 - `Scene` (`Scene/Scene.h`) загружает ресурсы уровня из БД (`loadResources`), владеет светом и объектами сцены
   и вызывает их `update()`. Состав уровня описывает строка таблицы `Levels` (см. «Данные сцены»); объект,
   которого у уровня нет, остаётся неинициализированным и ничего не делает;
@@ -256,17 +256,17 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Histogram в UE; ночью темнее по кривой компенсации от EV100 сцены — Exposure Compensation Curve в UE), bloom
   (уровни ½ … ¹⁄₆₄, Jimenez 2014), затем ночное зрение (сдвиг Пуркинье: в темноте цвет уходит в синеватый монохром,
   Krawczyk 2005) и тонмаппинг (AgX / ACES) в задний буфер sRGB; новый
-  проход — ещё одна цель и шаг в `PostProcess::render`. Затем `DMGraphics` рисует GUI и вызывает `DMD3D::endFrame`.
+  проход — ещё одна цель и шаг в `PostProcess::render`. Затем `Engine` рисует GUI и вызывает `DMD3D::endFrame`.
   Свои проходы рендерера со своими ресурсами (тени, туман, затенение окружением, постобработка) — возможности рендерера
   (`RenderFeature`, `Graphics/RenderFeature.h`): список `Renderer::features`, общие точки — начало кадра с вкладом в
-  константы, новый размер кадра, смена плана; окна свойств по списку регистрирует `DMGraphics`; кадр в `Renderer::render`
+  константы, новый размер кадра, смена плана; окна свойств по списку регистрирует `Engine`; кадр в `Renderer::render`
   — шагами (`preparePipeline`, `prepareShadows`, `computeObjects`, `renderShadows`, `renderScene`), `docs/passes.md`.
   Буфер сцены (HDR-цвет и глубина) — `SceneTargets` у `Renderer` (`Graphics/SceneTargets.h`): устройство о нём не знает.
   Глубина видна шейдерам (SceneDepthTexture в UE): текстура `R32_TYPELESS`, вид `depthView` (`R32_FLOAT`) и цель только
   для чтения `depthReadTarget` (`TextureViewDesc::readOnlyDepth`) — проход с ней читает ту же глубину шейдерами (layout
   `DIRECT_QUEUE_GENERIC_READ`, `docs/d3d12.md` §3.7, `docs/passes.md`).
   Задний буфер — swap chain flip model (`DMD3D::createSwapChain`: два буфера `R8G8B8A8_UNORM` с sRGB-видом, без
-  vsync — tearing, начало кадра по waitable object — `DMD3D::waitForNextFrame`); `WM_SIZE` → `DMGraphics::resize`:
+  vsync — tearing, начало кадра по waitable object — `DMD3D::waitForNextFrame`); `WM_SIZE` → `Engine::resize`:
   задний буфер, буфер сцены, глубина, уровни bloom и проекция камеры заново по правилу D3D12 (дождаться GPU,
   отпустить ссылки на задние буферы, `ResizeBuffers`).
   Единицы света физические (солнце — люксы, лампы — канделы, небо и свечение — кд/м²), поэтому буфер сцены хранит
@@ -281,7 +281,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (в `log.txt`, с числом барьеров у каждого прохода). Полноэкранные проходы (постобработка, небо) — `FullscreenShader`: сам ставит
   топологию, шейдеры и состояния. Время CPU и GPU (`GpuProfiler`: запросы timestamp, результат 2–3 кадра назад) каждого
   объекта и прохода — в окне «Statistic» (счётчики кадра — `FrameStats`, `Graphics/FrameStats.h`: пишут `Renderer` и
-  `DMGraphics`, показывает GUI; рендерер от GUI не зависит), те же области — метки PIX в захвате (`PIXBeginEvent`), ресурсы с именами (`DMD3D::setName`).
+  `Engine`, показывает GUI; рендерер от GUI не зависит), те же области — метки PIX в захвате (`PIXBeginEvent`), ресурсы с именами (`DMD3D::setName`).
 
 **Виды и списки отрисовки** — как mesh draw commands в UE: объекты не рисуют себя сами и не знают, в каком проходе
 их меши. Вид кадра — `RenderView` (`Scene/RenderView.h`, ≈ FSceneView: матрицы, положение, `DMFrustum`, `lodOrigin` —
@@ -387,7 +387,7 @@ ExecuteIndirect, берег — пересечение продолженной 
   `setUAV`, `setVertexBuffer(s)` / `setIndexBuffer`; вызовы — `draw*`, `dispatch`; цели — только через
   `beginPass( PassDesc )` (`D3D/GpuPass.h`; задний буфер — `backBufferTarget()`, буфер сцены — `SceneTargets` рендерера); `setSRV` вида ресурса, который пишет текущий проход, завершает проход над ним (цели снимаются,
   UAV отвязывается — так ресурсы сцены t101…t106 привязываются сразу после своих проходов); копия заднего буфера
-  (`captureBackBuffer` — снимки пишет `DMGraphics::saveScreenshot`); состояния растеризатора/глубины/блендинга
+  (`captureBackBuffer` — снимки пишет `Engine::saveScreenshot`); состояния растеризатора/глубины/блендинга
   (`setState(RasterState | DepthState | BlendState | RenderState)`; смещение глубины — `RenderState::depthBias`).
   Реализация `DMD3D` — по файлам: `DMD3D.cpp` (устройство, кадры, swap chain), `DMD3DPasses.cpp`, `DMD3DPipelines.cpp`,
   `DMD3DResources.cpp`, `DMD3DCommands.cpp`. Правило: `ID3D12*` и `D3D12_*` — только внутри
@@ -433,7 +433,7 @@ Static Mesh в UE и primitives glTF, `DMModel::Section`). Материалы г
 Слои: что уровень прочитал из базы — только данные, `Scene/Level/` (`LevelDescription`, `LevelSettings.h` — настройки
 неба, панорамы, постобработки, ветра, солнца и слоёв расстановки без объектов сцены; у объектов те же структуры под
 именами `SkyAtmosphere::Settings` и т. п.). Заголовки `ObjectLibrary` включают только их, а сам загрузчик знают лишь
-`Scene.cpp` и `DMGraphics.cpp`: новый параметр уровня — поле в `LevelSettings.h`, а не включение объекта в загрузчик.
+`Scene.cpp` и `Engine.cpp`: новый параметр уровня — поле в `LevelSettings.h`, а не включение объекта в загрузчик.
 Свет и окружение — тоже данные уровня, как сущности уровня в UE: источники — строки `LevelLights` (`type` directional /
 point / spot, `enabled`, `color` и `intensity` раздельно, `direction` — куда идёт свет, `position`, `attenuation_radius`,
 `inner_cone_angle` / `outer_cone_angle` — имена как в UE и KHR_lights_punctual; у направленного ещё `cast_shadows`
@@ -464,7 +464,7 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 вместо вектора; «Sun position» — время суток; кнопки «Add … light» и «Delete» — новый источник перед камерой и удаление,
 «Save level» вставляет и удаляет строки `LevelLights`), «Sky atmosphere» или «HDRI backdrop», «Volumetric cloud», «Post process», «Height fog», «Wind»; кнопка «Save level»
 (`GUI::addAction`) пишет их обратно вместе с окнами объектов сцены (`LibraryLoader::saveLevelEnvironment`; чтение и запись окружения — `ObjectLibrary/LibraryLoaderEnvironment.cpp`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
-уровень). Источники раз за кадр обновляет `Scene::updateLights` в `DMGraphics::Frame` (правки GUI и время
+уровень). Источники раз за кадр обновляет `Scene::updateLights` в `Engine::tick` (правки GUI и время
 суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`
 и загружает на GPU, только когда источники изменились.
 
@@ -488,7 +488,7 @@ Plane с материалом `PBR` перед стартовой камерой
 
 **Заглушки ресурсов.** Слот `placeholderId` (0) в хранилищах текстур и мешей занимает процедурная заглушка:
 пурпурно-чёрная шахматка (`DMTextureStorage::createPlaceholder`) и куб от −0,5 до 0,5 (`MeshStorage::createPlaceholder`).
-Обе создаются в `DMGraphics::Initialize` сразу после D3D. `DMResourceStorage::get(id)`, `get(name)` и `operator[]`
+Обе создаются в `Engine::initialize` сразу после D3D. `DMResourceStorage::get(id)`, `get(name)` и `operator[]`
 вместо отсутствующего ресурса возвращают слот 0. `LibraryLoader` при ошибке загрузки файла пишет в лог и продолжает.
 Id в `base.db3` начинаются с 1, поэтому со слотом 0 не пересекаются. Пока нет настоящих мешей, вместо меша подставляется
 его примитив (колонка `Meshes.primitive`: `box`, `sphere`, `plane` — вписаны в куб от −0,5 до 0,5; `card` —
@@ -554,7 +554,7 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 **Система свойств** (`src/Common/Properties`). `Property` хранит значение в `std::variant`
 (bool, float, XMFLOAT2/3/4, int32, uint32) плюс границы и `GUIControlType`. `PropertyContainer` —
 именованная карта свойств с вложенными контейнерами. Объекты, которые нужно крутить в рантайме
-(террейн, модели, частицы), отдают `properties()`, а `DMGraphics` регистрирует их через
+(террейн, модели, частицы), отдают `properties()`, а `Engine` регистрирует их через
 `m_GUI.addPropertyWatching( контейнер, раздел Outliner, объект )`. После этого панель Details (`GUI/PropertyWidgets.cpp`)
 сама строит контролы по типу свойства; необязательно — `setUnit`, `setTooltip`, `setFormat`, `setLogarithmic`. Правили ли
 окно — номер правки (`Property::revision`, растёт при смене значения любым путём; `PropertyContainer::revision` — с вложенными
@@ -711,8 +711,8 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 - Именование: большая часть графики — в пространстве имён `GS`, его достаточно, поэтому новые классы — без префикса
   (`Scene`, `Renderer`, `Material`, `ShaderProgram`); методы и свободные функции — camelCase (`initialize`, `setPass`),
   члены — `m_` + camelCase, типы и перечисления — с заглавной (`BlendMode::opaque`). Старые имена — префикс `DM`
-  (`DMModel`, `DMMesh`, `DMTexture`, `DMCamera`, `DMLight`, `DMD3D`, `DMGraphics`) и методы с заглавной (`Initialize`,
-  `Frame`, `HandleMsg`), — переименовываются, когда класс правится, а не отдельным коммитом на всё; имя, занятое типом
+  (`DMModel`, `DMMesh`, `DMTexture`, `DMCamera`, `DMLight`, `DMD3D`, `DMSystem`) и методы с заглавной (`Initialize`,
+  `Run`), — переименовываются, когда класс правится, а не отдельным коммитом на всё (так `DMGraphics` стал `Engine`); имя, занятое типом
   слоя GPU (`Texture`, `Buffer` в `D3D/GpuResources.h`), не берётся (у текстуры хранилища — например, `TextureAsset`).
 - `DirectX` (DirectXMath, DirectXTex, DirectXCollision): в заголовках — с квалификацией (`DirectX::XMFLOAT3`), в `.cpp` —
   `using namespace DirectX;` после include; `using namespace` в заголовках не пишется.

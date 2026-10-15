@@ -38,7 +38,7 @@ GUI::~GUI()
 	if( m_isInited )
 	{
 		// Буферы вершин и шрифт привязки ImGui — в командах последнего кадра: отпускать после GPU (DMD3D ждёт его позже, в
-		// своём shutdown, а GUI — член DMGraphics и разрушается раньше)
+		// своём shutdown, а GUI — член Engine и разрушается раньше)
 		if( DMD3D::exists() )
 			DMD3D::instance().waitForGpu();
 		ImGui_ImplDX12_Shutdown();

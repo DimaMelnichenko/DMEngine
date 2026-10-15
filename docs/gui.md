@@ -219,7 +219,7 @@ Details строка «Saved with the level», у остальных — «Not s
 
 ## Как дать объекту свойства
 
-Объект сцены отдаёт `properties()` — `PropertyContainer` (`src/Common/Properties`); `DMGraphics::Initialize` регистрирует
+Объект сцены отдаёт `properties()` — `PropertyContainer` (`src/Common/Properties`); `Engine::initialize` регистрирует
 его в Outliner (`GUI::addPropertyWatching( контейнер, раздел, объект, сохраняется )`). Раздел Environment у объекта —
 `SceneObject::environment()`, сохранение с уровнем — `SceneObject::savedWithLevel()` (у окружения — всегда): объект
 отдаёт настройки по своим свойствам (`settings()`, `layerRecords()`), а `Scene::saveLevel` передаёт их загрузчику —
@@ -328,15 +328,15 @@ updateSettings( db, "Terrain", id, terrainSchema(), settings );		// «Save level
 
 ## Экран загрузки
 
-Пока уровень грузится (`DMGraphics::Initialize`, в Release ~7 с, в Debug с GPU-based validation ~40 с), окно показывает
+Пока уровень грузится (`Engine::initialize`, в Release ~7 с, в Debug с GPU-based validation ~40 с), окно показывает
 панель «Loading level …»: что делается — вложенные шаги через « — » («Scene — Terrain — Rivers and lakes»), полоса
 прогресса и секунды с начала. Как Slow Task в UE:
 - **шаги** объявляет сам код загрузки — `SlowTask` (`src/Common/Utils/SlowTask.h`, как `FScopedSlowTask`): задача с
   объёмом работы и её части `enterProgressFrame( доля, "текст" )`; вложенная задача делит текущую часть внешней. Доли
   подобраны по времени шагов (Release, уровень `Test`): текстуры моделей, сцена (слои материала террейна, русла и озёра,
   течение озёр), импостеры. Новый долгий этап загрузки — ещё одна часть или задача там, где он выполняется;
-- **показ** — обработчик `SlowTask::setHandler`, его ставит `DMGraphics::Initialize` до загрузки и снимает в конце:
-  `DMGraphics::drawLoadingFrame` откачивает сообщения окна (иначе Windows через 5 с помечает его «не отвечает»;
+- **показ** — обработчик `SlowTask::setHandler`, его ставит `Engine::initialize` до загрузки и снимает в конце:
+  `Engine::drawLoadingFrame` откачивает сообщения окна (иначе Windows через 5 с помечает его «не отвечает»;
   закрытие окна — выход сразу после загрузки) и не чаще 30 раз в секунду рисует кадр `GUI::drawLoadingScreen`. Кадр
   выполняет и ждёт записанные команды загрузки (`DMD3D::beginFrame`), после него список открывается снова
   (`DMD3D::resumeLoading`). Поэтому GUI инициализируется сразу после устройства, а части отмечаются только на границах

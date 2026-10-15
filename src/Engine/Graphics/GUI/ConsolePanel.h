@@ -9,7 +9,7 @@ struct ImGuiInputTextCallbackData;
 
 // Окно Output — вкладки Console и Log, как консоль ~ и Output Log в UE.
 // Console: строка ввода на тех же консольных командах, что удалённое управление (ConsoleCommands, docs/remote.md):
-// набранное выполняется в начале следующего кадра (takePending — DMGraphics), ответ — в окне; история ↑ / ↓,
+// набранное выполняется в начале следующего кадра (takePending — Engine), ответ — в окне; история ↑ / ↓,
 // дополнение Tab по командам и путям свойств для get / set / list.
 // Log: последние строки log.txt (Logger::recent) с поиском и подсветкой ошибок и предупреждений
 class ConsolePanel

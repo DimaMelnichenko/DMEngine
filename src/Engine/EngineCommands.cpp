@@ -1,4 +1,4 @@
-#include "DMGraphics.h"
+#include "Engine.h"
 #include <cctype>
 #include <cstring>
 #include <ctime>
@@ -14,7 +14,7 @@ namespace GS
 
 // Команды движка: проходы кадра, камера, снимки, захват PIX, шаг времени, замер GPU, клавиши, окна ImGui, выход. Команды
 // редактора (GUI::registerCommands), вьюпорта (Viewport::registerCommands) и подсистем сцены (registerSceneCommands) — у них
-void DMGraphics::registerCommands()
+void Engine::registerCommands()
 {
 	// Камера как BugItGo в UE: положение и поворот в градусах; смена плана — экспозиция сразу по новому виду
 	m_console.registerCommand( "passes", "log the passes of the next frame with their targets, reads and writes (D3D/GpuPass.h)",

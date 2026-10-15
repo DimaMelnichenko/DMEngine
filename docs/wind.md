@@ -36,7 +36,7 @@
 
 ## Как это устроено
 
-1. `DMGraphics::Frame` копит время игры (`FrameContext::gameTime`, с) из длительностей кадров — тех же, что с `timestep`
+1. `Engine::tick` копит время игры (`FrameContext::gameTime`, с) из длительностей кадров — тех же, что с `timestep`
    фиксированы. `Renderer::preparePipeline` передаёт его в `ConstantBuffers::beginFrame` (`FrameParameters`), ветер
    (`Wind::parameters`) туда же кладёт `Scene::frameConstants`, а масштаб поля ветра — конвейер рельефа
    (`TerrainPipeline::frameConstants`; флажок «Use field» выключает его); в шейдерах — `cb_gameTime` и `cb_wind*`.

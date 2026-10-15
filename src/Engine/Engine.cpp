@@ -1,9 +1,8 @@
-#include "DMGraphics.h"
+#include "Engine.h"
 #include "ObjectLibrary\LibraryLoader.h"
 #include <ctime>
 #include <filesystem>
 #include <string>
-#include "../Input/Input.h"
 #include <chrono>
 #include "Logger\Logger.h"
 #include "D3D\TextureImages.h"
@@ -39,21 +38,21 @@ using namespace DirectX;
 namespace GS
 {
 
-DMGraphics::DMGraphics() :
+Engine::Engine() :
 	m_library( std::make_unique<LibraryLoader>() ),
 	m_renderer( m_frameStats )
 {
 
 }
 
-DMGraphics::~DMGraphics()
+Engine::~Engine()
 {
 	FrameWatchdog::instance().stop();
 	System::destroy();
-	// DMD3D::destroy — в main после DMSystem: члены DMGraphics ещё держат ресурсы GPU
+	// DMD3D::destroy — в main после DMSystem: члены Engine ещё держат ресурсы GPU
 }
 
-bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHeight, HWND hwnd, Config config )
+bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config config )
 {
 	auto timeStartInit = TIME_POINT();
 	std::chrono::time_point<std::chrono::high_resolution_clock> timeStart;
@@ -270,7 +269,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	return true;
 }
 
-bool DMGraphics::Frame()
+bool Engine::tick()
 {
 	// Кадр начинается, когда swap chain готов принять его (ввод и камера ниже берутся с меньшей задержкой), кольцо
 	// констант — с чистого участка
@@ -319,13 +318,13 @@ bool DMGraphics::Frame()
 	watchdog.stage( "scene update" );
 	TIME_CHECK( m_scene.update( frame ), "Scene Update = %.3f ms" );
 
-	const bool rendered = Render( frame );
+	const bool rendered = render( frame );
 	// Между кадрами — сообщения окна (DMSystem::Run); перетаскивание окна держит их цикл
 	watchdog.stage( "between frames (window messages)" );
 	return rendered;
 }
 
-bool DMGraphics::Render( const FrameContext& frame )
+bool Engine::render( const FrameContext& frame )
 {
 	FrameWatchdog& watchdog = FrameWatchdog::instance();
 	watchdog.stage( "render" );
@@ -373,10 +372,10 @@ bool DMGraphics::Render( const FrameContext& frame )
 	return true;
 }
 
-void DMGraphics::drawLoadingFrame( const std::string& task, float progress )
+void Engine::drawLoadingFrame( const std::string& task, float progress )
 {
 	// Сообщения окна — при каждом шаге: без них Windows через 5 с помечает окно «не отвечает». Закрыли окно — выход сразу
-	// после загрузки (WM_SIZE до конца Initialize не применяется — DMGraphics::resize)
+	// после загрузки (WM_SIZE до конца Initialize не применяется — Engine::resize)
 	MSG message;
 	while( PeekMessage( &message, nullptr, 0, 0, PM_REMOVE ) )
 	{
@@ -416,7 +415,7 @@ void DMGraphics::drawLoadingFrame( const std::string& task, float progress )
 	d3d.resumeLoading();
 }
 
-void DMGraphics::beforeExit()
+void Engine::beforeExit()
 {
 	FrameWatchdog::instance().stop();
 	m_library->save();
@@ -424,7 +423,7 @@ void DMGraphics::beforeExit()
 	m_remote.stop();
 }
 
-void DMGraphics::resize( uint32_t width, uint32_t height )
+void Engine::resize( uint32_t width, uint32_t height )
 {
 	// Свёрнутое окно — 0 × 0, цели не трогаем; до Initialize (WM_SIZE при создании окна) устройства ещё нет
 	if( !m_initialized || width == 0 || height == 0 )
@@ -443,7 +442,7 @@ void DMGraphics::resize( uint32_t width, uint32_t height )
 	m_cameraPool["main"].setViewport( m_screenWidth, m_screenHeight );
 }
 
-void DMGraphics::takeScreenshots( bool withGui )
+void Engine::takeScreenshots( bool withGui )
 {
 	if( m_framesSinceCut < settleFrames )
 		return;
@@ -481,7 +480,7 @@ void DMGraphics::takeScreenshots( bool withGui )
 	}
 }
 
-bool DMGraphics::saveScreenshot( const std::wstring& path )
+bool Engine::saveScreenshot( const std::wstring& path )
 {
 	DMD3D& d3d = DMD3D::instance();
 	std::vector<uint8_t> bytes;
@@ -491,7 +490,7 @@ bool DMGraphics::saveScreenshot( const std::wstring& path )
 	return GpuImages::saveImage( path, d3d.backBufferWidth(), d3d.backBufferHeight(), DMD3D::backBufferViewFormat, bytes.data(), rowPitch );
 }
 
-void DMGraphics::updateMouseLook()
+void Engine::updateMouseLook()
 {
 	// Как вьюпорт редактора UE: камера смотрит мышью, пока зажата правая кнопка над сценой (не над окнами редактора);
 	// в режиме полёта (I) и без редактора (G) — всегда. С -nomouse — никогда: поворот только из -camera и команд
@@ -535,7 +534,7 @@ void DMGraphics::updateMouseLook()
 	input.setKeyboardBlocked( m_showGUI && m_GUI.wantsKeyboard() );
 }
 
-void DMGraphics::bindingKeys()
+void Engine::bindingKeys()
 {
 	Input::instance().notifier().registerTrigger( DIK_Q, [this]( bool value )
 	{

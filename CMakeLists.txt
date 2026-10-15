@@ -199,8 +199,8 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Sky/HDRIBackdrop.cpp
     src/Engine/Graphics/Scene/Sky/VolumetricCloud.cpp
     src/Engine/Graphics/D3D/DMSamplerState.cpp
-    src/Engine/Graphics/DMGraphics.cpp
-    src/Engine/Graphics/DMGraphicsCommands.cpp
+    src/Engine/Engine.cpp
+    src/Engine/EngineCommands.cpp
     src/Engine/Graphics/Renderer.cpp
     src/Engine/Graphics/ShadowCascades.cpp
     src/Engine/Graphics/TerrainSunShadow.cpp

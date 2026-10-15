@@ -37,14 +37,18 @@ namespace GS
 // GLOBALS //
 /////////////
 
-class DMGraphics
+// Движок: окно, цикл кадра и ввод (как FEngineLoop и UGameEngine в UE) — загрузка уровня с экраном загрузки, кадр
+// (сцена → рендерер → редактор → кадр на экран), камера и горячие клавиши, снимки, консольные команды движка; содержимое
+// уровня — Scene, отрисовка — Renderer, редактор — GUI, Viewport, QuickAdd
+class Engine
 {
 public:
-	DMGraphics();
-	~DMGraphics();
+	Engine();
+	~Engine();
 
-	bool Initialize( HINSTANCE hinstance, int, int, HWND, Config );
-	bool Frame();
+	bool initialize( int screenWidth, int screenHeight, HWND hwnd, Config config );
+	// Кадр движка: команды, ввод, сцена, рендерер, редактор; false — выход
+	bool tick();
 	void beforeExit();
 	// WM_SIZE: задний буфер, буфер сцены, цели постобработки и проекция камеры — под новый размер клиентской области
 	void resize( uint32_t width, uint32_t height );
@@ -52,17 +56,15 @@ public:
 	bool exitRequested() const { return m_exitRequested; }
 
 
-	LRESULT HandleMsg( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
-
 private:
-	// Кадр: сначала Scene::update() меняет состояние сцены на CPU, затем Render() только отправляет команды GPU
-	bool Render( const FrameContext& frame );
+	// Кадр: сначала Scene::update() меняет состояние сцены на CPU, затем render() только отправляет команды GPU
+	bool render( const FrameContext& frame );
 
 	void bindingKeys();
 	// Поворот камеры мышью: правая кнопка над сценой, режим полёта (I), кадр без редактора (G); курсор и мышь GUI
 	void updateMouseLook();
 	// Команды движка в консоли и удалённом управлении (docs/remote.md): проходы, камера, снимок, захват PIX, шаг времени,
-	// замер GPU, клавиши, окна ImGui, выход — DMGraphicsCommands.cpp
+	// замер GPU, клавиши, окна ImGui, выход — EngineCommands.cpp
 	void registerCommands();
 	// Снимки, заказанные командой screenshot, — в своей точке кадра: до окон ImGui или после них
 	void takeScreenshots( bool withGui );

@@ -51,7 +51,7 @@ void updateResourceData( Buffer& buffer, const ResourceType& data )
 // устройство и очереди, кадры в полёте с fence, swap chain и задний буфер, кучи дескрипторов (bindless), кольцо
 // констант, память (D3D12MA), ресурсы и виды, шейдеры и пайплайны (PSO с кэшем на диске), проходы с барьерами по
 // объявлениям, привязка через таблицу привязок вызова (root-константы) и root CBV, вызовы, запросы времени GPU и метки
-// PIX. Что рисуется и куда — не здесь: буфер сцены и проходы кадра — у Renderer (SceneTargets), снимки — у DMGraphics.
+// PIX. Что рисуется и куда — не здесь: буфер сцены и проходы кадра — у Renderer (SceneTargets), снимки — у Engine.
 // Реализация — по файлам: DMD3D.cpp (устройство, кадры, swap chain), DMD3DPasses.cpp (барьеры, проходы),
 // DMD3DPipelines.cpp, DMD3DResources.cpp, DMD3DCommands.cpp (привязка, вызовы, профайлер)
 class DMD3D
@@ -70,7 +70,7 @@ public:
 	static constexpr DXGI_FORMAT backBufferViewFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	static constexpr uint32_t backBufferCount = 2;
 
-	// Настройки устройства из settings.ini (DMGraphics собирает их из Config)
+	// Настройки устройства из settings.ini (Engine собирает их из Config)
 	struct Settings
 	{
 		uint32_t backBufferWidth = 1920;
@@ -96,7 +96,7 @@ public:
 	void beginFrame();
 	// Конец кадра: задний буфер на показ, команды в очередь, Present, fence кадра
 	void endFrame();
-	// После кадра экрана загрузки (DMGraphics::drawLoadingFrame) загрузка продолжается: команды снова пишутся в открытый
+	// После кадра экрана загрузки (Engine::drawLoadingFrame) загрузка продолжается: команды снова пишутся в открытый
 	// список — его выполнит и дождётся следующий beginFrame. Привязки и пайплайн после кадра заданы заново
 	void resumeLoading() { ensureRecording(); }
 	// Проход начинается объявлением (GpuPass.h): барьеры целей, чтения и записи по объявлению (по подресурсам — мипы
@@ -111,7 +111,7 @@ public:
 	// Включена GPU-based validation (Debug): каждый вызов на GPU в разы дольше — долгие расчёты при загрузке урезать
 	bool gpuValidation() const { return m_gpuValidation; }
 	uint32_t backBufferHeight() const { return m_backBufferHeight; }
-	// Копия заднего буфера на CPU (снимок — DMGraphics): байты строками по rowPitch, формат backBufferViewFormat. Только
+	// Копия заднего буфера на CPU (снимок — Engine): байты строками по rowPitch, формат backBufferViewFormat. Только
 	// в кадре, между beginFrame и endFrame (задний буфер — цель кадра, командный список открыт; после Present содержимое
 	// не определено), иначе false и строка в лог. Ждёт GPU
 	bool captureBackBuffer( std::vector<uint8_t>& bytes, uint32_t& rowPitch );
@@ -130,7 +130,7 @@ public:
 	const ConstantRing::Stats& constantRingStats() const { return m_constantRing.lastFrameStats(); }
 
 	// Новый размер заднего буфера (WM_SIZE): дождаться GPU, отпустить все ссылки на задние буферы, ResizeBuffers, виды
-	// заново. Буфер сцены, цели постобработки и проекцию камеры пересоздают Renderer::resize и DMGraphics::resize. Тот
+	// заново. Буфер сцены, цели постобработки и проекцию камеры пересоздают Renderer::resize и Engine::resize. Тот
 	// же размер — ничего
 	bool resize( uint32_t width, uint32_t height );
 

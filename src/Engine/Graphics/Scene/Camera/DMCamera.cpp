@@ -205,7 +205,7 @@ void DMCamera::Update( float elapsedTime, bool cursorMode )
 	vPosDelta = XMVectorScale( vPosDelta, 0.1f );
 
 	// Set the yaw (Y axis), pitch (X axis), and roll (Z axis) rotations in radians.
-	// Поворот мышью — по смещениям Raw Input; курсор на время поворота закреплён на месте (DMGraphics::updateMouseLook)
+	// Поворот мышью — по смещениям Raw Input; курсор на время поворота закреплён на месте (Engine::updateMouseLook)
 	if( !cursorMode )
 		Input::instance().GetMouseLocation( m_mouseX, m_mouseY );
 

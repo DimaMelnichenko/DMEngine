@@ -41,7 +41,7 @@ bool DMSystem::Initialize( const char* commandLine )
 		return false;
 	}
 
-	if( !m_graphics.Initialize( m_hinstance, screenWidth, screenHeight, m_hwnd, m_config ) )
+	if( !m_engine.initialize( screenWidth, screenHeight, m_hwnd, m_config ) )
 	{
 		LOG( "Can`t initialize graphics" );
 		return false;
@@ -77,9 +77,9 @@ void DMSystem::Run( )
 		}
 
 		// If windows signals to end the application then exit out.
-		if( quit || m_exit || m_graphics.exitRequested() )
+		if( quit || m_exit || m_engine.exitRequested() )
 		{
-			m_graphics.beforeExit();
+			m_engine.beforeExit();
 			break;
 		}
 
@@ -87,7 +87,7 @@ void DMSystem::Run( )
 			break;
 
 		// Frame processing.
-		if( !m_graphics.Frame() )
+		if( !m_engine.tick() )
 			break;
 	}
 }
@@ -144,14 +144,14 @@ LRESULT DMSystem::wndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 		case WM_SIZE:
 			// Новый размер клиентской области — задний буфер и цели кадра за ним; свёрнутое окно (0 × 0) не трогаем
 			if( wParam != SIZE_MINIMIZED )
-				m_graphics.resize( LOWORD( lParam ), HIWORD( lParam ) );
+				m_engine.resize( LOWORD( lParam ), HIWORD( lParam ) );
 			return 0;
 		case WM_CREATE:
 		{
 			ShowWindow( hWnd, SW_SHOW );
 			SetFocus( hWnd );
 			SetForegroundWindow( hWnd );
-			// Курсор виден: прячет его только поворот камеры мышью и -nomouse (DMGraphics::updateMouseLook, Initialize)
+			// Курсор виден: прячет его только поворот камеры мышью и -nomouse (Engine::updateMouseLook, initialize)
 			break;
 		}
 	}
@@ -235,7 +235,7 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 
 void DMSystem::ShutdownWindows( )
 {
-	// Курсор виден и свободен (выход посреди поворота мышью — ClipCursor в DMGraphics::updateMouseLook)
+	// Курсор виден и свободен (выход посреди поворота мышью — ClipCursor в Engine::updateMouseLook)
 	ClipCursor( nullptr );
 	ShowCursor( true );
 
