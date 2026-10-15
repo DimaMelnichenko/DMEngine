@@ -408,6 +408,7 @@ float4 shadeWater( WaterShading input )
 	surface.occlusion = 1.0f;
 	surface.microShadows = 0.0f;
 	surface.selfShadow = 1.0f;
+	surface.screenOcclusion = 1.0f;
 	surface.emissive = 0.0f;
 	surface.transmission = 0.0f;
 	surface.transmissionColor = 0.0f;

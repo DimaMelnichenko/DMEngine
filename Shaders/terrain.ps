@@ -10,6 +10,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "lighting.sh"
+#include "ambient_occlusion.sh"
 #include "cdlod.sh"
 #include "bindless.sh"
 #include "water.sh"
@@ -214,6 +215,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.occlusion = saturate( occlusion );
 	surface.microShadows = g_microShadows;
 	surface.selfShadow = 1.0f;
+	surface.screenOcclusion = screenAmbientOcclusion( input.position.xy, surface.position );
 	surface.emissive = 0.0f;
 
 	// Мокрая земля у воды и под ней: вода в порах — темнее и глаже (блик), как wet в материалах UE. У воды static в плитках —

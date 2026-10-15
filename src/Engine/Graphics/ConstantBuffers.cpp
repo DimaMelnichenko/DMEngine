@@ -74,6 +74,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.cloudShadow = m_frame.cloudShadow;
 		data.waterDetail = m_frame.waterDetail;
 		data.foliageInteraction = m_frame.foliageInteraction;
+		data.ambientOcclusion = m_frame.ambientOcclusion;
 	} );
 
 	DMD3D::instance().setConstantBuffer( SLOT_CB_FRAME, m_frameConstant );

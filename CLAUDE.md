@@ -235,7 +235,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (`VolumetricFog`, как Volumetric Fog в UE: свет в ячейках сетки над экраном по карте теней и накопление вдоль лучей,
   `SLOT_VOLUMETRIC_FOG`, t110; только у уровня со строкой `ExponentialHeightFog`, `docs/fog.md`) → depth prepass
   (`depthPrepass`: только глубина непрозрачных и Masked вариантом `depthPhaseFor`, без цели цвета; `DepthPrepass` в
-  `settings.ini`, флажок в окне «Renderer») → `opaque` (после prepass — `DepthState::readOnlyEqual`: освещается только
+  `settings.ini`, флажок в окне «Renderer») → экранное затенение окружением по глубине prepass (`AmbientOcclusion`, GTAO
+в половине кадра, `Shaders/gtao.cs`, ресурс сцены t126 — материалы гасят им свет неба, `Surface::screenOcclusion`;
+настройки — в `PostProcessSettings`, `docs/ambient_occlusion.md`) → `opaque` (после prepass — `DepthState::readOnlyEqual`: освещается только
   ближайшая поверхность, Masked без `clip`; меш без варианта глубины и свой вызов без бита prepass пишут глубину сами;
   подробно — `docs/passes.md`) → `opaqueDepthRead` (после prepass — непрозрачные, которым нужна глубина сцены в шейдере:
   `Material::readsSceneDepth`, импостеры; глубина только для чтения и видна шейдерам — `SLOT_SCENE_DEPTH`, t107) → `sky`

@@ -48,6 +48,9 @@ cbuffer FrameConstantBuffer : register( SLOT_CB_FRAME )
 	// Следы в траве (foliage_interaction.sh, FoliageInteraction): xy — начало окна поля по X и Z мира, м; z — 1 / его сторона,
 	// 1/м (0 — поля нет); w — наклон полностью придавленного растения, рад
 	float4 cb_foliageInteraction;
+	// Экранное затенение окружением (ambient_occlusion.sh, AmbientOcclusion): x — сила (0 — затенения нет), yz — размер
+	// текстуры в текселях (половина кадра)
+	float4 cb_ambientOcclusion;
 };
 
 // Раскладка — ConstantBuffers::ShaderModelConstant

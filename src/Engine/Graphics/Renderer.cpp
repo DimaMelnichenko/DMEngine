@@ -111,6 +111,9 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, const std::
 	if( !m_fog.initialize( fog ) )
 		return false;
 
+	if( !m_ambientOcclusion.initialize() )
+		return false;
+
 	if( !m_gpuProfiler.initialize() )
 		return false;
 
@@ -196,7 +199,7 @@ bool Renderer::resize()
 {
 	DMD3D& d3d = DMD3D::instance();
 	return m_sceneTargets.create( d3d.backBufferWidth(), d3d.backBufferHeight(), sceneClearColor ) && m_postProcess.resize() &&
-		   m_fog.resize();
+		   m_fog.resize() && m_ambientOcclusion.resize();
 }
 
 void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
@@ -277,6 +280,13 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		ScopedRenderState prepassState( DepthState::enabled );
 		executePass( MeshPass::depthPrepass, frame.view, frameRaster );
 	}
+
+	// Затенение окружением — по глубине prepass, до прохода цвета: его читают материалы (без prepass его нет)
+	if( ambientOcclusionActive() )
+		measure( "Ambient occlusion", [&]
+		{
+			m_ambientOcclusion.render( frame.view, m_sceneTargets.depthView(), m_postProcess.settings().ambientOcclusion );
+		} );
 
 	{
 		// После prepass — проверка на равенство без записи (как CF_Equal базового прохода UE при полном prepass)
@@ -470,10 +480,18 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
 	frameParameters.waterDetail = scene.waterDetail();
 	// Следы в траве: окно поля сдвинул Scene::update, поле запишет compute() этого кадра
 	frameParameters.foliageInteraction = scene.foliageInteraction().frameParameters();
+	// Затенение окружением посчитает render() после depth prepass, константы — уже сейчас
+	frameParameters.ambientOcclusion = m_ambientOcclusion.frameParameters( m_postProcess.settings().ambientOcclusion, ambientOcclusionActive(),
+																		   ( *m_postProcess.properties() )["Show ambient occlusion"].data<bool>() );
 	m_constants.beginFrame( frameParameters );
 	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
 	m_postProcess.bindExposure();
 	m_constants.setViewBuffer( frame.view );
+}
+
+bool Renderer::ambientOcclusionActive()
+{
+	return m_properties["Depth prepass"].data<bool>() && m_postProcess.settings().ambientOcclusion.intensity > 0.0f;
 }
 
 void Renderer::collect( Scene& scene, const RenderView& view, MeshCollector& collector )

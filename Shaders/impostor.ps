@@ -16,6 +16,7 @@
 #include "slots.h"
 #include "common.vs"
 #include "lighting.sh"
+#include "ambient_occlusion.sh"
 #include "lod_dither.sh"
 #include "bindless.sh"
 #include "impostor.sh"
@@ -152,6 +153,7 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 #else
 	surface.selfShadow = impostorSelfShadow( input, position );
 #endif
+	surface.screenOcclusion = screenAmbientOcclusion( input.position.xy, position );
 	surface.emissive = 0.0f;
 	surface.transmission = saturate( packed.w * g_impostorTransmission.w );
 	surface.transmissionColor = baseColor * g_impostorTransmission.xyz;

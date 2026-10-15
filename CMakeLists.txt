@@ -195,6 +195,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Renderer.cpp
     src/Engine/Graphics/ShadowCascades.cpp
     src/Engine/Graphics/TerrainSunShadow.cpp
+    src/Engine/Graphics/AmbientOcclusion.cpp
     src/Engine/Graphics/VolumetricFog.cpp
     src/Engine/Graphics/SceneTargets.cpp
     src/Engine/Graphics/Scene/Camera/DMCamera.cpp

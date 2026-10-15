@@ -248,6 +248,14 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 		level.postProcess.bloomIntensity = static_cast<float>( query.getColumn( "bloom_intensity" ).getDouble() );
 		level.postProcess.bloomThreshold = static_cast<float>( query.getColumn( "bloom_threshold" ).getDouble() );
 		level.postProcess.purkinjeShift = value( "purkinje_shift" );
+		auto optional = [&query, &value]( const char* column, float& target )
+		{
+			if( !query.getColumn( column ).isNull() )
+				target = value( column );
+		};
+		optional( "ambient_occlusion_intensity", level.postProcess.ambientOcclusion.intensity );
+		optional( "ambient_occlusion_radius", level.postProcess.ambientOcclusion.radius );
+		optional( "ambient_occlusion_power", level.postProcess.ambientOcclusion.power );
 		const SQLite::Column curve = query.getColumn( "exposure_compensation_curve" );
 		if( !curve.isNull() )
 			level.postProcess.exposureCompensationCurve = GS::curveFromText( curve.getString() );
@@ -430,7 +438,8 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 												 "manual_ev100 = :manualEV100, min_ev100 = :minEV100, max_ev100 = :maxEV100, "
 												 "histogram_low_percent = :lowPercent, histogram_high_percent = :highPercent, "
 												 "speed_up = :speedUp, speed_down = :speedDown, purkinje_shift = :purkinjeShift, "
-												 "exposure_compensation_curve = :curve WHERE id = :id" );
+												 "exposure_compensation_curve = :curve, ambient_occlusion_intensity = :aoIntensity, "
+												 "ambient_occlusion_radius = :aoRadius, ambient_occlusion_power = :aoPower WHERE id = :id" );
 		updatePostProcess.bind( ":exposure", dbValue( postProcess.exposureCompensation ) );
 		updatePostProcess.bind( ":tonemapper", GS::tonemapperName( postProcess.tonemapper ) );
 		updatePostProcess.bind( ":bloomIntensity", dbValue( postProcess.bloomIntensity ) );
@@ -444,6 +453,9 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 		updatePostProcess.bind( ":speedUp", dbValue( postProcess.speedUp ) );
 		updatePostProcess.bind( ":speedDown", dbValue( postProcess.speedDown ) );
 		updatePostProcess.bind( ":purkinjeShift", dbValue( postProcess.purkinjeShift ) );
+		updatePostProcess.bind( ":aoIntensity", dbValue( postProcess.ambientOcclusion.intensity ) );
+		updatePostProcess.bind( ":aoRadius", dbValue( postProcess.ambientOcclusion.radius ) );
+		updatePostProcess.bind( ":aoPower", dbValue( postProcess.ambientOcclusion.power ) );
 		if( postProcess.exposureCompensationCurve.empty() )
 			updatePostProcess.bind( ":curve" );
 		else

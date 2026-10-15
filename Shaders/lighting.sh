@@ -34,6 +34,9 @@ struct Surface
 					// Specular в UE — вдвое меньше: 0,5 ↔ 1)
 	float  roughness;	// «на глаз» (perceptual), 0…1
 	float  occlusion;	// затенение освещения окружением, 0…1
+	// Экранное затенение окружением (GTAO, Shaders/ambient_occlusion.sh), 0…1: 1 — нет. Гасит, как occlusion, только свет
+	// неба, но отдельно от него: микротени прямого света — только по затенению материала
+	float  screenOcclusion;
 	// Микротени прямого света по occlusion (Brinck, Maximov 2016, «The Technical Art of Uncharted 4»): в щели свет
 	// проходит только под крутым углом — доля 0…1, 0 — нет (модели, вода); terrain.ps — «Micro shadows» окна террейна
 	float  microShadows;
@@ -166,8 +169,14 @@ float3 evaluateLighting( Surface surface )
 		ambient += transmissionColor * behind;
 	}
 
+	// Отладочный вид «Ambient occlusion»: кадр — экранное затенение серым (0,5 — открыто), как Show → Visualize →
+	// Ambient Occlusion в UE
+	[branch] if( cb_ambientOcclusion.w > 0.0f )
+		return surface.screenOcclusion * 0.5f;
+
 	// Освещение окружением тень не гасит (как в UE без затенения окружения)
-	const float3 color = ( direct + ambient * surface.occlusion + surface.emissive ) * shadowCascadeTint( surface.position );
+	const float3 color = ( direct + ambient * ( surface.occlusion * surface.screenOcclusion ) + surface.emissive ) *
+						 shadowCascadeTint( surface.position );
 	// Яркость, кд/м², — в буфер сцены с экспозицией прошлого кадра (pre-exposure, Shaders/exposure.sh)
 	return applyFogging( color, surface.position ) * preExposure();
 }

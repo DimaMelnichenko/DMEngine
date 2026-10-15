@@ -12,6 +12,7 @@
 #include "D3D\DMStructuredBuffer.h"
 #include "ShadowCascades.h"
 #include "VolumetricFog.h"
+#include "AmbientOcclusion.h"
 #include "SceneTargets.h"
 #include "FrameStats.h"
 #include "ConstantBuffers.h"
@@ -155,6 +156,9 @@ private:
 	PostProcess m_postProcess;
 	// Туман уровня: объём после карты теней, до проходов сцены
 	VolumetricFog m_fog;
+	AmbientOcclusion m_ambientOcclusion;
+	// Затенение окружением в этом кадре: включено (сила > 0) и есть depth prepass — по его глубине
+	bool ambientOcclusionActive();
 	GpuProfiler m_gpuProfiler;
 
 	// Замер среднего времени GPU за несколько секунд: после прогрева — одной строкой в log.txt («GPU average», её

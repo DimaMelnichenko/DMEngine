@@ -82,6 +82,14 @@ bool PostProcess::initialize( const Settings& settings )
 	addSlider( m_properties, "Bloom intensity", settings.bloomIntensity, 0.0f, 8.0f );
 	addSlider( m_properties, "Bloom threshold", settings.bloomThreshold, -1.0f, 10.0f );
 	addSlider( m_properties, "Purkinje shift", settings.purkinjeShift, 0.0f, 1.0f );
+	// Экранное затенение окружением (AmbientOcclusion) — до проходов цвета, но настройки здесь, как в UE
+	addSlider( m_properties, "Ambient occlusion intensity", settings.ambientOcclusion.intensity, 0.0f, 1.0f )->setTooltip(
+		"Screen space ambient occlusion (GTAO): how much it darkens the sky light; 0 - off" );
+	addSlider( m_properties, "Ambient occlusion radius", settings.ambientOcclusion.radius, 0.1f, 5.0f, "m" );
+	addSlider( m_properties, "Ambient occlusion power", settings.ambientOcclusion.power, 0.5f, 4.0f )->setTooltip(
+		"Visibility^power: stronger in crevices, weaker in the open" );
+	// Отладка (View → Debug views): кадр — само затенение серым; не сохраняется
+	m_properties.insert( "Show ambient occlusion", false )->setTransient();
 
 	return true;
 }
@@ -163,6 +171,9 @@ PostProcess::Settings PostProcess::settings()
 	settings.bloomIntensity = m_properties["Bloom intensity"].data<float>();
 	settings.bloomThreshold = m_properties["Bloom threshold"].data<float>();
 	settings.purkinjeShift = m_properties["Purkinje shift"].data<float>();
+	settings.ambientOcclusion.intensity = m_properties["Ambient occlusion intensity"].data<float>();
+	settings.ambientOcclusion.radius = m_properties["Ambient occlusion radius"].data<float>();
+	settings.ambientOcclusion.power = m_properties["Ambient occlusion power"].data<float>();
 	return settings;
 }
 

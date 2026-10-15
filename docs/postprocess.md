@@ -129,6 +129,7 @@ Ghost of Tsushima) палочки добавляют сигнал в оппон�
 | `bloom_intensity` | ≥ 0 | 0,05 | доля энергии над порогом, уходящая в свечение (Bloom Intensity); 0 — без bloom |
 | `bloom_threshold` | яркость | 1 | порог после экспозиции (Bloom Threshold); < 0 — без порога, светится всё |
 | `purkinje_shift` | 0…1 | 1 | сила ночного зрения; 0 — цвет как днём при любой яркости |
+| `ambient_occlusion_intensity`, `ambient_occlusion_radius`, `ambient_occlusion_power` | 0…1, м, степень | 1, 1, 1,5 | экранное затенение окружением (GTAO) — до проходов цвета, настройки здесь, как в UE: [ambient_occlusion.md](ambient_occlusion.md) |
 
 То же меняется на лету в GUI: окно свойств → «Post process» (I — курсор); кнопка «Save level» записывает
 значения в строку уровня (нет строки — создаёт её и привязывает к уровню).

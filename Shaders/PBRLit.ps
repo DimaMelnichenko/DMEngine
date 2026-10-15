@@ -5,6 +5,7 @@
 #include "slots.h"
 #include "common.vs"
 #include "lighting.sh"
+#include "ambient_occlusion.sh"
 #include "depth_only.sh"
 #include "pbr_material.sh"
 #include "lod_dither.sh"
@@ -80,6 +81,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.occlusion = lerp( 1.0f, g_texOcclusion.Sample( g_SamplerAnisotropicWrap, input.tex ).r, g_occlusionStrength );
 	surface.microShadows = 0.0f;
 	surface.selfShadow = 1.0f;
+	surface.screenOcclusion = screenAmbientOcclusion( input.position.xy, surface.position );
 	surface.emissive = g_texEmissive.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * g_emissiveFactor;
 	surface.transmission = saturate( g_diffuseTransmissionFactor );
 	surface.transmissionColor = 0.0f;

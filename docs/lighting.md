@@ -25,6 +25,7 @@
    | `roughness` | шероховатость 0…1 «на глаз»; ниже 0,045 поднимается до 0,045, иначе блик точечного источника вырождается в точку |
    | `occlusion` | затенение освещения окружением 0…1 (ambient occlusion) |
    | `microShadows` | микротени прямого света по `occlusion`, 0…1: 0 — нет (модели, вода), у террейна — «Micro shadows» |
+   | `screenOcclusion` | экранное затенение окружением 0…1 (GTAO, `screenAmbientOcclusion` в `Shaders/ambient_occlusion.sh`, [ambient_occlusion.md](ambient_occlusion.md)); 1 — нет (вода); гасит, как `occlusion`, только свет неба, на микротени не влияет |
    | `selfShadow` | тень солнца от самой поверхности, которой нет в каскадах, 0…1: 1 — нет; у импостера дерева — крона по своим кадрам ([scatter.md](scatter.md), «Импостеры»); с каскадами — минимум |
    | `emissive` | свечение, линейное, прибавляется как есть |
    | `transmission` | доля рассеянного света, проходящая насквозь тонкой поверхности (листья, травинки), 0…1; 0 — не пропускает |
@@ -64,7 +65,7 @@
    свет до дна не доходит; AO 1 не гасит. Включает только террейн ([terrain.md](terrain.md), «Затенение окружением слоёв»).
 4. **Освещение окружением** — от процедурного неба или HDRI-панорамы ([sky.md](sky.md)): рассеянное — сферические гармоники по нормали,
    отражённое — префильтрованный cubemap по вектору отражения с таблицей BRDF (split-sum). Оба умножаются на
-   `occlusion`. У пропускающей поверхности ещё небо с обратной стороны: прошедший цвет × (по Ламберту — гармоники
+   `occlusion` × `screenOcclusion`. У пропускающей поверхности ещё небо с обратной стороны: прошедший цвет × (по Ламберту — гармоники
    по −N, как Subsurface Color у Two Sided Foliage в UE; пиком вперёд — небо за листом по взгляду: префильтрованный
    cubemap по −V с шириной пика — тот же GGX) в долях 1 − f и f. Диска солнца в cubemap нет (у панорамы он срезан
    `max_luminance`) — солнце не считается дважды.
@@ -267,6 +268,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.occlusion = 1.0f;
 	surface.microShadows = 0.0f;
 	surface.selfShadow = 1.0f;
+	surface.screenOcclusion = 1.0f;	// или screenAmbientOcclusion( input.position.xy, surface.position ) — ambient_occlusion.sh
 	surface.emissive = 0.0f;
 	return float4( evaluateLighting( surface ), 1.0f );
 }

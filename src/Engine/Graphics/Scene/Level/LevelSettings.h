@@ -273,6 +273,15 @@ enum class MeteringMode : int32_t
 constexpr uint32_t maxExposureCurveKeys = 8;
 
 // Строка PostProcessSettings; без неё — значения по умолчанию (как у Post Process Volume в UE)
+// Экранное затенение окружением (GTAO, AmbientOcclusion) — колонки ambient_occlusion_* строки PostProcessSettings, как
+// Ambient Occlusion в Post Process Volume UE; NULL — значения по умолчанию
+struct AmbientOcclusionSettings
+{
+	float intensity = 1.0f;	// 0 — без затенения (и без расчёта)
+	float radius = 1.0f;	// м: на каком расстоянии от точки поверхность её заслоняет
+	float power = 1.5f;		// видимость^power: сильнее в щелях, слабее на открытом
+};
+
 struct PostProcessSettings
 {
 	MeteringMode meteringMode = MeteringMode::autoHistogram;
@@ -291,6 +300,7 @@ struct PostProcessSettings
 	float bloomIntensity = 0.05f;		// Bloom Intensity — доля энергии над порогом в свечении; 0 — без bloom
 	float bloomThreshold = 1.0f;		// Bloom Threshold, яркость после экспозиции; < 0 — без порога
 	float purkinjeShift = 1.0f;			// сила ночного зрения 0…1; 0 — цвет как днём при любой яркости
+	AmbientOcclusionSettings ambientOcclusion;
 };
 
 // Имена в базе: тонмаппинг None, ACES, AgX (другое — AgX); замер Manual, AutoHistogram (другое — AutoHistogram)

@@ -243,6 +243,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	debugView( "Water on terrain", m_scene.terrain().properties(), "Show water" );
 	debugView( "Wind field", m_scene.terrain().properties(), "Show wind" );
 	debugView( "Shadow cascades", m_renderer.shadowProperties(), "Show cascades" );
+	debugView( "Ambient occlusion", m_renderer.postProcessProperties(), "Show ambient occlusion" );
 
 	m_GUI.setCommandNames( m_console.names() );
 	m_showGUI = m_config.showGUI();

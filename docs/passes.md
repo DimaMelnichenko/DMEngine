@@ -11,7 +11,9 @@
 3. Глубина четырёх каскадов теней — у каждого каскада свой сбор ([shadows.md](shadows.md)).
    Затем — объём тумана уровня (`Volumetric fog light`, `Volumetric fog integrate`): ему нужна карта теней, а проходам
    сцены — он ([fog.md](fog.md)).
-4. **`depthPrepass`** — только глубина непрозрачных и Masked, без цели цвета.
+4. **`depthPrepass`** — только глубина непрозрачных и Masked, без цели цвета. Сразу за ним — экранное затенение
+   окружением по этой глубине (compute «Ambient occlusion», [ambient_occlusion.md](ambient_occlusion.md)): его читают
+   материалы прохода цвета.
 5. **`opaque`** — непрозрачные и Masked с освещением. После prepass глубина проверяется на равенство без записи.
 6. **`opaqueDepthRead`** (только после prepass и если есть кому) — непрозрачные, которым нужна глубина сцены в шейдере
    (`Material::readsSceneDepth`; сейчас импостеры, [scatter.md](scatter.md)): глубина в проходе только для чтения и
