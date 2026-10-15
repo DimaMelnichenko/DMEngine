@@ -3244,10 +3244,28 @@ bool TerrainHydrology::Build::buildStones()
 	const int detailSide = static_cast<int>( detailTileCells * detailSamples + 2 );
 	const double detailStep = 1.0 / detailSamples;
 	std::vector<std::vector<double>> detailNearest( result.detailTiles.size() );
+	// Кусок русла (~dischargeBinLength вдоль отрезка) у текселя ручья — для расхода сети в детальной воде (ниже, после озёр)
+	struct DischargeBin
+	{
+		double discharge;	// расход сети, м³/с
+		double length;		// м вдоль оси
+		double flux;		// ∑ h₀ |u₀| по текселям куска × площадь текселя, м⁴/с
+		int upstream;		// кусок выше по тому же ручью; −1 — нет
+		int chain;			// ручей
+	};
+	int chainIndex = 0;
+	std::vector<DischargeBin> bins;
+	constexpr double dischargeBinLength = 0.5;	// м
+	// Множитель u₀ по расходу — в этих пределах (сухой кусок у кромки, текселей у стыка отрезков мало)
+	constexpr double minDischargeScale = 0.25;
+	constexpr double maxDischargeScale = 2.5;
+	constexpr double maxDischargeSpeed = 3.0;	// м/с: u₀ после множителя не быстрее (порог под самой водой)
+	std::vector<std::vector<int32_t>> detailBin( result.detailTiles.size() );
 	for( size_t t = 0; t < result.detailTiles.size(); ++t )
 	{
 		result.detailTiles[t].water.assign( static_cast<size_t>( detailSide ) * detailSide, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, 0.0f ) );
 		detailNearest[t].assign( static_cast<size_t>( detailSide ) * detailSide, std::numeric_limits<double>::infinity() );
+		detailBin[t].assign( static_cast<size_t>( detailSide ) * detailSide, -1 );
 	}
 	auto detailTexel = [&]( const DetailTile& tile, int i, int j )
 	{
@@ -3302,26 +3320,27 @@ bool TerrainHydrology::Build::buildStones()
 			if( points.size() < 2 )
 				continue;
 		}
-		// Уровень у точек — поле уровня сети. Ручей, впадающий в озеро, кончается на берегу (последний узел — уже в озере:
-		// там вода — поверхность озера; уровень у берега и так озёрный — подпор)
+		// Уровень у точек — поле уровня сети. Ручей, впадающий в озеро, в растре 1 м кончается на берегу (последний узел — уже в
+		// озере: там вода — поверхность озера; уровень у берега и так озёрный — подпор). В детальной воде — нет: берег озера по
+		// клеткам 1 м и урез по детальной земле не совпадают, и между концом ручья и водой озера оставалась отмель с озёрным
+		// уровнем (на устье ручья в пруд на Test — на 13 см ниже ручья, 2–3 см воды). Для течения детальной воды она сухая —
+		// стенка: ручей был заперт, его вода шла по руслу назад и крутилась. Поэтому отрезок до узла в озере детальная вода
+		// берёт (mouth): уровень по нему сходит к озёрному, а где озеро не ниже ручья — тексель озера (ниже)
 		std::vector<double> pointLevel( points.size() );
 		for( size_t i = 0; i < points.size(); ++i )
 			pointLevel[i] = level[nodes[i]];
-		if( lake[cellOf[nodes.back()]] )
-		{
-			points.pop_back();
-			nodes.pop_back();
-			pointLevel.pop_back();
-			if( points.size() < 2 )
-				continue;
-		}
+		const bool mouth = lake[cellOf[nodes.back()]];
+		if( mouth && points.size() < 3 )
+			continue;
 
+		int previousBin = -1;
 		for( size_t i = 0; i + 1 < points.size(); ++i )
 		{
 			const int k = nodes[i];
 			const int d = nodes[i + 1];
 			const Point a = points[i];
 			const Point b = points[i + 1];
+			const bool coarse = !( mouth && i + 2 == points.size() );	// отрезок в озеро — только детальной воде
 			const double radius = std::max( reach[k], reach[d] ) / cell + 0.5;
 			const int c0 = static_cast<int>( std::max( std::floor( std::min( a.x, b.x ) - radius ), 0.0 ) );
 			const int c1 = static_cast<int>( std::min( std::ceil( std::max( a.x, b.x ) + radius ), n - 1.0 ) );
@@ -3331,7 +3350,17 @@ bool TerrainHydrology::Build::buildStones()
 			const double sy = b.y - a.y;
 			const double length2 = std::max( sx * sx + sy * sy, 1e-9 );
 			const double length = std::max( std::sqrt( length2 ), 1e-6 );
-			for( int row = r0; row <= r1; ++row )
+			// Куски отрезка для расхода сети в детальной воде
+			const double segmentLength = length * cell;
+			const int binCount = std::max( 1, static_cast<int>( std::lround( segmentLength / dischargeBinLength ) ) );
+			const int firstBin = static_cast<int>( bins.size() );
+			for( int bin = 0; bin < binCount; ++bin )
+			{
+				const double share = ( bin + 0.5 ) / binCount;
+				bins.push_back( { q[k] + ( q[d] - q[k] ) * share, segmentLength / binCount, 0.0, previousBin, chainIndex } );
+				previousBin = static_cast<int>( bins.size() ) - 1;
+			}
+			for( int row = coarse ? r0 : r1 + 1; row <= r1; ++row )
 			{
 				for( int col = c0; col <= c1; ++col )
 				{
@@ -3384,6 +3413,7 @@ bool TerrainHydrology::Build::buildStones()
 							if( distance >= radius || distance >= detailNearest[slice][index] )
 								continue;
 							detailNearest[slice][index] = distance;
+							detailBin[slice][index] = firstBin + std::min( static_cast<int>( t * binCount ), binCount - 1 );
 							const double v = speed[k] + ( speed[d] - speed[k] ) * t;
 							DirectX::XMFLOAT4& texel = tile.water[index];
 							texel.x = static_cast<float>( pointLevel[i] + ( pointLevel[i + 1] - pointLevel[i] ) * levelShare( k, d, t ) );
@@ -3397,8 +3427,9 @@ bool TerrainHydrology::Build::buildStones()
 			}
 		}
 
+		++chainIndex;
 		++result.streamCount;
-		result.points += points.size();
+		result.points += points.size() - ( mouth ? 1 : 0 );
 	}
 
 	// Озеро — по своему уровню над прорезанной землёй: из клеток низины ниже уровня по соседям ниже уровня в той же низине
@@ -3501,9 +3532,88 @@ bool TerrainHydrology::Build::buildStones()
 						if( candidate > -1e8f && !( own.x > -1e8f && own.x < candidate - 0.01f ) )
 							lakeLevel = candidate;
 					}
-					if( lakeLevel > -1e8f && ( texel.x <= -1e8f || lakeLevel >= texel.x ) )
+					// Тексель ручья не уступает озеру там, где вода озера мельче flowMinDepth: для течения такое озеро — берег, и
+					// порог детальной земли в устье под самой водой (уровень ручья у берега уже озёрный — подпор) запирал ручей
+					const bool shallowLake = texel.w > 0.0f && lakeLevel - tile.heights[index] < flowMinDepth;
+					if( lakeLevel > -1e8f && ( texel.x <= -1e8f || lakeLevel >= texel.x ) && !shallowLake )
 						texel = DirectX::XMFLOAT4( lakeLevel, 0.0f, 0.0f, 0.0f );
 				}
+			}
+		}
+	}
+
+	// Расход сети в детальной воде. u₀ — скорость по Маннингу из параметров русла (ширина, глубина, уклон у узла), а глубина
+	// детальной земли скачет — плёсы, пороги, камни дна, ширина русла по 0,25 м, — и расход h₀ u₀ через сечение сам по себе
+	// не сохраняется. Течение (water_flow.cs) держит ∇·(h u) = ∇·(h₀ u₀), и каждый скачок становился ложным источником или
+	// стоком: вода шла по ручью назад и закручивалась (устье ручья в пруд на Test). Поэтому u₀ куска русла нормируется: расход
+	// ∫ h₀ |u₀| через сечение — по ручью как расход сети q (там, где он растёт, — притоки), над порогом вода быстрее, на плёсе
+	// медленнее, как в настоящем ручье. Средняя скорость ручья — прежняя: расход сети × его среднее отношение ∫ h₀ |u₀| / q
+	// (детальное сечение русла больше оценки по Маннингу, и расход сети замедлил бы ручьи вдвое — с ними пену и рябь). h₀ — как
+	// в mainFlowInit: от уровня до детальной земли (без камней), не толще текущего слоя. Множитель сглажен с соседними кусками
+	// ручья и ограничен: тексели у стыков отрезков и кромки делят куски неровно
+	{
+		const double texelArea = detailStep * cell * detailStep * cell;
+		const double layer = water.flow.layer;
+		for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
+		{
+			const DetailTile& tile = result.detailTiles[tileIndex];
+			for( size_t index = 0; index < tile.water.size(); ++index )
+			{
+				const int bin = detailBin[tileIndex][index];
+				const DirectX::XMFLOAT4& texel = tile.water[index];
+				if( bin < 0 || texel.w <= 0.0f || texel.x <= -1e8f )
+					continue;
+				const double depth = std::min( std::max( static_cast<double>( texel.x ) - tile.heights[index], 0.0 ), layer );
+				bins[bin].flux += depth * std::hypot( texel.y, texel.z ) * texelArea;
+			}
+		}
+		std::vector<double> chainFlux( chainIndex, 0.0 ), chainDischarge( chainIndex, 0.0 );
+		for( const DischargeBin& bin : bins )
+			if( bin.flux > 0.0 )
+			{
+				chainFlux[bin.chain] += bin.flux;
+				chainDischarge[bin.chain] += bin.discharge * bin.length;
+			}
+		std::vector<double> scale( bins.size(), 1.0 );
+		for( size_t b = 0; b < bins.size(); ++b )
+		{
+			const double section = bins[b].flux / bins[b].length;
+			const int chain = bins[b].chain;
+			if( section > 1e-6 && chainDischarge[chain] > 0.0 )
+			{
+				const double target = bins[b].discharge * chainFlux[chain] / chainDischarge[chain];
+				scale[b] = std::clamp( target / section, minDischargeScale, maxDischargeScale );
+			}
+		}
+		// Сглаживание по ручью: кусок, выше и ниже (ниже — тот, чей upstream — этот)
+		std::vector<int> downstream( bins.size(), -1 );
+		for( size_t b = 0; b < bins.size(); ++b )
+			if( bins[b].upstream >= 0 )
+				downstream[bins[b].upstream] = static_cast<int>( b );
+		std::vector<double> smooth( bins.size() );
+		for( size_t b = 0; b < bins.size(); ++b )
+		{
+			double sum = 2.0 * scale[b];
+			double weight = 2.0;
+			if( bins[b].upstream >= 0 )
+				sum += scale[bins[b].upstream], weight += 1.0;
+			if( downstream[b] >= 0 )
+				sum += scale[downstream[b]], weight += 1.0;
+			smooth[b] = sum / weight;
+		}
+		for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
+		{
+			DetailTile& tile = result.detailTiles[tileIndex];
+			for( size_t index = 0; index < tile.water.size(); ++index )
+			{
+				const int bin = detailBin[tileIndex][index];
+				DirectX::XMFLOAT4& texel = tile.water[index];
+				if( bin < 0 || texel.w <= 0.0f || texel.x <= -1e8f )
+					continue;
+				const double speed = std::hypot( texel.y, texel.z );
+				const double factor = speed > 0.0 ? std::min( smooth[bin], std::max( maxDischargeSpeed, speed ) / speed ) : 1.0;
+				texel.y = static_cast<float>( texel.y * factor );
+				texel.z = static_cast<float>( texel.z * factor );
 			}
 		}
 	}

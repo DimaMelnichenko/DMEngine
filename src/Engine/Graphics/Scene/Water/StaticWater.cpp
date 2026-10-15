@@ -35,7 +35,7 @@ constexpr uint32_t validationFlowSteps = 20;	// под GPU-based validation ша
 constexpr uint32_t validationDetailFlowSteps = 0;
 constexpr uint32_t validationDetailFlowBlocks = 256;
 constexpr uint32_t flowTile = 8;				// тайл счёта течения — группа потоков 8 × 8 (water_flow.cs)
-constexpr float flowMinDepth = 0.05f;			// м: мельче — берег (скорость 0)
+constexpr float flowMinDepth = TerrainHydrology::flowMinDepth;			// м: мельче — берег (скорость 0)
 constexpr float flowScreen = 1e-3f;				// экранирование давления, м: озеро без истока тоже решается
 constexpr float maxViscosityShare = 0.2f;		// ν · dt / l² — не больше: явная вязкость устойчива
 // Детальная сетка: шаг — доля шага сетки 1 м (ячейка вчетверо мельче, перенос за шаг — не дальше пары ячеек при 2 м/с)
@@ -1083,52 +1083,63 @@ void StaticWater::buildDetailSurface()
 
 bool StaticWater::exportDetail( const std::string& prefix, std::string& reason )
 {
-	// Детальная вода: плитки — в растр мира (внутренние тексели, без поля), строка 0 — дальний край по z
+	// Детальная вода: плитки — в растр мира (внутренние тексели, без поля), строка 0 — дальний край по z. Итог расчёта
+	// (уровень, течение, глубина) и его вход из конвейера (течение по Маннингу u₀ и гидравлический радиус R русла)
 	if( m_detailTileCount == 0 )
 		return true;
-	std::vector<DMD3D::SubresourceCopy> copies;
-	std::vector<uint8_t> bytes;
-	if( !DMD3D::instance().captureTexture( m_detailWater, copies, bytes ) || copies.size() < m_detailTileCount )
-	{
-		reason = "water detail readback failed";
-		return false;
-	}
 	const uint32_t inner = m_detailSide - 2;
 	const uint32_t side = static_cast<uint32_t>( std::lround( m_field->terrain->terrainHeight().worldSize / m_detailTileSize ) ) * inner;
-	std::vector<float> detail[4];
-	detail[0].assign( static_cast<size_t>( side ) * side, -1e9f );
-	for( int c = 1; c < 4; ++c )
-		detail[c].assign( static_cast<size_t>( side ) * side, 0.0f );
-	for( uint32_t t = 0; t < m_detailTileCount; ++t )
+	const auto exportTexture = [&]( const Texture& texture, const float fill[4], const char* const names[4], std::string& error )
 	{
-		for( uint32_t j = 1; j <= inner; ++j )
+		std::vector<DMD3D::SubresourceCopy> copies;
+		std::vector<uint8_t> bytes;
+		if( !DMD3D::instance().captureTexture( texture, copies, bytes ) || copies.size() < m_detailTileCount )
 		{
-			const float* texel = reinterpret_cast<const float*>( bytes.data() + copies[t].offset + j * copies[t].rowPitch );
-			const uint32_t z = m_detailCoords[t].y * inner + j - 1;
-			if( z >= side )
-				continue;
-			for( uint32_t i = 1; i <= inner; ++i )
-			{
-				const uint32_t x = m_detailCoords[t].x * inner + i - 1;
-				if( x >= side )
-					continue;
-				const size_t index = static_cast<size_t>( side - 1 - z ) * side + x;
-				for( int c = 0; c < 4; ++c )
-					detail[c][index] = texel[i * 4 + c];
-			}
-		}
-	}
-	const char* detailNames[4] = { "_detail_level.dds", "_detail_vx.dds", "_detail_vz.dds", "_detail_depth.dds" };
-	for( int c = 0; c < 4; ++c )
-	{
-		const std::string file = prefix + detailNames[c];
-		if( !GpuImages::saveFloatDDS( std::wstring( file.begin(), file.end() ), side, side, detail[c].data() ) )
-		{
-			reason = "cannot write " + file;
+			error = "water detail readback failed";
 			return false;
 		}
-	}
-	LOG( "Water detail state: " + prefix + "_detail_level.dds, _detail_vx.dds, _detail_vz.dds, _detail_depth.dds" );
+		std::vector<float> detail[4];
+		for( int c = 0; c < 4; ++c )
+			detail[c].assign( static_cast<size_t>( side ) * side, fill[c] );
+		for( uint32_t t = 0; t < m_detailTileCount; ++t )
+		{
+			for( uint32_t j = 1; j <= inner; ++j )
+			{
+				const float* texel = reinterpret_cast<const float*>( bytes.data() + copies[t].offset + j * copies[t].rowPitch );
+				const uint32_t z = m_detailCoords[t].y * inner + j - 1;
+				if( z >= side )
+					continue;
+				for( uint32_t i = 1; i <= inner; ++i )
+				{
+					const uint32_t x = m_detailCoords[t].x * inner + i - 1;
+					if( x >= side )
+						continue;
+					const size_t index = static_cast<size_t>( side - 1 - z ) * side + x;
+					for( int c = 0; c < 4; ++c )
+						detail[c][index] = texel[i * 4 + c];
+				}
+			}
+		}
+		for( int c = 0; c < 4; ++c )
+		{
+			if( !names[c] )
+				continue;
+			const std::string file = prefix + names[c];
+			if( !GpuImages::saveFloatDDS( std::wstring( file.begin(), file.end() ), side, side, detail[c].data() ) )
+			{
+				error = "cannot write " + file;
+				return false;
+			}
+		}
+		return true;
+	};
+	const float fill[4] = { -1e9f, 0.0f, 0.0f, 0.0f };
+	const char* const stateNames[4] = { "_detail_level.dds", "_detail_vx.dds", "_detail_vz.dds", "_detail_depth.dds" };
+	const char* const inputNames[4] = { nullptr, "_detail_u0x.dds", "_detail_u0z.dds", "_detail_radius.dds" };
+	if( !exportTexture( m_detailWater, fill, stateNames, reason ) || !exportTexture( m_detailStatic, fill, inputNames, reason ) )
+		return false;
+	LOG( "Water detail state: " + prefix + "_detail_level.dds, _detail_vx.dds, _detail_vz.dds, _detail_depth.dds, _detail_u0x.dds, "
+		 "_detail_u0z.dds, _detail_radius.dds" );
 	return true;
 }
 
