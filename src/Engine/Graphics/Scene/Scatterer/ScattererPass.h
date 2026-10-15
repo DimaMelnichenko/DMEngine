@@ -4,6 +4,7 @@
 #include "Utils\utilites.h"
 #include "DMComputeShader.h"
 #include "RenderView.h"
+#include "Shaders\scatter_constants.h"
 
 namespace GS
 {
@@ -22,13 +23,14 @@ namespace GS
 class ScatterPass
 {
 public:
-	static constexpr uint32_t maxLods = 4;
-	static constexpr uint32_t maxVariants = 8;
+	static constexpr uint32_t maxLods = SCATTER_MAX_LODS;
+	static constexpr uint32_t maxVariants = SCATTER_MAX_VARIANTS;
 	static constexpr uint32_t pairCount = maxVariants * maxLods;	// пар «вариант × LOD»
-	static constexpr uint32_t maxLists = pairCount * 2;				// обычные списки и списки перехода; MAX_LISTS в Shaders\scatter.cs
-	static constexpr uint32_t maxSections = 4;	// MAX_SECTIONS в Shaders\scatter.cs
-	static constexpr uint32_t maxViews = maxRenderViews;	// MAX_VIEWS
-	static constexpr uint32_t maxGroups = maxLists * maxSections;	// MAX_GROUPS: секций списков — команд на вид
+	static constexpr uint32_t maxLists = pairCount * 2;				// обычные списки и списки перехода
+	static constexpr uint32_t maxSections = SCATTER_MAX_SECTIONS;
+	static constexpr uint32_t maxViews = maxRenderViews;
+	static constexpr uint32_t maxGroups = maxLists * maxSections;	// секций списков — команд на вид
+	static_assert( maxLists == SCATTER_MAX_LISTS && maxGroups == SCATTER_MAX_GROUPS, "Shaders\\scatter_constants.h" );
 	// Ёмкость пула инстансов слоя и списков индексов вида; делится между списками по ожидаемому числу инстансов
 	static constexpr uint32_t capacity = 262144;
 	// Постоянный слой: ячеек по стороне кластера (PLACED_CLUSTER_CELLS в Shaders\scatter.cs) и наибольший постоянный пул
@@ -148,52 +150,9 @@ public:
 	uint32_t groupCapacity( uint32_t group ) const { return m_groupCapacity[group]; }
 
 public:
-	// Параметры слоя для Shaders\scatter.cs (cbuffer ScatterLayerBuffer, b4)
-	struct alignas( 16 ) PopulateParams
-	{
-		float nearBorder;		// кольцо вокруг камеры, метры
-		float farBorder;
-		float nearFade;			// ширина плавного исчезания у ближней и дальней границы
-		float farFade;
-		float sizeMultiplier;
-		float cellSize;			// шаг сетки, метры
-		float jitter;			// смещение внутри ячейки, доля шага
-		float alignToTerrain;	// 1 — ось Y инстанса по нормали террейна
-		DirectX::XMFLOAT3 rotationRange;	// предел случайного поворота вокруг осей X, Y, Z, радианы
-		float castShadow;		// 1 — слой отбрасывает тень солнца (Cast Shadow в UE): инстансы попадают в списки видов теней
-		uint32_t variantCount;	// заполняет createBuffers()
-		uint32_t itemCapacity;		// ёмкость пула инстансов — createBuffers()
-		uint32_t transitionCapacity;// ёмкость пула перехода — createBuffers()
-		uint32_t indexStride;		// индексов на вид — createBuffers()
-		// Постоянный слой — createPersistent(): кластеров по X и всего (0 — слой кольцевой), ёмкость постоянного пула,
-		// запас границ кластера по XZ, м
-		uint32_t clustersX;
-		uint32_t clusterCount;
-		uint32_t placedCapacity;
-		float clusterMargin;
-		float sizeVariation;	// разброс размера: случайный множитель от 1 − разброс до 1
-		// Цвет земли у растения (Shaders\scatter_ground.sh): доля у корня, высота перехода, м, доля вдали, разброс яркости
-		float groundColor;
-		float groundColorHeight;
-		float groundColorFar;
-		float colorVariation;
-		// Края кольца и прореживание (Shaders\scatter.cs: ringFade, thinOut): разброс своих дальностей исчезания по полосе
-		// исчезания (0…1), начало прореживания, м, и доля убранных у дальней границы
-		float edgeSpread;
-		float thinStart;
-		float thinning;
-		float ditherFade;	// 1 — у краёв кольца исчезание долей пикселей (дизеринг): экземпляры полосы — в пуле перехода
-		// Куртины (ScatterLayerSettings::patchScale, patchStrength): размер пятен шума, м (0 — без куртин), и сила 0…1
-		float patchScale;
-		float patchStrength;
-		// Фильтр по слоям земли (ScatterLayerSettings::layerFilter): бит — слой материала террейна, на котором слой растёт,
-		// бит 31 — фильтр включён (0 — без фильтра), и порог — доля этих слоёв, при которой плотность вдвое меньше
-		uint32_t groundLayers;
-		float groundThreshold;
-		float groundPreferences;	// 1 — у какого-то варианта предпочтение слоёв земли (createBuffers): выбор по весам в точке
-		float padding[2];
-	} m_populateParams;
-	static_assert( sizeof( PopulateParams ) == 144, "ScatterLayerBuffer layout" );
+	// Параметры слоя для Shaders\scatter.cs — ScatterLayerBuffer (b4, Shaders\scatter_constants.h)
+	using PopulateParams = ScatterLayerBuffer;
+	PopulateParams m_populateParams = {};
 
 	PopulateParams& populateParams();
 
@@ -230,25 +189,8 @@ private:
 	static constexpr uint32_t commandStride = 24;	// root-константа + D3D12_DRAW_INDEXED_ARGUMENTS (COMMAND_STRIDE)
 	static constexpr uint32_t countersSize = ( 2 + maxViews * maxLists + maxViews * maxGroups ) * sizeof( uint32_t );
 
-	// cbuffer ScatterVariantsBuffer в Shaders\scatter.cs (b7)
-	struct alignas( 16 ) VariantsBuffer
-	{
-		// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом, w — с этого расстояния у
-		// видов теней последний LOD (Variant::shadowLastLodDistance; 0 — как у главного)
-		DirectX::XMFLOAT4 variants[maxVariants];
-		DirectX::XMFLOAT4 lodEnd[maxVariants];		// дальности LOD 0…2 варианта, м
-		DirectX::XMFLOAT4 shadowLodEnd[maxVariants];	// они же у видов теней (setShadowLods)
-		DirectX::XMFLOAT4 shadowCasting[maxVariants];	// x — с этого LOD у видов теней экземпляра нет (setShadowLods)
-		DirectX::XMFLOAT4 bounds[maxVariants];		// сфера модели варианта (Variant::bounds)
-		DirectX::XMFLOAT4 footprints[maxVariants];	// след основания варианта (Variant::footprint)
-		// Своя раскладка: x — вес (≥ 0), y — × размер слоя, z — разброс размера (< 0 — слоя), w — наклон по земле (< 0 —
-		// слоя, 0 / 1)
-		DirectX::XMFLOAT4 placement[maxVariants];
-		// x — группа куртин (номер узора шума), y — биты слоёв земли предпочтения, z — его сила (биты float)
-		uint32_t info[maxVariants][4];
-		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
-		uint32_t lists[maxLists][4];
-	};
+	// Варианты и списки — ScatterVariantsBuffer (b7, Shaders\scatter_constants.h)
+	using VariantsBuffer = ScatterVariantsBuffer;
 
 	// Буфер с UAV для раскладки и SRV для вершинного шейдера
 	struct PoolBuffer

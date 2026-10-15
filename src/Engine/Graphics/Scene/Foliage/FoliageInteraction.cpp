@@ -61,7 +61,7 @@ bool FoliageInteraction::initialize( const TerrainHeightSource* terrain )
 	m_terrain = terrain;
 	DMD3D& d3d = DMD3D::instance();
 	if( !m_shader.Initialize( "Shaders\\foliage_interaction.cs", "main" ) ||
-		!d3d.createShaderConstantBuffer( sizeof( Parameters ), m_constants ) )
+		!d3d.createShaderConstantBuffer( sizeof( FoliageInteractionBuffer ), m_constants ) )
 	{
 		LOG( "Foliage interaction: shader or constants are not created" );
 		return false;
@@ -167,13 +167,11 @@ void FoliageInteraction::compute( const FrameContext& frame )
 		return;
 	}
 
-	Parameters params = {};
-	params.originX = m_origin[0];
-	params.originZ = m_origin[1];
+	FoliageInteractionBuffer params = {};
+	params.origin = XMINT2( m_origin[0], m_origin[1] );
 	// Первый кадр (или снова включили): прошлого поля нет — прошлое окно далеко, все клетки начинаются с нуля
 	const int32_t shift = m_cleared ? 0 : static_cast<int32_t>( fieldResolution ) * 4;
-	params.previousOriginX = m_previousOrigin[0] + shift;
-	params.previousOriginZ = m_previousOrigin[1] + shift;
+	params.previousOrigin = XMINT2( m_previousOrigin[0] + shift, m_previousOrigin[1] + shift );
 	params.cellSize = fieldCellSize;
 	// Распрямление: за «Recovery time» остаётся 5 % (e^−3)
 	const float recovery = std::max( m_properties["Recovery time"].data<float>(), 0.01f );
@@ -192,7 +190,7 @@ void FoliageInteraction::compute( const FrameContext& frame )
 	DMD3D& d3d = DMD3D::instance();
 	const uint32_t previous = m_current;
 	m_current ^= 1;
-	Device::updateResourceData<Parameters>( m_constants, params );
+	Device::updateResourceData<FoliageInteractionBuffer>( m_constants, params );
 	d3d.beginPass( PassDesc{ "Foliage interaction", {}, {}, 0, 0, { { &m_fieldSRV[previous], "foliage interaction (previous)" } },
 							 { { &m_fieldUAV[m_current], "foliage interaction" } } } );
 	d3d.setConstantBuffer( 4, m_constants );

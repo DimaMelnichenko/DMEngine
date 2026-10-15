@@ -9,20 +9,8 @@
 
 #include "bindless.sh"
 
-static const uint maxInteractors = 8;
 
-cbuffer FoliageInteractionBuffer : register( b4 )
-{
-	int2   g_origin;			// первая клетка окна кадра
-	int2   g_previousOrigin;	// и прошлого
-	float  g_cellSize;			// м
-	float  g_keep;				// доля следа, что остаётся за кадр
-	uint   g_resolution;
-	uint   g_interactorCount;
-	float4 g_segments[maxInteractors];	// xy — начало, zw — конец капсулы, XZ мира
-	float4 g_shapes[maxInteractors];	// x — радиус, м; y — сила 0…1; zw — направление движения × «Forward push»
-	float4 g_edges[maxInteractors];		// x — ширина мягкого края, м («Edge width»)
-};
+#include "foliage_interaction_constants.h"
 
 DM_SRV( Texture2D<float2>, g_previousField, 0 );
 DM_UAV( RWTexture2D<float2>, g_field, 0 );

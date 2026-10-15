@@ -37,8 +37,8 @@ bool Scatterer::Initialize()
 	if( !m_commandShader.Initialize( "Shaders\\scatter.cs", "buildCommands" ) )
 		return false;
 
-	return DMD3D::instance().createShaderConstantBuffer( sizeof( TerrainParams ), m_terrainBuffer ) &&
-		   DMD3D::instance().createShaderConstantBuffer( sizeof( FrustumParams ), m_frustumBuffer );
+	return DMD3D::instance().createShaderConstantBuffer( sizeof( TerrainHeightBuffer ), m_terrainBuffer ) &&
+		   DMD3D::instance().createShaderConstantBuffer( sizeof( FrustumBuffer ), m_frustumBuffer );
 }
 
 namespace
@@ -649,12 +649,12 @@ void Scatterer::compute( const FrameContext& frame )
 		return;
 
 	const TerrainHeight terrain = m_terrain->terrainHeight();
-	Device::updateResource<TerrainParams>( m_terrainBuffer, [&terrain]( TerrainParams& params )
+	Device::updateResource<TerrainHeightBuffer>( m_terrainBuffer, [&terrain]( TerrainHeightBuffer& params )
 	{
-		params.worldSize = terrain.worldSize;
-		params.heightMultiplier = terrain.heightMultiplier;
-		params.heightOffset = terrain.heightOffset;
-		params.detailTileSize = terrain.detailTileSize;
+		params.terrainWorldSize = terrain.worldSize;
+		params.terrainHeightMultiplier = terrain.heightMultiplier;
+		params.terrainHeightOffset = terrain.heightOffset;
+		params.terrainDetailTile = terrain.detailTileSize;
 	} );
 	DMD3D::instance().setConstantBuffer( 5, m_terrainBuffer );
 
@@ -665,7 +665,7 @@ void Scatterer::compute( const FrameContext& frame )
 	// Виды кадра: главный и каскады теней. Дальности LOD у видов теней — у вариантов (ScatterPass::setShadowLods):
 	// множитель набора × множитель модели, «Shadow min LOD» модели, импостер без тени
 	const float shadowLodScale = m_properties["Shadow LOD scale"].data<float>();
-	Device::updateResource<FrustumParams>( m_frustumBuffer, [&]( FrustumParams& params )
+	Device::updateResource<FrustumBuffer>( m_frustumBuffer, [&]( FrustumBuffer& params )
 	{
 		params = {};
 		const uint32_t count = frame.viewCount ? std::min( frame.viewCount, maxRenderViews ) : 1;
@@ -673,7 +673,7 @@ void Scatterer::compute( const FrameContext& frame )
 		{
 			const RenderView& view = frame.viewCount ? *frame.views[v] : frame.view;
 			for( int i = 0; i < 6; ++i )
-				XMStoreFloat4( &params.planes[v * 6 + i], view.frustum.planes()[i] );
+				XMStoreFloat4( &params.frustumPlanes[v * 6 + i], view.frustum.planes()[i] );
 			params.viewParams[v] = XMFLOAT4( 0.0f, 0.0f, view.cascadeNear, view.cascadeFar );
 			params.viewDepths[v] = XMFLOAT4( view.cascadeNear, view.cascadeDepthFar, 0.0f, 0.0f );
 		}

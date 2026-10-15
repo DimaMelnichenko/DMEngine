@@ -35,44 +35,7 @@ static const uint particleStateInstances = 8;
 static const uint particleStateCommandCount = 24;
 static const uint particleStateDead = 28;
 
-// Раскладка — ParticleSystem::EmitterParameters
-cbuffer ParticleEmitterBuffer : register( b4 )
-{
-	float3 g_origin;			// экземпляр, м мира
-	uint   g_spawn;				// particleSpawn*
-	float  g_radius;
-	float  g_heightMin;
-	float  g_heightMax;
-	uint   g_capacity;			// частиц в пуле
-	uint   g_spawnCount;		// попыток рождения в этом кадре
-	uint   g_frame;				// номер шага симуляции — зерно случайных чисел
-	uint   g_emitterIndex;
-	float  g_timeStep;			// с
-	float  g_lifetimeMin;
-	float  g_lifetimeMax;
-	float  g_sizeStart;
-	float  g_sizeEnd;
-	float3 g_color;
-	float  g_alpha;
-	float3 g_velocity;
-	float  g_velocitySpread;
-	float  g_gravity;
-	float  g_drag;
-	float  g_wind;
-	float  g_curl;
-	float  g_curlScale;
-	float  g_waterFlow;
-	float  g_waterSpeed;
-	uint   g_collide;
-	float  g_fadeIn;
-	float  g_fadeOut;
-	float  g_transmission;
-	float  g_emissive;
-	uint   g_shape;				// particleShape*
-	uint   g_hasMask;
-	uint   g_hasTerrain;
-	float  g_viewportHeight;	// пикселей кадра по вертикали — наименьший размер частицы на экране
-};
+#include "particle_emitter_constants.h"
 
 uint particleHash( uint value )
 {

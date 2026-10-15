@@ -14,13 +14,7 @@
 #include "terrain_detail.sh"
 #include "terrain_layers.sh"
 
-cbuffer TerrainHeightBuffer : register( b5 )
-{
-	float g_terrainWorldSize;
-	float g_terrainHeightMultiplier;
-	float g_terrainHeightOffset;
-	float g_terrainDetailTile;	// сторона детальной плитки, м (terrain_detail.sh); 0 — детальной земли нет
-};
+#include "terrain_height_constants.h"
 
 DM_SRV( Texture2D, g_terrainHeightMap, 0 );
 DM_SRV( Texture2D, g_terrainFoliageClear, 1 );

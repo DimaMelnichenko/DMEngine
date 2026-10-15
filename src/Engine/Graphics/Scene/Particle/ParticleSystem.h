@@ -8,6 +8,8 @@
 #include "Level\LevelSettings.h"
 #include "Terrain\GridMesh.h"
 #include "Terrain\TerrainHeightSource.h"
+#include "Shaders\particle_emitter_constants.h"
+#include "Shaders\terrain_height_constants.h"
 
 namespace GS
 {
@@ -48,53 +50,7 @@ public:
 	static bool placed( const Settings& settings );
 
 private:
-	// Раскладка — cbuffer ParticleEmitterBuffer (b4) в Shaders/particles.sh
-	struct alignas( 16 ) EmitterParameters
-	{
-		DirectX::XMFLOAT3 origin;
-		uint32_t spawn;
-		float radius;
-		float heightMin;
-		float heightMax;
-		uint32_t capacity;
-		uint32_t spawnCount;
-		uint32_t frame;
-		uint32_t emitterIndex;
-		float timeStep;
-		float lifetimeMin;
-		float lifetimeMax;
-		float sizeStart;
-		float sizeEnd;
-		DirectX::XMFLOAT3 color;
-		float alpha;
-		DirectX::XMFLOAT3 velocity;
-		float velocitySpread;
-		float gravity;
-		float drag;
-		float wind;
-		float curl;
-		float curlScale;
-		float waterFlow;
-		float waterSpeed;
-		uint32_t collide;
-		float fadeIn;
-		float fadeOut;
-		float transmission;
-		float emissive;
-		uint32_t shape;
-		uint32_t hasMask;
-		uint32_t hasTerrain;
-		float viewportHeight;
-	};
 
-	// cbuffer TerrainHeightBuffer (b5) в Shaders/terrain_height.sh
-	struct alignas( 16 ) TerrainParameters
-	{
-		float worldSize;
-		float heightMultiplier;
-		float heightOffset;
-		float detailTileSize;	// детальная земля у русел (terrain_detail.sh); 0 — нет
-	};
 
 	struct Emitter
 	{

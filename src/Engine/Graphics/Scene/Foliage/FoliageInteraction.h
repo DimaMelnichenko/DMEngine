@@ -4,6 +4,7 @@
 #include "SceneObject.h"
 #include "DMComputeShader.h"
 #include "Terrain\TerrainHeightSource.h"
+#include "Shaders\foliage_interaction_constants.h"
 
 namespace GS
 {
@@ -31,7 +32,7 @@ public:
 		float strength = 1.0f;
 		DirectX::XMFLOAT2 direction = DirectX::XMFLOAT2( 0.0f, 0.0f );
 	};
-	static constexpr uint32_t maxInteractors = 8;
+	static constexpr uint32_t maxInteractors = FOLIAGE_MAX_INTERACTORS;
 
 	FoliageInteraction();
 	// terrain — высота земли под камерой (CPU): камера давит траву, только когда она у земли
@@ -49,21 +50,6 @@ public:
 	DirectX::XMFLOAT4 frameParameters() const;
 
 private:
-	// Раскладка — cbuffer FoliageInteractionBuffer (b4) в Shaders/foliage_interaction.cs
-	struct alignas( 16 ) Parameters
-	{
-		int32_t originX;			// первая клетка окна кадра
-		int32_t originZ;
-		int32_t previousOriginX;	// и прошлого: клетка поля, ушедшая из окна, начинается с нуля
-		int32_t previousOriginZ;
-		float cellSize;
-		float keep;					// доля следа, что остаётся за кадр
-		uint32_t resolution;
-		uint32_t interactorCount;
-		DirectX::XMFLOAT4 segments[maxInteractors];	// xy — начало, zw — конец, XZ мира
-		DirectX::XMFLOAT4 shapes[maxInteractors];	// x — радиус, y — сила, zw — направление движения
-		DirectX::XMFLOAT4 edges[maxInteractors];	// x — ширина мягкого края, м; yzw — запас
-	};
 
 	bool enabled() const;
 	// Камера у земли — след от прошлого места ног к нынешнему

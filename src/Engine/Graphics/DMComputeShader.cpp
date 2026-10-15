@@ -25,7 +25,7 @@ bool DMComputeShader::Initialize( const std::string& file_name, const std::strin
 		return false;
 	DMD3D::instance().warmComputePipeline( m_computeShader );
 
-	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( ConstantType ), m_constantBuffer ) )
+	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( GS::ThreadsData ), m_constantBuffer ) )
 		return false;
 
 	return true;
@@ -57,7 +57,7 @@ void DMComputeShader::Dispatch( uint32_t numElements, float elapsed_time )
 	///////////////////////////////////
 	// set contant
 
-	ConstantType constantType = {};
+	GS::ThreadsData constantType = {};
 	constantType.groupDim = group_size_X;
 	constantType.rect.x = numElements;
 	constantType.elapsedTime = elapsed_time;
@@ -84,7 +84,7 @@ void DMComputeShader::Dispatch( uint16_t width, uint16_t height, float elapsed_t
 	///////////////////////////////////
 	// set contant
 
-	ConstantType constantType = {};
+	GS::ThreadsData constantType = {};
 	constantType.groupDim = group_size_X;
 	constantType.rect.x = width;
 	constantType.rect.y = height;
@@ -105,7 +105,7 @@ void DMComputeShader::dispatchGroups( uint32_t x, uint32_t y, uint32_t z )
 	DMD3D::instance().dispatch( x, y, z );
 }
 
-void DMComputeShader::setConstants( ConstantType& constantType )
+void DMComputeShader::setConstants( GS::ThreadsData& constantType )
 {
 	Device::updateResourceData( m_constantBuffer, constantType );
 

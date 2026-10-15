@@ -115,9 +115,9 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 		m_variants.bounds[v] = variant.bounds;
 		m_variants.footprints[v] = variant.footprint;
 		m_variants.placement[v] = XMFLOAT4( std::max( variant.weight, 0.0f ), variant.sizeMultiplier, variant.sizeVariation, variant.alignToTerrain );
-		m_variants.info[v][0] = variant.patchGroup;
-		m_variants.info[v][1] = variant.groundLayers;
-		m_variants.info[v][2] = asUint( std::clamp( variant.groundPreference, 0.0f, 1.0f ) );
+		m_variants.variantInfo[v].x = variant.patchGroup;
+		m_variants.variantInfo[v].y = variant.groundLayers;
+		m_variants.variantInfo[v].z = asUint( std::clamp( variant.groundPreference, 0.0f, 1.0f ) );
 
 		for( uint32_t lod = 0; lod < lodCount; ++lod )
 		{
@@ -154,9 +154,9 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 				const float expected = cellBound ? std::min( 3.14159265f * area / cellArea * listShare * 1.1f, static_cast<float>( capacity ) ) :
 										capacity * listShare * area / ringArea;
 				const uint32_t listCapacity = std::max( minListCapacity, static_cast<uint32_t>( expected ) );
-				uint32_t* list = m_variants.lists[listIndex( v, lod, transition != 0 )];
-				list[1] = listCapacity;
-				list[2] = sections;
+				XMUINT4& list = m_variants.lists[listIndex( v, lod, transition != 0 )];
+				list.y = listCapacity;
+				list.z = sections;
 				poolCapacity[transition] += listCapacity;
 			}
 		}
@@ -167,9 +167,9 @@ bool ScatterPass::createBuffers( const std::vector<Variant>& variants, bool cell
 	for( uint32_t v = 0; v < variantCount; ++v )
 	for( uint32_t lod = 0; lod < static_cast<uint32_t>( m_variants.variants[v].y ); ++lod )
 	{
-		uint32_t* list = m_variants.lists[listIndex( v, lod, transition != 0 )];
-		list[3] = indexOffset;
-		indexOffset += list[1];
+		XMUINT4& list = m_variants.lists[listIndex( v, lod, transition != 0 )];
+		list.w = indexOffset;
+		indexOffset += list.y;
 	}
 	m_populateParams.itemCapacity = poolCapacity[0];
 	// В пуле перехода экземпляр занимает два места (уходящий и приходящий LOD), в списках — по одному в каждом
@@ -253,14 +253,14 @@ void ScatterPass::setVariantPlacement( uint32_t variant, const Variant& placemen
 	const XMFLOAT4 value( std::max( placement.weight, 0.0f ), placement.sizeMultiplier, placement.sizeVariation, placement.alignToTerrain );
 	XMFLOAT4& current = m_variants.placement[variant];
 	const uint32_t preference = asUint( std::clamp( placement.groundPreference, 0.0f, 1.0f ) );
-	uint32_t* info = m_variants.info[variant];
+	XMUINT4& info = m_variants.variantInfo[variant];
 	if( current.x != value.x || current.y != value.y || current.z != value.z || current.w != value.w ||
-		info[0] != placement.patchGroup || info[1] != placement.groundLayers || info[2] != preference )
+		info.x != placement.patchGroup || info.y != placement.groundLayers || info.z != preference )
 	{
 		current = value;
-		info[0] = placement.patchGroup;
-		info[1] = placement.groundLayers;
-		info[2] = preference;
+		info.x = placement.patchGroup;
+		info.y = placement.groundLayers;
+		info.z = preference;
 		m_variantsChanged = true;
 	}
 }

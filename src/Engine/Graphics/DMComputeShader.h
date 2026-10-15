@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "D3D\DMD3D.h"
+#include "Shaders\compute_dispatch_constants.h"
 
 class DMComputeShader
 {
@@ -22,14 +23,8 @@ public:
 	void dispatchGroups( uint32_t x, uint32_t y, uint32_t z );
 
 private:
-	struct alignas( 16 ) ConstantType
-	{
-		float groupDim;
-		DirectX::XMFLOAT2 rect;
-		float elapsedTime;
-	};
 
-	void setConstants( ConstantType& constantType );
+	void setConstants( GS::ThreadsData& constantType );
 private:
 	ShaderStage m_computeShader;
 	Buffer m_constantBuffer;

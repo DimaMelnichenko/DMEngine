@@ -39,7 +39,7 @@ bool ParticleSystem::initialize( const std::vector<Settings>& emitters, const Te
 		!m_resetShader.Initialize( "Shaders\\particles.cs", "mainReset" ) ||
 		!m_emitShader.Initialize( "Shaders\\particles.cs", "mainEmit" ) ||
 		!m_updateShader.Initialize( "Shaders\\particles.cs", "mainUpdate" ) ||
-		!d3d.createShaderConstantBuffer( sizeof( TerrainParameters ), m_terrainBuffer ) )
+		!d3d.createShaderConstantBuffer( sizeof( TerrainHeightBuffer ), m_terrainBuffer ) )
 		return false;
 
 	m_quad.initialize( 2, 2 );
@@ -100,7 +100,7 @@ bool ParticleSystem::createEmitter( Emitter& emitter, uint32_t index )
 		!structured( sizeof( uint32_t ), "dead", emitter.dead, emitter.deadUAV, nullptr ) ||
 		!structured( sizeof( uint32_t ), "alive", emitter.alive, emitter.aliveUAV, &emitter.aliveView ) ||
 		!d3d.createBuffer( stateDesc, nullptr, emitter.state ) || !d3d.createStorageView( emitter.state, rawView, emitter.stateUAV ) ||
-		!d3d.createShaderConstantBuffer( sizeof( EmitterParameters ), emitter.constants ) )
+		!d3d.createShaderConstantBuffer( sizeof( ParticleEmitterBuffer ), emitter.constants ) )
 	{
 		LOG( "Failed to create particle emitter " + settings.name );
 		return false;
@@ -186,7 +186,7 @@ bool ParticleSystem::placed( const Settings& settings )
 void ParticleSystem::setParameters( Emitter& emitter, uint32_t index, uint32_t spawnCount, float timeStep )
 {
 	const Settings settings = current( emitter );
-	EmitterParameters params = {};
+	ParticleEmitterBuffer params = {};
 	params.origin = settings.position;
 	params.spawn = static_cast<uint32_t>( settings.spawn );
 	params.radius = settings.radius;
@@ -240,11 +240,11 @@ void ParticleSystem::compute( const FrameContext& frame )
 		const TerrainHeight terrain = m_terrain->terrainHeight();
 		heightMap = terrain.heightMap;
 		foliageClear = terrain.foliageClearMask;
-		TerrainParameters params = {};
-		params.worldSize = terrain.worldSize;
-		params.heightMultiplier = terrain.heightMultiplier;
-		params.heightOffset = terrain.heightOffset;
-		params.detailTileSize = terrain.detailTileSize;
+		TerrainHeightBuffer params = {};
+		params.terrainWorldSize = terrain.worldSize;
+		params.terrainHeightMultiplier = terrain.heightMultiplier;
+		params.terrainHeightOffset = terrain.heightOffset;
+		params.terrainDetailTile = terrain.detailTileSize;
 		Device::updateResourceData( m_terrainBuffer, params );
 	}
 

@@ -33,104 +33,17 @@
 #include "water.sh"
 #include "lod_transition.h"
 #include "bindless.sh"
+#include "compute_dispatch_constants.h"
+#include "scatter_constants.h"
 
-// DMComputeShader::Dispatch: b_rect — размер сетки в ячейках
-cbuffer ThreadsData : register( SLOT_CB_PASS )
-{
-	float  b_groupDim;
-	float2 b_rect;
-	float  b_elapsedTime;
-};
-
-// ScatterPass::PopulateParams
-cbuffer ScatterLayerBuffer : register( b4 )
-{
-	float  g_nearBorder;
-	float  g_farBorder;
-	float  g_nearFade;
-	float  g_farFade;
-	float  g_sizeMultiplier;
-	float  g_cellSize;
-	float  g_jitter;			// смещение внутри ячейки, доля шага
-	float  g_alignToTerrain;	// 1 — ось Y инстанса по нормали террейна
-	float3 g_rotationRange;		// предел случайного поворота вокруг осей X, Y, Z, радианы
-	float  g_castShadow;		// 1 — слой отбрасывает тень солнца: инстансы попадают и в списки видов теней
-	uint   g_variantCount;		// моделей слоя, 1…8
-	uint   g_itemCapacity;		// ёмкость пула инстансов g_items
-	uint   g_transitionCapacity;// ёмкость пула перехода g_transitions
-	uint   g_indexStride;		// индексов на вид в g_indices (списки всех пар вида подряд)
-	// Постоянный слой: кластеров по X и всего, ёмкость постоянного пула, запас границ кластера по XZ (наибольший радиус
-	// экземпляра), м
-	uint   g_clustersX;
-	uint   g_clusterCount;
-	uint   g_placedCapacity;
-	float  g_clusterMargin;
-	float  g_sizeVariation;		// разброс размера: случайный множитель от 1 − разброс до 1
-	// Цвет земли у растения (scatter_ground.sh): доля у корня, высота перехода к своему цвету (м), доля по всему растению у
-	// дальней границы кольца, разброс яркости по экземплярам (±)
-	float  g_groundColor;
-	float  g_groundColorHeight;
-	float  g_groundColorFar;
-	float  g_colorVariation;
-	// Края кольца и прореживание: доля полосы исчезания, по которой разбросаны свои дальности экземпляров (0 — все исчезают
-	// вместе); с какого расстояния прореживать, м, и доля убранных у дальней границы (0 — не прореживать)
-	float  g_edgeSpread;
-	float  g_thinStart;
-	float  g_thinning;
-	float  g_ditherFade;		// 1 — у краёв кольца экземпляр исчезает долей пикселей (дизеринг), а не размером
-	// Куртины: размер пятен шума, м (0 — без куртин), и сила 0…1 — вес вида × e^(4 · сила · шум его группы)
-	float  g_patchScale;
-	float  g_patchStrength;
-	// Фильтр по слоям земли: бит — слой материала террейна, на котором слой растёт, бит 31 — фильтр включён (0 — на любых);
-	// порог — доля этих слоёв в весах земли, при которой плотность вдвое меньше (от удвоенной — полная)
-	uint   g_groundLayers;
-	float  g_groundThreshold;
-	float  g_groundPreferences;	// 1 — у какого-то варианта предпочтение слоёв земли: вариант — по весам в точке
-	float2 g_layerPadding;
-};
-
-// ScatterPass::VariantsBuffer; списки — ScatterPass::listIndex
-static const uint maxLods = 4;
-static const uint maxVariants = 8;
-#define MAX_SECTIONS 4	// ScatterPass::maxSections
-#define MAX_LISTS 64	// ScatterPass::maxLists: обычные списки пар «вариант × LOD», затем списки перехода
-#include "view_limits.h"
+// Пределы — scatter_constants.h; номер списка — как ScatterPass::listIndex
+static const uint maxLods = SCATTER_MAX_LODS;
+static const uint maxVariants = SCATTER_MAX_VARIANTS;
+#define MAX_SECTIONS SCATTER_MAX_SECTIONS
+#define MAX_LISTS SCATTER_MAX_LISTS	// обычные списки пар «вариант × LOD», затем списки перехода
 #define MAX_VIEWS DM_MAX_RENDER_VIEWS	// maxRenderViews: главный вид, каскады теней и дальний каскад
-#define MAX_GROUPS 256	// ScatterPass::maxGroups — не больше секций списков
-cbuffer ScatterVariantsBuffer : register( b7 )
-{
-	// x — накопленная доля варианта (0…1), y — число LOD, z — 1: смена LOD дизерингом, w — с этого расстояния у видов
-	// теней последний LOD (импостер; 0 — LOD как у главного вида)
-	float4 g_variants[maxVariants];
-	float4 g_lodEnd[maxVariants];	// дальности LOD 0…2 варианта, м: дальше — следующий LOD
-	// Они же у видов теней (ScatterPass::setShadowLods): границы LOD модели × «Shadow LOD scale» модели и набора, детальнее
-	// «Shadow min LOD» модели — 0; переход к импостеру — как в кадре (у теней его сдвигает w в g_variants)
-	float4 g_shadowLodEnd[maxVariants];
-	float4 g_shadowCasting[maxVariants];	// x — с этого LOD у видов теней экземпляра нет (импостер без тени); = числу LOD — у всех
-	float4 g_bounds[maxVariants];	// сфера модели (LOD0) в её координатах: xyz — центр, w — радиус (при размере 1)
-	float4 g_footprints[maxVariants];	// след основания (LOD0): xy — центр по X и Z, z — радиус по XZ (при размере 1)
-	// Своя раскладка варианта: x — вес, y — × размер слоя, z — разброс размера (< 0 — слоя), w — наклон по земле (< 0 —
-	// слоя, 0 / 1)
-	float4 g_placement[maxVariants];
-	// x — группа куртин: номер узора шума (у моделей одного вида — один); y — биты слоёв земли, которые вид предпочитает
-	// (0 — нет), z — сила предпочтения (asfloat)
-	uint4  g_variantInfo[maxVariants];
-	uint4  g_lists[MAX_LISTS];		// y — ёмкость списка индексов (на вид), z — число секций, w — начало списка в индексах вида
-};
+#define MAX_GROUPS SCATTER_MAX_GROUPS
 
-// Виды кадра: плоскости frustum каждого (нормированные, нормали внутрь) и параметры вида
-cbuffer FrustumBuffer : register( b6 )
-{
-	float4 g_frustumPlanes[MAX_VIEWS * 6];
-	// x, y — запас; у каскада теней z, w — полоса расстояний от камеры (RenderView::cascadeNear / cascadeFar): тень
-	// инстанса ложится не дальше её длины от него
-	float4 g_viewParams[MAX_VIEWS];
-	// У каскада теней: xy — полоса глубины взгляда, пиксели которой читают каскад (cascadeNear, cascadeDepthFar)
-	float4 g_viewDepths[MAX_VIEWS];
-	float4 g_shadowCast;	// xyz — куда идёт свет источника теней, w — длина тени на метр высоты вдоль луча (0 — теней нет)
-	uint   g_viewCount;
-	uint3  g_frustumPadding;
-};
 
 uint listIndex( uint variant, uint lod, bool transition )
 {
