@@ -1,6 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Приём тени солнца из каскадных карт (Cascaded Shadow Maps, как у directional light в UE). Карты рисует
-// ShadowCascades (C++) до проходов сцены; множитель тени берёт evaluateLighting в Shaders/lighting.sh
+// ShadowCascades (C++) до проходов сцены; множитель тени берёт evaluateLighting в Shaders/lighting.sh. Дальше
+// Dynamic Shadow Distance — дальние тени (как Far Shadow Cascades в UE): лес — дальним каскадом на всю карту, рельеф —
+// картой края тени (TerrainSunShadow); в полосе конца дистанции тень каскадов переходит в дальнюю
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef SHADOWS_SH
@@ -17,8 +19,13 @@
 cbuffer ShadowConstants : register( SLOT_CB_SHADOW )
 {
 	matrix g_cascadeViewProjection[SHADOW_CASCADE_COUNT];
+	matrix g_farViewProjection;	// дальний каскад: срез SHADOW_CASCADE_COUNT карты
 	float4 g_cascadeSplits;		// дальняя граница каскада по глубине взгляда, м
 	float4 g_cascadeTexelSize;	// размер текселя каскада в мире, м
+	float4 g_farShadow;			// x — тексель дальнего каскада, м; y — 1: он есть
+	// Тень рельефа дальше каскадов: x — 1 / сторона карты, м⁻¹ (0 — карты нет); y — тангенс угла полутени; z — наименьшая
+	// полутень, м
+	float4 g_terrainShadow;
 	float  g_cascadeTransition;	// доля каскада в его конце, где он смешивается со следующим
 	float  g_shadowFadeStart;	// отсюда тень плавно уходит…
 	float  g_shadowDistance;	// …и здесь заканчивается (Dynamic Shadow Distance), м
@@ -30,6 +37,8 @@ cbuffer ShadowConstants : register( SLOT_CB_SHADOW )
 };
 
 DM_SRV( Texture2DArray<float>, g_shadowMap, SLOT_SHADOW_MAP );
+// x — запас земли над краем тени, м (отрицательный — земля в тени); y — расстояние до заслона, м; z — высота земли, м
+DM_SRV( Texture2D<float4>, g_terrainSunShadow, SLOT_TERRAIN_SUN_SHADOW );
 SamplerComparisonState g_shadowSampler : register( SLOT_SAMPLER_SHADOW );
 
 // Фильтр 5 × 5 текселей девятью выборками сравнения с билинейной фильтрацией (PCF 2×2 в каждой): веса и смещения
@@ -88,15 +97,62 @@ float viewDepthOf( float3 position )
 	return dot( position - cb_cameraPosition, cb_viewDirection );
 }
 
+// Тень рельефа дальше каскадов (TerrainSunShadow, Shaders/terrain_sun_shadow.cs): точка ниже края тени над землёй —
+// в тени. Высота точки берётся над землёй карты (не ниже её): неровности мельче текселя карты (2 м) не уходят в тень.
+// Полутень — по расстоянию до заслона (тень дальней горы мягче), не уже наименьшей
+float terrainSunShadow( float3 position )
+{
+	[branch] if( g_terrainShadow.x <= 0.0f )
+		return 1.0f;
+	const float2 uv = float2( position.x, 1.0f / g_terrainShadow.x - position.z ) * g_terrainShadow.x;
+	if( any( saturate( uv ) != uv ) )
+		return 1.0f;
+	const float4 edge = g_terrainSunShadow.SampleLevel( g_SamplerLinearClamp, uv, 0.0f );
+	const float clearance = edge.x + max( position.y - edge.z, 0.0f );
+	const float penumbra = max( edge.y * g_terrainShadow.y, g_terrainShadow.z );
+	return saturate( clearance / penumbra + 0.5f );
+}
+
+// Дальний каскад: лес на всю карту (импостеры). Смещения — как у каскадов, в текселях дальнего; вне карты — света
+float farCascadeShadow( float3 position, float3 geometricNormal, float3 toSun, float NoL )
+{
+	[branch] if( g_farShadow.y <= 0.0f )
+		return 1.0f;
+	const float texel = g_farShadow.x;
+	const float3 offset = toSun * ( g_shadowDepthBias * texel ) + geometricNormal * ( g_shadowNormalBias * texel * ( 1.0f - NoL ) );
+	const float4 clip = mul( float4( position + offset, 1.0f ), g_farViewProjection );
+	const float2 uv = clip.xy * float2( 0.5f, -0.5f ) + 0.5f;
+	if( any( saturate( uv ) != uv ) )
+		return 1.0f;
+	return shadowPCF( uv, clip.z, SHADOW_CASCADE_COUNT );
+}
+
+// Дальняя тень: рельеф и лес — минимум из двух
+float farShadow( float3 position, float3 geometricNormal, float3 toSun, float NoL )
+{
+	const float terrain = terrainSunShadow( position );
+	[branch] if( terrain <= 0.0f )
+		return 0.0f;
+	return min( terrain, farCascadeShadow( position, geometricNormal, toSun, NoL ) );
+}
+
+// Доля дальней тени по глубине взгляда: 0 — каскады, 1 — дальняя (с конца Dynamic Shadow Distance)
+float farShadowFade( float viewDepth )
+{
+	return saturate( ( viewDepth - g_shadowFadeStart ) / max( g_shadowDistance - g_shadowFadeStart, 1e-4f ) );
+}
+
 // Множитель прямого света солнца: 1 — освещено, 0 — в тени. toSun — направление на солнце; selfShadow — тень от самой
-// поверхности, которой нет в каскадах (Surface::selfShadow): с каскадами — минимум, дальше дистанции теней — она одна
+// поверхности, которой нет в каскадах (Surface::selfShadow): с каскадами — минимум, дальше дистанции теней — тоже
 float sunShadow( float3 position, float3 geometricNormal, float3 toSun, float selfShadow = 1.0f )
 {
 	const float viewDepth = viewDepthOf( position );
+	const float NoL = saturate( dot( geometricNormal, toSun ) );
+	// К концу дистанции (Shadow Distance Fadeout Fraction) тень каскадов переходит в дальнюю (без неё — в свет)
+	const float fade = farShadowFade( viewDepth );
 	float shadow = 1.0f;
-	[branch] if( viewDepth < g_shadowDistance )
+	[branch] if( fade < 1.0f )
 	{
-		const float NoL = saturate( dot( geometricNormal, toSun ) );
 		const uint cascade = shadowCascade( viewDepth );
 		shadow = cascadeShadow( position, geometricNormal, toSun, NoL, cascade );
 
@@ -107,11 +163,9 @@ float sunShadow( float3 position, float3 geometricNormal, float3 toSun, float se
 		const float blend = saturate( ( viewDepth - ( cascadeEnd - band ) ) / band );
 		[branch] if( blend > 0.0f && cascade + 1 < SHADOW_CASCADE_COUNT )
 			shadow = lerp( shadow, cascadeShadow( position, geometricNormal, toSun, NoL, cascade + 1 ), blend );
-
-		// К концу дистанции (Shadow Distance Fadeout Fraction) тень плавно уходит
-		const float fade = saturate( ( viewDepth - g_shadowFadeStart ) / max( g_shadowDistance - g_shadowFadeStart, 1e-4f ) );
-		shadow = lerp( shadow, 1.0f, fade );
 	}
+	[branch] if( fade > 0.0f )
+		shadow = lerp( shadow, farShadow( position, geometricNormal, toSun, NoL ), fade );
 	// Облака — и дальше дистанции теней
 	return min( shadow, selfShadow ) * cloudShadow( position, toSun );
 }
@@ -122,24 +176,42 @@ float volumeShadow( float3 position, float3 toSun )
 {
 	const float viewDepth = viewDepthOf( position );
 	float shadow = 1.0f;
-	[branch] if( g_shadowSunIndex >= 0 && viewDepth < g_shadowDistance )
+	[branch] if( g_shadowSunIndex >= 0 )
 	{
-		const uint cascade = shadowCascade( viewDepth );
-		const float4 clip = mul( float4( position, 1.0f ), g_cascadeViewProjection[cascade] );
-		const float2 uv = clip.xy * float2( 0.5f, -0.5f ) + 0.5f;
-		shadow = g_shadowMap.SampleCmpLevelZero( g_shadowSampler, float3( uv, cascade ), clip.z );
-		const float fade = saturate( ( viewDepth - g_shadowFadeStart ) / max( g_shadowDistance - g_shadowFadeStart, 1e-4f ) );
-		shadow = lerp( shadow, 1.0f, fade );
+		const float fade = farShadowFade( viewDepth );
+		[branch] if( fade < 1.0f )
+		{
+			const uint cascade = shadowCascade( viewDepth );
+			const float4 clip = mul( float4( position, 1.0f ), g_cascadeViewProjection[cascade] );
+			const float2 uv = clip.xy * float2( 0.5f, -0.5f ) + 0.5f;
+			shadow = g_shadowMap.SampleCmpLevelZero( g_shadowSampler, float3( uv, cascade ), clip.z );
+		}
+		// Дальше — рельеф по карте края тени (туман в долине в тени горы) и лес дальним каскадом
+		[branch] if( fade > 0.0f )
+		{
+			float distant = terrainSunShadow( position );
+			[branch] if( g_farShadow.y > 0.0f && distant > 0.0f )
+			{
+				const float4 clip = mul( float4( position, 1.0f ), g_farViewProjection );
+				const float2 uv = clip.xy * float2( 0.5f, -0.5f ) + 0.5f;
+				if( all( saturate( uv ) == uv ) )
+					distant = min( distant, g_shadowMap.SampleCmpLevelZero( g_shadowSampler, float3( uv, SHADOW_CASCADE_COUNT ), clip.z ) );
+			}
+			shadow = lerp( shadow, distant, fade );
+		}
 	}
 	return shadow * cloudShadow( position, toSun );
 }
 
-// «Show cascades»: каскады 0…3 — красный, зелёный, синий, жёлтый; дальше дистанции — без изменений
+// «Show cascades»: каскады 0…3 — красный, зелёный, синий, жёлтый; дальше дистанции — пурпурный у дальних теней, без
+// них — без изменений
 float3 shadowCascadeTint( float3 position )
 {
 	const float viewDepth = viewDepthOf( position );
-	if( g_showCascades == 0 || g_shadowSunIndex < 0 || viewDepth >= g_shadowDistance )
+	if( g_showCascades == 0 || g_shadowSunIndex < 0 )
 		return 1.0f;
+	if( viewDepth >= g_shadowDistance )
+		return g_farShadow.y > 0.0f ? float3( 1.0f, 0.3f, 1.0f ) : 1.0f;
 	static const float3 colors[SHADOW_CASCADE_COUNT] = {
 		float3( 1.0f, 0.3f, 0.3f ), float3( 0.3f, 1.0f, 0.3f ), float3( 0.3f, 0.3f, 1.0f ), float3( 1.0f, 1.0f, 0.3f ) };
 	return colors[shadowCascade( viewDepth )];

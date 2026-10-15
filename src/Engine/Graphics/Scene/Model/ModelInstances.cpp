@@ -420,6 +420,9 @@ bool ModelInstances::bounds( DirectX::BoundingBox& bounds ) const
 
 void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
+	// Дальний каскад теней — только лес расстановки: модели уровня в нём не рисуются (их немного и они рядом)
+	if( view.farShadow )
+		return;
 	const XMVECTOR lodOrigin = XMLoadFloat3( &view.lodOrigin );
 	const XMVECTOR viewPosition = XMLoadFloat3( &view.position );
 

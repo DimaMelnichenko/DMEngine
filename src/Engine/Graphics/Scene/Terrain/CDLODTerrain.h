@@ -372,6 +372,7 @@ private:
 	std::vector<std::vector<DirectX::XMFLOAT2>> m_heightBounds;	// по уровням: нормированные min / max высоты узлов
 	Texture m_heightMapTexture;	// копия t_heightmap в R32_FLOAT с правками рельефа и полной цепочкой мипов
 	ShaderView m_heightMap;
+	uint32_t m_heightRevision = 0;	// TerrainHeight::revision: растёт с каждой новой итоговой картой
 	Texture m_foliageClearTexture;
 	ShaderView m_foliageClearMask;
 	float m_ranges[maxLevels] = {};

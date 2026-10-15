@@ -54,6 +54,10 @@ void LibraryLoader::loadLevelLights( LevelDescription& level )
 		shadows.shadowBias = value( "shadow_bias" );
 		shadows.normalBias = value( "normal_bias" );
 		shadows.shadowSlopeBias = value( "shadow_slope_bias" );
+		if( !query.getColumn( "far_shadows" ).isNull() )
+			shadows.farShadows = query.getColumn( "far_shadows" ).getInt() != 0;
+		if( !query.getColumn( "far_shadow_penumbra" ).isNull() )
+			shadows.farShadowPenumbra = value( "far_shadow_penumbra" );
 		light.setShadowSettings( shadows );
 		light.setAtmosphereSunLight( query.getColumn( "atmosphere_sun_light" ).getInt() != 0 );
 		light.setAtmosphereSunLightIndex( query.getColumn( "atmosphere_sun_light_index" ).getInt() );
@@ -323,6 +327,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 										   "cascade_distribution_exponent = :exponent, cascade_transition_fraction = :transition, "
 										   "shadow_distance_fadeout_fraction = :fadeout, shadow_bias = :shadowBias, "
 										   "normal_bias = :normalBias, shadow_slope_bias = :slopeBias, "
+										   "far_shadows = :farShadows, far_shadow_penumbra = :farPenumbra, "
 										   "atmosphere_sun_light = :atmosphereSunLight WHERE id = :id" );
 		for( const DMLight& light : lights )
 		{
@@ -346,6 +351,8 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 			updateLight.bind( ":shadowBias", dbValue( shadows.shadowBias ) );
 			updateLight.bind( ":normalBias", dbValue( shadows.normalBias ) );
 			updateLight.bind( ":slopeBias", dbValue( shadows.shadowSlopeBias ) );
+			updateLight.bind( ":farShadows", shadows.farShadows ? 1 : 0 );
+			updateLight.bind( ":farPenumbra", dbValue( shadows.farShadowPenumbra ) );
 			updateLight.bind( ":atmosphereSunLight", light.atmosphereSunLight() ? 1 : 0 );
 			updateLight.bind( ":id", light.id );
 			updateLight.exec();

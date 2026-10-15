@@ -277,8 +277,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 
 **Виды и списки отрисовки** — как mesh draw commands в UE: объекты не рисуют себя сами и не знают, в каком проходе
 их меши. Вид кадра — `RenderView` (`Scene/RenderView.h`, ≈ FSceneView: матрицы, положение, `DMFrustum`, `lodOrigin` —
-откуда считаются LOD; `index` — номер вида в кадре): главная камера (0) и четыре каскада теней (1…4, `lodOrigin` —
-главной камеры). Объект сцены наследует `GS::SceneObject`
+откуда считаются LOD; `index` — номер вида в кадре): главная камера (0), четыре каскада теней (1…4, `lodOrigin` —
+главной камеры) и дальний каскад (5, `RenderView::farShadow`: только лес расстановки). Объект сцены наследует `GS::SceneObject`
 (`Scene/SceneObject.h`): `update` / `compute` (кадр — `FrameContext`: главный вид и время) / `collectMeshes( view,
 collector )` / `renderCustom( context )` / `properties`, видимость. За каждый вид (`collectMeshes` зовётся на каждый
 вид кадра: выбор, зависящий от вида, объект хранит по `view.index`, как `CDLODTerrain`) объект отдаёт в `MeshCollector`
@@ -530,7 +530,11 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 в каскады, которые задевает их кольцо, `RenderView::cascadeNear/Far`; экземпляр — в каскад, полосу глубины взгляда которого
 задевает его сфера, протянутая вдоль света на длину тени, `cascadeDepthFar`). Направление на источник теней — `FrameContext::toShadowLight`: солнце, после заката — луна (`DMLightDriver::shadowLight`: светило над горизонтом с более ярким светом у земли). Приём — `Shaders/shadows.sh`
 (каскад по глубине взгляда, смещения к солнцу и по нормали в текселях каскада, PCF 5 × 5 Castaño, смешение каскадов,
-«Show cascades»): карта t104, сэмплер сравнения s8, константы b3. Настройки — у солнца (`DMLight::ShadowSettings`,
+«Show cascades»): карта t104, сэмплер сравнения s8, константы b3. Дальше дистанции — дальние тени (как Far Shadow Cascades
+в UE; `far_shadows` у солнца): лес — дальним каскадом на всю сцену (срез карты после четырёх, только импостеры), рельеф —
+картой края тени по карте высот (`TerrainSunShadow`, `Shaders/terrain_sun_shadow.cs`, ресурс сцены t125: точка ниже края —
+в тени, так её получают и кроны, и туман; считается заново при сдвиге солнца или новом рельефе); в полосе конца
+дистанции тень каскадов переходит в дальнюю. Настройки — у солнца (`DMLight::ShadowSettings`,
 колонки `LevelLights`, подокно солнца в «Lights»), в окне «Shadows» — только «Show cascades», подробно — `docs/shadows.md`.
 
 **Система свойств** (`src/Common/Properties`). `Property` хранит значение в `std::variant`

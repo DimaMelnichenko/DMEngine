@@ -22,6 +22,10 @@ public:
 		float shadowBias = 1.0f;					// сдвиг точки к солнцу, текселей каскада
 		float normalBias = 1.0f;					// сдвиг точки по нормали, текселей каскада
 		float shadowSlopeBias = 2.0f;				// наклонное смещение глубины в растеризаторе теней
+		// Дальние тени дальше Dynamic Shadow Distance (как Far Shadow Cascades в UE): лес — дальним каскадом на всю карту,
+		// рельеф — картой края тени; полутень рельефа — угол, градусы (диск солнца 0,53°, с рассеянием шире)
+		bool farShadows = true;
+		float farShadowPenumbra = 1.0f;
 	};
 
 public:

@@ -9,6 +9,7 @@
 #include "RenderView.h"
 #include "Light\DMLight.h"
 #include "Properties/PropertyContainer.h"
+#include "TerrainSunShadow.h"
 
 namespace GS
 {
@@ -19,11 +20,16 @@ namespace GS
 // в осях света, поэтому тень не дрожит при движении и повороте камеры. Карта — массив срезов D32, приём тени —
 // Shaders/shadows.sh (t104, сэмплер сравнения s8, константы b3). Настройки — у солнца (DMLight::ShadowSettings, колонки
 // LevelLights, его окно в GUI «Lights»), размер карты — ShadowMapResolution в settings.ini; в окне «Shadows» —
-// только отладочная подкраска каскадов
+// только отладочная подкраска каскадов.
+// Дальние тени — дальше Dynamic Shadow Distance (как Far Shadow Cascades в UE; DMLight::ShadowSettings::farShadows): лес —
+// дальним каскадом (срез карты после четырёх, вид на всю сцену вдоль света, в нём только импостеры расстановки —
+// RenderView::farShadow), рельеф — картой края тени по карте высот (TerrainSunShadow). Приём — в той же sunShadow:
+// в полосе конца дистанции тень каскадов переходит в дальнюю
 class ShadowCascades
 {
 public:
 	static constexpr uint32_t cascadeCount = 4;
+	static constexpr uint32_t farViewIndex = cascadeCount + 1;	// RenderView::index дальнего каскада
 
 	// resolution — размер среза карты, текселей
 	bool initialize( uint32_t resolution );
@@ -35,6 +41,12 @@ public:
 				 const DirectX::BoundingBox& sceneBounds );
 	bool active() const { return m_active; }
 	const RenderView& cascadeView( uint32_t cascade ) const { return m_views[cascade]; }
+	// Дальний каскад есть в этом кадре (тени активны и дальние тени включены у источника)
+	bool farActive() const { return m_active && m_settings.farShadows; }
+	const RenderView& farView() const { return m_farView; }
+	// Тень рельефа дальше каскадов — для источника теней этого кадра (пересчёт — только при его сдвиге или новом рельефе).
+	// До проходов сцены: её читают туман и все приёмники тени
+	void updateTerrainShadow( const TerrainHeight& terrain, const DirectX::XMFLOAT3& toLight );
 	// Состояние прохода глубины каскадов — часть пайплайнов теней: растеризатор теней (без отсечения граней и по
 	// глубине) с наклонным смещением глубины солнца (Shadow Slope Bias, DMLight::ShadowSettings). Из настроек
 	// последнего update() или из заданных (прогрев пайплайнов при загрузке — Renderer::warmPipelines)
@@ -43,8 +55,9 @@ public:
 
 	// Карта теней для объявлений проходов, которые её читают
 	const ShaderView& shaderView() const { return m_shaderView; }
-	// Цель — срез каскада, глубина очищена
+	// Цель — срез каскада, глубина очищена; дальний — срез cascadeCount
 	void beginCascade( uint32_t cascade );
+	void beginFarCascade() { beginCascade( cascadeCount ); }
 	// После прохода теней, на цели сцены: карта, сэмплер и константы для приёма тени; sunLightIndex — индекс солнца
 	// в буфере источников (−1 — без теней)
 	void bindForReceivers( int sunLightIndex );
@@ -56,8 +69,12 @@ private:
 	struct alignas( 16 ) ShaderShadowConstants
 	{
 		DirectX::XMMATRIX cascadeViewProjection[cascadeCount];
+		DirectX::XMMATRIX farViewProjection;
 		DirectX::XMFLOAT4 cascadeSplits;		// дальняя граница каскада по глубине взгляда, м
 		DirectX::XMFLOAT4 cascadeTexelSize;	// размер текселя каскада в мире, м
+		DirectX::XMFLOAT4 farShadow;			// x — тексель дальнего каскада, м; y — 1: он есть
+		// Тень рельефа: x — 1 / сторона карты, м⁻¹ (0 — карты нет); y — тангенс угла полутени; z — наименьшая полутень, м
+		DirectX::XMFLOAT4 terrainShadow;
 		float cascadeTransition;
 		float fadeStart;
 		float shadowDistance;
@@ -67,9 +84,12 @@ private:
 		float mapSize;
 		float depthBias;
 	};
-	static_assert( sizeof( ShaderShadowConstants ) == 320, "ShaderShadowConstants must match cbuffer ShadowConstants in Shaders/shadows.sh" );
+	static_assert( sizeof( ShaderShadowConstants ) == 416, "ShaderShadowConstants must match cbuffer ShadowConstants in Shaders/shadows.sh" );
 
 	bool createResources();
+	// Дальний каскад: вид вдоль света на всю сцену (её границы поперёк света), центр — на сетке текселей
+	void updateFarView( const RenderView& mainView, const DirectX::XMVECTOR& forward, const DirectX::XMVECTOR& right,
+						const DirectX::XMVECTOR& up, const DirectX::BoundingBox& sceneBounds, float sceneNear, float sceneFar );
 
 	static constexpr float depthBiasClamp = 0.01f;	// предел наклонного смещения, единицы глубины
 
@@ -79,9 +99,12 @@ private:
 	RenderView m_views[cascadeCount];
 	float m_splits[cascadeCount] = {};
 	float m_texelSize[cascadeCount] = {};
+	RenderView m_farView;
+	float m_farTexelSize = 0.0f;
+	TerrainSunShadow m_terrainShadow;
 
 	Texture m_texture;
-	TargetView m_depthViews[cascadeCount];
+	TargetView m_depthViews[cascadeCount + 1];	// каскады и дальний
 	ShaderView m_shaderView;
 	Buffer m_constantBuffer;
 	PropertyContainer m_properties;

@@ -213,6 +213,9 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	DMLight::ShadowSettings shadowSettings;
 	scene.lights().shadowLight( shadowLightDirection, shadowSettings );
 	m_shadowsActive = m_shadows.update( frame.view, shadowSettings, frame.toShadowLight, scene.bounds() );
+	// Тень рельефа дальше каскадов — до compute и проходов сцены (её читают туман и все приёмники тени)
+	if( m_shadowsActive )
+		measure( "Terrain sun shadow", [&] { m_shadows.updateTerrainShadow( scene.terrain().terrainHeight(), frame.toShadowLight ); } );
 	// Смещение теней сменилось (слайдер в GUI, тени перешли на луну) — пайплайны теней заново до прохода
 	if( m_shadows.renderState() != m_warmedShadowState )
 		warmShadowPipelines( scene );
@@ -224,6 +227,9 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		for( uint32_t cascade = 0; cascade < ShadowCascades::cascadeCount; ++cascade )
 			computeFrame.views[1 + cascade] = &m_shadows.cascadeView( cascade );
 		computeFrame.viewCount = 1 + ShadowCascades::cascadeCount;
+		// Дальний каскад — шестым видом: расстановка раскладывает в него лес, чья тень ложится дальше дистанции теней
+		if( m_shadows.farActive() )
+			computeFrame.views[computeFrame.viewCount++] = &m_shadows.farView();
 	}
 
 	// Compute — при главном виде в константах кадра: кольцо расстановки считается вокруг камеры
@@ -595,6 +601,20 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 		m_gpuProfiler.beginScope( "Shadow cascade " + std::to_string( cascade ) );
 		const RenderContext context{ view, MeshPass::csmShadowDepth, RasterState::csmShadowDepth,
 									 m_constants, m_vertexPool };
+		executeCommands( m_shadowCollector, m_shadowCommands, context, true, "Shadow: " );
+		m_gpuProfiler.endScope();
+	}
+	// Дальний каскад — дальше Dynamic Shadow Distance на всю карту: только лес (импостеры), рельеф и модели уровня в
+	// нём не рисуются (RenderView::farShadow): тень рельефа вдали — карта края тени (TerrainSunShadow)
+	if( m_shadows.farActive() )
+	{
+		const RenderView& view = m_shadows.farView();
+		collect( scene, view, m_shadowCollector );
+		buildShadowCommands();
+		m_constants.setViewBuffer( view );
+		m_shadows.beginFarCascade();
+		m_gpuProfiler.beginScope( "Shadow far" );
+		const RenderContext context{ view, MeshPass::csmShadowDepth, RasterState::csmShadowDepth, m_constants, m_vertexPool };
 		executeCommands( m_shadowCollector, m_shadowCommands, context, true, "Shadow: " );
 		m_gpuProfiler.endScope();
 	}

@@ -94,7 +94,7 @@ static const uint maxLods = 4;
 static const uint maxVariants = 8;
 #define MAX_SECTIONS 4	// ScatterPass::maxSections
 #define MAX_LISTS 64	// ScatterPass::maxLists: обычные списки пар «вариант × LOD», затем списки перехода
-#define MAX_VIEWS 5		// maxRenderViews: главный вид и каскады теней
+#define MAX_VIEWS 6		// maxRenderViews: главный вид, каскады теней и дальний каскад
 #define MAX_GROUPS 256	// ScatterPass::maxGroups — не больше секций списков
 cbuffer ScatterVariantsBuffer : register( b7 )
 {

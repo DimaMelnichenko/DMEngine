@@ -85,8 +85,10 @@
 // Следы в траве (foliage_interaction.sh, FoliageInteraction): R16G16_FLOAT, окно вокруг камеры с адресом по модулю — вектор
 // наклона растения XZ длиной 0…1; окно — константы кадра cb_foliageInteraction
 #define SLOT_FOLIAGE_INTERACTION	124
+// Тень рельефа дальше каскадов: запас земли над краем тени, расстояние до заслона, высота земли (shadows.sh, TerrainSunShadow)
+#define SLOT_TERRAIN_SUN_SHADOW	125
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	25
+#define SLOT_SCENE_COUNT	26
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

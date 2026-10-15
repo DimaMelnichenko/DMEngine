@@ -276,10 +276,15 @@ TerrainHeight CDLODTerrain::terrainHeight() const
 	height.heightMap = &m_heightMap;
 	height.foliageClearMask = &m_foliageClearMask;
 	height.worldSize = m_worldSize;
-	height.mapSize = static_cast<uint32_t>( std::lround( m_worldSize / m_texelSize ) );
+	height.mapSize = m_texelSize > 0.0f ? static_cast<uint32_t>( std::lround( m_worldSize / m_texelSize ) ) : 0;
 	// Ползунок, а не m_heightMultiplier: тот обновляется в update() только у видимого террейна
 	height.heightMultiplier = m_initialized ? m_properties["Height multiplier"].data<float>() : m_heightMultiplier;
 	height.heightOffset = m_heightOffset;
+	height.maxValue = 0.0f;
+	if( !m_heightBounds.empty() )
+		for( const XMFLOAT2& bounds : m_heightBounds.back() )
+			height.maxValue = std::max( height.maxValue, bounds.y );
+	height.revision = m_heightRevision;
 	height.detailTileSize = m_detailTileSize;
 	height.detailTiles = &m_detailView;
 	height.detailIndex = &m_detailIndexView;
@@ -580,6 +585,7 @@ bool CDLODTerrain::finishHeights( const Image& image, const WaterSimulationSetti
 		return false;
 	}
 	DMD3D::instance().setName( m_heightMapTexture, "Terrain height map" );
+	++m_heightRevision;
 
 	const uint32_t lastMip = static_cast<uint32_t>( mipChain.GetMetadata().mipLevels ) - 1;
 
@@ -2167,7 +2173,8 @@ void CDLODTerrain::collectMeshes( const RenderView& view, MeshCollector& collect
 {
 	std::vector<PatchInstance>& patches = m_patches[view.index];
 	patches.clear();
-	if( !m_initialized )
+	// В дальнем каскаде теней рельефа нет: его тень дальше каскадов — по карте края тени (TerrainSunShadow)
+	if( !m_initialized || view.farShadow )
 		return;
 
 	const uint32_t top = m_levelCount - 1;

@@ -19,18 +19,18 @@ bool ShadowCascades::initialize( uint32_t resolution )
 	m_properties.setName( "Shadows" );
 	m_properties.insert( "Show cascades", false );
 
-	return createResources();
+	return createResources() && m_terrainShadow.initialize();
 }
 
 bool ShadowCascades::createResources()
 {
 	DMD3D& d3d = DMD3D::instance();
 
-	// Карта — массив срезов глубины по каскаду: typeless, чтобы писать как D32 и читать как R32
+	// Карта — массив срезов глубины по каскаду и дальний последним: typeless, чтобы писать как D32 и читать как R32
 	TextureDesc textureDesc;
 	textureDesc.width = m_resolution;
 	textureDesc.height = m_resolution;
-	textureDesc.arraySize = cascadeCount;
+	textureDesc.arraySize = cascadeCount + 1;
 	textureDesc.format = DXGI_FORMAT_R32_TYPELESS;
 	textureDesc.usage = TextureUsage::depthStencil | TextureUsage::shaderResource;
 	if( !d3d.createTexture( textureDesc, nullptr, m_texture ) )
@@ -40,7 +40,7 @@ bool ShadowCascades::createResources()
 	}
 	d3d.setName( m_texture, "Shadow map" );
 
-	for( uint32_t cascade = 0; cascade < cascadeCount; ++cascade )
+	for( uint32_t cascade = 0; cascade < cascadeCount + 1; ++cascade )
 	{
 		TextureViewDesc depthDesc;
 		depthDesc.format = DXGI_FORMAT_D32_FLOAT;
@@ -158,7 +158,64 @@ bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSe
 		m_texelSize[cascade] = texel;
 	}
 
+	if( settings.farShadows )
+		updateFarView( mainView, forward, right, up, sceneBounds, sceneNear, sceneFar );
 	return true;
+}
+
+void ShadowCascades::updateFarView( const RenderView& mainView, const XMVECTOR& forward, const XMVECTOR& right, const XMVECTOR& up,
+									const BoundingBox& sceneBounds, float sceneNear, float sceneFar )
+{
+	// Вся сцена поперёк света — квадрат вокруг проекции её ящика; на карте 1 км вид от камеры не зависит и меняется только
+	// с солнцем (на карте в 4–8 км — вокруг камеры, этап 16)
+	XMFLOAT3 corners[BoundingBox::CORNER_COUNT];
+	sceneBounds.GetCorners( corners );
+	float minX = FLT_MAX, maxX = -FLT_MAX, minY = FLT_MAX, maxY = -FLT_MAX;
+	for( const XMFLOAT3& corner : corners )
+	{
+		const XMVECTOR point = XMLoadFloat3( &corner );
+		const float x = XMVectorGetX( XMVector3Dot( point, right ) );
+		const float y = XMVectorGetX( XMVector3Dot( point, up ) );
+		minX = std::min( minX, x );
+		maxX = std::max( maxX, x );
+		minY = std::min( minY, y );
+		maxY = std::max( maxY, y );
+	}
+	const float resolution = static_cast<float>( m_resolution );
+	// Запас на ядро PCF и смещения (8 текселей)
+	const float radius = 0.5f * std::max( maxX - minX, maxY - minY ) * resolution / ( resolution - 8.0f );
+	const float texel = 2.0f * radius / resolution;
+	const float x = std::floor( 0.5f * ( minX + maxX ) / texel ) * texel;
+	const float y = std::floor( 0.5f * ( minY + maxY ) / texel ) * texel;
+	const float depthNear = sceneNear - 1.0f;
+	const float depthFar = sceneFar + 1.0f;
+	const XMVECTOR eye = right * x + up * y + forward * depthNear;
+
+	RenderView& view = m_farView;
+	view.view = XMMatrixLookToLH( eye, forward, up );
+	view.projection = XMMatrixOrthographicLH( 2.0f * radius, 2.0f * radius, depthFar - depthNear, 0.0f );
+	view.viewProjection = XMMatrixMultiply( view.view, view.projection );
+	view.viewInverse = XMMatrixInverse( nullptr, view.view );
+	XMStoreFloat3( &view.position, eye );
+	XMStoreFloat3( &view.direction, forward );
+	view.lodOrigin = mainView.lodOrigin;	// LOD — как у главного вида: вдали лес — импостеры
+	view.lodEyeHeight = mainView.lodEyeHeight;
+	view.nearPlane = 0.0f;
+	view.farPlane = depthFar - depthNear;
+	view.frustum = DMFrustum( view.viewProjection );
+	view.index = farViewIndex;
+	view.farShadow = true;
+	// Пиксели берут дальний каскад с начала полосы конца дистанции (Shadow Distance Fadeout Fraction) — и дальше
+	view.cascadeNear = m_settings.dynamicShadowDistance * ( 1.0f - m_settings.shadowDistanceFadeoutFraction );
+	view.cascadeFar = FLT_MAX;
+	view.cascadeDepthFar = FLT_MAX;
+	m_farTexelSize = texel;
+}
+
+void ShadowCascades::updateTerrainShadow( const TerrainHeight& terrain, const XMFLOAT3& toLight )
+{
+	if( farActive() )
+		m_terrainShadow.update( terrain, toLight );
 }
 
 RenderState ShadowCascades::renderState( const DMLight::ShadowSettings& settings )
@@ -183,6 +240,12 @@ void ShadowCascades::bindForReceivers( int sunLightIndex )
 	ShaderShadowConstants constants = {};
 	for( uint32_t cascade = 0; cascade < cascadeCount; ++cascade )
 		constants.cascadeViewProjection[cascade] = XMMatrixTranspose( m_views[cascade].viewProjection );
+	const bool distant = farActive();
+	constants.farViewProjection = XMMatrixTranspose( m_farView.viewProjection );
+	constants.farShadow = XMFLOAT4( m_farTexelSize, distant ? 1.0f : 0.0f, 0.0f, 0.0f );
+	const bool terrain = distant && m_terrainShadow.valid();
+	constants.terrainShadow = XMFLOAT4( terrain ? m_terrainShadow.inverseWorldSize() : 0.0f,
+										std::tan( XMConvertToRadians( m_settings.farShadowPenumbra ) ), 0.1f, 0.0f );
 	constants.cascadeSplits = XMFLOAT4( m_splits[0], m_splits[1], m_splits[2], m_splits[3] );
 	constants.cascadeTexelSize = XMFLOAT4( m_texelSize[0], m_texelSize[1], m_texelSize[2], m_texelSize[3] );
 	constants.cascadeTransition = m_settings.cascadeTransitionFraction;
@@ -198,6 +261,8 @@ void ShadowCascades::bindForReceivers( int sunLightIndex )
 	DMD3D& d3d = DMD3D::instance();
 	d3d.setConstantBuffer( SLOT_CB_SHADOW, m_constantBuffer );
 	d3d.setSRV( SLOT_SHADOW_MAP, m_shaderView );
+	if( terrain )
+		d3d.setSRV( SLOT_TERRAIN_SUN_SHADOW, m_terrainShadow.shaderView() );
 }
 
 PropertyContainer* ShadowCascades::properties()

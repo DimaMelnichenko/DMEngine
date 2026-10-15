@@ -20,6 +20,10 @@ struct TerrainHeight
 	uint32_t mapSize = 0;	// текселей карты высот по стороне
 	float heightMultiplier = 1.0f;
 	float heightOffset = 0.0f;
+	float maxValue = 1.0f;		// наибольшее значение итоговой карты (нормированное, как текстура)
+	// Номер итоговой карты: растёт, когда её строят заново (загрузка, перестройка русел) — тем, кто считает по ней на GPU
+	// (тень рельефа, TerrainSunShadow)
+	uint32_t revision = 0;
 	// Детальная земля у русел — ресурс сцены (SLOT_TERRAIN_DETAIL, terrain_detail.sh): сторона плитки, м; 0 — её нет
 	float detailTileSize = 0.0f;
 	// Массив плиток и индекс (те же, что в слотах сцены) — тем, кто считает по ним при загрузке, до первого compute
