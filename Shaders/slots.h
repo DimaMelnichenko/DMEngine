@@ -20,7 +20,7 @@
 #define SLOT_CB_FRAME		DM_REGISTER( b, 0 )	// камера, время, число источников (common.vs, ConstantBuffers)
 #define SLOT_CB_OBJECT		DM_REGISTER( b, 1 )	// матрица объекта
 #define SLOT_CB_MATERIAL	DM_REGISTER( b, 2 )	// параметры материала (PBR, террейн, трава)
-#define SLOT_CB_PASS		DM_REGISTER( b, 2 )	// параметры прохода без материала (небо, постобработка, compute — DMComputeShader)
+#define SLOT_CB_PASS		DM_REGISTER( b, 2 )	// параметры прохода без материала (небо, панорама, постобработка, свет неба)
 #define SLOT_CB_SHADOW		DM_REGISTER( b, 3 )	// каскады теней солнца (shadows.sh, ShadowCascades) — пиксельные шейдеры
 // b4…b7 — свои буферы прохода (compute расстановки и частиц); b8 — таблица привязок вызова (bindless.sh); b9 —
 // root-константы вызова из команды ExecuteIndirect (начало списка индексов инстансов — instance.sh, scatter.cs); b10 —
@@ -99,7 +99,16 @@
 #define DM_BINDING_COUNT		28	// кратно 4 (uint4 в bindless.sh)
 #define DM_SCENE_BINDING_COUNT	( ( SLOT_SCENE_COUNT + 3 ) / 4 * 4 )	// t100… → 0…, кратно 4
 
-// Сэмплеры — статические в root signature: s0…s7 общие (samplers.sh, DMSamplerState)
-#define SLOT_SAMPLER_SHADOW	DM_REGISTER( s, 8 )		// сравнение глубины для карты теней (PCF 2×2)
+// Сэмплеры — статические в root signature (DMD3D::createRootSignature, по этим слотам): s0…s7 общие (имена в HLSL —
+// samplers.sh), s8 — сравнение для карты теней (shadows.sh)
+#define SLOT_SAMPLER_POINT_CLAMP		DM_REGISTER( s, 0 )
+#define SLOT_SAMPLER_POINT_WRAP			DM_REGISTER( s, 1 )
+#define SLOT_SAMPLER_POINT_BORDER		DM_REGISTER( s, 2 )		// за краем — 0
+#define SLOT_SAMPLER_LINEAR_CLAMP		DM_REGISTER( s, 3 )
+#define SLOT_SAMPLER_LINEAR_WRAP		DM_REGISTER( s, 4 )
+#define SLOT_SAMPLER_LINEAR_BORDER		DM_REGISTER( s, 5 )
+#define SLOT_SAMPLER_ANISOTROPIC_CLAMP	DM_REGISTER( s, 6 )		// анизотропия 8×
+#define SLOT_SAMPLER_ANISOTROPIC_WRAP	DM_REGISTER( s, 7 )
+#define SLOT_SAMPLER_SHADOW				DM_REGISTER( s, 8 )		// сравнение глубины для карты теней (PCF 2×2)
 
 #endif

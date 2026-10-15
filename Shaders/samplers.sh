@@ -3,14 +3,17 @@
 
 #ifndef SAMPLERS_H
 #define SAMPLERS_H
-SamplerState g_SamplerPointClamp : register(s0);
-SamplerState g_SamplerPointWrap : register(s1);
-SamplerState g_SamplerPointBorder : register(s2);
-SamplerState g_SamplerLinearClamp : register(s3);
-SamplerState g_SamplerLinearWrap : register(s4);
-SamplerState g_SamplerLinearBorder : register(s5);
-SamplerState g_SamplerAnisotropicClamp : register(s6);
-SamplerState g_SamplerAnisotropicWrap : register(s7);
+
+// Общие сэмплеры — статические в root signature (DMD3D::createRootSignature): слоты — slots.h, у карты теней — shadows.sh
+#include "slots.h"
+
+SamplerState g_SamplerPointClamp : register( SLOT_SAMPLER_POINT_CLAMP );
+SamplerState g_SamplerPointWrap : register( SLOT_SAMPLER_POINT_WRAP );
+SamplerState g_SamplerPointBorder : register( SLOT_SAMPLER_POINT_BORDER );
+SamplerState g_SamplerLinearClamp : register( SLOT_SAMPLER_LINEAR_CLAMP );
+SamplerState g_SamplerLinearWrap : register( SLOT_SAMPLER_LINEAR_WRAP );
+SamplerState g_SamplerLinearBorder : register( SLOT_SAMPLER_LINEAR_BORDER );
+SamplerState g_SamplerAnisotropicClamp : register( SLOT_SAMPLER_ANISOTROPIC_CLAMP );
+SamplerState g_SamplerAnisotropicWrap : register( SLOT_SAMPLER_ANISOTROPIC_WRAP );
 
 #endif
-/////////////////////

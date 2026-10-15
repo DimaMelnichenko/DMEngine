@@ -6,7 +6,6 @@
 #include "Logger\Logger.h"
 #include "Utils\FrameWatchdog.h"
 #include "Utils\Fingerprint.h"
-#include "DMSamplerState.h"
 #include <D3D12MemAlloc.h>
 #include <algorithm>
 #include <cstring>
@@ -448,14 +447,56 @@ void DMD3D::processDeferred( FrameResources& frame )
 	frame.deferredDescriptors.clear();
 }
 
+namespace
+{
+
+// Общие сэмплеры всех шейдеров — статические в root signature, привязки на кадр нет: слоты — Shaders/slots.h, имена в
+// HLSL — Shaders/samplers.sh, у карты теней — shadows.sh. Порядок — по слотам: от него зависит байткод сигнатуры, а от
+// неё — имена пайплайнов в библиотеке на диске
+std::vector<D3D12_STATIC_SAMPLER_DESC> staticSamplers()
+{
+	const auto sampler = []( UINT slot, D3D12_FILTER filter, D3D12_TEXTURE_ADDRESS_MODE address )
+	{
+		D3D12_STATIC_SAMPLER_DESC desc = {};
+		desc.Filter = filter;
+		desc.AddressU = desc.AddressV = desc.AddressW = address;
+		desc.MaxAnisotropy = filter == D3D12_FILTER_ANISOTROPIC ? 8 : 1;
+		desc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+		desc.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;	// за краем — 0, как у сэмплеров D3D11 по умолчанию
+		desc.MaxLOD = D3D12_FLOAT32_MAX;
+		desc.ShaderRegister = slot;
+		desc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		return desc;
+	};
+	std::vector<D3D12_STATIC_SAMPLER_DESC> samplers = {
+		sampler( SLOT_SAMPLER_POINT_CLAMP, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP ),
+		sampler( SLOT_SAMPLER_POINT_WRAP, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_WRAP ),
+		sampler( SLOT_SAMPLER_POINT_BORDER, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER ),
+		sampler( SLOT_SAMPLER_LINEAR_CLAMP, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP ),
+		sampler( SLOT_SAMPLER_LINEAR_WRAP, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP ),
+		sampler( SLOT_SAMPLER_LINEAR_BORDER, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_BORDER ),
+		sampler( SLOT_SAMPLER_ANISOTROPIC_CLAMP, D3D12_FILTER_ANISOTROPIC, D3D12_TEXTURE_ADDRESS_MODE_CLAMP ),
+		sampler( SLOT_SAMPLER_ANISOTROPIC_WRAP, D3D12_FILTER_ANISOTROPIC, D3D12_TEXTURE_ADDRESS_MODE_WRAP ),
+	};
+	// Карта теней: линейный PCF с сравнением — «освещено», если глубина пикселя не дальше от света, чем записанная (≥,
+	// глубина обратная); за краем карты — «освещено»: граница 0 — дальняя плоскость. Читают пиксельные шейдеры и вершинный
+	// шейдер частиц (тень в центре частицы)
+	D3D12_STATIC_SAMPLER_DESC shadow = sampler( SLOT_SAMPLER_SHADOW, D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+												D3D12_TEXTURE_ADDRESS_MODE_BORDER );
+	shadow.ComparisonFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+	samplers.push_back( shadow );
+	return samplers;
+}
+
+}
+
 bool DMD3D::createRootSignature()
 {
 	// [0] — root-константы таблицы привязок вызова (b8, DM_BINDING_COUNT DWORD: индексы дескрипторов по слотам —
 	// Shaders/bindless.sh); [1…SLOT_CB_COUNT] — root CBV b0…b7 (кольцо констант и буферы проходов); [1 + SLOT_CB_COUNT] —
 	// root-константы вызова b9 (их пишет команда ExecuteIndirect — начало списка инстансов); [2 + SLOT_CB_COUNT] — root
 	// CBV b10 — индексы ресурсов сцены (копия в кольце констант, flushSceneBindings); сэмплеры статические
-	DMSamplerState samplers;
-	samplers.initialize();
+	const std::vector<D3D12_STATIC_SAMPLER_DESC> samplers = staticSamplers();
 	D3D12_ROOT_PARAMETER1 parameters[3 + SLOT_CB_COUNT] = {};
 	parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
 	parameters[0].Constants.ShaderRegister = SLOT_CB_BINDINGS;
@@ -480,8 +521,8 @@ bool DMD3D::createRootSignature()
 	desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
 	desc.Desc_1_1.NumParameters = static_cast<UINT>( std::size( parameters ) );
 	desc.Desc_1_1.pParameters = parameters;
-	desc.Desc_1_1.NumStaticSamplers = static_cast<UINT>( samplers.staticSamplers().size() );
-	desc.Desc_1_1.pStaticSamplers = samplers.staticSamplers().data();
+	desc.Desc_1_1.NumStaticSamplers = static_cast<UINT>( samplers.size() );
+	desc.Desc_1_1.pStaticSamplers = samplers.data();
 	desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
 
 	ID3DBlob* blob = nullptr;

@@ -55,7 +55,7 @@ bool ShadowCascades::createResources()
 	if( !d3d.createShaderView( m_texture, viewDesc, m_shaderView ) )
 		return false;
 
-	// Сэмплер сравнения — общий s8 (DMSamplerState::shadowCompare)
+	// Сэмплер сравнения — общий статический SLOT_SAMPLER_SHADOW (s8, DMD3D::createRootSignature)
 	return d3d.createShaderConstantBuffer( sizeof( ShadowConstants ), m_constantBuffer );
 }
 
