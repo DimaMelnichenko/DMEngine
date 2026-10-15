@@ -157,8 +157,9 @@ private:
 	// Туман уровня: объём после карты теней, до проходов сцены
 	VolumetricFog m_fog;
 	AmbientOcclusion m_ambientOcclusion;
-	// Затенение окружением в этом кадре: включено (сила > 0) и есть depth prepass — по его глубине
-	bool ambientOcclusionActive();
+	// Затенение окружением в этом кадре — раз в начале render(): включено (сила > 0) и есть depth prepass — по его глубине
+	AmbientOcclusion::Settings m_ambientOcclusionSettings;
+	bool m_ambientOcclusionActive = false;
 	GpuProfiler m_gpuProfiler;
 
 	// Замер среднего времени GPU за несколько секунд: после прогрева — одной строкой в log.txt («GPU average», её

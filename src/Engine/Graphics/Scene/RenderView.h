@@ -3,12 +3,14 @@
 #include "DirectX.h"
 #include "Camera\DMCamera.h"
 #include "Camera\DMFrustum.h"
+#include "Shaders\view_limits.h"
 
 namespace GS
 {
 
-// Видов в кадре: главный, четыре каскада теней солнца и дальний каскад (лес до краёв карты, ShadowCascades)
-constexpr uint32_t maxRenderViews = 6;
+// Видов в кадре: главный, четыре каскада теней солнца и дальний каскад (лес до краёв карты, ShadowCascades) — общий
+// с шейдерами предел (Shaders/view_limits.h)
+constexpr uint32_t maxRenderViews = DM_MAX_RENDER_VIEWS;
 
 // Вид, с которого рисуется кадр, — как FSceneView в UE: матрицы, положение и пирамида видимости. Главный вид —
 // камера, ещё четыре — каскады теней солнца (ShadowCascades). Объекты сцены видят кадр только через вид

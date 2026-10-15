@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Properties\SettingsSchema.h"
 #include <optional>
 #include <string>
 #include <vector>
@@ -377,6 +378,8 @@ struct VolumetricCloudSettings
 	float shadowStrength = 1.0f;			// тень облаков на земле: множитель оптической толщины, 0 — нет
 	float tracingMaxDistance = 50000.0f;	// дальше облака не видны, м (Tracing Max Distance)
 };
+// Поля строки VolumetricCloud: колонки, окно «Volumetric cloud» (SettingsSchema)
+const SettingsSchema<VolumetricCloudSettings>& volumetricCloudSchema();
 
 // Слой тумана по высоте: ниже своей высоты ровный, выше редеет по экспоненте
 struct HeightFogLayer
@@ -693,6 +696,12 @@ struct ScatterLayerSettings
 	// дальше дистанции теней крона освещена со всех сторон — бледная и плоская рядом с затенёнными каскадами ближними
 	float impostorSelfShadow = 1.0f;
 };
+
+// Поля строки ScatterLayers (SettingsSchema): части окна слоя — "" (кольцо, размер, цвет, края), "ground" (порог фильтра
+// по слоям земли — при фильтре), "placement" (куртины, поворот, наклон, тень), "impostor" (у слоя с импостером),
+// "impostorSelfShadow" (у импостера со смещением глубины); только в базе — persistent, layer_filter (в окне — флажки
+// ролей, Scatterer). Не в описании: id, placement, mask
+const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema();
 
 // Своя раскладка вида (модели) слоя расстановки — колонки ScatterLayerModels; не задано (NULL в базе) — как у слоя
 struct ScatterVariantPlacement

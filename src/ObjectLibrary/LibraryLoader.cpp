@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "DBConnector.h"
+#include "SettingsDatabase.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 
@@ -555,18 +556,10 @@ void LibraryLoader::loadTerrainEdits( uint32_t terrainId, LevelDescription& leve
 
 void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::ScatterSet& set )
 {
-	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, placement, mask, cell_size, near_border, far_border, near_fade, "
-														   "far_fade, size_multiplier, size_variation, ground_color, ground_color_height, ground_color_far, color_variation, edge_spread, thinning_start, thinning, dither_fade, patch_scale, patch_strength, layer_filter, layer_filter_threshold, jitter, rotation_x, rotation_y, rotation_z, align_to_terrain, cast_shadow, persistent, "
-														   "impostor_distance, shadow_impostor_distance, impostor_density, impostor_occlusion, impostor_frame_size, impostor_cast_shadow, impostor_base_shade, impostor_self_shadow "
-														   "FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT * FROM ScatterLayers WHERE scatter_set = :set ORDER BY layer" );
 	query.bind( ":set", idSet );
 	while( query.executeStep() )
 	{
-		auto value = [&query]( const char* column )
-		{
-			return static_cast<float>( query.getColumn( column ).getDouble() );
-		};
-
 		LevelDescription::ScatterLayer layer;
 		layer.settings.id = query.getColumn( "id" ).getUInt();
 		layer.mask = query.getColumn( "mask" ).isNull() ? std::string() : query.getColumn( "mask" ).getString();
@@ -575,44 +568,8 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 			layer.settings.placement = GS::ScatterPlacement::streamStones;
 		else if( !placement.empty() && placement != "mask" )
 			LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": unknown placement '" + placement + "', mask is used" );
-		layer.settings.cellSize = value( "cell_size" );
-		layer.settings.nearBorder = value( "near_border" );
-		layer.settings.farBorder = value( "far_border" );
-		layer.settings.nearFade = value( "near_fade" );
-		layer.settings.farFade = value( "far_fade" );
-		layer.settings.sizeMultiplier = value( "size_multiplier" );
-		layer.settings.sizeVariation = value( "size_variation" );
-		// Цвет земли у растения: NULL — 0, свой цвет
-		layer.settings.groundColor = value( "ground_color" );
-		layer.settings.groundColorHeight = value( "ground_color_height" );
-		layer.settings.groundColorFar = value( "ground_color_far" );
-		layer.settings.colorVariation = value( "color_variation" );
-		// Края кольца и прореживание: NULL — 0, как раньше
-		layer.settings.edgeSpread = value( "edge_spread" );
-		layer.settings.thinStart = value( "thinning_start" );
-		layer.settings.thinning = value( "thinning" );
-		layer.settings.ditherFade = query.getColumn( "dither_fade" ).getInt() != 0;
-		// Куртины: NULL — 0, без куртин
-		layer.settings.patchScale = value( "patch_scale" );
-		layer.settings.patchStrength = value( "patch_strength" );
-		// Фильтр по слоям земли: NULL — растёт на любых
-		layer.settings.layerFilter = query.getColumn( "layer_filter" ).isNull() ? std::string() : query.getColumn( "layer_filter" ).getString();
-		layer.settings.layerFilterThreshold = value( "layer_filter_threshold" );
-		layer.settings.jitter = value( "jitter" );
-		layer.settings.rotationRange = XMFLOAT3( value( "rotation_x" ), value( "rotation_y" ), value( "rotation_z" ) );
-		layer.settings.alignToTerrain = query.getColumn( "align_to_terrain" ).getInt() != 0;
-		layer.settings.castShadow = query.getColumn( "cast_shadow" ).getInt() != 0;
-		layer.settings.persistent = query.getColumn( "persistent" ).getInt() != 0;
-		layer.settings.impostorDistance = value( "impostor_distance" );
-		layer.settings.shadowImpostorDistance = value( "shadow_impostor_distance" );
-		layer.settings.impostorDensity = value( "impostor_density" );
-		layer.settings.impostorOcclusion = value( "impostor_occlusion" );
-		if( !query.getColumn( "impostor_frame_size" ).isNull() )
-			layer.settings.impostorFrameSize = query.getColumn( "impostor_frame_size" ).getUInt();
-		layer.settings.impostorCastShadow = query.getColumn( "impostor_cast_shadow" ).getInt() != 0;
-		layer.settings.impostorBaseShade = value( "impostor_base_shade" );
-		if( !query.getColumn( "impostor_self_shadow" ).isNull() )
-			layer.settings.impostorSelfShadow = value( "impostor_self_shadow" );
+		// Остальное — по описанию полей (scatterLayerSchema): NULL — значение по умолчанию
+		readSettings( query, GS::scatterLayerSchema(), layer.settings, "Scatter layer " + std::to_string( layer.settings.id ) );
 
 		// Модели слоя — варианты растения с весами, в порядке строк
 		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, weight, cast_shadow, lod_distances, size_multiplier, "

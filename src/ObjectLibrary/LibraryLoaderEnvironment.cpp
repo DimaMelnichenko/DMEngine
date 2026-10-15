@@ -4,6 +4,7 @@
 #include "DBConnector.h"
 #include "Logger\Logger.h"
 #include "Utils\utilites.h"
+#include "SettingsDatabase.h"
 
 using namespace DirectX;
 
@@ -185,24 +186,8 @@ bool LibraryLoader::loadLevelEnvironment( LevelDescription& level )
 			LOG( "Volumetric cloud " + std::to_string( *level.volumetricCloudId ) + " is not found in table VolumetricCloud" );
 			return false;
 		}
-		auto value = [&query]( const char* column )
-		{
-			return static_cast<float>( query.getColumn( column ).getDouble() );
-		};
-		GS::VolumetricCloudSettings& cloud = level.volumetricCloud.emplace();
-		cloud.layerBottomAltitude = value( "layer_bottom_altitude" );
-		cloud.layerHeight = value( "layer_height" );
-		cloud.coverage = value( "coverage" );
-		cloud.density = value( "density" );
-		const std::string albedo = query.getColumn( "albedo" ).getString();
-		if( !strToVec3( albedo, cloud.albedo ) )
-			LOG( "Volumetric cloud " + std::to_string( *level.volumetricCloudId ) + ": wrong albedo '" + albedo + "'" );
-		cloud.shapeScale = value( "shape_scale" );
-		cloud.detailScale = value( "detail_scale" );
-		cloud.weatherScale = value( "weather_scale" );
-		cloud.windSpeed = value( "wind_speed" );
-		cloud.shadowStrength = value( "shadow_strength" );
-		cloud.tracingMaxDistance = value( "tracing_max_distance" );
+		readSettings( query, GS::volumetricCloudSchema(), level.volumetricCloud.emplace(),
+					  "Volumetric cloud " + std::to_string( *level.volumetricCloudId ) );
 	}
 
 	if( level.hdriBackdropId )
@@ -287,9 +272,7 @@ void LibraryLoader::loadStars( LevelDescription& level )
 
 double LibraryLoader::dbValue( float value )
 {
-	char text[32];
-	std::snprintf( text, sizeof( text ), "%g", value );
-	return std::atof( text );
+	return settingsDatabaseFloat( value );
 }
 
 bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<DMLight>& lights, const std::vector<uint32_t>& removedLights,
@@ -536,23 +519,7 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, std::vector<D
 		// Облака — только в свою строку: без строки у уровня облаков нет, и окна тоже
 		if( cloud && level.volumetricCloudId )
 		{
-			SQLite::Statement updateCloud( db, "UPDATE VolumetricCloud SET layer_bottom_altitude = :bottom, layer_height = :height, "
-											   "coverage = :coverage, density = :density, albedo = :albedo, shape_scale = :shape, "
-											   "detail_scale = :detail, weather_scale = :weather, wind_speed = :wind, "
-											   "shadow_strength = :shadow, tracing_max_distance = :distance WHERE id = :id" );
-			updateCloud.bind( ":bottom", dbValue( cloud->layerBottomAltitude ) );
-			updateCloud.bind( ":height", dbValue( cloud->layerHeight ) );
-			updateCloud.bind( ":coverage", dbValue( cloud->coverage ) );
-			updateCloud.bind( ":density", dbValue( cloud->density ) );
-			updateCloud.bind( ":albedo", vec3ToStr( cloud->albedo ) );
-			updateCloud.bind( ":shape", dbValue( cloud->shapeScale ) );
-			updateCloud.bind( ":detail", dbValue( cloud->detailScale ) );
-			updateCloud.bind( ":weather", dbValue( cloud->weatherScale ) );
-			updateCloud.bind( ":wind", dbValue( cloud->windSpeed ) );
-			updateCloud.bind( ":shadow", dbValue( cloud->shadowStrength ) );
-			updateCloud.bind( ":distance", dbValue( cloud->tracingMaxDistance ) );
-			updateCloud.bind( ":id", *level.volumetricCloudId );
-			updateCloud.exec();
+			updateSettings( db, "VolumetricCloud", *level.volumetricCloudId, GS::volumetricCloudSchema(), *cloud );
 		}
 
 		transaction.commit();

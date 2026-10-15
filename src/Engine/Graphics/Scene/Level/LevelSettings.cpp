@@ -8,6 +8,108 @@ using namespace DirectX;
 namespace GS
 {
 
+const SettingsSchema<VolumetricCloudSettings>& volumetricCloudSchema()
+{
+	using Settings = VolumetricCloudSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "layer_bottom_altitude", "Layer bottom altitude", DM_SETTING( layerBottomAltitude ), 200.0f, 8000.0f, "m" },
+		{ "layer_height", "Layer height", DM_SETTING( layerHeight ), 100.0f, 10000.0f, "m" },
+		{ "coverage", "Coverage", DM_SETTING( coverage ), 0.0f, 1.0f },
+		{ "density", "Density", DM_SETTING( density ), 0.0f, 0.2f, "1/m" },
+		{ "albedo", "Albedo", DM_SETTING( albedo ), 0.0f, 0.0f, "", "", settingColor },
+		{ "shape_scale", "Shape scale", DM_SETTING( shapeScale ), 1000.0f, 40000.0f, "m" },
+		{ "detail_scale", "Detail scale", DM_SETTING( detailScale ), 100.0f, 5000.0f, "m" },
+		{ "weather_scale", "Weather scale", DM_SETTING( weatherScale ), 5000.0f, 200000.0f, "m" },
+		{ "wind_speed", "Wind speed", DM_SETTING( windSpeed ), 0.0f, 50.0f, "m/s" },
+		{ "shadow_strength", "Shadow strength", DM_SETTING( shadowStrength ), 0.0f, 4.0f },
+		{ "tracing_max_distance", "Tracing max distance", DM_SETTING( tracingMaxDistance ), 5000.0f, 200000.0f, "m" },
+	};
+	return schema;
+}
+
+const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
+{
+	using Settings = ScatterLayerSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "cell_size", "Cell size", DM_SETTING( cellSize ), 0.05f, 20.0f, "m", "Grid step: at most one instance per cell",
+		  settingLogarithmic | settingClampLow },
+		{ "near_border", "Near border", DM_SETTING( nearBorder ), 0.0f, 200.0f, "m", "Ring around the camera where the layer grows",
+		  settingClampLow },
+		{ "far_border", "Far border", DM_SETTING( farBorder ), 1.0f, 200.0f, "m", "Ring around the camera where the layer grows" },
+		{ "near_fade", "Near fade", DM_SETTING( nearFade ), 0.0f, 100.0f, "m", "Instances shrink to zero over this width at the near border",
+		  settingClampLow },
+		{ "far_fade", "Far fade", DM_SETTING( farFade ), 0.0f, 200.0f, "m", "Instances shrink to zero over this width at the far border",
+		  settingClampLow },
+		{ "size_multiplier", "Size", DM_SETTING( sizeMultiplier ), 0.05f, 10.0f, "", "Size multiplier of the models", settingLogarithmic },
+		{ "size_variation", "Size variation", DM_SETTING( sizeVariation ), 0.0f, 1.0f, "",
+		  "Random size spread: an instance is Size x (1 - variation ... 1)", settingClamp },
+		{ "jitter", "Jitter", DM_SETTING( jitter ), 0.0f, 1.0f, "", "Random offset inside the cell, share of the cell size", settingClampLow },
+		// Цвет земли у растения: трава на пожелтевшей земле не сочно-зелёная, вдали пучки не выделяются тёмными корнями
+		{ "ground_color", "Ground color", DM_SETTING( groundColor ), 0.0f, 1.0f, "",
+		  "Share of the ground color under the plant at its root (the terrain layers by weight, with their tint): 0 - own color", settingClamp },
+		{ "ground_color_height", "Ground color height", DM_SETTING( groundColorHeight ), 0.0f, 2.0f, "m",
+		  "Height above the root where the ground color fades out to the plant's own color", settingClampLow },
+		{ "ground_color_far", "Ground color far", DM_SETTING( groundColorFar ), 0.0f, 1.0f, "",
+		  "Share of the ground color over the whole plant at the far border (from half the ring): far plants blend into the ground",
+		  settingClamp },
+		{ "color_variation", "Color variation", DM_SETTING( colorVariation ), 0.0f, 0.5f, "",
+		  "Random brightness spread between plants (+-); the ground brightness spots of the terrain apply too" },
+		// Края кольца и прореживание вдали: граница не ровной дугой, вдали меньше экземпляров
+		{ "edge_spread", "Edge spread", DM_SETTING( edgeSpread ), 0.0f, 1.0f, "",
+		  "Own fade distance of each instance over the fade bands (and a coarse world noise): the ring edge is ragged, "
+		  "plants vanish one by one; 0 - all shrink together", settingClamp },
+		{ "thinning_start", "Thinning start", DM_SETTING( thinStart ), 0.0f, 1.0f, "m", "Distance where thinning starts", settingClampLow },
+		{ "dither_fade", "Dither fade", DM_SETTING( ditherFade ), 0.0f, 0.0f, "",
+		  "At the ring borders an instance fades in from transparency (a share of its pixels, like foliage in UE) instead of "
+		  "growing from zero size; needs materials with dithered LOD transition" },
+		{ "thinning", "Thinning", DM_SETTING( thinning ), 0.0f, 0.95f, "",
+		  "Share of instances removed at the far border (the same ones always; the rest are bigger - the cover stays): fewer "
+		  "instances far away; 0 - none", settingClamp },
+		// Фильтр по слоям земли (как Landscape Grass Type в UE): роли — флажки подокна «Grows on» у слоя, здесь — порог
+		{ "layer_filter", nullptr, DM_SETTING( layerFilter ) },
+		{ "layer_filter_threshold", "Ground threshold", DM_SETTING( layerFilterThreshold ), 0.0f, 0.5f, "",
+		  "Share of the Grows on terrain layers where the density is half; from twice the share - full, at 0 - none "
+		  "(a snow or pebble stroke over a meadow removes the grass); 0 - any share of them", settingClamp, "ground" },
+		// Куртины: модели слоя — виды, растут пятнами (окно варианта: «Patch group» — модели одного вида в одних пятнах)
+		{ "patch_scale", "Patch size", DM_SETTING( patchScale ), 0.0f, 100.0f, "m",
+		  "Patches of the layer models (species): size of the world noise spots where a model group outnumbers the others; "
+		  "0 - the models are mixed evenly by weight", settingClampLow, "placement" },
+		{ "patch_strength", "Patch strength", DM_SETTING( patchStrength ), 0.0f, 1.0f, "",
+		  "How strongly a model group outnumbers the others in its patches: weight x e^(4 x strength x noise)", settingClamp, "placement" },
+		{ "rotation_x,rotation_y,rotation_z", "Rotation", DM_SETTING( rotationRange ), 0.0f, 360.0f, "deg",
+		  "Random rotation limit around X, Y, Z", 0, "placement" },
+		{ "align_to_terrain", "Align to terrain", DM_SETTING( alignToTerrain ), 0.0f, 0.0f, "", "Instance Y axis along the terrain normal",
+		  0, "placement" },
+		{ "cast_shadow", "Cast shadow", DM_SETTING( castShadow ), 0.0f, 0.0f, "", "", 0, "placement" },
+		// Постоянный слой (лес) — раскладка раз на всю карту при загрузке
+		{ "persistent", nullptr, DM_SETTING( persistent ) },
+		// Импостер — последний LOD варианта дальше impostor_distance (верхние границы дальностей ставит слой по кольцу)
+		{ "impostor_distance", "Impostor distance", DM_SETTING( impostorDistance ), 0.1f, 1.0f, "m",
+		  "From this distance an instance is an impostor (the last LOD of the model - up to it); model LODs that started beyond it "
+		  "at loading are not used", 0, "impostor" },
+		{ "shadow_impostor_distance", "Shadow impostor distance", DM_SETTING( shadowImpostorDistance ), 0.0f, 1.0f, "m",
+		  "Shadow views use the impostor from this distance (0 - as in the frame)", 0, "impostor" },
+		{ "impostor_cast_shadow", "Impostor shadow", DM_SETTING( impostorCastShadow ), 0.0f, 0.0f, "",
+		  "If impostors cast a shadow: off - shadow views skip them (far grass)", 0, "impostor" },
+		// Запекание импостера: правка — кадры заново, когда ползунок отпущен (Scatterer::rebakeChangedImpostors)
+		{ "impostor_frame_size", "Impostor frame size", DM_SETTING( impostorFrameSize ), 0.0f, 0.0f, "texels",
+		  "Side of an impostor frame (8 x 8 frames): smaller - less memory and a faster bake (64 - a quarter of 128); the impostor is "
+		  "rebaked", 0, "impostor", { 16, 32, 64, 128, 256, 512 } },
+		{ "impostor_density", "Impostor density", DM_SETTING( impostorDensity ), 0.25f, 4.0f, "",
+		  "Coverage multiplier of the bake: > 1 - denser (thin blades and needles far away merge instead of being cut by the "
+		  "alpha test); rebaked when the edit ends", 0, "impostor" },
+		{ "impostor_occlusion", "Impostor occlusion", DM_SETTING( impostorOcclusion ), 0.0f, 1.0f, "",
+		  "Sky light occlusion inside the crown, baked from the frames depth; rebaked when the edit ends", settingClamp, "impostor" },
+		{ "impostor_base_shade", "Impostor base shade", DM_SETTING( impostorBaseShade ), 0.0f, 1.0f, "",
+		  "Impostor color at the root x (1 - shade), up to the model top - none: far grass without a shadow is not lighter than "
+		  "the shadowed grass next to it", settingClamp, "impostor" },
+		{ "impostor_self_shadow", "Impostor self shadow", DM_SETTING( impostorSelfShadow ), 0.0f, 1.0f, "",
+		  "Sun shadow of the crown on itself from the impostor frames: beyond the shadow distance there are no cascades, and "
+		  "without it a far crown is lit from all sides - pale and flat", settingClamp, "impostorSelfShadow" },
+	};
+	return schema;
+}
+
 const std::vector<WindFieldParameter>& windFieldParameters()
 {
 	using W = WindFieldSettings;

@@ -544,7 +544,11 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 именованная карта свойств с вложенными контейнерами. Объекты, которые нужно крутить в рантайме
 (террейн, модели, частицы), отдают `properties()`, а `DMGraphics` регистрирует их через
 `m_GUI.addPropertyWatching( контейнер, раздел Outliner, объект )`. После этого панель Details (`GUI/PropertyWidgets.cpp`)
-сама строит контролы по типу свойства; необязательно — `setUnit`, `setTooltip`, `setFormat`, `setLogarithmic`.
+сама строит контролы по типу свойства; необязательно — `setUnit`, `setTooltip`, `setFormat`, `setLogarithmic`. Настройки
+строки уровня — описанием полей (`SettingsSchema`, `Properties/SettingsSchema.h`, как UPROPERTY в UE): колонка, имя
+свойства, член структуры, границы, единицы, подсказка — одной строкой в `Scene/Level/LevelSettings.cpp`; окно
+(`addSettingProperties` / `readSettingProperties`) и база (`readSettings` / `updateSettings`, `ObjectLibrary/SettingsDatabase.h`)
+— по нему; новый параметр — строка описания, а не пять мест (переведены облака и слои расстановки, `docs/gui.md`).
 
 **Террейн** — `CDLODTerrain` (`Scene/Terrain/`, Strugar 2009): квадродерево над картой высот,
 корень покрывает весь террейн, лист — 32 текселя, диапазон каждого уровня вдвое больше предыдущего. Узлы выбираются

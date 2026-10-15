@@ -237,6 +237,35 @@ property->setUnit( "1/m" )->setLogarithmic()->setFormat( "%.5f" )
 property->setStep( 0.25f );                                         // шаг стрелок и Ctrl; без него — подбор
 ```
 
+**Настройки уровня — описанием полей** (`SettingsSchema`, как UPROPERTY в UE): у строки базы, которую окно правит и
+«Save level» пишет, параметр описывается один раз — колонка базы, имя свойства, член структуры настроек, границы,
+единицы, подсказка, флаги (`settingLogarithmic`, `settingColor`, `settingClamp` / `settingClampLow` — пределы при чтении
+из окна, `settingTransient`), часть окна (`group` — добавляется по условию) и выбор из значений (`choices` — список в
+окне). По описанию строятся свойства окна (`addSettingProperties`, `Properties/SettingsProperties.h`) и структура из них
+(`readSettingProperties`), читается строка базы (`readSettings`, NULL — значение по умолчанию структуры) и пишется
+`UPDATE` (`updateSettings` / `settingsAssignments` + `bindSettings`, `ObjectLibrary/SettingsDatabase.h`). Описания — рядом
+с данными, в `Scene/Level/LevelSettings.cpp`:
+
+```cpp
+const SettingsSchema<VolumetricCloudSettings>& volumetricCloudSchema()
+{
+	using Settings = VolumetricCloudSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "coverage", "Coverage", DM_SETTING( coverage ), 0.0f, 1.0f },
+		{ "density", "Density", DM_SETTING( density ), 0.0f, 0.2f, "1/m" },
+		{ "albedo", "Albedo", DM_SETTING( albedo ), 0.0f, 0.0f, "", "", settingColor },
+		// вектор в колонках компонент, часть окна по условию
+		{ "rotation_x,rotation_y,rotation_z", "Rotation", DM_SETTING( rotationRange ), 0.0f, 360.0f, "deg", "", 0, "placement" },
+	};
+	return schema;
+}
+```
+
+Новый параметр — поле структуры, строка описания и колонка в базе; окно, загрузка и «Save level» подхватят его сами. Так
+переведены облака (`volumetricCloudSchema`) и слои расстановки (`scatterLayerSchema`); остальные строки уровня пока
+вручную (`TODO.md`, A1). Особое (фильтр по ролям земли флажками, связи полей вроде «дальняя граница не ближе ближней +
+шаг») объект дописывает после чтения по описанию.
+
 **Кнопки окна** — `PropertyContainer::addButton( имя, подсказка, действие )`: действие возвращает
 `PropertyContainer::ButtonAction` — функции отмены и повтора (пустые — не отменяется) и имя правки; так источники света
 добавляются и убираются (`DMLightDriver`, `DMGraphics::addLight`). Изменился состав окна (подокно добавили или убрали,

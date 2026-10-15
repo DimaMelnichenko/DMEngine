@@ -13,6 +13,7 @@
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "Materials\ImpostorMaterial.h"
+#include "Properties\SettingsProperties.h"
 #include "Terrain\TerrainMasks.h"
 
 using namespace DirectX;
@@ -44,22 +45,6 @@ bool Scatterer::Initialize()
 
 namespace
 {
-
-// Сторона кадра импостера — степень двойки 16…512; в окне — список, значение свойства — номер
-const std::vector<std::string> frameSizeItems = { "16", "32", "64", "128", "256", "512" };
-
-uint32_t frameSizeIndex( uint32_t size )
-{
-	uint32_t index = 0;
-	while( index + 1 < frameSizeItems.size() && ( 16u << index ) < size )
-		++index;
-	return index;
-}
-
-uint32_t frameSizeFromIndex( int32_t index )
-{
-	return 16u << std::clamp( index, 0, static_cast<int32_t>( frameSizeItems.size() ) - 1 );
-}
 
 // Настройки запекания импостера слоя («Impostor frame size», «Impostor density», «Impostor occlusion»)
 GS::ImpostorMaterial::BakeSettings bakeSettings( const GS::ScatterLayerSettings& settings )
@@ -245,7 +230,9 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	if( settings.placement == ScatterPlacement::streamStones )
 		settings.persistent = true;
 	// Кадр импостера — из списка окна (степень двойки 16…512): запечённое при загрузке совпадёт с окном
-	settings.impostorFrameSize = frameSizeFromIndex( static_cast<int32_t>( frameSizeIndex( settings.impostorFrameSize ) ) );
+	if( const SettingField<ScatterLayerSettings>* frameSize = findSettingField( scatterLayerSchema(), "impostor_frame_size" ) )
+		settings.impostorFrameSize = static_cast<uint32_t>( frameSize->choices[nearestSettingChoice( frameSize->choices,
+																									 static_cast<int32_t>( settings.impostorFrameSize ) )] );
 
 	Layer layer;
 	layer.mask = mask;
@@ -397,49 +384,17 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	if( variantCount > 1 )
 		name += " + " + std::to_string( variantCount - 1 );
 	layer.properties = std::make_unique<PropertyContainer>( name );
-	auto number = [&layer]( const char* name, float value, float low, float high, const char* unit, const char* tooltip )
-	{
-		Property* property = layer.properties->insert( name, value );
-		property->setLow( low );
-		property->setHigh( std::max( high, value ) );
-		property->setUnit( unit )->setTooltip( tooltip );
-		return property;
-	};
 	// Скрыть слой — посмотреть на другие (траву убрать — видны одуванчики): не считается и не рисуется, с уровнем не
 	// сохраняется
 	layer.properties->insert( "Visible", true )->setTransient()->setTooltip(
 		"Show the layer: off - it is neither placed nor drawn (to see the other layers); not saved with the level" );
+	// Поля окна — по описанию строки ScatterLayers (scatterLayerSchema), части — по условию
+	const SettingsSchema<ScatterLayerSettings>& schema = scatterLayerSchema();
+	addSettingProperties( *layer.properties, schema, settings, "" );
 	const float ringHigh = std::max( 200.0f, settings.farBorder * 2.0f );
-	number( "Cell size", settings.cellSize, 0.05f, 20.0f, "m", "Grid step: at most one instance per cell" )->setLogarithmic();
-	number( "Near border", settings.nearBorder, 0.0f, ringHigh, "m", "Ring around the camera where the layer grows" );
-	number( "Far border", settings.farBorder, 1.0f, ringHigh, "m", "Ring around the camera where the layer grows" );
-	number( "Near fade", settings.nearFade, 0.0f, 100.0f, "m", "Instances shrink to zero over this width at the near border" );
-	number( "Far fade", settings.farFade, 0.0f, 200.0f, "m", "Instances shrink to zero over this width at the far border" );
-	number( "Size", settings.sizeMultiplier, 0.05f, 10.0f, "", "Size multiplier of the models" )->setLogarithmic();
-	number( "Size variation", settings.sizeVariation, 0.0f, 1.0f, "",
-			"Random size spread: an instance is Size x (1 - variation ... 1)" );
-	number( "Jitter", settings.jitter, 0.0f, 1.0f, "", "Random offset inside the cell, share of the cell size" );
-	// Цвет земли у растения: трава на пожелтевшей земле не сочно-зелёная, вдали пучки не выделяются тёмными корнями
-	number( "Ground color", settings.groundColor, 0.0f, 1.0f, "",
-			"Share of the ground color under the plant at its root (the terrain layers by weight, with their tint): 0 - own color" );
-	number( "Ground color height", settings.groundColorHeight, 0.0f, 2.0f, "m",
-			"Height above the root where the ground color fades out to the plant's own color" );
-	number( "Ground color far", settings.groundColorFar, 0.0f, 1.0f, "",
-			"Share of the ground color over the whole plant at the far border (from half the ring): far plants blend into the ground" );
-	number( "Color variation", settings.colorVariation, 0.0f, 0.5f, "",
-			"Random brightness spread between plants (+-); the ground brightness spots of the terrain apply too" );
-	// Края кольца и прореживание вдали: граница не ровной дугой, вдали меньше экземпляров
-	number( "Edge spread", settings.edgeSpread, 0.0f, 1.0f, "",
-			"Own fade distance of each instance over the fade bands (and a coarse world noise): the ring edge is ragged, "
-			"plants vanish one by one; 0 - all shrink together" );
-	number( "Thinning start", settings.thinStart, 0.0f, std::max( settings.farBorder, 1.0f ), "m",
-			"Distance where thinning starts" );
-	layer.properties->insert( "Dither fade", settings.ditherFade )->setTooltip(
-		"At the ring borders an instance fades in from transparency (a share of its pixels, like foliage in UE) instead of "
-		"growing from zero size; needs materials with dithered LOD transition" );
-	number( "Thinning", settings.thinning, 0.0f, 0.95f, "",
-			"Share of instances removed at the far border (the same ones always; the rest are bigger - the cover stays): fewer "
-			"instances far away; 0 - none" );
+	( *layer.properties )["Near border"].setHigh( std::max( ringHigh, settings.nearBorder ) );
+	( *layer.properties )["Far border"].setHigh( std::max( ringHigh, settings.farBorder ) );
+	( *layer.properties )["Thinning start"].setHigh( std::max( { settings.farBorder, settings.thinStart, 1.0f } ) );
 	// Фильтр по слоям земли (как Landscape Grass Type в UE): подокно «Grows on» — флажок на роль слоя материала террейна.
 	// У камней русел нет: их кладёт CPU по камням конвейера, не раскладка по маске
 	if( settings.placement != ScatterPlacement::streamStones &&
@@ -452,64 +407,17 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		layer.groundProperties = std::make_unique<PropertyContainer>( "Grows on" );
 		addRoleFlags( *layer.groundProperties, m_groundLayers, settings.layerFilter == "none" ? std::vector<std::string>{ "none" } : roles,
 					  true, "The layer grows on this terrain layer (by its weight in the splat map and the detail weights); all on - no filter" );
-		number( "Ground threshold", settings.layerFilterThreshold, 0.0f, 0.5f, "",
-				"Share of the Grows on terrain layers where the density is half; from twice the share - full, at 0 - none "
-				"(a snow or pebble stroke over a meadow removes the grass); 0 - any share of them" );
+		addSettingProperties( *layer.properties, schema, settings, "ground" );
 	}
-	// Куртины: модели слоя — виды, растут пятнами (окно варианта: «Patch group» — модели одного вида в одних пятнах)
-	number( "Patch size", settings.patchScale, 0.0f, 100.0f, "m",
-			"Patches of the layer models (species): size of the world noise spots where a model group outnumbers the others; "
-			"0 - the models are mixed evenly by weight" );
-	number( "Patch strength", settings.patchStrength, 0.0f, 1.0f, "",
-			"How strongly a model group outnumbers the others in its patches: weight x e^(4 x strength x noise)" );
-	Property* rotation = layer.properties->insert( "Rotation", settings.rotationRange );
-	rotation->setLow( 0.0f );
-	rotation->setHigh( 360.0f );
-	rotation->setUnit( "deg" )->setTooltip( "Random rotation limit around X, Y, Z" );
-	layer.properties->insert( "Align to terrain", settings.alignToTerrain )->setTooltip( "Instance Y axis along the terrain normal" );
-	layer.properties->insert( "Cast shadow", params.castShadow > 0.5f );
+	addSettingProperties( *layer.properties, schema, settings, "placement" );
 	if( settings.impostorDistance > 0.0f )
 	{
-		Property* impostorDistance = layer.properties->insert( "Impostor distance", settings.impostorDistance );
-		impostorDistance->setLow( 0.1f );
-		impostorDistance->setHigh( std::max( settings.farBorder, settings.impostorDistance ) );
-		impostorDistance->setUnit( "m" )->setTooltip( "From this distance an instance is an impostor (the last LOD of the model - "
-													  "up to it); model LODs that started beyond it at loading are not used" );
-		// С какого расстояния тень — импостером (0 — как в кадре); до impostor_distance — раньше, чем в кадре
-		Property* shadowImpostor = layer.properties->insert( "Shadow impostor distance", settings.shadowImpostorDistance );
-		shadowImpostor->setLow( 0.0f );
-		shadowImpostor->setHigh( settings.impostorDistance );
-		shadowImpostor->setUnit( "m" );
-		layer.properties->insert( "Impostor shadow", settings.impostorCastShadow )->setTooltip(
-			"If impostors cast a shadow: off - shadow views skip them (far grass)" );
-		// Запекание импостера: правка — кадры заново, когда ползунок отпущен (rebakeChangedImpostors)
-		Property* frameSize = layer.properties->insert( "Impostor frame size", static_cast<int32_t>( frameSizeIndex( settings.impostorFrameSize ) ) );
-		frameSize->setItems( frameSizeItems );
-		frameSize->setUnit( "texels" )->setTooltip( "Side of an impostor frame (8 x 8 frames): smaller - less memory and a faster bake "
-													"(64 - a quarter of 128); the impostor is rebaked" );
-		Property* density = layer.properties->insert( "Impostor density", settings.impostorDensity );
-		density->setLow( 0.25f );
-		density->setHigh( 4.0f );
-		density->setTooltip( "Coverage multiplier of the bake: > 1 - denser (thin blades and needles far away merge instead of "
-							 "being cut by the alpha test); rebaked when the edit ends" );
-		Property* occlusion = layer.properties->insert( "Impostor occlusion", settings.impostorOcclusion );
-		occlusion->setLow( 0.0f );
-		occlusion->setHigh( 1.0f );
-		occlusion->setTooltip( "Sky light occlusion inside the crown, baked from the frames depth; rebaked when the edit ends" );
-		Property* baseShade = layer.properties->insert( "Impostor base shade", settings.impostorBaseShade );
-		baseShade->setLow( 0.0f );
-		baseShade->setHigh( 1.0f );
-		baseShade->setTooltip( "Impostor color at the root x (1 - shade), up to the model top - none: far grass without "
-							   "a shadow is not lighter than the shadowed grass next to it" );
+		addSettingProperties( *layer.properties, schema, settings, "impostor" );
+		( *layer.properties )["Impostor distance"].setHigh( std::max( settings.farBorder, settings.impostorDistance ) );
+		( *layer.properties )["Shadow impostor distance"].setHigh( settings.impostorDistance );
 		// Самотень кроны — у импостера со смещением глубины (плоский — при загрузке, по «Impostor shadow»)
 		if( settings.impostorCastShadow )
-		{
-			Property* selfShadow = layer.properties->insert( "Impostor self shadow", settings.impostorSelfShadow );
-			selfShadow->setLow( 0.0f );
-			selfShadow->setHigh( 1.0f );
-			selfShadow->setTooltip( "Sun shadow of the crown on itself from the impostor frames: beyond the shadow distance "
-									"there are no cascades, and without it a far crown is lit from all sides - pale and flat" );
-		}
+			addSettingProperties( *layer.properties, schema, settings, "impostorSelfShadow" );
 	}
 	if( layer.groundProperties )
 		layer.properties->addSubContainer( layer.groundProperties.get() );
@@ -1042,46 +950,18 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 {
 	const PropertyContainer& properties = *layer.properties;
 	ScatterLayerSettings settings = layer.settings;
-	settings.cellSize = std::max( properties["Cell size"].data<float>(), 0.05f );
-	settings.nearBorder = std::max( properties["Near border"].data<float>(), 0.0f );
-	settings.farBorder = std::max( properties["Far border"].data<float>(), settings.nearBorder + settings.cellSize );
-	settings.nearFade = std::max( properties["Near fade"].data<float>(), 0.0f );
-	settings.farFade = std::max( properties["Far fade"].data<float>(), 0.0f );
-	settings.sizeMultiplier = std::max( properties["Size"].data<float>(), 0.01f );
-	settings.sizeVariation = std::clamp( properties["Size variation"].data<float>(), 0.0f, 1.0f );
-	settings.jitter = std::max( properties["Jitter"].data<float>(), 0.0f );
-	settings.groundColor = std::clamp( properties["Ground color"].data<float>(), 0.0f, 1.0f );
-	settings.groundColorHeight = std::max( properties["Ground color height"].data<float>(), 0.0f );
-	settings.groundColorFar = std::clamp( properties["Ground color far"].data<float>(), 0.0f, 1.0f );
-	settings.colorVariation = std::clamp( properties["Color variation"].data<float>(), 0.0f, 1.0f );
-	settings.edgeSpread = std::clamp( properties["Edge spread"].data<float>(), 0.0f, 1.0f );
-	settings.thinStart = std::max( properties["Thinning start"].data<float>(), 0.0f );
-	settings.thinning = std::clamp( properties["Thinning"].data<float>(), 0.0f, 0.95f );
-	settings.ditherFade = properties["Dither fade"].data<bool>();
-	settings.patchScale = std::max( properties["Patch size"].data<float>(), 0.0f );
-	settings.patchStrength = std::clamp( properties["Patch strength"].data<float>(), 0.0f, 1.0f );
+	readSettingProperties( properties, scatterLayerSchema(), settings );
+	// Связи полей и пределы, которых нет в описании
+	settings.farBorder = std::max( settings.farBorder, settings.nearBorder + settings.cellSize );
+	settings.sizeMultiplier = std::max( settings.sizeMultiplier, 0.01f );
+	settings.colorVariation = std::clamp( settings.colorVariation, 0.0f, 1.0f );
+	settings.impostorDensity = std::max( settings.impostorDensity, 0.0f );
 	// Фильтр слоёв земли: все флажки — без фильтра, ни одного — «none»
 	if( layer.groundProperties )
 	{
 		bool all = false;
 		const std::string filter = rolesFromFlags( *layer.groundProperties, m_groundLayers, all );
 		settings.layerFilter = all ? std::string() : filter.empty() ? std::string( "none" ) : filter;
-		settings.layerFilterThreshold = std::clamp( properties["Ground threshold"].data<float>(), 0.0f, 0.5f );
-	}
-	settings.rotationRange = properties["Rotation"].data<XMFLOAT3>();
-	settings.alignToTerrain = properties["Align to terrain"].data<bool>();
-	settings.castShadow = properties["Cast shadow"].data<bool>();
-	if( properties.exists( "Shadow impostor distance" ) )
-	{
-		settings.impostorDistance = properties["Impostor distance"].data<float>();
-		settings.shadowImpostorDistance = properties["Shadow impostor distance"].data<float>();
-		settings.impostorCastShadow = properties["Impostor shadow"].data<bool>();
-		settings.impostorBaseShade = std::clamp( properties["Impostor base shade"].data<float>(), 0.0f, 1.0f );
-		if( properties.exists( "Impostor self shadow" ) )
-			settings.impostorSelfShadow = std::clamp( properties["Impostor self shadow"].data<float>(), 0.0f, 1.0f );
-		settings.impostorFrameSize = frameSizeFromIndex( properties["Impostor frame size"].data<int32_t>() );
-		settings.impostorDensity = std::max( properties["Impostor density"].data<float>(), 0.0f );
-		settings.impostorOcclusion = std::clamp( properties["Impostor occlusion"].data<float>(), 0.0f, 1.0f );
 	}
 	return settings;
 }

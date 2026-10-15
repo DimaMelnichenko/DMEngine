@@ -1,4 +1,5 @@
 #include "LibraryLoader.h"
+#include "SettingsDatabase.h"
 #include <cstdio>
 #include <utility>
 #include "DBConnector.h"
@@ -459,20 +460,8 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			updateSet.reset();
 		}
 
-		SQLite::Statement updateScatter( db, "UPDATE ScatterLayers SET cell_size = :cellSize, near_border = :nearBorder, "
-											 "far_border = :farBorder, near_fade = :nearFade, far_fade = :farFade, "
-											 "size_multiplier = :size, size_variation = :sizeVariation, ground_color = :groundColor, "
-											 "ground_color_height = :groundColorHeight, ground_color_far = :groundColorFar, "
-											 "color_variation = :colorVariation, edge_spread = :edgeSpread, thinning_start = :thinStart, "
-											 "thinning = :thinning, dither_fade = :ditherFade, patch_scale = :patchScale, "
-											 "patch_strength = :patchStrength, layer_filter = :layerFilter, "
-											 "layer_filter_threshold = :layerFilterThreshold, jitter = :jitter, rotation_x = :rotationX, "
-											 "rotation_y = :rotationY, rotation_z = :rotationZ, align_to_terrain = :align, "
-											 "cast_shadow = :castShadow, shadow_impostor_distance = :shadowImpostor, "
-											 "impostor_cast_shadow = :impostorShadow, impostor_base_shade = :baseShade, impostor_self_shadow = :selfShadow, impostor_distance = :impostorDistance, "
-											 "impostor_density = :impostorDensity, impostor_occlusion = :impostorOcclusion, "
-											 "impostor_frame_size = :impostorFrameSize "
-											 "WHERE id = :id" );
+		// Слой — по описанию полей (scatterLayerSchema)
+		SQLite::Statement updateScatter( db, "UPDATE ScatterLayers SET " + settingsAssignments( GS::scatterLayerSchema() ) + " WHERE id = :id" );
 		SQLite::Statement updateScatterModel( db, "UPDATE ScatterLayerModels SET weight = :weight, cast_shadow = :castShadow, "
 												  "lod_distances = :lods, size_multiplier = :size, size_variation = :sizeVariation, "
 												  "align_to_terrain = :align, patch_group = :patchGroup, ground_layers = :groundLayers, "
@@ -482,42 +471,7 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 			const GS::ScatterLayerSettings& layer = record.settings;
 			if( layer.id == 0 )
 				continue;
-			updateScatter.bind( ":cellSize", dbValue( layer.cellSize ) );
-			updateScatter.bind( ":nearBorder", dbValue( layer.nearBorder ) );
-			updateScatter.bind( ":farBorder", dbValue( layer.farBorder ) );
-			updateScatter.bind( ":nearFade", dbValue( layer.nearFade ) );
-			updateScatter.bind( ":farFade", dbValue( layer.farFade ) );
-			updateScatter.bind( ":size", dbValue( layer.sizeMultiplier ) );
-			updateScatter.bind( ":sizeVariation", dbValue( layer.sizeVariation ) );
-			updateScatter.bind( ":groundColor", dbValue( layer.groundColor ) );
-			updateScatter.bind( ":groundColorHeight", dbValue( layer.groundColorHeight ) );
-			updateScatter.bind( ":groundColorFar", dbValue( layer.groundColorFar ) );
-			updateScatter.bind( ":colorVariation", dbValue( layer.colorVariation ) );
-			updateScatter.bind( ":edgeSpread", dbValue( layer.edgeSpread ) );
-			updateScatter.bind( ":thinStart", dbValue( layer.thinStart ) );
-			updateScatter.bind( ":thinning", dbValue( layer.thinning ) );
-			updateScatter.bind( ":ditherFade", layer.ditherFade ? 1 : 0 );
-			updateScatter.bind( ":patchScale", dbValue( layer.patchScale ) );
-			updateScatter.bind( ":patchStrength", dbValue( layer.patchStrength ) );
-			if( layer.layerFilter.empty() )
-				updateScatter.bind( ":layerFilter" );
-			else
-				updateScatter.bind( ":layerFilter", layer.layerFilter );
-			updateScatter.bind( ":layerFilterThreshold", dbValue( layer.layerFilterThreshold ) );
-			updateScatter.bind( ":jitter", dbValue( layer.jitter ) );
-			updateScatter.bind( ":rotationX", dbValue( layer.rotationRange.x ) );
-			updateScatter.bind( ":rotationY", dbValue( layer.rotationRange.y ) );
-			updateScatter.bind( ":rotationZ", dbValue( layer.rotationRange.z ) );
-			updateScatter.bind( ":align", layer.alignToTerrain ? 1 : 0 );
-			updateScatter.bind( ":castShadow", layer.castShadow ? 1 : 0 );
-			updateScatter.bind( ":shadowImpostor", dbValue( layer.shadowImpostorDistance ) );
-			updateScatter.bind( ":impostorShadow", layer.impostorCastShadow ? 1 : 0 );
-			updateScatter.bind( ":baseShade", dbValue( layer.impostorBaseShade ) );
-			updateScatter.bind( ":selfShadow", dbValue( layer.impostorSelfShadow ) );
-			updateScatter.bind( ":impostorDistance", dbValue( layer.impostorDistance ) );
-			updateScatter.bind( ":impostorDensity", dbValue( layer.impostorDensity ) );
-			updateScatter.bind( ":impostorOcclusion", dbValue( layer.impostorOcclusion ) );
-			updateScatter.bind( ":impostorFrameSize", static_cast<int64_t>( layer.impostorFrameSize ) );
+			bindSettings( updateScatter, GS::scatterLayerSchema(), layer );
 			updateScatter.bind( ":id", layer.id );
 			updateScatter.exec();
 			updateScatter.reset();

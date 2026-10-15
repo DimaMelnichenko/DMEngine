@@ -6,6 +6,7 @@
 #include "SceneTargets.h"
 #include "Wind\Wind.h"
 #include "D3D\DMD3D.h"
+#include "Properties\SettingsProperties.h"
 
 using namespace DirectX;
 
@@ -30,16 +31,6 @@ constexpr uint32_t historySlot = 0;
 constexpr uint32_t shapeSlot = 6;
 constexpr uint32_t detailSlot = 7;
 constexpr uint32_t weatherSlot = 8;
-
-Property* addSlider( PropertyContainer& properties, const char* name, float value, float low, float high, const char* unit = "" )
-{
-	Property* property = properties.insert( name, value );
-	property->setLow( low );
-	property->setHigh( high );
-	property->setControlType( GUIControlType::SLIDER );
-	property->setUnit( unit );
-	return property;
-}
 
 bool createVolume( uint32_t width, uint32_t height, uint32_t depth, DXGI_FORMAT format, const char* name, Texture& texture,
 				   StorageView& uav, ShaderView& srv )
@@ -81,17 +72,7 @@ bool VolumetricCloud::initialize( const Settings& settings, SkyAtmosphere& atmos
 
 	m_properties.setName( "Volumetric cloud" );
 	m_properties.insert( "Enabled", true );
-	addSlider( m_properties, "Layer bottom altitude", settings.layerBottomAltitude, 200.0f, 8000.0f, "m" );
-	addSlider( m_properties, "Layer height", settings.layerHeight, 100.0f, 10000.0f, "m" );
-	addSlider( m_properties, "Coverage", settings.coverage, 0.0f, 1.0f );
-	addSlider( m_properties, "Density", settings.density, 0.0f, 0.2f, "1/m" );
-	m_properties.insert( "Albedo", settings.albedo )->setControlType( GUIControlType::COLOR );
-	addSlider( m_properties, "Shape scale", settings.shapeScale, 1000.0f, 40000.0f, "m" );
-	addSlider( m_properties, "Detail scale", settings.detailScale, 100.0f, 5000.0f, "m" );
-	addSlider( m_properties, "Weather scale", settings.weatherScale, 5000.0f, 200000.0f, "m" );
-	addSlider( m_properties, "Wind speed", settings.windSpeed, 0.0f, 50.0f, "m/s" );
-	addSlider( m_properties, "Shadow strength", settings.shadowStrength, 0.0f, 4.0f );
-	addSlider( m_properties, "Tracing max distance", settings.tracingMaxDistance, 5000.0f, 200000.0f, "m" );
+	addSettingProperties( m_properties, volumetricCloudSchema(), settings );
 	m_initialized = true;
 	return true;
 }
@@ -125,31 +106,21 @@ bool VolumetricCloud::enabled()
 
 VolumetricCloud::Settings VolumetricCloud::settings()
 {
-	PropertyContainer& p = m_properties;
 	Settings settings;
-	settings.layerBottomAltitude = p["Layer bottom altitude"].data<float>();
-	settings.layerHeight = p["Layer height"].data<float>();
-	settings.coverage = p["Coverage"].data<float>();
-	settings.density = p["Density"].data<float>();
-	settings.albedo = p["Albedo"].data<XMFLOAT3>();
-	settings.shapeScale = p["Shape scale"].data<float>();
-	settings.detailScale = p["Detail scale"].data<float>();
-	settings.weatherScale = p["Weather scale"].data<float>();
-	settings.windSpeed = p["Wind speed"].data<float>();
-	settings.shadowStrength = p["Shadow strength"].data<float>();
-	settings.tracingMaxDistance = p["Tracing max distance"].data<float>();
+	readSettingProperties( m_properties, volumetricCloudSchema(), settings );
 	return settings;
 }
 
 XMFLOAT4 VolumetricCloud::shadowParameters( const RenderView& view )
 {
-	if( !enabled() || m_properties["Shadow strength"].data<float>() <= 0.0f )
+	const Settings settings = this->settings();
+	if( !enabled() || settings.shadowStrength <= 0.0f )
 		return XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 	// Карта привязана к сетке текселей: при движении камеры тень не дрожит
 	const float texel = shadowMapWorldSize / shadowMapSize;
 	const float originX = std::floor( ( view.position.x - shadowMapWorldSize * 0.5f ) / texel ) * texel;
 	const float originZ = std::floor( ( view.position.z - shadowMapWorldSize * 0.5f ) / texel ) * texel;
-	const float middle = m_properties["Layer bottom altitude"].data<float>() + 0.5f * m_properties["Layer height"].data<float>();
+	const float middle = settings.layerBottomAltitude + 0.5f * settings.layerHeight;
 	return XMFLOAT4( originX, originZ, 1.0f / shadowMapWorldSize, middle );
 }
 
@@ -162,7 +133,7 @@ void VolumetricCloud::update( const FrameContext& frame )
 	if( wind.strength <= 0.0f )
 		return;
 	const float length = std::max( std::sqrt( wind.direction.x * wind.direction.x + wind.direction.y * wind.direction.y ), 1e-6f );
-	const float distance = m_properties["Wind speed"].data<float>() * frame.elapsedTime / 1000.0f;
+	const float distance = settings().windSpeed * frame.elapsedTime / 1000.0f;
 	// Шум сдвигается против ветра — облака плывут по ветру
 	m_windOffset.x -= wind.direction.x / length * distance;
 	m_windOffset.y -= wind.direction.y / length * distance;
@@ -170,25 +141,25 @@ void VolumetricCloud::update( const FrameContext& frame )
 
 VolumetricCloud::Parameters VolumetricCloud::currentParameters( const FrameContext& frame )
 {
-	PropertyContainer& p = m_properties;
+	const Settings settings = this->settings();
 	Parameters params = {};
 	params.previousViewProjection = XMMatrixTranspose( m_previousViewProjection );
-	params.layerBottom = p["Layer bottom altitude"].data<float>();
-	params.layerTop = params.layerBottom + std::max( p["Layer height"].data<float>(), 1.0f );
-	params.coverage = p["Coverage"].data<float>();
-	params.density = p["Density"].data<float>();
-	params.albedo = p["Albedo"].data<XMFLOAT3>();
-	params.shapeScale = 1.0f / std::max( p["Shape scale"].data<float>(), 1.0f );
+	params.layerBottom = settings.layerBottomAltitude;
+	params.layerTop = params.layerBottom + std::max( settings.layerHeight, 1.0f );
+	params.coverage = settings.coverage;
+	params.density = settings.density;
+	params.albedo = settings.albedo;
+	params.shapeScale = 1.0f / std::max( settings.shapeScale, 1.0f );
 	params.windOffset = m_windOffset;
-	params.detailScale = 1.0f / std::max( p["Detail scale"].data<float>(), 1.0f );
-	params.weatherScale = 1.0f / std::max( p["Weather scale"].data<float>(), 1.0f );
+	params.detailScale = 1.0f / std::max( settings.detailScale, 1.0f );
+	params.weatherScale = 1.0f / std::max( settings.weatherScale, 1.0f );
 	m_atmosphere->cloudLight( params.lightDirection, params.lightColor );
 	params.historyWeight = m_historyValid ? historyWeight : 0.0f;
-	params.maxDistance = p["Tracing max distance"].data<float>();
+	params.maxDistance = settings.tracingMaxDistance;
 	const XMFLOAT4 shadow = shadowParameters( frame.view );
 	params.shadowOrigin = XMFLOAT2( shadow.x, shadow.y );
 	params.shadowSize = shadowMapWorldSize;
-	params.shadowStrength = p["Shadow strength"].data<float>();
+	params.shadowStrength = settings.shadowStrength;
 	params.traceSize[0] = m_traceSize[0];
 	params.traceSize[1] = m_traceSize[1];
 	params.frameIndex = m_frameIndex;
