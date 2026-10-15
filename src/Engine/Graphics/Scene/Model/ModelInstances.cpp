@@ -476,7 +476,7 @@ void ModelInstances::addLod( const Instance& instance, uint16_t lodIndex, float 
 		MeshBatch batch;
 		batch.material = System::materials().get( section.material ).get();
 		// Режим читается каждый кадр: параметры материала меняются в GUI
-		batch.state = batch.material->renderState( section.params );
+		batch.state = batch.material->renderState( *section.params );
 		if( lodDither != 0.0f && !batch.state.ditheredLodTransition )
 		{
 			// Без дизеринга — та сторона перехода, которой в полосе больше: смена ровно на дальности LOD
@@ -492,7 +492,7 @@ void ModelInstances::addLod( const Instance& instance, uint16_t lodIndex, float 
 
 		const auto& mesh = System::meshes().get( section.mesh );
 		batch.materialId = section.material;
-		batch.params = &section.params;
+		batch.params = section.params;
 		batch.indexCount = mesh->indexCount();
 		batch.indexOffset = mesh->indexOffset();
 		batch.vertexOffset = mesh->vertexOffset();

@@ -173,6 +173,8 @@ private:
 		float impostorOcclusion = 0.0f;
 		std::unique_ptr<PropertyContainer> properties;	// адрес не меняется при росте m_layers: его хранит GUI
 		std::unique_ptr<PropertyContainer> groundProperties;	// «Grows on»: флажок на роль слоя земли (фильтр слоёв)
+		// «Materials»: экземпляры материалов растений слоя (общие с моделями, System::materialInstances) — правка вживую
+		std::unique_ptr<PropertyContainer> materialProperties;
 		// Применённые настройки: с ними сравниваются свойства окна. Варианты раскладки (веса, дальности LOD) и размеры
 		// моделей — для пересборки буферов слоя при смене шага, кольца, размера и весов
 		ScatterLayerSettings settings;

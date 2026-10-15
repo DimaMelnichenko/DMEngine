@@ -4,6 +4,7 @@
 #include "DBConnector.h"
 #include "Logger\Logger.h"
 #include "Utils\utilites.h"
+#include "Materials\MaterialInstanceStorage.h"
 
 namespace
 {
@@ -730,6 +731,93 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, std::vector<L
 	catch( const std::exception& e )
 	{
 		LOG( std::string( "Save level scene: " ) + e.what() );
+		return false;
+	}
+	return true;
+}
+
+namespace
+{
+
+// Значение параметра материала строкой базы — как его читает setParamFromString (LibraryLoader.cpp): "true", "0.5",
+// "1,1,1", id текстуры
+std::string materialParamText( Property& property )
+{
+	char text[64];
+	switch( property.valueType() )
+	{
+		case ValueType::BOOL:
+			return property.data<bool>() ? "true" : "false";
+		case ValueType::FLOAT:
+			snprintf( text, sizeof( text ), "%g", property.data<float>() );
+			return text;
+		case ValueType::VECTOR2:
+		{
+			const DirectX::XMFLOAT2 value = property.data<DirectX::XMFLOAT2>();
+			snprintf( text, sizeof( text ), "%g,%g", value.x, value.y );
+			return text;
+		}
+		case ValueType::VECTOR3:
+			return vec3ToStr( property.data<DirectX::XMFLOAT3>() );
+		case ValueType::VECTOR4:
+			return vec4ToStr( property.data<DirectX::XMFLOAT4>() );
+		case ValueType::INT:
+			return std::to_string( property.data<int32_t>() );
+		case ValueType::UINT:
+			return std::to_string( property.data<uint32_t>() );
+	}
+	return std::string();
+}
+
+}
+
+bool LibraryLoader::saveMaterialInstances( const GS::MaterialInstanceStorage& instances )
+{
+	try
+	{
+		SQLite::Database& db = DBConnector::instance().db();
+		SQLite::Transaction transaction( db );
+		SQLite::Statement findDefinition( db, "SELECT id_parameter_def FROM MaterialParameterDef WHERE id_material = :material AND param_name = :name" );
+		SQLite::Statement deleteValue( db, "DELETE FROM MaterialParameterInstance WHERE id_instance = :instance AND id_material_def = :definition" );
+		SQLite::Statement insertValue( db, "INSERT INTO MaterialParameterInstance (id_instance, id_material_def, value) "
+										   "VALUES (:instance, :definition, :value)" );
+		uint32_t written = 0;
+		for( const auto& instance : instances.all() )
+		{
+			for( const std::string& name : instance->params.names() )
+			{
+				Property& property = instance->params[name];
+				if( !property.modified() )
+					continue;
+				findDefinition.bind( ":material", instance->material );
+				findDefinition.bind( ":name", name );
+				const bool found = findDefinition.executeStep();
+				const int definition = found ? findDefinition.getColumn( 0 ).getInt() : 0;
+				findDefinition.reset();
+				if( !found )
+				{
+					LOG( "Material instance " + std::to_string( instance->id ) + ": parameter " + name + " has no definition, not saved" );
+					continue;
+				}
+				deleteValue.bind( ":instance", instance->id );
+				deleteValue.bind( ":definition", definition );
+				deleteValue.exec();
+				deleteValue.reset();
+				insertValue.bind( ":instance", instance->id );
+				insertValue.bind( ":definition", definition );
+				insertValue.bind( ":value", materialParamText( property ) );
+				insertValue.exec();
+				insertValue.reset();
+				++written;
+			}
+		}
+		transaction.commit();
+		if( written > 0 )
+			LOG( "Material instances: " + std::to_string( written ) + " parameters saved" );
+	}
+	catch( const std::exception& e )
+	{
+		LOG( std::string( "Save material instances: " ) + e.what() );
 		return false;
 	}
 	return true;

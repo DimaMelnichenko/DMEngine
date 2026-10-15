@@ -302,7 +302,8 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			variant.impostorSection = std::make_unique<DMModel::Section>();
 			variant.impostorSection->mesh = MeshStorage::cardId;
 			variant.impostorSection->material = 0;
-			variant.impostorSection->params.setName( "Impostor" );
+			variant.impostorSection->ownParams = std::make_unique<PropertyContainer>( "Impostor" );
+			variant.impostorSection->params = variant.impostorSection->ownParams.get();
 			LayerLod lod;
 			lod.sections.push_back( { variant.impostorSection.get(), nullptr } );
 			passVariant.lodEnd[modelLods] = params.farBorder;
@@ -465,6 +466,21 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		layer.properties->addSubContainer( layer.groundProperties.get() );
 	for( LayerVariant& variant : layer.variants )
 		layer.properties->addSubContainer( variant.properties.get() );
+	// «Materials» — материалы растений слоя: экземпляры материалов секций их моделей, каждый один раз (общие у всех моделей
+	// и LOD с ним, System::materialInstances). Правка — вживую: группы и их параметры слой берёт каждый кадр; «Save level»
+	// пишет изменённое в MaterialParameterInstance. Кадры импостеров — по параметрам при загрузке (до перезапуска прежние)
+	layer.materialProperties = std::make_unique<PropertyContainer>( "Materials" );
+	for( const LayerVariant& variant : layer.variants )
+		for( const LayerLod& lod : variant.lods )
+			for( const LayerSection& section : lod.sections )
+			{
+				if( !section.section || !section.material )
+					continue;	// секция импостера: материал — после запекания, своих параметров нет
+				std::vector<PropertyContainer*>& shown = layer.materialProperties->subContainer();
+				if( std::find( shown.begin(), shown.end(), section.section->params ) == shown.end() )
+					layer.materialProperties->addSubContainer( section.section->params );
+			}
+	layer.properties->addSubContainer( layer.materialProperties.get() );
 	m_properties.addSubContainer( layer.properties.get() );
 
 	m_layers.push_back( std::move( layer ) );
@@ -573,9 +589,9 @@ void Scatterer::assignGroups( Layer& layer )
 				const LayerSection& section = lod.sections[s];
 				LayerGroup group;
 				group.material = section.material;
-				group.params = &section.section->params;
-				group.paramsHash = hashParams( section.section->params );
-				group.state = section.material->renderState( section.section->params );
+				group.params = section.section->params;
+				group.paramsHash = hashParams( *section.section->params );
+				group.state = section.material->renderState( *section.section->params );
 				group.pass = passFor( group.state.blendMode );
 				group.transition = transition;
 				group.prepassed = inDepthPrepass( section );
@@ -662,7 +678,7 @@ void Scatterer::compute( const FrameContext& frame )
 			for( const LayerLod& lod : variant.lods )
 			for( const LayerSection& section : lod.sections )
 				variant.ditheredLodTransition = variant.ditheredLodTransition && section.material &&
-												section.material->renderState( section.section->params ).ditheredLodTransition;
+												section.material->renderState( *section.section->params ).ditheredLodTransition;
 			layer.pass->setDitheredLodTransition( v, variant.ditheredLodTransition );
 			// LOD теней: множители набора и модели — только для границ LOD модели (переход к импостеру у теней задаёт
 			// слой), «Shadow min LOD» модели, импостер без тени — флаг слоя
@@ -762,15 +778,15 @@ bool Scatterer::castsShadow( const Layer& layer, const LayerVariant& variant, co
 	ShaderPhaseOptions placed;
 	placed.placed = true;
 	return variant.castShadow && ( *layer.properties )["Cast shadow"].data<bool>() &&
-		   section.material->depthPhaseFor( section.section->params, placed ) >= 0;
+		   section.material->depthPhaseFor( *section.section->params, placed ) >= 0;
 }
 
 bool Scatterer::inDepthPrepass( const LayerSection& section ) const
 {
 	ShaderPhaseOptions placed;
 	placed.placed = true;
-	return passFor( section.material->renderState( section.section->params ).blendMode ) == MeshPass::opaque &&
-		   section.material->depthPhaseFor( section.section->params, placed ) >= 0;
+	return passFor( section.material->renderState( *section.section->params ).blendMode ) == MeshPass::opaque &&
+		   section.material->depthPhaseFor( *section.section->params, placed ) >= 0;
 }
 
 void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
@@ -787,7 +803,7 @@ void Scatterer::collectMeshes( const RenderView&, MeshCollector& collector )
 		{
 			if( !section.material )
 				continue;
-			const MeshPass pass = passFor( section.material->renderState( section.section->params ).blendMode );
+			const MeshPass pass = passFor( section.material->renderState( *section.section->params ).blendMode );
 			passMask |= passBit( pass );
 			if( pass == MeshPass::opaque && section.material->readsSceneDepth() )
 				passMask |= passBit( MeshPass::opaqueDepthRead );

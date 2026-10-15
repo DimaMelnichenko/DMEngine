@@ -9,6 +9,7 @@ namespace
 	static std::unique_ptr<MeshStorage> m_meshStorage;
 	static std::unique_ptr<ModelStorage> m_modelStorage;
 	static std::unique_ptr<MaterialStorage> m_materialStorage;
+	static std::unique_ptr<MaterialInstanceStorage> m_materialInstances;
 }
 
 DMTextureStorage& System::textures()
@@ -51,12 +52,23 @@ MaterialStorage& System::materials()
 	return *m_materialStorage;
 }
 
+MaterialInstanceStorage& System::materialInstances()
+{
+	if( !m_materialInstances )
+	{
+		m_materialInstances = std::make_unique<MaterialInstanceStorage>();
+	}
+
+	return *m_materialInstances;
+}
+
 void System::destroy()
 {
 	m_textureStorage.reset();
 	m_meshStorage.reset();
 	m_modelStorage.reset();
 	m_materialStorage.reset();
+	m_materialInstances.reset();
 }
 
 }

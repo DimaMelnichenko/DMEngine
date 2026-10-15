@@ -405,7 +405,10 @@ Static Mesh в UE и primitives glTF, `DMModel::Section`). Материалы г
 `Materials`; класс шейдера выбирает `MaterialStorage::createMaterial` по колонке `class`. Параметры секции —
 экземпляр материала: `ModelProperties.material_instance_id` → `MaterialInstance` (определения параметров — от его
 `id_material`, значения — `MaterialParameterInstance`); NULL — параметры `material_id` со значениями по умолчанию
-(`MaterialParameterDef.default_value`). Экземпляр 12 — наследие старой схемы, где эта колонка означала
+(`MaterialParameterDef.default_value`). Экземпляр в памяти один на все секции с ним (`System::materialInstances()`,
+`DMModel::Section::params` — указатель): правка в окне (у моделей уровня — их экземпляры, у слоя расстановки — подокно
+«Materials») видна у всех его моделей и LOD, «Save level» пишет изменённое в `MaterialParameterInstance`
+(`LibraryLoader::saveMaterialInstances`). Экземпляр 12 — наследие старой схемы, где эта колонка означала
 `Materials.id`; у SkySphere — свой экземпляр `Texture` с `Albedo` = `sky3`. Подробно — `docs/materials.md`. Цветовое
 пространство текстуры задаёт `Textures.sRGB` (1 — цвет, 0 — данные), а не метаданные файла; мипы с сохранением
 покрытия альфы (для Masked: трава, лепестки) — `Textures.preserve_alpha_coverage` (порог); сжатие на GPU —

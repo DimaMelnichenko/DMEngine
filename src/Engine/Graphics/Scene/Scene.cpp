@@ -414,6 +414,9 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	if( !library.saveLevelScene( m_level, models, m_models.removedIds(), terrain, scatterSets, scatterLayers, water, emitters ) )
 		return false;
 	m_models.markSaved( models );
+	// Параметры экземпляров материалов (окна «Models» и «Materials» слоёв расстановки) — изменённые
+	if( !library.saveMaterialInstances( System::materialInstances() ) )
+		return false;
 	// Экземпляры моделей в базе — на нынешней земле: пересадка после эрозии закреплена
 	if( m_level.terrain )
 		m_terrain.confirmErosionChange();

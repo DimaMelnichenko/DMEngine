@@ -388,7 +388,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 			return false;
 		}
 		sections.push_back( { section.get(), material } );
-		const PropertyContainer& params = section->params;
+		const PropertyContainer& params = *section->params;
 		if( params.exists( "DiffuseTransmissionFactor" ) && params["DiffuseTransmissionFactor"].data<float>() > 0.0f &&
 			params.exists( "DiffuseTransmissionColorFactor" ) )
 		{
@@ -418,7 +418,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	{
 		key.add( material->id() );
 		key.add( material->name().data(), material->name().size() );
-		const PropertyContainer& params = section->params;
+		const PropertyContainer& params = *section->params;
 		for( const std::string& param : params.names() )
 		{
 			key.add( param.data(), param.size() );
@@ -526,13 +526,13 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 			context.vertexPool.setBuffers();
 			for( const auto& [section, material] : sections )
 			{
-				const MaterialRenderState state = material->renderState( section->params );
+				const MaterialRenderState state = material->renderState( *section->params );
 				ScopedRenderState scoped( materialRasterState( state.twoSided, false, RasterState::solid ), DepthState::enabled, BlendState::opaque );
 				ShaderPhaseOptions options;
 				options.impostorBake = true;
-				if( !material->setPass( material->phaseFor( section->params, options ) ) )
+				if( !material->setPass( material->phaseFor( *section->params, options ) ) )
 					continue;
-				material->setParams( section->params );
+				material->setParams( *section->params );
 				const AbstractMesh* mesh = System::meshes().get( section->mesh ).get();
 				d3d.drawIndexed( mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
 			}

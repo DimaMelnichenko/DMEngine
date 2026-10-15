@@ -692,6 +692,10 @@ Outliner → Scene → имя набора. «Shadow LOD scale» — у набо
 | Patch size, Patch strength | `patch_scale`, `patch_strength` | константы раскладки; включение и выключение куртин — пересборка буферов (ёмкость списков — по группам) |
 | Cast shadow, Shadow impostor distance, Impostor shadow, Impostor base shade | `cast_shadow`, `shadow_impostor_distance`, `impostor_cast_shadow`, `impostor_base_shade` | сразу (плоский импостер или со смещением глубины — по `impostor_cast_shadow` при загрузке) |
 
+Подокно «Materials» слоя — экземпляры материалов его растений, каждый один раз (общие со всеми моделями и LOD с ним,
+[materials.md](materials.md), «Управление»): ветер, следы в траве, пропускание, цвет и режим — вживую (группы и их
+параметры слой берёт каждый кадр), «Save level» пишет изменённое в `MaterialParameterInstance`.
+
 Подокно варианта (модель) — «Weight» и «Cast shadow» (`ScatterLayerModels`), своя раскладка: «Size» (× размер слоя,
 `size_multiplier`; правка — пересборка буферов, как у размера слоя), «Own size variation» и «Size variation»
 (`size_variation`: выключен — как у слоя), «Align to terrain» — «As layer / Off / On» (`align_to_terrain`), «Patch

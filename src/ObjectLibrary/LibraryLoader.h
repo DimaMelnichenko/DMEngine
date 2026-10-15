@@ -15,6 +15,7 @@ namespace SQLite
 namespace GS
 {
 class Material;
+class MaterialInstanceStorage;
 }
 
 class LibraryLoader
@@ -54,6 +55,10 @@ public:
 						 const std::vector<GS::ScatterLayerRecord>& scatterLayers,
 						 const std::optional<GS::WaterSimulationSettings>& water,
 						 const std::vector<GS::ParticleEmitterSettings>& particleEmitters );
+	// Правки параметров экземпляров материалов (окна моделей и слоёв расстановки) — в MaterialParameterInstance одной
+	// транзакцией: только изменённые с загрузки или сохранения (Property::modified), строка на параметр — заменяется.
+	// Экземпляр — ресурс, а не данные уровня (как ассет Material Instance в UE), но пишется той же «Save level»
+	bool saveMaterialInstances( const GS::MaterialInstanceStorage& instances );
 
 
 	void save();
@@ -89,6 +94,8 @@ private:
 	void loadStars( LevelDescription& level );
 	// Материал экземпляра (MaterialInstance.id_material); false — экземпляра нет
 	bool instanceMaterial( uint32_t idInstance, uint32_t& idMaterial );
+	// Имя окна экземпляра материала — последняя часть MaterialInstance.name (без «/»: разделитель пути команды set)
+	std::string instanceName( uint32_t idInstance );
 	// Число для базы — с короткой записью (%g), как векторы: float 0.1 не превращается в 0.10000000149011612
 	static double dbValue( float value );
 

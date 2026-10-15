@@ -47,7 +47,7 @@ void SkySphere::renderCustom( const RenderContext& context )
 			continue;
 		Material* material = System::materials().get( section->material ).get();
 		material->setPass( 0 );
-		material->setParams( section->params );
+		material->setParams( *section->params );
 		const auto& mesh = System::meshes().get( section->mesh );
 		DMD3D::instance().drawIndexed( mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
 	}

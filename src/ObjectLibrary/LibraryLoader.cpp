@@ -737,24 +737,47 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		auto section = std::make_unique<GS::DMModel::Section>();
 		section->material = idMaterial;
 		section->mesh = queryLOD.getColumn( "mesh_id" );
-		section->params = GS::System::materials().get( idParamsMaterial )->parameters();
 		if( idInstance != 0 )
-			loadMaterialParams( idInstance, section->params );
-		model->properties()->addSubContainer( &section->params );
+		{
+			// Экземпляр — общий у всех секций с ним (System::materialInstances): параметры загружаются один раз, правка в
+			// окне видна у всех его моделей и LOD
+			GS::MaterialInstanceStorage::Instance* instance = GS::System::materialInstances().find( idInstance );
+			if( !instance )
+			{
+				PropertyContainer params = GS::System::materials().get( idParamsMaterial )->parameters();
+				loadMaterialParams( idInstance, params );
+				params.setName( instanceName( idInstance ) );
+				instance = &GS::System::materialInstances().add( idInstance, idParamsMaterial, std::move( params ) );
+			}
+			section->instance = idInstance;
+			section->params = &instance->params;
+		}
+		else
+		{
+			section->ownParams = std::make_unique<PropertyContainer>( GS::System::materials().get( idParamsMaterial )->parameters() );
+			section->params = section->ownParams.get();
+		}
+		// В окне модели — экземпляр один раз, сколько бы секций на нём ни было
+		std::vector<PropertyContainer*>& shown = model->properties()->subContainer();
+		if( std::find( shown.begin(), shown.end(), section->params ) == shown.end() )
+			model->properties()->addSubContainer( section->params );
 		block->sections.push_back( std::move( section ) );
 	}
 	finishLod();
 
-	// Имена параметров в GUI: одинаковые имена в одном окне ImGui путаются, поэтому — номер LOD и секции
+	// Имена своих параметров секций в GUI (без экземпляра; у экземпляра — его имя): одинаковые имена в одном окне ImGui
+	// путаются, поэтому — номер LOD и секции
 	for( uint16_t lod = 0; lod < model->lodCount(); ++lod )
 	{
 		const auto& sections = model->getLodById( lod )->sections;
 		for( size_t i = 0; i < sections.size(); ++i )
 		{
+			if( !sections[i]->ownParams )
+				continue;
 			const std::string material = GS::System::materials().get( sections[i]->material )->name();
-			sections[i]->params.setName( "LOD " + std::to_string( lod ) +
-										 ( sections.size() > 1 ? ", section " + std::to_string( i ) : std::string() ) +
-										 " (" + material + ")" );
+			sections[i]->params->setName( "LOD " + std::to_string( lod ) +
+										  ( sections.size() > 1 ? ", section " + std::to_string( i ) : std::string() ) +
+										  " (" + material + ")" );
 		}
 	}
 	// LOD теней — свойства окна «Models» только у моделей с несколькими LOD
@@ -765,6 +788,16 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	}
 
 	return true;
+}
+
+std::string LibraryLoader::instanceName( uint32_t idInstance )
+{
+	// Имя окна — последняя часть имени экземпляра («grass/GrassMat» → «GrassMat»): «/» — разделитель пути команды set
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT name FROM MaterialInstance where id_instance = :instance" );
+	query.bind( ":instance", idInstance );
+	std::string name = query.executeStep() && !query.getColumn( 0 ).isNull() ? query.getColumn( 0 ).getString() : std::string();
+	name = name.substr( name.find_last_of( '/' ) == std::string::npos ? 0 : name.find_last_of( '/' ) + 1 );
+	return name.empty() ? "Material instance " + std::to_string( idInstance ) : name;
 }
 
 bool LibraryLoader::instanceMaterial( uint32_t idInstance, uint32_t& idMaterial )
