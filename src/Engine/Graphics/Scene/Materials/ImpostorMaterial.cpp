@@ -45,6 +45,27 @@ bool loadFrames( const std::string& base, ScratchImage* images[3], uint32_t fram
 	return true;
 }
 
+// Есть ли в кадрах хоть один непрозрачный тексель (мип 0 цвета): все пустые — вариант запекания ничего не нарисовал (так
+// однажды грузились пустые кадры травы из кэша)
+bool framesCovered( const ScratchImage& color )
+{
+	const TexMetadata& metadata = color.GetMetadata();
+	for( size_t item = 0; item < metadata.arraySize; ++item )
+	{
+		const Image* image = color.GetImage( 0, item, 0 );
+		if( !image )
+			continue;
+		for( size_t row = 0; row < image->height; ++row )
+		{
+			const uint8_t* pixel = image->pixels + row * image->rowPitch;
+			for( size_t x = 0; x < image->width; ++x )
+				if( pixel[x * 4 + 3] != 0 )
+					return true;
+		}
+	}
+	return false;
+}
+
 // Кадры — в кэш, в папку модели: прежние варианты (другой ключ) удаляются, на модель — один набор файлов
 void saveFrames( const std::string& folder, const std::string& base, ScratchImage* images[3] )
 {
@@ -405,10 +426,15 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	key.add( true );
 #endif
 	key.add( ShaderCompiler::instance().shadersStamp() );
+	ShaderPhaseOptions bakeOptions;
+	bakeOptions.impostorBake = true;
 	for( const auto& [section, material] : sections )
 	{
 		key.add( material->id() );
 		key.add( material->name().data(), material->name().size() );
+		// Шейдеры варианта запекания (файл, точка входа, defines): их собирает код материала, отпечаток Shaders\ их не видит
+		const std::string bakeShaders = material->phaseSources( material->phaseFor( *section->params, bakeOptions ) );
+		key.add( bakeShaders.data(), bakeShaders.size() );
 		const PropertyContainer& params = *section->params;
 		for( const std::string& param : params.names() )
 		{
@@ -448,7 +474,12 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	ScratchImage normalImage;
 	ScratchImage offsetImage;
 	ScratchImage* images[3] = { &colorImage, &normalImage, &offsetImage };
-	const bool cached = loadFrames( cacheBase, images, frames, frameSize );
+	bool cached = loadFrames( cacheBase, images, frames, frameSize );
+	if( cached && !framesCovered( colorImage ) )
+	{
+		LOG( name() + ": cached frames are empty, baking again" );
+		cached = false;
+	}
 	if( !cached )
 	{
 		// Цели запекания: кадр — срез массива (цвет sRGB, нормаль и глубина поверхности — смещение глубины), буфер глубины
@@ -558,9 +589,17 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 			LOG( name() + ": can't build mips" );
 			return false;
 		}
-		saveFrames( folder, cacheBase, images );
+		// Пустые кадры в кэш не идут: следующий запуск запечёт заново
+		if( framesCovered( colorImage ) )
+		{
+			saveFrames( folder, cacheBase, images );
+			LOG( name() + ": frames baked and cached in " + cacheBase );
+		}
+		else
+			LOG( name() + ": all frames are empty - the bake variant of the model materials draws nothing, frames are not cached" );
 	}
-	LOG( name() + ( cached ? ": frames from cache " : ": frames baked and cached in " ) + cacheBase );
+	else
+		LOG( name() + ": frames from cache " + cacheBase );
 
 	// Текстуры кадров — в хранилище; при перезапекании (правка материала растения) — на месте прежних: id те же, прежние
 	// ресурсы GPU отпустит, когда закончит кадры с ними (отложенное освобождение)

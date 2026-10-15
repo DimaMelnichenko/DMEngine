@@ -120,6 +120,28 @@ int ShaderProgram::shader( ShaderStageType type, const std::string& funcName, co
 	return addShaderPassFromFile( type, funcName, fileName, defines ) ? index : -1;
 }
 
+std::string ShaderProgram::phaseSources( int phase ) const
+{
+	if( phase < 0 || phase >= phaseCount() )
+		return {};
+	// Номер шейдера стадии — его место среди исходников этой стадии (как в shader)
+	auto source = [this]( ShaderStageType type, int index ) -> std::string
+	{
+		if( index < 0 )
+			return "-";
+		int position = 0;
+		for( const ShaderSource& entry : m_sources )
+		{
+			if( entry.type == type && position++ == index )
+				return entry.file + "|" + entry.function + "|" + entry.defines;
+		}
+		return "?";
+	};
+	const Phase& stages = m_phases[phase];
+	return source( ShaderStageType::vertex, stages.index_vs ) + ";" + source( ShaderStageType::pixel, stages.index_ps ) + ";" +
+		   source( ShaderStageType::geometry, stages.index_gs );
+}
+
 void ShaderProgram::setPermutation( uint32_t key, int phase )
 {
 	if( key >= m_permutations.size() )

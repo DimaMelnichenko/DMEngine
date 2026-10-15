@@ -26,6 +26,9 @@ public:
 	// у совпавшей фазы он не следующий по порядку
 	int createPhase( int index_vs, int index_ps, int index_gs = -1 );
 	int phaseCount() const { return static_cast<int>( m_phases.size() ); }
+	// Шейдеры фазы — файл, точка входа и defines каждой стадии («-» — стадии нет): в ключ кэша того, что фаза рисует (кадры
+	// импостеров), — правка вариантов в коде меняет ключ, хотя файлы шейдеров те же
+	std::string phaseSources( int phase ) const;
 
 	// Перестановки — фазы по ключу признаков варианта (биты ShaderPermutation у материалов; как permutation domains в UE):
 	// разные ключи могут вести к одной фазе (признак, которого у программы нет, ничего не меняет). −1 — такой нет
