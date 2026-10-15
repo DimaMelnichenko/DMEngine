@@ -43,10 +43,14 @@ FoliageInteraction::FoliageInteraction() : SceneObject( "Foliage interaction" )
 {
 	m_properties.setName( "Foliage interaction" );
 	m_properties.insert( "Enabled", true )->setTooltip( "Plants bend away from the camera near the ground (walking, low flight)" );
-	addValue( m_properties, "Radius", 0.45f, 0.1f, 2.0f, "m", "Trail half-width: plants this close to the feet bend fully" );
+	addValue( m_properties, "Trail width", 0.9f, 0.1f, 4.0f, "m", "Width of the trail: plants within it bend fully" );
+	addValue( m_properties, "Edge width", 0.22f, 0.0f, 2.0f, "m",
+			  "Soft border on each side of the trail: towards its outer side plants bend less and less" );
 	addValue( m_properties, "Body height", 2.0f, 0.3f, 5.0f, "m",
 			  "The camera presses plants when it is this close to the ground: walking (eyes at 1.7 m) or low flight" );
-	addValue( m_properties, "Max angle", 70.0f, 0.0f, 89.0f, "deg", "Lean of a fully pressed plant from its root" );
+	addValue( m_properties, "Max angle", 80.0f, 0.0f, 89.0f, "deg",
+			  "Lean of a fully pressed plant: the stem bends over its bend length (TrampleBendLength of the material) up to this angle "
+			  "and lies straight above, times TrampleWeight of the material" );
 	addValue( m_properties, "Recovery time", 6.0f, 0.5f, 60.0f, "s", "Plants stand up again after the trail: 95 % in this time" );
 	addValue( m_properties, "Forward push", 0.5f, 0.0f, 1.0f, "",
 			  "Under moving feet plants lie along the way (1) or apart from the feet (0)" );
@@ -126,7 +130,8 @@ void FoliageInteraction::addCameraInteractor( const FrameContext& frame )
 	Interactor interactor;
 	interactor.from = feet;
 	interactor.to = feet;
-	interactor.radius = m_properties["Radius"].data<float>();
+	interactor.radius = 0.5f * m_properties["Trail width"].data<float>();
+	interactor.edge = m_properties["Edge width"].data<float>();
 	interactor.strength = strength;
 	if( m_hasFeet )
 	{
@@ -180,6 +185,7 @@ void FoliageInteraction::compute( const FrameContext& frame )
 		const Interactor& interactor = m_interactors[i];
 		params.segments[i] = XMFLOAT4( interactor.from.x, interactor.from.y, interactor.to.x, interactor.to.y );
 		params.shapes[i] = XMFLOAT4( interactor.radius, interactor.strength, interactor.direction.x, interactor.direction.y );
+		params.edges[i] = XMFLOAT4( interactor.edge, 0.0f, 0.0f, 0.0f );
 	}
 	m_interactors.clear();
 

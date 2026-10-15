@@ -19,13 +19,15 @@ namespace GS
 class FoliageInteraction : public SceneObject
 {
 public:
-	// Капсула следа: отрезок по земле (XZ, м мира) с радиусом; strength — доля полного наклона 0…1; направление движения
-	// (нормированное, 0 — стоит) — трава под ногами ложится вперёд
+	// Капсула следа: отрезок по земле (XZ, м мира) с радиусом — полный наклон ближе него к оси, дальше на edge сходит на
+	// нет; strength — доля полного наклона 0…1; направление движения (нормированное, 0 — стоит) — трава под ногами
+	// ложится вперёд
 	struct Interactor
 	{
 		DirectX::XMFLOAT2 from;
 		DirectX::XMFLOAT2 to;
 		float radius = 0.45f;
+		float edge = 0.22f;
 		float strength = 1.0f;
 		DirectX::XMFLOAT2 direction = DirectX::XMFLOAT2( 0.0f, 0.0f );
 	};
@@ -60,6 +62,7 @@ private:
 		uint32_t interactorCount;
 		DirectX::XMFLOAT4 segments[maxInteractors];	// xy — начало, zw — конец, XZ мира
 		DirectX::XMFLOAT4 shapes[maxInteractors];	// x — радиус, y — сила, zw — направление движения
+		DirectX::XMFLOAT4 edges[maxInteractors];	// x — ширина мягкого края, м; yzw — запас
 	};
 
 	bool enabled() const;

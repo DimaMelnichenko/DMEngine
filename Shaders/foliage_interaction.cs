@@ -21,6 +21,7 @@ cbuffer FoliageInteractionBuffer : register( b4 )
 	uint   g_interactorCount;
 	float4 g_segments[maxInteractors];	// xy — начало, zw — конец капсулы, XZ мира
 	float4 g_shapes[maxInteractors];	// x — радиус, м; y — сила 0…1; zw — направление движения × «Forward push»
+	float4 g_edges[maxInteractors];		// x — ширина мягкого края, м («Edge width»)
 };
 
 DM_SRV( Texture2D<float2>, g_previousField, 0 );
@@ -61,8 +62,8 @@ void main( uint3 id : SV_DispatchThreadID )
 		const float2 away = position - ( from + axis * t );
 		const float distance = length( away );
 		const float radius = g_shapes[i].x;
-		// Полный наклон у оси, к краю капсулы — на нет (край — радиус и ещё половина)
-		const float strength = g_shapes[i].y * ( 1.0f - smoothstep( radius, 1.5f * radius, distance ) );
+		// Полный наклон до радиуса («Trail width» / 2), за ним на ширине края — на нет
+		const float strength = g_shapes[i].y * ( 1.0f - smoothstep( radius, radius + max( g_edges[i].x, 1e-3f ), distance ) );
 		if( strength <= length( push ) )
 			continue;
 		// От оси наружу; у самой оси — по ходу или в свою сторону клетки

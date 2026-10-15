@@ -261,7 +261,7 @@ glTF их не понимает: материалы собраны на узла
 Нынешние модели расстановки уровня `Test`:
 
 ```
-blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/dandelion_01_2k.blend.zip --objects "^dandelion_01_" --lod-offset 1 --out Meshes/source/dandelion_01.glb --material-param WindWeight=1.5 --material-param DiffuseTransmissionFactor=0.35 --material-param DiffuseTransmissionColorFactor=1,1,0.6 --material-param DiffuseTransmissionColor=BaseColor --material-param DitheredLODTransition=true
+blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/dandelion_01_2k.blend.zip --objects "^dandelion_01_" --lod-offset 1 --out Meshes/source/dandelion_01.glb --material-param WindWeight=1.5 --material-param TrampleWeight=0.8 --material-param TrampleBendLength=0.3 --material-param DiffuseTransmissionFactor=0.35 --material-param DiffuseTransmissionColorFactor=1,1,0.6 --material-param DiffuseTransmissionColor=BaseColor --material-param DitheredLODTransition=true
 python Tools/import_gltf.py Meshes/source/dandelion_01.glb --scatter --lod-ranges 3,8
 blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/rock_moss_set_01_2k.blend.zip --objects "^rock_moss_set_01_rock0\d$" --decimate-tris 1500,400,100 --single-sided --out Meshes/source/rock_moss_set_01.glb --material-param DitheredLODTransition=true
 python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-ranges 8,20
@@ -328,7 +328,7 @@ Grass (Megascans `sltiN`, сухая трава пучками, 6 вариант
 ручьёв ([scatter.md](scatter.md), «Трава Megascans»):
 
 ```
-blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/Grass-d6846008 --name dry_grass --out Meshes/source/dry_grass.glb --material-param WindWeight=1 --material-param DitheredLODTransition=true
+blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/Grass-d6846008 --name dry_grass --out Meshes/source/dry_grass.glb --material-param WindWeight=1 --material-param TrampleBendLength=0.3 --material-param DitheredLODTransition=true
 python Tools/import_gltf.py Meshes/source/dry_grass.glb --scatter --lod-ranges 4,10,20
 ```
 

@@ -37,7 +37,10 @@ cbuffer PBRMaterialBuffer : register( SLOT_CB_MATERIAL )
 	float  g_windRippleAmplitude;	// рябь листвы вдоль нормали, м
 	float  g_windRippleFrequency;
 	float  g_transmissionForwardRoughness;	// ширина пика пропускания вперёд — шероховатость GGX «на глаз»
-	float2 g_materialPadding;
+	// Следы в траве (Shaders/foliage_interaction.sh): насколько растение ложится по следу (× «Max angle» поля; 0 — не
+	// гнётся) и длина изгибающейся от корня части, м модели — выше она лежит прямо
+	float  g_trampleWeight;
+	float  g_trampleBendLength;
 };
 
 #endif

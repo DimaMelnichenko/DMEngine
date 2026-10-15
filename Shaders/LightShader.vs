@@ -125,10 +125,11 @@ float4 vertexWorldPosition( VertexInputType input, inout WindFrame frame )
 		const InstanceParam instance = g_instanceData[instanceIndex];
 		const float3 root = mul( float4( instance.position, 1.0f ), world ).xyz;
 		#ifdef INST_SCALE
-			const float height = max( input.position.y * instance.scale, 0.0f );
+			const float scale = instance.scale;
 		#else
-			const float height = max( input.position.y, 0.0f );
+			const float scale = 1.0f;
 		#endif
+			const float height = max( input.position.y * scale, 0.0f );
 		// Высота растёт вдоль оси Y экземпляра (наклон по земле, случайный поворот)
 		const float3 up = normalize( mul( calcInstanceDirection( float3( 0.0f, 1.0f, 0.0f ), instanceIndex ), (float3x3)world ) );
 		// Своё случайное число растения — по его повороту, а не по месту: кольцевой слой стоит на земле с дисплейсментом
@@ -143,18 +144,20 @@ float4 vertexWorldPosition( VertexInputType input, inout WindFrame frame )
 		const float height = max( worldPosition.y - root.y, 0.0f );
 		const float3 up = float3( 0.0f, 1.0f, 0.0f );
 		const float phase = windPhase( root );
+		const float scale = 1.0f;
 	#endif
-		// След в корне: придавленное растение ветер качает меньше, затем оно наклоняется вокруг корня целиком (вместе с изгибом)
+		// След в корне: придавленное растение ветер качает меньше, затем оно ложится по следу дугой от корня (вместе с изгибом
+		// ветра); отклик и длина изгиба — параметры материала, длина — в метрах модели (× размер экземпляра)
 		const float2 push = foliagePushAt( root );
 		const float pressed = length( push );
 		[branch] if( cb_windStrength > 0.0f )
 		{
-			const float2 bend = windBendVector( root, g_windWeight, phase ) * ( 1.0f - 0.8f * pressed );
+			const float2 bend = windBendVector( root, g_windWeight, phase ) * ( 1.0f - 0.8f * pressed * saturate( g_trampleWeight ) );
 			worldPosition.xyz += windOffset( bend, height );
 			windBendFrame( bend, height, up, frame );
 		}
 		[branch] if( pressed > 0.01f )
-			worldPosition.xyz = foliageTrample( worldPosition.xyz, root, up, push, phase, frame );
+			worldPosition.xyz = foliageTrample( worldPosition.xyz, root, up, push, phase, g_trampleWeight, g_trampleBendLength * scale, frame );
 	}
 #endif
 	return worldPosition;

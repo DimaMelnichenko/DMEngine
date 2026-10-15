@@ -99,6 +99,7 @@ def grass_material(image):
     links.new([s for s in tint.outputs if s.type == 'RGBA'][0], bsdf.inputs['Base Color'])
     # Параметры движка (docs/materials.md, docs/wind.md): extras glTF → экземпляр материала
     mat['WindWeight'] = 1.0
+    mat['TrampleBendLength'] = 0.12   # следы в траве: гнётся у корня, выше лежит (Shaders/foliage_interaction.sh)
     mat['DiffuseTransmissionFactor'] = 0.4
     mat['DiffuseTransmissionColorFactor'] = [1.0, 1.0, 0.6]
     mat['DiffuseTransmissionColor'] = 'BaseColor'

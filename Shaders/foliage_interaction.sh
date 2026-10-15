@@ -34,11 +34,15 @@ float2 foliagePushAt( float3 root )
 	return push * saturate( edge / foliageInteractionEdge );
 }
 
-// Наклон точки p растения вокруг корня root (up — куда растёт, единичный) по вектору push (foliagePushAt): к его
-// направлению на «Max angle» × |push|, у каждого растения своё отклонение (phase 0…1 — его случайное число, постоянное:
-// ±20° направления, 85–100 % угла) — трава под ногами ложится не строем. Поворот вокруг оси поперёк up: стебли не
-// удлиняются, базис — тем же поворотом
-float3 foliageTrample( float3 p, float3 root, float3 up, float2 push, float phase, inout WindFrame frame )
+// Наклон точки p растения с корнем root (up — куда растёт, единичный) по вектору push (foliagePushAt) — дугой, как гнётся
+// стебель: нижняя часть длиной bendLength (м) изгибается по дуге окружности, касательная поворачивается от up к
+// направлению следа до угла «Max angle» × |push| × weight (отклик растения, параметр материала TrampleWeight; не больше
+// 85°: кончик не уходит в землю), выше растение лежит прямо под этим углом. Точка на высоте s над корнем — на дуге той же
+// длины s (стебли не удлиняются), её сдвиг поперёк оси роста поворачивается вместе с касательной, базис вершины — тоже.
+// У каждого растения своё отклонение (phase 0…1 — его постоянное случайное число: ±20° направления, 85–100 % угла) —
+// трава под ногами ложится не строем
+float3 foliageTrample( float3 p, float3 root, float3 up, float2 push, float phase, float weight, float bendLength,
+					   inout WindFrame frame )
 {
 	const float amount = length( push );
 	float turnSin, turnCos;
@@ -47,16 +51,24 @@ float3 foliageTrample( float3 p, float3 root, float3 up, float2 push, float phas
 	const float3 toward = float3( direction.x * turnCos - direction.y * turnSin, 0.0f, direction.x * turnSin + direction.y * turnCos );
 	float3 axis = cross( up, toward );
 	const float axisLength = length( axis );
-	[branch] if( axisLength < 1e-4f )
+	const float angle = min( cb_foliageInteraction.w * amount * weight * ( 0.85f + 0.15f * frac( phase * 7.13f ) ), 1.48f );
+	const float3 offset = p - root;
+	const float height = dot( offset, up );
+	[branch] if( axisLength < 1e-4f || angle < 1e-3f || height <= 0.0f )
 		return p;
 	axis /= axisLength;
-	const float angle = cb_foliageInteraction.w * amount * ( 0.85f + 0.15f * frac( phase * 7.13f ) );
+	const float3 side = cross( axis, up );		// направление следа поперёк оси роста
+	const float span = max( bendLength, 0.01f );
+	const float curvature = angle / span;
+	// Угол касательной на высоте точки: растёт по дуге до span, выше — постоянный
+	const float bend = curvature * min( height, span );
 	float s, c;
-	sincos( angle, s, c );
+	sincos( bend, s, c );
+	const float3 along = ( up * s + side * ( 1.0f - c ) ) / curvature + ( up * c + side * s ) * max( height - span, 0.0f );
 	frame.normal = windRotate( frame.normal, axis, s, c );
 	frame.tangent = windRotate( frame.tangent, axis, s, c );
 	frame.binormal = windRotate( frame.binormal, axis, s, c );
-	return root + windRotate( p - root, axis, s, c );
+	return root + along + windRotate( offset - up * height, axis, s, c );
 }
 
 #endif

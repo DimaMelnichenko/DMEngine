@@ -305,6 +305,8 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.windTwigFrequency = materialValue( params, "WindTwigFrequency", 2.0f );
 	param.windRippleAmplitude = materialValue( params, "WindRippleAmplitude", 0.02f );
 	param.windRippleFrequency = materialValue( params, "WindRippleFrequency", 6.0f );
+	param.trampleWeight = materialValue( params, "TrampleWeight", 1.0f );
+	param.trampleBendLength = materialValue( params, "TrampleBendLength", 0.25f );
 
 	Device::updateResourceData<PSParam>( m_psCB, param );
 	// b2 читают и пиксельный, и вершинный шейдер (отклик на ветер)

@@ -68,7 +68,9 @@ private:
 		float windRippleAmplitude;	// м
 		float windRippleFrequency;
 		float transmissionForwardRoughness;	// ширина пика пропускания вперёд
-		float padding[2];
+		// Следы в траве (Shaders/foliage_interaction.sh): отклик на след и длина изгиба от корня, м модели
+		float trampleWeight;
+		float trampleBendLength;
 	};
 	static_assert( sizeof( PSParam ) == 128, "PBRMaterialBuffer layout" );
 
