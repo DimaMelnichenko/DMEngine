@@ -116,10 +116,10 @@ void Viewport::setPaintMode( bool enabled )
 		clearSelection();
 }
 
-void Viewport::paintTerrain( const DMCamera& camera, GS::TerrainPipeline& terrain, GUI& gui )
+void Viewport::paintTerrain( const DMCamera& camera, GS::TerrainPaintTool& paint, const GS::TerrainPipeline& terrain, GUI& gui )
 {
 	const ImGuiIO& io = ImGui::GetIO();
-	const GS::TerrainPipeline::PaintBrush brush = terrain.paintBrush( io.KeyShift, io.KeyCtrl );
+	const GS::TerrainPaintTool::Brush brush = paint.brush( io.KeyShift, io.KeyCtrl );
 	// Точка под курсором — луч к рельефу; над окнами редактора кисти нет
 	XMFLOAT3 point = {};
 	const bool hit = !overPanels() && terrainPoint( camera, terrain, io.MousePos.x, io.MousePos.y, point );
@@ -129,10 +129,10 @@ void Viewport::paintTerrain( const DMCamera& camera, GS::TerrainPipeline& terrai
 	if( !m_painting && hit && ImGui::IsMouseClicked( ImGuiMouseButton_Left ) && !brush.target.empty() )
 	{
 		std::string reason;
-		m_painting = terrain.beginPaintStroke( brush.target, brush.mode, brush.value, reason );
+		m_painting = paint.beginStroke( brush.target, brush.mode, brush.value, reason );
 		if( m_painting )
 		{
-			terrain.paintDab( point.x, point.z, brush.radius, brush.falloff );
+			paint.dab( point.x, point.z, brush.radius, brush.falloff );
 			m_lastDab = XMFLOAT2( point.x, point.z );
 		}
 		else
@@ -141,10 +141,10 @@ void Viewport::paintTerrain( const DMCamera& camera, GS::TerrainPipeline& terrai
 	else if( m_painting && ImGui::IsMouseDown( ImGuiMouseButton_Left ) )
 	{
 		if( hit )
-			dabTo( terrain, brush.radius, brush.falloff, point );
+			dabTo( paint, brush.radius, brush.falloff, point );
 	}
 	else if( m_painting )
-		finishPaintStroke( terrain, gui );
+		finishPaintStroke( paint, gui );
 
 	if( !hit )
 		return;
@@ -202,7 +202,7 @@ bool Viewport::terrainPoint( const DMCamera& camera, const GS::TerrainPipeline& 
 	return true;
 }
 
-void Viewport::dabTo( GS::TerrainPipeline& terrain, float radius, float falloff, const XMFLOAT3& point )
+void Viewport::dabTo( GS::TerrainPaintTool& paint, float radius, float falloff, const XMFLOAT3& point )
 {
 	// Между касаниями — промежуточные с шагом в ¼ радиуса: быстрый взмах мышью — сплошной мазок, а не пятна
 	const float step = std::max( radius * 0.25f, 0.25f );
@@ -210,17 +210,17 @@ void Viewport::dabTo( GS::TerrainPipeline& terrain, float radius, float falloff,
 	const float dz = point.z - m_lastDab.y;
 	const int count = std::min( static_cast<int>( std::hypot( dx, dz ) / step ), 256 );
 	for( int i = 1; i <= count; ++i )
-		terrain.paintDab( m_lastDab.x + dx * i / count, m_lastDab.y + dz * i / count, radius, falloff );
+		paint.dab( m_lastDab.x + dx * i / count, m_lastDab.y + dz * i / count, radius, falloff );
 	if( count > 0 )
 		m_lastDab = XMFLOAT2( point.x, point.z );
 }
 
-std::string Viewport::brushStroke( const DMCamera& camera, GS::TerrainPipeline& terrain, GUI& gui, const std::vector<ImVec2>& points, bool shift,
-								   bool ctrl )
+std::string Viewport::brushStroke( const DMCamera& camera, GS::TerrainPaintTool& paint, const GS::TerrainPipeline& terrain, GUI& gui,
+								   const std::vector<ImVec2>& points, bool shift, bool ctrl )
 {
 	if( m_painting )
 		return "error: a stroke is going on";
-	const GS::TerrainPipeline::PaintBrush brush = terrain.paintBrush( shift, ctrl );
+	const GS::TerrainPaintTool::Brush brush = paint.brush( shift, ctrl );
 	std::vector<XMFLOAT3> hits;
 	for( const ImVec2& screen : points )
 	{
@@ -231,31 +231,31 @@ std::string Viewport::brushStroke( const DMCamera& camera, GS::TerrainPipeline& 
 	if( hits.empty() )
 		return "error: the brush misses the terrain";
 	std::string reason;
-	if( brush.target.empty() || !terrain.beginPaintStroke( brush.target, brush.mode, brush.value, reason ) )
+	if( brush.target.empty() || !paint.beginStroke( brush.target, brush.mode, brush.value, reason ) )
 		return "error: " + ( reason.empty() ? std::string( "no brush target" ) : reason );
 	m_painting = true;
-	terrain.paintDab( hits[0].x, hits[0].z, brush.radius, brush.falloff );
+	paint.dab( hits[0].x, hits[0].z, brush.radius, brush.falloff );
 	m_lastDab = XMFLOAT2( hits[0].x, hits[0].z );
 	for( size_t i = 1; i < hits.size(); ++i )
-		dabTo( terrain, brush.radius, brush.falloff, hits[i] );
-	finishPaintStroke( terrain, gui );
+		dabTo( paint, brush.radius, brush.falloff, hits[i] );
+	finishPaintStroke( paint, gui );
 	char text[160];
 	std::snprintf( text, sizeof( text ), "%s from %.1f, %.1f to %.1f, %.1f", brush.target.c_str(), hits.front().x, hits.front().z, hits.back().x,
 				   hits.back().z );
 	return text;
 }
 
-void Viewport::finishPaintStroke( GS::TerrainPipeline& terrain, GUI& gui )
+void Viewport::finishPaintStroke( GS::TerrainPaintTool& paint, GUI& gui )
 {
 	m_painting = false;
-	const GS::TerrainPipeline::PaintEdit edit = terrain.endPaintStroke();
+	const GS::TerrainPaintTool::Edit edit = paint.endStroke();
 	if( !edit.changed )
 		return;
 	// Отмена и повтор — плитки цели целиком
-	auto shared = std::make_shared<GS::TerrainPipeline::PaintEdit>( edit );
-	GS::TerrainPipeline* target = &terrain;
-	gui.history().record( "Paint " + edit.target, [target, shared] { target->setPaintTiles( shared->target, shared->before ); },
-						  [target, shared] { target->setPaintTiles( shared->target, shared->after ); } );
+	auto shared = std::make_shared<GS::TerrainPaintTool::Edit>( edit );
+	GS::TerrainPaintTool* target = &paint;
+	gui.history().record( "Paint " + edit.target, [target, shared] { target->setTiles( shared->target, shared->before ); },
+						  [target, shared] { target->setTiles( shared->target, shared->after ); } );
 }
 
 void Viewport::setStreamMode( bool enabled )
@@ -293,13 +293,13 @@ void Viewport::update( const DMCamera& camera, GS::Scene& scene, GUI& gui )
 	// Кисть: клик по сцене — мазок, а не выбор
 	if( m_paintMode )
 	{
-		paintTerrain( camera, scene.terrainPipeline(), gui );
+		paintTerrain( camera, scene.terrainPaint(), scene.terrainPipeline(), gui );
 		sceneClicked();
 	}
 	else
 	{
 		if( m_painting )
-			finishPaintStroke( scene.terrainPipeline(), gui );
+			finishPaintStroke( scene.terrainPaint(), gui );
 		if( sceneClicked() )
 			clickAt( camera, scene, gui, ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y );
 	}

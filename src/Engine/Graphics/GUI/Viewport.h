@@ -13,6 +13,7 @@ class GUI;
 namespace GS
 {
 class TerrainPipeline;
+class TerrainPaintTool;
 class ModelInstances;
 class ParticleSystem;
 class Scene;
@@ -31,7 +32,7 @@ class WaterSimulation;
 // сценой и клавиши 5 / 6 / 7, оси — мира или экземпляра. Режим «Stream curves» (View): кривые русел ближе 250 м — линии и
 // точки; клик по точке выбирает её (подокно кривой — в Details), гизмо двигает её по X и Z, Insert — новая точка после
 // выбранной, Delete — удалить; русла перестраиваются, когда правка закончена (WaterSimulation::finishCurveEdit).
-// Режим «Terrain paint» (View): кисть слоёв земли и масок поверх правил (TerrainPipeline, подокно «Paint» окна террейна) —
+// Режим «Terrain paint» (View): кисть слоёв земли и масок поверх правил (TerrainPaintTool, подокно «Paint» окна террейна) —
 // круг кисти на рельефе под курсором, ЛКМ — мазок (Shift — убавить в режиме «Step», Ctrl — стереть мазок), мазок — одна
 // правка истории (Ctrl+Z); клик по сцене в этом режиме ничего не выбирает.
 // Вызывается в кадре ImGui — между GUI::Begin и GUI::End
@@ -45,8 +46,8 @@ public:
 	void setPaintMode( bool enabled );
 	// Мазок кистью подокна «Paint» через точки окна (пиксели) — как ведут мышью с зажатой ЛКМ (команда brush): луч к рельефу,
 	// промежуточные касания, правка в истории. Ответ — что закрашено; «error: …» — мимо рельефа или нет цели
-	std::string brushStroke( const DMCamera& camera, GS::TerrainPipeline& terrain, GUI& gui, const std::vector<ImVec2>& points, bool shift,
-							 bool ctrl );
+	std::string brushStroke( const DMCamera& camera, GS::TerrainPaintTool& paint, const GS::TerrainPipeline& terrain, GUI& gui,
+							 const std::vector<ImVec2>& points, bool shift, bool ctrl );
 	void setStreamMode( bool enabled );
 	// Клик по точке окна (мышь и команда pick): в режиме кривых — сначала точка кривой, затем ближайший значок источника
 	// света или эмиттера, мимо — экземпляр модели. Возвращает описание выбранного («Stream 7, point 3», подокно источника
@@ -110,10 +111,10 @@ private:
 	bool pickStreamPoint( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain, float x, float y );
 	void drawStreams( const DMCamera& camera, const GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain ) const;
 	// Кисть: точка под курсором, круг, мазок мышью; конец мазка — в историю правок
-	void paintTerrain( const DMCamera& camera, GS::TerrainPipeline& terrain, GUI& gui );
-	void finishPaintStroke( GS::TerrainPipeline& terrain, GUI& gui );
+	void paintTerrain( const DMCamera& camera, GS::TerrainPaintTool& paint, const GS::TerrainPipeline& terrain, GUI& gui );
+	void finishPaintStroke( GS::TerrainPaintTool& paint, GUI& gui );
 	bool terrainPoint( const DMCamera& camera, const GS::TerrainPipeline& terrain, float x, float y, DirectX::XMFLOAT3& point ) const;
-	void dabTo( GS::TerrainPipeline& terrain, float radius, float falloff, const DirectX::XMFLOAT3& point );
+	void dabTo( GS::TerrainPaintTool& paint, float radius, float falloff, const DirectX::XMFLOAT3& point );
 	void editStreamPoint( const DMCamera& camera, GS::WaterSimulation& water, const GS::TerrainHeightSource& terrain, GUI& gui );
 	// Сдвиг выбранной точки так, чтобы она стала в position, — от положений в начале правки (m_dragStart), с мягким выделением
 	void dragStreamPoint( GS::WaterSimulation& water, DirectX::XMFLOAT2 position );

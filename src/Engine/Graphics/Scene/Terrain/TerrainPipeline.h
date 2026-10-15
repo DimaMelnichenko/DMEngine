@@ -35,7 +35,8 @@ struct TerrainEditCoverage;
 // (запросы высоты: ходьба, луч кисти, пересадка моделей) и на GPU с мипами, детальные плитки, маска очистки растительности,
 // маски — текстуры хранилища по имени, поле ветра; ресурсы сцены привязывает compute. Их читают отрисовка рельефа,
 // расстановка, вода, частицы, следы в траве и тень рельефа (TerrainHeightSource, hydrology). Правки окон (правила слоёв,
-// ветер, кривые русел, мазки) перестраивают нужные ступени без перезагрузки. Окна — части окна террейна (attachWindow).
+// ветер, кривые русел) и мазки кисти (данные мазков — здесь, кисть — TerrainPaintTool) перестраивают нужные ступени без
+// перезагрузки. Окна — части окна террейна (attachWindow).
 // Настройки — строка Terrain (карта высот, смещение, шаг) и слои TerrainLayers
 class TerrainPipeline : public SceneObject, public TerrainHeightSource
 {
@@ -52,7 +53,7 @@ public:
 					 const WaterSimulationSettings* water = nullptr, const TerrainErosionSettings* erosion = nullptr,
 					 const TerrainLayerRules& layerRules = {} );
 	// Части окна террейна: слои материала («Layer tiling», «Layer tint», «Layer displacement», «Layer occlusion»), «Erosion»,
-	// «Layer rules», «Paint» — подокна window; мазки кисти — данные уровня: отмечают window изменённым до «Save level»
+	// «Layer rules» — подокна window; мазки кисти — данные уровня: отмечают window изменённым до «Save level»
 	void attachWindow( PropertyContainer& window );
 	// Множитель высоты из окна террейна (Terrain.height_multiplier) — вживую: запросы высоты, ресурсы и отрисовка; ступени
 	// (русла, ветер) берут его при следующей перестройке
@@ -82,42 +83,16 @@ public:
 
 	// Мазки кисти поверх правил слоёв и масок (TerrainPaint, строки TerrainPaint) — до initialize; применяются в buildMasks
 	void setPaint( const std::vector<TerrainPaintTile>& tiles ) { m_paintTiles = tiles; }
-	// Мазок из одного касания (команда terrain paint, потом — кисть вьюпорта): цель — «layer N», «wetness» (тонкая сетка
-	// 0,25 м: детальный слой весов) или имя маски (1 м); текстуры цели — сразу, полог поля ветра — в конце мазка. false — нет
-	// цели или правил
-	bool paintStroke( const std::string& target, TerrainPaint::Mode mode, float value, float x, float z, float radius, float falloff,
-					  std::string& reason );
-	// Мазок кисти по частям (вьюпорт): начало, касание каждый кадр (цель — на GPU вживую: маска сразу, плитки детального слоя
-	// весов — раз в кадр (update), splat-карта — не чаще 10 раз в секунду), конец — снимки плиток цели до и после для отмены
-	// (EditHistory) и раскладка леса
+	// Мазок кисти по частям (кисть — TerrainPaintTool): начало — цель «layer N», «wetness» (тонкая сетка 0,25 м: детальный
+	// слой весов) или имя маски (1 м), касание каждый кадр (цель — на GPU вживую: маска сразу, плитки детального слоя весов —
+	// раз в кадр (update), splat-карта — не чаще 10 раз в секунду), конец — что задето (пусто — ничего), полог поля ветра и
+	// раскладка леса. false в начале — нет цели или правил (reason)
 	bool beginPaintStroke( const std::string& target, TerrainPaint::Mode mode, float value, std::string& reason );
 	void paintDab( float x, float z, float radius, float falloff );
-	struct PaintEdit
-	{
-		std::string target;
-		TerrainPaint::TileMap before;
-		TerrainPaint::TileMap after;
-		bool changed = false;
-	};
-	PaintEdit endPaintStroke();
+	TerrainPaint::Rect endPaintStroke();
 	bool painting() const { return m_paint.stroking(); }
 	// Отмена и повтор мазка: плитки цели целиком
 	void setPaintTiles( const std::string& target, const TerrainPaint::TileMap& tiles );
-	// Кисть подокна «Paint»: цель, режим (Shift — убавить в режиме «Step», Ctrl — стереть), значение, радиус, мягкость
-	struct PaintBrush
-	{
-		std::string target;
-		TerrainPaint::Mode mode = TerrainPaint::Mode::value;
-		float value = 1.0f;
-		float radius = 10.0f;
-		float falloff = 0.5f;
-	};
-	PaintBrush paintBrush( bool shift, bool ctrl ) const;
-	// Режим кисти во вьюпорте (View → «Terrain paint»): пока включён, цель кисти видна поверх земли, если в подокне «Paint»
-	// отмечено «Show target»
-	void setPaintPreview( bool enabled ) { m_paintPreview = enabled; }
-	// Цель кисти поверх земли для отрисовки: −1 — нет, 0…7 — слой земли, 8 — мокрость, 9 — маска (mask — её текстура)
-	int32_t paintPreview( const ShaderView*& mask ) const;
 	// Цели кисти: «layer N» по TerrainLayers, мокрость, затем маски
 	std::vector<std::string> paintTargets() const;
 	// Луч к рельефу (итоговая карта на CPU, как ходьба): distance — до точки на земле; false — мимо
@@ -208,12 +183,11 @@ private:
 	bool erode( HeightField& field, const TerrainErosionSettings& erosion );
 	// Подокна: слои материала (метров на повтор, оттенок, дисплейсмент, AO по слоям TerrainLayers), «Erosion» (параметры
 	// эрозии, применяются при следующей загрузке), «Layer rules» (пороги правил слоёв и масок; пересчёт вживую —
-	// layerRulesChanged / rebuildMasks) и правила по его свойствам, «Paint» (кисть)
+	// layerRulesChanged / rebuildMasks) и правила по его свойствам
 	void addLayerProperties();
 	void addErosionProperties( const TerrainErosionSettings& erosion );
 	void addLayerRulesProperties( const TerrainLayerRules& rules );
 	TerrainLayerRules layerRulesFromProperties() const;
-	void addPaintProperties();
 	// Копия карты высот с правками рельефа, затем русла, слои и маски и итоговая карта (finishHeights); coverage — что правки
 	// делают, кроме высоты
 	bool buildHeights( const std::vector<TerrainEdit>& edits, const WaterSimulationSettings* water, TerrainEditCoverage& coverage );
@@ -292,10 +266,7 @@ private:
 	TerrainMasks m_painted;
 	bool m_paintActive = false;					// есть мазки — m_painted
 	bool m_paintedMasksChanged = false;
-	PropertyContainer m_paintProperties;		// подокно «Paint» — кисть
-	std::string m_strokeTarget;
-	TerrainPaint::TileMap m_strokeBefore;
-	bool m_paintPreview = false;				// режим кисти во вьюпорте: цель кисти поверх земли
+	std::string m_strokeTarget;					// цель идущего мазка
 	bool m_splatPending = false;				// мазки тонкой сетки сменились — splat-карта заново
 	std::set<TerrainDetailSplat::TileKey> m_dirtySplatTiles;	// плитки детального слоя весов, задетые мазком с прошлой выгрузки
 	std::chrono::steady_clock::time_point m_splatUploaded;

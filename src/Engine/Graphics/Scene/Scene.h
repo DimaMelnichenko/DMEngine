@@ -70,6 +70,8 @@ public:
 	// кисть, поле ветра
 	CDLODTerrain& terrain();
 	TerrainPipeline& terrainPipeline();
+	// Кисть слоёв земли и масок (вьюпорт, команда terrain paint)
+	TerrainPaintTool& terrainPaint();
 	// Экземпляры моделей уровня (LevelModels)
 	ModelInstances& models();
 	// Вода по рельефу (Levels.water_simulation); без неё у уровня объект не инициализирован
@@ -98,6 +100,7 @@ private:
 	bool m_useHDRI = false;
 	SkySphere m_sky;			// модель неба уровня (Levels.sky), если задана — вместо фона атмосферы
 	TerrainPipeline m_terrainPipeline;	// данные рельефа (конвейер рельефа и воды); его читают террейн, расстановка, вода, частицы
+	TerrainPaintTool m_terrainPaint;	// кисть над мазками конвейера
 	CDLODTerrain m_terrain;
 	WaterSimulation m_water;	// вода по рельефу (Levels.water_simulation), только с террейном
 	ModelInstances m_models;

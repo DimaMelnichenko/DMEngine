@@ -148,8 +148,10 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		TerrainSettings terrainSettings;
 		if( !m_terrainPipeline.initialize( *m_level.terrain, terrainSettings, m_level.terrainEdits,
 										   m_level.waterSimulation ? &*m_level.waterSimulation : nullptr,
-										   m_level.terrainErosion ? &*m_level.terrainErosion : nullptr, m_level.terrainLayerRules ) ||
-			!m_terrain.initialize( terrainSettings, m_terrainPipeline ) )
+										   m_level.terrainErosion ? &*m_level.terrainErosion : nullptr, m_level.terrainLayerRules ) )
+			return false;
+		m_terrainPaint.initialize( m_terrainPipeline );
+		if( !m_terrain.initialize( terrainSettings, m_terrainPipeline, m_terrainPaint ) )
 			return false;
 		LOG( "Terrain init ms: " + elapsedMs( timeStart ) );
 	}
@@ -509,6 +511,11 @@ CDLODTerrain& Scene::terrain()
 TerrainPipeline& Scene::terrainPipeline()
 {
 	return m_terrainPipeline;
+}
+
+TerrainPaintTool& Scene::terrainPaint()
+{
+	return m_terrainPaint;
 }
 
 ModelInstances& Scene::models()

@@ -62,7 +62,7 @@ private:
 	void updateMouseLook();
 	// Консольные команды: камера, снимок, замер GPU, свойства GUI, клавиши, выход (docs/remote.md)
 	void registerCommands();
-	// Команда terrain paint: мазок кисти, clear, list, probe (TerrainPipeline::paintStroke)
+	// Команда terrain paint: мазок кисти, clear, list, probe (TerrainPaintTool::stroke)
 	void paintCommand( const std::vector<std::string>& args, const ConsoleReplyPtr& reply );
 	// Снимки, заказанные командой screenshot, — в своей точке кадра: до окон ImGui или после них
 	void takeScreenshots( bool withGui );

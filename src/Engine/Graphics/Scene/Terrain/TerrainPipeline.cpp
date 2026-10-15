@@ -129,7 +129,6 @@ bool TerrainPipeline::initialize( uint32_t terrainId, TerrainSettings& settings,
 	if( m_erosion )
 		addErosionProperties( *m_erosion );
 	addLayerRulesProperties( m_layerRules );
-	addPaintProperties();
 	m_initialized = true;
 	return true;
 }
@@ -144,7 +143,6 @@ void TerrainPipeline::attachWindow( PropertyContainer& window )
 	if( m_erosion )
 		window.addSubContainer( &m_erosionProperties );
 	window.addSubContainer( &m_layerRulesProperties );
-	window.addSubContainer( &m_paintProperties );
 }
 
 void TerrainPipeline::addLayerProperties()
@@ -224,26 +222,6 @@ const XMFLOAT2* TerrainPipeline::detailBounds( uint32_t x, uint32_t z ) const
 		return nullptr;
 	const int slice = m_detailIndex[static_cast<size_t>( z ) * m_detailTilesPerSide + x];
 	return slice >= 0 ? &m_detailBounds[slice] : nullptr;
-}
-
-int32_t TerrainPipeline::paintPreview( const ShaderView*& mask ) const
-{
-	// Цель кисти поверх земли: слой, мокрость или маска (её текстура хранилища — t7 пиксельного шейдера рельефа)
-	mask = nullptr;
-	if( !m_paintPreview || !m_paintProperties.exists( "Show target" ) || !m_paintProperties["Show target"].data<bool>() )
-		return -1;
-	const std::string target = paintBrush( false, false ).target;
-	const int32_t layer = TerrainPaint::layerOf( target );
-	if( layer >= 0 && static_cast<uint32_t>( layer ) < TerrainMaterial::maxLayers )
-		return layer;
-	if( target == TerrainPaint::wetnessTarget )
-		return static_cast<int32_t>( TerrainMaterial::maxLayers );
-	if( !target.empty() && System::textures().exists( target ) )
-	{
-		mask = &System::textures().get( System::textures().id( target ) )->srv();
-		return static_cast<int32_t>( TerrainMaterial::maxLayers ) + 1;
-	}
-	return -1;
 }
 
 void TerrainPipeline::update( const FrameContext& frame )
@@ -941,7 +919,6 @@ bool TerrainPipeline::beginPaintStroke( const std::string& target, TerrainPaint:
 		const uint32_t size = m_masks.size;
 		rule = [values, size]( uint32_t x, uint32_t row ) { return ( *values )[static_cast<size_t>( row ) * size + x]; };
 	}
-	m_strokeBefore = m_paint.targetTiles( target );
 	m_paint.beginStroke( target, mode, value, std::move( rule ) );
 	m_strokeTarget = target;
 	return true;
@@ -980,23 +957,17 @@ void TerrainPipeline::paintDab( float x, float z, float radius, float falloff )
 			uploadMask( mask, &changed );
 }
 
-TerrainPipeline::PaintEdit TerrainPipeline::endPaintStroke()
+TerrainPaint::Rect TerrainPipeline::endPaintStroke()
 {
-	PaintEdit edit;
 	if( !m_paint.stroking() )
-		return edit;
+		return {};
 	const TerrainPaint::Rect touched = m_paint.endStroke();
-	edit.target = m_strokeTarget;
-	edit.before = std::move( m_strokeBefore );
-	edit.after = m_paint.targetTiles( m_strokeTarget );
-	edit.changed = !touched.empty();
-	m_strokeBefore.clear();
 	// Плитки без поправок убраны — копия с мазками заново, если целей не осталось
 	if( !m_paint.has( m_strokeTarget ) )
 		refreshPainted();
 	paintTargetChanged( m_strokeTarget, &touched );
 	m_strokeTarget.clear();
-	return edit;
+	return touched;
 }
 
 void TerrainPipeline::paintTargetChanged( const std::string& target, const TerrainPaint::Rect* changed )
@@ -1148,20 +1119,6 @@ void TerrainPipeline::computeWaterLevel()
 		}
 }
 
-bool TerrainPipeline::paintStroke( const std::string& target, TerrainPaint::Mode mode, float value, float x, float z, float radius,
-								float falloff, std::string& reason )
-{
-	if( !beginPaintStroke( target, mode, value, reason ) )
-		return false;
-	paintDab( x, z, radius, falloff );
-	if( !endPaintStroke().changed )
-	{
-		reason = "terrain paint: the brush is outside the map";
-		return false;
-	}
-	return true;
-}
-
 std::vector<std::string> TerrainPipeline::paintTargets() const
 {
 	// Слои — по номерам TerrainLayers, мокрость, затем маски (без отладочной открытости ветру)
@@ -1174,25 +1131,6 @@ std::vector<std::string> TerrainPipeline::paintTargets() const
 		if( mask.name != "mask_wind_exposure" )
 			targets.push_back( mask.name );
 	return targets;
-}
-
-TerrainPipeline::PaintBrush TerrainPipeline::paintBrush( bool shift, bool ctrl ) const
-{
-	PaintBrush brush;
-	const PropertyContainer& p = m_paintProperties;
-	if( !p.exists( "Target" ) )
-		return brush;
-	const std::vector<std::string> targets = paintTargets();
-	const int32_t target = p["Target"].data<int32_t>();
-	if( target >= 0 && static_cast<size_t>( target ) < targets.size() )
-		brush.target = targets[target];
-	const bool step = p["Mode"].data<int32_t>() == 1;
-	brush.mode = ctrl ? TerrainPaint::Mode::erase : !step ? TerrainPaint::Mode::value :
-				 shift ? TerrainPaint::Mode::unstep : TerrainPaint::Mode::step;
-	brush.value = p["Value"].data<float>();
-	brush.radius = std::max( p["Radius"].data<float>(), 0.5f );
-	brush.falloff = p["Falloff"].data<float>();
-	return brush;
 }
 
 bool TerrainPipeline::raycast( const XMFLOAT3& origin, const XMFLOAT3& direction, float maxDistance, float& distance ) const
@@ -1722,37 +1660,6 @@ void TerrainPipeline::addErosionProperties( const TerrainErosionSettings& erosio
 {
 	m_erosionProperties.setName( "Erosion" );
 	addSettingProperties( m_erosionProperties, terrainErosionSchema(), erosion );
-}
-
-void TerrainPipeline::addPaintProperties()
-{
-	// Кисть слоёв и масок (View → «Terrain paint», вьюпорт): с уровнем не сохраняется
-	m_paintProperties.setName( "Paint" );
-	m_paintProperties.setTransient( true );
-	std::vector<std::string> names;
-	for( const std::string& target : paintTargets() )
-	{
-		const int32_t layer = TerrainPaint::layerOf( target );
-		names.push_back( layer >= 0 ? target + ": " + m_material.layerName( layer ) : target );
-	}
-	m_paintProperties.insert( "Target", static_cast<int32_t>( 0 ) )->setItems( names )
-		->setTooltip( "What the brush paints: a ground layer or a mask (grass, flowers, forest by kind, shrubs)" );
-	m_paintProperties.insert( "Mode", static_cast<int32_t>( 0 ) )->setItems( { "Value", "Step" } )
-		->setTooltip( "Value - a stroke takes the result to Value and no further; Step - every stroke adds Value (Shift - subtracts). "
-					  "Ctrl - erase the paint back to the rules" );
-	Property* prop = m_paintProperties.insert( "Value", 1.0f );
-	prop->setLow( 0.0f );
-	prop->setHigh( 1.0f );
-	prop = m_paintProperties.insert( "Radius", 10.0f );
-	prop->setLow( 1.0f );
-	prop->setHigh( 200.0f );
-	prop->setLogarithmic()->setUnit( "m" );
-	prop = m_paintProperties.insert( "Falloff", 0.5f );
-	prop->setLow( 0.0f );
-	prop->setHigh( 1.0f );
-	prop->setTooltip( "Soft edge, share of the radius" );
-	m_paintProperties.insert( "Show target", true )->setTooltip( "In the Terrain paint mode - the brush target over the ground: orange by "
-																 "its value (layer weight, wetness, mask), dark lines every 0.25" );
 }
 
 void TerrainPipeline::addLayerRulesProperties( const TerrainLayerRules& rules )

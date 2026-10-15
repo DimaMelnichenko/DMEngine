@@ -6,6 +6,7 @@
 #include "SceneObject.h"
 #include "GridMesh.h"
 #include "TerrainPipeline.h"
+#include "TerrainPaintTool.h"
 #include "ShaderProgram.h"
 #include "D3D\DMStructuredBuffer.h"
 
@@ -27,9 +28,9 @@ class CDLODTerrain : public SceneObject
 public:
 	CDLODTerrain();
 
-	// settings — строка Terrain (её читает конвейер: TerrainPipeline::initialize), pipeline — данные рельефа; живёт дольше
-	// террейна
-	bool initialize( const TerrainSettings& settings, TerrainPipeline& pipeline );
+	// settings — строка Terrain (её читает конвейер: TerrainPipeline::initialize), pipeline — данные рельефа, paint — кисть
+	// (её подокно — в окне террейна, цель — поверх земли); живут дольше террейна
+	bool initialize( const TerrainSettings& settings, TerrainPipeline& pipeline, TerrainPaintTool& paint );
 
 	// Множитель высоты из окна — в конвейер; границы узлов — по новой итоговой карте (перестройка русел)
 	void update( const FrameContext& frame ) override;
@@ -145,6 +146,7 @@ private:
 
 private:
 	TerrainPipeline* m_pipeline = nullptr;
+	const TerrainPaintTool* m_paintTool = nullptr;
 	uint32_t m_terrainId = 0;
 	uint32_t m_levelCount = 0;
 	std::vector<uint32_t> m_nodesPerSide;

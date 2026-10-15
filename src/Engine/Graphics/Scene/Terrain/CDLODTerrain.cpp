@@ -33,9 +33,10 @@ CDLODTerrain::CDLODTerrain() :
 {
 }
 
-bool CDLODTerrain::initialize( const TerrainSettings& settings, TerrainPipeline& pipeline )
+bool CDLODTerrain::initialize( const TerrainSettings& settings, TerrainPipeline& pipeline, TerrainPaintTool& paint )
 {
 	m_pipeline = &pipeline;
+	m_paintTool = &paint;
 	m_terrainId = settings.id;
 	const uint32_t mapSize = pipeline.mapSize();
 
@@ -71,8 +72,9 @@ bool CDLODTerrain::initialize( const TerrainSettings& settings, TerrainPipeline&
 	// Материал и сетка у камеры — по описанию полей строки Terrain (terrainSchema)
 	addSettingProperties( m_properties, terrainSchema(), settings );
 	static_assert( detailLevels - tileLevels == 4, "Finest mesh: values of terrainSchema" );
-	// Слои материала, эрозия, правила слоёв и кисть — части окна конвейера
+	// Слои материала, эрозия, правила слоёв — части окна конвейера; кисть — подокно «Paint»
 	pipeline.attachWindow( m_properties );
+	m_properties.addSubContainer( paint.properties() );
 
 	m_properties.insert( "Wireframe", false );
 	m_properties.insert( "Show LOD", false );
@@ -448,7 +450,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 
 	// Цель кисти поверх земли: слой, мокрость или маска (её текстура хранилища — t7)
 	const ShaderView* paintMask = nullptr;
-	const int32_t paintPreview = depthOnly ? -1 : m_pipeline->paintPreview( paintMask );
+	const int32_t paintPreview = depthOnly ? -1 : m_paintTool->previewTarget( paintMask );
 
 	const LayerConstants layers = layerConstants( context.view );
 	Device::updateResource<Parameters>( m_constantBuffer, [this, paintPreview, &layers]( Parameters& params )

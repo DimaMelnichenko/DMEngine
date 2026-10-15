@@ -229,7 +229,7 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	m_GUI.addToggle( { "Terrain paint", "", [this] { return m_viewport.paintMode(); }, [this]
 					   {
 						   m_viewport.setPaintMode( !m_viewport.paintMode() );
-						   m_scene.terrainPipeline().setPaintPreview( m_viewport.paintMode() );
+						   m_scene.terrainPaint().setPreview( m_viewport.paintMode() );
 					   } } );
 	// Отладочные виды — флажки окон объектов одним списком View → Debug views
 	auto debugView = [this]( const char* name, PropertyContainer* properties, const char* property )
@@ -537,7 +537,7 @@ void DMGraphics::paintCommand( const std::vector<std::string>& args, const Conso
 							 "paint list | paint probe <target> <x> <z>" );
 	// Цель — первое слово после paint: «layer N» пишется в кавычках
 	std::string reason;
-	if( !terrain.paintStroke( args[1], mode->second, value, x, z, radius, falloff, reason ) )
+	if( !m_scene.terrainPaint().stroke( args[1], mode->second, value, x, z, radius, falloff, reason ) )
 		return reply->error( reason );
 	reply->ok();
 }
@@ -954,7 +954,7 @@ void DMGraphics::registerCommands()
 			return reply->error( "usage: brush <x> <y> [<x> <y> ...] [shift] [ctrl]" );
 		for( size_t i = 0; i < numbers.size(); i += 2 )
 			points.emplace_back( numbers[i], numbers[i + 1] );
-		const std::string result = m_viewport.brushStroke( m_cameraPool["main"], m_scene.terrainPipeline(), m_GUI, points, shift, ctrl );
+		const std::string result = m_viewport.brushStroke( m_cameraPool["main"], m_scene.terrainPaint(), m_scene.terrainPipeline(), m_GUI, points, shift, ctrl );
 		if( result.rfind( "error: ", 0 ) == 0 )
 			reply->error( result.substr( 7 ) );
 		else
