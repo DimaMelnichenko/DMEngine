@@ -18,7 +18,7 @@ public:
 	bool initialize();
 	void beginFrame();
 	void endFrame();
-	// Области могут вкладываться; кадр не должен содержать больше maxScopes областей — лишние не замеряются
+	// Области могут вкладываться; кадр не должен содержать больше maxScopes областей — лишние не замеряются (строка в лог)
 	void beginScope( const std::string& name );
 	void endScope();
 	// Время областей, мс, в порядке их начала, и время всего кадра между beginFrame и endFrame — для кадра, который GPU
@@ -27,7 +27,8 @@ public:
 	float frameMilliseconds() const { return m_frameMilliseconds; }
 
 private:
-	static constexpr uint32_t maxScopes = 64;
+	// Областей в кадре: проходы, объекты в них (у теней — в каждом каскаде), compute объектов — ~70 на Test
+	static constexpr uint32_t maxScopes = 128;
 	static constexpr uint32_t queriesPerFrame = 2 + 2 * maxScopes;	// [0, 1] — кадр, [2 + 2i, 3 + 2i] — область i
 	static constexpr uint32_t readbackCount = 4;					// копий в кольце: GPU отстаёт на 1–2 кадра
 	struct Timestamps
@@ -47,4 +48,5 @@ private:
 	float m_frameMilliseconds = 0.0f;
 	uint32_t m_frame = 0;
 	bool m_frameOpen = false;
+	bool m_overflowLogged = false;	// лишние области — строка в лог один раз
 };

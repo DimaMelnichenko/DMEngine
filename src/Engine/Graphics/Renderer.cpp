@@ -276,19 +276,13 @@ FrameContext Renderer::prepareShadows( Scene& scene, const FrameContext& frame )
 
 void Renderer::computeObjects( Scene& scene, const FrameContext& computeFrame )
 {
-	// Compute — при главном виде в константах кадра: кольцо расстановки считается вокруг камеры
+	// Compute — при главном виде в константах кадра: кольцо расстановки считается вокруг камеры. У объекта — своя область
+	// «Compute: <объект>»: время GPU и CPU в «Statistic» и строках «GPU average» / «CPU average», метка в захвате PIX и у
+	// сторожа кадра (FrameWatchdog: на каком объекте стоит кадр)
 	measure( "Compute Pass", [&]
 	{
-		// Метка на объект — в захвате PIX и у сторожа кадра (FrameWatchdog: на каком объекте стоит кадр)
-		DMD3D& d3d = DMD3D::instance();
 		for( SceneObject* object : scene.objects() )
-		{
-			d3d.beginEvent( object->name().c_str() );
-			const auto start = std::chrono::high_resolution_clock::now();
-			object->compute( computeFrame );
-			m_stats.add( "Compute: " + object->name() + " = %.3f ms", millisecondsSince( start ) );
-			d3d.endEvent();
-		}
+			measure( "Compute: " + object->name(), [&] { object->compute( computeFrame ); } );
 	} );
 	// Пересчёт освещения окружением мог закончиться в compute неба: масштаб — по показанному результату
 	m_constants.setSkyLightScale( scene.skyLightScale() );

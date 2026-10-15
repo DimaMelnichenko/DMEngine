@@ -39,6 +39,9 @@ void GpuProfiler::beginScope( const std::string& name )
 	DMD3D::instance().beginEvent( name.c_str() );
 	if( m_frameScopes.size() >= maxScopes )
 	{
+		if( !m_overflowLogged )
+			LOG( "GPU profiler: more than " + std::to_string( maxScopes ) + " scopes in a frame, " + name + " and the rest are not measured" );
+		m_overflowLogged = true;
 		m_openScopes.push_back( maxScopes );	// область без замера: метка PIX есть, времени нет
 		return;
 	}
