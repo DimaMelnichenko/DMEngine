@@ -13,6 +13,7 @@
 #include "Shaders\bloom_constants.h"
 #include "Shaders\exposure_histogram_constants.h"
 #include "Shaders\exposure_adapt_constants.h"
+#include "RenderFeature.h"
 
 namespace GS
 {
@@ -30,7 +31,7 @@ namespace GS
 // Настройки — как Exposure, Tonemapper, Bloom в Post Process Volume UE: строка таблицы PostProcessSettings, на которую
 // ссылается уровень (Levels.post_process), меняются в GUI («Post process»). Новый проход (LUT, сглаживание) — ещё одна
 // цель и шаг в render()
-class PostProcess
+class PostProcess : public RenderFeature
 {
 public:
 	// Тонмаппинг и замер экспозиции, настройки — Level/LevelSettings.h
@@ -50,10 +51,12 @@ public:
 
 	bool initialize( const Settings& settings );
 	// Новый размер кадра: уровни bloom заново по размеру заднего буфера
-	bool resize();
+	bool resize() override;
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
-	// Экспозиция кадра — пиксельным шейдерам сцены (t105), до проходов сцены
+	// Начало кадра: экспозиция прошлого кадра — шейдерам сцены (t105, pre-exposure), до проходов сцены
+	void beginFrame( const RenderFrame& frame, FrameParameters& constants ) override { bindExposure(); }
+	// Экспозиция кадра — пиксельным шейдерам сцены (t105)
 	void bindExposure();
 	// Экспозиция кадра — для объявлений проходов, которые её читают
 	const ShaderView& exposureView() const { return m_exposureSRV; }
@@ -61,10 +64,11 @@ public:
 	// sceneColor — HDR-цвет сцены (SceneTargets::colorView), deltaTime — длительность кадра, с (скорость адаптации)
 	void render( const ShaderView& sceneColor, GpuProfiler& profiler, float deltaTime );
 	// Смена плана (camera cut, как у вида в UE): несколько кадров экспозиция адаптируется сразу, а не за секунды
-	void cameraCut() { m_cutFrames = cutFrameCount; }
+	void cameraCut() override { m_cutFrames = cutFrameCount; }
 	// EV100 кадра с отставанием на несколько кадров (копия с GPU без ожидания) — для статистики
 	float ev100() const { return m_ev100; }
-	PropertyContainer* properties();
+	PropertyContainer* properties() override;
+	bool environment() const override { return true; }
 
 private:
 	// Раскладка — ExposureState в Shaders/exposure.sh

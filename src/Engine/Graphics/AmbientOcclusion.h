@@ -6,6 +6,7 @@
 #include "RenderView.h"
 #include "Level\LevelSettings.h"
 #include "Shaders\ambient_occlusion_constants.h"
+#include "RenderFeature.h"
 
 namespace GS
 {
@@ -16,21 +17,28 @@ namespace GS
 // (Shaders/ambient_occlusion.sh) — гасит только освещение окружением (Surface::screenOcclusion). Даёт то, чего нет в
 // текстурах: землю под травой, камни друг на друге, стволы на рельефе. Настройки — у постобработки, как Ambient
 // Occlusion в Post Process Volume UE (PostProcessSettings: сила, радиус, степень), окно «Post process»
-class AmbientOcclusion
+class AmbientOcclusion : public RenderFeature
 {
 public:
 	using Settings = AmbientOcclusionSettings;
 
 	bool initialize();
 	// Новый размер кадра: половина заднего буфера
-	bool resize();
+	bool resize() override;
+	// Настройки кадра — из постобработки (PostProcessSettings::ambientOcclusion), до beginFrame; show — «Show ambient
+	// occlusion», отладочный вид: кадр — само затенение
+	void setSettings( const Settings& settings, bool show );
+	// Затенение в этом кадре: включено (сила > 0) и есть depth prepass — по его глубине; cb_ambientOcclusion: x — сила
+	// (0 — затенения нет), yz — размер в текселях, w — 1: отладочный вид
+	void beginFrame( const RenderFrame& frame, FrameParameters& constants ) override;
+	bool active() const { return m_active; }
 	// После depth prepass, до прохода цвета: расчёт и фильтр, привязка результата (t126) проходам сцены
-	void render( const RenderView& view, const ShaderView& sceneDepth, const Settings& settings );
-	// cb_ambientOcclusion кадра: x — сила (0 — затенения нет), yz — размер в текселях, w — 1: кадр — само затенение
-	// («Show ambient occlusion», отладочный вид)
-	DirectX::XMFLOAT4 frameParameters( const Settings& settings, bool active, bool show ) const;
+	void render( const RenderView& view, const ShaderView& sceneDepth );
 
 private:
+	Settings m_settings;
+	bool m_show = false;
+	bool m_active = false;
 
 	DMComputeShader m_shader;
 	DMComputeShader m_denoiseShader;

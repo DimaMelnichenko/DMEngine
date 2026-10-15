@@ -7,6 +7,7 @@
 #include "Scene\Level\LevelSettings.h"
 #include "Scene\RenderView.h"
 #include "Shaders\volumetric_fog_constants.h"
+#include "RenderFeature.h"
 
 namespace GS
 {
@@ -18,7 +19,7 @@ namespace GS
 // дальше — по формуле вдоль луча без теней. Его получают все материалы с освещением (evaluateLighting), фон неба, вода
 // и частицы — applyFogging. Настройки — строка ExponentialHeightFog уровня (Levels.height_fog), окно GUI «Height fog»;
 // проходы — после карты теней, до проходов сцены (Renderer::render), подробно — docs/fog.md
-class VolumetricFog
+class VolumetricFog : public RenderFeature
 {
 public:
 	using Settings = HeightFogSettings;
@@ -26,23 +27,25 @@ public:
 	// settings — строка уровня; нет — тумана нет, пока его не включат в GUI («Enabled»)
 	bool initialize( const std::optional<Settings>& settings );
 	// Новый размер кадра: сетка — по размеру заднего буфера
-	bool resize();
-	// Константы кадра cb_fog* для главного вида. normalization — яркость, кд/м², которую экспозиция кадра делает белой
-	// (по EV100): свет в объёме делится на неё, чтобы половинной точности хватало и днём, и ночью
-	FogParameters frameParameters( const RenderView& view, float normalization );
+	bool resize() override;
+	// Константы кадра cb_fog* для главного вида. Свет в объёме делится на яркость, кд/м², которую экспозиция прошлого кадра
+	// делает белой (по EV100): половинной точности хватает и днём, и ночью
+	void beginFrame( const RenderFrame& frame, FrameParameters& constants ) override;
 	// Объём главного вида: свет в ячейках с прошлым кадром, накопление вдоль лучей и привязка (t110) проходам сцены.
 	// После карты теней: каскады и их константы уже привязаны (ShadowCascades::bindForReceivers)
 	void render( const RenderView& view, const ShaderView& shadowMap );
 	// Объём считается в этом кадре (туман включён и объёмный)
 	bool active();
 	// Смена плана: прошлый кадр объёма не годится
-	void cameraCut();
+	void cameraCut() override;
 	// Текущие настройки из GUI — для сохранения уровня; нет строки и туман не включали — пусто
 	std::optional<Settings> settings();
-	PropertyContainer* properties() { return &m_properties; }
+	PropertyContainer* properties() override { return &m_properties; }
+	bool environment() const override { return true; }
 
 private:
-
+	// Константы кадра cb_fog* для вида; normalization — яркость, кд/м², которую экспозиция делает белой
+	FogParameters frameParameters( const RenderView& view, float normalization );
 	bool createVolumes();
 	bool enabled();
 

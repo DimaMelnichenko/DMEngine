@@ -120,6 +120,7 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, const std::
 
 	m_instanceBuffer.createBuffer( sizeof( InstanceTransform ), maxInstancesPerDraw, "Instance transforms" );
 	m_instanceTransforms.reserve( maxInstancesPerDraw );
+	m_features = { &m_shadows, &m_fog, &m_ambientOcclusion, &m_postProcess };
 	return true;
 }
 
@@ -199,8 +200,14 @@ void Renderer::warmShadowPipelines( Scene& scene )
 bool Renderer::resize()
 {
 	DMD3D& d3d = DMD3D::instance();
-	return m_sceneTargets.create( d3d.backBufferWidth(), d3d.backBufferHeight(), sceneClearColor ) && m_postProcess.resize() &&
-		   m_fog.resize() && m_ambientOcclusion.resize();
+	if( !m_sceneTargets.create( d3d.backBufferWidth(), d3d.backBufferHeight(), sceneClearColor ) )
+		return false;
+	for( RenderFeature* feature : m_features )
+	{
+		if( !feature->resize() )
+			return false;
+	}
+	return true;
 }
 
 void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
@@ -210,11 +217,29 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	m_meshDraws = 0;
 	m_shadowMeshCount = 0;
 	m_shadowDraws = 0;
-	// Настройки затенения окружением — раз за кадр (их читают константы кадра и проход)
-	m_ambientOcclusionSettings = m_postProcess.settings().ambientOcclusion;
-	m_ambientOcclusionActive = m_properties["Depth prepass"].data<bool>() && m_ambientOcclusionSettings.intensity > 0.0f;
-	measure( "preparePipeline", [&] { preparePipeline( scene, frame ); } );
+	const bool depthPrepass = m_properties["Depth prepass"].data<bool>();
+	measure( "preparePipeline", [&] { preparePipeline( scene, frame, depthPrepass ); } );
+	const FrameContext computeFrame = prepareShadows( scene, frame );
+	computeObjects( scene, computeFrame );
 
+	const auto collectStart = std::chrono::high_resolution_clock::now();
+	collect( scene, frame.view, m_collector );
+	buildCommands( depthPrepass );
+	const auto collectEnd = std::chrono::high_resolution_clock::now();
+	m_stats.add( "Collect meshes = %.3f ms",
+						  std::chrono::duration_cast<std::chrono::microseconds>( collectEnd - collectStart ).count() / 1000.0f );
+
+	renderShadows( scene, frame );
+	renderScene( scene, frame, wireframe, depthPrepass );
+	measure( "Post process", [&] { m_postProcess.render( m_sceneTargets.colorView(), m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
+	reportFrameStats( scene );
+
+	m_gpuProfiler.endFrame();
+	reportGpuTimes();
+}
+
+FrameContext Renderer::prepareShadows( Scene& scene, const FrameContext& frame )
+{
 	// Виды каскадов теней — до compute: расстановка раскладывает списки инстансов на каждый вид кадра
 	XMFLOAT3 shadowLightDirection;
 	DMLight::ShadowSettings shadowSettings;
@@ -238,7 +263,11 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		if( m_shadows.farActive() )
 			computeFrame.views[computeFrame.viewCount++] = &m_shadows.farView();
 	}
+	return computeFrame;
+}
 
+void Renderer::computeObjects( Scene& scene, const FrameContext& computeFrame )
+{
 	// Compute — при главном виде в константах кадра: кольцо расстановки считается вокруг камеры
 	measure( "Compute Pass", [&]
 	{
@@ -253,21 +282,16 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	} );
 	// Пересчёт освещения окружением мог закончиться в compute неба: масштаб — по показанному результату
 	m_constants.setSkyLightScale( scene.skyLightScale() );
-	m_constants.setViewBuffer( frame.view );
+	m_constants.setViewBuffer( computeFrame.view );
+}
 
-	const bool depthPrepass = m_properties["Depth prepass"].data<bool>();
-	const auto collectStart = std::chrono::high_resolution_clock::now();
-	collect( scene, frame.view, m_collector );
-	buildCommands( depthPrepass );
-	const auto collectEnd = std::chrono::high_resolution_clock::now();
-	m_stats.add( "Collect meshes = %.3f ms",
-						  std::chrono::duration_cast<std::chrono::microseconds>( collectEnd - collectStart ).count() / 1000.0f );
-
-	renderShadows( scene, frame );
-
+void Renderer::renderScene( Scene& scene, const FrameContext& frame, bool wireframe, bool depthPrepass )
+{
 	// Проходы сцены — в HDR-буфер: очистка цвета и глубины (0 — дальняя плоскость при обратной глубине)
 	m_sceneTargets.clear();
 	// Карта теней — пиксельным шейдерам проходов сцены (после рисования в неё и смены цели)
+	XMFLOAT3 shadowLightDirection;
+	DMLight::ShadowSettings shadowSettings;
 	m_shadows.bindForReceivers( scene.lights().shadowLight( shadowLightDirection, shadowSettings ) );
 
 	// Объём тумана — по карте теней (лучи в дымке), до проходов сцены: его читает освещение каждого пикселя
@@ -286,8 +310,8 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	}
 
 	// Затенение окружением — по глубине prepass, до прохода цвета: его читают материалы (без prepass его нет)
-	if( m_ambientOcclusionActive )
-		measure( "Ambient occlusion", [&] { m_ambientOcclusion.render( frame.view, m_sceneTargets.depthView(), m_ambientOcclusionSettings ); } );
+	if( m_ambientOcclusion.active() )
+		measure( "Ambient occlusion", [&] { m_ambientOcclusion.render( frame.view, m_sceneTargets.depthView() ); } );
 
 	{
 		// После prepass — проверка на равенство без записи (как CF_Equal базового прохода UE при полном prepass)
@@ -322,8 +346,10 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 		ScopedRenderState transparentState( BlendState::alpha, DepthState::readOnly );
 		executePass( MeshPass::transparent, frame.view, frameRaster );
 	}
+}
 
-	measure( "Post process", [&] { m_postProcess.render( m_sceneTargets.colorView(), m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
+void Renderer::reportFrameStats( Scene& scene )
+{
 	m_stats.add( "Exposure EV100 = %.2f", m_postProcess.ev100() );
 	m_sunGroundIlluminance = scene.lights().sunGroundIlluminance();
 	m_stats.add( "Sun illuminance at ground = %.0f lx", m_sunGroundIlluminance );
@@ -341,9 +367,6 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	m_stats.add( "Mesh draw calls = %.0f", static_cast<float>( m_meshDraws ) );
 	m_stats.add( "Shadow meshes = %.0f", static_cast<float>( m_shadowMeshCount ) );
 	m_stats.add( "Shadow draw calls = %.0f", static_cast<float>( m_shadowDraws ) );
-
-	m_gpuProfiler.endFrame();
-	reportGpuTimes();
 }
 
 void Renderer::reportGpuTimes()
@@ -457,26 +480,26 @@ PostProcess::Settings Renderer::postProcessSettings()
 	return m_postProcess.settings();
 }
 
-void Renderer::preparePipeline( Scene& scene, const FrameContext& frame )
+void Renderer::preparePipeline( Scene& scene, const FrameContext& frame, bool depthPrepass )
 {
 	// установка источников света
 	int lightCount = scene.lights().setBuffer( SLOT_LIGHTS );
 	// Константы кадра — главный вид: по нему считают и compute-проходы (кольцо расстановки вокруг камеры). Небо, ветер и
-	// вклад объектов сцены (тень облаков, детальная вода, следы в траве, поле ветра) — от сцены: их карты и поля объекты
-	// посчитают в compute() этого кадра, а константы нужны уже сейчас
+	// вклад объектов сцены (тень облаков, детальная вода, следы в траве, поле ветра) — от сцены, туман, затенение
+	// окружением и экспозиция — от возможностей рендерера: их карты и поля посчитают проходы этого кадра, а константы и
+	// привязки нужны уже сейчас
 	FrameParameters frameParameters;
 	frameParameters.lightsCount = lightCount;
 	frameParameters.gameTime = frame.gameTime;
 	frameParameters.deltaTime = frame.elapsedTime / 1000.0f;
 	scene.frameConstants( frame.view, frameParameters );
-	// Туман: свет в объёме — в долях яркости, которую экспозиция делает белой (EV100 с отставанием в несколько кадров)
-	frameParameters.fog = m_fog.frameParameters( frame.view, 1.2f * std::exp2( m_postProcess.ev100() ) );
-	// Затенение окружением посчитает render() после depth prepass, константы — уже сейчас
-	frameParameters.ambientOcclusion = m_ambientOcclusion.frameParameters( m_ambientOcclusionSettings, m_ambientOcclusionActive,
-																		   ( *m_postProcess.properties() )["Show ambient occlusion"].data<bool>() );
+	// Затенение окружением — по настройкам постобработки (сила, радиус) и её отладочному виду
+	m_ambientOcclusion.setSettings( m_postProcess.settings().ambientOcclusion,
+									( *m_postProcess.properties() )["Show ambient occlusion"].data<bool>() );
+	const RenderFrame renderFrame{ frame.view, m_postProcess.ev100(), depthPrepass };
+	for( RenderFeature* feature : m_features )
+		feature->beginFrame( renderFrame, frameParameters );
 	m_constants.beginFrame( frameParameters );
-	// Экспозиция прошлого кадра — шейдерам сцены (pre-exposure)
-	m_postProcess.bindExposure();
 	m_constants.setViewBuffer( frame.view );
 }
 

@@ -16,6 +16,7 @@
 #include "SceneTargets.h"
 #include "FrameStats.h"
 #include "ConstantBuffers.h"
+#include "RenderFeature.h"
 
 namespace GS
 {
@@ -49,10 +50,13 @@ public:
 
 	// Рисует сцену в HDR-буфер (SceneTargets) и тонмаппинг в задний буфер; дальше DMGraphics рисует GUI и вызывает endFrame
 	void render( Scene& scene, const FrameContext& frame, bool wireframe );
-	// Свойства постобработки и теней для GUI; properties — окно «Renderer»: проходы кадра («Depth prepass»)
+	// Возможности рендерера — свои проходы со своими ресурсами (тени, туман, затенение окружением, постобработка) в порядке
+	// кадра: их окна свойств регистрирует DMGraphics
+	const std::vector<RenderFeature*>& features() const { return m_features; }
+	// Окна постобработки и теней — для отладочных видов (View → Debug views); properties — окно «Renderer»: проходы кадра
+	// («Depth prepass»)
 	PropertyContainer* postProcessProperties();
 	PropertyContainer* shadowProperties();
-	PropertyContainer* fogProperties() { return m_fog.properties(); }
 	PropertyContainer* properties();
 	// Текущие настройки постобработки и тумана — для сохранения уровня
 	PostProcess::Settings postProcessSettings();
@@ -63,14 +67,23 @@ public:
 	// Смена плана: экспозиция адаптируется сразу (PostProcess::cameraCut), объём тумана — без прошлого кадра
 	void cameraCut()
 	{
-		m_postProcess.cameraCut();
-		m_fog.cameraCut();
+		for( RenderFeature* feature : m_features )
+			feature->cameraCut();
 	}
 
 private:
 	struct DrawCommand;
 
-	void preparePipeline( Scene& scene, const FrameContext& frame );
+	// Шаги кадра (render): общие данные конвейера и константы кадра → виды теней → compute объектов → сбор и раскладка →
+	// глубина теней → проходы сцены → постобработка → статистика
+	void preparePipeline( Scene& scene, const FrameContext& frame, bool depthPrepass );
+	// Виды каскадов и дальнего каскада теней и тень рельефа — до compute; кадр для compute со всеми видами
+	FrameContext prepareShadows( Scene& scene, const FrameContext& frame );
+	void computeObjects( Scene& scene, const FrameContext& computeFrame );
+	// Туман, depth prepass, затенение окружением, opaque, opaqueDepthRead, небо, копия цвета сцены, transparent — в HDR-буфер
+	void renderScene( Scene& scene, const FrameContext& frame, bool wireframe, bool depthPrepass );
+	// Счётчики кадра в «Statistic»: экспозиция, солнце и луна, меши и вызовы
+	void reportFrameStats( Scene& scene );
 	// Состояния и цели проходов для прогрева пайплайнов объектов (SceneObject::warmPipelines)
 	PassStates passStates( const RenderState& shadowState ) const;
 	// Пайплайны теней для нового состояния прохода теней (смещение сменилось в GUI, тени перешли с солнца на луну):
@@ -157,9 +170,8 @@ private:
 	// Туман уровня: объём после карты теней, до проходов сцены
 	VolumetricFog m_fog;
 	AmbientOcclusion m_ambientOcclusion;
-	// Затенение окружением в этом кадре — раз в начале render(): включено (сила > 0) и есть depth prepass — по его глубине
-	AmbientOcclusion::Settings m_ambientOcclusionSettings;
-	bool m_ambientOcclusionActive = false;
+	// Возможности рендерера в порядке кадра: тени, туман, затенение окружением, постобработка (initialize)
+	std::vector<RenderFeature*> m_features;
 	GpuProfiler m_gpuProfiler;
 
 	// Замер среднего времени GPU за несколько секунд: после прогрева — одной строкой в log.txt («GPU average», её

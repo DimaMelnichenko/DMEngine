@@ -11,6 +11,7 @@
 #include "Properties/PropertyContainer.h"
 #include "TerrainSunShadow.h"
 #include "Shaders\shadow_constants.h"
+#include "RenderFeature.h"
 
 namespace GS
 {
@@ -26,7 +27,7 @@ namespace GS
 // дальним каскадом (срез карты после четырёх, вид на всю сцену вдоль света, в нём только импостеры расстановки —
 // RenderView::farShadow), рельеф — картой края тени по карте высот (TerrainSunShadow). Приём — в той же sunShadow:
 // в полосе конца дистанции тень каскадов переходит в дальнюю
-class ShadowCascades
+class ShadowCascades : public RenderFeature
 {
 public:
 	static constexpr uint32_t cascadeCount = SHADOW_CASCADE_COUNT;
@@ -63,7 +64,7 @@ public:
 	// в буфере источников (−1 — без теней)
 	void bindForReceivers( int sunLightIndex );
 
-	PropertyContainer* properties();
+	PropertyContainer* properties() override;
 
 private:
 

@@ -1,5 +1,6 @@
 #include "AmbientOcclusion.h"
 #include <algorithm>
+#include "ConstantBuffers.h"
 #include "D3D\DMD3D.h"
 #include "Logger\Logger.h"
 #include "Shaders\slots.h"
@@ -47,8 +48,9 @@ bool AmbientOcclusion::resize()
 	return true;
 }
 
-void AmbientOcclusion::render( const RenderView& view, const ShaderView& sceneDepth, const Settings& settings )
+void AmbientOcclusion::render( const RenderView& view, const ShaderView& sceneDepth )
 {
+	const Settings& settings = m_settings;
 	DMD3D& d3d = DMD3D::instance();
 	XMFLOAT4X4 projection;
 	XMStoreFloat4x4( &projection, view.projection );
@@ -88,12 +90,18 @@ void AmbientOcclusion::render( const RenderView& view, const ShaderView& sceneDe
 	d3d.setSRV( SLOT_AMBIENT_OCCLUSION, m_resultSRV );
 }
 
-XMFLOAT4 AmbientOcclusion::frameParameters( const Settings& settings, bool active, bool show ) const
+void AmbientOcclusion::setSettings( const Settings& settings, bool show )
 {
-	if( !active )
-		return XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
-	return XMFLOAT4( std::clamp( settings.intensity, 0.0f, 1.0f ), static_cast<float>( m_width ), static_cast<float>( m_height ),
-					 show ? 1.0f : 0.0f );
+	m_settings = settings;
+	m_show = show;
+}
+
+void AmbientOcclusion::beginFrame( const RenderFrame& frame, FrameParameters& constants )
+{
+	m_active = frame.depthPrepass && m_settings.intensity > 0.0f;
+	constants.ambientOcclusion = m_active ? XMFLOAT4( std::clamp( m_settings.intensity, 0.0f, 1.0f ), static_cast<float>( m_width ),
+													  static_cast<float>( m_height ), m_show ? 1.0f : 0.0f ) :
+											XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 }
 
 }

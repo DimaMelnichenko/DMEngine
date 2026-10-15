@@ -108,6 +108,11 @@ void VolumetricFog::cameraCut()
 	m_jitterIndex = 0;
 }
 
+void VolumetricFog::beginFrame( const RenderFrame& frame, FrameParameters& constants )
+{
+	constants.fog = frameParameters( frame.view, 1.2f * std::exp2( frame.ev100 ) );
+}
+
 FogParameters VolumetricFog::frameParameters( const RenderView& view, float normalization )
 {
 	FogParameters fog;

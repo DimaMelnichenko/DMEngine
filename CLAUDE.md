@@ -257,6 +257,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (уровни ½ … ¹⁄₆₄, Jimenez 2014), затем ночное зрение (сдвиг Пуркинье: в темноте цвет уходит в синеватый монохром,
   Krawczyk 2005) и тонмаппинг (AgX / ACES) в задний буфер sRGB; новый
   проход — ещё одна цель и шаг в `PostProcess::render`. Затем `DMGraphics` рисует GUI и вызывает `DMD3D::endFrame`.
+  Свои проходы рендерера со своими ресурсами (тени, туман, затенение окружением, постобработка) — возможности рендерера
+  (`RenderFeature`, `Graphics/RenderFeature.h`): список `Renderer::features`, общие точки — начало кадра с вкладом в
+  константы, новый размер кадра, смена плана; окна свойств по списку регистрирует `DMGraphics`; кадр в `Renderer::render`
+  — шагами (`preparePipeline`, `prepareShadows`, `computeObjects`, `renderShadows`, `renderScene`), `docs/passes.md`.
   Буфер сцены (HDR-цвет и глубина) — `SceneTargets` у `Renderer` (`Graphics/SceneTargets.h`): устройство о нём не знает.
   Глубина видна шейдерам (SceneDepthTexture в UE): текстура `R32_TYPELESS`, вид `depthView` (`R32_FLOAT`) и цель только
   для чтения `depthReadTarget` (`TextureViewDesc::readOnlyDepth`) — проход с ней читает ту же глубину шейдерами (layout

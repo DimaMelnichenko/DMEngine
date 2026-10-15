@@ -170,12 +170,21 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 													 "New instance of the model in front of the camera, on the ground (Save level writes it, Ctrl+Z removes it)",
 													 [this, model] { return addModelInstance( model ); } );
 	}
-	m_GUI.addPropertyWatching( m_renderer.fogProperties(), Category::environment, nullptr, true );
-	m_GUI.addPropertyWatching( m_renderer.postProcessProperties(), Category::environment, nullptr, true );
+	// Окна возможностей рендерера: окружение уровня (туман, постобработка) пишет «Save level», настройки рендеринга (тени) —
+	// до выхода
+	for( RenderFeature* feature : m_renderer.features() )
+	{
+		if( feature->environment() && feature->properties() )
+			m_GUI.addPropertyWatching( feature->properties(), Category::environment, nullptr, true );
+	}
 	m_GUI.addPropertyWatching( m_scene.wind().properties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_renderer.properties(), Category::rendering );
 	m_GUI.addPropertyWatching( m_walk.properties(), Category::rendering );
-	m_GUI.addPropertyWatching( m_renderer.shadowProperties(), Category::rendering );
+	for( RenderFeature* feature : m_renderer.features() )
+	{
+		if( !feature->environment() && feature->properties() )
+			m_GUI.addPropertyWatching( feature->properties(), Category::rendering );
+	}
 	// Камера — и в Outliner (и командам list / get / set): поле зрения, плоскости, скорость; не сохраняется с уровнем
 	m_GUI.addPropertyWatching( &camera.m_properties, Category::rendering );
 	// Правки окон, сохраняемых с уровнем, — в его строки (LevelLights, SkyAtmosphere, PostProcessSettings,

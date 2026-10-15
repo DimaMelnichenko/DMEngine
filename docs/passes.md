@@ -30,6 +30,19 @@
 При `WM_SIZE` `DMGraphics::resize` пересоздаёт задний буфер, HDR-буфер сцены, глубину, уровни bloom и проекцию камеры
 по правилу D3D12: дождаться GPU, отпустить ссылки на задние буферы, `ResizeBuffers`, цели заново (`DMD3D::resize`).
 
+**Возможности рендерера.** Свои проходы рендерера со своими ресурсами — тени, туман, затенение окружением,
+постобработка — наследуют `RenderFeature` (`src/Engine/Graphics/RenderFeature.h`, как renderer feature в Unity URP):
+`Renderer` держит их списком в порядке кадра (`Renderer::features`) и обходит в общих точках — начало кадра
+(`beginFrame`: вклад в константы кадра — туман `cb_fog*`, затенение окружением `cb_ambientOcclusion`, привязка экспозиции
+прошлого кадра; `RenderFrame` — главный вид, EV100 прошлого кадра, есть ли depth prepass), новый размер кадра (`resize`),
+смена плана (`cameraCut`); окна свойств по списку регистрирует `DMGraphics` (окружение уровня — раздел Environment и
+«Save level», остальное — Rendering). Сам проход возможности рендерер вызывает в его месте кадра: входы у проходов
+разные (карта теней у тумана, глубина prepass у затенения окружением, цвет сцены у постобработки). Кадр в `Renderer::render`
+— шагами: `preparePipeline` (свет, константы кадра от сцены и возможностей), `prepareShadows` (виды каскадов, тень рельефа),
+`computeObjects`, сбор и раскладка, `renderShadows`, `renderScene` (туман и проходы сцены выше), постобработка,
+`reportFrameStats`. Новый проход со своими ресурсами — ещё одна возможность в списке и вызов её прохода на своём шаге;
+порядок и ресурсы между проходами задаст граф кадра (`TODO.md`, «Архитектура»).
+
 Проход объекта выбирает рендерер, а не объект: меши — по режиму материала (`passFor`: Translucent — в
 `transparent`, остальные — в `opaque` и prepass, читающие глубину сцены после prepass — в `opaqueDepthRead`), свои
 вызовы — по битам маски (`passBit( MeshPass::… )`). Глубина обратная (Reversed-Z): 1 у ближней плоскости, 0 у дальней,
@@ -152,7 +165,8 @@ Release, 1920 × 1080, время GPU, мс (частицы в уровнях в
 
 | Файл | Что там |
 |---|---|
-| `src/Engine/Graphics/Renderer.cpp` | порядок проходов (`render`), раскладка (`buildCommands`), запасной путь, `drawMesh` |
+| `src/Engine/Graphics/Renderer.cpp` | шаги кадра (`render`: `preparePipeline`, `prepareShadows`, `computeObjects`, `renderScene`), раскладка (`buildCommands`), запасной путь, `drawMesh` |
+| `src/Engine/Graphics/RenderFeature.h` | возможность рендерера: окно свойств, начало кадра, размер кадра, смена плана |
 | `src/Engine/Graphics/Scene/MeshBatch.h` | `MeshPass::depthPrepass`, `opaqueDepthRead`, `isDepthOnlyPass`, `passFor` |
 | `src/Engine/Graphics/SceneTargets.h/.cpp` | буфер сцены: глубина с видом для шейдеров и целью только для чтения |
 | `src/Engine/Graphics/Scene/SceneObject.h` | `RenderContext::depthFromPrepass` |
