@@ -88,8 +88,9 @@ float viewDepthOf( float3 position )
 	return dot( position - cb_cameraPosition, cb_viewDirection );
 }
 
-// Множитель прямого света солнца: 1 — освещено, 0 — в тени. toSun — направление на солнце
-float sunShadow( float3 position, float3 geometricNormal, float3 toSun )
+// Множитель прямого света солнца: 1 — освещено, 0 — в тени. toSun — направление на солнце; selfShadow — тень от самой
+// поверхности, которой нет в каскадах (Surface::selfShadow): с каскадами — минимум, дальше дистанции теней — она одна
+float sunShadow( float3 position, float3 geometricNormal, float3 toSun, float selfShadow = 1.0f )
 {
 	const float viewDepth = viewDepthOf( position );
 	float shadow = 1.0f;
@@ -112,7 +113,7 @@ float sunShadow( float3 position, float3 geometricNormal, float3 toSun )
 		shadow = lerp( shadow, 1.0f, fade );
 	}
 	// Облака — и дальше дистанции теней
-	return shadow * cloudShadow( position, toSun );
+	return min( shadow, selfShadow ) * cloudShadow( position, toSun );
 }
 
 // Тень солнца в точке воздуха (объёмный туман, Shaders/volumetric_fog.cs): одна выборка сравнения без смещений и

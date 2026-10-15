@@ -9,7 +9,8 @@
 // prepass. С LOD_DITHER — доля пикселей смены LOD.
 // mainDepth — тени и depth prepass.
 // С IMPOSTOR_FLAT — плоский импостер (трава без тени, ImpostorMaterial::flat): точка и глубина — самой карточки, без
-// смещения глубины; после prepass — обычный проход opaque с тестом EQUAL, без чтения глубины сцены
+// смещения глубины; после prepass — обычный проход opaque с тестом EQUAL, без чтения глубины сцены.
+// Самотень кроны (не у плоского) — тень солнца от самой модели по её же кадрам, impostorSelfShadow
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "slots.h"
@@ -44,6 +45,41 @@ float3 impostorSurface( ImpostorPixelInput input )
 	precise const float3 position = input.worldPosition + input.viewer.xyz * ( ( stored * 2.0f - 1.0f ) * input.viewer.w - input.planeOffset );
 	return position;
 }
+
+#ifndef IMPOSTOR_FLAT
+// Самотень кроны: тень солнца (луны — у источника теней) от самой модели. Каскады теней дают её только ближе дистанции
+// теней (200 м) и с силой, зависящей от их текселя, дальше крона освещена со всех сторон и бледна. Здесь — по кадрам:
+// точка поверхности проецируется в три кадра вокруг направления на солнце, как модель в кадре со стороны солнца; глубже
+// запечённой там поверхности — за кроной, и свет гасит покрытие кадра в этом месте (редкая крона пропускает часть).
+// Выборки — по мипу impostorShadowMip: тень мягкая, без шума отдельных хвоинок. 1 — не в тени
+static const float impostorShadowMip = 1.0f;
+static const float impostorShadowBias = 0.03f;		// радиусов сферы: поверхность, обращённая к солнцу, не затеняет себя
+static const float impostorShadowSoftness = 0.1f;	// радиусов сферы: от «на поверхности» до полной тени
+
+float impostorSelfShadow( ImpostorPixelInput input, float3 position )
+{
+	const float strength = g_impostorShade.z;
+	[branch] if( strength <= 0.0f || g_shadowSunIndex < 0 )
+		return 1.0f;
+	const float4 inverse = float4( -input.rotation.xyz, input.rotation.w );
+	const float3 toSun = impostorRotate( -g_lights[g_shadowSunIndex].direction, inverse );
+	const float3 offset = impostorRotate( position - input.center.xyz, inverse ) / input.center.w;
+	uint2 frames[3];
+	float3 weights;
+	impostorFrameTriangle( toSun, frames[0], frames[1], frames[2], weights );
+	float occluded = 0.0f;
+	[unroll] for( uint i = 0; i < 3; ++i )
+	{
+		const float3 uvw = float3( impostorFrameUV( frames[i], offset ), frames[i].y * g_impostorFrames + frames[i].x );
+		// Запечённая глубина и глубина точки — к камере кадра от плоскости через центр, в радиусах
+		const float stored = g_impostorDepth.SampleLevel( g_SamplerLinearClamp, uvw, impostorShadowMip ).x * 2.0f - 1.0f;
+		const float depth = dot( offset, impostorFrameDirection( frames[i] ) ) / g_impostorBounds.w;
+		const float coverage = saturate( g_impostorColor.SampleLevel( g_SamplerLinearClamp, uvw, impostorShadowMip ).a );
+		occluded += weights[i] * coverage * saturate( ( stored - depth - impostorShadowBias ) / impostorShadowSoftness );
+	}
+	return 1.0f - strength * occluded;
+}
+#endif
 
 // Глубина точки поверхности (обратная): не ближе растеризованной карточки — SV_DepthLessEqual, при обратной глубине
 // только дальше, ранний тест остаётся
@@ -111,6 +147,11 @@ float4 main( ImpostorPixelInput input ) : SV_TARGET
 	surface.roughness = g_impostorRoughness;
 	surface.occlusion = lerp( 1.0f, sampleFrames( g_impostorDepth, input ).y, g_impostorOcclusion );
 	surface.microShadows = 0.0f;
+#ifdef IMPOSTOR_FLAT
+	surface.selfShadow = 1.0f;
+#else
+	surface.selfShadow = impostorSelfShadow( input, position );
+#endif
 	surface.emissive = 0.0f;
 	surface.transmission = saturate( packed.w * g_impostorTransmission.w );
 	surface.transmissionColor = baseColor * g_impostorTransmission.xyz;

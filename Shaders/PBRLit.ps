@@ -79,6 +79,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.roughness = g_roughness * metallicRoughness.g;
 	surface.occlusion = lerp( 1.0f, g_texOcclusion.Sample( g_SamplerAnisotropicWrap, input.tex ).r, g_occlusionStrength );
 	surface.microShadows = 0.0f;
+	surface.selfShadow = 1.0f;
 	surface.emissive = g_texEmissive.Sample( g_SamplerAnisotropicWrap, input.tex ).rgb * g_emissiveFactor;
 	surface.transmission = saturate( g_diffuseTransmissionFactor );
 	surface.transmissionColor = 0.0f;

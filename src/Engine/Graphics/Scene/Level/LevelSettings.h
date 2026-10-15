@@ -679,6 +679,9 @@ struct ScatterLayerSettings
 	// низа: цвет у корня × (1 − shade), к верху модели — без затемнения (0…1)
 	bool impostorCastShadow = true;
 	float impostorBaseShade = 0.0f;
+	// Самотень кроны импостера (impostor_self_shadow; NULL — 1): сила тени солнца от самой модели по её кадрам, 0…1. Без неё
+	// дальше дистанции теней крона освещена со всех сторон — бледная и плоская рядом с затенёнными каскадами ближними
+	float impostorSelfShadow = 1.0f;
 };
 
 // Своя раскладка вида (модели) слоя расстановки — колонки ScatterLayerModels; не задано (NULL в базе) — как у слоя

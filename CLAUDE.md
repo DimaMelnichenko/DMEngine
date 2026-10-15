@@ -657,7 +657,8 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 `ScatterLayers.impostor_distance` — импостер (`ImpostorMaterial`: последний LOD варианта, карточка с тремя из 8 × 8 кадров
 полуоктаэдра; кадры запекаются при загрузке из LOD0 модели — `SceneObject::bake` → `Renderer::bake` после `Scene::initialize`,
 до прогрева пайплайнов, вариантом `mainBake` материала секции: цвет, нормаль, глубина поверхности; сторона кадра — по слою
-(`ScatterLayers.impostor_frame_size`, у травы 64, по умолчанию 128); после правки материала растения или настроек запекания
+(`ScatterLayers.impostor_frame_size`, у травы 64, по умолчанию 128); крона затеняет себя по своим кадрам со стороны солнца
+(`impostor_self_shadow`, `Surface::selfShadow` — минимум с каскадами, дальше 200 м — одна); после правки материала растения или настроек запекания
 в окне слоя — заново, `Scatterer::rebakeChangedImpostors` из `Scene::applyEditorChanges`; кэш —
 `cache\impostors\<debug|release>\<модель>\` по ключу из мешей, материалов, текстур, настроек и шейдеров); глубина пикселя —
 запечённой поверхности (смещение глубины): prepass и тени пишут её, проход цвета — `opaqueDepthRead` (видимость по

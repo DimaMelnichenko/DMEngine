@@ -18,15 +18,6 @@ struct VertexInputType
 	uint instanceIndex : SV_InstanceID;
 };
 
-// UV точки offset (координаты модели, от центра сферы) в кадре frame
-float2 impostorFrameUV( uint2 frame, float3 offset )
-{
-	float3 right, up;
-	impostorFrameBasis( impostorFrameDirection( frame ), right, up );
-	const float radius = g_impostorBounds.w;
-	return float2( 0.5f + 0.5f * dot( offset, right ) / radius, 0.5f - 0.5f * dot( offset, up ) / radius );
-}
-
 ImpostorPixelInput main( VertexInputType input )
 {
 	const uint slot = instanceSlot( input.instanceIndex );
@@ -48,34 +39,13 @@ ImpostorPixelInput main( VertexInputType input )
 	const float2 corner = float2( input.tex.x * 2.0f - 1.0f, 1.0f - input.tex.y * 2.0f ) * halfSize;
 	const float3 worldPosition = center + right * corner.x + up * corner.y;
 
-	// Направление на зрителя и точка карточки — в координатах модели (без поворота и масштаба экземпляра); снизу кадров
-	// нет — направление прижимается к горизонту
-	float3 viewDirection = impostorRotate( toViewer, inverse );
-	viewDirection.y = max( viewDirection.y, 1e-3f );
-	viewDirection = normalize( viewDirection );
+	// Направление на зрителя и точка карточки — в координатах модели (без поворота и масштаба экземпляра); три кадра
+	// вокруг направления на зрителя
 	const float3 offset = impostorRotate( worldPosition - center, inverse ) / max( scale, 1e-4f );
-
-	// Три кадра вокруг направления: треугольник сетки, в котором оно лежит, и барицентрические веса
-	const uint frames = g_impostorFrames;
-	const float2 grid = ( hemiOctEncode( viewDirection ) * 0.5f + 0.5f ) * float( frames - 1 );
-	const uint2 base = min( (uint2)max( floor( grid ), 0.0f ), frames - 2 );
-	const float2 f = saturate( grid - float2( base ) );
 	uint2 frame0, frame1, frame2;
 	float3 weights;
-	if( f.x + f.y < 1.0f )
-	{
-		frame0 = base;
-		frame1 = base + uint2( 1, 0 );
-		frame2 = base + uint2( 0, 1 );
-		weights = float3( 1.0f - f.x - f.y, f.x, f.y );
-	}
-	else
-	{
-		frame0 = base + uint2( 1, 1 );
-		frame1 = base + uint2( 0, 1 );
-		frame2 = base + uint2( 1, 0 );
-		weights = float3( f.x + f.y - 1.0f, 1.0f - f.x, 1.0f - f.y );
-	}
+	impostorFrameTriangle( impostorRotate( toViewer, inverse ), frame0, frame1, frame2, weights );
+	const uint frames = g_impostorFrames;
 
 	// Карточка перед сферой: точки worldPosition на радиус ближе к зрителю по лучам вида (у ортографии каскада — вдоль
 	// взгляда), плоскость по-прежнему параллельна экрану, поэтому worldPosition и planeOffset интерполируются по ней точно.
@@ -105,6 +75,7 @@ ImpostorPixelInput main( VertexInputType input )
 	output.rotation = instance.rotation;
 	output.heightRange = float2( instance.position.y, 1.0f / max( g_impostorShade.y * scale, 1e-4f ) );
 	output.ground = instance.ground;
+	output.center = float4( center, max( scale, 1e-4f ) );
 #ifdef LOD_DITHER
 	output.lodDither = instance.lodDither;
 #endif

@@ -313,12 +313,14 @@ std::vector<int> ImpostorMaterial::depthPhases() const
 	return { m_depthPhases[0], m_depthPhases[1] };
 }
 
-void ImpostorMaterial::setBaseShade( float shade )
+void ImpostorMaterial::setShading( float baseShade, float selfShadow )
 {
-	shade = std::min( std::max( shade, 0.0f ), 1.0f );
-	if( m_params.shade.x == shade )
+	baseShade = std::min( std::max( baseShade, 0.0f ), 1.0f );
+	selfShadow = std::min( std::max( selfShadow, 0.0f ), 1.0f );
+	if( m_params.shade.x == baseShade && m_params.shade.z == selfShadow )
 		return;
-	m_params.shade.x = shade;
+	m_params.shade.x = baseShade;
+	m_params.shade.z = selfShadow;
 	if( m_constantBuffer.valid() )
 		DMD3D::instance().updateBuffer( m_constantBuffer, &m_params, sizeof( m_params ) );
 }
@@ -375,7 +377,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	m_params.alphaCutoff = 0.5f;
 	m_params.roughness = 0.8f;
 	m_params.occlusion = std::min( std::max( settings.occlusion, 0.0f ), 1.0f );
-	m_params.shade = XMFLOAT4( m_params.shade.x, box.Center.y + box.Extents.y, 0.0f, 0.0f );
+	m_params.shade = XMFLOAT4( m_params.shade.x, box.Center.y + box.Extents.y, m_params.shade.z, 0.0f );
 
 	// Секции LOD0 и их материалы с вариантом запекания; цвет пропускания — у секции, которая пропускает свет (хвоя)
 	std::vector<std::pair<DMModel::Section*, Material*>> sections;

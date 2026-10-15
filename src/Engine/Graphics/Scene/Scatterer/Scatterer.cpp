@@ -501,6 +501,15 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 		baseShade->setHigh( 1.0f );
 		baseShade->setTooltip( "Impostor color at the root x (1 - shade), up to the model top - none: far grass without "
 							   "a shadow is not lighter than the shadowed grass next to it" );
+		// Самотень кроны — у импостера со смещением глубины (плоский — при загрузке, по «Impostor shadow»)
+		if( settings.impostorCastShadow )
+		{
+			Property* selfShadow = layer.properties->insert( "Impostor self shadow", settings.impostorSelfShadow );
+			selfShadow->setLow( 0.0f );
+			selfShadow->setHigh( 1.0f );
+			selfShadow->setTooltip( "Sun shadow of the crown on itself from the impostor frames: beyond the shadow distance "
+									"there are no cascades, and without it a far crown is lit from all sides - pale and flat" );
+		}
 	}
 	if( layer.groundProperties )
 		layer.properties->addSubContainer( layer.groundProperties.get() );
@@ -792,7 +801,11 @@ void Scatterer::compute( const FrameContext& frame )
 			if( variant.impostor )
 				layer.pass->setShadowLastLodDistance( v, ( *layer.properties )["Shadow impostor distance"].data<float>() );
 			if( variant.impostorMaterial )
-				variant.impostorMaterial->setBaseShade( ( *layer.properties )["Impostor base shade"].data<float>() );
+			{
+				const PropertyContainer& properties = *layer.properties;
+				variant.impostorMaterial->setShading( properties["Impostor base shade"].data<float>(),
+													  properties.exists( "Impostor self shadow" ) ? properties["Impostor self shadow"].data<float>() : 0.0f );
+			}
 
 			// Надписи колец LOD: конец последнего LOD модели, импостера и тень — с какого LOD и до куда
 			PropertyContainer& variantProperties = *variant.properties;
@@ -1064,6 +1077,8 @@ ScatterLayerSettings Scatterer::settingsFromProperties( const Layer& layer ) con
 		settings.shadowImpostorDistance = properties["Shadow impostor distance"].data<float>();
 		settings.impostorCastShadow = properties["Impostor shadow"].data<bool>();
 		settings.impostorBaseShade = std::clamp( properties["Impostor base shade"].data<float>(), 0.0f, 1.0f );
+		if( properties.exists( "Impostor self shadow" ) )
+			settings.impostorSelfShadow = std::clamp( properties["Impostor self shadow"].data<float>(), 0.0f, 1.0f );
 		settings.impostorFrameSize = frameSizeFromIndex( properties["Impostor frame size"].data<int32_t>() );
 		settings.impostorDensity = std::max( properties["Impostor density"].data<float>(), 0.0f );
 		settings.impostorOcclusion = std::clamp( properties["Impostor occlusion"].data<float>(), 0.0f, 1.0f );

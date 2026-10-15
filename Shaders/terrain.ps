@@ -213,6 +213,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.roughness = mixed.roughness;
 	surface.occlusion = saturate( occlusion );
 	surface.microShadows = g_microShadows;
+	surface.selfShadow = 1.0f;
 	surface.emissive = 0.0f;
 
 	// Мокрая земля у воды и под ней: вода в порах — темнее и глаже (блик), как wet в материалах UE. У воды static в плитках —

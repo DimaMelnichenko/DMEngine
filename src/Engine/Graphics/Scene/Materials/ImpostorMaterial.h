@@ -52,9 +52,10 @@ public:
 
 	void setParams( const PropertyContainer& ) override;
 	// Затемнение низа (ScatterLayers.impostor_base_shade, свойство слоя «Impostor base shade»): цвет у корня × (1 − shade),
-	// к верху модели — без затемнения. Импостер без тени (трава вдали) так не выглядит светлее травы с тенями рядом. Буфер
-	// констант — при смене
-	void setBaseShade( float shade );
+	// к верху модели — без затемнения. Импостер без тени (трава вдали) так не выглядит светлее травы с тенями рядом.
+	// Самотень кроны (impostor_self_shadow, «Impostor self shadow»): сила тени солнца от самой модели по её кадрам, 0…1
+	// (Shaders/impostor.ps; у плоского импостера её нет). Буфер констант — при смене
+	void setShading( float baseShade, float selfShadow );
 	// Masked без отсечения граней (карточка всегда к виду), со сменой LOD дизерингом
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
 	int phaseFor( const PropertyContainer& params, const ShaderPhaseOptions& options = {} ) const override;
@@ -78,7 +79,8 @@ private:
 		float alphaCutoff;
 		float roughness;
 		float occlusion;		// сила затенения окружающего света по запечённому (BakeSettings::occlusion)
-		// x — затемнение низа (setBaseShade), y — высота верха модели над её началом координат (ящик LOD0), zw — запас
+		// x — затемнение низа, y — высота верха модели над её началом координат (ящик LOD0), z — сила самотени кроны
+		// (setShading), w — запас
 		DirectX::XMFLOAT4 shade;
 	};
 	static_assert( sizeof( Params ) == 96, "ImpostorBuffer layout" );

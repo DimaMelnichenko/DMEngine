@@ -25,6 +25,7 @@
    | `roughness` | шероховатость 0…1 «на глаз»; ниже 0,045 поднимается до 0,045, иначе блик точечного источника вырождается в точку |
    | `occlusion` | затенение освещения окружением 0…1 (ambient occlusion) |
    | `microShadows` | микротени прямого света по `occlusion`, 0…1: 0 — нет (модели, вода), у террейна — «Micro shadows» |
+   | `selfShadow` | тень солнца от самой поверхности, которой нет в каскадах, 0…1: 1 — нет; у импостера дерева — крона по своим кадрам ([scatter.md](scatter.md), «Импостеры»); с каскадами — минимум |
    | `emissive` | свечение, линейное, прибавляется как есть |
    | `transmission` | доля рассеянного света, проходящая насквозь тонкой поверхности (листья, травинки), 0…1; 0 — не пропускает |
    | `transmissionColor` | цвет прошедшего света, линейный |
@@ -40,7 +41,7 @@
    (KHR_materials_diffuse_transmission в glTF, Two Sided Foliage в UE).
 3. **Прямой свет** — цикл по источникам из structured buffer (слот PS t100). Для каждого — направление на свет
    и затухание, затем BRDF Cook-Torrance GGX (`Shaders/brdf.sh`) × цвет источника × затухание. Затухание солнца —
-   множитель тени из каскадных карт (`sunShadow` в `Shaders/shadows.sh`, [shadows.md](shadows.md)); он считается
+   множитель тени из каскадных карт (`sunShadow` в `Shaders/shadows.sh`, [shadows.md](shadows.md); с `selfShadow` — минимум); он считается
    один раз до цикла, с нормалью геометрии, повёрнутой к солнцу (`normalTowardLight`): тонкая поверхность освещается
    с обеих сторон, и выборка тени смещается к свету, а не от него. Непрозрачным телам это ничего не меняет.
    **Пропускание** — свет с обратной стороны проходит насквозь: прошедший цвет × T × цвет источника × затухание (с
@@ -265,6 +266,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.roughness = 0.8f;
 	surface.occlusion = 1.0f;
 	surface.microShadows = 0.0f;
+	surface.selfShadow = 1.0f;
 	surface.emissive = 0.0f;
 	return float4( evaluateLighting( surface ), 1.0f );
 }

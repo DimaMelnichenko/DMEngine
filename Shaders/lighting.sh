@@ -37,6 +37,9 @@ struct Surface
 	// Микротени прямого света по occlusion (Brinck, Maximov 2016, «The Technical Art of Uncharted 4»): в щели свет
 	// проходит только под крутым углом — доля 0…1, 0 — нет (модели, вода); terrain.ps — «Micro shadows» окна террейна
 	float  microShadows;
+	// Тень солнца от самой поверхности, которой нет в каскадах: 1 — нет. Импостер дерева — крона по глубине своих кадров
+	// (Shaders/impostor.ps): за дистанцией теней каскадов нет совсем, ближе их тексель грубее хвои. С каскадами — минимум
+	float  selfShadow;
 	float3 emissive;
 	// Пропускание тонкой поверхностью — листья, травинки (KHR_materials_diffuse_transmission в glTF, Two Sided Foliage
 	// в UE): доля рассеянного света, прошедшая насквозь, и её цвет; 0 — не пропускает
@@ -86,7 +89,7 @@ float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 d
 	[branch] if( g_shadowSunIndex >= 0 )
 	{
 		const float3 toSun = -g_lights[g_shadowSunIndex].direction;
-		sunShadowFactor = sunShadow( surface.position, normalTowardLight( surface.geometricNormal, toSun ), toSun );
+		sunShadowFactor = sunShadow( surface.position, normalTowardLight( surface.geometricNormal, toSun ), toSun, surface.selfShadow );
 	}
 	const bool transmits = any( transmissionColor > 0.0f );
 	// Раствор конуса видимости по occlusion: 2·AO² (Brinck, Maximov 2016)

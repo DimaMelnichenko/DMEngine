@@ -427,7 +427,17 @@ Mesh Entries у Static Mesh Spawner в PCG UE, только с куртинам�
   prepass травы при 4K; переход между кадрами — долей пикселей, без скачка формы. Проход цвета покрытие не проверяет —
   оно только из prepass. При 4K кадр −0,16 / −0,19 мс (луг / вид с высоты глаз, 2 + 2 запуска попеременно), prepass
   −0,11 / −0,22 мс; при 1080p — до −0,04 мс; картинка полосы 30–45 м та же;
-- **затемнение низа** (`impostor_base_shade`, свойство «Impostor base shade», `ImpostorMaterial::setBaseShade`): цвет
+- **самотень кроны** (`impostor_self_shadow`, свойство «Impostor self shadow», `ImpostorMaterial::setShading`;
+  `impostorSelfShadow` в `Shaders/impostor.ps`, у плоского импостера её нет) — тень солнца (ночью луны — источника теней)
+  от самой модели. Каскады дают её только ближе дистанции теней (200 м), и сила зависит от их текселя; дальше крона
+  освещена со всех сторон — бледная и плоская, граница видна по склону. Точка поверхности проецируется в три кадра
+  вокруг направления на солнце (как модель в кадре со стороны солнца, `impostorFrameTriangle` / `impostorFrameUV` в
+  `Shaders/impostor.sh`); глубже запечённой там поверхности (смещение `impostorShadowBias` 0,03 радиуса, мягкость —
+  0,1) — за кроной, и прямой свет гасит покрытие кадра в этом месте (редкая крона пропускает часть); выборки — по мипу 1,
+  тень мягкая. С каскадами — минимум (`Surface::selfShadow`, [shadows.md](shadows.md)), дальше дистанции — она одна.
+  Шесть выборок на пиксель импостера: проход импостеров +0,01 мс (обзор 0,085 → 0,099, Release 1080p). Проверка — с
+  «Dynamic shadow distance» 500 м кроны вдали такие же;
+- **затемнение низа** (`impostor_base_shade`, свойство «Impostor base shade», `ImpostorMaterial::setShading`): цвет
   точки × (1 − shade) у корня экземпляра, к верху модели (ящик LOD0) — без затемнения; по высоте точки над корнем в
   пиксельном шейдере, вживую, кэш кадров не трогает. Траве без тени — чтобы дальняя полоса не была светлее ближней;
 - **материал расстановки** (`PBRInstance`, `INST_*` в базе) запекается своим вершинным шейдером без экземпляров
@@ -506,6 +516,7 @@ Mesh Entries у Static Mesh Spawner в PCG UE, только с куртинам�
 | `impostor_frame_size` | тексели | сторона кадра импостера (8 × 8 кадров), степень двойки 16…512; NULL — 128. Меньше — меньше памяти и запекания (64² — четверть 128²): мелкому растению вдали хватит |
 | `impostor_cast_shadow` | 0 / 1 | импостер отбрасывает тень; 0 — у каскадов его нет, и он плоский (без смещения глубины) — трава вдали; по умолчанию 1 |
 | `impostor_base_shade` | 0…1 | затемнение низа импостера: цвет у корня × (1 − shade), к верху модели — без затемнения; по умолчанию 0 |
+| `impostor_self_shadow` | 0…1 | сила самотени кроны импостера (тень солнца от самой модели по её кадрам; у плоского нет); NULL — 1 |
 
 ### ScatterLayerModels — модели слоя
 
@@ -701,7 +712,7 @@ Outliner → Scene → имя набора. «Shadow LOD scale» — у набо
 | Near fade, Far fade, Size variation, Jitter, Rotation, Align to terrain, Ground color, Ground color height, Ground color far, Color variation, Edge spread, Thinning start, Thinning, Dither fade | `near_fade`, `far_fade`, `size_variation`, `jitter`, `rotation_x/y/z`, `align_to_terrain`, `ground_color`, `ground_color_height`, `ground_color_far`, `color_variation`, `edge_spread`, `thinning_start`, `thinning`, `dither_fade` | константы раскладки (`dither_fade` и полосы исчезания при нём — пересборка буферов) |
 | Grows on (подокно: флажок на роль слоя земли, все — без фильтра; у камней русел нет), Ground threshold | `layer_filter`, `layer_filter_threshold` | константы раскладки (у постоянного слоя — раскладка заново) |
 | Patch size, Patch strength | `patch_scale`, `patch_strength` | константы раскладки; включение и выключение куртин — пересборка буферов (ёмкость списков — по группам) |
-| Cast shadow, Shadow impostor distance, Impostor shadow, Impostor base shade | `cast_shadow`, `shadow_impostor_distance`, `impostor_cast_shadow`, `impostor_base_shade` | сразу (плоский импостер или со смещением глубины — по `impostor_cast_shadow` при загрузке) |
+| Cast shadow, Shadow impostor distance, Impostor shadow, Impostor base shade, Impostor self shadow (у импостера со смещением глубины) | `cast_shadow`, `shadow_impostor_distance`, `impostor_cast_shadow`, `impostor_base_shade`, `impostor_self_shadow` | сразу (плоский импостер или со смещением глубины — по `impostor_cast_shadow` при загрузке) |
 | Impostor frame size (список 16…512), Impostor density, Impostor occlusion | `impostor_frame_size`, `impostor_density`, `impostor_occlusion` | импостеры моделей слоя запекаются заново, когда ползунок отпущен (`rebakeChangedImpostors`; ~0,1–0,4 с на модель, при 256² — ~1,5 с) |
 
 Подокно «Materials» слоя — экземпляры материалов его растений, каждый один раз (общие со всеми моделями и LOD с ним,
