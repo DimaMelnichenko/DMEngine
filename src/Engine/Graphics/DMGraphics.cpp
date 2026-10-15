@@ -8,7 +8,7 @@
 #include "Logger\Logger.h"
 #include "D3D\TextureImages.h"
 #include "Engine/Input/Input.h"
-#include "Engine\Console\PropertyCommands.h"
+#include "Scene\SceneCommands.h"
 #include "Utils\utilites.h"
 #include "Utils\SlowTask.h"
 #include "Utils\FrameWatchdog.h"
@@ -148,28 +148,16 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	// сцены с savedWithLevel: их пишет «Save level»
 	using Editor::Category;
 	m_GUI.addPropertyWatching( m_scene.lights().properties(), Category::environment, nullptr, true );
-	// Источники света добавляются кнопками окна «Lights» (удаляются — кнопкой Delete своего подокна, DMLightDriver)
-	for( DMLight::LightType type : { DMLight::Dir, DMLight::Point, DMLight::Spot } )
-	{
-		m_scene.lights().properties()->addButton( std::string( "Add " ) + DMLight::typeName( type ) + " light",
-												  "New light in front of the camera, selected in the viewport (Save level writes it, Ctrl+Z removes it)",
-												  [this, type] { return addLight( type ); } );
-	}
 	for( SceneObject* object : m_scene.objects() )
 	{
 		if( object->properties() )
 			m_GUI.addPropertyWatching( object->properties(), object->environment() ? Category::environment : Category::scene, object,
 									   object->savedWithLevel() );
 	}
-	// Экземпляры моделей — своё окно: положение сохраняется, а параметры материалов окна «Models» — нет. Добавляются
-	// кнопками подокна «Add» (модель палитры перед камерой), убираются — кнопкой Delete своего подокна (ModelInstances)
+	// Экземпляры моделей — своё окно: положение сохраняется, а параметры материалов окна «Models» — нет
 	m_GUI.addPropertyWatching( m_scene.models().instanceProperties(), Category::scene, nullptr, true );
-	for( uint32_t model : m_scene.models().palette() )
-	{
-		m_scene.models().addProperties()->addButton( m_scene.models().modelName( model ),
-													 "New instance of the model in front of the camera, on the ground (Save level writes it, Ctrl+Z removes it)",
-													 [this, model] { return addModelInstance( model ); } );
-	}
+	// Кнопки нового перед камерой: «Add … light» окна «Lights», подокно «Add» окна «Model instances»
+	m_quickAdd.initialize( m_cameraPool["main"], m_scene, m_viewport, m_GUI );
 	// Окна возможностей рендерера: окружение уровня (туман, постобработка) пишет «Save level», настройки рендеринга (тени) —
 	// до выхода
 	for( RenderFeature* feature : m_renderer.features() )
@@ -254,7 +242,6 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	debugView( "Shadow cascades", m_renderer.shadowProperties(), "Show cascades" );
 	debugView( "Ambient occlusion", m_renderer.postProcessProperties(), "Show ambient occlusion" );
 
-	m_GUI.setCommandNames( m_console.names() );
 	m_showGUI = m_config.showGUI();
 	if( !m_config.mouseLook() )
 		ShowCursor( FALSE );
@@ -263,7 +250,12 @@ bool DMGraphics::Initialize( HINSTANCE hinstance, int screenWidth, int screenHei
 	LOG( "Total init ms: " + TIME_PRINT( timeStartInit ) );
 
 	bindingKeys();
+	// Команды консоли: свои (камера, снимки, замеры, клавиши, выход), редактора, вьюпорта и подсистем сцены
 	registerCommands();
+	m_GUI.registerCommands( m_console );
+	m_viewport.registerCommands( m_console, m_cameraPool["main"], m_scene, m_GUI );
+	registerSceneCommands( m_console, m_scene );
+	m_GUI.setCommandNames( m_console.names() );
 	// Первые кадры — как смена плана: экспозиция сразу по сцене, а не за секунды от начального значения
 	m_renderer.cameraCut();
 	if( m_config.remoteControl() )
@@ -381,83 +373,6 @@ bool DMGraphics::Render( const FrameContext& frame )
 	return true;
 }
 
-bool DMGraphics::placementInFront( XMFLOAT3& position )
-{
-	const DMCamera& camera = m_cameraPool["main"];
-	const XMFLOAT3 eye = camera.position();
-	XMFLOAT3 forward;
-	camera.viewDirection( &forward );
-	const TerrainHeightSource& terrain = m_scene.terrainPipeline();
-	float ground = 0.0f;
-	for( float t = 0.5f; t < 200.0f; t += 0.5f )
-	{
-		if( terrain.surfaceHeight( eye.x + forward.x * t, eye.z + forward.z * t, ground ) && eye.y + forward.y * t <= ground )
-		{
-			position = XMFLOAT3( eye.x + forward.x * t, ground, eye.z + forward.z * t );
-			return true;
-		}
-	}
-	position = XMFLOAT3( eye.x + forward.x * 10.0f, eye.y + forward.y * 10.0f, eye.z + forward.z * 10.0f );
-	return false;
-}
-
-PropertyContainer::ButtonAction DMGraphics::addLight( DMLight::LightType type )
-{
-	DMLightDriver& lights = m_scene.lights();
-	XMFLOAT3 forward;
-	m_cameraPool["main"].viewDirection( &forward );
-	// Перед камерой (placementInFront); точечный — не ниже 1,5 м над землёй, прожектор — 3 м и светит вниз; направленный —
-	// под 45° вниз в сторону взгляда
-	XMFLOAT3 position;
-	placementInFront( position );
-	float ground = 0.0f;
-	if( m_scene.terrainPipeline().surfaceHeight( position.x, position.z, ground ) )
-		position.y = std::max( position.y, ground + ( type == DMLight::Spot ? 3.0f : 1.5f ) );
-	XMFLOAT3 direction( 0.0f, -1.0f, 0.0f );
-	const float horizontal = std::sqrt( forward.x * forward.x + forward.z * forward.z );
-	if( type == DMLight::Dir && horizontal > 1e-3f )
-	{
-		const float component = 1.0f / std::sqrt( 2.0f );
-		direction = XMFLOAT3( forward.x / horizontal * component, -component, forward.z / horizontal * component );
-	}
-
-	const uint32_t key = lights.addLight( lights.newLight( type, position, direction ) );
-	m_viewport.selectLight( lights, key );
-	PropertyContainer* properties = lights.lightProperties( lights.indexOf( key ) );
-	if( properties )
-		m_GUI.focusProperties( properties );
-	LOG( "Light added: " + ( properties ? properties->name() : std::string() ) );
-	return { [&lights, key] { lights.removeLight( key ); },
-			 [this, &lights, key]
-			 {
-				 lights.restoreLight( key );
-				 m_viewport.selectLight( lights, key );
-			 },
-			 "Add " + ( properties ? properties->name() : std::string( DMLight::typeName( type ) ) ) };
-}
-
-PropertyContainer::ButtonAction DMGraphics::addModelInstance( uint32_t model )
-{
-	ModelInstances& models = m_scene.models();
-	// Перед камерой (placementInFront) низом границ LOD 0 на землю, как End; без поворота, масштаб 1
-	XMFLOAT3 position;
-	const bool onGround = placementInFront( position );
-	const uint32_t key = models.addInstance( model, position, onGround ? &m_scene.terrainPipeline() : nullptr );
-	const int index = models.indexOf( key );
-	PropertyContainer* properties = models.instanceProperties( index );
-	m_viewport.selectInstance( models, key );
-	m_GUI.focusProperties( properties );
-	const std::string name = models.instanceName( index );
-	LOG( "Model instance added: " + name );
-	return { [&models, key] { models.removeInstance( key ); },
-			 [this, &models, key]
-			 {
-				 models.restoreInstance( key );
-				 m_viewport.selectInstance( models, key );
-			 },
-			 "Add " + name };
-}
-
 void DMGraphics::drawLoadingFrame( const std::string& task, float progress )
 {
 	// Сообщения окна — при каждом шаге: без них Windows через 5 с помечает окно «не отвечает». Закрыли окно — выход сразу
@@ -499,56 +414,6 @@ void DMGraphics::drawLoadingFrame( const std::string& task, float progress )
 							 static_cast<float>( std::chrono::duration<double>( now - m_loadingStart ).count() ) );
 	d3d.endFrame();
 	d3d.resumeLoading();
-}
-
-void DMGraphics::paintCommand( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-{
-	TerrainPipeline& terrain = m_scene.terrainPipeline();
-	auto number = []( const std::string& text, float& value )
-	{
-		try
-		{
-			value = std::stof( text );
-			return true;
-		}
-		catch( const std::exception& )
-		{
-			return false;
-		}
-	};
-	if( args.size() == 2 && args[1] == "list" )
-	{
-		std::string text;
-		for( const auto& [target, tiles] : terrain.paint().targets() )
-			text += target + ": " + std::to_string( tiles ) + " tiles\n";
-		return reply->ok( text.empty() ? "no paint" : text );
-	}
-	if( args.size() == 3 && args[1] == "clear" )
-		return terrain.clearPaint( args[2] ) ? reply->ok( "cleared " + args[2] ) : reply->error( "no paint of " + args[2] );
-	float x = 0.0f, z = 0.0f;
-	if( args.size() == 5 && args[1] == "probe" && number( args[3], x ) && number( args[4], z ) )
-	{
-		float rule = 0.0f, delta = 0.0f, result = 0.0f;
-		if( !terrain.paintProbe( args[2], x, z, rule, delta, result ) )
-			return reply->error( "no target " + args[2] + " at this point" );
-		char text[128];
-		std::snprintf( text, sizeof( text ), "rule %.3f, delta %.3f, result %.3f", rule, delta, result );
-		return reply->ok( text );
-	}
-	static const std::pair<const char*, TerrainPaint::Mode> modes[] = { { "value", TerrainPaint::Mode::value }, { "step", TerrainPaint::Mode::step },
-																		 { "unstep", TerrainPaint::Mode::unstep }, { "erase", TerrainPaint::Mode::erase } };
-	float radius = 0.0f, value = 0.0f, falloff = 0.5f;
-	const auto mode = args.size() >= 7 ? std::find_if( std::begin( modes ), std::end( modes ), [&]( const auto& m ) { return args[5] == m.first; } ) :
-										 std::end( modes );
-	if( args.size() < 7 || args.size() > 8 || !number( args[2], x ) || !number( args[3], z ) || !number( args[4], radius ) ||
-		mode == std::end( modes ) || !number( args[6], value ) || ( args.size() == 8 && !number( args[7], falloff ) ) )
-		return reply->error( "usage: terrain paint <target> <x> <z> <radius> value|step|unstep|erase <value> [falloff] | paint clear <target> | "
-							 "paint list | paint probe <target> <x> <z>" );
-	// Цель — первое слово после paint: «layer N» пишется в кавычках
-	std::string reason;
-	if( !m_scene.terrainPaint().stroke( args[1], mode->second, value, x, z, radius, falloff, reason ) )
-		return reply->error( reason );
-	reply->ok();
 }
 
 void DMGraphics::beforeExit()
@@ -624,428 +489,6 @@ bool DMGraphics::saveScreenshot( const std::wstring& path )
 	if( !d3d.captureBackBuffer( bytes, rowPitch ) )
 		return false;
 	return GpuImages::saveImage( path, d3d.backBufferWidth(), d3d.backBufferHeight(), DMD3D::backBufferViewFormat, bytes.data(), rowPitch );
-}
-
-void DMGraphics::registerCommands()
-{
-	// Камера как BugItGo в UE: положение и поворот в градусах; смена плана — экспозиция сразу по новому виду
-	m_console.registerCommand( "passes", "log the passes of the next frame with their targets, reads and writes (D3D/GpuPass.h)",
-							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
-	{
-		DMD3D::instance().logPasses();
-		reply->ok( "passes of the next frame are written to log.txt" );
-	} );
-	m_console.registerCommand( "camera", "[x,y,z[,pitch,yaw]] - move the camera (camera cut); no arguments - current camera",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		DMCamera& camera = m_cameraPool["main"];
-		std::string joined;
-		for( const std::string& arg : args )
-			joined += ( joined.empty() ? "" : "," ) + arg;
-		std::vector<std::string> parts;
-		str_split( joined, parts, ", " );
-		std::vector<float> values;
-		for( const std::string& part : parts )
-		{
-			char* end = nullptr;
-			values.push_back( std::strtof( part.c_str(), &end ) );
-			if( end == part.c_str() || *end != '\0' )
-				return reply->error( "camera: can`t parse " + part );
-		}
-		if( !values.empty() )
-		{
-			if( values.size() != 3 && values.size() != 5 )
-				return reply->error( "camera: expected x,y,z or x,y,z,pitch,yaw" );
-			const XMFLOAT2 rotation = values.size() == 5 ? XMFLOAT2( values[3], values[4] ) : camera.rotation();
-			camera.setView( XMFLOAT3( values[0], values[1], values[2] ), rotation.x, rotation.y );
-			m_renderer.cameraCut();
-			m_framesSinceCut = 0;
-		}
-		char text[128];
-		const XMFLOAT3& position = camera.position();
-		const XMFLOAT2 rotation = camera.rotation();
-		std::snprintf( text, sizeof( text ), "%g,%g,%g,%g,%g", position.x, position.y, position.z, rotation.x, rotation.y );
-		reply->ok( text );
-	} );
-
-	m_console.registerCommand( "screenshot", "<file.png|.jpg> [gui] [frames] - back buffer after the frame settles; gui - with "
-							   "ImGui windows; frames - that many consecutive frames, file_00, file_01...",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( args.empty() )
-			return reply->error( "screenshot: expected a file name" );
-		ScreenshotRequest request{ utf8ToWide( args[0] ), false, reply };
-		for( size_t i = 1; i < args.size(); ++i )
-		{
-			if( args[i] == "gui" )
-			{
-				request.withGui = true;
-				continue;
-			}
-			const int frames = std::atoi( args[i].c_str() );
-			if( frames <= 0 || frames > 1000 )
-				return reply->error( "screenshot: expected gui or a number of frames 1..1000, got " + args[i] );
-			request.frames = static_cast<uint32_t>( frames );
-		}
-		m_screenshots.push_back( std::move( request ) );
-	} );
-
-	// Захват PIX (движок с -pix, как -attachPIX и консоль UE): кадры после того, как кадр устоится, — в файл .wpix; ответ —
-	// когда захват записан. Разбор — PIX (WinPix.exe) или pixtool: docs/d3d12.md §4
-	m_console.registerCommand( "pix", "[file.wpix] [frames] - PIX GPU capture of the next frames after the frame settles (engine "
-							   "with -pix); default captures\\<date_time>.wpix; the reply comes when the file is written",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( !DMD3D::instance().pixCaptureReady() )
-			return reply->error( "pix: start the engine with -pix (PIX must be installed)" );
-		std::filesystem::path path;
-		if( !args.empty() )
-			path = utf8ToWide( args[0] );
-		else
-		{
-			char name[64];
-			const std::time_t now = std::time( nullptr );
-			std::tm local = {};
-			localtime_s( &local, &now );
-			std::strftime( name, sizeof( name ), "captures\\%Y%m%d_%H%M%S.wpix", &local );
-			path = name;
-		}
-		const int frames = args.size() > 1 ? std::atoi( args[1].c_str() ) : 1;
-		if( frames <= 0 || frames > 100 )
-			return reply->error( "pix: expected 1..100 frames" );
-		std::error_code error;
-		path = std::filesystem::absolute( path, error );
-		if( path.has_parent_path() )
-			std::filesystem::create_directories( path.parent_path(), error );
-		std::filesystem::remove( path, error );
-		// Шаг 0 — ждать, пока кадр устоится, и начать захват; дальше — пока файл не появится и не перестанет расти
-		struct State
-		{
-			int step = 0;
-			uintmax_t size = 0;
-			int stable = 0;
-			int waited = 0;
-		};
-		auto state = std::make_shared<State>();
-		m_console.addFrameTask( [this, reply, path, frames, state]
-		{
-			std::error_code error;
-			if( state->step == 0 )
-			{
-				if( m_framesSinceCut < settleFrames )
-					return false;
-				if( !DMD3D::instance().captureFrames( path.wstring(), static_cast<uint32_t>( frames ) ) )
-				{
-					reply->error( "pix: capture is not started, see log.txt" );
-					return true;
-				}
-				state->step = 1;
-				return false;
-			}
-			if( ++state->waited > 3000 )
-			{
-				reply->error( "pix: no capture file after 3000 frames: " + path.string() );
-				return true;
-			}
-			const uintmax_t size = std::filesystem::exists( path, error ) ? std::filesystem::file_size( path, error ) : 0;
-			state->stable = size > 0 && size == state->size ? state->stable + 1 : 0;
-			state->size = size;
-			if( state->stable < 30 )
-				return false;
-			LOG( "PIX capture is written: " + path.string() + ", " + std::to_string( size / 1024 ) + " KB" );
-			reply->ok( path.string() );
-			return true;
-		} );
-	} );
-
-	m_console.registerCommand( "timestep", "[seconds|off] - fixed frame time step (as -UseFixedTimeStep in UE); no arguments - current",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( !args.empty() )
-		{
-			if( args[0] == "off" )
-				m_fixedTimeStep = 0.0f;
-			else
-			{
-				const float step = static_cast<float>( std::atof( args[0].c_str() ) );
-				if( step <= 0.0f || step > 1.0f )
-					return reply->error( "timestep: expected seconds in (0, 1] or off" );
-				m_fixedTimeStep = step;
-			}
-		}
-		reply->ok( m_fixedTimeStep > 0.0f ? std::to_string( m_fixedTimeStep ) : "off" );
-	} );
-
-	m_console.registerCommand( "stat", "gpu [seconds=3] - average GPU time of the frame and passes, after the frame settles",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( args.empty() || args[0] != "gpu" )
-			return reply->error( "stat: only stat gpu is supported" );
-		const float seconds = args.size() > 1 ? static_cast<float>( std::atof( args[1].c_str() ) ) : 3.0f;
-		if( seconds <= 0.0f )
-			return reply->error( "stat gpu: expected a positive number of seconds" );
-		m_console.addFrameTask( [this, reply, seconds]
-		{
-			if( m_framesSinceCut < settleFrames )
-				return false;
-			m_renderer.measureGpu( seconds, [reply]( const std::string& line ) { reply->ok( line ); } );
-			return true;
-		} );
-	} );
-
-	// Горячие клавиши (bindingKeys): имя — буква или цифра, как на клавиатуре, или скан-код DIK_*
-	m_console.registerCommand( "key", "<letter|digit|scan code> - press a hotkey (G, Q, 1, 3, 4...)",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( args.empty() )
-			return reply->error( "key: expected a key" );
-		static const std::pair<const char*, uint8_t> rows[] = { { "1234567890", DIK_1 }, { "QWERTYUIOP", DIK_Q },
-																 { "ASDFGHJKL", DIK_A }, { "ZXCVBNM", DIK_Z } };
-		int code = -1;
-		if( args[0].size() == 1 )
-		{
-			const char c = static_cast<char>( std::toupper( static_cast<unsigned char>( args[0][0] ) ) );
-			for( const auto& [keys, first] : rows )
-			{
-				if( const char* found = std::strchr( keys, c ) )
-					code = first + static_cast<int>( found - keys );
-			}
-		}
-		if( code < 0 )
-		{
-			char* end = nullptr;
-			const long value = std::strtol( args[0].c_str(), &end, 0 );
-			if( end != args[0].c_str() && *end == '\0' && value > 0 && value < 256 )
-				code = static_cast<int>( value );
-		}
-		if( code < 0 )
-			return reply->error( "key: unknown key " + args[0] );
-		if( !Input::instance().notifier().press( static_cast<uint8_t>( code ) ) )
-			return reply->error( "key: nothing is bound to " + args[0] );
-		reply->ok();
-	} );
-
-	m_console.registerCommand( "gui", "on|off - ImGui windows, as the G key", [this]( const std::vector<std::string>& args,
-																					 const ConsoleReplyPtr& reply )
-	{
-		if( args.empty() || ( args[0] != "on" && args[0] != "off" ) )
-			return reply->error( "gui: expected on or off" );
-		m_showGUI = args[0] == "on";
-		reply->ok();
-	} );
-
-	m_console.registerCommand( "water", "discharge <file.dds> - water discharge of the cells, m3/s, as R32_FLOAT DDS; "
-							   "state <prefix> - water for the shaders as R32_FLOAT DDS: <prefix>_depth.dds (m), <prefix>_vx.dds and "
-							   "<prefix>_vz.dds (flow along world X and Z, m/s)",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( args.size() != 2 || ( args[0] != "discharge" && args[0] != "state" ) )
-		{
-			reply->error( "usage: water discharge <file.dds> | water state <prefix>" );
-			return;
-		}
-		std::string reason;
-		const bool written = args[0] == "discharge" ? m_scene.water().exportDischarge( args[1], reason ) :
-													 m_scene.water().exportState( args[1], reason );
-		if( written )
-			reply->ok( "written " + args[1] );
-		else
-			reply->error( reason );
-	} );
-	m_console.registerCommand( "terrain", "paint <target> <x> <z> <radius> value|step|unstep|erase <value> [falloff] - a brush dab over "
-							   "the layer rules at a world point (target: \"layer N\" or a mask name); paint clear <target>; paint list; "
-							   "paint probe <target> <x> <z> - rule, paint delta and result; "
-							   "hydrology <prefix> - water channels of the level as R32_FLOAT DDS: <prefix>_lowering.dds "
-							   "(bed lowering, m), <prefix>_level.dds (stream water level, m), <prefix>_lake.dds (lake level, m; -1e9 - no lake), <prefix>_detail.dds (detail ground near channels, m, "
-							   "4 samples per height map texel; -1e9 - no detail tile)",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( !args.empty() && args[0] == "paint" )
-			return paintCommand( args, reply );
-		if( args.size() != 2 || args[0] != "hydrology" )
-			return reply->error( "usage: terrain hydrology <prefix> | terrain paint ..." );
-		const TerrainHydrology::Result* hydrology = m_scene.terrainPipeline().hydrology();
-		if( !hydrology )
-			return reply->error( "terrain hydrology: the level has no water" );
-		const size_t cells = static_cast<size_t>( hydrology->size ) * hydrology->size;
-		std::vector<float> level( cells ), lake( cells );
-		for( size_t i = 0; i < cells; ++i )
-		{
-			level[i] = hydrology->staticWater[i].x;
-			lake[i] = hydrology->staticWater[i].w;
-		}
-		const std::wstring prefix( args[1].begin(), args[1].end() );
-		const uint32_t size = hydrology->size;
-		// Детальная земля у русел — одной картой с шагом детальной плитки (без плиток — −1e9), строки сверху вниз, как у карты
-		const uint32_t samples = TerrainHydrology::detailSamples;
-		const uint32_t tileCells = TerrainHydrology::detailTileCells;
-		const uint32_t fine = size * samples;
-		const uint32_t tileSide = tileCells * samples;
-		std::vector<float> detail( static_cast<size_t>( fine ) * fine, -1e9f );
-		for( const TerrainHydrology::DetailTile& tile : hydrology->detailTiles )
-			for( uint32_t j = 0; j < tileSide; ++j )
-				for( uint32_t i = 0; i < tileSide; ++i )
-				{
-					const uint32_t x = tile.x * tileSide + i;
-					const uint32_t z = tile.z * tileSide + j;
-					if( x < fine && z < fine )
-						detail[static_cast<size_t>( fine - 1 - z ) * fine + x] = tile.heights[static_cast<size_t>( j + 1 ) * ( tileSide + 2 ) + i + 1];
-				}
-		if( !hydrology->detailTiles.empty() && !GpuImages::saveFloatDDS( prefix + L"_detail.dds", fine, fine, detail.data() ) )
-			return reply->error( "terrain hydrology: can`t write " + args[1] + "_detail.dds" );
-		if( !GpuImages::saveFloatDDS( prefix + L"_lowering.dds", size, size, hydrology->lowering.data() ) ||
-			!GpuImages::saveFloatDDS( prefix + L"_level.dds", size, size, level.data() ) ||
-			!GpuImages::saveFloatDDS( prefix + L"_lake.dds", size, size, lake.data() ) )
-			return reply->error( "terrain hydrology: can`t write " + args[1] + "_*.dds" );
-		reply->ok( "written " + args[1] + "_lowering.dds, _level.dds, _lake.dds" );
-	} );
-	m_console.registerCommand( "action", "\"<name>\" - run an editor action, as File menu items (Save level, Exit)",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( args.size() != 1 )
-		{
-			std::string names;
-			for( const Editor::Action& action : m_GUI.actions() )
-				names += " \"" + action.name + "\"";
-			reply->error( "usage: action \"<name>\"; actions:" + names );
-			return;
-		}
-		if( m_GUI.runAction( args[0] ) )
-			reply->ok();
-		else
-			reply->error( "action: no action " + args[0] );
-	} );
-	m_console.registerCommand( "select", "\"<window>\" - select a properties window in the editor Outliner (Details shows it)",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( args.size() != 1 )
-			return reply->error( "usage: select \"<window>\"" );
-		if( m_GUI.select( args[0] ) )
-			reply->ok();
-		else
-			reply->error( "select: no window " + args[0] );
-	} );
-	m_console.registerCommand( "pick", "<x> <y> - select under a window point, as a click in the viewport (a stream curve point in "
-							   "the Stream curves mode, a light or particle emitter icon, else a model instance)",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( args.size() != 2 )
-			return reply->error( "usage: pick <x> <y>" );
-		const std::string picked = m_viewport.clickAt( m_cameraPool["main"], m_scene, m_GUI, std::stof( args[0] ), std::stof( args[1] ) );
-		reply->ok( picked.empty() ? "nothing" : picked );
-	} );
-	m_console.registerCommand( "brush", "<x> <y> [<x> <y> ...] [shift] [ctrl] - a stroke of the terrain brush (Paint of the terrain window) "
-							   "through window points, as the mouse with the left button held in the Terrain paint mode; undoable",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		std::vector<ImVec2> points;
-		bool shift = false, ctrl = false;
-		std::vector<float> numbers;
-		for( const std::string& arg : args )
-		{
-			if( arg == "shift" )
-				shift = true;
-			else if( arg == "ctrl" )
-				ctrl = true;
-			else
-			{
-				try
-				{
-					numbers.push_back( std::stof( arg ) );
-				}
-				catch( const std::exception& )
-				{
-					return reply->error( "usage: brush <x> <y> [<x> <y> ...] [shift] [ctrl]" );
-				}
-			}
-		}
-		if( numbers.size() < 2 || numbers.size() % 2 )
-			return reply->error( "usage: brush <x> <y> [<x> <y> ...] [shift] [ctrl]" );
-		for( size_t i = 0; i < numbers.size(); i += 2 )
-			points.emplace_back( numbers[i], numbers[i + 1] );
-		const std::string result = m_viewport.brushStroke( m_cameraPool["main"], m_scene.terrainPaint(), m_scene.terrainPipeline(), m_GUI, points, shift, ctrl );
-		if( result.rfind( "error: ", 0 ) == 0 )
-			reply->error( result.substr( 7 ) );
-		else
-			reply->ok( result );
-	} );
-	m_console.registerCommand( "toggle", "\"<name>\" - switch a View menu toggle (Stream curves, Wireframe...)",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( args.size() != 1 )
-			return reply->error( "usage: toggle \"<name>\"" );
-		for( const Editor::Toggle& toggle : m_GUI.toggles() )
-		{
-			if( toggle.name == args[0] )
-			{
-				toggle.toggle();
-				return reply->ok( toggle.state() ? "on" : "off" );
-			}
-		}
-		reply->error( "toggle: no toggle " + args[0] );
-	} );
-	m_console.registerCommand( "stream", "move <x,z> | insert | delete | falloff <m> - edit the selected stream curve point (pick it "
-							   "in the Stream curves mode), as the gizmo, Insert / Delete and Falloff in the viewport",
-							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
-	{
-		if( args.empty() || !m_scene.water().initialized() )
-			return reply->error( "usage: stream move <x,z> | insert | delete (the level needs water)" );
-		StreamCurves& streams = m_scene.water().streams();
-		bool done = false;
-		if( args[0] == "move" && args.size() == 2 )
-		{
-			const size_t comma = args[1].find( ',' );
-			if( comma == std::string::npos )
-				return reply->error( "usage: stream move <x,z>" );
-			done = m_viewport.moveStreamPoint( streams, std::stof( args[1].substr( 0, comma ) ), std::stof( args[1].substr( comma + 1 ) ) );
-		}
-		else if( args[0] == "insert" )
-			done = m_viewport.insertStreamPoint( streams );
-		else if( args[0] == "delete" )
-			done = m_viewport.removeStreamPoint( streams );
-		else if( args[0] == "falloff" && args.size() == 2 )
-		{
-			m_viewport.setStreamFalloff( std::stof( args[1] ) );
-			return reply->ok();
-		}
-		else
-			return reply->error( "usage: stream move <x,z> | insert | delete" );
-		if( done )
-			reply->ok();
-		else
-			reply->error( "stream: select a stream curve point first (pick in the Stream curves mode)" );
-	} );
-	// История правок редактора, как Ctrl+Z / Ctrl+Y: ответ — имя отменённой или повторённой правки
-	m_console.registerCommand( "undo", "- undo the last edit of the editor (Ctrl+Z)",
-							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
-	{
-		std::string name;
-		if( m_GUI.undo( &name ) )
-			reply->ok( name );
-		else
-			reply->error( "undo: nothing to undo" );
-	} );
-	m_console.registerCommand( "redo", "- redo the last undone edit (Ctrl+Y)",
-							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
-	{
-		std::string name;
-		if( m_GUI.redo( &name ) )
-			reply->ok( name );
-		else
-			reply->error( "redo: nothing to redo" );
-	} );
-	m_console.registerCommand( "quit", "- exit the engine normally (log is written to the end)",
-							   [this]( const std::vector<std::string>&, const ConsoleReplyPtr& reply )
-	{
-		m_exitRequested = true;
-		reply->ok();
-	} );
-
-	registerPropertyCommands( m_console, [this]() -> const std::vector<PropertyContainer*>& { return m_GUI.propertyContainers(); },
-							  [this]( PropertyContainer& container, const std::string& button, std::string* name )
-							  {
-								  return m_GUI.press( container, button, name );
-							  } );
 }
 
 void DMGraphics::updateMouseLook()

@@ -1183,6 +1183,53 @@ bool TerrainPipeline::raycast( const XMFLOAT3& origin, const XMFLOAT3& direction
 	return false;
 }
 
+bool TerrainPipeline::exportHydrology( const std::string& prefix, std::string& reason ) const
+{
+	const TerrainHydrology::Result* water = hydrology();
+	if( !water )
+	{
+		reason = "the level has no water";
+		return false;
+	}
+	const size_t cells = static_cast<size_t>( water->size ) * water->size;
+	std::vector<float> level( cells ), lake( cells );
+	for( size_t i = 0; i < cells; ++i )
+	{
+		level[i] = water->staticWater[i].x;
+		lake[i] = water->staticWater[i].w;
+	}
+	const std::wstring path( prefix.begin(), prefix.end() );
+	const uint32_t size = water->size;
+	// Детальная земля у русел — одной картой с шагом детальной плитки (без плиток — −1e9), строки сверху вниз, как у карты
+	const uint32_t samples = TerrainHydrology::detailSamples;
+	const uint32_t tileCells = TerrainHydrology::detailTileCells;
+	const uint32_t fine = size * samples;
+	const uint32_t tileSide = tileCells * samples;
+	std::vector<float> detail( static_cast<size_t>( fine ) * fine, -1e9f );
+	for( const TerrainHydrology::DetailTile& tile : water->detailTiles )
+		for( uint32_t j = 0; j < tileSide; ++j )
+			for( uint32_t i = 0; i < tileSide; ++i )
+			{
+				const uint32_t x = tile.x * tileSide + i;
+				const uint32_t z = tile.z * tileSide + j;
+				if( x < fine && z < fine )
+					detail[static_cast<size_t>( fine - 1 - z ) * fine + x] = tile.heights[static_cast<size_t>( j + 1 ) * ( tileSide + 2 ) + i + 1];
+			}
+	if( !water->detailTiles.empty() && !GpuImages::saveFloatDDS( path + L"_detail.dds", fine, fine, detail.data() ) )
+	{
+		reason = "can`t write " + prefix + "_detail.dds";
+		return false;
+	}
+	if( !GpuImages::saveFloatDDS( path + L"_lowering.dds", size, size, water->lowering.data() ) ||
+		!GpuImages::saveFloatDDS( path + L"_level.dds", size, size, level.data() ) ||
+		!GpuImages::saveFloatDDS( path + L"_lake.dds", size, size, lake.data() ) )
+	{
+		reason = "can`t write " + prefix + "_*.dds";
+		return false;
+	}
+	return true;
+}
+
 bool TerrainPipeline::clearPaint( const std::string& target )
 {
 	if( !m_paint.has( target ) )

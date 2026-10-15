@@ -134,6 +134,7 @@ add_executable(DMEngine WIN32
     ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
     ${imguizmo_SOURCE_DIR}/src/ImGuizmo.cpp
     src/Engine/Graphics/GUI/GUI.cpp
+    src/Engine/Graphics/GUI/GUICommands.cpp
     src/Engine/Graphics/GUI/PropertyWidgets.cpp
     src/Engine/Graphics/GUI/EditHistory.cpp
     src/Engine/Graphics/GUI/OutlinerPanel.cpp
@@ -143,6 +144,8 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/GUI/CameraPanel.cpp
     src/Engine/Graphics/GUI/TextureLibraryPanel.cpp
     src/Engine/Graphics/GUI/Viewport.cpp
+    src/Engine/Graphics/GUI/ViewportCommands.cpp
+    src/Engine/Graphics/GUI/QuickAdd.cpp
     src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp
     src/Engine/Graphics/Scene/Particle/ParticleSystem.cpp
     src/Engine/Graphics/DMComputeShader.cpp
@@ -197,6 +200,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Sky/VolumetricCloud.cpp
     src/Engine/Graphics/D3D/DMSamplerState.cpp
     src/Engine/Graphics/DMGraphics.cpp
+    src/Engine/Graphics/DMGraphicsCommands.cpp
     src/Engine/Graphics/Renderer.cpp
     src/Engine/Graphics/ShadowCascades.cpp
     src/Engine/Graphics/TerrainSunShadow.cpp
@@ -207,6 +211,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Camera/WalkMode.cpp
     src/Engine/Graphics/Scene/Camera/DMFrustum.cpp
     src/Engine/Graphics/Scene/Scene.cpp
+    src/Engine/Graphics/Scene/SceneCommands.cpp
     src/Engine/Graphics/Scene/Sky/SkySphere.cpp
     src/Engine/Graphics/Scene/Model/DMModel.cpp
     src/Engine/Graphics/Scene/Model/Mesh/DMMesh.cpp

@@ -21,6 +21,7 @@
 #include "Config\Config.h"
 #include "GUI\GUI.h"
 #include "GUI\Viewport.h"
+#include "GUI\QuickAdd.h"
 #include "Scene\Camera\WalkMode.h"
 #include "Scene\Scene.h"
 #include "Renderer.h"
@@ -60,10 +61,9 @@ private:
 	void bindingKeys();
 	// Поворот камеры мышью: правая кнопка над сценой, режим полёта (I), кадр без редактора (G); курсор и мышь GUI
 	void updateMouseLook();
-	// Консольные команды: камера, снимок, замер GPU, свойства GUI, клавиши, выход (docs/remote.md)
+	// Команды движка в консоли и удалённом управлении (docs/remote.md): проходы, камера, снимок, захват PIX, шаг времени,
+	// замер GPU, клавиши, окна ImGui, выход — DMGraphicsCommands.cpp
 	void registerCommands();
-	// Команда terrain paint: мазок кисти, clear, list, probe (TerrainPaintTool::stroke)
-	void paintCommand( const std::vector<std::string>& args, const ConsoleReplyPtr& reply );
 	// Снимки, заказанные командой screenshot, — в своей точке кадра: до окон ImGui или после них
 	void takeScreenshots( bool withGui );
 	// Задний буфер в файл (PNG или JPG по расширению) — в кадре до endFrame
@@ -71,13 +71,6 @@ private:
 	// Экран загрузки — обработчик SlowTask на время Initialize: сообщения окна (иначе Windows считает его зависшим) и кадр с
 	// тем, что делается, и полосой прогресса
 	void drawLoadingFrame( const std::string& task, float progress );
-	// Место нового перед камерой, как Quick Add в UE: там, где центр взгляда упирается в землю (ближе 200 м), иначе в 10 м
-	// по взгляду; true — на земле
-	bool placementInFront( DirectX::XMFLOAT3& position );
-	// Кнопки «Add … light» окна «Lights»: новый источник перед камерой, выбран во вьюпорте; отмена — убрать его
-	PropertyContainer::ButtonAction addLight( DMLight::LightType type );
-	// Кнопки подокна «Add» окна «Model instances»: экземпляр модели палитры перед камерой на земле, выбран во вьюпорте
-	PropertyContainer::ButtonAction addModelInstance( uint32_t model );
 
 private:
 	float m_screenWidth;
@@ -101,6 +94,7 @@ private:
 	Scene m_scene;
 	GUI m_GUI;
 	Viewport m_viewport;
+	QuickAdd m_quickAdd;		// новое перед камерой: кнопки окон «Lights» и «Model instances»
 	FrameStats m_frameStats;	// счётчики окна «Statistic» за кадр: пишут Frame и рендерер, показывает GUI
 	Renderer m_renderer;
 

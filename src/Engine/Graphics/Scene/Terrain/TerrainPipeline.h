@@ -116,6 +116,10 @@ public:
 	void releaseErosionChange() { m_previousEroded.clear(); m_previousEroded.shrink_to_fit(); m_eroded.clear(); m_eroded.shrink_to_fit(); }
 	// Русла, ручьи, растр статичной воды и приток — для WaterSimulation; nullptr — у уровня нет воды
 	const TerrainHydrology::Result* hydrology() const { return m_hasHydrology ? &m_hydrology : nullptr; }
+	// Русла уровня в R32_FLOAT DDS (команда terrain hydrology): <prefix>_lowering.dds — врез русел, м; _level.dds — уровень
+	// ручьёв, м; _lake.dds — уровень озёр, м (−1e9 — озера нет); _detail.dds — детальная земля у русел, м, по 4 отсчёта на
+	// тексель карты высот (−1e9 — плитки нет). false — воды у уровня нет или файл не записался (reason)
+	bool exportHydrology( const std::string& prefix, std::string& reason ) const;
 	// Слой материала каждой роли (TerrainLayers.role), −1 — нет: по ним фильтр слоёв земли у расстановки
 	const std::array<int32_t, terrainLayerRoleCount>& layersOfRoles() const { return m_layerOf; }
 	// Слой роли, если он есть в массивах материала; иначе −1

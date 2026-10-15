@@ -16,6 +16,10 @@
 #include "EditHistory.h"
 
 class DMCamera;
+namespace GS
+{
+class ConsoleCommands;
+}
 
 // Редактор поверх сцены, как редактор UE (docs/gui.md): главное меню (File — действия, View — переключатели, Window —
 // панели и раскладка, Help — горячие клавиши) и панели — Outliner (окна свойств по разделам), Details (свойства
@@ -63,7 +67,10 @@ public:
 	// Выбрать в Outliner запись, где лежит container (сама или подокно), и раскрыть его в Details (выбор во вьюпорте);
 	// false — такого окна нет
 	bool focusProperties( PropertyContainer* container );
-	// Имена консольных команд — для дополнения в консоли
+	// Команды редактора в консоли и удалённом управлении: action, select, toggle, undo, redo и свойства окон — list, get,
+	// set, press (GUICommands.cpp)
+	void registerCommands( GS::ConsoleCommands& console );
+	// Имена консольных команд — для дополнения в консоли (после регистрации всех команд)
 	void setCommandNames( std::vector<std::string> names ) { m_commandNames = std::move( names ); }
 
 	// Строки, набранные в консоли, — выполнить в начале кадра; ответ — consoleReply

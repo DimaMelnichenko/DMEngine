@@ -141,7 +141,12 @@ timestep off
 
 ## Как добавить команду
 
-Обработчик — в `DMGraphics::registerCommands` (или рядом с подсистемой, как `registerPropertyCommands`):
+Команду регистрирует её подсистема, как консольные команды модулей UE: движок — свои (проходы, камера, снимок, PIX, шаг
+времени, замер, клавиши, окна ImGui, выход — `DMGraphics::registerCommands`, `DMGraphicsCommands.cpp`), редактор —
+`GUI::registerCommands` (`action`, `select`, `toggle`, `undo`, `redo` и свойства окон — `registerPropertyCommands`),
+вьюпорт — `Viewport::registerCommands` (`pick`, `brush`, `stream`), подсистемы сцены — `registerSceneCommands`
+(`Scene/SceneCommands.cpp`: `terrain`, `water`; разбор аргументов там, дело — у подсистемы). Регистрацию всех вызывает
+`DMGraphics::Initialize`, затем отдаёт имена дополнению консоли редактора:
 
 ```cpp
 m_console.registerCommand( "имя", "<аргументы> - что делает", [this]( const std::vector<std::string>& args,
@@ -173,6 +178,8 @@ m_console.registerCommand( "имя", "<аргументы> - что делает
 | `src/Engine/Console/ConsoleCommands.h/.cpp` | реестр команд, ответ `ConsoleReply`, разбор строки, задачи на кадры, `help`, `wait` |
 | `src/Engine/Console/RemoteControlServer.h/.cpp` | именованный канал, поток, очередь команд |
 | `src/Engine/Console/PropertyCommands.h/.cpp` | `list`, `get`, `set`, `press` над окнами свойств GUI |
-| `src/Engine/Graphics/DMGraphics.cpp` (`registerCommands`, `takeScreenshots`) | камера, снимок, замер, клавиши, GUI, выход |
+| `src/Engine/Graphics/DMGraphicsCommands.cpp`, `DMGraphics.cpp` (`takeScreenshots`) | проходы, камера, снимок, PIX, шаг времени, замер, клавиши, GUI, выход |
+| `src/Engine/Graphics/GUI/GUICommands.cpp`, `ViewportCommands.cpp` | команды редактора и вьюпорта |
+| `src/Engine/Graphics/Scene/SceneCommands.cpp` | `terrain` (кисть, выгрузка русел), `water` |
 | `src/Engine/Graphics/Renderer.cpp` (`measureGpu`) | замеры времени GPU: после прогрева — в лог, по команде — в ответ |
 | `Tools/engine.py` | клиент: запуск, команды, сценарий, выход |

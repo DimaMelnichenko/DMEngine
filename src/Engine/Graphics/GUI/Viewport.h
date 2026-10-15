@@ -20,6 +20,7 @@ class Scene;
 class TerrainHeightSource;
 class WaterSimulation;
 class StreamCurves;
+class ConsoleCommands;
 }
 
 // Вьюпорт редактора, как в UE: клик по сцене выбирает экземпляр модели (луч из камеры к повёрнутым границам LOD 0
@@ -42,6 +43,9 @@ class Viewport
 public:
 	// Кадр вьюпорта: scene — что показывать и править (экземпляры моделей, кривые русел, источники света, эмиттеры)
 	void update( const DMCamera& camera, GS::Scene& scene, GUI& gui );
+	// Команды вьюпорта в консоли и удалённом управлении: pick (клик по сцене), brush (мазок кисти), stream (правка точки кривой
+	// русла) — ViewportCommands.cpp; camera, scene и gui живут дольше консоли
+	void registerCommands( GS::ConsoleCommands& console, DMCamera& camera, GS::Scene& scene, GUI& gui );
 	bool streamMode() const { return m_streamMode; }
 	bool paintMode() const { return m_paintMode; }
 	void setPaintMode( bool enabled );
