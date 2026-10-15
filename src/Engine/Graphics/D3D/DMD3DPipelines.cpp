@@ -322,7 +322,7 @@ ID3D12PipelineState* DMD3D::computePipeline( const ShaderStage& stage )
 	if( m_pipelinesWarm )
 	{
 		++m_lazyPipelines;
-		LOG( "Compute pipeline is created lazily (DMComputeShader::Initialize warms it)" );
+		LOG( "Compute pipeline is created lazily (ComputeShader::initialize warms it)" );
 	}
 	return m_computePipelines.emplace( stage.hash(), make_com_ptr<ID3D12PipelineState>( object ) ).first->second.get();
 }

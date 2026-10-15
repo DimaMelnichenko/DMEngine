@@ -5,7 +5,7 @@
 #include "SceneObject.h"
 #include "SkyLight.h"
 #include "FullscreenShader.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "D3D\CubeTarget.h"
 #include "D3D\RenderTarget.h"
 #include "Properties\PropertyContainer.h"
@@ -127,7 +127,7 @@ private:
 	FullscreenShader m_cubeShader;
 	FullscreenShader m_backgroundShader;
 	ShaderProgram m_starShader;
-	DMComputeShader m_aerialPerspectiveShader;
+	ComputeShader m_aerialPerspectiveShader;
 	Buffer m_constantBuffer;
 	Buffer m_aerialPerspectiveConstants;	// b4 compute-прохода, AerialPerspectiveBuffer
 	Buffer m_nightSkyConstants;			// b4 фона, NightSkyParameters

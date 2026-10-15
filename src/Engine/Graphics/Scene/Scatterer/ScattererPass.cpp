@@ -384,7 +384,7 @@ std::vector<PassDesc::Read> ScatterPass::placedReads() const
 	return { { &m_placed.srv, "placed instances" }, { &m_clusters.srv, "clusters" } };
 }
 
-void ScatterPass::place( DMComputeShader& shader )
+void ScatterPass::place( ComputeShader& shader )
 {
 	DMD3D& d3d = DMD3D::instance();
 	d3d.clearStorageView( m_placedCounterUAV );
@@ -458,7 +458,7 @@ size_t ScatterPass::placeInstances( const std::vector<PlacedInstance>& instances
 	return order.size() - placedCount;
 }
 
-void ScatterPass::cull( DMComputeShader& shader )
+void ScatterPass::cull( ComputeShader& shader )
 {
 	DMD3D& d3d = DMD3D::instance();
 	bindParams();
@@ -492,18 +492,21 @@ void ScatterPass::bindParams()
 	d3d.setConstantBuffer( 7, m_variantsBuffer );
 }
 
-void ScatterPass::populate( DMComputeShader& shader, uint16_t gridDim )
+void ScatterPass::populate( ComputeShader& shader, uint16_t gridDim )
 {
+	m_populateParams.gridDim = gridDim;
 	bindParams();
 	shader.setUAVBuffer( 0, m_countersUAV );
 	shader.setUAVBuffer( 1, m_items.uav );
 	shader.setUAVBuffer( 2, m_transitions.uav );
 	shader.setUAVBuffer( 3, m_indices.uav );
 
-	shader.Dispatch( gridDim, gridDim, 0.0f );
+	// Группа — 32 × 32 ячейки (numthreads main в scatter.cs)
+	const uint32_t groups = ( gridDim + 31u ) / 32u;
+	shader.dispatchGroups( groups, groups, 1 );
 }
 
-void ScatterPass::buildCommands( DMComputeShader& shader )
+void ScatterPass::buildCommands( ComputeShader& shader )
 {
 	// Поток — секция списка вида; групп потоков хватает на все виды (MAX_VIEWS × MAX_LISTS × MAX_SECTIONS / 64)
 	DMD3D& d3d = DMD3D::instance();

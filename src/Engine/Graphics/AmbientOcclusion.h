@@ -2,7 +2,7 @@
 
 #include "DirectX.h"
 #include "D3D\GpuResources.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "RenderView.h"
 #include "Level\LevelSettings.h"
 #include "Shaders\ambient_occlusion_constants.h"
@@ -40,8 +40,8 @@ private:
 	bool m_show = false;
 	bool m_active = false;
 
-	DMComputeShader m_shader;
-	DMComputeShader m_denoiseShader;
+	ComputeShader m_shader;
+	ComputeShader m_denoiseShader;
 	Buffer m_constants;
 	// Расчёт (с шумом) и после фильтра: R16G16_FLOAT — видимость и глубина вида, м
 	Texture m_noisy;

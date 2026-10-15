@@ -33,7 +33,6 @@
 #include "water.sh"
 #include "lod_transition.h"
 #include "bindless.sh"
-#include "compute_dispatch_constants.h"
 #include "scatter_constants.h"
 
 // Пределы — scatter_constants.h; номер списка — как ScatterPass::listIndex
@@ -651,7 +650,7 @@ uint4 groundColor( float3 position, float distanceToCamera, int2 cell, uint seed
 [numthreads( 32, 32, 1 )]
 void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 {
-	if( dispatchThreadId.x >= (uint)b_rect.x || dispatchThreadId.y >= (uint)b_rect.y )
+	if( dispatchThreadId.x >= g_gridDim || dispatchThreadId.y >= g_gridDim )
 		return;
 
 	// Первая ячейка — у угла квадрата 2 · far вокруг камеры; у слоёв с разными параметрами разный узор

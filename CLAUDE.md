@@ -707,7 +707,7 @@ Spawner в PCG UE: модель ячейки — по весам и случай
 `Texture` (`DMTexture` — текстура GPU и вид, `DMTextureStorage`, чтение файлов — `ImageFile::load`), `Model`/`Mesh`
 (`ModelInstances`; общие вершинный и индексный буферы в `VertexPool`), `Materials` (`Material` и его классы,
 `MaterialStorage`). Не объекты сцены, а общее для проходов — в `src/Engine/Graphics/`:
-`ShaderProgram`, `FullscreenShader`, `DMComputeShader`, `ConstantBuffers`, `VolumetricFog`.
+`ShaderProgram`, `FullscreenShader`, `ComputeShader`, `ConstantBuffers`, `VolumetricFog`.
 
 ## Соглашения
 

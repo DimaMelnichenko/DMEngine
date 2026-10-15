@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include "D3D\DMD3D.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "Logger\Logger.h"
 #include "Shaders\terrain_erosion_constants.h"
 
@@ -84,12 +84,12 @@ bool TerrainErosion::run( const std::vector<float>& heights, uint32_t size, floa
 	DMD3D& d3d = DMD3D::instance();
 	// Шейдеры — одинаковые в Debug и Release, строгий IEEE: результат кэшируется на диске и не должен зависеть ни от сборки,
 	// ни от debug-слоя (капли хаотичны: разница в последнем бите вырастает в метры)
-	DMComputeShader spawnShader, dropletShader, applyShader, thermalOutShader, thermalInShader;
-	if( !spawnShader.Initialize( "Shaders\\terrain_erosion.cs", "mainSpawn", true ) ||
-		!dropletShader.Initialize( "Shaders\\terrain_erosion.cs", "mainDroplet", true ) ||
-		!applyShader.Initialize( "Shaders\\terrain_erosion.cs", "mainApply", true ) ||
-		!thermalOutShader.Initialize( "Shaders\\terrain_erosion.cs", "mainThermalOut", true ) ||
-		!thermalInShader.Initialize( "Shaders\\terrain_erosion.cs", "mainThermalIn", true ) )
+	ComputeShader spawnShader, dropletShader, applyShader, thermalOutShader, thermalInShader;
+	if( !spawnShader.initialize( "Shaders\\terrain_erosion.cs", "mainSpawn", true ) ||
+		!dropletShader.initialize( "Shaders\\terrain_erosion.cs", "mainDroplet", true ) ||
+		!applyShader.initialize( "Shaders\\terrain_erosion.cs", "mainApply", true ) ||
+		!thermalOutShader.initialize( "Shaders\\terrain_erosion.cs", "mainThermalOut", true ) ||
+		!thermalInShader.initialize( "Shaders\\terrain_erosion.cs", "mainThermalIn", true ) )
 		return false;
 
 	// Карта капель — продолжена за край на кисть: капли доходят до края и уходят за него, без нетронутой рамки

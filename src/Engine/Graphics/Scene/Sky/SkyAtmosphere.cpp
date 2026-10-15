@@ -245,7 +245,7 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 		!m_skyViewShader.load( "Shaders\\sky_view.ps", TargetFormats::colorTarget( skyFormat ) ) ||
 		!m_cubeShader.load( "Shaders\\sky_cube.ps", TargetFormats::colorTarget( skyFormat ) ) ||
 		!m_backgroundShader.load( "Shaders\\sky_background.ps", SceneTargets::formats() ) ||
-		!m_aerialPerspectiveShader.Initialize( "Shaders\\aerial_perspective.cs", "main" ) ||
+		!m_aerialPerspectiveShader.initialize( "Shaders\\aerial_perspective.cs", "main" ) ||
 		!m_starShader.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\sky_stars.vs" ) ||
 		!m_starShader.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\sky_stars.ps" ) ||
 		m_starShader.createPhase( 0, 0 ) < 0 )

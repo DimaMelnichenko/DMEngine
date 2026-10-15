@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 #include "SceneObject.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "ShaderProgram.h"
 #include "Level\LevelSettings.h"
 #include "Terrain\GridMesh.h"
@@ -86,10 +86,10 @@ private:
 	std::vector<std::unique_ptr<Emitter>> m_emitters;
 	const TerrainHeightSource* m_terrain = nullptr;
 	Buffer m_terrainBuffer;
-	DMComputeShader m_initShader;
-	DMComputeShader m_resetShader;
-	DMComputeShader m_emitShader;
-	DMComputeShader m_updateShader;
+	ComputeShader m_initShader;
+	ComputeShader m_resetShader;
+	ComputeShader m_emitShader;
+	ComputeShader m_updateShader;
 	ShaderProgram m_program;
 	int m_phase = -1;
 	GridMesh m_quad;

@@ -5,7 +5,7 @@
 #include <vector>
 #include "DirectX.h"
 #include "Utils\utilites.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "Level\LevelSettings.h"
 #include "Model/DMModel.h"
 #include "ScattererPass.h"
@@ -222,11 +222,11 @@ private:
 	std::vector<int32_t> m_groundLayers;	// слой материала каждой роли (setGroundLayers)
 	std::vector<TerrainHydrology::Stone> m_streamStones;
 	std::vector<Layer> m_layers;
-	DMComputeShader m_computeShader;
-	DMComputeShader m_commandShader;	// buildCommands в Shaders\scatter.cs
+	ComputeShader m_computeShader;
+	ComputeShader m_commandShader;	// buildCommands в Shaders\scatter.cs
 	// Постоянные слои: раскладка на карту (placeWorld) и отбор кластеров кадра (cullPlaced) — с первым таким слоем
-	DMComputeShader m_placeShader;
-	DMComputeShader m_cullShader;
+	ComputeShader m_placeShader;
+	ComputeShader m_cullShader;
 	bool m_persistentShaders = false;
 	Buffer m_terrainBuffer;
 	Buffer m_frustumBuffer;

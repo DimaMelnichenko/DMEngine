@@ -12,7 +12,7 @@ namespace GS
 
 bool AmbientOcclusion::initialize()
 {
-	if( !m_shader.Initialize( "Shaders\\gtao.cs", "main" ) || !m_denoiseShader.Initialize( "Shaders\\gtao.cs", "mainDenoise" ) ||
+	if( !m_shader.initialize( "Shaders\\gtao.cs", "main" ) || !m_denoiseShader.initialize( "Shaders\\gtao.cs", "mainDenoise" ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( AmbientOcclusionBuffer ), m_constants ) )
 	{
 		LOG( "Ambient occlusion: shaders or constants are not created" );

@@ -3,7 +3,7 @@
 #include <string>
 #include "WaterField.h"
 #include "SceneObject.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 
 namespace GS
 {
@@ -41,14 +41,14 @@ private:
 	WaterSimulationSettings m_sourcesBuilt;	// настройки, по которым посчитан приток
 	float m_accumulated = 0.0f;				// время симуляции, ещё не отработанное шагами, с
 
-	DMComputeShader m_sourcesShader;
-	DMComputeShader m_fluxShader;
-	DMComputeShader m_waterShader;
-	DMComputeShader m_fillInitShader;
-	DMComputeShader m_fillShader;
-	DMComputeShader m_lakeInitShader;
-	DMComputeShader m_lakeGrowShader;
-	DMComputeShader m_lakeApplyShader;
+	ComputeShader m_sourcesShader;
+	ComputeShader m_fluxShader;
+	ComputeShader m_waterShader;
+	ComputeShader m_fillInitShader;
+	ComputeShader m_fillShader;
+	ComputeShader m_lakeInitShader;
+	ComputeShader m_lakeGrowShader;
+	ComputeShader m_lakeApplyShader;
 	Texture m_flux;					// R32G32B32A32_FLOAT: потоки к соседям, м³/с
 	StorageView m_fluxUAV;
 	Texture m_sources;				// R32_FLOAT: приток, м/с

@@ -41,8 +41,8 @@ float halton( uint32_t index, uint32_t base )
 
 bool VolumetricFog::initialize( const std::optional<Settings>& settings )
 {
-	if( !m_lightShader.Initialize( "Shaders\\volumetric_fog.cs", "mainLight" ) ||
-		!m_integrateShader.Initialize( "Shaders\\volumetric_fog.cs", "mainIntegrate" ) ||
+	if( !m_lightShader.initialize( "Shaders\\volumetric_fog.cs", "mainLight" ) ||
+		!m_integrateShader.initialize( "Shaders\\volumetric_fog.cs", "mainIntegrate" ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( VolumetricFogBuffer ), m_constants ) ||
 		!createVolumes() )
 		return false;

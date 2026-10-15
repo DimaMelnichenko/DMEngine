@@ -60,11 +60,11 @@ bool VolumetricCloud::initialize( const Settings& settings, SkyAtmosphere& atmos
 {
 	m_atmosphere = &atmosphere;
 	m_wind = &wind;
-	if( !m_shapeShader.Initialize( "Shaders\\cloud_noise.cs", "mainShape" ) ||
-		!m_detailShader.Initialize( "Shaders\\cloud_noise.cs", "mainDetail" ) ||
-		!m_weatherShader.Initialize( "Shaders\\cloud_noise.cs", "mainWeather" ) ||
-		!m_traceShader.Initialize( "Shaders\\volumetric_cloud.cs", "mainTrace" ) ||
-		!m_shadowShader.Initialize( "Shaders\\volumetric_cloud.cs", "mainShadow" ) ||
+	if( !m_shapeShader.initialize( "Shaders\\cloud_noise.cs", "mainShape" ) ||
+		!m_detailShader.initialize( "Shaders\\cloud_noise.cs", "mainDetail" ) ||
+		!m_weatherShader.initialize( "Shaders\\cloud_noise.cs", "mainWeather" ) ||
+		!m_traceShader.initialize( "Shaders\\volumetric_cloud.cs", "mainTrace" ) ||
+		!m_shadowShader.initialize( "Shaders\\volumetric_cloud.cs", "mainShadow" ) ||
 		!m_compositeShader.load( "Shaders\\cloud_composite.ps", SceneTargets::formats() ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( VolumetricCloudBuffer ), m_constants ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( CloudCompositeBuffer ), m_compositeConstants ) ||

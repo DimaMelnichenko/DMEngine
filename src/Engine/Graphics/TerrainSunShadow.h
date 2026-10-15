@@ -2,7 +2,7 @@
 
 #include "DirectX.h"
 #include "D3D\GpuResources.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "Terrain\TerrainHeightSource.h"
 #include "Shaders\terrain_sun_shadow_constants.h"
 
@@ -34,7 +34,7 @@ private:
 
 	bool createTexture( uint32_t size );
 
-	DMComputeShader m_shader;
+	ComputeShader m_shader;
 	Buffer m_constants;
 	Texture m_texture;
 	ShaderView m_shaderView;

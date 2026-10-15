@@ -1,7 +1,7 @@
 #pragma once
 
 #include "FullscreenShader.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "D3D\CubeTarget.h"
 #include "D3D\RenderTarget.h"
 #include "Shaders\sky_prefilter_constants.h"
@@ -78,9 +78,9 @@ private:
 	FullscreenShader m_prefilterShader;
 	FullscreenShader m_brdfShader;
 	FullscreenShader m_blendShader;
-	DMComputeShader m_irradianceShader;
-	DMComputeShader m_irradianceBlendShader;
-	DMComputeShader m_mipShader;
+	ComputeShader m_irradianceShader;
+	ComputeShader m_irradianceBlendShader;
+	ComputeShader m_mipShader;
 	Buffer m_constantBuffer;
 	Buffer m_blendConstants;
 	Buffer m_irradianceBlendConstants;

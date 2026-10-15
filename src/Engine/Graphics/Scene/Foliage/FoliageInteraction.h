@@ -2,7 +2,7 @@
 
 #include <vector>
 #include "SceneObject.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "Terrain\TerrainHeightSource.h"
 #include "Shaders\foliage_interaction_constants.h"
 
@@ -57,7 +57,7 @@ private:
 
 	bool m_initialized = false;
 	const TerrainHeightSource* m_terrain = nullptr;
-	DMComputeShader m_shader;
+	ComputeShader m_shader;
 	Buffer m_constants;
 	// Поле дважды: прошлый кадр читается, нынешний пишется (без чтения UAV форматов R16G16)
 	Texture m_fields[2];

@@ -32,10 +32,10 @@ Scatterer::Scatterer( const std::string& name, const ScatterSetSettings& setting
 
 bool Scatterer::Initialize()
 {
-	if( !m_computeShader.Initialize( "Shaders\\scatter.cs", "main" ) )
+	if( !m_computeShader.initialize( "Shaders\\scatter.cs", "main" ) )
 		return false;
 
-	if( !m_commandShader.Initialize( "Shaders\\scatter.cs", "buildCommands" ) )
+	if( !m_commandShader.initialize( "Shaders\\scatter.cs", "buildCommands" ) )
 		return false;
 
 	return DMD3D::instance().createShaderConstantBuffer( sizeof( TerrainHeightBuffer ), m_terrainBuffer ) &&
@@ -370,7 +370,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			return false;
 		if( !m_persistentShaders )
 		{
-			if( !m_placeShader.Initialize( "Shaders\\scatter.cs", "placeWorld" ) || !m_cullShader.Initialize( "Shaders\\scatter.cs", "cullPlaced" ) )
+			if( !m_placeShader.initialize( "Shaders\\scatter.cs", "placeWorld" ) || !m_cullShader.initialize( "Shaders\\scatter.cs", "cullPlaced" ) )
 				return false;
 			m_persistentShaders = true;
 		}

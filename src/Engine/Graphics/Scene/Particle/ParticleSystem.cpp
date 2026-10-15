@@ -35,10 +35,10 @@ bool ParticleSystem::initialize( const std::vector<Settings>& emitters, const Te
 {
 	m_terrain = terrain;
 	DMD3D& d3d = DMD3D::instance();
-	if( !m_initShader.Initialize( "Shaders\\particles.cs", "mainInit" ) ||
-		!m_resetShader.Initialize( "Shaders\\particles.cs", "mainReset" ) ||
-		!m_emitShader.Initialize( "Shaders\\particles.cs", "mainEmit" ) ||
-		!m_updateShader.Initialize( "Shaders\\particles.cs", "mainUpdate" ) ||
+	if( !m_initShader.initialize( "Shaders\\particles.cs", "mainInit" ) ||
+		!m_resetShader.initialize( "Shaders\\particles.cs", "mainReset" ) ||
+		!m_emitShader.initialize( "Shaders\\particles.cs", "mainEmit" ) ||
+		!m_updateShader.initialize( "Shaders\\particles.cs", "mainUpdate" ) ||
 		!d3d.createShaderConstantBuffer( sizeof( TerrainHeightBuffer ), m_terrainBuffer ) )
 		return false;
 

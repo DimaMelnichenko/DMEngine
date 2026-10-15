@@ -1,7 +1,7 @@
 #pragma once
 
 #include <optional>
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "ConstantBuffers.h"
 #include "Properties\PropertyContainer.h"
 #include "Scene\Level\LevelSettings.h"
@@ -49,8 +49,8 @@ private:
 	bool createVolumes();
 	bool enabled();
 
-	DMComputeShader m_lightShader;
-	DMComputeShader m_integrateShader;
+	ComputeShader m_lightShader;
+	ComputeShader m_integrateShader;
 	Buffer m_constants;
 	// Свет и плотность ячеек: этот кадр и прошлый по очереди
 	Texture m_lighting[2];

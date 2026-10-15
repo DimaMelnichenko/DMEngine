@@ -11,7 +11,7 @@ namespace GS
 
 bool TerrainSunShadow::initialize()
 {
-	if( !m_shader.Initialize( "Shaders\\terrain_sun_shadow.cs", "main" ) ||
+	if( !m_shader.initialize( "Shaders\\terrain_sun_shadow.cs", "main" ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( TerrainSunShadowBuffer ), m_constants ) )
 	{
 		LOG( "Terrain sun shadow: shader or constants are not created" );

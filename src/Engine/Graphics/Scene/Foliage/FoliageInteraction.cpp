@@ -61,7 +61,7 @@ bool FoliageInteraction::initialize( const TerrainHeightSource* terrain )
 {
 	m_terrain = terrain;
 	DMD3D& d3d = DMD3D::instance();
-	if( !m_shader.Initialize( "Shaders\\foliage_interaction.cs", "main" ) ||
+	if( !m_shader.initialize( "Shaders\\foliage_interaction.cs", "main" ) ||
 		!d3d.createShaderConstantBuffer( sizeof( FoliageInteractionBuffer ), m_constants ) )
 	{
 		LOG( "Foliage interaction: shader or constants are not created" );

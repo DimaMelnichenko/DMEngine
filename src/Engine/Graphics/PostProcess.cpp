@@ -32,8 +32,8 @@ bool PostProcess::initialize( const Settings& settings )
 	if( !m_shader.load( "Shaders\\tonemap.ps", DMD3D::backBufferFormats() ) ||
 		!m_bloomDownsample.load( "Shaders\\bloom_downsample.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
 		!m_bloomUpsample.load( "Shaders\\bloom_upsample.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
-		!m_histogramShader.Initialize( "Shaders\\exposure_histogram.cs", "main" ) ||
-		!m_adaptShader.Initialize( "Shaders\\exposure_adapt.cs", "main" ) )
+		!m_histogramShader.initialize( "Shaders\\exposure_histogram.cs", "main" ) ||
+		!m_adaptShader.initialize( "Shaders\\exposure_adapt.cs", "main" ) )
 		return false;
 
 	DMD3D& d3d = DMD3D::instance();

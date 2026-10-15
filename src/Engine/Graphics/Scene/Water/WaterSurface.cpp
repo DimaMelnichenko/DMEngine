@@ -23,9 +23,9 @@ bool WaterSurface::initialize( WaterField& field )
 	DMD3D& d3d = DMD3D::instance();
 	m_tilesPerSide = ( m_field->size + tileCells - 1 ) / tileCells;
 	const uint32_t tileCount = m_tilesPerSide * m_tilesPerSide;
-	if( !m_surfaceShader.Initialize( "Shaders\\water_surface.cs", "mainSurface" ) ||
-		!m_tilesResetShader.Initialize( "Shaders\\water_surface.cs", "mainTilesReset" ) ||
-		!m_tilesShader.Initialize( "Shaders\\water_surface.cs", "mainTiles" ) ||
+	if( !m_surfaceShader.initialize( "Shaders\\water_surface.cs", "mainSurface" ) ||
+		!m_tilesResetShader.initialize( "Shaders\\water_surface.cs", "mainTilesReset" ) ||
+		!m_tilesShader.initialize( "Shaders\\water_surface.cs", "mainTiles" ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterTilesBuffer ), m_tilesBuffer ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterSurfaceBuffer ), m_surfaceBuffer ) )
 		return false;

@@ -148,7 +148,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/GUI/QuickAdd.cpp
     src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp
     src/Engine/Graphics/Scene/Particle/ParticleSystem.cpp
-    src/Engine/Graphics/DMComputeShader.cpp
+    src/Engine/Graphics/ComputeShader.cpp
     src/ObjectLibrary/LibraryLoader.cpp
     src/ObjectLibrary/LibraryLoaderEnvironment.cpp
     src/ObjectLibrary/LibraryLoaderScene.cpp

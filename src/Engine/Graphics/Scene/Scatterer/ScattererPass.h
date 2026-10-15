@@ -2,7 +2,7 @@
 #include <vector>
 #include "DirectX.h"
 #include "Utils\utilites.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "RenderView.h"
 #include "Shaders\scatter_constants.h"
 
@@ -105,11 +105,11 @@ public:
 	// Объявление прохода раскладки (GpuPass.h): что слой пишет — счётчики, пулы, индексы, команды; что читает, добавляет Scatterer
 	PassDesc passDesc( const char* name ) const;
 	// Расставляет инстансы слоя: gridDim × gridDim ячеек сетки вокруг камеры
-	void populate( DMComputeShader& shader, uint16_t gridDim );
+	void populate( ComputeShader& shader, uint16_t gridDim );
 	// После расстановки: команды ExecuteIndirect по видам и группам (Shaders\scatter.cs, buildCommands). Последняя запись
 	// слоя в кадре: пулы, списки видов, команды и счётчики дальше только читаются — их барьеры встают в очередь
 	// (DMD3D::prepareShaderRead) и уходят группой в начале следующего прохода, а не перед первым ExecuteIndirect в каскаде
-	void buildCommands( DMComputeShader& shader );
+	void buildCommands( ComputeShader& shader );
 
 	// Постоянный слой: пул и кластеры на мир worldSize × worldSize м (после createBuffers); margin — наибольший радиус
 	// экземпляра, запас границ кластера по XZ; capacity — ёмкость пула (0 — экземпляр на ячейку мира, как у раскладки по маске)
@@ -117,7 +117,7 @@ public:
 	bool persistent() const { return m_populateParams.clusterCount > 0; }
 	// Объявление прохода раскладки на карту (пишет постоянный пул, кластеры и их счётчик) и сама раскладка (placeWorld)
 	PassDesc placeDesc( const char* name ) const;
-	void place( DMComputeShader& shader );
+	void place( ComputeShader& shader );
 	// Экземпляр постоянного слоя, разложенный не по маске, а на CPU (камни русел): положение основания, размер — множитель
 	// модели, поворот кватернионом, вариант и своя доля дальностей LOD
 	struct PlacedInstance
@@ -132,7 +132,7 @@ public:
 	// кластера — по самому широкому экземпляру. Сколько не поместилось в пул — в возврат (0 — все)
 	size_t placeInstances( const std::vector<PlacedInstance>& instances, const std::vector<Variant>& variants );
 	// Каждый кадр: экземпляры видимых кластеров — в пул кадра и списки видов (cullPlaced); что читает — placedReads
-	void cull( DMComputeShader& shader );
+	void cull( ComputeShader& shader );
 	std::vector<PassDesc::Read> placedReads() const;
 
 	// Для вершинного шейдера: пул инстансов (InstanceParam с INST_POS, INST_SCALE и INST_ROTATE — Shaders\instance.sh),

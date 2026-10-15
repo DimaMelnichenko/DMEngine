@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include "WaterField.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "Shaders\water_flow_constants.h"
 #include "Shaders\water_detail_flow_constants.h"
 #include "Shaders\water_detail_constants.h"
@@ -68,7 +68,7 @@ private:
 	WaterField* m_field = nullptr;
 	WaterSimulationSettings m_initial;
 	bool m_enabled = false;			// режим static
-	DMComputeShader m_staticShader;
+	ComputeShader m_staticShader;
 	// Из конвейера (TerrainHydrology): растр статичной воды — ручьи и маска озёр
 	Texture m_staticWaterTexture;
 	ShaderView m_staticWaterView;
@@ -76,16 +76,16 @@ private:
 	ShaderView m_stoneDragView;
 
 	// Течение сетки 1 м: только в рамке озёр и ручьёв с полем
-	DMComputeShader m_flowInitShader;
-	DMComputeShader m_flowFacesShader;
-	DMComputeShader m_flowAdvectShader;
-	DMComputeShader m_flowViscosityShader;
-	DMComputeShader m_flowDivergenceShader;
-	DMComputeShader m_flowRedShader;
-	DMComputeShader m_flowBlackShader;
-	DMComputeShader m_flowProjectShader;
-	DMComputeShader m_flowOutputShader;
-	DMComputeShader m_flowRestoreShader;
+	ComputeShader m_flowInitShader;
+	ComputeShader m_flowFacesShader;
+	ComputeShader m_flowAdvectShader;
+	ComputeShader m_flowViscosityShader;
+	ComputeShader m_flowDivergenceShader;
+	ComputeShader m_flowRedShader;
+	ComputeShader m_flowBlackShader;
+	ComputeShader m_flowProjectShader;
+	ComputeShader m_flowOutputShader;
+	ComputeShader m_flowRestoreShader;
 	Buffer m_flowBuffer;			// FlowParameters
 	Texture m_flowInfo;				// R32G32B32A32_FLOAT: заданная скорость, вид ячейки, глубина
 	Texture m_flowVelocity;			// R32G32_FLOAT: скорость на восточной и южной грани
@@ -123,7 +123,7 @@ private:
 	StorageView m_detailBoundsUAV;
 	ShaderView m_detailBoundsView;
 	Buffer m_detailBuffer;			// DetailParameters
-	DMComputeShader m_detailSurfaceShader;
+	ComputeShader m_detailSurfaceShader;
 	// Течение детальной сетки (solveDetailFlow): блоки 8 × 8 плиток с водой и сухим текселем вокруг — срез и номер блока
 	// в плитке (строка блоков — по Z мира); плитка мира → срез (−1 — нет); камни русла — препятствия
 	std::vector<DirectX::XMUINT2> m_detailBlockList;
@@ -132,17 +132,17 @@ private:
 	std::vector<int32_t> m_detailSliceOf;
 	uint32_t m_detailTilesPerSide = 0;
 	std::vector<TerrainHydrology::Stone> m_detailStones;
-	DMComputeShader m_detailFlowInitShader;
-	DMComputeShader m_detailFlowFacesShader;
-	DMComputeShader m_detailFlowAdvectShader;
-	DMComputeShader m_detailFlowViscosityShader;
-	DMComputeShader m_detailFlowNudgeShader;
-	DMComputeShader m_detailFlowDivergenceShader;
-	DMComputeShader m_detailFlowRedShader;
-	DMComputeShader m_detailFlowBlackShader;
-	DMComputeShader m_detailFlowProjectShader;
-	DMComputeShader m_detailFlowOutputShader;
-	DMComputeShader m_detailFlowRestoreShader;
+	ComputeShader m_detailFlowInitShader;
+	ComputeShader m_detailFlowFacesShader;
+	ComputeShader m_detailFlowAdvectShader;
+	ComputeShader m_detailFlowViscosityShader;
+	ComputeShader m_detailFlowNudgeShader;
+	ComputeShader m_detailFlowDivergenceShader;
+	ComputeShader m_detailFlowRedShader;
+	ComputeShader m_detailFlowBlackShader;
+	ComputeShader m_detailFlowProjectShader;
+	ComputeShader m_detailFlowOutputShader;
+	ComputeShader m_detailFlowRestoreShader;
 	Buffer m_detailFlowBuffer;		// DetailFlowParameters
 };
 

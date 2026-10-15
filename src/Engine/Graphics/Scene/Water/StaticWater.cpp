@@ -73,8 +73,8 @@ bool StaticWater::initialize( WaterField& field, const WaterSimulationSettings& 
 	m_field = &field;
 	m_initial = initial;
 	DMD3D& d3d = DMD3D::instance();
-	return m_staticShader.Initialize( "Shaders\\water_simulation.cs", "mainStatic" ) &&
-		   m_detailSurfaceShader.Initialize( "Shaders\\water_detail.cs", "mainDetailSurface" ) &&
+	return m_staticShader.initialize( "Shaders\\water_simulation.cs", "mainStatic" ) &&
+		   m_detailSurfaceShader.initialize( "Shaders\\water_detail.cs", "mainDetailSurface" ) &&
 		   d3d.createShaderConstantBuffer( sizeof( WaterDetailBuffer ), m_detailBuffer );
 }
 
@@ -359,28 +359,28 @@ bool StaticWater::createFlowResources()
 	// обрабатывался минутами (~170 с каждый)
 	const char* file = "Shaders\\water_flow.cs";
 	const bool same = true;
-	if( !m_flowInitShader.Initialize( file, "mainFlowInit", same ) || !m_flowFacesShader.Initialize( file, "mainFlowFaces", same ) ||
-		!m_flowAdvectShader.Initialize( file, "mainFlowAdvect", same ) ||
-		!m_flowViscosityShader.Initialize( file, "mainFlowViscosity", same ) ||
-		!m_flowDivergenceShader.Initialize( file, "mainFlowDivergence", same ) ||
-		!m_flowRedShader.Initialize( file, "mainFlowRed", same ) || !m_flowBlackShader.Initialize( file, "mainFlowBlack", same ) ||
-		!m_flowProjectShader.Initialize( file, "mainFlowProject", same ) ||
-		!m_flowOutputShader.Initialize( file, "mainFlowOutput", same ) || !m_flowRestoreShader.Initialize( file, "mainFlowRestore", same ) ||
+	if( !m_flowInitShader.initialize( file, "mainFlowInit", same ) || !m_flowFacesShader.initialize( file, "mainFlowFaces", same ) ||
+		!m_flowAdvectShader.initialize( file, "mainFlowAdvect", same ) ||
+		!m_flowViscosityShader.initialize( file, "mainFlowViscosity", same ) ||
+		!m_flowDivergenceShader.initialize( file, "mainFlowDivergence", same ) ||
+		!m_flowRedShader.initialize( file, "mainFlowRed", same ) || !m_flowBlackShader.initialize( file, "mainFlowBlack", same ) ||
+		!m_flowProjectShader.initialize( file, "mainFlowProject", same ) ||
+		!m_flowOutputShader.initialize( file, "mainFlowOutput", same ) || !m_flowRestoreShader.initialize( file, "mainFlowRestore", same ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterFlowBuffer ), m_flowBuffer ) )
 		return false;
 	// Детальная сетка — тот же шейдер с FLOW_DETAIL
 	const char* detail = "FLOW_DETAIL";
-	if( !m_detailFlowInitShader.Initialize( file, "mainFlowInit", same, detail ) ||
-		!m_detailFlowFacesShader.Initialize( file, "mainFlowFaces", same, detail ) ||
-		!m_detailFlowAdvectShader.Initialize( file, "mainFlowAdvect", same, detail ) ||
-		!m_detailFlowViscosityShader.Initialize( file, "mainFlowViscosity", same, detail ) ||
-		!m_detailFlowNudgeShader.Initialize( file, "mainFlowNudge", same, detail ) ||
-		!m_detailFlowDivergenceShader.Initialize( file, "mainFlowDivergence", same, detail ) ||
-		!m_detailFlowRedShader.Initialize( file, "mainFlowRed", same, detail ) ||
-		!m_detailFlowBlackShader.Initialize( file, "mainFlowBlack", same, detail ) ||
-		!m_detailFlowProjectShader.Initialize( file, "mainFlowProject", same, detail ) ||
-		!m_detailFlowOutputShader.Initialize( file, "mainFlowOutput", same, detail ) ||
-		!m_detailFlowRestoreShader.Initialize( file, "mainFlowRestore", same, detail ) ||
+	if( !m_detailFlowInitShader.initialize( file, "mainFlowInit", same, detail ) ||
+		!m_detailFlowFacesShader.initialize( file, "mainFlowFaces", same, detail ) ||
+		!m_detailFlowAdvectShader.initialize( file, "mainFlowAdvect", same, detail ) ||
+		!m_detailFlowViscosityShader.initialize( file, "mainFlowViscosity", same, detail ) ||
+		!m_detailFlowNudgeShader.initialize( file, "mainFlowNudge", same, detail ) ||
+		!m_detailFlowDivergenceShader.initialize( file, "mainFlowDivergence", same, detail ) ||
+		!m_detailFlowRedShader.initialize( file, "mainFlowRed", same, detail ) ||
+		!m_detailFlowBlackShader.initialize( file, "mainFlowBlack", same, detail ) ||
+		!m_detailFlowProjectShader.initialize( file, "mainFlowProject", same, detail ) ||
+		!m_detailFlowOutputShader.initialize( file, "mainFlowOutput", same, detail ) ||
+		!m_detailFlowRestoreShader.initialize( file, "mainFlowRestore", same, detail ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterDetailFlowBuffer ), m_detailFlowBuffer ) )
 		return false;
 	for( auto [texture, uav, format, name] :
@@ -457,7 +457,7 @@ std::string StaticWater::solveFlow( const Flow& flow )
 	};
 	// Привязка UAV после dispatch ставит барьер UAV → UAV: следующий проход видит записанное предыдущим
 	const uint32_t groups = static_cast<uint32_t>( m_flowTileList.size() );
-	auto dispatch = [&]( DMComputeShader& shader )
+	auto dispatch = [&]( ComputeShader& shader )
 	{
 		d3d.setUAV( 0, m_flowInfoUAV );
 		d3d.setUAV( 1, m_flowVelocityUAV );
@@ -724,7 +724,7 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 		d3d.setSRV( 10, m_field->stateView );
 	};
 	const uint32_t groups = blocks;
-	auto dispatch = [&]( DMComputeShader& shader )
+	auto dispatch = [&]( ComputeShader& shader )
 	{
 		d3d.setUAV( 0, infoUAV );
 		d3d.setUAV( 1, velocityUAV );

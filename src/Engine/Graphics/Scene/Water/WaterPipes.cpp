@@ -43,14 +43,14 @@ bool WaterPipes::initialize( WaterField& field, const WaterSimulationSettings& s
 {
 	m_field = &field;
 	DMD3D& d3d = DMD3D::instance();
-	if( !m_sourcesShader.Initialize( "Shaders\\water_simulation.cs", "mainSources" ) ||
-		!m_fluxShader.Initialize( "Shaders\\water_simulation.cs", "mainFlux" ) ||
-		!m_waterShader.Initialize( "Shaders\\water_simulation.cs", "mainWater" ) ||
-		!m_fillInitShader.Initialize( "Shaders\\water_simulation.cs", "mainFillInit" ) ||
-		!m_fillShader.Initialize( "Shaders\\water_simulation.cs", "mainFill" ) ||
-		!m_lakeInitShader.Initialize( "Shaders\\water_simulation.cs", "mainLakeInit" ) ||
-		!m_lakeGrowShader.Initialize( "Shaders\\water_simulation.cs", "mainLakeGrow" ) ||
-		!m_lakeApplyShader.Initialize( "Shaders\\water_simulation.cs", "mainLakeApply" ) )
+	if( !m_sourcesShader.initialize( "Shaders\\water_simulation.cs", "mainSources" ) ||
+		!m_fluxShader.initialize( "Shaders\\water_simulation.cs", "mainFlux" ) ||
+		!m_waterShader.initialize( "Shaders\\water_simulation.cs", "mainWater" ) ||
+		!m_fillInitShader.initialize( "Shaders\\water_simulation.cs", "mainFillInit" ) ||
+		!m_fillShader.initialize( "Shaders\\water_simulation.cs", "mainFill" ) ||
+		!m_lakeInitShader.initialize( "Shaders\\water_simulation.cs", "mainLakeInit" ) ||
+		!m_lakeGrowShader.initialize( "Shaders\\water_simulation.cs", "mainLakeGrow" ) ||
+		!m_lakeApplyShader.initialize( "Shaders\\water_simulation.cs", "mainLakeApply" ) )
 		return false;
 
 	auto create = [&]( DXGI_FORMAT format, const char* name, Texture& texture, StorageView& uav, ShaderView* srv )
@@ -164,7 +164,7 @@ bool WaterPipes::fillLakes( const WaterSimulationSettings& settings )
 
 	const ShaderView& heightMap = *m_field->terrain->terrainHeight().heightMap;
 	const uint32_t groups = ( m_field->size + groupSize - 1 ) / groupSize;
-	auto run = [&]( DMComputeShader& shader, uint32_t iterations )
+	auto run = [&]( ComputeShader& shader, uint32_t iterations )
 	{
 		for( uint32_t i = 0; i < iterations; ++i )
 		{

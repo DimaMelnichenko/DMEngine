@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include "FullscreenShader.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "D3D\RenderTarget.h"
 #include "D3D\ReadbackRing.h"
 #include "D3D\GpuProfiler.h"
@@ -95,8 +95,8 @@ private:
 	FullscreenShader m_shader;
 	FullscreenShader m_bloomDownsample;
 	FullscreenShader m_bloomUpsample;
-	DMComputeShader m_histogramShader;
-	DMComputeShader m_adaptShader;
+	ComputeShader m_histogramShader;
+	ComputeShader m_adaptShader;
 	RenderTarget m_bloom[bloomLevelCount];
 	Buffer m_constantBuffer;
 	Buffer m_bloomConstants;

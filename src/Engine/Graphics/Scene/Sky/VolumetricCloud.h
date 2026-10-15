@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SceneObject.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "FullscreenShader.h"
 #include "Properties\PropertyContainer.h"
 #include "Level\LevelSettings.h"
@@ -60,11 +60,11 @@ private:
 	bool m_initialized = false;
 	PropertyContainer m_properties;
 
-	DMComputeShader m_shapeShader;
-	DMComputeShader m_detailShader;
-	DMComputeShader m_weatherShader;
-	DMComputeShader m_traceShader;
-	DMComputeShader m_shadowShader;
+	ComputeShader m_shapeShader;
+	ComputeShader m_detailShader;
+	ComputeShader m_weatherShader;
+	ComputeShader m_traceShader;
+	ComputeShader m_shadowShader;
 	FullscreenShader m_compositeShader;
 	Buffer m_constants;
 	Buffer m_compositeConstants;

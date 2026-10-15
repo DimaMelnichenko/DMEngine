@@ -306,7 +306,7 @@ OpenGL, `ORM` — R затенение, G шероховатость, B мета
 3. **Водосбор** — на CPU по размытой карте (`TerrainHydrology::catchment`: Priority-Flood, Barnes, Lehman, Mulla 2014, и
    сток D8, O'Callaghan и Mark 1984) — для карт ниже.
 
-Шейдеры эрозии собираются одинаково в Debug и Release и со строгим IEEE (`DMComputeShader::Initialize( …, true )`,
+Шейдеры эрозии собираются одинаково в Debug и Release и со строгим IEEE (`ComputeShader::initialize( …, true )`,
 `ShaderCompiler::compile( …, reproducible )`: `-O3 -Gis`): капли хаотичны, и разница в последнем бите (Debug без
 оптимизаций, слияние умножения со сложением в драйвере, которое меняют debug-слой и GPU-based validation) вырастает в метры.
 Исходная карта R16 переводится в float точным делением, а не `Convert` DirectXTex (он округляет в Debug и Release

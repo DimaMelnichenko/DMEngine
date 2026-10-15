@@ -23,9 +23,9 @@ bool SkyLight::initialize()
 	if( !m_prefilterShader.load( "Shaders\\sky_prefilter.ps", TargetFormats::colorTarget( resultFormat ) ) ||
 		!m_brdfShader.load( "Shaders\\brdf_lut.ps", TargetFormats::colorTarget( DXGI_FORMAT_R16G16_FLOAT ) ) ||
 		!m_blendShader.load( "Shaders\\sky_light_blend.ps", TargetFormats::colorTarget( resultFormat ) ) ||
-		!m_irradianceShader.Initialize( "Shaders\\sky_irradiance.cs", "main" ) ||
-		!m_irradianceBlendShader.Initialize( "Shaders\\sky_irradiance_blend.cs", "main" ) ||
-		!m_mipShader.Initialize( "Shaders\\cube_downsample.cs", "main" ) )
+		!m_irradianceShader.initialize( "Shaders\\sky_irradiance.cs", "main" ) ||
+		!m_irradianceBlendShader.initialize( "Shaders\\sky_irradiance_blend.cs", "main" ) ||
+		!m_mipShader.initialize( "Shaders\\cube_downsample.cs", "main" ) )
 		return false;
 
 	DMD3D& d3d = DMD3D::instance();
@@ -138,7 +138,7 @@ void SkyLight::captureIrradiance( Result& result )
 										 { { &result.irradianceUAV, "irradiance SH" } } } );
 	DMD3D::instance().setSRV( 0, m_source->facesSRV() );
 	m_irradianceShader.setUAVBuffer( 0, result.irradianceUAV );
-	m_irradianceShader.Dispatch( 64u, 0.0f );
+	m_irradianceShader.dispatchGroups( 1, 1, 1 );
 }
 
 void SkyLight::prefilterFace( Result& result, int32_t face )

@@ -186,7 +186,7 @@ public:
 	const TargetFormats& passFormats() const { return m_passFormats; }
 	// Цели заднего буфера для прогрева пайплайнов тонмаппинга и GUI (цели сцены — SceneTargets::formats)
 	static TargetFormats backBufferFormats();
-	// Compute-пайплайн стадии — собрать заранее (DMComputeShader::Initialize)
+	// Compute-пайплайн стадии — собрать заранее (ComputeShader::initialize)
 	void warmComputePipeline( const ShaderStage& stage ) { computePipeline( stage ); }
 	// Конец загрузки уровня: набор пайплайнов собран, новые в кадре — «ленивые» (сборка PSO в кадре — фриз)
 	void markPipelinesWarm() { m_pipelinesWarm = true; }
@@ -248,7 +248,7 @@ public:
 	void setVertexBuffer( const Buffer& buffer, uint32_t stride, uint32_t offset = 0 );
 	void setIndexBuffer( const Buffer& buffer, DXGI_FORMAT format, uint32_t offset = 0 );
 	void unbindGeometry();										// без буферов вершин и индексов (вершины по SV_VertexID)
-	// Compute-шейдер — свой пайплайн (root signature общая): DMComputeShader перед dispatch
+	// Compute-шейдер — свой пайплайн (root signature общая): ComputeShader перед dispatch
 	void setComputeShader( const ShaderStage& stage );
 
 	// --- Вызовы -----------------------------------------------------------------------------------------------------------

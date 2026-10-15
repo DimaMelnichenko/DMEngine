@@ -2,7 +2,7 @@
 
 #include "WaterField.h"
 #include "SceneObject.h"
-#include "DMComputeShader.h"
+#include "ComputeShader.h"
 #include "ShaderProgram.h"
 #include "Terrain\GridMesh.h"
 #include "Shaders\water_tiles_constants.h"
@@ -38,9 +38,9 @@ private:
 
 
 	WaterField* m_field = nullptr;
-	DMComputeShader m_surfaceShader;
-	DMComputeShader m_tilesResetShader;
-	DMComputeShader m_tilesShader;
+	ComputeShader m_surfaceShader;
+	ComputeShader m_tilesResetShader;
+	ComputeShader m_tilesShader;
 	ShaderProgram m_surfaceProgram;
 	int m_surfacePhase = -1;
 	int m_detailPhase = -1;
