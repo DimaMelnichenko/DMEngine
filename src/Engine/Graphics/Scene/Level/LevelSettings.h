@@ -234,7 +234,8 @@ struct TerrainDescription
 	std::vector<TerrainLayerDescription> layers;
 };
 
-// Строка FarTerrain (Levels.far_terrain): дальние горы вокруг карты уровня — своя грубая карта высот (Tools/gen_far_terrain.py)
+// Значения по умолчанию правил — вариант C сетки снимков против картинки-ориентира (выбор Dimok 2026-10-17: снега больше,
+// лес ниже). Строка FarTerrain (Levels.far_terrain): дальние горы вокруг карты уровня — своя грубая карта высот (Tools/gen_far_terrain.py)
 // на той же сетке узлов CDLOD, что карта; у карты высота переходит в её высоту, материал — правила по высоте и уклону на
 // слоях террейна по ролям (TerrainLayers.role). Карта высот, её место и масштаб — только в базе; окно — дальность, полосы
 // стыка и правила
@@ -254,13 +255,13 @@ struct FarTerrainSettings
 	SettingRange screeSlope{ 25.0f, 38.0f };	// осыпи по уклону…
 	SettingRange screeHeight{ 900.0f, 1300.0f };	// …выше этой высоты, м
 	SettingRange meadowHeight{ 200.0f, 600.0f };	// трава долины → сухой луг, м
-	SettingRange snowHeight{ 1900.0f, 2200.0f };	// снег по высоте (на склоне к югу), м
-	float snowNorth = 400.0f;			// на склоне к северу снег ниже на столько, м
+	SettingRange snowHeight{ 1400.0f, 1700.0f };	// снег по высоте (на склоне к югу), м
+	float snowNorth = 500.0f;			// на склоне к северу снег ниже на столько, м
 	float snowNoise = 250.0f;			// граница снега гуляет пятнами на столько, м
-	SettingRange snowSlope{ 40.0f, 55.0f };		// круче — снег не держится, градусы
-	SettingRange forestLine{ 1300.0f, 1700.0f };	// лес (тон земли) — ниже, к верху полосы сходит на нет, м
+	SettingRange snowSlope{ 45.0f, 60.0f };		// круче — снег не держится, градусы
+	SettingRange forestLine{ 1400.0f, 1700.0f };	// лес (тон земли) — ниже, к верху полосы сходит на нет, м
 	SettingRange forestSlope{ 28.0f, 38.0f };	// круче — леса нет, градусы
-	DirectX::XMFLOAT3 forestColor = DirectX::XMFLOAT3( 0.035f, 0.055f, 0.03f );	// цвет леса издали, линейный
+	DirectX::XMFLOAT3 forestColor = DirectX::XMFLOAT3( 0.03f, 0.05f, 0.03f );	// цвет леса издали, линейный
 	SettingRange macroDistance{ 800.0f, 2500.0f };	// дальше текстуры слоёв — в третьем масштабе (повтор не виден сеткой), м
 	float macroTextureScale = 8.0f;		// во столько раз крупнее дальнего масштаба
 	int32_t shadowResolution = 512;		// текселей тени солнца на всё кольцо по стороне (TerrainSunShadow)
