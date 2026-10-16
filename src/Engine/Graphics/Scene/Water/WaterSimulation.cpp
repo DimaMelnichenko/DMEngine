@@ -67,10 +67,10 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	if( m_staticMode )
 	{
 		// Статичная вода: озёра и ручьи — одно поле из растра; шагов нет, течение озёр — установившийся расчёт
-		if( !m_staticWater.build( settings ) || !m_staticWater.createFlowResources() )
+		if( !m_staticWater.build( settings ) || !m_staticWater.createFlowResources() || !m_foam.initialize( m_field ) )
 			return false;
 		task.enterProgressFrame( 0.9f, "Flow" );
-		m_staticWater.solve( settings.flow, [this] { buildSurface(); } );
+		solveFlow( settings );
 		m_initialized = true;
 		logWaterSummary();
 		return true;
@@ -104,6 +104,12 @@ void WaterSimulation::buildSurface()
 	m_staticWater.buildDetailSurface();
 }
 
+void WaterSimulation::solveFlow( const Settings& settings )
+{
+	m_staticWater.solve( settings.flow, [this] { buildSurface(); } );
+	m_foam.build( m_staticWater, settings );
+}
+
 void WaterSimulation::frameConstants( const RenderView&, FrameParameters& constants )
 {
 	if( m_initialized && m_staticWater.detailTileCount() > 0 )
@@ -128,7 +134,7 @@ void WaterSimulation::renderCustom( const RenderContext& context )
 {
 	if( context.pass != MeshPass::transparent )
 		return;
-	m_surface.render( context, currentSettings(), m_staticWater );
+	m_surface.render( context, currentSettings(), m_staticWater, m_foam );
 }
 
 void WaterSimulation::applyFlowChanges()
@@ -146,7 +152,21 @@ void WaterSimulation::applyFlowChanges()
 	// mainStatic заново: у озёр нули течения, ручьи — как в растре; затем течение озёр и ручьёв, поверхность (детальная
 	// вода берёт течение сетки 1 м) и течение детальной сетки
 	if( m_staticWater.build( current ) )
-		m_staticWater.solve( current.flow, [this] { buildSurface(); } );
+		solveFlow( current );
+}
+
+void WaterSimulation::applyFoamChanges()
+{
+	if( !m_initialized || !m_staticMode || !m_foam.ready() )
+		return;
+	// Подокно «Surface» не правили с прошлой сверки — сверять нечего; правили не пену (цвет, рябь) — поле то же
+	const uint64_t revision = m_surfaceProperties.revision();
+	if( revision == m_foamRevision )
+		return;
+	m_foamRevision = revision;
+	const Settings current = settings();
+	if( !m_foam.builtWith( current ) )
+		m_foam.build( m_staticWater, current );
 }
 
 void WaterSimulation::logWaterSummary()
@@ -197,7 +217,7 @@ bool WaterSimulation::rebuild( const TerrainHydrology::Result& hydrology )
 	{
 		if( !m_staticWater.build( current ) )
 			return false;
-		m_staticWater.solve( current.flow, [this] { buildSurface(); } );
+		solveFlow( current );
 	}
 	else
 		m_surface.setDirty();
@@ -263,7 +283,7 @@ bool WaterSimulation::exportState( const std::string& prefix, std::string& reaso
 	}
 	LOG( "Water state: " + prefix + "_depth.dds, _vx.dds, _vz.dds" );
 
-	return m_staticWater.exportDetail( prefix, reason );
+	return m_staticWater.exportDetail( prefix, reason ) && m_foam.exportState( m_staticWater, prefix, reason );
 }
 
 bool WaterSimulation::exportDischarge( const std::string& file, std::string& reason )

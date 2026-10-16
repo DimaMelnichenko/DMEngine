@@ -338,7 +338,7 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 корня в `vertexWorldPosition` — `Shaders/foliage_interaction.sh`; давит камера у земли, звери — `addInteractor`; окно
 «Foliage interaction», не сохраняется; `docs/wind.md`),
 `WaterSimulation` (вода — части на общем поле `WaterField`: трубы `WaterPipes`, статичная вода с течением и кэшем
-`StaticWater`, поверхность `WaterSurface`, кривые русел в редакторе `StreamCurves`; режим строки `mode`: `static` — на `Test`, как реки-сплайны и озёра UE Water, но одним полем:
+`StaticWater`, поле пены, которую несёт течение, `WaterFoam` (при загрузке, `Shaders/water_foam.cs`), поверхность `WaterSurface`, кривые русел в редакторе `StreamCurves`; режим строки `mode`: `static` — на `Test`, как реки-сплайны и озёра UE Water, но одним полем:
 уровень ручьёв (Маннинг) и озёр (перелив) — одно поле по сети с подпором, растр, поверхность — те же тайлы, что у
 симуляции; вода для травы и мокрой земли — тот же растр, всё из конвейера рельефа и воды (`TerrainHydrology`), без шагов;
 течение ручьёв и озёр — установившийся расчёт при загрузке (или из кэша `cache\water\flow_<ключ>.bin` по отпечатку входа и

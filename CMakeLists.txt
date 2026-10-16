@@ -177,6 +177,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Water/WaterField.cpp
     src/Engine/Graphics/Scene/Water/WaterPipes.cpp
     src/Engine/Graphics/Scene/Water/StaticWater.cpp
+    src/Engine/Graphics/Scene/Water/WaterFoam.cpp
     src/Engine/Graphics/Scene/Water/WaterSurface.cpp
     src/Engine/Graphics/Scene/Water/StreamCurves.cpp
     src/Engine/Graphics/Scene/Water/WaterRipples.cpp

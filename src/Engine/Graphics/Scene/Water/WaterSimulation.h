@@ -7,6 +7,7 @@
 #include "WaterField.h"
 #include "WaterPipes.h"
 #include "StaticWater.h"
+#include "WaterFoam.h"
 #include "WaterSurface.h"
 #include "StreamCurves.h"
 
@@ -19,7 +20,7 @@ namespace GS
 //   конвейера и источникам-помощникам, при загрузке — налив озёр и прогрев, в игре — шаги по времени кадра;
 // - режим static (WaterSimulationSettings::staticWater) — статичная вода (StaticWater): озёра и ручьи конвейера рельефа и
 //   воды (TerrainHydrology) одним полем уровня, течение — установившийся расчёт при загрузке или из кэша, у русел — детальная
-//   вода 0,25 м;
+//   вода 0,25 м; пена, которую несёт течение, — поле при загрузке (WaterFoam);
 // - поверхность (WaterSurface) — свой вызов в проходе transparent: тайлы с водой, отобранные на GPU;
 // - кривые русел в редакторе (StreamCurves): подокна «Channels» и «Streams», точки во вьюпорте.
 // Окно «Water simulation» — приток и испарение, подокна «Surface», «Flow», «Channels», «Streams»
@@ -55,6 +56,8 @@ public:
 	bool rebuild( const TerrainHydrology::Result& hydrology );
 	// Правили подокно «Flow» — течение озёр заново (режим static); зовётся, когда редактор не тянет ползунок
 	void applyFlowChanges();
+	// Правили настройки пены (подокно «Surface») — поле пены заново (режим static); зовётся, когда редактор не тянет ползунок
+	void applyFoamChanges();
 	// Расход ячеек, м³/с (сумма оттоков к соседям), — в DDS R32_FLOAT на сетке карты высот (строка 0 — дальний край
 	// по z) — для проверки. Ждёт GPU; false — воды нет или файл не записан (reason)
 	bool exportDischarge( const std::string& file, std::string& reason );
@@ -69,6 +72,8 @@ private:
 	const Settings& currentSettings() const;
 	// Уровень поверхности и границы тайлов, затем детальная вода у русел
 	void buildSurface();
+	// Течение статичной воды (с поверхностью) и поле пены по нему
+	void solveFlow( const Settings& settings );
 	// Объём воды, наибольшая глубина и число мокрых ячеек — в лог (ждёт GPU)
 	void logWaterSummary();
 
@@ -81,10 +86,12 @@ private:
 	mutable Settings m_current;				// настройки кадра (currentSettings) и номер правки окна, по которому они прочитаны
 	mutable uint64_t m_currentRevision = ~0ull;
 	uint64_t m_flowRevision = ~0ull;		// номер правки «Flow», по которому сверено течение (applyFlowChanges)
+	uint64_t m_foamRevision = ~0ull;		// номер правки «Surface», по которому сверено поле пены (applyFoamChanges)
 
 	WaterField m_field;
 	WaterPipes m_pipes;
 	StaticWater m_staticWater;
+	WaterFoam m_foam;
 	WaterSurface m_surface;
 	StreamCurves m_streams;
 };

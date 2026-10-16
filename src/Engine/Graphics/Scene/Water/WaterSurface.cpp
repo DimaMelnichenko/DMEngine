@@ -1,5 +1,6 @@
 #include "WaterSurface.h"
 #include "StaticWater.h"
+#include "WaterFoam.h"
 #include <algorithm>
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
@@ -176,7 +177,8 @@ void WaterSurface::warmPipelines( const PassStates& states )
 									states.scene, { m_surfacePhase, m_detailPhase } );
 }
 
-void WaterSurface::render( const RenderContext& context, const WaterSimulationSettings& settings, const StaticWater& water )
+void WaterSurface::render( const RenderContext& context, const WaterSimulationSettings& settings, const StaticWater& water,
+						   const WaterFoam& foam )
 {
 	DMD3D& d3d = DMD3D::instance();
 	const TerrainHeight height = m_field->terrain->terrainHeight();
@@ -198,7 +200,7 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	params.foamSpeed = std::max( current.foamSpeed, 0.01f );
 	params.foamShear = std::max( current.foamShear, 0.01f );
 	params.detailDistance = water.detailTileCount() > 0 ? std::max( current.detailDistance, 0.0f ) : 0.0f;
-	params.foamSlope = std::max( current.channels.foamSlope, 0.01f );
+	params.foamField = foam.ready() ? 1.0f : 0.0f;
 	params.terrainHeightMultiplier = height.heightMultiplier;
 	params.terrainHeightOffset = height.heightOffset;
 	params.terrainDetailTile = height.detailTileSize;
@@ -221,6 +223,12 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 		d3d.setSRV( 3, *height.heightMap );
 	if( foamTexture )
 		d3d.setSRV( 4, System::textures().get( foamTextureName )->srv() );
+	if( foam.ready() )
+	{
+		d3d.setSRV( 5, foam.coarseView() );
+		if( water.detailTileCount() > 0 )
+			d3d.setSRV( 6, foam.detailView() );
+	}
 	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
 	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
 	// Детальные плитки у русел: своя сетка (0,25 м); уровень и течение — детальная вода (SLOT_WATER_DETAIL); грубая

@@ -24,10 +24,12 @@ DM_CONSTANTS( WaterSurfaceBuffer, SLOT_CB_MATERIAL )
 	DM_FIELD( float, calmRipple );		// и на стоячей (ветер)
 	DM_FIELD( float, refraction );		// сдвиг выборки цвета сцены по нормали, доля экрана на метр толщины
 	DM_FIELD( float, roughness );			// шероховатость поверхности (размытие отражения неба, ширина блика)
-	DM_FIELD( float, foamSpeed );			// пена — быстрее этого, м/с (полная — вдвое быстрее)
-	DM_FIELD( float, foamShear );			// и там, где сдвиг скорости больше, 1/с
+	// Без поля пены (режим simulated: течение меняется каждый кадр) пена — в пикселе: быстрее этого, м/с (полная — вдвое
+	// быстрее), и там, где сдвиг скорости больше, 1/с
+	DM_FIELD( float, foamSpeed );
+	DM_FIELD( float, foamShear );
 	DM_FIELD( float, detailDistance );	// м: ближе — поверхность у русел рисует детальная плитка (0 — её нет)
-	DM_FIELD( float, foamSlope );			// пена слива — где поверхность детальной воды круче, м на м (полная — втрое круче)
+	DM_FIELD( float, foamField );			// 1 — поле пены (WaterFoam: слоты 5 и 6 water.ps), 0 — пена в пикселе
 	// Точная земля — урез по ней (water.ps): карта высот (слот 3) в метры и детальная плитка (terrain_detail.sh)
 	DM_FIELD( float, terrainHeightMultiplier );
 	DM_FIELD( float, terrainHeightOffset );

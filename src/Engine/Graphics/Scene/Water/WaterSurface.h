@@ -12,6 +12,7 @@ namespace GS
 {
 
 class StaticWater;
+class WaterFoam;
 
 // Поверхность воды — свой вызов в проходе transparent (читает цвет и глубину сцены). Уровень поверхности и границы тайлов
 // по глубине поля (water_surface.cs, mainSurface) — после шагов труб или расчёта статичной воды; каждый кадр — видимые тайлы
@@ -29,7 +30,8 @@ public:
 	void setDirty() { m_dirty = true; }
 	// Видимые тайлы главного вида и детальные плитки статичной воды — в списки экземпляров косвенных вызовов
 	void cull( const RenderView& view, const WaterSimulationSettings& settings, const StaticWater& water );
-	void render( const RenderContext& context, const WaterSimulationSettings& settings, const StaticWater& water );
+	// foam — поле пены статичной воды (пусто — пена по скорости и сдвигу в пикселе)
+	void render( const RenderContext& context, const WaterSimulationSettings& settings, const StaticWater& water, const WaterFoam& foam );
 	void warmPipelines( const PassStates& states );
 	// Уровень поверхности, м (−1e30 — сухо): ресурс сцены SLOT_WATER_LEVEL — глубина в точке, урез внутри клетки
 	const ShaderView& levelView() const { return m_levelView; }

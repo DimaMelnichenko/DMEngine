@@ -42,7 +42,17 @@ public:
 	void buildDetailSurface();
 	uint32_t detailTileCount() const { return m_detailTileCount; }
 	float detailTileSize() const { return m_detailTileSize; }
+	uint32_t detailSide() const { return m_detailSide; }
 	const ShaderView& detailWaterView() const { return m_detailWaterView; }
+	// Плитка среза по сетке мира (x, z) — на CPU и буфером (uint2 на срез)
+	const std::vector<DirectX::XMUINT2>& detailCoords() const { return m_detailCoords; }
+	const ShaderView& detailTileCoordsView() const { return m_detailTileCoordsView; }
+	// Блоки 8 × 8 детальной воды с водой (срез, номер блока в плитке) и тайлы 8 × 8 сетки 1 м с озёрами и ручьями — те, что
+	// считает течение
+	uint32_t detailBlockCount() const { return static_cast<uint32_t>( m_detailBlockList.size() ); }
+	const ShaderView& detailBlocksView() const { return m_detailBlocksView; }
+	uint32_t flowTileCount() const { return static_cast<uint32_t>( m_flowTileList.size() ); }
+	const ShaderView& flowTilesView() const { return m_flowTilesView; }
 	const ShaderView& detailBoundsView() const { return m_detailBoundsView; }
 	// Сопротивление камней русла: площадь поперёк потока на м² дна — своя и средняя вокруг (R32G32_FLOAT)
 	const ShaderView& stoneDragView() const { return m_stoneDragView; }
