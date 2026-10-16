@@ -11,7 +11,8 @@ namespace GS
 
 // Поле пены статичной воды (Shaders/water_foam.cs, docs/water.md, «Пена»): пена, которую несёт течение. Источник — быстрая
 // вода, сдвиг скорости (норма тензора скоростей деформации) и слив (поверхность круче foam_slope); пена у источника растёт
-// к нему, переносится течением, тает за время жизни foam_lifetime и густеет там, где течение сходится (ручей входит в плёс).
+// к нему, переносится течением, тает за время жизни (foam_lifetime на быстрой воде, foam_still_lifetime — в стоячей) и
+// густеет там, где течение сходится (ручей входит в плёс).
 // Течение установившееся, поэтому поле считается при загрузке после течения и при правке настроек пены, а поверхность
 // (water.ps) берёт его одной выборкой. Две сетки: детальная у русел (плитки детальной воды, 0,25 м) и сетка 1 м — в клетках
 // у русел её источник — пена детальной сетки, и шлейф ручья продолжается в озеро
@@ -21,7 +22,7 @@ public:
 	bool initialize( WaterField& field );
 	// Поле заново — по течению статичной воды и настройкам пены (время в лог); false — течения нет
 	bool build( const StaticWater& water, const WaterSimulationSettings& settings );
-	// Поле посчитано по тем же настройкам пены (foam_speed, foam_shear, foam_slope, foam_lifetime)
+	// Поле посчитано по тем же настройкам пены (foam_speed, foam_shear, foam_slope, foam_lifetime, foam_still_lifetime)
 	bool builtWith( const WaterSimulationSettings& settings ) const;
 	bool ready() const { return m_ready; }
 	// Доля пены: сетка 1 м (R16_FLOAT, строки — против Z мира) и детальная (массив по плиткам детальной воды, с полем)
@@ -59,6 +60,7 @@ private:
 	float m_builtShear = -1.0f;
 	float m_builtSlope = -1.0f;
 	float m_builtLifetime = -1.0f;
+	float m_builtStillLifetime = -1.0f;
 };
 
 }

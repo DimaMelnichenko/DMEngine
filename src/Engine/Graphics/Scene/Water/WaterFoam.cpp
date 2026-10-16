@@ -60,7 +60,8 @@ bool WaterFoam::createGrid( Grid& grid, uint32_t width, uint32_t height, uint32_
 bool WaterFoam::builtWith( const WaterSimulationSettings& settings ) const
 {
 	return m_ready && settings.foamSpeed == m_builtSpeed && settings.foamShear == m_builtShear &&
-		   settings.channels.foamSlope == m_builtSlope && settings.foamLifetime == m_builtLifetime;
+		   settings.channels.foamSlope == m_builtSlope && settings.foamLifetime == m_builtLifetime &&
+		   settings.foamStillLifetime == m_builtStillLifetime;
 }
 
 bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& settings )
@@ -80,6 +81,9 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 		m_detailSlices = water.detailTileCount();
 	}
 	const float lifetime = std::max( settings.foamLifetime, 0.1f );
+	const float stillLifetime = std::max( settings.foamStillLifetime, 0.1f );
+	// Шагов — на пять самых долгих времён жизни: в стоячей воде поле устанавливается дольше
+	const float longest = std::max( lifetime, stillLifetime );
 
 	WaterFoamBuffer params = {};
 	params.foamSpeed = std::max( settings.foamSpeed, 0.01f );
@@ -90,7 +94,8 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 	auto solve = [&]( Grid& grid, ComputeShader& sourceShader, ComputeShader& stepShader, float timeStep, bool detailGrid, const char* name )
 	{
 		params.foamTimeStep = timeStep;
-		params.foamDecay = std::exp( -timeStep / lifetime );
+		params.foamLifetime = lifetime;
+		params.foamStillLifetime = stillLifetime;
 		params.foamGrowth = 1.0f - std::exp( -timeStep / growthTime );
 		Device::updateResourceData( m_constants, params );
 		for( StorageView& uav : grid.uavs )
@@ -130,7 +135,7 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 			shader.dispatchGroups( m_grid.groupCount( detailGrid ), 1, 1 );
 		};
 		pass( -1, 0, sourceShader );
-		const uint32_t steps = std::min( static_cast<uint32_t>( std::ceil( settleLifetimes * lifetime / timeStep ) ), maxSteps );
+		const uint32_t steps = std::min( static_cast<uint32_t>( std::ceil( settleLifetimes * longest / timeStep ) ), maxSteps );
 		int read = 1;
 		for( uint32_t s = 0; s < steps; ++s )
 		{
@@ -154,8 +159,9 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 	m_builtShear = settings.foamShear;
 	m_builtSlope = settings.channels.foamSlope;
 	m_builtLifetime = settings.foamLifetime;
+	m_builtStillLifetime = settings.foamStillLifetime;
 	const double ms = std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count();
-	LOG( "Water foam: lifetime " + std::to_string( lifetime ) + " s; detail " + std::to_string( detailSteps ) + " steps over " +
+	LOG( "Water foam: lifetime " + std::to_string( lifetime ) + " s, in still water " + std::to_string( stillLifetime ) + " s; detail " + std::to_string( detailSteps ) + " steps over " +
 		 std::to_string( detail ? water.detailBlockCount() : 0 ) + " blocks 8x8, 1 m grid " + std::to_string( coarseSteps ) +
 		 " steps over " + std::to_string( water.flowTileCount() ) + " tiles; ms: " + std::to_string( ms ) );
 	return true;

@@ -16,9 +16,10 @@ DM_CONSTANTS( WaterFoamBuffer, b5 )
 	DM_FIELD( float, foamShear );			// и где сдвиг скорости больше, 1/с
 	DM_FIELD( float, foamSlope );			// и где поверхность круче (слив), м на м
 	DM_FIELD( float, foamTimeStep );		// шаг установления, с
-	DM_FIELD( float, foamDecay );			// exp(−шаг / время жизни пены)
+	DM_FIELD( float, foamLifetime );		// время жизни пены на быстрой воде, с
+	DM_FIELD( float, foamStillLifetime );	// и в стоячей, с
 	DM_FIELD( float, foamGrowth );			// доля шага, на которую пена у источника растёт к нему
-	DM_FIELD( float2, foamPadding );
+	DM_FIELD( float, foamPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

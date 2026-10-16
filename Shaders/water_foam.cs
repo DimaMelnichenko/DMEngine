@@ -4,7 +4,8 @@
 // Источник — где вода быстрая, где скорость резко меняется (норма тензора скоростей деформации, Neyret 2003, «Advected
 // Textures»: вращение воды целиком пены не даёт), где поверхность круто падает (слив на уступе ступени) и где камень русла
 // выходит к поверхности (вода над ним тоньше stoneFoamDepth). Пена у источника
-// растёт к нему, переносится течением (назад по течению, полулагранжево, Stam 1999) и тает за время жизни; где течение
+// растёт к нему, переносится течением (назад по течению, полулагранжево, Stam 1999) и тает за время жизни (в медленной
+// воде — дольше: в бурной пузыри лопаются и пену перемешивает, в заводях и плёсах она держится плотами); где течение
 // сходится (∇·u < 0: ручей входит в плёс и замедляется), она густеет, где расходится — редеет. Итераций — на ~5 времён
 // жизни: дальше поле не меняется. Сначала детальная сетка у русел (0,25 м, плитки детальной воды), затем сетка 1 м: в
 // клетках у русел её источник — пена детальной сетки, и шлейф ручья продолжается в озеро за краем плиток.
@@ -58,11 +59,14 @@ float foamSource( float speed, float shear, float slope )
 		   fallFoam * saturate( ( slope - g_foamSlope ) / ( 2.0f * g_foamSlope ) );
 }
 
-// Пена за шаг: принесённая течением тает и сжимается, у источника растёт к нему
-float foamStep( float carried, float divergence, float source )
+// Пена за шаг: принесённая течением тает (в медленной воде — дольше) и сжимается, у источника растёт к нему
+float foamStep( float carried, float divergence, float source, float speed )
 {
+	// С той скорости, на которой пена рождается (foam_speed), — foamLifetime, в стоячей воде — foamStillLifetime, между
+	// ними — по логарифму: вода около 1 м/с ближе к быстрой (на каскадах пена не заливает плёсы), стоячая держит пену долго
+	const float lifetime = g_foamStillLifetime * pow( g_foamLifetime / g_foamStillLifetime, saturate( speed / g_foamSpeed ) );
 	const float compression = exp( clamp( -divergence * g_foamTimeStep, -maxCompression, maxCompression ) );
-	const float foam = carried * g_foamDecay * compression;
+	const float foam = carried * exp( -g_foamTimeStep / lifetime ) * compression;
 	return min( foam + max( source - foam, 0.0f ) * g_foamGrowth, maxFoam );
 }
 
@@ -123,7 +127,7 @@ void mainDetailStep( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 		float4 n[4];
 		detailNeighbors( texel, water, n );
 		const float divergence = ( n[0].y - n[1].y + n[2].z - n[3].z ) / ( 2.0f * detailStep() );
-		foam = foamStep( carried, divergence, g_detailSource.Load( int4( texel, 0 ) ) );
+		foam = foamStep( carried, divergence, g_detailSource.Load( int4( texel, 0 ) ), length( water.yz ) );
 	}
 	uint3 copies[4];
 	const uint count = detailCopies( cell, copies );
@@ -203,7 +207,7 @@ void mainCoarseStep( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 		float4 n[4];
 		coarseNeighbors( cell, water, n );
 		const float divergence = ( n[0].y - n[1].y + n[2].z - n[3].z ) / ( 2.0f * g_gridCellSize );
-		foam = foamStep( carried, divergence, g_coarseSource.Load( int3( cell, 0 ) ) );
+		foam = foamStep( carried, divergence, g_coarseSource.Load( int3( cell, 0 ) ), length( water.yz ) );
 	}
 	g_coarseOutput[cell] = foam;
 }

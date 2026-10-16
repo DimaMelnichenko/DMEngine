@@ -477,7 +477,9 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		{ "foam_speed", "Foam speed", DM_SETTING( foamSpeed ), 0.1f, 5.0f, "m/s", "", 0, "surface" },
 		{ "foam_shear", "Foam shear", DM_SETTING( foamShear ), 0.1f, 10.0f, "1/s", "", 0, "surface" },
 		{ "foam_lifetime", "Foam lifetime", DM_SETTING( foamLifetime ), 0.1f, 30.0f, "s",
-		  "The flow carries foam downstream; it fades in this time (longer trails, foam gathering in pools)", 0, "surface" },
+		  "The flow carries foam downstream; on fast water (from Foam speed) it fades in this time", 0, "surface" },
+		{ "foam_still_lifetime", "Foam still lifetime", DM_SETTING( foamStillLifetime ), 0.1f, 120.0f, "s",
+		  "In still and slow water foam lasts longer: rafts of foam drift into pools, backwaters and lakes", 0, "surface" },
 		{ "foam_texture_repeat", "Foam texture repeat", DM_SETTING( foamTextureRepeat ), 0.1f, 4.0f, "m",
 		  "The foam texture (Textures: water_foam) repeats every so many metres across the flow; along it the pattern is longer, "
 		  "like the ripple", 0, "surface" },
