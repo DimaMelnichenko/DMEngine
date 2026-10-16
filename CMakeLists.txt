@@ -228,6 +228,8 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp
     src/Engine/Graphics/Scene/Terrain/CDLODQuadtree.cpp
     src/Engine/Graphics/Scene/Terrain/FarTerrain.cpp
+    src/Engine/Graphics/Scene/Terrain/GlacialErosion.cpp
+    src/Engine/Graphics/Scene/Terrain/FluvialErosion.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainPipeline.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainPaintTool.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainEdits.cpp

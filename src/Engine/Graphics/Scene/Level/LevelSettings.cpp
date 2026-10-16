@@ -480,6 +480,78 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 	return schema;
 }
 
+const SettingsSchema<FluvialErosionSettings>& fluvialErosionSchema()
+{
+	using Settings = FluvialErosionSettings;
+	static const char* rebuilt = "; the mountains are eroded again when the edit ends";
+	static const SettingsSchema<Settings> schema = {
+		{ "resolution", "Resolution", DM_SETTING( resolution ), 0.0f, 0.0f, "",
+		  std::string( "Cells of the river grid per side: finer - narrower valleys, 4 times longer" ) + rebuilt, 0, "", { 512, 1024, 2048 } },
+		{ "erodibility", "Erodibility", DM_SETTING( erodibility ), 0.0f, 1.0e-3f, "1/yr",
+		  std::string( "K of the stream power law: incision = K * catchment^m * slope" ) + rebuilt, settingLogarithmic },
+		{ "area_exponent", "Area exponent", DM_SETTING( areaExponent ), 0.1f, 1.0f, "",
+		  std::string( "m of the stream power law: larger - big rivers cut deeper against small streams" ) + rebuilt },
+		{ "years", "Years", DM_SETTING( years ), 0.0f, 1.0e6f, "yr", std::string( "Years of the river erosion" ) + rebuilt,
+		  settingLogarithmic },
+		{ "steps", "Steps", DM_SETTING( steps ), 1.0f, 200.0f, "", std::string( "Steps of the run: the scheme is implicit, more - more exact" ) + rebuilt },
+		{ "hillslope_diffusion", "Hillslope diffusion", DM_SETTING( hillslopeDiffusion ), 0.0f, 1.0f, "m2/yr",
+		  std::string( "Slopes between the valleys are rounded" ) + rebuilt },
+		{ "routing_noise", "Routing noise", DM_SETTING( routingNoise ), 0.0f, 50.0f, "m",
+		  std::string( "Noise of the flow direction only (not of the heights): without it on even slopes the streams run in "
+					   "parallel furrows along the grid" ) + rebuilt },
+		{ "uplift_scale", "Uplift scale", DM_SETTING( upliftScale ), 0.0f, 20000.0f, "m",
+		  std::string( "Relief regrown by uplift and erosion (Cordonnier et al. 2016): the envelope of the mountains is the map "
+					   "smoothed this wide, the ridges and valleys come from the rivers; 0 - the rivers cut the given relief" ) + rebuilt },
+		{ "uplift_time", "Uplift time", DM_SETTING( upliftTime ), 1000.0f, 1.0e7f, "yr",
+		  std::string( "Uplift rate - the envelope height per this time" ) + rebuilt, settingLogarithmic },
+		{ "uplift_floor", "Uplift floor", DM_SETTING( upliftFloor ), -500.0f, 2000.0f, "m",
+		  std::string( "Lowlands of the map lower than this (smoothed) are not uplifted: the basin, the valleys and the sea stay, the "
+					   "mountain rivers flow into them" ) + rebuilt },
+		{ "map_fade_from,map_fade_to", "Map fade", DM_SETTING( mapFade ), 0.0f, 10000.0f, "m",
+		  std::string( "Near the level map the erosion fades out: full farther than the end from its edge" ) + rebuilt, settingRangeControl },
+	};
+	return schema;
+}
+
+const SettingsSchema<GlacialErosionSettings>& glacialErosionSchema()
+{
+	using Settings = GlacialErosionSettings;
+	static const char* rebuilt = "; the mountains are eroded again when the edit ends";
+	static const SettingsSchema<Settings> schema = {
+		{ "resolution", "Resolution", DM_SETTING( resolution ), 0.0f, 0.0f, "",
+		  std::string( "Cells of the ice grid per side: finer - narrower troughs, the run is 8 times longer per step" ) + rebuilt, 0, "",
+		  { 256, 512, 1024 } },
+		{ "ela", "ELA", DM_SETTING( ela ), 0.0f, 4000.0f, "m",
+		  std::string( "Equilibrium line altitude of the ice age: snow accumulates above, ice melts below" ) + rebuilt },
+		{ "balance_gradient", "Balance gradient", DM_SETTING( balanceGradient ), 0.0f, 20.0f, "m/yr per km",
+		  std::string( "Mass balance per kilometre of height above the equilibrium line" ) + rebuilt },
+		{ "max_accumulation", "Max accumulation", DM_SETTING( maxAccumulation ), 0.0f, 10.0f, "m/yr",
+		  std::string( "Accumulation does not exceed this" ) + rebuilt },
+		{ "flow", "Flow", DM_SETTING( flow ), 0.0f, 10.0f, "", std::string( "Multiplier of the ice deformation (Glen's law, temperate ice)" ) + rebuilt },
+		{ "sliding", "Sliding", DM_SETTING( sliding ), 0.0f, 10.0f, "", std::string( "Multiplier of the basal sliding: it erodes" ) + rebuilt },
+		{ "ice_years", "Ice years", DM_SETTING( iceYears ), 0.0f, 5000.0f, "yr", std::string( "The ice builds up before the erosion" ) + rebuilt },
+		{ "erosion_years", "Erosion years", DM_SETTING( erosionYears ), 0.0f, 5000.0f, "yr",
+		  std::string( "Years of the erosion; the erosion is accelerated - a step erodes as thousands of years" ) + rebuilt },
+		{ "erosion", "Erosion", DM_SETTING( erosion ), 0.0f, 0.05f, "m/m",
+		  std::string( "Bed lowering per metre of the basal sliding" ) + rebuilt, settingLogarithmic },
+		{ "max_erosion", "Max erosion", DM_SETTING( maxErosion ), 0.0f, 3000.0f, "m", std::string( "The bed goes down not more than this" ) + rebuilt },
+		{ "map_fade_from,map_fade_to", "Map fade", DM_SETTING( mapFade ), 0.0f, 10000.0f, "m",
+		  std::string( "Near the level map the erosion fades out: full farther than the end from its edge" ) + rebuilt, settingRangeControl },
+		{ "polish", "Polish", DM_SETTING( polish ), 0.0f, 1.0f, "", std::string( "Small relief under the ice is smoothed" ) + rebuilt },
+		{ "frost_peaks", "Frost peaks", DM_SETTING( frostPeaks ), 0.0f, 400.0f, "m",
+		  std::string( "Frost shattering: sharp bare spikes along the convex ridges high up; the shape of the massifs stays; 0 - none" ) +
+		  rebuilt },
+		{ "frost_peak_spacing", "Frost peak spacing", DM_SETTING( frostPeakSpacing ), 64.0f, 2000.0f, "m",
+		  std::string( "Spacing of the spikes along the ridges" ) + rebuilt },
+		{ "frost_peak_height_from,frost_peak_height_to", "Frost peak height", DM_SETTING( frostPeakHeight ), 0.0f, 5000.0f, "m",
+		  std::string( "The spikes grow from the start to the end of this height above the sea" ) + rebuilt, settingRangeControl },
+		{ "frost_peak_fade_from,frost_peak_fade_to", "Frost peak fade", DM_SETTING( frostPeakFade ), 0.0f, 10000.0f, "m",
+		  std::string( "Near the level map the spikes fade out only at the seam: full farther than the end from its edge (they do "
+					   "not change the massifs - the mountains above the valley get them too)" ) + rebuilt, settingRangeControl },
+	};
+	return schema;
+}
+
 const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema()
 {
 	using R = TerrainLayerRules;

@@ -234,6 +234,56 @@ struct TerrainDescription
 	std::vector<TerrainLayerDescription> layers;
 };
 
+// Строка FluvialErosion (FarTerrain.fluvial_erosion): речная эрозия гор вокруг карты до ледниковой (FluvialErosion,
+// закон stream power схемой FastScape) — сеть долин, по которой потом идут ледники
+struct FluvialErosionSettings
+{
+	// Значения по умолчанию — подбор 2026-10-17 с Dimok: сетка 128 м (на 64 м массивы «тощие»), рельеф заново из подъёма
+	uint32_t id = 0;					// строка FluvialErosion
+	int32_t resolution = 512;			// клеток сетки по стороне (512, 1024, 2048): у гор 64 км — 128, 64, 32 м
+	float erodibility = 6.0e-6f;		// K закона stream power, 1/год (при m = 0,5)
+	float areaExponent = 0.55f;			// m: врез ∝ водосбор^m · уклон
+	float years = 2.0e6f;				// лет
+	int32_t steps = 100;					// шагов (схема неявная — устойчива при любом)
+	float hillslopeDiffusion = 0.05f;	// склоны сглаживаются, м²/год
+	float routingNoise = 10.0f;			// шум выбора стока, ± м: без него на ровном склоне борозды вдоль осей сетки
+	// Рельеф заново из подъёма (Cordonnier и др. 2016): огибающая — карта, размытая на upliftScale, м (0 — нет: реки режут
+	// готовый рельеф); подъём — огибающая / upliftTime, м/год
+	float upliftScale = 3000.0f;
+	float upliftTime = 650000.0f;
+	float upliftFloor = 150.0f;			// низины ниже (сглаженные) не поднимаются — котловина, долины, море, м
+	SettingRange mapFade{ 3000.0f, 8000.0f };	// у карты уровня эрозия гаснет: полная — дальше to от её края, м
+};
+const SettingsSchema<FluvialErosionSettings>& fluvialErosionSchema();
+
+// Строка GlacialErosion (FarTerrain.glacial_erosion): ледниковая эрозия гор вокруг карты (GlacialErosion,
+// docs/far_terrain.md, «Ледниковая эрозия») — лёд ледникового периода на ложе гор: где копится и как течёт, сколько стирает
+struct GlacialErosionSettings
+{
+	// Значения по умолчанию — подбор 2026-10-17 с Dimok: ледники долинами (~5 % кольца), а не шапкой; зубцы и над долиной
+	uint32_t id = 0;					// строка GlacialErosion
+	int32_t resolution = 512;			// клеток сетки льда по стороне (256, 512, 1024): у гор 64 км — 256, 128, 64 м
+	float ela = 2200.0f;				// линия равновесия, м: выше снег копится, ниже лёд тает
+	float balanceGradient = 10.0f;		// баланс массы, м/год на км высоты над линией равновесия
+	float maxAccumulation = 1.0f;		// наибольшее накопление, м/год
+	float flow = 1.0f;					// множитель течения льда (закон Глена, тёплый лёд)
+	float sliding = 1.0f;				// множитель скольжения по ложу
+	float iceYears = 400.0f;			// лет набора льда до эрозии
+	float erosionYears = 800.0f;		// лет эрозии (ускоренной: размыв за шаг — как за тысячи лет)
+	float erosion = 0.001f;				// размыв ложа, м на м пути скольжения
+	float maxErosion = 800.0f;			// ложе ниже исходного не больше, м
+	SettingRange mapFade{ 3000.0f, 8000.0f };	// у карты уровня эрозия гаснет: полная — дальше to от её края, м
+	float polish = 0.7f;				// мелкий рельеф под льдом сглаживается, 0…1
+	// Морозное выветривание: острые голые зубцы по выпуклым гребням выше линии льда (как на ориентире — много мелких пиков по
+	// кромке хребта), форму массива не меняют
+	float frostPeaks = 220.0f;			// высота зубцов, м; 0 — нет
+	float frostPeakSpacing = 180.0f;	// их шаг вдоль гребня, м
+	SettingRange frostPeakHeight{ 1200.0f, 2000.0f };	// зубцы набирают высоту от from до to над морем, м
+	// У карты зубцы гаснут только у самого стыка (форму массива они не меняют): полные — дальше to от её края, м
+	SettingRange frostPeakFade{ 500.0f, 1500.0f };
+};
+const SettingsSchema<GlacialErosionSettings>& glacialErosionSchema();
+
 // Значения по умолчанию правил — вариант C сетки снимков против картинки-ориентира (выбор Dimok 2026-10-17: снега больше,
 // лес ниже). Строка FarTerrain (Levels.far_terrain): дальние горы вокруг карты уровня — своя грубая карта высот (Tools/gen_far_terrain.py)
 // на той же сетке узлов CDLOD, что карта; у карты высота переходит в её высоту, материал — правила по высоте и уклону на
@@ -265,6 +315,8 @@ struct FarTerrainSettings
 	SettingRange macroDistance{ 800.0f, 2500.0f };	// дальше текстуры слоёв — в третьем масштабе (повтор не виден сеткой), м
 	float macroTextureScale = 8.0f;		// во столько раз крупнее дальнего масштаба
 	int32_t shadowResolution = 512;		// текселей тени солнца на всё кольцо по стороне (TerrainSunShadow)
+	std::optional<FluvialErosionSettings> fluvial;	// строка FluvialErosion — речная эрозия; NULL — нет
+	std::optional<GlacialErosionSettings> glacier;	// строка GlacialErosion — ледниковая эрозия; NULL — нет
 };
 const SettingsSchema<FarTerrainSettings>& farTerrainSchema();
 

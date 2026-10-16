@@ -62,6 +62,39 @@ void LibraryLoader::loadFarTerrain( uint32_t farTerrainId, LevelDescription& lev
 	file.bind( ":name", mountains.heightMap );
 	if( file.executeStep() )
 		mountains.heightMapFile = file.getColumn( "file" ).getString();
+
+	// Речная эрозия гор — строка FluvialErosion (FarTerrain.fluvial_erosion); NULL — без неё
+	if( SettingsDatabaseDetail::hasColumn( query, "fluvial_erosion" ) && !query.getColumn( "fluvial_erosion" ).isNull() &&
+		db.tableExists( "FluvialErosion" ) )
+	{
+		const uint32_t fluvialId = query.getColumn( "fluvial_erosion" ).getUInt();
+		SQLite::Statement fluvial( db, "SELECT * FROM FluvialErosion WHERE id = :id" );
+		fluvial.bind( ":id", fluvialId );
+		if( fluvial.executeStep() )
+		{
+			GS::FluvialErosionSettings& settings = mountains.fluvial.emplace();
+			settings.id = fluvialId;
+			readSettings( fluvial, GS::fluvialErosionSchema(), settings, "Fluvial erosion " + std::to_string( fluvialId ) );
+		}
+		else
+			LOG( "Far terrain: no row " + std::to_string( fluvialId ) + " in table FluvialErosion" );
+	}
+	// Ледниковая эрозия гор — строка GlacialErosion (FarTerrain.glacial_erosion); NULL — без неё
+	if( SettingsDatabaseDetail::hasColumn( query, "glacial_erosion" ) && !query.getColumn( "glacial_erosion" ).isNull() &&
+		db.tableExists( "GlacialErosion" ) )
+	{
+		const uint32_t glacierId = query.getColumn( "glacial_erosion" ).getUInt();
+		SQLite::Statement glacier( db, "SELECT * FROM GlacialErosion WHERE id = :id" );
+		glacier.bind( ":id", glacierId );
+		if( glacier.executeStep() )
+		{
+			GS::GlacialErosionSettings& settings = mountains.glacier.emplace();
+			settings.id = glacierId;
+			readSettings( glacier, GS::glacialErosionSchema(), settings, "Glacial erosion " + std::to_string( glacierId ) );
+		}
+		else
+			LOG( "Far terrain: no row " + std::to_string( glacierId ) + " in table GlacialErosion" );
+	}
 }
 
 bool LibraryLoader::loadTerrain( uint32_t terrainId, LevelDescription& level )
@@ -469,7 +502,15 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 		}
 
 		if( data.farTerrain && level.farTerrain )
+		{
 			updateSettings( db, "FarTerrain", level.farTerrain->id, GS::farTerrainSchema(), *data.farTerrain, previousOf( previous.farTerrain ) );
+			if( data.farTerrain->fluvial && level.farTerrain->fluvial )
+				updateSettings( db, "FluvialErosion", level.farTerrain->fluvial->id, GS::fluvialErosionSchema(), *data.farTerrain->fluvial,
+								previous.farTerrain && previous.farTerrain->fluvial ? &*previous.farTerrain->fluvial : nullptr );
+			if( data.farTerrain->glacier && level.farTerrain->glacier )
+				updateSettings( db, "GlacialErosion", level.farTerrain->glacier->id, GS::glacialErosionSchema(), *data.farTerrain->glacier,
+								previous.farTerrain && previous.farTerrain->glacier ? &*previous.farTerrain->glacier : nullptr );
+		}
 
 		if( data.water && level.waterSimulationId )
 		{

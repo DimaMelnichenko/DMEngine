@@ -21,7 +21,10 @@ class TerrainPipeline;
 // дальности, с уровня, чей квад — тексель карты гор, — своя «LOD distance»), вершина — тот же код (Shaders/cdlod_patch.sh),
 // высота у края карты — её высота (Shaders/far_terrain.sh): стык без трещин. Внутри карты в карту гор запекается её мип того же
 // текселя (заново по новой итоговой карте): мипы гор у края не врут. Материал — правила по высоте и уклону на слоях террейна
-// по ролям, лес — тоном земли. Только главный вид: в каскадах теней и Scene::bounds гор нет (их тени — TODO, этап 16).
+// по ролям, лес — тоном земли. Эрозия гор — речная (строка FluvialErosion, FluvialErosion: сеть долин), затем ледниковая
+// (строка GlacialErosion, GlacialErosion: троги, кары) — после чтения карты, с кэшем на диске (каталог far_eroded\ рядом с
+// картой гор) и заново после правки подокон «Fluvial erosion» и «Glacial erosion». Только главный вид: в
+// каскадах теней и Scene::bounds гор нет — их тень даёт карта края тени (TerrainSunShadow, farHeight).
 // Уровни мельче уровня карты гор — дальности карты: камера далеко от карты над обрывами гор — там возможны трещины; камера
 // дальше двух «LOD distance» от карты — трещины на краю карты (её корень не грубее своего уровня)
 class FarTerrain : public SceneObject, private CDLODQuadtree::Bounds
@@ -52,6 +55,11 @@ private:
 	using Box = CDLODQuadtree::Box;
 
 	bool loadHeights( const FarTerrainSettings& settings );
+	// Эрозия исходной карты (m_original → m_source): из кэша или прогоном — речная (CPU) и ледниковая (GPU), каждая на своей
+	// грубой сетке, изменение — к карте гор кубическим B-сплайном, под льдом мелкий рельеф сглажен. Без строк — исходная карта
+	void applyErosion();
+	FluvialErosionSettings fluvialSettings() const;
+	GlacialErosionSettings glacierSettings() const;
 	bool createShader();
 	// Карта гор с мипом карты внутри неё → текстура с мипами и пирамида min / max на CPU, перепады узлов по уровням
 	bool bake();
@@ -66,7 +74,8 @@ private:
 	FarTerrainSettings m_loaded;		// строка из базы: поля только базы — как есть
 	uint32_t m_size = 0;				// текселей в стороне карты гор
 	uint32_t m_mipBias = 0;				// уровень, чей квад — её тексель: мип гор уровня L — L − m_mipBias
-	std::vector<float> m_source;		// карта гор из файла, м, строки с севера
+	std::vector<float> m_original;		// карта гор из файла, м, строки с севера
+	std::vector<float> m_source;		// она же после ледниковой эрозии
 	std::vector<float> m_heights;		// она же с мипом карты внутри — то, что видят вершины
 	// Пирамида min / max: уровень k (с 1) — тексель 2^k текселей, строки с севера; уровень 0 — m_heights
 	std::vector<std::vector<float>> m_minPyramid;
@@ -92,6 +101,9 @@ private:
 	Texture m_heightTexture;
 	ShaderView m_heightView;
 	PropertyContainer m_properties;
+	PropertyContainer m_fluvialProperties;	// подокно «Fluvial erosion» (есть, если у гор есть строка FluvialErosion)
+	PropertyContainer m_glacierProperties;	// подокно «Glacial erosion» (есть, если у гор есть строка GlacialErosion)
+	uint32_t m_erosionRevision = 0;		// правки подокон, по которым размыты горы
 	bool m_initialized = false;
 };
 

@@ -5,8 +5,13 @@
 #include <cstring>
 #include <filesystem>
 #include <DirectXTex.h>
+#include <fstream>
 #include "CDLODTerrain.h"
+#include "FluvialErosion.h"
+#include "GlacialErosion.h"
 #include "TerrainPipeline.h"
+#include "Utils\Fingerprint.h"
+#include "Utils\ValueNoise.h"
 #include "D3D\TextureImages.h"
 #include "ConstantBuffers.h"
 #include "Logger\Logger.h"
@@ -33,6 +38,102 @@ XMFLOAT2 slopeCosines( const SettingRange& degrees )
 XMFLOAT2 heightRange( const SettingRange& range )
 {
 	return XMFLOAT2( range.from, std::max( range.to, range.from + 0.01f ) );
+}
+
+// Кубический B-сплайн: веса четырёх текселей при доле t между вторым и третьим
+void splineWeights( float t, float weights[4] )
+{
+	const float u = 1.0f - t;
+	weights[0] = u * u * u / 6.0f;
+	weights[1] = ( 3.0f * t * t * t - 6.0f * t * t + 4.0f ) / 6.0f;
+	weights[2] = ( -3.0f * t * t * t + 3.0f * t * t + 3.0f * t + 1.0f ) / 6.0f;
+	weights[3] = t * t * t / 6.0f;
+}
+
+// Сетка n² → (n · factor)² кубическим B-сплайном (гладко, без изломов на границах грубых клеток: они были бы видны сеткой
+// в свете), за краем — край; строки с севера, центры клеток совпадают
+std::vector<float> upsample( const std::vector<float>& coarse, uint32_t n, uint32_t factor )
+{
+	const uint32_t m = n * factor;
+	std::vector<float> rows( static_cast<size_t>( n ) * m );	// по строкам грубой сетки, столбцы — тонкие
+	auto at = [n]( int64_t i ) { return static_cast<uint32_t>( std::clamp<int64_t>( i, 0, n - 1 ) ); };
+	for( uint32_t col = 0; col < m; ++col )
+	{
+		const float u = ( col + 0.5f ) / factor - 0.5f;
+		const float base = std::floor( u );
+		float w[4];
+		splineWeights( u - base, w );
+		const int64_t i = static_cast<int64_t>( base );
+		for( uint32_t row = 0; row < n; ++row )
+		{
+			const float* line = &coarse[static_cast<size_t>( row ) * n];
+			rows[static_cast<size_t>( row ) * m + col] = w[0] * line[at( i - 1 )] + w[1] * line[at( i )] + w[2] * line[at( i + 1 )] +
+														 w[3] * line[at( i + 2 )];
+		}
+	}
+	std::vector<float> fine( static_cast<size_t>( m ) * m );
+	for( uint32_t row = 0; row < m; ++row )
+	{
+		const float v = ( row + 0.5f ) / factor - 0.5f;
+		const float base = std::floor( v );
+		float w[4];
+		splineWeights( v - base, w );
+		const int64_t j = static_cast<int64_t>( base );
+		const float* r0 = &rows[static_cast<size_t>( at( j - 1 ) ) * m];
+		const float* r1 = &rows[static_cast<size_t>( at( j ) ) * m];
+		const float* r2 = &rows[static_cast<size_t>( at( j + 1 ) ) * m];
+		const float* r3 = &rows[static_cast<size_t>( at( j + 2 ) ) * m];
+		float* out = &fine[static_cast<size_t>( row ) * m];
+		for( uint32_t col = 0; col < m; ++col )
+			out[col] = w[0] * r0[col] + w[1] * r1[col] + w[2] * r2[col] + w[3] * r3[col];
+	}
+	return fine;
+}
+
+// Три прохода прямоугольного фильтра радиуса radius по обеим осям — гаусс с сигмой ≈ radius + 0,5; за краем — край
+std::vector<float> blur( const std::vector<float>& values, uint32_t size, int32_t radius )
+{
+	std::vector<float> current = values;
+	std::vector<float> next( values.size() );
+	const float scale = 1.0f / static_cast<float>( 2 * radius + 1 );
+	for( int pass = 0; pass < 3; ++pass )
+	{
+		for( int axis = 0; axis < 2; ++axis )
+		{
+			for( uint32_t line = 0; line < size; ++line )
+			{
+				auto index = [&]( int64_t i )
+				{
+					const size_t k = static_cast<size_t>( std::clamp<int64_t>( i, 0, size - 1 ) );
+					return axis == 0 ? static_cast<size_t>( line ) * size + k : k * size + line;
+				};
+				float sum = 0.0f;
+				for( int32_t k = -radius; k <= radius; ++k )
+					sum += current[index( k )];
+				for( uint32_t i = 0; i < size; ++i )
+				{
+					next[index( i )] = sum * scale;
+					sum += current[index( static_cast<int64_t>( i ) + radius + 1 )] - current[index( static_cast<int64_t>( i ) - radius )];
+				}
+			}
+			std::swap( current, next );
+		}
+	}
+	return current;
+}
+
+bool loadFloats( const std::filesystem::path& path, uint32_t size, std::vector<float>& values )
+{
+	ScratchImage image;
+	if( FAILED( LoadFromDDSFile( path.wstring().c_str(), DDS_FLAGS_NONE, nullptr, image ) ) || image.GetImageCount() == 0 )
+		return false;
+	const Image& source = *image.GetImage( 0, 0, 0 );
+	if( source.width != size || source.height != size || source.format != DXGI_FORMAT_R32_FLOAT )
+		return false;
+	values.resize( static_cast<size_t>( size ) * size );
+	for( uint32_t row = 0; row < size; ++row )
+		std::memcpy( &values[static_cast<size_t>( row ) * size], source.pixels + row * source.rowPitch, size * sizeof( float ) );
+	return true;
 }
 
 }
@@ -77,7 +178,21 @@ bool FarTerrain::initialize( const FarTerrainSettings& settings, CDLODTerrain& t
 	addSettingProperties( m_properties, farTerrainSchema(), settings );
 	m_properties.insert( "Wireframe", false );
 	m_properties.insert( "Show LOD", false );
+	if( settings.fluvial )
+	{
+		m_fluvialProperties.setName( "Fluvial erosion" );
+		addSettingProperties( m_fluvialProperties, fluvialErosionSchema(), *settings.fluvial );
+		m_properties.addSubContainer( &m_fluvialProperties );
+	}
+	if( settings.glacier )
+	{
+		m_glacierProperties.setName( "Glacial erosion" );
+		addSettingProperties( m_glacierProperties, glacialErosionSchema(), *settings.glacier );
+		m_properties.addSubContainer( &m_glacierProperties );
+	}
+	m_erosionRevision = m_fluvialProperties.revision() + m_glacierProperties.revision();
 
+	applyErosion();
 	if( !createShader() || !bake() )
 		return false;
 
@@ -119,7 +234,7 @@ bool FarTerrain::loadHeights( const FarTerrainSettings& settings )
 		return false;
 	}
 	m_size = static_cast<uint32_t>( source.width );
-	m_source.resize( static_cast<size_t>( m_size ) * m_size );
+	m_original.resize( static_cast<size_t>( m_size ) * m_size );
 	for( uint32_t row = 0; row < m_size; ++row )
 	{
 		const uint8_t* line = source.pixels + row * source.rowPitch;
@@ -130,7 +245,7 @@ bool FarTerrain::loadHeights( const FarTerrainSettings& settings )
 				value = static_cast<float>( reinterpret_cast<const uint16_t*>( line )[col] ) / 65535.0f;
 			else
 				value = reinterpret_cast<const float*>( line )[col];
-			m_source[static_cast<size_t>( row ) * m_size + col] = value * settings.heightMultiplier + settings.heightOffset;
+			m_original[static_cast<size_t>( row ) * m_size + col] = value * settings.heightMultiplier + settings.heightOffset;
 		}
 	}
 	return true;
@@ -303,8 +418,16 @@ void FarTerrain::update( const FrameContext& frame )
 {
 	if( !m_initialized )
 		return;
+	// Правка подокон эрозии закончилась — горы размываются заново
+	const uint32_t erosionRevision = m_fluvialProperties.revision() + m_glacierProperties.revision();
+	const bool glacierEdited = !m_fluvialProperties.editing() && !m_glacierProperties.editing() && erosionRevision != m_erosionRevision;
+	if( glacierEdited )
+	{
+		m_erosionRevision = erosionRevision;
+		applyErosion();
+	}
 	// Карту построили заново (перестройка русел) или сменили её множитель — её мип в горах заново
-	if( m_bakedRevision != m_pipeline->heightRevision() || m_bakedMultiplier != m_pipeline->heightMultiplier() ||
+	if( glacierEdited || m_bakedRevision != m_pipeline->heightRevision() || m_bakedMultiplier != m_pipeline->heightMultiplier() ||
 		m_bakedOffset != m_pipeline->heightOffset() )
 		bake();
 	// Дальность гор — в таблицу карты (её посчитает карта в следующем кадре); таблица — общая
@@ -417,7 +540,221 @@ FarTerrainSettings FarTerrain::settings() const
 {
 	FarTerrainSettings settings = m_loaded;
 	readSettingProperties( m_properties, farTerrainSchema(), settings );
+	if( settings.fluvial )
+		settings.fluvial = fluvialSettings();
+	if( settings.glacier )
+		settings.glacier = glacierSettings();
 	return settings;
+}
+
+FluvialErosionSettings FarTerrain::fluvialSettings() const
+{
+	FluvialErosionSettings settings = m_loaded.fluvial ? *m_loaded.fluvial : FluvialErosionSettings();
+	readSettingProperties( m_fluvialProperties, fluvialErosionSchema(), settings );
+	return settings;
+}
+
+GlacialErosionSettings FarTerrain::glacierSettings() const
+{
+	GlacialErosionSettings settings = m_loaded.glacier ? *m_loaded.glacier : GlacialErosionSettings();
+	readSettingProperties( m_glacierProperties, glacialErosionSchema(), settings );
+	return settings;
+}
+
+void FarTerrain::applyErosion()
+{
+	m_source = m_original;
+	if( !m_loaded.fluvial && !m_loaded.glacier )
+		return;
+	const FluvialErosionSettings fluvial = fluvialSettings();
+	const GlacialErosionSettings glacier = glacierSettings();
+	// Сетка — степень двойки, не мельче карты гор
+	auto gridSize = [this]( int32_t resolution )
+	{
+		uint32_t size = 1;
+		while( size * 2 <= static_cast<uint32_t>( std::max( resolution, 1 ) ) && size * 2 <= m_size )
+			size *= 2;
+		return size;
+	};
+
+	// Ключ кэша: исходная карта, её место, карта уровня и настройки обеих эрозий; версия — при правке алгоритмов
+	// (FluvialErosion, glacial_erosion.cs)
+	Fingerprint key;
+	const char version[] = "mountain-erosion-v4";
+	key.add( version, sizeof( version ) );
+	key.addWords( m_original.data(), m_original.size() * sizeof( float ) );
+	key.add( m_size );
+	key.add( m_loaded.origin );
+	key.add( m_loaded.extent );
+	key.add( m_pipeline->worldSize() );
+	key.add( static_cast<uint8_t>( m_loaded.fluvial ? 1 : 0 ) );
+	if( m_loaded.fluvial )
+	{
+		FluvialErosionSettings keyed = fluvial;
+		keyed.id = 0;
+		key.add( &keyed, sizeof( keyed ) );
+	}
+	key.add( static_cast<uint8_t>( m_loaded.glacier ? 1 : 0 ) );
+	if( m_loaded.glacier )
+	{
+		GlacialErosionSettings keyed = glacier;
+		keyed.id = 0;
+		key.add( &keyed, sizeof( keyed ) );
+	}
+	char keyText[32];
+	std::snprintf( keyText, sizeof( keyText ), "%016llx", static_cast<unsigned long long>( key.value ) );
+
+	// Кэш — рядом с картой гор: Textures\<её каталог>\far_eroded
+	const std::filesystem::path directory = ( std::filesystem::path( "Textures" ) / m_loaded.heightMapFile ).parent_path() / "far_eroded";
+	std::string cachedKey;
+	{
+		std::ifstream keyFile( directory / "key.txt" );
+		std::getline( keyFile, cachedKey );
+	}
+	if( cachedKey == keyText && loadFloats( directory / "height.dds", m_size, m_source ) )
+	{
+		LOG( "Mountain erosion: from cache " + directory.string() );
+		return;
+	}
+
+	// Сетка средних по клеткам и изменение на ней — к карте гор кубическим B-сплайном
+	auto downsample = [this]( const std::vector<float>& heights, uint32_t size )
+	{
+		const uint32_t factor = m_size / size;
+		std::vector<float> coarse( static_cast<size_t>( size ) * size, 0.0f );
+		const float share = 1.0f / static_cast<float>( factor * factor );
+		for( uint32_t row = 0; row < m_size; ++row )
+			for( uint32_t col = 0; col < m_size; ++col )
+				coarse[static_cast<size_t>( row / factor ) * size + col / factor] += heights[static_cast<size_t>( row ) * m_size + col] * share;
+		return coarse;
+	};
+
+	// 1. Реки — сеть долин
+	if( m_loaded.fluvial )
+	{
+		const uint32_t size = gridSize( fluvial.resolution );
+		std::vector<float> coarse = downsample( m_source, size );
+		std::vector<float> eroded = coarse;
+		FluvialErosion::run( eroded, size, m_loaded.extent / static_cast<float>( size ), m_loaded.origin, m_pipeline->worldSize(), fluvial );
+		for( size_t i = 0; i < coarse.size(); ++i )
+			eroded[i] -= coarse[i];
+		const std::vector<float> change = size == m_size ? eroded : upsample( eroded, size, m_size / size );
+		for( size_t i = 0; i < m_source.size(); ++i )
+			m_source[i] += change[i];
+	}
+
+	// 2. Ледники — троги по долинам; под льдом мелкий рельеф сглажен (ледник шлифует ложе)
+	std::vector<float> iceMax;
+	uint32_t iceSize = 0;
+	if( m_loaded.glacier )
+	{
+		iceSize = gridSize( glacier.resolution );
+		const uint32_t factor = m_size / iceSize;
+		const std::vector<float> coarse = downsample( m_source, iceSize );
+		GlacialErosion::Result result;
+		if( GlacialErosion::run( coarse, iceSize, m_loaded.extent / static_cast<float>( iceSize ), m_loaded.origin, m_pipeline->worldSize(),
+								 glacier, result ) )
+		{
+			std::vector<float> change( coarse.size() );
+			for( size_t i = 0; i < coarse.size(); ++i )
+				change[i] = result.bed[i] - coarse[i];
+			const std::vector<float> fineChange = upsample( change, iceSize, factor );
+			const std::vector<float> fineIce = upsample( result.iceMax, iceSize, factor );
+			const std::vector<float> smooth = blur( m_source, m_size, 2 );
+			const float polish = std::clamp( glacier.polish, 0.0f, 1.0f );
+			const float cell = m_loaded.extent / static_cast<float>( m_size );
+			const float fadeFrom = glacier.mapFade.from;
+			const float fadeTo = std::max( glacier.mapFade.to, fadeFrom + 1.0f );
+			const float world = m_pipeline->worldSize();
+			for( uint32_t row = 0; row < m_size; ++row )
+			{
+				for( uint32_t col = 0; col < m_size; ++col )
+				{
+					const size_t i = static_cast<size_t>( row ) * m_size + col;
+					const float t = std::clamp( ( fineIce[i] - 10.0f ) / 90.0f, 0.0f, 1.0f );
+					const float iceCover = t * t * ( 3.0f - 2.0f * t );
+					// Шлифовка у карты гаснет, как и размыв (glacial_erosion.cs)
+					const float x = m_loaded.origin.x + ( col + 0.5f ) * cell;
+					const float z = m_loaded.origin.y + ( m_size - row - 0.5f ) * cell;
+					const float dx = std::max( { -x, x - world, 0.0f } );
+					const float dz = std::max( { -z, z - world, 0.0f } );
+					const float f = std::clamp( ( std::sqrt( dx * dx + dz * dz ) - fadeFrom ) / ( fadeTo - fadeFrom ), 0.0f, 1.0f );
+					const float fade = f * f * ( 3.0f - 2.0f * f );
+					m_source[i] += fineChange[i] - polish * iceCover * fade * ( m_source[i] - smooth[i] );
+				}
+			}
+			iceMax = std::move( result.iceMax );
+		}
+		else
+			LOG( "Glacial erosion: failed, the mountains stay without it" );
+
+		// 3. Морозное выветривание: зубцы по выпуклым гребням (выше сглаженной на ~200 м земли) и крутым склонам высоко над
+		// морем — острый «гребенчатый» шум (1 − |2n − 1|)³ двух октав; у карты гаснет только у стыка (frostPeakFade)
+		const float amplitude = std::max( glacier.frostPeaks, 0.0f );
+		if( amplitude > 0.0f )
+		{
+			const std::vector<float> around = blur( m_source, m_size, 6 );
+			const float spacing = std::max( glacier.frostPeakSpacing, 1.0f );
+			const float heightFrom = glacier.frostPeakHeight.from;
+			const float heightTo = std::max( glacier.frostPeakHeight.to, heightFrom + 1.0f );
+			const float cell = m_loaded.extent / static_cast<float>( m_size );
+			const float fadeFrom = glacier.frostPeakFade.from;
+			const float fadeTo = std::max( glacier.frostPeakFade.to, fadeFrom + 1.0f );
+			const float world = m_pipeline->worldSize();
+			auto smooth01 = []( float t )
+			{
+				t = std::clamp( t, 0.0f, 1.0f );
+				return t * t * ( 3.0f - 2.0f * t );
+			};
+			for( uint32_t row = 0; row < m_size; ++row )
+			{
+				for( uint32_t col = 0; col < m_size; ++col )
+				{
+					const size_t i = static_cast<size_t>( row ) * m_size + col;
+					const float x = m_loaded.origin.x + ( col + 0.5f ) * cell;
+					const float z = m_loaded.origin.y + ( m_size - row - 0.5f ) * cell;
+					// Гребни — выше сглаженной земли; склоны — круче 30…45° по ней же (на ориентире скальные выступы торчат и из
+					// снежных склонов, не только по кромке)
+					const uint32_t left = col > 0 ? col - 1 : col, right = col + 1 < m_size ? col + 1 : col;
+					const uint32_t up = row > 0 ? row - 1 : row, down = row + 1 < m_size ? row + 1 : row;
+					const float gx = ( around[static_cast<size_t>( row ) * m_size + right] - around[static_cast<size_t>( row ) * m_size + left] ) /
+									 ( ( right - left ) * cell );
+					const float gz = ( around[static_cast<size_t>( up ) * m_size + col] - around[static_cast<size_t>( down ) * m_size + col] ) /
+									 ( ( down - up ) * cell );
+					const float steep = smooth01( ( std::sqrt( gx * gx + gz * gz ) - 0.58f ) / 0.42f );
+					const float ridge = std::max( smooth01( ( m_source[i] - around[i] - 5.0f ) / 40.0f ), steep );
+					const float high = smooth01( ( m_source[i] - heightFrom ) / ( heightTo - heightFrom ) );
+					if( ridge <= 0.0f || high <= 0.0f )
+						continue;
+					const float dx = std::max( { -x, x - world, 0.0f } );
+					const float dz = std::max( { -z, z - world, 0.0f } );
+					const float fade = smooth01( ( std::sqrt( dx * dx + dz * dz ) - fadeFrom ) / ( fadeTo - fadeFrom ) );
+					float spikes = 0.0f;
+					float weight = 1.0f;
+					float wavelength = spacing;
+					for( uint32_t octave = 0; octave < 2; ++octave )
+					{
+						const float n = 1.0f - std::abs( 2.0f * valueNoise( x / wavelength, z / wavelength, 97u + octave ) - 1.0f );
+						spikes += weight * n * n * n;
+						weight *= 0.5f;
+						wavelength /= 2.3f;
+					}
+					m_source[i] += amplitude * spikes / 1.5f * ridge * high * fade;
+				}
+			}
+		}
+	}
+
+	std::error_code error;
+	std::filesystem::create_directories( directory, error );
+	if( GpuImages::saveFloatDDS( ( directory / "height.dds" ).wstring(), m_size, m_size, m_source.data() ) &&
+		( iceMax.empty() || GpuImages::saveFloatDDS( ( directory / "ice.dds" ).wstring(), iceSize, iceSize, iceMax.data() ) ) )
+	{
+		std::ofstream( directory / "key.txt" ) << keyText << "\n";
+		LOG( "Mountain erosion: written " + directory.string() );
+	}
+	else
+		LOG( "Mountain erosion: can`t write " + directory.string() );
 }
 
 }

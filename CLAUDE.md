@@ -351,8 +351,9 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 `FarTerrain` (дальние горы вокруг карты, 64 × 64 км по своей карте высот 32 м: строка `FarTerrain`, `Levels.far_terrain`;
 та же сетка узлов CDLOD — карта дырой в их дереве (`CDLODQuadtree::setHole`), общая таблица дальностей
 (`CDLODTerrain::setFarLevels`) и общий код вершины `Shaders/cdlod_patch.sh` — стык без трещин; материал — правила по высоте и
-уклону на слоях по ролям (`Shaders/far_terrain.*`, смесь слоёв — `terrain_material.sh`, общая с картой); только главный вид;
-`docs/far_terrain.md`),
+уклону на слоях по ролям (`Shaders/far_terrain.*`, смесь слоёв — `terrain_material.sh`, общая с картой); эрозия гор при
+загрузке с кэшем `far_eroded\` — реки (`FluvialErosion`, FastScape, рельеф из подъёма), ледники (`GlacialErosion`, приближение
+мелкого льда на GPU), морозные зубцы гребней; только главный вид; `docs/far_terrain.md`),
 `ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида — в полосе перехода оба LOD с
 дизерингом, если у материала `DitheredLODTransition`; у каскадов теней дальности × `Models.shadow_lod_scale` — у елей 0,5,
 его же берёт расстановка; отсечение по frustum вида — границы
