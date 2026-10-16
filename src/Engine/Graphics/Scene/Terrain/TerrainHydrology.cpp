@@ -3362,6 +3362,11 @@ bool TerrainHydrology::Build::buildStones()
 		double flux;		// ∑ h₀ |u₀| по текселям куска × площадь текселя, м⁴/с
 		int upstream;		// кусок выше по тому же ручью; −1 — нет
 		int chain;			// ручей
+		int stream = 0;		// текселей ручья в куске (с u₀) и всех мокрых (ручья и озера)
+		int wet = 0;
+		// Устье: большая часть мокрых текселей куска — уже озеро, ручьём осталась кайма мелководья у берега (вода озера
+		// мельче flowMinDepth). Расход сети здесь уходит в озеро, и кайма его не несёт
+		bool mouth() const { return stream * 2 < wet; }
 	};
 	int chainIndex = 0;
 	std::vector<DischargeBin> bins;
@@ -3673,8 +3678,25 @@ bool TerrainHydrology::Build::buildStones()
 		// — сам u₀ (water_flow.cs). Прежде профиль давала только сила тяжести (равновесие u₀ (h / R)^(2/3)), а u₀ поперёк
 		// сечения был ровным: на каждом скачке глубины ∇·(h₀ u₀) расходился с профилем, давление выравнивало скорость обратно,
 		// и у берега текло как у оси (2026-10-15: при h / R < 0,25 — 0,78 u₀ вместо 0,25)
+		for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
 		{
+			const DetailTile& tile = result.detailTiles[tileIndex];
+			for( size_t index = 0; index < tile.water.size(); ++index )
+			{
+				const int bin = detailBin[tileIndex][index];
+				const DirectX::XMFLOAT4& texel = tile.water[index];
+				if( bin < 0 || texel.x <= -1e8f || texel.x <= tile.heights[index] )
+					continue;
+				++bins[bin].wet;
+				if( texel.w > 0.0f )
+					++bins[bin].stream;
+			}
+		}
+		{
+			// У устья (кайма мелководья) — профиль по ручью целиком: по своему куску кайма была бы «осью» и ей досталась бы
+			// скорость стрежня
 			std::vector<double> flat( bins.size(), 0.0 ), profiled( bins.size(), 0.0 );
+			std::vector<double> chainFlat( chainIndex, 0.0 ), chainProfiled( chainIndex, 0.0 );
 			for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
 			{
 				const DetailTile& tile = result.detailTiles[tileIndex];
@@ -3688,8 +3710,19 @@ bool TerrainHydrology::Build::buildStones()
 					const double flux = depth * std::hypot( texel.y, texel.z );
 					flat[bin] += flux;
 					profiled[bin] += flux * std::pow( depth, 2.0 / 3.0 );
+					if( !bins[bin].mouth() )
+					{
+						chainFlat[bins[bin].chain] += flux;
+						chainProfiled[bins[bin].chain] += flux * std::pow( depth, 2.0 / 3.0 );
+					}
 				}
 			}
+			for( size_t b = 0; b < bins.size(); ++b )
+				if( bins[b].mouth() )
+				{
+					flat[b] = chainFlat[bins[b].chain];
+					profiled[b] = chainProfiled[bins[b].chain];
+				}
 			for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
 			{
 				DetailTile& tile = result.detailTiles[tileIndex];
@@ -3719,7 +3752,7 @@ bool TerrainHydrology::Build::buildStones()
 		}
 		std::vector<double> chainFlux( chainIndex, 0.0 ), chainDischarge( chainIndex, 0.0 );
 		for( const DischargeBin& bin : bins )
-			if( bin.flux > 0.0 )
+			if( bin.flux > 0.0 && !bin.mouth() )
 			{
 				chainFlux[bin.chain] += bin.flux;
 				chainDischarge[bin.chain] += bin.discharge * bin.length;
@@ -3729,7 +3762,7 @@ bool TerrainHydrology::Build::buildStones()
 		{
 			const double section = bins[b].flux / bins[b].length;
 			const int chain = bins[b].chain;
-			if( section > 1e-6 && chainDischarge[chain] > 0.0 )
+			if( section > 1e-6 && chainDischarge[chain] > 0.0 && !bins[b].mouth() )
 			{
 				const double target = bins[b].discharge * chainFlux[chain] / chainDischarge[chain];
 				scale[b] = std::clamp( target / section, minDischargeScale, maxDischargeScale );
