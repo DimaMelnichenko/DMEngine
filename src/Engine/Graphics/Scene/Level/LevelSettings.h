@@ -327,6 +327,7 @@ struct PostProcessSettings
 	int32_t starRays = 6;
 	float starAngle = 15.0f;
 	float starLength = 0.06f;
+	float starDispersion = 2.0f;		// радужная кайма лучей: разброс длины по каналам (0 — белые, 1 — по длинам волн)
 	AmbientOcclusionSettings ambientOcclusion;
 };
 

@@ -311,18 +311,23 @@ void PostProcess::renderStars( const ShaderView& sceneColor, const Settings& set
 	StarBuffer params = {};
 	params.threshold = std::max( settings.starThreshold, 0.0f );
 	params.limit = std::max( settings.starLimit, 1.0f );
-	params.outputScale = 1.0f;
+	params.outputScale = XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	drawStarPass( "Star bright", m_starBright, m_starBrightTarget, sceneColor, params, BlendState::opaque );
 
-	// Ось звезды — три прохода вдоль неё с шагом 1, 4, 16 текселей; затухание на тексель — до 1 % на длине луча. Проходы
+	// Ось звезды — три прохода вдоль неё с шагом 1, 4, 16 текселей; затухание на тексель — до 1 % на длине луча (у зелёного).
+	// Проходы
 	// нормированы (сумма весов 1): ось — экспоненциальное ядро e^(−d/λ) / (2λ); последний проход × 2λ — луч на расстоянии d
 	// от блика яркостью e^(−d/λ) от него, иначе энергия уходила в середину и лучи гасли на первых текселях
 	const uint32_t axes = static_cast<uint32_t>( std::clamp( settings.starRays, 2, 16 ) ) / 2;
 	const float texelX = 1.0f / static_cast<float>( m_star.width() );
 	const float texelY = 1.0f / static_cast<float>( m_star.height() );
 	const float length = std::max( settings.starLength, 0.01f ) * static_cast<float>( m_star.height() );
-	const float falloff = std::exp( std::log( 0.01f ) / length );
-	const float decayLength = length / std::log( 100.0f );		// λ, текселей четверти кадра
+	// λ, текселей четверти кадра, — по каналам: дифракция растёт с длиной волны (красный 650 нм, зелёный 550, синий 450),
+	// разброс — star_dispersion (0 — луч белый, 1 — по отношению длин волн)
+	const float dispersion = std::max( settings.starDispersion, 0.0f );
+	const XMFLOAT3 decayLength( length / std::log( 100.0f ) * ( 1.0f + dispersion * ( 650.0f / 550.0f - 1.0f ) ),
+								length / std::log( 100.0f ),
+								length / std::log( 100.0f ) * std::max( 1.0f + dispersion * ( 450.0f / 550.0f - 1.0f ), 0.1f ) );
 	constexpr float steps[] = { 1.0f, 4.0f, 16.0f };
 	for( uint32_t axis = 0; axis < axes; ++axis )
 	{
@@ -333,8 +338,9 @@ void PostProcess::renderStars( const ShaderView& sceneColor, const Settings& set
 		{
 			const bool last = pass + 1 == std::size( steps );
 			params.direction = XMFLOAT2( unit.x * steps[pass], unit.y * steps[pass] );
-			params.attenuation = std::pow( falloff, steps[pass] );
-			params.outputScale = last ? 2.0f * decayLength : 1.0f;
+			params.attenuation = XMFLOAT3( std::exp( -steps[pass] / decayLength.x ), std::exp( -steps[pass] / decayLength.y ),
+										   std::exp( -steps[pass] / decayLength.z ) );
+			params.outputScale = last ? XMFLOAT3( 2.0f * decayLength.x, 2.0f * decayLength.y, 2.0f * decayLength.z ) : XMFLOAT3( 1.0f, 1.0f, 1.0f );
 			// Последний проход оси — в сумму звезды: первая ось её перезаписывает, следующие добавляются
 			const RenderTarget& target = last ? m_star : ( pass == 0 ? m_starPing : m_starPong );
 			drawStarPass( "Star streak", m_starStreak, target, source->srv(), params,

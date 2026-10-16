@@ -247,6 +247,9 @@ const SettingsSchema<PostProcessSettings>& postProcessSchema()
 		{ "star_rays", "Star rays", DM_SETTING( starRays ), 0.0f, 0.0f, "", "Number of rays of the star", 0, "bloom", { 4, 6, 8 } },
 		{ "star_angle", "Star angle", DM_SETTING( starAngle ), 0.0f, 180.0f, "deg", "Rotation of the star", 0, "bloom" },
 		{ "star_length", "Star length", DM_SETTING( starLength ), 0.01f, 0.2f, "", "Ray length, share of the frame height", 0, "bloom" },
+		{ "star_dispersion", "Star dispersion", DM_SETTING( starDispersion ), 0.0f, 4.0f, "",
+		  "Rainbow fringe of the rays: diffraction grows with the wavelength, the red ray is longer than the blue one "
+		  "(1 - by the wavelength ratio, more - stronger); 0 - white rays", 0, "bloom" },
 		// Экранное затенение окружением (AmbientOcclusion) — до проходов цвета, но настройки здесь, как в UE
 		{ "ambient_occlusion_intensity", "Ambient occlusion intensity", DM_SETTING( ambientOcclusion.intensity ), 0.0f, 1.0f, "",
 		  "Screen space ambient occlusion (GTAO): how much it darkens the sky light; 0 - off", 0, "bloom" },
