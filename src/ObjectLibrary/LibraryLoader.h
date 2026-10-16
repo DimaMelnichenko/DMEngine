@@ -11,6 +11,7 @@
 namespace SQLite
 {
 	class Statement;
+	class Database;
 }
 
 namespace GS
@@ -35,8 +36,15 @@ public:
 	bool loadMaterialParams( uint32_t idInstance, PropertyContainer& paramSet );
 	bool loadMaterialParamDef( uint32_t idMaterial, PropertyContainer& paramSet );
 	bool loadShader( uint32_t idMaterial, GS::Material* material );
-	// Состав уровня name (пустое имя — первый уровень таблицы Levels). Модели уровня не загружает
-	bool loadLevel( const std::string& name, LevelDescription& level );
+	// Состав уровня name (пустое имя — первый уровень таблицы Levels) с окружением пресета preset (LevelPresets; пусто —
+	// строки самого уровня, нет такого — тоже они и строка в логе). Модели уровня не загружает
+	bool loadLevel( const std::string& name, const std::string& preset, LevelDescription& level );
+	// Пресет окружения на лету: строки пресета (пусто — уровня) — в *Id уровня, их настройки — в level заново
+	// (sunPosition, atmosphere, postProcess, wind, heightFog, volumetricCloud); свет и содержимое уровня не трогает
+	bool selectLevelPreset( LevelDescription& level, const std::string& preset );
+	// «Save preset as»: копии строк окружения активного пресета — новый пресет name уровня (тем же именем — заменяется,
+	// кроме заблокированного), правки окон после previous — в его строки (data); пресет становится активным
+	bool saveLevelPreset( LevelDescription& level, const std::string& name, const LevelSaveData& data, const LevelSaveData& previous );
 	// «Save level» пишет правки, а не окна целиком: в строки — только колонки, которые отличаются от previous (снимок
 	// после загрузки или прошлого сохранения, LevelSaveData; RowUpdate). Строки уровня, которой нет (постобработка,
 	// ветер, туман, атмосфера вместо незагруженной панорамы), — создаётся, только если в окне что-то поменяли.
@@ -87,6 +95,13 @@ private:
 	void loadParticleEmitters( LevelDescription& level );
 	void loadLevelLights( LevelDescription& level );
 	bool loadLevelEnvironment( LevelDescription& level );
+	// Пресеты уровня (LibraryLoaderPresets.cpp): имена — в level.presets; строки пресета preset — в *Id (NULL — строка
+	// уровня), level.preset и presetLocked; false — пресета нет (остаются строки уровня)
+	void loadLevelPresetNames( LevelDescription& level );
+	bool usePresetRows( LevelDescription& level, const std::string& preset );
+	// Настройки окружения (время суток, небо, постобработка, ветер, туман, облака) — в строки *Id уровня, правки после
+	// previous; без строки — новая, привязанная к активному пресету или к уровню
+	void saveEnvironmentRows( SQLite::Database& db, LevelDescription& level, const LevelSaveData& data, const LevelSaveData& previous );
 	// Звёзды фона неба из таблицы Stars; нет таблицы — без звёзд, строка в логе
 	void loadStars( LevelDescription& level );
 	// Материал экземпляра (MaterialInstance.id_material); false — экземпляра нет

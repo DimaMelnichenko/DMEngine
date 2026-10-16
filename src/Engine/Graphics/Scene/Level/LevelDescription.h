@@ -81,4 +81,22 @@ struct LevelDescription
 	std::optional<GS::HeightFogSettings> heightFog;
 	std::optional<uint32_t> volumetricCloudId;	// строка VolumetricCloud: облака; NULL — облаков нет
 	std::optional<GS::VolumetricCloudSettings> volumetricCloud;
+
+	// Пресет окружения (таблица LevelPresets, как снимок в Level Snapshots UE): именованный набор строк окружения уровня —
+	// время суток, небо, постобработка, ветер, туман, облака. Колонка NULL — строка самого уровня. Активный пресет
+	// подставляет свои строки в *Id выше: их читают окна и в них пишет «Save level»; рельеф, вода, расстановка, модели и
+	// свет — общие для всех пресетов (содержимое уровня)
+	struct EnvironmentRows
+	{
+		std::optional<uint32_t> sunPosition;
+		std::optional<uint32_t> atmosphere;
+		std::optional<uint32_t> postProcess;
+		std::optional<uint32_t> wind;
+		std::optional<uint32_t> heightFog;
+		std::optional<uint32_t> volumetricCloud;
+	};
+	EnvironmentRows levelRows;				// строки самого уровня (Levels) — без пресета
+	std::string preset;						// активный пресет; пусто — строки самого уровня
+	bool presetLocked = false;				// LevelPresets.locked: «Save level» не пишет окружение (эталон проверок)
+	std::vector<std::string> presets;		// пресеты уровня по имени
 };

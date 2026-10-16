@@ -112,7 +112,7 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	RET_FALSE( System::meshes().createDefaults() );
 
 	stage( 1.8f, "Materials, models and textures" );
-	RET_FALSE( m_scene.loadResources( *m_library, m_config.levelName() ) );
+	RET_FALSE( m_scene.loadResources( *m_library, m_config.levelName(), m_config.presetName() ) );
 
 	// Создаем общий буфер вершин и индексов
 	stage( 0.05f, "Renderer" );
@@ -186,13 +186,25 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 		if( saved )
 		{
 			m_GUI.markSaved();
-			m_GUI.notify( "Level is saved to base.db3" );
+			// Заблокированный пресет (эталон проверок): окружение не записано
+			if( m_scene.level().presetLocked )
+				m_GUI.notify( "Saved without the environment: preset " + m_scene.level().preset + " is locked (File > Preset > Save preset as)", true );
+			else
+				m_GUI.notify( "Level is saved to base.db3" );
 		}
 		else
 			m_GUI.notify( "Level is not saved, see Log", true );
 	} );
 	// С чем сравнивает «Save level» — окна уровня сейчас, после регистрации (как Property::markSaved): пишутся правки
 	m_scene.markLevelSaved( m_renderer.postProcessSettings(), m_renderer.fogSettings() );
+	// Пресеты окружения уровня — подменю File → Preset
+	Editor::PresetMenu presets;
+	presets.names = [this] { return m_scene.level().presets; };
+	presets.active = [this] { return m_scene.level().preset; };
+	presets.locked = [this] { return m_scene.level().presetLocked; };
+	presets.select = [this]( const std::string& name ) { selectPreset( name ); };
+	presets.saveAs = [this]( const std::string& name ) { savePresetAs( name ); };
+	m_GUI.setPresetMenu( std::move( presets ) );
 	// На землю (End, как в UE): выбранный во вьюпорте экземпляр модели
 	m_GUI.addAction( "Snap to terrain", "End", [this]
 	{
@@ -411,6 +423,36 @@ void Engine::accumulateCpuMeasures()
 void Engine::logCpuAverage( const std::string& line )
 {
 	LOG( line );
+}
+
+bool Engine::selectPreset( const std::string& name )
+{
+	if( !m_scene.selectPreset( *m_library, name ) )
+	{
+		m_GUI.notify( "Preset " + name + " is not found, see Log", true );
+		return false;
+	}
+	m_renderer.applyEnvironment( m_scene.level().postProcess, m_scene.level().heightFog );
+	// С чем сравнивает «Save level» — окружение пресета; история правок — до него (отмена вернула бы прежний пресет в новый)
+	m_scene.markEnvironmentSaved( m_renderer.postProcessSettings(), m_renderer.fogSettings() );
+	m_GUI.history().clear();
+	const std::string shown = name.empty() ? std::string( "Level" ) : name;
+	LOG( "Environment preset is selected: " + shown );
+	m_GUI.notify( "Preset: " + shown );
+	return true;
+}
+
+bool Engine::savePresetAs( const std::string& name )
+{
+	if( !m_scene.savePreset( *m_library, name, m_renderer.postProcessSettings(), m_renderer.fogSettings() ) )
+	{
+		m_GUI.notify( "Preset " + name + " is not saved, see Log", true );
+		return false;
+	}
+	m_renderer.postProcessProperties()->markSaved();
+	m_renderer.fogProperties()->markSaved();
+	m_GUI.notify( "Preset " + name + " is saved and selected" );
+	return true;
 }
 
 void Engine::drawLoadingFrame( const std::string& task, float progress )

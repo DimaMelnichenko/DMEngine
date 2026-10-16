@@ -75,6 +75,11 @@ private:
 	void takeScreenshots( bool withGui );
 	// Задний буфер в файл (PNG или JPG по расширению) — в кадре до endFrame
 	bool saveScreenshot( const std::wstring& path );
+	// Пресет окружения уровня на лету (меню File → Preset, команда preset): строки пресета (пусто — уровня) — в окна
+	// окружения сцены и рендерера, правки окружения до него отбрасываются; false — такого пресета нет
+	bool selectPreset( const std::string& name );
+	// «Save preset as»: окружение в окнах — новый пресет name, он становится активным
+	bool savePresetAs( const std::string& name );
 	// Экран загрузки — обработчик SlowTask на время Initialize: сообщения окна (иначе Windows считает его зависшим) и кадр с
 	// тем, что делается, и полосой прогресса
 	void drawLoadingFrame( const std::string& task, float progress );

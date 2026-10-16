@@ -64,7 +64,10 @@ public:
 	PostProcess::Settings postProcessSettings();
 	// -nocolorgrading: кадр без цветокоррекции, только кривая тонмаппинга (PostProcess::disableColorGrading)
 	void disableColorGrading() { m_postProcess.disableColorGrading(); }
+	// Пресет окружения на лету: постобработка и туман — в окна, окна — «сохранённые» (изменённое — после пресета)
+	void applyEnvironment( const PostProcess::Settings& postProcess, const std::optional<VolumetricFog::Settings>& fog );
 	std::optional<VolumetricFog::Settings> fogSettings() { return m_fog.settings(); }
+	PropertyContainer* fogProperties() { return m_fog.properties(); }
 	// Среднее время GPU кадра и проходов за seconds секунд с этого кадра — строкой, как «GPU average» в log.txt
 	// (команда stat gpu удалённого управления)
 	void measureGpu( float seconds, std::function<void( const std::string& )> done );

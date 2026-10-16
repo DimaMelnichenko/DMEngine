@@ -79,7 +79,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   reference`; `--config Debug` — с проверкой debug-слоя). Эталон D3D11 — коммит `0aadc42` в истории git.
 - **Запуск для проверки** — `.\Tools\run.ps1 [-Config Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,4]
   [-Camera x,y,z,pitch,yaw] [-Level имя] [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
-  [-FreezeTime] [-NoColorGrading] [-GpuValidation]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
+  [-FreezeTime] [-NoColorGrading] [-Preset имя] [-GpuValidation]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
   Запускает exe из корня проекта с удалённым управлением (`-remote`), ждёт конца инициализации и ещё `-Seconds`, по
   желанию нажимает клавиши (команда `key`, скан-коды `DIK_*`, как в DirectInput: 2 — «1», 4 — «3», 5 — «4») и снимает
   задний буфер (команда `screenshot`, с окнами ImGui, если нет `-NoGui`), закрывает движок штатно (`quit`, лог дописан;
@@ -94,7 +94,11 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `-NoParticles` (`-noparticles`, `--noparticles`: частицы движутся) и `-FreezeTime` (`-freezetime`, `--freezetime`: время
   игры стоит — рябь воды на месте, снимки с водой совпадают между запусками); `-NoColorGrading` (`-nocolorgrading`,
   `--nocolorgrading`, в сессии `set "Post process/Color grading/Enabled" false`) — без цветокоррекции уровня, только кривая
-  тонмаппинга: снимки сравнимы с эталоном, как бы её ни настроили (`check_frames.py` запускает с ним). Ближняя и дальняя плоскости камеры — `ScreenNear` / `ScreenDepth` в секции `[General]` `settings.ini` (0,1 и 4000 м; от дальней зависят сфера неба и слои воздушной перспективы). Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
+  тонмаппинга; `-Preset имя` (`-preset`, `--preset`, в сессии `preset имя`) — пресет окружения уровня (`LevelPresets`:
+  время суток, небо, постобработка, ветер, туман, облака; `docs/gui.md`, «Пресеты окружения»): Dimok подбирает окружение в
+  своём (по умолчанию — строки уровня, `[Level] Preset=` в `settings.ini`), проверки — с заблокированным `Reference`
+  (`check_frames.py` запускает с `--preset Reference`; «Save level» его не пишет). В редакторе окна пресета подкрашены
+  бирюзовым: их правки эталон не меняют. Ближняя и дальняя плоскости камеры — `ScreenNear` / `ScreenDepth` в секции `[General]` `settings.ini` (0,1 и 4000 м; от дальней зависят сфера неба и слои воздушной перспективы). Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
   `Rotation=pitch,yaw` в градусах, pitch > 0 — взгляд вниз), уровень — секция `[Level]` (`Name`); параметры `-Camera`
   и `-Level` скрипта (`-camera`, `-level` у exe) их переопределяют, так что снимок с нужной точки не требует правки кода.
   Списки (`-Keys`, `-Camera`) скрипт разбирает сам: через `powershell -File` они приходят одной строкой.
@@ -481,7 +485,11 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 В GUI это окна «Lights» (подокно на источник, Pitch / Yaw
 вместо вектора; «Sun position» — время суток; кнопки «Add … light» и «Delete» — новый источник перед камерой и удаление,
 «Save level» вставляет и удаляет строки `LevelLights`), «Sky atmosphere» или «HDRI backdrop», «Volumetric cloud», «Post process», «Height fog», «Wind»; кнопка «Save level»
-(`GUI::addAction`) пишет их обратно вместе с окнами объектов сцены (`LibraryLoader::saveLevelEnvironment`; чтение и запись окружения — `ObjectLibrary/LibraryLoaderEnvironment.cpp`). Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
+(`GUI::addAction`) пишет их обратно вместе с окнами объектов сцены (`LibraryLoader::saveLevelEnvironment`; чтение и запись окружения — `ObjectLibrary/LibraryLoaderEnvironment.cpp`).
+Пресеты окружения — таблица `LevelPresets` (именованные наборы строк времени суток, неба, постобработки, ветра, тумана и
+облаков; `locked` — «Save level» не пишет, так заморожен эталон проверок `Reference`): выбор при запуске — `-preset`, на
+лету — File → Preset и команда `preset`, «Save preset as» — копии строк; загрузчик — `ObjectLibrary/LibraryLoaderPresets.cpp`,
+окна объектов — `apply` по `writeSettingProperties`; подробно — `docs/gui.md`, «Пресеты окружения». Размер карты теней — `ShadowMapResolution` в `settings.ini` (качество, а не
 уровень). Источники раз за кадр обновляет `Scene::updateLights` в `Engine::tick` (правки GUI и время
 суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`
 и загружает на GPU, только когда источники изменились.

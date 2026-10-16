@@ -478,7 +478,8 @@ void resetCell( const std::string& name, Property& property )
 	ImGui::PopID();
 }
 
-void drawProperties( PropertyContainer& container, const std::string& filter, bool containerMatches )
+// preset — окно пресета окружения (само или через родителя): строки подкрашены presetColor
+void drawProperties( PropertyContainer& container, const std::string& filter, bool containerMatches, bool preset )
 {
 	bool any = false;
 	for( const std::string& name : container.names() )
@@ -502,6 +503,9 @@ void drawProperties( PropertyContainer& container, const std::string& filter, bo
 			continue;
 		Property& property = container.property( name );
 		ImGui::TableNextRow();
+		if( preset )
+			ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg1,
+									ImGui::GetColorU32( ImVec4( presetColor[0], presetColor[1], presetColor[2], 0.13f ) ) );
 		labelCell( name, property );
 		controlCell( name, property, container.name() );
 		resetCell( name, property );
@@ -543,10 +547,13 @@ void drawButtons( PropertyContainer& container, const std::string& filter, bool 
 	}
 }
 
-void drawContainerImpl( PropertyContainer& container, const std::string& filter, bool parentMatches, PropertyContainer* focus )
+// parentPreset — родитель в пресете окружения: подокна наследуют подкраску
+void drawContainerImpl( PropertyContainer& container, const std::string& filter, bool parentMatches, PropertyContainer* focus,
+						bool parentPreset )
 {
 	const bool containerMatches = parentMatches || ( !filter.empty() && matches( container.name(), filter ) );
-	drawProperties( container, filter, containerMatches );
+	const bool preset = parentPreset || container.presetPart();
+	drawProperties( container, filter, containerMatches, preset );
 	drawButtons( container, filter, containerMatches );
 	for( PropertyContainer* sub : container.subContainer() )
 	{
@@ -560,13 +567,23 @@ void drawContainerImpl( PropertyContainer& container, const std::string& filter,
 			ImGui::SetNextItemOpen( true, ImGuiCond_Always );
 		else if( focus )
 			ImGui::SetNextItemOpen( contains( *sub, focus ), ImGuiCond_Always );
+		// Подокно пресета окружения — заголовок его цветом
+		const bool subPreset = preset || sub->presetPart();
+		if( subPreset )
+		{
+			ImGui::PushStyleColor( ImGuiCol_Header, ImVec4( presetColor[0], presetColor[1], presetColor[2], 0.30f ) );
+			ImGui::PushStyleColor( ImGuiCol_HeaderHovered, ImVec4( presetColor[0], presetColor[1], presetColor[2], 0.42f ) );
+			ImGui::PushStyleColor( ImGuiCol_HeaderActive, ImVec4( presetColor[0], presetColor[1], presetColor[2], 0.55f ) );
+		}
 		const bool open = ImGui::CollapsingHeader( title.c_str() );
+		if( subPreset )
+			ImGui::PopStyleColor( 3 );
 		if( sub == focus )
 			ImGui::SetScrollHereY( 0.1f );
 		if( open )
 		{
 			ImGui::Indent( ImGui::GetStyle().IndentSpacing * 0.5f );
-			drawContainerImpl( *sub, filter, containerMatches, focus );
+			drawContainerImpl( *sub, filter, containerMatches, focus, preset );
 			ImGui::Unindent( ImGui::GetStyle().IndentSpacing * 0.5f );
 		}
 		ImGui::PopID();
@@ -608,7 +625,7 @@ bool hasMatches( PropertyContainer& container, const std::string& filter )
 
 void drawContainer( PropertyContainer& container, const std::string& filter, PropertyContainer* focus )
 {
-	drawContainerImpl( container, filter, false, focus );
+	drawContainerImpl( container, filter, false, focus, false );
 }
 
 bool takePressedButton( PropertyContainer*& container, std::string& button )

@@ -48,6 +48,8 @@ public:
 
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings() const;
+	// Настройки пресета окружения (на лету): в окно и в ход времени
+	void apply( const Settings& settings );
 	// Время идёт: seconds реального времени кадра × Time scale; через полночь — следующий день. Пауза («Time paused»)
 	// и нулевая скорость время не двигают
 	void advance( float seconds );

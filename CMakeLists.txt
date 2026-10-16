@@ -151,6 +151,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/ComputeShader.cpp
     src/ObjectLibrary/LibraryLoader.cpp
     src/ObjectLibrary/LibraryLoaderEnvironment.cpp
+    src/ObjectLibrary/LibraryLoaderPresets.cpp
     src/ObjectLibrary/LibraryLoaderScene.cpp
     src/Engine/Graphics/Scene/Level/LevelSettings.cpp
     src/3rdParty/tinyxml2.cpp

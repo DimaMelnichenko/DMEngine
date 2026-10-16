@@ -18,12 +18,24 @@ std::string elapsedMs( std::chrono::high_resolution_clock::time_point start )
 	return std::to_string( elapsed.count() / 1000.0 );
 }
 
+// Окружение снимка «Save level» — то, что входит в пресет (время суток, небо, постобработка, ветер, туман, облака)
+void copyEnvironment( const LevelSaveData& from, LevelSaveData& to )
+{
+	to.sunPosition = from.sunPosition;
+	to.atmosphere = from.atmosphere;
+	to.hdri = from.hdri;
+	to.postProcess = from.postProcess;
+	to.wind = from.wind;
+	to.heightFog = from.heightFog;
+	to.cloud = from.cloud;
+}
+
 }
 
 namespace GS
 {
 
-bool Scene::loadResources( LibraryLoader& library, const std::string& levelName )
+bool Scene::loadResources( LibraryLoader& library, const std::string& levelName, const std::string& preset )
 {
 	// Доли — по времени загрузки: текстуры (PNG моделей с мипами на CPU) — почти всё
 	SlowTask task( 1.0f );
@@ -34,7 +46,7 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName 
 		return false;
 	LOG( "Load material for ms: " + elapsedMs( timeStart ) );
 
-	if( !library.loadLevel( levelName, m_level ) )
+	if( !library.loadLevel( levelName, preset, m_level ) )
 		return false;
 	LOG( "Level: " + m_level.name );
 
@@ -457,11 +469,61 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	// Экземпляры моделей в базе — на нынешней земле: пересадка после эрозии закреплена
 	if( m_level.terrain )
 		m_terrainPipeline.confirmErosionChange();
-	// Сохранённое — новое прежнее: следующее «Save level» пишет правки после него
+	// Сохранённое — новое прежнее: следующее «Save level» пишет правки после него. У заблокированного пресета окружение не
+	// записано — для него прежний снимок остаётся («Save preset as» перенесёт правки в новый пресет)
 	data.removedLights.clear();
 	data.removedModels.clear();
+	if( m_level.presetLocked )
+		copyEnvironment( m_savedLevel, data );
 	m_savedLevel = std::move( data );
 	return true;
+}
+
+bool Scene::selectPreset( LibraryLoader& library, const std::string& preset )
+{
+	if( !preset.empty() && std::find( m_level.presets.begin(), m_level.presets.end(), preset ) == m_level.presets.end() )
+	{
+		LOG( "Preset '" + preset + "' is not found in table LevelPresets for level " + m_level.name );
+		return false;
+	}
+	if( !library.selectLevelPreset( m_level, preset ) )
+		return false;
+	if( SunPosition* position = m_lightDriver.sunPosition(); position && m_level.sunPosition )
+		position->apply( *m_level.sunPosition );
+	if( !m_useHDRI )
+		m_atmosphere.apply( m_level.atmosphere );
+	if( m_clouds.initialized() && m_level.volumetricCloud )
+		m_clouds.apply( *m_level.volumetricCloud );
+	m_wind.apply( m_level.wind.value_or( WindSettings() ) );
+	markEnvironmentWindowsSaved();
+	return true;
+}
+
+bool Scene::savePreset( LibraryLoader& library, const std::string& name, const PostProcessSettings& postProcess,
+						const std::optional<HeightFogSettings>& heightFog )
+{
+	LevelSaveData data = levelSaveData( postProcess, heightFog );
+	if( !library.saveLevelPreset( m_level, name, data, m_savedLevel ) )
+		return false;
+	copyEnvironment( data, m_savedLevel );
+	markEnvironmentWindowsSaved();
+	return true;
+}
+
+void Scene::markEnvironmentSaved( const PostProcessSettings& postProcess, const std::optional<HeightFogSettings>& heightFog )
+{
+	copyEnvironment( levelSaveData( postProcess, heightFog ), m_savedLevel );
+}
+
+void Scene::markEnvironmentWindowsSaved()
+{
+	if( SunPosition* position = m_lightDriver.sunPosition() )
+		position->properties()->markSaved();
+	if( !m_useHDRI && m_atmosphere.properties() )
+		m_atmosphere.properties()->markSaved();
+	if( m_clouds.initialized() )
+		m_clouds.properties()->markSaved();
+	m_wind.properties()->markSaved();
 }
 
 bool Scene::rebuildChannels()

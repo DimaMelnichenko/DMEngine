@@ -44,8 +44,15 @@ void OutlinerPanel::draw( std::vector<Editor::Entry>& entries, int& selected, bo
 			}
 			const std::string label = entry.properties->modified() ? entry.properties->name() + "  *" : entry.properties->name();
 			ImGui::AlignTextToFramePadding();
+			// Окно пресета окружения — его цветом (PropertyWidgets::presetColor)
+			const bool preset = entry.properties->presetPart();
+			if( preset )
+				ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( PropertyWidgets::presetColor[0], PropertyWidgets::presetColor[1],
+															   PropertyWidgets::presetColor[2], PropertyWidgets::presetColor[3] ) );
 			if( ImGui::Selectable( label.c_str(), selected == i ) )
 				selected = i;
+			if( preset )
+				ImGui::PopStyleColor();
 			ImGui::PopID();
 		}
 	}

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <sstream>
 #include "D3D\DMD3D.h"
+#include "Logger\Logger.h"
 
 using namespace DirectX;
 
@@ -72,6 +73,7 @@ bool PostProcess::initialize( const Settings& settings )
 		return false;
 
 	m_properties.setName( "Post process" );
+	m_properties.setPresetPart( true );
 	m_properties.insert( meteringModeProperty, static_cast<int32_t>( settings.meteringMode ) )->setItems( { "Manual", "Auto histogram" } );
 	addSettingProperties( m_properties, postProcessSchema(), settings, "" );
 	// Ключи кривой — столько, сколько в базе: (EV100 сцены, поправка EV)
@@ -196,6 +198,26 @@ PostProcess::Settings PostProcess::settings()
 			   []( const XMFLOAT2& a, const XMFLOAT2& b ) { return a.x < b.x; } );
 	settings.tonemapper = static_cast<Tonemapper>( std::clamp( m_properties[tonemapperProperty].data<int32_t>(), 0, 2 ) );
 	return settings;
+}
+
+void PostProcess::apply( const Settings& settings )
+{
+	m_properties[meteringModeProperty].setData( static_cast<int32_t>( settings.meteringMode ) );
+	m_properties[tonemapperProperty].setData( static_cast<int32_t>( settings.tonemapper ) );
+	// Имена полей частей цветокоррекции совпадают — у каждого подокна свои группы
+	writeSettingProperties( m_properties, postProcessSchema(), settings, "" );
+	writeSettingProperties( m_properties, postProcessSchema(), settings, "exposure" );
+	writeSettingProperties( m_properties, postProcessSchema(), settings, "bloom" );
+	writeSettingProperties( m_colorGradingProperties, postProcessSchema(), settings, "colorGrading" );
+	for( size_t i = 0; i < std::size( colorGradingParts ); ++i )
+		writeSettingProperties( m_colorGradingParts[i], postProcessSchema(), settings, colorGradingParts[i].group );
+	// Ключи кривой — свойства окна, их столько, сколько было при загрузке: недостающие — как последний ключ пресета
+	const std::vector<XMFLOAT2>& curve = settings.exposureCompensationCurve;
+	if( curve.size() != m_curveKeyNames.size() )
+		LOG( "Post process: the preset has " + std::to_string( curve.size() ) + " compensation curve keys, the window " +
+			 std::to_string( m_curveKeyNames.size() ) + " (restart to show them all)" );
+	for( size_t i = 0; i < m_curveKeyNames.size() && !curve.empty(); ++i )
+		m_properties[m_curveKeyNames[i]].setData( curve[std::min( i, curve.size() - 1 )] );
 }
 
 void PostProcess::bindExposure()

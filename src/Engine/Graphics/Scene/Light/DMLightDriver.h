@@ -52,6 +52,7 @@ public:
 	float sunGroundIlluminance() const;
 	// Место и время уровня; nullptr — солнце по своим Pitch / Yaw
 	const SunPosition* sunPosition() const;
+	SunPosition* sunPosition();
 	// Запасной свет, когда включённых источников нет: белое солнце, лк
 	static constexpr float fallbackIlluminance = 100000.0f;
 

@@ -31,8 +31,9 @@ namespace GS
 class Scene
 {
 public:
-	// Загружает материалы, состав уровня levelName (пустое имя — первый уровень), его модели и текстуры
-	bool loadResources( LibraryLoader& library, const std::string& levelName );
+	// Загружает материалы, состав уровня levelName (пустое имя — первый уровень) с окружением пресета preset (пусто —
+	// строки уровня), его модели и текстуры
+	bool loadResources( LibraryLoader& library, const std::string& levelName, const std::string& preset );
 	// Создаёт объекты сцены и свет; вызывается после loadResources() и Renderer::initialize()
 	// particles — частицы уровня (-noparticles: нет, кадры с одной точки совпадают)
 	bool initialize( LibraryLoader& library, bool particles = true );
@@ -67,6 +68,15 @@ public:
 	// Снимок окон уровня, с которым сравнивает «Save level» — после загрузки, когда окна зарегистрированы в GUI (их
 	// Property::markSaved): постобработку и туман отдаёт рендерер
 	void markLevelSaved( const PostProcessSettings& postProcess, const std::optional<HeightFogSettings>& heightFog );
+	// Пресет окружения на лету (LevelPresets; пусто — строки уровня): его настройки — в окна времени суток, неба, облаков и
+	// ветра (постобработку и туман — Renderer::applyEnvironment по level()), правки окружения до него отбрасываются; false —
+	// такого пресета нет, ничего не меняется
+	bool selectPreset( LibraryLoader& library, const std::string& preset );
+	// «Save preset as»: окружение в окнах — новый пресет name (копии строк активного), он становится активным
+	bool savePreset( LibraryLoader& library, const std::string& name, const PostProcessSettings& postProcess,
+					 const std::optional<HeightFogSettings>& heightFog );
+	// После выбора пресета: окружение окон — «сохранённое» (с ним сравнивает «Save level»); остальное — как было
+	void markEnvironmentSaved( const PostProcessSettings& postProcess, const std::optional<HeightFogSettings>& heightFog );
 
 	// Отрисовка рельефа (окно террейна, видимость) и его данные — конвейер рельефа и воды: запросы высоты, русла, маски,
 	// кисть, поле ветра
@@ -98,6 +108,8 @@ private:
 	std::vector<WindObstacle> windObstacles() const;
 	// Окна уровня, собранные в данные для «Save level»
 	LevelSaveData levelSaveData( const PostProcessSettings& postProcess, const std::optional<HeightFogSettings>& heightFog );
+	// Окна окружения сцены (время суток, небо, облака, ветер) — «сохранённые» (Property::markSaved): после выбора пресета
+	void markEnvironmentWindowsSaved();
 
 	LevelDescription m_level;
 	LevelSaveData m_savedLevel;		// снимок после загрузки или прошлого «Save level» — с ним сравнивается следующее

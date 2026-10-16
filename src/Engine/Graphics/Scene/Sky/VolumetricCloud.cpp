@@ -72,6 +72,7 @@ bool VolumetricCloud::initialize( const Settings& settings, SkyAtmosphere& atmos
 		return false;
 
 	m_properties.setName( "Volumetric cloud" );
+	m_properties.setPresetPart( true );
 	m_properties.insert( "Enabled", true );
 	addSettingProperties( m_properties, volumetricCloudSchema(), settings );
 	m_initialized = true;
@@ -110,6 +111,11 @@ VolumetricCloud::Settings VolumetricCloud::settings()
 	Settings settings;
 	readSettingProperties( m_properties, volumetricCloudSchema(), settings );
 	return settings;
+}
+
+void VolumetricCloud::apply( const Settings& settings )
+{
+	writeSettingProperties( m_properties, volumetricCloudSchema(), settings );
 }
 
 void VolumetricCloud::frameConstants( const RenderView& view, FrameParameters& constants )

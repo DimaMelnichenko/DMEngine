@@ -50,6 +50,7 @@ bool VolumetricFog::initialize( const std::optional<Settings>& settings )
 	m_hasRow = settings.has_value();
 	const Settings values = settings.value_or( Settings() );
 	m_properties.setName( "Height fog" );
+	m_properties.setPresetPart( true );
 	// Строка без плотности — туман выключен (так его сохраняет снятый флажок)
 	m_properties.insert( "Enabled", m_hasRow && ( values.layer.density > 0.0f || values.secondLayer.density > 0.0f ) );
 	addSettingProperties( m_properties, heightFogSchema(), values );
@@ -195,6 +196,14 @@ void VolumetricFog::render( const RenderView& view, const ShaderView& shadowMap 
 	m_previousScale = m_scale;
 	m_historyValid = true;
 	++m_jitterIndex;
+}
+
+void VolumetricFog::apply( const std::optional<Settings>& settings )
+{
+	m_hasRow = settings.has_value();
+	const Settings values = settings.value_or( Settings() );
+	m_properties["Enabled"].setData( m_hasRow && ( values.layer.density > 0.0f || values.secondLayer.density > 0.0f ) );
+	writeSettingProperties( m_properties, heightFogSchema(), values );
 }
 
 std::optional<VolumetricFog::Settings> VolumetricFog::settings()

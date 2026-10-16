@@ -461,6 +461,14 @@ PostProcess::Settings Renderer::postProcessSettings()
 	return m_postProcess.settings();
 }
 
+void Renderer::applyEnvironment( const PostProcess::Settings& postProcess, const std::optional<VolumetricFog::Settings>& fog )
+{
+	m_postProcess.apply( postProcess );
+	m_fog.apply( fog );
+	m_postProcess.properties()->markSaved();
+	m_fog.properties()->markSaved();
+}
+
 void Renderer::preparePipeline( Scene& scene, const FrameContext& frame, bool depthPrepass )
 {
 	// установка источников света

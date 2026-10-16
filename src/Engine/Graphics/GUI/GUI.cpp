@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include "imgui.h"
+#include "imgui_stdlib.h"
 #ifdef IMGUI_HAS_DOCK
 #include "imgui_internal.h"
 #endif
@@ -178,6 +179,8 @@ void GUI::Begin( const GS::FrameStats& stats, DMCamera& camera )
 		m_outliner.draw( m_entries, m_selected, &m_showOutliner );
 	if( m_showDetails && placeNext( detailsWindow ) )
 	{
+		if( m_presetMenu.active )
+			m_details.setPreset( m_presetMenu.active(), m_presetMenu.locked && m_presetMenu.locked() );
 		m_details.draw( m_selected >= 0 && m_selected < static_cast<int>( m_entries.size() ) ? &m_entries[m_selected] : nullptr,
 						&m_showDetails, m_focus );
 		m_focus = nullptr;
@@ -192,6 +195,7 @@ void GUI::Begin( const GS::FrameStats& stats, DMCamera& camera )
 		m_textures.draw( &m_showTextures );
 	if( m_showHotkeys )
 		drawHotkeys();
+	drawPresetPopup();
 	drawNotification();
 	PropertyWidgets::endFrame();
 	// Кнопка окна — после отрисовки панелей: её действие может убрать подокно, которое только что рисовалось
@@ -258,6 +262,27 @@ void GUI::drawMenu()
 		{
 			if( ImGui::MenuItem( action.name.c_str(), action.shortcut.empty() ? nullptr : action.shortcut.c_str() ) )
 				action.run();
+		}
+		// Пресеты окружения уровня: «Level» — строки самого уровня; заблокированный (эталон) «Save level» не пишет
+		if( m_presetMenu.names )
+		{
+			ImGui::Separator();
+			const std::string active = m_presetMenu.active();
+			const std::string title = "Preset: " + ( active.empty() ? std::string( "Level" ) : active ) + "###preset";
+			if( ImGui::BeginMenu( title.c_str() ) )
+			{
+				if( ImGui::MenuItem( "Level", nullptr, active.empty() ) && !active.empty() )
+					m_presetMenu.select( "" );
+				for( const std::string& name : m_presetMenu.names() )
+				{
+					if( ImGui::MenuItem( name.c_str(), nullptr, name == active ) && name != active )
+						m_presetMenu.select( name );
+				}
+				ImGui::Separator();
+				if( ImGui::MenuItem( "Save preset as..." ) )
+					m_openPresetPopup = true;
+				ImGui::EndMenu();
+			}
 		}
 		ImGui::EndMenu();
 	}
@@ -421,6 +446,40 @@ void GUI::drawNotification()
 			ImGui::TextUnformatted( m_notice.c_str() );
 	}
 	ImGui::End();
+}
+
+void GUI::drawPresetPopup()
+{
+	if( m_openPresetPopup )
+	{
+		m_openPresetPopup = false;
+		m_presetName.clear();
+		ImGui::OpenPopup( "Save preset as" );
+	}
+	if( !ImGui::BeginPopupModal( "Save preset as", nullptr, ImGuiWindowFlags_AlwaysAutoResize ) )
+		return;
+	ImGui::TextUnformatted( "Environment of the windows (time of day, sky, post process, wind, fog, clouds)" );
+	ImGui::TextUnformatted( "becomes a new preset of the level; the current preset keeps its saved values" );
+	if( ImGui::IsWindowAppearing() )
+		ImGui::SetKeyboardFocusHere();
+	const bool enter = ImGui::InputText( "Name", &m_presetName, ImGuiInputTextFlags_EnterReturnsTrue );
+	const std::vector<std::string> names = m_presetMenu.names ? m_presetMenu.names() : std::vector<std::string>();
+	const bool exists = std::find( names.begin(), names.end(), m_presetName ) != names.end();
+	const bool valid = !m_presetName.empty() && m_presetName.find( '/' ) == std::string::npos && m_presetName != "Level" && !exists;
+	if( exists )
+		ImGui::TextColored( ImVec4( 1.0f, 0.45f, 0.4f, 1.0f ), "A preset with this name already exists" );
+	ImGui::BeginDisabled( !valid );
+	if( ImGui::Button( "Save" ) || ( enter && valid ) )
+	{
+		if( m_presetMenu.saveAs )
+			m_presetMenu.saveAs( m_presetName );
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	if( ImGui::Button( "Cancel" ) || ImGui::IsKeyPressed( ImGuiKey_Escape ) )
+		ImGui::CloseCurrentPopup();
+	ImGui::EndPopup();
 }
 
 void GUI::drawHotkeys()

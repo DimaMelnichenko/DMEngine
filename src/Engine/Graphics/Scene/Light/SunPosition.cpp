@@ -94,6 +94,15 @@ SunPosition::SunPosition( const Settings& settings ) :
 	addSettingProperties( m_properties, GS::sunPositionSchema(), settings );
 	m_properties["Time of day"].setStep( 0.25f );	// стрелки и Ctrl — по четверти часа
 	m_properties.insert( "Time paused", false );
+	m_properties.setPresetPart( true );
+}
+
+void SunPosition::apply( const Settings& settings )
+{
+	writeSettingProperties( m_properties, GS::sunPositionSchema(), settings );
+	m_year = settings.year;
+	m_hours = settings.timeOfDay;
+	m_hoursShown = settings.timeOfDay;
 }
 
 void SunPosition::advance( float seconds )

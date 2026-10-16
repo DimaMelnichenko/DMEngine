@@ -577,6 +577,11 @@ const SunPosition* DMLightDriver::sunPosition() const
 	return m_sunPosition.get();
 }
 
+SunPosition* DMLightDriver::sunPosition()
+{
+	return m_sunPosition.get();
+}
+
 const DMLightDriver::LightList& DMLightDriver::lights() const
 {
 	return m_light_list;

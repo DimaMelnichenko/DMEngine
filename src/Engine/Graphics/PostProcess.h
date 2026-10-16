@@ -63,6 +63,8 @@ public:
 	bool resize() override;
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
+	// Настройки пресета окружения (на лету) — в окно и подокна; ключи кривой компенсации — сколько их в окне
+	void apply( const Settings& settings );
 	// Начало кадра: экспозиция прошлого кадра — шейдерам сцены (t105, pre-exposure), до проходов сцены
 	void beginFrame( const RenderFrame& frame, FrameParameters& constants ) override { bindExposure(); }
 	// Экспозиция кадра — пиксельным шейдерам сцены (t105)

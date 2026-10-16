@@ -75,6 +75,11 @@ public:
 	void setStructureModified( bool modified );
 	// Не данные уровня (кисть, переключатели для сравнения): правки окна не делают уровень изменённым (modified — false)
 	void setTransient( bool transient ) { m_transient = transient; }
+	// Окно входит в пресет окружения уровня (LevelPresets: постобработка, туман, небо, облака, время суток, ветер) — со
+	// всеми подокнами: его правки ложатся в строки активного пресета, другие пресеты (эталон проверок) не меняются.
+	// Details и Outliner выделяют такие окна цветом
+	void setPresetPart( bool part ) { m_presetPart = part; }
+	bool presetPart() const { return m_presetPart; }
 	// Правят ли сейчас какое-то его свойство (Property::editing), со всеми подконтейнерами
 	bool editing() const;
 	// Номер последней правки свойств, со всеми подконтейнерами (наибольший Property::revision): объект хранит номер, по
@@ -90,6 +95,7 @@ private:
 	std::vector<Button> m_buttons;
 	bool m_structureModified = false;
 	bool m_transient = false;
+	bool m_presetPart = false;
 };
 
 

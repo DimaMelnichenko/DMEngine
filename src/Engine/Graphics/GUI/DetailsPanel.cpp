@@ -40,6 +40,34 @@ void DetailsPanel::draw( Editor::Entry* entry, bool* open, PropertyContainer* fo
 		ImGui::TextDisabled( "Saved with the level: File > Save level (Ctrl+S)" );
 	else
 		ImGui::TextDisabled( "Not saved: changes last until exit" );
+	// Окно пресета окружения: правки — в активный пресет, остальные (эталон проверок) не меняются
+	const ImVec4 presetColor( PropertyWidgets::presetColor[0], PropertyWidgets::presetColor[1], PropertyWidgets::presetColor[2],
+							  PropertyWidgets::presetColor[3] );
+	// Заметки — с переносом по ширине панели
+	const auto note = []( const ImVec4& color, const std::string& text )
+	{
+		ImGui::PushStyleColor( ImGuiCol_Text, color );
+		ImGui::TextWrapped( "%s", text.c_str() );
+		ImGui::PopStyleColor();
+	};
+	const std::string preset = m_preset.empty() ? "Level" : m_preset;
+	if( properties.presetPart() )
+	{
+		note( presetColor, "Preset " + preset + ": other presets keep their values (File > Preset)" );
+		if( m_presetLocked )
+			note( ImVec4( 1.0f, 0.45f, 0.4f, 1.0f ), "Locked: Save level skips it, use File > Preset > Save preset as" );
+	}
+	else
+	{
+		for( PropertyContainer* sub : properties.subContainer() )
+		{
+			if( sub->presetPart() )
+			{
+				note( presetColor, "Highlighted subwindows are in the preset " + preset );
+				break;
+			}
+		}
+	}
 	ImGui::SetNextItemWidth( -FLT_MIN );
 	ImGui::InputTextWithHint( "##filter", "Search properties", &m_filter );
 	ImGui::Separator();

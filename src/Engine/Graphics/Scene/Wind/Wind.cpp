@@ -26,6 +26,7 @@ Property* addSlider( PropertyContainer& properties, const char* name, float valu
 Wind::Wind()
 {
 	m_properties.setName( "Wind" );
+	m_properties.setPresetPart( true );
 }
 
 void Wind::initialize( const std::optional<Settings>& settings )
@@ -54,6 +55,16 @@ Wind::Settings Wind::settings()
 	readSettingProperties( m_properties, windSchema(), settings );
 	readSettingProperties( m_fieldProperties, windFieldSchema(), settings.field );
 	return settings;
+}
+
+void Wind::apply( const Settings& settings )
+{
+	// Окна ещё нет (ветра у уровня не было при загрузке) — пресет его не создаёт
+	if( !m_properties.exists( "Yaw" ) )
+		return;
+	m_properties["Yaw"].setData( XMConvertToDegrees( std::atan2( settings.direction.x, settings.direction.z ) ) );
+	writeSettingProperties( m_properties, windSchema(), settings );
+	writeSettingProperties( m_fieldProperties, windFieldSchema(), settings.field );
 }
 
 WindParameters Wind::parameters()

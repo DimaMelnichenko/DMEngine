@@ -22,6 +22,8 @@ public:
 	void initialize( const std::optional<Settings>& settings );
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
+	// Настройки пресета окружения (на лету) — в окно: направление — Yaw, поле ветра — подокно «Field»
+	void apply( const Settings& settings );
 	// Константы кадра по текущим значениям GUI; сила 0 — растения неподвижны
 	WindParameters parameters();
 	// Для сравнения кадров с одной точки (-nowind): растения неподвижны

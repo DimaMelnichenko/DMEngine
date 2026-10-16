@@ -64,6 +64,8 @@ public:
 	bool itemActive() const { return m_itemActive; }
 	// Переключатель меню View
 	void addToggle( Editor::Toggle toggle );
+	// Подменю File → Preset: пресеты окружения уровня, выбор и «Save preset as» (окно с именем)
+	void setPresetMenu( Editor::PresetMenu menu ) { m_presetMenu = std::move( menu ); }
 	// Выбрать в Outliner запись, где лежит container (сама или подокно), и раскрыть его в Details (выбор во вьюпорте);
 	// false — такого окна нет
 	bool focusProperties( PropertyContainer* container );
@@ -101,6 +103,8 @@ private:
 	bool placeNext( const char* name );
 	void drawNotification();
 	void drawHotkeys();
+	// Окно «Save preset as»: имя нового пресета окружения
+	void drawPresetPopup();
 
 	struct Place
 	{
@@ -117,6 +121,9 @@ private:
 	std::vector<Editor::Action> m_actions;
 	std::vector<Editor::Toggle> m_toggles;
 	std::vector<std::string> m_commandNames;
+	Editor::PresetMenu m_presetMenu;
+	bool m_openPresetPopup = false;		// открыть окно «Save preset as» в этом кадре
+	std::string m_presetName;			// имя в нём
 
 	OutlinerPanel m_outliner;
 	DetailsPanel m_details;

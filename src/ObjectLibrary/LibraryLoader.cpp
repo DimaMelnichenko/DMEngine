@@ -279,7 +279,7 @@ bool LibraryLoader::loadMesh( uint32_t idMesh )
 	return true;
 }
 
-bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level )
+bool LibraryLoader::loadLevel( const std::string& name, const std::string& preset, LevelDescription& level )
 {
 	try
 	{
@@ -329,6 +329,12 @@ bool LibraryLoader::loadLevel( const std::string& name, LevelDescription& level 
 			if( !loadWaterSimulation( level ) )
 				return false;
 		}
+
+		// Строки окружения самого уровня, затем — пресета (LibraryLoaderPresets.cpp): окна читают и «Save level» пишет строки пресета
+		level.levelRows = { level.sunPositionId, level.atmosphereId, level.postProcessId, level.windId, level.heightFogId,
+							level.volumetricCloudId };
+		loadLevelPresetNames( level );
+		usePresetRows( level, preset );
 
 		loadLevelLights( level );
 		if( !loadLevelEnvironment( level ) )

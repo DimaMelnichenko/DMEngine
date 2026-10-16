@@ -78,6 +78,7 @@ bool Config::readConfig( const std::string& file )
 		strToVec3( iniString( file, "Camera", "Position" ), m_cameraPosition );
 		strToVec2( iniString( file, "Camera", "Rotation" ), m_cameraRotation );
 		m_levelName = iniString( file, "Level", "Name" );
+		m_presetName = iniString( file, "Level", "Preset" );
 
 		return true;
 	}
@@ -144,6 +145,10 @@ void Config::parseCommandLine( const std::string& commandLine )
 		else if( args[i] == "-level" )
 		{
 			m_levelName = args[i + 1];
+		}
+		else if( args[i] == "-preset" )
+		{
+			m_presetName = args[i + 1];
 		}
 		else if( args[i] == "-resolution" )
 		{

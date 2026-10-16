@@ -202,22 +202,35 @@ const T* previousOf( const std::optional<T>& previous )
 }
 
 // Строка окружения уровня, которой у него может не быть (постобработка, ветер, туман, атмосфера вместо панорамы): есть
-// что писать, а строки нет — создаётся с именем уровня и привязывается к Levels.<levelColumn>
+// что писать, а строки нет — создаётся с именем уровня и привязывается к Levels.<levelColumn> или, при активном пресете,
+// к той же колонке LevelPresets
 void updateLevelRow( SQLite::Database& db, const RowUpdate& update, const char* table, const char* levelColumn,
-					 const LevelDescription& level, std::optional<uint32_t>& rowId )
+					 LevelDescription& level, std::optional<uint32_t>& rowId, std::optional<uint32_t>& levelRow )
 {
 	if( update.empty() )
 		return;
 	if( !rowId )
 	{
 		SQLite::Statement insert( db, std::string( "INSERT INTO " ) + table + " (name) VALUES (:name)" );
-		insert.bind( ":name", level.name );
+		insert.bind( ":name", level.preset.empty() ? level.name : level.name + " " + level.preset );
 		insert.exec();
 		rowId = static_cast<uint32_t>( db.getLastInsertRowid() );
-		SQLite::Statement link( db, std::string( "UPDATE Levels SET " ) + levelColumn + " = :row WHERE id = :id" );
-		link.bind( ":row", *rowId );
-		link.bind( ":id", level.id );
-		link.exec();
+		if( level.preset.empty() )
+		{
+			SQLite::Statement link( db, std::string( "UPDATE Levels SET " ) + levelColumn + " = :row WHERE id = :id" );
+			link.bind( ":row", *rowId );
+			link.bind( ":id", level.id );
+			link.exec();
+			levelRow = rowId;
+		}
+		else
+		{
+			SQLite::Statement link( db, std::string( "UPDATE LevelPresets SET " ) + levelColumn + " = :row WHERE level = :level AND name = :name" );
+			link.bind( ":row", *rowId );
+			link.bind( ":level", level.id );
+			link.bind( ":name", level.preset );
+			link.exec();
+		}
 	}
 	update.update( db, table, { { "id", dbInt( *rowId ) } } );
 }
@@ -285,73 +298,16 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, LevelSaveData
 			update.update( db, "LevelLights", { { "id", dbInt( light.id ) } } );
 		}
 
-		// Место и время — только если строка у уровня есть: без неё солнце светит по своему направлению
-		if( data.sunPosition && level.sunPositionId )
-		{
-			const auto date = []( const GS::SunPositionSettings& sun )
-			{
-				char text[16];
-				std::snprintf( text, sizeof( text ), "%04d-%02d-%02d", sun.year, sun.month, sun.day );
-				return DbValue( std::string( text ) );
-			};
-			const GS::SunPositionSettings* before = previousOf( previous.sunPosition );
-			RowUpdate update;
-			update.settings( GS::sunPositionSchema(), *data.sunPosition, before );
-			update.set( "date", *data.sunPosition, before, date );
-			update.update( db, "SunPosition", { { "id", dbInt( *level.sunPositionId ) } } );
-		}
-
-		// Небо — то, что у уровня работает: атмосфера или панорама (строку панорамы задают в базе, без неё небо —
-		// атмосфера). Атмосфера вместо незагруженной панорамы получает строку, только если её правили
-		if( data.atmosphere )
-		{
-			RowUpdate update;
-			update.settings( GS::skyAtmosphereSchema(), *data.atmosphere, previousOf( previous.atmosphere ) );
-			updateLevelRow( db, update, "SkyAtmosphere", "atmosphere", level, level.atmosphereId );
-		}
+		// Панорама — не часть пресета: её строку задают в базе
 		if( data.hdri && level.hdriBackdropId )
 			updateSettings( db, "HDRIBackdrop", *level.hdriBackdropId, GS::hdriBackdropSchema(), *data.hdri, previousOf( previous.hdri ) );
-
-		// Постобработка: поля описания, перечисления — именами, кривая компенсации — текстом (пустая — NULL)
+		// Окружение — в строки активного пресета; у заблокированного (эталон проверок) — не пишется
+		if( level.presetLocked )
 		{
-			const GS::PostProcessSettings& postProcess = data.postProcess;
-			const GS::PostProcessSettings* before = &previous.postProcess;
-			RowUpdate update;
-			update.settings( GS::postProcessSchema(), postProcess, before );
-			update.set( "tonemapper", postProcess, before,
-						[]( const GS::PostProcessSettings& p ) { return DbValue( std::string( GS::tonemapperName( p.tonemapper ) ) ); } );
-			update.set( "metering_mode", postProcess, before,
-						[]( const GS::PostProcessSettings& p ) { return DbValue( std::string( GS::meteringModeName( p.meteringMode ) ) ); } );
-			update.set( "exposure_compensation_curve", postProcess, before, []( const GS::PostProcessSettings& p )
-			{
-				return p.exposureCompensationCurve.empty() ? DbValue( nullptr ) : DbValue( GS::curveText( p.exposureCompensationCurve ) );
-			} );
-			updateLevelRow( db, update, "PostProcessSettings", "post_process", level, level.postProcessId );
+			LOG( "Preset '" + level.preset + "' is locked: environment is not saved (File > Preset > Save preset as)" );
 		}
-
-		// Ветер и поле ветра (колонки field_*) — по описаниям, направление — вектором (в окне — Yaw)
-		{
-			const GS::WindSettings& wind = data.wind;
-			const GS::WindSettings* before = &previous.wind;
-			RowUpdate update;
-			update.settings( GS::windSchema(), wind, before );
-			update.settings( GS::windFieldSchema(), wind.field, &before->field );
-			update.set( "direction", wind, before, []( const GS::WindSettings& w ) { return vectorValue( w.direction ); } );
-			updateLevelRow( db, update, "Wind", "wind", level, level.windId );
-		}
-
-		// Туман: строка создаётся, только если его включили в GUI; выключенный остаётся строкой с нулевой плотностью
-		if( data.heightFog )
-		{
-			RowUpdate update;
-			update.settings( GS::heightFogSchema(), *data.heightFog, previousOf( previous.heightFog ) );
-			updateLevelRow( db, update, "ExponentialHeightFog", "height_fog", level, level.heightFogId );
-		}
-
-		// Облака — только в свою строку: без строки у уровня облаков нет, и окна тоже
-		if( data.cloud && level.volumetricCloudId )
-			updateSettings( db, "VolumetricCloud", *level.volumetricCloudId, GS::volumetricCloudSchema(), *data.cloud,
-							previousOf( previous.cloud ) );
+		else
+			saveEnvironmentRows( db, level, data, previous );
 
 		transaction.commit();
 	}
@@ -362,4 +318,76 @@ bool LibraryLoader::saveLevelEnvironment( LevelDescription& level, LevelSaveData
 	}
 
 	return true;
+}
+
+void LibraryLoader::saveEnvironmentRows( SQLite::Database& db, LevelDescription& level, const LevelSaveData& data,
+										 const LevelSaveData& previous )
+{
+	LevelDescription::EnvironmentRows& levelRows = level.levelRows;
+
+	// Место и время — только если строка у уровня есть: без неё солнце светит по своему направлению
+	if( data.sunPosition && level.sunPositionId )
+	{
+		const auto date = []( const GS::SunPositionSettings& sun )
+		{
+			char text[16];
+			std::snprintf( text, sizeof( text ), "%04d-%02d-%02d", sun.year, sun.month, sun.day );
+			return DbValue( std::string( text ) );
+		};
+		const GS::SunPositionSettings* before = previousOf( previous.sunPosition );
+		RowUpdate update;
+		update.settings( GS::sunPositionSchema(), *data.sunPosition, before );
+		update.set( "date", *data.sunPosition, before, date );
+		update.update( db, "SunPosition", { { "id", dbInt( *level.sunPositionId ) } } );
+	}
+
+	// Небо — то, что у уровня работает: атмосфера или панорама (строку панорамы задают в базе, без неё небо —
+	// атмосфера). Атмосфера вместо незагруженной панорамы получает строку, только если её правили
+	if( data.atmosphere )
+	{
+		RowUpdate update;
+		update.settings( GS::skyAtmosphereSchema(), *data.atmosphere, previousOf( previous.atmosphere ) );
+		updateLevelRow( db, update, "SkyAtmosphere", "atmosphere", level, level.atmosphereId, levelRows.atmosphere );
+	}
+
+	// Постобработка: поля описания, перечисления — именами, кривая компенсации — текстом (пустая — NULL)
+	{
+		const GS::PostProcessSettings& postProcess = data.postProcess;
+		const GS::PostProcessSettings* before = &previous.postProcess;
+		RowUpdate update;
+		update.settings( GS::postProcessSchema(), postProcess, before );
+		update.set( "tonemapper", postProcess, before,
+					[]( const GS::PostProcessSettings& p ) { return DbValue( std::string( GS::tonemapperName( p.tonemapper ) ) ); } );
+		update.set( "metering_mode", postProcess, before,
+					[]( const GS::PostProcessSettings& p ) { return DbValue( std::string( GS::meteringModeName( p.meteringMode ) ) ); } );
+		update.set( "exposure_compensation_curve", postProcess, before, []( const GS::PostProcessSettings& p )
+		{
+			return p.exposureCompensationCurve.empty() ? DbValue( nullptr ) : DbValue( GS::curveText( p.exposureCompensationCurve ) );
+		} );
+		updateLevelRow( db, update, "PostProcessSettings", "post_process", level, level.postProcessId, levelRows.postProcess );
+	}
+
+	// Ветер и поле ветра (колонки field_*) — по описаниям, направление — вектором (в окне — Yaw)
+	{
+		const GS::WindSettings& wind = data.wind;
+		const GS::WindSettings* before = &previous.wind;
+		RowUpdate update;
+		update.settings( GS::windSchema(), wind, before );
+		update.settings( GS::windFieldSchema(), wind.field, &before->field );
+		update.set( "direction", wind, before, []( const GS::WindSettings& w ) { return vectorValue( w.direction ); } );
+		updateLevelRow( db, update, "Wind", "wind", level, level.windId, levelRows.wind );
+	}
+
+	// Туман: строка создаётся, только если его включили в GUI; выключенный остаётся строкой с нулевой плотностью
+	if( data.heightFog )
+	{
+		RowUpdate update;
+		update.settings( GS::heightFogSchema(), *data.heightFog, previousOf( previous.heightFog ) );
+		updateLevelRow( db, update, "ExponentialHeightFog", "height_fog", level, level.heightFogId, levelRows.heightFog );
+	}
+
+	// Облака — только в свою строку: без строки у уровня облаков нет, и окна тоже
+	if( data.cloud && level.volumetricCloudId )
+		updateSettings( db, "VolumetricCloud", *level.volumetricCloudId, GS::volumetricCloudSchema(), *data.cloud,
+						previousOf( previous.cloud ) );
 }

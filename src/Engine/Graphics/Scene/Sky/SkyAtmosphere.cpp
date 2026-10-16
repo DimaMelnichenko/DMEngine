@@ -278,6 +278,7 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	}
 
 	m_properties.setName( "Sky atmosphere" );
+	m_properties.setPresetPart( true );
 
 	// Данные уровня — по описанию строки SkyAtmosphere; остальное ниже — настройки показа луны и звёзд, не данные уровня
 	addSettingProperties( m_properties, skyAtmosphereSchema(), settings );
@@ -324,6 +325,12 @@ SkyAtmosphere::Settings SkyAtmosphere::settings()
 	readSettingProperties( m_properties, skyAtmosphereSchema(), settings );
 	settings.milkyWay = m_milkyWayFile;
 	return settings;
+}
+
+void SkyAtmosphere::apply( const Settings& settings )
+{
+	// Файл Млечного Пути — загруженный при запуске (в окне его нет)
+	writeSettingProperties( m_properties, skyAtmosphereSchema(), settings );
 }
 
 bool SkyAtmosphere::createStars( const std::vector<StarRecord>& stars )

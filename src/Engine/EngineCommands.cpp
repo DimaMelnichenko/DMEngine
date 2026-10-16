@@ -56,6 +56,38 @@ void Engine::registerCommands()
 		reply->ok( text );
 	} );
 
+	// Пресеты окружения уровня (LevelPresets, как File → Preset): список, выбор на лету и «Save preset as»
+	m_console.registerCommand( "preset", "[name | level | save <name>] - environment presets of the level (time of day, sky, "
+							   "post process, wind, fog, clouds): without arguments - the list, * - active, locked - Save level "
+							   "skips it; name - select it (level - the level rows); save - the windows as a new preset",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		const LevelDescription& level = m_scene.level();
+		if( args.empty() )
+		{
+			std::string text = std::string( level.preset.empty() ? "* " : "  " ) + "level";
+			for( const std::string& name : level.presets )
+			{
+				text += "\n" + std::string( name == level.preset ? "* " : "  " ) + name;
+				if( name == level.preset && level.presetLocked )
+					text += " (locked)";
+			}
+			return reply->ok( text );
+		}
+		if( args[0] == "save" )
+		{
+			if( args.size() < 2 )
+				return reply->error( "preset save: expected a name" );
+			if( !savePresetAs( args[1] ) )
+				return reply->error( "preset save: not saved, see log.txt" );
+			return reply->ok( "saved and selected: " + args[1] );
+		}
+		const std::string name = args[0] == "level" ? std::string() : args[0];
+		if( !selectPreset( name ) )
+			return reply->error( "preset: no preset " + args[0] + " (preset - the list)" );
+		reply->ok( "selected: " + args[0] );
+	} );
+
 	m_console.registerCommand( "screenshot", "<file.png|.jpg> [gui] [frames] - back buffer after the frame settles; gui - with "
 							   "ImGui windows; frames - that many consecutive frames, file_00, file_01...",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )

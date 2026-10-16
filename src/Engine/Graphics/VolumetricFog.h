@@ -40,6 +40,8 @@ public:
 	void cameraCut() override;
 	// Текущие настройки из GUI — для сохранения уровня; нет строки и туман не включали — пусто
 	std::optional<Settings> settings();
+	// Настройки пресета окружения (на лету) — в окно; нет строки или без плотности — туман выключен
+	void apply( const std::optional<Settings>& settings );
 	PropertyContainer* properties() override { return &m_properties; }
 	bool environment() const override { return true; }
 

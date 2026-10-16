@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 #include "Properties/PropertyContainer.h"
 
 namespace GS
@@ -37,6 +38,16 @@ struct Action
 	std::string name;
 	std::string shortcut;	// подпись в меню
 	std::function<void()> run;
+};
+
+// Пресеты окружения уровня — подменю File → Preset (LevelPresets): список и активный, выбор и «Save preset as» — у Engine
+struct PresetMenu
+{
+	std::function<std::vector<std::string>()> names;		// пресеты уровня
+	std::function<std::string()> active;					// активный; пусто — строки уровня («Level»)
+	std::function<bool()> locked;							// активный заблокирован: «Save level» его не пишет
+	std::function<void( const std::string& )> select;		// выбрать; пусто — строки уровня
+	std::function<void( const std::string& )> saveAs;		// окружение в окнах — новый пресет
 };
 
 // Пункт меню View — переключатель с состоянием (каркас, видимость террейна, расстановка)

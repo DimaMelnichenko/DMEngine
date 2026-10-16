@@ -53,6 +53,8 @@ public:
 					 SkyLight& skyLight );
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
+	// Настройки пресета окружения (на лету) — в окно
+	void apply( const Settings& settings );
 	// Фон не рисуется, если у уровня своя модель неба (SkySphere); освещение окружением остаётся
 	void setBackgroundVisible( bool visible );
 	// Пропускание атмосферы от наблюдателя к солнцу (toSun — нормированное направление на него): доля света солнца

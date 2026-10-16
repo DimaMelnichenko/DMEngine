@@ -35,6 +35,8 @@ public:
 	bool initialized() const { return m_initialized; }
 	// Текущие значения из GUI — для сохранения уровня
 	Settings settings();
+	// Настройки пресета окружения (на лету) — в окно
+	void apply( const Settings& settings );
 	void update( const FrameContext& frame ) override;
 	// Тень облаков в константах кадра (cb_cloudShadow, Shaders/cloud_shadow.sh): её читают все приёмники тени солнца
 	void frameConstants( const RenderView& view, FrameParameters& constants ) override;

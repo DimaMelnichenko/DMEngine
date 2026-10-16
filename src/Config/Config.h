@@ -33,6 +33,9 @@ public:
 	const DirectX::XMFLOAT2& cameraRotation() const	{ return m_cameraRotation; }
 	// Уровень из таблицы Levels (секция [Level], Name); пустое имя — первый уровень таблицы
 	const std::string& levelName() const	{ return m_levelName; }
+	// Пресет окружения уровня (LevelPresets: время суток, небо, постобработка, ветер, туман, облака) — секция [Level],
+	// Preset, или -preset имя; пусто — строки самого уровня. Эталон проверок — заблокированный Reference (check_frames.py)
+	const std::string& presetName() const	{ return m_presetName; }
 	// Показывать окна ImGui; -nogui скрывает их, например для снимков экрана
 	bool showGUI() const					{ return m_showGUI; }
 	// Камера поворачивается мышью; -nomouse отключает это и скрывает указатель — для снимков с заданной точки
@@ -64,6 +67,7 @@ private:
 	DirectX::XMFLOAT3 m_cameraPosition = DirectX::XMFLOAT3( 0.0f, 0.0f, -1.0f );
 	DirectX::XMFLOAT2 m_cameraRotation = DirectX::XMFLOAT2( 0.0f, 0.0f );
 	std::string m_levelName;
+	std::string m_presetName;
 	bool m_showGUI = true;
 	bool m_pixCapture = false;
 	bool m_mouseLook = true;

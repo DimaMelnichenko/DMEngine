@@ -69,6 +69,33 @@ void addSettingProperties( PropertyContainer& container, const SettingsSchema<T>
 	}
 }
 
+// Значения структуры — в свойства окна, которые в нём есть (обратное readSettingProperties: пресет окружения уровня,
+// выбранный на лету); group — как у readSettingProperties. Значение меняется через setData — у свойства новый номер правки
+template<typename T>
+void writeSettingProperties( PropertyContainer& container, const SettingsSchema<T>& schema, const T& values, const char* group = nullptr )
+{
+	for( const SettingField<T>& field : schema )
+	{
+		if( !field.name || ( group && field.group != group ) || !container.exists( field.name ) )
+			continue;
+		Property& property = container[field.name];
+		std::visit( [&]( auto access )
+		{
+			const auto& value = settingRef( access, values );
+			using Value = std::remove_cv_t<std::remove_reference_t<decltype( value )>>;
+			if constexpr( std::is_same_v<Value, std::string> )
+				return;
+			else if constexpr( std::is_same_v<Value, SettingRange> )
+				property.setData( DirectX::XMFLOAT2( value.from, value.to ) );
+			else if constexpr( std::is_same_v<Value, int32_t> || std::is_same_v<Value, uint32_t> )
+				property.setData( field.choices.empty() ? static_cast<int32_t>( value )
+														: nearestSettingChoice( field.choices, static_cast<int32_t>( value ) ) );
+			else
+				property.setData( value );
+		}, field.access );
+	}
+}
+
 // Поля из свойств окна — те, что в нём есть (часть по условию могла не добавиться: у поля остаётся значение values); group —
 // только поля этой части (подокно правил слоёв: имена в разных подокнах могут совпадать)
 template<typename T>

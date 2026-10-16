@@ -9,7 +9,7 @@
 ## Как запустить
 
 ```
-python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--nocolorgrading] [--gpu-validation]
+python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--nocolorgrading] [--preset имя] [--gpu-validation]
 python Tools/engine.py camera 567,58.1,212,8,35
 python Tools/engine.py screenshot кадр.png
 python Tools/engine.py stat gpu 3
@@ -63,6 +63,7 @@ python Tools/engine.py stop
 | `key клавиша` | нажатие горячей клавиши (буква, цифра или скан-код `DIK_*`, как в DirectInput): `G`, `Q`, `1`, `3`, `4`… |
 | `gui on\|off` | окна редактора, как клавиша G |
 | `action "имя"` | действие меню File редактора: `"Save level"` — правки окон в базу, `"Exit"` ([gui.md](gui.md)) |
+| `preset [имя \| level \| save имя]` | пресеты окружения уровня (время суток, небо, постобработка, ветер, туман, облака): без аргументов — список (`*` — активный, `locked` — «Save level» его не пишет), имя — выбрать на лету (`level` — строки уровня), `save` — окна как новый пресет ([gui.md](gui.md), «Пресеты окружения») |
 | `undo` / `redo` | отменить / повторить последнюю правку редактора, как Ctrl+Z / Ctrl+Y; ответ — имя правки ([gui.md](gui.md), «Отмена правок»; сам `set` в историю не попадает) |
 | `pick x y` | выбрать под точкой окна (пиксели), как клик во вьюпорте: в режиме «Stream curves» — точку кривой русла, затем значок источника света или эмиттера частиц, иначе экземпляр модели; ответ — `Stream 7, point 3`, имя экземпляра или `nothing` ([gui.md](gui.md)) |
 | `brush x y [x y …] [shift] [ctrl]` | мазок кисти подокна «Paint» окна террейна через точки окна (пиксели), как мышью с зажатой ЛКМ в режиме «Terrain paint»: луч к рельефу, промежуточные касания, правка в истории (`undo`); ответ — цель и концы мазка в мире ([gui.md](gui.md)) |
