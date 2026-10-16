@@ -5,6 +5,7 @@
 #include "SceneObject.h"
 #include "GridMesh.h"
 #include "CDLODQuadtree.h"
+#include "TerrainHeightSource.h"
 #include "ShaderProgram.h"
 #include "D3D\DMStructuredBuffer.h"
 
@@ -43,6 +44,8 @@ public:
 	bool savedWithLevel() const override { return true; }
 	// Строка FarTerrain из окна — для сохранения уровня
 	FarTerrainSettings settings() const;
+	// Карта гор для тех, кто считает по рельефу и за краем карты (тень рельефа); без гор heightMap пуст
+	FarTerrainHeight farHeight() const;
 
 private:
 	using Patch = CDLODQuadtree::Patch;
@@ -71,6 +74,8 @@ private:
 	DirectX::XMFLOAT2 m_mapHeights = DirectX::XMFLOAT2( 0.0f, 0.0f );	// min / max высоты карты, м — узлы у её края
 	std::vector<float> m_heightExtent;	// по уровням: наибольший перепад высот узла, м (с m_mipBias; ниже — 0)
 	uint32_t m_bakedRevision = 0;		// итоговая карта, мип которой запечён
+	uint32_t m_bakes = 0;				// запеканий с запуска — FarTerrainHeight::revision
+	float m_maxHeight = 0.0f;			// наибольшая высота гор, м
 	float m_bakedMultiplier = 0.0f;
 	float m_bakedOffset = 0.0f;
 

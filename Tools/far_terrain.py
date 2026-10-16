@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS FarTerrain (
     material_blend REAL,
     macro_distance_from REAL, macro_distance_to REAL,
     macro_texture_scale REAL,
+    shadow_resolution INTEGER,
     rock_slope_from REAL, rock_slope_to REAL,
     scree_slope_from REAL, scree_slope_to REAL,
     scree_height_from REAL, scree_height_to REAL,
@@ -52,9 +53,10 @@ CREATE TABLE IF NOT EXISTS FarTerrain (
 def migrate(db):
     db.executescript(SCHEMA)
     existing = [row[1] for row in db.execute('PRAGMA table_info(FarTerrain)')]
-    for column in ('macro_distance_from', 'macro_distance_to', 'macro_texture_scale'):
+    for column, kind in (('macro_distance_from', 'REAL'), ('macro_distance_to', 'REAL'), ('macro_texture_scale', 'REAL'),
+                         ('shadow_resolution', 'INTEGER')):
         if column not in existing:
-            db.execute('ALTER TABLE FarTerrain ADD COLUMN %s REAL' % column)
+            db.execute('ALTER TABLE FarTerrain ADD COLUMN %s %s' % (column, kind))
     if 'far_terrain' not in [row[1] for row in db.execute('PRAGMA table_info(Levels)')]:
         db.execute('ALTER TABLE Levels ADD COLUMN far_terrain INTEGER REFERENCES FarTerrain(id)')
         print('migrated: Levels.far_terrain added')

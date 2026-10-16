@@ -2,7 +2,8 @@
 // Приём тени солнца из каскадных карт (Cascaded Shadow Maps, как у directional light в UE). Карты рисует
 // ShadowCascades (C++) до проходов сцены; множитель тени берёт evaluateLighting в Shaders/lighting.sh. Дальше
 // Dynamic Shadow Distance — дальние тени (как Far Shadow Cascades в UE): лес — дальним каскадом на всю карту, рельеф —
-// картой края тени (TerrainSunShadow); в полосе конца дистанции тень каскадов переходит в дальнюю
+// картой края тени (TerrainSunShadow); в полосе конца дистанции тень каскадов переходит в дальнюю. Горы вокруг карты
+// (FarTerrain) в каскады не попадают: их тень (mountainShadow) — и ближе дистанции теней
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef SHADOWS_SH
@@ -19,6 +20,10 @@
 DM_SRV( Texture2DArray<float>, g_shadowMap, SLOT_SHADOW_MAP );
 // x — запас земли над краем тени, м (отрицательный — земля в тени); y — расстояние до заслона, м; z — высота земли, м
 DM_SRV( Texture2D<float4>, g_terrainSunShadow, SLOT_TERRAIN_SUN_SHADOW );
+// Тень гор на карте — от заслонов за её краем: x, y — как у тени карты (земля — её z)
+DM_SRV( Texture2D<float2>, g_terrainMountainShadow, SLOT_TERRAIN_MOUNTAIN_SHADOW );
+// Тень на всём кольце гор — как у тени карты
+DM_SRV( Texture2D<float4>, g_mountainSunShadow, SLOT_MOUNTAIN_SUN_SHADOW );
 SamplerComparisonState g_shadowSampler : register( SLOT_SAMPLER_SHADOW );
 
 // Фильтр 5 × 5 текселей девятью выборками сравнения с билинейной фильтрацией (PCF 2×2 в каждой): веса и смещения
@@ -77,20 +82,65 @@ float viewDepthOf( float3 position )
 	return dot( position - cb_cameraPosition, cb_viewDirection );
 }
 
-// Тень рельефа дальше каскадов (TerrainSunShadow, Shaders/terrain_sun_shadow.cs): точка ниже края тени над землёй —
-// в тени. Высота точки берётся над землёй карты (не ниже её): неровности мельче текселя карты (2 м) не уходят в тень.
-// Полутень — по расстоянию до заслона (тень дальней горы мягче), не уже наименьшей
+// Свет у края тени рельефа (TerrainSunShadow, Shaders/terrain_sun_shadow.cs): точка ниже края тени над землёй — в тени.
+// clearance — запас точки над краем: запас земли текселя плюс высота точки над его землёй (не ниже её: неровности мельче
+// текселя не уходят в тень); полутень — по расстоянию до заслона occluder (тень дальней горы мягче), не уже наименьшей
+float terrainEdgeLight( float clearance, float occluder )
+{
+	const float penumbra = max( occluder * g_terrainShadow.y, g_terrainShadow.z );
+	return saturate( clearance / penumbra + 0.5f );
+}
+
+// UV карты края тени карты уровня у точки мира; false — тени карты нет или точка вне карты
+bool terrainShadowUV( float3 position, out float2 uv )
+{
+	uv = 0.0f;
+	[branch] if( g_terrainShadow.x <= 0.0f )
+		return false;
+	uv = float2( position.x, 1.0f / g_terrainShadow.x - position.z ) * g_terrainShadow.x;
+	return all( saturate( uv ) == uv );
+}
+
+// Тень гор вокруг карты (FarTerrain): у точки карты — от заслонов за её краем, у точки гор — по карте края тени кольца.
+// Гор нет в каскадах — её берут и ближе дистанции теней (sunShadow, volumeShadow); без гор — 1
+float mountainShadow( float3 position )
+{
+	float2 uv;
+	[branch] if( terrainShadowUV( position, uv ) )
+	{
+		[branch] if( g_terrainShadow.w <= 0.0f )
+			return 1.0f;
+		const float ground = g_terrainSunShadow.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).z;
+		const float2 edge = g_terrainMountainShadow.SampleLevel( g_SamplerLinearClamp, uv, 0.0f );
+		return terrainEdgeLight( edge.x + max( position.y - ground, 0.0f ), edge.y );
+	}
+	[branch] if( g_mountainShadow.x > 0.0f )
+	{
+		const float extent = 1.0f / g_mountainShadow.x;
+		const float2 local = float2( position.x - g_mountainShadow.y, extent - ( position.z - g_mountainShadow.z ) );
+		const float2 mountainUV = local * g_mountainShadow.x;
+		if( all( saturate( mountainUV ) == mountainUV ) )
+		{
+			const float4 edge = g_mountainSunShadow.SampleLevel( g_SamplerLinearClamp, mountainUV, 0.0f );
+			return terrainEdgeLight( edge.x + max( position.y - edge.z, 0.0f ), edge.y );
+		}
+	}
+	return 1.0f;
+}
+
+// Тень рельефа дальше каскадов: заслоны карты (её карта края тени) и горы вокруг неё
 float terrainSunShadow( float3 position )
 {
-	[branch] if( g_terrainShadow.x <= 0.0f )
-		return 1.0f;
-	const float2 uv = float2( position.x, 1.0f / g_terrainShadow.x - position.z ) * g_terrainShadow.x;
-	if( any( saturate( uv ) != uv ) )
-		return 1.0f;
-	const float4 edge = g_terrainSunShadow.SampleLevel( g_SamplerLinearClamp, uv, 0.0f );
-	const float clearance = edge.x + max( position.y - edge.z, 0.0f );
-	const float penumbra = max( edge.y * g_terrainShadow.y, g_terrainShadow.z );
-	return saturate( clearance / penumbra + 0.5f );
+	float light = 1.0f;
+	float2 uv;
+	[branch] if( terrainShadowUV( position, uv ) )
+	{
+		const float4 edge = g_terrainSunShadow.SampleLevel( g_SamplerLinearClamp, uv, 0.0f );
+		light = terrainEdgeLight( edge.x + max( position.y - edge.z, 0.0f ), edge.y );
+	}
+	[branch] if( light > 0.0f )
+		light = min( light, mountainShadow( position ) );
+	return light;
 }
 
 // Дальний каскад: лес на всю карту (импостеры). Смещения — как у каскадов, в текселях дальнего; вне карты — света
@@ -143,6 +193,9 @@ float sunShadow( float3 position, float3 geometricNormal, float3 toSun, float se
 		const float blend = saturate( ( viewDepth - ( cascadeEnd - band ) ) / band );
 		[branch] if( blend > 0.0f && cascade + 1 < SHADOW_CASCADE_COUNT )
 			shadow = lerp( shadow, cascadeShadow( position, geometricNormal, toSun, NoL, cascade + 1 ), blend );
+		// Гор в каскадах нет: их тень — и здесь
+		[branch] if( shadow > 0.0f )
+			shadow = min( shadow, mountainShadow( position ) );
 	}
 	[branch] if( fade > 0.0f )
 		shadow = lerp( shadow, farShadow( position, geometricNormal, toSun, NoL ), fade );
@@ -164,7 +217,7 @@ float volumeShadow( float3 position, float3 toSun )
 			const uint cascade = shadowCascade( viewDepth );
 			const float4 clip = mul( float4( position, 1.0f ), g_cascadeViewProjection[cascade] );
 			const float2 uv = clip.xy * float2( 0.5f, -0.5f ) + 0.5f;
-			shadow = g_shadowMap.SampleCmpLevelZero( g_shadowSampler, float3( uv, cascade ), clip.z );
+			shadow = min( g_shadowMap.SampleCmpLevelZero( g_shadowSampler, float3( uv, cascade ), clip.z ), mountainShadow( position ) );
 		}
 		// Дальше — рельеф по карте края тени (туман в долине в тени горы) и лес дальним каскадом
 		[branch] if( fade > 0.0f )

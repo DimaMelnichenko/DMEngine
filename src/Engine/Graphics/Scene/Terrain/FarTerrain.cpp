@@ -159,6 +159,7 @@ bool FarTerrain::bake()
 	m_bakedRevision = m_pipeline->heightRevision();
 	m_bakedMultiplier = m_pipeline->heightMultiplier();
 	m_bakedOffset = m_pipeline->heightOffset();
+	++m_bakes;
 	m_heights = m_source;
 
 	// Внутри карты — её мип с текселем гор (те же значения, что читают её вершины этого уровня): мипы гор у края — по нынешней
@@ -237,6 +238,7 @@ bool FarTerrain::bake()
 		return false;
 	}
 	DMD3D::instance().setName( m_heightTexture, "Far terrain heights" );
+	m_maxHeight = *std::max_element( m_heights.begin(), m_heights.end() );
 	return true;
 }
 
@@ -394,6 +396,21 @@ void FarTerrain::warmPipelines( const PassStates& states )
 							{ m_materialPhase, m_lodPhase } );
 	m_shader.warmPipelines( { { RasterState::solid, DepthState::enabled, BlendState::opaque },
 							  { RasterState::wireframe, DepthState::enabled, BlendState::opaque } }, states.depthOnly, { m_depthPhase } );
+}
+
+FarTerrainHeight FarTerrain::farHeight() const
+{
+	FarTerrainHeight height;
+	if( !m_initialized )
+		return height;
+	height.heightMap = &m_heightView;
+	height.origin = m_loaded.origin;
+	height.extent = m_loaded.extent;
+	height.size = m_size;
+	height.maxHeight = m_maxHeight;
+	height.revision = m_bakes;
+	height.shadowSize = static_cast<uint32_t>( std::max( settings().shadowResolution, 0 ) );	// из окна — номер значения списка
+	return height;
 }
 
 FarTerrainSettings FarTerrain::settings() const

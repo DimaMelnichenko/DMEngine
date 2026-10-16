@@ -95,8 +95,13 @@
 // Пирамида глубины сцены (ScreenSpaceReflections, screen_reflections.cs): R32G32_FLOAT, уровни 1… (мип L − 1) — ближайшая и
 // дальняя глубина ячейки 2^L пикселей; лучам экранных отражений (screen_reflection_trace.sh)
 #define SLOT_SCENE_DEPTH_PYRAMID	128
+// Тень гор вокруг карты (shadows.sh, mountainShadow; TerrainSunShadow у ShadowCascades): на карте — от заслонов за её краем,
+// RG — запас земли над краем тени и расстояние до заслона (гор нет в каскадах — её берут и вблизи); на всё кольцо гор —
+// как SLOT_TERRAIN_SUN_SHADOW
+#define SLOT_TERRAIN_MOUNTAIN_SHADOW	129
+#define SLOT_MOUNTAIN_SUN_SHADOW	130
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	29
+#define SLOT_SCENE_COUNT	31
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

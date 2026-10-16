@@ -21,8 +21,10 @@ DM_CONSTANTS( ShadowConstants, SLOT_CB_SHADOW )
 	DM_FIELD( float4, cascadeTexelSize );	// размер текселя каскада в мире, м
 	DM_FIELD( float4, farShadow );			// x — тексель дальнего каскада, м; y — 1: он есть
 	// Тень рельефа дальше каскадов: x — 1 / сторона карты, м⁻¹ (0 — карты нет); y — тангенс угла полутени; z — наименьшая
-	// полутень, м
+	// полутень, м; w — 1: есть тень гор на карте (SLOT_TERRAIN_MOUNTAIN_SHADOW)
 	DM_FIELD( float4, terrainShadow );
+	// Тень на кольце гор (SLOT_MOUNTAIN_SUN_SHADOW): x — 1 / его сторона, м⁻¹ (0 — нет); y, z — его угол x, z, м
+	DM_FIELD( float4, mountainShadow );
 	DM_FIELD( float, cascadeTransition );	// доля каскада в его конце, где он смешивается со следующим
 	DM_FIELD( float, shadowFadeStart );	// отсюда тень плавно уходит…
 	DM_FIELD( float, shadowDistance );	// …и здесь заканчивается (Dynamic Shadow Distance), м

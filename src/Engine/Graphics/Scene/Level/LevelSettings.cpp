@@ -451,6 +451,10 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 		  "slopes", settingRangeControl },
 		{ "macro_texture_scale", "Macro texture scale", DM_SETTING( macroTextureScale ), 1.0f, 64.0f, "",
 		  "The macro repeat is this many times larger than the far one (Far texture scale of the terrain)", settingClampLow },
+		// Тень солнца на всём кольце: тексель — сторона кольца / разрешение (512 — 128 м); пересчёт — при сдвиге солнца
+		{ "shadow_resolution", "Shadow resolution", DM_SETTING( shadowResolution ), 0.0f, 0.0f, "",
+		  "Texels of the sun shadow over the whole ring per side: the mountains shade themselves by it; finer - sharper and "
+		  "longer to recompute when the sun moves", 0, "", { 256, 512, 1024, 2048 } },
 		{ "rock_slope_from,rock_slope_to", "Rock slope", DM_SETTING( rockSlope ), 0.0f, 90.0f, "deg", "Bare rock on slopes steeper",
 		  settingRangeControl, rules },
 		{ "scree_slope_from,scree_slope_to", "Scree slope", DM_SETTING( screeSlope ), 0.0f, 90.0f, "deg",

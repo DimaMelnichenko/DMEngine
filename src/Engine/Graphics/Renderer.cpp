@@ -259,7 +259,8 @@ FrameContext Renderer::prepareShadows( Scene& scene, const FrameContext& frame )
 	m_shadowsActive = m_shadows.update( frame.view, shadowSettings, frame.toShadowLight, scene.bounds() );
 	// Тень рельефа дальше каскадов — до compute и проходов сцены (её читают туман и все приёмники тени)
 	if( m_shadowsActive )
-		measure( "Terrain sun shadow", [&] { m_shadows.updateTerrainShadow( scene.terrainHeightSource().terrainHeight(), frame.toShadowLight ); } );
+		measure( "Terrain sun shadow", [&] { m_shadows.updateTerrainShadow( scene.terrainHeightSource().terrainHeight(),
+																			   scene.farTerrainHeight(), frame.toShadowLight ); } );
 	// Смещение теней сменилось (слайдер в GUI, тени перешли на луну) — пайплайны теней заново до прохода
 	if( m_shadows.renderState() != m_warmedShadowState )
 		warmShadowPipelines( scene );

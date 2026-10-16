@@ -26,7 +26,8 @@ namespace GS
 // Дальние тени — дальше Dynamic Shadow Distance (как Far Shadow Cascades в UE; DMLight::ShadowSettings::farShadows): лес —
 // дальним каскадом (срез карты после четырёх, вид на всю сцену вдоль света, в нём только импостеры расстановки —
 // RenderView::farShadow), рельеф — картой края тени по карте высот (TerrainSunShadow). Приём — в той же sunShadow:
-// в полосе конца дистанции тень каскадов переходит в дальнюю
+// в полосе конца дистанции тень каскадов переходит в дальнюю. Горы вокруг карты (FarTerrain) — своей картой края тени на
+// всё кольцо, а их тень на карте — отдельной картой у тени карты: гор нет в каскадах, их тень берут и вблизи
 class ShadowCascades : public RenderFeature
 {
 public:
@@ -46,9 +47,9 @@ public:
 	// Дальний каскад есть в этом кадре (тени активны и дальние тени включены у источника)
 	bool farActive() const { return m_active && m_settings.farShadows; }
 	const RenderView& farView() const { return m_farView; }
-	// Тень рельефа дальше каскадов — для источника теней этого кадра (пересчёт — только при его сдвиге или новом рельефе).
-	// До проходов сцены: её читают туман и все приёмники тени
-	void updateTerrainShadow( const TerrainHeight& terrain, const DirectX::XMFLOAT3& toLight );
+	// Тень рельефа дальше каскадов — для источника теней этого кадра (пересчёт — только при его сдвиге или новом рельефе):
+	// карта уровня и горы вокруг неё (farTerrain — без гор heightMap пуст). До проходов сцены: её читают туман и все приёмники тени
+	void updateTerrainShadow( const TerrainHeight& terrain, const FarTerrainHeight& farTerrain, const DirectX::XMFLOAT3& toLight );
 	// Состояние прохода глубины каскадов — часть пайплайнов теней: растеризатор теней (без отсечения граней и по
 	// глубине) с наклонным смещением глубины солнца (Shadow Slope Bias, DMLight::ShadowSettings). Из настроек
 	// последнего update() или из заданных (прогрев пайплайнов при загрузке — Renderer::warmPipelines)
@@ -83,7 +84,8 @@ private:
 	float m_texelSize[cascadeCount] = {};
 	RenderView m_farView;
 	float m_farTexelSize = 0.0f;
-	TerrainSunShadow m_terrainShadow;
+	TerrainSunShadow m_terrainShadow;	// карта уровня (и тень гор на ней — отдельно)
+	TerrainSunShadow m_mountainShadow;	// всё кольцо гор
 
 	Texture m_texture;
 	TargetView m_depthViews[cascadeCount + 1];	// каскады и дальний

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "DirectX.h"
 
 class ShaderView;
 
@@ -30,6 +31,18 @@ struct TerrainHeight
 	// террейна (детальная вода у русел, WaterSimulation)
 	const ShaderView* detailTiles = nullptr;
 	const ShaderView* detailIndex = nullptr;
+};
+
+// Горы вокруг карты (FarTerrain) — тем, кто считает по рельефу и за её краем (тень рельефа, TerrainSunShadow)
+struct FarTerrainHeight
+{
+	const ShaderView* heightMap = nullptr;	// карта гор: высоты в метрах (R32_FLOAT, мипы), строки с севера; nullptr — гор нет
+	DirectX::XMFLOAT2 origin = DirectX::XMFLOAT2( 0.0f, 0.0f );	// угол с наименьшими x, z, м
+	float extent = 0.0f;		// сторона, м
+	uint32_t size = 0;			// текселей по стороне
+	float maxHeight = 0.0f;		// наибольшая высота, м
+	uint32_t revision = 0;		// растёт с каждым запеканием (новая итоговая карта уровня)
+	uint32_t shadowSize = 0;	// текселей тени гор по стороне («Shadow resolution»)
 };
 
 class TerrainHeightSource

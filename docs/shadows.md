@@ -153,7 +153,17 @@ dᵢ = D · (Eⁱ − 1) / (E⁴ − 1)
   расстоянием, вдали высоты — из мипа по шагу; луч кончается у края карты или когда выше края ничто не поднимется.
   Карта считается заново, только когда источник теней сдвинулся больше чем на 0,05° или рельеф сменился (перестройка
   русел — `TerrainHeight::revision`, множитель высоты): 0,03–0,07 мс за пересчёт, с идущим временем суток в среднем
-  ≤ 0,03 мс.
+  ≤ 0,03 мс;
+- **горы вокруг карты** ([far_terrain.md](far_terrain.md)) — тем же расчётом: у карты луч не кончается у её края, а идёт
+  дальше по карте гор (`FarTerrainHeight`, высоты в метрах) до края кольца — до ~560 шагов; заслоны за краем карты пишутся
+  отдельно — во вторую цель, тень гор на карте (`SLOT_TERRAIN_MOUNTAIN_SHADOW`, t129: запас земли над краем и расстояние до
+  заслона). На всё кольцо — второй экземпляр `TerrainSunShadow` (`ShadowCascades::m_mountainShadow`, область — кольцо,
+  тексель — сторона / «Shadow resolution» гор, 512 → 128 м; `SLOT_MOUNTAIN_SUN_SHADOW`, t130): по ней горы затеняют сами
+  себя. Гор нет в каскадах, поэтому их тень (`mountainShadow` в `shadows.sh`) берут и ближе дистанции теней — в
+  `sunShadow` и `volumeShadow` минимумом с каскадом: иначе вокруг камеры в тени горы светился бы круг каскадов. Точка
+  карты — её тень и тень гор, точка гор — карта кольца. Пересчёт обеих карт — 0,35 мс (Release; если солнце сдвигается
+  каждый кадр), как и у карты, только при сдвиге источника или новом рельефе (`FarTerrainHeight::revision` — запекание
+  гор).
 
 В полосе конца дистанции (`ShadowDistanceFadeoutFraction`) тень каскадов переходит в дальнюю, шва нет. Самотень кроны
 импостера (`Surface.selfShadow`) действует и дальше дистанции. «Show cascades» подкрашивает область дальних теней
@@ -237,8 +247,9 @@ Release, 1920 × 1080, время GPU кадра без теней и с тен�
 ## Ограничения
 
 - Тень только от солнца: точечные и прожекторы теней не отбрасывают.
-- Дальше `DynamicShadowDistance` тени дают только лес (дальний каскад) и рельеф (карта края тени); модели уровня и
-  трава там тени не отбрасывают. Дальний каскад покрывает всю сцену — на карте в 4–8 км его нужно водить за камерой
+- Дальше `DynamicShadowDistance` тени дают только лес (дальний каскад) и рельеф (карта края тени, с горами вокруг карты);
+  модели уровня и трава там тени не отбрасывают. Горы отбрасывают тень только картой края (тексель 128 м): мелкие гребни
+  тени не дают. Дальний каскад покрывает всю сцену — на карте в 4–8 км его нужно водить за камерой
   (этап 16).
 - Тень расстановки рисуется в каскад всеми инстансами слоя, без отбора по frustum каскада.
 - Полупрозрачные материалы тень не отбрасывают и принимают её как непрозрачные.
@@ -251,7 +262,7 @@ Release, 1920 × 1080, время GPU кадра без теней и с тен�
 | Файл | Что там |
 |---|---|
 | `src/Engine/Graphics/ShadowCascades.h/.cpp` | карта теней, границы и виды каскадов, стабилизация, дальний каскад, настройки, константы для приёма |
-| `src/Engine/Graphics/TerrainSunShadow.h/.cpp`, `Shaders/terrain_sun_shadow.cs` | тень рельефа дальше каскадов — карта края тени по карте высот |
+| `src/Engine/Graphics/TerrainSunShadow.h/.cpp`, `Shaders/terrain_sun_shadow.cs` | тень рельефа дальше каскадов — карта края тени по карте высот и горам вокруг неё; область — карта уровня или кольцо гор |
 | `src/Engine/Graphics/Renderer.cpp` | проход теней (`renderShadows`, `buildShadowCommands`), общий исполнитель команд |
 | `src/Engine/Graphics/Scene/MeshBatch.h` | `MeshPass::csmShadowDepth`, `MeshBatch::castsShadow` |
 | `src/Engine/Graphics/Scene/Materials/Material.h` | `depthPhaseFor` — вариант материала «только глубина» |
@@ -260,11 +271,11 @@ Release, 1920 × 1080, время GPU кадра без теней и с тен�
 | `src/Engine/Graphics/Scene/Scatterer/Scatterer.cpp`, `Shaders/scatter.cs` | тень слоёв расстановки, отбор инстансов с учётом тени |
 | `src/Engine/Graphics/Scene/Scene.cpp` | `Scene::bounds` — границы сцены для глубины карты |
 | `src/Engine/Graphics/D3D/DMD3DPipelines.cpp` | растеризатор теней по `RenderState` (`csmShadowDepth`, `depthBias`) |
-| `Shaders/shadows.sh` | приём тени: каскад, смещения, фильтр, переход, дальние тени (`farShadow`, `terrainSunShadow`), подкраска каскадов |
+| `Shaders/shadows.sh` | приём тени: каскад, смещения, фильтр, переход, дальние тени (`farShadow`, `terrainSunShadow`), тень гор (`mountainShadow`), подкраска каскадов |
 | `Shaders/lighting.sh` | множитель тени солнца в прямом свете |
 | `Shaders/PBRLit.ps` | `mainDepth` — глубина Masked-материалов |
 | `Shaders/LightShader.vs`, `Shaders/depth_only.sh` | вершинный шейдер `PBR` «только глубина» (`DEPTH_ONLY`) |
-| `Shaders/slots.h` | `SLOT_CB_SHADOW` (b3), `SLOT_SHADOW_MAP` (t104), `SLOT_TERRAIN_SUN_SHADOW` (t125), `SLOT_SAMPLER_SHADOW` (s8) |
+| `Shaders/slots.h` | `SLOT_CB_SHADOW` (b3), `SLOT_SHADOW_MAP` (t104), `SLOT_TERRAIN_SUN_SHADOW` (t125), `SLOT_TERRAIN_MOUNTAIN_SHADOW` (t129), `SLOT_MOUNTAIN_SUN_SHADOW` (t130), `SLOT_SAMPLER_SHADOW` (s8) |
 | `settings.ini` | `ShadowMapResolution` — размер среза карты |
 
 ## Откуда подход

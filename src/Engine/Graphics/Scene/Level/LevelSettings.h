@@ -263,6 +263,7 @@ struct FarTerrainSettings
 	DirectX::XMFLOAT3 forestColor = DirectX::XMFLOAT3( 0.035f, 0.055f, 0.03f );	// цвет леса издали, линейный
 	SettingRange macroDistance{ 800.0f, 2500.0f };	// дальше текстуры слоёв — в третьем масштабе (повтор не виден сеткой), м
 	float macroTextureScale = 8.0f;		// во столько раз крупнее дальнего масштаба
+	int32_t shadowResolution = 512;		// текселей тени солнца на всё кольцо по стороне (TerrainSunShadow)
 };
 const SettingsSchema<FarTerrainSettings>& farTerrainSchema();
 

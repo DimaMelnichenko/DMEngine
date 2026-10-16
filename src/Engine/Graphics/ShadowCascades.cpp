@@ -19,7 +19,7 @@ bool ShadowCascades::initialize( uint32_t resolution )
 	m_properties.setName( "Shadows" );
 	m_properties.insert( "Show cascades", false );
 
-	return createResources() && m_terrainShadow.initialize();
+	return createResources() && m_terrainShadow.initialize( false ) && m_mountainShadow.initialize( true );
 }
 
 bool ShadowCascades::createResources()
@@ -212,10 +212,12 @@ void ShadowCascades::updateFarView( const RenderView& mainView, const XMVECTOR& 
 	m_farTexelSize = texel;
 }
 
-void ShadowCascades::updateTerrainShadow( const TerrainHeight& terrain, const XMFLOAT3& toLight )
+void ShadowCascades::updateTerrainShadow( const TerrainHeight& terrain, const FarTerrainHeight& farTerrain, const XMFLOAT3& toLight )
 {
-	if( farActive() )
-		m_terrainShadow.update( terrain, toLight );
+	if( !farActive() )
+		return;
+	m_terrainShadow.update( terrain, farTerrain, toLight );
+	m_mountainShadow.update( terrain, farTerrain, toLight );
 }
 
 RenderState ShadowCascades::renderState( const DMLight::ShadowSettings& settings )
@@ -244,8 +246,12 @@ void ShadowCascades::bindForReceivers( int sunLightIndex )
 	constants.farViewProjection = XMMatrixTranspose( m_farView.viewProjection );
 	constants.farShadow = XMFLOAT4( m_farTexelSize, distant ? 1.0f : 0.0f, 0.0f, 0.0f );
 	const bool terrain = distant && m_terrainShadow.valid();
-	constants.terrainShadow = XMFLOAT4( terrain ? m_terrainShadow.inverseWorldSize() : 0.0f,
-										std::tan( XMConvertToRadians( m_settings.farShadowPenumbra ) ), 0.1f, 0.0f );
+	const bool external = terrain && m_terrainShadow.hasExternal();
+	const bool mountains = distant && m_mountainShadow.valid();
+	constants.terrainShadow = XMFLOAT4( terrain ? m_terrainShadow.inverseExtent() : 0.0f,
+										std::tan( XMConvertToRadians( m_settings.farShadowPenumbra ) ), 0.1f, external ? 1.0f : 0.0f );
+	constants.mountainShadow = XMFLOAT4( mountains ? m_mountainShadow.inverseExtent() : 0.0f, m_mountainShadow.origin().x,
+										 m_mountainShadow.origin().y, 0.0f );
 	constants.cascadeSplits = XMFLOAT4( m_splits[0], m_splits[1], m_splits[2], m_splits[3] );
 	constants.cascadeTexelSize = XMFLOAT4( m_texelSize[0], m_texelSize[1], m_texelSize[2], m_texelSize[3] );
 	constants.cascadeTransition = m_settings.cascadeTransitionFraction;
@@ -263,6 +269,10 @@ void ShadowCascades::bindForReceivers( int sunLightIndex )
 	d3d.setSRV( SLOT_SHADOW_MAP, m_shaderView );
 	if( terrain )
 		d3d.setSRV( SLOT_TERRAIN_SUN_SHADOW, m_terrainShadow.shaderView() );
+	if( external )
+		d3d.setSRV( SLOT_TERRAIN_MOUNTAIN_SHADOW, m_terrainShadow.externalView() );
+	if( mountains )
+		d3d.setSRV( SLOT_MOUNTAIN_SUN_SHADOW, m_mountainShadow.shaderView() );
 }
 
 PropertyContainer* ShadowCascades::properties()

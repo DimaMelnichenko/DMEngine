@@ -82,6 +82,8 @@ public:
 	// Отрисовка рельефа (окно террейна, видимость) и его данные — конвейер рельефа и воды: запросы высоты, русла, маски,
 	// кисть, поле ветра
 	CDLODTerrain& terrain();
+	// Горы вокруг карты для тени рельефа (ShadowCascades); без гор heightMap пуст
+	FarTerrainHeight farTerrainHeight() const { return m_farTerrain.farHeight(); }
 	TerrainPipeline& terrainPipeline();
 	// Высоты рельефа для тех, кому нужна только земля (тень рельефа у рендерера): конвейер как TerrainHeightSource
 	const TerrainHeightSource& terrainHeightSource() const;
