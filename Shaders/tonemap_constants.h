@@ -15,6 +15,8 @@ DM_CONSTANTS( PostProcessBuffer, SLOT_CB_PASS )
 	DM_FIELD( float, bloomScale );		// Bloom Intensity / сумма весов уровней: уровень хранит взвешенную сумму всех уровней
 	DM_FIELD( float, purkinjeShift );	// сила ночного зрения 0…1
 	DM_FIELD( float, starScale );		// Star Intensity (0 — лучей нет): лучи-звёзды вокруг ярких бликов (star_streak.ps)
+	DM_FIELD( float3, shaftColor );		// лучи солнца: сила × оттенок × видимость солнца (0 — лучей нет, light_shaft_blur.ps)
+	DM_FIELD( float, padding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

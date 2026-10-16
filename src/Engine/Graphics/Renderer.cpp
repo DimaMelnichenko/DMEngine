@@ -242,7 +242,8 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 
 	renderShadows( scene, frame );
 	renderScene( scene, frame, wireframe, depthPrepass );
-	measure( "Post process", [&] { m_postProcess.render( m_sceneTargets.colorView(), m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
+	measure( "Post process", [&] { m_postProcess.render( m_sceneTargets.colorView(), m_sceneTargets.depthView(), frame.view, frame.toShadowLight,
+														 m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
 	reportFrameStats( scene );
 
 	m_gpuProfiler.endFrame();

@@ -328,6 +328,16 @@ struct PostProcessSettings
 	float starAngle = 15.0f;
 	float starLength = 0.06f;
 	float starDispersion = 2.0f;		// радужная кайма лучей: разброс длины по каналам (0 — белые, 1 — по длинам волн)
+	// Лучи солнца — god rays (как Light Shafts у направленного света в UE, экранные, Mitchell 2007): сила (0 — нет), порог —
+	// яркость неба после экспозиции, предел избытка (мягкий: диск солнца), радиус маски у солнца и длина следа — доли высоты
+	// кадра и пути к солнцу, оттенок. Не физика: в ясную сухую погоду лучей в воздухе не видно (их даёт туман уровня), но
+	// кадр с ними красивее
+	float lightShaftIntensity = 1.5f;
+	float lightShaftThreshold = 0.3f;
+	float lightShaftLimit = 4.0f;
+	float lightShaftRadius = 0.6f;
+	float lightShaftLength = 0.9f;
+	DirectX::XMFLOAT3 lightShaftTint = DirectX::XMFLOAT3( 1.0f, 0.92f, 0.8f );
 	AmbientOcclusionSettings ambientOcclusion;
 };
 

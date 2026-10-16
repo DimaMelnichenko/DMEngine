@@ -250,6 +250,20 @@ const SettingsSchema<PostProcessSettings>& postProcessSchema()
 		{ "star_dispersion", "Star dispersion", DM_SETTING( starDispersion ), 0.0f, 4.0f, "",
 		  "Rainbow fringe of the rays: diffraction grows with the wavelength, the red ray is longer than the blue one "
 		  "(1 - by the wavelength ratio, more - stronger); 0 - white rays", 0, "bloom" },
+		// Лучи солнца — god rays (PostProcess::renderLightShafts)
+		{ "light_shaft_intensity", "Light shaft intensity", DM_SETTING( lightShaftIntensity ), 0.0f, 4.0f, "",
+		  "God rays from the sun (screen space, like Light Shafts in UE): bright sky near the sun blurred toward it, silhouettes "
+		  "of trees and mountains cut it into rays; not physical in clear dry air, but pretty; 0 - off", 0, "bloom" },
+		{ "light_shaft_threshold", "Light shaft threshold", DM_SETTING( lightShaftThreshold ), 0.0f, 100.0f, "",
+		  "Sky brightness after exposure from which it shines into the rays (1 - white)", settingLogarithmic, "bloom" },
+		{ "light_shaft_limit", "Light shaft limit", DM_SETTING( lightShaftLimit ), 1.0f, 1000.0f, "",
+		  "Soft limit of the brightness above the threshold: the sun disk is thousands of times brighter than the sky near it",
+		  settingLogarithmic, "bloom" },
+		{ "light_shaft_radius", "Light shaft radius", DM_SETTING( lightShaftRadius ), 0.05f, 2.0f, "",
+		  "How far from the sun the sky shines into the rays, share of the frame height", 0, "bloom" },
+		{ "light_shaft_length", "Light shaft length", DM_SETTING( lightShaftLength ), 0.0f, 1.0f, "",
+		  "Share of the way to the sun a pixel gathers the light from: longer rays", 0, "bloom" },
+		{ "light_shaft_tint", "Light shaft tint", DM_SETTING( lightShaftTint ), 0.0f, 0.0f, "", "", settingColor, "bloom" },
 		// Экранное затенение окружением (AmbientOcclusion) — до проходов цвета, но настройки здесь, как в UE
 		{ "ambient_occlusion_intensity", "Ambient occlusion intensity", DM_SETTING( ambientOcclusion.intensity ), 0.0f, 1.0f, "",
 		  "Screen space ambient occlusion (GTAO): how much it darkens the sky light; 0 - off", 0, "bloom" },

@@ -1,0 +1,51 @@
+////////////////////////////////////////////////////////////////////////////////
+// Лучи солнца (god rays), первый проход: маска в четверти кадра — небо (глубина 0: фон, облака) ярче порога рядом с
+// солнцем, всё, что ближе неба (деревья, горы, вода), — 0: после радиального размытия к солнцу (light_shaft_blur.ps)
+// силуэты дают тёмные полосы между светлыми — лучи. У каждого пикселя блока 4 × 4 — избыток яркости после экспозиции над
+// порогом с мягким пределом (диск солнца в тысячи раз ярче неба рядом), × спад от солнца. Класс PostProcess
+////////////////////////////////////////////////////////////////////////////////
+
+#include "slots.h"
+#include "samplers.sh"
+#include "exposure.sh"
+#include "bindless.sh"
+
+DM_SRV( Texture2D<float4>, g_color, 0 );	// цвет сцены (с экспозицией прошлого кадра)
+DM_SRV( Texture2D<float>, g_depth, 1 );	// глубина сцены (обратная: 0 — небо)
+
+#include "light_shaft_constants.h"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+static const float maxHdrValue = 60000.0f;
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	uint width, height;
+	g_color.GetDimensions( width, height );
+	const int2 base = int2( input.position.xy ) * 4;
+	const float ratio = exposureRatio();
+	float3 sum = 0.0f;
+	[unroll] for( int y = 0; y < 4; ++y )
+	{
+		[unroll] for( int x = 0; x < 4; ++x )
+		{
+			const int2 pixel = min( base + int2( x, y ), int2( width, height ) - 1 );
+			[branch] if( g_depth.Load( int3( pixel, 0 ) ) <= 0.0f )
+			{
+				const float3 color = min( max( g_color.Load( int3( pixel, 0 ) ).rgb, 0.0f ), maxHdrValue );
+				const float brightness = max( color.r, max( color.g, color.b ) ) * ratio;
+				const float excess = max( brightness - g_threshold, 0.0f );
+				sum += color * ( excess / ( 1.0f + excess / g_limit ) / max( brightness, 1e-4f ) );
+			}
+		}
+	}
+	// Спад от солнца: расстояние — в долях высоты кадра
+	const float distance = length( ( input.uv - g_sunUV ) * float2( g_aspect, 1.0f ) );
+	const float falloff = saturate( 1.0f - distance / g_radius );
+	return float4( sum / 16.0f * falloff * falloff, 1.0f );
+}

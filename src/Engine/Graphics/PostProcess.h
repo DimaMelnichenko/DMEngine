@@ -12,6 +12,7 @@
 #include "Shaders\tonemap_constants.h"
 #include "Shaders\bloom_constants.h"
 #include "Shaders\star_constants.h"
+#include "Shaders\light_shaft_constants.h"
 #include "Shaders\exposure_histogram_constants.h"
 #include "Shaders\exposure_adapt_constants.h"
 #include "RenderFeature.h"
@@ -28,6 +29,8 @@ namespace GS
 //   (Shaders/bloom_upsample.ps, BlendState::additive);
 // - лучи-звёзды вокруг ярких бликов (M. Kawase, GDC 2003): яркое над высоким порогом в четверть кадра (Shaders/star_bright.ps)
 //   и по оси звезды три прохода вдоль неё с шагом 1, 4, 16 текселей (Shaders/star_streak.ps), оси — в сумму;
+// - лучи солнца, god rays (K. Mitchell, GPU Gems 3, гл. 13; Light Shafts в UE): маска неба у солнца в четверти кадра
+//   (Shaders/light_shaft_mask.ps) и радиальное размытие к экранной точке солнца в три прохода (Shaders/light_shaft_blur.ps);
 // - тонмаппинг (Shaders/tonemap.ps): цвет сцены + bloom + лучи, приведение к новой экспозиции, ночное зрение (сдвиг Пуркинье:
 //   в темноте цвет уходит в синеватый монохромный), AgX / ACES — в задний буфер.
 // Ночь темнее дня — кривая компенсации экспозиции от EV100 сцены (Exposure Compensation Curve в UE).
@@ -64,8 +67,10 @@ public:
 	// Экспозиция кадра — для объявлений проходов, которые её читают
 	const ShaderView& exposureView() const { return m_exposureSRV; }
 	// Рисует цепочку в задний буфер и оставляет его привязанным для GUI; время проходов — области profiler.
-	// sceneColor — HDR-цвет сцены (SceneTargets::colorView), deltaTime — длительность кадра, с (скорость адаптации)
-	void render( const ShaderView& sceneColor, GpuProfiler& profiler, float deltaTime );
+	// sceneColor — HDR-цвет сцены (SceneTargets::colorView), sceneDepth — её глубина (небо — 0), view — главный вид,
+	// toSun — направление на солнце (ночью — на луну; y ≤ 0 — его нет), deltaTime — длительность кадра, с (скорость адаптации)
+	void render( const ShaderView& sceneColor, const ShaderView& sceneDepth, const RenderView& view, const DirectX::XMFLOAT3& toSun,
+				 GpuProfiler& profiler, float deltaTime );
 	// Смена плана (camera cut, как у вида в UE): несколько кадров экспозиция адаптируется сразу, а не за секунды
 	void cameraCut() override { m_cutFrames = cutFrameCount; }
 	// EV100 кадра с отставанием на несколько кадров (копия с GPU без ожидания) — для статистики
@@ -93,6 +98,9 @@ private:
 	void renderStars( const ShaderView& sceneColor, const Settings& settings );
 	void drawStarPass( const char* name, FullscreenShader& shader, const RenderTarget& target, const ShaderView& source,
 					   const StarBuffer& params, BlendState blend );
+	// Лучи солнца: маска неба у солнца, три прохода к нему — в m_shafts. sunUV — экранная точка солнца
+	void renderLightShafts( const ShaderView& sceneColor, const ShaderView& sceneDepth, const DirectX::XMFLOAT2& sunUV,
+							const Settings& settings );
 	void renderExposure( const ShaderView& sceneColor, float deltaTime );
 	void readBackExposure();
 	void renderBloom( const ShaderView& sceneColor, float threshold );
@@ -113,6 +121,12 @@ private:
 	RenderTarget m_starPong;
 	RenderTarget m_star;
 	Buffer m_starConstants;
+	// Лучи солнца в четверти кадра: маска и след (промежуточные проходы — в m_starPing / m_starPong, лучи-звёзды к ним готовы)
+	FullscreenShader m_shaftMask;
+	FullscreenShader m_shaftBlur;
+	RenderTarget m_shaftMaskTarget;
+	RenderTarget m_shafts;
+	Buffer m_shaftConstants;
 	Buffer m_constantBuffer;
 	Buffer m_bloomConstants;
 	Buffer m_histogramConstants;
