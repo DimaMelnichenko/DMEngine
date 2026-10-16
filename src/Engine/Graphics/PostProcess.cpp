@@ -411,6 +411,8 @@ void PostProcess::renderLightShafts( const ShaderView& sceneColor, const ShaderV
 	// След к солнцу: три прохода длиной L / 64, L / 8, L пути к нему
 	const float length = std::clamp( settings.lightShaftLength, 0.0f, 1.0f );
 	const float lengths[] = { length / 64.0f, length / 8.0f, length };
+	// Спад к солнцу: на всей длине следа вес падает до light_shaft_decay
+	params.decayRate = length > 0.0f ? -std::log( std::clamp( settings.lightShaftDecay, 1e-4f, 1.0f ) ) / length : 0.0f;
 	const RenderTarget* targets[] = { &m_starPing, &m_starPong, &m_shafts };
 	const RenderTarget* source = &m_shaftMaskTarget;
 	for( uint32_t pass = 0; pass < std::size( lengths ); ++pass )

@@ -18,7 +18,8 @@ DM_CONSTANTS( LightShaftBuffer, SLOT_CB_PASS )
 	DM_FIELD( float, radius );			// light_shaft_mask.ps: на этом расстоянии от солнца (доля высоты кадра) маска сходит на нет
 	DM_FIELD( float, limit );				// light_shaft_mask.ps: предел избытка яркости над порогом (мягкий): солнечный диск
 	DM_FIELD( float, blurLength );		// light_shaft_blur.ps: доля пути к солнцу, которую собирает проход
-	DM_FIELD( float, padding );
+	// light_shaft_blur.ps: спад веса выборки к солнцу (Decay у Mitchell) — вес e^(−это × доля пути), 0 — выборки равны
+	DM_FIELD( float, decayRate );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

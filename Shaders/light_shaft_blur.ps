@@ -2,7 +2,9 @@
 // Лучи солнца (god rays): радиальное размытие маски к экранной точке солнца (K. Mitchell, «Volumetric Light Scattering as
 // a Post-Process», GPU Gems 3, гл. 13; как Light Shafts в UE). Пиксель собирает восемь выборок на отрезке к солнцу длиной
 // g_blurLength от пути до него; три прохода с длиной L / 64, L / 8, L складываются в непрерывный след без ступенек от
-// редких выборок. Класс PostProcess
+// редких выборок. Вес выборки спадает к солнцу — e^(−g_decayRate × доля пути), как Decay у Mitchell: экспонента от суммы
+// сдвигов — произведение экспонент проходов, поэтому у следа из трёх проходов спад тот же, что у одного марша; веса
+// нормированы — яркость следа та же, луч короче и чётче. Класс PostProcess
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "slots.h"
@@ -25,10 +27,13 @@ float4 main( PixelInputType input ) : SV_TARGET
 {
 	const float2 toSun = g_sunUV - input.uv;
 	float3 sum = 0.0f;
+	float weightSum = 0.0f;
 	[unroll] for( int i = 0; i < shaftSamples; ++i )
 	{
 		const float t = ( i + 0.5f ) / shaftSamples * g_blurLength;
-		sum += g_source.SampleLevel( g_SamplerLinearClamp, input.uv + toSun * t, 0.0f ).rgb;
+		const float weight = exp( -g_decayRate * t );
+		sum += weight * g_source.SampleLevel( g_SamplerLinearClamp, input.uv + toSun * t, 0.0f ).rgb;
+		weightSum += weight;
 	}
-	return float4( sum / shaftSamples, 1.0f );
+	return float4( sum / weightSum, 1.0f );
 }

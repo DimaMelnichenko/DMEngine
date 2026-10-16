@@ -267,6 +267,9 @@ const SettingsSchema<PostProcessSettings>& postProcessSchema()
 		{ "light_shaft_distance", "Light shaft distance", DM_SETTING( lightShaftDistance ), 0.0f, 500.0f, "m",
 		  "The rays are light scattered in the air in front of what is behind the pixel: share 1 - e^(-depth / distance); no haze "
 		  "over near branches and trunks; 0 - the same at any depth", settingLogarithmic, "bloom" },
+		{ "light_shaft_decay", "Light shaft decay", DM_SETTING( lightShaftDecay ), 0.001f, 1.0f, "",
+		  "Weight of the light at the end of the trail toward the sun (Decay in GPU Gems 3, ch. 13): less - shorter and sharper "
+		  "rays; 1 - no falloff", settingLogarithmic, "bloom" },
 		// Экранное затенение окружением (AmbientOcclusion) — до проходов цвета, но настройки здесь, как в UE
 		{ "ambient_occlusion_intensity", "Ambient occlusion intensity", DM_SETTING( ambientOcclusion.intensity ), 0.0f, 1.0f, "",
 		  "Screen space ambient occlusion (GTAO): how much it darkens the sky light; 0 - off", 0, "bloom" },

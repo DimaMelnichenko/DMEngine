@@ -341,6 +341,7 @@ struct PostProcessSettings
 	// Лучи — свет в воздухе перед тем, что за пикселем: доля 1 − e^(−глубина / это), м; перед ближним (ветка у камеры)
 	// дымки нет; 0 — по всей глубине одинаково
 	float lightShaftDistance = 15.0f;
+	float lightShaftDecay = 0.3f;		// вес света в конце следа (у солнца) — спад вдоль луча, Decay у Mitchell; 1 — без спада
 	AmbientOcclusionSettings ambientOcclusion;
 };
 
