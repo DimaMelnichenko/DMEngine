@@ -474,6 +474,13 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		{ "standing_waves", "Standing waves", DM_SETTING( standingWaves ), 0.0f, 3.0f, "",
 		  "Stationary waves over riffles: the wave stands where its speed against the current equals the speed of the water; "
 		  "stronger on shallow fast water (by the Froude number); 0 - none", 0, "surface" },
+		{ "sparkle", "Sparkle", DM_SETTING( sparkle ), 0.0f, 1.0f, "",
+		  "Share of the sun (moon) highlight that breaks into sparkles: tiny ripple facets smaller than a pixel reflect the "
+		  "light one by one; 0 - a smooth highlight", 0, "surface" },
+		{ "sparkle_roughness", "Sparkle roughness", DM_SETTING( sparkleRoughness ), 0.05f, 1.0f, "",
+		  "Roughness of the tiny ripple facets: how wide the sparkles spread around the reflection of the sun", 0, "surface" },
+		{ "sparkle_size", "Sparkle size", DM_SETTING( sparkleSize ), 0.001f, 0.1f, "m", "Size of a ripple facet that reflects the sun",
+		  0, "surface" },
 		{ "foam_speed", "Foam speed", DM_SETTING( foamSpeed ), 0.1f, 5.0f, "m/s", "", 0, "surface" },
 		{ "foam_shear", "Foam shear", DM_SETTING( foamShear ), 0.1f, 10.0f, "1/s", "", 0, "surface" },
 		{ "foam_lifetime", "Foam lifetime", DM_SETTING( foamLifetime ), 0.1f, 30.0f, "s",

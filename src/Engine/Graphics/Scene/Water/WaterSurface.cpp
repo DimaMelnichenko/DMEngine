@@ -210,6 +210,9 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	params.foamSoftness = std::max( current.foamSoftness, 0.01f );
 	params.foamDissolve = std::max( current.foamDissolve, 0.0f );
 	params.standingWaves = std::max( current.standingWaves, 0.0f );
+	params.sparkle = std::clamp( current.sparkle, 0.0f, 1.0f );
+	params.sparkleRoughness = std::clamp( current.sparkleRoughness, 0.0f, 1.0f );
+	params.sparkleSize = std::max( current.sparkleSize, 0.001f );
 	Device::updateResourceData( m_surfaceBuffer, params );
 
 	ScopedRenderState state( context.frameRaster );

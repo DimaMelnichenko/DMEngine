@@ -72,6 +72,9 @@ static const float standingMinWavelength = 0.1f;	// м
 static const float standingMinDepth = 0.03f;		// мельче — волн нет, м
 static const float standingMinSpeed = 0.3f;			// м/с: медленнее — числа Фруда для волн нет и на мелкой воде
 static const float gravityAcceleration = 9.81f;
+// Искры: светило в гранях ряби мельче пикселя (sparkleWeight)
+static const float lightSolidAngle = 6.8e-5f;	// телесный угол диска солнца, ср (радиус 0,27°; у луны почти такой же)
+static const float sparkleLifetime = 0.2f;		// с: грань отражает светило столько, затем гаснет, и блестит другая
 
 // Плитка ряби — клетка сетки воды: узор в ней повёрнут по течению в её центре, вытянут вдоль него и плывёт с его
 // скоростью (Tiled Directional Flow, van Hoesel 2011). Поворот в плитке один, поэтому узор не закручивается и не
@@ -441,6 +444,39 @@ void addRipple( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 
 	}
 }
 
+// Искры: рябь мельче пикселя — грани размером sparkleSize, наклон каждой — по распределению GGX с sparkleRoughness.
+// Светило отражают в камеру грани, нормаль которых попала в конус диска вокруг h, — доля probability = D(h)·(n·h)·Ω/(4·(v·h));
+// в пятне пикселя (или в грани, если она больше пикселя) таких в среднем λ = probability × граней в пятне. При λ < 1 пятно
+// либо блестит (с вероятностью λ), либо нет, и блестящее ярче среднего в 1/λ раз — в среднем тот же блик, а вблизи и на
+// краю россыпи он рассыпается на точки (дискретные грани, как у Zirr, Kaplanyan 2016 и Bowles, Wang 2015); при λ ≥ 1 —
+// почти ровный блик с колебанием ~1/√λ. Случайное число — у ячейки поверхности, а не пикселя: при движении камеры искры на
+// месте; ячейки — по ширине пятна пикселя (поперёк его длинной оси), два соседних уровня вперемешку, как мипы. Грань
+// блестит sparkleLifetime, разгораясь и гаснув, затем ячейка берёт новое число — искры мерцают. Возвращает множитель блика
+// с распределением граней (в среднем 1)
+float sparkleWeight( float2 xz, float2 dX, float2 dY, float probability )
+{
+	const float area = max( abs( dX.x * dY.y - dX.y * dY.x ), 1e-12f );
+	const float width = area / max( max( length( dX ), length( dY ) ), 1e-6f );
+	const float level = max( log2( width / g_sparkleSize ), 0.0f );
+	const float base = floor( level );
+	const float facetArea = g_sparkleSize * g_sparkleSize;
+	float weight = 0.0f;
+	[unroll] for( int k = 0; k < 2; ++k )
+	{
+		const float cellSize = g_sparkleSize * exp2( base + k );
+		const float lambda = probability * max( area, cellSize * cellSize ) / facetArea;
+		const int2 cell = (int2)floor( xz / cellSize );
+		const uint seed = rippleHash( (uint)cell.x + rippleHash( (uint)cell.y + rippleHash( (uint)base + (uint)k ) ) );
+		const float phase = cb_gameTime / sparkleLifetime + ( seed & 0xffffu ) / 65536.0f;
+		const float chance = ( rippleHash( seed + (uint)phase ) >> 8u ) / 16777216.0f;
+		const float glow = sin( 3.14159265f * frac( phase ) );
+		const float flash = 2.0f * glow * glow;
+		const float sample = lambda < 1.0f ? ( chance < lambda ? flash / lambda : 0.0f ) : 1.0f + ( flash - 1.0f ) * rsqrt( lambda );
+		weight += ( k == 0 ? 1.0f - ( level - base ) : level - base ) * sample;
+	}
+	return weight;
+}
+
 // Отражённый луч — не ниже горизонта: на крутом склоне волны при взгляде вскользь он уходит вниз, и экранное отражение
 // попадало в дно под водой (вода глубину не пишет) — тёмные зернистые кольца на гребнях; на деле он попал бы в воду рядом
 float3 upwardReflection( float3 r )
@@ -579,7 +615,23 @@ float4 shadeWater( WaterShading input )
 	surface.transmissionForward = 0.0f;
 	surface.transmissionForwardRoughness = 1.0f;
 	const float roughness = clamp( g_roughness, minRoughness, 1.0f );
-	const float3 sun = evaluateDirectLighting( surface, view, waterF0, 0.0f, 0.0f, roughness );
+	float lightShadow;
+	float3 sun = evaluateDirectLighting( surface, view, waterF0, 0.0f, 0.0f, roughness, lightShadow );
+	// Искры: доля блика светила (солнца, ночью — луны) — от граней ряби мельче пикселя с распределением шире, по точкам
+	[branch] if( g_sparkle > 0.0f && g_shadowSunIndex >= 0 && lightShadow > 0.0f )
+	{
+		const Light light = g_lights[g_shadowSunIndex];
+		const float3 toLight = -light.direction;
+		const float3 h = normalize( toLight + view );
+		const float NH = saturate( dot( normal, h ) );
+		const float sparkleRoughness = max( g_sparkleRoughness, minRoughness );
+		const float probability = GGX_Distribution( NH, sparkleRoughness * sparkleRoughness ) * NH * lightSolidAngle /
+								  ( 4.0f * max( dot( view, h ), 1e-3f ) );
+		const float3 smoothHighlight = CookTorrance_GGX( normal, toLight, view, waterF0, roughness, 0.0f );
+		const float3 facetHighlight = CookTorrance_GGX( normal, toLight, view, waterF0, sparkleRoughness, 0.0f ) *
+									  sparkleWeight( input.worldPosition.xz, dX, dY, probability );
+		sun += g_sparkle * ( facetHighlight - smoothHighlight ) * light.color * lightShadow;
+	}
 	const float3 r = upwardReflection( reflect( -view, normal ) );
 	const float2 environment = environmentBRDF( NV, roughness );
 	const float environmentWeight = waterF0 * environment.x + environment.y;

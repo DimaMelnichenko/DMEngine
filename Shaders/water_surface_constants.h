@@ -40,6 +40,10 @@ DM_CONSTANTS( WaterSurfaceBuffer, SLOT_CB_MATERIAL )
 	DM_FIELD( float, foamSoftness );
 	DM_FIELD( float, foamDissolve );
 	DM_FIELD( float, standingWaves );		// сила стоячих волн над перекатами (0 — нет)
+	// Искры (sparkleWeight): доля блика светила в искрах, шероховатость граней ряби мельче пикселя и их размер, м
+	DM_FIELD( float, sparkle );
+	DM_FIELD( float, sparkleRoughness );
+	DM_FIELD( float, sparkleSize );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

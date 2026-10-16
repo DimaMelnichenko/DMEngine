@@ -83,12 +83,13 @@ float transmissionLobe( Surface surface, float3 view, float3 toLight )
 	return lerp( lambert, scatter, forward );
 }
 
-// diffuseColor — отражаемая доля рассеянного цвета, transmissionColor — пропускаемая (у непрозрачных 0)
+// diffuseColor — отражаемая доля рассеянного цвета, transmissionColor — пропускаемая (у непрозрачных 0); sunShadowFactor —
+// тень источника теней (g_shadowSunIndex) в точке
 float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 diffuseColor, float3 transmissionColor,
-							   float roughness )
+							   float roughness, out float sunShadowFactor )
 {
 	// Тень солнца — один раз до цикла источников
-	float sunShadowFactor = 1.0f;
+	sunShadowFactor = 1.0f;
 	[branch] if( g_shadowSunIndex >= 0 )
 	{
 		const float3 toSun = -g_lights[g_shadowSunIndex].direction;
@@ -133,6 +134,13 @@ float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 d
 		}
 	}
 	return result;
+}
+
+float3 evaluateDirectLighting( Surface surface, float3 view, float3 F0, float3 diffuseColor, float3 transmissionColor,
+							   float roughness )
+{
+	float sunShadowFactor;
+	return evaluateDirectLighting( surface, view, F0, diffuseColor, transmissionColor, roughness, sunShadowFactor );
 }
 
 // Полное освещение точки: прямой свет, освещение окружением (рассеянное и отражённое, split-sum) и свечение,
