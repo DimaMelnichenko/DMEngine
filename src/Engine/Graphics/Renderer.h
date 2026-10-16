@@ -62,6 +62,8 @@ public:
 	PropertyContainer* properties();
 	// Текущие настройки постобработки и тумана — для сохранения уровня
 	PostProcess::Settings postProcessSettings();
+	// -nocolorgrading: кадр без цветокоррекции, только кривая тонмаппинга (PostProcess::disableColorGrading)
+	void disableColorGrading() { m_postProcess.disableColorGrading(); }
 	std::optional<VolumetricFog::Settings> fogSettings() { return m_fog.settings(); }
 	// Среднее время GPU кадра и проходов за seconds секунд с этого кадра — строкой, как «GPU average» в log.txt
 	// (команда stat gpu удалённого управления)

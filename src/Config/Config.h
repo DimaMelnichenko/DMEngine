@@ -41,6 +41,9 @@ public:
 	bool wind() const						{ return m_wind; }
 	// -noparticles: частицы уровня не создаются — кадры с одной точки совпадают до пикселя (частицы движутся)
 	bool particles() const					{ return m_particles; }
+	// -nocolorgrading: кадр без цветокоррекции уровня, только кривая тонмаппинга — снимки контрольных камер сравнимы с
+	// эталоном, как бы её ни настроили (ShowFlag.ColorGrading 0 в UE)
+	bool colorGrading() const				{ return m_colorGrading; }
 	// -freezetime: время игры стоит на нуле (cb_gameTime: рябь и пена воды, звёзды) — снимки с одной точки совпадают
 	// между запусками, хотя загрузка и путь до снимка — разной длины. Время кадра, экспозиция и время суток идут как обычно
 	bool gameTimeRunning() const			{ return m_gameTimeRunning; }
@@ -66,6 +69,7 @@ private:
 	bool m_mouseLook = true;
 	bool m_wind = true;
 	bool m_particles = true;
+	bool m_colorGrading = true;
 	bool m_gameTimeRunning = true;
 	bool m_remoteControl = false;
 

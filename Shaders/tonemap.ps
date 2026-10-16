@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Последний проход цепочки: цвет сцены + bloom + лучи-звёзды + лучи солнца, экспозиция, ночное зрение и тонмаппинг: линейный
-// HDR → задний буфер
+// Последний проход цепочки: цвет сцены + bloom + лучи-звёзды + лучи солнца, экспозиция, ночное зрение, затем цветокоррекция
+// и тонмаппинг — одной выборкой таблицы (color_grading_lut.cs): линейный HDR → задний буфер
 // (R8G8B8A8_UNORM_SRGB кодирует sRGB сам).
 // Класс PostProcess, настройки — строка PostProcessSettings уровня
 ////////////////////////////////////////////////////////////////////////////////
@@ -9,12 +9,14 @@
 #include "samplers.sh"
 #include "exposure.sh"
 #include "bindless.sh"
+#include "color_grading.sh"
 
 DM_SRV( Texture2D<float4>, g_sceneColor, 0 );
 DM_SRV( Texture2D<float4>, g_bloom, 1 );	// самый крупный уровень bloom (половина кадра), уже с добавленными меньшими
 DM_SRV( Texture2D<float4>, g_star, 2 );		// лучи-звёзды вокруг ярких бликов (четверть кадра, star_streak.ps)
 DM_SRV( Texture2D<float4>, g_shafts, 3 );	// лучи солнца (четверть кадра, light_shaft_blur.ps)
 DM_SRV( Texture2D<float>, g_depth, 4 );		// глубина сцены (обратная: 0 — небо) — доля лучей перед ближним
+DM_SRV( Texture3D<float4>, g_colorGrading, 5 );	// цветокоррекция и тонмаппинг: цвет экрана в кодировке sRGB (color_grading.sh)
 
 #include "tonemap_constants.h"
 
@@ -23,65 +25,6 @@ struct PixelInputType
 	float4 position : SV_POSITION;
 	float2 uv : TEXCOORD0;
 };
-
-// ACES: подгонка RRT + ODT (Stephen Hill, BakingLab, лицензия MIT). Вход и выход — линейный sRGB
-static const float3x3 acesInput =
-{
-	0.59719f, 0.35458f, 0.04823f,
-	0.07600f, 0.90834f, 0.01566f,
-	0.02840f, 0.13383f, 0.83777f
-};
-
-static const float3x3 acesOutput =
-{
-	 1.60475f, -0.53108f, -0.07367f,
-	-0.10208f,  1.10813f, -0.00605f,
-	-0.00327f, -0.07276f,  1.07602f
-};
-
-float3 acesFitted( float3 color )
-{
-	color = mul( acesInput, color );
-	float3 a = color * ( color + 0.0245786f ) - 0.000090537f;
-	float3 b = color * ( 0.983729f * color + 0.4329510f ) + 0.238081f;
-	return saturate( mul( acesOutput, a / b ) );
-}
-
-// AgX: приближение отображения Blender 4+ (Benjamin Wrensch, «Minimal AgX», лицензия MIT): вход в «рабочее»
-// пространство AgX, логарифм в диапазоне 16,5 EV, сигмоида полиномом, обратная матрица и гамма дисплея 2,2
-static const float3x3 agxInset =
-{
-	0.842479062253094f, 0.0784335999999992f, 0.0792237451477643f,
-	0.0423282422610123f, 0.878468636469772f, 0.0791661274605434f,
-	0.0423756549057051f, 0.0784336f, 0.879142973793104f
-};
-
-static const float3x3 agxOutset =
-{
-	 1.19687900512017f, -0.0980208811401368f, -0.0990297440797205f,
-	-0.0528968517574562f, 1.15190312990417f, -0.0989611768448433f,
-	-0.0529716355144438f, -0.0980434501171241f, 1.15107367264116f
-};
-
-float3 agxContrast( float3 x )
-{
-	float3 x2 = x * x;
-	float3 x4 = x2 * x2;
-	return 15.5f * x4 * x2 - 40.14f * x4 * x + 31.96f * x4 - 6.868f * x2 * x + 0.4298f * x2 + 0.1191f * x - 0.00232f;
-}
-
-float3 agx( float3 color )
-{
-	const float minEv = -12.47393f;
-	const float maxEv = 4.026069f;
-
-	color = mul( agxInset, max( color, 1e-10f ) );
-	color = ( clamp( log2( color ), minEv, maxEv ) - minEv ) / ( maxEv - minEv );
-	color = agxContrast( color );
-	color = mul( agxOutset, color );
-	// Результат закодирован для дисплея с гаммой 2,2; задний буфер sRGB ждёт линейное значение
-	return pow( saturate( color ), 2.2f );
-}
 
 // Ночное зрение — сдвиг Пуркинье (G. Krawczyk, K. Myszkowski, H.-P. Seidel, «Perceptual effects in real-time tone
 // mapping», 2005, по R. Hunt, 1995): в темноте работают палочки, и цвет уходит в монохромный с синеватым оттенком.
@@ -97,7 +40,7 @@ float3 purkinjeShift( float3 color )
 	return lerp( color, scotopicTint * luminance, rods );
 }
 
-// Экспозиция, ночное зрение и тонмаппинг: линейный HDR с экспозицией прошлого кадра → цвет экрана
+// Экспозиция, ночное зрение, цветокоррекция и тонмаппинг: линейный HDR с экспозицией прошлого кадра → цвет экрана
 float3 finishColor( float3 color )
 {
 	// Буфер сцены — с экспозицией прошлого кадра, приводим к новой (Shaders/exposure.sh)
@@ -105,13 +48,9 @@ float3 finishColor( float3 color )
 	[branch] if( g_purkinjeShift > 0.0f )
 		color = purkinjeShift( color );
 
-	[branch] if( g_tonemapper == 1 )
-		color = acesFitted( color );
-	else if( g_tonemapper == 2 )
-		color = agx( color );
-	else
-		color = saturate( color );
-	return color;
+	// Таблица хранит цвет экрана в кодировке sRGB; задний буфер ждёт линейное значение
+	const float3 screen = g_colorGrading.SampleLevel( g_SamplerLinearClamp, colorGradingCoordinate( color ), 0.0f ).rgb;
+	return sRGBToLinear( screen );
 }
 
 float4 main( PixelInputType input ) : SV_TARGET

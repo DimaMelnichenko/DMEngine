@@ -143,6 +143,9 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	// исходное состояние окна, а не правка
 	if( !m_config.wind() )
 		m_scene.wind().disable();
+	// -nocolorgrading: только кривая тонмаппинга — снимки сравнимы с эталоном, как бы ни настроили цветокоррекцию уровня
+	if( !m_config.colorGrading() )
+		m_renderer.disableColorGrading();
 	// Outliner: окружение уровня, объекты сцены, настройки рендера. Сохраняемые с уровнем (saved) — окружение и объекты
 	// сцены с savedWithLevel: их пишет «Save level»
 	using Editor::Category;

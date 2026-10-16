@@ -16,6 +16,7 @@
 #include "Shaders\exposure_histogram_constants.h"
 #include "Shaders\exposure_adapt_constants.h"
 #include "RenderFeature.h"
+#include "ColorGradingLut.h"
 
 namespace GS
 {
@@ -33,11 +34,12 @@ namespace GS
 //   полупрозрачных (renderLightShaftMask, Shaders/light_shaft_mask.ps), здесь — радиальное размытие к экранной точке солнца
 //   одним маршем со сдвигом выборок шумом (Shaders/light_shaft_blur.ps);
 // - тонмаппинг (Shaders/tonemap.ps): цвет сцены + bloom + лучи, приведение к новой экспозиции, ночное зрение (сдвиг Пуркинье:
-//   в темноте цвет уходит в синеватый монохромный), AgX / ACES — в задний буфер.
+//   в темноте цвет уходит в синеватый монохромный), затем цветокоррекция и кривая AgX / ACES — одной выборкой таблицы
+//   (ColorGradingLut, как Combine LUTs в UE: строится в compute после правки настроек) — в задний буфер.
 // Ночь темнее дня — кривая компенсации экспозиции от EV100 сцены (Exposure Compensation Curve в UE).
-// Настройки — как Exposure, Tonemapper, Bloom в Post Process Volume UE: строка таблицы PostProcessSettings, на которую
-// ссылается уровень (Levels.post_process), меняются в GUI («Post process»). Новый проход (LUT, сглаживание) — ещё одна
-// цель и шаг в render()
+// Настройки — как Exposure, Tonemapper, Bloom, Color Grading в Post Process Volume UE: строка таблицы PostProcessSettings, на
+// которую ссылается уровень (Levels.post_process), меняются в GUI («Post process», цветокоррекция — подокно «Color grading»).
+// Новый проход (сглаживание) — ещё одна цель и шаг в render()
 class PostProcess : public RenderFeature
 {
 public:
@@ -81,6 +83,9 @@ public:
 	void cameraCut() override { m_cutFrames = cutFrameCount; }
 	// EV100 кадра с отставанием на несколько кадров (копия с GPU без ожидания) — для статистики
 	float ev100() const { return m_ev100; }
+	// -nocolorgrading: кадр без цветокоррекции (только кривая тонмаппинга), как ShowFlag.ColorGrading 0 в UE — снимки
+	// контрольных камер сравнимы с эталоном, как бы её ни настроили на уровне. Флажок «Enabled» окна, не данные уровня
+	void disableColorGrading();
 	PropertyContainer* properties() override;
 	bool environment() const override { return true; }
 
@@ -155,8 +160,14 @@ private:
 	static constexpr uint32_t cutFrameCount = 4;
 	uint32_t m_cutFrames = 0;
 
+	// Цветокоррекция и тонмаппинг — таблица, строится заново после правки подокна «Color grading» или смены кривой
+	ColorGradingLut m_colorGrading;
+
 	PropertyContainer m_properties;
 	std::vector<std::string> m_curveKeyNames;	// свойства ключей кривой компенсации — по одному на ключ
+	// Подокно «Color grading» (баланс белого) и в нём части кадра: весь кадр, тени, полутона, света
+	PropertyContainer m_colorGradingProperties;
+	PropertyContainer m_colorGradingParts[4];
 };
 
 }

@@ -9,7 +9,7 @@
 ## Как запустить
 
 ```
-python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--gpu-validation]
+python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--nocolorgrading] [--gpu-validation]
 python Tools/engine.py camera 567,58.1,212,8,35
 python Tools/engine.py screenshot кадр.png
 python Tools/engine.py stat gpu 3
@@ -23,7 +23,9 @@ python Tools/engine.py stop
   на весь монитор, как у движка без параметра; любое `ШxВ` — своё окно). Кадры с одной точки совпадают до пикселя, если
   не движется трава: `--nowind` (параметр движка `-nowind`) или `set "Wind/Enabled" false` ([wind.md](wind.md)), нет
   частиц: `--noparticles` (`-noparticles`, [particles.md](particles.md)) и стоит рябь воды: `--freezetime` (`-freezetime`:
-  время игры на нуле — иначе снимок делается в разный момент игры). Сверка кадров и времени GPU с эталоном одной
+  время игры на нуле — иначе снимок делается в разный момент игры). `--nocolorgrading` (`-nocolorgrading`, в сессии
+  `set "Post process/Color grading/Enabled" false`) — без цветокоррекции уровня, только кривая тонмаппинга: снимки
+  сравнимы с эталоном, как бы её ни настроили ([postprocess.md](postprocess.md)). Сверка кадров и времени GPU с эталоном одной
   командой — `Tools/check_frames.py` ([d3d12.md](d3d12.md) §4). `--gpu-validation` (`-gpuvalidation`) —
   GPU-based validation ([d3d12.md](d3d12.md) §4), только в Debug: без `--config` запускает Debug, с `--config Release` —
   ошибка (Release без слоя проверки шёл бы молча). Затем ждёт, пока движок откроет канал, то есть конца инициализации, и

@@ -78,7 +78,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   reference`; `--config Debug` — с проверкой debug-слоя). Эталон D3D11 — коммит `0aadc42` в истории git.
 - **Запуск для проверки** — `.\Tools\run.ps1 [-Config Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,4]
   [-Camera x,y,z,pitch,yaw] [-Level имя] [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
-  [-FreezeTime] [-GpuValidation]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
+  [-FreezeTime] [-NoColorGrading] [-GpuValidation]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
   Запускает exe из корня проекта с удалённым управлением (`-remote`), ждёт конца инициализации и ещё `-Seconds`, по
   желанию нажимает клавиши (команда `key`, скан-коды `DIK_*`, как в DirectInput: 2 — «1», 4 — «3», 5 — «4») и снимает
   задний буфер (команда `screenshot`, с окнами ImGui, если нет `-NoGui`), закрывает движок штатно (`quit`, лог дописан;
@@ -91,7 +91,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   он включается сам — снимки с одной точки совпадают до пикселя, если не движется трава: ветер уровня качает её, для
   сравнения кадров — `-NoWind` (`-nowind` у exe, `--nowind` у `engine.py start`, в сессии `set "Wind/Enabled" false`),
   `-NoParticles` (`-noparticles`, `--noparticles`: частицы движутся) и `-FreezeTime` (`-freezetime`, `--freezetime`: время
-  игры стоит — рябь воды на месте, снимки с водой совпадают между запусками). Ближняя и дальняя плоскости камеры — `ScreenNear` / `ScreenDepth` в секции `[General]` `settings.ini` (0,1 и 4000 м; от дальней зависят сфера неба и слои воздушной перспективы). Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
+  игры стоит — рябь воды на месте, снимки с водой совпадают между запусками); `-NoColorGrading` (`-nocolorgrading`,
+  `--nocolorgrading`, в сессии `set "Post process/Color grading/Enabled" false`) — без цветокоррекции уровня, только кривая
+  тонмаппинга: снимки сравнимы с эталоном, как бы её ни настроили (`check_frames.py` запускает с ним). Ближняя и дальняя плоскости камеры — `ScreenNear` / `ScreenDepth` в секции `[General]` `settings.ini` (0,1 и 4000 м; от дальней зависят сфера неба и слои воздушной перспективы). Стартовая камера — секция `[Camera]` в `settings.ini` (`Position=x,y,z`,
   `Rotation=pitch,yaw` в градусах, pitch > 0 — взгляд вниз), уровень — секция `[Level]` (`Name`); параметры `-Camera`
   и `-Level` скрипта (`-camera`, `-level` у exe) их переопределяют, так что снимок с нужной точки не требует правки кода.
   Списки (`-Keys`, `-Camera`) скрипт разбирает сам: через `powershell -File` они приходят одной строкой.
@@ -267,7 +269,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (уровни ½ … ¹⁄₆₄, Jimenez 2014), лучи-звёзды вокруг ярких бликов (Kawase 2003: яркое над высоким порогом в четверти кадра,
   проходы вдоль осей звезды), лучи солнца (god rays, как Light Shafts в UE: маска неба у солнца и радиальное размытие к его
   экранной точке, только когда солнце в кадре — художественный эффект, физические лучи даёт туман уровня), затем ночное зрение (сдвиг Пуркинье: в темноте цвет уходит в синеватый монохром,
-  Krawczyk 2005) и тонмаппинг (AgX / ACES) в задний буфер sRGB; новый
+  Krawczyk 2005), цветокоррекция и тонмаппинг (AgX / ACES) — одной выборкой таблицы 32³ (`ColorGradingLut`, как Combine LUTs
+  и Color Grading в UE: баланс белого, насыщенность, контраст, гамма, усиление и сдвиг по теням, полутонам и светам в AP1;
+  строится в compute после правки подокна «Color grading») — в задний буфер sRGB; новый
   проход — ещё одна цель и шаг в `PostProcess::render`. Затем `Engine` рисует GUI и вызывает `DMD3D::endFrame`.
   Свои проходы рендерера со своими ресурсами (тени, туман, затенение окружением, экранные отражения, постобработка) — возможности рендерера
   (`RenderFeature`, `Graphics/RenderFeature.h`): список `Renderer::features`, общие точки — начало кадра с вкладом в

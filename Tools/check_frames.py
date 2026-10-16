@@ -5,7 +5,7 @@
     python Tools/check_frames.py [check] [--config Debug|Release] [--gpu-validation] [--gpu-threshold 10] [--allowed 32]
 
 reference — эталон текущей сборки (до правки или после принятой правки): --runs запусков движка (engine.py start --nogui
---nowind --noparticles), на каждой из четырёх камер — снимок и stat gpu 3. Снимок первого запуска — эталон кадра; пиксели,
+--nowind --noparticles --freezetime --nocolorgrading: цветокоррекция уровня кадр не меняет), на каждой из четырёх камер — снимок и stat gpu 3. Снимок первого запуска — эталон кадра; пиксели,
 которые расходятся между запусками одной сборки сверх допуска (рябь воды по времени игры, единичные пиксели расстановки,
 TODO.md «Решить или проверить»), с запасом в --dilate пикселей — маска шума <камера>_noise.png: там расхождения не
 считаются. Время GPU кадра — среднее по запускам. Всё — в reference\\<config>\\ (в .gitignore: кадры зависят от
@@ -59,7 +59,7 @@ def engine(args, timeout=None):
 def run_cameras(config, folder, gpu, gpu_validation):
     """Запуск движка, снимки камер в folder и время GPU кадра на каждой (gpu); None — движок не запустился или завис"""
     os.makedirs(folder, exist_ok=True)
-    start = ['start', '--config', config, '--nogui', '--nowind', '--noparticles', '--freezetime']
+    start = ['start', '--config', config, '--nogui', '--nowind', '--noparticles', '--freezetime', '--nocolorgrading']
     if gpu_validation:
         start.append('--gpu-validation')
     code, output = engine(start)

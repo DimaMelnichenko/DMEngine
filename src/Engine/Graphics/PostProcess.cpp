@@ -23,6 +23,21 @@ float exposureFromEV100( float ev100 )
 
 const char* const meteringModeProperty = "Metering mode";
 const char* const tonemapperProperty = "Tonemapper";
+const char* const colorGradingEnabledProperty = "Enabled";
+
+// Части кадра цветокоррекции — подокна «Color grading» (как разделы Color Grading в UE) и их поля (группы postProcessSchema)
+struct ColorGradingPartWindow
+{
+	const char* name;
+	const char* group;
+};
+
+constexpr ColorGradingPartWindow colorGradingParts[] = {
+	{ "Global", "colorGradingGlobal" },
+	{ "Shadows", "colorGradingShadows" },
+	{ "Midtones", "colorGradingMidtones" },
+	{ "Highlights", "colorGradingHighlights" },
+};
 
 }
 
@@ -37,7 +52,7 @@ bool PostProcess::initialize( const Settings& settings )
 		!m_shaftMask.load( "Shaders\\light_shaft_mask.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
 		!m_shaftBlur.load( "Shaders\\light_shaft_blur.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
 		!m_histogramShader.initialize( "Shaders\\exposure_histogram.cs", "main" ) ||
-		!m_adaptShader.initialize( "Shaders\\exposure_adapt.cs", "main" ) )
+		!m_adaptShader.initialize( "Shaders\\exposure_adapt.cs", "main" ) || !m_colorGrading.initialize() )
 		return false;
 
 	DMD3D& d3d = DMD3D::instance();
@@ -75,7 +90,27 @@ bool PostProcess::initialize( const Settings& settings )
 	m_properties.insert( "Show ambient occlusion", false )->setTransient();
 	m_properties.insert( "Show light shafts", false )->setTransient();
 
+	// Цветокоррекция — подокно «Color grading»: выключатель кадра и баланс белого, в нём — части кадра (Color Grading в UE)
+	m_colorGradingProperties.setName( "Color grading" );
+	Property* enabled = m_colorGradingProperties.insert( colorGradingEnabledProperty, true );
+	enabled->setTooltip( "Off - only the tonemapping curve, without the color grading, to compare frames (-nocolorgrading); "
+						 "not saved with the level" );
+	enabled->setTransient();
+	addSettingProperties( m_colorGradingProperties, postProcessSchema(), settings, "colorGrading" );
+	for( size_t i = 0; i < std::size( colorGradingParts ); ++i )
+	{
+		m_colorGradingParts[i].setName( colorGradingParts[i].name );
+		addSettingProperties( m_colorGradingParts[i], postProcessSchema(), settings, colorGradingParts[i].group );
+		m_colorGradingProperties.addSubContainer( &m_colorGradingParts[i] );
+	}
+	m_properties.addSubContainer( &m_colorGradingProperties );
+
 	return true;
+}
+
+void PostProcess::disableColorGrading()
+{
+	m_colorGradingProperties[colorGradingEnabledProperty].setData( false );
 }
 
 bool PostProcess::createBloomTargets()
@@ -150,6 +185,10 @@ PostProcess::Settings PostProcess::settings()
 	Settings settings;
 	settings.meteringMode = static_cast<MeteringMode>( std::clamp( m_properties[meteringModeProperty].data<int32_t>(), 0, 1 ) );
 	readSettingProperties( m_properties, postProcessSchema(), settings );
+	// Подокна цветокоррекции: имена полей в частях кадра совпадают — каждое по своей группе
+	readSettingProperties( m_colorGradingProperties, postProcessSchema(), settings, "colorGrading" );
+	for( size_t i = 0; i < std::size( colorGradingParts ); ++i )
+		readSettingProperties( m_colorGradingParts[i], postProcessSchema(), settings, colorGradingParts[i].group );
 	// Ключ, сдвинутый в GUI за соседний, встаёт на своё место
 	for( const std::string& name : m_curveKeyNames )
 		settings.exposureCompensationCurve.push_back( m_properties[name].data<XMFLOAT2>() );
@@ -240,12 +279,18 @@ void PostProcess::render( const ShaderView& sceneColor, const ShaderView& sceneD
 		profiler.endScope();
 	}
 
+	// Таблица цветокоррекции и тонмаппинга — заново после правки подокна «Color grading» или смены кривой; выключатель окна
+	// (-nocolorgrading) — таблица только с кривой
+	const bool grading = m_colorGradingProperties[colorGradingEnabledProperty].data<bool>();
+	m_colorGrading.update( grading ? current.colorGrading : ColorGradingSettings(), current.tonemapper,
+						   std::max( m_colorGradingProperties.revision(), m_properties[tonemapperProperty].revision() ), profiler );
+
 	profiler.beginScope( "Tonemap" );
 	d3d.beginPass( PassDesc{ "Tonemap", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight(),
 							 { { &sceneColor, "scene color" }, { &m_bloom[0].srv(), "bloom 1/2" }, { &m_star.srv(), "star" },
-							   { &m_shafts.srv(), "light shafts" }, { &sceneDepth, "scene depth" }, { &m_exposureSRV, "exposure" } } } );
+							   { &m_shafts.srv(), "light shafts" }, { &sceneDepth, "scene depth" }, { &m_exposureSRV, "exposure" },
+							   { &m_colorGrading.view(), "color grading LUT" } } } );
 	PostProcessBuffer params = {};
-	params.tonemapper = static_cast<int32_t>( current.tonemapper );
 	// Уровень 1/2 хранит сумму уровней с весами 1, f, f², …: деление на неё — Bloom Intensity как доля энергии
 	float weightSum = 0.0f;
 	for( uint32_t level = 0; level < bloomLevelCount; ++level )
@@ -269,6 +314,7 @@ void PostProcess::render( const ShaderView& sceneColor, const ShaderView& sceneD
 	d3d.setSRV( 2, m_star.srv() );
 	d3d.setSRV( 3, m_shafts.srv() );
 	d3d.setSRV( 4, sceneDepth );
+	d3d.setSRV( 5, m_colorGrading.view() );
 
 	m_shader.draw();
 	profiler.endScope();

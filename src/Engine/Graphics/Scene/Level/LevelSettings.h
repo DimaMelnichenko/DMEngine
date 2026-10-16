@@ -300,6 +300,34 @@ struct AmbientOcclusionSettings
 	float power = 1.5f;		// видимость^power: сильнее в щелях, слабее на открытом
 };
 
+// Цветокоррекция — колонки строки PostProcessSettings, как Color Grading в Post Process Volume UE (ColorGradingLut): часть
+// кадра — тени, полутона, света или весь кадр; значения — каналы R, G, B и общий множитель (w), как Vector4 у UE
+struct ColorGradingPart
+{
+	DirectX::XMFLOAT4 saturation = DirectX::XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );	// 0 — серый, больше — насыщеннее
+	DirectX::XMFLOAT4 contrast = DirectX::XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );	// вокруг среднего серого 0,18
+	DirectX::XMFLOAT4 gamma = DirectX::XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );		// больше — светлее полутона
+	DirectX::XMFLOAT4 gain = DirectX::XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f );		// множитель
+	DirectX::XMFLOAT4 offset = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );		// сдвиг (каналы + w)
+};
+
+struct ColorGradingSettings
+{
+	// Баланс белого, как у камеры (White Balance в UE): цветовая температура света, который выглядит белым; выше — кадр
+	// теплее, 6500 К — как есть; оттенок поперёк температуры: + пурпурнее, − зеленее
+	float whiteTemp = 6500.0f;
+	float whiteTint = 0.0f;
+	ColorGradingPart global;		// весь кадр: множитель частей (сдвиг — добавка)
+	ColorGradingPart shadows;
+	ColorGradingPart midtones;
+	ColorGradingPart highlights;
+	// Границы частей по яркости цвета после экспозиции (средний серый — 0,18): доля теней — 1 − smoothstep( 0, shadowsMax, Y ),
+	// светов — smoothstep( highlightsMin, highlightsMax, Y ), полутона — остаток
+	float shadowsMax = 0.09f;
+	float highlightsMin = 0.5f;
+	float highlightsMax = 1.0f;
+};
+
 struct PostProcessSettings
 {
 	MeteringMode meteringMode = MeteringMode::autoHistogram;
@@ -348,6 +376,7 @@ struct PostProcessSettings
 	float lightShaftFadeRadius = 0.8f;
 	float lightShaftFadeWidth = 0.7f;
 	AmbientOcclusionSettings ambientOcclusion;
+	ColorGradingSettings colorGrading;
 };
 
 // Имена в базе: тонмаппинг None, ACES, AgX (другое — AgX); замер Manual, AutoHistogram (другое — AutoHistogram)

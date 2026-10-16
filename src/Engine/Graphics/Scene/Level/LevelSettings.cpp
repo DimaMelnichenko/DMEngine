@@ -219,10 +219,41 @@ const SettingsSchema<HDRIBackdropSettings>& hdriBackdropSchema()
 	return schema;
 }
 
+namespace
+{
+
+// Поля части цветокоррекции (ColorGradingPart) — подокно part окна «Color grading»: колонки как свойства Color Grading в UE,
+// color_saturation + suffix (_shadows, _midtones, _highlights; у всего кадра — без него)
+template<ColorGradingPart ColorGradingSettings::* part>
+void addColorGradingPart( SettingsSchema<PostProcessSettings>& schema, const std::string& suffix, const std::string& group )
+{
+	using Settings = PostProcessSettings;
+	const std::string channels = " R, G, B and the overall multiplier (W)";
+	schema.push_back( { "color_saturation" + suffix, "Saturation",
+						[]( Settings& s ) -> XMFLOAT4& { return ( s.colorGrading.*part ).saturation; }, 0.0f, 2.0f, "",
+						"Saturation:" + channels + "; 0 - grey of the same luminance, 1 - as is", 0, group } );
+	schema.push_back( { "color_contrast" + suffix, "Contrast",
+						[]( Settings& s ) -> XMFLOAT4& { return ( s.colorGrading.*part ).contrast; }, 0.0f, 2.0f, "",
+						"Contrast around the middle grey (0.18):" + channels + "; 1 - as is", 0, group } );
+	schema.push_back( { "color_gamma" + suffix, "Gamma",
+						[]( Settings& s ) -> XMFLOAT4& { return ( s.colorGrading.*part ).gamma; }, 0.0f, 2.0f, "",
+						"Gamma:" + channels + "; more - brighter midtones, 1 - as is", 0, group } );
+	schema.push_back( { "color_gain" + suffix, "Gain",
+						[]( Settings& s ) -> XMFLOAT4& { return ( s.colorGrading.*part ).gain; }, 0.0f, 2.0f, "",
+						"Multiplier:" + channels + "; 1 - as is", 0, group } );
+	schema.push_back( { "color_offset" + suffix, "Offset",
+						[]( Settings& s ) -> XMFLOAT4& { return ( s.colorGrading.*part ).offset; }, -0.5f, 0.5f, "",
+						"Added to the color after the gain (the middle grey is 0.18):" + channels + " added together; 0 - as is",
+						0, group } );
+}
+
+}
+
 const SettingsSchema<PostProcessSettings>& postProcessSchema()
 {
 	using Settings = PostProcessSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = [] {
+	SettingsSchema<Settings> schema = {
 		{ "manual_ev100", "Manual EV100", DM_SETTING( manualEV100 ), -10.0f, 20.0f },
 		{ "exposure_compensation", "Exposure compensation", DM_SETTING( exposureCompensation ), -6.0f, 6.0f, "EV" },
 		{ "min_ev100", "Min EV100", DM_SETTING( minEV100 ), -10.0f, 20.0f, "", "", 0, "exposure" },
@@ -284,7 +315,28 @@ const SettingsSchema<PostProcessSettings>& postProcessSchema()
 		{ "ambient_occlusion_radius", "Ambient occlusion radius", DM_SETTING( ambientOcclusion.radius ), 0.1f, 5.0f, "m", "", 0, "bloom" },
 		{ "ambient_occlusion_power", "Ambient occlusion power", DM_SETTING( ambientOcclusion.power ), 0.5f, 4.0f, "",
 		  "Visibility^power: stronger in crevices, weaker in the open", 0, "bloom" },
+		// Цветокоррекция (ColorGradingLut) — подокно «Color grading»: баланс белого, части кадра — вложенные подокна
+		{ "white_temp", "Temperature", DM_SETTING( colorGrading.whiteTemp ), 1500.0f, 15000.0f, "K",
+		  "White balance, like a camera: color temperature of the light that looks white; higher - warmer picture, lower - "
+		  "cooler; 6500 - as is", settingClamp, "colorGrading" },
+		{ "white_tint", "Tint", DM_SETTING( colorGrading.whiteTint ), -1.0f, 1.0f, "",
+		  "White balance across the temperature: more - magenta, less - green; 0 - as is", settingClamp, "colorGrading" },
 	};
+	addColorGradingPart<&ColorGradingSettings::global>( schema, "", "colorGradingGlobal" );
+	addColorGradingPart<&ColorGradingSettings::shadows>( schema, "_shadows", "colorGradingShadows" );
+	schema.push_back( { "color_correction_shadows_max", "Shadows max", DM_SETTING( colorGrading.shadowsMax ), 0.001f, 1.0f, "",
+						"Luminance after the exposure (the middle grey is 0.18) where the shadows end: their share is "
+						"1 - smoothstep( 0, max, luminance )", settingClampLow, "colorGradingShadows" } );
+	addColorGradingPart<&ColorGradingSettings::midtones>( schema, "_midtones", "colorGradingMidtones" );
+	addColorGradingPart<&ColorGradingSettings::highlights>( schema, "_highlights", "colorGradingHighlights" );
+	schema.push_back( { "color_correction_highlights_min", "Highlights min", DM_SETTING( colorGrading.highlightsMin ), 0.0f, 4.0f,
+						"", "Luminance after the exposure where the highlights start: their share is "
+						"smoothstep( min, max, luminance ); the midtones get the rest", settingClampLow, "colorGradingHighlights" } );
+	schema.push_back( { "color_correction_highlights_max", "Highlights max", DM_SETTING( colorGrading.highlightsMax ), 0.0f, 8.0f,
+						"", "Luminance after the exposure where the colors are fully highlights", settingClampLow,
+						"colorGradingHighlights" } );
+	return schema;
+	}();
 	return schema;
 }
 

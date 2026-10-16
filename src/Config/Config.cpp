@@ -108,6 +108,10 @@ void Config::parseCommandLine( const std::string& commandLine )
 		{
 			m_particles = false;
 		}
+		else if( args[i] == "-nocolorgrading" )
+		{
+			m_colorGrading = false;
+		}
 		else if( args[i] == "-freezetime" )
 		{
 			m_gameTimeRunning = false;

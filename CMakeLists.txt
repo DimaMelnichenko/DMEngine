@@ -168,6 +168,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Materials/ColorMaterial.cpp
     src/Engine/Graphics/Scene/Materials/PBRMaterial.cpp
     src/Engine/Graphics/PostProcess.cpp
+    src/Engine/Graphics/ColorGradingLut.cpp
     src/Engine/Graphics/D3D/GpuProfiler.cpp
     src/Engine/Graphics/FullscreenShader.cpp
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
