@@ -80,6 +80,7 @@ public:
 		std::vector<std::string> warnings;				// правленные кривые не по рельефу, петли — в лог
 		std::vector<DetailTile> detailTiles;			// детальная земля у русел (U-ложе): там, где русло режет рельеф
 		std::vector<Stone> stones;						// камни русел
+		float streamManning = 0.0f;						// n Маннинга русел, по которому считана u₀, — трение ручьёв в течении
 
 		// Сводка для лога
 		size_t nodes = 0;

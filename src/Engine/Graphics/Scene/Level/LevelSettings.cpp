@@ -500,8 +500,8 @@ const SettingsSchema<WaterSimulationSettings::Flow>& waterFlowSchema()
 		{ "flow_viscosity", "Viscosity", DM_SETTING( viscosity ), 0.0f, 1.0f, "m2/s",
 		  "Eddy viscosity: a wider, shorter jet of an inflowing stream" + recomputed },
 		{ "flow_manning", "Bed roughness", DM_SETTING( manning ), 0.0f, 0.1f, "s/m^(1/3)",
-		  "Manning roughness of the bed of streams and lakes: a jet, a bend or a confluence settles back to the Manning flow sooner "
-		  "at more" + recomputed },
+		  "Manning roughness of lake beds: an inflowing jet fades sooner at more; streams take the Manning roughness of the "
+		  "channels" + recomputed },
 		{ "flow_layer", "Surface layer", DM_SETTING( layer ), 0.1f, 5.0f, "m",
 		  "Depth of the flowing layer: a stream spreads over a lake near the surface" + recomputed },
 		{ "flow_iterations", "Pressure iterations", DM_SETTING( iterations ), 1.0f, 100.0f, "", "Pressure solver iterations per step" + recomputed },

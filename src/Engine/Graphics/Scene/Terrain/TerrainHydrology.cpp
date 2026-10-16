@@ -2787,6 +2787,7 @@ bool TerrainHydrology::Build::buildBed()
 		}
 	}
 	result.size = static_cast<uint32_t>( n );
+	result.streamManning = p.manning;
 	result.lowering.resize( cells );
 	result.carvedCells = 0;
 	result.deepestLowering = 0.0f;
@@ -3663,6 +3664,47 @@ bool TerrainHydrology::Build::buildStones()
 	{
 		const double texelArea = detailStep * cell * detailStep * cell;
 		const double layer = water.flow.layer;
+		auto texelDepth = [&]( const DetailTile& tile, size_t index )
+		{
+			return std::min( std::max( static_cast<double>( tile.water[index].x ) - tile.heights[index], 0.0 ), layer );
+		};
+		// Профиль поперёк русла — у оси быстрее, у берегов медленнее: u₀ × h₀^(2/3) (по Маннингу при том же уклоне скорость
+		// растёт с глубиной), нормированный по куску так, что расход ∫ h₀ |u₀| через его сечение прежний. Равновесие течения
+		// — сам u₀ (water_flow.cs). Прежде профиль давала только сила тяжести (равновесие u₀ (h / R)^(2/3)), а u₀ поперёк
+		// сечения был ровным: на каждом скачке глубины ∇·(h₀ u₀) расходился с профилем, давление выравнивало скорость обратно,
+		// и у берега текло как у оси (2026-10-15: при h / R < 0,25 — 0,78 u₀ вместо 0,25)
+		{
+			std::vector<double> flat( bins.size(), 0.0 ), profiled( bins.size(), 0.0 );
+			for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
+			{
+				const DetailTile& tile = result.detailTiles[tileIndex];
+				for( size_t index = 0; index < tile.water.size(); ++index )
+				{
+					const int bin = detailBin[tileIndex][index];
+					const DirectX::XMFLOAT4& texel = tile.water[index];
+					if( bin < 0 || texel.w <= 0.0f || texel.x <= -1e8f )
+						continue;
+					const double depth = texelDepth( tile, index );
+					const double flux = depth * std::hypot( texel.y, texel.z );
+					flat[bin] += flux;
+					profiled[bin] += flux * std::pow( depth, 2.0 / 3.0 );
+				}
+			}
+			for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
+			{
+				DetailTile& tile = result.detailTiles[tileIndex];
+				for( size_t index = 0; index < tile.water.size(); ++index )
+				{
+					const int bin = detailBin[tileIndex][index];
+					DirectX::XMFLOAT4& texel = tile.water[index];
+					if( bin < 0 || texel.w <= 0.0f || texel.x <= -1e8f || profiled[bin] <= 0.0 )
+						continue;
+					const double factor = std::pow( texelDepth( tile, index ), 2.0 / 3.0 ) * flat[bin] / profiled[bin];
+					texel.y = static_cast<float>( texel.y * factor );
+					texel.z = static_cast<float>( texel.z * factor );
+				}
+			}
+		}
 		for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
 		{
 			const DetailTile& tile = result.detailTiles[tileIndex];
@@ -3672,8 +3714,7 @@ bool TerrainHydrology::Build::buildStones()
 				const DirectX::XMFLOAT4& texel = tile.water[index];
 				if( bin < 0 || texel.w <= 0.0f || texel.x <= -1e8f )
 					continue;
-				const double depth = std::min( std::max( static_cast<double>( texel.x ) - tile.heights[index], 0.0 ), layer );
-				bins[bin].flux += depth * std::hypot( texel.y, texel.z ) * texelArea;
+				bins[bin].flux += texelDepth( tile, index ) * std::hypot( texel.y, texel.z ) * texelArea;
 			}
 		}
 		std::vector<double> chainFlux( chainIndex, 0.0 ), chainDischarge( chainIndex, 0.0 );

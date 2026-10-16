@@ -81,6 +81,7 @@ bool StaticWater::initialize( WaterField& field, const WaterSimulationSettings& 
 bool StaticWater::createTextures( const TerrainHydrology::Result& hydrology, bool enabled )
 {
 	m_enabled = enabled;
+	m_streamManning = hydrology.streamManning;
 	if( hydrology.size != m_field->size || hydrology.channelFlow.size() != static_cast<size_t>( m_field->size ) * m_field->size )
 	{
 		LOG( "Water simulation: water channels differ from the height map in size" );
@@ -197,6 +198,7 @@ bool StaticWater::createTextures( const TerrainHydrology::Result& hydrology, boo
 		key.add( m_field->size );
 		key.add( m_field->cellSize );
 		key.add( height.mapSize );
+		key.add( m_streamManning );
 		key.addWords( heights, static_cast<size_t>( height.mapSize ) * height.mapSize * sizeof( float ) );
 		key.addWords( hydrology.staticWater.data(), hydrology.staticWater.size() * sizeof( DirectX::XMFLOAT4 ) );
 		for( const TerrainHydrology::Stone& stone : hydrology.stones )
@@ -427,6 +429,7 @@ std::string StaticWater::solveFlow( const Flow& flow )
 	params.flowTimeStep = timeStep;
 	params.flowViscosity = std::min( flow.viscosity * timeStep / ( m_field->cellSize * m_field->cellSize ), maxViscosityShare );
 	params.flowFriction = timeStep * gravity * flow.manning * flow.manning;
+	params.flowStreamFriction = timeStep * gravity * m_streamManning * m_streamManning;
 	params.flowMinDepth = flowMinDepth;
 	params.flowLayer = std::max( flow.layer, flowMinDepth );
 	params.flowScreen = flowScreen;
@@ -684,6 +687,7 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 	params.flowTimeStep = timeStep;
 	params.flowViscosity = std::min( flow.viscosity * timeStep / ( step * step ), maxViscosityShare );
 	params.flowFriction = timeStep * gravity * flow.manning * flow.manning;
+	params.flowStreamFriction = timeStep * gravity * m_streamManning * m_streamManning;
 	params.flowMinDepth = flowMinDepth;
 	params.flowLayer = std::max( flow.layer, flowMinDepth );
 	params.flowScreen = flowScreen;
@@ -857,7 +861,8 @@ std::string StaticWater::flowCachePath( const Flow& flow ) const
 	key.add( height.heightMultiplier );
 	key.add( height.heightOffset );
 	// Код расчёта — шейдер течения и его include: правка любого — расчёт заново
-	for( const char* file : { "Shaders\\water_flow.cs", "Shaders\\water_simulation.sh", "Shaders\\bindless.sh", "Shaders\\slots.h" } )
+	for( const char* file : { "Shaders\\water_flow.cs", "Shaders\\water_simulation.sh", "Shaders\\water_flow_constants.h",
+							  "Shaders\\water_detail_flow_constants.h", "Shaders\\bindless.sh", "Shaders\\slots.h" } )
 	{
 		std::ifstream in( file, std::ios::binary );
 		const std::string text( ( std::istreambuf_iterator<char>( in ) ), std::istreambuf_iterator<char>() );

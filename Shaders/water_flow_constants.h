@@ -15,7 +15,8 @@ DM_CONSTANTS( WaterFlowBuffer, b5 )
 	DM_FIELD( uint3, flowTilesPadding );
 	DM_FIELD( float, flowTimeStep );		// с
 	DM_FIELD( float, flowViscosity );		// вихревая вязкость · dt / l² — доля, не больше 0,2 (устойчивость)
-	DM_FIELD( float, flowFriction );		// dt · g · n²: трение дна по Маннингу (и ручьёв, и озёр)
+	DM_FIELD( float, flowFriction );		// dt · g · n²: трение дна по Маннингу в озере
+	DM_FIELD( float, flowStreamFriction );	// то же у ручья — n русел, по которому считана u₀
 	DM_FIELD( float, flowMinDepth );		// мельче — берег, м
 	DM_FIELD( float, flowScreen );			// экранирование давления, м: озеро без истока решается, вода «уходит в грунт»
 	DM_FIELD( float, flowRelaxation );		// верхняя релаксация давления (1 — Гаусс-Зейдель)

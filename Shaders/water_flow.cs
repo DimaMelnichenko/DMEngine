@@ -39,8 +39,9 @@
 //     камень выше воды перекрыл бы узкий ручей (видимая вода — 2–3 ячейки). Проводимость грани — глубина: вода обходит
 //     камень, над ним мельче и медленнее (трение), рядом быстрее. Расход сети ∇·(h₀ u₀) — по глубине без камней h₀: у
 //     камня вода уходит в обход, а не пропадает;
-//   - сила тяжести ручья — по гидравлическому радиусу русла R у ячейки (конвейер: тот же, по которому считана u₀), а не по
-//     глубине грани: равновесие u₀ (h / R)^(2/3) — у оси быстрее, у берегов медленнее;
+//   - сила тяжести ручья — по глубине без камней (h₀): равновесие — u₀ (h / h₀)^(2/3), над камнем медленнее; профиль
+//     поперёк русла (у оси быстрее, у берегов медленнее) — уже в u₀ (TerrainHydrology: u₀ × h₀^(2/3) с прежним расходом
+//     сечения), иначе расход сети ∇·(h₀ u₀) с ровным u₀ поперёк сечения выравнивал бы скорость давлением;
 //   - крупный масштаб тянется к решению 1 м (mainFlowNudge, spectral nudging вложенных моделей, von Storch, Langenberg,
 //     Feser 2000): средняя скорость блока 8 × 8 (2 м) по глубине — к средней сетки 1 м за nudgeTime, мелкий узор (обход
 //     камней, профиль поперёк русла, струи) — свой. Давление под «жёсткой крышкой» поправляет расход только вблизи, и
@@ -74,7 +75,7 @@ DM_UAV( FLOW_TEXTURE( float ), g_pressure, 3 );		// давление (м²/с: u
 DM_UAV( FLOW_TEXTURE( float ), g_divergence, 4 );	// ∇·(h (u − u₀)), м/с
 DM_UAV( FLOW_TEXTURE( float4 ), g_output, 5 );		// для шейдеров (SLOT_WATER; FLOW_DETAIL — детальная вода): скорость — в y, z
 #ifdef FLOW_DETAIL
-DM_UAV( RWTexture2DArray<float2>, g_info2, 6 );		// x — R русла (0 — не ручей), y — глубина без камней (текущий слой)
+DM_UAV( RWTexture2DArray<float2>, g_info2, 6 );		// x — R русла (> 0 — ручей), y — глубина без камней (текущий слой)
 DM_SRV( Texture2DArray<float2>, g_cachedFlow, 11 );	// mainFlowRestore: течение X, Z мира
 #else
 DM_SRV( Texture2D<float2>, g_cachedFlow, 11 );
@@ -227,9 +228,9 @@ struct Face
 	uint   state;		// закрыта (берег), свободна (между двумя мокрыми) или задана (FLOW_DETAIL: к ячейке вне плиток)
 	float  depth;		// глубина на грани
 	float2 base;		// скорость ручья по Маннингу u₀ у грани (оси текселей): два ручья — средняя, ручей и озеро — ручья, озёра — 0
-	// Глубина, к которой отнесена сила тяжести ручья: у сетки 1 м — глубина грани (равновесие — u₀), у детальной — R русла
-	float  radius;
-	float  baseDepth;	// глубина без камней — расход сети ∇·(h₀ u₀); 0 — грань закрыта
+	// Глубина без камней — расход сети ∇·(h₀ u₀) и сила тяжести ручья (у сетки 1 м — глубина грани); 0 — грань закрыта
+	float  baseDepth;
+	bool   stream;		// у ручья (хотя бы с одной стороны) — трение по n русел, у озера — своё
 };
 
 static const uint faceClosed = 0;
@@ -242,8 +243,8 @@ Face face( int2 a, uint axis )
 	result.state = faceClosed;
 	result.depth = 0.0f;
 	result.base = 0.0f;
-	result.radius = 0.0f;
 	result.baseDepth = 0.0f;
+	result.stream = false;
 	const int2 b = a + axes[axis];
 #ifdef FLOW_DETAIL
 	float4 infoA, infoB;
@@ -256,7 +257,6 @@ Face face( int2 a, uint axis )
 	const bool streamA = extraA.x > 0.0f;
 	const bool streamB = extraB.x > 0.0f;
 	result.baseDepth = 0.5f * ( extraA.y + extraB.y );
-	result.radius = streamA && streamB ? 0.5f * ( extraA.x + extraB.x ) : streamA ? extraA.x : extraB.x;
 	result.state = infoA.z == kindOutside || infoB.z == kindOutside ? faceFixed : faceFree;
 	result.depth = 0.5f * ( infoA.w + infoB.w );
 #else
@@ -268,9 +268,9 @@ Face face( int2 a, uint axis )
 	const bool streamB = infoB.z == kindStream;
 	result.state = faceFree;
 	result.depth = 0.5f * ( infoA.w + infoB.w );
-	result.radius = result.depth;
 	result.baseDepth = result.depth;
 #endif
+	result.stream = streamA || streamB;
 	result.base = streamA && streamB ? 0.5f * ( infoA.xy + infoB.xy ) : streamA ? infoA.xy : streamB ? infoB.xy : 0.0f;
 	return result;
 }
@@ -464,11 +464,17 @@ void mainFlowViscosity( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadI
 		}
 		float value = own + g_flowViscosity * spread;
 		// Трение дна по Маннингу, неявно: мелкая вода у берега и над камнем тормозит сильнее. Сила тяжести вдоль уклона
-		// ручья — то, что трение отнимает у скорости u₀ на глубине f.radius: у сетки 1 м это глубина грани — тогда u₀
+		// ручья — то, что трение отнимает у скорости u₀ на глубине без камней: у сетки 1 м это глубина грани — тогда u₀
 		// равновесие (на ровном участке поле — по Маннингу), отклонения от него (инерция на изгибе и слиянии, обход
-		// препятствия) гаснут за время трения; у детальной — R русла: равновесие u₀ (h / R)^(2/3), поперёк русла быстрее у оси
-		const float drag = g_flowFriction / pow( max( f.depth, g_flowMinDepth ), 4.0f / 3.0f );
-		const float forcing = g_flowFriction / pow( max( f.radius, g_flowMinDepth ), 4.0f / 3.0f );
+		// препятствия) гаснут за время трения; у детальной — равновесие u₀ (h / h₀)^(2/3): над камнем медленнее (профиль
+		// поперёк русла — уже в u₀)
+		// Трение ручья — по n русел, по которому считана u₀: на равновесие n не влияет (сила тяжести возмещает трение), но
+		// задаёт, за какое время поле к нему приходит. С трением озёр (вдвое меньше n — вчетверо дольше, ~12 с у ручья) профиль
+		// поперёк русла не успевал сложиться: перенос и давление уносили и выравнивали его, а вода у камней и изгибов
+		// закручивалась назад
+		const float friction = f.stream ? g_flowStreamFriction : g_flowFriction;
+		const float drag = friction / pow( max( f.depth, g_flowMinDepth ), 4.0f / 3.0f );
+		const float forcing = friction / pow( max( f.baseDepth, g_flowMinDepth ), 4.0f / 3.0f );
 		const float speed = length( axis == 0 ? float2( value, velocity.y ) : float2( velocity.x, value ) );
 #ifdef FLOW_DETAIL
 		// Камни — геометрия детальной сетки (дно и препятствия), сопротивление сетки 1 м не нужно

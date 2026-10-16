@@ -105,6 +105,7 @@ private:
 	// Отпечаток входа течения (createTextures): итоговый рельеф, растр статичной воды, камни, плитки детальной земли и воды;
 	// 0 — кэша нет (нет карты высот на CPU)
 	uint64_t m_flowInputKey = 0;
+	float m_streamManning = 0.0f;	// n Маннинга русел (TerrainHydrology::Result) — трение ручьёв в течении
 
 	// Детальная вода у русел (Shaders/water_detail.cs): плитки — те же, что у детальной земли (TerrainHydrology::DetailTile,
 	// тот же индекс SLOT_TERRAIN_DETAIL_INDEX), 0,25 м с полем в тексель
