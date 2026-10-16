@@ -45,6 +45,10 @@ static const float rippleSlope = 0.35f;
 static const float rippleFineWeight = 0.7f;
 static const float rippleStretchSpeed = 0.3f;	// м/с
 static const float rippleMinSlope = 0.005f;		// рябь течения слабее не видна — плитки не считаются (почти стоячее озеро)
+// Течение рябит поверхность только с этой скорости (турбулентность у дна доходит до поверхности), полная рябь течения — с
+// rippleOnsetFull, м/с: озеро с течением в сантиметры в секунду без ветра — зеркало, а струя ручья в нём рябит
+static const float rippleOnsetStart = 0.05f;
+static const float rippleOnsetFull = 0.15f;
 // Ветровая рябь мельче повтора g_rippleScale во столько раз и бежит по ветру с этой скоростью
 static const float calmOctave = 2.0f;
 static const float calmSpeed = 0.5f;			// м/с
@@ -503,7 +507,8 @@ float4 shadeWater( WaterShading input )
 	// ветер
 	const float2 dX = ddx( input.worldPosition.xz );
 	const float2 dY = ddy( input.worldPosition.xz );
-	const float flowStrength = rippleSlope * g_rippleStrength * max( saturate( speed / 1.5f ), input.ripple );
+	const float flowStrength = rippleSlope * g_rippleStrength * max( saturate( speed / 1.5f ), input.ripple ) *
+							   smoothstep( rippleOnsetStart, rippleOnsetFull, speed );
 	// Пена: узор — тот же, который несёт течение, порогом по доле пены. Вместе с рябью, до отражения: плитки ряби дальше не
 	// нужны и не занимают регистры в цикле луча (иначе вода на пол-экрана — на 0,1 мс дольше)
 	const float edge = saturate( input.depth / edgeDepth );
