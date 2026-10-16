@@ -14,6 +14,7 @@ DM_SRV( Texture2D<float4>, g_sceneColor, 0 );
 DM_SRV( Texture2D<float4>, g_bloom, 1 );	// самый крупный уровень bloom (половина кадра), уже с добавленными меньшими
 DM_SRV( Texture2D<float4>, g_star, 2 );		// лучи-звёзды вокруг ярких бликов (четверть кадра, star_streak.ps)
 DM_SRV( Texture2D<float4>, g_shafts, 3 );	// лучи солнца (четверть кадра, light_shaft_blur.ps)
+DM_SRV( Texture2D<float>, g_depth, 4 );		// глубина сцены (обратная: 0 — небо) — доля лучей перед ближним
 
 #include "tonemap_constants.h"
 
@@ -104,7 +105,14 @@ float4 main( PixelInputType input ) : SV_TARGET
 	[branch] if( g_starScale > 0.0f )
 		color += g_star.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).rgb * g_starScale;
 	[branch] if( any( g_shaftColor > 0.0f ) )
-		color += g_shafts.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).rgb * g_shaftColor;
+	{
+		// Лучи — свет, рассеянный в воздухе перед тем, что за пикселем: перед веткой у камеры воздуха почти нет — нет и дымки
+		// (без этого экранный след светил поверх всего ближнего); небо — полная доля
+		const float depth = g_depth.Load( int3( input.position.xy, 0 ) );
+		const float viewZ = depth > 0.0f ? g_depthLinearize.y / ( depth - g_depthLinearize.x ) : 1e9f;
+		const float air = g_shaftInverseDistance > 0.0f ? 1.0f - exp( -viewZ * g_shaftInverseDistance ) : 1.0f;
+		color += g_shafts.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).rgb * g_shaftColor * air;
+	}
 	// Буфер сцены — с экспозицией прошлого кадра, приводим к новой (Shaders/exposure.sh)
 	color *= exposureRatio();
 	[branch] if( g_purkinjeShift > 0.0f )

@@ -338,6 +338,9 @@ struct PostProcessSettings
 	float lightShaftRadius = 0.6f;
 	float lightShaftLength = 0.9f;
 	DirectX::XMFLOAT3 lightShaftTint = DirectX::XMFLOAT3( 1.0f, 0.92f, 0.8f );
+	// Лучи — свет в воздухе перед тем, что за пикселем: доля 1 − e^(−глубина / это), м; перед ближним (ветка у камеры)
+	// дымки нет; 0 — по всей глубине одинаково
+	float lightShaftDistance = 15.0f;
 	AmbientOcclusionSettings ambientOcclusion;
 };
 

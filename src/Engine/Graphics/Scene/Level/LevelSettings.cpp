@@ -264,6 +264,9 @@ const SettingsSchema<PostProcessSettings>& postProcessSchema()
 		{ "light_shaft_length", "Light shaft length", DM_SETTING( lightShaftLength ), 0.0f, 1.0f, "",
 		  "Share of the way to the sun a pixel gathers the light from: longer rays", 0, "bloom" },
 		{ "light_shaft_tint", "Light shaft tint", DM_SETTING( lightShaftTint ), 0.0f, 0.0f, "", "", settingColor, "bloom" },
+		{ "light_shaft_distance", "Light shaft distance", DM_SETTING( lightShaftDistance ), 0.0f, 500.0f, "m",
+		  "The rays are light scattered in the air in front of what is behind the pixel: share 1 - e^(-depth / distance); no haze "
+		  "over near branches and trunks; 0 - the same at any depth", settingLogarithmic, "bloom" },
 		// Экранное затенение окружением (AmbientOcclusion) — до проходов цвета, но настройки здесь, как в UE
 		{ "ambient_occlusion_intensity", "Ambient occlusion intensity", DM_SETTING( ambientOcclusion.intensity ), 0.0f, 1.0f, "",
 		  "Screen space ambient occlusion (GTAO): how much it darkens the sky light; 0 - off", 0, "bloom" },

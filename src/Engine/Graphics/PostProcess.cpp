@@ -212,7 +212,7 @@ void PostProcess::render( const ShaderView& sceneColor, const ShaderView& sceneD
 	profiler.beginScope( "Tonemap" );
 	d3d.beginPass( PassDesc{ "Tonemap", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight(),
 							 { { &sceneColor, "scene color" }, { &m_bloom[0].srv(), "bloom 1/2" }, { &m_star.srv(), "star" },
-							   { &m_shafts.srv(), "light shafts" }, { &m_exposureSRV, "exposure" } } } );
+							   { &m_shafts.srv(), "light shafts" }, { &sceneDepth, "scene depth" }, { &m_exposureSRV, "exposure" } } } );
 	PostProcessBuffer params = {};
 	params.tonemapper = static_cast<int32_t>( current.tonemapper );
 	// Уровень 1/2 хранит сумму уровней с весами 1, f, f², …: деление на неё — Bloom Intensity как доля энергии
@@ -225,12 +225,17 @@ void PostProcess::render( const ShaderView& sceneColor, const ShaderView& sceneD
 	const float shaftScale = std::max( current.lightShaftIntensity, 0.0f ) * shaftVisibility;
 	params.shaftColor = XMFLOAT3( current.lightShaftTint.x * shaftScale, current.lightShaftTint.y * shaftScale,
 								  current.lightShaftTint.z * shaftScale );
+	params.shaftInverseDistance = current.lightShaftDistance > 0.0f ? 1.0f / current.lightShaftDistance : 0.0f;
+	XMFLOAT4X4 projection;
+	XMStoreFloat4x4( &projection, view.projection );
+	params.depthLinearize = XMFLOAT2( projection._33, projection._43 );
 	Device::updateResourceData<PostProcessBuffer>( m_constantBuffer, params );
 	d3d.setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
 	d3d.setSRV( 0, sceneColor );
 	d3d.setSRV( 1, m_bloom[0].srv() );
 	d3d.setSRV( 2, m_star.srv() );
 	d3d.setSRV( 3, m_shafts.srv() );
+	d3d.setSRV( 4, sceneDepth );
 
 	m_shader.draw();
 	profiler.endScope();
