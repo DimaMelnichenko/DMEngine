@@ -42,8 +42,9 @@ void DMCamera::Initialize( CameraType _type, float width, float height, float _n
 	prop->setLogarithmic()->setUnit( "m" );
 	prop = m_properties.insert( "Far plane", depth );
 	prop->setLow( 100.0f );
-	prop->setHigh( 20000.0f );
-	prop->setLogarithmic()->setUnit( "m" )->setTooltip( "Also the sky sphere and the depth of aerial perspective and fog over the sky" );
+	prop->setHigh( 200000.0f );
+	prop->setLogarithmic()->setUnit( "m" )->setTooltip( "Farther nothing is drawn; the sky sphere of the level model is at 0.9 of it "
+														"(aerial perspective and fog over the sky have their own distances)" );
 }
 
 void DMCamera::applyProjectionProperties()

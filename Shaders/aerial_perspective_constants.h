@@ -14,7 +14,8 @@ DM_CONSTANTS( AerialPerspectiveBuffer, b4 )
 {
 	DM_FIELD( float, viewDistanceScale );	// Aerial Perspective View Distance Scale: во сколько раз путь в воздухе длиннее, 0 — выключено
 	DM_FIELD( float, outputScale );		// 1 / нормировка (SkyAtmosphere::aerialPerspectiveNormalization): объём — в половинной точности
-	DM_FIELD( float2, aerialPadding );
+	DM_FIELD( float, scaledDistance );		// растяжение пути — только ближе этого расстояния, м; 0 — весь путь
+	DM_FIELD( float, aerialPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

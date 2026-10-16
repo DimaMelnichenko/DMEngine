@@ -121,7 +121,8 @@ float3 applyHeightFog( float3 color, float3 position )
 	return color;
 }
 
-// Фон неба в направлении direction (от камеры) — за туманом до дальней плоскости; воздух в небе уже есть
+// Фон неба в направлении direction (от камеры) — за туманом до sky_distance строки тумана (cb_fogLayer0.w); воздух в небе
+// уже есть
 float3 applyHeightFogToSky( float3 luminance, float3 direction )
 {
 	return applyHeightFog( luminance, cb_cameraPosition + direction * cb_fogLayer0.w );

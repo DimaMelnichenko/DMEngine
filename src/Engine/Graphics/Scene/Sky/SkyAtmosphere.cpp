@@ -710,6 +710,7 @@ void SkyAtmosphere::updateAerialPerspective()
 
 	AerialPerspectiveBuffer constants = {};
 	constants.viewDistanceScale = m_properties["Aerial perspective view distance scale"].data<float>();
+	constants.scaledDistance = std::max( m_properties["Aerial perspective scaled distance"].data<float>(), 0.0f );
 	constants.outputScale = 1.0f / skyNormalization();
 	Device::updateResourceData<AerialPerspectiveBuffer>( m_aerialPerspectiveConstants, constants );
 	d3d.setConstantBuffer( 4, m_aerialPerspectiveConstants );

@@ -6,6 +6,7 @@
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "ConstantBuffers.h"
+#include "Shaders\atmosphere_constants.h"
 
 using namespace DirectX;
 
@@ -560,7 +561,8 @@ void Scene::frameConstants( const RenderView& view, FrameParameters& constants )
 {
 	constants.skyLightScale = skyLightScale();
 	constants.skyScale = skyScale();
-	constants.aerialPerspectiveDistance = hasAtmosphere() ? view.farPlane : 0.0f;
+	// Слои объёма воздушной перспективы — до AERIAL_PERSPECTIVE_DISTANCE (64 км, дальние горы), а не до дальней плоскости
+	constants.aerialPerspectiveDistance = hasAtmosphere() ? AERIAL_PERSPECTIVE_DISTANCE : 0.0f;
 	constants.aerialPerspectiveScale = aerialPerspectiveScale();
 	constants.wind = m_wind.parameters();
 	for( SceneObject* object : m_objects )

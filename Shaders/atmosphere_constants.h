@@ -29,8 +29,11 @@
 #define SKY_VIEW_LUT_HEIGHT				108
 
 // Объём воздушной перспективы (SkyAtmosphere, Shaders/aerial_perspective.cs, aerial_perspective.sh): сетка над экраном
-// AERIAL_PERSPECTIVE_SIZE² × AERIAL_PERSPECTIVE_DEPTH слоёв по расстоянию до дальней плоскости
+// AERIAL_PERSPECTIVE_SIZE² × AERIAL_PERSPECTIVE_DEPTH слоёв по расстоянию до AERIAL_PERSPECTIVE_DISTANCE, м (не до дальней
+// плоскости — как глубина таблицы перспективы в UE): слой s кончается на D · ((s + 1) / N)²; 128 слоёв на 64 км — первые 32
+// те же, что были 32 слоя на 4 км (D / N² одинаково), остальные — дальние горы до 64 км
 #define AERIAL_PERSPECTIVE_SIZE			32
-#define AERIAL_PERSPECTIVE_DEPTH		32
+#define AERIAL_PERSPECTIVE_DEPTH		128
+#define AERIAL_PERSPECTIVE_DISTANCE		64000.0f
 
 #endif

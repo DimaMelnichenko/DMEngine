@@ -122,7 +122,8 @@ FogParameters VolumetricFog::frameParameters( const RenderView& view, float norm
 
 	Settings values;
 	readSettingProperties( m_properties, heightFogSchema(), values );
-	fog.layer0 = XMFLOAT4( values.layer.density, values.layer.height, values.layer.heightFalloff, view.farPlane );
+	// Туман над фоном неба — до sky_distance (не до дальней плоскости: она теперь у дальних гор)
+	fog.layer0 = XMFLOAT4( values.layer.density, values.layer.height, values.layer.heightFalloff, std::max( values.skyDistance, 1.0f ) );
 	fog.layer1 = XMFLOAT4( values.secondLayer.density, values.secondLayer.height, values.secondLayer.heightFalloff,
 						   values.scatteringDistribution );
 	fog.albedo = values.albedo;

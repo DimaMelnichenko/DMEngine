@@ -184,6 +184,8 @@ const SettingsSchema<HeightFogSettings>& heightFogSchema()
 		{ "volumetric", "Volumetric", DM_SETTING( volumetric ), 0.0f, 0.0f, "", "Froxel volume with sun shadows and lamps; off - analytic fog only" },
 		{ "view_distance", "View distance", DM_SETTING( viewDistance ), 20.0f, 1000.0f, "m",
 		  "Depth of the froxel volume; beyond it the fog is analytic, without shadows" },
+		{ "sky_distance", "Sky distance", DM_SETTING( skyDistance ), 500.0f, 100000.0f, "m",
+		  "Fog over the sky background is taken as over a point this far", settingLogarithmic | settingClampLow },
 	};
 	return schema;
 }
@@ -197,6 +199,9 @@ const SettingsSchema<SkyAtmosphereSettings>& skyAtmosphereSchema()
 		{ "ground_albedo", "Ground albedo", DM_SETTING( groundAlbedo ), 0.0f, 1.0f },
 		{ "aerial_perspective_view_distance_scale", "Aerial perspective view distance scale", DM_SETTING( aerialPerspectiveViewDistanceScale ),
 		  0.0f, 16.0f },
+		{ "aerial_perspective_scaled_distance", "Aerial perspective scaled distance", DM_SETTING( aerialPerspectiveScaledDistance ),
+		  0.0f, 20000.0f, "m", "The air is thickened by the view distance scale only up to this distance from the camera, farther - "
+		  "the real path: the valley looks big, the far mountains don't drown in the haze; 0 - the whole path", settingClampLow },
 		{ "night_sky_luminance", "Night sky luminance", DM_SETTING( nightSkyLuminance ), 0.0f, 0.01f, "cd/m2", "", settingDrag },
 		// Млечный Путь: файл — только в базе (загружается при запуске), в окне — яркость: средняя по сфере (в полосе Галактики
 		// — втрое ярче); видно ночью, как звёзды
