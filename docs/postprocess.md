@@ -118,7 +118,9 @@ Ghost of Tsushima) палочки добавляют сигнал в оппон�
 
 Тон кадра — теплее или холоднее, насыщеннее, контрастнее, свои оттенки у теней и у светов — как Color Grading в Post
 Process Volume UE (и цветокоррекция кино: lift / gamma / gain, баланс белого камеры). Настройки — подокно «Color grading»
-окна «Post process» и колонки строки `PostProcessSettings`; по умолчанию всё нейтрально, кадр не меняется.
+окна «Post process» и колонки строки `PostProcessSettings`; по умолчанию всё нейтрально, кадр не меняется. У `Test` —
+по картинке-ориентиру (`docs/reference/alpine_valley_sunset.png`: тёплые света, голубоватые тени, сочный цвет):
+7300 К, насыщенность 1,25, контраст 1,08, усиление теней 0,94; 0,98; 1,06 и светов 1,06; 1,02; 0,94.
 
 **Таблица** (`ColorGradingLut`, `src/Engine/Graphics/ColorGradingLut.*`; как Combine LUTs в UE и color grading LUT в Unity
 HDRP). Цветокоррекция и кривая тонмаппинга запекаются в объёмную текстуру 32³ (`R16G16B16A16_FLOAT`, 256 КБ), и
