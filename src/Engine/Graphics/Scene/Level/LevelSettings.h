@@ -535,6 +535,7 @@ struct WaterSimulationSettings
 	float calmRipple = 0.25f;		// рябь стоячей (ветер)
 	float refraction = 0.02f;		// сдвиг преломления, доля высоты экрана на метр толщины
 	float rippleStretch = 2.5f;		// рябь быстрой воды вытянута вдоль течения во столько раз
+	float standingWaves = 1.0f;		// сила стоячих волн над перекатами (0 — нет)
 	float foamSpeed = 1.5f;			// пена — быстрее этого, м/с
 	float foamShear = 1.5f;			// и где сдвиг скорости больше, 1/с
 	float foamLifetime = 3.0f;		// пена, которую несёт течение, тает за это время, с (WaterFoam)

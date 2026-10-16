@@ -25,7 +25,7 @@ bool WaterFoam::initialize( WaterField& field )
 	const char* file = "Shaders\\water_foam.cs";
 	if( !m_detailSourceShader.initialize( file, "mainDetailSource" ) || !m_detailStepShader.initialize( file, "mainDetailStep" ) ||
 		!m_coarseSourceShader.initialize( file, "mainCoarseSource" ) || !m_coarseStepShader.initialize( file, "mainCoarseStep" ) ||
-		!DMD3D::instance().createShaderConstantBuffer( sizeof( WaterFoamBuffer ), m_constants ) )
+		!DMD3D::instance().createShaderConstantBuffer( sizeof( WaterFoamBuffer ), m_constants ) || !m_grid.initialize() )
 		return false;
 	return createGrid( m_coarse, field.size, field.size, 1, "Water foam" );
 }
@@ -70,8 +70,8 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 		return false;
 	const auto start = std::chrono::high_resolution_clock::now();
 	DMD3D& d3d = DMD3D::instance();
-	const TerrainHeight height = m_field->terrain->terrainHeight();
-	const bool detail = water.detailTileCount() > 0 && water.detailBlockCount() > 0 && height.detailIndex;
+	m_grid.prepare( *m_field, water );
+	const bool detail = m_grid.detail();
 	if( detail && water.detailTileCount() != m_detailSlices )
 	{
 		// Массив — хотя бы из двух срезов: вид массива и у одной плитки
@@ -85,51 +85,27 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 	params.foamSpeed = std::max( settings.foamSpeed, 0.01f );
 	params.foamShear = std::max( settings.foamShear, 0.01f );
 	params.foamSlope = std::max( settings.channels.foamSlope, 0.01f );
-	params.foamWetDepth = WaterField::visibleDepth;
-	params.foamCellSize = m_field->cellSize;
-	params.foamWorldSize = height.worldSize;
-	params.foamTileSize = water.detailTileSize();
-	params.foamSide = water.detailSide();
-	params.foamGridSize = m_field->size;
-	params.foamDetail = detail ? 1u : 0u;
 
 	// Сетка: источник, затем шаги — каждый читает поле прошлого и пишет другое; итог — в grid.current
-	auto solve = [&]( Grid& grid, ComputeShader& sourceShader, ComputeShader& stepShader, float timeStep, uint32_t groups,
-					  const ShaderView& groupsView, uint32_t outputSlot, const char* name )
+	auto solve = [&]( Grid& grid, ComputeShader& sourceShader, ComputeShader& stepShader, float timeStep, bool detailGrid, const char* name )
 	{
 		params.foamTimeStep = timeStep;
 		params.foamDecay = std::exp( -timeStep / lifetime );
 		params.foamGrowth = 1.0f - std::exp( -timeStep / growthTime );
-		params.foamTileCount = groups;
 		Device::updateResourceData( m_constants, params );
 		for( StorageView& uav : grid.uavs )
 			d3d.clearStorageView( uav );
-		const bool detailGrid = &grid == &m_detail;
 		auto pass = [&]( int read, int write, ComputeShader& shader )
 		{
-			PassDesc desc;
-			desc.name = name;
-			desc.reads = { { &m_field->stateView, "water state" }, { &groupsView, "foam groups" } };
-			if( detail )
-				desc.reads.insert( desc.reads.end(), { { &water.detailWaterView(), "detail water" }, { height.detailIndex, "terrain detail index" },
-													   { &water.detailTileCoordsView(), "detail tile coordinates" } } );
+			std::vector<PassDesc::Read> reads;
 			if( detail && !detailGrid )
-				desc.reads.push_back( { &m_detail.result(), "detail foam" } );
+				reads.push_back( { &m_detail.result(), "detail foam" } );
 			if( read >= 0 )
-				desc.reads.push_back( { &grid.views[read], "foam" } );
+				reads.push_back( { &grid.views[read], "foam" } );
 			if( write != 0 )
-				desc.reads.push_back( { &grid.views[0], "foam source" } );
-			desc.writes = { { &grid.uavs[write], "foam" } };
-			d3d.beginPass( desc );
+				reads.push_back( { &grid.views[0], "foam source" } );
+			m_grid.beginPass( name, detailGrid, std::move( reads ), { { &grid.uavs[write], "foam" } } );
 			d3d.setConstantBuffer( 5, m_constants );
-			if( detail )
-			{
-				d3d.setSRV( 0, water.detailWaterView() );
-				d3d.setSRV( 1, *height.detailIndex );
-				d3d.setSRV( 2, water.detailTileCoordsView() );
-			}
-			d3d.setSRV( 3, groupsView );
-			d3d.setSRV( 4, m_field->stateView );
 			// Детальная сетка: прошлый шаг — слот 5, источник — 7; сетка 1 м: итог детальной — 5, прошлый шаг — 6, источник — 8
 			if( detailGrid )
 			{
@@ -145,8 +121,8 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 					d3d.setSRV( 6, grid.views[read] );
 				d3d.setSRV( 8, grid.views[0] );
 			}
-			d3d.setUAV( outputSlot, grid.uavs[write] );
-			shader.dispatchGroups( groups, 1, 1 );
+			d3d.setUAV( detailGrid ? 0 : 1, grid.uavs[write] );
+			shader.dispatchGroups( m_grid.groupCount( detailGrid ), 1, 1 );
 		};
 		pass( -1, 0, sourceShader );
 		const uint32_t steps = std::min( static_cast<uint32_t>( std::ceil( settleLifetimes * lifetime / timeStep ) ), maxSteps );
@@ -162,10 +138,8 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 	};
 	uint32_t detailSteps = 0;
 	if( detail )
-		detailSteps = solve( m_detail, m_detailSourceShader, m_detailStepShader, detailTimeStep, water.detailBlockCount(),
-							 water.detailBlocksView(), 0, "Water foam detail" );
-	const uint32_t coarseSteps = solve( m_coarse, m_coarseSourceShader, m_coarseStepShader, coarseTimeStep, water.flowTileCount(),
-										water.flowTilesView(), 1, "Water foam" );
+		detailSteps = solve( m_detail, m_detailSourceShader, m_detailStepShader, detailTimeStep, true, "Water foam detail" );
+	const uint32_t coarseSteps = solve( m_coarse, m_coarseSourceShader, m_coarseStepShader, coarseTimeStep, false, "Water foam" );
 	d3d.prepareShaderRead( m_coarse.result() );
 	if( detail )
 		d3d.prepareShaderRead( m_detail.result() );

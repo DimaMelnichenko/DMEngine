@@ -4,6 +4,7 @@
 #include "WaterField.h"
 #include "StaticWater.h"
 #include "ComputeShader.h"
+#include "WaterGrid.h"
 
 namespace GS
 {
@@ -48,6 +49,7 @@ private:
 	ComputeShader m_coarseSourceShader;
 	ComputeShader m_coarseStepShader;
 	Buffer m_constants;			// WaterFoamBuffer
+	WaterGrid m_grid;
 	Grid m_detail;
 	Grid m_coarse;
 	uint32_t m_detailSlices = 0;	// срезов детальных массивов (плиток при их создании)

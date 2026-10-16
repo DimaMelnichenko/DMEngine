@@ -209,6 +209,7 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	params.foamTextureRepeat = foamTexture ? std::max( current.foamTextureRepeat, 0.05f ) : 0.0f;
 	params.foamSoftness = std::max( current.foamSoftness, 0.01f );
 	params.foamDissolve = std::max( current.foamDissolve, 0.0f );
+	params.standingWaves = std::max( current.standingWaves, 0.0f );
 	Device::updateResourceData( m_surfaceBuffer, params );
 
 	ScopedRenderState state( context.frameRaster );

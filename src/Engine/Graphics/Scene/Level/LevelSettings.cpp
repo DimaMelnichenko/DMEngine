@@ -471,6 +471,9 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		  0, "surface" },
 		{ "ripple_stretch", "Ripple stretch", DM_SETTING( rippleStretch ), 1.0f, 6.0f, "",
 		  "How many times the ripple pattern is longer along the flow than across it on running water", 0, "surface" },
+		{ "standing_waves", "Standing waves", DM_SETTING( standingWaves ), 0.0f, 3.0f, "",
+		  "Stationary waves over riffles: the wave stands where its speed against the current equals the speed of the water; "
+		  "stronger on shallow fast water (by the Froude number); 0 - none", 0, "surface" },
 		{ "foam_speed", "Foam speed", DM_SETTING( foamSpeed ), 0.1f, 5.0f, "m/s", "", 0, "surface" },
 		{ "foam_shear", "Foam shear", DM_SETTING( foamShear ), 0.1f, 10.0f, "1/s", "", 0, "surface" },
 		{ "foam_lifetime", "Foam lifetime", DM_SETTING( foamLifetime ), 0.1f, 30.0f, "s",

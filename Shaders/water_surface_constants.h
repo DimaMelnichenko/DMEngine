@@ -39,7 +39,7 @@ DM_CONSTANTS( WaterSurfaceBuffer, SLOT_CB_MATERIAL )
 	DM_FIELD( float, foamTextureRepeat );
 	DM_FIELD( float, foamSoftness );
 	DM_FIELD( float, foamDissolve );
-	DM_FIELD( float, surfacePadding );
+	DM_FIELD( float, standingWaves );		// сила стоячих волн над перекатами (0 — нет)
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

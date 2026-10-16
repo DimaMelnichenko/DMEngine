@@ -9,17 +9,11 @@
 // клетках у русел её источник — пена детальной сетки, и шлейф ручья продолжается в озеро за краем плиток.
 //   mainDetailSource / mainCoarseSource — источник пены;
 //   mainDetailStep / mainCoarseStep     — шаг: перенос, таяние, сжатие, рост к источнику.
-// Группа потоков — блок 8 × 8 детальной воды (блоки с водой, как у течения) или тайл 8 × 8 сетки 1 м (тайлы течения)
+// Группа потоков, ячейки и тексели — water_detail_grid.sh
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "samplers.sh"
-#include "bindless.sh"
+#include "water_detail_grid.sh"
 
-DM_SRV( Texture2DArray<float4>, g_detailWater, 0 );		// детальная вода: уровень (−1e30 — нет), течение X, Z мира, глубина
-DM_SRV( Texture2D<uint>, g_detailIndex, 1 );				// плитка (x, z) мира → срез + 1, 0 — плитки нет
-DM_SRV( StructuredBuffer<uint2>, g_detailTileCoords, 2 );	// срез → плитка (x, z) мира
-DM_SRV( StructuredBuffer<uint2>, g_groups, 3 );			// детальная сетка — срез и номер блока в плитке; сетка 1 м — тайл
-DM_SRV( Texture2D<float4>, g_coarseWater, 4 );			// вода сетки 1 м (SLOT_WATER): глубина, течение X, Z мира
 DM_SRV( Texture2DArray<float>, g_detailFoam, 5 );			// пена детальной сетки: прошлый шаг (mainDetailStep), итог (mainCoarseSource)
 DM_SRV( Texture2D<float>, g_coarseFoam, 6 );				// пена сетки 1 м: прошлый шаг
 DM_SRV( Texture2DArray<float>, g_detailSource, 7 );
@@ -33,65 +27,6 @@ DM_UAV( RWTexture2D<float>, g_coarseOutput, 1 );
 static const float fallFoam = 0.6f;			// пена на стенке уступа: узор даёт белые полосы по течению, а не сплошное пятно
 static const float maxFoam = 2.0f;			// больше — та же сплошная белая вода
 static const float maxCompression = 0.15f;	// сжатие и растяжение пены за шаг — не больше exp(±)
-
-float detailStep()
-{
-	return g_foamTileSize / ( g_foamSide - 2 );
-}
-
-// Ячейка детальной сетки потока: тексель среза (с полем), клетка детальной сетки мира, точка мира (x, z)
-bool detailCell( uint3 group, uint3 thread, out uint3 texel, out int2 cell, out float2 world )
-{
-	const uint cells = g_foamSide - 2;
-	const uint2 block = g_groups[min( group.x, g_foamTileCount - 1 )];
-	const uint2 local = uint2( block.y % ( cells / 8 ), block.y / ( cells / 8 ) ) * 8 + thread.xy;
-	texel = uint3( local + 1, block.x );
-	cell = int2( g_detailTileCoords[block.x] * cells + local );
-	world = ( cell + 0.5f ) * detailStep();
-	return group.x < g_foamTileCount;
-}
-
-// Точка мира → тексель детальной воды для выборки: x, y — непрерывные (центр текселя i — i + 0,5, с полем), z — срез;
-// false — плитки нет
-bool detailTexelAt( float2 world, out float3 texel )
-{
-	texel = 0.0f;
-	const int2 tile = int2( floor( world / g_foamTileSize ) );
-	uint tilesX, tilesZ;
-	g_detailIndex.GetDimensions( tilesX, tilesZ );
-	if( any( tile < 0 ) || tile.x >= (int)tilesX || tile.y >= (int)tilesZ )
-		return false;
-	const uint index = g_detailIndex.Load( int3( tile, 0 ) );
-	if( index == 0 )
-		return false;
-	texel = float3( ( world - tile * g_foamTileSize ) / detailStep() + 1.0f, index - 1 );
-	return true;
-}
-
-float3 detailUV( float3 texel )
-{
-	return float3( texel.xy / g_foamSide, texel.z );
-}
-
-// UV сетки 1 м: строки — против Z мира
-float2 coarseUV( float2 world )
-{
-	return float2( world.x, g_foamWorldSize - world.y ) / g_foamWorldSize;
-}
-
-bool wet( float4 detailWater )
-{
-	return detailWater.w >= g_foamWetDepth && detailWater.x > -1e3f;
-}
-
-// Течение в точке мира: детальная вода, вне плиток — сетка 1 м
-float2 detailVelocityAt( float2 world )
-{
-	float3 texel;
-	if( detailTexelAt( world, texel ) )
-		return g_detailWater.SampleLevel( g_SamplerLinearClamp, detailUV( texel ), 0.0f ).yz;
-	return g_coarseWater.SampleLevel( g_SamplerLinearClamp, coarseUV( world ), 0.0f ).yz;
-}
 
 // Пена прошлого шага в точке мира; вне плиток (озеро вдали от русел) пены детальной сетки нет
 float detailFoamAt( float2 world )
@@ -130,7 +65,7 @@ void detailNeighbors( uint3 texel, float4 here, out float4 neighbors[4] )
 	{
 		const int2 offset = k == 0 ? int2( 1, 0 ) : k == 1 ? int2( -1, 0 ) : k == 2 ? int2( 0, 1 ) : int2( 0, -1 );
 		const float4 neighbor = g_detailWater.Load( int4( int2( texel.xy ) + offset, texel.z, 0 ) );
-		neighbors[k] = wet( neighbor ) ? neighbor : here;
+		neighbors[k] = wetDetail( neighbor ) ? neighbor : here;
 	}
 }
 
@@ -144,14 +79,14 @@ void mainDetailSource( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID
 		return;
 	const float4 water = g_detailWater.Load( int4( texel, 0 ) );
 	float source = 0.0f;
-	if( wet( water ) )
+	if( wetDetail( water ) )
 	{
 		float4 n[4];
 		detailNeighbors( texel, water, n );
 		// Скачок скорости через тексель — на 2 клетки сетки 1 м, как у неё: градиент на 0,25 м круче (профиль поперёк узкого
 		// ручья — 1 м/с на 30–40 см), и пена с тем же порогом шла бы по всему ручью
-		const float2 dvdx = ( n[0].yz - n[1].yz ) / ( 2.0f * g_foamCellSize );
-		const float2 dvdz = ( n[2].yz - n[3].yz ) / ( 2.0f * g_foamCellSize );
+		const float2 dvdx = ( n[0].yz - n[1].yz ) / ( 2.0f * g_gridCellSize );
+		const float2 dvdz = ( n[2].yz - n[3].yz ) / ( 2.0f * g_gridCellSize );
 		const float slope = length( float2( n[0].x - n[1].x, n[2].x - n[3].x ) ) / ( 2.0f * detailStep() );
 		source = foamSource( length( water.yz ), strainRate( dvdx, dvdz ), slope );
 	}
@@ -168,7 +103,7 @@ void mainDetailStep( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 		return;
 	const float4 water = g_detailWater.Load( int4( texel, 0 ) );
 	float foam = 0.0f;
-	if( wet( water ) )
+	if( wetDetail( water ) )
 	{
 		// Назад по течению — по скорости в середине шага
 		const float2 middle = detailVelocityAt( world - 0.5f * g_foamTimeStep * water.yz );
@@ -178,30 +113,10 @@ void mainDetailStep( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 		const float divergence = ( n[0].y - n[1].y + n[2].z - n[3].z ) / ( 2.0f * detailStep() );
 		foam = foamStep( carried, divergence, g_detailSource.Load( int4( texel, 0 ) ) );
 	}
-	// В свою плитку и в поле соседних (тексель поля — копия ячейки соседа: выборка у края плитки — без шва)
-	const int cells = (int)g_foamSide - 2;
-	const int2 tile = cell / cells;
-	uint tilesX, tilesZ;
-	g_detailIndex.GetDimensions( tilesX, tilesZ );
-	[unroll] for( int k = 0; k < 9; ++k )
-	{
-		const int2 neighbor = tile + int2( k % 3 - 1, k / 3 - 1 );
-		if( any( neighbor < 0 ) || neighbor.x >= (int)tilesX || neighbor.y >= (int)tilesZ )
-			continue;
-		const uint slice = g_detailIndex.Load( int3( neighbor, 0 ) );
-		const int2 local = cell - neighbor * cells;
-		if( slice == 0 || any( local < -1 ) || any( local > cells ) )
-			continue;
-		g_detailOutput[uint3( local + 1, slice - 1 )] = foam;
-	}
-}
-
-// Клетка сетки 1 м потока и её центр в мире (x, z)
-bool coarseCell( uint3 group, uint3 thread, out int2 cell, out float2 world )
-{
-	cell = int2( g_groups[min( group.x, g_foamTileCount - 1 )] * 8 + thread.xy );
-	world = float2( ( cell.x + 0.5f ) * g_foamCellSize, g_foamWorldSize - ( cell.y + 0.5f ) * g_foamCellSize );
-	return group.x < g_foamTileCount && all( cell < (int)g_foamGridSize );
+	uint3 copies[4];
+	const uint count = detailCopies( cell, copies );
+	for( uint c = 0; c < count; ++c )
+		g_detailOutput[copies[c]] = foam;
 }
 
 // Соседи клетки сетки 1 м: +X, −X, +Z, −Z мира (строки — против Z); сухая — как сама клетка
@@ -210,9 +125,9 @@ void coarseNeighbors( int2 cell, float4 here, out float4 neighbors[4] )
 	[unroll] for( uint k = 0; k < 4; ++k )
 	{
 		const int2 offset = k == 0 ? int2( 1, 0 ) : k == 1 ? int2( -1, 0 ) : k == 2 ? int2( 0, -1 ) : int2( 0, 1 );
-		const int2 at = clamp( cell + offset, 0, (int)g_foamGridSize - 1 );
+		const int2 at = clamp( cell + offset, 0, (int)g_gridSize - 1 );
 		const float4 neighbor = g_coarseWater.Load( int3( at, 0 ) );
-		neighbors[k] = neighbor.x >= g_foamWetDepth ? neighbor : here;
+		neighbors[k] = neighbor.x >= g_gridWetDepth ? neighbor : here;
 	}
 }
 
@@ -225,17 +140,17 @@ void mainCoarseSource( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID
 		return;
 	const float4 water = g_coarseWater.Load( int3( cell, 0 ) );
 	float source = 0.0f;
-	if( water.x >= g_foamWetDepth )
+	if( water.x >= g_gridWetDepth )
 	{
 		// У русел (клетка в плитках детальной воды) — пена детальной сетки, средняя по четырём точкам клетки: шлейф ручья
 		// продолжается в озеро за краем плиток; дальше — свои правила
 		float detail = 0.0f;
 		uint count = 0;
-		if( g_foamDetail != 0 )
+		if( g_gridDetail != 0 )
 		{
 			[unroll] for( uint k = 0; k < 4; ++k )
 			{
-				const float2 at = world + ( float2( k & 1, k >> 1 ) - 0.5f ) * 0.5f * g_foamCellSize;
+				const float2 at = world + ( float2( k & 1, k >> 1 ) - 0.5f ) * 0.5f * g_gridCellSize;
 				float3 texel;
 				if( detailTexelAt( at, texel ) )
 				{
@@ -250,8 +165,8 @@ void mainCoarseSource( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID
 		{
 			float4 n[4];
 			coarseNeighbors( cell, water, n );
-			const float2 dvdx = ( n[0].yz - n[1].yz ) / ( 2.0f * g_foamCellSize );
-			const float2 dvdz = ( n[2].yz - n[3].yz ) / ( 2.0f * g_foamCellSize );
+			const float2 dvdx = ( n[0].yz - n[1].yz ) / ( 2.0f * g_gridCellSize );
+			const float2 dvdz = ( n[2].yz - n[3].yz ) / ( 2.0f * g_gridCellSize );
 			source = foamSource( length( water.yz ), strainRate( dvdx, dvdz ), 0.0f );
 		}
 	}
@@ -267,13 +182,13 @@ void mainCoarseStep( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 		return;
 	const float4 water = g_coarseWater.Load( int3( cell, 0 ) );
 	float foam = 0.0f;
-	if( water.x >= g_foamWetDepth )
+	if( water.x >= g_gridWetDepth )
 	{
 		const float2 middle = g_coarseWater.SampleLevel( g_SamplerLinearClamp, coarseUV( world - 0.5f * g_foamTimeStep * water.yz ), 0.0f ).yz;
 		const float carried = g_coarseFoam.SampleLevel( g_SamplerLinearClamp, coarseUV( world - g_foamTimeStep * middle ), 0.0f );
 		float4 n[4];
 		coarseNeighbors( cell, water, n );
-		const float divergence = ( n[0].y - n[1].y + n[2].z - n[3].z ) / ( 2.0f * g_foamCellSize );
+		const float divergence = ( n[0].y - n[1].y + n[2].z - n[3].z ) / ( 2.0f * g_gridCellSize );
 		foam = foamStep( carried, divergence, g_coarseSource.Load( int3( cell, 0 ) ) );
 	}
 	g_coarseOutput[cell] = foam;
