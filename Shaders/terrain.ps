@@ -1,12 +1,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Материал террейна CDLOD (TerrainMaterial). Нормаль рельефа считается по карте высот, веса до восьми слоёв
-// берутся из каналов splat-карты — массива из двух RGBA, как weightmap в UE Landscape. Текстуры читаются только у
-// четырёх самых весомых слоёв пикселя. Слой — пара текстур из массивов: альбедо + высота и нормаль (RG) + AO (B) +
-// шероховатость. AO гасит свет неба в щелях между камнями и даёт микротени прямого света (lighting.sh).
-// Текстура слоя проецируется сверху, а на крутых склонах ещё и вдоль осей X и Z (triplanar), поэтому на скалах
-// не растягивается. Слои смешиваются по высоте: где веса близки, видна более высокая текстура (камни из травы).
-// Вдали повтор текстуры крупнее (distance resampling, как в материалах UE Landscape): мелкий повтор (скала, снег)
-// издалека складывается в сетку
+// берутся из каналов splat-карты — массива из двух RGBA, как weightmap в UE Landscape, у русел — из детального слоя весов,
+// под водой — дно по глубине. Смесь слоёв по весам — terrain_material.sh (общее с дальними горами): четыре самых весомых,
+// triplanar, крупный масштаб вдали, смешивание по высоте. AO слоёв гасит свет неба в щелях между камнями и даёт микротени
+// прямого света (lighting.sh)
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "lighting.sh"
@@ -16,73 +13,9 @@
 #include "water.sh"
 #include "wind_field.sh"
 #include "terrain_layers.sh"
+#include "terrain_material.sh"
 
-DM_SRV( Texture2DArray, g_normalRoughness, 3 );
 DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти (g_paintPreview 9), в UV карты высот
-
-struct LayerSample
-{
-	float3 albedo;
-	float  height;
-	float3 detail;		// отклонение нормали по карте нормалей, в мировых координатах
-	float  roughness;
-	float  occlusion;	// затенение окружением слоя (B массива нормалей)
-};
-
-// tangent и bitangent — направления роста u и v проекции в мире. Отклонение нормали добавляется к нормали рельефа
-// в плоскости проекции (UDN): для плоского участка это обычный normal mapping
-void addProjection( inout LayerSample result, float weight, float layer, float2 uv, float2 uvDX, float2 uvDY,
-					float3 tangent, float3 bitangent )
-{
-	float4 albedoHeight = g_albedoHeight.SampleGrad( g_SamplerAnisotropicWrap, float3( uv, layer ), uvDX, uvDY );
-	float4 normalRoughness = g_normalRoughness.SampleGrad( g_SamplerAnisotropicWrap, float3( uv, layer ), uvDX, uvDY );
-	float2 slope = normalRoughness.xy * 2.0f - 1.0f;
-
-	result.albedo += albedoHeight.rgb * weight;
-	result.height += albedoHeight.a * weight;
-	result.detail += ( tangent * slope.x + bitangent * slope.y ) * weight;
-	result.roughness += normalRoughness.a * weight;
-	result.occlusion += normalRoughness.b * weight;
-}
-
-// Проекции слоя с повтором scale (повторов на метр), вклад — с весом weight.
-// Производные позиции считаются до ветвлений: внутри них неявные производные не определены, поэтому SampleGrad
-void addProjections( inout LayerSample result, float weight, uint layer, float scale, float3 position, float3 positionDX,
-					 float3 positionDY, float3 projection )
-{
-	// Сверху: u вдоль X, v вдоль Z
-	[branch] if( projection.y > 0.0f )
-	{
-		addProjection( result, projection.y * weight, layer, position.xz * scale, positionDX.xz * scale, positionDY.xz * scale,
-					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, 0.0f, 1.0f ) );
-	}
-	// Вдоль X: u вдоль Z, v вниз по Y, чтобы верх текстуры смотрел вверх
-	[branch] if( projection.x > 0.0f )
-	{
-		addProjection( result, projection.x * weight, layer, float2( position.z, -position.y ) * scale,
-					   float2( positionDX.z, -positionDX.y ) * scale, float2( positionDY.z, -positionDY.y ) * scale,
-					   float3( 0.0f, 0.0f, 1.0f ), float3( 0.0f, -1.0f, 0.0f ) );
-	}
-	// Вдоль Z: u вдоль X, v вниз по Y
-	[branch] if( projection.z > 0.0f )
-	{
-		addProjection( result, projection.z * weight, layer, float2( position.x, -position.y ) * scale,
-					   float2( positionDX.x, -positionDX.y ) * scale, float2( positionDY.x, -positionDY.y ) * scale,
-					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, -1.0f, 0.0f ) );
-	}
-}
-
-// far — доля крупного масштаба (0 — вблизи, 1 — вдали): обе выборки только в полосе перехода
-LayerSample sampleLayer( uint layer, float far, float3 position, float3 positionDX, float3 positionDY, float3 projection )
-{
-	LayerSample result = (LayerSample)0;
-	const float scale = layerScale( layer );
-	[branch] if( far < 1.0f )
-		addProjections( result, 1.0f - far, layer, scale, position, positionDX, positionDY, projection );
-	[branch] if( far > 0.0f )
-		addProjections( result, far, layer, scale / g_farTextureScale, position, positionDX, positionDY, projection );
-	return result;
-}
 
 // Доля диапазона: 0 при from, 1 при to (в любую сторону), плавно; from = to — ступень
 float ramp( float from, float to, float x )
@@ -170,34 +103,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 		}
 	}
 
-	float4 splat;
-	uint4 layerIndex;
-	selectLayers( weights, splat, layerIndex );
-	const float far = saturate( ( length( position - cb_cameraPosition ) - g_farBlendStart ) / ( g_farBlendEnd - g_farBlendStart ) );
-
-	LayerSample layers[activeLayers];
-	float4 heights = 0.0f;
-	[unroll] for( uint j = 0; j < activeLayers; ++j )
-	{
-		layers[j] = (LayerSample)0;
-		[branch] if( splat[j] > minWeight )
-		{
-			layers[j] = sampleLayer( layerIndex[j], far, position, positionDX, positionDY, projection );
-		}
-		heights[j] = layers[j].height;
-	}
-
-	float4 blend = heightBlend( splat, heights );
-	LayerSample mixed = (LayerSample)0;
-	float occlusion = 1.0f;
-	[unroll] for( uint n = 0; n < activeLayers; ++n )
-	{
-		mixed.albedo += layers[n].albedo * terrainLayers().layerTint[layerIndex[n]].xyz * blend[n];
-		mixed.detail += layers[n].detail * blend[n];
-		mixed.roughness += layers[n].roughness * blend[n];
-		// AO слоя с его силой, смешанный теми же долями, что цвет
-		occlusion -= ( 1.0f - layers[n].occlusion ) * g_layerOcclusion[layerIndex[n] / 4][layerIndex[n] % 4] * blend[n];
-	}
+	const TerrainLayerMix mixed = mixTerrainLayers( weights, farTextureShare( position ), 1.0f, position, positionDX, positionDY, projection );
 
 	Surface surface;
 	surface.transmission = 0.0f;
@@ -212,7 +118,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.metallic = 0.0f;
 	surface.specular = 1.0f;
 	surface.roughness = mixed.roughness;
-	surface.occlusion = saturate( occlusion );
+	surface.occlusion = saturate( mixed.occlusion );
 	surface.microShadows = g_microShadows;
 	surface.selfShadow = 1.0f;
 	surface.screenOcclusion = screenAmbientOcclusion( input.position.xy, surface.position );

@@ -34,23 +34,29 @@ struct PixelInputType
 // Ось z мира идёт по текстуре снизу вверх
 float2 heightMapUV( float2 worldXZ )
 {
-	float2 uv = worldXZ / g_worldSize;
+	precise float2 uv = worldXZ / g_worldSize;
 	uv.y = 1.0f - uv.y;
 	return uv;
 }
 
+// precise: вершины стыка карты и дальних гор (cdlod_patch.sh) считают её в разных шейдерах — результат совпадает до бита
 float sampleHeight( float2 worldXZ, float mip )
 {
-	return g_heightMap.SampleLevel( g_SamplerLinearClamp, heightMapUV( worldXZ ), mip ).r * g_heightMultiplier + g_heightOffset;
+	precise float2 uv = heightMapUV( worldXZ );
+	precise float height = g_heightMap.SampleLevel( g_SamplerLinearClamp, uv, mip ).r * g_heightMultiplier + g_heightOffset;
+	return height;
 }
 
 // Высота самой детальной земли в точке: плитка у русла (terrain_detail.sh) или карта высот (мип 0)
 float sampleFineHeight( float2 worldXZ )
 {
 	float detail;
+	precise float height;
 	if( sampleTerrainDetail( worldXZ, g_detailTile, detail ) )
-		return detail * g_heightMultiplier + g_heightOffset;
-	return sampleHeight( worldXZ, 0.0f );
+		height = detail * g_heightMultiplier + g_heightOffset;
+	else
+		height = sampleHeight( worldXZ, 0.0f );
+	return height;
 }
 
 // Нормаль рельефа: центральные разности в мипе карты высот, тексель которого примерно равен пикселю экрана.

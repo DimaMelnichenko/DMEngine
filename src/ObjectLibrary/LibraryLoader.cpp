@@ -283,8 +283,8 @@ bool LibraryLoader::loadLevel( const std::string& name, const std::string& prese
 {
 	try
 	{
-		const char* columns = "SELECT id, name, terrain, sky, atmosphere, post_process, sun_position, hdri_backdrop, wind, "
-							  "water_simulation, height_fog, volumetric_cloud FROM Levels ";
+		// Все колонки: у базы без новых (far_terrain) — их нет, а не ошибка
+		const char* columns = "SELECT * FROM Levels ";
 		SQLite::Statement query( DBConnector::instance().db(), std::string( columns ) + ( name.empty() ? "ORDER BY id LIMIT 1" : "WHERE name = :name" ) );
 		if( !name.empty() )
 			query.bind( ":name", name );
@@ -307,6 +307,8 @@ bool LibraryLoader::loadLevel( const std::string& name, const std::string& prese
 			loadTerrainLayerRules( terrainId, level );
 			loadTerrainPaint( terrainId, level );
 		}
+		if( SettingsDatabaseDetail::hasColumn( query, "far_terrain" ) && !query.getColumn( "far_terrain" ).isNull() )
+			loadFarTerrain( query.getColumn( "far_terrain" ).getUInt(), level );
 		if( !query.getColumn( "sky" ).isNull() )
 			level.sky = query.getColumn( "sky" ).getUInt();
 		if( !query.getColumn( "atmosphere" ).isNull() )

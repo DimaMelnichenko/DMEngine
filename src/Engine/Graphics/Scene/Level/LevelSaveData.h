@@ -29,6 +29,7 @@ struct LevelSaveData
 	std::vector<LevelDescription::ModelInstance> models;
 	std::vector<uint32_t> removedModels;
 	std::optional<GS::TerrainSettings> terrain;
+	std::optional<GS::FarTerrainSettings> farTerrain;
 	std::vector<GS::ScatterSetSettings> scatterSets;
 	std::vector<GS::ScatterLayerRecord> scatterLayers;
 	std::optional<GS::WaterSimulationSettings> water;

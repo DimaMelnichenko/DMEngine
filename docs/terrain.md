@@ -17,7 +17,10 @@
 трещин. Выбор узлов и таблица дальностей — `CDLODQuadtree` (`Scene/Terrain/CDLODQuadtree.h`: область с началом и стороной,
 коробки узлов даёт владелец — у террейна `CDLODTerrain::node` / `detailNode` по мипам карты; корень вне дальности рисуется
 своим уровнем; больше `maxPatches` (8192) патчей на вид — разовая строка в логе); наибольший перепад высот узла уровня —
-при построении границ (`buildNodeBounds`), а не обходом узлов каждый кадр. Настройки — строка `Terrain` уровня (`heightmap` — имя в `Textures`, `height_multiplier`, `height_offset`,
+при построении границ (`buildNodeBounds`), а не обходом узлов каждый кадр. Дальние горы вокруг карты (`FarTerrain`,
+[far_terrain.md](far_terrain.md)) — на той же сетке узлов: карта — дыра в их дереве (`CDLODQuadtree::setHole`), таблица
+дальностей общая (`CDLODTerrain::setFarLevels`: с уровня текселя гор — своя дальность), вершина патча — общий код
+`Shaders/cdlod_patch.sh` (`precise`: на стыке высота карты в обоих шейдерах совпадает до бита). Настройки — строка `Terrain` уровня (`heightmap` — имя в `Textures`, `height_multiplier`, `height_offset`,
 `width_multiplier`; `splatmap` пока не читается — splat-карту дают правила, «Слои и маски по рельефу»). Карта высот и splat-карта лежат перевёрнутыми по Z: `uv.y = 1 − z / worldSize`,
 то есть строка r картинки — z ≈ worldSize − r − 0,5, столбец — x (важно, когда место ищут по маске или карте высот).
 
@@ -718,6 +721,8 @@ Grass Type в UE, `TODO.md`, этап 8). Мазки — данные уровн
 
 ## Шейдер
 
+Смесь слоёв по весам (пункты 2–5) — `Shaders/terrain_material.sh`, общая с дальними горами ([far_terrain.md](far_terrain.md)).
+
 1. **Нормаль рельефа** — по карте высот, мип под размер пикселя.
 2. **Четыре самых весомых слоя пикселя** — из восьми весов двух срезов (слои сверх `g_layerCount` — описанных в
    `TerrainLayers` — веса не получают). Текстуры читаются только у них: в одной точке больше трёх-четырёх слоёв не бывает,
@@ -787,7 +792,8 @@ Release, 1920 × 1080, время GPU террейна (оба прохода ц
 | `src/Engine/Graphics/Scene/Terrain/TerrainMaterial.h/.cpp` | слои из `TerrainLayers`, массивы текстур, splat-карта |
 | `src/Engine/Graphics/Scene/Terrain/TerrainEdits.h/.cpp` | правки рельефа: кривые и площадки поверх карты высот |
 | `Tools/terrain_edit.py` | правки рельефа в базе: добавить, список, включить, выключить, удалить |
-| `Shaders/cdlod.sh`, `cdlod.vs`, `terrain.ps` | константы, вершинный шейдер с морфингом, материал |
+| `Shaders/cdlod.sh`, `cdlod.vs`, `terrain.ps` | константы, вершинный шейдер, материал |
+| `Shaders/cdlod_patch.sh`, `terrain_material.sh` | вершина патча с морфингом и смесь слоёв — общие с дальними горами ([far_terrain.md](far_terrain.md)) |
 | `Shaders/terrain_detail.sh` | детальная земля у русел: выборка плитки по точке мира |
 | `Tools/pack_terrain_layer.py` | слой из фото-текстур (Blender) |
 | `src/Engine/Graphics/Scene/Terrain/TerrainErosion.h/.cpp`, `Shaders/terrain_erosion.cs` | эрозия на GPU: капли и осыпание |

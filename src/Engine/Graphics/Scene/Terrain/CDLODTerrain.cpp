@@ -183,10 +183,22 @@ void CDLODTerrain::update( const FrameContext& frame )
 																	static_cast<int32_t>( detailLevels - tileLevels ) ) );
 	lod.finestRadius = std::max( m_properties["Finest mesh radius"].data<float>(), 0.0f );
 	lod.detailMargin = m_pipeline->material().maxDisplacement();
-	std::vector<float> extent( m_heightExtent.size() );
-	for( size_t level = 0; level < extent.size(); ++level )
+	// С горами вокруг карты — их дальние уровни и перепады их узлов: таблица общая
+	lod.coarseLevel = m_farLevel;
+	lod.coarseRange = m_farRange;
+	std::vector<float> extent( std::max( m_heightExtent.size(), m_farHeightExtent.size() ), 0.0f );
+	for( size_t level = 0; level < m_heightExtent.size(); ++level )
 		extent[level] = std::max( 0.0f, m_heightExtent[level] * m_pipeline->heightMultiplier() );
+	for( size_t level = 0; level < m_farHeightExtent.size(); ++level )
+		extent[level] = std::max( extent[level], m_farHeightExtent[level] );
 	m_quadtree.computeLod( lod, extent );
+}
+
+void CDLODTerrain::setFarLevels( uint32_t level, float range, std::vector<float> heightExtent )
+{
+	m_farLevel = level;
+	m_farRange = range;
+	m_farHeightExtent = std::move( heightExtent );
 }
 
 void CDLODTerrain::compute( const FrameContext& frame )
@@ -291,37 +303,9 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	const ShaderView* paintMask = nullptr;
 	const int32_t paintPreview = depthOnly ? -1 : m_paintTool->previewTarget( paintMask );
 
-	const TerrainLayerConstants layers = layerConstants( context.view );
-	Device::updateResource<CDLODBuffer>( m_constantBuffer, [this, paintPreview, &layers]( CDLODBuffer& params )
+	Device::updateResource<CDLODBuffer>( m_constantBuffer, [this, paintPreview, &context]( CDLODBuffer& params )
 	{
-		params.terrainLayers = layers;
-		params.worldSize = m_pipeline->worldSize();
-		params.heightMultiplier = m_pipeline->heightMultiplier();
-		params.heightOffset = m_pipeline->heightOffset();
-		params.gridDim = static_cast<float>( patchDim );
-		const CDLODQuadtree::Lod& lod = m_quadtree.lod();
-		std::copy( std::begin( lod.morph ), std::end( lod.morph ), params.morphConsts );
-		params.texelSize = m_pipeline->texelSize();
-		params.farTextureScale = m_properties["Far texture scale"].data<float>();
-		const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
-		params.farBlendStart = farBlend.x;
-		params.farBlendEnd = std::max( farBlend.y, farBlend.x + 1.0f );
-		params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
-		params.showWind = m_properties["Show wind"].data<bool>() && m_pipeline->hasWindField() ? 1 : 0;
-		params.detailTile = m_pipeline->detailTileSize();
-		params.wetnessBaked = m_pipeline->staticWater() && m_pipeline->detailSplat().tileSize() > 0.0f ? 1 : 0;
-		params.paintPreview = paintPreview;
-		params.microShadows = std::clamp( m_properties["Micro shadows"].data<float>(), 0.0f, 1.0f );
-		std::copy( m_pipeline->material().layerOcclusion().begin(), m_pipeline->material().layerOcclusion().end(), params.layerOcclusion );
-		params.waterBedLayer = m_pipeline->staticWater() && m_pipeline->channelLayer() < static_cast<int32_t>( m_pipeline->material().layerCount() ) ? m_pipeline->channelLayer() : -1;
-		// Наносы на дне нижних озёр — те же правила, что у детального слоя весов (TerrainDetailSplat): уровень — в м мира
-		params.lakeGravelLayer = params.waterBedLayer >= 0 ? m_pipeline->roleLayer( TerrainLayerRole::lakeGravel ) : -1;
-		params.lakeSiltLayer = params.waterBedLayer >= 0 ? m_pipeline->roleLayer( TerrainLayerRole::lakeSilt ) : -1;
-		params.lakeBedDepths = XMFLOAT4( m_pipeline->layerRules().lakeGravelDepth.from, m_pipeline->layerRules().lakeGravelDepth.to,
-										 m_pipeline->layerRules().lakeSiltDepth.from, m_pipeline->layerRules().lakeSiltDepth.to );
-		params.lakeSedimentLevel = XMFLOAT2( m_pipeline->heightOffset() + m_pipeline->layerRules().lakeSedimentHeight.from * m_pipeline->heightMultiplier(),
-											 m_pipeline->heightOffset() + m_pipeline->layerRules().lakeSedimentHeight.to * m_pipeline->heightMultiplier() );
-		std::copy( std::begin( lod.detailMorph ), std::end( lod.detailMorph ), params.detailMorph );
+		fillConstants( params, context.view, paintPreview );
 	} );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
 
@@ -344,6 +328,38 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 
 	m_shader.setPass( depthOnly ? m_depthPhase : m_properties["Show LOD"].data<bool>() ? m_lodPhase : m_materialPhase );
 	DMD3D::instance().drawIndexedInstanced( m_patch.indexCount(), static_cast<uint32_t>( patches.size() ), 0, 0 );
+}
+
+void CDLODTerrain::fillConstants( CDLODBuffer& params, const RenderView& view, int32_t paintPreview ) const
+{
+	params.terrainLayers = layerConstants( view );
+	params.worldSize = m_pipeline->worldSize();
+	params.heightMultiplier = m_pipeline->heightMultiplier();
+	params.heightOffset = m_pipeline->heightOffset();
+	params.gridDim = static_cast<float>( patchDim );
+	const CDLODQuadtree::Lod& lod = m_quadtree.lod();
+	std::copy( std::begin( lod.morph ), std::end( lod.morph ), params.morphConsts );
+	params.texelSize = m_pipeline->texelSize();
+	params.farTextureScale = m_properties["Far texture scale"].data<float>();
+	const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
+	params.farBlendStart = farBlend.x;
+	params.farBlendEnd = std::max( farBlend.y, farBlend.x + 1.0f );
+	params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
+	params.showWind = m_properties["Show wind"].data<bool>() && m_pipeline->hasWindField() ? 1 : 0;
+	params.detailTile = m_pipeline->detailTileSize();
+	params.wetnessBaked = m_pipeline->staticWater() && m_pipeline->detailSplat().tileSize() > 0.0f ? 1 : 0;
+	params.paintPreview = paintPreview;
+	params.microShadows = std::clamp( m_properties["Micro shadows"].data<float>(), 0.0f, 1.0f );
+	std::copy( m_pipeline->material().layerOcclusion().begin(), m_pipeline->material().layerOcclusion().end(), params.layerOcclusion );
+	params.waterBedLayer = m_pipeline->staticWater() && m_pipeline->channelLayer() < static_cast<int32_t>( m_pipeline->material().layerCount() ) ? m_pipeline->channelLayer() : -1;
+	// Наносы на дне нижних озёр — те же правила, что у детального слоя весов (TerrainDetailSplat): уровень — в м мира
+	params.lakeGravelLayer = params.waterBedLayer >= 0 ? m_pipeline->roleLayer( TerrainLayerRole::lakeGravel ) : -1;
+	params.lakeSiltLayer = params.waterBedLayer >= 0 ? m_pipeline->roleLayer( TerrainLayerRole::lakeSilt ) : -1;
+	params.lakeBedDepths = XMFLOAT4( m_pipeline->layerRules().lakeGravelDepth.from, m_pipeline->layerRules().lakeGravelDepth.to,
+									 m_pipeline->layerRules().lakeSiltDepth.from, m_pipeline->layerRules().lakeSiltDepth.to );
+	params.lakeSedimentLevel = XMFLOAT2( m_pipeline->heightOffset() + m_pipeline->layerRules().lakeSedimentHeight.from * m_pipeline->heightMultiplier(),
+										 m_pipeline->heightOffset() + m_pipeline->layerRules().lakeSedimentHeight.to * m_pipeline->heightMultiplier() );
+	std::copy( std::begin( lod.detailMorph ), std::end( lod.detailMorph ), params.detailMorph );
 }
 
 PropertyContainer* CDLODTerrain::properties()

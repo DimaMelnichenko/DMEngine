@@ -10,6 +10,7 @@
 #include "Sky\HDRIBackdrop.h"
 #include "Sky\VolumetricCloud.h"
 #include "Terrain\CDLODTerrain.h"
+#include "Terrain\FarTerrain.h"
 #include "Model\ModelInstances.h"
 #include "Scatterer\Scatterer.h"
 #include "Particle\ParticleSystem.h"
@@ -126,6 +127,7 @@ private:
 	TerrainPipeline m_terrainPipeline;	// данные рельефа (конвейер рельефа и воды); его читают террейн, расстановка, вода, частицы
 	TerrainPaintTool m_terrainPaint;	// кисть над мазками конвейера
 	CDLODTerrain m_terrain;
+	FarTerrain m_farTerrain;	// дальние горы вокруг карты (Levels.far_terrain), только с террейном
 	WaterSimulation m_water;	// вода по рельефу (Levels.water_simulation), только с террейном
 	ModelInstances m_models;
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;

@@ -428,6 +428,54 @@ const SettingsSchema<TerrainSettings>& terrainSchema()
 	return schema;
 }
 
+const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
+{
+	using Settings = FarTerrainSettings;
+	static const char* rules = "Rules";
+	static const SettingsSchema<Settings> schema = {
+		// Данные генератора (Tools/gen_far_terrain.py, Tools/far_terrain.py) — только в базе
+		{ "heightmap", nullptr, DM_SETTING( heightMap ) },
+		{ "origin", nullptr, DM_SETTING( origin ) },
+		{ "extent", nullptr, DM_SETTING( extent ) },
+		{ "height_multiplier", nullptr, DM_SETTING( heightMultiplier ) },
+		{ "height_offset", nullptr, DM_SETTING( heightOffset ) },
+		{ "lod_distance", "LOD distance", DM_SETTING( lodDistance ), 2000.0f, 64000.0f, "m",
+		  "Range of the level whose quad is a texel of the mountain map (32 m); each coarser level reaches twice as far. "
+		  "Nearer levels share the ranges of the level map", settingLogarithmic | settingClampLow },
+		{ "blend_distance", "Blend distance", DM_SETTING( blendDistance ), 32.0f, 4000.0f, "m",
+		  "From the edge of the level map its heights turn into the mountain heights", settingClampLow },
+		{ "material_blend", "Material blend", DM_SETTING( materialBlend ), 0.0f, 4000.0f, "m",
+		  "From the edge of the level map its painted layers turn into the rules below" },
+		{ "macro_distance_from,macro_distance_to", "Macro distance", DM_SETTING( macroDistance ), 0.0f, 32000.0f, "m",
+		  "Farther the layer textures repeat at the macro scale: the far repeat does not show as a grid of bumps on distant "
+		  "slopes", settingRangeControl },
+		{ "macro_texture_scale", "Macro texture scale", DM_SETTING( macroTextureScale ), 1.0f, 64.0f, "",
+		  "The macro repeat is this many times larger than the far one (Far texture scale of the terrain)", settingClampLow },
+		{ "rock_slope_from,rock_slope_to", "Rock slope", DM_SETTING( rockSlope ), 0.0f, 90.0f, "deg", "Bare rock on slopes steeper",
+		  settingRangeControl, rules },
+		{ "scree_slope_from,scree_slope_to", "Scree slope", DM_SETTING( screeSlope ), 0.0f, 90.0f, "deg",
+		  "Scree on slopes steeper (below the rock)...", settingRangeControl, rules },
+		{ "scree_height_from,scree_height_to", "Scree height", DM_SETTING( screeHeight ), 0.0f, 4000.0f, "m", "...higher than this",
+		  settingRangeControl, rules },
+		{ "meadow_height_from,meadow_height_to", "Meadow height", DM_SETTING( meadowHeight ), 0.0f, 4000.0f, "m",
+		  "Valley grass turns into the dry meadow", settingRangeControl, rules },
+		{ "snow_height_from,snow_height_to", "Snow height", DM_SETTING( snowHeight ), 0.0f, 5000.0f, "m",
+		  "Snow line on slopes facing south", settingRangeControl, rules },
+		{ "snow_north", "Snow north", DM_SETTING( snowNorth ), 0.0f, 1500.0f, "m", "On slopes facing north the snow is lower by this",
+		  0, rules },
+		{ "snow_noise", "Snow noise", DM_SETTING( snowNoise ), 0.0f, 1000.0f, "m", "The snow line wanders in patches by this", 0, rules },
+		{ "snow_slope_from,snow_slope_to", "Snow slope", DM_SETTING( snowSlope ), 0.0f, 90.0f, "deg", "Snow does not hold on steeper slopes",
+		  settingRangeControl, rules },
+		{ "forest_line_from,forest_line_to", "Forest line", DM_SETTING( forestLine ), 0.0f, 4000.0f, "m",
+		  "Forest tint of the ground below; it fades out to the end", settingRangeControl, rules },
+		{ "forest_slope_from,forest_slope_to", "Forest slope", DM_SETTING( forestSlope ), 0.0f, 90.0f, "deg", "No forest on steeper slopes",
+		  settingRangeControl, rules },
+		{ "forest_color", "Forest color", DM_SETTING( forestColor ), 0.0f, 0.0f, "", "Forest seen from far away, linear", settingColor,
+		  rules },
+	};
+	return schema;
+}
+
 const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema()
 {
 	using R = TerrainLayerRules;

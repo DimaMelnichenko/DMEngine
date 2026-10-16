@@ -72,7 +72,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   Папку без метки скрипт один раз конфигурирует заново и собирает с нуля.
   Папки `cmake-build-debug*` принадлежат профилям CLion: в них из терминала не собирать, иначе сборка
   сталкивается с перезагрузкой CMake в CLion («Permission denied»).
-- **Проверка изменений рендера** — по `docs/d3d12.md` §4 «Как проверять»: снимки четырёх контрольных камер совпадают
+- **Проверка изменений рендера** — по `docs/d3d12.md` §4 «Как проверять»: снимки пяти контрольных камер совпадают
   с эталоном ±1, «GPU average» не хуже, Debug-сборка молчит в `log.txt` (debug-слой D3D12; GPU-based validation —
   `-GpuValidation` у `run.ps1`, `--gpu-validation` у `engine.py` — только для правок слоя D3D12: ресурсы, барьеры,
   дескрипторы, проходы). Одной командой — `python Tools/check_frames.py` (эталон до правки — `check_frames.py
@@ -153,7 +153,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `flow`, `wear`, `deposition`, `talus`; это и кэш), а экземпляры `LevelModels` пересаживает на новую землю — закрепить
   «Save level»; splat-карту и маски расстановки и леса по типам (`mask_grass`, `mask_forest_spruce` / `pine` / `birch`,
   `mask_shrubs_riparian` / `slope` …) движок тоже считает сам — правилами по итоговому рельефу и руслам (`TerrainMasks`,
-  `docs/terrain.md`, «Слои и маски по рельефу»; копия — `Textures\terrain\generated\`); процедурные тестовые слои
+  `docs/terrain.md`, «Слои и маски по рельефу»; копия — `Textures\terrain\generated\`); дальние горы вокруг карты (котловина
+  с просветом на север) — `python Tools/gen_far_terrain.py` (по рельефу карты после эрозии: `Textures\terrain\far_heightmap.dds`
+  и строка `FarTerrain` уровня, `docs/far_terrain.md`); процедурные тестовые слои
   `Textures\terrain\layers\*.dds` — `python Tools/gen_terrain_textures.py` (нужен numpy). Слои из фото-текстур (Poly Haven,
   freepbr; архивы — в `DownloadResources\`, не в git) собирает `Tools/pack_terrain_layer.py` через Blender — команды
   нынешних слоёв в `docs/terrain.md`. Тестовые модели уровня
@@ -346,6 +348,11 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 `SkySphere` (модель неба уровня, если задана — тогда атмосфера только освещает; сфера
 растягивается до 0,9 дальней плоскости вида, `RenderView::farPlane`), `TerrainPipeline` (данные рельефа — конвейер
 рельефа и воды, мешей нет: его `compute()` привязывает ресурсы сцены рельефа), `CDLODTerrain` (отрисовка рельефа),
+`FarTerrain` (дальние горы вокруг карты, 64 × 64 км по своей карте высот 32 м: строка `FarTerrain`, `Levels.far_terrain`;
+та же сетка узлов CDLOD — карта дырой в их дереве (`CDLODQuadtree::setHole`), общая таблица дальностей
+(`CDLODTerrain::setFarLevels`) и общий код вершины `Shaders/cdlod_patch.sh` — стык без трещин; материал — правила по высоте и
+уклону на слоях по ролям (`Shaders/far_terrain.*`, смесь слоёв — `terrain_material.sh`, общая с картой); только главный вид;
+`docs/far_terrain.md`),
 `ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида — в полосе перехода оба LOD с
 дизерингом, если у материала `DitheredLODTransition`; у каскадов теней дальности × `Models.shadow_lod_scale` — у елей 0,5,
 его же берёт расстановка; отсечение по frustum вида — границы

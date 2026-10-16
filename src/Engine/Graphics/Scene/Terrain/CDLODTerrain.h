@@ -50,9 +50,20 @@ public:
 	// Строка Terrain из окна — для сохранения уровня (части конвейера — TerrainPipeline::settings)
 	TerrainSettings settings() const;
 
-private:
+	// Дальние горы вокруг карты (FarTerrain) — на той же сетке узлов: с уровня level дальность range; heightExtent — перепады
+	// высот их узлов по уровням, м (нижняя граница дальностей без трещин — общая). Таблица дальностей у них общая — lod()
+	void setFarLevels( uint32_t level, float range, std::vector<float> heightExtent );
+	const CDLODQuadtree::Lod& lod() const { return m_quadtree.lod(); }
+	float leafSize() const { return m_quadtree.nodeSize( 0 ); }
+	uint32_t levelCount() const { return m_quadtree.levelCount(); }
+	// Константы шейдеров террейна для вида (paintPreview — цель кисти, −1 — нет). Их же берут шейдеры гор: высота карты на
+	// стыке считается тем же кодом с теми же данными
+	void fillConstants( CDLODBuffer& params, const RenderView& view, int32_t paintPreview ) const;
+
 	static constexpr uint32_t gridDim = 32;			// квадов в стороне узла
 	static constexpr uint32_t patchDim = gridDim / 2;	// квадов в стороне патча: узел рисуется четырьмя патчами-четвертями
+
+private:
 	// Уровни мельче листа: до шага детальной плитки (tileLevels: 0,5 и 0,25 м) и ещё четыре — под дисплейсмент (0,125,
 	// 0,0625, 0,03125 и 0,015625 м у камеры); сколько из них рисовать — «Finest mesh», радиус самого мелкого —
 	// «Finest mesh radius»
@@ -83,6 +94,10 @@ private:
 	std::vector<std::vector<DirectX::XMFLOAT2>> m_heightBounds;	// по уровням: нормированные min / max высоты узлов
 	std::vector<float> m_heightExtent;	// по уровням: наибольший нормированный перепад высот узла
 	uint32_t m_boundsRevision = 0;		// номер итоговой карты конвейера, по которой посчитаны границы
+	// Дальние уровни гор вокруг карты (setFarLevels): с какого уровня, его дальность, перепады высот узлов гор по уровням, м
+	uint32_t m_farLevel = 0;
+	float m_farRange = 0.0f;
+	std::vector<float> m_farHeightExtent;
 
 	// Выбранные патчи на каждый вид кадра (RenderView::index): главный и каскады теней. Деление узлов — от lodOrigin (и
 	// отрезка до ног — lodEyeHeight), общих у всех видов, frustum вида только отсекает, поэтому рельеф в тени и на экране один

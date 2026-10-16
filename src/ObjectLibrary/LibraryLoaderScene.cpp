@@ -42,6 +42,28 @@ void LibraryLoader::loadTerrainPaint( uint32_t terrainId, LevelDescription& leve
 	}
 }
 
+void LibraryLoader::loadFarTerrain( uint32_t farTerrainId, LevelDescription& level )
+{
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "FarTerrain" ) )
+		return;
+	SQLite::Statement query( db, "SELECT * FROM FarTerrain WHERE id = :id" );
+	query.bind( ":id", farTerrainId );
+	if( !query.executeStep() )
+	{
+		LOG( "Far terrain: no row " + std::to_string( farTerrainId ) + " in table FarTerrain" );
+		return;
+	}
+	// Поля — по описанию (farTerrainSchema): NULL — значения по умолчанию FarTerrainSettings
+	GS::FarTerrainSettings& mountains = level.farTerrain.emplace();
+	mountains.id = farTerrainId;
+	readSettings( query, GS::farTerrainSchema(), mountains, "Far terrain " + std::to_string( farTerrainId ) );
+	SQLite::Statement file( db, "select file from Textures where name = :name" );
+	file.bind( ":name", mountains.heightMap );
+	if( file.executeStep() )
+		mountains.heightMapFile = file.getColumn( "file" ).getString();
+}
+
 bool LibraryLoader::loadTerrain( uint32_t terrainId, LevelDescription& level )
 {
 	// Колонка splatmap больше не читается: splat-карту дают правила по итоговому рельефу (TerrainMasks)
@@ -445,6 +467,9 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 				update.update( db, "ScatterLayerModels", { { "id", dbInt( model.id ) } } );
 			}
 		}
+
+		if( data.farTerrain && level.farTerrain )
+			updateSettings( db, "FarTerrain", level.farTerrain->id, GS::farTerrainSchema(), *data.farTerrain, previousOf( previous.farTerrain ) );
 
 		if( data.water && level.waterSimulationId )
 		{

@@ -56,6 +56,7 @@ struct LevelDescription
 	std::optional<GS::TerrainErosionSettings> terrainErosion;	// эрозия его карты высот (Terrain.erosion); NULL — нет
 	GS::TerrainLayerRules terrainLayerRules;	// правила его слоёв и масок (строка TerrainLayerRules; нет — по умолчанию)
 	std::vector<GS::TerrainPaintTile> terrainPaint;	// мазки кисти поверх правил (таблица TerrainPaint)
+	std::optional<GS::FarTerrainSettings> farTerrain;	// дальние горы вокруг карты (Levels.far_terrain); NULL — нет
 	std::optional<uint32_t> waterSimulationId;	// строка WaterSimulation: вода по рельефу; NULL — воды нет
 	std::optional<GS::WaterSimulationSettings> waterSimulation;
 	std::optional<uint32_t> sky;		// модель небесной сферы

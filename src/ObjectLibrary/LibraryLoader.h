@@ -91,6 +91,8 @@ private:
 	void loadTerrainLayerRules( uint32_t terrainId, LevelDescription& level );
 	// Строки TerrainPaint террейна — мазки кисти (LibraryLoaderScene.cpp); нет таблицы — мазков нет
 	void loadTerrainPaint( uint32_t terrainId, LevelDescription& level );
+	// Строка FarTerrain — дальние горы вокруг карты (LibraryLoaderScene.cpp); нет строки — гор нет
+	void loadFarTerrain( uint32_t farTerrainId, LevelDescription& level );
 	// Эмиттеры частиц уровня (LevelParticleEmitters → ParticleEmitters); таблиц нет — эмиттеров нет
 	void loadParticleEmitters( LevelDescription& level );
 	void loadLevelLights( LevelDescription& level );

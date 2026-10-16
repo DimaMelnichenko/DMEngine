@@ -234,6 +234,38 @@ struct TerrainDescription
 	std::vector<TerrainLayerDescription> layers;
 };
 
+// Строка FarTerrain (Levels.far_terrain): дальние горы вокруг карты уровня — своя грубая карта высот (Tools/gen_far_terrain.py)
+// на той же сетке узлов CDLOD, что карта; у карты высота переходит в её высоту, материал — правила по высоте и уклону на
+// слоях террейна по ролям (TerrainLayers.role). Карта высот, её место и масштаб — только в базе; окно — дальность, полосы
+// стыка и правила
+struct FarTerrainSettings
+{
+	uint32_t id = 0;					// строка FarTerrain
+	std::string heightMap;				// имя текстуры (Textures.name): R16 от 0 до 1, строки сверху вниз — с севера
+	std::string heightMapFile;			// её файл (Textures.file) — читает загрузчик
+	DirectX::XMFLOAT2 origin = DirectX::XMFLOAT2( -32768.0f, -32768.0f );	// угол с наименьшими x, z, м: кратен узлу карты
+	float extent = 65536.0f;			// сторона, м
+	float heightMultiplier = 1.0f;		// метры = значение · множитель + сдвиг
+	float heightOffset = 0.0f;
+	float lodDistance = 14000.0f;		// дальность уровня, чей квад — тексель карты гор; дальше — вдвое на уровень, м
+	float blendDistance = 256.0f;		// от края карты: высота карты → высота гор, м
+	float materialBlend = 500.0f;		// от края карты: слои карты (splat) → правила, м
+	SettingRange rockSlope{ 35.0f, 50.0f };		// скала по уклону, градусы
+	SettingRange screeSlope{ 25.0f, 38.0f };	// осыпи по уклону…
+	SettingRange screeHeight{ 900.0f, 1300.0f };	// …выше этой высоты, м
+	SettingRange meadowHeight{ 200.0f, 600.0f };	// трава долины → сухой луг, м
+	SettingRange snowHeight{ 1900.0f, 2200.0f };	// снег по высоте (на склоне к югу), м
+	float snowNorth = 400.0f;			// на склоне к северу снег ниже на столько, м
+	float snowNoise = 250.0f;			// граница снега гуляет пятнами на столько, м
+	SettingRange snowSlope{ 40.0f, 55.0f };		// круче — снег не держится, градусы
+	SettingRange forestLine{ 1300.0f, 1700.0f };	// лес (тон земли) — ниже, к верху полосы сходит на нет, м
+	SettingRange forestSlope{ 28.0f, 38.0f };	// круче — леса нет, градусы
+	DirectX::XMFLOAT3 forestColor = DirectX::XMFLOAT3( 0.035f, 0.055f, 0.03f );	// цвет леса издали, линейный
+	SettingRange macroDistance{ 800.0f, 2500.0f };	// дальше текстуры слоёв — в третьем масштабе (повтор не виден сеткой), м
+	float macroTextureScale = 8.0f;		// во столько раз крупнее дальнего масштаба
+};
+const SettingsSchema<FarTerrainSettings>& farTerrainSchema();
+
 // Строка SkyAtmosphere; без неё — значения по умолчанию
 struct SkyAtmosphereSettings
 {

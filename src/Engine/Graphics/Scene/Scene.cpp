@@ -166,9 +166,14 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		m_terrainPaint.initialize( m_terrainPipeline );
 		if( !m_terrain.initialize( m_level.terrain->settings, m_terrainPipeline, m_terrainPaint ) )
 			return false;
+		// Дальние горы вокруг карты — на её сетке узлов; не вышло — уровень без них
+		if( m_level.farTerrain && !m_farTerrain.initialize( *m_level.farTerrain, m_terrain, m_terrainPipeline ) )
+			LOG( "Far terrain is not initialized" );
 		LOG( "Terrain init ms: " + elapsedMs( timeStart ) );
 	}
 	const bool hasWater = m_level.terrain && m_level.waterSimulation;
+	if( m_level.farTerrain && !m_level.terrain )
+		LOG( "Far terrain needs a terrain, skipped" );
 	if( m_level.waterSimulation && !m_level.terrain )
 		LOG( "Water simulation needs a terrain, skipped" );
 	// Кривые русел сгенерированы заново — в базу (это данные: их правят окно «Streams» и Tools/stream_edit.py)
@@ -258,7 +263,11 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 	// Небо первым: его compute() готовит освещение окружением для всех, render() рисует фон
 	SceneObject* sky = m_useHDRI ? static_cast<SceneObject*>( &m_hdri ) : &m_atmosphere;
 	// Конвейер рельефа — до тех, кто читает его ресурсы сцены (рельеф, расстановка, частицы): его compute() их привязывает
-	m_objects = { sky, &m_sky, &m_terrainPipeline, &m_terrain, &m_models };
+	m_objects = { sky, &m_sky, &m_terrainPipeline, &m_terrain };
+	// Горы — после рельефа карты: его update() считает общую таблицу дальностей, их — берёт её
+	if( m_farTerrain.initialized() )
+		m_objects.push_back( &m_farTerrain );
+	m_objects.push_back( &m_models );
 	if( m_foliageInteraction.initialized() )
 		m_objects.push_back( &m_foliageInteraction );
 	// Облака — сразу после неба: их compute() читает таблицы атмосферы и освещение окружением, фон рисуют поверх неба
@@ -430,6 +439,8 @@ LevelSaveData Scene::levelSaveData( const PostProcessSettings& postProcess, cons
 		data.terrain = m_terrain.settings();
 		m_terrainPipeline.settings( *data.terrain );
 	}
+	if( m_farTerrain.initialized() )
+		data.farTerrain = m_farTerrain.settings();
 	for( const auto& scatterer : m_scatterers )
 	{
 		data.scatterSets.push_back( scatterer->settings() );

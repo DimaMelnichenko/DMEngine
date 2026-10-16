@@ -49,19 +49,28 @@ float CDLODQuadtree::nodeSize( uint32_t level ) const
 
 void CDLODQuadtree::computeLod( const LodSettings& settings, const std::vector<float>& heightExtent )
 {
+	// Нижние границы: дальности листа (уровни до coarseLevel) и дальних уровней (с него)
+	const uint32_t coarse = settings.coarseLevel > 0 ? std::min( settings.coarseLevel, maxLevels ) : maxLevels;
+	const uint32_t boundLevels = std::min( std::max( m_levelCount, static_cast<uint32_t>( heightExtent.size() ) ), maxLevels );
 	float minRange = 0.0f;
-	for( uint32_t level = 0; level < m_levelCount; ++level )
+	float minCoarse = 0.0f;
+	for( uint32_t level = 0; level < boundLevels; ++level )
 	{
 		const float extent = level < heightExtent.size() ? heightExtent[level] : 0.0f;
 		const float size = nodeSize( level );
 		const float diagonal = std::sqrt( 2.0f * size * size + extent * extent );
-		minRange = std::max( minRange, diagonal / morphStartRatio / static_cast<float>( 1u << level ) );
+		if( level < coarse )
+			minRange = std::max( minRange, diagonal / morphStartRatio / static_cast<float>( 1u << level ) );
+		else
+			minCoarse = std::max( minCoarse, diagonal / morphStartRatio / static_cast<float>( 1u << ( level - coarse ) ) );
 	}
 
 	float range = std::max( settings.lodDistance, minRange );
 	float previousRange = 0.0f;
-	for( uint32_t level = 0; level < m_levelCount; ++level )
+	for( uint32_t level = 0; level < maxLevels; ++level )
 	{
+		if( level == coarse )
+			range = std::max( { range, settings.coarseRange, minCoarse } );
 		const float morphStart = previousRange + ( range - previousRange ) * morphStartRatio;
 		m_lod.ranges[level] = range;
 		m_lod.morph[level] = XMFLOAT4( morphStart, 1.0f / ( range - morphStart ), 0.0f, 0.0f );
@@ -100,6 +109,13 @@ void CDLODQuadtree::computeLod( const LodSettings& settings, const std::vector<f
 	}
 }
 
+void CDLODQuadtree::setHole( const XMFLOAT2& min, const XMFLOAT2& max )
+{
+	m_hasHole = true;
+	m_holeMin = min;
+	m_holeMax = max;
+}
+
 void CDLODQuadtree::select( const RenderView& view, const Bounds& bounds, std::vector<Patch>& patches )
 {
 	const uint32_t top = m_levelCount - 1;
@@ -125,7 +141,17 @@ bool CDLODQuadtree::selectNode( const RenderView& view, const Bounds& bounds, ui
 	const XMFLOAT3& cameraPosition = view.lodOrigin;
 	const float eyeHeight = view.lodEyeHeight;
 
-	if( !lodRangeHitsBox( cameraPosition, eyeHeight, m_lod.ranges[level], box.min, box.max ) )
+	// Дыра: узел целиком в ней рисует другой; узел с её частью делится, как бы далеко ни был (его детей дальше их диапазона
+	// рисует он сам — четвертями своего уровня)
+	bool aroundHole = false;
+	if( m_hasHole && box.min.x < m_holeMax.x && box.max.x > m_holeMin.x && box.min.z < m_holeMax.y && box.max.z > m_holeMin.y )
+	{
+		if( box.min.x >= m_holeMin.x && box.max.x <= m_holeMax.x && box.min.z >= m_holeMin.y && box.max.z <= m_holeMax.y )
+			return true;
+		aroundHole = level > 0;
+	}
+
+	if( !aroundHole && !lodRangeHitsBox( cameraPosition, eyeHeight, m_lod.ranges[level], box.min, box.max ) )
 		return false;
 
 	// Невидимый узел считается обработанным: рисовать его не нужно ни ему, ни родителю
@@ -140,7 +166,7 @@ bool CDLODQuadtree::selectNode( const RenderView& view, const Bounds& bounds, ui
 				addPatch( 0, x, z, quarter, patches );
 		return true;
 	}
-	if( level == 0 || !lodRangeHitsBox( cameraPosition, eyeHeight, m_lod.ranges[level - 1], box.min, box.max ) )
+	if( level == 0 || ( !aroundHole && !lodRangeHitsBox( cameraPosition, eyeHeight, m_lod.ranges[level - 1], box.min, box.max ) ) )
 	{
 		for( uint32_t quarter = 0; quarter < 4; ++quarter )
 			addPatch( level, x, z, quarter, patches );

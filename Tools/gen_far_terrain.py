@@ -8,10 +8,10 @@
 # «рога»). Метры, координаты мира: x — восток, z — север; строка r — z = origin + extent − (r + 0,5)·cell, столбец c —
 # x = origin + (c + 0,5)·cell (как у карты, docs/terrain.md). Внутри карты — её высоты (рельеф после эрозии движка,
 # Textures\terrain\eroded\height.dds), средним по клетке 32 м.
-# Запись: Textures\terrain\far_heightmap.dds (R16_UNORM) и множитель с сдвигом высоты (метры = значение · множитель +
-# сдвиг) — в выводе (их пишет в базу Tools/far_terrain.py). Детерминирован (seed), ~30 с. Нужен numpy.
-# Запускать из корня проекта:
-#   python Tools/gen_far_terrain.py [--level Test] [--seed 11] [--preview файл.png]
+# Запись: Textures\terrain\far_heightmap.dds (R16_UNORM), в базу — строка FarTerrain уровня с множителем и сдвигом высоты
+# (метры = значение · множитель + сдвиг), углом и стороной (Tools/far_terrain.py; --no-db — без базы). Детерминирован
+# (seed), ~30 с. Нужен numpy. Запускать из корня проекта:
+#   python Tools/gen_far_terrain.py [--level Test] [--seed 11] [--preview файл.png] [--no-db]
 import argparse
 import math
 import os
@@ -22,6 +22,7 @@ import time
 import numpy as np
 
 import dds
+import far_terrain
 import preview
 import terrain
 from noise import Perlin, fbm, ridged, smoothstep
@@ -57,6 +58,12 @@ WARP = 2500.0               # искажение координат, м
 NEAR_MAP_BLEND = 2000.0     # от края карты: высоты края карты → рельеф кольца, м
 EDGE_BLUR = 0.35            # край карты, продолженный наружу, размыт с сигмой — эта доля расстояния от карты
 OUTER_TAPER = (25000.0, 32768.0)   # к внешнему краю горы ниже (от центра карты, по наибольшей из |x|, |z|), м
+
+
+def octaves(period, shortest=3.0 * CELL):
+    """Октав шума с крупной волной period, м, пока волна не короче shortest: октава мельче двух текселей не передаётся
+    сеткой карты и складывается в решётку бугорков (алиасинг)"""
+    return int(math.floor(math.log2(period / shortest))) + 1
 
 
 def ramp(x, width):
@@ -184,11 +191,11 @@ def far_relief(map_heights, map_cell, rng):
     envelope = envelope * (1.0 - 0.45 * smoothstep(OUTER_TAPER[0], OUTER_TAPER[1], outer))
     wx = X + WARP * fbm(noise, X / 9000.0 + 41.3, Z / 9000.0 + 13.7, 3)
     wz = Z + WARP * fbm(noise, X / 9000.0 + 71.9, Z / 9000.0 + 23.1, 3)
-    peaks = ridged(noise, wx / RIDGE_PERIOD + 211.0, wz / RIDGE_PERIOD + 97.0, 9)
+    peaks = ridged(noise, wx / RIDGE_PERIOD + 211.0, wz / RIDGE_PERIOD + 97.0, octaves(RIDGE_PERIOD))
     peaks = (peaks - peaks.min()) / (peaks.max() - peaks.min())
     peaks = peaks ** 1.4
     amplitude = PEAK_HEIGHT * (0.75 + 0.35 * fbm(noise, X / 22000.0 + 5.9, Z / 22000.0 + 2.2, 2)) * envelope
-    detail = fbm(noise, X / 600.0 + 3.1, Z / 600.0 + 8.8, 4)   # бугры на склонах ±25 м, на дне — только вверх до 8 м:
+    detail = fbm(noise, X / 600.0 + 3.1, Z / 600.0 + 8.8, octaves(600.0))   # бугры на склонах ±25 м, на дне — вверх до 8 м:
     bumps = 25.0 * detail * wall + 4.0 * (detail + 1.0) * (1.0 - wall)   # дно у карты не уходит ниже уровня моря
     relief = floor + WALL[1] * wall + MASSIF_HEIGHT * envelope + peaks * amplitude + bumps
 
@@ -216,6 +223,7 @@ def main():
     parser.add_argument('--level', default='Test')
     parser.add_argument('--seed', type=int, default=11)
     parser.add_argument('--preview', help='PNG with a hillshade')
+    parser.add_argument('--no-db', action='store_true', help='do not write the FarTerrain row')
     args = parser.parse_args()
 
     db = sqlite3.connect('base.db3')
@@ -237,6 +245,8 @@ def main():
         write_preview(args.preview, relief)
     print('far mountains written to %s in %.1f s: heights %.0f..%.0f m, height_multiplier %.0f, height_offset %.0f'
           % (OUTPUT, time.time() - start, relief.min(), relief.max(), multiplier, offset))
+    if not args.no_db:
+        far_terrain.store(args.level, os.path.relpath(OUTPUT, 'Textures'), multiplier, offset, (ORIGIN, ORIGIN), SIZE * CELL)
 
 
 if __name__ == '__main__':

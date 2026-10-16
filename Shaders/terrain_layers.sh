@@ -247,7 +247,9 @@ float layerHeight( uint layer, float3 position, float3 projection, float spacing
 float terrainDisplacement( float3 position, float3 normal, float distance )
 {
 	const TerrainLayerConstants layers = terrainLayers();
-	const float fade = 1.0f - smoothstep( layers.displacementStart, layers.displacementEnd, distance );
+	// К краю карты смещение сходит на нет за 2 м: на стыке с дальними горами (FarTerrain, без дисплейсмента) земля одна
+	const float2 edge = min( position.xz, layers.worldSize - position.xz );
+	const float fade = ( 1.0f - smoothstep( layers.displacementStart, layers.displacementEnd, distance ) ) * saturate( 0.5f * min( edge.x, edge.y ) );
 	[branch] if( fade <= 0.0f )
 		return 0.0f;
 	float4 splat;
