@@ -78,13 +78,17 @@ bool WaterSurface::initialize( WaterField& field )
 	if( !m_surfaceProgram.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\water.vs" ) ||
 		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water.ps" ) ||
 		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\water.vs", "WATER_DETAIL" ) ||
-		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water.ps", "WATER_DETAIL" ) )
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water.ps", "WATER_DETAIL" ) ||
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water_reflection.ps" ) ||
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water_reflection.ps", "WATER_DETAIL" ) )
 	{
 		LOG( "Water surface: shader compilation failed" );
 		return false;
 	}
 	m_surfacePhase = m_surfaceProgram.createPhase( 0, 0 );
 	m_detailPhase = m_surfaceProgram.createPhase( 1, 1 );
+	m_reflectionPhase = m_surfaceProgram.createPhase( 0, 2 );
+	m_reflectionDetailPhase = m_surfaceProgram.createPhase( 1, 3 );
 
 	// Детальная поверхность у русел: сетка плитки — вершина на тексель плитки с полем, свои список экземпляров и команда
 	const uint32_t side = TerrainHydrology::detailTileCells * TerrainHydrology::detailSamples + 2;
@@ -98,7 +102,7 @@ bool WaterSurface::initialize( WaterField& field )
 	}
 	d3d.setName( m_detailTileList, "Water visible detail tiles" );
 	d3d.setName( m_detailDrawArgs, "Water detail indirect command" );
-	return m_surfacePhase >= 0 && m_detailPhase >= 0;
+	return m_surfacePhase >= 0 && m_detailPhase >= 0 && m_reflectionPhase >= 0 && m_reflectionDetailPhase >= 0;
 }
 
 void WaterSurface::build( const WaterSimulationSettings& settings )
@@ -175,12 +179,12 @@ void WaterSurface::warmPipelines( const PassStates& states )
 	m_surfaceProgram.warmPipelines( { { RasterState::solid, DepthState::readOnly, BlendState::alpha },
 									  { RasterState::wireframe, DepthState::readOnly, BlendState::alpha } },
 									states.scene, { m_surfacePhase, m_detailPhase } );
+	m_surfaceProgram.warmPipelines( { { RasterState::solid, DepthState::enabled, BlendState::opaque } }, states.reflectionSurface,
+									{ m_reflectionPhase, m_reflectionDetailPhase } );
 }
 
-void WaterSurface::render( const RenderContext& context, const WaterSimulationSettings& settings, const StaticWater& water,
-						   const WaterFoam& foam )
+void WaterSurface::updateParameters( const WaterSimulationSettings& settings, const StaticWater& water, const WaterFoam& foam )
 {
-	DMD3D& d3d = DMD3D::instance();
 	const TerrainHeight height = m_field->terrain->terrainHeight();
 	WaterSurfaceBuffer params = {};
 	params.size = m_field->size;
@@ -214,6 +218,39 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	params.sparkleRoughness = std::clamp( current.sparkleRoughness, 0.0f, 1.0f );
 	params.sparkleSize = std::max( current.sparkleSize, 0.001f );
 	Device::updateResourceData( m_surfaceBuffer, params );
+}
+
+void WaterSurface::renderReflectionSurface( const WaterSimulationSettings& settings, const StaticWater& water, const WaterFoam& foam )
+{
+	DMD3D& d3d = DMD3D::instance();
+	updateParameters( settings, water, foam );
+	// Сплошной и в каркасном режиме кадра: лучам нужна поверхность целиком
+	ScopedRenderState state( RasterState::solid );
+	d3d.setVertexBuffer( m_tileMesh.vertexBuffer(), sizeof( DirectX::XMFLOAT3 ) );
+	d3d.setIndexBuffer( m_tileMesh.indexBuffer(), DXGI_FORMAT_R32_UINT );
+	m_surfaceProgram.setPass( m_reflectionPhase );
+	d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_surfaceBuffer );
+	d3d.setSRV( 0, m_levelView );
+	d3d.setSRV( SLOT_INSTANCE_DATA, m_tileListView );
+	d3d.drawIndexedInstancedIndirectCount( m_drawArgs, 0, 1, m_drawArgs, 24 );
+	if( water.detailTileCount() > 0 )
+	{
+		d3d.setVertexBuffer( m_detailMesh.vertexBuffer(), sizeof( DirectX::XMFLOAT3 ) );
+		d3d.setIndexBuffer( m_detailMesh.indexBuffer(), DXGI_FORMAT_R32_UINT );
+		m_surfaceProgram.setPass( m_reflectionDetailPhase );
+		d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_surfaceBuffer );
+		d3d.setSRV( SLOT_INSTANCE_DATA, m_detailTileListView );
+		d3d.drawIndexedInstancedIndirectCount( m_detailDrawArgs, 0, 1, m_detailDrawArgs, 24 );
+	}
+}
+
+void WaterSurface::render( const RenderContext& context, const WaterSimulationSettings& settings, const StaticWater& water,
+						   const WaterFoam& foam )
+{
+	DMD3D& d3d = DMD3D::instance();
+	const TerrainHeight height = m_field->terrain->terrainHeight();
+	updateParameters( settings, water, foam );
+	const bool foamTexture = System::textures().exists( foamTextureName );
 
 	ScopedRenderState state( context.frameRaster );
 	d3d.setVertexBuffer( m_tileMesh.vertexBuffer(), sizeof( DirectX::XMFLOAT3 ) );

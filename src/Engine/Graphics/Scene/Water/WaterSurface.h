@@ -32,12 +32,15 @@ public:
 	void cull( const RenderView& view, const WaterSimulationSettings& settings, const StaticWater& water );
 	// foam — поле пены статичной воды (пусто — пена по скорости и сдвигу в пикселе)
 	void render( const RenderContext& context, const WaterSimulationSettings& settings, const StaticWater& water, const WaterFoam& foam );
+	// Проход reflectionPrepass: та же поверхность — глубина и нормаль без ряби для экранных отражений (water_reflection.ps)
+	void renderReflectionSurface( const WaterSimulationSettings& settings, const StaticWater& water, const WaterFoam& foam );
 	void warmPipelines( const PassStates& states );
 	// Уровень поверхности, м (−1e30 — сухо): ресурс сцены SLOT_WATER_LEVEL — глубина в точке, урез внутри клетки
 	const ShaderView& levelView() const { return m_levelView; }
 
 private:
-
+	// Константы поверхности (WaterSurfaceBuffer) — у обоих проходов одни
+	void updateParameters( const WaterSimulationSettings& settings, const StaticWater& water, const WaterFoam& foam );
 
 	WaterField* m_field = nullptr;
 	ComputeShader m_surfaceShader;
@@ -46,6 +49,8 @@ private:
 	ShaderProgram m_surfaceProgram;
 	int m_surfacePhase = -1;
 	int m_detailPhase = -1;
+	int m_reflectionPhase = -1;			// поверхность для экранных отражений: тайлы 1 м и детальные плитки
+	int m_reflectionDetailPhase = -1;
 	GridMesh m_tileMesh;
 	GridMesh m_detailMesh;			// сетка детальной плитки: вершина на тексель (с полем)
 	uint32_t m_tilesPerSide = 0;

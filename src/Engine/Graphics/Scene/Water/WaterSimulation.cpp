@@ -118,9 +118,10 @@ void WaterSimulation::frameConstants( const RenderView&, FrameParameters& consta
 
 void WaterSimulation::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
-	// Только главный вид: тени вода не отбрасывает. Полупрозрачные — от дальних к ближним, вода — первой
+	// Только главный вид: тени вода не отбрасывает. Полупрозрачные — от дальних к ближним, вода — первой; до них — поверхность
+	// для экранных отражений
 	if( m_initialized && view.index == 0 )
-		collector.addCustom( passBit( MeshPass::transparent ), view.farPlane, true );
+		collector.addCustom( passBit( MeshPass::reflectionPrepass ) | passBit( MeshPass::transparent ), view.farPlane, true );
 }
 
 void WaterSimulation::warmPipelines( const PassStates& states )
@@ -132,9 +133,10 @@ void WaterSimulation::warmPipelines( const PassStates& states )
 
 void WaterSimulation::renderCustom( const RenderContext& context )
 {
-	if( context.pass != MeshPass::transparent )
-		return;
-	m_surface.render( context, currentSettings(), m_staticWater, m_foam );
+	if( context.pass == MeshPass::reflectionPrepass )
+		m_surface.renderReflectionSurface( currentSettings(), m_staticWater, m_foam );
+	else if( context.pass == MeshPass::transparent )
+		m_surface.render( context, currentSettings(), m_staticWater, m_foam );
 }
 
 void WaterSimulation::applyFlowChanges()

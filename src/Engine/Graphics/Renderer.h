@@ -13,6 +13,7 @@
 #include "ShadowCascades.h"
 #include "VolumetricFog.h"
 #include "AmbientOcclusion.h"
+#include "ScreenSpaceReflections.h"
 #include "SceneTargets.h"
 #include "FrameStats.h"
 #include "ConstantBuffers.h"
@@ -81,7 +82,8 @@ private:
 	// Виды каскадов и дальнего каскада теней и тень рельефа — до compute; кадр для compute со всеми видами
 	FrameContext prepareShadows( Scene& scene, const FrameContext& frame );
 	void computeObjects( Scene& scene, const FrameContext& computeFrame );
-	// Туман, depth prepass, затенение окружением, opaque, opaqueDepthRead, небо, копия цвета сцены, transparent — в HDR-буфер
+	// Туман, depth prepass, затенение окружением, opaque, opaqueDepthRead, небо, пирамида глубины, поверхности с отражением и
+	// лучи отражений, копия цвета сцены, transparent — в HDR-буфер
 	void renderScene( Scene& scene, const FrameContext& frame, bool wireframe, bool depthPrepass );
 	// Счётчики кадра в «Statistic»: экспозиция, солнце и луна, меши и вызовы
 	void reportFrameStats( Scene& scene );
@@ -171,7 +173,9 @@ private:
 	// Туман уровня: объём после карты теней, до проходов сцены
 	VolumetricFog m_fog;
 	AmbientOcclusion m_ambientOcclusion;
-	// Возможности рендерера в порядке кадра: тени, туман, затенение окружением, постобработка (initialize)
+	// Экранные отражения поверхностей, которые их просят (вода): после неба, до transparent
+	ScreenSpaceReflections m_reflections;
+	// Возможности рендерера в порядке кадра: тени, туман, затенение окружением, экранные отражения, постобработка (initialize)
 	std::vector<RenderFeature*> m_features;
 	GpuProfiler m_gpuProfiler;
 

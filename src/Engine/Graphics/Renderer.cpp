@@ -121,18 +121,21 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, const std::
 	if( !m_ambientOcclusion.initialize() )
 		return false;
 
+	if( !m_reflections.initialize() )
+		return false;
+
 	if( !m_gpuProfiler.initialize() )
 		return false;
 
 	m_instanceBuffer.createBuffer( sizeof( InstanceTransform ), maxInstancesPerDraw, "Instance transforms" );
 	m_instanceTransforms.reserve( maxInstancesPerDraw );
-	m_features = { &m_shadows, &m_fog, &m_ambientOcclusion, &m_postProcess };
+	m_features = { &m_shadows, &m_fog, &m_ambientOcclusion, &m_reflections, &m_postProcess };
 	return true;
 }
 
 PassStates Renderer::passStates( const RenderState& shadowState ) const
 {
-	return { shadowState, SceneTargets::formats(), SceneTargets::depthOnlyFormats() };
+	return { shadowState, SceneTargets::formats(), SceneTargets::depthOnlyFormats(), ScreenSpaceReflections::surfaceFormats() };
 }
 
 void Renderer::warmPipelines( Scene& scene )
@@ -335,6 +338,19 @@ void Renderer::renderScene( Scene& scene, const FrameContext& frame, bool wirefr
 		// Небо после непрозрачных: пиксели, закрытые сценой, отбрасывает ранняя проверка глубины
 		ScopedRenderState skyState( DepthState::readOnlyNearOrEqual );
 		executePass( MeshPass::sky, frame.view, frameRaster );
+	}
+
+	// Экранные отражения: пирамида глубины сцены; поверхности, которые их просят (вода), — глубина и нормаль без ряби; затем
+	// лучи по пирамиде; результат читает проход transparent (SLOT_SCREEN_REFLECTION)
+	if( !m_commands[static_cast<uint32_t>( MeshPass::reflectionPrepass )].empty() )
+	{
+		measure( "Scene depth pyramid", [&] { m_reflections.buildPyramid( m_sceneTargets.depthView() ); } );
+		m_reflections.clearSurfaces();
+		{
+			ScopedRenderState surfaceState( DepthState::enabled, BlendState::opaque );
+			executePass( MeshPass::reflectionPrepass, frame.view, frameRaster );
+		}
+		measure( "Screen reflections", [&] { m_reflections.trace( m_sceneTargets.depthView() ); } );
 	}
 
 	// Цвет сцены за полупрозрачными (SceneColor в UE: преломление воды) — копия того, что нарисовано до них
@@ -623,7 +639,8 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 {
 	// Проход не полагается на состояние, оставленное прошлым: своя цель, область вывода, без чужих ресурсов.
 	// Глубину и блендинг задаёт ScopedRenderState кадра и прохода, растеризатор команд восстанавливается после прохода.
-	static const char* const passNames[] = { "Pass depth prepass", "Pass opaque", "Pass opaque depth read", "Pass sky", "Pass transparent" };
+	static const char* const passNames[] = { "Pass depth prepass", "Pass opaque", "Pass opaque depth read", "Pass sky",
+											 "Pass reflection prepass", "Pass transparent" };
 	static_assert( std::size( passNames ) == scenePassCount );
 
 	// Объявление прохода: буфер сцены (depth prepass — без цели цвета), читает ресурсы сцены — карту теней и экспозицию
@@ -646,6 +663,9 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 		desc.reads.push_back( { &m_sceneTargets.depthView(), "scene depth" } );
 	if( sceneColorRead )
 		desc.reads.push_back( { &m_sceneTargets.colorCopyView(), "scene color copy" } );
+	// Поверхности с экранными отражениями — в свои цели (глубина поверхности и нормаль без ряби)
+	if( pass == MeshPass::reflectionPrepass )
+		desc = m_reflections.surfacePass();
 	d3d.beginPass( desc );
 	if( depthRead )
 		d3d.setSRV( SLOT_SCENE_DEPTH, m_sceneTargets.depthView() );
@@ -654,9 +674,10 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 	ScopedRenderState passState;
 	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
 	const RenderContext context{ view, pass, frameRaster, m_constants, m_vertexPool, depthFromPrepass };
-	// Объекты depth prepass — под именами «Prepass: <объект>», как в тенях: имена без приставки — их проходы цвета
+	// Объекты depth prepass — под именами «Prepass: <объект>», как в тенях, поверхности отражений — «Reflection: <объект>»:
+	// имена без приставки — их проходы цвета
 	executeCommands( m_collector, m_commands[static_cast<uint32_t>( pass )], context, true,
-					 pass == MeshPass::depthPrepass ? "Prepass: " : "" );
+					 pass == MeshPass::depthPrepass ? "Prepass: " : pass == MeshPass::reflectionPrepass ? "Reflection: " : "" );
 	m_gpuProfiler.endScope();
 }
 
@@ -779,7 +800,7 @@ void Renderer::countMeshes( MeshPass pass, uint32_t meshes, uint32_t draws )
 		m_shadowMeshCount += meshes;
 		m_shadowDraws += draws;
 	}
-	else if( pass != MeshPass::depthPrepass )
+	else if( pass != MeshPass::depthPrepass && pass != MeshPass::reflectionPrepass )
 	{
 		m_meshCount += meshes;
 		m_meshDraws += draws;

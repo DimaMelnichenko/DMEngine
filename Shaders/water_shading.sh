@@ -2,8 +2,9 @@
 // Материал воды — поверхности тайлов WaterSimulation (water.ps: озёра и ручьи одним полем, вода симуляции), как Single
 // Layer Water в UE. Под поверхностью — цвет сцены за водой (копия буфера, SLOT_SCENE_COLOR,
 // со сдвигом по нормали — преломление) с поглощением по пути луча в воде (глубина сцены, SLOT_SCENE_DEPTH) и рассеянием
-// в толще. Сверху — отражение: блик солнца с тенью, отражённое небо и экранные отражения — луч по буферу глубины сцены
-// (сама вода в глубину не пишет и себя не отражает). Рябь — гладкий полосовой узор (карта WaterRipples) на плитках по
+// в толще. Сверху — отражение: блик солнца с тенью и искрами, отражённое небо и экранные отражения — точка попадания луча
+// от поверхности без ряби (свой проход, ScreenSpaceReflections), сдвинутая по ряби (сама вода в глубину сцены не пишет и
+// себя не отражает). Рябь — гладкий полосовой узор (карта WaterRipples) на плитках по
 // клеткам сетки воды (1 м; в детальной воде у русел — 0,5 м): в плитке узор повёрнут по течению в её центре, вытянут
 // вдоль него и плывёт с его скоростью, соседние
 // плитки смешиваются без потери контраста (Tiled Directional Flow, van Hoesel 2011; смешение — Heitz, Neyret 2018): узор
@@ -16,6 +17,7 @@
 #define WATER_SHADING_SH
 
 #include "lighting.sh"
+#include "screen_reflections.sh"
 #include "water_surface.sh"
 #include "water.sh"
 #include "wind_field.sh"
@@ -26,17 +28,13 @@ DM_SRV( Texture2D<float4>, g_foam, 4 );		// пена (g_foamTextureRepeat > 0): 
 												// A — шум растворения 0…1
 DM_SRV( Texture2D<float>, g_sceneDepth, SLOT_SCENE_DEPTH );
 DM_SRV( Texture2D<float4>, g_sceneColor, SLOT_SCENE_COLOR );
+// Экранное отражение (ScreenSpaceReflections): uv попадания луча от поверхности без ряби, вес, доля пути луча в глубине
+DM_SRV( Texture2D<float4>, g_screenReflection, SLOT_SCREEN_REFLECTION );
 
 static const float waterF0 = 0.02f;		// отражение воды по нормали (показатель преломления 1,33)
 static const float edgeDepth = 0.02f;	// мельче — кромка: отражение и рассеяние гаснут к урезу
 static const float3 foamAlbedo = 0.8f;
 static const float foamRoughness = 0.7f;
-
-// Экранные отражения: шагов луча, первый шаг и его рост, м; уточнение попадания — делением пополам
-static const int reflectionSteps = 32;
-static const float reflectionFirstStep = 0.25f;
-static const float reflectionStepGrowth = 1.15f;
-static const int reflectionRefineSteps = 5;
 
 // Рябь: наклон в карте ÷ 4 (WaterRipples::slopeRange); наклон при силе 1 (среднеквадратичный) и доля мелкой октавы; узор
 // вытянут вдоль течения в полную силу (g_rippleStretch) с этой скорости
@@ -340,59 +338,30 @@ float viewDepth( float deviceDepth )
 	return cb_projectionMatrix[3][2] / ( deviceDepth - cb_projectionMatrix[2][2] );
 }
 
-// Экранное отражение: луч из точки поверхности по направлению r шагами растущей длины, попадание — точка луча за
-// поверхностью сцены не глубже толщины слоя. rgb — цвет сцены в точке попадания, a — вес (0 — промах: за краем
-// экрана, в небо, слишком далеко)
-float4 traceReflection( float3 origin, float3 r )
+// Экранное отражение (ScreenSpaceReflections, Shaders/screen_reflections.cs): точка попадания луча от поверхности без
+// ряби, сдвинутая по ряби — на столько, на сколько рябь поворачивает отражённое направление на экране (точка «на
+// бесконечности»), × доля пути луча в глубине попадания (близкое к воде сдвигается меньше). Сдвиг, который попал на то, что
+// ближе воды (берег перед ней), не берётся — как у преломления. rgb — цвет сцены, a — вес (0 — промах: небо)
+float4 screenReflection( float4 position, float3 view, float3 surfaceNormal, float3 rippleNormal )
 {
-	uint width, height;
-	g_sceneColor.GetDimensions( width, height );
-	const float2 size = float2( width, height );
-
-	float previous = 0.0f;
-	float distance = reflectionFirstStep;
-	float stepLength = reflectionFirstStep;
-	[loop] for( int i = 0; i < reflectionSteps; ++i )
+	const float4 hit = g_screenReflection[uint2( position.xy )];
+	[branch] if( hit.z <= 0.0f )
+		return 0.0f;
+	float2 uv = hit.xy;
+	const float4 flatClip = mul( float4( upwardReflection( reflect( -view, surfaceNormal ) ), 0.0f ), cb_viewProjectionMatrix );
+	const float4 rippleClip = mul( float4( upwardReflection( reflect( -view, rippleNormal ) ), 0.0f ), cb_viewProjectionMatrix );
+	if( flatClip.w > 1e-3f && rippleClip.w > 1e-3f )
 	{
-		const float4 clip = mul( float4( origin + r * distance, 1.0f ), cb_viewProjectionMatrix );
-		if( clip.w <= 0.0f )
-			break;
-		const float2 uv = clip.xy / clip.w * float2( 0.5f, -0.5f ) + 0.5f;
-		if( any( uv < 0.0f ) || any( uv > 1.0f ) )
-			break;
-		const float sceneDepth = g_sceneDepth[min( uint2( uv * size ), uint2( width, height ) - 1 )];
-		const float behind = clip.w - ( sceneDepth > 0.0f ? viewDepth( sceneDepth ) : 1e9f );
-		const float thickness = max( 0.5f, stepLength * 2.0f );
-		if( behind > 0.0f && behind < thickness )
-		{
-			// Уточнение между последним шагом перед поверхностью и первым за ней
-			float low = previous;
-			float high = distance;
-			float2 hitUV = uv;
-			[unroll] for( int k = 0; k < reflectionRefineSteps; ++k )
-			{
-				const float middle = 0.5f * ( low + high );
-				const float4 middleClip = mul( float4( origin + r * middle, 1.0f ), cb_viewProjectionMatrix );
-				const float2 middleUV = middleClip.xy / middleClip.w * float2( 0.5f, -0.5f ) + 0.5f;
-				const float middleDepth = g_sceneDepth[min( uint2( saturate( middleUV ) * size ), uint2( width, height ) - 1 )];
-				if( middleClip.w > ( middleDepth > 0.0f ? viewDepth( middleDepth ) : 1e9f ) )
-				{
-					high = middle;
-					hitUV = middleUV;
-				}
-				else
-					low = middle;
-			}
-			// Гаснет к краям экрана и к концу луча: там, где отражение обрывается, видно небо, а не шов
-			const float2 edge = saturate( min( hitUV, 1.0f - hitUV ) * 10.0f );
-			const float weight = edge.x * edge.y * saturate( 1.0f - (float)i / reflectionSteps );
-			return float4( g_sceneColor.SampleLevel( g_SamplerLinearClamp, hitUV, 0.0f ).rgb, weight );
-		}
-		previous = distance;
-		stepLength *= reflectionStepGrowth;
-		distance += stepLength;
+		const float2 shifted = hit.xy + ( rippleClip.xy / rippleClip.w - flatClip.xy / flatClip.w ) * float2( 0.5f, -0.5f ) * hit.w;
+		uint width, height;
+		g_sceneColor.GetDimensions( width, height );
+		const uint2 pixel = min( uint2( saturate( shifted ) * float2( width, height ) ), uint2( width, height ) - 1 );
+		if( g_sceneDepth[pixel] <= position.z )
+			uv = saturate( shifted );
 	}
-	return 0.0f;
+	// Гаснет к краям экрана: там, где отражение обрывается, видно небо, а не шов
+	const float2 edge = saturate( min( uv, 1.0f - uv ) * 10.0f );
+	return float4( g_sceneColor.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).rgb, hit.z * edge.x * edge.y );
 }
 
 // Цвет сцены за водой (с экспозицией) — без тумана и воздуха между камерой и поверхностью: вода считается до них, а
@@ -479,13 +448,6 @@ float sparkleWeight( float2 xz, float2 dX, float2 dY, float probability )
 		weight += ( k == 0 ? 1.0f - ( level - base ) : level - base ) * sample;
 	}
 	return weight;
-}
-
-// Отражённый луч — не ниже горизонта: на крутом склоне волны при взгляде вскользь он уходит вниз, и экранное отражение
-// попадало в дно под водой (вода глубину не пишет) — тёмные зернистые кольца на гребнях; на деле он попал бы в воду рядом
-float3 upwardReflection( float3 r )
-{
-	return normalize( float3( r.x, max( r.y, 0.02f ), r.z ) );
 }
 
 // Расстояние вдоль оси взгляда до сцены за пикселем; над небом — далеко
@@ -640,7 +602,7 @@ float4 shadeWater( WaterShading input )
 	const float3 r = upwardReflection( reflect( -view, normal ) );
 	const float2 environment = environmentBRDF( NV, roughness );
 	const float environmentWeight = waterF0 * environment.x + environment.y;
-	const float4 screen = traceReflection( input.worldPosition + reflectionNormal * 0.05f, upwardReflection( reflect( -view, reflectionNormal ) ) );
+	const float4 screen = screenReflection( input.position, view, normalize( input.normal ), reflectionNormal );
 	const float3 sky = ambientSpecular( r, roughness ) * environmentWeight * ( 1.0f - screen.a );
 	const float3 reflection = sun + sky + withoutFogging( screen.rgb, input.worldPosition ) * environmentWeight * screen.a;
 

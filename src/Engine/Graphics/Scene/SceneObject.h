@@ -57,6 +57,7 @@ struct PassStates
 	RenderState shadowDepth;	// глубина каскадов теней: растеризатор теней со смещением глубины солнца уровня
 	TargetFormats scene;		// буфер сцены (HDR-цвет + глубина) — проходы цвета
 	TargetFormats depthOnly;	// только глубина — depth prepass и каскады теней
+	TargetFormats reflectionSurface;	// поверхности с экранными отражениями (MeshPass::reflectionPrepass)
 };
 
 // Общий интерфейс объектов сцены. Scene вызывает update() на CPU, Renderer — compute() до отрисовки,

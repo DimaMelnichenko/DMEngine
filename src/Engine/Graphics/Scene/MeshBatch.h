@@ -22,12 +22,15 @@ enum class MeshPass
 	// prepass, в проходе она только для чтения и видна шейдерам (SLOT_SCENE_DEPTH); без prepass их рисует opaque
 	opaqueDepthRead,
 	sky,			// после непрозрачных: фон на дальней плоскости, глубина «ближе или равно» без записи — только где пусто
+	// Поверхности с экранными отражениями (вода): глубина и нормаль без ряби в цели ScreenSpaceReflections — до лучей
+	// отражений и прохода transparent (как SingleLayerWater depth prepass в UE); только свои вызовы
+	reflectionPrepass,
 	transparent,	// последним: альфа-блендинг, глубина только читается (Translucent)
 	csmShadowDepth	// глубина каскадов теней солнца (EMeshPass::CSMShadowDepth в UE) — до проходов сцены, на виды каскадов
 };
 
-// Проходов сцены с главного вида: depthPrepass, opaque, opaqueDepthRead, sky, transparent
-constexpr uint32_t scenePassCount = 5;
+// Проходов сцены с главного вида: depthPrepass, opaque, opaqueDepthRead, sky, reflectionPrepass, transparent
+constexpr uint32_t scenePassCount = 6;
 
 // Проходы только глубины: материал рисуется вариантом depthPhaseFor, без цвета
 constexpr bool isDepthOnlyPass( MeshPass pass )

@@ -1,0 +1,14 @@
+////////////////////////////////////////////////////////////////////////////////
+// Поверхность воды для экранных отражений (проход reflectionPrepass, ScreenSpaceReflections): та же сетка и те же плитки,
+// что у прохода цвета (water.vs, water_clip.sh); глубина — своя цель прохода, цвет — нормаль поверхности без ряби (x, z).
+// Луч отражения идёт от неё (Shaders/screen_reflections.cs), рябь сдвигает его попадание уже в water.ps
+////////////////////////////////////////////////////////////////////////////////
+
+#include "water_clip.sh"
+#include "bindless.sh"
+
+float2 main( WaterPixelInput input ) : SV_TARGET
+{
+	clipWaterSurface( input );
+	return normalize( input.normal ).xz;
+}

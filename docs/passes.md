@@ -20,10 +20,14 @@
    видна шейдерам (`SLOT_SCENE_DEPTH`, t107), проверка «ближе или равно» без записи. Без prepass такие материалы рисует
    `opaque` и пишут глубину сами.
 7. **`sky`** — фон на дальней плоскости (глубина 0), только там, где сцена ничего не нарисовала ([sky.md](sky.md)).
-8. **`Scene color copy`** (только если в `transparent` кто-то читает цвет сцены) — копия HDR-буфера для шейдеров, см.
+8. Экранные отражения (только если есть поверхности, которые их просят, — вода): **`Scene depth pyramid`** (compute по
+   глубине сцены), **`reflectionPrepass`** — свои вызовы с этим битом рисуют глубину поверхности и нормаль без ряби в цели
+   `ScreenSpaceReflections`, затем **`Screen reflections`** (compute: луч из каждого их пикселя); результат — ресурс сцены
+   t127 для `transparent` ([screen_reflections.md](screen_reflections.md)).
+9. **`Scene color copy`** (только если в `transparent` кто-то читает цвет сцены) — копия HDR-буфера для шейдеров, см.
    «Цвет сцены для шейдеров».
-9. **`transparent`** — полупрозрачные от дальних к ближним, глубина только читается.
-10. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
+10. **`transparent`** — полупрозрачные от дальних к ближним, глубина только читается.
+11. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
 
 Задний буфер — swap chain flip model (`DMD3D::createDeviceSwapChain`, как требует D3D12): два буфера `R8G8B8A8_UNORM`
 с sRGB-видом, без vsync — с разрывом кадра (tearing), кадр начинается по waitable object (`DMD3D::waitForNextFrame`).
@@ -167,7 +171,8 @@ Release, 1920 × 1080, время GPU, мс (частицы в уровнях в
 |---|---|
 | `src/Engine/Graphics/Renderer.cpp` | шаги кадра (`render`: `preparePipeline`, `prepareShadows`, `computeObjects`, `renderScene`), раскладка (`buildCommands`), запасной путь, `drawMesh` |
 | `src/Engine/Graphics/RenderFeature.h` | возможность рендерера: окно свойств, начало кадра, размер кадра, смена плана |
-| `src/Engine/Graphics/Scene/MeshBatch.h` | `MeshPass::depthPrepass`, `opaqueDepthRead`, `isDepthOnlyPass`, `passFor` |
+| `src/Engine/Graphics/Scene/MeshBatch.h` | `MeshPass::depthPrepass`, `opaqueDepthRead`, `reflectionPrepass`, `isDepthOnlyPass`, `passFor` |
+| `src/Engine/Graphics/ScreenSpaceReflections.h/.cpp` | цели прохода `reflectionPrepass`, пирамида глубины и лучи экранных отражений ([screen_reflections.md](screen_reflections.md)) |
 | `src/Engine/Graphics/SceneTargets.h/.cpp` | буфер сцены: глубина с видом для шейдеров и целью только для чтения |
 | `src/Engine/Graphics/Scene/SceneObject.h` | `RenderContext::depthFromPrepass` |
 | `src/Engine/Graphics/D3D/DMD3DPipelines.cpp`, `DMD3DPasses.cpp` | `DepthState::readOnlyEqual`, `beginPass` — цели прохода по `PassDesc` (`D3D/GpuPass.h`) |

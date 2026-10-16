@@ -89,8 +89,14 @@
 #define SLOT_TERRAIN_SUN_SHADOW	125
 // Экранное затенение окружением (ambient_occlusion.sh, AmbientOcclusion): половина кадра, R16G16 — видимость и глубина вида
 #define SLOT_AMBIENT_OCCLUSION	126
+// Экранное отражение (ScreenSpaceReflections, screen_reflection_trace.sh): R16G16B16A16_UNORM — uv попадания луча от
+// поверхности без ряби, вес, доля пути луча в глубине попадания; в проходе transparent, если есть поверхности с отражением
+#define SLOT_SCREEN_REFLECTION	127
+// Пирамида глубины сцены (ScreenSpaceReflections, screen_reflections.cs): R32G32_FLOAT, уровни 1… (мип L − 1) — ближайшая и
+// дальняя глубина ячейки 2^L пикселей; лучам экранных отражений (screen_reflection_trace.sh)
+#define SLOT_SCENE_DEPTH_PYRAMID	128
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	27
+#define SLOT_SCENE_COUNT	29
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

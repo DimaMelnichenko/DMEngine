@@ -250,7 +250,11 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   подробно — `docs/passes.md`) → `opaqueDepthRead` (после prepass — непрозрачные, которым нужна глубина сцены в шейдере:
   `Material::readsSceneDepth`, импостеры; глубина только для чтения и видна шейдерам — `SLOT_SCENE_DEPTH`, t107) → `sky`
   (фон на дальней плоскости: глубина 0 и `DepthState::readOnlyNearOrEqual` без записи — только там, где сцена ничего
-  не нарисовала) →
+  не нарисовала) → экранные отражения (`ScreenSpaceReflections`, `Graphics/ScreenSpaceReflections.h`, только если есть
+  поверхности с битом `MeshPass::reflectionPrepass` — вода: пирамида глубины сцены (Hi-Z: ближняя и дальняя глубина
+  ячейки, t128), проход `reflectionPrepass` — глубина поверхности и нормаль без ряби в свои цели, лучи в compute
+  (`Shaders/screen_reflections.cs`, `screen_reflection_trace.sh`); результат — uv попадания, вес, доля пути, t127: цвет и
+  сдвиг по ряби берёт материал, `docs/screen_reflections.md`) →
   `transparent` (alpha blending, глубина только читается; если его шейдеры читают цвет сцены — `Material::readsSceneColor`,
   `CustomBatch::readsSceneColor`, — перед ним копия HDR-буфера `SceneTargets::copyColor` в `SLOT_SCENE_COLOR`, t108, и
   глубина только для чтения в `SLOT_SCENE_DEPTH`, как SceneColor в UE) в HDR-буфер сцены. Глубина везде обратная (Reversed-Z, как в
@@ -263,7 +267,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (уровни ½ … ¹⁄₆₄, Jimenez 2014), затем ночное зрение (сдвиг Пуркинье: в темноте цвет уходит в синеватый монохром,
   Krawczyk 2005) и тонмаппинг (AgX / ACES) в задний буфер sRGB; новый
   проход — ещё одна цель и шаг в `PostProcess::render`. Затем `Engine` рисует GUI и вызывает `DMD3D::endFrame`.
-  Свои проходы рендерера со своими ресурсами (тени, туман, затенение окружением, постобработка) — возможности рендерера
+  Свои проходы рендерера со своими ресурсами (тени, туман, затенение окружением, экранные отражения, постобработка) — возможности рендерера
   (`RenderFeature`, `Graphics/RenderFeature.h`): список `Renderer::features`, общие точки — начало кадра с вкладом в
   константы, новый размер кадра, смена плана; окна свойств по списку регистрирует `Engine`; кадр в `Renderer::render`
   — шагами (`preparePipeline`, `prepareShadows`, `computeObjects`, `renderShadows`, `renderScene`), `docs/passes.md`.
@@ -365,7 +369,7 @@ ExecuteIndirect поверхности ближе `detail_distance`), течен
 сетку 1 м (`water_flow.cs` с `FLOW_DETAIL`: камни — поднятое дно, крупный масштаб тянется к сетке 1 м); строка `WaterSimulation` уровня, `Levels.water_simulation`;
 поверхность — свой вызов в `transparent` с цветом и глубиной сцены: тайлы сетки с водой отбирает compute, один
 ExecuteIndirect, берег — пересечение продолженной за урез плоскости воды с рельефом, `water.vs` / `water.ps`: поглощение
-по толщине, экранные отражения, блик с искрами (грани ряби мельче пикселя — дискретный блеск, `sparkleWeight`), рябь и пена, которые несёт течение (рябь — плитками, повёрнутыми и вытянутыми по
+по толщине, экранные отражения (луч — проход `ScreenSpaceReflections`, `water.ps` сдвигает попадание по ряби), блик с искрами (грани ряби мельче пикселя — дискретный блеск, `sparkleWeight`), рябь и пена, которые несёт течение (рябь — плитками, повёрнутыми и вытянутыми по
 течению, карта `WaterRipples`; стоячие волны над перекатами — неподвижный узор на тех же плитках, длина из дисперсии волн, сила по числу Фруда; пена — текстура `water_foam` на тех же плитках, `Tools/pack_water_foam.py`, без неё —
 узор по ряби); террейн по воде темнеет и блестит — мокрая земля, `waterWetness`; расстановка в воде
 не растёт — `waterFoliageClear` в `scatter.cs`; подсветка «Show water» у террейна; `docs/water.md`),
