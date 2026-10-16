@@ -221,6 +221,81 @@ bool StaticWater::createTextures( const TerrainHydrology::Result& hydrology, boo
 		   create( DXGI_FORMAT_R32G32_FLOAT, stoneDrag.data(), sizeof( DirectX::XMFLOAT2 ), "Water stone drag", m_stoneDrag, m_stoneDragView );
 }
 
+bool StaticWater::createDetailStones()
+{
+	// Камни русла — верх над ячейками плиток (и полем соседних): течение поднимает до него дно (water_flow.cs: не больше чем
+	// на половину глубины), поле пены по нему ставит пену там, где вода над камнем тонкая (water_foam.cs).
+	// Камень — полуэллипсоид: поперечник size, высота над дном stoneHeight · size (как у сопротивления сетки 1 м)
+	DMD3D& d3d = DMD3D::instance();
+	const uint32_t side = m_detailSide;
+	const uint32_t cells = side - 2;
+	const float step = m_detailTileSize / cells;
+	const size_t texels = static_cast<size_t>( side ) * side;
+	std::vector<float> stones( texels * m_detailTileCount, -1e9f );
+	const int tilesPerSide = static_cast<int>( m_detailTilesPerSide );
+	const int tileCells = static_cast<int>( cells );
+	for( const TerrainHydrology::Stone& stone : m_detailStones )
+	{
+		const float radius = 0.5f * stone.size;
+		const float rise = stoneHeight * stone.size;
+		if( radius <= 0.0f )
+			continue;
+		const int x0 = static_cast<int>( std::floor( ( stone.position.x - radius ) / step ) );
+		const int x1 = static_cast<int>( std::floor( ( stone.position.x + radius ) / step ) );
+		const int z0 = static_cast<int>( std::floor( ( stone.position.z - radius ) / step ) );
+		const int z1 = static_cast<int>( std::floor( ( stone.position.z + radius ) / step ) );
+		for( int z = std::max( z0, 0 ); z <= z1; ++z )
+			for( int x = std::max( x0, 0 ); x <= x1; ++x )
+			{
+				const float dx = ( x + 0.5f ) * step - stone.position.x;
+				const float dz = ( z + 0.5f ) * step - stone.position.z;
+				const float share = ( dx * dx + dz * dz ) / ( radius * radius );
+				if( share >= 1.0f )
+					continue;
+				const float top = stone.position.y + rise * std::sqrt( 1.0f - share );
+				// Своя плитка и поле соседних
+				const int tx = x / tileCells;
+				const int tz = z / tileCells;
+				for( int k = 0; k < 9; ++k )
+				{
+					const int nx = tx + k % 3 - 1;
+					const int nz = tz + k / 3 - 1;
+					if( nx < 0 || nz < 0 || nx >= tilesPerSide || nz >= tilesPerSide )
+						continue;
+					const int slice = m_detailSliceOf[static_cast<size_t>( nz ) * tilesPerSide + nx];
+					const int lx = x - nx * tileCells;
+					const int lz = z - nz * tileCells;
+					if( slice < 0 || lx < -1 || lz < -1 || lx > tileCells || lz > tileCells )
+						continue;
+					float& texel = stones[static_cast<size_t>( slice ) * texels + static_cast<size_t>( lz + 1 ) * side + lx + 1];
+					texel = std::max( texel, top );
+				}
+			}
+	}
+
+	TextureDesc desc;
+	desc.width = side;
+	desc.height = side;
+	desc.arraySize = m_detailTileCount;
+	desc.format = DXGI_FORMAT_R32_FLOAT;
+	TextureViewDesc arrayView;
+	arrayView.kind = TextureViewDesc::Kind::texture2DArray;
+	std::vector<TextureData> slices( m_detailTileCount );
+	for( uint32_t t = 0; t < m_detailTileCount; ++t )
+	{
+		slices[t].data = stones.data() + t * texels;
+		slices[t].rowPitch = side * static_cast<uint32_t>( sizeof( float ) );
+		slices[t].slicePitch = slices[t].rowPitch * side;
+	}
+	if( !d3d.createTexture( desc, slices.data(), m_detailStoneTops ) || !d3d.createShaderView( m_detailStoneTops, arrayView, m_detailStonesView ) )
+	{
+		LOG( "Failed to create water detail stones" );
+		return false;
+	}
+	d3d.setName( m_detailStoneTops, "Water detail stones" );
+	return true;
+}
+
 bool StaticWater::createDetailTextures( const TerrainHydrology::Result& hydrology )
 {
 	// Детальная вода — только у статичной: срез — плитка детальной земли (тот же порядок, что у TerrainPipeline)
@@ -328,6 +403,8 @@ bool StaticWater::createDetailTextures( const TerrainHydrology::Result& hydrolog
 	m_detailTileCount = count;
 	m_detailSide = side;
 	m_detailTileSize = TerrainHydrology::detailTileCells * m_field->cellSize;
+	if( !createDetailStones() )
+		return false;
 	LOG( "Water detail tiles " + std::to_string( count ) + " (" + std::to_string( side ) + "x" + std::to_string( side ) + ", " +
 		 std::to_string( 2 * texels * count * sizeof( DirectX::XMFLOAT4 ) / 1024 / 1024 ) + " MB)" );
 	return true;
@@ -592,52 +669,6 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 	}
 	const uint32_t iterations = static_cast<uint32_t>( std::clamp( flow.iterations, 1, 200 ) );
 
-	// Камни русла — верх над ячейками плиток (и полем соседних): дно поднято до него (water_flow.cs: не больше чем на
-	// половину глубины).
-	// Камень — полуэллипсоид: поперечник size, высота над дном stoneHeight · size (как у сопротивления сетки 1 м)
-	const size_t texels = static_cast<size_t>( side ) * side;
-	std::vector<float> stones( texels * m_detailTileCount, -1e9f );
-	const int tilesPerSide = static_cast<int>( m_detailTilesPerSide );
-	const int tileCells = static_cast<int>( cells );
-	for( const TerrainHydrology::Stone& stone : m_detailStones )
-	{
-		const float radius = 0.5f * stone.size;
-		const float rise = stoneHeight * stone.size;
-		if( radius <= 0.0f )
-			continue;
-		const int x0 = static_cast<int>( std::floor( ( stone.position.x - radius ) / step ) );
-		const int x1 = static_cast<int>( std::floor( ( stone.position.x + radius ) / step ) );
-		const int z0 = static_cast<int>( std::floor( ( stone.position.z - radius ) / step ) );
-		const int z1 = static_cast<int>( std::floor( ( stone.position.z + radius ) / step ) );
-		for( int z = std::max( z0, 0 ); z <= z1; ++z )
-			for( int x = std::max( x0, 0 ); x <= x1; ++x )
-			{
-				const float dx = ( x + 0.5f ) * step - stone.position.x;
-				const float dz = ( z + 0.5f ) * step - stone.position.z;
-				const float share = ( dx * dx + dz * dz ) / ( radius * radius );
-				if( share >= 1.0f )
-					continue;
-				const float top = stone.position.y + rise * std::sqrt( 1.0f - share );
-				// Своя плитка и поле соседних
-				const int tx = x / tileCells;
-				const int tz = z / tileCells;
-				for( int k = 0; k < 9; ++k )
-				{
-					const int nx = tx + k % 3 - 1;
-					const int nz = tz + k / 3 - 1;
-					if( nx < 0 || nz < 0 || nx >= tilesPerSide || nz >= tilesPerSide )
-						continue;
-					const int slice = m_detailSliceOf[static_cast<size_t>( nz ) * tilesPerSide + nx];
-					const int lx = x - nx * tileCells;
-					const int lz = z - nz * tileCells;
-					if( slice < 0 || lx < -1 || lz < -1 || lx > tileCells || lz > tileCells )
-						continue;
-					float& texel = stones[static_cast<size_t>( slice ) * texels + static_cast<size_t>( lz + 1 ) * side + lx + 1];
-					texel = std::max( texel, top );
-				}
-			}
-	}
-
 	// Массивы счёта — на время расчёта: срез на плитку, тексели — как у детальной воды (с полем)
 	TextureDesc desc;
 	desc.width = side;
@@ -646,9 +677,8 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 	desc.usage = TextureUsage::unorderedAccess;
 	TextureViewDesc arrayView;
 	arrayView.kind = TextureViewDesc::Kind::texture2DArray;
-	Texture info, info2, velocity, advected, pressure, divergence, stoneTops;
+	Texture info, info2, velocity, advected, pressure, divergence;
 	StorageView infoUAV, info2UAV, velocityUAV, advectedUAV, pressureUAV, divergenceUAV;
-	ShaderView stonesView;
 	for( auto [texture, uav, format, name] :
 		 { std::tuple{ &info, &infoUAV, DXGI_FORMAT_R32G32B32A32_FLOAT, "Water detail flow cells" },
 		   std::tuple{ &info2, &info2UAV, DXGI_FORMAT_R32G32_FLOAT, "Water detail flow radius" },
@@ -665,22 +695,6 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 		}
 		d3d.setName( *texture, name );
 	}
-	std::vector<TextureData> slices( m_detailTileCount );
-	for( uint32_t t = 0; t < m_detailTileCount; ++t )
-	{
-		slices[t].data = stones.data() + t * texels;
-		slices[t].rowPitch = side * static_cast<uint32_t>( sizeof( float ) );
-		slices[t].slicePitch = slices[t].rowPitch * side;
-	}
-	TextureDesc stonesDesc = desc;
-	stonesDesc.format = DXGI_FORMAT_R32_FLOAT;
-	stonesDesc.usage = TextureUsage::shaderResource;
-	if( !d3d.createTexture( stonesDesc, slices.data(), stoneTops ) || !d3d.createShaderView( stoneTops, arrayView, stonesView ) )
-	{
-		LOG( "Failed to create water detail stones" );
-		return {};
-	}
-	d3d.setName( stoneTops, "Water detail stones" );
 
 	WaterFlowBuffer params = {};
 	params.flowTileCount = blocks;
@@ -707,7 +721,7 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 		pass.name = "Water detail flow";
 		pass.reads = { { &m_detailStaticView, "detail static water" }, { height.detailTiles, "terrain detail tiles" },
 					   { height.detailIndex, "terrain detail index" }, { &m_detailTileCoordsView, "detail tile coordinates" },
-					   { &m_detailBlocksView, "detail flow blocks" },	{ &stonesView, "detail stones" },
+					   { &m_detailBlocksView, "detail flow blocks" },	{ &m_detailStonesView, "detail stones" },
 					   { &m_field->stateView, "water state" } };
 		pass.writes = { { &infoUAV, "detail flow cells" },		   { &info2UAV, "detail flow radius" },
 						{ &velocityUAV, "detail flow velocity" },	   { &advectedUAV, "detail flow advected" },
@@ -724,7 +738,7 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 		d3d.setSRV( 6, *height.detailTiles );
 		d3d.setSRV( 7, *height.detailIndex );
 		d3d.setSRV( 8, m_detailTileCoordsView );
-		d3d.setSRV( 9, stonesView );
+		d3d.setSRV( 9, m_detailStonesView );
 		d3d.setSRV( 10, m_field->stateView );
 	};
 	const uint32_t groups = blocks;

@@ -104,6 +104,9 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 				reads.push_back( { &grid.views[read], "foam" } );
 			if( write != 0 )
 				reads.push_back( { &grid.views[0], "foam source" } );
+			if( write == 0 )
+				reads.push_back( detailGrid ? PassDesc::Read{ &water.detailStonesView(), "detail stones" } :
+											  PassDesc::Read{ &water.stoneDragView(), "stone area" } );
 			m_grid.beginPass( name, detailGrid, std::move( reads ), { { &grid.uavs[write], "foam" } } );
 			d3d.setConstantBuffer( 5, m_constants );
 			// Детальная сетка: прошлый шаг — слот 5, источник — 7; сетка 1 м: итог детальной — 5, прошлый шаг — 6, источник — 8
@@ -112,6 +115,7 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 				if( read >= 0 )
 					d3d.setSRV( 5, grid.views[read] );
 				d3d.setSRV( 7, grid.views[0] );
+				d3d.setSRV( 9, water.detailStonesView() );
 			}
 			else
 			{
@@ -120,6 +124,7 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 				if( read >= 0 )
 					d3d.setSRV( 6, grid.views[read] );
 				d3d.setSRV( 8, grid.views[0] );
+				d3d.setSRV( 10, water.stoneDragView() );
 			}
 			d3d.setUAV( detailGrid ? 0 : 1, grid.uavs[write] );
 			shader.dispatchGroups( m_grid.groupCount( detailGrid ), 1, 1 );

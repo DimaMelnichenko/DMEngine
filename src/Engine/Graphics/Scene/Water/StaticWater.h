@@ -53,6 +53,8 @@ public:
 	const ShaderView& detailBlocksView() const { return m_detailBlocksView; }
 	uint32_t flowTileCount() const { return static_cast<uint32_t>( m_flowTileList.size() ); }
 	const ShaderView& flowTilesView() const { return m_flowTilesView; }
+	// Верх камня русла над ячейкой детальной плитки, м (−1e9 — камня нет): R32_FLOAT массив, тексели — как у детальной воды
+	const ShaderView& detailStonesView() const { return m_detailStonesView; }
 	const ShaderView& detailBoundsView() const { return m_detailBoundsView; }
 	// Сопротивление камней русла: площадь поперёк потока на м² дна — своя и средняя вокруг (R32G32_FLOAT)
 	const ShaderView& stoneDragView() const { return m_stoneDragView; }
@@ -66,6 +68,8 @@ private:
 
 	// Массивы детальной воды по плиткам конвейера: статичная вода плиток и детальная вода; блоки счёта течения
 	bool createDetailTextures( const TerrainHydrology::Result& hydrology );
+	// Верх камней русла над ячейками детальных плиток (m_detailStones → m_detailStoneTops)
+	bool createDetailStones();
 	// Течение сетки 1 м (water_flow.cs) поверх mainStatic — порциями с ожиданием GPU; сводка (она же — в лог), пусто — расчёта не было
 	std::string solveFlow( const Flow& flow );
 	// Течение на детальной сетке у русел (water_flow.cs с FLOW_DETAIL) — после solveFlow и поверхности: решение 1 м — начало
@@ -143,6 +147,8 @@ private:
 	std::vector<int32_t> m_detailSliceOf;
 	uint32_t m_detailTilesPerSide = 0;
 	std::vector<TerrainHydrology::Stone> m_detailStones;
+	Texture m_detailStoneTops;		// R32_FLOAT массив: верх камня над ячейкой (createDetailStones)
+	ShaderView m_detailStonesView;
 	ComputeShader m_detailFlowInitShader;
 	ComputeShader m_detailFlowFacesShader;
 	ComputeShader m_detailFlowAdvectShader;

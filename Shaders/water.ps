@@ -25,10 +25,13 @@ float groundHeight( float2 worldXZ, float2 uv )
 	return normalized * g_terrainHeightMultiplier + g_terrainHeightOffset;
 }
 
-// Пена у камня: вода тоньше этого над тем, что в клетке с камнями (камень выходит к поверхности или чуть под ней), м;
-// площадь камней клетки, при которой пена полная (камень 0,4 м, погружённый на 0,2 м, — 0,08)
+// Без поля пены (режим simulated) — пена у камня в пикселе: вода тоньше этого над тем, что в клетке с камнями (камень
+// выходит к поверхности или чуть под ней), м; площадь камней клетки, при которой пена полная (камень 0,4 м, погружённый на
+// 0,2 м, — 0,08). С полем пена у камней — в нём (water_foam.cs: по верху камня и уровню воды, хвост — по течению)
 static const float stoneFoamDepth = 0.12f;
 static const float stoneFoamArea = 0.08f;
+// Глубина по лучу взгляда — пока он упирается не дальше этого от точки по горизонтали, м; дальше — до точной земли под точкой
+static const float rayDepthReach = 0.3f;
 
 float4 main( WaterPixelInput input ) : SV_TARGET
 {
@@ -55,8 +58,8 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	const WaterSample water = sampleWater( input.uv, detail, detailTexel );
 	const float speed = length( water.velocity );
 
-	// Глубина в пикселе — от поверхности до сцены под ней по вертикали (глубина сцены), а не по сетке 1 м: урез по земле,
-	// которую видно (детальная земля у русел — U-ложе), плавный
+	// Глубина в пикселе — до точной земли под точкой (детальная плитка у русел или карта высот), а рядом с тем, что в воде
+	// (камень), — до сцены за поверхностью по лучу взгляда (глубина сцены): кромка и пена у камня
 	const float surfaceViewZ = max( mul( float4( input.worldPosition, 1.0f ), cb_viewMatrix ).z, 1e-3f );
 	const float behindViewZ = sceneViewDepthAt( input.position );
 	const float3 behind = cb_cameraPosition + ( input.worldPosition - cb_cameraPosition ) * ( behindViewZ / surfaceViewZ );
@@ -66,10 +69,15 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	shading.worldPosition = input.worldPosition;
 	shading.normal = input.normal;
 	shading.velocity = water.velocity;
-	shading.depth = max( input.worldPosition.y - behind.y, 0.0f );
 	// Урез — по точной земле: где нарисованный вдали рельеф ушёл под плоскость воды, а точная земля суше, воды нет (кромка
-	// гаснет, как у уреза)
-	shading.depth = min( shading.depth, max( input.worldPosition.y - groundHeight( input.worldPosition.xz, input.uv ), 0.0f ) );
+	// гаснет, как у уреза). По лучу — только если он упёрся рядом с точкой по горизонтали: у плоского дна спуск луча до него
+	// и есть глубина, но вскользь луч уходит далеко и упирается в подъём дна (следующую ступень лесенки, борт), едва
+	// опустившись, — глубина выходила в сантиметры, и пена, отражение и рассеяние гасли, как у уреза (Dimok, 2026-10-16: на
+	// лесенке уступов вдали пены нет, а с высоты есть)
+	const float groundDepth = max( input.worldPosition.y - groundHeight( input.worldPosition.xz, input.uv ), 0.0f );
+	const float rayDepth = max( input.worldPosition.y - behind.y, 0.0f );
+	const float rayReach = length( behind.xz - input.worldPosition.xz );
+	shading.depth = min( groundDepth, lerp( rayDepth, groundDepth, saturate( rayReach / rayDepthReach ) ) );
 	// Текущая вода (ручей) неспокойна и на пологом: рябь течения не слабее 0,7 уже при 0,3 м/с; озеро — по скорости
 	shading.ripple = 0.7f * saturate( speed / 0.3f );
 	shading.detailTexel = detailTexel;
@@ -96,10 +104,10 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 		const float2 dz = sampleWater( input.uv + float2( 0.0f, texel ) ).velocity - sampleWater( input.uv - float2( 0.0f, texel ) ).velocity;
 		const float shear = ( length( dx ) + length( dz ) ) / ( 2.0f * g_cellSize );
 		foam = saturate( ( speed - g_foamSpeed ) / g_foamSpeed ) + saturate( shear / g_foamShear - 0.5f );
+		// У камня, выходящего к поверхности, вода бурлит: кромка пены, где слой воды над ним тонкий, — сильнее на быстрой воде
+		const float stones = saturate( g_stones.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).x / stoneFoamArea );
+		foam += stones * saturate( 1.0f - shading.depth / stoneFoamDepth ) * saturate( speed / 0.5f );
 	}
-	// У камня, выходящего к поверхности, вода бурлит: кромка пены, где слой воды над ним тонкий, — сильнее на быстрой воде
-	const float stones = saturate( g_stones.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).x / stoneFoamArea );
-	const float contact = stones * saturate( 1.0f - shading.depth / stoneFoamDepth ) * saturate( speed / 0.5f );
-	shading.foam = foam + contact;
+	shading.foam = foam;
 	return shadeWater( shading );
 }
