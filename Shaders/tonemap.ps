@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Последний проход цепочки: цвет сцены + bloom, экспозиция, ночное зрение и тонмаппинг: линейный HDR → задний буфер
+// Последний проход цепочки: цвет сцены + bloom + лучи-звёзды, экспозиция, ночное зрение и тонмаппинг: линейный HDR → задний буфер
 // (R8G8B8A8_UNORM_SRGB кодирует sRGB сам).
 // Класс PostProcess, настройки — строка PostProcessSettings уровня
 ////////////////////////////////////////////////////////////////////////////////
@@ -11,6 +11,7 @@
 
 DM_SRV( Texture2D<float4>, g_sceneColor, 0 );
 DM_SRV( Texture2D<float4>, g_bloom, 1 );	// самый крупный уровень bloom (половина кадра), уже с добавленными меньшими
+DM_SRV( Texture2D<float4>, g_star, 2 );		// лучи-звёзды вокруг ярких бликов (четверть кадра, star_streak.ps)
 
 #include "tonemap_constants.h"
 
@@ -98,6 +99,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float3 color = g_sceneColor.Load( int3( input.position.xy, 0 ) ).rgb;
 	[branch] if( g_bloomScale > 0.0f )
 		color += g_bloom.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).rgb * g_bloomScale;
+	[branch] if( g_starScale > 0.0f )
+		color += g_star.SampleLevel( g_SamplerLinearClamp, input.uv, 0.0f ).rgb * g_starScale;
 	// Буфер сцены — с экспозицией прошлого кадра, приводим к новой (Shaders/exposure.sh)
 	color *= exposureRatio();
 	[branch] if( g_purkinjeShift > 0.0f )

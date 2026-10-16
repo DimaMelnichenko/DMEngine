@@ -32,6 +32,8 @@ bool PostProcess::initialize( const Settings& settings )
 	if( !m_shader.load( "Shaders\\tonemap.ps", DMD3D::backBufferFormats() ) ||
 		!m_bloomDownsample.load( "Shaders\\bloom_downsample.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
 		!m_bloomUpsample.load( "Shaders\\bloom_upsample.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
+		!m_starBright.load( "Shaders\\star_bright.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
+		!m_starStreak.load( "Shaders\\star_streak.ps", TargetFormats::colorTarget( bloomFormat ) ) ||
 		!m_histogramShader.initialize( "Shaders\\exposure_histogram.cs", "main" ) ||
 		!m_adaptShader.initialize( "Shaders\\exposure_adapt.cs", "main" ) )
 		return false;
@@ -39,6 +41,7 @@ bool PostProcess::initialize( const Settings& settings )
 	DMD3D& d3d = DMD3D::instance();
 	if( !d3d.createShaderConstantBuffer( sizeof( PostProcessBuffer ), m_constantBuffer ) ||
 		!d3d.createShaderConstantBuffer( sizeof( BloomBuffer ), m_bloomConstants ) ||
+		!d3d.createShaderConstantBuffer( sizeof( StarBuffer ), m_starConstants ) ||
 		!d3d.createShaderConstantBuffer( sizeof( HistogramBuffer ), m_histogramConstants ) ||
 		!d3d.createShaderConstantBuffer( sizeof( AdaptBuffer ), m_adaptConstants ) )
 		return false;
@@ -85,7 +88,13 @@ bool PostProcess::createBloomTargets()
 		if( !level.create( width, height, bloomFormat, ( "Bloom level " + std::to_string( ++index ) ).c_str() ) )
 			return false;
 	}
-	return true;
+	// Лучи-звёзды — в четверти кадра
+	const uint32_t starWidth = std::max( d3d.backBufferWidth() / 4, 1u );
+	const uint32_t starHeight = std::max( d3d.backBufferHeight() / 4, 1u );
+	return m_starBrightTarget.create( starWidth, starHeight, bloomFormat, "Star bright" ) &&
+		   m_starPing.create( starWidth, starHeight, bloomFormat, "Star streak ping" ) &&
+		   m_starPong.create( starWidth, starHeight, bloomFormat, "Star streak pong" ) &&
+		   m_star.create( starWidth, starHeight, bloomFormat, "Star" );
 }
 
 bool PostProcess::resize()
@@ -163,9 +172,18 @@ void PostProcess::render( const ShaderView& sceneColor, GpuProfiler& profiler, f
 		profiler.endScope();
 	}
 
+	const bool stars = current.starIntensity > 0.0f;
+	if( stars )
+	{
+		profiler.beginScope( "Star streaks" );
+		renderStars( sceneColor, current );
+		profiler.endScope();
+	}
+
 	profiler.beginScope( "Tonemap" );
 	d3d.beginPass( PassDesc{ "Tonemap", { { &d3d.backBufferTarget(), "back buffer" } }, {}, d3d.backBufferWidth(), d3d.backBufferHeight(),
-							 { { &sceneColor, "scene color" }, { &m_bloom[0].srv(), "bloom 1/2" }, { &m_exposureSRV, "exposure" } } } );
+							 { { &sceneColor, "scene color" }, { &m_bloom[0].srv(), "bloom 1/2" }, { &m_star.srv(), "star" },
+							   { &m_exposureSRV, "exposure" } } } );
 	PostProcessBuffer params = {};
 	params.tonemapper = static_cast<int32_t>( current.tonemapper );
 	// Уровень 1/2 хранит сумму уровней с весами 1, f, f², …: деление на неё — Bloom Intensity как доля энергии
@@ -174,10 +192,12 @@ void PostProcess::render( const ShaderView& sceneColor, GpuProfiler& profiler, f
 		weightSum += std::pow( bloomLevelFalloff, static_cast<float>( level ) );
 	params.bloomScale = std::max( current.bloomIntensity, 0.0f ) / weightSum;
 	params.purkinjeShift = std::clamp( current.purkinjeShift, 0.0f, 1.0f );
+	params.starScale = stars ? current.starIntensity : 0.0f;
 	Device::updateResourceData<PostProcessBuffer>( m_constantBuffer, params );
 	d3d.setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
 	d3d.setSRV( 0, sceneColor );
 	d3d.setSRV( 1, m_bloom[0].srv() );
+	d3d.setSRV( 2, m_star.srv() );
 
 	m_shader.draw();
 	profiler.endScope();
@@ -283,6 +303,56 @@ void PostProcess::renderBloom( const ShaderView& sceneColor, float threshold )
 		params.sourceTexelSize = XMFLOAT2( 1.0f / m_bloom[level].width(), 1.0f / m_bloom[level].height() );
 		drawPass( "Bloom upsample", m_bloomUpsample, m_bloom[level - 1], m_bloom[level].srv(), params, BlendState::additive );
 	}
+}
+
+void PostProcess::renderStars( const ShaderView& sceneColor, const Settings& settings )
+{
+	// Яркое над порогом — в четверть кадра
+	StarBuffer params = {};
+	params.threshold = std::max( settings.starThreshold, 0.0f );
+	params.limit = std::max( settings.starLimit, 1.0f );
+	params.outputScale = 1.0f;
+	drawStarPass( "Star bright", m_starBright, m_starBrightTarget, sceneColor, params, BlendState::opaque );
+
+	// Ось звезды — три прохода вдоль неё с шагом 1, 4, 16 текселей; затухание на тексель — до 1 % на длине луча. Проходы
+	// нормированы (сумма весов 1): ось — экспоненциальное ядро e^(−d/λ) / (2λ); последний проход × 2λ — луч на расстоянии d
+	// от блика яркостью e^(−d/λ) от него, иначе энергия уходила в середину и лучи гасли на первых текселях
+	const uint32_t axes = static_cast<uint32_t>( std::clamp( settings.starRays, 2, 16 ) ) / 2;
+	const float texelX = 1.0f / static_cast<float>( m_star.width() );
+	const float texelY = 1.0f / static_cast<float>( m_star.height() );
+	const float length = std::max( settings.starLength, 0.01f ) * static_cast<float>( m_star.height() );
+	const float falloff = std::exp( std::log( 0.01f ) / length );
+	const float decayLength = length / std::log( 100.0f );		// λ, текселей четверти кадра
+	constexpr float steps[] = { 1.0f, 4.0f, 16.0f };
+	for( uint32_t axis = 0; axis < axes; ++axis )
+	{
+		const float angle = XMConvertToRadians( settings.starAngle ) + XM_PI * static_cast<float>( axis ) / static_cast<float>( axes );
+		const XMFLOAT2 unit( std::cos( angle ) * texelX, -std::sin( angle ) * texelY );
+		const RenderTarget* source = &m_starBrightTarget;
+		for( uint32_t pass = 0; pass < std::size( steps ); ++pass )
+		{
+			const bool last = pass + 1 == std::size( steps );
+			params.direction = XMFLOAT2( unit.x * steps[pass], unit.y * steps[pass] );
+			params.attenuation = std::pow( falloff, steps[pass] );
+			params.outputScale = last ? 2.0f * decayLength : 1.0f;
+			// Последний проход оси — в сумму звезды: первая ось её перезаписывает, следующие добавляются
+			const RenderTarget& target = last ? m_star : ( pass == 0 ? m_starPing : m_starPong );
+			drawStarPass( "Star streak", m_starStreak, target, source->srv(), params,
+						  last && axis > 0 ? BlendState::additive : BlendState::opaque );
+			source = &target;
+		}
+	}
+}
+
+void PostProcess::drawStarPass( const char* name, FullscreenShader& shader, const RenderTarget& target, const ShaderView& source,
+								const StarBuffer& params, BlendState blend )
+{
+	DMD3D& d3d = DMD3D::instance();
+	d3d.beginPass( PassDesc{ name, { { &target.target(), "star" } }, {}, target.width(), target.height(), { { &source, "source" } } } );
+	Device::updateResourceData<StarBuffer>( m_starConstants, params );
+	d3d.setConstantBuffer( SLOT_CB_PASS, m_starConstants );
+	d3d.setSRV( 0, source );
+	shader.draw( blend );
 }
 
 void PostProcess::drawPass( const char* name, FullscreenShader& shader, const RenderTarget& target,

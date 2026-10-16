@@ -1,0 +1,35 @@
+////////////////////////////////////////////////////////////////////////////////
+// Лучи-звёзды вокруг ярких бликов (M. Kawase, «Frame Buffer Postprocessing Effects in DOUBLE-S.T.E.A.L», GDC 2003):
+// дифракция на лепестках диафрагмы объектива — от яркой точки расходятся лучи. Ось звезды — три прохода по яркому в
+// четверти кадра: семь выборок вдоль оси в обе стороны с шагом 1, 4 и 16 текселей и весами затухания^|k| (нормированы:
+// энергия блика не растёт) — после трёх проходов луч длиной до 63 текселей четверти кадра с экспоненциальным спадом.
+// Последний проход оси добавляет её в сумму звезды (BlendState::additive) × 2λ: ось — экспоненциальное ядро e^(−d/λ) / (2λ),
+// а луч на расстоянии d от блика должен быть яркостью e^(−d/λ) от него. Класс PostProcess
+////////////////////////////////////////////////////////////////////////////////
+
+#include "slots.h"
+#include "samplers.sh"
+#include "bindless.sh"
+
+DM_SRV( Texture2D<float4>, g_source, 0 );
+
+#include "star_constants.h"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	float3 sum = 0.0f;
+	float weightSum = 0.0f;
+	[unroll] for( int k = -3; k <= 3; ++k )
+	{
+		const float weight = pow( g_attenuation, (float)abs( k ) );
+		sum += weight * g_source.SampleLevel( g_SamplerLinearClamp, input.uv + g_direction * k, 0.0f ).rgb;
+		weightSum += weight;
+	}
+	return float4( sum / weightSum * g_outputScale, 1.0f );
+}

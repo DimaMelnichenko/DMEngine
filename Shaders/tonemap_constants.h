@@ -14,7 +14,7 @@ DM_CONSTANTS( PostProcessBuffer, SLOT_CB_PASS )
 	DM_FIELD( int, tonemapper );		// 0 — без тонмаппинга, 1 — ACES, 2 — AgX
 	DM_FIELD( float, bloomScale );		// Bloom Intensity / сумма весов уровней: уровень хранит взвешенную сумму всех уровней
 	DM_FIELD( float, purkinjeShift );	// сила ночного зрения 0…1
-	DM_FIELD( float, padding );
+	DM_FIELD( float, starScale );		// Star Intensity (0 — лучей нет): лучи-звёзды вокруг ярких бликов (star_streak.ps)
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

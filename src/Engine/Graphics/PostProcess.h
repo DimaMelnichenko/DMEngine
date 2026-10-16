@@ -11,6 +11,7 @@
 #include "Scene\Level\LevelSettings.h"
 #include "Shaders\tonemap_constants.h"
 #include "Shaders\bloom_constants.h"
+#include "Shaders\star_constants.h"
 #include "Shaders\exposure_histogram_constants.h"
 #include "Shaders\exposure_adapt_constants.h"
 #include "RenderFeature.h"
@@ -25,7 +26,9 @@ namespace GS
 // - bloom (J. Jimenez, SIGGRAPH 2014): цвет сцены уменьшается по уровням 1/2 … 1/64 (Shaders/bloom_downsample.ps —
 //   с порогом и защитой от «светлячков» на первом), затем уровни увеличиваются и складываются от мелкого к крупному
 //   (Shaders/bloom_upsample.ps, BlendState::additive);
-// - тонмаппинг (Shaders/tonemap.ps): цвет сцены + bloom, приведение к новой экспозиции, ночное зрение (сдвиг Пуркинье:
+// - лучи-звёзды вокруг ярких бликов (M. Kawase, GDC 2003): яркое над высоким порогом в четверть кадра (Shaders/star_bright.ps)
+//   и по оси звезды три прохода вдоль неё с шагом 1, 4, 16 текселей (Shaders/star_streak.ps), оси — в сумму;
+// - тонмаппинг (Shaders/tonemap.ps): цвет сцены + bloom + лучи, приведение к новой экспозиции, ночное зрение (сдвиг Пуркинье:
 //   в темноте цвет уходит в синеватый монохромный), AgX / ACES — в задний буфер.
 // Ночь темнее дня — кривая компенсации экспозиции от EV100 сцены (Exposure Compensation Curve в UE).
 // Настройки — как Exposure, Tonemapper, Bloom в Post Process Volume UE: строка таблицы PostProcessSettings, на которую
@@ -86,6 +89,10 @@ private:
 
 	bool createExposureResources( float initialEV100, float exposureCompensation );
 	bool createBloomTargets();
+	// Лучи-звёзды: яркое в четверть кадра, оси звезды — по три прохода, сумма осей — в m_star
+	void renderStars( const ShaderView& sceneColor, const Settings& settings );
+	void drawStarPass( const char* name, FullscreenShader& shader, const RenderTarget& target, const ShaderView& source,
+					   const StarBuffer& params, BlendState blend );
 	void renderExposure( const ShaderView& sceneColor, float deltaTime );
 	void readBackExposure();
 	void renderBloom( const ShaderView& sceneColor, float threshold );
@@ -98,6 +105,14 @@ private:
 	ComputeShader m_histogramShader;
 	ComputeShader m_adaptShader;
 	RenderTarget m_bloom[bloomLevelCount];
+	FullscreenShader m_starBright;
+	FullscreenShader m_starStreak;
+	// Четверть кадра: яркое над порогом, два промежуточных прохода оси и сумма осей звезды
+	RenderTarget m_starBrightTarget;
+	RenderTarget m_starPing;
+	RenderTarget m_starPong;
+	RenderTarget m_star;
+	Buffer m_starConstants;
 	Buffer m_constantBuffer;
 	Buffer m_bloomConstants;
 	Buffer m_histogramConstants;

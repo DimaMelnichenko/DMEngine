@@ -318,6 +318,15 @@ struct PostProcessSettings
 	float bloomIntensity = 0.05f;		// Bloom Intensity — доля энергии над порогом в свечении; 0 — без bloom
 	float bloomThreshold = 1.0f;		// Bloom Threshold, яркость после экспозиции; < 0 — без порога
 	float purkinjeShift = 1.0f;			// сила ночного зрения 0…1; 0 — цвет как днём при любой яркости
+	// Лучи-звёзды вокруг ярких бликов (дифракция на лепестках диафрагмы, Kawase 2003): яркость луча у блика — доля его
+	// избытка над порогом (0 — лучей нет), порог — яркость после экспозиции (1 — белое; искры солнца на воде — сотни),
+	// предел избытка (мягкий: солнце в тысячи раз ярче искры), число лучей, поворот звезды, длина луча — доля высоты кадра
+	float starIntensity = 0.05f;
+	float starThreshold = 500.0f;
+	float starLimit = 512.0f;
+	int32_t starRays = 6;
+	float starAngle = 15.0f;
+	float starLength = 0.06f;
 	AmbientOcclusionSettings ambientOcclusion;
 };
 

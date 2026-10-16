@@ -234,6 +234,19 @@ const SettingsSchema<PostProcessSettings>& postProcessSchema()
 		{ "bloom_intensity", "Bloom intensity", DM_SETTING( bloomIntensity ), 0.0f, 8.0f, "", "", 0, "bloom" },
 		{ "bloom_threshold", "Bloom threshold", DM_SETTING( bloomThreshold ), -1.0f, 10.0f, "", "", 0, "bloom" },
 		{ "purkinje_shift", "Purkinje shift", DM_SETTING( purkinjeShift ), 0.0f, 1.0f, "", "", 0, "bloom" },
+		// Лучи-звёзды вокруг ярких бликов (PostProcess::renderStars)
+		{ "star_intensity", "Star intensity", DM_SETTING( starIntensity ), 0.0f, 4.0f, "",
+		  "Rays around bright highlights (sun sparkles on water, wet stones, metal): diffraction on the aperture blades; "
+		  "share of the light above the threshold spread into the rays; 0 - off", 0, "bloom" },
+		{ "star_threshold", "Star threshold", DM_SETTING( starThreshold ), 0.0f, 2000.0f, "",
+		  "Brightness after exposure from which a highlight casts rays (1 - white; sun sparkles on water - hundreds)", settingLogarithmic,
+		  "bloom" },
+		{ "star_limit", "Star limit", DM_SETTING( starLimit ), 1.0f, 10000.0f, "",
+		  "Soft limit of the brightness above the threshold that goes into the rays: the sun is thousands of times brighter "
+		  "than a sparkle, and without it its rays would reach the end of the kernel", settingLogarithmic, "bloom" },
+		{ "star_rays", "Star rays", DM_SETTING( starRays ), 0.0f, 0.0f, "", "Number of rays of the star", 0, "bloom", { 4, 6, 8 } },
+		{ "star_angle", "Star angle", DM_SETTING( starAngle ), 0.0f, 180.0f, "deg", "Rotation of the star", 0, "bloom" },
+		{ "star_length", "Star length", DM_SETTING( starLength ), 0.01f, 0.2f, "", "Ray length, share of the frame height", 0, "bloom" },
 		// Экранное затенение окружением (AmbientOcclusion) — до проходов цвета, но настройки здесь, как в UE
 		{ "ambient_occlusion_intensity", "Ambient occlusion intensity", DM_SETTING( ambientOcclusion.intensity ), 0.0f, 1.0f, "",
 		  "Screen space ambient occlusion (GTAO): how much it darkens the sky light; 0 - off", 0, "bloom" },

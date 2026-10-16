@@ -1,0 +1,46 @@
+////////////////////////////////////////////////////////////////////////////////
+// Лучи-звёзды, первый проход: яркое из цвета сцены в четверть кадра — над порогом (g_threshold, яркость после экспозиции)
+// у каждого пикселя блока 4 × 4, среднее. Избыток над порогом мягко ограничен (до g_limit): солнце в сотни раз ярче искры,
+// и его лучи доходили бы до конца ядра (63 текселя) и обрывались «наконечником». Без усреднения по Karis, как у
+// первого уровня bloom: оно гасит одиночные яркие пиксели, а лучи дают как раз они — искры солнца на воде, блик на мокром
+// камне. Класс PostProcess
+////////////////////////////////////////////////////////////////////////////////
+
+#include "slots.h"
+#include "samplers.sh"
+#include "exposure.sh"
+#include "bindless.sh"
+
+DM_SRV( Texture2D<float4>, g_source, 0 );	// цвет сцены (с экспозицией прошлого кадра)
+
+#include "star_constants.h"
+
+struct PixelInputType
+{
+	float4 position : SV_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+// R16F-буфер сцены хранит inf при очень ярком солнечном диске; inf и NaN разнеслись бы по лучам
+static const float maxHdrValue = 60000.0f;
+
+float4 main( PixelInputType input ) : SV_TARGET
+{
+	uint width, height;
+	g_source.GetDimensions( width, height );
+	const int2 base = int2( input.position.xy ) * 4;
+	const float ratio = exposureRatio();
+	float3 sum = 0.0f;
+	[unroll] for( int y = 0; y < 4; ++y )
+	{
+		[unroll] for( int x = 0; x < 4; ++x )
+		{
+			const int2 pixel = min( base + int2( x, y ), int2( width, height ) - 1 );
+			const float3 color = min( max( g_source.Load( int3( pixel, 0 ) ).rgb, 0.0f ), maxHdrValue );
+			const float brightness = max( color.r, max( color.g, color.b ) ) * ratio;
+			const float excess = max( brightness - g_threshold, 0.0f );
+			sum += color * ( excess / ( 1.0f + excess / g_limit ) / max( brightness, 1e-4f ) );
+		}
+	}
+	return float4( sum / 16.0f, 1.0f );
+}
