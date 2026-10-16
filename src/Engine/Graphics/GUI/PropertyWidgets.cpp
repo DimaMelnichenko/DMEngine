@@ -86,6 +86,28 @@ double stepFor( double speed )
 ImGuiID snapItem = 0;
 double snapRaw = 0.0;
 
+// Логарифмическая шкала поля с границами — своя, а не ImGuiSliderFlags_Logarithmic: у ImGui «ноль» шкалы — точность формата
+// (0,1^знаков: у «%.4f» — 0,0001, у «%.3e» малых чисел — 10), и при нижней границе 0 малые значения (плотность тумана
+// 0,00006) были недостижимы, а сдвиг на пиксель перескакивал на сотые. Здесь на ширину поля — logScaleDecades порядков до
+// верхней границы (при 200 пикселях пиксель — ×1,05, с Shift — ×1,005), левее начала шкалы — нижняя граница (0)
+constexpr double logScaleDecades = 4.0;
+
+// Единица старшего разряда: 0,000063 → 0,00001
+double leadingUnit( double v )
+{
+	return std::pow( 10.0, std::floor( std::log10( v ) ) );
+}
+
+// Положение значения на логарифмической шкале 0…1 (scaleLow — её начало); не больше нижней границы 0 — пиксель левее начала
+double logPosition( double v, double low, double scaleLow, double high, float width )
+{
+	if( v <= low && low <= 0.0 )
+		return -1.0 / std::max( width, 1.0f );
+	if( v <= scaleLow )
+		return 0.0;
+	return std::log( v / scaleLow ) / std::log( high / scaleLow );
+}
+
 // Общее у чисел: фон и заливка под полем, поле ImGui (DragScalar с вводом по клику — io.ConfigDragClickToInputText),
 // стрелки при наведении
 template<class TYPE>
@@ -108,6 +130,9 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 		speed *= 0.1;
 	if( integer )
 		speed = std::max( speed, 0.05 );
+	// Логарифмическая шкала (logScaleDecades): начало — нижняя граница или, если она 0, порядки ниже верхней
+	const bool logScale = options.logarithmic && bounded && !integer && high > 0.0;
+	const double scaleLow = low > 0.0 ? low : high * std::pow( 10.0, -logScaleDecades );
 
 	// Фон поля и заливка доли — под ним: у самого поля фон прозрачный, подсветка наведения и правки — поверх
 	ImDrawList* draw = ImGui::GetWindowDrawList();
@@ -115,7 +140,7 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 	if( options.fill && bounded )
 	{
 		const double v = static_cast<double>( *value );
-		double share = options.logarithmic && low > 0.0 ? std::log( std::max( v, low ) / low ) / std::log( high / low ) : ( v - low ) / ( high - low );
+		double share = logScale ? logPosition( v, low, scaleLow, high, width ) : ( v - low ) / ( high - low );
 		share = std::clamp( share, 0.0, 1.0 );
 		if( share > 0.0 )
 			draw->AddRectFilled( min, ImVec2( min.x + static_cast<float>( width * share ), max.y ),
@@ -128,15 +153,39 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 	const TYPE typedLow = static_cast<TYPE>( low );
 	const TYPE typedHigh = static_cast<TYPE>( high );
 	ImGuiSliderFlags flags = ImGuiSliderFlags_NoSpeedTweaks;
-	if( options.logarithmic )
+	if( options.logarithmic && !logScale )
 		flags |= ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat;
 	ImGui::SetNextItemAllowOverlap();
 	ImGui::SetNextItemWidth( width );
-	bool changed = ImGui::DragScalar( id, type, value, static_cast<float>( speed ), bounded ? &typedLow : nullptr, bounded ? &typedHigh : nullptr,
-									  format, flags );
+	// Логарифмическую шкалу ведёт поле само (ниже): ImGui — скорость 0 и без границ, только активация и ввод числа
+	const bool imguiBounds = bounded && !logScale;
+	bool changed = ImGui::DragScalar( id, type, value, logScale ? 0.0f : static_cast<float>( speed ), imguiBounds ? &typedLow : nullptr,
+									  imguiBounds ? &typedHigh : nullptr, format, flags );
 	ImGui::PopStyleColor( 3 );
 	const ImGuiID item = ImGui::GetItemID();
-	if( ImGui::IsItemActive() && !ImGui::TempInputIsActive( item ) )
+	if( logScale && ImGui::IsItemActive() && !ImGui::TempInputIsActive( item ) )
+	{
+		// Положение на шкале копится в «сыром» значении (как у привязки Ctrl), движение — после порога перетаскивания,
+		// как у ImGui: клик без движения — ввод числа
+		if( snapItem != item )
+		{
+			snapItem = item;
+			snapRaw = logPosition( static_cast<double>( before ), low, scaleLow, high, width );
+		}
+		if( io.MouseDelta.x != 0.0f && ImGui::IsMouseDragPastThreshold( ImGuiMouseButton_Left, io.MouseDragThreshold * 0.5f ) )
+		{
+			snapRaw = std::clamp( snapRaw + io.MouseDelta.x / std::max( width, 1.0f ) * ( io.KeyShift ? 0.1 : 1.0 ),
+								  -1.0 / std::max( width, 1.0f ), 1.0 );
+			double v = snapRaw < 0.0 ? low : scaleLow * std::pow( high / scaleLow, snapRaw );
+			// Ctrl — шагами: до старшего разряда (0,000063 → 0,00006)
+			if( io.KeyCtrl && v > 0.0 )
+				v = std::round( v / leadingUnit( v ) ) * leadingUnit( v );
+			const TYPE snapped = static_cast<TYPE>( std::clamp( v, low, high ) );
+			changed = changed || snapped != *value;
+			*value = snapped;
+		}
+	}
+	else if( !logScale && ImGui::IsItemActive() && !ImGui::TempInputIsActive( item ) )
 	{
 		if( snapItem != item )
 		{
@@ -185,6 +234,18 @@ bool numberFieldImpl( const char* id, TYPE* value, ImGuiDataType type, const cha
 		if( ImGui::ButtonBehavior( rect, arrowId, &over, &held ) )
 		{
 			double v = static_cast<double>( *value ) + ( side == 0 ? -step : step );
+			// На логарифмической шкале — единица старшего разряда: 0,00006 → 0,00007 / 0,00005, 0,00001 вниз — 0,000009;
+			// ниже начала шкалы — нижняя граница, от неё вверх — начало
+			if( logScale )
+			{
+				const double current = static_cast<double>( *value );
+				if( side == 1 )
+					v = current < scaleLow ? scaleLow : current + leadingUnit( current );
+				else
+					v = current <= scaleLow ? low : current - leadingUnit( current * ( 1.0 - 1e-6 ) );
+				if( v > 0.0 )
+					v = std::round( v / leadingUnit( v ) * 1e6 ) / 1e6 * leadingUnit( v );
+			}
 			if( bounded )
 				v = std::clamp( v, low, high );
 			*value = static_cast<TYPE>( integer ? std::round( v ) : v );
