@@ -235,9 +235,12 @@ const SettingsSchema<PostProcessSettings>& postProcessSchema()
 		{ "bloom_threshold", "Bloom threshold", DM_SETTING( bloomThreshold ), -1.0f, 10.0f, "", "", 0, "bloom" },
 		{ "purkinje_shift", "Purkinje shift", DM_SETTING( purkinjeShift ), 0.0f, 1.0f, "", "", 0, "bloom" },
 		// Лучи-звёзды вокруг ярких бликов (PostProcess::renderStars)
-		{ "star_intensity", "Star intensity", DM_SETTING( starIntensity ), 0.0f, 4.0f, "",
+		{ "star_intensity", "Star intensity", DM_SETTING( starIntensity ), 0.0f, 1.0f, "",
 		  "Rays around bright highlights (sun sparkles on water, wet stones, metal): diffraction on the aperture blades; "
 		  "share of the light above the threshold spread into the rays; 0 - off", 0, "bloom" },
+		{ "star_opacity", "Star opacity", DM_SETTING( starOpacity ), 0.0f, 1.0f, "",
+		  "Visibility of the stars: their size and shape stay as they are, the stars are blended over the frame after the "
+		  "tonemapping (Star intensity changes the brightness, and with it how long the rays look)", 0, "bloom" },
 		{ "star_threshold", "Star threshold", DM_SETTING( starThreshold ), 0.0f, 2000.0f, "",
 		  "Brightness after exposure from which a highlight casts rays (1 - white; sun sparkles on water - hundreds)", settingLogarithmic,
 		  "bloom" },
@@ -270,6 +273,11 @@ const SettingsSchema<PostProcessSettings>& postProcessSchema()
 		{ "light_shaft_decay", "Light shaft decay", DM_SETTING( lightShaftDecay ), 0.001f, 1.0f, "",
 		  "Weight of the light at the end of the trail toward the sun (Decay in GPU Gems 3, ch. 13): less - shorter and sharper "
 		  "rays; 1 - no falloff", settingLogarithmic, "bloom" },
+		{ "light_shaft_fade_radius", "Light shaft fade radius", DM_SETTING( lightShaftFadeRadius ), 0.0f, 2.0f, "",
+		  "The rays fade out in a circle around the sun: radius, share of the frame height; 0 - they reach the frame edge", 0,
+		  "bloom" },
+		{ "light_shaft_fade_width", "Light shaft fade width", DM_SETTING( lightShaftFadeWidth ), 0.01f, 1.0f, "",
+		  "Width of the fade band, share of the fade radius: 1 - fading from the sun itself", 0, "bloom" },
 		// Экранное затенение окружением (AmbientOcclusion) — до проходов цвета, но настройки здесь, как в UE
 		{ "ambient_occlusion_intensity", "Ambient occlusion intensity", DM_SETTING( ambientOcclusion.intensity ), 0.0f, 1.0f, "",
 		  "Screen space ambient occlusion (GTAO): how much it darkens the sky light; 0 - off", 0, "bloom" },

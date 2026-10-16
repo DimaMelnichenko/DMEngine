@@ -322,6 +322,7 @@ struct PostProcessSettings
 	// избытка над порогом (0 — лучей нет), порог — яркость после экспозиции (1 — белое; искры солнца на воде — сотни),
 	// предел избытка (мягкий: солнце в тысячи раз ярче искры), число лучей, поворот звезды, длина луча — доля высоты кадра
 	float starIntensity = 0.05f;
+	float starOpacity = 1.0f;		// видимость звёзд: размер тот же, звезда смешивается с кадром после тонмаппинга
 	float starThreshold = 500.0f;
 	float starLimit = 512.0f;
 	int32_t starRays = 6;
@@ -332,7 +333,7 @@ struct PostProcessSettings
 	// яркость неба после экспозиции, предел избытка (мягкий: диск солнца), радиус маски у солнца и длина следа — доли высоты
 	// кадра и пути к солнцу, оттенок. Не физика: в ясную сухую погоду лучей в воздухе не видно (их даёт туман уровня), но
 	// кадр с ними красивее
-	float lightShaftIntensity = 1.5f;
+	float lightShaftIntensity = 2.5f;
 	float lightShaftThreshold = 0.3f;
 	float lightShaftLimit = 4.0f;
 	float lightShaftRadius = 0.6f;
@@ -340,8 +341,12 @@ struct PostProcessSettings
 	DirectX::XMFLOAT3 lightShaftTint = DirectX::XMFLOAT3( 1.0f, 0.92f, 0.8f );
 	// Лучи — свет в воздухе перед тем, что за пикселем: доля 1 − e^(−глубина / это), м; перед ближним (ветка у камеры)
 	// дымки нет; 0 — по всей глубине одинаково
-	float lightShaftDistance = 15.0f;
-	float lightShaftDecay = 0.3f;		// вес света в конце следа (у солнца) — спад вдоль луча, Decay у Mitchell; 1 — без спада
+	float lightShaftDistance = 8.0f;
+	float lightShaftDecay = 0.5f;		// вес света в конце следа (у солнца) — спад вдоль луча, Decay у Mitchell; 1 — без спада
+	// Круговое затухание лучей вокруг солнца: радиус — доля высоты кадра (0 — без него, лучи до края кадра), ширина полосы
+	// затухания — доля радиуса
+	float lightShaftFadeRadius = 0.8f;
+	float lightShaftFadeWidth = 0.7f;
 	AmbientOcclusionSettings ambientOcclusion;
 };
 

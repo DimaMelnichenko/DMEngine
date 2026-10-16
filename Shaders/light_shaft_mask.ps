@@ -1,8 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Лучи солнца (god rays), первый проход: маска в четверти кадра — небо (глубина 0: фон, облака) ярче порога рядом с
-// солнцем, всё, что ближе неба (деревья, горы, вода), — 0: после радиального размытия к солнцу (light_shaft_blur.ps)
-// силуэты дают тёмные полосы между светлыми — лучи. У каждого пикселя блока 4 × 4 — избыток яркости после экспозиции над
-// порогом с мягким пределом (диск солнца в тысячи раз ярче неба рядом), × спад от солнца. Класс PostProcess
+// Лучи солнца (god rays), первый проход: маска в половине кадра — небо (глубина 0: фон, облака) ярче порога рядом с
+// солнцем, всё, что ближе неба (деревья, горы), — 0: после радиального размытия к солнцу (light_shaft_blur.ps) силуэты
+// дают тёмные полосы между светлыми — лучи. Маска рисуется после неба, до полупрозрачных (как occlusion pre-pass у Mitchell):
+// частицы (пушинки, пыльца над лугом) и вода глубину не пишут и на фоне неба попали бы в маску — от каждой пушинки шёл бы
+// свой луч. У каждого пикселя блока 2 × 2 — избыток яркости после экспозиции над порогом с мягким пределом (диск солнца в
+// тысячи раз ярче неба рядом), × спад от солнца. Класс PostProcess
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "slots.h"
@@ -27,12 +29,12 @@ float4 main( PixelInputType input ) : SV_TARGET
 {
 	uint width, height;
 	g_color.GetDimensions( width, height );
-	const int2 base = int2( input.position.xy ) * 4;
+	const int2 base = int2( input.position.xy ) * 2;
 	const float ratio = exposureRatio();
 	float3 sum = 0.0f;
-	[unroll] for( int y = 0; y < 4; ++y )
+	[unroll] for( int y = 0; y < 2; ++y )
 	{
-		[unroll] for( int x = 0; x < 4; ++x )
+		[unroll] for( int x = 0; x < 2; ++x )
 		{
 			const int2 pixel = min( base + int2( x, y ), int2( width, height ) - 1 );
 			[branch] if( g_depth.Load( int3( pixel, 0 ) ) <= 0.0f )
@@ -47,5 +49,5 @@ float4 main( PixelInputType input ) : SV_TARGET
 	// Спад от солнца: расстояние — в долях высоты кадра
 	const float distance = length( ( input.uv - g_sunUV ) * float2( g_aspect, 1.0f ) );
 	const float falloff = saturate( 1.0f - distance / g_radius );
-	return float4( sum / 16.0f * falloff * falloff, 1.0f );
+	return float4( sum / 4.0f * falloff * falloff, 1.0f );
 }

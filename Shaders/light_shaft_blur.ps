@@ -1,10 +1,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Лучи солнца (god rays): радиальное размытие маски к экранной точке солнца (K. Mitchell, «Volumetric Light Scattering as
-// a Post-Process», GPU Gems 3, гл. 13; как Light Shafts в UE). Пиксель собирает восемь выборок на отрезке к солнцу длиной
-// g_blurLength от пути до него; три прохода с длиной L / 64, L / 8, L складываются в непрерывный след без ступенек от
-// редких выборок. Вес выборки спадает к солнцу — e^(−g_decayRate × доля пути), как Decay у Mitchell: экспонента от суммы
-// сдвигов — произведение экспонент проходов, поэтому у следа из трёх проходов спад тот же, что у одного марша; веса
-// нормированы — яркость следа та же, луч короче и чётче. Класс PostProcess
+// a Post-Process», GPU Gems 3, гл. 13; как Light Shafts в UE). Один марш, как у Mitchell: пиксель собирает shaftSamples
+// выборок на отрезке к солнцу длиной g_blurLength от пути до него, начало сдвинуто шумом (interleaved gradient noise,
+// Jimenez 2014) — ступеньки от шага выборок становятся мелким шумом, который сглаживает выборка половины кадра в
+// тонмаппинге. Вес выборки спадает к солнцу — e^(−g_decayRate × доля пути), как Decay у Mitchell; веса нормированы —
+// яркость следа та же, луч короче. След гаснет по кругу вокруг солнца (g_fadeRadius): лучи не уходят до края кадра. Прежде
+// след собирали три прохода по 8 выборок (L / 64, L / 8, L): у проходов сдвиги
+// складываются как 1 − (1 − a)(1 − b)(1 − c), и короткий проход у выборок длинного вблизи солнца размазывал в доли их
+// шага — луч распадался на продолговатые пятна. Класс PostProcess
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "slots.h"
@@ -21,19 +24,33 @@ struct PixelInputType
 	float2 uv : TEXCOORD0;
 };
 
-static const int shaftSamples = 8;
+static const int shaftSamples = 64;
+
+// Interleaved gradient noise (Jimenez 2014): 0…1, соседние пиксели — разные значения, без повторов на глаз
+float interleavedGradientNoise( float2 pixel )
+{
+	return frac( 52.9829189f * frac( dot( pixel, float2( 0.06711056f, 0.00583715f ) ) ) );
+}
 
 float4 main( PixelInputType input ) : SV_TARGET
 {
 	const float2 toSun = g_sunUV - input.uv;
+	const float jitter = interleavedGradientNoise( input.position.xy );
 	float3 sum = 0.0f;
 	float weightSum = 0.0f;
-	[unroll] for( int i = 0; i < shaftSamples; ++i )
+	[loop] for( int i = 0; i < shaftSamples; ++i )
 	{
-		const float t = ( i + 0.5f ) / shaftSamples * g_blurLength;
+		const float t = ( i + jitter ) / shaftSamples * g_blurLength;
 		const float weight = exp( -g_decayRate * t );
 		sum += weight * g_source.SampleLevel( g_SamplerLinearClamp, input.uv + toSun * t, 0.0f ).rgb;
 		weightSum += weight;
 	}
-	return float4( sum / weightSum, 1.0f );
+	// Круговое затухание вокруг солнца: расстояние — в долях высоты кадра
+	float fade = 1.0f;
+	[branch] if( g_fadeRadius > 0.0f )
+	{
+		const float distance = length( ( input.uv - g_sunUV ) * float2( g_aspect, 1.0f ) );
+		fade = 1.0f - smoothstep( g_fadeRadius * ( 1.0f - g_fadeWidth ), g_fadeRadius, distance );
+	}
+	return float4( sum / weightSum * fade, 1.0f );
 }

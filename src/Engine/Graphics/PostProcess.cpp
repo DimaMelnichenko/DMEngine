@@ -73,6 +73,7 @@ bool PostProcess::initialize( const Settings& settings )
 	addSettingProperties( m_properties, postProcessSchema(), settings, "bloom" );
 	// Отладка (View → Debug views): кадр — само затенение серым; не сохраняется
 	m_properties.insert( "Show ambient occlusion", false )->setTransient();
+	m_properties.insert( "Show light shafts", false )->setTransient();
 
 	return true;
 }
@@ -94,12 +95,15 @@ bool PostProcess::createBloomTargets()
 	// Лучи-звёзды — в четверти кадра
 	const uint32_t starWidth = std::max( d3d.backBufferWidth() / 4, 1u );
 	const uint32_t starHeight = std::max( d3d.backBufferHeight() / 4, 1u );
+	// Лучи солнца — в половине кадра
+	const uint32_t shaftWidth = std::max( d3d.backBufferWidth() / 2, 1u );
+	const uint32_t shaftHeight = std::max( d3d.backBufferHeight() / 2, 1u );
 	return m_starBrightTarget.create( starWidth, starHeight, bloomFormat, "Star bright" ) &&
 		   m_starPing.create( starWidth, starHeight, bloomFormat, "Star streak ping" ) &&
 		   m_starPong.create( starWidth, starHeight, bloomFormat, "Star streak pong" ) &&
 		   m_star.create( starWidth, starHeight, bloomFormat, "Star" ) &&
-		   m_shaftMaskTarget.create( starWidth, starHeight, bloomFormat, "Light shaft mask" ) &&
-		   m_shafts.create( starWidth, starHeight, bloomFormat, "Light shafts" );
+		   m_shaftMaskTarget.create( shaftWidth, shaftHeight, bloomFormat, "Light shaft mask" ) &&
+		   m_shafts.create( shaftWidth, shaftHeight, bloomFormat, "Light shafts" );
 }
 
 bool PostProcess::resize()
@@ -160,8 +164,49 @@ void PostProcess::bindExposure()
 	DMD3D::instance().setSRV( SLOT_EXPOSURE, m_exposureSRV );
 }
 
-void PostProcess::render( const ShaderView& sceneColor, const ShaderView& sceneDepth, const RenderView& view, const XMFLOAT3& toSun,
-						  GpuProfiler& profiler, float deltaTime )
+void PostProcess::renderLightShaftMask( const ShaderView& sceneColor, const ShaderView& sceneDepth, const RenderView& view,
+										 const XMFLOAT3& toSun, GpuProfiler& profiler )
+{
+	const Settings current = settings();
+	// Солнце над горизонтом и смотрим в его сторону: экранная точка — направление «на бесконечности»; лучи гаснут, когда
+	// солнце уходит из кадра за его край (cos угла к оси взгляда 0,5 → 0,2), и у горизонта
+	m_shaftVisibility = 0.0f;
+	if( current.lightShaftIntensity > 0.0f && toSun.y > 0.0f )
+	{
+		const XMVECTOR direction = XMLoadFloat3( &toSun );
+		const XMVECTOR clip = XMVector4Transform( XMVectorSetW( direction, 0.0f ), view.viewProjection );
+		const float w = XMVectorGetW( clip );
+		const float facing = XMVectorGetX( XMVector3Dot( XMVector3Normalize( view.viewInverse.r[2] ), direction ) );
+		if( w > 1e-4f )
+		{
+			m_shaftSunUV = XMFLOAT2( XMVectorGetX( clip ) / w * 0.5f + 0.5f, 0.5f - XMVectorGetY( clip ) / w * 0.5f );
+			m_shaftVisibility = std::clamp( ( facing - 0.2f ) / 0.3f, 0.0f, 1.0f ) * std::clamp( toSun.y * 20.0f, 0.0f, 1.0f );
+		}
+	}
+	if( m_shaftVisibility <= 0.0f )
+		return;
+
+	profiler.beginScope( "Light shaft mask" );
+	DMD3D& d3d = DMD3D::instance();
+	LightShaftBuffer params = {};
+	params.sunUV = m_shaftSunUV;
+	params.aspect = static_cast<float>( d3d.backBufferWidth() ) / static_cast<float>( std::max( d3d.backBufferHeight(), 1u ) );
+	params.threshold = std::max( current.lightShaftThreshold, 0.0f );
+	params.limit = std::max( current.lightShaftLimit, 1.0f );
+	params.radius = std::max( current.lightShaftRadius, 0.01f );
+	// Маска: небо у солнца над порогом, всё ближе неба — 0
+	d3d.beginPass( PassDesc{ "Light shaft mask", { { &m_shaftMaskTarget.target(), "light shaft mask" } }, {}, m_shaftMaskTarget.width(),
+							 m_shaftMaskTarget.height(), { { &sceneColor, "scene color" }, { &sceneDepth, "scene depth" } } } );
+	Device::updateResourceData<LightShaftBuffer>( m_shaftConstants, params );
+	d3d.setConstantBuffer( SLOT_CB_PASS, m_shaftConstants );
+	d3d.setSRV( 0, sceneColor );
+	d3d.setSRV( 1, sceneDepth );
+	m_shaftMask.draw();
+	profiler.endScope();
+}
+
+void PostProcess::render( const ShaderView& sceneColor, const ShaderView& sceneDepth, const RenderView& view, GpuProfiler& profiler,
+						  float deltaTime )
 {
 	// Цвет сцены читают замер экспозиции, bloom и тонмаппинг
 	DMD3D& d3d = DMD3D::instance();
@@ -186,26 +231,12 @@ void PostProcess::render( const ShaderView& sceneColor, const ShaderView& sceneD
 		profiler.endScope();
 	}
 
-	// Лучи солнца — если солнце над горизонтом и смотрим в его сторону: экранная точка — направление «на бесконечности»;
-	// гаснут, когда солнце уходит из кадра за его край (cos угла к оси взгляда 0,5 → 0,2)
-	float shaftVisibility = 0.0f;
-	XMFLOAT2 sunUV( 0.5f, 0.5f );
-	if( current.lightShaftIntensity > 0.0f && toSun.y > 0.0f )
-	{
-		const XMVECTOR direction = XMLoadFloat3( &toSun );
-		const XMVECTOR clip = XMVector4Transform( XMVectorSetW( direction, 0.0f ), view.viewProjection );
-		const float w = XMVectorGetW( clip );
-		const float facing = XMVectorGetX( XMVector3Dot( XMVector3Normalize( view.viewInverse.r[2] ), direction ) );
-		if( w > 1e-4f )
-		{
-			sunUV = XMFLOAT2( XMVectorGetX( clip ) / w * 0.5f + 0.5f, 0.5f - XMVectorGetY( clip ) / w * 0.5f );
-			shaftVisibility = std::clamp( ( facing - 0.2f ) / 0.3f, 0.0f, 1.0f ) * std::clamp( toSun.y * 20.0f, 0.0f, 1.0f );
-		}
-	}
+	// Лучи солнца — по маске этого кадра (renderLightShaftMask: солнца нет в кадре и рядом — маски нет)
+	const float shaftVisibility = m_shaftVisibility;
 	if( shaftVisibility > 0.0f )
 	{
 		profiler.beginScope( "Light shafts" );
-		renderLightShafts( sceneColor, sceneDepth, sunUV, current );
+		renderLightShafts( current );
 		profiler.endScope();
 	}
 
@@ -222,6 +253,8 @@ void PostProcess::render( const ShaderView& sceneColor, const ShaderView& sceneD
 	params.bloomScale = std::max( current.bloomIntensity, 0.0f ) / weightSum;
 	params.purkinjeShift = std::clamp( current.purkinjeShift, 0.0f, 1.0f );
 	params.starScale = stars ? current.starIntensity : 0.0f;
+	params.starOpacity = std::clamp( current.starOpacity, 0.0f, 1.0f );
+	params.showShafts = shaftVisibility > 0.0f && m_properties["Show light shafts"].data<bool>() ? 1.0f : 0.0f;
 	const float shaftScale = std::max( current.lightShaftIntensity, 0.0f ) * shaftVisibility;
 	params.shaftColor = XMFLOAT3( current.lightShaftTint.x * shaftScale, current.lightShaftTint.y * shaftScale,
 								  current.lightShaftTint.z * shaftScale );
@@ -388,45 +421,26 @@ void PostProcess::renderStars( const ShaderView& sceneColor, const Settings& set
 	}
 }
 
-void PostProcess::renderLightShafts( const ShaderView& sceneColor, const ShaderView& sceneDepth, const XMFLOAT2& sunUV,
-									 const Settings& settings )
+void PostProcess::renderLightShafts( const Settings& settings )
 {
 	DMD3D& d3d = DMD3D::instance();
 	LightShaftBuffer params = {};
-	params.sunUV = sunUV;
-	params.aspect = static_cast<float>( d3d.backBufferWidth() ) / static_cast<float>( std::max( d3d.backBufferHeight(), 1u ) );
-	params.threshold = std::max( settings.lightShaftThreshold, 0.0f );
-	params.limit = std::max( settings.lightShaftLimit, 1.0f );
-	params.radius = std::max( settings.lightShaftRadius, 0.01f );
+	params.sunUV = m_shaftSunUV;
 
-	// Маска: небо у солнца над порогом, всё ближе неба — 0
-	d3d.beginPass( PassDesc{ "Light shaft mask", { { &m_shaftMaskTarget.target(), "light shaft mask" } }, {}, m_shaftMaskTarget.width(),
-							 m_shaftMaskTarget.height(), { { &sceneColor, "scene color" }, { &sceneDepth, "scene depth" } } } );
+	// След к солнцу: один марш длиной L пути к нему (64 выборки со сдвигом шумом); спад к солнцу: на всей длине следа вес
+	// падает до light_shaft_decay
+	const float length = std::clamp( settings.lightShaftLength, 0.0f, 1.0f );
+	params.blurLength = length;
+	params.aspect = static_cast<float>( d3d.backBufferWidth() ) / static_cast<float>( std::max( d3d.backBufferHeight(), 1u ) );
+	params.fadeRadius = std::max( settings.lightShaftFadeRadius, 0.0f );
+	params.fadeWidth = std::clamp( settings.lightShaftFadeWidth, 0.01f, 1.0f );
+	params.decayRate = length > 0.0f ? -std::log( std::clamp( settings.lightShaftDecay, 1e-4f, 1.0f ) ) / length : 0.0f;
+	d3d.beginPass( PassDesc{ "Light shaft blur", { { &m_shafts.target(), "light shafts" } }, {}, m_shafts.width(), m_shafts.height(),
+							 { { &m_shaftMaskTarget.srv(), "light shaft mask" } } } );
 	Device::updateResourceData<LightShaftBuffer>( m_shaftConstants, params );
 	d3d.setConstantBuffer( SLOT_CB_PASS, m_shaftConstants );
-	d3d.setSRV( 0, sceneColor );
-	d3d.setSRV( 1, sceneDepth );
-	m_shaftMask.draw();
-
-	// След к солнцу: три прохода длиной L / 64, L / 8, L пути к нему
-	const float length = std::clamp( settings.lightShaftLength, 0.0f, 1.0f );
-	const float lengths[] = { length / 64.0f, length / 8.0f, length };
-	// Спад к солнцу: на всей длине следа вес падает до light_shaft_decay
-	params.decayRate = length > 0.0f ? -std::log( std::clamp( settings.lightShaftDecay, 1e-4f, 1.0f ) ) / length : 0.0f;
-	const RenderTarget* targets[] = { &m_starPing, &m_starPong, &m_shafts };
-	const RenderTarget* source = &m_shaftMaskTarget;
-	for( uint32_t pass = 0; pass < std::size( lengths ); ++pass )
-	{
-		const RenderTarget& target = *targets[pass];
-		params.blurLength = lengths[pass];
-		d3d.beginPass( PassDesc{ "Light shaft blur", { { &target.target(), "light shafts" } }, {}, target.width(), target.height(),
-								 { { &source->srv(), "source" } } } );
-		Device::updateResourceData<LightShaftBuffer>( m_shaftConstants, params );
-		d3d.setConstantBuffer( SLOT_CB_PASS, m_shaftConstants );
-		d3d.setSRV( 0, source->srv() );
-		m_shaftBlur.draw();
-		source = &target;
-	}
+	d3d.setSRV( 0, m_shaftMaskTarget.srv() );
+	m_shaftBlur.draw();
 }
 
 void PostProcess::drawStarPass( const char* name, FullscreenShader& shader, const RenderTarget& target, const ShaderView& source,

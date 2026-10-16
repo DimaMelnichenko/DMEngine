@@ -29,8 +29,9 @@ namespace GS
 //   (Shaders/bloom_upsample.ps, BlendState::additive);
 // - лучи-звёзды вокруг ярких бликов (M. Kawase, GDC 2003): яркое над высоким порогом в четверть кадра (Shaders/star_bright.ps)
 //   и по оси звезды три прохода вдоль неё с шагом 1, 4, 16 текселей (Shaders/star_streak.ps), оси — в сумму;
-// - лучи солнца, god rays (K. Mitchell, GPU Gems 3, гл. 13; Light Shafts в UE): маска неба у солнца в четверти кадра
-//   (Shaders/light_shaft_mask.ps) и радиальное размытие к экранной точке солнца в три прохода (Shaders/light_shaft_blur.ps);
+// - лучи солнца, god rays (K. Mitchell, GPU Gems 3, гл. 13; Light Shafts в UE): маска неба у солнца в половине кадра — до
+//   полупрозрачных (renderLightShaftMask, Shaders/light_shaft_mask.ps), здесь — радиальное размытие к экранной точке солнца
+//   одним маршем со сдвигом выборок шумом (Shaders/light_shaft_blur.ps);
 // - тонмаппинг (Shaders/tonemap.ps): цвет сцены + bloom + лучи, приведение к новой экспозиции, ночное зрение (сдвиг Пуркинье:
 //   в темноте цвет уходит в синеватый монохромный), AgX / ACES — в задний буфер.
 // Ночь темнее дня — кривая компенсации экспозиции от EV100 сцены (Exposure Compensation Curve в UE).
@@ -66,11 +67,16 @@ public:
 	void bindExposure();
 	// Экспозиция кадра — для объявлений проходов, которые её читают
 	const ShaderView& exposureView() const { return m_exposureSRV; }
+	// Маска лучей солнца — после неба, до полупрозрачных (частицы и вода глубину не пишут и на фоне неба дали бы свои лучи):
+	// sceneColor, sceneDepth — буфер сцены, view — главный вид, toSun — направление на солнце (ночью — на луну; y ≤ 0 — его
+	// нет). Солнца нет в кадре и рядом — маски нет, и лучей в этом кадре тоже
+	void renderLightShaftMask( const ShaderView& sceneColor, const ShaderView& sceneDepth, const RenderView& view,
+							   const DirectX::XMFLOAT3& toSun, GpuProfiler& profiler );
 	// Рисует цепочку в задний буфер и оставляет его привязанным для GUI; время проходов — области profiler.
 	// sceneColor — HDR-цвет сцены (SceneTargets::colorView), sceneDepth — её глубина (небо — 0), view — главный вид,
-	// toSun — направление на солнце (ночью — на луну; y ≤ 0 — его нет), deltaTime — длительность кадра, с (скорость адаптации)
-	void render( const ShaderView& sceneColor, const ShaderView& sceneDepth, const RenderView& view, const DirectX::XMFLOAT3& toSun,
-				 GpuProfiler& profiler, float deltaTime );
+	// deltaTime — длительность кадра, с (скорость адаптации)
+	void render( const ShaderView& sceneColor, const ShaderView& sceneDepth, const RenderView& view, GpuProfiler& profiler,
+				 float deltaTime );
 	// Смена плана (camera cut, как у вида в UE): несколько кадров экспозиция адаптируется сразу, а не за секунды
 	void cameraCut() override { m_cutFrames = cutFrameCount; }
 	// EV100 кадра с отставанием на несколько кадров (копия с GPU без ожидания) — для статистики
@@ -98,9 +104,8 @@ private:
 	void renderStars( const ShaderView& sceneColor, const Settings& settings );
 	void drawStarPass( const char* name, FullscreenShader& shader, const RenderTarget& target, const ShaderView& source,
 					   const StarBuffer& params, BlendState blend );
-	// Лучи солнца: маска неба у солнца, три прохода к нему — в m_shafts. sunUV — экранная точка солнца
-	void renderLightShafts( const ShaderView& sceneColor, const ShaderView& sceneDepth, const DirectX::XMFLOAT2& sunUV,
-							const Settings& settings );
+	// Лучи солнца: марш по маске (renderLightShaftMask) к экранной точке солнца — в m_shafts
+	void renderLightShafts( const Settings& settings );
 	void renderExposure( const ShaderView& sceneColor, float deltaTime );
 	void readBackExposure();
 	void renderBloom( const ShaderView& sceneColor, float threshold );
@@ -121,12 +126,15 @@ private:
 	RenderTarget m_starPong;
 	RenderTarget m_star;
 	Buffer m_starConstants;
-	// Лучи солнца в четверти кадра: маска и след (промежуточные проходы — в m_starPing / m_starPong, лучи-звёзды к ним готовы)
+	// Лучи солнца в половине кадра (в четверти след размывался и поперёк лучей): маска и след; экранная точка солнца и
+	// видимость эффекта — из renderLightShaftMask этого кадра
 	FullscreenShader m_shaftMask;
 	FullscreenShader m_shaftBlur;
 	RenderTarget m_shaftMaskTarget;
 	RenderTarget m_shafts;
 	Buffer m_shaftConstants;
+	DirectX::XMFLOAT2 m_shaftSunUV = DirectX::XMFLOAT2( 0.5f, 0.5f );
+	float m_shaftVisibility = 0.0f;
 	Buffer m_constantBuffer;
 	Buffer m_bloomConstants;
 	Buffer m_histogramConstants;

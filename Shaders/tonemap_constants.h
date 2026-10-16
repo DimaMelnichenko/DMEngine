@@ -20,7 +20,8 @@ DM_CONSTANTS( PostProcessBuffer, SLOT_CB_PASS )
 	// 1 / расстояние, 1/м (0 — по всей глубине одинаково)
 	DM_FIELD( float, shaftInverseDistance );
 	DM_FIELD( float2, depthLinearize );	// _33 и _43 проекции: глубина вида z = _43 / ( d − _33 ), d — обратная глубина буфера
-	DM_FIELD( float2, padding );
+	DM_FIELD( float, starOpacity );		// видимость звёзд: кадр с ними и без них смешиваются после тонмаппинга (размер тот же)
+	DM_FIELD( float, showShafts );		// 1 — отладочный вид: кадр — след лучей солнца (до доли воздуха)
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

@@ -242,6 +242,7 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	debugView( "Wind field", m_scene.terrain().properties(), "Show wind" );
 	debugView( "Shadow cascades", m_renderer.shadowProperties(), "Show cascades" );
 	debugView( "Ambient occlusion", m_renderer.postProcessProperties(), "Show ambient occlusion" );
+	debugView( "Light shafts", m_renderer.postProcessProperties(), "Show light shafts" );
 
 	m_showGUI = m_config.showGUI();
 	if( !m_config.mouseLook() )

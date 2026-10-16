@@ -242,8 +242,8 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 
 	renderShadows( scene, frame );
 	renderScene( scene, frame, wireframe, depthPrepass );
-	measure( "Post process", [&] { m_postProcess.render( m_sceneTargets.colorView(), m_sceneTargets.depthView(), frame.view, frame.toShadowLight,
-														 m_gpuProfiler, frame.elapsedTime / 1000.0f ); } );
+	measure( "Post process", [&] { m_postProcess.render( m_sceneTargets.colorView(), m_sceneTargets.depthView(), frame.view, m_gpuProfiler,
+														 frame.elapsedTime / 1000.0f ); } );
 	reportFrameStats( scene );
 
 	m_gpuProfiler.endFrame();
@@ -353,6 +353,11 @@ void Renderer::renderScene( Scene& scene, const FrameContext& frame, bool wirefr
 		}
 		measure( "Screen reflections", [&] { m_reflections.trace( m_sceneTargets.depthView() ); } );
 	}
+
+	// Маска лучей солнца — по небу до полупрозрачных: частицы (пушинки) и вода глубину не пишут и на фоне неба дали бы свои
+	// лучи (PostProcess::renderLightShaftMask; солнца нет в кадре и рядом — прохода нет)
+	m_postProcess.renderLightShaftMask( m_sceneTargets.colorView(), m_sceneTargets.depthView(), frame.view, frame.toShadowLight,
+										m_gpuProfiler );
 
 	// Цвет сцены за полупрозрачными (SceneColor в UE: преломление воды) — копия того, что нарисовано до них
 	if( m_sceneColorRead )
