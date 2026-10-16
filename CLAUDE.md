@@ -597,13 +597,14 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 ходьба, тень рельефа; правки окон перестраивают ступени без перезагрузки — `rebuildMasks`, `rebuildChannels`,
 `rebuildWindField`). Отрисовка — `CDLODTerrain` (`Scene/Terrain/`, Strugar 2009): квадродерево над картой высот конвейера,
 корень покрывает весь террейн, лист — 32 текселя, диапазон каждого уровня вдвое больше предыдущего. Узлы выбираются
-на CPU на каждый вид (`collectMeshes`) по расстоянию до AABB и frustum. При загрузке конвейер копирует карту высот с GPU
+на CPU на каждый вид (`collectMeshes` → `CDLODQuadtree::select`: общее с будущими дальними горами — область с началом,
+коробки узлов даёт владелец) по расстоянию до AABB и frustum. При загрузке конвейер копирует карту высот с GPU
 (`GpuImages::captureTexture`) и строит из итоговой карты текстуру R32_FLOAT с мипами для вершинного шейдера; min/max высот
 узлов `CDLODTerrain` считает по тем же мипам на CPU (`buildNodeBounds`, заново — по новому `heightRevision`). Рисуются одним
 `DrawIndexedInstanced` патча 16×16 (`GridMesh`). Вершина уровня L читает мип L; к концу диапазона уровня морфинг
 в `Shaders/cdlod.vs` сдвигает её на сетку уровня L + 1 и переводит высоту в мип L + 1, поэтому уровни стыкуются без
 скачков и трещин. Условие отсутствия трещин — диапазон уровня не меньше диагонали его узла / `morphStartRatio`,
-`calcRanges()` не даёт «LOD distance» опуститься ниже. Настройки — строка таблицы `Terrain`, на которую ссылается уровень
+`CDLODQuadtree::computeLod` не даёт «LOD distance» опуститься ниже. Настройки — строка таблицы `Terrain`, на которую ссылается уровень
 (`heightmap` — имя текстуры в таблице `Textures`, `splatmap` — файл, `height_multiplier`, `height_offset`,
 `width_multiplier`). Свойство «Show LOD» раскрашивает уровни (`Shaders/cdlod_lod.ps`), «Show water» подсвечивает воду
 симуляции (`docs/water.md`). Общее для шейдеров террейна

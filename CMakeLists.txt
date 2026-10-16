@@ -226,6 +226,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Model/ModelInstances.cpp
     src/Engine/Graphics/Scene/Terrain/GridMesh.cpp
     src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp
+    src/Engine/Graphics/Scene/Terrain/CDLODQuadtree.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainPipeline.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainPaintTool.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainEdits.cpp

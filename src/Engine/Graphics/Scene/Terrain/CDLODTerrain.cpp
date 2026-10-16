@@ -10,21 +10,6 @@
 
 using namespace DirectX;
 
-namespace
-{
-
-// Узел ближе диапазона LOD: расстояние от отрезка «глаза — ноги» (origin и на eyeHeight ниже; в полёте — точка) до коробки
-// узла не больше radius — как lodDistance в cdlod.vs
-bool lodRangeHitsBox( const XMFLOAT3& origin, float eyeHeight, float radius, const XMFLOAT3& boxMin, const XMFLOAT3& boxMax )
-{
-	float dx = std::max( { boxMin.x - origin.x, 0.0f, origin.x - boxMax.x } );
-	float dy = std::max( { boxMin.y - origin.y, 0.0f, origin.y - eyeHeight - boxMax.y } );
-	float dz = std::max( { boxMin.z - origin.z, 0.0f, origin.z - boxMax.z } );
-	return dx * dx + dy * dy + dz * dz <= radius * radius;
-}
-
-}
-
 namespace GS
 {
 
@@ -40,21 +25,15 @@ bool CDLODTerrain::initialize( const TerrainSettings& settings, TerrainPipeline&
 	m_terrainId = settings.id;
 	const uint32_t mapSize = pipeline.mapSize();
 
-	// Уровней столько, чтобы корень покрыл всю карту высот
-	m_levelCount = 1;
-	while( m_levelCount < maxLevels && ( gridDim << ( m_levelCount - 1 ) ) < mapSize )
-		++m_levelCount;
-
-	m_nodesPerSide.resize( m_levelCount );
-	for( uint32_t level = 0; level < m_levelCount; ++level )
-		m_nodesPerSide[level] = static_cast<uint32_t>( std::ceil( pipeline.worldSize() / nodeSize( level ) ) );
+	// Квадродерево над картой: лист — gridDim текселей, корень покрывает всю карту
+	m_quadtree.initialize( XMFLOAT2( 0.0f, 0.0f ), gridDim * pipeline.texelSize(), pipeline.worldSize() );
 
 	if( !createShader() )
 		return false;
 	buildNodeBounds();
 
 	m_patch.initialize( patchDim + 1, patchDim + 1 );
-	m_patchBuffer.createBuffer( sizeof( PatchInstance ), maxPatches, "Terrain patches" );
+	m_patchBuffer.createBuffer( sizeof( Patch ), CDLODQuadtree::maxPatches, "Terrain patches" );
 	m_layerConstants.createBuffer( sizeof( TerrainLayerConstants ), 1, "Terrain layer constants" );
 
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( CDLODBuffer ), m_constantBuffer ) )
@@ -62,9 +41,10 @@ bool CDLODTerrain::initialize( const TerrainSettings& settings, TerrainPipeline&
 
 	m_properties.setName( "CDLOD terrain" );
 
-	auto prop = m_properties.insert( "LOD distance", nodeSize( 0 ) * 4.0f );
-	prop->setLow( nodeSize( 0 ) );
-	prop->setHigh( nodeSize( 0 ) * 64.0f );
+	const float leaf = m_quadtree.nodeSize( 0 );
+	auto prop = m_properties.insert( "LOD distance", leaf * 4.0f );
+	prop->setLow( leaf );
+	prop->setHigh( leaf * 64.0f );
 	prop->setControlType( GUIControlType::SLIDER );
 	prop->setUnit( "m" )->setTooltip( "Range of the finest regular level (leaf nodes); each coarser level reaches twice as far, "
 									  "the finer detail levels near the camera - half, a quarter..." );
@@ -84,7 +64,7 @@ bool CDLODTerrain::initialize( const TerrainSettings& settings, TerrainPipeline&
 														   "wind of the level (blue calm, green even, red twice faster), white edge - up the slope, "
 														   "black - down; hatching - gusty" );
 
-	LOG( "CDLOD terrain: heightmap " + std::to_string( mapSize ) + ", LOD levels " + std::to_string( m_levelCount ) );
+	LOG( "CDLOD terrain: heightmap " + std::to_string( mapSize ) + ", LOD levels " + std::to_string( m_quadtree.levelCount() ) );
 
 	m_initialized = true;
 
@@ -161,12 +141,14 @@ void CDLODTerrain::buildNodeBounds()
 		}
 	};
 
-	m_heightBounds.assign( m_levelCount, {} );
+	const uint32_t levelCount = m_quadtree.levelCount();
+	m_heightBounds.assign( levelCount, {} );
+	m_heightExtent.assign( levelCount, 0.0f );
 
-	for( uint32_t level = 0; level < m_levelCount; ++level )
+	for( uint32_t level = 0; level < levelCount; ++level )
 	{
-		const uint32_t count = m_nodesPerSide[level];
-		const float size = nodeSize( level ) / m_pipeline->worldSize();
+		const uint32_t count = m_quadtree.nodesPerSide( level );
+		const float size = m_quadtree.nodeSize( level ) / m_pipeline->worldSize();
 		m_heightBounds[level].resize( count * count );
 
 		for( uint32_t z = 0; z < count; ++z )
@@ -177,6 +159,7 @@ void CDLODTerrain::buildNodeBounds()
 				mipBounds( std::min( level, lastMip ), x * size, ( x + 1 ) * size, z * size, ( z + 1 ) * size, bounds );
 				mipBounds( std::min( level + 1, lastMip ), x * size, ( x + 1 ) * size, z * size, ( z + 1 ) * size, bounds );
 				m_heightBounds[level][z * count + x] = bounds;
+				m_heightExtent[level] = std::max( m_heightExtent[level], bounds.y - bounds.x );
 			}
 		}
 	}
@@ -191,9 +174,19 @@ void CDLODTerrain::update( const FrameContext& frame )
 	// Итоговую карту построили заново (перестройка русел) — границы узлов по ней
 	if( m_boundsRevision != m_pipeline->heightRevision() )
 		buildNodeBounds();
-	m_meshLevels = tileLevels + static_cast<uint32_t>( std::clamp( m_properties["Finest mesh"].data<int32_t>(), 0,
-																  static_cast<int32_t>( detailLevels - tileLevels ) ) );
-	calcRanges();
+
+	// Дальности уровней: «LOD distance», но не меньше нижней границы без трещин — по перепаду высот узлов уровня
+	// (множитель высоты — из окна); уровни мельче листа — «Finest mesh» и «Finest mesh radius», запас — дисплейсмент
+	CDLODQuadtree::LodSettings lod;
+	lod.lodDistance = m_properties["LOD distance"].data<float>();
+	lod.meshLevels = tileLevels + static_cast<uint32_t>( std::clamp( m_properties["Finest mesh"].data<int32_t>(), 0,
+																	static_cast<int32_t>( detailLevels - tileLevels ) ) );
+	lod.finestRadius = std::max( m_properties["Finest mesh radius"].data<float>(), 0.0f );
+	lod.detailMargin = m_pipeline->material().maxDisplacement();
+	std::vector<float> extent( m_heightExtent.size() );
+	for( size_t level = 0; level < extent.size(); ++level )
+		extent[level] = std::max( 0.0f, m_heightExtent[level] * m_pipeline->heightMultiplier() );
+	m_quadtree.computeLod( lod, extent );
 }
 
 void CDLODTerrain::compute( const FrameContext& frame )
@@ -215,67 +208,6 @@ TerrainSettings CDLODTerrain::settings() const
 	return settings;
 }
 
-void CDLODTerrain::calcRanges()
-{
-	// Трещин нет, если на границе уровней L и L + 1 вершины уровня L уже полностью морфированы, а уровня L + 1 ещё
-	// не начали. Граница удалена от камеры не больше чем на диапазон L плюс диагональ узла L (с перепадом высот),
-	// а морфинг уровня L + 1 начинается через morphStartRatio диапазона L после конца уровня L. Отсюда нижняя граница
-	// диапазона: диагональ / morphStartRatio. Меньшее значение "LOD distance" не применяется
-	float minRange = 0.0f;
-	for( uint32_t level = 0; level < m_levelCount; ++level )
-	{
-		float heightExtent = 0.0f;
-		for( const XMFLOAT2& bounds : m_heightBounds[level] )
-			heightExtent = std::max( heightExtent, ( bounds.y - bounds.x ) * m_pipeline->heightMultiplier() );
-
-		const float size = nodeSize( level );
-		const float diagonal = std::sqrt( 2.0f * size * size + heightExtent * heightExtent );
-		minRange = std::max( minRange, diagonal / morphStartRatio / static_cast<float>( 1u << level ) );
-	}
-
-	float range = std::max( m_properties["LOD distance"].data<float>(), minRange );
-	float previousRange = 0.0f;
-	for( uint32_t level = 0; level < m_levelCount; ++level )
-	{
-		const float morphStart = previousRange + ( range - previousRange ) * morphStartRatio;
-		m_ranges[level] = range;
-		m_morphConsts[level] = XMFLOAT4( morphStart, 1.0f / ( range - morphStart ), 0.0f, 0.0f );
-
-		previousRange = range;
-		range *= 2.0f;
-	}
-
-	// Уровни мельче листа — от самого мелкого из рисуемых (m_meshLevels) к −1: диапазон −1 — половина диапазона листа, каждый
-	// следующий — вдвое меньше (при «LOD distance» 128 м — 64, 32 … 2 м); самый мелкий полон в «Finest mesh radius» (вокруг ног
-	// при ходьбе), его диапазон — не меньше радиуса / morphStartRatio. Без трещин (как выше): граница уровня с более крупным —
-	// не дальше его диапазона и диагонали узла (склон до 45° и запас на дисплейсмент), морфинг крупного начинается через
-	// morphStartRatio разницы диапазонов — она не меньше диагонали / morphStartRatio. Морфинг листа — дальше 0,66 его
-	// диапазона, за диапазоном −1
-	const float finestRadius = std::max( m_properties["Finest mesh radius"].data<float>(), 0.0f );
-	const float margin = m_pipeline->material().maxDisplacement();
-	float detailPrevious = 0.0f;
-	float previousDiagonal = 0.0f;
-	for( uint32_t depth = detailLevels; depth >= 1; --depth )
-	{
-		if( depth > m_meshLevels )
-		{
-			m_detailRanges[depth - 1] = 0.0f;	// не рисуется
-			m_detailMorph[depth - 1] = XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
-			continue;
-		}
-		float rangeAt = m_ranges[0] / static_cast<float>( 1u << depth );
-		if( depth == m_meshLevels )
-			rangeAt = std::max( rangeAt, finestRadius / morphStartRatio );
-		rangeAt = std::min( std::max( rangeAt, detailPrevious + previousDiagonal / morphStartRatio ), m_ranges[0] * 0.5f );
-		const float morphStart = detailPrevious + ( rangeAt - detailPrevious ) * morphStartRatio;
-		m_detailRanges[depth - 1] = rangeAt;
-		m_detailMorph[depth - 1] = XMFLOAT4( morphStart, 1.0f / std::max( rangeAt - morphStart, 1e-3f ), 0.0f, 0.0f );
-		detailPrevious = rangeAt;
-		const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
-		previousDiagonal = std::sqrt( 2.0f * size * size + ( size + margin ) * ( size + margin ) );
-	}
-}
-
 TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) const
 {
 	TerrainLayerConstants constants = {};
@@ -295,19 +227,14 @@ TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) con
 	return constants;
 }
 
-float CDLODTerrain::nodeSize( uint32_t level ) const
+CDLODQuadtree::Box CDLODTerrain::node( uint32_t level, uint32_t x, uint32_t z ) const
 {
-	return gridDim * m_pipeline->texelSize() * static_cast<float>( 1u << level );
-}
-
-CDLODTerrain::NodeBox CDLODTerrain::nodeBox( uint32_t level, uint32_t x, uint32_t z ) const
-{
-	const float size = nodeSize( level );
-	const XMFLOAT2& bounds = m_heightBounds[level][z * m_nodesPerSide[level] + x];
+	const float size = m_quadtree.nodeSize( level );
+	const XMFLOAT2& bounds = m_heightBounds[level][z * m_quadtree.nodesPerSide( level ) + x];
 
 	// С запасом на дисплейсмент (± половина наибольшего размаха): frustum и дальности не обрезают поднятые камни
 	const float margin = 0.5f * m_pipeline->material().maxDisplacement();
-	NodeBox box;
+	Box box;
 	box.min = XMFLOAT3( x * size, bounds.x * m_pipeline->heightMultiplier() + m_pipeline->heightOffset() - margin, z * size );
 	box.max = XMFLOAT3( std::min( ( x + 1 ) * size, m_pipeline->worldSize() ),
 						bounds.y * m_pipeline->heightMultiplier() + m_pipeline->heightOffset() + margin,
@@ -315,124 +242,36 @@ CDLODTerrain::NodeBox CDLODTerrain::nodeBox( uint32_t level, uint32_t x, uint32_
 	return box;
 }
 
-void CDLODTerrain::collectMeshes( const RenderView& view, MeshCollector& collector )
-{
-	std::vector<PatchInstance>& patches = m_patches[view.index];
-	patches.clear();
-	// В дальнем каскаде теней рельефа нет: его тень дальше каскадов — по карте края тени (TerrainSunShadow)
-	if( !m_initialized || view.farShadow )
-		return;
-
-	const uint32_t top = m_levelCount - 1;
-	for( uint32_t z = 0; z < m_nodesPerSide[top]; ++z )
-	{
-		for( uint32_t x = 0; x < m_nodesPerSide[top]; ++x )
-		{
-			selectNode( view, top, x, z, patches );
-		}
-	}
-
-	if( !patches.empty() )
-		collector.addCustom( passBit( MeshPass::depthPrepass ) | passBit( MeshPass::opaque ) | passBit( MeshPass::csmShadowDepth ) );
-}
-
-bool CDLODTerrain::selectNode( const RenderView& view, uint32_t level, uint32_t x, uint32_t z,
-							   std::vector<PatchInstance>& patches )
-{
-	const NodeBox box = nodeBox( level, x, z );
-	const XMFLOAT3& cameraPosition = view.lodOrigin;
-	const float eyeHeight = view.lodEyeHeight;
-
-	if( !lodRangeHitsBox( cameraPosition, eyeHeight, m_ranges[level], box.min, box.max ) )
-		return false;
-
-	// Невидимый узел считается обработанным: рисовать его не нужно ни ему, ни родителю
-	if( !view.frustum.checkBox( box.min, box.max ) )
-		return true;
-
-	// Лист у камеры — уровни мельче листа (−1, −2) везде: квадродерево однородно, переходы без трещин
-	if( level == 0 && lodRangeHitsBox( cameraPosition, eyeHeight, m_detailRanges[0], box.min, box.max ) )
-	{
-		for( uint32_t quarter = 0; quarter < 4; ++quarter )
-			if( !selectDetailNode( view, 1, x * 2 + ( quarter & 1 ), z * 2 + ( quarter >> 1 ), patches ) )
-				addPatch( 0, x, z, quarter, patches );
-		return true;
-	}
-	if( level == 0 || !lodRangeHitsBox( cameraPosition, eyeHeight, m_ranges[level - 1], box.min, box.max ) )
-	{
-		for( uint32_t quarter = 0; quarter < 4; ++quarter )
-			addPatch( level, x, z, quarter, patches );
-		return true;
-	}
-
-	// Четверти, которые дочерний узел не взял (он дальше своего диапазона), рисуются с детализацией этого уровня
-	const uint32_t childCount = m_nodesPerSide[level - 1];
-	for( uint32_t quarter = 0; quarter < 4; ++quarter )
-	{
-		const uint32_t cx = x * 2 + ( quarter & 1 );
-		const uint32_t cz = z * 2 + ( quarter >> 1 );
-		if( cx >= childCount || cz >= childCount )
-			continue;
-
-		if( !selectNode( view, level - 1, cx, cz, patches ) )
-			addPatch( level, x, z, quarter, patches );
-	}
-
-	return true;
-}
-
-void CDLODTerrain::addPatch( uint32_t level, uint32_t x, uint32_t z, uint32_t quarter, std::vector<PatchInstance>& patches )
-{
-	const float size = nodeSize( level );
-	const float halfSize = size * 0.5f;
-	const XMFLOAT2 origin( x * size + ( quarter & 1 ) * halfSize, z * size + ( quarter >> 1 ) * halfSize );
-
-	if( origin.x >= m_pipeline->worldSize() || origin.y >= m_pipeline->worldSize() || patches.size() >= maxPatches )
-		return;
-
-	patches.push_back( { origin, halfSize, static_cast<float>( level ) } );
-}
-
-bool CDLODTerrain::selectDetailNode( const RenderView& view, uint32_t depth, uint32_t nx, uint32_t nz, std::vector<PatchInstance>& patches )
+CDLODQuadtree::Box CDLODTerrain::detailNode( uint32_t depth, uint32_t nx, uint32_t nz ) const
 {
 	// Высоты узла — его листа и детальной плитки листа, если она есть
 	const uint32_t leafX = nx >> depth;
 	const uint32_t leafZ = nz >> depth;
-	if( leafX >= m_nodesPerSide[0] || leafZ >= m_nodesPerSide[0] )
-		return true;
-	XMFLOAT2 bounds = m_heightBounds[0][leafZ * m_nodesPerSide[0] + leafX];
+	XMFLOAT2 bounds = m_heightBounds[0][leafZ * m_quadtree.nodesPerSide( 0 ) + leafX];
 	if( const XMFLOAT2* detail = m_pipeline->detailBounds( leafX, leafZ ) )
 		bounds = XMFLOAT2( std::min( bounds.x, detail->x ), std::max( bounds.y, detail->y ) );
-	const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
+	const float size = m_quadtree.nodeSize( 0 ) / static_cast<float>( 1u << depth );
 	const float margin = 0.5f * m_pipeline->material().maxDisplacement();
-	const XMFLOAT3 boxMin( nx * size, bounds.x * m_pipeline->heightMultiplier() + m_pipeline->heightOffset() - margin, nz * size );
-	const XMFLOAT3 boxMax( std::min( ( nx + 1 ) * size, m_pipeline->worldSize() ), bounds.y * m_pipeline->heightMultiplier() + m_pipeline->heightOffset() + margin,
-						   std::min( ( nz + 1 ) * size, m_pipeline->worldSize() ) );
-	const XMFLOAT3& origin = view.lodOrigin;
-	if( !lodRangeHitsBox( origin, view.lodEyeHeight, m_detailRanges[depth - 1], boxMin, boxMax ) )
-		return false;
-	if( !view.frustum.checkBox( boxMin, boxMax ) )
-		return true;
-	if( depth >= m_meshLevels || !lodRangeHitsBox( origin, view.lodEyeHeight, m_detailRanges[depth], boxMin, boxMax ) )
-	{
-		for( uint32_t quarter = 0; quarter < 4; ++quarter )
-			addDetailPatch( depth, nx, nz, quarter, patches );
-		return true;
-	}
-	for( uint32_t quarter = 0; quarter < 4; ++quarter )
-		if( !selectDetailNode( view, depth + 1, nx * 2 + ( quarter & 1 ), nz * 2 + ( quarter >> 1 ), patches ) )
-			addDetailPatch( depth, nx, nz, quarter, patches );
-	return true;
+	Box box;
+	box.min = XMFLOAT3( nx * size, bounds.x * m_pipeline->heightMultiplier() + m_pipeline->heightOffset() - margin, nz * size );
+	box.max = XMFLOAT3( std::min( ( nx + 1 ) * size, m_pipeline->worldSize() ),
+						bounds.y * m_pipeline->heightMultiplier() + m_pipeline->heightOffset() + margin,
+						std::min( ( nz + 1 ) * size, m_pipeline->worldSize() ) );
+	return box;
 }
 
-void CDLODTerrain::addDetailPatch( uint32_t depth, uint32_t nx, uint32_t nz, uint32_t quarter, std::vector<PatchInstance>& patches )
+void CDLODTerrain::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
-	const float size = nodeSize( 0 ) / static_cast<float>( 1u << depth );
-	const float halfSize = size * 0.5f;
-	const XMFLOAT2 origin( nx * size + ( quarter & 1 ) * halfSize, nz * size + ( quarter >> 1 ) * halfSize );
-	if( origin.x >= m_pipeline->worldSize() || origin.y >= m_pipeline->worldSize() || patches.size() >= maxPatches )
+	std::vector<Patch>& patches = m_patches[view.index];
+	patches.clear();
+	// В дальнем каскаде теней рельефа нет: его тень дальше каскадов — по карте края тени (TerrainSunShadow)
+	if( !m_initialized || view.farShadow || m_heightBounds.empty() )
 		return;
-	patches.push_back( { origin, halfSize, -static_cast<float>( depth ) } );
+
+	m_quadtree.select( view, *this, patches );
+
+	if( !patches.empty() )
+		collector.addCustom( passBit( MeshPass::depthPrepass ) | passBit( MeshPass::opaque ) | passBit( MeshPass::csmShadowDepth ) );
 }
 
 void CDLODTerrain::renderCustom( const RenderContext& context )
@@ -440,7 +279,7 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	// В проходах только глубины (тени, depth prepass) — без раскраски LOD, материала и ресурсов пиксельного шейдера.
 	// Каркас террейна — и в prepass: иначе сплошная глубина закрыла бы то, что видно сквозь каркас
 	const bool depthOnly = isDepthOnlyPass( context.pass );
-	std::vector<PatchInstance>& patches = m_patches[context.view.index];
+	std::vector<Patch>& patches = m_patches[context.view.index];
 
 	ScopedRenderState terrainState;
 	if( context.pass != MeshPass::csmShadowDepth && m_properties["Wireframe"].data<bool>() )
@@ -460,7 +299,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		params.heightMultiplier = m_pipeline->heightMultiplier();
 		params.heightOffset = m_pipeline->heightOffset();
 		params.gridDim = static_cast<float>( patchDim );
-		std::copy( std::begin( m_morphConsts ), std::end( m_morphConsts ), params.morphConsts );
+		const CDLODQuadtree::Lod& lod = m_quadtree.lod();
+		std::copy( std::begin( lod.morph ), std::end( lod.morph ), params.morphConsts );
 		params.texelSize = m_pipeline->texelSize();
 		params.farTextureScale = m_properties["Far texture scale"].data<float>();
 		const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
@@ -481,11 +321,11 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 										 m_pipeline->layerRules().lakeSiltDepth.from, m_pipeline->layerRules().lakeSiltDepth.to );
 		params.lakeSedimentLevel = XMFLOAT2( m_pipeline->heightOffset() + m_pipeline->layerRules().lakeSedimentHeight.from * m_pipeline->heightMultiplier(),
 											 m_pipeline->heightOffset() + m_pipeline->layerRules().lakeSedimentHeight.to * m_pipeline->heightMultiplier() );
-		std::copy( std::begin( m_detailMorph ), std::end( m_detailMorph ), params.detailMorph );
+		std::copy( std::begin( lod.detailMorph ), std::end( lod.detailMorph ), params.detailMorph );
 	} );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
 
-	m_patchBuffer.updateData( patches.data(), sizeof( PatchInstance ) * patches.size() );
+	m_patchBuffer.updateData( patches.data(), sizeof( Patch ) * patches.size() );
 	m_patchBuffer.setToSlot( SLOT_INSTANCE_DATA );
 
 	// Карта высот — вершинному шейдеру и пиксельному: по ней считается нормаль рельефа
