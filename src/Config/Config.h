@@ -28,6 +28,9 @@ public:
 	// GPU-based validation debug-слоя D3D12 в Debug-сборке (GpuValidation=true или -gpuvalidation; медленно — для правок
 	// слоя D3D12: ресурсы, барьеры, дескрипторы, проходы). Нет строки — выключена: обычный Debug — только слой
 	bool gpuValidation() const				{ return m_gpuValidation; }
+	// Закреплённая частота GPU (StableClocks=true или -stableclocks, как «Lock to stable clocks» в PIX): время GPU не зависит
+	// от разгона, питания и нагрева — для сравнения замеров (Tools/check_frames.py). Нужен режим разработчика Windows
+	bool stableClocks() const				{ return m_stableClocks; }
 	// Стартовая камера: положение и поворот (тангаж, рыскание) в градусах, секция [Camera]
 	const DirectX::XMFLOAT3& cameraPosition() const	{ return m_cameraPosition; }
 	const DirectX::XMFLOAT2& cameraRotation() const	{ return m_cameraRotation; }
@@ -64,6 +67,7 @@ private:
 	uint32_t m_shadowMapResolution = 2048;
 	bool m_depthPrepass = true;
 	bool m_gpuValidation = false;
+	bool m_stableClocks = false;
 	DirectX::XMFLOAT3 m_cameraPosition = DirectX::XMFLOAT3( 0.0f, 0.0f, -1.0f );
 	DirectX::XMFLOAT2 m_cameraRotation = DirectX::XMFLOAT2( 0.0f, 0.0f );
 	std::string m_levelName;

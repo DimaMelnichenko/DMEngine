@@ -98,8 +98,12 @@ bool DMD3D::initialize( const Settings& settings, HWND hwnd )
 
 	if( settings.pixCapture )
 		loadPixCapturer();
-	if( !selectAdapter() || !createDevice( settings.gpuValidation ) || !createQueuesAndFrames() || !createDescriptorHeaps() ||
-		!createSwapChain( hwnd ) || !createBackBufferTargets() || !createRootSignature() || !createCommandSignature() )
+	if( !selectAdapter() || !createDevice( settings.gpuValidation ) )
+		return false;
+	if( settings.stableClocks )
+		lockStableClocks();
+	if( !createQueuesAndFrames() || !createDescriptorHeaps() || !createSwapChain( hwnd ) || !createBackBufferTargets() ||
+		!createRootSignature() || !createCommandSignature() )
 		return false;
 	if( !m_constantRing.initialize( m_device.get(), constantRingBytes, frameCount ) )
 		return false;
@@ -163,6 +167,29 @@ bool DMD3D::selectAdapter()
 		return false;
 	LOG( std::string( "Video adapter: " ) + description + ", dedicated memory " + std::to_string( adapterDesc.DedicatedVideoMemory / 1024 / 1024 ) + " MB" );
 	return true;
+}
+
+void DMD3D::lockStableClocks()
+{
+	// Как «Lock to stable clocks» в PIX: частота GPU закреплена, пока живёт устройство, — время GPU не зависит от разгона,
+	// питания и нагрева (на ноутбуке время кадра скакало до ×2,4: TODO.md, «Решить или проверить»). Без режима разработчика
+	// Windows SetStablePowerState теряет устройство — режим проверяется по реестру заранее
+	DWORD developerMode = 0;
+	DWORD size = sizeof( developerMode );
+	if( RegGetValueW( HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock",
+					  L"AllowDevelopmentWithoutDevLicense", RRF_RT_REG_DWORD, nullptr, &developerMode, &size ) != ERROR_SUCCESS ||
+		developerMode == 0 )
+	{
+		LOG( "GPU clocks are not locked: SetStablePowerState needs Windows developer mode (Settings - System - For developers)" );
+		return;
+	}
+	if( FAILED( m_device->SetStablePowerState( TRUE ) ) )
+	{
+		LOG( "GPU clocks are not locked: SetStablePowerState failed" );
+		return;
+	}
+	m_stableClocks = true;
+	LOG( "GPU clocks are locked (SetStablePowerState): GPU times do not depend on boost, power and heat" );
 }
 
 bool DMD3D::createDevice( bool gpuValidation )

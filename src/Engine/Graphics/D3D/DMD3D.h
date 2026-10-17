@@ -77,6 +77,7 @@ public:
 		uint32_t backBufferHeight = 1080;
 		bool vsync = false;
 		bool gpuValidation = true;	// Debug-сборка: GPU-based validation поверх debug-слоя
+		bool stableClocks = false;	// закреплённая частота GPU (SetStablePowerState) — для сравнения замеров
 		// Захватчик PIX (WinPixGpuCapturer.dll из установленного PIX) — до создания устройства: captureFrames пишет захват
 		bool pixCapture = false;
 	};
@@ -110,6 +111,9 @@ public:
 	uint32_t backBufferWidth() const { return m_backBufferWidth; }
 	// Включена GPU-based validation (Debug): каждый вызов на GPU в разы дольше — долгие расчёты при загрузке урезать
 	bool gpuValidation() const { return m_gpuValidation; }
+	// Частота GPU закреплена (Settings::stableClocks и режим разработчика Windows): время GPU в мс больше, чем с разгоном, зато
+	// не скачет от питания и нагрева
+	bool stableClocks() const { return m_stableClocks; }
 	uint32_t backBufferHeight() const { return m_backBufferHeight; }
 	// Копия заднего буфера на CPU (снимок — Engine): байты строками по rowPitch, формат backBufferViewFormat. Только
 	// в кадре, между beginFrame и endFrame (задний буфер — цель кадра, командный список открыт; после Present содержимое
@@ -312,6 +316,8 @@ private:
 
 	bool selectAdapter();
 	bool createDevice( bool gpuValidation );
+	// Закрепить частоту GPU на время жизни устройства (SetStablePowerState), если включён режим разработчика Windows
+	void lockStableClocks();
 	// Захватчик PIX — до D3D12CreateDevice: иначе он не видит устройство
 	void loadPixCapturer();
 	bool createQueuesAndFrames();
@@ -392,6 +398,7 @@ private:
 	bool m_recording = false;							// командный список открыт
 	bool m_frameStarted = false;						// был первый beginFrame: до него команды — список загрузки
 	bool m_gpuValidation = false;
+	bool m_stableClocks = false;	// SetStablePowerState( TRUE ) прошёл
 	bool m_pixCapturer = false;		// WinPixGpuCapturer.dll загружен
 	bool m_inFrame = false;								// между beginFrame и endFrame: задний буфер — цель кадра
 	com_unique_ptr<ID3D12Fence> m_fence;

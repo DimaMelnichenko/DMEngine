@@ -9,7 +9,7 @@
 ## Как запустить
 
 ```
-python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--nocolorgrading] [--preset имя] [--gpu-validation]
+python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--nocolorgrading] [--preset имя] [--gpu-validation] [--stableclocks]
 python Tools/engine.py camera 567,58.1,212,8,35
 python Tools/engine.py screenshot кадр.png
 python Tools/engine.py stat gpu 3
@@ -28,7 +28,11 @@ python Tools/engine.py stop
   сравнимы с эталоном, как бы её ни настроили ([postprocess.md](postprocess.md)). Сверка кадров и времени GPU с эталоном одной
   командой — `Tools/check_frames.py` ([d3d12.md](d3d12.md) §4). `--gpu-validation` (`-gpuvalidation`) —
   GPU-based validation ([d3d12.md](d3d12.md) §4), только в Debug: без `--config` запускает Debug, с `--config Release` —
-  ошибка (Release без слоя проверки шёл бы молча). Затем ждёт, пока движок откроет канал, то есть конца инициализации, и
+  ошибка (Release без слоя проверки шёл бы молча). `--stableclocks` (`-stableclocks`, `StableClocks=true` в `settings.ini`) —
+  закреплённая частота GPU на время жизни устройства (`SetStablePowerState`, как «Lock to stable clocks» в PIX): «GPU
+  average» не скачет от разгона, питания и нагрева, мс больше обычных (базовая частота); нужен режим разработчика Windows —
+  без него частота не закрепляется, в логе строка «GPU clocks are not locked», а у «GPU average» нет пометки
+  «stable clocks». Затем ждёт, пока движок откроет канал, то есть конца инициализации, и
   первого кадра (`wait 1`).
 - **Ответ — не дольше 60 с** (`python Tools/engine.py --timeout 120 <команда>` — своё время; у `stat gpu N` — ещё N, у
   `pix` — 300): не ответил — главный цикл движка стоит. Скрипт печатает строки «Frame watchdog» из `log.txt` (сторож

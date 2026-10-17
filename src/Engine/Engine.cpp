@@ -71,6 +71,7 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	d3dSettings.backBufferHeight = static_cast<uint32_t>( screenHeight );
 	d3dSettings.vsync = m_config.vSync();
 	d3dSettings.gpuValidation = m_config.gpuValidation();
+	d3dSettings.stableClocks = m_config.stableClocks();
 	d3dSettings.pixCapture = m_config.pixCapture();
 	result = DMD3D::instance().initialize( d3dSettings, hwnd );
 	LOG( "Initialize the Direct3D object ms: " + TIME_PRINT( timeStart ) );

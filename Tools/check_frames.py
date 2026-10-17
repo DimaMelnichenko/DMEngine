@@ -1,8 +1,9 @@
 """Проверка правки рендера одной командой: снимки и «GPU average» контрольных камер (docs/d3d12.md §4) против эталона —
 как Automation и Gauntlet в UE.
 
-    python Tools/check_frames.py reference [--config Debug|Release] [--runs 2]
+    python Tools/check_frames.py reference [--config Debug|Release] [--runs 2] [--no-stable-clocks] [--no-gpu-state]
     python Tools/check_frames.py [check] [--config Debug|Release] [--gpu-validation] [--gpu-threshold 10] [--allowed 32]
+                                 [--no-stable-clocks] [--no-gpu-state]
 
 reference — эталон текущей сборки (до правки или после принятой правки): --runs запусков движка (engine.py start --nogui
 --nowind --noparticles --freezetime --preset Reference: окружение — заблокированный пресет эталона, подбор окружения уровня
@@ -10,7 +11,11 @@ reference — эталон текущей сборки (до правки или
 которые расходятся между запусками одной сборки сверх допуска (рябь воды по времени игры, единичные пиксели расстановки,
 TODO.md «Решить или проверить»), с запасом в --dilate пикселей — маска шума <камера>_noise.png: там расхождения не
 считаются. Время GPU кадра — среднее по запускам. Всё — в reference\\<config>\\ (в .gitignore: кадры зависят от
-Textures\\ и Meshes\\ этой машины) с reference.json: коммит, дата, время GPU.
+Textures\\ и Meshes\\ этой машины) с reference.json: коммит, дата, время GPU, закреплена ли частота.
+
+В Release движок запускается с закреплённой частотой GPU (engine.py start --stableclocks, SetStablePowerState, как «Lock to
+stable clocks» в PIX; нужен режим разработчика Windows): время не скачет от разгона, питания и нагрева ноутбука, мс больше
+обычных. --no-stable-clocks — без неё; время сравнивается только с эталоном, снятым так же (иначе — пометка, без сравнения).
 
 check — один запуск текущей сборки с теми же камерами в reference\\<config>\\last\\: кадр совпал, если пикселей сверх
 допуска ±1 вне маски шума не больше --allowed (карта расхождений — last\\<камера>_diff.png: красным — сверх допуска вне
@@ -73,13 +78,16 @@ def engine_lines(args, timeout=None):
     return process.wait(), lines
 
 
-def run_cameras(config, folder, gpu, gpu_validation, gpu_state=True):
+def run_cameras(config, folder, gpu, gpu_validation, gpu_state=True, stable_clocks=True):
     """Запуск движка, снимки камер в folder и время GPU кадра на каждой (gpu) с состоянием GPU за замер (gpu_state,
-    gpu_monitor.py): (время, состояние) по камерам; None — движок не запустился или завис"""
+    gpu_monitor.py) и закреплённой частотой (stable_clocks, -stableclocks): (время, состояние) по камерам и закреплена ли
+    частота на деле; None — движок не запустился или завис"""
     os.makedirs(folder, exist_ok=True)
     start = ['start', '--config', config, '--nogui', '--nowind', '--noparticles', '--freezetime', '--preset', 'Reference']
     if gpu_validation:
         start.append('--gpu-validation')
+    if gpu and stable_clocks:
+        start.append('--stableclocks')
     code, output = engine(start)
     if code != 0:
         print(output.rstrip())
@@ -101,6 +109,7 @@ def run_cameras(config, folder, gpu, gpu_validation, gpu_state=True):
     os.remove(script)
     times = {}
     states = {}
+    locked = False
     camera = None
     begin = None
     for moment, line in lines:
@@ -111,6 +120,7 @@ def run_cameras(config, folder, gpu, gpu_validation, gpu_state=True):
         match = re.search(r'GPU average over (\d+) frames, ms: frame ([0-9.]+)', line)
         if match and camera:
             times[camera] = float(match.group(2))
+            locked = locked or 'stable clocks' in line
             if monitor and begin:
                 states[camera] = monitor.state(begin, moment)
                 if states[camera]:
@@ -122,7 +132,14 @@ def run_cameras(config, folder, gpu, gpu_validation, gpu_state=True):
         print('\n'.join(line for _, line in lines))
         print(stop_output.rstrip())
         return None
-    return times, states
+    return times, states, locked
+
+
+def clocks_note(stable_clocks):
+    """Пометка режима частоты GPU у эталона и прогона (None — Debug: время не сравнивается)"""
+    if stable_clocks is None:
+        return ''
+    return ', GPU clocks locked' if stable_clocks else ', GPU clocks not locked'
 
 
 def debug_layer_messages():
@@ -170,7 +187,8 @@ def make_reference(args, folder):
         run_folder = os.path.join(folder, 'run%d' % run)
         print('reference run %d of %d (%s)...' % (run + 1, args.runs, args.config))
         sys.stdout.flush()
-        result = run_cameras(args.config, run_folder, args.config == 'Release', args.gpu_validation, not args.no_gpu_state)
+        result = run_cameras(args.config, run_folder, args.config == 'Release', args.gpu_validation, not args.no_gpu_state,
+                             not args.no_stable_clocks)
         if result is None:
             print('error: the engine failed, no reference')
             return 2
@@ -178,7 +196,7 @@ def make_reference(args, folder):
 
     cameras = {}
     for name, camera in CAMERAS:
-        frames = [load(os.path.join(run_folder, name + '.png')) for run_folder, _, _ in runs]
+        frames = [load(os.path.join(run_folder, name + '.png')) for run_folder, _, _, _ in runs]
         noise = np.zeros(frames[0].shape[:2], dtype=bool)
         for frame in frames[1:]:
             if frame.shape != frames[0].shape:
@@ -189,8 +207,8 @@ def make_reference(args, folder):
         noise = dilate(noise, args.dilate)
         Image.fromarray(frames[0].astype(np.uint8)).save(os.path.join(folder, name + '.png'))
         Image.fromarray((noise * 255).astype(np.uint8)).save(os.path.join(folder, name + '_noise.png'))
-        times = [t[name] for _, t, _ in runs if name in t]
-        states = [s.get(name) for _, t, s in runs if name in t]
+        times = [t[name] for _, t, _, _ in runs if name in t]
+        states = [s.get(name) for _, t, s, _ in runs if name in t]
         cameras[name] = {'camera': camera, 'gpu_frame_ms': round(sum(times) / len(times), 3) if times else None,
                          'gpu_frame_ms_runs': times, 'gpu_state_runs': states, 'noise_pixels': raw,
                          'noise_mask_pixels': int(noise.sum())}
@@ -200,17 +218,23 @@ def make_reference(args, folder):
         for run, state in enumerate(states):
             if state:
                 print('          run %d: %s' % (run + 1, describe(state)))
-    for run_folder, _, _ in runs:
+    for run_folder, _, _, _ in runs:
         for name, _ in CAMERAS:
             os.remove(os.path.join(run_folder, name + '.png'))
         os.rmdir(run_folder)
 
     commit, changed = git_state()
+    locked = [run[3] for run in runs]
+    if args.config == 'Release' and len(set(locked)) > 1:
+        print('error: GPU clocks were locked in some runs only: no reference')
+        return 2
     info = {'config': args.config, 'date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), 'commit': commit,
-            'changed_files': changed, 'runs': args.runs, 'tolerance': TOLERANCE, 'dilate': args.dilate, 'cameras': cameras}
+            'changed_files': changed, 'runs': args.runs, 'tolerance': TOLERANCE, 'dilate': args.dilate,
+            'stable_clocks': locked[0] if args.config == 'Release' else None, 'cameras': cameras}
     with open(os.path.join(folder, 'reference.json'), 'w', encoding='utf-8') as f:
         json.dump(info, f, indent=2)
-    print('reference written to %s (commit %s%s)' % (folder, commit, ', with uncommitted changes' if changed else ''))
+    print('reference written to %s (commit %s%s)%s' % (folder, commit, ', with uncommitted changes' if changed else '',
+                                                       clocks_note(info['stable_clocks'])))
     if args.config == 'Debug':
         return report_debug_layer()
     return 0
@@ -237,16 +261,21 @@ def check(args, folder):
     except OSError:
         print('error: no reference in %s: python Tools/check_frames.py reference --config %s' % (folder, args.config))
         return 2
-    print('reference: %s, commit %s%s, %s, %d runs' % (info['config'], info['commit'],
-                                                       ' (with uncommitted changes)' if info.get('changed_files') else '',
-                                                       info['date'], info['runs']))
+    print('reference: %s, commit %s%s, %s, %d runs%s' % (info['config'], info['commit'],
+                                                         ' (with uncommitted changes)' if info.get('changed_files') else '',
+                                                         info['date'], info['runs'], clocks_note(info.get('stable_clocks'))))
     last = os.path.join(folder, 'last')
     gpu = args.config == 'Release'
-    result = run_cameras(args.config, last, gpu, args.gpu_validation, not args.no_gpu_state)
+    result = run_cameras(args.config, last, gpu, args.gpu_validation, not args.no_gpu_state, not args.no_stable_clocks)
     if result is None:
         print('error: the engine failed')
         return 2
-    times, states = result
+    times, states, locked = result
+    # Время с закреплённой частотой и без неё не сравнивается: мс другие
+    if gpu and bool(info.get('stable_clocks')) != locked:
+        print('GPU times are not compared: the reference was taken %s locked GPU clocks, this run %s them; take a new '
+              'reference' % ('with' if info.get('stable_clocks') else 'without', 'with' if locked else 'without'))
+        gpu = False
 
     frames_ok = True
     slower = []
@@ -322,6 +351,9 @@ def main():
     parser.add_argument('--allowed', type=int, default=32,
                         help='check: pixels beyond tolerance outside the noise mask that still pass')
     parser.add_argument('--gpu-threshold', type=float, default=10.0, help='check: GPU frame slower than the reference, %%')
+    parser.add_argument('--no-stable-clocks', action='store_true',
+                        help='Release: GPU clocks are not locked (no -stableclocks); times are compared only with a reference '
+                             'taken the same way')
     parser.add_argument('--no-gpu-state', action='store_true',
                         help='Release: no GPU state during the timing (clock, power, limits, other processes - gpu_monitor.py)')
     args = parser.parse_args(argv)

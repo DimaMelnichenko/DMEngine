@@ -439,6 +439,9 @@ std::string Renderer::gpuMeasureTail() const
 	line += std::string( "; EV100 " ) + value;
 	std::snprintf( value, sizeof( value ), "%.0f", m_sunGroundIlluminance );
 	line += std::string( "; sun " ) + value + " lx";
+	// Замер с закреплённой частотой (-stableclocks) с обычным не сравнивают: мс другие
+	if( DMD3D::instance().stableClocks() )
+		line += "; stable clocks";
 	return line;
 }
 
