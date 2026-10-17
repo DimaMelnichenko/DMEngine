@@ -54,7 +54,8 @@ python Tools/soundscape.py list / set ИМЯ --param поле=значение /
 Слои уровня и их правила — `python Tools/soundscape.py list`. Как подбирать: птицы — по одному-два певца в лесу на 20–200 м
 и выше земли, паузы — секунды; хор насекомых и лягушек — записью одной фразой (`--whole`) по кругу с наложением 0,5–1,5 с,
 певцы у земли в своих масках (трава, прибрежные), несколько штук на 5–40 м с разной высотой голоса; плеск воды — так же,
-на берегу озера (`lake_shore`), на 0–60 м весь день.
+на берегу озера (`lake_shore`), на 0–60 м весь день; пролёт (шмель) — одной фразой, певец рядом (2–8 м), паузы десятки
+секунд: пролетает раз за разом, пока «кормится» на месте.
 
 ## Записи
 
@@ -87,6 +88,8 @@ ffmpeg (из PATH, `--ffmpeg` или распакованный в `DownloadReso
 | `cicadas` | Цикады, петля | Nox_Sound | CC0 | https://freesound.org/people/Nox_Sound/sounds/515055/ |
 | `frogs` | Лягушки и сверчки у пруда ночью | greysound | CC0 | https://freesound.org/people/greysound/sounds/32655/ |
 | `lake_lapping` | Мелкая волна у берега озера | Ambient-X | CC BY 4.0 | https://freesound.org/people/Ambient-X/sounds/743342/ |
+| `bees` | Пчёлы у цветов (кусок длинной записи) | felix.blume | CC0 | https://freesound.org/people/felix.blume/sounds/567767/ |
+| `bumblebee` | Пролёт шмеля над полем | Robak1974 | CC0 | https://freesound.org/people/Robak1974/sounds/512663/ |
 
 Как упакована каждая (ключи `pack_sound.py`) — в `DONE.md`.
 
@@ -114,7 +117,7 @@ ffmpeg (из PATH, `--ffmpeg` или распакованный в `DownloadReso
 | Кузнечики | Grasshopper stridulation / meadow grasshoppers | луг; день, вечер | нужно |
 | Цикады | Cicadas | склоны, кусты; жаркий день | есть |
 | Одиночная цикада | Cicada single loop | там же | файл не скачан |
-| Шмели и пчёлы | Bumblebee buzz / bees flowers | луг в цветах; день | желательно |
+| Шмели и пчёлы | Bumblebee buzz / bees flowers | луг в цветах; день | есть |
 | Плеск у берега | Lake shore lapping water gentle | озёра | есть |
 
 ## Данные уровня
