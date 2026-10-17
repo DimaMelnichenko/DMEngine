@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 #include "Level\LevelSettings.h"
 #include "SceneObject.h"
@@ -23,9 +24,10 @@ class TerrainPipeline;
 // текселя (заново по новой итоговой карте): мипы гор у края не врут. Материал — правила по высоте и уклону на слоях террейна
 // по ролям, лес — тоном земли. Эрозия гор — речная (строка FluvialErosion, FluvialErosion: сеть долин), затем ледниковая
 // (строка GlacialErosion, GlacialErosion: троги, кары), затем ледники наших дней (тот же лёд без эрозии: поверхность — в
-// рельеф, толщина — материалу; морены — линиями течения льда от скальных стен, трещины — в шейдере) — после чтения карты, с кэшем на диске (каталог far_eroded\ рядом с картой гор) и заново
-// после правки подокон «Fluvial erosion» и «Glacial erosion». Только главный вид: в
-// каскадах теней и Scene::bounds гор нет — их тень даёт карта края тени (TerrainSunShadow, farHeight).
+// рельеф, толщина — материалу; морены — линиями течения льда от скальных стен, трещины — в шейдере) — после чтения карты,
+// с кэшем на диске (каталог far_eroded\ рядом с картой гор) и заново после правки подокон «Fluvial erosion» и «Glacial
+// erosion». Главный вид и съёмка сцены: в каскадах теней и Scene::bounds гор нет — их тень даёт карта края тени
+// (TerrainSunShadow, farHeight).
 // Уровни мельче уровня карты гор — дальности карты: камера далеко от карты над обрывами гор — там возможны трещины; камера
 // дальше двух «LOD distance» от карты — трещины на краю карты (её корень не грубее своего уровня)
 class FarTerrain : public SceneObject, private CDLODQuadtree::Bounds
@@ -40,7 +42,7 @@ public:
 
 	// Новая итоговая карта (перестройка русел) или её множитель — запекание заново; дальность гор — в таблицу карты
 	void update( const FrameContext& frame ) override;
-	// Узлы — только для главного вида
+	// Узлы — на каждый вид, кроме теней (RenderView::index)
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	void renderCustom( const RenderContext& context ) override;
 	void warmPipelines( const PassStates& states ) override;
@@ -96,7 +98,7 @@ private:
 	float m_bakedOffset = 0.0f;
 
 	CDLODQuadtree m_quadtree;
-	std::vector<Patch> m_patches;		// главного вида
+	std::array<std::vector<Patch>, maxRenderViews> m_patches;	// по номеру вида: главного и съёмки (теней гор нет)
 	GridMesh m_patch;
 	ShaderProgram m_shader;
 	int m_materialPhase = 0;			// фазы: материал, раскраска по уровням LOD, только глубина (depth prepass)

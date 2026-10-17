@@ -120,7 +120,7 @@ void WaterSimulation::collectMeshes( const RenderView& view, MeshCollector& coll
 {
 	// Только главный вид: тени вода не отбрасывает. Полупрозрачные — от дальних к ближним, вода — первой; до них — поверхность
 	// для экранных отражений
-	if( m_initialized && view.index == 0 )
+	if( m_initialized && view.kind == RenderView::Kind::main )
 		collector.addCustom( passBit( MeshPass::reflectionPrepass ) | passBit( MeshPass::transparent ), view.farPlane, true );
 }
 

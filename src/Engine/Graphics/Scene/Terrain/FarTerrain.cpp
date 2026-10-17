@@ -662,12 +662,13 @@ void FarTerrain::update( const FrameContext& frame )
 
 void FarTerrain::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
-	// Виды теней собираются после главного: его узлы не трогают
-	if( !m_initialized || view.index != 0 )
+	// Гор нет в тенях каскадов (их тень — карта края тени); главный вид и съёмка — каждый своими узлами
+	if( !m_initialized || view.shadow() )
 		return;
-	m_patches.clear();
-	m_quadtree.select( view, *this, m_patches );
-	if( !m_patches.empty() )
+	std::vector<Patch>& patches = m_patches[view.index];
+	patches.clear();
+	m_quadtree.select( view, *this, patches );
+	if( !patches.empty() )
 		collector.addCustom( passBit( MeshPass::depthPrepass ) | passBit( MeshPass::opaque ) );
 }
 
@@ -723,7 +724,8 @@ void FarTerrain::renderCustom( const RenderContext& context )
 	} );
 	DMD3D::instance().setConstantBuffer( farTerrainConstantSlot, m_constants );
 
-	m_patchBuffer.updateData( m_patches.data(), sizeof( Patch ) * m_patches.size() );
+	const std::vector<Patch>& patches = m_patches[context.view.index];
+	m_patchBuffer.updateData( patches.data(), sizeof( Patch ) * patches.size() );
 	m_patchBuffer.setToSlot( SLOT_INSTANCE_DATA );
 
 	// Карта высот уровня — у края, карта гор — дальше; слои и лёд — пиксельному шейдеру
@@ -740,7 +742,7 @@ void FarTerrain::renderCustom( const RenderContext& context )
 	DMD3D::instance().setIndexBuffer( m_patch.indexBuffer(), DXGI_FORMAT_R32_UINT );
 
 	m_shader.setPass( depthOnly ? m_depthPhase : m_properties["Show LOD"].data<bool>() ? m_lodPhase : m_materialPhase );
-	DMD3D::instance().drawIndexedInstanced( m_patch.indexCount(), static_cast<uint32_t>( m_patches.size() ), 0, 0 );
+	DMD3D::instance().drawIndexedInstanced( m_patch.indexCount(), static_cast<uint32_t>( patches.size() ), 0, 0 );
 }
 
 void FarTerrain::warmPipelines( const PassStates& states )

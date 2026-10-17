@@ -421,7 +421,7 @@ bool ModelInstances::bounds( DirectX::BoundingBox& bounds ) const
 void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
 	// Дальний каскад теней — только лес расстановки: модели уровня в нём не рисуются (их немного и они рядом)
-	if( view.farShadow )
+	if( view.kind == RenderView::Kind::farShadow )
 		return;
 	const XMVECTOR lodOrigin = XMLoadFloat3( &view.lodOrigin );
 	const XMVECTOR viewPosition = XMLoadFloat3( &view.position );
@@ -437,8 +437,8 @@ void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& colle
 		// scale» < 1 ближе (DMModel::shadowLodScale): тень дальних — более грубым LOD; переход у каждого вида свой. LOD
 		// детальнее «Shadow min LOD» у видов теней нет (DMModel::shadowMinLod)
 		const uint16_t lodCount = instance.model->lodCount();
-		const float lodScale = view.index > 0 ? instance.model->shadowLodScale() : 1.0f;
-		const uint16_t firstLod = view.index > 0 ? static_cast<uint16_t>( std::min<uint32_t>( instance.model->shadowMinLod(), lodCount ) ) : 0;
+		const float lodScale = view.shadow() ? instance.model->shadowLodScale() : 1.0f;
+		const uint16_t firstLod = view.shadow() ? static_cast<uint16_t>( std::min<uint32_t>( instance.model->shadowMinLod(), lodCount ) ) : 0;
 		for( uint16_t i = firstLod; i < lodCount; ++i )
 		{
 			// Дальность последнего LOD — конец модели: её множитель не сдвигает

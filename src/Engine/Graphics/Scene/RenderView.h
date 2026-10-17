@@ -8,14 +8,27 @@
 namespace GS
 {
 
-// Видов в кадре: главный, четыре каскада теней солнца и дальний каскад (лес до краёв карты, ShadowCascades) — общий
-// с шейдерами предел (Shaders/view_limits.h)
+// Видов в кадре: главный, четыре каскада теней солнца, дальний каскад (лес до краёв карты, ShadowCascades) и съёмка
+// сцены с другой камеры — общий с шейдерами предел (Shaders/view_limits.h)
 constexpr uint32_t maxRenderViews = DM_MAX_RENDER_VIEWS;
 
 // Вид, с которого рисуется кадр, — как FSceneView в UE: матрицы, положение и пирамида видимости. Главный вид —
 // камера, ещё четыре — каскады теней солнца (ShadowCascades). Объекты сцены видят кадр только через вид
 struct RenderView
 {
+	// Что за вид — по нему объект решает, что в него рисовать (а не по номеру): главная камера, каскад теней, дальний
+	// каскад (только лес импостерами), съёмка сцены с другой камеры (как SceneCapture в UE: свои цели, без ресурсов
+	// главного вида — затенения окружением по экрану, объёма тумана, облаков; LOD — как у главного)
+	enum class Kind : uint8_t
+	{
+		main,
+		shadow,
+		farShadow,
+		capture,
+	};
+	static_assert( static_cast<uint32_t>( Kind::main ) == DM_VIEW_MAIN && static_cast<uint32_t>( Kind::shadow ) == DM_VIEW_SHADOW &&
+				   static_cast<uint32_t>( Kind::farShadow ) == DM_VIEW_FAR_SHADOW && static_cast<uint32_t>( Kind::capture ) == DM_VIEW_CAPTURE,
+				   "RenderView::Kind - DM_VIEW_* in Shaders/view_limits.h" );
 	DirectX::XMMATRIX view;
 	DirectX::XMMATRIX projection;
 	DirectX::XMMATRIX viewProjection;
@@ -31,10 +44,16 @@ struct RenderView
 	float nearPlane = 0.0f;	// расстояния до ближней и дальней плоскостей, м (глубина в буфере — обратная: 1 у ближней)
 	float farPlane = 0.0f;
 	DMFrustum frustum;
-	uint32_t index = 0;	// номер вида в кадре: 0 — главный, 1…4 — каскады теней, 5 — дальний (данные объектов на вид, например узлы террейна)
-	// Дальний каскад теней — дальше Dynamic Shadow Distance на всю карту: в нём только то, что отбрасывает дальнюю тень
-	// (лес импостерами); рельефа нет — его тень по карте края тени (TerrainSunShadow), моделей уровня — тоже
-	bool farShadow = false;
+	// Номер вида в кадре — место данных объектов на вид (узлы террейна, списки расстановки): 0 — главный, дальше — каскады
+	// теней, дальний каскад и съёмка подряд, сколько их в кадре (FrameContext::views)
+	uint32_t index = 0;
+	// Дальний каскад теней (farShadow) — дальше Dynamic Shadow Distance на всю карту: в нём только то, что отбрасывает
+	// дальнюю тень (лес импостерами); рельефа нет — его тень по карте края тени (TerrainSunShadow), моделей уровня — тоже
+	Kind kind = Kind::main;
+	// Каскад теней или дальний каскад: свои LOD теней, рисуется только то, что отбрасывает тень
+	bool shadow() const { return kind == Kind::shadow || kind == Kind::farShadow; }
+	// Тип вида для шейдеров — DM_VIEW_* (Shaders/view_limits.h)
+	uint32_t shaderKind() const { return static_cast<uint32_t>( kind ); }
 	// Каскад теней: на каких расстояниях от главной камеры точка может попасть в каскад, м. Каскад покрывает глубину
 	// взгляда nᵢ…fᵢ (SplitNear / SplitFar в UE) и полосу смешения в конце предыдущего (Cascade Transition Fraction) —
 	// с неё начинается cascadeNear; у края кадра расстояние больше глубины, поэтому дальняя граница — fᵢ / cos(угла до

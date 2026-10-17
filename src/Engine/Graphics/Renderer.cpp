@@ -629,7 +629,7 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 		m_gpuProfiler.endScope();
 	}
 	// Дальний каскад — дальше Dynamic Shadow Distance на всю карту: только лес (импостеры), рельеф и модели уровня в
-	// нём не рисуются (RenderView::farShadow): тень рельефа вдали — карта края тени (TerrainSunShadow)
+	// нём не рисуются (RenderView::Kind::farShadow): тень рельефа вдали — карта края тени (TerrainSunShadow)
 	if( m_shadows.farActive() )
 	{
 		const RenderView& view = m_shadows.farView();

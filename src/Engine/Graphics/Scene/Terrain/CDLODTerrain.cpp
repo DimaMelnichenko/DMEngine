@@ -277,7 +277,7 @@ void CDLODTerrain::collectMeshes( const RenderView& view, MeshCollector& collect
 	std::vector<Patch>& patches = m_patches[view.index];
 	patches.clear();
 	// В дальнем каскаде теней рельефа нет: его тень дальше каскадов — по карте края тени (TerrainSunShadow)
-	if( !m_initialized || view.farShadow || m_heightBounds.empty() )
+	if( !m_initialized || view.kind == RenderView::Kind::farShadow || m_heightBounds.empty() )
 		return;
 
 	m_quadtree.select( view, *this, patches );

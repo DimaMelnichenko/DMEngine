@@ -97,8 +97,9 @@ DM_CONSTANTS_END
 DM_CONSTANTS( FrustumBuffer, b6 )
 {
 	DM_ARRAY( float4, frustumPlanes, DM_MAX_RENDER_VIEWS * 6 );
-	// x, y — запас; у каскада теней z, w — полоса расстояний от камеры (RenderView::cascadeNear / cascadeFar): тень
-	// инстанса ложится не дальше её длины от него
+	// x — тип вида (DM_VIEW_*, view_limits.h: главный, каскад теней, дальний каскад, съёмка), y — запас; у каскада теней
+	// z, w — полоса расстояний от камеры (RenderView::cascadeNear / cascadeFar): тень инстанса ложится не дальше её длины
+	// от него
 	DM_ARRAY( float4, viewParams, DM_MAX_RENDER_VIEWS );
 	// У каскада теней: xy — полоса глубины взгляда, пиксели которой читают каскад (cascadeNear, cascadeDepthFar)
 	DM_ARRAY( float4, viewDepths, DM_MAX_RENDER_VIEWS );

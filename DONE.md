@@ -473,3 +473,13 @@
   края кадра); контрольные камеры: у шаров вода перед белой панелью отражает панель, а не небо (2,7 тыс. пикселей), у рощи и
   вдоль долины — мелкие отличия в воде; время GPU в шуме; Debug-слой молчит. Эталоны Release и Debug сняты заново.
   Документация — `docs/screen_reflections.md` («Скрытый луч»).
+- [x] Съёмка сцены, шаг R1 — тип вида вместо догадок по номеру (2026-10-17; план «Съёмка сцены с другой камеры и кубическая
+  карта отражений», идея Dimok — сначала рисовать сцену с разных камер). Сделано: `RenderView::Kind` (`main`, `shadow`,
+  `farShadow`, `capture`; `shadow()`, `shaderKind()` → `DM_VIEW_*` в `Shaders/view_limits.h`) вместо `farShadow` и
+  проверок `index == 0` / `index > 0`: `ModelInstances` (LOD теней — только у видов теней), `CDLODTerrain`,
+  `VolumetricCloud`, `ParticleSystem`, `WaterSimulation` (только главный вид), `FarTerrain` (узлы — на каждый вид, кроме
+  теней, массив по номеру, как у `CDLODTerrain`), `Scatterer::renderCustom` (номер без подмены), `scatter.cs` (тип вида в
+  `viewParams.x`: тени — только у каскадов и дальнего каскада; съёмка — своим frustum, LOD как в кадре; кольцевые слои в
+  съёмку не идут). Видов до семи (`DM_MAX_RENDER_VIEWS`): списки расстановки на вид +1/7 памяти. Проверка: кадры
+  контрольных камер совпали (Release и Debug), время GPU в шуме, Debug-слой молчит. Документация — `CLAUDE.md`,
+  `docs/shadows.md`, `docs/scatter.md`.

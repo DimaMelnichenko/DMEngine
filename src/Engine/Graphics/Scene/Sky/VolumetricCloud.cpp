@@ -270,7 +270,7 @@ void VolumetricCloud::compute( const FrameContext& frame )
 
 void VolumetricCloud::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
-	if( enabled() && view.index == 0 )
+	if( enabled() && view.kind == RenderView::Kind::main )
 		collector.addCustom( passBit( MeshPass::sky ) );
 }
 

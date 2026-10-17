@@ -310,7 +310,7 @@ void ParticleSystem::compute( const FrameContext& frame )
 void ParticleSystem::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
 	// Только главный вид: тени частицы не отбрасывают. Глубина сцены — мягкий край
-	if( m_initialized && view.index == 0 )
+	if( m_initialized && view.kind == RenderView::Kind::main )
 		collector.addCustom( passBit( MeshPass::transparent ), 0.0f, false, true );
 }
 

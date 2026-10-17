@@ -148,6 +148,7 @@ bool ShadowCascades::update( const RenderView& mainView, const DMLight::ShadowSe
 		view.farPlane = depthFar - depthNear;
 		view.frustum = DMFrustum( view.viewProjection );
 		view.index = cascade + 1;
+		view.kind = RenderView::Kind::shadow;
 		// Каскад читают и пиксели полосы смешения в конце предыдущего (sunShadow в Shaders/shadows.sh)
 		const float previousBand = cascade == 0 ? 0.0f :
 								   ( n - ( cascade == 1 ? nearPlane : m_splits[cascade - 2] ) ) * settings.cascadeTransitionFraction;
@@ -204,7 +205,7 @@ void ShadowCascades::updateFarView( const RenderView& mainView, const XMVECTOR& 
 	view.farPlane = depthFar - depthNear;
 	view.frustum = DMFrustum( view.viewProjection );
 	view.index = farViewIndex;
-	view.farShadow = true;
+	view.kind = RenderView::Kind::farShadow;
 	// Пиксели берут дальний каскад с начала полосы конца дистанции (Shadow Distance Fadeout Fraction) — и дальше
 	view.cascadeNear = m_settings.dynamicShadowDistance * ( 1.0f - m_settings.shadowDistanceFadeoutFraction );
 	view.cascadeFar = FLT_MAX;

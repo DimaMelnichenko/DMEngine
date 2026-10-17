@@ -663,7 +663,7 @@ void Scatterer::compute( const FrameContext& frame )
 			const RenderView& view = frame.viewCount ? *frame.views[v] : frame.view;
 			for( int i = 0; i < 6; ++i )
 				XMStoreFloat4( &params.frustumPlanes[v * 6 + i], view.frustum.planes()[i] );
-			params.viewParams[v] = XMFLOAT4( 0.0f, 0.0f, view.cascadeNear, view.cascadeFar );
+			params.viewParams[v] = XMFLOAT4( static_cast<float>( view.shaderKind() ), 0.0f, view.cascadeNear, view.cascadeFar );
 			params.viewDepths[v] = XMFLOAT4( view.cascadeNear, view.cascadeDepthFar, 0.0f, 0.0f );
 		}
 		params.viewCount = count;
@@ -845,7 +845,10 @@ void Scatterer::renderCustom( const RenderContext& context )
 
 	const bool shadow = context.pass == MeshPass::csmShadowDepth;
 	const bool prepass = context.pass == MeshPass::depthPrepass;
-	const uint32_t view = std::min( context.view.index, ScatterPass::maxViews - 1 );
+	// Списки — по номеру вида (раскладка в compute — на виды кадра FrameContext::views)
+	const uint32_t view = context.view.index;
+	if( view >= ScatterPass::maxViews )
+		return;
 	for( Layer& layer : m_layers )
 	{
 		if( !layerVisible( layer ) )

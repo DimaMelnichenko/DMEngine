@@ -40,7 +40,7 @@ static const uint maxLods = SCATTER_MAX_LODS;
 static const uint maxVariants = SCATTER_MAX_VARIANTS;
 #define MAX_SECTIONS SCATTER_MAX_SECTIONS
 #define MAX_LISTS SCATTER_MAX_LISTS	// обычные списки пар «вариант × LOD», затем списки перехода
-#define MAX_VIEWS DM_MAX_RENDER_VIEWS	// maxRenderViews: главный вид, каскады теней и дальний каскад
+#define MAX_VIEWS DM_MAX_RENDER_VIEWS	// maxRenderViews: главный вид, каскады теней, дальний каскад и съёмка
 #define MAX_GROUPS SCATTER_MAX_GROUPS
 
 
@@ -252,6 +252,28 @@ bool insideFrustum( uint view, float3 center, float radius )
 	return true;
 }
 
+// Тип вида кадра (DM_VIEW_*): каскады теней и дальний каскад — виды теней (свои LOD, только отбрасывающие тень слои), съёмка
+// сцены с другой камеры — как главный, но со своей пирамидой видимости
+bool shadowView( uint view )
+{
+	const uint kind = (uint)g_viewParams[view].x;
+	return kind == DM_VIEW_SHADOW || kind == DM_VIEW_FAR_SHADOW;
+}
+
+bool captureView( uint view )
+{
+	return (uint)g_viewParams[view].x == DM_VIEW_CAPTURE;
+}
+
+// Виды съёмки кадра — маской: кольцевые слои (трава, камешки) в съёмку не идут — их кольцо вокруг главной камеры
+uint captureViews()
+{
+	uint mask = 0;
+	[loop] for( uint view = 1; view < g_viewCount; ++view )
+		mask |= captureView( view ) ? 1u << view : 0;
+	return mask;
+}
+
 // LOD экземпляра в виде: первый, чья дальность не меньше расстояния; последний — до конца кольца. Со сменой LOD
 // дизерингом в полосе дальность × (1 ± LOD_TRANSITION_WIDTH / 2) экземпляр переходит к следующему LOD, transition — доля
 void selectLod( float distanceToLodOrigin, float4 lodEnd, uint lodCount, bool dithered, out uint lod, out float transition )
@@ -443,7 +465,7 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 	// (frustum каскада вдоль света охватывает и много лишнего); тень ложится на землю не дальше её длины от инстанса
 	// вдоль света, поэтому каскад, полоса глубины взгляда которого не пересекается с глубиной сферы инстанса,
 	// протянутой вдоль света, инстанс не рисует (тень солнца сбоку или со спины не уходит в ближние каскады); и сам
-	// frustum каскада
+	// frustum каскада. Съёмка сцены с другой камеры — своим frustum, LOD — как у главного вида
 	float3 center;
 	float radius;
 	float height;
@@ -451,6 +473,12 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 	const float shadowLength = height * g_shadowCast.w;
 	const bool mainVisible = ( views & 1u ) != 0 && insideFrustum( 0, center, radius );
 	uint visibleMask = mainVisible ? 1u : 0u;
+	// Съёмка сцены — своей пирамидой видимости, без главного вида
+	[loop] for( uint capture = 1; capture < g_viewCount; ++capture )
+	{
+		if( ( views & ( 1u << capture ) ) != 0 && captureView( capture ) )
+			visibleMask |= insideFrustum( capture, center, radius ) ? 1u << capture : 0;
+	}
 	if( g_castShadow > 0.5f && g_viewCount > 1 &&
 		( mainVisible || ( shadowLength > 0.0f && insideFrustum( 0, center + g_shadowCast.xyz * ( shadowLength * 0.5f ), radius + shadowLength * 0.5f ) ) ) )
 	{
@@ -460,7 +488,7 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 		const float depthFar = depthCenter + max( shadowDepth, 0.0f ) + radius;
 		[loop] for( uint view = 1; view < g_viewCount; ++view )
 		{
-			if( ( views & ( 1u << view ) ) == 0 )
+			if( ( views & ( 1u << view ) ) == 0 || !shadowView( view ) )
 				continue;
 			if( depthFar < g_viewDepths[view].x || depthNear > g_viewDepths[view].y )
 				continue;
@@ -494,16 +522,16 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 			continue;
 		uint lod;
 		float transition;
-		const bool shadowView = view > 0;
-		const bool viewDithered = dithered && !( shadowView && ownShadowLods );
-		selectLod( distanceToLodOrigin, shadowView ? shadowLodEnd : lodEnd, lodCount, viewDithered, lod, transition );
+		const bool shadowLod = shadowView( view );
+		const bool viewDithered = dithered && !( shadowLod && ownShadowLods );
+		selectLod( distanceToLodOrigin, shadowLod ? shadowLodEnd : lodEnd, lodCount, viewDithered, lod, transition );
 		// LOD, с которого у теней экземпляра нет (импостер без тени): в полосе перехода к нему — только уходящий LOD
-		const uint castingLods = shadowView ? shadowLods : lodCount;
+		const uint castingLods = shadowLod ? shadowLods : lodCount;
 
 		// Исчезает у края кольца: долей пикселей своего LOD; нет места в пуле перехода — обычным списком целиком
 		[branch] if( fadeOut > 0.0f )
 		{
-			if( shadowView && shadowLastLod > 0.0f && distanceToLodOrigin >= shadowLastLod )
+			if( shadowLod && shadowLastLod > 0.0f && distanceToLodOrigin >= shadowLastLod )
 				lod = lodCount - 1;
 			if( lod >= castingLods )
 				continue;
@@ -517,7 +545,7 @@ bool emitInstance( ScatterItem item, uint variant, float lodScale, float distanc
 
 		// Тень дальнего экземпляра — последним LOD раньше, чем в кадре (импостер леса); в полосе вокруг этой дальности —
 		// переход дизерингом от LOD кадра к последнему своей парой: тень меняется так же плавно, как экземпляр в кадре
-		if( shadowView && shadowLastLod > 0.0f && lod + 1 < lodCount )
+		if( shadowLod && shadowLastLod > 0.0f && lod + 1 < lodCount )
 		{
 			const float start = shadowLastLod;
 			const float halfBand = dithered ? start * ( LOD_TRANSITION_WIDTH * 0.5f ) : 0.0f;
@@ -680,7 +708,8 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 		return;
 	item.ground = groundColor( item.position, distanceToCamera, cell, seed );
 
-	emitInstance( item, variant, lodScale, distanceToCamera, 0xffffffffU, fadeOut );
+	// Кольцо вокруг главной камеры — не в съёмку сцены с другой камеры
+	emitInstance( item, variant, lodScale, distanceToCamera, ~captureViews(), fadeOut );
 }
 
 // Постоянный слой, раз при загрузке: группа — кластер PLACED_CLUSTER_CELLS² ячеек сетки мира от начала координат.
@@ -764,13 +793,16 @@ void cullPlaced( uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex )
 		if( nearest <= g_farBorder && farthest >= g_nearBorder )
 		{
 			views = insideFrustum( 0, center, radius ) ? 1u : 0u;
+			// Съёмка сцены — своей пирамидой видимости (кольцо — то же, вокруг главной камеры)
+			[loop] for( uint capture = 1; capture < g_viewCount; ++capture )
+				views |= captureView( capture ) && insideFrustum( capture, center, radius ) ? 1u << capture : 0;
 			if( g_castShadow > 0.5f )
 			{
 				// Тень кластера ложится не дальше её длины от него: высота кластера на метр высоты вдоль луча
 				const float shadowLength = ( boxMax.y - boxMin.y ) * g_shadowCast.w;
 				[loop] for( uint view = 1; view < g_viewCount; ++view )
 				{
-					if( farthest + shadowLength < g_viewParams[view].z || nearest - shadowLength > g_viewParams[view].w )
+					if( !shadowView( view ) || farthest + shadowLength < g_viewParams[view].z || nearest - shadowLength > g_viewParams[view].w )
 						continue;
 					views |= insideFrustum( view, center, radius ) ? 1u << view : 0;
 				}
