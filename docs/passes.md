@@ -27,8 +27,8 @@
 9. **`Scene color copy`** (только если в `transparent` кто-то читает цвет сцены) — копия HDR-буфера для шейдеров, см.
    «Цвет сцены для шейдеров».
 10. **`transparent`** — полупрозрачные от дальних к ближним, глубина только читается.
-11. Съёмка сцены с другой камеры, если заказана (`Renderer::renderCapture`): `opaque` без prepass и `sky` с её вида в её
-    цели ([scene_capture.md](scene_capture.md)).
+11. Съёмка сцены с другой камеры, если заказана или её просит объект сцены — грань карты отражений места
+    (`Renderer::renderCapture`): `opaque` без prepass и `sky` с её вида в её цели ([scene_capture.md](scene_capture.md)).
 12. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
 
 Задний буфер — swap chain flip model (`DMD3D::createDeviceSwapChain`, как требует D3D12): два буфера `R8G8B8A8_UNORM`

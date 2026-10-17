@@ -20,17 +20,15 @@ constexpr DXGI_FORMAT resultFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
 bool SkyLight::initialize()
 {
-	if( !m_prefilterShader.load( "Shaders\\sky_prefilter.ps", TargetFormats::colorTarget( resultFormat ) ) ||
+	if( !m_prefilter.initialize( resultFormat ) ||
 		!m_brdfShader.load( "Shaders\\brdf_lut.ps", TargetFormats::colorTarget( DXGI_FORMAT_R16G16_FLOAT ) ) ||
 		!m_blendShader.load( "Shaders\\sky_light_blend.ps", TargetFormats::colorTarget( resultFormat ) ) ||
 		!m_irradianceShader.initialize( "Shaders\\sky_irradiance.cs", "main" ) ||
-		!m_irradianceBlendShader.initialize( "Shaders\\sky_irradiance_blend.cs", "main" ) ||
-		!m_mipShader.initialize( "Shaders\\cube_downsample.cs", "main" ) )
+		!m_irradianceBlendShader.initialize( "Shaders\\sky_irradiance_blend.cs", "main" ) )
 		return false;
 
 	DMD3D& d3d = DMD3D::instance();
-	return d3d.createShaderConstantBuffer( sizeof( PrefilterParameters ), m_constantBuffer ) &&
-		   d3d.createShaderConstantBuffer( sizeof( SkyLightBlendBuffer ), m_blendConstants ) &&
+	return d3d.createShaderConstantBuffer( sizeof( SkyLightBlendBuffer ), m_blendConstants ) &&
 		   d3d.createShaderConstantBuffer( sizeof( SkyLightBlendBuffer ), m_irradianceBlendConstants ) &&
 		   d3d.createShaderConstantBuffer( sizeof( IrradianceParameters ), m_irradianceConstants ) &&
 		   createResult( m_results[0] ) && createResult( m_results[1] ) && createResult( m_results[2] ) &&
@@ -75,7 +73,8 @@ void SkyLight::capture( const CubeTarget& source, float normalization )
 
 void SkyLight::beginCapture( const CubeTarget& source, float normalization )
 {
-	buildMips( source );
+	// Мипы источника — для выборки по важности префильтра
+	m_prefilter.buildMips( source );
 	m_source = &source;
 	m_step = 0;
 	m_captureNormalization = normalization > 0.0f ? normalization : 1.0f;
@@ -91,7 +90,7 @@ bool SkyLight::updateCapture()
 	if( m_step == 0 )
 		captureIrradiance( result );
 	else
-		prefilterFace( result, static_cast<int32_t>( m_step - 1 ) );
+		m_prefilter.prefilterFace( *m_source, result.specular, static_cast<int32_t>( m_step - 1 ), 1.0f / m_captureNormalization );
 
 	// Таблица BRDF не зависит от окружения — один раз
 	if( !m_brdfReady )
@@ -113,20 +112,6 @@ bool SkyLight::updateCapture()
 	return true;
 }
 
-void SkyLight::buildMips( const CubeTarget& source )
-{
-	DMD3D& d3d = DMD3D::instance();
-	for( uint32_t mip = 1; mip < source.mipCount(); ++mip )
-	{
-		d3d.beginPass( PassDesc{ "Sky cube mip", {}, {}, 0, 0, { { &source.mipView( mip - 1 ), "sky cube mip N" } },
-								 { { &source.mipStorage( mip ), "sky cube mip N + 1" } } } );
-		d3d.setSRV( 0, source.mipView( mip - 1 ) );
-		m_mipShader.setUAVBuffer( 0, source.mipStorage( mip ) );
-		const uint32_t groups = ( source.mipSize( mip ) + 7 ) / 8;
-		m_mipShader.dispatchGroups( groups, groups, 6 );
-	}
-}
-
 void SkyLight::captureIrradiance( Result& result )
 {
 	// Рассеянный свет: гармоники по мипу irradianceSourceMip, делённые на нормировку
@@ -139,27 +124,6 @@ void SkyLight::captureIrradiance( Result& result )
 	DMD3D::instance().setSRV( 0, m_source->facesSRV() );
 	m_irradianceShader.setUAVBuffer( 0, result.irradianceUAV );
 	m_irradianceShader.dispatchGroups( 1, 1, 1 );
-}
-
-void SkyLight::prefilterFace( Result& result, int32_t face )
-{
-	// Отражения: мип m — шероховатость m / (specularMipCount − 1)
-	DMD3D& d3d = DMD3D::instance();
-	PrefilterParameters params = {};
-	params.face = face;
-	params.sourceSize = static_cast<float>( m_source->size() );
-	params.outputScale = 1.0f / m_captureNormalization;
-	for( uint32_t mip = 0; mip < specularMipCount; ++mip )
-	{
-		params.roughness = static_cast<float>( mip ) / ( specularMipCount - 1 );
-		Device::updateResourceData<PrefilterParameters>( m_constantBuffer, params );
-		d3d.setConstantBuffer( SLOT_CB_PASS, m_constantBuffer );
-		const uint32_t size = result.specular.mipSize( mip );
-		d3d.beginPass( PassDesc{ "Sky light prefilter", { { &result.specular.target( mip, face ), "specular cube" } }, {}, size, size,
-								 { { &m_source->srv(), "sky cube" } } } );
-		d3d.setSRV( 0, m_source->srv() );
-		m_prefilterShader.draw();
-	}
 }
 
 void SkyLight::blendResults( float blend )

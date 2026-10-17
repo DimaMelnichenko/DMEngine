@@ -15,6 +15,7 @@
 #include "Scatterer\Scatterer.h"
 #include "Particle\ParticleSystem.h"
 #include "Light\DMLightDriver.h"
+#include "Light\ReflectionCaptures.h"
 #include "Wind\Wind.h"
 #include "Water\WaterSimulation.h"
 #include "Foliage\FoliageInteraction.h"
@@ -135,6 +136,7 @@ private:
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;
 	ParticleSystem m_particles;	// частицы уровня (LevelParticleEmitters); -noparticles — нет
 	FoliageInteraction m_foliageInteraction;	// трава расступается у камеры (только с террейном)
+	ReflectionCaptures m_reflectionCaptures;	// карты отражений места (LevelReflectionCaptures)
 
 	std::vector<SceneObject*> m_objects;
 };

@@ -229,14 +229,9 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	m_shadowMeshCount = 0;
 	m_shadowDraws = 0;
 	const bool depthPrepass = m_properties["Depth prepass"].data<bool>();
-	// Съёмка сцены с другой камеры — по одной за кадр из очереди: её вид — среди видов кадра для compute (расстановка
-	// раскладывает в него лес), рисуется после проходов главного вида
-	if( !m_capture && !m_captureRequests.empty() )
-	{
-		m_capture = std::move( m_captureRequests.front() );
-		m_captureRequests.pop_front();
-		m_capture->view.kind = RenderView::Kind::capture;
-	}
+	// Съёмка сцены с другой камеры — по одной за кадр: её вид — среди видов кадра для compute (расстановка раскладывает в
+	// него лес), рисуется после проходов главного вида
+	takeCapture( scene, frame );
 	measure( "preparePipeline", [&] { preparePipeline( scene, frame, depthPrepass ); } );
 	const FrameContext computeFrame = prepareShadows( scene, frame );
 	computeObjects( scene, computeFrame );
@@ -427,7 +422,7 @@ void Renderer::renderCapture( Scene& scene, const FrameContext& frame, RasterSta
 	m_gpuProfiler.beginScope( "Scene capture" );
 	d3d.beginPass( PassDesc{ "Scene capture clear", { { capture.color, "capture color" } }, { capture.depth, "capture depth" },
 							 capture.width, capture.height } );
-	d3d.clearTarget( *capture.color, SceneCapture::clearColor );
+	d3d.clearTarget( *capture.color, capture.clear() );
 	d3d.clearDepth( *capture.depth, 0.0f );
 	{
 		ScopedRenderState frameState( frameRaster );
@@ -435,18 +430,47 @@ void Renderer::renderCapture( Scene& scene, const FrameContext& frame, RasterSta
 			ScopedRenderState opaqueState( DepthState::enabled );
 			executePass( MeshPass::opaque, view, frameRaster, false, &capture );
 		}
-		ScopedRenderState skyState( DepthState::readOnlyNearOrEqual );
-		executePass( MeshPass::sky, view, frameRaster, false, &capture );
+		if( capture.sky )
+		{
+			ScopedRenderState skyState( DepthState::readOnlyNearOrEqual );
+			executePass( MeshPass::sky, view, frameRaster, false, &capture );
+		}
 	}
 	m_gpuProfiler.endScope();
 	if( capture.done )
-		capture.done();
+		capture.done( capture );
 
 	// Дальше — снова главный вид: константы, тени, экспозиция (объём воздушной перспективы — уже съёмки: после проходов
 	// сцены его не читают, следующий кадр посчитает свой)
 	m_constants.setViewBuffer( frame.view );
 	m_shadows.bindForReceivers( shadowLight );
 	d3d.setSRV( SLOT_EXPOSURE, m_postProcess.exposureView() );
+}
+
+void Renderer::takeCapture( Scene& scene, const FrameContext& frame )
+{
+	if( !m_captureRequests.empty() )
+	{
+		m_capture = std::move( m_captureRequests.front() );
+		m_captureRequests.pop_front();
+	}
+	else
+	{
+		for( SceneObject* object : scene.objects() )
+		{
+			SceneCapture capture;
+			if( object->requestCapture( frame, capture ) )
+			{
+				m_capture = std::move( capture );
+				break;
+			}
+		}
+	}
+	if( !m_capture )
+		return;
+	m_capture->view.kind = RenderView::Kind::capture;
+	if( m_capture->exposure <= 0.0f )
+		m_capture->exposure = exposure();
 }
 
 float Renderer::exposure() const

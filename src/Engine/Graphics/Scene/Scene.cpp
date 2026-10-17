@@ -256,6 +256,10 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 		return false;
 	}
 
+	// Карты отражений места; не вышло — вода отражает небо, где промахнулись экранные отражения
+	if( !m_level.reflectionCaptures.empty() && !m_reflectionCaptures.initialize( m_level.reflectionCaptures ) )
+		LOG( "Reflection captures are not initialized" );
+
 	// Следы в траве — по земле под камерой; без поля растения просто не расступаются
 	if( m_level.terrain && !m_foliageInteraction.initialize( &m_terrainPipeline ) )
 		LOG( "Foliage interaction is not initialized" );
@@ -281,6 +285,9 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 	// Частицы — после воды и расстановки: читают воду (SLOT_WATER) в compute
 	if( m_particles.initialized() )
 		m_objects.push_back( &m_particles );
+	// Карты отражений места — своих мешей нет: просят съёмку сцены, префильтр и слот сцены — в compute
+	if( m_reflectionCaptures.initialized() )
+		m_objects.push_back( &m_reflectionCaptures );
 
 	return true;
 }
@@ -454,6 +461,8 @@ LevelSaveData Scene::levelSaveData( const PostProcessSettings& postProcess, cons
 	}
 	if( m_particles.initialized() )
 		data.emitters = m_particles.emitterSettings();
+	if( m_reflectionCaptures.initialized() )
+		data.reflectionCaptures = m_reflectionCaptures.captureSettings();
 	return data;
 }
 

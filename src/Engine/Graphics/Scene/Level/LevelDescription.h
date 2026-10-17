@@ -63,6 +63,7 @@ struct LevelDescription
 	std::vector<ModelInstance> modelInstances;	// таблица LevelModels
 	std::vector<ScatterSet> scatterSets;	// таблица LevelScatterSets
 	std::vector<GS::ParticleEmitterSettings> particleEmitters;	// включённые строки LevelParticleEmitters
+	std::vector<GS::ReflectionCaptureSettings> reflectionCaptures;	// включённые строки LevelReflectionCaptures
 
 	// Свет и окружение уровня — как сущности уровня в UE (Directional / Point / Spot Light, Sky Atmosphere,
 	// Post Process Volume). Строки настроек неба и постобработки — по ссылке из Levels; NULL — значения по умолчанию

@@ -173,14 +173,13 @@ void Engine::registerCommands()
 		capture.width = static_cast<uint32_t>( width );
 		capture.height = static_cast<uint32_t>( height );
 		SceneCaptureRequest* pending = request.get();
-		capture.done = [pending] { pending->rendered = true; };
+		capture.done = [pending]( const SceneCapture& ) { pending->rendered = true; };
 		m_sceneCaptures.push_back( std::move( request ) );
-		// Как снимок — когда кадр устоится; экспозиция — главного вида
+		// Как снимок — когда кадр устоится; экспозиция — главного вида (SceneCapture::exposure 0)
 		m_console.addFrameTask( [this, capture]() mutable
 		{
 			if( m_framesSinceCut < settleFrames )
 				return false;
-			capture.exposure = m_renderer.exposure();
 			m_renderer.requestCapture( std::move( capture ) );
 			return true;
 		} );

@@ -294,7 +294,7 @@ bool LibraryLoader::saveGeneratedStreams( uint32_t waterSimulationId, const std:
 }
 
 // Объекты сцены уровня: правки из GUI («Save level») — строки LevelModels, Terrain и TerrainLayers, ScatterSets, ScatterLayers
-// и ScatterLayerModels, WaterSimulation, ParticleEmitters и место LevelParticleEmitters. Только колонки, которые правятся в
+// и ScatterLayerModels, WaterSimulation, ParticleEmitters и место LevelParticleEmitters, LevelReflectionCaptures. Только колонки, которые правятся в
 // окнах, и только изменённые против снимка previous (RowUpdate); состав (какие слои, эмиттеры) не меняется, кроме
 // экземпляров моделей: новые строки LevelModels вставляются, убранные удаляются
 
@@ -579,6 +579,13 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 				.set( "position", emitter, before, []( const Emitter& e ) { return DbValue( vec3ToStr( e.position ) ); } )
 				.update( db, "LevelParticleEmitters", { { "id", dbInt( emitter.instanceId ) } } );
 		}
+
+		// Карты отражений места — их строки LevelReflectionCaptures
+		using Capture = GS::ReflectionCaptureSettings;
+		for( const Capture& capture : data.reflectionCaptures )
+			if( capture.id != 0 )
+				updateSettings( db, "LevelReflectionCaptures", capture.id, GS::reflectionCaptureSchema(), capture,
+								findPrevious( previous.reflectionCaptures, capture.id, []( const Capture& c ) { return c.id; } ) );
 
 		transaction.commit();
 	}

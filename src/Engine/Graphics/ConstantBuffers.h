@@ -62,6 +62,10 @@ struct FrameParameters
 	DirectX::XMFLOAT4 foliageInteraction = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 	// Экранное затенение окружением (AmbientOcclusion::frameParameters): сила (0 — нет), размер текстуры
 	DirectX::XMFLOAT4 ambientOcclusion = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	// Карта отражений места (ReflectionCaptures::frameConstants): точка съёмки и радиус влияния (0 — карты нет); множитель
+	// выборки, 1 / полоса перехода в небо
+	DirectX::XMFLOAT4 reflectionCaptureSphere = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	DirectX::XMFLOAT4 reflectionCapture = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 };
 
 class ConstantBuffers

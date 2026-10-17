@@ -1,7 +1,9 @@
 #include "CubeTarget.h"
+#include <cstring>
 #include "DMD3D.h"
 
-bool CubeTarget::create( uint32_t size, uint32_t mipCount, DXGI_FORMAT format, bool computeMips, const char* name )
+bool CubeTarget::create( uint32_t size, uint32_t mipCount, DXGI_FORMAT format, bool computeMips, const char* name,
+						 const float* clearColor )
 {
 	DMD3D& d3d = DMD3D::instance();
 
@@ -13,6 +15,11 @@ bool CubeTarget::create( uint32_t size, uint32_t mipCount, DXGI_FORMAT format, b
 	desc.format = format;
 	desc.usage = TextureUsage::renderTarget | TextureUsage::shaderResource | ( computeMips ? TextureUsage::unorderedAccess : 0 );
 	desc.cube = true;
+	if( clearColor )
+	{
+		desc.hasClearColor = true;
+		memcpy( desc.clearColor, clearColor, sizeof( desc.clearColor ) );
+	}
 	if( !d3d.createTexture( desc, nullptr, m_texture ) )
 		return false;
 	if( name )

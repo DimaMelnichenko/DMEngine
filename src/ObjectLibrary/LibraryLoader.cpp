@@ -382,6 +382,7 @@ bool LibraryLoader::loadLevel( const std::string& name, const std::string& prese
 		}
 
 		loadParticleEmitters( level );
+		loadReflectionCaptures( level );
 	}
 	catch( const std::exception& e )
 	{
@@ -418,6 +419,25 @@ void LibraryLoader::loadParticleEmitters( LevelDescription& level )
 			LOG( "Particle emitter " + emitter.name + ": wrong instance position '" + position + "'" );
 		// Остальное — по описанию полей (particleEmitterSchema): NULL — значения по умолчанию
 		readSettings( query, GS::particleEmitterSchema(), emitter, "Particle emitter " + emitter.name );
+	}
+}
+
+void LibraryLoader::loadReflectionCaptures( LevelDescription& level )
+{
+	// Таблицы может не быть у базы, где карты не заводили (Tools/reflection_capture.py)
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "LevelReflectionCaptures" ) )
+		return;
+	SQLite::Statement query( db, "SELECT * FROM LevelReflectionCaptures WHERE level = :level AND enabled = 1 ORDER BY id" );
+	query.bind( ":level", level.id );
+	while( query.executeStep() )
+	{
+		GS::ReflectionCaptureSettings& capture = level.reflectionCaptures.emplace_back();
+		capture.id = query.getColumn( "id" ).getUInt();
+		capture.name = query.getColumn( "name" ).getString();
+		if( capture.name.empty() )
+			capture.name = "Capture " + std::to_string( capture.id );
+		readSettings( query, GS::reflectionCaptureSchema(), capture, "Reflection capture " + capture.name );
 	}
 }
 

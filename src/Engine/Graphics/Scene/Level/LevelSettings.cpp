@@ -919,6 +919,25 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 	return schema;
 }
 
+const SettingsSchema<ReflectionCaptureSettings>& reflectionCaptureSchema()
+{
+	using Settings = ReflectionCaptureSettings;
+	// Точка и размер грани — съёмка заново, когда правка закончена; радиус, переход и яркость — сразу, без съёмки
+	static const SettingsSchema<Settings> schema = {
+		{ "position", "Position", DM_SETTING( position ), 0.0f, 0.0f, "m",
+		  "Capture point (a typical eye height above the water); recaptured when the edit ends", settingDrag },
+		{ "influence_radius", "Influence radius", DM_SETTING( influenceRadius ), 10.0f, 500.0f, "m",
+		  "Inside it the water reflects the map instead of the sky; the sphere is also the parallax proxy",
+		  settingClampLow | settingWideHigh },
+		{ "transition", "Transition", DM_SETTING( transition ), 0.01f, 1.0f, "",
+		  "Share of the radius at its edge where the map fades into the sky" },
+		{ "face_size", "Face size", DM_SETTING( faceSize ), 0.0f, 0.0f, "texels", "Side of a cube face; recaptured", 0, "",
+		  { 64, 128, 256, 512 } },
+		{ "brightness", "Brightness", DM_SETTING( brightness ), 0.0f, 4.0f, "", "Multiplier of the map" },
+	};
+	return schema;
+}
+
 Tonemapper tonemapperFromName( const std::string& name )
 {
 	return name == "None" ? Tonemapper::none : name == "ACES" ? Tonemapper::aces : Tonemapper::agx;

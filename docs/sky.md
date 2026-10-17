@@ -47,8 +47,9 @@ Light в UE): рассеянный свет сверху и сбоку, отра
    панорамы):
    - **рассеянный свет** (`Shaders/sky_irradiance.cs`): проекция мипа 32² на 9 сферических гармоник со свёрткой
      косинусом (Ramamoorthi, Hanrahan 2001);
-   - **отражения** (`Shaders/sky_prefilter.ps`): 6 мипов cubemap 128² … 4², мип m — шероховатость m / 5; выборка по
-     важности GGX с выбором мипа исходника по плотности выборок (Karis 2013, Křivánek 2008);
+   - **отражения** (`CubePrefilter`, `Shaders/cube_prefilter.ps` — общий с картами отражений места): 6 мипов cubemap
+     128² … 4², мип m — шероховатость m / 5; выборка по важности GGX с выбором мипа исходника по плотности выборок
+     (Karis 2013, Křivánek 2008);
    - **таблица BRDF** (128², `Shaders/brdf_lut.ps`) — один раз: масштаб и сдвиг F0 для отражений окружения.
 
    Гармоники и префильтр — по шагу за кадр, как Real Time Capture с time slicing у Sky Light в UE: шаг 0 — гармоники,
@@ -348,7 +349,8 @@ Release, 1920 × 1080. Каждый кадр — Sky-View и объём возд
 | `Shaders/sky_light_blend.ps`, `Shaders/sky_irradiance_blend.cs` | переход освещения окружением от прежнего результата к новому |
 | `src/Engine/Graphics/Scene/Sky/HDRIBackdrop.h/.cpp` | панорама: загрузка, сводка в лог, cubemap для освещения, фон |
 | `src/Engine/Graphics/D3D/CubeTarget.h/.cpp` | cubemap-цель: грани × мипы, SRV куба и граней, SRV и UAV каждого мипа для цепочки в compute |
-| `Shaders/cube_downsample.cs` | мип куба из предыдущего: среднее 2 × 2 (`SkyLight::buildMips`, GenerateMips в D3D12 нет) |
+| `src/Engine/Graphics/CubePrefilter.h/.cpp` | префильтр куба по шероховатости и цепочка мипов источника — общий у освещения неба и карт отражений места |
+| `Shaders/cube_downsample.cs` | мип куба из предыдущего: среднее 2 × 2 (`CubePrefilter::buildMips`, GenerateMips в D3D12 нет) |
 | `Shaders/hdri.sh`, `hdri_cube.ps`, `hdri_background.ps` | выборка панорамы, грань cubemap из неё, фон |
 | `Shaders/cubemap.sh` | направление на тексель грани cubemap |
 | `Shaders/atmosphere.sh` | среда атмосферы, фазовые функции, таблица пропускания (отображение и выборка), трассировка неба |
@@ -364,7 +366,7 @@ Release, 1920 × 1080. Каждый кадр — Sky-View и объём возд
 | `Textures\sky\moon\lroc_color_poles_1k.jpg` | карта луны NASA CGI Moon Kit (скачивается, в git не хранится) |
 | `Shaders/aerial_perspective.cs`, `aerial_perspective.sh` | объём воздушной перспективы и его применение в `evaluateLighting` |
 | `Shaders/sky_irradiance.cs` | сферические гармоники рассеянного света |
-| `Shaders/sky_prefilter.ps`, `brdf_lut.ps`, `ibl_sampling.sh` | префильтр отражений, таблица BRDF, выборка GGX |
+| `Shaders/cube_prefilter.ps`, `brdf_lut.ps`, `ibl_sampling.sh` | префильтр отражений, таблица BRDF, выборка GGX |
 | `Shaders/ibl.sh` | чтение освещения окружением в шейдерах материалов |
 
 ## Откуда подход

@@ -95,6 +95,8 @@ private:
 	void loadFarTerrain( uint32_t farTerrainId, LevelDescription& level );
 	// Эмиттеры частиц уровня (LevelParticleEmitters → ParticleEmitters); таблиц нет — эмиттеров нет
 	void loadParticleEmitters( LevelDescription& level );
+	// Карты отражений места уровня (LevelReflectionCaptures); таблицы нет — карт нет
+	void loadReflectionCaptures( LevelDescription& level );
 	void loadLevelLights( LevelDescription& level );
 	bool loadLevelEnvironment( LevelDescription& level );
 	// Пресеты уровня (LibraryLoaderPresets.cpp): имена — в level.presets; строки пресета preset — в *Id (NULL — строка

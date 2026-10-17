@@ -53,6 +53,11 @@ DM_CONSTANTS( FrameConstantBuffer, SLOT_CB_FRAME )
 	// Экранное затенение окружением (ambient_occlusion.sh, AmbientOcclusion): x — сила (0 — затенения нет), yz — размер
 	// текстуры в текселях (половина кадра)
 	DM_FIELD( float4, ambientOcclusion );
+	// Карта отражений места (reflection_capture.sh, ReflectionCaptures): xyz — точка съёмки, м мира; w — радиус влияния, м
+	// (0 — карты нет)
+	DM_FIELD( float4, reflectionCaptureSphere );
+	// x — множитель выборки до кд/м²: Brightness / экспозиция съёмки; y — 1 / ширина полосы перехода в небо у края радиуса, 1/м
+	DM_FIELD( float4, reflectionCapture );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

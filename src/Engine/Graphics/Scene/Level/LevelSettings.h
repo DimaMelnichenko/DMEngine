@@ -802,6 +802,21 @@ struct ParticleEmitterSettings
 // шаре; в базе — LevelParticleEmitters.position). Не в описании — имя, способ рождения и форма (имена в базе)
 const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema();
 
+// Карта отражений места — строка LevelReflectionCaptures (как Sphere Reflection Capture в UE; ReflectionCaptures,
+// docs/reflection_captures.md)
+struct ReflectionCaptureSettings
+{
+	uint32_t id = 0;				// строка LevelReflectionCaptures — куда пишет «Save level»
+	std::string name;
+	DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// точка съёмки, м мира
+	float influenceRadius = 100.0f;	// м: внутри — отражения окружения берут карту вместо неба; сфера — поправка параллакса
+	float transition = 0.2f;		// доля радиуса у края, где карта переходит в небо
+	int32_t faceSize = 256;			// сторона грани, текселей
+	float brightness = 1.0f;		// множитель карты, как Brightness у Reflection Capture в UE
+};
+// Поля строки LevelReflectionCaptures (SettingsSchema), подокно карты в окне «Reflection captures». Не в описании — имя
+const SettingsSchema<ReflectionCaptureSettings>& reflectionCaptureSchema();
+
 // Строка SunPosition
 struct SunPositionSettings
 {

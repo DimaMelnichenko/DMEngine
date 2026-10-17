@@ -158,6 +158,7 @@ add_executable(DMEngine WIN32
     src/Config/Config.cpp
     src/Engine/Graphics/Scene/Light/DMLight.cpp
     src/Engine/Graphics/Scene/Light/DMLightDriver.cpp
+    src/Engine/Graphics/Scene/Light/ReflectionCaptures.cpp
     src/Engine/Graphics/Scene/Light/SunPosition.cpp
     src/Engine/Graphics/Scene/Materials/MaterialStorage.cpp
     src/Engine/Graphics/Common/Storage/DMResourceStorage.cpp
@@ -172,6 +173,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/ColorGradingLut.cpp
     src/Engine/Graphics/D3D/GpuProfiler.cpp
     src/Engine/Graphics/FullscreenShader.cpp
+    src/Engine/Graphics/CubePrefilter.cpp
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Graphics/Scene/Foliage/FoliageInteraction.cpp

@@ -100,8 +100,11 @@
 // как SLOT_TERRAIN_SUN_SHADOW
 #define SLOT_TERRAIN_MOUNTAIN_SHADOW	129
 #define SLOT_MOUNTAIN_SUN_SHADOW	130
+// Карта отражений места (ReflectionCaptures, reflection_capture.sh): кубическая, префильтр по шероховатости, мипы — как у
+// освещения неба (specularMipCount); ближайшая к камере, константы — cb_reflectionCapture*
+#define SLOT_REFLECTION_CAPTURE	131
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	31
+#define SLOT_SCENE_COUNT	32
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

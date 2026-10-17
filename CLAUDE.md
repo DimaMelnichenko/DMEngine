@@ -409,7 +409,11 @@ ExecuteIndirect, берег — пересечение продолженной 
 эмиттеры уровня — строки `LevelParticleEmitters` → `ParticleEmitters`, `Tools/particle_emitter.py`; пул, стек мёртвых и
 список живых в compute `Shaders/particles.cs`, рождение по маске вокруг камеры или на быстрой воде, ветер, вихри, течение,
 столкновения; один ExecuteIndirect на эмиттер в `transparent` с глубиной сцены — `CustomBatch::readsSceneDepth`; на
-`Test` — пыльца, хвоя, брызги; `-noparticles` — нет; `docs/particles.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
+`Test` — пыльца, хвоя, брызги; `-noparticles` — нет; `docs/particles.md`), `ReflectionCaptures` (карты отражений места, как
+Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/reflection_capture.py`; грани — съёмкой сцены без неба
+по грани за кадр (`SceneObject::requestCapture`), покрытие в альфу, префильтр `CubePrefilter` (общий с `SkyLight`); ближайшая к
+камере — ресурс сцены t131, `cb_reflectionCapture*`; вода там, где промахнулись экранные отражения, — сцена из неё с
+поправкой параллакса и небо сквозь непокрытое, `Shaders/reflection_capture.sh`; `docs/reflection_captures.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 
 Логику, которая меняет состояние сцены, пишите в `SceneObject::update()`, а в `render()` оставляйте только команды GPU.

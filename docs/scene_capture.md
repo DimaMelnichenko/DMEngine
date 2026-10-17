@@ -1,8 +1,8 @@
 # Съёмка сцены с другой камеры
 
 Как SceneCapture2D / SceneCaptureCube в UE: кадр сцены с произвольного вида — в свои цели (HDR-цвет и глубина), а не в
-буфер сцены главной камеры. Главный кадр от этого не меняется. На съёмке строятся кубическая карта отражений места
-(`TODO.md`, «Кубическая карта отражений места»), а дальше — зеркала, карты местности, камеры наблюдения.
+буфер сцены главной камеры. Главный кадр от этого не меняется. На съёмке строятся карты отражений места
+([reflection_captures.md](reflection_captures.md)), а дальше — зеркала, карты местности, камеры наблюдения.
 
 ## Как пользоваться
 
@@ -16,16 +16,22 @@ capture.view = RenderView::perspective( position, forward, up, XM_PIDIV2, 1.0f, 
 capture.color = &targets.colorTarget();
 capture.depth = &targets.depthTarget();
 capture.width = capture.height = 256;
-capture.exposure = renderer.exposure();	// яркость × это — в цель (pre-exposure съёмки)
-capture.done = [] { /* команды съёмки записаны: копия, чтение на CPU */ };
+capture.exposure = 0.0f;	// яркость × это — в цель (pre-exposure съёмки); 0 — экспозиция главного вида
+capture.done = []( const SceneCapture& done ) { /* команды записаны: done.exposure — экспозиция съёмки */ };
 renderer.requestCapture( std::move( capture ) );
 ```
 
-Цели создаются с `SceneCapture::clearColor` — им же съёмка их очищает (optimized clear value текстуры, иначе
-предупреждение debug-слоя). Заказы встают в очередь: в кадре одна съёмка, следующая — в следующем кадре. `done`
-вызывается в кадре сразу после записи команд съёмки — там ставят копию цели (в грань кубической карты) или отмечают, что
-её можно прочитать: чтение на CPU (`GpuImages::captureTexture`) ждёт GPU, поэтому его делают после `Renderer::render`, как
+Цели создаются с цветом очистки съёмки (`SceneCapture::clear()`: `clearColor`, без неба — `transparentClearColor`) — им
+же съёмка их очищает (optimized clear value текстуры, иначе предупреждение debug-слоя). Заказы встают в очередь: в кадре
+одна съёмка, следующая — в следующем кадре. Пока очередь пуста, съёмку просят объекты сцены сами
+(`SceneObject::requestCapture`, по порядку сцены: так карта отражений места снимает свои грани). `done` вызывается в кадре
+сразу после записи команд съёмки — там ставят свою работу над целью (покрытие грани карты отражений) или отмечают, что её
+можно прочитать: чтение на CPU (`GpuImages::captureTexture`) ждёт GPU, поэтому его делают после `Renderer::render`, как
 снимок заднего буфера.
+
+**Без неба** (`SceneCapture::sky = false`, как show flag Atmosphere у SceneCapture в UE): проход `sky` пропускается, цель
+очищается прозрачным чёрным — альфа 0 там, где сцена ничего не нарисовала. Так снимает карта отражений места: небо в
+отражении она берёт по направлению луча, а не из карты.
 
 Проверочный инструмент — команда `capture` удалённого управления и консоли ([remote.md](remote.md)):
 
@@ -48,7 +54,7 @@ capture 300,30,960,-4,180 valley.dds                   # HDR как есть: я
 1. Очистка целей (`Scene capture clear`): цвет — `SceneCapture::clearColor`, глубина — 0 (дальняя плоскость).
 2. **`opaque`** без depth prepass: непрозрачные и Masked пишут глубину сами, Masked — вариантом с `clip`, импостеры —
    тоже без глубины сцены (их глубина — запечённой поверхности).
-3. **`sky`** — фон там, где сцена ничего не нарисовала.
+3. **`sky`** — фон там, где сцена ничего не нарисовала (без неба — `SceneCapture::sky = false` — прохода нет).
 
 Объекты решают, что рисовать в съёмку, по типу вида `RenderView::Kind::capture`, а не по его номеру:
 
@@ -121,9 +127,10 @@ capture 300,30,960,-4,180 valley.dds                   # HDR как есть: я
 
 ## Файлы
 
-- `src/Engine/Graphics/Renderer.h` / `.cpp` — `SceneCapture`, `requestCapture`, `renderCapture`, очередь съёмок.
+- `src/Engine/Graphics/SceneCapture.h` — `SceneCapture`: вид, цели, экспозиция, без неба, `done`.
+- `src/Engine/Graphics/Renderer.h` / `.cpp` — `requestCapture`, очередь и съёмка кадра (`takeCapture`), `renderCapture`.
+- `src/Engine/Graphics/Scene/SceneObject.h` — `requestCapture` (съёмку просит объект), `beginCaptureView`.
 - `src/Engine/Graphics/Scene/RenderView.h` — `RenderView::Kind::capture`, `RenderView::perspective`.
-- `src/Engine/Graphics/Scene/SceneObject.h` — `SceneObject::beginCaptureView`.
 - `src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp` — объём воздушной перспективы под вид съёмки.
 - `src/Engine/Graphics/ShadowCascades.cpp` — `bindForReceivers( …, cascades )`.
 - `src/Engine/Graphics/ConstantBuffers.cpp` — `setViewBuffer( view, parameters )`.
@@ -134,4 +141,5 @@ capture 300,30,960,-4,180 valley.dds                   # HDR как есть: я
 ## Откуда подход
 
 - Unreal Engine, Scene Capture 2D / Scene Capture Cube: вид со своей целью, флаги показа (что рисовать), своя экспозиция.
-- Reflection Capture в UE (Sphere / Box) — снимок сцены в кубическую карту из точки: следующий шаг на этой съёмке.
+- Reflection Capture в UE (Sphere / Box) — снимок сцены в кубическую карту из точки: карты отражений места
+  ([reflection_captures.md](reflection_captures.md)).

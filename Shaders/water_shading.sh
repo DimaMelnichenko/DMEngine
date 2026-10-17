@@ -18,6 +18,7 @@
 
 #include "lighting.sh"
 #include "screen_reflections.sh"
+#include "reflection_capture.sh"
 #include "water_surface.sh"
 #include "water.sh"
 #include "wind_field.sh"
@@ -603,7 +604,8 @@ float4 shadeWater( WaterShading input )
 	const float2 environment = environmentBRDF( NV, roughness );
 	const float environmentWeight = waterF0 * environment.x + environment.y;
 	const float4 screen = screenReflection( input.position, view, normalize( input.normal ), reflectionNormal );
-	const float3 sky = ambientSpecular( r, roughness ) * environmentWeight * ( 1.0f - screen.a );
+	// Где луч по экрану не попал — карта отражений места (рельеф, лес, горы вокруг), за её радиусом — небо
+	const float3 sky = environmentSpecular( input.worldPosition, r, roughness ) * environmentWeight * ( 1.0f - screen.a );
 	const float3 reflection = sun + sky + withoutFogging( screen.rgb, input.worldPosition ) * environmentWeight * screen.a;
 
 	const float fresnel = waterF0 + ( 1.0f - waterF0 ) * pow( 1.0f - NV, 5.0f );

@@ -21,32 +21,12 @@
 #include "ConstantBuffers.h"
 #include "RenderFeature.h"
 #include "FrameMeasures.h"
+#include "SceneCapture.h"
 
 namespace GS
 {
 
 class Scene;
-
-// Съёмка сцены с другой камеры — как SceneCapture2D / SceneCaptureCube в UE: вид и свои цели. Рисуется в конце кадра, после
-// проходов главного вида (тени, небо и освещение окружением кадра уже готовы): opaque без depth prepass и небо — без воды,
-// частиц, облаков и кольцевых слоёв расстановки (трава); затенения окружением по экрану и объёма тумана нет (туман — по
-// формуле), тени — только дальние (каскады подогнаны под главную камеру), объём воздушной перспективы — заново под вид
-// (SceneObject::beginCaptureView). docs/scene_capture.md
-struct SceneCapture
-{
-	// Цвет очистки целей съёмки — он же optimized clear value их текстуры (SceneTargets::create): почти чёрный линейный, как у
-	// буфера сцены
-	static constexpr float clearColor[4] = { 0.004f, 0.004f, 0.004f, 1.0f };
-
-	RenderView view;					// положение, матрицы, frustum; kind и index ставит рендерер
-	const TargetView* color = nullptr;	// SceneTargets::colorFormat (R16G16B16A16_FLOAT) width × height
-	const TargetView* depth = nullptr;	// SceneTargets::depthFormat (D32_FLOAT) того же размера
-	uint32_t width = 0;
-	uint32_t height = 0;
-	float exposure = 1.0f;				// яркость, кд/м², × это — в цель (preExposure съёмки)
-	// После записи команд съёмки (в кадре): копия в кубическую карту, чтение на CPU
-	std::function<void()> done;
-};
 
 // Отправляет на GPU кадр сцены: общие данные конвейера, compute-проходы объектов, сбор мешей с вида
 // (MeshBatch — меш с материалом и матрицей, CustomBatch — свой вызов объекта), раскладка по проходам с сортировкой
@@ -94,7 +74,8 @@ public:
 	// Среднее время GPU кадра и проходов за seconds секунд с этого кадра — строкой, как «GPU average» в log.txt
 	// (команда stat gpu удалённого управления)
 	void measureGpu( float seconds, std::function<void( const std::string& )> done );
-	// Съёмка сцены с другой камеры (SceneCapture) — в одном из следующих кадров: по одной за кадр (вид съёмки в кадре один)
+	// Съёмка сцены с другой камеры (SceneCapture) — в одном из следующих кадров: по одной за кадр (вид съёмки в кадре один).
+	// Пока очередь пуста, съёмку кадра просят объекты сцены (SceneObject::requestCapture: карта отражений места)
 	void requestCapture( SceneCapture capture ) { m_captureRequests.push_back( std::move( capture ) ); }
 	// Экспозиция главного вида — множитель яркости кадра (preExposure) по EV100 после адаптации
 	float exposure() const;
@@ -142,6 +123,8 @@ private:
 					  const SceneCapture* capture = nullptr );
 	// Съёмка сцены этого кадра (m_capture) — после проходов главного вида; главный вид, тени и экспозиция — обратно
 	void renderCapture( Scene& scene, const FrameContext& frame, RasterState frameRaster );
+	// Съёмка кадра: из очереди, иначе — у первого объекта сцены, который её просит; вид — съёмки, экспозиция — своя или главного
+	void takeCapture( Scene& scene, const FrameContext& frame );
 	// Команды прохода сериями по объектам; measureOwners — строка времени CPU и GPU на каждую серию, ownerPrefix — к имени
 	// объекта в ней (у каскадов теней «Shadow: »: одноимённые области кадра складываются — время объекта во всех каскадах)
 	void executeCommands( const MeshCollector& collector, const std::vector<DrawCommand>& commands,

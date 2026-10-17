@@ -6,6 +6,7 @@
 #include "D3D\RenderState.h"
 #include "D3D\GpuPipeline.h"
 #include "Properties/PropertyContainer.h"
+#include "SceneCapture.h"
 
 namespace GS
 {
@@ -87,6 +88,10 @@ public:
 	// кадра: объект готовит ресурсы, которые считал под главный вид, под вид съёмки (небо — объём воздушной перспективы).
 	// Константы вида (b0) — уже съёмки
 	virtual void beginCaptureView( const RenderView& view ) {}
+	// Съёмка сцены, которую объект просит в этом кадре (как карта отражений места в UE, ReflectionCaptures): true — capture
+	// заполнен (вид, цели, done). Рендерер спрашивает объекты по порядку сцены, только когда очередь Renderer::requestCapture
+	// пуста; съёмка в кадре одна — объект, которому не досталось, попросит в следующем
+	virtual bool requestCapture( const FrameContext& frame, SceneCapture& capture ) { return false; }
 	// Пайплайны своих вызовов для состояний проходов рендерера — при загрузке уровня и когда состояние прохода меняется
 	// (смещение теней в GUI): Renderer::warmPipelines. Объекты, которые рисуют только меши материалов, ничего не делают
 	virtual void warmPipelines( const PassStates& states ) {}
