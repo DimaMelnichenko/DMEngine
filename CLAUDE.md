@@ -411,9 +411,10 @@ ExecuteIndirect, берег — пересечение продолженной 
 столкновения; один ExecuteIndirect на эмиттер в `transparent` с глубиной сцены — `CustomBatch::readsSceneDepth`; на
 `Test` — пыльца, хвоя, брызги; `-noparticles` — нет; `docs/particles.md`), `ReflectionCaptures` (карты отражений места, как
 Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/reflection_capture.py`; грани — съёмкой сцены без неба
-по грани за кадр (`SceneObject::requestCapture`), покрытие в альфу, префильтр `CubePrefilter` (общий с `SkyLight`); ближайшая к
-камере — ресурс сцены t131, `cb_reflectionCapture*`; вода там, где промахнулись экранные отражения, — сцена из неё с
-поправкой параллакса и небо сквозь непокрытое, `Shaders/reflection_capture.sh`; `docs/reflection_captures.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
+по грани за кадр (`SceneObject::requestCapture`), покрытие в альфу и расстояния от точки съёмки в свою карту, префильтр
+`CubePrefilter` (общий с `SkyLight`); две ближайшие к камере — ресурсы сцены t131…t134, `cb_reflectionCapture*[2]`; вода там,
+где промахнулись экранные отражения, — луч по карте расстояний до того, во что упёрся (distance impostors), и небо сквозь
+непокрытое, `Shaders/reflection_capture.sh`; точку ставят над водой подальше от моделей; `docs/reflection_captures.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 
 Логику, которая меняет состояние сцены, пишите в `SceneObject::update()`, а в `render()` оставляйте только команды GPU.

@@ -29,7 +29,7 @@ struct SceneCapture
 	// Яркость, кд/м², × это — в цель (preExposure съёмки); 0 — экспозиция главного вида (её ставит рендерер, done её видит)
 	float exposure = 0.0f;
 	// Фон неба (проход sky), как show flag Atmosphere у SceneCapture в UE. Без него цель очищается прозрачным чёрным
-	// (transparentClearColor) — съёмка карты отражений: небо в отражении берётся по направлению луча, без поправки параллакса
+	// (transparentClearColor) — съёмка карты отражений: небо в отражении берётся по направлению самого луча
 	bool sky = true;
 	// Цвет очистки этой съёмки
 	const float* clear() const { return sky ? clearColor : transparentClearColor; }

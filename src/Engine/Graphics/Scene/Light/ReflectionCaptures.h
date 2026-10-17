@@ -13,10 +13,12 @@ namespace GS
 
 // Карты отражений места уровня — как Sphere Reflection Capture в UE: строки LevelReflectionCaptures (точка съёмки, радиус
 // влияния, размер грани; Tools/reflection_capture.py), у каждой — кубическая карта сцены из точки: съёмка сцены по грани за
-// кадр (SceneObject::requestCapture) без неба, покрытие сценой — в альфу по глубине грани (Shaders/reflection_capture_coverage.cs),
-// затем префильтр по шероховатости (CubePrefilter, мипы — как у освещения неба). В кадре — ближайшая к камере готовая карта:
-// ресурс сцены t131 и константы cb_reflectionCapture* (Shaders/reflection_capture.sh); где экранные отражения воды
-// промахнулись — сцена из неё с поправкой параллакса по сфере влияния и небо сквозь непокрытое, за её радиусом — небо. Снимается заново после загрузки, правки точки или размера грани,
+// кадр (SceneObject::requestCapture) без неба, покрытие сценой — в альфу, расстояния от точки съёмки — в свою кубическую
+// карту, обе по глубине грани (Shaders/reflection_capture_coverage.cs), затем префильтр по шероховатости (CubePrefilter, мипы
+// — как у освещения неба). В кадре — две ближайшие к камере готовые карты: ресурсы сцены t131…t134 (цвет и расстояния) и
+// константы cb_reflectionCapture* (Shaders/reflection_capture.sh); где экранные отражения воды промахнулись — луч по карте,
+// в чьём радиусе точка воды, до того, во что он упёрся (distance impostors, Szirmay-Kalos 2005), и небо сквозь непокрытое,
+// вне радиусов — небо. Снимается заново после загрузки, правки точки или размера грани,
 // кнопкой «Recapture» и когда сдвинулось светило теней (время суток). Окно «Reflection captures» — подокно на карту.
 // Подробно — docs/reflection_captures.md
 class ReflectionCaptures : public SceneObject
@@ -25,6 +27,8 @@ public:
 	using Settings = ReflectionCaptureSettings;
 	// Мипы префильтра — как у освещения неба: шероховатость мипа m — m / (mipCount − 1) (specularMipCount в Shaders/ibl.sh)
 	static constexpr uint32_t mipCount = 6;
+	// Карт в кадре — две ближайшие к камере (точка воды берёт ту, в чьём радиусе она): Shaders/reflection_capture.sh
+	static constexpr uint32_t shownCount = 2;
 	// Сдвиг светила теней, после которого карты снимаются заново (небо, свет и тени в них — того времени суток), градусы
 	static constexpr float recaptureLightAngle = 1.0f;
 
@@ -34,9 +38,9 @@ public:
 
 	// Правки окна и сдвиг светила — съёмка заново
 	void update( const FrameContext& frame ) override;
-	// Ближайшая к камере готовая карта — в константы кадра
+	// Две ближайшие к камере готовые карты — в константы кадра
 	void frameConstants( const RenderView& view, FrameParameters& constants ) override;
-	// Снятые грани — префильтр; карта кадра — в слот сцены t131
+	// Снятые грани — префильтр; карты кадра — в слоты сцены t131…t134
 	void compute( const FrameContext& frame ) override;
 	// Следующая грань карты, которую снимают
 	bool requestCapture( const FrameContext& frame, SceneCapture& capture ) override;
@@ -56,6 +60,9 @@ private:
 		uint64_t appliedRevision = 0;		// номер правки окна, по которому сверены точка и размер грани
 		CubeTarget source;					// грани сцены (мип 0 — съёмка) и мипы для выборки префильтра
 		CubeTarget specular;				// префильтр — его читают шейдеры
+		// Расстояния от точки съёмки, м (0 — неба): показанные и те, куда идёт съёмка, — цвет и расстояния всегда одной съёмки
+		CubeTarget distance[2];
+		uint32_t shownDistance = 0;
 		Texture depth;						// глубина съёмки грани — по ней покрытие
 		TargetView depthTarget;
 		ShaderView depthView;
@@ -72,15 +79,16 @@ private:
 	Settings current( const Capture& capture ) const;
 	// Съёмка заново с первой грани (прежняя карта показывается до конца префильтра новой)
 	static void restart( Capture& capture );
-	// Грань снята: альфа — 1 там, где сцена есть (глубина не на дальней плоскости), остальное — 0
-	void writeCoverage( const Capture& capture, int32_t face );
+	// Грань снята (capture — её съёмка: проекция грани): альфа — 1 там, где сцена есть (глубина не на дальней плоскости),
+	// остальное — 0; расстояния до сцены — в карту расстояний, куда идёт съёмка
+	void writeCoverage( const Capture& capture, int32_t face, const SceneCapture& faceCapture );
 
 	PropertyContainer m_properties;
 	std::vector<std::unique_ptr<Capture>> m_captures;
 	CubePrefilter m_prefilter;
 	ComputeShader m_coverageShader;		// покрытие грани по глубине съёмки
 	Buffer m_coverageConstants;
-	const Capture* m_shown = nullptr;		// карта этого кадра (frameConstants) — её compute привязывает в t131
+	const Capture* m_shown[shownCount] = {};	// карты этого кадра (frameConstants), ближняя первой — их compute привязывает
 };
 
 }

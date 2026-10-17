@@ -927,7 +927,7 @@ const SettingsSchema<ReflectionCaptureSettings>& reflectionCaptureSchema()
 		{ "position", "Position", DM_SETTING( position ), 0.0f, 0.0f, "m",
 		  "Capture point (a typical eye height above the water); recaptured when the edit ends", settingDrag },
 		{ "influence_radius", "Influence radius", DM_SETTING( influenceRadius ), 10.0f, 500.0f, "m",
-		  "Inside it the water reflects the map instead of the sky; the sphere is also the parallax proxy",
+		  "Inside it the water reflects the map (the reflected ray is traced through its distances) instead of the sky",
 		  settingClampLow | settingWideHigh },
 		{ "transition", "Transition", DM_SETTING( transition ), 0.01f, 1.0f, "",
 		  "Share of the radius at its edge where the map fades into the sky" },

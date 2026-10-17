@@ -1,4 +1,5 @@
 #include "ReflectionCaptures.h"
+#include <algorithm>
 #include <cmath>
 #include "ConstantBuffers.h"
 #include "SceneTargets.h"
@@ -82,6 +83,8 @@ bool ReflectionCaptures::createResources( Capture& capture )
 	if( !capture.source.create( size, 0, SceneTargets::colorFormat, true, "Reflection capture source",
 								SceneCapture::transparentClearColor ) ||
 		!capture.specular.create( size, mipCount, SceneTargets::colorFormat, false, "Reflection capture" ) ||
+		!capture.distance[0].create( size, 1, DXGI_FORMAT_R32_FLOAT, true, "Reflection capture distance" ) ||
+		!capture.distance[1].create( size, 1, DXGI_FORMAT_R32_FLOAT, true, "Reflection capture distance" ) ||
 		!d3d.createTexture( depthDesc, nullptr, capture.depth ) || !d3d.createTargetView( capture.depth, {}, capture.depthTarget ) ||
 		!d3d.createShaderView( capture.depth, depthViewDesc, capture.depthView ) )
 	{
@@ -170,8 +173,8 @@ bool ReflectionCaptures::requestCapture( const FrameContext& frame, SceneCapture
 		Capture* owner = &target;
 		capture.done = [this, owner, face]( const SceneCapture& done )
 		{
-			// Глубина у граней одна — покрытие сразу, до следующей грани
-			writeCoverage( *owner, face );
+			// Глубина у граней одна — покрытие и расстояния сразу, до следующей грани
+			writeCoverage( *owner, face, done );
 			if( face == 0 )
 				owner->exposure = done.exposure;
 			owner->nextFace = face + 1;
@@ -182,48 +185,52 @@ bool ReflectionCaptures::requestCapture( const FrameContext& frame, SceneCapture
 	return false;
 }
 
-void ReflectionCaptures::writeCoverage( const Capture& capture, int32_t face )
+void ReflectionCaptures::writeCoverage( const Capture& capture, int32_t face, const SceneCapture& faceCapture )
 {
 	DMD3D& d3d = DMD3D::instance();
 	const uint32_t size = capture.source.size();
+	// z вида по обратной глубине грани: P₃₂ / (глубина − P₂₂), как reflectionViewDepth в шейдерах
+	XMFLOAT4X4 projection;
+	XMStoreFloat4x4( &projection, faceCapture.view.projection );
 	ReflectionCaptureCoverageBuffer constants = {};
 	constants.face = face;
 	constants.size = size;
+	constants.projection22 = projection._33;
+	constants.projection32 = projection._43;
 	Device::updateResourceData<ReflectionCaptureCoverageBuffer>( m_coverageConstants, constants );
 	d3d.setConstantBuffer( SLOT_CB_PASS, m_coverageConstants );
+	const CubeTarget& distance = capture.distance[1 - capture.shownDistance];
 	d3d.beginPass( PassDesc{ "Reflection capture coverage", {}, {}, 0, 0, { { &capture.depthView, "capture depth" } },
-							 { { &capture.source.mipStorage( 0 ), "capture cube" } } } );
+							 { { &capture.source.mipStorage( 0 ), "capture cube" }, { &distance.mipStorage( 0 ), "capture distance" } } } );
 	d3d.setSRV( 0, capture.depthView );
 	m_coverageShader.setUAVBuffer( 0, capture.source.mipStorage( 0 ) );
+	m_coverageShader.setUAVBuffer( 1, distance.mipStorage( 0 ) );
 	const uint32_t groups = ( size + 7 ) / 8;
 	m_coverageShader.dispatchGroups( groups, groups, 1 );
 }
 
 void ReflectionCaptures::frameConstants( const RenderView& view, FrameParameters& constants )
 {
-	// Ближайшая к камере карта, у которой есть что показать (готова или префильтр — в compute этого кадра, до проходов)
-	m_shown = nullptr;
-	float nearest = 0.0f;
+	// Две ближайшие к камере карты, у которых есть что показать (готова или префильтр — в compute этого кадра, до проходов)
+	std::vector<std::pair<float, const Capture*>> shown;
 	for( const auto& capture : m_captures )
+		if( capture->ready || capture->prefilterPending )
+			shown.emplace_back( distanceSquared( view.position, capture->settings.position ), capture.get() );
+	std::sort( shown.begin(), shown.end(), []( const auto& a, const auto& b ) { return a.first < b.first; } );
+	for( uint32_t i = 0; i < shownCount; ++i )
 	{
-		if( !capture->ready && !capture->prefilterPending )
+		m_shown[i] = i < shown.size() ? shown[i].second : nullptr;
+		if( !m_shown[i] )
 			continue;
-		const float distance = distanceSquared( view.position, capture->settings.position );
-		if( !m_shown || distance < nearest )
-		{
-			m_shown = capture.get();
-			nearest = distance;
-		}
+		const Capture& capture = *m_shown[i];
+		const Settings settings = current( capture );
+		const float exposure = capture.prefilterPending ? capture.exposure : capture.shownExposure;
+		const float radius = std::max( settings.influenceRadius, 0.01f );
+		constants.reflectionCaptureSphere[i] = XMFLOAT4( capture.settings.position.x, capture.settings.position.y,
+														 capture.settings.position.z, radius );
+		constants.reflectionCapture[i] = XMFLOAT4( settings.brightness / std::max( exposure, 1e-30f ),
+												   1.0f / std::max( radius * settings.transition, 0.01f ), 0.0f, 0.0f );
 	}
-	if( !m_shown )
-		return;
-	const Settings settings = current( *m_shown );
-	const float exposure = m_shown->prefilterPending ? m_shown->exposure : m_shown->shownExposure;
-	const float radius = std::max( settings.influenceRadius, 0.01f );
-	constants.reflectionCaptureSphere = XMFLOAT4( m_shown->settings.position.x, m_shown->settings.position.y,
-												  m_shown->settings.position.z, radius );
-	constants.reflectionCapture = XMFLOAT4( settings.brightness / std::max( exposure, 1e-30f ),
-											1.0f / std::max( radius * settings.transition, 0.01f ), 0.0f, 0.0f );
 }
 
 void ReflectionCaptures::compute( const FrameContext& )
@@ -241,9 +248,19 @@ void ReflectionCaptures::compute( const FrameContext& )
 		capture.prefilterPending = false;
 		capture.ready = true;
 		capture.shownExposure = capture.exposure;
+		// Расстояния новой съёмки — показанные
+		capture.shownDistance = 1 - capture.shownDistance;
 	}
-	if( m_shown )
-		d3d.setSRV( SLOT_REFLECTION_CAPTURE, m_shown->specular.srv() );
+	// Карты кадра — в слоты сцены; нет второй — её слот не читают (радиус 0 в константах)
+	static constexpr uint16_t colorSlots[shownCount] = { SLOT_REFLECTION_CAPTURE_0, SLOT_REFLECTION_CAPTURE_1 };
+	static constexpr uint16_t distanceSlots[shownCount] = { SLOT_REFLECTION_CAPTURE_DISTANCE_0, SLOT_REFLECTION_CAPTURE_DISTANCE_1 };
+	for( uint32_t i = 0; i < shownCount; ++i )
+	{
+		if( !m_shown[i] )
+			continue;
+		d3d.setSRV( colorSlots[i], m_shown[i]->specular.srv() );
+		d3d.setSRV( distanceSlots[i], m_shown[i]->distance[m_shown[i]->shownDistance].srv() );
+	}
 }
 
 }

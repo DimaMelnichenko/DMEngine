@@ -809,7 +809,7 @@ struct ReflectionCaptureSettings
 	uint32_t id = 0;				// строка LevelReflectionCaptures — куда пишет «Save level»
 	std::string name;
 	DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// точка съёмки, м мира
-	float influenceRadius = 100.0f;	// м: внутри — отражения окружения берут карту вместо неба; сфера — поправка параллакса
+	float influenceRadius = 100.0f;	// м: внутри — отражения окружения берут карту (луч по её расстояниям) вместо неба
 	float transition = 0.2f;		// доля радиуса у края, где карта переходит в небо
 	int32_t faceSize = 256;			// сторона грани, текселей
 	float brightness = 1.0f;		// множитель карты, как Brightness у Reflection Capture в UE
