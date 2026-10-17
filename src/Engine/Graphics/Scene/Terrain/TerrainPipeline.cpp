@@ -1571,6 +1571,25 @@ bool TerrainPipeline::createFoliageClearMask( const TerrainEditCoverage& coverag
 	return true;
 }
 
+std::vector<TerrainHeightSource::FineRegion> TerrainPipeline::fineRegions() const
+{
+	std::vector<FineRegion> regions;
+	if( !m_hasHydrology || m_detailTileSize <= 0.0f )
+		return regions;
+	const float spacing = m_texelSize / static_cast<float>( TerrainHydrology::detailSamples );
+	for( const TerrainHydrology::DetailTile& tile : m_hydrology.detailTiles )
+		regions.push_back( { tile.x * m_detailTileSize, tile.z * m_detailTileSize, m_detailTileSize, spacing } );
+	return regions;
+}
+
+bool TerrainPipeline::waterLevel( float x, float z, float& level ) const
+{
+	if( m_waterLevel.empty() )
+		return false;
+	level = cellWaterLevel( m_waterLevel, static_cast<int>( m_cpuSize ), m_texelSize, x, z );
+	return level > -1e29f;
+}
+
 bool TerrainPipeline::surfaceHeight( float x, float z, float& height ) const
 {
 	if( m_cpuHeights.empty() || x < 0.0f || z < 0.0f || x > m_worldSize || z > m_worldSize )

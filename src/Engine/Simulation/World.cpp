@@ -1,10 +1,26 @@
 #include "World.h"
 #include "Components.h"
+#include "Terrain\TerrainHeightSource.h"
 #include <algorithm>
 #include <cmath>
 
 namespace GS
 {
+
+World::World()
+{
+	m_registry.on_destroy<Character>().connect<&World::removeCharacter>( *this );
+}
+
+World::~World()
+{
+	m_registry.clear();
+}
+
+void World::removeCharacter( entt::registry& registry, entt::entity entity )
+{
+	m_physics.removeCharacter( registry.get<Character>( entity ).id );
+}
 
 void World::addSystem( std::unique_ptr<SimulationSystem> system )
 {
@@ -26,6 +42,9 @@ void World::setPaused( bool paused )
 
 uint32_t World::tick( double seconds )
 {
+	// Новая итоговая карта высот (русла после правки кривых) — земля столкновений заново
+	if( m_terrain && m_physics.terrainRevision() != ~0u && m_physics.terrainRevision() != m_terrain->terrainHeight().revision )
+		m_physics.buildTerrain( *m_terrain );
 	m_clock.advance( seconds );
 	m_lastSteps = 0;
 	if( m_paused || !m_clock.gameTimeRunning() || seconds <= 0.0 )

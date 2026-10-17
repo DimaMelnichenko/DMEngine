@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 #include "DirectX.h"
 
 class ShaderView;
@@ -57,6 +58,19 @@ public:
 	// Итоговая карта высот на CPU — нормированная, как текстура (строки сверху вниз, mapSize²); nullptr — её нет. Для
 	// отпечатка того, что посчитано по рельефу (кэш течения воды, WaterSimulation)
 	virtual const float* cpuHeights() const { return nullptr; }
+
+	// Квадрат детальной земли: [x, x + size] × [z, z + size], м; surfaceHeight в нём — с шагом spacing (у русел — плитки
+	// 0,25 м). Физика (PhysicsWorld::buildTerrain) строит их отдельными картами высот, чтобы земля совпала с surfaceHeight
+	struct FineRegion
+	{
+		float x = 0.0f;
+		float z = 0.0f;
+		float size = 0.0f;
+		float spacing = 0.0f;
+	};
+	virtual std::vector<FineRegion> fineRegions() const { return {}; }
+	// Уровень воды в точке (ручьи и озёра), м; false — воды рядом нет. Глубже предела не пускает персонажей (PhysicsWorld)
+	virtual bool waterLevel( float x, float z, float& level ) const { return false; }
 };
 
 }

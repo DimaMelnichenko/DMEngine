@@ -587,22 +587,30 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 
 	LOG( "Load model: " + std::to_string( idModel ) );
 
-	SQLite::Statement query( DBConnector::instance().db(), "SELECT id, name, shadow_lod_scale, shadow_min_lod FROM Models where id = :id" );
+	SQLite::Statement query( DBConnector::instance().db(),
+							 "SELECT id, name, shadow_lod_scale, shadow_min_lod, collision FROM Models where id = :id" );
 	query.bind( ":id", idModel );
 	float shadowLodScale = 1.0f;
 	uint32_t shadowMinLod = 0;
+	std::string collision;
 	while( query.executeStep() )
 	{	
 		if( !GS::System::models().createModel( query.getColumn( 0 ), query.getColumn( 1 ) ) )
 			return false;
 		shadowLodScale = static_cast<float>( query.getColumn( "shadow_lod_scale" ).getDouble() );
 		shadowMinLod = static_cast<uint32_t>( std::max( query.getColumn( "shadow_min_lod" ).getInt(), 0 ) );
+		collision = query.getColumn( "collision" ).isNull() ? std::string() : query.getColumn( "collision" ).getString();
 	}
 
 	if( !GS::System::models().exists( idModel ) )
 		return false;
 
 	GS::DMModel* model = GS::System::models().get( idModel ).get();
+	// Простая коллизия (NULL — оболочка)
+	GS::DMModel::Collision modelCollision = GS::DMModel::Collision::hull;
+	if( !collision.empty() && !GS::DMModel::parseCollision( collision, modelCollision ) )
+		LOG( "Model " + std::to_string( idModel ) + ": unknown collision '" + collision + "' (hull, box, mesh, capsule, none), hull is used" );
+	model->setCollision( modelCollision );
 	if( !model )
 		return false;
 	

@@ -59,6 +59,9 @@ float sampleCells( const float* values, int size, float texel, float x, float z 
 	return upper + ( lower - upper ) * fv;
 }
 
+
+}
+
 // Уровень воды сетки 1 м в точке, как waterDepthAt: билинейно по четырём клеткам вокруг, клетка без уровня — наименьший
 // из соседних; воды рядом нет — noLevel
 float cellWaterLevel( const std::vector<float>& level, int size, float texel, float x, float z )
@@ -86,8 +89,6 @@ float cellWaterLevel( const std::vector<float>& level, int size, float texel, fl
 	const float upper = levels[0] + ( levels[1] - levels[0] ) * fu;
 	const float lower = levels[2] + ( levels[3] - levels[2] ) * fu;
 	return upper + ( lower - upper ) * fv;
-}
-
 }
 
 void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const

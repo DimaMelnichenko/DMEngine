@@ -333,7 +333,7 @@ bool Engine::tick()
 	updateMouseLook();
 	// Ходьба ставит камеру на землю до её Update (поворот мышью — как в полёте)
 	if( m_walk.enabled() )
-		m_walk.update( elapsedTime / 1000.0f, camera, m_scene.terrainPipeline() );
+		m_walk.update( elapsedTime / 1000.0f, camera, m_scene.world() );
 	TIME_CHECK( camera.Update( elapsedTime, !m_mouseLook ), "Camera Update = %.3f ms" );
 
 	RenderView mainView = RenderView::fromCamera( camera );
@@ -747,7 +747,7 @@ void Engine::bindingKeys()
 	Input::instance().notifier().registerTrigger( DIK_F, [this]( bool )
 	{
 		const bool walk = !m_walk.enabled() && m_scene.level().terrain.has_value();
-		m_walk.setEnabled( walk, m_cameraPool["main"], walk ? &m_scene.terrainPipeline() : nullptr );
+		m_walk.setEnabled( walk, m_cameraPool["main"], walk ? &m_scene.world() : nullptr );
 		LOG( walk ? "Walk mode" : "Fly mode" );
 	} );
 }

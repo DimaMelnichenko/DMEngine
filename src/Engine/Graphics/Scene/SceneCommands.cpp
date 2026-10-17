@@ -6,6 +6,7 @@
 #include "Terrain\TerrainPaintTool.h"
 #include "Terrain\TerrainPipeline.h"
 #include "Water\WaterSimulation.h"
+#include "Engine\Simulation\Components.h"
 
 namespace GS
 {
@@ -70,7 +71,8 @@ void paintCommand( Scene& scene, const std::vector<std::string>& args, const Con
 void registerSceneCommands( ConsoleCommands& console, Scene& scene )
 {
 	console.registerCommand( "world", "- entities, steps and clock of the simulation world; spawn <model> <x> <z> [count=5] "
-							 "[radius=15] - wanderers around the point (a loaded model: Sphere, Cube...); clear - remove all entities",
+							 "[radius=15] - wanderers around the point (a loaded model: Sphere, Cube...); list - places of the entities; "
+							 "clear - remove all entities",
 							 [&scene]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		World& world = scene.world();
@@ -78,13 +80,27 @@ void registerSceneCommands( ConsoleCommands& console, Scene& scene )
 		{
 			const WorldClock& clock = world.clock();
 			const WorldClock::Date date = clock.date();
-			char text[256];
+			char text[384];
 			std::snprintf( text, sizeof( text ), "entities %zu, steps %llu (last frame %u), step rate %.0f Hz%s; clock %04d-%02d-%02d "
-						   "%.3f h, time scale %g%s; game time %.2f s%s", world.entityCount(),
+						   "%.3f h, time scale %g%s; game time %.2f s%s; physics: %zu bodies, %zu characters%s", world.entityCount(),
 						   static_cast<unsigned long long>( world.steps() ), world.lastSteps(), world.stepRate(),
 						   world.paused() ? ", paused" : "", date.year, date.month, date.day, clock.hours(), clock.timeScale(),
-						   clock.paused() ? ", paused" : "", clock.gameSeconds(), clock.gameTimeRunning() ? "" : " (frozen)" );
+						   clock.paused() ? ", paused" : "", clock.gameSeconds(), clock.gameTimeRunning() ? "" : " (frozen)",
+						   world.physics().bodyCount(), world.physics().characterCount(),
+						   world.physics().terrainRevision() != ~0u ? ", terrain" : ", no terrain" );
 			return reply->ok( text );
+		}
+		if( args.size() == 1 && args[0] == "list" )
+		{
+			std::string text;
+			for( auto [entity, transform] : world.registry().view<const Transform>().each() )
+			{
+				char line[96];
+				std::snprintf( line, sizeof( line ), "%u: %.2f,%.2f,%.2f\n", static_cast<uint32_t>( entity ), transform.position.x,
+							   transform.position.y, transform.position.z );
+				text += line;
+			}
+			return reply->ok( text.empty() ? "no entities" : text );
 		}
 		if( args.size() == 1 && args[0] == "clear" )
 		{
@@ -95,7 +111,7 @@ void registerSceneCommands( ConsoleCommands& console, Scene& scene )
 		if( args[0] != "spawn" || args.size() < 4 || args.size() > 6 || !number( args[2], x ) || !number( args[3], z ) ||
 			( args.size() > 4 && !number( args[4], count ) ) || ( args.size() > 5 && !number( args[5], radius ) ) || count < 1.0f ||
 			radius < 1.0f )
-			return reply->error( "usage: world | world spawn <model> <x> <z> [count] [radius] | world clear" );
+			return reply->error( "usage: world | world spawn <model> <x> <z> [count] [radius] | world list | world clear" );
 		std::string reason;
 		if( !scene.worldEntities().spawnWanderers( args[1], x, z, static_cast<uint32_t>( count ), radius, reason ) )
 			return reply->error( reason );

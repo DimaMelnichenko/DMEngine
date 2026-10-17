@@ -14,6 +14,7 @@ namespace GS
 {
 
 class TerrainHeightSource;
+class PhysicsWorld;
 
 // Модели уровня (таблица LevelModels): у каждого экземпляра свой трансформ, модель — общий ресурс. За каждый вид
 // выбирает LOD экземпляра по расстоянию от точки LOD вида, отсекает его по frustum вида (границы меша в мировых
@@ -25,7 +26,8 @@ class TerrainHeightSource;
 // Окно «Models» — свойства моделей (параметры материалов секций, не сохраняются); окно «Model instances» — подокно на
 // экземпляр: положение, поворот углами (Pitch, Yaw, Roll, как Rotation в Details UE) и масштаб, сохраняются в LevelModels.
 // Экземпляры добавляются и убираются в редакторе, как источники света (DMLightDriver): подокно «Add» — кнопка на модель
-// палитры, «Delete» у подокна экземпляра и Delete во вьюпорте
+// палитры, «Delete» у подокна экземпляра и Delete во вьюпорте. У экземпляра — тело в мире столкновений по простой
+// коллизии модели (Models.collision, ModelCollision.h): правка места, добавление, удаление и отмена его переставляют
 class ModelInstances : public SceneObject
 {
 public:
@@ -33,6 +35,8 @@ public:
 
 	// Вызывается после загрузки моделей: экземпляры уровня и свойства их моделей для GUI
 	void initialize( const std::vector<LevelDescription::ModelInstance>& instances );
+	// Мир столкновений (World::physics): тела всех экземпляров — сразу, дальше — по правкам
+	void setPhysics( PhysicsWorld* physics );
 
 	// Правки окна экземпляров — в трансформы и границы
 	void update( const FrameContext& frame ) override;
@@ -101,10 +105,14 @@ private:
 		DirectX::XMFLOAT3 angles = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// применённый поворот: pitch, yaw, roll, градусы
 		std::unique_ptr<PropertyContainer> properties;	// «Position», «Rotation», «Scale»
 		std::string name;	// «id: модель» — имя подокна
+		uint32_t body = 0;			// тело в мире столкновений (0 — нет)
+		bool bodyStale = true;		// место сменилось после постройки тела
 	};
 
 	// Границы всех экземпляров: при загрузке и после правки
 	void updateBounds();
+	// Тела экземпляров, чьё место сменилось (или новых), — заново
+	void syncBodies();
 	// Подокно экземпляра: положение, поворот, масштаб и кнопка Delete
 	void createProperties( Instance& instance );
 	// После добавления и удаления: подокна по порядку с именами («id: модель», у нового — «new ключ: модель»), отметка
@@ -116,6 +124,7 @@ private:
 	std::vector<uint32_t> m_palette;
 	uint32_t m_nextKey = 1;
 	DirectX::BoundingBox m_bounds;
+	PhysicsWorld* m_physics = nullptr;
 	PropertyContainer m_properties;
 	PropertyContainer m_instanceProperties;
 	PropertyContainer m_addProperties;

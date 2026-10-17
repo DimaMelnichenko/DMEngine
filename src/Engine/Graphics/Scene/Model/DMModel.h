@@ -66,9 +66,19 @@ public:
 	uint32_t shadowMinLod() const;
 	void setShadowMinLod( uint32_t lod );
 
+	// Простая коллизия модели в мире столкновений (Models.collision, как Simple Collision у Static Mesh в UE;
+	// docs/physics.md) — по LOD 0: выпуклая оболочка вершин (по умолчанию: камни, шары), коробка по границам, треугольники
+	// (неподвижное сложной формы), ствол — вертикальная капсула по границам основания (деревья), без столкновений
+	enum class Collision { hull, box, mesh, capsule, none };
+	Collision collision() const { return m_collision; }
+	void setCollision( Collision collision ) { m_collision = collision; }
+	// Имя колонки → значение; false — неизвестное имя
+	static bool parseCollision( const std::string& name, Collision& collision );
+
 	PropertyContainer* properties();
 private:
 	std::vector<std::pair<float, std::shared_ptr<LodBlock>>> m_lods;
+	Collision m_collision = Collision::hull;
 	PropertyContainer m_properties;
 };
 

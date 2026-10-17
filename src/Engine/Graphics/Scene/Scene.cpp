@@ -1,5 +1,6 @@
 #include "Scene.h"
 #include "Engine\Simulation\WanderSystem.h"
+#include "Engine\Simulation\MovementSystem.h"
 #include "ObjectLibrary\LibraryLoader.h"
 #include <algorithm>
 #include <chrono>
@@ -271,9 +272,17 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 								  m_world.clock() ) )
 		LOG( "Soundscape is not initialized" );
 
-	// Мир симуляции: земля — рельеф уровня; системы — по порядку шага
+	// Мир симуляции: земля — рельеф уровня; столкновения — земля и тела моделей уровня; системы — по порядку шага:
+	// поведение решает, куда идти, передвижение двигает
 	m_world.setTerrain( m_level.terrain ? &m_terrainPipeline : nullptr );
+	timeStart = std::chrono::high_resolution_clock::now();
+	if( m_level.terrain && !m_world.physics().buildTerrain( m_terrainPipeline ) )
+		LOG( "Physics terrain is not built: walking and creatures go through the ground" );
+	m_models.setPhysics( &m_world.physics() );
+	m_world.physics().optimize();
+	LOG( "Physics: terrain and " + std::to_string( m_world.physics().bodyCount() ) + " bodies of model instances, ms: " + elapsedMs( timeStart ) );
 	m_world.addSystem( std::make_unique<WanderSystem>() );
+	m_world.addSystem( std::make_unique<MovementSystem>() );
 	m_worldEntities.initialize( m_world );
 
 	// Следы в траве — по земле под камерой; без поля растения просто не расступаются

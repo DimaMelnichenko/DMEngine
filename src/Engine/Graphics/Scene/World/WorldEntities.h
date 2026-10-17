@@ -27,8 +27,9 @@ public:
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	PropertyContainer* properties() override { return &m_properties; }
 
-	// Бродяги (WanderSystem): count сущностей модели model (имя из загруженных) в круге radius вокруг (x, z) — на земле,
-	// каждая со своим зерном; false — модели нет среди загруженных (error — почему)
+	// Бродяги (WanderSystem, MovementSystem): count сущностей модели model (имя из загруженных) в круге radius вокруг (x, z) —
+	// на земле, каждая со своим зерном; с землёй столкновений — персонажами (капсула по границам модели: не проходят сквозь
+	// модели уровня, друг друга и глубокую воду); false — модели нет среди загруженных (error — почему)
 	bool spawnWanderers( const std::string& model, float x, float z, uint32_t count, float radius, std::string& error );
 
 private:

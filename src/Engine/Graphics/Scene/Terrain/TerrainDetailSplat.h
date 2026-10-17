@@ -13,6 +13,11 @@ struct TerrainEditCoverage;
 struct TerrainMasks;
 class TerrainPaint;
 
+// Уровень воды сетки 1 м (level: size × size клеток со стороной texel, строки сверху вниз, −1e30 — нет) в точке (x, z),
+// как waterDepthAt в шейдерах: билинейно по четырём клеткам вокруг, клетка без уровня — наименьший из соседних; воды
+// рядом нет — меньше −1e29
+float cellWaterLevel( const std::vector<float>& level, int size, float texel, float x, float z );
+
 // Детальный слой весов земли (docs/terrain.md, «Детальный слой весов»): веса восьми слоёв и мокрость с шагом 0,25 м —
 // плитками там, где они нужны (русла и мазки кисти), поверх splat-карты 1 м, как основа и детали поверх у Landscape в UE
 // (веса по вершине, мельче — Runtime Virtual Texture). Плитки — по сетке детальной земли (сторона — лист квадродерева,

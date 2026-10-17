@@ -144,6 +144,10 @@ public:
 	TerrainHeight terrainHeight() const override;
 	bool surfaceHeight( float x, float z, float& height ) const override;
 	const float* cpuHeights() const override { return m_cpuHeights.empty() ? nullptr : m_cpuHeights.data(); }
+	// Детальные плитки у русел — квадраты 0,25 м (TerrainHydrology::DetailTile)
+	std::vector<FineRegion> fineRegions() const override;
+	// Уровень воды static на сетке 1 м (computeWaterLevel) в точке, как waterDepthAt
+	bool waterLevel( float x, float z, float& level ) const override;
 
 	// Для отрисовки рельефа (CDLODTerrain): размеры, итоговая карта и её мипы на CPU (границы узлов), детальные плитки,
 	// материал слоёв, вода и правила дна

@@ -1,6 +1,7 @@
 #include "ModelInstances.h"
 #include "ModelReseat.h"
 #include "ModelDraw.h"
+#include "ModelCollision.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -151,6 +152,11 @@ bool ModelInstances::removeInstance( uint32_t key )
 	const int index = indexOf( key );
 	if( index < 0 )
 		return false;
+	// Убранный — без тела; вернут — построится заново
+	if( m_physics && m_instances[index].body )
+		m_physics->removeBody( m_instances[index].body );
+	m_instances[index].body = 0;
+	m_instances[index].bodyStale = true;
 	m_removed.push_back( std::move( m_instances[index] ) );
 	m_instances.erase( m_instances.begin() + index );
 	updateStructure();
@@ -227,6 +233,30 @@ void ModelInstances::updateStructure()
 	// Убранный экземпляр ещё есть в базе — окно изменено до «Save level»
 	m_instanceProperties.setStructureModified( std::any_of( m_removed.begin(), m_removed.end(), []( const Instance& instance ) { return instance.id != 0; } ) );
 	updateBounds();
+	syncBodies();
+}
+
+void ModelInstances::setPhysics( PhysicsWorld* physics )
+{
+	m_physics = physics;
+	for( Instance& instance : m_instances )
+		instance.bodyStale = true;
+	syncBodies();
+}
+
+void ModelInstances::syncBodies()
+{
+	if( !m_physics )
+		return;
+	for( Instance& instance : m_instances )
+	{
+		if( !instance.bodyStale )
+			continue;
+		if( instance.body )
+			m_physics->removeBody( instance.body );
+		instance.body = addModelBody( *m_physics, *instance.model, instance.transform.worldMatrix() );
+		instance.bodyStale = false;
+	}
 }
 
 void ModelInstances::update( const FrameContext& frame )
@@ -238,26 +268,32 @@ void ModelInstances::update( const FrameContext& frame )
 		const XMFLOAT3& position = properties["Position"].data<XMFLOAT3>();
 		const XMFLOAT3& angles = properties["Rotation"].data<XMFLOAT3>();
 		const XMFLOAT3& scale = properties["Scale"].data<XMFLOAT3>();
+		bool changed = false;
 		if( !equal( position, instance.transform.position() ) )
 		{
 			instance.transform.setPosition( position );
-			moved = true;
+			changed = true;
 		}
 		if( !equal( angles, instance.angles ) )
 		{
 			instance.angles = angles;
 			instance.transform.setRotation( anglesToQuaternion( angles ) );
-			moved = true;
+			changed = true;
 		}
 		if( !equal( scale, instance.transform.scale() ) )
 		{
 			instance.transform.setScale( scale );
-			moved = true;
+			changed = true;
 		}
+		instance.bodyStale |= changed;
+		moved |= changed;
 	}
-	// Границы — для ближней и дальней плоскости каскадов теней (Scene::bounds)
+	// Границы — для ближней и дальней плоскости каскадов теней (Scene::bounds); тела — на новые места
 	if( moved )
+	{
 		updateBounds();
+		syncBodies();
+	}
 }
 
 std::vector<DirectX::BoundingBox> ModelInstances::tallBounds( float minHeight ) const

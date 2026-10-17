@@ -85,6 +85,7 @@ bool WorldEntities::spawnWanderers( const std::string& model, float x, float z, 
 
 	entt::registry& registry = m_world->registry();
 	const TerrainHeightSource* terrain = m_world->terrain();
+	PhysicsWorld& physics = m_world->physics();
 	for( uint32_t i = 0; i < count; ++i )
 	{
 		// Место в круге — по золотому углу (ровно, без случайных кучек), направление и зерно — своё у каждой
@@ -108,6 +109,17 @@ bool WorldEntities::spawnWanderers( const std::string& model, float x, float z, 
 		// Низ границ LOD 0 — на точку места
 		registry.emplace<ModelVisual>( entity, ModelVisual{ modelId, -( lod->bounds.Center.y - lod->bounds.Extents.y ) } );
 		registry.emplace<Wander>( entity, wander );
+		registry.emplace<Locomotion>( entity, Locomotion{ XMFLOAT2( 0.0f, 0.0f ), angle } );
+		// Есть земля столкновений — персонаж: капсула по границам LOD 0 (толщина — по горизонтали, высота — модели)
+		if( physics.terrainRevision() != ~0u )
+		{
+			PhysicsWorld::CharacterSettings settings;
+			settings.radius = std::max( std::max( lod->bounds.Extents.x, lod->bounds.Extents.z ), 0.1f );
+			settings.height = std::max( 2.0f * lod->bounds.Extents.y, 2.0f * settings.radius + 0.05f );
+			settings.stepHeight = std::min( 0.3f, 0.5f * settings.height );
+			settings.maxWadeDepth = std::max( 0.5f * settings.height, 0.1f );
+			registry.emplace<Character>( entity, Character{ physics.createCharacter( settings, transform.position ) } );
+		}
 	}
 	return true;
 }

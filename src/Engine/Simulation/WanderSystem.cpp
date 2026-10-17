@@ -1,6 +1,5 @@
 #include "WanderSystem.h"
 #include "Components.h"
-#include "Terrain\TerrainHeightSource.h"
 #include <algorithm>
 #include <cmath>
 
@@ -41,12 +40,22 @@ float smoothstep( float from, float to, float x )
 
 void WanderSystem::step( World& world, float seconds )
 {
-	const TerrainHeightSource* terrain = world.terrain();
-	for( auto [entity, transform, wander] : world.registry().view<Transform, Wander>().each() )
+	entt::registry& registry = world.registry();
+	for( auto [entity, transform, wander, locomotion] : registry.view<const Transform, Wander, Locomotion>().each() )
 	{
 		// Точка блуждания сдвигается по окружности случайно — направление меняется плавно, без рывков; не дальше
 		// четверти окружности от хода, иначе сущность кружит на месте
 		wander.wanderAngle = std::clamp( wander.wanderAngle + randomSigned( wander.random ) * jitter * seconds, -0.5f * pi, 0.5f * pi );
+		// Упёрлась (прошлый шаг прошёл меньше трети пути: модель, другой персонаж, вода) — точка блуждания на четверть
+		// окружности в сторону: сущность отворачивает, а не толкает препятствие
+		if( const PreviousTransform* previous = registry.try_get<PreviousTransform>( entity ) )
+		{
+			const float px = transform.position.x - previous->transform.position.x;
+			const float pz = transform.position.z - previous->transform.position.z;
+			if( wander.moving && px * px + pz * pz < 0.1f * wander.speed * seconds * wander.speed * seconds )
+				wander.wanderAngle = randomSigned( wander.random ) > 0.0f ? 0.5f * pi : -0.5f * pi;
+		}
+		wander.moving = true;
 		float desired = wander.heading + std::atan2( circleRadius * std::sin( wander.wanderAngle ),
 													 circleDistance + circleRadius * std::cos( wander.wanderAngle ) );
 
@@ -60,26 +69,14 @@ void WanderSystem::step( World& world, float seconds )
 		if( home > 0.0f && distance > 1e-4f )
 			desired += wrapAngle( std::atan2( -dx, -dz ) - desired ) * home;
 
+		// Поворот не быстрее turnRate; за краем круга (столкнули) — сразу к центру
 		const float maxTurn = wander.turnRate * seconds;
-		wander.heading = wrapAngle( wander.heading + std::clamp( wrapAngle( desired - wander.heading ), -maxTurn, maxTurn ) );
-		float x = transform.position.x + std::sin( wander.heading ) * wander.speed * seconds;
-		float z = transform.position.z + std::cos( wander.heading ) * wander.speed * seconds;
-		// Последняя защита: не дальше края круга
-		const float ox = x - wander.center.x;
-		const float oz = z - wander.center.y;
-		const float outside = std::sqrt( ox * ox + oz * oz );
-		if( outside > wander.radius )
-		{
-			x = wander.center.x + ox * wander.radius / outside;
-			z = wander.center.y + oz * wander.radius / outside;
-		}
-		transform.position.x = x;
-		transform.position.z = z;
-		float ground;
-		if( terrain && terrain->surfaceHeight( x, z, ground ) )
-			transform.position.y = ground;
-		// Взгляд по ходу: поворот вокруг вертикали (+Z к +X)
-		XMStoreFloat4( &transform.rotation, XMQuaternionRotationRollPitchYaw( 0.0f, wander.heading, 0.0f ) );
+		if( distance > wander.radius )
+			wander.heading = std::atan2( -dx, -dz );
+		else
+			wander.heading = wrapAngle( wander.heading + std::clamp( wrapAngle( desired - wander.heading ), -maxTurn, maxTurn ) );
+		locomotion.velocity = XMFLOAT2( std::sin( wander.heading ) * wander.speed, std::cos( wander.heading ) * wander.speed );
+		locomotion.heading = wander.heading;
 	}
 }
 

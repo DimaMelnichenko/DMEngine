@@ -59,12 +59,13 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   WinPixEventRuntime, Dear ImGui 1.92.9b ветки docking (ядро и бэкенды Win32 / DX12 собираются в движке; архив — из
   `DownloadResources\imgui-1.92.9b-docking.zip`, если он там есть, иначе с GitHub), ImGuizmo (ветка master, гизмо
   вьюпорта; `DownloadResources\ImGuizmo-master.zip`, иначе с GitHub), D3D12 Memory Allocator 3.2, EnTT (тег `v3.16.0` —
-  последний на C++17, только заголовки: мир симуляции) и doctest (тег `v2.4.11`, только заголовок — для тестов)
+  последний на C++17, только заголовки: мир симуляции), Jolt Physics (тег `v5.6.0`, его CMake в `Build\`: рантайм `/MD`,
+  без LTCG и устройств GPU — столкновения) и doctest (тег `v2.4.11`, только заголовок — для тестов)
   подтягиваются через `FetchContent` при первом configure: нужны сеть и git.
   Остальное берётся из Windows SDK.
 - Цели CMake: `DMCore` — статическая библиотека, ядро без устройства (свойства, лог, данные уровня, время суток, рельеф
-  и вода на CPU, ветер, микшер и синтез звука, камера, ходьба, ввод, мир симуляции на EnTT и мировые часы; как модуль
-  Core в UE); `DMEngine` — exe движка поверх
+  и вода на CPU, ветер, микшер и синтез звука, камера, ходьба, ввод, мир симуляции на EnTT, мировые часы и столкновения
+  на Jolt; как модуль Core в UE); `DMEngine` — exe движка поверх
   неё; `DMEngineTests` — тесты логики на CPU (doctest) против ядра; общие include-пути, defines и флаги трёх целей —
   `DMEngineSettings`. Файлы ядра лежат на своих местах в `src/` — ядро задаётся списком `DMCore` в `CMakeLists.txt`.
 - **Из терминала собирать только скриптом**, а не вызывать cmake вручную:
@@ -224,8 +225,9 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   I — режим полёта (камера смотрит мышью всегда), G — вид игры без редактора, Ctrl+S — сохранить уровень (правки окон),
   левая кнопка по сцене — выбрать экземпляр модели, 5 / 6 / 7 — гизмо: перемещение / поворот / масштаб, End — выбранный
   экземпляр на землю («Snap to terrain», `ModelInstances::snapToTerrain`), F — полёт ↔
-  ходьба по рельефу (`Scene/Camera/WalkMode.h`: высота — `TerrainHeightSource::surfaceHeight`, итоговая карта на CPU;
-  без столкновений; включение в воздухе — падение до земли),
+  ходьба по рельефу (`Scene/Camera/WalkMode.h`: персонаж мира столкновений — капсула Jolt, земля — те же треугольники,
+  что `TerrainHeightSource::surfaceHeight`; модели уровня и сущности преграждают путь, ступеньки, уклон, вода глубже
+  «Max wade depth» не пускает, `docs/physics.md`; включение в воздухе — падение до земли),
   `` ` `` — консоль. Камера смотрит мышью при зажатой правой кнопке над сценой (`Engine::updateMouseLook`: только у
   активного окна, курсор спрятан и закреплён `ClipCursor` на месте, после Alt+Tab свободен); пока
   в окнах редактора набирается текст, горячие клавиши и WASD молчат (`Input::setKeyboardBlocked`).
@@ -363,7 +365,12 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 компонентами (`Simulation/Components.h`: `Transform`, `PreviousTransform`, `ModelVisual`), системы (`SimulationSystem`:
 `WanderSystem` — блуждание в круге, Reynolds 1999), службы мира без синглтонов (рельеф — `TerrainHeightSource`) и мировые
 часы `WorldClock` — одно время для неба, звуков и распорядка: календарь со скоростью «Time scale» и время игры
-(`FrameContext::gameTime`, `cb_gameTime`; `-freezetime` его останавливает и мир не шагает). Кадр начинается с
+(`FrameContext::gameTime`, `cb_gameTime`; `-freezetime` его останавливает и мир не шагает). Столкновения — служба мира
+`PhysicsWorld` (Jolt Physics за фасадом без типов Jolt, как Chaos у World в UE): земля теми же треугольниками, что
+`surfaceHeight` (детальные плитки у русел — своими картами высот), тела моделей уровня по простой коллизии
+`Models.collision` (`hull` по умолчанию, `box`, `mesh`, `capsule` — ствол, `none`; строит `ModelInstances` через
+`Scene/Model/ModelCollision.h`), персонажи `CharacterVirtual` (ходьба `WalkMode` и сущности с компонентом `Character`);
+поведение пишет `Locomotion`, передвигает `MovementSystem`; подробно — `docs/physics.md`. Кадр начинается с
 `Scene::advanceWorld`: правки окна «Sun position» (органы часов) — в часы, шаг часов, шаги систем фиксированной длительности
 (60 Гц, не больше 4 за кадр, остаток — дальше; «Fix Your Timestep»). Рисует сущности объект сцены `WorldEntities` (общей с
 `ModelInstances` функцией `collectModelMeshes`, `Scene/Model/ModelDraw.h`; место — смешанное по `World::interpolation`),

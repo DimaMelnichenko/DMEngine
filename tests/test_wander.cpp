@@ -1,5 +1,6 @@
-// Блуждание в круге (WanderSystem): сущность не уходит из круга, обходит его весь, стоит на земле, идёт с заданной
-// скоростью и смотрит, куда идёт; путь повторяется при том же зерне. Рельеф — подделка (склон)
+// Блуждание в круге (WanderSystem) с передвижением по земле (MovementSystem, без персонажей): сущность не уходит из круга,
+// обходит его весь, стоит на земле, идёт с заданной скоростью и смотрит, куда идёт; путь повторяется при том же зерне.
+// Рельеф — подделка (склон)
 #include <doctest/doctest.h>
 #include <algorithm>
 #include <cmath>
@@ -7,6 +8,7 @@
 #include "Engine\Simulation\World.h"
 #include "Engine\Simulation\Components.h"
 #include "Engine\Simulation\WanderSystem.h"
+#include "Engine\Simulation\MovementSystem.h"
 #include "fake_terrain.h"
 
 using namespace GS;
@@ -30,7 +32,9 @@ entt::entity spawn( World& world, uint32_t seed, float radius = 12.0f, float spe
 	entt::registry& registry = world.registry();
 	const entt::entity entity = registry.create();
 	registry.emplace<Transform>( entity, transform );
+	registry.emplace<PreviousTransform>( entity, PreviousTransform{ transform } );
 	registry.emplace<Wander>( entity, wander );
+	registry.emplace<Locomotion>( entity );
 	return entity;
 }
 
@@ -38,6 +42,7 @@ void setUp( World& world )
 {
 	world.setTerrain( &slope );
 	world.addSystem( std::make_unique<WanderSystem>() );
+	world.addSystem( std::make_unique<MovementSystem>() );
 }
 
 }
@@ -65,7 +70,7 @@ TEST_CASE( "WanderSystem: ten minutes inside the circle, all over it, on the gro
 						   ( transform.position.z - previous.z ) * ( transform.position.z - previous.z ) );
 		previous = transform.position;
 	}
-	CHECK( farthest <= 12.0f + 1e-3f );
+	CHECK( farthest <= 12.0f + 0.05f );					// за край — не дальше шага, затем сразу к центру
 	CHECK( farthest > 9.0f );							// доходит до края, а не топчется у центра
 	CHECK( ( quadrants[0] && quadrants[1] && quadrants[2] && quadrants[3] ) );
 	float ground = 0.0f;

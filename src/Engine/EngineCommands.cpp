@@ -297,7 +297,8 @@ void Engine::registerCommands()
 	} );
 
 	// Горячие клавиши (bindingKeys): имя — буква или цифра, как на клавиатуре, или скан-код DIK_*
-	m_console.registerCommand( "key", "<letter|digit|scan code> - press a hotkey (G, Q, 1, 3, 4...)",
+	m_console.registerCommand( "key", "<letter|digit|scan code> [down|up] - press a hotkey (G, Q, 1, 3, 4...); down / up - hold "
+							   "the key or let it go (W A S D of walking, Space)",
 							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		if( args.empty() )
@@ -323,6 +324,12 @@ void Engine::registerCommands()
 		}
 		if( code < 0 )
 			return reply->error( "key: unknown key " + args[0] );
+		// Удержание — состояние клавиши, как от Raw Input (его видят WASD и прыжок со следующего кадра)
+		if( args.size() == 2 && ( args[1] == "down" || args[1] == "up" ) )
+		{
+			Input::instance().setKeyDown( static_cast<uint8_t>( code ), args[1] == "down" );
+			return reply->ok();
+		}
 		if( !Input::instance().notifier().press( static_cast<uint8_t>( code ) ) )
 			return reply->error( "key: nothing is bound to " + args[0] );
 		reply->ok();

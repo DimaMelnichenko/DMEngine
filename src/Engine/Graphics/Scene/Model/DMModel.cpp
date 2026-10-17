@@ -68,6 +68,22 @@ float DMModel::lodRange( uint16_t index ) const
 	return index < m_lods.size() ? m_lods[index].first : 0.0f;
 }
 
+bool DMModel::parseCollision( const std::string& name, Collision& collision )
+{
+	static const std::pair<const char*, Collision> names[] = { { "hull", Collision::hull }, { "box", Collision::box },
+															   { "mesh", Collision::mesh }, { "capsule", Collision::capsule },
+															   { "none", Collision::none } };
+	for( const auto& [text, value] : names )
+	{
+		if( name == text )
+		{
+			collision = value;
+			return true;
+		}
+	}
+	return false;
+}
+
 uint16_t DMModel::lodCount() const
 {
 	return m_lods.size();

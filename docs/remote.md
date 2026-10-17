@@ -66,6 +66,7 @@ python Tools/engine.py stop
 | `set окно/свойство значение` | новое значение свойства — так же, как ползунок в GUI: объекты читают свойства каждый кадр |
 | `press "окно/кнопка"` | нажать кнопку окна, как в Details (с отменой — правка истории): `press "Lights/Add point light"`, `press "Lights/2: Point light (point)/Delete"`; ответ — имя правки ([gui.md](gui.md)) |
 | `key клавиша` | нажатие горячей клавиши (буква, цифра или скан-код `DIK_*`, как в DirectInput): `G`, `Q`, `1`, `3`, `4`… |
+| `key клавиша down` / `up` | удержать клавишу или отпустить — W A S D и пробел ходьбы ([gui.md](gui.md), «Ходьба»): `key F`, `key W down`, `wait 600`, `key W up`, `camera` — где остановился |
 | `gui on\|off` | окна редактора, как клавиша G |
 | `action "имя"` | действие меню File редактора: `"Save level"` — правки окон в базу, `"Exit"` ([gui.md](gui.md)) |
 | `preset [имя \| level \| save имя]` | пресеты окружения уровня (время суток, небо, постобработка, ветер, туман, облака): без аргументов — список (`*` — активный, `locked` — «Save level» его не пишет), имя — выбрать на лету (`level` — строки уровня), `save` — окна как новый пресет ([gui.md](gui.md), «Пресеты окружения») |
@@ -80,8 +81,9 @@ python Tools/engine.py stop
 | `water discharge файл.dds` | расход воды ячеек симуляции, м³/с, в DDS `R32_FLOAT` (`WaterSimulation::exportDischarge`) — для проверки |
 | `water state префикс` | текстура воды для шейдеров (`SLOT_WATER`) в DDS `R32_FLOAT`: `_depth` — глубина, м, `_vx`, `_vz` — течение по X и Z мира, м/с (`WaterSimulation::exportState`; строка 0 — дальний край по z) — проверка течения ручьёв и озёр ([water.md](water.md), «Течение ручьёв и озёр»); в режиме `static` ещё детальная вода у русел одним растром 0,25 м на весь мир (−1e9 — плитки нет): `_detail_level` — уровень поверхности, м, `_detail_depth`, `_detail_vx`, `_detail_vz` и вход её течения из конвейера — `_detail_u0x`, `_detail_u0z` (скорость по Маннингу `u₀`), `_detail_radius` (`R` русла) ([water.md](water.md), «Детальная вода у русел»), и поле пены — `_foam` (сетка 1 м), `_detail_foam` (детальная, 0 — плитки нет) ([water.md](water.md), «Материал», «Пена») |
 | `terrain paint цель x z радиус value\|step\|unstep\|erase значение [falloff]` | мазок кисти поверх правил слоёв в точке мира: цель — `"layer N"` или `wetness` (сетка 0,25 м) или имя маски (`mask_forest_spruce`, 1 м); `value` — итог к значению, `step` / `unstep` — поправка ± значение, `erase` — к правилам; `terrain paint clear цель`, `terrain paint list`, `terrain paint probe цель x z` — правило, поправка и итог в точке ([terrain.md](terrain.md), «Ручная правка слоёв и масок») |
-| `world` | мир симуляции: сущности, шаги, время мировых часов ([simulation.md](simulation.md)) |
+| `world` | мир симуляции: сущности, шаги, время мировых часов, тела и персонажи мира столкновений ([simulation.md](simulation.md), [physics.md](physics.md)) |
 | `world spawn модель x z [число] [радиус]` | бродяги модели из загруженных вокруг точки (проверка мира симуляции) |
+| `world list` | места сущностей мира |
 | `world clear` | убрать все сущности мира |
 | `terrain hydrology префикс` | русла и вода конвейера рельефа в DDS `R32_FLOAT`: `_lowering` — опускание ложа, `_level` — уровень ручьёв, `_lake` — уровень озёр, `_detail` — детальная земля у русел, 4096², −1e9 — плиток нет ([water.md](water.md), [terrain.md](terrain.md)) |
 | `passes` | список проходов следующего кадра в `log.txt` (`DMD3D::logPasses`): имя, цели с размером, что читает и пишет — по объявлениям `PassDesc` (`D3D/GpuPass.h`); compute-проходы помечены `compute` |
