@@ -95,7 +95,7 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName,
 	return true;
 }
 
-bool Scene::initialize( LibraryLoader& library, bool particles )
+bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audio )
 {
 	// Доли — по времени (Release, уровень Test): террейн с эрозией, руслами и слоями материала ~2 с, течение озёр ~0,6 с
 	SlowTask task( 2.8f );
@@ -260,6 +260,11 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 	if( !m_level.reflectionCaptures.empty() && !m_reflectionCaptures.initialize( m_level.reflectionCaptures ) )
 		LOG( "Reflection captures are not initialized" );
 
+	// Звуки окружения — голоса микшера по ветру и маскам травы и леса; без террейна — только ветер
+	if( audio && m_level.ambientSound &&
+		!m_ambientSound.initialize( *m_level.ambientSound, *audio, m_wind, m_level.terrain ? &m_terrainPipeline : nullptr ) )
+		LOG( "Ambient sound is not initialized" );
+
 	// Следы в траве — по земле под камерой; без поля растения просто не расступаются
 	if( m_level.terrain && !m_foliageInteraction.initialize( &m_terrainPipeline ) )
 		LOG( "Foliage interaction is not initialized" );
@@ -288,6 +293,9 @@ bool Scene::initialize( LibraryLoader& library, bool particles )
 	// Карты отражений места — своих мешей нет: просят съёмку сцены, префильтр и слот сцены — в compute
 	if( m_reflectionCaptures.initialized() )
 		m_objects.push_back( &m_reflectionCaptures );
+	// Звуки окружения — мешей нет: цели голосов микшера по камере
+	if( m_ambientSound.initialized() )
+		m_objects.push_back( &m_ambientSound );
 
 	return true;
 }
@@ -463,6 +471,8 @@ LevelSaveData Scene::levelSaveData( const PostProcessSettings& postProcess, cons
 		data.emitters = m_particles.emitterSettings();
 	if( m_reflectionCaptures.initialized() )
 		data.reflectionCaptures = m_reflectionCaptures.captureSettings();
+	if( m_ambientSound.initialized() )
+		data.ambientSound = m_ambientSound.settings();
 	return data;
 }
 

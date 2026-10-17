@@ -133,8 +133,11 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 
 	m_timer.Initialize();
 
+	// Звук: нет устройства или выключен в settings.ini — уровень без звука, движок работает
+	m_audio.initialize( m_config.audio(), m_config.audioVolume(), m_config.audioMuted() );
+
 	stage( 2.8f, "Scene" );
-	RET_FALSE( m_scene.initialize( *m_library, m_config.particles() ) );
+	RET_FALSE( m_scene.initialize( *m_library, m_config.particles(), &m_audio.mixer() ) );
 	// Импостеры расстановки — рендером моделей в кадры, до прогрева: их материалы прогреются вместе со всеми
 	stage( 2.0f, "Impostors" );
 	RET_FALSE( m_renderer.bake( m_scene ) );
@@ -174,6 +177,8 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	m_GUI.addPropertyWatching( m_scene.wind().properties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_renderer.properties(), Category::rendering );
 	m_GUI.addPropertyWatching( m_walk.properties(), Category::rendering );
+	// Громкость и «Mute» — пользователя, а не уровня: не сохраняются
+	m_GUI.addPropertyWatching( m_audio.properties(), Category::rendering );
 	for( RenderFeature* feature : m_renderer.features() )
 	{
 		if( !feature->environment() && feature->properties() )
@@ -276,6 +281,7 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	m_GUI.registerCommands( m_console );
 	m_viewport.registerCommands( m_console, m_cameraPool["main"], m_scene, m_GUI );
 	registerSceneCommands( m_console, m_scene );
+	m_audio.registerCommands( m_console );
 	m_GUI.setCommandNames( m_console.names() );
 	// Первые кадры — как смена плана: экспозиция сразу по сцене, а не за секунды от начального значения
 	m_renderer.cameraCut();
@@ -349,6 +355,7 @@ bool Engine::tick()
 	// Сначала состояние сцены на CPU, затем команды GPU
 	watchdog.stage( "scene update" );
 	TIME_CHECK( m_scene.update( frame, m_frameStats ), "Scene Update = %.3f ms" );
+	m_audio.update( m_frameStats );
 
 	const bool rendered = render( frame );
 	// Между кадрами — сообщения окна (DMSystem::Run); перетаскивание окна держит их цикл
@@ -506,6 +513,7 @@ void Engine::drawLoadingFrame( const std::string& task, float progress )
 void Engine::beforeExit()
 {
 	FrameWatchdog::instance().stop();
+	m_audio.shutdown();
 	m_library->save();
 	// Ответ на quit поток канала дописывает до выхода
 	m_remote.stop();

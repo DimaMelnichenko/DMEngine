@@ -1,7 +1,7 @@
 # Запуск DMEngine для проверки изменений:
 #   .\Tools\run.ps1 [-Config Debug|Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,3] [-Camera x,y,z,pitch,yaw] [-Level имя]
 #                    [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles] [-FreezeTime] [-NoColorGrading]
-#                    [-Preset имя] [-GpuValidation] [-StableClocks]
+#                    [-Preset имя] [-GpuValidation] [-StableClocks] [-Sound]
 # Запускает cmake-build-cli-<конфигурация>\DMEngine.exe из корня проекта (все пути движка относительные) с удалённым
 # управлением (-remote, канал \\.\pipe\DMEngine, docs/remote.md), ждёт конца инициализации, затем Seconds секунд работы,
 # при необходимости нажимает клавиши и снимает кадр, закрывает движок штатно (команда quit: Engine::beforeExit,
@@ -30,6 +30,7 @@
 # дескрипторы, проходы); без него Debug — только debug-слой, загрузка и кадр в разы быстрее.
 # StableClocks — закреплённая частота GPU (параметр движка -stableclocks, SetStablePowerState; нужен режим разработчика
 # Windows): «GPU average» не скачет от разгона, питания и нагрева, мс больше обычных.
+# Sound — со звуком; без него вывод звука молчит (параметр движка -mute: микшер и запись audio record работают).
 # Каждая команда ждёт ответа не дольше 60 с: не ответил — главный цикл движка стоит (в log.txt — «Frame watchdog»), процесс
 # закрывается принудительно.
 param(
@@ -48,7 +49,8 @@ param(
     [switch]$NoColorGrading,
     [string]$Preset,
     [switch]$GpuValidation,
-    [switch]$StableClocks
+    [switch]$StableClocks,
+    [switch]$Sound
 )
 
 $ErrorActionPreference = 'Stop'
@@ -128,6 +130,7 @@ if ($Preset) {
 }
 if ($GpuValidation) { $engineArgs += '-gpuvalidation' }
 if ($StableClocks) { $engineArgs += '-stableclocks' }
+if (-not $Sound) { $engineArgs += '-mute' }
 $process = Start-Process -FilePath $exe -WorkingDirectory $root -PassThru -ArgumentList ($engineArgs -join ' ')
 $begin = Get-Date
 

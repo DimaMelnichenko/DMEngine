@@ -80,6 +80,17 @@ WindParameters Wind::parameters()
 	return parameters;
 }
 
+float Wind::gust( const WindParameters& parameters, float x, float z, float time )
+{
+	constexpr float twoPi = 6.2831853f;
+	const XMFLOAT2& direction = parameters.direction;
+	const float along = ( x * direction.x + z * direction.y - time * parameters.speed ) / parameters.gustSize;
+	const float side = ( -x * direction.y + z * direction.x ) / parameters.gustSize;
+	const float wave = 0.6f * std::sin( twoPi * along + 1.7f * std::sin( 1.3f * side ) ) +
+					   0.4f * std::sin( twoPi * 0.43f * along + 2.1f * side + 1.0f );
+	return parameters.gustMin + ( parameters.gustMax - parameters.gustMin ) * ( wave * 0.5f + 0.5f );
+}
+
 void Wind::disable()
 {
 	m_properties["Enabled"].setData( false );

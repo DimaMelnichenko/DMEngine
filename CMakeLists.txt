@@ -123,6 +123,10 @@ add_executable(DMEngine WIN32
     src/Engine/Console/ConsoleCommands.cpp
     src/Engine/Console/PropertyCommands.cpp
     src/Engine/Console/RemoteControlServer.cpp
+    src/Engine/Audio/AudioDevice.cpp
+    src/Engine/Audio/AudioMixer.cpp
+    src/Engine/Audio/AudioOutput.cpp
+    src/Engine/Audio/AudioSynth.cpp
     src/Engine/Graphics/Scene/Scatterer/ScattererPass.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
@@ -176,6 +180,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/CubePrefilter.cpp
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
+    src/Engine/Graphics/Scene/Sound/AmbientSound.cpp
     src/Engine/Graphics/Scene/Foliage/FoliageInteraction.cpp
     src/Engine/Graphics/Scene/Water/WaterSimulation.cpp
     src/Engine/Graphics/Scene/Water/WaterField.cpp
@@ -290,7 +295,7 @@ target_link_libraries(DMEngine PRIVATE
     D3D12MemoryAllocator
     ${dxc_SOURCE_DIR}/lib/x64/dxcompiler.lib
     ${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.lib
-    d3d12 dxgi dxguid winmm windowscodecs
+    d3d12 dxgi dxguid winmm windowscodecs xaudio2
     dbghelp     # стек зависшего главного потока (FrameWatchdog)
     d3dcompiler # только шейдеры imgui_impl_dx12 (D3DCompile); шейдеры движка — DXC
 )

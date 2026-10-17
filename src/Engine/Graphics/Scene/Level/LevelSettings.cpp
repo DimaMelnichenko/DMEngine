@@ -938,6 +938,34 @@ const SettingsSchema<ReflectionCaptureSettings>& reflectionCaptureSchema()
 	return schema;
 }
 
+const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema()
+{
+	using Settings = AmbientSoundSettings;
+	// Громкости — доли амплитуды; частоты — середины полос шума, по логарифму (слух — по октавам)
+	static const SettingsSchema<Settings> schema = {
+		{ "volume", "Volume", DM_SETTING( volume ), 0.0f, 2.0f, "", "All ambient sounds of the level" },
+		{ "wind_volume", "Volume", DM_SETTING( windVolume ), 0.0f, 2.0f, "", "Air rushing past the camera", 0, "Wind" },
+		{ "wind_reference_speed", "Reference speed", DM_SETTING( windReferenceSpeed ), 1.0f, 30.0f, "m/s",
+		  "Wind speed at the camera with the full volume (the speed of the level wind times the terrain field and the gust)",
+		  settingClampLow, "Wind" },
+		{ "wind_frequency", "Frequency", DM_SETTING( windFrequency ), 30.0f, 1000.0f, "Hz",
+		  "Middle of the rumble band in a calm; it rises with the wind speed", settingLogarithmic | settingClampLow, "Wind" },
+		{ "grass_volume", "Volume", DM_SETTING( grassVolume ), 0.0f, 2.0f, "", "Rustle of the grass around the camera", 0, "Grass" },
+		{ "grass_radius", "Radius", DM_SETTING( grassRadius ), 1.0f, 20.0f, "m", "Grass masks are averaged in this circle",
+		  settingClampLow, "Grass" },
+		{ "grass_height", "Height", DM_SETTING( grassHeight ), 3.0f, 50.0f, "m",
+		  "Camera this high above the ground does not hear the grass (quieter from 2.5 m)", settingClampLow, "Grass" },
+		{ "grass_frequency", "Frequency", DM_SETTING( grassFrequency ), 500.0f, 12000.0f, "Hz", "Middle of the rustle band",
+		  settingLogarithmic | settingClampLow, "Grass" },
+		{ "crown_volume", "Volume", DM_SETTING( crownVolume ), 0.0f, 2.0f, "", "Rustle of the forest crowns around", 0, "Crowns" },
+		{ "crown_radius", "Radius", DM_SETTING( crownRadius ), 10.0f, 300.0f, "m",
+		  "Forest masks in this circle, by four sides: the sound comes from where the forest is", settingClampLow, "Crowns" },
+		{ "crown_frequency", "Frequency", DM_SETTING( crownFrequency ), 200.0f, 8000.0f, "Hz", "Middle of the rustle band",
+		  settingLogarithmic | settingClampLow, "Crowns" },
+	};
+	return schema;
+}
+
 Tonemapper tonemapperFromName( const std::string& name )
 {
 	return name == "None" ? Tonemapper::none : name == "ACES" ? Tonemapper::aces : Tonemapper::agx;

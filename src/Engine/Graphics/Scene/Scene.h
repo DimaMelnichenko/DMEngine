@@ -19,6 +19,7 @@
 #include "Wind\Wind.h"
 #include "Water\WaterSimulation.h"
 #include "Foliage\FoliageInteraction.h"
+#include "Sound\AmbientSound.h"
 #include "Level\LevelDescription.h"
 #include "Level\LevelSaveData.h"
 
@@ -37,8 +38,9 @@ public:
 	// строки уровня), его модели и текстуры
 	bool loadResources( LibraryLoader& library, const std::string& levelName, const std::string& preset );
 	// Создаёт объекты сцены и свет; вызывается после loadResources() и Renderer::initialize()
-	// particles — частицы уровня (-noparticles: нет, кадры с одной точки совпадают)
-	bool initialize( LibraryLoader& library, bool particles = true );
+	// particles — частицы уровня (-noparticles: нет, кадры с одной точки совпадают); audio — микшер звука движка: голоса
+	// звуков окружения (nullptr — уровень без звука)
+	bool initialize( LibraryLoader& library, bool particles = true, AudioMixer* audio = nullptr );
 
 	// Раз за кадр до update(): правки источников в GUI и время суток, затем свет солнца у земли — через атмосферу
 	// seconds — время кадра: с ним идёт время суток
@@ -137,6 +139,7 @@ private:
 	ParticleSystem m_particles;	// частицы уровня (LevelParticleEmitters); -noparticles — нет
 	FoliageInteraction m_foliageInteraction;	// трава расступается у камеры (только с террейном)
 	ReflectionCaptures m_reflectionCaptures;	// карты отражений места (LevelReflectionCaptures)
+	AmbientSound m_ambientSound;	// звуки окружения (Levels.ambient_sound): голоса микшера звука
 
 	std::vector<SceneObject*> m_objects;
 };

@@ -309,6 +309,8 @@ bool LibraryLoader::loadLevel( const std::string& name, const std::string& prese
 		}
 		if( SettingsDatabaseDetail::hasColumn( query, "far_terrain" ) && !query.getColumn( "far_terrain" ).isNull() )
 			loadFarTerrain( query.getColumn( "far_terrain" ).getUInt(), level );
+		if( SettingsDatabaseDetail::hasColumn( query, "ambient_sound" ) && !query.getColumn( "ambient_sound" ).isNull() )
+			loadAmbientSound( query.getColumn( "ambient_sound" ).getUInt(), level );
 		if( !query.getColumn( "sky" ).isNull() )
 			level.sky = query.getColumn( "sky" ).getUInt();
 		if( !query.getColumn( "atmosphere" ).isNull() )

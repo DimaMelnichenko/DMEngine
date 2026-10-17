@@ -93,6 +93,7 @@ private:
 	void loadTerrainPaint( uint32_t terrainId, LevelDescription& level );
 	// Строка FarTerrain — дальние горы вокруг карты (LibraryLoaderScene.cpp); нет строки — гор нет
 	void loadFarTerrain( uint32_t farTerrainId, LevelDescription& level );
+	void loadAmbientSound( uint32_t ambientSoundId, LevelDescription& level );
 	// Эмиттеры частиц уровня (LevelParticleEmitters → ParticleEmitters); таблиц нет — эмиттеров нет
 	void loadParticleEmitters( LevelDescription& level );
 	// Карты отражений места уровня (LevelReflectionCaptures); таблицы нет — карт нет

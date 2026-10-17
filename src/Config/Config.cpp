@@ -80,6 +80,9 @@ bool Config::readConfig( const std::string& file )
 		strToVec2( iniString( file, "Camera", "Rotation" ), m_cameraRotation );
 		m_levelName = iniString( file, "Level", "Name" );
 		m_presetName = iniString( file, "Level", "Preset" );
+		m_audio = iniString( file, "Audio", "Enabled" ) != "false";
+		if( !iniString( file, "Audio", "Volume" ).empty() )
+			m_audioVolume = iniFloat( file, "Audio", "Volume" );
 
 		return true;
 	}
@@ -133,6 +136,10 @@ void Config::parseCommandLine( const std::string& commandLine )
 		else if( args[i] == "-stableclocks" )
 		{
 			m_stableClocks = true;
+		}
+		else if( args[i] == "-mute" )
+		{
+			m_audioMuted = true;
 		}
 		else if( i + 1 >= args.size() )
 		{

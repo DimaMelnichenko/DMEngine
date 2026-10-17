@@ -1,6 +1,6 @@
 """Удалённое управление запущенным DMEngine — как консоль и Remote Control API в UE (docs/remote.md).
 
-    python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--nocolorgrading] [--preset name] [--pix] [--gpu-validation] [--stableclocks]
+    python Tools/engine.py start [--config Debug|Release] [--camera x,y,z,pitch,yaw] [--level имя] [--resolution 1920x1080|desktop] [--nogui] [--mouse] [--nowind] [--noparticles] [--freezetime] [--nocolorgrading] [--preset name] [--pix] [--gpu-validation] [--stableclocks] [--sound]
     python Tools/engine.py [--timeout с] <команда ...>    одна команда, печатает ответ; код выхода 1 при error
     python Tools/engine.py [--timeout с] run сценарий.txt  команды из файла по строке (# — комментарий), за одно подключение
     python Tools/engine.py stop                   quit, ожидание выхода, ошибки из log.txt
@@ -17,6 +17,7 @@ ASCII (правило Tools/).
 (-gpuvalidation) для правок слоя D3D12, только в Debug: без --config запускает Debug, с --config Release — ошибка.
 --stableclocks — закреплённая частота GPU (-stableclocks, SetStablePowerState, как «Lock to stable clocks» в PIX): время GPU не
 скачет от разгона, питания и нагрева, мс больше обычных; нужен режим разработчика Windows (без него — строка в log.txt).
+Звук движка — без вывода (-mute: проверки не шумят; микшер и audio record работают); --sound — со звуком.
 """
 import argparse
 import ctypes
@@ -228,6 +229,8 @@ def start(args):
         engine_args.append('-gpuvalidation')
     if args.stableclocks:
         engine_args.append('-stableclocks')
+    if not args.sound:
+        engine_args.append('-mute')
     if args.camera:
         engine_args += ['-camera', args.camera]
     if args.level:
@@ -337,6 +340,7 @@ def main():
         parser.add_argument('--pix', action='store_true', help='load the PIX GPU capturer: command pix takes captures')
         parser.add_argument('--gpu-validation', action='store_true',
                             help='Debug: GPU-based validation of the D3D12 debug layer (slow; for changes of the D3D12 layer)')
+        parser.add_argument('--sound', action='store_true', help='audio output on (by default -mute: the mixer runs silently)')
         parser.add_argument('--stableclocks', action='store_true',
                             help='lock the GPU clocks (SetStablePowerState, Windows developer mode): GPU times do not jump with '
                                  'boost, power and heat')

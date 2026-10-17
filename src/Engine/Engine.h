@@ -28,6 +28,7 @@
 #include "FrameMeasures.h"
 #include "Engine\Console\ConsoleCommands.h"
 #include "Engine\Console\RemoteControlServer.h"
+#include "Engine\Audio\AudioDevice.h"
 
 class LibraryLoader;
 
@@ -105,6 +106,7 @@ private:
 	Config m_config;
 	std::unique_ptr<LibraryLoader> m_library;
 
+	AudioDevice m_audio;		// раньше сцены: её звуки окружения убирают свои голоса из микшера при разрушении
 	Scene m_scene;
 	GUI m_GUI;
 	Viewport m_viewport;

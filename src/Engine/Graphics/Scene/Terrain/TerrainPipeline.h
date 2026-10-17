@@ -99,6 +99,9 @@ public:
 	const TerrainPaint& paint() const { return m_paint; }
 	// Итог цели в точке: правила, поправка, итог (для проверки команд); false — нет цели
 	bool paintProbe( const std::string& target, float x, float z, float& rule, float& delta, float& result ) const;
+	// Маска по имени (mask_grass, mask_forest_* …, TerrainMasks) с мазками кисти: mapSize² значений, строка 0 — дальний край по z,
+	// как у карты высот; nullptr — такой нет. Указатель — до перестройки масок или русел: брать заново каждый кадр
+	const std::vector<float>* maskValues( const std::string& name ) const;
 	// Мазок изменил маски: постоянные слои расстановки (лес) раскладываются заново — флаг для Scene, сбрасывается
 	bool takePaintedMasks() { const bool changed = m_paintedMasksChanged; m_paintedMasksChanged = false; return changed; }
 

@@ -13,9 +13,10 @@ TODO.md «Решить или проверить»), с запасом в --dila
 считаются. Время GPU кадра — среднее по запускам. Всё — в reference\\<config>\\ (в .gitignore: кадры зависят от
 Textures\\ и Meshes\\ этой машины) с reference.json: коммит, дата, время GPU, закреплена ли частота.
 
-В Release движок запускается с закреплённой частотой GPU (engine.py start --stableclocks, SetStablePowerState, как «Lock to
-stable clocks» в PIX; нужен режим разработчика Windows): время не скачет от разгона, питания и нагрева ноутбука, мс больше
-обычных. --no-stable-clocks — без неё; время сравнивается только с эталоном, снятым так же (иначе — пометка, без сравнения).
+Движок запускается с закреплённой частотой GPU (engine.py start --stableclocks, SetStablePowerState, как «Lock to stable
+clocks» в PIX; нужен режим разработчика Windows): время не скачет от разгона, питания и нагрева ноутбука, мс больше обычных,
+и ноутбук не перегревается (поэтому и в Debug). --no-stable-clocks — без неё; время сравнивается только с эталоном, снятым
+так же (иначе — пометка, без сравнения).
 
 check — один запуск текущей сборки с теми же камерами в reference\\<config>\\last\\: кадр совпал, если пикселей сверх
 допуска ±1 вне маски шума не больше --allowed (карта расхождений — last\\<камера>_diff.png: красным — сверх допуска вне
@@ -86,7 +87,8 @@ def run_cameras(config, folder, gpu, gpu_validation, gpu_state=True, stable_cloc
     start = ['start', '--config', config, '--nogui', '--nowind', '--noparticles', '--freezetime', '--preset', 'Reference']
     if gpu_validation:
         start.append('--gpu-validation')
-    if gpu and stable_clocks:
+    # Частота закреплена и в Debug (время там не сравнивается): GPU без разгона, ноутбук не перегревается
+    if stable_clocks:
         start.append('--stableclocks')
     code, output = engine(start)
     if code != 0:

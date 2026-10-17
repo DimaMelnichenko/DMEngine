@@ -817,6 +817,28 @@ struct ReflectionCaptureSettings
 // Поля строки LevelReflectionCaptures (SettingsSchema), подокно карты в окне «Reflection captures». Не в описании — имя
 const SettingsSchema<ReflectionCaptureSettings>& reflectionCaptureSchema();
 
+// Звуки окружения уровня — строка AmbientSound (Levels.ambient_sound; AmbientSound, docs/audio.md): синтез ветра у камеры,
+// шелеста травы под ногами и крон леса вокруг по ветру уровня, полю ветра и маскам. Громкости — доли (амплитуда), полная
+// громкость слоя — около −20 дБ FS
+struct AmbientSoundSettings
+{
+	uint32_t id = 0;				// строка AmbientSound — куда пишет «Save level»
+	float volume = 1.0f;			// общая громкость звуков окружения
+	float windVolume = 0.5f;		// гул и свист ветра у камеры
+	float windReferenceSpeed = 8.0f;	// при такой скорости ветра у камеры, м/с, — полная громкость (ветер — по скорости^1,5,
+									// шелест — по скорости^0,75)
+	float windFrequency = 120.0f;	// середина полосы гула в штиль, Гц; растёт со скоростью ветра
+	float grassVolume = 0.5f;		// шелест травы вокруг камеры
+	float grassRadius = 5.0f;		// трава в этом круге, м
+	float grassHeight = 12.0f;		// камера выше земли на столько, м, — травы не слышно (от 2,5 м тише)
+	float grassFrequency = 3500.0f;	// середина полосы шелеста травы, Гц
+	float crownVolume = 0.6f;		// шум крон леса вокруг
+	float crownRadius = 80.0f;		// лес в этом круге, м
+	float crownFrequency = 1200.0f;	// середина полосы шума крон, Гц
+};
+// Поля строки AmbientSound (SettingsSchema): основное окно «Ambient sound» и подокна «Wind», «Grass», «Crowns»
+const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema();
+
 // Строка SunPosition
 struct SunPositionSettings
 {

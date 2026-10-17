@@ -64,6 +64,7 @@ struct LevelDescription
 	std::vector<ScatterSet> scatterSets;	// таблица LevelScatterSets
 	std::vector<GS::ParticleEmitterSettings> particleEmitters;	// включённые строки LevelParticleEmitters
 	std::vector<GS::ReflectionCaptureSettings> reflectionCaptures;	// включённые строки LevelReflectionCaptures
+	std::optional<GS::AmbientSoundSettings> ambientSound;	// звуки окружения (Levels.ambient_sound); NULL — тишина
 
 	// Свет и окружение уровня — как сущности уровня в UE (Directional / Point / Spot Light, Sky Atmosphere,
 	// Post Process Volume). Строки настроек неба и постобработки — по ссылке из Levels; NULL — значения по умолчанию

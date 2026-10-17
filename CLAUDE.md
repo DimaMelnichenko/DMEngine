@@ -82,7 +82,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   коммит `0aadc42` в истории git.
 - **Запуск для проверки** — `.\Tools\run.ps1 [-Config Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,4]
   [-Camera x,y,z,pitch,yaw] [-Level имя] [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
-  [-FreezeTime] [-NoColorGrading] [-Preset имя] [-GpuValidation] [-StableClocks]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
+  [-FreezeTime] [-NoColorGrading] [-Preset имя] [-GpuValidation] [-StableClocks] [-Sound]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
   Запускает exe из корня проекта с удалённым управлением (`-remote`), ждёт конца инициализации и ещё `-Seconds`, по
   желанию нажимает клавиши (команда `key`, скан-коды `DIK_*`, как в DirectInput: 2 — «1», 4 — «3», 5 — «4») и снимает
   задний буфер (команда `screenshot`, с окнами ImGui, если нет `-NoGui`), закрывает движок штатно (`quit`, лог дописан;
@@ -97,7 +97,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `-NoParticles` (`-noparticles`, `--noparticles`: частицы движутся) и `-FreezeTime` (`-freezetime`, `--freezetime`: время
   игры стоит — рябь воды на месте, снимки с водой совпадают между запусками); `-NoColorGrading` (`-nocolorgrading`,
   `--nocolorgrading`, в сессии `set "Post process/Color grading/Enabled" false`) — без цветокоррекции уровня, только кривая
-  тонмаппинга; `-Preset имя` (`-preset`, `--preset`, в сессии `preset имя`) — пресет окружения уровня (`LevelPresets`:
+  тонмаппинга; звук инструменты по умолчанию глушат (`-mute`: вывод молчит, микшер и `audio record` работают; `-Sound` /
+  `--sound` — со звуком, `docs/audio.md`); `-Preset имя` (`-preset`, `--preset`, в сессии `preset имя`) — пресет окружения уровня (`LevelPresets`:
   время суток, небо, постобработка, ветер, туман, облака; `docs/gui.md`, «Пресеты окружения»): Dimok подбирает окружение в
   своём (по умолчанию — строки уровня, `[Level] Preset=` в `settings.ini`), проверки — с заблокированным `Reference`
   (`check_frames.py` запускает с `--preset Reference`; «Save level» его не пишет). В редакторе окна пресета подкрашены
@@ -110,7 +111,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `-NoGui` (`-nogui` у exe) снимает кадр без окон ImGui — для сравнения картинки лучше с ним.
 - **Серия проверок за один запуск** — удалённое управление (`docs/remote.md`, как консоль и Remote Control в UE):
   `python Tools/engine.py start [--config Debug] [--nogui]` (по умолчанию — Release), затем команды — `camera x,y,z,pitch,yaw`,
-  `screenshot файл.png [кадров]`, `capture x,y,z,pitch,yaw файл.png` (кадр с другой камеры), `stat gpu 3`, `stat cpu 3`, `list` / `get` / `set "окно/свойство" значение`, `press "окно/кнопка"`, `pix [файл.wpix]` (захват PIX, движок с
+  `screenshot файл.png [кадров]`, `capture x,y,z,pitch,yaw файл.png` (кадр с другой камеры), `audio record файл.wav секунд`
+  (смесь звука; разбор — `Tools/audio_check.py`), `stat gpu 3`, `stat cpu 3`, `list` / `get` / `set "окно/свойство" значение`, `press "окно/кнопка"`, `pix [файл.wpix]` (захват PIX, движок с
   `--pix`; разбор — `Tools/pix_events.py`, `docs/d3d12.md` §4), `key G`, `timestep 0.0166`
   (фиксированный шаг времени для серий кадров), — по одной или
   сценарием (`python Tools/engine.py run файл.txt`), и `python Tools/engine.py stop` (штатный выход, ошибки из лога).
@@ -340,6 +342,10 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 глубина уже записана prepass); перед
 ним привязан общий `VertexPool` с топологией TRIANGLELIST, свои буферы объект привязывает сам. Новый проход или вид
 (тени прожекторов, экранные эффекты) добавляется в `Renderer`, а не в объекты.
+Звук — `AudioDevice` (`src/Engine/Audio/`, член `Engine` до сцены, как Audio Mixer в UE): свой микшер (`AudioMixer`: голоса —
+генераторы с целями громкости по каналам, нить ведёт к ним плавно) и вывод XAudio2 (`AudioOutput`, своя нить, блоки 10 мс);
+голоса заводят объекты сцены, окно «Audio» — громкость и «Mute» пользователя (`[Audio]` в `settings.ini`, `-mute`), подробно —
+`docs/audio.md`.
 Сейчас объекты (в порядке сцены): небо — `SkyAtmosphere` (процедурное небо фоном и освещение окружением от него,
 таблицы Hillaire 2020 как в Sky Atmosphere UE5; его `compute()` идёт первым: при смене атмосферы — таблицы пропускания
 и Ψ, каждый кадр — небо вокруг камеры, Sky-View, и объём воздушной перспективы главного вида — t106; при смене солнца —
@@ -414,7 +420,10 @@ Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/
 по грани за кадр (`SceneObject::requestCapture`), покрытие в альфу и расстояния от точки съёмки в свою карту, префильтр
 `CubePrefilter` (общий с `SkyLight`); две ближайшие к камере — ресурсы сцены t131…t134, `cb_reflectionCapture*[2]`; вода там,
 где промахнулись экранные отражения, — луч по карте расстояний до того, во что упёрся (distance impostors), и небо сквозь
-непокрытое, `Shaders/reflection_capture.sh`; точку ставят над водой подальше от моделей; `docs/reflection_captures.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
+непокрытое, `Shaders/reflection_capture.sh`; точку ставят над водой подальше от моделей; `docs/reflection_captures.md`),
+`AmbientSound` (звуки окружения синтезом: ветер у камеры, шелест травы и кроны леса по сторонам — по ветру уровня, полю ветра
+и маскам, `Wind::gust`, `TerrainPipeline::maskValues`; строка `AmbientSound`, `Levels.ambient_sound`, `Tools/ambient_sound.py`;
+мешей нет — цели голосов микшера в `update`, `docs/audio.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 
 Логику, которая меняет состояние сцены, пишите в `SceneObject::update()`, а в `render()` оставляйте только команды GPU.

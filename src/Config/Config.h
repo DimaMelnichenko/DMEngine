@@ -57,6 +57,11 @@ public:
 	bool remoteControl() const				{ return m_remoteControl; }
 	// -pix: захват кадров PIX из самого движка (команда pix), как -attachPIX в UE: захватчик PIX грузится до устройства
 	bool pixCapture() const					{ return m_pixCapture; }
+	// Звук (секция [Audio]): Enabled=false — звука нет совсем; Volume — громкость вывода 0…1 (окно «Audio»); -mute — вывод
+	// молчит, а микшер и запись (audio record) работают: проверки (run.ps1, engine.py, check_frames.py) не шумят
+	bool audio() const						{ return m_audio; }
+	float audioVolume() const				{ return m_audioVolume; }
+	bool audioMuted() const					{ return m_audioMuted; }
 
 private:
 	bool m_vSync = true;
@@ -80,6 +85,9 @@ private:
 	bool m_colorGrading = true;
 	bool m_gameTimeRunning = true;
 	bool m_remoteControl = false;
+	bool m_audio = true;
+	float m_audioVolume = 1.0f;
+	bool m_audioMuted = false;
 
 };
 

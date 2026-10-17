@@ -42,6 +42,24 @@ void LibraryLoader::loadTerrainPaint( uint32_t terrainId, LevelDescription& leve
 	}
 }
 
+void LibraryLoader::loadAmbientSound( uint32_t ambientSoundId, LevelDescription& level )
+{
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "AmbientSound" ) )
+		return;
+	SQLite::Statement query( db, "SELECT * FROM AmbientSound WHERE id = :id" );
+	query.bind( ":id", ambientSoundId );
+	if( !query.executeStep() )
+	{
+		LOG( "Ambient sound: no row " + std::to_string( ambientSoundId ) + " in table AmbientSound" );
+		return;
+	}
+	// Поля — по описанию (ambientSoundSchema): NULL — значения по умолчанию AmbientSoundSettings
+	GS::AmbientSoundSettings& sound = level.ambientSound.emplace();
+	sound.id = ambientSoundId;
+	readSettings( query, GS::ambientSoundSchema(), sound, "Ambient sound " + std::to_string( ambientSoundId ) );
+}
+
 void LibraryLoader::loadFarTerrain( uint32_t farTerrainId, LevelDescription& level )
 {
 	SQLite::Database& db = DBConnector::instance().db();
@@ -511,6 +529,10 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 				updateSettings( db, "GlacialErosion", level.farTerrain->glacier->id, GS::glacialErosionSchema(), *data.farTerrain->glacier,
 								previous.farTerrain && previous.farTerrain->glacier ? &*previous.farTerrain->glacier : nullptr );
 		}
+
+		if( data.ambientSound && level.ambientSound )
+			updateSettings( db, "AmbientSound", level.ambientSound->id, GS::ambientSoundSchema(), *data.ambientSound,
+							previousOf( previous.ambientSound ) );
 
 		if( data.water && level.waterSimulationId )
 		{

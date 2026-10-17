@@ -35,4 +35,5 @@ struct LevelSaveData
 	std::optional<GS::WaterSimulationSettings> water;
 	std::vector<GS::ParticleEmitterSettings> emitters;
 	std::vector<GS::ReflectionCaptureSettings> reflectionCaptures;
+	std::optional<GS::AmbientSoundSettings> ambientSound;
 };

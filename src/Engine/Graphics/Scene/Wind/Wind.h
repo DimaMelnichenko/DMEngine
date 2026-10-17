@@ -26,6 +26,9 @@ public:
 	void apply( const Settings& settings );
 	// Константы кадра по текущим значениям GUI; сила 0 — растения неподвижны
 	WindParameters parameters();
+	// Порыв в точке мира (x, z) в момент time, с: доля силы между gustMin и gustMax — тот же расчёт, что windGust в
+	// Shaders/wind_field.sh (звук ветра, AmbientSound, слышит те же волны, что видны на траве)
+	static float gust( const WindParameters& parameters, float x, float z, float time );
 	// Для сравнения кадров с одной точки (-nowind): растения неподвижны
 	void disable();
 	PropertyContainer* properties();
