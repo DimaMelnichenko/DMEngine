@@ -87,6 +87,7 @@ ffmpeg (из PATH, `--ffmpeg` или распакованный в `DownloadReso
 | `crickets` | Сверчок близко и хор вдали ночью | ItsTheGoodstuff | CC BY 4.0 | https://freesound.org/people/ItsTheGoodstuff/sounds/656116/ |
 | `crickets_harz` | Сверчки ночью (кусок длинной записи, без сетевого фона) | inchadney | CC BY 4.0 | https://freesound.org/people/inchadney/sounds/58365/ |
 | `cicadas` | Цикады, петля | Nox_Sound | CC0 | https://freesound.org/people/Nox_Sound/sounds/515055/ |
+| `cicada_single` | Одиночная цикада, петля | soundofsong | CC0 | https://freesound.org/people/soundofsong/sounds/640718/ |
 | `frogs` | Лягушки и сверчки у пруда ночью | greysound | CC0 | https://freesound.org/people/greysound/sounds/32655/ |
 | `lake_lapping` | Мелкая волна у берега озера | Ambient-X | CC BY 4.0 | https://freesound.org/people/Ambient-X/sounds/743342/ |
 | `bees` | Пчёлы у цветов (кусок длинной записи) | felix.blume | CC0 | https://freesound.org/people/felix.blume/sounds/567767/ |
@@ -118,7 +119,7 @@ ffmpeg (из PATH, `--ffmpeg` или распакованный в `DownloadReso
 | Лягушки | Frogs pond night | у воды; ночь | есть |
 | Кузнечики | Grasshopper stridulation / meadow grasshoppers | луг; день, вечер | нужно |
 | Цикады | Cicadas | склоны, кусты; жаркий день | есть |
-| Одиночная цикада | Cicada single loop | там же | файл не скачан |
+| Одиночная цикада | Cicada single loop | там же | есть |
 | Шмели и пчёлы | Bumblebee buzz / bees flowers | луг в цветах; день | есть |
 | Плеск у берега | Lake shore lapping water gentle | озёра | есть |
 
