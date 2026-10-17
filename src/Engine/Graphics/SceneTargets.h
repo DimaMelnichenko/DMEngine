@@ -40,6 +40,8 @@ public:
 	// Глубина только для чтения: проход с ней проверяет глубину без записи и читает её шейдерами (depthView)
 	const TargetView& depthReadTarget() const { return m_depthReadTarget; }
 	const ShaderView& colorView() const { return m_colorView; }
+	// Текстура цвета — чтение на CPU (съёмка сцены в файл, команда capture)
+	const Texture& colorTexture() const { return m_color; }
 	const ShaderView& depthView() const { return m_depthView; }
 	const ShaderView& colorCopyView() const { return m_colorCopyView; }
 	uint32_t width() const { return m_width; }

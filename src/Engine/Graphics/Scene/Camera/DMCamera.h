@@ -42,6 +42,7 @@ public:
 	void projectionMatrix( DirectX::XMMATRIX* ) const;
 	float nearPlane() const { return m_nearPlane; }
 	float farPlane() const { return m_farPlane; }
+	float fieldOfView() const { return m_fieldOfView; }	// по вертикали, радианы
 	void viewDirection( DirectX::XMFLOAT3* ) const;	
 
 	PropertyContainer m_properties;

@@ -158,8 +158,10 @@ bool CDLODQuadtree::selectNode( const RenderView& view, const Bounds& bounds, ui
 	if( !view.frustum.checkBox( box.min, box.max ) )
 		return true;
 
-	// Лист у камеры — уровни мельче листа (−1, −2 …) везде: квадродерево однородно, переходы без трещин
-	if( level == 0 && lodRangeHitsBox( cameraPosition, eyeHeight, m_lod.detailRanges[0], box.min, box.max ) )
+	// Лист у камеры — уровни мельче листа (−1, −2 …) везде: квадродерево однородно, переходы без трещин. У съёмки сцены с
+	// другой камеры (кубическая карта отражений — грани в сотню пикселей) их нет: лист и так мельче её пикселя
+	if( level == 0 && view.kind != RenderView::Kind::capture &&
+		lodRangeHitsBox( cameraPosition, eyeHeight, m_lod.detailRanges[0], box.min, box.max ) )
 	{
 		for( uint32_t quarter = 0; quarter < 4; ++quarter )
 			if( !selectDetailNode( view, bounds, 1, x * 2 + ( quarter & 1 ), z * 2 + ( quarter >> 1 ), patches ) )

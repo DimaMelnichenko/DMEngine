@@ -761,6 +761,12 @@ void SkyAtmosphere::bindEnvironment()
 	DMD3D::instance().setSRV( SLOT_AERIAL_PERSPECTIVE, m_aerialPerspectiveSRV );
 }
 
+void SkyAtmosphere::beginCaptureView( const RenderView& )
+{
+	updateAerialPerspective();
+	DMD3D::instance().setSRV( SLOT_AERIAL_PERSPECTIVE, m_aerialPerspectiveSRV );
+}
+
 void SkyAtmosphere::collectMeshes( const RenderView&, MeshCollector& collector )
 {
 	if( m_backgroundVisible )

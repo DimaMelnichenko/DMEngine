@@ -235,9 +235,10 @@ void ShadowCascades::beginCascade( uint32_t cascade )
 	DMD3D::instance().clearDepth( m_depthViews[cascade], 0.0f );
 }
 
-void ShadowCascades::bindForReceivers( int sunLightIndex )
+void ShadowCascades::bindForReceivers( int sunLightIndex, bool cascades )
 {
-	const float distance = m_settings.dynamicShadowDistance;
+	// Без каскадов — дистанция 0: с первого метра дальние тени (farShadowFade в Shaders/shadows.sh)
+	const float distance = cascades ? m_settings.dynamicShadowDistance : 0.0f;
 	const float fadeout = m_settings.shadowDistanceFadeoutFraction;
 
 	ShadowConstants constants = {};
@@ -260,7 +261,7 @@ void ShadowCascades::bindForReceivers( int sunLightIndex )
 	constants.shadowDistance = distance;
 	constants.shadowNormalBias = m_settings.normalBias;
 	constants.shadowSunIndex = m_active ? sunLightIndex : -1;
-	constants.showCascades = m_properties["Show cascades"].data<bool>() ? 1 : 0;
+	constants.showCascades = cascades && m_properties["Show cascades"].data<bool>() ? 1 : 0;
 	constants.shadowMapSize = static_cast<float>( m_resolution );
 	constants.shadowDepthBias = m_settings.shadowBias;
 	Device::updateResourceData<ShadowConstants>( m_constantBuffer, constants );

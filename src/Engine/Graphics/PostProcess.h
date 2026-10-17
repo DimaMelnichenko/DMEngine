@@ -85,6 +85,8 @@ public:
 	void cameraCut() override { m_cutFrames = cutFrameCount; }
 	// EV100 кадра с отставанием на несколько кадров (копия с GPU без ожидания) — для статистики
 	float ev100() const { return m_ev100; }
+	// Множитель яркости, с которым рисуется сцена (preExposure), — с той же задержкой чтения, что ev100
+	float exposure() const { return m_exposure; }
 	// -nocolorgrading: кадр без цветокоррекции (только кривая тонмаппинга), как ShowFlag.ColorGrading 0 в UE — снимки
 	// контрольных камер сравнимы с эталоном, как бы её ни настроили на уровне. Флажок «Enabled» окна, не данные уровня
 	void disableColorGrading();
@@ -158,6 +160,7 @@ private:
 	static constexpr DXGI_FORMAT bloomFormat = DXGI_FORMAT_R11G11B10_FLOAT;
 	ReadbackRing<ExposureState> m_exposureReadback;
 	float m_ev100 = 0.0f;
+	float m_exposure = 1.0f;
 	// Кадры до конца смены плана: за один кадр гистограмма с чужой экспозицией может упереться в край диапазона
 	static constexpr uint32_t cutFrameCount = 4;
 	uint32_t m_cutFrames = 0;

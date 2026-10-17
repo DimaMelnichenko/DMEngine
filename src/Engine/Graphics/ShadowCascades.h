@@ -62,8 +62,10 @@ public:
 	void beginCascade( uint32_t cascade );
 	void beginFarCascade() { beginCascade( cascadeCount ); }
 	// После прохода теней, на цели сцены: карта, сэмплер и константы для приёма тени; sunLightIndex — индекс солнца
-	// в буфере источников (−1 — без теней)
-	void bindForReceivers( int sunLightIndex );
+	// в буфере источников (−1 — без теней). cascades = false — у вида съёмки сцены с другой камеры: каскады подогнаны под
+	// главную камеру (каскад выбирается по глубине её взгляда), поэтому только дальние тени — край тени рельефа, тень гор,
+	// дальний каскад леса — и облака
+	void bindForReceivers( int sunLightIndex, bool cascades = true );
 
 	PropertyContainer* properties() override;
 

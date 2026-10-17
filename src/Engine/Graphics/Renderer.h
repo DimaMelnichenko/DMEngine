@@ -1,7 +1,9 @@
 #pragma once
 
 #include <chrono>
+#include <deque>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 #include "Scene\VertexPool.h"
@@ -24,6 +26,27 @@ namespace GS
 {
 
 class Scene;
+
+// Съёмка сцены с другой камеры — как SceneCapture2D / SceneCaptureCube в UE: вид и свои цели. Рисуется в конце кадра, после
+// проходов главного вида (тени, небо и освещение окружением кадра уже готовы): opaque без depth prepass и небо — без воды,
+// частиц, облаков и кольцевых слоёв расстановки (трава); затенения окружением по экрану и объёма тумана нет (туман — по
+// формуле), тени — только дальние (каскады подогнаны под главную камеру), объём воздушной перспективы — заново под вид
+// (SceneObject::beginCaptureView). docs/scene_capture.md
+struct SceneCapture
+{
+	// Цвет очистки целей съёмки — он же optimized clear value их текстуры (SceneTargets::create): почти чёрный линейный, как у
+	// буфера сцены
+	static constexpr float clearColor[4] = { 0.004f, 0.004f, 0.004f, 1.0f };
+
+	RenderView view;					// положение, матрицы, frustum; kind и index ставит рендерер
+	const TargetView* color = nullptr;	// SceneTargets::colorFormat (R16G16B16A16_FLOAT) width × height
+	const TargetView* depth = nullptr;	// SceneTargets::depthFormat (D32_FLOAT) того же размера
+	uint32_t width = 0;
+	uint32_t height = 0;
+	float exposure = 1.0f;				// яркость, кд/м², × это — в цель (preExposure съёмки)
+	// После записи команд съёмки (в кадре): копия в кубическую карту, чтение на CPU
+	std::function<void()> done;
+};
 
 // Отправляет на GPU кадр сцены: общие данные конвейера, compute-проходы объектов, сбор мешей с вида
 // (MeshBatch — меш с материалом и матрицей, CustomBatch — свой вызов объекта), раскладка по проходам с сортировкой
@@ -71,6 +94,10 @@ public:
 	// Среднее время GPU кадра и проходов за seconds секунд с этого кадра — строкой, как «GPU average» в log.txt
 	// (команда stat gpu удалённого управления)
 	void measureGpu( float seconds, std::function<void( const std::string& )> done );
+	// Съёмка сцены с другой камеры (SceneCapture) — в одном из следующих кадров: по одной за кадр (вид съёмки в кадре один)
+	void requestCapture( SceneCapture capture ) { m_captureRequests.push_back( std::move( capture ) ); }
+	// Экспозиция главного вида — множитель яркости кадра (preExposure) по EV100 после адаптации
+	float exposure() const;
 	// Смена плана: экспозиция адаптируется сразу (PostProcess::cameraCut), объём тумана — без прошлого кадра
 	void cameraCut()
 	{
@@ -99,16 +126,22 @@ private:
 	void warmShadowPipelines( Scene& scene );
 	// Меши и свои вызовы видимых объектов с вида
 	void collect( Scene& scene, const RenderView& view, MeshCollector& collector );
-	// Раскладка собранного с главного вида по проходам сцены: меши — по режиму материала, свои вызовы — по маске;
-	// с depthPrepass непрозрачные и Masked с вариантом «только глубина» — ещё и в depth prepass
-	void buildCommands( bool depthPrepass );
+	// Раскладка собранного с вида по проходам сцены: меши — по режиму материала, свои вызовы — по маске; с depthPrepass
+	// непрозрачные и Masked с вариантом «только глубина» — ещё и в depth prepass. sceneColorRead / sceneDepthRead — в
+	// transparent кто-то читает цвет или глубину сцены
+	void buildCommands( const MeshCollector& collector, std::vector<DrawCommand> ( &commands )[scenePassCount], bool depthPrepass,
+						bool& sceneColorRead, bool& sceneDepthRead );
 	// Раскладка для прохода глубины тени: меши, отбрасывающие тень (материал с вариантом «только глубина», не
 	// полупрозрачные), и свои вызовы с битом прохода
 	void buildShadowCommands();
 	// Каскады теней солнца — до проходов сцены: на каждый каскад сбор с его вида и глубина в срез карты
 	void renderShadows( Scene& scene, const FrameContext& frame );
-	// depthFromPrepass — глубина вида уже записана depth prepass (RenderContext::depthFromPrepass)
-	void executePass( MeshPass pass, const RenderView& view, RasterState frameRaster, bool depthFromPrepass = false );
+	// depthFromPrepass — глубина вида уже записана depth prepass (RenderContext::depthFromPrepass); capture — проход съёмки
+	// сцены: её цели, сборщик и команды (без областей времени по объектам — их число в кадре ограничено)
+	void executePass( MeshPass pass, const RenderView& view, RasterState frameRaster, bool depthFromPrepass = false,
+					  const SceneCapture* capture = nullptr );
+	// Съёмка сцены этого кадра (m_capture) — после проходов главного вида; главный вид, тени и экспозиция — обратно
+	void renderCapture( Scene& scene, const FrameContext& frame, RasterState frameRaster );
 	// Команды прохода сериями по объектам; measureOwners — строка времени CPU и GPU на каждую серию, ownerPrefix — к имени
 	// объекта в ней (у каскадов теней «Shadow: »: одноимённые области кадра складываются — время объекта во всех каскадах)
 	void executeCommands( const MeshCollector& collector, const std::vector<DrawCommand>& commands,
@@ -120,7 +153,7 @@ private:
 	void drawMeshInstanced( const std::vector<MeshBatch>& meshes, const std::vector<DrawCommand>& commands,
 							size_t first, size_t last, const RenderContext& context );
 	// Счётчики мешей и вызовов кадра: проход теней — свои, depth prepass не считается
-	void countMeshes( MeshPass pass, uint32_t meshes, uint32_t draws );
+	void countMeshes( const RenderContext& context, uint32_t meshes, uint32_t draws );
 
 	// Время CPU на отправку команд и область GPU-профайлера с тем же именем
 	template<typename Func>
@@ -158,6 +191,13 @@ private:
 	RenderState m_warmedShadowState;	// состояние прохода теней, для которого прогреты пайплайны (warmShadowPipelines)
 	MeshCollector m_shadowCollector;
 	std::vector<DrawCommand> m_shadowCommands;
+	// Съёмка сцены с другой камеры: очередь, съёмка этого кадра (её вид — в видах кадра для compute), свои сборщик,
+	// команды и экспозиция (ExposureState в SLOT_EXPOSURE на время съёмки)
+	std::deque<SceneCapture> m_captureRequests;
+	std::optional<SceneCapture> m_capture;
+	MeshCollector m_captureCollector;
+	std::vector<DrawCommand> m_captureCommands[scenePassCount];
+	DMStructuredBuffer m_captureExposure;
 
 	// Матрицы экземпляров инстансного вызова; раскладка — InstanceTransform в Shaders/instance.sh
 	struct InstanceTransform

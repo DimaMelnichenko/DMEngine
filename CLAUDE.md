@@ -110,7 +110,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `-NoGui` (`-nogui` у exe) снимает кадр без окон ImGui — для сравнения картинки лучше с ним.
 - **Серия проверок за один запуск** — удалённое управление (`docs/remote.md`, как консоль и Remote Control в UE):
   `python Tools/engine.py start [--config Debug] [--nogui]` (по умолчанию — Release), затем команды — `camera x,y,z,pitch,yaw`,
-  `screenshot файл.png [кадров]`, `stat gpu 3`, `stat cpu 3`, `list` / `get` / `set "окно/свойство" значение`, `press "окно/кнопка"`, `pix [файл.wpix]` (захват PIX, движок с
+  `screenshot файл.png [кадров]`, `capture x,y,z,pitch,yaw файл.png` (кадр с другой камеры), `stat gpu 3`, `stat cpu 3`, `list` / `get` / `set "окно/свойство" значение`, `press "окно/кнопка"`, `pix [файл.wpix]` (захват PIX, движок с
   `--pix`; разбор — `Tools/pix_events.py`, `docs/d3d12.md` §4), `key G`, `timestep 0.0166`
   (фиксированный шаг времени для серий кадров), — по одной или
   сценарием (`python Tools/engine.py run файл.txt`), и `python Tools/engine.py stop` (штатный выход, ошибки из лога).
@@ -289,6 +289,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   (`RenderFeature`, `Graphics/RenderFeature.h`): список `Renderer::features`, общие точки — начало кадра с вкладом в
   константы, новый размер кадра, смена плана; окна свойств по списку регистрирует `Engine`; кадр в `Renderer::render`
   — шагами (`preparePipeline`, `prepareShadows`, `computeObjects`, `renderShadows`, `renderScene`), `docs/passes.md`.
+  Съёмка сцены с другой камеры (как SceneCapture2D в UE) — `Renderer::requestCapture( SceneCapture )`: вид (`RenderView::Kind::capture`,
+  `RenderView::perspective`) и свои цели (`SceneTargets`); в конце кадра проходы `opaque` без prepass и `sky`, без травы, воды,
+  частиц и облаков, тени — только дальние, ресурсы главного вида подменены (`SceneObject::beginCaptureView`); проверка — команда
+  `capture`; подробно — `docs/scene_capture.md`.
   Буфер сцены (HDR-цвет и глубина) — `SceneTargets` у `Renderer` (`Graphics/SceneTargets.h`): устройство о нём не знает.
   Глубина видна шейдерам (SceneDepthTexture в UE): текстура `R32_TYPELESS`, вид `depthView` (`R32_FLOAT`) и цель только
   для чтения `depthReadTarget` (`TextureViewDesc::readOnlyDepth`) — проход с ней читает ту же глубину шейдерами (layout

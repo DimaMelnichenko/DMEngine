@@ -76,6 +76,8 @@ public:
 	void compute( const FrameContext& frame ) override;
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	void renderCustom( const RenderContext& context ) override;
+	// Съёмка сцены с другой камеры: объём воздушной перспективы — заново под её вид (главный кадр свой уже прочёл)
+	void beginCaptureView( const RenderView& view ) override;
 	PropertyContainer* properties() override;
 	bool environment() const override { return true; }
 

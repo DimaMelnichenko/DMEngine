@@ -75,6 +75,8 @@ private:
 	void takeScreenshots( bool withGui );
 	// Задний буфер в файл (PNG или JPG по расширению) — в кадре до endFrame
 	bool saveScreenshot( const std::wstring& path );
+	// Съёмки сцены по команде capture, записанные в этом кадре (Renderer::requestCapture), — в файлы; ответы командам
+	void saveSceneCaptures();
 	// Пресет окружения уровня на лету (меню File → Preset, команда preset): строки пресета (пусто — уровня) — в окна
 	// окружения сцены и рендерера, правки окружения до него отбрасываются; false — такого пресета нет
 	bool selectPreset( const std::string& name );
@@ -122,6 +124,15 @@ private:
 	};
 	std::vector<ScreenshotRequest> m_screenshots;
 	uint16_t m_screenshotCounter = 0;	// снимки по клавише P: screenshotN.jpg в рабочей папке
+	// Съёмка сцены с другой камеры по команде capture: свои цели; rendered — команды съёмки записаны в кадре (SceneCapture::done)
+	struct SceneCaptureRequest
+	{
+		std::wstring path;
+		ConsoleReplyPtr reply;
+		SceneTargets targets;
+		bool rendered = false;
+	};
+	std::vector<std::unique_ptr<SceneCaptureRequest>> m_sceneCaptures;
 	// Кадров после смены плана (старт, команда camera): снимок и замер ждут, пока устоится экспозиция
 	uint32_t m_framesSinceCut = 0;
 	static constexpr uint32_t settleFrames = 10;

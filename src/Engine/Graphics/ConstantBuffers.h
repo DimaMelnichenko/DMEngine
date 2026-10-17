@@ -78,7 +78,12 @@ public:
 	void setSkyLightScale( float skyLightScale ) { m_frame.skyLightScale = skyLightScale; }
 	// Константы кадра (b0) для вида: матрицы и положение камеры; время и свет — от beginFrame. Для каждого вида
 	// кадра (главная камера, позже каскады теней) — свой вызов
-	void setViewBuffer( const RenderView& view );
+	void setViewBuffer( const RenderView& view ) { setViewBuffer( view, m_frame ); }
+	// То же со своими данными кадра — у вида съёмки сцены (Renderer::renderCapture) без ресурсов главного вида: затенения
+	// окружением по экрану, объёма тумана
+	void setViewBuffer( const RenderView& view, const FrameParameters& frame );
+	// Данные кадра (beginFrame) — основа своих у вида съёмки
+	const FrameParameters& frameParameters() const { return m_frame; }
 	// Мировая матрица объекта (b1) и матрица нормалей к ней — обратная транспонированная: нормали остаются
 	// перпендикулярными поверхности и при неравномерном масштабе
 	// lodDither — доля смены LOD дизерингом у экземпляра в полосе перехода (Shaders/lod_dither.sh), 0 — вне её

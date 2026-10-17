@@ -1,6 +1,9 @@
 #include "Engine.h"
 #include "ObjectLibrary\LibraryLoader.h"
+#include <algorithm>
+#include <cmath>
 #include <ctime>
+#include <DirectXPackedVector.h>
 #include <filesystem>
 #include <string>
 #include <chrono>
@@ -360,6 +363,7 @@ bool Engine::render( const FrameContext& frame )
 	m_renderer.render( m_scene, frame, m_wireframe );
 	watchdog.stage( "screenshots" );
 	takeScreenshots( false );
+	saveSceneCaptures();
 
 	if( m_showGUI )
 	{
@@ -572,6 +576,60 @@ bool Engine::saveScreenshot( const std::wstring& path )
 	if( !d3d.captureBackBuffer( bytes, rowPitch ) )
 		return false;
 	return GpuImages::saveImage( path, d3d.backBufferWidth(), d3d.backBufferHeight(), DMD3D::backBufferViewFormat, bytes.data(), rowPitch );
+}
+
+namespace
+{
+
+// Съёмка сцены в файл: .dds — HDR как есть (яркость × экспозиция съёмки, R16G16B16A16_FLOAT); PNG / JPG — простой тонмаппинг
+// (ACES, приближение Narkowicz 2015) и sRGB, без постобработки кадра (bloom, цветокоррекция, AgX) — посмотреть, что снято
+bool saveCaptureImage( const std::wstring& path, const DirectX::ScratchImage& image )
+{
+	const DirectX::Image& source = *image.GetImage( 0, 0, 0 );
+	if( path.size() > 4 && _wcsicmp( path.c_str() + path.size() - 4, L".dds" ) == 0 )
+		return SUCCEEDED( DirectX::SaveToDDSFile( source, DirectX::DDS_FLAGS_NONE, path.c_str() ) );
+	const uint32_t width = static_cast<uint32_t>( source.width );
+	const uint32_t height = static_cast<uint32_t>( source.height );
+	std::vector<uint8_t> bytes( static_cast<size_t>( width ) * height * 4 );
+	for( uint32_t y = 0; y < height; ++y )
+	{
+		const auto* row = reinterpret_cast<const DirectX::PackedVector::HALF*>( source.pixels + y * source.rowPitch );
+		uint8_t* target = bytes.data() + static_cast<size_t>( y ) * width * 4;
+		for( uint32_t x = 0; x < width; ++x )
+		{
+			for( uint32_t channel = 0; channel < 3; ++channel )
+			{
+				const float value = std::max( DirectX::PackedVector::XMConvertHalfToFloat( row[x * 4 + channel] ), 0.0f );
+				const float mapped = std::clamp( value * ( 2.51f * value + 0.03f ) / ( value * ( 2.43f * value + 0.59f ) + 0.14f ), 0.0f, 1.0f );
+				const float encoded = mapped <= 0.0031308f ? mapped * 12.92f : 1.055f * std::pow( mapped, 1.0f / 2.4f ) - 0.055f;
+				target[x * 4 + channel] = static_cast<uint8_t>( encoded * 255.0f + 0.5f );
+			}
+			target[x * 4 + 3] = 255;
+		}
+	}
+	return GpuImages::saveImage( path, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, bytes.data(), width * 4 );
+}
+
+}
+
+void Engine::saveSceneCaptures()
+{
+	for( auto it = m_sceneCaptures.begin(); it != m_sceneCaptures.end(); )
+	{
+		SceneCaptureRequest& request = **it;
+		if( !request.rendered )
+		{
+			++it;
+			continue;
+		}
+		// Чтение ждёт GPU, как снимок заднего буфера: команды съёмки этого кадра уже записаны
+		DirectX::ScratchImage image;
+		if( GpuImages::captureTexture( request.targets.colorTexture(), image ) && saveCaptureImage( request.path, image ) )
+			request.reply->ok();
+		else
+			request.reply->error( "capture: can`t save the image" );
+		it = m_sceneCaptures.erase( it );
+	}
 }
 
 void Engine::updateMouseLook()

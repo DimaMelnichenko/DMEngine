@@ -483,3 +483,18 @@
   съёмку не идут). Видов до семи (`DM_MAX_RENDER_VIEWS`): списки расстановки на вид +1/7 памяти. Проверка: кадры
   контрольных камер совпали (Release и Debug), время GPU в шуме, Debug-слой молчит. Документация — `CLAUDE.md`,
   `docs/shadows.md`, `docs/scatter.md`.
+- [x] Съёмка сцены, шаг R2 — кадр сцены с другой камеры (2026-10-17; как SceneCapture2D в UE). Сделано:
+  `Renderer::requestCapture( SceneCapture )` — вид и свои цели (`SceneTargets`), очередь по одной съёмке в кадр; вид съёмки
+  — среди видов кадра для compute (расстановка раскладывает в него лес); `Renderer::renderCapture` после проходов главного
+  вида: свой сборщик и команды (`buildCommands` и `executePass` — с параметрами сборщика, команд и целей), `opaque` без
+  prepass и `sky`; подмены — константы вида без затенения окружением и объёма тумана (`ConstantBuffers::setViewBuffer( view,
+  parameters )`), объём воздушной перспективы под вид (`SceneObject::beginCaptureView`, у `SkyAtmosphere`), приём теней без
+  каскадов (`ShadowCascades::bindForReceivers( …, false )`), своя экспозиция в t105; после — главный вид обратно. `CDLODTerrain`
+  — без уровней мельче листа у съёмки; меши съёмки не в счётчиках кадра, время — одной областью «Scene capture».
+  `RenderView::perspective`, `DMCamera::fieldOfView`, `SceneTargets::colorTexture`, `PostProcess::exposure`. Команда
+  `capture x,y,z,pitch,yaw файл [ширина высота [fov]]` — снимок в PNG / JPG (тонмаппинг ACES) или DDS (HDR). Проверка: съёмка
+  с поз контрольных камер `balls` и `valley` против их снимков — рельеф, горы, лес, модели, небо, дымка и дальние тени те же,
+  нет травы, воды, облаков и ближних теней, как задумано; съёмка 512² с полем 90° с точки у озера (`463.91,13.72,187.21`);
+  кадр 1920 × 1080 — ~4,8 мс GPU и 0,9 мс CPU (Release); главный кадр — паритет (`check_frames.py`: кадры совпали в Release и
+  Debug, время GPU попеременным замером HEAD и правки — не хуже), Debug-слой молчит, ленивых пайплайнов нет. Документация —
+  новый `docs/scene_capture.md`, `docs/passes.md`, `docs/remote.md`, `docs/README.md`, `CLAUDE.md`.

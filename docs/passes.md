@@ -27,7 +27,9 @@
 9. **`Scene color copy`** (только если в `transparent` кто-то читает цвет сцены) — копия HDR-буфера для шейдеров, см.
    «Цвет сцены для шейдеров».
 10. **`transparent`** — полупрозрачные от дальних к ближним, глубина только читается.
-11. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
+11. Съёмка сцены с другой камеры, если заказана (`Renderer::renderCapture`): `opaque` без prepass и `sky` с её вида в её
+    цели ([scene_capture.md](scene_capture.md)).
+12. Постобработка в задний буфер ([postprocess.md](postprocess.md)), затем GUI.
 
 Задний буфер — swap chain flip model (`DMD3D::createDeviceSwapChain`, как требует D3D12): два буфера `R8G8B8A8_UNORM`
 с sRGB-видом, без vsync — с разрывом кадра (tearing), кадр начинается по waitable object (`DMD3D::waitForNextFrame`).
@@ -43,7 +45,8 @@
 «Save level», остальное — Rendering). Сам проход возможности рендерер вызывает в его месте кадра: входы у проходов
 разные (карта теней у тумана, глубина prepass у затенения окружением, цвет сцены у постобработки). Кадр в `Renderer::render`
 — шагами: `preparePipeline` (свет, константы кадра от сцены и возможностей), `prepareShadows` (виды каскадов, тень рельефа),
-`computeObjects`, сбор и раскладка, `renderShadows`, `renderScene` (туман и проходы сцены выше), постобработка,
+`computeObjects`, сбор и раскладка, `renderShadows`, `renderScene` (туман и проходы сцены выше), `renderCapture`
+(съёмка сцены, если заказана), постобработка,
 `reportFrameStats`. Новый проход со своими ресурсами — ещё одна возможность в списке и вызов её прохода на своём шаге;
 порядок и ресурсы между проходами задаст граф кадра (`TODO.md`, «Архитектура»).
 

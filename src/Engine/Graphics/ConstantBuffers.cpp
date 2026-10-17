@@ -37,7 +37,7 @@ void ConstantBuffers::beginFrame( const FrameParameters& frame )
 	m_frame = frame;
 }
 
-void ConstantBuffers::setViewBuffer( const RenderView& view )
+void ConstantBuffers::setViewBuffer( const RenderView& view, const FrameParameters& frame )
 {
 	// HLSL читает матрицы по столбцам: транспонирование даёт ту же запись mul( v, M ), что и в C++
 	Device::updateResource<FrameConstantBuffer>( m_frameConstant, [&]( FrameConstantBuffer& data )
@@ -48,15 +48,15 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.viewProjectionMatrix = XMMatrixTranspose( view.viewProjection );
 		data.cameraPosition = view.position;
 		data.viewDirection = view.direction;
-		data.gameTime = m_frame.gameTime;
-		data.deltaTime = m_frame.deltaTime;
-		data.lightCount = static_cast<float>( m_frame.lightsCount );
+		data.gameTime = frame.gameTime;
+		data.deltaTime = frame.deltaTime;
+		data.lightCount = static_cast<float>( frame.lightsCount );
 		data.lodOrigin = view.lodOrigin;
-		data.skyLightScale = m_frame.skyLightScale;
-		data.aerialPerspectiveDistance = m_frame.aerialPerspectiveDistance;
-		data.aerialPerspectiveScale = m_frame.aerialPerspectiveScale;
-		data.skyScale = m_frame.skyScale;
-		const WindParameters& wind = m_frame.wind;
+		data.skyLightScale = frame.skyLightScale;
+		data.aerialPerspectiveDistance = frame.aerialPerspectiveDistance;
+		data.aerialPerspectiveScale = frame.aerialPerspectiveScale;
+		data.skyScale = frame.skyScale;
+		const WindParameters& wind = frame.wind;
 		data.windDirection = wind.direction;
 		data.windStrength = wind.strength;
 		data.windSpeed = wind.speed;
@@ -64,17 +64,17 @@ void ConstantBuffers::setViewBuffer( const RenderView& view )
 		data.windGustMax = wind.gustMax;
 		data.windGustSize = wind.gustSize;
 		data.windFieldScale = wind.fieldScale;
-		const FogParameters& fog = m_frame.fog;
+		const FogParameters& fog = frame.fog;
 		data.fogLayer0 = fog.layer0;
 		data.fogLayer1 = fog.layer1;
 		data.fogAlbedo = fog.albedo;
 		data.fogScale = fog.scale;
 		data.fogGridZ = fog.gridZ;
 		data.fogVolumeDistance = fog.volumeDistance;
-		data.cloudShadow = m_frame.cloudShadow;
-		data.waterDetail = m_frame.waterDetail;
-		data.foliageInteraction = m_frame.foliageInteraction;
-		data.ambientOcclusion = m_frame.ambientOcclusion;
+		data.cloudShadow = frame.cloudShadow;
+		data.waterDetail = frame.waterDetail;
+		data.foliageInteraction = frame.foliageInteraction;
+		data.ambientOcclusion = frame.ambientOcclusion;
 	} );
 
 	DMD3D::instance().setConstantBuffer( SLOT_CB_FRAME, m_frameConstant );

@@ -412,7 +412,10 @@ void PostProcess::readBackExposure()
 	m_exposureReadback.push( m_exposureState );
 	ExposureState state = {};
 	if( m_exposureReadback.latest( state ) )
+	{
 		m_ev100 = state.ev100;
+		m_exposure = state.exposure;
+	}
 }
 
 void PostProcess::renderBloom( const ShaderView& sceneColor, float threshold )

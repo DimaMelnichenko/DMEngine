@@ -128,6 +128,8 @@ bool Renderer::initialize( const PostProcess::Settings& postProcess, const std::
 		return false;
 
 	m_instanceBuffer.createBuffer( sizeof( InstanceTransform ), maxInstancesPerDraw, "Instance transforms" );
+	// Экспозиция съёмки сцены — одна запись ExposureState (Shaders/exposure.sh)
+	m_captureExposure.createBuffer( 4 * sizeof( float ), 1, "Scene capture exposure" );
 	m_instanceTransforms.reserve( maxInstancesPerDraw );
 	m_features = { &m_shadows, &m_fog, &m_ambientOcclusion, &m_reflections, &m_postProcess };
 	return true;
@@ -227,6 +229,14 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	m_shadowMeshCount = 0;
 	m_shadowDraws = 0;
 	const bool depthPrepass = m_properties["Depth prepass"].data<bool>();
+	// Съёмка сцены с другой камеры — по одной за кадр из очереди: её вид — среди видов кадра для compute (расстановка
+	// раскладывает в него лес), рисуется после проходов главного вида
+	if( !m_capture && !m_captureRequests.empty() )
+	{
+		m_capture = std::move( m_captureRequests.front() );
+		m_captureRequests.pop_front();
+		m_capture->view.kind = RenderView::Kind::capture;
+	}
 	measure( "preparePipeline", [&] { preparePipeline( scene, frame, depthPrepass ); } );
 	const FrameContext computeFrame = prepareShadows( scene, frame );
 	computeObjects( scene, computeFrame );
@@ -237,11 +247,16 @@ void Renderer::render( Scene& scene, const FrameContext& frame, bool wireframe )
 	collect( scene, frame.view, m_collector );
 	m_stats.add( "Collect main view = %.3f ms", millisecondsSince( start ) );
 	start = std::chrono::high_resolution_clock::now();
-	buildCommands( depthPrepass );
+	buildCommands( m_collector, m_commands, depthPrepass, m_sceneColorRead, m_sceneDepthRead );
 	m_stats.add( "Build commands = %.3f ms", millisecondsSince( start ) );
 
 	renderShadows( scene, frame );
 	renderScene( scene, frame, wireframe, depthPrepass );
+	if( m_capture )
+	{
+		measure( "Scene capture", [&] { renderCapture( scene, frame, wireframe ? RasterState::wireframe : RasterState::solid ); } );
+		m_capture.reset();
+	}
 	measure( "Post process", [&] { m_postProcess.render( m_sceneTargets.colorView(), m_sceneTargets.depthView(), frame.view, m_gpuProfiler,
 														 frame.elapsedTime / 1000.0f ); } );
 	reportFrameStats( scene );
@@ -275,6 +290,12 @@ FrameContext Renderer::prepareShadows( Scene& scene, const FrameContext& frame )
 		// Дальний каскад — шестым видом: расстановка раскладывает в него лес, чья тень ложится дальше дистанции теней
 		if( m_shadows.farActive() )
 			computeFrame.views[computeFrame.viewCount++] = &m_shadows.farView();
+	}
+	// Съёмка сцены — следующим видом
+	if( m_capture )
+	{
+		m_capture->view.index = computeFrame.viewCount;
+		computeFrame.views[computeFrame.viewCount++] = &m_capture->view;
 	}
 	return computeFrame;
 }
@@ -373,6 +394,64 @@ void Renderer::renderScene( Scene& scene, const FrameContext& frame, bool wirefr
 		ScopedRenderState transparentState( BlendState::alpha, DepthState::readOnly );
 		executePass( MeshPass::transparent, frame.view, frameRaster );
 	}
+}
+
+void Renderer::renderCapture( Scene& scene, const FrameContext& frame, RasterState frameRaster )
+{
+	const SceneCapture& capture = *m_capture;
+	const RenderView& view = capture.view;
+	collect( scene, view, m_captureCollector );
+	bool sceneColorRead = false;
+	bool sceneDepthRead = false;
+	buildCommands( m_captureCollector, m_captureCommands, false, sceneColorRead, sceneDepthRead );
+
+	// Константы вида: без затенения окружением по экрану и объёма тумана — их считали под главный вид (туман — по формуле);
+	// объекты готовят свои ресурсы под вид съёмки (небо — объём воздушной перспективы)
+	FrameParameters parameters = m_constants.frameParameters();
+	parameters.ambientOcclusion = XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	parameters.fog.volumeDistance = 0.0f;
+	m_constants.setViewBuffer( view, parameters );
+	for( SceneObject* object : scene.objects() )
+		object->beginCaptureView( view );
+	// Тени — только дальние: каскады подогнаны под главную камеру
+	XMFLOAT3 shadowLightDirection;
+	DMLight::ShadowSettings shadowSettings;
+	const int shadowLight = scene.lights().shadowLight( shadowLightDirection, shadowSettings );
+	m_shadows.bindForReceivers( shadowLight, false );
+	// Своя экспозиция (ExposureState: экспозиция, она же у цвета сцены, EV100)
+	const float exposureState[4] = { capture.exposure, capture.exposure, m_postProcess.ev100(), 0.0f };
+	m_captureExposure.updateData( exposureState, sizeof( exposureState ) );
+	m_captureExposure.setToSlot( SLOT_EXPOSURE );
+
+	DMD3D& d3d = DMD3D::instance();
+	m_gpuProfiler.beginScope( "Scene capture" );
+	d3d.beginPass( PassDesc{ "Scene capture clear", { { capture.color, "capture color" } }, { capture.depth, "capture depth" },
+							 capture.width, capture.height } );
+	d3d.clearTarget( *capture.color, SceneCapture::clearColor );
+	d3d.clearDepth( *capture.depth, 0.0f );
+	{
+		ScopedRenderState frameState( frameRaster );
+		{
+			ScopedRenderState opaqueState( DepthState::enabled );
+			executePass( MeshPass::opaque, view, frameRaster, false, &capture );
+		}
+		ScopedRenderState skyState( DepthState::readOnlyNearOrEqual );
+		executePass( MeshPass::sky, view, frameRaster, false, &capture );
+	}
+	m_gpuProfiler.endScope();
+	if( capture.done )
+		capture.done();
+
+	// Дальше — снова главный вид: константы, тени, экспозиция (объём воздушной перспективы — уже съёмки: после проходов
+	// сцены его не читают, следующий кадр посчитает свой)
+	m_constants.setViewBuffer( frame.view );
+	m_shadows.bindForReceivers( shadowLight );
+	d3d.setSRV( SLOT_EXPOSURE, m_postProcess.exposureView() );
+}
+
+float Renderer::exposure() const
+{
+	return m_postProcess.exposure();
 }
 
 void Renderer::reportFrameStats( Scene& scene )
@@ -511,14 +590,15 @@ void Renderer::collect( Scene& scene, const RenderView& view, MeshCollector& col
 	}
 }
 
-void Renderer::buildCommands( bool depthPrepass )
+void Renderer::buildCommands( const MeshCollector& collector, std::vector<DrawCommand> ( &commands )[scenePassCount],
+							  bool depthPrepass, bool& sceneColorRead, bool& sceneDepthRead )
 {
-	for( auto& commands : m_commands )
-		commands.clear();
-	m_sceneColorRead = false;
-	m_sceneDepthRead = false;
+	for( auto& passCommands : commands )
+		passCommands.clear();
+	sceneColorRead = false;
+	sceneDepthRead = false;
 
-	const std::vector<MeshBatch>& meshes = m_collector.meshes();
+	const std::vector<MeshBatch>& meshes = collector.meshes();
 	for( uint32_t i = 0; i < meshes.size(); ++i )
 	{
 		const MeshBatch& batch = meshes[i];
@@ -527,7 +607,7 @@ void Renderer::buildCommands( bool depthPrepass )
 		if( pass == MeshPass::transparent )
 		{
 			key = transparentKey( batch.distance, batch.ownerOrder, i );
-			m_sceneColorRead |= batch.material->readsSceneColor();
+			sceneColorRead |= batch.material->readsSceneColor();
 		}
 		else
 		{
@@ -537,13 +617,13 @@ void Renderer::buildCommands( bool depthPrepass )
 			{
 				const uint32_t prepassIndex = static_cast<uint32_t>( MeshPass::depthPrepass );
 				const int depthPhase = batch.material->depthPhaseFor( *batch.params, meshPhaseOptions( batch, false, false ) );
-				m_commands[prepassIndex].push_back( { opaqueKey( batch, depthPhase ), i, false } );
+				commands[prepassIndex].push_back( { opaqueKey( batch, depthPhase ), i, false } );
 			}
 		}
-		m_commands[static_cast<uint32_t>( pass )].push_back( { key, i, false } );
+		commands[static_cast<uint32_t>( pass )].push_back( { key, i, false } );
 	}
 
-	const std::vector<CustomBatch>& customs = m_collector.customs();
+	const std::vector<CustomBatch>& customs = collector.customs();
 	for( uint32_t i = 0; i < customs.size(); ++i )
 	{
 		const CustomBatch& batch = customs[i];
@@ -556,14 +636,14 @@ void Renderer::buildCommands( bool depthPrepass )
 			const uint64_t key = transparent ?
 								 transparentKey( batch.distance, batch.ownerOrder, static_cast<uint32_t>( meshes.size() ) + i ) :
 								 static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56;
-			m_commands[pass].push_back( { key, i, true } );
-			m_sceneColorRead |= transparent && batch.readsSceneColor;
-			m_sceneDepthRead |= transparent && batch.readsSceneDepth;
+			commands[pass].push_back( { key, i, true } );
+			sceneColorRead |= transparent && batch.readsSceneColor;
+			sceneDepthRead |= transparent && batch.readsSceneDepth;
 		}
 	}
 
-	for( auto& commands : m_commands )
-		std::stable_sort( commands.begin(), commands.end(),
+	for( auto& passCommands : commands )
+		std::stable_sort( passCommands.begin(), passCommands.end(),
 						  []( const DrawCommand& a, const DrawCommand& b ) { return a.key < b.key; } );
 }
 
@@ -653,7 +733,8 @@ void Renderer::renderShadows( Scene& scene, const FrameContext& frame )
 	m_stats.add( "Shadow depths = %.3f ms", millisecondsSince( start ) );
 }
 
-void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState frameRaster, bool depthFromPrepass )
+void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState frameRaster, bool depthFromPrepass,
+						   const SceneCapture* capture )
 {
 	// Проход не полагается на состояние, оставленное прошлым: своя цель, область вывода, без чужих ресурсов.
 	// Глубину и блендинг задаёт ScopedRenderState кадра и прохода, растеризатор команд восстанавливается после прохода.
@@ -684,14 +765,29 @@ void Renderer::executePass( MeshPass pass, const RenderView& view, RasterState f
 	// Поверхности с экранными отражениями — в свои цели (глубина поверхности и нормаль без ряби)
 	if( pass == MeshPass::reflectionPrepass )
 		desc = m_reflections.surfacePass();
+	// Съёмка сцены — в свои цели (глубины для шейдеров и копии цвета у неё нет: проходы opaque и sky)
+	if( capture )
+	{
+		desc.colors = { { capture->color, "capture color" } };
+		desc.depth = PassDesc::Target{ capture->depth, "capture depth" };
+		desc.width = capture->width;
+		desc.height = capture->height;
+		desc.reads = { { &m_shadows.shaderView(), "shadow map" } };
+	}
 	d3d.beginPass( desc );
 	if( depthRead )
 		d3d.setSRV( SLOT_SCENE_DEPTH, m_sceneTargets.depthView() );
 	if( sceneColorRead )
 		d3d.setSRV( SLOT_SCENE_COLOR, m_sceneTargets.colorCopyView() );
 	ScopedRenderState passState;
-	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
 	const RenderContext context{ view, pass, frameRaster, m_constants, m_vertexPool, depthFromPrepass };
+	if( capture )
+	{
+		// Съёмка — одной областью времени на всю (renderCapture): областей в кадре не больше GpuProfiler::maxScopes
+		executeCommands( m_captureCollector, m_captureCommands[static_cast<uint32_t>( pass )], context, false );
+		return;
+	}
+	m_gpuProfiler.beginScope( passNames[static_cast<int>( pass )] );
 	// Объекты depth prepass — под именами «Prepass: <объект>», как в тенях, поверхности отражений — «Reflection: <объект>»:
 	// имена без приставки — их проходы цвета
 	executeCommands( m_collector, m_commands[static_cast<uint32_t>( pass )], context, true,
@@ -792,9 +888,9 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 		m_instanceBuffer.updateData( m_instanceTransforms.data(), count * sizeof( InstanceTransform ) );
 		m_instanceBuffer.setToSlot( SLOT_INSTANCE_DATA );
 		d3d.drawIndexedInstanced( batch.indexCount, static_cast<uint32_t>( count ), batch.indexOffset, batch.vertexOffset );
-		countMeshes( context.pass, 0, 1 );
+		countMeshes( context, 0, 1 );
 	}
-	countMeshes( context.pass, static_cast<uint32_t>( last - first + 1 ), 0 );
+	countMeshes( context, static_cast<uint32_t>( last - first + 1 ), 0 );
 }
 
 void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
@@ -808,11 +904,15 @@ void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
 	shader->setParams( *batch.params );
 	context.constants.setPerObjectBuffer( batch.world, batch.lodDither );
 	d3d.drawIndexed( batch.indexCount, batch.indexOffset, batch.vertexOffset );
-	countMeshes( context.pass, 1, 1 );
+	countMeshes( context, 1, 1 );
 }
 
-void Renderer::countMeshes( MeshPass pass, uint32_t meshes, uint32_t draws )
+void Renderer::countMeshes( const RenderContext& context, uint32_t meshes, uint32_t draws )
 {
+	// Съёмка сцены — не в счётчиках кадра
+	const MeshPass pass = context.pass;
+	if( context.view.kind == RenderView::Kind::capture )
+		return;
 	if( pass == MeshPass::csmShadowDepth )
 	{
 		m_shadowMeshCount += meshes;

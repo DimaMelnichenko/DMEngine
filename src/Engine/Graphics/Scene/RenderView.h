@@ -78,6 +78,26 @@ struct RenderView
 		view.frustum = DMFrustum( view.viewProjection );
 		return view;
 	}
+
+	// Перспективный вид без DMCamera — съёмка сцены (SceneCapture): положение, направление взгляда и верх (нормированные),
+	// поле зрения по вертикали (радианы), ширина / высота, плоскости, м; глубина обратная, как у DMCamera
+	static RenderView perspective( const DirectX::XMFLOAT3& position, const DirectX::XMFLOAT3& forward, const DirectX::XMFLOAT3& up,
+								   float fieldOfView, float aspect, float nearPlane, float farPlane )
+	{
+		RenderView view;
+		view.view = DirectX::XMMatrixLookToLH( DirectX::XMLoadFloat3( &position ), DirectX::XMLoadFloat3( &forward ),
+											   DirectX::XMLoadFloat3( &up ) );
+		view.projection = DirectX::XMMatrixPerspectiveFovLH( fieldOfView, aspect, farPlane, nearPlane );
+		view.viewProjection = DirectX::XMMatrixMultiply( view.view, view.projection );
+		view.viewInverse = DirectX::XMMatrixInverse( nullptr, view.view );
+		view.position = position;
+		view.direction = forward;
+		view.lodOrigin = position;
+		view.nearPlane = nearPlane;
+		view.farPlane = farPlane;
+		view.frustum = DMFrustum( view.viewProjection );
+		return view;
+	}
 };
 
 }

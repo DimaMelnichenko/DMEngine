@@ -110,6 +110,82 @@ void Engine::registerCommands()
 		m_screenshots.push_back( std::move( request ) );
 	} );
 
+	// Съёмка сцены с другой камеры (SceneCapture, как SceneCapture2D в UE в render target): кадр сцены с позы — в файл, главный
+	// кадр не меняется; проверочный инструмент съёмки (docs/scene_capture.md)
+	m_console.registerCommand( "capture", "x,y,z,pitch,yaw <file.png|.jpg|.dds> [width height [fov]] - the scene from another camera "
+							   "after the frame settles (opaque and sky: no grass, water, particles, clouds; far shadows only) in a "
+							   "file: .dds - HDR as is, png/jpg - simple ACES tonemap; default - the frame size and the camera fov, "
+							   "degrees",
+							   [this]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		if( args.size() < 2 )
+			return reply->error( "capture: expected x,y,z,pitch,yaw and a file name" );
+		std::vector<std::string> parts;
+		str_split( args[0], parts, ", " );
+		if( parts.size() != 5 )
+			return reply->error( "capture: expected x,y,z,pitch,yaw, got " + args[0] );
+		float pose[5];
+		for( size_t i = 0; i < 5; ++i )
+		{
+			char* end = nullptr;
+			pose[i] = std::strtof( parts[i].c_str(), &end );
+			if( end == parts[i].c_str() || *end != '\0' )
+				return reply->error( "capture: can`t parse " + parts[i] );
+		}
+		DMD3D& d3d = DMD3D::instance();
+		const DMCamera& camera = m_cameraPool["main"];
+		int width = static_cast<int>( d3d.backBufferWidth() );
+		int height = static_cast<int>( d3d.backBufferHeight() );
+		float fieldOfView = camera.fieldOfView();
+		if( args.size() == 3 )
+			return reply->error( "capture: expected width and height" );
+		if( args.size() > 3 )
+		{
+			width = std::atoi( args[2].c_str() );
+			height = std::atoi( args[3].c_str() );
+			if( width < 1 || height < 1 || width > 8192 || height > 8192 )
+				return reply->error( "capture: expected width and height 1..8192" );
+		}
+		if( args.size() > 4 )
+		{
+			const float degrees = static_cast<float>( std::atof( args[4].c_str() ) );
+			if( degrees <= 0.0f || degrees >= 180.0f )
+				return reply->error( "capture: expected fov in (0, 180) degrees" );
+			fieldOfView = XMConvertToRadians( degrees );
+		}
+
+		auto request = std::make_unique<SceneCaptureRequest>();
+		request->path = utf8ToWide( args[1] );
+		request->reply = reply;
+		if( !request->targets.create( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ), SceneCapture::clearColor ) )
+			return reply->error( "capture: can`t create the targets" );
+		// Направление по тангажу и рысканию — как у камеры (DMCamera::Update: pitch > 0 — взгляд вниз)
+		const XMMATRIX rotation = XMMatrixRotationRollPitchYaw( XMConvertToRadians( pose[3] ), XMConvertToRadians( pose[4] ), 0.0f );
+		XMFLOAT3 forward;
+		XMFLOAT3 up;
+		XMStoreFloat3( &forward, XMVector3Normalize( XMVector3TransformNormal( XMVectorSet( 0.0f, 0.0f, 1.0f, 0.0f ), rotation ) ) );
+		XMStoreFloat3( &up, XMVector3Normalize( XMVector3TransformNormal( XMVectorSet( 0.0f, 1.0f, 0.0f, 0.0f ), rotation ) ) );
+		SceneCapture capture;
+		capture.view = RenderView::perspective( XMFLOAT3( pose[0], pose[1], pose[2] ), forward, up, fieldOfView,
+												static_cast<float>( width ) / static_cast<float>( height ), camera.nearPlane(), camera.farPlane() );
+		capture.color = &request->targets.colorTarget();
+		capture.depth = &request->targets.depthTarget();
+		capture.width = static_cast<uint32_t>( width );
+		capture.height = static_cast<uint32_t>( height );
+		SceneCaptureRequest* pending = request.get();
+		capture.done = [pending] { pending->rendered = true; };
+		m_sceneCaptures.push_back( std::move( request ) );
+		// Как снимок — когда кадр устоится; экспозиция — главного вида
+		m_console.addFrameTask( [this, capture]() mutable
+		{
+			if( m_framesSinceCut < settleFrames )
+				return false;
+			capture.exposure = m_renderer.exposure();
+			m_renderer.requestCapture( std::move( capture ) );
+			return true;
+		} );
+	} );
+
 	// Захват PIX (движок с -pix, как -attachPIX и консоль UE): кадры после того, как кадр устоится, — в файл .wpix; ответ —
 	// когда захват записан. Разбор — PIX (WinPix.exe) или pixtool: docs/d3d12.md §4
 	m_console.registerCommand( "pix", "[file.wpix] [frames] - PIX GPU capture of the next frames after the frame settles (engine "
