@@ -852,13 +852,13 @@ struct SoundRecord
 	std::string license;
 };
 
-// Слой певцов уровня — строка SoundscapeLayers (как Soundscape в UE; Soundscape, docs/audio.md, «Певцы»): певцы одной записи
-// сидят вокруг слушателя там, где их место по маскам, и поют её фразы с паузами в свои часы
+// Слой певцов уровня — строка SoundscapeLayers (как Soundscape в UE; Soundscape, docs/audio.md, «Певцы»): певцы сидят вокруг
+// слушателя там, где их место по маскам, и поют фразы одной из записей слоя с паузами в свои часы
 struct SoundscapeLayerSettings
 {
 	uint32_t id = 0;				// строка SoundscapeLayers — куда пишет «Save level»
 	std::string name;
-	std::string sound;				// запись — Sounds.name
+	std::string sound;				// записи — Sounds.name через запятую: у каждого певца — одна из них
 	std::string habitat;			// маски места певца через запятую (mask_forest_spruce …); пусто — где угодно
 	DirectX::XMFLOAT2 hours = DirectX::XMFLOAT2( 4.0f, 22.0f );	// часы суток, когда поёт; от > до — через полночь
 	int32_t singers = 2;			// певцов сразу в свои часы

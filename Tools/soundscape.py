@@ -8,7 +8,7 @@
   python Tools/soundscape.py set ИМЯ --param поле=значение [...] [--level Test]
   python Tools/soundscape.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level Test]
 
-Поля — колонки SoundscapeLayers: sound (Sounds.name), habitat (маски места через запятую: mask_forest_spruce, mask_grass …;
+Поля — колонки SoundscapeLayers: sound (Sounds.name; несколько через запятую — у каждого певца одна из них), habitat (маски места через запятую: mask_forest_spruce, mask_grass …;
 пусто — где угодно), hours_from / hours_to (часы суток; от > до — через полночь), singers (певцов сразу), distance_from /
 distance_to (от слушателя, м), height_from / height_to (над землёй, м), bout_from / bout_to (поёт с одного места, с),
 pause_from / pause_to (между фразами, с), volume (в 10 м), pitch (разброс высоты певцов, доля). NULL — значение по умолчанию
@@ -74,7 +74,7 @@ def main():
     parser.add_argument('command', choices=['list', 'add', 'set', 'delete', 'enable', 'disable'])
     parser.add_argument('name', nargs='?')
     parser.add_argument('--level', default='Test')
-    parser.add_argument('--sound', help='recording: Sounds.name')
+    parser.add_argument('--sound', help='recordings: Sounds.name, several - comma-separated')
     parser.add_argument('--param', action='append', help='field=value, repeatable (empty value - NULL)')
     args = parser.parse_args()
 
@@ -101,8 +101,9 @@ def main():
         values['sound'] = args.sound
     if 'sound' in values and values['sound'] is not None and db.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'Sounds'").fetchone():
-        if not db.execute('SELECT 1 FROM Sounds WHERE name = ?', (values['sound'],)).fetchone():
-            print('warning: no sound %s in table Sounds yet (Tools/pack_sound.py)' % values['sound'])
+        for name in [n.strip() for n in values['sound'].split(',') if n.strip()]:
+            if not db.execute('SELECT 1 FROM Sounds WHERE name = ?', (name,)).fetchone():
+                print('warning: no sound %s in table Sounds yet (Tools/pack_sound.py)' % name)
     if args.command == 'add':
         if not values.get('sound'):
             sys.exit('add: --sound <Sounds.name> is required')

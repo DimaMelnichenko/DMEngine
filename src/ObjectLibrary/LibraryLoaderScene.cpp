@@ -75,25 +75,30 @@ void LibraryLoader::loadSoundscape( LevelDescription& level )
 		layer.name = query.getColumn( "name" ).getString();
 		readSettings( query, GS::soundscapeLayerSchema(), layer, "Soundscape layer " + layer.name );
 	}
-	// Записи слоёв — по имени, каждая один раз
+	// Записи слоёв — имена через запятую, каждая запись один раз
 	SQLite::Statement sound( db, "SELECT * FROM Sounds WHERE name = :name" );
 	for( const GS::SoundscapeLayerSettings& layer : level.soundscapeLayers )
 	{
-		if( std::any_of( level.sounds.begin(), level.sounds.end(), [&]( const GS::SoundRecord& s ) { return s.name == layer.sound; } ) )
-			continue;
-		sound.bind( ":name", layer.sound );
-		if( sound.executeStep() )
+		std::vector<std::string> names;
+		str_split( layer.sound, names, ", " );
+		for( const std::string& name : names )
 		{
-			GS::SoundRecord& record = level.sounds.emplace_back();
-			record.name = layer.sound;
-			record.file = sound.getColumn( "file" ).getString();
-			record.phrases = sound.getColumn( "phrases" ).getString();
-			record.author = sound.getColumn( "author" ).getString();
-			record.license = sound.getColumn( "license" ).getString();
+			if( std::any_of( level.sounds.begin(), level.sounds.end(), [&]( const GS::SoundRecord& s ) { return s.name == name; } ) )
+				continue;
+			sound.bind( ":name", name );
+			if( sound.executeStep() )
+			{
+				GS::SoundRecord& record = level.sounds.emplace_back();
+				record.name = name;
+				record.file = sound.getColumn( "file" ).getString();
+				record.phrases = sound.getColumn( "phrases" ).getString();
+				record.author = sound.getColumn( "author" ).getString();
+				record.license = sound.getColumn( "license" ).getString();
+			}
+			else
+				LOG( "Soundscape layer " + layer.name + ": no sound " + name + " in table Sounds (Tools/pack_sound.py)" );
+			sound.reset();
 		}
-		else
-			LOG( "Soundscape layer " + layer.name + ": no sound " + layer.sound + " in table Sounds (Tools/pack_sound.py)" );
-		sound.reset();
 	}
 }
 

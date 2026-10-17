@@ -63,22 +63,30 @@ bool Soundscape::initialize( const std::vector<Layer>& layers, const std::vector
 		layer->properties.setName( settings.name );
 		addSettingProperties( layer->properties, soundscapeLayerSchema(), settings, "" );
 		m_properties.addSubContainer( &layer->properties );
-		const auto record = std::find_if( sounds.begin(), sounds.end(), [&]( const SoundRecord& s ) { return s.name == settings.sound; } );
-		if( record != sounds.end() )
+		// Записи слоя — имена Sounds через запятую: у каждого певца — своя из них
+		std::vector<std::string> names;
+		str_split( settings.sound, names, ", " );
+		for( const std::string& name : names )
 		{
+			const auto record = std::find_if( sounds.begin(), sounds.end(), [&]( const SoundRecord& s ) { return s.name == name; } );
+			if( record == sounds.end() )
+				continue;
 			std::string reason;
-			layer->clip = AudioClip::load( record->file, record->phrases, reason );
-			if( layer->clip )
+			std::shared_ptr<const AudioClip> clip = AudioClip::load( record->file, record->phrases, reason );
+			if( clip && !clip->phrases.empty() )
 			{
-				LOG( "Soundscape layer " + settings.name + ": sound " + record->name + ", " + std::to_string( layer->clip->phrases.size() ) +
+				LOG( "Soundscape layer " + settings.name + ": sound " + record->name + ", " + std::to_string( clip->phrases.size() ) +
 					 " phrases" + ( record->author.empty() ? std::string() : ", by " + record->author ) +
 					 ( record->license.empty() ? std::string() : " (" + record->license + ")" ) );
+				layer->clips.push_back( std::move( clip ) );
 			}
 			else
 			{
-				LOG( "Soundscape layer " + settings.name + " is silent: " + reason );
+				LOG( "Soundscape layer " + settings.name + ": sound " + record->name + " is skipped: " + reason );
 			}
 		}
+		if( layer->clips.empty() )
+			LOG( "Soundscape layer " + settings.name + " is silent: no sounds loaded" );
 		layer->spawnDelay = uniform( 0.0f, spawnDelayFrom );
 		m_layers.push_back( std::move( layer ) );
 	}
@@ -162,7 +170,7 @@ void Soundscape::update( const FrameContext& frame )
 	{
 		LayerState& layer = *pointer;
 		const Layer settings = current( layer );
-		const bool audible = visible() && layer.clip && !layer.clip->phrases.empty() && settings.volume > 0.0f;
+		const bool audible = visible() && !layer.clips.empty() && settings.volume > 0.0f;
 		const int32_t wanted = audible ? static_cast<int32_t>( std::floor( settings.singers * activity( settings.hours, hour ) + 0.5f ) ) : 0;
 
 		// Певцы: фразы с паузами, конец «bout» — улетает (допев фразу); слушатель ушёл далеко — тоже
@@ -190,10 +198,11 @@ void Soundscape::update( const FrameContext& frame )
 			if( singer.boutLeft <= 0.0f || singer.nextPhrase > 0.0f )
 				continue;
 			// Фраза записи — случайная, не та же подряд
-			const auto& phrases = layer.clip->phrases;
+			const std::shared_ptr<const AudioClip>& clip = layer.clips[std::min( singer.clip, layer.clips.size() - 1 )];
+			const auto& phrases = clip->phrases;
 			const size_t count = phrases.size();
 			const size_t index = std::uniform_int_distribution<size_t>( 0, count - 1 )( m_random );
-			auto generator = std::make_unique<ClipGenerator>( layer.clip, phrases[index], singer.pitch );
+			auto generator = std::make_unique<ClipGenerator>( clip, phrases[index], singer.pitch );
 			singer.voiceLeft = generator->seconds() + 0.05f;
 			singer.voice = m_mixer->addVoice( std::move( generator ) );
 			singer.nextPhrase = uniform( settings.pause.from, std::max( settings.pause.to, settings.pause.from ) );
@@ -209,7 +218,10 @@ void Soundscape::update( const FrameContext& frame )
 		{
 			Singer singer;
 			if( placeSinger( settings, listener.position, singer ) )
+			{
+				singer.clip = std::uniform_int_distribution<size_t>( 0, layer.clips.size() - 1 )( m_random );
 				layer.singers.push_back( singer );
+			}
 			layer.spawnDelay = uniform( spawnDelayFrom, spawnDelayTo );
 		}
 

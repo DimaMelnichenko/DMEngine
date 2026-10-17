@@ -16,8 +16,8 @@ namespace GS
 
 class TerrainPipeline;
 
-// Певцы уровня — как Soundscape в UE (docs/audio.md, «Певцы»): слои SoundscapeLayers, у слоя — запись (строка Sounds, её фразы
-// собрал Tools/pack_sound.py) и правила. Певец садится вокруг слушателя — в полосе расстояний слоя, на высоте над землёй, там,
+// Певцы уровня — как Soundscape в UE (docs/audio.md, «Певцы»): слои SoundscapeLayers, у слоя — записи (строки Sounds, их фразы
+// собрал Tools/pack_sound.py; у каждого певца — одна из них) и правила. Певец садится вокруг слушателя — в полосе расстояний слоя, на высоте над землёй, там,
 // где есть его место по маскам «habitat» (до 16 попыток), — поёт фразы записи с паузами весь свой «bout», потом улетает, и
 // появляется другой. Певцов сразу — «singers» в свои часы суток (SunPosition), у краёв часов — меньше. Голос — на фразу
 // (ClipGenerator), у певца своя высота; громкость — по расстоянию от 10 м, поглощение воздухом и заглушение гребнем
@@ -50,12 +50,13 @@ private:
 		float nextPhrase = 0.0f;	// с: пауза до следующей фразы
 		AudioMixer::VoiceId voice = 0;	// звучащая фраза; 0 — молчит
 		float voiceLeft = 0.0f;		// с: до конца фразы
+		size_t clip = 0;			// запись слоя, которую поёт этот певец
 	};
 	struct LayerState
 	{
 		Layer settings;
 		PropertyContainer properties;
-		std::shared_ptr<const AudioClip> clip;
+		std::vector<std::shared_ptr<const AudioClip>> clips;	// записи слоя (Sounds через запятую)
 		std::vector<Singer> singers;
 		float spawnDelay = 0.0f;	// с: до следующего певца (прилетают не все сразу)
 	};
