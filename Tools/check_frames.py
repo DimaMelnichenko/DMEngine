@@ -16,7 +16,10 @@ check — один запуск текущей сборки с теми же к�
 допуска ±1 вне маски шума не больше --allowed (карта расхождений — last\\<камера>_diff.png: красным — сверх допуска вне
 маски, синим — маска шума); время GPU кадра — не больше эталона на --gpu-threshold %. Между отдельными запусками время
 шумит (фоновая нагрузка GPU, docs/d3d12.md §4): медленнее порога — повторить, для сравнения двух сборок — попеременные
-запуски. В Debug время GPU не сравнивается, зато debug-слой D3D12 должен молчать: строки «D3D12 error / warning /
+запуски. Под каждой камерой — состояние GPU за её замер (Tools/gpu_monitor.py): кадров в секунду, частота (и частота в
+эталоне), P-state, мощность и её действующий предел, температура, ограничения частоты по nvidia-smi и чужие процессы на том
+же GPU — по ним видно, почему замер медленный; в эталоне — у каждого прогона (reference.json, gpu_state_runs);
+--no-gpu-state — без него. В Debug время GPU не сравнивается, зато debug-слой D3D12 должен молчать: строки «D3D12 error / warning /
 corruption» в log.txt — провал (--gpu-validation — с GPU-based validation, для правок слоя D3D12).
 
 Код выхода: 0 — всё совпало, 1 — расходятся кадры или есть сообщения debug-слоя, 3 — кадры совпали, но GPU медленнее
@@ -30,6 +33,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 import numpy as np
 from PIL import Image
@@ -39,6 +43,7 @@ ROOT = os.path.dirname(TOOLS)
 ENGINE = os.path.join(TOOLS, 'engine.py')
 sys.path.insert(0, TOOLS)
 from compare_frames import load  # noqa: E402
+from gpu_monitor import GpuMonitor, describe  # noqa: E402
 
 # Контрольные камеры docs/d3d12.md §4: x,y,z,pitch,yaw
 CAMERAS = [
@@ -48,6 +53,7 @@ CAMERAS = [
     ('grove', '480,12.6,320,3,0'),
     ('valley', '300,30,960,-4,180'),    # вдоль долины на юг — дальние горы (FarTerrain)
 ]
+GPU_STAT_SECONDS = 3   # stat gpu 3: среднее за столько секунд
 TOLERANCE = 1     # ±1 — двоякое округление экспозиции между запусками (TODO.md, «Решить или проверить»)
 
 
@@ -58,8 +64,18 @@ def engine(args, timeout=None):
     return result.returncode, result.stdout + result.stderr
 
 
-def run_cameras(config, folder, gpu, gpu_validation):
-    """Запуск движка, снимки камер в folder и время GPU кадра на каждой (gpu); None — движок не запустился или завис"""
+def engine_lines(args, timeout=None):
+    """engine.py с аргументами, вывод — построчно по мере ответов: код выхода и [(время прихода, строка)]"""
+    command = [sys.executable, '-u', ENGINE] + (['--timeout', str(timeout)] if timeout else []) + args
+    process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                               errors='replace')
+    lines = [(time.time(), line.rstrip('\n')) for line in process.stdout]
+    return process.wait(), lines
+
+
+def run_cameras(config, folder, gpu, gpu_validation, gpu_state=True):
+    """Запуск движка, снимки камер в folder и время GPU кадра на каждой (gpu) с состоянием GPU за замер (gpu_state,
+    gpu_monitor.py): (время, состояние) по камерам; None — движок не запустился или завис"""
     os.makedirs(folder, exist_ok=True)
     start = ['start', '--config', config, '--nogui', '--nowind', '--noparticles', '--freezetime', '--preset', 'Reference']
     if gpu_validation:
@@ -74,24 +90,39 @@ def run_cameras(config, folder, gpu, gpu_validation):
             f.write('camera %s\n' % camera)
             f.write('screenshot "%s"\n' % os.path.join(folder, name + '.png'))
             if gpu:
-                f.write('stat gpu 3\n')
+                f.write('stat gpu %d\n' % GPU_STAT_SECONDS)
+    monitor = None
+    if gpu and gpu_state:
+        pid = re.search(r'pid (\d+)', output)
+        monitor = GpuMonitor(int(pid.group(1)) if pid else None)
+        monitor.start()
     # Debug с GPU-based validation — кадр в разы дольше: и ответ дольше
-    code, output = engine(['run', script], timeout=300 if config == 'Debug' else None)
+    code, lines = engine_lines(['run', script], timeout=300 if config == 'Debug' else None)
     os.remove(script)
     times = {}
+    states = {}
     camera = None
-    for line in output.splitlines():
+    begin = None
+    for moment, line in lines:
         if line.startswith('> camera '):
             camera = next((n for n, c in CAMERAS if c == line[len('> camera '):].strip()), None)
-        match = re.search(r'GPU average over \d+ frames, ms: frame ([0-9.]+)', line)
+        if line.startswith('> stat gpu'):
+            begin = moment
+        match = re.search(r'GPU average over (\d+) frames, ms: frame ([0-9.]+)', line)
         if match and camera:
-            times[camera] = float(match.group(1))
+            times[camera] = float(match.group(2))
+            if monitor and begin:
+                states[camera] = monitor.state(begin, moment)
+                if states[camera]:
+                    states[camera]['fps'] = round(int(match.group(1)) / GPU_STAT_SECONDS)
+    if monitor:
+        monitor.stop()
     stop_code, stop_output = engine(['stop'])
     if code != 0:
-        print(output.rstrip())
+        print('\n'.join(line for _, line in lines))
         print(stop_output.rstrip())
         return None
-    return times
+    return times, states
 
 
 def debug_layer_messages():
@@ -139,15 +170,15 @@ def make_reference(args, folder):
         run_folder = os.path.join(folder, 'run%d' % run)
         print('reference run %d of %d (%s)...' % (run + 1, args.runs, args.config))
         sys.stdout.flush()
-        times = run_cameras(args.config, run_folder, args.config == 'Release', args.gpu_validation)
-        if times is None:
+        result = run_cameras(args.config, run_folder, args.config == 'Release', args.gpu_validation, not args.no_gpu_state)
+        if result is None:
             print('error: the engine failed, no reference')
             return 2
-        runs.append((run_folder, times))
+        runs.append((run_folder,) + result)
 
     cameras = {}
     for name, camera in CAMERAS:
-        frames = [load(os.path.join(run_folder, name + '.png')) for run_folder, _ in runs]
+        frames = [load(os.path.join(run_folder, name + '.png')) for run_folder, _, _ in runs]
         noise = np.zeros(frames[0].shape[:2], dtype=bool)
         for frame in frames[1:]:
             if frame.shape != frames[0].shape:
@@ -158,13 +189,18 @@ def make_reference(args, folder):
         noise = dilate(noise, args.dilate)
         Image.fromarray(frames[0].astype(np.uint8)).save(os.path.join(folder, name + '.png'))
         Image.fromarray((noise * 255).astype(np.uint8)).save(os.path.join(folder, name + '_noise.png'))
-        times = [t[name] for _, t in runs if name in t]
+        times = [t[name] for _, t, _ in runs if name in t]
+        states = [s.get(name) for _, t, s in runs if name in t]
         cameras[name] = {'camera': camera, 'gpu_frame_ms': round(sum(times) / len(times), 3) if times else None,
-                         'gpu_frame_ms_runs': times, 'noise_pixels': raw, 'noise_mask_pixels': int(noise.sum())}
+                         'gpu_frame_ms_runs': times, 'gpu_state_runs': states, 'noise_pixels': raw,
+                         'noise_mask_pixels': int(noise.sum())}
         print('%-9s noise between runs: %d px (mask %d px)%s' % (
             name, raw, int(noise.sum()),
             ', GPU frame %.3f ms (%s)' % (cameras[name]['gpu_frame_ms'], ', '.join('%.3f' % t for t in times)) if times else ''))
-    for run_folder, _ in runs:
+        for run, state in enumerate(states):
+            if state:
+                print('          run %d: %s' % (run + 1, describe(state)))
+    for run_folder, _, _ in runs:
         for name, _ in CAMERAS:
             os.remove(os.path.join(run_folder, name + '.png'))
         os.rmdir(run_folder)
@@ -206,10 +242,11 @@ def check(args, folder):
                                                        info['date'], info['runs']))
     last = os.path.join(folder, 'last')
     gpu = args.config == 'Release'
-    times = run_cameras(args.config, last, gpu, args.gpu_validation)
-    if times is None:
+    result = run_cameras(args.config, last, gpu, args.gpu_validation, not args.no_gpu_state)
+    if result is None:
         print('error: the engine failed')
         return 2
+    times, states = result
 
     frames_ok = True
     slower = []
@@ -250,6 +287,9 @@ def check(args, folder):
                 slower.append(name)
             line += ' | GPU frame %.3f ms vs %.3f (%+.1f%%)%s' % (times[name], reference_time, change, ' SLOWER' if slow else '')
         print(line)
+        if states.get(name):
+            reference_states = [s for s in info['cameras'].get(name, {}).get('gpu_state_runs', []) if s]
+            print('          ' + describe(states[name], reference_states[0] if reference_states else None))
 
     result = 0 if frames_ok else 1
     if args.config == 'Debug':
@@ -282,6 +322,8 @@ def main():
     parser.add_argument('--allowed', type=int, default=32,
                         help='check: pixels beyond tolerance outside the noise mask that still pass')
     parser.add_argument('--gpu-threshold', type=float, default=10.0, help='check: GPU frame slower than the reference, %%')
+    parser.add_argument('--no-gpu-state', action='store_true',
+                        help='Release: no GPU state during the timing (clock, power, limits, other processes - gpu_monitor.py)')
     args = parser.parse_args(argv)
     if args.gpu_validation and args.config != 'Debug':
         raise SystemExit('error: --gpu-validation needs --config Debug')

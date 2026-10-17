@@ -76,7 +76,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   с эталоном ±1, «GPU average» не хуже, Debug-сборка молчит в `log.txt` (debug-слой D3D12; GPU-based validation —
   `-GpuValidation` у `run.ps1`, `--gpu-validation` у `engine.py` — только для правок слоя D3D12: ресурсы, барьеры,
   дескрипторы, проходы). Одной командой — `python Tools/check_frames.py` (эталон до правки — `check_frames.py
-  reference`; `--config Debug` — с проверкой debug-слоя). Эталон D3D11 — коммит `0aadc42` в истории git.
+  reference`; `--config Debug` — с проверкой debug-слоя; в Release под каждой камерой — состояние GPU за замер: частота,
+  мощность, температура, ограничения, чужие процессы — `Tools/gpu_monitor.py`). Эталон D3D11 — коммит `0aadc42` в истории git.
 - **Запуск для проверки** — `.\Tools\run.ps1 [-Config Release] [-Seconds 8] [-Screenshot кадр.png] [-Keys 2,4]
   [-Camera x,y,z,pitch,yaw] [-Level имя] [-Resolution 1920x1080|desktop] [-NoGui] [-NoMouse] [-NoWind] [-NoParticles]
   [-FreezeTime] [-NoColorGrading] [-Preset имя] [-GpuValidation]` (если PowerShell запрещает скрипты: `powershell -ExecutionPolicy Bypass -File Tools\run.ps1 ...`).
