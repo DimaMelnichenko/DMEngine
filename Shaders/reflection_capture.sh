@@ -3,37 +3,44 @@
 // съёмка сцены без неба — docs/scene_capture.md), с префильтром по шероховатости, как у освещения неба (мипы —
 // specularMipCount). Альфа — покрытие сценой: цвет умножен на неё, где съёмка видела небо — 0. Рядом — расстояния от
 // точки съёмки до того, что она видит. В кадре — две ближайшие к камере карты; точка воды берёт ту, в чьём радиусе влияния
-// она глубже (обе полностью — у которой точка съёмки ближе). Внутри радиуса отражения окружения ищут попадание лучом по
+// она глубже (обе полностью — у которой точка съёмки ближе), а если там луч ни во что не упёрся (ушёл за предмет рядом с её
+// точкой: что за ним, она не видит) — вторую. Внутри радиуса отражения окружения ищут попадание лучом по
 // карте (distance impostors, Szirmay-Kalos, Aszódi, Lazányi, Premecz 2005, «Approximate Ray-Tracing on the GPU with
 // Distance Impostors»): луч отражения из точки воды идёт шагами, растущими с расстоянием, и на каждом сравнивает, дальше ли он от
 // точки съёмки, чем видимое ею в этом направлении; ушёл за видимое — уточнение делением пополам и секущей, и попадание —
 // там, где луч упёрся в поверхность. Так в отражении на своих местах и близкие предметы (шар, закрытый на экране другим),
 // и дальние берега. Луч, ушедший за предмет далеко (за ним из точки съёмки ничего не видно), ищет дальше. Сквозь
 // непокрытое и где луч ни во что не упёрся — небо освещения окружением по направлению самого луча (как сочетание карт
-// отражений со Sky Light в UE). Ресурсы — t131…t134 (цвет и расстояния двух
-// карт), константы — cb_reflectionCaptureSphere / cb_reflectionCapture. docs/reflection_captures.md
+// отражений со Sky Light в UE). Ресурсы — t131…t134 (цвет и расстояния двух карт; карту точка воды выбирает сама —
+// индексом в таблице ресурсов сцены), константы — cb_reflectionCaptureSphere / cb_reflectionCapture.
+// docs/reflection_captures.md
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef REFLECTION_CAPTURE_SH
 #define REFLECTION_CAPTURE_SH
 
 #include "ibl.sh"
+#include "reflection_capture_distance.sh"
 
-DM_SRV( TextureCube, g_reflectionCapture0, SLOT_REFLECTION_CAPTURE_0 );
-DM_SRV( TextureCube<float>, g_reflectionCaptureDistance0, SLOT_REFLECTION_CAPTURE_DISTANCE_0 );
-DM_SRV( TextureCube, g_reflectionCapture1, SLOT_REFLECTION_CAPTURE_1 );
-DM_SRV( TextureCube<float>, g_reflectionCaptureDistance1, SLOT_REFLECTION_CAPTURE_DISTANCE_1 );
-
-static const uint reflectionCaptureSteps = 24;			// шагов луча по карте
+static const uint reflectionCaptureSteps = 16;			// шагов луча по карте
 static const float reflectionCaptureFirstStep = 0.5f;	// первый шаг, м; дальше каждый — в reflectionCaptureStepGrowth раз длиннее
-static const float reflectionCaptureStepGrowth = 1.43f;	// 24 шага — до ~2 км
-static const uint reflectionCaptureRefineSteps = 6;		// деление пополам у попадания, затем секущая
-// Луч за видимым из точки съёмки дальше этого — прошёл позади предмета, а не упёрся в него: метры и доля расстояния. На
-// поверхности, которую точка съёмки видит вскользь (низ шара), соседние тексели расходятся на D · θ / tg α (θ — тексель, при
-// 256 на грань 0,006 рад): при α ≈ 1,5° — на четверть расстояния; край предмета (шар в 12 м перед берегом в сотне) — много
-// больше. Меньший допуск — у такой поверхности попадания через тексель отбрасываются, в отражении полосы
-static const float reflectionCaptureThickness = 0.5f;
-static const float reflectionCaptureThicknessScale = 0.25f;
+static const float reflectionCaptureStepGrowth = 1.6f;	// 16 шагов — до ~600 м; дальше — по направлению самого луча
+static const uint reflectionCaptureRefineSteps = 5;		// деление пополам у попадания, затем секущая
+// Луч, ушедший за видимое из точки съёмки, упёрся в поверхность, если (метры и доля расстояния):
+// - ушёл за неё не дальше reflectionCaptureEdge… — вошёл в предмет на его глубине, в том числе с края (крона ели: между
+//   иголками в карте видны горы за километры, и почти каждое пересечение с ней — край);
+// - или по обе стороны пересечения видно одно и то же — скачок не больше reflectionCaptureSurface…: на поверхности, которую
+//   точка съёмки видит вскользь (низ шара), соседние тексели расходятся на D · θ / tg α (θ — тексель, при 256 на грань
+//   0,006 рад) — при α ≈ 1,5° на четверть расстояния (меньший допуск — попадания через тексель отбрасываются, полосы).
+// Иначе луч прошёл позади предмета (куб в 18 м, а луч — в 3 м за ним: иначе в воде второе, смещённое отражение куба)
+static const float reflectionCaptureEdgeThickness = 0.5f;
+static const float reflectionCaptureEdgeThicknessScale = 0.02f;
+static const float reflectionCaptureSurfaceJump = 0.5f;
+static const float reflectionCaptureSurfaceJumpScale = 0.25f;
+// Луч ушёл за предмет и ни в одной карте ни во что не упёрся: за предметом дальше этого от точки съёмки, м, скорее всего, то
+// же (за ёлкой на склоне — ёлки и склон), и его цвет лучше неба — иначе в отражённом лесу голубые квадраты; за ближним
+// (куб, шар в десятке метров) в широком секторе может быть что угодно — там небо
+static const float reflectionCaptureFarOccluder = 40.0f;
 
 // Насколько точка q (от точки съёмки) дальше видимого ею в своём направлении, м: > 0 — за поверхностью; небо в карте —
 // миллион метров. Расстояния — без смешивания соседних текселей: у края предмета их среднее — несуществующая поверхность
@@ -45,10 +52,14 @@ float reflectionCaptureBehind( TextureCube<float> distances, float3 q, out float
 }
 
 // Луч из точки offset (от точки съёмки) в направлении r по карте: направление на попадание из точки съёмки; found — луч
-// упёрся в поверхность (нет — ни во что не упёрся или прошёл только позади предметов: что за ними, карта не знает — небо)
-float3 reflectionCaptureTrace( TextureCube<float> distances, float3 offset, float3 r, out bool found )
+// упёрся в поверхность (нет — ни во что не упёрся или прошёл только позади предметов: что за ними, карта не знает).
+// occluder — направление на первый предмет, позади которого прошёл луч, occluderDistance — расстояние до него (0 — не было)
+float3 reflectionCaptureTrace( TextureCube<float> distances, float3 offset, float3 r, out bool found, out float3 occluder,
+							   out float occluderDistance )
 {
 	found = false;
+	occluder = r;
+	occluderDistance = 0.0f;
 	float previous = 0.0f;
 	float previousBehind = -1.0f;
 	float t = reflectionCaptureFirstStep;
@@ -81,18 +92,29 @@ float3 reflectionCaptureTrace( TextureCube<float> distances, float3 offset, floa
 					behindNear = middleBehind;
 				}
 			}
-			// Упёрся в поверхность — луч за ней не дальше толщины; иначе прошёл позади предмета (край его силуэта из точки
-			// съёмки) — ищем дальше
-			if( behindFar < reflectionCaptureThickness + reflectionCaptureThicknessScale * seen )
+			// Упёрся в поверхность (вошёл в предмет на его глубине или по обе стороны пересечения видно одно и то же); иначе
+			// прошёл позади предмета — ищем дальше
+			if( behindFar < reflectionCaptureEdgeThickness + reflectionCaptureEdgeThicknessScale * seen ||
+				behindFar - behindNear < reflectionCaptureSurfaceJump + reflectionCaptureSurfaceJumpScale * seen )
 			{
 				found = true;
 				return offset + r * ( tNear + ( tFar - tNear ) * saturate( -behindNear / max( behindFar - behindNear, 1e-4f ) ) );
+			}
+			if( occluderDistance <= 0.0f )
+			{
+				occluder = offset + r * tFar;
+				occluderDistance = seen;
 			}
 		}
 		previousBehind = behind;
 		previous = t;
 		t *= reflectionCaptureStepGrowth;
 	}
+	// Дошёл до конца шагов перед всем видимым: дальше (горы вокруг карты в десятках километров) смещение точки воды от точки
+	// съёмки уже ничего не значит — что карта видит по направлению самого луча, туда он и упрётся. Гора это или небо, решает
+	// не тексель расстояний (край гор в отражении шёл бы ступеньками), а покрытие карты со смешиванием: небо подмешает
+	// environmentSpecular
+	found = previousBehind <= 0.0f;
 	return r;
 }
 
@@ -104,17 +126,12 @@ float reflectionCaptureWeight( float4 sphere, float4 params, float3 position, ou
 	return sphere.w > 0.0f ? saturate( ( sphere.w - sqrt( distanceSquared ) ) * params.y ) : 0.0f;
 }
 
-// Отражённый свет окружения по карте: сцена, куда упёрся луч, и небо sky сквозь непокрытое; у края радиуса — небо
-float3 reflectionCaptureSpecular( TextureCube colors, TextureCube<float> distances, float4 sphere, float4 params, float weight,
-								  float3 position, float3 r, float roughness, float3 sky )
+// Отражённый свет карты k кадра в направлении direction из её точки, кд/м², с небом sky сквозь непокрытое
+float3 reflectionCaptureColor( uint k, float3 direction, float roughness, float3 sky )
 {
-	bool found;
-	const float3 direction = reflectionCaptureTrace( distances, position - sphere.xyz, r, found );
-	[branch] if( !found )
-		return sky;
+	TextureCube colors = ResourceDescriptorHeap[NonUniformResourceIndex( DM_SCENE_BINDING( SLOT_REFLECTION_CAPTURE_0 - SLOT_SCENE_FIRST + 2 * k ) )];
 	const float4 captured = colors.SampleLevel( g_SamplerLinearClamp, direction, roughness * ( specularMipCount - 1.0f ) );
-	const float3 local = captured.rgb * params.x + sky * ( 1.0f - captured.a );
-	return lerp( sky, local, weight );
+	return captured.rgb * cb_reflectionCapture[k].x + sky * ( 1.0f - captured.a );
 }
 
 // Отражённый свет окружения в направлении r из точки position, кд/м²: внутри радиуса карты отражений места — сцена, куда
@@ -125,13 +142,40 @@ float3 environmentSpecular( float3 position, float3 r, float roughness )
 	float distance0, distance1;
 	const float weight0 = reflectionCaptureWeight( cb_reflectionCaptureSphere[0], cb_reflectionCapture[0], position, distance0 );
 	const float weight1 = reflectionCaptureWeight( cb_reflectionCaptureSphere[1], cb_reflectionCapture[1], position, distance1 );
-	[branch] if( max( weight0, weight1 ) <= 0.0f )
+	const float weight = max( weight0, weight1 );
+	[branch] if( weight <= 0.0f )
 		return sky;
-	[branch] if( weight1 > weight0 || ( weight1 == weight0 && distance1 < distance0 ) )
-		return reflectionCaptureSpecular( g_reflectionCapture1, g_reflectionCaptureDistance1, cb_reflectionCaptureSphere[1],
-										  cb_reflectionCapture[1], weight1, position, r, roughness, sky );
-	return reflectionCaptureSpecular( g_reflectionCapture0, g_reflectionCaptureDistance0, cb_reflectionCaptureSphere[0],
-									  cb_reflectionCapture[0], weight0, position, r, roughness, sky );
+	// Сначала карта, в чьём радиусе точка глубже (обе полностью — ближняя). Луч там ушёл за дальний предмет
+	// (reflectionCaptureFarOccluder) — его цвет; за ближний — слепая зона этой карты: вторая карта кадра; и там ни во что не
+	// упёрся — небо
+	const uint first = weight1 > weight0 || ( weight1 == weight0 && distance1 < distance0 ) ? 1 : 0;
+	float3 firstOccluder = r;
+	float firstOccluderDistance = 0.0f;
+	[loop] for( uint attempt = 0; attempt < 2; ++attempt )
+	{
+		const uint k = attempt == 0 ? first : 1 - first;
+		const float4 sphere = cb_reflectionCaptureSphere[k];
+		if( sphere.w <= 0.0f )
+			continue;
+		TextureCube<float> distances =
+			ResourceDescriptorHeap[NonUniformResourceIndex( DM_SCENE_BINDING( SLOT_REFLECTION_CAPTURE_DISTANCE_0 - SLOT_SCENE_FIRST + 2 * k ) )];
+		bool found;
+		float3 occluder;
+		float occluderDistance;
+		const float3 direction = reflectionCaptureTrace( distances, position - sphere.xyz, r, found, occluder, occluderDistance );
+		[branch] if( found )
+			return lerp( sky, reflectionCaptureColor( k, direction, roughness, sky ), weight );
+		if( attempt == 0 )
+		{
+			firstOccluder = occluder;
+			firstOccluderDistance = occluderDistance;
+			if( occluderDistance > reflectionCaptureFarOccluder )
+				break;
+		}
+	}
+	[branch] if( firstOccluderDistance > reflectionCaptureFarOccluder )
+		return lerp( sky, reflectionCaptureColor( first, firstOccluder, roughness, sky ), weight );
+	return sky;
 }
 
 #endif
