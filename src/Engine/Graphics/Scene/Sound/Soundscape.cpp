@@ -127,33 +127,81 @@ float Soundscape::activity( const XMFLOAT2& hours, float hour )
 	return rise * fall;
 }
 
+void Soundscape::buildShore()
+{
+	m_shore.clear();
+	const TerrainHydrology::Result* hydrology = m_terrain ? m_terrain->hydrology() : nullptr;
+	const uint32_t size = hydrology ? hydrology->size : 0;
+	if( size == 0 || hydrology->staticWater.size() != static_cast<size_t>( size ) * size )
+		return;
+	const float world = m_terrain->worldSize();
+	const float texel = world / size;
+	auto lake = [&]( int32_t row, int32_t column )
+	{
+		return row >= 0 && column >= 0 && row < static_cast<int32_t>( size ) && column < static_cast<int32_t>( size ) &&
+			   hydrology->staticWater[static_cast<size_t>( row ) * size + column].w > -1e8f;
+	};
+	for( int32_t row = 0; row < static_cast<int32_t>( size ); ++row )
+		for( int32_t column = 0; column < static_cast<int32_t>( size ); ++column )
+			if( lake( row, column ) && ( !lake( row - 1, column ) || !lake( row + 1, column ) || !lake( row, column - 1 ) || !lake( row, column + 1 ) ) )
+				// Строка 0 — дальний край по z
+				m_shore.push_back( XMFLOAT3( ( column + 0.5f ) * texel, hydrology->staticWater[static_cast<size_t>( row ) * size + column].w,
+											 world - ( row + 0.5f ) * texel ) );
+	LOG( "Soundscape: " + std::to_string( m_shore.size() ) + " points of lake shore" );
+}
+
 bool Soundscape::placeSinger( const Layer& settings, const XMFLOAT3& listener, Singer& singer )
 {
 	std::vector<std::string> names;
 	str_split( settings.habitat, names, ", " );
-	const auto habitat = terrainMasks( m_terrain, names );
-	for( int32_t attempt = 0; attempt < placeTries; ++attempt )
+	const float inner = std::max( settings.distance.from, 0.0f );
+	const float outer = std::max( settings.distance.to, inner );
+	const float height = uniform( settings.height.from, std::max( settings.height.to, settings.height.from ) );
+	bool placed = false;
+	if( std::find( names.begin(), names.end(), lakeShore ) != names.end() )
 	{
-		// Равномерно по площади кольца
-		const float angle = uniform( 0.0f, 2.0f * pi );
-		const float inner = std::max( settings.distance.from, 0.0f );
-		const float outer = std::max( settings.distance.to, inner );
-		const float radius = std::sqrt( uniform( inner * inner, outer * outer ) );
-		const float x = listener.x + radius * std::sin( angle );
-		const float z = listener.z + radius * std::cos( angle );
-		if( !names.empty() && uniform( 0.0f, 1.0f ) >= terrainMaskAt( m_terrain, habitat, x, z ) )
-			continue;
-		float ground = listener.y - 1.7f;
-		if( m_terrain )
-			m_terrain->surfaceHeight( x, z, ground );
-		singer.position = XMFLOAT3( x, ground + uniform( settings.height.from, std::max( settings.height.to, settings.height.from ) ), z );
+		// Берег озера: случайная точка края воды в полосе расстояний
+		std::vector<const XMFLOAT3*> nearby;
+		for( const XMFLOAT3& point : m_shore )
+		{
+			const float distance = std::hypot( point.x - listener.x, point.z - listener.z );
+			if( distance >= inner && distance <= outer )
+				nearby.push_back( &point );
+		}
+		if( !nearby.empty() )
+		{
+			const XMFLOAT3& point = *nearby[std::uniform_int_distribution<size_t>( 0, nearby.size() - 1 )( m_random )];
+			singer.position = XMFLOAT3( point.x, point.y + height, point.z );
+			placed = true;
+		}
+	}
+	else
+	{
+		const auto habitat = terrainMasks( m_terrain, names );
+		for( int32_t attempt = 0; attempt < placeTries && !placed; ++attempt )
+		{
+			// Равномерно по площади кольца
+			const float angle = uniform( 0.0f, 2.0f * pi );
+			const float radius = std::sqrt( uniform( inner * inner, outer * outer ) );
+			const float x = listener.x + radius * std::sin( angle );
+			const float z = listener.z + radius * std::cos( angle );
+			if( !names.empty() && uniform( 0.0f, 1.0f ) >= terrainMaskAt( m_terrain, habitat, x, z ) )
+				continue;
+			float ground = listener.y - 1.7f;
+			if( m_terrain )
+				m_terrain->surfaceHeight( x, z, ground );
+			singer.position = XMFLOAT3( x, ground + height, z );
+			placed = true;
+		}
+	}
+	if( placed )
+	{
 		singer.pitch = 1.0f + uniform( -settings.pitch, settings.pitch );
 		singer.boutLeft = uniform( settings.bout.from, std::max( settings.bout.to, settings.bout.from ) );
 		// Первая фраза — скоро: прилетел и запел
 		singer.nextPhrase = uniform( 0.0f, std::clamp( settings.pause.from, 0.5f, 4.0f ) );
-		return true;
 	}
-	return false;
+	return placed;
 }
 
 void Soundscape::update( const FrameContext& frame )
@@ -165,6 +213,11 @@ void Soundscape::update( const FrameContext& frame )
 	if( const SunPosition* sun = m_lights->sunPosition() )
 		hour = sun->settings().timeOfDay;
 	const AudioListener listener = listenerFromView( frame.view );
+	if( m_terrain && m_terrain->heightRevision() != m_shoreRevision )
+	{
+		m_shoreRevision = m_terrain->heightRevision();
+		buildShore();
+	}
 
 	for( const auto& pointer : m_layers )
 	{

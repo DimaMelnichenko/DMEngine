@@ -18,7 +18,8 @@ class TerrainPipeline;
 
 // Певцы уровня — как Soundscape в UE (docs/audio.md, «Певцы»): слои SoundscapeLayers, у слоя — записи (строки Sounds, их фразы
 // собрал Tools/pack_sound.py; у каждого певца — одна из них) и правила. Певец садится вокруг слушателя — в полосе расстояний слоя, на высоте над землёй, там,
-// где есть его место по маскам «habitat» (до 16 попыток), — поёт фразы записи с паузами весь свой «bout», потом улетает, и
+// где есть его место по маскам «habitat» (до 16 попыток; «lake_shore» — на берегу озера: точки края воды озёр из растра
+// статичной воды, TerrainHydrology::Result::staticWater), — поёт фразы записи с паузами весь свой «bout», потом улетает, и
 // появляется другой. Певцов сразу — «singers» в свои часы суток (SunPosition), у краёв часов — меньше. Голос — на фразу
 // (ClipGenerator), у певца своя высота; громкость — по расстоянию от 10 м, поглощение воздухом и заглушение гребнем
 // (SoundPlace.h), как у ручьёв. Окно «Soundscape» — подокно на слой; флажок видимости в Outliner — тихо
@@ -26,6 +27,8 @@ class Soundscape : public SceneObject
 {
 public:
 	using Layer = SoundscapeLayerSettings;
+	// Место певца «на берегу озера» в habitat (вместо масок)
+	static constexpr const char* lakeShore = "lake_shore";
 
 	Soundscape();
 	~Soundscape() override;
@@ -72,6 +75,8 @@ private:
 	// Место нового певца; false — места по маскам рядом нет
 	bool placeSinger( const Layer& settings, const DirectX::XMFLOAT3& listener, Singer& singer );
 	float uniform( float from, float to );
+	// Берег озёр: клетки озера, у которых сосед — не озеро; высота — уровень озера. Заново — по номеру итоговой карты
+	void buildShore();
 
 	PropertyContainer m_properties;
 	std::vector<std::unique_ptr<LayerState>> m_layers;
@@ -79,6 +84,8 @@ private:
 	const TerrainPipeline* m_terrain = nullptr;
 	DMLightDriver* m_lights = nullptr;
 	std::mt19937 m_random{ 0x5EEDu };
+	std::vector<DirectX::XMFLOAT3> m_shore;
+	uint32_t m_shoreRevision = ~0u;
 };
 
 }
