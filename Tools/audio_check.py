@@ -37,7 +37,8 @@ def clicks(samples):
     if len(diff) < 2 * BLOCK:
         return 0, 1.0
     kernel = np.ones(BLOCK) / BLOCK
-    local = np.sqrt(np.convolve(diff ** 2, kernel, mode='same')) + 1e-6
+    # Пол — у цифрового нуля между фразами первый ненулевой отсчёт плавного входа не скачок (−80 дБ FS)
+    local = np.sqrt(np.convolve(diff ** 2, kernel, mode='same')) + 1e-4
     outliers = int((diff > 8.0 * local).sum())
     boundaries = diff[BLOCK - 1::BLOCK]
     ratio = boundaries.mean() / (diff.mean() + 1e-12)

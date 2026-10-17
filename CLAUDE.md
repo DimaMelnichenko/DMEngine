@@ -150,7 +150,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   эталона — `Tools/check_frames.py`.
 - Запускать из корня проекта: все пути относительные к рабочей папке (`settings.ini`, `base.db3`,
   `Shaders\`, `Textures\`, `Meshes\`). Для CLion это задаёт общая
-  конфигурация запуска `.run/DMEngine.run.xml`. Каталоги `Textures\` и `Meshes\` в git не хранятся;
+  конфигурация запуска `.run/DMEngine.run.xml`. Каталоги `Textures\`, `Meshes\` и `Sounds\` (записи звука — `Tools/pack_sound.py`
+  из `DownloadResources\Sounds\` через ffmpeg, `docs/audio.md`) в git не хранятся;
   без них движок запускается на заглушках (см. «Заглушки ресурсов»), а в `log.txt` перечислено, что не загрузилось.
   Тестовые данные террейна: исходную карту высот `Textures\terrain\heightmap.dds` (1024×1024: горная долина без
   эрозии, секунды, numpy; карта может быть и из World Machine, Gaea) — `python Tools/gen_heightmap.py`; эрозию (капли,
@@ -424,7 +425,9 @@ Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/
 `AmbientSound` (звуки окружения синтезом: ветер у камеры, шелест травы и кроны леса по сторонам — по ветру уровня, полю ветра
 и маскам, `Wind::gust`, `TerrainPipeline::maskValues`; ручьи — места воды 8 × 8 м по растру `staticWater`, громкость — по
 потере мощности течения, слышны самые громкие, заглушение гребнем; строка `AmbientSound`, `Levels.ambient_sound`, `Tools/ambient_sound.py`;
-мешей нет — цели голосов микшера в `update`, `docs/audio.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
+мешей нет — цели голосов микшера в `update`, `docs/audio.md`), `Soundscape` (певцы из записей, как Soundscape в UE: слои
+`SoundscapeLayers` — запись `Sounds`, маски места, часы суток; певец садится вокруг слушателя и поёт фразы записи с паузами;
+`Tools/soundscape.py`, записи — `Tools/pack_sound.py` через ffmpeg в `Sounds\` (не в git, как `Textures\`), `docs/audio.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 
 Логику, которая меняет состояние сцены, пишите в `SceneObject::update()`, а в `render()` оставляйте только команды GPU.

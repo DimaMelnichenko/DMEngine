@@ -264,6 +264,11 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 	if( audio && m_level.ambientSound &&
 		!m_ambientSound.initialize( *m_level.ambientSound, *audio, m_wind, m_level.terrain ? &m_terrainPipeline : nullptr ) )
 		LOG( "Ambient sound is not initialized" );
+	// Певцы — записи (Sounds\) по слоям уровня, места — по маскам, часы — по времени суток
+	if( audio && !m_level.soundscapeLayers.empty() &&
+		!m_soundscape.initialize( m_level.soundscapeLayers, m_level.sounds, *audio, m_level.terrain ? &m_terrainPipeline : nullptr,
+								  m_lightDriver ) )
+		LOG( "Soundscape is not initialized" );
 
 	// Следы в траве — по земле под камерой; без поля растения просто не расступаются
 	if( m_level.terrain && !m_foliageInteraction.initialize( &m_terrainPipeline ) )
@@ -296,6 +301,8 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 	// Звуки окружения — мешей нет: цели голосов микшера по камере
 	if( m_ambientSound.initialized() )
 		m_objects.push_back( &m_ambientSound );
+	if( m_soundscape.initialized() )
+		m_objects.push_back( &m_soundscape );
 
 	return true;
 }
@@ -473,6 +480,8 @@ LevelSaveData Scene::levelSaveData( const PostProcessSettings& postProcess, cons
 		data.reflectionCaptures = m_reflectionCaptures.captureSettings();
 	if( m_ambientSound.initialized() )
 		data.ambientSound = m_ambientSound.settings();
+	if( m_soundscape.initialized() )
+		data.soundscapeLayers = m_soundscape.layerSettings();
 	return data;
 }
 

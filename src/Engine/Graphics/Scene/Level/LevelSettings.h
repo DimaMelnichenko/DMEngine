@@ -842,6 +842,36 @@ struct AmbientSoundSettings
 // Поля строки AmbientSound (SettingsSchema): основное окно «Ambient sound» и подокна «Wind», «Grass», «Crowns», «Streams»
 const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema();
 
+// Запись звука — строка Sounds (как Sound Wave в UE; собирает Tools/pack_sound.py): файл WAV в Sounds\, фразы, автор и лицензия
+struct SoundRecord
+{
+	std::string name;
+	std::string file;
+	std::string phrases;			// «начало-конец;…», с
+	std::string author;
+	std::string license;
+};
+
+// Слой певцов уровня — строка SoundscapeLayers (как Soundscape в UE; Soundscape, docs/audio.md, «Певцы»): певцы одной записи
+// сидят вокруг слушателя там, где их место по маскам, и поют её фразы с паузами в свои часы
+struct SoundscapeLayerSettings
+{
+	uint32_t id = 0;				// строка SoundscapeLayers — куда пишет «Save level»
+	std::string name;
+	std::string sound;				// запись — Sounds.name
+	std::string habitat;			// маски места певца через запятую (mask_forest_spruce …); пусто — где угодно
+	DirectX::XMFLOAT2 hours = DirectX::XMFLOAT2( 4.0f, 22.0f );	// часы суток, когда поёт; от > до — через полночь
+	int32_t singers = 2;			// певцов сразу в свои часы
+	SettingRange distance{ 15.0f, 80.0f };	// от слушателя, м
+	SettingRange height{ 3.0f, 12.0f };		// над землёй, м
+	SettingRange bout{ 30.0f, 120.0f };		// поёт с одного места, с; потом улетает, появляется другой
+	SettingRange pause{ 2.0f, 6.0f };		// между фразами, с
+	float volume = 0.5f;			// громкость певца в 10 м
+	float pitch = 0.05f;			// у каждого певца своя высота: выше или ниже до этой доли
+};
+// Поля строки SoundscapeLayers (SettingsSchema), подокно слоя в окне «Soundscape». Запись и маски места — только в базе
+const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema();
+
 // Строка SunPosition
 struct SunPositionSettings
 {

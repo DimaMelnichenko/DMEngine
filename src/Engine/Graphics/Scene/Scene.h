@@ -20,6 +20,7 @@
 #include "Water\WaterSimulation.h"
 #include "Foliage\FoliageInteraction.h"
 #include "Sound\AmbientSound.h"
+#include "Sound\Soundscape.h"
 #include "Level\LevelDescription.h"
 #include "Level\LevelSaveData.h"
 
@@ -140,6 +141,7 @@ private:
 	FoliageInteraction m_foliageInteraction;	// трава расступается у камеры (только с террейном)
 	ReflectionCaptures m_reflectionCaptures;	// карты отражений места (LevelReflectionCaptures)
 	AmbientSound m_ambientSound;	// звуки окружения (Levels.ambient_sound): голоса микшера звука
+	Soundscape m_soundscape;		// певцы (SoundscapeLayers): фразы записей вокруг слушателя
 
 	std::vector<SceneObject*> m_objects;
 };

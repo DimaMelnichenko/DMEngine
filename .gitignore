@@ -5,6 +5,8 @@
 /ClassDiagram.cd
 /Meshes
 /Textures
+# Записи звука для движка — собирает Tools/pack_sound.py из DownloadResources\Sounds\
+/Sounds
 # Скачанные исходники ассетов (архивы Poly Haven и других): из них сценарии Tools/ собирают данные
 /DownloadResources
 /cmake-build-*/

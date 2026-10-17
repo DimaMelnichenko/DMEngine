@@ -973,6 +973,28 @@ const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema()
 	return schema;
 }
 
+const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema()
+{
+	using Settings = SoundscapeLayerSettings;
+	static const SettingsSchema<Settings> schema = {
+		{ "sound", nullptr, DM_SETTING( sound ) },
+		{ "habitat", nullptr, DM_SETTING( habitat ) },
+		// Часы — парой полей, а не полосой: «от» больше «до» — через полночь (сверчки, совы)
+		{ "hours_from,hours_to", "Hours", DM_SETTING( hours ), 0.0f, 24.0f, "h",
+		  "Time of day when it sings (from > to - over midnight); the edges fade over 45 minutes" },
+		{ "singers", "Singers", DM_SETTING( singers ), 0.0f, 8.0f, "", "Singing at once in their hours", settingClamp },
+		{ "distance_from,distance_to", "Distance", DM_SETTING( distance ), 5.0f, 300.0f, "m", "From the listener",
+		  settingRangeControl },
+		{ "height_from,height_to", "Height", DM_SETTING( height ), 0.0f, 100.0f, "m", "Above the ground", settingRangeControl },
+		{ "bout_from,bout_to", "Bout", DM_SETTING( bout ), 5.0f, 600.0f, "s",
+		  "Sings this long from one place, then flies away and another one comes", settingRangeControl },
+		{ "pause_from,pause_to", "Pause", DM_SETTING( pause ), 0.0f, 60.0f, "s", "Between the phrases", settingRangeControl },
+		{ "volume", "Volume", DM_SETTING( volume ), 0.0f, 2.0f, "", "Of a singer 10 m away" },
+		{ "pitch", "Pitch spread", DM_SETTING( pitch ), 0.0f, 0.3f, "", "Each singer is higher or lower by up to this share" },
+	};
+	return schema;
+}
+
 Tonemapper tonemapperFromName( const std::string& name )
 {
 	return name == "None" ? Tonemapper::none : name == "ACES" ? Tonemapper::aces : Tonemapper::agx;

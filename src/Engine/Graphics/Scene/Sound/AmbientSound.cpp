@@ -6,6 +6,7 @@
 #include "Engine\Audio\AudioSynth.h"
 #include "Logger\Logger.h"
 #include "Properties\SettingsProperties.h"
+#include "SoundPlace.h"
 #include "Terrain\TerrainPipeline.h"
 #include "Wind\Wind.h"
 
@@ -20,8 +21,8 @@ namespace
 constexpr float pi = 3.14159265f;
 
 // Маски, по которым слышны трава и лес (TerrainMasks)
-const char* const grassMasks[] = { "mask_grass", "mask_grass_riparian", "mask_camomile" };
-const char* const forestMasks[] = { "mask_forest_spruce", "mask_forest_pine", "mask_forest_birch" };
+const std::vector<std::string> grassMasks = { "mask_grass", "mask_grass_riparian", "mask_camomile" };
+const std::vector<std::string> forestMasks = { "mask_forest_spruce", "mask_forest_pine", "mask_forest_birch" };
 
 // Голоса слева и справа — в стороны на столько от камеры берётся ветер, м: порыв проходит от уха к уху
 constexpr float earSpacing = 6.0f;
@@ -49,14 +50,6 @@ constexpr float streamRapidsFrom = 0.02f;
 constexpr float streamRapidsTo = 0.15f;
 constexpr float streamKeep = 1.5f;
 constexpr float streamFadeFrom = 0.7f;
-// Поглощение воздухом: срез фильтра — 20 кГц / (1 + расстояние / это), м (в 100 м — 4 кГц, как ISO 9613-1 на высоких)
-constexpr float airAbsorptionDistance = 25.0f;
-// Заглушение гребнем: рельеф выше прямой «слушатель — вода» на столько, м, — ещё не гребень (бровки русла), на столько больше
-// — заглушено полностью: тише на долю и глуше до частоты
-constexpr float occlusionFrom = 0.5f;
-constexpr float occlusionRange = 2.5f;
-constexpr float occlusionAttenuation = 0.7f;
-constexpr float occlusionLowpass = 1000.0f;
 
 // Сектор стороны крон: лучи под этими углами к стороне, точки — на этих долях радиуса
 const float crownAngles[] = { -30.0f, 0.0f, 30.0f };
@@ -150,36 +143,6 @@ AmbientSound::Settings AmbientSound::settings() const
 	return settings;
 }
 
-std::vector<const std::vector<float>*> AmbientSound::masks( const char* const* names, size_t count ) const
-{
-	std::vector<const std::vector<float>*> result;
-	if( !m_terrain )
-		return result;
-	const size_t size = m_terrain->mapSize();
-	for( size_t i = 0; i < count; ++i )
-		if( const std::vector<float>* values = m_terrain->maskValues( names[i] ); values && values->size() == size * size )
-			result.push_back( values );
-	return result;
-}
-
-float AmbientSound::maskAt( const std::vector<const std::vector<float>*>& masks, float x, float z ) const
-{
-	if( masks.empty() )
-		return 0.0f;
-	const uint32_t size = m_terrain->mapSize();
-	const float texel = m_terrain->worldSize() / size;
-	// Строка 0 — дальний край по z, как у карты высот (TerrainPipeline::paintProbe)
-	const int32_t column = static_cast<int32_t>( std::floor( x / texel ) );
-	const int32_t row = static_cast<int32_t>( std::floor( ( m_terrain->worldSize() - z ) / texel ) );
-	if( column < 0 || row < 0 || column >= static_cast<int32_t>( size ) || row >= static_cast<int32_t>( size ) )
-		return 0.0f;
-	const size_t index = static_cast<size_t>( row ) * size + column;
-	float sum = 0.0f;
-	for( const std::vector<float>* values : masks )
-		sum += ( *values )[index];
-	return std::min( sum, 1.0f );
-}
-
 AmbientSound::WindSample AmbientSound::windAt( const WindParameters& wind, float x, float z, float time ) const
 {
 	WindSample sample;
@@ -214,14 +177,7 @@ void AmbientSound::update( const FrameContext& frame )
 	const float volume = visible() ? std::max( settings.volume, 0.0f ) : 0.0f;
 	const float time = frame.gameTime;
 
-	// Слушатель — камера: вправо — первая строка обратной матрицы вида (крена нет — горизонтально), вперёд по горизонту
-	AudioListener listener;
-	listener.position = frame.view.position;
-	XMFLOAT3 right;
-	XMStoreFloat3( &right, frame.view.viewInverse.r[0] );
-	const float rightLength = std::max( std::sqrt( right.x * right.x + right.z * right.z ), 1e-4f );
-	listener.right = XMFLOAT3( right.x / rightLength, 0.0f, right.z / rightLength );
-	listener.forward = XMFLOAT3( -listener.right.z, 0.0f, listener.right.x );
+	const AudioListener listener = listenerFromView( frame.view );
 	const float x = listener.position.x;
 	const float z = listener.position.z;
 
@@ -236,8 +192,8 @@ void AmbientSound::update( const FrameContext& frame )
 	auto rustle = []( float relative ) { return std::pow( relative, 0.75f ); };
 
 	// Ветер и трава: голос слева и справа, ветер — в точке у этого уха
-	const auto grassMaskValues = masks( grassMasks, std::size( grassMasks ) );
-	const auto forestMaskValues = masks( forestMasks, std::size( forestMasks ) );
+	const auto grassMaskValues = terrainMasks( m_terrain, grassMasks );
+	const auto forestMaskValues = terrainMasks( m_terrain, forestMasks );
 	float grass = 0.0f;
 	{
 		// Трава в круге: центр и шесть точек на 0,6 радиуса, под лесом — реже
@@ -247,7 +203,7 @@ void AmbientSound::update( const FrameContext& frame )
 			const float angle = i * pi / 3.0f;
 			const float pointX = i == 6 ? x : x + radius * std::cos( angle );
 			const float pointZ = i == 6 ? z : z + radius * std::sin( angle );
-			grass += maskAt( grassMaskValues, pointX, pointZ ) * ( 1.0f - grassUnderForest * maskAt( forestMaskValues, pointX, pointZ ) );
+			grass += terrainMaskAt( m_terrain, grassMaskValues, pointX, pointZ ) * ( 1.0f - grassUnderForest * terrainMaskAt( m_terrain, forestMaskValues, pointX, pointZ ) );
 		}
 		grass /= 7.0f;
 	}
@@ -295,7 +251,7 @@ void AmbientSound::update( const FrameContext& frame )
 			{
 				const float distance = share * crownRadius;
 				const float slant = std::sqrt( distance * distance + aboveCrowns * aboveCrowns );
-				forest += maskAt( forestMaskValues, x + distance * std::sin( angle ), z + distance * std::cos( angle ) ) /
+				forest += terrainMaskAt( m_terrain, forestMaskValues, x + distance * std::sin( angle ), z + distance * std::cos( angle ) ) /
 						  ( 1.0f + slant / ( 0.25f * crownRadius ) );
 				weights += 1.0f / ( 1.0f + distance / ( 0.25f * crownRadius ) );
 			}
@@ -393,24 +349,6 @@ void AmbientSound::buildStreamBlocks()
 		 " of them over steps" );
 }
 
-float AmbientSound::occlusion( const XMFLOAT3& from, const XMFLOAT3& to ) const
-{
-	if( !m_terrain )
-		return 0.0f;
-	constexpr int32_t samples = 12;
-	float excess = 0.0f;
-	for( int32_t i = 1; i < samples; ++i )
-	{
-		const float t = static_cast<float>( i ) / samples;
-		const float x = from.x + ( to.x - from.x ) * t;
-		const float z = from.z + ( to.z - from.z ) * t;
-		float ground = 0.0f;
-		if( m_terrain->surfaceHeight( x, z, ground ) )
-			excess = std::max( excess, ground - ( from.y + ( to.y - from.y ) * t ) );
-	}
-	return std::clamp( ( excess - occlusionFrom ) / occlusionRange, 0.0f, 1.0f );
-}
-
 void AmbientSound::updateStreams( const Settings& settings, const AudioListener& listener, float volume )
 {
 	if( m_terrain && m_terrain->heightRevision() != m_streamRevision )
@@ -461,8 +399,8 @@ void AmbientSound::updateStreams( const Settings& settings, const AudioListener&
 	{
 		XMFLOAT3 water = m_streamBlocks[candidate.block].position;
 		water.y += 0.3f;
-		candidate.occlusion = occlusion( listener.position, water );
-		const float muffled = 1.0f - occlusionAttenuation * candidate.occlusion;
+		candidate.occlusion = terrainOcclusion( m_terrain, listener.position, water );
+		const float muffled = occlusionGain( candidate.occlusion );
 		candidate.gain *= muffled;
 		candidate.key *= muffled;
 	}
@@ -490,8 +428,7 @@ void AmbientSound::updateStreams( const Settings& settings, const AudioListener&
 		const StreamBlock& block = m_streamBlocks[candidate.block];
 		AudioVoiceTarget target;
 		// Вдали — глуше (воздух), за гребнем — ещё глуше; у самой воды — вокруг слушателя
-		target.lowpass = std::min( 20000.0f / ( 1.0f + candidate.distance / airAbsorptionDistance ),
-								   20000.0f + ( occlusionLowpass - 20000.0f ) * candidate.occlusion );
+		target.lowpass = std::min( airAbsorptionLowpass( candidate.distance ), occlusionLowpass( candidate.occlusion ) );
 		const XMFLOAT3 direction( block.position.x - listener.position.x, 0.0f, block.position.z - listener.position.z );
 		spatialize( listener, direction, candidate.gain, target, 1.0f - std::clamp( candidate.distance / streamBlock, 0.0f, 1.0f ) );
 		target.controls[0] = std::min( 0.5f + std::sqrt( block.power ), 1.5f );

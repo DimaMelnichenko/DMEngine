@@ -1,5 +1,6 @@
 #include "LibraryLoader.h"
 #include "SettingsDatabase.h"
+#include <algorithm>
 #include <cstdio>
 #include <utility>
 #include "DBConnector.h"
@@ -58,6 +59,42 @@ void LibraryLoader::loadAmbientSound( uint32_t ambientSoundId, LevelDescription&
 	GS::AmbientSoundSettings& sound = level.ambientSound.emplace();
 	sound.id = ambientSoundId;
 	readSettings( query, GS::ambientSoundSchema(), sound, "Ambient sound " + std::to_string( ambientSoundId ) );
+}
+
+void LibraryLoader::loadSoundscape( LevelDescription& level )
+{
+	SQLite::Database& db = DBConnector::instance().db();
+	if( !db.tableExists( "SoundscapeLayers" ) || !db.tableExists( "Sounds" ) )
+		return;
+	SQLite::Statement query( db, "SELECT * FROM SoundscapeLayers WHERE level = :level AND enabled = 1 ORDER BY id" );
+	query.bind( ":level", level.id );
+	while( query.executeStep() )
+	{
+		GS::SoundscapeLayerSettings& layer = level.soundscapeLayers.emplace_back();
+		layer.id = query.getColumn( "id" ).getUInt();
+		layer.name = query.getColumn( "name" ).getString();
+		readSettings( query, GS::soundscapeLayerSchema(), layer, "Soundscape layer " + layer.name );
+	}
+	// Записи слоёв — по имени, каждая один раз
+	SQLite::Statement sound( db, "SELECT * FROM Sounds WHERE name = :name" );
+	for( const GS::SoundscapeLayerSettings& layer : level.soundscapeLayers )
+	{
+		if( std::any_of( level.sounds.begin(), level.sounds.end(), [&]( const GS::SoundRecord& s ) { return s.name == layer.sound; } ) )
+			continue;
+		sound.bind( ":name", layer.sound );
+		if( sound.executeStep() )
+		{
+			GS::SoundRecord& record = level.sounds.emplace_back();
+			record.name = layer.sound;
+			record.file = sound.getColumn( "file" ).getString();
+			record.phrases = sound.getColumn( "phrases" ).getString();
+			record.author = sound.getColumn( "author" ).getString();
+			record.license = sound.getColumn( "license" ).getString();
+		}
+		else
+			LOG( "Soundscape layer " + layer.name + ": no sound " + layer.sound + " in table Sounds (Tools/pack_sound.py)" );
+		sound.reset();
+	}
 }
 
 void LibraryLoader::loadFarTerrain( uint32_t farTerrainId, LevelDescription& level )
@@ -529,6 +566,13 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 				updateSettings( db, "GlacialErosion", level.farTerrain->glacier->id, GS::glacialErosionSchema(), *data.farTerrain->glacier,
 								previous.farTerrain && previous.farTerrain->glacier ? &*previous.farTerrain->glacier : nullptr );
 		}
+
+		// Слои певцов — их строки SoundscapeLayers
+		using Layer = GS::SoundscapeLayerSettings;
+		for( const Layer& layer : data.soundscapeLayers )
+			if( layer.id != 0 )
+				updateSettings( db, "SoundscapeLayers", layer.id, GS::soundscapeLayerSchema(), layer,
+								findPrevious( previous.soundscapeLayers, layer.id, []( const Layer& l ) { return l.id; } ) );
 
 		if( data.ambientSound && level.ambientSound )
 			updateSettings( db, "AmbientSound", level.ambientSound->id, GS::ambientSoundSchema(), *data.ambientSound,

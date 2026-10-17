@@ -123,6 +123,7 @@ add_executable(DMEngine WIN32
     src/Engine/Console/ConsoleCommands.cpp
     src/Engine/Console/PropertyCommands.cpp
     src/Engine/Console/RemoteControlServer.cpp
+    src/Engine/Audio/AudioClip.cpp
     src/Engine/Audio/AudioDevice.cpp
     src/Engine/Audio/AudioMixer.cpp
     src/Engine/Audio/AudioOutput.cpp
@@ -181,6 +182,8 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Graphics/Scene/Sound/AmbientSound.cpp
+    src/Engine/Graphics/Scene/Sound/Soundscape.cpp
+    src/Engine/Graphics/Scene/Sound/SoundPlace.cpp
     src/Engine/Graphics/Scene/Foliage/FoliageInteraction.cpp
     src/Engine/Graphics/Scene/Water/WaterSimulation.cpp
     src/Engine/Graphics/Scene/Water/WaterField.cpp

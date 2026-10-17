@@ -385,6 +385,7 @@ bool LibraryLoader::loadLevel( const std::string& name, const std::string& prese
 
 		loadParticleEmitters( level );
 		loadReflectionCaptures( level );
+		loadSoundscape( level );
 	}
 	catch( const std::exception& e )
 	{

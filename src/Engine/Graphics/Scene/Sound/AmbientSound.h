@@ -55,9 +55,6 @@ private:
 		float turbulence = 0.0f;
 	};
 	WindSample windAt( const WindParameters& wind, float x, float z, float time ) const;
-	// Сумма масок в точке мира, не больше 1; вне карты — 0
-	float maskAt( const std::vector<const std::vector<float>*>& masks, float x, float z ) const;
-	std::vector<const std::vector<float>*> masks( const char* const* names, size_t count ) const;
 
 	// Место воды ручья: середина над водой, мощность (доля самого шумного места уровня), перекат 0…1 (уклон воды)
 	struct StreamBlock
@@ -70,8 +67,6 @@ private:
 	void buildStreamBlocks();
 	// Слышные места воды — голоса, их цели; volume — общая громкость
 	void updateStreams( const Settings& settings, const AudioListener& listener, float volume );
-	// Заглушение гребнем 0…1: насколько рельеф поднимается над прямой «слушатель — вода», по карте высот
-	float occlusion( const DirectX::XMFLOAT3& from, const DirectX::XMFLOAT3& to ) const;
 
 	PropertyContainer m_properties;
 	PropertyContainer m_windProperties;

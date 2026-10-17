@@ -36,4 +36,5 @@ struct LevelSaveData
 	std::vector<GS::ParticleEmitterSettings> emitters;
 	std::vector<GS::ReflectionCaptureSettings> reflectionCaptures;
 	std::optional<GS::AmbientSoundSettings> ambientSound;
+	std::vector<GS::SoundscapeLayerSettings> soundscapeLayers;
 };
