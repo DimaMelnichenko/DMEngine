@@ -44,8 +44,8 @@ Soundscape::~Soundscape()
 		return;
 	for( const auto& layer : m_layers )
 		for( const Singer& singer : layer->singers )
-			if( singer.voice )
-				m_mixer->removeVoice( singer.voice );
+			for( const Singer::Phrase& phrase : singer.phrases )
+				m_mixer->removeVoice( phrase.voice );
 }
 
 float Soundscape::uniform( float from, float to )
@@ -150,7 +150,7 @@ bool Soundscape::placeSinger( const Layer& settings, const XMFLOAT3& listener, S
 		singer.pitch = 1.0f + uniform( -settings.pitch, settings.pitch );
 		singer.boutLeft = uniform( settings.bout.from, std::max( settings.bout.to, settings.bout.from ) );
 		// Первая фраза — скоро: прилетел и запел
-		singer.nextPhrase = uniform( 0.0f, std::max( settings.pause.from, 0.5f ) );
+		singer.nextPhrase = uniform( 0.0f, std::clamp( settings.pause.from, 0.5f, 4.0f ) );
 		return true;
 	}
 	return false;
@@ -184,31 +184,31 @@ void Soundscape::update( const FrameContext& frame )
 				singer.boutLeft = std::min( singer.boutLeft, 0.0f );
 			if( singer.boutLeft > 0.0f && ++singing > wanted )
 				singer.boutLeft = 0.0f;		// часы слоя кончаются — лишние улетают
-			if( singer.voice )
+			// Дозвучавшие фразы — голос прочь
+			singer.phrases.erase( std::remove_if( singer.phrases.begin(), singer.phrases.end(), [&]( Singer::Phrase& phrase )
 			{
-				singer.voiceLeft -= step;
-				if( singer.voiceLeft <= 0.0f || !audible )
-				{
-					m_mixer->removeVoice( singer.voice );
-					singer.voice = 0;
-				}
-				continue;
-			}
+				phrase.left -= step;
+				if( phrase.left > 0.0f && audible )
+					return false;
+				m_mixer->removeVoice( phrase.voice );
+				return true;
+			} ), singer.phrases.end() );
 			singer.nextPhrase -= step;
-			if( singer.boutLeft <= 0.0f || singer.nextPhrase > 0.0f )
+			if( singer.boutLeft <= 0.0f || singer.nextPhrase > 0.0f || singer.phrases.size() >= 2 )
 				continue;
-			// Фраза записи — случайная, не та же подряд
+			// Фраза записи — случайная; пауза меньше нуля — следующая начнётся до конца этой, переход — на длину наложения
 			const std::shared_ptr<const AudioClip>& clip = layer.clips[std::min( singer.clip, layer.clips.size() - 1 )];
 			const auto& phrases = clip->phrases;
-			const size_t count = phrases.size();
-			const size_t index = std::uniform_int_distribution<size_t>( 0, count - 1 )( m_random );
-			auto generator = std::make_unique<ClipGenerator>( clip, phrases[index], singer.pitch );
-			singer.voiceLeft = generator->seconds() + 0.05f;
-			singer.voice = m_mixer->addVoice( std::move( generator ) );
-			singer.nextPhrase = uniform( settings.pause.from, std::max( settings.pause.to, settings.pause.from ) );
+			const size_t index = std::uniform_int_distribution<size_t>( 0, phrases.size() - 1 )( m_random );
+			const float pause = uniform( settings.pause.from, std::max( settings.pause.to, settings.pause.from ) );
+			auto generator = std::make_unique<ClipGenerator>( clip, phrases[index], singer.pitch,
+															  std::max( -pause, ClipGenerator::defaultFade ) );
+			const float seconds = generator->seconds();
+			singer.phrases.push_back( { m_mixer->addVoice( std::move( generator ) ), seconds + 0.05f } );
+			singer.nextPhrase = std::max( seconds + pause, 0.25f * seconds );
 		}
 		layer.singers.erase( std::remove_if( layer.singers.begin(), layer.singers.end(),
-											 []( const Singer& s ) { return s.boutLeft <= 0.0f && s.voice == 0; } ),
+											 []( const Singer& s ) { return s.boutLeft <= 0.0f && s.phrases.empty(); } ),
 							 layer.singers.end() );
 
 		// Новый певец — если их меньше, чем нужно в этот час, и прошлый прилетел не только что
@@ -228,7 +228,7 @@ void Soundscape::update( const FrameContext& frame )
 		// Звучащие фразы: с места певца — затухание, воздух, гребень
 		for( const Singer& singer : layer.singers )
 		{
-			if( !singer.voice )
+			if( singer.phrases.empty() )
 				continue;
 			const XMFLOAT3 direction( singer.position.x - listener.position.x, singer.position.y - listener.position.y,
 									  singer.position.z - listener.position.z );
@@ -238,7 +238,8 @@ void Soundscape::update( const FrameContext& frame )
 			target.lowpass = std::min( airAbsorptionLowpass( distance ), occlusionLowpass( occlusion ) );
 			spatialize( listener, direction, settings.volume * std::min( referenceDistance / std::max( distance, 1e-3f ), 1.0f ) *
 												 occlusionGain( occlusion ), target );
-			m_mixer->setTarget( singer.voice, target );
+			for( const Singer::Phrase& phrase : singer.phrases )
+				m_mixer->setTarget( phrase.voice, target );
 		}
 	}
 }

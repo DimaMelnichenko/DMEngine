@@ -1,13 +1,17 @@
 """Запись звука для движка: исходник (MP3, WAV, FLAC …) → Sounds\\<имя>.wav и строка таблицы Sounds (docs/audio.md, «Записи»).
 
   python Tools/pack_sound.py <исходник> --name <имя> [--author автор] [--license лицензия] [--source-url ссылка]
-                             [--highpass Гц] [--threshold дБ] [--min-pause с] [--ffmpeg путь]
+                             [--highpass Гц] [--denoise дБ] [--start с] [--length с] [--threshold дБ] [--min-pause с]
+                             [--whole] [--ffmpeg путь]
 
 Запись приводится к виду микшера (AudioMixer): моно, 48 кГц, 16 бит; фильтр высоких частот (--highpass, по умолчанию 150 Гц)
-убирает гул ветра в микрофоне и дальний транспорт. Громкость — к общему уровню: медиана громкости фраз — −18 дБ FS, пик — не
+убирает гул ветра в микрофоне и дальний транспорт; у насекомых, поющих высоко (сверчки — 3–5 кГц), его можно ставить на
+1–2 кГц — уйдёт любой гул ниже. --denoise — шумоподавление ffmpeg (afftdn: ровный шумовой фон, на столько дБ). --start и
+--length — кусок длинной записи, с (в движке запись целиком в памяти: минуты не нужны). Громкость — к общему уровню: медиана громкости фраз — −18 дБ FS, пик — не
 выше −1 дБ FS (слой певцов задаёт громкость сам). Фразы — по огибающей громкости (окна 10 мс): громче фона записи (20-й
 процентиль) на --threshold дБ (по умолчанию 12), паузы короче --min-pause (0,3 с) не разрывают фразу, фраза короче 0,12 с —
-щелчок, не фраза; поля 50 мс. Фразы, автор, лицензия и ссылка — в строку Sounds (по имени; есть — обновляется): у записей
+щелчок, не фраза; поля 50 мс; --whole — запись (кусок) одной фразой: хор с ровным уровнем (сверчки, лягушки), слой
+крутит её по кругу внахлёст (SoundscapeLayers.pause меньше нуля). Фразы, автор, лицензия и ссылка — в строку Sounds (по имени; есть — обновляется): у записей
 CC BY автора указывать обязательно.
 
 Декодирует ffmpeg: --ffmpeg, из PATH или распакованный в DownloadResources\\ffmpeg\\. Нужен numpy. Папка Sounds\\ — не
@@ -53,12 +57,19 @@ def find_ffmpeg(explicit):
     return local[0] if local else None
 
 
-def decode(source, target, highpass, ffmpeg):
-    """Исходник → моно 48 кГц float32 WAV с фильтром высоких частот"""
+def decode(source, target, highpass, denoise, start, length, ffmpeg):
+    """Исходник (или его кусок) → моно 48 кГц float32 WAV с фильтром высоких частот и шумоподавлением"""
     if not ffmpeg:
         sys.exit('error: ffmpeg is not found: add it to PATH or pass --ffmpeg <path to ffmpeg.exe>')
-    filters = ['-af', 'highpass=f=%g' % highpass] if highpass > 0 else []
-    subprocess.run([ffmpeg, '-v', 'error', '-y', '-i', source, '-ac', '1', '-ar', str(RATE)] + filters +
+    chain = []
+    if highpass > 0:
+        # Два фильтра подряд — крутой срез (−24 дБ на октаву): гул ниже уходит, а не только тише
+        chain += ['highpass=f=%g' % highpass, 'highpass=f=%g' % highpass]
+    if denoise > 0:
+        chain.append('afftdn=nr=%g' % denoise)
+    filters = ['-af', ','.join(chain)] if chain else []
+    segment = (['-ss', '%g' % start] if start > 0 else []) + (['-t', '%g' % length] if length > 0 else [])
+    subprocess.run([ffmpeg, '-v', 'error', '-y'] + segment + ['-i', source, '-ac', '1', '-ar', str(RATE)] + filters +
                    ['-c:a', 'pcm_f32le', target], check=True)
 
 
@@ -144,8 +155,12 @@ def main():
     parser.add_argument('--license', default=None)
     parser.add_argument('--source-url', default=None, help='where the recording is from')
     parser.add_argument('--highpass', type=float, default=150.0, help='Hz, 0 - off')
+    parser.add_argument('--denoise', type=float, default=0.0, help='dB of noise reduction (ffmpeg afftdn), 0 - off')
+    parser.add_argument('--start', type=float, default=0.0, help='s: a piece of a long recording from here')
+    parser.add_argument('--length', type=float, default=0.0, help='s: the piece length, 0 - to the end')
     parser.add_argument('--threshold', type=float, default=12.0, help='dB above the background of the recording')
     parser.add_argument('--min-pause', type=float, default=0.3, help='s: shorter pauses stay inside a phrase')
+    parser.add_argument('--whole', action='store_true', help='the whole recording (or the piece) is one phrase: a chorus loop')
     parser.add_argument('--ffmpeg', default=None)
     args = parser.parse_args()
 
@@ -154,11 +169,15 @@ def main():
     folder = os.path.join(ROOT, 'Sounds')
     os.makedirs(folder, exist_ok=True)
     decoded = os.path.join(tempfile.gettempdir(), 'dmengine_pack_sound.wav')
-    decode(args.source, decoded, args.highpass, find_ffmpeg(args.ffmpeg))
+    decode(args.source, decoded, args.highpass, args.denoise, args.start, args.length, find_ffmpeg(args.ffmpeg))
     samples = read_float_wav(decoded)
     os.remove(decoded)
 
-    phrases, floor = find_phrases(samples, args.threshold, args.min_pause)
+    if args.whole:
+        # Хор (сверчки, лягушки): уровень ровный — фраз по огибающей нет, слой крутит запись по кругу внахлёст
+        phrases, floor = [(0, len(samples))], float('nan')
+    else:
+        phrases, floor = find_phrases(samples, args.threshold, args.min_pause)
     if not phrases:
         sys.exit('error: no phrases found (lower --threshold)')
     loudness = [np.sqrt(np.mean(samples[a:b] ** 2)) for a, b in phrases]

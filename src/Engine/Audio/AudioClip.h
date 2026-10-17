@@ -25,12 +25,15 @@ struct AudioClip
 	static std::shared_ptr<const AudioClip> load( const std::string& path, const std::string& phrases, std::string& reason );
 };
 
-// Фраза записи один раз — с плавным входом и выходом (без щелчка на краях) и сдвигом высоты (pitch: шаг чтения ≠ 1, линейная
-// интерполяция; 1,05 — на полтона выше и короче). Дозвучала — тишина: голос убирает тот, кто его завёл, по seconds()
+// Фраза записи один раз — с плавным входом и выходом (без щелчка на краях; fade, с — у фраз внахлёст это переход между ними)
+// и сдвигом высоты (pitch: шаг чтения ≠ 1, линейная интерполяция; 1,05 — на полтона выше и короче). Дозвучала — тишина: голос
+// убирает тот, кто его завёл, по seconds()
 class ClipGenerator : public AudioGenerator
 {
 public:
-	ClipGenerator( std::shared_ptr<const AudioClip> clip, const AudioClip::Phrase& phrase, float pitch );
+	static constexpr float defaultFade = 0.02f;
+
+	ClipGenerator( std::shared_ptr<const AudioClip> clip, const AudioClip::Phrase& phrase, float pitch, float fade = defaultFade );
 	void render( float* out, uint32_t frames, const float* controls ) override;
 	// Сколько звучит фраза, с
 	float seconds() const;
@@ -41,6 +44,7 @@ private:
 	double m_end;
 	double m_start;
 	float m_step;
+	double m_fade;		// отсчёты записи
 };
 
 }

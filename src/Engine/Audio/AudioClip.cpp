@@ -13,9 +13,6 @@ namespace GS
 namespace
 {
 
-// Плавный вход и выход фразы, с: край записи не щёлкает, даже если фраза вырезана посреди звука
-constexpr double phraseFade = 0.02;
-
 uint32_t readU32( const uint8_t* bytes )
 {
 	return bytes[0] | ( bytes[1] << 8 ) | ( bytes[2] << 16 ) | ( static_cast<uint32_t>( bytes[3] ) << 24 );
@@ -123,9 +120,11 @@ std::shared_ptr<const AudioClip> AudioClip::load( const std::string& path, const
 	return clip;
 }
 
-ClipGenerator::ClipGenerator( std::shared_ptr<const AudioClip> clip, const AudioClip::Phrase& phrase, float pitch ) :
+ClipGenerator::ClipGenerator( std::shared_ptr<const AudioClip> clip, const AudioClip::Phrase& phrase, float pitch, float fade ) :
 	m_clip( std::move( clip ) ), m_position( phrase.start ), m_end( phrase.end ), m_start( phrase.start ),
-	m_step( std::clamp( pitch, 0.25f, 4.0f ) )
+	m_step( std::clamp( pitch, 0.25f, 4.0f ) ),
+	// Вход и выход — не длиннее половины фразы
+	m_fade( std::min( static_cast<double>( std::max( fade, 0.001f ) ) * AudioMixer::sampleRate * m_step, 0.5 * ( phrase.end - phrase.start ) ) )
 {
 }
 
@@ -137,7 +136,7 @@ float ClipGenerator::seconds() const
 void ClipGenerator::render( float* out, uint32_t frames, const float* )
 {
 	const std::vector<float>& samples = m_clip->samples;
-	const double fade = phraseFade * AudioMixer::sampleRate;
+	const double fade = std::max( m_fade, 1.0 );
 	for( uint32_t i = 0; i < frames; ++i )
 	{
 		if( m_position >= m_end - 1.0 )

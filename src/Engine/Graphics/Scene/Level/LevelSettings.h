@@ -865,7 +865,7 @@ struct SoundscapeLayerSettings
 	SettingRange distance{ 15.0f, 80.0f };	// от слушателя, м
 	SettingRange height{ 3.0f, 12.0f };		// над землёй, м
 	SettingRange bout{ 30.0f, 120.0f };		// поёт с одного места, с; потом улетает, появляется другой
-	SettingRange pause{ 2.0f, 6.0f };		// между фразами, с
+	SettingRange pause{ 2.0f, 6.0f };		// между фразами, с; меньше нуля — внахлёст с переходом (хор по кругу без шва)
 	float volume = 0.5f;			// громкость певца в 10 м
 	float pitch = 0.05f;			// у каждого певца своя высота: выше или ниже до этой доли
 };

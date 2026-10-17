@@ -988,7 +988,9 @@ const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema()
 		{ "height_from,height_to", "Height", DM_SETTING( height ), 0.0f, 100.0f, "m", "Above the ground", settingRangeControl },
 		{ "bout_from,bout_to", "Bout", DM_SETTING( bout ), 5.0f, 600.0f, "s",
 		  "Sings this long from one place, then flies away and another one comes", settingRangeControl },
-		{ "pause_from,pause_to", "Pause", DM_SETTING( pause ), 0.0f, 60.0f, "s", "Between the phrases", settingRangeControl },
+		{ "pause_from,pause_to", "Pause", DM_SETTING( pause ), -10.0f, 60.0f, "s",
+		  "Between the phrases; below 0 - the next phrase starts that much before the end of the previous one and they crossfade "
+		  "(a chorus recording looped without a seam)", settingRangeControl },
 		{ "volume", "Volume", DM_SETTING( volume ), 0.0f, 2.0f, "", "Of a singer 10 m away" },
 		{ "pitch", "Pitch spread", DM_SETTING( pitch ), 0.0f, 0.3f, "", "Each singer is higher or lower by up to this share" },
 	};

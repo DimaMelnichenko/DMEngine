@@ -47,9 +47,14 @@ private:
 		DirectX::XMFLOAT3 position;
 		float pitch = 1.0f;
 		float boutLeft = 0.0f;		// с: столько ещё поёт с этого места
-		float nextPhrase = 0.0f;	// с: пауза до следующей фразы
-		AudioMixer::VoiceId voice = 0;	// звучащая фраза; 0 — молчит
-		float voiceLeft = 0.0f;		// с: до конца фразы
+		float nextPhrase = 0.0f;	// с: до начала следующей фразы (от начала прошлой — её длина и пауза)
+		// Звучащие фразы: голос и сколько ему ещё, с. Две — у фраз внахлёст (пауза меньше нуля: хор без шва)
+		struct Phrase
+		{
+			AudioMixer::VoiceId voice = 0;
+			float left = 0.0f;
+		};
+		std::vector<Phrase> phrases;
 		size_t clip = 0;			// запись слоя, которую поёт этот певец
 	};
 	struct LayerState
