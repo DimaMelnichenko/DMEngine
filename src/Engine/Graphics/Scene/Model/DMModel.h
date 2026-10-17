@@ -52,9 +52,10 @@ public:
 	// Номер LOD для расстояния или −1, если дальше последнего
 	int lodIndex( float distance ) const;
 	LodBlock* getLodById( uint16_t index );
+	const LodBlock* getLodById( uint16_t index ) const;
 	// Дальность LOD index, м: до неё включительно рисуется этот LOD (ModelProperties.range)
 	float lodRange( uint16_t index ) const;
-	uint16_t lodCount();
+	uint16_t lodCount() const;
 	// Множитель дальностей LOD у видов теней (Models.shadow_lod_scale, свойство «Shadow LOD scale» окна «Models»): < 1 —
 	// тень более грубым LOD ближе, чем в кадре. Тень ближнего экземпляра — от той же геометрии, что в кадре (он сам себя
 	// затеняет), дальнего — грубее: у ели LOD0 втрое тяжелее LOD1, а его мелкие карточки хвои в тени не видны

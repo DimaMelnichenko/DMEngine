@@ -138,6 +138,8 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 
 	stage( 2.8f, "Scene" );
 	RET_FALSE( m_scene.initialize( *m_library, m_config.particles(), &m_audio.mixer() ) );
+	// -freezetime: время игры у мировых часов стоит, мир симуляции не шагает — снимки с одной точки совпадают
+	m_scene.world().clock().setGameTimeRunning( m_config.gameTimeRunning() );
 	// Импостеры расстановки — рендером моделей в кадры, до прогрева: их материалы прогреются вместе со всеми
 	stage( 2.0f, "Impostors" );
 	RET_FALSE( m_renderer.bake( m_scene ) );
@@ -337,16 +339,21 @@ bool Engine::tick()
 	RenderView mainView = RenderView::fromCamera( camera );
 	// При ходьбе LOD террейна — от отрезка «глаза — ноги»: самая мелкая сетка вокруг ног, а не только у глаз
 	mainView.lodEyeHeight = m_walk.eyeAboveFeet();
-	// Правки источников в GUI и время суток — до кадра: по солнцу считаются тени, расстановка и небо
-	m_scene.updateLights( elapsedTime / 1000.0f );
+	// Мировые часы и шаги мира симуляции, затем правки источников в GUI и время суток — до кадра: по солнцу считаются тени,
+	// расстановка и небо
+	watchdog.stage( "world simulation" );
+	const auto worldStart = TIME_POINT();
+	const uint32_t worldSteps = m_scene.advanceWorld( elapsedTime / 1000.0 );
+	m_frameStats.add( "World simulation = %.3f ms", TIME_DIFF( worldStart, TIME_POINT() ) / 1000.0f );
+	m_frameStats.add( "World steps = %.0f", static_cast<float>( worldSteps ) );
+	m_frameStats.add( "World entities = %.0f", static_cast<float>( m_scene.world().entityCount() ) );
+	m_scene.updateLights();
 	// Тени — от солнца, ночью — от луны; нет источника теней — направление вниз, как светило под горизонтом
 	XMFLOAT3 toShadowLight;
 	DMLight::ShadowSettings shadowSettings;
 	m_scene.lights().shadowLight( toShadowLight, shadowSettings );
-	// -freezetime: время игры стоит — снимки с одной точки совпадают между запусками (Tools/check_frames.py)
-	if( m_config.gameTimeRunning() )
-		m_gameTime += elapsedTime / 1000.0;
-	const FrameContext frame{ mainView, elapsedTime, static_cast<float>( m_gameTime ), toShadowLight };
+	// Время игры — у мировых часов (-freezetime: стоит — снимки с одной точки совпадают между запусками, Tools/check_frames.py)
+	const FrameContext frame{ mainView, elapsedTime, static_cast<float>( m_scene.world().clock().gameSeconds() ), toShadowLight };
 	// Перестройка по правкам редактора (кривые русел) — не пока тянут ползунок в окне
 	watchdog.stage( "editor changes" );
 	if( !m_GUI.itemActive() )

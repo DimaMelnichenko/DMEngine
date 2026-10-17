@@ -149,7 +149,6 @@ private:
 	// Фиксированный шаг времени кадра, с (команда timestep, как -UseFixedTimeStep в UE): время камеры, экспозиции,
 	// частиц и суток идёт шагами, сколько бы кадр ни длился, — серия снимков не сбивается записью файлов. 0 — таймер
 	float m_fixedTimeStep = 0.0f;
-	double m_gameTime = 0.0;	// время игры, с: FrameContext::gameTime, шейдерам — cb_gameTime
 
 	bool m_flyMode = false;			// I: камера смотрит мышью всегда
 	WalkMode m_walk;				// F: ходьба по рельефу вместо полёта

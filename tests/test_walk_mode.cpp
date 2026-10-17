@@ -2,39 +2,15 @@
 // соскальзывание с крутого склона, прыжок. Рельеф — подделка TerrainHeightSource, клавиши — Input::setKeyDown
 #include <doctest/doctest.h>
 #include <cmath>
-#include <functional>
 #include "Camera\DMCamera.h"
 #include "Camera\WalkMode.h"
 #include "Engine\Input\Input.h"
-#include "Terrain\TerrainHeightSource.h"
+#include "fake_terrain.h"
 
 using namespace GS;
 
 namespace
 {
-
-class FakeTerrain : public TerrainHeightSource
-{
-public:
-	explicit FakeTerrain( std::function<float( float x, float z )> height ) : m_height( std::move( height ) ) {}
-	TerrainHeight terrainHeight() const override
-	{
-		TerrainHeight height;
-		height.worldSize = 256.0f;
-		height.mapSize = 256;
-		return height;
-	}
-	bool surfaceHeight( float x, float z, float& height ) const override
-	{
-		if( x < 0.0f || z < 0.0f || x > 256.0f || z > 256.0f )
-			return false;
-		height = m_height( x, z );
-		return true;
-	}
-
-private:
-	std::function<float( float x, float z )> m_height;
-};
 
 constexpr float frame = 1.0f / 60.0f;
 constexpr float eyeHeight = 1.7f;	// «Eye height» окна «Walk» по умолчанию

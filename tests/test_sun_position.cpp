@@ -1,4 +1,4 @@
-// Время суток (SunPosition): высота и азимут солнца по формулам NOAA, фаза луны, ход времени через полночь и Новый год
+// Время суток (SunPosition): высота и азимут солнца по формулам NOAA, фаза луны, окно «Sun position» — органы мировых часов
 #include <doctest/doctest.h>
 #include "Light\SunPosition.h"
 
@@ -63,28 +63,33 @@ TEST_CASE( "SunPosition: moon phase at a known full and new moon" )
 	CHECK( SunPosition::computeMoon( place( 45.0f, 2024, 1, 11, 11.95f ) ).illuminatedFraction < 0.02f );
 }
 
-TEST_CASE( "SunPosition: time advances past midnight into the next day, month and year" )
+TEST_CASE( "SunPosition: the window drives the world clock and shows it" )
 {
-	SunPosition::Settings settings = place( 45.0f, 2026, 6, 30, 23.5f );
-	settings.timeScale = 3600.0f;	// час за секунду
-	SunPosition june( settings );
-	june.advance( 1.0f );
-	SunPosition::Settings next = june.settings();
-	CHECK( next.month == 7 );
-	CHECK( next.day == 1 );
-	CHECK( next.timeOfDay == doctest::Approx( 0.5f ).epsilon( 0.001 ) );
+	GS::WorldClock clock;
+	SunPosition sun( place( 45.0f, 2026, 6, 21, 6.0f ), clock );
+	CHECK( clock.hours() == doctest::Approx( 6.0 ) );
+	CHECK( clock.date().day == 21 );
 
-	SunPosition::Settings december = place( 45.0f, 2026, 12, 31, 23.0f );
-	december.timeScale = 3600.0f;
-	SunPosition newYear( december );
-	newYear.advance( 2.0f );
-	next = newYear.settings();
-	CHECK( next.year == 2027 );
-	CHECK( next.month == 1 );
-	CHECK( next.day == 1 );
+	// Правка окна — в часы до их шага
+	PropertyContainer& window = *sun.properties();
+	window["Time of day"].setData( 12.0f );
+	window["Time scale"].setData( 3600.0f );	// час за секунду
+	sun.takeWindowEdits();
+	CHECK( clock.hours() == doctest::Approx( 12.0 ) );
+	CHECK( clock.timeScale() == doctest::Approx( 3600.0f ) );
 
-	// Скорость 0 — время стоит
-	SunPosition stopped( place( 45.0f, 2026, 6, 21, 12.0f ) );
-	stopped.advance( 10.0f );
-	CHECK( stopped.settings().timeOfDay == doctest::Approx( 12.0f ) );
+	// Шаг часов — в окно, в дату и в высоту солнца: 13 часов спустя — час ночи следующего дня
+	clock.advance( 13.0 );
+	sun.showClock();
+	CHECK( window["Time of day"].data<float>() == doctest::Approx( 1.0f ) );
+	CHECK( window["Day"].data<int32_t>() == 22 );
+	CHECK( sun.settings().day == 22 );
+	CHECK( sun.angles().elevation < 0.0f );
+
+	// Пауза окна — пауза часов
+	window["Time paused"].setData( true );
+	sun.takeWindowEdits();
+	CHECK( clock.paused() );
+	clock.advance( 5.0 );
+	CHECK( clock.hours() == doctest::Approx( 1.0 ) );
 }

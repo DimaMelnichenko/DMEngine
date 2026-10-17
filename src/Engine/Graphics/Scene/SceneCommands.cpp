@@ -69,6 +69,38 @@ void paintCommand( Scene& scene, const std::vector<std::string>& args, const Con
 
 void registerSceneCommands( ConsoleCommands& console, Scene& scene )
 {
+	console.registerCommand( "world", "- entities, steps and clock of the simulation world; spawn <model> <x> <z> [count=5] "
+							 "[radius=15] - wanderers around the point (a loaded model: Sphere, Cube...); clear - remove all entities",
+							 [&scene]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
+	{
+		World& world = scene.world();
+		if( args.empty() )
+		{
+			const WorldClock& clock = world.clock();
+			const WorldClock::Date date = clock.date();
+			char text[256];
+			std::snprintf( text, sizeof( text ), "entities %zu, steps %llu (last frame %u), step rate %.0f Hz%s; clock %04d-%02d-%02d "
+						   "%.3f h, time scale %g%s; game time %.2f s%s", world.entityCount(),
+						   static_cast<unsigned long long>( world.steps() ), world.lastSteps(), world.stepRate(),
+						   world.paused() ? ", paused" : "", date.year, date.month, date.day, clock.hours(), clock.timeScale(),
+						   clock.paused() ? ", paused" : "", clock.gameSeconds(), clock.gameTimeRunning() ? "" : " (frozen)" );
+			return reply->ok( text );
+		}
+		if( args.size() == 1 && args[0] == "clear" )
+		{
+			world.clear();
+			return reply->ok( "entities removed" );
+		}
+		float x = 0.0f, z = 0.0f, count = 5.0f, radius = 15.0f;
+		if( args[0] != "spawn" || args.size() < 4 || args.size() > 6 || !number( args[2], x ) || !number( args[3], z ) ||
+			( args.size() > 4 && !number( args[4], count ) ) || ( args.size() > 5 && !number( args[5], radius ) ) || count < 1.0f ||
+			radius < 1.0f )
+			return reply->error( "usage: world | world spawn <model> <x> <z> [count] [radius] | world clear" );
+		std::string reason;
+		if( !scene.worldEntities().spawnWanderers( args[1], x, z, static_cast<uint32_t>( count ), radius, reason ) )
+			return reply->error( reason );
+		reply->ok( "spawned " + std::to_string( static_cast<uint32_t>( count ) ) + ", entities " + std::to_string( world.entityCount() ) );
+	} );
 	console.registerCommand( "water", "discharge <file.dds> - water discharge of the cells, m3/s, as R32_FLOAT DDS; "
 							 "state <prefix> - water for the shaders as R32_FLOAT DDS: <prefix>_depth.dds (m), <prefix>_vx.dds and "
 							 "<prefix>_vz.dds (flow along world X and Z, m/s)",

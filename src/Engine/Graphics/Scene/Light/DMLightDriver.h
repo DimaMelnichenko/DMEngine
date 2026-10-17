@@ -26,11 +26,14 @@ public:
 	~DMLightDriver();
 	bool Initialize();
 	// Источники уровня; порядок направленных между собой — как в базе. sunPosition — место и время уровня (строка
-	// SunPosition): тогда направление первого направленного источника задаёт оно, а Pitch / Yaw у него нет
-	void load( LightList lights, const std::optional<SunPosition::Settings>& sunPosition = std::nullopt );
-	// Раз за кадр до отрисовки: значения из GUI — в источники, время суток — в направление солнца
-	// seconds — реальное время кадра: с ним идёт время суток (SunPosition::advance)
-	void update( float seconds = 0.0f );
+	// SunPosition): тогда направление первого направленного источника задаёт оно, а Pitch / Yaw у него нет; время —
+	// у мировых часов clock (их органы — подокно «Sun position»: SunPosition ставит часы на время строки)
+	void load( LightList lights, GS::WorldClock& clock, const std::optional<SunPosition::Settings>& sunPosition = std::nullopt );
+	// Правки времени в окне «Sun position» — в мировые часы; раз за кадр до их шага
+	void takeClockEdits();
+	// Раз за кадр до отрисовки, после шага часов: время часов — в окно, значения из GUI — в источники, время суток — в
+	// направление солнца и луны
+	void update();
 	// Пропускание атмосферы от земли к светилу index (0 — солнце, 1 — луна; SkyAtmosphere::sunTransmittance) — после
 	// update(): на него умножается свет светила с atmosphereSunLight
 	void setAtmosphereTransmittance( int index, const DirectX::XMFLOAT3& transmittance );

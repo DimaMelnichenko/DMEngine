@@ -58,11 +58,13 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   в `D3D12\` рядом с exe, заголовки — раньше Windows SDK), DXC v1.9 (`dxcompiler.dll` и `dxil.dll` рядом с exe),
   WinPixEventRuntime, Dear ImGui 1.92.9b ветки docking (ядро и бэкенды Win32 / DX12 собираются в движке; архив — из
   `DownloadResources\imgui-1.92.9b-docking.zip`, если он там есть, иначе с GitHub), ImGuizmo (ветка master, гизмо
-  вьюпорта; `DownloadResources\ImGuizmo-master.zip`, иначе с GitHub), D3D12 Memory Allocator 3.2 и doctest (тег
-  `v2.4.11`, только заголовок — для тестов) подтягиваются через `FetchContent` при первом configure: нужны сеть и git.
+  вьюпорта; `DownloadResources\ImGuizmo-master.zip`, иначе с GitHub), D3D12 Memory Allocator 3.2, EnTT (тег `v3.16.0` —
+  последний на C++17, только заголовки: мир симуляции) и doctest (тег `v2.4.11`, только заголовок — для тестов)
+  подтягиваются через `FetchContent` при первом configure: нужны сеть и git.
   Остальное берётся из Windows SDK.
 - Цели CMake: `DMCore` — статическая библиотека, ядро без устройства (свойства, лог, данные уровня, время суток, рельеф
-  и вода на CPU, ветер, микшер и синтез звука, камера, ходьба, ввод; как модуль Core в UE); `DMEngine` — exe движка поверх
+  и вода на CPU, ветер, микшер и синтез звука, камера, ходьба, ввод, мир симуляции на EnTT и мировые часы; как модуль
+  Core в UE); `DMEngine` — exe движка поверх
   неё; `DMEngineTests` — тесты логики на CPU (doctest) против ядра; общие include-пути, defines и флаги трёх целей —
   `DMEngineSettings`. Файлы ядра лежат на своих местах в `src/` — ядро задаётся списком `DMCore` в `CMakeLists.txt`.
 - **Из терминала собирать только скриптом**, а не вызывать cmake вручную:
@@ -357,6 +359,15 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 генераторы с целями громкости по каналам, нить ведёт к ним плавно) и вывод XAudio2 (`AudioOutput`, своя нить, блоки 10 мс);
 голоса заводят объекты сцены, окно «Audio» — громкость и «Mute» пользователя (`[Audio]` в `settings.ini`, `-mute`), подробно —
 `docs/audio.md`.
+Мир симуляции — `World` у `Scene` (`src/Engine/Simulation/`, ядро `DMCore`, как World с Mass в UE, на EnTT): сущности с
+компонентами (`Simulation/Components.h`: `Transform`, `PreviousTransform`, `ModelVisual`), системы (`SimulationSystem`:
+`WanderSystem` — блуждание в круге, Reynolds 1999), службы мира без синглтонов (рельеф — `TerrainHeightSource`) и мировые
+часы `WorldClock` — одно время для неба, звуков и распорядка: календарь со скоростью «Time scale» и время игры
+(`FrameContext::gameTime`, `cb_gameTime`; `-freezetime` его останавливает и мир не шагает). Кадр начинается с
+`Scene::advanceWorld`: правки окна «Sun position» (органы часов) — в часы, шаг часов, шаги систем фиксированной длительности
+(60 Гц, не больше 4 за кадр, остаток — дальше; «Fix Your Timestep»). Рисует сущности объект сцены `WorldEntities` (общей с
+`ModelInstances` функцией `collectModelMeshes`, `Scene/Model/ModelDraw.h`; место — смешанное по `World::interpolation`),
+окно «World», команда `world` (`spawn` — бродяги для проверки); подробно — `docs/simulation.md`.
 Сейчас объекты (в порядке сцены): небо — `SkyAtmosphere` (процедурное небо фоном и освещение окружением от него,
 таблицы Hillaire 2020 как в Sky Atmosphere UE5; его `compute()` идёт первым: при смене атмосферы — таблицы пропускания
 и Ψ, каждый кадр — небо вокруг камеры, Sky-View, и объём воздушной перспективы главного вида — t106; при смене солнца —
@@ -385,7 +396,8 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 `ModelInstances` (экземпляры моделей уровня: LOD по расстоянию от точки LOD вида — в полосе перехода оба LOD с
 дизерингом, если у материала `DitheredLODTransition`; у каскадов теней дальности × `Models.shadow_lod_scale` — у елей 0,5,
 его же берёт расстановка; отсечение по frustum вида — границы
-меша `AbstractMesh::bounds` считаются при загрузке, меши в список отрисовки),
+меша `AbstractMesh::bounds` считаются при загрузке, меши в список отрисовки; общая функция `collectModelMeshes`),
+`WorldEntities` (сущности мира симуляции с моделью — та же функция, место смешано по доле шага; не в съёмке сцены),
 `FoliageInteraction` (трава расступается: поле следов 48 м вокруг камеры — compute `Shaders/foliage_interaction.cs`,
 ресурс сцены `SLOT_FOLIAGE_INTERACTION`, t124, окно — `cb_foliageInteraction`; растения с `WindWeight` > 0 наклоняются от
 корня в `vertexWorldPosition` — `Shaders/foliage_interaction.sh`; давит камера у земли, звери — `addInteractor`; окно
@@ -515,7 +527,8 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 своя таблица Sky-View, диск с картой NASA в фоне; тени ночью — от неё, `DMLightDriver::shadowLight`); `intensity` направленного —
 люксы, точечного и прожектора — канделы, затухание — `1 / max(d², 0,01²)`), время суток — строка `SunPosition`
 (`Levels.sun_position`, как Sun Position в UE: широта, долгота, часовой пояс, `north_offset`, дата, `time_of_day`,
-`time_scale` — скорость цикла дня и ночи, время идёт само в `SunPosition::advance`, пауза — «Time paused» в GUI →
+`time_scale` — скорость цикла дня и ночи, время идёт у мировых часов (`WorldClock`: подокно «Sun position» — их органы,
+`SunPosition` считает светила по их времени), пауза — «Time paused» в GUI →
 направление первого направленного, `Light/SunPosition.h`, формулы NOAA; NULL — Pitch / Yaw солнца), небо — строка `SkyAtmosphere`
 (`Levels.atmosphere`; запекается для солнца 1 лк и умножается на освещённость от солнца — `cb_skyScale` у фона, `cb_skyLightScale` у освещения окружением; там же сила воздушной перспективы)
 или панорама — строка `HDRIBackdrop` (`Levels.hdri_backdrop`: файл, `intensity` — кд/м² на единицу панорамы, она же
@@ -525,7 +538,7 @@ Exponential Height Fog с Volumetric Fog в UE: два слоя по высот�
 тумана нет; `Tools/height_fog.py`, `docs/fog.md`), облака — строка `VolumetricCloud` (`Levels.volumetric_cloud`;
 NULL — облаков нет), ветер — строка `Wind` (`Levels.wind`, как Wind Directional Source
 в UE: направление, сила, порывы волнами; класс `Wind` у `Scene`, константы кадра `cb_wind*` и время игры `cb_gameTime` —
-шагами кадра, изгиб в `vertexWorldPosition` у материалов с `WindWeight` > 0 — `Shaders/wind.sh`, подробно — `docs/wind.md`;
+мировых часов, изгиб в `vertexWorldPosition` у материалов с `WindWeight` > 0 — `Shaders/wind.sh`, подробно — `docs/wind.md`;
 поле ветра по рельефу — ступень конвейера `TerrainWind` (поток над рельефом, подветренная тень, вертикаль — до масок:
 по ним снег в правилах слоёв; лес — после масок и моделей), ресурс сцены `SLOT_WIND_FIELD`, подокно «Field» окна «Wind»,
 кэш `generated\wind.dds`;

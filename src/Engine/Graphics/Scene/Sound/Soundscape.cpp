@@ -3,7 +3,7 @@
 #include <cmath>
 #include "Logger\Logger.h"
 #include "Properties\SettingsProperties.h"
-#include "Light\DMLightDriver.h"
+#include "Engine\Simulation\WorldClock.h"
 #include "SoundPlace.h"
 #include "Terrain\TerrainPipeline.h"
 #include "Utils\utilites.h"
@@ -51,7 +51,7 @@ float Soundscape::uniform( float from, float to )
 }
 
 bool Soundscape::initialize( const std::vector<Layer>& layers, const std::vector<SoundRecord>& sounds, AudioMixer& mixer,
-							 const TerrainPipeline* terrain, DMLightDriver& lights )
+							 const TerrainPipeline* terrain, const WorldClock& clock )
 {
 	for( const Layer& settings : layers )
 	{
@@ -90,7 +90,7 @@ bool Soundscape::initialize( const std::vector<Layer>& layers, const std::vector
 	}
 	m_mixer = &mixer;
 	m_terrain = terrain;
-	m_lights = &lights;
+	m_clock = &clock;
 	return true;
 }
 
@@ -207,9 +207,7 @@ void Soundscape::update( const FrameContext& frame )
 	if( !m_mixer )
 		return;
 	const float step = std::clamp( frame.elapsedTime / 1000.0f, 0.0f, maxStep );
-	float hour = 12.0f;
-	if( const SunPosition* sun = m_lights->sunPosition() )
-		hour = sun->settings().timeOfDay;
+	const float hour = static_cast<float>( m_clock->hours() );
 	const AudioListener listener = listenerFromView( frame.view );
 	if( m_terrain && m_terrain->heightRevision() != m_shoreRevision )
 	{

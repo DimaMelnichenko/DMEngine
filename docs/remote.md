@@ -80,6 +80,9 @@ python Tools/engine.py stop
 | `water discharge файл.dds` | расход воды ячеек симуляции, м³/с, в DDS `R32_FLOAT` (`WaterSimulation::exportDischarge`) — для проверки |
 | `water state префикс` | текстура воды для шейдеров (`SLOT_WATER`) в DDS `R32_FLOAT`: `_depth` — глубина, м, `_vx`, `_vz` — течение по X и Z мира, м/с (`WaterSimulation::exportState`; строка 0 — дальний край по z) — проверка течения ручьёв и озёр ([water.md](water.md), «Течение ручьёв и озёр»); в режиме `static` ещё детальная вода у русел одним растром 0,25 м на весь мир (−1e9 — плитки нет): `_detail_level` — уровень поверхности, м, `_detail_depth`, `_detail_vx`, `_detail_vz` и вход её течения из конвейера — `_detail_u0x`, `_detail_u0z` (скорость по Маннингу `u₀`), `_detail_radius` (`R` русла) ([water.md](water.md), «Детальная вода у русел»), и поле пены — `_foam` (сетка 1 м), `_detail_foam` (детальная, 0 — плитки нет) ([water.md](water.md), «Материал», «Пена») |
 | `terrain paint цель x z радиус value\|step\|unstep\|erase значение [falloff]` | мазок кисти поверх правил слоёв в точке мира: цель — `"layer N"` или `wetness` (сетка 0,25 м) или имя маски (`mask_forest_spruce`, 1 м); `value` — итог к значению, `step` / `unstep` — поправка ± значение, `erase` — к правилам; `terrain paint clear цель`, `terrain paint list`, `terrain paint probe цель x z` — правило, поправка и итог в точке ([terrain.md](terrain.md), «Ручная правка слоёв и масок») |
+| `world` | мир симуляции: сущности, шаги, время мировых часов ([simulation.md](simulation.md)) |
+| `world spawn модель x z [число] [радиус]` | бродяги модели из загруженных вокруг точки (проверка мира симуляции) |
+| `world clear` | убрать все сущности мира |
 | `terrain hydrology префикс` | русла и вода конвейера рельефа в DDS `R32_FLOAT`: `_lowering` — опускание ложа, `_level` — уровень ручьёв, `_lake` — уровень озёр, `_detail` — детальная земля у русел, 4096², −1e9 — плиток нет ([water.md](water.md), [terrain.md](terrain.md)) |
 | `passes` | список проходов следующего кадра в `log.txt` (`DMD3D::logPasses`): имя, цели с размером, что читает и пишет — по объявлениям `PassDesc` (`D3D/GpuPass.h`); compute-проходы помечены `compute` |
 | `timestep [секунды\|off]` | фиксированный шаг времени кадра, как `-UseFixedTimeStep` в UE: камера, экспозиция, частицы и время суток идут шагами, сколько бы кадр ни длился. Нужен сериям кадров: запись снимков не сбивает ход времени |
@@ -191,7 +194,7 @@ m_console.registerCommand( "имя", "<аргументы> - что делает
 | `src/Engine/Console/PropertyCommands.h/.cpp` | `list`, `get`, `set`, `press` над окнами свойств GUI |
 | `src/Engine/EngineCommands.cpp`, `Engine.cpp` (`takeScreenshots`) | проходы, камера, снимок, PIX, шаг времени, замер, клавиши, GUI, выход |
 | `src/Engine/Graphics/GUI/GUICommands.cpp`, `ViewportCommands.cpp` | команды редактора и вьюпорта |
-| `src/Engine/Graphics/Scene/SceneCommands.cpp` | `terrain` (кисть, выгрузка русел), `water` |
+| `src/Engine/Graphics/Scene/SceneCommands.cpp` | `world`, `terrain` (кисть, выгрузка русел), `water` |
 | `src/Engine/Graphics/Renderer.cpp` (`measureGpu`) | замеры времени GPU: после прогрева — в лог, по команде — в ответ |
 | `Tools/engine.py` | клиент: запуск, команды, сценарий, выход |
 | `Tools/check_frames.py` | контрольные камеры против эталона: кадры, время GPU, debug-слой ([d3d12.md](d3d12.md) §4) |

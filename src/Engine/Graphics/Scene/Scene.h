@@ -21,6 +21,8 @@
 #include "Foliage\FoliageInteraction.h"
 #include "Sound\AmbientSound.h"
 #include "Sound\Soundscape.h"
+#include "World\WorldEntities.h"
+#include "Engine\Simulation\World.h"
 #include "Level\LevelDescription.h"
 #include "Level\LevelSaveData.h"
 
@@ -43,9 +45,12 @@ public:
 	// звуков окружения (nullptr — уровень без звука)
 	bool initialize( LibraryLoader& library, bool particles = true, AudioMixer* audio = nullptr );
 
-	// Раз за кадр до update(): правки источников в GUI и время суток, затем свет солнца у земли — через атмосферу
-	// seconds — время кадра: с ним идёт время суток
-	void updateLights( float seconds = 0.0f );
+	// Раз за кадр, первым: правки времени в окне «Sun position» — в мировые часы, шаг часов (seconds — реальное время
+	// кадра) и шаги систем мира симуляции; число шагов мира в этом кадре
+	uint32_t advanceWorld( double seconds );
+	// Раз за кадр после advanceWorld, до update(): время часов — в окно, правки источников в GUI и время суток — в свет,
+	// затем свет солнца у земли — через атмосферу
+	void updateLights();
 	// Константы кадра от сцены по главному виду: масштабы неба и освещения окружением, воздушная перспектива, ветер и
 	// вклад объектов (SceneObject::frameConstants: тень облаков, детальная вода, следы в траве, поле ветра). Рендерер
 	// добавляет своё (свет, время, туман, затенение окружением) и о самих объектах не знает
@@ -62,6 +67,10 @@ public:
 
 	const std::vector<SceneObject*>& objects() const;
 	DMLightDriver& lights();
+	// Мир симуляции: сущности, системы, мировые часы (время суток, время игры)
+	World& world() { return m_world; }
+	// Сущности мира на экране и окно «World»
+	WorldEntities& worldEntities() { return m_worldEntities; }
 	// Ветер уровня (Levels.wind): константы кадра — Wind::parameters
 	Wind& wind();
 	const LevelDescription& level() const;
@@ -120,6 +129,8 @@ private:
 
 	LevelDescription m_level;
 	LevelSaveData m_savedLevel;		// снимок после загрузки или прошлого «Save level» — с ним сравнивается следующее
+	// Мир — до тех, кто держит ссылку на его часы (время суток у SunPosition, певцы): уничтожается после них
+	World m_world;
 	DMLightDriver m_lightDriver;
 	Wind m_wind;
 	uint64_t m_windRevision = ~0ull;	// номер правки окна «Wind», по которому сверены направление и поле ветра (applyEditorChanges)
@@ -142,6 +153,7 @@ private:
 	ReflectionCaptures m_reflectionCaptures;	// карты отражений места (LevelReflectionCaptures)
 	AmbientSound m_ambientSound;	// звуки окружения (Levels.ambient_sound): голоса микшера звука
 	Soundscape m_soundscape;		// певцы (SoundscapeLayers): фразы записей вокруг слушателя
+	WorldEntities m_worldEntities;	// сущности мира симуляции на экране
 
 	std::vector<SceneObject*> m_objects;
 };

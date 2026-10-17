@@ -56,12 +56,19 @@ DMModel::LodBlock* DMModel::getLodById( uint16_t index )
 	return nullptr;
 }
 
+const DMModel::LodBlock* DMModel::getLodById( uint16_t index ) const
+{
+	if( index < m_lods.size() )
+		return m_lods[index].second.get();
+	return nullptr;
+}
+
 float DMModel::lodRange( uint16_t index ) const
 {
 	return index < m_lods.size() ? m_lods[index].first : 0.0f;
 }
 
-uint16_t DMModel::lodCount()
+uint16_t DMModel::lodCount() const
 {
 	return m_lods.size();
 }

@@ -3,13 +3,14 @@
 #include "DirectX.h"
 #include "Properties\PropertyContainer.h"
 #include "Level\LevelSettings.h"
+#include "Engine\Simulation\WorldClock.h"
 
 // Положение солнца по месту и времени, как Sun Position в UE: широта, долгота, часовой пояс, дата и время по местным
 // часам дают высоту солнца над горизонтом и азимут (формулы NOAA Solar Calculator по J. Meeus, «Astronomical
 // Algorithms»; точность — сотые доли градуса, рефракция у горизонта не учитывается). Строка SunPosition уровня
 // (Levels.sun_position) задаёт направление солнца — первого направленного источника — вместо его Pitch / Yaw.
-// Время идёт само со скоростью Time scale (во сколько раз быстрее реального, как timescale в играх Bethesda; 0 — стоит)
-// и переходит через полночь в следующий день. В GUI — подокно «Sun position» в окне «Lights», там же пауза.
+// Время — у мировых часов (GS::WorldClock: идут со скоростью Time scale, через полночь — следующий день); подокно
+// «Sun position» в окне «Lights» — и место, и органы часов: Time of day, Month, Day, Time scale, Time paused.
 // По тем же месту и времени — луна (moon(): положение по Meeus, гл. 47, фаза и освещённость — её свет задаёт второй
 // источник атмосферы, Atmosphere Sun Light Index 1) и поворот звёздного неба (equatorialFrame)
 class SunPosition
@@ -44,15 +45,18 @@ public:
 		float positionAngle = 0.0f;
 	};
 
-	explicit SunPosition( const Settings& settings );
+	// Окно — по строке уровня, часы — на её дату, время и скорость
+	SunPosition( const Settings& settings, GS::WorldClock& clock );
 
-	// Текущие значения из GUI — для сохранения уровня
+	// Текущие значения из GUI — для сохранения уровня и расчёта светил: место и время, которое показывает окно (после
+	// showClock — время часов), год — у часов
 	Settings settings() const;
-	// Настройки пресета окружения (на лету): в окно и в ход времени
+	// Настройки пресета окружения (на лету): в окно и в часы
 	void apply( const Settings& settings );
-	// Время идёт: seconds реального времени кадра × Time scale; через полночь — следующий день. Пауза («Time paused»)
-	// и нулевая скорость время не двигают
-	void advance( float seconds );
+	// Правки окна — в часы (время суток, дата, скорость, пауза); до шага часов, иначе шаг их затрёт
+	void takeWindowEdits();
+	// Часы — в окно (время суток и дата); после шага часов
+	void showClock();
 	Angles angles() const;
 	// Направление на солнце в мире: север — +Z, повёрнутый на North offset, восток — +X (как Yaw у источника), вверх — +Y
 	DirectX::XMFLOAT3 toSun() const;
@@ -69,10 +73,10 @@ public:
 	static DirectX::XMFLOAT3 direction( const Angles& angles, float northOffset );
 
 private:
+	void setClock( const Settings& settings );
+
 	PropertyContainer m_properties;
-	int32_t m_year;		// год в GUI не правится: положение солнца в один день разных лет почти одно
-	// Время суток точнее, чем во float свойства: при реальной скорости приращение кадра (~10⁻⁶ ч) — порядка шага float
-	// у 12 ч. Свойство — его округление; правка свойства в GUI (значение не совпало с записанным) берётся заново
-	double m_hours;
-	float m_hoursShown;
+	// Время суток точнее, чем во float свойства, — у часов; свойство — его округление: правка в GUI (значение не совпало с
+	// часами) берётся заново. Год в GUI не правится (положение солнца в один день разных лет почти одно) — тоже у часов
+	GS::WorldClock& m_clock;
 };

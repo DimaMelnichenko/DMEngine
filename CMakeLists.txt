@@ -109,7 +109,13 @@ FetchContent_Declare(d3d12ma
     GIT_TAG        v3.2.0
     GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(agilitysdk dxc winpixeventruntime imgui imguizmo d3d12ma)
+# EnTT — ECS мира симуляции (ядро, docs/simulation.md), только заголовки; 3.16 — последний выпуск на C++17 (4.0 — C++20)
+FetchContent_Declare(entt
+    GIT_REPOSITORY https://github.com/skypjack/entt.git
+    GIT_TAG        v3.16.0
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(agilitysdk dxc winpixeventruntime imgui imguizmo d3d12ma entt)
 set(AGILITY_INCLUDE ${agilitysdk_SOURCE_DIR}/build/native/include)
 set(AGILITY_BIN ${agilitysdk_SOURCE_DIR}/build/native/bin/x64)
 # Аллокатор — против тех же заголовков D3D12, что движок
@@ -134,9 +140,9 @@ target_compile_definitions(DMEngineSettings INTERFACE _MBCS NOMINMAX)
 target_compile_options(DMEngineSettings INTERFACE /W3 /wd4005 /utf-8)
 
 # Ядро — логика без устройства (как модуль Core в UE): свойства, лог, данные уровня, время суток, рельеф и вода на CPU,
-# ветер, звук (микшер и синтез; вывод XAudio2 — в движке), камера, ходьба и ввод. Его собирают движок и тесты; рендер,
-# ImGui, DirectXTex и база — не в нём: тесты берут ядро целиком (/WHOLEARCHIVE), и ссылка на них — ошибка линковки
-# (docs/tests.md). Новая логика (слой симуляции, навигация, столкновения) — сюда же
+# ветер, звук (микшер и синтез; вывод XAudio2 — в движке), камера, ходьба и ввод, мир симуляции (EnTT) и мировые часы.
+# Его собирают движок и тесты; рендер, ImGui, DirectXTex и база — не в нём: тесты берут ядро целиком (/WHOLEARCHIVE), и
+# ссылка на них — ошибка линковки (docs/tests.md). Новая логика (системы мира, навигация, столкновения) — сюда же
 add_library(DMCore STATIC
     src/Common/Properties/Property.cpp
     src/Common/Properties/PropertyContainer.cpp
@@ -155,8 +161,11 @@ add_library(DMCore STATIC
     src/Engine/Graphics/Scene/Camera/WalkMode.cpp
     src/Engine/Input/Input.cpp
     src/Engine/Input/KeyEventNotifier.cpp
+    src/Engine/Simulation/WorldClock.cpp
+    src/Engine/Simulation/World.cpp
+    src/Engine/Simulation/WanderSystem.cpp
 )
-target_link_libraries(DMCore PUBLIC DMEngineSettings)
+target_link_libraries(DMCore PUBLIC DMEngineSettings EnTT::EnTT)
 
 add_executable(DMEngine WIN32
     src/Common/DBConnector.cpp
@@ -266,6 +275,8 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Model/Mesh/MeshStorage.cpp
     src/Engine/Graphics/Scene/Model/ModelStorage.cpp
     src/Engine/Graphics/Scene/Model/ModelInstances.cpp
+    src/Engine/Graphics/Scene/Model/ModelDraw.cpp
+    src/Engine/Graphics/Scene/World/WorldEntities.cpp
     src/Engine/Graphics/Scene/Terrain/GridMesh.cpp
     src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp
     src/Engine/Graphics/Scene/Terrain/CDLODQuadtree.cpp

@@ -1,4 +1,5 @@
 #include "Scene.h"
+#include "Engine\Simulation\WanderSystem.h"
 #include "ObjectLibrary\LibraryLoader.h"
 #include <algorithm>
 #include <chrono>
@@ -105,7 +106,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 		return false;
 	if( m_level.lights.empty() )
 		LOG( "Level has no lights in table LevelLights, default light is used" );
-	m_lightDriver.load( m_level.lights, m_level.sunPosition );
+	m_lightDriver.load( m_level.lights, m_world.clock(), m_level.sunPosition );
 	m_lightDriver.update();
 
 	if( !m_skyLight.initialize() )
@@ -267,8 +268,13 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 	// Певцы — записи (Sounds\) по слоям уровня, места — по маскам, часы — по времени суток
 	if( audio && !m_level.soundscapeLayers.empty() &&
 		!m_soundscape.initialize( m_level.soundscapeLayers, m_level.sounds, *audio, m_level.terrain ? &m_terrainPipeline : nullptr,
-								  m_lightDriver ) )
+								  m_world.clock() ) )
 		LOG( "Soundscape is not initialized" );
+
+	// Мир симуляции: земля — рельеф уровня; системы — по порядку шага
+	m_world.setTerrain( m_level.terrain ? &m_terrainPipeline : nullptr );
+	m_world.addSystem( std::make_unique<WanderSystem>() );
+	m_worldEntities.initialize( m_world );
 
 	// Следы в траве — по земле под камерой; без поля растения просто не расступаются
 	if( m_level.terrain && !m_foliageInteraction.initialize( &m_terrainPipeline ) )
@@ -282,6 +288,8 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 	if( m_farTerrain.initialized() )
 		m_objects.push_back( &m_farTerrain );
 	m_objects.push_back( &m_models );
+	// Сущности мира — модели, как экземпляры уровня
+	m_objects.push_back( &m_worldEntities );
 	if( m_foliageInteraction.initialized() )
 		m_objects.push_back( &m_foliageInteraction );
 	// Облака — сразу после неба: их compute() читает таблицы атмосферы и освещение окружением, фон рисуют поверх неба
@@ -307,9 +315,15 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 	return true;
 }
 
-void Scene::updateLights( float seconds )
+uint32_t Scene::advanceWorld( double seconds )
 {
-	m_lightDriver.update( seconds );
+	m_lightDriver.takeClockEdits();
+	return m_world.tick( seconds );
+}
+
+void Scene::updateLights()
+{
+	m_lightDriver.update();
 	// Atmosphere Sun Light, как в UE: солнце задано над атмосферой, у земли его свет — прошедший атмосферу
 	XMFLOAT3 toSun;
 	XMFLOAT3 color;

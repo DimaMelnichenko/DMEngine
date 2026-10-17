@@ -20,13 +20,6 @@ double degrees( double radians )
 	return radians * 180.0 / pi;
 }
 
-int32_t daysInMonth( int32_t year, int32_t month )
-{
-	static const int32_t days[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-	const bool leap = ( year % 4 == 0 && year % 100 != 0 ) || year % 400 == 0;
-	return month == 2 && leap ? 29 : days[month - 1];
-}
-
 // Юлианский день начала даты (полночь UTC), григорианский календарь (Meeus, гл. 7)
 double julianDay( int32_t year, int32_t month, int32_t day )
 {
@@ -44,7 +37,7 @@ double julianDay( int32_t year, int32_t month, int32_t day )
 double julianDate( const SunPosition::Settings& settings )
 {
 	const int32_t month = std::clamp( settings.month, 1, 12 );
-	const int32_t day = std::clamp( settings.day, 1, daysInMonth( settings.year, month ) );
+	const int32_t day = std::clamp( settings.day, 1, GS::WorldClock::daysInMonth( settings.year, month ) );
 	return julianDay( settings.year, month, day ) + ( settings.timeOfDay - settings.timeZone ) / 24.0;
 }
 
@@ -85,67 +78,63 @@ SunPosition::Angles horizontal( double hourAngle, double declination, double lat
 
 }
 
-SunPosition::SunPosition( const Settings& settings ) :
+SunPosition::SunPosition( const Settings& settings, GS::WorldClock& clock ) :
 	m_properties( "Sun position" ),
-	m_year( settings.year ),
-	m_hours( settings.timeOfDay ),
-	m_hoursShown( settings.timeOfDay )
+	m_clock( clock )
 {
 	addSettingProperties( m_properties, GS::sunPositionSchema(), settings );
 	m_properties["Time of day"].setStep( 0.25f );	// стрелки и Ctrl — по четверти часа
 	m_properties.insert( "Time paused", false );
 	m_properties.setPresetPart( true );
+	setClock( settings );
+	m_clock.setPaused( false );
 }
 
 void SunPosition::apply( const Settings& settings )
 {
 	writeSettingProperties( m_properties, GS::sunPositionSchema(), settings );
-	m_year = settings.year;
-	m_hours = settings.timeOfDay;
-	m_hoursShown = settings.timeOfDay;
+	setClock( settings );
 }
 
-void SunPosition::advance( float seconds )
+void SunPosition::setClock( const Settings& settings )
+{
+	m_clock.setDate( { settings.year, settings.month, settings.day } );
+	m_clock.setHours( settings.timeOfDay );
+	m_clock.setTimeScale( settings.timeScale );
+}
+
+void SunPosition::takeWindowEdits()
 {
 	const float shown = m_properties["Time of day"].data<float>();
-	if( shown != m_hoursShown )
-		m_hours = shown;
+	if( shown != static_cast<float>( m_clock.hours() ) )
+		m_clock.setHours( shown );
+	const GS::WorldClock::Date date = m_clock.date();
+	const int32_t month = m_properties["Month"].data<int32_t>();
+	const int32_t day = m_properties["Day"].data<int32_t>();
+	if( month != date.month || day != date.day )
+		m_clock.setDate( { date.year, month, day } );
+	m_clock.setTimeScale( m_properties["Time scale"].data<float>() );
+	m_clock.setPaused( m_properties["Time paused"].data<bool>() );
+}
 
-	const float scale = m_properties["Time scale"].data<float>();
-	if( scale <= 0.0f || seconds <= 0.0f || m_properties["Time paused"].data<bool>() )
-		return;
-
-	m_hours += static_cast<double>( seconds ) * scale / 3600.0;
-	if( m_hours >= 24.0 )
-	{
-		// Через полночь — следующий день: дата двигает склонение солнца, за год — сезоны
-		int32_t month = std::clamp( m_properties["Month"].data<int32_t>(), 1, 12 );
-		int32_t day = std::clamp( m_properties["Day"].data<int32_t>(), 1, daysInMonth( m_year, month ) );
-		while( m_hours >= 24.0 )
-		{
-			m_hours -= 24.0;
-			if( ++day > daysInMonth( m_year, month ) )
-			{
-				day = 1;
-				if( ++month > 12 )
-				{
-					month = 1;
-					++m_year;
-				}
-			}
-		}
-		m_properties["Month"].setData( month );
-		m_properties["Day"].setData( day );
-	}
-	m_hoursShown = static_cast<float>( m_hours );
-	m_properties["Time of day"].setData( m_hoursShown );
+void SunPosition::showClock()
+{
+	// Только то, что сменилось: номер правки окна растёт, лишь когда время идёт
+	const float hours = static_cast<float>( m_clock.hours() );
+	if( m_properties["Time of day"].data<float>() != hours )
+		m_properties["Time of day"].setData( hours );
+	const GS::WorldClock::Date date = m_clock.date();
+	if( m_properties["Month"].data<int32_t>() != date.month )
+		m_properties["Month"].setData( date.month );
+	if( m_properties["Day"].data<int32_t>() != date.day )
+		m_properties["Day"].setData( date.day );
 }
 
 SunPosition::Settings SunPosition::settings() const
 {
 	Settings settings;
 	readSettingProperties( m_properties, GS::sunPositionSchema(), settings );
-	settings.year = m_year;
+	settings.year = m_clock.date().year;
 	return settings;
 }
 

@@ -41,7 +41,7 @@ bool DMLightDriver::Initialize()
 	return true;
 }
 
-void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Settings>& sunPosition )
+void DMLightDriver::load( LightList lights, GS::WorldClock& clock, const std::optional<SunPosition::Settings>& sunPosition )
 {
 	// Устойчивая сортировка: направленные первыми в порядке базы, солнце — первый включённый из них
 	std::stable_sort( lights.begin(), lights.end(), []( const DMLight& a, const DMLight& b )
@@ -59,7 +59,7 @@ void DMLightDriver::load( LightList lights, const std::optional<SunPosition::Set
 	{
 		if( !m_light_list.empty() && m_light_list[0].type() == DMLight::Dir )
 		{
-			m_sunPosition = std::make_unique<SunPosition>( *sunPosition );
+			m_sunPosition = std::make_unique<SunPosition>( *sunPosition, clock );
 			m_sunPositionLight = 0;
 			const SunPosition::Angles angles = m_sunPosition->angles();
 			LOG( "Sun position: elevation " + std::to_string( angles.elevation ) + ", azimuth " + std::to_string( angles.azimuth ) );
@@ -327,10 +327,16 @@ void DMLightDriver::updateStructure()
 	m_properties.setStructureModified( std::any_of( m_removed.begin(), m_removed.end(), []( const RemovedLight& removed ) { return removed.light.id != 0; } ) );
 }
 
-void DMLightDriver::update( float seconds )
+void DMLightDriver::takeClockEdits()
 {
 	if( m_sunPosition )
-		m_sunPosition->advance( seconds );
+		m_sunPosition->takeWindowEdits();
+}
+
+void DMLightDriver::update()
+{
+	if( m_sunPosition )
+		m_sunPosition->showClock();
 
 	for( size_t i = 0; i < m_light_list.size(); ++i )
 	{
