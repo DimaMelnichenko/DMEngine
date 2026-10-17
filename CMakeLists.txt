@@ -115,19 +115,56 @@ set(AGILITY_BIN ${agilitysdk_SOURCE_DIR}/build/native/bin/x64)
 # Аллокатор — против тех же заголовков D3D12, что движок
 target_include_directories(D3D12MemoryAllocator BEFORE PRIVATE ${AGILITY_INCLUDE})
 
-add_executable(DMEngine WIN32
+# Общие настройки движка, ядра и тестов: заголовки D3D12 Agility SDK — раньше Windows SDK (BEFORE, иначе d3d12.h возьмётся
+# системный); include-пути от корня проекта и основных каталогов движка: отсюда "Utils\DMTimer.h", "Materials\Material.h" и т. п.
+# Символьный набор MultiByte (_MBCS); NOMINMAX убирает макросы min / max из windows.h. Исходники в UTF-8 без BOM: /utf-8
+# задаёт кодировку и исходников, и строковых литералов
+add_library(DMEngineSettings INTERFACE)
+target_include_directories(DMEngineSettings BEFORE INTERFACE ${AGILITY_INCLUDE} ${AGILITY_INCLUDE}/d3dx12)
+target_include_directories(DMEngineSettings INTERFACE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/3rdParty
+    ${CMAKE_SOURCE_DIR}/src/Common
+    ${CMAKE_SOURCE_DIR}/src/Engine/Graphics
+    ${CMAKE_SOURCE_DIR}/src/Engine/Graphics/Common
+    ${CMAKE_SOURCE_DIR}/src/Engine/Graphics/Scene
+)
+target_compile_definitions(DMEngineSettings INTERFACE _MBCS NOMINMAX)
+target_compile_options(DMEngineSettings INTERFACE /W3 /wd4005 /utf-8)
+
+# Ядро — логика без устройства (как модуль Core в UE): свойства, лог, данные уровня, время суток, рельеф и вода на CPU,
+# ветер, звук (микшер и синтез; вывод XAudio2 — в движке), камера, ходьба и ввод. Его собирают движок и тесты; рендер,
+# ImGui, DirectXTex и база — не в нём: тесты берут ядро целиком (/WHOLEARCHIVE), и ссылка на них — ошибка линковки
+# (docs/tests.md). Новая логика (слой симуляции, навигация, столкновения) — сюда же
+add_library(DMCore STATIC
     src/Common/Properties/Property.cpp
     src/Common/Properties/PropertyContainer.cpp
     src/Logger/Logger.cpp
+    src/Common/Utils/utilites.cpp
+    src/Common/Utils/DMTimer.cpp
+    src/Engine/Graphics/Scene/Level/LevelSettings.cpp
+    src/Engine/Graphics/Scene/Light/SunPosition.cpp
+    src/Engine/Graphics/Scene/Terrain/TerrainEdits.cpp
+    src/Engine/Graphics/Scene/Terrain/TerrainHydrology.cpp
+    src/Engine/Graphics/Scene/Wind/Wind.cpp
+    src/Engine/Audio/AudioMixer.cpp
+    src/Engine/Audio/AudioSynth.cpp
+    src/Engine/Audio/AudioClip.cpp
+    src/Engine/Graphics/Scene/Camera/DMCamera.cpp
+    src/Engine/Graphics/Scene/Camera/WalkMode.cpp
+    src/Engine/Input/Input.cpp
+    src/Engine/Input/KeyEventNotifier.cpp
+)
+target_link_libraries(DMCore PUBLIC DMEngineSettings)
+
+add_executable(DMEngine WIN32
     src/Common/DBConnector.cpp
     src/Engine/Console/ConsoleCommands.cpp
     src/Engine/Console/PropertyCommands.cpp
     src/Engine/Console/RemoteControlServer.cpp
-    src/Engine/Audio/AudioClip.cpp
     src/Engine/Audio/AudioDevice.cpp
-    src/Engine/Audio/AudioMixer.cpp
     src/Engine/Audio/AudioOutput.cpp
-    src/Engine/Audio/AudioSynth.cpp
     src/Engine/Graphics/Scene/Scatterer/ScattererPass.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
@@ -158,13 +195,11 @@ add_executable(DMEngine WIN32
     src/ObjectLibrary/LibraryLoaderEnvironment.cpp
     src/ObjectLibrary/LibraryLoaderPresets.cpp
     src/ObjectLibrary/LibraryLoaderScene.cpp
-    src/Engine/Graphics/Scene/Level/LevelSettings.cpp
     src/3rdParty/tinyxml2.cpp
     src/Config/Config.cpp
     src/Engine/Graphics/Scene/Light/DMLight.cpp
     src/Engine/Graphics/Scene/Light/DMLightDriver.cpp
     src/Engine/Graphics/Scene/Light/ReflectionCaptures.cpp
-    src/Engine/Graphics/Scene/Light/SunPosition.cpp
     src/Engine/Graphics/Scene/Materials/MaterialStorage.cpp
     src/Engine/Graphics/Common/Storage/DMResourceStorage.cpp
     src/Engine/Graphics/Common/Storage/DMResource.cpp
@@ -180,7 +215,6 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/FullscreenShader.cpp
     src/Engine/Graphics/CubePrefilter.cpp
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
-    src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Graphics/Scene/Sound/AmbientSound.cpp
     src/Engine/Graphics/Scene/Sound/Soundscape.cpp
     src/Engine/Graphics/Scene/Sound/SoundPlace.cpp
@@ -222,8 +256,6 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/ScreenSpaceReflections.cpp
     src/Engine/Graphics/VolumetricFog.cpp
     src/Engine/Graphics/SceneTargets.cpp
-    src/Engine/Graphics/Scene/Camera/DMCamera.cpp
-    src/Engine/Graphics/Scene/Camera/WalkMode.cpp
     src/Engine/Graphics/Scene/Camera/DMFrustum.cpp
     src/Engine/Graphics/Scene/Scene.cpp
     src/Engine/Graphics/Scene/SceneCommands.cpp
@@ -242,8 +274,6 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Terrain/FluvialErosion.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainPipeline.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainPaintTool.cpp
-    src/Engine/Graphics/Scene/Terrain/TerrainEdits.cpp
-    src/Engine/Graphics/Scene/Terrain/TerrainHydrology.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainMasks.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainErosion.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainFields.cpp
@@ -255,43 +285,27 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Texture/DMTextureStorage.cpp
     src/Engine/Graphics/Scene/VertexPool.cpp
     src/Engine/Graphics/System.cpp
-    src/Engine/Input/Input.cpp
-    src/Engine/Input/KeyEventNotifier.cpp
     src/main.cpp
-    src/Common/Utils/DMTimer.cpp
     src/Common/Utils/SlowTask.cpp
     src/Common/Utils/FrameWatchdog.cpp
-    src/Common/Utils/utilites.cpp
     src/Engine/Graphics/Scene/Texture/ImageFile.cpp
     src/Engine/Graphics/Scene/Texture/ImageMips.cpp
 )
 
-# Заголовки D3D12 Agility SDK — раньше Windows SDK (BEFORE), иначе d3d12.h возьмётся системный
-target_include_directories(DMEngine BEFORE PRIVATE ${AGILITY_INCLUDE} ${AGILITY_INCLUDE}/d3dx12)
-# Include-пути от корня проекта и основных каталогов движка: отсюда "Utils\DMTimer.h", "Materials\Material.h" и т. п.
+# Свои include-пути движка (сверх общих — DMEngineSettings): компилятор шейдеров, PIX, ImGui и ImGuizmo
 target_include_directories(DMEngine PRIVATE
     ${dxc_SOURCE_DIR}/inc
     ${winpixeventruntime_SOURCE_DIR}/Include/WinPixEventRuntime
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/misc/cpp
     ${imguizmo_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/3rdParty
-    ${CMAKE_SOURCE_DIR}/src/Common
-    ${CMAKE_SOURCE_DIR}/src/Engine/Graphics
-    ${CMAKE_SOURCE_DIR}/src/Engine/Graphics/Common
-    ${CMAKE_SOURCE_DIR}/src/Engine/Graphics/Scene
 )
-
-# Символьный набор MultiByte (_MBCS); NOMINMAX убирает макросы min / max из windows.h.
-# Исходники в UTF-8 без BOM: /utf-8 задаёт кодировку и исходников, и строковых литералов.
-target_compile_definitions(DMEngine PRIVATE HOME_RUN _MBCS NOMINMAX DM_AGILITY_SDK_VERSION=${DM_AGILITY_SDK_VERSION})
-target_compile_options(DMEngine PRIVATE /W3 /wd4005 /utf-8)
+target_compile_definitions(DMEngine PRIVATE HOME_RUN DM_AGILITY_SDK_VERSION=${DM_AGILITY_SDK_VERSION})
 # Карта линковки рядом с exe: адрес сбоя из журнала Windows (смещение в модуле) → функция
 target_link_options(DMEngine PRIVATE /MAP)
 
 target_link_libraries(DMEngine PRIVATE
+    DMCore
     DirectXTex
     SQLiteCpp
     tinyexr
@@ -312,3 +326,22 @@ add_custom_command(TARGET DMEngine POST_BUILD
     COMMENT "Copying D3D12 Agility SDK, DXC and PIX runtime next to the executable"
     VERBATIM
 )
+
+# Тесты логики на CPU (docs/tests.md): doctest, консольный exe из tests\ против ядра. Ядро — целиком (/WHOLEARCHIVE): любая
+# ссылка ядра на устройство, ImGui или базу не линкуется — граница ядра проверяется каждой сборкой. Запуск — Tools\test.cmd
+# или ctest; рабочая папка — каталог сборки (LOG не затрёт log.txt движка в корне)
+# doctest — один заголовок; его CMakeLists объявляет старую минимальную версию CMake — не подключается (SOURCE_SUBDIR)
+FetchContent_Declare(doctest
+    GIT_REPOSITORY https://github.com/doctest/doctest.git
+    GIT_TAG        v2.4.11
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  do-not-add
+)
+FetchContent_MakeAvailable(doctest)
+file(GLOB DM_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/*.cpp)
+add_executable(DMEngineTests ${DM_TEST_SOURCES})
+target_link_libraries(DMEngineTests PRIVATE DMCore)
+target_include_directories(DMEngineTests PRIVATE ${doctest_SOURCE_DIR})
+target_link_options(DMEngineTests PRIVATE /WHOLEARCHIVE:DMCore)
+enable_testing()
+add_test(NAME DMEngineTests COMMAND DMEngineTests WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

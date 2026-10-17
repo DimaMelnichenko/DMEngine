@@ -156,6 +156,9 @@ python Tools/ambient_sound.py remove --level Test
 
 ## Как это устроено
 
+Микшер, синтез и записи (`AudioMixer`, `AudioSynth`, `AudioClip`) — в ядре без устройства `DMCore`, их тесты —
+`tests/test_audio.cpp` ([tests.md](tests.md)); вывод (`AudioOutput`, `AudioDevice`) и объекты сцены — в движке.
+
 - `AudioDevice` (`src/Engine/Audio/AudioDevice.h`, член `Engine`, как FAudioDevice в UE) — микшер, вывод, окно «Audio»,
   команды `audio`. Создаётся до сцены: объекты сцены заводят в его микшере голоса.
 - `AudioOutput` (`AudioOutput.h`) — XAudio2 2.9 (`xaudio2.lib`): мастер-голос устройства по умолчанию и один стерео-голос

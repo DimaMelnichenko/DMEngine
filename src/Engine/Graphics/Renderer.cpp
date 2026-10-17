@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "DrawSortKey.h"
 #include "Shaders\slots.h"
 #include <algorithm>
 #include <chrono>
@@ -47,32 +48,17 @@ bool inDepthPrepass( const MeshBatch& batch )
 	return batch.state.blendMode != BlendMode::translucent && batch.material->depthPhaseFor( *batch.params ) >= 0;
 }
 
-// Ключ непрозрачной команды: объекты в порядке сцены (8 бит), внутри — материал (16), его фаза — вариант шейдера (8:
-// у PBR с экземплярами расстановки и запеканием их ~26), растеризатор (4); группа (меш с параметрами, 28 бит) последней
-// — одинаковые меши встают подряд для инстансного вызова
+// Ключ непрозрачной команды меша — по полям его секции (DrawSortKey.h)
 uint64_t opaqueKey( const MeshBatch& batch, int phase )
 {
-	const uint64_t raster = static_cast<uint64_t>( materialRasterState( batch.state.twoSided, batch.mirrored,
-																	   RasterState::solid ) ) & 0xF;
-	return ( static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56 ) |
-		   ( static_cast<uint64_t>( batch.materialId & 0xFFFF ) << 40 ) |
-		   ( ( static_cast<uint64_t>( phase ) & 0xFF ) << 32 ) | ( raster << 28 ) | ( batch.instanceGroup & 0x0FFFFFFF );
+	const uint32_t raster = static_cast<uint32_t>( materialRasterState( batch.state.twoSided, batch.mirrored, RasterState::solid ) );
+	return opaqueSortKey( batch.ownerOrder, batch.materialId, phase, raster, batch.instanceGroup );
 }
 
 // Миллисекунды с момента start — для счётчиков времени CPU кадра (FrameStats)
 float millisecondsSince( std::chrono::high_resolution_clock::time_point start )
 {
 	return std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::high_resolution_clock::now() - start ).count() / 1000.0f;
-}
-
-// Ключ прозрачной команды: дальние раньше, при равном расстоянии — порядок объектов сцены и номер
-uint64_t transparentKey( float distance, uint32_t ownerOrder, uint32_t sequence )
-{
-	uint32_t bits;
-	const float positive = std::max( distance, 0.0f );
-	std::memcpy( &bits, &positive, sizeof( bits ) );	// у неотрицательных float порядок битов совпадает с порядком чисел
-	return ( static_cast<uint64_t>( 0xFFFFFFFFu - bits ) << 32 ) | ( static_cast<uint64_t>( ownerOrder & 0xFF ) << 24 ) |
-		   ( sequence & 0xFFFFFF );
 }
 
 }
@@ -630,7 +616,7 @@ void Renderer::buildCommands( const MeshCollector& collector, std::vector<DrawCo
 		uint64_t key;
 		if( pass == MeshPass::transparent )
 		{
-			key = transparentKey( batch.distance, batch.ownerOrder, i );
+			key = transparentSortKey( batch.distance, batch.ownerOrder, i );
 			sceneColorRead |= batch.material->readsSceneColor();
 		}
 		else
@@ -658,8 +644,8 @@ void Renderer::buildCommands( const MeshCollector& collector, std::vector<DrawCo
 				continue;
 			const bool transparent = static_cast<MeshPass>( pass ) == MeshPass::transparent;
 			const uint64_t key = transparent ?
-								 transparentKey( batch.distance, batch.ownerOrder, static_cast<uint32_t>( meshes.size() ) + i ) :
-								 static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56;
+								 transparentSortKey( batch.distance, batch.ownerOrder, static_cast<uint32_t>( meshes.size() ) + i ) :
+								 customSortKey( batch.ownerOrder );
 			commands[pass].push_back( { key, i, true } );
 			sceneColorRead |= transparent && batch.readsSceneColor;
 			sceneDepthRead |= transparent && batch.readsSceneDepth;
@@ -684,17 +670,14 @@ void Renderer::buildShadowCommands()
 		const int phase = batch.material->depthPhaseFor( *batch.params, meshPhaseOptions( batch, false, false ) );
 		if( phase < 0 )
 			continue;
-		const uint64_t key = ( static_cast<uint64_t>( batch.ownerOrder & 0xFF ) << 56 ) |
-							 ( static_cast<uint64_t>( batch.materialId & 0xFFFF ) << 40 ) |
-							 ( static_cast<uint64_t>( phase & 0xF ) << 36 ) | batch.instanceGroup;
-		m_shadowCommands.push_back( { key, i, false } );
+		m_shadowCommands.push_back( { shadowSortKey( batch.ownerOrder, batch.materialId, phase, batch.instanceGroup ), i, false } );
 	}
 
 	const std::vector<CustomBatch>& customs = m_shadowCollector.customs();
 	for( uint32_t i = 0; i < customs.size(); ++i )
 	{
 		if( customs[i].passMask & passBit( MeshPass::csmShadowDepth ) )
-			m_shadowCommands.push_back( { static_cast<uint64_t>( customs[i].ownerOrder & 0xFF ) << 56, i, true } );
+			m_shadowCommands.push_back( { customSortKey( customs[i].ownerOrder ), i, true } );
 	}
 
 	std::stable_sort( m_shadowCommands.begin(), m_shadowCommands.end(),

@@ -2,7 +2,7 @@
 #include <optional>
 #include "DirectX.h"
 #include "Properties\PropertyContainer.h"
-#include "ConstantBuffers.h"
+#include "WindParameters.h"
 #include "Level\LevelSettings.h"
 
 namespace GS

@@ -58,8 +58,13 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   в `D3D12\` рядом с exe, заголовки — раньше Windows SDK), DXC v1.9 (`dxcompiler.dll` и `dxil.dll` рядом с exe),
   WinPixEventRuntime, Dear ImGui 1.92.9b ветки docking (ядро и бэкенды Win32 / DX12 собираются в движке; архив — из
   `DownloadResources\imgui-1.92.9b-docking.zip`, если он там есть, иначе с GitHub), ImGuizmo (ветка master, гизмо
-  вьюпорта; `DownloadResources\ImGuizmo-master.zip`, иначе с GitHub) и D3D12 Memory Allocator 3.2
-  подтягиваются через `FetchContent` при первом configure: нужны сеть и git. Остальное берётся из Windows SDK.
+  вьюпорта; `DownloadResources\ImGuizmo-master.zip`, иначе с GitHub), D3D12 Memory Allocator 3.2 и doctest (тег
+  `v2.4.11`, только заголовок — для тестов) подтягиваются через `FetchContent` при первом configure: нужны сеть и git.
+  Остальное берётся из Windows SDK.
+- Цели CMake: `DMCore` — статическая библиотека, ядро без устройства (свойства, лог, данные уровня, время суток, рельеф
+  и вода на CPU, ветер, микшер и синтез звука, камера, ходьба, ввод; как модуль Core в UE); `DMEngine` — exe движка поверх
+  неё; `DMEngineTests` — тесты логики на CPU (doctest) против ядра; общие include-пути, defines и флаги трёх целей —
+  `DMEngineSettings`. Файлы ядра лежат на своих местах в `src/` — ядро задаётся списком `DMCore` в `CMakeLists.txt`.
 - **Из терминала собирать только скриптом**, а не вызывать cmake вручную:
   ```
   Tools\build.cmd debug        (или release; из Git Bash: cmd //c "Tools\build.cmd debug")
@@ -146,8 +151,13 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   в `log.txt` (одинаковые — первые три раза): без отладчика их больше нигде не видно; при потере устройства в лог
   уходят последние команды (DRED). Release-сборка создаёт устройство без слоя. Крах в Release: смещение из журнала
   Windows (`Get-WinEvent`, Id 1000) ищется в `DMEngine.map` рядом с exe (линкер с `/MAP`).
-- Тестов и линтера нет. Проверка изменений — сборка и запуск приложения; кадры и время GPU контрольных камер против
-  эталона — `Tools/check_frames.py`.
+- **Тесты логики на CPU** — `Tools\test.cmd [debug|release] [параметры doctest]` (из Git Bash:
+  `cmd //c "Tools\test.cmd release"`; `-tc=WalkMode*` — тесты по имени): собирает конфигурацию скриптом сборки и запускает
+  `DMEngineTests.exe` в каталоге сборки (его `log.txt`, лог движка в корне цел), код выхода — результат; весь набор —
+  доли секунды. Тесты — `tests/test_<подсистема>.cpp` (CMake подхватывает новые файлы сам); тестовый exe берёт ядро
+  целиком (`/WHOLEARCHIVE:DMCore`), поэтому ссылка файла ядра на устройство, ImGui, DirectXTex или базу — ошибка
+  линковки. Подробно — `docs/tests.md`. Линтера нет. Проверка рендера — сборка и запуск приложения; кадры и время GPU
+  контрольных камер против эталона — `Tools/check_frames.py`.
 - Запускать из корня проекта: все пути относительные к рабочей папке (`settings.ini`, `base.db3`,
   `Shaders\`, `Textures\`, `Meshes\`). Для CLion это задаёт общая
   конфигурация запуска `.run/DMEngine.run.xml`. Каталоги `Textures\`, `Meshes\` и `Sounds\` (записи звука — `Tools/pack_sound.py`
@@ -332,7 +342,7 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 (`Scene/MeshBatch.h`) секции мешей — `MeshBatch` (≈ FMeshBatch: меш секции в `VertexPool`, материал, параметры, мировая матрица,
 режим материала, расстояние) — или свой вызов `CustomBatch` с маской проходов (террейн, расстановка, небо, частицы).
 `Renderer` раскладывает их по проходам (`MeshPass`: меши — по режиму материала, `passFor`; свои вызовы — по маске)
-с 64-битным ключом сортировки (непрозрачные — объект в порядке сцены, материал, вариант шейдера, растеризатор, меш;
+с 64-битным ключом сортировки (`Graphics/DrawSortKey.h`; непрозрачные — объект в порядке сцены, материал, вариант шейдера, растеризатор, меш;
 прозрачные — от дальних к ближним между всеми объектами; `MeshBatch::instanceGroup` — «этот меш с этими
 параметрами») и рисует меши одной функцией `Renderer::drawMesh` (`setPass( phaseFor )`, в проходах только глубины —
 тени и depth prepass, `isDepthOnlyPass` — `depthPhaseFor`: вариант «только глубина», −1 — материал тень не отбрасывает
@@ -788,6 +798,10 @@ Spawner в PCG UE: модель ячейки — по весам и случай
   и ImGui. Исключение: batch-файлы (`*.cmd`) с CRLF, иначе cmd ошибается на метках (`.editorconfig`, `.gitattributes`).
   Сообщения, которые печатают скрипты `Tools/`, — ASCII: их запускают и Windows PowerShell 5.1, и cmd в кодировке 866.
 - `NOMINMAX` задан глобально: `std::min` / `std::max` пишутся без скобок.
+- Логика без устройства — в ядре `DMCore` (план шага L1 этапа 14, одобрен Dimok 2026-10-17): слой симуляции, мировые часы, навигация,
+  столкновения — файлом в списке `DMCore`, с тестами в `tests/`; рендер о ней не знает, объект сцены берёт у неё
+  состояние. Логику, которую надо проверить, а она в классе с устройством, — выносить чистой функцией или структурой
+  (`Graphics/DrawSortKey.h`, `Scene/Model/ModelReseat.h`, `Scene/Wind/WindParameters.h`; `docs/tests.md`).
 - Сторонний код: `imGUI/`, `src/3rdParty/` и зависимости из `FetchContent`. Его не правим.
 
 ## graphify

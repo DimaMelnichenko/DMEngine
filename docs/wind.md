@@ -293,7 +293,8 @@ GPU-based validation — лог чист.
 
 | Файл | Что там |
 |---|---|
-| `src/Engine/Graphics/Scene/Wind/Wind.h/.cpp` | ветер уровня: настройки, окно GUI, константы кадра |
+| `src/Engine/Graphics/Scene/Wind/Wind.h/.cpp` | ветер уровня: настройки, окно GUI, константы кадра, порыв в точке на CPU (`Wind::gust`) |
+| `src/Engine/Graphics/Scene/Wind/WindParameters.h` | параметры ветра кадра (`WindParameters`) — общие у констант шейдеров и звука, без буферов констант рендера |
 | `Shaders/wind.sh` | порыв и изгиб травы (`windGust`, `windBendVector`, `windOffset`, базис — `windBendFrame`), ветер дерева (`treeWindPosition`, `windBend`) |
 | `Shaders/LightShader.vs` | `vertexWorldPosition`: корень, высота, сдвиг; с `WIND_TREE` — входы второго потока и ветер дерева |
 | `src/Engine/Graphics/Scene/Model/Mesh/VertexData.h`, `Scene/VertexPool.h/.cpp` | данные ветра дерева на вершину, второй поток вершин |

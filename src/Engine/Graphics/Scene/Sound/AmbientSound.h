@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include "SceneObject.h"
-#include "ConstantBuffers.h"
+#include "Wind\WindParameters.h"
 #include "Level\LevelSettings.h"
 #include "Engine\Audio\AudioMixer.h"
 

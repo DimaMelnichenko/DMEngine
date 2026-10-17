@@ -42,6 +42,9 @@ public:
 	bool isRightMouseDown() const { return m_rightButton; }
 	// Клавиша зажата (скан-код DIK_*); при вводе текста в редакторе — нет
 	bool isKeyDown( uint8_t key ) const { return ( m_keyboardState[key] & 0x80 ) != 0; }
+	// Клавиша зажата или отпущена не через Raw Input — как WM_INPUT (тесты ходьбы, tests/test_walk_mode.cpp); действует со
+	// следующего Frame
+	void setKeyDown( uint8_t key, bool down ) { m_keys[key] = down ? 0x80 : 0; }
 
 private:
 	Input( const Input& ) = delete;

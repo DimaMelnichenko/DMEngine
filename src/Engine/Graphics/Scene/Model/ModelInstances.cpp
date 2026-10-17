@@ -1,4 +1,5 @@
 #include "ModelInstances.h"
+#include "ModelReseat.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -320,14 +321,9 @@ size_t ModelInstances::reseat( const std::function<float( float x, float z, floa
 	size_t moved = 0;
 	for( Instance& instance : m_instances )
 	{
-		// Размер модели — по масштабу экземпляра (примитивы и тестовые модели — около метра), не меньше метра
-		const XMFLOAT3& scale = instance.transform.scale();
-		const float radius = std::max( 0.5f * std::max( std::abs( scale.x ), std::abs( scale.z ) ), 1.0f );
 		XMFLOAT3 position = instance.properties->property( "Position" ).data<XMFLOAT3>();
-		const float dy = shift( position.x, position.z, radius );
-		if( std::abs( dy ) < 1e-3f )
+		if( !reseatPosition( position, instance.transform.scale(), shift ) )
 			continue;
-		position.y += dy;
 		instance.properties->property( "Position" ).setData( position );
 		++moved;
 	}

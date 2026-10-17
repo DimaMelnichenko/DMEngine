@@ -4,6 +4,7 @@
 #include "D3D\GpuResources.h"
 #include "Scene\RenderView.h"
 #include "Shaders\frame_constants.h"
+#include "Scene\Wind\WindParameters.h"
 
 namespace GS
 {
@@ -11,18 +12,6 @@ namespace GS
 // Матрица нормалей к мировой — обратная транспонированная (без сдвига): нормали остаются перпендикулярными
 // поверхности и при неравномерном масштабе. У вырожденной матрицы (нулевой масштаб) обратной нет — берётся сама матрица
 DirectX::XMMATRIX normalMatrix( const DirectX::XMMATRIX& world );
-
-// Ветер кадра (Wind::parameters) — cb_wind* в Shaders/common.vs, изгиб — Shaders/wind.sh
-struct WindParameters
-{
-	DirectX::XMFLOAT2 direction = DirectX::XMFLOAT2( 0.0f, 1.0f );	// куда дует, нормированное (x, z)
-	float strength = 0.0f;
-	float speed = 0.0f;			// м/с
-	float gustMin = 0.0f;
-	float gustMax = 0.0f;
-	float gustSize = 1.0f;		// м
-	float fieldScale = 0.0f;	// поле ветра по рельефу (SLOT_WIND_FIELD): 1 / сторона карты; 0 — поля нет
-};
 
 // Туман уровня кадра (VolumetricFog::frameParameters) — cb_fog* в Shaders/common.vs, Shaders/height_fog.sh
 struct FogParameters

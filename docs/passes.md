@@ -7,7 +7,8 @@
 
 1. `compute()` всех объектов (расстановка, частицы, небо, воздушная перспектива, облака и их тень — [clouds.md](clouds.md)).
 2. Сбор с главного вида: каждый видимый объект отдаёт в `MeshCollector` меши (`MeshBatch`) и свои вызовы
-   (`CustomBatch` с маской проходов), `Renderer::buildCommands` раскладывает их по проходам с ключом сортировки.
+   (`CustomBatch` с маской проходов), `Renderer::buildCommands` раскладывает их по проходам с ключом сортировки (`Graphics/DrawSortKey.h`: чистые функции
+   ключей, их проверяет `tests/test_render_logic.cpp`, [tests.md](tests.md)).
 3. Глубина четырёх каскадов теней — у каждого каскада свой сбор ([shadows.md](shadows.md)).
    Затем — объём тумана уровня (`Volumetric fog light`, `Volumetric fog integrate`): ему нужна карта теней, а проходам
    сцены — он ([fog.md](fog.md)).
