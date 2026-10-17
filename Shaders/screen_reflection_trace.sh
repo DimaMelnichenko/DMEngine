@@ -94,6 +94,9 @@ float4 traceScreenReflection( float3 position, float3 normal )
 	bool hit = false;
 	float hitDepth = 0.0f;
 	float behind = 0.0f;	// на сколько луч в пикселе попадания ушёл за поверхность буфера, м
+	// Луч ушёл за предмет дальше толщины и ещё не вышел перед сценой; occluderViewZ — глубина вида пикселя, за которым скрылся
+	bool hidden = false;
+	float occluderViewZ = 0.0f;
 	for( uint i = 0; i < reflectionMaxIterations && t <= tMax; ++i )
 	{
 		const float3 p = start + delta * t;
@@ -107,7 +110,8 @@ float4 traceScreenReflection( float3 position, float3 normal )
 		const float tCell = min( exits.x, exits.y );
 		if( p.z > closest )
 		{
-			// Луч ближе всего в ячейке; уходя от камеры, дойдёт до глубины ближайшего в ней на tPlane
+			// Луч ближе всего в ячейке (снова перед сценой); уходя от камеры, дойдёт до глубины ближайшего в ней на tPlane
+			hidden = false;
 			const float tPlane = delta.z < 0.0f ? ( closest - start.z ) / delta.z : 1e30f;
 			if( tPlane < tCell )
 			{
@@ -129,11 +133,23 @@ float4 traceScreenReflection( float3 position, float3 normal )
 		else
 		{
 			// Луч за ближайшим в ячейке. За всем в ней дальше толщины (по дальней глубине и ближней к камере точке луча в ячейке:
-			// идя к камере, он приближается) — проходит ячейку; на уровне 0 иначе — попадание, крупнее — уровень мельче
+			// идя к камере, он приближается) — проходит ячейку; на уровне 0 иначе — попадание, крупнее — уровень мельче.
+			// Скрывшись за предметом (впервые — с точностью до пикселя: спуск до уровня 0), луч помнит его глубину. Показался
+			// из-за него фон дальше него, а луч и за фоном — значит, прошёл фон, пока был скрыт (луг за елью, закрытый от камеры
+			// её кроной): попадание — там, где фон показался. Иначе луч бежал бы за фоном до края кадра, и вода показывала бы
+			// небо пятнами у основания крон и в просветах между ветками
 			const float rayNear = max( p.z, start.z + delta.z * min( tCell, tMax ) );
 			const float farthestViewZ = reflectionViewDepth( range.y );
-			if( rayNear < range.y && reflectionViewDepth( rayNear ) - farthestViewZ > thicknessBase + thicknessScale * farthestViewZ )
+			const float thickness = thicknessBase + thicknessScale * farthestViewZ;
+			const bool beyond = rayNear < range.y && reflectionViewDepth( rayNear ) - farthestViewZ > thickness;
+			const bool emerged = hidden && farthestViewZ > occluderViewZ + thickness;
+			if( beyond && !emerged && ( hidden || level == 0 ) )
 			{
+				if( !hidden )
+				{
+					hidden = true;
+					occluderViewZ = farthestViewZ;
+				}
 				t = tCell;
 				level = min( level + 1, SCREEN_REFLECTION_LEVELS - 1 );
 			}
@@ -143,7 +159,7 @@ float4 traceScreenReflection( float3 position, float3 normal )
 			{
 				hit = true;
 				hitDepth = closest;
-				behind = max( reflectionViewDepth( p.z ) - reflectionViewDepth( closest ), 0.0f );
+				behind = emerged ? 0.0f : max( reflectionViewDepth( p.z ) - reflectionViewDepth( closest ), 0.0f );
 				break;
 			}
 		}
