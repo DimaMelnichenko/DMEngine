@@ -23,7 +23,7 @@ class TerrainPipeline;
 // текселя (заново по новой итоговой карте): мипы гор у края не врут. Материал — правила по высоте и уклону на слоях террейна
 // по ролям, лес — тоном земли. Эрозия гор — речная (строка FluvialErosion, FluvialErosion: сеть долин), затем ледниковая
 // (строка GlacialErosion, GlacialErosion: троги, кары), затем ледники наших дней (тот же лёд без эрозии: поверхность — в
-// рельеф, толщина — материалу) — после чтения карты, с кэшем на диске (каталог far_eroded\ рядом с картой гор) и заново
+// рельеф, толщина — материалу; морены — линиями течения льда от скальных стен, трещины — в шейдере) — после чтения карты, с кэшем на диске (каталог far_eroded\ рядом с картой гор) и заново
 // после правки подокон «Fluvial erosion» и «Glacial erosion». Только главный вид: в
 // каскадах теней и Scene::bounds гор нет — их тень даёт карта края тени (TerrainSunShadow, farHeight).
 // Уровни мельче уровня карты гор — дальности карты: камера далеко от карты над обрывами гор — там возможны трещины; камера
@@ -61,8 +61,9 @@ private:
 	// их поверхность в m_source, толщина льда — в ice (сетка карты гор; без строки GlacialErosion — пусто). Без строк — исходная
 	// карта
 	void applyErosion( std::vector<float>& ice );
-	// Толщина льда наших дней → текстура R16_FLOAT с мипами для материала; пусто — тексель без льда
-	bool createIceTexture( const std::vector<float>& ice );
+	// Ледники наших дней для материала (m_ice, m_source): течение льда, карта морен по его линиям с шириной moraineWidth и
+	// текстура RGBA8 с мипами — толщина льда, доля линий обломков, течение; без льда — тексель без льда
+	bool createGlacierTexture( float moraineWidth );
 	FluvialErosionSettings fluvialSettings() const;
 	GlacialErosionSettings glacierSettings() const;
 	bool createShader();
@@ -81,6 +82,7 @@ private:
 	uint32_t m_mipBias = 0;				// уровень, чей квад — её тексель: мип гор уровня L — L − m_mipBias
 	std::vector<float> m_original;		// карта гор из файла, м, строки с севера
 	std::vector<float> m_source;		// она же после эрозии, с ледниками наших дней
+	std::vector<float> m_ice;			// толщина их льда, м, как карта гор; без строки GlacialErosion — пусто
 	std::vector<float> m_heights;		// она же с мипом карты внутри — то, что видят вершины
 	// Пирамида min / max: уровень k (с 1) — тексель 2^k текселей, строки с севера; уровень 0 — m_heights
 	std::vector<std::vector<float>> m_minPyramid;
@@ -105,8 +107,9 @@ private:
 	Buffer m_constants;					// FarTerrainBuffer
 	Texture m_heightTexture;
 	ShaderView m_heightView;
-	Texture m_iceTexture;				// толщина льда ледников наших дней, м (как карта гор)
-	ShaderView m_iceView;
+	Texture m_glacierTexture;			// ледники наших дней (как карта гор): толщина льда, линии обломков (морены), течение
+	ShaderView m_glacierView;
+	float m_moraineWidth = 0.0f;		// ширина, с которой построена карта морен, м
 	PropertyContainer m_properties;
 	PropertyContainer m_fluvialProperties;	// подокно «Fluvial erosion» (есть, если у гор есть строка FluvialErosion)
 	PropertyContainer m_glacierProperties;	// подокно «Glacial erosion» (есть, если у гор есть строка GlacialErosion)

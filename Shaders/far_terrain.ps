@@ -1,7 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Материал дальних гор вокруг карты (FarTerrain): нормаль — по их высоте (far_terrain.sh), веса слоёв — правила по высоте и
 // уклону (скала, осыпи, снег, луг, трава долины) и ледники наших дней, у карты — её слои; смесь слоёв — terrain_material.sh,
-// как у рельефа карты. Лес издали — тоном земли (лес моделями на горах не стоит), голый лёд — слой снега с оттенком льда
+// как у рельефа карты. Лес издали — тоном земли (лес моделями на горах не стоит), голый лёд — слой снега с оттенком льда,
+// морены — слой осыпей, трещины — тёмные полосы поперёк течения льда
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "lighting.sh"
@@ -24,7 +25,9 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float weights[maxLayers];
 	float forest;
 	float bareIce;
-	farRuleWeights( position, normal, farIceThickness( position.xz ), weights, forest, bareIce );
+	float glacier;
+	const FarGlacier ice = farGlacier( position.xz );
+	farRuleWeights( position, normal, ice, weights, forest, bareIce, glacier );
 	// У карты — её слои (край splat-карты продолжен наружу), к g_farMaterialBlend — правила
 	const float rules = smoothstep( 0.0f, max( g_farMaterialBlend, 1e-3f ), distanceToMap( position.xz ) );
 	const float2 uv = heightMapUV( position.xz );
@@ -35,6 +38,9 @@ float4 main( PixelInputType input ) : SV_TARGET
 		weights[layer] = lerp( painted[layer], weights[layer], rules );
 	forest *= rules;
 	bareIce *= rules;
+	// Трещины — где течение льда круче (ледопады; уклон усреднён по льду — не по мелким неровностям поверхности), и под снегом:
+	// тень в трещине видна сквозь снежные мосты
+	const float crevassed = glacier * rules * slopeShare( g_crevasseSlope, rsqrt( 1.0f + dot( ice.downhill, ice.downhill ) ) );
 
 	// Вдали — третий масштаб текстур («Macro texture scale» к дальнему): повтор дальнего за километры складывается в сетку
 	// бугорков, а в крупном рисунок скал и снега остаётся. Обе выборки — только в полосе «Macro distance»
@@ -62,7 +68,9 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.normal = normalize( normal + mixed.detail * ( 1.0f - forest ) );
 	surface.geometricNormal = normal;
 	// Пятна яркости земли (тексели 13 и 40 м, как у карты) — только вблизи: вдали их мип 0 дал бы решётку
-	const float3 albedo = mixed.albedo * lerp( 1.0f, g_glacierIceTint, bareIce );
+	float3 albedo = mixed.albedo * lerp( 1.0f, g_glacierIceTint, bareIce );
+	[branch] if( crevassed > 0.0f )
+		albedo = lerp( albedo, g_crevasseColor, crevassed * farCrevasses( position.xz, ice.downhill, footprint ) );
 	surface.baseColor = lerp( albedo * lerp( terrainBrightness( position.xz ), 1.0f, macro ), g_forestColor, forest );
 	surface.metallic = 0.0f;
 	surface.specular = 1.0f;

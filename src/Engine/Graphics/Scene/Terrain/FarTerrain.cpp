@@ -1,6 +1,7 @@
 #include "FarTerrain.h"
 #include <algorithm>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -95,31 +96,201 @@ std::vector<float> blur( const std::vector<float>& values, uint32_t size, int32_
 {
 	std::vector<float> current = values;
 	std::vector<float> next( values.size() );
+	std::vector<float> sums( size );
 	const float scale = 1.0f / static_cast<float>( 2 * radius + 1 );
+	const int64_t last = static_cast<int64_t>( size ) - 1;
+	auto clamped = [last]( int64_t i ) { return static_cast<size_t>( std::clamp<int64_t>( i, 0, last ) ); };
 	for( int pass = 0; pass < 3; ++pass )
 	{
-		for( int axis = 0; axis < 2; ++axis )
+		// По строкам — скользящая сумма окна
+		for( uint32_t row = 0; row < size; ++row )
 		{
-			for( uint32_t line = 0; line < size; ++line )
+			const float* line = &current[static_cast<size_t>( row ) * size];
+			float* out = &next[static_cast<size_t>( row ) * size];
+			float sum = 0.0f;
+			for( int32_t k = -radius; k <= radius; ++k )
+				sum += line[clamped( k )];
+			for( uint32_t i = 0; i < size; ++i )
 			{
-				auto index = [&]( int64_t i )
-				{
-					const size_t k = static_cast<size_t>( std::clamp<int64_t>( i, 0, size - 1 ) );
-					return axis == 0 ? static_cast<size_t>( line ) * size + k : k * size + line;
-				};
-				float sum = 0.0f;
-				for( int32_t k = -radius; k <= radius; ++k )
-					sum += current[index( k )];
-				for( uint32_t i = 0; i < size; ++i )
-				{
-					next[index( i )] = sum * scale;
-					sum += current[index( static_cast<int64_t>( i ) + radius + 1 )] - current[index( static_cast<int64_t>( i ) - radius )];
-				}
+				out[i] = sum * scale;
+				sum += line[clamped( static_cast<int64_t>( i ) + radius + 1 )] - line[clamped( static_cast<int64_t>( i ) - radius )];
 			}
-			std::swap( current, next );
 		}
+		std::swap( current, next );
+		// По столбцам — те же суммы всех столбцов сразу, строка за строкой (подряд в памяти: столбец с шагом в строку
+		// читался бы в разы дольше); порядок сложений у каждого столбца прежний
+		std::fill( sums.begin(), sums.end(), 0.0f );
+		for( int32_t k = -radius; k <= radius; ++k )
+		{
+			const float* line = &current[clamped( k ) * size];
+			for( uint32_t col = 0; col < size; ++col )
+				sums[col] += line[col];
+		}
+		for( uint32_t i = 0; i < size; ++i )
+		{
+			float* out = &next[static_cast<size_t>( i ) * size];
+			const float* add = &current[clamped( static_cast<int64_t>( i ) + radius + 1 ) * size];
+			const float* remove = &current[clamped( static_cast<int64_t>( i ) - radius ) * size];
+			for( uint32_t col = 0; col < size; ++col )
+			{
+				out[col] = sums[col] * scale;
+				sums[col] += add[col] - remove[col];
+			}
+		}
+		std::swap( current, next );
 	}
 	return current;
+}
+
+// Течение ледника: уклон поверхности льда, усреднённый по льду на ~270 м (взвешенное размытие: клетки без льда не входят,
+// толстый лёд весит больше). Лёд течёт по уклону поверхности, усреднённому на несколько своих толщин — продольные напряжения
+// связывают соседние слои (Kamb, Echelmeyer 1986): у края течение идёт вдоль долины, а не к её середине, как местный уклон.
+// surface — поверхность с ледником, ice — толщина льда, м, обе size², строки с севера; iceFrom — тоньше льда нет. Результат —
+// уклон вниз по течению в мировых осях (x — на восток, z — на север), м на м; без льда — 0
+void glacierFlow( const std::vector<float>& surface, const std::vector<float>& ice, uint32_t size, float cell, float iceFrom,
+				  std::vector<float>& downhillX, std::vector<float>& downhillZ )
+{
+	const int64_t n = size;
+	auto at = [n]( int64_t col, int64_t row ) { return static_cast<size_t>( row * n + col ); };
+	std::vector<float> weight( surface.size() ), weightedX( surface.size() ), weightedZ( surface.size() );
+	for( int64_t row = 0; row < n; ++row )
+		for( int64_t col = 0; col < n; ++col )
+		{
+			const size_t i = at( col, row );
+			const int64_t left = std::max<int64_t>( col - 1, 0 ), right = std::min( col + 1, n - 1 );
+			const int64_t up = std::max<int64_t>( row - 1, 0 ), down = std::min( row + 1, n - 1 );
+			// Ряды — с севера: вниз по ряду — на юг
+			const float x = -( surface[at( right, row )] - surface[at( left, row )] ) / ( static_cast<float>( right - left ) * cell );
+			const float z = ( surface[at( col, down )] - surface[at( col, up )] ) / ( static_cast<float>( down - up ) * cell );
+			weight[i] = ice[i] > iceFrom ? std::min( ice[i], 100.0f ) : 0.0f;
+			weightedX[i] = x * weight[i];
+			weightedZ[i] = z * weight[i];
+		}
+	constexpr float couplingLength = 270.0f;	// σ усреднения, м
+	const int32_t radius = std::max( 1, static_cast<int32_t>( std::lround( couplingLength / cell ) ) );
+	const std::vector<float> spreadWeight = blur( weight, size, radius );
+	downhillX = blur( weightedX, size, radius );
+	downhillZ = blur( weightedZ, size, radius );
+	for( size_t i = 0; i < surface.size(); ++i )
+	{
+		const bool glacier = ice[i] > iceFrom && spreadWeight[i] > 1e-3f;
+		downhillX[i] = glacier ? downhillX[i] / spreadWeight[i] : 0.0f;
+		downhillZ[i] = glacier ? downhillZ[i] / spreadWeight[i] : 0.0f;
+	}
+}
+
+// Морены (Eyles, Rogerson 1978): обломки со скальных стен над ледником (камнепад). Ниже линии фирна они остаются на льду у
+// стены — боковая морена полосой вдоль края. Срединная морена — продолжение боковых двух слившихся потоков: начинается у конца
+// разделявшего их отрога (или у нижнего края нунатака), где скала лежит выше по течению, и идёт по линии течения льда
+// (glacierFlow). Линий от каждой точки стены нет: выше линии фирна обломки засыпает снег, а линии от боковых стен на узком
+// языке сходятся и ложатся на всю его ширину. surface — поверхность с ледником, ice — толщина льда, м, downhillX / Z —
+// течение, все size², строки с севера; cell — шаг, м; iceFrom — тоньше льда нет; firnLine — линия фирна, м; width — ширина
+// морены, м. Результат — доля морены около точки, 0…1 (на оси одной линии — около 1); lineCount — линий срединных морен
+std::vector<float> traceMoraines( const std::vector<float>& surface, const std::vector<float>& ice, const std::vector<float>& downhillX,
+								  const std::vector<float>& downhillZ, uint32_t size, float cell, float iceFrom, float firnLine,
+								  float width, uint32_t& lineCount )
+{
+	const int64_t n = size;
+	auto at = [n]( int64_t col, int64_t row ) { return static_cast<size_t>( row * n + col ); };
+	auto glacier = [&]( int64_t col, int64_t row ) { return col >= 0 && row >= 0 && col < n && row < n && ice[at( col, row )] > iceFrom; };
+	auto sample = [&]( const std::vector<float>& values, float x, float y )
+	{
+		const float cx = std::clamp( x, 0.0f, static_cast<float>( n - 1 ) ), cy = std::clamp( y, 0.0f, static_cast<float>( n - 1 ) );
+		const int64_t x0 = std::min( static_cast<int64_t>( cx ), n - 2 ), y0 = std::min( static_cast<int64_t>( cy ), n - 2 );
+		const float fx = cx - static_cast<float>( x0 ), fy = cy - static_cast<float>( y0 );
+		return ( values[at( x0, y0 )] * ( 1.0f - fx ) + values[at( x0 + 1, y0 )] * fx ) * ( 1.0f - fy ) +
+			   ( values[at( x0, y0 + 1 )] * ( 1.0f - fx ) + values[at( x0 + 1, y0 + 1 )] * fx ) * fy;
+	};
+
+	// Куда от края льда скала — уклон сглаженной маски «не лёд»; сколько её вокруг — она же шире: у кончика отрога лёд обступает
+	// скалу с трёх сторон (её мало), у стены кара скала — половина и больше
+	std::vector<float> rock( surface.size() );
+	for( int64_t row = 0; row < n; ++row )
+		for( int64_t col = 0; col < n; ++col )
+			rock[at( col, row )] = glacier( col, row ) ? 0.0f : 1.0f;
+	const std::vector<float> rockAround = blur( rock, size, 4 );
+	rock = blur( rock, size, 2 );
+
+	// Край льда под стеной (соседняя клетка без льда выше на 10 м): у стены сбоку от течения ниже линии фирна — боковая морена
+	// полосой вдоль края; там, где скала выше по течению (конец отрога между двумя потоками, нижний край нунатака), — линия
+	// срединной морены. След линии — шагом в полклетки, билинейно в четыре клетки (сглаженная линия шириной ~2 клетки)
+	std::vector<float> lines( surface.size(), 0.0f );
+	constexpr float step = 0.5f;
+	const uint32_t maxSteps = 4 * size;
+	lineCount = 0;
+	for( int64_t row = 0; row < n; ++row )
+	{
+		for( int64_t col = 0; col < n; ++col )
+		{
+			const float own = surface[at( col, row )];
+			if( !glacier( col, row ) )
+				continue;
+			bool wall = false;
+			for( int64_t dy = -1; dy <= 1 && !wall; ++dy )
+				for( int64_t dx = -1; dx <= 1 && !wall; ++dx )
+				{
+					const int64_t c = col + dx, r = row + dy;
+					wall = c >= 0 && r >= 0 && c < n && r < n && !glacier( c, r ) && surface[at( c, r )] > own + 10.0f;
+				}
+			if( !wall )
+				continue;
+			// Течение и направление на скалу — в осях сетки (ряды — с севера)
+			const float flowCol = downhillX[at( col, row )], flowRow = -downhillZ[at( col, row )];
+			const float towardCol = rock[at( std::min( col + 1, n - 1 ), row )] - rock[at( std::max<int64_t>( col - 1, 0 ), row )];
+			const float towardRow = rock[at( col, std::min( row + 1, n - 1 ) )] - rock[at( col, std::max<int64_t>( row - 1, 0 ) )];
+			const float lengths = std::sqrt( ( flowCol * flowCol + flowRow * flowRow ) * ( towardCol * towardCol + towardRow * towardRow ) );
+			const bool upstream = lengths > 1e-6f && ( flowCol * towardCol + flowRow * towardRow ) / lengths < -0.5f;
+			if( !upstream || rockAround[at( col, row )] > 0.3f )
+			{
+				if( own < firnLine )
+					lines[at( col, row )] = 1.0f;
+				continue;
+			}
+			++lineCount;
+			float x = static_cast<float>( col ), y = static_cast<float>( row );
+			float previousX = 0.0f, previousY = 0.0f;
+			for( uint32_t k = 0; k < maxSteps; ++k )
+			{
+				const int64_t x0 = static_cast<int64_t>( std::floor( x ) ), y0 = static_cast<int64_t>( std::floor( y ) );
+				if( !glacier( std::lround( x ), std::lround( y ) ) || x0 < 0 || y0 < 0 || x0 + 1 >= n || y0 + 1 >= n )
+					break;
+				const float fx = x - static_cast<float>( x0 ), fy = y - static_cast<float>( y0 );
+				float& a = lines[at( x0, y0 )];
+				float& b = lines[at( x0 + 1, y0 )];
+				float& c = lines[at( x0, y0 + 1 )];
+				float& d = lines[at( x0 + 1, y0 + 1 )];
+				a = std::max( a, ( 1.0f - fx ) * ( 1.0f - fy ) );
+				b = std::max( b, fx * ( 1.0f - fy ) );
+				c = std::max( c, ( 1.0f - fx ) * fy );
+				d = std::max( d, fx * fy );
+				// По течению (ряды — с севера: на север — вверх по ряду); на ровном и там, где течение повернуло назад (ямка
+				// сглаженного течения: иначе линия качается в ней до предела шагов), линия кончается
+				const float flowX = sample( downhillX, x, y ), flowZ = sample( downhillZ, x, y );
+				const float length = std::sqrt( flowX * flowX + flowZ * flowZ );
+				if( length < 1e-3f )
+					break;
+				const float directionX = flowX / length, directionY = -flowZ / length;
+				if( directionX * previousX + directionY * previousY < 0.0f )
+					break;
+				previousX = directionX;
+				previousY = directionY;
+				x += step * directionX;
+				y += step * directionY;
+			}
+		}
+	}
+
+	// Шире линии — размытием: гаусс σ (три прохода прямоугольного фильтра радиуса r — σ² = r² + r) с полушириной width;
+	// на оси одиночной линии — снова около 1
+	const float sigma = width / ( 2.355f * cell );
+	const int32_t radius = static_cast<int32_t>( std::lround( 0.5f * ( std::sqrt( 1.0f + 4.0f * sigma * sigma ) - 1.0f ) ) );
+	if( radius < 1 )
+		return lines;
+	std::vector<float> spread = blur( lines, size, radius );
+	const float scale = 2.5f * std::sqrt( static_cast<float>( radius * radius + radius ) );
+	for( float& value : spread )
+		value = std::min( value * scale, 1.0f );
+	return spread;
 }
 
 bool loadFloats( const std::filesystem::path& path, uint32_t size, std::vector<float>& values )
@@ -192,9 +363,8 @@ bool FarTerrain::initialize( const FarTerrainSettings& settings, CDLODTerrain& t
 	}
 	m_erosionRevision = m_fluvialProperties.revision() + m_glacierProperties.revision();
 
-	std::vector<float> ice;
-	applyErosion( ice );
-	if( !createShader() || !createIceTexture( ice ) || !bake() )
+	applyErosion( m_ice );
+	if( !createShader() || !createGlacierTexture( settings.moraineWidth ) || !bake() )
 		return false;
 
 	m_patch.initialize( CDLODTerrain::patchDim + 1, CDLODTerrain::patchDim + 1 );
@@ -358,31 +528,53 @@ bool FarTerrain::bake()
 	return true;
 }
 
-bool FarTerrain::createIceTexture( const std::vector<float>& ice )
+bool FarTerrain::createGlacierTexture( float moraineWidth )
 {
-	// Без ледников — тексель без льда: шейдер читает текстуру всегда. Мипы — средние: вдали край ледника не рябит
-	const uint32_t size = ice.empty() ? 1 : m_size;
-	const float none = 0.0f;
-	const float* values = ice.empty() ? &none : ice.data();
+	m_moraineWidth = moraineWidth;
+	// Без ледников — тексель без льда: шейдер читает текстуру всегда
+	const uint32_t size = m_ice.empty() ? 1 : m_size;
+	const size_t count = static_cast<size_t>( size ) * size;
+	std::vector<float> moraines( count, 0.0f ), downhillX( count, 0.0f ), downhillZ( count, 0.0f );
+	if( !m_ice.empty() )
+	{
+		const auto start = std::chrono::steady_clock::now();
+		const float cell = m_loaded.extent / static_cast<float>( m_size );
+		const float iceFrom = std::max( settings().glacierCover.from, 1.0f );
+		uint32_t lines = 0;
+		glacierFlow( m_source, m_ice, m_size, cell, iceFrom, downhillX, downhillZ );
+		moraines = traceMoraines( m_source, m_ice, downhillX, downhillZ, m_size, cell, iceFrom, glacierSettings().presentEla,
+								  moraineWidth, lines );		LOG( "Glacier moraines: " + std::to_string( lines ) + " debris lines, ms: " +
+			 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() ) );
+	}
+
+	// R — толщина льда до 255 м (правила — до 200), G — доля линий обломков, B, A — течение: уклон вниз по течению по x и z,
+	// −1…1 → 0…1. Мипы — средние: вдали край ледника и морены не рябят
 	ScratchImage image;
-	if( FAILED( image.Initialize2D( DXGI_FORMAT_R32_FLOAT, size, size, 1, 1 ) ) )
+	if( FAILED( image.Initialize2D( DXGI_FORMAT_R8G8B8A8_UNORM, size, size, 1, 1 ) ) )
 		return false;
 	const Image& top = *image.GetImage( 0, 0, 0 );
+	auto unorm = []( float value ) { return static_cast<uint8_t>( std::lround( std::clamp( value, 0.0f, 1.0f ) * 255.0f ) ); };
 	for( uint32_t row = 0; row < size; ++row )
-		std::memcpy( top.pixels + row * top.rowPitch, values + static_cast<size_t>( row ) * size, size * sizeof( float ) );
+	{
+		uint8_t* line = top.pixels + row * top.rowPitch;
+		for( uint32_t col = 0; col < size; ++col )
+		{
+			const size_t i = static_cast<size_t>( row ) * size + col;
+			line[col * 4] = unorm( ( m_ice.empty() ? 0.0f : m_ice[i] ) / 255.0f );
+			line[col * 4 + 1] = unorm( moraines[i] );
+			line[col * 4 + 2] = unorm( 0.5f + 0.5f * downhillX[i] );
+			line[col * 4 + 3] = unorm( 0.5f + 0.5f * downhillZ[i] );
+		}
+	}
 	ScratchImage mipChain;
 	if( size > 1 && FAILED( GenerateMipMaps( top, TEX_FILTER_BOX | TEX_FILTER_FORCE_NON_WIC, 0, mipChain ) ) )
 		return false;
-	const ScratchImage& source = size > 1 ? mipChain : image;
-	ScratchImage converted;
-	if( FAILED( Convert( source.GetImages(), source.GetImageCount(), source.GetMetadata(), DXGI_FORMAT_R16_FLOAT, TEX_FILTER_DEFAULT,
-						 TEX_THRESHOLD_DEFAULT, converted ) ) ||
-		!GpuImages::createTexture( converted, m_iceTexture, m_iceView ) )
+	if( !GpuImages::createTexture( size > 1 ? mipChain : image, m_glacierTexture, m_glacierView ) )
 	{
-		LOG( "Far terrain: can`t create the glacier ice texture" );
+		LOG( "Far terrain: can`t create the glacier texture" );
 		return false;
 	}
-	DMD3D::instance().setName( m_iceTexture, "Far terrain glacier ice" );
+	DMD3D::instance().setName( m_glacierTexture, "Far terrain glaciers" );
 	return true;
 }
 
@@ -453,10 +645,12 @@ void FarTerrain::update( const FrameContext& frame )
 	if( glacierEdited )
 	{
 		m_erosionRevision = erosionRevision;
-		std::vector<float> ice;
-		applyErosion( ice );
-		createIceTexture( ice );
+		applyErosion( m_ice );
+		createGlacierTexture( m_properties["Moraine width"].data<float>() );
 	}
+	// Правка ширины морен закончилась — карта морен заново (эрозия — нет)
+	else if( !m_properties["Moraine width"].editing() && m_properties["Moraine width"].data<float>() != m_moraineWidth )
+		createGlacierTexture( m_properties["Moraine width"].data<float>() );
 	// Карту построили заново (перестройка русел) или сменили её множитель — её мип в горах заново
 	if( glacierEdited || m_bakedRevision != m_pipeline->heightRevision() || m_bakedMultiplier != m_pipeline->heightMultiplier() ||
 		m_bakedOffset != m_pipeline->heightOffset() )
@@ -522,6 +716,10 @@ void FarTerrain::renderCustom( const RenderContext& context )
 		params.glacierFirnLine = rules.glacier ? rules.glacier->presentEla : 1.0e6f;
 		params.glacierIceTint = rules.glacierIceTint;
 		params.glacierCover = heightRange( rules.glacierCover );
+		params.crevasseSlope = slopeCosines( rules.crevasseSlope );
+		params.crevasseSpacing = std::max( rules.crevasseSpacing, 1.0f );
+		params.crevasseColor = rules.crevasseColor;
+		params.moraineCover = XMFLOAT2( rules.moraineCover.from, std::max( rules.moraineCover.to, rules.moraineCover.from + 0.01f ) );
 	} );
 	DMD3D::instance().setConstantBuffer( farTerrainConstantSlot, m_constants );
 
@@ -534,7 +732,7 @@ void FarTerrain::renderCustom( const RenderContext& context )
 	if( !depthOnly )
 	{
 		m_pipeline->material().bind();
-		DMD3D::instance().setSRV( 2, m_iceView );
+		DMD3D::instance().setSRV( 2, m_glacierView );
 	}
 
 	context.constants.setPerObjectBuffer( XMMatrixIdentity() );

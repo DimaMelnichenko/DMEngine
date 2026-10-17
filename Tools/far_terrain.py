@@ -51,7 +51,12 @@ CREATE TABLE IF NOT EXISTS FarTerrain (
     forest_slope_from REAL, forest_slope_to REAL,
     forest_color TEXT,
     glacier_cover_from REAL, glacier_cover_to REAL,
-    glacier_ice_tint TEXT
+    glacier_ice_tint TEXT,
+    crevasse_slope_from REAL, crevasse_slope_to REAL,
+    crevasse_spacing REAL,
+    crevasse_color TEXT,
+    moraine_width REAL,
+    moraine_cover_from REAL, moraine_cover_to REAL
 );
 """
 
@@ -118,7 +123,9 @@ def migrate(db):
     existing = [row[1] for row in db.execute('PRAGMA table_info(FarTerrain)')]
     for column, kind in (('macro_distance_from', 'REAL'), ('macro_distance_to', 'REAL'), ('macro_texture_scale', 'REAL'),
                          ('shadow_resolution', 'INTEGER'), ('glacier_cover_from', 'REAL'), ('glacier_cover_to', 'REAL'),
-                         ('glacier_ice_tint', 'TEXT')):
+                         ('glacier_ice_tint', 'TEXT'), ('crevasse_slope_from', 'REAL'), ('crevasse_slope_to', 'REAL'),
+                         ('crevasse_spacing', 'REAL'), ('crevasse_color', 'TEXT'), ('moraine_width', 'REAL'),
+                         ('moraine_cover_from', 'REAL'), ('moraine_cover_to', 'REAL')):
         if column not in existing:
             db.execute('ALTER TABLE FarTerrain ADD COLUMN %s %s' % (column, kind))
     if 'glacial_erosion' not in [row[1] for row in db.execute('PRAGMA table_info(FarTerrain)')]:

@@ -14,7 +14,9 @@
 #include "far_terrain_constants.h"
 
 DM_SRV( Texture2D, g_farHeightMap, 1 );	// карта гор: R32_FLOAT в метрах с полной цепочкой мипов, строки с севера
-DM_SRV( Texture2D, g_farIce, 2 );			// толщина льда ледников наших дней, м: как карта гор, мипы — средние (у пикселя)
+// Ледники наших дней, как карта гор (RGBA8, FarTerrain::createGlacierTexture): R — толщина льда / 255 м, G — доля линий
+// обломков (морены), B, A — течение: уклон поверхности льда вниз по течению по x и z, усреднённый по льду (−1…1 → 0…1)
+DM_SRV( Texture2D, g_farGlacier, 2 );
 
 float2 farHeightMapUV( float2 worldXZ )
 {
@@ -157,18 +159,83 @@ void addRuleWeight( inout float weights[maxLayers], int layer, float weight )
 		weights[i] += (int)i == layer ? weight : 0.0f;
 }
 
-// Толщина льда ледников наших дней, м (мип — по размеру пикселя)
-float farIceThickness( float2 worldXZ )
+// Ледник наших дней в точке (мип — по размеру пикселя)
+struct FarGlacier
 {
-	return g_farIce.Sample( g_SamplerLinearClamp, farHeightMapUV( worldXZ ) ).r;
+	float thickness;	// толщина льда, м
+	float debris;		// доля линий обломков
+	float2 downhill;	// течение: уклон поверхности льда вниз по течению (x, z мира), м на м
+};
+
+FarGlacier farGlacier( float2 worldXZ )
+{
+	const float4 texel = g_farGlacier.Sample( g_SamplerLinearClamp, farHeightMapUV( worldXZ ) );
+	FarGlacier glacier;
+	glacier.thickness = texel.r * 255.0f;
+	glacier.debris = texel.g;
+	glacier.downhill = texel.ba * 2.0f - 1.0f;
+	return glacier;
+}
+
+// Случайное 0…1 по целой точке (хеш с перемешиванием битов, как у PCG)
+float farHash( int2 cell )
+{
+	uint value = uint( cell.x ) * 1664525u + uint( cell.y ) * 1013904223u + 374761393u;
+	value ^= value >> 16;
+	value *= 0x7feb352du;
+	value ^= value >> 15;
+	value *= 0x846ca68bu;
+	value ^= value >> 16;
+	return float( value ) / 4294967295.0f;
+}
+
+// Трещины поперёк течения льда — тёмные рваные полосы с шагом g_crevasseSpacing: downhill — течение (FarGlacier), полоса —
+// где координата вдоль течения проходит середину шага, отрезки — по шуму вдоль трещины. Координата вдоль течения — в своих
+// ячейках по четыре шага со своим началом: от одного начала на километры поворот течения сдвигал бы фазу полос, между
+// ячейками — смесь четырёх соседних. footprint — размер пикселя, м: там, где шаг — единицы пикселей, полосы переходят в свою
+// среднюю долю (без ряби). Результат — доля трещины 0…1
+float farCrevasses( float2 worldXZ, float2 downhill, float footprint )
+{
+	const float average = 0.08f;	// средняя доля: полоса ~15 % шага, отрезки — около половины длины
+	const float horizontal = length( downhill );
+	const float scale = footprint / g_crevasseSpacing;
+	const float detail = 1.0f - smoothstep( 0.1f, 0.35f, scale );
+	[branch] if( detail <= 0.0f || horizontal < 1e-3f )
+		return average;
+	const float2 along = downhill / horizontal;
+	const float2 across = float2( -along.y, along.x );
+	const float cellSize = 4.0f * g_crevasseSpacing;
+	const float2 grid = worldXZ / cellSize - 0.5f;
+	const float2 base = floor( grid );
+	const float2 f = grid - base;
+	const float edge = max( 0.05f, scale );	// край полосы не тоньше пикселя
+	float lines = 0.0f;
+	[unroll] for( int k = 0; k < 4; ++k )
+	{
+		const int2 corner = int2( k & 1, k >> 1 );
+		const int2 cell = int2( base ) + corner;
+		const float2 local = worldXZ - ( float2( cell ) + 0.5f ) * cellSize;
+		const float phase = farHash( cell );
+		const float s = dot( local, along ) / g_crevasseSpacing + 7.0f * phase;
+		const float t = dot( local, across ) / g_crevasseSpacing;
+		const float stripe = floor( s );
+		const float gap = g_terrainNoise.SampleLevel( g_SamplerLinearWrap,
+			float2( 0.7f * t + 13.7f * stripe, 7.3f * stripe + 256.0f * phase ) / 256.0f, 0.0f ).r;
+		const float crack = 1.0f - smoothstep( 0.04f, 0.04f + edge, abs( frac( s ) - 0.5f ) );
+		const float2 corners = lerp( 1.0f - f, f, float2( corner ) );
+		lines += corners.x * corners.y * crack * smoothstep( -0.1f, 0.2f, gap );
+	}
+	return lerp( average, lines, detail );
 }
 
 // Веса восьми слоёв по правилам гор: трава долины → сухой луг по высоте, поверх — осыпи по уклону выше их высоты, скала по
-// уклону, снег по высоте (к северу ниже, граница пятнами) там, где он держится; поверх всего — ледник (лёд толщиной ice, м):
-// слой снега на любом уклоне. forest — доля леса: тон земли ниже границы леса на некрутых склонах, без снега, скалы и льда,
-// пятнами; bareIce — доля голого льда (оттенок g_glacierIceTint): ниже линии фирна и там, где снег не держится, без снега
-// по правилу
-void farRuleWeights( float3 position, float3 normal, float ice, out float weights[maxLayers], out float forest, out float bareIce )
+// уклону, снег по высоте (к северу ниже, граница пятнами) там, где он держится; поверх всего — ледник (ice —
+// farGlacier): слой снега на любом уклоне, ниже линии фирна на нём — морены слоем осыпей (выше линии обломки погребены
+// снегом). forest — доля леса: тон земли ниже границы леса на некрутых склонах, без снега, скалы и льда, пятнами; bareIce —
+// доля голого льда (оттенок g_glacierIceTint): ниже линии фирна и там, где снег не держится, без снега по правилу и морен;
+// glacier — доля ледника
+void farRuleWeights( float3 position, float3 normal, FarGlacier ice, out float weights[maxLayers], out float forest,
+					 out float bareIce, out float glacier )
 {
 	[unroll] for( uint i = 0; i < maxLayers; ++i )
 		weights[i] = 0.0f;
@@ -184,11 +251,13 @@ void farRuleWeights( float3 position, float3 normal, float ice, out float weight
 	const float snowHolds = 1.0f - slopeShare( g_snowSlope, slope );
 	const float snowLine = g_snowHeight.x - g_snowNorth * northFacing + g_snowNoise * snowNoise;
 	const float snow = heightShare( float2( snowLine, snowLine + g_snowHeight.y - g_snowHeight.x ), height ) * snowHolds;
-	// Ледник: снег на нём — выше линии фирна (граница — пятнами вполовину снеговой) или по правилу снега, на крутом — голый лёд
-	const float glacier = heightShare( g_glacierCover, ice );
-	const float firn = heightShare( float2( g_glacierFirnLine - 50.0f, g_glacierFirnLine + 50.0f ), height + 0.5f * g_snowNoise * snowNoise ) *
-					   snowHolds;
-	bareIce = glacier * ( 1.0f - max( snow, firn ) );
+	// Ледник: снег на нём — выше линии фирна (граница — пятнами вполовину снеговой) или по правилу снега, на крутом — голый лёд;
+	// ниже линии фирна — морены
+	glacier = heightShare( g_glacierCover, ice.thickness );
+	const float firnLine = heightShare( float2( g_glacierFirnLine - 50.0f, g_glacierFirnLine + 50.0f ), height + 0.5f * g_snowNoise * snowNoise );
+	const float firn = firnLine * snowHolds;
+	const float moraine = heightShare( g_moraineCover, ice.debris ) * ( 1.0f - firnLine );
+	bareIce = glacier * ( 1.0f - max( snow, firn ) ) * ( 1.0f - moraine );
 
 	// Каждый следующий — поверх: остальные уступают ему свою долю
 	float grassWet = 1.0f - meadow;
@@ -200,9 +269,9 @@ void farRuleWeights( float3 position, float3 normal, float ice, out float weight
 	const float keepIce = 1.0f - glacier;
 	addRuleWeight( weights, g_grassWetLayer, grassWet * keepRock * keepSnow * keepIce );
 	addRuleWeight( weights, g_grassDryLayer, grassDry * keepRock * keepSnow * keepIce );
-	addRuleWeight( weights, g_talusLayer, scree * keepRock * keepSnow * keepIce );
+	addRuleWeight( weights, g_talusLayer, scree * keepRock * keepSnow * keepIce + glacier * moraine );
 	addRuleWeight( weights, g_rockLayer, rock * keepSnow * keepIce );
-	addRuleWeight( weights, g_snowLayer, snow * keepIce + glacier );
+	addRuleWeight( weights, g_snowLayer, snow * keepIce + glacier * ( 1.0f - moraine ) );
 
 	forest = ( 1.0f - heightShare( g_forestLine, height + 150.0f * farNoise( position.xz, 300.0f ) ) ) *
 			 ( 1.0f - slopeShare( g_forestSlope, slope ) ) * keepRock * keepSnow * keepIce *

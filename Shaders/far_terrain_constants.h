@@ -39,6 +39,10 @@ DM_CONSTANTS( FarTerrainBuffer, b4 )
 	DM_FIELD( float3, glacierIceTint );		// голый лёд — альбедо слоя снега × это
 	DM_FIELD( float, farPadding );
 	DM_FIELD( float2, glacierCover );		// толщина льда, м: от x до y — ледник набирает полную силу
+	DM_FIELD( float2, moraineCover );		// доля линий обломков: от x до y — морена (слой осыпей) набирает силу
+	DM_FIELD( float3, crevasseColor );		// альбедо в трещине, линейное
+	DM_FIELD( float, crevasseSpacing );		// шаг трещин вдоль течения льда, м
+	DM_FIELD( float2, crevasseSlope );		// трещины по уклону поверхности льда
 	DM_FIELD( float2, farPadding2 );
 };
 DM_CONSTANTS_END

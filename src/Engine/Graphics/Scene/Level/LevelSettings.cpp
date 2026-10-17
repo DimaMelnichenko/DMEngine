@@ -432,6 +432,7 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 {
 	using Settings = FarTerrainSettings;
 	static const char* rules = "Rules";
+	static const char* glaciers = "Glaciers";
 	static const SettingsSchema<Settings> schema = {
 		// Данные генератора (Tools/gen_far_terrain.py, Tools/far_terrain.py) — только в базе
 		{ "heightmap", nullptr, DM_SETTING( heightMap ) },
@@ -478,9 +479,21 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 		  rules },
 		{ "glacier_cover_from,glacier_cover_to", "Glacier cover", DM_SETTING( glacierCover ), 0.0f, 200.0f, "m",
 		  "Present-day glaciers (Glacial erosion, Present ELA): ice thicker than this is snow on any slope; below the firn line "
-		  "(the present ELA) and where snow does not hold it is bare ice", settingRangeControl, rules },
+		  "(the present ELA) and where snow does not hold it is bare ice", settingRangeControl, glaciers },
 		{ "glacier_ice_tint", "Glacier ice tint", DM_SETTING( glacierIceTint ), 0.0f, 0.0f, "",
-		  "Bare glacier ice: the snow layer albedo times this", settingColor, rules },
+		  "Bare glacier ice: the snow layer albedo times this", settingColor, glaciers },
+		{ "crevasse_slope_from,crevasse_slope_to", "Crevasse slope", DM_SETTING( crevasseSlope ), 0.0f, 90.0f, "deg",
+		  "Crevasses across the ice flow where the glacier surface is steeper (icefalls)", settingRangeControl, glaciers },
+		{ "crevasse_spacing", "Crevasse spacing", DM_SETTING( crevasseSpacing ), 5.0f, 500.0f, "m",
+		  "Crevasse spacing along the flow; far away they turn into their average tone", settingClampLow, glaciers },
+		{ "crevasse_color", "Crevasse color", DM_SETTING( crevasseColor ), 0.0f, 0.0f, "", "Albedo inside a crevasse, linear",
+		  settingColor, glaciers },
+		{ "moraine_width", "Moraine width", DM_SETTING( moraineWidth ), 32.0f, 500.0f, "m",
+		  "Debris from the rock walls above a glacier rides its flow lines: lateral moraines along the edges, medial ones from "
+		  "where two ice streams join; the moraine map is rebuilt when the edit ends", settingClampLow, glaciers },
+		{ "moraine_cover_from,moraine_cover_to", "Moraine cover", DM_SETTING( moraineCover ), 0.0f, 1.0f, "",
+		  "Share of the debris lines around a point: the moraine (scree layer) grows from the start to the end; below the firn "
+		  "line only", settingRangeControl, glaciers },
 	};
 	return schema;
 }
