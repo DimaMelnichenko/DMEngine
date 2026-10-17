@@ -2,8 +2,8 @@
 // Дальние горы вокруг карты (FarTerrain, docs/far_terrain.md): высота и материал. Карта гор — своя грубая карта высот в
 // метрах (тексель — квад уровня g_farMipBias); у карты высота переходит в её высоту: h = lerp( карта, горы, w ), w — 0 у края
 // карты, 1 — за g_farBlendDistance. На краю w = 0 ровно, и высоту карты вершина считает тем же кодом, что рельеф карты
-// (sampleHeight, cdlod_patch.sh): трещин нет. Материал — правила по высоте и уклону на слоях террейна по ролям, у карты — её
-// слои (splat-карта, край продолжен наружу)
+// (sampleHeight, cdlod_patch.sh): трещин нет. Материал — правила по высоте и уклону на слоях террейна по ролям и ледники наших
+// дней по толщине льда, у карты — её слои (splat-карта, край продолжен наружу)
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef FAR_TERRAIN_SH
@@ -14,6 +14,7 @@
 #include "far_terrain_constants.h"
 
 DM_SRV( Texture2D, g_farHeightMap, 1 );	// карта гор: R32_FLOAT в метрах с полной цепочкой мипов, строки с севера
+DM_SRV( Texture2D, g_farIce, 2 );			// толщина льда ледников наших дней, м: как карта гор, мипы — средние (у пикселя)
 
 float2 farHeightMapUV( float2 worldXZ )
 {
@@ -156,10 +157,18 @@ void addRuleWeight( inout float weights[maxLayers], int layer, float weight )
 		weights[i] += (int)i == layer ? weight : 0.0f;
 }
 
+// Толщина льда ледников наших дней, м (мип — по размеру пикселя)
+float farIceThickness( float2 worldXZ )
+{
+	return g_farIce.Sample( g_SamplerLinearClamp, farHeightMapUV( worldXZ ) ).r;
+}
+
 // Веса восьми слоёв по правилам гор: трава долины → сухой луг по высоте, поверх — осыпи по уклону выше их высоты, скала по
-// уклону, снег по высоте (к северу ниже, граница пятнами) там, где он держится. forest — доля леса: тон земли ниже границы
-// леса на некрутых склонах, без снега и скалы, пятнами
-void farRuleWeights( float3 position, float3 normal, out float weights[maxLayers], out float forest )
+// уклону, снег по высоте (к северу ниже, граница пятнами) там, где он держится; поверх всего — ледник (лёд толщиной ice, м):
+// слой снега на любом уклоне. forest — доля леса: тон земли ниже границы леса на некрутых склонах, без снега, скалы и льда,
+// пятнами; bareIce — доля голого льда (оттенок g_glacierIceTint): ниже линии фирна и там, где снег не держится, без снега
+// по правилу
+void farRuleWeights( float3 position, float3 normal, float ice, out float weights[maxLayers], out float forest, out float bareIce )
 {
 	[unroll] for( uint i = 0; i < maxLayers; ++i )
 		weights[i] = 0.0f;
@@ -171,9 +180,15 @@ void farRuleWeights( float3 position, float3 normal, out float weights[maxLayers
 	const float meadow = heightShare( g_meadowHeight, height );
 	const float scree = slopeShare( g_screeSlope, slope ) * heightShare( g_screeHeight, height );
 	const float rock = slopeShare( g_rockSlope, slope );
-	const float snowLine = g_snowHeight.x - g_snowNorth * northFacing + g_snowNoise * farNoise( position.xz, 500.0f );
-	const float snow = heightShare( float2( snowLine, snowLine + g_snowHeight.y - g_snowHeight.x ), height ) *
-					   ( 1.0f - slopeShare( g_snowSlope, slope ) );
+	const float snowNoise = farNoise( position.xz, 500.0f );
+	const float snowHolds = 1.0f - slopeShare( g_snowSlope, slope );
+	const float snowLine = g_snowHeight.x - g_snowNorth * northFacing + g_snowNoise * snowNoise;
+	const float snow = heightShare( float2( snowLine, snowLine + g_snowHeight.y - g_snowHeight.x ), height ) * snowHolds;
+	// Ледник: снег на нём — выше линии фирна (граница — пятнами вполовину снеговой) или по правилу снега, на крутом — голый лёд
+	const float glacier = heightShare( g_glacierCover, ice );
+	const float firn = heightShare( float2( g_glacierFirnLine - 50.0f, g_glacierFirnLine + 50.0f ), height + 0.5f * g_snowNoise * snowNoise ) *
+					   snowHolds;
+	bareIce = glacier * ( 1.0f - max( snow, firn ) );
 
 	// Каждый следующий — поверх: остальные уступают ему свою долю
 	float grassWet = 1.0f - meadow;
@@ -182,14 +197,15 @@ void farRuleWeights( float3 position, float3 normal, out float weights[maxLayers
 	grassDry *= 1.0f - scree;
 	const float keepRock = 1.0f - rock;
 	const float keepSnow = 1.0f - snow;
-	addRuleWeight( weights, g_grassWetLayer, grassWet * keepRock * keepSnow );
-	addRuleWeight( weights, g_grassDryLayer, grassDry * keepRock * keepSnow );
-	addRuleWeight( weights, g_talusLayer, scree * keepRock * keepSnow );
-	addRuleWeight( weights, g_rockLayer, rock * keepSnow );
-	addRuleWeight( weights, g_snowLayer, snow );
+	const float keepIce = 1.0f - glacier;
+	addRuleWeight( weights, g_grassWetLayer, grassWet * keepRock * keepSnow * keepIce );
+	addRuleWeight( weights, g_grassDryLayer, grassDry * keepRock * keepSnow * keepIce );
+	addRuleWeight( weights, g_talusLayer, scree * keepRock * keepSnow * keepIce );
+	addRuleWeight( weights, g_rockLayer, rock * keepSnow * keepIce );
+	addRuleWeight( weights, g_snowLayer, snow * keepIce + glacier );
 
 	forest = ( 1.0f - heightShare( g_forestLine, height + 150.0f * farNoise( position.xz, 300.0f ) ) ) *
-			 ( 1.0f - slopeShare( g_forestSlope, slope ) ) * keepRock * keepSnow *
+			 ( 1.0f - slopeShare( g_forestSlope, slope ) ) * keepRock * keepSnow * keepIce *
 			 saturate( 0.8f + 0.6f * farNoise( position.xz, 150.0f ) );
 }
 

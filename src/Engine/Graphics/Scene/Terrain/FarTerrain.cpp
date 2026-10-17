@@ -192,8 +192,9 @@ bool FarTerrain::initialize( const FarTerrainSettings& settings, CDLODTerrain& t
 	}
 	m_erosionRevision = m_fluvialProperties.revision() + m_glacierProperties.revision();
 
-	applyErosion();
-	if( !createShader() || !bake() )
+	std::vector<float> ice;
+	applyErosion( ice );
+	if( !createShader() || !createIceTexture( ice ) || !bake() )
 		return false;
 
 	m_patch.initialize( CDLODTerrain::patchDim + 1, CDLODTerrain::patchDim + 1 );
@@ -357,6 +358,34 @@ bool FarTerrain::bake()
 	return true;
 }
 
+bool FarTerrain::createIceTexture( const std::vector<float>& ice )
+{
+	// Без ледников — тексель без льда: шейдер читает текстуру всегда. Мипы — средние: вдали край ледника не рябит
+	const uint32_t size = ice.empty() ? 1 : m_size;
+	const float none = 0.0f;
+	const float* values = ice.empty() ? &none : ice.data();
+	ScratchImage image;
+	if( FAILED( image.Initialize2D( DXGI_FORMAT_R32_FLOAT, size, size, 1, 1 ) ) )
+		return false;
+	const Image& top = *image.GetImage( 0, 0, 0 );
+	for( uint32_t row = 0; row < size; ++row )
+		std::memcpy( top.pixels + row * top.rowPitch, values + static_cast<size_t>( row ) * size, size * sizeof( float ) );
+	ScratchImage mipChain;
+	if( size > 1 && FAILED( GenerateMipMaps( top, TEX_FILTER_BOX | TEX_FILTER_FORCE_NON_WIC, 0, mipChain ) ) )
+		return false;
+	const ScratchImage& source = size > 1 ? mipChain : image;
+	ScratchImage converted;
+	if( FAILED( Convert( source.GetImages(), source.GetImageCount(), source.GetMetadata(), DXGI_FORMAT_R16_FLOAT, TEX_FILTER_DEFAULT,
+						 TEX_THRESHOLD_DEFAULT, converted ) ) ||
+		!GpuImages::createTexture( converted, m_iceTexture, m_iceView ) )
+	{
+		LOG( "Far terrain: can`t create the glacier ice texture" );
+		return false;
+	}
+	DMD3D::instance().setName( m_iceTexture, "Far terrain glacier ice" );
+	return true;
+}
+
 XMFLOAT2 FarTerrain::pyramidBounds( uint32_t k, int x0, int x1, int z0, int z1 ) const
 {
 	const int size = static_cast<int>( m_size >> k );
@@ -424,7 +453,9 @@ void FarTerrain::update( const FrameContext& frame )
 	if( glacierEdited )
 	{
 		m_erosionRevision = erosionRevision;
-		applyErosion();
+		std::vector<float> ice;
+		applyErosion( ice );
+		createIceTexture( ice );
 	}
 	// Карту построили заново (перестройка русел) или сменили её множитель — её мип в горах заново
 	if( glacierEdited || m_bakedRevision != m_pipeline->heightRevision() || m_bakedMultiplier != m_pipeline->heightMultiplier() ||
@@ -487,17 +518,24 @@ void FarTerrain::renderCustom( const RenderContext& context )
 		params.snowLayer = m_pipeline->roleLayer( TerrainLayerRole::snow );
 		params.macroDistance = heightRange( rules.macroDistance );
 		params.macroTextureScale = std::max( rules.macroTextureScale, 1.0f );
+		// Без строки GlacialErosion льда нет (текстура — тексель без льда), линия фирна — выше любых гор
+		params.glacierFirnLine = rules.glacier ? rules.glacier->presentEla : 1.0e6f;
+		params.glacierIceTint = rules.glacierIceTint;
+		params.glacierCover = heightRange( rules.glacierCover );
 	} );
 	DMD3D::instance().setConstantBuffer( farTerrainConstantSlot, m_constants );
 
 	m_patchBuffer.updateData( m_patches.data(), sizeof( Patch ) * m_patches.size() );
 	m_patchBuffer.setToSlot( SLOT_INSTANCE_DATA );
 
-	// Карта высот уровня — у края, карта гор — дальше; слои — пиксельному шейдеру
+	// Карта высот уровня — у края, карта гор — дальше; слои и лёд — пиксельному шейдеру
 	DMD3D::instance().setSRV( 0, m_pipeline->heightMapView() );
 	DMD3D::instance().setSRV( 1, m_heightView );
 	if( !depthOnly )
+	{
 		m_pipeline->material().bind();
+		DMD3D::instance().setSRV( 2, m_iceView );
+	}
 
 	context.constants.setPerObjectBuffer( XMMatrixIdentity() );
 	DMD3D::instance().setVertexBuffer( m_patch.vertexBuffer(), sizeof( XMFLOAT3 ) );
@@ -561,9 +599,10 @@ GlacialErosionSettings FarTerrain::glacierSettings() const
 	return settings;
 }
 
-void FarTerrain::applyErosion()
+void FarTerrain::applyErosion( std::vector<float>& ice )
 {
 	m_source = m_original;
+	ice.clear();
 	if( !m_loaded.fluvial && !m_loaded.glacier )
 		return;
 	const FluvialErosionSettings fluvial = fluvialSettings();
@@ -578,9 +617,9 @@ void FarTerrain::applyErosion()
 	};
 
 	// Ключ кэша: исходная карта, её место, карта уровня и настройки обеих эрозий; версия — при правке алгоритмов
-	// (FluvialErosion, glacial_erosion.cs)
+	// (FluvialErosion, glacial_erosion.cs, ледники наших дней)
 	Fingerprint key;
-	const char version[] = "mountain-erosion-v4";
+	const char version[] = "mountain-erosion-v5";
 	key.add( version, sizeof( version ) );
 	key.addWords( m_original.data(), m_original.size() * sizeof( float ) );
 	key.add( m_size );
@@ -611,10 +650,16 @@ void FarTerrain::applyErosion()
 		std::ifstream keyFile( directory / "key.txt" );
 		std::getline( keyFile, cachedKey );
 	}
-	if( cachedKey == keyText && loadFloats( directory / "height.dds", m_size, m_source ) )
+	if( cachedKey == keyText )
 	{
-		LOG( "Mountain erosion: from cache " + directory.string() );
-		return;
+		std::vector<float> heights;
+		if( loadFloats( directory / "height.dds", m_size, heights ) && ( !m_loaded.glacier || loadFloats( directory / "ice.dds", m_size, ice ) ) )
+		{
+			m_source = std::move( heights );
+			LOG( "Mountain erosion: from cache " + directory.string() );
+			return;
+		}
+		ice.clear();
 	}
 
 	// Сетка средних по клеткам и изменение на ней — к карте гор кубическим B-сплайном
@@ -644,16 +689,14 @@ void FarTerrain::applyErosion()
 	}
 
 	// 2. Ледники — троги по долинам; под льдом мелкий рельеф сглажен (ледник шлифует ложе)
-	std::vector<float> iceMax;
-	uint32_t iceSize = 0;
 	if( m_loaded.glacier )
 	{
-		iceSize = gridSize( glacier.resolution );
+		const uint32_t iceSize = gridSize( glacier.resolution );
 		const uint32_t factor = m_size / iceSize;
+		const float iceCell = m_loaded.extent / static_cast<float>( iceSize );
 		const std::vector<float> coarse = downsample( m_source, iceSize );
 		GlacialErosion::Result result;
-		if( GlacialErosion::run( coarse, iceSize, m_loaded.extent / static_cast<float>( iceSize ), m_loaded.origin, m_pipeline->worldSize(),
-								 glacier, result ) )
+		if( GlacialErosion::run( coarse, iceSize, iceCell, m_loaded.origin, m_pipeline->worldSize(), glacier, "Glacial erosion", result ) )
 		{
 			std::vector<float> change( coarse.size() );
 			for( size_t i = 0; i < coarse.size(); ++i )
@@ -683,7 +726,6 @@ void FarTerrain::applyErosion()
 					m_source[i] += fineChange[i] - polish * iceCover * fade * ( m_source[i] - smooth[i] );
 				}
 			}
-			iceMax = std::move( result.iceMax );
 		}
 		else
 			LOG( "Glacial erosion: failed, the mountains stay without it" );
@@ -743,12 +785,39 @@ void FarTerrain::applyErosion()
 				}
 			}
 		}
+
+		// 4. Ледники наших дней: тот же лёд без эрозии по готовому рельефу с линией равновесия наших дней — кары и долинные
+		// ледники под вершинами. Поверхность толстого льда гладкая — ложе сетки льда (B-сплайн) плюс лёд: мелкий рельеф под ним
+		// не виден, выступы выше неё торчат скалами (нунатаки); к краю ледника (тоньше ~30 м) — плавно к ложу
+		GlacialErosionSettings present = glacier;
+		present.ela = glacier.presentEla;
+		present.erosionYears = 0.0f;
+		const std::vector<float> bed = downsample( m_source, iceSize );
+		GlacialErosion::Result now;
+		if( GlacialErosion::run( bed, iceSize, iceCell, m_loaded.origin, m_pipeline->worldSize(), present, "Present glaciers", now ) )
+		{
+			const std::vector<float> fineIce = upsample( now.ice, iceSize, factor );
+			const std::vector<float> smoothBed = upsample( bed, iceSize, factor );
+			ice.resize( m_source.size() );
+			for( size_t i = 0; i < m_source.size(); ++i )
+			{
+				const float t = std::clamp( fineIce[i] / 30.0f, 0.0f, 1.0f );
+				const float surface = std::max( m_source[i], smoothBed[i] + fineIce[i] );
+				const float top = m_source[i] + t * t * ( 3.0f - 2.0f * t ) * ( surface - m_source[i] );
+				ice[i] = top - m_source[i];
+				m_source[i] = top;
+			}
+		}
+		else
+			LOG( "Present glaciers: failed, the mountains stay without them" );
 	}
 
 	std::error_code error;
 	std::filesystem::create_directories( directory, error );
+	if( ice.empty() )
+		std::filesystem::remove( directory / "ice.dds", error );
 	if( GpuImages::saveFloatDDS( ( directory / "height.dds" ).wstring(), m_size, m_size, m_source.data() ) &&
-		( iceMax.empty() || GpuImages::saveFloatDDS( ( directory / "ice.dds" ).wstring(), iceSize, iceSize, iceMax.data() ) ) )
+		( ice.empty() || GpuImages::saveFloatDDS( ( directory / "ice.dds" ).wstring(), m_size, m_size, ice.data() ) ) )
 	{
 		std::ofstream( directory / "key.txt" ) << keyText << "\n";
 		LOG( "Mountain erosion: written " + directory.string() );

@@ -49,7 +49,9 @@ CREATE TABLE IF NOT EXISTS FarTerrain (
     snow_slope_from REAL, snow_slope_to REAL,
     forest_line_from REAL, forest_line_to REAL,
     forest_slope_from REAL, forest_slope_to REAL,
-    forest_color TEXT
+    forest_color TEXT,
+    glacier_cover_from REAL, glacier_cover_to REAL,
+    glacier_ice_tint TEXT
 );
 """
 
@@ -91,7 +93,8 @@ CREATE TABLE IF NOT EXISTS GlacialErosion (
     frost_peaks REAL,
     frost_peak_spacing REAL,
     frost_peak_height_from REAL, frost_peak_height_to REAL,
-    frost_peak_fade_from REAL, frost_peak_fade_to REAL
+    frost_peak_fade_from REAL, frost_peak_fade_to REAL,
+    present_ela REAL
 );
 """
 
@@ -102,7 +105,7 @@ def migrate(db):
     db.executescript(FLUVIAL_SCHEMA)
     glacier_columns = [row[1] for row in db.execute('PRAGMA table_info(GlacialErosion)')]
     for column in ('frost_peaks', 'frost_peak_spacing', 'frost_peak_height_from', 'frost_peak_height_to', 'frost_peak_fade_from',
-                   'frost_peak_fade_to'):
+                   'frost_peak_fade_to', 'present_ela'):
         if column not in glacier_columns:
             db.execute('ALTER TABLE GlacialErosion ADD COLUMN %s REAL' % column)
     fluvial_columns = [row[1] for row in db.execute('PRAGMA table_info(FluvialErosion)')]
@@ -114,7 +117,8 @@ def migrate(db):
         print('migrated: FarTerrain.fluvial_erosion added')
     existing = [row[1] for row in db.execute('PRAGMA table_info(FarTerrain)')]
     for column, kind in (('macro_distance_from', 'REAL'), ('macro_distance_to', 'REAL'), ('macro_texture_scale', 'REAL'),
-                         ('shadow_resolution', 'INTEGER')):
+                         ('shadow_resolution', 'INTEGER'), ('glacier_cover_from', 'REAL'), ('glacier_cover_to', 'REAL'),
+                         ('glacier_ice_tint', 'TEXT')):
         if column not in existing:
             db.execute('ALTER TABLE FarTerrain ADD COLUMN %s %s' % (column, kind))
     if 'glacial_erosion' not in [row[1] for row in db.execute('PRAGMA table_info(FarTerrain)')]:

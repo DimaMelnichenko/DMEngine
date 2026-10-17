@@ -77,7 +77,7 @@ bool readTexture( const Texture& texture, uint32_t size, std::vector<float>& val
 }
 
 bool GlacialErosion::run( const std::vector<float>& bed, uint32_t size, float cell, const XMFLOAT2& origin, float mapSize,
-						  const GlacialErosionSettings& settings, Result& result )
+						  const GlacialErosionSettings& settings, const char* name, Result& result )
 {
 	const auto start = std::chrono::steady_clock::now();
 	DMD3D& d3d = DMD3D::instance();
@@ -157,7 +157,8 @@ bool GlacialErosion::run( const std::vector<float>& bed, uint32_t size, float ce
 		}
 		d3d.waitForGpu();
 	}
-	if( !readTexture( bedTexture.texture, size, result.bed ) || !readTexture( iceMax.texture, size, result.iceMax ) )
+	if( !readTexture( bedTexture.texture, size, result.bed ) || !readTexture( ice.texture, size, result.ice ) ||
+		!readTexture( iceMax.texture, size, result.iceMax ) )
 		return false;
 
 	float deepest = 0.0f;
@@ -170,8 +171,8 @@ bool GlacialErosion::run( const std::vector<float>& bed, uint32_t size, float ce
 		glaciated += result.iceMax[i] > 10.0f ? 1 : 0;
 	}
 	char text[256];
-	std::snprintf( text, sizeof( text ), "Glacial erosion %ux%u, cell %.0f m: %u steps of %.3f yr, ice cover %.1f%%, thickest %.0f m, "
-				   "deepest erosion %.0f m, ms: %.0f", size, size, cell, steps, params.timeStep,
+	std::snprintf( text, sizeof( text ), "%s %ux%u, cell %.0f m, ELA %.0f m: %u steps of %.3f yr, ice cover %.1f%%, thickest %.0f m, "
+				   "deepest erosion %.0f m, ms: %.0f", name, size, size, cell, settings.ela, steps, params.timeStep,
 				   100.0 * static_cast<double>( glaciated ) / static_cast<double>( result.bed.size() ), thickest, deepest,
 				   std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
 	LOG( text );

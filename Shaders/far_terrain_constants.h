@@ -35,7 +35,11 @@ DM_CONSTANTS( FarTerrainBuffer, b4 )
 	DM_FIELD( int, snowLayer );
 	DM_FIELD( float2, macroDistance );		// от x до y м от камеры текстуры слоёв переходят в третий масштаб…
 	DM_FIELD( float, macroTextureScale );	// …во столько раз крупнее дальнего
+	DM_FIELD( float, glacierFirnLine );		// ледник наших дней (g_farIce): выше — фирн (снег), ниже — голый лёд, м
+	DM_FIELD( float3, glacierIceTint );		// голый лёд — альбедо слоя снега × это
 	DM_FIELD( float, farPadding );
+	DM_FIELD( float2, glacierCover );		// толщина льда, м: от x до y — ледник набирает полную силу
+	DM_FIELD( float2, farPadding2 );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

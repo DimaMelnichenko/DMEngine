@@ -281,6 +281,10 @@ struct GlacialErosionSettings
 	SettingRange frostPeakHeight{ 1200.0f, 2000.0f };	// зубцы набирают высоту от from до to над морем, м
 	// У карты зубцы гаснут только у самого стыка (форму массива они не меняют): полные — дальше to от её края, м
 	SettingRange frostPeakFade{ 500.0f, 1500.0f };
+	// Ледники наших дней: тот же лёд без эрозии по готовому рельефу (iceYears лет) — кары и долинные ледники под вершинами;
+	// выше вершин — ледников нет. 2000 м — выбор Dimok 2026-10-17 по сетке снимков (лёд заполняет долины южного хребта, ~4 %
+	// гор): ниже ela ледникового периода — его лёд за короткий прогон не доходит до настоящего размаха
+	float presentEla = 2000.0f;			// линия равновесия наших дней, м; она же линия фирна на леднике
 };
 const SettingsSchema<GlacialErosionSettings>& glacialErosionSchema();
 
@@ -312,6 +316,10 @@ struct FarTerrainSettings
 	SettingRange forestLine{ 1400.0f, 1700.0f };	// лес (тон земли) — ниже, к верху полосы сходит на нет, м
 	SettingRange forestSlope{ 28.0f, 38.0f };	// круче — леса нет, градусы
 	DirectX::XMFLOAT3 forestColor = DirectX::XMFLOAT3( 0.03f, 0.05f, 0.03f );	// цвет леса издали, линейный
+	// Ледники наших дней (строка GlacialErosion, presentEla): лёд толще from…to — слой снега на любом уклоне; ниже линии фирна
+	// и там, где снег не держится, — голый лёд: альбедо слоя снега × оттенок льда
+	SettingRange glacierCover{ 5.0f, 30.0f };	// толщина льда, м
+	DirectX::XMFLOAT3 glacierIceTint = DirectX::XMFLOAT3( 0.55f, 0.72f, 0.9f );
 	SettingRange macroDistance{ 800.0f, 2500.0f };	// дальше текстуры слоёв — в третьем масштабе (повтор не виден сеткой), м
 	float macroTextureScale = 8.0f;		// во столько раз крупнее дальнего масштаба
 	int32_t shadowResolution = 512;		// текселей тени солнца на всё кольцо по стороне (TerrainSunShadow)

@@ -476,6 +476,11 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 		  settingRangeControl, rules },
 		{ "forest_color", "Forest color", DM_SETTING( forestColor ), 0.0f, 0.0f, "", "Forest seen from far away, linear", settingColor,
 		  rules },
+		{ "glacier_cover_from,glacier_cover_to", "Glacier cover", DM_SETTING( glacierCover ), 0.0f, 200.0f, "m",
+		  "Present-day glaciers (Glacial erosion, Present ELA): ice thicker than this is snow on any slope; below the firn line "
+		  "(the present ELA) and where snow does not hold it is bare ice", settingRangeControl, rules },
+		{ "glacier_ice_tint", "Glacier ice tint", DM_SETTING( glacierIceTint ), 0.0f, 0.0f, "",
+		  "Bare glacier ice: the snow layer albedo times this", settingColor, rules },
 	};
 	return schema;
 }
@@ -548,6 +553,9 @@ const SettingsSchema<GlacialErosionSettings>& glacialErosionSchema()
 		{ "frost_peak_fade_from,frost_peak_fade_to", "Frost peak fade", DM_SETTING( frostPeakFade ), 0.0f, 10000.0f, "m",
 		  std::string( "Near the level map the spikes fade out only at the seam: full farther than the end from its edge (they do "
 					   "not change the massifs - the mountains above the valley get them too)" ) + rebuilt, settingRangeControl },
+		{ "present_ela", "Present ELA", DM_SETTING( presentEla ), 0.0f, 5000.0f, "m",
+		  std::string( "Present-day glaciers: the same ice without erosion over the final relief (Ice years) with this equilibrium "
+					   "line - cirque and valley glaciers below the peaks; it is the firn line on them too" ) + rebuilt },
 	};
 	return schema;
 }

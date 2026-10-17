@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Материал дальних гор вокруг карты (FarTerrain): нормаль — по их высоте (far_terrain.sh), веса слоёв — правила по высоте и
-// уклону (скала, осыпи, снег, луг, трава долины), у карты — её слои; смесь слоёв — terrain_material.sh, как у рельефа карты.
-// Лес издали — тоном земли (лес моделями на горах не стоит)
+// уклону (скала, осыпи, снег, луг, трава долины) и ледники наших дней, у карты — её слои; смесь слоёв — terrain_material.sh,
+// как у рельефа карты. Лес издали — тоном земли (лес моделями на горах не стоит), голый лёд — слой снега с оттенком льда
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "lighting.sh"
@@ -23,7 +23,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 	float weights[maxLayers];
 	float forest;
-	farRuleWeights( position, normal, weights, forest );
+	float bareIce;
+	farRuleWeights( position, normal, farIceThickness( position.xz ), weights, forest, bareIce );
 	// У карты — её слои (край splat-карты продолжен наружу), к g_farMaterialBlend — правила
 	const float rules = smoothstep( 0.0f, max( g_farMaterialBlend, 1e-3f ), distanceToMap( position.xz ) );
 	const float2 uv = heightMapUV( position.xz );
@@ -33,6 +34,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
 		weights[layer] = lerp( painted[layer], weights[layer], rules );
 	forest *= rules;
+	bareIce *= rules;
 
 	// Вдали — третий масштаб текстур («Macro texture scale» к дальнему): повтор дальнего за километры складывается в сетку
 	// бугорков, а в крупном рисунок скал и снега остаётся. Обе выборки — только в полосе «Macro distance»
@@ -60,7 +62,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.normal = normalize( normal + mixed.detail * ( 1.0f - forest ) );
 	surface.geometricNormal = normal;
 	// Пятна яркости земли (тексели 13 и 40 м, как у карты) — только вблизи: вдали их мип 0 дал бы решётку
-	surface.baseColor = lerp( mixed.albedo * lerp( terrainBrightness( position.xz ), 1.0f, macro ), g_forestColor, forest );
+	const float3 albedo = mixed.albedo * lerp( 1.0f, g_glacierIceTint, bareIce );
+	surface.baseColor = lerp( albedo * lerp( terrainBrightness( position.xz ), 1.0f, macro ), g_forestColor, forest );
 	surface.metallic = 0.0f;
 	surface.specular = 1.0f;
 	surface.roughness = lerp( mixed.roughness, 0.9f, forest );
