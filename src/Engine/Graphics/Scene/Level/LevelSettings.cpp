@@ -991,6 +991,8 @@ const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema()
 		{ "pause_from,pause_to", "Pause", DM_SETTING( pause ), -10.0f, 60.0f, "s",
 		  "Between the phrases; below 0 - the next phrase starts that much before the end of the previous one and they crossfade "
 		  "(a chorus recording looped without a seam)", settingRangeControl },
+		{ "arrival_from,arrival_to", "Arrival", DM_SETTING( arrival ), 0.0f, 600.0f, "s",
+		  "A singer left - the next one comes after this long (a cuckoo calls in sessions minutes apart)", settingRangeControl },
 		{ "volume", "Volume", DM_SETTING( volume ), 0.0f, 2.0f, "", "Of a singer 10 m away" },
 		{ "pitch", "Pitch spread", DM_SETTING( pitch ), 0.0f, 0.3f, "", "Each singer is higher or lower by up to this share" },
 	};

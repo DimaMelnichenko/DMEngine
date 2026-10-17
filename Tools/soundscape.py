@@ -11,7 +11,8 @@
 Поля — колонки SoundscapeLayers: sound (Sounds.name; несколько через запятую — у каждого певца одна из них), habitat (маски места через запятую: mask_forest_spruce, mask_grass …;
 пусто — где угодно), hours_from / hours_to (часы суток; от > до — через полночь), singers (певцов сразу), distance_from /
 distance_to (от слушателя, м), height_from / height_to (над землёй, м), bout_from / bout_to (поёт с одного места, с),
-pause_from / pause_to (между фразами, с), volume (в 10 м), pitch (разброс высоты певцов, доля). NULL — значение по умолчанию
+pause_from / pause_to (между фразами, с; меньше нуля — внахлёст), arrival_from / arrival_to (место опустело — следующий
+певец через столько, с), volume (в 10 м), pitch (разброс высоты певцов, доля). NULL — значение по умолчанию
 движка (SoundscapeLayerSettings). Сообщения — ASCII (Windows PowerShell 5.1, cmd).
 """
 import argparse
@@ -41,13 +42,18 @@ CREATE TABLE IF NOT EXISTS SoundscapeLayers (
     bout_to REAL,
     pause_from REAL,
     pause_to REAL,
+    arrival_from REAL,
+    arrival_to REAL,
     volume REAL,
     pitch REAL
 );
 """
 
 FIELDS = ['sound', 'habitat', 'hours_from', 'hours_to', 'singers', 'distance_from', 'distance_to', 'height_from', 'height_to',
-          'bout_from', 'bout_to', 'pause_from', 'pause_to', 'volume', 'pitch']
+          'bout_from', 'bout_to', 'pause_from', 'pause_to', 'arrival_from', 'arrival_to', 'volume', 'pitch']
+
+# Колонки, добавленные после первой версии таблицы: у базы без них — ALTER TABLE
+ADDED = [('arrival_from', 'REAL'), ('arrival_to', 'REAL')]
 
 
 def level_id(db, level):
@@ -81,6 +87,11 @@ def main():
     db = sqlite3.connect(DB)
     db.execute('PRAGMA foreign_keys = ON')
     db.executescript(SCHEMA)
+    existing = [row[1] for row in db.execute('PRAGMA table_info(SoundscapeLayers)')]
+    for column, kind in ADDED:
+        if column not in existing:
+            db.execute('ALTER TABLE SoundscapeLayers ADD COLUMN %s %s' % (column, kind))
+            print('migrated: SoundscapeLayers.%s added' % column)
     level = level_id(db, args.level)
 
     if args.command == 'list':

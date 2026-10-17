@@ -66,7 +66,7 @@ private:
 		PropertyContainer properties;
 		std::vector<std::shared_ptr<const AudioClip>> clips;	// записи слоя (Sounds через запятую)
 		std::vector<Singer> singers;
-		float spawnDelay = 0.0f;	// с: до следующего певца (прилетают не все сразу)
+		float spawnDelay = 0.0f;	// с: до следующего певца — идёт, пока место пустует («Arrival»)
 	};
 
 	Layer current( const LayerState& layer ) const;

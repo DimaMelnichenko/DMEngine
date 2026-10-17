@@ -25,9 +25,6 @@ constexpr float hourFade = 0.75f;
 constexpr int32_t placeTries = 16;
 // Слушатель ушёл: певец дальше верхней границы полосы во столько раз — улетает (допевает фразу)
 constexpr float leaveDistance = 1.5f;
-// Новый певец прилетает через столько секунд после прошлого (не все сразу)
-constexpr float spawnDelayFrom = 2.0f;
-constexpr float spawnDelayTo = 8.0f;
 // Кадр дольше (загрузка, точка останова) — время певцов идёт не больше чем на столько, с
 constexpr float maxStep = 0.25f;
 
@@ -87,7 +84,8 @@ bool Soundscape::initialize( const std::vector<Layer>& layers, const std::vector
 		}
 		if( layer->clips.empty() )
 			LOG( "Soundscape layer " + settings.name + " is silent: no sounds loaded" );
-		layer->spawnDelay = uniform( 0.0f, spawnDelayFrom );
+		// Первые певцы — не все сразу: в пределах «Arrival»
+		layer->spawnDelay = uniform( 0.0f, std::max( settings.arrival.from, 0.0f ) );
 		m_layers.push_back( std::move( layer ) );
 	}
 	m_mixer = &mixer;
@@ -265,8 +263,10 @@ void Soundscape::update( const FrameContext& frame )
 							 layer.singers.end() );
 
 		// Новый певец — если их меньше, чем нужно в этот час, и прошлый прилетел не только что
-		layer.spawnDelay -= step;
+		// Ожидание идёт, пока место пустует: «Arrival» — от того, как прошлый улетел
 		const auto alive = std::count_if( layer.singers.begin(), layer.singers.end(), []( const Singer& s ) { return s.boutLeft > 0.0f; } );
+		if( alive < wanted )
+			layer.spawnDelay -= step;
 		if( alive < wanted && layer.spawnDelay <= 0.0f )
 		{
 			Singer singer;
@@ -275,7 +275,7 @@ void Soundscape::update( const FrameContext& frame )
 				singer.clip = std::uniform_int_distribution<size_t>( 0, layer.clips.size() - 1 )( m_random );
 				layer.singers.push_back( singer );
 			}
-			layer.spawnDelay = uniform( spawnDelayFrom, spawnDelayTo );
+			layer.spawnDelay = uniform( settings.arrival.from, std::max( settings.arrival.to, settings.arrival.from ) );
 		}
 
 		// Звучащие фразы: с места певца — затухание, воздух, гребень
