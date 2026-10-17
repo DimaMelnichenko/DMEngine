@@ -65,16 +65,17 @@ void AudioDevice::update( FrameStats& stats )
 void AudioDevice::registerCommands( ConsoleCommands& console )
 {
 	console.registerCommand( "audio", "record <file.wav> <seconds> - the mix (before the volume and Mute of the output) into a 16-bit "
-							 "stereo WAV; stats - voices, mixer load, clipped samples",
+							 "stereo WAV; stats - voices, mixer load, clipped samples, frames quietened by the limiter",
 							 [this, &console]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
 		if( args.size() == 1 && args[0] == "stats" )
 		{
 			const AudioMixer::Stats stats = m_mixer.stats();
 			char text[256];
-			std::snprintf( text, sizeof( text ), "output %s, voices %u, mixer load %.2f %%, clipped samples %llu, blocks %llu",
-						   m_output.active() ? "active" : "none", stats.voices, stats.load * 100.0f,
-						   static_cast<unsigned long long>( stats.clipped ), static_cast<unsigned long long>( stats.blocks ) );
+			std::snprintf( text, sizeof( text ), "output %s, voices %u, mixer load %.2f %%, clipped samples %llu, limited frames %llu, "
+						   "blocks %llu", m_output.active() ? "active" : "none", stats.voices, stats.load * 100.0f,
+						   static_cast<unsigned long long>( stats.clipped ), static_cast<unsigned long long>( stats.limited ),
+						   static_cast<unsigned long long>( stats.blocks ) );
 			return reply->ok( text );
 		}
 		float seconds = 0.0f;

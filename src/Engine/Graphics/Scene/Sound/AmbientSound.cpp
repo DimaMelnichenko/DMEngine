@@ -4,6 +4,7 @@
 #include <iterator>
 #include <memory>
 #include "Engine\Audio\AudioSynth.h"
+#include "Logger\Logger.h"
 #include "Properties\SettingsProperties.h"
 #include "Terrain\TerrainPipeline.h"
 #include "Wind\Wind.h"
@@ -35,6 +36,28 @@ constexpr float crownWindGain = 1.2f;
 constexpr float crownHeight = 15.0f;
 // Громкость слоя растёт со скоростью ветра до полуторной опорной, дальше — нет
 constexpr float maxRelativeSpeed = 1.5f;
+// Ручьи: громкость места — по опорному расстоянию, ближе не растёт, м; ровная вода тоже журчит — к перепаду уровня в месте
+// прибавка, м; перекат — уклон воды от и до (доли); место, которое уже звучит, держится, пока другое не громче во столько раз;
+// у края слышимости — затухание с этой доли расстояния
+constexpr float streamReferenceDistance = 3.0f;
+constexpr float streamRoughness = 0.15f;
+// Громкость места — по мощности в этой степени: перепад «тихий ручей — водопад» в тысячи раз по мощности на слух — ~12 дБ;
+// мощность места — не меньше этой доли шумного: у плёса течение почти стоит, а вода у камней всё равно журчит
+constexpr float streamLoudness = 0.2f;
+constexpr float streamQuietest = 0.05f;
+constexpr float streamRapidsFrom = 0.02f;
+constexpr float streamRapidsTo = 0.15f;
+constexpr float streamKeep = 1.5f;
+constexpr float streamFadeFrom = 0.7f;
+// Поглощение воздухом: срез фильтра — 20 кГц / (1 + расстояние / это), м (в 100 м — 4 кГц, как ISO 9613-1 на высоких)
+constexpr float airAbsorptionDistance = 25.0f;
+// Заглушение гребнем: рельеф выше прямой «слушатель — вода» на столько, м, — ещё не гребень (бровки русла), на столько больше
+// — заглушено полностью: тише на долю и глуше до частоты
+constexpr float occlusionFrom = 0.5f;
+constexpr float occlusionRange = 2.5f;
+constexpr float occlusionAttenuation = 0.7f;
+constexpr float occlusionLowpass = 1000.0f;
+
 // Сектор стороны крон: лучи под этими углами к стороне, точки — на этих долях радиуса
 const float crownAngles[] = { -30.0f, 0.0f, 30.0f };
 const float crownDistances[] = { 0.06f, 0.125f, 0.25f, 0.5f, 1.0f };
@@ -58,6 +81,7 @@ AmbientSound::AmbientSound() : SceneObject( "Ambient sound" )
 	m_windProperties.setName( "Wind" );
 	m_grassProperties.setName( "Grass" );
 	m_crownProperties.setName( "Crowns" );
+	m_streamProperties.setName( "Streams" );
 }
 
 AmbientSound::~AmbientSound()
@@ -70,6 +94,8 @@ AmbientSound::~AmbientSound()
 		m_mixer->removeVoice( voice );
 	for( AudioMixer::VoiceId voice : m_crownVoices )
 		m_mixer->removeVoice( voice );
+	for( const StreamVoice& voice : m_streamVoices )
+		m_mixer->removeVoice( voice.voice );
 }
 
 bool AmbientSound::initialize( const Settings& settings, AudioMixer& mixer, Wind& wind, const TerrainPipeline* terrain )
@@ -81,9 +107,11 @@ bool AmbientSound::initialize( const Settings& settings, AudioMixer& mixer, Wind
 	addSettingProperties( m_windProperties, ambientSoundSchema(), settings, "Wind" );
 	addSettingProperties( m_grassProperties, ambientSoundSchema(), settings, "Grass" );
 	addSettingProperties( m_crownProperties, ambientSoundSchema(), settings, "Crowns" );
+	addSettingProperties( m_streamProperties, ambientSoundSchema(), settings, "Streams" );
 	m_properties.addSubContainer( &m_windProperties );
 	m_properties.addSubContainer( &m_grassProperties );
 	m_properties.addSubContainer( &m_crownProperties );
+	m_properties.addSubContainer( &m_streamProperties );
 
 	// Голоса — сразу все, молчат, пока не задана громкость
 	uint32_t seed = 0;
@@ -105,6 +133,8 @@ bool AmbientSound::initialize( const Settings& settings, AudioMixer& mixer, Wind
 	crowns.crackleShare = 0.2f;
 	for( AudioMixer::VoiceId& voice : m_crownVoices )
 		voice = mixer.addVoice( std::make_unique<FoliageGenerator>( voiceSeed( seed++ ), crowns ) );
+	// Голоса ручьёв заводятся по слышным местам воды (updateStreams)
+	m_nextSeed = seed;
 	m_mixer = &mixer;
 	return true;
 }
@@ -116,6 +146,7 @@ AmbientSound::Settings AmbientSound::settings() const
 	readSettingProperties( m_windProperties, ambientSoundSchema(), settings, "Wind" );
 	readSettingProperties( m_grassProperties, ambientSoundSchema(), settings, "Grass" );
 	readSettingProperties( m_crownProperties, ambientSoundSchema(), settings, "Crowns" );
+	readSettingProperties( m_streamProperties, ambientSoundSchema(), settings, "Streams" );
 	return settings;
 }
 
@@ -280,6 +311,192 @@ void AmbientSound::update( const FrameContext& frame )
 		target.controls[0] = crownRelative * 1.5f;
 		target.controls[1] = settings.crownFrequency;
 		m_mixer->setTarget( m_crownVoices[side], target );
+	}
+
+	updateStreams( settings, listener, volume );
+}
+
+void AmbientSound::buildStreamBlocks()
+{
+	m_streamBlocks.clear();
+	const TerrainHydrology::Result* hydrology = m_terrain ? m_terrain->hydrology() : nullptr;
+	const uint32_t size = hydrology ? hydrology->size : 0;
+	if( size == 0 || hydrology->staticWater.size() != static_cast<size_t>( size ) * size )
+		return;
+	const float world = m_terrain->worldSize();
+	const float texel = world / size;
+	const uint32_t cells = std::max( 1u, static_cast<uint32_t>( std::lround( streamBlock / texel ) ) );
+	const uint32_t blocks = ( size + cells - 1 ) / cells;
+	// Клетки ручьёв (не озёр) с водой глубже видимой — в свой блок: середина, уровень, перепад уровня и расход
+	struct Sum
+	{
+		double x = 0.0, z = 0.0, level = 0.0, flow = 0.0;
+		float low = 1e9f, high = -1e9f;
+		uint32_t count = 0;
+	};
+	std::vector<Sum> sums( static_cast<size_t>( blocks ) * blocks );
+	for( uint32_t row = 0; row < size; ++row )
+	{
+		for( uint32_t column = 0; column < size; ++column )
+		{
+			const XMFLOAT4& cell = hydrology->staticWater[static_cast<size_t>( row ) * size + column];
+			if( cell.x < -1e8f || cell.w > -1e8f )
+				continue;
+			// Строка 0 — дальний край по z
+			const float x = ( column + 0.5f ) * texel;
+			const float z = world - ( row + 0.5f ) * texel;
+			float ground = 0.0f;
+			if( !m_terrain->surfaceHeight( x, z, ground ) || cell.x - ground < TerrainHydrology::visibleWaterDepth )
+				continue;
+			Sum& sum = sums[static_cast<size_t>( row / cells ) * blocks + column / cells];
+			sum.x += x;
+			sum.z += z;
+			sum.level += cell.x;
+			sum.low = std::min( sum.low, cell.x );
+			sum.high = std::max( sum.high, cell.x );
+			// Расход через клетку поперёк течения: скорость × глубина × ширина клетки
+			sum.flow += std::sqrt( cell.y * cell.y + cell.z * cell.z ) * std::min( cell.x - ground, 2.0f ) * texel;
+			++sum.count;
+		}
+	}
+	// Мощность, которую теряет течение в блоке, — расход × перепад уровня (ρ g Q ΔH): её малая доля — звук. Расход — сумма
+	// по площади на длину блока
+	const float length = cells * texel;
+	for( const Sum& sum : sums )
+	{
+		if( sum.count == 0 )
+			continue;
+		StreamBlock block;
+		block.position = XMFLOAT3( static_cast<float>( sum.x / sum.count ), static_cast<float>( sum.level / sum.count ),
+								   static_cast<float>( sum.z / sum.count ) );
+		const float drop = sum.high - sum.low;
+		block.power = static_cast<float>( sum.flow / length ) * ( drop + streamRoughness );
+		block.rapids = smoothstep( streamRapidsFrom, streamRapidsTo, drop / length );
+		m_streamBlocks.push_back( block );
+	}
+	if( m_streamBlocks.empty() )
+		return;
+	// Мощность — доля шумного места уровня (громче 95 % мест): один водопад не делает тихими все ручьи
+	std::vector<float> powers;
+	for( const StreamBlock& block : m_streamBlocks )
+		powers.push_back( block.power );
+	const size_t loud = powers.size() * 95 / 100;
+	std::nth_element( powers.begin(), powers.begin() + loud, powers.end() );
+	const float reference = std::max( powers[loud], 1e-6f );
+	size_t rapids = 0;
+	for( StreamBlock& block : m_streamBlocks )
+	{
+		block.power = std::clamp( block.power / reference, streamQuietest, 4.0f );
+		rapids += block.rapids > 0.5f ? 1 : 0;
+	}
+	LOG( "Ambient sound: " + std::to_string( m_streamBlocks.size() ) + " places of stream water, " + std::to_string( rapids ) +
+		 " of them over steps" );
+}
+
+float AmbientSound::occlusion( const XMFLOAT3& from, const XMFLOAT3& to ) const
+{
+	if( !m_terrain )
+		return 0.0f;
+	constexpr int32_t samples = 12;
+	float excess = 0.0f;
+	for( int32_t i = 1; i < samples; ++i )
+	{
+		const float t = static_cast<float>( i ) / samples;
+		const float x = from.x + ( to.x - from.x ) * t;
+		const float z = from.z + ( to.z - from.z ) * t;
+		float ground = 0.0f;
+		if( m_terrain->surfaceHeight( x, z, ground ) )
+			excess = std::max( excess, ground - ( from.y + ( to.y - from.y ) * t ) );
+	}
+	return std::clamp( ( excess - occlusionFrom ) / occlusionRange, 0.0f, 1.0f );
+}
+
+void AmbientSound::updateStreams( const Settings& settings, const AudioListener& listener, float volume )
+{
+	if( m_terrain && m_terrain->heightRevision() != m_streamRevision )
+	{
+		m_streamRevision = m_terrain->heightRevision();
+		buildStreamBlocks();
+		for( const StreamVoice& voice : m_streamVoices )
+			m_mixer->removeVoice( voice.voice );
+		m_streamVoices.clear();
+	}
+	const float streamVolume = volume * std::max( settings.streamVolume, 0.0f );
+	const size_t voiceCount = streamVolume > 0.0f ? static_cast<size_t>( std::clamp( settings.streamVoices, 0, 16 ) ) : 0;
+	const float maxDistance = std::max( settings.streamDistance, 1.0f );
+
+	// Слышимость места: громкость × опорное расстояние / расстояние; ключ выбора — с запасом у звучащих (голоса не скачут)
+	struct Candidate
+	{
+		size_t block;
+		float distance;
+		float gain;
+		float key;
+		float occlusion;
+	};
+	std::vector<Candidate> candidates;
+	if( voiceCount > 0 )
+	{
+		for( size_t i = 0; i < m_streamBlocks.size(); ++i )
+		{
+			const XMFLOAT3& position = m_streamBlocks[i].position;
+			const float dx = position.x - listener.position.x;
+			const float dy = position.y - listener.position.y;
+			const float dz = position.z - listener.position.z;
+			const float distance = std::sqrt( dx * dx + dy * dy + dz * dz );
+			if( distance >= maxDistance )
+				continue;
+			const float gain = streamVolume * std::pow( m_streamBlocks[i].power, streamLoudness ) * std::min( streamReferenceDistance / distance, 1.0f ) *
+							   ( 1.0f - smoothstep( streamFadeFrom * maxDistance, maxDistance, distance ) );
+			const bool playing = std::any_of( m_streamVoices.begin(), m_streamVoices.end(), [i]( const StreamVoice& v ) { return v.block == i; } );
+			candidates.push_back( { i, distance, gain, playing ? gain * streamKeep : gain, 0.0f } );
+		}
+	}
+	// Вдвое больше слышных — с заглушением гребнем (луч по карте высот), из них — самые громкие
+	auto byKey = []( const Candidate& a, const Candidate& b ) { return a.key > b.key; };
+	const size_t checked = std::min( candidates.size(), voiceCount * 2 );
+	std::partial_sort( candidates.begin(), candidates.begin() + checked, candidates.end(), byKey );
+	candidates.resize( checked );
+	for( Candidate& candidate : candidates )
+	{
+		XMFLOAT3 water = m_streamBlocks[candidate.block].position;
+		water.y += 0.3f;
+		candidate.occlusion = occlusion( listener.position, water );
+		const float muffled = 1.0f - occlusionAttenuation * candidate.occlusion;
+		candidate.gain *= muffled;
+		candidate.key *= muffled;
+	}
+	std::sort( candidates.begin(), candidates.end(), byKey );
+	candidates.resize( std::min( candidates.size(), voiceCount ) );
+	candidates.erase( std::remove_if( candidates.begin(), candidates.end(), []( const Candidate& c ) { return c.gain < 1e-4f; } ),
+					  candidates.end() );
+
+	// Ушедшие места — их голоса затихают; новые — свой голос (генератор со своим зерном)
+	m_streamVoices.erase( std::remove_if( m_streamVoices.begin(), m_streamVoices.end(), [&]( const StreamVoice& voice )
+	{
+		const bool kept = std::any_of( candidates.begin(), candidates.end(), [&]( const Candidate& c ) { return c.block == voice.block; } );
+		if( !kept )
+			m_mixer->removeVoice( voice.voice );
+		return !kept;
+	} ), m_streamVoices.end() );
+	for( const Candidate& candidate : candidates )
+	{
+		auto found = std::find_if( m_streamVoices.begin(), m_streamVoices.end(), [&]( const StreamVoice& v ) { return v.block == candidate.block; } );
+		if( found == m_streamVoices.end() )
+		{
+			m_streamVoices.push_back( { candidate.block, m_mixer->addVoice( std::make_unique<BrookGenerator>( voiceSeed( m_nextSeed++ ) ) ) } );
+			found = m_streamVoices.end() - 1;
+		}
+		const StreamBlock& block = m_streamBlocks[candidate.block];
+		AudioVoiceTarget target;
+		// Вдали — глуше (воздух), за гребнем — ещё глуше; у самой воды — вокруг слушателя
+		target.lowpass = std::min( 20000.0f / ( 1.0f + candidate.distance / airAbsorptionDistance ),
+								   20000.0f + ( occlusionLowpass - 20000.0f ) * candidate.occlusion );
+		const XMFLOAT3 direction( block.position.x - listener.position.x, 0.0f, block.position.z - listener.position.z );
+		spatialize( listener, direction, candidate.gain, target, 1.0f - std::clamp( candidate.distance / streamBlock, 0.0f, 1.0f ) );
+		target.controls[0] = std::min( 0.5f + std::sqrt( block.power ), 1.5f );
+		target.controls[1] = block.rapids;
+		m_mixer->setTarget( found->voice, target );
 	}
 }
 

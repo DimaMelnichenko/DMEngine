@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 #include "AudioMixer.h"
 
 namespace GS
@@ -127,6 +128,41 @@ private:
 	float m_envelope = 0.0f;
 	float m_decay;
 	uint32_t m_filterCountdown = 0;
+};
+
+// Ручей — пузырьки (K. van den Doel, «Physically-based models for liquid sounds», ACM TAP 2(4), 2005): пузырёк, захваченный
+// течением, звенит затухающей синусоидой с частотой Миннарта (~3,26 кГц / радиус в мм), частота растёт по мере всплытия;
+// радиусы — по степенному закону, их поток — по силе течения; на перекате пузырьков больше и они крупнее, и шумит поток.
+// controls: [0] — сила 0…~2 (частота пузырьков; громкость от неё не растёт — её задаёт голос); [1] — перекат 0…1 (крупные
+// пузырьки и шум потока)
+class BrookGenerator : public AudioGenerator
+{
+public:
+	explicit BrookGenerator( uint32_t seed );
+	void render( float* out, uint32_t frames, const float* controls ) override;
+
+private:
+	// Пузырёк: вращение фазора (без синуса на каждый отсчёт), амплитуда с затуханием, частота растёт со временем
+	struct Bubble
+	{
+		float re = 0.0f;
+		float im = 0.0f;
+		float amplitude = 0.0f;
+		float decay = 1.0f;			// множитель амплитуды за отсчёт
+		float frequency = 0.0f;		// начальная, Гц
+		float rise = 0.0f;			// рост частоты, доля за секунду
+		float age = 0.0f;			// с
+	};
+	static constexpr uint32_t maxBubbles = 48;
+	// Пузырёк с отсчёта start блока до конца
+	void renderBubble( Bubble& bubble, float* out, uint32_t start, uint32_t frames );
+
+	NoiseSource m_noise;
+	PinkNoise m_pink;
+	StateVariableFilter m_rush;
+	Bubble m_bubbles[maxBubbles];
+	uint32_t m_count = 0;
+	std::vector<uint32_t> m_spawns;
 };
 
 }

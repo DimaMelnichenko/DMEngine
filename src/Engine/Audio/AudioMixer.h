@@ -40,8 +40,10 @@ struct AudioListener
 };
 
 // Громкость каналов от направления на источник (мир, к источнику) у слушателя: стерео равной мощностью по азимуту в плоскости
-// горизонта, сзади — тише и глуше (тень головы). gain — общая громкость; срез фильтра — меньший из прежнего и тени головы
-void spatialize( const AudioListener& listener, const DirectX::XMFLOAT3& direction, float gain, AudioVoiceTarget& target );
+// горизонта, сзади — тише и глуше (тень головы). gain — общая громкость; срез фильтра — меньший из прежнего и тени головы;
+// spread 0…1 — источник вокруг слушателя (стоит в нём): 1 — посередине, без тени головы
+void spatialize( const AudioListener& listener, const DirectX::XMFLOAT3& direction, float gain, AudioVoiceTarget& target,
+				 float spread = 0.0f );
 
 // Микшер звука — как Audio Mixer в UE: свой расчёт смеси, вывод — отдельно (AudioOutput). Голоса — генераторы с целями
 // громкости по каналам и фильтра; главный поток добавляет и убирает голоса и задаёт цели, нить вывода зовёт render за
@@ -55,6 +57,10 @@ public:
 	// Сглаживание целей: громкость и управление идут к цели с этой постоянной времени, с; убранный голос затихает за fadeSeconds
 	static constexpr float smoothingSeconds = 0.05f;
 	static constexpr float fadeSeconds = 0.1f;
+	// Ограничитель пиков смеси (как Limiter мастер-шины в UE): громче порога — усиление сразу вниз до порога, обратно — с этой
+	// постоянной времени, с. Пересечение многих громких голосов (перекат рядом с кронами в бурю) не уходит в перегрузку
+	static constexpr float limiterThreshold = 0.7f;
+	static constexpr float limiterRelease = 0.15f;
 	using VoiceId = uint32_t;
 
 	// Главный поток
@@ -71,6 +77,7 @@ public:
 		uint32_t voices = 0;
 		float load = 0.0f;			// доля реального времени на расчёт блока
 		uint64_t clipped = 0;		// отсчётов за ±1 с начала
+		uint64_t limited = 0;		// кадров, приглушённых ограничителем, с начала
 		uint64_t blocks = 0;
 	};
 	Stats stats() const;
@@ -105,6 +112,8 @@ private:
 	std::atomic<uint32_t> m_voiceCount{ 0 };
 	std::atomic<float> m_load{ 0.0f };
 	std::atomic<uint64_t> m_clipped{ 0 };
+	std::atomic<uint64_t> m_limited{ 0 };
+	float m_limiterGain = 1.0f;
 	std::atomic<uint64_t> m_blocks{ 0 };
 };
 

@@ -818,8 +818,8 @@ struct ReflectionCaptureSettings
 const SettingsSchema<ReflectionCaptureSettings>& reflectionCaptureSchema();
 
 // Звуки окружения уровня — строка AmbientSound (Levels.ambient_sound; AmbientSound, docs/audio.md): синтез ветра у камеры,
-// шелеста травы под ногами и крон леса вокруг по ветру уровня, полю ветра и маскам. Громкости — доли (амплитуда), полная
-// громкость слоя — около −20 дБ FS
+// шелеста травы под ногами и крон леса вокруг по ветру уровня, полю ветра и маскам, журчания ручьёв по растру воды. Громкости —
+// доли (амплитуда), полная громкость слоя — около −20 дБ FS
 struct AmbientSoundSettings
 {
 	uint32_t id = 0;				// строка AmbientSound — куда пишет «Save level»
@@ -835,8 +835,11 @@ struct AmbientSoundSettings
 	float crownVolume = 0.6f;		// шум крон леса вокруг
 	float crownRadius = 80.0f;		// лес в этом круге, м
 	float crownFrequency = 1200.0f;	// середина полосы шума крон, Гц
+	float streamVolume = 1.2f;		// журчание ручьёв: громкость шумного места воды уровня (громче 95 % мест) в 3 м
+	int32_t streamVoices = 8;		// мест воды, слышных сразу (самых громких у камеры); остальные молчат
+	float streamDistance = 250.0f;	// дальше вода не слышна, м
 };
-// Поля строки AmbientSound (SettingsSchema): основное окно «Ambient sound» и подокна «Wind», «Grass», «Crowns»
+// Поля строки AmbientSound (SettingsSchema): основное окно «Ambient sound» и подокна «Wind», «Grass», «Crowns», «Streams»
 const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema();
 
 // Строка SunPosition

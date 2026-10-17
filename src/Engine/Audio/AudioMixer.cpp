@@ -26,14 +26,15 @@ float lerp( float a, float b, float t )
 
 }
 
-void spatialize( const AudioListener& listener, const XMFLOAT3& direction, float gain, AudioVoiceTarget& target )
+void spatialize( const AudioListener& listener, const XMFLOAT3& direction, float gain, AudioVoiceTarget& target, float spread )
 {
 	// Азимут в плоскости горизонта: вправо и вперёд слушателя; прямо сверху или снизу — посередине
 	const float x = direction.x * listener.right.x + direction.z * listener.right.z;
 	const float z = direction.x * listener.forward.x + direction.z * listener.forward.z;
 	const float length = std::sqrt( x * x + z * z );
-	const float pan = length > 1e-4f ? x / length : 0.0f;
-	const float rear = length > 1e-4f ? std::max( -z / length, 0.0f ) : 0.0f;
+	const float around = 1.0f - std::clamp( spread, 0.0f, 1.0f );
+	const float pan = length > 1e-4f ? x / length * around : 0.0f;
+	const float rear = length > 1e-4f ? std::max( -z / length, 0.0f ) * around : 0.0f;
 	// Равная мощность: посередине — оба канала на −3 дБ
 	const float angle = ( pan + 1.0f ) * 0.25f * pi;
 	const float shadowed = gain * ( 1.0f - rearAttenuation * rear );
@@ -102,6 +103,7 @@ AudioMixer::Stats AudioMixer::stats() const
 	stats.voices = m_voiceCount.load();
 	stats.load = m_load.load();
 	stats.clipped = m_clipped.load();
+	stats.limited = m_limited.load();
 	stats.blocks = m_blocks.load();
 	return stats;
 }
@@ -170,6 +172,20 @@ void AudioMixer::render( float* stereo, uint32_t frames )
 	{
 		return voice.fading && std::max( voice.current.left, voice.current.right ) < 1e-4f;
 	} ), m_voices.end() );
+
+	// Ограничитель: по большему из каналов, оба канала одинаково (образ не уходит в сторону)
+	const float release = 1.0f - std::exp( -1.0f / ( limiterRelease * sampleRate ) );
+	uint64_t limited = 0;
+	for( uint32_t i = 0; i < frames; ++i )
+	{
+		const float peak = std::max( std::abs( stereo[i * 2 + 0] ), std::abs( stereo[i * 2 + 1] ) );
+		const float wanted = peak > limiterThreshold ? limiterThreshold / peak : 1.0f;
+		m_limiterGain = wanted < m_limiterGain ? wanted : m_limiterGain + ( wanted - m_limiterGain ) * release;
+		stereo[i * 2 + 0] *= m_limiterGain;
+		stereo[i * 2 + 1] *= m_limiterGain;
+		limited += m_limiterGain < 0.999f ? 1 : 0;
+	}
+	m_limited += limited;
 
 	uint64_t clipped = 0;
 	for( uint32_t i = 0; i < frames * channels; ++i )

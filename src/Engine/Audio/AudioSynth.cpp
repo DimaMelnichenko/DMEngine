@@ -16,6 +16,21 @@ constexpr uint32_t filterInterval = 32;
 constexpr float windNormalization = 2.5f;
 constexpr float hissNormalization = 1.2f;
 constexpr float crackleNormalization = 3.0f;
+constexpr float bubbleNormalization = 0.2f;
+constexpr float rushNormalization = 0.35f;
+
+// Пузырьки ручья: радиусы, мм — от наименьшего до наибольшего (на перекате — крупнее), степень закона распределения
+// (p(r) ∝ r^−β: мелких больше всего, на перекате — меньше), частота появления в секунду при силе 1 — в тихой воде и прибавка
+// на перекате
+constexpr float bubbleRadiusMin = 0.4f;
+constexpr float bubbleRadiusMax = 2.5f;
+constexpr float bubbleRadiusRapids = 6.0f;
+constexpr float bubbleExponent = 2.2f;
+constexpr float bubbleExponentRapids = 0.7f;
+constexpr float bubbleRate = 120.0f;
+constexpr float bubbleRateRapids = 600.0f;
+// Рост частоты пузырька — доля его затухания (ξ у van den Doel)
+constexpr float bubbleRise = 0.1f;
 
 }
 
@@ -126,6 +141,93 @@ void FoliageGenerator::render( float* out, uint32_t frames, const float* control
 		m_envelope *= m_decay;
 		const float crackle = m_crackle.process( m_noise.white() * m_envelope ).band * crackleNormalization;
 		out[i] = hiss * ( 1.0f - m_preset.crackleShare ) + crackle * m_preset.crackleShare;
+	}
+}
+
+BrookGenerator::BrookGenerator( uint32_t seed ) : m_noise( seed )
+{
+}
+
+void BrookGenerator::renderBubble( Bubble& bubble, float* out, uint32_t start, uint32_t frames )
+{
+	// Частота за блок почти не меняется (10 мс против десятков мс жизни): одно вращение на блок — по середине
+	const float duration = static_cast<float>( frames - start ) / AudioMixer::sampleRate;
+	const float frequency = std::min( bubble.frequency * ( 1.0f + bubble.rise * ( bubble.age + 0.5f * duration ) ),
+									  0.45f * AudioMixer::sampleRate );
+	const float omega = 2.0f * pi * frequency / AudioMixer::sampleRate;
+	const float cr = std::cos( omega );
+	const float ci = std::sin( omega );
+	float re = bubble.re;
+	float im = bubble.im;
+	float amplitude = bubble.amplitude;
+	for( uint32_t i = start; i < frames; ++i )
+	{
+		const float next = re * cr - im * ci;
+		im = re * ci + im * cr;
+		re = next;
+		out[i] += amplitude * im;
+		amplitude *= bubble.decay;
+	}
+	// Фазор — на единичную окружность: ошибка округления за тысячи шагов не копится
+	const float length = std::sqrt( re * re + im * im );
+	bubble.re = re / length;
+	bubble.im = im / length;
+	bubble.amplitude = amplitude;
+	bubble.age += duration;
+}
+
+void BrookGenerator::render( float* out, uint32_t frames, const float* controls )
+{
+	const float strength = std::max( controls[0], 0.0f );
+	const float rapids = std::clamp( controls[1], 0.0f, 1.0f );
+
+	// Шум потока: розовый в широкой полосе, на перекате — громче и выше
+	m_rush.set( 900.0f + 900.0f * rapids, 0.5f );
+	const float rush = ( 0.1f + 0.6f * rapids ) * rushNormalization;
+	for( uint32_t i = 0; i < frames; ++i )
+		out[i] = m_rush.process( m_pink.next( m_noise.white() ) ).band * rush;
+
+	// Пузырьки, что звенят с прошлых блоков, затем новые — поток Пуассона: шанс на каждый отсчёт
+	for( uint32_t b = 0; b < m_count; ++b )
+		renderBubble( m_bubbles[b], out, 0, frames );
+	const float rate = strength * ( bubbleRate + bubbleRateRapids * rapids );
+	const float chance = rate / AudioMixer::sampleRate;
+	// Чаще пузырьки — каждый тише: частота меняет характер (редкие «бульки» — сплошное журчание), громкость — голос (мощность места)
+	const float density = 1.0f / std::sqrt( std::max( rate, 1.0f ) / bubbleRate );
+	m_spawns.clear();
+	for( uint32_t i = 0; i < frames; ++i )
+		if( m_noise.uniform() < chance )
+			m_spawns.push_back( i );
+	const float radiusMax = bubbleRadiusMax + bubbleRadiusRapids * rapids;
+	const float exponent = 1.0f - ( bubbleExponent - bubbleExponentRapids * rapids );
+	const float low = std::pow( bubbleRadiusMin, exponent );
+	const float high = std::pow( radiusMax, exponent );
+	for( uint32_t spawn : m_spawns )
+	{
+		if( m_count == maxBubbles )
+			break;
+		// Радиус — обратной функцией распределения p(r) ∝ r^−β; частота Миннарта и затухание (van den Doel 2005, (1) и (3))
+		const float radius = std::pow( low + m_noise.uniform() * ( high - low ), 1.0f / exponent );
+		const float frequency = 3260.0f / radius;
+		const float damping = 0.043f * frequency + 0.0014f * frequency * std::sqrt( frequency );
+		Bubble& bubble = m_bubbles[m_count++];
+		bubble.re = 1.0f;
+		bubble.im = 0.0f;
+		// Крупный пузырёк громче, но не во столько, во сколько больше: иначе редкие хлопки громче всего журчания
+		bubble.amplitude = bubbleNormalization * density * std::sqrt( radius ) * ( 0.5f + 0.5f * m_noise.uniform() );
+		bubble.decay = std::exp( -damping / AudioMixer::sampleRate );
+		bubble.frequency = frequency;
+		bubble.rise = bubbleRise * damping;
+		bubble.age = 0.0f;
+		renderBubble( bubble, out, spawn, frames );
+	}
+	// Затихшие — прочь (на их место — последний)
+	for( uint32_t b = 0; b < m_count; )
+	{
+		if( m_bubbles[b].amplitude < 1e-5f )
+			m_bubbles[b] = m_bubbles[--m_count];
+		else
+			++b;
 	}
 }
 

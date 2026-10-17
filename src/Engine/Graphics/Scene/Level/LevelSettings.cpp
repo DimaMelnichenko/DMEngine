@@ -962,6 +962,13 @@ const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema()
 		  "Forest masks in this circle, by four sides: the sound comes from where the forest is", settingClampLow, "Crowns" },
 		{ "crown_frequency", "Frequency", DM_SETTING( crownFrequency ), 200.0f, 8000.0f, "Hz", "Middle of the rustle band",
 		  settingLogarithmic | settingClampLow, "Crowns" },
+		{ "stream_volume", "Volume", DM_SETTING( streamVolume ), 0.0f, 2.0f, "",
+		  "Babble of the streams: a noisy place of the level water (louder than 95 % of places) 3 m away; louder over steps, quieter "
+		  "behind a ridge", 0, "Streams" },
+		{ "stream_voices", "Voices", DM_SETTING( streamVoices ), 1.0f, 16.0f, "",
+		  "Places of water heard at once (the loudest at the camera); the rest are silent", settingClamp, "Streams" },
+		{ "stream_distance", "Distance", DM_SETTING( streamDistance ), 20.0f, 1000.0f, "m", "Water farther than this is not heard",
+		  settingClampLow, "Streams" },
 	};
 	return schema;
 }

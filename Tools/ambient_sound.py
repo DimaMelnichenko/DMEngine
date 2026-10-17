@@ -1,7 +1,7 @@
 """Звуки окружения уровня в base.db3 (таблица AmbientSound и Levels.ambient_sound; AmbientSound, docs/audio.md).
 
 Строка — как Ambient Sound и Soundscape в UE, но синтезом в движке: ветер у камеры, шелест травы вокруг и кроны леса по
-сторонам — по ветру уровня, полю ветра по рельефу и маскам травы и леса. Громкости — доли (амплитуда), частоты — середины
+сторонам — по ветру уровня, полю ветра по рельефу и маскам травы и леса; журчание ручьёв — по растру воды. Громкости — доли (амплитуда), частоты — середины
 полос шума, Гц. NULL — значение по умолчанию движка (AmbientSoundSettings). Те же поля правит окно «Ambient sound»,
 «Save level» пишет их обратно.
 
@@ -34,13 +34,24 @@ CREATE TABLE IF NOT EXISTS AmbientSound (
     grass_frequency REAL,
     crown_volume REAL,
     crown_radius REAL,
-    crown_frequency REAL
+    crown_frequency REAL,
+    stream_volume REAL,
+    stream_voices INTEGER,
+    stream_distance REAL
 );
 """
+
+# Колонки, добавленные после первой версии таблицы: у базы без них — ALTER TABLE
+ADDED = [('stream_volume', 'REAL'), ('stream_voices', 'INTEGER'), ('stream_distance', 'REAL')]
 
 
 def migrate(db):
     db.executescript(SCHEMA)
+    existing = [row[1] for row in db.execute('PRAGMA table_info(AmbientSound)')]
+    for column, kind in ADDED:
+        if column not in existing:
+            db.execute('ALTER TABLE AmbientSound ADD COLUMN %s %s' % (column, kind))
+            print('migrated: AmbientSound.%s added' % column)
     if 'ambient_sound' not in [row[1] for row in db.execute('PRAGMA table_info(Levels)')]:
         db.execute('ALTER TABLE Levels ADD COLUMN ambient_sound INTEGER REFERENCES AmbientSound(id)')
         print('migrated: Levels.ambient_sound added')

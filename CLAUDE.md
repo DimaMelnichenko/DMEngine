@@ -422,7 +422,8 @@ Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/
 где промахнулись экранные отражения, — луч по карте расстояний до того, во что упёрся (distance impostors), и небо сквозь
 непокрытое, `Shaders/reflection_capture.sh`; точку ставят над водой подальше от моделей; `docs/reflection_captures.md`),
 `AmbientSound` (звуки окружения синтезом: ветер у камеры, шелест травы и кроны леса по сторонам — по ветру уровня, полю ветра
-и маскам, `Wind::gust`, `TerrainPipeline::maskValues`; строка `AmbientSound`, `Levels.ambient_sound`, `Tools/ambient_sound.py`;
+и маскам, `Wind::gust`, `TerrainPipeline::maskValues`; ручьи — места воды 8 × 8 м по растру `staticWater`, громкость — по
+потере мощности течения, слышны самые громкие, заглушение гребнем; строка `AmbientSound`, `Levels.ambient_sound`, `Tools/ambient_sound.py`;
 мешей нет — цели голосов микшера в `update`, `docs/audio.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 

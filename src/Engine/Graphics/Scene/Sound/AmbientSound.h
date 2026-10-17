@@ -19,13 +19,20 @@ class TerrainPipeline;
 //   порыв в точке (Wind::gust — волны те же, что на траве), выше над землёй — сильнее;
 // - трава — два голоса так же: маски травы вокруг камеры × ветер, высоко над землёй не слышна;
 // - кроны леса — голос на сторону света: маски леса в секторе стороны × ветер в нём, звук — с той стороны, где лес
-//   (AudioMixer, spatialize), волна порыва проходит по лесу слышимо.
-// Ветра нет (сила 0, -nowind) — тихо; флажок видимости в Outliner — тоже
+//   (AudioMixer, spatialize), волна порыва проходит по лесу слышимо;
+// - ручьи — места воды: клетки ручьёв растра статичной воды (TerrainHydrology::Result::staticWater) блоками streamBlock,
+//   громкость — мощность, которую теряет течение в блоке (расход × перепад уровня: перекат громче плёса), по самому шумному
+//   месту уровня; слышны streamVoices самых громких у камеры (голос — генератор пузырьков BrookGenerator, остальные места
+//   молчат, как виртуальные голоса UE), с затуханием по расстоянию, поглощением воздухом и заглушением гребнем между
+//   камерой и водой (луч по карте высот). Блоки — заново, когда сменилась итоговая карта (перестройка русел).
+// Ветра нет (сила 0, -nowind) — ветер, трава и кроны молчат, ручьи — нет; флажок видимости в Outliner — тихо всё
 class AmbientSound : public SceneObject
 {
 public:
 	using Settings = AmbientSoundSettings;
 	static constexpr uint32_t crownSides = 4;
+	// Место воды ручья — квадрат со стороной столько, м
+	static constexpr float streamBlock = 8.0f;
 
 	AmbientSound();
 	~AmbientSound() override;
@@ -52,10 +59,25 @@ private:
 	float maskAt( const std::vector<const std::vector<float>*>& masks, float x, float z ) const;
 	std::vector<const std::vector<float>*> masks( const char* const* names, size_t count ) const;
 
+	// Место воды ручья: середина над водой, мощность (доля самого шумного места уровня), перекат 0…1 (уклон воды)
+	struct StreamBlock
+	{
+		DirectX::XMFLOAT3 position;
+		float power = 0.0f;
+		float rapids = 0.0f;
+	};
+	// Места воды по растру ручьёв конвейера; нет воды — пусто
+	void buildStreamBlocks();
+	// Слышные места воды — голоса, их цели; volume — общая громкость
+	void updateStreams( const Settings& settings, const AudioListener& listener, float volume );
+	// Заглушение гребнем 0…1: насколько рельеф поднимается над прямой «слушатель — вода», по карте высот
+	float occlusion( const DirectX::XMFLOAT3& from, const DirectX::XMFLOAT3& to ) const;
+
 	PropertyContainer m_properties;
 	PropertyContainer m_windProperties;
 	PropertyContainer m_grassProperties;
 	PropertyContainer m_crownProperties;
+	PropertyContainer m_streamProperties;
 	Settings m_settings;
 	AudioMixer* m_mixer = nullptr;
 	Wind* m_wind = nullptr;
@@ -63,6 +85,16 @@ private:
 	AudioMixer::VoiceId m_windVoices[2] = {};		// слева, справа
 	AudioMixer::VoiceId m_grassVoices[2] = {};
 	AudioMixer::VoiceId m_crownVoices[crownSides] = {};	// север, восток, юг, запад
+	std::vector<StreamBlock> m_streamBlocks;
+	uint32_t m_streamRevision = ~0u;	// номер итоговой карты, по которой собраны места воды
+	// Слышные места воды: голос на место (уходит — затихает, новое — заводит свой)
+	struct StreamVoice
+	{
+		size_t block = 0;
+		AudioMixer::VoiceId voice = 0;
+	};
+	std::vector<StreamVoice> m_streamVoices;
+	uint32_t m_nextSeed = 0;
 };
 
 }
