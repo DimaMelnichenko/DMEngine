@@ -1,4 +1,5 @@
 // Мир столкновений (PhysicsWorld, Jolt): земля совпадает с surfaceHeight (и в детальном квадрате), персонаж падает и стоит,
+// стоящий не сползает по пологому склону (по крутому — съезжает),
 // коробка, капсула и оболочка преграждают путь, персонажи не проходят друг сквозь друга, глубокая вода не пускает (вдоль
 // берега — идёт, вброд — переходит), бродяги-персонажи не сходятся, персонажи убираются с сущностями
 #include <doctest/doctest.h>
@@ -99,6 +100,26 @@ TEST_CASE( "PhysicsWorld: a character falls and stands on the ground" )
 	const PhysicsWorld::CharacterState state = walk( physics, character, XMFLOAT2( 0.0f, 0.0f ), 3.0f );
 	CHECK( std::abs( state.feet.y - flatHeight ) < 0.03f );
 	CHECK( state.onGround );
+}
+
+TEST_CASE( "PhysicsWorld: a standing character does not slide down a gentle slope, down a steep one it does" )
+{
+	// Склон 15° — пологий (стоит: лежащий зверь не ползёт), 55° — круче «Max slope» 40° (съезжает)
+	for( const float degrees : { 15.0f, 55.0f } )
+	{
+		const float tangent = std::tan( degrees * 3.14159265f / 180.0f );
+		FakeTerrain terrain( [tangent]( float x, float ) { return 100.0f - tangent * x; } );
+		PhysicsWorld physics;
+		REQUIRE( physics.buildTerrain( terrain ) );
+		const PhysicsWorld::CharacterId character =
+			physics.createCharacter( {}, XMFLOAT3( 128.0f, 100.0f - tangent * 128.0f + 0.5f, 128.0f ) );
+		const XMFLOAT3 settled = walk( physics, character, XMFLOAT2( 0.0f, 0.0f ), 1.0f ).feet;
+		const XMFLOAT3 after = walk( physics, character, XMFLOAT2( 0.0f, 0.0f ), 3.0f ).feet;
+		if( degrees < 40.0f )
+			CHECK( horizontal( after, settled.x, settled.z ) < 0.01f );
+		else
+			CHECK( after.x - settled.x > 0.5f );
+	}
 }
 
 TEST_CASE( "PhysicsWorld: a box, a capsule and a hull are not walked through" )

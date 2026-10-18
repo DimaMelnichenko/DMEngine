@@ -1,5 +1,6 @@
 // Блуждание в круге (WanderSystem) с передвижением по земле (MovementSystem, без персонажей): сущность не уходит из круга,
-// обходит его весь, стоит на земле, идёт с заданной скоростью и смотрит, куда идёт; путь повторяется при том же зерне.
+// обходит его весь, стоит на земле, идёт с заданной скоростью и смотрит, куда идёт; путь повторяется при том же зерне; при
+// скорости 0 и клипе-действии (AnimationState) стоит и не поворачивается.
 // Рельеф — подделка (склон)
 #include <doctest/doctest.h>
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include "Engine\Simulation\Components.h"
 #include "Engine\Simulation\WanderSystem.h"
 #include "Engine\Simulation\MovementSystem.h"
+#include "Engine\Animation\AnimationSystem.h"
 #include "fake_terrain.h"
 
 using namespace GS;
@@ -106,4 +108,51 @@ TEST_CASE( "WanderSystem: the same seed walks the same path, another seed - anot
 	CHECK( pa.x == pb.x );
 	CHECK( pa.z == pb.z );
 	CHECK( std::abs( pa.x - pc.x ) + std::abs( pa.z - pc.z ) > 0.1f );
+}
+
+TEST_CASE( "WanderSystem: at zero speed the entity stands and does not turn" )
+{
+	World world;
+	setUp( world );
+	const entt::entity entity = spawn( world, 11, 12.0f, 0.0f );
+	world.tick( step );
+	const Transform before = world.registry().get<Transform>( entity );
+	for( int i = 0; i < 60 * 5; ++i )
+		world.tick( step );
+	const Transform& after = world.registry().get<Transform>( entity );
+	CHECK( after.position.x == before.position.x );
+	CHECK( after.position.z == before.position.z );
+	CHECK( after.rotation.y == doctest::Approx( before.rotation.y ) );
+	CHECK( after.rotation.w == doctest::Approx( before.rotation.w ) );
+}
+
+TEST_CASE( "WanderSystem: an animation clip holds the place, the walk goes on from the same heading" )
+{
+	World world;
+	setUp( world );
+	const entt::entity entity = spawn( world, 5 );
+	entt::registry& registry = world.registry();
+	for( int i = 0; i < 60; ++i )
+		world.tick( step );
+	// Клип-действие (лечь): ни места, ни поворота
+	AnimationState animation;
+	animation.current = clipPlayback( 1 );
+	registry.emplace<AnimationState>( entity, animation );
+	const Transform held = registry.get<Transform>( entity );
+	const float heading = registry.get<Wander>( entity ).heading;
+	for( int i = 0; i < 60 * 3; ++i )
+		world.tick( step );
+	const Transform& lying = registry.get<Transform>( entity );
+	CHECK( lying.position.x == held.position.x );
+	CHECK( lying.position.z == held.position.z );
+	CHECK( lying.rotation.y == held.rotation.y );
+	CHECK( registry.get<Wander>( entity ).heading == heading );
+	// Снова шаг по скорости: идёт дальше с того же направления, без рывка
+	playAnimation( registry.get<AnimationState>( entity ), AnimationPlayback() );
+	world.tick( step );
+	CHECK( std::abs( registry.get<Wander>( entity ).heading - heading ) <= 1.5f * step + 1e-4f );
+	for( int i = 0; i < 60; ++i )
+		world.tick( step );
+	const XMFLOAT3& walked = registry.get<Transform>( entity ).position;
+	CHECK( std::hypot( walked.x - held.position.x, walked.z - held.position.z ) > 0.8f );
 }

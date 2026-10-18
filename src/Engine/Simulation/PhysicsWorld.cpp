@@ -210,6 +210,23 @@ private:
 
 }
 
+// Персонаж, который не идёт, не сползает по пологому неподвижному склону — как sAllowSliding в примере CharacterVirtual Jolt:
+// силу тяжести решатель контактов раскладывает вдоль склона, и стоящий (лежащий) зверь полз бы вниз. Крутой склон — сползает,
+// движущееся тело и другой персонаж — толкают
+class StandStillListener : public JPH::CharacterContactListener
+{
+public:
+	bool standing = false;	// у персонажа, которого сейчас двигают (moveCharacter), нет желаемой скорости
+
+	void OnContactSolve( const JPH::CharacterVirtual* character, const JPH::BodyID&, const JPH::SubShapeID&, JPH::RVec3Arg,
+						 JPH::Vec3Arg normal, JPH::Vec3Arg contactVelocity, const JPH::PhysicsMaterial*, JPH::Vec3Arg,
+						 JPH::Vec3& newVelocity ) override
+	{
+		if( standing && contactVelocity.IsNearZero() && !character->IsSlopeTooSteep( normal ) )
+			newVelocity = JPH::Vec3::sZero();
+	}
+};
+
 struct PhysicsWorld::Impl
 {
 	struct Character
@@ -300,6 +317,7 @@ struct PhysicsWorld::Impl
 		virtualSettings->mSupportingVolume = JPH::Plane( JPH::Vec3::sAxisY(), -std::max( settings.radius, 0.05f ) );
 		JPH::Ref<JPH::CharacterVirtual> character = new JPH::CharacterVirtual( virtualSettings, feet, JPH::Quat::sIdentity(), 0, &system );
 		character->SetCharacterVsCharacterCollision( &characterVsCharacter );
+		character->SetListener( &standStill );
 		characterVsCharacter.Add( character );
 		return character;
 	}
@@ -338,6 +356,7 @@ struct PhysicsWorld::Impl
 	JPH::TempAllocatorImpl tempAllocator;
 	JPH::PhysicsSystem system;
 	JPH::CharacterVsCharacterCollisionSimple characterVsCharacter;
+	StandStillListener standStill;
 
 	const TerrainHeightSource* terrain = nullptr;
 	JPH::BodyID terrainBody;
@@ -657,6 +676,8 @@ PhysicsWorld::CharacterState PhysicsWorld::moveCharacter( CharacterId id, const 
 	desired = impl.limitByWater( desired, character.GetPosition(), settings );
 	desired = character.CancelVelocityTowardsSteepSlopes( desired );
 	character.SetLinearVelocity( velocity + desired );
+	// Не идёт (стоит, лежит, упёрся в глубокую воду) — по пологому склону не сползает
+	impl.standStill.standing = desired.IsNearZero();
 
 	JPH::CharacterVirtual::ExtendedUpdateSettings update;
 	update.mStickToFloorStepDown = JPH::Vec3( 0.0f, -settings.stepHeight, 0.0f );

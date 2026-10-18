@@ -1,5 +1,6 @@
 #include "WanderSystem.h"
 #include "Components.h"
+#include "Engine\Animation\AnimationSystem.h"
 #include <algorithm>
 #include <cmath>
 
@@ -43,6 +44,17 @@ void WanderSystem::step( World& world, float seconds )
 	entt::registry& registry = world.registry();
 	for( auto [entity, transform, wander, locomotion] : registry.view<const Transform, Wander, Locomotion>().each() )
 	{
+		// Стоит — скорость 0 или играет клип-действие (лечь, удар): поведение ждёт, направление не меняется (иначе сущность
+		// вертится на месте), после — с того же направления
+		const AnimationState* animation = registry.try_get<AnimationState>( entity );
+		if( wander.speed <= 0.0f || ( animation && holdsPlace( *animation ) ) )
+		{
+			wander.moving = false;
+			locomotion.velocity = XMFLOAT2( 0.0f, 0.0f );
+			locomotion.heading = wander.heading;
+			continue;
+		}
+
 		// Точка блуждания сдвигается по окружности случайно — направление меняется плавно, без рывков; не дальше
 		// четверти окружности от хода, иначе сущность кружит на месте
 		wander.wanderAngle = std::clamp( wander.wanderAngle + randomSigned( wander.random ) * jitter * seconds, -0.5f * pi, 0.5f * pi );

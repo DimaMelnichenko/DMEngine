@@ -43,6 +43,12 @@ struct AnimationState
 
 // Сменить то, что играет, — с переходом от того, что видно сейчас
 void playAnimation( AnimationState& state, const AnimationPlayback& next );
+// Клип-действие (лечь, удар) держит место сущности: поведение и передвижение её не двигают и не поворачивают, как монтаж в
+// UE отключает ввод движения (движение корня из клипа — позже); шаг по скорости — нет
+inline bool holdsPlace( const AnimationState& state )
+{
+	return state.current.mode == AnimationPlayback::Mode::clip;
+}
 // Один клип с начала
 AnimationPlayback clipPlayback( uint32_t clip, double time = 0.0 );
 
