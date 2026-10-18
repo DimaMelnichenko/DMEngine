@@ -91,6 +91,21 @@ void WalkMode::setEnabled( bool enabled, DMCamera& camera, World* world )
 	m_eyeLift = 0.0f;
 }
 
+void WalkMode::teleport( const DMCamera& camera )
+{
+	if( !m_enabled || !m_world )
+		return;
+	const XMFLOAT3& eye = camera.position();
+	m_feet = XMFLOAT3( eye.x, eye.y - m_properties["Eye height"].data<float>(), eye.z );
+	float ground = 0.0f;
+	if( m_world->terrain() && m_world->terrain()->surfaceHeight( m_feet.x, m_feet.z, ground ) && m_feet.y < ground )
+		m_feet.y = ground;
+	m_world->physics().setCharacterPosition( m_character, m_feet );
+	m_velocity = XMFLOAT2( 0.0f, 0.0f );
+	m_onGround = false;
+	m_eyeLift = 0.0f;
+}
+
 float WalkMode::eyeAboveFeet() const
 {
 	return m_enabled ? m_properties["Eye height"].data<float>() + m_eyeLift : 0.0f;

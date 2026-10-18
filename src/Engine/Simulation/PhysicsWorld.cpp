@@ -16,7 +16,11 @@
 #include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
+#include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
+#ifdef JPH_DEBUG_RENDERER
+#include <Jolt/Renderer/DebugRendererSimple.h>
+#endif
 
 #include <algorithm>
 #include <cfloat>
@@ -159,6 +163,51 @@ JPH::RefConst<JPH::Shape> create( const JPH::ShapeSettings& settings, const char
 	return result.Get();
 }
 
+// Ключ тела Jolt — для обратной карты (попадание луча → своё тело)
+uint32_t bodyKey( const JPH::BodyID& body )
+{
+	return body.GetIndexAndSequenceNumber();
+}
+
+#ifdef JPH_DEBUG_RENDERER
+// Отладочный рендер Jolt, который не рисует, а собирает отрезки: треугольники форм — тремя рёбрами. Единственный на процесс
+// (DebugRenderer::sInstance)
+class LineCollector final : public JPH::DebugRendererSimple
+{
+public:
+	void DrawLine( JPH::RVec3Arg from, JPH::RVec3Arg to, JPH::ColorArg ) override
+	{
+		lines->push_back( { float3( from ), float3( to ), character } );
+	}
+	void DrawTriangle( JPH::RVec3Arg a, JPH::RVec3Arg b, JPH::RVec3Arg c, JPH::ColorArg color, ECastShadow ) override
+	{
+		DrawLine( a, b, color );
+		DrawLine( b, c, color );
+		DrawLine( c, a, color );
+	}
+	void DrawText3D( JPH::RVec3Arg, const std::string_view&, JPH::ColorArg, float ) override {}
+
+	std::vector<PhysicsWorld::DebugLine>* lines = nullptr;
+	bool character = false;
+};
+
+// Тела ближе радиуса к точке, кроме земли
+class NearBodies final : public JPH::BodyDrawFilter
+{
+public:
+	NearBodies( JPH::Vec3Arg center, float radius, JPH::BodyID terrain ) : m_center( center ), m_radiusSq( radius * radius ), m_terrain( terrain ) {}
+	bool ShouldDraw( const JPH::Body& body ) const override
+	{
+		return body.GetID() != m_terrain && body.GetWorldSpaceBounds().GetSqDistanceTo( m_center ) <= m_radiusSq;
+	}
+
+private:
+	JPH::Vec3 m_center;
+	float m_radiusSq;
+	JPH::BodyID m_terrain;
+};
+#endif
+
 }
 
 struct PhysicsWorld::Impl
@@ -202,7 +251,34 @@ struct PhysicsWorld::Impl
 			return 0;
 		const BodyId id = nextBody++;
 		staticBodies[id] = body;
+		bodyIds[bodyKey( body )] = id;
 		return id;
+	}
+
+	ShapeId addShape( const JPH::RefConst<JPH::Shape>& shape )
+	{
+		if( !shape )
+			return 0;
+		const ShapeId id = nextShape++;
+		shapes[id] = shape;
+		return id;
+	}
+
+	// Коробка по границам точек — для плоской или вырожденной оболочки
+	static JPH::RefConst<JPH::Shape> boundsBox( const std::vector<XMFLOAT3>& points )
+	{
+		XMFLOAT3 low( FLT_MAX, FLT_MAX, FLT_MAX ), high( -FLT_MAX, -FLT_MAX, -FLT_MAX );
+		for( const XMFLOAT3& p : points )
+		{
+			low = XMFLOAT3( std::min( low.x, p.x ), std::min( low.y, p.y ), std::min( low.z, p.z ) );
+			high = XMFLOAT3( std::max( high.x, p.x ), std::max( high.y, p.y ), std::max( high.z, p.z ) );
+		}
+		const JPH::Vec3 half( std::max( 0.5f * ( high.x - low.x ), 0.01f ), std::max( 0.5f * ( high.y - low.y ), 0.01f ),
+							  std::max( 0.5f * ( high.z - low.z ), 0.01f ) );
+		const JPH::Vec3 center( 0.5f * ( low.x + high.x ), 0.5f * ( low.y + high.y ), 0.5f * ( low.z + high.z ) );
+		return create( JPH::RotatedTranslatedShapeSettings( center, JPH::Quat::sIdentity(),
+															 new JPH::BoxShapeSettings( half, std::min( JPH::cDefaultConvexRadius, half.ReduceMin() ) ) ),
+					   "hull box" );
 	}
 
 	// Капсула персонажа: стоит на точке ног
@@ -267,7 +343,10 @@ struct PhysicsWorld::Impl
 	JPH::BodyID terrainBody;
 	uint32_t terrainRevision = ~0u;
 	std::unordered_map<BodyId, JPH::BodyID> staticBodies;
+	std::unordered_map<uint32_t, BodyId> bodyIds;		// тело Jolt (bodyKey) → своё
 	BodyId nextBody = 1;
+	std::unordered_map<ShapeId, JPH::RefConst<JPH::Shape>> shapes;	// общие формы (createShape): держит их, пока мир есть
+	ShapeId nextShape = 1;
 	std::unordered_map<CharacterId, Character> characters;
 	CharacterId nextCharacter = 1;
 };
@@ -363,11 +442,75 @@ uint32_t PhysicsWorld::terrainRevision() const
 	return m_impl->terrainBody.IsInvalid() ? ~0u : m_impl->terrainRevision;
 }
 
+PhysicsWorld::ShapeId PhysicsWorld::createBoxShape( const XMFLOAT3& center, const XMFLOAT3& halfExtents )
+{
+	const JPH::Vec3 half( std::max( std::abs( halfExtents.x ), 0.01f ), std::max( std::abs( halfExtents.y ), 0.01f ),
+						  std::max( std::abs( halfExtents.z ), 0.01f ) );
+	return m_impl->addShape( create( JPH::RotatedTranslatedShapeSettings( vec3( center ), JPH::Quat::sIdentity(),
+																		  new JPH::BoxShapeSettings( half, std::min( JPH::cDefaultConvexRadius, half.ReduceMin() ) ) ),
+									 "box" ) );
+}
+
+PhysicsWorld::ShapeId PhysicsWorld::createHullShape( const std::vector<XMFLOAT3>& points )
+{
+	if( points.empty() )
+		return 0;
+	JPH::Array<JPH::Vec3> hull;
+	hull.reserve( points.size() );
+	for( const XMFLOAT3& point : points )
+		hull.push_back( vec3( point ) );
+	const JPH::ShapeSettings::ShapeResult result = JPH::ConvexHullShapeSettings( hull ).Create();
+	// Плоская или вырожденная оболочка — коробкой по границам
+	return m_impl->addShape( result.HasError() ? Impl::boundsBox( points ) : result.Get() );
+}
+
+PhysicsWorld::ShapeId PhysicsWorld::createMeshShape( const std::vector<XMFLOAT3>& vertices, const std::vector<uint32_t>& indices )
+{
+	JPH::VertexList list;
+	list.reserve( vertices.size() );
+	for( const XMFLOAT3& vertex : vertices )
+		list.push_back( JPH::Float3( vertex.x, vertex.y, vertex.z ) );
+	JPH::IndexedTriangleList triangles;
+	triangles.reserve( indices.size() / 3 );
+	for( size_t i = 0; i + 2 < indices.size(); i += 3 )
+		triangles.push_back( JPH::IndexedTriangle( indices[i], indices[i + 1], indices[i + 2] ) );
+	return m_impl->addShape( create( JPH::MeshShapeSettings( list, triangles ), "mesh" ) );
+}
+
+PhysicsWorld::ShapeId PhysicsWorld::createCapsuleShape( const XMFLOAT3& base, float height, float radius )
+{
+	const float r = std::max( radius, 0.02f );
+	const float h = std::max( height, 2.0f * r + 0.02f );
+	return m_impl->addShape( create( JPH::RotatedTranslatedShapeSettings( JPH::Vec3( base.x, base.y + 0.5f * h, base.z ), JPH::Quat::sIdentity(),
+																		  new JPH::CapsuleShapeSettings( 0.5f * h - r, r ) ),
+									 "capsule" ) );
+}
+
+PhysicsWorld::BodyId PhysicsWorld::addStaticBody( ShapeId shapeId, FXMMATRIX world )
+{
+	auto it = m_impl->shapes.find( shapeId );
+	if( it == m_impl->shapes.end() )
+		return 0;
+	const Placement placement = decompose( world );
+	JPH::RefConst<JPH::Shape> shape = it->second;
+	// Масштаб экземпляра — оболочкой ScaledShape над общей формой; там, где форма не допускает (неравномерный у капсулы), —
+	// ближайший допустимый. Зеркальный (отрицательный) — тоже масштабом: Jolt выворачивает форму сам
+	JPH::Vec3 scale = vec3( placement.scale );
+	if( !scale.IsClose( JPH::Vec3::sOne(), 1e-8f ) )
+	{
+		if( !shape->IsValidScale( scale ) )
+			scale = shape->MakeScaleValid( scale );
+		shape = new JPH::ScaledShape( shape, scale );
+	}
+	return m_impl->addStatic( shape, placement );
+}
+
 PhysicsWorld::BodyId PhysicsWorld::addStaticBox( const XMFLOAT3& center, const XMFLOAT3& halfExtents, FXMMATRIX world )
 {
 	const Placement placement = decompose( world );
 	const XMFLOAT3 c = scaled( center, placement.scale );
-	// Плоская модель (плоскость) — коробка в сантиметр толщиной; скругление краёв — не толще коробки
+	// Масштаб — в размеры: плоская модель (плоскость) — коробка в сантиметр толщиной при любом масштабе; скругление краёв —
+	// не толще коробки
 	const JPH::Vec3 half( std::max( std::abs( halfExtents.x * placement.scale.x ), 0.01f ),
 						  std::max( std::abs( halfExtents.y * placement.scale.y ), 0.01f ),
 						  std::max( std::abs( halfExtents.z * placement.scale.z ), 0.01f ) );
@@ -379,73 +522,18 @@ PhysicsWorld::BodyId PhysicsWorld::addStaticBox( const XMFLOAT3& center, const X
 
 PhysicsWorld::BodyId PhysicsWorld::addStaticHull( const std::vector<XMFLOAT3>& points, FXMMATRIX world )
 {
-	const Placement placement = decompose( world );
-	JPH::Array<JPH::Vec3> hull;
-	hull.reserve( points.size() );
-	XMFLOAT3 low( FLT_MAX, FLT_MAX, FLT_MAX ), high( -FLT_MAX, -FLT_MAX, -FLT_MAX );
-	for( const XMFLOAT3& point : points )
-	{
-		const XMFLOAT3 p = scaled( point, placement.scale );
-		hull.push_back( vec3( p ) );
-		low = XMFLOAT3( std::min( low.x, p.x ), std::min( low.y, p.y ), std::min( low.z, p.z ) );
-		high = XMFLOAT3( std::max( high.x, p.x ), std::max( high.y, p.y ), std::max( high.z, p.z ) );
-	}
-	JPH::RefConst<JPH::Shape> shape;
-	if( !hull.empty() )
-	{
-		const JPH::ShapeSettings::ShapeResult result = JPH::ConvexHullShapeSettings( hull ).Create();
-		if( !result.HasError() )
-			shape = result.Get();
-	}
-	if( !shape && !points.empty() )
-	{
-		// Плоская или вырожденная оболочка — коробкой по границам (без масштаба: он уже в точках)
-		const JPH::Vec3 half( std::max( 0.5f * ( high.x - low.x ), 0.01f ), std::max( 0.5f * ( high.y - low.y ), 0.01f ),
-							  std::max( 0.5f * ( high.z - low.z ), 0.01f ) );
-		const JPH::Vec3 center( 0.5f * ( low.x + high.x ), 0.5f * ( low.y + high.y ), 0.5f * ( low.z + high.z ) );
-		shape = create( JPH::RotatedTranslatedShapeSettings( center, JPH::Quat::sIdentity(),
-															  new JPH::BoxShapeSettings( half, std::min( JPH::cDefaultConvexRadius, half.ReduceMin() ) ) ),
-						"hull box" );
-	}
-	return m_impl->addStatic( shape, placement );
+	return addStaticBody( createHullShape( points ), world );
 }
 
 PhysicsWorld::BodyId PhysicsWorld::addStaticMesh( const std::vector<XMFLOAT3>& vertices, const std::vector<uint32_t>& indices,
 												 FXMMATRIX world )
 {
-	const Placement placement = decompose( world );
-	JPH::VertexList list;
-	list.reserve( vertices.size() );
-	for( const XMFLOAT3& vertex : vertices )
-	{
-		const XMFLOAT3 p = scaled( vertex, placement.scale );
-		list.push_back( JPH::Float3( p.x, p.y, p.z ) );
-	}
-	JPH::IndexedTriangleList triangles;
-	triangles.reserve( indices.size() / 3 );
-	for( size_t i = 0; i + 2 < indices.size(); i += 3 )
-	{
-		// Зеркальный масштаб выворачивает треугольники — обход назад
-		if( placement.mirrored )
-			triangles.push_back( JPH::IndexedTriangle( indices[i], indices[i + 2], indices[i + 1] ) );
-		else
-			triangles.push_back( JPH::IndexedTriangle( indices[i], indices[i + 1], indices[i + 2] ) );
-	}
-	return m_impl->addStatic( create( JPH::MeshShapeSettings( list, triangles ), "mesh" ), placement );
+	return addStaticBody( createMeshShape( vertices, indices ), world );
 }
 
 PhysicsWorld::BodyId PhysicsWorld::addStaticCapsule( const XMFLOAT3& base, float height, float radius, FXMMATRIX world )
 {
-	const Placement placement = decompose( world );
-	const float r = std::max( radius * std::max( std::abs( placement.scale.x ), std::abs( placement.scale.z ) ), 0.02f );
-	const float h = std::max( height * std::abs( placement.scale.y ), 2.0f * r + 0.02f );
-	const float halfCylinder = 0.5f * h - r;
-	const XMFLOAT3 b = scaled( base, placement.scale );
-	const JPH::RefConst<JPH::Shape> shape = create( JPH::RotatedTranslatedShapeSettings( JPH::Vec3( b.x, b.y + 0.5f * h, b.z ),
-																						  JPH::Quat::sIdentity(),
-																						  new JPH::CapsuleShapeSettings( halfCylinder, r ) ),
-													"capsule" );
-	return m_impl->addStatic( shape, placement );
+	return addStaticBody( createCapsuleShape( base, height, radius ), world );
 }
 
 void PhysicsWorld::removeBody( BodyId body )
@@ -454,6 +542,7 @@ void PhysicsWorld::removeBody( BodyId body )
 	if( it == m_impl->staticBodies.end() )
 		return;
 	JPH::BodyInterface& bodies = m_impl->system.GetBodyInterface();
+	m_impl->bodyIds.erase( bodyKey( it->second ) );
 	bodies.RemoveBody( it->second );
 	bodies.DestroyBody( it->second );
 	m_impl->staticBodies.erase( it );
@@ -469,14 +558,54 @@ void PhysicsWorld::optimize()
 	m_impl->system.OptimizeBroadPhase();
 }
 
-bool PhysicsWorld::castRay( const XMFLOAT3& origin, const XMFLOAT3& direction, float& fraction ) const
+bool PhysicsWorld::castRay( const XMFLOAT3& origin, const XMFLOAT3& direction, float& fraction, BodyId* body ) const
 {
 	const JPH::RRayCast ray( vec3( origin ), vec3( direction ) );
 	JPH::RayCastResult hit;
 	if( !m_impl->system.GetNarrowPhaseQuery().CastRay( ray, hit ) )
 		return false;
 	fraction = hit.mFraction;
+	if( body )
+	{
+		auto it = m_impl->bodyIds.find( bodyKey( hit.mBodyID ) );
+		*body = it != m_impl->bodyIds.end() ? it->second : 0;
+	}
 	return true;
+}
+
+void PhysicsWorld::debugLines( const XMFLOAT3& center, float radius, std::vector<DebugLine>& lines ) const
+{
+#ifdef JPH_DEBUG_RENDERER
+	static LineCollector collector;
+	collector.lines = &lines;
+	collector.SetCameraPos( vec3( center ) );
+	// Неподвижные тела рядом — каркасом форм
+	collector.character = false;
+	JPH::BodyManager::DrawSettings settings;
+	settings.mDrawShape = true;
+	settings.mDrawShapeWireframe = true;
+	const NearBodies filter( vec3( center ), radius, m_impl->terrainBody );
+	m_impl->system.DrawBodies( settings, &collector, &filter );
+	// Капсулы персонажей
+	collector.character = true;
+	for( const auto& [id, character] : m_impl->characters )
+	{
+		const JPH::CharacterVirtual& body = *character.body;
+		const JPH::Vec3 offset = vec3( center ) - body.GetPosition();
+		if( offset.LengthSq() > radius * radius )
+			continue;
+		// Камера внутри капсулы (идущий) — изнутри каркас только мешает
+		const float side = offset.GetX() * offset.GetX() + offset.GetZ() * offset.GetZ();
+		if( side < character.settings.radius * character.settings.radius && offset.GetY() >= 0.0f && offset.GetY() <= character.settings.height )
+			continue;
+		body.GetShape()->Draw( &collector, body.GetCenterOfMassTransform(), JPH::Vec3::sOne(), JPH::Color::sYellow, false, true );
+	}
+	collector.lines = nullptr;
+#else
+	( void )center;
+	( void )radius;
+	( void )lines;
+#endif
 }
 
 PhysicsWorld::CharacterId PhysicsWorld::createCharacter( const CharacterSettings& settings, const XMFLOAT3& feet )

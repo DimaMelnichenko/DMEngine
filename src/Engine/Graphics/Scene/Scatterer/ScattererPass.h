@@ -131,6 +131,11 @@ public:
 	// Вместо place: экземпляры — кластерами по сетке мира в постоянный пул, их высоты — по сферам вариантов; запас границ
 	// кластера — по самому широкому экземпляру. Сколько не поместилось в пул — в возврат (0 — все)
 	size_t placeInstances( const std::vector<PlacedInstance>& instances, const std::vector<Variant>& variants );
+	// Постоянный пул — на CPU (тела столкновений леса): копия пула и счётчика в буферы readback в этом кадре, после раскладки
+	// (place). readPlaced — когда GPU прошёл кадр копии: экземпляры пула (размер — множитель модели); false — копия ещё не
+	// готова или её не просили
+	void requestPlacedReadback();
+	bool readPlaced( std::vector<PlacedInstance>& instances );
 	// Каждый кадр: экземпляры видимых кластеров — в пул кадра и списки видов (cullPlaced); что читает — placedReads
 	void cull( ComputeShader& shader );
 	std::vector<PassDesc::Read> placedReads() const;
@@ -217,6 +222,9 @@ private:
 	PoolBuffer m_clusters;
 	Buffer m_placedCounter;
 	StorageView m_placedCounterUAV;
+	Buffer m_placedReadback;		// копии пула и счётчика для CPU (requestPlacedReadback)
+	Buffer m_placedCounterReadback;
+	bool m_placedReadbackPending = false;
 	Buffer m_counters;
 	StorageView m_countersUAV;
 	Buffer m_commands;

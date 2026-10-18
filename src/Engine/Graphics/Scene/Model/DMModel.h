@@ -72,6 +72,10 @@ public:
 	enum class Collision { hull, box, mesh, capsule, none };
 	Collision collision() const { return m_collision; }
 	void setCollision( Collision collision ) { m_collision = collision; }
+	// Радиус ствола (capsule), м в координатах модели (Models.collision_radius, как радиус капсулы простой коллизии в UE);
+	// 0 — по границам основания LOD 0 (у ели нижние лапы у земли — радиус кроны, а не ствола)
+	float collisionRadius() const { return m_collisionRadius; }
+	void setCollisionRadius( float radius ) { m_collisionRadius = radius; }
 	// Имя колонки → значение; false — неизвестное имя
 	static bool parseCollision( const std::string& name, Collision& collision );
 
@@ -79,6 +83,7 @@ public:
 private:
 	std::vector<std::pair<float, std::shared_ptr<LodBlock>>> m_lods;
 	Collision m_collision = Collision::hull;
+	float m_collisionRadius = 0.0f;
 	PropertyContainer m_properties;
 };
 

@@ -303,6 +303,7 @@ void Viewport::update( const DMCamera& camera, GS::Scene& scene, GUI& gui )
 		if( sceneClicked() )
 			clickAt( camera, scene, gui, ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y );
 	}
+	drawCollision( camera, scene );
 	drawLights( camera, *lights );
 	if( particles )
 		drawEmitters( camera, *particles );
@@ -759,6 +760,27 @@ int Viewport::pickLight( const DMCamera& camera, const DMLightDriver& lights, fl
 		}
 	}
 	return nearest;
+}
+
+void Viewport::drawCollision( const DMCamera& camera, GS::Scene& scene ) const
+{
+	PropertyContainer& world = *scene.worldEntities().properties();
+	if( !world.exists( "Show collision" ) || !world["Show collision"].data<bool>() )
+		return;
+	constexpr float radius = 30.0f;	// в густом лесу — ~2 мс CPU кадра (в 40 м было ~7)
+	std::vector<GS::PhysicsWorld::DebugLine> lines;
+	scene.world().physics().debugLines( camera.position(), radius, lines );
+	const XMMATRIX transform = viewProjection( camera );
+	ImDrawList* draw = ImGui::GetBackgroundDrawList();
+	const ImU32 bodyColor = IM_COL32( 80, 230, 120, 200 );
+	const ImU32 characterColor = IM_COL32( 255, 220, 60, 230 );
+	for( const GS::PhysicsWorld::DebugLine& line : lines )
+	{
+		// Отрезок, у которого конец за камерой, — не рисуется (отладочный вид, без отсечения по ближней плоскости)
+		ImVec2 from, to;
+		if( toScreen( transform, line.from.x, line.from.y, line.from.z, from ) && toScreen( transform, line.to.x, line.to.y, line.to.z, to ) )
+			draw->AddLine( from, to, line.character ? characterColor : bodyColor, 1.0f );
+	}
 }
 
 void Viewport::drawLights( const DMCamera& camera, const DMLightDriver& lights ) const

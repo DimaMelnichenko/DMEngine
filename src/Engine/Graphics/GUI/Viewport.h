@@ -87,6 +87,9 @@ private:
 	// Ничего не выбрано: экземпляр, источник, эмиттер, точка кривой
 	void clearSelection();
 	void drawSelection( const DMCamera& camera, const GS::ModelInstances& models ) const;
+	// Отладочный вид столкновений («Show collision» окна «World»): каркас форм тел и персонажей рядом с камерой линиями
+	// поверх кадра (PhysicsWorld::debugLines); неподвижные — зелёные, персонажи — жёлтые
+	void drawCollision( const DMCamera& camera, GS::Scene& scene ) const;
 	// Кнопки режима гизмо над сценой и клавиши 5 / 6 / 7; rotate / scale — есть ли такие режимы у выбранного (у
 	// источников света масштаба нет, у точечного — и поворота)
 	void drawToolbar( bool rotate = true, bool scale = true, bool localAxes = true );

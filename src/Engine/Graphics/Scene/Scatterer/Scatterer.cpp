@@ -1,5 +1,6 @@
 #include "Scatterer.h"
 #include "Shaders\slots.h"
+#include "Model\ModelCollision.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -765,6 +766,12 @@ void Scatterer::compute( const FrameContext& frame )
 				DMD3D::instance().setSRV( 2, mask );
 				layer.pass->place( m_placeShader );
 				layer.placed = true;
+				// Тела леса — по копии пула на CPU (update, когда GPU пройдёт этот кадр)
+				if( m_collision )
+				{
+					layer.pass->requestPlacedReadback();
+					layer.bodiesPending = true;
+				}
 			}
 			PassDesc cull = layer.pass->passDesc( "Scatter clusters" );
 			cull.reads = layer.pass->placedReads();
@@ -1126,6 +1133,45 @@ bool Scatterer::rebuildPass( Layer& layer )
 	return true;
 }
 
+void Scatterer::update( const FrameContext& frame )
+{
+	for( Layer& layer : m_layers )
+	{
+		std::vector<ScatterPass::PlacedInstance> instances;
+		if( layer.bodiesPending && layer.pass->readPlaced( instances ) )
+		{
+			layer.bodiesPending = false;
+			buildBodies( layer, instances );
+		}
+	}
+}
+
+void Scatterer::buildBodies( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances )
+{
+	if( !m_collision )
+		return;
+	const auto start = std::chrono::high_resolution_clock::now();
+	PhysicsWorld& physics = m_collision->physics();
+	for( uint32_t body : layer.bodies )
+		physics.removeBody( body );
+	layer.bodies.clear();
+	layer.bodies.reserve( instances.size() );
+	for( const ScatterPass::PlacedInstance& instance : instances )
+	{
+		if( instance.variant >= layer.variants.size() || !layer.variants[instance.variant].model )
+			continue;
+		// Как вершинный шейдер экземпляра (Shaders\instance.sh): размер, поворот, место основания
+		const XMMATRIX world = XMMatrixScaling( instance.size, instance.size, instance.size ) *
+							   XMMatrixRotationQuaternion( XMLoadFloat4( &instance.rotation ) ) *
+							   XMMatrixTranslation( instance.position.x, instance.position.y, instance.position.z );
+		if( const uint32_t body = m_collision->addBody( *layer.variants[instance.variant].model, world ) )
+			layer.bodies.push_back( body );
+	}
+	physics.optimize();
+	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": " + std::to_string( layer.bodies.size() ) + " collision bodies, ms: " +
+		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() ) );
+}
+
 void Scatterer::setStreamStones( const std::vector<TerrainHydrology::Stone>& stones )
 {
 	m_streamStones = stones;
@@ -1184,6 +1230,7 @@ void Scatterer::placeStreamStones( Layer& layer )
 		instances.push_back( instance );
 	}
 	const size_t dropped = layer.pass->placeInstances( instances, layer.passVariants );
+	buildBodies( layer, instances );
 	// Длина тени — по самому высокому камню
 	layer.maxHeight = std::max( 1.0f, tallest );
 	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": stream stones " + std::to_string( instances.size() - dropped ) +

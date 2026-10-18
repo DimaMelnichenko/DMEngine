@@ -14,7 +14,7 @@ namespace GS
 {
 
 class TerrainHeightSource;
-class PhysicsWorld;
+class ModelCollision;
 
 // Модели уровня (таблица LevelModels): у каждого экземпляра свой трансформ, модель — общий ресурс. За каждый вид
 // выбирает LOD экземпляра по расстоянию от точки LOD вида, отсекает его по frustum вида (границы меша в мировых
@@ -35,8 +35,8 @@ public:
 
 	// Вызывается после загрузки моделей: экземпляры уровня и свойства их моделей для GUI
 	void initialize( const std::vector<LevelDescription::ModelInstance>& instances );
-	// Мир столкновений (World::physics): тела всех экземпляров — сразу, дальше — по правкам
-	void setPhysics( PhysicsWorld* physics );
+	// Мир столкновений (формы моделей — ModelCollision): тела всех экземпляров — сразу, дальше — по правкам
+	void setCollision( ModelCollision* collision );
 
 	// Правки окна экземпляров — в трансформы и границы
 	void update( const FrameContext& frame ) override;
@@ -47,8 +47,10 @@ public:
 	// Экземпляры с правками окна — для сохранения уровня (строки LevelModels по id)
 	std::vector<LevelDescription::ModelInstance> instances() const;
 
-	// Выбор во вьюпорте редактора: экземпляр, чьи повёрнутые границы LOD 0 луч пересекает ближе всех (distance — до
-	// пересечения); −1 — ни один
+	// Выбор во вьюпорте редактора (distance — до пересечения; −1 — ни один). С миром столкновений — лучом Jolt: попал в
+	// тело экземпляра — он (тонкая плоскость не закрывает то, что за ней); иначе — экземпляр, чьи повёрнутые границы LOD 0
+	// луч пересекает ближе всех, но ближе точки попадания (земля и лес закрывают то, что за ними; крона ели рощи, у которой
+	// тело — только ствол, выбирается по границам)
 	int pick( DirectX::FXMVECTOR origin, DirectX::FXMVECTOR direction, float& distance ) const;
 	uint32_t instanceCount() const { return static_cast<uint32_t>( m_instances.size() ); }
 	// Границы LOD 0 экземпляра в мире (рамка выбранного); false — у модели нет LOD
@@ -124,7 +126,7 @@ private:
 	std::vector<uint32_t> m_palette;
 	uint32_t m_nextKey = 1;
 	DirectX::BoundingBox m_bounds;
-	PhysicsWorld* m_physics = nullptr;
+	ModelCollision* m_collision = nullptr;
 	PropertyContainer m_properties;
 	PropertyContainer m_instanceProperties;
 	PropertyContainer m_addProperties;

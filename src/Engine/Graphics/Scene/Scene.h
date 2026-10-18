@@ -22,6 +22,7 @@
 #include "Sound\AmbientSound.h"
 #include "Sound\Soundscape.h"
 #include "World\WorldEntities.h"
+#include "Model\ModelCollision.h"
 #include "Engine\Simulation\World.h"
 #include "Level\LevelDescription.h"
 #include "Level\LevelSaveData.h"
@@ -131,6 +132,8 @@ private:
 	LevelSaveData m_savedLevel;		// снимок после загрузки или прошлого «Save level» — с ним сравнивается следующее
 	// Мир — до тех, кто держит ссылку на его часы (время суток у SunPosition, певцы): уничтожается после них
 	World m_world;
+	// Формы моделей в мире столкновений — раз на модель: экземпляры уровня, лес и камни расстановки
+	ModelCollision m_modelCollision{ m_world.physics() };
 	DMLightDriver m_lightDriver;
 	Wind m_wind;
 	uint64_t m_windRevision = ~0ull;	// номер правки окна «Wind», по которому сверены направление и поле ветра (applyEditorChanges)

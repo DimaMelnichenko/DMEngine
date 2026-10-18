@@ -9,25 +9,34 @@ using namespace DirectX;
 namespace GS
 {
 
-PhysicsWorld::BodyId addModelBody( PhysicsWorld& physics, const DMModel& model, FXMMATRIX world )
+PhysicsWorld::BodyId ModelCollision::addBody( const DMModel& model, FXMMATRIX world )
 {
 	const DMModel::LodBlock* lod = model.getLodById( 0 );
 	if( !lod || model.collision() == DMModel::Collision::none )
 		return 0;
+	if( model.collision() == DMModel::Collision::box )
+		return m_physics.addStaticBox( lod->bounds.Center, lod->bounds.Extents, world );
+	return m_physics.addStaticBody( shape( model ), world );
+}
+
+PhysicsWorld::ShapeId ModelCollision::shape( const DMModel& model )
+{
+	auto it = m_shapes.find( &model );
+	if( it != m_shapes.end() )
+		return it->second;
+
+	const DMModel::LodBlock* lod = model.getLodById( 0 );
 	const BoundingBox& bounds = lod->bounds;
-	switch( model.collision() )
+	PhysicsWorld::ShapeId shape = 0;
+	if( model.collision() == DMModel::Collision::capsule )
 	{
-	case DMModel::Collision::box:
-		return physics.addStaticBox( bounds.Center, bounds.Extents, world );
-	case DMModel::Collision::capsule:
-	{
-		// Ствол: от низа модели на всю высоту, толщина — у земли
+		// Ствол: от низа модели на всю высоту; толщина — своя (Models.collision_radius) или у земли по основанию
 		const BoundingBox& base = lod->baseBounds;
 		const XMFLOAT3 bottom( base.Center.x, bounds.Center.y - bounds.Extents.y, base.Center.z );
-		return physics.addStaticCapsule( bottom, 2.0f * bounds.Extents.y, std::max( base.Extents.x, base.Extents.z ), world );
+		const float radius = model.collisionRadius() > 0.0f ? model.collisionRadius() : std::max( base.Extents.x, base.Extents.z );
+		shape = m_physics.createCapsuleShape( bottom, 2.0f * bounds.Extents.y, radius );
 	}
-	case DMModel::Collision::hull:
-	case DMModel::Collision::mesh:
+	else
 	{
 		// Вершины всех секций LOD 0 (позиция — первое поле вершины любого формата, VertexData)
 		std::vector<XMFLOAT3> points;
@@ -46,13 +55,14 @@ PhysicsWorld::BodyId addModelBody( PhysicsWorld& physics, const DMModel& model, 
 				indices.push_back( first + index );
 		}
 		if( points.empty() )
-			return physics.addStaticBox( bounds.Center, bounds.Extents, world );
-		return model.collision() == DMModel::Collision::hull ? physics.addStaticHull( points, world ) :
-															   physics.addStaticMesh( points, indices, world );
+			shape = m_physics.createBoxShape( bounds.Center, bounds.Extents );
+		else if( model.collision() == DMModel::Collision::mesh )
+			shape = m_physics.createMeshShape( points, indices );
+		else
+			shape = m_physics.createHullShape( points );
 	}
-	default:
-		return 0;
-	}
+	m_shapes[&model] = shape;
+	return shape;
 }
 
 }

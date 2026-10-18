@@ -46,6 +46,9 @@ void Engine::registerCommands()
 				return reply->error( "camera: expected x,y,z or x,y,z,pitch,yaw" );
 			const XMFLOAT2 rotation = values.size() == 5 ? XMFLOAT2( values[3], values[4] ) : camera.rotation();
 			camera.setView( XMFLOAT3( values[0], values[1], values[2] ), rotation.x, rotation.y );
+			// Идущий — туда же: персонаж переносится, иначе ходьба вернула бы камеру к нему
+			if( m_walk.enabled() )
+				m_walk.teleport( camera );
 			m_renderer.cameraCut();
 			m_framesSinceCut = 0;
 		}

@@ -19,6 +19,7 @@ namespace GS
 {
 
 class ImpostorMaterial;
+class ModelCollision;
 
 // Набор расстановки по террейну: трава, цветы, камешки, веточки (таблица ScatterSets). Слой набора — растение:
 // одна или несколько моделей со всеми их LOD и весами (ScatterLayerModels, как Mesh Entries у Static Mesh Spawner в
@@ -37,7 +38,9 @@ class ImpostorMaterial;
 // расстановки (Material::enablePlacedInstances). Слой камней русел (placement stream_stones) — постоянный, но раскладывает
 // его не маска на GPU, а конвейер рельефа и воды (TerrainHydrology::Result::stones): модель — по весам, размер — по
 // поперечнику камня, поворот — случайный; экземпляры загружаются в постоянный пул с CPU (ScatterPass::placeInstances).
-// Расчёт и отрисовка всех наборов переключаются клавишами 3 и 4
+// У экземпляров постоянных слоёв (лес, камни русел) — тела мира столкновений по простой коллизии модели варианта (ствол у
+// елей, оболочка у камней; docs/physics.md): лес — по копии постоянного пула с GPU, камни — сразу с CPU. Кольцевые слои
+// (трава, галька) — без тел. Расчёт и отрисовка всех наборов переключаются клавишами 3 и 4
 class Scatterer : public SceneObject
 {
 public:
@@ -64,6 +67,10 @@ public:
 	// ScatterPass::maxVariants); mask — маска плотности в хранилище текстур, в координатах карты высот террейна
 	bool addLayer( const std::vector<LayerModel>& models, const std::string& mask, const ScatterLayerSettings& settings );
 
+	// Мир столкновений (формы моделей — ModelCollision): тела постоянных слоёв — после их раскладки
+	void setCollision( ModelCollision* collision ) { m_collision = collision; }
+	// Готовая копия постоянного пула с GPU — тела его экземпляров (прежние тела слоя — убираются)
+	void update( const FrameContext& frame ) override;
 	// Раскладка по видам кадра (FrameContext::views: главный и каскады теней)
 	void compute( const FrameContext& frame ) override;
 	// Свой вызов в проходах, где есть слои их режима материала
@@ -168,6 +175,9 @@ private:
 		// применены настройки и сверены отпечатки импостеров: не сменился — сверять нечего
 		uint64_t appliedRevision = ~0ull;
 		uint64_t bakeRevision = ~0ull;
+		// Тела экземпляров постоянного слоя в мире столкновений; ждём копию пула с GPU (раскладка в этом кадре)
+		std::vector<uint32_t> bodies;
+		bool bodiesPending = false;
 	};
 
 	// Константы раскладки из настроек слоя (ёмкости и число вариантов заполняет ScatterPass::createBuffers)
@@ -185,6 +195,8 @@ private:
 	static float maxRadius( const Layer& layer );
 	// Слой камней русел: экземпляры по камням конвейера — в постоянный пул
 	void placeStreamStones( Layer& layer );
+	// Тела экземпляров постоянного слоя (прежние — убираются): по модели варианта, размер — масштаб
+	void buildBodies( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances );
 	// Ёмкость постоянного пула слоя: у камней русел — их наибольшее число, у прочих — экземпляр на ячейку мира
 	static uint32_t placedCapacity( const ScatterLayerSettings& settings )
 	{
@@ -222,6 +234,7 @@ private:
 	std::vector<int32_t> m_groundLayers;	// слой материала каждой роли (setGroundLayers)
 	std::vector<TerrainHydrology::Stone> m_streamStones;
 	std::vector<Layer> m_layers;
+	ModelCollision* m_collision = nullptr;
 	ComputeShader m_computeShader;
 	ComputeShader m_commandShader;	// buildCommands в Shaders\scatter.cs
 	// Постоянные слои: раскладка на карту (placeWorld) и отбор кластеров кадра (cullPlaced) — с первым таким слоем

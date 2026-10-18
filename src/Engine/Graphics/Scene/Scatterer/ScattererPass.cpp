@@ -396,6 +396,48 @@ void ScatterPass::place( ComputeShader& shader )
 	shader.dispatchGroups( m_populateParams.clustersX, m_populateParams.clustersX, 1 );
 }
 
+void ScatterPass::requestPlacedReadback()
+{
+	DMD3D& d3d = DMD3D::instance();
+	if( !m_placed.buffer.handle() || !m_placedCounter.handle() )
+		return;
+	if( !m_placedReadback.handle() )
+	{
+		BufferDesc desc;
+		desc.usage = BufferUsage::readback;
+		desc.size = m_placed.buffer.size();
+		if( !d3d.createBuffer( desc, nullptr, m_placedReadback ) )
+			return;
+		desc.size = m_placedCounter.size();
+		if( !d3d.createBuffer( desc, nullptr, m_placedCounterReadback ) )
+			return;
+		d3d.setName( m_placedReadback, "Scatter placed instances readback" );
+		d3d.setName( m_placedCounterReadback, "Scatter placed counter readback" );
+	}
+	d3d.copyBuffer( m_placedReadback, m_placed.buffer );
+	d3d.copyBuffer( m_placedCounterReadback, m_placedCounter );
+	m_placedReadbackPending = true;
+}
+
+bool ScatterPass::readPlaced( std::vector<PlacedInstance>& instances )
+{
+	DMD3D& d3d = DMD3D::instance();
+	uint32_t counter[4] = {};
+	if( !m_placedReadbackPending || !d3d.readBuffer( m_placedCounterReadback, counter, sizeof( counter ) ) )
+		return false;
+	// Экземпляры — подряд с начала пула (раскладка берёт место атомарным счётчиком); сверх ёмкости — не записаны
+	const uint32_t count = std::min( counter[0], m_populateParams.placedCapacity );
+	std::vector<PlacedItem> items( count );
+	if( count > 0 && !d3d.readBuffer( m_placedReadback, items.data(), items.size() * sizeof( PlacedItem ) ) )
+		return false;
+	m_placedReadbackPending = false;
+	instances.clear();
+	instances.reserve( count );
+	for( const PlacedItem& item : items )
+		instances.push_back( { item.item.position, item.item.size, item.item.rotation, item.variant, item.lodScale } );
+	return true;
+}
+
 size_t ScatterPass::placeInstances( const std::vector<PlacedInstance>& instances, const std::vector<Variant>& variants )
 {
 	// Кластер экземпляра — по сетке мира clusterCells × cellSize от начала координат (как у placeWorld)

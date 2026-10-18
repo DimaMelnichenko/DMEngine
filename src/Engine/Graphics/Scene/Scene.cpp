@@ -278,9 +278,12 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 	timeStart = std::chrono::high_resolution_clock::now();
 	if( m_level.terrain && !m_world.physics().buildTerrain( m_terrainPipeline ) )
 		LOG( "Physics terrain is not built: walking and creatures go through the ground" );
-	m_models.setPhysics( &m_world.physics() );
+	m_models.setCollision( &m_modelCollision );
 	m_world.physics().optimize();
 	LOG( "Physics: terrain and " + std::to_string( m_world.physics().bodyCount() ) + " bodies of model instances, ms: " + elapsedMs( timeStart ) );
+	// Постоянные слои расстановки (лес, камни русел) — тела после своей раскладки (лес — по копии пула с GPU)
+	for( const auto& scatterer : m_scatterers )
+		scatterer->setCollision( &m_modelCollision );
 	m_world.addSystem( std::make_unique<WanderSystem>() );
 	m_world.addSystem( std::make_unique<MovementSystem>() );
 	m_worldEntities.initialize( m_world );

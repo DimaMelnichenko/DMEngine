@@ -395,6 +395,10 @@ def main():
         for index, mesh in enumerate(meshes[name]):
             obj_name = name + suffix + ('' if index == 0 else '_LOD%d' % index)
             obj = bpy.data.objects.new(obj_name, mesh)
+            if index == 0:
+                # Простая коллизия движка (Models.collision, docs/physics.md): ствол — капсула радиусом ствола у земли
+                obj['collision'] = 'capsule'
+                obj['collision_radius'] = VARIANTS[name]['radius']
             obj.location = (x, y, 0.0)
             obj.rotation_euler = (0.0, 0.0, angle)
             scene.collection.objects.link(obj)

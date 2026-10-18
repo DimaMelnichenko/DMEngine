@@ -153,8 +153,8 @@ bool ModelInstances::removeInstance( uint32_t key )
 	if( index < 0 )
 		return false;
 	// Убранный — без тела; вернут — построится заново
-	if( m_physics && m_instances[index].body )
-		m_physics->removeBody( m_instances[index].body );
+	if( m_collision && m_instances[index].body )
+		m_collision->physics().removeBody( m_instances[index].body );
 	m_instances[index].body = 0;
 	m_instances[index].bodyStale = true;
 	m_removed.push_back( std::move( m_instances[index] ) );
@@ -236,9 +236,9 @@ void ModelInstances::updateStructure()
 	syncBodies();
 }
 
-void ModelInstances::setPhysics( PhysicsWorld* physics )
+void ModelInstances::setCollision( ModelCollision* collision )
 {
-	m_physics = physics;
+	m_collision = collision;
 	for( Instance& instance : m_instances )
 		instance.bodyStale = true;
 	syncBodies();
@@ -246,15 +246,15 @@ void ModelInstances::setPhysics( PhysicsWorld* physics )
 
 void ModelInstances::syncBodies()
 {
-	if( !m_physics )
+	if( !m_collision )
 		return;
 	for( Instance& instance : m_instances )
 	{
 		if( !instance.bodyStale )
 			continue;
 		if( instance.body )
-			m_physics->removeBody( instance.body );
-		instance.body = addModelBody( *m_physics, *instance.model, instance.transform.worldMatrix() );
+			m_collision->physics().removeBody( instance.body );
+		instance.body = m_collision->addBody( *instance.model, instance.transform.worldMatrix() );
 		instance.bodyStale = false;
 	}
 }
@@ -412,12 +412,35 @@ bool ModelInstances::instanceBox( int instance, DirectX::BoundingOrientedBox& bo
 
 int ModelInstances::pick( FXMVECTOR origin, FXMVECTOR direction, float& distance ) const
 {
+	// Луч по формам столкновений: тело экземпляра — он; иначе граница выбора по границам — точка попадания
+	float limit = FLT_MAX;
+	if( m_collision )
+	{
+		constexpr float reach = 20000.0f;
+		XMFLOAT3 from, ray;
+		XMStoreFloat3( &from, origin );
+		XMStoreFloat3( &ray, XMVector3Normalize( direction ) * reach );
+		float fraction = 0.0f;
+		PhysicsWorld::BodyId body = 0;
+		if( m_collision->physics().castRay( from, ray, fraction, &body ) )
+		{
+			limit = fraction * reach;
+			for( int i = 0; i < static_cast<int>( m_instances.size() ); ++i )
+			{
+				if( body != 0 && m_instances[i].body == body )
+				{
+					distance = limit;
+					return i;
+				}
+			}
+		}
+	}
 	int nearest = -1;
 	for( int i = 0; i < static_cast<int>( m_instances.size() ); ++i )
 	{
 		DirectX::BoundingOrientedBox box;
 		float hit = 0.0f;
-		if( instanceBox( i, box ) && box.Intersects( origin, direction, hit ) && ( nearest < 0 || hit < distance ) )
+		if( instanceBox( i, box ) && box.Intersects( origin, direction, hit ) && hit < limit && ( nearest < 0 || hit < distance ) )
 		{
 			nearest = i;
 			distance = hit;

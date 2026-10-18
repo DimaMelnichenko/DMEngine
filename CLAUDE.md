@@ -253,7 +253,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   заливка доли. Кнопки окна — `PropertyContainer::addButton` (как CallInEditor в UE; действие с отменой —
   `EditHistory::record`, команда `press "окно/кнопка"`): так добавляются и убираются источники света. Вьюпорт
   (`GUI/Viewport.h`, вызывается между `GUI::Begin` и `End`, получает `Scene` целиком; значки и гизмо источников света и
-  эмиттеров частиц с местом): клик по сцене — луч к границам экземпляров
+  эмиттеров частиц с местом): клик по сцене — луч по формам столкновений, иначе к границам экземпляров ближе попадания
   (`ModelInstances::pick`), рамка, подокно в Details (`GUI::focusProperties`), гизмо ImGuizmo пишет в те же свойства;
   отладочные виды — View → Debug views; команда `pick x y` — выбор сценарием.
 
@@ -368,9 +368,11 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 (`FrameContext::gameTime`, `cb_gameTime`; `-freezetime` его останавливает и мир не шагает). Столкновения — служба мира
 `PhysicsWorld` (Jolt Physics за фасадом без типов Jolt, как Chaos у World в UE): земля теми же треугольниками, что
 `surfaceHeight` (детальные плитки у русел — своими картами высот), тела моделей уровня по простой коллизии
-`Models.collision` (`hull` по умолчанию, `box`, `mesh`, `capsule` — ствол, `none`; строит `ModelInstances` через
-`Scene/Model/ModelCollision.h`), персонажи `CharacterVirtual` (ходьба `WalkMode` и сущности с компонентом `Character`);
-поведение пишет `Locomotion`, передвигает `MovementSystem`; подробно — `docs/physics.md`. Кадр начинается с
+`Models.collision` (`hull` по умолчанию, `box`, `mesh`, `capsule` — ствол, радиус — `Models.collision_radius`, `none`;
+форма — раз на модель, кэш `ModelCollision` у `Scene`, масштаб — у тела), тела экземпляров уровня (`ModelInstances`) и
+постоянных слоёв расстановки (лес — по копии пула с GPU, камни русел — с CPU; `Scatterer::buildBodies`), персонажи
+`CharacterVirtual` (ходьба `WalkMode` и сущности с компонентом `Character`); поведение пишет `Locomotion`, передвигает
+`MovementSystem`; луч `castRay` — и выбор во вьюпорте; отладочный вид — Debug views → «Collision»; подробно — `docs/physics.md`. Кадр начинается с
 `Scene::advanceWorld`: правки окна «Sun position» (органы часов) — в часы, шаг часов, шаги систем фиксированной длительности
 (60 Гц, не больше 4 за кадр, остаток — дальше; «Fix Your Timestep»). Рисует сущности объект сцены `WorldEntities` (общей с
 `ModelInstances` функцией `collectModelMeshes`, `Scene/Model/ModelDraw.h`; место — смешанное по `World::interpolation`),

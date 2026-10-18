@@ -236,3 +236,99 @@ TEST_CASE( "PhysicsWorld: wandering characters keep apart, entities take their c
 	world.clear();
 	CHECK( world.physics().characterCount() == 0 );
 }
+
+TEST_CASE( "PhysicsWorld: a shared hull shape takes the scale and rotation of each body" )
+{
+	PhysicsWorld physics;
+	// Куб 1 м: общая форма, тела — масштаб 2, второе ещё повёрнуто на 45° вокруг вертикали
+	std::vector<XMFLOAT3> cube;
+	for( int i = 0; i < 8; ++i )
+		cube.push_back( XMFLOAT3( i & 1 ? 0.5f : -0.5f, i & 2 ? 0.5f : -0.5f, i & 4 ? 0.5f : -0.5f ) );
+	const PhysicsWorld::ShapeId shape = physics.createHullShape( cube );
+	REQUIRE( shape != 0 );
+	const PhysicsWorld::BodyId plain = physics.addStaticBody( shape, XMMatrixScaling( 2.0f, 2.0f, 2.0f ) * XMMatrixTranslation( 50.0f, 10.0f, 50.0f ) );
+	const PhysicsWorld::BodyId turned = physics.addStaticBody( shape, XMMatrixScaling( 2.0f, 2.0f, 2.0f ) * XMMatrixRotationY( XM_PIDIV4 ) *
+																	  XMMatrixTranslation( 90.0f, 10.0f, 50.0f ) );
+	REQUIRE( plain != 0 );
+	REQUIRE( turned != 0 );
+	auto top = [&]( float x, float z, PhysicsWorld::BodyId& body )
+	{
+		float fraction = 0.0f;
+		body = 0;
+		return physics.castRay( XMFLOAT3( x, 100.0f, z ), XMFLOAT3( 0.0f, -200.0f, 0.0f ), fraction, &body ) ? 100.0f - 200.0f * fraction : -1e9f;
+	};
+	PhysicsWorld::BodyId body = 0;
+	CHECK( top( 50.0f, 50.0f, body ) == doctest::Approx( 11.0f ).epsilon( 0.001 ) );	// верх — на половине масштабированного куба
+	CHECK( body == plain );
+	CHECK( top( 51.3f, 50.0f, body ) < 0.0f );											// за гранью куба 2 м — мимо
+	CHECK( top( 91.3f, 50.0f, body ) == doctest::Approx( 11.0f ).epsilon( 0.001 ) );	// повёрнутый ромбом — дальше по оси
+	CHECK( body == turned );
+}
+
+TEST_CASE( "PhysicsWorld: a capsule with a non-uniform scale still gets a body" )
+{
+	PhysicsWorld physics;
+	const PhysicsWorld::ShapeId trunk = physics.createCapsuleShape( XMFLOAT3( 0.0f, 0.0f, 0.0f ), 4.0f, 0.5f );
+	REQUIRE( trunk != 0 );
+	CHECK( physics.addStaticBody( trunk, XMMatrixScaling( 2.0f, 1.0f, 1.0f ) * XMMatrixTranslation( 10.0f, 0.0f, 10.0f ) ) != 0 );
+	CHECK( physics.addStaticBody( trunk, XMMatrixScaling( 1.5f, 1.5f, 1.5f ) * XMMatrixTranslation( 20.0f, 0.0f, 10.0f ) ) != 0 );
+	CHECK( physics.bodyCount() == 2 );
+}
+
+TEST_CASE( "PhysicsWorld: a ray tells the body it hit, the ground is body 0" )
+{
+	FakeTerrain terrain( flat );
+	PhysicsWorld physics;
+	REQUIRE( physics.buildTerrain( terrain ) );
+	const PhysicsWorld::BodyId box = physics.addStaticBox( XMFLOAT3( 0.0f, 0.0f, 0.0f ), XMFLOAT3( 1.0f, 1.0f, 1.0f ),
+														   XMMatrixTranslation( 128.0f, flatHeight + 1.0f, 128.0f ) );
+	float fraction = 0.0f;
+	PhysicsWorld::BodyId body = 99;
+	REQUIRE( physics.castRay( XMFLOAT3( 128.0f, 50.0f, 128.0f ), XMFLOAT3( 0.0f, -100.0f, 0.0f ), fraction, &body ) );
+	CHECK( body == box );
+	REQUIRE( physics.castRay( XMFLOAT3( 140.0f, 50.0f, 128.0f ), XMFLOAT3( 0.0f, -100.0f, 0.0f ), fraction, &body ) );
+	CHECK( body == 0 );
+	CHECK( 50.0f - 100.0f * fraction == doctest::Approx( flatHeight ).epsilon( 0.001 ) );
+}
+
+TEST_CASE( "PhysicsWorld: debug lines show bodies and characters nearby, not the ground or far bodies" )
+{
+	FakeTerrain terrain( flat );
+	PhysicsWorld physics;
+	REQUIRE( physics.buildTerrain( terrain ) );
+	const XMFLOAT3 center( 128.0f, flatHeight, 128.0f );
+	std::vector<PhysicsWorld::DebugLine> lines;
+	physics.debugLines( center, 40.0f, lines );
+	CHECK( lines.empty() );		// только земля
+
+	physics.addStaticBox( XMFLOAT3( 0.0f, 0.0f, 0.0f ), XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMMatrixTranslation( 130.0f, flatHeight + 1.0f, 128.0f ) );
+	physics.addStaticBox( XMFLOAT3( 0.0f, 0.0f, 0.0f ), XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMMatrixTranslation( 228.0f, flatHeight + 1.0f, 128.0f ) );
+	physics.debugLines( center, 40.0f, lines );
+	REQUIRE( !lines.empty() );
+	bool nearBoxOnly = true;
+	for( const PhysicsWorld::DebugLine& line : lines )
+		nearBoxOnly &= !line.character && std::abs( line.from.x - 130.0f ) < 1.2f && std::abs( line.to.x - 130.0f ) < 1.2f;
+	CHECK( nearBoxOnly );
+
+	lines.clear();
+	physics.createCharacter( {}, XMFLOAT3( 126.0f, flatHeight, 128.0f ) );
+	physics.debugLines( center, 40.0f, lines );
+	CHECK( std::any_of( lines.begin(), lines.end(), []( const PhysicsWorld::DebugLine& line ) { return line.character; } ) );
+}
+
+TEST_CASE( "PhysicsWorld: a row of trunks with one shared capsule is a wall" )
+{
+	FakeTerrain terrain( flat );
+	PhysicsWorld physics;
+	REQUIRE( physics.buildTerrain( terrain ) );
+	// 50 стволов радиусом 0,3 м через метр поперёк пути: просвет 0,4 м уже персонажа (0,6 м)
+	const PhysicsWorld::ShapeId trunk = physics.createCapsuleShape( XMFLOAT3( 0.0f, 0.0f, 0.0f ), 8.0f, 0.3f );
+	for( int i = 0; i < 50; ++i )
+		physics.addStaticBody( trunk, XMMatrixTranslation( 103.0f + i, flatHeight, 135.0f ) );
+	physics.optimize();
+	CHECK( physics.bodyCount() == 50 );
+	const PhysicsWorld::CharacterId character = physics.createCharacter( {}, XMFLOAT3( 128.4f, flatHeight, 128.0f ) );
+	const PhysicsWorld::CharacterState state = walk( physics, character, XMFLOAT2( 0.0f, 1.5f ), 10.0f );
+	CHECK( state.feet.z < 135.0f - 0.3f );
+	CHECK( state.feet.z > 133.5f );
+}

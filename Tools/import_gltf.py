@@ -2,7 +2,7 @@
 
     python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--snap-to-terrain]] [--scale s]
                                            [--lod-ranges 25,60] [--shadow-lod-scale 0.5] [--shadow-min-lod 2]
-                                           [--collision hull|box|mesh|capsule|none]
+                                           [--collision hull|box|mesh|capsule|none] [--collision-radius r]
                                            [--name Имя] [--scatter] [--dry-run]
 
 Пишет файлы мешей (Meshes\\models\\<ассет>\\<модель>_LOD<N>[_S<секция>].bin, формат MeshLoader), картинки текстур
@@ -31,7 +31,8 @@ MaterialParameterInstance, по --level — LevelModels и LevelLights. Всё �
   export_extras) с именами параметров PBR; значение-строка с именем текстуры материала (BaseColor) — та же текстура.
 - Простая коллизия модели (Models.collision, docs/physics.md): --collision для всех моделей файла или extras объекта LOD0
   (Custom Property «collision» объекта Blender, экспорт с export_extras); ни того ни другого — не менять (у новой — NULL,
-  выпуклая оболочка).
+  выпуклая оболочка). Радиус ствола (capsule, Models.collision_radius) — --collision-radius или extras «collision_radius»;
+  без него — по основанию модели.
 - --snap-to-terrain ставит экземпляры на землю уровня, как Drop to surface в UE: высота — террейн в точке (x, z)
   плюс высота объекта над нулём в Blender (Tools/terrain.py).
 - Источники света (KHR_lights_punctual: в Blender — флажок Punctual Lights при экспорте) с --level — строки LevelLights,
@@ -621,7 +622,8 @@ def collect_models(gltf, asset, materials, rename, bake, bake_scale=1.0):
             inverse = np.linalg.inv(lod0_world[:3, :3])
             bases = [inverse @ lods[lod][1][:3, :3] for lod in order]
         spec = {'base': base, 'lods': [lods[lod][0] for lod in order], 'bases': bases, 'instances': [placement],
-                'collision': lods[order[0]][0].get('extras', {}).get('collision')}
+                'collision': lods[order[0]][0].get('extras', {}).get('collision'),
+                'collision_radius': lods[order[0]][0].get('extras', {}).get('collision_radius')}
         specs.append(spec)
         if not baked:
             by_meshes[key] = spec
@@ -663,7 +665,8 @@ def collect_models(gltf, asset, materials, rename, bake, bake_scale=1.0):
                 break
             lods.append(sections)
         if lods:
-            models.append({'name': base, 'lods': lods, 'instances': spec['instances'], 'collision': spec['collision']})
+            models.append({'name': base, 'lods': lods, 'instances': spec['instances'], 'collision': spec['collision'],
+                           'collision_radius': spec['collision_radius']})
     return models
 
 
@@ -743,7 +746,7 @@ class Database:
         self.cursor.execute('UPDATE Meshes SET file = ?, primitive = ? WHERE id = ?', (file, FALLBACK_PRIMITIVE, mesh_id))
         return mesh_id
 
-    def model(self, name, lods, render, shadow_lod_scale=None, shadow_min_lod=None, collision=None):
+    def model(self, name, lods, render, shadow_lod_scale=None, shadow_min_lod=None, collision=None, collision_radius=None):
         """lods — по LOD: ([(секция, id меша, id экземпляра материала)], дальность); строка ModelProperties — секция.
         shadow_lod_scale, shadow_min_lod — Models.shadow_lod_scale и shadow_min_lod (None — не менять, у новой модели
         1 и 0); collision — Models.collision (None — не менять)"""
@@ -758,6 +761,8 @@ class Database:
                                 (min(shadow_min_lod, len(lods) - 1), model_id))
         if collision is not None:
             self.cursor.execute('UPDATE Models SET collision = ? WHERE id = ?', (collision, model_id))
+        if collision_radius is not None:
+            self.cursor.execute('UPDATE Models SET collision_radius = ? WHERE id = ?', (collision_radius, model_id))
         old_meshes = [r[0] for r in self.cursor.execute('SELECT mesh_id FROM ModelProperties WHERE model_id = ?',
                                                         (model_id,))]
         self.cursor.execute('DELETE FROM ModelProperties WHERE model_id = ?', (model_id,))
@@ -854,6 +859,9 @@ def main():
                         help='simple collision of the models (Models.collision): hull of LOD0 vertices, box of its bounds, '
                              'mesh of its triangles, capsule - a trunk, none; default: keep, extras "collision" of the '
                              'LOD0 object, hull for a new model')
+    parser.add_argument('--collision-radius', type=float,
+                        help='trunk radius of a capsule collision, m in model units (Models.collision_radius); default: keep, '
+                             'extras "collision_radius" of the LOD0 object, the base of the model for a new one')
     parser.add_argument('--scatter', action='store_true', help='model for scatter layers: PBRInstance, render = 0')
     parser.add_argument('--dry-run', action='store_true', help='print what would be written, write nothing')
     parser.add_argument('--db', default=os.path.join(ROOT, 'base.db3'))
@@ -931,8 +939,9 @@ def main():
         collision = args.collision or model['collision']
         if collision is not None and collision not in COLLISIONS:
             raise SystemExit('error: model %s: collision %r, expected one of %s' % (model['name'], collision, ', '.join(COLLISIONS)))
+        collision_radius = args.collision_radius if args.collision_radius is not None else model['collision_radius']
         model_id = db.model(model['name'], lods, 0 if args.scatter else 1, args.shadow_lod_scale, args.shadow_min_lod,
-                            collision)
+                            collision, None if collision_radius is None else float(collision_radius))
 
         positions = np.concatenate([section['mesh'][0] for section in model['lods'][0]])
         lo, hi = positions.min(axis=0), positions.max(axis=0)

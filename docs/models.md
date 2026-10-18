@@ -106,7 +106,8 @@ REPEAT, цвета вершин и остальные расширения ма�
 ```
 python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--snap-to-terrain]] [--scale s]
                                        [--lod-ranges 25,60] [--shadow-lod-scale 0.5] [--shadow-min-lod 2] [--name Имя]
-                                       [--collision hull|box|mesh|capsule|none] [--asset папка] [--scatter] [--dry-run]
+                                       [--collision hull|box|mesh|capsule|none] [--collision-radius r] [--asset папка]
+                                       [--scatter] [--dry-run]
 ```
 
 | Параметр | Что делает |
@@ -119,6 +120,7 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
 | `--shadow-min-lod` | LOD у теней не детальнее этого (`Models.shadow_min_lod`; без опции не меняется, у новой модели 0) — см. «LOD теней» |
 | `--name` | имя модели вместо имени объекта — для файла с одной моделью |
 | `--collision` | простая коллизия моделей файла (`Models.collision`): `hull` — оболочка вершин LOD0, `box` — коробка по границам, `mesh` — треугольники, `capsule` — ствол дерева, `none` — без столкновений ([physics.md](physics.md)); без опции — extras «collision» объекта LOD0 (Custom Property объекта в Blender), иначе не меняется (у новой модели NULL — оболочка) |
+| `--collision-radius` | радиус ствола у `capsule`, м в единицах модели (`Models.collision_radius`); без опции — extras «collision_radius» объекта LOD0, иначе не меняется (NULL — по основанию модели: у дерева с лапами у земли выйдет радиус кроны) |
 | `--asset` | папка и префикс файлов и текстур вместо имени файла |
 | `--scatter` | модель для слоёв расстановки: материал `PBRInstance`, `render = 0`, без `--level`; дальности LOD (`--lod-ranges`) расстановка тоже берёт из модели (см. [scatter.md](scatter.md)) |
 | `--dry-run` | напечатать, что будет записано, и ничего не менять |
@@ -135,7 +137,7 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
 | `Meshes` | строка на секцию LOD: имя `<модель>_LOD<N>[_S<k>]`, файл, `primitive = box` — заглушка, если файла нет (каталог не в git) |
 | `Textures` | имя `<ассет>_<картинка>`, файл, мипы, `sRGB` — 1 для базового цвета и свечения, 0 для остального; `compression` — `normalmap` (BC5) у карты нормалей, `default` (BC7) у прочих ([materials.md](materials.md), «Сжатие и приготовление текстур») |
 | `MaterialInstance`, `MaterialParameterInstance` | экземпляр `<ассет>/<материал>` материала `PBR` (12) или `PBRInstance` (9) и его значения |
-| `Models`, `ModelProperties` | модель (`shadow_lod_scale`, `shadow_min_lod` — LOD теней, `collision` — простая коллизия, [physics.md](physics.md)) и её LOD: строка на секцию (`lod`, `section`) — меш, материал, экземпляр; дальность и `render` LOD — у секции 0 |
+| `Models`, `ModelProperties` | модель (`shadow_lod_scale`, `shadow_min_lod` — LOD теней, `collision` и `collision_radius` — простая коллизия, [physics.md](physics.md)) и её LOD: строка на секцию (`lod`, `section`) — меш, материал, экземпляр; дальность и `render` LOD — у секции 0 |
 | `LevelModels` | с `--level`: экземпляры модели на уровне — положение, поворот, масштаб (см. ниже) |
 | `LevelLights` | с `--level`: источники света файла (`KHR_lights_punctual`) — см. «Источники света из Blender» |
 

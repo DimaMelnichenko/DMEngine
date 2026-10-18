@@ -22,6 +22,8 @@ WorldEntities::WorldEntities() :
 	rate->setHigh( 240.0f );
 	rate->setUnit( "Hz" )->setTooltip( "Fixed steps of the simulation per second; frames interpolate between the steps" );
 	m_properties.insert( "Simulation paused", false )->setTooltip( "Entities stand still; the world clock goes on" );
+	m_properties.insert( "Show collision", false )->setTooltip( "Collision shapes of bodies and characters within 30 m of the camera, "
+																  "as lines over the frame (View > Debug views > Collision)" );
 }
 
 void WorldEntities::initialize( World& world )

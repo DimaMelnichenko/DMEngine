@@ -588,11 +588,12 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	LOG( "Load model: " + std::to_string( idModel ) );
 
 	SQLite::Statement query( DBConnector::instance().db(),
-							 "SELECT id, name, shadow_lod_scale, shadow_min_lod, collision FROM Models where id = :id" );
+							 "SELECT id, name, shadow_lod_scale, shadow_min_lod, collision, collision_radius FROM Models where id = :id" );
 	query.bind( ":id", idModel );
 	float shadowLodScale = 1.0f;
 	uint32_t shadowMinLod = 0;
 	std::string collision;
+	float collisionRadius = 0.0f;
 	while( query.executeStep() )
 	{	
 		if( !GS::System::models().createModel( query.getColumn( 0 ), query.getColumn( 1 ) ) )
@@ -600,6 +601,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		shadowLodScale = static_cast<float>( query.getColumn( "shadow_lod_scale" ).getDouble() );
 		shadowMinLod = static_cast<uint32_t>( std::max( query.getColumn( "shadow_min_lod" ).getInt(), 0 ) );
 		collision = query.getColumn( "collision" ).isNull() ? std::string() : query.getColumn( "collision" ).getString();
+		collisionRadius = static_cast<float>( query.getColumn( "collision_radius" ).getDouble() );
 	}
 
 	if( !GS::System::models().exists( idModel ) )
@@ -611,6 +613,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	if( !collision.empty() && !GS::DMModel::parseCollision( collision, modelCollision ) )
 		LOG( "Model " + std::to_string( idModel ) + ": unknown collision '" + collision + "' (hull, box, mesh, capsule, none), hull is used" );
 	model->setCollision( modelCollision );
+	model->setCollisionRadius( std::max( collisionRadius, 0.0f ) );
 	if( !model )
 		return false;
 	

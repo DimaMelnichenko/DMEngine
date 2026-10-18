@@ -19,6 +19,7 @@ class PhysicsWorld
 public:
 	using BodyId = uint32_t;		// 0 — нет тела
 	using CharacterId = uint32_t;	// 0 — нет персонажа
+	using ShapeId = uint32_t;		// 0 — нет формы
 
 	PhysicsWorld();
 	~PhysicsWorld();
@@ -33,12 +34,21 @@ public:
 	// Номер итоговой карты, по которой построена земля; ~0 — земли нет
 	uint32_t terrainRevision() const;
 
-	// Неподвижные тела: форма — в пространстве модели, world — мировая матрица (масштаб, в том числе неравномерный,
-	// запекается в форму). 0 — форма не построилась (вырожденная: плоская оболочка — коробкой)
+	// Общие формы — в пространстве модели, без масштаба: одну форму берут многие тела (addStaticBody), масштаб — у тела.
+	// 0 — форма не построилась (плоская оболочка — коробкой по границам)
+	ShapeId createBoxShape( const DirectX::XMFLOAT3& center, const DirectX::XMFLOAT3& halfExtents );
+	ShapeId createHullShape( const std::vector<DirectX::XMFLOAT3>& points );
+	ShapeId createMeshShape( const std::vector<DirectX::XMFLOAT3>& vertices, const std::vector<uint32_t>& indices );
+	// Вертикальная капсула (ствол): низ — base, высота height (с полусферами), радиус radius
+	ShapeId createCapsuleShape( const DirectX::XMFLOAT3& base, float height, float radius );
+	// Неподвижное тело с общей формой: world — мировая матрица; масштаб — форме поверх (неравномерный — где форма его
+	// допускает, у капсулы — ближайший равномерный). 0 — формы нет
+	BodyId addStaticBody( ShapeId shape, DirectX::FXMMATRIX world );
+	// Тело со своей формой (форма — только его): коробка — с масштабом, запечённым в размеры (плоская модель остаётся
+	// тонкой), остальные — общая форма + addStaticBody
 	BodyId addStaticBox( const DirectX::XMFLOAT3& center, const DirectX::XMFLOAT3& halfExtents, DirectX::FXMMATRIX world );
 	BodyId addStaticHull( const std::vector<DirectX::XMFLOAT3>& points, DirectX::FXMMATRIX world );
 	BodyId addStaticMesh( const std::vector<DirectX::XMFLOAT3>& vertices, const std::vector<uint32_t>& indices, DirectX::FXMMATRIX world );
-	// Вертикальная капсула (ствол): низ — base, высота height (с полусферами), радиус radius
 	BodyId addStaticCapsule( const DirectX::XMFLOAT3& base, float height, float radius, DirectX::FXMMATRIX world );
 	void removeBody( BodyId body );
 	// Неподвижных тел, без земли
@@ -46,8 +56,19 @@ public:
 	// После загрузки многих тел — перестроить дерево широкой фазы (быстрее запросы)
 	void optimize();
 
-	// Луч от origin на direction (длина — дальность): доля пути до ближайшего попадания; false — мимо
-	bool castRay( const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& direction, float& fraction ) const;
+	// Луч от origin на direction (длина — дальность): доля пути до ближайшего попадания и тело (0 — земля); false — мимо
+	bool castRay( const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& direction, float& fraction, BodyId* body = nullptr ) const;
+
+	// Отладочный вид (как Show → Collision в UE): отрезки каркаса форм тел и персонажей, чьи границы ближе radius к center;
+	// земли нет (её и так видно), персонажа, внутри чьей капсулы center (идущий), — тоже. Подробнее форма — ближе к center
+	// (LOD форм Jolt)
+	struct DebugLine
+	{
+		DirectX::XMFLOAT3 from;
+		DirectX::XMFLOAT3 to;
+		bool character = false;		// капсула персонажа, а не неподвижное тело
+	};
+	void debugLines( const DirectX::XMFLOAT3& center, float radius, std::vector<DebugLine>& lines ) const;
 
 	// Персонаж — капсула, стоящая на точке ног
 	struct CharacterSettings
