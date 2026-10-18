@@ -1,5 +1,5 @@
 // Звук без устройства: микшер (сглаживание, затухание убранного голоса, ограничитель), стерео, синтез, фразы записей,
-// чтение WAV и прослушивание в редакторе (Mute и Solo частей)
+// чтение WAV, прослушивание в редакторе (Mute и Solo частей) и правила слоёв певцов
 #include <doctest/doctest.h>
 #include <algorithm>
 #include <cmath>
@@ -12,6 +12,7 @@
 #include "Engine\Audio\AudioClip.h"
 #include "Engine\Audio\AudioMixer.h"
 #include "Engine\Audio\AudioSynth.h"
+#include "Engine\Audio\SoundRules.h"
 
 using namespace GS;
 using namespace DirectX;
@@ -265,4 +266,44 @@ TEST_CASE( "AudioAudition: Mute silences, Solo leaves only the soloed parts" )
 	const uint32_t seen = audition.clearRevision();
 	audition.clearSolo();
 	CHECK( audition.clearRevision() != seen );
+}
+
+TEST_CASE( "SoundRules: hours window, product of rules, values as text" )
+{
+	// Окно часов: внутри — 1, снаружи — 0, на границе — половина, край — за fade часов; через полночь
+	CHECK( hoursActivity( 4.0f, 22.0f, 0.75f, 12.0f ) == doctest::Approx( 1.0f ) );
+	CHECK( hoursActivity( 4.0f, 22.0f, 0.75f, 2.0f ) == doctest::Approx( 0.0f ) );
+	CHECK( hoursActivity( 4.0f, 22.0f, 0.75f, 4.0f ) == doctest::Approx( 0.5f ) );
+	CHECK( hoursActivity( 4.0f, 22.0f, 0.75f, 22.375f ) == doctest::Approx( 0.0f ) );
+	CHECK( hoursActivity( 21.0f, 5.0f, 0.75f, 23.5f ) == doctest::Approx( 1.0f ) );
+	CHECK( hoursActivity( 21.0f, 5.0f, 0.75f, 2.0f ) == doctest::Approx( 1.0f ) );
+	CHECK( hoursActivity( 21.0f, 5.0f, 0.75f, 12.0f ) == doctest::Approx( 0.0f ) );
+
+	const SoundRuleType* hours = soundRuleType( "hours" );
+	REQUIRE( hours );
+	CHECK_FALSE( soundRuleType( "no_such_rule" ) );
+
+	// Текст параметров: нет ключа — по умолчанию, лишний и не число — пропуск; обратно — по порядку параметров
+	const std::vector<float> values = parseSoundRuleValues( *hours, " to = 18 ;from=6;extra=1;fade=x" );
+	REQUIRE( values.size() == hours->params.size() );
+	CHECK( values[0] == doctest::Approx( 6.0f ) );
+	CHECK( values[1] == doctest::Approx( 18.0f ) );
+	CHECK( values[2] == doctest::Approx( hours->params[2].defaultValue ) );
+	CHECK( formatSoundRuleValues( *hours, values ) == "from=6;to=18;fade=0.75" );
+	CHECK( parseSoundRuleValues( *hours, formatSoundRuleValues( *hours, values ) ) == values );
+
+	// Активность — произведение включённых правил; выключенное и неизвестное — 1; правил нет — 1
+	SoundRuleContext context;
+	context.hour = 7.0f;
+	SoundRule day{ 0, "hours", true, parseSoundRuleValues( *hours, "from=6;to=18" ) };
+	SoundRule morning{ 0, "hours", true, parseSoundRuleValues( *hours, "from=5;to=9" ) };
+	SoundRule evening{ 0, "hours", true, parseSoundRuleValues( *hours, "from=17;to=21" ) };
+	SoundRule unknown{ 0, "no_such_rule", true, {} };
+	CHECK( soundActivity( {}, context ) == doctest::Approx( 1.0f ) );
+	CHECK( soundActivity( { day, morning }, context ) == doctest::Approx( 1.0f ) );
+	CHECK( soundActivity( { day, evening }, context ) == doctest::Approx( 0.0f ) );
+	evening.enabled = false;
+	CHECK( soundActivity( { day, evening, unknown }, context ) == doctest::Approx( 1.0f ) );
+	context.hour = 6.0f;
+	CHECK( soundActivity( { day, morning }, context ) == doctest::Approx( 0.5f ) );
 }

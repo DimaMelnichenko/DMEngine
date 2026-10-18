@@ -76,6 +76,33 @@ void LibraryLoader::loadSoundscape( LevelDescription& level )
 		layer.name = query.getColumn( "name" ).getString();
 		readSettings( query, GS::soundscapeLayerSchema(), layer, "Soundscape layer " + layer.name );
 	}
+	// Правила слоёв — строки SoundRules: тип, включено, параметры «ключ=значение;…» (GS::soundRuleTypes); тип, которого нет, —
+	// строка в лог, правило остаётся в базе
+	if( db.tableExists( "SoundRules" ) )
+	{
+		SQLite::Statement rules( db, "SELECT id, type, enabled, params FROM SoundRules WHERE layer = :layer ORDER BY id" );
+		for( GS::SoundscapeLayerSettings& layer : level.soundscapeLayers )
+		{
+			rules.bind( ":layer", layer.id );
+			while( rules.executeStep() )
+			{
+				const std::string type = rules.getColumn( 1 ).getString();
+				const GS::SoundRuleType* ruleType = GS::soundRuleType( type );
+				if( !ruleType )
+				{
+					LOG( "Soundscape layer " + layer.name + ": unknown rule type " + type + " (SoundRules " +
+						 std::to_string( rules.getColumn( 0 ).getUInt() ) + ") is skipped" );
+					continue;
+				}
+				GS::SoundRule& rule = layer.rules.emplace_back();
+				rule.id = rules.getColumn( 0 ).getUInt();
+				rule.type = type;
+				rule.enabled = rules.getColumn( 2 ).isNull() || rules.getColumn( 2 ).getInt() != 0;
+				rule.values = GS::parseSoundRuleValues( *ruleType, rules.getColumn( 3 ).isNull() ? std::string() : rules.getColumn( 3 ).getString() );
+			}
+			rules.reset();
+		}
+	}
 	// Все записи: окно «Sounds» и флажки записей слоя; звук записи читается, когда её поют или слушают
 	SQLite::Statement sound( db, "SELECT * FROM Sounds ORDER BY name" );
 	while( sound.executeStep() )
@@ -572,12 +599,30 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 		// Слои певцов — их строки SoundscapeLayers: убранные в редакторе удаляются, добавленные — новые строки уровня (имя;
 		// остальное пишет UPDATE по описанию — у новой строки все колонки, без записей — NULL). id новых — в data, из неё — в слои
 		using Layer = GS::SoundscapeLayerSettings;
+		const bool rules = db.tableExists( "SoundRules" );
 		SQLite::Statement deleteLayer( db, "DELETE FROM SoundscapeLayers WHERE id = :id" );
 		for( uint32_t id : data.removedSoundscapeLayers )
 		{
+			// Правила слоя — с ним (без опоры на ON DELETE CASCADE: внешние ключи у соединения могут быть выключены)
+			if( rules )
+			{
+				SQLite::Statement deleteLayerRules( db, "DELETE FROM SoundRules WHERE layer = :layer" );
+				deleteLayerRules.bind( ":layer", id );
+				deleteLayerRules.exec();
+			}
 			deleteLayer.bind( ":id", id );
 			deleteLayer.exec();
 			deleteLayer.reset();
+		}
+		if( rules )
+		{
+			SQLite::Statement deleteRule( db, "DELETE FROM SoundRules WHERE id = :id" );
+			for( uint32_t id : data.removedSoundRules )
+			{
+				deleteRule.bind( ":id", id );
+				deleteRule.exec();
+				deleteRule.reset();
+			}
 		}
 		SQLite::Statement insertLayer( db, "INSERT INTO SoundscapeLayers (level, name) VALUES (:level, :name)" );
 		for( Layer& layer : data.soundscapeLayers )
@@ -595,6 +640,31 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 			else
 				before = findPrevious( previous.soundscapeLayers, layer.id, []( const Layer& l ) { return l.id; } );
 			updateSettings( db, "SoundscapeLayers", layer.id, GS::soundscapeLayerSchema(), layer, before );
+
+			// Правила слоя: новые — вставка (тип), остальное — изменённые колонки против прежнего по id
+			if( !rules )
+				continue;
+			for( GS::SoundRule& rule : layer.rules )
+			{
+				const GS::SoundRuleType* type = GS::soundRuleType( rule.type );
+				if( !type )
+					continue;
+				const GS::SoundRule* ruleBefore = nullptr;
+				if( rule.id == 0 )
+				{
+					SQLite::Statement insertRule( db, "INSERT INTO SoundRules (layer, type) VALUES (:layer, :type)" );
+					insertRule.bind( ":layer", layer.id );
+					insertRule.bind( ":type", rule.type );
+					insertRule.exec();
+					rule.id = static_cast<uint32_t>( db.getLastInsertRowid() );
+				}
+				else if( before )
+					ruleBefore = findPrevious( before->rules, rule.id, []( const GS::SoundRule& r ) { return r.id; } );
+				RowUpdate update;
+				update.set( "enabled", rule, ruleBefore, []( const GS::SoundRule& r ) { return dbInt( r.enabled ? 1 : 0 ); } );
+				update.set( "params", rule, ruleBefore, [type]( const GS::SoundRule& r ) { return dbText( GS::formatSoundRuleValues( *type, r.values ) ); } );
+				update.update( db, "SoundRules", { { "id", dbInt( rule.id ) } } );
+			}
 		}
 		// Громкость записей — окно «Sounds»
 		for( const GS::SoundRecord& record : data.sounds )

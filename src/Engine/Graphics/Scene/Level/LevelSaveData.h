@@ -37,6 +37,7 @@ struct LevelSaveData
 	std::vector<GS::ReflectionCaptureSettings> reflectionCaptures;
 	std::optional<GS::AmbientSoundSettings> ambientSound;
 	std::vector<GS::SoundscapeLayerSettings> soundscapeLayers;	// id 0 — слой добавлен в редакторе
-	std::vector<uint32_t> removedSoundscapeLayers;		// строки убранных в редакторе слоёв
+	std::vector<uint32_t> removedSoundscapeLayers;		// строки убранных в редакторе слоёв (их правила — с ними)
+	std::vector<uint32_t> removedSoundRules;			// строки убранных в редакторе правил слоёв
 	std::vector<GS::SoundRecord> sounds;				// записи: громкость окна «Sounds»
 };

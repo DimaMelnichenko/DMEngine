@@ -19,8 +19,6 @@ namespace
 constexpr float pi = 3.14159265f;
 // Громкость певца задана в столько метрах; ближе не растёт
 constexpr float referenceDistance = 10.0f;
-// Края часов слоя: активность растёт и спадает за столько часов
-constexpr float hourFade = 0.75f;
 // Попыток найти место певцу по маскам
 constexpr int32_t placeTries = 16;
 // Слушатель ушёл: певец дальше верхней границы полосы во столько раз — улетает (допевает фразу)
@@ -174,6 +172,26 @@ std::unique_ptr<Soundscape::LayerState> Soundscape::createLayer( const Layer& se
 	layer->properties.addSubContainer( &layer->soundFlags );
 	layer->properties.addSubContainer( &layer->habitatFlags );
 
+	// Правила — подокно на правило по описанию типа; кнопка на тип — новое правило
+	layer->ruleProperties.setName( "Rules" );
+	for( const SoundRule& rule : settings.rules )
+		if( const SoundRuleType* type = soundRuleType( rule.type ) )
+			layer->rules.push_back( createRule( *layer, *type, rule ) );
+	LayerState* state = layer.get();
+	for( const SoundRuleType& type : soundRuleTypes() )
+	{
+		const SoundRuleType* added = &type;
+		layer->ruleProperties.addButton( std::string( "Add " ) + type.label + " rule", type.tooltip,
+										 [this, state, added]() -> PropertyContainer::ButtonAction
+		{
+			const uint32_t key = addRule( *state, *added );
+			return { [this, state, key] { removeRule( *state, key ); }, [this, state, key] { restoreRule( *state, key ); },
+					 std::string( "Add " ) + added->label + " rule" };
+		} );
+	}
+	updateRules( *layer );
+	layer->properties.addSubContainer( &layer->ruleProperties );
+
 	const uint32_t key = layer->key;
 	layer->properties.addButton( "Delete", "Remove the layer from the level (Save level deletes its row, Ctrl+Z returns it)",
 								 [this, key]() -> PropertyContainer::ButtonAction
@@ -186,6 +204,116 @@ std::unique_ptr<Soundscape::LayerState> Soundscape::createLayer( const Layer& se
 		return { [this, key] { restoreLayer( key ); }, [this, key] { removeLayer( key ); }, name };
 	} );
 	return layer;
+}
+
+std::unique_ptr<Soundscape::RuleState> Soundscape::createRule( LayerState& layer, const SoundRuleType& type, const SoundRule& rule )
+{
+	auto state = std::make_unique<RuleState>();
+	state->key = layer.nextRuleKey++;
+	state->rule = rule;
+	state->rule.type = type.name;
+	if( state->rule.values.size() != type.params.size() )
+		state->rule.values = parseSoundRuleValues( type, "" );
+	// Имя — подпись типа, с номером, если такое уже есть у слоя (и у убранных: их вернёт отмена)
+	auto taken = [&layer]( const std::string& name )
+	{
+		auto same = [&name]( const auto& other ) { return other->properties.name() == name; };
+		return std::any_of( layer.rules.begin(), layer.rules.end(), same ) ||
+			   std::any_of( layer.removedRules.begin(), layer.removedRules.end(), same );
+	};
+	std::string name = type.label;
+	for( int number = 2; taken( name ); ++number )
+		name = std::string( type.label ) + " " + std::to_string( number );
+	state->properties.setName( name );
+	state->properties.insert( "Enabled", state->rule.enabled )->setTooltip( "Off - the rule does not change the activity of the layer" );
+	for( size_t i = 0; i < type.params.size(); ++i )
+	{
+		const SoundRuleParam& param = type.params[i];
+		Property* property = state->properties.insert( param.label, state->rule.values[i] );
+		property->setLow( param.low );
+		property->setHigh( param.high );
+		property->setUnit( param.unit )->setTooltip( param.tooltip );
+	}
+	LayerState* owner = &layer;
+	const uint32_t key = state->key;
+	state->properties.addButton( "Delete", "Remove the rule from the layer (Save level deletes its row, Ctrl+Z returns it)",
+								 [this, owner, key]() -> PropertyContainer::ButtonAction
+	{
+		const auto found = std::find_if( owner->rules.begin(), owner->rules.end(), [key]( const auto& r ) { return r->key == key; } );
+		if( found == owner->rules.end() )
+			return {};
+		const std::string name = "Delete " + ( *found )->properties.name();
+		removeRule( *owner, key );
+		return { [this, owner, key] { restoreRule( *owner, key ); }, [this, owner, key] { removeRule( *owner, key ); }, name };
+	} );
+	return state;
+}
+
+uint32_t Soundscape::addRule( LayerState& layer, const SoundRuleType& type )
+{
+	SoundRule rule;
+	rule.type = type.name;
+	rule.values = parseSoundRuleValues( type, "" );
+	std::unique_ptr<RuleState> state = createRule( layer, type, rule );
+	// Значения по умолчанию — «сохранённые»: Details отмечает правки после них, а само новое правило — до «Save level»
+	state->properties.markSaved();
+	const uint32_t key = state->key;
+	layer.rules.push_back( std::move( state ) );
+	updateRules( layer );
+	return key;
+}
+
+bool Soundscape::removeRule( LayerState& layer, uint32_t key )
+{
+	const auto found = std::find_if( layer.rules.begin(), layer.rules.end(), [key]( const auto& rule ) { return rule->key == key; } );
+	if( found == layer.rules.end() )
+		return false;
+	layer.removedRules.push_back( std::move( *found ) );
+	layer.rules.erase( found );
+	updateRules( layer );
+	return true;
+}
+
+bool Soundscape::restoreRule( LayerState& layer, uint32_t key )
+{
+	const auto found = std::find_if( layer.removedRules.begin(), layer.removedRules.end(), [key]( const auto& rule ) { return rule->key == key; } );
+	if( found == layer.removedRules.end() )
+		return false;
+	// На прежнее место: правила по ключу (порядок базы, затем добавленные)
+	const auto at = std::find_if( layer.rules.begin(), layer.rules.end(), [key]( const auto& rule ) { return rule->key > key; } );
+	layer.rules.insert( at, std::move( *found ) );
+	layer.removedRules.erase( found );
+	updateRules( layer );
+	return true;
+}
+
+void Soundscape::updateRules( LayerState& layer )
+{
+	layer.ruleProperties.subContainer().clear();
+	for( const auto& rule : layer.rules )
+	{
+		// Нового правила в базе ещё нет
+		rule->properties.setStructureModified( rule->rule.id == 0 );
+		layer.ruleProperties.addSubContainer( &rule->properties );
+	}
+	// Убранное правило ещё есть в базе — подокно изменено до «Save level»
+	layer.ruleProperties.setStructureModified( std::any_of( layer.removedRules.begin(), layer.removedRules.end(),
+															[]( const auto& rule ) { return rule->rule.id != 0; } ) );
+}
+
+std::vector<SoundRule> Soundscape::currentRules( const LayerState& layer ) const
+{
+	std::vector<SoundRule> rules;
+	for( const auto& state : layer.rules )
+	{
+		SoundRule rule = state->rule;
+		rule.enabled = state->properties["Enabled"].data<bool>();
+		if( const SoundRuleType* type = soundRuleType( rule.type ) )
+			for( size_t i = 0; i < type->params.size() && i < rule.values.size(); ++i )
+				rule.values[i] = state->properties[type->params[i].label].data<float>();
+		rules.push_back( std::move( rule ) );
+	}
+	return rules;
 }
 
 uint32_t Soundscape::addLayer()
@@ -261,6 +389,7 @@ Soundscape::Layer Soundscape::current( const LayerState& layer ) const
 	readSettingProperties( layer.properties, soundscapeLayerSchema(), settings, "" );
 	settings.sound = checkedList( layer.soundFlags, layer.settings.sound );
 	settings.habitat = checkedList( layer.habitatFlags, layer.settings.habitat );
+	settings.rules = currentRules( layer );
 	return settings;
 }
 
@@ -331,6 +460,17 @@ std::vector<uint32_t> Soundscape::removedIds() const
 	return ids;
 }
 
+std::vector<uint32_t> Soundscape::removedRuleIds() const
+{
+	// Правила убранного слоя уходят вместе с его строкой
+	std::vector<uint32_t> ids;
+	for( const auto& layer : m_layers )
+		for( const auto& rule : layer->removedRules )
+			if( rule->rule.id != 0 )
+				ids.push_back( rule->rule.id );
+	return ids;
+}
+
 std::vector<SoundRecord> Soundscape::soundRecords() const
 {
 	std::vector<SoundRecord> records;
@@ -345,15 +485,28 @@ std::vector<SoundRecord> Soundscape::soundRecords() const
 
 void Soundscape::markSaved( const std::vector<Layer>& saved )
 {
-	// Записанное — новая основа слоя (id новой строки, порядок записей и мест в тексте)
+	// Записанное — новая основа слоя (id новой строки, порядок записей и мест в тексте) и его правил (id новых строк)
 	for( size_t i = 0; i < m_layers.size() && i < saved.size(); ++i )
 	{
-		m_layers[i]->settings = saved[i];
-		m_layers[i]->listsRevision = ~0ull;
+		LayerState& layer = *m_layers[i];
+		layer.settings = saved[i];
+		layer.listsRevision = ~0ull;
+		for( size_t j = 0; j < layer.rules.size() && j < saved[i].rules.size(); ++j )
+			layer.rules[j]->rule.id = saved[i].rules[j].id;
+		for( const auto& rule : layer.removedRules )
+			rule->rule.id = 0;
+		updateRules( layer );
 	}
-	// Строк убранных больше нет: вернёт отмена — вставится заново
+	// Строк убранных больше нет (и их правил): вернёт отмена — вставится заново
 	for( const auto& layer : m_removed )
+	{
 		layer->settings.id = 0;
+		for( const auto& rule : layer->rules )
+			rule->rule.id = 0;
+		for( const auto& rule : layer->removedRules )
+			rule->rule.id = 0;
+		updateRules( *layer );
+	}
 	updateStructure();
 }
 
@@ -387,22 +540,6 @@ std::vector<size_t> Soundscape::layerSounds( const LayerState& layer )
 		if( layer.soundFlags[m_sounds[i]->record.name].data<bool>() && clipOf( *m_sounds[i] ) )
 			sounds.push_back( i );
 	return sounds;
-}
-
-float Soundscape::activity( const XMFLOAT2& hours, float hour )
-{
-	// «От» больше «до» — через полночь: часы после полуночи — за 24
-	float from = hours.x;
-	float to = hours.y;
-	if( to < from )
-	{
-		to += 24.0f;
-		if( hour < from - hourFade )
-			hour += 24.0f;
-	}
-	const float rise = std::clamp( ( hour - from ) / hourFade + 0.5f, 0.0f, 1.0f );
-	const float fall = std::clamp( ( to - hour ) / hourFade + 0.5f, 0.0f, 1.0f );
-	return rise * fall;
 }
 
 void Soundscape::buildShore()
@@ -531,7 +668,8 @@ void Soundscape::update( const FrameContext& frame )
 		for( const auto& layer : m_layers )
 			clearSolo( layer->properties );
 	const float step = std::clamp( frame.elapsedTime / 1000.0f, 0.0f, maxStep );
-	const float hour = static_cast<float>( m_clock->hours() );
+	SoundRuleContext rules;
+	rules.hour = static_cast<float>( m_clock->hours() );
 	const AudioListener listener = listenerFromView( frame.view );
 	if( m_terrain && m_terrain->heightRevision() != m_shoreRevision )
 	{
@@ -555,7 +693,8 @@ void Soundscape::update( const FrameContext& frame )
 		// Прослушивание: Mute — певцы поют беззвучно, Solo другого слоя — тоже
 		const float heard = auditionGain( audition, layer.properties, settings.enabled );
 		const bool audible = visible() && settings.enabled && !sounds.empty() && settings.volume > 0.0f;
-		const int32_t wanted = audible ? static_cast<int32_t>( std::floor( settings.singers * activity( settings.hours, hour ) + 0.5f ) ) : 0;
+		// Певцов сразу — «Singers» × активность: произведение правил слоя (часы суток …)
+		const int32_t wanted = audible ? static_cast<int32_t>( std::floor( settings.singers * soundActivity( currentRules( layer ), rules ) + 0.5f ) ) : 0;
 
 		// Певцы: фразы с паузами, конец «bout» — улетает (допев фразу); слушатель ушёл далеко или запись убрали — тоже
 		int32_t singing = 0;

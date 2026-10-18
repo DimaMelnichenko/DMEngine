@@ -20,11 +20,13 @@ class WorldClock;
 // собрал Tools/pack_sound.py; у каждого певца — одна из них) и правила. Певец садится вокруг слушателя — в полосе расстояний слоя, на высоте над землёй, там,
 // где есть его место по маскам «habitat» (до 16 попыток; «lake_shore» — на берегу озера: точки края воды озёр из растра
 // статичной воды, TerrainHydrology::Result::staticWater), — поёт фразы записи с паузами весь свой «bout», потом улетает, и
-// появляется другой. Певцов сразу — «singers» в свои часы суток (мировые часы, WorldClock), у краёв часов — меньше. Голос — на фразу
+// появляется другой. Певцов сразу — «singers» × активность слоя: произведение его правил (SoundRules.h — часы суток по мировым
+// часам WorldClock и т. д.). Голос — на фразу
 // (ClipGenerator), у певца своя высота; громкость — слоя × записи, по расстоянию от 10 м, поглощение воздухом и заглушение
 // гребнем (SoundPlace.h), как у ручьёв.
 // Окно «Soundscape» (раздел Audio) — подокно на слой: «Enabled», поля слоя, записи и места флажками (подокна «Sounds» и
-// «Habitat»), прослушивание «Mute» / «Solo» (AudioAudition), «Delete»; кнопка окна «Add layer» — новый слой (как источники
+// «Habitat»), правила (подокно «Rules»: подокно на правило с полями по описанию типа, «Add … rule», «Delete»), прослушивание
+// «Mute» / «Solo» (AudioAudition), «Delete»; кнопка окна «Add layer» — новый слой (как источники
 // света: Ctrl+Z, «Save level» вставляет и удаляет строки). Окно «Sounds» — записи: громкость (Sounds.volume), «Play» / «Stop» —
 // послушать фразы записи у слушателя. Флажок видимости в Outliner — тихо
 class Soundscape : public SceneObject
@@ -50,10 +52,12 @@ public:
 	// Окно «Sounds»: подокно на запись
 	PropertyContainer* soundProperties() { return &m_soundProperties; }
 
-	// «Save level»: слои окна по порядку (id 0 — добавлен в редакторе), строки убранных, записи с громкостью окна; после записи —
-	// id новых строк в слои (saved — те же слои по порядку)
+	// «Save level»: слои окна по порядку (id 0 — добавлен в редакторе) с правилами, строки убранных слоёв и правил (правила
+	// убранного слоя уходят с ним), записи с громкостью окна; после записи — id новых строк в слои и правила (saved — те же слои
+	// и правила по порядку)
 	std::vector<Layer> layerSettings() const;
 	std::vector<uint32_t> removedIds() const;
+	std::vector<uint32_t> removedRuleIds() const;
 	std::vector<SoundRecord> soundRecords() const;
 	void markSaved( const std::vector<Layer>& saved );
 
@@ -68,6 +72,13 @@ public:
 	void soundDebug( SoundDebug& out );
 
 private:
+	// Правило слоя: строка SoundRules и подокно с полями по описанию типа (SoundRuleType)
+	struct RuleState
+	{
+		uint32_t key = 0;			// номер правила в слое — для удаления и отмены
+		SoundRule rule;				// загруженное (или с прошлого сохранения): id, тип
+		PropertyContainer properties;
+	};
 	// Запись: строка Sounds, подокно окна «Sounds», звук (читается при первой нужде) и прослушивание кнопкой «Play»
 	struct Sound
 	{
@@ -101,6 +112,10 @@ private:
 		PropertyContainer properties;
 		PropertyContainer soundFlags;	// подокно «Sounds»: флажок на запись
 		PropertyContainer habitatFlags;	// подокно «Habitat»: флажок на маску и берег озера
+		PropertyContainer ruleProperties;	// подокно «Rules»: подокно на правило, кнопки «Add … rule»
+		std::vector<std::unique_ptr<RuleState>> rules;
+		std::vector<std::unique_ptr<RuleState>> removedRules;	// убранные в редакторе: вернёт отмена
+		uint32_t nextRuleKey = 1;
 		// Флажки текстом и записи со звуком — заново, когда флажки правили (номер правки)
 		uint64_t listsRevision = ~0ull;
 		std::string sound;
@@ -110,8 +125,16 @@ private:
 		float spawnDelay = 0.0f;	// с: до следующего певца — идёт, пока место пустует («Arrival»)
 	};
 
-	// Слой с правками окна: поля, записи и места — текстом из флажков
+	// Слой с правками окна: поля, записи и места — текстом из флажков, правила — из их подокон
 	Layer current( const LayerState& layer ) const;
+	std::vector<SoundRule> currentRules( const LayerState& layer ) const;
+	// Правило слоя: подокно с полями типа и «Delete»; добавить (значения по умолчанию), убрать и вернуть (отмена); подокна
+	// «Rules» — по списку (новые и убранные отмечают окно изменённым до «Save level»)
+	std::unique_ptr<RuleState> createRule( LayerState& layer, const SoundRuleType& type, const SoundRule& rule );
+	uint32_t addRule( LayerState& layer, const SoundRuleType& type );
+	bool removeRule( LayerState& layer, uint32_t key );
+	bool restoreRule( LayerState& layer, uint32_t key );
+	void updateRules( LayerState& layer );
 	// Списки слоя по флажкам (LayerState::sound, habitat, sounds) — если флажки правили
 	void refreshLists( LayerState& layer );
 	// Окно слоя: поля, флажки, прослушивание, «Delete»
@@ -124,8 +147,6 @@ private:
 	const AudioClip* clipOf( Sound& sound );
 	// Записи слоя — номера в m_sounds по флажкам, у которых есть звук
 	std::vector<size_t> layerSounds( const LayerState& layer );
-	// Активность слоя 0…1 в час суток hour: в часах слоя — 1, у краёв — плавно за 45 минут
-	static float activity( const DirectX::XMFLOAT2& hours, float hour );
 	// Место нового певца; false — места по маскам рядом нет
 	bool placeSinger( const Layer& settings, const DirectX::XMFLOAT3& listener, Singer& singer );
 	float uniform( float from, float to );

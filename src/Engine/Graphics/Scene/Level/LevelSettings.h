@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include "DirectX.h"
+#include "Engine\Audio\SoundRules.h"
 
 // Настройки окружения и расстановки уровня — данные строк base.db3 без объектов сцены: их читает и пишет LibraryLoader,
 // а объекты (SkyAtmosphere, HDRIBackdrop, PostProcess, Wind, SunPosition, Scatterer) принимают при создании и отдают
@@ -863,7 +864,7 @@ struct SoundRecord
 const SettingsSchema<SoundRecord>& soundRecordSchema();
 
 // Слой певцов уровня — строка SoundscapeLayers (как Soundscape в UE; Soundscape, docs/audio.md, «Певцы»): певцы сидят вокруг
-// слушателя там, где их место по маскам, и поют фразы одной из записей слоя с паузами в свои часы
+// слушателя там, где их место по маскам, и поют фразы одной из записей слоя с паузами, когда велят правила слоя
 struct SoundscapeLayerSettings
 {
 	uint32_t id = 0;				// строка SoundscapeLayers — куда пишет «Save level»; 0 — слой добавлен в редакторе
@@ -871,8 +872,8 @@ struct SoundscapeLayerSettings
 	bool enabled = true;			// выключенный слой не поёт
 	std::string sound;				// записи — Sounds.name через запятую: у каждого певца — одна из них
 	std::string habitat;			// маски места певца через запятую (mask_forest_spruce …); пусто — где угодно
-	DirectX::XMFLOAT2 hours = DirectX::XMFLOAT2( 4.0f, 22.0f );	// часы суток, когда поёт; от > до — через полночь
-	int32_t singers = 2;			// певцов сразу в свои часы
+	std::vector<SoundRule> rules;	// строки SoundRules слоя: активность — их произведение (часы суток — правило «hours»)
+	int32_t singers = 2;			// певцов сразу при полной активности
 	SettingRange distance{ 15.0f, 80.0f };	// от слушателя, м
 	SettingRange height{ 3.0f, 12.0f };		// над землёй, м
 	SettingRange bout{ 30.0f, 120.0f };		// поёт с одного места, с; потом улетает, появляется другой
@@ -882,7 +883,7 @@ struct SoundscapeLayerSettings
 	float pitch = 0.05f;			// у каждого певца своя высота: выше или ниже до этой доли
 };
 // Поля строки SoundscapeLayers (SettingsSchema), подокно слоя в окне «Soundscape». Записи и маски места — текстом в базе, в
-// окне — флажками подокон «Sounds» и «Habitat» (Soundscape)
+// окне — флажками подокон «Sounds» и «Habitat» (Soundscape); правила — строки SoundRules, подокно «Rules»
 const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema();
 
 // Строка SunPosition

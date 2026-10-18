@@ -60,8 +60,8 @@ public:
 	// экземпляр с id 0 — новая строка уровня, её id пишется в data.models; removedModels — удаляются), строки Terrain,
 	// TerrainErosion, TerrainLayerRules, TerrainLayers и мазки TerrainPaint, ScatterSets, ScatterLayers и
 	// ScatterLayerModels по id, WaterSimulation, WaterChannels и Streams уровня, ParticleEmitters по id и место
-	// экземпляров LevelParticleEmitters (instanceId), AmbientSound, слои SoundscapeLayers (как экземпляры: id 0 — вставка,
-	// removedSoundscapeLayers — удаление) и громкость записей Sounds
+	// экземпляров LevelParticleEmitters (instanceId), AmbientSound, слои SoundscapeLayers и их правила SoundRules (как
+	// экземпляры: id 0 — вставка, removedSoundscapeLayers / removedSoundRules — удаление) и громкость записей Sounds
 	bool saveLevelScene( const LevelDescription& level, LevelSaveData& data, const LevelSaveData& previous );
 	// Правки параметров экземпляров материалов (окна моделей и слоёв расстановки) — в MaterialParameterInstance одной
 	// транзакцией: только изменённые с загрузки или сохранения (Property::modified), строка на параметр — заменяется.

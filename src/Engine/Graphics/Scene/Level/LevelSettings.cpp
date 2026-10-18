@@ -989,10 +989,9 @@ const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema()
 		// Записи и места — флажками подокон «Sounds» и «Habitat»: строкового свойства у окна нет
 		{ "sound", nullptr, DM_SETTING( sound ) },
 		{ "habitat", nullptr, DM_SETTING( habitat ) },
-		// Часы — парой полей, а не полосой: «от» больше «до» — через полночь (сверчки, совы)
-		{ "hours_from,hours_to", "Hours", DM_SETTING( hours ), 0.0f, 24.0f, "h",
-		  "Time of day when it sings (from > to - over midnight); the edges fade over 45 minutes" },
-		{ "singers", "Singers", DM_SETTING( singers ), 0.0f, 8.0f, "", "Singing at once in their hours", settingClamp },
+		// Когда поёт — правила слоя (SoundRules, подокно «Rules»), не поля строки
+		{ "singers", "Singers", DM_SETTING( singers ), 0.0f, 8.0f, "",
+		  "Singing at once at the full activity; the rules of the layer (hours …) scale it", settingClamp },
 		{ "distance_from,distance_to", "Distance", DM_SETTING( distance ), 5.0f, 300.0f, "m", "From the listener",
 		  settingRangeControl },
 		{ "height_from,height_to", "Height", DM_SETTING( height ), 0.0f, 100.0f, "m", "Above the ground", settingRangeControl },

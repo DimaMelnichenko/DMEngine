@@ -173,6 +173,7 @@ add_library(DMCore STATIC
     src/Engine/Audio/AudioMixer.cpp
     src/Engine/Audio/AudioSynth.cpp
     src/Engine/Audio/AudioClip.cpp
+    src/Engine/Audio/SoundRules.cpp
     src/Engine/Graphics/Scene/Camera/DMCamera.cpp
     src/Engine/Graphics/Scene/Camera/WalkMode.cpp
     src/Engine/Input/Input.cpp

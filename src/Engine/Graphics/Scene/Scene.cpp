@@ -542,6 +542,7 @@ LevelSaveData Scene::levelSaveData( const PostProcessSettings& postProcess, cons
 		// Слои — копией: id новых строк вернутся в неё и уйдут в слои
 		data.soundscapeLayers = m_soundscape.layerSettings();
 		data.removedSoundscapeLayers = m_soundscape.removedIds();
+		data.removedSoundRules = m_soundscape.removedRuleIds();
 		data.sounds = m_soundscape.soundRecords();
 	}
 	return data;
@@ -578,6 +579,7 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	data.removedLights.clear();
 	data.removedModels.clear();
 	data.removedSoundscapeLayers.clear();
+	data.removedSoundRules.clear();
 	if( m_level.presetLocked )
 		copyEnvironment( m_savedLevel, data );
 	m_savedLevel = std::move( data );
