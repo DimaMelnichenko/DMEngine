@@ -299,13 +299,22 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 		DMD3D::instance().setState( RasterState::wireframe );
 	}
 
-	// Цель кисти поверх земли: слой, мокрость или маска (её текстура хранилища — t7)
+	// Цель кисти поверх земли: слой, мокрость или маска (её текстура хранилища — t7); нет её — подсветка маски (места звука)
 	const ShaderView* paintMask = nullptr;
-	const int32_t paintPreview = depthOnly ? -1 : m_paintTool->previewTarget( paintMask );
-
-	Device::updateResource<CDLODBuffer>( m_constantBuffer, [this, paintPreview, &context]( CDLODBuffer& params )
+	int32_t paintPreview = depthOnly ? -1 : m_paintTool->previewTarget( paintMask );
+	XMFLOAT3 previewColor = paintColor;
+	float previewStrength = paintStrength;
+	if( !depthOnly && paintPreview < 0 && m_highlightMask )
 	{
-		fillConstants( params, context.view, paintPreview );
+		paintPreview = static_cast<int32_t>( TerrainMaterial::maxLayers ) + 1;
+		paintMask = m_highlightMask;
+		previewColor = m_highlightColor;
+		previewStrength = highlightStrength;
+	}
+
+	Device::updateResource<CDLODBuffer>( m_constantBuffer, [this, paintPreview, previewColor, previewStrength, &context]( CDLODBuffer& params )
+	{
+		fillConstants( params, context.view, paintPreview, previewColor, previewStrength );
 	} );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
 
@@ -330,7 +339,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 	DMD3D::instance().drawIndexedInstanced( m_patch.indexCount(), static_cast<uint32_t>( patches.size() ), 0, 0 );
 }
 
-void CDLODTerrain::fillConstants( CDLODBuffer& params, const RenderView& view, int32_t paintPreview ) const
+void CDLODTerrain::fillConstants( CDLODBuffer& params, const RenderView& view, int32_t paintPreview, const XMFLOAT3& previewColor,
+								  float previewStrength ) const
 {
 	params.terrainLayers = layerConstants( view );
 	params.worldSize = m_pipeline->worldSize();
@@ -349,6 +359,8 @@ void CDLODTerrain::fillConstants( CDLODBuffer& params, const RenderView& view, i
 	params.detailTile = m_pipeline->detailTileSize();
 	params.wetnessBaked = m_pipeline->staticWater() && m_pipeline->detailSplat().tileSize() > 0.0f ? 1 : 0;
 	params.paintPreview = paintPreview;
+	params.paintPreviewColor = previewColor;
+	params.paintPreviewStrength = previewStrength;
 	params.microShadows = std::clamp( m_properties["Micro shadows"].data<float>(), 0.0f, 1.0f );
 	std::copy( m_pipeline->material().layerOcclusion().begin(), m_pipeline->material().layerOcclusion().end(), params.layerOcclusion );
 	params.waterBedLayer = m_pipeline->staticWater() && m_pipeline->channelLayer() < static_cast<int32_t>( m_pipeline->material().layerCount() ) ? m_pipeline->channelLayer() : -1;

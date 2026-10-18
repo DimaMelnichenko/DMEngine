@@ -56,9 +56,21 @@ public:
 	const CDLODQuadtree::Lod& lod() const { return m_quadtree.lod(); }
 	float leafSize() const { return m_quadtree.nodeSize( 0 ); }
 	uint32_t levelCount() const { return m_quadtree.levelCount(); }
-	// Константы шейдеров террейна для вида (paintPreview — цель кисти, −1 — нет). Их же берут шейдеры гор: высота карты на
-	// стыке считается тем же кодом с теми же данными
-	void fillConstants( CDLODBuffer& params, const RenderView& view, int32_t paintPreview ) const;
+	// Константы шейдеров террейна для вида (paintPreview — цель кисти, −1 — нет; previewColor — цвет её подсветки). Их же
+	// берут шейдеры гор: высота карты на стыке считается тем же кодом с теми же данными
+	void fillConstants( CDLODBuffer& params, const RenderView& view, int32_t paintPreview,
+						const DirectX::XMFLOAT3& previewColor = paintColor, float previewStrength = paintStrength ) const;
+	// Подсветка маски поверх земли тем же кодом, что цель кисти (terrain.ps): места звука («Sound sources», «Show area»).
+	// Задаёт Scene каждый кадр; nullptr — нет. Цель кисти важнее
+	void setHighlight( const ShaderView* mask, const DirectX::XMFLOAT3& color )
+	{
+		m_highlightMask = mask;
+		m_highlightColor = color;
+	}
+	// Цвет и сила подсветки цели кисти; у подсветки маски сила меньше — земля под ней видна
+	static constexpr DirectX::XMFLOAT3 paintColor = DirectX::XMFLOAT3( 1.0f, 0.38f, 0.04f );
+	static constexpr float paintStrength = 0.75f;
+	static constexpr float highlightStrength = 0.5f;
 
 	static constexpr uint32_t gridDim = 32;			// квадов в стороне узла
 	static constexpr uint32_t patchDim = gridDim / 2;	// квадов в стороне патча: узел рисуется четырьмя патчами-четвертями
@@ -89,6 +101,8 @@ private:
 private:
 	TerrainPipeline* m_pipeline = nullptr;
 	const TerrainPaintTool* m_paintTool = nullptr;
+	const ShaderView* m_highlightMask = nullptr;	// подсветка маски (setHighlight)
+	DirectX::XMFLOAT3 m_highlightColor = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );
 	uint32_t m_terrainId = 0;
 	CDLODQuadtree m_quadtree;
 	std::vector<std::vector<DirectX::XMFLOAT2>> m_heightBounds;	// по уровням: нормированные min / max высоты узлов

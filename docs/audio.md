@@ -163,12 +163,13 @@ python Tools/ambient_sound.py remove --level Test
 
 Весь звук — в разделе Audio Outliner'а (`Editor::Category::audio`; объект сцены — `SceneObject::audio`):
 
-- **«Audio»** — громкость и «Mute» вывода (пользователя, не сохраняются) и кнопка «Clear solo».
+- **«Audio»** — громкость и «Mute» вывода (пользователя, не сохраняются), «Show sources» (режим вьюпорта ниже) и кнопка
+  «Clear solo».
 - **«Ambient sound»** — общая громкость и подокна частей «Wind», «Grass», «Crowns», «Streams»: «Enabled» (сохраняется),
-  громкость и поля части, прослушивание «Mute» / «Solo».
+  громкость и поля части, прослушивание «Mute» / «Solo», «Show area» (у ветра нет — он вокруг слушателя).
 - **«Soundscape»** — подокно на слой певцов: «Enabled», поля слоя, подокна флажков «Sounds» (записи `Sounds`: у каждого певца —
   одна из отмеченных) и «Habitat» (маски рельефа по именам `TerrainMasks` и `lake_shore`; ни одной — где угодно), «Mute» /
-  «Solo», кнопка «Delete». Кнопка окна «Add layer» — новый слой «Layer N» с полями по умолчанию и без записей (молчит, пока
+  «Solo», «Show area», кнопка «Delete». Кнопка окна «Add layer» — новый слой «Layer N» с полями по умолчанию и без записей (молчит, пока
   запись не отмечена). Добавление и удаление — правки истории (Ctrl+Z), как у источников света; «Save level» вставляет и
   удаляет строки `SoundscapeLayers` (без записей — `sound` NULL). Имя слоя меняет `Tools/soundscape.py set`.
 - **«Sounds»** — подокно на запись: «Volume» (`Sounds.volume`, сохраняется) и кнопки «Play» / «Stop» — следующая фраза записи
@@ -179,7 +180,22 @@ python Tools/ambient_sound.py remove --level Test
 под Mute поют беззвучно — сняли, и они на месте. Общее состояние — `AudioAudition` у микшера (`AudioMixer::audition`): Solo,
 отмеченные за кадр, в силе со следующего (части разных объектов друг о друге не знают). «Clear solo» снимает все Solo.
 
-Сценарием: `set "Ambient sound/Wind/Volume" 0.3`, `set "Ambient sound/Streams/Solo" true`, `press "Soundscape/Add layer"`,
+**Где звучит — режим вьюпорта «Sound sources»** (View → Debug views или «Show sources» окна «Audio», не сохраняется):
+
+- **значки** — певцы (кружок цвета слоя с подписью и отвесом к земле: сидят на высоте) и места воды ближе «Streams/Distance»
+  (синие, размер — громкость места); звучащий значок залит и обведён кольцом. Клик по значку (и `pick x y`) выбирает окно
+  слоя или части в Details;
+- **области** — у слоёв и частей с «Show area»: кольца дальности вокруг слушателя по земле с подписью («Blackbird 20-90 m»;
+  у травы и крон — их круг масок, у ручьёв — «Distance»), маски места — подсветкой земли бирюзовым (та же подсветка, что цель
+  кисти в `terrain.ps`, слабее: объединение масок по максимуму — текстура хранилища `sound_area`, `SoundAreaOverlay`, заново
+  по набору масок и `TerrainPipeline::maskRevision`; кисть важнее), берег озера (`lake_shore`) — точками в полосе.
+
+Метки собирают объекты (`AmbientSound::soundDebug`, `Soundscape::soundDebug` → `SoundDebug.h`: `SoundMarker`, `SoundArea`),
+вьюпорт рисует их, не зная объектов (`Viewport::drawSoundSources`), подсветку ставит `Scene::update`
+(`CDLODTerrain::setHighlight`). Цвет слоя — по его ключу оттенками через золотой угол (`soundColor`).
+
+Сценарием: `set "Audio/Show sources" true`, `set "Soundscape/Blackbird/Show area" true`,
+`set "Ambient sound/Wind/Volume" 0.3`, `set "Ambient sound/Streams/Solo" true`, `press "Soundscape/Add layer"`,
 `set "Soundscape/Layer/Sounds/crickets" true`, `press "Sounds/blackbird/Play"`, `press "Audio/Clear solo"`.
 
 ## Как это устроено

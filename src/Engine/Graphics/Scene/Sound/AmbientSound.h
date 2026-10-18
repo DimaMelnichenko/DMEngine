@@ -6,6 +6,7 @@
 #include "Wind\WindParameters.h"
 #include "Level\LevelSettings.h"
 #include "Engine\Audio\AudioMixer.h"
+#include "SoundDebug.h"
 
 namespace GS
 {
@@ -48,6 +49,8 @@ public:
 	bool audio() const override { return true; }
 	// Значения окна — для «Save level» (строка AmbientSound)
 	Settings settings() const;
+	// Метки режима «Sound sources»: места воды ближе «Distance» (звучащие — ярче), области частей с «Show area»
+	void soundDebug( SoundDebug& out );
 
 private:
 	// Ветер у земли в точке: скорость (ветер уровня × поле по рельефу × порыв), м/с, и порывистость поля 0…1
@@ -86,6 +89,7 @@ private:
 	AudioMixer::VoiceId m_grassVoices[2] = {};
 	AudioMixer::VoiceId m_crownVoices[crownSides] = {};	// север, восток, юг, запад
 	uint32_t m_clearSolo = 0;		// номер «Clear solo», по который сняты Solo частей
+	DirectX::XMFLOAT3 m_listener = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// слушатель прошлого update
 	std::vector<StreamBlock> m_streamBlocks;
 	uint32_t m_streamRevision = ~0u;	// номер итоговой карты, по которой собраны места воды
 	// Слышные места воды: голос на место (уходит — затихает, новое — заводит свой)

@@ -31,6 +31,8 @@ public:
 	// Раз в кадр: правки окна — в громкость мастер-голоса, сводка — в «Statistic»
 	void update( FrameStats& stats );
 	PropertyContainer* properties() { return &m_properties; }
+	// Режим вьюпорта «Sound sources» (флажок окна; View → Debug views): метки звука уровня
+	bool showSources() const { return m_properties["Show sources"].data<bool>(); }
 	void registerCommands( ConsoleCommands& console );
 
 	// Стерео 16 бит с частотой микшера: samples — каналы через один, −1…1

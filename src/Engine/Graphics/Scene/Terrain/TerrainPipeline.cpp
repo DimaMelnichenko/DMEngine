@@ -792,6 +792,7 @@ bool TerrainPipeline::uploadMask( const TerrainMasks::Mask& mask, const TerrainP
 	const uint32_t size = paintedMasks().size;
 	if( mask.values.size() != static_cast<size_t>( size ) * size )
 		return false;
+	++m_maskRevision;
 	const auto byte = []( float value ) { return static_cast<uint8_t>( std::lround( std::clamp( value, 0.0f, 1.0f ) * 255.0f ) ); };
 	const TerrainPaint::Rect area = rect && !rect->empty() ? *rect : TerrainPaint::Rect{ 0, 0, size, size };
 	if( System::textures().exists( mask.name ) && System::textures().get( System::textures().id( mask.name ) )->width() == size )

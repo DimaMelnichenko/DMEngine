@@ -126,4 +126,16 @@ void clearSolo( PropertyContainer& part )
 		part["Solo"].setData( false );
 }
 
+void addAreaProperty( PropertyContainer& part )
+{
+	part.insert( "Show area", false )->setTransient()->setTooltip(
+		"In the Sound sources view (View > Debug views): the range around the listener and the habitat masks on the ground "
+		"(not saved)" );
+}
+
+bool showArea( const PropertyContainer& part )
+{
+	return part.exists( "Show area" ) && part["Show area"].data<bool>();
+}
+
 }

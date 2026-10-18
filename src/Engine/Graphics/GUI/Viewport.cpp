@@ -86,6 +86,40 @@ ImU32 lightColor( const DMLight& light )
 // Выбранный значок: обводка и подпись
 const ImU32 selectedColor = IM_COL32( 255, 170, 40, 255 );
 
+// Окружность по земле вокруг center (x, z), радиус — м: точки — на поверхности (нет рельефа — на высоте center) и выше на
+// lift, м; часть за камерой не рисуется
+void groundCircle( ImDrawList* draw, const XMMATRIX& transform, const GS::TerrainHeightSource* terrain, const XMFLOAT3& center,
+				   float radius, ImU32 color, float thickness, int segments = 64, float lift = 0.1f )
+{
+	ImVec2 previous;
+	bool hasPrevious = false;
+	for( int i = 0; i <= segments; ++i )
+	{
+		const float angle = XM_2PI * i / segments;
+		const float x = center.x + radius * std::cos( angle );
+		const float z = center.z + radius * std::sin( angle );
+		float height = center.y;
+		if( terrain )
+			terrain->surfaceHeight( x, z, height );
+		ImVec2 screen;
+		if( !toScreen( transform, x, height + lift, z, screen ) )
+		{
+			hasPrevious = false;
+			continue;
+		}
+		if( hasPrevious )
+			draw->AddLine( previous, screen, color, thickness );
+		previous = screen;
+		hasPrevious = true;
+	}
+}
+
+// Цвет метки звука: цвет слоя, звучащая — ярче
+ImU32 soundColor( const XMFLOAT3& color, float alpha )
+{
+	return ImGui::ColorConvertFloat4ToU32( ImVec4( color.x, color.y, color.z, alpha ) );
+}
+
 // Высота точки кривой для показа — над поверхностью земли (дно русла), чтобы точку не закрывала вода
 float streamPointHeight( const GS::TerrainHeightSource& terrain, float x, float z )
 {
@@ -156,30 +190,8 @@ void Viewport::paintTerrain( const DMCamera& camera, GS::TerrainPaintTool& paint
 	ImDrawList* drawList = ImGui::GetBackgroundDrawList();
 	for( const float scale : { 1.0f, 1.0f - brush.falloff } )
 	{
-		if( scale <= 0.02f )
-			continue;
-		const float radius = brush.radius * scale;
-		constexpr int segments = 64;
-		ImVec2 previous;
-		bool hasPrevious = false;
-		for( int i = 0; i <= segments; ++i )
-		{
-			const float angle = XM_2PI * i / segments;
-			const float x = point.x + radius * std::cos( angle );
-			const float z = point.z + radius * std::sin( angle );
-			float height = point.y;
-			terrain.surfaceHeight( x, z, height );
-			ImVec2 screen;
-			if( !toScreen( transform, x, height + 0.1f, z, screen ) )
-			{
-				hasPrevious = false;
-				continue;
-			}
-			if( hasPrevious )
-				drawList->AddLine( previous, screen, color, scale == 1.0f ? 2.0f : 1.0f );
-			previous = screen;
-			hasPrevious = true;
-		}
+		if( scale > 0.02f )
+			groundCircle( drawList, transform, &terrain, point, brush.radius * scale, color, scale == 1.0f ? 2.0f : 1.0f );
 	}
 	char label[160];
 	const char* mode = brush.mode == GS::TerrainPaint::Mode::value ? "value" : brush.mode == GS::TerrainPaint::Mode::step ? "+" :
@@ -383,6 +395,14 @@ std::string Viewport::clickAt( const DMCamera& camera, GS::Scene& scene, GUI& gu
 	float emitterDistance = 0.0f;
 	const int light = pickLight( camera, lights, x, y, lightDistance );
 	const int emitter = particles ? pickEmitter( camera, *particles, x, y, emitterDistance ) : -1;
+	// Метки звука («Sound sources»): ближе значков источников и эмиттеров — окно слоя или части
+	float soundDistance = 0.0f;
+	if( PropertyContainer* sound = pickSoundMarker( camera, scene, x, y, soundDistance );
+		sound && ( light < 0 || soundDistance < lightDistance ) && ( emitter < 0 || soundDistance < emitterDistance ) )
+	{
+		gui.focusProperties( sound );
+		return sound->name();
+	}
 	if( emitter >= 0 && ( light < 0 || emitterDistance < lightDistance ) )
 	{
 		m_selectedEmitter = emitter;
@@ -766,6 +786,114 @@ void Viewport::drawDebugLines( const DMCamera& camera, GS::Scene& scene ) const
 {
 	drawCollision( camera, scene );
 	drawSkeletons( camera, scene );
+	drawSoundSources( camera, scene );
+}
+
+void Viewport::drawSoundSources( const DMCamera& camera, GS::Scene& scene ) const
+{
+	if( !scene.showSoundSources() )
+		return;
+	const GS::SoundDebug debug = scene.soundDebug();
+	const XMMATRIX transform = viewProjection( camera );
+	ImDrawList* draw = ImGui::GetBackgroundDrawList();
+	const ImU32 outline = IM_COL32( 0, 0, 0, 160 );
+	const GS::TerrainHeightSource* terrain = scene.level().terrain ? &scene.terrainPipeline() : nullptr;
+
+	// Области вокруг слушателя (камеры): кольца «от — до» по земле, подпись у северной точки внешнего, точки места в полосе
+	const XMFLOAT3 listener = camera.position();
+	XMFLOAT3 ground = listener;
+	ground.y -= 1.7f;
+	if( terrain )
+		terrain->surfaceHeight( listener.x, listener.z, ground.y );
+	for( const GS::SoundArea& area : debug.areas )
+	{
+		const ImU32 color = soundColor( area.color, 0.9f );
+		if( area.ring.y > 0.0f )
+		{
+			groundCircle( draw, transform, terrain, ground, area.ring.y, color, 2.0f, 128, 0.3f );
+			if( area.ring.x > 0.5f )
+				groundCircle( draw, transform, terrain, ground, area.ring.x, color, 1.0f, 96, 0.3f );
+			XMFLOAT3 north( ground.x, ground.y, ground.z + area.ring.y );
+			if( terrain )
+				terrain->surfaceHeight( north.x, north.z, north.y );
+			ImVec2 screen;
+			if( toScreen( transform, north.x, north.y + 0.5f, north.z, screen ) )
+			{
+				char label[160];
+				if( area.ring.x > 0.5f )
+					std::snprintf( label, sizeof( label ), "%s %.0f-%.0f m", area.label.c_str(), area.ring.x, area.ring.y );
+				else
+					std::snprintf( label, sizeof( label ), "%s %.0f m", area.label.c_str(), area.ring.y );
+				draw->AddText( ImVec2( screen.x + 1.0f, screen.y + 1.0f ), outline, label );
+				draw->AddText( screen, color, label );
+			}
+		}
+		if( area.points )
+		{
+			const float outer = area.ring.y > 0.0f ? area.ring.y : 1e9f;
+			for( const XMFLOAT3& point : *area.points )
+			{
+				const float distance = std::hypot( point.x - listener.x, point.z - listener.z );
+				ImVec2 screen;
+				if( distance >= area.ring.x && distance <= outer && toScreen( transform, point.x, point.y + 0.2f, point.z, screen ) )
+					draw->AddCircleFilled( screen, 2.0f, color );
+			}
+		}
+	}
+
+	// Источники: кружок цвета слоя (звучит — залит и с кольцом), у певца — подпись и отвес к земле (сидит на высоте)
+	for( const GS::SoundMarker& marker : debug.markers )
+	{
+		ImVec2 center;
+		if( !toScreen( transform, marker.position.x, marker.position.y, marker.position.z, center ) )
+			continue;
+		const ImU32 color = soundColor( marker.color, marker.sounding ? 1.0f : 0.55f );
+		const float radius = ( marker.label.empty() ? 3.5f : 6.0f ) * marker.size;
+		if( !marker.label.empty() && terrain )
+		{
+			float height = marker.position.y;
+			ImVec2 foot;
+			if( terrain->surfaceHeight( marker.position.x, marker.position.z, height ) &&
+				toScreen( transform, marker.position.x, height, marker.position.z, foot ) )
+				draw->AddLine( center, foot, soundColor( marker.color, 0.35f ), 1.0f );
+		}
+		draw->AddCircleFilled( center, radius + 1.5f, outline );
+		if( marker.sounding )
+		{
+			draw->AddCircleFilled( center, radius, color );
+			draw->AddCircle( center, radius + 4.0f, color, 0, 1.5f );
+		}
+		else
+			draw->AddCircle( center, radius, color, 0, 1.5f );
+		if( !marker.label.empty() )
+		{
+			const ImVec2 at( center.x + radius + 5.0f, center.y - 7.0f );
+			draw->AddText( ImVec2( at.x + 1.0f, at.y + 1.0f ), outline, marker.label.c_str() );
+			draw->AddText( at, color, marker.label.c_str() );
+		}
+	}
+}
+
+PropertyContainer* Viewport::pickSoundMarker( const DMCamera& camera, GS::Scene& scene, float x, float y, float& distance ) const
+{
+	PropertyContainer* nearest = nullptr;
+	distance = lightPickPixels;
+	if( !scene.showSoundSources() )
+		return nullptr;
+	const XMMATRIX transform = viewProjection( camera );
+	for( const GS::SoundMarker& marker : scene.soundDebug().markers )
+	{
+		ImVec2 screen;
+		if( !marker.properties || !toScreen( transform, marker.position.x, marker.position.y, marker.position.z, screen ) )
+			continue;
+		const float d = std::hypot( screen.x - x, screen.y - y );
+		if( d < distance )
+		{
+			distance = d;
+			nearest = marker.properties;
+		}
+	}
+	return nearest;
 }
 
 void Viewport::drawSkeletons( const DMCamera& camera, GS::Scene& scene ) const

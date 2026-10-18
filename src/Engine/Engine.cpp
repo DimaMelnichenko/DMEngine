@@ -275,6 +275,7 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	debugView( "Light shafts", m_renderer.postProcessProperties(), "Show light shafts" );
 	debugView( "Collision", m_scene.worldEntities().properties(), "Show collision" );
 	debugView( "Skeleton", m_scene.worldEntities().properties(), "Show skeleton" );
+	debugView( "Sound sources", m_audio.properties(), "Show sources" );
 
 	m_showGUI = m_config.showGUI();
 	if( !m_config.mouseLook() )
@@ -367,6 +368,7 @@ bool Engine::tick()
 
 	// Сначала состояние сцены на CPU, затем команды GPU
 	watchdog.stage( "scene update" );
+	m_scene.setShowSoundSources( m_audio.showSources() );
 	TIME_CHECK( m_scene.update( frame, m_frameStats ), "Scene Update = %.3f ms" );
 	m_audio.update( m_frameStats );
 

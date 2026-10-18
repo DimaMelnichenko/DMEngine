@@ -41,6 +41,8 @@ DM_CONSTANTS( CDLODBuffer, SLOT_CB_MATERIAL )
 	DM_FIELD( float2, lakeSedimentLevel );
 	DM_FIELD( int, lakeSiltLayer );
 	DM_FIELD( float, cdlodPadding );
+	DM_FIELD( float3, paintPreviewColor );		// цвет подсветки paintPreview: цель кисти — оранжевый, места звука — бирюзовый
+	DM_FIELD( float, paintPreviewStrength );	// её сила, 0…1: у кисти 0,75, у мест звука 0,5 (земля под ней видна)
 	DM_ARRAY( float4, detailMorph, CDLOD_DETAIL_LEVELS );		// уровни мельче листа (−1…−6): x — начало морфинга, y — 1 / длина зоны
 	DM_ARRAY( float4, layerOcclusion, TERRAIN_SPLAT_SLICES );		// сила AO по слоям, по четыре, 0…1 (TerrainLayers.occlusion, «Layer occlusion»)
 	DM_FIELD_STRUCT( TerrainLayerConstants, terrainLayers );	// то же, что ресурс сцены SLOT_TERRAIN_LAYER_CONSTANTS (terrain_layers.sh)

@@ -8,6 +8,7 @@
 #include "Level\LevelSettings.h"
 #include "Engine\Audio\AudioClip.h"
 #include "Engine\Audio\AudioMixer.h"
+#include "SoundDebug.h"
 
 namespace GS
 {
@@ -61,6 +62,10 @@ public:
 	// Убрать слой (певцы умолкают) и вернуть убранный (отмена); false — нет такого
 	bool removeLayer( uint32_t key );
 	bool restoreLayer( uint32_t key );
+
+	// Метки режима «Sound sources»: певцы (цвет слоя, ярче — пока звучит фраза), области слоёв с «Show area» — полоса
+	// расстояний, маски места, берег озера
+	void soundDebug( SoundDebug& out );
 
 private:
 	// Запись: строка Sounds, подокно окна «Sounds», звук (читается при первой нужде) и прослушивание кнопкой «Play»

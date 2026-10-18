@@ -104,6 +104,9 @@ public:
 	const std::vector<float>* maskValues( const std::string& name ) const;
 	// Имена масок по порядку (mask_grass, mask_forest_* …) — флажки мест певцов в окне «Soundscape»
 	std::vector<std::string> maskNames() const;
+	// Номер правки масок: растёт с каждой выгрузкой маски на GPU (правила заново, мазок кисти) — сборные копии масок (места
+	// звука на земле, SoundAreaOverlay) сверяют его
+	uint32_t maskRevision() const { return m_maskRevision; }
 	// Мазок изменил маски: постоянные слои расстановки (лес) раскладываются заново — флаг для Scene, сбрасывается
 	bool takePaintedMasks() { const bool changed = m_paintedMasksChanged; m_paintedMasksChanged = false; return changed; }
 
@@ -305,6 +308,7 @@ private:
 	Texture m_heightMapTexture;	// копия t_heightmap в R32_FLOAT с правками рельефа и полной цепочкой мипов
 	ShaderView m_heightMap;
 	uint32_t m_heightRevision = 0;	// TerrainHeight::revision: растёт с каждой новой итоговой картой
+	uint32_t m_maskRevision = 0;	// растёт с каждой выгрузкой маски (uploadMask)
 	float m_maxHeightValue = 0.0f;	// наибольшее значение итоговой карты (TerrainHeight::maxValue)
 	Texture m_foliageClearTexture;
 	ShaderView m_foliageClearMask;

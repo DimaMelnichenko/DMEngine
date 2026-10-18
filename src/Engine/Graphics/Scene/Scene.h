@@ -21,6 +21,8 @@
 #include "Foliage\FoliageInteraction.h"
 #include "Sound\AmbientSound.h"
 #include "Sound\Soundscape.h"
+#include "Sound\SoundAreaOverlay.h"
+#include "Sound\SoundDebug.h"
 #include "World\WorldEntities.h"
 #include "Model\ModelCollision.h"
 #include "Engine\Simulation\World.h"
@@ -75,6 +77,12 @@ public:
 	// Звуки окружения и певцы: окна раздела Audio, метки во вьюпорте
 	AmbientSound& ambientSound() { return m_ambientSound; }
 	Soundscape& soundscape() { return m_soundscape; }
+	// Режим вьюпорта «Sound sources» (флажок «Show sources» окна «Audio», ставит Engine каждый кадр): метки звука во вьюпорте,
+	// маски мест областей с «Show area» — подсветкой земли (update)
+	void setShowSoundSources( bool show ) { m_showSoundSources = show; }
+	bool showSoundSources() const { return m_showSoundSources; }
+	// Метки звука кадра (значки источников, области) — вьюпорту
+	SoundDebug soundDebug();
 	// Ветер уровня (Levels.wind): константы кадра — Wind::parameters
 	Wind& wind();
 	const LevelDescription& level() const;
@@ -160,6 +168,8 @@ private:
 	AmbientSound m_ambientSound;	// звуки окружения (Levels.ambient_sound): голоса микшера звука
 	Soundscape m_soundscape;		// певцы (SoundscapeLayers): фразы записей вокруг слушателя
 	WorldEntities m_worldEntities;	// сущности мира симуляции на экране
+	bool m_showSoundSources = false;
+	SoundAreaOverlay m_soundAreas;	// маски мест звука одной текстурой — подсветка земли
 
 	std::vector<SceneObject*> m_objects;
 };

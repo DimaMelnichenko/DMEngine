@@ -157,6 +157,9 @@ bool AmbientSound::initialize( const Settings& settings, AudioMixer& mixer, Wind
 	for( PropertyContainer* part : { &m_windProperties, &m_grassProperties, &m_crownProperties, &m_streamProperties } )
 	{
 		addAuditionProperties( *part );
+		// Ветер — вокруг слушателя: области нет
+		if( part != &m_windProperties )
+			addAreaProperty( *part );
 		m_properties.addSubContainer( part );
 	}
 
@@ -224,6 +227,7 @@ void AmbientSound::update( const FrameContext& frame )
 	const float time = frame.gameTime;
 
 	const AudioListener listener = listenerFromView( frame.view );
+	m_listener = listener.position;
 	const float x = listener.position.x;
 	const float z = listener.position.z;
 
@@ -318,6 +322,45 @@ void AmbientSound::update( const FrameContext& frame )
 	}
 
 	updateStreams( settings, listener, volume * streamPart );
+}
+
+void AmbientSound::soundDebug( SoundDebug& out )
+{
+	if( !m_mixer )
+		return;
+	const Settings settings = this->settings();
+	// Места воды ближе «Distance»: звучащие — крупнее и ярче, размер — громкость места
+	const XMFLOAT3 water( 0.35f, 0.65f, 1.0f );
+	const float distance = std::max( settings.streamDistance, 1.0f );
+	for( size_t i = 0; i < m_streamBlocks.size(); ++i )
+	{
+		const StreamBlock& block = m_streamBlocks[i];
+		if( std::hypot( block.position.x - m_listener.x, block.position.z - m_listener.z ) > distance )
+			continue;
+		SoundMarker marker;
+		marker.position = block.position;
+		marker.color = water;
+		marker.sounding = std::any_of( m_streamVoices.begin(), m_streamVoices.end(), [i]( const StreamVoice& v ) { return v.block == i; } );
+		marker.size = std::clamp( std::pow( block.power, streamLoudness ), 0.4f, 1.3f );
+		marker.properties = &m_streamProperties;
+		out.markers.push_back( marker );
+	}
+	// Области частей: кольцо дальности и маски, по которым часть слышна
+	auto area = [&out]( PropertyContainer& part, const XMFLOAT3& color, float radius, const std::vector<std::string>& masks )
+	{
+		if( !showArea( part ) )
+			return;
+		SoundArea result;
+		result.color = color;
+		result.ring = XMFLOAT2( 0.0f, radius );
+		result.masks = masks;
+		result.label = part.name();
+		result.properties = &part;
+		out.areas.push_back( std::move( result ) );
+	};
+	area( m_grassProperties, XMFLOAT3( 0.55f, 1.0f, 0.35f ), settings.grassRadius, grassMasks );
+	area( m_crownProperties, XMFLOAT3( 0.25f, 0.8f, 0.45f ), settings.crownRadius, forestMasks );
+	area( m_streamProperties, water, distance, {} );
 }
 
 void AmbientSound::buildStreamBlocks()

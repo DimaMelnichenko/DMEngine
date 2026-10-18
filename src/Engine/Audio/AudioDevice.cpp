@@ -35,6 +35,9 @@ bool AudioDevice::initialize( bool enabled, float volume, bool muted )
 	volumeProperty->setControlType( GUIControlType::SLIDER );
 	volumeProperty->setTooltip( "Master volume of the output; starts from [Audio] Volume of settings.ini" );
 	m_properties.insert( "Mute", muted )->setTooltip( "Silent output (-mute); the mixer and audio record keep working" );
+	m_properties.insert( "Show sources", false )->setTooltip(
+		"Sound sources in the viewport (View > Debug views): singers and places of water as icons (a click selects the layer), "
+		"areas of the parts and layers with Show area - rings around the listener and habitat masks on the ground" );
 	m_properties.addButton( "Clear solo", "Turn off Solo of every part of the level sound (Ambient sound, Soundscape layers)",
 							[this]() -> PropertyContainer::ButtonAction
 	{

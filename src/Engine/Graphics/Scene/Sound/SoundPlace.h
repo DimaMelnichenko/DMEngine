@@ -42,5 +42,9 @@ float auditionGain( AudioAudition& audition, const PropertyContainer& part, bool
 // снимает Solo своих частей (clearSolo)
 bool takeClearSolo( const AudioAudition& audition, uint32_t& seen );
 void clearSolo( PropertyContainer& part );
+// «Show area» части или слоя (редакторский, не сохраняется): в режиме вьюпорта «Sound sources» — кольцо дальности вокруг
+// слушателя и маски места на земле (SoundDebug.h)
+void addAreaProperty( PropertyContainer& part );
+bool showArea( const PropertyContainer& part );
 
 }

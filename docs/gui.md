@@ -47,8 +47,8 @@
   Это те же горячие клавиши — меню нажимает их (`KeyEventNotifier::press`). Подменю **Debug views** — отладочные виды
   одним списком: раскраска LOD террейна, вода на земле, поле ветра, каскады теней, затенение окружением, след лучей
   солнца, столкновения («Collision» — каркас форм тел и персонажей в 30 м, и при ходьбе, [physics.md](physics.md)), кости поз моделей
-  со скелетом («Skeleton», [animation.md](animation.md)) (флажки окон объектов,
-  `Editor::Toggle::debugView`).
+  со скелетом («Skeleton», [animation.md](animation.md)), источники звука («Sound sources» — певцы и места воды значками,
+  области с «Show area», [audio.md](audio.md)) (флажки окон объектов, `Editor::Toggle::debugView`).
 - **Window** — панели вкл / выкл, «Reset layout».
 - **Help** — горячие клавиши.
 

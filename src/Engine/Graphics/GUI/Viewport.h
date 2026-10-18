@@ -9,6 +9,7 @@
 class DMCamera;
 class DMLightDriver;
 class GUI;
+class PropertyContainer;
 
 namespace GS
 {
@@ -34,6 +35,9 @@ class ConsoleCommands;
 // сценой и клавиши 5 / 6 / 7, оси — мира или экземпляра. Режим «Stream curves» (View): кривые русел ближе 250 м — линии и
 // точки; клик по точке выбирает её (подокно кривой — в Details), гизмо двигает её по X и Z, Insert — новая точка после
 // выбранной, Delete — удалить; русла перестраиваются, когда правка закончена (StreamCurves::finishCurveEdit).
+// Режим «Sound sources» (View → Debug views, «Show sources» окна «Audio»): певцы и места воды — значками (клик выбирает слой
+// или часть в Details), области слоёв и частей с «Show area» — кольца дальности вокруг слушателя на земле и точки берега
+// (маски мест подсвечивает террейн — Scene::update).
 // Режим «Terrain paint» (View): кисть слоёв земли и масок поверх правил (TerrainPaintTool, подокно «Paint» окна террейна) —
 // круг кисти на рельефе под курсором, ЛКМ — мазок (Shift — убавить в режиме «Step», Ctrl — стереть мазок), мазок — одна
 // правка истории (Ctrl+Z); клик по сцене в этом режиме ничего не выбирает.
@@ -44,9 +48,9 @@ public:
 	// Кадр вьюпорта: scene — что показывать и править (экземпляры моделей, кривые русел, источники света, эмиттеры)
 	void update( const DMCamera& camera, GS::Scene& scene, GUI& gui );
 	// Отладочные виды линиями поверх кадра: столкновения («Show collision» окна «World»: каркас форм тел и персонажей рядом
-	// с камерой, PhysicsWorld::debugLines; неподвижные — зелёные, персонажи — жёлтые) и кости поз моделей со скелетом
-	// («Show skeleton»: сущности и экземпляры уровня, голубые). Их зовёт и update, и Engine, пока камера смотрит мышью
-	// (ходьба, полёт с I): тогда update не зовётся, а линии нужны
+	// с камерой, PhysicsWorld::debugLines; неподвижные — зелёные, персонажи — жёлтые), кости поз моделей со скелетом
+	// («Show skeleton»: сущности и экземпляры уровня, голубые) и метки звука («Sound sources»). Их зовёт и update, и Engine,
+	// пока камера смотрит мышью (ходьба, полёт с I): тогда update не зовётся, а линии нужны
 	void drawDebugLines( const DMCamera& camera, GS::Scene& scene ) const;
 	// Команды вьюпорта в консоли и удалённом управлении: pick (клик по сцене), brush (мазок кисти), stream (правка точки кривой
 	// русла) — ViewportCommands.cpp; camera, scene и gui живут дольше консоли
@@ -105,9 +109,12 @@ private:
 	// Ближайший к точке значок ближе lightPickPixels (−1 — нет); distance — до него, пиксели
 	int pickLight( const DMCamera& camera, const DMLightDriver& lights, float x, float y, float& distance ) const;
 	void drawLights( const DMCamera& camera, const DMLightDriver& lights ) const;
-	// Части drawDebugLines: каркас столкновений и кости поз
+	// Части drawDebugLines: каркас столкновений, кости поз, метки звука
 	void drawCollision( const DMCamera& camera, GS::Scene& scene ) const;
 	void drawSkeletons( const DMCamera& camera, GS::Scene& scene ) const;
+	void drawSoundSources( const DMCamera& camera, GS::Scene& scene ) const;
+	// Ближайший к точке значок звука ближе lightPickPixels: окно его слоя или части (distance — до него, пиксели); nullptr — нет
+	PropertyContainer* pickSoundMarker( const DMCamera& camera, GS::Scene& scene, float x, float y, float& distance ) const;
 	// Правка выбранного источника: гизмо у точечного и прожектора, перетаскивание значка направленного по небу
 	void editLight( const DMCamera& camera, DMLightDriver& lights, GUI& gui );
 	void dragDirectionalLight( const DMCamera& camera, DMLightDriver& lights, GUI& gui );

@@ -249,6 +249,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/CubePrefilter.cpp
     src/Engine/Graphics/Scene/Sky/SkyAtmosphere.cpp
     src/Engine/Graphics/Scene/Sound/AmbientSound.cpp
+    src/Engine/Graphics/Scene/Sound/SoundAreaOverlay.cpp
     src/Engine/Graphics/Scene/Sound/Soundscape.cpp
     src/Engine/Graphics/Scene/Sound/SoundPlace.cpp
     src/Engine/Graphics/Scene/Foliage/FoliageInteraction.cpp

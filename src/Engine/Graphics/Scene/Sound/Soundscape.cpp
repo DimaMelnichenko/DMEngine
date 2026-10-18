@@ -151,6 +151,7 @@ std::unique_ptr<Soundscape::LayerState> Soundscape::createLayer( const Layer& se
 	layer->properties.setName( settings.name );
 	addSettingProperties( layer->properties, soundscapeLayerSchema(), settings, "" );
 	addAuditionProperties( layer->properties );
+	addAreaProperty( layer->properties );
 
 	// Записи и места — флажками: строкового свойства у окна нет
 	std::vector<std::string> names;
@@ -261,6 +262,45 @@ Soundscape::Layer Soundscape::current( const LayerState& layer ) const
 	settings.sound = checkedList( layer.soundFlags, layer.settings.sound );
 	settings.habitat = checkedList( layer.habitatFlags, layer.settings.habitat );
 	return settings;
+}
+
+void Soundscape::soundDebug( SoundDebug& out )
+{
+	for( size_t index = 0; index < m_layers.size(); ++index )
+	{
+		LayerState& layer = *m_layers[index];
+		// Цвет — по ключу слоя: у слоя он тот же, пока его не убрали, и другие слои не перекрашивают
+		const XMFLOAT3 color = soundColor( layer.key - 1 );
+		for( const Singer& singer : layer.singers )
+		{
+			SoundMarker marker;
+			marker.position = singer.position;
+			marker.color = color;
+			marker.label = layer.properties.name();
+			marker.sounding = !singer.phrases.empty();
+			marker.properties = &layer.properties;
+			out.markers.push_back( std::move( marker ) );
+		}
+		if( !showArea( layer.properties ) )
+			continue;
+		// Область слоя: полоса расстояний вокруг слушателя, маски места; берег озера — его точки
+		const Layer settings = current( layer );
+		SoundArea area;
+		area.color = color;
+		area.ring = XMFLOAT2( std::max( settings.distance.from, 0.0f ), std::max( settings.distance.to, settings.distance.from ) );
+		std::vector<std::string> names;
+		str_split( settings.habitat, names, ", " );
+		for( const std::string& name : names )
+		{
+			if( name == lakeShore )
+				area.points = &m_shore;
+			else
+				area.masks.push_back( name );
+		}
+		area.label = layer.properties.name();
+		area.properties = &layer.properties;
+		out.areas.push_back( std::move( area ) );
+	}
 }
 
 void Soundscape::refreshLists( LayerState& layer )

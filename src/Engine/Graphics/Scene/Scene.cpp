@@ -434,6 +434,31 @@ void Scene::update( const FrameContext& frame, FrameStats& stats )
 		stats.add( "Update: " + object->name() + " = %.3f ms",
 				   std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::high_resolution_clock::now() - start ).count() / 1000.0f );
 	}
+
+	// Места звука на земле (режим «Sound sources», «Show area»): маски областей — подсветкой террейна, бирюзовым
+	if( m_level.terrain )
+	{
+		const ShaderView* mask = nullptr;
+		if( m_showSoundSources )
+		{
+			std::vector<std::string> masks;
+			for( const SoundArea& area : soundDebug().areas )
+				masks.insert( masks.end(), area.masks.begin(), area.masks.end() );
+			if( !masks.empty() )
+				mask = m_soundAreas.update( m_terrainPipeline, std::move( masks ) );
+		}
+		m_terrain.setHighlight( mask, XMFLOAT3( 0.1f, 0.85f, 0.95f ) );
+	}
+}
+
+SoundDebug Scene::soundDebug()
+{
+	SoundDebug debug;
+	if( m_ambientSound.initialized() )
+		m_ambientSound.soundDebug( debug );
+	if( m_soundscape.initialized() )
+		m_soundscape.soundDebug( debug );
+	return debug;
 }
 
 const std::vector<SceneObject*>& Scene::objects() const

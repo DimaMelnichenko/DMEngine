@@ -15,7 +15,7 @@
 #include "terrain_layers.sh"
 #include "terrain_material.sh"
 
-DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти (g_paintPreview 9), в UV карты высот
+DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти или места звука (g_paintPreview 9), в UV карты высот
 
 // Доля диапазона: 0 при from, 1 при to (в любую сторону), плавно; from = to — ступень
 float ramp( float from, float to, float x )
@@ -153,7 +153,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 
 	// Цель кисти (режим «Terrain paint», «Show target» подокна «Paint»): итог цели в точке — оранжевым поверх земли, сила —
 	// значение (вес слоя среди слоёв пикселя, мокрость, маска), тёмные изолинии через 0,25 — читать «Value»; свечение — от
-	// неба, как у «Show wind»: в тени видно так же
+	// неба, как у «Show wind»: в тени видно так же. Та же подсветка маски — места звука («Sound sources», «Show area»),
+	// бирюзовым: цвет — g_paintPreviewColor
 	[branch] if( g_paintPreview >= 0 )
 	{
 		float value = 0.0f;
@@ -172,9 +173,9 @@ float4 main( PixelInputType input ) : SV_TARGET
 		const float steps = value * 4.0f;
 		const float slope = fwidth( steps );
 		const float isoline = slope > 1e-4f ? 1.0f - saturate( abs( frac( steps + 0.5f ) - 0.5f ) / ( 1.5f * slope ) ) : 0.0f;
-		const float3 highlight = float3( 1.0f, 0.38f, 0.04f );
-		surface.baseColor = lerp( surface.baseColor, highlight * 0.6f, 0.75f * value ) * ( 1.0f - 0.7f * isoline );
-		surface.emissive += highlight * value * ( 1.0f - isoline ) * 0.6f *
+		const float3 highlight = g_paintPreviewColor;
+		surface.baseColor = lerp( surface.baseColor, highlight * 0.6f, g_paintPreviewStrength * value ) * ( 1.0f - 0.7f * isoline );
+		surface.emissive += highlight * value * ( 1.0f - isoline ) * 0.8f * g_paintPreviewStrength *
 							dot( ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) ), float3( 0.2126f, 0.7152f, 0.0722f ) );
 	}
 
