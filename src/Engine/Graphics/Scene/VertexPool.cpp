@@ -21,11 +21,13 @@ bool VertexPool::prepareMeshes()
 {
 	std::vector<VertexData::PTNTB> vertexes;
 	std::vector<VertexData::WindHalf> wind;
+	std::vector<VertexData::Skin> skin;
 	std::vector<uint32_t> indexes;
 
 	// подготовка бкферов для вершин и индексов
 	vertexes.resize( System::meshes().vertexCount() );
 	wind.resize( System::meshes().vertexCount() );	// нули: у мешей без ветра дерева
+	skin.resize( System::meshes().vertexCount() );	// нули: у мешей без скелета
 	indexes.resize( System::meshes().indexCount() );
 
 	// переменные для сохранения смещения
@@ -56,6 +58,8 @@ bool VertexPool::prepareMeshes()
 				target.weights[1] = PackedVector::XMConvertFloatToHalf( source.weights.y );
 			}
 		}
+		if( mesh->skin().size() == mesh->vertexCount() )
+			std::copy( mesh->skin().begin(), mesh->skin().end(), skin.begin() + vertexOffset );
 
 		// копируем индексы в общий буфер
 		memcpy( (char*)(&indexes[0]) + indexOffset * sizeof( uint32_t ),
@@ -73,9 +77,11 @@ bool VertexPool::prepareMeshes()
 	// создание буферов на видюхе с нашими общими буферами
 	DMD3D::instance().createVertexBuffer( m_vertexBuffer, &vertexes[0], System::meshes().vertexCount() * sizeof( VertexData::PTNTB ) );
 	DMD3D::instance().createVertexBuffer( m_windBuffer, &wind[0], System::meshes().vertexCount() * sizeof( VertexData::WindHalf ) );
+	DMD3D::instance().createVertexBuffer( m_skinBuffer, &skin[0], System::meshes().vertexCount() * sizeof( VertexData::Skin ) );
 	DMD3D::instance().createIndexBuffer( m_indexBuffer, &indexes[0], System::meshes().indexCount() * sizeof( uint32_t ) );
 	DMD3D::instance().setName( m_vertexBuffer, "Vertex pool" );
 	DMD3D::instance().setName( m_windBuffer, "Vertex pool wind" );
+	DMD3D::instance().setName( m_skinBuffer, "Vertex pool skin" );
 	DMD3D::instance().setName( m_indexBuffer, "Index pool" );
 
 	return true;
@@ -83,11 +89,11 @@ bool VertexPool::prepareMeshes()
 
 bool VertexPool::setBuffers()
 {	
-	const uint32_t strides[] = { sizeof( VertexData::PTNTB ), sizeof( VertexData::WindHalf ) };
-	const uint32_t offsets[] = { 0, 0 };
-	const Buffer* buffers[] = { &m_vertexBuffer, &m_windBuffer };
+	const uint32_t strides[] = { sizeof( VertexData::PTNTB ), sizeof( VertexData::WindHalf ), sizeof( VertexData::Skin ) };
+	const uint32_t offsets[] = { 0, 0, 0 };
+	const Buffer* buffers[] = { &m_vertexBuffer, &m_windBuffer, &m_skinBuffer };
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setVertexBuffers( 2, buffers, strides, offsets );
+	d3d.setVertexBuffers( 3, buffers, strides, offsets );
 	d3d.setIndexBuffer( m_indexBuffer, DXGI_FORMAT_R32_UINT );
 
 	return true;

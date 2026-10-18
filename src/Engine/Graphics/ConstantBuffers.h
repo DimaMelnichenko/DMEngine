@@ -79,8 +79,9 @@ public:
 	const FrameParameters& frameParameters() const { return m_frame; }
 	// Мировая матрица объекта (b1) и матрица нормалей к ней — обратная транспонированная: нормали остаются
 	// перпендикулярными поверхности и при неравномерном масштабе
-	// lodDither — доля смены LOD дизерингом у экземпляра в полосе перехода (Shaders/lod_dither.sh), 0 — вне её
-	void setPerObjectBuffer( const DirectX::XMMATRIX& world, float lodDither = 0.0f );
+	// lodDither — доля смены LOD дизерингом у экземпляра в полосе перехода (Shaders/lod_dither.sh), 0 — вне её; boneOffset —
+	// первая матрица скиннинга объекта в буфере вызова (Shaders/skinning.sh, SkinningPalette)
+	void setPerObjectBuffer( const DirectX::XMMATRIX& world, float lodDither = 0.0f, uint32_t boneOffset = 0 );
 
 private:
 	FrameParameters m_frame;

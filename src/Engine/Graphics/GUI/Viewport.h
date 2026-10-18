@@ -43,10 +43,11 @@ class Viewport
 public:
 	// Кадр вьюпорта: scene — что показывать и править (экземпляры моделей, кривые русел, источники света, эмиттеры)
 	void update( const DMCamera& camera, GS::Scene& scene, GUI& gui );
-	// Отладочный вид столкновений («Show collision» окна «World»): каркас форм тел и персонажей рядом с камерой линиями
-	// поверх кадра (PhysicsWorld::debugLines); неподвижные — зелёные, персонажи — жёлтые. Его зовёт и update, и Engine, пока
-	// камера смотрит мышью (ходьба, полёт с I): тогда update не зовётся, а каркас нужен
-	void drawCollision( const DMCamera& camera, GS::Scene& scene ) const;
+	// Отладочные виды линиями поверх кадра: столкновения («Show collision» окна «World»: каркас форм тел и персонажей рядом
+	// с камерой, PhysicsWorld::debugLines; неподвижные — зелёные, персонажи — жёлтые) и кости поз моделей со скелетом
+	// («Show skeleton»: сущности и экземпляры уровня, голубые). Их зовёт и update, и Engine, пока камера смотрит мышью
+	// (ходьба, полёт с I): тогда update не зовётся, а линии нужны
+	void drawDebugLines( const DMCamera& camera, GS::Scene& scene ) const;
 	// Команды вьюпорта в консоли и удалённом управлении: pick (клик по сцене), brush (мазок кисти), stream (правка точки кривой
 	// русла) — ViewportCommands.cpp; camera, scene и gui живут дольше консоли
 	void registerCommands( GS::ConsoleCommands& console, DMCamera& camera, GS::Scene& scene, GUI& gui );
@@ -104,6 +105,9 @@ private:
 	// Ближайший к точке значок ближе lightPickPixels (−1 — нет); distance — до него, пиксели
 	int pickLight( const DMCamera& camera, const DMLightDriver& lights, float x, float y, float& distance ) const;
 	void drawLights( const DMCamera& camera, const DMLightDriver& lights ) const;
+	// Части drawDebugLines: каркас столкновений и кости поз
+	void drawCollision( const DMCamera& camera, GS::Scene& scene ) const;
+	void drawSkeletons( const DMCamera& camera, GS::Scene& scene ) const;
 	// Правка выбранного источника: гизмо у точечного и прожектора, перетаскивание значка направленного по небу
 	void editLight( const DMCamera& camera, DMLightDriver& lights, GUI& gui );
 	void dragDirectionalLight( const DMCamera& camera, DMLightDriver& lights, GUI& gui );

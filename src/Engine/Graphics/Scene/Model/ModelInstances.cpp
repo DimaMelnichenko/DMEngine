@@ -2,6 +2,8 @@
 #include "ModelReseat.h"
 #include "ModelDraw.h"
 #include "ModelCollision.h"
+#include "Engine\Animation\AnimationLibrary.h"
+#include "Engine\Animation\AnimationPose.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -65,8 +67,9 @@ ModelInstances::ModelInstances() :
 	m_addProperties.setName( "Add" );
 }
 
-void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstance>& instances )
+void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstance>& instances, const AnimationLibrary* animations )
 {
+	m_animations = animations;
 	std::unordered_set<uint32_t> withProperties;
 	m_instances.reserve( instances.size() );
 	for( const LevelDescription::ModelInstance& description : instances )
@@ -75,6 +78,7 @@ void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstan
 		instance.model = System::models().get( description.model ).get();
 		instance.modelId = description.model;
 		instance.id = description.id;
+		instance.animation = description.animation;
 		instance.key = m_nextKey++;
 		instance.transform.setPosition( description.position );
 		instance.transform.setRotation( description.rotation );
@@ -460,6 +464,7 @@ std::vector<LevelDescription::ModelInstance> ModelInstances::instances() const
 		description.position = instance.transform.position();
 		description.rotation = instance.transform.rotation();
 		description.scale = instance.transform.scale();
+		description.animation = instance.animation;
 		result.push_back( description );
 	}
 	return result;
@@ -473,11 +478,41 @@ bool ModelInstances::bounds( DirectX::BoundingBox& bounds ) const
 	return true;
 }
 
+void ModelInstances::compute( const FrameContext& frame )
+{
+	m_skinning.clear();
+	m_boneLines.clear();
+	for( Instance& instance : m_instances )
+	{
+		instance.posed = false;
+		if( !m_animations || instance.animation == 0 || instance.model->skeleton() == 0 )
+			continue;
+		const Skeleton* skeleton = m_animations->skeleton( instance.model->skeleton() );
+		if( !skeleton )
+			continue;
+		// Клип по кругу по времени игры: стоит с -freezetime, у всех экземпляров с ним — одна поза
+		AnimationState state;
+		state.skeleton = instance.model->skeleton();
+		state.current = clipPlayback( instance.animation, frame.gameTime );
+		state.previous = state.current;
+		if( !evaluatePose( *m_animations, state, 1.0f, m_poseScratch, m_pose ) )
+			continue;
+		modelSpace( *skeleton, m_pose, m_jointMatrices );
+		skinningMatrices( *skeleton, m_jointMatrices, m_skinning.append( skeleton->jointCount(), instance.boneOffset ) );
+		appendBoneLines( *skeleton, m_jointMatrices, instance.transform.worldMatrix(), m_boneLines );
+		instance.posed = true;
+	}
+	m_skinning.upload();
+}
+
 void ModelInstances::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
 	for( const Instance& instance : m_instances )
+	{
+		const SkinBinding skin{ &m_skinning, instance.boneOffset };
 		collectModelMeshes( *instance.model, instance.modelId, instance.transform.worldMatrix(), instance.transform.position(), view,
-							collector );
+							collector, instance.posed ? &skin : nullptr );
+	}
 }
 
 PropertyContainer* ModelInstances::properties()

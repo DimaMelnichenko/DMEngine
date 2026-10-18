@@ -155,8 +155,8 @@ target_compile_definitions(DMEngineSettings INTERFACE _MBCS NOMINMAX)
 target_compile_options(DMEngineSettings INTERFACE /W3 /wd4005 /utf-8)
 
 # Ядро — логика без устройства (как модуль Core в UE): свойства, лог, данные уровня, время суток, рельеф и вода на CPU,
-# ветер, звук (микшер и синтез; вывод XAudio2 — в движке), камера, ходьба и ввод, мир симуляции (EnTT), мировые часы и
-# столкновения (Jolt).
+# ветер, звук (микшер и синтез; вывод XAudio2 — в движке), камера, ходьба и ввод, мир симуляции (EnTT), мировые часы,
+# столкновения (Jolt) и скелетная анимация (поза; скиннинг — в движке).
 # Его собирают движок и тесты; рендер, ImGui, DirectXTex и база — не в нём: тесты берут ядро целиком (/WHOLEARCHIVE), и
 # ссылка на них — ошибка линковки (docs/tests.md). Новая логика (системы мира, навигация, столкновения) — сюда же
 add_library(DMCore STATIC
@@ -182,6 +182,12 @@ add_library(DMCore STATIC
     src/Engine/Simulation/WanderSystem.cpp
     src/Engine/Simulation/MovementSystem.cpp
     src/Engine/Simulation/PhysicsWorld.cpp
+    src/Engine/Animation/Skeleton.cpp
+    src/Engine/Animation/AnimationClip.cpp
+    src/Engine/Animation/AnimationPose.cpp
+    src/Engine/Animation/BlendSpace1D.cpp
+    src/Engine/Animation/AnimationLibrary.cpp
+    src/Engine/Animation/AnimationSystem.cpp
 )
 target_link_libraries(DMCore PUBLIC DMEngineSettings EnTT::EnTT Jolt)
 
@@ -295,6 +301,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Model/ModelInstances.cpp
     src/Engine/Graphics/Scene/Model/ModelDraw.cpp
     src/Engine/Graphics/Scene/Model/ModelCollision.cpp
+    src/Engine/Graphics/Scene/Model/SkinningPalette.cpp
     src/Engine/Graphics/Scene/World/WorldEntities.cpp
     src/Engine/Graphics/Scene/Terrain/GridMesh.cpp
     src/Engine/Graphics/Scene/Terrain/CDLODTerrain.cpp

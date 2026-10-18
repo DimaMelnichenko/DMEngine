@@ -13,6 +13,7 @@
 #include "D3D\ShaderCompiler.h"
 #include "D3D\DMD3D.h"
 #include "Materials\Material.h"
+#include "Model\SkinningPalette.h"
 #include "Logger\Logger.h"
 
 using namespace DirectX;
@@ -23,21 +24,25 @@ namespace GS
 namespace
 {
 
-// Один ли это меш с одними параметрами и отсечением граней — можно ли нарисовать их одним инстансным вызовом
+// Один ли это меш с одними параметрами и отсечением граней — можно ли нарисовать их одним инстансным вызовом (у модели
+// со скелетом — своя поза: нельзя)
 bool sameMesh( const MeshBatch& a, const MeshBatch& b )
 {
 	return a.material == b.material && a.params == b.params && a.indexOffset == b.indexOffset &&
 		   a.vertexOffset == b.vertexOffset && a.indexCount == b.indexCount && a.state.blendMode == b.state.blendMode &&
-		   a.state.twoSided == b.state.twoSided && a.mirrored == b.mirrored && a.lodDither == 0.0f && b.lodDither == 0.0f;
+		   a.state.twoSided == b.state.twoSided && a.mirrored == b.mirrored && a.lodDither == 0.0f && b.lodDither == 0.0f &&
+		   !a.skin && !b.skin;
 }
 
-// Вариант шейдера меша: инстансный вызов, глубина из depth prepass и смена LOD дизерингом (экземпляр в полосе перехода)
+// Вариант шейдера меша: инстансный вызов, глубина из depth prepass, смена LOD дизерингом (экземпляр в полосе перехода) и
+// скиннинг (модель со скелетом)
 ShaderPhaseOptions meshPhaseOptions( const MeshBatch& batch, bool instanced, bool depthFromPrepass )
 {
 	ShaderPhaseOptions options;
 	options.instanced = instanced;
 	options.depthFromPrepass = depthFromPrepass;
 	options.lodDither = batch.lodDither != 0.0f;
+	options.skinned = batch.skin != nullptr;
 	return options;
 }
 
@@ -909,7 +914,9 @@ void Renderer::drawMesh( const MeshBatch& batch, const RenderContext& context )
 	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
 					 shader->phaseFor( *batch.params, options ) );
 	shader->setParams( *batch.params );
-	context.constants.setPerObjectBuffer( batch.world, batch.lodDither );
+	context.constants.setPerObjectBuffer( batch.world, batch.lodDither, batch.boneOffset );
+	if( batch.skin )
+		batch.skin->bind();
 	d3d.drawIndexed( batch.indexCount, batch.indexOffset, batch.vertexOffset );
 	countMeshes( context, 1, 1 );
 }

@@ -55,8 +55,8 @@ PBRMaterial::PBRMaterial( uint32_t id, const std::string& name ) : Material( id,
 std::vector<VertexElement> PBRMaterial::initLayouts()
 {
 	// Основной поток VertexPool (слот 0) — VertexData::PTNTB. Второй поток (слот 1) — данные ветра дерева в половинной
-	// точности, VertexData::WindHalf: их читают только вершинные шейдеры с WIND_TREE (материал PBRTree); остальным лишние
-	// элементы раскладки не мешают
+	// точности, VertexData::WindHalf: их читают только вершинные шейдеры с WIND_TREE (материал PBRTree). Третий (слот 2) —
+	// скин, VertexData::Skin: его читают перестановки SKINNED. Остальным лишние элементы раскладки не мешают
 	return {
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0 },
 		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, VertexElement::appendOffset },
@@ -66,6 +66,8 @@ std::vector<VertexElement> PBRMaterial::initLayouts()
 		{ "BRANCH", 0, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 0 },
 		{ "BRANCH", 1, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 8 },
 		{ "WINDWEIGHTS", 0, DXGI_FORMAT_R16G16_FLOAT, 1, 16 },
+		{ "JOINTS", 0, DXGI_FORMAT_R8G8B8A8_UINT, 2, 0 },
+		{ "WEIGHTS", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 2, 4 },
 	};
 }
 
@@ -143,6 +145,8 @@ std::string PBRMaterial::vertexDefines( uint32_t key ) const
 		defines = withDefine( defines, "LOD_DITHER=1" );
 	if( key & depthOnly )
 		defines = withDefine( defines, "DEPTH_ONLY=1" );
+	if( key & skinned )
+		defines = withDefine( defines, "SKINNED=1" );
 	return defines;
 }
 
@@ -164,6 +168,14 @@ bool PBRMaterial::enablePlacedInstances()
 	if( !m_placed )
 		m_placed = addVertexVariant( placed ) && addVertexVariant( placed | lodDither );
 	return m_placed;
+}
+
+bool PBRMaterial::enableSkinning()
+{
+	using namespace ShaderPermutation;
+	if( !m_skinned )
+		m_skinned = addVertexVariant( skinned ) && addVertexVariant( skinned | lodDither );
+	return m_skinned;
 }
 
 bool PBRMaterial::enableImpostorBake()

@@ -18,15 +18,16 @@ namespace
 // приходящий. Секция без дизеринга рисуется, только пока её сторона перехода — не меньше половины: LOD сменяется
 // мгновенно на дальности модели, как без полосы
 void addLod( const DMModel& model, uint32_t modelId, FXMMATRIX world, uint16_t lodIndex, float lodDither, float distance,
-			 const RenderView& view, MeshCollector& collector )
+			 const RenderView& view, MeshCollector& collector, const SkinBinding* skin )
 {
 	const DMModel::LodBlock* lod = model.getLodById( lodIndex );
 	if( !lod || !lod->isRender )
 		return;
 
-	// Отсечение по frustum вида: границы LOD (все секции), переведённые мировой матрицей
+	// Отсечение по frustum вида: границы LOD (все секции; у позы скелета — во всех позах клипов), переведённые мировой
+	// матрицей
 	DirectX::BoundingBox bounds;
-	lod->bounds.Transform( bounds, world );
+	( skin ? model.animatedBounds() : lod->bounds ).Transform( bounds, world );
 	const XMFLOAT3 boundsMin( bounds.Center.x - bounds.Extents.x, bounds.Center.y - bounds.Extents.y,
 							  bounds.Center.z - bounds.Extents.z );
 	const XMFLOAT3 boundsMax( bounds.Center.x + bounds.Extents.x, bounds.Center.y + bounds.Extents.y,
@@ -63,6 +64,14 @@ void addLod( const DMModel& model, uint32_t modelId, FXMMATRIX world, uint16_t l
 		batch.vertexOffset = mesh->vertexOffset();
 		batch.world = world;
 		batch.distance = distance;
+		// Поза скелета — если материал собрал варианты скиннинга (Material::enableSkinning), иначе поза покоя
+		ShaderPhaseOptions skinned;
+		skinned.skinned = true;
+		if( skin && batch.material->phaseFor( *section.params, skinned ) >= 0 )
+		{
+			batch.skin = skin->palette;
+			batch.boneOffset = skin->boneOffset;
+		}
 		// «Эта секция этого LOD этой модели»: одинаковые у соседних экземпляров рисуются одним вызовом
 		batch.instanceGroup = ( modelId << 8 ) | ( static_cast<uint32_t>( lodIndex ) << 4 ) | static_cast<uint32_t>( i );
 		collector.add( batch );
@@ -72,7 +81,7 @@ void addLod( const DMModel& model, uint32_t modelId, FXMMATRIX world, uint16_t l
 }
 
 void collectModelMeshes( const DMModel& model, uint32_t modelId, FXMMATRIX world, const XMFLOAT3& position,
-						 const RenderView& view, MeshCollector& collector )
+						 const RenderView& view, MeshCollector& collector, const SkinBinding* skin )
 {
 	// Дальний каскад теней — только лес расстановки: модели в нём не рисуются (их немного и они рядом)
 	if( view.kind == RenderView::Kind::farShadow )
@@ -96,9 +105,9 @@ void collectModelMeshes( const DMModel& model, uint32_t modelId, FXMMATRIX world
 		if( lodDistance >= range + halfBand )
 			continue;
 		const float t = halfBand > 0.0f ? std::clamp( ( lodDistance - ( range - halfBand ) ) / ( 2.0f * halfBand ), 0.0f, 1.0f ) : 0.0f;
-		addLod( model, modelId, world, i, t, distance, view, collector );
+		addLod( model, modelId, world, i, t, distance, view, collector, skin );
 		if( t > 0.0f && i + 1 < lodCount )
-			addLod( model, modelId, world, static_cast<uint16_t>( i + 1 ), t - 1.0f, distance, view, collector );
+			addLod( model, modelId, world, static_cast<uint16_t>( i + 1 ), t - 1.0f, distance, view, collector, skin );
 		break;
 	}
 }

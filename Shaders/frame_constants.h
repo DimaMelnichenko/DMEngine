@@ -68,7 +68,8 @@ DM_CONSTANTS( WorldBuffer, SLOT_CB_OBJECT )
 	DM_FIELD( matrix, worldMatrix );
 	DM_FIELD( matrix, worldInverseTransposeMatrix );	// для нормалей: перпендикулярны поверхности и при неравномерном масштабе
 	DM_FIELD( float, lodDither );		// смена LOD дизерингом у модели в полосе перехода (Shaders/lod_dither.sh), 0 — вне её
-	DM_FIELD( float3, objectPadding );
+	DM_FIELD( uint, boneOffset );		// первая матрица скиннинга объекта в буфере вызова (Shaders/skinning.sh), кости
+	DM_FIELD( float2, objectPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

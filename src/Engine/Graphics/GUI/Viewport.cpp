@@ -303,7 +303,7 @@ void Viewport::update( const DMCamera& camera, GS::Scene& scene, GUI& gui )
 		if( sceneClicked() )
 			clickAt( camera, scene, gui, ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y );
 	}
-	drawCollision( camera, scene );
+	drawDebugLines( camera, scene );
 	drawLights( camera, *lights );
 	if( particles )
 		drawEmitters( camera, *particles );
@@ -760,6 +760,32 @@ int Viewport::pickLight( const DMCamera& camera, const DMLightDriver& lights, fl
 		}
 	}
 	return nearest;
+}
+
+void Viewport::drawDebugLines( const DMCamera& camera, GS::Scene& scene ) const
+{
+	drawCollision( camera, scene );
+	drawSkeletons( camera, scene );
+}
+
+void Viewport::drawSkeletons( const DMCamera& camera, GS::Scene& scene ) const
+{
+	PropertyContainer& world = *scene.worldEntities().properties();
+	if( !world.exists( "Show skeleton" ) || !world["Show skeleton"].data<bool>() )
+		return;
+	const XMMATRIX transform = viewProjection( camera );
+	ImDrawList* draw = ImGui::GetBackgroundDrawList();
+	const ImU32 color = IM_COL32( 90, 200, 255, 230 );
+	for( const std::vector<GS::BoneLine>* lines : { &scene.worldEntities().boneLines(), &scene.models().boneLines() } )
+		for( const GS::BoneLine& line : *lines )
+		{
+			ImVec2 from, to;
+			if( toScreen( transform, line.from.x, line.from.y, line.from.z, from ) && toScreen( transform, line.to.x, line.to.y, line.to.z, to ) )
+			{
+				draw->AddLine( from, to, color, 2.0f );
+				draw->AddCircleFilled( to, 2.5f, color );
+			}
+		}
 }
 
 void Viewport::drawCollision( const DMCamera& camera, GS::Scene& scene ) const

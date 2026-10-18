@@ -68,22 +68,33 @@ public:
 
 	// Простая коллизия модели в мире столкновений (Models.collision, как Simple Collision у Static Mesh в UE;
 	// docs/physics.md) — по LOD 0: выпуклая оболочка вершин (по умолчанию: камни, шары), коробка по границам, треугольники
-	// (неподвижное сложной формы), ствол — вертикальная капсула по границам основания (деревья), без столкновений
+	// (неподвижное сложной формы), ствол — вертикальная капсула по следу вершин у низа модели (деревья), без столкновений
 	enum class Collision { hull, box, mesh, capsule, none };
 	Collision collision() const { return m_collision; }
 	void setCollision( Collision collision ) { m_collision = collision; }
 	// Радиус ствола (capsule), м в координатах модели (Models.collision_radius, как радиус капсулы простой коллизии в UE);
-	// 0 — по границам основания LOD 0 (у ели нижние лапы у земли — радиус кроны, а не ствола)
+	// 0 — полуширина следа вершин у низа модели (TrunkCollision.h: у ели — комель с корнями, шире ствола)
 	float collisionRadius() const { return m_collisionRadius; }
 	void setCollisionRadius( float radius ) { m_collisionRadius = radius; }
 	// Имя колонки → значение; false — неизвестное имя
 	static bool parseCollision( const std::string& name, Collision& collision );
+
+	// Скелет модели (Models.skeleton_id — скелет в AnimationLibrary мира, строка Skeletons); 0 — модель без скелета. Меши
+	// модели со скелетом лежат в позе покоя, с весами костей (блок SKIN), рисуются вариантом материала SKINNED
+	uint32_t skeleton() const { return m_skeleton; }
+	void setSkeleton( uint32_t skeleton ) { m_skeleton = skeleton; }
+	// Границы модели во всех позах клипов её скелета (AnimationClip::boundsMin / boundsMax), пространство модели: по ним
+	// отсекаются экземпляры в анимации (лёжа, в прыжке); у модели без клипов — границы LOD 0
+	const DirectX::BoundingBox& animatedBounds() const { return m_animatedBounds; }
+	void setAnimatedBounds( const DirectX::BoundingBox& bounds ) { m_animatedBounds = bounds; }
 
 	PropertyContainer* properties();
 private:
 	std::vector<std::pair<float, std::shared_ptr<LodBlock>>> m_lods;
 	Collision m_collision = Collision::hull;
 	float m_collisionRadius = 0.0f;
+	uint32_t m_skeleton = 0;
+	DirectX::BoundingBox m_animatedBounds;
 	PropertyContainer m_properties;
 };
 

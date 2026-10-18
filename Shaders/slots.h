@@ -31,8 +31,9 @@
 #define SLOT_CB_COUNT		8						// root CBV b0…b7
 #define DM_DRAW_CONSTANT_COUNT 4					// DWORD root-констант b9
 
-// Текстуры и буферы — номера слотов таблицы привязок вызова: t0…t14 — ресурсы материала или прохода, t15 и t16 — данные
+// Текстуры и буферы — номера слотов таблицы привязок вызова: t0…t13 — ресурсы материала или прохода, t14…t16 — данные
 // объекта, u0…u7 — UAV compute-проходов
+#define SLOT_SKIN_MATRICES	14	// вершинный шейдер со скиннингом: матрицы скиннинга костей (skinning.sh, SkinningPalette)
 #define SLOT_INSTANCE_INDICES 15	// вершинный шейдер расстановки: индексы инстансов списка вида (instance.sh, scatter.cs)
 #define SLOT_INSTANCE_DATA	16	// вершинный шейдер: данные инстансов (instance.sh: пул расстановки или матрицы инстансов)
 #define SLOT_TRANSIENT_COUNT 17	// слотов SRV вызова: t0…t16

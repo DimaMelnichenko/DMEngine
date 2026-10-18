@@ -1,7 +1,9 @@
 #include "LibraryLoader.h"
 #include "System.h"
 #include "Materials\Material.h"
+#include "Engine\Animation\AnimationLibrary.h"
 #include <algorithm>
+#include <set>
 #include <iostream>
 #include <chrono>
 #include <cstdio>
@@ -345,14 +347,15 @@ bool LibraryLoader::loadLevel( const std::string& name, const std::string& prese
 			return false;
 		loadStars( level );
 
-		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, position, rotation, scale FROM LevelModels "
-																	 "WHERE level = :level ORDER BY id" );
+		SQLite::Statement queryModels( DBConnector::instance().db(), "SELECT id, model, position, rotation, scale, animation_id "
+																	 "FROM LevelModels WHERE level = :level ORDER BY id" );
 		queryModels.bind( ":level", level.id );
 		while( queryModels.executeStep() )
 		{
 			LevelDescription::ModelInstance instance;
 			instance.id = queryModels.getColumn( "id" ).getUInt();
 			instance.model = queryModels.getColumn( "model" ).getUInt();
+			instance.animation = queryModels.getColumn( "animation_id" ).isNull() ? 0 : queryModels.getColumn( "animation_id" ).getUInt();
 			const std::string row = "Level model " + queryModels.getColumn( "id" ).getString();
 			const std::string position = queryModels.getColumn( "position" ).getString();
 			const std::string rotation = queryModels.getColumn( "rotation" ).getString();
@@ -588,20 +591,23 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	LOG( "Load model: " + std::to_string( idModel ) );
 
 	SQLite::Statement query( DBConnector::instance().db(),
-							 "SELECT id, name, shadow_lod_scale, shadow_min_lod, collision, collision_radius FROM Models where id = :id" );
+							 "SELECT id, name, shadow_lod_scale, shadow_min_lod, collision, collision_radius, skeleton_id FROM Models "
+							 "where id = :id" );
 	query.bind( ":id", idModel );
 	float shadowLodScale = 1.0f;
 	uint32_t shadowMinLod = 0;
 	std::string collision;
 	float collisionRadius = 0.0f;
+	uint32_t skeleton = 0;
 	while( query.executeStep() )
-	{	
+	{
 		if( !GS::System::models().createModel( query.getColumn( 0 ), query.getColumn( 1 ) ) )
 			return false;
 		shadowLodScale = static_cast<float>( query.getColumn( "shadow_lod_scale" ).getDouble() );
 		shadowMinLod = static_cast<uint32_t>( std::max( query.getColumn( "shadow_min_lod" ).getInt(), 0 ) );
 		collision = query.getColumn( "collision" ).isNull() ? std::string() : query.getColumn( "collision" ).getString();
 		collisionRadius = static_cast<float>( query.getColumn( "collision_radius" ).getDouble() );
+		skeleton = query.getColumn( "skeleton_id" ).isNull() ? 0 : query.getColumn( "skeleton_id" ).getUInt();
 	}
 
 	if( !GS::System::models().exists( idModel ) )
@@ -614,6 +620,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		LOG( "Model " + std::to_string( idModel ) + ": unknown collision '" + collision + "' (hull, box, mesh, capsule, none), hull is used" );
 	model->setCollision( modelCollision );
 	model->setCollisionRadius( std::max( collisionRadius, 0.0f ) );
+	model->setSkeleton( skeleton );
 	if( !model )
 		return false;
 	
@@ -664,6 +671,10 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 
 		if( !loadMesh( queryLOD.getColumn( "mesh_id" ) ) )
 			return false;
+		// Модель со скелетом: материалу секции — варианты скиннинга, до прогрева пайплайнов
+		if( skeleton != 0 && !GS::System::materials().get( idMaterial )->enableSkinning() )
+			LOG( "Model " + std::to_string( idModel ) + ": material " + std::to_string( idMaterial ) +
+				 " has no skinning variant, the model is drawn in its rest pose" );
 
 		const int lod = queryLOD.getColumn( "lod" ).getInt();
 		if( lod != blockLod )
@@ -729,6 +740,84 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	}
 
 	return true;
+}
+
+void LibraryLoader::loadAnimations( GS::AnimationLibrary& library )
+{
+	std::set<uint32_t> skeletons;
+	for( auto& pair : GS::System::models() )
+		if( pair.second->skeleton() != 0 )
+			skeletons.insert( pair.second->skeleton() );
+
+	for( uint32_t id : skeletons )
+	{
+		SQLite::Statement query( DBConnector::instance().db(), "SELECT name, file FROM Skeletons WHERE id = :id" );
+		query.bind( ":id", id );
+		if( !query.executeStep() )
+		{
+			LOG( "Skeleton " + std::to_string( id ) + " is not found in Skeletons" );
+			continue;
+		}
+		const std::string name = query.getColumn( "name" ).getString();
+		const std::string file = "Meshes\\" + query.getColumn( "file" ).getString();
+		auto skeleton = std::make_shared<GS::Skeleton>();
+		std::string reason;
+		if( !skeleton->load( file, reason ) )
+		{
+			LOG( "Skeleton " + name + " (" + file + "): " + reason + ", its models are drawn in the rest pose" );
+			continue;
+		}
+		library.addSkeleton( id, name, skeleton );
+
+		SQLite::Statement clips( DBConnector::instance().db(),
+								 "SELECT id, name, file, locomotion_speed FROM Animations WHERE skeleton_id = :id ORDER BY id" );
+		clips.bind( ":id", id );
+		uint32_t loaded = 0, failed = 0;
+		while( clips.executeStep() )
+		{
+			const std::string clipName = clips.getColumn( "name" ).getString();
+			const std::string clipFile = "Meshes\\" + clips.getColumn( "file" ).getString();
+			auto clip = std::make_shared<GS::AnimationClip>();
+			const float speed = clips.getColumn( "locomotion_speed" ).isNull() ? -1.0f :
+								static_cast<float>( clips.getColumn( "locomotion_speed" ).getDouble() );
+			if( !clip->load( clipFile, reason ) )
+			{
+				LOG( "Clip " + clipName + " (" + clipFile + "): " + reason );
+				++failed;
+			}
+			else if( !library.addClip( clips.getColumn( "id" ).getUInt(), id, clipName, clip, speed ) )
+			{
+				LOG( "Clip " + clipName + ": " + std::to_string( clip->jointCount() ) + " joints, skeleton " + name + " has " +
+					 std::to_string( skeleton->jointCount() ) );
+				++failed;
+			}
+			else
+				++loaded;
+		}
+		const GS::BlendSpace1D* locomotion = library.locomotion( id );
+		LOG( "Skeleton " + name + ": " + std::to_string( skeleton->jointCount() ) + " joints, " + std::to_string( loaded ) +
+			 " clips" + ( failed ? ", " + std::to_string( failed ) + " failed" : std::string() ) + ", locomotion " +
+			 std::to_string( locomotion ? locomotion->samples().size() : 0 ) + " clips" );
+	}
+
+	// Границы моделей со скелетом — поза покоя и все позы клипов: по ним отсекаются экземпляры в анимации
+	for( auto& pair : GS::System::models() )
+	{
+		GS::DMModel& model = *pair.second;
+		const GS::DMModel::LodBlock* lod = model.getLodById( 0 );
+		if( model.skeleton() == 0 || !lod )
+			continue;
+		DirectX::BoundingBox bounds = lod->bounds;
+		for( uint32_t clipId : library.clips( model.skeleton() ) )
+		{
+			const GS::AnimationClip* clip = library.clip( clipId );
+			DirectX::BoundingBox clipBounds;
+			DirectX::BoundingBox::CreateFromPoints( clipBounds, DirectX::XMLoadFloat3( &clip->boundsMin() ),
+													DirectX::XMLoadFloat3( &clip->boundsMax() ) );
+			DirectX::BoundingBox::CreateMerged( bounds, bounds, clipBounds );
+		}
+		model.setAnimatedBounds( bounds );
+	}
 }
 
 std::string LibraryLoader::instanceName( uint32_t idInstance )

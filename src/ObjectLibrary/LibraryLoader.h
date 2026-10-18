@@ -18,6 +18,7 @@ namespace GS
 {
 class Material;
 class MaterialInstanceStorage;
+class AnimationLibrary;
 }
 
 class LibraryLoader
@@ -32,6 +33,9 @@ public:
 	bool loadMaterial( uint32_t idMaterial );
 	bool loadMesh( uint32_t idMesh );
 	bool loadModelWithLOD( uint32_t idModel );
+	// Скелеты загруженных моделей со скелетом и их клипы (Skeletons, Animations; файлы .skel и .anim — в Meshes\) — в
+	// библиотеку анимации мира; границы этих моделей во всех позах клипов — DMModel::setAnimatedBounds. После моделей
+	void loadAnimations( GS::AnimationLibrary& library );
 	// Значения экземпляра материала (MaterialParameterInstance) поверх определений paramSet
 	bool loadMaterialParams( uint32_t idInstance, PropertyContainer& paramSet );
 	bool loadMaterialParamDef( uint32_t idMaterial, PropertyContainer& paramSet );

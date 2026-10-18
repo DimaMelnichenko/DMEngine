@@ -24,6 +24,10 @@ DMModel& DMModel::operator=( DMModel&& other )
 	if( this != &other )
 	{
 		std::swap( m_lods, other.m_lods );
+		m_collision = other.m_collision;
+		m_collisionRadius = other.m_collisionRadius;
+		m_skeleton = other.m_skeleton;
+		m_animatedBounds = other.m_animatedBounds;
 	}
 	return *this;
 }

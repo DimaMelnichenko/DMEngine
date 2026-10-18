@@ -7,14 +7,17 @@
 #include <DirectXCollision.h>
 #include "SceneObject.h"
 #include "Model\DMModel.h"
+#include "Model\SkinningPalette.h"
 #include "Common\DMTransform.h"
 #include "Level\LevelDescription.h"
+#include "Engine\Animation\AnimationSystem.h"
 
 namespace GS
 {
 
 class TerrainHeightSource;
 class ModelCollision;
+class AnimationLibrary;
 
 // Модели уровня (таблица LevelModels): у каждого экземпляра свой трансформ, модель — общий ресурс. За каждый вид
 // выбирает LOD экземпляра по расстоянию от точки LOD вида, отсекает его по frustum вида (границы меша в мировых
@@ -27,19 +30,26 @@ class ModelCollision;
 // экземпляр: положение, поворот углами (Pitch, Yaw, Roll, как Rotation в Details UE) и масштаб, сохраняются в LevelModels.
 // Экземпляры добавляются и убираются в редакторе, как источники света (DMLightDriver): подокно «Add» — кнопка на модель
 // палитры, «Delete» у подокна экземпляра и Delete во вьюпорте. У экземпляра — тело в мире столкновений по простой
-// коллизии модели (Models.collision, ModelCollision.h): правка места, добавление, удаление и отмена его переставляют
+// коллизии модели (Models.collision, ModelCollision.h): правка места, добавление, удаление и отмена его переставляют.
+// Экземпляр модели со скелетом с клипом (LevelModels.animation_id) играет его по кругу по времени игры, как Skeletal Mesh
+// Actor с Animation Asset в UE: поза — в compute, матрицы скиннинга кадра — SkinningPalette
 class ModelInstances : public SceneObject
 {
 public:
 	ModelInstances();
 
-	// Вызывается после загрузки моделей: экземпляры уровня и свойства их моделей для GUI
-	void initialize( const std::vector<LevelDescription::ModelInstance>& instances );
+	// Вызывается после загрузки моделей: экземпляры уровня и свойства их моделей для GUI; animations — скелеты и клипы
+	// мира (экземпляры с клипом), nullptr — все в позе покоя
+	void initialize( const std::vector<LevelDescription::ModelInstance>& instances, const AnimationLibrary* animations = nullptr );
 	// Мир столкновений (формы моделей — ModelCollision): тела всех экземпляров — сразу, дальше — по правкам
 	void setCollision( ModelCollision* collision );
 
 	// Правки окна экземпляров — в трансформы и границы
 	void update( const FrameContext& frame ) override;
+	// Позы экземпляров с клипом — в матрицы скиннинга кадра
+	void compute( const FrameContext& frame ) override;
+	// Кости поз кадра отрезками в мире (отладочный вид «Skeleton»)
+	const std::vector<BoneLine>& boneLines() const { return m_boneLines; }
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	PropertyContainer* properties() override;
 	// Окно экземпляров — отдельная запись Outliner, сохраняется с уровнем (в отличие от свойств моделей)
@@ -109,6 +119,9 @@ private:
 		std::string name;	// «id: модель» — имя подокна
 		uint32_t body = 0;			// тело в мире столкновений (0 — нет)
 		bool bodyStale = true;		// место сменилось после постройки тела
+		uint32_t animation = 0;		// клип модели со скелетом (LevelModels.animation_id); 0 — поза покоя
+		uint32_t boneOffset = 0;	// первая матрица скиннинга экземпляра в кадре
+		bool posed = false;			// поза кадра посчитана (compute)
 	};
 
 	// Границы всех экземпляров: при загрузке и после правки
@@ -127,6 +140,12 @@ private:
 	uint32_t m_nextKey = 1;
 	DirectX::BoundingBox m_bounds;
 	ModelCollision* m_collision = nullptr;
+	const AnimationLibrary* m_animations = nullptr;
+	SkinningPalette m_skinning;
+	PoseScratch m_poseScratch;
+	std::vector<JointTransform> m_pose;
+	std::vector<DirectX::XMFLOAT4X4> m_jointMatrices;
+	std::vector<BoneLine> m_boneLines;
 	PropertyContainer m_properties;
 	PropertyContainer m_instanceProperties;
 	PropertyContainer m_addProperties;

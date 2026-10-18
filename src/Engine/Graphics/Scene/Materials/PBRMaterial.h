@@ -30,6 +30,8 @@ public:
 	bool enablePlacedInstances() override;
 	// Перестановки запекания: пиксельный шейдер mainBake (и с отсечением по альфе) с обычным вершинным шейдером
 	bool enableImpostorBake() override;
+	// Перестановки скиннинга — вершинный шейдер с SKINNED (обычный и LOD_DITHER, у каждого — «только глубина»)
+	bool enableSkinning() override;
 
 	// Пропускание вперёд по умолчанию (TransmissionForward, TransmissionForwardRoughness; как default_value
 	// в MaterialParameterDef): у всех пропускающих материалов уровня — листья, травинки, лепестки
@@ -52,6 +54,7 @@ private:
 	ShaderSource m_pixelSource;
 	bool m_instancing = false;	// вершинный шейдер из базы без экземпляров (INST_*): есть вариант INST_MATRIX
 	bool m_placed = false;		// перестановки экземпляров расстановки есть
+	bool m_skinned = false;		// перестановки скиннинга есть
 
 	Buffer m_psCB;	// PBRMaterialBuffer (b2): пиксельному и вершинному шейдеру
 };

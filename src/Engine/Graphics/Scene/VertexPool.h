@@ -6,9 +6,9 @@
 namespace GS
 {
 
-// Общие буферы вершин и индексов всех мешей. Два потока вершин: основной (VertexData::PTNTB, слот 0) и данные ветра
-// дерева (VertexData::WindHalf — VertexData::Wind в половинной точности, слот 1; у мешей без них — нули): второй читают
-// только шейдеры с ветром дерева
+// Общие буферы вершин и индексов всех мешей. Три потока вершин: основной (VertexData::PTNTB, слот 0), данные ветра
+// дерева (VertexData::WindHalf — VertexData::Wind в половинной точности, слот 1) и скин (VertexData::Skin, слот 2); у мешей
+// без ветра или скина — нули: второй читают только шейдеры с ветром дерева, третий — со скиннингом (SKINNED)
 class VertexPool
 {
 public:
@@ -25,6 +25,7 @@ private:
 private:
 	Buffer m_vertexBuffer;
 	Buffer m_windBuffer;
+	Buffer m_skinBuffer;
 	Buffer m_indexBuffer;
 };
 

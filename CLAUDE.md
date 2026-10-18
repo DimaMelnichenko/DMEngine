@@ -64,8 +64,8 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   подтягиваются через `FetchContent` при первом configure: нужны сеть и git.
   Остальное берётся из Windows SDK.
 - Цели CMake: `DMCore` — статическая библиотека, ядро без устройства (свойства, лог, данные уровня, время суток, рельеф
-  и вода на CPU, ветер, микшер и синтез звука, камера, ходьба, ввод, мир симуляции на EnTT, мировые часы и столкновения
-  на Jolt; как модуль Core в UE); `DMEngine` — exe движка поверх
+  и вода на CPU, ветер, микшер и синтез звука, камера, ходьба, ввод, мир симуляции на EnTT, мировые часы, столкновения
+  на Jolt и скелетная анимация; как модуль Core в UE); `DMEngine` — exe движка поверх
   неё; `DMEngineTests` — тесты логики на CPU (doctest) против ядра; общие include-пути, defines и флаги трёх целей —
   `DMEngineSettings`. Файлы ядра лежат на своих местах в `src/` — ядро задаётся списком `DMCore` в `CMakeLists.txt`.
 - **Из терминала собирать только скриптом**, а не вызывать cmake вручную:
@@ -372,7 +372,14 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 форма — раз на модель, кэш `ModelCollision` у `Scene`, масштаб — у тела), тела экземпляров уровня (`ModelInstances`) и
 постоянных слоёв расстановки (лес — по копии пула с GPU, камни русел — с CPU; `Scatterer::buildBodies`), персонажи
 `CharacterVirtual` (ходьба `WalkMode` и сущности с компонентом `Character`); поведение пишет `Locomotion`, передвигает
-`MovementSystem`; луч `castRay` — и выбор во вьюпорте; отладочный вид — Debug views → «Collision»; подробно — `docs/physics.md`. Кадр начинается с
+`MovementSystem`; луч `castRay` — и выбор во вьюпорте; отладочный вид — Debug views → «Collision»; подробно — `docs/physics.md`.
+Скелетная анимация — ядро `src/Engine/Animation/` (как Skeleton, AnimSequence и Blend Space в UE): скелет и клипы (`Skeletons`,
+`Animations`, файлы `.skel` / `.anim` рядом с мешами; импорт — `Tools/import_gltf.py` выносит движение корня), служба мира
+`World::animations()`, компонент `AnimationState` и `AnimationSystem` после передвижения — шаг по фактической скорости
+(`BlendSpace1D`: фаза держит смешанный шаг на скорости — копыта не скользят), переход между клипами; позу собирает
+отрисовка (`evaluatePose` в `compute` у `WorldEntities` и у `ModelInstances` — экземпляр уровня с клипом
+`LevelModels.animation_id`) в `SkinningPalette`, скиннинг — вариант материала `SKINNED` (`Shaders/skinning.sh`, веса —
+третий поток `VertexPool`); команды `world speed` / `anim`, вид «Skeleton»; подробно — `docs/animation.md`. Кадр начинается с
 `Scene::advanceWorld`: правки окна «Sun position» (органы часов) — в часы, шаг часов, шаги систем фиксированной длительности
 (60 Гц, не больше 4 за кадр, остаток — дальше; «Fix Your Timestep»). Рисует сущности объект сцены `WorldEntities` (общей с
 `ModelInstances` функцией `collectModelMeshes`, `Scene/Model/ModelDraw.h`; место — смешанное по `World::interpolation`),
@@ -521,7 +528,7 @@ Static Mesh в UE и primitives glTF, `DMModel::Section`). Материалы г
 строками в БД, а не кодом; модели из Blender — экспорт glTF и `Tools/import_gltf.py` (файлы мешей и текстур + строки
 моделей, LOD, экземпляров материала `PBR`, расстановки: положение, поворот и масштаб объекта Blender — экземпляр
 в `LevelModels`, связанные дубликаты — экземпляры одной модели; источники `KHR_lights_punctual` — строки `LevelLights` по
-имени; повторный импорт обновляет), подробно — `docs/models.md`.
+имени; модель со скином — скелет и клипы, `docs/animation.md`; повторный импорт обновляет), подробно — `docs/models.md`.
 Слои: что уровень прочитал из базы — только данные, `Scene/Level/` (`LevelDescription`, `LevelSettings.h` — настройки
 неба, панорамы, постобработки, ветра, солнца и слоёв расстановки без объектов сцены; у объектов те же структуры под
 именами `SkyAtmosphere::Settings` и т. п.). Заголовки `ObjectLibrary` включают только их, а сам загрузчик знают лишь
@@ -581,7 +588,8 @@ Plane с материалом `PBR` перед стартовой камерой
 (две секции: панель и металлическая рамка), к северу от луга — роща елей (`Fir_A/B/C`, 23 экземпляра), на склонах — лес:
 набор `Forest` (те же ели постоянным слоем по `mask_forest_spruce`, ~12,9 тыс. деревьев; до 90 м — модели, дальше до
 1500 м — импостеры), частицы — пыльца над лугом, хвоя под ельником, брызги на быстрой воде (для сравнения кадров —
-`-noparticles`).
+`-noparticles`); позади стартовой камеры, у опушки (600, 140), — зверь со скелетом, играет клип уровня (вне кадров
+контрольных камер; `world spawn` его модели — бродяги шагом по скорости, `docs/animation.md`).
 
 **Заглушки ресурсов.** Слот `placeholderId` (0) в хранилищах текстур и мешей занимает процедурная заглушка:
 пурпурно-чёрная шахматка (`DMTextureStorage::createPlaceholder`) и куб от −0,5 до 0,5 (`MeshStorage::createPlaceholder`).
@@ -606,7 +614,7 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 с именами glTF: `AlphaMode` (0 OPAQUE, 1 MASK, 2 BLEND — Blend Mode в UE), `AlphaCutoff`, `DoubleSided`; материал
 сообщает его `Material::renderState( params )` (`Scene/Materials/MaterialRenderState.h`), вариант шейдера —
 `phaseFor( params, options )` — фаза по ключу перестановки (биты `ShaderPermutation`: экземпляры, смена LOD, отсечение, только
-глубина, запекание; ключ вызова — `Material::permutationKey`, фазы по ключам собирает материал — `ShaderProgram::setPermutation`,
+глубина, запекание, скиннинг; ключ вызова — `Material::permutationKey`, фазы по ключам собирает материал — `ShaderProgram::setPermutation`,
 как permutation domains в UE; `docs/materials.md`, «Перестановки»): `PBRMaterial` сам собирает второй пиксельный шейдер с
 `clip` (define `ALPHA_MASK`), у непрозрачных отсечения нет; `ShaderPhaseOptions` — что зависит от вызова: инстансы, глубина из prepass (цвет без `clip`), смена LOD
 дизерингом (`LOD_DITHER`, `Shaders/lod_dither.sh`, как Dithered LOD Transition в UE; флаг материала

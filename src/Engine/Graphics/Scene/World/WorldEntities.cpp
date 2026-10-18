@@ -7,6 +7,8 @@
 #include "Terrain\TerrainHeightSource.h"
 #include "Engine\Simulation\Components.h"
 #include "Engine\Simulation\WanderSystem.h"
+#include "Engine\Animation\AnimationLibrary.h"
+#include "Engine\Animation\AnimationPose.h"
 
 using namespace DirectX;
 
@@ -24,6 +26,8 @@ WorldEntities::WorldEntities() :
 	m_properties.insert( "Simulation paused", false )->setTooltip( "Entities stand still; the world clock goes on" );
 	m_properties.insert( "Show collision", false )->setTooltip( "Collision shapes of bodies and characters within 30 m of the camera, "
 																  "as lines over the frame (View > Debug views > Collision)" );
+	m_properties.insert( "Show skeleton", false )->setTooltip( "Bones of animated models (entities and level instances) as lines "
+																 "over the frame (View > Debug views > Skeleton)" );
 }
 
 void WorldEntities::initialize( World& world )
@@ -41,6 +45,46 @@ void WorldEntities::update( const FrameContext& frame )
 		m_world->setPaused( paused );
 }
 
+XMMATRIX WorldEntities::placeMatrix( entt::entity entity, const Transform& current, const ModelVisual& visual, float t,
+									 XMFLOAT3& origin ) const
+{
+	const PreviousTransform* previous = m_world->registry().try_get<PreviousTransform>( entity );
+	const Transform place = previous ? interpolate( previous->transform, current, t ) : current;
+	// Точка места — на земле, низ модели — на ней
+	origin = XMFLOAT3( place.position.x, place.position.y + visual.groundOffset * place.scale, place.position.z );
+	return XMMatrixScaling( place.scale, place.scale, place.scale ) * XMMatrixRotationQuaternion( XMLoadFloat4( &place.rotation ) ) *
+		   XMMatrixTranslation( origin.x, origin.y, origin.z );
+}
+
+void WorldEntities::compute( const FrameContext& frame )
+{
+	m_skinning.clear();
+	m_boneOffsets.clear();
+	m_boneLines.clear();
+	if( !m_world )
+		return;
+	const AnimationLibrary& library = m_world->animations();
+	const float t = m_world->interpolation();
+	const bool showSkeleton = m_properties["Show skeleton"].data<bool>();
+	const entt::registry& registry = m_world->registry();
+	for( auto [entity, current, visual, state] : registry.view<const Transform, const ModelVisual, const AnimationState>().each() )
+	{
+		const Skeleton* skeleton = library.skeleton( state.skeleton );
+		if( !skeleton || !evaluatePose( library, state, t, m_poseScratch, m_pose ) )
+			continue;
+		modelSpace( *skeleton, m_pose, m_jointMatrices );
+		uint32_t offset = 0;
+		skinningMatrices( *skeleton, m_jointMatrices, m_skinning.append( skeleton->jointCount(), offset ) );
+		m_boneOffsets[entity] = offset;
+		if( showSkeleton )
+		{
+			XMFLOAT3 origin;
+			appendBoneLines( *skeleton, m_jointMatrices, placeMatrix( entity, current, visual, t, origin ), m_boneLines );
+		}
+	}
+	m_skinning.upload();
+}
+
 void WorldEntities::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
 	// Съёмка сцены (карты отражений места) — без движущегося
@@ -53,15 +97,52 @@ void WorldEntities::collectMeshes( const RenderView& view, MeshCollector& collec
 		const DMModel* model = System::models().get( visual.model ).get();
 		if( !model || model->lodCount() == 0 )
 			continue;
-		const PreviousTransform* previous = registry.try_get<PreviousTransform>( entity );
-		const Transform place = previous ? interpolate( previous->transform, current, t ) : current;
-		// Точка места — на земле, низ модели — на ней
-		const XMFLOAT3 origin( place.position.x, place.position.y + visual.groundOffset * place.scale, place.position.z );
-		const XMMATRIX world = XMMatrixScaling( place.scale, place.scale, place.scale ) *
-							   XMMatrixRotationQuaternion( XMLoadFloat4( &place.rotation ) ) *
-							   XMMatrixTranslation( origin.x, origin.y, origin.z );
-		collectModelMeshes( *model, visual.model, world, origin, view, collector );
+		XMFLOAT3 origin;
+		const XMMATRIX world = placeMatrix( entity, current, visual, t, origin );
+		auto posed = m_boneOffsets.find( entity );
+		const SkinBinding skin{ &m_skinning, posed != m_boneOffsets.end() ? posed->second : 0 };
+		collectModelMeshes( *model, visual.model, world, origin, view, collector, posed != m_boneOffsets.end() ? &skin : nullptr );
 	}
+}
+
+size_t WorldEntities::setWanderSpeed( float speed )
+{
+	if( !m_world )
+		return 0;
+	size_t count = 0;
+	for( auto [entity, wander] : m_world->registry().view<Wander>().each() )
+	{
+		wander.speed = std::max( speed, 0.0f );
+		++count;
+	}
+	return count;
+}
+
+size_t WorldEntities::playClip( const std::string& clip )
+{
+	if( !m_world )
+		return 0;
+	const AnimationLibrary& library = m_world->animations();
+	size_t count = 0;
+	for( auto [entity, state] : m_world->registry().view<AnimationState>().each() )
+	{
+		if( clip.empty() )
+		{
+			if( state.current.mode == AnimationPlayback::Mode::locomotion )
+				continue;
+			AnimationPlayback locomotion;
+			locomotion.speed = 0.0f;
+			playAnimation( state, locomotion );
+			++count;
+			continue;
+		}
+		const uint32_t id = library.findClip( state.skeleton, clip );
+		if( id == 0 )
+			continue;
+		playAnimation( state, clipPlayback( id ) );
+		++count;
+	}
+	return count;
 }
 
 bool WorldEntities::spawnWanderers( const std::string& model, float x, float z, uint32_t count, float radius, std::string& error )
@@ -112,6 +193,15 @@ bool WorldEntities::spawnWanderers( const std::string& model, float x, float z, 
 		registry.emplace<ModelVisual>( entity, ModelVisual{ modelId, -( lod->bounds.Center.y - lod->bounds.Extents.y ) } );
 		registry.emplace<Wander>( entity, wander );
 		registry.emplace<Locomotion>( entity, Locomotion{ XMFLOAT2( 0.0f, 0.0f ), angle } );
+		// Модель со скелетом — анимация: шаг по скорости (клипы шага скелета), каждый — со своей фазы покоя
+		if( asset->skeleton() != 0 && m_world->animations().skeleton( asset->skeleton() ) )
+		{
+			AnimationState animation;
+			animation.skeleton = asset->skeleton();
+			animation.current.time = 0.37 * serial;
+			animation.previous = animation.current;
+			registry.emplace<AnimationState>( entity, animation );
+		}
 		// Есть земля столкновений — персонаж: капсула по границам LOD 0 (толщина — по горизонтали, высота — модели)
 		if( physics.terrainRevision() != ~0u )
 		{

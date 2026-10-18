@@ -12,6 +12,7 @@ namespace GS
 
 class Material;
 class SceneObject;
+class SkinningPalette;
 
 // Проход кадра — как EMeshPass в UE. Порядок проходов и их состояния задаёт Renderer
 enum class MeshPass
@@ -78,6 +79,10 @@ struct MeshBatch
 	// (−1; 0) — приходящий, 0 — вне перехода. Такой меш рисуется вариантом материала с дизерингом и не объединяется
 	// с другими в инстансный вызов: доля у каждого своя, в константах объекта
 	float lodDither = 0.0f;
+	// Модель со скелетом: матрицы скиннинга объекта за кадр и первая кость модели в них — вариант материала SKINNED
+	// (Shaders/skinning.sh); такой меш не объединяется в инстансный вызов: у каждого своя поза
+	const SkinningPalette* skin = nullptr;
+	uint32_t boneOffset = 0;
 
 	// Заполняет MeshCollector
 	const SceneObject* owner = nullptr;

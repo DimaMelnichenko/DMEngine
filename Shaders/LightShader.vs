@@ -4,7 +4,8 @@
 // без нормалей, для проходов без цвета. Растения с WindWeight > 0 гнутся ветром уровня (Shaders/wind.sh) и расступаются
 // по следам в траве (Shaders/foliage_interaction.sh). С define
 // LOD_DITHER — экземпляр в полосе смены LOD: отдаёт пиксельному шейдеру долю перехода (Shaders/lod_dither.sh). С define
-// WIND_TREE (материал PBRTree) — ветер дерева по данным второго потока вершин (VertexData::Wind), а не изгиб травы
+// WIND_TREE (материал PBRTree) — ветер дерева по данным второго потока вершин (VertexData::Wind), а не изгиб травы. С define
+// SKINNED — модель со скелетом: вершина в позе кадра по костям третьего потока (Shaders/skinning.sh) до всего остального
 ////////////////////////////////////////////////////////////////////////////////
 
 
@@ -15,6 +16,7 @@
 #include "pbr_material_constants.h"
 #include "wind.sh"
 #include "foliage_interaction.sh"
+#include "skinning.sh"
 
 //////////////
 // TYPEDEFS //
@@ -32,6 +34,11 @@ struct VertexInputType
 	float4 windBranch1 : BRANCH0;
 	float4 windBranch2 : BRANCH1;
 	float2 windWeights : WINDWEIGHTS0;
+#endif
+#ifdef SKINNED
+	// Третий поток VertexPool (слот 2): до 4 костей скелета и их веса
+	uint4 joints : JOINTS0;
+	float4 weights : WEIGHTS0;
 #endif
 	uint instanceIndex: SV_InstanceID;
 };
@@ -172,6 +179,10 @@ float4 vertexWorldPosition( VertexInputType input, inout WindFrame frame )
 DepthOnlyVertexOutput main( VertexInputType input )
 {
 	DepthOnlyVertexOutput output;
+#ifdef SKINNED
+	// Тот же путь точки, что у полного варианта: глубина совпадает
+	input.position.xyz = skinPoint( skinMatrix( input.joints, input.weights ), input.position.xyz );
+#endif
 	WindFrame frame = (WindFrame)0;	// базис здесь не нужен
 	output.position = mul( mul( vertexWorldPosition( input, frame ), cb_viewMatrix ), cb_projectionMatrix );
 	output.tex = input.tex;
@@ -188,6 +199,14 @@ PixelInputType main(VertexInputType input)
     PixelInputType output;
 
 	output.tex = input.tex;
+#ifdef SKINNED
+	// Поза кадра — в координатах модели, дальше как у неподвижной модели
+	const float3x4 skin = skinMatrix( input.joints, input.weights );
+	input.position.xyz = skinPoint( skin, input.position.xyz );
+	input.normal = skinDirection( skin, input.normal );
+	input.tangent = skinDirection( skin, input.tangent );
+	input.binormal = skinDirection( skin, input.binormal );
+#endif
 
 	const uint instanceIndex = instanceSlot( input.instanceIndex );
 	output.instanceIndex = instanceIndex;

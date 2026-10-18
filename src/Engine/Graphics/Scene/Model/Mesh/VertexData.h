@@ -47,6 +47,16 @@ public:
 	};
 	static_assert( sizeof( WindHalf ) == 20, "VertexPool wind stream layout (input slot 1)" );
 
+	// Скин вершины (третий поток VertexPool, слот 2; блок SKIN файла меша): до 4 костей скелета (номер — Skeleton) и их веса
+	// unorm8 с суммой 255 — как 8-битные веса Skeletal Mesh в UE. У мешей без скина — нули (шейдер без SKINNED их не
+	// читает). Раскладка — входы SKINNED в Shaders/LightShader.vs
+	struct Skin
+	{
+		uint8_t joints[4];
+		uint8_t weights[4];
+	};
+	static_assert( sizeof( Skin ) == 8, "VertexData::Skin layout: file block SKIN, VertexPool input slot 2" );
+
 	enum Type
 	{
 		V_PTN = 1, V_PTNTB = 2

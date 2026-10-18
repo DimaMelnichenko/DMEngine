@@ -80,15 +80,27 @@ public:
 			indices.push_back( index );
 		}
 
-		// Необязательный блок после индексов: метка WIND и данные ветра дерева на каждую вершину (Tools/import_gltf.py)
+		// Необязательные блоки после индексов (Tools/import_gltf.py): 4 байта метки и данные на каждую вершину — WIND (ветер
+		// дерева, VertexData::Wind), SKIN (кости и веса, VertexData::Skin)
 		std::vector<VertexData::Wind> wind;
+		std::vector<VertexData::Skin> skin;
 		char marker[4] = {};
-		if( fin.read( marker, sizeof( marker ) ) && std::equal( marker, marker + 4, "WIND" ) )
+		while( fin.read( marker, sizeof( marker ) ) )
 		{
-			wind.resize( vertex_count );
-			fin.read( reinterpret_cast<char*>( wind.data() ), wind.size() * sizeof( VertexData::Wind ) );
+			if( std::equal( marker, marker + 4, "WIND" ) )
+			{
+				wind.resize( vertex_count );
+				fin.read( reinterpret_cast<char*>( wind.data() ), wind.size() * sizeof( VertexData::Wind ) );
+			}
+			else if( std::equal( marker, marker + 4, "SKIN" ) )
+			{
+				skin.resize( vertex_count );
+				fin.read( reinterpret_cast<char*>( skin.data() ), skin.size() * sizeof( VertexData::Skin ) );
+			}
+			else
+				throw std::exception( "Unknown block after the indices" );
 			if( !fin )
-				throw std::exception( "Wind block is shorter than the vertex count" );
+				throw std::exception( "A block is shorter than the vertex count" );
 		}
 
 		// Close the model file.
@@ -96,6 +108,7 @@ public:
 
 		AbstractMesh* mesh = new DMMesh<MeshVertexStruct>( id, name, std::move( indices ), std::move( vertices ) );
 		mesh->setWind( std::move( wind ) );
+		mesh->setSkin( std::move( skin ) );
 		return mesh;
 	}
 };

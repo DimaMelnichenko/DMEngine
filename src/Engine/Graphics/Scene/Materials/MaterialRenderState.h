@@ -39,12 +39,15 @@ struct ShaderPhaseOptions
 	// дизерингом (как r.EarlyZPassOnlyMaterialMasking в UE)
 	bool depthFromPrepass = false;
 	bool lodDither = false;			// экземпляр в полосе смены LOD: дизеринг (LOD_DITHER, Shaders/lod_dither.sh)
+	// Скиннинг (SKINNED, Shaders/skinning.sh): вершины по костям из матриц скиннинга вызова; вариант собирает
+	// Material::enableSkinning (как Used with Skeletal Mesh в UE)
+	bool skinned = false;
 };
 
 // Ключ перестановки шейдера материала — признаки варианта битами, как permutation domains в UE: материал собирает
 // фазы по ключам (ShaderProgram::setPermutation), вызов находит свою по ключу (Material::permutationKey из
-// ShaderPhaseOptions и режима материала). Новый признак (скиннинг) — бит здесь и его defines у материала, а не ещё
-// одно измерение массивов фаз
+// ShaderPhaseOptions и режима материала). Новый признак — бит здесь и его defines у материала, а не ещё одно измерение
+// массивов фаз
 namespace ShaderPermutation
 {
 constexpr uint32_t instanced = 1u << 0;		// матрицы экземпляров из буфера (INST_MATRIX): модели уровня одним вызовом
@@ -55,6 +58,7 @@ constexpr uint32_t clipDither = 1u << 4;	// пиксельный шейдер о
 // Тени и depth prepass: вершинный шейдер «только глубина» (DEPTH_ONLY), пиксельный — только отсечение или его нет
 constexpr uint32_t depthOnly = 1u << 5;
 constexpr uint32_t impostorBake = 1u << 6;	// запекание импостера (mainBake): цвет и нормаль модели в цели кадра
+constexpr uint32_t skinned = 1u << 7;		// скиннинг по костям (SKINNED): модели со скелетом
 }
 
 }

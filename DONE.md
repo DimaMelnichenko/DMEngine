@@ -743,3 +743,24 @@
   Debug, кадры `check_frames.py` как прежде (отличия от эталонов — только вода: сняты до правок отражений), время GPU
   в шуме, debug-слой молчит; с точки Dimok при ходьбе каркас виден, капсулы — на стволах. Тем же `baseBounds` пользуется след
   основания расстановки — в «Архитектура» `TODO.md`. Описание — `docs/physics.md`.
+- [x] Этап 14, шаг L4a: скелетная анимация — импорт, скиннинг, шаг по скорости (2026-10-18; остаток — L4b в пункте
+  «Скелетная анимация»). Модель для проверки — «Realistic Animated Elk 3D Model», WildMesh 3D, Sketchfab, CC-BY-4.0
+  (https://sketchfab.com/3d-models/realistic-animated-elk-3d-model-787834f9caa2474d9f1814b807c072d7; вапити: 38 костей,
+  ~7,9 тыс. треугольников, 53 клипа; архив — `DownloadResources\`, распакован в `Meshes\source\elk\`). До неё смотрели
+  оленя-самку (CC-BY-NC, один клип; Blender ломает её ноги — IK) и антилопу (CC-BY, 5 клипов на месте). Импорт
+  (`Tools/import_gltf.py`): скелет `skins[0]` (родитель раньше потомка, узлы над скелетом и `--scale` — в корневые кости),
+  вершины — в позе покоя (общая матрица привязки — в вершины), перед glTF +Z — перед движка (зеркало по X), веса — блок
+  `SKIN` меша, рога — сетка на кости с весом 1, клипы на 30 Гц с выносом движения корня (кривая и средние скорость и
+  поворот), цикл, границы по кадрам; spec-gloss → PBR; таблицы `Skeletons`, `Animations`, колонки `Models.skeleton_id`,
+  `LevelModels.animation_id`; `--animation`, `--locomotion`, `--root-motion-bone`. Сверка записанного с glTF по
+  спецификации (numpy) — совпадение до 0,1 мм. Ядро `src/Engine/Animation/`: `Skeleton`, `AnimationClip`, `AnimationPose`,
+  `BlendSpace1D` (фаза держит смешанный шаг на скорости), `AnimationLibrary` (служба мира), `AnimationSystem` (фактическая
+  скорость, переход 0,25 с, смешение по доле шага). Движок: третий поток `VertexPool`, бит `skinned` и
+  `PBRMaterial::enableSkinning`, `Shaders/skinning.sh` (t14, `cb_boneOffset`), `SkinningPalette`, `MeshBatch::skin`,
+  `collectModelMeshes` с позой и границами клипов, `LibraryLoader::loadAnimations`, экземпляры уровня с клипом
+  (`ModelInstances::compute`), `world speed` / `anim`, вид «Skeleton». Олень уровня `Test` — у луга (600, 140), ест.
+  Тесты: 63 (+7: клип, поза, смешение, шаг по скорости, система, переход, файлы). Проверка: Release и Debug; кадры
+  `check_frames.py` как прежде (отличия от эталонов — только вода; оленя нет в контрольных камерах), debug-слой молчит,
+  ленивых пайплайнов нет; запуск: ест, кости внутри меша, 4 оленя шагом ~1 м/с, рысью 5 м/с и бегом 9 м/с, упёршийся —
+  покой, ложатся клипом; 10 оленей — позы 0,04 мс CPU, запись вызовов ~0,9 мс CPU (стадо инстансами — L4b), GPU ~0,1 мс.
+  Описание — `docs/animation.md`, `docs/models.md`, `docs/materials.md`, `docs/simulation.md`.

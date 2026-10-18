@@ -83,7 +83,9 @@ python Tools/engine.py stop
 | `terrain paint цель x z радиус value\|step\|unstep\|erase значение [falloff]` | мазок кисти поверх правил слоёв в точке мира: цель — `"layer N"` или `wetness` (сетка 0,25 м) или имя маски (`mask_forest_spruce`, 1 м); `value` — итог к значению, `step` / `unstep` — поправка ± значение, `erase` — к правилам; `terrain paint clear цель`, `terrain paint list`, `terrain paint probe цель x z` — правило, поправка и итог в точке ([terrain.md](terrain.md), «Ручная правка слоёв и масок») |
 | `world` | мир симуляции: сущности, шаги, время мировых часов, тела и персонажи мира столкновений ([simulation.md](simulation.md), [physics.md](physics.md)) |
 | `world spawn модель x z [число] [радиус]` | бродяги модели из загруженных вокруг точки (проверка мира симуляции) |
-| `world list` | места сущностей мира |
+| `world list` | места сущностей мира; у сущностей со скелетом — клип или скорость и фаза шага |
+| `world speed м/с` | скорость блуждания всех сущностей: шаг ↔ рысь ↔ бег у моделей со скелетом ([animation.md](animation.md)) |
+| `world anim [клип\|locomotion]` | клип всем сущностям со скелетом с переходом (`locomotion` — снова шаг по скорости); без аргумента — клипы скелетов |
 | `world clear` | убрать все сущности мира |
 | `terrain hydrology префикс` | русла и вода конвейера рельефа в DDS `R32_FLOAT`: `_lowering` — опускание ложа, `_level` — уровень ручьёв, `_lake` — уровень озёр, `_detail` — детальная земля у русел, 4096², −1e9 — плиток нет ([water.md](water.md), [terrain.md](terrain.md)) |
 | `passes` | список проходов следующего кадра в `log.txt` (`DMD3D::logPasses`): имя, цели с размером, что читает и пишет — по объявлениям `PassDesc` (`D3D/GpuPass.h`); compute-проходы помечены `compute` |

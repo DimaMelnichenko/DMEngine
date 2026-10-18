@@ -6,6 +6,7 @@
 #include <entt/entity/registry.hpp>
 #include "WorldClock.h"
 #include "PhysicsWorld.h"
+#include "Engine\Animation\AnimationLibrary.h"
 
 namespace GS
 {
@@ -27,8 +28,9 @@ public:
 // часы. Шаг фиксированный («Fix Your Timestep», Gaffer on Games): кадр копит реальное время, системы шагают по
 // 1 / stepRate, пока оно есть, не больше maxStepsPerFrame за кадр (остаток сверх — отбрасывается: долгий кадр не тянет за
 // собой ещё более долгий); до шага Transform сущностей — в PreviousTransform, отрисовка смешивает их по interpolation().
-// Службы мира — рельеф (указатель, его ставит владелец, Scene) и столкновения (PhysicsWorld, свои): системы получают мир, а
-// не синглтоны. Ядро без устройства: рисует сущности движок (WorldEntities)
+// Службы мира — рельеф (указатель, его ставит владелец, Scene), столкновения (PhysicsWorld) и скелеты с клипами
+// (AnimationLibrary; их кладёт загрузка уровня): системы получают мир, а не синглтоны. Ядро без устройства: рисует сущности
+// движок (WorldEntities)
 class World
 {
 public:
@@ -52,6 +54,9 @@ public:
 	// Столкновения: земля, неподвижные тела, персонажи
 	PhysicsWorld& physics() { return m_physics; }
 	const PhysicsWorld& physics() const { return m_physics; }
+	// Скелеты и клипы (id — строк Skeletons и Animations базы)
+	AnimationLibrary& animations() { return m_animations; }
+	const AnimationLibrary& animations() const { return m_animations; }
 
 	// Системы шагают в порядке добавления
 	void addSystem( std::unique_ptr<SimulationSystem> system );
@@ -80,6 +85,7 @@ private:
 
 	// Столкновения — до реестра: уничтожаются после него (персонажи сущностей убираются, пока мир столкновений есть)
 	PhysicsWorld m_physics;
+	AnimationLibrary m_animations;
 	entt::registry m_registry;
 	WorldClock m_clock;
 	const TerrainHeightSource* m_terrain = nullptr;

@@ -270,6 +270,7 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	debugView( "Ambient occlusion", m_renderer.postProcessProperties(), "Show ambient occlusion" );
 	debugView( "Light shafts", m_renderer.postProcessProperties(), "Show light shafts" );
 	debugView( "Collision", m_scene.worldEntities().properties(), "Show collision" );
+	debugView( "Skeleton", m_scene.worldEntities().properties(), "Show skeleton" );
 
 	m_showGUI = m_config.showGUI();
 	if( !m_config.mouseLook() )
@@ -407,7 +408,7 @@ bool Engine::render( const FrameContext& frame )
 		if( !m_mouseLook )
 			m_viewport.update( m_cameraPool["main"], m_scene, m_GUI );
 		else
-			m_viewport.drawCollision( m_cameraPool["main"], m_scene );	// ходьба и полёт мышью — без выбора, но с каркасом
+			m_viewport.drawDebugLines( m_cameraPool["main"], m_scene );	// ходьба и полёт мышью — без выбора, но с каркасом и костями
 		m_GUI.End();
 		auto guiFinish = TIME_POINT();
 		m_guiRenderTime = TIME_DIFF( guiStart, guiFinish );

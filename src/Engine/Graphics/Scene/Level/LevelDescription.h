@@ -19,6 +19,9 @@ struct LevelDescription
 		DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );
 		DirectX::XMFLOAT4 rotation = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 1.0f );	// кватернион x, y, z, w, как rotation узла glTF
 		DirectX::XMFLOAT3 scale = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );
+		// Клип, который играет экземпляр модели со скелетом (LevelModels.animation_id, как Animation Asset у Skeletal Mesh
+		// Actor в UE); 0 — поза покоя
+		uint32_t animation = 0;
 	};
 
 	// Модель слоя расстановки, её вес и тень (ScatterLayerModels)

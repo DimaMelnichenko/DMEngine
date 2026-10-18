@@ -1,6 +1,7 @@
 #include "Scene.h"
 #include "Engine\Simulation\WanderSystem.h"
 #include "Engine\Simulation\MovementSystem.h"
+#include "Engine\Animation\AnimationSystem.h"
 #include "ObjectLibrary\LibraryLoader.h"
 #include <algorithm>
 #include <chrono>
@@ -77,6 +78,8 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName,
 			}
 		}
 	}
+	// Скелеты и клипы моделей со скелетом — в библиотеку анимации мира
+	library.loadAnimations( m_world.animations() );
 	LOG( "Load models for ms: " + elapsedMs( timeStart ) );
 
 	task.enterProgressFrame( 0.95f, "Textures" );
@@ -194,7 +197,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 
 	if( m_level.sky )
 		m_sky.setModel( *m_level.sky );
-	m_models.initialize( m_level.modelInstances );
+	m_models.initialize( m_level.modelInstances, &m_world.animations() );
 	// Эрозия посчитана заново — экземпляры моделей на новую землю (правка окна «Model instances», в базу — «Save level»)
 	if( m_terrainPipeline.erosionChanged() )
 	{
@@ -286,6 +289,8 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 		scatterer->setCollision( &m_modelCollision );
 	m_world.addSystem( std::make_unique<WanderSystem>() );
 	m_world.addSystem( std::make_unique<MovementSystem>() );
+	// Анимация — после передвижения: шаг по фактической скорости
+	m_world.addSystem( std::make_unique<AnimationSystem>() );
 	m_worldEntities.initialize( m_world );
 
 	// Следы в траве — по земле под камерой; без поля растения просто не расступаются

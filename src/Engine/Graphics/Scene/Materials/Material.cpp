@@ -32,9 +32,11 @@ uint32_t Material::permutationKey( const PropertyContainer& params, const Shader
 	if( options.impostorBake )
 		return impostorBake | ( masked ? clipAlpha : 0 );
 	uint32_t key = depth ? depthOnly : 0;
+	if( options.skinned )
+		key |= skinned;
 	if( options.placed )
 		key |= placed;
-	else if( options.instanced && !options.lodDither )
+	else if( options.instanced && !options.lodDither && !options.skinned )
 		key |= instanced;
 	if( options.lodDither )
 		key |= lodDither;

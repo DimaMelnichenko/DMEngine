@@ -37,12 +37,16 @@ public:
 	// Данные ветра дерева по вершинам (VertexData::Wind) — блок WIND файла меша; пусто — у меша их нет
 	void setWind( std::vector<VertexData::Wind>&& wind ) { m_wind = std::move( wind ); }
 	const std::vector<VertexData::Wind>& wind() const { return m_wind; }
+	// Кости и веса по вершинам (VertexData::Skin) — блок SKIN файла меша; пусто — меш без скелета
+	void setSkin( std::vector<VertexData::Skin>&& skin ) { m_skin = std::move( skin ); }
+	const std::vector<VertexData::Skin>& skin() const { return m_skin; }
 
 
 protected:
 	VertexData::Type m_vertex_combination;
 	std::vector<uint32_t> m_indices;
 	std::vector<VertexData::Wind> m_wind;
+	std::vector<VertexData::Skin> m_skin;
 	uint32_t m_vertexOffset;
 	uint32_t m_indexOffset;
 	DirectX::BoundingBox m_bounds;

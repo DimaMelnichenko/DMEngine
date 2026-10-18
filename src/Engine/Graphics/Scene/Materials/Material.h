@@ -45,6 +45,9 @@ public:
 	// с долей пропускания и глубина поверхности (ImpostorMaterial). false — материал так не умеет, модель с ним в импостер
 	// не запекается
 	virtual bool enableImpostorBake() { return false; }
+	// Собрать варианты скиннинга (ShaderPhaseOptions::skinned) — у материалов секций моделей со скелетом, при загрузке до
+	// прогрева пайплайнов. false — материал так не умеет: модель со скелетом рисуется им в позе покоя
+	virtual bool enableSkinning() { return false; }
 	// Шейдер читает глубину сцены (SLOT_SCENE_DEPTH): после depth prepass такие меши и свои вызовы рисуются проходом
 	// opaqueDepthRead — глубина в нём только для чтения, проверка «ближе или равно» (импостер: смещение глубины)
 	virtual bool readsSceneDepth() const { return false; }

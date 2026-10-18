@@ -111,8 +111,10 @@ class Gltf:
         else:
             self.json = json.loads(data.decode('utf-8'))
 
-        # Источники света экспортёр Blender помечает обязательными — их скрипт читает (collect_lights)
-        required = set(self.json.get('extensionsRequired', [])) - {'KHR_lights_punctual'}
+        # Источники света экспортёр Blender помечает обязательными — их скрипт читает (collect_lights); материалы
+        # specular-glossiness (Sketchfab) переводит в metallic-roughness (MaterialConverter)
+        required = set(self.json.get('extensionsRequired', [])) - {'KHR_lights_punctual',
+                                                                   'KHR_materials_pbrSpecularGlossiness'}
         if required:
             raise SystemExit('error: required glTF extensions are not supported: %s. Export without compression '
                              '(Draco, meshopt) and without image formats other than PNG/JPEG' % ', '.join(sorted(required)))
@@ -324,9 +326,24 @@ def uv_tangents(positions, normals, uvs, triangles):
     return tangents, sign
 
 
-def convert_primitive(gltf, primitive, basis, label):
-    """Примитив glTF → массивы движка: позиции, нормали, UV, касательные, бинормали, индексы треугольников и данные
-    ветра дерева (10 чисел на вершину, VertexData::Wind; None — их нет)."""
+def quantize_skin(joints, weights):
+    """Кости и веса вершины → 4 индекса uint8 и 4 веса unorm8 с суммой 255 (блок SKIN файла меша, VertexData::Skin)."""
+    weights = np.where(weights > 0.0, weights, 0.0)
+    total = weights.sum(axis=1, keepdims=True)
+    weights = np.where(total > 0.0, weights / np.maximum(total, 1e-12), np.array([[1.0, 0.0, 0.0, 0.0]]))
+    quantized = np.floor(weights * 255.0 + 0.5).astype(np.int64)
+    # Остаток округления — самому весомому влиянию: сумма ровно 255
+    largest = np.argmax(quantized, axis=1)
+    quantized[np.arange(len(quantized)), largest] += 255 - quantized.sum(axis=1)
+    joints = np.where(quantized > 0, joints, 0)
+    return np.hstack([joints, quantized]).astype(np.uint8)
+
+
+def convert_primitive(gltf, primitive, basis, label, offset=None, skin=None):
+    """Примитив glTF → массивы движка: позиции, нормали, UV, касательные, бинормали, индексы треугольников, данные
+    ветра дерева (10 чисел на вершину, VertexData::Wind; None — их нет) и скин (8 байт на вершину, VertexData::Skin; None —
+    нет). offset — сдвиг после basis (модель со скелетом: вершины в позе покоя в пространстве модели); skin — ('weights',
+    номера костей движка по номерам скина) или ('rigid', кость) — сетка на кости целиком (рога на голове)."""
     attributes = primitive['attributes']
     positions = gltf.accessor(attributes['POSITION']).astype(np.float64)
     count = len(positions)
@@ -343,8 +360,22 @@ def convert_primitive(gltf, primitive, basis, label):
         uvs = np.zeros((count, 2))
     if 'COLOR_0' in attributes:
         warn('%s: vertex colors (COLOR_0) are ignored' % label)
-    if 'JOINTS_0' in attributes or primitive.get('targets'):
-        warn('%s: skinning and morph targets are ignored, the mesh is imported in its bind pose' % label)
+    skin_data = None
+    if skin is not None and skin[0] == 'rigid':
+        skin_data = np.zeros((count, 8), dtype=np.uint8)
+        skin_data[:, 0] = skin[1]
+        skin_data[:, 4] = 255
+    elif skin is not None:
+        if 'JOINTS_0' not in attributes or 'WEIGHTS_0' not in attributes:
+            raise SystemExit('error: %s: a skinned primitive without JOINTS_0 / WEIGHTS_0' % label)
+        if 'JOINTS_1' in attributes:
+            warn('%s: more than 4 joints per vertex, only JOINTS_0 / WEIGHTS_0 are used' % label)
+        joints = skin[1][gltf.accessor(attributes['JOINTS_0']).astype(np.int64)]
+        skin_data = quantize_skin(joints, gltf.accessor(attributes['WEIGHTS_0']).astype(np.float64)[:, :4])
+    elif 'JOINTS_0' in attributes:
+        warn('%s: skinning is ignored (the node has no skin), the mesh is imported in its bind pose' % label)
+    if primitive.get('targets'):
+        warn('%s: morph targets are ignored' % label)
     wind = None
     if any(name in attributes for name, _ in WIND_ATTRIBUTES):
         wind = np.hstack([gltf.accessor(attributes[name]).astype(np.float64).reshape(count, -1)[:, :size]
@@ -353,6 +384,8 @@ def convert_primitive(gltf, primitive, basis, label):
     # Поворот и масштаб узла; нормали — обратной транспонированной матрицей
     determinant = np.linalg.det(basis)
     positions = positions @ basis.T
+    if offset is not None:
+        positions = positions + offset
     normals = None
     if 'NORMAL' in attributes:
         normals = normalize(gltf.accessor(attributes['NORMAL']).astype(np.float64) @ np.linalg.inv(basis))
@@ -390,31 +423,42 @@ def convert_primitive(gltf, primitive, basis, label):
     # Бинормаль движка — направление роста v (вниз по картинке): у зеркально отражённого базиса glTF это
     # cross(N, T)·w; карта нормалей glTF (зелёный — вверх) читается с NormalGreenUp = true
     binormals = np.cross(normals, tangents) * handedness[:, None]
-    return positions, normals, uvs, tangents, binormals, triangles, wind
+    return positions, normals, uvs, tangents, binormals, triangles, wind, skin_data
 
 
 def merge(parts):
-    positions, normals, uvs, tangents, binormals, triangles, wind = [], [], [], [], [], [], []
+    positions, normals, uvs, tangents, binormals, triangles, wind, skin = [], [], [], [], [], [], [], []
     base = 0
-    for p, n, uv, t, b, tri, w in parts:
+    for p, n, uv, t, b, tri, w, s in parts:
         positions.append(p), normals.append(n), uvs.append(uv), tangents.append(t), binormals.append(b)
         triangles.append(tri + base)
         wind.append(w)
+        skin.append(s)
         base += len(p)
     merged = tuple(np.concatenate(x) for x in (positions, normals, uvs, tangents, binormals, triangles))
     # У примитива без данных ветра — нули (не гнётся), если они есть у другого примитива того же материала
     if all(w is None for w in wind):
+        merged += (None,)
+    else:
+        merged += (np.concatenate([w if w is not None else np.zeros((len(p), 10)) for w, p in zip(wind, positions)]),)
+    if all(s is None for s in skin):
         return merged + (None,)
-    return merged + (np.concatenate([w if w is not None else np.zeros((len(p), 10)) for w, p in zip(wind, positions)]),)
+    if any(s is None for s in skin):
+        raise SystemExit('error: skinned and static primitives share a material')
+    return merged + (np.concatenate(skin),)
 
 
 def mesh_bytes(mesh):
-    positions, normals, uvs, tangents, binormals, triangles, wind = mesh
+    positions, normals, uvs, tangents, binormals, triangles, wind, skin = mesh
     vertices = np.hstack([positions, normals, uvs, tangents, binormals]).astype('<f4')
     data = struct.pack('<II', len(vertices), triangles.size) + vertices.tobytes() + triangles.astype('<u4').tobytes()
+    # Необязательные блоки: 4 байта метки и данные на вершину (MeshLoader)
     if wind is not None:
-        # Необязательный блок: метка и данные ветра дерева на вершину (MeshLoader, VertexData::Wind)
+        # Ветер дерева: начала и веса ветвей, доли высоты и ряби (VertexData::Wind, 40 байт)
         data += b'WIND' + wind.astype('<f4').tobytes()
+    if skin is not None:
+        # Скин: 4 номера костей uint8 и 4 веса unorm8 с суммой 255 (VertexData::Skin, 8 байт)
+        data += b'SKIN' + skin.astype(np.uint8).tobytes()
     return data
 
 
@@ -443,7 +487,11 @@ class MaterialConverter:
         source = texture['source']
         if source not in self.textures:
             data, extension = self.gltf.image(source)
-            image_name = sanitize(self.gltf.json['images'][source].get('name') or 'image%d' % source)
+            # Имя картинки, без него — имя её файла (у Sketchfab имён нет: textures/Body_diffuse.png)
+            image = self.gltf.json['images'][source]
+            uri = image.get('uri', '')
+            file_name = os.path.splitext(os.path.basename(uri))[0] if uri and not uri.startswith('data:') else ''
+            image_name = sanitize(image.get('name') or file_name or 'image%d' % source)
             if image_name in self.image_names:   # две картинки с одним именем — разные файлы
                 image_name = '%s_%d' % (image_name, source)
             self.image_names.add(image_name)
@@ -466,12 +514,18 @@ class MaterialConverter:
 
         material = self.gltf.json['materials'][index]
         name = material.get('name') or 'material%d' % index
+        extensions = material.get('extensions', {})
+        glossiness = extensions.get('KHR_materials_pbrSpecularGlossiness')
         pbr = material.get('pbrMetallicRoughness', {})
+        if glossiness is not None:
+            pbr = self.from_specular_glossiness(glossiness, name)
         params = {
             'BaseColorFactor': ','.join('%g' % v for v in pbr.get('baseColorFactor', [1.0, 1.0, 1.0, 1.0])),
             'Metallic': '%g' % pbr.get('metallicFactor', 1.0),
             'Roughness': '%g' % pbr.get('roughnessFactor', 1.0),
         }
+        if 'specularFactor' in pbr:
+            params['SpecularFactor'] = '%g' % pbr['specularFactor']
         textures = {}
         if 'baseColorTexture' in pbr:
             textures['BaseColor'] = self.texture(pbr['baseColorTexture'], True, name, 'baseColorTexture')
@@ -487,7 +541,6 @@ class MaterialConverter:
             params['OcclusionStrength'] = '%g' % material['occlusionTexture'].get('strength', 1.0)
 
         emissive = np.array(material.get('emissiveFactor', [0.0, 0.0, 0.0]))
-        extensions = material.get('extensions', {})
         emissive = emissive * extensions.get('KHR_materials_emissive_strength', {}).get('emissiveStrength', 1.0)
         if 'emissiveTexture' in material:
             textures['Emissive'] = self.texture(material['emissiveTexture'], True, name, 'emissiveTexture')
@@ -515,7 +568,7 @@ class MaterialConverter:
                     warn('material %s: KHR_materials_specular %s is ignored' % (name, key))
 
         ignored = sorted(set(extensions) - {'KHR_materials_emissive_strength', 'KHR_materials_diffuse_transmission',
-                                            'KHR_materials_specular'})
+                                            'KHR_materials_specular', 'KHR_materials_pbrSpecularGlossiness'})
         if ignored:
             warn('material %s: extensions are ignored: %s' % (name, ', '.join(ignored)))
         # Режим материала — как в glTF: AlphaMode 0 OPAQUE, 1 MASK, 2 BLEND; порог отсечения; двусторонность
@@ -549,6 +602,23 @@ class MaterialConverter:
                 params[key] = str(value)
         compensate_transmission(name, params, textures)
         return '%s/%s' % (self.asset, sanitize(name)), params
+
+    def from_specular_glossiness(self, glossiness, name):
+        """KHR_materials_pbrSpecularGlossiness (архивное расширение, так экспортирует Sketchfab) → metallic-roughness, как
+        его перевод в спецификации glTF для диэлектриков: диффузный цвет — базовый, металличность 0, шероховатость —
+        1 − глянец, сила отражения — F0 / 0,04 (KHR_materials_specular). Цвет отражения и карта specularGlossiness не
+        переносятся."""
+        pbr = {'baseColorFactor': glossiness.get('diffuseFactor', [1.0, 1.0, 1.0, 1.0]), 'metallicFactor': 0.0,
+               'roughnessFactor': 1.0 - glossiness.get('glossinessFactor', 1.0)}
+        if 'diffuseTexture' in glossiness:
+            pbr['baseColorTexture'] = glossiness['diffuseTexture']
+        f0 = max(glossiness.get('specularFactor', [1.0, 1.0, 1.0]))
+        pbr['specularFactor'] = min(f0 / 0.04, 1.0)
+        if f0 > 0.04:
+            warn('material %s: specular F0 %g is above a dielectric (0.04), clamped' % (name, f0))
+        if 'specularGlossinessTexture' in glossiness:
+            warn('material %s: specularGlossinessTexture is ignored, glossiness is the factor only' % name)
+        return pbr
 
 
 _compensated = set()   # материалы, о поправке которых уже сказано (convert зовётся на каждую секцию)
@@ -668,6 +738,433 @@ def collect_models(gltf, asset, materials, rename, bake, bake_scale=1.0):
             models.append({'name': base, 'lods': lods, 'instances': spec['instances'], 'collision': spec['collision'],
                            'collision_radius': spec['collision_radius']})
     return models
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Модель со скелетом: скин, кости, клипы (как Skeletal Mesh, Skeleton и AnimSequence в UE)
+
+CLIP_RATE = 30.0                       # кадров в секунду в файле клипа
+ROOT_MOTION_THRESHOLD = 0.05           # кость корня — первая, что уходит по горизонтали дальше, м
+LOOP_TOLERANCE = 0.02                  # клип зациклен, если кости в первом и последнем кадре ближе, м
+# Поворот на 180° вокруг вертикали в координатах glTF: с ним и зеркалом по Z перед модели glTF (+Z) — перед движка (+Z, взгляд
+# 0 у Locomotion); вместе это зеркало по X
+TURN = np.diag([-1.0, 1.0, -1.0, 1.0])
+MIRROR_X = np.array([-1.0, 1.0, 1.0])
+
+
+def quaternion_matrices(q):
+    """Кватернионы x, y, z, w (N×4) → матрицы поворота N×3×3 (точка — столбец)."""
+    q = q / np.linalg.norm(q, axis=1, keepdims=True)
+    x, y, z, w = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    return np.stack([
+        np.stack([1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)], axis=1),
+        np.stack([2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)], axis=1),
+        np.stack([2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)], axis=1)], axis=1)
+
+
+def trs_matrices(t, q, s):
+    m = np.zeros((len(t), 4, 4))
+    m[:, :3, :3] = quaternion_matrices(q) * s[:, None, :]
+    m[:, :3, 3] = t
+    m[:, 3, 3] = 1.0
+    return m
+
+
+def matrix_quaternions(r):
+    """Матрицы поворота N×3×3 → кватернионы x, y, z, w (как quaternion(), но пачкой)."""
+    n = len(r)
+    q = np.zeros((n, 4))
+    trace = r[:, 0, 0] + r[:, 1, 1] + r[:, 2, 2]
+    c0 = trace > 0.0
+    c1 = ~c0 & (r[:, 0, 0] > r[:, 1, 1]) & (r[:, 0, 0] > r[:, 2, 2])
+    c2 = ~c0 & ~c1 & (r[:, 1, 1] > r[:, 2, 2])
+    c3 = ~(c0 | c1 | c2)
+    s = 2.0 * np.sqrt(np.maximum(trace[c0] + 1.0, 1e-12))
+    q[c0] = np.stack([(r[c0, 2, 1] - r[c0, 1, 2]) / s, (r[c0, 0, 2] - r[c0, 2, 0]) / s, (r[c0, 1, 0] - r[c0, 0, 1]) / s,
+                      0.25 * s], axis=1)
+    s = 2.0 * np.sqrt(np.maximum(1.0 + r[c1, 0, 0] - r[c1, 1, 1] - r[c1, 2, 2], 1e-12))
+    q[c1] = np.stack([0.25 * s, (r[c1, 0, 1] + r[c1, 1, 0]) / s, (r[c1, 0, 2] + r[c1, 2, 0]) / s,
+                      (r[c1, 2, 1] - r[c1, 1, 2]) / s], axis=1)
+    s = 2.0 * np.sqrt(np.maximum(1.0 + r[c2, 1, 1] - r[c2, 0, 0] - r[c2, 2, 2], 1e-12))
+    q[c2] = np.stack([(r[c2, 0, 1] + r[c2, 1, 0]) / s, 0.25 * s, (r[c2, 1, 2] + r[c2, 2, 1]) / s,
+                      (r[c2, 0, 2] - r[c2, 2, 0]) / s], axis=1)
+    s = 2.0 * np.sqrt(np.maximum(1.0 + r[c3, 2, 2] - r[c3, 0, 0] - r[c3, 1, 1], 1e-12))
+    q[c3] = np.stack([(r[c3, 0, 2] + r[c3, 2, 0]) / s, (r[c3, 1, 2] + r[c3, 2, 1]) / s, 0.25 * s,
+                      (r[c3, 1, 0] - r[c3, 0, 1]) / s], axis=1)
+    return q / np.linalg.norm(q, axis=1, keepdims=True)
+
+
+def matrices_trs(m, label):
+    """Матрицы N×4×4 → перемещение, поворот, масштаб (без смены системы координат)."""
+    t = m[:, :3, 3].copy()
+    linear = m[:, :3, :3]
+    s = np.linalg.norm(linear, axis=1)          # длины столбцов
+    r = linear / np.maximum(s[:, None, :], 1e-12)
+    mirrored = np.linalg.det(r) < 0.0
+    if mirrored.any():
+        warn('%s: a mirrored joint transform, X scale is negated' % label)
+        s[mirrored, 0] = -s[mirrored, 0]
+        r[mirrored, :, 0] = -r[mirrored, :, 0]
+    if not np.allclose(np.einsum('nji,njk->nik', r, r), np.eye(3), atol=1e-3):
+        warn('%s: a sheared joint transform (non-uniform scale under rotation) is approximated' % label)
+    return t, matrix_quaternions(r), s
+
+
+def to_engine(t, q, s):
+    """Место кости в координатах glTF → движка: поворот на 180° вокруг вертикали и зеркало по Z — вместе зеркало по X
+    (TURN, MIRROR): у перемещения минус x, у кватерниона — минус y и z."""
+    return t * MIRROR_X, q * np.array([1.0, -1.0, -1.0, 1.0]), s
+
+
+def node_trs(node):
+    """Поза узла glTF: перемещение, поворот, масштаб (из matrix — разложением)."""
+    if 'matrix' in node:
+        t, q, s = matrices_trs(node_matrix(node)[None], node.get('name', 'node'))
+        return t[0], q[0], s[0]
+    return (np.array(node.get('translation', [0.0, 0.0, 0.0]), dtype=np.float64),
+            np.array(node.get('rotation', [0.0, 0.0, 0.0, 1.0]), dtype=np.float64),
+            np.array(node.get('scale', [1.0, 1.0, 1.0]), dtype=np.float64))
+
+
+def slerp(a, b, f):
+    dot = np.sum(a * b, axis=1)
+    b = np.where(dot[:, None] < 0.0, -b, b)
+    dot = np.abs(dot)
+    theta = np.arccos(np.clip(dot, -1.0, 1.0))
+    sin = np.sin(theta)
+    small = sin < 1e-6
+    safe = np.where(small, 1.0, sin)
+    wa = np.where(small, 1.0 - f, np.sin((1.0 - f) * theta) / safe)
+    wb = np.where(small, f, np.sin(f * theta) / safe)
+    q = wa[:, None] * a + wb[:, None] * b
+    return q / np.linalg.norm(q, axis=1, keepdims=True)
+
+
+_cubic_warned = set()
+
+
+def sample_channel(gltf, sampler, path, times, label):
+    """Канал анимации glTF в моменты times: LINEAR (поворот — slerp), STEP; у CUBICSPLINE — значения ключей линейно."""
+    keys = gltf.accessor(sampler['input']).astype(np.float64)[:, 0]
+    values = gltf.accessor(sampler['output']).astype(np.float64)
+    interpolation = sampler.get('interpolation', 'LINEAR')
+    if interpolation == 'CUBICSPLINE':
+        values = values.reshape(len(keys), 3, -1)[:, 1, :]
+        if label not in _cubic_warned:
+            _cubic_warned.add(label)
+            warn('%s: CUBICSPLINE channels are sampled linearly between keys' % label)
+    if len(keys) == 1:
+        return np.repeat(values[:1], len(times), axis=0)
+    index = np.clip(np.searchsorted(keys, times, side='right') - 1, 0, len(keys) - 2)
+    span = np.maximum(keys[index + 1] - keys[index], 1e-12)
+    f = np.clip((times - keys[index]) / span, 0.0, 1.0)
+    if interpolation == 'STEP':
+        f = (times >= keys[index + 1]).astype(np.float64)
+    a, b = values[index], values[index + 1]
+    if path == 'rotation':
+        return slerp(a, b, f)
+    return a + (b - a) * f[:, None]
+
+
+def collect_skinned_model(gltf, materials, name, scale):
+    """Модель со скелетом skins[0]: сетки со скином и сетки на костях (рога на голове) — одна модель, секции по материалам,
+    LOD — по суффиксу _LOD<N> имени узла. Вершины — в позе покоя в пространстве модели: общая матрица привязки (поза
+    покоя кости × обратная привязка) уходит в вершины, узлы над скелетом и --scale — в корневые кости."""
+    nodes = gltf.json['nodes']
+    skins = gltf.json['skins']
+    if len(skins) > 1:
+        warn('%d skins in the file, only skin 0 is imported' % len(skins))
+    skin = skins[0]
+    world = {index: matrix for index, _, matrix in scene_nodes(gltf)}
+    parent = {child: i for i, node in enumerate(nodes) for child in node.get('children', [])}
+    scale_matrix = np.diag([scale, scale, scale, 1.0])
+
+    def model_world(index):
+        return scale_matrix @ world[index]
+
+    skin_joints = list(skin['joints'])
+    joint_set = set(skin_joints)
+
+    def parent_joint(index):
+        p = parent.get(index)
+        while p is not None and p not in joint_set:
+            p = parent.get(p)
+        return p
+
+    def depth(index):
+        d = 0
+        while index in parent:
+            index = parent[index]
+            d += 1
+        return d
+
+    # Кости движка — родитель раньше потомка (по глубине в дереве узлов), номер в весах — по этому порядку
+    order = sorted(skin_joints, key=lambda j: (depth(j), skin_joints.index(j)))
+    engine_index = {node: k for k, node in enumerate(order)}
+    remap = np.array([engine_index[j] for j in skin_joints])
+    parents = [engine_index[parent_joint(j)] if parent_joint(j) is not None else -1 for j in order]
+    # Неподвижная часть пути к родителю: узлы между костью и родительской костью, у корня — узлы над скелетом и --scale
+    pre = []
+    for j in order:
+        pj = parent_joint(j)
+        above = model_world(parent[j]) if j in parent else scale_matrix
+        pre.append(np.linalg.inv(model_world(pj)) @ above if pj is not None else above)
+        if j in parent and pj is not None and parent[j] != pj:
+            warn('joint %s: nodes between it and its parent joint are taken as fixed' % nodes[j].get('name', j))
+
+    rest = [to_engine(*matrices_trs((pre[k] @ node_matrix(nodes[j]))[None], nodes[j].get('name', '')))
+            for k, j in enumerate(order)]
+    rest_t = np.array([r[0][0] for r in rest])
+    rest_q = np.array([r[1][0] for r in rest])
+    rest_s = np.array([r[2][0] for r in rest])
+
+    # Общая матрица привязки: поза покоя кости × обратная привязка — одна у всех костей с весами (так у экспортов FBX)
+    if 'inverseBindMatrices' in skin:
+        inverse_bind = gltf.accessor(skin['inverseBindMatrices']).astype(np.float64).reshape(-1, 4, 4).transpose(0, 2, 1)
+    else:
+        inverse_bind = np.repeat(np.eye(4)[None], len(skin_joints), axis=0)
+    bind = np.array([model_world(j) @ inverse_bind[i] for i, j in enumerate(skin_joints)])
+
+    skinned_nodes, rigid_nodes = [], []
+    used = np.zeros(len(skin_joints), dtype=np.int64)
+    for index, node, _ in mesh_nodes(gltf):
+        if node.get('skin') == 0:
+            skinned_nodes.append(index)
+            for primitive in gltf.json['meshes'][node['mesh']]['primitives']:
+                attributes = primitive['attributes']
+                if 'JOINTS_0' in attributes and 'WEIGHTS_0' in attributes:
+                    joints = gltf.accessor(attributes['JOINTS_0']).astype(np.int64)
+                    weights = gltf.accessor(attributes['WEIGHTS_0']).astype(np.float64)[:, :4]
+                    np.add.at(used, joints[weights > 0.0], 1)
+        elif parent_joint(index) is not None:
+            rigid_nodes.append(index)
+        else:
+            warn('mesh node %s has no skin and is not under a joint, skipped' % node.get('name', index))
+    if not skinned_nodes and not rigid_nodes:
+        raise SystemExit('error: no meshes use skin 0')
+    common = bind[int(np.argmax(used))]
+    differs = [nodes[skin_joints[i]].get('name', '') for i in np.nonzero(used)[0]
+               if not np.allclose(bind[i], common, atol=1e-3 * max(1.0, np.abs(common).max()))]
+    if differs:
+        warn('the bind pose differs from the rest pose at joints %s: the mesh follows the most used joint'
+             % ', '.join(differs[:5]))
+
+    lod_pattern = re.compile(r'^(.*)_LOD(\d+)$', re.IGNORECASE)
+    parts_by_lod = {}
+    for index in skinned_nodes + rigid_nodes:
+        node = nodes[index]
+        match = lod_pattern.match(node.get('name', ''))
+        lod = int(match.group(2)) if match else 0
+        if index in skinned_nodes:
+            matrix = TURN @ common
+            skin_spec = ('weights', remap)
+        else:
+            matrix = TURN @ model_world(index)
+            skin_spec = ('rigid', engine_index[parent_joint(index)])
+        for p_index, primitive in enumerate(gltf.json['meshes'][node['mesh']]['primitives']):
+            label = '%s %s primitive %d' % (name, node.get('name', index), p_index)
+            if primitive.get('mode', TRIANGLES) != TRIANGLES:
+                warn('%s: mode %d is not triangles, skipped' % (label, primitive['mode']))
+                continue
+            parts_by_lod.setdefault(lod, {}).setdefault(primitive.get('material'), []).append(
+                convert_primitive(gltf, primitive, matrix[:3, :3], label, matrix[:3, 3], skin_spec))
+
+    slots, lods = [], []
+    for lod in sorted(parts_by_lod):
+        parts = parts_by_lod[lod]
+        for material_index in parts:
+            if material_index not in slots:
+                slots.append(material_index)
+        sections = []
+        for slot, material_index in enumerate(slots):
+            if material_index in parts:
+                instance, params = materials.convert(material_index)
+                sections.append({'slot': slot, 'mesh': merge(parts[material_index]), 'instance': instance, 'params': params})
+        lods.append(sections)
+    skeleton = {'names': [nodes[j].get('name') or 'joint%d' % j for j in order], 'parents': parents, 'order': order,
+                'pre': pre, 'rest': (rest_t, rest_q, rest_s)}
+    return {'name': name, 'lods': lods, 'collision': None, 'collision_radius': None, 'skeleton': skeleton,
+            'instances': [{'position': np.zeros(3), 'rotation': np.array([0.0, 0.0, 0.0, 1.0]), 'scale': np.ones(3)}]}
+
+
+def globals_of(parents, t, q, s):
+    """Места костей в пространстве модели по кадрам: F × J × 4 × 4 (родитель раньше потомка)."""
+    frames, count = t.shape[:2]
+    result = np.zeros((frames, count, 4, 4))
+    for j in range(count):
+        local = trs_matrices(t[:, j], q[:, j], s[:, j])
+        result[:, j] = local if parents[j] < 0 else result[:, parents[j]] @ local
+    return result
+
+
+def yaw_rotation(angle):
+    """Поворот вокруг вертикали на angle (+Z к +X), F × 4 × 4."""
+    m = np.repeat(np.eye(4)[None], len(angle), axis=0)
+    c, s = np.cos(angle), np.sin(angle)
+    m[:, 0, 0], m[:, 0, 2], m[:, 2, 0], m[:, 2, 2] = c, s, -s, c
+    return m
+
+
+def collect_clips(gltf, skeleton):
+    """Клипы glTF → кадры мест костей движка с частотой CLIP_RATE (пока с движением корня)."""
+    nodes = gltf.json['nodes']
+    order = skeleton['order']
+    engine_index = {node: k for k, node in enumerate(order)}
+    clips = []
+    for a_index, animation in enumerate(gltf.json.get('animations', [])):
+        clip_name = animation.get('name') or 'animation%d' % a_index
+        channels = {}
+        start, end = None, None
+        for channel in animation['channels']:
+            target = channel['target']
+            if 'node' not in target or target['path'] == 'weights':
+                continue
+            sampler = animation['samplers'][channel['sampler']]
+            keys = gltf.accessor(sampler['input'])[:, 0]
+            start = keys[0] if start is None else min(start, keys[0])
+            end = keys[-1] if end is None else max(end, keys[-1])
+            if target['node'] not in engine_index:
+                warn('clip %s: channel of node %s (not a joint) is ignored' % (clip_name,
+                                                                                nodes[target['node']].get('name', '')))
+                continue
+            channels.setdefault(target['node'], {})[target['path']] = sampler
+        if start is None:
+            warn('clip %s has no joint channels, skipped' % clip_name)
+            continue
+        duration = float(end - start)
+        frame_count = max(int(round(duration * CLIP_RATE)) + 1, 1)
+        rate = (frame_count - 1) / duration if frame_count > 1 and duration > 0.0 else CLIP_RATE
+        times = start + np.arange(frame_count) / rate
+
+        t = np.zeros((frame_count, len(order), 3))
+        q = np.zeros((frame_count, len(order), 4))
+        s = np.zeros((frame_count, len(order), 3))
+        for k, j in enumerate(order):
+            rest_t, rest_q, rest_s = node_trs(nodes[j])
+            sampled = {'translation': np.repeat(rest_t[None], frame_count, axis=0),
+                       'rotation': np.repeat(rest_q[None], frame_count, axis=0),
+                       'scale': np.repeat(rest_s[None], frame_count, axis=0)}
+            for path, sampler in channels.get(j, {}).items():
+                sampled[path] = sample_channel(gltf, sampler, path, times, clip_name)
+            local = trs_matrices(sampled['translation'], sampled['rotation'], sampled['scale'])
+            if not np.allclose(skeleton['pre'][k], np.eye(4), atol=1e-9):
+                local = skeleton['pre'][k][None] @ local
+            t[:, k], q[:, k], s[:, k] = to_engine(*matrices_trs(local, '%s %s' % (clip_name, nodes[j].get('name', ''))))
+        # Кватернионы подряд — по одной стороне (q и −q — один поворот)
+        for f in range(1, frame_count):
+            flip = np.sum(q[f] * q[f - 1], axis=1) < 0.0
+            q[f, flip] = -q[f, flip]
+        clips.append({'name': clip_name, 'rate': rate, 't': t, 'q': q, 's': s})
+    return clips
+
+
+def find_root_motion_joint(skeleton, clips, name):
+    """Кость корня: по имени (--root-motion-bone) или первая (от корня), что уходит по горизонтали дальше порога в каком-то
+    клипе; None — клипы на месте."""
+    names = skeleton['names']
+    if name:
+        if name not in names:
+            raise SystemExit('error: --root-motion-bone %s: no such joint (%s)' % (name, ', '.join(names[:10])))
+        return names.index(name)
+    best = None
+    for clip in clips:
+        g = globals_of(skeleton['parents'], clip['t'], clip['q'], clip['s'])
+        travel = np.linalg.norm((g[:, :, :3, 3] - g[:1, :, :3, 3])[:, :, [0, 2]], axis=2).max(axis=0)
+        moving = np.nonzero(travel > ROOT_MOTION_THRESHOLD)[0]
+        if len(moving) and (best is None or moving[0] < best):
+            best = int(moving[0])
+    return best
+
+
+def extract_root_motion(skeleton, clip, root):
+    """Движение корня из клипа (клип — на месте): сдвиг кости корня по горизонтали и её поворот вокруг вертикали от первого
+    кадра убираются из позы и пишутся кривой (x, z, yaw по кадрам в пространстве модели); средние скорость по пути и
+    поворот. Высота и наклоны корня остаются в позе."""
+    frames = len(clip['t'])
+    clip['motion'] = np.zeros((frames, 3))
+    clip['speed'], clip['turn'] = 0.0, 0.0
+    if root is None or frames < 2:
+        return
+    parents = skeleton['parents']
+    g = globals_of(parents, clip['t'], clip['q'], clip['s'])
+    root_global = g[:, root]
+    position = root_global[:, :3, 3].copy()
+    position[:, 1] = 0.0
+    rotation = root_global[:, :3, :3] / np.linalg.norm(root_global[:, :3, :3], axis=1)[:, None, :]
+    relative = matrix_quaternions(np.einsum('nij,kj->nik', rotation, rotation[0]))
+    yaw = np.unwrap(2.0 * np.arctan2(relative[:, 1], relative[:, 3]))
+    to_start = np.repeat(np.eye(4)[None], frames, axis=0)
+    to_start[:, :3, 3] = -position[0]
+    move = np.repeat(np.eye(4)[None], frames, axis=0)
+    move[:, :3, 3] = position
+    delta = move @ yaw_rotation(yaw) @ to_start
+    in_place = np.linalg.inv(delta) @ root_global
+    local = in_place if parents[root] < 0 else np.linalg.inv(g[:, parents[root]]) @ in_place
+    t, q, s = matrices_trs(local, clip['name'])
+    for f in range(1, frames):
+        if np.dot(q[f], q[f - 1]) < 0.0:
+            q[f] = -q[f]
+    clip['t'][:, root], clip['q'][:, root], clip['s'][:, root] = t, q, s
+    offset = position - position[0]
+    clip['motion'] = np.stack([offset[:, 0], offset[:, 2], yaw], axis=1)
+    duration = (frames - 1) / clip['rate']
+    clip['speed'] = float(np.linalg.norm(np.diff(offset[:, [0, 2]], axis=0), axis=1).sum() / duration)
+    clip['turn'] = float(yaw[-1] / duration)
+
+
+def skinned_bounds(skeleton, clip, vertices, skin):
+    """Границы модели по кадрам клипа (каждый второй и последний): скиннинг вершин, как в шейдере."""
+    rest = globals_of(skeleton['parents'], *[c[None] for c in skeleton['rest']])[0]
+    inverse_bind = np.linalg.inv(rest)
+    frames = sorted(set(range(0, len(clip['t']), 2)) | {len(clip['t']) - 1})
+    g = globals_of(skeleton['parents'], clip['t'][frames], clip['q'][frames], clip['s'][frames])
+    joints = skin[:, :4].astype(np.int64)
+    weights = skin[:, 4:].astype(np.float64) / 255.0
+    points = np.hstack([vertices, np.ones((len(vertices), 1))])
+    lo, hi = np.full(3, np.inf), np.full(3, -np.inf)
+    for f in range(len(frames)):
+        palette = g[f] @ inverse_bind
+        p = np.zeros((len(vertices), 4))
+        for k in range(4):
+            p += weights[:, k:k + 1] * np.einsum('nij,nj->ni', palette[joints[:, k]], points)
+        lo, hi = np.minimum(lo, p[:, :3].min(axis=0)), np.maximum(hi, p[:, :3].max(axis=0))
+    return lo, hi
+
+
+def is_looping(skeleton, clip):
+    if len(clip['t']) < 2:
+        return False
+    g = globals_of(skeleton['parents'], clip['t'][[0, -1]], clip['q'][[0, -1]], clip['s'][[0, -1]])
+    return bool(np.abs(g[0, :, :3, 3] - g[1, :, :3, 3]).max() < LOOP_TOLERANCE)
+
+
+def skeleton_bytes(skeleton):
+    t, q, s = skeleton['rest']
+    data = b'DMSK' + struct.pack('<II', 1, len(skeleton['names']))
+    for k, name in enumerate(skeleton['names']):
+        encoded = name.encode('utf-8')
+        data += struct.pack('<I', len(encoded)) + encoded + struct.pack('<i', skeleton['parents'][k])
+        data += np.hstack([t[k], q[k], s[k]]).astype('<f4').tobytes()
+    return data
+
+
+def clip_bytes(clip):
+    frames, joints = clip['t'].shape[:2]
+    data = b'DMAN' + struct.pack('<IIIfIff', 1, joints, frames, clip['rate'], 1 if clip['looping'] else 0,
+                                 clip['speed'], clip['turn'])
+    data += np.hstack([clip['bounds'][0], clip['bounds'][1]]).astype('<f4').tobytes()
+    data += np.concatenate([clip['t'], clip['q'], clip['s']], axis=2).astype('<f4').tobytes()
+    data += clip['motion'].astype('<f4').tobytes()
+    return data
+
+
+def parse_locomotion(text):
+    """--locomotion: «клип[=скорость],…» → {имя: скорость или None (по движению корня)}."""
+    points = {}
+    for item in [v.strip() for v in text.split(',') if v.strip()]:
+        name, _, speed = item.partition('=')
+        points[name.strip()] = float(speed) if speed else None
+    return points
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -802,16 +1299,57 @@ class Database:
                             (level_id, light['name']) + values + (int(sun), int(sun)))
         return self.cursor.lastrowid, True
 
-    def place(self, level_id, model_id, instances):
-        """Экземпляры модели на уровне: повторный импорт заменяет прежние строки этой модели."""
+    def place(self, level_id, model_id, instances, animation_id=None):
+        """Экземпляры модели на уровне: повторный импорт заменяет прежние строки этой модели. animation_id — клип, который
+        играют экземпляры модели со скелетом (LevelModels.animation_id)."""
         def text(vector, digits):
             return ','.join('%g' % (round(float(c), digits) + 0.0) for c in vector)
         self.cursor.execute('DELETE FROM LevelModels WHERE level = ? AND model = ?', (level_id, model_id))
         for instance in instances:
-            self.cursor.execute('INSERT INTO LevelModels (level, model, position, rotation, scale) '
-                                'VALUES (?, ?, ?, ?, ?)',
+            self.cursor.execute('INSERT INTO LevelModels (level, model, position, rotation, scale, animation_id) '
+                                'VALUES (?, ?, ?, ?, ?, ?)',
                                 (level_id, model_id, text(instance['position'], 4), text(instance['rotation'], 6),
-                                 text(instance['scale'], 4)))
+                                 text(instance['scale'], 4), animation_id))
+
+    def skeleton(self, model_id, name, file):
+        """Скелет модели (Skeletons, Models.skeleton_id) по имени модели."""
+        skeleton_id = self.one('SELECT id FROM Skeletons WHERE name = ?', (name,))
+        if skeleton_id is None:
+            self.cursor.execute('INSERT INTO Skeletons (name, file) VALUES (?, ?)', (name, file))
+            skeleton_id = self.cursor.lastrowid
+        else:
+            self.cursor.execute('UPDATE Skeletons SET file = ? WHERE id = ?', (file, skeleton_id))
+        self.cursor.execute('UPDATE Models SET skeleton_id = ? WHERE id = ?', (skeleton_id, model_id))
+        return skeleton_id
+
+    def animations(self, skeleton_id, clips, locomotion):
+        """Клипы скелета (Animations) по имени: файлы и точки шага по скорости. locomotion — {имя: скорость} (None —
+        оставить прежние). Клипы, которых больше нет, удаляются; экземпляры уровня с ними — без клипа. Возвращает {имя: id}."""
+        old = {name: (clip_id, speed) for clip_id, name, speed in self.cursor.execute(
+            'SELECT id, name, locomotion_speed FROM Animations WHERE skeleton_id = ?', (skeleton_id,)).fetchall()}
+        ids = {}
+        for clip in clips:
+            if locomotion is None:
+                speed = old[clip['name']][1] if clip['name'] in old else None
+            elif clip['name'] in locomotion:
+                speed = locomotion[clip['name']] if locomotion[clip['name']] is not None else clip['speed']
+            else:
+                speed = None
+            if clip['name'] in old:
+                clip_id = old[clip['name']][0]
+                self.cursor.execute('UPDATE Animations SET file = ?, locomotion_speed = ? WHERE id = ?',
+                                    (clip['file'], speed, clip_id))
+            else:
+                self.cursor.execute('INSERT INTO Animations (name, skeleton_id, file, locomotion_speed) VALUES (?, ?, ?, ?)',
+                                    (clip['name'], skeleton_id, clip['file'], speed))
+                clip_id = self.cursor.lastrowid
+            ids[clip['name']] = clip_id
+        for name, (clip_id, _) in old.items():
+            if name not in ids:
+                self.cursor.execute('UPDATE LevelModels SET animation_id = NULL WHERE animation_id = ?', (clip_id,))
+                self.cursor.execute('DELETE FROM Animations WHERE id = ?', (clip_id,))
+                print('Clip %s: no longer in the file, removed' % name)
+        return ids
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -862,6 +1400,15 @@ def main():
     parser.add_argument('--collision-radius', type=float,
                         help='trunk radius of a capsule collision, m in model units (Models.collision_radius); default: keep, '
                              'extras "collision_radius" of the LOD0 object, the base of the model for a new one')
+    parser.add_argument('--animation', help='model with a skeleton: the clip its level instances play '
+                                            '(LevelModels.animation_id); default: none, the rest pose')
+    parser.add_argument('--locomotion',
+                        help='model with a skeleton: clips of the locomotion blend space by speed, e.g. '
+                             '"Stand_Breathing_01,WalkSlow,Walk,Trot,Run" (Animations.locomotion_speed); the speed of a '
+                             'clip is its root motion, "name=speed" sets it (in-place clips); default: keep')
+    parser.add_argument('--root-motion-bone',
+                        help='model with a skeleton: the joint whose horizontal move and turn are taken out of the clips '
+                             'as root motion; default: the first joint from the root that moves')
     parser.add_argument('--scatter', action='store_true', help='model for scatter layers: PBRInstance, render = 0')
     parser.add_argument('--dry-run', action='store_true', help='print what would be written, write nothing')
     parser.add_argument('--db', default=os.path.join(ROOT, 'base.db3'))
@@ -879,7 +1426,38 @@ def main():
     gltf = Gltf(args.file)
     asset = sanitize(args.asset or os.path.splitext(os.path.basename(args.file))[0])
     materials = MaterialConverter(gltf, asset)
-    models = collect_models(gltf, asset, materials, args.name, args.scatter, args.scale)
+    skinned = bool(gltf.json.get('skins')) and not args.scatter
+    clips = []
+    if skinned:
+        # Модель со скелетом — одна: сетки со скином и на костях; --scale запекается в скелет и вершины
+        model = collect_skinned_model(gltf, materials, sanitize(args.name or asset), args.scale)
+        models = [model]
+        skeleton = model['skeleton']
+        clips = collect_clips(gltf, skeleton)
+        root = find_root_motion_joint(skeleton, clips, args.root_motion_bone)
+        sections = model['lods'][0]
+        vertices = np.concatenate([section['mesh'][0] for section in sections])
+        skin = np.concatenate([section['mesh'][7] for section in sections])
+        for clip in clips:
+            extract_root_motion(skeleton, clip, root)
+            clip['looping'] = is_looping(skeleton, clip)
+            clip['bounds'] = skinned_bounds(skeleton, clip, vertices, skin)
+            clip['file'] = 'models\\%s\\%s_%s.anim' % (asset, model['name'], sanitize(clip['name']))
+        print('Skeleton %s: %d joints, root motion: %s' % (model['name'], len(skeleton['names']),
+                                                            skeleton['names'][root] if root is not None else 'none'))
+        for clip in clips:
+            print('  clip %-32s %6.2f s %4d frames %s speed %5.2f m/s turn %6.1f deg/s' % (
+                clip['name'], (len(clip['t']) - 1) / clip['rate'], len(clip['t']), 'loop' if clip['looping'] else 'once',
+                clip['speed'], np.degrees(clip['turn'])))
+        names = {clip['name'] for clip in clips}
+        locomotion = parse_locomotion(args.locomotion) if args.locomotion is not None else None
+        for name in ([args.animation] if args.animation else []) + list(locomotion or []):
+            if name not in names:
+                raise SystemExit('error: clip %s is not in the file' % name)
+    else:
+        if args.animation or args.locomotion or args.root_motion_bone:
+            raise SystemExit('error: --animation, --locomotion and --root-motion-bone need a model with a skeleton')
+        models = collect_models(gltf, asset, materials, args.name, args.scatter, args.scale)
     lights = collect_lights(gltf)
     if not models and not lights:
         raise SystemExit('error: no meshes and no lights in %s' % args.file)
@@ -942,6 +1520,18 @@ def main():
         collision_radius = args.collision_radius if args.collision_radius is not None else model['collision_radius']
         model_id = db.model(model['name'], lods, 0 if args.scatter else 1, args.shadow_lod_scale, args.shadow_min_lod,
                             collision, None if collision_radius is None else float(collision_radius))
+        animation_id = None
+        if 'skeleton' in model:
+            skeleton_file = 'models\\%s\\%s.skel' % (asset, model['name'])
+            files[os.path.join('Meshes', skeleton_file)] = skeleton_bytes(model['skeleton'])
+            for clip in clips:
+                files[os.path.join('Meshes', clip['file'])] = clip_bytes(clip)
+            clip_ids = db.animations(db.skeleton(model_id, model['name'], skeleton_file), clips, locomotion)
+            animation_id = clip_ids.get(args.animation)
+            points = sorted((speed, name) for name, speed in db.cursor.execute(
+                'SELECT name, locomotion_speed FROM Animations WHERE skeleton_id = (SELECT skeleton_id FROM Models WHERE '
+                'id = ?) AND locomotion_speed IS NOT NULL', (model_id,)).fetchall())
+            print('Locomotion of %s: %s' % (model['name'], ', '.join('%s %.2f m/s' % (n, s) for s, n in points) or 'none'))
 
         positions = np.concatenate([section['mesh'][0] for section in model['lods'][0]])
         lo, hi = positions.min(axis=0), positions.max(axis=0)
@@ -953,16 +1543,17 @@ def main():
         for section in model['lods'][0]:
             print('  section %d: material instance %s' % (section['slot'], section['instance']))
         if level_id is not None:
-            # Origin файла — в --position с равномерным масштабом --scale
-            placed = [{'position': position + instance['position'] * args.scale, 'rotation': instance['rotation'],
-                       'scale': instance['scale'] * args.scale} for instance in model['instances']]
+            # Origin файла — в --position с равномерным масштабом --scale (у модели со скелетом он уже в вершинах)
+            scale = 1.0 if 'skeleton' in model else args.scale
+            placed = [{'position': position + instance['position'] * scale, 'rotation': instance['rotation'],
+                       'scale': instance['scale'] * scale} for instance in model['instances']]
             if ground is not None:
                 # Высота над нулём в Blender — над землёй: y --position не учитывается
                 heights, cell = ground
                 for instance, source in zip(placed, model['instances']):
                     x, _, z = instance['position']
-                    instance['position'][1] = terrain.sample(heights, x, z, cell) + source['position'][1] * args.scale
-            db.place(level_id, model_id, placed)
+                    instance['position'][1] = terrain.sample(heights, x, z, cell) + source['position'][1] * scale
+            db.place(level_id, model_id, placed, animation_id)
             for instance in placed:
                 print('  level %s: position %.2f,%.2f,%.2f rotation %.3f,%.3f,%.3f,%.3f scale %.3g,%.3g,%.3g' % (
                     (args.level,) + tuple(instance['position']) + tuple(instance['rotation']) +
