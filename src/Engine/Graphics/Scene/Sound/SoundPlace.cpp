@@ -98,4 +98,32 @@ float occlusionLowpass( float occlusion )
 	return 20000.0f + ( occludedLowpass - 20000.0f ) * occlusion;
 }
 
+void addAuditionProperties( PropertyContainer& part )
+{
+	part.insert( "Mute", false )->setTransient()->setTooltip( "Silence this part while editing (not saved)" );
+	part.insert( "Solo", false )->setTransient()->setTooltip(
+		"Hear only the parts with Solo while editing (not saved); Clear solo of the Audio window turns them all off" );
+}
+
+float auditionGain( AudioAudition& audition, const PropertyContainer& part, bool enabled )
+{
+	if( !enabled )
+		return 0.0f;
+	return audition.gain( part["Mute"].data<bool>(), part["Solo"].data<bool>() );
+}
+
+bool takeClearSolo( const AudioAudition& audition, uint32_t& seen )
+{
+	if( audition.clearRevision() == seen )
+		return false;
+	seen = audition.clearRevision();
+	return true;
+}
+
+void clearSolo( PropertyContainer& part )
+{
+	if( part["Solo"].data<bool>() )
+		part["Solo"].setData( false );
+}
+
 }

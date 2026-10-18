@@ -1222,6 +1222,15 @@ const std::vector<float>* TerrainPipeline::maskValues( const std::string& name )
 	return nullptr;
 }
 
+std::vector<std::string> TerrainPipeline::maskNames() const
+{
+	std::vector<std::string> names;
+	for( const TerrainMasks::Mask& mask : paintedMasks().masks )
+		if( !mask.values.empty() )
+			names.push_back( mask.name );
+	return names;
+}
+
 bool TerrainPipeline::paintProbe( const std::string& target, float x, float z, float& rule, float& delta, float& result ) const
 {
 	const uint32_t size = m_masks.size;

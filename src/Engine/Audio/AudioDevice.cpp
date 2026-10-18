@@ -35,6 +35,12 @@ bool AudioDevice::initialize( bool enabled, float volume, bool muted )
 	volumeProperty->setControlType( GUIControlType::SLIDER );
 	volumeProperty->setTooltip( "Master volume of the output; starts from [Audio] Volume of settings.ini" );
 	m_properties.insert( "Mute", muted )->setTooltip( "Silent output (-mute); the mixer and audio record keep working" );
+	m_properties.addButton( "Clear solo", "Turn off Solo of every part of the level sound (Ambient sound, Soundscape layers)",
+							[this]() -> PropertyContainer::ButtonAction
+	{
+		m_mixer.audition().clearSolo();
+		return {};
+	} );
 	if( !enabled )
 	{
 		LOG( "Audio: disabled in settings.ini ([Audio] Enabled=false)" );
@@ -50,6 +56,7 @@ void AudioDevice::shutdown()
 
 void AudioDevice::update( FrameStats& stats )
 {
+	m_mixer.audition().beginFrame();
 	if( !m_output.active() )
 		return;
 	if( m_properties.revision() != m_appliedRevision )

@@ -14,8 +14,10 @@ class ConsoleCommands;
 struct FrameStats;
 
 // Звук движка — как FAudioDevice в UE (docs/audio.md): микшер (AudioMixer) и вывод (AudioOutput, XAudio2). Голоса заводят
-// объекты сцены (AmbientSound). Окно «Audio» — громкость и «Mute» пользователя, а не уровня: начальные — settings.ini
-// ([Audio] Volume) и -mute, в базу не пишутся. Команды: audio record — смесь в WAV для проверки без наушников, audio stats
+// объекты сцены (AmbientSound, Soundscape). Окно «Audio» (раздел Audio в Outliner) — громкость и «Mute» пользователя, а не
+// уровня: начальные — settings.ini ([Audio] Volume) и -mute, в базу не пишутся; «Clear solo» снимает Solo частей звука
+// уровня (AudioAudition). Команды: audio record — смесь в WAV для проверки без наушников, audio stats
+// Прослушивание (AudioAudition) — с начала кадра, в update: Solo частей за прошлый кадр — в силе
 class AudioDevice
 {
 public:

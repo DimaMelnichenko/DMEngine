@@ -269,8 +269,9 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 	if( audio && m_level.ambientSound &&
 		!m_ambientSound.initialize( *m_level.ambientSound, *audio, m_wind, m_level.terrain ? &m_terrainPipeline : nullptr ) )
 		LOG( "Ambient sound is not initialized" );
-	// Певцы — записи (Sounds\) по слоям уровня, места — по маскам, часы — по времени суток
-	if( audio && !m_level.soundscapeLayers.empty() &&
+	// Певцы — записи (Sounds\) по слоям уровня, места — по маскам, часы — по времени суток. Окно — и у уровня без слоёв: слой
+	// добавляют в нём
+	if( audio &&
 		!m_soundscape.initialize( m_level.soundscapeLayers, m_level.sounds, *audio, m_level.terrain ? &m_terrainPipeline : nullptr,
 								  m_world.clock() ) )
 		LOG( "Soundscape is not initialized" );
@@ -512,7 +513,12 @@ LevelSaveData Scene::levelSaveData( const PostProcessSettings& postProcess, cons
 	if( m_ambientSound.initialized() )
 		data.ambientSound = m_ambientSound.settings();
 	if( m_soundscape.initialized() )
+	{
+		// Слои — копией: id новых строк вернутся в неё и уйдут в слои
 		data.soundscapeLayers = m_soundscape.layerSettings();
+		data.removedSoundscapeLayers = m_soundscape.removedIds();
+		data.sounds = m_soundscape.soundRecords();
+	}
 	return data;
 }
 
@@ -534,6 +540,8 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	if( !library.saveLevelScene( m_level, data, m_savedLevel ) )
 		return false;
 	m_models.markSaved( data.models );
+	if( m_soundscape.initialized() )
+		m_soundscape.markSaved( data.soundscapeLayers );
 	// Параметры экземпляров материалов (окна «Models» и «Materials» слоёв расстановки) — изменённые
 	if( !library.saveMaterialInstances( System::materialInstances() ) )
 		return false;
@@ -544,6 +552,7 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	// записано — для него прежний снимок остаётся («Save preset as» перенесёт правки в новый пресет)
 	data.removedLights.clear();
 	data.removedModels.clear();
+	data.removedSoundscapeLayers.clear();
 	if( m_level.presetLocked )
 		copyEnvironment( m_savedLevel, data );
 	m_savedLevel = std::move( data );

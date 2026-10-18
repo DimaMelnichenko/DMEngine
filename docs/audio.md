@@ -44,12 +44,14 @@
 появляется другой — уже вокруг того места, где теперь слушатель. Слушатель ушёл дальше
 полуторной верхней границы — певец улетает. Певцов сразу — «Singers» в свои часы «Hours» (у краёв — плавно за 45 минут;
 «от» больше «до» — через полночь), часы — время суток мировых часов (`WorldClock`, [simulation.md](simulation.md); органы — подокно «Sun position»). Голос — на фразу (`ClipGenerator`, вход и
-выход 20 мс); громкость «Volume» — в 10 м, дальше — обратно расстоянию, поглощение воздухом и заглушение гребнем — как у
-ручьёв. Окно «Soundscape» — подокно на слой; «Save level» пишет правки в строки.
+выход 20 мс); громкость «Volume» — в 10 м (× громкость записи, окно «Sounds»), дальше — обратно расстоянию, поглощение
+воздухом и заглушение гребнем — как у ручьёв. Выключенный слой («Enabled», `SoundscapeLayers.enabled`) не поёт. Окно
+«Soundscape» — подокно на слой (раздел «Окна редактора»); «Save level» пишет правки в строки.
 
 ```
 python Tools/soundscape.py add Blackbird --sound blackbird --param habitat=mask_forest_spruce,mask_forest_pine --param hours_from=4 ...
 python Tools/soundscape.py list / set ИМЯ --param поле=значение / delete / enable / disable
+python Tools/soundscape.py sounds / sound ЗАПИСЬ --volume 0.8
 ```
 
 Слои уровня и их правила — `python Tools/soundscape.py list`. Как подбирать: птицы — по одному-два певца в лесу на 20–200 м
@@ -94,7 +96,9 @@ ffmpeg (из PATH, `--ffmpeg` или распакованный в `DownloadReso
 | `bumblebee` | Пролёт шмеля над полем | Robak1974 | CC0 | https://freesound.org/people/Robak1974/sounds/512663/ |
 | `cuckoo` | Кукушка: начинает неуверенно, потом входит в ритм | acclivity | CC BY-NC 4.0 (некоммерческое — движок некоммерческий, решение Dimok 2026-10-17) | https://freesound.org/people/acclivity/sounds/19561/ |
 
-Как упакована каждая (ключи `pack_sound.py`) — в `DONE.md`.
+Как упакована каждая (ключи `pack_sound.py`) — в `DONE.md`. Громкость записи — `Sounds.volume` (NULL — 1): множитель у всех
+слоёв, что её поют, — так тихая запись выравнивается с другими, а громкость певца задаёт слой; правится окном «Sounds» или
+`soundscape.py sound`.
 
 ## Какие записи нужны
 
@@ -126,11 +130,12 @@ ffmpeg (из PATH, `--ffmpeg` или распакованный в `DownloadReso
 ## Данные уровня
 
 Строка `AmbientSound`, на неё ссылается `Levels.ambient_sound` (NULL — у уровня звуков окружения нет). Окно «Ambient
-sound» (раздел Scene в Outliner) с подокнами «Wind», «Grass», «Crowns», «Streams»; «Save level» пишет правки в строку.
+sound» (раздел Audio в Outliner) с подокнами «Wind», «Grass», «Crowns», «Streams»; «Save level» пишет правки в строку.
 
 | Колонка | Окно | Что |
 |---|---|---|
 | `volume` | Volume | Общая громкость звуков окружения |
+| `wind_enabled`, `grass_enabled`, `crown_enabled`, `stream_enabled` | Wind/Enabled … | Часть звучит; выключенная молчит и голосов не держит |
 | `wind_volume` | Wind/Volume | Гул и свист ветра |
 | `wind_reference_speed` | Wind/Reference speed | Скорость ветра у камеры с полной громкостью слоёв, м/с |
 | `wind_frequency` | Wind/Frequency | Середина полосы гула в штиль, Гц; растёт со скоростью |
@@ -149,10 +154,33 @@ python Tools/ambient_sound.py show --level Test
 python Tools/ambient_sound.py remove --level Test
 ```
 
-Громкость и «Mute» пользователя — окно «Audio» (раздел Rendering), не уровень: начальная громкость — `[Audio] Volume` в
+Громкость и «Mute» пользователя — окно «Audio» (раздел Audio), не уровень: начальная громкость — `[Audio] Volume` в
 `settings.ini` (0…1), `[Audio] Enabled=false` выключает звук совсем. `-mute` — вывод молчит, а микшер и запись работают:
 `Tools/run.ps1`, `Tools/engine.py` и `Tools/check_frames.py` запускают движок так по умолчанию (`-Sound` / `--sound` — со
 звуком).
+
+## Окна редактора
+
+Весь звук — в разделе Audio Outliner'а (`Editor::Category::audio`; объект сцены — `SceneObject::audio`):
+
+- **«Audio»** — громкость и «Mute» вывода (пользователя, не сохраняются) и кнопка «Clear solo».
+- **«Ambient sound»** — общая громкость и подокна частей «Wind», «Grass», «Crowns», «Streams»: «Enabled» (сохраняется),
+  громкость и поля части, прослушивание «Mute» / «Solo».
+- **«Soundscape»** — подокно на слой певцов: «Enabled», поля слоя, подокна флажков «Sounds» (записи `Sounds`: у каждого певца —
+  одна из отмеченных) и «Habitat» (маски рельефа по именам `TerrainMasks` и `lake_shore`; ни одной — где угодно), «Mute» /
+  «Solo», кнопка «Delete». Кнопка окна «Add layer» — новый слой «Layer N» с полями по умолчанию и без записей (молчит, пока
+  запись не отмечена). Добавление и удаление — правки истории (Ctrl+Z), как у источников света; «Save level» вставляет и
+  удаляет строки `SoundscapeLayers` (без записей — `sound` NULL). Имя слоя меняет `Tools/soundscape.py set`.
+- **«Sounds»** — подокно на запись: «Volume» (`Sounds.volume`, сохраняется) и кнопки «Play» / «Stop» — следующая фраза записи
+  у слушателя посередине с громкостью записи (как певец в 10 м при громкости слоя 1), мимо Mute и Solo слоёв.
+
+**Прослушивание** — как Mute и Solo у дорожек микшера DAW (au.Debug.SoloSoundClass в UE): «Mute» глушит часть или слой, «Solo»
+хоть у одной — звучат только части и слои с Solo. Флажки редакторские (не сохраняются и не делают уровень изменённым), певцы
+под Mute поют беззвучно — сняли, и они на месте. Общее состояние — `AudioAudition` у микшера (`AudioMixer::audition`): Solo,
+отмеченные за кадр, в силе со следующего (части разных объектов друг о друге не знают). «Clear solo» снимает все Solo.
+
+Сценарием: `set "Ambient sound/Wind/Volume" 0.3`, `set "Ambient sound/Streams/Solo" true`, `press "Soundscape/Add layer"`,
+`set "Soundscape/Layer/Sounds/crickets" true`, `press "Sounds/blackbird/Play"`, `press "Audio/Clear solo"`.
 
 ## Как это устроено
 
@@ -160,7 +188,8 @@ python Tools/ambient_sound.py remove --level Test
 `tests/test_audio.cpp` ([tests.md](tests.md)); вывод (`AudioOutput`, `AudioDevice`) и объекты сцены — в движке.
 
 - `AudioDevice` (`src/Engine/Audio/AudioDevice.h`, член `Engine`, как FAudioDevice в UE) — микшер, вывод, окно «Audio»,
-  команды `audio`. Создаётся до сцены: объекты сцены заводят в его микшере голоса.
+  команды `audio`. Создаётся до сцены: объекты сцены заводят в его микшере голоса. В начале кадра — новый кадр
+  прослушивания (`AudioAudition::beginFrame`, `Audio/AudioAudition.h`, в ядре `DMCore`).
 - `AudioOutput` (`AudioOutput.h`) — XAudio2 2.9 (`xaudio2.lib`): мастер-голос устройства по умолчанию и один стерео-голос
   float 48 кГц. Своя нить «Audio mixer» по событию конца буфера считает следующий блок смеси (480 кадров, 10 мс) и ставит
   его в очередь из трёх — задержка ~30 мс. Нет устройства — строка в лог, движок работает без звука.
@@ -187,11 +216,15 @@ python Tools/ambient_sound.py remove --level Test
   `surfaceHeight` (глубина), заново по `TerrainPipeline::heightRevision` (перестройка русел), в лог — сколько мест и сколько
   на перекатах; голос ручья — на место, ушедшее место затихает, новое заводит свой генератор со своим зерном.
   Общее у звуков окружения и певцов — `Scene/Sound/SoundPlace.h`: слушатель по виду, маски в точке, поглощение воздухом,
-  заглушение гребнем.
+  заглушение гребнем, флажки и множитель прослушивания части (`addAuditionProperties`, `auditionGain`). Выключенная часть
+  убирает свои голоса (`syncVoices`), включённая заводит их заново с теми же зёрнами шума.
 - `AudioClip` (`Audio/AudioClip.h`) — запись в памяти (своё чтение WAV: 16 бит или float32, каналы — в один) и её фразы;
   `ClipGenerator` — фраза один раз с плавным входом и выходом и сдвигом высоты (шаг чтения ≠ 1, линейная интерполяция).
   Запись живёт, пока звучат её голоса (`shared_ptr`).
-- `Soundscape` (`Scene/Sound/Soundscape.h`) — объект сцены без мешей: певцы слоёв, голоса фраз, их цели (раздел «Певцы»).
+- `Soundscape` (`Scene/Sound/Soundscape.h`) — объект сцены без мешей: певцы слоёв, голоса фраз, их цели (раздел «Певцы»), окна
+  «Soundscape» и «Sounds». Загрузчик отдаёт все слои уровня (и выключенные) и все записи `Sounds`; звук записи читается, когда
+  её поёт включённый слой или нажата «Play». Записи и места слоя — флажки, текстом (`sound`, `habitat` через запятую) — по
+  правке флажков: прежние по их порядку в строке, новые — следом (без правки строка в базе не меняется).
 
 ## Проверка без наушников
 
@@ -203,7 +236,7 @@ python Tools/ambient_sound.py remove --level Test
 
 Цена: нить микшера — ~1 % реального времени одного ядра без ручьёв, ~5 % с восемью голосами ручьёв;
 `Update: Ambient sound` — ~0,02 мс CPU кадра без ручьёв, ~0,09 мс с ними (выбор из ~1000 мест и лучи заглушения);
-`Update: Soundscape` — ~0,01 мс.
+`Update: Soundscape` — ~0,01 мс с двумя слоями, ~0,04 мс с десятью.
 
 На `Test` (выключены ветер, трава и кроны): у плёса в 4 м — −32…−34 дБ FS, у переката — −21…−25; в 70 м от переката на
 виду — −47, за гребнем — −52…−55 и глуше (центроид 650 Гц против 1200).
@@ -215,5 +248,6 @@ python Tools/ambient_sound.py remove --level Test
 - Реверберации и смены устройства вывода (наушники выдернули) нет.
 - Озёра молчат (плеск у берега — потом). Вода у ручья — растр 1 м: узкий ручей, которого в нём нет, не слышен.
 - Заглушение — только рельефом (не моделями и не лесом).
+- Имя слоя в окне не правится (у окна нет строковых свойств) — `Tools/soundscape.py set`.
 - Певцов не видно (птиц-моделей нет — этап 14); у дрозда и ворона по одной записи — их фразы повторяются; дрозды не поют
   громче на рассвете и закате (хор — отдельной кривой по часам).

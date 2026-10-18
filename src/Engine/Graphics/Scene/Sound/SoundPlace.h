@@ -4,6 +4,7 @@
 #include <vector>
 #include <DirectXMath.h>
 #include "Engine\Audio\AudioMixer.h"
+#include "Properties\PropertyContainer.h"
 
 namespace GS
 {
@@ -31,5 +32,15 @@ float terrainOcclusion( const TerrainPipeline* terrain, const DirectX::XMFLOAT3&
 // Заглушённый источник — тише на долю и глуше: множитель громкости и срез фильтра по заглушению
 float occlusionGain( float occlusion );
 float occlusionLowpass( float occlusion );
+
+// Прослушивание части звука (подокно «Ambient sound», слой «Soundscape») — AudioAudition: флажки «Mute» и «Solo» окна части
+// (редакторские, не сохраняются)
+void addAuditionProperties( PropertyContainer& part );
+// Множитель громкости части в этом кадре: включена — по флажкам (Solo отмечается у прослушивания), выключена — 0
+float auditionGain( AudioAudition& audition, const PropertyContainer& part, bool enabled );
+// «Clear solo» окна «Audio»: номер сброса у прослушивания сменился против seen (true — раз на номер, seen — новый) — объект
+// снимает Solo своих частей (clearSolo)
+bool takeClearSolo( const AudioAudition& audition, uint32_t& seen );
+void clearSolo( PropertyContainer& part );
 
 }

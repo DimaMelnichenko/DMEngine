@@ -233,7 +233,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   в окнах редактора набирается текст, горячие клавиши и WASD молчат (`Input::setKeyboardBlocked`).
 - **Редактор** (`src/Engine/Graphics/GUI/`, подробно — `docs/gui.md`), как редактор UE: главное меню (File — действия
   `GUI::addAction`, их же вызывает команда `action`; Edit — отмена и повтор правок, Ctrl+Z / Ctrl+Y, `Editor::EditHistory`,
-  команды `undo` / `redo`; View — переключатели `addToggle`; Window — панели и «Reset layout»; Help), докинг панелей: Outliner (окна свойств по разделам Environment / Scene / Rendering, флажок видимости объекта),
+  команды `undo` / `redo`; View — переключатели `addToggle`; Window — панели и «Reset layout»; Help), докинг панелей: Outliner (окна свойств по разделам Environment / Scene / Audio / Rendering, флажок видимости объекта),
   Details (свойства выбранного таблицей: поиск, единицы, подсказки, отметка изменённого после загрузки или сохранения и
   сброс — `Property::markSaved` / `modified` / `resetToSaved`), Output (консоль на `ConsoleCommands` с историей и
   дополнением; лог — `Logger::recent`), Stats, Camera, Texture Library; оверлей FPS и времени кадра. Раскладка по
@@ -359,8 +359,10 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 (тени прожекторов, экранные эффекты) добавляется в `Renderer`, а не в объекты.
 Звук — `AudioDevice` (`src/Engine/Audio/`, член `Engine` до сцены, как Audio Mixer в UE): свой микшер (`AudioMixer`: голоса —
 генераторы с целями громкости по каналам, нить ведёт к ним плавно) и вывод XAudio2 (`AudioOutput`, своя нить, блоки 10 мс);
-голоса заводят объекты сцены, окно «Audio» — громкость и «Mute» пользователя (`[Audio]` в `settings.ini`, `-mute`), подробно —
-`docs/audio.md`.
+голоса заводят объекты сцены, окно «Audio» — громкость и «Mute» пользователя (`[Audio]` в `settings.ini`, `-mute`) и «Clear solo»;
+весь звук — раздел Audio в Outliner (`SceneObject::audio`): у частей звуков окружения и слоёв певцов «Enabled» (сохраняется) и
+прослушивание «Mute» / «Solo» (`AudioAudition` у микшера, не сохраняется), слои певцов добавляются и удаляются кнопками, записи
+и места — флажками, окно «Sounds» — громкость записей и «Play»; подробно — `docs/audio.md`, «Окна редактора».
 Мир симуляции — `World` у `Scene` (`src/Engine/Simulation/`, ядро `DMCore`, как World с Mass в UE, на EnTT): сущности с
 компонентами (`Simulation/Components.h`: `Transform`, `PreviousTransform`, `ModelVisual`), системы (`SimulationSystem`:
 `WanderSystem` — блуждание в круге, Reynolds 1999), службы мира без синглтонов (рельеф — `TerrainHeightSource`) и мировые
@@ -467,7 +469,7 @@ Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/
 и маскам, `Wind::gust`, `TerrainPipeline::maskValues`; ручьи — места воды 8 × 8 м по растру `staticWater`, громкость — по
 потере мощности течения, слышны самые громкие, заглушение гребнем; строка `AmbientSound`, `Levels.ambient_sound`, `Tools/ambient_sound.py`;
 мешей нет — цели голосов микшера в `update`, `docs/audio.md`), `Soundscape` (певцы из записей, как Soundscape в UE: слои
-`SoundscapeLayers` — запись `Sounds`, маски места, часы суток; певец садится вокруг слушателя и поёт фразы записи с паузами;
+`SoundscapeLayers` — записи `Sounds` (у записи — своя громкость), маски места, часы суток; певец садится вокруг слушателя и поёт фразы записи с паузами;
 `Tools/soundscape.py`, записи — `Tools/pack_sound.py` через ffmpeg в `Sounds\` (не в git, как `Textures\`), `docs/audio.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 

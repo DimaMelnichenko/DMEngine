@@ -944,12 +944,16 @@ const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema()
 	// Громкости — доли амплитуды; частоты — середины полос шума, по логарифму (слух — по октавам)
 	static const SettingsSchema<Settings> schema = {
 		{ "volume", "Volume", DM_SETTING( volume ), 0.0f, 2.0f, "", "All ambient sounds of the level" },
+		{ "wind_enabled", "Enabled", DM_SETTING( windEnabled ), 0.0f, 0.0f, "", "Off - the wind is silent and keeps no voices", 0,
+		  "Wind" },
 		{ "wind_volume", "Volume", DM_SETTING( windVolume ), 0.0f, 2.0f, "", "Air rushing past the camera", 0, "Wind" },
 		{ "wind_reference_speed", "Reference speed", DM_SETTING( windReferenceSpeed ), 1.0f, 30.0f, "m/s",
 		  "Wind speed at the camera with the full volume (the speed of the level wind times the terrain field and the gust)",
 		  settingClampLow, "Wind" },
 		{ "wind_frequency", "Frequency", DM_SETTING( windFrequency ), 30.0f, 1000.0f, "Hz",
 		  "Middle of the rumble band in a calm; it rises with the wind speed", settingLogarithmic | settingClampLow, "Wind" },
+		{ "grass_enabled", "Enabled", DM_SETTING( grassEnabled ), 0.0f, 0.0f, "", "Off - the grass is silent and keeps no voices",
+		  0, "Grass" },
 		{ "grass_volume", "Volume", DM_SETTING( grassVolume ), 0.0f, 2.0f, "", "Rustle of the grass around the camera", 0, "Grass" },
 		{ "grass_radius", "Radius", DM_SETTING( grassRadius ), 1.0f, 20.0f, "m", "Grass masks are averaged in this circle",
 		  settingClampLow, "Grass" },
@@ -957,11 +961,15 @@ const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema()
 		  "Camera this high above the ground does not hear the grass (quieter from 2.5 m)", settingClampLow, "Grass" },
 		{ "grass_frequency", "Frequency", DM_SETTING( grassFrequency ), 500.0f, 12000.0f, "Hz", "Middle of the rustle band",
 		  settingLogarithmic | settingClampLow, "Grass" },
+		{ "crown_enabled", "Enabled", DM_SETTING( crownEnabled ), 0.0f, 0.0f, "", "Off - the crowns are silent and keep no voices",
+		  0, "Crowns" },
 		{ "crown_volume", "Volume", DM_SETTING( crownVolume ), 0.0f, 2.0f, "", "Rustle of the forest crowns around", 0, "Crowns" },
 		{ "crown_radius", "Radius", DM_SETTING( crownRadius ), 10.0f, 300.0f, "m",
 		  "Forest masks in this circle, by four sides: the sound comes from where the forest is", settingClampLow, "Crowns" },
 		{ "crown_frequency", "Frequency", DM_SETTING( crownFrequency ), 200.0f, 8000.0f, "Hz", "Middle of the rustle band",
 		  settingLogarithmic | settingClampLow, "Crowns" },
+		{ "stream_enabled", "Enabled", DM_SETTING( streamEnabled ), 0.0f, 0.0f, "", "Off - the streams are silent and keep no voices",
+		  0, "Streams" },
 		{ "stream_volume", "Volume", DM_SETTING( streamVolume ), 0.0f, 2.0f, "",
 		  "Babble of the streams: a noisy place of the level water (louder than 95 % of places) 3 m away; louder over steps, quieter "
 		  "behind a ridge", 0, "Streams" },
@@ -977,6 +985,8 @@ const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema()
 {
 	using Settings = SoundscapeLayerSettings;
 	static const SettingsSchema<Settings> schema = {
+		{ "enabled", "Enabled", DM_SETTING( enabled ), 0.0f, 0.0f, "", "Off - the layer does not sing" },
+		// Записи и места — флажками подокон «Sounds» и «Habitat»: строкового свойства у окна нет
 		{ "sound", nullptr, DM_SETTING( sound ) },
 		{ "habitat", nullptr, DM_SETTING( habitat ) },
 		// Часы — парой полей, а не полосой: «от» больше «до» — через полночь (сверчки, совы)
@@ -995,6 +1005,17 @@ const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema()
 		  "A singer left - the next one comes after this long (a cuckoo calls in sessions minutes apart)", settingRangeControl },
 		{ "volume", "Volume", DM_SETTING( volume ), 0.0f, 2.0f, "", "Of a singer 10 m away" },
 		{ "pitch", "Pitch spread", DM_SETTING( pitch ), 0.0f, 0.3f, "", "Each singer is higher or lower by up to this share" },
+	};
+	return schema;
+}
+
+const SettingsSchema<SoundRecord>& soundRecordSchema()
+{
+	using Settings = SoundRecord;
+	static const SettingsSchema<Settings> schema = {
+		{ "volume", "Volume", DM_SETTING( volume ), 0.0f, 4.0f, "",
+		  "Gain of the recording in every layer that sings it (a quiet recording is levelled with the others here, the layer "
+		  "volume sets the singer)" },
 	};
 	return schema;
 }

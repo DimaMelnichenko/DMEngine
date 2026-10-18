@@ -824,6 +824,11 @@ struct AmbientSoundSettings
 {
 	uint32_t id = 0;				// строка AmbientSound — куда пишет «Save level»
 	float volume = 1.0f;			// общая громкость звуков окружения
+	// Части: выключенная молчит и голосов не держит
+	bool windEnabled = true;
+	bool grassEnabled = true;
+	bool crownEnabled = true;
+	bool streamEnabled = true;
 	float windVolume = 0.5f;		// гул и свист ветра у камеры
 	float windReferenceSpeed = 8.0f;	// при такой скорости ветра у камеры, м/с, — полная громкость (ветер — по скорости^1,5,
 									// шелест — по скорости^0,75)
@@ -842,22 +847,28 @@ struct AmbientSoundSettings
 // Поля строки AmbientSound (SettingsSchema): основное окно «Ambient sound» и подокна «Wind», «Grass», «Crowns», «Streams»
 const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema();
 
-// Запись звука — строка Sounds (как Sound Wave в UE; собирает Tools/pack_sound.py): файл WAV в Sounds\, фразы, автор и лицензия
+// Запись звука — строка Sounds (как Sound Wave в UE; собирает Tools/pack_sound.py): файл WAV в Sounds\, фразы, автор и лицензия,
+// громкость записи — множитель у всех слоёв, что её поют (окно «Sounds»)
 struct SoundRecord
 {
+	uint32_t id = 0;				// строка Sounds — куда пишет «Save level»
+	float volume = 1.0f;
 	std::string name;
 	std::string file;
 	std::string phrases;			// «начало-конец;…», с
 	std::string author;
 	std::string license;
 };
+// Поля строки Sounds, которые правит окно «Sounds» (громкость); имя, файл, фразы и источник — Tools/pack_sound.py
+const SettingsSchema<SoundRecord>& soundRecordSchema();
 
 // Слой певцов уровня — строка SoundscapeLayers (как Soundscape в UE; Soundscape, docs/audio.md, «Певцы»): певцы сидят вокруг
 // слушателя там, где их место по маскам, и поют фразы одной из записей слоя с паузами в свои часы
 struct SoundscapeLayerSettings
 {
-	uint32_t id = 0;				// строка SoundscapeLayers — куда пишет «Save level»
+	uint32_t id = 0;				// строка SoundscapeLayers — куда пишет «Save level»; 0 — слой добавлен в редакторе
 	std::string name;
+	bool enabled = true;			// выключенный слой не поёт
 	std::string sound;				// записи — Sounds.name через запятую: у каждого певца — одна из них
 	std::string habitat;			// маски места певца через запятую (mask_forest_spruce …); пусто — где угодно
 	DirectX::XMFLOAT2 hours = DirectX::XMFLOAT2( 4.0f, 22.0f );	// часы суток, когда поёт; от > до — через полночь
@@ -870,7 +881,8 @@ struct SoundscapeLayerSettings
 	float volume = 0.5f;			// громкость певца в 10 м
 	float pitch = 0.05f;			// у каждого певца своя высота: выше или ниже до этой доли
 };
-// Поля строки SoundscapeLayers (SettingsSchema), подокно слоя в окне «Soundscape». Запись и маски места — только в базе
+// Поля строки SoundscapeLayers (SettingsSchema), подокно слоя в окне «Soundscape». Записи и маски места — текстом в базе, в
+// окне — флажками подокон «Sounds» и «Habitat» (Soundscape)
 const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema();
 
 // Строка SunPosition

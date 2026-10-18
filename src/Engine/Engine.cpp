@@ -159,12 +159,18 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	// сцены с savedWithLevel: их пишет «Save level»
 	using Editor::Category;
 	m_GUI.addPropertyWatching( m_scene.lights().properties(), Category::environment, nullptr, true );
+	// Звук — первым в своём разделе: громкость и «Mute» пользователя, а не уровня (не сохраняются), «Clear solo»
+	m_GUI.addPropertyWatching( m_audio.properties(), Category::audio );
 	for( SceneObject* object : m_scene.objects() )
 	{
 		if( object->properties() )
-			m_GUI.addPropertyWatching( object->properties(), object->environment() ? Category::environment : Category::scene, object,
+			m_GUI.addPropertyWatching( object->properties(), object->environment() ? Category::environment :
+															 object->audio() ? Category::audio : Category::scene, object,
 									   object->savedWithLevel() );
 	}
+	// Записи звука (строки Sounds): громкость сохраняет «Save level»
+	if( m_scene.soundscape().initialized() )
+		m_GUI.addPropertyWatching( m_scene.soundscape().soundProperties(), Category::audio, nullptr, true );
 	// Экземпляры моделей — своё окно: положение сохраняется, а параметры материалов окна «Models» — нет
 	m_GUI.addPropertyWatching( m_scene.models().instanceProperties(), Category::scene, nullptr, true );
 	// Кнопки нового перед камерой: «Add … light» окна «Lights», подокно «Add» окна «Model instances»
@@ -179,8 +185,6 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	m_GUI.addPropertyWatching( m_scene.wind().properties(), Category::environment, nullptr, true );
 	m_GUI.addPropertyWatching( m_renderer.properties(), Category::rendering );
 	m_GUI.addPropertyWatching( m_walk.properties(), Category::rendering );
-	// Громкость и «Mute» — пользователя, а не уровня: не сохраняются
-	m_GUI.addPropertyWatching( m_audio.properties(), Category::rendering );
 	for( RenderFeature* feature : m_renderer.features() )
 	{
 		if( !feature->environment() && feature->properties() )

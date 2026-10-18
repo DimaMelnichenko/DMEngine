@@ -1,5 +1,5 @@
-// Звук без устройства: микшер (сглаживание, затухание убранного голоса, ограничитель), стерео, синтез, фразы записей и
-// чтение WAV
+// Звук без устройства: микшер (сглаживание, затухание убранного голоса, ограничитель), стерео, синтез, фразы записей,
+// чтение WAV и прослушивание в редакторе (Mute и Solo частей)
 #include <doctest/doctest.h>
 #include <algorithm>
 #include <cmath>
@@ -8,6 +8,7 @@
 #include <fstream>
 #include <memory>
 #include <vector>
+#include "Engine\Audio\AudioAudition.h"
 #include "Engine\Audio\AudioClip.h"
 #include "Engine\Audio\AudioMixer.h"
 #include "Engine\Audio\AudioSynth.h"
@@ -233,4 +234,35 @@ TEST_CASE( "AudioClip: WAV 16-bit and float, stereo to mono, phrases" )
 	std::filesystem::remove( pcm );
 	std::filesystem::remove( flt );
 	std::filesystem::remove( slow );
+}
+
+TEST_CASE( "AudioAudition: Mute silences, Solo leaves only the soloed parts" )
+{
+	AudioAudition audition;
+	audition.beginFrame();
+	CHECK( audition.gain( false, false ) == 1.0f );
+	CHECK( audition.gain( true, false ) == 0.0f );		// Mute
+	CHECK_FALSE( audition.anySolo() );
+
+	// Solo отмечен в кадре — в силе со следующего: части разных объектов друг о друге не знают
+	CHECK( audition.gain( false, true ) == 1.0f );
+	CHECK( audition.gain( false, false ) == 1.0f );
+	audition.beginFrame();
+	CHECK( audition.anySolo() );
+	CHECK( audition.gain( false, true ) == 1.0f );		// с Solo — звучит
+	CHECK( audition.gain( false, false ) == 0.0f );		// без — молчит
+	CHECK( audition.gain( true, true ) == 0.0f );		// Mute сильнее Solo
+
+	// Solo сняли — со следующего кадра снова звучат все
+	audition.beginFrame();
+	CHECK( audition.anySolo() );
+	CHECK( audition.gain( false, false ) == 0.0f );
+	audition.beginFrame();
+	CHECK_FALSE( audition.anySolo() );
+	CHECK( audition.gain( false, false ) == 1.0f );
+
+	// «Clear solo» — новый номер сброса
+	const uint32_t seen = audition.clearRevision();
+	audition.clearSolo();
+	CHECK( audition.clearRevision() != seen );
 }

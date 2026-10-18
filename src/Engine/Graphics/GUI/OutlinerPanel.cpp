@@ -15,7 +15,8 @@ void OutlinerPanel::draw( std::vector<Editor::Entry>& entries, int& selected, bo
 	ImGui::InputTextWithHint( "##filter", "Search", &m_filter );
 
 	static const std::pair<Editor::Category, const char*> sections[] = {
-		{ Editor::Category::environment, "Environment" }, { Editor::Category::scene, "Scene" }, { Editor::Category::rendering, "Rendering" } };
+		{ Editor::Category::environment, "Environment" }, { Editor::Category::scene, "Scene" }, { Editor::Category::audio, "Audio" },
+		{ Editor::Category::rendering, "Rendering" } };
 	for( const auto& [category, title] : sections )
 	{
 		ImGui::SetNextItemOpen( true, ImGuiCond_FirstUseEver );

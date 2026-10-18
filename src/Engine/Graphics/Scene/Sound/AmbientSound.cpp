@@ -66,6 +66,52 @@ uint32_t voiceSeed( uint32_t index )
 	return ( 0x9E3779B9u * ( index + 1 ) ) ^ 0x85EBCA6Bu;
 }
 
+// Зёрна шума голосов: свои у каждого голоса, одни и те же при каждом включении части; ручьи — дальше
+constexpr uint32_t windSeed = 0;
+constexpr uint32_t grassSeed = 2;
+constexpr uint32_t crownSeed = 4;
+constexpr uint32_t streamSeed = crownSeed + AmbientSound::crownSides;
+
+FoliagePreset grassPreset()
+{
+	FoliagePreset grass;
+	grass.flutterRate = 7.0f;
+	grass.crackleRate = 60.0f;
+	grass.crackleShare = 0.35f;
+	return grass;
+}
+
+// Кроны ели — шум ниже и медленнее, щелчков меньше (иголки, а не листья)
+FoliagePreset crownPreset()
+{
+	FoliagePreset crowns;
+	crowns.hissQ = 0.6f;
+	crowns.flutterRate = 1.5f;
+	crowns.flutterDepth = 0.6f;
+	crowns.crackleRatio = 2.5f;
+	crowns.crackleRate = 40.0f;
+	crowns.crackleShare = 0.2f;
+	return crowns;
+}
+
+// Голоса части: включена — заведены (генератор make( номер голоса )), выключена — убраны (затихают)
+template<size_t count, typename Make>
+void syncPartVoices( AudioMixer& mixer, AudioMixer::VoiceId ( &voices )[count], bool enabled, Make make )
+{
+	for( size_t i = 0; i < count; ++i )
+	{
+		if( enabled && voices[i] == 0 )
+		{
+			voices[i] = mixer.addVoice( make( static_cast<uint32_t>( i ) ) );
+		}
+		else if( !enabled && voices[i] != 0 )
+		{
+			mixer.removeVoice( voices[i] );
+			voices[i] = 0;
+		}
+	}
+}
+
 }
 
 AmbientSound::AmbientSound() : SceneObject( "Ambient sound" )
@@ -81,14 +127,21 @@ AmbientSound::~AmbientSound()
 {
 	if( !m_mixer )
 		return;
-	for( AudioMixer::VoiceId voice : m_windVoices )
-		m_mixer->removeVoice( voice );
-	for( AudioMixer::VoiceId voice : m_grassVoices )
-		m_mixer->removeVoice( voice );
-	for( AudioMixer::VoiceId voice : m_crownVoices )
-		m_mixer->removeVoice( voice );
+	Settings off;
+	off.windEnabled = off.grassEnabled = off.crownEnabled = false;
+	syncVoices( off );
 	for( const StreamVoice& voice : m_streamVoices )
 		m_mixer->removeVoice( voice.voice );
+}
+
+void AmbientSound::syncVoices( const Settings& settings )
+{
+	syncPartVoices( *m_mixer, m_windVoices, settings.windEnabled,
+					[]( uint32_t i ) { return std::make_unique<WindGenerator>( voiceSeed( windSeed + i ) ); } );
+	syncPartVoices( *m_mixer, m_grassVoices, settings.grassEnabled,
+					[]( uint32_t i ) { return std::make_unique<FoliageGenerator>( voiceSeed( grassSeed + i ), grassPreset() ); } );
+	syncPartVoices( *m_mixer, m_crownVoices, settings.crownEnabled,
+					[]( uint32_t i ) { return std::make_unique<FoliageGenerator>( voiceSeed( crownSeed + i ), crownPreset() ); } );
 }
 
 bool AmbientSound::initialize( const Settings& settings, AudioMixer& mixer, Wind& wind, const TerrainPipeline* terrain )
@@ -101,34 +154,17 @@ bool AmbientSound::initialize( const Settings& settings, AudioMixer& mixer, Wind
 	addSettingProperties( m_grassProperties, ambientSoundSchema(), settings, "Grass" );
 	addSettingProperties( m_crownProperties, ambientSoundSchema(), settings, "Crowns" );
 	addSettingProperties( m_streamProperties, ambientSoundSchema(), settings, "Streams" );
-	m_properties.addSubContainer( &m_windProperties );
-	m_properties.addSubContainer( &m_grassProperties );
-	m_properties.addSubContainer( &m_crownProperties );
-	m_properties.addSubContainer( &m_streamProperties );
+	for( PropertyContainer* part : { &m_windProperties, &m_grassProperties, &m_crownProperties, &m_streamProperties } )
+	{
+		addAuditionProperties( *part );
+		m_properties.addSubContainer( part );
+	}
 
-	// Голоса — сразу все, молчат, пока не задана громкость
-	uint32_t seed = 0;
-	for( AudioMixer::VoiceId& voice : m_windVoices )
-		voice = mixer.addVoice( std::make_unique<WindGenerator>( voiceSeed( seed++ ) ) );
-	FoliagePreset grass;
-	grass.flutterRate = 7.0f;
-	grass.crackleRate = 60.0f;
-	grass.crackleShare = 0.35f;
-	for( AudioMixer::VoiceId& voice : m_grassVoices )
-		voice = mixer.addVoice( std::make_unique<FoliageGenerator>( voiceSeed( seed++ ), grass ) );
-	// Кроны ели — шум ниже и медленнее, щелчков меньше (иголки, а не листья)
-	FoliagePreset crowns;
-	crowns.hissQ = 0.6f;
-	crowns.flutterRate = 1.5f;
-	crowns.flutterDepth = 0.6f;
-	crowns.crackleRatio = 2.5f;
-	crowns.crackleRate = 40.0f;
-	crowns.crackleShare = 0.2f;
-	for( AudioMixer::VoiceId& voice : m_crownVoices )
-		voice = mixer.addVoice( std::make_unique<FoliageGenerator>( voiceSeed( seed++ ), crowns ) );
-	// Голоса ручьёв заводятся по слышным местам воды (updateStreams)
-	m_nextSeed = seed;
+	// Голоса включённых частей — сразу все, молчат, пока не задана громкость; ручьёв — по слышным местам воды (updateStreams)
 	m_mixer = &mixer;
+	m_nextSeed = streamSeed;
+	m_clearSolo = mixer.audition().clearRevision();
+	syncVoices( settings );
 	return true;
 }
 
@@ -172,9 +208,19 @@ void AmbientSound::update( const FrameContext& frame )
 {
 	if( !m_mixer )
 		return;
+	AudioAudition& audition = m_mixer->audition();
+	if( takeClearSolo( audition, m_clearSolo ) )
+		for( PropertyContainer* part : { &m_windProperties, &m_grassProperties, &m_crownProperties, &m_streamProperties } )
+			clearSolo( *part );
 	const Settings settings = this->settings();
+	syncVoices( settings );
 	const WindParameters wind = m_wind->parameters();
 	const float volume = visible() ? std::max( settings.volume, 0.0f ) : 0.0f;
+	// Части: включение и прослушивание
+	const float windPart = auditionGain( audition, m_windProperties, settings.windEnabled );
+	const float grassPart = auditionGain( audition, m_grassProperties, settings.grassEnabled );
+	const float crownPart = auditionGain( audition, m_crownProperties, settings.crownEnabled );
+	const float streamPart = auditionGain( audition, m_streamProperties, settings.streamEnabled );
 	const float time = frame.gameTime;
 
 	const AudioListener listener = listenerFromView( frame.view );
@@ -216,30 +262,32 @@ void AmbientSound::update( const FrameContext& frame )
 		const float windRelative = relative( windSpeed );
 
 		AudioVoiceTarget target;
-		const float windGain = volume * settings.windVolume * windRelative * std::sqrt( windRelative );
+		const float windGain = volume * windPart * settings.windVolume * windRelative * std::sqrt( windRelative );
 		target.left = side == 0 ? windGain : 0.0f;
 		target.right = side == 0 ? 0.0f : windGain;
 		target.controls[0] = windSpeed;
 		target.controls[1] = std::min( sample.turbulence + 0.2f, 1.0f );
 		target.controls[2] = settings.windFrequency;
-		m_mixer->setTarget( m_windVoices[side], target );
+		if( m_windVoices[side] != 0 )
+			m_mixer->setTarget( m_windVoices[side], target );
 
 		// Трава — у земли: ветер без прибавки высоты
 		const float grassRelative = relative( sample.speed );
-		const float grassGain = volume * settings.grassVolume * std::sqrt( grass ) * grassNear * rustle( grassRelative );
+		const float grassGain = volume * grassPart * settings.grassVolume * std::sqrt( grass ) * grassNear * rustle( grassRelative );
 		target = AudioVoiceTarget();
 		target.left = side == 0 ? grassGain : 0.0f;
 		target.right = side == 0 ? 0.0f : grassGain;
 		target.controls[0] = grassRelative * 1.5f;
 		target.controls[1] = settings.grassFrequency;
-		m_mixer->setTarget( m_grassVoices[side], target );
+		if( m_grassVoices[side] != 0 )
+			m_mixer->setTarget( m_grassVoices[side], target );
 	}
 
 	// Кроны: сторона света — сектор лучами, лес ближе — весомее; ветер — в середине сектора. Доля леса — против весов у
 	// земли: камера выше крон — тот же лес дальше и тише
 	const float crownRadius = std::max( settings.crownRadius, 1.0f );
 	const float aboveCrowns = std::max( aboveGround - crownHeight, 0.0f );
-	for( uint32_t side = 0; side < crownSides; ++side )
+	for( uint32_t side = 0; side < crownSides && settings.crownEnabled; ++side )
 	{
 		const float azimuth = side * 0.5f * pi;
 		float forest = 0.0f;
@@ -263,13 +311,13 @@ void AmbientSound::update( const FrameContext& frame )
 		const float crownRelative = relative( sample.speed * crownWindGain );
 
 		AudioVoiceTarget target;
-		spatialize( listener, direction, volume * settings.crownVolume * std::sqrt( forest ) * rustle( crownRelative ), target );
+		spatialize( listener, direction, volume * crownPart * settings.crownVolume * std::sqrt( forest ) * rustle( crownRelative ), target );
 		target.controls[0] = crownRelative * 1.5f;
 		target.controls[1] = settings.crownFrequency;
 		m_mixer->setTarget( m_crownVoices[side], target );
 	}
 
-	updateStreams( settings, listener, volume );
+	updateStreams( settings, listener, volume * streamPart );
 }
 
 void AmbientSound::buildStreamBlocks()

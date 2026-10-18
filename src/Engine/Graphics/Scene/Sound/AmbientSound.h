@@ -25,7 +25,8 @@ class TerrainPipeline;
 //   месту уровня; слышны streamVoices самых громких у камеры (голос — генератор пузырьков BrookGenerator, остальные места
 //   молчат, как виртуальные голоса UE), с затуханием по расстоянию, поглощением воздухом и заглушением гребнем между
 //   камерой и водой (луч по карте высот). Блоки — заново, когда сменилась итоговая карта (перестройка русел).
-// Ветра нет (сила 0, -nowind) — ветер, трава и кроны молчат, ручьи — нет; флажок видимости в Outliner — тихо всё
+// Ветра нет (сила 0, -nowind) — ветер, трава и кроны молчат, ручьи — нет; флажок видимости в Outliner — тихо всё.
+// У части (подокна) — «Enabled» (сохраняется: выключенная голосов не держит) и прослушивание «Mute» / «Solo» (AudioAudition)
 class AmbientSound : public SceneObject
 {
 public:
@@ -44,6 +45,7 @@ public:
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override {}
 	PropertyContainer* properties() override { return &m_properties; }
 	bool savedWithLevel() const override { return true; }
+	bool audio() const override { return true; }
 	// Значения окна — для «Save level» (строка AmbientSound)
 	Settings settings() const;
 
@@ -65,8 +67,10 @@ private:
 	};
 	// Места воды по растру ручьёв конвейера; нет воды — пусто
 	void buildStreamBlocks();
-	// Слышные места воды — голоса, их цели; volume — общая громкость
+	// Слышные места воды — голоса, их цели; volume — общая громкость с прослушиванием части
 	void updateStreams( const Settings& settings, const AudioListener& listener, float volume );
+	// Голоса ветра, травы и крон — по «Enabled» частей: включена — заведены, выключена — убраны
+	void syncVoices( const Settings& settings );
 
 	PropertyContainer m_properties;
 	PropertyContainer m_windProperties;
@@ -77,9 +81,11 @@ private:
 	AudioMixer* m_mixer = nullptr;
 	Wind* m_wind = nullptr;
 	const TerrainPipeline* m_terrain = nullptr;
+	// 0 — голоса нет (часть выключена)
 	AudioMixer::VoiceId m_windVoices[2] = {};		// слева, справа
 	AudioMixer::VoiceId m_grassVoices[2] = {};
 	AudioMixer::VoiceId m_crownVoices[crownSides] = {};	// север, восток, юг, запад
+	uint32_t m_clearSolo = 0;		// номер «Clear solo», по который сняты Solo частей
 	std::vector<StreamBlock> m_streamBlocks;
 	uint32_t m_streamRevision = ~0u;	// номер итоговой карты, по которой собраны места воды
 	// Слышные места воды: голос на место (уходит — затихает, новое — заводит свой)

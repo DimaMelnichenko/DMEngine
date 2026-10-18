@@ -37,12 +37,17 @@ CREATE TABLE IF NOT EXISTS AmbientSound (
     crown_frequency REAL,
     stream_volume REAL,
     stream_voices INTEGER,
-    stream_distance REAL
+    stream_distance REAL,
+    wind_enabled INTEGER,
+    grass_enabled INTEGER,
+    crown_enabled INTEGER,
+    stream_enabled INTEGER
 );
 """
 
 # Колонки, добавленные после первой версии таблицы: у базы без них — ALTER TABLE
-ADDED = [('stream_volume', 'REAL'), ('stream_voices', 'INTEGER'), ('stream_distance', 'REAL')]
+ADDED = [('stream_volume', 'REAL'), ('stream_voices', 'INTEGER'), ('stream_distance', 'REAL'),
+         ('wind_enabled', 'INTEGER'), ('grass_enabled', 'INTEGER'), ('crown_enabled', 'INTEGER'), ('stream_enabled', 'INTEGER')]
 
 
 def migrate(db):

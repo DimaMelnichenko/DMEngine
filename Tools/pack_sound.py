@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS Sounds (
     phrases TEXT,
     source TEXT,
     author TEXT,
-    license TEXT
+    license TEXT,
+    volume REAL
 );
 """
 
@@ -197,6 +198,10 @@ def main():
     text = ';'.join('%.3f-%.3f' % (a / RATE, b / RATE) for a, b in phrases)
     db = sqlite3.connect(DB)
     db.executescript(SCHEMA)
+    # Громкость записи (окно «Sounds») — колонка после первой версии таблицы
+    if 'volume' not in [row[1] for row in db.execute('PRAGMA table_info(Sounds)')]:
+        db.execute('ALTER TABLE Sounds ADD COLUMN volume REAL')
+        print('migrated: Sounds.volume added')
     file = 'Sounds\\' + args.name + '.wav'
     if db.execute('SELECT id FROM Sounds WHERE name = ?', (args.name,)).fetchone():
         db.execute('UPDATE Sounds SET file = ?, phrases = ?, source = COALESCE(?, source), author = COALESCE(?, author), '

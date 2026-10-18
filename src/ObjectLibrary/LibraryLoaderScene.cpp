@@ -66,7 +66,8 @@ void LibraryLoader::loadSoundscape( LevelDescription& level )
 	SQLite::Database& db = DBConnector::instance().db();
 	if( !db.tableExists( "SoundscapeLayers" ) || !db.tableExists( "Sounds" ) )
 		return;
-	SQLite::Statement query( db, "SELECT * FROM SoundscapeLayers WHERE level = :level AND enabled = 1 ORDER BY id" );
+	// Все слои уровня, и выключенные: их включают в окне «Soundscape»
+	SQLite::Statement query( db, "SELECT * FROM SoundscapeLayers WHERE level = :level ORDER BY id" );
 	query.bind( ":level", level.id );
 	while( query.executeStep() )
 	{
@@ -75,30 +76,26 @@ void LibraryLoader::loadSoundscape( LevelDescription& level )
 		layer.name = query.getColumn( "name" ).getString();
 		readSettings( query, GS::soundscapeLayerSchema(), layer, "Soundscape layer " + layer.name );
 	}
-	// Записи слоёв — имена через запятую, каждая запись один раз
-	SQLite::Statement sound( db, "SELECT * FROM Sounds WHERE name = :name" );
+	// Все записи: окно «Sounds» и флажки записей слоя; звук записи читается, когда её поют или слушают
+	SQLite::Statement sound( db, "SELECT * FROM Sounds ORDER BY name" );
+	while( sound.executeStep() )
+	{
+		GS::SoundRecord& record = level.sounds.emplace_back();
+		record.id = sound.getColumn( "id" ).getUInt();
+		record.name = sound.getColumn( "name" ).getString();
+		record.file = sound.getColumn( "file" ).getString();
+		record.phrases = sound.getColumn( "phrases" ).getString();
+		record.author = sound.getColumn( "author" ).getString();
+		record.license = sound.getColumn( "license" ).getString();
+		readSettings( sound, GS::soundRecordSchema(), record, "Sound " + record.name );
+	}
 	for( const GS::SoundscapeLayerSettings& layer : level.soundscapeLayers )
 	{
 		std::vector<std::string> names;
 		str_split( layer.sound, names, ", " );
 		for( const std::string& name : names )
-		{
-			if( std::any_of( level.sounds.begin(), level.sounds.end(), [&]( const GS::SoundRecord& s ) { return s.name == name; } ) )
-				continue;
-			sound.bind( ":name", name );
-			if( sound.executeStep() )
-			{
-				GS::SoundRecord& record = level.sounds.emplace_back();
-				record.name = name;
-				record.file = sound.getColumn( "file" ).getString();
-				record.phrases = sound.getColumn( "phrases" ).getString();
-				record.author = sound.getColumn( "author" ).getString();
-				record.license = sound.getColumn( "license" ).getString();
-			}
-			else
+			if( std::none_of( level.sounds.begin(), level.sounds.end(), [&]( const GS::SoundRecord& s ) { return s.name == name; } ) )
 				LOG( "Soundscape layer " + layer.name + ": no sound " + name + " in table Sounds (Tools/pack_sound.py)" );
-			sound.reset();
-		}
 	}
 }
 
@@ -572,12 +569,38 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 								previous.farTerrain && previous.farTerrain->glacier ? &*previous.farTerrain->glacier : nullptr );
 		}
 
-		// Слои певцов — их строки SoundscapeLayers
+		// Слои певцов — их строки SoundscapeLayers: убранные в редакторе удаляются, добавленные — новые строки уровня (имя;
+		// остальное пишет UPDATE по описанию — у новой строки все колонки, без записей — NULL). id новых — в data, из неё — в слои
 		using Layer = GS::SoundscapeLayerSettings;
-		for( const Layer& layer : data.soundscapeLayers )
-			if( layer.id != 0 )
-				updateSettings( db, "SoundscapeLayers", layer.id, GS::soundscapeLayerSchema(), layer,
-								findPrevious( previous.soundscapeLayers, layer.id, []( const Layer& l ) { return l.id; } ) );
+		SQLite::Statement deleteLayer( db, "DELETE FROM SoundscapeLayers WHERE id = :id" );
+		for( uint32_t id : data.removedSoundscapeLayers )
+		{
+			deleteLayer.bind( ":id", id );
+			deleteLayer.exec();
+			deleteLayer.reset();
+		}
+		SQLite::Statement insertLayer( db, "INSERT INTO SoundscapeLayers (level, name) VALUES (:level, :name)" );
+		for( Layer& layer : data.soundscapeLayers )
+		{
+			// Прежнее — по id; у вставленной сейчас строки его нет (id мог достаться от удалённой)
+			const Layer* before = nullptr;
+			if( layer.id == 0 )
+			{
+				insertLayer.bind( ":level", level.id );
+				insertLayer.bind( ":name", layer.name );
+				insertLayer.exec();
+				insertLayer.reset();
+				layer.id = static_cast<uint32_t>( db.getLastInsertRowid() );
+			}
+			else
+				before = findPrevious( previous.soundscapeLayers, layer.id, []( const Layer& l ) { return l.id; } );
+			updateSettings( db, "SoundscapeLayers", layer.id, GS::soundscapeLayerSchema(), layer, before );
+		}
+		// Громкость записей — окно «Sounds»
+		for( const GS::SoundRecord& record : data.sounds )
+			if( record.id != 0 )
+				updateSettings( db, "Sounds", record.id, GS::soundRecordSchema(), record,
+								findPrevious( previous.sounds, record.id, []( const GS::SoundRecord& r ) { return r.id; } ) );
 
 		if( data.ambientSound && level.ambientSound )
 			updateSettings( db, "AmbientSound", level.ambientSound->id, GS::ambientSoundSchema(), *data.ambientSound,

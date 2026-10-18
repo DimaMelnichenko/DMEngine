@@ -101,6 +101,8 @@ public:
 	virtual PropertyContainer* properties() { return nullptr; }
 	// Часть окружения уровня (небо, облака): в Outliner — раздел Environment
 	virtual bool environment() const { return false; }
+	// Звук уровня (звуки окружения, певцы): в Outliner — раздел Audio
+	virtual bool audio() const { return false; }
 	// Свойства окна пишет в базу «Save level» (окружение, террейн, расстановка, вода, частицы); у остальных правки живут
 	// до выхода
 	virtual bool savedWithLevel() const { return environment(); }

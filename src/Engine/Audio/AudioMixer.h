@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <vector>
 #include <DirectXMath.h>
+#include "AudioAudition.h"
 
 namespace GS
 {
@@ -81,6 +82,8 @@ public:
 		uint64_t blocks = 0;
 	};
 	Stats stats() const;
+	// Прослушивание в редакторе (Mute и Solo частей звука уровня) — главный поток: части множат на него громкость целей
+	AudioAudition& audition() { return m_audition; }
 
 	// Нить вывода: блок frames кадров смеси, каналы через один
 	void render( float* stereo, uint32_t frames );
@@ -115,6 +118,9 @@ private:
 	std::atomic<uint64_t> m_limited{ 0 };
 	float m_limiterGain = 1.0f;
 	std::atomic<uint64_t> m_blocks{ 0 };
+
+	// Только главный поток
+	AudioAudition m_audition;
 };
 
 }

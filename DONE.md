@@ -806,3 +806,21 @@
   Снимок с «Show skeleton» — у каждого оленя своя поза. Кадры `check_frames.py` как прежде (раскладка `InstanceTransform`
   поменялась у всех инстансных вызовов — модели уровня рисуются как раньше), debug-слой молчит. Описание —
   `docs/animation.md`.
+- [x] Редактор звука, шаг 1 — управление (запрос Dimok 2026-10-18: громкость ветра не найти, «полный набор» настройки; 2026-10-18).
+  Раздел Outliner «Audio» (`Editor::Category::audio`, `SceneObject::audio`): окна «Audio» (громкость вывода, «Clear solo»),
+  «Ambient sound», «Soundscape» и новое «Sounds». Части звуков окружения — «Enabled» (колонки `AmbientSound.*_enabled`, поля
+  `ambientSoundSchema`; выключенная убирает голоса — `AmbientSound::syncVoices`, зёрна те же). Прослушивание «Mute» / «Solo» у
+  частей и слоёв (как у дорожек DAW): `AudioAudition` в ядре (`Audio/AudioAudition.h`, у микшера — `AudioMixer::audition`;
+  Solo — со следующего кадра), флажки — редакторские (`Property::setTransient`), общие функции — `SoundPlace.h`. Слои певцов:
+  «Enabled» (загрузчик берёт и выключенные), записи и места — подокна флажков «Sounds» и «Habitat» (маски
+  `TerrainPipeline::maskNames` и `lake_shore`; текстом — прежние по порядку, новые следом, списки — по номеру правки флажков),
+  «Add layer» / «Delete» с отменой, как у источников света; «Save level» вставляет и удаляет строки `SoundscapeLayers`
+  (`removedSoundscapeLayers`, `Soundscape::markSaved`). Громкость записи — `Sounds.volume` (`soundRecordSchema`, окно «Sounds»:
+  «Volume», «Play» / «Stop» — фразы записи у слушателя мимо Mute и Solo), множитель у певцов. База: колонки — через
+  `Tools/ambient_sound.py`, `Tools/soundscape.py` и `Tools/pack_sound.py` (как прежние), `SoundscapeLayers.sound` — без NOT NULL
+  (новый слой без записей не сохранялся — найдено проверкой); `soundscape.py sounds` / `sound ЗАПИСЬ --volume`. Тесты: 74 (+1:
+  прослушивание). Проверка записями смеси (`audio record`, `audio_check.py`): всё — центроид 2 кГц; Solo ветра — только ветер
+  (низ 0,72, 370 Гц); громкость ветра 0,25 вместо 0,5 — тише на 4–7 дБ (порывы); Solo нового слоя со сверчками — только
+  сверчки (верх 1,0, 3,5 кГц); «Play» кукушки и дрозда при всём заглушённом — звучат. Новый слой — «Save level» вставил строку
+  (записи, часы 0–24, 4 певца), «Delete», Ctrl+Z, «Delete», «Save level» — строка удалена; база как была. `Update: Soundscape` —
+  ~0,04 мс с десятью слоями. Debug-слой молчит. Описание — `docs/audio.md`, «Окна редактора».

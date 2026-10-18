@@ -7,8 +7,13 @@
   python Tools/soundscape.py add ИМЯ --sound запись [--param поле=значение ...] [--level Test]
   python Tools/soundscape.py set ИМЯ --param поле=значение [...] [--level Test]
   python Tools/soundscape.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level Test]
+  python Tools/soundscape.py sounds                          — записи (Sounds) с громкостью
+  python Tools/soundscape.py sound ЗАПИСЬ --volume 0.8       — громкость записи (Sounds.volume; пусто — NULL, 1)
 
-Поля — колонки SoundscapeLayers: sound (Sounds.name; несколько через запятую — у каждого певца одна из них), habitat (маски места через запятую: mask_forest_spruce, mask_grass …;
+Те же поля правит окно «Soundscape» (раздел Audio в Outliner): слои добавляются и удаляются кнопками, записи и места —
+флажками; громкость записей — окно «Sounds». «Save level» пишет их обратно.
+
+Поля — колонки SoundscapeLayers: sound (Sounds.name; несколько через запятую — у каждого певца одна из них; NULL — слой молчит), habitat (маски места через запятую: mask_forest_spruce, mask_grass …;
 пусто — где угодно), hours_from / hours_to (часы суток; от > до — через полночь), singers (певцов сразу), distance_from /
 distance_to (от слушателя, м), height_from / height_to (над землёй, м), bout_from / bout_to (поёт с одного места, с),
 pause_from / pause_to (между фразами, с; меньше нуля — внахлёст), arrival_from / arrival_to (место опустело — следующий
@@ -29,7 +34,7 @@ CREATE TABLE IF NOT EXISTS SoundscapeLayers (
     level INTEGER NOT NULL REFERENCES Levels(id),
     name TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
-    sound TEXT NOT NULL,
+    sound TEXT,
     habitat TEXT,
     hours_from REAL,
     hours_to REAL,
@@ -56,6 +61,20 @@ FIELDS = ['sound', 'habitat', 'hours_from', 'hours_to', 'singers', 'distance_fro
 ADDED = [('arrival_from', 'REAL'), ('arrival_to', 'REAL')]
 
 
+def relax_sound(db):
+    """sound был NOT NULL; слой, добавленный в окне «Soundscape», бывает без записи (NULL — молчит): таблица — заново без
+    ограничения (SQLite не меняет ограничения колонки), строки — те же"""
+    info = db.execute('PRAGMA table_info(SoundscapeLayers)').fetchall()
+    if not any(row[1] == 'sound' and row[3] for row in info):
+        return
+    columns = ', '.join(row[1] for row in info)
+    db.execute('ALTER TABLE SoundscapeLayers RENAME TO SoundscapeLayers_old')
+    db.execute(SCHEMA.replace('CREATE TABLE IF NOT EXISTS', 'CREATE TABLE'))
+    db.execute('INSERT INTO SoundscapeLayers (%s) SELECT %s FROM SoundscapeLayers_old' % (columns, columns))
+    db.execute('DROP TABLE SoundscapeLayers_old')
+    print('migrated: SoundscapeLayers.sound may be NULL')
+
+
 def level_id(db, level):
     row = db.execute('SELECT id FROM Levels WHERE name = ?', (level,)).fetchone()
     if row is None:
@@ -77,11 +96,12 @@ def parse_params(items):
 
 def main():
     parser = argparse.ArgumentParser(description='Soundscape layers of a level (SoundscapeLayers)')
-    parser.add_argument('command', choices=['list', 'add', 'set', 'delete', 'enable', 'disable'])
+    parser.add_argument('command', choices=['list', 'add', 'set', 'delete', 'enable', 'disable', 'sounds', 'sound'])
     parser.add_argument('name', nargs='?')
     parser.add_argument('--level', default='Test')
     parser.add_argument('--sound', help='recordings: Sounds.name, several - comma-separated')
     parser.add_argument('--param', action='append', help='field=value, repeatable (empty value - NULL)')
+    parser.add_argument('--volume', help='sound: gain of the recording (empty - NULL, 1)')
     args = parser.parse_args()
 
     db = sqlite3.connect(DB)
@@ -92,6 +112,28 @@ def main():
         if column not in existing:
             db.execute('ALTER TABLE SoundscapeLayers ADD COLUMN %s %s' % (column, kind))
             print('migrated: SoundscapeLayers.%s added' % column)
+    relax_sound(db)
+    has_sounds = db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'Sounds'").fetchone() is not None
+    # Громкость записи (окно «Sounds») — колонка после первой версии таблицы Sounds (Tools/pack_sound.py)
+    if has_sounds and 'volume' not in [row[1] for row in db.execute('PRAGMA table_info(Sounds)')]:
+        db.execute('ALTER TABLE Sounds ADD COLUMN volume REAL')
+        print('migrated: Sounds.volume added')
+
+    if args.command in ('sounds', 'sound'):
+        if not has_sounds:
+            sys.exit('no table Sounds (Tools/pack_sound.py)')
+        if args.command == 'sounds':
+            for name, file, volume in db.execute('SELECT name, file, volume FROM Sounds ORDER BY name'):
+                print('%s %s volume=%s' % (name, file, 1.0 if volume is None else volume))
+        else:
+            if not args.name or args.volume is None:
+                sys.exit('sound: a recording name and --volume are required')
+            volume = float(args.volume) if args.volume != '' else None
+            if db.execute('UPDATE Sounds SET volume = ? WHERE name = ?', (volume, args.name)).rowcount == 0:
+                sys.exit('sound %s is not found in Sounds' % args.name)
+            print('sound %s: volume %s' % (args.name, 'NULL' if volume is None else volume))
+        db.commit()
+        return
     level = level_id(db, args.level)
 
     if args.command == 'list':

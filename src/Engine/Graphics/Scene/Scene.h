@@ -72,6 +72,9 @@ public:
 	World& world() { return m_world; }
 	// Сущности мира на экране и окно «World»
 	WorldEntities& worldEntities() { return m_worldEntities; }
+	// Звуки окружения и певцы: окна раздела Audio, метки во вьюпорте
+	AmbientSound& ambientSound() { return m_ambientSound; }
+	Soundscape& soundscape() { return m_soundscape; }
 	// Ветер уровня (Levels.wind): константы кадра — Wind::parameters
 	Wind& wind();
 	const LevelDescription& level() const;

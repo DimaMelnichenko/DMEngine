@@ -60,6 +60,8 @@
 - **Outliner** — окна свойств по разделам:
   - **Environment** — свет и время суток, небо или панорама, облака, туман, постобработка, ветер;
   - **Scene** — объекты сцены: террейн, модели, вода, наборы расстановки, частицы, мир симуляции («World», [simulation.md](simulation.md));
+  - **Audio** — звук: «Audio» (громкость вывода, «Clear solo»), «Ambient sound» (звуки окружения), «Soundscape» (слои певцов),
+    «Sounds» (записи) — [audio.md](audio.md), «Окна редактора»;
   - **Rendering** — рендерер и тени.
 
   Флажок слева — видимость объекта сцены (`SceneObject::setVisible`). Звёздочка — есть изменения после загрузки или
@@ -280,7 +282,7 @@ Details строка «Saved with the level», у остальных — «Not s
 
 Объект сцены отдаёт `properties()` — `PropertyContainer` (`src/Common/Properties`); `Engine::initialize` регистрирует
 его в Outliner (`GUI::addPropertyWatching( контейнер, раздел, объект, сохраняется )`). Раздел Environment у объекта —
-`SceneObject::environment()`, сохранение с уровнем — `SceneObject::savedWithLevel()` (у окружения — всегда): объект
+`SceneObject::environment()`, Audio — `SceneObject::audio()`, сохранение с уровнем — `SceneObject::savedWithLevel()` (у окружения — всегда): объект
 отдаёт настройки по своим свойствам (`settings()`, `layerRecords()`), а `Scene::saveLevel` передаёт их загрузчику —
 объекты о базе не знают. Контролы панель строит сама по типу значения и `GUIControlType` — один шаблон
 (`PropertyWidgets::controlCell`) на все окна: у числа — поле как в Blender (`SLIDER` — с заливкой доли и границами,
