@@ -1,8 +1,9 @@
-// Логика рендера и сцены без устройства: ключи сортировки команд (DrawSortKey.h) и пересадка экземпляров на новую землю
-// (ModelReseat.h)
+// Логика рендера и сцены без устройства: ключи сортировки команд (DrawSortKey.h), пересадка экземпляров на новую землю
+// (ModelReseat.h) и ствол у земли для капсулы коллизии (TrunkCollision.h)
 #include <doctest/doctest.h>
 #include "DrawSortKey.h"
 #include "Model\ModelReseat.h"
+#include "Model\TrunkCollision.h"
 
 using namespace GS;
 using namespace DirectX;
@@ -53,4 +54,23 @@ TEST_CASE( "reseatPosition: moves by the terrain shift under the model, ignores 
 	} ) );
 	CHECK( position.y == doctest::Approx( 5.75f ) );
 	CHECK( radiusSeen == doctest::Approx( 1.0f ) );		// маленькая модель — не меньше метра
+}
+
+TEST_CASE( "trunkBase: the trunk axis and width at the ground, low branches on one side don't move it" )
+{
+	// Ствол — кольца радиусом 0,3 м вокруг начала координат от −0,3 до 20 м; нижняя лапа — с одного бока, кончик на 0,5 м
+	std::vector<XMFLOAT3> points;
+	for( float y = -0.3f; y <= 20.0f; y += 0.5f )
+		for( int i = 0; i < 12; ++i )
+			points.push_back( XMFLOAT3( 0.3f * std::cos( i * XM_2PI / 12.0f ), y, 0.3f * std::sin( i * XM_2PI / 12.0f ) ) );
+	for( float x = 0.5f; x <= 3.5f; x += 0.25f )
+		points.push_back( XMFLOAT3( x, 0.5f + 0.1f * x, 0.2f ) );
+	TrunkBase base;
+	REQUIRE( trunkBase( points, 0.25f, base ) );
+	CHECK( base.center.x == doctest::Approx( 0.0f ).epsilon( 0.01 ) );
+	CHECK( base.center.y == doctest::Approx( 0.0f ).epsilon( 0.01 ) );
+	CHECK( base.radius == doctest::Approx( 0.3f ).epsilon( 0.01 ) );
+	CHECK( base.bottom == doctest::Approx( -0.3f ) );
+	CHECK( base.height == doctest::Approx( 20.0f ) );	// кольца до 19,7 м
+	CHECK_FALSE( trunkBase( {}, 0.25f, base ) );
 }

@@ -43,6 +43,10 @@ class Viewport
 public:
 	// Кадр вьюпорта: scene — что показывать и править (экземпляры моделей, кривые русел, источники света, эмиттеры)
 	void update( const DMCamera& camera, GS::Scene& scene, GUI& gui );
+	// Отладочный вид столкновений («Show collision» окна «World»): каркас форм тел и персонажей рядом с камерой линиями
+	// поверх кадра (PhysicsWorld::debugLines); неподвижные — зелёные, персонажи — жёлтые. Его зовёт и update, и Engine, пока
+	// камера смотрит мышью (ходьба, полёт с I): тогда update не зовётся, а каркас нужен
+	void drawCollision( const DMCamera& camera, GS::Scene& scene ) const;
 	// Команды вьюпорта в консоли и удалённом управлении: pick (клик по сцене), brush (мазок кисти), stream (правка точки кривой
 	// русла) — ViewportCommands.cpp; camera, scene и gui живут дольше консоли
 	void registerCommands( GS::ConsoleCommands& console, DMCamera& camera, GS::Scene& scene, GUI& gui );
@@ -87,9 +91,6 @@ private:
 	// Ничего не выбрано: экземпляр, источник, эмиттер, точка кривой
 	void clearSelection();
 	void drawSelection( const DMCamera& camera, const GS::ModelInstances& models ) const;
-	// Отладочный вид столкновений («Show collision» окна «World»): каркас форм тел и персонажей рядом с камерой линиями
-	// поверх кадра (PhysicsWorld::debugLines); неподвижные — зелёные, персонажи — жёлтые
-	void drawCollision( const DMCamera& camera, GS::Scene& scene ) const;
 	// Кнопки режима гизмо над сценой и клавиши 5 / 6 / 7; rotate / scale — есть ли такие режимы у выбранного (у
 	// источников света масштаба нет, у точечного — и поворота)
 	void drawToolbar( bool rotate = true, bool scale = true, bool localAxes = true );

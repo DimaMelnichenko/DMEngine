@@ -406,6 +406,8 @@ bool Engine::render( const FrameContext& frame )
 		// Вьюпорт — в кадре ImGui: выбор кликом по сцене, рамка выбранного; пока камера смотрит мышью — без кликов
 		if( !m_mouseLook )
 			m_viewport.update( m_cameraPool["main"], m_scene, m_GUI );
+		else
+			m_viewport.drawCollision( m_cameraPool["main"], m_scene );	// ходьба и полёт мышью — без выбора, но с каркасом
 		m_GUI.End();
 		auto guiFinish = TIME_POINT();
 		m_guiRenderTime = TIME_DIFF( guiStart, guiFinish );
