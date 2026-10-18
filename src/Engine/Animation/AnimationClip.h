@@ -33,6 +33,11 @@ public:
 
 	// Поза в момент time, с: у зацикленного — по модулю длительности, у разового — до последнего кадра; кадры — линейно
 	void sample( double time, std::vector<JointTransform>& pose ) const;
+	// Движение корня с from до to, с (to ≥ from), как root motion delta в UE: сдвиг в осях корня в момент from (x — вбок к +X,
+	// z — вперёд) и поворот вокруг вертикали. У зацикленного — через стыки цикла, у разового — в пределах клипа
+	RootMotion rootMotionDelta( double from, double to ) const;
+	// Кривая корня в момент time в пределах клипа — линейно между кадрами
+	RootMotion rootMotionAt( double time ) const;
 
 	uint32_t jointCount() const { return m_jointCount; }
 	uint32_t frameCount() const { return m_frameCount; }
@@ -43,6 +48,8 @@ public:
 	float rootSpeed() const { return m_rootSpeed; }
 	float rootTurn() const { return m_rootTurn; }
 	void setRootMotion( float speed, float turn ) { m_rootSpeed = speed; m_rootTurn = turn; }
+	// Кривая движения корня по кадрам (frameCount точек) — у клипа из create; из файла она своя
+	void setRootMotionCurve( std::vector<RootMotion> curve ) { if( curve.size() == m_frameCount ) m_rootMotion = std::move( curve ); }
 	const std::vector<RootMotion>& rootMotion() const { return m_rootMotion; }
 	// Границы модели по всем кадрам (пространство модели)
 	const DirectX::XMFLOAT3& boundsMin() const { return m_boundsMin; }

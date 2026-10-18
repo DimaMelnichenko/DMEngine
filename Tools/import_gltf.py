@@ -746,6 +746,7 @@ def collect_models(gltf, asset, materials, rename, bake, bake_scale=1.0):
 CLIP_RATE = 30.0                       # кадров в секунду в файле клипа
 ROOT_MOTION_THRESHOLD = 0.05           # кость корня — первая, что уходит по горизонтали дальше, м
 LOOP_TOLERANCE = 0.02                  # клип зациклен, если кости в первом и последнем кадре ближе, м
+TURN_THRESHOLD = 0.05                  # клип шага с поворотом корня быстрее, рад/с, — вариант с поворотом (L / R)
 # Поворот на 180° вокруг вертикали в координатах glTF: с ним и зеркалом по Z перед модели glTF (+Z) — перед движка (+Z, взгляд
 # 0 у Locomotion); вместе это зеркало по X
 TURN = np.diag([-1.0, 1.0, -1.0, 1.0])
@@ -1323,28 +1324,30 @@ class Database:
         return skeleton_id
 
     def animations(self, skeleton_id, clips, locomotion):
-        """Клипы скелета (Animations) по имени: файлы и точки шага по скорости. locomotion — {имя: скорость} (None —
-        оставить прежние). Клипы, которых больше нет, удаляются; экземпляры уровня с ними — без клипа. Возвращает {имя: id}."""
-        old = {name: (clip_id, speed) for clip_id, name, speed in self.cursor.execute(
-            'SELECT id, name, locomotion_speed FROM Animations WHERE skeleton_id = ?', (skeleton_id,)).fetchall()}
+        """Клипы скелета (Animations) по имени: файлы и точки шага по скорости и повороту. locomotion — {имя: скорость}
+        (None — оставить прежние); поворот точки — поворот корня клипа (рад/с, у прямых — 0). Клипы, которых больше нет,
+        удаляются; экземпляры уровня с ними — без клипа. Возвращает {имя: id}."""
+        old = {name: (clip_id, speed, turn) for clip_id, name, speed, turn in self.cursor.execute(
+            'SELECT id, name, locomotion_speed, locomotion_turn FROM Animations WHERE skeleton_id = ?', (skeleton_id,)).fetchall()}
         ids = {}
         for clip in clips:
             if locomotion is None:
-                speed = old[clip['name']][1] if clip['name'] in old else None
+                speed, turn = old[clip['name']][1:] if clip['name'] in old else (None, None)
             elif clip['name'] in locomotion:
                 speed = locomotion[clip['name']] if locomotion[clip['name']] is not None else clip['speed']
+                turn = clip['turn'] if abs(clip['turn']) > TURN_THRESHOLD else 0.0
             else:
-                speed = None
+                speed, turn = None, None
             if clip['name'] in old:
                 clip_id = old[clip['name']][0]
-                self.cursor.execute('UPDATE Animations SET file = ?, locomotion_speed = ? WHERE id = ?',
-                                    (clip['file'], speed, clip_id))
+                self.cursor.execute('UPDATE Animations SET file = ?, locomotion_speed = ?, locomotion_turn = ? WHERE id = ?',
+                                    (clip['file'], speed, turn, clip_id))
             else:
-                self.cursor.execute('INSERT INTO Animations (name, skeleton_id, file, locomotion_speed) VALUES (?, ?, ?, ?)',
-                                    (clip['name'], skeleton_id, clip['file'], speed))
+                self.cursor.execute('INSERT INTO Animations (name, skeleton_id, file, locomotion_speed, locomotion_turn) '
+                                    'VALUES (?, ?, ?, ?, ?)', (clip['name'], skeleton_id, clip['file'], speed, turn))
                 clip_id = self.cursor.lastrowid
             ids[clip['name']] = clip_id
-        for name, (clip_id, _) in old.items():
+        for name, (clip_id, _, _) in old.items():
             if name not in ids:
                 self.cursor.execute('UPDATE LevelModels SET animation_id = NULL WHERE animation_id = ?', (clip_id,))
                 self.cursor.execute('DELETE FROM Animations WHERE id = ?', (clip_id,))
@@ -1403,9 +1406,10 @@ def main():
     parser.add_argument('--animation', help='model with a skeleton: the clip its level instances play '
                                             '(LevelModels.animation_id); default: none, the rest pose')
     parser.add_argument('--locomotion',
-                        help='model with a skeleton: clips of the locomotion blend space by speed, e.g. '
-                             '"Stand_Breathing_01,WalkSlow,Walk,Trot,Run" (Animations.locomotion_speed); the speed of a '
-                             'clip is its root motion, "name=speed" sets it (in-place clips); default: keep')
+                        help='model with a skeleton: clips of the locomotion blend space by speed and turn, e.g. '
+                             '"Idle,Walk,WalkL,WalkR,Trot" (Animations.locomotion_speed, locomotion_turn); the speed and turn '
+                             'of a clip are its root motion - a clip that turns is a left or right variant of the gait of the '
+                             'nearest speed; "name=speed" sets the speed (in-place clips); default: keep')
     parser.add_argument('--root-motion-bone',
                         help='model with a skeleton: the joint whose horizontal move and turn are taken out of the clips '
                              'as root motion; default: the first joint from the root that moves')
@@ -1528,10 +1532,11 @@ def main():
                 files[os.path.join('Meshes', clip['file'])] = clip_bytes(clip)
             clip_ids = db.animations(db.skeleton(model_id, model['name'], skeleton_file), clips, locomotion)
             animation_id = clip_ids.get(args.animation)
-            points = sorted((speed, name) for name, speed in db.cursor.execute(
-                'SELECT name, locomotion_speed FROM Animations WHERE skeleton_id = (SELECT skeleton_id FROM Models WHERE '
-                'id = ?) AND locomotion_speed IS NOT NULL', (model_id,)).fetchall())
-            print('Locomotion of %s: %s' % (model['name'], ', '.join('%s %.2f m/s' % (n, s) for s, n in points) or 'none'))
+            points = sorted((speed, turn or 0.0, name) for name, speed, turn in db.cursor.execute(
+                'SELECT name, locomotion_speed, locomotion_turn FROM Animations WHERE skeleton_id = (SELECT skeleton_id FROM '
+                'Models WHERE id = ?) AND locomotion_speed IS NOT NULL', (model_id,)).fetchall())
+            print('Locomotion of %s: %s' % (model['name'], ', '.join(
+                '%s %.2f m/s%s' % (n, s, ' turn %.0f deg/s' % np.degrees(t) if t else '') for s, t, n in points) or 'none'))
 
         positions = np.concatenate([section['mesh'][0] for section in model['lods'][0]])
         lo, hi = positions.min(axis=0), positions.max(axis=0)

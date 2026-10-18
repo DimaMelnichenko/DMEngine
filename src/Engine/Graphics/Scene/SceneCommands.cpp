@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <iterator>
 #include <set>
 #include "Scene.h"
@@ -75,7 +76,8 @@ void registerSceneCommands( ConsoleCommands& console, Scene& scene )
 	console.registerCommand( "world", "- entities, steps and clock of the simulation world; spawn <model> <x> <z> [count=5] "
 							 "[radius=15] - wanderers around the point (a loaded model: Sphere, Cube, Elk...); list - places of the "
 							 "entities (and clip, speed, phase of animated ones); clear - remove all entities; speed <m/s> - wander "
-							 "speed of all entities; anim <clip>|locomotion - all animated entities play the clip of their skeleton, "
+							 "speed of all entities; anim <clip>|locomotion [<clip>|locomotion ...] - all animated entities play the "
+							 "clip of their skeleton, the next ones when a one-shot clip ends, "
 							 "locomotion - back to the blend by speed; anim - clips of the skeletons",
 							 [&scene]( const std::vector<std::string>& args, const ConsoleReplyPtr& reply )
 	{
@@ -110,8 +112,10 @@ void registerSceneCommands( ConsoleCommands& console, Scene& scene )
 						std::snprintf( line + length, sizeof( line ) - length, " clip %s %.2f s",
 									   animations.clipName( playback.clip ).c_str(), playback.time );
 					else
-						std::snprintf( line + length, sizeof( line ) - length, " locomotion %.2f m/s phase %.2f", playback.speed,
-									   playback.phase - std::floor( playback.phase ) );
+						std::snprintf( line + length, sizeof( line ) - length, " locomotion %.2f m/s turn %.0f deg/s phase %.2f",
+									   playback.speed, playback.turn * 57.29578f, playback.phase - std::floor( playback.phase ) );
+					length = static_cast<int>( std::strlen( line ) );
+					std::snprintf( line + length, sizeof( line ) - length, " heading %.0f deg", headingOf( transform.rotation ) * 57.29578f );
 				}
 				text += line;
 				text += '\n';
@@ -153,20 +157,27 @@ void registerSceneCommands( ConsoleCommands& console, Scene& scene )
 			}
 			return reply->ok( text.empty() ? "no animated entities" : text );
 		}
-		if( args.size() == 2 && args[0] == "anim" )
+		if( args.size() >= 2 && args[0] == "anim" )
 		{
-			const std::string clip = args[1] == "locomotion" ? std::string() : args[1];
-			const size_t count = scene.worldEntities().playClip( clip );
-			if( count == 0 && !clip.empty() )
-				return reply->error( "no animated entity has clip " + clip + " (world anim - the clips)" );
-			return reply->ok( ( clip.empty() ? std::string( "locomotion" ) : clip ) + ": " + std::to_string( count ) + " entities" );
+			// Цепочка: клип, затем следующие, когда разовый дойдёт до конца; locomotion — шаг по скорости
+			std::vector<std::string> clips;
+			std::string text;
+			for( size_t i = 1; i < args.size(); ++i )
+			{
+				clips.push_back( args[i] == "locomotion" ? std::string() : args[i] );
+				text += ( i > 1 ? " -> " : "" ) + args[i];
+			}
+			const size_t count = scene.worldEntities().playClips( clips );
+			if( count == 0 && !( clips.size() == 1 && clips[0].empty() ) )
+				return reply->error( "no animated entity has all of the clips " + text + " (world anim - the clips)" );
+			return reply->ok( text + ": " + std::to_string( count ) + " entities" );
 		}
 		float x = 0.0f, z = 0.0f, count = 5.0f, radius = 15.0f;
 		if( args[0] != "spawn" || args.size() < 4 || args.size() > 6 || !number( args[2], x ) || !number( args[3], z ) ||
 			( args.size() > 4 && !number( args[4], count ) ) || ( args.size() > 5 && !number( args[5], radius ) ) || count < 1.0f ||
 			radius < 1.0f )
 			return reply->error( "usage: world | world spawn <model> <x> <z> [count] [radius] | world list | world clear | "
-								 "world speed <m/s> | world anim [<clip>|locomotion]" );
+								 "world speed <m/s> | world anim [<clip>|locomotion ...]" );
 		std::string reason;
 		if( !scene.worldEntities().spawnWanderers( args[1], x, z, static_cast<uint32_t>( count ), radius, reason ) )
 			return reply->error( reason );

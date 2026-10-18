@@ -770,7 +770,8 @@ void LibraryLoader::loadAnimations( GS::AnimationLibrary& library )
 		library.addSkeleton( id, name, skeleton );
 
 		SQLite::Statement clips( DBConnector::instance().db(),
-								 "SELECT id, name, file, locomotion_speed FROM Animations WHERE skeleton_id = :id ORDER BY id" );
+								 "SELECT id, name, file, locomotion_speed, locomotion_turn FROM Animations WHERE skeleton_id = :id "
+								 "ORDER BY id" );
 		clips.bind( ":id", id );
 		uint32_t loaded = 0, failed = 0;
 		while( clips.executeStep() )
@@ -780,12 +781,13 @@ void LibraryLoader::loadAnimations( GS::AnimationLibrary& library )
 			auto clip = std::make_shared<GS::AnimationClip>();
 			const float speed = clips.getColumn( "locomotion_speed" ).isNull() ? -1.0f :
 								static_cast<float>( clips.getColumn( "locomotion_speed" ).getDouble() );
+			const float turn = static_cast<float>( clips.getColumn( "locomotion_turn" ).getDouble() );	// NULL — 0, прямо
 			if( !clip->load( clipFile, reason ) )
 			{
 				LOG( "Clip " + clipName + " (" + clipFile + "): " + reason );
 				++failed;
 			}
-			else if( !library.addClip( clips.getColumn( "id" ).getUInt(), id, clipName, clip, speed ) )
+			else if( !library.addClip( clips.getColumn( "id" ).getUInt(), id, clipName, clip, speed, turn ) )
 			{
 				LOG( "Clip " + clipName + ": " + std::to_string( clip->jointCount() ) + " joints, skeleton " + name + " has " +
 					 std::to_string( skeleton->jointCount() ) );
@@ -794,10 +796,10 @@ void LibraryLoader::loadAnimations( GS::AnimationLibrary& library )
 			else
 				++loaded;
 		}
-		const GS::BlendSpace1D* locomotion = library.locomotion( id );
+		const GS::LocomotionBlendSpace* locomotion = library.locomotion( id );
 		LOG( "Skeleton " + name + ": " + std::to_string( skeleton->jointCount() ) + " joints, " + std::to_string( loaded ) +
 			 " clips" + ( failed ? ", " + std::to_string( failed ) + " failed" : std::string() ) + ", locomotion " +
-			 std::to_string( locomotion ? locomotion->samples().size() : 0 ) + " clips" );
+			 std::to_string( locomotion ? locomotion->rows().size() : 0 ) + " gaits" );
 	}
 
 	// Границы моделей со скелетом — поза покоя и все позы клипов: по ним отсекаются экземпляры в анимации

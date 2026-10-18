@@ -33,7 +33,14 @@ AnimationPlayback interpolatePlayback( const AnimationPlayback& from, const Anim
 	result.time = from.time + ( to.time - from.time ) * alpha;
 	result.phase = from.phase + ( to.phase - from.phase ) * alpha;
 	result.speed = from.speed + ( to.speed - from.speed ) * alpha;
+	result.turn = from.turn + ( to.turn - from.turn ) * alpha;
 	return result;
+}
+
+// Угол в −π…π
+float wrapAngle( float angle )
+{
+	return std::remainder( angle, 6.28318530718f );
 }
 
 void samplePlayback( const AnimationLibrary& library, uint32_t skeletonId, const Skeleton& skeleton,
@@ -47,22 +54,30 @@ void samplePlayback( const AnimationLibrary& library, uint32_t skeletonId, const
 			restPose( skeleton, pose );
 		return;
 	}
-	const BlendSpace1D* locomotion = library.locomotion( skeletonId );
+	const LocomotionBlendSpace* locomotion = library.locomotion( skeletonId );
 	if( !locomotion )
 	{
 		restPose( skeleton, pose );
 		return;
 	}
-	const BlendSpace1D::Result result = locomotion->evaluate( playback.speed );
-	auto clipTime = [&]( const BlendSpace1D::Weighted& sample )
+	const LocomotionBlendSpace::Result result = locomotion->evaluate( playback.speed, playback.turn );
+	if( result.count == 0 )
+	{
+		restPose( skeleton, pose );
+		return;
+	}
+	auto clipTime = [&]( const LocomotionBlendSpace::Weighted& sample )
 	{
 		return sample.moving ? playback.phase * sample.duration : playback.time;
 	};
+	// Взвешенное среднее поз по очереди: накопленный вес — у уже смешанного
 	library.clip( result.samples[0].clip )->sample( clipTime( result.samples[0] ), pose );
-	if( result.count == 2 && result.samples[1].weight > 0.0f )
+	float accumulated = result.samples[0].weight;
+	for( uint32_t i = 1; i < result.count; ++i )
 	{
-		library.clip( result.samples[1].clip )->sample( clipTime( result.samples[1] ), temp );
-		blendPoses( pose, temp, result.samples[1].weight, pose );
+		accumulated += result.samples[i].weight;
+		library.clip( result.samples[i].clip )->sample( clipTime( result.samples[i] ), temp );
+		blendPoses( pose, temp, result.samples[i].weight / std::max( accumulated, 1e-6f ), pose );
 	}
 }
 
@@ -86,6 +101,16 @@ void playAnimation( AnimationState& state, const AnimationPlayback& next )
 	state.previousFade = 0.0f;
 }
 
+void playSequence( AnimationState& state, const AnimationPlayback* items, size_t count )
+{
+	if( count == 0 )
+		return;
+	playAnimation( state, items[0] );
+	state.queued = 0;
+	for( size_t i = 1; i < count && state.queued < AnimationState::maxQueue; ++i )
+		state.queue[state.queued++] = items[i];
+}
+
 void AnimationSystem::step( World& world, float seconds )
 {
 	const AnimationLibrary& library = world.animations();
@@ -103,8 +128,18 @@ void AnimationSystem::step( World& world, float seconds )
 		{
 			if( const AnimationClip* clip = library.clip( playback.clip ) )
 			{
-				if( clip->looping() )
+				// Есть следующий в очереди — клип играет один проход, и зацикленный (разворот на месте и прыжок импорт
+				// считает циклом: поза в конце та же); последний в цепочке зацикленный — по кругу
+				if( clip->looping() && state.queued == 0 )
 					wrapTime( playback.time, state.previous.time, clip->duration() );
+				else if( playback.time >= clip->duration() && state.queued > 0 )
+				{
+					// Дошёл до конца — следующий из очереди, с переходом
+					const AnimationPlayback next = state.queue[0];
+					std::copy( state.queue + 1, state.queue + state.queued, state.queue );
+					--state.queued;
+					playAnimation( state, next );
+				}
 				else
 				{
 					// Разовый стоит на последнем кадре — время дальше не нужно
@@ -115,25 +150,29 @@ void AnimationSystem::step( World& world, float seconds )
 			continue;
 		}
 
-		// Фактическая скорость по земле: упёрлась в ствол или в воду — встаёт, хотя поведение и просит идти
-		float measured = 0.0f;
+		// Фактические скорость по земле и поворот: упёрлась в ствол или в воду — встаёт, хотя поведение и просит идти
+		float measured = 0.0f, turning = 0.0f;
 		const Transform* transform = registry.try_get<Transform>( entity );
 		const PreviousTransform* before = registry.try_get<PreviousTransform>( entity );
 		if( transform && before && seconds > 0.0f )
+		{
 			measured = std::hypot( transform->position.x - before->transform.position.x,
 								   transform->position.z - before->transform.position.z ) / seconds;
+			turning = wrapAngle( headingOf( transform->rotation ) - headingOf( before->transform.rotation ) ) / seconds;
+		}
 		else if( const Locomotion* locomotion = registry.try_get<Locomotion>( entity ) )
 			measured = std::hypot( locomotion->velocity.x, locomotion->velocity.y );
 		playback.speed += ( measured - playback.speed ) * smoothing;
+		playback.turn += ( turning - playback.turn ) * smoothing;
 
-		if( const BlendSpace1D* locomotion = library.locomotion( state.skeleton ) )
+		if( const LocomotionBlendSpace* locomotion = library.locomotion( state.skeleton ) )
 		{
-			playback.phase += locomotion->evaluate( playback.speed ).phaseRate * seconds;
+			playback.phase += locomotion->evaluate( playback.speed, playback.turn ).phaseRate * seconds;
 			wrapTime( playback.phase, state.previous.phase, 1.0 );
-			// Время покоя — по длительности его клипа (точка со скоростью 0)
-			const std::vector<BlendSpace1D::Sample>& samples = locomotion->samples();
-			if( samples.front().speed == 0.0f )
-				wrapTime( playback.time, state.previous.time, samples.front().duration );
+			// Время покоя — по длительности его клипа (ряд со скоростью 0)
+			const LocomotionBlendSpace::Sample& first = locomotion->rows().front().straight;
+			if( first.speed == 0.0f )
+				wrapTime( playback.time, state.previous.time, first.duration );
 		}
 	}
 }

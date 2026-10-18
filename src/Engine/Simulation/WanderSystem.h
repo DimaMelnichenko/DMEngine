@@ -22,6 +22,7 @@ struct Wander
 	float wanderAngle = 0.0f;	// точка блуждания на окружности впереди, рад от направления хода
 	uint32_t random = 1;		// состояние генератора (xorshift32): у каждой сущности своё — путь повторяется
 	bool moving = false;		// уже шла (до первого шага упереться не во что)
+	bool waiting = false;		// ждала (скорость 0, клип-действие): снова пойдёт — туда, куда повернулась за это время
 };
 
 class WanderSystem : public SimulationSystem

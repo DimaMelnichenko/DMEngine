@@ -8,7 +8,8 @@ namespace GS
 // Передвижение сущностей (как Character Movement в UE): желаемая скорость и взгляд — из Locomotion (их пишет поведение),
 // место — в Transform. Сущность с персонажем (Character) идёт запросами к миру столкновений (PhysicsWorld::moveCharacter:
 // капсула, ступеньки, уклон, глубокая вода, другие персонажи, гравитация и падение); без него — прямо по земле мира
-// (surfaceHeight), сквозь всё. Взгляд — поворот вокруг вертикали по Locomotion::heading
+// (surfaceHeight), сквозь всё. Взгляд — поворот вокруг вертикали по Locomotion::heading. Пока играет клип-действие
+// (holdsPlace), сущность ведёт движение корня клипа (AnimationClip::rootMotionDelta), а не Locomotion
 class MovementSystem : public SimulationSystem
 {
 public:

@@ -44,15 +44,22 @@ void WanderSystem::step( World& world, float seconds )
 	entt::registry& registry = world.registry();
 	for( auto [entity, transform, wander, locomotion] : registry.view<const Transform, Wander, Locomotion>().each() )
 	{
-		// Стоит — скорость 0 или играет клип-действие (лечь, удар): поведение ждёт, направление не меняется (иначе сущность
-		// вертится на месте), после — с того же направления
+		// Стоит — скорость 0 или играет клип-действие (лечь, развернуться): поведение ждёт, направление не меняется (иначе
+		// сущность вертится на месте); после — туда, куда она повернулась (клип разворота), без рывка
 		const AnimationState* animation = registry.try_get<AnimationState>( entity );
 		if( wander.speed <= 0.0f || ( animation && holdsPlace( *animation ) ) )
 		{
 			wander.moving = false;
+			wander.waiting = true;
 			locomotion.velocity = XMFLOAT2( 0.0f, 0.0f );
 			locomotion.heading = wander.heading;
 			continue;
+		}
+		if( wander.waiting )
+		{
+			wander.heading = headingOf( transform.rotation );
+			wander.wanderAngle = 0.0f;
+			wander.waiting = false;
 		}
 
 		// Точка блуждания сдвигается по окружности случайно — направление меняется плавно, без рывков; не дальше

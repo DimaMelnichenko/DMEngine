@@ -185,7 +185,7 @@ add_library(DMCore STATIC
     src/Engine/Animation/Skeleton.cpp
     src/Engine/Animation/AnimationClip.cpp
     src/Engine/Animation/AnimationPose.cpp
-    src/Engine/Animation/BlendSpace1D.cpp
+    src/Engine/Animation/LocomotionBlendSpace.cpp
     src/Engine/Animation/AnimationLibrary.cpp
     src/Engine/Animation/AnimationSystem.cpp
 )

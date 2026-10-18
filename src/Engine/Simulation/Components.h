@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <DirectXMath.h>
 
@@ -46,6 +47,15 @@ struct Character
 {
 	uint32_t id = 0;
 };
+
+// Взгляд поворота вокруг вертикали, рад: 0 — +Z, π/2 — +X (как Locomotion::heading)
+inline float headingOf( const DirectX::XMFLOAT4& rotation )
+{
+	// Ось +Z, повёрнутая кватернионом
+	const float x = 2.0f * ( rotation.x * rotation.z + rotation.w * rotation.y );
+	const float z = 1.0f - 2.0f * ( rotation.x * rotation.x + rotation.y * rotation.y );
+	return std::atan2( x, z );
+}
 
 // Место между прежним (t = 0) и новым (t = 1): положение и масштаб — линейно, поворот — по дуге (slerp)
 inline Transform interpolate( const Transform& from, const Transform& to, float t )

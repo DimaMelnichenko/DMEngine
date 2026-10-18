@@ -375,8 +375,10 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 `MovementSystem`; луч `castRay` — и выбор во вьюпорте; отладочный вид — Debug views → «Collision»; подробно — `docs/physics.md`.
 Скелетная анимация — ядро `src/Engine/Animation/` (как Skeleton, AnimSequence и Blend Space в UE): скелет и клипы (`Skeletons`,
 `Animations`, файлы `.skel` / `.anim` рядом с мешами; импорт — `Tools/import_gltf.py` выносит движение корня), служба мира
-`World::animations()`, компонент `AnimationState` и `AnimationSystem` после передвижения — шаг по фактической скорости
-(`BlendSpace1D`: фаза держит смешанный шаг на скорости — копыта не скользят), переход между клипами; позу собирает
+`World::animations()`, компонент `AnimationState` и `AnimationSystem` после передвижения — шаг по фактическим скорости и
+повороту (`LocomotionBlendSpace`: ряды аллюров с вариантами влево и вправо, фаза держит смешанный шаг на скорости — копыта не
+скользят), переход между клипами, цепочки (`playSequence`); клип-действие ведёт сущность движением корня
+(`MovementSystem`, `AnimationClip::rootMotionDelta`); позу собирает
 отрисовка (`evaluatePose` в `compute` у `WorldEntities` и у `ModelInstances` — экземпляр уровня с клипом
 `LevelModels.animation_id`) в `SkinningPalette`, скиннинг — вариант материала `SKINNED` (`Shaders/skinning.sh`, веса —
 третий поток `VertexPool`); команды `world speed` / `anim`, вид «Skeleton»; подробно — `docs/animation.md`. Кадр начинается с

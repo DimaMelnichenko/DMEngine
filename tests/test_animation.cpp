@@ -1,5 +1,6 @@
 // Скелетная анимация (ядро): выборка клипа, поза в пространстве модели и матрицы скиннинга, смешение мест костей, шаг по
-// скорости (BlendSpace1D), система анимации сущностей и переход между режимами, чтение файлов .skel и .anim
+// скорости и повороту (LocomotionBlendSpace: ряды аллюров, варианты с поворотом), движение корня клипа за отрезок, система
+// анимации сущностей (скорость и поворот, переход, очередь клипов), передвижение движением корня, чтение файлов .skel и .anim
 #include <doctest/doctest.h>
 #include <cmath>
 #include <cstring>
@@ -9,11 +10,12 @@
 #include "Engine\Animation\Skeleton.h"
 #include "Engine\Animation\AnimationClip.h"
 #include "Engine\Animation\AnimationPose.h"
-#include "Engine\Animation\BlendSpace1D.h"
+#include "Engine\Animation\LocomotionBlendSpace.h"
 #include "Engine\Animation\AnimationLibrary.h"
 #include "Engine\Animation\AnimationSystem.h"
 #include "Engine\Simulation\World.h"
 #include "Engine\Simulation\Components.h"
+#include "Engine\Simulation\MovementSystem.h"
 
 using namespace GS;
 using namespace DirectX;
@@ -148,39 +150,109 @@ TEST_CASE( "blendJoint: translation midway, rotation half the angle along the sh
 	CHECK( yawOf( half.rotation ) == doctest::Approx( pi / 4.0f ).epsilon( 1e-4 ) );
 }
 
-TEST_CASE( "BlendSpace1D: weights by speed, the phase rate keeps the blended stride at the speed" )
+TEST_CASE( "LocomotionBlendSpace: weights by speed, the phase rate keeps the blended stride at the speed" )
 {
-	BlendSpace1D blend;
+	LocomotionBlendSpace blend;
 	blend.addSample( 3, 6.0f, 0.6f );		// рысь: шаг 3,6 м за цикл
 	blend.addSample( 1, 0.0f, 5.0f );		// покой
 	blend.addSample( 2, 1.5f, 1.0f );		// шаг: 1,5 м за цикл
-	REQUIRE( blend.samples().size() == 3 );
-	CHECK( blend.samples().front().clip == 1 );
+	REQUIRE( blend.rows().size() == 3 );
+	CHECK( blend.rows().front().straight.clip == 1 );
 
-	BlendSpace1D::Result still = blend.evaluate( 0.0f );
+	LocomotionBlendSpace::Result still = blend.evaluate( 0.0f );
 	CHECK( still.count == 1 );
 	CHECK( still.samples[0].clip == 1 );
 	CHECK_FALSE( still.samples[0].moving );
 	CHECK( still.phaseRate == 0.0f );
 
 	// Между покоем и шагом: клип на ходу — в своём темпе, цикл в секунду
-	BlendSpace1D::Result slow = blend.evaluate( 0.75f );
+	LocomotionBlendSpace::Result slow = blend.evaluate( 0.75f );
 	REQUIRE( slow.count == 2 );
 	CHECK( slow.samples[0].weight == doctest::Approx( 0.5f ) );
 	CHECK( slow.samples[1].clip == 2 );
 	CHECK( slow.phaseRate == doctest::Approx( 1.0f ) );
 
 	// Между шагом и рысью: смешанный шаг за цикл × циклов в секунду = скорость
-	BlendSpace1D::Result mixed = blend.evaluate( 3.75f );
+	LocomotionBlendSpace::Result mixed = blend.evaluate( 3.75f );
 	REQUIRE( mixed.count == 2 );
 	CHECK( mixed.samples[1].weight == doctest::Approx( 0.5f ) );
 	CHECK( mixed.phaseRate * ( 0.5f * 1.5f + 0.5f * 3.6f ) == doctest::Approx( 3.75f ) );
 
 	// Выше последней точки — рысь быстрее
-	BlendSpace1D::Result fast = blend.evaluate( 9.0f );
+	LocomotionBlendSpace::Result fast = blend.evaluate( 9.0f );
 	CHECK( fast.count == 1 );
 	CHECK( fast.samples[0].clip == 3 );
 	CHECK( fast.phaseRate == doctest::Approx( 2.5f ) );
+}
+
+TEST_CASE( "LocomotionBlendSpace: left and right variants of a gait by the turn" )
+{
+	LocomotionBlendSpace blend;
+	blend.addSample( 21, 1.5f, 1.0f, -1.0f );	// шаг влево — раньше своего ряда
+	blend.addSample( 1, 0.0f, 5.0f );			// покой
+	blend.addSample( 2, 1.5f, 1.0f );			// шаг
+	blend.addSample( 22, 1.5f, 1.0f, 1.0f );	// шаг вправо
+	blend.addSample( 3, 6.0f, 0.6f );			// рысь
+	blend.addSample( 31, 6.0f, 0.6f, -2.5f );	// рысь влево; вправо варианта нет
+	REQUIRE( blend.rows().size() == 3 );
+	CHECK( blend.rows()[1].hasLeft );
+	CHECK( blend.rows()[1].hasRight );
+	CHECK( blend.rows()[2].hasLeft );
+	CHECK_FALSE( blend.rows()[2].hasRight );
+	CHECK_FALSE( blend.rows()[0].hasLeft );
+
+	auto weightOf = []( const LocomotionBlendSpace::Result& result, uint32_t clip )
+	{
+		float weight = 0.0f;
+		for( uint32_t i = 0; i < result.count; ++i )
+			if( result.samples[i].clip == clip )
+				weight += result.samples[i].weight;
+		return weight;
+	};
+	// Прямо — только прямой клип; половина поворота клипа — пополам; больше — только вариант
+	CHECK( weightOf( blend.evaluate( 1.5f, 0.0f ), 2 ) == doctest::Approx( 1.0f ) );
+	const LocomotionBlendSpace::Result half = blend.evaluate( 1.5f, -0.5f );
+	CHECK( weightOf( half, 2 ) == doctest::Approx( 0.5f ) );
+	CHECK( weightOf( half, 21 ) == doctest::Approx( 0.5f ) );
+	const LocomotionBlendSpace::Result sharp = blend.evaluate( 1.5f, -2.0f );
+	CHECK( sharp.count == 1 );
+	CHECK( sharp.samples[0].clip == 21 );
+	CHECK( weightOf( blend.evaluate( 1.5f, 0.7f ), 22 ) == doctest::Approx( 0.7f ) );
+	// Вправо у рыси варианта нет — прямо
+	CHECK( weightOf( blend.evaluate( 6.0f, 1.0f ), 3 ) == doctest::Approx( 1.0f ) );
+
+	// Между шагом и рысью с поворотом влево: до 4 клипов, веса в сумме 1, смешанный шаг держит скорость
+	const LocomotionBlendSpace::Result four = blend.evaluate( 3.75f, -0.5f );
+	REQUIRE( four.count == 4 );
+	CHECK( weightOf( four, 2 ) == doctest::Approx( 0.25f ) );
+	CHECK( weightOf( four, 21 ) == doctest::Approx( 0.25f ) );
+	CHECK( weightOf( four, 3 ) == doctest::Approx( 0.4f ) );
+	CHECK( weightOf( four, 31 ) == doctest::Approx( 0.1f ) );
+	CHECK( four.phaseRate * ( 0.5f * 1.5f + 0.5f * 3.6f ) == doctest::Approx( 3.75f ) );
+}
+
+TEST_CASE( "AnimationClip: root motion between two moments is in the axes of the root at the first one" )
+{
+	// Секунду — метр вперёд, следующую — метр вправо с поворотом на 90° вправо (кривая — в осях первого кадра)
+	auto clip = slideClip( { 0.0f, 0.0f, 0.0f }, 1.0f, false, 1.0f );
+	clip->setRootMotionCurve( { { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 1.0f, 1.0f, pi / 2.0f } } );
+	AnimationClip::RootMotion first = clip->rootMotionDelta( 0.0, 1.0 );
+	CHECK( first.x == doctest::Approx( 0.0f ) );
+	CHECK( first.z == doctest::Approx( 1.0f ) );
+	AnimationClip::RootMotion second = clip->rootMotionDelta( 1.0, 2.0 );
+	CHECK( second.x == doctest::Approx( 1.0f ) );
+	CHECK( second.z == doctest::Approx( 0.0f ).epsilon( 1e-5 ) );
+	CHECK( second.yaw == doctest::Approx( pi / 2.0f ) );
+	// Разовый — в пределах клипа
+	CHECK( clip->rootMotionDelta( 2.0, 5.0 ).z == doctest::Approx( 0.0f ) );
+
+	// Зацикленный — через стыки: метр вперёд за цикл, с 0,5 до 2,5 — два метра
+	auto loop = slideClip( { 0.0f, 0.0f }, 1.0f, true, 1.0f );
+	loop->setRootMotionCurve( { { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } } );
+	const AnimationClip::RootMotion two = loop->rootMotionDelta( 0.5, 2.5 );
+	CHECK( two.z == doctest::Approx( 2.0f ) );
+	CHECK( two.x == doctest::Approx( 0.0f ) );
+	CHECK( two.yaw == doctest::Approx( 0.0f ) );
 }
 
 namespace
@@ -334,4 +406,120 @@ TEST_CASE( "Skeleton and AnimationClip: files as Tools/import_gltf.py writes the
 	CHECK( clip.boundsMax().y == doctest::Approx( 2.4f ) );
 	CHECK( clip.rootMotion()[1].z == doctest::Approx( 0.056f ) );
 	CHECK_FALSE( clip.parse( anim.data(), anim.size() - 4, reason ) );
+}
+
+TEST_CASE( "AnimationSystem: a queued clip follows one pass of the clip before it, the last looping one stays" )
+{
+	World world;
+	AnimationLibrary& library = world.animations();
+	library.addSkeleton( 1, "test", oneJointSkeleton() );
+	REQUIRE( library.addClip( 10, 1, "Idle", slideClip( { 0.0f, 0.0f }, 1.0f, true, 0.0f ), 0.0f ) );
+	// 0,1 с; зацикленный, как разворот на месте у импорта (поза в конце та же) — перед следующим играет один проход
+	REQUIRE( library.addClip( 12, 1, "Lie", slideClip( { 4.0f, 4.0f }, 10.0f, true, 0.0f ), -1.0f ) );
+	REQUIRE( library.addClip( 13, 1, "Lying", slideClip( { 5.0f, 5.0f }, 1.0f, true, 0.0f ), -1.0f ) );
+	world.addSystem( std::make_unique<AnimationSystem>() );
+	entt::registry& registry = world.registry();
+	const entt::entity entity = registry.create();
+	AnimationState state;
+	state.skeleton = 1;
+	registry.emplace<AnimationState>( entity, state );
+
+	const AnimationPlayback lieDown[] = { clipPlayback( 12 ), clipPlayback( 13 ) };
+	playSequence( registry.get<AnimationState>( entity ), lieDown, 2 );
+	CHECK( registry.get<AnimationState>( entity ).queued == 1 );
+	for( int i = 0; i < 12; ++i )
+		world.tick( 1.0 / 60.0 );
+	CHECK( registry.get<AnimationState>( entity ).current.clip == 13 );
+	CHECK( registry.get<AnimationState>( entity ).queued == 0 );
+	for( int i = 0; i < 120; ++i )
+		world.tick( 1.0 / 60.0 );
+	CHECK( registry.get<AnimationState>( entity ).current.clip == 13 );
+
+	// Разовый, затем шаг по скорости
+	const AnimationPlayback standUp[] = { clipPlayback( 12 ), AnimationPlayback() };
+	playSequence( registry.get<AnimationState>( entity ), standUp, 2 );
+	for( int i = 0; i < 12; ++i )
+		world.tick( 1.0 / 60.0 );
+	CHECK( registry.get<AnimationState>( entity ).current.mode == AnimationPlayback::Mode::locomotion );
+}
+
+namespace
+{
+
+// Поворачивает сущности вокруг вертикали со скоростью rate, рад/с (до системы анимации, как MovementSystem)
+class SpinSystem : public SimulationSystem
+{
+public:
+	const char* name() const override { return "Spin"; }
+	void step( World& world, float seconds ) override
+	{
+		for( auto [entity, transform] : world.registry().view<Transform>().each() )
+			XMStoreFloat4( &transform.rotation, XMQuaternionRotationRollPitchYaw( 0.0f, headingOf( transform.rotation ) +
+																					rate * seconds, 0.0f ) );
+	}
+	float rate = 0.0f;
+};
+
+}
+
+TEST_CASE( "AnimationSystem: the turn of an entity is measured from its heading" )
+{
+	World world;
+	world.animations().addSkeleton( 1, "test", oneJointSkeleton() );
+	auto spin = std::make_unique<SpinSystem>();
+	spin->rate = 1.0f;
+	world.addSystem( std::move( spin ) );
+	world.addSystem( std::make_unique<AnimationSystem>() );
+	entt::registry& registry = world.registry();
+	const entt::entity entity = registry.create();
+	registry.emplace<Transform>( entity );
+	registry.emplace<PreviousTransform>( entity );
+	AnimationState state;
+	state.skeleton = 1;
+	registry.emplace<AnimationState>( entity, state );
+	for( int i = 0; i < 120; ++i )
+		world.tick( 1.0 / 60.0 );
+	CHECK( registry.get<AnimationState>( entity ).current.turn == doctest::Approx( 1.0f ).epsilon( 0.01 ) );
+}
+
+TEST_CASE( "MovementSystem: an action clip moves and turns the entity by its root motion" )
+{
+	World world;
+	AnimationLibrary& library = world.animations();
+	library.addSkeleton( 1, "test", oneJointSkeleton() );
+	// Секунду — 2 м вперёд, следующую — разворот на месте на 90° вправо
+	auto clip = slideClip( { 0.0f, 0.0f, 0.0f }, 1.0f, false, 1.0f );
+	clip->setRootMotionCurve( { { 0.0f, 0.0f, 0.0f }, { 0.0f, 2.0f, 0.0f }, { 0.0f, 2.0f, pi / 2.0f } } );
+	REQUIRE( library.addClip( 14, 1, "WalkAndTurn", clip, -1.0f ) );
+	REQUIRE( library.addClip( 15, 1, "Lie", slideClip( { 0.0f, 0.0f }, 1.0f, false, 0.0f ), -1.0f ) );
+	world.addSystem( std::make_unique<MovementSystem>() );
+	world.addSystem( std::make_unique<AnimationSystem>() );
+	entt::registry& registry = world.registry();
+	const entt::entity entity = registry.create();
+	Transform transform;
+	transform.position = XMFLOAT3( 10.0f, 0.0f, 10.0f );
+	XMStoreFloat4( &transform.rotation, XMQuaternionRotationRollPitchYaw( 0.0f, pi / 2.0f, 0.0f ) );	// взгляд — +X
+	registry.emplace<Transform>( entity, transform );
+	registry.emplace<PreviousTransform>( entity, PreviousTransform{ transform } );
+	// Поведение просит идти к −Z — во время действия не действует
+	registry.emplace<Locomotion>( entity, Locomotion{ XMFLOAT2( 0.0f, -3.0f ), pi } );
+	AnimationState state;
+	state.skeleton = 1;
+	registry.emplace<AnimationState>( entity, state );
+	playAnimation( registry.get<AnimationState>( entity ), clipPlayback( 14 ) );
+
+	for( int i = 0; i < 150; ++i )
+		world.tick( 1.0 / 60.0 );
+	const Transform& moved = registry.get<Transform>( entity );
+	CHECK( moved.position.x == doctest::Approx( 12.0f ).epsilon( 0.01 ) );		// 2 м по взгляду (+X)
+	CHECK( moved.position.z == doctest::Approx( 10.0f ).epsilon( 0.01 ) );
+	CHECK( std::cos( headingOf( moved.rotation ) ) == doctest::Approx( -1.0f ).epsilon( 0.001 ) );	// +X → −Z: ещё 90° вправо
+
+	// Клип без движения корня — стоит
+	playAnimation( registry.get<AnimationState>( entity ), clipPlayback( 15 ) );
+	const XMFLOAT3 before = registry.get<Transform>( entity ).position;
+	for( int i = 0; i < 60; ++i )
+		world.tick( 1.0 / 60.0 );
+	CHECK( registry.get<Transform>( entity ).position.x == before.x );
+	CHECK( registry.get<Transform>( entity ).position.z == before.z );
 }

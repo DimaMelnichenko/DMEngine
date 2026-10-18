@@ -45,9 +45,9 @@ public:
 	bool spawnWanderers( const std::string& model, float x, float z, uint32_t count, float radius, std::string& error );
 	// Скорость блуждания всех сущностей, м/с (команда world speed); сколько сущностей
 	size_t setWanderSpeed( float speed );
-	// Клип всем сущностям со скелетом (имя клипа их скелета, с переходом); пусто — снова шаг по скорости. Сколько сущностей
-	// его получили
-	size_t playClip( const std::string& clip );
+	// Цепочка клипов всем сущностям со скелетом (имена клипов их скелета; пустое имя — шаг по скорости): первый — сейчас, с
+	// переходом, остальные — когда разовый дойдёт до конца (playSequence). Сколько сущностей её получили
+	size_t playClips( const std::vector<std::string>& clips );
 	// Кости поз кадра отрезками в мире (отладочный вид «Skeleton»)
 	const std::vector<BoneLine>& boneLines() const { return m_boneLines; }
 

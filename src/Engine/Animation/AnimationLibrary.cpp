@@ -17,13 +17,13 @@ void AnimationLibrary::addSkeleton( uint32_t id, const std::string& name, std::s
 }
 
 bool AnimationLibrary::addClip( uint32_t id, uint32_t skeleton, const std::string& name,
-								std::shared_ptr<const AnimationClip> clip, float locomotionSpeed )
+								std::shared_ptr<const AnimationClip> clip, float locomotionSpeed, float locomotionTurn )
 {
 	auto owner = m_skeletons.find( skeleton );
 	if( owner == m_skeletons.end() || !clip || clip->jointCount() != owner->second.skeleton->jointCount() )
 		return false;
 	if( locomotionSpeed >= 0.0f )
-		owner->second.locomotion.addSample( id, locomotionSpeed, clip->duration() );
+		owner->second.locomotion.addSample( id, locomotionSpeed, clip->duration(), locomotionTurn );
 	owner->second.clips.push_back( id );
 	m_clips[id] = ClipEntry{ name, skeleton, std::move( clip ) };
 	return true;
@@ -73,7 +73,7 @@ const std::vector<uint32_t>& AnimationLibrary::clips( uint32_t skeleton ) const
 	return it != m_skeletons.end() ? it->second.clips : noClips;
 }
 
-const BlendSpace1D* AnimationLibrary::locomotion( uint32_t skeleton ) const
+const LocomotionBlendSpace* AnimationLibrary::locomotion( uint32_t skeleton ) const
 {
 	auto it = m_skeletons.find( skeleton );
 	return it != m_skeletons.end() && !it->second.locomotion.empty() ? &it->second.locomotion : nullptr;

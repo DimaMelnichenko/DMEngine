@@ -156,3 +156,27 @@ TEST_CASE( "WanderSystem: an animation clip holds the place, the walk goes on fr
 	const XMFLOAT3& walked = registry.get<Transform>( entity ).position;
 	CHECK( std::hypot( walked.x - held.position.x, walked.z - held.position.z ) > 0.8f );
 }
+
+TEST_CASE( "WanderSystem: after an action that turned the entity, it walks on where it faces" )
+{
+	World world;
+	setUp( world );
+	const entt::entity entity = spawn( world, 9, 30.0f );
+	entt::registry& registry = world.registry();
+	for( int i = 0; i < 30; ++i )
+		world.tick( step );
+	// Действие: клип держит место, разворот — как движением корня (здесь — сразу на 2 рад)
+	AnimationState animation;
+	animation.current = clipPlayback( 1 );
+	registry.emplace<AnimationState>( entity, animation );
+	world.tick( step );
+	Transform& transform = registry.get<Transform>( entity );
+	const float turned = headingOf( transform.rotation ) + 2.0f;
+	XMStoreFloat4( &transform.rotation, XMQuaternionRotationRollPitchYaw( 0.0f, turned, 0.0f ) );
+	world.tick( step );
+	// Снова шаг по скорости: блуждание — от нового направления, без рывка назад
+	playAnimation( registry.get<AnimationState>( entity ), AnimationPlayback() );
+	world.tick( step );
+	const float heading = registry.get<Wander>( entity ).heading;
+	CHECK( std::abs( std::remainder( heading - turned, 6.2831853f ) ) <= 1.5f * step + 1e-3f );
+}

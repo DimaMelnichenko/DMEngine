@@ -118,28 +118,40 @@ size_t WorldEntities::setWanderSpeed( float speed )
 	return count;
 }
 
-size_t WorldEntities::playClip( const std::string& clip )
+size_t WorldEntities::playClips( const std::vector<std::string>& clips )
 {
-	if( !m_world )
+	if( !m_world || clips.empty() )
 		return 0;
 	const AnimationLibrary& library = m_world->animations();
 	size_t count = 0;
 	for( auto [entity, state] : m_world->registry().view<AnimationState>().each() )
 	{
-		if( clip.empty() )
+		// Цепочка этого скелета: пустое имя — шаг по скорости; нет такого клипа у скелета — сущность не трогается
+		AnimationPlayback sequence[1 + AnimationState::maxQueue];
+		size_t length = 0;
+		bool found = true;
+		for( const std::string& clip : clips )
 		{
-			if( state.current.mode == AnimationPlayback::Mode::locomotion )
+			if( length == std::size( sequence ) )
+				break;
+			if( clip.empty() )
+			{
+				sequence[length++] = AnimationPlayback();
 				continue;
-			AnimationPlayback locomotion;
-			locomotion.speed = 0.0f;
-			playAnimation( state, locomotion );
-			++count;
+			}
+			const uint32_t id = library.findClip( state.skeleton, clip );
+			found = found && id != 0;
+			sequence[length++] = clipPlayback( id );
+		}
+		if( !found )
+			continue;
+		// Уже идёт шагом по скорости — снова не начинать (без лишнего перехода)
+		if( length == 1 && clips[0].empty() && state.current.mode == AnimationPlayback::Mode::locomotion )
+		{
+			state.queued = 0;
 			continue;
 		}
-		const uint32_t id = library.findClip( state.skeleton, clip );
-		if( id == 0 )
-			continue;
-		playAnimation( state, clipPlayback( id ) );
+		playSequence( state, sequence, length );
 		++count;
 	}
 	return count;
@@ -202,11 +214,15 @@ bool WorldEntities::spawnWanderers( const std::string& model, float x, float z, 
 			animation.previous = animation.current;
 			registry.emplace<AnimationState>( entity, animation );
 		}
-		// Есть земля столкновений — персонаж: капсула по границам LOD 0 (толщина — по горизонтали, высота — модели)
+		// Есть земля столкновений — персонаж: капсула высотой модели; толщина — радиус простой коллизии капсулой
+		// (Models.collision_radius: у зверя — по ширине тела, иначе длинное тело застревает между стволами) или по границам
+		// LOD 0 по горизонтали
 		if( physics.terrainRevision() != ~0u )
 		{
 			PhysicsWorld::CharacterSettings settings;
-			settings.radius = std::max( std::max( lod->bounds.Extents.x, lod->bounds.Extents.z ), 0.1f );
+			settings.radius = asset->collision() == DMModel::Collision::capsule && asset->collisionRadius() > 0.0f ?
+							  asset->collisionRadius() :
+							  std::max( std::max( lod->bounds.Extents.x, lod->bounds.Extents.z ), 0.1f );
 			settings.height = std::max( 2.0f * lod->bounds.Extents.y, 2.0f * settings.radius + 0.05f );
 			settings.stepHeight = std::min( 0.3f, 0.5f * settings.height );
 			settings.maxWadeDepth = std::max( 0.5f * settings.height, 0.1f );

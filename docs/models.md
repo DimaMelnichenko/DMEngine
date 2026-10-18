@@ -140,7 +140,7 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
 | `MaterialInstance`, `MaterialParameterInstance` | экземпляр `<ассет>/<материал>` материала `PBR` (12) или `PBRInstance` (9) и его значения |
 | `Models`, `ModelProperties` | модель (`shadow_lod_scale`, `shadow_min_lod` — LOD теней, `collision` и `collision_radius` — простая коллизия, [physics.md](physics.md)) и её LOD: строка на секцию (`lod`, `section`) — меш, материал, экземпляр; дальность и `render` LOD — у секции 0 |
 | `LevelModels` | с `--level`: экземпляры модели на уровне — положение, поворот, масштаб (см. ниже), у модели со скелетом — клип `--animation` (`animation_id`) |
-| `Skeletons`, `Animations`, `Models.skeleton_id` | модель со скелетом: скелет, клипы и точки шага по скорости (`--locomotion`) |
+| `Skeletons`, `Animations`, `Models.skeleton_id` | модель со скелетом: скелет, клипы и точки шага по скорости и повороту (`--locomotion`) |
 | `LevelLights` | с `--level`: источники света файла (`KHR_lights_punctual`) — см. «Источники света из Blender» |
 
 Всё пишется в одной транзакции. Модели, меши, текстуры и экземпляры материалов находятся по именам, поэтому повторный
@@ -160,7 +160,10 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
   прежде).
 - Клипы — в файлы `.anim` с частотой 30 Гц, движение корня вынесено. Кость корня — `--root-motion-bone` или первая, что
   уходит по горизонтали.
-- `--locomotion "<покой>,<шаг>,<рысь>[=скорость]"` — точки шага по скорости (скорость — по движению корня).
+- `--locomotion "<покой>,<шаг>,<шаг влево>,<шаг вправо>,<рысь>[=скорость]"` — точки шага по скорости и повороту:
+  скорость и поворот — по движению корня, клип с поворотом — вариант влево или вправо аллюра ближайшей скорости.
+- `--collision capsule --collision-radius <м>` — у зверя капсула по ширине тела: тело экземпляра уровня и персонаж
+  сущности ([physics.md](physics.md)).
 - `--animation <клип>` — клип экземпляров уровня.
 
 Материалы `KHR_materials_pbrSpecularGlossiness` (Sketchfab) переводятся в `PBR`: диффузный цвет — базовый, шероховатость
@@ -171,7 +174,8 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
 
 ```
 python Tools/import_gltf.py Meshes/source/<имя>/scene.gltf --asset <имя> --name <Модель> --level Test --position x,0,z
-    --snap-to-terrain --animation <клип> --locomotion "<покой>,<шаг>,<рысь>,<бег>"
+    --snap-to-terrain --animation <клип> --collision capsule --collision-radius 0.45
+    --locomotion "<покой>,<шаг>,<шаг влево>,<шаг вправо>,<рысь>,<бег>"
 ```
 
 Импорт в Blender у части моделей ломает клипы (IK-кости ног выворачиваются) — импортёр читает glTF сам и считает по
