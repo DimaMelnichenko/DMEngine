@@ -25,13 +25,13 @@ namespace
 {
 
 // Один ли это меш с одними параметрами и отсечением граней — можно ли нарисовать их одним инстансным вызовом (у модели
-// со скелетом — своя поза: нельзя)
+// со скелетом — с одним буфером матриц скиннинга: поза у каждого своя, первая кость — в данных экземпляра)
 bool sameMesh( const MeshBatch& a, const MeshBatch& b )
 {
 	return a.material == b.material && a.params == b.params && a.indexOffset == b.indexOffset &&
 		   a.vertexOffset == b.vertexOffset && a.indexCount == b.indexCount && a.state.blendMode == b.state.blendMode &&
 		   a.state.twoSided == b.state.twoSided && a.mirrored == b.mirrored && a.lodDither == 0.0f && b.lodDither == 0.0f &&
-		   !a.skin && !b.skin;
+		   a.skin == b.skin;
 }
 
 // Вариант шейдера меша: инстансный вызов, глубина из depth prepass, смена LOD дизерингом (экземпляр в полосе перехода) и
@@ -886,6 +886,9 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 	shader->setPass( isDepthOnlyPass( context.pass ) ? shader->depthPhaseFor( *batch.params, options ) :
 					 shader->phaseFor( *batch.params, options ) );
 	shader->setParams( *batch.params );
+	// Стадо моделей со скелетом — один буфер матриц скиннинга на всех (sameMesh), первая кость — у экземпляра
+	if( batch.skin )
+		batch.skin->bind();
 
 	for( size_t chunk = first; chunk <= last; chunk += maxInstancesPerDraw )
 	{
@@ -894,8 +897,12 @@ void Renderer::drawMeshInstanced( const std::vector<MeshBatch>& meshes, const st
 		for( size_t i = chunk; i < chunk + count; ++i )
 		{
 			// HLSL читает матрицы по столбцам — транспонирование, как у константного буфера объекта
-			const XMMATRIX& world = meshes[commands[i].index].world;
-			m_instanceTransforms.push_back( { XMMatrixTranspose( world ), XMMatrixTranspose( normalMatrix( world ) ) } );
+			const MeshBatch& instance = meshes[commands[i].index];
+			InstanceTransform transform;
+			transform.world = XMMatrixTranspose( instance.world );
+			transform.worldInverseTranspose = XMMatrixTranspose( normalMatrix( instance.world ) );
+			transform.boneOffset = instance.boneOffset;
+			m_instanceTransforms.push_back( transform );
 		}
 		m_instanceBuffer.updateData( m_instanceTransforms.data(), count * sizeof( InstanceTransform ) );
 		m_instanceBuffer.setToSlot( SLOT_INSTANCE_DATA );

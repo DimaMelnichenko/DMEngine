@@ -72,6 +72,23 @@ public:
 	void step( World& world, float seconds ) override;
 };
 
+// LOD анимации по расстоянию (как Update Rate Optimizations в UE): шаг обновления позы в кадрах —
+// 2^⌊distance / lodDistance⌋, не больше maxSkip (1 — каждый кадр; lodDistance ≤ 0 — тоже)
+inline uint32_t animationUpdateStep( float distance, float lodDistance, uint32_t maxSkip )
+{
+	if( !( lodDistance > 0.0f ) || maxSkip <= 1 )
+		return 1;
+	uint32_t step = 1;
+	for( float level = distance / lodDistance; level >= 1.0f && step < maxSkip; level -= 1.0f )
+		step *= 2;
+	return step < maxSkip ? step : maxSkip;
+}
+// Считать ли позу в этом кадре: у сущностей с одним шагом кадры разнесены по номеру сущности — за step кадров каждая ровно раз
+inline bool updatesThisFrame( uint64_t frame, uint32_t serial, uint32_t step )
+{
+	return step <= 1 || ( frame + serial ) % step == 0;
+}
+
 // Рабочие массивы позы — у вызывающего, без выделений памяти в кадре
 struct PoseScratch
 {

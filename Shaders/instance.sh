@@ -9,12 +9,14 @@
 #endif
 
 #ifdef INST_MATRIX
-// Экземпляры моделей уровня одним вызовом (Renderer::drawMeshInstanced): мировая матрица и матрица нормалей
-// экземпляра вместо cb_worldMatrix, по SV_InstanceID. Раскладка — Renderer::InstanceTransform
+// Экземпляры моделей уровня и сущностей одним вызовом (Renderer::drawMeshInstanced): мировая матрица и матрица нормалей
+// экземпляра вместо cb_worldMatrix, по SV_InstanceID; у модели со скелетом — ещё первая кость. Раскладка —
+// Renderer::InstanceTransform
 struct InstanceTransform
 {
 	float4x4 world;
 	float4x4 worldInverseTranspose;
+	uint4 extra;	// x — первая матрица скиннинга экземпляра модели со скелетом (skinning.sh)
 };
 
 DM_SRV( StructuredBuffer<InstanceTransform>, g_instanceTransforms, SLOT_INSTANCE_DATA );

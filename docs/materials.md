@@ -159,7 +159,8 @@ Color в UE), множитель 1, доля 0,5, а альбедо и прос�
 **Перестановки.** Варианты шейдеров материала — перестановки по ключу, как permutation domains в UE: признаки варианта —
 биты `ShaderPermutation` (`MaterialRenderState.h`: `instanced`, `placed`, `lodDither` — вершинный шейдер; `clipAlpha`,
 `clipDither` — отсечение в пиксельном; `depthOnly` — тени и depth prepass; `impostorBake` — запекание; `skinned` — скиннинг
-модели со скелетом, define `SKINNED`, варианты собирает `Material::enableSkinning`, [animation.md](animation.md)). Материал при загрузке
+модели со скелетом, define `SKINNED`, варианты собирает `Material::enableSkinning` — и с `instanced`: стадо одним вызовом,
+[animation.md](animation.md)). Материал при загрузке
 собирает фазы по ключам (`ShaderProgram::setPermutation`; шейдер с тем же файлом, точкой входа и defines берётся готовый —
 `ShaderProgram::shader`), вызов находит свою фазу по ключу: `Material::permutationKey` собирает его из `ShaderPhaseOptions`
 и режима материала (`phaseFor`, `depthPhaseFor` — общие у всех материалов; свои правила ключа — переопределить

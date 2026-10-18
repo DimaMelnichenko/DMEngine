@@ -181,7 +181,8 @@ DepthOnlyVertexOutput main( VertexInputType input )
 	DepthOnlyVertexOutput output;
 #ifdef SKINNED
 	// Тот же путь точки, что у полного варианта: глубина совпадает
-	input.position.xyz = skinPoint( skinMatrix( input.joints, input.weights ), input.position.xyz );
+	input.position.xyz = skinPoint( skinMatrix( input.joints, input.weights, skinBoneOffset( instanceSlot( input.instanceIndex ) ) ),
+									input.position.xyz );
 #endif
 	WindFrame frame = (WindFrame)0;	// базис здесь не нужен
 	output.position = mul( mul( vertexWorldPosition( input, frame ), cb_viewMatrix ), cb_projectionMatrix );
@@ -201,7 +202,7 @@ PixelInputType main(VertexInputType input)
 	output.tex = input.tex;
 #ifdef SKINNED
 	// Поза кадра — в координатах модели, дальше как у неподвижной модели
-	const float3x4 skin = skinMatrix( input.joints, input.weights );
+	const float3x4 skin = skinMatrix( input.joints, input.weights, skinBoneOffset( instanceSlot( input.instanceIndex ) ) );
 	input.position.xyz = skinPoint( skin, input.position.xyz );
 	input.normal = skinDirection( skin, input.normal );
 	input.tangent = skinDirection( skin, input.tangent );

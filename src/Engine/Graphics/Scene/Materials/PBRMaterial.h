@@ -30,7 +30,8 @@ public:
 	bool enablePlacedInstances() override;
 	// Перестановки запекания: пиксельный шейдер mainBake (и с отсечением по альфе) с обычным вершинным шейдером
 	bool enableImpostorBake() override;
-	// Перестановки скиннинга — вершинный шейдер с SKINNED (обычный и LOD_DITHER, у каждого — «только глубина»)
+	// Перестановки скиннинга — вершинный шейдер с SKINNED (обычный, LOD_DITHER и с матрицами экземпляров — стадо одним
+	// вызовом; у каждого — «только глубина»)
 	bool enableSkinning() override;
 
 	// Пропускание вперёд по умолчанию (TransmissionForward, TransmissionForwardRoughness; как default_value

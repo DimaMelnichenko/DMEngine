@@ -793,3 +793,16 @@
   `Trans_TurnL Stand_Breathing_01` — ровно 90° влево на месте; `JumpStand` — 2,8–3,0 м по взгляду (клип — 3,0);
   «лечь → дышать лёжа», «встать → шаг» — пошли дальше со своих направлений. Описание — `docs/animation.md`,
   `docs/simulation.md`, `docs/physics.md`, `docs/models.md`.
+- [x] Скелетная анимация (этап 14, шаг L4c — стадо инстансами и LOD анимации; 2026-10-18; пункт закрыт, остатки — в
+  «Звери», VAT — в «Птицы» и «Мелкая жизнь»). Стадо: одинаковые секции моделей со скелетом с одним буфером матриц —
+  одним `DrawIndexedInstanced` (`sameMesh` сравнивает `skin`), первая кость — в данных экземпляра
+  (`InstanceTransform::boneOffset`, `extra.x` в `Shaders/instance.sh`, `skinBoneOffset` в `skinning.sh`), вариант
+  `skinned | instanced` у `PBRMaterial::enableSkinning`. LOD анимации в `WorldEntities::compute` (как Update Rate
+  Optimizations в UE): невидимая ни в одном виде кадра — без позы; шаг обновления 2^⌊расстояние / «Animation LOD distance»⌋
+  до «Animation LOD max skip» (`animationUpdateStep`), разнос по номеру (`updatesThisFrame`), кэш позы сущности;
+  свойства окна «World», `world` — поз посчитано и из кэша. Тесты: 73 (+1: шаг обновления и разнос). Замер (Release,
+  50 оленей на лугу): CPU кадра 9,06 → 5,61 мс, вызовов кадра 169 → 5, теней 643 → 55, запись теней 2,42 → 0,12 мс;
+  10 оленей — 4,13 → 3,95 мс, 41 → 5 вызовов; GPU — как прежде. Вдали (~150 м) из 50 поз 12 посчитаны, 38 — из кэша.
+  Снимок с «Show skeleton» — у каждого оленя своя поза. Кадры `check_frames.py` как прежде (раскладка `InstanceTransform`
+  поменялась у всех инстансных вызовов — модели уровня рисуются как раньше), debug-слой молчит. Описание —
+  `docs/animation.md`.

@@ -28,6 +28,16 @@ WorldEntities::WorldEntities() :
 																  "as lines over the frame (View > Debug views > Collision)" );
 	m_properties.insert( "Show skeleton", false )->setTooltip( "Bones of animated models (entities and level instances) as lines "
 																 "over the frame (View > Debug views > Skeleton)" );
+	// LOD анимации (как Update Rate Optimizations в UE): дальше — поза реже
+	Property* lodDistance = m_properties.insert( "Animation LOD distance", 40.0f );
+	lodDistance->setLow( 5.0f );
+	lodDistance->setHigh( 500.0f );
+	lodDistance->setUnit( "m" )->setTooltip( "Every this distance from the camera the pose of an animated entity is updated half "
+											  "as often (up to Animation LOD max skip); invisible entities get no pose" );
+	Property* maxSkip = m_properties.insert( "Animation LOD max skip", static_cast<int32_t>( 4 ) );
+	maxSkip->setLow( 1 );
+	maxSkip->setHigh( 16 );
+	maxSkip->setTooltip( "Far entities update the pose at most every this many frames; 1 - every frame (no LOD)" );
 }
 
 void WorldEntities::initialize( World& world )
@@ -56,32 +66,82 @@ XMMATRIX WorldEntities::placeMatrix( entt::entity entity, const Transform& curre
 		   XMMatrixTranslation( origin.x, origin.y, origin.z );
 }
 
+namespace
+{
+
+// Задевает ли модель (границы во всех позах клипов, мировой матрицей) хоть один вид кадра — главный или каскад теней; съёмку
+// сцены сущности не рисуют
+bool visibleInFrame( const BoundingBox& local, FXMMATRIX world, const FrameContext& frame )
+{
+	BoundingBox bounds;
+	local.Transform( bounds, world );
+	const XMFLOAT3 low( bounds.Center.x - bounds.Extents.x, bounds.Center.y - bounds.Extents.y, bounds.Center.z - bounds.Extents.z );
+	const XMFLOAT3 high( bounds.Center.x + bounds.Extents.x, bounds.Center.y + bounds.Extents.y, bounds.Center.z + bounds.Extents.z );
+	if( frame.viewCount == 0 )
+		return frame.view.frustum.checkBox( low, high );
+	for( uint32_t i = 0; i < frame.viewCount; ++i )
+		if( frame.views[i] && frame.views[i]->kind != RenderView::Kind::capture && frame.views[i]->frustum.checkBox( low, high ) )
+			return true;
+	return false;
+}
+
+}
+
 void WorldEntities::compute( const FrameContext& frame )
 {
 	m_skinning.clear();
 	m_boneOffsets.clear();
 	m_boneLines.clear();
+	m_posed = 0;
+	m_cachedPoses = 0;
 	if( !m_world )
 		return;
+	++m_frame;
 	const AnimationLibrary& library = m_world->animations();
 	const float t = m_world->interpolation();
 	const bool showSkeleton = m_properties["Show skeleton"].data<bool>();
+	const float lodDistance = m_properties["Animation LOD distance"].data<float>();
+	const uint32_t maxSkip = static_cast<uint32_t>( std::max( m_properties["Animation LOD max skip"].data<int32_t>(), 1 ) );
+	const XMVECTOR camera = XMLoadFloat3( &frame.view.position );
 	const entt::registry& registry = m_world->registry();
 	for( auto [entity, current, visual, state] : registry.view<const Transform, const ModelVisual, const AnimationState>().each() )
 	{
 		const Skeleton* skeleton = library.skeleton( state.skeleton );
-		if( !skeleton || !evaluatePose( library, state, t, m_poseScratch, m_pose ) )
+		const DMModel* model = System::models().get( visual.model ).get();
+		if( !skeleton || !model )
 			continue;
-		modelSpace( *skeleton, m_pose, m_jointMatrices );
+		XMFLOAT3 origin;
+		const XMMATRIX world = placeMatrix( entity, current, visual, t, origin );
+		// Невидимая ни в одном виде кадра — без позы: отрисовка её так же отсекает
+		if( !visibleInFrame( model->animatedBounds(), world, frame ) )
+			continue;
+		// LOD анимации: далёкая — поза реже, в остальных кадрах — прежняя из кэша (место смешивается каждый кадр). Не было
+		// позы в прошлом кадре (была невидима) — заново
+		PoseCache& cache = m_poseCache[entity];
+		const float distance = XMVectorGetX( XMVector3Length( XMLoadFloat3( &origin ) - camera ) );
+		const uint32_t step = animationUpdateStep( distance, lodDistance, maxSkip );
+		if( cache.matrices.size() != skeleton->jointCount() || cache.frame + 1 != m_frame ||
+			updatesThisFrame( m_frame, static_cast<uint32_t>( entt::to_integral( entity ) ), step ) )
+		{
+			if( !evaluatePose( library, state, t, m_poseScratch, m_pose ) )
+				continue;
+			modelSpace( *skeleton, m_pose, cache.joints );
+			cache.matrices.resize( skeleton->jointCount() );
+			skinningMatrices( *skeleton, cache.joints, cache.matrices.data() );
+			++m_posed;
+		}
+		else
+			++m_cachedPoses;
+		cache.frame = m_frame;
 		uint32_t offset = 0;
-		skinningMatrices( *skeleton, m_jointMatrices, m_skinning.append( skeleton->jointCount(), offset ) );
+		std::copy( cache.matrices.begin(), cache.matrices.end(), m_skinning.append( cache.matrices.size(), offset ) );
 		m_boneOffsets[entity] = offset;
 		if( showSkeleton )
-		{
-			XMFLOAT3 origin;
-			appendBoneLines( *skeleton, m_jointMatrices, placeMatrix( entity, current, visual, t, origin ), m_boneLines );
-		}
+			appendBoneLines( *skeleton, cache.joints, world, m_boneLines );
 	}
+	// Позы убранных сущностей — прочь
+	for( auto it = m_poseCache.begin(); it != m_poseCache.end(); )
+		it = registry.valid( it->first ) ? std::next( it ) : m_poseCache.erase( it );
 	m_skinning.upload();
 }
 

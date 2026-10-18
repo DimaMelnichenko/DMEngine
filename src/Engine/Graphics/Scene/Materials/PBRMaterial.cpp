@@ -173,8 +173,9 @@ bool PBRMaterial::enablePlacedInstances()
 bool PBRMaterial::enableSkinning()
 {
 	using namespace ShaderPermutation;
+	// Стадо одним вызовом — ещё и с матрицами экземпляров (у материала без инстансинга ключ ведёт к той же фазе)
 	if( !m_skinned )
-		m_skinned = addVertexVariant( skinned ) && addVertexVariant( skinned | lodDither );
+		m_skinned = addVertexVariant( skinned ) && addVertexVariant( skinned | lodDither ) && addVertexVariant( skinned | instanced );
 	return m_skinned;
 }
 

@@ -19,8 +19,10 @@ struct Transform;
 // моделью (Transform, ModelVisual) отдают секции модели в список отрисовки, как экземпляры моделей уровня (общая функция
 // collectModelMeshes, Model/ModelDraw.h); место — смешанное между прежним и новым по доле шага мира (World::interpolation).
 // Сущность со скелетом (AnimationState) — в позе кадра: её собирает compute (evaluatePose по доле шага) в матрицы скиннинга
-// (SkinningPalette). Рендерер о сущностях не знает: одинаковые меши без скелета подряд он сам рисует инстансами. В съёмку
-// сцены (карты отражений) они не попадают — движутся, как трава и частицы. Окно «World» — частота шагов, пауза мира и
+// (SkinningPalette); LOD анимации — дальше поза реже (кэш позы), невидимая — без позы. Рендерер о сущностях не знает:
+// одинаковые меши подряд (и стадо со скелетом — с одним буфером матриц) он сам рисует инстансами. В съёмку
+// сцены (карты отражений) они не попадают — движутся, как трава и частицы. Окно «World» — частота шагов, пауза мира, LOD
+// анимации и
 // отладочные виды столкновений и костей («Show collision», «Show skeleton», рисует вьюпорт; с уровнем не сохраняется);
 // команда world — сущности, шаги, бродяги для проверки (docs/simulation.md)
 class WorldEntities : public SceneObject
@@ -50,6 +52,9 @@ public:
 	size_t playClips( const std::vector<std::string>& clips );
 	// Кости поз кадра отрезками в мире (отладочный вид «Skeleton»)
 	const std::vector<BoneLine>& boneLines() const { return m_boneLines; }
+	// LOD анимации за прошлый кадр: поз посчитано и взято из кэша (у далёких — поза реже); невидимые — ни там, ни там
+	uint32_t posedLastFrame() const { return m_posed; }
+	uint32_t cachedLastFrame() const { return m_cachedPoses; }
 
 private:
 	// Мировая матрица модели сущности на месте между прежним и новым шагом; origin — точка модели (низ на земле)
@@ -59,12 +64,23 @@ private:
 	World* m_world = nullptr;
 	PropertyContainer m_properties;
 	uint32_t m_spawned = 0;		// сущностей создано за сеанс: зерно следующей
+	// Поза сущности последнего обновления (LOD анимации): места костей в пространстве модели и матрицы скиннинга
+	struct PoseCache
+	{
+		std::vector<DirectX::XMFLOAT4X4> joints;
+		std::vector<DirectX::XMFLOAT3X4> matrices;
+		uint64_t frame = 0;		// кадр, в котором поза была в буфере
+	};
+
 	SkinningPalette m_skinning;
 	std::unordered_map<entt::entity, uint32_t> m_boneOffsets;	// поза кадра: первая матрица скиннинга сущности
+	std::unordered_map<entt::entity, PoseCache> m_poseCache;
 	PoseScratch m_poseScratch;
 	std::vector<JointTransform> m_pose;
-	std::vector<DirectX::XMFLOAT4X4> m_jointMatrices;
 	std::vector<BoneLine> m_boneLines;
+	uint64_t m_frame = 0;
+	uint32_t m_posed = 0;
+	uint32_t m_cachedPoses = 0;
 };
 
 }

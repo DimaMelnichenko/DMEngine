@@ -28,7 +28,8 @@ world clear
 персонажи мира столкновений; `world list` — места сущностей. Сущности живут до
 выхода: в базу они не пишутся — появление зверей по маскам и запись в базу появятся с ними (этап 14, «Звери», «Птицы»).
 
-Окно «World» (Outliner → Scene): «Step rate (Hz)» — частота шагов, «Simulation paused» — сущности стоят (часы идут).
+Окно «World» (Outliner → Scene): «Step rate (Hz)» — частота шагов, «Simulation paused» — сущности стоят (часы идут),
+«Animation LOD distance» и «Animation LOD max skip» — LOD анимации ([animation.md](animation.md)).
 С уровнем не сохраняется. В «Statistic» — «World simulation» (время шагов, мс), «World steps» (шагов за кадр) и «World
 entities».
 

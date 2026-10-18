@@ -379,9 +379,10 @@ collector )` / `renderCustom( context )` / `properties`, видимость. З�
 повороту (`LocomotionBlendSpace`: ряды аллюров с вариантами влево и вправо, фаза держит смешанный шаг на скорости — копыта не
 скользят), переход между клипами, цепочки (`playSequence`); клип-действие ведёт сущность движением корня
 (`MovementSystem`, `AnimationClip::rootMotionDelta`); позу собирает
-отрисовка (`evaluatePose` в `compute` у `WorldEntities` и у `ModelInstances` — экземпляр уровня с клипом
-`LevelModels.animation_id`) в `SkinningPalette`, скиннинг — вариант материала `SKINNED` (`Shaders/skinning.sh`, веса —
-третий поток `VertexPool`); команды `world speed` / `anim`, вид «Skeleton»; подробно — `docs/animation.md`. Кадр начинается с
+отрисовка (`evaluatePose` в `compute` у `WorldEntities` — с LOD анимации: дальше реже, невидимые без позы — и у
+`ModelInstances` — экземпляр уровня с клипом `LevelModels.animation_id`) в `SkinningPalette`, скиннинг — вариант материала
+`SKINNED` (`Shaders/skinning.sh`, веса — третий поток `VertexPool`; стадо — одним инстансным вызовом, первая кость — в
+`InstanceTransform`); команды `world speed` / `anim`, вид «Skeleton»; подробно — `docs/animation.md`. Кадр начинается с
 `Scene::advanceWorld`: правки окна «Sun position» (органы часов) — в часы, шаг часов, шаги систем фиксированной длительности
 (60 Гц, не больше 4 за кадр, остаток — дальше; «Fix Your Timestep»). Рисует сущности объект сцены `WorldEntities` (общей с
 `ModelInstances` функцией `collectModelMeshes`, `Scene/Model/ModelDraw.h`; место — смешанное по `World::interpolation`),

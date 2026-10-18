@@ -36,7 +36,7 @@ uint32_t Material::permutationKey( const PropertyContainer& params, const Shader
 		key |= skinned;
 	if( options.placed )
 		key |= placed;
-	else if( options.instanced && !options.lodDither && !options.skinned )
+	else if( options.instanced && !options.lodDither )
 		key |= instanced;
 	if( options.lodDither )
 		key |= lodDither;

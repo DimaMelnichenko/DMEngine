@@ -187,7 +187,10 @@ private:
 	{
 		DirectX::XMMATRIX world;
 		DirectX::XMMATRIX worldInverseTranspose;
+		uint32_t boneOffset = 0;	// модель со скелетом: первая матрица скиннинга экземпляра (MeshBatch::boneOffset)
+		uint32_t padding[3] = {};
 	};
+	static_assert( sizeof( InstanceTransform ) == 144, "InstanceTransform: layout of Shaders/instance.sh" );
 	static constexpr uint32_t maxInstancesPerDraw = 1024;
 	DMStructuredBuffer m_instanceBuffer;
 	std::vector<InstanceTransform> m_instanceTransforms;

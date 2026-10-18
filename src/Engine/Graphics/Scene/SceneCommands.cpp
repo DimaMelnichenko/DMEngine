@@ -86,14 +86,16 @@ void registerSceneCommands( ConsoleCommands& console, Scene& scene )
 		{
 			const WorldClock& clock = world.clock();
 			const WorldClock::Date date = clock.date();
-			char text[384];
+			char text[448];
 			std::snprintf( text, sizeof( text ), "entities %zu, steps %llu (last frame %u), step rate %.0f Hz%s; clock %04d-%02d-%02d "
-						   "%.3f h, time scale %g%s; game time %.2f s%s; physics: %zu bodies, %zu characters%s", world.entityCount(),
+						   "%.3f h, time scale %g%s; game time %.2f s%s; physics: %zu bodies, %zu characters%s; animation last "
+						   "frame: %u poses, %u from the cache", world.entityCount(),
 						   static_cast<unsigned long long>( world.steps() ), world.lastSteps(), world.stepRate(),
 						   world.paused() ? ", paused" : "", date.year, date.month, date.day, clock.hours(), clock.timeScale(),
 						   clock.paused() ? ", paused" : "", clock.gameSeconds(), clock.gameTimeRunning() ? "" : " (frozen)",
 						   world.physics().bodyCount(), world.physics().characterCount(),
-						   world.physics().terrainRevision() != ~0u ? ", terrain" : ", no terrain" );
+						   world.physics().terrainRevision() != ~0u ? ", terrain" : ", no terrain",
+						   scene.worldEntities().posedLastFrame(), scene.worldEntities().cachedLastFrame() );
 			return reply->ok( text );
 		}
 		if( args.size() == 1 && args[0] == "list" )

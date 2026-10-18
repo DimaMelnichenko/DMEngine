@@ -462,6 +462,34 @@ public:
 
 }
 
+TEST_CASE( "Animation LOD: the update step doubles every LOD distance up to the limit, entities take turns" )
+{
+	CHECK( animationUpdateStep( 10.0f, 40.0f, 4 ) == 1 );
+	CHECK( animationUpdateStep( 45.0f, 40.0f, 4 ) == 2 );
+	CHECK( animationUpdateStep( 85.0f, 40.0f, 4 ) == 4 );
+	CHECK( animationUpdateStep( 500.0f, 40.0f, 4 ) == 4 );
+	CHECK( animationUpdateStep( 500.0f, 40.0f, 3 ) == 3 );
+	CHECK( animationUpdateStep( 500.0f, 40.0f, 1 ) == 1 );		// без LOD
+	CHECK( animationUpdateStep( 500.0f, 0.0f, 8 ) == 1 );
+
+	// За шаг кадров каждая сущность обновляется ровно раз, в кадре — четверть из них
+	constexpr uint32_t step = 4, entities = 40;
+	uint32_t updates[entities] = {};
+	for( uint64_t frame = 100; frame < 100 + step; ++frame )
+	{
+		uint32_t inFrame = 0;
+		for( uint32_t serial = 0; serial < entities; ++serial )
+			if( updatesThisFrame( frame, serial, step ) )
+			{
+				++updates[serial];
+				++inFrame;
+			}
+		CHECK( inFrame == entities / step );
+	}
+	for( uint32_t count : updates )
+		CHECK( count == 1 );
+}
+
 TEST_CASE( "AnimationSystem: the turn of an entity is measured from its heading" )
 {
 	World world;
