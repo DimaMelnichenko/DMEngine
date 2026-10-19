@@ -166,6 +166,10 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   конфигурация запуска `.run/DMEngine.run.xml`. Каталоги `Textures\`, `Meshes\` и `Sounds\` (записи звука — `Tools/pack_sound.py`
   из `DownloadResources\Sounds\` через ffmpeg, `docs/audio.md`) в git не хранятся;
   без них движок запускается на заглушках (см. «Заглушки ресурсов»), а в `log.txt` перечислено, что не загрузилось.
+  Их копия вместе с `DownloadResources\` (скачанные архивы) и итогом эрозии — на NAS (решение 2026-10-19):
+  `python Tools/nas_sync.py [status|push|pull] [--dry-run]` — сравнить, залить, забрать (без удалений; запускать из
+  PowerShell или cmd — из песочницы Git Bash SSH в локальную сеть не ходит). На новой машине — `pull`; новые архивы,
+  текстуры, меши и записи — `push`.
   Тестовые данные террейна: исходную карту высот `Textures\terrain\heightmap.dds` (1024×1024: горная долина без
   эрозии, секунды, numpy; карта может быть и из World Machine, Gaea) — `python Tools/gen_heightmap.py`; эрозию (капли,
   осыпание) делает движок при загрузке на GPU и пишет рельеф и карты эрозии в `Textures\terrain\eroded\` (`height`,
