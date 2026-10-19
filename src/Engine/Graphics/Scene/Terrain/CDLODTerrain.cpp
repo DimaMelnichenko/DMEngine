@@ -236,6 +236,17 @@ TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) con
 	const XMFLOAT2 displacement = m_properties["Displacement distance"].data<XMFLOAT2>();
 	constants.displacementEnd = m_pipeline->material().maxDisplacement() > 0.0f ? std::max( displacement.y, 0.0f ) : 0.0f;
 	constants.displacementStart = std::min( std::max( displacement.x, 0.0f ), constants.displacementEnd );
+	// Подстилка под кронами — вместо трав
+	const int32_t floorLayer = m_pipeline->roleLayer( TerrainLayerRole::forestFloor );
+	constants.forestFloorLayer = floorLayer >= 0 && floorLayer < static_cast<int32_t>( constants.layerCount ) ? floorLayer : -1;
+	constants.forestFloorStrength = m_properties["Forest floor"].data<float>();
+	constants.forestFloorEdge = m_properties["Forest floor edge"].data<float>();
+	for( const TerrainLayerRole role : { TerrainLayerRole::grassDry, TerrainLayerRole::grassWet } )
+	{
+		const int32_t layer = m_pipeline->roleLayer( role );
+		if( layer >= 0 && layer != constants.forestFloorLayer )
+			constants.forestFloorReplaced |= 1u << layer;
+	}
 	return constants;
 }
 

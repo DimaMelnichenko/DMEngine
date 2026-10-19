@@ -11,6 +11,7 @@
 #include "Common\DMTransform.h"
 #include "Level\LevelDescription.h"
 #include "Engine\Animation\AnimationSystem.h"
+#include "Terrain\TerrainCanopy.h"
 
 namespace GS
 {
@@ -81,6 +82,8 @@ public:
 	bool bounds( DirectX::BoundingBox& bounds ) const;
 	// Границы в мире (LOD0) экземпляров не ниже minHeight, м: ели рощи, постройки — препятствия ветру (поле ветра)
 	std::vector<DirectX::BoundingBox> tallBounds( float minHeight ) const;
+	// Кроны экземпляров деревьев (модели с Models.canopy > 0) — в карту полога (TerrainCanopy)
+	void appendCanopy( std::vector<CanopyStamp>& stamps ) const;
 
 	// Добавление и удаление в редакторе. У экземпляра — ключ, постоянный в сеансе (по нему его находят выбор вьюпорта и
 	// отмена: номер после добавления и удаления сдвигается). Новый — в конец списка, без поворота, масштаб 1; убранный

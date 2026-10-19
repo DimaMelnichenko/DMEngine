@@ -316,6 +316,19 @@ std::vector<DirectX::BoundingBox> ModelInstances::tallBounds( float minHeight ) 
 	return result;
 }
 
+void ModelInstances::appendCanopy( std::vector<CanopyStamp>& stamps ) const
+{
+	for( const Instance& instance : m_instances )
+	{
+		const DMModel::LodBlock* lod = instance.model->getLodById( 0 );
+		if( !lod || instance.model->canopy() <= 0.0f )
+			continue;
+		DirectX::BoundingBox bounds;
+		lod->bounds.Transform( bounds, instance.transform.worldMatrix() );
+		stamps.push_back( { bounds.Center.x, bounds.Center.z, std::max( bounds.Extents.x, bounds.Extents.z ) * instance.model->canopy() } );
+	}
+}
+
 void ModelInstances::updateBounds()
 {
 	bool first = true;

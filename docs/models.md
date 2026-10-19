@@ -138,7 +138,7 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
 | `Meshes` | строка на секцию LOD: имя `<модель>_LOD<N>[_S<k>]`, файл, `primitive = box` — заглушка, если файла нет (каталог не в git) |
 | `Textures` | имя `<ассет>_<картинка>`, файл, мипы, `sRGB` — 1 для базового цвета и свечения, 0 для остального; `compression` — `normalmap` (BC5) у карты нормалей, `default` (BC7) у прочих ([materials.md](materials.md), «Сжатие и приготовление текстур») |
 | `MaterialInstance`, `MaterialParameterInstance` | экземпляр `<ассет>/<материал>` материала `PBR` (12) или `PBRInstance` (9) и его значения |
-| `Models`, `ModelProperties` | модель (`shadow_lod_scale`, `shadow_min_lod` — LOD теней, `collision` и `collision_radius` — простая коллизия, [physics.md](physics.md)) и её LOD: строка на секцию (`lod`, `section`) — меш, материал, экземпляр; дальность и `render` LOD — у секции 0 |
+| `Models`, `ModelProperties` | модель (`shadow_lod_scale`, `shadow_min_lod` — LOD теней, `collision` и `collision_radius` — простая коллизия, [physics.md](physics.md), `canopy` — крона дерева на карте полога: множитель радиуса, NULL — не дерево, [scatter.md](scatter.md), «Полог») и её LOD: строка на секцию (`lod`, `section`) — меш, материал, экземпляр; дальность и `render` LOD — у секции 0 |
 | `LevelModels` | с `--level`: экземпляры модели на уровне — положение, поворот, масштаб (см. ниже), у модели со скелетом — клип `--animation` (`animation_id`) |
 | `Skeletons`, `Animations`, `Models.skeleton_id` | модель со скелетом: скелет, клипы и точки шага по скорости и повороту (`--locomotion`) |
 | `LevelLights` | с `--level`: источники света файла (`KHR_lights_punctual`) — см. «Источники света из Blender» |

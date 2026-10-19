@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Слои материала террейна — общее для всех, кто читает землю: пиксельный (terrain.ps) и вершинный (cdlod.vs,
 // дисплейсмент) шейдеры террейна, расстановка и частицы (terrain_height.sh — земля со смещением). Веса всех слоёв
-// (splat-карта и детальный слой весов у русел и мазков), четыре самых весомых, проекции triplanar, смешивание по высоте,
+// (splat-карта и детальный слой весов у русел и мазков, подстилка под кронами по карте полога), четыре самых весомых, проекции triplanar, смешивание по высоте,
 // расстояние LOD и смещение вершины по высоте слоёв (дисплейсмент, docs/terrain.md, «Дисплейсмент»). Всё — ресурсы сцены
 // (TerrainPipeline::compute, константы — CDLODTerrain::compute); без террейна слоты пусты: читать их можно только у уровня с террейном. Шейдеры террейна берут
 // константы из своего cbuffer (TERRAIN_LAYERS_IN_CBUFFER, cdlod.sh): у каждой вершины и пикселя он дешевле буфера
@@ -14,6 +14,7 @@
 #include "samplers.sh"
 #include "bindless.sh"
 #include "terrain_layer_constants.h"
+#include "canopy.sh"
 
 #ifndef TERRAIN_LAYERS_IN_CBUFFER
 DM_SRV( StructuredBuffer<TerrainLayerConstants>, g_terrainLayerConstants, SLOT_TERRAIN_LAYER_CONSTANTS );
@@ -163,8 +164,43 @@ float terrainBrightness( float2 worldXZ )
 	return 1.0f + 0.15f * variation;
 }
 
+// Подстилка под кронами деревьев (как слой земли по маске в материале UE Landscape, но маска — полог, TerrainCanopy):
+// полог × «Forest floor» переносит вес трав (forestFloorReplaced) в слой подстилки, скала, осыпи, снег и дно остаются.
+// Край — не круг кроны: выборка полога сдвинута шумом мира (тексели по 2 и 0,5 м) на «Forest floor edge», мелкое — смешивание
+// по высоте. Последний шаг весов и у пикселя террейна, и у тех, кто читает землю: фильтр слоёв и цвет земли у растений,
+// дисплейсмент
+void applyForestFloor( float2 worldXZ, inout float weights[maxLayers] )
+{
+	const TerrainLayerConstants layers = terrainLayers();
+	[branch] if( layers.forestFloorLayer < 0 || layers.forestFloorStrength <= 0.0f )
+		return;
+	float2 warp = 0.0f;
+	[branch] if( layers.forestFloorEdge > 0.0f )
+	{
+		[unroll] for( uint axis = 0; axis < 2; ++axis )
+		{
+			const float2 p = worldXZ + axis * float2( 91.7f, 53.3f );
+			warp[axis] = g_terrainNoise.SampleLevel( g_SamplerLinearWrap, p / 512.0f, 0.0f ).r * 0.75f +
+						 g_terrainNoise.SampleLevel( g_SamplerLinearWrap, p / 128.0f, 0.0f ).r * 0.25f;
+		}
+	}
+	const float share = saturate( canopyCover( terrainLayerUV( worldXZ + warp * layers.forestFloorEdge ) ) * layers.forestFloorStrength );
+	[branch] if( share <= 0.0f )
+		return;
+	float moved = 0.0f;
+	[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
+	{
+		const float taken = ( ( layers.forestFloorReplaced >> layer ) & 1u ) != 0 ? weights[layer] * share : 0.0f;
+		weights[layer] -= taken;
+		moved += taken;
+	}
+	// Слой — сравнением в развёрнутом цикле: индекс локального массива по константе ушёл бы в память потока
+	[unroll] for( uint target = 0; target < maxLayers; ++target )
+		weights[target] += target == (uint)layers.forestFloorLayer ? moved : 0.0f;
+}
+
 // Веса всех слоёв земли в точке: splat-карта, у русел и мазков — детальный слой весов (плитка целиком: те, кто его читает, —
-// у камеры, пиксель мельче текселя карты). Не нормированы — сумма около 1
+// у камеры, пиксель мельче текселя карты), под кронами — подстилка. Не нормированы — сумма около 1
 void terrainLayerWeightsAll( float2 worldXZ, out float weights[maxLayers] )
 {
 	float fine[maxLayers];
@@ -176,6 +212,7 @@ void terrainLayerWeightsAll( float2 worldXZ, out float weights[maxLayers] )
 	}
 	else
 		splatMapWeights( terrainLayerUV( worldXZ ), weights );
+	applyForestFloor( worldXZ, weights );
 }
 
 // Доля слоёв маски (бит — номер слоя) в весах земли (terrainLayerWeightsAll), нормированных здесь

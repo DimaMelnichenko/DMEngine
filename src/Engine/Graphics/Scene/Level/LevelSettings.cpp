@@ -423,6 +423,12 @@ const SettingsSchema<TerrainSettings>& terrainSchema()
 		{ "micro_shadows", "Micro shadows", DM_SETTING( microShadows ), 0.0f, 1.0f, "",
 		  "Direct light in the crevices of the layer AO: it reaches their bottom only from steep angles (micro shadowing of "
 		  "Uncharted 4); 0 - AO darkens the sky light only" },
+		// Подстилка под кронами: вес трав уходит слою с ролью forest_floor по карте полога (terrain_layers.sh, applyForestFloor)
+		{ "forest_floor", "Forest floor", DM_SETTING( forestFloor ), 0.0f, 1.0f, "",
+		  "Forest floor under the tree crowns: share of the canopy cover that moves the grass weight to the forest_floor layer "
+		  "(0 - grass under the trees as in the open)" },
+		{ "forest_floor_edge", "Forest floor edge", DM_SETTING( forestFloorEdge ), 0.0f, 4.0f, "m",
+		  "How far the noise moves the edge of the forest floor from the crown circle: a ragged edge instead of a disc" },
 		// Дисплейсмент у камеры (сетка — «Finest mesh»): полный ближе начала полосы, к концу сходит на нет
 		{ "displacement_start,displacement_end", "Displacement distance", DM_SETTING( displacement ), 0.0f, 64.0f, "m",
 		  "Displacement by the layer heights: full nearer than the start, fades out to the end (end 0 - off); the terrain mesh "

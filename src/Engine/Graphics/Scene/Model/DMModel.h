@@ -76,6 +76,10 @@ public:
 	// 0 — полуширина следа вершин у низа модели (TrunkCollision.h: у ели — комель с корнями, шире ствола)
 	float collisionRadius() const { return m_collisionRadius; }
 	void setCollisionRadius( float radius ) { m_collisionRadius = radius; }
+	// Крона на карте полога (Models.canopy, как ScatterLayers.canopy у леса): радиус — половина ящика LOD0 экземпляра по
+	// горизонтали × canopy; 0 — модель не дерево (шары, постройки): ни подстилки, ни редкой травы под ней
+	float canopy() const { return m_canopy; }
+	void setCanopy( float canopy ) { m_canopy = canopy; }
 	// Имя колонки → значение; false — неизвестное имя
 	static bool parseCollision( const std::string& name, Collision& collision );
 
@@ -93,6 +97,7 @@ private:
 	std::vector<std::pair<float, std::shared_ptr<LodBlock>>> m_lods;
 	Collision m_collision = Collision::hull;
 	float m_collisionRadius = 0.0f;
+	float m_canopy = 0.0f;
 	uint32_t m_skeleton = 0;
 	DirectX::BoundingBox m_animatedBounds;
 	PropertyContainer m_properties;

@@ -106,6 +106,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 			weights[layer] = weights[layer] * ( 1.0f - bed ) + bed * share;
 		}
 	}
+	// Под кронами — подстилка вместо трав (карта полога), как у тех, кто читает веса земли (terrainLayerWeightsAll)
+	applyForestFloor( position.xz, weights );
 
 	const TerrainLayerMix mixed = mixTerrainLayers( weights, farTextureShare( position ), 1.0f, position, positionDX, positionDY, projection );
 

@@ -318,7 +318,7 @@ float groundFilter( float2 worldXZ )
 {
 	if( g_groundLayers == 0 )
 		return 1.0f;
-	const float share = terrainLayerShare( worldXZ, g_groundLayers & 0xffu );
+	const float share = terrainLayerShare( worldXZ, g_groundLayers & ( ( 1u << maxLayers ) - 1u ) );
 	return g_groundThreshold > 0.0f ? smoothstep( 0.0f, 2.0f * g_groundThreshold, share ) : ( share > minWeight ? 1.0f : 0.0f );
 }
 

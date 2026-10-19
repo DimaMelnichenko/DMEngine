@@ -28,6 +28,9 @@ enum class TerrainLayerRole : uint32_t
 	// медленных ручьёв, ил — глубже в нижних озёрах (поля «Water beds» правил слоёв)
 	lakeGravel,	// lake_gravel
 	lakeSilt,	// lake_silt
+	// Подстилка под кронами (не правила, а полог — TerrainCanopy): в шейдере по карте полога забирает вес у трав
+	// (terrain_layers.sh, applyForestFloor; сила — «Forest floor» окна террейна)
+	forestFloor,	// forest_floor
 	count
 };
 constexpr uint32_t terrainLayerRoleCount = static_cast<uint32_t>( TerrainLayerRole::count );
@@ -36,6 +39,14 @@ constexpr uint32_t terrainRuleRoleCount = static_cast<uint32_t>( TerrainLayerRol
 // Имя роли в TerrainLayers.role; не найдено — count
 const char* terrainLayerRoleName( TerrainLayerRole role );
 TerrainLayerRole terrainLayerRole( const std::string& name );
+
+// Слои ролей, когда ни у одной роли слоя нет (−1)
+inline std::array<int32_t, terrainLayerRoleCount> noRoleLayers()
+{
+	std::array<int32_t, terrainLayerRoleCount> layers;
+	layers.fill( -1 );
+	return layers;
+}
 
 // Входы правил: итоговый рельеф (после эрозии, ручных правок и русел) и что о нём известно. Поля — строки подряд,
 // size × size; пустое поле — правило без него (карты эрозии — нули, русла — по водосбору)
@@ -48,7 +59,7 @@ struct TerrainMaskInputs
 	const std::vector<float>* catchment = nullptr;	// водосбор итогового рельефа, м² (TerrainHydrology::catchment)
 	const std::vector<float>* water = nullptr;		// 1 — русло или озеро конвейера (TerrainHydrology), 0 — суша
 	// Слой материала (TerrainLayers.layer) каждой роли; −1 — слоя с этой ролью нет: его вес — сухой траве (или слою 0)
-	std::array<int32_t, terrainLayerRoleCount> layerOf{ -1, -1, -1, -1, -1, -1 };
+	std::array<int32_t, terrainLayerRoleCount> layerOf = noRoleLayers();
 	// Множитель скорости ветра по рельефу — поле ветра без леса (TerrainWind: поток и подветренная тень); nullptr — без
 	// ветра у уровня: снег и лес без него
 	const std::vector<float>* windSpeed = nullptr;

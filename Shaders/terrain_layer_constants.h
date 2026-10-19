@@ -28,9 +28,13 @@ DM_STRUCT( TerrainLayerConstants )
 	DM_MEMBER( float, splatDetailTile );		// сторона плитки детального слоя весов, м; 0 — плиток нет
 	DM_MEMBER( float, displacementStart );		// дисплейсмент: полный ближе, м,
 	DM_MEMBER( float, displacementEnd );		// к этому расстоянию от точки LOD — нет; 0 — выключен
-	DM_MEMBER( float, padding );
+	DM_MEMBER( float, forestFloorStrength );	// подстилка под кронами: доля полога, которая уходит в её слой («Forest floor»)
 	// множитель альбедо по слоям (xyz; TerrainLayers.albedo_tint, окно «Layer tint»)
 	DM_MEMBER_ARRAY( float4, layerTint, TERRAIN_MAX_LAYERS );
+	DM_MEMBER( int, forestFloorLayer );			// слой роли forest_floor; −1 — нет
+	DM_MEMBER( uint, forestFloorReplaced );		// биты слоёв, чей вес под кронами уходит подстилке: травы
+	DM_MEMBER( float, forestFloorEdge );		// рваный край подстилки: сдвиг выборки полога шумом, м («Forest floor edge»)
+	DM_MEMBER( float, padding );
 };
 DM_STRUCT_END
 
