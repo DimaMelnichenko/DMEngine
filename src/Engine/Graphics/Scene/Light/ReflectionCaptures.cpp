@@ -145,6 +145,12 @@ void ReflectionCaptures::update( const FrameContext& frame )
 		if( capture.nextFace >= faceCount && !capture.prefilterPending &&
 			light.x * captured.x + light.y * captured.y + light.z * captured.z < recaptureCos )
 			restart( capture );
+		// Экспозиция кадра ушла от экспозиции съёмки (смена дня и ночи): точности half-float карты на новую не хватает
+		const float low = std::max( std::min( frame.exposure, capture.shownExposure ), 1e-30f );
+		const float high = std::max( frame.exposure, capture.shownExposure );
+		if( capture.ready && capture.nextFace >= faceCount && !capture.prefilterPending && frame.exposure > 0.0f &&
+			high > low * recaptureExposureRatio )
+			restart( capture );
 	}
 }
 

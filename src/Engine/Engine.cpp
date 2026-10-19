@@ -360,7 +360,8 @@ bool Engine::tick()
 	DMLight::ShadowSettings shadowSettings;
 	m_scene.lights().shadowLight( toShadowLight, shadowSettings );
 	// Время игры — у мировых часов (-freezetime: стоит — снимки с одной точки совпадают между запусками, Tools/check_frames.py)
-	const FrameContext frame{ mainView, elapsedTime, static_cast<float>( m_scene.world().clock().gameSeconds() ), toShadowLight };
+	const FrameContext frame{ mainView, elapsedTime, static_cast<float>( m_scene.world().clock().gameSeconds() ), toShadowLight,
+							  m_renderer.exposure() };
 	// Перестройка по правкам редактора (кривые русел) — не пока тянут ползунок в окне
 	watchdog.stage( "editor changes" );
 	if( !m_GUI.itemActive() )
