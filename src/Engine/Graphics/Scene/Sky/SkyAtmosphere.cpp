@@ -28,7 +28,9 @@ namespace
 
 constexpr DXGI_FORMAT hdrFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 // Небо вокруг наблюдателя и воздушная перспектива — во float32: луна в единицах запекания (на 1 лк солнца) — ~10⁻⁶,
-// ночное свечение — ~10⁻⁹, в половинной точности это ноль
+// ночное свечение — ~10⁻⁹, в половинной точности это ноль. Так же таблица многократного рассеяния Ψ: для солнца под
+// горизонтом у земли она ~10⁻⁶…10⁻⁹ на люкс, в половинной точности — последние разряды, и в сумерках небо (×10⁵ лк солнца)
+// шло плато со ступенями и зелёными пятнами (разные каналы округлялись по-разному)
 constexpr DXGI_FORMAT skyFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
 // Луна светит в небе, пока она выше −10°: ниже её свет в атмосфере — ноль (тень Земли), таблицу луны не считаем
 constexpr float moonSkyMinSin = -0.1736f;
@@ -241,7 +243,7 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 
 	// Цели для прогрева пайплайнов — форматы таблиц, куба и буфера сцены
 	if( !m_transmittanceShader.load( "Shaders\\sky_transmittance.ps", TargetFormats::colorTarget( hdrFormat ) ) ||
-		!m_multipleScatteringShader.load( "Shaders\\sky_multiscattering.ps", TargetFormats::colorTarget( hdrFormat ) ) ||
+		!m_multipleScatteringShader.load( "Shaders\\sky_multiscattering.ps", TargetFormats::colorTarget( skyFormat ) ) ||
 		!m_skyViewShader.load( "Shaders\\sky_view.ps", TargetFormats::colorTarget( skyFormat ) ) ||
 		!m_cubeShader.load( "Shaders\\sky_cube.ps", TargetFormats::colorTarget( skyFormat ) ) ||
 		!m_backgroundShader.load( "Shaders\\sky_background.ps", SceneTargets::formats() ) ||
@@ -256,7 +258,7 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( SkyParameters ), m_constantBuffer ) ||
 		!SkyLight::createSource( m_skyCube ) ||
 		!m_transmittanceLut.create( SKY_TRANSMITTANCE_LUT_WIDTH, SKY_TRANSMITTANCE_LUT_HEIGHT, hdrFormat, "Transmittance LUT" ) ||
-		!m_multipleScattering.create( multipleScatteringSize, multipleScatteringSize, hdrFormat, "Multiple scattering LUT" ) ||
+		!m_multipleScattering.create( multipleScatteringSize, multipleScatteringSize, skyFormat, "Multiple scattering LUT" ) ||
 		!m_skyViewLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat, "Sky-View LUT" ) ||
 		!m_skyViewMoonLut.create( SKY_VIEW_LUT_WIDTH, SKY_VIEW_LUT_HEIGHT, skyFormat, "Sky-View moon LUT" ) ||
 		!createAerialPerspectiveVolume() ||
