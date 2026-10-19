@@ -269,11 +269,11 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 	if( audio && m_level.ambientSound &&
 		!m_ambientSound.initialize( *m_level.ambientSound, *audio, m_wind, m_level.terrain ? &m_terrainPipeline : nullptr ) )
 		LOG( "Ambient sound is not initialized" );
-	// Певцы — записи (Sounds\) по слоям уровня, места — по маскам, часы — по времени суток. Окно — и у уровня без слоёв: слой
-	// добавляют в нём
+	// Певцы — записи (Sounds\) по слоям уровня, места — по маскам, часы — по времени суток, правило «Wind» — по ветру уровня.
+	// Окно — и у уровня без слоёв: слой добавляют в нём
 	if( audio &&
 		!m_soundscape.initialize( m_level.soundscapeLayers, m_level.sounds, *audio, m_level.terrain ? &m_terrainPipeline : nullptr,
-								  m_world.clock() ) )
+								  m_world.clock(), m_wind ) )
 		LOG( "Soundscape is not initialized" );
 
 	// Мир симуляции: земля — рельеф уровня; столкновения — земля и тела моделей уровня; системы — по порядку шага:

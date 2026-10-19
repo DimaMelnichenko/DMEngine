@@ -14,6 +14,7 @@ namespace GS
 {
 
 class TerrainPipeline;
+class Wind;
 class WorldClock;
 
 // Певцы уровня — как Soundscape в UE (docs/audio.md, «Певцы»): слои SoundscapeLayers, у слоя — записи (строки Sounds, их фразы
@@ -23,7 +24,7 @@ class WorldClock;
 // появляется другой. Певцов сразу — «singers» × активность слоя: произведение его правил (SoundRules.h — часы суток по мировым
 // часам WorldClock и т. д.). Голос — на фразу
 // (ClipGenerator), у певца своя высота; громкость — слоя × записи, по расстоянию от 10 м, поглощение воздухом и заглушение
-// гребнем (SoundPlace.h), как у ручьёв.
+// гребнем (SoundPlace.h), как у ручьёв. Правило «Wind» — по ветру уровня (Wind).
 // Окно «Soundscape» (раздел Audio) — подокно на слой: «Enabled», поля слоя, записи и места флажками (подокна «Sounds» и
 // «Habitat»), правила (подокно «Rules»: подокно на правило с полями по описанию типа, «Add … rule», «Delete»), прослушивание
 // «Mute» / «Solo» (AudioAudition), «Delete»; кнопка окна «Add layer» — новый слой (как источники
@@ -39,9 +40,9 @@ public:
 	Soundscape();
 	~Soundscape() override;
 	// sounds — все записи (строки Sounds): звук записи читается, когда её поёт слой или слушают; нет файла — строка в лог, запись
-	// молчит; clock — время суток (мировые часы)
+	// молчит; clock — время суток (мировые часы), wind — погода для правила «Wind»
 	bool initialize( const std::vector<Layer>& layers, const std::vector<SoundRecord>& sounds, AudioMixer& mixer,
-					 const TerrainPipeline* terrain, const WorldClock& clock );
+					 const TerrainPipeline* terrain, const WorldClock& clock, Wind& wind );
 	bool initialized() const { return m_mixer != nullptr; }
 
 	void update( const FrameContext& frame ) override;
@@ -168,6 +169,7 @@ private:
 	AudioMixer* m_mixer = nullptr;
 	const TerrainPipeline* m_terrain = nullptr;
 	const WorldClock* m_clock = nullptr;
+	Wind* m_wind = nullptr;
 	std::mt19937 m_random{ 0x5EEDu };
 	std::vector<DirectX::XMFLOAT3> m_shore;
 	uint32_t m_shoreRevision = ~0u;

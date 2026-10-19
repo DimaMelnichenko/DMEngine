@@ -471,7 +471,7 @@ Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/
 потере мощности течения, слышны самые громкие, заглушение гребнем; строка `AmbientSound`, `Levels.ambient_sound`, `Tools/ambient_sound.py`;
 мешей нет — цели голосов микшера в `update`, `docs/audio.md`), `Soundscape` (певцы из записей, как Soundscape в UE: слои
 `SoundscapeLayers` — записи `Sounds` (у записи — своя громкость), маски места, правила `SoundRules` (активность — их
-произведение; тип правила — строка таблицы `soundRuleTypes` в ядре, `Audio/SoundRules.h`; сейчас — часы суток); певец садится вокруг слушателя и поёт фразы записи с паузами;
+произведение; тип правила — строка таблицы `soundRuleTypes` в ядре, `Audio/SoundRules.h`; сейчас — часы суток и ветер уровня: так скрипят деревья); певец садится вокруг слушателя и поёт фразы записи с паузами;
 `Tools/soundscape.py`, записи — `Tools/pack_sound.py` через ffmpeg в `Sounds\` (не в git, как `Textures\`), `docs/audio.md`). Новый объект добавляется членом `Scene` и строкой в `Scene::initialize`;
 его свойства GUI подхватит сам.
 

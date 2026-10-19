@@ -17,6 +17,7 @@ namespace GS
 struct SoundRuleContext
 {
 	float hour = 12.0f;		// час суток мировых часов, 0…24 (WorldClock)
+	float windSpeed = 0.0f;	// ветер уровня — погода, м/с (Wind.speed; ветер выключен — 0)
 };
 
 // Параметр типа правила: ключ в params, подпись в окне, значение по умолчанию, границы поля, единицы, подсказка
@@ -68,5 +69,8 @@ float soundActivity( const std::vector<SoundRule>& rules, const SoundRuleContext
 // Окно часов: 1 в часах from…to (from > to — через полночь), у краёв — плавно за fade часов, на самой границе — половина;
 // правило «Hours»
 float hoursActivity( float from, float to, float fade, float hour );
+// Ветер: 0 при скорости from, 1 при to, между — плавно (smoothstep); from > to — наоборот, поёт в тихую погоду и затихает в
+// сильный ветер; правило «Wind»
+float windActivity( float from, float to, float speed );
 
 }

@@ -6,6 +6,7 @@
 #include "Engine\Simulation\WorldClock.h"
 #include "SoundPlace.h"
 #include "Terrain\TerrainPipeline.h"
+#include "Wind\Wind.h"
 #include "Utils\utilites.h"
 
 using namespace DirectX;
@@ -72,11 +73,12 @@ float Soundscape::uniform( float from, float to )
 }
 
 bool Soundscape::initialize( const std::vector<Layer>& layers, const std::vector<SoundRecord>& sounds, AudioMixer& mixer,
-							 const TerrainPipeline* terrain, const WorldClock& clock )
+							 const TerrainPipeline* terrain, const WorldClock& clock, Wind& wind )
 {
 	m_mixer = &mixer;
 	m_terrain = terrain;
 	m_clock = &clock;
+	m_wind = &wind;
 	m_clearSolo = mixer.audition().clearRevision();
 
 	// Записи — окно «Sounds»: громкость и прослушивание
@@ -670,6 +672,8 @@ void Soundscape::update( const FrameContext& frame )
 	const float step = std::clamp( frame.elapsedTime / 1000.0f, 0.0f, maxStep );
 	SoundRuleContext rules;
 	rules.hour = static_cast<float>( m_clock->hours() );
+	const WindParameters wind = m_wind->parameters();
+	rules.windSpeed = wind.strength > 0.0f ? std::max( wind.speed, 0.0f ) : 0.0f;
 	const AudioListener listener = listenerFromView( frame.view );
 	if( m_terrain && m_terrain->heightRevision() != m_shoreRevision )
 	{

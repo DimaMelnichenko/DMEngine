@@ -2,14 +2,14 @@
 
 Слой — как Soundscape в UE: певцы одной записи (строка Sounds, Tools/pack_sound.py) садятся вокруг слушателя там, где их место
 по маскам рельефа, и поют её фразы с паузами; сколько их сразу — «singers» × активность слоя, произведение его правил
-(SoundRules: часы суток и т. д.).
+(SoundRules: часы суток, ветер и т. д.).
 
   python Tools/soundscape.py list [--level Test]
   python Tools/soundscape.py add ИМЯ --sound запись [--param поле=значение ...] [--level Test]
   python Tools/soundscape.py set ИМЯ --param поле=значение [...] [--level Test]
   python Tools/soundscape.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level Test]
   python Tools/soundscape.py rules [--level Test]                                 — правила слоёв
-  python Tools/soundscape.py rule-add ИМЯ --type hours [--param ключ=значение ...]  — правило слоя
+  python Tools/soundscape.py rule-add ИМЯ --type hours|wind [--param ключ=значение ...]  — правило слоя
   python Tools/soundscape.py rule-set ID [--param ключ=значение ...] [--enabled 0|1]
   python Tools/soundscape.py rule-delete ID
   python Tools/soundscape.py sounds                          — записи (Sounds) с громкостью
@@ -27,7 +27,8 @@ habitat (маски места через запятую: mask_forest_spruce, ma
 
 Правило — строка SoundRules: layer, type (тип — строка таблицы soundRuleTypes в src/Engine/Audio/SoundRules.cpp), enabled,
 params «ключ=значение;…» (ключи — параметры типа; нет ключа — значение по умолчанию). Типы сейчас: hours — from, to (часы
-суток; from > to — через полночь), fade (края, ч). Миграция: часы слоя (hours_from / hours_to, были колонками слоя) — в
+суток; from > to — через полночь), fade (края, ч); wind — from, to (ветер уровня, м/с: при from певцов нет, при to — все;
+from > to — поёт в тихую погоду). Миграция: часы слоя (hours_from / hours_to, были колонками слоя) — в
 правило hours, колонки убраны. Сообщения — ASCII (Windows PowerShell 5.1, cmd).
 """
 import argparse
@@ -176,7 +177,7 @@ def main():
     parser.add_argument('--sound', help='recordings: Sounds.name, several - comma-separated')
     parser.add_argument('--param', action='append', help='field=value (layer) or key=value (rule), repeatable (empty value - NULL)')
     parser.add_argument('--volume', help='sound: gain of the recording (empty - NULL, 1)')
-    parser.add_argument('--type', help='rule-add: rule type (hours)')
+    parser.add_argument('--type', help='rule-add: rule type (hours, wind)')
     parser.add_argument('--enabled', choices=['0', '1'], help='rule-set: rule on or off')
     args = parser.parse_args()
 
@@ -259,7 +260,7 @@ def main():
         if row is None:
             sys.exit('soundscape layer %s is not found' % args.name)
         if not args.type:
-            sys.exit('rule-add: --type is required (hours)')
+            sys.exit('rule-add: --type is required (hours, wind)')
         db.execute('INSERT INTO SoundRules (layer, type, params) VALUES (?, ?, ?)', (row[0], args.type, rule_params(args.param) or None))
         db.commit()
         print('rule-add %s %s: done' % (args.name, args.type))

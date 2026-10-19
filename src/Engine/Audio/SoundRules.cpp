@@ -1,5 +1,6 @@
 #include "SoundRules.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -14,13 +15,18 @@ float hoursRule( const float* values, const SoundRuleContext& context )
 	return hoursActivity( values[0], values[1], values[2], context.hour );
 }
 
+float windRule( const float* values, const SoundRuleContext& context )
+{
+	return windActivity( values[0], values[1], context.windSpeed );
+}
+
 }
 
 const std::vector<SoundRuleType>& soundRuleTypes()
 {
 	// Новое правило — строка здесь: имя в базе, подпись, параметры (ключ, подпись, по умолчанию, границы, единицы, подсказка),
-	// оценка. Дальше по плану (TODO.md, «Звук — дальше»): солнце (высота над горизонтом — рассвет и закат), сезон, ветер и
-	// погода, кривая по часам (рассветный хор)
+	// оценка. Дальше по плану (TODO.md, «Звук — дальше»): солнце (высота над горизонтом — рассвет и закат), сезон, дождь,
+	// кривая по часам (рассветный хор)
 	static const std::vector<SoundRuleType> types = {
 		{ "hours", "Hours", "Sings in these hours of the day (world clock); from > to - over midnight (crickets, owls)",
 		  {
@@ -29,6 +35,13 @@ const std::vector<SoundRuleType>& soundRuleTypes()
 			  { "fade", "Fade", 0.75f, 0.0f, 4.0f, "h", "The edges fade over this long: half the singers right at the edge" },
 		  },
 		  hoursRule },
+		{ "wind", "Wind", "Sings by the wind of the level (weather, not the field at the ground: crowns and birds are above the "
+						  "forest): no singers at From, all at To; From > To - sings in calm and goes quiet in a strong wind",
+		  {
+			  { "from", "From", 2.0f, 0.0f, 30.0f, "m/s", "No singers at this wind" },
+			  { "to", "To", 6.0f, 0.0f, 30.0f, "m/s", "All the singers at this wind" },
+		  },
+		  windRule },
 	};
 	return types;
 }
@@ -114,6 +127,15 @@ float hoursActivity( float from, float to, float fade, float hour )
 	const float rise = std::clamp( ( hour - from ) / edge + 0.5f, 0.0f, 1.0f );
 	const float fall = std::clamp( ( to - hour ) / edge + 0.5f, 0.0f, 1.0f );
 	return rise * fall;
+}
+
+float windActivity( float from, float to, float speed )
+{
+	// Доля пути от from к to — та же формула и при from > to: спад с ветром
+	if( std::abs( to - from ) < 1e-3f )
+		return speed >= from ? 1.0f : 0.0f;
+	const float share = std::clamp( ( speed - from ) / ( to - from ), 0.0f, 1.0f );
+	return share * share * ( 3.0f - 2.0f * share );
 }
 
 }

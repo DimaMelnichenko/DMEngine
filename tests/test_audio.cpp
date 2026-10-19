@@ -307,3 +307,34 @@ TEST_CASE( "SoundRules: hours window, product of rules, values as text" )
 	context.hour = 6.0f;
 	CHECK( soundActivity( { day, morning }, context ) == doctest::Approx( 0.5f ) );
 }
+
+TEST_CASE( "SoundRules: wind rises from From to To, From > To - quiet in a strong wind" )
+{
+	// Скрип деревьев: нет при 2 м/с, все при 6, посередине — половина (smoothstep)
+	CHECK( windActivity( 2.0f, 6.0f, 0.0f ) == doctest::Approx( 0.0f ) );
+	CHECK( windActivity( 2.0f, 6.0f, 2.0f ) == doctest::Approx( 0.0f ) );
+	CHECK( windActivity( 2.0f, 6.0f, 4.0f ) == doctest::Approx( 0.5f ) );
+	CHECK( windActivity( 2.0f, 6.0f, 6.0f ) == doctest::Approx( 1.0f ) );
+	CHECK( windActivity( 2.0f, 6.0f, 20.0f ) == doctest::Approx( 1.0f ) );
+	CHECK( windActivity( 2.0f, 6.0f, 3.0f ) < windActivity( 2.0f, 6.0f, 5.0f ) );
+	// Птицы в бурю: поют до 8 м/с, к 14 — молчат
+	CHECK( windActivity( 14.0f, 8.0f, 4.0f ) == doctest::Approx( 1.0f ) );
+	CHECK( windActivity( 14.0f, 8.0f, 11.0f ) == doctest::Approx( 0.5f ) );
+	CHECK( windActivity( 14.0f, 8.0f, 16.0f ) == doctest::Approx( 0.0f ) );
+	// Порог без полосы — ступень
+	CHECK( windActivity( 5.0f, 5.0f, 4.9f ) == doctest::Approx( 0.0f ) );
+	CHECK( windActivity( 5.0f, 5.0f, 5.0f ) == doctest::Approx( 1.0f ) );
+
+	// Правило по ветру кадра; в штиль (ветер выключен — 0) слой молчит; с часами — произведение
+	const SoundRuleType* wind = soundRuleType( "wind" );
+	REQUIRE( wind );
+	SoundRule creaks{ 0, "wind", true, parseSoundRuleValues( *wind, "from=2;to=6" ) };
+	SoundRule day{ 0, "hours", true, parseSoundRuleValues( *soundRuleType( "hours" ), "from=6;to=18" ) };
+	SoundRuleContext context;
+	context.hour = 12.0f;
+	CHECK( soundActivity( { creaks }, context ) == doctest::Approx( 0.0f ) );
+	context.windSpeed = 4.0f;
+	CHECK( soundActivity( { creaks, day }, context ) == doctest::Approx( 0.5f ) );
+	context.hour = 2.0f;
+	CHECK( soundActivity( { creaks, day }, context ) == doctest::Approx( 0.0f ) );
+}
