@@ -187,7 +187,7 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
 | Постобработка, GTAO, SSR | `PostProcess`, `AmbientOcclusion`, `ScreenSpaceReflections`, `ReflectionCaptures` | `postprocess.md`, `ambient_occlusion.md`, `screen_reflections.md`, `reflection_captures.md` |
 | Рельеф | `TerrainPipeline` (данные: эрозия, правки, русла, маски, поле ветра), `CDLODTerrain`, `FarTerrain` | `terrain.md`, `far_terrain.md` |
 | Вода | `WaterSimulation` (`StaticWater`, `WaterSurface`, `WaterFoam`), `TerrainHydrology` | `water.md` |
-| Расстановка и лес | `Scatterer`, `ScatterPass`, импостеры | `scatter.md` |
+| Расстановка и лес | `Scatterer`, `ScatterPass`, импостеры, полог (`TerrainCanopy`) | `scatter.md` |
 | Ветер | `Wind`, `TerrainWind`, `FoliageInteraction` | `wind.md` |
 | Частицы | `ParticleSystem` | `particles.md` |
 | Звук | `AudioDevice`, `AudioMixer`, `AmbientSound`, `Soundscape` | `audio.md` |

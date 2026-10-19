@@ -971,6 +971,10 @@ struct ScatterLayerSettings
 	// экземпляр наклонён по ветру уровня на ridgeLean × открытость, градусы, и ниже на долю ridgeShrink × открытость
 	float ridgeLean = 0.0f;
 	float ridgeShrink = 0.0f;
+	// Полог (TerrainCanopy, docs/scatter.md, «Полог»): постоянный слой (лес) кладёт кроны в карту полога — радиус кроны LOD0
+	// модели × canopy (0 — не кладёт); слои под ним редеют — плотность под полным пологом × underCanopy (1 — как на открытом)
+	float canopy = 0.0f;
+	float underCanopy = 1.0f;
 	bool castShadow = false;		// слой отбрасывает тень солнца (Cast Shadow в UE)
 	// Постоянный слой (лес): экземпляры раскладываются один раз на всю карту кластерами, а не кольцом каждый кадр;
 	// кольцо near_border…far_border — дальность прорисовки

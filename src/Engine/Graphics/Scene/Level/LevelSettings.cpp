@@ -96,6 +96,13 @@ const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 		  "wind by up to this angle; 0 - upright. Needs the Wind row of the level", settingClamp, "placement" },
 		{ "ridge_shrink", "Ridge shrink", DM_SETTING( ridgeShrink ), 0.0f, 0.8f, "",
 		  "Flagged trees on open ridges: the instance is smaller by up to this share where the wind scours", settingClamp, "placement" },
+		// Полог: лес кладёт кроны в карту, под кронами другие слои реже
+		{ "canopy", "Canopy", DM_SETTING( canopy ), 0.0f, 2.0f, "",
+		  "Persistent layer (forest): its crowns cover the ground in the canopy map - the crown radius of the LOD0 model times this; "
+		  "0 - no canopy. Other layers thin out under it (Under canopy)", settingClamp, "placement" },
+		{ "under_canopy", "Under canopy", DM_SETTING( underCanopy ), 0.0f, 1.0f, "",
+		  "Density under a full canopy (crowns of the forest and of tall level models): 1 - as in the open, 0 - nothing under "
+		  "the crowns", settingClamp, "placement" },
 		{ "cast_shadow", "Cast shadow", DM_SETTING( castShadow ), 0.0f, 0.0f, "", "", 0, "placement" },
 		// Постоянный слой (лес) — раскладка раз на всю карту при загрузке
 		{ "persistent", nullptr, DM_SETTING( persistent ) },

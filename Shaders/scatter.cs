@@ -34,6 +34,7 @@
 #include "lod_transition.h"
 #include "bindless.sh"
 #include "scatter_constants.h"
+#include "canopy.sh"
 
 // Пределы — scatter_constants.h; номер списка — как ScatterPass::listIndex
 static const uint maxLods = SCATTER_MAX_LODS;
@@ -340,8 +341,10 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	if( any( uv < 0.0f ) || any( uv > 1.0f ) )
 		return false;
 
+	// Под кронами деревьев — реже (карта полога; лесу и тем, кому всё равно, «Under canopy» = 1 — без выборки)
+	const float canopy = g_underCanopy < 1.0f ? lerp( 1.0f, g_underCanopy, canopyCover( uv ) ) : 1.0f;
 	const float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - foliageClear( worldXZ ) ) *
-						  groundFilter( worldXZ );
+						  groundFilter( worldXZ ) * canopy;
 	const float chance = random( cell, seed + 2 );
 	if( chance >= density )
 		return false;

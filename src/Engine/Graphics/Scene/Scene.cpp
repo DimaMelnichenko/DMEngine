@@ -436,6 +436,25 @@ void Scene::update( const FrameContext& frame, FrameStats& stats )
 				   std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::high_resolution_clock::now() - start ).count() / 1000.0f );
 	}
 
+	// Карта полога: кроны леса (постоянные слои с «Canopy») и высоких моделей уровня (ели рощи, постройки — как полог поля
+	// ветра); заново, когда сменились кроны или экземпляры моделей
+	if( m_level.terrain )
+	{
+		uint64_t key = m_models.properties() ? m_models.properties()->revision() << 32 : 0;
+		for( const auto& scatterer : m_scatterers )
+			key += scatterer->canopyRevision();
+		if( key != m_canopyKey )
+		{
+			m_canopyKey = key;
+			std::vector<CanopyStamp> stamps;
+			for( const auto& scatterer : m_scatterers )
+				scatterer->appendCanopy( stamps );
+			for( const WindObstacle& obstacle : windObstacles() )
+				stamps.push_back( { obstacle.x, obstacle.z, obstacle.radius } );
+			m_terrainPipeline.setCanopy( stamps );
+		}
+	}
+
 	// Места звука на земле (режим «Sound sources», «Show area»): маски областей — подсветкой террейна, бирюзовым
 	if( m_level.terrain )
 	{

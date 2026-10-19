@@ -10,6 +10,7 @@
 #include "Model/DMModel.h"
 #include "ScattererPass.h"
 #include "SceneObject.h"
+#include "Terrain\TerrainCanopy.h"
 #include "Terrain\TerrainHeightSource.h"
 #include "Terrain\TerrainHydrology.h"
 #include "Shaders\terrain_height_constants.h"
@@ -69,6 +70,10 @@ public:
 
 	// Мир столкновений (формы моделей — ModelCollision): тела постоянных слоёв — после их раскладки
 	void setCollision( ModelCollision* collision ) { m_collision = collision; }
+	// Карта полога (TerrainCanopy): кроны постоянных слоёв с «Canopy» > 0 — радиус × «Canopy»; номер растёт, когда кроны
+	// сменились (лес разложен заново, правка «Canopy») — тогда Scene собирает карту заново
+	uint32_t canopyRevision() const { return m_canopyRevision; }
+	void appendCanopy( std::vector<CanopyStamp>& stamps ) const;
 	// Готовая копия постоянного пула с GPU — тела его экземпляров (прежние тела слоя — убираются)
 	void update( const FrameContext& frame ) override;
 	// Раскладка по видам кадра (FrameContext::views: главный и каскады теней)
@@ -178,6 +183,10 @@ private:
 		// Тела экземпляров постоянного слоя в мире столкновений; ждём копию пула с GPU (раскладка в этом кадре)
 		std::vector<uint32_t> bodies;
 		bool bodiesPending = false;
+		// Кроны постоянного слоя для карты полога (радиус — кроны LOD0 модели × размер экземпляра, без «Canopy»); ждём
+		// копию пула с GPU
+		std::vector<CanopyStamp> canopy;
+		bool canopyPending = false;
 	};
 
 	// Константы раскладки из настроек слоя (ёмкости и число вариантов заполняет ScatterPass::createBuffers)
@@ -197,6 +206,8 @@ private:
 	void placeStreamStones( Layer& layer );
 	// Тела экземпляров постоянного слоя (прежние — убираются): по модели варианта, размер — масштаб
 	void buildBodies( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances );
+	// Кроны постоянного слоя для карты полога: круг на экземпляр по границам LOD0 модели варианта
+	void buildCanopy( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances );
 	// Ёмкость постоянного пула слоя: у камней русел — их наибольшее число, у прочих — экземпляр на ячейку мира
 	static uint32_t placedCapacity( const ScatterLayerSettings& settings )
 	{
@@ -235,6 +246,7 @@ private:
 	std::vector<TerrainHydrology::Stone> m_streamStones;
 	std::vector<Layer> m_layers;
 	ModelCollision* m_collision = nullptr;
+	uint32_t m_canopyRevision = 0;
 	ComputeShader m_computeShader;
 	ComputeShader m_commandShader;	// buildCommands в Shaders\scatter.cs
 	// Постоянные слои: раскладка на карту (placeWorld) и отбор кластеров кадра (cullPlaced) — с первым таким слоем

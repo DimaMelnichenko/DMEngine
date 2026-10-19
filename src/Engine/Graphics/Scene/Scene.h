@@ -162,6 +162,8 @@ private:
 	WaterSimulation m_water;	// вода по рельефу (Levels.water_simulation), только с террейном
 	ModelInstances m_models;
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;
+	// Карта полога собрана по этим кронам: сумма номеров крон наборов (Scatterer::canopyRevision) и правок моделей уровня
+	uint64_t m_canopyKey = ~0ull;
 	ParticleSystem m_particles;	// частицы уровня (LevelParticleEmitters); -noparticles — нет
 	FoliageInteraction m_foliageInteraction;	// трава расступается у камеры (только с террейном)
 	ReflectionCaptures m_reflectionCaptures;	// карты отражений места (LevelReflectionCaptures)

@@ -66,7 +66,8 @@ DM_CONSTANTS( ScatterLayerBuffer, b4 )
 	// Флаговые деревья: наклон по ветру уровня × открытость ветру (g_windExposure), радианы; уменьшение × открытость, доля
 	DM_FIELD( float, ridgeLean );
 	DM_FIELD( float, ridgeShrink );
-	DM_FIELD( float3, layerPadding );
+	DM_FIELD( float, underCanopy );		// плотность под полным пологом (canopy.sh): 1 — как на открытом, 0 — ничего
+	DM_FIELD( float2, layerPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

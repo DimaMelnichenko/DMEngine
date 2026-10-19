@@ -14,6 +14,7 @@
 #include "TerrainHydrology.h"
 #include "TerrainMasks.h"
 #include "TerrainWind.h"
+#include "TerrainCanopy.h"
 #include "TerrainPaint.h"
 #include "TerrainDetailSplat.h"
 
@@ -78,6 +79,9 @@ public:
 	bool rebuildWindField();
 	const std::vector<TerrainWind::Cell>& windField() const { return m_wind; }
 	bool hasWindField() const { return m_windView.valid(); }
+	// Карта полога (TerrainCanopy) по кругам крон — на GPU ресурсом сцены SLOT_CANOPY (до неё — пустая); false — текстура не
+	// создана
+	bool setCanopy( const std::vector<CanopyStamp>& stamps );
 
 	// Мазки кисти поверх правил слоёв и масок (TerrainPaint, строки TerrainPaint) — до initialize; применяются в buildMasks
 	void setPaint( const std::vector<TerrainPaintTile>& tiles ) { m_paintTiles = tiles; }
@@ -325,6 +329,8 @@ private:
 	std::vector<TerrainWind::Cell> m_wind;
 	Texture m_windTexture;
 	ShaderView m_windView;
+	Texture m_canopyTexture;
+	ShaderView m_canopyView;
 	Texture m_detailIndexTexture;
 	ShaderView m_detailIndexView;
 	float m_detailTileSize = 0.0f;			// сторона плитки, м; 0 — плиток нет

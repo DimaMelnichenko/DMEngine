@@ -771,11 +771,12 @@ void Scatterer::compute( const FrameContext& frame )
 				DMD3D::instance().setSRV( 8, exposure );
 				layer.pass->place( m_placeShader );
 				layer.placed = true;
-				// Тела леса — по копии пула на CPU (update, когда GPU пройдёт этот кадр)
-				if( m_collision )
+				// Тела леса и кроны для карты полога — по копии пула на CPU (update, когда GPU пройдёт этот кадр)
+				if( m_collision || layer.settings.canopy > 0.0f )
 				{
 					layer.pass->requestPlacedReadback();
-					layer.bodiesPending = true;
+					layer.bodiesPending = m_collision != nullptr;
+					layer.canopyPending = layer.settings.canopy > 0.0f;
 				}
 			}
 			PassDesc cull = layer.pass->passDesc( "Scatter clusters" );
@@ -946,6 +947,7 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	const bool exposure = Assets::textures().exists( TerrainMasks::windExposureMask );
 	params.ridgeLean = exposure ? XMConvertToRadians( settings.ridgeLean ) : 0.0f;
 	params.ridgeShrink = exposure ? settings.ridgeShrink : 0.0f;
+	params.underCanopy = std::clamp( settings.underCanopy, 0.0f, 1.0f );
 }
 
 float Scatterer::maxHeight( const Layer& layer )
@@ -1065,7 +1067,7 @@ void Scatterer::applyProperties( Layer& layer )
 						   settings.patchScale != applied.patchScale || settings.patchStrength != applied.patchStrength ||
 						   settings.layerFilter != applied.layerFilter || settings.layerFilterThreshold != applied.layerFilterThreshold ||
 						   settings.alignToTerrain != applied.alignToTerrain || settings.ridgeLean != applied.ridgeLean ||
-						   settings.ridgeShrink != applied.ridgeShrink ||
+						   settings.ridgeShrink != applied.ridgeShrink || settings.underCanopy != applied.underCanopy ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
 	// Пока ползунок тянут или в поле набирают число (Property::editing), дорогое ждёт: новые буферы слоя (шаг, кольцо,
@@ -1087,7 +1089,15 @@ void Scatterer::applyProperties( Layer& layer )
 		if( variant.impostor && variant.modelLods > 0 )
 			passVariant.lodEnd[variant.modelLods - 1] = clamped.impostorDistance;
 	}
+	// Полог: множитель крон — карта заново по тем же кронам; включили, а крон ещё нет — лес разложить заново (копия пула)
+	const bool canopyChanged = clamped.canopy != applied.canopy;
 	layer.settings = clamped;
+	if( canopyChanged )
+	{
+		++m_canopyRevision;
+		if( layer.settings.canopy > 0.0f && layer.canopy.empty() && layer.settings.persistent )
+			layer.placed = false;
+	}
 	if( buffers )
 	{
 		const bool rebuilt = rebuildPass( layer );
@@ -1120,6 +1130,7 @@ void Scatterer::applyProperties( Layer& layer )
 		params.alignToTerrain = fresh.alignToTerrain;
 		params.ridgeLean = fresh.ridgeLean;
 		params.ridgeShrink = fresh.ridgeShrink;
+		params.underCanopy = fresh.underCanopy;
 		params.castShadow = castShadow;
 		for( uint32_t v = 0; v < layer.passVariants.size(); ++v )
 			layer.pass->setVariantPlacement( v, layer.passVariants[v] );
@@ -1152,10 +1163,14 @@ void Scatterer::update( const FrameContext& frame )
 	for( Layer& layer : m_layers )
 	{
 		std::vector<ScatterPass::PlacedInstance> instances;
-		if( layer.bodiesPending && layer.pass->readPlaced( instances ) )
+		if( ( layer.bodiesPending || layer.canopyPending ) && layer.pass->readPlaced( instances ) )
 		{
+			if( layer.bodiesPending )
+				buildBodies( layer, instances );
+			if( layer.canopyPending )
+				buildCanopy( layer, instances );
 			layer.bodiesPending = false;
-			buildBodies( layer, instances );
+			layer.canopyPending = false;
 		}
 	}
 }
@@ -1184,6 +1199,36 @@ void Scatterer::buildBodies( Layer& layer, const std::vector<ScatterPass::Placed
 	physics.optimize();
 	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": " + std::to_string( layer.bodies.size() ) + " collision bodies, ms: " +
 		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() ) );
+}
+
+void Scatterer::buildCanopy( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances )
+{
+	layer.canopy.clear();
+	layer.canopy.reserve( instances.size() );
+	for( const ScatterPass::PlacedInstance& instance : instances )
+	{
+		if( instance.variant >= layer.variants.size() )
+			continue;
+		// Крона — наибольшая половина ящика LOD0 по горизонтали (у ели — нижний ярус ветвей); центр — у ствола
+		const DirectX::BoundingBox& box = layer.variants[instance.variant].box;
+		layer.canopy.push_back( { instance.position.x, instance.position.z, std::max( box.Extents.x, box.Extents.z ) * instance.size } );
+	}
+	++m_canopyRevision;
+	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": " + std::to_string( layer.canopy.size() ) + " crowns for the canopy map" );
+}
+
+void Scatterer::appendCanopy( std::vector<CanopyStamp>& stamps ) const
+{
+	for( const Layer& layer : m_layers )
+	{
+		if( layer.settings.canopy <= 0.0f )
+			continue;
+		for( CanopyStamp stamp : layer.canopy )
+		{
+			stamp.radius *= layer.settings.canopy;
+			stamps.push_back( stamp );
+		}
+	}
 }
 
 void Scatterer::setStreamStones( const std::vector<TerrainHydrology::Stone>& stones )

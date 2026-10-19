@@ -169,6 +169,7 @@ add_library(DMCore STATIC
     src/Engine/Graphics/Scene/Light/SunPosition.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainEdits.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainHydrology.cpp
+    src/Engine/Graphics/Scene/Terrain/TerrainCanopy.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Audio/AudioMixer.cpp
     src/Engine/Audio/AudioSynth.cpp

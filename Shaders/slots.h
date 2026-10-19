@@ -108,8 +108,11 @@
 #define SLOT_REFLECTION_CAPTURE_DISTANCE_0	132
 #define SLOT_REFLECTION_CAPTURE_1	133
 #define SLOT_REFLECTION_CAPTURE_DISTANCE_1	134
+// Полог — где земля под кронами деревьев, 0…1 в UV карты высот (TerrainCanopy, TerrainPipeline::setCanopy; canopy.sh): по
+// нему редеет расстановка под лесом (ScatterLayers.under_canopy)
+#define SLOT_CANOPY	135
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	35
+#define SLOT_SCENE_COUNT	36
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

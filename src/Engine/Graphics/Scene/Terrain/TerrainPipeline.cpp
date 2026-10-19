@@ -251,6 +251,41 @@ void TerrainPipeline::frameConstants( const RenderView&, FrameParameters& consta
 		constants.wind.fieldScale = 1.0f / m_worldSize;
 }
 
+bool TerrainPipeline::setCanopy( const std::vector<CanopyStamp>& stamps )
+{
+	const auto start = std::chrono::steady_clock::now();
+	const uint32_t size = stamps.empty() ? 1u : TerrainCanopy::mapSize( m_worldSize );
+	const std::vector<uint8_t> map = TerrainCanopy::build( stamps, size, m_worldSize );
+	DMD3D& d3d = DMD3D::instance();
+	TextureDesc desc;
+	desc.width = desc.height = size;
+	desc.format = DXGI_FORMAT_R8_UNORM;
+	desc.usage = TextureUsage::shaderResource;
+	TextureData data;
+	data.data = map.data();
+	data.rowPitch = size;
+	data.slicePitch = static_cast<size_t>( size ) * size;
+	Texture texture;
+	ShaderView view;
+	if( !d3d.createTexture( desc, &data, texture ) || !d3d.createShaderView( texture, {}, view ) )
+	{
+		LOG( "Terrain: canopy map is not created" );
+		return false;
+	}
+	d3d.setName( texture, "Canopy" );
+	m_canopyTexture = std::move( texture );
+	m_canopyView = std::move( view );
+	if( !stamps.empty() )
+	{
+		const size_t covered = std::count_if( map.begin(), map.end(), []( uint8_t value ) { return value >= 128; } );
+		char text[128];
+		std::snprintf( text, sizeof( text ), "Canopy map: %zu crowns, %ux%u, under crowns %.1f%% of the map, ms: %.1f", stamps.size(), size,
+					   size, 100.0 * covered / map.size(), std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
+		LOG( text );
+	}
+	return true;
+}
+
 void TerrainPipeline::compute( const FrameContext& frame )
 {
 	if( !m_initialized )
@@ -259,6 +294,11 @@ void TerrainPipeline::compute( const FrameContext& frame )
 	DMD3D::instance().setSRV( SLOT_TERRAIN_DETAIL_INDEX, m_detailIndexView );
 	if( m_windView.valid() )
 		DMD3D::instance().setSRV( SLOT_WIND_FIELD, m_windView );
+	// Полог: до первой карты (кроны леса придут копией пула) — пустая, чтобы слот был у всех, кто его читает
+	if( !m_canopyView.valid() )
+		setCanopy( {} );
+	if( m_canopyView.valid() )
+		DMD3D::instance().setSRV( SLOT_CANOPY, m_canopyView );
 	// Слои материала — ресурсы сцены (terrain_layers.sh): выбор слоёв и дисплейсмент у шейдеров террейна, расстановки и
 	// частиц — по одним данным
 	m_material.bindScene();
