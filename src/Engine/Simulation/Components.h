@@ -25,7 +25,7 @@ struct PreviousTransform
 	Transform transform;
 };
 
-// Вид сущности — модель хранилища System::models(); низ модели поднят над точкой Transform на groundOffset (× масштаб):
+// Вид сущности — модель хранилища Assets::models(); низ модели поднят над точкой Transform на groundOffset (× масштаб):
 // его считает движок по границам модели, точка остаётся на земле
 struct ModelVisual
 {

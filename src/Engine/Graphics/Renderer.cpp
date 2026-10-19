@@ -9,7 +9,7 @@
 #include <iterator>
 #include <optional>
 #include "Scene.h"
-#include "System.h"
+#include "Assets.h"
 #include "D3D\ShaderCompiler.h"
 #include "D3D\DMD3D.h"
 #include "Materials\Material.h"
@@ -157,7 +157,7 @@ void Renderer::warmPipelines( Scene& scene )
 	for( RasterState raster : { RasterState::solid, RasterState::noCulling, RasterState::solidMirrored, RasterState::noCullingMirrored,
 								RasterState::wireframe } )
 		depthReadStates.push_back( { raster, DepthState::readOnlyNearOrEqual, BlendState::opaque } );
-	for( auto& material : System::materials() )
+	for( auto& material : Assets::materials() )
 	{
 		if( Material* shader = material.second.get() )
 		{
@@ -189,7 +189,7 @@ bool Renderer::bake( Scene& scene )
 void Renderer::warmShadowPipelines( Scene& scene )
 {
 	m_warmedShadowState = m_shadows.renderState();
-	for( auto& material : System::materials() )
+	for( auto& material : Assets::materials() )
 	{
 		if( Material* shader = material.second.get() )
 			shader->warmPipelines( { m_warmedShadowState }, SceneTargets::depthOnlyFormats(), shader->depthPhases() );

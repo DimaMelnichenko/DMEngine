@@ -268,7 +268,7 @@ WHERE model_id = <id модели>;
 
 Параметры материала правятся в окнах вживую — по **экземпляру материала** (строка `MaterialInstance`, как Material
 Instance в UE): он общий у всех секций моделей, которые на него ссылаются (`ModelProperties.material_instance_id`), и в
-памяти один (`System::materialInstances()`, `Scene/Materials/MaterialInstanceStorage.h`; секция держит указатель
+памяти один (`Assets::materialInstances()`, `Scene/Materials/MaterialInstanceStorage.h`; секция держит указатель
 `DMModel::Section::params`): у одуванчика пять моделей по три LOD с одним экземпляром — правка видна у всех сразу.
 Где: в окне «Model instances» у модели уровня — её экземпляры (каждый один раз; секция без экземпляра — свои параметры
 «LOD n (материал)»), в окне набора расстановки у слоя — подокно «Materials» с экземплярами его растений. Окно экземпляра
@@ -313,7 +313,7 @@ Instance в UE): он общий у всех секций моделей, кот
 |---|---|
 | `src/Engine/Graphics/Scene/Materials/Material.h/.cpp` | базовый класс материала: ресурс хранилища, определения параметров, `setParams` / `renderState`, фаза по ключу перестановки — `phaseFor` / `depthPhaseFor` / `permutationKey`; программа шейдеров — `ShaderProgram` (`Graphics/ShaderProgram.h`: стадии, фазы, перестановки, `setPass`, прогрев) |
 | `src/Engine/Graphics/Scene/Materials/MaterialRenderState.h` | режим материала, `ShaderPhaseOptions` вызова, биты ключа перестановки `ShaderPermutation` |
-| `src/Engine/Graphics/Scene/Materials/MaterialStorage.h/.cpp` | хранилище `System::materials()`: класс материала по колонке `Materials.class` |
+| `src/Engine/Graphics/Scene/Materials/MaterialStorage.h/.cpp` | хранилище `Assets::materials()`: класс материала по колонке `Materials.class` |
 | `src/Engine/Graphics/Scene/Materials/PBRMaterial.h/.cpp` | класс материала `PBR`: параметры → текстуры t0…t4 и константный буфер PS b2, режим, перестановки (defines по ключу) |
 | `src/Engine/Graphics/Scene/Materials/MaterialRenderState.h` | режим материала (`BlendMode`), двусторонность, смена LOD дизерингом; `ShaderPhaseOptions` — вариант шейдера вызова |
 | `Shaders/lod_dither.sh` | маска дизеринга смены LOD (`clipLodTransition`) |

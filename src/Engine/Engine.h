@@ -16,7 +16,7 @@
 
 #include "Utils\DMTimer.h"
 
-#include "System.h"
+#include "Assets.h"
 
 #include "Config\Config.h"
 #include "GUI\GUI.h"

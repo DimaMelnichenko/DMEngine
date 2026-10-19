@@ -5,7 +5,7 @@
 #include "ObjectLibrary\LibraryLoader.h"
 #include <algorithm>
 #include <chrono>
-#include "System.h"
+#include "Assets.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "ConstantBuffers.h"
@@ -230,7 +230,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 			std::vector<Scatterer::LayerModel> models;
 			for( const LevelDescription::ScatterModel& variant : layer.models )
 			{
-				DMModel* model = System::models().get( variant.model ).get();
+				DMModel* model = Assets::models().get( variant.model ).get();
 				if( !model || model->lodCount() == 0 )
 				{
 					LOG( "Scatter set " + set.name + ": model " + std::to_string( variant.model ) + " has no LOD" );
@@ -569,7 +569,7 @@ bool Scene::saveLevel( LibraryLoader& library, const PostProcessSettings& postPr
 	if( m_soundscape.initialized() )
 		m_soundscape.markSaved( data.soundscapeLayers );
 	// Параметры экземпляров материалов (окна «Models» и «Materials» слоёв расстановки) — изменённые
-	if( !library.saveMaterialInstances( System::materialInstances() ) )
+	if( !library.saveMaterialInstances( Assets::materialInstances() ) )
 		return false;
 	// Экземпляры моделей в базе — на нынешней земле: пересадка после эрозии закреплена
 	if( m_level.terrain )

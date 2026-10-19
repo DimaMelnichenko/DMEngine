@@ -1,6 +1,6 @@
 #include "ModelDraw.h"
 #include <algorithm>
-#include "System.h"
+#include "Assets.h"
 #include "MeshBatch.h"
 #include "RenderView.h"
 #include "Model\DMModel.h"
@@ -40,7 +40,7 @@ void addLod( const DMModel& model, uint32_t modelId, FXMMATRIX world, uint16_t l
 	{
 		const DMModel::Section& section = *lod->sections[i];
 		MeshBatch batch;
-		batch.material = System::materials().get( section.material ).get();
+		batch.material = Assets::materials().get( section.material ).get();
 		// Режим читается каждый кадр: параметры материала меняются в GUI
 		batch.state = batch.material->renderState( *section.params );
 		if( lodDither != 0.0f && !batch.state.ditheredLodTransition )
@@ -56,7 +56,7 @@ void addLod( const DMModel& model, uint32_t modelId, FXMMATRIX world, uint16_t l
 			batch.lodDither = lodDither;
 		}
 
-		const auto& mesh = System::meshes().get( section.mesh );
+		const auto& mesh = Assets::meshes().get( section.mesh );
 		batch.materialId = section.material;
 		batch.params = section.params;
 		batch.indexCount = mesh->indexCount();

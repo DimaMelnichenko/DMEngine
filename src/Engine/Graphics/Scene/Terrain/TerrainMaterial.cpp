@@ -9,7 +9,7 @@
 #include <cstring>
 #include <filesystem>
 #include <DirectXTex.h>
-#include "System.h"
+#include "Assets.h"
 #include "D3D\DMD3D.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
@@ -79,7 +79,7 @@ bool loadImage( const std::string& file, size_t& width, size_t& height, ScratchI
 		return false;
 
 	ScratchImage loaded;
-	if( !ImageFile::load( GS::System::textures().path() + "\\" + file, loaded ) )
+	if( !ImageFile::load( GS::Assets::textures().path() + "\\" + file, loaded ) )
 		return false;
 
 	return convertImage( *loaded.GetImage( 0, 0, 0 ), width, height, image );
@@ -140,7 +140,7 @@ bool loadArrayFromFileMips( const std::vector<std::string>& files, bool srgb, Sc
 	for( size_t i = 0; i < files.size(); ++i )
 	{
 		task.enterProgressFrame( 1.0f, files[i] );
-		if( files[i].empty() || !ImageFile::load( GS::System::textures().path() + "\\" + files[i], images[i] ) )
+		if( files[i].empty() || !ImageFile::load( GS::Assets::textures().path() + "\\" + files[i], images[i] ) )
 			return false;
 		const TexMetadata& meta = images[i].GetMetadata();
 		const TexMetadata& first = images[0].GetMetadata();
@@ -229,7 +229,7 @@ bool buildArray( const std::vector<std::string>& files, Fallback fallback, bool 
 	std::error_code error;
 	for( const std::string& file : files )
 	{
-		const std::string path = GS::System::textures().path() + "\\" + file;
+		const std::string path = GS::Assets::textures().path() + "\\" + file;
 		stamp.add( path.data(), path.size() );
 		stamp.add( static_cast<uint64_t>( std::filesystem::file_size( path, error ) ) );
 		stamp.add( std::filesystem::last_write_time( path, error ).time_since_epoch().count() );
@@ -428,7 +428,7 @@ void TerrainMaterial::bindScene() const
 {
 	DMD3D::instance().setSRV( SLOT_TERRAIN_SPLAT, m_splatMap );
 	DMD3D::instance().setSRV( SLOT_TERRAIN_ALBEDO_HEIGHT, m_albedoHeight );
-	DMD3D::instance().setSRV( SLOT_TERRAIN_NOISE, System::textures().get( DMTextureStorage::noiseId )->srv() );
+	DMD3D::instance().setSRV( SLOT_TERRAIN_NOISE, Assets::textures().get( DMTextureStorage::noiseId )->srv() );
 }
 
 }

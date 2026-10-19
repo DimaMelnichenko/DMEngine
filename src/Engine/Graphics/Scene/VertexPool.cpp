@@ -1,6 +1,6 @@
 #include "VertexPool.h"
 #include <DirectXPackedVector.h>
-#include "System.h"
+#include "Assets.h"
 
 using namespace DirectX;
 
@@ -25,17 +25,17 @@ bool VertexPool::prepareMeshes()
 	std::vector<uint32_t> indexes;
 
 	// подготовка бкферов для вершин и индексов
-	vertexes.resize( System::meshes().vertexCount() );
-	wind.resize( System::meshes().vertexCount() );	// нули: у мешей без ветра дерева
-	skin.resize( System::meshes().vertexCount() );	// нули: у мешей без скелета
-	indexes.resize( System::meshes().indexCount() );
+	vertexes.resize( Assets::meshes().vertexCount() );
+	wind.resize( Assets::meshes().vertexCount() );	// нули: у мешей без ветра дерева
+	skin.resize( Assets::meshes().vertexCount() );	// нули: у мешей без скелета
+	indexes.resize( Assets::meshes().indexCount() );
 
 	// переменные для сохранения смещения
 	uint32_t vertexOffset = 0;
 	uint32_t indexOffset = 0;
 
 	// перебираем все меши какие есть
-	for( auto& pair : System::meshes() )
+	for( auto& pair : Assets::meshes() )
 	{
 		AbstractMesh* mesh = pair.second.get();
 		char* structuredBuffer = mesh->getVertices();
@@ -75,10 +75,10 @@ bool VertexPool::prepareMeshes()
 	}
 
 	// создание буферов на видюхе с нашими общими буферами
-	DMD3D::instance().createVertexBuffer( m_vertexBuffer, &vertexes[0], System::meshes().vertexCount() * sizeof( VertexData::PTNTB ) );
-	DMD3D::instance().createVertexBuffer( m_windBuffer, &wind[0], System::meshes().vertexCount() * sizeof( VertexData::WindHalf ) );
-	DMD3D::instance().createVertexBuffer( m_skinBuffer, &skin[0], System::meshes().vertexCount() * sizeof( VertexData::Skin ) );
-	DMD3D::instance().createIndexBuffer( m_indexBuffer, &indexes[0], System::meshes().indexCount() * sizeof( uint32_t ) );
+	DMD3D::instance().createVertexBuffer( m_vertexBuffer, &vertexes[0], Assets::meshes().vertexCount() * sizeof( VertexData::PTNTB ) );
+	DMD3D::instance().createVertexBuffer( m_windBuffer, &wind[0], Assets::meshes().vertexCount() * sizeof( VertexData::WindHalf ) );
+	DMD3D::instance().createVertexBuffer( m_skinBuffer, &skin[0], Assets::meshes().vertexCount() * sizeof( VertexData::Skin ) );
+	DMD3D::instance().createIndexBuffer( m_indexBuffer, &indexes[0], Assets::meshes().indexCount() * sizeof( uint32_t ) );
 	DMD3D::instance().setName( m_vertexBuffer, "Vertex pool" );
 	DMD3D::instance().setName( m_windBuffer, "Vertex pool wind" );
 	DMD3D::instance().setName( m_skinBuffer, "Vertex pool skin" );

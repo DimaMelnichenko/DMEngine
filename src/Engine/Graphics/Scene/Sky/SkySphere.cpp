@@ -1,6 +1,6 @@
 #include "SkySphere.h"
 #include <algorithm>
-#include "System.h"
+#include "Assets.h"
 #include "ConstantBuffers.h"
 
 using namespace DirectX;
@@ -20,13 +20,13 @@ void SkySphere::setModel( uint32_t modelId )
 
 void SkySphere::collectMeshes( const RenderView&, MeshCollector& collector )
 {
-	if( m_modelId && System::models().exists( m_modelId ) )
+	if( m_modelId && Assets::models().exists( m_modelId ) )
 		collector.addCustom( passBit( MeshPass::sky ) );
 }
 
 void SkySphere::renderCustom( const RenderContext& context )
 {
-	const DMModel::LodBlock* block = System::models().get( m_modelId )->getLod( 0.0f );
+	const DMModel::LodBlock* block = Assets::models().get( m_modelId )->getLod( 0.0f );
 	if( !block || block->sections.empty() )
 		return;
 
@@ -43,12 +43,12 @@ void SkySphere::renderCustom( const RenderContext& context )
 
 	for( const auto& section : block->sections )
 	{
-		if( !System::materials().exists( section->material ) )
+		if( !Assets::materials().exists( section->material ) )
 			continue;
-		Material* material = System::materials().get( section->material ).get();
+		Material* material = Assets::materials().get( section->material ).get();
 		material->setPass( 0 );
 		material->setParams( *section->params );
-		const auto& mesh = System::meshes().get( section->mesh );
+		const auto& mesh = Assets::meshes().get( section->mesh );
 		DMD3D::instance().drawIndexed( mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
 	}
 }

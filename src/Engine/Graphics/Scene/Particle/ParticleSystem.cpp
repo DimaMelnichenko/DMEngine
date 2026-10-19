@@ -2,7 +2,7 @@
 #include "Properties\SettingsProperties.h"
 #include <algorithm>
 #include <cmath>
-#include "System.h"
+#include "Assets.h"
 #include "ConstantBuffers.h"
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
@@ -109,8 +109,8 @@ bool ParticleSystem::createEmitter( Emitter& emitter, uint32_t index )
 
 	if( !settings.mask.empty() )
 	{
-		if( System::textures().exists( settings.mask ) )
-			emitter.mask = &System::textures().get( settings.mask )->srv();
+		if( Assets::textures().exists( settings.mask ) )
+			emitter.mask = &Assets::textures().get( settings.mask )->srv();
 		else
 			LOG( "Particle emitter " + settings.name + ": mask " + settings.mask + " is not found, spawning everywhere" );
 	}

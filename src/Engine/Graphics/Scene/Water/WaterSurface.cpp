@@ -5,7 +5,7 @@
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
 #include "WaterRipples.h"
-#include "System.h"
+#include "Assets.h"
 
 namespace GS
 {
@@ -209,7 +209,7 @@ void WaterSurface::updateParameters( const WaterSimulationSettings& settings, co
 	params.terrainHeightOffset = height.heightOffset;
 	params.terrainDetailTile = height.detailTileSize;
 	// Пена из текстуры (строка water_foam в Textures, Tools/pack_water_foam.py); нет её — узор пены по ряби
-	const bool foamTexture = System::textures().exists( foamTextureName );
+	const bool foamTexture = Assets::textures().exists( foamTextureName );
 	params.foamTextureRepeat = foamTexture ? std::max( current.foamTextureRepeat, 0.05f ) : 0.0f;
 	params.foamSoftness = std::max( current.foamSoftness, 0.01f );
 	params.foamDissolve = std::max( current.foamDissolve, 0.0f );
@@ -250,7 +250,7 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	DMD3D& d3d = DMD3D::instance();
 	const TerrainHeight height = m_field->terrain->terrainHeight();
 	updateParameters( settings, water, foam );
-	const bool foamTexture = System::textures().exists( foamTextureName );
+	const bool foamTexture = Assets::textures().exists( foamTextureName );
 
 	ScopedRenderState state( context.frameRaster );
 	d3d.setVertexBuffer( m_tileMesh.vertexBuffer(), sizeof( DirectX::XMFLOAT3 ) );
@@ -263,7 +263,7 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	if( height.heightMap )
 		d3d.setSRV( 3, *height.heightMap );
 	if( foamTexture )
-		d3d.setSRV( 4, System::textures().get( foamTextureName )->srv() );
+		d3d.setSRV( 4, Assets::textures().get( foamTextureName )->srv() );
 	if( foam.ready() )
 	{
 		d3d.setSRV( 5, foam.coarseView() );

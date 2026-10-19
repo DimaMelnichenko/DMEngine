@@ -9,7 +9,7 @@
 namespace GS
 {
 
-// Материал — ресурс хранилища System::materials() (строка Materials в base.db3, класс — колонка class,
+// Материал — ресурс хранилища Assets::materials() (строка Materials в base.db3, класс — колонка class,
 // MaterialStorage::createMaterial): программа шейдеров с вариантами и то, как её рисовать с параметрами секции.
 // Материал не рисует сам: вызывающий (Renderer::drawMesh, свои вызовы объектов) ставит состояние, setPass( phaseFor ),
 // setParams и рисует DMD3D::draw*

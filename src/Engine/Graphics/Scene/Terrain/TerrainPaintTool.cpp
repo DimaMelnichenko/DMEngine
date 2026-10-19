@@ -1,7 +1,7 @@
 #include "TerrainPaintTool.h"
 #include "TerrainPipeline.h"
 #include <algorithm>
-#include "System.h"
+#include "Assets.h"
 
 namespace GS
 {
@@ -69,9 +69,9 @@ int32_t TerrainPaintTool::previewTarget( const ShaderView*& mask ) const
 		return layer;
 	if( target == TerrainPaint::wetnessTarget )
 		return static_cast<int32_t>( TerrainMaterial::maxLayers );
-	if( !target.empty() && System::textures().exists( target ) )
+	if( !target.empty() && Assets::textures().exists( target ) )
 	{
-		mask = &System::textures().get( System::textures().id( target ) )->srv();
+		mask = &Assets::textures().get( Assets::textures().id( target ) )->srv();
 		return static_cast<int32_t>( TerrainMaterial::maxLayers ) + 1;
 	}
 	return -1;

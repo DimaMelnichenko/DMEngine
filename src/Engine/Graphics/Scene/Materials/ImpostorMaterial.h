@@ -16,8 +16,8 @@ struct BakeContext;
 // карточка к виду с тремя ближайшими кадрами (Shaders/impostor.vs / .ps), освещённая как материалы в точке запечённой
 // поверхности; глубина пикселя — тоже её (pixel depth offset): дерево не уходит в склон, крона затеняет себя. Это
 // последний LOD варианта слоя расстановки (Scatterer: ScatterLayers.impostor_distance): экземпляры из пула расстановки,
-// смена LOD — дизерингом. Материал — в хранилище System::materials() (прогрев пайплайнов — как у остальных), текстуры —
-// в System::textures()
+// смена LOD — дизерингом. Материал — в хранилище Assets::materials() (прогрев пайплайнов — как у остальных), текстуры —
+// в Assets::textures()
 class ImpostorMaterial : public Material
 {
 public:

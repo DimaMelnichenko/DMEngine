@@ -11,7 +11,7 @@
 #include "ConstantBuffers.h"
 #include "SceneObject.h"
 #include "Scene\VertexPool.h"
-#include "System.h"
+#include "Assets.h"
 #include "D3D\ShaderCompiler.h"
 #include "D3D\TextureImages.h"
 #include "Texture\ImageFile.h"
@@ -337,9 +337,9 @@ void ImpostorMaterial::setShading( float baseShade, float selfShadow )
 void ImpostorMaterial::setParams( const PropertyContainer& )
 {
 	DMD3D& d3d = DMD3D::instance();
-	d3d.setSRV( 0, System::textures().get( m_colorTexture )->srv() );
-	d3d.setSRV( 1, System::textures().get( m_normalTexture )->srv() );
-	d3d.setSRV( 2, System::textures().get( m_offsetTexture )->srv() );
+	d3d.setSRV( 0, Assets::textures().get( m_colorTexture )->srv() );
+	d3d.setSRV( 1, Assets::textures().get( m_normalTexture )->srv() );
+	d3d.setSRV( 2, Assets::textures().get( m_offsetTexture )->srv() );
 	d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_constantBuffer );
 }
 
@@ -392,7 +392,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	std::vector<std::pair<DMModel::Section*, Material*>> sections;
 	for( const auto& section : lod0->sections )
 	{
-		Material* material = System::materials().get( section->material ).get();
+		Material* material = Assets::materials().get( section->material ).get();
 		if( !material || !material->enableImpostorBake() )
 		{
 			LOG( name() + ": material of model " + model.properties()->name() + " can't bake impostors" );
@@ -444,10 +444,10 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 			std::visit( [&key]( const auto& item ) { key.add( item ); }, value );
 			// Текстура материала (параметр — id в хранилище) — отпечатком её файла
 			const uint32_t* texture = std::get_if<uint32_t>( &value );
-			if( texture && *texture != 0 && System::textures().exists( *texture ) )
-				key.add( System::textures().get( *texture )->sourceStamp() );
+			if( texture && *texture != 0 && Assets::textures().exists( *texture ) )
+				key.add( Assets::textures().get( *texture )->sourceStamp() );
 		}
-		AbstractMesh* mesh = System::meshes().get( section->mesh ).get();
+		AbstractMesh* mesh = Assets::meshes().get( section->mesh ).get();
 		key.add( mesh->vertexCount() );
 		if( mesh->vertexCount() > 0 )
 			key.addWords( mesh->getVertices(), static_cast<size_t>( mesh->vertexCount() ) * mesh->vertexStride() );
@@ -555,7 +555,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 				if( !material->setPass( material->phaseFor( *section->params, options ) ) )
 					continue;
 				material->setParams( *section->params );
-				const AbstractMesh* mesh = System::meshes().get( section->mesh ).get();
+				const AbstractMesh* mesh = Assets::meshes().get( section->mesh ).get();
 				d3d.drawIndexed( mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset() );
 			}
 		}
@@ -603,7 +603,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 
 	// Текстуры кадров — в хранилище; при перезапекании (правка материала растения) — на месте прежних: id те же, прежние
 	// ресурсы GPU отпустит, когда закончит кадры с ними (отложенное освобождение)
-	DMTextureStorage& textures = System::textures();
+	DMTextureStorage& textures = Assets::textures();
 	auto store = [&]( uint32_t& id, const char* suffix, const ScratchImage& image )
 	{
 		if( id != 0 && textures.exists( id ) )

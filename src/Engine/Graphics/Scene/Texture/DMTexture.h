@@ -7,7 +7,7 @@
 namespace GS
 {
 
-// Текстура хранилища System::textures(): ресурс GPU и вид для шейдеров. Откуда данные — файл (DMTextureStorage::load,
+// Текстура хранилища Assets::textures(): ресурс GPU и вид для шейдеров. Откуда данные — файл (DMTextureStorage::load,
 // ImageFile::load), заглушка или процедурная текстура (DMTextureStorage::createPlaceholder / createDefaults), — текстуре
 // всё равно: копию картинки на CPU она не держит (если нужна — GpuImages::captureTexture)
 class DMTexture : public DMResource

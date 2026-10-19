@@ -323,7 +323,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Texture/DMTexture.cpp
     src/Engine/Graphics/Scene/Texture/DMTextureStorage.cpp
     src/Engine/Graphics/Scene/VertexPool.cpp
-    src/Engine/Graphics/System.cpp
+    src/Engine/Graphics/Assets.cpp
     src/main.cpp
     src/Common/Utils/SlowTask.cpp
     src/Common/Utils/FrameWatchdog.cpp

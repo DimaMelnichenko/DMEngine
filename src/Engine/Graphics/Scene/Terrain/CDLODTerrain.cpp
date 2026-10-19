@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
-#include "System.h"
+#include "Assets.h"
 #include "ConstantBuffers.h"
 #include "Logger\Logger.h"
 #include "Properties\SettingsProperties.h"

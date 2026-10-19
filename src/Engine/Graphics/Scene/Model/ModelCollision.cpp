@@ -1,7 +1,7 @@
 #include "ModelCollision.h"
 #include <algorithm>
 #include <vector>
-#include "System.h"
+#include "Assets.h"
 #include "Model\DMModel.h"
 #include "Model\Mesh\AbstractMesh.h"
 #include "TrunkCollision.h"
@@ -34,7 +34,7 @@ PhysicsWorld::ShapeId ModelCollision::shape( const DMModel& model )
 	std::vector<uint32_t> indices;
 	for( const auto& section : lod->sections )
 	{
-		auto& mesh = System::meshes().get( section->mesh );
+		auto& mesh = Assets::meshes().get( section->mesh );
 		if( !mesh )
 			continue;
 		const uint32_t first = static_cast<uint32_t>( points.size() );

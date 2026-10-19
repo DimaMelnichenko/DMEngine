@@ -478,7 +478,7 @@ Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/
 Логику, которая меняет состояние сцены, пишите в `SceneObject::update()`, а в `render()` оставляйте только команды GPU.
 
 **Глобальные синглтоны** — основной способ связи подсистем, все в одном стиле — статические члены класса
-(`Class::instance()`, при явном разрушении — `Class::destroy()`; у хранилищ — `System::textures()` и т. п.):
+(`Class::instance()`, при явном разрушении — `Class::destroy()`; у хранилищ — `Assets::textures()` и т. п.):
 - `DMD3D::instance()` — устройство D3D12 за фасадом (`Graphics/D3D/`: очереди, кадры в полёте с fence, кучи дескрипторов,
   кольцо констант, проходы, пайплайны). Ресурсы GPU объекты держат только непрозрачными
   (`D3D/GpuResources.h`: `Buffer`, `Texture`, виды `ShaderView` / `TargetView` / `StorageView`, `ShaderStage`, `InputLayout`)
@@ -509,8 +509,8 @@ Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/
   Проход, которому нужно другое состояние, меняет его через RAII-объект `ScopedRenderState`
   (`ScopedRenderState state( DepthState::disabled, RasterState::frontCulling );`): в деструкторе он восстановит
   предыдущие состояния;
-- `GS::System::textures() / meshes() / models() / materials()` — хранилища ресурсов
-  (`DMResourceStorage<T>`, доступ по id или по имени; путь хранилища — подкаталог: `Textures`, `Meshes`,
+- `GS::Assets::textures() / meshes() / models() / materials()` — хранилища ресурсов, реестр ассетов
+  (`Graphics/Assets.h`, как AssetManager в UE; `Assets::destroy()` в `Engine` — до устройства; `DMResourceStorage<T>`, доступ по id или по имени; путь хранилища — подкаталог: `Textures`, `Meshes`,
   `Models`, `Shaders`);
 - `DBConnector::instance().db()` — `SQLite::Database` на `base.db3`; `Input::instance()` — Raw Input (`WM_INPUT` из `DMSystem::wndProc`: клавиши по скан-кодам `DIK_*`, смещения мыши)
   + `KeyEventNotifier`; обычные сообщения окна (ImGui, ввод текста, Ctrl+S, раскладка, Alt+Tab) не перехватываются.
@@ -523,7 +523,7 @@ Static Mesh в UE и primitives glTF, `DMModel::Section`). Материалы г
 `Materials`; класс шейдера выбирает `MaterialStorage::createMaterial` по колонке `class`. Параметры секции —
 экземпляр материала: `ModelProperties.material_instance_id` → `MaterialInstance` (определения параметров — от его
 `id_material`, значения — `MaterialParameterInstance`); NULL — параметры `material_id` со значениями по умолчанию
-(`MaterialParameterDef.default_value`). Экземпляр в памяти один на все секции с ним (`System::materialInstances()`,
+(`MaterialParameterDef.default_value`). Экземпляр в памяти один на все секции с ним (`Assets::materialInstances()`,
 `DMModel::Section::params` — указатель): правка в окне (у моделей уровня — их экземпляры, у слоя расстановки — подокно
 «Materials») видна у всех его моделей и LOD, «Save level» пишет изменённое в `MaterialParameterInstance`
 (`LibraryLoader::saveMaterialInstances`). Экземпляр 12 — наследие старой схемы, где эта колонка означала
@@ -610,7 +610,7 @@ Id в `base.db3` начинаются с 1, поэтому со слотом 0 �
 их материал `PBR` подставляет вместо не заданных текстур (значение параметра 0), а шахматка по-прежнему означает
 «файл не найден».
 
-**Материал = `Material`** (`Scene/Materials/`: ресурс хранилища `System::materials()`, класс по колонке `class` —
+**Материал = `Material`** (`Scene/Materials/`: ресурс хранилища `Assets::materials()`, класс по колонке `class` —
 `MaterialStorage::createMaterial`). Программу шейдеров — стадии (`addShaderPassFromFile(stage, "main", file, defines)`),
 фазы-варианты, раскладку, `setPass`, прогрев — он наследует от `ShaderProgram` (`Graphics/ShaderProgram.h`; ею же пользуются
 шейдеры без материала: террейн, `FullscreenShader`), сам добавляет определения параметров (`parameters()`) и что зависит

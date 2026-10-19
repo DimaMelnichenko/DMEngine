@@ -8,7 +8,7 @@
 #include <cstring>
 #include <optional>
 #include "D3D\DMD3D.h"
-#include "System.h"
+#include "Assets.h"
 #include "ConstantBuffers.h"
 #include "Shaders\lod_transition.h"
 #include "Logger\Logger.h"
@@ -302,7 +302,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 			{
 				LayerSection section;
 				section.section = block->sections[s].get();
-				section.material = System::materials().get( section.section->material ).get();
+				section.material = Assets::materials().get( section.section->material ).get();
 				// Вариант материала для экземпляров расстановки — до прогрева пайплайнов
 				if( !section.material->enablePlacedInstances() )
 					LOG( "Scatter layer " + layer.mask + ": material " + section.material->name() + " can't draw scatter instances" );
@@ -424,7 +424,7 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	for( LayerVariant& variant : layer.variants )
 		layer.properties->addSubContainer( variant.properties.get() );
 	// «Materials» — материалы растений слоя: экземпляры материалов секций их моделей, каждый один раз (общие у всех моделей
-	// и LOD с ним, System::materialInstances). Правка — вживую: группы и их параметры слой берёт каждый кадр; «Save level»
+	// и LOD с ним, Assets::materialInstances). Правка — вживую: группы и их параметры слой берёт каждый кадр; «Save level»
 	// пишет изменённое в MaterialParameterInstance. Импостеры — запекаются заново, когда правка закончилась
 	// (rebakeChangedImpostors)
 	layer.materialProperties = std::make_unique<PropertyContainer>( "Materials" );
@@ -461,7 +461,7 @@ bool Scatterer::bake( const BakeContext& context )
 		// Материал импостера — на модель, общий для всех наборов (настройки запекания — первого слоя с этой моделью)
 		const std::string name = "Impostor " + variant.model->properties()->name();
 		task.enterProgressFrame( 1.0f, variant.model->properties()->name() );
-		MaterialStorage& materials = System::materials();
+		MaterialStorage& materials = Assets::materials();
 		Material* material = materials.exists( name ) ? materials[name].get() : nullptr;
 		if( !material )
 		{
@@ -626,7 +626,7 @@ void Scatterer::assignGroups( Layer& layer )
 				if( index == layer.groups.size() )
 					layer.groups.push_back( group );
 
-				const AbstractMesh* mesh = System::meshes().get( section.section->mesh ).get();
+				const AbstractMesh* mesh = Assets::meshes().get( section.section->mesh ).get();
 				layer.pass->setSectionArgs( list, s, mesh->indexCount(), mesh->indexOffset(), mesh->vertexOffset(), index );
 			}
 		}
@@ -745,7 +745,7 @@ void Scatterer::compute( const FrameContext& frame )
 
 		const ShaderView& heightMap = *terrain.heightMap;
 		const ShaderView& foliageClear = *terrain.foliageClearMask;
-		const ShaderView& mask = System::textures().get( layer.mask )->srv();
+		const ShaderView& mask = Assets::textures().get( layer.mask )->srv();
 
 		// Постоянный слой: раз — раскладка на карту кластерами, каждый кадр — отбор кластеров и их экземпляров в пул
 		// кадра и списки видов

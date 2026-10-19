@@ -1,5 +1,5 @@
 #include "LibraryLoader.h"
-#include "System.h"
+#include "Assets.h"
 #include "Materials\Material.h"
 #include "Engine\Animation\AnimationLibrary.h"
 #include <algorithm>
@@ -41,7 +41,7 @@ bool LibraryLoader::loadAllTextures()
 
 bool LibraryLoader::loadTexture( uint32_t idTexture )
 {
-	if( GS::System::textures().exists( idTexture ) )
+	if( GS::Assets::textures().exists( idTexture ) )
 		return true;
 
 	SQLite::Statement queryTexture( DBConnector::instance().db(), "SELECT id, name, file, generate_mipmap, sRGB, preserve_alpha_coverage, "
@@ -65,7 +65,7 @@ bool LibraryLoader::loadTextures( SQLite::Statement& queryTexture, uint32_t coun
 		const float preserveAlphaCoverage = queryTexture.getColumn( 5 ).isNull() ? 0.0f : static_cast<float>( queryTexture.getColumn( 5 ).getDouble() );
 		// Сжатие на GPU, как Compression Settings в UE: default — BC7, normalmap — BC5, none — без сжатия
 		const GS::TextureCompression compression = GS::DMTextureStorage::compressionFromName( queryTexture.getColumn( 6 ).getString() );
-		if( !GS::System::textures().load( id, textureName, fileName, queryTexture.getColumn( 3 ).getInt(), queryTexture.getColumn( 4 ).getInt(),
+		if( !GS::Assets::textures().load( id, textureName, fileName, queryTexture.getColumn( 3 ).getInt(), queryTexture.getColumn( 4 ).getInt(),
 										  preserveAlphaCoverage, compression ) )
 		{
 			LOG( "Can`t load texture " + textureName + " (" + fileName + "), placeholder is used" );
@@ -99,7 +99,7 @@ bool LibraryLoader::loadAllMaterials()
 bool LibraryLoader::loadMaterial( uint32_t idMaterial )
 {
 	
-	if( GS::System::materials().exists( idMaterial ) )
+	if( GS::Assets::materials().exists( idMaterial ) )
 		return true;
 
 	LOG( "Load material: " + std::to_string( idMaterial ) );
@@ -108,14 +108,14 @@ bool LibraryLoader::loadMaterial( uint32_t idMaterial )
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{
-		if( !GS::System::materials().createMaterial( query.getColumn( 0 ), query.getColumn( 1 ), query.getColumn( 2 ) ) )
+		if( !GS::Assets::materials().createMaterial( query.getColumn( 0 ), query.getColumn( 1 ), query.getColumn( 2 ) ) )
 			return false;
 	}
 
-	if( !GS::System::materials().exists( idMaterial ) )
+	if( !GS::Assets::materials().exists( idMaterial ) )
 		return false;
 	
-	GS::Material* material = GS::System::materials().get( idMaterial ).get();
+	GS::Material* material = GS::Assets::materials().get( idMaterial ).get();
 	loadMaterialParamDef( idMaterial, material->parameters() );
 
 	if( !loadShader( idMaterial, material ) )
@@ -234,7 +234,7 @@ bool LibraryLoader::loadShader( uint32_t idMaterial, GS::Material* material )
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{	
-		std::string fullPath = GS::System::materials().path() + "\\" + query.getColumn( 1 ).getString();
+		std::string fullPath = GS::Assets::materials().path() + "\\" + query.getColumn( 1 ).getString();
 		LOG( "Load shader: " + fullPath );
 		// Shader.type — номер ShaderStageType (таблица ShaderType)
 		const auto stage = static_cast<ShaderStageType>( query.getColumn( 2 ).getInt() );
@@ -248,7 +248,7 @@ bool LibraryLoader::loadShader( uint32_t idMaterial, GS::Material* material )
 bool LibraryLoader::loadMesh( uint32_t idMesh )
 {
 	// Незагрузившийся меш запоминается: повторные запросы (например, с других LOD) сразу получают заглушку
-	if( GS::System::meshes().exists( idMesh ) || m_failedMeshes.count( idMesh ) )
+	if( GS::Assets::meshes().exists( idMesh ) || m_failedMeshes.count( idMesh ) )
 		return true;
 
 	LOG( "Load mesh: " + std::to_string( idMesh ) );
@@ -261,13 +261,13 @@ bool LibraryLoader::loadMesh( uint32_t idMesh )
 		const std::string file = query.getColumn( "file" ).getString();
 		const std::string primitiveName = query.getColumn( "primitive" ).getString();
 
-		if( !file.empty() && GS::System::meshes().load( idMesh, name, file ) )
+		if( !file.empty() && GS::Assets::meshes().load( idMesh, name, file ) )
 			continue;
 
 		// Файла нет или он не задан: подставляется примитив меша, а если примитива нет — куб из слота 0
 		GS::MeshStorage::Primitive primitive;
 		if( GS::MeshStorage::primitiveFromName( primitiveName, primitive ) &&
-			GS::System::meshes().createPrimitive( idMesh, name, primitive ) )
+			GS::Assets::meshes().createPrimitive( idMesh, name, primitive ) )
 		{
 			if( !file.empty() )
 				LOG( "Mesh " + std::to_string( idMesh ) + " is not loaded, placeholder " + primitiveName + " is used" );
@@ -585,7 +585,7 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 
 bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 {
-	if( GS::System::models().exists( idModel ) )
+	if( GS::Assets::models().exists( idModel ) )
 		return true;
 
 	LOG( "Load model: " + std::to_string( idModel ) );
@@ -601,7 +601,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	uint32_t skeleton = 0;
 	while( query.executeStep() )
 	{
-		if( !GS::System::models().createModel( query.getColumn( 0 ), query.getColumn( 1 ) ) )
+		if( !GS::Assets::models().createModel( query.getColumn( 0 ), query.getColumn( 1 ) ) )
 			return false;
 		shadowLodScale = static_cast<float>( query.getColumn( "shadow_lod_scale" ).getDouble() );
 		shadowMinLod = static_cast<uint32_t>( std::max( query.getColumn( "shadow_min_lod" ).getInt(), 0 ) );
@@ -610,10 +610,10 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		skeleton = query.getColumn( "skeleton_id" ).isNull() ? 0 : query.getColumn( "skeleton_id" ).getUInt();
 	}
 
-	if( !GS::System::models().exists( idModel ) )
+	if( !GS::Assets::models().exists( idModel ) )
 		return false;
 
-	GS::DMModel* model = GS::System::models().get( idModel ).get();
+	GS::DMModel* model = GS::Assets::models().get( idModel ).get();
 	// Простая коллизия (NULL — оболочка)
 	GS::DMModel::Collision modelCollision = GS::DMModel::Collision::hull;
 	if( !collision.empty() && !GS::DMModel::parseCollision( collision, modelCollision ) )
@@ -637,7 +637,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 			return;
 		for( size_t i = 0; i < block->sections.size(); ++i )
 		{
-			const auto& mesh = GS::System::meshes().get( block->sections[i]->mesh );
+			const auto& mesh = GS::Assets::meshes().get( block->sections[i]->mesh );
 			if( i == 0 )
 			{
 				block->bounds = mesh->bounds();
@@ -672,7 +672,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		if( !loadMesh( queryLOD.getColumn( "mesh_id" ) ) )
 			return false;
 		// Модель со скелетом: материалу секции — варианты скиннинга, до прогрева пайплайнов
-		if( skeleton != 0 && !GS::System::materials().get( idMaterial )->enableSkinning() )
+		if( skeleton != 0 && !GS::Assets::materials().get( idMaterial )->enableSkinning() )
 			LOG( "Model " + std::to_string( idModel ) + ": material " + std::to_string( idMaterial ) +
 				 " has no skinning variant, the model is drawn in its rest pose" );
 
@@ -691,22 +691,22 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		section->mesh = queryLOD.getColumn( "mesh_id" );
 		if( idInstance != 0 )
 		{
-			// Экземпляр — общий у всех секций с ним (System::materialInstances): параметры загружаются один раз, правка в
+			// Экземпляр — общий у всех секций с ним (Assets::materialInstances): параметры загружаются один раз, правка в
 			// окне видна у всех его моделей и LOD
-			GS::MaterialInstanceStorage::Instance* instance = GS::System::materialInstances().find( idInstance );
+			GS::MaterialInstanceStorage::Instance* instance = GS::Assets::materialInstances().find( idInstance );
 			if( !instance )
 			{
-				PropertyContainer params = GS::System::materials().get( idParamsMaterial )->parameters();
+				PropertyContainer params = GS::Assets::materials().get( idParamsMaterial )->parameters();
 				loadMaterialParams( idInstance, params );
 				params.setName( instanceName( idInstance ) );
-				instance = &GS::System::materialInstances().add( idInstance, idParamsMaterial, std::move( params ) );
+				instance = &GS::Assets::materialInstances().add( idInstance, idParamsMaterial, std::move( params ) );
 			}
 			section->instance = idInstance;
 			section->params = &instance->params;
 		}
 		else
 		{
-			section->ownParams = std::make_unique<PropertyContainer>( GS::System::materials().get( idParamsMaterial )->parameters() );
+			section->ownParams = std::make_unique<PropertyContainer>( GS::Assets::materials().get( idParamsMaterial )->parameters() );
 			section->params = section->ownParams.get();
 		}
 		// В окне модели — экземпляр один раз, сколько бы секций на нём ни было
@@ -726,7 +726,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		{
 			if( !sections[i]->ownParams )
 				continue;
-			const std::string material = GS::System::materials().get( sections[i]->material )->name();
+			const std::string material = GS::Assets::materials().get( sections[i]->material )->name();
 			sections[i]->params->setName( "LOD " + std::to_string( lod ) +
 										  ( sections.size() > 1 ? ", section " + std::to_string( i ) : std::string() ) +
 										  " (" + material + ")" );
@@ -745,7 +745,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 void LibraryLoader::loadAnimations( GS::AnimationLibrary& library )
 {
 	std::set<uint32_t> skeletons;
-	for( auto& pair : GS::System::models() )
+	for( auto& pair : GS::Assets::models() )
 		if( pair.second->skeleton() != 0 )
 			skeletons.insert( pair.second->skeleton() );
 
@@ -803,7 +803,7 @@ void LibraryLoader::loadAnimations( GS::AnimationLibrary& library )
 	}
 
 	// Границы моделей со скелетом — поза покоя и все позы клипов: по ним отсекаются экземпляры в анимации
-	for( auto& pair : GS::System::models() )
+	for( auto& pair : GS::Assets::models() )
 	{
 		GS::DMModel& model = *pair.second;
 		const GS::DMModel::LodBlock* lod = model.getLodById( 0 );
@@ -864,7 +864,7 @@ void LibraryLoader::save()
 {	
 	std::string insertedValue;
 /*
-	for( auto& pair : GS::System::models() )
+	for( auto& pair : GS::Assets::models() )
 	{
 		GS::DMModel* model = pair.second.get();
 		for( uint32_t i = 0; i < model->lodCount(); ++i )

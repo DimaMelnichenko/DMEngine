@@ -13,7 +13,7 @@
 #include <filesystem>
 #include <DirectXTex.h>
 #include <DirectXPackedVector.h>
-#include "System.h"
+#include "Assets.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"
 #include "Utils\Fingerprint.h"
@@ -104,7 +104,7 @@ bool TerrainPipeline::initialize( const TerrainDescription& terrain, const std::
 	applyDescription( terrain );
 	m_heightMultiplier = terrain.settings.heightMultiplier;
 
-	const uint32_t mapSize = System::textures().get( m_heightMapName )->width();
+	const uint32_t mapSize = Assets::textures().get( m_heightMapName )->width();
 	m_worldSize = mapSize * m_texelSize;
 
 	// Доли — по времени загрузки (Release, Test): конвейер рельефа и воды с правилами слоёв ~0,7 с, слои материала
@@ -347,7 +347,7 @@ bool TerrainPipeline::buildHeights( const std::vector<TerrainEdit>& edits, const
 	SlowTask task( 1.0f );
 	task.enterProgressFrame( 0.05f, "Height map" );
 	ScratchImage captured;
-	if( !GpuImages::captureTexture( System::textures().get( m_heightMapName )->texture(), captured ) )
+	if( !GpuImages::captureTexture( Assets::textures().get( m_heightMapName )->texture(), captured ) )
 	{
 		LOG( "Terrain: can`t copy heightmap to CPU" );
 		return false;
@@ -795,7 +795,7 @@ bool TerrainPipeline::uploadMask( const TerrainMasks::Mask& mask, const TerrainP
 	++m_maskRevision;
 	const auto byte = []( float value ) { return static_cast<uint8_t>( std::lround( std::clamp( value, 0.0f, 1.0f ) * 255.0f ) ); };
 	const TerrainPaint::Rect area = rect && !rect->empty() ? *rect : TerrainPaint::Rect{ 0, 0, size, size };
-	if( System::textures().exists( mask.name ) && System::textures().get( System::textures().id( mask.name ) )->width() == size )
+	if( Assets::textures().exists( mask.name ) && Assets::textures().get( Assets::textures().id( mask.name ) )->width() == size )
 	{
 		const uint32_t width = area.x1 - area.x0;
 		std::vector<uint8_t> bytes( static_cast<size_t>( width ) * ( area.row1 - area.row0 ) );
@@ -807,7 +807,7 @@ bool TerrainPipeline::uploadMask( const TerrainMasks::Mask& mask, const TerrainP
 		region.y = area.row0;
 		region.width = width;
 		region.height = area.row1 - area.row0;
-		if( System::textures().updateGenerated( mask.name, region, bytes.data(), width ) )
+		if( Assets::textures().updateGenerated( mask.name, region, bytes.data(), width ) )
 			return true;
 	}
 	std::vector<uint8_t> bytes( static_cast<size_t>( size ) * size );
@@ -819,7 +819,7 @@ bool TerrainPipeline::uploadMask( const TerrainMasks::Mask& mask, const TerrainP
 	TextureData data;
 	data.data = bytes.data();
 	data.rowPitch = size;
-	if( System::textures().setGenerated( mask.name, desc, data ) )
+	if( Assets::textures().setGenerated( mask.name, desc, data ) )
 		return true;
 	LOG( "Terrain: mask " + mask.name + " is not created" );
 	return false;

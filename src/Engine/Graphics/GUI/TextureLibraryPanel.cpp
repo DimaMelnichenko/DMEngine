@@ -2,7 +2,7 @@
 #include <algorithm>
 #include "imgui.h"
 #include "imgui_stdlib.h"
-#include "System.h"
+#include "Assets.h"
 #include "PropertyWidgets.h"
 
 void TextureLibraryPanel::draw( bool* open )
@@ -27,7 +27,7 @@ void TextureLibraryPanel::draw( bool* open )
 	const float spacing = ImGui::GetStyle().ItemSpacing.x;
 	const int columns = std::max( 1, static_cast<int>( ( ImGui::GetContentRegionAvail().x + spacing ) / ( m_thumbnail + spacing ) ) );
 	int column = 0;
-	for( auto& item : GS::System::textures() )
+	for( auto& item : GS::Assets::textures() )
 	{
 		const std::string& name = item.second->name();
 		if( !PropertyWidgets::matches( name, m_filter ) )

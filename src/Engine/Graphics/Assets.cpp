@@ -1,4 +1,4 @@
-#include "System.h"
+#include "Assets.h"
 
 namespace GS
 {
@@ -12,7 +12,7 @@ namespace
 	static std::unique_ptr<MaterialInstanceStorage> m_materialInstances;
 }
 
-DMTextureStorage& System::textures()
+DMTextureStorage& Assets::textures()
 {
 	if( !m_textureStorage )
 	{
@@ -22,7 +22,7 @@ DMTextureStorage& System::textures()
 	return *m_textureStorage;
 }
  
-MeshStorage& System::meshes()
+MeshStorage& Assets::meshes()
 {
 	if( !m_meshStorage )
 	{
@@ -32,7 +32,7 @@ MeshStorage& System::meshes()
 	return *m_meshStorage;
 }
 
-ModelStorage& System::models()
+ModelStorage& Assets::models()
 {
 	if( !m_modelStorage )
 	{
@@ -42,7 +42,7 @@ ModelStorage& System::models()
 	return *m_modelStorage;
 }
 
-MaterialStorage& System::materials()
+MaterialStorage& Assets::materials()
 {
 	if( !m_materialStorage )
 	{
@@ -52,7 +52,7 @@ MaterialStorage& System::materials()
 	return *m_materialStorage;
 }
 
-MaterialInstanceStorage& System::materialInstances()
+MaterialInstanceStorage& Assets::materialInstances()
 {
 	if( !m_materialInstances )
 	{
@@ -62,7 +62,7 @@ MaterialInstanceStorage& System::materialInstances()
 	return *m_materialInstances;
 }
 
-void System::destroy()
+void Assets::destroy()
 {
 	m_textureStorage.reset();
 	m_meshStorage.reset();

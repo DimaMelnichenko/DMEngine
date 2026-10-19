@@ -25,7 +25,7 @@ public:
 	{
 		uint32_t mesh = 0;
 		uint32_t material = 0;
-		// Экземпляр материала (MaterialInstance.id_instance, System::materialInstances()): его параметры — общие у всех
+		// Экземпляр материала (MaterialInstance.id_instance, Assets::materialInstances()): его параметры — общие у всех
 		// секций с ним; 0 — параметры материала со значениями по умолчанию, свои у секции (ownParams)
 		uint32_t instance = 0;
 		// Параметры материала: экземпляра или свои; адрес постоянен — на него ссылаются MeshBatch, GUI, расстановка

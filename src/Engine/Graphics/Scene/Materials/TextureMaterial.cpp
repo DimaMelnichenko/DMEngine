@@ -1,5 +1,5 @@
 #include "TextureMaterial.h"
-#include "System.h"
+#include "Assets.h"
 
 namespace GS
 {
@@ -28,9 +28,9 @@ void TextureMaterial::setParams( const PropertyContainer& params )
 	if( params.exists( "Albedo" ) )
 	{
 		uint32_t idTexture = params["Albedo"].data<uint32_t>();
-		if( System::textures().exists( idTexture ) )
+		if( Assets::textures().exists( idTexture ) )
 		{
-			DMD3D::instance().setSRV( 0, System::textures().get( idTexture )->srv() );
+			DMD3D::instance().setSRV( 0, Assets::textures().get( idTexture )->srv() );
 		}
 	}
 }

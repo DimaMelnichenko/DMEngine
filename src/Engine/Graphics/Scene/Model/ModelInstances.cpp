@@ -8,7 +8,7 @@
 #include <cmath>
 #include <string>
 #include <unordered_set>
-#include "System.h"
+#include "Assets.h"
 #include "Terrain\TerrainHeightSource.h"
 #include <cfloat>
 
@@ -75,7 +75,7 @@ void ModelInstances::initialize( const std::vector<LevelDescription::ModelInstan
 	for( const LevelDescription::ModelInstance& description : instances )
 	{
 		Instance instance;
-		instance.model = System::models().get( description.model ).get();
+		instance.model = Assets::models().get( description.model ).get();
 		instance.modelId = description.model;
 		instance.id = description.id;
 		instance.animation = description.animation;
@@ -135,7 +135,7 @@ void ModelInstances::createProperties( Instance& instance )
 uint32_t ModelInstances::addInstance( uint32_t model, const XMFLOAT3& position, const TerrainHeightSource* terrain )
 {
 	Instance instance;
-	instance.model = System::models().get( model ).get();
+	instance.model = Assets::models().get( model ).get();
 	instance.modelId = model;
 	instance.key = m_nextKey++;
 	instance.transform.setPosition( position );
@@ -197,7 +197,7 @@ int ModelInstances::indexOf( uint32_t key ) const
 
 const std::string& ModelInstances::modelName( uint32_t model ) const
 {
-	return System::models().get( model )->properties()->name();
+	return Assets::models().get( model )->properties()->name();
 }
 
 std::vector<uint32_t> ModelInstances::removedIds() const

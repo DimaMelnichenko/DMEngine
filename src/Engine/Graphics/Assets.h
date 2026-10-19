@@ -10,7 +10,8 @@
 namespace GS
 {
 
-class System
+// Реестр ассетов, как AssetManager в UE: хранилища текстур, мешей, моделей, материалов и их экземпляров
+class Assets
 {
 public:
 

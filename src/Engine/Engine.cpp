@@ -51,7 +51,7 @@ Engine::Engine() :
 Engine::~Engine()
 {
 	FrameWatchdog::instance().stop();
-	System::destroy();
+	Assets::destroy();
 	// DMD3D::destroy — в main после DMSystem: члены Engine ещё держат ресурсы GPU
 }
 
@@ -110,10 +110,10 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	};
 
 	// Заглушки создаются до загрузки ресурсов и подставляются вместо всего, что не загрузилось
-	RET_FALSE( System::textures().createPlaceholder() );
-	RET_FALSE( System::textures().createDefaults() );
-	RET_FALSE( System::meshes().createPlaceholder() );
-	RET_FALSE( System::meshes().createDefaults() );
+	RET_FALSE( Assets::textures().createPlaceholder() );
+	RET_FALSE( Assets::textures().createDefaults() );
+	RET_FALSE( Assets::meshes().createPlaceholder() );
+	RET_FALSE( Assets::meshes().createDefaults() );
 
 	stage( 1.8f, "Materials, models and textures" );
 	RET_FALSE( m_scene.loadResources( *m_library, m_config.levelName(), m_config.presetName() ) );

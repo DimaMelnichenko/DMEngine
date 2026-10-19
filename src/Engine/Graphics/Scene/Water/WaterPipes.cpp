@@ -9,7 +9,7 @@
 #include <iterator>
 #include <tuple>
 #include <DirectXPackedVector.h>
-#include "System.h"
+#include "Assets.h"
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
 #include "Utils\SlowTask.h"

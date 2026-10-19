@@ -1,7 +1,7 @@
 #include "WorldEntities.h"
 #include <algorithm>
 #include <cmath>
-#include "System.h"
+#include "Assets.h"
 #include "RenderView.h"
 #include "Model\ModelDraw.h"
 #include "Terrain\TerrainHeightSource.h"
@@ -107,7 +107,7 @@ void WorldEntities::compute( const FrameContext& frame )
 	for( auto [entity, current, visual, state] : registry.view<const Transform, const ModelVisual, const AnimationState>().each() )
 	{
 		const Skeleton* skeleton = library.skeleton( state.skeleton );
-		const DMModel* model = System::models().get( visual.model ).get();
+		const DMModel* model = Assets::models().get( visual.model ).get();
 		if( !skeleton || !model )
 			continue;
 		XMFLOAT3 origin;
@@ -154,7 +154,7 @@ void WorldEntities::collectMeshes( const RenderView& view, MeshCollector& collec
 	const entt::registry& registry = m_world->registry();
 	for( auto [entity, current, visual] : registry.view<const Transform, const ModelVisual>().each() )
 	{
-		const DMModel* model = System::models().get( visual.model ).get();
+		const DMModel* model = Assets::models().get( visual.model ).get();
 		if( !model || model->lodCount() == 0 )
 			continue;
 		XMFLOAT3 origin;
@@ -224,13 +224,13 @@ bool WorldEntities::spawnWanderers( const std::string& model, float x, float z, 
 		error = "the world is not initialized";
 		return false;
 	}
-	if( !System::models().exists( model ) )
+	if( !Assets::models().exists( model ) )
 	{
 		error = "model " + model + " is not loaded (models of the level, its sky and scatter sets)";
 		return false;
 	}
-	const uint32_t modelId = System::models().id( model );
-	DMModel* asset = System::models().get( modelId ).get();
+	const uint32_t modelId = Assets::models().id( model );
+	DMModel* asset = Assets::models().get( modelId ).get();
 	const DMModel::LodBlock* lod = asset ? asset->getLodById( 0 ) : nullptr;
 	if( !lod )
 	{

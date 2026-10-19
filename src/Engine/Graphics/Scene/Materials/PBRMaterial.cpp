@@ -1,7 +1,7 @@
 #include "PBRMaterial.h"
 #include <algorithm>
 #include "Shaders\slots.h"
-#include "System.h"
+#include "Assets.h"
 
 using namespace DirectX;
 
@@ -15,7 +15,7 @@ namespace
 const ShaderView& materialTexture( const PropertyContainer& params, const char* name, uint32_t defaultTexture )
 {
 	uint32_t id = params.exists( name ) ? params[name].data<uint32_t>() : 0;
-	return System::textures().get( id != 0 ? id : defaultTexture )->srv();
+	return Assets::textures().get( id != 0 ? id : defaultTexture )->srv();
 }
 
 template<class TYPE>

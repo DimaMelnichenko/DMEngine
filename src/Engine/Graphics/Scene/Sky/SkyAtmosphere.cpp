@@ -16,7 +16,7 @@
 #include "Utils\Fingerprint.h"
 #include "Light\DMLightDriver.h"
 #include "Logger\Logger.h"
-#include "System.h"
+#include "Assets.h"
 
 using namespace DirectX;
 
@@ -271,12 +271,12 @@ bool SkyAtmosphere::initialize( const DMLightDriver& lights, const Settings& set
 		m_hasMilkyWay = loadMilkyWay( m_milkyWayFile );
 
 	// Карта луны: нет в базе — белая текстура, диск ровный
-	if( System::textures().exists( moonAlbedoTexture ) )
-		m_moonAlbedo = System::textures().get( moonAlbedoTexture ).get();
+	if( Assets::textures().exists( moonAlbedoTexture ) )
+		m_moonAlbedo = Assets::textures().get( moonAlbedoTexture ).get();
 	else
 	{
 		LOG( std::string( "Sky atmosphere: no texture " ) + moonAlbedoTexture + ", the moon disk is plain" );
-		m_moonAlbedo = System::textures().get( DMTextureStorage::whiteId ).get();
+		m_moonAlbedo = Assets::textures().get( DMTextureStorage::whiteId ).get();
 	}
 
 	m_properties.setName( "Sky atmosphere" );

@@ -1,7 +1,7 @@
 #include "SoundAreaOverlay.h"
 #include <algorithm>
 #include <cmath>
-#include "System.h"
+#include "Assets.h"
 #include "Logger\Logger.h"
 #include "Terrain\TerrainPipeline.h"
 
@@ -44,12 +44,12 @@ const ShaderView* SoundAreaOverlay::update( const TerrainPipeline& terrain, std:
 			TextureData data;
 			data.data = bytes.data();
 			data.rowPitch = size;
-			m_valid = System::textures().setGenerated( textureName, desc, data );
+			m_valid = Assets::textures().setGenerated( textureName, desc, data );
 			if( !m_valid )
 				LOG( "Sound areas: texture " + std::string( textureName ) + " is not created" );
 		}
 	}
-	return m_valid ? &System::textures().get( System::textures().id( textureName ) )->srv() : nullptr;
+	return m_valid ? &Assets::textures().get( Assets::textures().id( textureName ) )->srv() : nullptr;
 }
 
 }
