@@ -4,12 +4,32 @@
 // меньше квадрата на сферу: меньше пикселей у prepass, теней и цвета). Кадры — три ближайших к направлению на
 // зрителя в координатах модели (у перспективного вида — к камере, у ортографического каскада теней — против света):
 // UV точки карточки в каждом — её проекция на плоскость кадра. Растеризуется та же карточка, отодвинутая к зрителю на
-// радиус по лучам вида: смещение глубины в impostor.ps только отодвигает пиксели. С LOD_DITHER — доля смены LOD
+// радиус по лучам вида: смещение глубины в impostor.ps только отодвигает пиксели. С LOD_DITHER — доля смены LOD.
+// Ветер — качание всего дерева той же формулой, что слой Global у модели (treeWindPosition): на смене LOD «модель →
+// импостер» дерево не дёргается; кадры (UV) — от карточки до наклона, картинка наклоняется вместе с ней
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
 #include "instance.sh"
 #include "impostor.sh"
+#include "wind.sh"
+
+// Наклон точки карточки ветром вокруг корня root: доля высоты — от корня до верха модели top, м мира
+float3 impostorWindPosition( float3 position, float3 root, float top )
+{
+	const WindSample wind = windAt( root.xz );
+	const float strength = cb_windStrength * g_impostorWind.w * windLoad( wind );
+	const float phase = windPhase( root );
+	const float2 direction = windSwirl( wind, phase );
+	const float swing = 0.8f + 0.3f * sin( windTwoPi * ( cb_gameTime * g_impostorWind.z + phase ) );
+	const float share = saturate( ( position.y - root.y ) / max( top, 1e-3f ) );
+	const float angle = g_impostorWind.x * pow( share, g_impostorWind.y ) * strength * windGust( root.xz ) * swing;
+	WindFrame frame;
+	frame.normal = float3( 0.0f, 1.0f, 0.0f );
+	frame.tangent = float3( 1.0f, 0.0f, 0.0f );
+	frame.binormal = float3( 0.0f, 0.0f, 1.0f );
+	return windBend( position, root, float3( direction.x, 0.0f, direction.y ), angle, frame );
+}
 
 struct VertexInputType
 {
@@ -53,7 +73,7 @@ ImpostorPixelInput main( VertexInputType input )
 	// карточка не ближе половины его глубины
 #ifdef IMPOSTOR_FLAT
 	// Плоский импостер (трава без тени): глубина — самой карточки в плоскости через центр, без смещения
-	const float3 cardPosition = worldPosition;
+	float3 cardPosition = worldPosition;
 #else
 	float3 cardPosition = worldPosition - cb_viewDirection * radius;
 	if( !orthographic )
@@ -62,6 +82,13 @@ ImpostorPixelInput main( VertexInputType input )
 		cardPosition = cb_cameraPosition + ( worldPosition - cb_cameraPosition ) * ( max( centerDepth - radius, centerDepth * 0.5f ) / centerDepth );
 	}
 #endif
+
+	// Ветер: точка и её отодвинутая к зрителю копия наклоняются одинаково — смещение одно на обе
+	[branch] if( g_impostorWind.w > 0.0f && cb_windStrength > 0.0f )
+	{
+		const float3 swayed = impostorWindPosition( worldPosition, instance.position, g_impostorShade.y * scale );
+		cardPosition += swayed - worldPosition;
+	}
 
 	ImpostorPixelInput output;
 	output.position = mul( float4( cardPosition, 1.0f ), cb_viewProjectionMatrix );

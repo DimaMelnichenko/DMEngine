@@ -231,9 +231,9 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.diffuseTransmissionFactor = materialValue( params, "DiffuseTransmissionFactor", 0.0f );
 	param.transmissionForward = materialValue( params, "TransmissionForward", defaultTransmissionForward );
 	param.transmissionForwardRoughness = materialValue( params, "TransmissionForwardRoughness", defaultTransmissionForwardRoughness );
-	param.windGlobalAngle = XMConvertToRadians( materialValue( params, "WindGlobalAngle", 1.5f ) );
-	param.windGlobalExponent = materialValue( params, "WindGlobalExponent", 1.5f );
-	param.windGlobalFrequency = materialValue( params, "WindGlobalFrequency", 0.25f );
+	param.windGlobalAngle = XMConvertToRadians( materialValue( params, "WindGlobalAngle", defaultWindGlobalAngle ) );
+	param.windGlobalExponent = materialValue( params, "WindGlobalExponent", defaultWindGlobalExponent );
+	param.windGlobalFrequency = materialValue( params, "WindGlobalFrequency", defaultWindGlobalFrequency );
 	param.windBranchAngle = XMConvertToRadians( materialValue( params, "WindBranchAngle", 6.0f ) );
 	param.windBranchFrequency = materialValue( params, "WindBranchFrequency", 0.8f );
 	param.windTwigAngle = XMConvertToRadians( materialValue( params, "WindTwigAngle", 12.0f ) );

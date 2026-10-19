@@ -94,6 +94,10 @@ float3 windToward( float2 direction, float phase, float frequency )
 	return normalize( float3( d.x, 0.0f, d.y ) );
 }
 
+// Ветер дерева — только у шейдеров с константами материала PBR (углы и частоты слоёв); импостер (impostor.vs) берёт
+// из этого файла общие части
+#ifdef DM_PBR_MATERIAL_CONSTANTS_H
+
 // Ветер дерева по схеме Games wind SpeedTree — слои от дочерних к родительским (поворот ребёнка вокруг его начала, затем
 // вместе с ним — вокруг начала родителя), все в мире:
 //   рябь листвы вдоль нормали → веточка вокруг branch2 → ветвь вокруг branch1 → всё дерево вокруг корня.
@@ -139,5 +143,7 @@ float3 treeWindPosition( float3 p, float3 root, float3 branch1Origin, float bran
 	}
 	return p;
 }
+
+#endif
 
 #endif

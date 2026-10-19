@@ -24,6 +24,9 @@ DM_CONSTANTS( ImpostorBuffer, SLOT_CB_MATERIAL )
 	// x — затемнение низа: цвет у корня × (1 − x), к верху модели — без затемнения (ImpostorMaterial::setShading);
 	// y — высота верха модели над её началом координат (ящик LOD0); z — сила самотени кроны (impostor.ps), w — запас
 	DM_FIELD( float4, impostorShade );
+	// Качание всего дерева, как слой Global у модели (PBRTree, treeWindPosition): x — наклон верхушки при силе ветра 1, рад,
+	// y — рост наклона с долей высоты, z — частота, Гц, w — отклик (WindWeight; 0 — импостер неподвижен)
+	DM_FIELD( float4, impostorWind );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

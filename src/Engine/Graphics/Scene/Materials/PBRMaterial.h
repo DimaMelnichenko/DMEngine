@@ -38,6 +38,11 @@ public:
 	// в MaterialParameterDef): у всех пропускающих материалов уровня — листья, травинки, лепестки
 	static constexpr float defaultTransmissionForward = 0.75f;
 	static constexpr float defaultTransmissionForwardRoughness = 0.775f;
+	// Качание всего дерева (PBRTree, слой Global ветра — Shaders/wind.sh): наклон верхушки при силе ветра 1, градусы, рост
+	// наклона с долей высоты, частота, Гц; их же берёт импостер дерева (ImpostorMaterial)
+	static constexpr float defaultWindGlobalAngle = 1.5f;
+	static constexpr float defaultWindGlobalExponent = 1.5f;
+	static constexpr float defaultWindGlobalFrequency = 0.25f;
 
 private:
 	// Перестановки вершинного шейдера с признаками features (instanced, placed, lodDither): цвет — с отсечением по

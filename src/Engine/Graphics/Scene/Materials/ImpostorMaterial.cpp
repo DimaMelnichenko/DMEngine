@@ -387,6 +387,7 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 	m_params.impostorRoughness = 0.8f;
 	m_params.impostorOcclusion = std::min( std::max( settings.occlusion, 0.0f ), 1.0f );
 	m_params.impostorShade = XMFLOAT4( m_params.impostorShade.x, box.Center.y + box.Extents.y, m_params.impostorShade.z, 0.0f );
+	m_params.impostorWind = XMFLOAT4( 0.0f, 1.0f, 0.0f, 0.0f );
 
 	// Секции LOD0 и их материалы с вариантом запекания; цвет пропускания — у секции, которая пропускает свет (хвоя)
 	std::vector<std::pair<DMModel::Section*, Material*>> sections;
@@ -400,6 +401,15 @@ bool ImpostorMaterial::bake( DMModel& model, const BakeContext& context, const B
 		}
 		sections.push_back( { section.get(), material } );
 		const PropertyContainer& params = *section->params;
+		// Качание всего дерева — как у модели (слой Global ветра PBRTree): у секции дерева с откликом на ветер
+		if( params.exists( "WindGlobalAngle" ) && params.exists( "WindWeight" ) && params["WindWeight"].data<float>() > m_params.impostorWind.w )
+		{
+			auto value = [&params]( const char* name, float fallback ) { return params.exists( name ) ? params[name].data<float>() : fallback; };
+			m_params.impostorWind = XMFLOAT4( XMConvertToRadians( value( "WindGlobalAngle", PBRMaterial::defaultWindGlobalAngle ) ),
+											  value( "WindGlobalExponent", PBRMaterial::defaultWindGlobalExponent ),
+											  value( "WindGlobalFrequency", PBRMaterial::defaultWindGlobalFrequency ),
+											  params["WindWeight"].data<float>() );
+		}
 		if( params.exists( "DiffuseTransmissionFactor" ) && params["DiffuseTransmissionFactor"].data<float>() > 0.0f &&
 			params.exists( "DiffuseTransmissionColorFactor" ) )
 		{
