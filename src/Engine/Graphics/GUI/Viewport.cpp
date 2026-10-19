@@ -120,6 +120,24 @@ ImU32 soundColor( const XMFLOAT3& color, float alpha )
 	return ImGui::ColorConvertFloat4ToU32( ImVec4( color.x, color.y, color.z, alpha ) );
 }
 
+// Метки звука крупнее прочих значков вьюпорта: кружки, подписи и их отступы — во столько раз (Dimok 2026-10-19: в 3 раза)
+constexpr float soundIconScale = 3.0f;
+
+// Радиус кружка метки, пиксели: певец — крупнее места воды
+float soundMarkerRadius( const GS::SoundMarker& marker )
+{
+	return ( marker.label.empty() ? 3.5f : 6.0f ) * marker.size * soundIconScale;
+}
+
+// Подпись метки звука — шрифтом окна × soundIconScale, с тенью
+void soundLabel( ImDrawList* draw, const ImVec2& at, ImU32 color, ImU32 outline, const char* text )
+{
+	const float size = ImGui::GetFontSize() * soundIconScale;
+	const float shadow = soundIconScale;
+	draw->AddText( ImGui::GetFont(), size, ImVec2( at.x + shadow, at.y + shadow ), outline, text );
+	draw->AddText( ImGui::GetFont(), size, at, color, text );
+}
+
 // Высота точки кривой для показа — над поверхностью земли (дно русла), чтобы точку не закрывала вода
 float streamPointHeight( const GS::TerrainHeightSource& terrain, float x, float z )
 {
@@ -824,8 +842,7 @@ void Viewport::drawSoundSources( const DMCamera& camera, GS::Scene& scene ) cons
 					std::snprintf( label, sizeof( label ), "%s %.0f-%.0f m", area.label.c_str(), area.ring.x, area.ring.y );
 				else
 					std::snprintf( label, sizeof( label ), "%s %.0f m", area.label.c_str(), area.ring.y );
-				draw->AddText( ImVec2( screen.x + 1.0f, screen.y + 1.0f ), outline, label );
-				draw->AddText( screen, color, label );
+				soundLabel( draw, screen, color, outline, label );
 			}
 		}
 		if( area.points )
@@ -836,7 +853,7 @@ void Viewport::drawSoundSources( const DMCamera& camera, GS::Scene& scene ) cons
 				const float distance = std::hypot( point.x - listener.x, point.z - listener.z );
 				ImVec2 screen;
 				if( distance >= area.ring.x && distance <= outer && toScreen( transform, point.x, point.y + 0.2f, point.z, screen ) )
-					draw->AddCircleFilled( screen, 2.0f, color );
+					draw->AddCircleFilled( screen, 2.0f * soundIconScale, color );
 			}
 		}
 	}
@@ -848,28 +865,29 @@ void Viewport::drawSoundSources( const DMCamera& camera, GS::Scene& scene ) cons
 		if( !toScreen( transform, marker.position.x, marker.position.y, marker.position.z, center ) )
 			continue;
 		const ImU32 color = soundColor( marker.color, marker.sounding ? 1.0f : 0.55f );
-		const float radius = ( marker.label.empty() ? 3.5f : 6.0f ) * marker.size;
+		const float radius = soundMarkerRadius( marker );
+		const float stroke = 1.5f * soundIconScale;
 		if( !marker.label.empty() && terrain )
 		{
 			float height = marker.position.y;
 			ImVec2 foot;
 			if( terrain->surfaceHeight( marker.position.x, marker.position.z, height ) &&
 				toScreen( transform, marker.position.x, height, marker.position.z, foot ) )
-				draw->AddLine( center, foot, soundColor( marker.color, 0.35f ), 1.0f );
+				draw->AddLine( center, foot, soundColor( marker.color, 0.35f ), soundIconScale );
 		}
-		draw->AddCircleFilled( center, radius + 1.5f, outline );
+		draw->AddCircleFilled( center, radius + stroke, outline );
 		if( marker.sounding )
 		{
 			draw->AddCircleFilled( center, radius, color );
-			draw->AddCircle( center, radius + 4.0f, color, 0, 1.5f );
+			draw->AddCircle( center, radius + 4.0f * soundIconScale, color, 0, stroke );
 		}
 		else
-			draw->AddCircle( center, radius, color, 0, 1.5f );
+			draw->AddCircle( center, radius, color, 0, stroke );
 		if( !marker.label.empty() )
 		{
-			const ImVec2 at( center.x + radius + 5.0f, center.y - 7.0f );
-			draw->AddText( ImVec2( at.x + 1.0f, at.y + 1.0f ), outline, marker.label.c_str() );
-			draw->AddText( at, color, marker.label.c_str() );
+			const float textSize = ImGui::GetFontSize() * soundIconScale;
+			soundLabel( draw, ImVec2( center.x + radius + 5.0f * soundIconScale, center.y - 0.5f * textSize ), color, outline,
+						marker.label.c_str() );
 		}
 	}
 }
@@ -886,7 +904,8 @@ PropertyContainer* Viewport::pickSoundMarker( const DMCamera& camera, GS::Scene&
 		ImVec2 screen;
 		if( !marker.properties || !toScreen( transform, marker.position.x, marker.position.y, marker.position.z, screen ) )
 			continue;
-		const float d = std::hypot( screen.x - x, screen.y - y );
+		// Крупный кружок ловится по всей площади: расстояние — от его края
+		const float d = std::max( std::hypot( screen.x - x, screen.y - y ) - soundMarkerRadius( marker ), 0.0f );
 		if( d < distance )
 		{
 			distance = d;
