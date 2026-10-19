@@ -11,7 +11,8 @@
 /DownloadResources
 /cmake-build-*/
 # Локальные настройки инструментов: Claude Code (разрешения, хуки с путями машины) и проект CLion
-/.claude/
+/.claude/*
+!/.claude/skills/
 /.idea/
 __pycache__/
 # Кэш DXIL шейдеров и библиотеки пайплайнов (D3D/ShaderCompiler.h, DMD3D::loadPipelineLibrary) и течения воды
