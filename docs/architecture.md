@@ -336,7 +336,7 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
 (см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн,
-наборы `Meadow` (трава — пучки `GrassClump` из Blender,
+наборы `Meadow` (папоротник Megascans под ельником; трава — пучки `GrassClump` из Blender,
 три LOD до 30 м с тенью от LOD2, дальше до 45 м — плоские импостеры без тени,
 пучки сухой травы Megascans `dry_grass` своим слоем вдоль ручьёв — `mask_grass_riparian` и одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`: галька по маске и камни русел — слой `stream_stones`, ~7 тыс.), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,
 Plane с материалом `PBR` перед стартовой камерой и перед ними таблица шаров PBR (`PBR_Dielectric_R01…R09`,
