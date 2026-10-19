@@ -40,6 +40,7 @@ import export_polyhaven as polyhaven   # noqa: E402 — open_archive, export_mat
 TEXTURE_SIZE = 1024       # 2k PNG грузится движком ~1 с на картинку
 BARK_TILE = 0.8           # м коры на повтор текстуры
 GROUND_CLEARANCE = 0.4    # м: ниже нижние ветви не свисают
+CROWN_NORMAL_BLEND = 0.6  # доля нормали конуса кроны у хвои (CrownNormalBlend, LightShader.vs): крона объёмная, а не пёстрая
 
 VARIANTS = {
     #          высота, низ кроны (доля), радиус ствола, радиус кроны, seed
@@ -108,6 +109,7 @@ def make_materials(folder):
     twig['DiffuseTransmissionFactor'] = 0.35
     twig['DiffuseTransmissionColorFactor'] = [1.0, 1.0, 0.6]
     twig['DiffuseTransmissionColor'] = 'BaseColor'
+    twig['CrownNormalBlend'] = CROWN_NORMAL_BLEND   # хвоя освещается конусом кроны, а не плоскостью карточки (LightShader.vs)
     return bark, twig
 
 

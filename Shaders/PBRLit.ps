@@ -37,8 +37,9 @@ struct PixelInputType
 
 float3 surfaceNormal( PixelInputType input )
 {
-	// Задняя грань двусторонней геометрии (карточки без отсечения граней) освещается как передняя
-	float3 normal = input.isFrontFace ? input.normal : -input.normal;
+	// Задняя грань двусторонней геометрии (карточки без отсечения граней) освещается как передняя; у листвы с нормалью кроны
+	// (CrownNormalBlend, LightShader.vs) обе стороны смотрят из кроны наружу — не переворачивается
+	float3 normal = input.isFrontFace || g_crownNormalBlend > 0.0f ? input.normal : -input.normal;
 
 	// Z — из X и Y (нормаль карты единичной длины): у карт в BC5 (Textures.compression = normalmap) хранятся только они
 	float3 n;
@@ -72,7 +73,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	Surface surface;
 	surface.position = input.worldPosition;
 	surface.normal = surfaceNormal( input );
-	surface.geometricNormal = normalize( input.isFrontFace ? input.normal : -input.normal );
+	surface.geometricNormal = normalize( input.isFrontFace || g_crownNormalBlend > 0.0f ? input.normal : -input.normal );
 	// Растение расстановки: у корня — цвет земли под ним, вдали — и выше (у остальных доля 0, множитель 1)
 	surface.baseColor = lerp( baseColor.rgb * input.groundBrightness, input.ground.rgb, input.ground.a );
 	surface.metallic = saturate( g_metallic * metallicRoughness.b );

@@ -5,7 +5,8 @@
 // по следам в траве (Shaders/foliage_interaction.sh). С define
 // LOD_DITHER — экземпляр в полосе смены LOD: отдаёт пиксельному шейдеру долю перехода (Shaders/lod_dither.sh). С define
 // WIND_TREE (материал PBRTree) — ветер дерева по данным второго потока вершин (VertexData::Wind), а не изгиб травы. С define
-// SKINNED — модель со скелетом: вершина в позе кадра по костям третьего потока (Shaders/skinning.sh) до всего остального
+// SKINNED — модель со скелетом: вершина в позе кадра по костям третьего потока (Shaders/skinning.sh) до всего остального.
+// Листва деревьев с CrownNormalBlend > 0 освещается нормалью кроны (crownNormal), а не плоскостью карточки
 ////////////////////////////////////////////////////////////////////////////////
 
 
@@ -195,6 +196,23 @@ DepthOnlyVertexOutput main( VertexInputType input )
 
 #else
 
+// Нормаль кроны (как у листвы SpeedTree и в UE): карточки хвои и листьев освещаются не своей плоскостью — так крона вблизи
+// пёстрая и плоская, — а нормалью конуса кроны: от оси ствола (ось Y модели) наружу и вверх на g_crownNormalUp; обе стороны
+// карточки смотрят из кроны (PBRLit.ps не переворачивает её по грани). С нормалью карточки — в доле g_crownNormalBlend; базис
+// карты нормалей — заново вокруг новой нормали (Грам — Шмидт, сторона бинормали — прежняя)
+void crownNormal( float3 position, inout float3 normal, inout float3 tangent, inout float3 binormal )
+{
+	const float radius = length( position.xz );
+	const float2 outward = radius > 1e-4f ? position.xz / radius : 0.0f;
+	const float3 crown = normalize( float3( outward.x, max( g_crownNormalUp, 0.0f ) + ( radius > 1e-4f ? 0.0f : 1.0f ), outward.y ) );
+	const float3 card = dot( normal, crown ) < 0.0f ? -normal : normal;
+	const float3 blended = normalize( lerp( card, crown, saturate( g_crownNormalBlend ) ) );
+	const float handedness = dot( cross( normal, tangent ), binormal ) < 0.0f ? -1.0f : 1.0f;
+	tangent = normalize( tangent - blended * dot( blended, tangent ) );
+	binormal = cross( blended, tangent ) * handedness;
+	normal = blended;
+}
+
 PixelInputType main(VertexInputType input)
 {
     PixelInputType output;
@@ -225,6 +243,8 @@ PixelInputType main(VertexInputType input)
 	float3 normal = input.normal;
 	float3 tangent = input.tangent;
 	float3 binormal = input.binormal;
+	[branch] if( g_crownNormalBlend > 0.0f )
+		crownNormal( input.position.xyz, normal, tangent, binormal );
 	#if defined(INSTANCE_INCLUDE)
 		normal = calcInstanceDirection( normal, instanceIndex );
 		tangent = calcInstanceDirection( tangent, instanceIndex );

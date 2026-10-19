@@ -242,6 +242,8 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.windRippleFrequency = materialValue( params, "WindRippleFrequency", 6.0f );
 	param.trampleWeight = materialValue( params, "TrampleWeight", 1.0f );
 	param.trampleBendLength = materialValue( params, "TrampleBendLength", 0.25f );
+	param.crownNormalBlend = materialValue( params, "CrownNormalBlend", 0.0f );
+	param.crownNormalUp = materialValue( params, "CrownNormalUp", 0.4f );
 
 	Device::updateResourceData<PBRMaterialBuffer>( m_psCB, param );
 	// b2 читают и пиксельный, и вершинный шейдер (отклик на ветер)

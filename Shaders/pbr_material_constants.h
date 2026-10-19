@@ -42,6 +42,10 @@ DM_CONSTANTS( PBRMaterialBuffer, SLOT_CB_MATERIAL )
 	// гнётся) и длина изгибающейся от корня части, м модели — выше она лежит прямо
 	DM_FIELD( float, trampleWeight );
 	DM_FIELD( float, trampleBendLength );
+	// Нормаль кроны (LightShader.vs, crownNormal): доля нормали конуса кроны в нормали листвы (0 — своя плоскость карточки) и
+	// подъём конуса — вверх на столько к единице наружу от оси ствола
+	DM_FIELD( float, crownNormalBlend );
+	DM_FIELD( float, crownNormalUp );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX
