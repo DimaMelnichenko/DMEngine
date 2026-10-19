@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS AmbientSound (
     grass_height REAL,
     grass_frequency REAL,
     crown_volume REAL,
+    crown_reference_strength REAL,
     crown_radius REAL,
+    crown_falloff REAL,
+    crown_gust_swing REAL,
     crown_frequency REAL,
     stream_volume REAL,
     stream_voices INTEGER,
@@ -47,7 +50,8 @@ CREATE TABLE IF NOT EXISTS AmbientSound (
 
 # Колонки, добавленные после первой версии таблицы: у базы без них — ALTER TABLE
 ADDED = [('stream_volume', 'REAL'), ('stream_voices', 'INTEGER'), ('stream_distance', 'REAL'),
-         ('wind_enabled', 'INTEGER'), ('grass_enabled', 'INTEGER'), ('crown_enabled', 'INTEGER'), ('stream_enabled', 'INTEGER')]
+         ('wind_enabled', 'INTEGER'), ('grass_enabled', 'INTEGER'), ('crown_enabled', 'INTEGER'), ('stream_enabled', 'INTEGER'),
+         ('crown_reference_strength', 'REAL'), ('crown_falloff', 'REAL'), ('crown_gust_swing', 'REAL')]
 
 
 def migrate(db):

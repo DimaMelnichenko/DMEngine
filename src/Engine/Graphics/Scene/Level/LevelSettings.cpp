@@ -964,8 +964,16 @@ const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema()
 		{ "crown_enabled", "Enabled", DM_SETTING( crownEnabled ), 0.0f, 0.0f, "", "Off - the crowns are silent and keep no voices",
 		  0, "Crowns" },
 		{ "crown_volume", "Volume", DM_SETTING( crownVolume ), 0.0f, 2.0f, "", "Rustle of the forest crowns around", 0, "Crowns" },
+		{ "crown_reference_strength", "Reference strength", DM_SETTING( crownReferenceStrength ), 0.05f, 2.0f, "",
+		  "Strength of the level wind (Wind/Strength - how much it bends the trees) with the full volume: the crowns get louder "
+		  "with it", settingClampLow, "Crowns" },
 		{ "crown_radius", "Radius", DM_SETTING( crownRadius ), 10.0f, 300.0f, "m",
 		  "Forest masks in this circle, by four sides: the sound comes from where the forest is", settingClampLow, "Crowns" },
+		{ "crown_falloff", "Falloff", DM_SETTING( crownFalloff ), 2.0f, 100.0f, "m",
+		  "Forest this far away is heard at half, farther - quieter by the distance squared: the crowns are heard in the forest "
+		  "and at its edge, not across a meadow", settingClampLow, "Crowns" },
+		{ "crown_gust_swing", "Gust swing", DM_SETTING( crownGustSwing ), 0.0f, 40.0f, "dB",
+		  "In a lull between the gusts the crowns are this much quieter than in a gust", settingClamp, "Crowns" },
 		{ "crown_frequency", "Frequency", DM_SETTING( crownFrequency ), 200.0f, 8000.0f, "Hz", "Middle of the rustle band",
 		  settingLogarithmic | settingClampLow, "Crowns" },
 		{ "stream_enabled", "Enabled", DM_SETTING( streamEnabled ), 0.0f, 0.0f, "", "Off - the streams are silent and keep no voices",

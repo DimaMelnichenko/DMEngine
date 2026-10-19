@@ -32,8 +32,7 @@ constexpr float heightWindGain = 1.6f;
 constexpr float grassFullHeight = 2.5f;
 // Под пологом ельника травы почти нет и ветра у земли тоже: шелест травы тише на эту долю леса в круге травы
 constexpr float grassUnderForest = 0.8f;
-// Кроны — выше травы: ветер в них сильнее; камера выше крон — лес под ней дальше на эту разность высот
-constexpr float crownWindGain = 1.2f;
+// Камера выше крон — лес под ней дальше на эту разность высот
 constexpr float crownHeight = 15.0f;
 // Громкость слоя растёт со скоростью ветра до полуторной опорной, дальше — нет
 constexpr float maxRelativeSpeed = 1.5f;
@@ -203,7 +202,10 @@ AmbientSound::WindSample AmbientSound::windAt( const WindParameters& wind, float
 			sample.turbulence = cell.w;
 		}
 	}
-	sample.speed = wind.speed * field * Wind::gust( wind, x, z, time );
+	const float gust = Wind::gust( wind, x, z, time );
+	sample.speed = wind.speed * field * gust;
+	sample.field = field;
+	sample.gust = wind.gustMax > wind.gustMin ? std::clamp( ( gust - wind.gustMin ) / ( wind.gustMax - wind.gustMin ), 0.0f, 1.0f ) : 1.0f;
 	return sample;
 }
 
@@ -287,10 +289,13 @@ void AmbientSound::update( const FrameContext& frame )
 			m_mixer->setTarget( m_grassVoices[side], target );
 	}
 
-	// Кроны: сторона света — сектор лучами, лес ближе — весомее; ветер — в середине сектора. Доля леса — против весов у
-	// земли: камера выше крон — тот же лес дальше и тише
+	// Кроны: сторона света — сектор лучами; лес на «Falloff» — вдвое тише, дальше — по квадрату расстояния: слышно в лесу и у
+	// опушки, а не через луг. Доля леса — против весов у земли: камера выше крон — тот же лес дальше и тише. Громкость — по силе
+	// ветра уровня (изгиб деревьев) × поле ветра, порыв — в середине сектора: в затишье тише на «Gust swing»
 	const float crownRadius = std::max( settings.crownRadius, 1.0f );
+	const float crownFalloff = std::max( settings.crownFalloff, 1.0f );
 	const float aboveCrowns = std::max( aboveGround - crownHeight, 0.0f );
+	auto nearWeight = [crownFalloff]( float distance ) { return 1.0f / ( 1.0f + ( distance / crownFalloff ) * ( distance / crownFalloff ) ); };
 	for( uint32_t side = 0; side < crownSides && settings.crownEnabled; ++side )
 	{
 		const float azimuth = side * 0.5f * pi;
@@ -303,20 +308,23 @@ void AmbientSound::update( const FrameContext& frame )
 			{
 				const float distance = share * crownRadius;
 				const float slant = std::sqrt( distance * distance + aboveCrowns * aboveCrowns );
-				forest += terrainMaskAt( m_terrain, forestMaskValues, x + distance * std::sin( angle ), z + distance * std::cos( angle ) ) /
-						  ( 1.0f + slant / ( 0.25f * crownRadius ) );
-				weights += 1.0f / ( 1.0f + distance / ( 0.25f * crownRadius ) );
+				forest += terrainMaskAt( m_terrain, forestMaskValues, x + distance * std::sin( angle ), z + distance * std::cos( angle ) ) *
+						  nearWeight( slant );
+				weights += nearWeight( distance );
 			}
 		}
 		forest /= std::max( weights, 1e-4f );
-		const float middle = 0.25f * crownRadius;
+		const float middle = std::min( crownFalloff, crownRadius );
 		const XMFLOAT3 direction( std::sin( azimuth ), 0.0f, std::cos( azimuth ) );
 		const WindSample sample = windAt( wind, x + middle * direction.x, z + middle * direction.z, time );
-		const float crownRelative = relative( sample.speed * crownWindGain );
+		const float bending = std::min( wind.strength * sample.field / std::max( settings.crownReferenceStrength, 0.01f ), maxRelativeSpeed );
+		const float gustGain = std::pow( 10.0f, -std::max( settings.crownGustSwing, 0.0f ) * ( 1.0f - sample.gust ) / 20.0f );
+		const float gusting = wind.gustMax > 0.0f ? ( wind.gustMin + ( wind.gustMax - wind.gustMin ) * sample.gust ) / wind.gustMax : 1.0f;
 
 		AudioVoiceTarget target;
-		spatialize( listener, direction, volume * crownPart * settings.crownVolume * std::sqrt( forest ) * rustle( crownRelative ), target );
-		target.controls[0] = crownRelative * 1.5f;
+		spatialize( listener, direction, volume * crownPart * settings.crownVolume * forest * rustle( bending ) * gustGain, target );
+		// Щелчки и трепет — чаще в порыв
+		target.controls[0] = bending * gusting * 1.5f;
 		target.controls[1] = settings.crownFrequency;
 		m_mixer->setTarget( m_crownVoices[side], target );
 	}
@@ -359,7 +367,8 @@ void AmbientSound::soundDebug( SoundDebug& out )
 		out.areas.push_back( std::move( result ) );
 	};
 	area( m_grassProperties, XMFLOAT3( 0.55f, 1.0f, 0.35f ), settings.grassRadius, grassMasks );
-	area( m_crownProperties, XMFLOAT3( 0.25f, 0.8f, 0.45f ), settings.crownRadius, forestMasks );
+	// Кроны: кольцо — где лес ещё слышен (на двух «Falloff» — вчетверо тише, чем рядом)
+	area( m_crownProperties, XMFLOAT3( 0.25f, 0.8f, 0.45f ), std::min( 2.0f * settings.crownFalloff, settings.crownRadius ), forestMasks );
 	area( m_streamProperties, water, distance, {} );
 }
 
