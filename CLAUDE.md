@@ -48,6 +48,13 @@ DMEngine — самописный 3D-движок на C++17 / Direct3D 12 по�
   `.run/*.run.xml` (их меняет CLion), `DownloadResources\` и чужие незаконченные правки в рабочей копии.
 - **Без публикации:** `git push`, `git tag`, MR / PR, переписывание истории, уже отправленной в origin, — только
   владелец. Коммит как следующий шаг не предлагать: делать его в конце пункта и называть в отчёте.
+- **Копия репозитория на NAS** (Synology Git Server — git по SSH, без веб-интерфейса): голый репозиторий
+  `~/git/DMEngine.git` пользователя `dimok`. У `origin` два адреса отправки — GitHub и NAS, `git push` идёт в оба;
+  remote `nas` — отдельно (`git push nas v2` — дослать, если NAS был недоступен: вне домашней сети отправка на NAS
+  падает, GitHub при этом обновлён). Настройка на другой машине: в `~/.ssh/config` — `Host nas` (`HostName 192.168.1.80`,
+  `User dimok`, ключ, который есть в `authorized_keys` NAS, `IdentitiesOnly yes`), затем
+  `git remote add nas nas:git/DMEngine.git`, `git remote set-url --add --push origin https://github.com/DimaMelnichenko/DMEngine`,
+  `git remote set-url --add --push origin nas:git/DMEngine.git`; проверка — `git push --dry-run origin v2` (две цели).
 
 ## Сборка и запуск
 
