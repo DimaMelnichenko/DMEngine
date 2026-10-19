@@ -1,7 +1,8 @@
 """Звуки окружения уровня в base.db3 (таблица AmbientSound и Levels.ambient_sound; AmbientSound, docs/audio.md).
 
 Строка — как Ambient Sound и Soundscape в UE, но синтезом в движке: ветер у камеры, шелест травы вокруг и кроны леса по
-сторонам — по ветру уровня, полю ветра по рельефу и маскам травы и леса; журчание ручьёв — по растру воды. Громкости — доли (амплитуда), частоты — середины
+сторонам — по ветру уровня, полю ветра по рельефу и маскам травы и леса; журчание ручьёв — по растру воды, записями по кругу
+(stream_sound — спокойная вода, stream_rapids_sound — пороги: Sounds.name через запятую; пусто — синтез пузырьков). Громкости — доли (амплитуда), частоты — середины
 полос шума, Гц. NULL — значение по умолчанию движка (AmbientSoundSettings). Те же поля правит окно «Ambient sound»,
 «Save level» пишет их обратно.
 
@@ -41,6 +42,9 @@ CREATE TABLE IF NOT EXISTS AmbientSound (
     stream_volume REAL,
     stream_voices INTEGER,
     stream_distance REAL,
+    stream_rapids_from REAL,
+    stream_sound TEXT,
+    stream_rapids_sound TEXT,
     wind_enabled INTEGER,
     grass_enabled INTEGER,
     crown_enabled INTEGER,
@@ -51,7 +55,8 @@ CREATE TABLE IF NOT EXISTS AmbientSound (
 # Колонки, добавленные после первой версии таблицы: у базы без них — ALTER TABLE
 ADDED = [('stream_volume', 'REAL'), ('stream_voices', 'INTEGER'), ('stream_distance', 'REAL'),
          ('wind_enabled', 'INTEGER'), ('grass_enabled', 'INTEGER'), ('crown_enabled', 'INTEGER'), ('stream_enabled', 'INTEGER'),
-         ('crown_reference_strength', 'REAL'), ('crown_falloff', 'REAL'), ('crown_gust_swing', 'REAL')]
+         ('crown_reference_strength', 'REAL'), ('crown_falloff', 'REAL'), ('crown_gust_swing', 'REAL'),
+         ('stream_rapids_from', 'REAL'), ('stream_sound', 'TEXT'), ('stream_rapids_sound', 'TEXT')]
 
 
 def migrate(db):

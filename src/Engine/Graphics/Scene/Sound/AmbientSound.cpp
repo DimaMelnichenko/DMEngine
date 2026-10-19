@@ -7,6 +7,7 @@
 #include "Logger\Logger.h"
 #include "Properties\SettingsProperties.h"
 #include "SoundPlace.h"
+#include "SoundRecordings.h"
 #include "Terrain\TerrainPipeline.h"
 #include "Wind\Wind.h"
 
@@ -49,6 +50,8 @@ constexpr float streamRapidsFrom = 0.02f;
 constexpr float streamRapidsTo = 0.15f;
 constexpr float streamKeep = 1.5f;
 constexpr float streamFadeFrom = 0.7f;
+// Запись места воды: высота — в этих пределах вокруг записи (у каждого места своя: соседние не в унисон)
+constexpr float streamPitchSpread = 0.06f;
 
 // Сектор стороны крон: лучи под этими углами к стороне, точки — на этих долях радиуса
 const float crownAngles[] = { -30.0f, 0.0f, 30.0f };
@@ -143,11 +146,13 @@ void AmbientSound::syncVoices( const Settings& settings )
 					[]( uint32_t i ) { return std::make_unique<FoliageGenerator>( voiceSeed( crownSeed + i ), crownPreset() ); } );
 }
 
-bool AmbientSound::initialize( const Settings& settings, AudioMixer& mixer, Wind& wind, const TerrainPipeline* terrain )
+bool AmbientSound::initialize( const Settings& settings, AudioMixer& mixer, Wind& wind, const TerrainPipeline* terrain,
+							   SoundRecordings* recordings )
 {
 	m_settings = settings;
 	m_wind = &wind;
 	m_terrain = terrain;
+	m_recordings = recordings;
 	addSettingProperties( m_properties, ambientSoundSchema(), settings, "" );
 	addSettingProperties( m_windProperties, ambientSoundSchema(), settings, "Wind" );
 	addSettingProperties( m_grassProperties, ambientSoundSchema(), settings, "Grass" );
@@ -459,6 +464,7 @@ void AmbientSound::updateStreams( const Settings& settings, const AudioListener&
 			m_mixer->removeVoice( voice.voice );
 		m_streamVoices.clear();
 	}
+	refreshStreamRecordings( settings );
 	const float streamVolume = volume * std::max( settings.streamVolume, 0.0f );
 	const size_t voiceCount = streamVolume > 0.0f ? static_cast<size_t>( std::clamp( settings.streamVoices, 0, 16 ) ) : 0;
 	const float maxDistance = std::max( settings.streamDistance, 1.0f );
@@ -522,19 +528,80 @@ void AmbientSound::updateStreams( const Settings& settings, const AudioListener&
 		auto found = std::find_if( m_streamVoices.begin(), m_streamVoices.end(), [&]( const StreamVoice& v ) { return v.block == candidate.block; } );
 		if( found == m_streamVoices.end() )
 		{
-			m_streamVoices.push_back( { candidate.block, m_mixer->addVoice( std::make_unique<BrookGenerator>( voiceSeed( m_nextSeed++ ) ) ) } );
+			StreamVoice voice;
+			voice.block = candidate.block;
+			voice.voice = addStreamVoice( settings, candidate.block, voice.recording );
+			m_streamVoices.push_back( std::move( voice ) );
 			found = m_streamVoices.end() - 1;
 		}
 		const StreamBlock& block = m_streamBlocks[candidate.block];
+		// Запись — с громкостью окна «Sounds» (правка слышна сразу)
+		const float recordingVolume = !found->recording.empty() && m_recordings ? m_recordings->recordingVolume( found->recording ) : 1.0f;
 		AudioVoiceTarget target;
 		// Вдали — глуше (воздух), за гребнем — ещё глуше; у самой воды — вокруг слушателя
 		target.lowpass = std::min( airAbsorptionLowpass( candidate.distance ), occlusionLowpass( candidate.occlusion ) );
 		const XMFLOAT3 direction( block.position.x - listener.position.x, 0.0f, block.position.z - listener.position.z );
-		spatialize( listener, direction, candidate.gain, target, 1.0f - std::clamp( candidate.distance / streamBlock, 0.0f, 1.0f ) );
+		spatialize( listener, direction, candidate.gain * recordingVolume, target,
+					1.0f - std::clamp( candidate.distance / streamBlock, 0.0f, 1.0f ) );
 		target.controls[0] = std::min( 0.5f + std::sqrt( block.power ), 1.5f );
 		target.controls[1] = block.rapids;
 		m_mixer->setTarget( found->voice, target );
 	}
+}
+
+void AmbientSound::refreshStreamRecordings( const Settings& settings )
+{
+	const std::string lists = settings.streamSound + "|" + settings.streamRapidsSound;
+	if( lists == m_recordingLists )
+		return;
+	m_recordingLists = lists;
+	auto resolve = [this]( const std::string& list, std::vector<StreamRecording>& recordings )
+	{
+		recordings.clear();
+		size_t start = 0;
+		while( start <= list.size() )
+		{
+			const size_t end = std::min( list.find( ',', start ), list.size() );
+			std::string name = list.substr( start, end - start );
+			name.erase( 0, name.find_first_not_of( " \t" ) );
+			name.erase( name.find_last_not_of( " \t" ) + 1 );
+			start = end + 1;
+			if( name.empty() )
+				continue;
+			std::shared_ptr<const AudioClip> clip = m_recordings ? m_recordings->recording( name ) : nullptr;
+			if( clip )
+				recordings.push_back( { name, std::move( clip ) } );
+			else
+				LOG( "Ambient sound: no recording " + name + " for the streams (table Sounds, Tools/pack_sound.py)" );
+		}
+	};
+	resolve( settings.streamSound, m_calmRecordings );
+	resolve( settings.streamRapidsSound, m_rapidsRecordings );
+	LOG( "Ambient sound: streams - " + std::to_string( m_calmRecordings.size() ) + " calm and " +
+		 std::to_string( m_rapidsRecordings.size() ) + " rapids recordings" + ( m_calmRecordings.empty() ? ", calm water - synthesis" : "" ) );
+	// Звучащие места — заново со своими записями
+	for( const StreamVoice& voice : m_streamVoices )
+		m_mixer->removeVoice( voice.voice );
+	m_streamVoices.clear();
+}
+
+AudioMixer::VoiceId AmbientSound::addStreamVoice( const Settings& settings, size_t block, std::string& recording )
+{
+	const uint32_t seed = voiceSeed( m_nextSeed++ );
+	// Порог — запись порогов (нет её — спокойная вода), спокойное место — спокойная вода; списка нет — синтез
+	const bool rapids = m_streamBlocks[block].rapids >= settings.streamRapidsFrom && !m_rapidsRecordings.empty();
+	const std::vector<StreamRecording>& list = rapids ? m_rapidsRecordings : m_calmRecordings;
+	if( list.empty() )
+	{
+		recording.clear();
+		return m_mixer->addVoice( std::make_unique<BrookGenerator>( seed ) );
+	}
+	// Запись — по номеру места (то же место — та же запись), начало и высота — свои у голоса
+	const StreamRecording& chosen = list[voiceSeed( static_cast<uint32_t>( block ) ) % list.size()];
+	recording = chosen.name;
+	const float start = static_cast<float>( seed & 0xFFFFu ) / 65535.0f;
+	const float pitch = 1.0f + streamPitchSpread * ( static_cast<float>( ( seed >> 16 ) & 0xFFFFu ) / 32767.5f - 1.0f );
+	return m_mixer->addVoice( std::make_unique<LoopGenerator>( chosen.clip, start, pitch ) );
 }
 
 }

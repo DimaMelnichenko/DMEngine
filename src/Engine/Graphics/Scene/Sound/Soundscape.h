@@ -9,6 +9,7 @@
 #include "Engine\Audio\AudioClip.h"
 #include "Engine\Audio\AudioMixer.h"
 #include "SoundDebug.h"
+#include "SoundRecordings.h"
 
 namespace GS
 {
@@ -30,7 +31,7 @@ class WorldClock;
 // «Mute» / «Solo» (AudioAudition), «Delete»; кнопка окна «Add layer» — новый слой (как источники
 // света: Ctrl+Z, «Save level» вставляет и удаляет строки). Окно «Sounds» — записи: громкость (Sounds.volume), «Play» / «Stop» —
 // послушать фразы записи у слушателя. Флажок видимости в Outliner — тихо
-class Soundscape : public SceneObject
+class Soundscape : public SceneObject, public SoundRecordings
 {
 public:
 	using Layer = SoundscapeLayerSettings;
@@ -52,6 +53,9 @@ public:
 	bool audio() const override { return true; }
 	// Окно «Sounds»: подокно на запись
 	PropertyContainer* soundProperties() { return &m_soundProperties; }
+	// Записи для других звуков уровня (SoundRecordings): ручьи AmbientSound
+	std::shared_ptr<const AudioClip> recording( const std::string& name ) override;
+	float recordingVolume( const std::string& name ) const override;
 
 	// «Save level»: слои окна по порядку (id 0 — добавлен в редакторе) с правилами, строки убранных слоёв и правил (правила
 	// убранного слоя уходят с ним), записи с громкостью окна; после записи — id новых строк в слои и правила (saved — те же слои

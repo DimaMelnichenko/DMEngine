@@ -308,6 +308,49 @@ TEST_CASE( "SoundRules: hours window, product of rules, values as text" )
 	CHECK( soundActivity( { day, morning }, context ) == doctest::Approx( 0.5f ) );
 }
 
+TEST_CASE( "LoopGenerator: plays on past the end, the seam keeps the loudness and has no jump" )
+{
+	// Шум 3 с: петля 10 с — громкость по секундам ровная (шов внахлёст с равной мощностью), скачков нет
+	auto clip = std::make_shared<AudioClip>();
+	clip->samples.resize( 3 * AudioMixer::sampleRate );
+	uint32_t state = 12345u;
+	for( float& value : clip->samples )
+	{
+		state = state * 1664525u + 1013904223u;
+		// Шум, сглаженный по соседям: скачок между отсчётами меньше размаха
+		value = 0.5f * static_cast<float>( static_cast<int32_t>( state >> 8 ) - ( 1 << 23 ) ) / ( 1 << 23 );
+	}
+	for( size_t i = clip->samples.size() - 1; i > 0; --i )
+		clip->samples[i] = 0.5f * ( clip->samples[i] + clip->samples[i - 1] );
+	LoopGenerator loop( clip, 0.3f, 1.0f, 0.5f );
+	std::vector<float> out( 10 * AudioMixer::sampleRate );
+	const float controls[AudioGenerator::controlCount] = {};
+	for( size_t at = 0; at < out.size(); at += 480 )
+		loop.render( out.data() + at, 480, controls );
+	auto rms = [&]( size_t from, size_t count )
+	{
+		double sum = 0.0;
+		for( size_t i = from; i < from + count; ++i )
+			sum += out[i] * out[i];
+		return std::sqrt( sum / count );
+	};
+	const size_t quarter = AudioMixer::sampleRate / 4;
+	const double reference = rms( 0, out.size() );
+	REQUIRE( reference > 0.05 );
+	for( size_t from = 0; from + quarter <= out.size(); from += quarter )
+		CHECK( rms( from, quarter ) == doctest::Approx( reference ).epsilon( 0.2 ) );
+	float jump = 0.0f;
+	for( size_t i = 1; i < out.size(); ++i )
+		jump = std::max( jump, std::abs( out[i] - out[i - 1] ) );
+	CHECK( jump < 0.6f );
+
+	// Пустая запись — тишина
+	LoopGenerator empty( std::make_shared<AudioClip>(), 0.0f, 1.0f );
+	std::vector<float> silent( 480, 1.0f );
+	empty.render( silent.data(), 480, controls );
+	CHECK( std::all_of( silent.begin(), silent.end(), []( float v ) { return v == 0.0f; } ) );
+}
+
 TEST_CASE( "SoundRules: wind rises from From to To, From > To - quiet in a strong wind" )
 {
 	// Скрип деревьев: нет при 2 м/с, все при 6, посередине — половина (smoothstep)

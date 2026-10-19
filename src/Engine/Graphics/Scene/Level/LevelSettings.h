@@ -847,6 +847,11 @@ struct AmbientSoundSettings
 	float streamVolume = 1.2f;		// журчание ручьёв: громкость шумного места воды уровня (громче 95 % мест) в 3 м
 	int32_t streamVoices = 8;		// мест воды, слышных сразу (самых громких у камеры); остальные молчат
 	float streamDistance = 250.0f;	// дальше вода не слышна, м
+	// Записи мест воды (Sounds.name через запятую): спокойная вода и пороги — место с уклоном воды от streamRapidsFrom (доля
+	// перепада ступени 0…1); записей нет — синтез пузырьков. Место берёт одну запись списка — по своему номеру
+	std::string streamSound;
+	std::string streamRapidsSound;
+	float streamRapidsFrom = 0.5f;
 };
 // Поля строки AmbientSound (SettingsSchema): основное окно «Ambient sound» и подокна «Wind», «Grass», «Crowns», «Streams»
 const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema();

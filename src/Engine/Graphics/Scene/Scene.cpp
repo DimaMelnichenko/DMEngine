@@ -267,7 +267,8 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 
 	// Звуки окружения — голоса микшера по ветру и маскам травы и леса; без террейна — только ветер
 	if( audio && m_level.ambientSound &&
-		!m_ambientSound.initialize( *m_level.ambientSound, *audio, m_wind, m_level.terrain ? &m_terrainPipeline : nullptr ) )
+		!m_ambientSound.initialize( *m_level.ambientSound, *audio, m_wind, m_level.terrain ? &m_terrainPipeline : nullptr,
+									&m_soundscape ) )
 		LOG( "Ambient sound is not initialized" );
 	// Певцы — записи (Sounds\) по слоям уровня, места — по маскам, часы — по времени суток, правило «Wind» — по ветру уровня.
 	// Окно — и у уровня без слоёв: слой добавляют в нём

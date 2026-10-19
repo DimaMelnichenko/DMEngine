@@ -985,6 +985,12 @@ const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema()
 		  "Places of water heard at once (the loudest at the camera); the rest are silent", settingClamp, "Streams" },
 		{ "stream_distance", "Distance", DM_SETTING( streamDistance ), 20.0f, 1000.0f, "m", "Water farther than this is not heard",
 		  settingClampLow, "Streams" },
+		{ "stream_rapids_from", "Rapids from", DM_SETTING( streamRapidsFrom ), 0.0f, 1.0f, "",
+		  "A place of water this steep (0 - flat, 1 - a step of the stream) plays the rapids recording, a flatter one - the calm "
+		  "stream", settingClamp, "Streams" },
+		// Записи — Tools/ambient_sound.py (громкость записи — окно «Sounds»): строкового свойства у окна нет
+		{ "stream_sound", nullptr, DM_SETTING( streamSound ) },
+		{ "stream_rapids_sound", nullptr, DM_SETTING( streamRapidsSound ) },
 	};
 	return schema;
 }

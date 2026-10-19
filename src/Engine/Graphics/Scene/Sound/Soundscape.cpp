@@ -535,6 +535,22 @@ const AudioClip* Soundscape::clipOf( Sound& sound )
 	return sound.clip.get();
 }
 
+std::shared_ptr<const AudioClip> Soundscape::recording( const std::string& name )
+{
+	for( const auto& sound : m_sounds )
+		if( sound->record.name == name )
+			return clipOf( *sound ) ? sound->clip : nullptr;
+	return nullptr;
+}
+
+float Soundscape::recordingVolume( const std::string& name ) const
+{
+	for( const auto& sound : m_sounds )
+		if( sound->record.name == name )
+			return std::max( sound->properties["Volume"].data<float>(), 0.0f );
+	return 1.0f;
+}
+
 std::vector<size_t> Soundscape::layerSounds( const LayerState& layer )
 {
 	std::vector<size_t> sounds;

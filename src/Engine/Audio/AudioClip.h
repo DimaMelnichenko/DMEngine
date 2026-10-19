@@ -47,4 +47,26 @@ private:
 	double m_fade;		// отсчёты записи
 };
 
+// Запись по кругу без конца — ровный шум места (ручей, порог), как looping Sound Wave в UE: с доли start (0…1) записи, со
+// сдвигом высоты pitch; шов — переход внахлёст на fade секунд: конец записи уходит, начало входит с равной мощностью (шум
+// записи в конце и в начале не связан — громкость на шве не проседает). Запись короче двух переходов — переход короче
+class LoopGenerator : public AudioGenerator
+{
+public:
+	static constexpr float defaultFade = 1.0f;
+
+	LoopGenerator( std::shared_ptr<const AudioClip> clip, float start, float pitch, float fade = defaultFade );
+	void render( float* out, uint32_t frames, const float* controls ) override;
+
+private:
+	// Отсчёт записи в дробном месте (линейно); за концом — 0
+	float sample( double position ) const;
+
+	std::shared_ptr<const AudioClip> m_clip;
+	double m_position;
+	double m_length;	// отсчёты записи
+	double m_fade;
+	float m_step;
+};
+
 }

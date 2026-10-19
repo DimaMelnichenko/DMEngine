@@ -133,6 +133,49 @@ float ClipGenerator::seconds() const
 	return static_cast<float>( ( m_end - m_start ) / m_step / AudioMixer::sampleRate );
 }
 
+LoopGenerator::LoopGenerator( std::shared_ptr<const AudioClip> clip, float start, float pitch, float fade ) :
+	m_clip( std::move( clip ) ), m_step( std::clamp( pitch, 0.25f, 4.0f ) )
+{
+	m_length = m_clip ? static_cast<double>( m_clip->samples.size() ) : 0.0;
+	m_fade = std::min( static_cast<double>( std::max( fade, 0.001f ) ) * AudioMixer::sampleRate, 0.5 * m_length );
+	m_position = std::clamp( static_cast<double>( start ), 0.0, 1.0 ) * std::max( m_length - m_fade - 1.0, 0.0 );
+}
+
+float LoopGenerator::sample( double position ) const
+{
+	const std::vector<float>& samples = m_clip->samples;
+	const size_t index = static_cast<size_t>( position );
+	if( index + 1 >= samples.size() )
+		return index < samples.size() ? samples[index] : 0.0f;
+	const float t = static_cast<float>( position - index );
+	return samples[index] + ( samples[index + 1] - samples[index] ) * t;
+}
+
+void LoopGenerator::render( float* out, uint32_t frames, const float* )
+{
+	if( m_length < 4.0 )
+	{
+		std::fill( out, out + frames, 0.0f );
+		return;
+	}
+	// Круг — [fade, length): последние fade отсчётов звучат вместе с первыми, дальше чтение идёт с fade
+	const double seam = m_length - m_fade - 1.0;
+	constexpr float halfPi = 1.57079633f;
+	for( uint32_t i = 0; i < frames; ++i )
+	{
+		float value = sample( m_position );
+		if( m_position >= seam && m_fade >= 1.0 )
+		{
+			const float t = static_cast<float>( std::min( ( m_position - seam ) / m_fade, 1.0 ) );
+			value = value * std::cos( t * halfPi ) + sample( m_position - seam ) * std::sin( t * halfPi );
+		}
+		out[i] = value;
+		m_position += m_step;
+		if( m_position >= seam + m_fade )
+			m_position -= seam;
+	}
+}
+
 void ClipGenerator::render( float* out, uint32_t frames, const float* )
 {
 	const std::vector<float>& samples = m_clip->samples;

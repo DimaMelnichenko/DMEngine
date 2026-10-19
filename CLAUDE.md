@@ -468,7 +468,8 @@ Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/
 непокрытое, `Shaders/reflection_capture.sh`; точку ставят над водой подальше от моделей; `docs/reflection_captures.md`),
 `AmbientSound` (звуки окружения синтезом: ветер у камеры, шелест травы и кроны леса по сторонам — по ветру уровня, полю ветра
 и маскам, `Wind::gust`, `TerrainPipeline::maskValues`; ручьи — места воды 8 × 8 м по растру `staticWater`, громкость — по
-потере мощности течения, слышны самые громкие, заглушение гребнем; строка `AmbientSound`, `Levels.ambient_sound`, `Tools/ambient_sound.py`;
+потере мощности течения, слышны самые громкие, заглушение гребнем; звучат записями по кругу (`LoopGenerator`: спокойная вода и
+пороги — по уклону воды места; записи — `SoundRecordings`, их даёт `Soundscape`; без записей — синтез пузырьков); строка `AmbientSound`, `Levels.ambient_sound`, `Tools/ambient_sound.py`;
 мешей нет — цели голосов микшера в `update`, `docs/audio.md`), `Soundscape` (певцы из записей, как Soundscape в UE: слои
 `SoundscapeLayers` — записи `Sounds` (у записи — своя громкость), маски места, правила `SoundRules` (активность — их
 произведение; тип правила — строка таблицы `soundRuleTypes` в ядре, `Audio/SoundRules.h`; сейчас — часы суток и ветер уровня: так скрипят деревья); певец садится вокруг слушателя и поёт фразы записи с паузами;

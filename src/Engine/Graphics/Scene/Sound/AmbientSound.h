@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 #include "SceneObject.h"
@@ -13,6 +14,8 @@ namespace GS
 
 class Wind;
 class TerrainPipeline;
+class SoundRecordings;
+struct AudioClip;
 
 // Звуки окружения уровня — как Ambient Sound и Soundscape в UE, но синтезом (Audio/AudioSynth.h, docs/audio.md): строка
 // AmbientSound уровня (Levels.ambient_sound), окно «Ambient sound». Мешей нет: каждый кадр по камере — цели голосов микшера:
@@ -26,7 +29,9 @@ class TerrainPipeline;
 //   громкость — мощность, которую теряет течение в блоке (расход × перепад уровня: перекат громче плёса), по самому шумному
 //   месту уровня; слышны streamVoices самых громких у камеры (голос — генератор пузырьков BrookGenerator, остальные места
 //   молчат, как виртуальные голоса UE), с затуханием по расстоянию, поглощением воздухом и заглушением гребнем между
-//   камерой и водой (луч по карте высот). Блоки — заново, когда сменилась итоговая карта (перестройка русел).
+//   камерой и водой (луч по карте высот). Блоки — заново, когда сменилась итоговая карта (перестройка русел). Звучит место
+//   записью по кругу (LoopGenerator, записи — SoundRecordings по спискам строки: спокойная вода и пороги, место берёт одну
+//   по своему номеру, со своего места записи и со своей высотой — соседние места не в унисон); записей нет — синтез пузырьков.
 // Ветра нет (сила 0, -nowind) — ветер, трава и кроны молчат, ручьи — нет; флажок видимости в Outliner — тихо всё.
 // У части (подокна) — «Enabled» (сохраняется: выключенная голосов не держит) и прослушивание «Mute» / «Solo» (AudioAudition)
 class AmbientSound : public SceneObject
@@ -39,8 +44,10 @@ public:
 
 	AmbientSound();
 	~AmbientSound() override;
-	// terrain — маски травы и леса, поле ветра, высота земли; без террейна — только ветер
-	bool initialize( const Settings& settings, AudioMixer& mixer, Wind& wind, const TerrainPipeline* terrain );
+	// terrain — маски травы и леса, поле ветра, высота земли; без террейна — только ветер; recordings — записи мест воды
+	// (nullptr — синтез)
+	bool initialize( const Settings& settings, AudioMixer& mixer, Wind& wind, const TerrainPipeline* terrain,
+					 SoundRecordings* recordings );
 	bool initialized() const { return m_mixer != nullptr; }
 
 	void update( const FrameContext& frame ) override;
@@ -78,6 +85,10 @@ private:
 	void updateStreams( const Settings& settings, const AudioListener& listener, float volume );
 	// Голоса ветра, травы и крон — по «Enabled» частей: включена — заведены, выключена — убраны
 	void syncVoices( const Settings& settings );
+	// Записи мест воды по спискам строки — заново, когда списки сменились (голоса ручьёв — тоже заново)
+	void refreshStreamRecordings( const Settings& settings );
+	// Голос нового места воды: запись по кругу (спокойная вода или порог — по уклону места) или синтез пузырьков
+	AudioMixer::VoiceId addStreamVoice( const Settings& settings, size_t block, std::string& recording );
 
 	PropertyContainer m_properties;
 	PropertyContainer m_windProperties;
@@ -88,6 +99,7 @@ private:
 	AudioMixer* m_mixer = nullptr;
 	Wind* m_wind = nullptr;
 	const TerrainPipeline* m_terrain = nullptr;
+	SoundRecordings* m_recordings = nullptr;
 	// 0 — голоса нет (часть выключена)
 	AudioMixer::VoiceId m_windVoices[2] = {};		// слева, справа
 	AudioMixer::VoiceId m_grassVoices[2] = {};
@@ -96,13 +108,23 @@ private:
 	DirectX::XMFLOAT3 m_listener = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// слушатель прошлого update
 	std::vector<StreamBlock> m_streamBlocks;
 	uint32_t m_streamRevision = ~0u;	// номер итоговой карты, по которой собраны места воды
-	// Слышные места воды: голос на место (уходит — затихает, новое — заводит свой)
+	// Слышные места воды: голос на место (уходит — затихает, новое — заводит свой) и его запись (пусто — синтез)
 	struct StreamVoice
 	{
 		size_t block = 0;
 		AudioMixer::VoiceId voice = 0;
+		std::string recording;
 	};
 	std::vector<StreamVoice> m_streamVoices;
+	// Записи мест воды: спокойная вода и пороги; списки, по которым они взяты
+	struct StreamRecording
+	{
+		std::string name;
+		std::shared_ptr<const AudioClip> clip;
+	};
+	std::vector<StreamRecording> m_calmRecordings;
+	std::vector<StreamRecording> m_rapidsRecordings;
+	std::string m_recordingLists = "\n";		// «спокойные|пороги»; начальное — не совпадёт ни с какими
 	uint32_t m_nextSeed = 0;
 };
 
