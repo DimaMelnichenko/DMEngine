@@ -131,7 +131,7 @@ def main():
                         help='no AO map: AO from the height map, RELIEF - metres of its full range (needs --tiling)')
     parser.add_argument('--ao-radius', type=float, default=0.15, help='horizon search radius for --ao-from-height, m')
     parser.add_argument('--size', type=int, default=2048)
-    parser.add_argument('--layer', type=int, choices=range(8), help='TerrainLayers.layer to update (0..7)')
+    parser.add_argument('--layer', type=int, choices=range(12), help='TerrainLayers.layer to update (0..11)')
     parser.add_argument('--tiling', type=float, help='meters per texture repeat for --layer')
     parser.add_argument('--terrain', default='Terrain', help='Terrain.name for --layer')
     args = parser.parse_args(argv)

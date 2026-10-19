@@ -150,9 +150,11 @@ float patchNoise( float2 worldXZ, uint group, uint seed )
 uint pickWeightedVariant( float2 worldXZ, float pick, uint seed )
 {
 	const bool patches = g_patchScale > 0.0f && g_patchStrength > 0.0f;
-	float4 ground0 = 0.0f, ground1 = 0.0f;
+	float ground[maxLayers];
+	[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
+		ground[layer] = 0.0f;
 	[branch] if( g_groundPreferences > 0.5f )
-		terrainLayerWeights8( worldXZ, ground0, ground1 );
+		terrainLayerWeightsAll( worldXZ, ground );
 	float weights[maxVariants];
 	float total = 0.0f;
 	[loop] for( uint v = 0; v < g_variantCount; ++v )
@@ -161,7 +163,7 @@ uint pickWeightedVariant( float2 worldXZ, float pick, uint seed )
 		[branch] if( weight > 0.0f && patches )
 			weight *= exp( 4.0f * g_patchStrength * patchNoise( worldXZ, g_variantInfo[v].x, seed ) );
 		[branch] if( weight > 0.0f && g_variantInfo[v].y != 0 )
-			weight *= lerp( 1.0f, layerMaskShare( ground0, ground1, g_variantInfo[v].y ), asfloat( g_variantInfo[v].z ) );
+			weight *= lerp( 1.0f, layerMaskShare( ground, g_variantInfo[v].y ), asfloat( g_variantInfo[v].z ) );
 		weights[v] = weight;
 		total += weight;
 	}

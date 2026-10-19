@@ -698,9 +698,9 @@ Maps у directional light в UE: 4 каскада до Dynamic Shadow Distance (
 симуляции (`docs/water.md`). Общее для шейдеров террейна
 (константы `CDLODBuffer` — `Shaders/cdlod_constants.h`, выборка карты высот, выход VS) — `Shaders/cdlod.sh`.
 
-**Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До восьми слоёв из
-таблицы `TerrainLayers` (`layer` 0…7 — канал `layer % 4` среза `layer / 4` splat-карты: она — массив из двух RGBA, как
-weightmap в UE Landscape; `albedo` и `normal` — файлы, `tiling` — метров на повтор, `albedo_tint` — множитель альбедо,
+**Материал террейна** — `TerrainMaterial` (`Terrain/TerrainMaterial.h`) + `Shaders/terrain.ps`. До двенадцати слоёв из
+таблицы `TerrainLayers` (`layer` 0…11 — канал `layer % 4` среза `layer / 4` splat-карты: она — массив из трёх RGBA весов и
+среза мокрости, как weightmap в UE Landscape; число — `TERRAIN_MAX_LAYERS` в `Shaders/terrain_layer_constants.h`; `albedo` и `normal` — файлы, `tiling` — метров на повтор, `albedo_tint` — множитель альбедо,
 как Layer Tint в UE, подокно «Layer tint»; сейчас восемь: две травы вперемешку
 пятнами по шуму, осыпи, скала, снег, галька русел — роль `channel_bed`, ею красят русла конвейера и правки рельефа, — и
 наносы на дне: дресва и ил нижних озёр по глубине, дресва медленных ручьёв — роли `lake_gravel`, `lake_silt`, поля правил

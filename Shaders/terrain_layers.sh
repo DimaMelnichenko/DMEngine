@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Слои материала террейна — общее для всех, кто читает землю: пиксельный (terrain.ps) и вершинный (cdlod.vs,
-// дисплейсмент) шейдеры террейна, расстановка и частицы (terrain_height.sh — земля со смещением). Веса восьми слоёв
+// дисплейсмент) шейдеры террейна, расстановка и частицы (terrain_height.sh — земля со смещением). Веса всех слоёв
 // (splat-карта и детальный слой весов у русел и мазков), четыре самых весомых, проекции triplanar, смешивание по высоте,
 // расстояние LOD и смещение вершины по высоте слоёв (дисплейсмент, docs/terrain.md, «Дисплейсмент»). Всё — ресурсы сцены
 // (TerrainPipeline::compute, константы — CDLODTerrain::compute); без террейна слоты пусты: читать их можно только у уровня с террейном. Шейдеры террейна берут
@@ -18,10 +18,12 @@
 #ifndef TERRAIN_LAYERS_IN_CBUFFER
 DM_SRV( StructuredBuffer<TerrainLayerConstants>, g_terrainLayerConstants, SLOT_TERRAIN_LAYER_CONSTANTS );
 #endif
-DM_SRV( Texture2DArray, g_splatMap, SLOT_TERRAIN_SPLAT );			// срез 0 — веса слоёв 0…3, срез 1 — 4…7, срез 2 — не веса: R — мокрость
+// Срезы 0…splatSlices − 1 — веса слоёв по четыре (0…3, 4…7, 8…11), срез splatSlices — не веса: R — мокрость
+DM_SRV( Texture2DArray, g_splatMap, SLOT_TERRAIN_SPLAT );
 DM_SRV( Texture2DArray, g_albedoHeight, SLOT_TERRAIN_ALBEDO_HEIGHT );	// альбедо RGB, высота A (0…1 — 1-й…99-й перцентиль карты высоты слоя)
 // Детальный слой весов (TerrainDetailSplat): плитки 0,25 м у русел и мазков по сетке детальной земли, с полем в тексель;
-// срез 3s — веса слоёв 0…3 места s, 3s + 1 — 4…7, 3s + 2 — мокрость. Индекс: плитка (x, z) мира → место + 1, 0 — нет
+// у места s — splatSlices + 1 срезов подряд, как у splat-карты: веса слоёв по четыре, затем мокрость. Индекс: плитка (x, z)
+// мира → место + 1, 0 — нет
 DM_SRV( Texture2DArray, g_splatDetail, SLOT_TERRAIN_SPLAT_DETAIL );
 DM_SRV( Texture2D<uint>, g_splatDetailIndex, SLOT_TERRAIN_SPLAT_DETAIL_INDEX );
 DM_SRV( Texture2D, g_terrainNoise, SLOT_TERRAIN_NOISE );	// белый шум 256², R8_SNORM — пятна яркости земли
@@ -36,8 +38,9 @@ TerrainLayerConstants terrainLayers()
 #endif
 }
 
-static const uint maxLayers = 8;
-// Слоёв с выборкой текстур в пикселе: больше трёх-четырёх в одной точке не бывает, а массив из восьми LayerSample
+static const uint maxLayers = TERRAIN_MAX_LAYERS;
+static const uint splatSlices = TERRAIN_SPLAT_SLICES;
+// Слоёв с выборкой текстур в пикселе: больше трёх-четырёх в одной точке не бывает, а массив из maxLayers LayerSample
 // занял бы регистры и снизил занятость GPU
 static const uint activeLayers = 4;
 static const float minWeight = 0.01f;	// слой или проекцию с меньшим вкладом не читаем
@@ -61,12 +64,23 @@ float lodDistance( float3 position )
 	return length( float3( offset.x, vertical, offset.z ) );
 }
 
-// Детальный слой в точке (0,25 м): веса восьми слоёв (галька русел по врезу и дно под водой уже в них) и срез не весов
-// (x — мокрость от воды static); false — плитки нет
-bool sampleSplatDetail( float2 worldXZ, out float4 weights0, out float4 weights1, out float4 extra )
+// Веса всех слоёв splat-карты в точке uv (мип 0)
+void splatMapWeights( float2 uv, out float weights[maxLayers] )
 {
-	weights0 = 0.0f;
-	weights1 = 0.0f;
+	[unroll] for( uint s = 0; s < splatSlices; ++s )
+	{
+		const float4 slice = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, s ), 0.0f );
+		[unroll] for( uint c = 0; c < 4; ++c )
+			weights[4 * s + c] = slice[c];
+	}
+}
+
+// Детальный слой в точке (0,25 м): веса всех слоёв (галька русел по врезу и дно под водой уже в них) и срез не весов
+// (x — мокрость от воды static); false — плитки нет
+bool sampleSplatDetail( float2 worldXZ, out float weights[maxLayers], out float4 extra )
+{
+	[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
+		weights[layer] = 0.0f;
 	extra = 0.0f;
 	const float tileSize = terrainLayers().splatDetailTile;
 	if( tileSize <= 0.0f )
@@ -84,10 +98,14 @@ bool sampleSplatDetail( float2 worldXZ, out float4 weights0, out float4 weights1
 	// Тексель i плитки — центр в tile + ( i − 1 + 0,5 ) · cell: поле в тексель с каждой стороны
 	const float cell = tileSize / ( width - 2 );
 	const float2 uv = ( ( worldXZ - tile * tileSize ) / cell + 1.0f ) / float2( width, height );
-	const float slice = 3.0f * ( index - 1 );
-	weights0 = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, slice ), 0.0f );
-	weights1 = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, slice + 1.0f ), 0.0f );
-	extra = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, slice + 2.0f ), 0.0f );
+	const float first = ( splatSlices + 1.0f ) * ( index - 1 );
+	[unroll] for( uint s = 0; s < splatSlices; ++s )
+	{
+		const float4 slice = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, first + s ), 0.0f );
+		[unroll] for( uint c = 0; c < 4; ++c )
+			weights[4 * s + c] = slice[c];
+	}
+	extra = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, first + splatSlices ), 0.0f );
 	return true;
 }
 
@@ -145,53 +163,48 @@ float terrainBrightness( float2 worldXZ )
 	return 1.0f + 0.15f * variation;
 }
 
-// Веса четырёх самых весомых слоёв в точке: splat-карта, у русел и мазков — детальный слой весов (плитка целиком: те, кто
-// его читает, — у камеры, пиксель мельче текселя карты)
-void terrainLayerWeights( float2 worldXZ, out float4 splat, out uint4 layerIndex )
+// Веса всех слоёв земли в точке: splat-карта, у русел и мазков — детальный слой весов (плитка целиком: те, кто его читает, —
+// у камеры, пиксель мельче текселя карты). Не нормированы — сумма около 1
+void terrainLayerWeightsAll( float2 worldXZ, out float weights[maxLayers] )
 {
-	const float2 uv = terrainLayerUV( worldXZ );
-	const float4 splat0 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 0.0f ), 0.0f );
-	const float4 splat1 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 1.0f ), 0.0f );
-	float weights[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
-	float4 fine0, fine1, extra;
-	[branch] if( sampleSplatDetail( worldXZ, fine0, fine1, extra ) )
+	float fine[maxLayers];
+	float4 extra;
+	[branch] if( sampleSplatDetail( worldXZ, fine, extra ) )
 	{
-		const float fine[maxLayers] = { fine0.x, fine0.y, fine0.z, fine0.w, fine1.x, fine1.y, fine1.z, fine1.w };
 		[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
 			weights[layer] = fine[layer];
 	}
-	selectLayers( weights, splat, layerIndex );
+	else
+		splatMapWeights( terrainLayerUV( worldXZ ), weights );
 }
 
-// Веса восьми слоёв земли в точке, нормированные: splat-карта, у русел и мазков — детальный слой весов
-void terrainLayerWeights8( float2 worldXZ, out float4 weights0, out float4 weights1 )
+// Доля слоёв маски (бит — номер слоя) в весах земли (terrainLayerWeightsAll), нормированных здесь
+float layerMaskShare( float weights[maxLayers], uint mask )
 {
-	const float2 uv = terrainLayerUV( worldXZ );
-	weights0 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 0.0f ), 0.0f );
-	weights1 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 1.0f ), 0.0f );
-	float4 fine0, fine1, extra;
-	[branch] if( sampleSplatDetail( worldXZ, fine0, fine1, extra ) )
+	float share = 0.0f;
+	float total = 0.0f;
+	[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
 	{
-		weights0 = fine0;
-		weights1 = fine1;
+		share += ( ( mask >> layer ) & 1u ) != 0 ? weights[layer] : 0.0f;
+		total += weights[layer];
 	}
-	const float total = max( dot( weights0, 1.0f ) + dot( weights1, 1.0f ), 1e-5f );
-	weights0 /= total;
-	weights1 /= total;
-}
-
-// Доля слоёв маски (бит — номер слоя) в нормированных весах земли (terrainLayerWeights8)
-float layerMaskShare( float4 weights0, float4 weights1, uint mask )
-{
-	return dot( weights0, float4( ( mask >> uint4( 0, 1, 2, 3 ) ) & 1u ) ) + dot( weights1, float4( ( mask >> uint4( 4, 5, 6, 7 ) ) & 1u ) );
+	return share / max( total, 1e-5f );
 }
 
 // Доля слоёв маски в весах земли точки. Фильтр слоёв земли у расстановки (scatter.cs, groundFilter)
 float terrainLayerShare( float2 worldXZ, uint mask )
 {
-	float4 weights0, weights1;
-	terrainLayerWeights8( worldXZ, weights0, weights1 );
-	return layerMaskShare( weights0, weights1, mask );
+	float weights[maxLayers];
+	terrainLayerWeightsAll( worldXZ, weights );
+	return layerMaskShare( weights, mask );
+}
+
+// Веса четырёх самых весомых слоёв в точке: splat-карта, у русел и мазков — детальный слой весов
+void terrainLayerWeights( float2 worldXZ, out float4 splat, out uint4 layerIndex )
+{
+	float weights[maxLayers];
+	terrainLayerWeightsAll( worldXZ, weights );
+	selectLayers( weights, splat, layerIndex );
 }
 
 // Цвет земли в точке, каким его видит издали тот, кто на ней стоит: средний цвет слоёв (последний мип массива альбедо —

@@ -87,7 +87,7 @@ uint32_t roleLayerBits( const std::string& roles, const std::vector<int32_t>& gr
 	for( const std::string& name : filterRoles( roles ) )
 	{
 		const uint32_t role = static_cast<uint32_t>( terrainLayerRole( name ) );
-		if( role < groundLayers.size() && groundLayers[role] >= 0 && groundLayers[role] < 8 )
+		if( role < groundLayers.size() && groundLayers[role] >= 0 && groundLayers[role] < static_cast<int32_t>( TerrainMasks::splatLayers ) )
 			bits |= 1u << groundLayers[role];
 	}
 	return bits;

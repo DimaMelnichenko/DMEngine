@@ -138,7 +138,7 @@ def main():
     parser.add_argument('--layer', type=int, default=0, help='edits apply in layer order')
     parser.add_argument('--clear-foliage', type=float, help='0..1: share of scatter (grass, forest) removed under the edit')
     paint = parser.add_mutually_exclusive_group()
-    paint.add_argument('--paint-layer', type=int, choices=range(8), help='TerrainLayers.layer painted under the edit')
+    paint.add_argument('--paint-layer', type=int, choices=range(12), help='TerrainLayers.layer painted under the edit')
     paint.add_argument('--no-paint', action='store_true', help='set: stop painting')
     args = parser.parse_args()
 

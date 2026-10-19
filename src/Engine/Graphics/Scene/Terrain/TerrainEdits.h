@@ -26,7 +26,7 @@ struct HeightField
 // и раскладки строк, что у HeightField (строки подряд, без rowPitch). Пустое поле — правки его не меняют
 struct TerrainEditCoverage
 {
-	static constexpr uint32_t paintLayers = 8;	// TerrainMaterial::maxLayers
+	static constexpr uint32_t paintLayers = 12;	// TerrainMaterial::maxLayers (static_assert там)
 
 	uint32_t size = 0;
 	// 0…1: доля растительности, которую убирают правки (наибольшая из них)

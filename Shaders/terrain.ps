@@ -15,7 +15,7 @@
 #include "terrain_layers.sh"
 #include "terrain_material.sh"
 
-DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти или места звука (g_paintPreview 9), в UV карты высот
+DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти или места звука (g_paintPreview maxLayers + 1), в UV карты высот
 
 // Доля диапазона: 0 при from, 1 при to (в любую сторону), плавно; from = to — ступень
 float ramp( float from, float to, float x )
@@ -58,20 +58,24 @@ float4 main( PixelInputType input ) : SV_TARGET
 	}
 	float3 projection = projectionWeights( normal );
 
-	const float4 splat0 = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 0.0f ) );
-	const float4 splat1 = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 1.0f ) );
-	float weights[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
+	float weights[maxLayers];
+	[unroll] for( uint s = 0; s < splatSlices; ++s )
+	{
+		const float4 slice = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, s ) );
+		[unroll] for( uint c = 0; c < 4; ++c )
+			weights[4 * s + c] = slice[c];
+	}
 	// У русел — детальный слой весов (0,25 м: галька по врезу и дно под водой, мокрость), пока пиксель не крупнее двух
 	// текселей карты высот, к четырём — splat-карта 1 м (в ней галька русел по клеткам), как у нормали. Мипов у плиток нет,
 	// а в мипах splat-карты узкое русло растворяется в траве: веса меньше соседних слоёв проигрывают им и при смешивании по
 	// высоте
 	float detailShare = 0.0f;
 	float bakedWetness = 0.0f;
-	float4 fine0, fine1, fineExtra;
-	[branch] if( footprint < 4.0f * g_texelSize && sampleSplatDetail( position.xz, fine0, fine1, fineExtra ) )
+	float fine[maxLayers];
+	float4 fineExtra;
+	[branch] if( footprint < 4.0f * g_texelSize && sampleSplatDetail( position.xz, fine, fineExtra ) )
 	{
 		detailShare = saturate( 2.0f - footprint / ( 2.0f * g_texelSize ) );
-		const float fine[maxLayers] = { fine0.x, fine0.y, fine0.z, fine0.w, fine1.x, fine1.y, fine1.z, fine1.w };
 		[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
 			weights[layer] = lerp( weights[layer], fine[layer], detailShare );
 		bakedWetness = fineExtra.x;
@@ -131,7 +135,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	[branch] if( liveWater )
 		liveWetness = max( smoothstep( -0.02f, 0.0f, waterDepth ), smoothstep( 0.005f, 0.02f, recededWaterDepth( input.uv ) ) );
 	// Мокрость кисти вдали — splat-карта (мазки в среднем по клетке), вблизи — в плитке
-	const float baseWetness = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, 2.0f ) ).x;
+	const float baseWetness = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, splatSlices ) ).x;
 	const float wet = g_wetnessBaked != 0 ? lerp( max( liveWetness, baseWetness ), bakedWetness, detailShare ) :
 											max( liveWetness, lerp( baseWetness, bakedWetness, detailShare ) );
 	surface.baseColor *= lerp( 1.0f, 0.6f, wet );

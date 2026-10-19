@@ -5,6 +5,7 @@
 #include <vector>
 #include "D3D\GpuResources.h"
 #include "TerrainHydrology.h"
+#include "TerrainMasks.h"
 
 namespace GS
 {
@@ -71,9 +72,10 @@ public:
 	// Плитки мира, которые задевает прямоугольник тонкой сетки [x0, x1) × [row0, row1): border — и те, у кого он в поле
 	// (тексель края — тоже их); existing — только те, что есть
 	std::vector<TileKey> tilesOf( uint32_t x0, uint32_t row0, uint32_t x1, uint32_t row1, bool border, bool existing ) const;
-	// Значение «до кисти» в текселе тонкой сетки: слои 0…7 — веса, wetnessChannel — мокрость; плитки нет — false
+	// Значение «до кисти» в текселе тонкой сетки: слои 0…TerrainMasks::splatLayers − 1 — веса, wetnessChannel — мокрость;
+	// плитки нет — false
 	bool sourceAt( uint32_t x, uint32_t row, uint32_t channel, float& value ) const;
-	static constexpr uint32_t wetnessChannel = 8;
+	static constexpr uint32_t wetnessChannel = TerrainMasks::splatLayers;
 	// Ресурсы сцены (terrain_layers.sh): массив плиток и индекс — их читают террейн, расстановка и частицы
 	void bind() const;
 	// Сторона плитки, м; 0 — плиток нет
@@ -86,7 +88,7 @@ private:
 		uint32_t x = 0;
 		uint32_t z = 0;
 		int32_t hydrology = -1;			// детальная плитка у русла (Source::hydrology) или −1 — плитка мазка
-		std::vector<uint8_t> source;	// копия «до кисти»: три среза side² RGBA8 подряд
+		std::vector<uint8_t> source;	// копия «до кисти»: срезы side² RGBA8 подряд — веса по четыре слоя, затем мокрость
 	};
 
 	// Копия «до кисти» плитки и итог (копия + мазки) — три среза side² RGBA8 подряд

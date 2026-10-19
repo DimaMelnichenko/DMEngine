@@ -31,9 +31,8 @@ float4 main( PixelInputType input ) : SV_TARGET
 	// У карты — её слои (край splat-карты продолжен наружу), к g_farMaterialBlend — правила
 	const float rules = smoothstep( 0.0f, max( g_farMaterialBlend, 1e-3f ), distanceToMap( position.xz ) );
 	const float2 uv = heightMapUV( position.xz );
-	const float4 splat0 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 0.0f ), 0.0f );
-	const float4 splat1 = g_splatMap.SampleLevel( g_SamplerLinearClamp, float3( uv, 1.0f ), 0.0f );
-	const float painted[maxLayers] = { splat0.x, splat0.y, splat0.z, splat0.w, splat1.x, splat1.y, splat1.z, splat1.w };
+	float painted[maxLayers];
+	splatMapWeights( uv, painted );
 	[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
 		weights[layer] = lerp( painted[layer], weights[layer], rules );
 	forest *= rules;

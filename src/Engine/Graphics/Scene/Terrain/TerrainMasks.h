@@ -56,7 +56,7 @@ struct TerrainMaskInputs
 
 struct TerrainMasks
 {
-	static constexpr uint32_t splatLayers = 8;
+	static constexpr uint32_t splatLayers = 12;	// TerrainMaterial::maxLayers (static_assert там)
 	struct Mask
 	{
 		std::string name;		// имя текстуры: его указывают ScatterLayers.mask и ParticleEmitters.mask
@@ -71,7 +71,7 @@ struct TerrainMasks
 	// Веса слоёв и масок — к 8 битам (k / 255), как в копии на диске и на GPU: слои и маски из кэша (load) те же, что
 	// после расчёта
 	void quantize();
-	// Копия для просмотра и правки: splatmap.dds (два среза RGBA8, как прежний файл) и маски R8 — в directory
+	// Копия для просмотра и правки: splatmap.dds (срезы RGBA8 по четыре слоя) и маски R8 — в directory
 	bool save( const std::string& directory ) const;
 	// Та же копия как результат правил — кэш TerrainPipeline::buildMasks: names — маски по порядку; нет файла или не тот
 	// размер — false. Слой без веса нигде — пустой, как после расчёта

@@ -8,8 +8,8 @@
 
 #include "shader_constants.h"
 
-// Слоёв материала террейна и срезов splat-карты по четыре слоя (TerrainMaterial::maxLayers, splatSlices)
-#define TERRAIN_MAX_LAYERS 8
+// Слоёв материала террейна и срезов splat-карты по четыре слоя (TerrainMaterial::maxLayers, splatSlices); кратно четырём
+#define TERRAIN_MAX_LAYERS 12
 #define TERRAIN_SPLAT_SLICES ( TERRAIN_MAX_LAYERS / 4 )
 
 // То, что нужно выбору слоёв и дисплейсменту: ресурс сцены SLOT_TERRAIN_LAYER_CONSTANTS (структурный буфер из одного

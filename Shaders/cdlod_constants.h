@@ -31,7 +31,7 @@ DM_CONSTANTS( CDLODBuffer, SLOT_CB_MATERIAL )
 	DM_FIELD( int, waterBedLayer );			// слой гальки под водой (режим static): по глубине в точке (−1 — нет)
 	DM_FIELD( uint, showWind );				// поле ветра на рельефе (wind_field.sh) — отладка, «Show wind»
 	DM_FIELD( uint, wetnessBaked );			// мокрость от воды static запечена в плитках детального слоя весов (terrain.ps)
-	DM_FIELD( int, paintPreview );			// цель кисти поверх земли: −1 — нет, 0…7 — слой, 8 — мокрость, 9 — маска (terrain.ps)
+	DM_FIELD( int, paintPreview );			// цель кисти поверх земли: −1 — нет, 0…maxLayers − 1 — слой, maxLayers — мокрость, maxLayers + 1 — маска (terrain.ps)
 	DM_FIELD( float, microShadows );			// микротени прямого света по AO слоёв, 0…1 (terrain.ps, «Micro shadows»)
 	// Наносы на дне нижних озёр (terrain.ps, lakeBedShares; правила «Water beds»): слой дресвы (−1 — нет), глубина воды
 	// перехода гальки к дресве (x → y) и дресвы к илу (z → w), м; уровень озера, м мира: от x к y наносы сходят на нет;
