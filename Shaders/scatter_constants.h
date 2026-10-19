@@ -63,7 +63,10 @@ DM_CONSTANTS( ScatterLayerBuffer, b4 )
 	DM_FIELD( float, groundThreshold );
 	DM_FIELD( float, groundPreferences );	// 1 — у какого-то варианта предпочтение слоёв земли: вариант — по весам в точке
 	DM_FIELD( uint, gridDim );			// кольцевой слой: ячеек сетки по стороне квадрата 2 · far вокруг камеры (main)
-	DM_FIELD( float, layerPadding );
+	// Флаговые деревья: наклон по ветру уровня × открытость ветру (g_windExposure), радианы; уменьшение × открытость, доля
+	DM_FIELD( float, ridgeLean );
+	DM_FIELD( float, ridgeShrink );
+	DM_FIELD( float3, layerPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

@@ -85,6 +85,7 @@ DM_UAV( RWStructuredBuffer<ScatterTransitionItem>, g_transitions, 2 );	// пул
 DM_UAV( RWStructuredBuffer<uint>, g_indices, 3 );						// списки индексов по видам: индексы в пуле списка
 DM_UAV( RWByteAddressBuffer, g_commands, 4 );							// команды ExecuteIndirect по видам и группам
 DM_SRV( Texture2D, g_densityMask, 2 );
+DM_SRV( Texture2D, g_windExposure, 8 );	// открытость ветру (mask_wind_exposure, UV карты высот) — флаговые деревья
 
 // Постоянный слой: экземпляр — ScatterPass::PlacedItem, кластер — x начало и y число экземпляров в g_placed, z и w —
 // наименьшая и наибольшая высота (orderedFloat)
@@ -389,6 +390,18 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 												  quaternionAxisAngle( float3( 0.0f, 0.0f, 1.0f ), angles.z ) ) );
 	if( placement.w >= 0.0f ? placement.w > 0.5f : g_alignToTerrain > 0.5f )
 		item.rotation = quaternionMul( quaternionFromTo( float3( 0.0f, 1.0f, 0.0f ), terrainNormal( worldXZ ) ), item.rotation );
+
+	// Флаговые деревья (на открытых гребнях): где сдувает — наклон по ветру уровня (туда, куда он дует; деревья растут по
+	// господствующему ветру — не по полю кадра и не по тому, включён ли ветер сейчас) и ниже
+	[branch] if( g_ridgeLean > 0.0f || g_ridgeShrink > 0.0f )
+	{
+		const float exposure = saturate( g_windExposure.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r );
+		float sinLean, cosLean;
+		sincos( g_ridgeLean * exposure, sinLean, cosLean );
+		const float3 leaned = float3( cb_windDirection.x * sinLean, cosLean, cb_windDirection.y * sinLean );
+		item.rotation = quaternionMul( quaternionFromTo( float3( 0.0f, 1.0f, 0.0f ), leaned ), item.rotation );
+		item.size *= 1.0f - g_ridgeShrink * exposure;
+	}
 
 	// Дальности LOD — свои у экземпляра: у модели, ближе на долю по случайному числу ячейки и шуму мира
 	lodScale = 1.0f - LOD_JITTER_RANDOM * random( cell, seed + 8 ) -

@@ -1117,7 +1117,7 @@ std::vector<std::string> TerrainPipeline::paintTargets() const
 			targets.push_back( TerrainPaint::layerTarget( layer ) );
 	targets.push_back( TerrainPaint::wetnessTarget );
 	for( const TerrainMasks::Mask& mask : m_masks.masks )
-		if( mask.name != "mask_wind_exposure" )
+		if( mask.name != TerrainMasks::windExposureMask )
 			targets.push_back( mask.name );
 	return targets;
 }

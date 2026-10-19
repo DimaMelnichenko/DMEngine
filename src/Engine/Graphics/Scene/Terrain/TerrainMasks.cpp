@@ -408,7 +408,7 @@ bool TerrainMasks::build( const TerrainMaskInputs& inputs, const TerrainLayerRul
 	result.masks.push_back( { "mask_grass_riparian", std::move( riparianGrass ) } );
 	result.masks.push_back( { "mask_shrubs_slope", std::move( shrubsSlope ) } );
 	// Открытость ветру — для просмотра и тех, кому она пригодится (снег, частицы, ветер по рельефу)
-	result.masks.push_back( { "mask_wind_exposure", std::move( exposure ) } );
+	result.masks.push_back( { windExposureMask, std::move( exposure ) } );
 	return true;
 }
 

@@ -967,6 +967,10 @@ struct ScatterLayerSettings
 	float jitter = 0.0f;			// смещение внутри ячейки, доля шага
 	DirectX::XMFLOAT3 rotationRange = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// предел случайного поворота вокруг осей X, Y, Z, градусы
 	bool alignToTerrain = false;	// ось Y инстанса по нормали террейна
+	// Флаговые деревья на открытых гребнях: где сдувает (маска открытости ветру TerrainMasks::windExposureMask, 0…1),
+	// экземпляр наклонён по ветру уровня на ridgeLean × открытость, градусы, и ниже на долю ridgeShrink × открытость
+	float ridgeLean = 0.0f;
+	float ridgeShrink = 0.0f;
 	bool castShadow = false;		// слой отбрасывает тень солнца (Cast Shadow в UE)
 	// Постоянный слой (лес): экземпляры раскладываются один раз на всю карту кластерами, а не кольцом каждый кадр;
 	// кольцо near_border…far_border — дальность прорисовки

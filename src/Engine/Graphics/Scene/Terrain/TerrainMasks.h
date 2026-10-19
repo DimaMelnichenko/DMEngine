@@ -57,6 +57,8 @@ struct TerrainMaskInputs
 struct TerrainMasks
 {
 	static constexpr uint32_t splatLayers = 12;	// TerrainMaterial::maxLayers (static_assert там)
+	// Маска открытости ветру (сдувает или гребень, 0…1): её читают флаговые деревья расстановки (ScatterLayers.ridge_lean)
+	static constexpr const char* windExposureMask = "mask_wind_exposure";
 	struct Mask
 	{
 		std::string name;		// имя текстуры: его указывают ScatterLayers.mask и ParticleEmitters.mask

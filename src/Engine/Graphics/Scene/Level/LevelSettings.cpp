@@ -90,6 +90,12 @@ const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 		  "Random rotation limit around X, Y, Z", 0, "placement" },
 		{ "align_to_terrain", "Align to terrain", DM_SETTING( alignToTerrain ), 0.0f, 0.0f, "", "Instance Y axis along the terrain normal",
 		  0, "placement" },
+		// Флаговые деревья: наклон и рост по открытости ветру (mask_wind_exposure — рельефная часть поля ветра без леса)
+		{ "ridge_lean", "Ridge lean", DM_SETTING( ridgeLean ), 0.0f, 30.0f, "deg",
+		  "Flagged trees on open ridges: where the wind scours (mask_wind_exposure), the instance leans downwind of the level "
+		  "wind by up to this angle; 0 - upright. Needs the Wind row of the level", settingClamp, "placement" },
+		{ "ridge_shrink", "Ridge shrink", DM_SETTING( ridgeShrink ), 0.0f, 0.8f, "",
+		  "Flagged trees on open ridges: the instance is smaller by up to this share where the wind scours", settingClamp, "placement" },
 		{ "cast_shadow", "Cast shadow", DM_SETTING( castShadow ), 0.0f, 0.0f, "", "", 0, "placement" },
 		// Постоянный слой (лес) — раскладка раз на всю карту при загрузке
 		{ "persistent", nullptr, DM_SETTING( persistent ) },

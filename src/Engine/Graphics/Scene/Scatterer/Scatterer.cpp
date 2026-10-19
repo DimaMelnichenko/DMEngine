@@ -746,6 +746,9 @@ void Scatterer::compute( const FrameContext& frame )
 		const ShaderView& heightMap = *terrain.heightMap;
 		const ShaderView& foliageClear = *terrain.foliageClearMask;
 		const ShaderView& mask = Assets::textures().get( layer.mask )->srv();
+		// Открытость ветру — флаговые деревья (без неё наклона нет: константы слоя — нули, слот — маска плотности)
+		const ShaderView& exposure = Assets::textures().exists( TerrainMasks::windExposureMask ) ?
+			Assets::textures().get( Assets::textures().id( TerrainMasks::windExposureMask ) )->srv() : mask;
 
 		// Постоянный слой: раз — раскладка на карту кластерами, каждый кадр — отбор кластеров и их экземпляров в пул
 		// кадра и списки видов
@@ -759,11 +762,13 @@ void Scatterer::compute( const FrameContext& frame )
 			if( !layer.placed )
 			{
 				PassDesc place = layer.pass->placeDesc( "Scatter placement" );
-				place.reads = { { &heightMap, "height map" }, { &foliageClear, "foliage clear mask" }, { &mask, "density mask" } };
+				place.reads = { { &heightMap, "height map" }, { &foliageClear, "foliage clear mask" }, { &mask, "density mask" },
+								{ &exposure, "wind exposure mask" } };
 				DMD3D::instance().beginPass( place );
 				DMD3D::instance().setSRV( 0, heightMap );
 				DMD3D::instance().setSRV( 1, foliageClear );
 				DMD3D::instance().setSRV( 2, mask );
+				DMD3D::instance().setSRV( 8, exposure );
 				layer.pass->place( m_placeShader );
 				layer.placed = true;
 				// Тела леса — по копии пула на CPU (update, когда GPU пройдёт этот кадр)
@@ -789,12 +794,14 @@ void Scatterer::compute( const FrameContext& frame )
 		// Проход раскладки слоя: читает карту высот и маску плотности, пишет счётчики (сначала нули), пулы, списки
 		// индексов видов и команды
 		PassDesc pass = layer.pass->passDesc( "Scatter layer" );
-		pass.reads = { { &heightMap, "height map" }, { &foliageClear, "foliage clear mask" }, { &mask, "density mask" } };
+		pass.reads = { { &heightMap, "height map" }, { &foliageClear, "foliage clear mask" }, { &mask, "density mask" },
+					   { &exposure, "wind exposure mask" } };
 		DMD3D::instance().beginPass( pass );
 		layer.pass->resetCounters();
 		DMD3D::instance().setSRV( 0, heightMap );
 		DMD3D::instance().setSRV( 1, foliageClear );
 		DMD3D::instance().setSRV( 2, mask );
+		DMD3D::instance().setSRV( 8, exposure );
 		layer.pass->populate( m_computeShader, gridDim );
 		layer.pass->buildCommands( m_commandShader );
 	}
@@ -935,6 +942,10 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 									 XMConvertToRadians( settings.rotationRange.z ) );
 	params.alignToTerrain = settings.alignToTerrain ? 1.0f : 0.0f;
 	params.castShadow = settings.castShadow ? 1.0f : 0.0f;
+	// Флаговые деревья — только если у рельефа есть маска открытости ветру (у уровня есть строка Wind)
+	const bool exposure = Assets::textures().exists( TerrainMasks::windExposureMask );
+	params.ridgeLean = exposure ? XMConvertToRadians( settings.ridgeLean ) : 0.0f;
+	params.ridgeShrink = exposure ? settings.ridgeShrink : 0.0f;
 }
 
 float Scatterer::maxHeight( const Layer& layer )
@@ -1053,7 +1064,8 @@ void Scatterer::applyProperties( Layer& layer )
 						   settings.thinning != applied.thinning || variantPlacement ||
 						   settings.patchScale != applied.patchScale || settings.patchStrength != applied.patchStrength ||
 						   settings.layerFilter != applied.layerFilter || settings.layerFilterThreshold != applied.layerFilterThreshold ||
-						   settings.alignToTerrain != applied.alignToTerrain ||
+						   settings.alignToTerrain != applied.alignToTerrain || settings.ridgeLean != applied.ridgeLean ||
+						   settings.ridgeShrink != applied.ridgeShrink ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
 	// Пока ползунок тянут или в поле набирают число (Property::editing), дорогое ждёт: новые буферы слоя (шаг, кольцо,
@@ -1106,6 +1118,8 @@ void Scatterer::applyProperties( Layer& layer )
 		params.groundThreshold = fresh.groundThreshold;
 		params.rotationRange = fresh.rotationRange;
 		params.alignToTerrain = fresh.alignToTerrain;
+		params.ridgeLean = fresh.ridgeLean;
+		params.ridgeShrink = fresh.ridgeShrink;
 		params.castShadow = castShadow;
 		for( uint32_t v = 0; v < layer.passVariants.size(); ++v )
 			layer.pass->setVariantPlacement( v, layer.passVariants[v] );
