@@ -50,12 +50,17 @@ VARIANTS = {
 }
 
 # LOD: грани ствола, шаг колец ствола (м), грани ветви (0 — без ветвей), доля карточек, масштаб карточек, LOD карточек
-# Poly Haven; LOD2 — одна карточка на ветвь
+# Poly Haven, ярусы карточек (2 — ещё свисающие веточки под ветвью); LOD2 — одна карточка на ветвь
 LODS = [
-    dict(trunk_sides=12, trunk_step=0.4, branch_sides=4, branch_min=0.0, card_every=1, card_scale=1.0, source='LOD1'),
-    dict(trunk_sides=8, trunk_step=1.0, branch_sides=3, branch_min=1.0, card_every=2, card_scale=1.3, source='LOD2'),
-    dict(trunk_sides=5, trunk_step=2.5, branch_sides=0, branch_min=0.0, card_every=0, card_scale=1.0, source='LOD2'),
+    dict(trunk_sides=12, trunk_step=0.4, branch_sides=4, branch_min=0.0, card_every=1, card_scale=1.0, source='LOD1',
+         card_layers=2),
+    dict(trunk_sides=8, trunk_step=1.0, branch_sides=3, branch_min=1.0, card_every=2, card_scale=1.3, source='LOD2',
+         card_layers=1),
+    dict(trunk_sides=5, trunk_step=2.5, branch_sides=0, branch_min=0.0, card_every=0, card_scale=1.0, source='LOD2',
+         card_layers=1),
 ]
+HANGING_ANGLE = 40.0      # градусы: свисающие веточки второго яруса — вниз от ветви (гребенчатая ель)
+HANGING_LENGTH = 0.8      # их длина — доля длины веточки первого яруса
 
 MAIN_CARDS = ['twig_main_a', 'twig_main_b', 'twig_main_c', 'twig_tip_d']
 TIP_CARDS = ['twig_tip_a', 'twig_tip_b', 'twig_tip_c']
@@ -332,7 +337,9 @@ def build_fir(name, variant, lod, cards, rng_seed):
                          (start, 0.15), 0.8, twig=False)
             continue
 
-        # Веточки вдоль ветви в обе стороны, от основания к кончику короче; на кончике — веточка-кончик
+        # Веточки вдоль ветви в обе стороны, от основания к кончику короче; на кончике — веточка-кончик. Второй ярус
+        # (card_layers 2) — свисающие веточки под ветвью, между веточками первого и на другую сторону, как у гребенчатой
+        # ели: крона вблизи без просветов между мутовками, и снизу виден не голый сук, а хвоя
         spacing = 0.28 * lod['card_every']
         count = max(1, int(branch['length'] * 0.85 / spacing))
         for k in range(count):
@@ -345,6 +352,15 @@ def build_fir(name, variant, lod, cards, rng_seed):
             length = min(1.0, 0.3 + 0.45 * branch['length'] * (1.0 - s)) * lod['card_scale']
             card = cards[(MAIN_CARDS[picks[k % 16] % len(MAIN_CARDS)], source)]
             builder.card(card, p, forward, rotate(up, forward, rolls[k % 16]), length, (start, s))
+            if lod['card_layers'] < 2:
+                continue
+            s2 = min(0.12 + 0.8 * (k + 1.0) / count, 0.9)
+            p2, d2 = point_on(pts, s2)
+            hanging = rotate(d2, up, -sign * math.radians(35.0))
+            side = hanging.cross(up)
+            hanging = rotate(hanging, side.normalized() if side.length > 1e-4 else outward, -math.radians(HANGING_ANGLE))
+            card2 = cards[(MAIN_CARDS[picks[(k + 8) % 16] % len(MAIN_CARDS)], source)]
+            builder.card(card2, p2, hanging, rotate(up, hanging, rolls[(k + 8) % 16]), length * HANGING_LENGTH, (start, s2))
         p, d = point_on(pts, 0.92)
         tip = cards[(TIP_CARDS[picks[15] % len(TIP_CARDS)], source)]
         builder.card(tip, p, d, rotate(up, d, rolls[15]), min(0.7, 0.25 + 0.2 * branch['length']) * lod['card_scale'],
