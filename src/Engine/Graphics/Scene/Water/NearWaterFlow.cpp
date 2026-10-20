@@ -1,6 +1,7 @@
 #include "NearWaterFlow.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <tuple>
 #include <vector>
 #include <DirectXPackedVector.h>
@@ -48,9 +49,31 @@ bool NearWaterFlow::initialize()
 		LOG( "Water near flow: shaders or constants are not created" );
 		return false;
 	}
-	m_stones.createBuffer( sizeof( XMFLOAT4 ), maxStones, "Water near flow stones" );
+	m_stones.createBuffer( sizeof( XMFLOAT4 ), 2 * maxStones, "Water near flow stones" );
 	m_initialized = true;
 	return true;
+}
+
+void NearWaterFlow::setStoneTops( std::vector<StoneTop>&& tops )
+{
+	static_assert( StoneTop::cells == WATER_NEAR_STONE_CELLS, "stone top squares of the scatter and of the near flow shader differ" );
+	constexpr size_t texels = StoneTop::cells * StoneTop::cells;
+	m_stoneBounds.clear();
+	m_stoneBounds.reserve( tops.size() );
+	m_stoneTopData.assign( ( tops.size() * texels + 1 ) / 2, 0u );
+	for( size_t s = 0; s < tops.size(); ++s )
+	{
+		const StoneTop& top = tops[s];
+		m_stoneBounds.push_back( XMFLOAT4( top.origin.x, top.origin.y, top.side, top.base ) );
+		for( size_t t = 0; t < texels; ++t )
+		{
+			const size_t index = s * texels + t;
+			const uint32_t half = PackedVector::XMConvertFloatToHalf( top.heights[t] );
+			m_stoneTopData[index / 2] |= half << ( index % 2 ? 16 : 0 );
+		}
+	}
+	m_stoneTopsPending = true;
+	LOG( "Water near flow: " + std::to_string( tops.size() ) + " stream stones with model tops" );
 }
 
 bool NearWaterFlow::createTextures( uint32_t size )
@@ -138,22 +161,45 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	if( NearWindow::jumped( m_origin, previous, size ) )
 		m_reset = true;
 
-	// Камни русла, задевающие окно: центр основания и поперечник
+	// Верх камней — на GPU, раз после расстановки (пустой — буфер в одно слово: слоту нужен ресурс)
+	DMD3D& d3d = DMD3D::instance();
+	if( m_stoneTopsPending )
+	{
+		if( m_stoneTopData.empty() )
+			m_stoneTopData.push_back( 0u );
+		BufferDesc desc;
+		desc.size = static_cast<uint32_t>( m_stoneTopData.size() * sizeof( uint32_t ) );
+		desc.stride = sizeof( uint32_t );
+		desc.usage = BufferUsage::shaderResource | BufferUsage::structured;
+		if( !d3d.createBuffer( desc, m_stoneTopData.data(), m_stoneTops ) || !d3d.createShaderView( m_stoneTops, {}, m_stoneTopsView ) )
+		{
+			LOG( "Water near flow: stone tops are not created" );
+			m_active = false;
+			return;
+		}
+		d3d.setName( m_stoneTops, "Water near flow stone tops" );
+		m_stoneTopData.clear();
+		m_stoneTopData.shrink_to_fit();
+		m_stoneTopsPending = false;
+	}
+
+	// Камни русла, задевающие окно: квадрат верха и его номер
 	std::vector<XMFLOAT4> stones;
-	stones.reserve( 64 );
+	stones.reserve( 128 );
 	const float minX = m_origin.x * step;
 	const float minZ = m_origin.y * step;
-	for( const TerrainHydrology::Stone& stone : water.stones() )
+	for( size_t s = 0; s < m_stoneBounds.size() && stones.size() < 2 * maxStones; ++s )
 	{
-		const float radius = 0.5f * stone.size;
-		if( stone.position.x + radius < minX || stone.position.x - radius > minX + side || stone.position.z + radius < minZ ||
-			stone.position.z - radius > minZ + side )
+		const XMFLOAT4& bounds = m_stoneBounds[s];
+		if( bounds.x + bounds.z < minX || bounds.x > minX + side || bounds.y + bounds.z < minZ || bounds.y > minZ + side )
 			continue;
-		if( stones.size() >= maxStones )
-			break;
-		stones.push_back( XMFLOAT4( stone.position.x, stone.position.y, stone.position.z, stone.size ) );
+		stones.push_back( bounds );
+		uint32_t index = static_cast<uint32_t>( s );
+		float packed;
+		std::memcpy( &packed, &index, sizeof( packed ) );
+		stones.push_back( XMFLOAT4( packed, 0.0f, 0.0f, 0.0f ) );
 	}
-	const uint32_t stoneCount = static_cast<uint32_t>( stones.size() );
+	const uint32_t stoneCount = static_cast<uint32_t>( stones.size() / 2 );
 	if( stones.empty() )
 		stones.push_back( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
 
@@ -169,18 +215,17 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	nearParams.nearSize = size;
 	nearParams.nearStep = step;
 	nearParams.nearStoneCount = stoneCount;
-	nearParams.nearStoneHeight = StaticWater::stoneHeightShare();
 	nearParams.nearPassage = std::clamp( window.passage, 0.0f, 1.0f );
 	nearParams.nearEddies = std::max( window.eddies, 0.0f );
 	nearParams.nearNudgeShare = std::min( dt / nudgeTime, 1.0f );
 	nearParams.nearReset = m_reset ? 1u : 0u;
 	nearParams.nearSurface = std::max( window.surface, 0.0f );
 
-	DMD3D& d3d = DMD3D::instance();
 	PassDesc pass;
 	pass.name = "Water near flow";
 	pass.reads = { { &water.detailStaticView(), "detail static water" }, { height.detailTiles, "terrain detail tiles" },
-				   { height.detailIndex, "terrain detail index" }, { &water.detailWaterView(), "detail water" } };
+				   { height.detailIndex, "terrain detail index" }, { &water.detailWaterView(), "detail water" },
+				   { &m_stoneTopsView, "stone tops" } };
 	pass.writes = { { &m_infoUAV, "near flow cells" },		   { &m_info2UAV, "near flow radius" },
 					{ &m_velocityUAV, "near flow velocity" },	   { &m_advectedUAV, "near flow advected" },
 					{ &m_pressureUAV, "near flow pressure" },	   { &m_divergenceUAV, "near flow divergence" },
@@ -198,6 +243,7 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	d3d.setSRV( 7, *height.detailIndex );
 	m_stones.updateData( stones.data(), stones.size() * sizeof( XMFLOAT4 ) );
 	m_stones.setToSlot( 9 );
+	d3d.setSRV( 8, m_stoneTopsView );
 	d3d.setSRV( 10, water.detailWaterView() );
 	auto dispatch = [&]( ComputeShader& shader )
 	{

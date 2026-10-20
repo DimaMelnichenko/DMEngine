@@ -13,6 +13,7 @@
 #include "Terrain\TerrainCanopy.h"
 #include "Terrain\TerrainHeightSource.h"
 #include "Terrain\TerrainHydrology.h"
+#include "Water\StoneTop.h"
 #include "Shaders\terrain_height_constants.h"
 #include "Shaders\scatter_constants.h"
 
@@ -74,6 +75,10 @@ public:
 	// сменились (лес разложен заново, правка «Canopy») — тогда Scene собирает карту заново
 	uint32_t canopyRevision() const { return m_canopyRevision; }
 	void appendCanopy( std::vector<CanopyStamp>& stamps ) const;
+	// Камни русел (слои с placement stream_stones): верх каждого по его модели сверху (StoneTop) — воде, обтекание камней в
+	// окне подробного течения у камеры; номер растёт, когда камни разложены заново, — тогда Scene отдаёт их воде
+	uint32_t streamStoneRevision() const { return m_streamStoneRevision; }
+	void appendStreamStoneTops( std::vector<StoneTop>& tops ) const;
 	// Кольцо деревьев на дальних горах (слои с placement far_forest): дальняя граница и её исчезание, м — горам
 	// (FarTerrain::setForestRing: тон леса — дальше); false — таких слоёв нет
 	bool farForestRing( float& border, float& fade ) const;
@@ -190,6 +195,7 @@ private:
 		// копию пула с GPU
 		std::vector<CanopyStamp> canopy;
 		bool canopyPending = false;
+		std::vector<StoneTop> stoneTops;	// камни русел: верх по модели (placeStreamStones)
 	};
 
 	// Константы раскладки из настроек слоя (ёмкости и число вариантов заполняет ScatterPass::createBuffers)
@@ -211,6 +217,8 @@ private:
 	void buildBodies( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances );
 	// Кроны постоянного слоя для карты полога: круг на экземпляр по границам LOD0 модели варианта
 	void buildCanopy( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances );
+	// Верх камней русла сверху по треугольникам модели варианта (LOD1) с поворотом, размером и местом экземпляра
+	void buildStoneTops( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances );
 	// Ёмкость постоянного пула слоя: у камней русел — их наибольшее число, у прочих — экземпляр на ячейку мира
 	static uint32_t placedCapacity( const ScatterLayerSettings& settings )
 	{
@@ -250,6 +258,7 @@ private:
 	std::vector<Layer> m_layers;
 	ModelCollision* m_collision = nullptr;
 	uint32_t m_canopyRevision = 0;
+	uint32_t m_streamStoneRevision = 0;
 	ComputeShader m_computeShader;
 	ComputeShader m_commandShader;	// buildCommands в Shaders\scatter.cs
 	// Постоянные слои: раскладка на карту (placeWorld) и отбор кластеров кадра (cullPlaced) — с первым таким слоем

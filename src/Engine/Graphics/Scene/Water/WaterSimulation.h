@@ -65,8 +65,11 @@ public:
 	// Текстура воды для шейдеров (SLOT_WATER) — в DDS R32_FLOAT: <prefix>_depth.dds (глубина, м), <prefix>_vx.dds и
 	// <prefix>_vz.dds (течение по X и Z мира, м/с); строка 0 — дальний край по z. Детальная вода у русел — так же, растром
 	// 0,25 м на весь мир (−1e9 — плитки нет): <prefix>_detail_level.dds (уровень поверхности), _detail_depth, _detail_vx,
-	// _detail_vz; окно подробного течения у камеры, если оно есть, — <prefix>_near_depth.dds, _near_vx, _near_vz. Ждёт GPU
+	// _detail_vz; окно подробного течения у камеры, если оно есть, — <prefix>_near_surface.dds, _near_vx, _near_vz,
+	// _near_passage. Ждёт GPU
 	bool exportState( const std::string& prefix, std::string& reason );
+	// Камни русел расстановки с верхом по модели (Scatterer): препятствия окна подробного течения у камеры
+	void setStoneTops( std::vector<StoneTop>&& tops ) { m_near.setStoneTops( std::move( tops ) ); }
 
 private:
 	// Настройки из окна для кадра (compute, отрисовка): заново — только когда окно правили (PropertyContainer::revision)

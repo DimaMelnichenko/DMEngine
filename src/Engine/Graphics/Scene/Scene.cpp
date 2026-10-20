@@ -452,6 +452,19 @@ void Scene::update( const FrameContext& frame, FrameStats& stats )
 			m_models.appendCanopy( stamps );
 			m_terrainPipeline.setCanopy( stamps );
 		}
+
+		// Камни русел расстановки — воде: в окне подробного течения у камеры она обтекает их по форме модели
+		uint32_t stoneKey = 0;
+		for( const auto& scatterer : m_scatterers )
+			stoneKey += scatterer->streamStoneRevision();
+		if( stoneKey != m_streamStoneKey )
+		{
+			m_streamStoneKey = stoneKey;
+			std::vector<StoneTop> tops;
+			for( const auto& scatterer : m_scatterers )
+				scatterer->appendStreamStoneTops( tops );
+			m_water.setStoneTops( std::move( tops ) );
+		}
 	}
 
 	// Деревья на дальних горах (слои far_forest): докуда они — оттуда горы рисуют лес тоном

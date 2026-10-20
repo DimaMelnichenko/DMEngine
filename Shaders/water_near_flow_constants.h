@@ -11,6 +11,8 @@
 
 // Камней русла в окне (NearWaterFlow::maxStones)
 #define WATER_NEAR_MAX_STONES 512
+// Текселей по стороне квадрата верха камня (StoneTop::cells)
+#define WATER_NEAR_STONE_CELLS 16
 
 #define DM_FIELD_PREFIX g_
 DM_CONSTANTS( WaterNearFlowBuffer, b7 )
@@ -20,7 +22,6 @@ DM_CONSTANTS( WaterNearFlowBuffer, b7 )
 	DM_FIELD( uint, nearSize );			// ячеек по стороне окна (кратно 8)
 	DM_FIELD( float, nearStep );			// сторона ячейки, м
 	DM_FIELD( uint, nearStoneCount );		// камней в g_nearStones
-	DM_FIELD( float, nearStoneHeight );		// высота камня над дном — доля поперечника (полуэллипсоид)
 	// Камень выше воды — препятствие: проводимость грани и глубина для трения сквозь него — эта доля глубины без камня
 	// (вода обходит камень, а ряд камней без просвета не запружает ручей намертво — сочится)
 	DM_FIELD( float, nearPassage );

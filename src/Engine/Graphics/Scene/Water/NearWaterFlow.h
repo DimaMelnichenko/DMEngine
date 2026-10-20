@@ -4,6 +4,7 @@
 #include "ComputeShader.h"
 #include "D3D\DMStructuredBuffer.h"
 #include "Level\LevelSettings.h"
+#include "StoneTop.h"
 #include "Shaders\water_near_flow_constants.h"
 
 namespace GS
@@ -18,8 +19,8 @@ struct TerrainHeight;
 // Подробное течение у камеры (docs/water.md, «Подробное течение у камеры»): окно мелкой сетки (по умолчанию 10 × 10 м,
 // ячейка 6,25 см) вокруг камеры, каждый кадр — та же модель, что течение статичной воды (Shaders/water_flow.cs с FLOW_NEAR:
 // мелкая вода под «жёсткой крышкой» на сетке MAC), вложенная в течение детальной сетки 0,25 м, как то — в сетку 1 м.
-// Камни русла — полуэллипсоиды на своей сетке, камень выше воды — препятствие (вода обходит его), вихри за камнями и на
-// поворотах держит удержание завихрённости. Окно привязано к миру (NearWindow): сдвигается вслед за камерой целыми
+// Камни русла — по верху их моделей (StoneTop от расстановки), камень выше воды — препятствие (вода обходит его), вихри за
+// камнями и на поворотах держит удержание завихрённости. Окно привязано к миру (NearWindow): сдвигается вслед за камерой целыми
 // ячейками, вошедшие ячейки начинаются с течения детальной сетки, остальные считаются дальше; шаги — по времени игры
 // (с -freezetime их нет). Итог — ресурс сцены SLOT_WATER_NEAR и константа кадра cb_waterNear
 class NearWaterFlow
@@ -34,6 +35,8 @@ public:
 				  const TerrainHeight& height );
 	// Окно — шейдерам (cb_waterNear); нет окна — нули
 	void frameConstants( FrameParameters& constants ) const;
+	// Камни русел расстановки с верхом по модели: препятствия окна (на GPU — в следующем compute); до них камней в окне нет
+	void setStoneTops( std::vector<StoneTop>&& tops );
 	bool active() const { return m_active; }
 	// Ячеек по стороне окна, у которого есть текстуры (0 — окна не было): сетка поверхности окна (WaterSurface) — по ним,
 	// рисует ли её и где — по константам кадра (cb_waterNear)
@@ -61,7 +64,14 @@ private:
 	Buffer m_flowBuffer;		// WaterFlowBuffer (b5)
 	Buffer m_detailBuffer;		// WaterDetailFlowBuffer (b6)
 	Buffer m_nearBuffer;		// WaterNearFlowBuffer (b7)
-	DMStructuredBuffer m_stones;	// камни русла в окне: центр основания, поперечник
+	DMStructuredBuffer m_stones;	// камни русла в окне: по два float4 — квадрат верха и его номер
+	// Камни русел: квадрат верха (угол x, z, сторона, низ) — для отбора в окно; высоты всех квадратов — на GPU по две
+	// половинной точности в uint (m_stoneTopData ждёт загрузки, пока m_stoneTopsPending)
+	std::vector<DirectX::XMFLOAT4> m_stoneBounds;
+	std::vector<uint32_t> m_stoneTopData;
+	bool m_stoneTopsPending = true;
+	Buffer m_stoneTops;
+	ShaderView m_stoneTopsView;
 
 	// Текстуры окна: вид ячейки и u₀, R и глубина без камней, скорость граней, перенос, давление, расхождение, завихрённость,
 	// итог для шейдеров

@@ -53,7 +53,8 @@
 // сдвигается, ячейки остаются на месте; вошедшие начинаются с течения детальной сетки — mainFlowFaces). Вложено в детальную
 // сетку, как она — в сетку 1 м: ячейка — из детальных плиток билинейно (уровень, u₀, R, дно), за окном — ячейки вне
 // (грань задана течением детальной сетки), крупный масштаб тянется к нему (mainFlowNudge). Отличия:
-//   - камни русла — полуэллипсоиды на своей сетке (список камней окна g_nearStones), и камень выше воды — препятствие:
+//   - камни русла — по верху их моделей (StoneTop: квадрат высот сверху у каждого камня расстановки, Scatterer; список
+//     камней окна g_nearStones), и камень выше воды — препятствие:
 //     глубина сквозь него — доля g_nearPassage глубины без камня (проводимость грани и трение по Маннингу на этой глубине —
 //     вода обходит камень, а ряд камней на уступе без просвета не запружает ручей: уровень под «жёсткой крышкой» не
 //     поднимается — вода сочится);
@@ -71,7 +72,11 @@ DM_SRV( StructuredBuffer<uint2>, g_flowTiles, 5 );	// группы счёта (�
 DM_SRV( Texture2DArray<float4>, g_detailStatic, 3 );		// детальные плитки: уровень воды (−1e9 — нет), u₀ по X и Z мира, R русла
 DM_SRV( Texture2DArray<float2>, g_terrainDetailTiles, 6 );	// детальная земля: нормированная высота, врез
 DM_SRV( Texture2D<uint>, g_detailIndex, 7 );				// плитка (x, z) мира → срез + 1, 0 — плитки нет
-DM_SRV( StructuredBuffer<float4>, g_nearStones, 9 );		// камни русла в окне: центр основания (x, y, z), поперечник
+// Камни русла в окне — по два: угол квадрата верха (x, z мира), его сторона, низ камня, м; номер квадрата (asuint x)
+DM_SRV( StructuredBuffer<float4>, g_nearStones, 9 );
+// Верх камней (StoneTop, Scatterer): квадраты WATER_NEAR_STONE_CELLS² высот над низом камня, м, по две половинной точности
+// в uint (младшая — чётный тексель); меньше 0 — меша нет
+DM_SRV( StructuredBuffer<uint>, g_nearStoneTops, 8 );
 DM_SRV( Texture2DArray<float4>, g_detailWater, 10 );		// детальная вода (SLOT_WATER_DETAIL): уровень, течение X, Z, глубина
 #define FLOW_TEXTURE( type ) RWTexture2D<type>
 #elif defined( FLOW_DETAIL )
@@ -512,9 +517,9 @@ void mainFlowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	if( !flowCell( group, thread, cell, address ) )
 		return;
 #if defined( FLOW_NEAR )
-	// Ячейка окна — из детальных плиток билинейно: уровень воды, u₀ и R, дно — детальная земля; камни русла — полуэллипсоиды
-	// на сетке окна. Камень выше воды — препятствие: глубина сквозь него — g_nearPassage глубины без камня. Каждый кадр (окно
-	// сдвигается), давление и скорость остаются — начальное приближение
+	// Ячейка окна — из детальных плиток билинейно: уровень воды, u₀ и R, дно — детальная земля; камни русла — по верху их
+	// моделей (квадраты StoneTop: тексель под центром ячейки). Камень выше воды — препятствие: глубина сквозь него —
+	// g_nearPassage глубины без камня. Каждый кадр (окно сдвигается), давление и скорость остаются — начальное приближение
 	const float2 world = ( cell + 0.5f ) * g_nearStep;
 	float4 water;
 	const bool wet = detailStaticAt( world, water );
@@ -522,12 +527,15 @@ void mainFlowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	float top = bed;
 	[loop] for( uint s = 0; s < g_nearStoneCount; ++s )
 	{
-		const float4 stone = g_nearStones[s];
-		const float radius = 0.5f * stone.w;
-		const float2 offset = world - stone.xz;
-		const float share = dot( offset, offset ) / max( radius * radius, 1e-6f );
-		if( share < 1.0f )
-			top = max( top, stone.y + g_nearStoneHeight * stone.w * sqrt( 1.0f - share ) );
+		const float4 stone = g_nearStones[2 * s];
+		const int2 texel = int2( floor( ( world - stone.xy ) / stone.z * WATER_NEAR_STONE_CELLS ) );
+		if( any( texel < 0 ) || any( texel >= WATER_NEAR_STONE_CELLS ) )
+			continue;
+		const uint index = ( asuint( g_nearStones[2 * s + 1].x ) * WATER_NEAR_STONE_CELLS + texel.y ) * WATER_NEAR_STONE_CELLS + texel.x;
+		const uint word = g_nearStoneTops[index >> 1];
+		const float height = f16tof32( ( index & 1 ) != 0 ? word >> 16 : word & 0xffff );
+		if( height >= 0.0f )
+			top = max( top, stone.w + height );
 	}
 	const bool stream = water.w > 0.0f;
 	const float baseDepth = wet && bed > -1e8f ? max( water.x - bed, 0.0f ) : 0.0f;

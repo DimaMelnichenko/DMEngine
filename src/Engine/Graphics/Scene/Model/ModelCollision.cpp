@@ -1,9 +1,9 @@
 #include "ModelCollision.h"
 #include <algorithm>
 #include <vector>
-#include "Assets.h"
 #include "Model\DMModel.h"
 #include "Model\Mesh\AbstractMesh.h"
+#include "ModelGeometry.h"
 #include "TrunkCollision.h"
 
 using namespace DirectX;
@@ -27,24 +27,11 @@ PhysicsWorld::ShapeId ModelCollision::shape( const DMModel& model )
 	if( it != m_shapes.end() )
 		return it->second;
 
-	// Вершины всех секций LOD 0 (позиция — первое поле вершины любого формата, VertexData)
-	const DMModel::LodBlock* lod = model.getLodById( 0 );
-	const BoundingBox& bounds = lod->bounds;
+	// Вершины всех секций LOD 0
+	const BoundingBox& bounds = model.getLodById( 0 )->bounds;
 	std::vector<XMFLOAT3> points;
 	std::vector<uint32_t> indices;
-	for( const auto& section : lod->sections )
-	{
-		auto& mesh = Assets::meshes().get( section->mesh );
-		if( !mesh )
-			continue;
-		const uint32_t first = static_cast<uint32_t>( points.size() );
-		const char* vertices = mesh->getVertices();
-		const uint32_t stride = mesh->vertexStride();
-		for( uint32_t i = 0; i < mesh->vertexCount(); ++i )
-			points.push_back( *reinterpret_cast<const XMFLOAT3*>( vertices + static_cast<size_t>( i ) * stride ) );
-		for( uint32_t index : mesh->getIndices() )
-			indices.push_back( first + index );
-	}
+	modelLodGeometry( model, 0, points, indices );
 
 	PhysicsWorld::ShapeId shape = 0;
 	TrunkBase trunk;

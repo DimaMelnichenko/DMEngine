@@ -164,6 +164,7 @@ private:
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;
 	// Карта полога собрана по этим кронам: сумма номеров крон наборов (Scatterer::canopyRevision) и правок моделей уровня
 	uint64_t m_canopyKey = ~0ull;
+	uint32_t m_streamStoneKey = 0;	// сумма номеров камней русел расстановки, отданных воде
 	ParticleSystem m_particles;	// частицы уровня (LevelParticleEmitters); -noparticles — нет
 	FoliageInteraction m_foliageInteraction;	// трава расступается у камеры (только с террейном)
 	ReflectionCaptures m_reflectionCaptures;	// карты отражений места (LevelReflectionCaptures)

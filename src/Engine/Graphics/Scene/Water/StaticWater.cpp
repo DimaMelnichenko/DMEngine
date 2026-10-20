@@ -660,11 +660,6 @@ WaterDetailFlowBuffer StaticWater::detailFlowParameters() const
 	return params;
 }
 
-float StaticWater::stoneHeightShare()
-{
-	return stoneHeight;
-}
-
 std::string StaticWater::solveDetailFlow( const Flow& flow )
 {
 	if( !m_enabled || m_detailTileCount == 0 || m_detailBlockList.empty() || flow.detailSettleTime <= 0.0f )

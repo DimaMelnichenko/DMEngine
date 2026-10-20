@@ -1,11 +1,14 @@
 #include "Scatterer.h"
 #include "Shaders\slots.h"
 #include "Model\ModelCollision.h"
+#include "Model\ModelGeometry.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <execution>
+#include <numeric>
 #include <optional>
 #include "D3D\DMD3D.h"
 #include "Assets.h"
@@ -22,6 +25,18 @@ using namespace DirectX;
 
 namespace GS
 {
+
+namespace
+{
+
+// Мировая матрица экземпляра — как у вершинного шейдера экземпляра (Shaders\instance.sh): размер, поворот, место основания
+XMMATRIX instanceWorld( const ScatterPass::PlacedInstance& instance )
+{
+	return XMMatrixScaling( instance.size, instance.size, instance.size ) * XMMatrixRotationQuaternion( XMLoadFloat4( &instance.rotation ) ) *
+		   XMMatrixTranslation( instance.position.x, instance.position.y, instance.position.z );
+}
+
+}
 
 Scatterer::Scatterer( const std::string& name, const ScatterSetSettings& settings ) :
 	SceneObject( name ),
@@ -1206,16 +1221,51 @@ void Scatterer::buildBodies( Layer& layer, const std::vector<ScatterPass::Placed
 	{
 		if( instance.variant >= layer.variants.size() || !layer.variants[instance.variant].model )
 			continue;
-		// Как вершинный шейдер экземпляра (Shaders\instance.sh): размер, поворот, место основания
-		const XMMATRIX world = XMMatrixScaling( instance.size, instance.size, instance.size ) *
-							   XMMatrixRotationQuaternion( XMLoadFloat4( &instance.rotation ) ) *
-							   XMMatrixTranslation( instance.position.x, instance.position.y, instance.position.z );
-		if( const uint32_t body = m_collision->addBody( *layer.variants[instance.variant].model, world ) )
+		if( const uint32_t body = m_collision->addBody( *layer.variants[instance.variant].model, instanceWorld( instance ) ) )
 			layer.bodies.push_back( body );
 	}
 	physics.optimize();
 	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": " + std::to_string( layer.bodies.size() ) + " collision bodies, ms: " +
 		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() ) );
+}
+
+void Scatterer::buildStoneTops( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances )
+{
+	const auto start = std::chrono::high_resolution_clock::now();
+	// Треугольники модели — раз на вариант, LOD1 (у камня он с текселем верха в ~6 см не расходится с LOD0, а треугольников
+	// втрое меньше: у LOD0 — ~150 мс загрузки на 10 тыс. камней); экземпляры — параллельно
+	std::vector<std::vector<XMFLOAT3>> points( layer.variants.size() );
+	std::vector<std::vector<uint32_t>> indices( layer.variants.size() );
+	size_t triangles = 0;
+	for( size_t v = 0; v < layer.variants.size(); ++v )
+		if( const DMModel* model = layer.variants[v].model )
+		{
+			modelLodGeometry( *model, model->lodCount() > 1 ? 1 : 0, points[v], indices[v] );
+			triangles += indices[v].size() / 3;
+		}
+	layer.stoneTops.assign( instances.size(), StoneTop() );
+	std::vector<size_t> order( instances.size() );
+	std::iota( order.begin(), order.end(), size_t( 0 ) );
+	std::for_each( std::execution::par, order.begin(), order.end(),
+				   [&]( size_t i )
+				   {
+					   const ScatterPass::PlacedInstance& instance = instances[i];
+					   if( instance.variant < points.size() )
+						   layer.stoneTops[i] = rasterizeStoneTop( points[instance.variant], indices[instance.variant], instanceWorld( instance ) );
+				   } );
+	++m_streamStoneRevision;
+	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": " + std::to_string( layer.stoneTops.size() ) + " stone tops for the water (" +
+		 std::to_string( layer.variants.empty() ? 0 : triangles / layer.variants.size() ) + " triangles per model), ms: " +
+		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() ) );
+}
+
+void Scatterer::appendStreamStoneTops( std::vector<StoneTop>& tops ) const
+{
+	for( const Layer& layer : m_layers )
+		if( layer.settings.placement == ScatterPlacement::streamStones )
+			for( const StoneTop& top : layer.stoneTops )
+				if( top.side > 0.0f )
+					tops.push_back( top );
 }
 
 void Scatterer::buildCanopy( Layer& layer, const std::vector<ScatterPass::PlacedInstance>& instances )
@@ -1323,6 +1373,7 @@ void Scatterer::placeStreamStones( Layer& layer )
 	}
 	const size_t dropped = layer.pass->placeInstances( instances, layer.passVariants );
 	buildBodies( layer, instances );
+	buildStoneTops( layer, instances );
 	// Длина тени — по самому высокому камню
 	layer.maxHeight = std::max( 1.0f, tallest );
 	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": stream stones " + std::to_string( instances.size() - dropped ) +

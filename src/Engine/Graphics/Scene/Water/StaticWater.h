@@ -63,11 +63,8 @@ public:
 	WaterFlowBuffer flowParameters( const Flow& flow, float viscosity, float timeStep, float cell, uint32_t groups ) const;
 	// Детальная сетка (b6): ячеек плитки по стороне, плиток по стороне мира, шаг, мокрая глубина
 	WaterDetailFlowBuffer detailFlowParameters() const;
-	// Статичная вода детальных плиток (уровень, u₀, R) и камни русла — окну у камеры (NearWaterFlow)
+	// Статичная вода детальных плиток (уровень, u₀, R) — окну у камеры (NearWaterFlow)
 	const ShaderView& detailStaticView() const { return m_detailStaticView; }
-	const std::vector<TerrainHydrology::Stone>& stones() const { return m_detailStones; }
-	// Камень русла в течении — полуэллипсоид: высота над дном — эта доля поперечника
-	static float stoneHeightShare();
 	// Детальная вода — растром 0,25 м на весь мир (−1e9 — плитки нет): <prefix>_detail_level.dds (уровень поверхности),
 	// _detail_depth, _detail_vx, _detail_vz; строка 0 — дальний край по z. Ждёт GPU
 	bool exportDetail( const std::string& prefix, std::string& reason );

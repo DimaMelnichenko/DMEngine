@@ -170,6 +170,7 @@ add_library(DMCore STATIC
     src/Engine/Graphics/Scene/Terrain/TerrainEdits.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainHydrology.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainCanopy.cpp
+    src/Engine/Graphics/Scene/Water/StoneTop.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Audio/AudioMixer.cpp
     src/Engine/Audio/AudioSynth.cpp
@@ -305,6 +306,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Model/ModelInstances.cpp
     src/Engine/Graphics/Scene/Model/ModelDraw.cpp
     src/Engine/Graphics/Scene/Model/ModelCollision.cpp
+    src/Engine/Graphics/Scene/Model/ModelGeometry.cpp
     src/Engine/Graphics/Scene/Model/SkinningPalette.cpp
     src/Engine/Graphics/Scene/World/WorldEntities.cpp
     src/Engine/Graphics/Scene/Terrain/GridMesh.cpp
