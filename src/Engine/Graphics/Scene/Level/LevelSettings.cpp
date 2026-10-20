@@ -847,6 +847,9 @@ const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema()
 		  "without a gap does not dam the stream - it seeps", settingClamp },
 		{ "near_eddies", "Eddies", DM_SETTING( eddies ), 0.0f, 10.0f, "1/s",
 		  "Vorticity confinement: eddies behind the stones and in the bends keep their spin", settingClamp },
+		{ "near_surface", "Surface relief", DM_SETTING( surface ), 0.0f, 4.0f, "",
+		  "The surface in the window follows the flow pressure: a bulge in front of a stone, a dip behind it and over it; "
+		  "0 - flat", settingClamp },
 	};
 	return schema;
 }

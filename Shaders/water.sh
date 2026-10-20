@@ -10,6 +10,7 @@
 #include "common.vs"
 #include "samplers.sh"
 #include "terrain_detail.sh"
+#include "water_near.sh"
 #include "bindless.sh"
 
 DM_SRV( Texture2D<float4>, g_waterState, SLOT_WATER );	// глубина, м; скорость по X и Z мира, м/с; глубина с памятью, м
@@ -18,34 +19,6 @@ DM_SRV( Texture2D<float>, g_waterLevel, SLOT_WATER_LEVEL );	// уровень п
 // Детальная вода у русел: x — уровень поверхности (−1e30 — нет), y, z — течение по X и Z мира, w — глубина; срез — по
 // индексу плиток детальной земли (cb_waterDetail: размер мира и сторона плитки, 0 — её нет)
 DM_SRV( Texture2DArray<float4>, g_waterDetail, SLOT_WATER_DETAIL );
-// Подробное течение у камеры (NearWaterFlow): окно мелкой сетки, тексель — ячейка мира по модулю стороны окна (cb_waterNear:
-// угол окна, ячейка, ячеек по стороне; 0 — окна нет). x — глубина без камней, м, y, z — течение по X и Z мира, w — доля
-// глубины над камнем (1 — камня нет, 0 — суша)
-DM_SRV( Texture2D<float4>, g_waterNear, SLOT_WATER_NEAR );
-
-// К краю окна у камеры на этой полосе, м, его течение переходит в детальное
-static const float nearWaterFade = 1.0f;
-// Доля глубины над камнем, с которой ячейка окна — вода (меньше — выборка задела сушу); выше nearWaterOpen — камень под водой
-static const float nearWaterWet = 0.05f;
-static const float nearWaterOpen = 0.5f;
-
-// Доля окна у камеры в точке мира: 1 внутри, к краю на полосе nearWaterFade — к 0; 0 — окна нет или точка вне него
-float nearWaterWeight( float2 worldXZ )
-{
-	if( cb_waterNear.w <= 0.0f )
-		return 0.0f;
-	const float side = cb_waterNear.z * cb_waterNear.w;
-	const float2 local = worldXZ - cb_waterNear.xy;
-	const float2 edge = min( local, side - local );
-	return saturate( min( edge.x, edge.y ) / nearWaterFade );
-}
-
-// Окно у камеры в точке мира — билинейно: ячейка мира i — в i + ½ ячейки, тексель — по модулю стороны (выборка с
-// повтором; у края окна, где соседний тексель — ячейка с другой его стороны, вес окна — 0)
-float4 sampleNearWater( float2 worldXZ )
-{
-	return g_waterNear.SampleLevel( g_SamplerLinearWrap, worldXZ / ( cb_waterNear.z * cb_waterNear.w ), 0.0f );
-}
 
 // Тексель детальной воды в точке uv карты высот: x, y — в текселях плитки (центр текселя i — i + 0,5, с полем), z — срез;
 // false — плитки нет

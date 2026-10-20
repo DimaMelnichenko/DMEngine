@@ -80,7 +80,10 @@ bool WaterSurface::initialize( WaterField& field )
 		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\water.vs", "WATER_DETAIL" ) ||
 		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water.ps", "WATER_DETAIL" ) ||
 		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water_reflection.ps" ) ||
-		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water_reflection.ps", "WATER_DETAIL" ) )
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water_reflection.ps", "WATER_DETAIL" ) ||
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::vertex, "main", "Shaders\\water.vs", "WATER_NEAR" ) ||
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water.ps", "WATER_NEAR" ) ||
+		!m_surfaceProgram.addShaderPassFromFile( ShaderStageType::pixel, "main", "Shaders\\water_reflection.ps", "WATER_NEAR" ) )
 	{
 		LOG( "Water surface: shader compilation failed" );
 		return false;
@@ -89,6 +92,8 @@ bool WaterSurface::initialize( WaterField& field )
 	m_detailPhase = m_surfaceProgram.createPhase( 1, 1 );
 	m_reflectionPhase = m_surfaceProgram.createPhase( 0, 2 );
 	m_reflectionDetailPhase = m_surfaceProgram.createPhase( 1, 3 );
+	m_nearPhase = m_surfaceProgram.createPhase( 2, 4 );
+	m_reflectionNearPhase = m_surfaceProgram.createPhase( 2, 5 );
 
 	// Детальная поверхность у русел: сетка плитки — вершина на тексель плитки с полем, свои список экземпляров и команда
 	const uint32_t side = TerrainHydrology::detailTileCells * TerrainHydrology::detailSamples + 2;
@@ -102,7 +107,20 @@ bool WaterSurface::initialize( WaterField& field )
 	}
 	d3d.setName( m_detailTileList, "Water visible detail tiles" );
 	d3d.setName( m_detailDrawArgs, "Water detail indirect command" );
-	return m_surfacePhase >= 0 && m_detailPhase >= 0 && m_reflectionPhase >= 0 && m_reflectionDetailPhase >= 0;
+	return m_surfacePhase >= 0 && m_detailPhase >= 0 && m_reflectionPhase >= 0 && m_reflectionDetailPhase >= 0 && m_nearPhase >= 0 &&
+		   m_reflectionNearPhase >= 0;
+}
+
+bool WaterSurface::prepareNearMesh( const StaticWater& water, uint32_t cells )
+{
+	if( cells == 0 || water.detailTileCount() == 0 )
+		return false;
+	if( cells != m_nearMeshCells )
+	{
+		m_nearMesh.initialize( static_cast<uint16_t>( cells ), static_cast<uint16_t>( cells ) );
+		m_nearMeshCells = cells;
+	}
+	return true;
 }
 
 void WaterSurface::build( const WaterSimulationSettings& settings )
@@ -178,9 +196,9 @@ void WaterSurface::warmPipelines( const PassStates& states )
 {
 	m_surfaceProgram.warmPipelines( { { RasterState::solid, DepthState::readOnly, BlendState::alpha },
 									  { RasterState::wireframe, DepthState::readOnly, BlendState::alpha } },
-									states.scene, { m_surfacePhase, m_detailPhase } );
+									states.scene, { m_surfacePhase, m_detailPhase, m_nearPhase } );
 	m_surfaceProgram.warmPipelines( { { RasterState::solid, DepthState::enabled, BlendState::opaque } }, states.reflectionSurface,
-									{ m_reflectionPhase, m_reflectionDetailPhase } );
+									{ m_reflectionPhase, m_reflectionDetailPhase, m_reflectionNearPhase } );
 }
 
 void WaterSurface::updateParameters( const WaterSimulationSettings& settings, const StaticWater& water, const WaterFoam& foam )
@@ -220,7 +238,8 @@ void WaterSurface::updateParameters( const WaterSimulationSettings& settings, co
 	Device::updateResourceData( m_surfaceBuffer, params );
 }
 
-void WaterSurface::renderReflectionSurface( const WaterSimulationSettings& settings, const StaticWater& water, const WaterFoam& foam )
+void WaterSurface::renderReflectionSurface( const WaterSimulationSettings& settings, const StaticWater& water, const WaterFoam& foam,
+											uint32_t nearCells )
 {
 	DMD3D& d3d = DMD3D::instance();
 	updateParameters( settings, water, foam );
@@ -242,10 +261,18 @@ void WaterSurface::renderReflectionSurface( const WaterSimulationSettings& setti
 		d3d.setSRV( SLOT_INSTANCE_DATA, m_detailTileListView );
 		d3d.drawIndexedInstancedIndirectCount( m_detailDrawArgs, 0, 1, m_detailDrawArgs, 24 );
 	}
+	if( prepareNearMesh( water, nearCells ) )
+	{
+		d3d.setVertexBuffer( m_nearMesh.vertexBuffer(), sizeof( DirectX::XMFLOAT3 ) );
+		d3d.setIndexBuffer( m_nearMesh.indexBuffer(), DXGI_FORMAT_R32_UINT );
+		m_surfaceProgram.setPass( m_reflectionNearPhase );
+		d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_surfaceBuffer );
+		d3d.drawIndexed( m_nearMesh.indexCount(), 0, 0 );
+	}
 }
 
 void WaterSurface::render( const RenderContext& context, const WaterSimulationSettings& settings, const StaticWater& water,
-						   const WaterFoam& foam )
+						   const WaterFoam& foam, uint32_t nearCells )
 {
 	DMD3D& d3d = DMD3D::instance();
 	const TerrainHeight height = m_field->terrain->terrainHeight();
@@ -286,6 +313,16 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 			d3d.setSRV( 3, *height.heightMap );
 		d3d.setSRV( SLOT_INSTANCE_DATA, m_detailTileListView );
 		d3d.drawIndexedInstancedIndirectCount( m_detailDrawArgs, 0, 1, m_detailDrawArgs, 24 );
+	}
+	// Окно подробного течения у камеры: сетка 6,25 см, поверхность — по давлению его течения; детальные плитки в окне
+	// отсечены в water.ps. Рисуется, пока у окна есть текстуры: есть ли окно в этом кадре и где — решают константы кадра
+	if( prepareNearMesh( water, nearCells ) )
+	{
+		d3d.setVertexBuffer( m_nearMesh.vertexBuffer(), sizeof( DirectX::XMFLOAT3 ) );
+		d3d.setIndexBuffer( m_nearMesh.indexBuffer(), DXGI_FORMAT_R32_UINT );
+		m_surfaceProgram.setPass( m_nearPhase );
+		d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_surfaceBuffer );
+		d3d.drawIndexed( m_nearMesh.indexCount(), 0, 0 );
 	}
 }
 

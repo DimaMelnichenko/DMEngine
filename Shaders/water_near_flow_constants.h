@@ -27,6 +27,7 @@ DM_CONSTANTS( WaterNearFlowBuffer, b7 )
 	DM_FIELD( float, nearEddies );			// удержание завихрённости (vorticity confinement), доля
 	DM_FIELD( float, nearNudgeShare );		// доля шага: средняя блока 8 × 8 — к течению 0,25 м
 	DM_FIELD( uint, nearReset );			// 1 — все ячейки окна — новые (первый кадр, телепорт, правка окна)
+	DM_FIELD( float, nearSurface );			// подъём поверхности по давлению — × это (0 — поверхность ровная)
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

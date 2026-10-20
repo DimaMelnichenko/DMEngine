@@ -757,6 +757,8 @@ struct WaterSimulationSettings
 		// просвета сочится, не запружая ручей)
 		float passage = 0.05f;
 		float eddies = 1.0f;		// удержание завихрённости, 1/с: вихри за камнями и на поворотах держатся дольше
+		// Поверхность в окне по давлению течения (вспучивание перед камнем, просадка за ним) — × это; 0 — ровная
+		float surface = 1.0f;
 	} nearFlow;
 
 	std::vector<WaterSource> sources;	// включённые строки WaterSources этой строки WaterSimulation

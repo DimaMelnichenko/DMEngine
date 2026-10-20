@@ -10,7 +10,7 @@ namespace GS
 {
 
 class StaticWater;
-class WaterField;
+struct WaterField;
 struct FrameContext;
 struct FrameParameters;
 struct TerrainHeight;
@@ -35,8 +35,11 @@ public:
 	// Окно — шейдерам (cb_waterNear); нет окна — нули
 	void frameConstants( FrameParameters& constants ) const;
 	bool active() const { return m_active; }
-	// Окно — растром (строка 0 — дальний край по z, как у остальных выгрузок): <prefix>_near_depth.dds, _near_vx, _near_vz.
-	// Ждёт GPU
+	// Ячеек по стороне окна, у которого есть текстуры (0 — окна не было): сетка поверхности окна (WaterSurface) — по ним,
+	// рисует ли её и где — по константам кадра (cb_waterNear)
+	uint32_t windowCells() const { return m_size; }
+	// Окно — растром (строка 0 — дальний край по z, как у остальных выгрузок): <prefix>_near_surface.dds (подъём поверхности
+	// по давлению, м), _near_vx, _near_vz, _near_passage. Ждёт GPU
 	bool exportState( const std::string& prefix, std::string& reason );
 
 private:

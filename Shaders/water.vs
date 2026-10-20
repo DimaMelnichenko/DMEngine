@@ -3,15 +3,21 @@
 // воды (water_surface.cs, mainSurface). Вершина без уровня (сухо) — NaN: треугольники с ней отбрасываются, поэтому
 // рисуется только вода и полоса в ячейку за урезом, где плоскость воды уходит под рельеф. Экземпляр — видимый тайл.
 // WATER_DETAIL — детальная плитка у русел: сетка — вершина на тексель плитки детальной воды (0,25 м, с полем в тексель:
-// плитка чуть шире своей площади, лишнее отсекает water.ps), высота — её уровень (water_detail.cs)
+// плитка чуть шире своей площади, лишнее отсекает water.ps), высота — её уровень (water_detail.cs).
+// WATER_NEAR — окно подробного течения у камеры (NearWaterFlow): сетка — вершина на ячейку окна (6,25 см), один экземпляр,
+// высота — уровень детальной воды билинейно и подъём по давлению течения окна (к краю окна — к нулю: там поверхность та же,
+// что у детальных плиток)
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
 #include "water_surface.sh"
 #include "bindless.sh"
-#ifdef WATER_DETAIL
+#if defined( WATER_DETAIL ) || defined( WATER_NEAR )
 #include "terrain_detail.sh"
 DM_SRV( Texture2DArray<float4>, g_waterDetailTiles, SLOT_WATER_DETAIL );	// x — уровень поверхности, м; −1e30 — нет
+#ifdef WATER_NEAR
+#include "water_near.sh"
+#endif
 #else
 DM_SRV( Texture2D<float>, g_level, 0 );							// уровень поверхности, м; −1e30 — сухо
 #endif
@@ -25,7 +31,91 @@ struct VertexInputType
 
 static const float dryLevel = -1e29f;
 
-#ifdef WATER_DETAIL
+// Вершина без воды: NaN — треугольники с ней отбрасываются
+WaterPixelInput dryVertex()
+{
+	WaterPixelInput output;
+	output.position = asfloat( 0x7fc00000 );
+	output.worldPosition = 0.0f;
+	output.normal = float3( 0.0f, 1.0f, 0.0f );
+	output.uv = 0.0f;
+	output.tile = 0;
+	return output;
+}
+
+#if defined( WATER_NEAR )
+
+// Уровень детальной воды в точке мира — билинейно по четырём текселям её плитки (вершина окна — между ними); нет плитки,
+// её не рисует детальная сетка (дальше g_detailDistance — тайлы 1 м) или среди четырёх сухой тексель — dryLevel: окно
+// рисует ту же воду, что детальные плитки
+float detailLevel( float2 worldXZ )
+{
+	const float tileSize = WATER_TILE * g_cellSize;
+	const int2 tile = int2( floor( worldXZ / tileSize ) );
+	uint tilesX, tilesZ;
+	g_terrainDetailIndex.GetDimensions( tilesX, tilesZ );
+	if( any( tile < 0 ) || tile.x >= (int)tilesX || tile.y >= (int)tilesZ )
+		return dryLevel;
+	const uint index = g_terrainDetailIndex.Load( int3( tile, 0 ) );
+	if( !waterDetailRendered( tile, index, cb_cameraPosition ) )
+		return dryLevel;
+	uint side, sideZ, slices;
+	g_waterDetailTiles.GetDimensions( side, sideZ, slices );
+	// Тексель i — центр в начале плитки + ( i − 0,5 ) · шаг (поле в тексель с каждой стороны)
+	const float2 position = ( worldXZ - tile * tileSize ) / ( tileSize / ( side - 2 ) ) + 0.5f;
+	const int2 base = int2( floor( position ) );
+	const float2 f = position - (float2)base;
+	float level = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 corner = int2( k & 1, k >> 1 );
+		const float value = g_waterDetailTiles.Load( int4( clamp( base + corner, 0, (int)side - 1 ), index - 1, 0 ) ).x;
+		if( value <= dryLevel )
+			return dryLevel;
+		level += value * ( corner.x ? f.x : 1.0f - f.x ) * ( corner.y ? f.y : 1.0f - f.y );
+	}
+	return level;
+}
+
+// Уровень поверхности в центре ячейки окна: детальная вода и подъём по давлению (к краю окна — к нулю); сухо — fallback
+float nearLevel( int2 cell, float fallback )
+{
+	const float2 worldXZ = ( cell + 0.5f ) * cb_waterNear.z;
+	const float level = detailLevel( worldXZ );
+	return level > dryLevel ? level + loadNearWater( cell ).x * nearWaterWeight( worldXZ ) : fallback;
+}
+
+WaterPixelInput main( VertexInputType input )
+{
+	// Вершина (i, j) — ячейка окна от его угла (j — по Z мира); окна нет (константы кадра — с прошлого расчёта окна) или
+	// сетка больше окна (его сторона сменилась) — сухо
+	const int2 index = int2( input.position.x, input.position.z );
+	const int size = (int)cb_waterNear.w;
+	if( size <= 0 || any( index >= size ) )
+		return dryVertex();
+	const float step = cb_waterNear.z;
+	const int2 cell = int2( round( cb_waterNear.xy / step ) ) + index;
+	const float level = nearLevel( cell, dryLevel );
+	if( level <= dryLevel )
+		return dryVertex();
+
+	const float2 worldXZ = ( cell + 0.5f ) * step;
+	const float3 worldPosition = float3( worldXZ.x, level, worldXZ.y );
+	// Наклон поверхности по соседним ячейкам; у сухого соседа — свой уровень
+	const float left = nearLevel( cell + int2( -1, 0 ), level );
+	const float right = nearLevel( cell + int2( 1, 0 ), level );
+	const float back = nearLevel( cell + int2( 0, -1 ), level );	// меньше Z
+	const float front = nearLevel( cell + int2( 0, 1 ), level );
+	WaterPixelInput output;
+	output.tile = 0;
+	output.position = mul( float4( worldPosition, 1.0f ), cb_viewProjectionMatrix );
+	output.worldPosition = worldPosition;
+	output.normal = normalize( float3( left - right, 2.0f * step, back - front ) );
+	output.uv = float2( worldXZ.x / g_worldSize, 1.0f - worldXZ.y / g_worldSize );
+	return output;
+}
+
+#elif defined( WATER_DETAIL )
 
 // Уровень текселя (i — по X, j — по Z мира) плитки slice; у сухого — fallback
 float detailLevelAt( int2 texel, uint slice, uint side, float fallback )

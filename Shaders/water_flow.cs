@@ -121,6 +121,9 @@ static const int2 axes[2] = { int2( 1, 0 ), int2( 0, 1 ) };
 #include "water_near_flow_constants.h"
 
 static const float zSign = 1.0f;			// ось y окна — по Z мира
+static const float nearGravity = 9.81f;		// м/с²: давление → подъём поверхности (nearSurfaceLift)
+static const float nearSurfaceReach = 0.5f;	// м: подъём поверхности — давление минус среднее в этом радиусе
+static const float nearSurfaceDepthShare = 0.5f;	// подъём и просадка поверхности — не больше этой доли глубины ячейки
 
 typedef uint2 CellAddress;
 #define FLOW_CELL g_nearStep
@@ -925,6 +928,61 @@ void mainFlowProject( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID 
 	g_velocity[address] = velocity;
 }
 
+#ifdef FLOW_NEAR
+// Давление ячейки для подъёма поверхности: ячейка с водой, не камень выше воды (у него проводимость — доля Obstacle passage,
+// и давление в нём скачет на метры)
+bool surfacePressure( int2 cell, out float pressure )
+{
+	pressure = 0.0f;
+	CellAddress at;
+	if( !cellAddress( cell, at ) || !solved( g_info[at].z ) || g_info[at].w <= 2.0f * g_nearPassage * g_info2[at].y )
+		return false;
+	pressure = g_pressure[at];
+	return true;
+}
+
+// Подъём поверхности воды в ячейке, м. Под «жёсткой крышкой» уровень неподвижен, и давление — это подъём, который разгонял
+// бы воду: поправка u −= ∇p за шаг — −g·dt·∇η, то есть p = g·dt·η. Но крупный масштаб давления — не рельеф воды: вдоль
+// ручья оно держит расход против силы тяжести и трения по Маннингу (на 10 м окна — перепад в метр), а уровень на этом
+// масштабе уже даёт детальная вода. Поэтому подъём — давление у ячейки (среднее 3 × 3: у красно-чёрного Гаусса — Зейделя
+// шахматная рябь) минус среднее в радиусе nearSurfaceReach: остаётся то, что размером с камень, — вспучивание перед
+// камнем, просадка у его боков и над подводным, где вода быстрее. × g_nearSurface, не больше nearSurfaceDepthShare глубины
+// ячейки (просадка не уходит под дно и камень, на мели у берега вода не поднимается над урезом); без шагов (время стоит) и у
+// суши — 0
+float nearSurfaceLift( int2 cell )
+{
+	CellAddress address;
+	if( g_flowTimeStep <= 0.0f || g_nearSurface <= 0.0f || !cellAddress( cell, address ) || !solved( g_info[address].z ) )
+		return 0.0f;
+	float pressure;
+	float local = 0.0f;
+	float localCount = 0.0f;
+	[unroll] for( int k = 0; k < 9; ++k )
+		if( surfacePressure( cell + int2( k % 3 - 1, k / 3 - 1 ), pressure ) )
+		{
+			local += pressure;
+			localCount += 1.0f;
+		}
+	if( localCount == 0.0f )
+		return 0.0f;
+	// Среднее вокруг — по сетке с шагом stride (не больше 9 × 9 ячеек)
+	const int reach = clamp( (int)round( nearSurfaceReach / g_nearStep ), 2, 32 );
+	const int stride = max( reach / 4, 1 );
+	float around = 0.0f;
+	float aroundCount = 0.0f;
+	[loop] for( int j = -reach; j <= reach; j += stride )
+		[loop] for( int i = -reach; i <= reach; i += stride )
+			if( surfacePressure( cell + int2( i, j ), pressure ) )
+			{
+				around += pressure;
+				aroundCount += 1.0f;
+			}
+	const float lift = ( local / localCount - around / max( aroundCount, 1.0f ) ) / ( nearGravity * g_flowTimeStep ) * g_nearSurface;
+	const float limit = nearSurfaceDepthShare * g_info[address].w;
+	return clamp( lift, -limit, limit );
+}
+#endif
+
 // Скорость ячейки — средняя двух граней по каждой оси — в текстуру для шейдеров (оси мира), у озёр и ручьёв
 [numthreads( 8, 8, 1 )]
 void mainFlowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
@@ -962,10 +1020,11 @@ void mainFlowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	}
 	const float2 world = float2( velocity.x, zSign * velocity.y );
 #if defined( FLOW_NEAR )
-	// x — глубина без камней (вода есть), y, z — течение по X и Z мира, w — доля глубины над камнем (1 — камня нет, у камня
-	// выше воды — Obstacle passage): где вода обходит камень
+	// x — подъём поверхности по давлению (nearSurfaceLift), y, z — течение по X и Z мира, w — доля глубины над камнем (1 —
+	// камня нет, у камня выше воды — Obstacle passage): где вода обходит камень
+	const float surface = nearSurfaceLift( cell );
 	const float baseDepth = g_info2[address].y;
-	g_output[address] = float4( baseDepth, world, baseDepth > 0.0f ? saturate( g_info[address].w / baseDepth ) : 0.0f );
+	g_output[address] = float4( surface, world, baseDepth > 0.0f ? saturate( g_info[address].w / baseDepth ) : 0.0f );
 #elif defined( FLOW_DETAIL )
 	// Своя плитка и поле соседних (тексель поля — копия ячейки соседа: выборка у края плитки — без шва)
 	const int2 tile = cell / (int)g_detailCells;

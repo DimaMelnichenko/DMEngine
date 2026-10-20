@@ -143,9 +143,9 @@ void WaterSimulation::warmPipelines( const PassStates& states )
 void WaterSimulation::renderCustom( const RenderContext& context )
 {
 	if( context.pass == MeshPass::reflectionPrepass )
-		m_surface.renderReflectionSurface( currentSettings(), m_staticWater, m_foam );
+		m_surface.renderReflectionSurface( currentSettings(), m_staticWater, m_foam, m_near.windowCells() );
 	else if( context.pass == MeshPass::transparent )
-		m_surface.render( context, currentSettings(), m_staticWater, m_foam );
+		m_surface.render( context, currentSettings(), m_staticWater, m_foam, m_near.windowCells() );
 }
 
 void WaterSimulation::applyFlowChanges()

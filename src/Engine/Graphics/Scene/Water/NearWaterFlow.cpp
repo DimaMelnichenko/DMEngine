@@ -174,6 +174,7 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	nearParams.nearEddies = std::max( window.eddies, 0.0f );
 	nearParams.nearNudgeShare = std::min( dt / nudgeTime, 1.0f );
 	nearParams.nearReset = m_reset ? 1u : 0u;
+	nearParams.nearSurface = std::max( window.surface, 0.0f );
 
 	DMD3D& d3d = DMD3D::instance();
 	PassDesc pass;
@@ -267,7 +268,7 @@ bool NearWaterFlow::exportState( const std::string& prefix, std::string& reason 
 			for( int c = 0; c < 4; ++c )
 				channels[c][row] = PackedVector::XMConvertHalfToFloat( source[c] );
 		}
-	const char* names[4] = { "_near_depth.dds", "_near_vx.dds", "_near_vz.dds", "_near_passage.dds" };
+	const char* names[4] = { "_near_surface.dds", "_near_vx.dds", "_near_vz.dds", "_near_passage.dds" };
 	for( int c = 0; c < 4; ++c )
 	{
 		const std::string file = prefix + names[c];
