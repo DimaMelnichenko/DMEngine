@@ -419,6 +419,33 @@ blender -b --factory-startup --python Tools/make_lods.py -- --inputs <a>.gltf <b
 python Tools/import_gltf.py Meshes/source/broken_branch.glb --scatter --lod-ranges 8,25 --collision none
 ```
 
+## Дерево из готового меша: `Tools/tree_from_mesh.py`
+
+Готовое дерево с Fab или Sketchfab (FBX: ствол и ветви — куски труб, листва — карточки, без LOD и данных ветра) —
+`Tools/tree_from_mesh.py` (Blender без окна), бук `Test`:
+
+```
+blender -b --factory-startup --python Tools/tree_from_mesh.py -- --fbx "DownloadResources/<ассет>/Beech Tree.fbx" --name Beech --out Meshes/source/beech.glb --wood Trunk --leaves Leaves --wood-drop 0,0.02,0.06
+python Tools/import_gltf.py Meshes/source/beech.glb --level Test --position 440,0,300 --snap-to-terrain --lod-ranges 35,90 --shadow-lod-scale 0.5
+```
+
+- **Меши** — по подстроке имени (`--wood`, `--leaves`); положение FBX (у бука — пустышка-родитель с масштабом 0,01 и
+  поворотом) — в вершины, начало координат — середина основания ствола.
+- **Иерархия ветвей для ветра** — по касаниям: куски древесины (острова сетки; у бука 1603 — ствол и ветви порезаны на
+  отрезки) цепляются от корня к ближайшему прицепленному, допуск растёт ступенями (1 см … 50 см). Ствол — путь от корня
+  по самым толстым кускам, пока кусок не тоньше `--trunk-min-radius` (6 см); ветвь первого уровня — поддерево куска,
+  отходящего от ствола (у бука ствол — 5 кусков до 6 м, 31 ветвь). Данные — как у ели ([wind.md](wind.md)): ствол — доля
+  высоты, ветвь — начало на стволе и вес (расстояние / наибольшее в ветви), карточка листа — ветвь ближайшей древесины,
+  своё основание и доля длины (веточка и рябь).
+- **LOD** — древесина без кусков тоньше `--wood-drop` (Decimate тонкую трубку не упрощает: у бука на LOD2 без этого
+  оставалось 14 тыс. треугольников веточек) и Decimate на доли `--wood-ratio`; листва — доля карточек `--leaf-keep`
+  (одни и те же во всех LOD), крупнее на `--leaf-scale` вокруг основания. Данные ветра LOD — у ближайшей вершины LOD0.
+  У бука 70,9 / 29,0 / 13,5 тыс. треугольников (`1,0.3,0.08`, `0,0.02,0.06` м, карточки `1,0.5,0.18` × `1,1.35,2`).
+- **Материалы** — по картам FBX: кора (цвет, нормаль, шероховатость), листва (цвет с альфой из карты прозрачности,
+  нормаль; шероховатость — `--leaf-roughness`), нормали OpenGL; оба — `DitheredLODTransition`, `WindWeight` 1 и
+  `--material-param` (ветер — одинаково у коры и листвы, иначе листья отстают от ветвей); листве — просвет
+  `--transmission` (0,45) и нормаль кроны 0,5. Капсула столкновений — радиус ствола у земли (у бука 0,4 м).
+
 ## Ель
 
 `Tools/blender_fir.py` (Blender без окна) строит ели сам, а текстуры и карточки веточек берёт из ели Poly Haven
@@ -519,6 +546,7 @@ python Tools/import_gltf.py Meshes/source/fir.glb --level Test --position 480,0,
 | `Tools/export_polyhaven.py` | модели Poly Haven (архив `.blend`) → `.glb` для импорта с `--scatter` |
 | `Tools/blender_fir.py` | ель: своя геометрия (ствол, мутовки, карточки хвои Poly Haven), три варианта, три LOD, роща |
 | `Tools/make_lods.py` | LOD уменьшением сетки и сжатие текстур для моделей без своих LOD |
+| `Tools/tree_from_mesh.py` | готовое дерево (FBX: куски древесины и карточки листвы) → данные ветра по касаниям, LOD, материалы |
 | `Tools/terrain.py` | высота террейна уровня в точке мира — для `--snap-to-terrain` и `gen_heightmap.py` |
 | `src/Engine/Graphics/Scene/Model/Mesh/MeshLoader.h` | чтение файла меша движком (блоки `WIND`, `SKIN`) |
 | `src/ObjectLibrary/LibraryLoader.cpp` | загрузка моделей, LOD, мешей и экземпляров материалов из БД, экземпляры моделей уровня (`loadLevel`) |
