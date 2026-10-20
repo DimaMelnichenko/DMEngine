@@ -765,6 +765,7 @@ struct WaterSimulationSettings
 		// 0 — плитки
 		float pattern = 1.0f;
 		float patternPeriod = 1.5f;
+		float patternStretch = 2.0f;	// слой узора, растянутый (или сжатый) во столько раз, весит вдвое меньше
 	} nearFlow;
 
 	std::vector<WaterSource> sources;	// включённые строки WaterSources этой строки WaterSimulation

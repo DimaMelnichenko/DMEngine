@@ -97,8 +97,9 @@ private:
 	bool m_foamReset = true;	// прошлого поля пены нет (окно заново, поля пены 0,25 м ещё нет)
 	float m_foamTime = 0.0f;	// время игры, которое пена окна шла с последнего «заново», с: 0 — она ещё — поле 0,25 м
 	float m_foamShare = 0.0f;	// доля пены окна в материале (cb_waterNearFoam)
-	float m_patternShare = 0.0f;	// доля узора пены по течению окна и период его слоёв, с
+	float m_patternShare = 0.0f;	// доля узора пены по течению окна, период его слоёв, с, и растяжение половинного веса слоя
 	float m_patternPeriod = 1.0f;
+	float m_patternStretch = 2.0f;
 	uint32_t m_size = 0;		// ячеек по стороне окна
 	float m_step = 0.0f;		// ячейка, м
 	DirectX::XMINT2 m_origin = DirectX::XMINT2( 0, 0 );

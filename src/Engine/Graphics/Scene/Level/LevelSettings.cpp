@@ -858,6 +858,9 @@ const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema()
 		  "in the eddies; 0 - the pattern tiles", settingClamp },
 		{ "near_pattern_period", "Pattern period", DM_SETTING( patternPeriod ), 0.3f, 10.0f, "s",
 		  "A layer of the carried pattern starts anew this often: longer - longer streaks, but the pattern gets torn apart", settingClamp },
+		{ "near_pattern_stretch", "Pattern stretch", DM_SETTING( patternStretch ), 1.2f, 10.0f, "",
+		  "A layer of the carried pattern stretched (or squeezed) this many times weighs half: the other layer takes over, and the "
+		  "pattern does not draw out into ribbons", settingClamp },
 	};
 	return schema;
 }

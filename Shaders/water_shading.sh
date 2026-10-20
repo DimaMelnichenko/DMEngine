@@ -429,11 +429,33 @@ void addRipple( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 
 	}
 }
 
+// Вес слоя узора по течению по его растяжению (Neyret 2003: слои — по накопленной деформации): якобиан отображения точки мира
+// в узор слоя J = M · A⁻¹ — по экранным производным точки (A = [dX dY]) и её координат в узоре (M = [mapDX mapDY]);
+// искажение — наибольшее из растяжения и сжатия (сингулярные числа J), вес — 1 / (1 + ((искажение − 1) / (L − 1))²),
+// L — «Pattern stretch» окна (cb_waterNearFoam.w): слой, растянутый в L раз, весит вдвое меньше — узор не тянется в ленты
+float patternStretchWeight( float2 dX, float2 dY, float2 mapDX, float2 mapDY )
+{
+	const float det = dX.x * dY.y - dY.x * dX.y;
+	const float limit = cb_waterNearFoam.w;
+	if( abs( det ) < 1e-14f || limit <= 1.0f )
+		return 1.0f;
+	const float j00 = ( mapDX.x * dY.y - mapDY.x * dX.y ) / det;
+	const float j01 = ( mapDY.x * dX.x - mapDX.x * dY.x ) / det;
+	const float j10 = ( mapDX.y * dY.y - mapDY.y * dX.y ) / det;
+	const float j11 = ( mapDY.y * dX.x - mapDX.y * dY.x ) / det;
+	const float t = j00 * j00 + j01 * j01 + j10 * j10 + j11 * j11;
+	const float d = j00 * j11 - j01 * j10;
+	const float largest = sqrt( 0.5f * ( t + sqrt( max( t * t - 4.0f * d * d, 0.0f ) ) ) );
+	const float smallest = abs( d ) / max( largest, 1e-6f );
+	const float excess = ( max( largest, 1.0f / max( smallest, 1e-3f ) ) - 1.0f ) / ( limit - 1.0f );
+	return 1.0f / ( 1.0f + excess * excess );
+}
+
 // Узор пены окна подробного течения у камеры — по его течению (advected textures, Neyret 2003): два слоя смещений координат
 // (water_near_foam.cs) несёт течение окна, и узор плывёт с водой, обтекает камни, растягивается в полосы на сдвиге и
 // закручивается в вихрях, а не ездит плитками. Слой обновляется раз в период (смещения — к нулю, узор — свой сдвиг на цикл),
-// его вес — треугольник по фазе (в миг обновления — 0); смешение слоёв — с делением на √Σw², как у плиток. Маска, шум
-// растворения (вокруг 0,5) и наклон — как у foamTexturePattern
+// его вес — треугольник по фазе (в миг обновления — 0) × вес по растяжению (patternStretchWeight); смешение слоёв — с
+// делением на √Σw², как у плиток. Маска, шум растворения (вокруг 0,5) и наклон — как у foamTexturePattern
 float nearFoamPattern( float2 xz, float2 dX, float2 dY, out float2 slope, out float dissolve )
 {
 	const float4 offsets = sampleNearPattern( xz );
@@ -447,11 +469,13 @@ float nearFoamPattern( float2 xz, float2 dX, float2 dY, out float2 slope, out fl
 	[unroll] for( uint k = 0; k < 2; ++k )
 	{
 		const float layer = phase + 0.5f * k;
-		const float weight = 1.0f - abs( 2.0f * frac( layer ) - 1.0f );
 		const float2 offset = k == 0 ? offsets.xy : offsets.zw;
+		const float2 mapDX = dX + ( k == 0 ? offsetsDX.xy : offsetsDX.zw );
+		const float2 mapDY = dY + ( k == 0 ? offsetsDY.xy : offsetsDY.zw );
+		const float weight = ( 1.0f - abs( 2.0f * frac( layer ) - 1.0f ) ) * patternStretchWeight( dX, dY, mapDX, mapDY );
 		const float2 uv = ( xz + offset ) / g_foamTextureRepeat + nearPatternOffset( floor( layer ), k );
-		const float2 uvDX = ( dX + ( k == 0 ? offsetsDX.xy : offsetsDX.zw ) ) / g_foamTextureRepeat;
-		const float2 uvDY = ( dY + ( k == 0 ? offsetsDY.xy : offsetsDY.zw ) ) / g_foamTextureRepeat;
+		const float2 uvDX = mapDX / g_foamTextureRepeat;
+		const float2 uvDY = mapDY / g_foamTextureRepeat;
 		const float4 foam = g_foam.SampleGrad( g_SamplerLinearWrap, uv, uvDX, uvDY );
 		mask += weight * ( foam.r - 0.5f );
 		dissolve += weight * ( foam.a - 0.5f );

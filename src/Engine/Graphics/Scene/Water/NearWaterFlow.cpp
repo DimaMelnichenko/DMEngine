@@ -367,6 +367,7 @@ void NearWaterFlow::stepFoam( const WaterSimulationSettings& settings, const Wat
 	m_foamTime = ( reset ? 0.0f : m_foamTime ) + elapsed;
 	m_foamShare = m_foamTime > 0.0f ? std::clamp( settings.nearFlow.foam, 0.0f, 1.0f ) : 0.0f;
 	m_patternShare = m_foamTime > 0.0f ? std::clamp( settings.nearFlow.pattern, 0.0f, 1.0f ) : 0.0f;
+	m_patternStretch = std::max( settings.nearFlow.patternStretch, 1.2f );
 	m_foamReset = false;
 }
 
@@ -375,7 +376,7 @@ void NearWaterFlow::frameConstants( FrameParameters& constants ) const
 	if( m_active )
 	{
 		constants.waterNear = XMFLOAT4( m_origin.x * m_step, m_origin.y * m_step, m_step, static_cast<float>( m_size ) );
-		constants.waterNearFoam = XMFLOAT4( m_foamShare, m_patternShare, m_patternPeriod, 0.0f );
+		constants.waterNearFoam = XMFLOAT4( m_foamShare, m_patternShare, m_patternPeriod, m_patternStretch );
 	}
 }
 
