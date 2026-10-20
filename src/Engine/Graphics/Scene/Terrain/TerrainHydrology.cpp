@@ -3506,6 +3506,7 @@ bool TerrainHydrology::Build::buildStones()
 	constexpr double minDischargeScale = 0.25;
 	constexpr double maxDischargeScale = 2.5;
 	constexpr double maxDischargeSpeed = 3.0;	// м/с: u₀ после множителя не быстрее (порог под самой водой)
+	constexpr double dischargeWindow = 8.0;		// м: расход сечения выравнивается по куску вдоль ручья на столько в обе стороны
 	std::vector<std::vector<int32_t>> detailBin( result.detailTiles.size() );
 	for( size_t t = 0; t < result.detailTiles.size(); ++t )
 	{
@@ -3792,11 +3793,10 @@ bool TerrainHydrology::Build::buildStones()
 	// детальной земли скачет — плёсы, пороги, камни дна, ширина русла по 0,25 м, — и расход h₀ u₀ через сечение сам по себе
 	// не сохраняется. Течение (water_flow.cs) держит ∇·(h u) = ∇·(h₀ u₀), и каждый скачок становился ложным источником или
 	// стоком: вода шла по ручью назад и закручивалась (устье ручья в пруд на Test). Поэтому u₀ куска русла нормируется: расход
-	// ∫ h₀ |u₀| через сечение — по ручью как расход сети q (там, где он растёт, — притоки), над порогом вода быстрее, на плёсе
-	// медленнее, как в настоящем ручье. Средняя скорость ручья — прежняя: расход сети × его среднее отношение ∫ h₀ |u₀| / q
-	// (детальное сечение русла больше оценки по Маннингу, и расход сети замедлил бы ручьи вдвое — с ними пену и рябь). h₀ — как
-	// в mainFlowInit: от уровня до детальной земли (без камней), не толще текущего слоя. Множитель сглажен с соседними кусками
-	// ручья и ограничен: тексели у стыков отрезков и кромки делят куски неровно
+	// ∫ h₀ |u₀| через сечение — по ручью как средний по Маннингу вокруг куска (на ±dischargeWindow), со ступенями расхода сети q
+	// у притоков; над порогом вода быстрее, на плёсе медленнее, как в настоящем ручье. h₀ — как в mainFlowInit: от уровня до
+	// детальной земли (без камней), не толще текущего слоя. Множитель сглажен с соседними кусками ручья и ограничен: тексели у
+	// стыков отрезков и кромки делят куски неровно
 	{
 		const double texelArea = detailStep * cell * detailStep * cell;
 		const double layer = water.flow.layer;
@@ -3881,29 +3881,45 @@ bool TerrainHydrology::Build::buildStones()
 				bins[bin].flux += texelDepth( tile, index ) * std::hypot( texel.y, texel.z ) * texelArea;
 			}
 		}
-		std::vector<double> chainFlux( chainIndex, 0.0 ), chainDischarge( chainIndex, 0.0 );
-		for( const DischargeBin& bin : bins )
-			if( bin.flux > 0.0 && !bin.mouth() )
-			{
-				chainFlux[bin.chain] += bin.flux;
-				chainDischarge[bin.chain] += bin.discharge * bin.length;
-			}
-		std::vector<double> scale( bins.size(), 1.0 );
-		for( size_t b = 0; b < bins.size(); ++b )
-		{
-			const double section = bins[b].flux / bins[b].length;
-			const int chain = bins[b].chain;
-			if( section > 1e-6 && chainDischarge[chain] > 0.0 && !bins[b].mouth() )
-			{
-				const double target = bins[b].discharge * chainFlux[chain] / chainDischarge[chain];
-				scale[b] = std::clamp( target / section, minDischargeScale, maxDischargeScale );
-			}
-		}
-		// Сглаживание по ручью: кусок, выше и ниже (ниже — тот, чей upstream — этот)
+		// Кусок ниже по ручью — тот, чей upstream — этот
 		std::vector<int> downstream( bins.size(), -1 );
 		for( size_t b = 0; b < bins.size(); ++b )
 			if( bins[b].upstream >= 0 )
 				downstream[bins[b].upstream] = static_cast<int>( b );
+		// Цель — расход сечения по Маннингу (сам u₀) на ±dischargeWindow вдоль ручья, со ступенями по расходу сети: q ×
+		// ⟨сечение⟩ / ⟨q⟩ в окне. Скачки между кусками выравниваются, где расход сети растёт (приток) — растёт и цель, а
+		// уровень скорости — по Маннингу. Прежде цель была q × среднее отношение по всему ручью: у родника q — min_discharge,
+		// а видимая глубина — не мельче min_water_depth, и верховья текли вдвое медленнее Маннинга (множитель 0,35–0,8), а
+		// низовья — быстрее (Dimok, 2026-10-21: «для такого узкого ручья очень маленькая скорость потока»)
+		const int window = static_cast<int>( std::ceil( dischargeWindow / dischargeBinLength ) );
+		auto counted = [&bins]( int b ) { return bins[b].flux > 0.0 && bins[b].discharge > 0.0 && !bins[b].mouth(); };
+		std::vector<double> scale( bins.size(), 1.0 );
+		for( size_t b = 0; b < bins.size(); ++b )
+		{
+			const double section = bins[b].flux / bins[b].length;
+			if( section <= 1e-6 || !counted( static_cast<int>( b ) ) )
+				continue;
+			double flux = bins[b].flux;
+			double discharge = bins[b].discharge * bins[b].length;
+			for( int side = 0; side < 2; ++side )
+			{
+				int at = static_cast<int>( b );
+				for( int step = 0; step < window; ++step )
+				{
+					at = side == 0 ? bins[at].upstream : downstream[at];
+					if( at < 0 )
+						break;
+					if( counted( at ) )
+					{
+						flux += bins[at].flux;
+						discharge += bins[at].discharge * bins[at].length;
+					}
+				}
+			}
+			const double target = bins[b].discharge * flux / discharge;
+			scale[b] = std::clamp( target / section, minDischargeScale, maxDischargeScale );
+		}
+		// Сглаживание по ручью: кусок, выше и ниже
 		std::vector<double> smooth( bins.size() );
 		for( size_t b = 0; b < bins.size(); ++b )
 		{
