@@ -18,6 +18,31 @@ DM_SRV( Texture2D<float>, g_waterLevel, SLOT_WATER_LEVEL );	// уровень п
 // Детальная вода у русел: x — уровень поверхности (−1e30 — нет), y, z — течение по X и Z мира, w — глубина; срез — по
 // индексу плиток детальной земли (cb_waterDetail: размер мира и сторона плитки, 0 — её нет)
 DM_SRV( Texture2DArray<float4>, g_waterDetail, SLOT_WATER_DETAIL );
+// Подробное течение у камеры (NearWaterFlow): окно мелкой сетки, тексель — ячейка мира по модулю стороны окна (cb_waterNear:
+// угол окна, ячейка, ячеек по стороне; 0 — окна нет). x — глубина без камней (0 — суша), y, z — течение по X и Z мира, w —
+// доля глубины над камнем
+DM_SRV( Texture2D<float4>, g_waterNear, SLOT_WATER_NEAR );
+
+// К краю окна у камеры на этой полосе, м, его течение переходит в детальное
+static const float nearWaterFade = 1.0f;
+
+// Доля окна у камеры в точке мира: 1 внутри, к краю на полосе nearWaterFade — к 0; 0 — окна нет или точка вне него
+float nearWaterWeight( float2 worldXZ )
+{
+	if( cb_waterNear.w <= 0.0f )
+		return 0.0f;
+	const float side = cb_waterNear.z * cb_waterNear.w;
+	const float2 local = worldXZ - cb_waterNear.xy;
+	const float2 edge = min( local, side - local );
+	return saturate( min( edge.x, edge.y ) / nearWaterFade );
+}
+
+// Окно у камеры в точке мира — билинейно: ячейка мира i — в i + ½ ячейки, тексель — по модулю стороны (выборка с
+// повтором; у края окна, где соседний тексель — ячейка с другой его стороны, вес окна — 0)
+float4 sampleNearWater( float2 worldXZ )
+{
+	return g_waterNear.SampleLevel( g_SamplerLinearWrap, worldXZ / ( cb_waterNear.z * cb_waterNear.w ), 0.0f );
+}
 
 // Тексель детальной воды в точке uv карты высот: x, y — в текселях плитки (центр текселя i — i + 0,5, с полем), z — срез;
 // false — плитки нет
@@ -68,6 +93,14 @@ WaterSample sampleWater( float2 uv, bool detail, float3 texel )
 		water.depth = fine.w;
 		water.velocity = fine.yz;
 		water.remembered = fine.w;
+		// У камеры — течение окна (обтекание камней, повороты, вихри), к его краю — детальное
+		const float2 worldXZ = float2( uv.x, 1.0f - uv.y ) * cb_waterDetail.x;
+		const float weight = nearWaterWeight( worldXZ );
+		[branch] if( weight > 0.0f )
+		{
+			const float4 near = sampleNearWater( worldXZ );
+			water.velocity = lerp( water.velocity, near.yz, weight * saturate( near.x / 0.01f ) );
+		}
 	}
 	return water;
 }
