@@ -1055,8 +1055,9 @@ struct ScatterLayerRecord
 const SettingsSchema<HeightFogSettings>& heightFogSchema();
 const SettingsSchema<SkyAtmosphereSettings>& skyAtmosphereSchema();
 const SettingsSchema<HDRIBackdropSettings>& hdriBackdropSchema();
-// Части окна «Post process»: "" — экспозиция до кривой, "exposure" — пределы и адаптация, "bloom" — bloom, ночное зрение и
-// затенение окружением (между частями — кривая и тонмаппинг у PostProcess)
+// Части окна «Post process» — подокна по эффектам (PostProcess): "exposure" — экспозиция до кривой компенсации,
+// "exposureAdaptation" — пределы и адаптация (то же подокно «Exposure» после кривой), "bloom", "stars", "lightShafts",
+// "nightVision", "ambientOcclusion", "colorGrading*" — цветокоррекция; имена полей — короткие, в своём подокне
 const SettingsSchema<PostProcessSettings>& postProcessSchema();
 const SettingsSchema<SunPositionSettings>& sunPositionSchema();
 const SettingsSchema<WindSettings>& windSchema();

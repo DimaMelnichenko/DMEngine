@@ -91,6 +91,10 @@ public:
 	// контрольных камер сравнимы с эталоном, как бы её ни настроили на уровне. Флажок «Enabled» окна, не данные уровня
 	void disableColorGrading();
 	PropertyContainer* properties() override;
+	// Подокно по имени («Ambient occlusion», «Light shafts» …): отладочные виды меню View; nullptr — нет такого
+	PropertyContainer* part( const char* name );
+	// Отладочный вид «Ambient occlusion»: кадр — само затенение серым
+	bool showAmbientOcclusion() const;
 	bool environment() const override { return true; }
 
 private:
@@ -169,7 +173,10 @@ private:
 	ColorGradingLut m_colorGrading;
 
 	PropertyContainer m_properties;
-	std::vector<std::string> m_curveKeyNames;	// свойства ключей кривой компенсации — по одному на ключ
+	// Подокна по эффектам (как разделы Post Process Volume в UE): экспозиция, bloom, звёзды, лучи солнца, ночное зрение,
+	// затенение окружением — порядок и группы описания полей — postProcessParts в PostProcess.cpp
+	PropertyContainer m_parts[6];
+	std::vector<std::string> m_curveKeyNames;	// свойства ключей кривой компенсации (подокно «Exposure») — по одному на ключ
 	// Подокно «Color grading» (баланс белого) и в нём части кадра: весь кадр, тени, полутона, света
 	PropertyContainer m_colorGradingProperties;
 	PropertyContainer m_colorGradingParts[4];

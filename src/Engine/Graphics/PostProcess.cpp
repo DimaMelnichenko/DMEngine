@@ -33,6 +33,23 @@ struct ColorGradingPartWindow
 	const char* group;
 };
 
+// Подокна окна «Post process» по эффектам (как разделы Post Process Volume в UE): имя и группа postProcessSchema; у экспозиции
+// между двумя группами — кривая компенсации (exposureAdaptation добавляет PostProcess::initialize)
+constexpr ColorGradingPartWindow postProcessParts[] = {
+	{ "Exposure", "exposure" },
+	{ "Bloom", "bloom" },
+	{ "Star streaks", "stars" },
+	{ "Light shafts", "lightShafts" },
+	{ "Night vision", "nightVision" },
+	{ "Ambient occlusion", "ambientOcclusion" },
+};
+constexpr size_t exposurePart = 0;
+constexpr size_t lightShaftPart = 3;
+constexpr size_t ambientOcclusionPart = 5;
+const char* const exposureAdaptationGroup = "exposureAdaptation";
+const char* const showLightShaftsProperty = "Show light shafts";
+const char* const showAmbientOcclusionProperty = "Show ambient occlusion";
+
 constexpr ColorGradingPartWindow colorGradingParts[] = {
 	{ "Global", "colorGradingGlobal" },
 	{ "Shadows", "colorGradingShadows" },
@@ -74,23 +91,34 @@ bool PostProcess::initialize( const Settings& settings )
 
 	m_properties.setName( "Post process" );
 	m_properties.setPresetPart( true );
-	m_properties.insert( meteringModeProperty, static_cast<int32_t>( settings.meteringMode ) )->setItems( { "Manual", "Auto histogram" } );
-	addSettingProperties( m_properties, postProcessSchema(), settings, "" );
-	// Ключи кривой — столько, сколько в базе: (EV100 сцены, поправка EV)
-	for( size_t i = 0; i < settings.exposureCompensationCurve.size(); ++i )
+	m_properties.insert( tonemapperProperty, static_cast<int32_t>( settings.tonemapper ) )->setItems( { "None", "ACES", "AgX" } )
+		->setTooltip( "Tonemapping curve from the scene brightness to the screen: AgX, ACES or none (clipped)" );
+	for( size_t i = 0; i < std::size( postProcessParts ); ++i )
 	{
-		m_curveKeyNames.push_back( "Compensation curve key " + std::to_string( i + 1 ) + " (EV100, EV)" );
-		Property* key = m_properties.insert( m_curveKeyNames.back(), settings.exposureCompensationCurve[i] );
-		key->setLow( -10.0f );
-		key->setHigh( 20.0f );
-		key->setControlType( GUIControlType::DRAG );
+		PropertyContainer& part = m_parts[i];
+		part.setName( postProcessParts[i].name );
+		if( i == exposurePart )
+		{
+			part.insert( meteringModeProperty, static_cast<int32_t>( settings.meteringMode ) )->setItems( { "Manual", "Auto histogram" } );
+			addSettingProperties( part, postProcessSchema(), settings, postProcessParts[i].group );
+			// Ключи кривой — столько, сколько в базе: (EV100 сцены, поправка EV)
+			for( size_t k = 0; k < settings.exposureCompensationCurve.size(); ++k )
+			{
+				m_curveKeyNames.push_back( "Compensation curve key " + std::to_string( k + 1 ) + " (EV100, EV)" );
+				Property* key = part.insert( m_curveKeyNames.back(), settings.exposureCompensationCurve[k] );
+				key->setLow( -10.0f );
+				key->setHigh( 20.0f );
+				key->setControlType( GUIControlType::DRAG );
+			}
+			addSettingProperties( part, postProcessSchema(), settings, exposureAdaptationGroup );
+		}
+		else
+			addSettingProperties( part, postProcessSchema(), settings, postProcessParts[i].group );
+		m_properties.addSubContainer( &part );
 	}
-	addSettingProperties( m_properties, postProcessSchema(), settings, "exposure" );
-	m_properties.insert( tonemapperProperty, static_cast<int32_t>( settings.tonemapper ) )->setItems( { "None", "ACES", "AgX" } );
-	addSettingProperties( m_properties, postProcessSchema(), settings, "bloom" );
-	// Отладка (View → Debug views): кадр — само затенение серым; не сохраняется
-	m_properties.insert( "Show ambient occlusion", false )->setTransient();
-	m_properties.insert( "Show light shafts", false )->setTransient();
+	// Отладка (View → Debug views): кадр — само затенение серым, только лучи; не сохраняется
+	m_parts[ambientOcclusionPart].insert( showAmbientOcclusionProperty, false )->setTransient();
+	m_parts[lightShaftPart].insert( showLightShaftsProperty, false )->setTransient();
 
 	// Цветокоррекция — подокно «Color grading»: выключатель кадра и баланс белого, в нём — части кадра (Color Grading в UE)
 	m_colorGradingProperties.setName( "Color grading" );
@@ -185,15 +213,19 @@ bool PostProcess::createExposureResources( float initialEV100, float exposureCom
 PostProcess::Settings PostProcess::settings()
 {
 	Settings settings;
-	settings.meteringMode = static_cast<MeteringMode>( std::clamp( m_properties[meteringModeProperty].data<int32_t>(), 0, 1 ) );
-	readSettingProperties( m_properties, postProcessSchema(), settings );
+	PropertyContainer& exposure = m_parts[exposurePart];
+	settings.meteringMode = static_cast<MeteringMode>( std::clamp( exposure[meteringModeProperty].data<int32_t>(), 0, 1 ) );
+	// Подокна — каждое по своей группе: короткие имена полей («Intensity») в разных подокнах совпадают
+	for( size_t i = 0; i < std::size( postProcessParts ); ++i )
+		readSettingProperties( m_parts[i], postProcessSchema(), settings, postProcessParts[i].group );
+	readSettingProperties( exposure, postProcessSchema(), settings, exposureAdaptationGroup );
 	// Подокна цветокоррекции: имена полей в частях кадра совпадают — каждое по своей группе
 	readSettingProperties( m_colorGradingProperties, postProcessSchema(), settings, "colorGrading" );
 	for( size_t i = 0; i < std::size( colorGradingParts ); ++i )
 		readSettingProperties( m_colorGradingParts[i], postProcessSchema(), settings, colorGradingParts[i].group );
 	// Ключ, сдвинутый в GUI за соседний, встаёт на своё место
 	for( const std::string& name : m_curveKeyNames )
-		settings.exposureCompensationCurve.push_back( m_properties[name].data<XMFLOAT2>() );
+		settings.exposureCompensationCurve.push_back( exposure[name].data<XMFLOAT2>() );
 	std::sort( settings.exposureCompensationCurve.begin(), settings.exposureCompensationCurve.end(),
 			   []( const XMFLOAT2& a, const XMFLOAT2& b ) { return a.x < b.x; } );
 	settings.tonemapper = static_cast<Tonemapper>( std::clamp( m_properties[tonemapperProperty].data<int32_t>(), 0, 2 ) );
@@ -202,12 +234,13 @@ PostProcess::Settings PostProcess::settings()
 
 void PostProcess::apply( const Settings& settings )
 {
-	m_properties[meteringModeProperty].setData( static_cast<int32_t>( settings.meteringMode ) );
+	PropertyContainer& exposure = m_parts[exposurePart];
+	exposure[meteringModeProperty].setData( static_cast<int32_t>( settings.meteringMode ) );
 	m_properties[tonemapperProperty].setData( static_cast<int32_t>( settings.tonemapper ) );
-	// Имена полей частей цветокоррекции совпадают — у каждого подокна свои группы
-	writeSettingProperties( m_properties, postProcessSchema(), settings, "" );
-	writeSettingProperties( m_properties, postProcessSchema(), settings, "exposure" );
-	writeSettingProperties( m_properties, postProcessSchema(), settings, "bloom" );
+	// Имена полей в подокнах совпадают — у каждого подокна свои группы
+	for( size_t i = 0; i < std::size( postProcessParts ); ++i )
+		writeSettingProperties( m_parts[i], postProcessSchema(), settings, postProcessParts[i].group );
+	writeSettingProperties( exposure, postProcessSchema(), settings, exposureAdaptationGroup );
 	writeSettingProperties( m_colorGradingProperties, postProcessSchema(), settings, "colorGrading" );
 	for( size_t i = 0; i < std::size( colorGradingParts ); ++i )
 		writeSettingProperties( m_colorGradingParts[i], postProcessSchema(), settings, colorGradingParts[i].group );
@@ -217,7 +250,7 @@ void PostProcess::apply( const Settings& settings )
 		LOG( "Post process: the preset has " + std::to_string( curve.size() ) + " compensation curve keys, the window " +
 			 std::to_string( m_curveKeyNames.size() ) + " (restart to show them all)" );
 	for( size_t i = 0; i < m_curveKeyNames.size() && !curve.empty(); ++i )
-		m_properties[m_curveKeyNames[i]].setData( curve[std::min( i, curve.size() - 1 )] );
+		exposure[m_curveKeyNames[i]].setData( curve[std::min( i, curve.size() - 1 )] );
 }
 
 void PostProcess::bindExposure()
@@ -321,7 +354,7 @@ void PostProcess::render( const ShaderView& sceneColor, const ShaderView& sceneD
 	params.purkinjeShift = std::clamp( current.purkinjeShift, 0.0f, 1.0f );
 	params.starScale = stars ? current.starIntensity : 0.0f;
 	params.starOpacity = std::clamp( current.starOpacity, 0.0f, 1.0f );
-	params.showShafts = shaftVisibility > 0.0f && m_properties["Show light shafts"].data<bool>() ? 1.0f : 0.0f;
+	params.showShafts = shaftVisibility > 0.0f && m_parts[lightShaftPart][showLightShaftsProperty].data<bool>() ? 1.0f : 0.0f;
 	const float shaftScale = std::max( current.lightShaftIntensity, 0.0f ) * shaftVisibility;
 	params.shaftColor = XMFLOAT3( current.lightShaftTint.x * shaftScale, current.lightShaftTint.y * shaftScale,
 								  current.lightShaftTint.z * shaftScale );
@@ -540,6 +573,19 @@ void PostProcess::drawPass( const char* name, FullscreenShader& shader, const Re
 PropertyContainer* PostProcess::properties()
 {
 	return &m_properties;
+}
+
+PropertyContainer* PostProcess::part( const char* name )
+{
+	for( size_t i = 0; i < std::size( postProcessParts ); ++i )
+		if( std::strcmp( postProcessParts[i].name, name ) == 0 )
+			return &m_parts[i];
+	return nullptr;
+}
+
+bool PostProcess::showAmbientOcclusion() const
+{
+	return m_parts[ambientOcclusionPart][showAmbientOcclusionProperty].data<bool>();
 }
 
 }

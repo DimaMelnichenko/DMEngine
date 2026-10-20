@@ -544,6 +544,11 @@ PropertyContainer* Renderer::postProcessProperties()
 	return m_postProcess.properties();
 }
 
+PropertyContainer* Renderer::postProcessPart( const char* name )
+{
+	return m_postProcess.part( name );
+}
+
 PropertyContainer* Renderer::shadowProperties()
 {
 	return m_shadows.properties();
@@ -581,8 +586,7 @@ void Renderer::preparePipeline( Scene& scene, const FrameContext& frame, bool de
 	frameParameters.deltaTime = frame.elapsedTime / 1000.0f;
 	scene.frameConstants( frame.view, frameParameters );
 	// Затенение окружением — по настройкам постобработки (сила, радиус) и её отладочному виду
-	m_ambientOcclusion.setSettings( m_postProcess.settings().ambientOcclusion,
-									( *m_postProcess.properties() )["Show ambient occlusion"].data<bool>() );
+	m_ambientOcclusion.setSettings( m_postProcess.settings().ambientOcclusion, m_postProcess.showAmbientOcclusion() );
 	const RenderFrame renderFrame{ frame.view, m_postProcess.ev100(), depthPrepass };
 	for( RenderFeature* feature : m_features )
 		feature->beginFrame( renderFrame, frameParameters );

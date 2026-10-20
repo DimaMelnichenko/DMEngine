@@ -61,6 +61,8 @@ public:
 	// Окна постобработки и теней — для отладочных видов (View → Debug views); properties — окно «Renderer»: проходы кадра
 	// («Depth prepass»)
 	PropertyContainer* postProcessProperties();
+	// Подокно окна «Post process» по имени («Ambient occlusion», «Light shafts»): отладочные виды меню View
+	PropertyContainer* postProcessPart( const char* name );
 	PropertyContainer* shadowProperties();
 	PropertyContainer* properties();
 	// Текущие настройки постобработки и тумана — для сохранения уровня

@@ -278,8 +278,8 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	debugView( "Water on terrain", m_scene.terrain().properties(), "Show water" );
 	debugView( "Wind field", m_scene.terrain().properties(), "Show wind" );
 	debugView( "Shadow cascades", m_renderer.shadowProperties(), "Show cascades" );
-	debugView( "Ambient occlusion", m_renderer.postProcessProperties(), "Show ambient occlusion" );
-	debugView( "Light shafts", m_renderer.postProcessProperties(), "Show light shafts" );
+	debugView( "Ambient occlusion", m_renderer.postProcessPart( "Ambient occlusion" ), "Show ambient occlusion" );
+	debugView( "Light shafts", m_renderer.postProcessPart( "Light shafts" ), "Show light shafts" );
 	debugView( "Collision", m_scene.worldEntities().properties(), "Show collision" );
 	debugView( "Skeleton", m_scene.worldEntities().properties(), "Show skeleton" );
 	debugView( "Sound sources", m_audio.properties(), "Show sources" );

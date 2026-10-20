@@ -214,7 +214,12 @@ UE): в окне — четыре числа подряд, `Saturation = 1,1,1,1
 | `color_correction_highlights_min`, `color_correction_highlights_max` | яркость | 0,5, 1 | полоса, в которой цвет становится светом |
 
 То же меняется на лету в GUI: окно свойств → «Post process» (I — курсор); кнопка «Save level» записывает
-значения в строку уровня (нет строки — создаёт её и привязывает к уровню).
+значения в строку уровня (нет строки — создаёт её и привязывает к уровню). Окно — подокна по эффектам, как разделы Post
+Process Volume в UE (`PostProcess::m_parts`, группы описания полей `postProcessSchema`): сверху «Tonemapper», ниже
+разворачиваются «Exposure» (режим, ручная экспозиция и поправка, ключи кривой, пределы и адаптация), «Bloom», «Star
+streaks», «Light shafts» (и отладочный «Show light shafts»), «Night vision» («Purkinje shift»), «Ambient occlusion» (и
+«Show ambient occlusion»), «Color grading». Имена внутри подокна — короткие: путь `set` — `Post process/Bloom/Intensity`,
+`Post process/Light shafts/Decay`, `Post process/Exposure/Metering mode` (до 2026-10-20 — плоско: «Bloom intensity»).
 
 **Тонмапперы:**
 

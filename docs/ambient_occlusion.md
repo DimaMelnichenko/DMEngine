@@ -40,13 +40,14 @@
 ## Настройки
 
 Как Ambient Occlusion в Post Process Volume UE — колонки строки `PostProcessSettings` уровня ([postprocess.md](postprocess.md)),
-окно «Post process», «Save level»; NULL — значения по умолчанию.
+окно «Post process», подокно «Ambient occlusion» (`set "Post process/Ambient occlusion/Intensity" 0`), «Save level»; NULL —
+значения по умолчанию.
 
 | Колонка | Свойство | По умолчанию | Что это |
 |---|---|---|---|
-| `ambient_occlusion_intensity` | Ambient occlusion intensity | 1 | насколько затенение гасит свет неба, 0…1; 0 — без затенения и без расчёта |
-| `ambient_occlusion_radius` | Ambient occlusion radius (m) | 1 | на каком расстоянии от точки поверхность её заслоняет |
-| `ambient_occlusion_power` | Ambient occlusion power | 1,5 | видимость^power: сильнее в щелях, слабее на открытом |
+| `ambient_occlusion_intensity` | Intensity | 1 | насколько затенение гасит свет неба, 0…1; 0 — без затенения и без расчёта |
+| `ambient_occlusion_radius` | Radius (m) | 1 | на каком расстоянии от точки поверхность её заслоняет |
+| `ambient_occlusion_power` | Power | 1,5 | видимость^power: сильнее в щелях, слабее на открытом |
 
 Отладка: View → Debug views → «Ambient occlusion» (свойство «Show ambient occlusion» окна «Post process», не
 сохраняется) — кадр показывает само затенение серым (0,5 — открыто), как Show → Visualize → Ambient Occlusion в UE.
