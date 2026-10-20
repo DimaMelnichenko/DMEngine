@@ -30,6 +30,10 @@ constexpr double speedSpan = 2.0;
 // Ступени русла: уклон участка — по дну на столько метров вверх и вниз по сети; длина уступа (стенки) вдоль течения, м
 constexpr double stepSlopeSpan = 5.0;
 constexpr double stepFace = 0.3;
+// Излом оси ручья при генерации: поворот круче, градусы, разглаживается (шагами сглаживания, не больше foldPasses); у
+// плавных извилин поворот между узлами в клетку — до 20–30°
+constexpr double foldMaxTurn = 60.0;
+constexpr int foldPasses = 60;
 // Валуны русла — только где дно не уже, м: в узком ручье у родника крупный камень загораживает русло
 constexpr double boulderMinBedWidth = 1.5;
 // Берег озера в детальных плитках (lakeShare): полоса по обе стороны изолинии, где земля подводится к профилю отмели, м;
@@ -980,8 +984,8 @@ std::string TerrainHydrology::generationKey( const HeightField& field, const Wat
 	// без прямых по сетке (flowDirections: Barnes 2014 на ровных местах, D8-LTD на склонах); v5 — размах извилин по зазору
 	// до чужого ручья (русла не пересекаются); v6 — соседние ветви в клетку-две сливаются (русла не ложатся одно на другое);
 	// v7 — ось спускается поперёк течения к дну ложбины (не режет её борт); v8 — исток из озера на месте, у берега (как
-	// родник: без сглаживания, спуска ко дну и извилин)
-	const char version[] = "streams-v8";
+	// родник: без сглаживания, спуска ко дну и извилин); v9 — без изломов оси (отростки и складки после сдвигов поперёк)
+	const char version[] = "streams-v9";
 	key.add( version, sizeof( version ) );
 	key.add( field.size );
 	key.add( field.texelSize );
@@ -1256,6 +1260,38 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 			shifted[k].y = position[k].y + tx * offset;
 		}
 		position = std::move( shifted );
+	}
+
+	// Без изломов: спуск ко дну ложбины и извилины сдвигают узлы поперёк течения каждый по своей касательной, и у соседей
+	// сдвиги бывали в разные стороны — ось складывалась назад отростком (у 604,130: на 1,3 м вбок и обратно, «два потока
+	// текут друг в друга» — Dimok, 2026-10-20; на Test — 57 поворотов круче 90°), а врез под ней выходил чашей. Узел, где ось
+	// поворачивает круче maxTurn, — шагом сглаживания к соседям, пока изломов нет; плавные извилины (повороты в разы меньше)
+	// не трогаются
+	{
+		const double maxTurnCos = std::cos( foldMaxTurn * pi / 180.0 );
+		for( int pass = 0; pass < foldPasses; ++pass )
+		{
+			std::vector<Point> relaxed = position;
+			int remaining = 0;
+			for( int k = 0; k < count; ++k )
+			{
+				if( fixedNode( k ) || dr.lake[stream[k]] )
+					continue;
+				const Point& a = position[up[k]];
+				const Point& b = position[k];
+				const Point& c = position[down[k]];
+				const double ax = b.x - a.x, ay = b.y - a.y, bx = c.x - b.x, by = c.y - b.y;
+				const double la = std::hypot( ax, ay ), lb = std::hypot( bx, by );
+				if( la > 1e-6 && lb > 1e-6 && ( ax * bx + ay * by ) / ( la * lb ) >= maxTurnCos )
+					continue;
+				relaxed[k].x = 0.25 * a.x + 0.5 * b.x + 0.25 * c.x;
+				relaxed[k].y = 0.25 * a.y + 0.5 * b.y + 0.25 * c.y;
+				++remaining;
+			}
+			position = std::move( relaxed );
+			if( remaining == 0 )
+				break;
+		}
 	}
 
 	// Кривые — цепочки узлов от истока (или первого узла ниже озера) до слияния (узел главного — последняя точка), озера
