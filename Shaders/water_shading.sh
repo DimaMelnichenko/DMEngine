@@ -25,8 +25,8 @@
 #include "bindless.sh"
 
 DM_SRV( Texture2D<float4>, g_ripple, 1 );	// карта ряби (WaterRipples): наклон крупной и мелкой октавы узора по U и V
-DM_SRV( Texture2D<float4>, g_foam, 4 );		// пена (g_foamTextureRepeat > 0): R — маска 0…1, GB — нормаль по ней (0,5 + 0,5 · n),
-												// A — шум растворения 0…1
+DM_SRV( Texture2D<float4>, g_foam, 4 );		// узор пены — кружево (WaterFoamLace): R — маска 0…1, GB — нормаль по ней
+												// (0,5 + 0,5 · n), A — шум растворения 0…1
 DM_SRV( Texture2D<float>, g_sceneDepth, SLOT_SCENE_DEPTH );
 DM_SRV( Texture2D<float4>, g_sceneColor, SLOT_SCENE_COLOR );
 // Экранное отражение (ScreenSpaceReflections): uv попадания луча от поверхности без ряби, вес, доля пути луча в глубине
@@ -51,13 +51,9 @@ static const float rippleOnsetFull = 0.15f;
 // Ветровая рябь мельче повтора g_rippleScale во столько раз и бежит по ветру с этой скоростью
 static const float calmOctave = 2.0f;
 static const float calmSpeed = 0.5f;			// м/с
-// Узор пены — наклон крупной октавы по U (разброс 1/√2) втрое мельче ряби, приведённый к разбросу 0,43 доли пены
-static const float foamFrequency = 3.0f;
-static const float foamPatternScale = 0.43f * 1.41421356f;
-// Пена из текстуры: крутизна её нормали и белизна тонкой пены (толстая — foamAlbedo); край узора по ряби
+// Узор пены: крутизна его нормали и белизна тонкой пены (толстая — foamAlbedo)
 static const float foamBump = 1.0f;
 static const float foamThinShade = 0.7f;
-static const float foamPatternSoftness = 0.2f;
 // Плитки ряби в детальной воде у русел — две ячейки её сетки: течение там мельче метра (обход камня, профиль поперёк
 // русла), а ячейка 0,25 м меньше волны ряби (~20 см) — узор рассыпался бы. У края набора детальных плиток рябь переходит
 // в плитки 1 м на этой полосе — без шва
@@ -425,19 +421,11 @@ void addRipple( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 
 		standing += weight * standingWaves( tiles, xz, surface, standingScale, dX, dY );
 	[branch] if( foam && foamWeight > 0.0f )
 	{
-		[branch] if( g_foamTextureRepeat > 0.0f )
-		{
-			float2 slope;
-			float dissolve;
-			foamNoise += foamWeight * foamTexturePattern( tiles, xz, surface, dX, dY, slope, dissolve );
-			foamSlope += foamWeight * slope;
-			foamDissolve += foamWeight * ( dissolve - 0.5f );
-		}
-		else
-		{
-			flowRipple( tiles, xz, surface, foamFrequency, dX, dY, pattern );
-			foamNoise += foamWeight * pattern;
-		}
+		float2 slope;
+		float dissolve;
+		foamNoise += foamWeight * foamTexturePattern( tiles, xz, surface, dX, dY, slope, dissolve );
+		foamSlope += foamWeight * slope;
+		foamDissolve += foamWeight * ( dissolve - 0.5f );
 	}
 }
 
@@ -560,7 +548,7 @@ float4 shadeWater( WaterShading input )
 		// на √Σw², как у плиток. Узор пены в окне у камеры — по его течению (nearFoamPattern), к краю окна — плиток
 		const float w = input.detailRipple;
 		const bool needFoam = foamAmount > 0.0f;
-		const float n = needFoam && g_foamTextureRepeat > 0.0f ? input.nearPattern : 0.0f;
+		const float n = needFoam ? input.nearPattern : 0.0f;
 		float foamNoise = 0.0f;
 		[branch] if( w > 0.0f )
 			addRipple( detailRippleTiles( input.worldPosition.xz, input.velocity, input.detailTexel ), input.worldPosition.xz, surfaceStretch,
@@ -583,18 +571,15 @@ float4 shadeWater( WaterShading input )
 		flow.xy += standing * normalization * standingStrength;
 		[branch] if( needFoam )
 		{
-			// Текстура: маска — толщина пены, край шире (тонкие нити полупрозрачны), тонкая пена сероватее
-			const bool textured = g_foamTextureRepeat > 0.0f;
-			const float pattern = textured ? 0.5f + foamNoise * foamNormalization : 0.5f + 0.5f * foamPatternScale * foamNoise * foamNormalization;
+			// Маска узора — толщина пены, край шире (тонкие нити полупрозрачны), тонкая пена сероватее
+			const float pattern = 0.5f + foamNoise * foamNormalization;
 			foamSlope *= foamNormalization;
-			if( textured )
-				foamShade = lerp( foamThinShade, 1.0f, saturate( pattern ) );
-			// Растворение у края: порог сдвинут шумом из текстуры (он плывёт с пеной) — где доля пены сходит на нет, пена тает
-			// кусками на разных расстояниях, а не по линии
-			const float threshold = 1.0f - foamAmount + ( textured ? g_foamDissolve * foamDissolve * foamNormalization : 0.0f );
+			foamShade = lerp( foamThinShade, 1.0f, saturate( pattern ) );
+			// Растворение у края: порог сдвинут шумом узора (он плывёт с пеной) — где доля пены сходит на нет, пена тает кусками
+			// на разных расстояниях, а не по линии
+			const float threshold = 1.0f - foamAmount + g_foamDissolve * foamDissolve * foamNormalization;
 			// На тонкой воде пена реже и прозрачнее: в пару сантиметров ей не на чем держаться
-			const float softness = textured ? g_foamSoftness : foamPatternSoftness;
-			foam = smoothstep( threshold, threshold + softness, pattern ) * foamAmount * saturate( input.depth / 0.05f );
+			foam = smoothstep( threshold, threshold + g_foamSoftness, pattern ) * foamAmount * saturate( input.depth / 0.05f );
 		}
 	}
 	// Ветровая рябь — пятнами порывов поля ветра («кошачьи лапы» бегут по воде); в штиль (сила 0: флажок ветра, -nowind)

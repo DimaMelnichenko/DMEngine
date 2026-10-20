@@ -171,6 +171,7 @@ add_library(DMCore STATIC
     src/Engine/Graphics/Scene/Terrain/TerrainHydrology.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainCanopy.cpp
     src/Engine/Graphics/Scene/Water/StoneTop.cpp
+    src/Engine/Graphics/Scene/Water/FoamLace.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Audio/AudioMixer.cpp
     src/Engine/Audio/AudioSynth.cpp
@@ -266,6 +267,7 @@ add_executable(DMEngine WIN32
     src/Engine/Graphics/Scene/Water/WaterSurface.cpp
     src/Engine/Graphics/Scene/Water/StreamCurves.cpp
     src/Engine/Graphics/Scene/Water/WaterRipples.cpp
+    src/Engine/Graphics/Scene/Water/WaterFoamLace.cpp
     src/Engine/Graphics/ShaderProgram.cpp
     src/Engine/Graphics/Scene/Materials/TextureMaterial.cpp
     src/Engine/Graphics/D3D/DMStructuredBuffer.cpp

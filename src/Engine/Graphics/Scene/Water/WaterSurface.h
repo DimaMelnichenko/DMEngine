@@ -84,6 +84,8 @@ private:
 	Buffer m_surfaceBuffer;			// SurfaceParameters
 	Texture m_ripple;				// карта ряби (WaterRipples)
 	ShaderView m_rippleView;
+	Texture m_foamLace;				// узор пены — кружево (WaterFoamLace)
+	ShaderView m_foamLaceView;
 };
 
 }

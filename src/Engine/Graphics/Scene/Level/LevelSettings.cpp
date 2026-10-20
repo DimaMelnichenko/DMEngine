@@ -789,8 +789,8 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		{ "foam_still_lifetime", "Foam still lifetime", DM_SETTING( foamStillLifetime ), 0.1f, 120.0f, "s",
 		  "In still and slow water foam lasts longer: rafts of foam drift into pools, backwaters and lakes", 0, "surface" },
 		{ "foam_texture_repeat", "Foam texture repeat", DM_SETTING( foamTextureRepeat ), 0.1f, 4.0f, "m",
-		  "The foam texture (Textures: water_foam) repeats every so many metres across the flow; along it the pattern is longer, "
-		  "like the ripple", 0, "surface" },
+		  "The foam lace pattern repeats every so many metres across the flow; along it the pattern is longer, like the ripple",
+		  0, "surface" },
 		{ "foam_softness", "Foam softness", DM_SETTING( foamSoftness ), 0.05f, 1.0f, "",
 		  "Width of the foam texture edge: thin foam strands are translucent", 0, "surface" },
 		{ "foam_dissolve", "Foam dissolve", DM_SETTING( foamDissolve ), 0.0f, 1.0f, "",

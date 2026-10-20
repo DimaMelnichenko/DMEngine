@@ -5,7 +5,7 @@
 #include "Shaders\slots.h"
 #include "Logger\Logger.h"
 #include "WaterRipples.h"
-#include "Assets.h"
+#include "WaterFoamLace.h"
 
 namespace GS
 {
@@ -16,7 +16,7 @@ namespace
 constexpr float visibleDepth = WaterField::visibleDepth;
 constexpr uint32_t tileCells = 32;				// WATER_TILE в water_surface.cs / water_surface.sh
 constexpr uint32_t rippleSize = 256;			// текселей карты ряби по стороне (WaterRipples)
-constexpr const char* foamTextureName = "water_foam";	// текстура пены в Textures (Tools/pack_water_foam.py)
+constexpr uint32_t foamLaceSize = 512;			// текселей узора пены по стороне (WaterFoamLace)
 
 }
 
@@ -38,6 +38,12 @@ bool WaterSurface::initialize( WaterField& field )
 		return false;
 	}
 	d3d.setName( m_ripple, "Water ripple" );
+	if( !WaterFoamLace::create( foamLaceSize, m_foamLace, m_foamLaceView ) )
+	{
+		LOG( "Failed to create the water foam lace texture" );
+		return false;
+	}
+	d3d.setName( m_foamLace, "Water foam lace" );
 
 	TextureDesc levelDesc;
 	levelDesc.width = m_field->size;
@@ -226,9 +232,8 @@ void WaterSurface::updateParameters( const WaterSimulationSettings& settings, co
 	params.terrainHeightMultiplier = height.heightMultiplier;
 	params.terrainHeightOffset = height.heightOffset;
 	params.terrainDetailTile = height.detailTileSize;
-	// Пена из текстуры (строка water_foam в Textures, Tools/pack_water_foam.py); нет её — узор пены по ряби
-	const bool foamTexture = Assets::textures().exists( foamTextureName );
-	params.foamTextureRepeat = foamTexture ? std::max( current.foamTextureRepeat, 0.05f ) : 0.0f;
+	// Узор пены — кружево (WaterFoamLace)
+	params.foamTextureRepeat = std::max( current.foamTextureRepeat, 0.05f );
 	params.foamSoftness = std::max( current.foamSoftness, 0.01f );
 	params.foamDissolve = std::max( current.foamDissolve, 0.0f );
 	params.standingWaves = std::max( current.standingWaves, 0.0f );
@@ -277,7 +282,6 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	DMD3D& d3d = DMD3D::instance();
 	const TerrainHeight height = m_field->terrain->terrainHeight();
 	updateParameters( settings, water, foam );
-	const bool foamTexture = Assets::textures().exists( foamTextureName );
 
 	ScopedRenderState state( context.frameRaster );
 	d3d.setVertexBuffer( m_tileMesh.vertexBuffer(), sizeof( DirectX::XMFLOAT3 ) );
@@ -289,8 +293,7 @@ void WaterSurface::render( const RenderContext& context, const WaterSimulationSe
 	d3d.setSRV( 2, water.stoneDragView() );
 	if( height.heightMap )
 		d3d.setSRV( 3, *height.heightMap );
-	if( foamTexture )
-		d3d.setSRV( 4, Assets::textures().get( foamTextureName )->srv() );
+	d3d.setSRV( 4, m_foamLaceView );
 	if( foam.ready() )
 	{
 		d3d.setSRV( 5, foam.coarseView() );
