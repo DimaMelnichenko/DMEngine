@@ -35,6 +35,10 @@ DM_STRUCT( TerrainLayerConstants )
 	DM_MEMBER( uint, forestFloorReplaced );		// биты слоёв, чей вес под кронами уходит подстилке: травы
 	DM_MEMBER( float, forestFloorEdge );		// рваный край подстилки: сдвиг выборки полога шумом, м («Forest floor edge»)
 	DM_MEMBER( float, padding );
+	DM_MEMBER( int, forestMossLayer );			// слой роли forest_moss; −1 — нет
+	DM_MEMBER( uint, forestFloorWet );			// биты слоёв, чей вес — «влажно» (влажная трава): там мха больше
+	DM_MEMBER( float, forestMoss );				// доля подстилки, которая уходит мху на влажном («Forest moss»)
+	DM_MEMBER( float, forestMossDry );			// на сухом — эта доля от неё («Forest moss on dry»)
 };
 DM_STRUCT_END
 

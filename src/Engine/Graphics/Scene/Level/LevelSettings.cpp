@@ -434,6 +434,11 @@ const SettingsSchema<TerrainSettings>& terrainSchema()
 		  "(0 - grass under the trees as in the open)" },
 		{ "forest_floor_edge", "Forest floor edge", DM_SETTING( forestFloorEdge ), 0.0f, 4.0f, "m",
 		  "How far the noise moves the edge of the forest floor from the crown circle: a ragged edge instead of a disc" },
+		{ "forest_moss", "Forest moss", DM_SETTING( forestMoss ), 0.0f, 0.8f, "",
+		  "Share of the forest floor that goes to the forest_moss layer where the ground is wet (where wet grass would grow); "
+		  "the moss shows in patches by its layer height (above 0.8 the gaps between the patches lose the floor)", settingClamp },
+		{ "forest_moss_dry", "Forest moss on dry", DM_SETTING( forestMossDry ), 0.0f, 1.0f, "",
+		  "Moss on dry ground: this share of Forest moss (1 - as much as on wet ground)" },
 		// Дисплейсмент у камеры (сетка — «Finest mesh»): полный ближе начала полосы, к концу сходит на нет
 		{ "displacement_start,displacement_end", "Displacement distance", DM_SETTING( displacement ), 0.0f, 64.0f, "m",
 		  "Displacement by the layer heights: full nearer than the start, fades out to the end (end 0 - off); the terrain mesh "

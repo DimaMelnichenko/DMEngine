@@ -31,6 +31,9 @@ enum class TerrainLayerRole : uint32_t
 	// Подстилка под кронами (не правила, а полог — TerrainCanopy): в шейдере по карте полога забирает вес у трав
 	// (terrain_layers.sh, applyForestFloor; сила — «Forest floor» окна террейна)
 	forestFloor,	// forest_floor
+	// Мох на подстилке: часть веса подстилки, больше на влажном (applyForestFloor; «Forest moss»); пятна — альфой текстуры в
+	// высоте слоя (pack_terrain_layer.py --coverage-from-alpha)
+	forestMoss,		// forest_moss
 	count
 };
 constexpr uint32_t terrainLayerRoleCount = static_cast<uint32_t>( TerrainLayerRole::count );

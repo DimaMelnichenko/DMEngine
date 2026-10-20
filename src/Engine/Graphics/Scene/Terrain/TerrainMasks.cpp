@@ -166,7 +166,8 @@ bool saveImage( const ScratchImage& image, const std::string& path )
 }
 
 constexpr const char* roleNames[terrainLayerRoleCount] = { "grass_dry", "talus", "rock", "snow", "grass_wet", "channel_bed",
-															  "lake_gravel", "lake_silt", "forest_floor" };
+															  "lake_gravel", "lake_silt", "forest_floor",
+															  "forest_moss" };
 
 }
 

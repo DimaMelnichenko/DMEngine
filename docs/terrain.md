@@ -80,10 +80,12 @@
 | 6 — дресва (отмель нижних озёр, дно медленных ручьёв) | `ground_gravel_coarse_02` | 2 | Megascans (Fab) Desert Western Ground Gravel Coarse 02, `DownloadResources/Desert_Western_Ground_Gravel_Coarse_02-5a980794/` (красноватый песчаник Юты: множитель альбедо 0,8 / 1,05 / 1,25) |
 | 7 — ил (глубже в нижних озёрах) | `soil_mud` | 2 | Megascans (Fab) Soil Mud, `DownloadResources/Soil_Mud-594f71d6/` |
 | 8 — лесная подстилка (под кронами) | `forrest_ground_01` | 2 | Poly Haven (CC0), картами — `DownloadResources/forrest_ground_01/` |
+| 9 — мох на подстилке (пятнами) | `moss_patches` | 2 | Megascans (Fab) Tileable Moss Patches — декаль с прозрачностью, `DownloadResources/Tileable_Moss_Patches-a9a94514/` |
 
 Две травы лежат вперемешку крупными пятнами (см. «Слои и маски по рельефу»), чтобы луг издалека не был одного тона.
 Слоёв 6 и 7 тоже нет в правилах: роли `lake_gravel` и `lake_silt` — наносы на дне («Наносы на дне» ниже). Слоя 8 —
-тоже: роль `forest_floor` — подстилка под кронами по карте полога («Подстилка под кронами» ниже).
+тоже: роль `forest_floor` — подстилка под кронами по карте полога («Подстилка под кронами» ниже); слоя 9 — роль
+`forest_moss`, мох на подстилке там же.
 Слоя 5 нет в правилах слоёв: у него роль `channel_bed` — им дно и борта русел и дно озёр красят русла конвейера (и по
 врезу у русел — детальный слой весов), а ручные правки рельефа — своим `paint_layer` («Правка рельефа»).
 Снег — `snow_packed12` (утоптанный); до него были `snow_02` (следы на снегу) и наст `crusted_snow2`. Архивы FreePBR
@@ -241,7 +243,17 @@ B --name forrest_ground_01 --albedo D/forrest_ground_01/forrest_ground_01_diff_2
   --normal D/forrest_ground_01/forrest_ground_01_nor_gl_2k.jpg --normal-convention gl
   --roughness D/forrest_ground_01/forrest_ground_01_arm_2k.jpg:g --ao D/forrest_ground_01/forrest_ground_01_arm_2k.jpg:r
   --height D/forrest_ground_01/forrest_ground_01_disp_2k.exr --layer 8 --tiling 2
+B --name moss_patches --albedo D/Tileable_Moss_Patches-a9a94514/gltf/high/Textures/T_sfdnqii_4K_B-O.png
+  --normal D/Tileable_Moss_Patches-a9a94514/gltf/high/Textures/T_sfdnqii_4K_N.png --normal-convention gl
+  --roughness D/Tileable_Moss_Patches-a9a94514/gltf/high/Textures/T_sfdnqii_4K_ORM.png:g
+  --ao D/Tileable_Moss_Patches-a9a94514/gltf/high/Textures/T_sfdnqii_4K_ORM.png:r
+  --height D/Tileable_Moss_Patches-a9a94514/gltf/high/Textures/T_sfdnqii_4K_H.png --coverage-from-alpha --layer 9 --tiling 2
 ```
+
+Декаль с прозрачностью (пятна мха, лишайника, листвы: у Megascans — карта `_B-O`, цвет и альфа) — `--coverage-from-alpha`:
+высота слоя × альфа (при смешивании по высоте слой виден пятнами, в дырах — соседний), цвет в дырах — цвет пятен по
+соседству (заливка pull-push со сглаживанием: без неё мипы темнеют от чёрного под нулевой альфой). Такой слой не должен
+забирать весь вес точки: в дырах тогда виден залитый цвет.
 
 Поверхности Megascans с Fab (папка `gltf/high` скачанного ассета) — те же отдельные файлы: `B` — цвет, `N` — нормаль
 OpenGL, `ORM` — R затенение, G шероховатость, B металличность, `H` — высота (только в 4K; `--size` по умолчанию сжимает
@@ -526,7 +538,7 @@ smoothstep; «от» больше «до» — убывание), правка �
 слою 0), строка в логе; нет `channel_bed` — русла не красятся, строка в логе. Роли `lake_gravel` и `lake_silt` (на
 `Test` — слои 6 и 7) правила тоже не красят: это наносы на дне под водой («Наносы на дне»); нет их — дно галечное.
 Роль `forest_floor` (слой 8) — тоже не правила: подстилку кладёт шейдер под кронами по карте полога («Подстилка под
-кронами»); нет её — под деревьями трава.
+кронами»); нет её — под деревьями трава. Роль `forest_moss` (слой 9) — мох, часть подстилки там же; нет её — мха нет.
 
 На `Test` (2026-10-17, решение Dimok — перезонирование под горы вокруг карты, [far_terrain.md](far_terrain.md)) снег, граница
 леса и стланик подняты выше гребней карты (~0,95 высоты): снег — 1,3–1,4, граница леса — 1,15–1,25, стланик — 1,2–1,35
@@ -607,6 +619,13 @@ Landscape, но маска — полог, а не правило по рель�
 |---|---|---|---|
 | «Forest floor» | `forest_floor` | 1 | доля полога, которая уходит подстилке; 0 — под деревьями трава, как на открытом |
 | «Forest floor edge» | `forest_floor_edge` | 1,5 м | на сколько шум сдвигает край подстилки от круга кроны |
+| «Forest moss» | `forest_moss` | 0,5 | доля подстилки, которая уходит мху (роль `forest_moss`) на влажном; не больше 0,8 — иначе в дырах между пятнами нет подстилки |
+| «Forest moss on dry» | `forest_moss_dry` | 0,3 | на сухом — эта доля от «Forest moss» |
+
+**Мох** — часть подстилки: «влажно» — там, где под кроной была бы влажная трава (вес роли `grass_wet` среди забранных
+трав, `forestFloorWet`: правило влажности TWI уже в весах, своей карты не нужно), сухо — сухая трава. Пятнами его делает
+высота слоя — альфа текстуры («Слой из фото-текстур», `--coverage-from-alpha`): при доле мха 0,3–0,6 в пятнах выше
+подстилки мох, в дырах — хвоя. Цена — в шуме замера (роща 4,64 мс, как без мха).
 
 Трава под кронами — не только фильтр: у травы и сухой травы `Test` в `layer_filter` есть и `forest_floor`, поэтому под
 кроной она не пропадает совсем, а редеет по `under_canopy` (0,15, [scatter.md](scatter.md)), цветы (`grass_dry,grass_wet`)

@@ -15,6 +15,9 @@
 #       --height DownloadResources/polyhaven/leafy_grass_disp_2k.exr --layer 0 --tiling 2
 # Шероховатость — «файл:канал» (r, g, b, a; по умолчанию r): у ARM Poly Haven — g. AO — так же (у ARM — r); карты нет —
 # --ao-from-height <перепад, м> --tiling <м>: горизонт по бесшовной карте высоты в радиусе --ao-radius. Размер — --size (2048).
+# Пятна с прозрачностью (декаль Megascans «Moss Patches»: цвет и альфа в _B-O) — --coverage-from-alpha: высота × альфа
+# (при смешивании по высоте слой виден только пятнами, в дырах — соседний слой), цвет в дырах — цвет пятен по соседству
+# (заливка pull-push: без неё мипы темнеют к краю пятна от чёрного под нулевой альфой).
 import argparse
 import os
 import sqlite3
@@ -59,6 +62,25 @@ def load(path, size):
     image.pixels.foreach_get(pixels)
     bpy.data.images.remove(image)
     return pixels.reshape(height, width, 4)[::-1]   # у Blender строки снизу вверх
+
+
+def fill_holes(rgb, alpha):
+    """Цвет под нулевой альфой — средний цвет покрытого вокруг (pull-push: сумма с весом альфы по уровням вниз, затем
+    вверх — где у уровня нет веса, цвет родителя); покрытое остаётся, край смешивается по альфе"""
+    levels = [(rgb * alpha[..., None], alpha.copy())]
+    while levels[-1][1].shape[0] > 1:
+        c, w = levels[-1]
+        h, wd = c.shape[0] // 2, c.shape[1] // 2
+        levels.append((c.reshape(h, 2, wd, 2, 3).sum(axis=(1, 3)), w.reshape(h, 2, wd, 2).sum(axis=(1, 3))))
+    c, w = levels[-1]
+    fill = c / np.maximum(w, 1e-6)[..., None]
+    for c, w in reversed(levels[:-1]):
+        parent = np.repeat(np.repeat(fill, 2, axis=0), 2, axis=1)
+        # Сгладить повтор (иначе в дырах — квадраты родительских текселей): среднее 3 × 3 по кругу (текстура бесшовная)
+        parent = sum(np.roll(parent, (dy, dx), axis=(0, 1)) for dy in (-1, 0, 1) for dx in (-1, 0, 1)) / 9.0
+        own = c / np.maximum(w, 1e-6)[..., None]
+        fill = np.where((w > 1e-6)[..., None], own, parent)
+    return rgb * alpha[..., None] + fill * (1.0 - alpha[..., None])
 
 
 def split_channel(spec, default):
@@ -130,6 +152,8 @@ def main():
     parser.add_argument('--ao-from-height', type=float, metavar='RELIEF',
                         help='no AO map: AO from the height map, RELIEF - metres of its full range (needs --tiling)')
     parser.add_argument('--ao-radius', type=float, default=0.15, help='horizon search radius for --ao-from-height, m')
+    parser.add_argument('--coverage-from-alpha', action='store_true',
+                        help='the albedo alpha is coverage (patches): height x alpha, holes filled with the patch colour')
     parser.add_argument('--size', type=int, default=2048)
     parser.add_argument('--layer', type=int, choices=range(12), help='TerrainLayers.layer to update (0..11)')
     parser.add_argument('--tiling', type=float, help='meters per texture repeat for --layer')
@@ -140,13 +164,19 @@ def main():
     if args.ao_from_height and not args.tiling:
         raise SystemExit('error: --ao-from-height needs --tiling (metres per texture repeat)')
 
-    albedo = load(args.albedo, args.size)[..., :3]
+    albedo_rgba = load(args.albedo, args.size)
+    albedo = albedo_rgba[..., :3]
     normal = load(args.normal, args.size)[..., :3].copy()
     if args.normal_convention == 'gl':
         normal[..., 1] = 1.0 - normal[..., 1]
     roughness_file, roughness_channel = split_channel(args.roughness, 0)
     roughness = load(roughness_file, args.size)[..., roughness_channel]
     height = normalized_height(load(args.height, args.size)[..., 0])
+    if args.coverage_from_alpha:
+        coverage = np.clip(albedo_rgba[..., 3], 0.0, 1.0)
+        print('coverage mean %.3f' % float(coverage.mean()))
+        height = height * coverage
+        albedo = fill_holes(albedo, coverage)
     if args.ao:
         ao_file, ao_channel = split_channel(args.ao, 0)
         occlusion = load(ao_file, args.size)[..., ao_channel]

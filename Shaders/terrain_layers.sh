@@ -167,8 +167,9 @@ float terrainBrightness( float2 worldXZ )
 // Подстилка под кронами деревьев (как слой земли по маске в материале UE Landscape, но маска — полог, TerrainCanopy):
 // полог × «Forest floor» переносит вес трав (forestFloorReplaced) в слой подстилки, скала, осыпи, снег и дно остаются.
 // Край — не круг кроны: выборка полога сдвинута шумом мира (тексели по 2 и 0,5 м) на «Forest floor edge», мелкое — смешивание
-// по высоте. Последний шаг весов и у пикселя террейна, и у тех, кто читает землю: фильтр слоёв и цвет земли у растений,
-// дисплейсмент
+// по высоте. Часть подстилки — мох (роль forest_moss, «Forest moss»): там, где под кроной была бы влажная трава, больше, на
+// сухом — «Forest moss on dry» от этого; пятнами его делает высота слоя (альфа текстуры). Последний шаг весов и у пикселя
+// террейна, и у тех, кто читает землю: фильтр слоёв и цвет земли у растений, дисплейсмент
 void applyForestFloor( float2 worldXZ, inout float weights[maxLayers] )
 {
 	const TerrainLayerConstants layers = terrainLayers();
@@ -188,15 +189,20 @@ void applyForestFloor( float2 worldXZ, inout float weights[maxLayers] )
 	[branch] if( share <= 0.0f )
 		return;
 	float moved = 0.0f;
+	float wet = 0.0f;
 	[unroll] for( uint layer = 0; layer < maxLayers; ++layer )
 	{
 		const float taken = ( ( layers.forestFloorReplaced >> layer ) & 1u ) != 0 ? weights[layer] * share : 0.0f;
 		weights[layer] -= taken;
 		moved += taken;
+		wet += ( ( layers.forestFloorWet >> layer ) & 1u ) != 0 ? taken : 0.0f;
 	}
+	const float moss = layers.forestMossLayer >= 0 ?
+					   saturate( layers.forestMoss * lerp( layers.forestMossDry, 1.0f, wet / max( moved, 1e-5f ) ) ) : 0.0f;
 	// Слой — сравнением в развёрнутом цикле: индекс локального массива по константе ушёл бы в память потока
 	[unroll] for( uint target = 0; target < maxLayers; ++target )
-		weights[target] += target == (uint)layers.forestFloorLayer ? moved : 0.0f;
+		weights[target] += ( target == (uint)layers.forestFloorLayer ? moved * ( 1.0f - moss ) : 0.0f ) +
+						   ( target == (uint)layers.forestMossLayer ? moved * moss : 0.0f );
 }
 
 // Веса всех слоёв земли в точке: splat-карта, у русел и мазков — детальный слой весов (плитка целиком: те, кто его читает, —
