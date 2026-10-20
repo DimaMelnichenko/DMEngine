@@ -19,6 +19,8 @@ namespace GS
 class WaterFoam
 {
 public:
+	static constexpr float growthTime = 0.25f;	// с: пена у источника растёт к нему за это время (и пена окна у камеры)
+
 	bool initialize( WaterField& field );
 	// Поле заново — по течению статичной воды и настройкам пены (время в лог); false — течения нет
 	bool build( const StaticWater& water, const WaterSimulationSettings& settings );

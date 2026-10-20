@@ -14,7 +14,6 @@ namespace
 {
 constexpr float detailTimeStep = 0.25f;	// с: перенос за шаг — до 3 текселей детальной сетки на быстрой воде
 constexpr float coarseTimeStep = 0.5f;	// с
-constexpr float growthTime = 0.25f;		// с: пена у источника растёт к нему за это время
 constexpr float settleLifetimes = 5.0f;	// шагов — на столько времён жизни: дальше поле не меняется (e⁻⁵)
 constexpr uint32_t maxSteps = 400;
 }

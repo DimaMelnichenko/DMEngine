@@ -69,6 +69,9 @@ DM_CONSTANTS( FrameConstantBuffer, SLOT_CB_FRAME )
 	// Подробное течение у камеры (NearWaterFlow, SLOT_WATER_NEAR): xy — угол окна, м мира (x, z), z — сторона ячейки, м,
 	// w — ячеек по стороне окна (0 — окна нет)
 	DM_FIELD( float4, waterNear );
+	// Пена окна (SLOT_WATER_NEAR_FOAM): x — её доля в материале воды («Foam» окна; 0 — пена поля 0,25 м: окна нет или время
+	// с его появления не шло)
+	DM_FIELD( float4, waterNearFoam );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

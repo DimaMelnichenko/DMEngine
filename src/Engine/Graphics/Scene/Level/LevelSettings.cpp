@@ -850,6 +850,9 @@ const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema()
 		{ "near_surface", "Surface relief", DM_SETTING( surface ), 0.0f, 4.0f, "",
 		  "The surface in the window follows the flow pressure: a bulge in front of a stone, a dip behind it and over it; "
 		  "0 - flat", settingClamp },
+		{ "near_foam", "Foam", DM_SETTING( foam ), 0.0f, 1.0f, "",
+		  "Share of the window's own foam: born where the water hits a stone and on the velocity shear, carried by the window's "
+		  "flow every frame; 0 - the foam field of the 0.25 m grid", settingClamp },
 	};
 	return schema;
 }

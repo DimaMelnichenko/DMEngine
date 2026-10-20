@@ -14,6 +14,8 @@
 // Тексель — ячейка мира по модулю стороны окна (cb_waterNear: угол окна, м, ячейка, м, ячеек по стороне; 0 — окна нет).
 // x — подъём поверхности по давлению, м, y, z — течение по X и Z мира, w — доля глубины над камнем (1 — камня нет, 0 — суша)
 DM_SRV( Texture2D<float4>, g_waterNear, SLOT_WATER_NEAR );
+// Пена окна (water_near_foam.cs): та же сетка, доля в материале — cb_waterNearFoam.x
+DM_SRV( Texture2D<float>, g_waterNearFoam, SLOT_WATER_NEAR_FOAM );
 
 // К краю окна у камеры на этой полосе, м, его течение переходит в детальное, а подъём поверхности сходит на нет
 static const float nearWaterFade = 1.0f;
@@ -37,6 +39,12 @@ float nearWaterWeight( float2 worldXZ )
 float4 sampleNearWater( float2 worldXZ )
 {
 	return g_waterNear.SampleLevel( g_SamplerLinearWrap, worldXZ / ( cb_waterNear.z * cb_waterNear.w ), 0.0f );
+}
+
+// Пена окна в точке мира — билинейно, как sampleNearWater; доля её в материале — nearWaterWeight × cb_waterNearFoam.x
+float sampleNearFoam( float2 worldXZ )
+{
+	return g_waterNearFoam.SampleLevel( g_SamplerLinearWrap, worldXZ / ( cb_waterNear.z * cb_waterNear.w ), 0.0f );
 }
 
 // Ячейка окна (сетка мира с шагом ячейки окна от угла мира) — её тексель по модулю стороны

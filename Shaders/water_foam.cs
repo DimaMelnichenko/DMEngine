@@ -11,6 +11,7 @@
 // клетках у русел её источник — пена детальной сетки, и шлейф ручья продолжается в озеро за краем плиток.
 //   mainDetailSource / mainCoarseSource — источник пены;
 //   mainDetailStep / mainCoarseStep     — шаг: перенос, таяние, сжатие, рост к источнику.
+// Правила источника и шага — water_foam.sh (их же берёт пена окна у камеры, water_near_foam.cs)
 // Группа потоков, ячейки и тексели — water_detail_grid.sh
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,48 +27,13 @@ DM_SRV( Texture2D<float2>, g_stoneArea, 10 );				// камни русла сет
 DM_UAV( RWTexture2DArray<float>, g_detailOutput, 0 );
 DM_UAV( RWTexture2D<float>, g_coarseOutput, 1 );
 
-#include "water_foam_constants.h"
-
-static const float fallFoam = 0.6f;			// пена на стенке уступа: узор даёт белые полосы по течению, а не сплошное пятно
-static const float maxFoam = 2.0f;			// больше — та же сплошная белая вода
-static const float maxCompression = 0.15f;	// сжатие и растяжение пены за шаг — не больше exp(±)
-// Пена у камня, который выходит к поверхности: вода над ним тоньше этого, м, — сильнее на быстрой воде (полная — с
-// stoneFoamSpeed); у сетки 1 м — по площади камней в клетке (полная — stoneFoamArea: камень 0,4 м, погружённый на 0,2 м)
-static const float stoneFoamDepth = 0.12f;
-static const float stoneFoamSpeed = 0.5f;		// м/с
-static const float stoneFoamArea = 0.08f;
+#include "water_foam.sh"
 
 // Пена прошлого шага в точке мира; вне плиток (озеро вдали от русел) пены детальной сетки нет
 float detailFoamAt( float2 world )
 {
 	float3 texel;
 	return detailTexelAt( world, texel ) ? g_detailFoam.SampleLevel( g_SamplerLinearClamp, detailUV( texel ), 0.0f ) : 0.0f;
-}
-
-// Сдвиг скорости — норма тензора скоростей деформации ½(∇v + ∇vᵀ) × √2: при чистом сдвиге она равна прежнему скачку
-// скорости (|∂v/∂x| + |∂v/∂z|), а вращение воды целиком её не меняет. dvdx = (∂vx/∂x, ∂vz/∂x), dvdz = (∂vx/∂z, ∂vz/∂z)
-float strainRate( float2 dvdx, float2 dvdz )
-{
-	const float exz = 0.5f * ( dvdz.x + dvdx.y );
-	return sqrt( 2.0f * ( dvdx.x * dvdx.x + dvdz.y * dvdz.y + 2.0f * exz * exz ) );
-}
-
-// Источник пены: быстрая вода (полная — вдвое быстрее foamSpeed), сдвиг, слив (полная — втрое круче foamSlope)
-float foamSource( float speed, float shear, float slope )
-{
-	return saturate( ( speed - g_foamSpeed ) / g_foamSpeed ) + saturate( shear / g_foamShear - 0.5f ) +
-		   fallFoam * saturate( ( slope - g_foamSlope ) / ( 2.0f * g_foamSlope ) );
-}
-
-// Пена за шаг: принесённая течением тает (в медленной воде — дольше) и сжимается, у источника растёт к нему
-float foamStep( float carried, float divergence, float source, float speed )
-{
-	// С той скорости, на которой пена рождается (foam_speed), — foamLifetime, в стоячей воде — foamStillLifetime, между
-	// ними — по логарифму: вода около 1 м/с ближе к быстрой (на каскадах пена не заливает плёсы), стоячая держит пену долго
-	const float lifetime = g_foamStillLifetime * pow( g_foamLifetime / g_foamStillLifetime, saturate( speed / g_foamSpeed ) );
-	const float compression = exp( clamp( -divergence * g_foamTimeStep, -maxCompression, maxCompression ) );
-	const float foam = carried * exp( -g_foamTimeStep / lifetime ) * compression;
-	return min( foam + max( source - foam, 0.0f ) * g_foamGrowth, maxFoam );
 }
 
 // Соседи текселя детальной воды через тексель: +X, −X, +Z, −Z мира (строки — по Z); сухой — как сам тексель

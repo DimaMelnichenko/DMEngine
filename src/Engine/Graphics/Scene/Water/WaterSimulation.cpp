@@ -260,7 +260,7 @@ void WaterSimulation::compute( const FrameContext& frame )
 		DMD3D::instance().setSRV( SLOT_WATER_DETAIL, m_staticWater.detailWaterView() );
 	// Подробное течение у камеры — по детальной воде, ресурс сцены SLOT_WATER_NEAR
 	if( m_staticMode )
-		m_near.compute( frame, current, m_field, m_staticWater, m_field.terrain->terrainHeight() );
+		m_near.compute( frame, current, m_field, m_staticWater, m_field.terrain->terrainHeight(), m_foam );
 }
 
 bool WaterSimulation::exportState( const std::string& prefix, std::string& reason )

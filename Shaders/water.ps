@@ -77,6 +77,10 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 			g_foamDetail.GetDimensions( width, height, slices );
 			const float fine = g_foamDetail.SampleLevel( g_SamplerLinearClamp, float3( detailTexel.xy / float2( width, height ), detailTexel.z ), 0.0f );
 			foam = lerp( foam, fine, shading.detailRipple );
+			// В окне подробного течения у камеры — своя пена окна (6,25 см, по его течению), к краю окна — поле
+			const float nearFoam = nearWaterWeight( input.worldPosition.xz ) * cb_waterNearFoam.x;
+			[branch] if( nearFoam > 0.0f )
+				foam = lerp( foam, sampleNearFoam( input.worldPosition.xz ), nearFoam );
 		}
 	}
 	else

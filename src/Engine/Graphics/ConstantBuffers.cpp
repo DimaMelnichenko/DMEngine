@@ -84,6 +84,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view, const FrameParamete
 		data.farTerrain = frame.farTerrain;
 		data.farForest = frame.farForest;
 		data.waterNear = frame.waterNear;
+		data.waterNearFoam = frame.waterNearFoam;
 	} );
 
 	DMD3D::instance().setConstantBuffer( SLOT_CB_FRAME, m_frameConstant );

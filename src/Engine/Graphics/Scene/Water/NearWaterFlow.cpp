@@ -8,11 +8,13 @@
 #include "NearWindow.h"
 #include "StaticWater.h"
 #include "WaterField.h"
+#include "WaterFoam.h"
 #include "SceneObject.h"
 #include "ConstantBuffers.h"
 #include "D3D\TextureImages.h"
 #include "Logger\Logger.h"
 #include "Shaders\slots.h"
+#include "Shaders\water_foam_constants.h"
 #include "Terrain\TerrainHeightSource.h"
 
 using namespace DirectX;
@@ -42,6 +44,9 @@ bool NearWaterFlow::initialize()
 		!m_divergence.initialize( file, "mainFlowDivergence", same, define ) || !m_red.initialize( file, "mainFlowRed", same, define ) ||
 		!m_black.initialize( file, "mainFlowBlack", same, define ) || !m_project.initialize( file, "mainFlowProject", same, define ) ||
 		!m_output.initialize( file, "mainFlowOutput", same, define ) ||
+		!m_foamStep.initialize( "Shaders\\water_near_foam.cs", "mainNearFoam", same ) ||
+		!d3d.createShaderConstantBuffer( sizeof( WaterFoamBuffer ), m_foamBuffer ) ||
+		!d3d.createShaderConstantBuffer( sizeof( WaterNearFlowBuffer ), m_foamWindowBuffer ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterFlowBuffer ), m_flowBuffer ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterDetailFlowBuffer ), m_detailBuffer ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterNearFlowBuffer ), m_nearBuffer ) )
@@ -104,12 +109,29 @@ bool NearWaterFlow::createTextures( uint32_t size )
 	}
 	if( !d3d.createShaderView( m_result, {}, m_resultView ) )
 		return false;
+	for( uint32_t k = 0; k < 2; ++k )
+	{
+		TextureDesc desc;
+		desc.width = size;
+		desc.height = size;
+		desc.format = DXGI_FORMAT_R16_FLOAT;
+		desc.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
+		if( !d3d.createTexture( desc, nullptr, m_foam[k] ) || !d3d.createStorageView( m_foam[k], {}, m_foamUAV[k] ) ||
+			!d3d.createShaderView( m_foam[k], {}, m_foamView[k] ) )
+		{
+			LOG( "Failed to create texture Water near foam" );
+			return false;
+		}
+		d3d.setName( m_foam[k], "Water near foam" );
+		d3d.clearStorageView( m_foamUAV[k] );
+	}
+	m_foamReset = true;
 	m_size = size;
 	return true;
 }
 
 void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSettings& settings, WaterField& field, const StaticWater& water,
-							 const TerrainHeight& height )
+							 const TerrainHeight& height, const WaterFoam& foam )
 {
 	const Settings& window = settings.nearFlow;
 	const float elapsed = std::clamp( frame.gameTime - m_gameTime, 0.0f, maxFrameTime );
@@ -278,13 +300,63 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	dispatch( m_output );
 	// Шейдерам — до следующего кадра (вода, расстановка, частицы): привязка завершает проход над окном
 	d3d.setSRV( SLOT_WATER_NEAR, m_resultView );
+	stepFoam( settings, foam, elapsed, nearParams );
 	m_reset = false;
+}
+
+void NearWaterFlow::stepFoam( const WaterSimulationSettings& settings, const WaterFoam& foam, float elapsed, const WaterNearFlowBuffer& window )
+{
+	// Без поля пены 0,25 м (ещё не посчитано) брать вошедшим ячейкам нечего — пена окна ждёт его
+	if( !foam.ready() )
+	{
+		m_foamReset = true;
+		m_foamShare = 0.0f;
+		return;
+	}
+	const bool reset = m_foamReset || window.nearReset != 0;
+	const uint32_t previous = m_foamCurrent;
+	m_foamCurrent ^= 1u;
+	DMD3D& d3d = DMD3D::instance();
+	PassDesc pass;
+	pass.name = "Water near foam";
+	pass.reads = { { &m_resultView, "near flow" }, { &m_foamView[previous], "near foam previous" }, { &foam.detailView(), "detail foam" } };
+	pass.writes = { { &m_foamUAV[m_foamCurrent], "near foam" } };
+	d3d.beginPass( pass );
+	// Правила — поля пены 0,25 м (те же настройки «Surface»), шаг — время игры кадра
+	WaterFoamBuffer params = {};
+	params.foamSpeed = std::max( settings.foamSpeed, 0.01f );
+	params.foamShear = std::max( settings.foamShear, 0.01f );
+	params.foamSlope = std::max( settings.channels.foamSlope, 0.01f );
+	params.foamTimeStep = elapsed;
+	params.foamLifetime = std::max( settings.foamLifetime, 0.1f );
+	params.foamStillLifetime = std::max( settings.foamStillLifetime, 0.1f );
+	params.foamGrowth = 1.0f - std::exp( -elapsed / WaterFoam::growthTime );
+	Device::updateResourceData( m_foamBuffer, params );
+	d3d.setConstantBuffer( 5, m_foamBuffer );
+	WaterNearFlowBuffer windowParams = window;
+	windowParams.nearReset = reset ? 1u : 0u;
+	Device::updateResourceData( m_foamWindowBuffer, windowParams );
+	d3d.setConstantBuffer( 7, m_foamWindowBuffer );
+	d3d.setSRV( 0, m_resultView );
+	d3d.setSRV( 1, m_foamView[previous] );
+	d3d.setSRV( 2, foam.detailView() );
+	d3d.setUAV( 0, m_foamUAV[m_foamCurrent] );
+	const uint32_t groups = ( m_size + 7 ) / 8;
+	m_foamStep.dispatchGroups( groups, groups, 1 );
+	d3d.setSRV( SLOT_WATER_NEAR_FOAM, m_foamView[m_foamCurrent] );
+	// Пока время не шло (с -freezetime) — пена окна та же, что поле 0,25 м: материал берёт поле (снимки — как без окна)
+	m_foamTime = ( reset ? 0.0f : m_foamTime ) + elapsed;
+	m_foamShare = m_foamTime > 0.0f ? std::clamp( settings.nearFlow.foam, 0.0f, 1.0f ) : 0.0f;
+	m_foamReset = false;
 }
 
 void NearWaterFlow::frameConstants( FrameParameters& constants ) const
 {
 	if( m_active )
+	{
 		constants.waterNear = XMFLOAT4( m_origin.x * m_step, m_origin.y * m_step, m_step, static_cast<float>( m_size ) );
+		constants.waterNearFoam = XMFLOAT4( m_foamShare, 0.0f, 0.0f, 0.0f );
+	}
 }
 
 bool NearWaterFlow::exportState( const std::string& prefix, std::string& reason )
@@ -294,28 +366,32 @@ bool NearWaterFlow::exportState( const std::string& prefix, std::string& reason 
 		reason = "no near flow window (no detail water around the camera or Near flow is off)";
 		return false;
 	}
-	std::vector<DMD3D::SubresourceCopy> copies;
-	std::vector<uint8_t> bytes;
-	if( !DMD3D::instance().captureTexture( m_result, copies, bytes ) || copies.empty() )
+	std::vector<DMD3D::SubresourceCopy> copies, foamCopies;
+	std::vector<uint8_t> bytes, foamBytes;
+	if( !DMD3D::instance().captureTexture( m_result, copies, bytes ) || copies.empty() ||
+		!DMD3D::instance().captureTexture( m_foam[m_foamCurrent], foamCopies, foamBytes ) || foamCopies.empty() )
 	{
 		reason = "near flow readback failed";
 		return false;
 	}
 	const uint32_t size = m_size;
-	std::vector<float> channels[4] = { std::vector<float>( size * size ), std::vector<float>( size * size ), std::vector<float>( size * size ),
-									 std::vector<float>( size * size ) };
+	std::vector<float> channels[5];
+	for( auto& channel : channels )
+		channel.resize( static_cast<size_t>( size ) * size );
 	for( uint32_t j = 0; j < size; ++j )
 		for( uint32_t i = 0; i < size; ++i )
 		{
 			// Ячейка окна (i, j от его угла, j — по Z) → тексель по модулю; строка растра — с дальнего края по z
 			const XMUINT2 texel = NearWindow::address( XMINT2( m_origin.x + static_cast<int32_t>( i ), m_origin.y + static_cast<int32_t>( j ) ), size );
 			const auto* source = reinterpret_cast<const PackedVector::HALF*>( bytes.data() + copies[0].offset + texel.y * copies[0].rowPitch ) + texel.x * 4;
+			const auto* foam = reinterpret_cast<const PackedVector::HALF*>( foamBytes.data() + foamCopies[0].offset + texel.y * foamCopies[0].rowPitch ) + texel.x;
 			const size_t row = static_cast<size_t>( size - 1 - j ) * size + i;
 			for( int c = 0; c < 4; ++c )
 				channels[c][row] = PackedVector::XMConvertHalfToFloat( source[c] );
+			channels[4][row] = PackedVector::XMConvertHalfToFloat( *foam );
 		}
-	const char* names[4] = { "_near_surface.dds", "_near_vx.dds", "_near_vz.dds", "_near_passage.dds" };
-	for( int c = 0; c < 4; ++c )
+	const char* names[5] = { "_near_surface.dds", "_near_vx.dds", "_near_vz.dds", "_near_passage.dds", "_near_foam.dds" };
+	for( int c = 0; c < 5; ++c )
 	{
 		const std::string file = prefix + names[c];
 		if( !GpuImages::saveFloatDDS( std::wstring( file.begin(), file.end() ), size, size, channels[c].data() ) )
