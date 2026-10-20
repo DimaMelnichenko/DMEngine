@@ -11,7 +11,7 @@ namespace GS
 const SettingsSchema<VolumetricCloudSettings>& volumetricCloudSchema()
 {
 	using Settings = VolumetricCloudSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "layer_bottom_altitude", "Layer bottom altitude", DM_SETTING( layerBottomAltitude ), 200.0f, 8000.0f, "m" },
 		{ "layer_height", "Layer height", DM_SETTING( layerHeight ), 100.0f, 10000.0f, "m" },
 		{ "coverage", "Coverage", DM_SETTING( coverage ), 0.0f, 1.0f },
@@ -23,7 +23,9 @@ const SettingsSchema<VolumetricCloudSettings>& volumetricCloudSchema()
 		{ "wind_speed", "Wind speed", DM_SETTING( windSpeed ), 0.0f, 50.0f, "m/s" },
 		{ "shadow_strength", "Shadow strength", DM_SETTING( shadowStrength ), 0.0f, 4.0f },
 		{ "tracing_max_distance", "Tracing max distance", DM_SETTING( tracingMaxDistance ), 5000.0f, 200000.0f, "m" },
-	};
+	},
+	// Разделы окна
+	{ { "layer_bottom_altitude", "Layer" }, { "albedo", "Lighting" }, { "shape_scale", "Shape" }, { "wind_speed", "Wind" }, { "shadow_strength", "Lighting" }, { "tracing_max_distance", "Quality" } } );
 	return schema;
 }
 
@@ -40,7 +42,7 @@ const SettingsSchema<ScatterSetSettings>& scatterSetSchema()
 const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 {
 	using Settings = ScatterLayerSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "cell_size", "Cell size", DM_SETTING( cellSize ), 0.05f, 20.0f, "m", "Grid step: at most one instance per cell",
 		  settingLogarithmic | settingClampLow },
 		{ "near_border", "Near border", DM_SETTING( nearBorder ), 0.0f, 200.0f, "m", "Ring around the camera where the layer grows",
@@ -139,14 +141,16 @@ const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 		{ "impostor_self_shadow", "Impostor self shadow", DM_SETTING( impostorSelfShadow ), 0.0f, 1.0f, "",
 		  "Sun shadow of the crown on itself from the impostor frames: beyond the shadow distance there are no cascades, and "
 		  "without it a far crown is lit from all sides - pale and flat", settingClamp, "impostorSelfShadow" },
-	};
+	},
+	// Разделы окна
+	{ { "cell_size", "Distribution" }, { "near_border", "Ring" }, { "size_multiplier", "Distribution" }, { "ground_color", "Color" }, { "edge_spread", "Ring" }, { "layer_filter", "Distribution" }, { "rotation_x,rotation_y,rotation_z", "Placement" }, { "canopy", "Canopy" }, { "cast_shadow", "Shadow" }, { "impostor_distance", "Impostor" } } );
 	return schema;
 }
 
 const SettingsSchema<WindFieldSettings>& windFieldSchema()
 {
 	using Settings = WindFieldSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "field_layer_height", "Layer height", DM_SETTING( layerHeight ), 10.0f, 1000.0f, "m",
 		  "Air layer above the smoothed ground: where the ground rises above it (ridges, rocks by a gap) the layer is thinner and the wind "
 		  "faster; the wind field is rebuilt when the edit ends" },
@@ -170,7 +174,9 @@ const SettingsSchema<WindFieldSettings>& windFieldSchema()
 		  "Past the forest the wind speeds up again this far over fields and water; the wind field is rebuilt when the edit ends" },
 		{ "field_turbulence", "Turbulence", DM_SETTING( turbulence ), 0.0f, 1.0f, "",
 		  "Gustiness behind ridges and at forest edges; the wind field is rebuilt when the edit ends" },
-	};
+	},
+	// Разделы окна
+	{ { "field_layer_height", "Flow" }, { "field_reach", "Lee" }, { "field_forest_damping", "Forest" }, { "field_turbulence", "Flow" } } );
 	return schema;
 }
 
@@ -190,7 +196,7 @@ const SettingsSchema<WindSettings>& windSchema()
 const SettingsSchema<HeightFogSettings>& heightFogSchema()
 {
 	using Settings = HeightFogSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		// Плотность — от тысячных до сотых 1/м: логарифмический ползунок
 		{ "density", "Density", DM_SETTING( layer.density ), 0.0f, 0.02f, "1/m",
 		  "Haze over the valley: extinction coefficient; visibility in the layer is about 3 / density", settingLogarithmic },
@@ -209,14 +215,16 @@ const SettingsSchema<HeightFogSettings>& heightFogSchema()
 		  "Depth of the froxel volume; beyond it the fog is analytic, without shadows" },
 		{ "sky_distance", "Sky distance", DM_SETTING( skyDistance ), 500.0f, 100000.0f, "m",
 		  "Fog over the sky background is taken as over a point this far", settingLogarithmic | settingClampLow },
-	};
+	},
+	// Разделы окна
+	{ { "density", "Layer 1" }, { "second_density", "Layer 2" }, { "albedo", "Scattering" }, { "volumetric", "Volume" }, { "sky_distance", "Scattering" } } );
 	return schema;
 }
 
 const SettingsSchema<SkyAtmosphereSettings>& skyAtmosphereSchema()
 {
 	using Settings = SkyAtmosphereSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "sky_intensity", "Sky intensity", DM_SETTING( skyIntensity ), 0.0f, 10.0f },
 		{ "haze", "Haze", DM_SETTING( haze ), 0.0f, 10.0f },
 		{ "ground_albedo", "Ground albedo", DM_SETTING( groundAlbedo ), 0.0f, 1.0f },
@@ -231,7 +239,9 @@ const SettingsSchema<SkyAtmosphereSettings>& skyAtmosphereSchema()
 		{ "milky_way", nullptr, DM_SETTING( milkyWay ) },
 		{ "milky_way_luminance", "Milky Way luminance", DM_SETTING( milkyWayLuminance ), 0.0f, 0.001f, "cd/m2",
 		  "Mean over the whole sky; the galactic plane is about three times brighter", settingDrag },
-	};
+	},
+	// Разделы окна
+	{ { "sky_intensity", "Atmosphere" }, { "aerial_perspective_view_distance_scale", "Aerial perspective" }, { "night_sky_luminance", "Night sky" } } );
 	return schema;
 }
 
@@ -391,7 +401,7 @@ const SettingsSchema<TerrainErosionSettings>& terrainErosionSchema()
 	using Settings = TerrainErosionSettings;
 	// Эрозия считается при загрузке уровня — к подсказке
 	const std::string load = "; applied at the next level load";
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "droplets", "Droplets", DM_SETTING( droplets ), 0.0f, 4000000.0f, "", "Water droplets of the hydraulic erosion" + load, settingClampLow },
 		{ "seed", "Seed", DM_SETTING( seed ), 0.0f, 1000.0f, "", "Random numbers of the droplets" + load },
 		{ "lifetime", "Lifetime", DM_SETTING( lifetime ), 1.0f, 300.0f, "steps", "Steps of a droplet, a texel each" + load, settingClampLow },
@@ -409,14 +419,16 @@ const SettingsSchema<TerrainErosionSettings>& terrainErosionSchema()
 		{ "thermal_iterations", "Thermal iterations", DM_SETTING( thermalIterations ), 0.0f, 200.0f, "", "Steps of the scree sliding" + load,
 		  settingClampLow },
 		{ "thermal_rate", "Thermal rate", DM_SETTING( thermalRate ), 0.0f, 1.0f, "", "Share of the excess sliding per step" + load },
-	};
+	},
+	// Разделы окна
+	{ { "droplets", "Droplets" }, { "rain_scale", "Rain" }, { "talus_angle", "Talus" } } );
 	return schema;
 }
 
 const SettingsSchema<TerrainSettings>& terrainSchema()
 {
 	using Settings = TerrainSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "height_multiplier", "Height multiplier", DM_SETTING( heightMultiplier ), 1.0f, 5000.0f, "m",
 		  "Height of the heightmap value 1; the scatter and particles follow, the terrain edits do not" },
 		{ "triplanar_sharpness", "Triplanar sharpness", DM_SETTING( triplanarSharpness ), 1.0f, 32.0f, "",
@@ -459,7 +471,9 @@ const SettingsSchema<TerrainSettings>& terrainSchema()
 		{ "finest_mesh_radius", "Finest mesh radius", DM_SETTING( finestMeshRadius ), 0.0f, 8.0f, "m",
 		  "The finest mesh is full nearer, farther it morphs into the next level (up to 1.5 times the radius): around the feet "
 		  "when walking, around the camera in flight. Not less than the LOD distance gives" },
-	};
+	},
+	// Разделы окна
+	{ { "height_multiplier", "Geometry" }, { "triplanar_sharpness", "Material" }, { "forest_floor", "Forest floor" }, { "displacement_start,displacement_end", "Geometry" } } );
 	return schema;
 }
 
@@ -468,7 +482,7 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 	using Settings = FarTerrainSettings;
 	static const char* rules = "Rules";
 	static const char* glaciers = "Glaciers";
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		// Данные генератора (Tools/gen_far_terrain.py, Tools/far_terrain.py) — только в базе
 		{ "heightmap", nullptr, DM_SETTING( heightMap ) },
 		{ "origin", nullptr, DM_SETTING( origin ) },
@@ -529,7 +543,9 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 		{ "moraine_cover_from,moraine_cover_to", "Moraine cover", DM_SETTING( moraineCover ), 0.0f, 1.0f, "",
 		  "Share of the debris lines around a point: the moraine (scree layer) grows from the start to the end; below the firn "
 		  "line only", settingRangeControl, glaciers },
-	};
+	},
+	// Разделы окна
+	{ { "lod_distance", "Geometry" }, { "material_blend", "Material" }, { "shadow_resolution", "Geometry" }, { "rock_slope_from,rock_slope_to", "Rock and scree" }, { "meadow_height_from,meadow_height_to", "Meadow" }, { "snow_height_from,snow_height_to", "Snow" }, { "forest_line_from,forest_line_to", "Forest" }, { "glacier_cover_from,glacier_cover_to", "Glaciers" } } );
 	return schema;
 }
 
@@ -537,7 +553,7 @@ const SettingsSchema<FluvialErosionSettings>& fluvialErosionSchema()
 {
 	using Settings = FluvialErosionSettings;
 	static const char* rebuilt = "; the mountains are eroded again when the edit ends";
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "resolution", "Resolution", DM_SETTING( resolution ), 0.0f, 0.0f, "",
 		  std::string( "Cells of the river grid per side: finer - narrower valleys, 4 times longer" ) + rebuilt, 0, "", { 512, 1024, 2048 } },
 		{ "erodibility", "Erodibility", DM_SETTING( erodibility ), 0.0f, 1.0e-3f, "1/yr",
@@ -562,7 +578,9 @@ const SettingsSchema<FluvialErosionSettings>& fluvialErosionSchema()
 					   "mountain rivers flow into them" ) + rebuilt },
 		{ "map_fade_from,map_fade_to", "Map fade", DM_SETTING( mapFade ), 0.0f, 10000.0f, "m",
 		  std::string( "Near the level map the erosion fades out: full farther than the end from its edge" ) + rebuilt, settingRangeControl },
-	};
+	},
+	// Разделы окна
+	{ { "resolution", "Rivers" }, { "uplift_scale", "Uplift" }, { "map_fade_from,map_fade_to", "Rivers" } } );
 	return schema;
 }
 
@@ -570,7 +588,7 @@ const SettingsSchema<GlacialErosionSettings>& glacialErosionSchema()
 {
 	using Settings = GlacialErosionSettings;
 	static const char* rebuilt = "; the mountains are eroded again when the edit ends";
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "resolution", "Resolution", DM_SETTING( resolution ), 0.0f, 0.0f, "",
 		  std::string( "Cells of the ice grid per side: finer - narrower troughs, the run is 8 times longer per step" ) + rebuilt, 0, "",
 		  { 256, 512, 1024 } },
@@ -604,7 +622,9 @@ const SettingsSchema<GlacialErosionSettings>& glacialErosionSchema()
 		{ "present_ela", "Present ELA", DM_SETTING( presentEla ), 0.0f, 5000.0f, "m",
 		  std::string( "Present-day glaciers: the same ice without erosion over the final relief (Ice years) with this equilibrium "
 					   "line - cirque and valley glaciers below the peaks; it is the firn line on them too" ) + rebuilt },
-	};
+	},
+	// Разделы окна
+	{ { "resolution", "Ice" }, { "erosion_years", "Erosion" }, { "frost_peaks", "Frost peaks" }, { "present_ela", "Present glaciers" } } );
 	return schema;
 }
 
@@ -728,7 +748,7 @@ const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema()
 const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 {
 	using Settings = WaterSimulationSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "time_scale", "Time scale", DM_SETTING( timeScale ), 0.0f, 100.0f },
 		{ "source_rate", "Source rate", DM_SETTING( sourceRate ), 0.0f, 2.0f, "l/s" },
 		{ "flow_start", "Flow start", DM_SETTING( flowStart ), 100.0f, 100000.0f, "m2" },
@@ -779,7 +799,9 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		{ "detail_distance", "Detail distance", DM_SETTING( detailDistance ), 0.0f, 1000.0f, "m",
 		  "Nearer the water surface of streams is drawn by the detail tiles (0.25 m): farther the 1 m grid differs by less than a "
 		  "pixel, and a detail tile has 16 times as many triangles; 0 - the 1 m grid only", 0, "surface" },
-	};
+	},
+	// Разделы окна
+	{ { "time_scale", nullptr }, { "absorption", "Color" }, { "roughness", "Ripples" }, { "refraction", "Color" }, { "ripple_stretch", "Ripples" }, { "sparkle", "Sparkle" }, { "foam_speed", "Foam" }, { "detail_distance", "Detail water" } } );
 	return schema;
 }
 
@@ -814,7 +836,7 @@ const SettingsSchema<WaterChannelsSettings>& waterChannelsSchema()
 	// русла сразу — к подсказке
 	const std::string rebuilt = "; the channels are rebuilt on change";
 	const std::string generated = "; generates the stream curves anew at the next level load";
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "min_discharge", "Min discharge", DM_SETTING( minDischarge ), 0.0005f, 0.05f, "m3/s",
 		  "A channel starts where the discharge is larger" + generated, 0, streamGeneratorGroup },
 		{ "width_coef", "Width coef", DM_SETTING( widthCoef ), 0.5f, 10.0f, "", "Bed width w = a * Q^0.5, m" + rebuilt },
@@ -889,7 +911,9 @@ const SettingsSchema<WaterChannelsSettings>& waterChannelsSchema()
 		{ "boulder_size", "Boulder size", DM_SETTING( boulderSize ), 0.3f, 3.0f, "m", "Boulder diameter" + rebuilt },
 		{ "smooth", "Smooth passes", DM_SETTING( smooth ), 0.0f, 20.0f, "", "Smoothing passes of the channel axis along the flow" + generated, 0,
 		  streamGeneratorGroup },
-	};
+	},
+	// Разделы окна
+	{ { "min_discharge", "Generator" }, { "width_coef", "Bed" }, { "meander_length", "Generator" }, { "min_slope", "Bed" }, { "lake_depth", "Generator" }, { "thalweg", "Bed" }, { "manning", "Water" }, { "freeboard", "Bed" }, { "step_height", "Steps" }, { "lake_depth_ratio", "Lake bed" }, { "stone_density", "Stones" }, { "smooth", "Generator" } } );
 	return schema;
 }
 
@@ -917,7 +941,7 @@ const SettingsSchema<StreamCurve>& streamCurveSchema()
 const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 {
 	using Settings = ParticleEmitterSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		// Место экземпляра — колонка position строки LevelParticleEmitters (её пишет «Save level» отдельно); в окне — у эмиттера
 		// в точке и в шаре
 		{ "", "Position", DM_SETTING( position ), 0.0f, 0.0f, "m", "Where the particles are born (the viewport gizmo moves it)",
@@ -950,7 +974,9 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 		{ "collide", "Collide", DM_SETTING( collide ), 0.0f, 0.0f, "", "With the terrain: needles lie down, dots die" },
 		{ "transmission", "Transmission", DM_SETTING( transmission ), 0.0f, 4.0f, "", "Glow against the sun (pollen, fluff)" },
 		{ "emissive", "Emissive", DM_SETTING( emissive ), 0.0f, 10.0f, "cd/m2", "", settingWideHigh },
-	};
+	},
+	// Разделы окна
+	{ { "Position", "Spawn" }, { "lifetime_min", "Lifetime" }, { "size_start", "Look" }, { "fade_in", "Lifetime" }, { "velocity", "Motion" }, { "transmission", "Look" } } );
 	return schema;
 }
 
@@ -1033,7 +1059,7 @@ const SettingsSchema<AmbientSoundSettings>& ambientSoundSchema()
 const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema()
 {
 	using Settings = SoundscapeLayerSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "enabled", "Enabled", DM_SETTING( enabled ), 0.0f, 0.0f, "", "Off - the layer does not sing" },
 		// Записи и места — флажками подокон «Sounds» и «Habitat»: строкового свойства у окна нет
 		{ "sound", nullptr, DM_SETTING( sound ) },
@@ -1053,7 +1079,9 @@ const SettingsSchema<SoundscapeLayerSettings>& soundscapeLayerSchema()
 		  "A singer left - the next one comes after this long (a cuckoo calls in sessions minutes apart)", settingRangeControl },
 		{ "volume", "Volume", DM_SETTING( volume ), 0.0f, 2.0f, "", "Of a singer 10 m away" },
 		{ "pitch", "Pitch spread", DM_SETTING( pitch ), 0.0f, 0.3f, "", "Each singer is higher or lower by up to this share" },
-	};
+	},
+	// Разделы окна
+	{ { "singers", "Placement" }, { "bout_from,bout_to", "Timing" }, { "volume", "Sound" } } );
 	return schema;
 }
 

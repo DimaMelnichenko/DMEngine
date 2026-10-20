@@ -4,6 +4,7 @@
 #include <string>
 #include "Properties\PropertyContainer.h"
 #include "Properties\SettingsProperties.h"
+#include "Engine\Graphics\Scene\Level\LevelSettings.h"
 
 using namespace DirectX;
 
@@ -98,4 +99,44 @@ TEST_CASE( "SettingsSchema: window from settings and back" )
 	CHECK( result.band.from == doctest::Approx( 2.0f ) );
 	CHECK( result.band.to == doctest::Approx( 4.0f ) );
 	CHECK( result.name == "row" );		// поля без окна не трогаются
+}
+
+namespace
+{
+
+// Поля окна описания без раздела: у описаний с разделами (withCategories) их быть не должно — отметка с опечаткой в колонке
+// оставила бы часть окна вне разделов
+template<typename T>
+int uncategorized( const SettingsSchema<T>& schema )
+{
+	int count = 0;
+	for( const SettingField<T>& field : schema )
+		count += field.name && !field.category ? 1 : 0;
+	return count;
+}
+
+}
+
+TEST_CASE( "SettingsSchema: categories mark every field of the window" )
+{
+	CHECK( uncategorized( GS::terrainSchema() ) == 0 );
+	CHECK( uncategorized( GS::terrainErosionSchema() ) == 0 );
+	CHECK( uncategorized( GS::farTerrainSchema() ) == 0 );
+	CHECK( uncategorized( GS::fluvialErosionSchema() ) == 0 );
+	CHECK( uncategorized( GS::glacialErosionSchema() ) == 0 );
+	CHECK( uncategorized( GS::waterSimulationSchema() ) == 8 );	// поля симуляции — сверху основного окна, разделы — у «Surface»
+	CHECK( uncategorized( GS::waterChannelsSchema() ) == 0 );
+	CHECK( uncategorized( GS::particleEmitterSchema() ) == 0 );
+	CHECK( uncategorized( GS::scatterLayerSchema() ) == 0 );
+	CHECK( uncategorized( GS::heightFogSchema() ) == 0 );
+	CHECK( uncategorized( GS::volumetricCloudSchema() ) == 0 );
+	CHECK( uncategorized( GS::skyAtmosphereSchema() ) == 0 );
+	CHECK( uncategorized( GS::windFieldSchema() ) == 0 );
+	CHECK( uncategorized( GS::soundscapeLayerSchema() ) == 1 );	// «Enabled» — сверху окна, без раздела
+
+	// Раздел — у свойства окна, путь и чтение — как были
+	PropertyContainer window( "Terrain" );
+	addSettingProperties( window, GS::terrainSchema(), GS::TerrainSettings() );
+	CHECK( window["Triplanar sharpness"].category() == "Material" );
+	CHECK( window["Finest mesh"].category() == "Geometry" );
 }

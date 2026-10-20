@@ -62,6 +62,8 @@ struct SettingField
 	std::vector<int32_t> choices = {};
 	// Подписи значений списка; пусто — сами значения («64», «128»)
 	std::vector<std::string> labels = {};
+	// Раздел окна (Property::setCategory, как Category у UPROPERTY в UE) — ставит withCategories; nullptr — без раздела
+	const char* category = nullptr;
 };
 
 template<typename T>
@@ -91,6 +93,25 @@ template<typename T, typename V>
 const V& settingRef( V T::* access, const T& values )
 {
 	return values.*access;
+}
+
+// Разделы окна (как Category у UPROPERTY в UE): поле, с которого начинается раздел (колонка; у поля без колонки — имя
+// свойства), и имя раздела; поля дальше — в нём же до следующей отметки (раздел может встретиться и не подряд). Только
+// показ: путь set, база, ключи кэшей — как были
+template<typename T>
+SettingsSchema<T> withCategories( SettingsSchema<T> schema, std::initializer_list<std::pair<const char*, const char*>> starts )
+{
+	const char* current = nullptr;
+	for( SettingField<T>& field : schema )
+	{
+		for( const auto& [key, category] : starts )
+		{
+			if( field.column == key || ( field.column.empty() && field.name && std::string( field.name ) == key ) )
+				current = category;
+		}
+		field.category = current;
+	}
+	return schema;
 }
 
 // Поле по колонке базы; nullptr — нет

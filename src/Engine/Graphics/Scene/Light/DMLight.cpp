@@ -7,7 +7,7 @@ using namespace DirectX;
 const SettingsSchema<DMLight::ShadowSettings>& DMLight::shadowSchema()
 {
 	using Settings = ShadowSettings;
-	static const SettingsSchema<Settings> schema = {
+	static const SettingsSchema<Settings> schema = withCategories( SettingsSchema<Settings>{
 		{ "cast_shadows", "Cast shadows", DM_SETTING( castShadows ) },
 		{ "dynamic_shadow_distance", "Dynamic shadow distance", DM_SETTING( dynamicShadowDistance ), 20.0f, 1000.0f, "m" },
 		{ "cascade_distribution_exponent", "Cascade distribution exponent", DM_SETTING( cascadeDistributionExponent ), 1.0f, 6.0f },
@@ -20,7 +20,9 @@ const SettingsSchema<DMLight::ShadowSettings>& DMLight::shadowSchema()
 		  "Shadows beyond the dynamic shadow distance: the forest - by a far cascade over the whole map, the terrain - by a map of the "
 		  "shadow edge height (Far Shadow Cascades in UE)" },
 		{ "far_shadow_penumbra", "Far shadow penumbra", DM_SETTING( farShadowPenumbra ), 0.1f, 5.0f, "deg" },
-	};
+	},
+	// Разделы окна источника: свет — сверху, тени — разделами
+	{ { "cast_shadows", "Cascaded shadows" }, { "far_shadows", "Far shadows" } } );
 	return schema;
 }
 

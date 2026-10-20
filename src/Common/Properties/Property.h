@@ -113,6 +113,10 @@ public:
 	// Для панели Details (необязательно): подсказка, единицы («lx», «m», «1/m»), формат числа (printf; пусто — по
 	// величине значения) и логарифмический ползунок — для величин в несколько порядков (плотность, яркость)
 	Property* setTooltip( const std::string& tooltip ) { m_tooltip = tooltip; return this; }
+	// Раздел окна (как Category у UPROPERTY в UE): Details показывает свойства раздела под его разворачивающимся заголовком;
+	// только показ — путь set, чтение и запись свойства не меняются. Пусто — без раздела, сверху окна
+	Property* setCategory( const std::string& category ) { m_category = category; return this; }
+	const std::string& category() const { return m_category; }
 	Property* setUnit( const std::string& unit ) { m_unit = unit; return this; }
 	Property* setFormat( const std::string& format ) { m_format = format; return this; }
 	Property* setLogarithmic( bool logarithmic = true ) { m_logarithmic = logarithmic; return this; }
@@ -155,6 +159,7 @@ private:
 	Container m_saved;
 	bool m_hasSaved = false;
 	std::string m_tooltip;
+	std::string m_category;
 	std::string m_unit;
 	std::string m_format;
 	bool m_logarithmic = false;

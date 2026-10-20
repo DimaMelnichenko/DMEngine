@@ -175,7 +175,7 @@ static bool setParamFromString( Property& prop, const std::string& value )
 
 bool LibraryLoader::loadMaterialParamDef( uint32_t idMaterial, PropertyContainer& paramSet )
 {
-	SQLite::Statement query( DBConnector::instance().db(), "SELECT id_material, param_name, value_type, control_type, low, high, default_value, unit FROM MaterialParameterDefView where id_material = :id" );
+	SQLite::Statement query( DBConnector::instance().db(), "SELECT id_material, param_name, value_type, control_type, low, high, default_value, unit, category FROM MaterialParameterDefView where id_material = :id" );
 	query.bind( ":id", idMaterial );
 	while( query.executeStep() )
 	{
@@ -216,6 +216,9 @@ bool LibraryLoader::loadMaterialParamDef( uint32_t idMaterial, PropertyContainer
 			// Единица — в названии окна («WindBranchAngle (deg)»); NULL — без единицы
 			if( !query.getColumn( "unit" ).isNull() )
 				prop->setUnit( query.getColumn( "unit" ).getString() );
+			// Раздел окна (MaterialParameterDef.category: «Surface», «Wind» …); NULL — без раздела
+			if( !query.getColumn( "category" ).isNull() )
+				prop->setCategory( query.getColumn( "category" ).getString() );
 
 			// Без default_value параметр остаётся нулевым
 			const SQLite::Column defaultValue = query.getColumn( "default_value" );

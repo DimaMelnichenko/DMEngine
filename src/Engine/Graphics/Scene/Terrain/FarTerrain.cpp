@@ -347,8 +347,8 @@ bool FarTerrain::initialize( const FarTerrainSettings& settings, CDLODTerrain& t
 	// Окно — до запекания: границы узлов у края карты берут полосу перехода из него
 	m_properties.setName( "Far terrain" );
 	addSettingProperties( m_properties, farTerrainSchema(), settings );
-	m_properties.insert( "Wireframe", false );
-	m_properties.insert( "Show LOD", false );
+	m_properties.insert( "Wireframe", false )->setCategory( "Debug" );
+	m_properties.insert( "Show LOD", false )->setCategory( "Debug" );
 	if( settings.fluvial )
 	{
 		m_fluvialProperties.setName( "Fluvial erosion" );

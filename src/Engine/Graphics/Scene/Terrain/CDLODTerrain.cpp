@@ -46,6 +46,7 @@ bool CDLODTerrain::initialize( const TerrainSettings& settings, TerrainPipeline&
 	prop->setLow( leaf );
 	prop->setHigh( leaf * 64.0f );
 	prop->setControlType( GUIControlType::SLIDER );
+	prop->setCategory( "Geometry" );
 	prop->setUnit( "m" )->setTooltip( "Range of the finest regular level (leaf nodes); each coarser level reaches twice as far, "
 									  "the finer detail levels near the camera - half, a quarter..." );
 
@@ -56,11 +57,11 @@ bool CDLODTerrain::initialize( const TerrainSettings& settings, TerrainPipeline&
 	pipeline.attachWindow( m_properties );
 	m_properties.addSubContainer( paint.properties() );
 
-	m_properties.insert( "Wireframe", false );
-	m_properties.insert( "Show LOD", false );
+	m_properties.insert( "Wireframe", false )->setCategory( "Debug" );
+	m_properties.insert( "Show LOD", false )->setCategory( "Debug" );
 	// Вода симуляции (WaterSimulation, SLOT_WATER) поверх земли: синее — глубже, светлее — быстрее
-	m_properties.insert( "Show water", false );
-	m_properties.insert( "Show wind", false )->setTooltip( "Wind field on the ground: arrows - direction, their color - speed against the "
+	m_properties.insert( "Show water", false )->setCategory( "Debug" );
+	m_properties.insert( "Show wind", false )->setCategory( "Debug" )->setTooltip( "Wind field on the ground: arrows - direction, their color - speed against the "
 														   "wind of the level (blue calm, green even, red twice faster), white edge - up the slope, "
 														   "black - down; hatching - gusty" );
 

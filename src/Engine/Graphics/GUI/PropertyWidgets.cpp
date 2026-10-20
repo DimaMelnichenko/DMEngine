@@ -478,11 +478,13 @@ void resetCell( const std::string& name, Property& property )
 	ImGui::PopID();
 }
 
-// preset — окно пресета окружения (само или через родителя): строки подкрашены presetColor
-void drawProperties( PropertyContainer& container, const std::string& filter, bool containerMatches, bool preset )
+// Таблица свойств names окна (в его порядке); preset — окно пресета окружения (само или через родителя): строки подкрашены
+// presetColor
+void drawPropertyTable( PropertyContainer& container, const std::vector<std::string>& names, const std::string& filter,
+						bool containerMatches, bool preset )
 {
 	bool any = false;
-	for( const std::string& name : container.names() )
+	for( const std::string& name : names )
 	{
 		if( containerMatches || matches( name, filter ) )
 		{
@@ -497,7 +499,7 @@ void drawProperties( PropertyContainer& container, const std::string& filter, bo
 	ImGui::TableSetupColumn( "name", ImGuiTableColumnFlags_WidthStretch, 0.45f );
 	ImGui::TableSetupColumn( "value", ImGuiTableColumnFlags_WidthStretch, 0.55f );
 	ImGui::TableSetupColumn( "reset", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize( "reset" ).x + ImGui::GetStyle().FramePadding.x * 2.0f );
-	for( const std::string& name : container.names() )
+	for( const std::string& name : names )
 	{
 		if( !containerMatches && !matches( name, filter ) )
 			continue;
@@ -511,6 +513,50 @@ void drawProperties( PropertyContainer& container, const std::string& filter, bo
 		resetCell( name, property );
 	}
 	ImGui::EndTable();
+}
+
+// Свойства окна: без раздела — таблицей сверху, разделы (Property::category, как Category у UPROPERTY в UE) — под
+// разворачивающимися заголовками, в порядке их первого свойства; «*» — в разделе есть изменённое; под фильтром — раскрыты
+void drawProperties( PropertyContainer& container, const std::string& filter, bool containerMatches, bool preset )
+{
+	std::vector<std::string> plain;
+	std::vector<std::pair<std::string, std::vector<std::string>>> categories;
+	for( const std::string& name : container.names() )
+	{
+		const std::string& category = container.property( name ).category();
+		if( category.empty() )
+		{
+			plain.push_back( name );
+			continue;
+		}
+		auto it = std::find_if( categories.begin(), categories.end(), [&]( const auto& entry ) { return entry.first == category; } );
+		if( it == categories.end() )
+		{
+			categories.push_back( { category, {} } );
+			it = std::prev( categories.end() );
+		}
+		it->second.push_back( name );
+	}
+	drawPropertyTable( container, plain, filter, containerMatches, preset );
+	for( const auto& [category, names] : categories )
+	{
+		const bool categoryMatches = containerMatches || ( !filter.empty() && matches( category, filter ) );
+		if( !categoryMatches && std::none_of( names.begin(), names.end(), [&]( const std::string& name ) { return matches( name, filter ); } ) )
+			continue;
+		const bool modified = std::any_of( names.begin(), names.end(), [&]( const std::string& name ) { return container.property( name ).modified(); } );
+		ImGui::PushID( category.c_str() );
+		if( !filter.empty() )
+			ImGui::SetNextItemOpen( true, ImGuiCond_Always );
+		// ID заголовка — постоянный («###»): «*» после правки не сворачивает раздел
+		const std::string title = ( modified ? category + "  *" : category ) + "###category";
+		if( ImGui::CollapsingHeader( title.c_str() ) )
+		{
+			ImGui::Indent( ImGui::GetStyle().IndentSpacing * 0.5f );
+			drawPropertyTable( container, names, filter, categoryMatches, preset );
+			ImGui::Unindent( ImGui::GetStyle().IndentSpacing * 0.5f );
+		}
+		ImGui::PopID();
+	}
 }
 
 bool contains( PropertyContainer& container, const PropertyContainer* target )
@@ -607,7 +653,7 @@ bool hasMatches( PropertyContainer& container, const std::string& filter )
 		return true;
 	for( const std::string& name : container.names() )
 	{
-		if( matches( name, filter ) )
+		if( matches( name, filter ) || matches( container.property( name ).category(), filter ) )
 			return true;
 	}
 	for( const PropertyContainer::Button& button : container.buttons() )

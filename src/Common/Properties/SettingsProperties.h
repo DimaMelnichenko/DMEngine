@@ -66,6 +66,8 @@ void addSettingProperties( PropertyContainer& container, const SettingsSchema<T>
 			property->setControlType( GUIControlType::RANGE );
 		if( field.flags & settingTransient )
 			property->setTransient();
+		if( field.category )
+			property->setCategory( field.category );
 	}
 }
 
