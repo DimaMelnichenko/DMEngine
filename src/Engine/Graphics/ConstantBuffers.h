@@ -55,6 +55,8 @@ struct FrameParameters
 	// (0 — карты нет); множитель выборки, 1 / полоса перехода в небо
 	DirectX::XMFLOAT4 reflectionCaptureSphere[2] = {};
 	DirectX::XMFLOAT4 reflectionCapture[2] = {};
+	// Террейн уровня (TerrainPipeline::frameConstants): сторона карты, м (0 — нет)
+	DirectX::XMFLOAT4 terrain = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 };
 
 class ConstantBuffers

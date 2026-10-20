@@ -70,6 +70,11 @@ DM_CONSTANTS( ScatterLayerBuffer, b4 )
 	// Под пологом — пятнами: размер пятен шума мира, м, и сила (0 — ровно; плотность × max(1 + 2 · сила · шум, 0), не больше 1)
 	DM_FIELD( float, canopyPatchScale );
 	DM_FIELD( float, canopyPatchStrength );
+	// Посадка по следу основания (ScatterLayers.ground_fit, как Embed у PCG UE): 1 — модель опускается до самой низкой точки
+	// земли под следом (относительно плоскости, на которую её ставит наклон); и глубже на groundEmbed × размер, м
+	DM_FIELD( float, groundFit );
+	DM_FIELD( float, groundEmbed );
+	DM_FIELD( float2, layerPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

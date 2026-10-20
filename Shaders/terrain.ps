@@ -125,7 +125,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.specular = 1.0f;
 	surface.roughness = mixed.roughness;
 	surface.occlusion = saturate( mixed.occlusion );
-	surface.microShadows = g_microShadows;
+	surface.microShadows = terrainLayers().microShadows;
 	surface.selfShadow = 1.0f;
 	surface.screenOcclusion = screenAmbientOcclusion( input.position.xy, surface.position );
 	surface.emissive = 0.0f;

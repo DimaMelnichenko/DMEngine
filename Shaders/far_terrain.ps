@@ -7,6 +7,8 @@
 
 #include "lighting.sh"
 #include "ambient_occlusion.sh"
+// cdlod.sh — раньше ядра материала: константы слоёв — из cbuffer террейна
+#include "cdlod.sh"
 #include "terrain_material.sh"
 #include "far_terrain.sh"
 
@@ -75,7 +77,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.specular = 1.0f;
 	surface.roughness = lerp( mixed.roughness, 0.9f, forest );
 	surface.occlusion = saturate( mixed.occlusion );
-	surface.microShadows = g_microShadows;
+	surface.microShadows = terrainLayers().microShadows;
 	surface.selfShadow = 1.0f;
 	surface.screenOcclusion = screenAmbientOcclusion( input.position.xy, surface.position );
 	surface.emissive = 0.0f;

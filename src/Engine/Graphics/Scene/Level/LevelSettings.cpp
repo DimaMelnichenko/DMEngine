@@ -90,6 +90,11 @@ const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 		  "Random rotation limit around X, Y, Z", 0, "placement" },
 		{ "align_to_terrain", "Align to terrain", DM_SETTING( alignToTerrain ), 0.0f, 0.0f, "", "Instance Y axis along the terrain normal",
 		  0, "placement" },
+		{ "ground_fit", "Ground fit", DM_SETTING( groundFit ), 0.0f, 0.0f, "",
+		  "The instance goes down to the lowest ground under its base footprint (as Embed in PCG): a wide base (stump, log) "
+		  "does not hang over a dip", 0, "placement" },
+		{ "ground_embed", "Ground embed", DM_SETTING( groundEmbed ), 0.0f, 0.5f, "m",
+		  "With Ground fit: deeper into the ground by this times the instance size", settingClamp, "placement" },
 		// Флаговые деревья: наклон и рост по открытости ветру (mask_wind_exposure — рельефная часть поля ветра без леса)
 		{ "ridge_lean", "Ridge lean", DM_SETTING( ridgeLean ), 0.0f, 30.0f, "deg",
 		  "Flagged trees on open ridges: where the wind scours (mask_wind_exposure), the instance leans downwind of the level "

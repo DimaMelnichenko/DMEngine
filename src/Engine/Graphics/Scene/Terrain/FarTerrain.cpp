@@ -732,10 +732,7 @@ void FarTerrain::renderCustom( const RenderContext& context )
 	DMD3D::instance().setSRV( 0, m_pipeline->heightMapView() );
 	DMD3D::instance().setSRV( 1, m_heightView );
 	if( !depthOnly )
-	{
-		m_pipeline->material().bind();
 		DMD3D::instance().setSRV( 2, m_glacierView );
-	}
 
 	context.constants.setPerObjectBuffer( XMMatrixIdentity() );
 	DMD3D::instance().setVertexBuffer( m_patch.vertexBuffer(), sizeof( XMFLOAT3 ) );

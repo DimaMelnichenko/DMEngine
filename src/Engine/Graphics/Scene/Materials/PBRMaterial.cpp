@@ -109,6 +109,10 @@ bool PBRMaterial::addVertexVariant( uint32_t features )
 		if( !createPermutation( features | alpha ) || ( dither && !createPermutation( features | alpha | dither ) ) ||
 			!createPermutation( features | depthOnly | alpha | dither ) )
 			return false;
+		// Переход в землю — только у цвета (глубина и тени — та же геометрия), отдельным вариантом: ядро материала террейна
+		// в общем шейдере заняло бы регистры у всех моделей
+		if( !createPermutation( features | alpha | terrainBlend ) || ( dither && !createPermutation( features | alpha | dither | terrainBlend ) ) )
+			return false;
 	}
 	return true;
 }
@@ -159,6 +163,8 @@ std::string PBRMaterial::pixelDefines( uint32_t key ) const
 	// Запекание рисует модель целиком: дизеринга смены LOD нет
 	if( ( key & clipDither ) && !( key & impostorBake ) )
 		defines = withDefine( defines, "LOD_DITHER=1" );
+	if( key & terrainBlend )
+		defines = withDefine( defines, "TERRAIN_BLEND=1" );
 	return defines;
 }
 
@@ -183,6 +189,14 @@ bool PBRMaterial::enableImpostorBake()
 {
 	using namespace ShaderPermutation;
 	return permutation( impostorBake ) >= 0 || ( createPermutation( impostorBake ) && createPermutation( impostorBake | clipAlpha ) );
+}
+
+uint32_t PBRMaterial::permutationKey( const PropertyContainer& params, const ShaderPhaseOptions& options, bool depth ) const
+{
+	uint32_t key = Material::permutationKey( params, options, depth );
+	if( !depth && !options.impostorBake && materialValue( params, "TerrainBlendHeight", 0.0f ) > 0.0f )
+		key |= ShaderPermutation::terrainBlend;
+	return key;
 }
 
 MaterialRenderState PBRMaterial::renderState( const PropertyContainer& params ) const
@@ -244,6 +258,8 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.trampleBendLength = materialValue( params, "TrampleBendLength", 0.25f );
 	param.crownNormalBlend = materialValue( params, "CrownNormalBlend", 0.0f );
 	param.crownNormalUp = materialValue( params, "CrownNormalUp", 0.4f );
+	param.terrainBlendHeight = std::max( materialValue( params, "TerrainBlendHeight", 0.0f ), 0.0f );
+	param.terrainBlendContrast = std::clamp( materialValue( params, "TerrainBlendContrast", 0.5f ), 0.0f, 1.0f );
 
 	Device::updateResourceData<PBRMaterialBuffer>( m_psCB, param );
 	// b2 читают и пиксельный, и вершинный шейдер (отклик на ветер)

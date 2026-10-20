@@ -58,6 +58,8 @@ DM_CONSTANTS( FrameConstantBuffer, SLOT_CB_FRAME )
 	DM_ARRAY( float4, reflectionCaptureSphere, 2 );
 	// x — множитель выборки до кд/м²: Brightness / экспозиция съёмки; y — 1 / ширина полосы перехода в небо у края радиуса, 1/м
 	DM_ARRAY( float4, reflectionCapture, 2 );
+	// Террейн уровня (TerrainPipeline): x — сторона карты, м (0 — террейна нет: его ресурсы сцены не читать)
+	DM_FIELD( float4, terrain );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

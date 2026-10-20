@@ -80,6 +80,7 @@ void ConstantBuffers::setViewBuffer( const RenderView& view, const FrameParamete
 			data.reflectionCaptureSphere[i] = frame.reflectionCaptureSphere[i];
 			data.reflectionCapture[i] = frame.reflectionCapture[i];
 		}
+		data.terrain = frame.terrain;
 	} );
 
 	DMD3D::instance().setConstantBuffer( SLOT_CB_FRAME, m_frameConstant );

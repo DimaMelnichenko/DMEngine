@@ -241,6 +241,15 @@ TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) con
 	constants.forestFloorLayer = floorLayer >= 0 && floorLayer < static_cast<int32_t>( constants.layerCount ) ? floorLayer : -1;
 	constants.forestFloorStrength = m_properties["Forest floor"].data<float>();
 	constants.forestFloorEdge = m_properties["Forest floor edge"].data<float>();
+	constants.heightMultiplier = m_pipeline->heightMultiplier();
+	constants.heightOffset = m_pipeline->heightOffset();
+	constants.detailTile = m_pipeline->detailTileSize();
+	constants.microShadows = std::clamp( m_properties["Micro shadows"].data<float>(), 0.0f, 1.0f );
+	constants.farTextureScale = m_properties["Far texture scale"].data<float>();
+	const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
+	constants.farBlendStart = farBlend.x;
+	constants.farBlendEnd = std::max( farBlend.y, farBlend.x + 1.0f );
+	std::copy( m_pipeline->material().layerOcclusion().begin(), m_pipeline->material().layerOcclusion().end(), constants.layerOcclusion );
 	const int32_t litterLayer = m_pipeline->roleLayer( TerrainLayerRole::forestFloorBroadleaf );
 	constants.forestLitterLayer = litterLayer >= 0 && litterLayer < static_cast<int32_t>( constants.layerCount ) ? litterLayer : -1;
 	const int32_t mossLayer = m_pipeline->roleLayer( TerrainLayerRole::forestMoss );
@@ -343,10 +352,8 @@ void CDLODTerrain::renderCustom( const RenderContext& context )
 
 	// Карта высот — вершинному шейдеру и пиксельному: по ней считается нормаль рельефа
 	DMD3D::instance().setSRV( 0, m_pipeline->heightMapView() );
-	// Нормали и шум слоёв — пиксельному шейдеру; splat-карта, альбедо с высотой и детальный слой весов — ресурсы сцены
-	// (compute): их читает и дисплейсмент вершинного шейдера в проходах только глубины
-	if( !depthOnly )
-		m_pipeline->material().bind();
+	// Слои материала (splat-карта, массивы текстур, детальный слой весов) — ресурсы сцены: их читает и дисплейсмент
+	// вершинного шейдера в проходах только глубины, и модели, переходящие в землю
 	if( !depthOnly && paintMask )
 		DMD3D::instance().setSRV( 7, *paintMask );
 
@@ -370,10 +377,6 @@ void CDLODTerrain::fillConstants( CDLODBuffer& params, const RenderView& view, i
 	const CDLODQuadtree::Lod& lod = m_quadtree.lod();
 	std::copy( std::begin( lod.morph ), std::end( lod.morph ), params.morphConsts );
 	params.texelSize = m_pipeline->texelSize();
-	params.farTextureScale = m_properties["Far texture scale"].data<float>();
-	const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
-	params.farBlendStart = farBlend.x;
-	params.farBlendEnd = std::max( farBlend.y, farBlend.x + 1.0f );
 	params.showWater = m_properties["Show water"].data<bool>() ? 1 : 0;
 	params.showWind = m_properties["Show wind"].data<bool>() && m_pipeline->hasWindField() ? 1 : 0;
 	params.detailTile = m_pipeline->detailTileSize();
@@ -381,8 +384,6 @@ void CDLODTerrain::fillConstants( CDLODBuffer& params, const RenderView& view, i
 	params.paintPreview = paintPreview;
 	params.paintPreviewColor = previewColor;
 	params.paintPreviewStrength = previewStrength;
-	params.microShadows = std::clamp( m_properties["Micro shadows"].data<float>(), 0.0f, 1.0f );
-	std::copy( m_pipeline->material().layerOcclusion().begin(), m_pipeline->material().layerOcclusion().end(), params.layerOcclusion );
 	params.waterBedLayer = m_pipeline->staticWater() && m_pipeline->channelLayer() < static_cast<int32_t>( m_pipeline->material().layerCount() ) ? m_pipeline->channelLayer() : -1;
 	// Наносы на дне нижних озёр — те же правила, что у детального слоя весов (TerrainDetailSplat): уровень — в м мира
 	params.lakeGravelLayer = params.waterBedLayer >= 0 ? m_pipeline->roleLayer( TerrainLayerRole::lakeGravel ) : -1;

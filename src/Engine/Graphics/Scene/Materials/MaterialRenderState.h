@@ -59,6 +59,7 @@ constexpr uint32_t clipDither = 1u << 4;	// пиксельный шейдер о
 constexpr uint32_t depthOnly = 1u << 5;
 constexpr uint32_t impostorBake = 1u << 6;	// запекание импостера (mainBake): цвет и нормаль модели в цели кадра
 constexpr uint32_t skinned = 1u << 7;		// скиннинг по костям (SKINNED): модели со скелетом
+constexpr uint32_t terrainBlend = 1u << 8;	// переход в землю у пиксельного шейдера цвета (TERRAIN_BLEND, PBR: TerrainBlendHeight > 0)
 }
 
 }

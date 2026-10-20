@@ -24,6 +24,8 @@ public:
 	std::vector<VertexElement> initLayouts() override;
 	void setParams( const PropertyContainer& ) override;
 	MaterialRenderState renderState( const PropertyContainer& params ) const override;
+	// Ключ перестановки — ещё и переход в землю у цвета (TerrainBlendHeight > 0: вариант TERRAIN_BLEND)
+	uint32_t permutationKey( const PropertyContainer& params, const ShaderPhaseOptions& options, bool depth ) const override;
 	bool supportsInstancing() const override;
 	// Перестановки экземпляров расстановки — вершинный шейдер с INST_POS, INST_SCALE, INST_ROTATE (обычный и LOD_DITHER,
 	// у каждого — «только глубина»); у материала, вершинный шейдер которого из базы уже такой (PBRInstance), — он сам

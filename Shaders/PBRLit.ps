@@ -10,6 +10,9 @@
 #include "pbr_material_constants.h"
 #include "lod_dither.sh"
 #include "bindless.sh"
+#ifdef TERRAIN_BLEND
+#include "terrain_blend.sh"
+#endif
 
 // Не заданная текстура — белая 1×1 (для Normal — плоская нормаль), так что работают одни множители
 DM_SRV( Texture2D, g_texBaseColor, 0 );         // sRGB, альфа — прозрачность
@@ -91,6 +94,14 @@ float4 main( PixelInputType input ) : SV_TARGET
 									g_diffuseTransmissionColorFactor;
 	surface.transmissionForward = g_transmissionForward;
 	surface.transmissionForwardRoughness = g_transmissionForwardRoughness;
+
+#ifdef TERRAIN_BLEND
+	// У земли — в материал террейна (TerrainBlendHeight; только у уровня с террейном)
+	const float3 positionDX = ddx( input.worldPosition );
+	const float3 positionDY = ddy( input.worldPosition );
+	[branch] if( cb_terrain.x > 0.0f )
+		blendWithTerrain( surface, positionDX, positionDY, g_terrainBlendHeight, g_terrainBlendContrast );
+#endif
 
 	// Линейный HDR: экспозиция и тонмаппинг — в постобработке (Shaders/tonemap.ps). Альфа нужна только
 	// полупрозрачному (AlphaMode BLEND): у непрозрачных блендинг выключен

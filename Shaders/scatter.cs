@@ -407,6 +407,33 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	if( placement.w >= 0.0f ? placement.w > 0.5f : g_alignToTerrain > 0.5f )
 		item.rotation = quaternionMul( quaternionFromTo( float3( 0.0f, 1.0f, 0.0f ), terrainNormal( worldXZ ) ), item.rotation );
 
+	// Посадка по следу основания (Ground fit, как Embed у PCG UE): под широким основанием (пень, бревно) земля неровная, и по
+	// одной точке в центре край основания висел над ямкой. Модель — до самой низкой точки земли под следом (центр и восемь
+	// точек по его краю) относительно плоскости, на которую её ставит наклон (по земле в центре или ровно), и глубже на
+	// Ground embed × размер
+	[branch] if( g_groundFit > 0.5f )
+	{
+		const bool aligned = placement.w >= 0.0f ? placement.w > 0.5f : g_alignToTerrain > 0.5f;
+		const float3 normal = aligned ? terrainNormal( worldXZ ) : float3( 0.0f, 1.0f, 0.0f );
+		float sinYaw, cosYaw;
+		sincos( angles.y, sinYaw, cosYaw );
+		const float2 center = worldXZ + float2( footprint.x * cosYaw + footprint.y * sinYaw,
+												-footprint.x * sinYaw + footprint.y * cosYaw ) * item.size;
+		const float radius = footprint.z * item.size;
+		static const float2 rim[9] = { float2( 0.0f, 0.0f ), float2( 1.0f, 0.0f ), float2( -1.0f, 0.0f ), float2( 0.0f, 1.0f ),
+									   float2( 0.0f, -1.0f ), float2( 0.7071f, 0.7071f ), float2( -0.7071f, 0.7071f ),
+									   float2( 0.7071f, -0.7071f ), float2( -0.7071f, -0.7071f ) };
+		float lowest = 0.0f;
+		[unroll] for( uint k = 0; k < 9; ++k )
+		{
+			const float2 sample = center + rim[k] * radius;
+			const float2 offset = sample - worldXZ;
+			const float plane = item.position.y - ( normal.x * offset.x + normal.z * offset.y ) / max( normal.y, 0.2f );
+			lowest = min( lowest, terrainHeight( sample ) - plane );
+		}
+		item.position.y += lowest - g_groundEmbed * item.size;
+	}
+
 	// Флаговые деревья (на открытых гребнях): где сдувает — наклон по ветру уровня (туда, куда он дует; деревья растут по
 	// господствующему ветру — не по полю кадра и не по тому, включён ли ветер сейчас) и ниже
 	[branch] if( g_ridgeLean > 0.0f || g_ridgeShrink > 0.0f )

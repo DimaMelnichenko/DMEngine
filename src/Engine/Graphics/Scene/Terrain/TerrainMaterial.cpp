@@ -419,15 +419,11 @@ bool TerrainMaterial::repaint( const SplatWeights& weights )
 	return true;
 }
 
-void TerrainMaterial::bind() const
-{
-	DMD3D::instance().setSRV( 3, m_normalRoughness );
-}
-
 void TerrainMaterial::bindScene() const
 {
 	DMD3D::instance().setSRV( SLOT_TERRAIN_SPLAT, m_splatMap );
 	DMD3D::instance().setSRV( SLOT_TERRAIN_ALBEDO_HEIGHT, m_albedoHeight );
+	DMD3D::instance().setSRV( SLOT_TERRAIN_NORMAL_ROUGHNESS, m_normalRoughness );
 	DMD3D::instance().setSRV( SLOT_TERRAIN_NOISE, Assets::textures().get( DMTextureStorage::noiseId )->srv() );
 }
 

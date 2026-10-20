@@ -39,6 +39,18 @@ DM_STRUCT( TerrainLayerConstants )
 	DM_MEMBER( uint, forestFloorWet );			// биты слоёв, чей вес — «влажно» (влажная трава): там мха больше
 	DM_MEMBER( float, forestMoss );				// доля подстилки, которая уходит мху на влажном («Forest moss»)
 	DM_MEMBER( float, forestMossDry );			// на сухом — эта доля от неё («Forest moss on dry»)
+	// Высота земли (terrain_blend.sh): карта нормирована — высота × множитель + сдвиг, м; детальные плитки у русел, м (0 — нет)
+	DM_MEMBER( float, heightMultiplier );
+	DM_MEMBER( float, heightOffset );
+	DM_MEMBER( float, detailTile );
+	DM_MEMBER( float, microShadows );			// микротени прямого света по AO слоёв, 0…1 («Micro shadows»)
+	// Второй масштаб текстур вдали (terrain_material.sh): во сколько раз крупнее повтор; переход — от start до end, м
+	DM_MEMBER( float, farTextureScale );
+	DM_MEMBER( float, farBlendStart );
+	DM_MEMBER( float, farBlendEnd );
+	DM_MEMBER( float, layerPadding );
+	// сила AO по слоям, по четыре, 0…1 (TerrainLayers.occlusion, «Layer occlusion»)
+	DM_MEMBER_ARRAY( float4, layerOcclusion, TERRAIN_SPLAT_SLICES );
 };
 DM_STRUCT_END
 

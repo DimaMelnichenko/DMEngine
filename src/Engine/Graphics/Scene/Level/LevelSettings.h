@@ -979,6 +979,10 @@ struct ScatterLayerSettings
 	// модели × canopy (0 — не кладёт); слои под ним редеют — плотность под полным пологом × underCanopy (1 — как на открытом)
 	float canopy = 0.0f;
 	float underCanopy = 1.0f;
+	// Посадка по следу основания (как Embed у PCG UE): до самой низкой точки земли под следом, и глубже на groundEmbed ×
+	// размер, м — пни и брёвна не висят краем над ямкой
+	bool groundFit = false;
+	float groundEmbed = 0.0f;
 	// Под пологом — пятнами по шуму мира: размер пятен, м, и сила 0…1 (0 — ровно редко)
 	float underCanopyPatchSize = 2.0f;
 	float underCanopyPatches = 0.0f;

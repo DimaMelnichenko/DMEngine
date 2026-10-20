@@ -46,6 +46,10 @@ DM_CONSTANTS( PBRMaterialBuffer, SLOT_CB_MATERIAL )
 	// подъём конуса — вверх на столько к единице наружу от оси ствола
 	DM_FIELD( float, crownNormalBlend );
 	DM_FIELD( float, crownNormalUp );
+	// Переход в землю (terrain_blend.sh, вариант TERRAIN_BLEND): полоса над землёй, м (0 — нет), и насколько высоты текстур
+	// земли рвут её край
+	DM_FIELD( float, terrainBlendHeight );
+	DM_FIELD( float, terrainBlendContrast );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

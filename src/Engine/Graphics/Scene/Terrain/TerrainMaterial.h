@@ -40,10 +40,9 @@ public:
 	bool initialize( const std::vector<TerrainLayerDescription>& layers, const SplatWeights& weights );
 	// Splat-карта заново (русла, правила, мазки)
 	bool repaint( const SplatWeights& weights );
-	// Пиксельный шейдер: t3 — нормаль + AO + шероховатость
-	void bind() const;
-	// Ресурсы сцены (terrain_layers.sh): splat-карта, альбедо + высота и шум пятен яркости — их читают и дисплейсмент,
-	// расстановка (цвет земли у травы), частицы
+	// Ресурсы сцены (terrain_layers.sh, terrain_material.sh): splat-карта, массивы «альбедо + высота» и «нормаль + AO +
+	// шероховатость», шум пятен яркости — их читают террейн, дисплейсмент, расстановка (цвет земли у травы), частицы и
+	// модели, переходящие в землю (terrain_blend.sh)
 	void bindScene() const;
 	// Повторов текстуры слоя на единицу мира (1 / tiling) по слоям, по четыре в XMFLOAT4
 	const std::array<DirectX::XMFLOAT4, splatSlices>& layerScale() const { return m_layerScale; }

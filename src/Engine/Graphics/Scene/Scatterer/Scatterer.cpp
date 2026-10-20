@@ -955,6 +955,8 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.underCanopy = std::clamp( settings.underCanopy, 0.0f, 1.0f );
 	params.canopyPatchScale = std::max( settings.underCanopyPatchSize, 0.25f );
 	params.canopyPatchStrength = std::clamp( settings.underCanopyPatches, 0.0f, 1.0f );
+	params.groundFit = settings.groundFit ? 1.0f : 0.0f;
+	params.groundEmbed = std::clamp( settings.groundEmbed, 0.0f, 0.5f );
 }
 
 float Scatterer::maxHeight( const Layer& layer )
@@ -1077,6 +1079,7 @@ void Scatterer::applyProperties( Layer& layer )
 						   settings.ridgeShrink != applied.ridgeShrink || settings.underCanopy != applied.underCanopy ||
 						   settings.underCanopyPatches != applied.underCanopyPatches ||
 						   settings.underCanopyPatchSize != applied.underCanopyPatchSize ||
+						   settings.groundFit != applied.groundFit || settings.groundEmbed != applied.groundEmbed ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
 	// Пока ползунок тянут или в поле набирают число (Property::editing), дорогое ждёт: новые буферы слоя (шаг, кольцо,
@@ -1142,6 +1145,8 @@ void Scatterer::applyProperties( Layer& layer )
 		params.underCanopy = fresh.underCanopy;
 		params.canopyPatchScale = fresh.canopyPatchScale;
 		params.canopyPatchStrength = fresh.canopyPatchStrength;
+		params.groundFit = fresh.groundFit;
+		params.groundEmbed = fresh.groundEmbed;
 		params.castShadow = castShadow;
 		for( uint32_t v = 0; v < layer.passVariants.size(); ++v )
 			layer.pass->setVariantPlacement( v, layer.passVariants[v] );

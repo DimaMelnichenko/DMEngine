@@ -249,6 +249,8 @@ void TerrainPipeline::frameConstants( const RenderView&, FrameParameters& consta
 {
 	if( m_windView.valid() && m_worldSize > 0.0f )
 		constants.wind.fieldScale = 1.0f / m_worldSize;
+	if( m_initialized )
+		constants.terrain.x = m_worldSize;
 }
 
 bool TerrainPipeline::setCanopy( const std::vector<CanopyStamp>& stamps )
@@ -307,6 +309,7 @@ void TerrainPipeline::compute( const FrameContext& frame )
 		setCanopy( {} );
 	if( m_canopyView.valid() )
 		DMD3D::instance().setSRV( SLOT_CANOPY, m_canopyView );
+	DMD3D::instance().setSRV( SLOT_TERRAIN_HEIGHT, m_heightMap );
 	// Слои материала — ресурсы сцены (terrain_layers.sh): выбор слоёв и дисплейсмент у шейдеров террейна, расстановки и
 	// частиц — по одним данным
 	m_material.bindScene();

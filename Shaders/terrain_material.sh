@@ -3,16 +3,18 @@
 // четыре самых весомых, их текстуры проекциями triplanar (на крутых склонах ещё вдоль X и Z), вдали — и в крупном масштабе
 // (distance resampling), смешивание по высоте, множитель альбедо слоя («Layer tint») и AO слоя с его силой. Слой — пара
 // текстур из массивов: альбедо + высота и нормаль (RG) + AO (B) + шероховатость. Откуда веса — решает шейдер: у карты —
-// splat-карта и детальный слой весов, у гор — правила по высоте и уклону
+// splat-карта и детальный слой весов, у гор — правила по высоте и уклону. Всё — ресурсы и константы сцены (terrain_layers.sh):
+// ядро зовут и модели, переходящие в землю (terrain_blend.sh). Шейдеры террейна подключают cdlod.sh раньше — константы слоёв
+// у них из своего cbuffer
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef TERRAIN_MATERIAL_SH
 #define TERRAIN_MATERIAL_SH
 
-#include "cdlod.sh"
+#include "frame_constants.h"
 #include "terrain_layers.sh"
 
-DM_SRV( Texture2DArray, g_normalRoughness, 3 );
+DM_SRV( Texture2DArray, g_normalRoughness, SLOT_TERRAIN_NORMAL_ROUGHNESS );
 
 struct LayerSample
 {
@@ -76,23 +78,26 @@ LayerSample sampleLayer( uint layer, float far, float scaleDivider, float3 posit
 	[branch] if( far < 1.0f )
 		addProjections( result, 1.0f - far, layer, scale, position, positionDX, positionDY, projection );
 	[branch] if( far > 0.0f )
-		addProjections( result, far, layer, scale / g_farTextureScale, position, positionDX, positionDY, projection );
+		addProjections( result, far, layer, scale / terrainLayers().farTextureScale, position, positionDX, positionDY, projection );
 	return result;
 }
 
 // Доля крупного масштаба текстур по расстоянию до камеры («Far blend»)
 float farTextureShare( float3 position )
 {
-	return saturate( ( length( position - cb_cameraPosition ) - g_farBlendStart ) / ( g_farBlendEnd - g_farBlendStart ) );
+	const TerrainLayerConstants layers = terrainLayers();
+	return saturate( ( length( position - cb_cameraPosition ) - layers.farBlendStart ) / ( layers.farBlendEnd - layers.farBlendStart ) );
 }
 
-// Смесь слоёв в точке: альбедо с множителем слоя, отклонение нормали, шероховатость, AO слоёв с их силой
+// Смесь слоёв в точке: альбедо с множителем слоя, отклонение нормали, шероховатость, AO слоёв с их силой, высота текстур
+// (0…1, по долям смешивания — рваный край перехода моделей в землю)
 struct TerrainLayerMix
 {
 	float3 albedo;
 	float3 detail;
 	float  roughness;
 	float  occlusion;
+	float  height;
 };
 
 // weights — веса восьми слоёв (не обязательно нормированные), far — доля крупного масштаба (farTextureShare), scaleDivider —
@@ -124,8 +129,9 @@ TerrainLayerMix mixTerrainLayers( float weights[maxLayers], float far, float sca
 		mixed.albedo += layers[n].albedo * terrainLayers().layerTint[layerIndex[n]].xyz * blend[n];
 		mixed.detail += layers[n].detail * blend[n];
 		mixed.roughness += layers[n].roughness * blend[n];
+		mixed.height += layers[n].height * blend[n];
 		// AO слоя с его силой, смешанный теми же долями, что цвет
-		mixed.occlusion -= ( 1.0f - layers[n].occlusion ) * g_layerOcclusion[layerIndex[n] / 4][layerIndex[n] % 4] * blend[n];
+		mixed.occlusion -= ( 1.0f - layers[n].occlusion ) * terrainLayers().layerOcclusion[layerIndex[n] / 4][layerIndex[n] % 4] * blend[n];
 	}
 	return mixed;
 }
