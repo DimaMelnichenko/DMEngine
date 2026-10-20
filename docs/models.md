@@ -407,6 +407,18 @@ python Tools/import_gltf.py Meshes/source/old_stump.glb --scatter --lod-ranges 1
 `--lod-ranges 4`, без столкновений (`--collision none`). Валежник — `--collision hull` (бревно и пень преграждают путь),
 сухое дерево — `capsule`.
 
+### Модели без LOD: `Tools/make_lods.py`
+
+Скан без своих LOD (обломки стволов, коряги с Fab не Megascans: один меш на 15–20 тыс. треугольников и текстуры 8K) —
+`Tools/make_lods.py` (Blender без окна): файл — вариант (`<имя>_VarA` …; меши файла объединяются, начало координат —
+середина по горизонтали и низ), LOD — копии с Decimate (схлопывание рёбер) на доли `--lods` от исходника (первая — LOD0),
+текстуры — до `--texture-size` (2048), `--single-sided` — отсечение задних граней; материалы glTF — как есть.
+
+```
+blender -b --factory-startup --python Tools/make_lods.py -- --inputs <a>.gltf <b>.gltf --name broken_branch --out Meshes/source/broken_branch.glb --lods 0.2,0.05,0.012 --single-sided
+python Tools/import_gltf.py Meshes/source/broken_branch.glb --scatter --lod-ranges 8,25 --collision none
+```
+
 ## Ель
 
 `Tools/blender_fir.py` (Blender без окна) строит ели сам, а текстуры и карточки веточек берёт из ели Poly Haven
@@ -506,6 +518,7 @@ python Tools/import_gltf.py Meshes/source/fir.glb --level Test --position 480,0,
 | `Tools/blender_test_model.py` | тестовая сцена Blender и её экспорт |
 | `Tools/export_polyhaven.py` | модели Poly Haven (архив `.blend`) → `.glb` для импорта с `--scatter` |
 | `Tools/blender_fir.py` | ель: своя геометрия (ствол, мутовки, карточки хвои Poly Haven), три варианта, три LOD, роща |
+| `Tools/make_lods.py` | LOD уменьшением сетки и сжатие текстур для моделей без своих LOD |
 | `Tools/terrain.py` | высота террейна уровня в точке мира — для `--snap-to-terrain` и `gen_heightmap.py` |
 | `src/Engine/Graphics/Scene/Model/Mesh/MeshLoader.h` | чтение файла меша движком (блоки `WIND`, `SKIN`) |
 | `src/ObjectLibrary/LibraryLoader.cpp` | загрузка моделей, LOD, мешей и экземпляров материалов из БД, экземпляры моделей уровня (`loadLevel`) |
