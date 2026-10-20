@@ -34,6 +34,9 @@ constexpr double stepFace = 0.3;
 // плавных извилин поворот между узлами в клетку — до 20–30°
 constexpr double foldMaxTurn = 60.0;
 constexpr int foldPasses = 60;
+// Спуск оси ко дну ложбины при генерации: узел уходит от пути стока не дальше, клетки. Так же далеко постройка ищет путь стока
+// под осью — расход узла по сети русел (Build::buildAxis)
+constexpr double valleySnapReach = 8.0;
 // Валуны русла — только где дно не уже, м: в узком ручье у родника крупный камень загораживает русло
 constexpr double boulderMinBedWidth = 1.5;
 // Берег озера в детальных плитках (lakeShare): полоса по обе стороны изолинии, где земля подводится к профилю отмели, м;
@@ -1132,7 +1135,6 @@ bool TerrainHydrology::generate( const HeightField& field, const WaterSimulation
 	// озере — на месте
 	{
 		constexpr int valleySnapPasses = 6;
-		constexpr double valleySnapReach = 8.0;
 		constexpr double valleySnapStep = 0.25;
 		constexpr double valleySnapDrop = 0.05;
 		const Grid& ground = dr.height;
@@ -1665,8 +1667,8 @@ bool TerrainHydrology::Build::buildAxis()
 		{
 			const int k = static_cast<int>( position.size() );
 			position.push_back( line.points[i] );
-			const double discharge = line.discharge[i] > 0.0 ? line.discharge[i] : sampleMax( dr.flow, line.points[i], n );
-			q.push_back( discharge * line.curve->dischargeScale );
+			// Пока — явный расход точки ручной кривой (0 — по сети): итог — ниже, по сети русел
+			q.push_back( line.curve->generated ? 0.0 : line.discharge[i] );
 			nodeArea.push_back( sampleMax( dr.area, line.points[i], n ) );
 			down.push_back( -1 );
 			curveOf.push_back( static_cast<int>( a ) );
@@ -1740,10 +1742,107 @@ bool TerrainHydrology::Build::buildAxis()
 			result.warnings.push_back( "stream curves link into a loop: the loop is cut" );
 		}
 	}
-	// Расход вниз по течению не убывает (ручная кривая с расходом по водосбору)
-	for( int k : nodeOrder )
-		if( down[k] >= 0 )
-			q[down[k]] = std::max( q[down[k]], q[k] );
+	cellOf.resize( count );
+	for( int k = 0; k < count; ++k )
+		cellOf[k] = cellIndex( position[k], n );
+
+	// Расход узла — по сети русел: у слияния — сумма ручьёв (русло ниже шире, w ∝ Q^0,5, и глубже). Приток каждой клетки
+	// карты (dr.inflow) достаётся одному узлу — тому, к которому её сток впервые подходит; расход узла — его приток и расход
+	// всех узлов выше, у ручья из озера — и впадающих в озеро. До 2026-10-20 расход брался из точек кривой (сток D8
+	// генератора) и вниз по течению лишь не убывал: скачок стоял у слияния путей стока, а не кривых, у правленной кривой
+	// оставался прежним, приток к ручной не прибавлялся (Dimok: «сливающиеся ручьи не увеличивают размер русла»)
+	{
+		// Захват: клетка суши ближе captureReach клеток к узлу не в озере — ближайшему такому узлу; клетка пути стока (расход
+		// больше min_discharge) — и дальше, до channelReach: ось уходит с пути D8 на извилинах и спуском ко дну ложбины.
+		// Клетки озера не захватываются — их сток идёт к выходу из озера
+		const double captureReach = std::clamp( p.meanderAmplitude / cell + 0.5, 1.5, 4.0 );
+		const double channelReach = captureReach + valleySnapReach;
+		const int radius = static_cast<int>( std::ceil( channelReach ) );
+		std::vector<int> captured( cells, -1 );
+		std::vector<double> nearest( cells, std::numeric_limits<double>::infinity() );
+		for( int k = 0; k < count; ++k )
+		{
+			if( inLake( k ) )
+				continue;
+			const int row = cellOf[k] / n, col = cellOf[k] % n;
+			for( int dy = -radius; dy <= radius; ++dy )
+			{
+				for( int dx = -radius; dx <= radius; ++dx )
+				{
+					const int r = row + dy, c = col + dx;
+					if( r < 0 || c < 0 || r >= n || c >= n )
+						continue;
+					const size_t i = static_cast<size_t>( r ) * n + c;
+					const double distance = std::hypot( c + 0.5 - position[k].x, r + 0.5 - position[k].y );
+					if( lake[i] || distance >= nearest[i] || distance > ( dr.flow[i] > p.minDischarge ? channelReach : captureReach ) )
+						continue;
+					nearest[i] = distance;
+					captured[i] = k;
+				}
+			}
+		}
+		// Узел клетки — первый захват на её пути стока (обход от получателей к донорам); −1 — сток уходит мимо русел
+		std::vector<int> target( cells, -1 );
+		for( auto it = dr.order.rbegin(); it != dr.order.rend(); ++it )
+		{
+			const int i = *it;
+			target[i] = captured[i] >= 0 ? captured[i] : dr.receiver[i] != i ? target[dr.receiver[i]] : -1;
+		}
+		std::vector<double> total( count, 0.0 );
+		for( size_t i = 0; i < cells; ++i )
+			if( target[i] >= 0 )
+				total[target[i]] += dr.inflow[i];
+		// Вниз — по down; конец без продолжения (в озере, у края, правленный далеко от русла) — по пути стока от него к первой
+		// захваченной клетке чужой кривой: ручей из озера несёт и воду впадающих в него. Связь, которая замкнула бы круг, —
+		// нет
+		std::vector<int> next = down;
+		for( size_t a = 0; a < lines.size(); ++a )
+		{
+			if( lineNodes[a].empty() || down[lineNodes[a].back()] >= 0 )
+				continue;
+			const int last = lineNodes[a].back();
+			int to = -1;
+			for( int i = cellOf[last], steps = 0; steps < static_cast<int>( cells ); i = dr.receiver[i], ++steps )
+			{
+				if( captured[i] >= 0 && curveOf[captured[i]] != static_cast<int>( a ) )
+				{
+					to = captured[i];
+					break;
+				}
+				if( dr.receiver[i] == i )
+					break;
+			}
+			bool loop = false;
+			for( int j = to, steps = 0; j >= 0 && steps <= count && !loop; j = next[j], ++steps )
+				loop = j == last;
+			if( to >= 0 && !loop )
+				next[last] = to;
+		}
+		std::vector<int> incoming( count, 0 );
+		for( int k = 0; k < count; ++k )
+			if( next[k] >= 0 )
+				++incoming[next[k]];
+		std::vector<int> ready;
+		for( int k = 0; k < count; ++k )
+			if( incoming[k] == 0 )
+				ready.push_back( k );
+		// Множитель расхода кривой (discharge_scale) — ко всей воде в ней: её русло и то, что она отдаёт ниже (без повтора
+		// по узлам кривой); явный расход ручной кривой — не меньше него
+		while( !ready.empty() )
+		{
+			const int k = ready.back();
+			ready.pop_back();
+			total[k] = std::max( total[k], q[k] );
+			const double scale = lines[curveOf[k]].curve->dischargeScale;
+			q[k] = total[k] * scale;
+			const int d = next[k];
+			if( d < 0 )
+				continue;
+			total[d] += curveOf[d] == curveOf[k] ? total[k] : q[k];
+			if( --incoming[d] == 0 )
+				ready.push_back( d );
+		}
+	}
 	up.assign( count, -1 );
 	{
 		std::vector<double> upFlow( count, 0.0 );
@@ -1757,10 +1856,6 @@ bool TerrainHydrology::Build::buildAxis()
 			}
 		}
 	}
-	cellOf.resize( count );
-	for( int k = 0; k < count; ++k )
-		cellOf[k] = cellIndex( position[k], n );
-
 	shape.resize( count );
 	for( int k = 0; k < count; ++k )
 	{

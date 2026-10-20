@@ -624,8 +624,8 @@ const SettingsSchema<StreamCurve>& streamCurveSchema();
 struct WaterChannelsSettings
 {
 	float minDischarge = 0.002f;	// м³/с: отсюда начинается русло
-	float widthCoef = 3.0f;			// ширина дна w = a · Q^0,5, м
-	float minWidth = 1.0f;			// самое узкое дно, м (у русел — детальная земля 0,25 м)
+	float widthCoef = 4.0f;			// ширина дна w = a · Q^0,5, м
+	float minWidth = 0.5f;			// самое узкое дно, м (у русел — детальная земля 0,25 м)
 	float depthCoef = 1.0f;			// врез d = c · Q^0,4, м
 	float minIncision = 0.4f;		// самый мелкий врез, м
 	float bankSlope = 1.0f;			// борт: метров по горизонтали на метр вреза

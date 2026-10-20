@@ -134,3 +134,59 @@ TEST_CASE( "TerrainHydrology: a stream is generated along the valley floor and c
 		waterAtOutlet |= result.staticWater[static_cast<size_t>( 120 ) * 128 + column].x > -1e8f;
 	CHECK( waterAtOutlet );
 }
+
+TEST_CASE( "TerrainHydrology: streams sum their water at a confluence and the bed below grows" )
+{
+	// Ровный склон к z = 0 (уклон 0,02 — без ступеней), дождя нет: вода — только помощники в истоках двух ручных притоков,
+	// по 0,1 м³/с, притоки сходятся в начале третьей кривой. Сток D8 от истоков идёт прямо вниз мимо главного — расход
+	// главного только по сети кривых
+	constexpr uint32_t size = 96;
+	constexpr float texel = 0.5f;
+	TestField terrain( size, texel, 200.0f );
+	for( uint32_t row = 0; row < size; ++row )
+		for( uint32_t column = 0; column < size; ++column )
+			terrain.at( row, column ) = ( 50.0f + 0.02f * terrain.z( row ) ) / 200.0f;
+	auto curve = []( std::initializer_list<XMFLOAT2> points )
+	{
+		StreamCurve result;
+		result.generated = false;
+		for( const XMFLOAT2& position : points )
+			result.points.push_back( { position, 0.0f } );
+		return result;
+	};
+	WaterSimulationSettings water;
+	water.sourceRate = 0.0f;
+	for( const XMFLOAT2& head : { XMFLOAT2( 12.0f, 44.0f ), XMFLOAT2( 36.0f, 44.0f ) } )
+	{
+		WaterSource source;
+		source.position = head;
+		source.rate = 100.0f;		// л/с
+		water.sources.push_back( source );
+	}
+	std::vector<StreamCurve> curves = { curve( { { 12.0f, 44.0f }, { 24.0f, 28.0f } } ), curve( { { 36.0f, 44.0f }, { 24.0f, 28.0f } } ),
+										curve( { { 24.0f, 28.0f }, { 24.0f, 4.0f } } ) };
+	// Сечение вреза главного (сумма опускания поперёк, м²) — среднее по строкам z 8…24 м: плёсы и шум дна усредняются
+	auto mainSection = [&]( const std::vector<StreamCurve>& network )
+	{
+		TerrainHydrology::Result result;
+		REQUIRE( TerrainHydrology::build( terrain.field, water, network, result ) );
+		double area = 0.0;
+		int rows = 0;
+		for( uint32_t row = 0; row < size; ++row )
+		{
+			if( terrain.z( row ) < 8.0f || terrain.z( row ) > 24.0f )
+				continue;
+			for( uint32_t column = 0; column < size; ++column )
+				area -= result.lowering[static_cast<size_t>( row ) * size + column] * texel;
+			++rows;
+		}
+		return area / rows;
+	};
+	const double both = mainSection( curves );
+	curves[1].enabled = false;
+	const double one = mainSection( curves );
+	CHECK( one > 0.0 );
+	// Вдвое больше воды: дно шире в √2 раза, врез глубже; с бортами, которые от расхода не зависят, — сечение больше хотя бы
+	// на пятую часть (2026-10-20: на треть; прежде, по большему из притоков, — то же, что у одного)
+	CHECK( both > 1.2 * one );
+}
