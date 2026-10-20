@@ -1,7 +1,8 @@
 // Мир столкновений (PhysicsWorld, Jolt): земля совпадает с surfaceHeight (и в детальном квадрате), персонаж падает и стоит,
 // стоящий не сползает по пологому склону (по крутому — съезжает),
 // коробка, капсула и оболочка преграждают путь, персонажи не проходят друг сквозь друга, глубокая вода не пускает (вдоль
-// берега — идёт, вброд — переходит), бродяги-персонажи не сходятся, персонажи убираются с сущностями
+// берега — идёт, вброд — переходит), бродяги-персонажи не сходятся, персонажи убираются с сущностями, край карты держит
+// персонажа, а лучи его не видят
 #include <doctest/doctest.h>
 #include <algorithm>
 #include <cmath>
@@ -352,4 +353,27 @@ TEST_CASE( "PhysicsWorld: a row of trunks with one shared capsule is a wall" )
 	const PhysicsWorld::CharacterState state = walk( physics, character, XMFLOAT2( 0.0f, 1.5f ), 10.0f );
 	CHECK( state.feet.z < 135.0f - 0.3f );
 	CHECK( state.feet.z > 133.5f );
+}
+
+TEST_CASE( "PhysicsWorld: a character stops at the map edge, a ray goes through the boundary" )
+{
+	FakeTerrain terrain( flat );
+	PhysicsWorld physics;
+	REQUIRE( physics.buildTerrain( terrain ) );
+	CHECK( physics.bodyCount() == 0 );		// граница — не тела моделей
+	// К краю x = 0 и дальше: за краем земли нет — стена границы держит у края, на земле
+	const PhysicsWorld::CharacterId character = physics.createCharacter( {}, XMFLOAT3( 3.0f, flatHeight, 128.0f ) );
+	const PhysicsWorld::CharacterState state = walk( physics, character, XMFLOAT2( -2.0f, 0.0f ), 4.0f );
+	CHECK( state.feet.x > 0.0f );
+	CHECK( state.feet.x < 1.0f );
+	CHECK( std::abs( state.feet.y - flatHeight ) < 0.05f );
+	CHECK( state.onGround );
+	// Луч снаружи карты внутрь — сквозь стену в коробку за ней (передняя грань — x = 4)
+	const PhysicsWorld::BodyId box = physics.addStaticBox( XMFLOAT3( 0.0f, 0.0f, 0.0f ), XMFLOAT3( 1.0f, 1.0f, 1.0f ),
+														   XMMatrixTranslation( 5.0f, flatHeight + 1.0f, 128.0f ) );
+	float fraction = 0.0f;
+	PhysicsWorld::BodyId body = 0;
+	REQUIRE( physics.castRay( XMFLOAT3( -20.0f, flatHeight + 1.0f, 128.0f ), XMFLOAT3( 40.0f, 0.0f, 0.0f ), fraction, &body ) );
+	CHECK( body == box );
+	CHECK( -20.0f + 40.0f * fraction == doctest::Approx( 4.0f ).epsilon( 0.01 ) );
 }

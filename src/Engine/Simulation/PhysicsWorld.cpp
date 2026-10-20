@@ -39,11 +39,13 @@ namespace GS
 namespace
 {
 
-// Слои: неподвижное (рельеф, модели) с неподвижным не сталкивается
+// Слои: неподвижное (рельеф, модели) с неподвижным не сталкивается. Граница карты (стены за её краями, как Blocking Volume
+// в UE) — неподвижное только для персонажей: лучи (castRay) её не видят
 namespace Layers
 {
 constexpr JPH::ObjectLayer nonMoving = 0;
 constexpr JPH::ObjectLayer moving = 1;
+constexpr JPH::ObjectLayer boundary = 2;
 }
 
 namespace BroadPhaseLayers
@@ -68,7 +70,7 @@ public:
 	JPH::uint GetNumBroadPhaseLayers() const override { return BroadPhaseLayers::count; }
 	JPH::BroadPhaseLayer GetBroadPhaseLayer( JPH::ObjectLayer layer ) const override
 	{
-		return layer == Layers::nonMoving ? BroadPhaseLayers::nonMoving : BroadPhaseLayers::moving;
+		return layer == Layers::moving ? BroadPhaseLayers::moving : BroadPhaseLayers::nonMoving;
 	}
 #if defined( JPH_EXTERNAL_PROFILE ) || defined( JPH_PROFILE_ENABLED )
 	const char* GetBroadPhaseLayerName( JPH::BroadPhaseLayer layer ) const override
@@ -84,6 +86,16 @@ public:
 	bool ShouldCollide( JPH::ObjectLayer layer, JPH::BroadPhaseLayer broadPhase ) const override
 	{
 		return layer == Layers::moving || broadPhase == BroadPhaseLayers::moving;
+	}
+};
+
+// Луч — по всему, кроме границы карты: выбор кликом с камеры за краем карты стена не перекрывает
+class NotBoundary final : public JPH::ObjectLayerFilter
+{
+public:
+	bool ShouldCollide( JPH::ObjectLayer layer ) const override
+	{
+		return layer != Layers::boundary;
 	}
 };
 
@@ -256,6 +268,18 @@ struct PhysicsWorld::Impl
 			bodies.RemoveBody( terrainBody );
 			bodies.DestroyBody( terrainBody );
 		}
+		removeBoundary();
+	}
+
+	void removeBoundary()
+	{
+		JPH::BodyInterface& bodies = system.GetBodyInterface();
+		for( const JPH::BodyID& body : boundaryBodies )
+		{
+			bodies.RemoveBody( body );
+			bodies.DestroyBody( body );
+		}
+		boundaryBodies.clear();
 	}
 
 	BodyId addStatic( const JPH::RefConst<JPH::Shape>& shape, const Placement& placement )
@@ -360,6 +384,7 @@ struct PhysicsWorld::Impl
 
 	const TerrainHeightSource* terrain = nullptr;
 	JPH::BodyID terrainBody;
+	std::vector<JPH::BodyID> boundaryBodies;	// стены за четырьмя краями карты (слой boundary)
 	uint32_t terrainRevision = ~0u;
 	std::unordered_map<BodyId, JPH::BodyID> staticBodies;
 	std::unordered_map<uint32_t, BodyId> bodyIds;		// тело Jolt (bodyKey) → своё
@@ -398,6 +423,7 @@ bool PhysicsWorld::buildTerrain( const TerrainHeightSource& terrain )
 	// Карта высот Jolt: число выборок — кратное блоку (4), лишние — дыры
 	constexpr uint32_t block = 4;
 	const float noCollision = JPH::HeightFieldShapeConstants::cNoCollisionValue;
+	float lowest = FLT_MAX, highest = -FLT_MAX;	// земля по высоте — стенам границы
 	auto heightField = [&]( float x0, float z0, float spacing, uint32_t cells, const auto& isHole ) -> JPH::RefConst<JPH::Shape>
 	{
 		const uint32_t samples = ( cells + 1 + block - 1 ) / block * block;
@@ -409,7 +435,11 @@ bool PhysicsWorld::buildTerrain( const TerrainHeightSource& terrain )
 				const float z = z0 + j * spacing;
 				float value = 0.0f;
 				if( !isHole( i, j ) && terrain.surfaceHeight( x, z, value ) )
+				{
 					values[static_cast<size_t>( j ) * samples + i] = value;
+					lowest = std::min( lowest, value );
+					highest = std::max( highest, value );
+				}
 			}
 		JPH::HeightFieldShapeSettings settings( values.data(), JPH::Vec3( x0, 0.0f, z0 ), JPH::Vec3( spacing, 1.0f, spacing ), samples );
 		settings.mBlockSize = block;
@@ -453,6 +483,34 @@ bool PhysicsWorld::buildTerrain( const TerrainHeightSource& terrain )
 	JPH::BodyCreationSettings settings( shape, JPH::Vec3::sZero(), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Layers::nonMoving );
 	impl.terrainBody = bodies.CreateAndAddBody( settings, JPH::EActivation::DontActivate );
 	impl.terrainRevision = height.revision;
+
+	// Граница карты — стены за четырьмя её краями, как Blocking Volume в UE: дальше земли столкновений нет (дальние горы —
+	// только картинка), и идущий падал вниз без конца (Dimok, 2026-10-20). Толщина 1 м, вдоль — сторона карты и по метру за
+	// углы, по высоте — от самой низкой земли − 10 м до самой высокой + 100 м (прыжок не перелетит). Четыре тела, а не одно:
+	// отладочный вид «Collision» показывает только ближнюю стену
+	impl.removeBoundary();
+	if( lowest <= highest )
+	{
+		const float size = height.worldSize;
+		const float bottom = lowest - 10.0f;
+		const float top = highest + 100.0f;
+		const float middle = 0.5f * ( bottom + top );
+		const JPH::Vec3 alongX( 0.5f * size + 1.0f, 0.5f * ( top - bottom ), 0.5f );
+		const JPH::Vec3 alongZ( 0.5f, 0.5f * ( top - bottom ), 0.5f * size + 1.0f );
+		const std::pair<JPH::Vec3, JPH::Vec3> walls[4] = {
+			{ JPH::Vec3( -0.5f, middle, 0.5f * size ), alongZ }, { JPH::Vec3( size + 0.5f, middle, 0.5f * size ), alongZ },
+			{ JPH::Vec3( 0.5f * size, middle, -0.5f ), alongX }, { JPH::Vec3( 0.5f * size, middle, size + 0.5f ), alongX } };
+		for( const auto& [center, half] : walls )
+		{
+			const JPH::RefConst<JPH::Shape> wall = create( JPH::BoxShapeSettings( half ), "map boundary" );
+			if( !wall )
+				continue;
+			const JPH::BodyCreationSettings wallSettings( wall, center, JPH::Quat::sIdentity(), JPH::EMotionType::Static, Layers::boundary );
+			const JPH::BodyID body = bodies.CreateAndAddBody( wallSettings, JPH::EActivation::DontActivate );
+			if( !body.IsInvalid() )
+				impl.boundaryBodies.push_back( body );
+		}
+	}
 	return !impl.terrainBody.IsInvalid();
 }
 
@@ -581,7 +639,8 @@ bool PhysicsWorld::castRay( const XMFLOAT3& origin, const XMFLOAT3& direction, f
 {
 	const JPH::RRayCast ray( vec3( origin ), vec3( direction ) );
 	JPH::RayCastResult hit;
-	if( !m_impl->system.GetNarrowPhaseQuery().CastRay( ray, hit ) )
+	const NotBoundary notBoundary;
+	if( !m_impl->system.GetNarrowPhaseQuery().CastRay( ray, hit, {}, notBoundary ) )
 		return false;
 	fraction = hit.mFraction;
 	if( body )

@@ -1,5 +1,5 @@
 // Ходьба по рельефу (WalkMode) на персонаже мира столкновений: падение на землю, шаг по ровному, стена выше ступеньки,
-// сход с уступа и падение с обрыва, соскальзывание с крутого склона, прыжок, упор в коробку. Рельеф — подделка с шагом
+// сход с уступа и падение с обрыва, соскальзывание с крутого склона, прыжок, упор в коробку, край карты. Рельеф — подделка с шагом
 // 0,25 м (стена в полметра — стена, а не пологий скат), клавиши — Input::setKeyDown
 #include <doctest/doctest.h>
 #include <cmath>
@@ -159,4 +159,23 @@ TEST_CASE( "WalkMode: a box stops the walk" )
 	CHECK( camera.position().z > 133.5f );					// дошёл до неё
 	mode.setEnabled( false, camera, &flat.world );
 	CHECK( flat.world.physics().characterCount() == 0 );
+}
+
+TEST_CASE( "WalkMode: walking turned on outside the map starts at its edge, the edge stops the walk" )
+{
+	WalkWorld flat( []( float, float ) { return 10.0f; } );
+	DMCamera camera;
+	WalkMode mode;
+	// Камера за краем z = 0 (карта 256 м): земли там нет — ноги у края, на земле, а не падение без конца
+	start( mode, camera, flat.world, 128.0f, 30.0f, -40.0f );
+	walk( mode, camera, flat.world, 3.0f );
+	CHECK( camera.position().z > 0.0f );
+	CHECK( camera.position().z < 1.0f );
+	CHECK( std::abs( camera.position().y - ( 10.0f + eyeHeight ) ) < heightTolerance );
+	// Назад, за край, — стена границы
+	press( DIK_S, true );
+	walk( mode, camera, flat.world, 3.0f );
+	press( DIK_S, false );
+	CHECK( camera.position().z > 0.0f );
+	CHECK( std::abs( camera.position().y - ( 10.0f + eyeHeight ) ) < heightTolerance );
 }

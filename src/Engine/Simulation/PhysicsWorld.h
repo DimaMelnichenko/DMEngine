@@ -29,6 +29,7 @@ public:
 	// Земля — те же треугольники, что видит surfaceHeight: главная карта высот — выборки в узлах текселя карты
 	// (TerrainHeight::worldSize / mapSize), под квадратами детальной земли (fineRegions: плитки у русел) — дыры, сами квадраты —
 	// свои карты высот с их шагом. Заново — после новой итоговой карты (TerrainHeight::revision). Вода (waterLevel) — оттуда же.
+	// И граница карты — стены за её краями только для персонажей (лучи castRay их не видят): за картой земли нет.
 	// false — у рельефа нет высот на CPU
 	bool buildTerrain( const TerrainHeightSource& terrain );
 	// Номер итоговой карты, по которой построена земля; ~0 — земли нет
@@ -56,7 +57,8 @@ public:
 	// После загрузки многих тел — перестроить дерево широкой фазы (быстрее запросы)
 	void optimize();
 
-	// Луч от origin на direction (длина — дальность): доля пути до ближайшего попадания и тело (0 — земля); false — мимо
+	// Луч от origin на direction (длина — дальность): доля пути до ближайшего попадания и тело (0 — земля); false — мимо.
+	// Границу карты луч не видит
 	bool castRay( const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& direction, float& fraction, BodyId* body = nullptr ) const;
 
 	// Отладочный вид (как Show → Collision в UE): отрезки каркаса форм тел и персонажей, чьи границы ближе radius к center;

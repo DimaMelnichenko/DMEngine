@@ -23,10 +23,11 @@ public:
 	WalkMode();
 
 	bool enabled() const { return m_enabled; }
-	// Включение — с места камеры (под землёй — на поверхность, в воздухе — падение до земли): свой персонаж в мире world;
-	// выключение — персонаж убран, камера летает с того же места
+	// Включение — с места камеры (под землёй — на поверхность, в воздухе — падение до земли, за картой — у её края): свой
+	// персонаж в мире world; выключение — персонаж убран, камера летает с того же места
 	void setEnabled( bool enabled, DMCamera& camera, World* world );
-	// Перенос идущего на место камеры (команда camera): ноги — на высоту глаз ниже, под землёй — на поверхность, скорость — ноль
+	// Перенос идущего на место камеры (команда camera): ноги — на высоту глаз ниже, под землёй — на поверхность, за картой —
+	// у её края, скорость — ноль
 	void teleport( const DMCamera& camera );
 	// Шаг ходьбы: seconds — время кадра; ставит положение камеры (направление взгляда — её, по мыши)
 	void update( float seconds, DMCamera& camera, World& world );
@@ -39,6 +40,9 @@ public:
 private:
 	// Капсула по окну: высота — глаза + 0,1 м
 	PhysicsWorld::CharacterSettings characterSettings() const;
+	// Ноги под камерой: на высоту глаз ниже, внутри карты (за краем — стена границы, PhysicsWorld::buildTerrain), под землёй —
+	// на поверхности
+	DirectX::XMFLOAT3 feetUnder( const DMCamera& camera, const World& world ) const;
 
 	PropertyContainer m_properties;
 	bool m_enabled = false;

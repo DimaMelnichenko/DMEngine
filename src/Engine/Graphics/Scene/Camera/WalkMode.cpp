@@ -78,12 +78,7 @@ void WalkMode::setEnabled( bool enabled, DMCamera& camera, World* world )
 		return;
 
 	// С места камеры — падение до земли (под землёй — сразу на поверхность)
-	const XMFLOAT3& eye = camera.position();
-	const float eyeHeight = m_properties["Eye height"].data<float>();
-	m_feet = XMFLOAT3( eye.x, eye.y - eyeHeight, eye.z );
-	float ground = 0.0f;
-	if( world->terrain()->surfaceHeight( m_feet.x, m_feet.z, ground ) && m_feet.y < ground )
-		m_feet.y = ground;
+	m_feet = feetUnder( camera, *world );
 	m_applied = characterSettings();
 	m_character = world->physics().createCharacter( m_applied, m_feet );
 	m_velocity = XMFLOAT2( 0.0f, 0.0f );
@@ -95,15 +90,32 @@ void WalkMode::teleport( const DMCamera& camera )
 {
 	if( !m_enabled || !m_world )
 		return;
-	const XMFLOAT3& eye = camera.position();
-	m_feet = XMFLOAT3( eye.x, eye.y - m_properties["Eye height"].data<float>(), eye.z );
-	float ground = 0.0f;
-	if( m_world->terrain() && m_world->terrain()->surfaceHeight( m_feet.x, m_feet.z, ground ) && m_feet.y < ground )
-		m_feet.y = ground;
+	m_feet = feetUnder( camera, *m_world );
 	m_world->physics().setCharacterPosition( m_character, m_feet );
 	m_velocity = XMFLOAT2( 0.0f, 0.0f );
 	m_onGround = false;
 	m_eyeLift = 0.0f;
+}
+
+XMFLOAT3 WalkMode::feetUnder( const DMCamera& camera, const World& world ) const
+{
+	const XMFLOAT3& eye = camera.position();
+	XMFLOAT3 feet( eye.x, eye.y - m_properties["Eye height"].data<float>(), eye.z );
+	const TerrainHeightSource* terrain = world.terrain();
+	if( !terrain )
+		return feet;
+	// За краем карты земли нет, а у края — стена границы: ноги — у края изнутри, иначе падение без конца
+	const float size = terrain->terrainHeight().worldSize;
+	const float margin = m_properties["Radius"].data<float>() + 0.1f;
+	if( size > 2.0f * margin )
+	{
+		feet.x = std::clamp( feet.x, margin, size - margin );
+		feet.z = std::clamp( feet.z, margin, size - margin );
+	}
+	float ground = 0.0f;
+	if( terrain->surfaceHeight( feet.x, feet.z, ground ) && feet.y < ground )
+		feet.y = ground;
+	return feet;
 }
 
 float WalkMode::eyeAboveFeet() const
