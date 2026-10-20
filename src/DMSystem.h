@@ -29,5 +29,4 @@ private:
 	HWND m_hwnd;
 	GS::Engine m_engine;
 	Config m_config;
-	bool m_exit;
 };

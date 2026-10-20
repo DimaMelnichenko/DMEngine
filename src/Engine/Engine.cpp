@@ -234,7 +234,14 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 		if( !snapped )
 			m_GUI.notify( "Select a model instance over the terrain first", true );
 	} );
-	m_GUI.addAction( "Exit", "Esc", [this] { m_exitRequested = true; } );
+	m_GUI.addAction( "Exit", "Esc", [this] { confirmExit(); } );
+	m_GUI.setExitHandler( [this]( bool quit )
+	{
+		if( quit )
+			m_exitRequested = true;
+		else if( m_gameViewBeforeExit )
+			m_showGUI = false;
+	} );
 	// Меню View — те же переключатели, что горячие клавиши (нажатие через KeyEventNotifier: состояние клавиши не сбивается)
 	auto press = []( uint8_t key ) { return [key] { Input::instance().notifier().press( key ); }; };
 	m_GUI.addToggle( { "Wireframe", "Q", [this] { return m_wireframe; }, press( DIK_Q ) } );
@@ -658,6 +665,16 @@ void Engine::saveSceneCaptures()
 	}
 }
 
+void Engine::confirmExit()
+{
+	// Esc в открытом окне — его «Cancel» (окно ловит Esc само)
+	if( m_GUI.exitConfirmationOpen() )
+		return;
+	m_gameViewBeforeExit = !m_showGUI;
+	m_showGUI = true;
+	m_GUI.requestExitConfirmation();
+}
+
 void Engine::updateMouseLook()
 {
 	// Как вьюпорт редактора UE: камера смотрит мышью, пока зажата правая кнопка над сценой (не над окнами редактора);
@@ -670,7 +687,9 @@ void Engine::updateMouseLook()
 		m_rightButtonLook = true;
 	else if( m_rightButtonLook && !rightButton )
 		m_rightButtonLook = false;
-	const bool look = active && m_config.mouseLook() && ( m_rightButtonLook || m_flyMode || m_walk.enabled() || !m_showGUI );
+	// Пока открыто окно выхода — курсор свободен: по его кнопкам можно попасть и в полёте, и при ходьбе
+	const bool look = active && m_config.mouseLook() && !m_GUI.exitConfirmationOpen() &&
+					  ( m_rightButtonLook || m_flyMode || m_walk.enabled() || !m_showGUI );
 	if( look != m_mouseLook )
 	{
 		// Курсор прячется на время поворота и стоит на месте (ClipCursor в точку: смещения даёт Raw Input), затем
@@ -735,6 +754,12 @@ void Engine::bindingKeys()
 	{
 		for( const auto& scatterer : m_scene.scatterers() )
 			scatterer->setVisible( !scatterer->visible() );
+	} );
+
+	// Выход — с вопросом (окно «Exit DMEngine?»): случайный Esc движок не закрывает
+	Input::instance().notifier().registerTrigger( DIK_ESCAPE, [this]( bool )
+	{
+		confirmExit();
 	} );
 
 	// Как Game View в редакторе UE: кадр без окон интерфейса

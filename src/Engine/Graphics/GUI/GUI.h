@@ -84,6 +84,11 @@ public:
 	bool modified() const;
 	// Сообщение в углу экрана на несколько секунд (сохранено, ошибка)
 	void notify( const std::string& text, bool error = false );
+	// Окно «Exit DMEngine?» (Esc, File → Exit): открыть в следующем кадре; ответ — handler( true ) выйти, ( false ) отмена.
+	// При несохранённых правках окон уровня — ещё «Save and quit» (действие «Save level», затем выход)
+	void requestExitConfirmation() { m_openExitPopup = true; }
+	void setExitHandler( std::function<void( bool quit )> handler ) { m_exitHandler = std::move( handler ); }
+	bool exitConfirmationOpen() const { return m_openExitPopup || m_exitPopupOpen; }
 
 	// Курсор над окнами или окно перетаскивается — мышь у GUI, камере не давать; идёт ввод текста — горячие клавиши
 	// не срабатывают. По прошлому кадру
@@ -105,6 +110,8 @@ private:
 	void drawHotkeys();
 	// Окно «Save preset as»: имя нового пресета окружения
 	void drawPresetPopup();
+	// Окно «Exit DMEngine?»
+	void drawExitPopup();
 
 	struct Place
 	{
@@ -124,6 +131,9 @@ private:
 	Editor::PresetMenu m_presetMenu;
 	bool m_openPresetPopup = false;		// открыть окно «Save preset as» в этом кадре
 	std::string m_presetName;			// имя в нём
+	bool m_openExitPopup = false;		// открыть окно выхода в этом кадре
+	bool m_exitPopupOpen = false;		// окно выхода на экране
+	std::function<void( bool )> m_exitHandler;
 
 	OutlinerPanel m_outliner;
 	DetailsPanel m_details;

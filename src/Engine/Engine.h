@@ -54,8 +54,11 @@ public:
 	void beforeExit();
 	// WM_SIZE: задний буфер, буфер сцены, цели постобработки и проекция камеры — под новый размер клиентской области
 	void resize( uint32_t width, uint32_t height );
-	// Команда quit удалённого управления: DMSystem выходит, как по Esc
+	// Выход: команда quit удалённого управления, «Quit» окна выхода (Esc, File → Exit); DMSystem выходит
 	bool exitRequested() const { return m_exitRequested; }
+	// Esc и File → Exit: окно «Exit DMEngine?» — выход только по подтверждению (случайный Esc движок не закрывает); без
+	// редактора (G) окно показывается с ним, «Cancel» снова его прячет
+	void confirmExit();
 
 
 private:
@@ -151,6 +154,7 @@ private:
 	float m_fixedTimeStep = 0.0f;
 
 	bool m_flyMode = false;			// I: камера смотрит мышью всегда
+	bool m_gameViewBeforeExit = false;	// окно выхода открыто из вида игры (G): после «Cancel» редактор снова скрыт
 	WalkMode m_walk;				// F: ходьба по рельефу вместо полёта
 	bool m_rightButtonLook = false;	// зажата правая кнопка, нажатая над сценой
 	bool m_mouseLook = false;		// камера читает мышь в этом кадре

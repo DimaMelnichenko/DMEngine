@@ -6,7 +6,6 @@
 
 
 DMSystem::DMSystem(  )
-	: m_exit(false)
 {
 
 }
@@ -47,11 +46,6 @@ bool DMSystem::Initialize( const char* commandLine )
 		return false;
 	}
 
-	Input::instance().notifier().registerTrigger( DIK_ESCAPE, [this]( bool )
-	{
-		m_exit = true;
-	} );
-
 	return true;
 }
 
@@ -77,7 +71,7 @@ void DMSystem::Run( )
 		}
 
 		// If windows signals to end the application then exit out.
-		if( quit || m_exit || m_engine.exitRequested() )
+		if( quit || m_engine.exitRequested() )
 		{
 			m_engine.beforeExit();
 			break;

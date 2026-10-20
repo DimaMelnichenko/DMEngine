@@ -196,6 +196,7 @@ void GUI::Begin( const GS::FrameStats& stats, DMCamera& camera )
 	if( m_showHotkeys )
 		drawHotkeys();
 	drawPresetPopup();
+	drawExitPopup();
 	drawNotification();
 	PropertyWidgets::endFrame();
 	// Кнопка окна — после отрисовки панелей: её действие может убрать подокно, которое только что рисовалось
@@ -482,6 +483,51 @@ void GUI::drawPresetPopup()
 	ImGui::EndPopup();
 }
 
+void GUI::drawExitPopup()
+{
+	static const char* const title = "Exit DMEngine?";
+	if( m_openExitPopup )
+	{
+		m_openExitPopup = false;
+		ImGui::OpenPopup( title );
+	}
+	m_exitPopupOpen = ImGui::BeginPopupModal( title, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings );
+	if( !m_exitPopupOpen )
+		return;
+	const bool unsaved = modified();
+	if( unsaved )
+		ImGui::TextColored( ImVec4( 1.0f, 0.75f, 0.35f, 1.0f ), "The level has unsaved edits of the windows" );
+	ImGui::TextUnformatted( "Enter - the first button, Esc - cancel" );
+	// Esc и Enter, которыми окно открыли, в кадре появления его не закрывают
+	const bool appearing = ImGui::IsWindowAppearing();
+	const bool enter = !appearing && ( ImGui::IsKeyPressed( ImGuiKey_Enter ) || ImGui::IsKeyPressed( ImGuiKey_KeypadEnter ) );
+	bool save = false;
+	if( unsaved )
+	{
+		save = ImGui::Button( "Save and quit" ) || enter;
+		ImGui::SameLine();
+	}
+	const bool quit = ImGui::Button( "Quit" ) || ( enter && !unsaved );
+	ImGui::SameLine();
+	const bool cancel = ImGui::Button( "Cancel" ) || ( !appearing && ImGui::IsKeyPressed( ImGuiKey_Escape ) );
+	if( save || quit || cancel )
+	{
+		if( save )
+		{
+			for( const Editor::Action& action : m_actions )
+			{
+				if( action.name == "Save level" )
+					action.run();
+			}
+		}
+		ImGui::CloseCurrentPopup();
+		m_exitPopupOpen = false;
+		if( m_exitHandler )
+			m_exitHandler( save || quit );
+	}
+	ImGui::EndPopup();
+}
+
 void GUI::drawHotkeys()
 {
 	ImGui::SetNextWindowSize( ImVec2( 420.0f, 0.0f ), ImGuiCond_FirstUseEver );
@@ -500,7 +546,7 @@ void GUI::drawHotkeys()
 			{ "`", "console" },
 			{ "Ctrl + click on a slider", "type a value" },
 			{ "Delete", "remove the model instance or light selected in the viewport" },
-			{ "Esc", "exit" } };
+			{ "Esc", "exit (asks first)" } };
 		if( ImGui::BeginTable( "keys", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit ) )
 		{
 			for( const auto& key : keys )
