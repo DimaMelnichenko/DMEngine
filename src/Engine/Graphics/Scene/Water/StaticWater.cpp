@@ -501,16 +501,7 @@ std::string StaticWater::solveFlow( const Flow& flow )
 	}
 	const uint32_t iterations = static_cast<uint32_t>( std::clamp( flow.iterations, 1, 200 ) );
 
-	WaterFlowBuffer params = {};
-	params.flowTileCount = static_cast<uint32_t>( m_flowTileList.size() );
-	params.flowTimeStep = timeStep;
-	params.flowViscosity = std::min( flow.viscosity * timeStep / ( m_field->cellSize * m_field->cellSize ), maxViscosityShare );
-	params.flowFriction = timeStep * gravity * flow.manning * flow.manning;
-	params.flowStreamFriction = timeStep * gravity * m_streamManning * m_streamManning;
-	params.flowMinDepth = flowMinDepth;
-	params.flowLayer = std::max( flow.layer, flowMinDepth );
-	params.flowScreen = flowScreen;
-	params.flowRelaxation = flowRelaxation;
+	WaterFlowBuffer params = flowParameters( flow, flow.viscosity, timeStep, m_field->cellSize, static_cast<uint32_t>( m_flowTileList.size() ) );
 	params.flowStoneDrag = timeStep * 0.5f * stoneDragCoefficient;
 
 	// Тайлы прошлого расчёта (другие русла) — сухие: соседи за краем тайлов читаются нулями
@@ -644,6 +635,36 @@ std::string StaticWater::solveFlow( const Flow& flow )
 	return text;
 }
 
+WaterFlowBuffer StaticWater::flowParameters( const Flow& flow, float viscosity, float timeStep, float cell, uint32_t groups ) const
+{
+	WaterFlowBuffer params = {};
+	params.flowTileCount = groups;
+	params.flowTimeStep = timeStep;
+	params.flowViscosity = std::min( viscosity * timeStep / ( cell * cell ), maxViscosityShare );
+	params.flowFriction = timeStep * gravity * flow.manning * flow.manning;
+	params.flowStreamFriction = timeStep * gravity * m_streamManning * m_streamManning;
+	params.flowMinDepth = flowMinDepth;
+	params.flowLayer = std::max( flow.layer, flowMinDepth );
+	params.flowScreen = flowScreen;
+	params.flowRelaxation = flowRelaxation;
+	return params;
+}
+
+WaterDetailFlowBuffer StaticWater::detailFlowParameters() const
+{
+	WaterDetailFlowBuffer params = {};
+	params.detailCells = m_detailSide > 2 ? m_detailSide - 2 : 0;
+	params.detailTilesPerSide = m_detailTilesPerSide;
+	params.detailStep = params.detailCells > 0 ? m_detailTileSize / params.detailCells : 0.0f;
+	params.detailWetDepth = flowMinDepth;
+	return params;
+}
+
+float StaticWater::stoneHeightShare()
+{
+	return stoneHeight;
+}
+
 std::string StaticWater::solveDetailFlow( const Flow& flow )
 {
 	if( !m_enabled || m_detailTileCount == 0 || m_detailBlockList.empty() || flow.detailSettleTime <= 0.0f )
@@ -696,21 +717,8 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 		d3d.setName( *texture, name );
 	}
 
-	WaterFlowBuffer params = {};
-	params.flowTileCount = blocks;
-	params.flowTimeStep = timeStep;
-	params.flowViscosity = std::min( flow.viscosity * timeStep / ( step * step ), maxViscosityShare );
-	params.flowFriction = timeStep * gravity * flow.manning * flow.manning;
-	params.flowStreamFriction = timeStep * gravity * m_streamManning * m_streamManning;
-	params.flowMinDepth = flowMinDepth;
-	params.flowLayer = std::max( flow.layer, flowMinDepth );
-	params.flowScreen = flowScreen;
-	params.flowRelaxation = flowRelaxation;
-	WaterDetailFlowBuffer detailParams = {};
-	detailParams.detailCells = cells;
-	detailParams.detailTilesPerSide = m_detailTilesPerSide;
-	detailParams.detailStep = step;
-	detailParams.detailWetDepth = flowMinDepth;
+	const WaterFlowBuffer params = flowParameters( flow, flow.viscosity, timeStep, step, blocks );
+	const WaterDetailFlowBuffer detailParams = detailFlowParameters();
 
 	// Блоки прошлого расчёта и ячейки вне блоков — сухие
 	for( StorageView* uav : { &infoUAV, &info2UAV, &velocityUAV, &advectedUAV, &pressureUAV, &divergenceUAV } )

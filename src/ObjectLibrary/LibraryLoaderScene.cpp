@@ -683,6 +683,7 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 			const int64_t waterId = *level.waterSimulationId;
 			updateSettings( db, "WaterSimulation", waterId, GS::waterSimulationSchema(), water, before );
 			updateSettings( db, "WaterSimulation", waterId, GS::waterFlowSchema(), water.flow, before ? &before->flow : nullptr );
+			updateSettings( db, "WaterSimulation", waterId, GS::waterNearFlowSchema(), water.nearFlow, before ? &before->nearFlow : nullptr );
 
 			// Русла конвейера: строка на строку WaterSimulation (нет — появится)
 			RowUpdate().settings( GS::waterChannelsSchema(), water.channels, before ? &before->channels : nullptr )

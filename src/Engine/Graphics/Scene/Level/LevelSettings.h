@@ -743,6 +743,22 @@ struct WaterSimulationSettings
 		float detailSettleTime = 30.0f;
 	} flow;
 
+	// Подробное течение у камеры (NearWaterFlow, docs/water.md): окно мелкой сетки вокруг камеры, каждый кадр, вложено в
+	// течение детальной сетки 0,25 м — обтекание камней (камень выше воды — препятствие), повороты и завихрения
+	struct NearFlow
+	{
+		bool enabled = true;
+		float size = 10.0f;			// сторона окна, м
+		float cell = 0.0625f;		// сторона ячейки, м
+		int32_t steps = 1;			// шагов за кадр (время шага — время игры кадра / шагов)
+		int32_t iterations = 10;	// итераций давления за шаг
+		float viscosity = 0.005f;	// вихревая вязкость, м²/с: меньше — мельче вихри
+		// Камень выше воды: проводимость сквозь него — эта доля глубины без камня (вода обходит его, а ряд камней без
+		// просвета сочится, не запружая ручей)
+		float passage = 0.05f;
+		float eddies = 1.0f;		// удержание завихрённости, 1/с: вихри за камнями и на поворотах держатся дольше
+	} nearFlow;
+
 	std::vector<WaterSource> sources;	// включённые строки WaterSources этой строки WaterSimulation
 
 	// Режим static (колонка mode): вода не течёт — озёра наливаются при загрузке до перелива, ручьи — ленты, их вода для
@@ -760,6 +776,8 @@ struct WaterSimulationSettings
 // источники, русла и кривые (свои строки)
 const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema();
 const SettingsSchema<WaterSimulationSettings::Flow>& waterFlowSchema();
+// Поля подокна «Near flow» (колонки near_* строки WaterSimulation): подробное течение у камеры, правка — сразу
+const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema();
 
 // Эмиттер частиц (строки ParticleEmitters и экземпляр LevelParticleEmitters, ParticleSystem, docs/particles.md)
 struct ParticleEmitterSettings

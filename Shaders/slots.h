@@ -121,8 +121,11 @@
 // cb_farTerrain, cb_farForest
 #define SLOT_FAR_TERRAIN_HEIGHT	138
 #define SLOT_FAR_FOREST	139
+// Подробное течение у камеры (NearWaterFlow, water.sh): окно мелкой сетки, тексель — ячейка мира по модулю стороны окна
+// (RGBA16F: глубина без камней, течение по X и Z мира, 1 — посчитано); константа — cb_waterNear
+#define SLOT_WATER_NEAR	140
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	40
+#define SLOT_SCENE_COUNT	41
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

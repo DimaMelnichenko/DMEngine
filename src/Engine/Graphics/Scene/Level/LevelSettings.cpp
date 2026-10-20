@@ -829,6 +829,28 @@ const SettingsSchema<WaterSimulationSettings::Flow>& waterFlowSchema()
 	return schema;
 }
 
+const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema()
+{
+	using Settings = WaterSimulationSettings::NearFlow;
+	static const SettingsSchema<Settings> schema = {
+		{ "near_enabled", "Enabled", DM_SETTING( enabled ), 0.0f, 0.0f, "",
+		  "Flow around the camera on a fine grid every frame: around the stones, in the bends, with eddies" },
+		{ "near_size", "Size", DM_SETTING( size ), 2.0f, 40.0f, "m", "Side of the window around the camera", settingClamp },
+		{ "near_cell", "Cell", DM_SETTING( cell ), 0.03f, 0.25f, "m", "Side of a cell of the fine grid", settingClamp },
+		{ "near_steps", "Steps per frame", DM_SETTING( steps ), 1.0f, 8.0f, "", "Flow steps per frame (the game time of the frame)", settingClamp },
+		{ "near_iterations", "Pressure iterations", DM_SETTING( iterations ), 1.0f, 60.0f, "", "Pressure solver iterations per step",
+		  settingClamp },
+		{ "near_viscosity", "Viscosity", DM_SETTING( viscosity ), 0.0f, 0.1f, "m2/s",
+		  "Eddy viscosity of the fine grid: smaller eddies at less", settingClamp },
+		{ "near_passage", "Obstacle passage", DM_SETTING( passage ), 0.0f, 1.0f, "",
+		  "A stone above the water lets this share of the depth through: the water goes around it, and a row of stones "
+		  "without a gap does not dam the stream - it seeps", settingClamp },
+		{ "near_eddies", "Eddies", DM_SETTING( eddies ), 0.0f, 10.0f, "1/s",
+		  "Vorticity confinement: eddies behind the stones and in the bends keep their spin", settingClamp },
+	};
+	return schema;
+}
+
 const SettingsSchema<WaterChannelsSettings>& waterChannelsSchema()
 {
 	using Settings = WaterChannelsSettings;

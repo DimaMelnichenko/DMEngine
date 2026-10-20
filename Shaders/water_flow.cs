@@ -47,6 +47,19 @@
 //     камней, профиль поперёк русла, струи) — свой. Давление под «жёсткой крышкой» поправляет расход только вблизи, и
 //     камни подряд (запруда за запрудой, течение не успевает разогнаться) тормозили весь ручей втрое, а сетка 1 м камни
 //     уже держит сопротивлением с возмещением (в среднем — по Маннингу)
+//
+// FLOW_NEAR (define) — то же течение в окне вокруг камеры каждый кадр (NearWaterFlow, docs/water.md, «Подробное течение у
+// камеры»): ячейка g_nearStep (6,25 см), окно g_nearSize² привязано к миру, адрес ячейки — по модулю стороны окна (окно
+// сдвигается, ячейки остаются на месте; вошедшие начинаются с течения детальной сетки — mainFlowFaces). Вложено в детальную
+// сетку, как она — в сетку 1 м: ячейка — из детальных плиток билинейно (уровень, u₀, R, дно), за окном — ячейки вне
+// (грань задана течением детальной сетки), крупный масштаб тянется к нему (mainFlowNudge). Отличия:
+//   - камни русла — полуэллипсоиды на своей сетке (список камней окна g_nearStones), и камень выше воды — препятствие:
+//     глубина сквозь него — доля g_nearPassage глубины без камня (проводимость грани и трение по Маннингу на этой глубине —
+//     вода обходит камень, а ряд камней на уступе без просвета не запружает ручей: уровень под «жёсткой крышкой» не
+//     поднимается — вода сочится);
+//   - удержание завихрённости (vorticity confinement, Fedkiw, Stam, Jensen 2001; mainNearVorticity, сила — в
+//     mainFlowViscosity): полулагранжев перенос размывает вихри за камнем и на повороте, сила к центрам вихрей их держит;
+//   - давление и скорость прошлого кадра — начальное приближение: окно идёт вслед за водой, шаги — по времени игры
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "water_simulation.sh"
@@ -54,7 +67,14 @@
 DM_SRV( StructuredBuffer<uint2>, g_flowTiles, 5 );	// группы счёта (группа потоков — 8 × 8 ячеек): тайлы с озером и соседние;
 													// FLOW_DETAIL — блоки плиток: срез, номер блока в плитке
 
-#ifdef FLOW_DETAIL
+#if defined( FLOW_NEAR )
+DM_SRV( Texture2DArray<float4>, g_detailStatic, 3 );		// детальные плитки: уровень воды (−1e9 — нет), u₀ по X и Z мира, R русла
+DM_SRV( Texture2DArray<float2>, g_terrainDetailTiles, 6 );	// детальная земля: нормированная высота, врез
+DM_SRV( Texture2D<uint>, g_detailIndex, 7 );				// плитка (x, z) мира → срез + 1, 0 — плитки нет
+DM_SRV( StructuredBuffer<float4>, g_nearStones, 9 );		// камни русла в окне: центр основания (x, y, z), поперечник
+DM_SRV( Texture2DArray<float4>, g_detailWater, 10 );		// детальная вода (SLOT_WATER_DETAIL): уровень, течение X, Z, глубина
+#define FLOW_TEXTURE( type ) RWTexture2D<type>
+#elif defined( FLOW_DETAIL )
 DM_SRV( Texture2DArray<float4>, g_detailStatic, 3 );		// уровень воды (−1e9 — нет), u₀ по X и Z мира, R русла (0 — озеро)
 DM_SRV( Texture2DArray<float2>, g_terrainDetailTiles, 6 );	// детальная земля: нормированная высота, врез
 DM_SRV( Texture2D<uint>, g_detailIndex, 7 );				// плитка (x, z) мира → срез + 1, 0 — плитки нет
@@ -74,7 +94,10 @@ DM_UAV( FLOW_TEXTURE( float2 ), g_advected, 2 );	// после переноса
 DM_UAV( FLOW_TEXTURE( float ), g_pressure, 3 );		// давление (м²/с: u −= ∇p)
 DM_UAV( FLOW_TEXTURE( float ), g_divergence, 4 );	// ∇·(h (u − u₀)), м/с
 DM_UAV( FLOW_TEXTURE( float4 ), g_output, 5 );		// для шейдеров (SLOT_WATER; FLOW_DETAIL — детальная вода): скорость — в y, z
-#ifdef FLOW_DETAIL
+#if defined( FLOW_NEAR )
+DM_UAV( RWTexture2D<float2>, g_info2, 6 );			// x — R русла (> 0 — ручей), y — глубина без камней (текущий слой)
+DM_UAV( RWTexture2D<float>, g_vorticity, 7 );		// завихрённость в центре ячейки, 1/с (удержание завихрённости)
+#elif defined( FLOW_DETAIL )
 DM_UAV( RWTexture2DArray<float2>, g_info2, 6 );		// x — R русла (> 0 — ручей), y — глубина без камней (текущий слой)
 DM_SRV( Texture2DArray<float2>, g_cachedFlow, 11 );	// mainFlowRestore: течение X, Z мира
 #else
@@ -89,7 +112,144 @@ static const float kindStream = 2.0f;
 static const float kindOutside = 3.0f;	// FLOW_DETAIL: ячейка вне плиток, вода там — по сетке 1 м
 static const int2 axes[2] = { int2( 1, 0 ), int2( 0, 1 ) };
 
-#ifdef FLOW_DETAIL
+#if defined( FLOW_DETAIL ) || defined( FLOW_NEAR )
+#define FLOW_NESTED		// вложенная сетка: ячейки вне — с течением внешней сетки, крупный масштаб тянется к ней
+#endif
+
+#if defined( FLOW_NEAR )
+#include "water_detail_flow_constants.h"
+#include "water_near_flow_constants.h"
+
+static const float zSign = 1.0f;			// ось y окна — по Z мира
+
+typedef uint2 CellAddress;
+#define FLOW_CELL g_nearStep
+
+// Ячейка мира (шаг g_nearStep от угла мира) → тексель окна по модулю его стороны: окно сдвигается, а ячейка остаётся в
+// том же текселе; false — ячейка вне окна
+bool cellAddress( int2 cell, out CellAddress address )
+{
+	const int size = (int)g_nearSize;
+	address = uint2( ( cell % size + size ) % size );
+	const int2 local = cell - g_nearOrigin;
+	return all( local >= 0 ) && all( local < size );
+}
+
+// Тексель детальной плитки под точкой мира, м: x, y — дробные в текселях плитки (с полем в тексель), z — срез; false —
+// плитки нет
+bool detailTexel( float2 world, out float3 texel )
+{
+	texel = 0.0f;
+	const float2 grid = world / g_detailStep;
+	const int2 tile = int2( floor( grid / (float)g_detailCells ) );
+	if( any( tile < 0 ) || any( tile >= (int)g_detailTilesPerSide ) )
+		return false;
+	const uint slice = g_detailIndex.Load( int3( tile, 0 ) );
+	texel = float3( grid - float2( tile ) * (float)g_detailCells + 1.0f, (float)slice - 1.0f );
+	return slice != 0;
+}
+
+// Четыре текселя вокруг точки (дробный тексель) и билинейные веса
+float bilinearWeight( float2 t, int2 offset )
+{
+	return ( offset.x ? t.x : 1.0f - t.x ) * ( offset.y ? t.y : 1.0f - t.y );
+}
+
+// Статичная вода плиток в точке мира — билинейно по текселям с водой: уровень, u₀ по X и Z мира, R; false — воды нет
+bool detailStaticAt( float2 world, out float4 value )
+{
+	value = 0.0f;
+	float3 texel;
+	if( !detailTexel( world, texel ) )
+		return false;
+	const float2 grid = texel.xy - 0.5f;
+	const int2 c = int2( floor( grid ) );
+	const float2 t = grid - c;
+	float4 sum = 0.0f;
+	float weights = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 offset = int2( k & 1, k >> 1 );
+		const float weight = bilinearWeight( t, offset );
+		const float4 sample = g_detailStatic.Load( int4( c + offset, texel.z, 0 ) );
+		if( weight <= 0.0f || sample.x <= -1e8f )
+			continue;
+		sum += weight * sample;
+		weights += weight;
+	}
+	if( weights <= 1e-6f )
+		return false;
+	value = sum / weights;
+	return true;
+}
+
+// Детальная вода в точке мира — билинейно по мокрым текселям: x — уровень, y, z — течение по X и Z мира, w — глубина;
+// false — воды нет
+bool detailWaterAt( float2 world, out float4 value )
+{
+	value = 0.0f;
+	float3 texel;
+	if( !detailTexel( world, texel ) )
+		return false;
+	const float2 grid = texel.xy - 0.5f;
+	const int2 c = int2( floor( grid ) );
+	const float2 t = grid - c;
+	float4 sum = 0.0f;
+	float weights = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 offset = int2( k & 1, k >> 1 );
+		const float weight = bilinearWeight( t, offset );
+		const float4 sample = g_detailWater.Load( int4( c + offset, texel.z, 0 ) );
+		if( weight <= 0.0f || sample.w < g_detailWetDepth )
+			continue;
+		sum += weight * sample;
+		weights += weight;
+	}
+	if( weights <= 1e-6f )
+		return false;
+	value = sum / weights;
+	return true;
+}
+
+// Детальная земля в точке мира, м (билинейно); −1e9 — плитки нет
+float detailBed( float2 world )
+{
+	float3 texel;
+	if( !detailTexel( world, texel ) )
+		return -1e9f;
+	const float2 grid = texel.xy - 0.5f;
+	const int2 c = int2( floor( grid ) );
+	const float2 t = grid - c;
+	float height = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 offset = int2( k & 1, k >> 1 );
+		height += bilinearWeight( t, offset ) * g_terrainDetailTiles.Load( int4( c + offset, texel.z, 0 ) ).x;
+	}
+	return height * g_heightMultiplier + g_heightOffset;
+}
+
+// Течение внешней (детальной) сетки в точке p (ячейки окна от угла мира) — по осям окна (они — X и Z мира)
+float2 coarseVelocity( float2 p )
+{
+	float4 water;
+	return detailWaterAt( p * g_nearStep, water ) ? water.yz : 0.0f;
+}
+
+// Глубина детальной воды у ячейки
+float coarseDepth( int2 cell )
+{
+	float4 water;
+	return detailWaterAt( ( cell + 0.5f ) * g_nearStep, water ) ? water.w : 0.0f;
+}
+
+// Доля шага, на которую крупный масштаб тянется к внешней сетке
+float nudgeShare()
+{
+	return g_nearNudgeShare;
+}
+#elif defined( FLOW_DETAIL )
 #include "water_detail_flow_constants.h"
 
 static const float stoneDepthShare = 0.5f;		// камень отнимает у глубины не больше этой доли
@@ -147,7 +307,31 @@ float coarseDepth( int2 cell )
 	return inside( coarse ) ? g_coarseWater.Load( int3( coarse, 0 ) ).x : 0.0f;
 }
 
-// Вид, u₀ и глубина ячейки (info) и R с глубиной без камней (extra); вне плиток — по сетке 1 м
+// Доля шага, на которую крупный масштаб тянется к внешней сетке
+float nudgeShare()
+{
+	return min( g_flowTimeStep / nudgeTime, 1.0f );
+}
+#else
+static const float zSign = -1.0f;			// строки сетки — против Z мира
+
+typedef int2 CellAddress;
+#define FLOW_CELL g_cellSize
+
+bool cellAddress( int2 cell, out CellAddress address )
+{
+	address = cell;
+	return inside( cell );
+}
+
+float4 cellInfo( int2 cell )
+{
+	return inside( cell ) ? g_info[cell] : 0.0f;
+}
+#endif
+
+#ifdef FLOW_NESTED
+// Вид, u₀ и глубина ячейки (info) и R с глубиной без камней (extra); вне своей сетки — по внешней (вид «вне»)
 void loadCell( int2 cell, out float4 info, out float2 extra )
 {
 	CellAddress address;
@@ -169,31 +353,15 @@ float4 cellInfo( int2 cell )
 	loadCell( cell, info, extra );
 	return info;
 }
-#else
-static const float zSign = -1.0f;			// строки сетки — против Z мира
-
-typedef int2 CellAddress;
-#define FLOW_CELL g_cellSize
-
-bool cellAddress( int2 cell, out CellAddress address )
-{
-	address = cell;
-	return inside( cell );
-}
-
-float4 cellInfo( int2 cell )
-{
-	return inside( cell ) ? g_info[cell] : 0.0f;
-}
 #endif
 
-// Скорости граней, которые хранит ячейка (восточной и южной); FLOW_DETAIL: у ячейки вне плиток — течение сетки 1 м
+// Скорости граней, которые хранит ячейка (восточной и южной); вложенная сетка: у ячейки вне — течение внешней
 float2 faceVelocity( int2 cell )
 {
 	CellAddress address;
 	if( cellAddress( cell, address ) )
 		return g_velocity[address];
-#ifdef FLOW_DETAIL
+#ifdef FLOW_NESTED
 	return cellInfo( cell ).z == kindOutside ? coarseVelocity( cell + 0.5f ) : 0.0f;
 #else
 	return 0.0f;
@@ -207,7 +375,12 @@ bool flowCell( uint3 group, uint3 thread, out int2 cell, out CellAddress address
 	address = 0;
 	if( group.x >= g_flowTileCount )
 		return false;
-#ifdef FLOW_DETAIL
+#if defined( FLOW_NEAR )
+	// Группа — блок 8 × 8 окна по строкам блоков
+	const uint blocks = g_nearSize / 8;
+	cell = g_nearOrigin + int2( uint2( group.x % blocks, group.x / blocks ) * 8 + thread.xy );
+	return cellAddress( cell, address );
+#elif defined( FLOW_DETAIL )
 	const uint2 block = g_flowTiles[group.x];
 	const uint blocksPerSide = g_detailCells / 8;
 	const uint2 tile = g_detailTileCoords[block.x];
@@ -222,6 +395,14 @@ bool flowCell( uint3 group, uint3 thread, out int2 cell, out CellAddress address
 #endif
 }
 
+#ifdef FLOW_NEAR
+// Пропускная доля ячейки: у камня выше воды (глубина упёрлась в долю g_nearPassage глубины без камня) — g_nearPassage, иначе 1
+float obstacleShare( float4 info, float2 extra )
+{
+	return extra.y > 0.0f && info.w <= g_nearPassage * extra.y * 1.01f + 1e-5f ? g_nearPassage : 1.0f;
+}
+#endif
+
 // Грань между ячейкой a и соседом a + axes[axis]
 struct Face
 {
@@ -231,6 +412,11 @@ struct Face
 	// Глубина без камней — расход сети ∇·(h₀ u₀) и сила тяжести ручья (у сетки 1 м — глубина грани); 0 — грань закрыта
 	float  baseDepth;
 	bool   stream;		// у ручья (хотя бы с одной стороны) — трение по n русел, у озера — своё
+	// Пропускная доля грани (окно у камеры: у камня выше воды — g_nearPassage, иначе 1): ею умножаются проводимость давления
+	// и поправка давлением. Под «жёсткой крышкой» поправка разгоняет воду на мелкой грани так же, как на глубокой, и одна
+	// малая глубина воду сквозь камень не останавливала (в камне течение было быстрее, чем рядом); так камень — пористое
+	// препятствие (как штраф Бринкмана): вода обходит его, а без обхода сочится
+	float  open;
 };
 
 static const uint faceClosed = 0;
@@ -245,8 +431,9 @@ Face face( int2 a, uint axis )
 	result.base = 0.0f;
 	result.baseDepth = 0.0f;
 	result.stream = false;
+	result.open = 1.0f;
 	const int2 b = a + axes[axis];
-#ifdef FLOW_DETAIL
+#ifdef FLOW_NESTED
 	float4 infoA, infoB;
 	float2 extraA, extraB;
 	loadCell( a, infoA, extraA );
@@ -271,6 +458,9 @@ Face face( int2 a, uint axis )
 	result.baseDepth = result.depth;
 #endif
 	result.stream = streamA || streamB;
+#ifdef FLOW_NEAR
+	result.open = min( obstacleShare( infoA, extraA ), obstacleShare( infoB, extraB ) );
+#endif
 	result.base = streamA && streamB ? 0.5f * ( infoA.xy + infoB.xy ) : streamA ? infoA.xy : streamB ? infoB.xy : 0.0f;
 	return result;
 }
@@ -278,7 +468,7 @@ Face face( int2 a, uint axis )
 // Заданная скорость грани (FLOW_DETAIL: к ячейке вне плиток) — течение сетки 1 м в точке грани
 float fixedFaceVelocity( int2 cell, uint axis )
 {
-#ifdef FLOW_DETAIL
+#ifdef FLOW_NESTED
 	return coarseVelocity( cell + ( axis == 0 ? float2( 1.0f, 0.5f ) : float2( 0.5f, 1.0f ) ) )[axis];
 #else
 	return 0.0f;
@@ -297,7 +487,7 @@ float2 advectedVelocity( int2 cell )
 	CellAddress address;
 	if( cellAddress( cell, address ) )
 		return g_advected[address];
-#ifdef FLOW_DETAIL
+#ifdef FLOW_NESTED
 	return cellInfo( cell ).z == kindOutside ? coarseVelocity( cell + 0.5f ) : 0.0f;
 #else
 	return 0.0f;
@@ -318,7 +508,36 @@ void mainFlowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	CellAddress address;
 	if( !flowCell( group, thread, cell, address ) )
 		return;
-#ifdef FLOW_DETAIL
+#if defined( FLOW_NEAR )
+	// Ячейка окна — из детальных плиток билинейно: уровень воды, u₀ и R, дно — детальная земля; камни русла — полуэллипсоиды
+	// на сетке окна. Камень выше воды — препятствие: глубина сквозь него — g_nearPassage глубины без камня. Каждый кадр (окно
+	// сдвигается), давление и скорость остаются — начальное приближение
+	const float2 world = ( cell + 0.5f ) * g_nearStep;
+	float4 water;
+	const bool wet = detailStaticAt( world, water );
+	const float bed = detailBed( world );
+	float top = bed;
+	[loop] for( uint s = 0; s < g_nearStoneCount; ++s )
+	{
+		const float4 stone = g_nearStones[s];
+		const float radius = 0.5f * stone.w;
+		const float2 offset = world - stone.xz;
+		const float share = dot( offset, offset ) / max( radius * radius, 1e-6f );
+		if( share < 1.0f )
+			top = max( top, stone.y + g_nearStoneHeight * stone.w * sqrt( 1.0f - share ) );
+	}
+	const bool stream = water.w > 0.0f;
+	const float baseDepth = wet && bed > -1e8f ? max( water.x - bed, 0.0f ) : 0.0f;
+	const float depth = baseDepth > 0.0f ? max( water.x - top, g_nearPassage * baseDepth ) : 0.0f;
+	float kind = kindDry;
+	if( stream && depth > 0.0f )
+		kind = kindStream;
+	else if( !stream && depth >= g_flowMinDepth )
+		kind = kindLake;
+	g_info[address] = float4( kind == kindStream ? water.yz : 0.0f, kind, min( depth, g_flowLayer ) );
+	g_info2[address] = float2( kind == kindStream ? water.w : 0.0f, kind != kindDry ? min( baseDepth, g_flowLayer ) : 0.0f );
+	return;
+#elif defined( FLOW_DETAIL )
 	// Дно — детальная земля, над ним камень русла (отнимает не больше stoneDepthShare глубины); ручей — где у воды есть R
 	const float4 water = g_detailStatic.Load( int4( address, 0 ) );
 	const float bed = g_terrainDetailTiles.Load( int4( address, 0 ) ).x * g_heightMultiplier + g_heightOffset;
@@ -357,7 +576,8 @@ void mainFlowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 }
 
 // Начальная скорость граней (после mainFlowInit: грань читает обе ячейки) — у сетки 1 м u₀ (у озёр 0): расчёт идёт от сети
-// ручьёв; у детальной — решение 1 м, у заданной грани оно же и остаётся
+// ручьёв; у детальной — решение 1 м, у заданной грани оно же и остаётся. Окно у камеры — только у ячеек, вошедших в него в
+// этом кадре (не было в окне прошлого кадра, g_nearReset — все): течение детальной сетки, давление и завихрённость — нули
 [numthreads( 8, 8, 1 )]
 void mainFlowFaces( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 {
@@ -365,11 +585,19 @@ void mainFlowFaces( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	CellAddress address;
 	if( !flowCell( group, thread, cell, address ) )
 		return;
+#if defined( FLOW_NEAR )
+	const int2 previous = cell - g_nearPreviousOrigin;
+	if( g_nearReset == 0 && all( previous >= 0 ) && all( previous < (int)g_nearSize ) )
+		return;
+	g_pressure[address] = 0.0f;
+	g_divergence[address] = 0.0f;
+	g_vorticity[address] = 0.0f;
+#endif
 	float2 velocity;
 	[unroll] for( uint axis = 0; axis < 2; ++axis )
 	{
 		const Face f = face( cell, axis );
-#ifdef FLOW_DETAIL
+#ifdef FLOW_NESTED
 		velocity[axis] = f.state != faceClosed ? fixedFaceVelocity( cell, axis ) : 0.0f;
 #else
 		velocity[axis] = f.state == faceFree ? f.base[axis] : 0.0f;
@@ -438,6 +666,47 @@ void mainFlowAdvect( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	g_advected[address] = result;
 }
 
+#ifdef FLOW_NEAR
+// Завихрённость в центре ячейки по перенесённому полю (mainNearVorticity) — для удержания завихрённости в mainFlowViscosity
+float vorticityAt( int2 cell )
+{
+	CellAddress address;
+	return cellAddress( cell, address ) ? g_vorticity[address] : 0.0f;
+}
+
+// Скорость в центре ячейки — средняя двух граней по каждой оси (перенесённое поле)
+float2 centreVelocity( int2 cell )
+{
+	return 0.5f * float2( advectedVelocity( cell ).x + advectedVelocity( cell - axes[0] ).x,
+						  advectedVelocity( cell ).y + advectedVelocity( cell - axes[1] ).y );
+}
+
+// Сила удержания завихрённости на грани cell по оси axis, м/с²: ε · h · (N × ω), N — направление роста |ω| (Fedkiw, Stam,
+// Jensen 2001, «Visual Simulation of Smoke»): подталкивает поток вокруг центров вихрей, которые перенос размывает
+float eddyForce( int2 cell, uint axis )
+{
+	if( g_nearEddies <= 0.0f )
+		return 0.0f;
+	const int2 next = cell + axes[axis];
+	const int2 across = axes[1 - axis];
+	const float omega = 0.5f * ( vorticityAt( cell ) + vorticityAt( next ) );
+	if( abs( omega ) < 1e-4f )
+		return 0.0f;
+	// Рост |ω| на грани: вдоль оси — между ячейками, поперёк — по соседям обеих
+	const float along = abs( vorticityAt( next ) ) - abs( vorticityAt( cell ) );
+	const float sideways = 0.25f * ( abs( vorticityAt( cell + across ) ) + abs( vorticityAt( next + across ) ) -
+									 abs( vorticityAt( cell - across ) ) - abs( vorticityAt( next - across ) ) );
+	float2 gradient = axis == 0 ? float2( along, sideways ) : float2( sideways, along );
+	const float length2 = dot( gradient, gradient );
+	if( length2 < 1e-10f )
+		return 0.0f;
+	gradient *= rsqrt( length2 );
+	// N × (ω ẑ) = (N.y ω, −N.x ω)
+	const float2 force = g_nearEddies * g_nearStep * omega * float2( gradient.y, -gradient.x );
+	return force[axis];
+}
+#endif
+
 [numthreads( 8, 8, 1 )]
 void mainFlowViscosity( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 {
@@ -475,10 +744,15 @@ void mainFlowViscosity( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadI
 		const float friction = f.stream ? g_flowStreamFriction : g_flowFriction;
 		const float drag = friction / pow( max( f.depth, g_flowMinDepth ), 4.0f / 3.0f );
 		const float forcing = friction / pow( max( f.baseDepth, g_flowMinDepth ), 4.0f / 3.0f );
+#ifdef FLOW_NEAR
+		// Удержание завихрённости: вихри за камнем и на повороте не размываются переносом
+		value += eddyForce( cell, axis ) * g_flowTimeStep;
+#endif
 		const float speed = length( axis == 0 ? float2( value, velocity.y ) : float2( velocity.x, value ) );
-#ifdef FLOW_DETAIL
-		// Камни — геометрия детальной сетки (дно и препятствия), сопротивление сетки 1 м не нужно
-		value = ( value + forcing * length( f.base ) * f.base[axis] ) / ( 1.0f + drag * speed );
+#ifdef FLOW_NESTED
+		// Камни — геометрия детальной сетки (дно и препятствия), сопротивление сетки 1 м не нужно. Окно у камеры: в грани
+		// камня выше воды и сила тяжести, и скорость — × пропускная доля (штраф Бринкмана: вода в камне почти стоит)
+		value = ( value + f.open * forcing * length( f.base ) * f.base[axis] ) / ( 1.0f + drag * speed ) * f.open;
 #else
 		// Камни русла — сопротивление формы: Cd / 2 · a / h · |u| u (a — площадь камней поперёк потока на м² дна у грани).
 		// Шероховатость дна по Маннингу уже держит камни участка в среднем, поэтому сила тяжести возмещает среднее
@@ -494,11 +768,12 @@ void mainFlowViscosity( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadI
 	g_velocity[address] = result;
 }
 
-#ifdef FLOW_DETAIL
+#ifdef FLOW_NESTED
 groupshared float4 g_nudgeSums[64];
 
-// Крупный масштаб — к решению 1 м (после mainFlowViscosity, до давления): по свободным граням блока (группа потоков —
-// блок 8 × 8) средняя по глубине разница скорости сетки 1 м и детальной, доля шага dt / nudgeTime — всем граням блока
+// Крупный масштаб — к внешней сетке (после mainFlowViscosity, до давления): по свободным граням блока (группа потоков —
+// блок 8 × 8) средняя по глубине разница скорости внешней сетки (у детальной — 1 м, у окна — детальной) и своей, доля шага
+// (nudgeShare) — всем граням блока
 [numthreads( 8, 8, 1 )]
 void mainFlowNudge( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID, uint index : SV_GroupIndex )
 {
@@ -532,7 +807,7 @@ void mainFlowNudge( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID, u
 	if( !valid )
 		return;
 	const float4 total = g_nudgeSums[0];
-	const float share = min( g_flowTimeStep / nudgeTime, 1.0f );
+	const float share = nudgeShare();
 	[unroll] for( uint axis = 0; axis < 2; ++axis )
 		if( open[axis] && total[axis * 2 + 1] > 1e-6f )
 			velocity[axis] += share * total[axis * 2] / total[axis * 2 + 1];
@@ -611,8 +886,8 @@ void relaxPressure( uint3 group, uint3 thread, uint parity )
 		const Face f = face( cf.texel, cf.axis );
 		if( f.state != faceFree )
 			continue;
-		weights += f.depth;
-		sum += f.depth * pressureAt( cf.neighbor );
+		weights += f.depth * f.open;
+		sum += f.depth * f.open * pressureAt( cf.neighbor );
 	}
 	const float previous = g_pressure[address];
 	g_pressure[address] = lerp( previous, sum / weights, g_flowRelaxation );
@@ -645,7 +920,7 @@ void mainFlowProject( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID 
 		const Face f = face( cell, axis );
 		if( f.state != faceFree )
 			continue;
-		velocity[axis] -= ( pressureAt( cell + axes[axis] ) - pressure ) / FLOW_CELL;
+		velocity[axis] -= f.open * ( pressureAt( cell + axes[axis] ) - pressure ) / FLOW_CELL;
 	}
 	g_velocity[address] = velocity;
 }
@@ -659,7 +934,14 @@ void mainFlowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	if( !flowCell( group, thread, cell, address ) )
 		return;
 	const float kind = g_info[address].z;
-#ifdef FLOW_DETAIL
+#if defined( FLOW_NEAR )
+	// Окно — все ячейки: у сухой — нули (иначе осталось бы прежнее с прошлого места окна)
+	if( kind == kindDry )
+	{
+		g_output[address] = 0.0f;
+		return;
+	}
+#elif defined( FLOW_DETAIL )
 	if( kind == kindDry )
 		return;
 #else
@@ -679,7 +961,12 @@ void mainFlowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 		velocity[axis] = open > 0.0f ? sum / open : 0.0f;
 	}
 	const float2 world = float2( velocity.x, zSign * velocity.y );
-#ifdef FLOW_DETAIL
+#if defined( FLOW_NEAR )
+	// x — глубина без камней (вода есть), y, z — течение по X и Z мира, w — доля глубины над камнем (1 — камня нет, у камня
+	// выше воды — Obstacle passage): где вода обходит камень
+	const float baseDepth = g_info2[address].y;
+	g_output[address] = float4( baseDepth, world, baseDepth > 0.0f ? saturate( g_info[address].w / baseDepth ) : 0.0f );
+#elif defined( FLOW_DETAIL )
 	// Своя плитка и поле соседних (тексель поля — копия ячейки соседа: выборка у края плитки — без шва)
 	const int2 tile = cell / (int)g_detailCells;
 	[unroll] for( int k = 0; k < 9; ++k )
@@ -705,6 +992,7 @@ void mainFlowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 
 // Скорость для шейдеров (y, z) — из кэша, у всех текселей: сетка 1 м — после mainStatic, детальная — после
 // mainDetailSurface (тексели без расчёта держат там то же, что дал бы расчёт)
+#ifndef FLOW_NEAR
 [numthreads( 8, 8, 1 )]
 void mainFlowRestore( uint3 id : SV_DispatchThreadID )
 {
@@ -724,3 +1012,23 @@ void mainFlowRestore( uint3 id : SV_DispatchThreadID )
 	g_output[id.xy] = state;
 #endif
 }
+#endif
+
+#ifdef FLOW_NEAR
+// ω = ∂v/∂x − ∂u/∂y в центре ячейки, где вода и у всех четырёх соседей (у берега сдвиг скорости — не вихрь, а стенка)
+[numthreads( 8, 8, 1 )]
+void mainNearVorticity( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
+{
+	int2 cell;
+	CellAddress address;
+	if( !flowCell( group, thread, cell, address ) )
+		return;
+	float omega = 0.0f;
+	const bool wet = solved( cellInfo( cell ).z ) && solved( cellInfo( cell + axes[0] ).z ) && solved( cellInfo( cell - axes[0] ).z ) &&
+					 solved( cellInfo( cell + axes[1] ).z ) && solved( cellInfo( cell - axes[1] ).z );
+	if( wet )
+		omega = ( centreVelocity( cell + axes[0] ).y - centreVelocity( cell - axes[0] ).y -
+				  centreVelocity( cell + axes[1] ).x + centreVelocity( cell - axes[1] ).x ) / ( 2.0f * g_nearStep );
+	g_vorticity[address] = omega;
+}
+#endif

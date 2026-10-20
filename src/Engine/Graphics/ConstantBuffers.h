@@ -61,6 +61,8 @@ struct FrameParameters
 	// карте уровня, м; лес гор: переход маски леса карты в правила гор, м, кольцо деревьев на горах — граница и исчезание, м
 	DirectX::XMFLOAT4 farTerrain = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 	DirectX::XMFLOAT4 farForest = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	// Подробное течение у камеры (NearWaterFlow::frameConstants): угол окна X, Z, ячейка, м, ячеек по стороне (0 — окна нет)
+	DirectX::XMFLOAT4 waterNear = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 };
 
 class ConstantBuffers

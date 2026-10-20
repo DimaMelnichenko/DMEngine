@@ -66,6 +66,9 @@ DM_CONSTANTS( FrameConstantBuffer, SLOT_CB_FRAME )
 	// Лес гор: x — от края карты уровня её маска леса переходит в плотность по правилам гор за столько, м («Material blend»);
 	// y, z — дальняя граница кольца деревьев на горах (слой far_forest) и её исчезание, м (0 — деревьев нет: лес — тоном)
 	DM_FIELD( float4, farForest );
+	// Подробное течение у камеры (NearWaterFlow, SLOT_WATER_NEAR): xy — угол окна, м мира (x, z), z — сторона ячейки, м,
+	// w — ячеек по стороне окна (0 — окна нет)
+	DM_FIELD( float4, waterNear );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

@@ -41,6 +41,10 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	m_flowProperties.setName( "Flow" );
 	addSettingProperties( m_flowProperties, waterFlowSchema(), settings.flow );
 	m_properties.addSubContainer( &m_flowProperties );
+	// Подробное течение у камеры: каждый кадр, правка — сразу
+	m_nearProperties.setName( "Near flow" );
+	addSettingProperties( m_nearProperties, waterNearFlowSchema(), settings.nearFlow );
+	m_properties.addSubContainer( &m_nearProperties );
 
 	// Русла и ручьи строит конвейер рельефа: форма русел и кривые — подокна «Channels» и «Streams»
 	m_streams.initialize( settings, m_properties );
@@ -69,6 +73,9 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 		// Статичная вода: озёра и ручьи — одно поле из растра; шагов нет, течение озёр — установившийся расчёт
 		if( !m_staticWater.build( settings ) || !m_staticWater.createFlowResources() || !m_foam.initialize( m_field ) )
 			return false;
+		// Без окна у камеры вода есть — течение у камеры — детальной сетки
+		if( !m_near.initialize() )
+			LOG( "Water near flow is not created" );
 		task.enterProgressFrame( 0.9f, "Flow" );
 		solveFlow( settings );
 		m_initialized = true;
@@ -114,6 +121,8 @@ void WaterSimulation::frameConstants( const RenderView&, FrameParameters& consta
 {
 	if( m_initialized && m_staticWater.detailTileCount() > 0 )
 		constants.waterDetail = DirectX::XMFLOAT4( m_field.terrain->terrainHeight().worldSize, m_staticWater.detailTileSize(), 0.0f, 0.0f );
+	if( m_initialized )
+		m_near.frameConstants( constants );
 }
 
 void WaterSimulation::collectMeshes( const RenderView& view, MeshCollector& collector )
@@ -203,6 +212,7 @@ WaterSimulation::Settings WaterSimulation::settings() const
 	readSettingProperties( m_properties, waterSimulationSchema(), settings, "" );
 	readSettingProperties( m_surfaceProperties, waterSimulationSchema(), settings, "surface" );
 	readSettingProperties( m_flowProperties, waterFlowSchema(), settings.flow );
+	readSettingProperties( m_nearProperties, waterNearFlowSchema(), settings.nearFlow );
 	settings.channels = m_streams.channels();
 	return settings;
 }
@@ -248,6 +258,9 @@ void WaterSimulation::compute( const FrameContext& frame )
 	// Детальная вода у русел — тем же потребителям (water.sh: по индексу плиток детальной земли)
 	if( m_staticWater.detailTileCount() > 0 )
 		DMD3D::instance().setSRV( SLOT_WATER_DETAIL, m_staticWater.detailWaterView() );
+	// Подробное течение у камеры — по детальной воде, ресурс сцены SLOT_WATER_NEAR
+	if( m_staticMode )
+		m_near.compute( frame, current, m_field, m_staticWater, m_field.terrain->terrainHeight() );
 }
 
 bool WaterSimulation::exportState( const std::string& prefix, std::string& reason )
@@ -285,7 +298,16 @@ bool WaterSimulation::exportState( const std::string& prefix, std::string& reaso
 	}
 	LOG( "Water state: " + prefix + "_depth.dds, _vx.dds, _vz.dds" );
 
-	return m_staticWater.exportDetail( prefix, reason ) && m_foam.exportState( m_staticWater, prefix, reason );
+	if( !m_staticWater.exportDetail( prefix, reason ) || !m_foam.exportState( m_staticWater, prefix, reason ) )
+		return false;
+	// Окно у камеры — если есть (вне детальной воды его нет — не ошибка)
+	std::string nearReason;
+	if( m_near.active() && !m_near.exportState( prefix, nearReason ) )
+	{
+		reason = nearReason;
+		return false;
+	}
+	return true;
 }
 
 bool WaterSimulation::exportDischarge( const std::string& file, std::string& reason )

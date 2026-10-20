@@ -464,6 +464,7 @@ bool LibraryLoader::loadWaterSimulation( LevelDescription& level )
 	const std::string what = "Water simulation " + std::to_string( *level.waterSimulationId );
 	readSettings( query, GS::waterSimulationSchema(), water, what );
 	readSettings( query, GS::waterFlowSchema(), water.flow, what );
+	readSettings( query, GS::waterNearFlowSchema(), water.nearFlow, what );
 
 	// Источники-помощники (Tools/water_source.py); таблицы может не быть у базы, где их не ставили
 	SQLite::Database& db = DBConnector::instance().db();

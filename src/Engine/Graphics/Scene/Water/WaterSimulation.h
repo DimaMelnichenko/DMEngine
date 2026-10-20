@@ -7,6 +7,7 @@
 #include "WaterField.h"
 #include "WaterPipes.h"
 #include "StaticWater.h"
+#include "NearWaterFlow.h"
 #include "WaterFoam.h"
 #include "WaterSurface.h"
 #include "StreamCurves.h"
@@ -64,7 +65,7 @@ public:
 	// Текстура воды для шейдеров (SLOT_WATER) — в DDS R32_FLOAT: <prefix>_depth.dds (глубина, м), <prefix>_vx.dds и
 	// <prefix>_vz.dds (течение по X и Z мира, м/с); строка 0 — дальний край по z. Детальная вода у русел — так же, растром
 	// 0,25 м на весь мир (−1e9 — плитки нет): <prefix>_detail_level.dds (уровень поверхности), _detail_depth, _detail_vx,
-	// _detail_vz. Ждёт GPU
+	// _detail_vz; окно подробного течения у камеры, если оно есть, — <prefix>_near_depth.dds, _near_vx, _near_vz. Ждёт GPU
 	bool exportState( const std::string& prefix, std::string& reason );
 
 private:
@@ -80,6 +81,7 @@ private:
 	PropertyContainer m_properties;
 	PropertyContainer m_surfaceProperties;	// подокно «Surface» — материал поверхности
 	PropertyContainer m_flowProperties;		// подокно «Flow» — течение статичной воды
+	PropertyContainer m_nearProperties;		// подокно «Near flow» — подробное течение у камеры
 	Settings m_initial;
 	bool m_staticMode = false;				// режим static: шагов нет
 	bool m_initialized = false;
@@ -91,6 +93,7 @@ private:
 	WaterField m_field;
 	WaterPipes m_pipes;
 	StaticWater m_staticWater;
+	NearWaterFlow m_near;					// подробное течение у камеры (статичная вода)
 	WaterFoam m_foam;
 	WaterSurface m_surface;
 	StreamCurves m_streams;
