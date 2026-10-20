@@ -387,6 +387,26 @@ python Tools/import_gltf.py Meshes/source/dry_grass.glb --scatter --lod-ranges 4
 Прежняя Rough Meadow Grass (5 вариантов × 3 LOD; в базе, слоем не используется) — так же из
 `DownloadResources/rough_meadow_grass_skfjj_high.zip` с `--name rough_meadow_grass`.
 
+### Сканы Megascans: бревно, пень, грибы
+
+Сканы (3D asset Megascans: валежник, пни, коряги, грибы) Fab отдаёт по уровню качества за загрузку — `fbx/high`, `fbx/mid`,
+`fbx/low` (`<Ассет>_<id>_High|Mid|Low.fbx`, карты 4K / 2K / 1K). Скачиваются все три (формат любой): это готовые LOD
+Quixel — у пня 20,6 / 4,9 / 3,3 тыс. треугольников; число треугольников уровней — в `*.json` ассета (`models`, `tier`).
+`Tools/export_megascans.py` узнаёт такую папку сам: уровень качества — LOD (High — 0, Mid — 1, Low — 2), объекты файла
+(`<id>_LOD0_TIER<k>_<nnn>`) — варианты (`000` → `VarA`; у группы грибов — каждый гриб), каждый вариант — в своё начало
+координат (середина по горизонтали, низ — z = 0); карты — у High, сжатые до `--texture-size`. Материал непрозрачный, без
+просвета (карты Translucency нет — расширение просвета не пишется); `--single-sided` — с отсечением задних граней
+(замкнутые сканы). Нормаль у этих сканов — OpenGL, но проверка карты на границе уверенности: `--normal-convention gl`.
+
+```
+blender -b --factory-startup --python Tools/export_megascans.py -- --archive DownloadResources/<Ассет> --name old_stump --out Meshes/source/old_stump.glb --single-sided --normal-convention gl
+python Tools/import_gltf.py Meshes/source/old_stump.glb --scatter --lod-ranges 15,40 --collision hull
+```
+
+Мелким (грибы) High не нужен: `--lod-offset 1` — LOD0 из Mid (300–1900 треугольников на гриб), LOD1 из Low, дальность —
+`--lod-ranges 4`, без столкновений (`--collision none`). Валежник — `--collision hull` (бревно и пень преграждают путь),
+сухое дерево — `capsule`.
+
 ## Ель
 
 `Tools/blender_fir.py` (Blender без окна) строит ели сам, а текстуры и карточки веточек берёт из ели Poly Haven

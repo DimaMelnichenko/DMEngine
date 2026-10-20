@@ -246,6 +246,9 @@ bool Scatterer::addLayer( const std::vector<LayerModel>& models, const std::stri
 	// по ней отсечение экземпляров (у деревьев — десятки метров) и длина их тени
 	std::vector<ScatterPass::Variant> passVariants;
 	const size_t variantCount = std::min<size_t>( models.size(), ScatterPass::maxVariants );
+	if( models.size() > variantCount )
+		LOG( "Scatter layer " + std::to_string( layerSettings.id ) + ": " + std::to_string( models.size() ) + " models, only the first " +
+			 std::to_string( variantCount ) + " are used (SCATTER_MAX_VARIANTS) - split the layer" );
 	for( size_t v = 0; v < variantCount; ++v )
 	{
 		DMModel* model = models[v].model;
@@ -745,7 +748,9 @@ void Scatterer::compute( const FrameContext& frame )
 
 		const ShaderView& heightMap = *terrain.heightMap;
 		const ShaderView& foliageClear = *terrain.foliageClearMask;
-		const ShaderView& mask = Assets::textures().get( layer.mask )->srv();
+		// Маска «none» — плотность 1 везде (где расти — решают фильтр слоёв земли и полог: грибы на подстилке)
+		const ShaderView& mask = layer.mask == "none" ? Assets::textures().get( DMTextureStorage::whiteId )->srv() :
+														Assets::textures().get( layer.mask )->srv();
 		// Открытость ветру — флаговые деревья (без неё наклона нет: константы слоя — нули, слот — маска плотности)
 		const ShaderView& exposure = Assets::textures().exists( TerrainMasks::windExposureMask ) ?
 			Assets::textures().get( Assets::textures().id( TerrainMasks::windExposureMask ) )->srv() : mask;

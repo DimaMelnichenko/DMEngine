@@ -1,5 +1,8 @@
 # Растения Megascans с Fab (архив .zip формата FBX: <Ассет>_<Вар>_LOD<N>.fbx и карты JPG; или загрузка Fab нового
-# формата — папка gltf/<качество>/ с glTF вариантов и упакованными картами PNG) → .glb для
+# формата — папка gltf/<качество>/ с glTF вариантов и упакованными картами PNG) и сканы (3D asset: бревно, пень, грибы —
+# fbx/high|mid|low/<Ассет>_<id>_High|Mid|Low.fbx, по загрузке Fab на качество; в файле — объекты <id>_LOD0_TIER<k>_<nnn>,
+# каждый — вариант: у грибов — гриб группы; качество — LOD: High — 0, Mid — 1, Low — 2; карты берутся у High и сжимаются до
+# --texture-size; материал непрозрачный, --single-sided — с отсечением задних граней) → .glb для
 # Tools/import_gltf.py --scatter. Сценарий:
 #   - распаковывает архив (или копирует распакованную загрузку Fab — папку) во временную папку и импортирует FBX вариантов
 #     (--variants — регулярное выражение по VarA…). Новый формат Fab: glTF для движков не UE (standard/*_nonUE.gltf:
@@ -50,6 +53,10 @@ from export_polyhaven import material_param, save_png, triangle_count  # noqa: E
 FBX_PATTERN = re.compile(r'_(Var[A-Za-z0-9]+)_LOD(\d+)\.fbx$', re.I)
 # Узел glTF нового формата Fab: SM_<ассет>_VarA (LOD0), SM_<ассет>_VarA_LOD1 …; Blender может дописать .001
 GLTF_NODE_PATTERN = re.compile(r'_(Var[A-Za-z0-9]+)(?:_LOD(\d+))?(?:\.\d+)?$', re.I)
+# Скан Megascans: файл уровня качества и объекты в нём (<id>_LOD0_TIER<k>_<nnn>; Blender может дописать .001)
+TIER_FILE_PATTERN = re.compile(r'_(High|Mid|Low)\.fbx$', re.I)
+TIER_LODS = {'high': 0, 'mid': 1, 'low': 2}
+TIER_NODE_PATTERN = re.compile(r'_TIER\d+_(\d+)(?:\.\d+)?$', re.I)
 # Упакованные карты нового формата Fab: окончание имени → [(карта формата FBX, каналы)]; каналы — срез RGBA
 PACKED_MAPS = {
     '_Billboard_B-O': [('Billboard_BaseColor', 'rgb'), ('Billboard_Opacity', 'a')],
@@ -288,7 +295,9 @@ def add_extensions(path, materials, transmission):
                 texture['sampler'] = gltf['textures'][base['index']]['sampler']
             gltf.setdefault('textures', []).append(texture)
             diffuse['diffuseTransmissionColorTexture'] = {'index': len(gltf['textures']) - 1}
-        extensions['KHR_materials_diffuse_transmission'] = diffuse
+        # Без карты просвета (сканы: кора, пень, грибы) материал непрозрачен — просвета нет
+        if info['translucency']:
+            extensions['KHR_materials_diffuse_transmission'] = diffuse
         if info['specular'] is not None:
             extensions['KHR_materials_specular'] = {'specularFactor': round(info['specular'], 4)}
         for name in extensions:
@@ -319,6 +328,7 @@ def main():
     parser.add_argument('--no-billboard-cross', action='store_true', help='keep the billboard LOD a single card')
     parser.add_argument('--diffuse-transmission', type=float, default=0.5,
                         help='share of diffuse light passing through (KHR_materials_diffuse_transmission); color - Translucency map')
+    parser.add_argument('--single-sided', action='store_true', help='back-face culling (closed scans: logs, stumps)')
     parser.add_argument('--material-param', action='append', default=[], metavar='NAME=VALUE',
                         help='engine material parameter for both materials (glTF extras)')
     args = parser.parse_args(argv)
@@ -336,6 +346,7 @@ def main():
     variants = re.compile(args.variants, re.I)
     files = []
     gltf_files = []
+    tier_files = []
     for root, _, names in os.walk(folder):
         for file in names:
             match = FBX_PATTERN.search(file)
@@ -343,9 +354,46 @@ def main():
                 files.append((match.group(1), int(match.group(2)), os.path.join(root, file)))
             if file.lower().endswith('_nonue.gltf'):
                 gltf_files.append(os.path.join(root, file))
+            match = TIER_FILE_PATTERN.search(file)
+            if match:
+                tier_files.append((TIER_LODS[match.group(1).lower()], os.path.join(root, file)))
 
     objects = {}   # (вариант, LOD) → объект
-    if not files and gltf_files:
+    if not files and not gltf_files and tier_files:
+        # Скан: файл на уровень качества, объекты в нём — варианты (000 → VarA)
+        for lod, path in sorted(tier_files):
+            if lod < args.lod_offset:
+                continue
+            before = set(bpy.data.objects)
+            bpy.ops.import_scene.fbx(filepath=path)
+            for obj in set(bpy.data.objects) - before:
+                match = TIER_NODE_PATTERN.search(obj.name)
+                if obj.type != 'MESH' or not match:
+                    bpy.data.objects.remove(obj, do_unlink=True)
+                    continue
+                index = int(match.group(1))
+                variant = 'Var' + (chr(ord('A') + index) if index < 26 else str(index))
+                if not variants.search(variant):
+                    bpy.data.objects.remove(obj, do_unlink=True)
+                    continue
+                obj.name = '%s_%s' % (args.name, variant) if lod == args.lod_offset else '%s_%s_LOD%d' % (args.name, variant, lod - args.lod_offset)
+                objects[( variant, lod - args.lod_offset )] = obj
+        if not objects:
+            raise SystemExit('error: no <id>_LOD0_TIER<k>_<nnn> meshes in the *_High/Mid/Low.fbx files')
+        # Варианты группы (грибы) — каждый в своё начало координат: середина по горизонтали и низ — по LOD0
+        offsets = {}
+        for (variant, lod), obj in sorted(objects.items()):
+            if lod != 0:
+                continue
+            corners = np.array([obj.matrix_world @ v.co for v in obj.data.vertices])
+            low, high = corners.min(axis=0), corners.max(axis=0)
+            offsets[variant] = mathutils.Vector(((low[0] + high[0]) / 2.0, (low[1] + high[1]) / 2.0, low[2]))
+        for (variant, lod), obj in objects.items():
+            offset = offsets.get(variant, mathutils.Vector((0.0, 0.0, 0.0)))
+            obj.data.transform(obj.matrix_world)
+            obj.matrix_world = mathutils.Matrix.Identity(4)
+            obj.data.transform(mathutils.Matrix.Translation(-offset))
+    elif not files and gltf_files:
         # Новый формат Fab: варианты и LOD — узлы одного glTF (для движков не UE); карты — по одной из упакованных
         unpack_packed_maps(folder, args.texture_size)
         before = set(bpy.data.objects)
@@ -367,7 +415,7 @@ def main():
         if not objects:
             raise SystemExit('error: no SM_<asset>_<Var>[_LOD<N>] meshes in %s' % sorted(gltf_files)[0])
     elif not files:
-        raise SystemExit('error: no <Var>_LOD<N>.fbx or *_nonUE.gltf in %s' % args.archive)
+        raise SystemExit('error: no <Var>_LOD<N>.fbx, *_nonUE.gltf or *_High/Mid/Low.fbx in %s' % args.archive)
     for variant, lod, path in sorted(files):
         if lod < args.lod_offset:
             continue
@@ -391,6 +439,7 @@ def main():
     params = [material_param(text) for text in args.material_param]
     main_mat, main_extras = build_material(args.name, folder, '', args.texture_size, convention, params,
                                            args.diffuse_transmission)
+    main_mat.use_backface_culling = args.single_sided
     material_extras = {main_mat.name: main_extras}
     billboard_mat = None
     if find_map(folder, 'Billboard_BaseColor'):
