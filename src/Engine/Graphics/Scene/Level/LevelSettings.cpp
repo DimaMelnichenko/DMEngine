@@ -103,6 +103,11 @@ const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 		{ "under_canopy", "Under canopy", DM_SETTING( underCanopy ), 0.0f, 1.0f, "",
 		  "Density under a full canopy (crowns of the forest and of tall level models): 1 - as in the open, 0 - nothing under "
 		  "the crowns", settingClamp, "placement" },
+		{ "under_canopy_patches", "Under canopy patches", DM_SETTING( underCanopyPatches ), 0.0f, 1.0f, "",
+		  "Under the crowns the layer grows in patches (light gaps), not as an even sparse grid: 0 - even, 1 - patches and bare "
+		  "ground between them; the mean density stays about Under canopy", settingClamp, "placement" },
+		{ "under_canopy_patch_size", "Under canopy patch size", DM_SETTING( underCanopyPatchSize ), 0.25f, 10.0f, "m",
+		  "Size of the patches under the crowns (Under canopy patches)", settingClamp, "placement" },
 		{ "cast_shadow", "Cast shadow", DM_SETTING( castShadow ), 0.0f, 0.0f, "", "", 0, "placement" },
 		// Постоянный слой (лес) — раскладка раз на всю карту при загрузке
 		{ "persistent", nullptr, DM_SETTING( persistent ) },

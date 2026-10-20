@@ -948,6 +948,8 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.ridgeLean = exposure ? XMConvertToRadians( settings.ridgeLean ) : 0.0f;
 	params.ridgeShrink = exposure ? settings.ridgeShrink : 0.0f;
 	params.underCanopy = std::clamp( settings.underCanopy, 0.0f, 1.0f );
+	params.canopyPatchScale = std::max( settings.underCanopyPatchSize, 0.25f );
+	params.canopyPatchStrength = std::clamp( settings.underCanopyPatches, 0.0f, 1.0f );
 }
 
 float Scatterer::maxHeight( const Layer& layer )
@@ -1068,6 +1070,8 @@ void Scatterer::applyProperties( Layer& layer )
 						   settings.layerFilter != applied.layerFilter || settings.layerFilterThreshold != applied.layerFilterThreshold ||
 						   settings.alignToTerrain != applied.alignToTerrain || settings.ridgeLean != applied.ridgeLean ||
 						   settings.ridgeShrink != applied.ridgeShrink || settings.underCanopy != applied.underCanopy ||
+						   settings.underCanopyPatches != applied.underCanopyPatches ||
+						   settings.underCanopyPatchSize != applied.underCanopyPatchSize ||
 						   settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
 	// Пока ползунок тянут или в поле набирают число (Property::editing), дорогое ждёт: новые буферы слоя (шаг, кольцо,
@@ -1131,6 +1135,8 @@ void Scatterer::applyProperties( Layer& layer )
 		params.ridgeLean = fresh.ridgeLean;
 		params.ridgeShrink = fresh.ridgeShrink;
 		params.underCanopy = fresh.underCanopy;
+		params.canopyPatchScale = fresh.canopyPatchScale;
+		params.canopyPatchStrength = fresh.canopyPatchStrength;
 		params.castShadow = castShadow;
 		for( uint32_t v = 0; v < layer.passVariants.size(); ++v )
 			layer.pass->setVariantPlacement( v, layer.passVariants[v] );

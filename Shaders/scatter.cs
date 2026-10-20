@@ -341,8 +341,21 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	if( any( uv < 0.0f ) || any( uv > 1.0f ) )
 		return false;
 
-	// Под кронами деревьев — реже (карта полога; лесу и тем, кому всё равно, «Under canopy» = 1 — без выборки)
-	const float canopy = g_underCanopy < 1.0f ? lerp( 1.0f, g_underCanopy, canopyCover( uv ) ) : 1.0f;
+	// Под кронами деревьев — реже (карта полога; лесу и тем, кому всё равно, «Under canopy» = 1 — без выборки), пятнами: в
+	// тени трава растёт там, куда пробивается свет, а не ровной редкой сеткой — та в низком ракурсе читается рядами
+	float canopy = 1.0f;
+	[branch] if( g_underCanopy < 1.0f )
+	{
+		const float cover = canopyCover( uv );
+		float under = g_underCanopy;
+		[branch] if( cover > 0.0f && g_canopyPatchStrength > 0.0f && g_canopyPatchScale > 0.0f )
+		{
+			const float noise = 0.7f * worldNoise( worldXZ, g_canopyPatchScale, seed + 96 ) +
+								0.3f * worldNoise( worldXZ, g_canopyPatchScale * 0.35f, seed + 97 );
+			under = min( under * max( 1.0f + 2.0f * g_canopyPatchStrength * noise, 0.0f ), 1.0f );
+		}
+		canopy = lerp( 1.0f, under, cover );
+	}
 	const float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - foliageClear( worldXZ ) ) *
 						  groundFilter( worldXZ ) * canopy;
 	const float chance = random( cell, seed + 2 );
