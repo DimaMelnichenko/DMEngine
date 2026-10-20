@@ -70,7 +70,8 @@ DM_CONSTANTS( FrameConstantBuffer, SLOT_CB_FRAME )
 	// w — ячеек по стороне окна (0 — окна нет)
 	DM_FIELD( float4, waterNear );
 	// Пена окна (SLOT_WATER_NEAR_FOAM): x — её доля в материале воды («Foam» окна; 0 — пена поля 0,25 м: окна нет или время
-	// с его появления не шло)
+	// с его появления не шло); y — доля узора пены по течению окна (SLOT_WATER_NEAR_PATTERN, «Pattern»; 0 — плитки), z — период
+	// обновления его слоёв, с
 	DM_FIELD( float4, waterNearFoam );
 };
 DM_CONSTANTS_END

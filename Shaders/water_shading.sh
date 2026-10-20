@@ -410,33 +410,71 @@ struct WaterShading
 	// 0 — плитки 1 м)
 	float3 detailTexel;
 	float  detailRipple;
+	float  nearPattern;		// доля узора пены по течению окна у камеры (nearFoamPattern; 0 — плитки)
 };
 
-// Рябь (flow), стоячие волны (standing: если standingScale > 0) и узор пены (foamNoise, если foam; у текстуры пены — ещё её
-// наклон foamSlope) по набору плиток — с весом weight
-void addRipple( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 dY, bool foam, float weight, float standingScale,
-				inout float4 flow, inout float2 standing, inout float foamNoise, inout float2 foamSlope, inout float foamDissolve )
+// Рябь (flow), стоячие волны (standing: если standingScale > 0) по набору плиток — с весом weight, узор пены (foamNoise, если
+// foam; у текстуры пены — ещё её наклон foamSlope) — с весом foamWeight
+void addRipple( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 dY, bool foam, float weight, float foamWeight,
+				float standingScale, inout float4 flow, inout float2 standing, inout float foamNoise, inout float2 foamSlope,
+				inout float foamDissolve )
 {
 	float pattern;
 	flow += weight * flowRipple( tiles, xz, surface, 1.0f, dX, dY, pattern );
 	[branch] if( standingScale > 0.0f )
 		standing += weight * standingWaves( tiles, xz, surface, standingScale, dX, dY );
-	[branch] if( foam )
+	[branch] if( foam && foamWeight > 0.0f )
 	{
 		[branch] if( g_foamTextureRepeat > 0.0f )
 		{
 			float2 slope;
 			float dissolve;
-			foamNoise += weight * foamTexturePattern( tiles, xz, surface, dX, dY, slope, dissolve );
-			foamSlope += weight * slope;
-			foamDissolve += weight * ( dissolve - 0.5f );
+			foamNoise += foamWeight * foamTexturePattern( tiles, xz, surface, dX, dY, slope, dissolve );
+			foamSlope += foamWeight * slope;
+			foamDissolve += foamWeight * ( dissolve - 0.5f );
 		}
 		else
 		{
 			flowRipple( tiles, xz, surface, foamFrequency, dX, dY, pattern );
-			foamNoise += weight * pattern;
+			foamNoise += foamWeight * pattern;
 		}
 	}
+}
+
+// Узор пены окна подробного течения у камеры — по его течению (advected textures, Neyret 2003): два слоя смещений координат
+// (water_near_foam.cs) несёт течение окна, и узор плывёт с водой, обтекает камни, растягивается в полосы на сдвиге и
+// закручивается в вихрях, а не ездит плитками. Слой обновляется раз в период (смещения — к нулю, узор — свой сдвиг на цикл),
+// его вес — треугольник по фазе (в миг обновления — 0); смешение слоёв — с делением на √Σw², как у плиток. Маска, шум
+// растворения (вокруг 0,5) и наклон — как у foamTexturePattern
+float nearFoamPattern( float2 xz, float2 dX, float2 dY, out float2 slope, out float dissolve )
+{
+	const float4 offsets = sampleNearPattern( xz );
+	const float4 offsetsDX = ddx( offsets );
+	const float4 offsetsDY = ddy( offsets );
+	const float phase = nearPatternPhase( xz, cb_gameTime, cb_waterNearFoam.z );
+	float mask = 0.0f;
+	float weights = 0.0f;
+	slope = 0.0f;
+	dissolve = 0.0f;
+	[unroll] for( uint k = 0; k < 2; ++k )
+	{
+		const float layer = phase + 0.5f * k;
+		const float weight = 1.0f - abs( 2.0f * frac( layer ) - 1.0f );
+		const float2 offset = k == 0 ? offsets.xy : offsets.zw;
+		const float2 uv = ( xz + offset ) / g_foamTextureRepeat + nearPatternOffset( floor( layer ), k );
+		const float2 uvDX = ( dX + ( k == 0 ? offsetsDX.xy : offsetsDX.zw ) ) / g_foamTextureRepeat;
+		const float2 uvDY = ( dY + ( k == 0 ? offsetsDY.xy : offsetsDY.zw ) ) / g_foamTextureRepeat;
+		const float4 foam = g_foam.SampleGrad( g_SamplerLinearWrap, uv, uvDX, uvDY );
+		mask += weight * ( foam.r - 0.5f );
+		dissolve += weight * ( foam.a - 0.5f );
+		// Наклон по U и V — минус xy нормали; U и V — по X и Z мира
+		slope += weight * ( -( foam.gb * 2.0f - 1.0f ) * foamBump );
+		weights += weight * weight;
+	}
+	const float normalization = rsqrt( max( weights, 1e-4f ) );
+	slope *= normalization;
+	dissolve = 0.5f + dissolve * normalization;
+	return mask * normalization;
 }
 
 // Искры: рябь мельче пикселя — грани размером sparkleSize, наклон каждой — по распределению GGX с sparkleRoughness.
@@ -519,17 +557,27 @@ float4 shadeWater( WaterShading input )
 	[branch] if( flowStrength > rippleMinSlope || foamAmount > 0.0f )
 	{
 		// Плитки 0,5 м детальной воды и 1 м — у края набора детальных плиток вместе: узоры несвязаны, смешение — с делением
-		// на √Σw², как у плиток
+		// на √Σw², как у плиток. Узор пены в окне у камеры — по его течению (nearFoamPattern), к краю окна — плиток
 		const float w = input.detailRipple;
 		const bool needFoam = foamAmount > 0.0f;
+		const float n = needFoam && g_foamTextureRepeat > 0.0f ? input.nearPattern : 0.0f;
 		float foamNoise = 0.0f;
 		[branch] if( w > 0.0f )
 			addRipple( detailRippleTiles( input.worldPosition.xz, input.velocity, input.detailTexel ), input.worldPosition.xz, surfaceStretch,
-					   dX, dY, needFoam, w, standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
+					   dX, dY, needFoam, w, w * ( 1.0f - n ), standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
 		[branch] if( w < 1.0f )
 			addRipple( rippleTiles( input.worldPosition.xz, input.velocity ), input.worldPosition.xz, surfaceStretch, dX, dY, needFoam, 1.0f - w,
-					   standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
+					   ( 1.0f - w ) * ( 1.0f - n ), standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
+		[branch] if( n > 0.0f )
+		{
+			float2 slope;
+			float dissolve;
+			foamNoise += n * nearFoamPattern( input.worldPosition.xz, dX, dY, slope, dissolve );
+			foamSlope += n * slope;
+			foamDissolve += n * ( dissolve - 0.5f );
+		}
 		const float normalization = rsqrt( w * w + ( 1.0f - w ) * ( 1.0f - w ) );
+		const float foamNormalization = rsqrt( max( ( 1.0f - n ) * ( 1.0f - n ) / ( normalization * normalization ) + n * n, 1e-4f ) );
 		flow *= normalization * flowStrength;
 		// Стоячие волны — не по силе ряби течения, а свои: длинные, отражение берега по ним тоже колышется
 		flow.xy += standing * normalization * standingStrength;
@@ -537,13 +585,13 @@ float4 shadeWater( WaterShading input )
 		{
 			// Текстура: маска — толщина пены, край шире (тонкие нити полупрозрачны), тонкая пена сероватее
 			const bool textured = g_foamTextureRepeat > 0.0f;
-			const float pattern = textured ? 0.5f + foamNoise * normalization : 0.5f + 0.5f * foamPatternScale * foamNoise * normalization;
-			foamSlope *= normalization;
+			const float pattern = textured ? 0.5f + foamNoise * foamNormalization : 0.5f + 0.5f * foamPatternScale * foamNoise * foamNormalization;
+			foamSlope *= foamNormalization;
 			if( textured )
 				foamShade = lerp( foamThinShade, 1.0f, saturate( pattern ) );
 			// Растворение у края: порог сдвинут шумом из текстуры (он плывёт с пеной) — где доля пены сходит на нет, пена тает
 			// кусками на разных расстояниях, а не по линии
-			const float threshold = 1.0f - foamAmount + ( textured ? g_foamDissolve * foamDissolve * normalization : 0.0f );
+			const float threshold = 1.0f - foamAmount + ( textured ? g_foamDissolve * foamDissolve * foamNormalization : 0.0f );
 			// На тонкой воде пена реже и прозрачнее: в пару сантиметров ей не на чем держаться
 			const float softness = textured ? g_foamSoftness : foamPatternSoftness;
 			foam = smoothstep( threshold, threshold + softness, pattern ) * foamAmount * saturate( input.depth / 0.05f );

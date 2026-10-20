@@ -16,6 +16,12 @@
 DM_SRV( Texture2D<float4>, g_waterNear, SLOT_WATER_NEAR );
 // Пена окна (water_near_foam.cs): та же сетка, доля в материале — cb_waterNearFoam.x
 DM_SRV( Texture2D<float>, g_waterNearFoam, SLOT_WATER_NEAR_FOAM );
+// Смещения координат узора пены, которые несёт течение окна (water_near_foam.cs): слой 1 — xy, слой 2 — zw, м мира
+DM_SRV( Texture2D<float4>, g_waterNearPattern, SLOT_WATER_NEAR_PATTERN );
+
+// Слоёв смещений узора два, фазы — через полпериода; фаза в точке сдвинута шумом с ячейкой nearPatternNoiseCell (весь узор
+// окна не обновляется разом — не мигает)
+static const float nearPatternNoiseCell = 2.0f;	// м
 
 // К краю окна у камеры на этой полосе, м, его течение переходит в детальное, а подъём поверхности сходит на нет
 static const float nearWaterFade = 1.0f;
@@ -45,6 +51,44 @@ float4 sampleNearWater( float2 worldXZ )
 float sampleNearFoam( float2 worldXZ )
 {
 	return g_waterNearFoam.SampleLevel( g_SamplerLinearWrap, worldXZ / ( cb_waterNear.z * cb_waterNear.w ), 0.0f );
+}
+
+// Смещения координат узора в точке мира — билинейно, как sampleNearWater
+float4 sampleNearPattern( float2 worldXZ )
+{
+	return g_waterNearPattern.SampleLevel( g_SamplerLinearWrap, worldXZ / ( cb_waterNear.z * cb_waterNear.w ), 0.0f );
+}
+
+// PCG (Jarzynski, Olano 2020)
+uint nearPatternHash( uint value )
+{
+	const uint state = value * 747796405u + 2891336453u;
+	const uint word = ( ( state >> ( ( state >> 28u ) + 4u ) ) ^ state ) * 277803737u;
+	return ( word >> 22u ) ^ word;
+}
+
+// Фаза слоя 0 узора в точке мира, периодов: время / период и плавный шум 0…1 (решётка nearPatternNoiseCell, smoothstep);
+// у слоя k — + k / 2. Слой обновляется, когда его фаза переходит через целое, и его вес в этот миг — 0
+float nearPatternPhase( float2 worldXZ, float time, float period )
+{
+	const float2 position = worldXZ / nearPatternNoiseCell;
+	const int2 base = int2( floor( position ) );
+	const float2 f = smoothstep( 0.0f, 1.0f, position - (float2)base );
+	float noise = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 corner = base + int2( k & 1, k >> 1 );
+		const float value = ( nearPatternHash( (uint)corner.x + nearPatternHash( (uint)corner.y + 0x5bd1e995u ) ) >> 8u ) / 16777216.0f;
+		noise += value * ( k & 1 ? f.x : 1.0f - f.x ) * ( k >> 1 ? f.y : 1.0f - f.y );
+	}
+	return time / period + noise;
+}
+
+// Случайный сдвиг узора слоя на цикл (номер цикла — целая часть фазы слоя): после обновления слой не повторяет прошлый
+float2 nearPatternOffset( float cycle, uint layer )
+{
+	const uint hash = nearPatternHash( (uint)(int)cycle * 2u + layer + 0x27d4eb2fu );
+	return float2( hash & 0xffffu, hash >> 16u ) / 65536.0f;
 }
 
 // Ячейка окна (сетка мира с шагом ячейки окна от угла мира) — её тексель по модулю стороны

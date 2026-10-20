@@ -5,7 +5,10 @@
 // поверхностью, на сдвиге скорости (струя между камнями, край затишья за камнем), на быстрой воде и на сливе; течение окна
 // уносит её хвостами за камни и вокруг них, она тает и густеет там, где течение сходится. Вошедшие в окно ячейки и то, что
 // течение приносит из-за края окна, — пена поля 0,25 м (WaterFoam). Тексель — ячейка мира по модулю стороны окна, как у
-// течения (mainFlowOutput в water_flow.cs); окно — константы b7 этого кадра (cb_waterNear — с прошлого расчёта окна)
+// течения (mainFlowOutput в water_flow.cs); окно — константы b7 этого кадра (cb_waterNear — с прошлого расчёта окна).
+// Там же — смещения координат узора пены (advected textures, Neyret 2003; узор — nearFoamPattern в water_shading.sh): два
+// слоя смещений несёт течение окна (точка узора, которая сейчас здесь, пришла оттуда, где была при обновлении слоя), слой
+// обновляется (смещения — к нулю), когда его фаза переходит через целое (nearPatternPhase, water_near.sh)
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "water.sh"
@@ -15,8 +18,10 @@
 DM_SRV( Texture2D<float4>, g_nearState, 0 );		// итог окна этого кадра: подъём, течение по X и Z мира, доля глубины над камнем
 DM_SRV( Texture2D<float>, g_nearFoamPrevious, 1 );	// пена окна прошлого кадра
 DM_SRV( Texture2DArray<float>, g_detailFoam, 2 );	// поле пены детальной сетки (WaterFoam): тексели и срезы детальной воды
+DM_SRV( Texture2D<float4>, g_nearPatternPrevious, 3 );	// смещения координат узора прошлого кадра: слой 1 — xy, слой 2 — zw, м
 
 DM_UAV( RWTexture2D<float>, g_nearFoam, 0 );
+DM_UAV( RWTexture2D<float4>, g_nearPattern, 1 );
 
 // Скачок скорости для сдвига — через две ячейки в каждую сторону (25 см), делится на столько, м: как у сетки 1 м и
 // детальной (там скачок через 0,5 м — на 2 м), — тот же порог foam_shear ловит струю у камня, а не профиль поперёк ручья
@@ -96,6 +101,27 @@ float carriedFoam( float2 world )
 	return foam;
 }
 
+// Смещения узора прошлого кадра в точке мира — билинейно по ячейкам окна прошлого кадра; вне него — 0 (узор только что
+// обновлён: у края окна вес узора по течению — 0)
+float4 carriedPattern( float2 world )
+{
+	const float2 position = world / g_nearStep - 0.5f;
+	const int2 base = int2( floor( position ) );
+	const float2 f = position - (float2)base;
+	float4 offsets = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 corner = int2( k & 1, k >> 1 );
+		const int2 cell = base + corner;
+		if( insideWindow( cell, g_nearPreviousOrigin ) )
+			offsets += g_nearPatternPrevious[nearAddress( cell )] * ( corner.x ? f.x : 1.0f - f.x ) * ( corner.y ? f.y : 1.0f - f.y );
+	}
+	return offsets;
+}
+
+// Пена ячейки за кадр (here — итог окна в ячейке, вода есть)
+float stepFoam( int2 cell, float2 world, float4 here );
+
 [numthreads( 8, 8, 1 )]
 void mainNearFoam( uint3 id : SV_DispatchThreadID )
 {
@@ -105,18 +131,29 @@ void mainNearFoam( uint3 id : SV_DispatchThreadID )
 	const uint2 address = nearAddress( cell );
 	const float2 world = ( cell + 0.5f ) * g_nearStep;
 	const float4 here = g_nearState[address];
-	// Суша (и камень на берегу) — без пены
-	if( here.w <= 0.0f )
+	// Суша (и камень на берегу) — без пены; вошла в окно в этом кадре (или окно заново) — пена поля 0,25 м, узор — обновлён
+	const bool fresh = g_nearReset != 0 || !insideWindow( cell, g_nearPreviousOrigin );
+	if( here.w <= 0.0f || fresh )
 	{
-		g_nearFoam[address] = 0.0f;
+		g_nearFoam[address] = here.w > 0.0f ? detailFoamAt( world ) : 0.0f;
+		g_nearPattern[address] = 0.0f;
 		return;
 	}
-	// Вошла в окно в этом кадре (или окно заново) — пена поля 0,25 м
-	if( g_nearReset != 0 || !insideWindow( cell, g_nearPreviousOrigin ) )
-	{
-		g_nearFoam[address] = detailFoamAt( world );
-		return;
-	}
+	g_nearFoam[address] = stepFoam( cell, world, here );
+
+	// Смещения узора: назад по течению и на смещение за кадр; слой, чья фаза перешла через целое, — заново
+	float4 offsets = carriedPattern( world - g_nearPatternStep * here.yz ) - g_nearPatternStep * here.yzyz;
+	const float phase = nearPatternPhase( world, g_nearPatternTime, g_nearPatternPeriod );
+	const float before = nearPatternPhase( world, g_nearPatternTime - g_nearPatternStep, g_nearPatternPeriod );
+	if( floor( phase ) != floor( before ) )
+		offsets.xy = 0.0f;
+	if( floor( phase + 0.5f ) != floor( before + 0.5f ) )
+		offsets.zw = 0.0f;
+	g_nearPattern[address] = offsets;
+}
+
+float stepFoam( int2 cell, float2 world, float4 here )
+{
 	const float2 velocity = here.yz;
 	const float speed = length( velocity );
 
@@ -165,5 +202,5 @@ void mainNearFoam( uint3 id : SV_DispatchThreadID )
 
 	// Назад по течению (смещение за кадр — доли ячейки: скорость в середине шага та же)
 	const float carried = carriedFoam( world - g_foamTimeStep * velocity );
-	g_nearFoam[address] = foamStep( carried, divergence, source, speed );
+	return foamStep( carried, divergence, source, speed );
 }

@@ -52,8 +52,9 @@ private:
 	static constexpr uint32_t maxStones = WATER_NEAR_MAX_STONES;
 	// Текстуры окна size² (заново при смене стороны окна)
 	bool createTextures( uint32_t size );
-	// Пена окна за время elapsed (0 — та же, вошедшие ячейки — из поля foam): после расчёта течения, в том же кадре
-	void stepFoam( const WaterSimulationSettings& settings, const WaterFoam& foam, float elapsed, const WaterNearFlowBuffer& window );
+	// Пена окна и смещения координат её узора за время elapsed к времени игры gameTime (0 — те же, вошедшие ячейки — из поля
+	// foam): после расчёта течения, в том же кадре
+	void stepFoam( const WaterSimulationSettings& settings, const WaterFoam& foam, float gameTime, float elapsed, const WaterNearFlowBuffer& window );
 
 	ComputeShader m_init;
 	ComputeShader m_faces;
@@ -72,6 +73,7 @@ private:
 	Buffer m_nearBuffer;		// WaterNearFlowBuffer (b7)
 	Buffer m_foamBuffer;		// WaterFoamBuffer (b5) прохода пены
 	Buffer m_foamWindowBuffer;	// WaterNearFlowBuffer (b7) прохода пены: окно заново — и после кадров без пены
+	Buffer m_patternBuffer;		// WaterNearPatternBuffer (b6) прохода пены
 	DMStructuredBuffer m_stones;	// камни русла в окне: по два float4 — квадрат верха и его номер
 	// Камни русел: квадрат верха (угол x, z, сторона, низ) — для отбора в окно; высоты всех квадратов — на GPU по две
 	// половинной точности в uint (m_stoneTopData ждёт загрузки, пока m_stoneTopsPending)
@@ -86,14 +88,17 @@ private:
 	Texture m_info, m_info2, m_velocity, m_advected, m_pressure, m_divergenceTexture, m_vorticityTexture, m_result;
 	StorageView m_infoUAV, m_info2UAV, m_velocityUAV, m_advectedUAV, m_pressureUAV, m_divergenceUAV, m_vorticityUAV, m_resultUAV;
 	ShaderView m_resultView;
-	// Пена окна (R16F): два поля по очереди — шаг читает прошлое, пишет другое
-	Texture m_foam[2];
-	StorageView m_foamUAV[2];
-	ShaderView m_foamView[2];
+	// Пена окна (R16F) и смещения координат её узора (RGBA16F: два слоя): по два поля по очереди — шаг читает прошлое, пишет
+	// другое
+	Texture m_foam[2], m_pattern[2];
+	StorageView m_foamUAV[2], m_patternUAV[2];
+	ShaderView m_foamView[2], m_patternView[2];
 	uint32_t m_foamCurrent = 0;
 	bool m_foamReset = true;	// прошлого поля пены нет (окно заново, поля пены 0,25 м ещё нет)
 	float m_foamTime = 0.0f;	// время игры, которое пена окна шла с последнего «заново», с: 0 — она ещё — поле 0,25 м
 	float m_foamShare = 0.0f;	// доля пены окна в материале (cb_waterNearFoam)
+	float m_patternShare = 0.0f;	// доля узора пены по течению окна и период его слоёв, с
+	float m_patternPeriod = 1.0f;
 	uint32_t m_size = 0;		// ячеек по стороне окна
 	float m_step = 0.0f;		// ячейка, м
 	DirectX::XMINT2 m_origin = DirectX::XMINT2( 0, 0 );

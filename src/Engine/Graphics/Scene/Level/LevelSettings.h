@@ -761,6 +761,10 @@ struct WaterSimulationSettings
 		float surface = 1.0f;
 		// Доля своей пены окна в материале воды (рождается у камней и на сдвиге, её несёт течение окна); 0 — пена поля 0,25 м
 		float foam = 1.0f;
+		// Узор пены в окне — по его течению (координаты узора несёт течение, слой обновляется раз в patternPeriod, с): доля;
+		// 0 — плитки
+		float pattern = 1.0f;
+		float patternPeriod = 1.5f;
 	} nearFlow;
 
 	std::vector<WaterSource> sources;	// включённые строки WaterSources этой строки WaterSimulation

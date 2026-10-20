@@ -853,6 +853,11 @@ const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema()
 		{ "near_foam", "Foam", DM_SETTING( foam ), 0.0f, 1.0f, "",
 		  "Share of the window's own foam: born where the water hits a stone and on the velocity shear, carried by the window's "
 		  "flow every frame; 0 - the foam field of the 0.25 m grid", settingClamp },
+		{ "near_pattern", "Pattern", DM_SETTING( pattern ), 0.0f, 1.0f, "",
+		  "Share of the foam pattern carried by the window's flow: it streams around the stones, stretches into streaks and curls "
+		  "in the eddies; 0 - the pattern tiles", settingClamp },
+		{ "near_pattern_period", "Pattern period", DM_SETTING( patternPeriod ), 0.3f, 10.0f, "s",
+		  "A layer of the carried pattern starts anew this often: longer - longer streaks, but the pattern gets torn apart", settingClamp },
 	};
 	return schema;
 }

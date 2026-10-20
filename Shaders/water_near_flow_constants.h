@@ -31,6 +31,17 @@ DM_CONSTANTS( WaterNearFlowBuffer, b7 )
 	DM_FIELD( float, nearSurface );			// подъём поверхности по давлению — × это (0 — поверхность ровная)
 };
 DM_CONSTANTS_END
+
+// Узор пены окна по его течению (water_near_foam.cs): слои смещений координат обновляются раз в период по фазе в точке
+// (nearPatternPhase, water_near.sh)
+DM_CONSTANTS( WaterNearPatternBuffer, b6 )
+{
+	DM_FIELD( float, nearPatternTime );		// время игры этого кадра, с
+	DM_FIELD( float, nearPatternStep );		// с прошлого кадра, с (0 — время стоит: слои те же)
+	DM_FIELD( float, nearPatternPeriod );	// период обновления слоя, с
+	DM_FIELD( float, nearPatternPadding );
+};
+DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX
 
 #endif
