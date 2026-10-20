@@ -57,6 +57,10 @@ struct FrameParameters
 	DirectX::XMFLOAT4 reflectionCapture[2] = {};
 	// Террейн уровня (TerrainPipeline::frameConstants): сторона карты, м (0 — нет)
 	DirectX::XMFLOAT4 terrain = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	// Дальние горы (FarTerrain::frameConstants, far_ground.sh): угол карты гор X, Z, её сторона (0 — гор нет), переход высоты к
+	// карте уровня, м; лес гор: переход маски леса карты в правила гор, м, кольцо деревьев на горах — граница и исчезание, м
+	DirectX::XMFLOAT4 farTerrain = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
+	DirectX::XMFLOAT4 farForest = DirectX::XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f );
 };
 
 class ConstantBuffers

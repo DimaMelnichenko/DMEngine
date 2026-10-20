@@ -957,6 +957,7 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.canopyPatchStrength = std::clamp( settings.underCanopyPatches, 0.0f, 1.0f );
 	params.groundFit = settings.groundFit ? 1.0f : 0.0f;
 	params.groundEmbed = std::clamp( settings.groundEmbed, 0.0f, 0.5f );
+	params.farForest = settings.placement == ScatterPlacement::farForest ? 1.0f : 0.0f;
 }
 
 float Scatterer::maxHeight( const Layer& layer )
@@ -1247,6 +1248,20 @@ void Scatterer::appendCanopy( std::vector<CanopyStamp>& stamps ) const
 			stamps.push_back( stamp );
 		}
 	}
+}
+
+bool Scatterer::farForestRing( float& border, float& fade ) const
+{
+	bool found = false;
+	for( const Layer& layer : m_layers )
+	{
+		if( layer.settings.placement != ScatterPlacement::farForest || !layer.pass )
+			continue;
+		border = std::max( found ? border : 0.0f, layer.settings.farBorder );
+		fade = std::max( found ? fade : 0.0f, layer.settings.farFade );
+		found = true;
+	}
+	return found;
 }
 
 void Scatterer::setStreamStones( const std::vector<TerrainHydrology::Stone>& stones )

@@ -919,7 +919,10 @@ struct SunPositionSettings
 enum class ScatterPlacement
 {
 	mask,
-	streamStones
+	streamStones,
+	// Деревья на дальних горах вокруг камеры (кольцевой слой): за краем карты, по плотности леса гор (FarTerrain), у края — по
+	// маске слоя
+	farForest
 };
 
 // Строка ScatterSets — набор расстановки целиком

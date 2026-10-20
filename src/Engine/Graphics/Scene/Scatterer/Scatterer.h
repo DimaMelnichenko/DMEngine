@@ -74,6 +74,9 @@ public:
 	// сменились (лес разложен заново, правка «Canopy») — тогда Scene собирает карту заново
 	uint32_t canopyRevision() const { return m_canopyRevision; }
 	void appendCanopy( std::vector<CanopyStamp>& stamps ) const;
+	// Кольцо деревьев на дальних горах (слои с placement far_forest): дальняя граница и её исчезание, м — горам
+	// (FarTerrain::setForestRing: тон леса — дальше); false — таких слоёв нет
+	bool farForestRing( float& border, float& fade ) const;
 	// Готовая копия постоянного пула с GPU — тела его экземпляров (прежние тела слоя — убираются)
 	void update( const FrameContext& frame ) override;
 	// Раскладка по видам кадра (FrameContext::views: главный и каскады теней)

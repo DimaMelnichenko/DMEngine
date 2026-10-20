@@ -372,6 +372,20 @@ bool FarTerrain::initialize( const FarTerrainSettings& settings, CDLODTerrain& t
 	if( !DMD3D::instance().createShaderConstantBuffer( sizeof( CDLODBuffer ), m_terrainConstants ) ||
 		!DMD3D::instance().createShaderConstantBuffer( sizeof( FarTerrainBuffer ), m_constants ) )
 		return false;
+	// Плотность леса по правилам гор — на сетке карты гор: по ней слой far_forest ставит деревья на горах
+	{
+		TextureDesc desc;
+		desc.width = m_size;
+		desc.height = m_size;
+		desc.format = DXGI_FORMAT_R8_UNORM;
+		desc.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
+		if( !m_forestDensityShader.initialize( "Shaders\\far_forest_density.cs", "main" ) ||
+			!DMD3D::instance().createTexture( desc, nullptr, m_forestDensity ) ||
+			!DMD3D::instance().createStorageView( m_forestDensity, {}, m_forestDensityWrite ) ||
+			!DMD3D::instance().createShaderView( m_forestDensity, {}, m_forestDensityView ) )
+			return false;
+		DMD3D::instance().setName( m_forestDensity, "Far forest density" );
+	}
 
 	// Дальность гор — в таблицу карты до первого кадра
 	m_terrain->setFarLevels( m_mipBias, settings.lodDistance, m_heightExtent );
@@ -660,6 +674,54 @@ void FarTerrain::update( const FrameContext& frame )
 	m_quadtree.setLod( m_terrain->lod() );
 }
 
+void FarTerrain::setForestRing( float border, float fade )
+{
+	m_forestRingFar = std::max( border, 0.0f );
+	m_forestRingFade = std::max( fade, 0.0f );
+}
+
+void FarTerrain::compute( const FrameContext& frame )
+{
+	if( !m_initialized )
+		return;
+	// Правили окно гор (правила леса, снега, скалы) или горы запечены заново — плотность заново
+	const uint64_t key = ( static_cast<uint64_t>( m_properties.revision() ) << 20 ) ^ m_bakes ^ ( static_cast<uint64_t>( m_erosionRevision ) << 40 );
+	if( key != m_forestDensityKey )
+	{
+		m_forestDensityKey = key;
+		bakeForestDensity( frame.view );
+	}
+	// Тем, кто ставит что-то на горы (лес гор — слой far_forest): привязка завершает проход над плотностью
+	DMD3D::instance().setSRV( SLOT_FAR_TERRAIN_HEIGHT, m_heightView );
+	DMD3D::instance().setSRV( SLOT_FAR_FOREST, m_forestDensityView );
+}
+
+void FarTerrain::bakeForestDensity( const RenderView& view )
+{
+	DMD3D& d3d = DMD3D::instance();
+	// Константы и ресурсы — как у материала гор: те же правила и та же высота
+	Device::updateResource<CDLODBuffer>( m_terrainConstants, [this, &view]( CDLODBuffer& params ) { m_terrain->fillConstants( params, view, -1 ); } );
+	Device::updateResource<FarTerrainBuffer>( m_constants, [this]( FarTerrainBuffer& params ) { fillConstants( params ); } );
+	d3d.beginPass( PassDesc{ "Far forest density", {}, {}, 0, 0, { { &m_heightView, "far terrain heights" }, { &m_glacierView, "far glaciers" } },
+							 { { &m_forestDensityWrite, "far forest density" } } } );
+	d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_terrainConstants );
+	d3d.setConstantBuffer( farTerrainConstantSlot, m_constants );
+	d3d.setSRV( 0, m_pipeline->heightMapView() );
+	d3d.setSRV( 1, m_heightView );
+	d3d.setSRV( 2, m_glacierView );
+	m_forestDensityShader.setUAVBuffer( 0, m_forestDensityWrite );
+	m_forestDensityShader.dispatchGroups( ( m_size + 7 ) / 8, ( m_size + 7 ) / 8, 1 );
+}
+
+void FarTerrain::frameConstants( const RenderView&, FrameParameters& constants )
+{
+	if( !m_initialized )
+		return;
+	const FarTerrainSettings rules = settings();
+	constants.farTerrain = XMFLOAT4( rules.origin.x, rules.origin.y, rules.extent, std::max( rules.blendDistance, 1.0f ) );
+	constants.farForest = XMFLOAT4( std::max( rules.materialBlend, 1.0f ), m_forestRingFar, m_forestRingFade, 0.0f );
+}
+
 void FarTerrain::collectMeshes( const RenderView& view, MeshCollector& collector )
 {
 	// Гор нет в тенях каскадов (их тень — карта края тени); главный вид и съёмка — каждый своими узлами
@@ -670,6 +732,44 @@ void FarTerrain::collectMeshes( const RenderView& view, MeshCollector& collector
 	m_quadtree.select( view, *this, patches );
 	if( !patches.empty() )
 		collector.addCustom( passBit( MeshPass::depthPrepass ) | passBit( MeshPass::opaque ) );
+}
+
+void FarTerrain::fillConstants( FarTerrainBuffer& params ) const
+{
+	const FarTerrainSettings rules = settings();
+	params.farOrigin = rules.origin;
+	params.farExtent = rules.extent;
+	params.farMipBias = static_cast<float>( m_mipBias );
+	params.farBlendDistance = std::max( rules.blendDistance, 1.0f );
+	params.farMaterialBlend = std::max( rules.materialBlend, 0.0f );
+	params.rockSlope = slopeCosines( rules.rockSlope );
+	params.screeSlope = slopeCosines( rules.screeSlope );
+	params.screeHeight = heightRange( rules.screeHeight );
+	params.meadowHeight = heightRange( rules.meadowHeight );
+	params.snowHeight = heightRange( rules.snowHeight );
+	params.snowSlope = slopeCosines( rules.snowSlope );
+	params.snowNorth = rules.snowNorth;
+	params.snowNoise = rules.snowNoise;
+	params.forestLine = heightRange( rules.forestLine );
+	params.forestSlope = slopeCosines( rules.forestSlope );
+	params.forestColor = rules.forestColor;
+	params.grassWetLayer = m_pipeline->roleLayer( TerrainLayerRole::grassWet );
+	params.grassDryLayer = m_pipeline->roleLayer( TerrainLayerRole::grassDry );
+	params.talusLayer = m_pipeline->roleLayer( TerrainLayerRole::talus );
+	params.rockLayer = m_pipeline->roleLayer( TerrainLayerRole::rock );
+	params.snowLayer = m_pipeline->roleLayer( TerrainLayerRole::snow );
+	params.macroDistance = heightRange( rules.macroDistance );
+	params.macroTextureScale = std::max( rules.macroTextureScale, 1.0f );
+	// Без строки GlacialErosion льда нет (текстура — тексель без льда), линия фирна — выше любых гор
+	params.glacierFirnLine = rules.glacier ? rules.glacier->presentEla : 1.0e6f;
+	params.glacierIceTint = rules.glacierIceTint;
+	params.glacierCover = heightRange( rules.glacierCover );
+	params.crevasseSlope = slopeCosines( rules.crevasseSlope );
+	params.crevasseSpacing = std::max( rules.crevasseSpacing, 1.0f );
+	params.crevasseColor = rules.crevasseColor;
+	params.moraineCover = XMFLOAT2( rules.moraineCover.from, std::max( rules.moraineCover.to, rules.moraineCover.from + 0.01f ) );
+	// Тон леса — дальше кольца деревьев на горах
+	params.forestRing = XMFLOAT2( m_forestRingFar, std::max( m_forestRingFade, 1.0f ) );
 }
 
 void FarTerrain::renderCustom( const RenderContext& context )
@@ -687,41 +787,7 @@ void FarTerrain::renderCustom( const RenderContext& context )
 	} );
 	DMD3D::instance().setConstantBuffer( SLOT_CB_MATERIAL, m_terrainConstants );
 
-	Device::updateResource<FarTerrainBuffer>( m_constants, [this]( FarTerrainBuffer& params )
-	{
-		const FarTerrainSettings rules = settings();
-		params.farOrigin = rules.origin;
-		params.farExtent = rules.extent;
-		params.farMipBias = static_cast<float>( m_mipBias );
-		params.farBlendDistance = std::max( rules.blendDistance, 1.0f );
-		params.farMaterialBlend = std::max( rules.materialBlend, 0.0f );
-		params.rockSlope = slopeCosines( rules.rockSlope );
-		params.screeSlope = slopeCosines( rules.screeSlope );
-		params.screeHeight = heightRange( rules.screeHeight );
-		params.meadowHeight = heightRange( rules.meadowHeight );
-		params.snowHeight = heightRange( rules.snowHeight );
-		params.snowSlope = slopeCosines( rules.snowSlope );
-		params.snowNorth = rules.snowNorth;
-		params.snowNoise = rules.snowNoise;
-		params.forestLine = heightRange( rules.forestLine );
-		params.forestSlope = slopeCosines( rules.forestSlope );
-		params.forestColor = rules.forestColor;
-		params.grassWetLayer = m_pipeline->roleLayer( TerrainLayerRole::grassWet );
-		params.grassDryLayer = m_pipeline->roleLayer( TerrainLayerRole::grassDry );
-		params.talusLayer = m_pipeline->roleLayer( TerrainLayerRole::talus );
-		params.rockLayer = m_pipeline->roleLayer( TerrainLayerRole::rock );
-		params.snowLayer = m_pipeline->roleLayer( TerrainLayerRole::snow );
-		params.macroDistance = heightRange( rules.macroDistance );
-		params.macroTextureScale = std::max( rules.macroTextureScale, 1.0f );
-		// Без строки GlacialErosion льда нет (текстура — тексель без льда), линия фирна — выше любых гор
-		params.glacierFirnLine = rules.glacier ? rules.glacier->presentEla : 1.0e6f;
-		params.glacierIceTint = rules.glacierIceTint;
-		params.glacierCover = heightRange( rules.glacierCover );
-		params.crevasseSlope = slopeCosines( rules.crevasseSlope );
-		params.crevasseSpacing = std::max( rules.crevasseSpacing, 1.0f );
-		params.crevasseColor = rules.crevasseColor;
-		params.moraineCover = XMFLOAT2( rules.moraineCover.from, std::max( rules.moraineCover.to, rules.moraineCover.from + 0.01f ) );
-	} );
+	Device::updateResource<FarTerrainBuffer>( m_constants, [this]( FarTerrainBuffer& params ) { fillConstants( params ); } );
 	DMD3D::instance().setConstantBuffer( farTerrainConstantSlot, m_constants );
 
 	const std::vector<Patch>& patches = m_patches[context.view.index];

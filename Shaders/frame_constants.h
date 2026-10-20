@@ -60,6 +60,12 @@ DM_CONSTANTS( FrameConstantBuffer, SLOT_CB_FRAME )
 	DM_ARRAY( float4, reflectionCapture, 2 );
 	// Террейн уровня (TerrainPipeline): x — сторона карты, м (0 — террейна нет: его ресурсы сцены не читать)
 	DM_FIELD( float4, terrain );
+	// Дальние горы (FarTerrain, far_ground.sh): xy — угол карты гор с наименьшими x, z, м, z — её сторона, м (0 — гор нет: их
+	// ресурсы сцены не читать), w — от края карты уровня высота карты переходит в высоту гор за столько, м
+	DM_FIELD( float4, farTerrain );
+	// Лес гор: x — от края карты уровня её маска леса переходит в плотность по правилам гор за столько, м («Material blend»);
+	// y, z — дальняя граница кольца деревьев на горах (слой far_forest) и её исчезание, м (0 — деревьев нет: лес — тоном)
+	DM_FIELD( float4, farForest );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

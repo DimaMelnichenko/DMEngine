@@ -8,7 +8,9 @@
 #include "CDLODQuadtree.h"
 #include "TerrainHeightSource.h"
 #include "ShaderProgram.h"
+#include "ComputeShader.h"
 #include "D3D\DMStructuredBuffer.h"
+#include "Shaders\far_terrain_constants.h"
 
 namespace GS
 {
@@ -42,6 +44,14 @@ public:
 
 	// Новая итоговая карта (перестройка русел) или её множитель — запекание заново; дальность гор — в таблицу карты
 	void update( const FrameContext& frame ) override;
+	// Плотность леса по правилам гор (заново, когда сменились правила или горы) и ресурсы сцены тем, кто ставит что-то на
+	// горы (лес гор — слой far_forest): карта гор и плотность леса (SLOT_FAR_TERRAIN_HEIGHT, SLOT_FAR_FOREST, far_ground.sh)
+	void compute( const FrameContext& frame ) override;
+	// Угол и сторона карты гор, переход высоты к карте, кольцо деревьев на горах (cb_farTerrain, cb_farForest)
+	void frameConstants( const RenderView& view, FrameParameters& constants ) override;
+	// Кольцо деревьев на горах (слой расстановки far_forest, Scatterer::farForestRing): дальняя граница и её исчезание, м — там
+	// лес деревьями, тон леса в материале гор сходит на нет к ближней стороне полосы исчезания; 0 — деревьев нет
+	void setForestRing( float border, float fade );
 	// Узлы — на каждый вид, кроме теней (RenderView::index)
 	void collectMeshes( const RenderView& view, MeshCollector& collector ) override;
 	void renderCustom( const RenderContext& context ) override;
@@ -69,6 +79,10 @@ private:
 	FluvialErosionSettings fluvialSettings() const;
 	GlacialErosionSettings glacierSettings() const;
 	bool createShader();
+	// Константы материала гор (FarTerrainBuffer) по окну — материалу и плотности леса
+	void fillConstants( FarTerrainBuffer& params ) const;
+	// Плотность леса по правилам гор на сетке карты гор (Shaders/far_forest_density.cs)
+	void bakeForestDensity( const RenderView& view );
 	// Карта гор с мипом карты внутри неё → текстура с мипами и пирамида min / max на CPU, перепады узлов по уровням
 	bool bake();
 	// min / max высоты текселей уровня пирамиды k (тексель — 2^k текселей карты гор) в столбцах [x0, x1] и рядах [z0, z1] (ряд —
@@ -112,6 +126,14 @@ private:
 	Texture m_glacierTexture;			// ледники наших дней (как карта гор): толщина льда, линии обломков (морены), течение
 	ShaderView m_glacierView;
 	float m_moraineWidth = 0.0f;		// ширина, с которой построена карта морен, м
+	// Плотность леса по правилам гор (R8, сетка карты гор): по ней слой far_forest ставит деревья
+	Texture m_forestDensity;
+	StorageView m_forestDensityWrite;
+	ShaderView m_forestDensityView;
+	ComputeShader m_forestDensityShader;
+	uint64_t m_forestDensityKey = ~0ull;	// правки окна и запекания гор, по которым она посчитана
+	float m_forestRingFar = 0.0f;		// кольцо деревьев на горах (setForestRing)
+	float m_forestRingFade = 0.0f;
 	PropertyContainer m_properties;
 	PropertyContainer m_fluvialProperties;	// подокно «Fluvial erosion» (есть, если у гор есть строка FluvialErosion)
 	PropertyContainer m_glacierProperties;	// подокно «Glacial erosion» (есть, если у гор есть строка GlacialErosion)

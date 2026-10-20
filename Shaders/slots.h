@@ -116,8 +116,13 @@
 // и смеси моделей с землёй (terrain_blend.sh, TerrainBlendHeight у PBR)
 #define SLOT_TERRAIN_HEIGHT	136
 #define SLOT_TERRAIN_NORMAL_ROUGHNESS	137
+// Дальние горы (FarTerrain) тем, кто ставит что-то на них (лес гор — слой расстановки far_forest, far_ground.sh): карта гор
+// (R32_FLOAT в метрах, строки с севера, как g_farHeightMap) и плотность леса по правилам гор (R8, та же сетка); константы —
+// cb_farTerrain, cb_farForest
+#define SLOT_FAR_TERRAIN_HEIGHT	138
+#define SLOT_FAR_FOREST	139
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	38
+#define SLOT_SCENE_COUNT	40
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

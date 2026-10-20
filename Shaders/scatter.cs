@@ -14,6 +14,9 @@
 // перехода попадает в списки перехода обоих LOD с долей перехода (Dithered LOD Transition в UE, Shaders/lod_dither.sh) —
 // в пул перехода g_transitions.
 //
+// Деревья на дальних горах (ScatterLayers.placement far_forest, placeFarTree): кольцевой слой за краем карты — высота и
+// плотность леса — гор (FarTerrain, far_ground.sh), у края карты — её маска леса, продолженная наружу.
+//
 // Постоянный слой (лес, ScatterLayers.persistent): экземпляры раскладываются один раз на всю карту (placeWorld) в
 // постоянный пул g_placed кластерами — группа потоков на квадрат PLACED_CLUSTER_CELLS² ячеек, экземпляры кластера подряд,
 // у кластера — начало, число и диапазон высот (как кластеры HISM в UE). Каждый кадр cullPlaced отсекает кластер по видам
@@ -35,6 +38,7 @@
 #include "bindless.sh"
 #include "scatter_constants.h"
 #include "canopy.sh"
+#include "far_ground.sh"
 
 // Пределы — scatter_constants.h; номер списка — как ScatterPass::listIndex
 static const uint maxLods = SCATTER_MAX_LODS;
@@ -452,6 +456,40 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 	return true;
 }
 
+// Дерево на дальних горах в ячейке (слой far_forest): только за краем карты (на ней — свой лес); плотность — леса гор по их
+// правилам, у края карты — маска слоя (лес карты), продолженная наружу; высота — земли гор (как у их вершин у камеры); без
+// наклона по земле, следа и цвета земли — деревья вдали
+bool placeFarTree( int2 cell, uint seed, out ScatterItem item, out uint variant, out float lodScale )
+{
+	item = (ScatterItem)0;
+	variant = 0;
+	lodScale = 1.0f;
+	if( !farGroundExists() )
+		return false;
+	const float2 offset = ( float2( random( cell, seed ), random( cell, seed + 1 ) ) - 0.5f ) * g_jitter;
+	const float2 worldXZ = ( (float2)cell + 0.5f + offset ) * g_cellSize;
+	const float2 uv = terrainUV( worldXZ );
+	if( all( uv >= 0.0f ) && all( uv <= 1.0f ) )
+		return false;
+	const float density = farForestDensity( worldXZ, g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r );
+	if( random( cell, seed + 2 ) >= density )
+		return false;
+	const float pick = random( cell, seed + 7 );
+	[loop] for( uint v = 0; v + 1 < g_variantCount; ++v )
+		variant += pick >= g_variants[v].x ? 1 : 0;
+	const float4 placement = g_placement[variant];
+	const float3 angles = ( float3( random( cell, seed + 4 ), random( cell, seed + 5 ), random( cell, seed + 6 ) ) - 0.5f ) * g_rotationRange;
+	const float sizeVariation = placement.z >= 0.0f ? placement.z : g_sizeVariation;
+	item.size = g_sizeMultiplier * placement.y * lerp( 1.0f - sizeVariation, 1.0f, random( cell, seed + 3 ) ) * lerp( 0.6f, 1.0f, density );
+	item.position = float3( worldXZ.x, farGroundHeight( worldXZ, terrainHeight( worldXZ ) ), worldXZ.y );
+	item.rotation = quaternionMul( quaternionAxisAngle( float3( 0.0f, 1.0f, 0.0f ), angles.y ),
+								   quaternionMul( quaternionAxisAngle( float3( 1.0f, 0.0f, 0.0f ), angles.x ),
+												  quaternionAxisAngle( float3( 0.0f, 0.0f, 1.0f ), angles.z ) ) );
+	lodScale = 1.0f - LOD_JITTER_RANDOM * random( cell, seed + 8 ) -
+			   LOD_JITTER_NOISE * ( worldNoise( worldXZ, LOD_JITTER_NOISE_SIZE, seed + 9 ) * 0.5f + 0.5f );
+	return true;
+}
+
 // Сфера экземпляра: по границам модели варианта (у деревьев — десятки метров) и не меньше прежней «единичной» сферы
 // размера size над точкой (трава, цветы — модели меньше метра); высота — для длины тени
 void instanceSphere( ScatterItem item, uint variant, out float3 center, out float radius, out float height )
@@ -747,11 +785,14 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	ScatterItem item;
 	uint variant;
 	float lodScale;
-	if( !placeInCell( cell, seed, item, variant, lodScale ) )
+	const bool farTree = g_farForest > 0.5f;
+	if( farTree ? !placeFarTree( cell, seed, item, variant, lodScale ) : !placeInCell( cell, seed, item, variant, lodScale ) )
 		return;
 	// На земле со смещением дисплейсмента (камни слоёв у камеры): трава и камешки не тонут в поднятых камнях и не висят
-	// над щелями. Постоянный слой (placeWorld) — без него: раскладка раз, а смещение зависит от камеры
-	item.position = terrainSurfacePoint( item.position.xz );
+	// над щелями. Постоянный слой (placeWorld) — без него: раскладка раз, а смещение зависит от камеры; деревья на горах —
+	// на земле гор
+	if( !farTree )
+		item.position = terrainSurfacePoint( item.position.xz );
 
 	float distanceToCamera = distance( item.position, cb_cameraPosition );
 	if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )

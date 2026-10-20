@@ -541,6 +541,8 @@ void LibraryLoader::loadScatterLayers( uint32_t idSet, LevelDescription::Scatter
 		const std::string placement = query.getColumn( "placement" ).isNull() ? std::string() : query.getColumn( "placement" ).getString();
 		if( placement == "stream_stones" )
 			layer.settings.placement = GS::ScatterPlacement::streamStones;
+		else if( placement == "far_forest" )
+			layer.settings.placement = GS::ScatterPlacement::farForest;
 		else if( !placement.empty() && placement != "mask" )
 			LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": unknown placement '" + placement + "', mask is used" );
 		// Остальное — по описанию полей (scatterLayerSchema): NULL — значение по умолчанию

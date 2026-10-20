@@ -454,6 +454,24 @@ void Scene::update( const FrameContext& frame, FrameStats& stats )
 		}
 	}
 
+	// Деревья на дальних горах (слои far_forest): докуда они — оттуда горы рисуют лес тоном
+	if( m_farTerrain.initialized() )
+	{
+		float border = 0.0f;
+		float fade = 0.0f;
+		for( const auto& scatterer : m_scatterers )
+		{
+			float layerFar = 0.0f;
+			float layerFade = 0.0f;
+			if( scatterer->farForestRing( layerFar, layerFade ) )
+			{
+				border = std::max( border, layerFar );
+				fade = std::max( fade, layerFade );
+			}
+		}
+		m_farTerrain.setForestRing( border, fade );
+	}
+
 	// Места звука на земле (режим «Sound sources», «Show area»): маски областей — подсветкой террейна, бирюзовым
 	if( m_level.terrain )
 	{

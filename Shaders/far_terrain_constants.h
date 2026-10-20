@@ -43,7 +43,9 @@ DM_CONSTANTS( FarTerrainBuffer, b4 )
 	DM_FIELD( float3, crevasseColor );		// альбедо в трещине, линейное
 	DM_FIELD( float, crevasseSpacing );		// шаг трещин вдоль течения льда, м
 	DM_FIELD( float2, crevasseSlope );		// трещины по уклону поверхности льда
-	DM_FIELD( float2, farPadding2 );
+	// Кольцо деревьев на горах (слой расстановки far_forest): x — дальняя граница, м (0 — деревьев нет), y — её исчезание, м.
+	// Тон леса — там, где деревьев уже нет
+	DM_FIELD( float2, forestRing );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

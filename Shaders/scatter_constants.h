@@ -74,7 +74,9 @@ DM_CONSTANTS( ScatterLayerBuffer, b4 )
 	// земли под следом (относительно плоскости, на которую её ставит наклон); и глубже на groundEmbed × размер, м
 	DM_FIELD( float, groundFit );
 	DM_FIELD( float, groundEmbed );
-	DM_FIELD( float2, layerPadding );
+	// Деревья на дальних горах (ScatterLayers.placement far_forest): 1 — за краем карты, высота и плотность — гор (far_ground.sh)
+	DM_FIELD( float, farForest );
+	DM_FIELD( float, layerPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX
