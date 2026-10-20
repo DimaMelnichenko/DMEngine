@@ -241,6 +241,8 @@ TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) con
 	constants.forestFloorLayer = floorLayer >= 0 && floorLayer < static_cast<int32_t>( constants.layerCount ) ? floorLayer : -1;
 	constants.forestFloorStrength = m_properties["Forest floor"].data<float>();
 	constants.forestFloorEdge = m_properties["Forest floor edge"].data<float>();
+	const int32_t litterLayer = m_pipeline->roleLayer( TerrainLayerRole::forestFloorBroadleaf );
+	constants.forestLitterLayer = litterLayer >= 0 && litterLayer < static_cast<int32_t>( constants.layerCount ) ? litterLayer : -1;
 	const int32_t mossLayer = m_pipeline->roleLayer( TerrainLayerRole::forestMoss );
 	constants.forestMossLayer = mossLayer >= 0 && mossLayer < static_cast<int32_t>( constants.layerCount ) ? mossLayer : -1;
 	constants.forestMoss = m_properties["Forest moss"].data<float>();

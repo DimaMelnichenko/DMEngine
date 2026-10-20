@@ -185,7 +185,10 @@ void applyForestFloor( float2 worldXZ, inout float weights[maxLayers] )
 						 g_terrainNoise.SampleLevel( g_SamplerLinearWrap, p / 128.0f, 0.0f ).r * 0.25f;
 		}
 	}
-	const float share = saturate( canopyCover( terrainLayerUV( worldXZ + warp * layers.forestFloorEdge ) ) * layers.forestFloorStrength );
+	const float2 canopy = canopyCoverAndBroadleaf( terrainLayerUV( worldXZ + warp * layers.forestFloorEdge ) );
+	const float share = saturate( canopy.x * layers.forestFloorStrength );
+	// Доля лиственного полога: под буком — листья (роль forest_floor_broadleaf), под елью — хвоя
+	const float broadleaf = layers.forestLitterLayer >= 0 ? saturate( canopy.y / max( canopy.x, 1e-3f ) ) : 0.0f;
 	[branch] if( share <= 0.0f )
 		return;
 	float moved = 0.0f;
@@ -201,7 +204,8 @@ void applyForestFloor( float2 worldXZ, inout float weights[maxLayers] )
 					   saturate( layers.forestMoss * lerp( layers.forestMossDry, 1.0f, wet / max( moved, 1e-5f ) ) ) : 0.0f;
 	// Слой — сравнением в развёрнутом цикле: индекс локального массива по константе ушёл бы в память потока
 	[unroll] for( uint target = 0; target < maxLayers; ++target )
-		weights[target] += ( target == (uint)layers.forestFloorLayer ? moved * ( 1.0f - moss ) : 0.0f ) +
+		weights[target] += ( target == (uint)layers.forestFloorLayer ? moved * ( 1.0f - moss ) * ( 1.0f - broadleaf ) : 0.0f ) +
+						   ( target == (uint)layers.forestLitterLayer ? moved * ( 1.0f - moss ) * broadleaf : 0.0f ) +
 						   ( target == (uint)layers.forestMossLayer ? moved * moss : 0.0f );
 }
 

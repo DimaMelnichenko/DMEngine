@@ -255,16 +255,16 @@ bool TerrainPipeline::setCanopy( const std::vector<CanopyStamp>& stamps )
 {
 	const auto start = std::chrono::steady_clock::now();
 	const uint32_t size = stamps.empty() ? 1u : TerrainCanopy::mapSize( m_worldSize );
-	const std::vector<uint8_t> map = TerrainCanopy::build( stamps, size, m_worldSize );
+	const std::vector<uint8_t> map = TerrainCanopy::buildWithBroadleaf( stamps, size, m_worldSize );
 	DMD3D& d3d = DMD3D::instance();
 	TextureDesc desc;
 	desc.width = desc.height = size;
-	desc.format = DXGI_FORMAT_R8_UNORM;
+	desc.format = DXGI_FORMAT_R8G8_UNORM;	// R — все кроны, G — лиственные
 	desc.usage = TextureUsage::shaderResource;
 	TextureData data;
 	data.data = map.data();
-	data.rowPitch = size;
-	data.slicePitch = static_cast<size_t>( size ) * size;
+	data.rowPitch = size * 2;
+	data.slicePitch = static_cast<size_t>( size ) * size * 2;
 	Texture texture;
 	ShaderView view;
 	if( !d3d.createTexture( desc, &data, texture ) || !d3d.createShaderView( texture, {}, view ) )
@@ -277,10 +277,18 @@ bool TerrainPipeline::setCanopy( const std::vector<CanopyStamp>& stamps )
 	m_canopyView = std::move( view );
 	if( !stamps.empty() )
 	{
-		const size_t covered = std::count_if( map.begin(), map.end(), []( uint8_t value ) { return value >= 128; } );
-		char text[128];
-		std::snprintf( text, sizeof( text ), "Canopy map: %zu crowns, %ux%u, under crowns %.1f%% of the map, ms: %.1f", stamps.size(), size,
-					   size, 100.0 * covered / map.size(), std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
+		size_t covered = 0;
+		size_t broadleaf = 0;
+		for( size_t i = 0; i < map.size(); i += 2 )
+		{
+			covered += map[i] >= 128 ? 1 : 0;
+			broadleaf += map[i + 1] >= 128 ? 1 : 0;
+		}
+		const size_t texels = map.size() / 2;
+		char text[160];
+		std::snprintf( text, sizeof( text ), "Canopy map: %zu crowns, %ux%u, under crowns %.1f%% of the map (broadleaf %.1f%%), ms: %.1f",
+					   stamps.size(), size, size, 100.0 * covered / texels, 100.0 * broadleaf / texels,
+					   std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() );
 		LOG( text );
 	}
 	return true;

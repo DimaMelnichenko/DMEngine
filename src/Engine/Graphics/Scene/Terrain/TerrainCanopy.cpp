@@ -11,6 +11,23 @@ uint32_t TerrainCanopy::mapSize( float worldSize )
 	return static_cast<uint32_t>( std::clamp( cells, 1.0f, static_cast<float>( maxSize ) ) );
 }
 
+std::vector<uint8_t> TerrainCanopy::buildWithBroadleaf( const std::vector<CanopyStamp>& stamps, uint32_t size, float worldSize )
+{
+	std::vector<CanopyStamp> broadleaf;
+	for( const CanopyStamp& stamp : stamps )
+		if( stamp.broadleaf )
+			broadleaf.push_back( stamp );
+	const std::vector<uint8_t> all = build( stamps, size, worldSize );
+	const std::vector<uint8_t> leaves = broadleaf.empty() ? std::vector<uint8_t>( all.size(), 0 ) : build( broadleaf, size, worldSize );
+	std::vector<uint8_t> map( all.size() * 2 );
+	for( size_t i = 0; i < all.size(); ++i )
+	{
+		map[2 * i] = all[i];
+		map[2 * i + 1] = leaves[i];
+	}
+	return map;
+}
+
 float TerrainCanopy::cover( float distance, float radius )
 {
 	if( radius <= 0.0f || distance >= radius )

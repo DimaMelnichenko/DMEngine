@@ -38,6 +38,18 @@ TEST_CASE( "TerrainCanopy: map rows go from the far edge, crowns overlap by maxi
 	// Крона за краем — её часть на карте, без выхода за массив
 	CHECK( TerrainCanopy::sample( map, size, world, 0.5f, 30.0f ) == doctest::Approx( 1.0f ) );
 	CHECK( TerrainCanopy::sample( map, size, world, -0.5f, 30.0f ) == doctest::Approx( 0.0f ) );
+	// Лиственные — второй канал: под лиственной кроной G = R, под хвойной G = 0
+	std::vector<CanopyStamp> mixed = stamps;
+	mixed[1].broadleaf = true;
+	const std::vector<uint8_t> two = TerrainCanopy::buildWithBroadleaf( mixed, size, world );
+	REQUIRE( two.size() == 2 * map.size() );
+	const size_t underBroadleaf = 8 * size + 24;	// z = 60, x = 12 — крона 1 (лиственная), крона 0 — в 4 м
+	const size_t underConifer = static_cast<size_t>( 68 ) * size + 1;	// x ≈ 0,75, z = 30 — крона 2 (хвойная)
+	CHECK( two[2 * underBroadleaf] == map[underBroadleaf] );
+	CHECK( two[2 * underBroadleaf + 1] == map[underBroadleaf] );
+	CHECK( two[2 * underConifer] == map[underConifer] );
+	CHECK( two[2 * underConifer + 1] == 0 );
+	CHECK( map[underConifer] > 0 );
 	// Без кругов — пусто
 	const std::vector<uint8_t> empty = TerrainCanopy::build( {}, size, world );
 	CHECK( std::all_of( empty.begin(), empty.end(), []( uint8_t v ) { return v == 0; } ) );

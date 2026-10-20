@@ -80,6 +80,9 @@ public:
 	// горизонтали × canopy; 0 — модель не дерево (шары, постройки): ни подстилки, ни редкой травы под ней
 	float canopy() const { return m_canopy; }
 	void setCanopy( float canopy ) { m_canopy = canopy; }
+	// Лиственное дерево (Models.broadleaf): под его кроной подстилка из листьев (forest_floor_broadleaf), а не хвоя
+	bool broadleaf() const { return m_broadleaf; }
+	void setBroadleaf( bool broadleaf ) { m_broadleaf = broadleaf; }
 	// Имя колонки → значение; false — неизвестное имя
 	static bool parseCollision( const std::string& name, Collision& collision );
 
@@ -98,6 +101,7 @@ private:
 	Collision m_collision = Collision::hull;
 	float m_collisionRadius = 0.0f;
 	float m_canopy = 0.0f;
+	bool m_broadleaf = false;
 	uint32_t m_skeleton = 0;
 	DirectX::BoundingBox m_animatedBounds;
 	PropertyContainer m_properties;

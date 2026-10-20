@@ -325,7 +325,8 @@ void ModelInstances::appendCanopy( std::vector<CanopyStamp>& stamps ) const
 			continue;
 		DirectX::BoundingBox bounds;
 		lod->bounds.Transform( bounds, instance.transform.worldMatrix() );
-		stamps.push_back( { bounds.Center.x, bounds.Center.z, std::max( bounds.Extents.x, bounds.Extents.z ) * instance.model->canopy() } );
+		stamps.push_back( { bounds.Center.x, bounds.Center.z, std::max( bounds.Extents.x, bounds.Extents.z ) * instance.model->canopy(),
+							instance.model->broadleaf() } );
 	}
 }
 

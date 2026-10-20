@@ -591,7 +591,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	LOG( "Load model: " + std::to_string( idModel ) );
 
 	SQLite::Statement query( DBConnector::instance().db(),
-							 "SELECT id, name, shadow_lod_scale, shadow_min_lod, collision, collision_radius, skeleton_id, canopy FROM Models "
+							 "SELECT id, name, shadow_lod_scale, shadow_min_lod, collision, collision_radius, skeleton_id, canopy, broadleaf FROM Models "
 							 "where id = :id" );
 	query.bind( ":id", idModel );
 	float shadowLodScale = 1.0f;
@@ -600,6 +600,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	float collisionRadius = 0.0f;
 	uint32_t skeleton = 0;
 	float canopy = 0.0f;
+	bool broadleaf = false;
 	while( query.executeStep() )
 	{
 		if( !GS::Assets::models().createModel( query.getColumn( 0 ), query.getColumn( 1 ) ) )
@@ -610,6 +611,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 		collisionRadius = static_cast<float>( query.getColumn( "collision_radius" ).getDouble() );
 		skeleton = query.getColumn( "skeleton_id" ).isNull() ? 0 : query.getColumn( "skeleton_id" ).getUInt();
 		canopy = static_cast<float>( query.getColumn( "canopy" ).getDouble() );
+		broadleaf = query.getColumn( "broadleaf" ).getInt() != 0;
 	}
 
 	if( !GS::Assets::models().exists( idModel ) )
@@ -624,6 +626,7 @@ bool LibraryLoader::loadModelWithLOD( uint32_t idModel )
 	model->setCollisionRadius( std::max( collisionRadius, 0.0f ) );
 	model->setSkeleton( skeleton );
 	model->setCanopy( std::max( canopy, 0.0f ) );
+	model->setBroadleaf( broadleaf );
 	if( !model )
 		return false;
 	

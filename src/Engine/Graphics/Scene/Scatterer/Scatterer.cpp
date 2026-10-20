@@ -1222,7 +1222,9 @@ void Scatterer::buildCanopy( Layer& layer, const std::vector<ScatterPass::Placed
 			continue;
 		// Крона — наибольшая половина ящика LOD0 по горизонтали (у ели — нижний ярус ветвей); центр — у ствола
 		const DirectX::BoundingBox& box = layer.variants[instance.variant].box;
-		layer.canopy.push_back( { instance.position.x, instance.position.z, std::max( box.Extents.x, box.Extents.z ) * instance.size } );
+		const DMModel* model = layer.variants[instance.variant].model;
+		layer.canopy.push_back( { instance.position.x, instance.position.z, std::max( box.Extents.x, box.Extents.z ) * instance.size,
+								  model && model->broadleaf() } );
 	}
 	++m_canopyRevision;
 	LOG( "Scatter layer " + std::to_string( layer.settings.id ) + ": " + std::to_string( layer.canopy.size() ) + " crowns for the canopy map" );
