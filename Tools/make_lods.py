@@ -1,7 +1,8 @@
 # LOD уменьшением сетки для моделей без своих LOD (сканы с Fab не Megascans: обломки стволов, коряги) → .glb для
 # Tools/import_gltf.py --scatter. Сценарий Blender без окна:
 #   - импортирует файлы --inputs (glTF / GLB / FBX), каждый файл — вариант (<имя>_VarA, _VarB …); меши файла
-#     объединяются, положение и поворот — в вершины, начало координат — середина по горизонтали, низ — z = 0;
+#     объединяются (--split-objects — каждый меш файла свой вариант), положение и поворот — в вершины, начало координат —
+#     середина по горизонтали, низ — z = 0;
 #   - LOD — копии с модификатором Decimate (схлопывание рёбер) на доли --lods от треугольников исходника (первая доля —
 #     LOD0, 1 — без упрощения): <имя>_VarA, <имя>_VarA_LOD1 … (суффикс понимает импортёр);
 #   - текстуры сжимаются до --texture-size (сканы приходят 8K); --single-sided — отсечение задних граней (замкнутое тело);
@@ -24,7 +25,8 @@ def triangles(obj):
     return len(mesh.loop_triangles)
 
 
-def import_file(path):
+def import_file(path, split):
+    """Объекты вариантов файла: один (меши объединены) или по мешу на вариант (split)"""
     before = set(bpy.data.objects)
     ext = os.path.splitext(path)[1].lower()
     if ext == '.fbx':
@@ -40,6 +42,8 @@ def import_file(path):
         o.matrix_world = mathutils.Matrix.Identity(4)
     for o in new - set(meshes):
         bpy.data.objects.remove(o, do_unlink=True)
+    if split:
+        return [ground(o) for o in sorted(meshes, key=lambda o: o.name)]
     if len(meshes) > 1:
         for o in bpy.context.selected_objects:
             o.select_set(False)
@@ -47,7 +51,11 @@ def import_file(path):
             o.select_set(True)
         bpy.context.view_layer.objects.active = meshes[0]
         bpy.ops.object.join()
-    obj = meshes[0]
+    return [ground(meshes[0])]
+
+
+def ground(obj):
+    """Начало координат — середина по горизонтали, низ — z = 0"""
     corners = np.array([v.co for v in obj.data.vertices])
     low, high = corners.min(axis=0), corners.max(axis=0)
     obj.data.transform(mathutils.Matrix.Translation(-mathutils.Vector(((low[0] + high[0]) / 2.0, (low[1] + high[1]) / 2.0, low[2]))))
@@ -63,12 +71,13 @@ def main():
     parser.add_argument('--lods', default='1,0.25,0.06', help='share of the source triangles per LOD, LOD0 first')
     parser.add_argument('--texture-size', type=int, default=2048)
     parser.add_argument('--single-sided', action='store_true', help='back-face culling (closed scans)')
+    parser.add_argument('--split-objects', action='store_true', help='every mesh of a file is its own variant')
     args = parser.parse_args(argv)
     ratios = [float(r) for r in args.lods.split(',')]
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    for index, path in enumerate(args.inputs):
-        source = import_file(path)
+    sources = [obj for path in args.inputs for obj in import_file(path, args.split_objects)]
+    for index, source in enumerate(sources):
         variant = 'Var' + chr(ord('A') + index)
         source_tris = triangles(source)
         for lod, ratio in enumerate(ratios):

@@ -413,6 +413,8 @@ python Tools/import_gltf.py Meshes/source/old_stump.glb --scatter --lod-ranges 1
 `Tools/make_lods.py` (Blender без окна): файл — вариант (`<имя>_VarA` …; меши файла объединяются, начало координат —
 середина по горизонтали и низ), LOD — копии с Decimate (схлопывание рёбер) на доли `--lods` от исходника (первая — LOD0),
 текстуры — до `--texture-size` (2048), `--single-sided` — отсечение задних граней; материалы glTF — как есть.
+`--split-objects` — каждый меш файла свой вариант (модели Poly Haven glTF с несколькими объектами: корни `pine_roots_a/b`).
+Сканы Poly Haven тяжёлые (пни 41–62 тыс., корни 81 тыс. треугольников) — LOD0 тоже упрощается (доля 0,06–0,12).
 
 ```
 blender -b --factory-startup --python Tools/make_lods.py -- --inputs <a>.gltf <b>.gltf --name broken_branch --out Meshes/source/broken_branch.glb --lods 0.2,0.05,0.012 --single-sided
