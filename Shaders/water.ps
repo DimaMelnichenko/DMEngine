@@ -66,7 +66,6 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	shading.ripple = 0.7f * saturate( speed / 0.3f );
 	shading.detailTexel = detailTexel;
 	shading.detailRipple = detail ? detailRippleWeight( input.worldPosition.xz ) : 0.0f;
-	shading.nearRipple = detail ? nearWaterWeight( input.worldPosition.xz ) : 0.0f;
 	float foam;
 	if( g_foamField > 0.0f )
 	{

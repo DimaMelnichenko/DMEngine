@@ -19,12 +19,15 @@ DM_SRV( Texture2D<float>, g_waterLevel, SLOT_WATER_LEVEL );	// уровень п
 // индексу плиток детальной земли (cb_waterDetail: размер мира и сторона плитки, 0 — её нет)
 DM_SRV( Texture2DArray<float4>, g_waterDetail, SLOT_WATER_DETAIL );
 // Подробное течение у камеры (NearWaterFlow): окно мелкой сетки, тексель — ячейка мира по модулю стороны окна (cb_waterNear:
-// угол окна, ячейка, ячеек по стороне; 0 — окна нет). x — глубина без камней (0 — суша), y, z — течение по X и Z мира, w —
-// доля глубины над камнем
+// угол окна, ячейка, ячеек по стороне; 0 — окна нет). x — глубина без камней, м, y, z — течение по X и Z мира, w — доля
+// глубины над камнем (1 — камня нет, 0 — суша)
 DM_SRV( Texture2D<float4>, g_waterNear, SLOT_WATER_NEAR );
 
 // К краю окна у камеры на этой полосе, м, его течение переходит в детальное
 static const float nearWaterFade = 1.0f;
+// Доля глубины над камнем, с которой ячейка окна — вода (меньше — выборка задела сушу); выше nearWaterOpen — камень под водой
+static const float nearWaterWet = 0.05f;
+static const float nearWaterOpen = 0.5f;
 
 // Доля окна у камеры в точке мира: 1 внутри, к краю на полосе nearWaterFade — к 0; 0 — окна нет или точка вне него
 float nearWaterWeight( float2 worldXZ )
@@ -99,7 +102,7 @@ WaterSample sampleWater( float2 uv, bool detail, float3 texel )
 		[branch] if( weight > 0.0f )
 		{
 			const float4 near = sampleNearWater( worldXZ );
-			water.velocity = lerp( water.velocity, near.yz, weight * saturate( near.x / 0.01f ) );
+			water.velocity = lerp( water.velocity, near.yz, weight * saturate( near.w / nearWaterWet ) );
 		}
 	}
 	return water;
