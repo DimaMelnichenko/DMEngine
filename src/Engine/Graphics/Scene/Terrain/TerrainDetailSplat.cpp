@@ -91,17 +91,6 @@ float cellWaterLevel( const std::vector<float>& level, int size, float texel, fl
 	return upper + ( lower - upper ) * fv;
 }
 
-// Мокрость земли на высоте height над водой, м, при высоте мокрой полосы band (bankWetness в terrain_layers.sh — то же)
-float bankWetness( float height, float band )
-{
-	if( height <= 0.0f )
-		return 1.0f;
-	const float from = 0.35f * band;
-	const float to = std::max( band, 1e-3f );
-	const float t = std::clamp( ( height - from ) / std::max( to - from, 1e-6f ), 0.0f, 1.0f );
-	return 1.0f - t * t * ( 3.0f - 2.0f * t );
-}
-
 void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 {
 	const int side = static_cast<int>( m_side );
@@ -206,8 +195,9 @@ void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 			}
 	}
 
-	// Мокрая полоса над водой у русел: в текселе — наименьший уровень мокрых текселей в splashReach вокруг (x) и высота полосы
-	// по самому быстрому из них (y: «Wet bank height» + «Wet splash height» × доля от 0,5 до 1,5 м/с)
+	// Мокрая полоса над водой у русел (саму мокрость считает terrain.ps в пикселе по нарисованной земле): в текселе — высота
+	// полосы по самому быстрому из мокрых текселей в splashReach вокруг («Wet bank height» + «Wet splash height» × доля от 0,5
+	// до 1,5 м/с) — в G среза мокрости, долей maxWetBand
 	const float bankHeight = source.bedRules ? std::max( source.bedRules->wetBankHeight, 0.0f ) : 0.02f;
 	std::vector<DirectX::XMFLOAT2> splash;
 	if( source.staticWater && hydrology && hydrology->water.size() == texels && !ground.empty() )
@@ -289,8 +279,8 @@ void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 			// Галька русел — по врезу в текселе
 			if( channels )
 				paint( smoothstep( 0.03f, 0.15f, hydrology->carve[k] ) );
-			// Дно под водой и мокрая земля — по глубине над точной землёй
-			float wetness = 0.0f;
+			// Дно под водой — по глубине над точной землёй; мокрость от воды — в terrain.ps (в R — только мазки кисти)
+			const float wetness = 0.0f;
 			if( !level.empty() )
 			{
 				const float waterDepth = level[k] > -1e29f && ground[k] < 1e29f ? level[k] - ground[k] : noLevel;
@@ -319,12 +309,7 @@ void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 					}
 					paintBed( smoothstep( 0.03f, 0.15f, waterDepth ), gravel, silt );
 				}
-				wetness = waterDepth > noLevel * 0.5f ? bankWetness( -waterDepth, bankHeight ) : 0.0f;
 			}
-			// Над водой у русел — полоса выше: уровень и течение — у мокрых текселей в двух вокруг (стенка русла в полметра
-			// высотой — в паре текселей от воды), у быстрой воды — брызги
-			if( !splash.empty() && splash[k].x > noLevel * 0.5f && !ground.empty() && ground[k] < 1e29f )
-				wetness = std::max( wetness, bankWetness( ground[k] - splash[k].x, splash[k].y ) );
 			for( uint32_t slice = 0; slice < weightSlices; ++slice )
 			{
 				uint8_t* texel = &tile.source[( slice * texels + k ) * 4];
@@ -332,6 +317,8 @@ void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 					texel[c] = store( weights[slice * 4 + c] );
 			}
 			tile.source[( weightSlices * texels + k ) * 4] = store( wetness );
+			// Высота полосы — только у воды (мокрый тексель в splashReach вокруг), иначе 0: шейдер там не ищет уровень воды
+			tile.source[( weightSlices * texels + k ) * 4 + 1] = store( !splash.empty() && splash[k].x > noLevel * 0.5f ? splash[k].y / maxWetBand : 0.0f );
 		}
 	}
 }

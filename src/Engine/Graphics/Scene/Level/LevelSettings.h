@@ -144,10 +144,12 @@ struct TerrainLayerRules
 	// Полоса — не шире этого от воды, м: на плоском дне долины земля ниже перелива тянется на десятки метров, и трава луга
 	// пропадала бы на всей низине
 	float lakeShoreWidth = 3.0f;
-	// Мокрая полоса над водой (docs/terrain.md, «Детальный слой весов»): вода по капиллярам и волнам — на столько над урезом,
-	// м, к верху сходит на нет; у быстрой воды (от 0,5 до 1,5 м/с по течению русла) — выше ещё на wetSplashHeight: брызги
-	float wetBankHeight = 0.12f;
-	float wetSplashHeight = 0.35f;
+	// Мокрая полоса над водой (docs/terrain.md, «Детальный слой весов»): на столько над урезом мокро, м, выше — сухо с резким
+	// краем шириной wetBankEdge (летнее солнце быстро сушит камни); у быстрой воды (от 0,5 до 1,5 м/с по течению русла) — выше
+	// ещё на wetSplashHeight: брызги
+	float wetBankHeight = 0.04f;
+	float wetBankEdge = 0.01f;
+	float wetSplashHeight = 0.2f;
 	Range krummholzHeight{ 0.73f, 0.78f };	// стланик над границей леса — от, до верха krummholzTop
 	Range krummholzTop{ 0.84f, 0.79f };
 	Range dryGapsSlope{ 12.0f, 20.0f };		// кусты прогалин сухих склонов — доля dryGapsShare

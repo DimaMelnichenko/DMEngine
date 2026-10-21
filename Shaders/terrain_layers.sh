@@ -98,11 +98,11 @@ float lakeShoreSmooth( float from, float to, float x )
 	return t * t * ( 3.0f - 2.0f * t );
 }
 
-// Мокрость земли на высоте height над водой, м (< 0 — под водой: 1), при высоте мокрой полосы band: у воды — полная, верхние
-// две трети полосы сходят на нет (TerrainDetailSplat::bankWetness — то же на CPU)
+// Мокрость земли на высоте height над водой, м (< 0 — под водой: 1), при высоте мокрой полосы band: до неё мокро, выше —
+// сухо, край — wetBankEdge (резкий: летнее солнце быстро сушит камни)
 float bankWetness( float height, float band )
 {
-	return height <= 0.0f ? 1.0f : 1.0f - smoothstep( 0.35f * band, max( band, 1e-3f ), height );
+	return 1.0f - smoothstep( band, band + terrainLayers().wetBankEdge, height );
 }
 
 // Доля полосы берега на высоте height над водой озера, м: 1 от уреза до перелива, выше — к 0 за 3 см; под водой — 0

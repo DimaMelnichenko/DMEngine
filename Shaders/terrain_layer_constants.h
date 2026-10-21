@@ -53,7 +53,7 @@ DM_STRUCT( TerrainLayerConstants )
 	DM_MEMBER( float, lakeFreeboard );
 	DM_MEMBER( float2, lakeShallowDepth );
 	DM_MEMBER( float, wetBankHeight );			// мокрая полоса над водой, м (bankWetness; «Wet bank height»)
-	DM_MEMBER( float, layerPadding2 );
+	DM_MEMBER( float, wetBankEdge );			// и её край — от мокрого к сухому на столько, м («Wet bank edge»)
 	// сила AO по слоям, по четыре, 0…1 (TerrainLayers.occlusion, «Layer occlusion»)
 	DM_MEMBER_ARRAY( float4, layerOcclusion, TERRAIN_SPLAT_SLICES );
 };

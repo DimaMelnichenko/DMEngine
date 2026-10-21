@@ -254,6 +254,7 @@ TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) con
 	constants.lakeFreeboard = m_pipeline->lakeFreeboard();
 	constants.lakeShallowDepth = XMFLOAT2( m_pipeline->layerRules().lakeShallowDepth.from, m_pipeline->layerRules().lakeShallowDepth.to );
 	constants.wetBankHeight = std::max( m_pipeline->layerRules().wetBankHeight, 0.0f );
+	constants.wetBankEdge = std::max( m_pipeline->layerRules().wetBankEdge, 0.001f );
 	std::copy( m_pipeline->material().layerOcclusion().begin(), m_pipeline->material().layerOcclusion().end(), constants.layerOcclusion );
 	const int32_t litterLayer = m_pipeline->roleLayer( TerrainLayerRole::forestFloorBroadleaf );
 	constants.forestLitterLayer = litterLayer >= 0 && litterLayer < static_cast<int32_t>( constants.layerCount ) ? litterLayer : -1;

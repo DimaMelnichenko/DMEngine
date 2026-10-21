@@ -17,6 +17,9 @@
 
 DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти или места звука (g_paintPreview maxLayers + 1), в UV карты высот
 
+// G среза мокрости детального слоя весов — высота мокрой полосы над водой, доля этой высоты, м (TerrainDetailSplat::maxWetBand)
+static const float maxWetBand = 1.0f;
+
 // Доля диапазона: 0 при from, 1 при to (в любую сторону), плавно; from = to — ступень
 float ramp( float from, float to, float x )
 {
@@ -72,7 +75,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float detailShare = 0.0f;
 	float bakedWetness = 0.0f;
 	float fine[maxLayers];
-	float4 fineExtra;
+	float4 fineExtra = 0.0f;
 	[branch] if( footprint < 4.0f * g_texelSize && sampleSplatDetail( position.xz, fine, fineExtra ) )
 	{
 		detailShare = saturate( 2.0f - footprint / ( 2.0f * g_texelSize ) );
@@ -130,17 +133,25 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.screenOcclusion = screenAmbientOcclusion( input.position.xy, surface.position );
 	surface.emissive = 0.0f;
 
-	// Мокрая земля у воды и под ней: вода в порах — темнее и глаже (блик), как wet в материалах UE. У воды static в плитках —
-	// запечённая (детальный слой весов), иначе — по глубине в точке над точной землёй, как waterWetness, и где вода недавно
-	// ушла (simulated) — сохнет не сразу
-	float liveWetness = 0.0f;
+	// Мокрая земля у воды и под ней: вода в порах — темнее и глаже (блик), как wet в материалах UE. В пикселе — по нарисованной
+	// (смещённой дисплейсментом) земле против уровня воды у точки: под водой и полосой над урезом мокро, выше — сухо с резким
+	// краем (bankWetness): мокрая линия идёт по камням, верх камня сухой, щель мокрая. Высота полосы у русел — из детального
+	// слоя весов (G среза мокрости: у быстрой воды выше — брызги), вдали — «Wet bank height». Где вода недавно ушла
+	// (simulated) — сохнет не сразу
+	// Уровень воды у точки ищется только у воды: вне плиток он уже есть (waterDepth над точной землёй), в плитках — где у
+	// текселя есть высота полосы (G > 0 — мокрый тексель в двух вокруг); иначе каждый пиксель рельефа у русел платил бы за поиск
+	const float wetBand = lerp( terrainLayers().wetBankHeight, fineExtra.y * maxWetBand, detailShare );
+	float wetDepth = -1e30f;
 	[branch] if( liveWater )
-		liveWetness = max( waterDepth > -1e29f ? bankWetness( -waterDepth, terrainLayers().wetBankHeight ) : 0.0f,
-						   smoothstep( 0.005f, 0.02f, recededWaterDepth( input.uv ) ) );
+		wetDepth = waterDepth > -1e29f ? waterDepth + groundHeight - input.worldPosition.y : -1e30f;
+	else [branch] if( fineExtra.y > 0.0f )
+		wetDepth = waterDepthAt( input.uv, input.worldPosition.y );
+	float liveWetness = wetDepth > -1e29f ? bankWetness( -wetDepth, wetBand ) : 0.0f;
+	[branch] if( liveWater )
+		liveWetness = max( liveWetness, smoothstep( 0.005f, 0.02f, recededWaterDepth( input.uv ) ) );
 	// Мокрость кисти вдали — splat-карта (мазки в среднем по клетке), вблизи — в плитке
 	const float baseWetness = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, splatSlices ) ).x;
-	const float wet = g_wetnessBaked != 0 ? lerp( max( liveWetness, baseWetness ), bakedWetness, detailShare ) :
-											max( liveWetness, lerp( baseWetness, bakedWetness, detailShare ) );
+	const float wet = max( liveWetness, lerp( baseWetness, bakedWetness, detailShare ) );
 	surface.baseColor *= lerp( 1.0f, g_wetDarkening, wet );
 	surface.roughness = lerp( surface.roughness, 0.2f, wet );
 

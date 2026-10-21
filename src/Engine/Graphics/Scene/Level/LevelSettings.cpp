@@ -740,7 +740,9 @@ const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema()
 			   "The shore strip of the lakes (below the overflow: no meadow grass, cattail of Shallows layers) is at most this wide "
 			   "from the water: on a flat valley floor the ground below the overflow runs for tens of metres" ),
 		value( "wet_bank_height", beds, "Wet bank height", &R::wetBankHeight, 0.0f, 1.0f, "m",
-			   "The ground is wet this high above the water (capillaries, small waves), fading upwards" ),
+			   "The ground is wet this high above the water (capillaries, small waves), then dry: the summer sun dries the stones fast" ),
+		value( "wet_bank_edge", beds, "Wet bank edge", &R::wetBankEdge, 0.001f, 0.2f, "m",
+			   "Height of the wet-to-dry edge above the wet band: small - a sharp line along the stones" ),
 		value( "wet_splash_height", beds, "Wet splash height", &R::wetSplashHeight, 0.0f, 2.0f, "m",
 			   "By fast water (0.5 to 1.5 m/s of the stream) the wet band is this much higher: splashes" ),
 		range( "krummholz_height", shrubs, "Krummholz height", &R::krummholzHeight, 0.0f, 1.0f, "", "Krummholz above the treeline: from, to" ),
