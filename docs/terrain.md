@@ -74,7 +74,7 @@
 | Слой (`layer`) | Сейчас | Повтор, м | Источник |
 |---|---|---|---|
 | 0 — трава | `patchy_meadow1` | 4 | freepbr, `DownloadResources/patchy-meadow1-bl.zip` |
-| 1 — осыпи | `rocky_terrain_03` | 20 (снято 90 × 90 м, сжато) | Poly Haven, `DownloadResources/polyhaven/rocky_terrain_03_*` |
+| 1 — осыпи | `rocky_terrain_03` | 10 (снято 90 × 90 м, сжато; при 20 тексель 2048² — 9,8 мм, вблизи мыло) | Poly Haven, `DownloadResources/polyhaven/rocky_terrain_03_*` |
 | 2 — скала | `rock_face_03` | 2,7 | Poly Haven, `DownloadResources/polyhaven/rock_face_03_*` |
 | 3 — снег | `snow_packed12` | 4 | FreePBR, `DownloadResources/snow-packed12-UE.zip` (варианта `bl` нет; нормаль DirectX) |
 | 4 — вторая трава | `wispy_grass_meadow` | 4 | FreePBR, `DownloadResources/whispy-grass-meadow-bl.zip` |
@@ -222,7 +222,7 @@ B --name patchy_meadow1 --albedo D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patch
   --ao D/patchy-meadow1-bl.zip:patchy-meadow1-bl/patchy-meadow1_ao.png
 B --name rocky_terrain_03 --albedo D/polyhaven/rocky_terrain_03_diff_2k.jpg
   --normal D/polyhaven/rocky_terrain_03_nor_gl_2k.jpg --roughness D/polyhaven/rocky_terrain_03_arm_2k.jpg:g
-  --height D/polyhaven/rocky_terrain_03_disp_2k.exr --layer 1 --tiling 20 --ao D/polyhaven/rocky_terrain_03_arm_2k.jpg:r
+  --height D/polyhaven/rocky_terrain_03_disp_2k.exr --layer 1 --tiling 10 --ao D/polyhaven/rocky_terrain_03_arm_2k.jpg:r
 B --name rock_face_03 --albedo D/polyhaven/rock_face_03_diff_2k.jpg --normal D/polyhaven/rock_face_03_nor_gl_2k.jpg
   --roughness D/polyhaven/rock_face_03_arm_2k.jpg:g --height D/polyhaven/rock_face_03_disp_2k.exr --layer 2 --tiling 2.7
   --ao D/polyhaven/rock_face_03_arm_2k.jpg:r
@@ -757,7 +757,8 @@ Grass Type в UE, `TODO.md`, этап 8). Мазки — данные уровн
   шагу сетки (от 1,6 см у камеры, `distance / 128` дальше; без производных — вершинный шейдер). Направление — нормаль самой
   детальной земли (`fineNormal`, 0,5 м). Вокруг середины высоты: рельеф в среднем на месте, ± половина размаха.
 - **Размах слоя** — `TerrainLayers.displacement` (м), подокно «Layer displacement» окна террейна, «Save level». На `Test`:
-  осыпи `rocky_terrain_03` 0,25 (плиты по 0,5–1 м — повтор текстуры 20 м), скала `rock_face_03` 0,15, галька русел 0,06,
+  осыпи `rocky_terrain_03` 0,125 (плиты по 0,25–0,5 м — повтор текстуры 10 м; при 20 м и плитах вдвое крупнее было 0,25),
+  скала `rock_face_03` 0,15, галька русел 0,06,
   снег 0,03, травы 0,02.
 - **Дальность** — «Displacement distance» окна террейна (`Terrain.displacement_start` / `displacement_end`, 12 и 24 м):
   полное ближе начала, к концу сходит на нет; конец 0 или все размахи 0 — выключен. Расстояние — до точки LOD главного
