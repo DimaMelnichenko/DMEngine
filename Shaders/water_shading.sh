@@ -63,6 +63,10 @@ static const float detailRippleCell = 0.5f;
 // Плитка в окне подробного течения у камеры берёт его направление в полную силу с этой скорости течения окна, м/с
 static const float nearDirectionSpeed = 0.05f;
 static const float detailRippleFade = 1.0f;		// м
+// Пена в медленной воде — плавучая (кружево, без густой), к белой воде — от этой доли foam_speed до трёх четвертей его; на сливе
+// (поверхность круче — тангенс наклона от x до y) — белая вода и на медленной
+static const float floatFoamSpeed = 0.3f;
+static const float2 floatFoamSlope = float2( 0.12f, 0.35f );
 // Стоячие волны над перекатами (water_standing.sh): короткие гребни — крупная октава карты ряби на плитках, повёрнутая по
 // течению, как рябь, но неподвижная и вытянутая поперёк течения
 static const float standingCrestLength = 5.0f;		// гребень длиннее волны во столько раз
@@ -556,7 +560,14 @@ float4 shadeWater( WaterShading input )
 	// Пена: узор — тот же, который несёт течение, порогом по доле пены. Вместе с рябью, до отражения: плитки ряби дальше не
 	// нужны и не занимают регистры в цикле луча (иначе вода на пол-экрана — на 0,1 мс дольше)
 	const float edge = saturate( input.depth / edgeDepth );
-	const float foamAmount = saturate( input.foam ) * edge;
+	// Белая вода — только на быстрой (с floatFoamSpeed × foam_speed до ¾ foam_speed — полностью, и на сливе): в медленной (плёс под ступенью,
+	// заводь) пена — то, что принесло течение и сжало у затишья, — плавучая: кружевом и пятнами не больше «Floating foam» и
+	// без густой пены. Иначе пена копилась в плёсах до сплошного белого листа — «мыльная вода» (Dimok, 2026-10-21)
+	// Белая вода и на сливе: поверхность круче floatFoamSlope (тангенс наклона нормали сетки)
+	const float steepness = sqrt( saturate( 1.0f - input.normal.y * input.normal.y ) ) / max( input.normal.y, 0.05f );
+	const float whitewater = max( smoothstep( floatFoamSpeed * g_foamSpeed, 0.75f * g_foamSpeed, speed ),
+								  smoothstep( floatFoamSlope.x, floatFoamSlope.y, steepness ) );
+	const float foamAmount = saturate( input.foam ) * edge * lerp( g_foamFloatCover, 1.0f, whitewater );
 	float4 flow = 0.0f;
 	float foam = 0.0f;
 	// Стоячие волны над перекатами: сила по числу Фруда и глубине пикселя, длина — из дисперсии; на медленной воде их нет
@@ -582,7 +593,7 @@ float4 shadeWater( WaterShading input )
 		const float r = input.nearPattern;
 		const float n = needFoam ? r : 0.0f;
 		// Где пены больше всего (слив, котёл под ступенью) — густая белая вода вместо кружева
-		const float dense = g_foamDense < 1.0f ? smoothstep( g_foamDense, 1.0f, foamAmount ) : 0.0f;
+		const float dense = g_foamDense < 1.0f ? smoothstep( g_foamDense, 1.0f, foamAmount ) * whitewater : 0.0f;
 		float foamNoise = 0.0f;
 		[branch] if( w > 0.0f )
 			addRipple( detailRippleTiles( input.worldPosition.xz, input.velocity, input.detailTexel ), input.worldPosition.xz, surfaceStretch,

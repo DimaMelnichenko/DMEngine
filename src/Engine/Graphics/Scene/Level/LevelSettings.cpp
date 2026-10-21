@@ -815,6 +815,9 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		{ "foam_dense", "Foam dense", DM_SETTING( foamDense ), 0.0f, 1.0f, "",
 		  "From this foam share the foam lace turns into dense white water (fully at 1): spillways, pools under the steps; "
 		  "1 - lace only", 0, "surface" },
+		{ "foam_float_cover", "Floating foam", DM_SETTING( foamFloatCover ), 0.0f, 1.0f, "",
+		  "In slow water (pools, eddies) the foam is what the current brought: lace and patches covering at most this share of "
+		  "the surface, no dense white water; on fast water (from Foam speed) - full", settingClamp, "surface" },
 		{ "standing_crest", "Standing crest", DM_SETTING( standingCrest ), 0.0f, 1.0f, "",
 		  "Share of long standing-wave crests across the whole channel (by the phase along the stream axis; near the camera they "
 		  "bend the surface itself); the rest are short crests on the ripple tiles", 0, "surface" },
