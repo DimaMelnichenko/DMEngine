@@ -237,6 +237,7 @@ void WaterSurface::updateParameters( const WaterSimulationSettings& settings, co
 	params.foamSoftness = std::max( current.foamSoftness, 0.01f );
 	params.foamDissolve = std::max( current.foamDissolve, 0.0f );
 	params.foamDense = std::clamp( current.foamDense, 0.0f, 1.0f );
+	params.standingCrest = std::clamp( current.standingCrest, 0.0f, 1.0f );
 	params.standingWaves = std::max( current.standingWaves, 0.0f );
 	params.sparkle = std::clamp( current.sparkle, 0.0f, 1.0f );
 	params.sparkleRoughness = std::clamp( current.sparkleRoughness, 0.0f, 1.0f );

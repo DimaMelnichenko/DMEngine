@@ -21,6 +21,7 @@
 #include "reflection_capture.sh"
 #include "water_surface.sh"
 #include "water.sh"
+#include "water_standing.sh"
 #include "wind_field.sh"
 #include "bindless.sh"
 
@@ -62,18 +63,10 @@ static const float detailRippleCell = 0.5f;
 // Плитка в окне подробного течения у камеры берёт его направление в полную силу с этой скорости течения окна, м/с
 static const float nearDirectionSpeed = 0.05f;
 static const float detailRippleFade = 1.0f;		// м
-// Стоячие волны над перекатами: волна стоит на месте, когда её скорость против течения равна скорости воды. Узор — крупная
-// октава карты ряби, повёрнутая по течению, как рябь, но неподвижная и вытянутая поперёк течения (гребни поперёк); длина —
-// из дисперсии волн на воде, сила — по числу Фруда (на глубоком медленном плёсе волн нет, на мелком быстром перекате — есть)
-static const float standingSlope = 0.18f;			// наклон при силе 1 (среднеквадратичный)
-static const float standingFroudeStart = 0.5f;		// число Фруда v / √(g h): волны с этого, полные — с standingFroudeFull
-static const float standingFroudeFull = 0.9f;
-static const float standingCrest = 5.0f;			// гребень длиннее волны во столько раз
+// Стоячие волны над перекатами (water_standing.sh): короткие гребни — крупная октава карты ряби на плитках, повёрнутая по
+// течению, как рябь, но неподвижная и вытянутая поперёк течения
+static const float standingCrestLength = 5.0f;		// гребень длиннее волны во столько раз
 static const float standingRepeat = 12.8f;			// повторов карты ряби на длину волны её крупной октавы (~20 текселей из 256)
-static const float standingMinWavelength = 0.1f;	// м
-static const float standingMinDepth = 0.03f;		// мельче — волн нет, м
-static const float standingMinSpeed = 0.3f;			// м/с: медленнее — числа Фруда для волн нет и на мелкой воде
-static const float gravityAcceleration = 9.81f;
 // Искры: светило в гранях ряби мельче пикселя (sparkleWeight)
 static const float lightSolidAngle = 6.8e-5f;	// телесный угол диска солнца, ср (радиус 0,27°; у луны почти такой же)
 static const float sparkleLifetime = 0.2f;		// с: грань отражает светило столько, затем гаснет, и блестит другая
@@ -98,19 +91,6 @@ struct RippleTiles
 	// с нулевым средним, его разброс сохраняется
 	float normalization;
 };
-
-// Волновое число стоячей волны на течении, 1/м: скорость волны против течения равна скорости воды — дисперсия волн на воде
-// конечной глубины v² = g · th(k h) / k (Finch, GPU Gems 1, гл. 1: скорость волны — от её длины); у почти критического
-// течения (Фруд → 1) решение уходит в длинные волны — не длиннее 2π глубины (k h ≥ 1); не короче standingMinWavelength
-float standingWavenumber( float speed, float depth )
-{
-	const float v2 = max( speed * speed, 1e-4f );
-	const float h = max( depth, 0.01f );
-	float k = gravityAcceleration / v2;
-	[unroll] for( int i = 0; i < 3; ++i )
-		k = max( gravityAcceleration * tanh( k * h ) / v2, 1.0f / h );
-	return min( k, 6.2831853f / standingMinWavelength );
-}
 
 // PCG (Jarzynski, Olano 2020)
 uint rippleHash( uint value )
@@ -291,13 +271,13 @@ float4 flowRipple( RippleTiles tiles, float2 xz, float2 surface, float frequency
 }
 
 // Стоячие волны по тем же плиткам, что рябь: узор повёрнут по течению, но не плывёт; вдоль течения — длина стоячей волны
-// (scale — повторов узора на метр), поперёк — гребень в standingCrest раз длиннее; наклон по X и Z мира. Сдвиг узора — свой
+// (scale — повторов узора на метр), поперёк — гребень в standingCrestLength раз длиннее; наклон по X и Z мира. Сдвиг узора — свой
 // (не как у ряби). Длина волны и сила — по пикселю, а не по плитке: код волн в плитках поднимал число регистров всего шейдера,
 // и вода была дороже и без волн
 float2 standingWaves( RippleTiles tiles, float2 xz, float2 surface, float scale, float2 dX, float2 dY )
 {
 	float2 slope = 0.0f;
-	const float2 scale2 = surface * scale * float2( 1.0f, 1.0f / standingCrest );
+	const float2 scale2 = surface * scale * float2( 1.0f, 1.0f / standingCrestLength );
 	[unroll] for( uint k = 0; k < 4; ++k )
 	{
 		const RippleTile tile = tiles.tiles[k];
@@ -308,7 +288,7 @@ float2 standingWaves( RippleTiles tiles, float2 xz, float2 surface, float scale,
 		const float2 uvDY = float2( dot( dY, tile.along ), dot( dY, across ) ) * scale2;
 		const float2 wave = g_ripple.SampleGrad( g_SamplerLinearWrap, uv, uvDX, uvDY ).xy * rippleSlopeRange;
 		// Наклон узора — в мир: поперёк узор длиннее и во столько же раз положе
-		slope += tile.weight * ( tile.along * wave.x + across * ( wave.y / standingCrest ) );
+		slope += tile.weight * ( tile.along * wave.x + across * ( wave.y / standingCrestLength ) );
 	}
 	return slope * tiles.normalization;
 }
@@ -417,6 +397,8 @@ struct WaterShading
 	float3 detailTexel;
 	float  detailRipple;
 	float  nearPattern;		// доля ряби и узора пены по течению окна у камеры (nearPatternLayers; 0 — плитки)
+	float2 standing;		// фаза и волновое число длинных гребней стоячих волн (sampleStanding; 0 — не ручей)
+	float  standingGeometry;	// доля длинных гребней в геометрии сетки окна у камеры (standingGeometryShare)
 };
 
 // Рябь (flow) — с весом flowWeight, стоячие волны (standing: если standingScale > 0) — с весом weight, узор пены (foamNoise,
@@ -596,16 +578,11 @@ float4 shadeWater( WaterShading input )
 	float4 flow = 0.0f;
 	float foam = 0.0f;
 	// Стоячие волны над перекатами: сила по числу Фруда и глубине пикселя, длина — из дисперсии; на медленной воде их нет
-	float standingStrength = 0.0f;
-	float standingScale = 0.0f;
-	[branch] if( g_standingWaves > 0.0f && speed > standingMinSpeed )
-	{
-		const float froude = speed / sqrt( gravityAcceleration * max( input.depth, 0.01f ) );
-		standingStrength = smoothstep( standingFroudeStart, standingFroudeFull, froude ) * saturate( input.depth / standingMinDepth - 1.0f ) *
-						   standingSlope * g_standingWaves;
-		if( standingStrength > 0.0f )
-			standingScale = standingWavenumber( speed, input.depth ) / ( 6.2831853f * standingRepeat );
-	}
+	const float standingStrength = standingWaveStrength( speed, input.depth );
+	// Короткие гребни на плитках — доля 1 − g_standingCrest (там, где фаза длинных есть)
+	const float crestShare = input.standing.y > 0.0f ? g_standingCrest : 0.0f;
+	const float standingScale = standingStrength > 0.0f && crestShare < 1.0f ?
+								standingWavenumber( speed, input.depth ) / ( 6.2831853f * standingRepeat ) : 0.0f;
 	float2 standing = 0.0f;
 	float2 foamSlope = 0.0f;
 	float foamShade = 1.0f;
@@ -650,8 +627,12 @@ float4 shadeWater( WaterShading input )
 		const float flowNormalization = rsqrt( max( ( 1.0f - r ) * ( 1.0f - r ) / ( normalization * normalization ) + r * r, 1e-4f ) );
 		const float foamNormalization = rsqrt( max( ( 1.0f - n ) * ( 1.0f - n ) / ( normalization * normalization ) + n * n, 1e-4f ) );
 		flow *= flowNormalization * flowStrength;
-		// Стоячие волны — не по силе ряби течения, а свои: длинные, отражение берега по ним тоже колышется
-		flow.xy += standing * normalization * standingStrength;
+		// Стоячие волны — не по силе ряби течения, а свои: длинные, отражение берега по ним тоже колышется. Длинные гребни через
+		// всё русло — по фазе вдоль оси ручья; в окне у камеры их наклон (доля standingGeometry) уже в нормали сетки
+		float2 crest = 0.0f;
+		[branch] if( standingStrength > 0.0f && crestShare > 0.0f && speed > 1e-3f )
+			crest = standingCrest( input.worldPosition.xz, input.standing ).y * ( input.velocity / speed ) * ( 1.0f - input.standingGeometry );
+		flow.xy += ( standing * normalization * ( 1.0f - crestShare ) + crest * crestShare ) * standingStrength;
 		[branch] if( needFoam )
 		{
 			// Маска узора — толщина пены, край шире (тонкие нити полупрозрачны), тонкая пена сероватее

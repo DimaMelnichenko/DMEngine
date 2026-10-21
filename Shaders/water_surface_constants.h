@@ -45,6 +45,7 @@ DM_CONSTANTS( WaterSurfaceBuffer, SLOT_CB_MATERIAL )
 	DM_FIELD( float, sparkleRoughness );
 	DM_FIELD( float, sparkleSize );
 	DM_FIELD( float, foamDense );			// с этой доли пены кружево переходит в густую пену (полностью — при 1); 1 — без неё
+	DM_FIELD( float, standingCrest );		// доля длинных гребней стоячих волн через всё русло (остальное — короткие на плитках)
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

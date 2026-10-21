@@ -68,6 +68,9 @@ public:
 	WaterDetailFlowBuffer detailFlowParameters() const;
 	// Статичная вода детальных плиток (уровень, u₀, R) — окну у камеры (NearWaterFlow)
 	const ShaderView& detailStaticView() const { return m_detailStaticView; }
+	// Стоячие волны детальной воды: фаза вдоль оси ручья и волновое число (DetailTile::standing) — ресурс сцены
+	// SLOT_WATER_STANDING
+	const ShaderView& detailStandingView() const { return m_detailStandingView; }
 	// Детальная вода — растром 0,25 м на весь мир (−1e9 — плитки нет): <prefix>_detail_level.dds (уровень поверхности),
 	// _detail_depth, _detail_vx, _detail_vz; строка 0 — дальний край по z. Ждёт GPU
 	bool exportDetail( const std::string& prefix, std::string& reason );
@@ -138,6 +141,8 @@ private:
 	float m_detailTileSize = 0.0f;
 	Texture m_detailStatic;			// RGBA32F массив: уровень воды, u₀ по X и Z мира, R русла (DetailTile::water)
 	ShaderView m_detailStaticView;
+	Texture m_detailStanding;		// RG32F массив: фаза стоячих волн вдоль оси ручья и волновое число (DetailTile::standing)
+	ShaderView m_detailStandingView;
 	Texture m_detailWater;			// RGBA32F массив: уровень поверхности, течение X, Z, глубина — SLOT_WATER_DETAIL
 	StorageView m_detailWaterUAV;
 	ShaderView m_detailWaterView;

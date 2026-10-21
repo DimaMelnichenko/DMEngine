@@ -67,6 +67,12 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	shading.detailTexel = detailTexel;
 	shading.detailRipple = detail ? detailRippleWeight( input.worldPosition.xz ) : 0.0f;
 	shading.nearPattern = detail ? nearWaterWeight( input.worldPosition.xz ) * cb_waterNearFoam.y : 0.0f;
+	shading.standing = detail ? sampleStanding( detailTexel ) : 0.0f;
+#ifdef WATER_NEAR
+	shading.standingGeometry = standingGeometryShare( input.worldPosition.xz, shading.standing.y );
+#else
+	shading.standingGeometry = 0.0f;
+#endif
 	float foam;
 	if( g_foamField > 0.0f )
 	{

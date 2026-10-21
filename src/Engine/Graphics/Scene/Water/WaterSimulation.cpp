@@ -257,7 +257,10 @@ void WaterSimulation::compute( const FrameContext& frame )
 	DMD3D::instance().setSRV( SLOT_WATER_LEVEL, m_surface.levelView() );
 	// Детальная вода у русел — тем же потребителям (water.sh: по индексу плиток детальной земли)
 	if( m_staticWater.detailTileCount() > 0 )
+	{
 		DMD3D::instance().setSRV( SLOT_WATER_DETAIL, m_staticWater.detailWaterView() );
+		DMD3D::instance().setSRV( SLOT_WATER_STANDING, m_staticWater.detailStandingView() );
+	}
 	// Подробное течение у камеры — по детальной воде, ресурс сцены SLOT_WATER_NEAR
 	if( m_staticMode )
 		m_near.compute( frame, current, m_field, m_staticWater, m_field.terrain->terrainHeight(), m_foam );

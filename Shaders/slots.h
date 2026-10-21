@@ -128,8 +128,11 @@
 #define SLOT_WATER_NEAR	140
 #define SLOT_WATER_NEAR_FOAM	141
 #define SLOT_WATER_NEAR_PATTERN	142
+// Стоячие волны детальной воды (StaticWater, water_standing.sh): тексели и срезы — как у SLOT_WATER_DETAIL (RG32F: фаза вдоль
+// оси ручья, рад, и волновое число, 1/м; 0 — не ручей)
+#define SLOT_WATER_STANDING	143
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	43
+#define SLOT_SCENE_COUNT	44
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

@@ -799,6 +799,9 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		{ "foam_dense", "Foam dense", DM_SETTING( foamDense ), 0.0f, 1.0f, "",
 		  "From this foam share the foam lace turns into dense white water (fully at 1): spillways, pools under the steps; "
 		  "1 - lace only", 0, "surface" },
+		{ "standing_crest", "Standing crest", DM_SETTING( standingCrest ), 0.0f, 1.0f, "",
+		  "Share of long standing-wave crests across the whole channel (by the phase along the stream axis; near the camera they "
+		  "bend the surface itself); the rest are short crests on the ripple tiles", 0, "surface" },
 		{ "detail_distance", "Detail distance", DM_SETTING( detailDistance ), 0.0f, 1000.0f, "m",
 		  "Nearer the water surface of streams is drawn by the detail tiles (0.25 m): farther the 1 m grid differs by less than a "
 		  "pixel, and a detail tile has 16 times as many triangles; 0 - the 1 m grid only", 0, "surface" },

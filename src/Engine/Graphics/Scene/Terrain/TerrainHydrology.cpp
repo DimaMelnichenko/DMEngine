@@ -1,5 +1,6 @@
 #include "TerrainHydrology.h"
 #include "Utils\Fingerprint.h"
+#include "Water\StandingWaves.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -3508,11 +3509,13 @@ bool TerrainHydrology::Build::buildStones()
 	constexpr double maxDischargeSpeed = 3.0;	// м/с: u₀ после множителя не быстрее (порог под самой водой)
 	constexpr double dischargeWindow = 8.0;		// м: расход сечения выравнивается по куску вдоль ручья на столько в обе стороны
 	std::vector<std::vector<int32_t>> detailBin( result.detailTiles.size() );
+	std::vector<std::vector<float>> detailBinShare( result.detailTiles.size() );	// где тексель в своём куске вдоль оси, 0…1
 	for( size_t t = 0; t < result.detailTiles.size(); ++t )
 	{
 		result.detailTiles[t].water.assign( static_cast<size_t>( detailSide ) * detailSide, DirectX::XMFLOAT4( -1e9f, 0.0f, 0.0f, 0.0f ) );
 		detailNearest[t].assign( static_cast<size_t>( detailSide ) * detailSide, std::numeric_limits<double>::infinity() );
 		detailBin[t].assign( static_cast<size_t>( detailSide ) * detailSide, -1 );
+		detailBinShare[t].assign( static_cast<size_t>( detailSide ) * detailSide, 0.0f );
 	}
 	auto detailTexel = [&]( const DetailTile& tile, int i, int j )
 	{
@@ -3661,6 +3664,8 @@ bool TerrainHydrology::Build::buildStones()
 								continue;
 							detailNearest[slice][index] = distance;
 							detailBin[slice][index] = firstBin + std::min( static_cast<int>( t * binCount ), binCount - 1 );
+							detailBinShare[slice][index] =
+								static_cast<float>( std::clamp( t * binCount - ( detailBin[slice][index] - firstBin ), 0.0, 1.0 ) );
 							const double v = speed[k] + ( speed[d] - speed[k] ) * t;
 							DirectX::XMFLOAT4& texel = tile.water[index];
 							texel.x = static_cast<float>( pointLevel[i] + ( pointLevel[i + 1] - pointLevel[i] ) * levelShare( k, d, t ) );
@@ -3944,6 +3949,50 @@ bool TerrainHydrology::Build::buildStones()
 				const double factor = speed > 0.0 ? std::min( smooth[bin], std::max( maxDischargeSpeed, speed ) / speed ) : 1.0;
 				texel.y = static_cast<float>( texel.y * factor );
 				texel.z = static_cast<float>( texel.z * factor );
+			}
+		}
+
+		// Стоячие волны: фаза вдоль оси ручья — ∫ k ds по кускам от истока ручья (гребни поперёк оси через всё русло, а не
+		// плитками 0,5 м), k — по средней скорости u₀ и глубине куска; кусок без воды — k ручья выше
+		std::vector<double> flowDepth( bins.size(), 0.0 ), depthSum( bins.size(), 0.0 );
+		std::vector<int> texelCount( bins.size(), 0 );
+		for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
+		{
+			const DetailTile& tile = result.detailTiles[tileIndex];
+			for( size_t index = 0; index < tile.water.size(); ++index )
+			{
+				const int bin = detailBin[tileIndex][index];
+				const DirectX::XMFLOAT4& texel = tile.water[index];
+				if( bin < 0 || texel.w <= 0.0f || texel.x <= -1e8f )
+					continue;
+				const double depth = texelDepth( tile, index );
+				depthSum[bin] += depth;
+				flowDepth[bin] += depth * std::hypot( texel.y, texel.z );
+				++texelCount[bin];
+			}
+		}
+		std::vector<double> wavenumber( bins.size(), 0.0 ), phase( bins.size(), 0.0 );
+		for( size_t b = 0; b < bins.size(); ++b )
+		{
+			const int up = bins[b].upstream;
+			if( depthSum[b] > 0.0 )
+				wavenumber[b] = standingWavenumber( static_cast<float>( flowDepth[b] / depthSum[b] ), static_cast<float>( depthSum[b] / texelCount[b] ) );
+			else if( up >= 0 )
+				wavenumber[b] = wavenumber[up];
+			phase[b] = up >= 0 ? phase[up] + wavenumber[up] * bins[up].length : 0.0;
+		}
+		for( size_t tileIndex = 0; tileIndex < result.detailTiles.size(); ++tileIndex )
+		{
+			DetailTile& tile = result.detailTiles[tileIndex];
+			tile.standing.assign( tile.water.size(), DirectX::XMFLOAT2( 0.0f, 0.0f ) );
+			for( size_t index = 0; index < tile.water.size(); ++index )
+			{
+				const int bin = detailBin[tileIndex][index];
+				const DirectX::XMFLOAT4& texel = tile.water[index];
+				if( bin < 0 || texel.w <= 0.0f || texel.x <= -1e8f )
+					continue;
+				tile.standing[index] = DirectX::XMFLOAT2( static_cast<float>( phase[bin] + wavenumber[bin] * bins[bin].length * detailBinShare[tileIndex][index] ),
+														  static_cast<float>( wavenumber[bin] ) );
 			}
 		}
 	}

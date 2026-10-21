@@ -312,12 +312,17 @@ bool StaticWater::createDetailTextures( const TerrainHydrology::Result& hydrolog
 		}
 	DMD3D& d3d = DMD3D::instance();
 	const uint32_t count = static_cast<uint32_t>( hydrology.detailTiles.size() );
-	std::vector<TextureData> slices( count );
+	std::vector<TextureData> slices( count ), standingSlices( count );
+	std::vector<DirectX::XMFLOAT2> noStanding( texels, DirectX::XMFLOAT2( 0.0f, 0.0f ) );
 	for( uint32_t t = 0; t < count; ++t )
 	{
 		slices[t].data = hydrology.detailTiles[t].water.data();
 		slices[t].rowPitch = side * static_cast<uint32_t>( sizeof( DirectX::XMFLOAT4 ) );
 		slices[t].slicePitch = slices[t].rowPitch * side;
+		const std::vector<DirectX::XMFLOAT2>& standing = hydrology.detailTiles[t].standing;
+		standingSlices[t].data = standing.size() == texels ? standing.data() : noStanding.data();
+		standingSlices[t].rowPitch = side * static_cast<uint32_t>( sizeof( DirectX::XMFLOAT2 ) );
+		standingSlices[t].slicePitch = standingSlices[t].rowPitch * side;
 	}
 	TextureDesc desc;
 	desc.width = side;
@@ -333,6 +338,8 @@ bool StaticWater::createDetailTextures( const TerrainHydrology::Result& hydrolog
 	rawView.raw = true;
 	TextureDesc target = desc;
 	target.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
+	TextureDesc standingDesc = desc;
+	standingDesc.format = DXGI_FORMAT_R32G32_FLOAT;
 	std::vector<DirectX::XMUINT2>& coords = m_detailCoords;
 	coords.clear();
 	for( const TerrainHydrology::DetailTile& tile : hydrology.detailTiles )
@@ -343,6 +350,8 @@ bool StaticWater::createDetailTextures( const TerrainHydrology::Result& hydrolog
 	coordsDesc.usage = BufferUsage::shaderResource | BufferUsage::structured;
 	if( !d3d.createBuffer( coordsDesc, coords.data(), m_detailTileCoords ) || !d3d.createShaderView( m_detailTileCoords, {}, m_detailTileCoordsView ) ||
 		!d3d.createTexture( desc, slices.data(), m_detailStatic ) || !d3d.createShaderView( m_detailStatic, arrayView, m_detailStaticView ) ||
+		!d3d.createTexture( standingDesc, standingSlices.data(), m_detailStanding ) ||
+		!d3d.createShaderView( m_detailStanding, arrayView, m_detailStandingView ) ||
 		!d3d.createTexture( target, nullptr, m_detailWater ) || !d3d.createStorageView( m_detailWater, arrayView, m_detailWaterUAV ) ||
 		!d3d.createShaderView( m_detailWater, arrayView, m_detailWaterView ) ||
 		!d3d.createBuffer( boundsDesc, nullptr, m_detailBounds ) || !d3d.createStorageView( m_detailBounds, rawView, m_detailBoundsUAV ) ||
@@ -352,6 +361,7 @@ bool StaticWater::createDetailTextures( const TerrainHydrology::Result& hydrolog
 		return false;
 	}
 	d3d.setName( m_detailStatic, "Water detail static" );
+	d3d.setName( m_detailStanding, "Water detail standing waves" );
 	d3d.setName( m_detailWater, "Water detail tiles" );
 	d3d.setName( m_detailBounds, "Water detail tile bounds" );
 

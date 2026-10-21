@@ -17,6 +17,7 @@
 DM_SRV( Texture2DArray<float4>, g_waterDetailTiles, SLOT_WATER_DETAIL );	// x — уровень поверхности, м; −1e30 — нет
 #ifdef WATER_NEAR
 #include "water_near.sh"
+#include "water_standing.sh"
 #endif
 #else
 DM_SRV( Texture2D<float>, g_level, 0 );							// уровень поверхности, м; −1e30 — сухо
@@ -77,12 +78,13 @@ float detailLevel( float2 worldXZ )
 	return level;
 }
 
-// Уровень поверхности в центре ячейки окна: детальная вода и подъём по давлению (к краю окна — к нулю); сухо — fallback
+// Уровень поверхности в центре ячейки окна: детальная вода, подъём по давлению (к краю окна — к нулю) и длинные гребни
+// стоячих волн; сухо — fallback
 float nearLevel( int2 cell, float fallback )
 {
 	const float2 worldXZ = ( cell + 0.5f ) * cb_waterNear.z;
 	const float level = detailLevel( worldXZ );
-	return level > dryLevel ? level + loadNearWater( cell ).x * nearWaterWeight( worldXZ ) : fallback;
+	return level > dryLevel ? level + loadNearWater( cell ).x * nearWaterWeight( worldXZ ) + standingCrestHeight( worldXZ ) : fallback;
 }
 
 WaterPixelInput main( VertexInputType input )
