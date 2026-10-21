@@ -185,6 +185,9 @@ public:
 	// Слой гальки русел — роль channel_bed (TerrainLayers.role), −1 — нет
 	int32_t channelLayer() const { return m_channelLayer; }
 	const TerrainLayerRules& layerRules() const { return m_layerRules; }
+	// Запас берега озёр (WaterChannelsSettings::lakeFreeboard), м: вода ниже перелива на столько — полоса берега
+	// (SLOT_LAKE_SHORE); 0 — полосы нет (вода не static)
+	float lakeFreeboard() const { return m_lakeFreeboard; }
 
 	// Мазок тонкой сетки — плитки детального слоя весов раз в кадр, splat-карта — не чаще 10 раз в секунду; параметры слоёв
 	// материала из окна
@@ -241,6 +244,11 @@ private:
 	// Уровень поверхности воды static на сетке 1 м, как mainStatic и mainSurface (water_simulation.cs, water_surface.cs): дно и
 	// мокрость плиток мазков вне детальной земли (TerrainDetailSplat)
 	void computeWaterLevel();
+	// Берег озёр на сетке 1 м (m_lakeShore): уровень воды озера у клеток озера и полосы берега до перелива (уровень + запас
+	// берега) — от клеток озера вширь по соседям, пока земля ниже перелива, и ещё на клетку; −1e9 — не у озера. По нему
+	// расстановка не сажает траву луга в полосе и сажает рогоз (docs/scatter.md, «Вода»); на GPU — ресурс сцены SLOT_LAKE_SHORE
+	void computeLakeShore();
+	bool createLakeShoreTexture();
 	// Рельефная часть поля ветра (поток и подветренная тень, без леса) по итоговому рельефу field: ключ и расчёт, если ключ
 	// сменился (m_windTerrain). Её читают правила слоёв (снег) и итоговое поле
 	uint64_t windTerrainKey( const HeightField& field, TerrainField& metres ) const;
@@ -291,6 +299,10 @@ private:
 	std::set<TerrainDetailSplat::TileKey> m_dirtySplatTiles;	// плитки детального слоя весов, задетые мазком с прошлой выгрузки
 	std::chrono::steady_clock::time_point m_splatUploaded;
 	std::vector<float> m_waterLevel;			// уровень воды static на сетке 1 м (computeWaterLevel), −1e30 — нет
+	std::vector<float> m_lakeShore;				// уровень озера у клеток озера и полосы берега (computeLakeShore), −1e9 — нет
+	float m_lakeFreeboard = 0.0f;				// запас берега озёр, м (0 — не static)
+	Texture m_lakeShoreTexture;
+	ShaderView m_lakeShoreView;
 	TerrainMasks m_masks;					// веса слоёв и маски последней сборки (перестройка русел — заново)
 	TerrainLayerRules m_layerRules;			// правила, по которым они собраны
 	mutable uint64_t m_layerRulesRevision = ~0ull;	// номер правки «Layer rules», по которому сверены правила (layerRulesChanged)

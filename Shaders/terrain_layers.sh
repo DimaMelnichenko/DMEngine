@@ -28,6 +28,7 @@ DM_SRV( Texture2DArray, g_albedoHeight, SLOT_TERRAIN_ALBEDO_HEIGHT );	// аль�
 DM_SRV( Texture2DArray, g_splatDetail, SLOT_TERRAIN_SPLAT_DETAIL );
 DM_SRV( Texture2D<uint>, g_splatDetailIndex, SLOT_TERRAIN_SPLAT_DETAIL_INDEX );
 DM_SRV( Texture2D, g_terrainNoise, SLOT_TERRAIN_NOISE );	// белый шум 256², R8_SNORM — пятна яркости земли
+DM_SRV( Texture2D<float>, g_lakeShore, SLOT_LAKE_SHORE );	// уровень воды озера у клеток озера и полосы берега, м; −1e9 — нет
 
 // Константы слоёв: читаются там, где нужны (без террейна слот пуст — не читать)
 TerrainLayerConstants terrainLayers()
@@ -52,6 +53,58 @@ float2 terrainLayerUV( float2 worldXZ )
 	float2 uv = worldXZ / terrainLayers().worldSize;
 	uv.y = 1.0f - uv.y;
 	return uv;
+}
+
+// Берег озёр (docs/scatter.md, «Вода»): вода стоит ниже перелива на запас берега, полоса от уреза до перелива — то, что вода
+// заливает в паводок: трава луга там не растёт, рогоз — растёт
+
+// Уровень воды озера у точки мира (клетки озера и полосы берега, g_lakeShore): средняя клеток с уровнем вокруг, coverage —
+// их доля из четырёх (к краю полосы вширь — плавно на клетку); false — не у озера
+bool lakeShoreLevel( float2 worldXZ, out float level, out float coverage )
+{
+	level = 0.0f;
+	coverage = 0.0f;
+	if( terrainLayers().lakeFreeboard <= 0.0f )
+		return false;
+	uint width, height;
+	g_lakeShore.GetDimensions( width, height );
+	if( width < 2 )
+		return false;
+	const float2 position = terrainLayerUV( worldXZ ) * float2( width, height ) - 0.5f;
+	const int2 base = int2( floor( position ) );
+	float sum = 0.0f, count = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 cell = clamp( base + int2( k & 1, k >> 1 ), 0, int2( width, height ) - 1 );
+		const float value = g_lakeShore.Load( int3( cell, 0 ) );
+		if( value > -1e8f )
+		{
+			sum += value;
+			count += 1.0f;
+		}
+	}
+	if( count <= 0.0f )
+		return false;
+	level = sum / count;
+	coverage = 0.25f * count;
+	return true;
+}
+
+// 0 при from, 1 при to (в любую сторону), плавно; from = to — ступень
+float lakeShoreSmooth( float from, float to, float x )
+{
+	const float range = to - from;
+	const float t = abs( range ) > 1e-6f ? saturate( ( x - from ) / range ) : ( x >= from ? 1.0f : 0.0f );
+	return t * t * ( 3.0f - 2.0f * t );
+}
+
+// Доля полосы берега на высоте height над водой озера, м: 1 от уреза до перелива, выше — к 0 за 3 см; под водой — 0
+float lakeShoreBand( float height )
+{
+	const float freeboard = terrainLayers().lakeFreeboard;
+	if( freeboard <= 0.0f || height < 0.0f )
+		return 0.0f;
+	return 1.0f - lakeShoreSmooth( freeboard, freeboard + 0.03f, height );
 }
 
 // Расстояние LOD: от отрезка «глаза — ноги» под точкой LOD — земля под ногами рядом, а не в росте от глаз: самая мелкая

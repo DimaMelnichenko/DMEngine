@@ -307,11 +307,34 @@ void selectLod( float distanceToLodOrigin, float4 lodEnd, uint lodCount, bool di
 // (лес) — по воде первого кадра.
 // В детальной плитке у русла — ещё и по врезу (0,25 м). Вода — по глубине в точке (уровень воды против высоты точки,
 // waterDepthAt): урез внутри клетки, узкий ручей и мелкий слив из озера не выкашивают метровую полосу и не зарастают
+// Вода по правилу слоя (g_waterRule, ScatterLayerSettings::water): 0 — до уреза; 1 — ещё и без полосы берега озёр до
+// перелива (lakeShoreBand: её заливает в паводок); 2 — мелководье (рогоз): только полоса берега озёр и вода до «Lake
+// shallows depth», глубина в точке его не убирает
 float foliageClear( float2 worldXZ )
 {
 	const float2 uv = terrainUV( worldXZ );
 	const float channelClear = terrainChannelClear( worldXZ );
-	const float waterClear = waterFoliageClear( uv, terrainHeight( worldXZ ) );
+	const float ground = terrainHeight( worldXZ );
+	float waterClear;
+	if( g_waterRule == 2 )
+	{
+		float shoreLevel, coverage;
+		float shallows = 0.0f;
+		if( lakeShoreLevel( worldXZ, shoreLevel, coverage ) )
+		{
+			const float above = ground - shoreLevel;
+			const float2 depth = terrainLayers().lakeShallowDepth;
+			shallows = coverage * ( above >= 0.0f ? lakeShoreBand( above ) : 1.0f - lakeShoreSmooth( depth.x, depth.y, -above ) );
+		}
+		waterClear = 1.0f - shallows;
+	}
+	else
+	{
+		waterClear = waterFoliageClear( uv, ground );
+		float shoreLevel, coverage;
+		if( g_waterRule == 1 && lakeShoreLevel( worldXZ, shoreLevel, coverage ) )
+			waterClear = max( waterClear, coverage * ( ground < shoreLevel ? 1.0f : lakeShoreBand( ground - shoreLevel ) ) );
+	}
 	return 1.0f - ( 1.0f - terrainFoliageClear( uv ) ) * ( 1.0f - max( channelClear, 0.0f ) ) * ( 1.0f - waterClear );
 }
 

@@ -310,6 +310,8 @@ void TerrainPipeline::compute( const FrameContext& frame )
 	if( m_canopyView.valid() )
 		DMD3D::instance().setSRV( SLOT_CANOPY, m_canopyView );
 	DMD3D::instance().setSRV( SLOT_TERRAIN_HEIGHT, m_heightMap );
+	if( m_lakeShoreView.valid() )
+		DMD3D::instance().setSRV( SLOT_LAKE_SHORE, m_lakeShoreView );
 	// Слои материала — ресурсы сцены (terrain_layers.sh): выбор слоёв и дисплейсмент у шейдеров террейна, расстановки и
 	// частиц — по одним данным
 	m_material.bindScene();
@@ -529,6 +531,7 @@ bool TerrainPipeline::finishHeights( const Image& image, const WaterSimulationSe
 		}
 		applyTerrainEdits( field, TerrainHydrology::loweringEdits( m_hydrology, water->staticWater, m_channelLayer ), &coverage );
 		m_staticWater = water->staticWater;
+		m_lakeFreeboard = water->staticWater ? std::max( water->channels.lakeFreeboard, 0.0f ) : 0.0f;
 		m_hasHydrology = true;
 		for( const std::string& warning : m_hydrology.warnings )
 			LOG( "Terrain hydrology: " + warning );
@@ -554,6 +557,9 @@ bool TerrainPipeline::finishHeights( const Image& image, const WaterSimulationSe
 	for( size_t row = 0; row < image.height; ++row )
 		std::memcpy( &m_cpuHeights[row * m_cpuSize], image.pixels + row * image.rowPitch, m_cpuSize * sizeof( float ) );
 	computeWaterLevel();
+	computeLakeShore();
+	if( !createLakeShoreTexture() )
+		return false;
 
 	// Вершины уровня L читают мипы L и L + 1, поэтому вершинному шейдеру нужна карта высот с полной цепочкой мипов
 	ScratchImage mipChain;
@@ -827,6 +833,10 @@ bool TerrainPipeline::rebuildMasks()
 	field.heightMultiplier = m_heightMultiplier;
 	field.heightOffset = m_heightOffset;
 	if( !buildMasks( field ) || !repaintSplat() || !buildDetailSplat() )
+		return false;
+	// Ширина полосы берега озёр — правило слоёв
+	computeLakeShore();
+	if( !createLakeShoreTexture() )
 		return false;
 	// Лес в масках сменился (и ветер мог повернуть) — поле ветра заново
 	if( !m_windObstacles.empty() || !m_wind.empty() )
@@ -1157,6 +1167,101 @@ void TerrainPipeline::computeWaterLevel()
 			if( lowest < 1e29f )
 				m_waterLevel[i] = lowest;
 		}
+}
+
+void TerrainPipeline::computeLakeShore()
+{
+	m_lakeShore.clear();
+	const uint32_t n = m_cpuSize;
+	const size_t cells = static_cast<size_t>( n ) * n;
+	if( !m_hasHydrology || m_lakeFreeboard <= 0.0f || m_hydrology.staticWater.size() != cells || m_cpuHeights.size() != cells )
+		return;
+	// Перелив выше воды на запас берега; земля ниже него — полоса, вширь не дальше «Lake shore width» (на плоском дне долины
+	// земля ниже перелива тянется на десятки метров). Только ниже перелива: с запасом в 5 см полоса перешагивала береговой вал
+	// на сантиметры выше и растекалась по низине за ним
+	const int32_t lakeShoreReach = std::max( static_cast<int32_t>( std::lround( m_layerRules.lakeShoreWidth / m_texelSize ) ), 0 );
+	m_lakeShore.assign( cells, -1e9f );
+	std::vector<int32_t> steps( cells, -1 );
+	std::vector<size_t> queue;
+	for( size_t i = 0; i < cells; ++i )
+		if( m_hydrology.staticWater[i].w > -1e8f )
+		{
+			m_lakeShore[i] = m_hydrology.staticWater[i].w;
+			steps[i] = 0;
+			queue.push_back( i );
+		}
+	const int32_t size = static_cast<int32_t>( n );
+	for( size_t head = 0; head < queue.size(); ++head )
+	{
+		const size_t i = queue[head];
+		const int32_t row = static_cast<int32_t>( i / n ), col = static_cast<int32_t>( i % n );
+		for( int32_t y = -1; y <= 1; ++y )
+			for( int32_t x = -1; x <= 1; ++x )
+			{
+				const int32_t r = row + y, c = col + x;
+				if( ( x == 0 && y == 0 ) || r < 0 || c < 0 || r >= size || c >= size )
+					continue;
+				const size_t j = static_cast<size_t>( r ) * n + c;
+				if( steps[j] >= 0 || steps[i] >= lakeShoreReach )
+					continue;
+				const float ground = m_cpuHeights[j] * m_heightMultiplier + m_heightOffset;
+				if( ground >= m_lakeShore[i] + m_lakeFreeboard )
+					continue;
+				m_lakeShore[j] = m_lakeShore[i];
+				steps[j] = steps[i] + 1;
+				queue.push_back( j );
+			}
+	}
+	// Поле в клетку: выборка в точке берёт клетки вокруг неё, и у крутого берега полоса уже клетки
+	std::vector<float> grown = m_lakeShore;
+	for( int32_t row = 0; row < size; ++row )
+		for( int32_t col = 0; col < size; ++col )
+		{
+			const size_t i = static_cast<size_t>( row ) * n + col;
+			if( m_lakeShore[i] > -1e8f )
+				continue;
+			for( int32_t k = 0; k < 9 && grown[i] <= -1e8f; ++k )
+			{
+				const int32_t r = row + k / 3 - 1, c = col + k % 3 - 1;
+				if( r >= 0 && c >= 0 && r < size && c < size && m_lakeShore[static_cast<size_t>( r ) * n + c] > -1e8f )
+					grown[i] = m_lakeShore[static_cast<size_t>( r ) * n + c];
+			}
+		}
+	m_lakeShore = std::move( grown );
+	size_t shore = 0;
+	for( size_t i = 0; i < cells; ++i )
+		shore += m_lakeShore[i] > -1e8f && m_hydrology.staticWater[i].w <= -1e8f ? 1 : 0;
+	char text[160];
+	std::snprintf( text, sizeof( text ), "Terrain: lake shore strip %zu cells (freeboard %.2f m)", shore, m_lakeFreeboard );
+	LOG( text );
+}
+
+bool TerrainPipeline::createLakeShoreTexture()
+{
+	// Без берега — текстура 1 × 1 «нет»: слот у всех, кто его читает
+	const uint32_t size = m_lakeShore.empty() ? 1u : m_cpuSize;
+	const std::vector<float> none( 1, -1e9f );
+	const std::vector<float>& values = m_lakeShore.empty() ? none : m_lakeShore;
+	DMD3D& d3d = DMD3D::instance();
+	TextureDesc desc;
+	desc.width = desc.height = size;
+	desc.format = DXGI_FORMAT_R32_FLOAT;
+	desc.usage = TextureUsage::shaderResource;
+	TextureData data;
+	data.data = values.data();
+	data.rowPitch = size * sizeof( float );
+	data.slicePitch = static_cast<size_t>( size ) * size * sizeof( float );
+	Texture texture;
+	ShaderView view;
+	if( !d3d.createTexture( desc, &data, texture ) || !d3d.createShaderView( texture, {}, view ) )
+	{
+		LOG( "Terrain: lake shore texture is not created" );
+		return false;
+	}
+	d3d.setName( texture, "Lake shore" );
+	m_lakeShoreTexture = std::move( texture );
+	m_lakeShoreView = std::move( view );
+	return true;
 }
 
 std::vector<std::string> TerrainPipeline::paintTargets() const

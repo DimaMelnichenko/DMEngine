@@ -250,6 +250,9 @@ TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) con
 	const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
 	constants.farBlendStart = farBlend.x;
 	constants.farBlendEnd = std::max( farBlend.y, farBlend.x + 1.0f );
+	// Берег озёр (terrain_layers.sh): запас берега и глубина мелководья слоёв «Shallows»
+	constants.lakeFreeboard = m_pipeline->lakeFreeboard();
+	constants.lakeShallowDepth = XMFLOAT2( m_pipeline->layerRules().lakeShallowDepth.from, m_pipeline->layerRules().lakeShallowDepth.to );
 	std::copy( m_pipeline->material().layerOcclusion().begin(), m_pipeline->material().layerOcclusion().end(), constants.layerOcclusion );
 	const int32_t litterLayer = m_pipeline->roleLayer( TerrainLayerRole::forestFloorBroadleaf );
 	constants.forestLitterLayer = litterLayer >= 0 && litterLayer < static_cast<int32_t>( constants.layerCount ) ? litterLayer : -1;

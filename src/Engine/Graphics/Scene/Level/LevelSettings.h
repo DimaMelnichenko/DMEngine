@@ -137,6 +137,13 @@ struct TerrainLayerRules
 	Range lakeSiltDepth{ 0.50f, 0.90f };		// дресва → ил по глубине воды, м
 	Range streamGravelSpeed{ 0.50f, 0.30f };	// дресва на дне ручья, где течение медленнее, м/с (плёсы, подпор у озера)
 	Range streamGravelDepth{ 0.05f, 0.15f };	// и вода глубже (середина дна, не края), м
+	// Берег озёр (docs/scatter.md, «Вода»): полоса от уреза до перелива (запас берега lake_freeboard) — то, что вода заливает
+	// в паводок: трава луга там не растёт (слои с водой «Above the lake overflow»), рогоз — в ней и на мелководье (слои
+	// «Shallows») до этой глубины воды, м: от полной плотности до нуля
+	Range lakeShallowDepth{ 0.3f, 0.6f };
+	// Полоса — не шире этого от воды, м: на плоском дне долины земля ниже перелива тянется на десятки метров, и трава луга
+	// пропадала бы на всей низине
+	float lakeShoreWidth = 3.0f;
 	Range krummholzHeight{ 0.73f, 0.78f };	// стланик над границей леса — от, до верха krummholzTop
 	Range krummholzTop{ 0.84f, 0.79f };
 	Range dryGapsSlope{ 12.0f, 20.0f };		// кусты прогалин сухих склонов — доля dryGapsShare
@@ -1026,6 +1033,10 @@ struct ScatterLayerSettings
 	// размер, м — пни и брёвна не висят краем над ямкой
 	bool groundFit = false;
 	float groundEmbed = 0.0f;
+	// Вода (docs/scatter.md, «Вода»): 0 — растёт до уреза (в воде расстановку убирает глубина в точке), 1 — только выше
+	// перелива озёр (полоса берега от уреза до перелива — без травы луга), 2 — мелководье: полоса берега озёр и вода до
+	// «Lake shallows depth» (рогоз)
+	int32_t water = 0;
 	// Под пологом — пятнами по шуму мира: размер пятен, м, и сила 0…1 (0 — ровно редко)
 	float underCanopyPatchSize = 2.0f;
 	float underCanopyPatches = 0.0f;

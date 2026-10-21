@@ -77,6 +77,11 @@ const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 		{ "thinning", "Thinning", DM_SETTING( thinning ), 0.0f, 0.95f, "",
 		  "Share of instances removed at the far border (the same ones always; the rest are bigger - the cover stays): fewer "
 		  "instances far away; 0 - none", settingClamp },
+		{ "water", "Water", DM_SETTING( water ), 0.0f, 0.0f, "",
+		  "Where the layer grows at the water: up to the waterline; only above the overflow of the lakes (not in the shore strip "
+		  "from the waterline to the overflow, Lake freeboard of Channels - the water floods it); shallows - the shore strip of the "
+		  "lakes and the water up to Lake shallows depth (Layer rules, Water beds), as cattail", 0, "ground", { 0, 1, 2 },
+		  { "Up to the waterline", "Above the lake overflow", "Shallows" } },
 		// Фильтр по слоям земли (как Landscape Grass Type в UE): роли — флажки подокна «Grows on» у слоя, здесь — порог
 		{ "layer_filter", nullptr, DM_SETTING( layerFilter ) },
 		{ "layer_filter_threshold", "Ground threshold", DM_SETTING( layerFilterThreshold ), 0.0f, 0.5f, "",
@@ -720,6 +725,12 @@ const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema()
 			   "Gravel on the bottom of the streams where the current is slower (pools): from, to" ),
 		range( "stream_gravel_depth", beds, "Stream gravel depth", &R::streamGravelDepth, 0.0f, 1.0f, "m",
 			   "Stream gravel only where the water is deeper (the middle of the bed): from, to" ),
+		range( "lake_shallow_depth", beds, "Lake shallows depth", &R::lakeShallowDepth, 0.0f, 3.0f, "m",
+			   "Scatter layers with Water = Shallows (cattail) grow in the shore strip of the lakes (from the waterline to the "
+			   "overflow, Lake freeboard of Channels) and in the water up to this depth: full density at from, none at to" ),
+		value( "lake_shore_width", beds, "Lake shore width", &R::lakeShoreWidth, 0.0f, 20.0f, "m",
+			   "The shore strip of the lakes (below the overflow: no meadow grass, cattail of Shallows layers) is at most this wide "
+			   "from the water: on a flat valley floor the ground below the overflow runs for tens of metres" ),
 		range( "krummholz_height", shrubs, "Krummholz height", &R::krummholzHeight, 0.0f, 1.0f, "", "Krummholz above the treeline: from, to" ),
 		range( "krummholz_top", shrubs, "Krummholz top", &R::krummholzTop, 0.0f, 1.0f, "", "Krummholz ends higher: from, to" ),
 		range( "dry_gaps_slope", shrubs, "Dry gaps slope", &R::dryGapsSlope, 0.0f, 90.0f, "deg", "Shrubs in the gaps of dry slopes: from, to" ),

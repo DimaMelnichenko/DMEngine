@@ -48,7 +48,11 @@ DM_STRUCT( TerrainLayerConstants )
 	DM_MEMBER( float, farTextureScale );
 	DM_MEMBER( float, farBlendStart );
 	DM_MEMBER( float, farBlendEnd );
-	DM_MEMBER( float, layerPadding );
+	// Берег озёр (terrain_layers.sh, lakeShoreBand): запас берега — вода ниже перелива на столько, м (lake_freeboard; 0 —
+	// полосы нет); слои расстановки «Shallows» — до этой глубины воды, м (from → to)
+	DM_MEMBER( float, lakeFreeboard );
+	DM_MEMBER( float2, lakeShallowDepth );
+	DM_MEMBER( float2, lakeShorePadding );
 	// сила AO по слоям, по четыре, 0…1 (TerrainLayers.occlusion, «Layer occlusion»)
 	DM_MEMBER_ARRAY( float4, layerOcclusion, TERRAIN_SPLAT_SLICES );
 };
