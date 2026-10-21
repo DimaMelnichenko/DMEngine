@@ -11,7 +11,9 @@
 //   mainShallowVelocity — перенос импульса по расходам вокруг грани, сила тяжести по наклону поверхности, трение по
 //                         Маннингу неявно; грань, откуда течь нечему, — без скорости.
 // Окно (ячейка g_nearStep, сторона g_nearSize, адрес по модулю стороны — water_near_grid.sh) вложено в детальную воду 0,25 м:
-//   - дно — детальная земля билинейно; камни русла — по верху их моделей (StoneTop), камень проницаем: до shallowStoneSolid
+//   - дно — детальная земля билинейно со смещением дисплейсмента слоёв материала (nearDisplacement: камни осыпей и скал,
+//     галька — та же функция, что у вершины рельефа, terrainDisplacement): вода обходит и прячется между теми камнями, что
+//     рисует рельеф (без них на уступах каскада слив шёл сквозь нарисованные валуны — Dimok, 2026-10-21, вариант 1); камни русла — по верху их моделей (StoneTop), камень проницаем: до shallowStoneSolid
 //     глубины детальной воды он — дно (вода над низким камнем ускоряется, перед ним бугор, над ним просадка), выше —
 //     сопротивление его доли столба воды (g_nearStoneDrag, Форхгеймер): вода обходит камень и встаёт перед ним, а сквозь ряд
 //     камней без просвета сочится — сплошные камни на сетке 6,25 см закрывали щели между ними, и за каждым рядом вставал
@@ -31,6 +33,7 @@
 #include "water_simulation.sh"
 #include "water_near_grid.sh"
 #include "water_flow_constants.h"
+#include "terrain_layers.sh"	// дисплейсмент земли — ресурсы сцены террейна
 
 // x — дно, м: земля и сплошная часть камня; y — глубина детальной воды над ним (её уровень − дно; −1e9 — детальной воды нет);
 // z — проницаемая часть камня над дном, м (0 — камня нет); w — сплошная часть камня под дном, м
@@ -112,6 +115,25 @@ float faceSpeed( int2 cell, uint axis, float fallback )
 	return cellAddress( cell, address ) ? g_velocity[address][axis] : fallback;
 }
 
+// Нормаль самой детальной земли — разностями через это, м (как fineNormal в cdlod.sh)
+static const float nearFineNormalReach = 0.5f;
+
+// Подъём земли дисплейсментом слоёв материала в точке мира над землёй ground, м: смещение — вдоль нормали самой детальной
+// земли, как у вершины рельефа (cdlod.vs; с тем же расстоянием LOD и дальностью — дно совпадает с нарисованной землёй), в дно
+// окна — его высота
+float nearDisplacement( float2 world, float ground )
+{
+	const float reach = nearFineNormalReach;
+	const float left = detailBed( world - float2( reach, 0.0f ) );
+	const float right = detailBed( world + float2( reach, 0.0f ) );
+	const float back = detailBed( world - float2( 0.0f, reach ) );
+	const float front = detailBed( world + float2( 0.0f, reach ) );
+	const bool tiles = min( min( left, right ), min( back, front ) ) > -1e8f;
+	const float3 normal = tiles ? normalize( float3( left - right, 2.0f * reach, back - front ) ) : float3( 0.0f, 1.0f, 0.0f );
+	const float3 position = float3( world.x, ground, world.y );
+	return terrainDisplacement( position, normal, lodDistance( position ) ) * normal.y;
+}
+
 // Ячейки и грани окна каждый кадр (окно сдвигается): дно, камень, детальная вода над дном, скорость детальной воды на
 // гранях; вошедшие в окно в этом кадре (не было в окне прошлого кадра, g_nearReset — все) и край окна — детальная вода
 [numthreads( 8, 8, 1 )]
@@ -123,7 +145,8 @@ void mainShallowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID 
 		return;
 	const float2 world = ( cell + 0.5f ) * g_nearStep;
 	float4 water, still;
-	const float ground = detailBed( world );
+	const float flat = detailBed( world );
+	const float ground = flat > -1e8f ? flat + nearDisplacement( world, flat ) : flat;
 	const bool wet = detailWaterAt( world, water ) && ground > -1e8f;
 	const float stone = nearStoneTop( world, ground ) - ground;
 	const bool stream = detailStaticAt( world, still ) && still.w > 0.0f;
