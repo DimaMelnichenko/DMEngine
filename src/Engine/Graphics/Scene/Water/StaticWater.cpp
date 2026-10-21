@@ -383,6 +383,16 @@ bool StaticWater::createDetailTextures( const TerrainHydrology::Result& hydrolog
 	for( uint32_t t = 0; t < count; ++t )
 		if( coords[t].x < m_detailTilesPerSide && coords[t].y < m_detailTilesPerSide )
 			m_detailSliceOf[static_cast<size_t>( coords[t].y ) * m_detailTilesPerSide + coords[t].x] = static_cast<int32_t>( t );
+	// Мокрые блоки — по сетке мира: окну подробного течения у камеры (detailWaterIn)
+	m_detailBlocksPerSide = m_detailTilesPerSide * blocksPerSide;
+	m_detailWetBlocks.assign( static_cast<size_t>( m_detailBlocksPerSide ) * m_detailBlocksPerSide, 0 );
+	for( const DirectX::XMUINT2& block : m_detailBlockList )
+	{
+		const uint32_t x = coords[block.x].x * blocksPerSide + block.y % blocksPerSide;
+		const uint32_t z = coords[block.x].y * blocksPerSide + block.y / blocksPerSide;
+		if( x < m_detailBlocksPerSide && z < m_detailBlocksPerSide )
+			m_detailWetBlocks[static_cast<size_t>( z ) * m_detailBlocksPerSide + x] = 1;
+	}
 	m_detailStones = hydrology.stones;
 	if( !m_detailBlockList.empty() )
 	{
@@ -648,6 +658,24 @@ WaterFlowBuffer StaticWater::flowParameters( const Flow& flow, float viscosity, 
 	params.flowScreen = flowScreen;
 	params.flowRelaxation = flowRelaxation;
 	return params;
+}
+
+bool StaticWater::detailWaterIn( float minX, float minZ, float maxX, float maxZ ) const
+{
+	if( m_detailBlocksPerSide == 0 || m_detailTileSize <= 0.0f )
+		return false;
+	// Блок — плитка / блоков на плитку по стороне
+	const float block = m_detailTileSize * m_detailTilesPerSide / m_detailBlocksPerSide;
+	const int last = static_cast<int>( m_detailBlocksPerSide ) - 1;
+	const int x0 = std::clamp( static_cast<int>( std::floor( minX / block ) ), 0, last );
+	const int x1 = std::clamp( static_cast<int>( std::floor( maxX / block ) ), 0, last );
+	const int z0 = std::clamp( static_cast<int>( std::floor( minZ / block ) ), 0, last );
+	const int z1 = std::clamp( static_cast<int>( std::floor( maxZ / block ) ), 0, last );
+	for( int z = z0; z <= z1; ++z )
+		for( int x = x0; x <= x1; ++x )
+			if( m_detailWetBlocks[static_cast<size_t>( z ) * m_detailBlocksPerSide + x] )
+				return true;
+	return false;
 }
 
 WaterDetailFlowBuffer StaticWater::detailFlowParameters() const

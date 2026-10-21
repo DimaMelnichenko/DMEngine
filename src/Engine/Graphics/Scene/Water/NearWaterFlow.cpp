@@ -151,23 +151,8 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 											   [terrain]( float x, float z, float& ground ) { return terrain && terrain->surfaceHeight( x, z, ground ); } );
 	const float centerX = center.x;
 	const float centerZ = center.y;
-	// Детальная вода в окне — хотя бы одна плитка детальных плиток касается его
-	bool touches = false;
-	if( possible )
-	{
-		const float tile = water.detailTileSize();
-		for( const XMUINT2& coord : water.detailCoords() )
-		{
-			const float x0 = coord.x * tile;
-			const float z0 = coord.y * tile;
-			if( x0 < centerX + 0.5f * side && x0 + tile > centerX - 0.5f * side && z0 < centerZ + 0.5f * side && z0 + tile > centerZ - 0.5f * side )
-			{
-				touches = true;
-				break;
-			}
-		}
-	}
-	m_active = possible && touches;
+	// Детальная вода в окне — хотя бы один мокрый блок 2 м (прежде — касание плитки 32 м: окно считалось и в 20 м от ручья)
+	m_active = possible && water.detailWaterIn( centerX - 0.5f * side, centerZ - 0.5f * side, centerX + 0.5f * side, centerZ + 0.5f * side );
 	if( !m_active )
 	{
 		m_reset = true;

@@ -46,6 +46,9 @@ public:
 	const ShaderView& detailWaterView() const { return m_detailWaterView; }
 	// Плитка среза по сетке мира (x, z) — на CPU и буфером (uint2 на срез)
 	const std::vector<DirectX::XMUINT2>& detailCoords() const { return m_detailCoords; }
+	// Есть ли детальная вода в прямоугольнике мира [minX, maxX] × [minZ, maxZ], м — по мокрым блокам 8 × 8 ячеек (2 м; те
+	// же, что считает течение детальной сетки, с текселем вокруг)
+	bool detailWaterIn( float minX, float minZ, float maxX, float maxZ ) const;
 	const ShaderView& detailTileCoordsView() const { return m_detailTileCoordsView; }
 	// Блоки 8 × 8 детальной воды с водой (срез, номер блока в плитке) и тайлы 8 × 8 сетки 1 м с озёрами и ручьями — те, что
 	// считает течение
@@ -153,6 +156,9 @@ private:
 	ShaderView m_detailBlocksView;
 	std::vector<int32_t> m_detailSliceOf;
 	uint32_t m_detailTilesPerSide = 0;
+	// Мокрые блоки по сетке мира (блок 8 × 8 ячеек от угла мира, строка — по Z): 1 — в блоке детальная вода (detailWaterIn)
+	std::vector<uint8_t> m_detailWetBlocks;
+	uint32_t m_detailBlocksPerSide = 0;
 	std::vector<TerrainHydrology::Stone> m_detailStones;
 	Texture m_detailStoneTops;		// R32_FLOAT массив: верх камня над ячейкой (createDetailStones)
 	ShaderView m_detailStonesView;
