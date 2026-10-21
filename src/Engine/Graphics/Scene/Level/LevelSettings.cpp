@@ -841,6 +841,11 @@ const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema()
 	static const SettingsSchema<Settings> schema = {
 		{ "near_enabled", "Enabled", DM_SETTING( enabled ), 0.0f, 0.0f, "",
 		  "Flow around the camera on a fine grid every frame: around the stones, in the bends, with eddies" },
+		{ "near_shallow", "Shallow water", DM_SETTING( shallow ), 0.0f, 0.0f, "",
+		  "The window solves the shallow water equations: the water height varies, and waves, a bulge in front of a stone, a "
+		  "hydraulic jump below a step and reflections from the banks come by themselves; off - the flow under a rigid lid with "
+		  "the surface from its pressure (Steps per frame, Pressure iterations, Viscosity, Eddies, Obstacle passage and Surface "
+		  "relief are for it)" },
 		{ "near_size", "Size", DM_SETTING( size ), 2.0f, 40.0f, "m", "Side of the window around the camera", settingClamp },
 		{ "near_cell", "Cell", DM_SETTING( cell ), 0.03f, 0.25f, "m", "Side of a cell of the fine grid", settingClamp },
 		{ "near_steps", "Steps per frame", DM_SETTING( steps ), 1.0f, 8.0f, "", "Flow steps per frame (the game time of the frame)", settingClamp },

@@ -28,6 +28,11 @@ namespace
 constexpr float maxFrameTime = 0.1f;	// с: после долгого кадра (загрузка, отладчик) — не больше шага в столько
 constexpr float nudgeTime = 1.0f;		// с: средняя блока 8 × 8 тянется к течению детальной сетки за это время
 constexpr float focusReach = 30.0f;		// м: окно — у точки взгляда на земле не дальше этого по горизонтали
+// Мелкая вода: подшаг не длиннее (волна √(g h) + течение за подшаг — не дальше 0,4 ячейки 6,25 см при глубине до ~1,5 м и
+// скорости до 2 м/с; глубже и быстрее — до ~0,7, схема ещё устойчива), подшагов за кадр не больше
+constexpr float shallowMaxStep = 1.0f / 240.0f;
+constexpr uint32_t shallowMaxSubsteps = 32;
+constexpr float shallowNudgeTime = 2.0f;	// с: уровень окна (средний в 1,5 м) тянется к детальной воде за это время
 
 }
 
@@ -36,6 +41,7 @@ bool NearWaterFlow::initialize()
 	// Тот же шейдер, что у течения статичной воды, с FLOW_NEAR; воспроизводимо, как у него (течение одно в Debug и Release)
 	const char* file = "Shaders\\water_flow.cs";
 	const char* define = "FLOW_NEAR";
+	const char* shallow = "Shaders\\water_near_shallow.cs";
 	const bool same = true;
 	DMD3D& d3d = DMD3D::instance();
 	if( !m_init.initialize( file, "mainFlowInit", same, define ) || !m_faces.initialize( file, "mainFlowFaces", same, define ) ||
@@ -45,6 +51,9 @@ bool NearWaterFlow::initialize()
 		!m_black.initialize( file, "mainFlowBlack", same, define ) || !m_project.initialize( file, "mainFlowProject", same, define ) ||
 		!m_surfacePressure.initialize( file, "mainNearSurfacePressure", same, define ) ||
 		!m_output.initialize( file, "mainFlowOutput", same, define ) ||
+		!m_shallowInit.initialize( shallow, "mainShallowInit", same ) || !m_shallowFlux.initialize( shallow, "mainShallowFlux", same ) ||
+		!m_shallowDepth.initialize( shallow, "mainShallowDepth", same ) || !m_shallowVelocity.initialize( shallow, "mainShallowVelocity", same ) ||
+		!m_shallowBlocks.initialize( shallow, "mainShallowBlocks", same ) || !m_shallowOutput.initialize( shallow, "mainShallowOutput", same ) ||
 		!m_foamStep.initialize( "Shaders\\water_near_foam.cs", "mainNearFoam", same ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterFoamBuffer ), m_foamBuffer ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterNearFlowBuffer ), m_foamWindowBuffer ) ||
@@ -111,6 +120,30 @@ bool NearWaterFlow::createTextures( uint32_t size )
 	}
 	if( !d3d.createShaderView( m_result, {}, m_resultView ) )
 		return false;
+	// Мелкая вода
+	const uint32_t blocks = size / 8;
+	for( auto [texture, uav, side, format, name] :
+		 { std::tuple{ &m_shallow.cells, &m_shallow.cellsUAV, size, DXGI_FORMAT_R32G32B32A32_FLOAT, "Water near shallow cells" },
+		   std::tuple{ &m_shallow.depth, &m_shallow.depthUAV, size, DXGI_FORMAT_R32_FLOAT, "Water near shallow depth" },
+		   std::tuple{ &m_shallow.velocity[0], &m_shallow.velocityUAV[0], size, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow velocity" },
+		   std::tuple{ &m_shallow.velocity[1], &m_shallow.velocityUAV[1], size, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow velocity" },
+		   std::tuple{ &m_shallow.flux, &m_shallow.fluxUAV, size, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow flux" },
+		   std::tuple{ &m_shallow.target, &m_shallow.targetUAV, size, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow target" },
+		   std::tuple{ &m_shallow.blocks, &m_shallow.blocksUAV, blocks, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow blocks" } } )
+	{
+		TextureDesc desc;
+		desc.width = side;
+		desc.height = side;
+		desc.format = format;
+		desc.usage = TextureUsage::unorderedAccess;
+		if( !d3d.createTexture( desc, nullptr, *texture ) || !d3d.createStorageView( *texture, {}, *uav ) )
+		{
+			LOG( std::string( "Failed to create texture " ) + name );
+			return false;
+		}
+		d3d.setName( *texture, name );
+		d3d.clearStorageView( *uav );
+	}
 	for( uint32_t k = 0; k < 4; ++k )
 	{
 		const bool pattern = k >= 2;
@@ -197,43 +230,80 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	}
 
 	// Камни русла, задевающие окно: квадрат верха и его номер
-	std::vector<XMFLOAT4> stones;
-	stones.reserve( 128 );
+	m_windowStones.clear();
 	const float minX = m_origin.x * step;
 	const float minZ = m_origin.y * step;
-	for( size_t s = 0; s < m_stoneBounds.size() && stones.size() < 2 * maxStones; ++s )
+	for( size_t s = 0; s < m_stoneBounds.size() && m_windowStones.size() < 2 * maxStones; ++s )
 	{
 		const XMFLOAT4& bounds = m_stoneBounds[s];
 		if( bounds.x + bounds.z < minX || bounds.x > minX + side || bounds.y + bounds.z < minZ || bounds.y > minZ + side )
 			continue;
-		stones.push_back( bounds );
+		m_windowStones.push_back( bounds );
 		uint32_t index = static_cast<uint32_t>( s );
 		float packed;
 		std::memcpy( &packed, &index, sizeof( packed ) );
-		stones.push_back( XMFLOAT4( packed, 0.0f, 0.0f, 0.0f ) );
+		m_windowStones.push_back( XMFLOAT4( packed, 0.0f, 0.0f, 0.0f ) );
 	}
-	const uint32_t stoneCount = static_cast<uint32_t>( stones.size() / 2 );
-	if( stones.empty() )
-		stones.push_back( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
 
-	// Шаги — по времени игры кадра (с -freezetime их нет: окно — течение детальной сетки, снимки совпадают)
-	const uint32_t blocks = size / 8;
-	const uint32_t steps = elapsed > 0.0f ? static_cast<uint32_t>( std::clamp( window.steps, 1, 8 ) ) : 0u;
-	const float dt = steps > 0 ? elapsed / steps : 0.0f;
-	const WaterFlowBuffer flowParams = water.flowParameters( settings.flow, window.viscosity, dt, step, blocks * blocks );
-	const WaterDetailFlowBuffer detailParams = water.detailFlowParameters();
+	// Режим сменился — окно заново
+	if( window.shallow != m_shallowMode )
+	{
+		m_shallowMode = window.shallow;
+		m_reset = true;
+	}
 	WaterNearFlowBuffer nearParams = {};
 	nearParams.nearOrigin = m_origin;
 	nearParams.nearPreviousOrigin = previous;
 	nearParams.nearSize = size;
 	nearParams.nearStep = step;
-	nearParams.nearStoneCount = stoneCount;
+	nearParams.nearStoneCount = static_cast<uint32_t>( m_windowStones.size() / 2 );
 	nearParams.nearPassage = std::clamp( window.passage, 0.0f, 1.0f );
 	nearParams.nearEddies = std::max( window.eddies, 0.0f );
-	nearParams.nearNudgeShare = std::min( dt / nudgeTime, 1.0f );
 	nearParams.nearReset = m_reset ? 1u : 0u;
 	nearParams.nearSurface = std::max( window.surface, 0.0f );
+	if( m_windowStones.empty() )
+		m_windowStones.push_back( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
+	if( window.shallow )
+		stepShallow( settings, field, water, height, elapsed, nearParams );
+	else
+		stepRigidLid( settings, field, water, height, elapsed, nearParams );
+	// Шейдерам — до следующего кадра (вода, расстановка, частицы): привязка завершает проход над окном
+	d3d.setSRV( SLOT_WATER_NEAR, m_resultView );
+	stepFoam( settings, foam, frame.gameTime, elapsed, nearParams );
+	m_reset = false;
+}
 
+void NearWaterFlow::bindWindow( const WaterSimulationSettings& settings, WaterField& field, const StaticWater& water,
+								const TerrainHeight& height, const WaterFlowBuffer& flow, const WaterNearFlowBuffer& window )
+{
+	DMD3D& d3d = DMD3D::instance();
+	field.setParameters( settings );
+	Device::updateResourceData( m_flowBuffer, flow );
+	d3d.setConstantBuffer( 5, m_flowBuffer );
+	Device::updateResourceData( m_detailBuffer, water.detailFlowParameters() );
+	d3d.setConstantBuffer( 6, m_detailBuffer );
+	Device::updateResourceData( m_nearBuffer, window );
+	d3d.setConstantBuffer( 7, m_nearBuffer );
+	d3d.setSRV( 3, water.detailStaticView() );
+	d3d.setSRV( 6, *height.detailTiles );
+	d3d.setSRV( 7, *height.detailIndex );
+	m_stones.updateData( m_windowStones.data(), m_windowStones.size() * sizeof( XMFLOAT4 ) );
+	m_stones.setToSlot( 9 );
+	d3d.setSRV( 8, m_stoneTopsView );
+	d3d.setSRV( 10, water.detailWaterView() );
+}
+
+void NearWaterFlow::stepRigidLid( const WaterSimulationSettings& settings, WaterField& field, const StaticWater& water,
+								  const TerrainHeight& height, float elapsed, WaterNearFlowBuffer window )
+{
+	const Settings& options = settings.nearFlow;
+	// Шаги — по времени игры кадра (с -freezetime их нет: окно — течение детальной сетки, снимки совпадают)
+	const uint32_t blocks = m_size / 8;
+	const uint32_t steps = elapsed > 0.0f ? static_cast<uint32_t>( std::clamp( options.steps, 1, 8 ) ) : 0u;
+	const float dt = steps > 0 ? elapsed / steps : 0.0f;
+	window.nearNudgeShare = std::min( dt / nudgeTime, 1.0f );
+
+	DMD3D& d3d = DMD3D::instance();
 	PassDesc pass;
 	pass.name = "Water near flow";
 	pass.reads = { { &water.detailStaticView(), "detail static water" }, { height.detailTiles, "terrain detail tiles" },
@@ -244,20 +314,7 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 					{ &m_pressureUAV, "near flow pressure" },	   { &m_divergenceUAV, "near flow divergence" },
 					{ &m_vorticityUAV, "near flow vorticity" },  { &m_resultUAV, "near flow" } };
 	d3d.beginPass( pass );
-	field.setParameters( settings );
-	Device::updateResourceData( m_flowBuffer, flowParams );
-	d3d.setConstantBuffer( 5, m_flowBuffer );
-	Device::updateResourceData( m_detailBuffer, detailParams );
-	d3d.setConstantBuffer( 6, m_detailBuffer );
-	Device::updateResourceData( m_nearBuffer, nearParams );
-	d3d.setConstantBuffer( 7, m_nearBuffer );
-	d3d.setSRV( 3, water.detailStaticView() );
-	d3d.setSRV( 6, *height.detailTiles );
-	d3d.setSRV( 7, *height.detailIndex );
-	m_stones.updateData( stones.data(), stones.size() * sizeof( XMFLOAT4 ) );
-	m_stones.setToSlot( 9 );
-	d3d.setSRV( 8, m_stoneTopsView );
-	d3d.setSRV( 10, water.detailWaterView() );
+	bindWindow( settings, field, water, height, water.flowParameters( settings.flow, options.viscosity, dt, m_step, blocks * blocks ), window );
 	auto dispatch = [&]( ComputeShader& shader )
 	{
 		d3d.setUAV( 0, m_infoUAV );
@@ -273,7 +330,7 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	// Ячейки (каждый кадр: окно сдвигается), вошедшие — течение детальной сетки, затем шаги
 	dispatch( m_init );
 	dispatch( m_faces );
-	const uint32_t iterations = static_cast<uint32_t>( std::clamp( window.iterations, 1, 60 ) );
+	const uint32_t iterations = static_cast<uint32_t>( std::clamp( options.iterations, 1, 60 ) );
 	for( uint32_t done = 0; done < steps; ++done )
 	{
 		dispatch( m_advect );
@@ -292,10 +349,55 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	if( steps > 0 )
 		dispatch( m_surfacePressure );
 	dispatch( m_output );
-	// Шейдерам — до следующего кадра (вода, расстановка, частицы): привязка завершает проход над окном
-	d3d.setSRV( SLOT_WATER_NEAR, m_resultView );
-	stepFoam( settings, foam, frame.gameTime, elapsed, nearParams );
-	m_reset = false;
+}
+
+void NearWaterFlow::stepShallow( const WaterSimulationSettings& settings, WaterField& field, const StaticWater& water,
+								 const TerrainHeight& height, float elapsed, WaterNearFlowBuffer window )
+{
+	// Подшаги — по времени игры кадра не длиннее shallowMaxStep (с -freezetime их нет: окно — детальная вода, снимки совпадают)
+	const uint32_t blocks = m_size / 8;
+	const uint32_t substeps = elapsed > 0.0f ? std::clamp( static_cast<uint32_t>( std::ceil( elapsed / shallowMaxStep ) ), 1u, shallowMaxSubsteps ) : 0u;
+	const float dt = substeps > 0 ? elapsed / substeps : 0.0f;
+	window.nearNudgeShare = std::min( elapsed / shallowNudgeTime, 1.0f );
+
+	DMD3D& d3d = DMD3D::instance();
+	PassDesc pass;
+	pass.name = "Water near shallow";
+	pass.reads = { { &water.detailStaticView(), "detail static water" }, { height.detailTiles, "terrain detail tiles" },
+				   { height.detailIndex, "terrain detail index" }, { &water.detailWaterView(), "detail water" },
+				   { &m_stoneTopsView, "stone tops" } };
+	pass.writes = { { &m_shallow.cellsUAV, "near shallow cells" },		  { &m_shallow.depthUAV, "near shallow depth" },
+					{ &m_shallow.velocityUAV[0], "near shallow velocity" }, { &m_shallow.velocityUAV[1], "near shallow velocity" },
+					{ &m_shallow.fluxUAV, "near shallow flux" },			  { &m_resultUAV, "near flow" },
+					{ &m_shallow.targetUAV, "near shallow target" },		  { &m_shallow.blocksUAV, "near shallow blocks" } };
+	d3d.beginPass( pass );
+	bindWindow( settings, field, water, height, water.flowParameters( settings.flow, 0.0f, dt, m_step, blocks * blocks ), window );
+	if( m_reset )
+		m_shallow.current = 0;
+	auto dispatch = [&]( ComputeShader& shader )
+	{
+		d3d.setUAV( 0, m_shallow.cellsUAV );
+		d3d.setUAV( 1, m_shallow.depthUAV );
+		d3d.setUAV( 2, m_shallow.velocityUAV[m_shallow.current] );
+		d3d.setUAV( 3, m_shallow.velocityUAV[m_shallow.current ^ 1u] );
+		d3d.setUAV( 4, m_shallow.fluxUAV );
+		d3d.setUAV( 5, m_resultUAV );
+		d3d.setUAV( 6, m_shallow.targetUAV );
+		d3d.setUAV( 7, m_shallow.blocksUAV );
+		shader.dispatchGroups( blocks * blocks, 1, 1 );
+	};
+	// Ячейки (каждый кадр: окно сдвигается), вошедшие и край окна — детальная вода, затем подшаги
+	dispatch( m_shallowInit );
+	for( uint32_t done = 0; done < substeps; ++done )
+	{
+		dispatch( m_shallowFlux );
+		dispatch( m_shallowDepth );
+		dispatch( m_shallowVelocity );
+		m_shallow.current ^= 1u;
+	}
+	// Крупный масштаб — к детальной воде, итог
+	dispatch( m_shallowBlocks );
+	dispatch( m_shallowOutput );
 }
 
 void NearWaterFlow::stepFoam( const WaterSimulationSettings& settings, const WaterFoam& foam, float gameTime, float elapsed,
@@ -376,16 +478,17 @@ bool NearWaterFlow::exportState( const std::string& prefix, std::string& reason 
 		reason = "no near flow window (no detail water around the camera or Near flow is off)";
 		return false;
 	}
-	std::vector<DMD3D::SubresourceCopy> copies, foamCopies;
-	std::vector<uint8_t> bytes, foamBytes;
+	std::vector<DMD3D::SubresourceCopy> copies, foamCopies, depthCopies;
+	std::vector<uint8_t> bytes, foamBytes, depthBytes;
 	if( !DMD3D::instance().captureTexture( m_result, copies, bytes ) || copies.empty() ||
-		!DMD3D::instance().captureTexture( m_foam[m_foamCurrent], foamCopies, foamBytes ) || foamCopies.empty() )
+		!DMD3D::instance().captureTexture( m_foam[m_foamCurrent], foamCopies, foamBytes ) || foamCopies.empty() ||
+		( m_shallowMode && ( !DMD3D::instance().captureTexture( m_shallow.depth, depthCopies, depthBytes ) || depthCopies.empty() ) ) )
 	{
 		reason = "near flow readback failed";
 		return false;
 	}
 	const uint32_t size = m_size;
-	std::vector<float> channels[5];
+	std::vector<float> channels[6];
 	for( auto& channel : channels )
 		channel.resize( static_cast<size_t>( size ) * size );
 	for( uint32_t j = 0; j < size; ++j )
@@ -399,9 +502,11 @@ bool NearWaterFlow::exportState( const std::string& prefix, std::string& reason 
 			for( int c = 0; c < 4; ++c )
 				channels[c][row] = PackedVector::XMConvertHalfToFloat( source[c] );
 			channels[4][row] = PackedVector::XMConvertHalfToFloat( *foam );
+			if( m_shallowMode )
+				channels[5][row] = *( reinterpret_cast<const float*>( depthBytes.data() + depthCopies[0].offset + texel.y * depthCopies[0].rowPitch ) + texel.x );
 		}
-	const char* names[5] = { "_near_surface.dds", "_near_vx.dds", "_near_vz.dds", "_near_passage.dds", "_near_foam.dds" };
-	for( int c = 0; c < 5; ++c )
+	const char* names[6] = { "_near_surface.dds", "_near_vx.dds", "_near_vz.dds", "_near_passage.dds", "_near_foam.dds", "_near_depth.dds" };
+	for( int c = 0; c < ( m_shallowMode ? 6 : 5 ); ++c )
 	{
 		const std::string file = prefix + names[c];
 		if( !GpuImages::saveFloatDDS( std::wstring( file.begin(), file.end() ), size, size, channels[c].data() ) )

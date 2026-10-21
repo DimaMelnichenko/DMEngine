@@ -1,0 +1,356 @@
+////////////////////////////////////////////////////////////////////////////////
+// Мелкая вода в окне у камеры (NearWaterFlow, режим «Shallow water»; docs/water.md, «Мелкая вода у камеры»): вместо
+// течения под «жёсткой крышкой» (water_flow.cs с FLOW_NEAR) — уравнения мелкой воды, высота воды переменна, давление
+// гидростатическое (его даёт наклон поверхности), решателя давления нет: бугор перед камнем, просадка за ним, волны,
+// гидравлический прыжок под ступенью и отражение от бортов получаются сами. Схема — та же, что у эталона на CPU
+// (ShallowWater, Scene/Water/ShallowWater.cpp, тесты tests/test_shallow_water.cpp): сетка MAC, явная схема, сохраняющая
+// импульс (Stelling, Duinmeijer 2003), подшаг:
+//   mainShallowFlux     — расход через грани: глубина ячейки, откуда течёт, × скорость; поток из ячейки — не больше воды
+//                         в ней (доля исходящих потоков — по её граням);
+//   mainShallowDepth    — высота по расходам;
+//   mainShallowVelocity — перенос импульса по расходам вокруг грани, сила тяжести по наклону поверхности, трение по
+//                         Маннингу неявно; грань, откуда течь нечему, — без скорости.
+// Окно (ячейка g_nearStep, сторона g_nearSize, адрес по модулю стороны — water_near_grid.sh) вложено в детальную воду 0,25 м:
+//   - дно — детальная земля билинейно и верх камней русла по их моделям (StoneTop): камень выше воды — сухая ячейка, вода
+//     обходит его и поднимается перед ним;
+//   - край окна: ячейки в shallowFixedCells от края закреплены — глубина и скорость граней детальной воды (вход и выход
+//     расхода, как закреплённые ячейки эталона); вошедшие в окно ячейки начинаются с неё же (mainShallowInit);
+//   - полоса гашения волн shallowSpongeWidth у края: глубина и скорость тянутся к детальной воде, сильнее к краю
+//     (relaxation zone), — волна изнутри уходит в неё, а не отражается от закреплённого края;
+//   - крупный масштаб — к детальной воде (mainShallowBlocks, mainShallowOutput): средняя по блокам разница глубины,
+//     сглаженная в радиусе shallowNudgeRadius, за shallowNudgeTime (доля кадра — g_nearNudgeShare), — уровень окна не
+//     уходит от уровня сети ручьёв, а бугры и ямы размером с камень — свои.
+// Шаги — по времени игры (подшаги — NearWaterFlow::stepShallow), с -freezetime их нет: окно — детальная вода.
+// Итог (mainShallowOutput) — SLOT_WATER_NEAR в том же виде, что у «жёсткой крышки»: x — отклонение поверхности от уровня
+// детальной воды, м, y, z — течение по X и Z мира, w — доля глубины над камнем (как у крышки; 0 — сухо)
+////////////////////////////////////////////////////////////////////////////////
+
+#include "water_simulation.sh"
+#include "water_near_grid.sh"
+#include "water_flow_constants.h"
+
+// x — дно с камнями, м; y — глубина детальной воды над ним (её уровень − дно; меньше 0 — камень выше воды, −1e9 — детальной
+// воды нет); z — доля глубины над камнем, как у «жёсткой крышки» (1 — камня нет, у камня выше воды — Obstacle passage);
+// w — 1 у ручья (трение по n русел), 0 у озера
+DM_UAV( RWTexture2D<float4>, g_cells, 0 );
+DM_UAV( RWTexture2D<float>, g_depth, 1 );			// глубина, м
+DM_UAV( RWTexture2D<float2>, g_velocity, 2 );		// скорость на восточной (x) и северной (y, к +Z) грани ячейки, м/с
+DM_UAV( RWTexture2D<float2>, g_velocityNext, 3 );	// она же после подшага (NearWaterFlow меняет их местами)
+DM_UAV( RWTexture2D<float2>, g_flux, 4 );			// расход через восточную и северную грань в этом подшаге, м²/с
+DM_UAV( RWTexture2D<float4>, g_output, 5 );			// итог для шейдеров (SLOT_WATER_NEAR)
+DM_UAV( RWTexture2D<float2>, g_target, 6 );			// скорость детальной воды на восточной и северной грани, м/с
+DM_UAV( RWTexture2D<float2>, g_blocks, 7 );			// блок 8 × 8 окна: сумма разницы глубины детальной воды и своей, ячеек
+
+static const float shallowGravity = 9.81f;		// м/с²
+static const float shallowMinDepth = 1e-4f;		// мельче — сухо: течь неоткуда, м (ShallowWater::Settings::minDepth)
+static const float shallowWetDepth = 1e-3f;		// глубже — вода для итога и подтягивания, м
+static const float shallowMaxSpeed = 8.0f;		// скорость грани не больше, м/с
+static const int shallowFixedCells = 2;			// ячеек у края окна — детальная вода (закреплены)
+static const float shallowSpongeWidth = 1.0f;	// м: полоса гашения волн у края окна (там же к краю гаснет и итог, nearWaterFade)
+static const float shallowSpongeRate = 20.0f;	// 1/с: у самого края глубина и скорость тянутся к детальной воде так быстро
+static const float shallowNudgeRadius = 1.5f;	// м: подтягивание крупного масштаба — средняя разница в этом радиусе
+static const float shallowDryMargin = 0.01f;	// м: у сухой ячейки окна, где детальная вода есть, поверхность — на столько под дном
+
+static const int2 axes[2] = { int2( 1, 0 ), int2( 0, 1 ) };
+
+// Ячейка счёта: группа — блок 8 × 8 окна по строкам блоков, поток — ячейка
+bool shallowCell( uint3 group, uint3 thread, out int2 cell, out uint2 address )
+{
+	cell = 0;
+	address = 0;
+	if( group.x >= g_flowTileCount )
+		return false;
+	const uint blocks = g_nearSize / 8;
+	cell = g_nearOrigin + int2( uint2( group.x % blocks, group.x / blocks ) * 8 + thread.xy );
+	return cellAddress( cell, address );
+}
+
+// Ячеек от ячейки до края окна (0 — крайняя)
+int edgeCells( int2 cell )
+{
+	const int2 local = cell - g_nearOrigin;
+	return min( min( local.x, local.y ), (int)g_nearSize - 1 - max( local.x, local.y ) );
+}
+
+// Ячейка края окна: глубина и скорость граней — детальной воды
+bool fixedCell( int2 cell )
+{
+	return edgeCells( cell ) < shallowFixedCells;
+}
+
+// Доля подшага, на которую глубина и скорость в полосе гашения тянутся к детальной воде; cells — ячеек до края окна
+float spongeShare( float cells )
+{
+	const float inside = saturate( 1.0f - cells * g_nearStep / shallowSpongeWidth );
+	return 1.0f - exp( -shallowSpongeRate * inside * inside * g_flowTimeStep );
+}
+
+uint2 addressOf( int2 cell )
+{
+	uint2 address;
+	cellAddress( cell, address );
+	return address;
+}
+
+// Расход через грань оси axis, которую хранит ячейка; вне окна — 0
+float faceFlux( int2 cell, uint axis )
+{
+	uint2 address;
+	return cellAddress( cell, address ) ? g_flux[address][axis] : 0.0f;
+}
+
+// Скорость грани оси axis, которую хранит ячейка; вне окна — fallback
+float faceSpeed( int2 cell, uint axis, float fallback )
+{
+	uint2 address;
+	return cellAddress( cell, address ) ? g_velocity[address][axis] : fallback;
+}
+
+// Ячейки и грани окна каждый кадр (окно сдвигается): дно с камнями, детальная вода над ним, скорость детальной воды на
+// гранях; вошедшие в окно в этом кадре (не было в окне прошлого кадра, g_nearReset — все) и край окна — детальная вода
+[numthreads( 8, 8, 1 )]
+void mainShallowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
+{
+	int2 cell;
+	uint2 address;
+	if( !shallowCell( group, thread, cell, address ) )
+		return;
+	const float2 world = ( cell + 0.5f ) * g_nearStep;
+	float4 water, still;
+	const float ground = detailBed( world );
+	const bool wet = detailWaterAt( world, water ) && ground > -1e8f;
+	const float bed = nearStoneTop( world, ground );
+	const bool stream = detailStaticAt( world, still ) && still.w > 0.0f;
+	const float baseDepth = wet ? max( water.x - ground, 0.0f ) : 0.0f;
+	const float share = baseDepth > 0.0f ? max( water.x - bed, g_nearPassage * baseDepth ) / baseDepth : 0.0f;
+	const float target = wet ? water.x - bed : -1e9f;
+	g_cells[address] = float4( bed, target, share, stream ? 1.0f : 0.0f );
+	float2 faces = 0.0f;
+	[unroll] for( uint axis = 0; axis < 2; ++axis )
+		if( detailWaterAt( ( cell + ( axis == 0 ? float2( 1.0f, 0.5f ) : float2( 0.5f, 1.0f ) ) ) * g_nearStep, water ) )
+			faces[axis] = water[1 + axis];
+	g_target[address] = faces;
+	const int2 previous = cell - g_nearPreviousOrigin;
+	const bool fresh = g_nearReset != 0 || any( previous < 0 ) || any( previous >= (int)g_nearSize );
+	if( fresh || fixedCell( cell ) )
+	{
+		g_depth[address] = max( target, 0.0f );
+		g_velocity[address] = faces;
+	}
+}
+
+// Доля исходящих потоков ячейки: за подшаг из неё уходит не больше воды, чем в ней есть (у края окна — без доли)
+float outflowScale( int2 cell, uint2 address, float depth )
+{
+	if( fixedCell( cell ) )
+		return 1.0f;
+	const float2 own = g_velocity[address];
+	const float west = g_velocity[addressOf( cell - axes[0] )].x;
+	const float south = g_velocity[addressOf( cell - axes[1] )].y;
+	const float outflow = ( max( own.x, 0.0f ) + max( -west, 0.0f ) + max( own.y, 0.0f ) + max( -south, 0.0f ) ) * depth * g_flowTimeStep / g_nearStep;
+	return outflow > depth && outflow > 0.0f ? depth / outflow : 1.0f;
+}
+
+[numthreads( 8, 8, 1 )]
+void mainShallowFlux( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
+{
+	int2 cell;
+	uint2 address;
+	if( !shallowCell( group, thread, cell, address ) )
+		return;
+	const float2 velocity = g_velocity[address];
+	float2 flux = 0.0f;
+	[unroll] for( uint axis = 0; axis < 2; ++axis )
+	{
+		// Грань к ячейке за краем окна никому не нужна: ячейки края закреплены
+		const int2 next = cell + axes[axis];
+		uint2 nextAddress;
+		if( !cellAddress( next, nextAddress ) )
+			continue;
+		const float u = velocity[axis];
+		const bool fromHere = u > 0.0f;
+		const uint2 source = fromHere ? address : nextAddress;
+		const float depth = g_depth[source];
+		flux[axis] = u * depth * outflowScale( fromHere ? cell : next, source, depth );
+	}
+	g_flux[address] = flux;
+}
+
+[numthreads( 8, 8, 1 )]
+void mainShallowDepth( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
+{
+	int2 cell;
+	uint2 address;
+	if( !shallowCell( group, thread, cell, address ) || fixedCell( cell ) )
+		return;
+	const float2 own = g_flux[address];
+	const float west = g_flux[addressOf( cell - axes[0] )].x;
+	const float south = g_flux[addressOf( cell - axes[1] )].y;
+	float depth = max( g_depth[address] - g_flowTimeStep / g_nearStep * ( own.x - west + own.y - south ), 0.0f );
+	const float share = spongeShare( edgeCells( cell ) + 0.5f );
+	if( share > 0.0f )
+		depth = lerp( depth, max( g_cells[address].y, 0.0f ), share );
+	g_depth[address] = depth;
+}
+
+// Перенос импульса в консервативной форме (Stelling, Duinmeijer 2003; ShallowWater::updateVelocity): у грани — расход ячеек
+// и углов вокруг неё (средний по их граням), скорость со стороны, откуда он идёт; ∂u/∂t + [Δ(q̄ u*) − u Δq̄] / (h̄ Δx)
+[numthreads( 8, 8, 1 )]
+void mainShallowVelocity( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
+{
+	int2 cell;
+	uint2 address;
+	if( !shallowCell( group, thread, cell, address ) )
+		return;
+	const float dt = g_flowTimeStep;
+	const float limit = min( shallowMaxSpeed, 0.5f * g_nearStep / dt );
+	const float4 here = g_cells[address];
+	const float depthHere = g_depth[address];
+	const float2 velocity = g_velocity[address];
+	const float2 flux = g_flux[address];
+	float2 result = velocity;
+	[unroll] for( uint axis = 0; axis < 2; ++axis )
+	{
+		// Грань между ячейками края (или к ячейке за краем окна) — скорость детальной воды, как есть
+		const uint other = 1 - axis;
+		const int2 along = axes[axis];
+		const int2 across = axes[other];
+		const int2 next = cell + along;
+		uint2 nextAddress;
+		if( !cellAddress( next, nextAddress ) || ( fixedCell( cell ) && fixedCell( next ) ) )
+			continue;
+		const float4 there = g_cells[nextAddress];
+		const float depthNext = g_depth[nextAddress];
+		const float u = velocity[axis];
+		const float depth = 0.5f * ( depthHere + depthNext );
+		float advection = 0.0f;
+		if( depth > shallowMinDepth )
+		{
+			// Вдоль оси: ячейки cell и next
+			const float qa = 0.5f * ( faceFlux( cell - along, axis ) + flux[axis] );
+			const float qb = 0.5f * ( flux[axis] + faceFlux( next, axis ) );
+			const float ua = qa > 0.0f ? faceSpeed( cell - along, axis, u ) : u;
+			const float ub = qb > 0.0f ? u : faceSpeed( next, axis, u );
+			advection += qb * ub - qa * ua - u * ( qb - qa );
+			// Поперёк: углы грани с меньшей и с большей стороны другой оси
+			const float qd = 0.5f * ( faceFlux( cell - across, other ) + faceFlux( next - across, other ) );
+			const float qu = 0.5f * ( flux[other] + faceFlux( next, other ) );
+			const float ud = qd > 0.0f ? faceSpeed( cell - across, axis, u ) : u;
+			const float uu = qu > 0.0f ? u : faceSpeed( cell + across, axis, u );
+			advection += qu * uu - qd * ud - u * ( qu - qd );
+			advection /= depth * g_nearStep;
+		}
+		// Наклон поверхности — разность дна и разность глубин по отдельности: дно — десятки метров, и во float у суммы
+		// дна и глубины ошибка ~10 мкм — озеро на неровном дне не стояло бы
+		const float slope = ( ( there.x - here.x ) + ( depthNext - depthHere ) ) / g_nearStep;
+		float value = u - dt * advection - shallowGravity * dt * slope;
+		const float upstream = value > 0.0f ? depthHere : depthNext;
+		if( upstream <= shallowMinDepth )
+			value = 0.0f;
+		else
+		{
+			const float friction = here.w > 0.0f || there.w > 0.0f ? g_flowStreamFriction : g_flowFriction;
+			value /= 1.0f + friction * abs( value ) / pow( upstream, 4.0f / 3.0f );
+			value = clamp( value, -limit, limit );
+		}
+		const float share = spongeShare( 0.5f * ( edgeCells( cell ) + edgeCells( next ) ) + 0.5f );
+		if( share > 0.0f )
+			value = lerp( value, g_target[address][axis], share );
+		result[axis] = value;
+	}
+	g_velocityNext[address] = result;
+}
+
+groupshared float2 g_blockSums[64];
+
+// Разница глубины детальной воды и своей по блоку 8 × 8 (группа потоков) — у ячеек, где вода и там, и там (после подшагов)
+[numthreads( 8, 8, 1 )]
+void mainShallowBlocks( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID, uint index : SV_GroupIndex )
+{
+	int2 cell;
+	uint2 address;
+	const bool valid = shallowCell( group, thread, cell, address );
+	float2 sum = 0.0f;
+	if( valid && !fixedCell( cell ) )
+	{
+		const float depth = g_depth[address];
+		const float target = g_cells[address].y;
+		if( depth > shallowWetDepth && target > shallowWetDepth )
+			sum = float2( target - depth, 1.0f );
+	}
+	g_blockSums[index] = sum;
+	GroupMemoryBarrierWithGroupSync();
+	[unroll] for( uint width = 32; width > 0; width >>= 1 )
+	{
+		if( index < width )
+			g_blockSums[index] += g_blockSums[index + width];
+		GroupMemoryBarrierWithGroupSync();
+	}
+	if( valid && index == 0 )
+	{
+		const uint blocks = g_nearSize / 8;
+		g_blocks[uint2( group.x % blocks, group.x / blocks )] = g_blockSums[0];
+	}
+}
+
+// Средняя разница глубины детальной воды и своей у ячейки — по блокам в радиусе shallowNudgeRadius (веса — шатёр по
+// расстоянию до центра блока: поправка плавная, без ступеней на границах блоков)
+float nudgeCorrection( int2 cell )
+{
+	const int blocks = (int)g_nearSize / 8;
+	const float2 position = ( float2( cell - g_nearOrigin ) + 0.5f ) / 8.0f;
+	const float radius = max( shallowNudgeRadius / ( 8.0f * g_nearStep ), 1.0f );
+	const int2 low = max( int2( floor( position - radius ) ), 0 );
+	const int2 high = min( int2( floor( position + radius ) ), blocks - 1 );
+	float2 sum = 0.0f;
+	[loop] for( int j = low.y; j <= high.y; ++j )
+		[loop] for( int i = low.x; i <= high.x; ++i )
+		{
+			const float2 distance = abs( float2( i, j ) + 0.5f - position ) / radius;
+			sum += saturate( 1.0f - distance.x ) * saturate( 1.0f - distance.y ) * g_blocks[uint2( i, j )];
+		}
+	return sum.y > 0.0f ? sum.x / sum.y : 0.0f;
+}
+
+// Подтягивание крупного масштаба (доля кадра g_nearNudgeShare) и итог для шейдеров
+[numthreads( 8, 8, 1 )]
+void mainShallowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
+{
+	int2 cell;
+	uint2 address;
+	if( !shallowCell( group, thread, cell, address ) )
+		return;
+	const float4 info = g_cells[address];
+	float depth = g_depth[address];
+	if( g_nearNudgeShare > 0.0f && !fixedCell( cell ) && depth > shallowWetDepth && info.y > shallowWetDepth )
+	{
+		depth = max( depth + g_nearNudgeShare * nudgeCorrection( cell ), 0.0f );
+		g_depth[address] = depth;
+	}
+	const bool wet = depth > shallowWetDepth;
+	// Течение в центре — средняя граней к мокрым соседям: к сухому вода не течёт (скорость грани 0), и у берега среднее
+	// вышло бы вдвое меньше
+	float2 velocity = 0.0f;
+	if( wet )
+		[unroll] for( uint axis = 0; axis < 2; ++axis )
+		{
+			float sum = 0.0f, faces = 0.0f;
+			uint2 neighbor;
+			if( cellAddress( cell + axes[axis], neighbor ) && g_depth[neighbor] > shallowWetDepth )
+			{
+				sum += g_velocity[address][axis];
+				faces += 1.0f;
+			}
+			if( cellAddress( cell - axes[axis], neighbor ) && g_depth[neighbor] > shallowWetDepth )
+			{
+				sum += g_velocity[neighbor][axis];
+				faces += 1.0f;
+			}
+			velocity[axis] = faces > 0.0f ? sum / faces : 0.0f;
+		}
+	// Отклонение поверхности от детальной воды; у сухой ячейки, где детальная вода есть, — поверхность под дном (урез — по
+	// своей воде), у камня выше воды и где детальной воды нет — 0
+	const float surface = wet ? ( info.y > -1e8f ? depth - info.y : 0.0f ) : min( -info.y - shallowDryMargin, 0.0f );
+	const bool stoneAbove = info.z > 0.0f && info.z <= g_nearPassage * 1.01f + 1e-5f;
+	g_output[address] = float4( surface, velocity, wet || stoneAbove ? info.z : 0.0f );
+}

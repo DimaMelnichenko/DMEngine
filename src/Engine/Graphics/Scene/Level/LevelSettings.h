@@ -754,6 +754,10 @@ struct WaterSimulationSettings
 	struct NearFlow
 	{
 		bool enabled = true;
+		// Мелкая вода (water_near_shallow.cs): высота воды в окне переменна — волны, бугор перед камнем, прыжок под ступенью;
+		// нет — течение под «жёсткой крышкой» с поверхностью по давлению (water_flow.cs с FLOW_NEAR). Переключатель — на время
+		// сравнения (docs/water.md, «Мелкая вода у камеры»)
+		bool shallow = false;
 		float size = 10.0f;			// сторона окна, м
 		float cell = 0.0625f;		// сторона ячейки, м
 		int32_t steps = 1;			// шагов за кадр (время шага — время игры кадра / шагов)

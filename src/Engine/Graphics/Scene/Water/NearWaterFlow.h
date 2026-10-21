@@ -5,6 +5,7 @@
 #include "D3D\DMStructuredBuffer.h"
 #include "Level\LevelSettings.h"
 #include "StoneTop.h"
+#include "Shaders\water_flow_constants.h"
 #include "Shaders\water_near_flow_constants.h"
 
 namespace GS
@@ -19,7 +20,9 @@ struct TerrainHeight;
 
 // Подробное течение у камеры (docs/water.md, «Подробное течение у камеры»): окно мелкой сетки (по умолчанию 10 × 10 м,
 // ячейка 6,25 см) вокруг камеры, каждый кадр — та же модель, что течение статичной воды (Shaders/water_flow.cs с FLOW_NEAR:
-// мелкая вода под «жёсткой крышкой» на сетке MAC), вложенная в течение детальной сетки 0,25 м, как то — в сетку 1 м.
+// мелкая вода под «жёсткой крышкой» на сетке MAC), вложенная в течение детальной сетки 0,25 м, как то — в сетку 1 м. Режим
+// «Shallow water» (Settings::shallow; docs/water.md, «Мелкая вода у камеры») — вместо него уравнения мелкой воды с переменной
+// высотой (Shaders/water_near_shallow.cs, схема эталона ShallowWater): край окна и крупный масштаб — по детальной воде.
 // Камни русла — по верху их моделей (StoneTop от расстановки), камень выше воды — препятствие (вода обходит его), вихри за
 // камнями и на поворотах держит удержание завихрённости. Окно привязано к миру (NearWindow): сдвигается вслед за камерой целыми
 // ячейками, вошедшие ячейки начинаются с течения детальной сетки, остальные считаются дальше; шаги — по времени игры
@@ -45,13 +48,23 @@ public:
 	// рисует ли её и где — по константам кадра (cb_waterNear)
 	uint32_t windowCells() const { return m_size; }
 	// Окно — растром (строка 0 — дальний край по z, как у остальных выгрузок): <prefix>_near_surface.dds (подъём поверхности
-	// по давлению, м), _near_vx, _near_vz, _near_passage, _near_foam. Ждёт GPU
+	// над детальной водой, м), _near_vx, _near_vz, _near_passage, _near_foam; у мелкой воды — и _near_depth (глубина, м). Ждёт GPU
 	bool exportState( const std::string& prefix, std::string& reason );
 
 private:
 	static constexpr uint32_t maxStones = WATER_NEAR_MAX_STONES;
 	// Текстуры окна size² (заново при смене стороны окна)
 	bool createTextures( uint32_t size );
+	// Окно за время elapsed: течение под «жёсткой крышкой» (шаги — Settings::steps) или мелкая вода (подшаги по устойчивости);
+	// проход объявляет и привязывает окно — bindWindow
+	void stepRigidLid( const WaterSimulationSettings& settings, WaterField& field, const StaticWater& water, const TerrainHeight& height,
+					   float elapsed, WaterNearFlowBuffer window );
+	void stepShallow( const WaterSimulationSettings& settings, WaterField& field, const StaticWater& water, const TerrainHeight& height,
+					  float elapsed, WaterNearFlowBuffer window );
+	// Константы (поле b4, течение b5, детальная сетка b6, окно b7), детальные плитки, земля и камни окна (SRV 3, 6–10) — после
+	// beginPass прохода окна
+	void bindWindow( const WaterSimulationSettings& settings, WaterField& field, const StaticWater& water, const TerrainHeight& height,
+					 const WaterFlowBuffer& flow, const WaterNearFlowBuffer& window );
 	// Пена окна и смещения координат её узора за время elapsed к времени игры gameTime (0 — те же, вошедшие ячейки — из поля
 	// foam): после расчёта течения, в том же кадре
 	void stepFoam( const WaterSimulationSettings& settings, const WaterFoam& foam, float gameTime, float elapsed, const WaterNearFlowBuffer& window );
@@ -68,6 +81,12 @@ private:
 	ComputeShader m_project;
 	ComputeShader m_surfacePressure;
 	ComputeShader m_output;
+	ComputeShader m_shallowInit;
+	ComputeShader m_shallowFlux;
+	ComputeShader m_shallowDepth;
+	ComputeShader m_shallowVelocity;
+	ComputeShader m_shallowBlocks;
+	ComputeShader m_shallowOutput;
 	ComputeShader m_foamStep;
 	Buffer m_flowBuffer;		// WaterFlowBuffer (b5)
 	Buffer m_detailBuffer;		// WaterDetailFlowBuffer (b6)
@@ -76,6 +95,7 @@ private:
 	Buffer m_foamWindowBuffer;	// WaterNearFlowBuffer (b7) прохода пены: окно заново — и после кадров без пены
 	Buffer m_patternBuffer;		// WaterNearPatternBuffer (b6) прохода пены
 	DMStructuredBuffer m_stones;	// камни русла в окне: по два float4 — квадрат верха и его номер
+	std::vector<DirectX::XMFLOAT4> m_windowStones;	// они же этого кадра (на GPU — в bindWindow)
 	// Камни русел: квадрат верха (угол x, z, сторона, низ) — для отбора в окно; высоты всех квадратов — на GPU по две
 	// половинной точности в uint (m_stoneTopData ждёт загрузки, пока m_stoneTopsPending)
 	std::vector<DirectX::XMFLOAT4> m_stoneBounds;
@@ -89,6 +109,16 @@ private:
 	Texture m_info, m_info2, m_velocity, m_advected, m_pressure, m_divergenceTexture, m_vorticityTexture, m_result;
 	StorageView m_infoUAV, m_info2UAV, m_velocityUAV, m_advectedUAV, m_pressureUAV, m_divergenceUAV, m_vorticityUAV, m_resultUAV;
 	ShaderView m_resultView;
+	// Мелкая вода (water_near_shallow.cs; итог — m_result): дно и детальная вода ячейки, глубина, скорость граней (две по
+	// очереди: подшаг читает velocity[current], пишет другую), расход граней, скорость детальной воды на гранях, блоки 8 × 8
+	// подтягивания крупного масштаба
+	struct Shallow
+	{
+		Texture cells, depth, velocity[2], flux, target, blocks;
+		StorageView cellsUAV, depthUAV, velocityUAV[2], fluxUAV, targetUAV, blocksUAV;
+		uint32_t current = 0;
+	} m_shallow;
+	bool m_shallowMode = false;	// режим прошлого кадра: сменился — окно заново
 	// Пена окна (R16F) и смещения координат её узора (RGBA16F: два слоя): по два поля по очереди — шаг читает прошлое, пишет
 	// другое
 	Texture m_foam[2], m_pattern[2];
