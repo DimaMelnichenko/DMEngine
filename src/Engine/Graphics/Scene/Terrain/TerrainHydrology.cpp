@@ -2729,10 +2729,19 @@ bool TerrainHydrology::Build::buildBed()
 		const int side = tileCells * samples + 2;
 		const int tiles = ( n + tileCells - 1 ) / tileCells;
 		const double step = 1.0 / samples;	// клеток на тексель
-		// Плитки — где проходит русло (рамка отрезка оси): узкое русло может не задеть центры клеток карты
+		// Плитки — где проходит русло (рамка отрезка оси): узкое русло может не задеть центры клеток карты. Рамка — шире на
+		// tileMargin клеток: врез опускает клетки 1 м, чей центр в досягаемости русла, а рельеф вне плиток — билинейно по
+		// центрам клеток, и опущенная клетка тянет вниз землю ещё на клетку вокруг. Без запаса русло у самой границы плиток
+		// (приток вдоль z = 192 у 424,192) опускало землю соседней плитки, которой не было: по одну сторону границы земля
+		// опущена билинейно, по другую — плитка без вреза, и на границе вставала стенка до 0,4–0,7 м (Dimok, 2026-10-21)
+		constexpr double tileMargin = 1.5;
 		std::vector<int> tileIndex( static_cast<size_t>( tiles ) * tiles, -1 );
 		auto addTiles = [&]( double xMin, double xMax, double yMin, double yMax )
 		{
+			xMin -= tileMargin;
+			xMax += tileMargin;
+			yMin -= tileMargin;
+			yMax += tileMargin;
 			const int tx0 = std::max( static_cast<int>( std::floor( xMin / tileCells ) ), 0 );
 			const int tx1 = std::min( static_cast<int>( std::floor( xMax / tileCells ) ), tiles - 1 );
 			const int tz0 = std::max( static_cast<int>( std::floor( ( n - yMax ) / tileCells ) ), 0 );
