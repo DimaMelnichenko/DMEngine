@@ -56,6 +56,27 @@ TEST_CASE( "FoamLace: the mask and the dissolve noise are uniform, a foam share 
 	CHECK( static_cast<double>( above ) / texels.size() == doctest::Approx( 0.2 ).epsilon( 0.02 ) );
 }
 
+TEST_CASE( "FoamLace: dense foam is seamless, its gaps are thin foam, not water" )
+{
+	const std::vector<XMFLOAT4> texels = generateFoamDense( size, 1 );
+	REQUIRE( texels.size() == size * size );
+	double inside = 0.0, across = 0.0, sum = 0.0;
+	for( uint32_t y = 0; y < size; ++y )
+	{
+		across += std::fabs( mask( texels, size - 1, y ) - mask( texels, 0, y ) ) + std::fabs( mask( texels, y, size - 1 ) - mask( texels, y, 0 ) );
+		inside += std::fabs( mask( texels, size / 2 - 1, y ) - mask( texels, size / 2, y ) ) +
+				  std::fabs( mask( texels, y, size / 2 - 1 ) - mask( texels, y, size / 2 ) );
+	}
+	for( const XMFLOAT4& texel : texels )
+	{
+		CHECK( texel.x >= denseFoamGap );
+		CHECK( texel.x <= 1.0f );
+		sum += texel.x;
+	}
+	CHECK( across < 1.6 * inside );
+	CHECK( sum / texels.size() == doctest::Approx( 0.5 * ( 1.0 + denseFoamGap ) ).epsilon( 0.01 ) );
+}
+
 TEST_CASE( "FoamLace: the same seed gives the same pattern, another seed another one" )
 {
 	const std::vector<XMFLOAT4> a = generateFoamLace( size, 3 );

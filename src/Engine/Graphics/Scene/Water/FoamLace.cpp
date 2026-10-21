@@ -138,6 +138,25 @@ std::vector<float> blur( const std::vector<float>& source, uint32_t size, float 
 	return result;
 }
 
+// Маска и шум растворения → каналы узора: нормаль — по размытой маске, как у pack_water_foam.py
+std::vector<XMFLOAT4> packFoam( const std::vector<float>& mask, const std::vector<float>& dissolve, uint32_t size )
+{
+	const std::vector<float> height = blur( mask, size, normalBlur );
+	const int n = static_cast<int>( size );
+	std::vector<XMFLOAT4> texels( mask.size() );
+	for( int y = 0; y < n; ++y )
+		for( int x = 0; x < n; ++x )
+		{
+			const size_t index = static_cast<size_t>( y ) * n + x;
+			const float dx = 0.5f * normalBump * ( height[static_cast<size_t>( y ) * n + wrap( x + 1, n )] - height[static_cast<size_t>( y ) * n + wrap( x - 1, n )] );
+			const float dy = 0.5f * normalBump * ( height[static_cast<size_t>( wrap( y + 1, n ) ) * n + x] - height[static_cast<size_t>( wrap( y - 1, n ) ) * n + x] );
+			XMFLOAT3 normal;
+			XMStoreFloat3( &normal, XMVector3Normalize( XMVectorSet( -dx, -dy, 1.0f, 0.0f ) ) );
+			texels[index] = XMFLOAT4( mask[index], 0.5f + 0.5f * normal.x, 0.5f + 0.5f * normal.y, dissolve[index] );
+		}
+	return texels;
+}
+
 }
 
 std::vector<XMFLOAT4> generateFoamLace( uint32_t size, uint32_t seed )
@@ -175,22 +194,39 @@ std::vector<XMFLOAT4> generateFoamLace( uint32_t size, uint32_t seed )
 				   } );
 	equalize( mask );
 	equalize( dissolve );
+	return packFoam( mask, dissolve, size );
+}
 
-	// Нормаль — по размытой маске, как у pack_water_foam.py
-	const std::vector<float> height = blur( mask, size, normalBlur );
-	const int n = static_cast<int>( size );
-	std::vector<XMFLOAT4> texels( count );
-	for( int y = 0; y < n; ++y )
-		for( int x = 0; x < n; ++x )
-		{
-			const size_t index = static_cast<size_t>( y ) * n + x;
-			const float dx = 0.5f * normalBump * ( height[static_cast<size_t>( y ) * n + wrap( x + 1, n )] - height[static_cast<size_t>( y ) * n + wrap( x - 1, n )] );
-			const float dy = 0.5f * normalBump * ( height[static_cast<size_t>( wrap( y + 1, n ) ) * n + x] - height[static_cast<size_t>( wrap( y - 1, n ) ) * n + x] );
-			XMFLOAT3 normal;
-			XMStoreFloat3( &normal, XMVector3Normalize( XMVectorSet( -dx, -dy, 1.0f, 0.0f ) ) );
-			texels[index] = XMFLOAT4( mask[index], 0.5f + 0.5f * normal.x, 0.5f + 0.5f * normal.y, dissolve[index] );
-		}
-	return texels;
+std::vector<XMFLOAT4> generateFoamDense( uint32_t size, uint32_t seed )
+{
+	const size_t count = static_cast<size_t>( size ) * size;
+	std::vector<float> mask( count ), dissolve( count );
+	std::vector<uint32_t> rows( size );
+	std::iota( rows.begin(), rows.end(), 0u );
+	std::for_each( std::execution::par, rows.begin(), rows.end(),
+				   [&]( uint32_t y )
+				   {
+					   for( uint32_t x = 0; x < size; ++x )
+					   {
+						   const float u = ( x + 0.5f ) / size;
+						   const float v = ( y + 0.5f ) / size;
+						   // Пузыри трёх размеров вплотную (стенки толще, чем у кружева) и плавные пятна плотнее и реже
+						   const Cells large = worley( u, v, 20, seed + 20, 0.5f );
+						   const Cells middle = worley( u, v, 44, seed + 30, 0.6f );
+						   const Cells small = worley( u, v, 90, seed + 40, 0.6f );
+						   const float patches = smoothstep( 0.25f, 0.75f, 0.6f * valueNoise( u, v, 5, seed + 10 ) + 0.4f * valueNoise( u, v, 11, seed + 11 ) );
+						   const size_t index = static_cast<size_t>( y ) * size + x;
+						   mask[index] = 0.35f * ( 1.0f - smoothstep( 0.0f, 0.35f, large.second - large.first ) ) +
+										 0.35f * ( 1.0f - smoothstep( 0.0f, 0.4f, middle.second - middle.first ) ) +
+										 0.3f * ( 1.0f - smoothstep( 0.0f, 0.45f, small.second - small.first ) ) + 0.25f * patches;
+						   dissolve[index] = 0.7f * valueNoise( u, v, 6, seed + 50 ) + 0.3f * valueNoise( u, v, 18, seed + 51 );
+					   }
+				   } );
+	equalize( mask );
+	equalize( dissolve );
+	for( float& value : mask )
+		value = denseFoamGap + ( 1.0f - denseFoamGap ) * value;
+	return packFoam( mask, dissolve, size );
 }
 
 }

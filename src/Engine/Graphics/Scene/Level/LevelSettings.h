@@ -723,6 +723,9 @@ struct WaterSimulationSettings
 	float foamTextureRepeat = 0.5f;
 	float foamSoftness = 0.35f;
 	float foamDissolve = 0.5f;
+	// Густая пена — белая вода сливов и котлов под ступенями: с этой доли пены кружево переходит в неё (полностью — при 1);
+	// 1 — только кружево
+	float foamDense = 0.5f;
 	// Ближе — поверхность воды у русел рисует детальная плитка (0,25 м, режим static), м; 0 — только сетка 1 м
 	float detailDistance = 150.0f;
 

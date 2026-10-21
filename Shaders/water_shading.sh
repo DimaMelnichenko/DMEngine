@@ -25,8 +25,9 @@
 #include "bindless.sh"
 
 DM_SRV( Texture2D<float4>, g_ripple, 1 );	// карта ряби (WaterRipples): наклон крупной и мелкой октавы узора по U и V
-DM_SRV( Texture2D<float4>, g_foam, 4 );		// узор пены — кружево (WaterFoamLace): R — маска 0…1, GB — нормаль по ней
-												// (0,5 + 0,5 · n), A — шум растворения 0…1
+// Узор пены (WaterFoamLace): срез 0 — кружево, 1 — густая пена; R — маска, GB — нормаль по ней (0,5 + 0,5 · n), A — шум
+// растворения 0…1
+DM_SRV( Texture2DArray<float4>, g_foam, 4 );
 DM_SRV( Texture2D<float>, g_sceneDepth, SLOT_SCENE_DEPTH );
 DM_SRV( Texture2D<float4>, g_sceneColor, SLOT_SCENE_COLOR );
 // Экранное отражение (ScreenSpaceReflections): uv попадания луча от поверхности без ряби, вес, доля пути луча в глубине
@@ -312,10 +313,19 @@ float2 standingWaves( RippleTiles tiles, float2 xz, float2 surface, float scale,
 	return slope * tiles.normalization;
 }
 
+// Узор пены в точке uv: кружево, где доля пены велика (dense > 0), — к густой пене
+float4 sampleFoam( float2 uv, float2 uvDX, float2 uvDY, float dense )
+{
+	const float4 lace = g_foam.SampleGrad( g_SamplerLinearWrap, float3( uv, 0.0f ), uvDX, uvDY );
+	[branch] if( dense <= 0.0f )
+		return lace;
+	return lerp( lace, g_foam.SampleGrad( g_SamplerLinearWrap, float3( uv, 1.0f ), uvDX, uvDY ), dense );
+}
+
 // Пена из текстуры по тем же плиткам, что рябь: течение несёт узор, вдоль течения он вытянут, на крутом — по длине вдоль
 // поверхности (surface). Маска и шум растворения (dissolve) — вокруг середины 0,5 (смешение плиток с делением на √Σw², как
 // у ряби: узор не тускнеет и не густеет), slope — наклон пены по её нормали в мире
-float foamTexturePattern( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 dY, out float2 slope, out float dissolve )
+float foamTexturePattern( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 dY, float dense, out float2 slope, out float dissolve )
 {
 	float mask = 0.0f;
 	slope = 0.0f;
@@ -330,7 +340,7 @@ float foamTexturePattern( RippleTiles tiles, float2 xz, float2 surface, float2 d
 		uv.x -= frac( cb_gameTime * tile.rate * g_rippleScale / g_foamTextureRepeat );
 		const float2 uvDX = float2( dot( dX, tile.along ), dot( dX, across ) ) * scale;
 		const float2 uvDY = float2( dot( dY, tile.along ), dot( dY, across ) ) * scale;
-		const float4 foam = g_foam.SampleGrad( g_SamplerLinearWrap, uv, uvDX, uvDY );
+		const float4 foam = sampleFoam( uv, uvDX, uvDY, dense );
 		mask += tile.weight * ( foam.r - 0.5f );
 		dissolve += tile.weight * ( foam.a - 0.5f );
 		// Наклон по U и V — минус xy нормали; в мир — как у ряби (вдоль течения узор длиннее и во столько же раз положе)
@@ -410,9 +420,9 @@ struct WaterShading
 };
 
 // Рябь (flow), стоячие волны (standing: если standingScale > 0) по набору плиток — с весом weight, узор пены (foamNoise, если
-// foam; у текстуры пены — ещё её наклон foamSlope) — с весом foamWeight
+// foam; ещё его наклон foamSlope; dense — доля густой пены) — с весом foamWeight
 void addRipple( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 dY, bool foam, float weight, float foamWeight,
-				float standingScale, inout float4 flow, inout float2 standing, inout float foamNoise, inout float2 foamSlope,
+				float dense, float standingScale, inout float4 flow, inout float2 standing, inout float foamNoise, inout float2 foamSlope,
 				inout float foamDissolve )
 {
 	float pattern;
@@ -423,7 +433,7 @@ void addRipple( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 
 	{
 		float2 slope;
 		float dissolve;
-		foamNoise += foamWeight * foamTexturePattern( tiles, xz, surface, dX, dY, slope, dissolve );
+		foamNoise += foamWeight * foamTexturePattern( tiles, xz, surface, dX, dY, dense, slope, dissolve );
 		foamSlope += foamWeight * slope;
 		foamDissolve += foamWeight * ( dissolve - 0.5f );
 	}
@@ -456,7 +466,7 @@ float patternStretchWeight( float2 dX, float2 dY, float2 mapDX, float2 mapDY )
 // закручивается в вихрях, а не ездит плитками. Слой обновляется раз в период (смещения — к нулю, узор — свой сдвиг на цикл),
 // его вес — треугольник по фазе (в миг обновления — 0) × вес по растяжению (patternStretchWeight); смешение слоёв — с
 // делением на √Σw², как у плиток. Маска, шум растворения (вокруг 0,5) и наклон — как у foamTexturePattern
-float nearFoamPattern( float2 xz, float2 dX, float2 dY, out float2 slope, out float dissolve )
+float nearFoamPattern( float2 xz, float2 dX, float2 dY, float dense, out float2 slope, out float dissolve )
 {
 	const float4 offsets = sampleNearPattern( xz );
 	const float4 offsetsDX = ddx( offsets );
@@ -476,7 +486,7 @@ float nearFoamPattern( float2 xz, float2 dX, float2 dY, out float2 slope, out fl
 		const float2 uv = ( xz + offset ) / g_foamTextureRepeat + nearPatternOffset( floor( layer ), k );
 		const float2 uvDX = mapDX / g_foamTextureRepeat;
 		const float2 uvDY = mapDY / g_foamTextureRepeat;
-		const float4 foam = g_foam.SampleGrad( g_SamplerLinearWrap, uv, uvDX, uvDY );
+		const float4 foam = sampleFoam( uv, uvDX, uvDY, dense );
 		mask += weight * ( foam.r - 0.5f );
 		dissolve += weight * ( foam.a - 0.5f );
 		// Наклон по U и V — минус xy нормали; U и V — по X и Z мира
@@ -573,18 +583,20 @@ float4 shadeWater( WaterShading input )
 		const float w = input.detailRipple;
 		const bool needFoam = foamAmount > 0.0f;
 		const float n = needFoam ? input.nearPattern : 0.0f;
+		// Где пены больше всего (слив, котёл под ступенью) — густая белая вода вместо кружева
+		const float dense = g_foamDense < 1.0f ? smoothstep( g_foamDense, 1.0f, foamAmount ) : 0.0f;
 		float foamNoise = 0.0f;
 		[branch] if( w > 0.0f )
 			addRipple( detailRippleTiles( input.worldPosition.xz, input.velocity, input.detailTexel ), input.worldPosition.xz, surfaceStretch,
-					   dX, dY, needFoam, w, w * ( 1.0f - n ), standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
+					   dX, dY, needFoam, w, w * ( 1.0f - n ), dense, standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
 		[branch] if( w < 1.0f )
 			addRipple( rippleTiles( input.worldPosition.xz, input.velocity ), input.worldPosition.xz, surfaceStretch, dX, dY, needFoam, 1.0f - w,
-					   ( 1.0f - w ) * ( 1.0f - n ), standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
+					   ( 1.0f - w ) * ( 1.0f - n ), dense, standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
 		[branch] if( n > 0.0f )
 		{
 			float2 slope;
 			float dissolve;
-			foamNoise += n * nearFoamPattern( input.worldPosition.xz, dX, dY, slope, dissolve );
+			foamNoise += n * nearFoamPattern( input.worldPosition.xz, dX, dY, dense, slope, dissolve );
 			foamSlope += n * slope;
 			foamDissolve += n * ( dissolve - 0.5f );
 		}

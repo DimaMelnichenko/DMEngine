@@ -796,6 +796,9 @@ const SettingsSchema<WaterSimulationSettings>& waterSimulationSchema()
 		{ "foam_dissolve", "Foam dissolve", DM_SETTING( foamDissolve ), 0.0f, 1.0f, "",
 		  "Where the foam fades out it dissolves in pieces at different distances (the threshold is shifted by the noise of the "
 		  "foam texture); 0 - along a line", 0, "surface" },
+		{ "foam_dense", "Foam dense", DM_SETTING( foamDense ), 0.0f, 1.0f, "",
+		  "From this foam share the foam lace turns into dense white water (fully at 1): spillways, pools under the steps; "
+		  "1 - lace only", 0, "surface" },
 		{ "detail_distance", "Detail distance", DM_SETTING( detailDistance ), 0.0f, 1000.0f, "m",
 		  "Nearer the water surface of streams is drawn by the detail tiles (0.25 m): farther the 1 m grid differs by less than a "
 		  "pixel, and a detail tile has 16 times as many triangles; 0 - the 1 m grid only", 0, "surface" },
