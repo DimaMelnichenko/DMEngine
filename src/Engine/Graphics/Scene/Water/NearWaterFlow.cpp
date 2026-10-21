@@ -128,7 +128,7 @@ bool NearWaterFlow::createTextures( uint32_t size )
 		   std::tuple{ &m_shallow.velocity[0], &m_shallow.velocityUAV[0], size, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow velocity" },
 		   std::tuple{ &m_shallow.velocity[1], &m_shallow.velocityUAV[1], size, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow velocity" },
 		   std::tuple{ &m_shallow.flux, &m_shallow.fluxUAV, size, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow flux" },
-		   std::tuple{ &m_shallow.target, &m_shallow.targetUAV, size, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow target" },
+		   std::tuple{ &m_shallow.detail, &m_shallow.detailUAV, size, DXGI_FORMAT_R32G32B32A32_FLOAT, "Water near shallow detail" },
 		   std::tuple{ &m_shallow.blocks, &m_shallow.blocksUAV, blocks, DXGI_FORMAT_R32G32_FLOAT, "Water near shallow blocks" } } )
 	{
 		TextureDesc desc;
@@ -261,6 +261,8 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	nearParams.nearEddies = std::max( window.eddies, 0.0f );
 	nearParams.nearReset = m_reset ? 1u : 0u;
 	nearParams.nearSurface = std::max( window.surface, 0.0f );
+	nearParams.nearShallow = window.shallow ? 1u : 0u;
+	nearParams.nearStoneDrag = std::max( window.stoneDrag, 0.0f );
 	if( m_windowStones.empty() )
 		m_windowStones.push_back( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
 	if( window.shallow )
@@ -369,7 +371,7 @@ void NearWaterFlow::stepShallow( const WaterSimulationSettings& settings, WaterF
 	pass.writes = { { &m_shallow.cellsUAV, "near shallow cells" },		  { &m_shallow.depthUAV, "near shallow depth" },
 					{ &m_shallow.velocityUAV[0], "near shallow velocity" }, { &m_shallow.velocityUAV[1], "near shallow velocity" },
 					{ &m_shallow.fluxUAV, "near shallow flux" },			  { &m_resultUAV, "near flow" },
-					{ &m_shallow.targetUAV, "near shallow target" },		  { &m_shallow.blocksUAV, "near shallow blocks" } };
+					{ &m_shallow.detailUAV, "near shallow detail" },		  { &m_shallow.blocksUAV, "near shallow blocks" } };
 	d3d.beginPass( pass );
 	bindWindow( settings, field, water, height, water.flowParameters( settings.flow, 0.0f, dt, m_step, blocks * blocks ), window );
 	if( m_reset )
@@ -382,7 +384,7 @@ void NearWaterFlow::stepShallow( const WaterSimulationSettings& settings, WaterF
 		d3d.setUAV( 3, m_shallow.velocityUAV[m_shallow.current ^ 1u] );
 		d3d.setUAV( 4, m_shallow.fluxUAV );
 		d3d.setUAV( 5, m_resultUAV );
-		d3d.setUAV( 6, m_shallow.targetUAV );
+		d3d.setUAV( 6, m_shallow.detailUAV );
 		d3d.setUAV( 7, m_shallow.blocksUAV );
 		shader.dispatchGroups( blocks * blocks, 1, 1 );
 	};
@@ -468,6 +470,7 @@ void NearWaterFlow::frameConstants( FrameParameters& constants ) const
 	{
 		constants.waterNear = XMFLOAT4( m_origin.x * m_step, m_origin.y * m_step, m_step, static_cast<float>( m_size ) );
 		constants.waterNearFoam = XMFLOAT4( m_foamShare, m_patternShare, m_patternPeriod, m_patternStretch );
+		constants.waterNearMode = XMFLOAT4( m_shallowMode ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f );
 	}
 }
 

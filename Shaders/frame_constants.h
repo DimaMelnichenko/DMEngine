@@ -73,6 +73,9 @@ DM_CONSTANTS( FrameConstantBuffer, SLOT_CB_FRAME )
 	// с его появления не шло); y — доля узора пены по течению окна (SLOT_WATER_NEAR_PATTERN, «Pattern»; 0 — плитки), z — период
 	// обновления его слоёв, с, w — растяжение слоя, при котором его вес вдвое меньше («Pattern stretch»)
 	DM_FIELD( float4, waterNearFoam );
+	// Режим окна: x — 1, если в нём мелкая вода («Shallow water»: поверхность даёт расчёт, длинные гребни стоячих волн
+	// геометрией сетки окна не рисуются — только материалом), 0 — «жёсткая крышка»; y, z, w — 0
+	DM_FIELD( float4, waterNearMode );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

@@ -29,6 +29,10 @@ static const int shearReach = 2;
 static const float shearSpan = 2.0f;
 // Камень выше воды бьёт воду ячейкам не дальше стольких ячеек от себя
 static const int stoneReach = 2;
+// Мелкая вода: на сливе со ступени — сразу белая вода, где поверхность круче shallowFallSlope (45°; полная — вдвое круче) на
+// соседних ячейках: средний уклон каскада (25–30 %) её не даёт, только стенка ступени
+static const float shallowFallSlope = 1.0f;
+static const float shallowFallFoam = 1.2f;
 
 // Ячейка мира → тексель окна по модулю его стороны
 uint2 nearAddress( int2 cell )
@@ -171,12 +175,24 @@ float stepFoam( int2 cell, float2 world, float4 here )
 	n[3] = nearState( cell - int2( 0, 1 ), here );
 	const float divergence = ( n[0].y - n[1].y + n[2].z - n[3].z ) / ( 2.0f * g_nearStep );
 
-	// Слив — уклон детальной воды (уровень на 0,25 м в обе стороны)
+	// Слив — уклон детальной воды (уровень на 0,25 м в обе стороны); в окне мелкая вода — уклон её поверхности: детальный и
+	// отклонения от него (x итога окна; у сухого соседа — как у ячейки): пена — на кромке плёса, сливе и прыжке, а плёс — гладкий
 	const float level = detailLevelAt( world, 0.0f );
-	const float reach = 4.0f * g_nearStep;
-	const float slope = length( float2( detailLevelAt( world + float2( reach, 0.0f ), level ) - detailLevelAt( world - float2( reach, 0.0f ), level ),
-										detailLevelAt( world + float2( 0.0f, reach ), level ) - detailLevelAt( world - float2( 0.0f, reach ), level ) ) ) /
-						( 2.0f * reach );
+	const int reachCells = 4;
+	const float reach = reachCells * g_nearStep;
+	const float2 detailGradient = float2( detailLevelAt( world + float2( reach, 0.0f ), level ) - detailLevelAt( world - float2( reach, 0.0f ), level ),
+										  detailLevelAt( world + float2( 0.0f, reach ), level ) - detailLevelAt( world - float2( 0.0f, reach ), level ) );
+	float2 gradient = detailGradient;
+	if( g_nearShallow != 0 )
+	{
+		const float4 ahead[4] = { nearState( cell + int2( reachCells, 0 ), here ), nearState( cell - int2( reachCells, 0 ), here ),
+								  nearState( cell + int2( 0, reachCells ), here ), nearState( cell - int2( 0, reachCells ), here ) };
+		float lift[4];
+		[unroll] for( uint k = 0; k < 4; ++k )
+			lift[k] = ahead[k].w > 0.0f ? ahead[k].x : here.x;
+		gradient += float2( lift[0] - lift[1], lift[2] - lift[3] );
+	}
+	const float slope = length( gradient ) / ( 2.0f * reach );
 	float source = foamSource( speed, strainRate( dvdx, dvdz ), slope );
 
 	// Камень у поверхности. В самом камне выше воды пену закрывает камень, а течение сквозь него — просачивание: не источник
@@ -202,5 +218,16 @@ float stepFoam( int2 cell, float2 world, float4 here )
 
 	// Назад по течению (смещение за кадр — доли ячейки: скорость в середине шага та же)
 	const float carried = carriedFoam( world - g_foamTimeStep * velocity );
-	return foamStep( carried, divergence, source, speed );
+	const float foam = foamStep( carried, divergence, source, speed );
+	// Мелкая вода: на сливе со ступени — сразу белая вода (поток срывается с кромки плёса, в нём воздух), а не пена, которая
+	// растёт к источнику за время. Крутизна — детальный уклон и отклонения от него по соседним ячейкам
+	if( g_nearShallow != 0 )
+	{
+		float lift[4];
+		[unroll] for( uint k = 0; k < 4; ++k )
+			lift[k] = n[k].w > 0.0f ? n[k].x : here.x;
+		const float steepness = length( detailGradient / ( 2.0f * reach ) + float2( lift[0] - lift[1], lift[2] - lift[3] ) / ( 2.0f * g_nearStep ) );
+		return max( foam, shallowFallFoam * saturate( ( steepness - shallowFallSlope ) / shallowFallSlope ) );
+	}
+	return foam;
 }

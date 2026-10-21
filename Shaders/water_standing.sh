@@ -109,10 +109,11 @@ float2 standingCrest( float2 xz, float2 standing )
 }
 
 // Доля длинных гребней геометрией сетки окна у камеры в точке мира: по весу окна, где волна длиннее standingGeometryCells
-// ячеек окна; столько же их наклона уже в нормали сетки — материал добавляет остальное
+// ячеек окна; столько же их наклона уже в нормали сетки — материал добавляет остальное. В окне мелкая вода — 0: поверхность
+// даёт расчёт (бугры, сливы, прыжки), а гребни стоячих волн — волны с дисперсией, мелкой воде их не получить, — материалом
 float standingGeometryShare( float2 xz, float wavenumber )
 {
-	if( wavenumber <= 0.0f || cb_waterNear.w <= 0.0f )
+	if( wavenumber <= 0.0f || cb_waterNear.w <= 0.0f || cb_waterNearMode.x > 0.0f )
 		return 0.0f;
 	return nearWaterWeight( xz ) * saturate( 6.2831853f / wavenumber / ( standingGeometryCells * cb_waterNear.z ) - 1.0f );
 }

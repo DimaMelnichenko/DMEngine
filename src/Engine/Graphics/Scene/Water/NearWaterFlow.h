@@ -109,13 +109,13 @@ private:
 	Texture m_info, m_info2, m_velocity, m_advected, m_pressure, m_divergenceTexture, m_vorticityTexture, m_result;
 	StorageView m_infoUAV, m_info2UAV, m_velocityUAV, m_advectedUAV, m_pressureUAV, m_divergenceUAV, m_vorticityUAV, m_resultUAV;
 	ShaderView m_resultView;
-	// Мелкая вода (water_near_shallow.cs; итог — m_result): дно и детальная вода ячейки, глубина, скорость граней (две по
-	// очереди: подшаг читает velocity[current], пишет другую), расход граней, скорость детальной воды на гранях, блоки 8 × 8
-	// подтягивания крупного масштаба
+	// Мелкая вода (water_near_shallow.cs; итог — m_result): дно, камень и детальная вода ячейки, глубина, скорость граней (две
+	// по очереди: подшаг читает velocity[current], пишет другую), расход граней, скорость детальной воды на гранях и ручей ли,
+	// блоки 8 × 8 подтягивания крупного масштаба
 	struct Shallow
 	{
-		Texture cells, depth, velocity[2], flux, target, blocks;
-		StorageView cellsUAV, depthUAV, velocityUAV[2], fluxUAV, targetUAV, blocksUAV;
+		Texture cells, depth, velocity[2], flux, detail, blocks;
+		StorageView cellsUAV, depthUAV, velocityUAV[2], fluxUAV, detailUAV, blocksUAV;
 		uint32_t current = 0;
 	} m_shallow;
 	bool m_shallowMode = false;	// режим прошлого кадра: сменился — окно заново

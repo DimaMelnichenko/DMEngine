@@ -29,6 +29,10 @@ DM_CONSTANTS( WaterNearFlowBuffer, b7 )
 	DM_FIELD( float, nearNudgeShare );		// доля шага: средняя блока 8 × 8 — к течению 0,25 м
 	DM_FIELD( uint, nearReset );			// 1 — все ячейки окна — новые (первый кадр, телепорт, правка окна)
 	DM_FIELD( float, nearSurface );			// подъём поверхности по давлению — × это (0 — поверхность ровная)
+	DM_FIELD( uint, nearShallow );			// 1 — в окне мелкая вода (water_near_shallow.cs), 0 — «жёсткая крышка»
+	// Мелкая вода: сопротивление камня, 1/м — u /= 1 + dt · это · доля столба воды в камне · |u| (камень проницаем)
+	DM_FIELD( float, nearStoneDrag );
+	DM_FIELD( float2, nearPadding );
 };
 DM_CONSTANTS_END
 

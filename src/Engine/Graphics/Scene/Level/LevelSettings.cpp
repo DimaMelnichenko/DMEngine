@@ -846,6 +846,10 @@ const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema()
 		  "hydraulic jump below a step and reflections from the banks come by themselves; off - the flow under a rigid lid with "
 		  "the surface from its pressure (Steps per frame, Pressure iterations, Viscosity, Eddies, Obstacle passage and Surface "
 		  "relief are for it)" },
+		{ "near_stone_drag", "Stone drag", DM_SETTING( stoneDrag ), 0.0f, 100.0f, "1/m",
+		  "Shallow water: a stone is solid up to half the depth and porous above it, this is its drag on the water passing "
+		  "through: more - the water goes around the stone and rises in front of it, less - it seeps through a row of stones",
+		  settingClamp },
 		{ "near_size", "Size", DM_SETTING( size ), 2.0f, 40.0f, "m", "Side of the window around the camera", settingClamp },
 		{ "near_cell", "Cell", DM_SETTING( cell ), 0.03f, 0.25f, "m", "Side of a cell of the fine grid", settingClamp },
 		{ "near_steps", "Steps per frame", DM_SETTING( steps ), 1.0f, 8.0f, "", "Flow steps per frame (the game time of the frame)", settingClamp },
