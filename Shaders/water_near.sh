@@ -18,10 +18,15 @@ DM_SRV( Texture2D<float4>, g_waterNear, SLOT_WATER_NEAR );
 DM_SRV( Texture2D<float>, g_waterNearFoam, SLOT_WATER_NEAR_FOAM );
 // Смещения координат узора пены, которые несёт течение окна (water_near_foam.cs): слой 1 — xy, слой 2 — zw, м мира
 DM_SRV( Texture2D<float4>, g_waterNearPattern, SLOT_WATER_NEAR_PATTERN );
+// Фаза слоёв узора (cos, sin фазы слоя 0), её несёт течение вместе со смещениями
+DM_SRV( Texture2D<float2>, g_waterNearPhase, SLOT_WATER_NEAR_PHASE );
 
-// Слоёв смещений узора два, фазы — через полпериода; фаза в точке сдвинута шумом с ячейкой nearPatternNoiseCell (весь узор
-// окна не обновляется разом — не мигает)
-static const float nearPatternNoiseCell = 2.0f;	// м
+// Слоёв смещений узора два, фазы — через полпериода. Фазу несёт течение вместе со смещениями (water_near_foam.cs): у частицы
+// воды она идёт ровно, обновление — когда она переходит через целое; у воды, входящей в окно (и у окна заново), фаза —
+// время и шум с ячейкой nearPatternNoiseCell в точке входа: соседние струйки обновляются в разное время. Прежде фаза была
+// привязана к миру, а смещения несло течение: в точку приходили смещения, обновлённые выше по течению при другой фазе, и
+// на узком ручье слой обновлялся разом — пена пульсировала раз в полпериода (Dimok, 2026-10-21)
+static const float nearPatternNoiseCell = 0.25f;	// м
 
 // К краю окна у камеры на этой полосе, м, его течение переходит в детальное, а подъём поверхности сходит на нет
 static const float nearWaterFade = 1.0f;
@@ -84,11 +89,19 @@ float nearPatternPhase( float2 worldXZ, float time, float period )
 	return time / period + noise;
 }
 
-// Случайный сдвиг узора слоя на цикл (номер цикла — целая часть фазы слоя): после обновления слой не повторяет прошлый
+// Случайный сдвиг узора слоя на цикл (номер цикла — целая часть фазы слоя), м: смещение слоя при обновлении — он, а не 0,
+// и слой не повторяет прошлый
 float2 nearPatternOffset( float cycle, uint layer )
 {
 	const uint hash = nearPatternHash( (uint)(int)cycle * 2u + layer + 0x27d4eb2fu );
 	return float2( hash & 0xffffu, hash >> 16u ) / 65536.0f;
+}
+
+// Фаза слоя 0 узора в точке мира, доля периода 0…1, — из окна (её несёт течение); fallback — если её там нет
+float nearPatternPhaseAt( float2 worldXZ, float fallback )
+{
+	const float2 phase = g_waterNearPhase.SampleLevel( g_SamplerLinearWrap, worldXZ / ( cb_waterNear.z * cb_waterNear.w ), 0.0f );
+	return dot( phase, phase ) > 1e-4f ? frac( atan2( phase.y, phase.x ) / 6.2831853f ) : fallback;
 }
 
 // Ячейка окна (сетка мира с шагом ячейки окна от угла мира) — её тексель по модулю стороны

@@ -19,9 +19,11 @@ DM_SRV( Texture2D<float4>, g_nearState, 0 );		// итог окна этого к
 DM_SRV( Texture2D<float>, g_nearFoamPrevious, 1 );	// пена окна прошлого кадра
 DM_SRV( Texture2DArray<float>, g_detailFoam, 2 );	// поле пены детальной сетки (WaterFoam): тексели и срезы детальной воды
 DM_SRV( Texture2D<float4>, g_nearPatternPrevious, 3 );	// смещения координат узора прошлого кадра: слой 1 — xy, слой 2 — zw, м
+DM_SRV( Texture2D<float2>, g_nearPhasePrevious, 4 );	// фаза слоёв узора прошлого кадра: cos, sin фазы слоя 0
 
 DM_UAV( RWTexture2D<float>, g_nearFoam, 0 );
 DM_UAV( RWTexture2D<float4>, g_nearPattern, 1 );
+DM_UAV( RWTexture2D<float2>, g_nearPhase, 2 );
 
 // Скачок скорости для сдвига — через две ячейки в каждую сторону (25 см), делится на столько, м: как у сетки 1 м и
 // детальной (там скачок через 0,5 м — на 2 м), — тот же порог foam_shear ловит струю у камня, а не профиль поперёк ручья
@@ -123,6 +125,26 @@ float4 carriedPattern( float2 world )
 	return offsets;
 }
 
+// Фаза слоя 0 узора прошлого кадра в точке мира, доля периода 0…1: у ячеек окна прошлого кадра — их (cos, sin) билинейно, у
+// воды извне окна — время и шум в точке (nearPatternPhase)
+float carriedPhase( float2 world )
+{
+	const float2 position = world / g_nearStep - 0.5f;
+	const int2 base = int2( floor( position ) );
+	const float2 f = position - (float2)base;
+	const float outside = frac( nearPatternPhase( world, g_nearPatternTime - g_nearPatternStep, g_nearPatternPeriod ) );
+	const float2 outsideVector = float2( cos( 6.2831853f * outside ), sin( 6.2831853f * outside ) );
+	float2 phase = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 corner = int2( k & 1, k >> 1 );
+		const int2 cell = base + corner;
+		const float2 value = insideWindow( cell, g_nearPreviousOrigin ) ? g_nearPhasePrevious[nearAddress( cell )] : outsideVector;
+		phase += value * ( corner.x ? f.x : 1.0f - f.x ) * ( corner.y ? f.y : 1.0f - f.y );
+	}
+	return dot( phase, phase ) > 1e-6f ? frac( atan2( phase.y, phase.x ) / 6.2831853f ) : outside;
+}
+
 // Пена ячейки за кадр (here — итог окна в ячейке, вода есть)
 float stepFoam( int2 cell, float2 world, float4 here );
 
@@ -139,21 +161,29 @@ void mainNearFoam( uint3 id : SV_DispatchThreadID )
 	const bool fresh = g_nearReset != 0 || !insideWindow( cell, g_nearPreviousOrigin );
 	if( here.w <= 0.0f || fresh )
 	{
+		const float phase = 6.2831853f * frac( nearPatternPhase( world, g_nearPatternTime, g_nearPatternPeriod ) );
 		g_nearFoam[address] = here.w > 0.0f ? detailFoamAt( world ) : 0.0f;
 		g_nearPattern[address] = 0.0f;
+		g_nearPhase[address] = float2( cos( phase ), sin( phase ) );
 		return;
 	}
 	g_nearFoam[address] = stepFoam( cell, world, here );
 
-	// Смещения узора: назад по течению и на смещение за кадр; слой, чья фаза перешла через целое, — заново
-	float4 offsets = carriedPattern( world - g_nearPatternStep * here.yz ) - g_nearPatternStep * here.yzyz;
-	const float phase = nearPatternPhase( world, g_nearPatternTime, g_nearPatternPeriod );
-	const float before = nearPatternPhase( world, g_nearPatternTime - g_nearPatternStep, g_nearPatternPeriod );
+	// Смещения узора и фаза: назад по течению, смещение — на сдвиг за кадр, фаза — на долю периода; слой, чья фаза перешла
+	// через целое, — заново: смещение — случайный сдвиг цикла (номер цикла — фаза частицы без дробной части: время / период
+	// и её шум в точке входа, у соседних частиц на той же границе цикла — тот же)
+	const float2 from = world - g_nearPatternStep * here.yz;
+	float4 offsets = carriedPattern( from ) - g_nearPatternStep * here.yzyz;
+	const float before = carriedPhase( from );
+	const float phase = before + g_nearPatternStep / g_nearPatternPeriod;
+	const float time = g_nearPatternTime / g_nearPatternPeriod;
+	const float cycle = floor( time + frac( phase - time ) + 0.5f );
 	if( floor( phase ) != floor( before ) )
-		offsets.xy = 0.0f;
+		offsets.xy = nearPatternOffset( cycle, 0 );
 	if( floor( phase + 0.5f ) != floor( before + 0.5f ) )
-		offsets.zw = 0.0f;
+		offsets.zw = nearPatternOffset( floor( time + frac( phase + 0.5f - time ) + 0.5f ), 1 );
 	g_nearPattern[address] = offsets;
+	g_nearPhase[address] = float2( cos( 6.2831853f * phase ), sin( 6.2831853f * phase ) );
 }
 
 float stepFoam( int2 cell, float2 world, float4 here )

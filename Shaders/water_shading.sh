@@ -440,7 +440,6 @@ struct NearPatternLayers
 	float2 position[2];		// точка узора слоя, м (точка мира + смещение)
 	float2 mapDX[2];		// её экранные производные
 	float2 mapDY[2];
-	float2 shift[2];		// случайный сдвиг узора слоя на цикл, доли повтора
 	float  weight[2];
 	float  normalization;	// 1 / √Σw²
 };
@@ -450,7 +449,8 @@ NearPatternLayers nearPatternLayers( float2 xz, float2 dX, float2 dY )
 	const float4 offsets = sampleNearPattern( xz );
 	const float4 offsetsDX = ddx( offsets );
 	const float4 offsetsDY = ddy( offsets );
-	const float phase = nearPatternPhase( xz, cb_gameTime, cb_waterNearFoam.z );
+	// Фаза — её несёт течение вместе со смещениями (water_near_foam.cs); сдвиг слоя на цикл уже в смещениях
+	const float phase = nearPatternPhaseAt( xz, frac( nearPatternPhase( xz, cb_gameTime, cb_waterNearFoam.z ) ) );
 	NearPatternLayers layers;
 	float weights = 0.0f;
 	[unroll] for( uint k = 0; k < 2; ++k )
@@ -459,7 +459,6 @@ NearPatternLayers nearPatternLayers( float2 xz, float2 dX, float2 dY )
 		layers.position[k] = xz + ( k == 0 ? offsets.xy : offsets.zw );
 		layers.mapDX[k] = dX + ( k == 0 ? offsetsDX.xy : offsetsDX.zw );
 		layers.mapDY[k] = dY + ( k == 0 ? offsetsDY.xy : offsetsDY.zw );
-		layers.shift[k] = nearPatternOffset( floor( layer ), k );
 		layers.weight[k] = ( 1.0f - abs( 2.0f * frac( layer ) - 1.0f ) ) * patternStretchWeight( dX, dY, layers.mapDX[k], layers.mapDY[k] );
 		weights += layers.weight[k] * layers.weight[k];
 	}
@@ -475,7 +474,7 @@ float nearFoamPattern( NearPatternLayers layers, float dense, out float2 slope, 
 	dissolve = 0.0f;
 	[unroll] for( uint k = 0; k < 2; ++k )
 	{
-		const float2 uv = layers.position[k] / g_foamTextureRepeat + layers.shift[k];
+		const float2 uv = layers.position[k] / g_foamTextureRepeat;
 		const float4 foam = sampleFoam( uv, layers.mapDX[k] / g_foamTextureRepeat, layers.mapDY[k] / g_foamTextureRepeat, dense );
 		mask += layers.weight[k] * ( foam.r - 0.5f );
 		dissolve += layers.weight[k] * ( foam.a - 0.5f );
@@ -495,7 +494,7 @@ float4 nearFlowRipple( NearPatternLayers layers )
 	float4 result = 0.0f;
 	[unroll] for( uint k = 0; k < 2; ++k )
 	{
-		const float2 uv = layers.position[k] / g_rippleScale + layers.shift[k].yx;
+		const float2 uv = layers.position[k].yx / g_rippleScale;
 		const float4 ripple = g_ripple.SampleGrad( g_SamplerLinearWrap, uv, layers.mapDX[k] / g_rippleScale, layers.mapDY[k] / g_rippleScale ) *
 							  rippleSlopeRange;
 		result += layers.weight[k] * ripple;

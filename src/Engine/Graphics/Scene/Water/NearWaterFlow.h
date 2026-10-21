@@ -121,9 +121,9 @@ private:
 	bool m_shallowMode = false;	// режим прошлого кадра: сменился — окно заново
 	// Пена окна (R16F) и смещения координат её узора (RGBA16F: два слоя): по два поля по очереди — шаг читает прошлое, пишет
 	// другое
-	Texture m_foam[2], m_pattern[2];
-	StorageView m_foamUAV[2], m_patternUAV[2];
-	ShaderView m_foamView[2], m_patternView[2];
+	Texture m_foam[2], m_pattern[2], m_phase[2];
+	StorageView m_foamUAV[2], m_patternUAV[2], m_phaseUAV[2];
+	ShaderView m_foamView[2], m_patternView[2], m_phaseView[2];
 	uint32_t m_foamCurrent = 0;
 	bool m_foamReset = true;	// прошлого поля пены нет (окно заново, поля пены 0,25 м ещё нет)
 	float m_foamTime = 0.0f;	// время игры, которое пена окна шла с последнего «заново», с: 0 — она ещё — поле 0,25 м

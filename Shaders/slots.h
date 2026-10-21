@@ -134,8 +134,11 @@
 // Берег озёр (TerrainPipeline::computeLakeShore, terrain_layers.sh): R32_FLOAT на сетке карты высот (строки — как у неё) —
 // уровень воды озера, м, у клеток озера и полосы берега до перелива (с полем в клетку); −1e9 — не у озера
 #define SLOT_LAKE_SHORE	144
+// Фаза слоёв узора пены окна у камеры (NearWaterFlow, water_near_foam.cs): RG16F — cos и sin фазы слоя 0 (слой 1 — на
+// полпериода позже), её несёт течение вместе со смещениями узора
+#define SLOT_WATER_NEAR_PHASE	145
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	45
+#define SLOT_SCENE_COUNT	46
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

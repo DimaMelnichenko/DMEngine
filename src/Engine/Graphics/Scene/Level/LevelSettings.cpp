@@ -874,6 +874,10 @@ const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema()
 		  "hydraulic jump below a step and reflections from the banks come by themselves; off - the flow under a rigid lid with "
 		  "the surface from its pressure (Steps per frame, Pressure iterations, Viscosity, Eddies, Obstacle passage and Surface "
 		  "relief are for it)" },
+		{ "near_stream_roughness", "Stream roughness", DM_SETTING( streamRoughness ), 0.01f, 0.1f, "s/m^(1/3)",
+		  "Shallow water: Manning roughness of the stream bed in the window. The channels use a larger one (Manning of Channels: "
+		  "pebbles plus the form drag of stones and steps); in the window the stones and steps are the bed itself, so only the grain "
+		  "is left: more - slower water", settingClamp },
 		{ "near_stone_drag", "Stone drag", DM_SETTING( stoneDrag ), 0.0f, 100.0f, "1/m",
 		  "Shallow water: a stone is solid up to half the depth and porous above it, this is its drag on the water passing "
 		  "through: more - the water goes around the stone and rises in front of it, less - it seeps through a row of stones",
