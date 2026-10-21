@@ -43,6 +43,7 @@ bool NearWaterFlow::initialize()
 		!m_viscosity.initialize( file, "mainFlowViscosity", same, define ) || !m_nudge.initialize( file, "mainFlowNudge", same, define ) ||
 		!m_divergence.initialize( file, "mainFlowDivergence", same, define ) || !m_red.initialize( file, "mainFlowRed", same, define ) ||
 		!m_black.initialize( file, "mainFlowBlack", same, define ) || !m_project.initialize( file, "mainFlowProject", same, define ) ||
+		!m_surfacePressure.initialize( file, "mainNearSurfacePressure", same, define ) ||
 		!m_output.initialize( file, "mainFlowOutput", same, define ) ||
 		!m_foamStep.initialize( "Shaders\\water_near_foam.cs", "mainNearFoam", same ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterFoamBuffer ), m_foamBuffer ) ||
@@ -287,6 +288,9 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 		}
 		dispatch( m_project );
 	}
+	// Подъём поверхности — по сглаженному давлению (после шагов)
+	if( steps > 0 )
+		dispatch( m_surfacePressure );
 	dispatch( m_output );
 	// Шейдерам — до следующего кадра (вода, расстановка, частицы): привязка завершает проход над окном
 	d3d.setSRV( SLOT_WATER_NEAR, m_resultView );

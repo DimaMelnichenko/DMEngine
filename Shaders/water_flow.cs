@@ -129,6 +129,9 @@ static const float zSign = 1.0f;			// ось y окна — по Z мира
 static const float nearGravity = 9.81f;		// м/с²: давление → подъём поверхности (nearSurfaceLift)
 static const float nearSurfaceReach = 0.5f;	// м: подъём поверхности — давление минус среднее в этом радиусе
 static const float nearSurfaceDepthShare = 0.5f;	// подъём и просадка поверхности — не больше этой доли глубины ячейки
+// и не больше nearSurfaceMaxLift, м: бугор перед камнем — v² / 2g, ~5 см при 1 м/с; давление на сливе и у ступени давало до
+// 8 см полосами, и с высоты в десятки сантиметров над водой поверхность шла стеклянным листом с изломом (Dimok, 2026-10-21)
+static const float nearSurfaceMaxLift = 0.03f;
 
 typedef uint2 CellAddress;
 #define FLOW_CELL g_nearStep
@@ -949,45 +952,77 @@ bool surfacePressure( int2 cell, out float pressure )
 	return true;
 }
 
+// Сглаженное давление для подъёма поверхности (после шагов, перед mainFlowOutput): биномиальное среднее 5 × 5 (веса
+// 1 4 6 4 1 по каждой оси) по ячейкам surfacePressure — в g_divergence (после шагов он не нужен до следующего кадра), вес — в
+// g_vorticity (0 — рядом ни одной такой ячейки). Шахматную рябь красно-чёрного Гаусса — Зейделя оно гасит целиком, и среднее
+// вокруг (nearSurfaceLift) можно брать по нему через ячейку: по сырому давлению сетка выборок через ячейку сдвигалась вместе
+// с ячейкой, и подъём соседних ячеек 6,25 см прыгал на 4–6 см точечной решёткой — у камеры над водой поверхность шла
+// изломанными гранями (Dimok, 2026-10-21)
+[numthreads( 8, 8, 1 )]
+void mainNearSurfacePressure( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
+{
+	int2 cell;
+	CellAddress address;
+	if( !flowCell( group, thread, cell, address ) )
+		return;
+	static const float binomial[5] = { 1.0f, 4.0f, 6.0f, 4.0f, 1.0f };
+	float pressure;
+	float sum = 0.0f;
+	float weights = 0.0f;
+	[unroll] for( int k = 0; k < 25; ++k )
+		if( surfacePressure( cell + int2( k % 5 - 2, k / 5 - 2 ), pressure ) )
+		{
+			const float weight = binomial[k % 5] * binomial[k / 5];
+			sum += weight * pressure;
+			weights += weight;
+		}
+	g_divergence[address] = weights > 0.0f ? sum / weights : 0.0f;
+	g_vorticity[address] = weights;
+}
+
+// Сглаженное давление ячейки (mainNearSurfacePressure); false — рядом нет воды
+bool smoothPressure( int2 cell, out float pressure )
+{
+	pressure = 0.0f;
+	CellAddress at;
+	if( !cellAddress( cell, at ) || g_vorticity[at] <= 0.0f )
+		return false;
+	pressure = g_divergence[at];
+	return true;
+}
+
 // Подъём поверхности воды в ячейке, м. Под «жёсткой крышкой» уровень неподвижен, и давление — это подъём, который разгонял
 // бы воду: поправка u −= ∇p за шаг — −g·dt·∇η, то есть p = g·dt·η. Но крупный масштаб давления — не рельеф воды: вдоль
 // ручья оно держит расход против силы тяжести и трения по Маннингу (на 10 м окна — перепад в метр), а уровень на этом
-// масштабе уже даёт детальная вода. Поэтому подъём — давление у ячейки (среднее 3 × 3: у красно-чёрного Гаусса — Зейделя
-// шахматная рябь) минус среднее в радиусе nearSurfaceReach: остаётся то, что размером с камень, — вспучивание перед
-// камнем, просадка у его боков и над подводным, где вода быстрее. × g_nearSurface, не больше nearSurfaceDepthShare глубины
-// ячейки (просадка не уходит под дно и камень, на мели у берега вода не поднимается над урезом); без шагов (время стоит) и у
-// суши — 0
+// масштабе уже даёт детальная вода. Поэтому подъём — сглаженное давление у ячейки (mainNearSurfacePressure) минус его
+// среднее в радиусе nearSurfaceReach: остаётся то, что размером с камень, — вспучивание перед камнем, просадка у его боков
+// и над подводным, где вода быстрее. × g_nearSurface, мягко не больше nearSurfaceMaxLift и nearSurfaceDepthShare глубины ячейки (просадка не уходит под
+// дно и камень, на мели у берега вода не поднимается над урезом); без шагов (время стоит) и у суши — 0
 float nearSurfaceLift( int2 cell )
 {
 	CellAddress address;
 	if( g_flowTimeStep <= 0.0f || g_nearSurface <= 0.0f || !cellAddress( cell, address ) || !solved( g_info[address].z ) )
 		return 0.0f;
-	float pressure;
-	float local = 0.0f;
-	float localCount = 0.0f;
-	[unroll] for( int k = 0; k < 9; ++k )
-		if( surfacePressure( cell + int2( k % 3 - 1, k / 3 - 1 ), pressure ) )
-		{
-			local += pressure;
-			localCount += 1.0f;
-		}
-	if( localCount == 0.0f )
+	float local;
+	if( !smoothPressure( cell, local ) )
 		return 0.0f;
-	// Среднее вокруг — по сетке с шагом stride (не больше 9 × 9 ячеек)
+	// Среднее вокруг — по сетке с шагом stride (не больше 9 × 9 ячеек): сглаженное давление пропуски не искажают
 	const int reach = clamp( (int)round( nearSurfaceReach / g_nearStep ), 2, 32 );
 	const int stride = max( reach / 4, 1 );
+	float pressure;
 	float around = 0.0f;
 	float aroundCount = 0.0f;
 	[loop] for( int j = -reach; j <= reach; j += stride )
 		[loop] for( int i = -reach; i <= reach; i += stride )
-			if( surfacePressure( cell + int2( i, j ), pressure ) )
+			if( smoothPressure( cell + int2( i, j ), pressure ) )
 			{
 				around += pressure;
 				aroundCount += 1.0f;
 			}
-	const float lift = ( local / localCount - around / max( aroundCount, 1.0f ) ) / ( nearGravity * g_flowTimeStep ) * g_nearSurface;
-	const float limit = nearSurfaceDepthShare * g_info[address].w;
-	return clamp( lift, -limit, limit );
+	const float lift = ( local - around / max( aroundCount, 1.0f ) ) / ( nearGravity * g_flowTimeStep ) * g_nearSurface;
+	// Мягкий предел (tanh): у плато резкого предела — изломы
+	const float limit = max( min( nearSurfaceDepthShare * g_info[address].w, nearSurfaceMaxLift ), 1e-4f );
+	return limit * tanh( lift / limit );
 }
 #endif
 

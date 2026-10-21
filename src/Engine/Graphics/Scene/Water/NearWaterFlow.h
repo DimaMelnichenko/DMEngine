@@ -66,6 +66,7 @@ private:
 	ComputeShader m_red;
 	ComputeShader m_black;
 	ComputeShader m_project;
+	ComputeShader m_surfacePressure;
 	ComputeShader m_output;
 	ComputeShader m_foamStep;
 	Buffer m_flowBuffer;		// WaterFlowBuffer (b5)
