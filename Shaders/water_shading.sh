@@ -209,25 +209,7 @@ RippleTiles detailRippleTiles( float2 xz, float2 velocity, float3 texel )
 // на полосе detailRippleFade
 float detailRippleWeight( float2 xz )
 {
-	const float tileSize = cb_waterDetail.y;
-	uint tilesX, tilesZ;
-	g_terrainDetailIndex.GetDimensions( tilesX, tilesZ );
-	const int2 tile = int2( floor( xz / tileSize ) );
-	const float2 local = xz - tile * tileSize;
-	float weight = 1.0f;
-	[unroll] for( int k = 0; k < 4; ++k )
-	{
-		const int2 side = k == 0 ? int2( -1, 0 ) : k == 1 ? int2( 1, 0 ) : k == 2 ? int2( 0, -1 ) : int2( 0, 1 );
-		const float distance = k == 0 ? local.x : k == 1 ? tileSize - local.x : k == 2 ? local.y : tileSize - local.y;
-		if( distance >= detailRippleFade )
-			continue;
-		const int2 neighbor = tile + side;
-		const bool present = all( neighbor >= 0 ) && neighbor.x < (int)tilesX && neighbor.y < (int)tilesZ &&
-							 g_terrainDetailIndex.Load( int3( neighbor, 0 ) ) != 0;
-		if( !present )
-			weight = min( weight, distance / detailRippleFade );
-	}
-	return saturate( weight );
+	return detailEdgeWeight( xz, cb_waterDetail.y, detailRippleFade );
 }
 
 // Во сколько раз поверхность длиннее своей проекции вдоль течения и поперёк: на крутом (вода по жёлобу, стенка ступени)

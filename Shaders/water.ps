@@ -66,7 +66,9 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 	shading.ripple = 0.7f * saturate( speed / 0.3f );
 	shading.detailTexel = detailTexel;
 	shading.detailRipple = detail ? detailRippleWeight( input.worldPosition.xz ) : 0.0f;
-	shading.nearPattern = detail ? nearWaterWeight( input.worldPosition.xz ) * cb_waterNearFoam.y : 0.0f;
+	// Узор и пена окна у камеры — и к краю набора детальных плиток (за ним вода сетки 1 м): доля ряби по плиткам — та же
+	// полоса, что у перехода итога окна к детальной воде (nearDetailEdge, water_near_grid.sh)
+	shading.nearPattern = detail ? nearWaterWeight( input.worldPosition.xz ) * shading.detailRipple * cb_waterNearFoam.y : 0.0f;
 	shading.standing = detail ? sampleStanding( detailTexel ) : 0.0f;
 #ifdef WATER_NEAR
 	shading.standingGeometry = standingGeometryShare( input.worldPosition.xz, shading.standing.y );
@@ -85,7 +87,7 @@ float4 main( WaterPixelInput input ) : SV_TARGET
 			const float fine = g_foamDetail.SampleLevel( g_SamplerLinearClamp, float3( detailTexel.xy / float2( width, height ), detailTexel.z ), 0.0f );
 			foam = lerp( foam, fine, shading.detailRipple );
 			// В окне подробного течения у камеры — своя пена окна (6,25 см, по его течению), к краю окна — поле
-			const float nearFoam = nearWaterWeight( input.worldPosition.xz ) * cb_waterNearFoam.x;
+			const float nearFoam = nearWaterWeight( input.worldPosition.xz ) * shading.detailRipple * cb_waterNearFoam.x;
 			[branch] if( nearFoam > 0.0f )
 				foam = lerp( foam, sampleNearFoam( input.worldPosition.xz ), nearFoam );
 		}

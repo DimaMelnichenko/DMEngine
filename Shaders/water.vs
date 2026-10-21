@@ -49,16 +49,26 @@ WaterPixelInput dryVertex()
 // Уровень детальной воды в точке мира — билинейно по четырём текселям её плитки (вершина окна — между ними); нет плитки,
 // её не рисует детальная сетка (дальше g_detailDistance — тайлы 1 м) или среди четырёх сухой тексель — dryLevel: окно
 // рисует ту же воду, что детальные плитки
-float detailLevel( float2 worldXZ )
+// Детальная плитка под точкой мира рисует воду (есть и ближе g_detailDistance): её место и номер + 1
+bool detailTileRendered( float2 worldXZ, out int2 tile, out uint index )
 {
 	const float tileSize = WATER_TILE * g_cellSize;
-	const int2 tile = int2( floor( worldXZ / tileSize ) );
+	tile = int2( floor( worldXZ / tileSize ) );
+	index = 0;
 	uint tilesX, tilesZ;
 	g_terrainDetailIndex.GetDimensions( tilesX, tilesZ );
 	if( any( tile < 0 ) || tile.x >= (int)tilesX || tile.y >= (int)tilesZ )
-		return dryLevel;
-	const uint index = g_terrainDetailIndex.Load( int3( tile, 0 ) );
-	if( !waterDetailRendered( tile, index, cb_cameraPosition ) )
+		return false;
+	index = g_terrainDetailIndex.Load( int3( tile, 0 ) );
+	return waterDetailRendered( tile, index, cb_cameraPosition );
+}
+
+float detailLevel( float2 worldXZ )
+{
+	const float tileSize = WATER_TILE * g_cellSize;
+	int2 tile;
+	uint index;
+	if( !detailTileRendered( worldXZ, tile, index ) )
 		return dryLevel;
 	uint side, sideZ, slices;
 	g_waterDetailTiles.GetDimensions( side, sideZ, slices );
@@ -97,7 +107,16 @@ WaterPixelInput main( VertexInputType input )
 		return dryVertex();
 	const float step = cb_waterNear.z;
 	const int2 cell = int2( round( cb_waterNear.xy / step ) ) + index;
-	const float level = nearLevel( cell, dryLevel );
+	float level = nearLevel( cell, dryLevel );
+	// Вершина за краем детальных плиток (там вода — тайлы 1 м, пиксели за краем отбрасывает clipWaterSurface) — уровень
+	// соседней вершины по эту сторону: иначе квадрат через край пропадал, и между сеткой окна (вершины — в центрах ячеек) и
+	// тайлами 1 м (от самого края) оставалась щель в полъячейки — сквозь воду виден рыжий шов дна (Dimok, 2026-10-21)
+	int2 tile;
+	uint tileIndex;
+	if( level <= dryLevel && !detailTileRendered( ( cell + 0.5f ) * step, tile, tileIndex ) )
+		[unroll] for( uint k = 0; k < 4; ++k )
+			if( level <= dryLevel )
+				level = nearLevel( cell + ( k < 2 ? int2( k == 0 ? 1 : -1, 0 ) : int2( 0, k == 2 ? 1 : -1 ) ), dryLevel );
 	if( level <= dryLevel )
 		return dryVertex();
 

@@ -126,6 +126,35 @@ float detailBed( float2 world )
 	return height * g_heightMultiplier + g_heightOffset;
 }
 
+// Окно вложено в детальную воду, а за краем набора детальных плиток вода — сетки 1 м, окно её не считает (ячейки там —
+// суша, у края течение окна стоит). Итог окна к такому краю на этой полосе, м, переходит в детальную воду — как к краю
+// окна (nearWaterFade в water_near.sh): без перехода окно обрывалось на краю плитки посреди пруда прямой линией (Dimok,
+// 2026-10-21). Считается в расчёте окна раз на ячейку, а не в шейдерах поверхности на каждую выборку (+0,15 мс прохода воды)
+static const float nearDetailEdgeFade = 1.0f;
+
+// Доля окна у края набора детальных плиток в точке мира: 1, к краю плитки, за которым плитки нет, — до 0 на полосе
+// nearDetailEdgeFade
+float nearDetailEdge( float2 world )
+{
+	const float tileSize = g_detailCells * g_detailStep;
+	const int2 tile = int2( floor( world / tileSize ) );
+	const float2 local = world - tile * tileSize;
+	float weight = 1.0f;
+	[unroll] for( int k = 0; k < 4; ++k )
+	{
+		const int2 side = k == 0 ? int2( -1, 0 ) : k == 1 ? int2( 1, 0 ) : k == 2 ? int2( 0, -1 ) : int2( 0, 1 );
+		const float distance = k == 0 ? local.x : k == 1 ? tileSize - local.x : k == 2 ? local.y : tileSize - local.y;
+		if( distance >= nearDetailEdgeFade )
+			continue;
+		const int2 neighbor = tile + side;
+		const bool present = all( neighbor >= 0 ) && all( neighbor < (int)g_detailTilesPerSide ) &&
+							 g_detailIndex.Load( int3( neighbor, 0 ) ) != 0;
+		if( !present )
+			weight = min( weight, distance / nearDetailEdgeFade );
+	}
+	return saturate( weight );
+}
+
 // Верх камней русла окна в точке мира (квадраты StoneTop: тексель под точкой), не ниже bed, м
 float nearStoneTop( float2 world, float bed )
 {

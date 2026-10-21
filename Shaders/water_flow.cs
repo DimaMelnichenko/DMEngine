@@ -937,9 +937,12 @@ void mainFlowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 #if defined( FLOW_NEAR )
 	// x — подъём поверхности по давлению (nearSurfaceLift), y, z — течение по X и Z мира, w — доля глубины над камнем (1 —
 	// камня нет, у камня выше воды — Obstacle passage): где вода обходит камень
-	const float surface = nearSurfaceLift( cell );
+	// К краю набора детальных плиток (за ним вода сетки 1 м) — детальная вода: подъём — к нулю, течение — к её течению
+	const float edge = nearDetailEdge( ( cell + 0.5f ) * g_nearStep );
+	const float surface = nearSurfaceLift( cell ) * edge;
 	const float baseDepth = g_info2[address].y;
-	g_output[address] = float4( surface, world, baseDepth > 0.0f ? saturate( g_info[address].w / baseDepth ) : 0.0f );
+	g_output[address] = float4( surface, lerp( coarseVelocity( cell + 0.5f ), world, edge ),
+								baseDepth > 0.0f ? saturate( g_info[address].w / baseDepth ) : 0.0f );
 #elif defined( FLOW_DETAIL )
 	// Своя плитка и поле соседних (тексель поля — копия ячейки соседа: выборка у края плитки — без шва)
 	const int2 tile = cell / (int)g_detailCells;

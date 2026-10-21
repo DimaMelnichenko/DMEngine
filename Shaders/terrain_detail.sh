@@ -41,6 +41,29 @@ bool sampleTerrainDetail2( float2 worldXZ, float tileSize, out float2 value )
 	return true;
 }
 
+// Доля у края набора детальных плиток в точке: 1, к краю плитки, за которым плитки нет, — до 0 на полосе fade, м
+float detailEdgeWeight( float2 worldXZ, float tileSize, float fade )
+{
+	uint tilesX, tilesZ;
+	g_terrainDetailIndex.GetDimensions( tilesX, tilesZ );
+	const int2 tile = int2( floor( worldXZ / tileSize ) );
+	const float2 local = worldXZ - tile * tileSize;
+	float weight = 1.0f;
+	[unroll] for( int k = 0; k < 4; ++k )
+	{
+		const int2 side = k == 0 ? int2( -1, 0 ) : k == 1 ? int2( 1, 0 ) : k == 2 ? int2( 0, -1 ) : int2( 0, 1 );
+		const float distance = k == 0 ? local.x : k == 1 ? tileSize - local.x : k == 2 ? local.y : tileSize - local.y;
+		if( distance >= fade )
+			continue;
+		const int2 neighbor = tile + side;
+		const bool present = all( neighbor >= 0 ) && neighbor.x < (int)tilesX && neighbor.y < (int)tilesZ &&
+							 g_terrainDetailIndex.Load( int3( neighbor, 0 ) ) != 0;
+		if( !present )
+			weight = min( weight, distance / fade );
+	}
+	return saturate( weight );
+}
+
 // Нормированная высота детальной плитки в точке; false — плитки нет
 bool sampleTerrainDetail( float2 worldXZ, float tileSize, out float value )
 {
