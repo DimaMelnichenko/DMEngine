@@ -172,6 +172,7 @@ add_library(DMCore STATIC
     src/Engine/Graphics/Scene/Terrain/TerrainCanopy.cpp
     src/Engine/Graphics/Scene/Water/StoneTop.cpp
     src/Engine/Graphics/Scene/Water/FoamLace.cpp
+    src/Engine/Graphics/Scene/Water/ShallowWater.cpp
     src/Engine/Graphics/Scene/Wind/Wind.cpp
     src/Engine/Audio/AudioMixer.cpp
     src/Engine/Audio/AudioSynth.cpp
