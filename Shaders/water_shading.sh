@@ -416,17 +416,18 @@ struct WaterShading
 	// 0 — плитки 1 м)
 	float3 detailTexel;
 	float  detailRipple;
-	float  nearPattern;		// доля узора пены по течению окна у камеры (nearFoamPattern; 0 — плитки)
+	float  nearPattern;		// доля ряби и узора пены по течению окна у камеры (nearPatternLayers; 0 — плитки)
 };
 
-// Рябь (flow), стоячие волны (standing: если standingScale > 0) по набору плиток — с весом weight, узор пены (foamNoise, если
-// foam; ещё его наклон foamSlope; dense — доля густой пены) — с весом foamWeight
-void addRipple( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 dY, bool foam, float weight, float foamWeight,
-				float dense, float standingScale, inout float4 flow, inout float2 standing, inout float foamNoise, inout float2 foamSlope,
-				inout float foamDissolve )
+// Рябь (flow) — с весом flowWeight, стоячие волны (standing: если standingScale > 0) — с весом weight, узор пены (foamNoise,
+// если foam; ещё его наклон foamSlope; dense — доля густой пены) — с весом foamWeight, по набору плиток
+void addRipple( RippleTiles tiles, float2 xz, float2 surface, float2 dX, float2 dY, bool foam, float weight, float flowWeight,
+				float foamWeight, float dense, float standingScale, inout float4 flow, inout float2 standing, inout float foamNoise,
+				inout float2 foamSlope, inout float foamDissolve )
 {
 	float pattern;
-	flow += weight * flowRipple( tiles, xz, surface, 1.0f, dX, dY, pattern );
+	[branch] if( flowWeight > 0.0f )
+		flow += flowWeight * flowRipple( tiles, xz, surface, 1.0f, dX, dY, pattern );
 	[branch] if( standingScale > 0.0f )
 		standing += weight * standingWaves( tiles, xz, surface, standingScale, dX, dY );
 	[branch] if( foam && foamWeight > 0.0f )
@@ -461,42 +462,77 @@ float patternStretchWeight( float2 dX, float2 dY, float2 mapDX, float2 mapDY )
 	return 1.0f / ( 1.0f + excess * excess );
 }
 
-// Узор пены окна подробного течения у камеры — по его течению (advected textures, Neyret 2003): два слоя смещений координат
+// Узор окна подробного течения у камеры — по его течению (advected textures, Neyret 2003): два слоя смещений координат
 // (water_near_foam.cs) несёт течение окна, и узор плывёт с водой, обтекает камни, растягивается в полосы на сдвиге и
 // закручивается в вихрях, а не ездит плитками. Слой обновляется раз в период (смещения — к нулю, узор — свой сдвиг на цикл),
 // его вес — треугольник по фазе (в миг обновления — 0) × вес по растяжению (patternStretchWeight); смешение слоёв — с
-// делением на √Σw², как у плиток. Маска, шум растворения (вокруг 0,5) и наклон — как у foamTexturePattern
-float nearFoamPattern( float2 xz, float2 dX, float2 dY, float dense, out float2 slope, out float dissolve )
+// делением на √Σw², как у плиток. Слои — одни у пены и ряби: они плывут вместе
+struct NearPatternLayers
+{
+	float2 position[2];		// точка узора слоя, м (точка мира + смещение)
+	float2 mapDX[2];		// её экранные производные
+	float2 mapDY[2];
+	float2 shift[2];		// случайный сдвиг узора слоя на цикл, доли повтора
+	float  weight[2];
+	float  normalization;	// 1 / √Σw²
+};
+
+NearPatternLayers nearPatternLayers( float2 xz, float2 dX, float2 dY )
 {
 	const float4 offsets = sampleNearPattern( xz );
 	const float4 offsetsDX = ddx( offsets );
 	const float4 offsetsDY = ddy( offsets );
 	const float phase = nearPatternPhase( xz, cb_gameTime, cb_waterNearFoam.z );
-	float mask = 0.0f;
+	NearPatternLayers layers;
 	float weights = 0.0f;
+	[unroll] for( uint k = 0; k < 2; ++k )
+	{
+		const float layer = phase + 0.5f * k;
+		layers.position[k] = xz + ( k == 0 ? offsets.xy : offsets.zw );
+		layers.mapDX[k] = dX + ( k == 0 ? offsetsDX.xy : offsetsDX.zw );
+		layers.mapDY[k] = dY + ( k == 0 ? offsetsDY.xy : offsetsDY.zw );
+		layers.shift[k] = nearPatternOffset( floor( layer ), k );
+		layers.weight[k] = ( 1.0f - abs( 2.0f * frac( layer ) - 1.0f ) ) * patternStretchWeight( dX, dY, layers.mapDX[k], layers.mapDY[k] );
+		weights += layers.weight[k] * layers.weight[k];
+	}
+	layers.normalization = rsqrt( max( weights, 1e-4f ) );
+	return layers;
+}
+
+// Узор пены по течению окна: маска, шум растворения (вокруг 0,5) и наклон — как у foamTexturePattern
+float nearFoamPattern( NearPatternLayers layers, float dense, out float2 slope, out float dissolve )
+{
+	float mask = 0.0f;
 	slope = 0.0f;
 	dissolve = 0.0f;
 	[unroll] for( uint k = 0; k < 2; ++k )
 	{
-		const float layer = phase + 0.5f * k;
-		const float2 offset = k == 0 ? offsets.xy : offsets.zw;
-		const float2 mapDX = dX + ( k == 0 ? offsetsDX.xy : offsetsDX.zw );
-		const float2 mapDY = dY + ( k == 0 ? offsetsDY.xy : offsetsDY.zw );
-		const float weight = ( 1.0f - abs( 2.0f * frac( layer ) - 1.0f ) ) * patternStretchWeight( dX, dY, mapDX, mapDY );
-		const float2 uv = ( xz + offset ) / g_foamTextureRepeat + nearPatternOffset( floor( layer ), k );
-		const float2 uvDX = mapDX / g_foamTextureRepeat;
-		const float2 uvDY = mapDY / g_foamTextureRepeat;
-		const float4 foam = sampleFoam( uv, uvDX, uvDY, dense );
-		mask += weight * ( foam.r - 0.5f );
-		dissolve += weight * ( foam.a - 0.5f );
+		const float2 uv = layers.position[k] / g_foamTextureRepeat + layers.shift[k];
+		const float4 foam = sampleFoam( uv, layers.mapDX[k] / g_foamTextureRepeat, layers.mapDY[k] / g_foamTextureRepeat, dense );
+		mask += layers.weight[k] * ( foam.r - 0.5f );
+		dissolve += layers.weight[k] * ( foam.a - 0.5f );
 		// Наклон по U и V — минус xy нормали; U и V — по X и Z мира
-		slope += weight * ( -( foam.gb * 2.0f - 1.0f ) * foamBump );
-		weights += weight * weight;
+		slope += layers.weight[k] * ( -( foam.gb * 2.0f - 1.0f ) * foamBump );
 	}
-	const float normalization = rsqrt( max( weights, 1e-4f ) );
-	slope *= normalization;
-	dissolve = 0.5f + dissolve * normalization;
-	return mask * normalization;
+	slope *= layers.normalization;
+	dissolve = 0.5f + dissolve * layers.normalization;
+	return mask * layers.normalization;
+}
+
+// Рябь по течению окна: наклон крупной (xy) и мелкой (zw) октавы карты ряби по X и Z мира, как у flowRipple. Узор не
+// повёрнут по течению и не вытянут вдоль него: его поворачивает и тянет само течение — на поворотах и в вихрях рябь
+// закручивается вместе с пеной, а не едет плитками отдельно от неё (Dimok, 2026-10-21)
+float4 nearFlowRipple( NearPatternLayers layers )
+{
+	float4 result = 0.0f;
+	[unroll] for( uint k = 0; k < 2; ++k )
+	{
+		const float2 uv = layers.position[k] / g_rippleScale + layers.shift[k].yx;
+		const float4 ripple = g_ripple.SampleGrad( g_SamplerLinearWrap, uv, layers.mapDX[k] / g_rippleScale, layers.mapDY[k] / g_rippleScale ) *
+							  rippleSlopeRange;
+		result += layers.weight[k] * ripple;
+	}
+	return result * layers.normalization;
 }
 
 // Искры: рябь мельче пикселя — грани размером sparkleSize, наклон каждой — по распределению GGX с sparkleRoughness.
@@ -582,27 +618,38 @@ float4 shadeWater( WaterShading input )
 		// на √Σw², как у плиток. Узор пены в окне у камеры — по его течению (nearFoamPattern), к краю окна — плиток
 		const float w = input.detailRipple;
 		const bool needFoam = foamAmount > 0.0f;
-		const float n = needFoam ? input.nearPattern : 0.0f;
+		// Рябь и пена в окне у камеры — по его течению (nearPatternLayers), к краю окна — плиток; стоячие волны — плиток всегда:
+		// они стоят на месте, течение их не несёт
+		const float r = input.nearPattern;
+		const float n = needFoam ? r : 0.0f;
 		// Где пены больше всего (слив, котёл под ступенью) — густая белая вода вместо кружева
 		const float dense = g_foamDense < 1.0f ? smoothstep( g_foamDense, 1.0f, foamAmount ) : 0.0f;
 		float foamNoise = 0.0f;
 		[branch] if( w > 0.0f )
 			addRipple( detailRippleTiles( input.worldPosition.xz, input.velocity, input.detailTexel ), input.worldPosition.xz, surfaceStretch,
-					   dX, dY, needFoam, w, w * ( 1.0f - n ), dense, standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
+					   dX, dY, needFoam, w, w * ( 1.0f - r ), w * ( 1.0f - n ), dense, standingScale, flow, standing, foamNoise, foamSlope,
+					   foamDissolve );
 		[branch] if( w < 1.0f )
 			addRipple( rippleTiles( input.worldPosition.xz, input.velocity ), input.worldPosition.xz, surfaceStretch, dX, dY, needFoam, 1.0f - w,
-					   ( 1.0f - w ) * ( 1.0f - n ), dense, standingScale, flow, standing, foamNoise, foamSlope, foamDissolve );
-		[branch] if( n > 0.0f )
+					   ( 1.0f - w ) * ( 1.0f - r ), ( 1.0f - w ) * ( 1.0f - n ), dense, standingScale, flow, standing, foamNoise, foamSlope,
+					   foamDissolve );
+		[branch] if( r > 0.0f )
 		{
-			float2 slope;
-			float dissolve;
-			foamNoise += n * nearFoamPattern( input.worldPosition.xz, dX, dY, dense, slope, dissolve );
-			foamSlope += n * slope;
-			foamDissolve += n * ( dissolve - 0.5f );
+			const NearPatternLayers layers = nearPatternLayers( input.worldPosition.xz, dX, dY );
+			flow += r * nearFlowRipple( layers );
+			[branch] if( n > 0.0f )
+			{
+				float2 slope;
+				float dissolve;
+				foamNoise += n * nearFoamPattern( layers, dense, slope, dissolve );
+				foamSlope += n * slope;
+				foamDissolve += n * ( dissolve - 0.5f );
+			}
 		}
 		const float normalization = rsqrt( w * w + ( 1.0f - w ) * ( 1.0f - w ) );
+		const float flowNormalization = rsqrt( max( ( 1.0f - r ) * ( 1.0f - r ) / ( normalization * normalization ) + r * r, 1e-4f ) );
 		const float foamNormalization = rsqrt( max( ( 1.0f - n ) * ( 1.0f - n ) / ( normalization * normalization ) + n * n, 1e-4f ) );
-		flow *= normalization * flowStrength;
+		flow *= flowNormalization * flowStrength;
 		// Стоячие волны — не по силе ряби течения, а свои: длинные, отражение берега по ним тоже колышется
 		flow.xy += standing * normalization * standingStrength;
 		[branch] if( needFoam )
