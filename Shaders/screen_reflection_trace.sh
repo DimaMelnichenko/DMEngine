@@ -94,9 +94,11 @@ float4 traceScreenReflection( float3 position, float3 normal )
 	bool hit = false;
 	float hitDepth = 0.0f;
 	float behind = 0.0f;	// на сколько луч в пикселе попадания ушёл за поверхность буфера, м
-	// Луч ушёл за предмет дальше толщины и ещё не вышел перед сценой; occluderViewZ — глубина вида пикселя, за которым скрылся
+	// Луч ушёл за предмет дальше толщины и ещё не вышел перед сценой; occluderViewZ — глубина вида пикселя, за которым скрылся,
+	// hiddenRayViewZ — глубина вида самого луча в этот миг
 	bool hidden = false;
 	float occluderViewZ = 0.0f;
+	float hiddenRayViewZ = 0.0f;
 	for( uint i = 0; i < reflectionMaxIterations && t <= tMax; ++i )
 	{
 		const float3 p = start + delta * t;
@@ -137,18 +139,22 @@ float4 traceScreenReflection( float3 position, float3 normal )
 			// Скрывшись за предметом (впервые — с точностью до пикселя: спуск до уровня 0), луч помнит его глубину. Показался
 			// из-за него фон дальше него, а луч и за фоном — значит, прошёл фон, пока был скрыт (луг за елью, закрытый от камеры
 			// её кроной): попадание — там, где фон показался. Иначе луч бежал бы за фоном до края кадра, и вода показывала бы
-			// небо пятнами у основания крон и в просветах между ветками
+			// небо пятнами у основания крон и в просветах между ветками. Но только если фон дальше, чем был сам луч, когда
+			// скрылся: иначе луч уже был за фоном и сквозь него не проходил. Без этого луч от дальней воды, скрывшись за веткой
+			// у камеры, «попадал» в листья той же кроны чуть дальше ветки — далеко перед собой, и отражение под деревьями того
+			// берега шло вертикальными полосами листвы (Dimok, 2026-10-21)
 			const float rayNear = max( p.z, start.z + delta.z * min( tCell, tMax ) );
 			const float farthestViewZ = reflectionViewDepth( range.y );
 			const float thickness = thicknessBase + thicknessScale * farthestViewZ;
 			const bool beyond = rayNear < range.y && reflectionViewDepth( rayNear ) - farthestViewZ > thickness;
-			const bool emerged = hidden && farthestViewZ > occluderViewZ + thickness;
+			const bool emerged = hidden && farthestViewZ > occluderViewZ + thickness && farthestViewZ > hiddenRayViewZ;
 			if( beyond && !emerged && ( hidden || level == 0 ) )
 			{
 				if( !hidden )
 				{
 					hidden = true;
 					occluderViewZ = farthestViewZ;
+					hiddenRayViewZ = reflectionViewDepth( p.z );
 				}
 				t = tCell;
 				level = min( level + 1, SCREEN_REFLECTION_LEVELS - 1 );
