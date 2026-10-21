@@ -329,10 +329,19 @@ float groundFilter( float2 worldXZ )
 // След шире детальной плитки у русла (0,25 м) проверяется по краю: центр следа и четыре точки на его окружности
 static const float footprintCheckRadius = 0.25f;
 
+// Высота земли под точкой: на смещённой земле (displaced) — со смещением дисплейсмента у камеры (terrainSurfacePoint), иначе
+// — карта высот
+float groundHeight( float2 worldXZ, bool displaced )
+{
+	return displaced ? terrainSurfacePoint( worldXZ ).y : terrainHeight( worldXZ );
+}
+
 // Экземпляр в ячейке сетки мира: смещение, плотность маски (вероятность и размер), высота, размер без исчезания,
 // поворот, вариант по весам и своя доля дальностей LOD. Все случайные величины — хеш ячейки и номера величины, поэтому у
-// ячейки всегда один и тот же экземпляр — и у кольцевого слоя каждый кадр, и у постоянного при раскладке
-bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, out float lodScale )
+// ячейки всегда один и тот же экземпляр — и у кольцевого слоя каждый кадр, и у постоянного при раскладке. displaced — на
+// земле со смещением дисплейсмента (кольцевой слой: трава и камешки не тонут в поднятых камнях слоёв и не висят над щелями;
+// постоянный — без него: раскладка раз, а смещение зависит от камеры); посадка по следу — по той же земле
+bool placeInCell( int2 cell, uint seed, bool displaced, out ScatterItem item, out uint variant, out float lodScale )
 {
 	item = (ScatterItem)0;
 	variant = 0;
@@ -401,7 +410,7 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 			return false;
 	}
 
-	item.position = float3( worldXZ.x, terrainHeight( worldXZ ), worldXZ.y );
+	item.position = displaced ? terrainSurfacePoint( worldXZ ) : float3( worldXZ.x, terrainHeight( worldXZ ), worldXZ.y );
 	// Размер: размер и разброс слоя и варианта (Size, Size variation) и плотность маски
 	item.size = sizeBound * lerp( 0.6f, 1.0f, density );
 
@@ -433,7 +442,7 @@ bool placeInCell( int2 cell, uint seed, out ScatterItem item, out uint variant, 
 			const float2 sample = center + rim[k] * radius;
 			const float2 offset = sample - worldXZ;
 			const float plane = item.position.y - ( normal.x * offset.x + normal.z * offset.y ) / max( normal.y, 0.2f );
-			lowest = min( lowest, terrainHeight( sample ) - plane );
+			lowest = min( lowest, groundHeight( sample, displaced ) - plane );
 		}
 		item.position.y += lowest - g_groundEmbed * item.size;
 	}
@@ -786,13 +795,11 @@ void main( uint3 dispatchThreadId : SV_DispatchThreadID )
 	uint variant;
 	float lodScale;
 	const bool farTree = g_farForest > 0.5f;
-	if( farTree ? !placeFarTree( cell, seed, item, variant, lodScale ) : !placeInCell( cell, seed, item, variant, lodScale ) )
+	// На земле со смещением дисплейсмента (камни слоёв у камеры), и посадка по следу — по ней же: прежде точку ставили на
+	// смещённую землю уже после посадки, и та пропадала — ветка висела краем над землёй (Dimok, 2026-10-21). Деревья на
+	// горах — на земле гор
+	if( farTree ? !placeFarTree( cell, seed, item, variant, lodScale ) : !placeInCell( cell, seed, true, item, variant, lodScale ) )
 		return;
-	// На земле со смещением дисплейсмента (камни слоёв у камеры): трава и камешки не тонут в поднятых камнях и не висят
-	// над щелями. Постоянный слой (placeWorld) — без него: раскладка раз, а смещение зависит от камеры; деревья на горах —
-	// на земле гор
-	if( !farTree )
-		item.position = terrainSurfacePoint( item.position.xz );
 
 	float distanceToCamera = distance( item.position, cb_cameraPosition );
 	if( distanceToCamera < g_nearBorder || distanceToCamera > g_farBorder )
@@ -832,7 +839,7 @@ void placeWorld( uint3 groupId : SV_GroupID, uint3 threadId : SV_GroupThreadID, 
 	const int2 cell = (int2)( groupId.xy * PLACED_CLUSTER_CELLS + threadId.xy );
 	const uint seed = asuint( g_cellSize ) ^ hash( asuint( g_farBorder ) ^ hash( asuint( g_sizeMultiplier ) ) );
 	PlacedItem placed = (PlacedItem)0;
-	const bool valid = placeInCell( cell, seed, placed.item, placed.variant, placed.lodScale );
+	const bool valid = placeInCell( cell, seed, false, placed.item, placed.variant, placed.lodScale );
 	uint local = 0;
 	if( valid )
 	{
