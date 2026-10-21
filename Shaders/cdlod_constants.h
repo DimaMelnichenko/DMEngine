@@ -36,7 +36,7 @@ DM_CONSTANTS( CDLODBuffer, SLOT_CB_MATERIAL )
 	DM_FIELD( float4, lakeBedDepths );
 	DM_FIELD( float2, lakeSedimentLevel );
 	DM_FIELD( int, lakeSiltLayer );
-	DM_FIELD( float, cdlodPadding );
+	DM_FIELD( float, wetDarkening );			// альбедо мокрой земли × это при полной мокрости («Wet darkening»)
 	DM_FIELD( float3, paintPreviewColor );		// цвет подсветки paintPreview: цель кисти — оранжевый, места звука — бирюзовый
 	DM_FIELD( float, paintPreviewStrength );	// её сила, 0…1: у кисти 0,75, у мест звука 0,5 (земля под ней видна)
 	DM_ARRAY( float4, detailMorph, CDLOD_DETAIL_LEVELS );		// уровни мельче листа (−1…−6): x — начало морфинга, y — 1 / длина зоны

@@ -135,12 +135,13 @@ float4 main( PixelInputType input ) : SV_TARGET
 	// ушла (simulated) — сохнет не сразу
 	float liveWetness = 0.0f;
 	[branch] if( liveWater )
-		liveWetness = max( smoothstep( -0.02f, 0.0f, waterDepth ), smoothstep( 0.005f, 0.02f, recededWaterDepth( input.uv ) ) );
+		liveWetness = max( waterDepth > -1e29f ? bankWetness( -waterDepth, terrainLayers().wetBankHeight ) : 0.0f,
+						   smoothstep( 0.005f, 0.02f, recededWaterDepth( input.uv ) ) );
 	// Мокрость кисти вдали — splat-карта (мазки в среднем по клетке), вблизи — в плитке
 	const float baseWetness = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, splatSlices ) ).x;
 	const float wet = g_wetnessBaked != 0 ? lerp( max( liveWetness, baseWetness ), bakedWetness, detailShare ) :
 											max( liveWetness, lerp( baseWetness, bakedWetness, detailShare ) );
-	surface.baseColor *= lerp( 1.0f, 0.6f, wet );
+	surface.baseColor *= lerp( 1.0f, g_wetDarkening, wet );
 	surface.roughness = lerp( surface.roughness, 0.2f, wet );
 
 	// Отладка симуляции воды («Show water»): от 5 мм до 0,5 м глубины земля уходит в синий, быстрая вода — светлее

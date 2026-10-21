@@ -456,6 +456,9 @@ const SettingsSchema<TerrainSettings>& terrainSchema()
 		{ "micro_shadows", "Micro shadows", DM_SETTING( microShadows ), 0.0f, 1.0f, "",
 		  "Direct light in the crevices of the layer AO: it reaches their bottom only from steep angles (micro shadowing of "
 		  "Uncharted 4); 0 - AO darkens the sky light only" },
+		{ "wet_darkening", "Wet darkening", DM_SETTING( wetDarkening ), 0.05f, 1.0f, "",
+		  "Wet ground is darker: the albedo at full wetness is multiplied by this (water in the pores: wet sand and soil are two to "
+		  "three times darker than dry ones); 1 - only the gloss", settingClamp },
 		// Подстилка под кронами: вес трав уходит слою с ролью forest_floor по карте полога (terrain_layers.sh, applyForestFloor)
 		{ "forest_floor", "Forest floor", DM_SETTING( forestFloor ), 0.0f, 1.0f, "",
 		  "Forest floor under the tree crowns: share of the canopy cover that moves the grass weight to the forest_floor layer "
@@ -736,6 +739,10 @@ const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema()
 		value( "lake_shore_width", beds, "Lake shore width", &R::lakeShoreWidth, 0.0f, 20.0f, "m",
 			   "The shore strip of the lakes (below the overflow: no meadow grass, cattail of Shallows layers) is at most this wide "
 			   "from the water: on a flat valley floor the ground below the overflow runs for tens of metres" ),
+		value( "wet_bank_height", beds, "Wet bank height", &R::wetBankHeight, 0.0f, 1.0f, "m",
+			   "The ground is wet this high above the water (capillaries, small waves), fading upwards" ),
+		value( "wet_splash_height", beds, "Wet splash height", &R::wetSplashHeight, 0.0f, 2.0f, "m",
+			   "By fast water (0.5 to 1.5 m/s of the stream) the wet band is this much higher: splashes" ),
 		range( "krummholz_height", shrubs, "Krummholz height", &R::krummholzHeight, 0.0f, 1.0f, "", "Krummholz above the treeline: from, to" ),
 		range( "krummholz_top", shrubs, "Krummholz top", &R::krummholzTop, 0.0f, 1.0f, "", "Krummholz ends higher: from, to" ),
 		range( "dry_gaps_slope", shrubs, "Dry gaps slope", &R::dryGapsSlope, 0.0f, 90.0f, "deg", "Shrubs in the gaps of dry slopes: from, to" ),

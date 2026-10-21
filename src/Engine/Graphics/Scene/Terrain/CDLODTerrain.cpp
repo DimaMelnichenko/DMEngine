@@ -253,6 +253,7 @@ TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) con
 	// Берег озёр (terrain_layers.sh): запас берега и глубина мелководья слоёв «Shallows»
 	constants.lakeFreeboard = m_pipeline->lakeFreeboard();
 	constants.lakeShallowDepth = XMFLOAT2( m_pipeline->layerRules().lakeShallowDepth.from, m_pipeline->layerRules().lakeShallowDepth.to );
+	constants.wetBankHeight = std::max( m_pipeline->layerRules().wetBankHeight, 0.0f );
 	std::copy( m_pipeline->material().layerOcclusion().begin(), m_pipeline->material().layerOcclusion().end(), constants.layerOcclusion );
 	const int32_t litterLayer = m_pipeline->roleLayer( TerrainLayerRole::forestFloorBroadleaf );
 	constants.forestLitterLayer = litterLayer >= 0 && litterLayer < static_cast<int32_t>( constants.layerCount ) ? litterLayer : -1;
@@ -385,6 +386,7 @@ void CDLODTerrain::fillConstants( CDLODBuffer& params, const RenderView& view, i
 	params.showWind = m_properties["Show wind"].data<bool>() && m_pipeline->hasWindField() ? 1 : 0;
 	params.detailTile = m_pipeline->detailTileSize();
 	params.wetnessBaked = m_pipeline->staticWater() && m_pipeline->detailSplat().tileSize() > 0.0f ? 1 : 0;
+	params.wetDarkening = std::clamp( m_properties["Wet darkening"].data<float>(), 0.0f, 1.0f );
 	params.paintPreview = paintPreview;
 	params.paintPreviewColor = previewColor;
 	params.paintPreviewStrength = previewStrength;
