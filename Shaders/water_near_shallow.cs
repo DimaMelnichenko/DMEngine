@@ -19,7 +19,9 @@
 //     камней без просвета сочится — сплошные камни на сетке 6,25 см закрывали щели между ними, и за каждым рядом вставал
 //     плёс на 10–13 см выше детальной воды (Dimok, 2026-10-21: «проницаемые камни»). Поверхность в камне закрывает сам камень;
 //   - край окна: ячейки в shallowFixedCells от края закреплены — глубина и скорость граней детальной воды (вход и выход
-//     расхода, как закреплённые ячейки эталона); вошедшие в окно ячейки начинаются с неё же (mainShallowInit);
+//     расхода, как закреплённые ячейки эталона); вошедшие в окно ячейки начинаются с неё же (mainShallowInit); ячейки за
+//     краем детальных плиток (там вода сетки 1 м) закреплены так же — по воде сетки 1 м (coarseWaterAt), и течение окна идёт
+//     через край плиток, а не упирается в него;
 //   - полоса гашения волн shallowSpongeWidth у края: глубина и скорость тянутся к детальной воде, сильнее к краю
 //     (relaxation zone), — волна изнутри уходит в неё, а не отражается от закреплённого края; так же — у края набора
 //     детальных плиток внутри окна (за ним вода сетки 1 м, ячейки там — стена): иначе течение пруда упиралось в стену, и у
@@ -45,8 +47,9 @@ DM_UAV( RWTexture2D<float2>, g_velocity, 2 );		// скорость на вост
 DM_UAV( RWTexture2D<float2>, g_velocityNext, 3 );	// она же после подшага (NearWaterFlow меняет их местами)
 DM_UAV( RWTexture2D<float2>, g_flux, 4 );			// расход через восточную и северную грань в этом подшаге, м²/с
 DM_UAV( RWTexture2D<float4>, g_output, 5 );			// итог для шейдеров (SLOT_WATER_NEAR)
-// x, y — скорость детальной воды на восточной и северной грани, м/с; z — 1 у ручья (трение по n русел), 0 у озера; w — доля
-// окна у края набора детальных плиток (nearDetailEdge: 1 — далеко от края, 0 — на краю)
+// x, y — скорость детальной воды на восточной и северной грани, м/с (за краем детальных плиток — воды сетки 1 м); z — 1 у
+// ручья (трение по n русел), 0 у озера; w — доля окна у края набора детальных плиток (nearDetailEdge: 1 — далеко от края,
+// 0 — на краю), −1 — ячейка за краем плиток (закреплена по воде сетки 1 м)
 DM_UAV( RWTexture2D<float4>, g_detail, 6 );
 DM_UAV( RWTexture2D<float2>, g_blocks, 7 );			// блок 8 × 8 окна: сумма разницы глубины детальной воды и своей, ячеек
 
@@ -85,16 +88,16 @@ int edgeCells( int2 cell )
 	return min( min( local.x, local.y ), (int)g_nearSize - 1 - max( local.x, local.y ) );
 }
 
-// Ячейка края окна: глубина и скорость граней — детальной воды
-bool fixedCell( int2 cell )
+// Закреплённая ячейка: у края окна — детальная вода, за краем детальных плиток — вода сетки 1 м (g_detail.w < 0)
+bool fixedCell( int2 cell, uint2 address )
 {
-	return edgeCells( cell ) < shallowFixedCells;
+	return edgeCells( cell ) < shallowFixedCells || g_detail[address].w < 0.0f;
 }
 
 // Ячеек до края окна или набора детальных плиток (доля края плиток edge — g_detail.w) — для полосы гашения
 float spongeCells( int2 cell, float edge )
 {
-	return min( edgeCells( cell ) + 0.5f, edge * nearDetailEdgeFade / g_nearStep );
+	return min( edgeCells( cell ) + 0.5f, max( edge, 0.0f ) * nearDetailEdgeFade / g_nearStep );
 }
 
 // Доля подшага, на которую глубина и скорость в полосе гашения тянутся к детальной воде; cells — ячеек до края
@@ -145,7 +148,8 @@ float nearDisplacement( float2 world, float ground )
 }
 
 // Ячейки и грани окна каждый кадр (окно сдвигается): дно, камень, детальная вода над дном, скорость детальной воды на
-// гранях; вошедшие в окно в этом кадре (не было в окне прошлого кадра, g_nearReset — все) и край окна — детальная вода
+// гранях; вошедшие в окно в этом кадре (не было в окне прошлого кадра, g_nearReset — все) и закреплённые — эта вода; за
+// краем детальных плиток — земля карты высот и вода сетки 1 м
 [numthreads( 8, 8, 1 )]
 void mainShallowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 {
@@ -157,24 +161,24 @@ void mainShallowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID 
 	float4 water, still;
 	const float flat = detailBed( world );
 	const bool tile = flat > -1e8f;
-	const float ground = tile ? flat + nearDisplacement( world, flat ) : flat;
-	const bool wet = tile && detailWaterAt( world, water );
+	const float ground = tile ? flat + nearDisplacement( world, flat ) : coarseGround( world );
+	const bool wet = tile ? detailWaterAt( world, water ) : coarseWaterAt( world, water );
 	const float stone = tile ? nearStoneTop( world, ground ) - ground : 0.0f;
 	const bool stream = detailStaticAt( world, still ) && still.w > 0.0f;
 	const float solid = min( stone, shallowStoneSolid * ( wet ? max( water.x - ground, 0.0f ) : 0.0f ) );
-	// Ячейка без детальной плитки — стена (вода там — сетки 1 м, окно её не считает): с дном −1e9 вода утекала в неё со
-	// скоростью предела, и у края плитки посреди пруда вставала белая стена слива (Dimok, 2026-10-21)
-	const float bed = tile ? ground + solid : shallowWallBed;
+	// За краем детальных плиток без воды сетки 1 м — стена: с дном −1e9 (плитки нет) вода утекала в неё со скоростью предела,
+	// и у края плитки посреди пруда вставала белая стена слива (Dimok, 2026-10-21)
+	const float bed = tile || wet ? ground + solid : shallowWallBed;
 	const float target = wet ? water.x - bed : -1e9f;
 	g_cells[address] = float4( bed, target, stone - solid, solid );
 	float2 faces = 0.0f;
 	[unroll] for( uint axis = 0; axis < 2; ++axis )
-		if( detailWaterAt( ( cell + ( axis == 0 ? float2( 1.0f, 0.5f ) : float2( 0.5f, 1.0f ) ) ) * g_nearStep, water ) )
+		if( nearWaterAt( ( cell + ( axis == 0 ? float2( 1.0f, 0.5f ) : float2( 0.5f, 1.0f ) ) ) * g_nearStep, water ) )
 			faces[axis] = water[1 + axis];
-	g_detail[address] = float4( faces, stream ? 1.0f : 0.0f, nearDetailEdge( world ) );
+	g_detail[address] = float4( faces, stream ? 1.0f : 0.0f, tile ? nearDetailEdge( world ) : -1.0f );
 	const int2 previous = cell - g_nearPreviousOrigin;
 	const bool fresh = g_nearReset != 0 || any( previous < 0 ) || any( previous >= (int)g_nearSize );
-	if( fresh || fixedCell( cell ) )
+	if( fresh || fixedCell( cell, address ) )
 	{
 		g_depth[address] = max( target, 0.0f );
 		g_velocity[address] = faces;
@@ -184,7 +188,7 @@ void mainShallowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID 
 // Доля исходящих потоков ячейки: за подшаг из неё уходит не больше воды, чем в ней есть (у края окна — без доли)
 float outflowScale( int2 cell, uint2 address, float depth )
 {
-	if( fixedCell( cell ) )
+	if( fixedCell( cell, address ) )
 		return 1.0f;
 	const float2 own = g_velocity[address];
 	const float west = g_velocity[addressOf( cell - axes[0] )].x;
@@ -223,7 +227,7 @@ void mainShallowDepth( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID
 {
 	int2 cell;
 	uint2 address;
-	if( !shallowCell( group, thread, cell, address ) || fixedCell( cell ) )
+	if( !shallowCell( group, thread, cell, address ) || fixedCell( cell, address ) )
 		return;
 	const float2 own = g_flux[address];
 	const float west = g_flux[addressOf( cell - axes[0] )].x;
@@ -267,7 +271,7 @@ void mainShallowVelocity( uint3 group : SV_GroupID, uint3 thread : SV_GroupThrea
 		const int2 across = axes[other];
 		const int2 next = cell + along;
 		uint2 nextAddress;
-		if( !cellAddress( next, nextAddress ) || ( fixedCell( cell ) && fixedCell( next ) ) )
+		if( !cellAddress( next, nextAddress ) || ( fixedCell( cell, address ) && fixedCell( next, nextAddress ) ) )
 			continue;
 		const float4 there = g_cells[nextAddress];
 		const float depthNext = g_depth[nextAddress];
@@ -324,7 +328,7 @@ void mainShallowBlocks( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadI
 	uint2 address;
 	const bool valid = shallowCell( group, thread, cell, address );
 	float2 sum = 0.0f;
-	if( valid && !fixedCell( cell ) )
+	if( valid && !fixedCell( cell, address ) )
 	{
 		const float depth = g_depth[address];
 		const float target = g_cells[address].y;
@@ -375,7 +379,7 @@ void mainShallowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadI
 		return;
 	const float4 info = g_cells[address];
 	float depth = g_depth[address];
-	if( g_nearNudgeShare > 0.0f && !fixedCell( cell ) && depth > shallowWetDepth && info.y > shallowWetDepth )
+	if( g_nearNudgeShare > 0.0f && !fixedCell( cell, address ) && depth > shallowWetDepth && info.y > shallowWetDepth )
 	{
 		depth = max( depth + g_nearNudgeShare * nudgeCorrection( cell ), 0.0f );
 		g_depth[address] = depth;
@@ -408,7 +412,7 @@ void mainShallowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadI
 	// К краю набора детальных плиток (за ним вода сетки 1 м, здесь — стена) — детальная вода: отклонение — к нулю, течение — к
 	// её течению
 	const float2 world = ( cell + 0.5f ) * g_nearStep;
-	const float edge = g_detail[address].w;
+	const float edge = saturate( g_detail[address].w );
 	if( edge < 1.0f )
 	{
 		float4 water;

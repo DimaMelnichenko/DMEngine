@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Сетка окна у камеры (NearWaterFlow, docs/water.md, «Подробное течение у камеры») — общее у течения под «жёсткой
 // крышкой» (water_flow.cs с FLOW_NEAR) и мелкой воды (water_near_shallow.cs): адрес ячейки по модулю стороны окна, детальная
-// вода и земля под точкой мира, верх камней русла. Перед включением — water_simulation.sh (g_heightMultiplier,
-// g_heightOffset)
+// вода и земля под точкой мира, вода сетки 1 м за краем детальных плиток, верх камней русла. Перед включением —
+// water_simulation.sh (карта высот g_heightMap — SRV 0, terrain, inside, константы поля b4)
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef WATER_NEAR_GRID_SH
@@ -20,6 +20,8 @@ DM_SRV( StructuredBuffer<float4>, g_nearStones, 9 );
 // в uint (младшая — чётный тексель); меньше 0 — меша нет
 DM_SRV( StructuredBuffer<uint>, g_nearStoneTops, 8 );
 DM_SRV( Texture2DArray<float4>, g_detailWater, 10 );		// детальная вода (SLOT_WATER_DETAIL): уровень, течение X, Z, глубина
+// Вода сетки 1 м (SLOT_WATER, на сетке карты высот, строки — против Z мира): глубина, течение X, Z мира, глубина с памятью
+DM_SRV( Texture2D<float4>, g_coarseWater, 11 );
 
 // Ячейка мира (шаг g_nearStep от угла мира) → тексель окна по модулю его стороны: окно сдвигается, а ячейка остаётся в
 // том же текселе; false — ячейка вне окна
@@ -108,6 +110,59 @@ bool detailWaterAt( float2 world, out float4 value )
 	return true;
 }
 
+// Земля карты высот (сетка воды 1 м) в точке мира — билинейно по центрам клеток, м
+float coarseGround( float2 world )
+{
+	const float2 grid = float2( world.x, g_size * g_cellSize - world.y ) / g_cellSize - 0.5f;
+	const int2 c = int2( floor( grid ) );
+	const float2 t = grid - c;
+	float height = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 offset = int2( k & 1, k >> 1 );
+		height += bilinearWeight( t, offset ) * terrain( clamp( c + offset, 0, (int)g_size - 1 ) );
+	}
+	return height;
+}
+
+// Вода сетки 1 м в точке мира — билинейно по мокрым клеткам: x — уровень, y, z — течение по X и Z мира, w — глубина над
+// землёй карты высот (coarseGround); false — воды нет
+bool coarseWaterAt( float2 world, out float4 value )
+{
+	value = 0.0f;
+	const float2 grid = float2( world.x, g_size * g_cellSize - world.y ) / g_cellSize - 0.5f;
+	const int2 c = int2( floor( grid ) );
+	const float2 t = grid - c;
+	float3 sum = 0.0f;
+	float weights = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 offset = int2( k & 1, k >> 1 );
+		const int2 texel = c + offset;
+		const float weight = bilinearWeight( t, offset );
+		if( weight <= 0.0f || !inside( texel ) )
+			continue;
+		const float4 state = g_coarseWater.Load( int3( texel, 0 ) );
+		if( state.x < g_detailWetDepth )
+			continue;
+		sum += weight * float3( terrain( texel ) + state.x, state.yz );
+		weights += weight;
+	}
+	if( weights <= 1e-6f )
+		return false;
+	value.xyz = sum / weights;
+	value.w = max( value.x - coarseGround( world ), 0.0f );
+	return value.w >= g_detailWetDepth;
+}
+
+// Вода в точке мира для окна: детальная там, где детальная плитка (false — там сухо), за краем плиток — сетки 1 м; x —
+// уровень, y, z — течение по X и Z мира, w — глубина
+bool nearWaterAt( float2 world, out float4 value )
+{
+	float3 texel;
+	return detailTexel( world, texel ) ? detailWaterAt( world, value ) : coarseWaterAt( world, value );
+}
+
 // Детальная земля в точке мира, м (билинейно); −1e9 — плитки нет
 float detailBed( float2 world )
 {
@@ -126,10 +181,11 @@ float detailBed( float2 world )
 	return height * g_heightMultiplier + g_heightOffset;
 }
 
-// Окно вложено в детальную воду, а за краем набора детальных плиток вода — сетки 1 м, окно её не считает (ячейки там —
-// суша, у края течение окна стоит). Итог окна к такому краю на этой полосе, м, переходит в детальную воду — как к краю
-// окна (nearWaterFade в water_near.sh): без перехода окно обрывалось на краю плитки посреди пруда прямой линией (Dimok,
-// 2026-10-21). Считается в расчёте окна раз на ячейку, а не в шейдерах поверхности на каждую выборку (+0,15 мс прохода воды)
+// Окно вложено в детальную воду, а за краем набора детальных плиток вода — сетки 1 м: ячейки окна там — по ней (coarseWaterAt:
+// течение окна идёт через край), но рисуют её тайлы 1 м со своей рябью. Итог окна к такому краю на этой полосе, м, переходит в
+// детальную воду — как к краю окна (nearWaterFade в water_near.sh): без перехода окно обрывалось на краю плитки посреди пруда
+// прямой линией (Dimok, 2026-10-21). Считается в расчёте окна раз на ячейку, а не в шейдерах поверхности на каждую выборку
+// (+0,15 мс прохода воды)
 static const float nearDetailEdgeFade = 1.0f;
 
 // Доля окна у края набора детальных плиток в точке мира: 1, к краю плитки, за которым плитки нет, — до 0 на полосе

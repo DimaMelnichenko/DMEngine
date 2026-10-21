@@ -175,7 +175,8 @@ void NearWaterFlow::compute( const FrameContext& frame, const WaterSimulationSet
 	const Settings& window = settings.nearFlow;
 	const float elapsed = std::clamp( frame.gameTime - m_gameTime, 0.0f, maxFrameTime );
 	m_gameTime = frame.gameTime;
-	const bool possible = m_initialized && window.enabled && water.detailTileCount() > 0 && height.detailTiles && height.detailIndex;
+	const bool possible = m_initialized && window.enabled && water.detailTileCount() > 0 && height.detailTiles && height.detailIndex &&
+						  height.heightMap;
 	const float step = std::clamp( window.cell, 0.03f, 0.25f );
 	const uint32_t size = NearWindow::cells( window.size, step );
 	const float side = size * step;
@@ -293,6 +294,9 @@ void NearWaterFlow::bindWindow( const WaterSimulationSettings& settings, WaterFi
 	m_stones.setToSlot( 9 );
 	d3d.setSRV( 8, m_stoneTopsView );
 	d3d.setSRV( 10, water.detailWaterView() );
+	// За краем детальных плиток — вода сетки 1 м и карта высот
+	d3d.setSRV( 0, *height.heightMap );
+	d3d.setSRV( 11, field.stateView );
 }
 
 void NearWaterFlow::stepRigidLid( const WaterSimulationSettings& settings, WaterField& field, const StaticWater& water,
@@ -310,7 +314,7 @@ void NearWaterFlow::stepRigidLid( const WaterSimulationSettings& settings, Water
 	pass.name = "Water near flow";
 	pass.reads = { { &water.detailStaticView(), "detail static water" }, { height.detailTiles, "terrain detail tiles" },
 				   { height.detailIndex, "terrain detail index" }, { &water.detailWaterView(), "detail water" },
-				   { &m_stoneTopsView, "stone tops" } };
+				   { &m_stoneTopsView, "stone tops" }, { &field.stateView, "water" }, { height.heightMap, "height map" } };
 	pass.writes = { { &m_infoUAV, "near flow cells" },		   { &m_info2UAV, "near flow radius" },
 					{ &m_velocityUAV, "near flow velocity" },	   { &m_advectedUAV, "near flow advected" },
 					{ &m_pressureUAV, "near flow pressure" },	   { &m_divergenceUAV, "near flow divergence" },
@@ -367,7 +371,7 @@ void NearWaterFlow::stepShallow( const WaterSimulationSettings& settings, WaterF
 	pass.name = "Water near shallow";
 	pass.reads = { { &water.detailStaticView(), "detail static water" }, { height.detailTiles, "terrain detail tiles" },
 				   { height.detailIndex, "terrain detail index" }, { &water.detailWaterView(), "detail water" },
-				   { &m_stoneTopsView, "stone tops" } };
+				   { &m_stoneTopsView, "stone tops" }, { &field.stateView, "water" }, { height.heightMap, "height map" } };
 	pass.writes = { { &m_shallow.cellsUAV, "near shallow cells" },		  { &m_shallow.depthUAV, "near shallow depth" },
 					{ &m_shallow.velocityUAV[0], "near shallow velocity" }, { &m_shallow.velocityUAV[1], "near shallow velocity" },
 					{ &m_shallow.fluxUAV, "near shallow flux" },			  { &m_resultUAV, "near flow" },

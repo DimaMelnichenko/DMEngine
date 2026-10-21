@@ -125,18 +125,19 @@ static const float nearSurfaceMaxLift = 0.03f;
 typedef uint2 CellAddress;
 #define FLOW_CELL g_nearStep
 
-// Течение внешней (детальной) сетки в точке p (ячейки окна от угла мира) — по осям окна (они — X и Z мира)
+// Течение внешней сетки в точке p (ячейки окна от угла мира) — по осям окна (они — X и Z мира): детальной, за краем
+// детальных плиток — сетки 1 м
 float2 coarseVelocity( float2 p )
 {
 	float4 water;
-	return detailWaterAt( p * g_nearStep, water ) ? water.yz : 0.0f;
+	return nearWaterAt( p * g_nearStep, water ) ? water.yz : 0.0f;
 }
 
-// Глубина детальной воды у ячейки
+// Глубина внешней воды у ячейки: детальной, за краем детальных плиток — сетки 1 м
 float coarseDepth( int2 cell )
 {
 	float4 water;
-	return detailWaterAt( ( cell + 0.5f ) * g_nearStep, water ) ? water.w : 0.0f;
+	return nearWaterAt( ( cell + 0.5f ) * g_nearStep, water ) ? water.w : 0.0f;
 }
 
 // Доля шага, на которую крупный масштаб тянется к внешней сетке
@@ -409,8 +410,20 @@ void mainFlowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	// g_nearPassage глубины без камня. Каждый кадр (окно сдвигается), давление и скорость остаются — начальное приближение
 	const float2 world = ( cell + 0.5f ) * g_nearStep;
 	float4 water;
-	const bool wet = detailStaticAt( world, water );
 	const float bed = detailBed( world );
+	// За краем детальных плиток — ячейка «вне» с водой сетки 1 м (грань к ней задана её течением, как за краем окна): течение
+	// окна идёт через край, а не стоит у него, как у суши
+	if( bed <= -1e8f )
+	{
+		const float depth = coarseWaterAt( world, water ) ? water.w : 0.0f;
+		const bool outside = depth >= g_detailWetDepth;
+		g_info[address] = outside ? float4( 0.0f, 0.0f, kindOutside, min( depth, g_flowLayer ) ) : 0.0f;
+		g_info2[address] = float2( 0.0f, outside ? min( depth, g_flowLayer ) : 0.0f );
+		g_pressure[address] = 0.0f;
+		g_divergence[address] = 0.0f;
+		return;
+	}
+	const bool wet = detailStaticAt( world, water );
 	const float top = nearStoneTop( world, bed );
 	const bool stream = water.w > 0.0f;
 	const float baseDepth = wet && bed > -1e8f ? max( water.x - bed, 0.0f ) : 0.0f;
