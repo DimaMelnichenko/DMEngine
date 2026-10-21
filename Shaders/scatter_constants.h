@@ -77,6 +77,11 @@ DM_CONSTANTS( ScatterLayerBuffer, b4 )
 	// Деревья на дальних горах (ScatterLayers.placement far_forest): 1 — за краем карты, высота и плотность — гор (far_ground.sh)
 	DM_FIELD( float, farForest );
 	DM_FIELD( uint, waterRule );		// вода (ScatterLayerSettings::water): 0 — до уреза, 1 — выше перелива озёр, 2 — мелководье
+	// Заросли (ScatterLayerSettings::standSize, standCover): пятна шума мира такого размера, м (0 — без зарослей), занимают
+	// эту долю площади — слой растёт только в них
+	DM_FIELD( float, standSize );
+	DM_FIELD( float, standCover );
+	DM_FIELD( float2, standPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

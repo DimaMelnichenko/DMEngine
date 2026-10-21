@@ -150,6 +150,18 @@ float patchNoise( float2 worldXZ, uint group, uint seed )
 	return 0.7f * worldNoise( worldXZ, g_patchScale, index ) + 0.3f * worldNoise( worldXZ, g_patchScale * 0.35f, index + 1 );
 }
 
+// Заросли (g_standSize, g_standCover): пятна шума мира размером g_standSize и их неровный край (второй слой втрое мельче)
+// занимают примерно долю g_standCover площади — слой растёт только в них, у края пятна — реже; без зарослей — 1
+float standDensity( float2 worldXZ, uint seed )
+{
+	if( g_standSize <= 0.0f )
+		return 1.0f;
+	const float noise = 0.7f * worldNoise( worldXZ, g_standSize, seed + 98 ) + 0.3f * worldNoise( worldXZ, g_standSize * 0.35f, seed + 99 );
+	// Шум из двух слоёв гуще у нуля, чем равномерный: порог подобран так, что доля площади выше него — около g_standCover
+	const float threshold = 0.55f - 1.1f * saturate( g_standCover );
+	return smoothstep( threshold - 0.06f, threshold + 0.06f, noise );
+}
+
 // Вариант ячейки по весам в точке: с куртинами — вес × e^(4 · сила · шум его группы), с предпочтением слоёв земли —
 // × (1 − сила + сила × доля слоёв вида в весах земли). Порог — случайное число ячейки pick (то же, что без них): пятна и
 // слои на месте мира, виды не «пересаживаются» при движении камеры
@@ -393,7 +405,7 @@ bool placeInCell( int2 cell, uint seed, bool displaced, out ScatterItem item, ou
 		canopy = lerp( 1.0f, under, cover );
 	}
 	const float density = g_densityMask.SampleLevel( g_SamplerLinearClamp, uv, 0.0f ).r * ( 1.0f - foliageClear( worldXZ ) ) *
-						  groundFilter( worldXZ ) * canopy;
+						  groundFilter( worldXZ ) * canopy * standDensity( worldXZ, seed );
 	const float chance = random( cell, seed + 2 );
 	if( chance >= density )
 		return false;

@@ -974,6 +974,8 @@ void Scatterer::fillParams( ScatterPass::PopulateParams& params, const ScatterLa
 	params.groundEmbed = std::clamp( settings.groundEmbed, 0.0f, 0.5f );
 	params.farForest = settings.placement == ScatterPlacement::farForest ? 1.0f : 0.0f;
 	params.waterRule = static_cast<uint32_t>( std::clamp( settings.water, 0, 2 ) );
+	params.standSize = std::max( settings.standSize, 0.0f );
+	params.standCover = std::clamp( settings.standCover, 0.0f, 1.0f );
 }
 
 float Scatterer::maxHeight( const Layer& layer )
@@ -1097,7 +1099,8 @@ void Scatterer::applyProperties( Layer& layer )
 						   settings.underCanopyPatches != applied.underCanopyPatches ||
 						   settings.underCanopyPatchSize != applied.underCanopyPatchSize ||
 						   settings.groundFit != applied.groundFit || settings.groundEmbed != applied.groundEmbed ||
-						   settings.water != applied.water || settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
+						   settings.water != applied.water || settings.standSize != applied.standSize ||
+						   settings.standCover != applied.standCover || settings.rotationRange.x != applied.rotationRange.x || settings.rotationRange.y != applied.rotationRange.y ||
 						   settings.rotationRange.z != applied.rotationRange.z;
 	// Пока ползунок тянут или в поле набирают число (Property::editing), дорогое ждёт: новые буферы слоя (шаг, кольцо,
 	// размер, веса — иначе каждый кадр новые буферы, а прежние живут до конца кадров в полёте) и раскладка постоянного слоя
@@ -1165,6 +1168,8 @@ void Scatterer::applyProperties( Layer& layer )
 		params.groundFit = fresh.groundFit;
 		params.groundEmbed = fresh.groundEmbed;
 		params.waterRule = fresh.waterRule;
+		params.standSize = fresh.standSize;
+		params.standCover = fresh.standCover;
 		params.castShadow = castShadow;
 		for( uint32_t v = 0; v < layer.passVariants.size(); ++v )
 			layer.pass->setVariantPlacement( v, layer.passVariants[v] );

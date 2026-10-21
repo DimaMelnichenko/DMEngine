@@ -82,6 +82,11 @@ const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 		  "from the waterline to the overflow, Lake freeboard of Channels - the water floods it); shallows - the shore strip of the "
 		  "lakes and the water up to Lake shallows depth (Layer rules, Water beds), as cattail", 0, "ground", { 0, 1, 2 },
 		  { "Up to the waterline", "Above the lake overflow", "Shallows" } },
+		{ "stand_size", "Stand size", DM_SETTING( standSize ), 0.0f, 50.0f, "m",
+		  "Dense stands: the layer grows only in patches of world noise this big (cattail - thick clumps, not a strip); "
+		  "0 - no stands, the mask decides", settingClamp, "ground" },
+		{ "stand_cover", "Stand cover", DM_SETTING( standCover ), 0.0f, 1.0f, "",
+		  "With Stand size: about this share of the area is covered by the stands", settingClamp, "ground" },
 		// Фильтр по слоям земли (как Landscape Grass Type в UE): роли — флажки подокна «Grows on» у слоя, здесь — порог
 		{ "layer_filter", nullptr, DM_SETTING( layerFilter ) },
 		{ "layer_filter_threshold", "Ground threshold", DM_SETTING( layerFilterThreshold ), 0.0f, 0.5f, "",
