@@ -42,6 +42,14 @@ uint8_t store( float value )
 	return static_cast<uint8_t>( std::lround( std::clamp( value, 0.0f, 1.0f ) * 255.0f ) );
 }
 
+// G среза мокрости у воды (TerrainDetailSplat::maxWetBand): шаг 0 занят «воды рядом нет», высота полосы — на остальных 254.
+// Сначала G был просто высотой, и при «Wet bank height» 0 у стоячей воды 0 читался как «воды нет»: дно озера в плитке
+// оставалось сухим и светлым, а вне плитки — мокрым, и по краю плитки шла граница через всё дно (Dimok, 2026-10-22)
+uint8_t wetBandEncode( float band )
+{
+	return static_cast<uint8_t>( 1 + std::lround( std::clamp( band / TerrainDetailSplat::maxWetBand, 0.0f, 1.0f ) * 254.0f ) );
+}
+
 // Билинейно по центрам клеток сетки size² (строка 0 — дальний край по z) в точке мира (x, z)
 float sampleCells( const float* values, int size, float texel, float x, float z )
 {
@@ -318,7 +326,7 @@ void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 			}
 			tile.source[( weightSlices * texels + k ) * 4] = store( wetness );
 			// Высота полосы — только у воды (мокрый тексель в splashReach вокруг), иначе 0: шейдер там не ищет уровень воды
-			tile.source[( weightSlices * texels + k ) * 4 + 1] = store( !splash.empty() && splash[k].x > noLevel * 0.5f ? splash[k].y / maxWetBand : 0.0f );
+			tile.source[( weightSlices * texels + k ) * 4 + 1] = !splash.empty() && splash[k].x > noLevel * 0.5f ? wetBandEncode( splash[k].y ) : 0;
 		}
 	}
 }

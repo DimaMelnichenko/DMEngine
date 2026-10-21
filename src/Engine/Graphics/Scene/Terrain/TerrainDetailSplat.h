@@ -76,7 +76,8 @@ public:
 	// плитки нет — false
 	bool sourceAt( uint32_t x, uint32_t row, uint32_t channel, float& value ) const;
 	static constexpr uint32_t wetnessChannel = TerrainMasks::splatLayers;
-	// G среза мокрости — высота мокрой полосы над водой этой долей, м (maxWetBand в terrain.ps)
+	// G среза мокрости: 0 — воды рядом нет, у воды — ( 1 + 254 · высота мокрой полосы / maxWetBand ) / 255 (wetBandEncode;
+	// maxWetBand и разбор — в terrain.ps): полоса высотой 0 («Wet bank height» 0 у стоячей воды) — не «воды нет»
 	static constexpr float maxWetBand = 1.0f;
 	// Ресурсы сцены (terrain_layers.sh): массив плиток и индекс — их читают террейн, расстановка и частицы
 	void bind() const;

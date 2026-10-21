@@ -17,8 +17,14 @@
 
 DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти или места звука (g_paintPreview maxLayers + 1), в UV карты высот
 
-// G среза мокрости детального слоя весов — высота мокрой полосы над водой, доля этой высоты, м (TerrainDetailSplat::maxWetBand)
+// G среза мокрости детального слоя весов (TerrainDetailSplat::maxWetBand, wetBandEncode): 0 — воды рядом нет, у воды —
+// ( 1 + 254 · высота мокрой полосы над водой / maxWetBand ) / 255
 static const float maxWetBand = 1.0f;
+
+float wetBandDecode( float g )
+{
+	return saturate( ( g * 255.0f - 1.0f ) / 254.0f ) * maxWetBand;
+}
 
 // Доля диапазона: 0 при from, 1 при to (в любую сторону), плавно; from = to — ступень
 float ramp( float from, float to, float x )
@@ -140,7 +146,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	// (simulated) — сохнет не сразу
 	// Уровень воды у точки ищется только у воды: вне плиток он уже есть (waterDepth над точной землёй), в плитках — где у
 	// текселя есть высота полосы (G > 0 — мокрый тексель в двух вокруг); иначе каждый пиксель рельефа у русел платил бы за поиск
-	const float wetBand = lerp( terrainLayers().wetBankHeight, fineExtra.y * maxWetBand, detailShare );
+	const float wetBand = lerp( terrainLayers().wetBankHeight, wetBandDecode( fineExtra.y ), detailShare );
 	float wetDepth = -1e30f;
 	[branch] if( liveWater )
 		wetDepth = waterDepth > -1e29f ? waterDepth + groundHeight - input.worldPosition.y : -1e30f;
