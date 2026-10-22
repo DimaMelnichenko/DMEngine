@@ -14,6 +14,9 @@ namespace
 
 constexpr float normalBump = 2.0f;		// крутизна нормали: высота маски на шаг текселя
 constexpr float normalBlur = 1.0f;		// размытие маски для нормали, текселей
+// Мелкие слои кружева лопаются раньше крупного: расстояние до их стенок × столько
+constexpr float netPersistence = 1.6f;
+constexpr float frothPersistence = 2.2f;
 
 // PCG (Jarzynski, Olano 2020)
 uint32_t hash( uint32_t value )
@@ -138,6 +141,20 @@ std::vector<float> blur( const std::vector<float>& source, uint32_t size, float 
 	return result;
 }
 
+// Расстояние до середины стенки пузыря (F2 − F1 шума Ворлея, ячеек) в долях её толщины thickness (тех же ячеек): 0 —
+// середина стенки; толщины нет (слоя тут нет) — далеко
+float wallDistance( const Cells& cells, float thickness )
+{
+	return thickness > 1e-4f ? ( cells.second - cells.first ) / thickness : 1e9f;
+}
+
+// Шум растворения: плавные пятна (пена тает кусками на разных расстояниях) и мелкая рябь вдоль стенок — тонкая стенка в
+// конце рвётся на бусины, а не пропадает линией
+float dissolveNoise( float u, float v, uint32_t seed )
+{
+	return 0.5f * valueNoise( u, v, 6, seed + 50 ) + 0.2f * valueNoise( u, v, 18, seed + 51 ) + 0.3f * valueNoise( u, v, 48, seed + 52 );
+}
+
 // Маска и шум растворения → каналы узора: нормаль — по размытой маске, как у pack_water_foam.py
 std::vector<XMFLOAT4> packFoam( const std::vector<float>& mask, const std::vector<float>& dissolve, uint32_t size )
 {
@@ -172,24 +189,25 @@ std::vector<XMFLOAT4> generateFoamLace( uint32_t size, uint32_t seed )
 					   {
 						   const float u = ( x + 0.5f ) / size;
 						   const float v = ( y + 0.5f ) / size;
-						   // Плотность пены — плавные пятна: где её много, кружево гуще и между стенками — мелкая пена
+						   // Плотность пены — плавные пятна: где её много, стенки толще и между ними — сеть помельче и мелкая пена
 						   const float density = smoothstep( 0.2f, 0.8f, 0.65f * valueNoise( u, v, 4, seed + 10 ) + 0.35f * valueNoise( u, v, 8, seed + 11 ) );
-						   // Крупное кружево: стенки разной толщины, с разрывами
+						   // Крупное кружево: стенки разной толщины
 						   const Cells lace = worley( u, v, 9, seed + 20, 0.35f );
-						   const float thickness = 0.05f + 0.22f * std::pow( valueNoise( u, v, 18, seed + 12 ), 2.0f );
-						   const float gaps = smoothstep( 0.25f, 0.45f, valueNoise( u, v, 14, seed + 13 ) );
-						   const float walls = ( 1.0f - smoothstep( 0.0f, thickness, lace.second - lace.first ) ) * ( 0.35f + 0.65f * gaps );
-						   // Сеть помельче — кусками
+						   const float thickness = ( 0.06f + 0.2f * std::pow( valueNoise( u, v, 18, seed + 12 ), 2.0f ) ) * ( 0.7f + 0.6f * density );
+						   // Сеть помельче — кусками, и мелкая пена пузырьков — где пены много
 						   const Cells net = worley( u, v, 24, seed + 30, 0.5f );
-						   const float netWalls = ( 1.0f - smoothstep( 0.0f, 0.2f, net.second - net.first ) ) *
-												  smoothstep( 0.3f, 0.6f, valueNoise( u, v, 20, seed + 14 ) );
-						   // Мелкая пена пузырьков
+						   const float netThickness = 0.2f * smoothstep( 0.3f, 0.6f, valueNoise( u, v, 20, seed + 14 ) ) * density;
 						   const Cells froth = worley( u, v, 56, seed + 40, 0.6f );
-						   const float frothWalls = 1.0f - smoothstep( 0.0f, 0.3f, froth.second - froth.first );
+						   const float frothThickness = 0.3f * std::pow( density, 1.5f );
+						   // Маска — ближе к середине стенки (в долях её толщины) — больше: порог по доле пены сужает все стенки разом,
+						   // толстые держатся дольше, дыры между ними растут (Dimok, 2026-10-22: «дыры растут, а белые границы
+						   // сужаются и тают»). Мелкие пузыри лопаются раньше крупных (расстояние у их стенок — дальше): пена редеет
+						   // до крупного кружева, а не до сетки трещин. Прежде маска была суммой стенок, разрывов и плотности, и порог
+						   // оставлял от кружева узлы и пятна
 						   const size_t index = static_cast<size_t>( y ) * size + x;
-						   mask[index] = walls * ( 0.5f + 0.5f * density ) + 0.45f * netWalls * density +
-										 0.55f * frothWalls * std::pow( density, 1.5f ) + 0.1f * density;
-						   dissolve[index] = 0.7f * valueNoise( u, v, 6, seed + 50 ) + 0.3f * valueNoise( u, v, 18, seed + 51 );
+						   mask[index] = -std::min( { wallDistance( lace, thickness ), netPersistence * wallDistance( net, netThickness ),
+													  frothPersistence * wallDistance( froth, frothThickness ) } );
+						   dissolve[index] = dissolveNoise( u, v, seed );
 					   }
 				   } );
 	equalize( mask );
@@ -210,16 +228,17 @@ std::vector<XMFLOAT4> generateFoamDense( uint32_t size, uint32_t seed )
 					   {
 						   const float u = ( x + 0.5f ) / size;
 						   const float v = ( y + 0.5f ) / size;
-						   // Пузыри трёх размеров вплотную (стенки толще, чем у кружева) и плавные пятна плотнее и реже
+						   // Пузыри трёх размеров вплотную (стенки толще, чем у кружева); в плавных пятнах стенки толще
 						   const Cells large = worley( u, v, 20, seed + 20, 0.5f );
 						   const Cells middle = worley( u, v, 44, seed + 30, 0.6f );
 						   const Cells small = worley( u, v, 90, seed + 40, 0.6f );
 						   const float patches = smoothstep( 0.25f, 0.75f, 0.6f * valueNoise( u, v, 5, seed + 10 ) + 0.4f * valueNoise( u, v, 11, seed + 11 ) );
+						   const float boost = 0.7f + 0.6f * patches;
+						   // Маска — как у кружева: ближе к середине стенки — больше, порог сужает стенки, пузыри растут
 						   const size_t index = static_cast<size_t>( y ) * size + x;
-						   mask[index] = 0.35f * ( 1.0f - smoothstep( 0.0f, 0.35f, large.second - large.first ) ) +
-										 0.35f * ( 1.0f - smoothstep( 0.0f, 0.4f, middle.second - middle.first ) ) +
-										 0.3f * ( 1.0f - smoothstep( 0.0f, 0.45f, small.second - small.first ) ) + 0.25f * patches;
-						   dissolve[index] = 0.7f * valueNoise( u, v, 6, seed + 50 ) + 0.3f * valueNoise( u, v, 18, seed + 51 );
+						   mask[index] = -std::min( { wallDistance( large, 0.35f * boost ), wallDistance( middle, 0.4f * boost ),
+													  wallDistance( small, 0.45f * boost ) } );
+						   dissolve[index] = dissolveNoise( u, v, seed );
 					   }
 				   } );
 	equalize( mask );

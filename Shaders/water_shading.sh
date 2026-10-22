@@ -632,8 +632,9 @@ float4 shadeWater( WaterShading input )
 			foamSlope *= foamNormalization;
 			foamShade = lerp( foamThinShade, 1.0f, saturate( pattern ) );
 			// Растворение у края: порог сдвинут шумом узора (он плывёт с пеной) — где доля пены сходит на нет, пена тает кусками
-			// на разных расстояниях, а не по линии
-			const float threshold = 1.0f - foamAmount + g_foamDissolve * foamDissolve * foamNormalization;
+			// на разных расстояниях, а не по линии, и тонкие стенки рвутся на бусины (мелкая рябь шума вдоль стенок). Сдвиг —
+			// сильнее там, где пены мало: у сплошной белой воды его нет
+			const float threshold = 1.0f - foamAmount + g_foamDissolve * foamDissolve * foamNormalization * 2.0f * ( 1.0f - foamAmount );
 			// На тонкой воде пена реже и прозрачнее: в пару сантиметров ей не на чем держаться
 			foam = smoothstep( threshold, threshold + g_foamSoftness, pattern ) * foamAmount * saturate( input.depth / 0.05f );
 		}

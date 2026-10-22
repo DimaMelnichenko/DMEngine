@@ -1,5 +1,5 @@
 // Узор пены «кружево» (generateFoamLace): бесшовен, маска и шум растворения выровнены по гистограмме (порог по доле пены
-// оставляет ту же долю площади), одинаков при том же зерне
+// оставляет ту же долю площади), пены мало — остаются тонкие стенки, а не пятна, одинаков при том же зерне
 #include <doctest/doctest.h>
 #include <cmath>
 #include "Water\FoamLace.h"
@@ -54,6 +54,34 @@ TEST_CASE( "FoamLace: the mask and the dissolve noise are uniform, a foam share 
 	CHECK( maskSum / texels.size() == doctest::Approx( 0.5 ).epsilon( 0.01 ) );
 	CHECK( dissolveSum / texels.size() == doctest::Approx( 0.5 ).epsilon( 0.01 ) );
 	CHECK( static_cast<double>( above ) / texels.size() == doctest::Approx( 0.2 ).epsilon( 0.02 ) );
+}
+
+TEST_CASE( "FoamLace: with little foam thin walls remain, not blobs" )
+{
+	// Пены мало (порог оставляет 15 % площади): видимое — тонкие стенки, почти каждый их тексель — у края. Прежде маска была
+	// суммой стенок и плотности, и от кружева оставались узлы и пятна — у края 74–77 % текселей (стенки по расстоянию до
+	// середины — 88–93 %)
+	constexpr uint32_t side = 256;
+	for( uint32_t seed : { 1u, 2u, 3u } )
+	{
+		const std::vector<XMFLOAT4> texels = generateFoamLace( side, seed );
+		size_t visible = 0, edge = 0;
+		for( uint32_t y = 0; y < side; ++y )
+			for( uint32_t x = 0; x < side; ++x )
+			{
+				const float threshold = 0.85f;
+				if( texels[static_cast<size_t>( y ) * side + x].x < threshold )
+					continue;
+				++visible;
+				const uint32_t xs[4] = { ( x + 1 ) % side, ( x + side - 1 ) % side, x, x };
+				const uint32_t ys[4] = { y, y, ( y + 1 ) % side, ( y + side - 1 ) % side };
+				bool border = false;
+				for( int k = 0; k < 4; ++k )
+					border = border || texels[static_cast<size_t>( ys[k] ) * side + xs[k]].x < threshold;
+				edge += border ? 1 : 0;
+			}
+		CHECK( static_cast<double>( edge ) / visible > 0.85 );
+	}
 }
 
 TEST_CASE( "FoamLace: dense foam is seamless, its gaps are thin foam, not water" )
