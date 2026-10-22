@@ -170,6 +170,7 @@ add_library(DMCore STATIC
     src/Engine/Graphics/Scene/Terrain/TerrainEdits.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainHydrology.cpp
     src/Engine/Graphics/Scene/Terrain/TerrainCanopy.cpp
+    src/Engine/Graphics/Scene/Terrain/FarForestRelief.cpp
     src/Engine/Graphics/Scene/Water/StoneTop.cpp
     src/Engine/Graphics/Scene/Water/FoamLace.cpp
     src/Engine/Graphics/Scene/Water/ShallowWater.cpp

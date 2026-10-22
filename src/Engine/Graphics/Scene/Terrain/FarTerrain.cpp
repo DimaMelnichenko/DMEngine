@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <DirectXTex.h>
+#include <DirectXPackedVector.h>
 #include <fstream>
 #include "CDLODTerrain.h"
 #include "FluvialErosion.h"
@@ -366,6 +367,7 @@ bool FarTerrain::initialize( const FarTerrainSettings& settings, CDLODTerrain& t
 	applyErosion( m_ice );
 	if( !createShader() || !createGlacierTexture( settings.moraineWidth ) || !bake() )
 		return false;
+	buildForestRelief();
 
 	m_patch.initialize( CDLODTerrain::patchDim + 1, CDLODTerrain::patchDim + 1 );
 	m_patchBuffer.createBuffer( sizeof( Patch ), CDLODQuadtree::maxPatches, "Far terrain patches" );
@@ -661,10 +663,20 @@ void FarTerrain::update( const FrameContext& frame )
 		m_erosionRevision = erosionRevision;
 		applyErosion( m_ice );
 		createGlacierTexture( m_properties["Moraine width"].data<float>() );
+		buildForestRelief();
 	}
 	// Правка ширины морен закончилась — карта морен заново (эрозия — нет)
 	else if( !m_properties["Moraine width"].editing() && m_properties["Moraine width"].data<float>() != m_moraineWidth )
 		createGlacierTexture( m_properties["Moraine width"].data<float>() );
+	// Правка лавинных лотков закончилась — их доля заново (заливка водосбора — нет)
+	const AvalancheRules avalanche = avalancheRules();
+	if( std::memcmp( &avalanche, &m_avalancheRules, sizeof( AvalancheRules ) ) != 0 && !m_properties["Avalanche slope"].editing() &&
+		!m_properties["Avalanche height"].editing() && !m_properties["Avalanche runout"].editing() &&
+		!m_properties["Avalanche area"].editing() )
+	{
+		m_avalancheRules = avalanche;
+		createForestReliefTexture();
+	}
 	// Карту построили заново (перестройка русел) или сменили её множитель — её мип в горах заново
 	if( glacierEdited || m_bakedRevision != m_pipeline->heightRevision() || m_bakedMultiplier != m_pipeline->heightMultiplier() ||
 		m_bakedOffset != m_pipeline->heightOffset() )
@@ -685,7 +697,8 @@ void FarTerrain::compute( const FrameContext& frame )
 	if( !m_initialized )
 		return;
 	// Правили окно гор (правила леса, снега, скалы) или горы запечены заново — плотность заново
-	const uint64_t key = ( static_cast<uint64_t>( m_properties.revision() ) << 20 ) ^ m_bakes ^ ( static_cast<uint64_t>( m_erosionRevision ) << 40 );
+	const uint64_t key = ( static_cast<uint64_t>( m_properties.revision() ) << 20 ) ^ m_bakes ^ ( static_cast<uint64_t>( m_erosionRevision ) << 40 ) ^
+						 ( static_cast<uint64_t>( m_forestReliefRevision ) << 52 );
 	if( key != m_forestDensityKey )
 	{
 		m_forestDensityKey = key;
@@ -702,15 +715,84 @@ void FarTerrain::bakeForestDensity( const RenderView& view )
 	// Константы и ресурсы — как у материала гор: те же правила и та же высота
 	Device::updateResource<CDLODBuffer>( m_terrainConstants, [this, &view]( CDLODBuffer& params ) { m_terrain->fillConstants( params, view, -1 ); } );
 	Device::updateResource<FarTerrainBuffer>( m_constants, [this]( FarTerrainBuffer& params ) { fillConstants( params ); } );
-	d3d.beginPass( PassDesc{ "Far forest density", {}, {}, 0, 0, { { &m_heightView, "far terrain heights" }, { &m_glacierView, "far glaciers" } },
+	d3d.beginPass( PassDesc{ "Far forest density", {}, {}, 0, 0, { { &m_heightView, "far terrain heights" }, { &m_glacierView, "far glaciers" },
+																   { &m_forestReliefView, "far forest relief" } },
 							 { { &m_forestDensityWrite, "far forest density" } } } );
 	d3d.setConstantBuffer( SLOT_CB_MATERIAL, m_terrainConstants );
 	d3d.setConstantBuffer( farTerrainConstantSlot, m_constants );
 	d3d.setSRV( 0, m_pipeline->heightMapView() );
 	d3d.setSRV( 1, m_heightView );
 	d3d.setSRV( 2, m_glacierView );
+	d3d.setSRV( 3, m_forestReliefView );
 	m_forestDensityShader.setUAVBuffer( 0, m_forestDensityWrite );
 	m_forestDensityShader.dispatchGroups( ( m_size + 7 ) / 8, ( m_size + 7 ) / 8, 1 );
+}
+
+void FarTerrain::buildForestRelief()
+{
+	const auto start = std::chrono::steady_clock::now();
+	// Сетка вдвое грубее карты гор (64 м): лоток в 50–100 м — клетка-две, заливка вчетверо дешевле. Горы после эрозии без мипа
+	// карты: лес по рельефу — за её краем, а у края его плотность переходит в маску леса карты
+	const uint32_t size = m_size / 2;
+	std::vector<float> heights( static_cast<size_t>( size ) * size );
+	for( uint32_t row = 0; row < size; ++row )
+		for( uint32_t col = 0; col < size; ++col )
+		{
+			const size_t i = static_cast<size_t>( 2 * row ) * m_size + 2 * col;
+			heights[static_cast<size_t>( row ) * size + col] = 0.25f * ( m_source[i] + m_source[i + 1] + m_source[i + m_size] + m_source[i + m_size + 1] );
+		}
+	m_forestRelief.build( heights, size, 2.0f * m_loaded.extent / static_cast<float>( m_size ) );
+	m_avalancheRules = avalancheRules();
+	createForestReliefTexture();
+	LOG( "Far forest relief: " + std::to_string( size ) + " cells of " + std::to_string( m_forestRelief.cell() ) + " m, ms: " +
+		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - start ).count() ) );
+}
+
+bool FarTerrain::createForestReliefTexture()
+{
+	// Без рельефа (горы меньше трёх клеток) — тексель без долин и лотков: шейдер читает текстуру всегда
+	const uint32_t size = m_forestRelief.size() >= 3 ? m_forestRelief.size() : 1;
+	const std::vector<float> avalanche = m_forestRelief.avalanche( m_avalancheRules );
+	ScratchImage image;
+	if( FAILED( image.Initialize2D( DXGI_FORMAT_R16G16_FLOAT, size, size, 1, 1 ) ) )
+		return false;
+	const Image& top = *image.GetImage( 0, 0, 0 );
+	for( uint32_t row = 0; row < size; ++row )
+	{
+		uint16_t* line = reinterpret_cast<uint16_t*>( top.pixels + row * top.rowPitch );
+		for( uint32_t col = 0; col < size; ++col )
+		{
+			const size_t i = static_cast<size_t>( row ) * size + col;
+			const bool relief = size > 1;
+			line[col * 2] = PackedVector::XMConvertFloatToHalf( relief ? std::log10( m_forestRelief.drainage()[i] ) : 0.0f );
+			line[col * 2 + 1] = PackedVector::XMConvertFloatToHalf( relief ? avalanche[i] : 0.0f );
+		}
+	}
+	// Мипы — средние: мип 1 — дно долины и нижние склоны над ним
+	ScratchImage mipChain;
+	if( size > 1 && FAILED( GenerateMipMaps( top, TEX_FILTER_BOX | TEX_FILTER_FORCE_NON_WIC, 0, mipChain ) ) )
+		return false;
+	if( !GpuImages::createTexture( size > 1 ? mipChain : image, m_forestReliefTexture, m_forestReliefView ) )
+	{
+		LOG( "Far terrain: can`t create the forest relief texture" );
+		return false;
+	}
+	DMD3D::instance().setName( m_forestReliefTexture, "Far forest relief" );
+	++m_forestReliefRevision;
+	return true;
+}
+
+AvalancheRules FarTerrain::avalancheRules() const
+{
+	const FarTerrainSettings rules = settings();
+	AvalancheRules avalanche;
+	avalanche.slopeFrom = rules.avalancheSlope.from;
+	avalanche.slopeTo = std::max( rules.avalancheSlope.to, rules.avalancheSlope.from + 0.1f );
+	avalanche.height = rules.avalancheHeight;
+	avalanche.runout = rules.avalancheRunout;
+	avalanche.areaFrom = rules.avalancheArea.from;
+	avalanche.areaTo = std::max( rules.avalancheArea.to, rules.avalancheArea.from + 0.01f );
+	return avalanche;
 }
 
 void FarTerrain::frameConstants( const RenderView&, FrameParameters& constants )
@@ -753,6 +835,12 @@ void FarTerrain::fillConstants( FarTerrainBuffer& params ) const
 	params.forestLine = heightRange( rules.forestLine );
 	params.forestSlope = slopeCosines( rules.forestSlope );
 	params.forestColor = rules.forestColor;
+	// Лес по рельефу: водосбор долины — log10 м²; полоса без леса у ледников — мип льда с текселем около неё
+	const float valleyFrom = std::max( rules.forestValleyArea.from, 1e-4f );
+	params.forestValleyArea = XMFLOAT2( std::log10( valleyFrom * 1e6f ), std::log10( std::max( rules.forestValleyArea.to, valleyFrom * 1.01f ) * 1e6f ) );
+	params.forestUpland = std::clamp( rules.forestUpland, 0.0f, 1.0f );
+	params.forestGlades = std::clamp( rules.forestGlades, 0.0f, 1.0f );
+	params.forestGlacierMip = std::max( std::log2( std::max( rules.forestGlacierGap, 1.0f ) / ( rules.extent / static_cast<float>( m_size ) ) ), 0.0f );
 	params.grassWetLayer = m_pipeline->roleLayer( TerrainLayerRole::grassWet );
 	params.grassDryLayer = m_pipeline->roleLayer( TerrainLayerRole::grassDry );
 	params.talusLayer = m_pipeline->roleLayer( TerrainLayerRole::talus );

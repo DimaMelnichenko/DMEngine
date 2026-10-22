@@ -46,6 +46,13 @@ DM_CONSTANTS( FarTerrainBuffer, b4 )
 	// Кольцо деревьев на горах (слой расстановки far_forest): x — дальняя граница, м (0 — деревьев нет), y — её исчезание, м.
 	// Тон леса — там, где деревьев уже нет
 	DM_FIELD( float2, forestRing );
+	// Лес по рельефу (far_forest_density.cs): водосбор долины, log10 м² (от x до y — дно долины и нижние склоны гуще), плотность
+	// вдали от долин и пологого, доля полян, мип льда ледников с текселем около полосы без леса у них
+	DM_FIELD( float2, forestValleyArea );
+	DM_FIELD( float, forestUpland );
+	DM_FIELD( float, forestGlades );
+	DM_FIELD( float, forestGlacierMip );
+	DM_FIELD( float3, forestPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

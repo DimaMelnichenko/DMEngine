@@ -231,7 +231,8 @@ float farCrevasses( float2 worldXZ, float2 downhill, float footprint )
 // Веса восьми слоёв по правилам гор: трава долины → сухой луг по высоте, поверх — осыпи по уклону выше их высоты, скала по
 // уклону, снег по высоте (к северу ниже, граница пятнами) там, где он держится; поверх всего — ледник (ice —
 // farGlacier): слой снега на любом уклоне, ниже линии фирна на нём — морены слоем осыпей (выше линии обломки погребены
-// снегом). forest — доля леса: тон земли ниже границы леса на некрутых склонах, без снега, скалы и льда, пятнами; bareIce —
+// снегом). forest — где лес может расти по покрову: на некрутых склонах, без скалы, осыпей, снега и льда (граница леса,
+// долины, поляны и лавинные лотки — в плотности леса, far_forest_density.cs); bareIce —
 // доля голого льда (оттенок g_glacierIceTint): ниже линии фирна и там, где снег не держится, без снега по правилу и морен;
 // glacier — доля ледника
 void farRuleWeights( float3 position, float3 normal, FarGlacier ice, out float weights[maxLayers], out float forest,
@@ -273,9 +274,7 @@ void farRuleWeights( float3 position, float3 normal, FarGlacier ice, out float w
 	addRuleWeight( weights, g_rockLayer, rock * keepSnow * keepIce );
 	addRuleWeight( weights, g_snowLayer, snow * keepIce + glacier * ( 1.0f - moraine ) );
 
-	forest = ( 1.0f - heightShare( g_forestLine, height + 150.0f * farNoise( position.xz, 300.0f ) ) ) *
-			 ( 1.0f - slopeShare( g_forestSlope, slope ) ) * keepRock * keepSnow * keepIce *
-			 saturate( 0.8f + 0.6f * farNoise( position.xz, 150.0f ) );
+	forest = ( 1.0f - slopeShare( g_forestSlope, slope ) ) * ( 1.0f - scree ) * keepRock * keepSnow * keepIce;
 }
 
 #endif

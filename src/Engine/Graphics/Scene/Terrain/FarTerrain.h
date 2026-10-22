@@ -6,6 +6,7 @@
 #include "SceneObject.h"
 #include "GridMesh.h"
 #include "CDLODQuadtree.h"
+#include "FarForestRelief.h"
 #include "TerrainHeightSource.h"
 #include "ShaderProgram.h"
 #include "ComputeShader.h"
@@ -83,6 +84,12 @@ private:
 	void fillConstants( FarTerrainBuffer& params ) const;
 	// Плотность леса по правилам гор на сетке карты гор (Shaders/far_forest_density.cs)
 	void bakeForestDensity( const RenderView& view );
+	// Рельеф для леса (FarForestRelief) по горам после эрозии на сетке вдвое грубее карты гор (64 м): водосбор — заново после
+	// эрозии, лавинные лотки — и после правки их правил в окне
+	void buildForestRelief();
+	// Текстура рельефа для леса — RG16F с мипами, как карта гор: log10 водосбора, м², доля лавинного лотка
+	bool createForestReliefTexture();
+	AvalancheRules avalancheRules() const;
 	// Карта гор с мипом карты внутри неё → текстура с мипами и пирамида min / max на CPU, перепады узлов по уровням
 	bool bake();
 	// min / max высоты текселей уровня пирамиды k (тексель — 2^k текселей карты гор) в столбцах [x0, x1] и рядах [z0, z1] (ряд —
@@ -132,6 +139,11 @@ private:
 	ShaderView m_forestDensityView;
 	ComputeShader m_forestDensityShader;
 	uint64_t m_forestDensityKey = ~0ull;	// правки окна и запекания гор, по которым она посчитана
+	FarForestRelief m_forestRelief;
+	AvalancheRules m_avalancheRules;		// правила, по которым посчитаны лотки
+	Texture m_forestReliefTexture;
+	ShaderView m_forestReliefView;
+	uint32_t m_forestReliefRevision = 0;	// текстура рельефа заново — плотность леса заново
 	float m_forestRingFar = 0.0f;		// кольцо деревьев на горах (setForestRing)
 	float m_forestRingFade = 0.0f;
 	PropertyContainer m_properties;

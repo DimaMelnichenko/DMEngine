@@ -346,6 +346,19 @@ struct FarTerrainSettings
 	SettingRange forestLine{ 1400.0f, 1700.0f };	// лес (тон земли) — ниже, к верху полосы сходит на нет, м
 	SettingRange forestSlope{ 28.0f, 38.0f };	// круче — леса нет, градусы
 	DirectX::XMFLOAT3 forestColor = DirectX::XMFLOAT3( 0.03f, 0.05f, 0.03f );	// цвет леса издали, линейный
+	// Лес по рельефу (docs/far_terrain.md, «Лес на горах»): гуще в долинах (водосбор от from до to, км²: дно долины и нижние
+	// склоны) и на пологом, выше по склонам и на гребнях — доля forestUpland; поляны — доля forestGlades; ближе forestGlacierGap
+	// метров к ледникам — нет (морены, свежая земля из-под льда)
+	SettingRange forestValleyArea{ 0.05f, 1.0f };
+	float forestUpland = 0.6f;
+	float forestGlades = 0.2f;
+	float forestGlacierGap = 300.0f;
+	// Лавинные лотки (FarForestRelief, AvalancheRules): отрыв на склонах круче avalancheSlope, градусы, выше avalancheHeight, м;
+	// лавина идёт вниз до склона положе avalancheRunout; где сошло с площади отрыва больше avalancheArea га — леса нет
+	SettingRange avalancheSlope{ 30.0f, 40.0f };
+	float avalancheHeight = 900.0f;
+	float avalancheRunout = 15.0f;
+	SettingRange avalancheArea{ 3.0f, 12.0f };
 	// Ледники наших дней (строка GlacialErosion, presentEla): лёд толще from…to — слой снега на любом уклоне; ниже линии фирна
 	// и там, где снег не держится, — голый лёд: альбедо слоя снега × оттенок льда
 	SettingRange glacierCover{ 5.0f, 30.0f };	// толщина льда, м

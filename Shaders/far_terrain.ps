@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Материал дальних гор вокруг карты (FarTerrain): нормаль — по их высоте (far_terrain.sh), веса слоёв — правила по высоте и
 // уклону (скала, осыпи, снег, луг, трава долины) и ледники наших дней, у карты — её слои; смесь слоёв — terrain_material.sh,
-// как у рельефа карты. Лес издали — тоном земли (лес моделями на горах не стоит), голый лёд — слой снега с оттенком льда,
+// как у рельефа карты. Лес издали — тоном земли по плотности леса гор (дальше кольца деревьев), голый лёд — слой снега с оттенком льда,
 // морены — слой осыпей, трещины — тёмные полосы поперёк течения льда
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -11,6 +11,10 @@
 #include "cdlod.sh"
 #include "terrain_material.sh"
 #include "far_terrain.sh"
+
+// Плотность леса гор (FarTerrain::bakeForestDensity, far_forest_density.cs) — ресурс сцены: тон леса — та же плотность, что у
+// деревьев слоя far_forest, без своих правил
+DM_SRV( Texture2D<float>, g_farForestTone, SLOT_FAR_FOREST );
 
 float4 main( PixelInputType input ) : SV_TARGET
 {
@@ -30,6 +34,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	float glacier;
 	const FarGlacier ice = farGlacier( position.xz );
 	farRuleWeights( position, normal, ice, weights, forest, bareIce, glacier );
+	forest = g_farForestTone.SampleLevel( g_SamplerLinearClamp, farHeightMapUV( position.xz ), 0.0f );
 	// У карты — её слои (край splat-карты продолжен наружу), к g_farMaterialBlend — правила
 	const float rules = smoothstep( 0.0f, max( g_farMaterialBlend, 1e-3f ), distanceToMap( position.xz ) );
 	const float2 uv = heightMapUV( position.xz );

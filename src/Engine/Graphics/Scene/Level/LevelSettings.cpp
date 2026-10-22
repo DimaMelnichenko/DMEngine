@@ -550,6 +550,28 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 		  settingRangeControl, rules },
 		{ "forest_color", "Forest color", DM_SETTING( forestColor ), 0.0f, 0.0f, "", "Forest seen from far away, linear", settingColor,
 		  rules },
+		// Лес по рельефу гор после эрозии (FarForestRelief): долины, пологое, поляны, у ледников — нет
+		{ "forest_valley_area_from,forest_valley_area_to", "Forest valley area", DM_SETTING( forestValleyArea ), 0.0f, 50.0f, "km2",
+		  "The forest is densest in valleys: from this catchment (the area draining into a point) the valley floor and the "
+		  "lower slopes thicken, fully to the end", settingRangeControl, rules },
+		{ "forest_upland", "Forest upland", DM_SETTING( forestUpland ), 0.0f, 1.0f, "",
+		  "Forest density away from the valleys and gentle ground: upper slopes and ridges (1 - as dense as in the valleys)",
+		  settingClamp, rules },
+		{ "forest_glades", "Forest glades", DM_SETTING( forestGlades ), 0.0f, 1.0f, "",
+		  "Share of glades in the forest: meadow patches, more on the ridges than in the valleys", settingClamp, rules },
+		{ "forest_glacier_gap", "Forest glacier gap", DM_SETTING( forestGlacierGap ), 0.0f, 2000.0f, "m",
+		  "No forest this close to the glaciers: moraines and fresh ground from under the ice", settingClampLow, rules },
+		// Лавинные лотки: просеки вниз по ложбинам под крутыми открытыми склонами
+		{ "avalanche_slope_from,avalanche_slope_to", "Avalanche slope", DM_SETTING( avalancheSlope ), 0.0f, 90.0f, "deg",
+		  "Snow breaks away on open slopes steeper than this (fully at the end) above Avalanche height; the avalanches clear "
+		  "forest strips down the gullies below", settingRangeControl, rules },
+		{ "avalanche_height", "Avalanche height", DM_SETTING( avalancheHeight ), 0.0f, 5000.0f, "m",
+		  "Avalanches start above this height (enough winter snow)", 0, rules },
+		{ "avalanche_runout", "Avalanche runout", DM_SETTING( avalancheRunout ), 0.0f, 45.0f, "deg",
+		  "An avalanche stops where the slope is gentler; past it the runout fades within about a hundred metres", 0, rules },
+		{ "avalanche_area_from,avalanche_area_to", "Avalanche area", DM_SETTING( avalancheArea ), 0.0f, 200.0f, "ha",
+		  "Release area that went down through a point: from it the forest thins, at the end it is gone", settingRangeControl,
+		  rules },
 		{ "glacier_cover_from,glacier_cover_to", "Glacier cover", DM_SETTING( glacierCover ), 0.0f, 200.0f, "m",
 		  "Present-day glaciers (Glacial erosion, Present ELA): ice thicker than this is snow on any slope; below the firn line "
 		  "(the present ELA) and where snow does not hold it is bare ice", settingRangeControl, glaciers },
@@ -569,7 +591,7 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 		  "line only", settingRangeControl, glaciers },
 	},
 	// Разделы окна
-	{ { "lod_distance", "Geometry" }, { "material_blend", "Material" }, { "shadow_resolution", "Geometry" }, { "rock_slope_from,rock_slope_to", "Rock and scree" }, { "meadow_height_from,meadow_height_to", "Meadow" }, { "snow_height_from,snow_height_to", "Snow" }, { "forest_line_from,forest_line_to", "Forest" }, { "glacier_cover_from,glacier_cover_to", "Glaciers" } } );
+	{ { "lod_distance", "Geometry" }, { "material_blend", "Material" }, { "shadow_resolution", "Geometry" }, { "rock_slope_from,rock_slope_to", "Rock and scree" }, { "meadow_height_from,meadow_height_to", "Meadow" }, { "snow_height_from,snow_height_to", "Snow" }, { "forest_line_from,forest_line_to", "Forest" }, { "avalanche_slope_from,avalanche_slope_to", "Avalanches" }, { "glacier_cover_from,glacier_cover_to", "Glaciers" } } );
 	return schema;
 }
 
