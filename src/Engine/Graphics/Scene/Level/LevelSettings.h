@@ -353,6 +353,11 @@ struct FarTerrainSettings
 	float forestUpland = 0.6f;
 	float forestGlades = 0.2f;
 	float forestGlacierGap = 300.0f;
+	// Тени леса гор дальше дистанции теней (far_terrain.ps, forestShadow): там их не дают ни каскады, ни дальний каскад (он —
+	// над картой). Земля под лесом — в тени по доле крон: forestShadow — доля земли под кронами при полной плотности леса
+	// (0 — без теней), forestHeight — высота деревьев, м: длина тени по высоте солнца
+	float forestShadow = 0.35f;
+	float forestHeight = 20.0f;
 	// Лавинные лотки (FarForestRelief, AvalancheRules): отрыв на склонах круче avalancheSlope, градусы, выше avalancheHeight, м;
 	// лавина идёт вниз до склона положе avalancheRunout; где сошло с площади отрыва больше avalancheArea га — леса нет
 	SettingRange avalancheSlope{ 30.0f, 40.0f };

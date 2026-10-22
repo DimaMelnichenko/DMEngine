@@ -52,7 +52,11 @@ DM_CONSTANTS( FarTerrainBuffer, b4 )
 	DM_FIELD( float, forestUpland );
 	DM_FIELD( float, forestGlades );
 	DM_FIELD( float, forestGlacierMip );
-	DM_FIELD( float3, forestPadding );
+	// Тени леса дальше дистанции теней (far_terrain.ps): доля земли под кронами при полной плотности (0 — без теней) и высота
+	// деревьев, м
+	DM_FIELD( float, forestShadow );
+	DM_FIELD( float, forestHeight );
+	DM_FIELD( float, forestPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

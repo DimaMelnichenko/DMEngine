@@ -840,6 +840,8 @@ void FarTerrain::fillConstants( FarTerrainBuffer& params ) const
 	params.forestValleyArea = XMFLOAT2( std::log10( valleyFrom * 1e6f ), std::log10( std::max( rules.forestValleyArea.to, valleyFrom * 1.01f ) * 1e6f ) );
 	params.forestUpland = std::clamp( rules.forestUpland, 0.0f, 1.0f );
 	params.forestGlades = std::clamp( rules.forestGlades, 0.0f, 1.0f );
+	params.forestShadow = std::clamp( rules.forestShadow, 0.0f, 1.0f );
+	params.forestHeight = std::max( rules.forestHeight, 1.0f );
 	params.forestGlacierMip = std::max( std::log2( std::max( rules.forestGlacierGap, 1.0f ) / ( rules.extent / static_cast<float>( m_size ) ) ), 0.0f );
 	params.grassWetLayer = m_pipeline->roleLayer( TerrainLayerRole::grassWet );
 	params.grassDryLayer = m_pipeline->roleLayer( TerrainLayerRole::grassDry );

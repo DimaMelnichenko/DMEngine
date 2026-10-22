@@ -16,6 +16,36 @@
 // деревьев слоя far_forest, без своих правил
 DM_SRV( Texture2D<float>, g_farForestTone, SLOT_FAR_FOREST );
 
+// Ширина кроны — эта доля высоты дерева (ель: 5–7 м при 20 м)
+static const float crownWidthShare = 0.3f;
+
+float forestDensity( float2 worldXZ )
+{
+	return g_farForestTone.SampleLevel( g_SamplerLinearClamp, farHeightMapUV( worldXZ ), 0.0f );
+}
+
+// Тень леса на земле гор дальше дистанции теней — там её не дают ни каскады, ни дальний каскад (он — над картой), а деревья
+// кольца far_forest стоят на светлой земле. Не по деревьям, а по плотности леса (булева модель покрытия, как доля затенённой
+// земли под пологом): тень дерева — крона и полоса за ней длиной L = высота · ctg высоты солнца; земля в тени, если хоть
+// одно дерево на отрезке L к солнцу её закрывает — доля освещённой земли exp( −c · ( 1 + L / D ) ), c — доля земли под
+// кронами на этом отрезке (forestShadow × плотность), D — ширина кроны. Опушка поляны со стороны солнца — в тени леса,
+// дальняя — на свету. sky — доля неба над землёй под кронами (полог закрывает половину неба над собой)
+float forestShadow( float3 position, float3 toSun, out float sky )
+{
+	sky = 1.0f;
+	[branch] if( g_forestShadow <= 0.0f || toSun.y <= 0.0f )
+		return 1.0f;
+	const float horizontal = length( toSun.xz );
+	const float shadowLength = g_forestHeight * horizontal / max( toSun.y, 0.05f );
+	const float2 along = horizontal > 1e-4f ? toSun.xz / horizontal : 0.0f;
+	float cover = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+		cover += forestDensity( position.xz + along * shadowLength * ( k + 0.5f ) * 0.25f );
+	cover *= 0.25f * g_forestShadow;
+	sky = 1.0f - 0.5f * g_forestShadow * forestDensity( position.xz );
+	return exp( -cover * ( 1.0f + shadowLength / ( crownWidthShare * g_forestHeight ) ) );
+}
+
 float4 main( PixelInputType input ) : SV_TARGET
 {
 	const float3 position = input.worldPosition;
@@ -87,6 +117,19 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.occlusion = saturate( mixed.occlusion );
 	surface.microShadows = terrainLayers().microShadows;
 	surface.selfShadow = 1.0f;
+	// Тень леса на земле — дальше дистанции теней (ближе её дают каскады) и там, где видна земля, а не тон леса (он сам —
+	// полог с его тенями)
+	[branch] if( g_shadowSunIndex >= 0 )
+	{
+		const float canopy = farShadowFade( viewDepthOf( position ) ) * ( 1.0f - forest );
+		[branch] if( canopy > 0.0f )
+		{
+			float sky;
+			const float lit = forestShadow( position, -g_lights[g_shadowSunIndex].direction, sky );
+			surface.selfShadow = lerp( 1.0f, lit, canopy );
+			surface.occlusion *= lerp( 1.0f, sky, canopy );
+		}
+	}
 	surface.screenOcclusion = screenAmbientOcclusion( input.position.xy, surface.position );
 	surface.emissive = 0.0f;
 

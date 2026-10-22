@@ -561,6 +561,13 @@ const SettingsSchema<FarTerrainSettings>& farTerrainSchema()
 		  "Share of glades in the forest: meadow patches, more on the ridges than in the valleys", settingClamp, rules },
 		{ "forest_glacier_gap", "Forest glacier gap", DM_SETTING( forestGlacierGap ), 0.0f, 2000.0f, "m",
 		  "No forest this close to the glaciers: moraines and fresh ground from under the ice", settingClampLow, rules },
+		// Тени леса гор дальше дистанции теней — по плотности леса, а не по деревьям
+		{ "forest_shadow", "Forest shadow", DM_SETTING( forestShadow ), 0.0f, 1.0f, "",
+		  "Shadows of the mountain forest beyond the shadow distance (no shadow map reaches there): ground share under the "
+		  "crowns at full forest density; the shadowed share grows with the shadow length. 0 - no forest shadows", settingClamp,
+		  rules },
+		{ "forest_height", "Forest height", DM_SETTING( forestHeight ), 1.0f, 60.0f, "m",
+		  "Tree height for the forest shadows: the lower the sun, the longer the shadows", settingClampLow, rules },
 		// Лавинные лотки: просеки вниз по ложбинам под крутыми открытыми склонами
 		{ "avalanche_slope_from,avalanche_slope_to", "Avalanche slope", DM_SETTING( avalancheSlope ), 0.0f, 90.0f, "deg",
 		  "Snow breaks away on open slopes steeper than this (fully at the end) above Avalanche height; the avalanches clear "
