@@ -744,7 +744,10 @@ const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema()
 		value( "wet_bank_edge", beds, "Wet bank edge", &R::wetBankEdge, 0.001f, 0.2f, "m",
 			   "Height of the wet-to-dry edge above the wet band: small - a sharp line along the stones" ),
 		value( "wet_splash_height", beds, "Wet splash height", &R::wetSplashHeight, 0.0f, 2.0f, "m",
-			   "By fast water (0.5 to 1.5 m/s of the stream) the wet band is this much higher: splashes" ),
+			   "By a waterfall the wet band is this much higher: splashes (only by falls - see Wet splash fall)" ),
+		range( "wet_splash_fall", beds, "Wet splash fall", &R::wetSplashFall, 0.0f, 1.0f, "m",
+			   "A waterfall step: drop of the water surface between neighbouring 0.25 m texels - from: splashes start, to: full Wet "
+			   "splash height (a smooth fast stream drops a few cm per texel and does not splash)" ),
 		value( "wet_roughness", beds, "Wet roughness", &R::wetRoughness, 0.0f, 1.0f, "",
 			   "Roughness of the wet ground: water in the pores makes it smooth, with a highlight" ),
 		range( "krummholz_height", shrubs, "Krummholz height", &R::krummholzHeight, 0.0f, 1.0f, "", "Krummholz above the treeline: from, to" ),
@@ -921,6 +924,9 @@ const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema()
 		{ "near_pattern_stretch", "Pattern stretch", DM_SETTING( patternStretch ), 1.2f, 10.0f, "",
 		  "A layer of the carried pattern stretched (or squeezed) this many times weighs half: the other layer takes over, and the "
 		  "pattern does not draw out into ribbons", settingClamp },
+		{ "near_wet_drying", "Wet drying speed", DM_SETTING( wetDrying ), 0.0f, 0.2f, "m/s",
+		  "Wet ground and stones by the water near the camera: the wet line follows a rising water level at once, and a falling "
+		  "one no faster than this - wetting is instant, drying is gradual", settingClamp },
 	};
 	return schema;
 }

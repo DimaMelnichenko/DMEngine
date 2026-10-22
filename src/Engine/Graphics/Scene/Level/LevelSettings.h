@@ -145,11 +145,12 @@ struct TerrainLayerRules
 	// пропадала бы на всей низине
 	float lakeShoreWidth = 3.0f;
 	// Мокрая полоса над водой (docs/terrain.md, «Детальный слой весов»): на столько над урезом мокро, м, выше — сухо с резким
-	// краем шириной wetBankEdge (летнее солнце быстро сушит камни); у быстрой воды (от 0,5 до 1,5 м/с по течению русла) — выше
-	// ещё на wetSplashHeight: брызги
+	// краем шириной wetBankEdge (летнее солнце быстро сушит камни); у падения воды — выше ещё на wetSplashHeight × доля по
+	// высоте уступа (wetSplashFall: перепад уровня между соседними текселями 0,25 м, от → до): брызги только у водопадов
 	float wetBankHeight = 0.04f;
 	float wetBankEdge = 0.01f;
 	float wetSplashHeight = 0.2f;
+	Range wetSplashFall{ 0.08f, 0.2f };
 	float wetRoughness = 0.2f;		// шероховатость мокрой земли (вода в порах — гладкая, блик)
 	Range krummholzHeight{ 0.73f, 0.78f };	// стланик над границей леса — от, до верха krummholzTop
 	Range krummholzTop{ 0.84f, 0.79f };
@@ -810,6 +811,9 @@ struct WaterSimulationSettings
 		float pattern = 1.0f;
 		float patternPeriod = 1.5f;
 		float patternStretch = 2.0f;	// слой узора, растянутый (или сжатый) во столько раз, весит вдвое меньше
+		// Мокрость у воды в окне: запомненный уровень видимой воды опускается не быстрее этого, м/с — намокает сразу, сохнет
+		// постепенно (волны мелкой воды не двигают мокрую линию)
+		float wetDrying = 0.01f;
 	} nearFlow;
 
 	std::vector<WaterSource> sources;	// включённые строки WaterSources этой строки WaterSimulation

@@ -43,7 +43,7 @@ DM_CONSTANTS( WaterNearPatternBuffer, b6 )
 	DM_FIELD( float, nearPatternTime );		// время игры этого кадра, с
 	DM_FIELD( float, nearPatternStep );		// с прошлого кадра, с (0 — время стоит: слои те же)
 	DM_FIELD( float, nearPatternPeriod );	// период обновления слоя, с
-	DM_FIELD( float, nearPatternPadding );
+	DM_FIELD( float, nearWetDrying );		// мокрость: запомненный уровень опускается не быстрее этого, м/с (высыхание)
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

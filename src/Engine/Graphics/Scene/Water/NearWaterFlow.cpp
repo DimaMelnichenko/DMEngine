@@ -144,13 +144,15 @@ bool NearWaterFlow::createTextures( uint32_t size )
 		d3d.setName( *texture, name );
 		d3d.clearStorageView( *uav );
 	}
-	for( auto [texture, uav, view, name] : { std::tuple{ &m_fall, &m_fallUAV, &m_fallView, "Water near fall" },
-											 std::tuple{ &m_wet, &m_wetUAV, &m_wetView, "Water near wetness" } } )
+	// Мокрость — R32F: шейдер пены читает своё прошлое значение из UAV (типизированное чтение R32_FLOAT есть везде)
+	for( auto [texture, uav, view, format, name] :
+		 { std::tuple{ &m_fall, &m_fallUAV, &m_fallView, DXGI_FORMAT_R16_FLOAT, "Water near fall" },
+		   std::tuple{ &m_wet, &m_wetUAV, &m_wetView, DXGI_FORMAT_R32_FLOAT, "Water near wetness" } } )
 	{
 		TextureDesc desc;
 		desc.width = size;
 		desc.height = size;
-		desc.format = DXGI_FORMAT_R16_FLOAT;
+		desc.format = format;
 		desc.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
 		if( !d3d.createTexture( desc, nullptr, *texture ) || !d3d.createStorageView( *texture, {}, *uav ) ||
 			!d3d.createShaderView( *texture, {}, *view ) )
@@ -464,6 +466,7 @@ void NearWaterFlow::stepFoam( const WaterSimulationSettings& settings, const Wat
 	pattern.nearPatternTime = gameTime;
 	pattern.nearPatternStep = elapsed;
 	pattern.nearPatternPeriod = m_patternPeriod;
+	pattern.nearWetDrying = std::max( settings.nearFlow.wetDrying, 0.0f );
 	Device::updateResourceData( m_patternBuffer, pattern );
 	d3d.setConstantBuffer( 6, m_patternBuffer );
 	d3d.setSRV( 0, m_resultView );

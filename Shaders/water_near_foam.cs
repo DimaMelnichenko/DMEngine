@@ -27,7 +27,7 @@ DM_UAV( RWTexture2D<float>, g_nearFoam, 0 );
 DM_UAV( RWTexture2D<float4>, g_nearPattern, 1 );
 DM_UAV( RWTexture2D<float2>, g_nearPhase, 2 );
 DM_UAV( RWTexture2D<float>, g_nearFall, 3 );		// бурление падения ячейки (SLOT_WATER_NEAR_FALL): по нему — брызги бурления
-DM_UAV( RWTexture2D<float>, g_nearWet, 4 );		// поправка уровня для мокрости (SLOT_WATER_NEAR_WET)
+DM_UAV( RWTexture2D<float>, g_nearWet, 4 );		// поправка уровня для мокрости (SLOT_WATER_NEAR_WET), с памятью: читает своё
 
 
 // Скачок скорости для сдвига — через две ячейки в каждую сторону (25 см), делится на столько, м: как у сетки 1 м и
@@ -186,6 +186,19 @@ float wetLift( int2 cell, float4 here )
 	return lift;
 }
 
+// Поправка с памятью: вода поднялась — мокро сразу, отошла — запомненный уровень опускается не быстрее nearWetDrying
+// (высыхание постепенное: Dimok, 2026-10-22 — мокрость «плавала» вместе с волнами уровня мелкой воды). previous —
+// запомненная в прошлом кадре (nearWetNone — нет); без мокрых рядом — сохнет дальше, пока не уйдёт на 0,5 м ниже
+float rememberWet( float current, float previous )
+{
+	if( previous <= nearWetNone * 0.5f )
+		return current;
+	const float dried = previous - g_nearWetDrying * g_nearPatternStep;
+	if( current <= nearWetNone * 0.5f )
+		return dried > -0.5f ? dried : nearWetNone;
+	return max( current, dried );
+}
+
 // Пена ячейки за кадр (here — итог окна в ячейке, вода есть); churn — бурление падения у подошвы и в котле (fallChurn)
 float stepFoam( int2 cell, float2 world, float4 here, out float churn );
 
@@ -198,9 +211,9 @@ void mainNearFoam( uint3 id : SV_DispatchThreadID )
 	const uint2 address = nearAddress( cell );
 	const float2 world = ( cell + 0.5f ) * g_nearStep;
 	const float4 here = g_nearState[address];
-	g_nearWet[address] = wetLift( cell, here );
 	// Суша (и камень на берегу) — без пены; вошла в окно в этом кадре (или окно заново) — пена поля 0,25 м, узор — обновлён
 	const bool fresh = g_nearReset != 0 || !insideWindow( cell, g_nearPreviousOrigin );
+	g_nearWet[address] = rememberWet( wetLift( cell, here ), fresh ? nearWetNone : g_nearWet[address] );
 	if( here.w <= 0.0f || fresh )
 	{
 		const float phase = 6.2831853f * frac( nearPatternPhase( world, g_nearPatternTime, g_nearPatternPeriod ) );

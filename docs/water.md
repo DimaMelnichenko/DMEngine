@@ -818,7 +818,8 @@ const WaterSample water = sampleWater( uv );	// water.depth, water.velocity
 - **Подокно «Near flow»** окна «Water simulation» (колонки `near_*` строки `WaterSimulation`), правка — сразу. Флажок
   «Shallow water» — вместо «крышки» мелкая вода («Мелкая вода у камеры» ниже); «Steps per frame», «Pressure iterations»,
   «Viscosity», «Eddies», «Obstacle passage» и «Surface relief» — только для «крышки», «Stream roughness» и «Stone drag» —
-  только для мелкой воды.
+  только для мелкой воды; «Wet drying speed» — высыхание мокрой линии рельефа и камней у камеры ([terrain.md](terrain.md),
+  «Уровень воды для мокрости»).
 - **Цена** — 0,13 мс расчёта (Release, 160², шаг и 10 итераций давления за кадр; из них подъём поверхности — 0,02 мс) и
   сетка окна: +0,03 мс прохода воды и +0,008 мс поверхности для отражений (у каскада Dimok, попеременно с окном и без);
   окна без детальной воды нет — 0 (контрольные камеры: расчёт воды 0,006 мс).

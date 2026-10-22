@@ -204,15 +204,37 @@ void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 	}
 
 	// Мокрая полоса над водой у русел (саму мокрость считает terrain.ps в пикселе по нарисованной земле): в текселе — высота
-	// полосы по самому быстрому из мокрых текселей в splashReach вокруг («Wet bank height» + «Wet splash height» × доля от 0,5
-	// до 1,5 м/с) — в G среза мокрости, долей maxWetBand
+	// полосы: «Wet bank height», у падения воды в splashReach вокруг — выше на «Wet splash height» × доля по высоте уступа
+	// («Wet splash fall»: перепад уровня между соседними мокрыми текселями, 0,25 м) — брызги бывают только у водопадов, на
+	// быстрой ровной воде их нет (Dimok, 2026-10-22; прежде полоса росла по скорости воды, и на всей быстрой воде стенки
+	// мокли на 20 см); в G среза мокрости, долей maxWetBand
 	const float bankHeight = source.bedRules ? std::max( source.bedRules->wetBankHeight, 0.0f ) : 0.02f;
 	std::vector<DirectX::XMFLOAT2> splash;
 	if( source.staticWater && hydrology && hydrology->water.size() == texels && !ground.empty() )
 	{
 		constexpr int splashReach = 2;
 		const float splashHeight = source.bedRules ? std::max( source.bedRules->wetSplashHeight, 0.0f ) : 0.0f;
-		// Наименьший уровень и наибольшая скорость мокрых текселей в окне — по строкам, затем по столбцам (окно разделимо)
+		auto wet = [&]( size_t n ) { return hydrology->water[n].x > -1e8f && hydrology->water[n].x - ground[n] >= TerrainHydrology::visibleWaterDepth; };
+		// Уступ у мокрого текселя — наибольший перепад уровня до мокрых соседей (по четырём сторонам)
+		std::vector<float> step( texels, 0.0f );
+		for( int j = 0; j < side; ++j )
+			for( int i = 0; i < side; ++i )
+			{
+				const size_t k = static_cast<size_t>( j ) * side + i;
+				if( !wet( k ) )
+					continue;
+				const int offsets[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+				for( const auto& o : offsets )
+				{
+					const int ni = i + o[0], nj = j + o[1];
+					if( ni < 0 || nj < 0 || ni >= side || nj >= side )
+						continue;
+					const size_t n = static_cast<size_t>( nj ) * side + ni;
+					if( wet( n ) )
+						step[k] = std::max( step[k], std::abs( hydrology->water[k].x - hydrology->water[n].x ) );
+				}
+			}
+		// Наименьший уровень и наибольший уступ мокрых текселей в окне — по строкам, затем по столбцам (окно разделимо)
 		std::vector<DirectX::XMFLOAT2> rows( texels, DirectX::XMFLOAT2( 1e30f, 0.0f ) );
 		for( int j = 0; j < side; ++j )
 			for( int i = 0; i < side; ++i )
@@ -221,27 +243,26 @@ void TerrainDetailSplat::computeSource( Tile& tile, const Source& source ) const
 				for( int x = -splashReach; x <= splashReach; ++x )
 				{
 					const size_t n = static_cast<size_t>( j ) * side + std::clamp( i + x, 0, side - 1 );
-					const DirectX::XMFLOAT4& water = hydrology->water[n];
-					if( water.x <= -1e8f || water.x - ground[n] < TerrainHydrology::visibleWaterDepth )
+					if( !wet( n ) )
 						continue;
-					row.x = std::min( row.x, water.x );
-					row.y = std::max( row.y, std::hypot( water.y, water.z ) );
+					row.x = std::min( row.x, hydrology->water[n].x );
+					row.y = std::max( row.y, step[n] );
 				}
 			}
 		splash.assign( texels, DirectX::XMFLOAT2( noLevel, 0.0f ) );
 		for( int j = 0; j < side; ++j )
 			for( int i = 0; i < side; ++i )
 			{
-				float lowest = 1e30f, fastest = 0.0f;
+				float lowest = 1e30f, fall = 0.0f;
 				for( int y = -splashReach; y <= splashReach; ++y )
 				{
 					const DirectX::XMFLOAT2& row = rows[static_cast<size_t>( std::clamp( j + y, 0, side - 1 ) ) * side + i];
 					lowest = std::min( lowest, row.x );
-					fastest = std::max( fastest, row.y );
+					fall = std::max( fall, row.y );
 				}
 				if( lowest < 1e29f )
 					splash[static_cast<size_t>( j ) * side + i] =
-						DirectX::XMFLOAT2( lowest, bankHeight + splashHeight * std::clamp( fastest - 0.5f, 0.0f, 1.0f ) );
+						DirectX::XMFLOAT2( lowest, bankHeight + splashHeight * ( source.bedRules ? ramp( source.bedRules->wetSplashFall, fall ) : 0.0f ) );
 			}
 	}
 
