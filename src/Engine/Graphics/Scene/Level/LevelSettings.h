@@ -852,6 +852,8 @@ struct ParticleEmitterSettings
 	float heightMin = 0.0f;			// над рельефом (camera) или над поверхностью воды (water), м
 	float heightMax = 0.0f;
 	std::string mask;				// текстура плотности в координатах карты высот (camera); пусто — всюду
+	// Спрайт клочка (froth): покрытие, рельеф и плотность из текстуры (Tools/pack_particle_sprite.py), пусто — узор пены
+	std::string sprite;
 	float rate = 10.0f;				// рождений в секунду; у camera — на 100 м² поля
 	uint32_t maxParticles = 4096;
 	float lifetimeMin = 1.0f;		// с

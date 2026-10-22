@@ -47,7 +47,8 @@ DM_CONSTANTS( ParticleEmitterBuffer, b4 )
 	DM_FIELD( float, viewportHeight );	// пикселей кадра по вертикали — наименьший размер частицы на экране
 	DM_FIELD( float, sprayHeightMin );	// fall: брызги подлетают над водой на столько, м
 	DM_FIELD( float, sprayHeightMax );
-	DM_FIELD( float2, sprayPadding );
+	DM_FIELD( uint, hasSprite );			// у клочка (froth) — спрайт (particles.ps, SRV 1), иначе узор пены
+	DM_FIELD( float, spritePadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

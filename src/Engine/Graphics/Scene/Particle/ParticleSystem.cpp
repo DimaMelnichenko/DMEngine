@@ -113,6 +113,13 @@ bool ParticleSystem::createEmitter( Emitter& emitter, uint32_t index )
 		else
 			LOG( "Particle emitter " + settings.name + ": mask " + settings.mask + " is not found, spawning everywhere" );
 	}
+	if( !settings.sprite.empty() )
+	{
+		if( Assets::textures().exists( settings.sprite ) )
+			emitter.sprite = &Assets::textures().get( settings.sprite )->srv();
+		else
+			LOG( "Particle emitter " + settings.name + ": sprite " + settings.sprite + " is not found, the procedural shape is used" );
+	}
 
 	// Окно GUI: подокно на эмиттер
 	PropertyContainer& properties = emitter.properties;
@@ -224,6 +231,7 @@ void ParticleSystem::setParameters( Emitter& emitter, uint32_t index, uint32_t s
 	params.viewportHeight = static_cast<float>( DMD3D::instance().backBufferHeight() );
 	params.sprayHeightMin = settings.sprayHeightMin;
 	params.sprayHeightMax = std::max( settings.sprayHeightMax, settings.sprayHeightMin );
+	params.hasSprite = emitter.sprite ? 1 : 0;
 	Device::updateResourceData( emitter.constants, params );
 	DMD3D::instance().setConstantBuffer( 4, emitter.constants );
 }
@@ -342,6 +350,8 @@ void ParticleSystem::renderCustom( const RenderContext& context )
 		setParameters( emitter, index, 0, m_timeStep );
 		d3d.setSRV( 0, emitter.particlesView );
 		d3d.setSRV( SLOT_INSTANCE_DATA, emitter.aliveView );
+		if( emitter.sprite )
+			d3d.setSRV( 1, *emitter.sprite );
 		d3d.drawIndexedInstancedIndirectCount( emitter.state, 0, 1, emitter.state, 24 );
 	}
 }

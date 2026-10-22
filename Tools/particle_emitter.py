@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS ParticleEmitters (
     height_min REAL NOT NULL DEFAULT 0,
     height_max REAL NOT NULL DEFAULT 0,
     mask TEXT,
+    sprite TEXT,
     rate REAL NOT NULL DEFAULT 10,
     max_particles INTEGER NOT NULL DEFAULT 4096,
     lifetime_min REAL NOT NULL DEFAULT 1,
@@ -95,9 +96,9 @@ def migrate(db):
     колонки эмиттера (высота брызг бурления)"""
     db.executescript(SCHEMA)
     present = [row[1] for row in db.execute('PRAGMA table_info(ParticleEmitters)')]
-    for column in ('spray_height_min', 'spray_height_max'):
+    for column, kind in (('spray_height_min', 'REAL'), ('spray_height_max', 'REAL'), ('sprite', 'TEXT')):
         if column not in present:
-            db.execute('ALTER TABLE ParticleEmitters ADD COLUMN %s REAL' % column)
+            db.execute('ALTER TABLE ParticleEmitters ADD COLUMN %s %s' % (column, kind))
             print('migrated: column ParticleEmitters.%s added' % column)
     if db.execute("SELECT 1 FROM Materials WHERE id = 5 AND class = 'Particle'").fetchone():
         sky = db.execute("SELECT id FROM Textures WHERE name = 'sky3'").fetchone()

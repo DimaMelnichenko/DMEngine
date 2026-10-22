@@ -30,6 +30,9 @@ static const float softDistance = 0.3f;		// м: на этой толщине д�
 static const float frothSoftDistance = 0.05f;
 // Узор пены воды (WaterFoamLace): срез 1 — густая пена, маска 0,35…1, нормаль по ней — у клочков взбитой воды
 DM_SRV( Texture2DArray<float4>, g_foamPattern, SLOT_WATER_FOAM_PATTERN );
+// Спрайт клочка (колонка sprite эмиттера, Tools/pack_particle_sprite.py): R — покрытие, G, B — нормаль, A — плотность;
+// несколько фото — кадры в ряд (ширина — кадров × высота), кадр — по зерну частицы
+DM_SRV( Texture2D<float4>, g_sprite, 1 );
 // Клочок взбитой воды: доля узора на поперечник пятна (узор пены у воды — 0,5 м на повтор, клочок — 6–16 см); у частицы —
 // × 0,6…1,6: пузыри разного размера
 static const float frothPattern = 0.6f;
@@ -56,15 +59,37 @@ float4 frothColor( ParticlePixelInput input )
 	const float2 p = float2( c * corner.x - s * corner.y, s * corner.x + c * corner.y );
 	float body = saturate( 1.0f - dot( p, p ) );
 	body *= body;
-	// Рваный край и провалы — крупные пятна кружева (срез 0): масса клочка не круг
-	const float lumps = g_foamPattern.Sample( g_SamplerLinearWrap, float3( p * frothLumps + random.zy, 0.0f ) ).r;
-	const float scale = frothPattern * lerp( 0.6f, 1.6f, frac( random.y * 7.31f ) );
-	const float4 foam = g_foamPattern.Sample( g_SamplerLinearWrap, float3( p * scale + random.yz, 1.0f ) );
-	const float density = foam.r;
-	// Край — мягко по форме клочка (Dimok: «края у этих клочков довольно резкие»), пузыри — плотность внутри, а не вырезы
-	float coverage = saturate( 1.8f * body * lerp( 0.5f, 1.5f, lumps ) );
-	coverage = coverage * coverage * ( 3.0f - 2.0f * coverage );
-	const float alpha = coverage * lerp( 0.3f, 1.0f, density );
+	float density;
+	float alpha;
+	float4 foam;
+	[branch] if( g_hasSprite != 0 )
+	{
+		// Спрайт всплеска (фото, Dimok): покрытие, рельеф и плотность — из него; повёрнут и отражён по-своему у частицы.
+		// Прозрачное (у всплеска — почти девять десятых квада) — сразу мимо: без света, искр и глубины сцены
+		uint width, height;
+		g_sprite.GetDimensions( width, height );
+		const float frames = max( floor( (float)width / max( (float)height, 1.0f ) ), 1.0f );
+		const float frame = min( floor( frac( random.y * 13.7f ) * frames ), frames - 1.0f );
+		float2 uv = saturate( float2( random.z < 0.5f ? p.x : -p.x, p.y ) * 0.5f + 0.5f );
+		uv.x = ( frame + uv.x ) / frames;
+		const float4 sprite = g_sprite.Sample( g_SamplerLinearClamp, uv );
+		clip( sprite.r * input.alpha - 1.0f / 255.0f );
+		foam = float4( sprite.a, sprite.g, sprite.b, 0.0f );
+		density = sprite.a;
+		alpha = sprite.r;
+	}
+	else
+	{
+		// Рваный край и провалы — крупные пятна кружева (срез 0): масса клочка не круг
+		const float lumps = g_foamPattern.Sample( g_SamplerLinearWrap, float3( p * frothLumps + random.zy, 0.0f ) ).r;
+		const float scale = frothPattern * lerp( 0.6f, 1.6f, frac( random.y * 7.31f ) );
+		foam = g_foamPattern.Sample( g_SamplerLinearWrap, float3( p * scale + random.yz, 1.0f ) );
+		density = foam.r;
+		// Край — мягко по форме клочка (Dimok: «края у этих клочков довольно резкие»), пузыри — плотность внутри, а не вырезы
+		float coverage = saturate( 1.8f * body * lerp( 0.5f, 1.5f, lumps ) );
+		coverage = coverage * coverage * ( 3.0f - 2.0f * coverage );
+		alpha = coverage * lerp( 0.3f, 1.0f, density );
+	}
 
 	// Нормаль: бугристый шар (к камере в середине) и рельеф пузырей узора (повёрнут обратно в оси квада)
 	const float2 bump = foam.gb * 2.0f - 1.0f;

@@ -1043,8 +1043,9 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 		{ "radius", "Radius", DM_SETTING( radius ), 0.0f, 10.0f, "m", "", settingClampLow | settingWideHigh },
 		{ "height_min", "Height min", DM_SETTING( heightMin ), -10.0f, 50.0f, "m", "Above the terrain or the water surface" },
 		{ "height_max", "Height max", DM_SETTING( heightMax ), -10.0f, 50.0f, "m" },
-		// Маска и ёмкость пула задают ресурсы эмиттера — только в базе
+		// Маска, спрайт и ёмкость пула задают ресурсы эмиттера — только в базе
 		{ "mask", nullptr, DM_SETTING( mask ) },
+		{ "sprite", nullptr, DM_SETTING( sprite ) },
 		{ "max_particles", nullptr, DM_SETTING( maxParticles ) },
 		{ "lifetime_min", "Lifetime min", DM_SETTING( lifetimeMin ), 0.0f, 10.0f, "s", "", settingClampLow | settingWideHigh },
 		{ "lifetime_max", "Lifetime max", DM_SETTING( lifetimeMax ), 0.0f, 10.0f, "s", "", settingClampLow | settingWideHigh },

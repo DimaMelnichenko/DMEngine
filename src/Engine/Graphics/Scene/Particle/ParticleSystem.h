@@ -59,6 +59,7 @@ private:
 		uint32_t capacity = 0;
 		float pending = 0.0f;			// дробная доля рождений, не отданная прошлым кадрам
 		const ShaderView* mask = nullptr;
+		const ShaderView* sprite = nullptr;	// спрайт клочка (froth), Settings::sprite
 		Buffer particles;				// Particle × capacity (48 байт, Shaders/particles.sh)
 		Buffer dead;					// uint × capacity: стек мёртвых индексов
 		Buffer alive;					// uint × capacity: живые кадра — экземпляры вызова
