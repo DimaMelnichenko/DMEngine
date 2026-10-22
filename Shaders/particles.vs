@@ -37,6 +37,8 @@ static const float minimumPixels = 1.5f;
 // Клочок взбитой воды вытянут вдоль движения: 1 + скорость × frothStretch, не больше 1 + frothMaxStretch
 static const float frothStretch = 0.6f;
 static const float frothMaxStretch = 1.2f;
+// Клочок сдвинут вниз по течению на такую долю своей полудлины: точка рождения — у его верхнего по течению края
+static const float frothDownstream = 0.8f;
 // Бурление под водой: видимость падает в e раз на такую глубину, м
 static const float frothUnderwaterFade = 0.08f;
 static const float needleWidth = 0.15f;	// ширина хвоинки — доля её длины	// тоньше пары пикселей частица мерцает — шире, но прозрачнее
@@ -78,20 +80,24 @@ ParticlePixelInput main( VertexInputType input )
 	{
 		float3 right = cb_viewInverseMatrix[0].xyz;
 		float3 up = cb_viewInverseMatrix[1].xyz;
-		// Клочок взбитой воды вытянут вдоль своего движения (по плоскости экрана): вода несёт и тянет пену
+		// Клочок взбитой воды вытянут вдоль течения (его горизонтальной скорости по плоскости экрана; всплытие не тянет) и
+		// сдвинут вниз по течению: тянется от точки рождения у подошвы, а не лежит половиной на стенке и кромке выше
 		float stretch = 1.0f;
+		float3 shift = 0.0f;
 		if( g_shape == particleShapeFroth )
 		{
-			const float3 along = particle.velocity - dot( particle.velocity, view ) * view;
+			const float3 flow = float3( particle.velocity.x, 0.0f, particle.velocity.z );
+			const float3 along = flow - dot( flow, view ) * view;
 			const float speed = length( along );
 			if( speed > 0.05f )
 			{
 				right = along / speed;
 				up = normalize( cross( view, right ) );
 				stretch = 1.0f + min( speed * frothStretch, frothMaxStretch );
+				shift = flow / max( length( flow ), 1e-4f ) * width * stretch * 0.5f * frothDownstream;
 			}
 		}
-		offset = ( right * corner.x * stretch + up * corner.y ) * width * 0.5f;
+		offset = ( right * corner.x * stretch + up * corner.y ) * width * 0.5f + shift;
 	}
 	const float3 position = particle.position + offset;
 

@@ -42,7 +42,11 @@ struct Fall
 	float above;	// от кромки до точки, м
 	float below;	// от точки до подошвы, м
 	float plunge;	// точка в котле под падением (полого, выше по течению — стенка): расстояние до подошвы, м; на стенке — 0
+	float ahead;	// спад уровня вперёд по течению на lipReach, м: у кромки следующей ступени — велик
 };
+
+// Насколько вперёд смотреть, нет ли кромки следующей ступени (бурление там не рождается), м
+static const float lipReach = 0.3f;
 
 // Падение, ниже которого — не падение, м
 static const float minFallHeight = 0.03f;
@@ -79,6 +83,7 @@ Fall traceFall( float2 world, float2 along, float level, float step, uint steps 
 	}
 	if( !wall )
 		fall.plunge = 0.0f;
+	fall.ahead = level - fallLevelAt( world + along * lipReach, level );
 	previous = level;
 	[loop] for( uint m = 1; m <= steps; ++m )
 	{
@@ -117,11 +122,13 @@ float fallFoam( Fall fall )
 
 // Бурление падения 0…1 (частицы spawn fall): сила падения у его подошвы и в котле — где струя входит в воду; на стенке
 // падения (ниже по течению ещё круто) — нет: бурление рождается на дне котла, а не в самом водопаде (Dimok, 2026-10-22).
-// От пены на поверхности (foamFall) не зависит: основную белизну у падения дают частицы, на поверхности после них — тонкая
-// пена
+// И не у кромки следующей ступени: котёл каскада короткий, и вода уже начинает спадать дальше (спад на lipReach впереди —
+// от половины крутизны стенки), — иначе бурление рождалось в начале спада (Dimok, 2026-10-22). От пены на поверхности
+// (foamFall) не зависит: основную белизну у падения дают частицы, на поверхности после них — тонкая пена
 float fallChurn( Fall fall )
 {
-	return fall.below > 0.0f ? 0.0f : fallStrength( fall );
+	const float lip = 1.0f - smoothstep( 0.25f, 0.5f, fall.ahead / ( g_foamFallSlope * lipReach ) );
+	return fall.below > 0.0f ? 0.0f : fallStrength( fall ) * lip;
 }
 
 // Пена за шаг: принесённая течением тает (в медленной воде — дольше) и сжимается, у источника растёт к нему
