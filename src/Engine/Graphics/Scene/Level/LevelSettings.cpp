@@ -745,6 +745,8 @@ const SettingsSchema<TerrainLayerRules>& terrainLayerRulesSchema()
 			   "Height of the wet-to-dry edge above the wet band: small - a sharp line along the stones" ),
 		value( "wet_splash_height", beds, "Wet splash height", &R::wetSplashHeight, 0.0f, 2.0f, "m",
 			   "By fast water (0.5 to 1.5 m/s of the stream) the wet band is this much higher: splashes" ),
+		value( "wet_roughness", beds, "Wet roughness", &R::wetRoughness, 0.0f, 1.0f, "",
+			   "Roughness of the wet ground: water in the pores makes it smooth, with a highlight" ),
 		range( "krummholz_height", shrubs, "Krummholz height", &R::krummholzHeight, 0.0f, 1.0f, "", "Krummholz above the treeline: from, to" ),
 		range( "krummholz_top", shrubs, "Krummholz top", &R::krummholzTop, 0.0f, 1.0f, "", "Krummholz ends higher: from, to" ),
 		range( "dry_gaps_slope", shrubs, "Dry gaps slope", &R::dryGapsSlope, 0.0f, 90.0f, "deg", "Shrubs in the gaps of dry slopes: from, to" ),

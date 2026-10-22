@@ -105,6 +105,36 @@ float bankWetness( float height, float band )
 	return 1.0f - smoothstep( band, band + terrainLayers().wetBankEdge, height );
 }
 
+// G среза мокрости детального слоя весов (TerrainDetailSplat::maxWetBand, wetBandEncode): 0 — воды рядом нет, у воды —
+// ( 1 + 254 · высота мокрой полосы над водой / maxWetBand ) / 255
+static const float maxWetBand = 1.0f;
+
+float wetBandDecode( float g )
+{
+	return saturate( ( g * 255.0f - 1.0f ) / 254.0f ) * maxWetBand;
+}
+
+// Высота мокрой полосы над водой в точке мира, м: у русел — из детального слоя весов (у быстрой воды выше — брызги), вдали —
+// «Wet bank height»; воды рядом нет (G = 0 в плитке) — −1
+float wetBandAt( float2 worldXZ )
+{
+	const float tileSize = terrainLayers().splatDetailTile;
+	uint tilesX, tilesZ;
+	g_splatDetailIndex.GetDimensions( tilesX, tilesZ );
+	const int2 tile = int2( floor( worldXZ / max( tileSize, 1e-3f ) ) );
+	if( tileSize <= 0.0f || any( tile < 0 ) || tile.x >= (int)tilesX || tile.y >= (int)tilesZ )
+		return terrainLayers().wetBankHeight;
+	const uint index = g_splatDetailIndex.Load( int3( tile, 0 ) );
+	if( index == 0 )
+		return terrainLayers().wetBankHeight;
+	uint width, height, slices;
+	g_splatDetail.GetDimensions( width, height, slices );
+	const float cell = tileSize / ( width - 2 );
+	const float2 uv = ( ( worldXZ - tile * tileSize ) / cell + 1.0f ) / float2( width, height );
+	const float g = g_splatDetail.SampleLevel( g_SamplerLinearClamp, float3( uv, ( splatSlices + 1.0f ) * ( index - 1 ) + splatSlices ), 0.0f ).y;
+	return g > 0.0f ? wetBandDecode( g ) : -1.0f;
+}
+
 // Доля полосы берега на высоте height над водой озера, м: 1 от уреза до перелива, выше — к 0 за 3 см; под водой — 0
 float lakeShoreBand( float height )
 {

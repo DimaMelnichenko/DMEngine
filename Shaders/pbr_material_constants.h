@@ -50,6 +50,11 @@ DM_CONSTANTS( PBRMaterialBuffer, SLOT_CB_MATERIAL )
 	// земли рвут её край
 	DM_FIELD( float, terrainBlendHeight );
 	DM_FIELD( float, terrainBlendContrast );
+	// Мокрость от воды (PBRLit.ps): сила (0 — нет: камни русел — 1), альбедо мокрого — × wetAlbedo, шероховатость — к
+	// wetRoughness; полоса над водой и её край — общие с рельефом («Wet bank height», «Wet bank edge»)
+	DM_FIELD( float, waterWetness );
+	DM_FIELD( float, wetAlbedo );
+	DM_FIELD( float, wetRoughness );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

@@ -10,6 +10,8 @@
 #include "pbr_material_constants.h"
 #include "lod_dither.sh"
 #include "bindless.sh"
+#include "water.sh"
+#include "terrain_layers.sh"
 #ifdef TERRAIN_BLEND
 #include "terrain_blend.sh"
 #endif
@@ -94,6 +96,21 @@ float4 main( PixelInputType input ) : SV_TARGET
 									g_diffuseTransmissionColorFactor;
 	surface.transmissionForward = g_transmissionForward;
 	surface.transmissionForwardRoughness = g_transmissionForwardRoughness;
+
+	// Мокрость от воды (WaterWetness: камни русел, валуны у воды): по высоте пикселя против уровня видимой воды — как у
+	// рельефа (wetWaterDepth, bankWetness: та же полоса над водой и резкий край), каждый камень мокнет на своей высоте; у
+	// остальных материалов (0) — мимо. Только у уровня с террейном
+	[branch] if( g_waterWetness > 0.0f && cb_terrain.x > 0.0f )
+	{
+		const float band = wetBandAt( input.worldPosition.xz );
+		const float depth = band >= 0.0f ? wetWaterDepth( input.worldPosition.xz, input.worldPosition.y ) : -1e30f;
+		[branch] if( depth > -1e29f )
+		{
+			const float wet = g_waterWetness * bankWetness( -depth, band );
+			surface.baseColor *= lerp( 1.0f, g_wetAlbedo, wet );
+			surface.roughness = lerp( surface.roughness, g_wetRoughness, wet );
+		}
+	}
 
 #ifdef TERRAIN_BLEND
 	// У земли — в материал террейна (TerrainBlendHeight; только у уровня с террейном)

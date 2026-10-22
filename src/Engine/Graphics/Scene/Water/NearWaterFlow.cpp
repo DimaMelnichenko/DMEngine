@@ -144,20 +144,22 @@ bool NearWaterFlow::createTextures( uint32_t size )
 		d3d.setName( *texture, name );
 		d3d.clearStorageView( *uav );
 	}
+	for( auto [texture, uav, view, name] : { std::tuple{ &m_fall, &m_fallUAV, &m_fallView, "Water near fall" },
+											 std::tuple{ &m_wet, &m_wetUAV, &m_wetView, "Water near wetness" } } )
 	{
 		TextureDesc desc;
 		desc.width = size;
 		desc.height = size;
 		desc.format = DXGI_FORMAT_R16_FLOAT;
 		desc.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
-		if( !d3d.createTexture( desc, nullptr, m_fall ) || !d3d.createStorageView( m_fall, {}, m_fallUAV ) ||
-			!d3d.createShaderView( m_fall, {}, m_fallView ) )
+		if( !d3d.createTexture( desc, nullptr, *texture ) || !d3d.createStorageView( *texture, {}, *uav ) ||
+			!d3d.createShaderView( *texture, {}, *view ) )
 		{
-			LOG( "Failed to create texture Water near fall" );
+			LOG( std::string( "Failed to create texture " ) + name );
 			return false;
 		}
-		d3d.setName( m_fall, "Water near fall" );
-		d3d.clearStorageView( m_fallUAV );
+		d3d.setName( *texture, name );
+		d3d.clearStorageView( *uav );
 	}
 	for( uint32_t k = 0; k < 6; ++k )
 	{
@@ -447,7 +449,7 @@ void NearWaterFlow::stepFoam( const WaterSimulationSettings& settings, const Wat
 	pass.reads = { { &m_resultView, "near flow" }, { &m_foamView[previous], "near foam previous" }, { &foam.detailView(), "detail foam" },
 				   { &m_patternView[previous], "near foam pattern previous" }, { &m_phaseView[previous], "near foam pattern phase previous" } };
 	pass.writes = { { &m_foamUAV[m_foamCurrent], "near foam" }, { &m_patternUAV[m_foamCurrent], "near foam pattern" },
-					{ &m_phaseUAV[m_foamCurrent], "near foam pattern phase" }, { &m_fallUAV, "near fall" } };
+					{ &m_phaseUAV[m_foamCurrent], "near foam pattern phase" }, { &m_fallUAV, "near fall" }, { &m_wetUAV, "near wetness" } };
 	d3d.beginPass( pass );
 	// Правила — поля пены 0,25 м (те же настройки «Surface»), шаг — время игры кадра
 	const WaterFoamBuffer params = WaterFoam::parameters( settings, elapsed );
@@ -473,12 +475,14 @@ void NearWaterFlow::stepFoam( const WaterSimulationSettings& settings, const Wat
 	d3d.setUAV( 1, m_patternUAV[m_foamCurrent] );
 	d3d.setUAV( 2, m_phaseUAV[m_foamCurrent] );
 	d3d.setUAV( 3, m_fallUAV );
+	d3d.setUAV( 4, m_wetUAV );
 	const uint32_t groups = ( m_size + 7 ) / 8;
 	m_foamStep.dispatchGroups( groups, groups, 1 );
 	d3d.setSRV( SLOT_WATER_NEAR_FOAM, m_foamView[m_foamCurrent] );
 	d3d.setSRV( SLOT_WATER_NEAR_PATTERN, m_patternView[m_foamCurrent] );
 	d3d.setSRV( SLOT_WATER_NEAR_PHASE, m_phaseView[m_foamCurrent] );
 	d3d.setSRV( SLOT_WATER_NEAR_FALL, m_fallView );
+	d3d.setSRV( SLOT_WATER_NEAR_WET, m_wetView );
 	// Пока время не шло (с -freezetime) — пена окна та же, что поле 0,25 м, а узор не сдвинут: материал берёт поле и плитки
 	// (снимки — как без окна)
 	m_foamTime = ( reset ? 0.0f : m_foamTime ) + elapsed;

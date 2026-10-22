@@ -129,6 +129,11 @@ private:
 	Texture m_fall;
 	StorageView m_fallUAV;
 	ShaderView m_fallView;
+	// Поправка уровня для мокрости (R16F): отклонение поверхности окна от детальной воды у ближайшей мокрой ячейки — рельеф и
+	// камни мокнут от видимой воды (wetWaterDepth)
+	Texture m_wet;
+	StorageView m_wetUAV;
+	ShaderView m_wetView;
 	uint32_t m_foamCurrent = 0;
 	bool m_foamReset = true;	// прошлого поля пены нет (окно заново, поля пены 0,25 м ещё нет)
 	float m_foamTime = 0.0f;	// время игры, которое пена окна шла с последнего «заново», с: 0 — она ещё — поле 0,25 м

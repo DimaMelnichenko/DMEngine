@@ -260,6 +260,9 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.crownNormalUp = materialValue( params, "CrownNormalUp", 0.4f );
 	param.terrainBlendHeight = std::max( materialValue( params, "TerrainBlendHeight", 0.0f ), 0.0f );
 	param.terrainBlendContrast = std::clamp( materialValue( params, "TerrainBlendContrast", 0.5f ), 0.0f, 1.0f );
+	param.waterWetness = std::clamp( materialValue( params, "WaterWetness", 0.0f ), 0.0f, 1.0f );
+	param.wetAlbedo = std::clamp( materialValue( params, "WetAlbedo", 0.5f ), 0.0f, 1.0f );
+	param.wetRoughness = std::clamp( materialValue( params, "WetRoughness", 0.15f ), 0.0f, 1.0f );
 
 	Device::updateResourceData<PBRMaterialBuffer>( m_psCB, param );
 	// b2 читают и пиксельный, и вершинный шейдер (отклик на ветер)

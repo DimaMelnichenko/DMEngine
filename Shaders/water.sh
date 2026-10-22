@@ -153,6 +153,15 @@ float waterDepthAt( float2 uv, float height )
 	return level - height;
 }
 
+// Вода над точкой мира на высоте height для мокрости, м (уровень − height; −1e30 — воды рядом нет): уровень видимой воды —
+// детальной (или сетки 1 м), у камеры — с поправкой окна мелкой воды (nearWetLift: плёс там выше детальной воды, слив —
+// ниже, и мокрая полоса стенок шла по грубому уровню). Общая у рельефа (terrain.ps) и камней-моделей (PBRLit.ps)
+float wetWaterDepth( float2 worldXZ, float height )
+{
+	const float depth = waterDepthAt( float2( worldXZ.x, cb_waterDetail.x - worldXZ.y ) / cb_waterDetail.x, height );
+	return depth > -1e29f ? depth + nearWetLift( worldXZ ) : depth;
+}
+
 // Вода ушла недавно (simulated: глубина с памятью ~30 с больше нынешней), м; у static — 0
 float recededWaterDepth( float2 uv )
 {

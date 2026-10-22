@@ -150,6 +150,7 @@ struct TerrainLayerRules
 	float wetBankHeight = 0.04f;
 	float wetBankEdge = 0.01f;
 	float wetSplashHeight = 0.2f;
+	float wetRoughness = 0.2f;		// шероховатость мокрой земли (вода в порах — гладкая, блик)
 	Range krummholzHeight{ 0.73f, 0.78f };	// стланик над границей леса — от, до верха krummholzTop
 	Range krummholzTop{ 0.84f, 0.79f };
 	Range dryGapsSlope{ 12.0f, 20.0f };		// кусты прогалин сухих склонов — доля dryGapsShare

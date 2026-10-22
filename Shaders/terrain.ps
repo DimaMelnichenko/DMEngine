@@ -17,14 +17,6 @@
 
 DM_SRV( Texture2D, g_paintMask, 7 );	// маска — цель кисти или места звука (g_paintPreview maxLayers + 1), в UV карты высот
 
-// G среза мокрости детального слоя весов (TerrainDetailSplat::maxWetBand, wetBandEncode): 0 — воды рядом нет, у воды —
-// ( 1 + 254 · высота мокрой полосы над водой / maxWetBand ) / 255
-static const float maxWetBand = 1.0f;
-
-float wetBandDecode( float g )
-{
-	return saturate( ( g * 255.0f - 1.0f ) / 254.0f ) * maxWetBand;
-}
 
 // Доля диапазона: 0 при from, 1 при to (в любую сторону), плавно; from = to — ступень
 float ramp( float from, float to, float x )
@@ -147,11 +139,12 @@ float4 main( PixelInputType input ) : SV_TARGET
 	// Уровень воды у точки ищется только у воды: вне плиток он уже есть (waterDepth над точной землёй), в плитках — где у
 	// текселя есть высота полосы (G > 0 — мокрый тексель в двух вокруг); иначе каждый пиксель рельефа у русел платил бы за поиск
 	const float wetBand = lerp( terrainLayers().wetBankHeight, wetBandDecode( fineExtra.y ), detailShare );
+	// Уровень — видимой воды: у камеры с поправкой окна мелкой воды (wetWaterDepth: плёс выше детальной воды, слив ниже)
 	float wetDepth = -1e30f;
 	[branch] if( liveWater )
-		wetDepth = waterDepth > -1e29f ? waterDepth + groundHeight - input.worldPosition.y : -1e30f;
+		wetDepth = waterDepth > -1e29f ? waterDepth + groundHeight - input.worldPosition.y + nearWetLift( position.xz ) : -1e30f;
 	else [branch] if( fineExtra.y > 0.0f )
-		wetDepth = waterDepthAt( input.uv, input.worldPosition.y );
+		wetDepth = wetWaterDepth( position.xz, input.worldPosition.y );
 	float liveWetness = wetDepth > -1e29f ? bankWetness( -wetDepth, wetBand ) : 0.0f;
 	[branch] if( liveWater )
 		liveWetness = max( liveWetness, smoothstep( 0.005f, 0.02f, recededWaterDepth( input.uv ) ) );
@@ -159,7 +152,7 @@ float4 main( PixelInputType input ) : SV_TARGET
 	const float baseWetness = g_splatMap.Sample( g_SamplerLinearClamp, float3( input.uv, splatSlices ) ).x;
 	const float wet = max( liveWetness, lerp( baseWetness, bakedWetness, detailShare ) );
 	surface.baseColor *= lerp( 1.0f, g_wetDarkening, wet );
-	surface.roughness = lerp( surface.roughness, 0.2f, wet );
+	surface.roughness = lerp( surface.roughness, terrainLayers().wetRoughness, wet );
 
 	// Отладка симуляции воды («Show water»): от 5 мм до 0,5 м глубины земля уходит в синий, быстрая вода — светлее
 	[branch] if( g_showWater )

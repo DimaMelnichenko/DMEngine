@@ -27,6 +27,8 @@ DM_UAV( RWTexture2D<float>, g_nearFoam, 0 );
 DM_UAV( RWTexture2D<float4>, g_nearPattern, 1 );
 DM_UAV( RWTexture2D<float2>, g_nearPhase, 2 );
 DM_UAV( RWTexture2D<float>, g_nearFall, 3 );		// бурление падения ячейки (SLOT_WATER_NEAR_FALL): по нему — брызги бурления
+DM_UAV( RWTexture2D<float>, g_nearWet, 4 );		// поправка уровня для мокрости (SLOT_WATER_NEAR_WET)
+
 
 // Скачок скорости для сдвига — через две ячейки в каждую сторону (25 см), делится на столько, м: как у сетки 1 м и
 // детальной (там скачок через 0,5 м — на 2 м), — тот же порог foam_shear ловит струю у камня, а не профиль поперёк ручья
@@ -158,6 +160,32 @@ float carriedPhase( float2 world )
 	return dot( phase, phase ) > 1e-6f ? frac( atan2( phase.y, phase.x ) / 6.2831853f ) : outside;
 }
 
+// Сухая ячейка (стенка русла над водой) берёт для мокрости отклонение ближайшей мокрой не дальше стольких ячеек (~19 см):
+// мокрая полоса в несколько сантиметров над водой у крутой стенки — в паре ячеек от уреза, у пологого берега дальше — уже
+// детальная вода
+static const int nearWetReach = 3;
+
+// Отклонение поверхности окна от детальной воды для мокрости в ячейке: мокрая — своё, сухая — ближайшей мокрой; nearWetNone
+float wetLift( int2 cell, float4 here )
+{
+	if( here.w > 0.0f )
+		return here.x;
+	float nearest = 1e9f;
+	float lift = nearWetNone;
+	[loop] for( int y = -nearWetReach; y <= nearWetReach; ++y )
+		[loop] for( int x = -nearWetReach; x <= nearWetReach; ++x )
+		{
+			const float4 state = nearState( cell + int2( x, y ), float4( 0.0f, 0.0f, 0.0f, 0.0f ) );
+			const float distance = x * x + y * y;
+			if( state.w > 0.0f && distance < nearest )
+			{
+				nearest = distance;
+				lift = state.x;
+			}
+		}
+	return lift;
+}
+
 // Пена ячейки за кадр (here — итог окна в ячейке, вода есть); churn — бурление падения у подошвы и в котле (fallChurn)
 float stepFoam( int2 cell, float2 world, float4 here, out float churn );
 
@@ -170,6 +198,7 @@ void mainNearFoam( uint3 id : SV_DispatchThreadID )
 	const uint2 address = nearAddress( cell );
 	const float2 world = ( cell + 0.5f ) * g_nearStep;
 	const float4 here = g_nearState[address];
+	g_nearWet[address] = wetLift( cell, here );
 	// Суша (и камень на берегу) — без пены; вошла в окно в этом кадре (или окно заново) — пена поля 0,25 м, узор — обновлён
 	const bool fresh = g_nearReset != 0 || !insideWindow( cell, g_nearPreviousOrigin );
 	if( here.w <= 0.0f || fresh )

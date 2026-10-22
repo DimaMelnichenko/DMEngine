@@ -56,7 +56,7 @@ DM_CONSTANTS( ParticleEmitterBuffer, b4 )
 	DM_FIELD( float, hold );				// fall: с рождения столько секунд течение клочок не несёт
 	DM_FIELD( float, growTime );			// с рождения размер растёт от birthSize до sizeStart за столько секунд (0 — сразу)
 	DM_FIELD( float, birthSize );		// м
-	DM_FIELD( float3, sizePadding );
+	DM_FIELD( float, sizePadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

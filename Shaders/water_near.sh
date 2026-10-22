@@ -22,6 +22,9 @@ DM_SRV( Texture2D<float4>, g_waterNearPattern, SLOT_WATER_NEAR_PATTERN );
 DM_SRV( Texture2D<float2>, g_waterNearPhase, SLOT_WATER_NEAR_PHASE );
 // Пена падения: у подошвы ступени и в котле под ней (брызги бурления — по ней)
 DM_SRV( Texture2D<float>, g_waterNearFall, SLOT_WATER_NEAR_FALL );
+// Отклонение поверхности окна от детальной воды для мокрости: у мокрой ячейки — её, у сухой — ближайшей мокрой; −1000 — нет
+DM_SRV( Texture2D<float>, g_waterNearWet, SLOT_WATER_NEAR_WET );
+static const float nearWetNone = -1000.0f;
 
 // Слоёв смещений узора два, фазы — через полпериода. Фазу несёт течение вместе со смещениями (water_near_foam.cs): у частицы
 // воды она идёт ровно, обновление — когда она переходит через целое; у воды, входящей в окно (и у окна заново), фаза —
@@ -110,6 +113,35 @@ float nearPatternPhaseAt( float2 worldXZ, float fallback )
 {
 	const float2 phase = g_waterNearPhase.SampleLevel( g_SamplerLinearWrap, worldXZ / ( cb_waterNear.z * cb_waterNear.w ), 0.0f );
 	return dot( phase, phase ) > 1e-4f ? frac( atan2( phase.y, phase.x ) / 6.2831853f ) : fallback;
+}
+
+// Поправка уровня воды для мокрости в точке мира, м: в окне у камеры уровень видимой воды — детальная вода и отклонение
+// мелкой воды от неё (у стенки над водой — ближайшей мокрой ячейки), билинейно по ячейкам, где оно есть; к краю окна —
+// к нулю (nearWaterWeight). Без окна — 0
+float nearWetLift( float2 worldXZ )
+{
+	const float weight = nearWaterWeight( worldXZ );
+	if( weight <= 0.0f )
+		return 0.0f;
+	const int size = (int)cb_waterNear.w;
+	const float2 position = worldXZ / cb_waterNear.z - 0.5f;
+	const int2 base = int2( floor( position ) );
+	const float2 f = position - (float2)base;
+	float lift = 0.0f;
+	float total = 0.0f;
+	[unroll] for( uint k = 0; k < 4; ++k )
+	{
+		const int2 corner = int2( k & 1, k >> 1 );
+		const int2 cell = base + corner;
+		const float value = g_waterNearWet.Load( int3( ( cell % size + size ) % size, 0 ) );
+		const float w = ( corner.x ? f.x : 1.0f - f.x ) * ( corner.y ? f.y : 1.0f - f.y );
+		if( value > nearWetNone * 0.5f )
+		{
+			lift += value * w;
+			total += w;
+		}
+	}
+	return total > 1e-4f ? weight * lift / total : 0.0f;
 }
 
 // Ячейка окна (сетка мира с шагом ячейки окна от угла мира) — её тексель по модулю стороны

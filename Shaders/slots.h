@@ -143,8 +143,12 @@
 // Узор пены (WaterFoamLace: массив из двух карт — кружево и густая пена; R — маска, G, B — нормаль, A — растворение): у
 // поверхности воды — свой слот материала, ресурс сцены — для клочков взбитой воды (частицы, shape froth)
 #define SLOT_WATER_FOAM_PATTERN	147
+// Мокрость у воды в окне у камеры (NearWaterFlow, water_near_foam.cs): R16F, та же сетка — отклонение поверхности мелкой
+// воды от детальной (x итога окна) у мокрой ячейки и у ближайшей мокрой в nearWetReach ячеек у сухой (стенка русла над
+// водой); −1000 — мокрых рядом нет. Рельеф и камни-модели мокнут от уровня видимой воды (wetWaterDepth, water.sh)
+#define SLOT_WATER_NEAR_WET	148
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	48
+#define SLOT_SCENE_COUNT	49
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,
