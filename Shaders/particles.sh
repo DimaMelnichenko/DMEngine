@@ -18,7 +18,7 @@ struct Particle
 	float  size;		// случайная доля размера, 0,7…1
 	uint   seed;		// случайное число частицы: поворот, направление лежащей хвоинки
 	float  landed;		// 1 — лежит на земле (needle)
-	float  padding;
+	float  surface;		// бурление (spawn fall): уровень воды под частицей, м — подъём к нему и видимость под водой
 };
 
 static const uint particleSpawnPoint = 0;

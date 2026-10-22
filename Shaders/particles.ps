@@ -70,11 +70,14 @@ float4 frothColor( ParticlePixelInput input )
 		g_sprite.GetDimensions( width, height );
 		const float frames = max( floor( (float)width / max( (float)height, 1.0f ) ), 1.0f );
 		const float frame = min( floor( frac( random.y * 13.7f ) * frames ), frames - 1.0f );
-		float2 uv = saturate( float2( random.z < 0.5f ? p.x : -p.x, p.y ) * 0.5f + 0.5f );
+		const float mirror = random.z < 0.5f ? 1.0f : -1.0f;
+		float2 uv = saturate( float2( mirror * p.x, p.y ) * 0.5f + 0.5f );
 		uv.x = ( frame + uv.x ) / frames;
 		const float4 sprite = g_sprite.Sample( g_SamplerLinearClamp, uv );
 		clip( sprite.r * input.alpha - 1.0f / 255.0f );
-		foam = float4( sprite.a, sprite.g, sprite.b, 0.0f );
+		// Нормаль спрайта — в осях картинки (v вниз): в оси клочка (y вверх), с его отражением
+		const float2 bump = ( sprite.gb * 2.0f - 1.0f ) * float2( mirror, -1.0f );
+		foam = float4( sprite.a, 0.5f + 0.5f * bump, 0.0f );
 		density = sprite.a;
 		alpha = sprite.r;
 	}

@@ -1041,7 +1041,8 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 		// Единица частоты и подсказка радиуса — по способу рождения (ParticleSystem)
 		{ "rate", "Rate", DM_SETTING( rate ), 0.0f, 10.0f, "1/s", "", settingClampLow | settingWideHigh },
 		{ "radius", "Radius", DM_SETTING( radius ), 0.0f, 10.0f, "m", "", settingClampLow | settingWideHigh },
-		{ "height_min", "Height min", DM_SETTING( heightMin ), -10.0f, 50.0f, "m", "Above the terrain or the water surface" },
+		{ "height_min", "Height min", DM_SETTING( heightMin ), -10.0f, 50.0f, "m",
+		  "Above the terrain (camera), the water surface (water) or the plunge pool bottom (fall)" },
 		{ "height_max", "Height max", DM_SETTING( heightMax ), -10.0f, 50.0f, "m" },
 		// Маска, спрайт и ёмкость пула задают ресурсы эмиттера — только в базе
 		{ "mask", nullptr, DM_SETTING( mask ) },
@@ -1064,9 +1065,10 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 		{ "curl_scale", "Curl scale", DM_SETTING( curlScale ), 0.1f, 50.0f, "m", "Size of the vortices", settingLogarithmic | settingClampLow },
 		{ "water_flow", "Water flow", DM_SETTING( waterFlow ), 0.0f, 2.0f, "", "Share of the water velocity under the particle" },
 		{ "water_speed", "Water speed", DM_SETTING( waterSpeed ), 0.0f, 5.0f, "m/s", "Spawn on water faster than this" },
-		{ "spray_height_min", "Spray height min", DM_SETTING( sprayHeightMin ), 0.0f, 2.0f, "m",
-		  "Churn spray (spawn fall): drops jump this high over the water at least, then fall back" },
-		{ "spray_height_max", "Spray height max", DM_SETTING( sprayHeightMax ), 0.0f, 2.0f, "m", "And at most" },
+		{ "spray_height_min", "Spray height min", DM_SETTING( sprayHeightMin ), 0.0f, 0.5f, "m",
+		  "Churn (spawn fall): born at the plunge pool bottom (Height min..max above it), it rises (Velocity y) up to this height "
+		  "over the water at least and drifts there with the flow" },
+		{ "spray_height_max", "Spray height max", DM_SETTING( sprayHeightMax ), 0.0f, 0.5f, "m", "And at most" },
 		{ "collide", "Collide", DM_SETTING( collide ), 0.0f, 0.0f, "", "With the terrain: needles lie down, dots die" },
 		{ "transmission", "Transmission", DM_SETTING( transmission ), 0.0f, 4.0f, "", "Glow against the sun (pollen, fluff)" },
 		{ "emissive", "Emissive", DM_SETTING( emissive ), 0.0f, 10.0f, "cd/m2", "", settingWideHigh },

@@ -105,8 +105,9 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 	}
 	else if( g_spawn == particleSpawnFall )
 	{
-		// Брызги бурления (Dimok, 2026-10-22): в окне у камеры, где пена падения — у подошвы ступени и в котле под ней (чаще,
-		// где её больше); подлетают над водой на высоту между sprayHeightMin и sprayHeightMax и падают обратно
+		// Бурление (Dimok, 2026-10-22): в окне у камеры, где бурление падения — у подошвы ступени и в котле под ней (чаще,
+		// где его больше); рождается у дна котла (height_min…height_max над ним), всплывает (скорость — velocity.y) до
+		// sprayHeightMin…sprayHeightMax над водой и тянется там с течением (mainUpdate)
 		if( g_hasTerrain == 0 || cb_waterNear.w <= 0.0f )
 			return;
 		const float side = cb_waterNear.z * cb_waterNear.w;
@@ -123,10 +124,8 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 		const float ground = terrainSurfacePoint( xz ).y;
 		if( ground > surface - 0.01f )
 			return;
-		// Над водой и в ней (height_min < 0: взбитая вода там, где струя входит в ручей), но не в дне
-		position = float3( xz.x, max( surface + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), ground + 0.02f ), xz.y );
-		const float height = max( lerp( g_sprayHeightMin, g_sprayHeightMax, particleRandom( state ) ), 0.0f );
-		velocity += float3( water.velocity.x * g_waterFlow, sqrt( 2.0f * max( g_gravity, 0.0f ) * height ), water.velocity.y * g_waterFlow );
+		position = float3( xz.x, min( ground + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), surface - 0.01f ), xz.y );
+		velocity += float3( water.velocity.x, 0.0f, water.velocity.y ) * g_waterFlow;
 	}
 	velocity += randomDirection( state ) * g_velocitySpread * particleRandom( state );
 
@@ -148,7 +147,7 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 	particle.size = lerp( 0.7f, 1.0f, particleRandom( state ) );
 	particle.seed = state;
 	particle.landed = 0.0f;
-	particle.padding = 0.0f;
+	particle.surface = position.y;
 	g_particles[index] = particle;
 }
 
@@ -201,6 +200,10 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 		const WaterSample water = sampleWater( uv );
 		waterDepth = water.depth;
 		waterVelocity = water.velocity;
+		// Бурление: уровень воды под частицей (поверхность окна у камеры) — всплывает к нему
+		if( g_spawn == particleSpawnFall && waterDepth > 0.0f )
+			particle.surface = terrainHeight( particle.position.xz ) + waterDepth +
+							   ( nearWaterWeight( particle.position.xz ) > 0.0f ? sampleNearWater( particle.position.xz ).x : 0.0f );
 	}
 
 	if( alive && particle.landed == 0.0f )
@@ -213,9 +216,22 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 		float3 target = wind + curlNoise( particle.position ) * g_curl;
 		if( waterDepth > 0.01f && particle.position.y < ground + waterDepth + 0.5f )
 			target += float3( waterVelocity.x, 0.0f, waterVelocity.y ) * g_waterFlow;
+		// Бурление всплывает (velocity.y эмиттера) до своей высоты над водой (sprayHeightMin…Max) и держится там
+		float top = 1e9f;
+		if( g_spawn == particleSpawnFall )
+		{
+			uint state = particle.seed ^ 0x51ed270bu;
+			top = particle.surface + lerp( g_sprayHeightMin, g_sprayHeightMax, particleRandom( state ) );
+			target.y = particle.position.y < top ? g_velocity.y : 0.0f;
+		}
 		particle.velocity += ( target - particle.velocity ) * ( 1.0f - exp( -g_drag * dt ) );
 		particle.velocity.y -= g_gravity * dt;
 		particle.position += particle.velocity * dt;
+		if( particle.position.y > top )
+		{
+			particle.position.y = top;
+			particle.velocity.y = min( particle.velocity.y, 0.0f );
+		}
 
 		// Земля и вода: хвоинка ложится на землю и тонет в воде, тяжёлые капли (брызги) гибнут, лёгкие пушинки
 		// отскакивают вверх — вихри у земли не губят их раньше срока

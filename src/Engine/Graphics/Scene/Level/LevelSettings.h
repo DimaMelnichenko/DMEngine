@@ -849,7 +849,7 @@ struct ParticleEmitterSettings
 	Shape shape = Shape::dot;
 	DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// экземпляр, м мира (point, sphere)
 	float radius = 1.0f;			// шар (sphere), поле вокруг камеры (camera, water), м; дальше от камеры — гибнут
-	float heightMin = 0.0f;			// над рельефом (camera) или над поверхностью воды (water), м
+	float heightMin = 0.0f;			// над рельефом (camera), над поверхностью воды (water), над дном (fall), м
 	float heightMax = 0.0f;
 	std::string mask;				// текстура плотности в координатах карты высот (camera); пусто — всюду
 	// Спрайт клочка (froth): покрытие, рельеф и плотность из текстуры (Tools/pack_particle_sprite.py), пусто — узор пены
@@ -873,8 +873,10 @@ struct ParticleEmitterSettings
 	float curlScale = 4.0f;			// размер вихрей, м
 	float waterFlow = 0.0f;			// доля скорости воды симуляции под частицей
 	float waterSpeed = 1.0f;		// water: порог скорости воды, м/с
-	float sprayHeightMin = 0.1f;	// fall: брызги подлетают над водой на высоту между этими, м (скорость вверх — √(2 g h))
-	float sprayHeightMax = 0.4f;
+	// fall (бурление): рождается у дна котла на heightMin…heightMax над ним, всплывает со скоростью velocity.y до высоты
+	// sprayHeightMin…sprayHeightMax над водой и тянется там с течением
+	float sprayHeightMin = 0.0f;
+	float sprayHeightMax = 0.01f;
 	bool collide = false;			// с рельефом: needle ложится, dot гибнет
 	float transmission = 0.0f;		// просвет на солнце (пыльца, пух светятся против солнца)
 	float emissive = 0.0f;			// свечение, кд/м² (светлячки)

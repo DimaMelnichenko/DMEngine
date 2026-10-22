@@ -84,10 +84,11 @@ PRESETS = {
                   lifetime_min=0.5, lifetime_max=1.0, size_start=0.03, size_end=0.12, color='0.9,0.95,1', alpha=0.45,
                   fade_in=0.05, fade_out=0.5, velocity='0,1.5,0', velocity_spread=0.8, gravity=9.8, drag=0.5, wind=0.1,
                   water_flow=1, water_speed=0.9, collide=1, transmission=0.5),
-    'churn': dict(spawn='fall', shape='froth', radius=0, height_min=-0.12, height_max=0, rate=400000, max_particles=65536,
-                  lifetime_min=0.5, lifetime_max=1.0, size_start=0.06, size_end=0.16, color='0.95,0.97,1', alpha=0.4,
-                  fade_in=0.1, fade_out=0.6, velocity_spread=0.1, gravity=0.2, drag=4, wind=0.1, water_flow=0.7,
-                  spray_height_min=0, spray_height_max=0.02, collide=0, transmission=0.5),
+    'churn': dict(spawn='fall', shape='froth', sprite='water_splash', radius=0, height_min=0.02, height_max=0.08,
+                  rate=400000, max_particles=65536, lifetime_min=0.6, lifetime_max=1.0, size_start=0.12, size_end=0.3,
+                  color='0.95,0.97,1', alpha=0.7, fade_in=0.05, fade_out=0.5, velocity='0,0.5,0', velocity_spread=0.05,
+                  gravity=0, drag=4, wind=0.1, water_flow=0.8, spray_height_min=0, spray_height_max=0.01, collide=0,
+                  transmission=0.5),
 }
 
 

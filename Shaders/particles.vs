@@ -37,6 +37,8 @@ static const float minimumPixels = 1.5f;
 // Клочок взбитой воды вытянут вдоль движения: 1 + скорость × frothStretch, не больше 1 + frothMaxStretch
 static const float frothStretch = 0.6f;
 static const float frothMaxStretch = 1.2f;
+// Бурление под водой: видимость падает в e раз на такую глубину, м
+static const float frothUnderwaterFade = 0.08f;
 static const float needleWidth = 0.15f;	// ширина хвоинки — доля её длины	// тоньше пары пикселей частица мерцает — шире, но прозрачнее
 
 ParticlePixelInput main( VertexInputType input )
@@ -118,7 +120,11 @@ ParticlePixelInput main( VertexInputType input )
 	float edge = 1.0f;
 	if( g_spawn == particleSpawnCamera || g_spawn == particleSpawnWater )
 		edge = 1.0f - smoothstep( g_radius * 0.75f, g_radius, length( particle.position.xz - cb_cameraPosition.xz ) );
-	output.alpha = g_alpha * particleFade( particle ) * coverage * edge;
+	// Бурление под водой видно слабо: проявляется, всплывая к поверхности
+	float underwater = 1.0f;
+	if( g_spawn == particleSpawnFall )
+		underwater = exp( -max( particle.surface - particle.position.y, 0.0f ) / frothUnderwaterFade );
+	output.alpha = g_alpha * particleFade( particle ) * coverage * edge * underwater;
 	output.corner = corner;
 	output.viewDepth = mul( float4( position, 1.0f ), cb_viewMatrix ).z;
 	uint state = particle.seed ^ 0x9e3779b9u;

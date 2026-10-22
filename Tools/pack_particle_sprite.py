@@ -9,8 +9,10 @@
 # по яркости): 0 — фон, 1 — белое. Покрытие — плавный порог этой проекции (--alpha-from … --alpha-to), плотность — она
 # же без порога; к краям фото покрытие гаснет (--edge-fade: всплеск, обрезанный кадром фото, без прямого среза). Картинка
 # обрезается по покрытию с полем --margin, дополняется до квадрата, к краю покрытие гаснет (край спрайта прозрачный при
-# любом повороте). Каналы: R — покрытие, G, B — нормаль по размытому покрытию (0,5 + 0,5 · n),
-# A — плотность. Нужны numpy и Pillow. Сообщения — ASCII (правило Tools/).
+# любом повороте). Каналы: R — покрытие, G, B — нормаль (0,5 + 0,5 · n) по высоте — покрытие × яркость фото: рельеф
+# пузырей и гребней внутри всплеска, а не только его края (--bump, --blur), A — плотность. --export <папка> — ещё
+# подготовленные кадры PNG (<имя>_<k>.png: серое — плотность, альфа — покрытие) — для своих normal и height map.
+# Нужны numpy и Pillow. Сообщения — ASCII (правило Tools/).
 import argparse
 import os
 import sqlite3
@@ -54,12 +56,21 @@ def main():
     parser.add_argument('--alpha-to', type=float, default=0.45, help='and is full at this share')
     parser.add_argument('--margin', type=float, default=0.04, help='crop margin around the coverage, share of the side')
     parser.add_argument('--edge-fade', type=float, default=0.25, help='coverage fades out toward the photo edges over this share of its shorter side')
-    parser.add_argument('--bump', type=float, default=3.0, help='normal steepness: coverage height per pixel step')
-    parser.add_argument('--blur', type=float, default=1.5, help='coverage blur for the normal, pixels')
+    parser.add_argument('--bump', type=float, default=4.0, help='normal steepness: height per pixel step')
+    parser.add_argument('--blur', type=float, default=1.0, help='height blur for the normal, pixels')
     parser.add_argument('--db', help='base.db3: insert or update the Textures row')
+    parser.add_argument('--export', help='folder: also write the prepared frames as PNG (grey - density, alpha - coverage)')
     args = parser.parse_args()
 
     frames = [frame(path, args) for path in args.images]
+    if args.export:
+        os.makedirs(args.export, exist_ok=True)
+        for k, image in enumerate(frames):
+            grey = dds.to_bytes(image[..., 3])
+            png = np.stack([grey, grey, grey, dds.to_bytes(image[..., 0])], axis=-1)
+            name = os.path.join(args.export, '%s_%d.png' % (args.name, k))
+            Image.fromarray(png, 'RGBA').save(name)
+            print('exported %s' % name)
     rgba = np.concatenate(frames, axis=1)
     out = os.path.join('Textures', 'particles', args.name + '.dds')
     os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -127,7 +138,9 @@ def frame(path, args):
     fade = 1.0 - smoothstep(0.85, 1.0, radius)
     cover, dense = image[..., 0] * fade, image[..., 1]
 
-    height = blur(cover, args.blur) * args.bump
+    # Высота — покрытие × яркость фото (на светлом гребне выше, в провале между пузырями — ниже): рельеф и внутри
+    # плотной массы; по одному покрытию нормаль была только на краях брызг
+    height = blur(cover * (0.35 + 0.65 * dense), args.blur) * args.bump
     dx = 0.5 * (np.roll(height, -1, axis=1) - np.roll(height, 1, axis=1))
     dy = 0.5 * (np.roll(height, -1, axis=0) - np.roll(height, 1, axis=0))
     normal = np.stack([-dx, -dy, np.ones_like(dx)], axis=-1)
