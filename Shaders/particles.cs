@@ -125,7 +125,6 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 		if( ground > surface - 0.01f )
 			return;
 		position = float3( xz.x, min( ground + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), surface - 0.01f ), xz.y );
-		velocity += float3( water.velocity.x, 0.0f, water.velocity.y ) * g_waterFlow;
 	}
 	velocity += randomDirection( state ) * g_velocitySpread * particleRandom( state );
 
@@ -206,7 +205,7 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 							   ( nearWaterWeight( particle.position.xz ) > 0.0f ? sampleNearWater( particle.position.xz ).x : 0.0f );
 	}
 
-	if( alive && particle.landed == 0.0f )
+	if( alive && particle.landed < 1.0f )
 	{
 		// Скорость воздуха: поле ветра по рельефу (вверх по наветренному склону, тише в лесу) с порывами (без ветра, -nowind, —
 		// штиль) и вихри; у воды — её течение
@@ -216,13 +215,22 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 		float3 target = wind + curlNoise( particle.position ) * g_curl;
 		if( waterDepth > 0.01f && particle.position.y < ground + waterDepth + 0.5f )
 			target += float3( waterVelocity.x, 0.0f, waterVelocity.y ) * g_waterFlow;
-		// Бурление всплывает (velocity.y эмиттера) до своей высоты над водой (sprayHeightMin…Max) и держится там
+		// Бурление всплывает вертикально (velocity.y эмиттера; течение и ветер его не трогают) до своей высоты над водой
+		// (sprayHeightMin…Max), и только всплывшее несёт течение по поверхности (Dimok, 2026-10-22: «частицы рождаются в
+		// котловине, поднимаются вертикально вверх, и уже потом их сносит течение»; прежде течение сносило их с рождения)
 		float top = 1e9f;
 		if( g_spawn == particleSpawnFall )
 		{
 			uint state = particle.seed ^ 0x51ed270bu;
 			top = particle.surface + lerp( g_sprayHeightMin, g_sprayHeightMax, particleRandom( state ) );
-			target.y = particle.position.y < top ? g_velocity.y : 0.0f;
+			// Ветер на бурление не действует (оно — вода): всплывшее несёт только течение
+			if( particle.landed < particleSurfaced && particle.position.y < top - 0.002f )
+				target = float3( 0.0f, g_velocity.y, 0.0f );
+			else
+			{
+				particle.landed = particleSurfaced;
+				target = float3( waterVelocity.x, 0.0f, waterVelocity.y ) * g_waterFlow;
+			}
 		}
 		particle.velocity += ( target - particle.velocity ) * ( 1.0f - exp( -g_drag * dt ) );
 		particle.velocity.y -= g_gravity * dt;

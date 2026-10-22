@@ -17,7 +17,7 @@ struct Particle
 	float  lifetime;	// с
 	float  size;		// случайная доля размера, 0,7…1
 	uint   seed;		// случайное число частицы: поворот, направление лежащей хвоинки
-	float  landed;		// 1 — лежит на земле (needle)
+	float  landed;		// 1 — лежит на земле (needle); particleSurfaced — бурление всплыло (fall)
 	float  surface;		// бурление (spawn fall): уровень воды под частицей, м — подъём к нему и видимость под водой
 };
 
@@ -29,6 +29,8 @@ static const uint particleSpawnFall = 4;
 static const uint particleShapeDot = 0;
 static const uint particleShapeNeedle = 1;
 static const uint particleShapeFroth = 2;
+// Бурление (spawn fall) всплыло к поверхности: дальше его несёт течение (у лежащей хвоинки landed — 1)
+static const float particleSurfaced = 0.5f;
 
 // Байты буфера состояния эмиттера (ParticleSystem::stateBytes): команда ExecuteIndirect {root-константа b9,
 // IndexCountPerInstance, InstanceCount — живых, StartIndexLocation, BaseVertexLocation, StartInstanceLocation}, число
