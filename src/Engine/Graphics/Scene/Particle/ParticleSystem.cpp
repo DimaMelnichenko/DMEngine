@@ -232,6 +232,8 @@ void ParticleSystem::setParameters( Emitter& emitter, uint32_t index, uint32_t s
 	params.sprayHeightMin = settings.sprayHeightMin;
 	params.sprayHeightMax = std::max( settings.sprayHeightMax, settings.sprayHeightMin );
 	params.hasSprite = emitter.sprite ? 1 : 0;
+	params.selfShadow = std::max( settings.selfShadow, 0.0f );
+	params.coreOcclusion = std::clamp( settings.coreOcclusion, 0.0f, 1.0f );
 	Device::updateResourceData( emitter.constants, params );
 	DMD3D::instance().setConstantBuffer( 4, emitter.constants );
 }

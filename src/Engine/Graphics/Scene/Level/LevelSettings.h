@@ -877,6 +877,9 @@ struct ParticleEmitterSettings
 	// sprayHeightMin…sprayHeightMax над водой и тянется там с течением
 	float sprayHeightMin = 0.0f;
 	float sprayHeightMax = 0.01f;
+	// froth со спрайтом: самозатенение массы — плотность для солнца (тень внутри массы) и доля света неба, которой нет в ядре
+	float selfShadow = 1.2f;
+	float coreOcclusion = 0.3f;
 	bool collide = false;			// с рельефом: needle ложится, dot гибнет
 	float transmission = 0.0f;		// просвет на солнце (пыльца, пух светятся против солнца)
 	float emissive = 0.0f;			// свечение, кд/м² (светлячки)

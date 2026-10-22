@@ -31,6 +31,10 @@ struct ParticlePixelInput
 	float3 shade : COLOR2;
 	nointerpolation float3 glint : COLOR3;
 	nointerpolation float3 toSun : TEXCOORD3;
+	// Оси квада в мире (corner.x — вдоль axisRight, w — его растяжение вдоль течения; corner.y — вдоль axisUp): нормаль и
+	// тень внутри клочка — в его осях
+	nointerpolation float4 axisRight : TEXCOORD4;
+	nointerpolation float3 axisUp : TEXCOORD5;
 };
 
 static const float minimumPixels = 1.5f;
@@ -64,6 +68,8 @@ ParticlePixelInput main( VertexInputType input )
 	}
 
 	float3 offset;
+	float4 axisRight = float4( cb_viewInverseMatrix[0].xyz, 1.0f );
+	float3 axisUp = cb_viewInverseMatrix[1].xyz;
 	if( g_shape == particleShapeNeedle )
 	{
 		// Ось — по скорости; у лежащей и медленной — направление из зерна, лёжа на земле
@@ -98,6 +104,8 @@ ParticlePixelInput main( VertexInputType input )
 			}
 		}
 		offset = ( right * corner.x * stretch + up * corner.y ) * width * 0.5f + shift;
+		axisRight = float4( right, stretch );
+		axisUp = up;
 	}
 	const float3 position = particle.position + offset;
 
@@ -138,5 +146,7 @@ ParticlePixelInput main( VertexInputType input )
 	output.shade = g_shape == particleShapeFroth ? applyFogging( g_color * ambient + g_emissive, particle.position ) * preExposure() : color;
 	output.glint = ( applyFogging( sunLight, particle.position ) - applyFogging( 0.0f, particle.position ) ) * preExposure();
 	output.toSun = toSun;
+	output.axisRight = axisRight;
+	output.axisUp = axisUp;
 	return output;
 }

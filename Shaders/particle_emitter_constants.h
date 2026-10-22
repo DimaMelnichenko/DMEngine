@@ -48,7 +48,9 @@ DM_CONSTANTS( ParticleEmitterBuffer, b4 )
 	DM_FIELD( float, sprayHeightMin );	// fall: брызги подлетают над водой на столько, м
 	DM_FIELD( float, sprayHeightMax );
 	DM_FIELD( uint, hasSprite );			// у клочка (froth) — спрайт (particles.ps, SRV 1), иначе узор пены
-	DM_FIELD( float, spritePadding );
+	DM_FIELD( float, selfShadow );		// клочок со спрайтом: плотность его массы для солнца (тень внутри массы)
+	DM_FIELD( float, coreOcclusion );	// и доля света неба, которую не получает его ядро (0 — получает весь)
+	DM_FIELD( float, shadowPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

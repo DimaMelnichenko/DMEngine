@@ -1069,6 +1069,10 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 		  "Churn (spawn fall): born at the plunge pool bottom (Height min..max above it), it rises (Velocity y) up to this height "
 		  "over the water at least and drifts there with the flow" },
 		{ "spray_height_max", "Spray height max", DM_SETTING( sprayHeightMax ), 0.0f, 0.5f, "m", "And at most" },
+		{ "self_shadow", "Self shadow", DM_SETTING( selfShadow ), 0.0f, 10.0f, "",
+		  "Froth with a sprite: density of its mass for the sun - the side away from the sun is shaded (0 - none)" },
+		{ "core_occlusion", "Core occlusion", DM_SETTING( coreOcclusion ), 0.0f, 1.0f, "",
+		  "Froth with a sprite: share of the sky light its dense core does not get (0 - lit everywhere)", settingClamp },
 		{ "collide", "Collide", DM_SETTING( collide ), 0.0f, 0.0f, "", "With the terrain: needles lie down, dots die" },
 		{ "transmission", "Transmission", DM_SETTING( transmission ), 0.0f, 4.0f, "", "Glow against the sun (pollen, fluff)" },
 		{ "emissive", "Emissive", DM_SETTING( emissive ), 0.0f, 10.0f, "cd/m2", "", settingWideHigh },

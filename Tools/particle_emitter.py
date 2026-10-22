@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS ParticleEmitters (
     water_speed REAL NOT NULL DEFAULT 1,
     spray_height_min REAL,
     spray_height_max REAL,
+    self_shadow REAL,
+    core_occlusion REAL,
     collide INTEGER NOT NULL DEFAULT 0,
     transmission REAL NOT NULL DEFAULT 0,
     emissive REAL NOT NULL DEFAULT 0
@@ -87,7 +89,7 @@ PRESETS = {
     'churn': dict(spawn='fall', shape='froth', sprite='water_splash', radius=0, height_min=0.02, height_max=0.08,
                   rate=400000, max_particles=65536, lifetime_min=0.6, lifetime_max=1.0, size_start=0.12, size_end=0.3,
                   color='0.95,0.97,1', alpha=0.7, fade_in=0.05, fade_out=0.5, velocity='0,0.5,0', velocity_spread=0.05,
-                  gravity=0, drag=4, wind=0, water_flow=0.8, spray_height_min=0, spray_height_max=0.01, collide=0,
+                  gravity=0, drag=4, wind=0, water_flow=0.8, spray_height_min=0, spray_height_max=0.01, self_shadow=1.2, core_occlusion=0.3, collide=0,
                   transmission=0.5),
 }
 
@@ -97,7 +99,8 @@ def migrate(db):
     колонки эмиттера (высота брызг бурления)"""
     db.executescript(SCHEMA)
     present = [row[1] for row in db.execute('PRAGMA table_info(ParticleEmitters)')]
-    for column, kind in (('spray_height_min', 'REAL'), ('spray_height_max', 'REAL'), ('sprite', 'TEXT')):
+    for column, kind in (('spray_height_min', 'REAL'), ('spray_height_max', 'REAL'), ('sprite', 'TEXT'), ('self_shadow', 'REAL'),
+                         ('core_occlusion', 'REAL')):
         if column not in present:
             db.execute('ALTER TABLE ParticleEmitters ADD COLUMN %s %s' % (column, kind))
             print('migrated: column ParticleEmitters.%s added' % column)

@@ -22,6 +22,8 @@ struct ParticlePixelInput
 	float3 shade : COLOR2;
 	nointerpolation float3 glint : COLOR3;
 	nointerpolation float3 toSun : TEXCOORD3;
+	nointerpolation float4 axisRight : TEXCOORD4;
+	nointerpolation float3 axisUp : TEXCOORD5;
 };
 
 static const float softDistance = 0.3f;		// м: на этой толщине до сцены частица гаснет
@@ -44,6 +46,11 @@ static const float glintCells = 22.0f;
 static const float glintShare = 0.5f;
 static const float glintPower = 60.0f;
 static const float glintStrength = 8.0f;
+// Самозатенение клочка со спрайтом: к солнцу по плоскости клочка — столько выборок плотности на столько его радиусов;
+// ядро — плотность в мипе с таким сдвигом (размытая масса)
+static const uint shadowSteps = 4;
+static const float shadowReach = 0.5f;
+static const float coreMipBias = 4.0f;
 
 // Клочок взбитой воды (бурление у падений, Dimok, 2026-10-22: «бурлящая вода в месте падения», референс — фото белой
 // воды вблизи): бугристое пятно с рваным краем, внутри — пузыри густой пены (узор тот же, что у пены на воде; поворот,
@@ -62,6 +69,7 @@ float4 frothColor( ParticlePixelInput input )
 	float density;
 	float alpha;
 	float4 foam;
+	float3 spriteFrame = 0.0f;	// кадр, кадров и отражение спрайта — самозатенению
 	[branch] if( g_hasSprite != 0 )
 	{
 		// Спрайт всплеска (фото, Dimok): покрытие, рельеф и плотность — из него; повёрнут и отражён по-своему у частицы.
@@ -75,6 +83,7 @@ float4 frothColor( ParticlePixelInput input )
 		uv.x = ( frame + uv.x ) / frames;
 		const float4 sprite = g_sprite.Sample( g_SamplerLinearClamp, uv );
 		clip( sprite.r * input.alpha - 1.0f / 255.0f );
+		spriteFrame = float3( frame, frames, mirror );
 		// Нормаль спрайта — в осях картинки (v вниз): в оси клочка (y вверх), с его отражением
 		const float2 bump = ( sprite.gb * 2.0f - 1.0f ) * float2( mirror, -1.0f );
 		foam = float4( sprite.a, 0.5f + 0.5f * bump, 0.0f );
@@ -98,15 +107,41 @@ float4 frothColor( ParticlePixelInput input )
 	const float2 bump = foam.gb * 2.0f - 1.0f;
 	const float2 bumpCorner = float2( c * bump.x + s * bump.y, -s * bump.x + c * bump.y );
 	const float3 local = normalize( float3( corner * 0.9f + bumpCorner * 0.7f, sqrt( saturate( 1.0f - dot( corner, corner ) ) ) + 0.2f ) );
-	const float3 right = cb_viewInverseMatrix[0].xyz;
-	const float3 up = cb_viewInverseMatrix[1].xyz;
+	const float3 right = input.axisRight.xyz;
+	const float3 up = input.axisUp;
 	const float3 toCamera = -cb_viewInverseMatrix[2].xyz;
 	const float3 normal = normalize( right * local.x + up * local.y + toCamera * local.z );
 
-	// Свет: от тени (небо) к стороне, обращённой к солнцу (мягко — свет рассеивается в пене); тонкая — серо-голубая
+	// Самозатенение массы (Dimok, 2026-10-22: объём бурления): у клочка со спрайтом — тень от солнца внутри массы (от
+	// пикселя к солнцу по плоскости клочка копится плотность спрайта: сторона массы от солнца серая) и меньше света неба
+	// в её ядре (размытая плотность) и на гранях вниз
 	const bool sun = dot( input.toSun, input.toSun ) > 0.5f;
+	float sunVisibility = 1.0f;
+	float skyVisibility = saturate( 0.75f + 0.25f * normal.y );
+	[branch] if( g_hasSprite != 0 )
+	{
+		// Солнце в осях угла квада (x растянут вдоль течения) и в осях спрайта (поворот частицы, отражение)
+		const float2 sunCorner = float2( dot( input.toSun, right ) / max( input.axisRight.w, 1.0f ), dot( input.toSun, up ) );
+		const float2 sunP = float2( c * sunCorner.x - s * sunCorner.y, s * sunCorner.x + c * sunCorner.y );
+		const float2 toSunUV = float2( spriteFrame.z * sunP.x, sunP.y ) * 0.5f * shadowReach / shadowSteps;
+		float2 at = saturate( float2( spriteFrame.z * p.x, p.y ) * 0.5f + 0.5f );
+		float optical = 0.0f;
+		[unroll] for( uint k = 1; k <= shadowSteps; ++k )
+		{
+			const float2 step = saturate( at + toSunUV * k );
+			const float4 ahead = g_sprite.SampleLevel( g_SamplerLinearClamp, float2( ( spriteFrame.x + step.x ) / spriteFrame.y, step.y ), 1.0f );
+			optical += ahead.r * ( 0.4f + 0.6f * ahead.a );
+		}
+		sunVisibility = exp( -g_selfShadow * optical / shadowSteps );
+		const float core = g_sprite.SampleLevel( g_SamplerLinearClamp, float2( ( spriteFrame.x + at.x ) / spriteFrame.y, at.y ), coreMipBias ).r;
+		skyVisibility *= 1.0f - g_coreOcclusion * saturate( core * 2.5f );
+	}
+
+	// Свет: небо (с его затенением в массе) и солнце на стороне, обращённой к нему (мягко — свет рассеивается в пене, и с
+	// тенью внутри массы); тонкая — серо-голубая
 	const float lit = sun ? saturate( dot( normal, input.toSun ) * 0.8f + 0.2f ) : 0.0f;
-	float3 color = lerp( input.shade, input.color, lit ) * lerp( frothThin, 1.0f, saturate( density * body * 1.6f ) );
+	float3 color = ( input.shade * skyVisibility + ( input.color - input.shade ) * lit * sunVisibility ) *
+				   lerp( frothThin, 1.0f, saturate( density * body * 1.6f ) );
 
 	// Искры: ячейка мелкой сетки — пузырь с бликом (случайная грань), блестит, если грань смотрит между солнцем и камерой
 	float spark = 0.0f;
@@ -122,7 +157,7 @@ float4 frothColor( ParticlePixelInput input )
 		const float3 halfway = normalize( input.toSun + toCamera );
 		spark = chosen < glintShare ? bubble * pow( saturate( dot( facet, halfway ) ), glintPower ) * density * body : 0.0f;
 	}
-	color += input.glint * spark * glintStrength;
+	color += input.glint * spark * glintStrength * sunVisibility;
 	return float4( color, saturate( alpha + spark ) );
 }
 
