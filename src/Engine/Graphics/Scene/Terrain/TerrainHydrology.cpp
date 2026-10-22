@@ -1577,7 +1577,7 @@ struct TerrainHydrology::Build
 	Grid carved;
 	std::vector<double> width, reach;
 	// 5. Вода
-	std::vector<double> slope, level, speed, foam, actual;
+	std::vector<double> slope, level, speed, actual;
 	std::vector<double> hydraulicRadius;	// R русла у узла, м — течение детальной воды (water_flow.cs)
 	int detailTiles = 0;
 	std::vector<int> detailIndex;
@@ -3020,7 +3020,6 @@ bool TerrainHydrology::Build::buildWater()
 	slope.assign( count, p.minWaterSlope );
 	level.resize( count );
 	speed.resize( count );
-	foam.resize( count );
 	actual.resize( count );
 	hydraulicRadius.assign( count, 0.0 );
 	// Дно, от которого стоит вода, — видимое, детальное (билинейно по текселям плитки; вне плиток — сетка 1 м), а не клетки
@@ -3206,7 +3205,6 @@ bool TerrainHydrology::Build::buildWater()
 		const double meanSpeed = std::pow( meanRadius, 2.0 / 3.0 ) *
 								 std::sqrt( std::max( surfaceSlope, static_cast<double>( p.minWaterSlope ) ) ) / shape[k].manning;
 		speed[k] = std::max( meanSpeed * mean / std::max( depth, 0.5 * mean ), static_cast<double>( p.minSpeed ) );
-		foam[k] = std::clamp( ( slope[k] - p.foamSlope ) / ( 2.0 * p.foamSlope ), 0.0, 1.0 ) * 0.6;
 	}
 	return true;
 }

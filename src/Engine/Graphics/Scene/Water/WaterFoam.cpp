@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <DirectXPackedVector.h>
 #include "Logger\Logger.h"
 #include "D3D\TextureImages.h"
@@ -56,11 +57,27 @@ bool WaterFoam::createGrid( Grid& grid, uint32_t width, uint32_t height, uint32_
 	return true;
 }
 
+WaterFoamBuffer WaterFoam::parameters( const WaterSimulationSettings& settings, float timeStep )
+{
+	WaterFoamBuffer params = {};
+	params.foamSpeed = std::max( settings.foamSpeed, 0.01f );
+	params.foamShear = std::max( settings.foamShear, 0.01f );
+	params.foamFallSlope = std::max( settings.foamFallSlope, 0.01f );
+	params.foamTimeStep = timeStep;
+	params.foamLifetime = std::max( settings.foamLifetime, 0.1f );
+	params.foamStillLifetime = std::max( settings.foamStillLifetime, 0.1f );
+	params.foamGrowth = 1.0f - std::exp( -timeStep / growthTime );
+	params.foamFallStart = std::max( settings.foamFallStart, 0.0f );
+	params.foamFall = std::max( settings.foamFall, 0.0f );
+	params.foamFallHeight = std::max( settings.foamFallHeight, 0.01f );
+	params.foamPlungeLength = std::max( settings.foamPlungeLength, 0.01f );
+	return params;
+}
+
 bool WaterFoam::builtWith( const WaterSimulationSettings& settings ) const
 {
-	return m_ready && settings.foamSpeed == m_builtSpeed && settings.foamShear == m_builtShear &&
-		   settings.channels.foamSlope == m_builtSlope && settings.foamLifetime == m_builtLifetime &&
-		   settings.foamStillLifetime == m_builtStillLifetime;
+	const WaterFoamBuffer params = parameters( settings, 0.0f );
+	return m_ready && std::memcmp( &params, &m_builtParameters, sizeof( params ) ) == 0;
 }
 
 bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& settings )
@@ -79,23 +96,16 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 			return false;
 		m_detailSlices = water.detailTileCount();
 	}
-	const float lifetime = std::max( settings.foamLifetime, 0.1f );
-	const float stillLifetime = std::max( settings.foamStillLifetime, 0.1f );
+	WaterFoamBuffer params = parameters( settings, 0.0f );
+	const float lifetime = params.foamLifetime;
+	const float stillLifetime = params.foamStillLifetime;
 	// Шагов — на пять самых долгих времён жизни: в стоячей воде поле устанавливается дольше
 	const float longest = std::max( lifetime, stillLifetime );
-
-	WaterFoamBuffer params = {};
-	params.foamSpeed = std::max( settings.foamSpeed, 0.01f );
-	params.foamShear = std::max( settings.foamShear, 0.01f );
-	params.foamSlope = std::max( settings.channels.foamSlope, 0.01f );
 
 	// Сетка: источник, затем шаги — каждый читает поле прошлого и пишет другое; итог — в grid.current
 	auto solve = [&]( Grid& grid, ComputeShader& sourceShader, ComputeShader& stepShader, float timeStep, bool detailGrid, const char* name )
 	{
-		params.foamTimeStep = timeStep;
-		params.foamLifetime = lifetime;
-		params.foamStillLifetime = stillLifetime;
-		params.foamGrowth = 1.0f - std::exp( -timeStep / growthTime );
+		params = parameters( settings, timeStep );
 		Device::updateResourceData( m_constants, params );
 		for( StorageView& uav : grid.uavs )
 			d3d.clearStorageView( uav );
@@ -154,11 +164,7 @@ bool WaterFoam::build( const StaticWater& water, const WaterSimulationSettings& 
 		d3d.prepareShaderRead( m_detail.result() );
 	d3d.waitForGpu();
 	m_ready = true;
-	m_builtSpeed = settings.foamSpeed;
-	m_builtShear = settings.foamShear;
-	m_builtSlope = settings.channels.foamSlope;
-	m_builtLifetime = settings.foamLifetime;
-	m_builtStillLifetime = settings.foamStillLifetime;
+	m_builtParameters = parameters( settings, 0.0f );
 	const double ms = std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count();
 	LOG( "Water foam: lifetime " + std::to_string( lifetime ) + " s, in still water " + std::to_string( stillLifetime ) + " s; detail " + std::to_string( detailSteps ) + " steps over " +
 		 std::to_string( detail ? water.detailBlockCount() : 0 ) + " blocks 8x8, 1 m grid " + std::to_string( coarseSteps ) +

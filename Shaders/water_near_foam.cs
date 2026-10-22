@@ -2,13 +2,15 @@
 // Пена окна подробного течения у камеры (NearWaterFlow, docs/water.md, «Подробное течение у камеры»): своё поле пены на
 // сетке окна (6,25 см) каждый кадр — по тем же правилам, что поле пены статичной воды (water_foam.sh), но по течению окна:
 // пена рождается там, где вода бьёт в камень, выходящий из воды, и где её тонкий слой бежит по камню под самой
-// поверхностью, на сдвиге скорости (струя между камнями, край затишья за камнем), на быстрой воде и на сливе; течение окна
-// уносит её хвостами за камни и вокруг них, она тает и густеет там, где течение сходится. Вошедшие в окно ячейки и то, что
+// поверхностью, на сдвиге скорости (струя между камнями, край затишья за камнем), на быстрой воде, на нижней части падения
+// со ступени и в котле под ним (верх падения — чистая вода); течение окна уносит её хвостами за камни и вокруг них, она
+// тает и густеет там, где течение сходится. Вошедшие в окно ячейки и то, что
 // течение приносит из-за края окна, — пена поля 0,25 м (WaterFoam). Тексель — ячейка мира по модулю стороны окна, как у
 // течения (mainFlowOutput в water_flow.cs); окно — константы b7 этого кадра (cb_waterNear — с прошлого расчёта окна).
 // Там же — смещения координат узора пены (advected textures, Neyret 2003; узор — nearFoamPattern в water_shading.sh): два
 // слоя смещений несёт течение окна (точка узора, которая сейчас здесь, пришла оттуда, где была при обновлении слоя), слой
-// обновляется (смещения — к нулю), когда его фаза переходит через целое (nearPatternPhase, water_near.sh)
+// обновляется (смещение — случайный сдвиг цикла), когда его фаза — её тоже несёт течение — переходит через целое
+// (nearPatternPhase, water_near.sh)
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "water.sh"
@@ -31,10 +33,9 @@ static const int shearReach = 2;
 static const float shearSpan = 2.0f;
 // Камень выше воды бьёт воду ячейкам не дальше стольких ячеек от себя
 static const int stoneReach = 2;
-// Мелкая вода: на сливе со ступени — сразу белая вода, где поверхность круче shallowFallSlope (45°; полная — вдвое круче) на
-// соседних ячейках: средний уклон каскада (25–30 %) её не даёт, только стенка ступени
-static const float shallowFallSlope = 1.0f;
-static const float shallowFallFoam = 1.2f;
+// Падение со ступени — шагами по две ячейки (12,5 см), до метра в каждую сторону
+static const float fallStepCells = 2.0f;
+static const uint fallSteps = 8;
 
 // Ячейка мира → тексель окна по модулю его стороны
 uint2 nearAddress( int2 cell )
@@ -80,6 +81,17 @@ float detailLevelAt( float2 world, float fallback )
 		return fallback;
 	const float level = g_waterDetail.Load( int4( int2( texel.xy ), texel.z, 0 ) ).x;
 	return level > -1e29f ? level : fallback;
+}
+
+// Уровень поверхности окна в точке мира: детальная вода и отклонение окна от неё (x итога; вне окна — 0); сухо или плитки
+// нет — fallback (water_foam.sh, traceFall)
+float fallLevelAt( float2 world, float fallback )
+{
+	const float level = detailLevelAt( world, -1e30f );
+	if( level < -1e29f )
+		return fallback;
+	const float4 state = nearState( int2( floor( world / g_nearStep ) ), float4( 0.0f, 0.0f, 0.0f, 1.0f ) );
+	return state.w > 0.0f ? level + state.x : fallback;
 }
 
 // Глубина детальной воды в точке мира (без камней окна)
@@ -205,25 +217,7 @@ float stepFoam( int2 cell, float2 world, float4 here )
 	n[3] = nearState( cell - int2( 0, 1 ), here );
 	const float divergence = ( n[0].y - n[1].y + n[2].z - n[3].z ) / ( 2.0f * g_nearStep );
 
-	// Слив — уклон детальной воды (уровень на 0,25 м в обе стороны); в окне мелкая вода — уклон её поверхности: детальный и
-	// отклонения от него (x итога окна; у сухого соседа — как у ячейки): пена — на кромке плёса, сливе и прыжке, а плёс — гладкий
-	const float level = detailLevelAt( world, 0.0f );
-	const int reachCells = 4;
-	const float reach = reachCells * g_nearStep;
-	const float2 detailGradient = float2( detailLevelAt( world + float2( reach, 0.0f ), level ) - detailLevelAt( world - float2( reach, 0.0f ), level ),
-										  detailLevelAt( world + float2( 0.0f, reach ), level ) - detailLevelAt( world - float2( 0.0f, reach ), level ) );
-	float2 gradient = detailGradient;
-	if( g_nearShallow != 0 )
-	{
-		const float4 ahead[4] = { nearState( cell + int2( reachCells, 0 ), here ), nearState( cell - int2( reachCells, 0 ), here ),
-								  nearState( cell + int2( 0, reachCells ), here ), nearState( cell - int2( 0, reachCells ), here ) };
-		float lift[4];
-		[unroll] for( uint k = 0; k < 4; ++k )
-			lift[k] = ahead[k].w > 0.0f ? ahead[k].x : here.x;
-		gradient += float2( lift[0] - lift[1], lift[2] - lift[3] );
-	}
-	const float slope = length( gradient ) / ( 2.0f * reach );
-	float source = foamSource( speed, strainRate( dvdx, dvdz ), slope );
+	float source = foamSource( speed, strainRate( dvdx, dvdz ) );
 
 	// Камень у поверхности. В самом камне выше воды пену закрывает камень, а течение сквозь него — просачивание: не источник
 	const float fast = saturate( speed / stoneFoamSpeed );
@@ -246,18 +240,19 @@ float stepFoam( int2 cell, float2 world, float4 here )
 		source += impact * fast;
 	}
 
+	// Падение со ступени — по поверхности окна (в мелкой воде — её ступени, плёсы и прыжки): ближе foamFallStart к кромке
+	// источников нет (и у быстрой воды, и у камней) — верх чистый; ниже, у подошвы и в котле — пена падения, сразу белая
+	// вода (воздух в поток несёт сама струя), а не пена, которая растёт к источнику за время
+	float fall = 0.0f;
+	const float level = fallLevelAt( world, -1e30f );
+	if( speed > 1e-3f && level > -1e29f )
+	{
+		const Fall trace = traceFall( world, velocity / speed, level, fallStepCells * g_nearStep, fallSteps );
+		source *= fallFoamShare( trace );
+		fall = fallFoam( trace );
+	}
+
 	// Назад по течению (смещение за кадр — доли ячейки: скорость в середине шага та же)
 	const float carried = carriedFoam( world - g_foamTimeStep * velocity );
-	const float foam = foamStep( carried, divergence, source, speed );
-	// Мелкая вода: на сливе со ступени — сразу белая вода (поток срывается с кромки плёса, в нём воздух), а не пена, которая
-	// растёт к источнику за время. Крутизна — детальный уклон и отклонения от него по соседним ячейкам
-	if( g_nearShallow != 0 )
-	{
-		float lift[4];
-		[unroll] for( uint k = 0; k < 4; ++k )
-			lift[k] = n[k].w > 0.0f ? n[k].x : here.x;
-		const float steepness = length( detailGradient / ( 2.0f * reach ) + float2( lift[0] - lift[1], lift[2] - lift[3] ) / ( 2.0f * g_nearStep ) );
-		return max( foam, shallowFallFoam * saturate( ( steepness - shallowFallSlope ) / shallowFallSlope ) );
-	}
-	return foam;
+	return max( foamStep( carried, divergence, source, speed ), fall );
 }

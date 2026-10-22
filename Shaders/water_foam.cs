@@ -2,8 +2,8 @@
 // Поле пены (WaterFoam, docs/water.md, «Пена»): пена, которую несёт течение. Течение статичной воды установившееся, поэтому
 // и поле пены считается при загрузке — после течения и при правке настроек пены, — а поверхность берёт его одной выборкой.
 // Источник — где вода быстрая, где скорость резко меняется (норма тензора скоростей деформации, Neyret 2003, «Advected
-// Textures»: вращение воды целиком пены не даёт), где поверхность круто падает (слив на уступе ступени) и где камень русла
-// выходит к поверхности (вода над ним тоньше stoneFoamDepth). Пена у источника
+// Textures»: вращение воды целиком пены не даёт), на нижней части падения со ступени и в котле под ним (верх падения —
+// чистый) и где камень русла выходит к поверхности (вода над ним тоньше stoneFoamDepth). Пена у источника
 // растёт к нему, переносится течением (назад по течению, полулагранжево, Stam 1999) и тает за время жизни (в медленной
 // воде — дольше: в бурной пузыри лопаются и пену перемешивает, в заводях и плёсах она держится плотами); где течение
 // сходится (∇·u < 0: ручей входит в плёс и замедляется), она густеет, где расходится — редеет. Итераций — на ~5 времён
@@ -28,6 +28,19 @@ DM_UAV( RWTexture2DArray<float>, g_detailOutput, 0 );
 DM_UAV( RWTexture2D<float>, g_coarseOutput, 1 );
 
 #include "water_foam.sh"
+
+// Падение — шагами по текселю детальной сетки (0,25 м), до метра в каждую сторону
+static const uint fallSteps = 4;
+
+// Уровень детальной воды в точке мира (тексель под ней); сухо или плитки нет — fallback (water_foam.sh, traceFall)
+float fallLevelAt( float2 world, float fallback )
+{
+	float3 texel;
+	if( !detailTexelAt( world, texel ) )
+		return fallback;
+	const float4 water = g_detailWater.Load( int4( int2( texel.xy ), texel.z, 0 ) );
+	return wetDetail( water ) ? water.x : fallback;
+}
 
 // Пена прошлого шага в точке мира; вне плиток (озеро вдали от русел) пены детальной сетки нет
 float detailFoamAt( float2 world )
@@ -65,8 +78,15 @@ void mainDetailSource( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID
 		// ручья — 1 м/с на 30–40 см), и пена с тем же порогом шла бы по всему ручью
 		const float2 dvdx = ( n[0].yz - n[1].yz ) / ( 2.0f * g_gridCellSize );
 		const float2 dvdz = ( n[2].yz - n[3].yz ) / ( 2.0f * g_gridCellSize );
-		const float slope = length( float2( n[0].x - n[1].x, n[2].x - n[3].x ) ) / ( 2.0f * detailStep() );
-		source = foamSource( length( water.yz ), strainRate( dvdx, dvdz ), slope );
+		const float speed = length( water.yz );
+		source = foamSource( speed, strainRate( dvdx, dvdz ) );
+		// Падение со ступени: ближе foamFallStart к кромке — чистая вода (и быстрая), ниже — пена, у подошвы и в котле — пена
+		// падения
+		if( speed > 1e-3f )
+		{
+			const Fall fall = traceFall( world, water.yz / speed, water.x, detailStep(), fallSteps );
+			source = source * fallFoamShare( fall ) + fallFoam( fall );
+		}
 		// Камень у поверхности: уровень воды против верха камня (уровень поля не знает о камнях — над камнем вода тоньше)
 		const float stoneTop = g_detailStones.Load( int4( texel, 0 ) );
 		if( stoneTop > -1e8f )
@@ -149,7 +169,7 @@ void mainCoarseSource( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID
 			coarseNeighbors( cell, water, n );
 			const float2 dvdx = ( n[0].yz - n[1].yz ) / ( 2.0f * g_gridCellSize );
 			const float2 dvdz = ( n[2].yz - n[3].yz ) / ( 2.0f * g_gridCellSize );
-			source = foamSource( length( water.yz ), strainRate( dvdx, dvdz ), 0.0f );
+			source = foamSource( length( water.yz ), strainRate( dvdx, dvdz ) );
 			const float stones = saturate( g_stoneArea.Load( int3( cell, 0 ) ).x / stoneFoamArea );
 			source += stones * saturate( 1.0f - water.x / stoneFoamDepth ) * saturate( length( water.yz ) / stoneFoamSpeed );
 		}

@@ -435,14 +435,7 @@ void NearWaterFlow::stepFoam( const WaterSimulationSettings& settings, const Wat
 					{ &m_phaseUAV[m_foamCurrent], "near foam pattern phase" } };
 	d3d.beginPass( pass );
 	// Правила — поля пены 0,25 м (те же настройки «Surface»), шаг — время игры кадра
-	WaterFoamBuffer params = {};
-	params.foamSpeed = std::max( settings.foamSpeed, 0.01f );
-	params.foamShear = std::max( settings.foamShear, 0.01f );
-	params.foamSlope = std::max( settings.channels.foamSlope, 0.01f );
-	params.foamTimeStep = elapsed;
-	params.foamLifetime = std::max( settings.foamLifetime, 0.1f );
-	params.foamStillLifetime = std::max( settings.foamStillLifetime, 0.1f );
-	params.foamGrowth = 1.0f - std::exp( -elapsed / WaterFoam::growthTime );
+	const WaterFoamBuffer params = WaterFoam::parameters( settings, elapsed );
 	Device::updateResourceData( m_foamBuffer, params );
 	d3d.setConstantBuffer( 5, m_foamBuffer );
 	WaterNearFlowBuffer windowParams = window;

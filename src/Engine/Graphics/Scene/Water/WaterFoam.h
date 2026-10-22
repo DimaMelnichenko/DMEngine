@@ -5,12 +5,14 @@
 #include "StaticWater.h"
 #include "ComputeShader.h"
 #include "WaterGrid.h"
+#include "Shaders\water_foam_constants.h"
 
 namespace GS
 {
 
 // Поле пены статичной воды (Shaders/water_foam.cs, docs/water.md, «Пена»): пена, которую несёт течение. Источник — быстрая
-// вода, сдвиг скорости (норма тензора скоростей деформации) и слив (поверхность круче foam_slope); пена у источника растёт
+// вода, сдвиг скорости (норма тензора скоростей деформации) и падение со ступени (нижняя часть и котёл; верх — чистый,
+// foam_fall_*); пена у источника растёт
 // к нему, переносится течением, тает за время жизни (foam_lifetime на быстрой воде, foam_still_lifetime — в стоячей) и
 // густеет там, где течение сходится (ручей входит в плёс).
 // Течение установившееся, поэтому поле считается при загрузке после течения и при правке настроек пены, а поверхность
@@ -21,10 +23,14 @@ class WaterFoam
 public:
 	static constexpr float growthTime = 0.25f;	// с: пена у источника растёт к нему за это время (и пена окна у камеры)
 
+	// Правила пены (WaterFoamBuffer, Shaders/water_foam.sh) по настройкам — у поля и у пены окна у камеры (NearWaterFlow);
+	// шаг — timeStep, с
+	static WaterFoamBuffer parameters( const WaterSimulationSettings& settings, float timeStep );
+
 	bool initialize( WaterField& field );
 	// Поле заново — по течению статичной воды и настройкам пены (время в лог); false — течения нет
 	bool build( const StaticWater& water, const WaterSimulationSettings& settings );
-	// Поле посчитано по тем же настройкам пены (foam_speed, foam_shear, foam_slope, foam_lifetime, foam_still_lifetime)
+	// Поле посчитано по тем же настройкам пены (parameters без шага)
 	bool builtWith( const WaterSimulationSettings& settings ) const;
 	bool ready() const { return m_ready; }
 	// Доля пены: сетка 1 м (R16_FLOAT, строки — против Z мира) и детальная (массив по плиткам детальной воды, с полем)
@@ -57,12 +63,8 @@ private:
 	Grid m_coarse;
 	uint32_t m_detailSlices = 0;	// срезов детальных массивов (плиток при их создании)
 	bool m_ready = false;
-	// Настройки пены, по которым посчитано поле
-	float m_builtSpeed = -1.0f;
-	float m_builtShear = -1.0f;
-	float m_builtSlope = -1.0f;
-	float m_builtLifetime = -1.0f;
-	float m_builtStillLifetime = -1.0f;
+	// Правила пены, по которым посчитано поле (parameters с шагом 0)
+	WaterFoamBuffer m_builtParameters = {};
 };
 
 }

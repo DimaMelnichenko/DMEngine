@@ -1,8 +1,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Правила пены, которую несёт течение (docs/water.md, «Пена»), — общие у поля пены статичной воды при загрузке
 // (water_foam.cs, WaterFoam) и у пены окна подробного течения у камеры каждый кадр (water_near_foam.cs, NearWaterFlow):
-// источник (быстрая вода, сдвиг скорости, слив, камень у поверхности) и шаг (перенос даёт вызывающий: таяние по времени
-// жизни, сжатие, рост к источнику). Константы — WaterFoamBuffer (b5)
+// источник (быстрая вода, сдвиг скорости, падение со ступени, камень у поверхности) и шаг (перенос даёт вызывающий: таяние
+// по времени жизни, сжатие, рост к источнику). Константы — WaterFoamBuffer (b5). Уровень поверхности для падения даёт
+// вызывающий: fallLevelAt
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef WATER_FOAM_SH
@@ -10,7 +11,6 @@
 
 #include "water_foam_constants.h"
 
-static const float fallFoam = 0.6f;			// пена на стенке уступа: узор даёт белые полосы по течению, а не сплошное пятно
 static const float maxFoam = 2.0f;			// больше — та же сплошная белая вода
 static const float maxCompression = 0.15f;	// сжатие и растяжение пены за шаг — не больше exp(±)
 // Пена у камня, который выходит к поверхности: вода над ним тоньше этого, м, — сильнее на быстрой воде (полная — с
@@ -27,11 +27,87 @@ float strainRate( float2 dvdx, float2 dvdz )
 	return sqrt( 2.0f * ( dvdx.x * dvdx.x + dvdz.y * dvdz.y + 2.0f * exz * exz ) );
 }
 
-// Источник пены: быстрая вода (полная — вдвое быстрее foamSpeed), сдвиг, слив (полная — втрое круче foamSlope)
-float foamSource( float speed, float shear, float slope )
+// Источник пены: быстрая вода (полная — вдвое быстрее foamSpeed), сдвиг
+float foamSource( float speed, float shear )
 {
-	return saturate( ( speed - g_foamSpeed ) / g_foamSpeed ) + saturate( shear / g_foamShear - 0.5f ) +
-		   fallFoam * saturate( ( slope - g_foamSlope ) / ( 2.0f * g_foamSlope ) );
+	return saturate( ( speed - g_foamSpeed ) / g_foamSpeed ) + saturate( shear / g_foamShear - 0.5f );
+}
+
+// Падение со ступени у точки — по уровню поверхности вдоль течения. Как на ступенчатых водосбросах (точка начала аэрации,
+// Chanson): сверху вода прозрачная, воздух в поток попадает ниже, и больше всего пены — у подошвы и в котле, куда бьёт струя
+// (Dimok, 2026-10-22, по видео ручьёв: «верх должен быть чистый, пена начинается с середины падения»; прежде пена слива белила
+// всю стенку уступа от кромки)
+struct Fall
+{
+	float above;	// от кромки до точки, м
+	float below;	// от точки до подошвы, м
+	float plunge;	// точка в котле под падением (полого, выше по течению — стенка): расстояние до подошвы, м; на стенке — 0
+};
+
+// Падение, ниже которого — не падение, м
+static const float minFallHeight = 0.03f;
+
+// Уровень поверхности в точке мира, м; сухо или воды нет — fallback (у вызывающего: окно у камеры, детальная сетка)
+float fallLevelAt( float2 world, float fallback );
+
+// Падение у точки world с уровнем level: шаги step вдоль течения along (единичный вектор), не больше steps в каждую сторону.
+// Вверх — пока поверхность круче foamFallSlope (стенка; её верх — кромка), полого до первой стенки — котёл, не дальше
+// foamPlungeLength; вниз — до подошвы
+Fall traceFall( float2 world, float2 along, float level, float step, uint steps )
+{
+	Fall fall = (Fall)0;
+	const float rise = g_foamFallSlope * step;
+	float previous = level;
+	bool wall = false;
+	[loop] for( uint k = 1; k <= steps; ++k )
+	{
+		const float next = fallLevelAt( world - along * ( k * step ), previous );
+		if( next - previous > rise )
+		{
+			wall = true;
+			fall.above = next - level;
+		}
+		else if( wall )
+			break;
+		else
+		{
+			fall.plunge += step;
+			if( fall.plunge > g_foamPlungeLength )
+				break;
+		}
+		previous = next;
+	}
+	if( !wall )
+		fall.plunge = 0.0f;
+	previous = level;
+	[loop] for( uint m = 1; m <= steps; ++m )
+	{
+		const float next = fallLevelAt( world + along * ( m * step ), previous );
+		if( previous - next <= rise )
+			break;
+		fall.below = level - next;
+		previous = next;
+	}
+	return fall;
+}
+
+// Доля падения, где пена есть: 0 — ближе foamFallStart к кромке (по высоте), 1 — у подошвы и в котле; падение ниже
+// foamFallStart пены не даёт; не падение — 1
+float fallFoamShare( Fall fall )
+{
+	const float height = fall.above + fall.below;
+	return height >= minFallHeight ? smoothstep( g_foamFallStart, max( height, g_foamFallStart + 0.02f ), fall.above ) : 1.0f;
+}
+
+// Пена падения: с foamFallStart ниже кромки растёт к подошве, у подошвы и в котле — foamFall (падение ниже
+// foamFallHeight — меньше), в котле гаснет к foamPlungeLength от подошвы; не падение — 0
+float fallFoam( Fall fall )
+{
+	const float height = fall.above + fall.below;
+	if( height < minFallHeight )
+		return 0.0f;
+	return g_foamFall * fallFoamShare( fall ) * saturate( height / g_foamFallHeight ) *
+		   ( 1.0f - smoothstep( 0.0f, g_foamPlungeLength, fall.plunge ) );
 }
 
 // Пена за шаг: принесённая течением тает (в медленной воде — дольше) и сжимается, у источника растёт к нему
