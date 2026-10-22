@@ -5,9 +5,9 @@
 дальность. Плотность — коэффициент ослабления, 1/м (видимость ~3 / density). Те же поля правит окно «Height fog», кнопка
 «Save level environment» пишет их обратно.
 
-  python Tools/height_fog.py show [--level Test]
-  python Tools/height_fog.py set [--level Test] --param поле=значение [...]
-  python Tools/height_fog.py remove [--level Test]
+  python Tools/height_fog.py show [--level ValleyOfStreams]
+  python Tools/height_fog.py set [--level ValleyOfStreams] --param поле=значение [...]
+  python Tools/height_fog.py remove [--level ValleyOfStreams]
 
 Первый запуск заводит таблицу и колонку Levels.height_fog. set без строки у уровня создаёт её со значениями по
 умолчанию. Сообщения — ASCII (Windows PowerShell 5.1, cmd).
@@ -48,7 +48,7 @@ def migrate(db):
 def main():
     parser = argparse.ArgumentParser(description='Height fog of a level (ExponentialHeightFog)')
     parser.add_argument('command', choices=['show', 'set', 'remove'])
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--param', action='append', help='field=value, repeatable')
     args = parser.parse_args()
 

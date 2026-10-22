@@ -5,15 +5,15 @@
 (--clear-foliage: доля 0…1) и красит слой splat-карты (--paint-layer: TerrainLayers.layer), как Paint Layer у Landscape
 Splines; --paint-only — правка без высоты, только очистка и покраска. Подробно — docs/terrain.md.
 
-  python Tools/terrain_edit.py list [--level Test]
+  python Tools/terrain_edit.py list [--level ValleyOfStreams]
   python Tools/terrain_edit.py add ИМЯ --points "x,z[,y[,ширина[,полоса]]];..." [--width 4] [--falloff 4]
          [--height Y] [--relative] [--raise-only | --lower-only | --paint-only] [--linear] [--layer N]
-         [--clear-foliage F] [--paint-layer N] [--level Test]
+         [--clear-foliage F] [--paint-layer N] [--level ValleyOfStreams]
   python Tools/terrain_edit.py add ИМЯ --raster terrain\\channels.dds [--raise-only | --lower-only] [--layer N]
-         [--clear-foliage F] [--paint-layer N] [--level Test]
-  python Tools/terrain_edit.py set ИМЯ [--clear-foliage F] [--paint-layer N | --no-paint] [--level Test]
-  python Tools/terrain_edit.py delete ИМЯ [--level Test]
-  python Tools/terrain_edit.py enable ИМЯ / disable ИМЯ [--level Test]
+         [--clear-foliage F] [--paint-layer N] [--level ValleyOfStreams]
+  python Tools/terrain_edit.py set ИМЯ [--clear-foliage F] [--paint-layer N | --no-paint] [--level ValleyOfStreams]
+  python Tools/terrain_edit.py delete ИМЯ [--level ValleyOfStreams]
+  python Tools/terrain_edit.py enable ИМЯ / disable ИМЯ [--level ValleyOfStreams]
 
 y точки — высота, м; у --relative — смещение от рельефа под точкой (−1.5 — русло на полтора метра ниже земли). Без y —
 --height, иначе (абсолютная правка) — высота рельефа под точкой по карте высот: площадка «как есть сейчас». Повторный
@@ -123,7 +123,7 @@ def main():
     parser = argparse.ArgumentParser(description='Terrain edits in base.db3 (TerrainEdits / TerrainEditPoints)')
     parser.add_argument('command', choices=['list', 'add', 'set', 'delete', 'enable', 'disable'])
     parser.add_argument('name', nargs='?')
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--points', help='"x,z[,y[,width[,falloff]]];..."')
     parser.add_argument('--raster', help='raster edit: R32_FLOAT DDS from Textures\\, height offset in meters')
     parser.add_argument('--width', type=float, default=4.0, help='flat part width, m')

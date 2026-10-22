@@ -6,9 +6,9 @@
 полос шума, Гц. NULL — значение по умолчанию движка (AmbientSoundSettings). Те же поля правит окно «Ambient sound»,
 «Save level» пишет их обратно.
 
-  python Tools/ambient_sound.py show [--level Test]
-  python Tools/ambient_sound.py set [--level Test] [--param поле=значение ...]
-  python Tools/ambient_sound.py remove [--level Test]
+  python Tools/ambient_sound.py show [--level ValleyOfStreams]
+  python Tools/ambient_sound.py set [--level ValleyOfStreams] [--param поле=значение ...]
+  python Tools/ambient_sound.py remove [--level ValleyOfStreams]
 
 Первый запуск заводит таблицу и колонку Levels.ambient_sound. set без строки у уровня создаёт её (все поля NULL).
 Сообщения — ASCII (Windows PowerShell 5.1, cmd).
@@ -74,7 +74,7 @@ def migrate(db):
 def main():
     parser = argparse.ArgumentParser(description='Ambient sound of a level (AmbientSound)')
     parser.add_argument('command', choices=['show', 'set', 'remove'])
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--param', action='append', help='field=value (empty value - NULL), repeatable')
     args = parser.parse_args()
 

@@ -16,7 +16,7 @@
 `Meshes\source\<имя>\` и импортировать:
 
 ```
-python Tools/import_gltf.py Meshes/source/<имя>/scene.gltf --asset <имя> --name <Модель> --level Test --position x,0,z
+python Tools/import_gltf.py Meshes/source/<имя>/scene.gltf --asset <имя> --name <Модель> --level ValleyOfStreams --position x,0,z
     --snap-to-terrain --animation <клип экземпляра> --collision capsule --collision-radius 0.45
     --locomotion "<покой>,<шаг>,<шаг влево>,<шаг вправо>,<рысь>,<рысь влево>,<рысь вправо>,<бег>"
 ```

@@ -165,8 +165,8 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	// Get the instance of this application.
 	m_hinstance = GetModuleHandle( nullptr );
 
-	// Give the application a name.
-	m_applicationName = "Engine";
+	// Класс и заголовок окна; после загрузки уровня в заголовке — его название (Engine::initialize)
+	m_applicationName = "DMEngine";
 
 	// Setup the windows class with default settings.
 	wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;

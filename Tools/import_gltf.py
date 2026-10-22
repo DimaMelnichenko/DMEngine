@@ -1,6 +1,6 @@
 """Импорт моделей glTF 2.0 (.glb, .gltf) в DMEngine — как импорт FBX/glTF в редакторе UE.
 
-    python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--snap-to-terrain]] [--scale s]
+    python Tools/import_gltf.py модель.glb [--level ValleyOfStreams --position x,y,z [--snap-to-terrain]] [--scale s]
                                            [--lod-ranges 25,60] [--shadow-lod-scale 0.5] [--shadow-min-lod 2]
                                            [--collision hull|box|mesh|capsule|none] [--collision-radius r]
                                            [--name Имя] [--scatter] [--dry-run]

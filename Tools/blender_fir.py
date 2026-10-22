@@ -1,10 +1,10 @@
-# Ель для уровня Test (этап 9, деревья): геометрия — своя, текстуры и карточки веточек — из ели Poly Haven
+# Ель для уровня ValleyOfStreams (этап 9, деревья): геометрия — своя, текстуры и карточки веточек — из ели Poly Haven
 # (fir_tree_01, CC0: https://polyhaven.com/a/fir_tree_01; архив .blend — в DownloadResources\). Запуск внутри Blender
 # без окна:
 #   blender -b --factory-startup --python Tools/blender_fir.py -- --archive DownloadResources/fir_tree_01_2k.blend.zip
 #       --out Meshes/source/fir.glb
 # Затем импорт моделями уровня на землю:
-#   python Tools/import_gltf.py Meshes/source/fir.glb --level Test --position 480,0,345 --snap-to-terrain --lod-ranges 35,90
+#   python Tools/import_gltf.py Meshes/source/fir.glb --level ValleyOfStreams --position 480,0,345 --snap-to-terrain --lod-ranges 35,90
 # У ели Poly Haven LOD0 — 0,5–4 млн треугольников, у LOD1 половина — плотный ствол, низких LOD нет, силуэт лесной
 # (голый ствол, крона сверху), а данных для ветра нет. Поэтому сценарий строит ель сам — конус, как в Valley, с
 # известной иерархией ствол → мутовки ветвей → веточки:
@@ -74,7 +74,7 @@ SHOWCASE = {'Fir_A': (-14.0, -27.0), 'Fir_B': (0.0, -30.0), 'Fir_C': (12.0, -27.
 
 def parse_args():
     argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
-    parser = argparse.ArgumentParser(description='Fir tree for the Test level (glTF for Tools/import_gltf.py)')
+    parser = argparse.ArgumentParser(description='Fir tree for the ValleyOfStreams level (glTF for Tools/import_gltf.py)')
     parser.add_argument('--archive', required=True, help='Poly Haven fir_tree_01 .blend.zip')
     parser.add_argument('--out', required=True, help='output .glb')
     return parser.parse_args(argv)

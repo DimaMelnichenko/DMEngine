@@ -173,7 +173,7 @@ cubemap из Sky-View в `SkyLight` — гармоники и префильтр
 корня в `vertexWorldPosition` — `Shaders/foliage_interaction.sh`; давит камера у земли, звери — `addInteractor`; окно
 «Foliage interaction», не сохраняется; `docs/wind.md`),
 `WaterSimulation` (вода — части на общем поле `WaterField`: трубы `WaterPipes`, статичная вода с течением и кэшем
-`StaticWater`, поле пены, которую несёт течение, `WaterFoam` (при загрузке, `Shaders/water_foam.cs`; счёт по плиткам детальной воды при загрузке — `WaterGrid`, `Shaders/water_detail_grid.sh`), поверхность `WaterSurface`, кривые русел в редакторе `StreamCurves`; режим строки `mode`: `static` — на `Test`, как реки-сплайны и озёра UE Water, но одним полем:
+`StaticWater`, поле пены, которую несёт течение, `WaterFoam` (при загрузке, `Shaders/water_foam.cs`; счёт по плиткам детальной воды при загрузке — `WaterGrid`, `Shaders/water_detail_grid.sh`), поверхность `WaterSurface`, кривые русел в редакторе `StreamCurves`; режим строки `mode`: `static` — на `ValleyOfStreams`, как реки-сплайны и озёра UE Water, но одним полем:
 уровень ручьёв (Маннинг) и озёр (перелив) — одно поле по сети с подпором, растр, поверхность — те же тайлы, что у
 симуляции; вода для травы и мокрой земли — тот же растр, всё из конвейера рельефа и воды (`TerrainHydrology`), без шагов;
 течение ручьёв и озёр — установившийся расчёт при загрузке (или из кэша `cache\water\flow_<ключ>.bin` по отпечатку входа и
@@ -208,7 +208,7 @@ ExecuteIndirect, берег — пересечение продолженной 
 эмиттеры уровня — строки `LevelParticleEmitters` → `ParticleEmitters`, `Tools/particle_emitter.py`; пул, стек мёртвых и
 список живых в compute `Shaders/particles.cs`, рождение по маске вокруг камеры или на быстрой воде, ветер, вихри, течение,
 столкновения; один ExecuteIndirect на эмиттер в `transparent` с глубиной сцены — `CustomBatch::readsSceneDepth`; на
-`Test` — пыльца, хвоя, брызги; `-noparticles` — нет; `docs/particles.md`), `ReflectionCaptures` (карты отражений места, как
+`ValleyOfStreams` — пыльца, хвоя, брызги; `-noparticles` — нет; `docs/particles.md`), `ReflectionCaptures` (карты отражений места, как
 Sphere Reflection Capture в UE: строки `LevelReflectionCaptures`, `Tools/reflection_capture.py`; грани — съёмкой сцены без неба
 по грани за кадр (`SceneObject::requestCapture`), покрытие в альфу и расстояния от точки съёмки в свою карту, префильтр
 `CubePrefilter` (общий с `SkyLight`); две ближайшие к камере — ресурсы сцены t131…t134, `cb_reflectionCapture*[2]`; вода там,
@@ -304,7 +304,7 @@ point / spot, `enabled`, `color` и `intensity` раздельно, `direction` 
 направление первого направленного, `Light/SunPosition.h`, формулы NOAA; NULL — Pitch / Yaw солнца), небо — строка `SkyAtmosphere`
 (`Levels.atmosphere`; запекается для солнца 1 лк и умножается на освещённость от солнца — `cb_skyScale` у фона, `cb_skyLightScale` у освещения окружением; там же сила воздушной перспективы)
 или панорама — строка `HDRIBackdrop` (`Levels.hdri_backdrop`: файл, `intensity` — кд/м² на единицу панорамы, она же
-`cb_skyScale` и `cb_skyLightScale`, `rotation`, `max_luminance` — срез солнца для освещения окружением; уровень `TestHDRI`), постобработка — `PostProcessSettings`
+`cb_skyScale` и `cb_skyLightScale`, `rotation`, `max_luminance` — срез солнца для освещения окружением; уровень `ValleyOfStreamsHDRI`), постобработка — `PostProcessSettings`
 (`Levels.post_process`; NULL — значения по умолчанию), туман — строка `ExponentialHeightFog` (`Levels.height_fog`, как
 Exponential Height Fog с Volumetric Fog в UE: два слоя по высоте, альбедо, анизотропия, объём и его дальность; NULL —
 тумана нет; `Tools/height_fog.py`, `docs/fog.md`), облака — строка `VolumetricCloud` (`Levels.volumetric_cloud`;
@@ -328,14 +328,18 @@ NULL — облаков нет), ветер — строка `Wind` (`Levels.win
 суток, затем пропускание атмосферы для солнца), буфер `DMLightDriver::setBuffer` упаковывает в `preparePipeline`
 и загружает на GPU, только когда источники изменились.
 
-Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`, `Scene/Level/`): строка `Levels` ссылается на террейн (`Terrain`,
+Состав уровня (`LibraryLoader::loadLevel` → `LevelDescription`, `Scene/Level/`): строка `Levels` — имя (`name`, латиницей
+без пробелов: его пишут в `settings.ini` и `-level`) и название для людей (`title`, UTF-8; NULL — имя) — заголовок окна
+после загрузки («Долина ручьёв — DMEngine», `Engine::initialize`; до неё — «DMEngine»). Уровень мира — `ValleyOfStreams`
+(«Долина ручьёв»; до 2026-10-23 — `Test`), его копия с панорамой неба — `ValleyOfStreamsHDRI` (была `TestHDRI`). Строка
+`Levels` ссылается на террейн (`Terrain`,
 слои материала — `TerrainLayers`; строка и слои — `TerrainDescription`: конвейер рельефа и материал о базе не знают), модель неба (`Models`); NULL — этого у уровня нет; эмиттеры частиц — строки
 `LevelParticleEmitters`. Экземпляры моделей уровня — `LevelModels`: строка на экземпляр (`position`, `rotation` —
 кватернион `x,y,z,w` как в glTF, `scale`), у модели их может быть сколько угодно. Модель (`DMModel`: LOD из секций —
 меш и материал) — общий ресурс без положения; положение держит экземпляр (`DMTransform` в `ModelInstances`, у неба — в
 `SkySphere`), мировая матрица и матрица нормалей (обратная транспонированная) уходят в константный буфер объекта
 (`ConstantBuffers::setPerObjectBuffer`). Наборы расстановки — `LevelScatterSets` → `ScatterSets` + слои `ScatterLayers`
-(см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `Test`: террейн,
+(см. «Расстановка»). Грузятся только модели уровня, неба и расстановки. Тестовый уровень `ValleyOfStreams`: террейн,
 наборы `Meadow` (папоротник Megascans под ельником; трава — пучки `GrassClump` из Blender,
 три LOD до 30 м с тенью от LOD2, дальше до 45 м — плоские импостеры без тени,
 пучки сухой травы Megascans `dry_grass` своим слоем вдоль ручьёв — `mask_grass_riparian` и одуванчики `dandelion_01`) и `Debris` (камни `rock_moss_set_01`: галька по маске и камни русел — слой `stream_stones`, ~7 тыс.), Box в начале координат (его LOD видны ближе 50 м), модели Cube, Sphere,

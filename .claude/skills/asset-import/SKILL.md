@@ -12,7 +12,7 @@ description: Добавить или пересобрать данные DMEngin
 
 - **Модели и растения** — `docs/models.md`: экспорт glTF (сценарии `Tools/blender_*.py`, `Tools/export_polyhaven.py`,
   `Tools/export_megascans.py` — архив FBX Megascans или загрузка лаунчера Fab, в том числе новый формат glTF; Poly Haven — `python Tools/polyhaven_download.py <ассет> --resolution 2k`), затем
-  `python Tools/import_gltf.py файл.glb` — модель уровня (`--level Test --position x,y,z [--snap-to-terrain]`) или
+  `python Tools/import_gltf.py файл.glb` — модель уровня (`--level ValleyOfStreams --position x,y,z [--snap-to-terrain]`) или
   расстановки (`--scatter`); LOD — `--lod-ranges`, тени — `--shadow-min-lod`, `--shadow-lod-scale`; параметры движка,
   которых нет в glTF (ветер, пропускание, смена LOD, нормаль кроны), — `--material-param Имя=значение` или extras в
   сценарии. Повторный импорт обновляет строки.

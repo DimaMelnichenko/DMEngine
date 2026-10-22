@@ -5,10 +5,10 @@
 движутся (тяжесть, сопротивление, ветер, вихри, течение) и как выглядят (пятно или хвоинка, размер, цвет, просвет).
 Экземпляр — эмиттер на уровне. add создаёт и то и другое: из готового набора (--preset) с заменой полей (--param).
 
-  python Tools/particle_emitter.py list [--level Test]
+  python Tools/particle_emitter.py list [--level ValleyOfStreams]
   python Tools/particle_emitter.py add ИМЯ --preset pollen|needles|spray|churn [--position x,y,z] [--param поле=значение ...]
   python Tools/particle_emitter.py set ИМЯ --param поле=значение [...]
-  python Tools/particle_emitter.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level Test]
+  python Tools/particle_emitter.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level ValleyOfStreams]
 
 Поля — колонки ParticleEmitters (spawn, shape — dot, needle, froth, radius, rate, size_start, color, gravity, drag, wind, curl, ...; цвет и
 скорость — "r,g,b"). Первый запуск переносит базу со старой заготовки: таблица Particles и Levels.particles удаляются,
@@ -156,7 +156,7 @@ def main():
     parser = argparse.ArgumentParser(description='Particle emitters of a level (ParticleEmitters, LevelParticleEmitters)')
     parser.add_argument('command', choices=['list', 'add', 'set', 'delete', 'enable', 'disable'])
     parser.add_argument('name', nargs='?')
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--preset', choices=sorted(PRESETS))
     parser.add_argument('--position', default='0,0,0', help='x,y,z of the instance (point, sphere)')
     parser.add_argument('--param', action='append', help='field=value, repeatable')

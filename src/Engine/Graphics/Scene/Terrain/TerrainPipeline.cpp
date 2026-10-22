@@ -107,7 +107,7 @@ bool TerrainPipeline::initialize( const TerrainDescription& terrain, const std::
 	const uint32_t mapSize = Assets::textures().get( m_heightMapName )->width();
 	m_worldSize = mapSize * m_texelSize;
 
-	// Доли — по времени загрузки (Release, Test): конвейер рельефа и воды с правилами слоёв ~0,7 с, слои материала
+	// Доли — по времени загрузки (Release, ValleyOfStreams): конвейер рельефа и воды с правилами слоёв ~0,7 с, слои материала
 	// (фото-текстуры с мипами) ~1,5 с
 	SlowTask task( 1.0f );
 	task.enterProgressFrame( 0.3f );

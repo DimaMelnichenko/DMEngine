@@ -59,7 +59,7 @@ bool WaterSimulation::initialize( const Settings& settings, const TerrainHeightS
 	if( !m_staticWater.createTextures( hydrology, m_staticMode ) || !m_pipes.setChannelFlow( hydrology ) )
 		return false;
 	m_pipes.buildSources( settings );
-	// Доли — по времени загрузки (Release, Test: растр русел и источники ~0,16 с — до этих шагов, течение ~0,5 с):
+	// Доли — по времени загрузки (Release, ValleyOfStreams: растр русел и источники ~0,16 с — до этих шагов, течение ~0,5 с):
 	// течение озёр (static) или налив озёр и прогрев (simulated) — почти всё
 	SlowTask task( 1.0f );
 	task.enterProgressFrame( 0.1f, "Water surface" );

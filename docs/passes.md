@@ -112,7 +112,7 @@ RTX 4070 Ti, строка `Scene color copy` в «GPU average»). В списк�
   по `ShaderPhaseOptions::depthFromPrepass`.
 
 Меш, у материала которого нет варианта глубины (`depthPhaseFor` = −1: классы `Color`, `Texture`, — например Box
-уровня `Test`), и свой вызов без бита `depthPrepass` в prepass не рисуются. В проходе цвета они проверяют и пишут
+уровня `ValleyOfStreams`), и свой вызов без бита `depthPrepass` в prepass не рисуются. В проходе цвета они проверяют и пишут
 глубину сами (`DepthState::enabled`), поэтому закрывают и закрываются правильно, только без выигрыша от prepass.
 
 Каркас (Q и «Wireframe» террейна) рисуется каркасом и в prepass: сплошная глубина закрыла бы то, что видно сквозь

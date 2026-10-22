@@ -53,7 +53,8 @@ struct LevelDescription
 	};
 
 	uint32_t id = 0;
-	std::string name;
+	std::string name;		// имя уровня (Levels.name): в settings.ini и командной строке (-level)
+	std::string title;		// его название для людей — заголовок окна (Levels.title, UTF-8); NULL — имя
 	std::optional<GS::TerrainDescription> terrain;	// строка таблицы Terrain и слои его материала (TerrainLayers)
 	std::vector<GS::TerrainEdit> terrainEdits;	// правки его рельефа по порядку слоёв: таблицы TerrainEdits / TerrainEditPoints
 	std::optional<GS::TerrainErosionSettings> terrainErosion;	// эрозия его карты высот (Terrain.erosion); NULL — нет

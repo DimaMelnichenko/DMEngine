@@ -4,10 +4,10 @@
 там, где экранные отражения промахнулись (за краем кадра, за предметами), за радиусом — небо. Точку ставят над водой на
 высоте глаза (1,5-2 м), радиус — чтобы накрыл озеро или участок русла.
 
-  python Tools/reflection_capture.py list [--level Test]
-  python Tools/reflection_capture.py add ИМЯ --position x,y,z [--param поле=значение ...] [--level Test]
+  python Tools/reflection_capture.py list [--level ValleyOfStreams]
+  python Tools/reflection_capture.py add ИМЯ --position x,y,z [--param поле=значение ...] [--level ValleyOfStreams]
   python Tools/reflection_capture.py set ИМЯ --param поле=значение [...]
-  python Tools/reflection_capture.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level Test]
+  python Tools/reflection_capture.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level ValleyOfStreams]
 
 Поля — колонки LevelReflectionCaptures: position ("x,y,z"), influence_radius (м), transition (доля радиуса у края, где карта
 переходит в небо), face_size (64, 128, 256, 512), brightness. NULL — значение по умолчанию движка. Сообщения — ASCII
@@ -61,7 +61,7 @@ def main():
     parser = argparse.ArgumentParser(description='Reflection captures of a level (LevelReflectionCaptures)')
     parser.add_argument('command', choices=['list', 'add', 'set', 'delete', 'enable', 'disable'])
     parser.add_argument('name', nargs='?')
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--position', help='x,y,z of the capture point')
     parser.add_argument('--param', action='append', help='field=value, repeatable (empty value - NULL)')
     args = parser.parse_args()

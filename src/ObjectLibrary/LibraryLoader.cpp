@@ -302,6 +302,8 @@ bool LibraryLoader::loadLevel( const std::string& name, const std::string& prese
 
 		level.id = query.getColumn( "id" ).getUInt();
 		level.name = query.getColumn( "name" ).getString();
+		level.title = SettingsDatabaseDetail::hasColumn( query, "title" ) && !query.getColumn( "title" ).isNull()
+						  ? query.getColumn( "title" ).getString() : level.name;
 		if( !query.getColumn( "terrain" ).isNull() )
 		{
 			const uint32_t terrainId = query.getColumn( "terrain" ).getUInt();

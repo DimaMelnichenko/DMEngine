@@ -26,7 +26,7 @@
 `buildTerrain( TerrainHeightSource )` строит землю теми же треугольниками, что видит ходьба
 (`TerrainHeightSource::surfaceHeight`):
 
-- главная карта высот Jolt (`HeightFieldShape`) — выборки в узлах текселя карты (у `Test` — 1 м); число выборок
+- главная карта высот Jolt (`HeightFieldShape`) — выборки в узлах текселя карты (у `ValleyOfStreams` — 1 м); число выборок
   дополнено до кратного блоку 4 дырами;
 - детальные квадраты (`TerrainHeightSource::fineRegions`: у русел — плитки 0,25 м, `TerrainHydrology::DetailTile`) —
   свои карты высот с их шагом, а в главной под ними — дыры (`cNoCollisionValue` в узлах строго внутри квадрата: уходят
@@ -69,7 +69,7 @@
 кроны. У низа ели — только комель с корнями (у `Fir_A` полуширина следа 0,39 м), поэтому радиус ствола выше задан: у
 `Fir_A/B/C` 0,3 / 0,2 / 0,1 м (как в `Tools/blender_fir.py`, он и пишет их Custom Properties объекта LOD0). Колонки пишет
 `Tools/import_gltf.py --collision … --collision-radius …` или extras «collision» и «collision_radius» объекта LOD0. У
-`Test` — ели `capsule`; кубы, плоскость и панель — `box`; остальное — оболочка.
+`ValleyOfStreams` — ели `capsule`; кубы, плоскость и панель — `box`; остальное — оболочка.
 
 Кэш форм моделей — `ModelCollision` (`Scene/Model/ModelCollision.h`, член `Scene`): форма — при первом теле модели, тела
 берут её экземпляры уровня, лес и камни.
@@ -133,7 +133,7 @@ Jolt `v5.6.0` подтягивает FetchContent (`CMakeLists.txt`, его CMak
 
 ## Производительность
 
-Release, `Test`:
+Release, `ValleyOfStreams`:
 - земля и 39 тел моделей — ~0,5 с загрузки;
 - тела леса (17 639 стволов) — 15 мс, камней русел (9 028) — 12 мс в первых кадрах (в логе «Scatter layer N: … collision
   bodies»); в Debug — по ~0,25 с; всего ~26,7 тыс. тел;

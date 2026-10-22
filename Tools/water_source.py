@@ -4,11 +4,11 @@
 притока с суммой, равной расходу. Источник в низине (котловина кара) наливает её до перелива ещё при загрузке, и из
 неё вытекает ручей; источник на склоне — родник, ручей начинается из мокрого пятна. Подробно — docs/water.md.
 
-  python Tools/water_source.py list [--level Test]
-  python Tools/water_source.py add ИМЯ --position x,z [--rate 5] [--radius 4] [--level Test]
-  python Tools/water_source.py set ИМЯ [--position x,z] [--rate L] [--radius R] [--level Test]
-  python Tools/water_source.py delete ИМЯ [--level Test]
-  python Tools/water_source.py enable ИМЯ / disable ИМЯ [--level Test]
+  python Tools/water_source.py list [--level ValleyOfStreams]
+  python Tools/water_source.py add ИМЯ --position x,z [--rate 5] [--radius 4] [--level ValleyOfStreams]
+  python Tools/water_source.py set ИМЯ [--position x,z] [--rate L] [--radius R] [--level ValleyOfStreams]
+  python Tools/water_source.py delete ИМЯ [--level ValleyOfStreams]
+  python Tools/water_source.py enable ИМЯ / disable ИМЯ [--level ValleyOfStreams]
 
 rate — расход, л/с (родник 0,5–5, ручей из ледникового озера 20–200); radius — радиус пятна, м (родник 2–4, ледник —
 пол-озера). Источники принадлежат строке WaterSimulation уровня (Levels.water_simulation). Повторный add с тем же
@@ -64,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser(description='Water sources of a level (table WaterSources)')
     parser.add_argument('command', choices=['list', 'add', 'set', 'delete', 'enable', 'disable'])
     parser.add_argument('name', nargs='?')
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--position', help='x,z in world meters')
     parser.add_argument('--rate', type=float, help='discharge, l/s')
     parser.add_argument('--radius', type=float, help='radius of the wet spot, m')

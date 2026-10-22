@@ -5,13 +5,13 @@
 правила материала (скала, осыпи, снег, луг, лес) — те же поля правит окно «Far terrain», «Save level» пишет их обратно.
 NULL в полях окна — значения по умолчанию движка. Карту, множитель и сдвиг пишет Tools/gen_far_terrain.py (store).
 
-  python Tools/far_terrain.py show [--level Test]
-  python Tools/far_terrain.py set [--level Test] --param поле=значение [...]
-  python Tools/far_terrain.py remove [--level Test]
-  python Tools/far_terrain.py glacier [--level Test] [--param поле=значение ...]   (заводит строку GlacialErosion)
-  python Tools/far_terrain.py no-glacier [--level Test]
-  python Tools/far_terrain.py fluvial [--level Test] [--param поле=значение ...]   (заводит строку FluvialErosion)
-  python Tools/far_terrain.py no-fluvial [--level Test]
+  python Tools/far_terrain.py show [--level ValleyOfStreams]
+  python Tools/far_terrain.py set [--level ValleyOfStreams] --param поле=значение [...]
+  python Tools/far_terrain.py remove [--level ValleyOfStreams]
+  python Tools/far_terrain.py glacier [--level ValleyOfStreams] [--param поле=значение ...]   (заводит строку GlacialErosion)
+  python Tools/far_terrain.py no-glacier [--level ValleyOfStreams]
+  python Tools/far_terrain.py fluvial [--level ValleyOfStreams] [--param поле=значение ...]   (заводит строку FluvialErosion)
+  python Tools/far_terrain.py no-fluvial [--level ValleyOfStreams]
 
 Первый запуск заводит таблицу и колонку Levels.far_terrain. Сообщения — ASCII (Windows PowerShell 5.1, cmd).
 """
@@ -166,7 +166,7 @@ def store(level, file, multiplier, offset, origin, extent):
 def main():
     parser = argparse.ArgumentParser(description='Far mountains around the level map (FarTerrain)')
     parser.add_argument('command', choices=['show', 'set', 'remove', 'glacier', 'no-glacier', 'fluvial', 'no-fluvial'])
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--param', action='append', help='field=value, repeatable')
     args = parser.parse_args()
 

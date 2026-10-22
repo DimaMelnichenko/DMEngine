@@ -205,9 +205,9 @@ NULL — значение по умолчанию (`AmbientSoundSettings` в `Sc
 слой на полной громкости — около −20 дБ FS. Строка и колонка заводятся скриптом:
 
 ```
-python Tools/ambient_sound.py set --level Test [--param grass_volume=0.4 ...]
-python Tools/ambient_sound.py show --level Test
-python Tools/ambient_sound.py remove --level Test
+python Tools/ambient_sound.py set --level ValleyOfStreams [--param grass_volume=0.4 ...]
+python Tools/ambient_sound.py show --level ValleyOfStreams
+python Tools/ambient_sound.py remove --level ValleyOfStreams
 ```
 
 Громкость и «Mute» пользователя — окно «Audio» (раздел Audio), не уровень: начальная громкость — `[Audio] Volume` в
@@ -314,7 +314,7 @@ python Tools/ambient_sound.py remove --level Test
 `Update: Ambient sound` — ~0,02 мс CPU кадра без ручьёв, ~0,09 мс с ними (выбор из ~1000 мест и лучи заглушения);
 `Update: Soundscape` — ~0,01 мс с двумя слоями, ~0,04 мс с десятью.
 
-На `Test` (выключены ветер, трава и кроны): у плёса в 4 м — −32…−34 дБ FS, у переката — −21…−25; в 70 м от переката на
+На `ValleyOfStreams` (выключены ветер, трава и кроны): у плёса в 4 м — −32…−34 дБ FS, у переката — −21…−25; в 70 м от переката на
 виду — −47, за гребнем — −52…−55 и глуше (центроид 650 Гц против 1200). Записями (2026-10-19, Solo «Streams»): у спокойного
 места (452, 252) — −37 дБ FS, у порога (360, 264) — −24, как у синтеза (−38 и −24); центроид у порога — 3,5 кГц (синтез — 0,9).
 

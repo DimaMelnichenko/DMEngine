@@ -102,7 +102,7 @@ bool Scene::loadResources( LibraryLoader& library, const std::string& levelName,
 
 bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audio )
 {
-	// Доли — по времени (Release, уровень Test): террейн с эрозией, руслами и слоями материала ~2 с, течение озёр ~0,6 с
+	// Доли — по времени (Release, уровень ValleyOfStreams): террейн с эрозией, руслами и слоями материала ~2 с, течение озёр ~0,6 с
 	SlowTask task( 2.8f );
 	task.enterProgressFrame( 0.1f, "Sky" );
 	LOG( "Create light driver" );

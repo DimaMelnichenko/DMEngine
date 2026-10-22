@@ -11,7 +11,7 @@
 # Запись: Textures\terrain\far_heightmap.dds (R16_UNORM), в базу — строка FarTerrain уровня с множителем и сдвигом высоты
 # (метры = значение · множитель + сдвиг), углом и стороной (Tools/far_terrain.py; --no-db — без базы). Детерминирован
 # (seed), ~30 с. Нужен numpy. Запускать из корня проекта:
-#   python Tools/gen_far_terrain.py [--level Test] [--seed 11] [--preview файл.png] [--no-db]
+#   python Tools/gen_far_terrain.py [--level ValleyOfStreams] [--seed 11] [--preview файл.png] [--no-db]
 import argparse
 import math
 import os
@@ -220,7 +220,7 @@ def write_preview(path, height):
 
 def main():
     parser = argparse.ArgumentParser(description='Far mountains around the level map: heightmap of the ring')
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--seed', type=int, default=11)
     parser.add_argument('--preview', help='PNG with a hillshade')
     parser.add_argument('--no-db', action='store_true', help='do not write the FarTerrain row')

@@ -137,9 +137,9 @@
   `Textures\terrain\layers\*.dds` — `python Tools/gen_terrain_textures.py` (нужен numpy). Слои из фото-текстур (Poly Haven,
   freepbr; архивы — в `DownloadResources\`, не в git) собирает `Tools/pack_terrain_layer.py` через Blender — команды
   нынешних слоёв в `docs/terrain.md`. Тестовые модели уровня
-  `Test` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
+  `ValleyOfStreams` (`TestRock`, `TestPanel`) — сцена Blender без окна и импорт:
   `blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/source/test_models.glb`, затем
-  `python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,11.73,238` (повторно — без
+  `python Tools/import_gltf.py Meshes/source/test_models.glb --level ValleyOfStreams --position 470,11.73,238` (повторно — без
   `--level`: после новой долины экземпляры пересажены на землю). Параметры движка, которых нет в glTF (ветер,
   пропускание, смена LOD), — в сценариях и опциях `--material-param` (`extras` glTF), см. `docs/models.md`. Пучок травы
   набора `Meadow` (`GrassClump`) — `blender -b --factory-startup --python Tools/blender_grass.py -- Meshes/source/grass.glb`,
@@ -151,13 +151,13 @@
   `Grass` sltiN — `dry_grass`; архив FBX или папка из Unreal Launcher — в `DownloadResources\`) —
   `Tools/export_megascans.py` через Blender, затем
   `import_gltf.py --scatter`, команды — в `docs/models.md`. Ели уровня
-`Test` (`Fir_A`, `Fir_B`, `Fir_C`: своя геометрия, кора и карточки хвои из `fir_tree_01` Poly Haven) —
+`ValleyOfStreams` (`Fir_A`, `Fir_B`, `Fir_C`: своя геометрия, кора и карточки хвои из `fir_tree_01` Poly Haven) —
 `blender -b --factory-startup --python Tools/blender_fir.py -- --archive DownloadResources/fir_tree_01_2k.blend.zip --out Meshes/source/fir.glb`,
-затем `python Tools/import_gltf.py Meshes/source/fir.glb --level Test --position 480,0,345 --snap-to-terrain --lod-ranges 35,90`
+затем `python Tools/import_gltf.py Meshes/source/fir.glb --level ValleyOfStreams --position 480,0,345 --snap-to-terrain --lod-ranges 35,90`
 (`--snap-to-terrain` ставит экземпляры на землю уровня). Blender 5.0 стоит в
-  `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH). Панорама уровня `TestHDRI` —
+  `C:\Program Files\Blender Foundation\Blender 5.0\blender.exe` (не в PATH). Панорама уровня `ValleyOfStreamsHDRI` —
   Kloofendal 48d Partly Cloudy с Poly Haven (CC0, https://polyhaven.com/a/kloofendal_48d_partly_cloudy), 2k `.hdr`
-  (и `.exr` для проверки) в `Textures\hdri\kloofendal_48d_partly_cloudy_2k.*`; без неё `TestHDRI` освещает атмосфера.
+  (и `.exr` для проверки) в `Textures\hdri\kloofendal_48d_partly_cloudy_2k.*`; без неё `ValleyOfStreamsHDRI` освещает атмосфера.
 - Лог каждого запуска перезаписывается в `log.txt` (макрос `LOG(x)` из `src/Logger/Logger.h`); в git его нет
   (`.gitignore`), как и снимков клавишей P (`screenshot<N>.jpg` в корне).
 - Шейдеры (`Shaders/*.vs|.ps|.gs|.cs`, include — `*.sh`) компилируются во время выполнения компилятором DXC в DXIL

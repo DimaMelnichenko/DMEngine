@@ -5,7 +5,7 @@
 при новой генерации остаются, сгенерированные в их полосе обрезаются. Любая правка здесь помечает кривую правленной.
 Множители (--width-scale и т. п.) — к общим параметрам WaterChannels, 1 — как у всех. Применяется при следующей загрузке.
 
-  python Tools/stream_edit.py list [--level Test]
+  python Tools/stream_edit.py list [--level ValleyOfStreams]
   python Tools/stream_edit.py show ID
   python Tools/stream_edit.py set ID [--name N] [--enabled 0|1] [--width-scale S] [--depth-scale S] [--freeboard-scale S]
          [--bank-slope-scale S] [--thalweg-scale S] [--roughness-scale S] [--discharge-scale S] [--stone-scale S]
@@ -13,10 +13,10 @@
   python Tools/stream_edit.py move ID POINT x,z           (точка POINT — в x, z мира)
   python Tools/stream_edit.py insert ID AFTER x,z         (новая точка после AFTER; -1 — в начало)
   python Tools/stream_edit.py remove ID POINT
-  python Tools/stream_edit.py add NAME --points "x,z;x,z;..." [--discharge Q] [--level Test]
+  python Tools/stream_edit.py add NAME --points "x,z;x,z;..." [--discharge Q] [--level ValleyOfStreams]
   python Tools/stream_edit.py delete ID
   python Tools/stream_edit.py reset ID                    (снова сгенерированная: заменится при следующей генерации)
-  python Tools/stream_edit.py regenerate [--level Test]   (генерация при следующей загрузке; правленные остаются)
+  python Tools/stream_edit.py regenerate [--level ValleyOfStreams]   (генерация при следующей загрузке; правленные остаются)
 
 Точки — от истока вниз по течению. Расход ручной кривой — --discharge, м3/с, иначе по водосбору под точкой. Сообщения —
 ASCII (Windows PowerShell 5.1, cmd).
@@ -76,7 +76,7 @@ def main():
     parser = argparse.ArgumentParser(description='Stream curves of a level (Streams / StreamPoints)')
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('list')
-    p.add_argument('--level', default='Test')
+    p.add_argument('--level', default='ValleyOfStreams')
     p = sub.add_parser('show')
     p.add_argument('id', type=int)
     p = sub.add_parser('set')
@@ -100,13 +100,13 @@ def main():
     p.add_argument('name')
     p.add_argument('--points', required=True)
     p.add_argument('--discharge', type=float)
-    p.add_argument('--level', default='Test')
+    p.add_argument('--level', default='ValleyOfStreams')
     p = sub.add_parser('delete')
     p.add_argument('id', type=int)
     p = sub.add_parser('reset')
     p.add_argument('id', type=int)
     p = sub.add_parser('regenerate')
-    p.add_argument('--level', default='Test')
+    p.add_argument('--level', default='ValleyOfStreams')
     args = parser.parse_args()
 
     db = sqlite3.connect(DB)

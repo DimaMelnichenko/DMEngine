@@ -4,11 +4,11 @@
 по маскам рельефа, и поют её фразы с паузами; сколько их сразу — «singers» × активность слоя, произведение его правил
 (SoundRules: часы суток, ветер и т. д.).
 
-  python Tools/soundscape.py list [--level Test]
-  python Tools/soundscape.py add ИМЯ --sound запись [--param поле=значение ...] [--level Test]
-  python Tools/soundscape.py set ИМЯ --param поле=значение [...] [--level Test]
-  python Tools/soundscape.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level Test]
-  python Tools/soundscape.py rules [--level Test]                                 — правила слоёв
+  python Tools/soundscape.py list [--level ValleyOfStreams]
+  python Tools/soundscape.py add ИМЯ --sound запись [--param поле=значение ...] [--level ValleyOfStreams]
+  python Tools/soundscape.py set ИМЯ --param поле=значение [...] [--level ValleyOfStreams]
+  python Tools/soundscape.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level ValleyOfStreams]
+  python Tools/soundscape.py rules [--level ValleyOfStreams]                                 — правила слоёв
   python Tools/soundscape.py rule-add ИМЯ --type hours|wind [--param ключ=значение ...]  — правило слоя
   python Tools/soundscape.py rule-set ID [--param ключ=значение ...] [--enabled 0|1]
   python Tools/soundscape.py rule-delete ID
@@ -173,7 +173,7 @@ def main():
     parser.add_argument('command', choices=['list', 'add', 'set', 'delete', 'enable', 'disable', 'rules', 'rule-add', 'rule-set',
                                             'rule-delete', 'sounds', 'sound'])
     parser.add_argument('name', nargs='?')
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--sound', help='recordings: Sounds.name, several - comma-separated')
     parser.add_argument('--param', action='append', help='field=value (layer) or key=value (rule), repeatable (empty value - NULL)')
     parser.add_argument('--volume', help='sound: gain of the recording (empty - NULL, 1)')

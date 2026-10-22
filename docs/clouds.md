@@ -70,7 +70,7 @@
 
 ### Стоимость
 
-Release, 1920 × 1080, RTX 4070 Ti, `Test`: облака 0,2 мс GPU на обзорной камере и 0,3 мс при взгляде в небо (строка
+Release, 1920 × 1080, RTX 4070 Ti, `ValleyOfStreams`: облака 0,2 мс GPU на обзорной камере и 0,3 мс при взгляде в небо (строка
 `Compute Pass` в «GPU average»: 0,28–0,41 мс против 0,10 без облаков), наложение — 0,002 мс (`Volumetric cloud` в проходе
 `sky`). Шумы в первом кадре — миллисекунды.
 
@@ -89,12 +89,12 @@ Release, 1920 × 1080, RTX 4070 Ti, `Test`: облака 0,2 мс GPU на об�
 | `shadow_strength` | 1 | тень облаков на земле: множитель оптической толщины; 0 — нет |
 | `tracing_max_distance` | 50000 | дальше облака не видны, м |
 
-У `Test`: покрытие 0,22, плотность 0,02 — кучевые облака хорошей погоды, солнце над долиной.
+У `ValleyOfStreams`: покрытие 0,22, плотность 0,02 — кучевые облака хорошей погоды, солнце над долиной.
 
 ```
-python Tools/volumetric_cloud.py show [--level Test]
-python Tools/volumetric_cloud.py set [--level Test] --param поле=значение [...]
-python Tools/volumetric_cloud.py remove [--level Test]
+python Tools/volumetric_cloud.py show [--level ValleyOfStreams]
+python Tools/volumetric_cloud.py set [--level ValleyOfStreams] --param поле=значение [...]
+python Tools/volumetric_cloud.py remove [--level ValleyOfStreams]
 ```
 
 Первый запуск сценария заводит таблицу и колонку `Levels.volumetric_cloud`.

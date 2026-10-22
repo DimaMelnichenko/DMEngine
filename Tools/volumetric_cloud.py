@@ -4,9 +4,9 @@
 альбедо, размеры шумов формы, краёв и карты погоды (м на повтор), скорость облаков (направление — ветра уровня), сила
 тени на земле, дальность. Те же поля правит окно «Volumetric cloud», кнопка «Save level environment» пишет их обратно.
 
-  python Tools/volumetric_cloud.py show [--level Test]
-  python Tools/volumetric_cloud.py set [--level Test] --param поле=значение [...]
-  python Tools/volumetric_cloud.py remove [--level Test]
+  python Tools/volumetric_cloud.py show [--level ValleyOfStreams]
+  python Tools/volumetric_cloud.py set [--level ValleyOfStreams] --param поле=значение [...]
+  python Tools/volumetric_cloud.py remove [--level ValleyOfStreams]
 
 Первый запуск заводит таблицу и колонку Levels.volumetric_cloud. set без строки у уровня создаёт её со значениями по
 умолчанию. Сообщения — ASCII (Windows PowerShell 5.1, cmd).
@@ -48,7 +48,7 @@ def migrate(db):
 def main():
     parser = argparse.ArgumentParser(description='Volumetric cloud of a level (VolumetricCloud)')
     parser.add_argument('command', choices=['show', 'set', 'remove'])
-    parser.add_argument('--level', default='Test')
+    parser.add_argument('--level', default='ValleyOfStreams')
     parser.add_argument('--param', action='append', help='field=value, repeatable')
     args = parser.parse_args()
 

@@ -104,7 +104,7 @@ REPEAT, цвета вершин и остальные расширения ма�
 ## Запуск
 
 ```
-python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--snap-to-terrain]] [--scale s]
+python Tools/import_gltf.py модель.glb [--level ValleyOfStreams --position x,y,z [--snap-to-terrain]] [--scale s]
                                        [--lod-ranges 25,60] [--shadow-lod-scale 0.5] [--shadow-min-lod 2] [--name Имя]
                                        [--collision hull|box|mesh|capsule|none] [--collision-radius r] [--asset папка]
                                        [--scatter] [--dry-run]
@@ -173,7 +173,7 @@ python Tools/import_gltf.py модель.glb [--level Test --position x,y,z [--s
 папку файлов (имя файла `scene` — общее у всех архивов):
 
 ```
-python Tools/import_gltf.py Meshes/source/<имя>/scene.gltf --asset <имя> --name <Модель> --level Test --position x,0,z
+python Tools/import_gltf.py Meshes/source/<имя>/scene.gltf --asset <имя> --name <Модель> --level ValleyOfStreams --position x,0,z
     --snap-to-terrain --animation <клип> --collision capsule --collision-radius 0.45
     --locomotion "<покой>,<шаг>,<шаг влево>,<шаг вправо>,<рысь>,<бег>"
 ```
@@ -263,7 +263,7 @@ UV копируются без изменений: у glTF, как у Direct3D, 
 
 ```
 blender -b --factory-startup --python Tools/blender_test_model.py -- Meshes/source/test_models.glb
-python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --position 470,11.73,238
+python Tools/import_gltf.py Meshes/source/test_models.glb --level ValleyOfStreams --position 470,11.73,238
 ```
 
 Так модели ставятся на уровень в первый раз. После новой долины (`Tools/gen_heightmap.py` пересаживает экземпляры
@@ -272,7 +272,7 @@ python Tools/import_gltf.py Meshes/source/test_models.glb --level Test --positio
 
 Скрипт строит в Blender без окна `TestRock` + `TestRock_LOD1` (камень с сеткой Blender «Color Grid»: по буквам видно,
 не отражена ли развёртка) и `TestPanel` (плита с картой нормалей из полусфер и золотыми торцами — второй материал,
-секция 1 той же модели). На уровне `Test` они стоят слева от таблицы шаров; вид вблизи —
+секция 1 той же модели). На уровне `ValleyOfStreams` они стоят слева от таблицы шаров; вид вблизи —
 `run.ps1 -NoGui -Camera 471,14.5,229,4,0`.
 Правильный результат: буквы читаются, выпуклости освещены сверху (свет падает сверху справа), торцы плиты — металл.
 
@@ -295,7 +295,7 @@ glTF их не понимает: материалы собраны на узла
 - параметры движка, которых нет в glTF, — `--material-param ИМЯ=ЗНАЧЕНИЕ` (повторяется, всем материалам): в
   `extras`, как у ели. Значения: `true` / `false`, числа через запятую, имя текстуры материала (`BaseColor`).
 
-Нынешние модели расстановки уровня `Test`:
+Нынешние модели расстановки уровня `ValleyOfStreams`:
 
 ```
 blender -b --factory-startup --python Tools/export_polyhaven.py -- --archive DownloadResources/dandelion_01_2k.blend.zip --objects "^dandelion_01_" --lod-offset 1 --out Meshes/source/dandelion_01.glb --material-param WindWeight=1.5 --material-param TrampleWeight=0.8 --material-param TrampleBendLength=0.3 --material-param DiffuseTransmissionFactor=0.35 --material-param DiffuseTransmissionColorFactor=1,1,0.6 --material-param DiffuseTransmissionColor=BaseColor --material-param DitheredLODTransition=true
@@ -425,11 +425,11 @@ python Tools/import_gltf.py Meshes/source/broken_branch.glb --scatter --lod-rang
 ## Дерево из готового меша: `Tools/tree_from_mesh.py`
 
 Готовое дерево с Fab или Sketchfab (FBX: ствол и ветви — куски труб, листва — карточки, без LOD и данных ветра) —
-`Tools/tree_from_mesh.py` (Blender без окна), бук `Test`:
+`Tools/tree_from_mesh.py` (Blender без окна), бук `ValleyOfStreams`:
 
 ```
 blender -b --factory-startup --python Tools/tree_from_mesh.py -- --fbx "DownloadResources/<ассет>/Beech Tree.fbx" --name Beech --out Meshes/source/beech.glb --wood Trunk --leaves Leaves --wood-drop 0,0.02,0.06
-python Tools/import_gltf.py Meshes/source/beech.glb --level Test --position 440,0,300 --snap-to-terrain --lod-ranges 35,90 --shadow-lod-scale 0.5
+python Tools/import_gltf.py Meshes/source/beech.glb --level ValleyOfStreams --position 440,0,300 --snap-to-terrain --lod-ranges 35,90 --shadow-lod-scale 0.5
 ```
 
 - **Меши** — по подстроке имени (`--wood`, `--leaves`); положение FBX (у бука — пустышка-родитель с масштабом 0,01 и
@@ -491,12 +491,12 @@ python Tools/import_gltf.py Meshes/source/beech.glb --level Test --position 440,
 - **Ветер** — по схеме SpeedTree ([wind.md](wind.md)). Данные на вершину сценарий пишет сам: начало ветви на стволе,
   основание карточки хвои, веса, доля высоты.
 
-На уровне `Test` к северу от луга стоят витрина — по ели каждого варианта в 15–18 м от точки `480,12.6,300` — и роща
+На уровне `ValleyOfStreams` к северу от луга стоят витрина — по ели каждого варианта в 15–18 м от точки `480,12.6,300` — и роща
 из 20 связанных дубликатов в пятне радиусом 22 м (центр `480,345`). Вблизи — `-Camera 474,12.2,308,-18,35`.
 
 ```
 blender -b --factory-startup --python Tools/blender_fir.py -- --archive DownloadResources/fir_tree_01_2k.blend.zip --out Meshes/source/fir.glb
-python Tools/import_gltf.py Meshes/source/fir.glb --level Test --position 480,0,345 --snap-to-terrain --lod-ranges 35,90 --shadow-lod-scale 0.5
+python Tools/import_gltf.py Meshes/source/fir.glb --level ValleyOfStreams --position 480,0,345 --snap-to-terrain --lod-ranges 35,90 --shadow-lod-scale 0.5
 ```
 
 Стоимость рощи (23 ели, Release, 1920×1080):

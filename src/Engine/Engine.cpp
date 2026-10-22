@@ -95,7 +95,7 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 	{
 		~LoadingScreenGuard() { SlowTask::setHandler( {} ); }
 	} loadingScreenGuard;
-	// Части загрузки — по времени (Release, уровень Test): текстуры ~1,8 с, сцена (террейн, русла, вода) ~2,8 с, импостеры
+	// Части загрузки — по времени (Release, уровень ValleyOfStreams): текстуры ~1,8 с, сцена (террейн, русла, вода) ~2,8 с, импостеры
 	// ~2 с; в лог — сколько заняла каждая (и шаги дольше 100 мс — drawLoadingFrame)
 	SlowTask loading( 6.7f );
 	std::string stageName;
@@ -117,6 +117,8 @@ bool Engine::initialize( int screenWidth, int screenHeight, HWND hwnd, Config co
 
 	stage( 1.8f, "Materials, models and textures" );
 	RET_FALSE( m_scene.loadResources( *m_library, m_config.levelName(), m_config.presetName() ) );
+	// Заголовок окна — название уровня («Долина ручьёв — DMEngine»)
+	SetWindowTextW( m_hwnd, utf8ToWide( m_scene.level().title + " — DMEngine" ).c_str() );
 
 	// Создаем общий буфер вершин и индексов
 	stage( 0.05f, "Renderer" );
