@@ -26,9 +26,17 @@ struct ParticlePixelInput
 	float2 corner : TEXCOORD0;		// −1…1 по квадрату
 	float  viewDepth : TEXCOORD1;	// z вида — мягкий край по глубине сцены
 	nointerpolation float3 random : TEXCOORD2;	// случайные числа частицы 0…1: у клочка пены — поворот и узор
+	// Клочок взбитой воды (froth) освещается в пикселе: свет тени (небо) — shade, а color — с солнцем; блик солнца на
+	// пузырях — glint; направление к солнцу — toSun (0 — солнца нет)
+	float3 shade : COLOR2;
+	nointerpolation float3 glint : COLOR3;
+	nointerpolation float3 toSun : TEXCOORD3;
 };
 
 static const float minimumPixels = 1.5f;
+// Клочок взбитой воды вытянут вдоль движения: 1 + скорость × frothStretch, не больше 1 + frothMaxStretch
+static const float frothStretch = 0.6f;
+static const float frothMaxStretch = 1.2f;
 static const float needleWidth = 0.15f;	// ширина хвоинки — доля её длины	// тоньше пары пикселей частица мерцает — шире, но прозрачнее
 
 ParticlePixelInput main( VertexInputType input )
@@ -66,21 +74,40 @@ ParticlePixelInput main( VertexInputType input )
 	}
 	else
 	{
-		const float3 right = cb_viewInverseMatrix[0].xyz;
-		const float3 up = cb_viewInverseMatrix[1].xyz;
-		offset = ( right * corner.x + up * corner.y ) * width * 0.5f;
+		float3 right = cb_viewInverseMatrix[0].xyz;
+		float3 up = cb_viewInverseMatrix[1].xyz;
+		// Клочок взбитой воды вытянут вдоль своего движения (по плоскости экрана): вода несёт и тянет пену
+		float stretch = 1.0f;
+		if( g_shape == particleShapeFroth )
+		{
+			const float3 along = particle.velocity - dot( particle.velocity, view ) * view;
+			const float speed = length( along );
+			if( speed > 0.05f )
+			{
+				right = along / speed;
+				up = normalize( cross( view, right ) );
+				stretch = 1.0f + min( speed * frothStretch, frothMaxStretch );
+			}
+		}
+		offset = ( right * corner.x * stretch + up * corner.y ) * width * 0.5f;
 	}
 	const float3 position = particle.position + offset;
 
-	// Свет: небо со всех сторон и солнце (или луна) с тенью; просвет — свет насквозь к камере, сильный против солнца
-	float3 light = ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
+	// Свет: небо со всех сторон и солнце (или луна) с тенью; просвет — свет насквозь к камере, сильный против солнца. У
+	// клочка взбитой воды солнце — по нормали в пикселе (particles.ps): здесь — свет с солнцем (как у обращённой к нему
+	// стороны) и без него
+	const float3 ambient = ambientIrradiance( float3( 0.0f, 1.0f, 0.0f ) );
+	float3 light = ambient;
+	float3 sunLight = 0.0f;
+	float3 toSun = 0.0f;
 	[branch] if( g_shadowSunIndex >= 0 )
 	{
 		const Light sun = g_lights[g_shadowSunIndex];
-		const float3 toSun = -sun.direction;
+		toSun = -sun.direction;
 		const float shadow = sunShadow( particle.position, toSun, toSun );
 		const float forward = pow( saturate( dot( -view, toSun ) ), 6.0f );
-		light += sun.color * shadow * ( 0.6f + g_transmission * forward * 4.0f ) / PI;
+		sunLight = sun.color * shadow;
+		light += sunLight * ( ( g_shape == particleShapeFroth ? 1.0f : 0.6f ) + g_transmission * forward * 4.0f ) / PI;
 	}
 	const float3 color = applyFogging( g_color * light + g_emissive, particle.position ) * preExposure();
 
@@ -96,5 +123,8 @@ ParticlePixelInput main( VertexInputType input )
 	output.viewDepth = mul( float4( position, 1.0f ), cb_viewMatrix ).z;
 	uint state = particle.seed ^ 0x9e3779b9u;
 	output.random = float3( particleRandom( state ), particleRandom( state ), particleRandom( state ) );
+	output.shade = g_shape == particleShapeFroth ? applyFogging( g_color * ambient + g_emissive, particle.position ) * preExposure() : color;
+	output.glint = ( applyFogging( sunLight, particle.position ) - applyFogging( 0.0f, particle.position ) ) * preExposure();
+	output.toSun = toSun;
 	return output;
 }

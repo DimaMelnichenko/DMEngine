@@ -120,9 +120,11 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 			return;
 		// На поверхности окна; камень (поднятый дисплейсментом) выше воды — не здесь: клочки висели бы над камнями
 		const float surface = terrainHeight( xz ) + water.depth + sampleNearWater( xz ).x;
-		if( terrainSurfacePoint( xz ).y > surface - 0.01f )
+		const float ground = terrainSurfacePoint( xz ).y;
+		if( ground > surface - 0.01f )
 			return;
-		position = float3( xz.x, surface + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), xz.y );
+		// Над водой и в ней (height_min < 0: взбитая вода там, где струя входит в ручей), но не в дне
+		position = float3( xz.x, max( surface + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), ground + 0.02f ), xz.y );
 		const float height = max( lerp( g_sprayHeightMin, g_sprayHeightMax, particleRandom( state ) ), 0.0f );
 		velocity += float3( water.velocity.x * g_waterFlow, sqrt( 2.0f * max( g_gravity, 0.0f ) * height ), water.velocity.y * g_waterFlow );
 	}
