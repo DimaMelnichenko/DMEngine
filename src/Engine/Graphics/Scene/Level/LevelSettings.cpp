@@ -1012,6 +1012,13 @@ const SettingsSchema<WaterChannelsSettings>& waterChannelsSchema()
 		  "Drop-off beyond the shelf, m per m" + rebuilt },
 		{ "lake_freeboard", "Lake freeboard", DM_SETTING( lakeFreeboard ), 0.0f, 1.0f, "m",
 		  "Lake water stands this much below the spill level of its basin: the shore is above the water, the outlet cuts the sill" + rebuilt },
+		// Исток из озера: шире у озера, вода на пороге — критической глубины, к «Outlet length» — русло ручья
+		{ "outlet_width", "Outlet width", DM_SETTING( outletWidth ), 0.3f, 4.0f, "",
+		  "A stream leaving a lake is this many times wider at the lake than by its discharge (< 1 - narrower and deeper, as in "
+		  "rock); the water over the sill is the critical depth for this width" + rebuilt },
+		{ "outlet_length", "Outlet length", DM_SETTING( outletLength ), 0.0f, 100.0f, "m",
+		  "Over this distance from the lake the outlet becomes the stream: width, water depth and the bank above the water (from "
+		  "Lake freeboard to Freeboard); shorter - the stream sinks into its bed sooner" + rebuilt },
 		{ "stone_density", "Stone density", DM_SETTING( stoneDensity ), 0.0f, 5.0f, "1/m",
 		  "Stones per metre of a stream (bed and banks): denser on riffles and steep reaches" + rebuilt },
 		{ "stone_size", "Stone size", DM_SETTING( stoneSize ), 0.05f, 1.0f, "m", "Typical stone diameter" + rebuilt },
@@ -1045,6 +1052,10 @@ const SettingsSchema<StreamCurve>& streamCurveSchema()
 		  "Water of this stream: wider, deeper bed at > 1" + rebuilt },
 		{ "stone_scale", "Stone scale", DM_SETTING( stoneScale ), 0.1f, 4.0f, "",
 		  "Stones and boulders of this stream, times the common density" + rebuilt },
+		{ "outlet_width_scale", "Outlet width scale", DM_SETTING( outletWidthScale ), 0.1f, 4.0f, "",
+		  "If the stream leaves a lake: its width at the lake, times the common Outlet width (< 1 - a narrow deep outlet in rock)" + rebuilt },
+		{ "outlet_length_scale", "Outlet length scale", DM_SETTING( outletLengthScale ), 0.1f, 4.0f, "",
+		  "If the stream leaves a lake: the distance where it becomes the stream, times the common Outlet length" + rebuilt },
 	};
 	return schema;
 }

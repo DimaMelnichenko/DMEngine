@@ -8,7 +8,8 @@
   python Tools/stream_edit.py list [--level Test]
   python Tools/stream_edit.py show ID
   python Tools/stream_edit.py set ID [--name N] [--enabled 0|1] [--width-scale S] [--depth-scale S] [--freeboard-scale S]
-         [--bank-slope-scale S] [--thalweg-scale S] [--roughness-scale S] [--discharge-scale S]
+         [--bank-slope-scale S] [--thalweg-scale S] [--roughness-scale S] [--discharge-scale S] [--stone-scale S]
+         [--outlet-width-scale S] [--outlet-length-scale S]
   python Tools/stream_edit.py move ID POINT x,z           (точка POINT — в x, z мира)
   python Tools/stream_edit.py insert ID AFTER x,z         (новая точка после AFTER; -1 — в начало)
   python Tools/stream_edit.py remove ID POINT
@@ -30,7 +31,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, 'base.db3')
 
 SCALES = ['width_scale', 'depth_scale', 'freeboard_scale', 'bank_slope_scale', 'thalweg_scale', 'roughness_scale',
-          'discharge_scale', 'stone_scale']
+          'discharge_scale', 'stone_scale', 'outlet_width_scale', 'outlet_length_scale']
 
 
 def water_simulation(db, level):
