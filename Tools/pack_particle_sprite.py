@@ -4,10 +4,12 @@
 # sprite строки ParticleEmitters) берёт из него покрытие, рельеф и плотность, а свет и искры считает сама
 # (Shaders/particles.ps, docs/particles.md).
 #   python Tools/pack_particle_sprite.py DownloadResources/<фото> [<фото> ...] --name water_splash [--size 512] [--db base.db3]
+# У фото можно взять часть: <фото>[x0,y0,x1,y1] в пикселях (без отражения на полу, подписи и т. п.).
 # Фон — медиана цвета по краям картинки; пиксель — проекция на ось от фона к самому светлому (верхние --white-percent %
 # по яркости): 0 — фон, 1 — белое. Покрытие — плавный порог этой проекции (--alpha-from … --alpha-to), плотность — она
-# же без порога. Картинка обрезается по покрытию с полем --margin, дополняется до квадрата, к краю покрытие гаснет (край
-# спрайта прозрачный при любом повороте). Каналы: R — покрытие, G, B — нормаль по размытому покрытию (0,5 + 0,5 · n),
+# же без порога; к краям фото покрытие гаснет (--edge-fade: всплеск, обрезанный кадром фото, без прямого среза). Картинка
+# обрезается по покрытию с полем --margin, дополняется до квадрата, к краю покрытие гаснет (край спрайта прозрачный при
+# любом повороте). Каналы: R — покрытие, G, B — нормаль по размытому покрытию (0,5 + 0,5 · n),
 # A — плотность. Нужны numpy и Pillow. Сообщения — ASCII (правило Tools/).
 import argparse
 import os
@@ -51,6 +53,7 @@ def main():
     parser.add_argument('--alpha-from', type=float, default=0.06, help='coverage starts at this share between background and white')
     parser.add_argument('--alpha-to', type=float, default=0.45, help='and is full at this share')
     parser.add_argument('--margin', type=float, default=0.04, help='crop margin around the coverage, share of the side')
+    parser.add_argument('--edge-fade', type=float, default=0.25, help='coverage fades out toward the photo edges over this share of its shorter side')
     parser.add_argument('--bump', type=float, default=3.0, help='normal steepness: coverage height per pixel step')
     parser.add_argument('--blur', type=float, default=1.5, help='coverage blur for the normal, pixels')
     parser.add_argument('--db', help='base.db3: insert or update the Textures row')
@@ -78,8 +81,15 @@ def main():
 
 
 def frame(path, args):
-    """Кадр спрайта из фото: size × size × 4 (покрытие, нормаль, плотность)"""
-    rgb = np.asarray(Image.open(path).convert('RGB')).astype(np.float32) / 255.0
+    """Кадр спрайта из фото: size × size × 4 (покрытие, нормаль, плотность); path[x0,y0,x1,y1] — часть фото"""
+    box = None
+    if path.endswith(']') and '[' in path:
+        path, crop = path[:-1].split('[', 1)
+        box = tuple(int(v) for v in crop.split(','))
+    image = Image.open(path).convert('RGB')
+    if box:
+        image = image.crop(box)
+    rgb = np.asarray(image).astype(np.float32) / 255.0
     border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
     background = np.median(border, axis=0)
     lum = luminance(rgb)
@@ -87,6 +97,10 @@ def frame(path, args):
     axis = white - background
     density = np.clip(((rgb - background) @ axis) / float(axis @ axis), 0.0, 1.0)
     coverage = smoothstep(args.alpha_from, args.alpha_to, density)
+    # К краям фото — прозрачно: всплеск, обрезанный кадром фото (или поверхностью у основания), иначе дал бы прямой срез
+    h, w = coverage.shape
+    edge = np.minimum.outer(np.minimum(np.arange(h), np.arange(h)[::-1]), np.minimum(np.arange(w), np.arange(w)[::-1]))
+    coverage *= smoothstep(0.0, args.edge_fade * min(h, w), edge.astype(np.float32))
     print('%s: background %s, white %s, covered share %.3f' % (os.path.basename(path), np.round(background * 255).astype(int).tolist(),
                                                               np.round(white * 255).astype(int).tolist(), float((coverage > 0.5).mean())))
 
