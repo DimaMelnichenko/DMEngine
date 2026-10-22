@@ -144,6 +144,21 @@ bool NearWaterFlow::createTextures( uint32_t size )
 		d3d.setName( *texture, name );
 		d3d.clearStorageView( *uav );
 	}
+	{
+		TextureDesc desc;
+		desc.width = size;
+		desc.height = size;
+		desc.format = DXGI_FORMAT_R16_FLOAT;
+		desc.usage = TextureUsage::unorderedAccess | TextureUsage::shaderResource;
+		if( !d3d.createTexture( desc, nullptr, m_fall ) || !d3d.createStorageView( m_fall, {}, m_fallUAV ) ||
+			!d3d.createShaderView( m_fall, {}, m_fallView ) )
+		{
+			LOG( "Failed to create texture Water near fall" );
+			return false;
+		}
+		d3d.setName( m_fall, "Water near fall" );
+		d3d.clearStorageView( m_fallUAV );
+	}
 	for( uint32_t k = 0; k < 6; ++k )
 	{
 		// Пена, смещения узора и его фаза — по два поля
@@ -432,7 +447,7 @@ void NearWaterFlow::stepFoam( const WaterSimulationSettings& settings, const Wat
 	pass.reads = { { &m_resultView, "near flow" }, { &m_foamView[previous], "near foam previous" }, { &foam.detailView(), "detail foam" },
 				   { &m_patternView[previous], "near foam pattern previous" }, { &m_phaseView[previous], "near foam pattern phase previous" } };
 	pass.writes = { { &m_foamUAV[m_foamCurrent], "near foam" }, { &m_patternUAV[m_foamCurrent], "near foam pattern" },
-					{ &m_phaseUAV[m_foamCurrent], "near foam pattern phase" } };
+					{ &m_phaseUAV[m_foamCurrent], "near foam pattern phase" }, { &m_fallUAV, "near fall" } };
 	d3d.beginPass( pass );
 	// Правила — поля пены 0,25 м (те же настройки «Surface»), шаг — время игры кадра
 	const WaterFoamBuffer params = WaterFoam::parameters( settings, elapsed );
@@ -457,11 +472,13 @@ void NearWaterFlow::stepFoam( const WaterSimulationSettings& settings, const Wat
 	d3d.setUAV( 0, m_foamUAV[m_foamCurrent] );
 	d3d.setUAV( 1, m_patternUAV[m_foamCurrent] );
 	d3d.setUAV( 2, m_phaseUAV[m_foamCurrent] );
+	d3d.setUAV( 3, m_fallUAV );
 	const uint32_t groups = ( m_size + 7 ) / 8;
 	m_foamStep.dispatchGroups( groups, groups, 1 );
 	d3d.setSRV( SLOT_WATER_NEAR_FOAM, m_foamView[m_foamCurrent] );
 	d3d.setSRV( SLOT_WATER_NEAR_PATTERN, m_patternView[m_foamCurrent] );
 	d3d.setSRV( SLOT_WATER_NEAR_PHASE, m_phaseView[m_foamCurrent] );
+	d3d.setSRV( SLOT_WATER_NEAR_FALL, m_fallView );
 	// Пока время не шло (с -freezetime) — пена окна та же, что поле 0,25 м, а узор не сдвинут: материал берёт поле и плитки
 	// (снимки — как без окна)
 	m_foamTime = ( reset ? 0.0f : m_foamTime ) + elapsed;

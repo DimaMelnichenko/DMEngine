@@ -56,8 +56,7 @@ bool ParticleSystem::initialize( const std::vector<Settings>& emitters, const Te
 
 	for( const Settings& settings : emitters )
 	{
-		const bool fieldSpawn = settings.spawn == Settings::Spawn::camera || settings.spawn == Settings::Spawn::water;
-		if( fieldSpawn && !terrain )
+		if( !placed( settings ) && !terrain )
 		{
 			LOG( "Particle emitter " + settings.name + " needs a terrain, skipped" );
 			continue;
@@ -124,10 +123,12 @@ bool ParticleSystem::createEmitter( Emitter& emitter, uint32_t index )
 	if( placed( settings ) )
 		addSettingProperties( properties, particleEmitterSchema(), settings, "placed" );
 	addSettingProperties( properties, particleEmitterSchema(), settings, "" );
-	// Единица частоты и смысл радиуса — по способу рождения
+	// Единица частоты и смысл радиуса — по способу рождения (у бурления — попыток в секунду по окну у камеры, радиуса нет)
 	const bool field = settings.spawn == Settings::Spawn::camera || settings.spawn == Settings::Spawn::water;
 	properties["Rate"].setUnit( field ? "1/s per 100 m2" : "1/s" );
-	properties["Radius"].setTooltip( field ? "Field around the camera; farther particles die" : "Spawn sphere" );
+	properties["Radius"].setTooltip( field ? "Field around the camera; farther particles die" :
+									 settings.spawn == Settings::Spawn::fall ? "Not used: churn spray is born in the near flow window around the camera" :
+																			   "Spawn sphere" );
 	m_properties.addSubContainer( &properties );
 
 	// Все частицы мертвы, стек мёртвых — весь пул
@@ -221,6 +222,8 @@ void ParticleSystem::setParameters( Emitter& emitter, uint32_t index, uint32_t s
 	params.hasMask = emitter.mask ? 1 : 0;
 	params.hasTerrain = m_terrain ? 1 : 0;
 	params.viewportHeight = static_cast<float>( DMD3D::instance().backBufferHeight() );
+	params.sprayHeightMin = settings.sprayHeightMin;
+	params.sprayHeightMax = std::max( settings.sprayHeightMax, settings.sprayHeightMin );
 	Device::updateResourceData( emitter.constants, params );
 	DMD3D::instance().setConstantBuffer( 4, emitter.constants );
 }

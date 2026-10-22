@@ -124,6 +124,10 @@ private:
 	Texture m_foam[2], m_pattern[2], m_phase[2];
 	StorageView m_foamUAV[2], m_patternUAV[2], m_phaseUAV[2];
 	ShaderView m_foamView[2], m_patternView[2], m_phaseView[2];
+	// Пена падения кадра (R16F): у подошвы ступени и в котле — по ней рождаются брызги бурления (ParticleSystem, spawn fall)
+	Texture m_fall;
+	StorageView m_fallUAV;
+	ShaderView m_fallView;
 	uint32_t m_foamCurrent = 0;
 	bool m_foamReset = true;	// прошлого поля пены нет (окно заново, поля пены 0,25 м ещё нет)
 	float m_foamTime = 0.0f;	// время игры, которое пена окна шла с последнего «заново», с: 0 — она ещё — поле 0,25 м

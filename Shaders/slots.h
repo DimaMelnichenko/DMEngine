@@ -137,8 +137,11 @@
 // Фаза слоёв узора пены окна у камеры (NearWaterFlow, water_near_foam.cs): RG16F — cos и sin фазы слоя 0 (слой 1 — на
 // полпериода позже), её несёт течение вместе со смещениями узора
 #define SLOT_WATER_NEAR_PHASE	145
+// Пена падения окна у камеры (NearWaterFlow, water_near_foam.cs): R16F, та же сетка — у подошвы ступени и в котле под ней;
+// по ней рождаются брызги бурления (частицы, spawn fall)
+#define SLOT_WATER_NEAR_FALL	146
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	46
+#define SLOT_SCENE_COUNT	47
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

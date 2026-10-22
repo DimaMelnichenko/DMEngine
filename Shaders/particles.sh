@@ -25,6 +25,7 @@ static const uint particleSpawnPoint = 0;
 static const uint particleSpawnSphere = 1;
 static const uint particleSpawnCamera = 2;
 static const uint particleSpawnWater = 3;
+static const uint particleSpawnFall = 4;
 static const uint particleShapeDot = 0;
 static const uint particleShapeNeedle = 1;
 

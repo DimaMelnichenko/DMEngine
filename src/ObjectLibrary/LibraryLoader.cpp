@@ -420,7 +420,8 @@ void LibraryLoader::loadParticleEmitters( LevelDescription& level )
 		const std::string spawn = query.getColumn( "spawn" ).getString();
 		emitter.spawn = spawn == "sphere" ? GS::ParticleEmitterSettings::Spawn::sphere :
 						spawn == "camera" ? GS::ParticleEmitterSettings::Spawn::camera :
-						spawn == "water" ? GS::ParticleEmitterSettings::Spawn::water : GS::ParticleEmitterSettings::Spawn::point;
+						spawn == "water" ? GS::ParticleEmitterSettings::Spawn::water :
+						spawn == "fall"	 ? GS::ParticleEmitterSettings::Spawn::fall : GS::ParticleEmitterSettings::Spawn::point;
 		emitter.shape = query.getColumn( "shape" ).getString() == "needle" ? GS::ParticleEmitterSettings::Shape::needle :
 																			  GS::ParticleEmitterSettings::Shape::dot;
 		const std::string position = query.getColumn( "instance_position" ).getString();

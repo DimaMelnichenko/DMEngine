@@ -1,11 +1,12 @@
 """Эмиттеры частиц уровня в base.db3 (таблицы ParticleEmitters и LevelParticleEmitters, ParticleSystem, docs/particles.md).
 
-Эмиттер — ассет: где рождаются частицы (точка, шар, поле вокруг камеры по маске плотности, быстрая вода симуляции), как
+Эмиттер — ассет: где рождаются частицы (точка, шар, поле вокруг камеры по маске плотности, быстрая вода симуляции, пена
+падения в окне у камеры — брызги бурления), как
 движутся (тяжесть, сопротивление, ветер, вихри, течение) и как выглядят (пятно или хвоинка, размер, цвет, просвет).
 Экземпляр — эмиттер на уровне. add создаёт и то и другое: из готового набора (--preset) с заменой полей (--param).
 
   python Tools/particle_emitter.py list [--level Test]
-  python Tools/particle_emitter.py add ИМЯ --preset pollen|needles|spray [--position x,y,z] [--param поле=значение ...]
+  python Tools/particle_emitter.py add ИМЯ --preset pollen|needles|spray|churn [--position x,y,z] [--param поле=значение ...]
   python Tools/particle_emitter.py set ИМЯ --param поле=значение [...]
   python Tools/particle_emitter.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level Test]
 
@@ -51,6 +52,8 @@ CREATE TABLE IF NOT EXISTS ParticleEmitters (
     curl_scale REAL NOT NULL DEFAULT 4,
     water_flow REAL NOT NULL DEFAULT 0,
     water_speed REAL NOT NULL DEFAULT 1,
+    spray_height_min REAL,
+    spray_height_max REAL,
     collide INTEGER NOT NULL DEFAULT 0,
     transmission REAL NOT NULL DEFAULT 0,
     emissive REAL NOT NULL DEFAULT 0
@@ -64,7 +67,8 @@ CREATE TABLE IF NOT EXISTS LevelParticleEmitters (
 );
 """
 
-# Готовые наборы: пыльца и пух в солнце над лугом, сухая хвоя под ельником, брызги на перекатах
+# Готовые наборы: пыльца и пух в солнце над лугом, сухая хвоя под ельником, брызги на перекатах, брызги бурления у
+# подошвы ступеней и в котлах (spawn fall: попытки в секунду по окну у камеры, подлёт — spray_height_min…max)
 PRESETS = {
     'pollen': dict(spawn='camera', shape='dot', radius=20, height_min=0.3, height_max=4, mask='mask_grass', rate=15,
                    max_particles=8192, lifetime_min=8, lifetime_max=14, size_start=0.03, size_end=0.03,
@@ -78,12 +82,22 @@ PRESETS = {
                   lifetime_min=0.5, lifetime_max=1.0, size_start=0.03, size_end=0.12, color='0.9,0.95,1', alpha=0.45,
                   fade_in=0.05, fade_out=0.5, velocity='0,1.5,0', velocity_spread=0.8, gravity=9.8, drag=0.5, wind=0.1,
                   water_flow=1, water_speed=0.9, collide=1, transmission=0.5),
+    'churn': dict(spawn='fall', shape='dot', radius=0, height_min=0, height_max=0.03, rate=150000, max_particles=16384,
+                  lifetime_min=0.4, lifetime_max=0.8, size_start=0.012, size_end=0.02, color='0.95,0.97,1', alpha=0.8,
+                  fade_in=0.05, fade_out=0.2, velocity_spread=0.4, gravity=9.8, drag=0.5, wind=0.1, water_flow=1,
+                  spray_height_min=0.1, spray_height_max=0.4, collide=1, transmission=0.5),
 }
 
 
 def migrate(db):
-    """Старая заготовка частиц: таблица Particles, Levels.particles, материал Particle (5) и экземпляр неба на нём"""
+    """Старая заготовка частиц: таблица Particles, Levels.particles, материал Particle (5) и экземпляр неба на нём; новые
+    колонки эмиттера (высота брызг бурления)"""
     db.executescript(SCHEMA)
+    present = [row[1] for row in db.execute('PRAGMA table_info(ParticleEmitters)')]
+    for column in ('spray_height_min', 'spray_height_max'):
+        if column not in present:
+            db.execute('ALTER TABLE ParticleEmitters ADD COLUMN %s REAL' % column)
+            print('migrated: column ParticleEmitters.%s added' % column)
     if db.execute("SELECT 1 FROM Materials WHERE id = 5 AND class = 'Particle'").fetchone():
         sky = db.execute("SELECT id FROM Textures WHERE name = 'sky3'").fetchone()
         albedo = db.execute("SELECT id_parameter_def FROM MaterialParameterDef WHERE id_material = 2 AND param_name = 'Albedo'").fetchone()

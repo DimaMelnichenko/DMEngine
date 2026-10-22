@@ -45,6 +45,9 @@ DM_CONSTANTS( ParticleEmitterBuffer, b4 )
 	DM_FIELD( uint, hasMask );
 	DM_FIELD( uint, hasTerrain );
 	DM_FIELD( float, viewportHeight );	// пикселей кадра по вертикали — наименьший размер частицы на экране
+	DM_FIELD( float, sprayHeightMin );	// fall: брызги подлетают над водой на столько, м
+	DM_FIELD( float, sprayHeightMax );
+	DM_FIELD( float2, sprayPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

@@ -835,8 +835,9 @@ const SettingsSchema<WaterSimulationSettings::NearFlow>& waterNearFlowSchema();
 struct ParticleEmitterSettings
 {
 	// Где рождаются: в точке экземпляра, в шаре вокруг неё, на поле вокруг камеры (по маске плотности — пыльца над
-	// лугом, хвоя под ельником) или на быстрой воде симуляции (брызги на перекатах)
-	enum class Spawn { point, sphere, camera, water };
+	// лугом, хвоя под ельником), на быстрой воде симуляции (брызги на перекатах) или в окне подробного течения у камеры по
+	// пене падения — у подошвы ступени и в котле (брызги бурления)
+	enum class Spawn { point, sphere, camera, water, fall };
 	// Как выглядят: мягкое пятно к камере или узкая карточка, вытянутая вдоль скорости (хвоинка)
 	enum class Shape { dot, needle };
 
@@ -869,6 +870,8 @@ struct ParticleEmitterSettings
 	float curlScale = 4.0f;			// размер вихрей, м
 	float waterFlow = 0.0f;			// доля скорости воды симуляции под частицей
 	float waterSpeed = 1.0f;		// water: порог скорости воды, м/с
+	float sprayHeightMin = 0.1f;	// fall: брызги подлетают над водой на высоту между этими, м (скорость вверх — √(2 g h))
+	float sprayHeightMax = 0.4f;
 	bool collide = false;			// с рельефом: needle ложится, dot гибнет
 	float transmission = 0.0f;		// просвет на солнце (пыльца, пух светятся против солнца)
 	float emissive = 0.0f;			// свечение, кд/м² (светлячки)

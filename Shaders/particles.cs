@@ -4,7 +4,8 @@
 //   mainInit   — при создании: все частицы мертвы, стек мёртвых — весь пул;
 //   mainReset  — каждый кадр: команда косвенного вызова без экземпляров;
 //   mainEmit   — попытки рождения кадра: место по форме эмиттера (поле вокруг камеры — по маске плотности, быстрая
-//                вода — по полю скорости симуляции), принятая попытка берёт индекс со стека мёртвых;
+//                вода — по полю скорости симуляции, бурление — по пене падения окна у камеры), принятая попытка берёт
+//                индекс со стека мёртвых;
 //   mainUpdate — все частицы пула: тяжесть, сопротивление к скорости воздуха (ветер уровня, вихри curl noise) и воды,
 //                столкновение с рельефом и водой; умершая — на стек мёртвых, живая — в список живых и в число экземпляров
 //                косвенного вызова
@@ -101,6 +102,28 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 		if( particleRandom( state ) >= chance )
 			return;
 		position = float3( xz.x, base + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), xz.y );
+	}
+	else if( g_spawn == particleSpawnFall )
+	{
+		// Брызги бурления (Dimok, 2026-10-22): в окне у камеры, где пена падения — у подошвы ступени и в котле под ней (чаще,
+		// где её больше); подлетают над водой на высоту между sprayHeightMin и sprayHeightMax и падают обратно
+		if( g_hasTerrain == 0 || cb_waterNear.w <= 0.0f )
+			return;
+		const float side = cb_waterNear.z * cb_waterNear.w;
+		const float2 xz = cb_waterNear.xy + float2( particleRandom( state ), particleRandom( state ) ) * side;
+		const float2 uv = terrainUV( xz );
+		if( any( uv < 0.0f ) || any( uv > 1.0f ) )
+			return;
+		const WaterSample water = sampleWater( uv );
+		const float chance = water.depth > minSprayDepth ? saturate( sampleNearFall( xz ) ) : 0.0f;
+		if( particleRandom( state ) >= chance )
+			return;
+		// Поверхность окна, но не ниже той, о которую капля гибнет (земля со смещением дисплейсмента и глубина, mainUpdate):
+		// иначе над поднятым камнем она гибла бы в первом же шаге
+		const float surface = max( terrainHeight( xz ) + water.depth + sampleNearWater( xz ).x, terrainSurfacePoint( xz ).y + water.depth );
+		position = float3( xz.x, surface + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), xz.y );
+		const float height = max( lerp( g_sprayHeightMin, g_sprayHeightMax, particleRandom( state ) ), 0.0f );
+		velocity += float3( water.velocity.x * g_waterFlow, sqrt( 2.0f * max( g_gravity, 0.0f ) * height ), water.velocity.y * g_waterFlow );
 	}
 	velocity += randomDirection( state ) * g_velocitySpread * particleRandom( state );
 

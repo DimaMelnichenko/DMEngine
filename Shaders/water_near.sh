@@ -20,6 +20,8 @@ DM_SRV( Texture2D<float>, g_waterNearFoam, SLOT_WATER_NEAR_FOAM );
 DM_SRV( Texture2D<float4>, g_waterNearPattern, SLOT_WATER_NEAR_PATTERN );
 // Фаза слоёв узора (cos, sin фазы слоя 0), её несёт течение вместе со смещениями
 DM_SRV( Texture2D<float2>, g_waterNearPhase, SLOT_WATER_NEAR_PHASE );
+// Пена падения: у подошвы ступени и в котле под ней (брызги бурления — по ней)
+DM_SRV( Texture2D<float>, g_waterNearFall, SLOT_WATER_NEAR_FALL );
 
 // Слоёв смещений узора два, фазы — через полпериода. Фазу несёт течение вместе со смещениями (water_near_foam.cs): у частицы
 // воды она идёт ровно, обновление — когда она переходит через целое; у воды, входящей в окно (и у окна заново), фаза —
@@ -95,6 +97,12 @@ float2 nearPatternOffset( float cycle, uint layer )
 {
 	const uint hash = nearPatternHash( (uint)(int)cycle * 2u + layer + 0x27d4eb2fu );
 	return float2( hash & 0xffffu, hash >> 16u ) / 65536.0f;
+}
+
+// Пена падения окна в точке мира (окно должно быть: cb_waterNear.w > 0)
+float sampleNearFall( float2 worldXZ )
+{
+	return g_waterNearFall.SampleLevel( g_SamplerLinearWrap, worldXZ / ( cb_waterNear.z * cb_waterNear.w ), 0.0f );
 }
 
 // Фаза слоя 0 узора в точке мира, доля периода 0…1, — из окна (её несёт течение); fallback — если её там нет
