@@ -205,7 +205,7 @@ bool LibraryLoader::loadTerrain( uint32_t terrainId, LevelDescription& level )
 		terrain.heightMapFile = file.getColumn( "file" ).getString();
 
 	// Слои материала: albedo_tint — "r,g,b"; колонки нет или NULL — текстура как есть; displacement — м, NULL — без смещения;
-	// occlusion — сила AO, NULL — 1; role — роль в правилах слоёв, NULL — никакой
+	// occlusion — сила AO, NULL — 1; hex_rotation — доля поворота ячеек hex-tiling, NULL — 1; role — роль в правилах слоёв, NULL — никакой
 	std::vector<GS::TerrainLayerDescription>& layers = terrain.layers;
 	layers.assign( TERRAIN_MAX_LAYERS, {} );
 	if( DBConnector::instance().db().tableExists( "TerrainLayers" ) )
@@ -236,6 +236,8 @@ bool LibraryLoader::loadTerrain( uint32_t terrainId, LevelDescription& level )
 					layer.displacement = static_cast<float>( rows.getColumn( column ).getDouble() );
 				else if( name == "occlusion" )
 					layer.occlusion = static_cast<float>( rows.getColumn( column ).getDouble() );
+				else if( name == "hex_rotation" )
+					layer.hexRotation = static_cast<float>( rows.getColumn( column ).getDouble() );
 				else if( name == "role" )
 					layer.role = rows.getColumn( column ).getString();
 			}
@@ -510,7 +512,7 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 				}
 			}
 
-			// Слои материала: повтор, оттенок, дисплейсмент, затенение — по номеру слоя
+			// Слои материала: повтор, оттенок, дисплейсмент, затенение, поворот ячеек hex-tiling — по номеру слоя
 			for( uint32_t layer = 0; layer < terrain.layerTiling.size(); ++layer )
 			{
 				if( terrain.layerTiling[layer] <= 0.0f )
@@ -522,11 +524,13 @@ bool LibraryLoader::saveLevelScene( const LevelDescription& level, LevelSaveData
 				};
 				const auto displacement = [layer]( const GS::TerrainSettings& t ) { return dbFloat( layerValue( t.layerDisplacement, layer, 0.0f ) ); };
 				const auto occlusion = [layer]( const GS::TerrainSettings& t ) { return dbFloat( layerValue( t.layerOcclusion, layer, 1.0f ) ); };
+				const auto hexRotation = [layer]( const GS::TerrainSettings& t ) { return dbFloat( layerValue( t.layerHexRotation, layer, 1.0f ) ); };
 				RowUpdate update;
 				update.set( "tiling", terrain, before, tiling );
 				update.set( "albedo_tint", terrain, before, tint );
 				update.set( "displacement", terrain, before, displacement );
 				update.set( "occlusion", terrain, before, occlusion );
+				update.set( "hex_rotation", terrain, before, hexRotation );
 				update.update( db, "TerrainLayers", { { "terrain", dbInt( terrain.id ) }, { "layer", dbInt( layer ) } } );
 			}
 		}

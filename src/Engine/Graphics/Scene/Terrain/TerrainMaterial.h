@@ -68,6 +68,11 @@ public:
 	float occlusion( uint32_t layer ) const { return m_occlusion[layer]; }
 	void setOcclusion( uint32_t layer, float occlusion );
 	const std::array<DirectX::XMFLOAT4, splatSlices>& layerOcclusion() const { return m_layerOcclusion; }
+	// Доля случайного поворота ячеек стохастического повтора (TerrainLayers.hex_rotation, NULL — 1): 1 — на любой угол (трава,
+	// снег, галька), 0 — только сдвиг (слоистая скала); по слоям для шейдера — по четыре в XMFLOAT4
+	float hexRotation( uint32_t layer ) const { return m_hexRotation[layer]; }
+	void setHexRotation( uint32_t layer, float rotation );
+	const std::array<DirectX::XMFLOAT4, splatSlices>& layerHexRotation() const { return m_layerHexRotation; }
 
 private:
 private:
@@ -87,6 +92,8 @@ private:
 	std::array<DirectX::XMFLOAT4, splatSlices> m_layerDisplacement = {};
 	std::vector<float> m_occlusion;
 	std::array<DirectX::XMFLOAT4, splatSlices> m_layerOcclusion = {};
+	std::vector<float> m_hexRotation;
+	std::array<DirectX::XMFLOAT4, splatSlices> m_layerHexRotation = {};
 	std::array<DirectX::XMFLOAT4, maxLayers> m_layerTint = {};
 };
 

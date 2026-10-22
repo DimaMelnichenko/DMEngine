@@ -250,6 +250,12 @@ TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) con
 	const XMFLOAT2 farBlend = m_properties["Far blend"].data<XMFLOAT2>();
 	constants.farBlendStart = farBlend.x;
 	constants.farBlendEnd = std::max( farBlend.y, farBlend.x + 1.0f );
+	// Стохастический повтор текстур слоёв: показатель кривой контраста стыков из «Hex contrast» r (Mikkelsen, Gain3:
+	// log( 1 − r ) / log 0,5; 0,5 — 1, без кривой)
+	const float hexCell = m_properties["Hex cell"].data<float>();
+	constants.hexCell = hexCell > 0.0f ? std::max( hexCell, 0.05f ) : 0.0f;
+	constants.hexGain = std::log( 1.0f - std::clamp( m_properties["Hex contrast"].data<float>(), 0.05f, 0.95f ) ) / std::log( 0.5f );
+	constants.hexHeightWeight = std::clamp( m_properties["Hex height weight"].data<float>(), 0.0f, 0.95f );
 	// Берег озёр (terrain_layers.sh): запас берега и глубина мелководья слоёв «Shallows»
 	constants.lakeFreeboard = m_pipeline->lakeFreeboard();
 	constants.lakeShallowDepth = XMFLOAT2( m_pipeline->layerRules().lakeShallowDepth.from, m_pipeline->layerRules().lakeShallowDepth.to );
@@ -257,6 +263,7 @@ TerrainLayerConstants CDLODTerrain::layerConstants( const RenderView& view ) con
 	constants.wetBankEdge = std::max( m_pipeline->layerRules().wetBankEdge, 0.001f );
 	constants.wetRoughness = std::clamp( m_pipeline->layerRules().wetRoughness, 0.0f, 1.0f );
 	std::copy( m_pipeline->material().layerOcclusion().begin(), m_pipeline->material().layerOcclusion().end(), constants.layerOcclusion );
+	std::copy( m_pipeline->material().layerHexRotation().begin(), m_pipeline->material().layerHexRotation().end(), constants.layerHexRotation );
 	const int32_t litterLayer = m_pipeline->roleLayer( TerrainLayerRole::forestFloorBroadleaf );
 	constants.forestLitterLayer = litterLayer >= 0 && litterLayer < static_cast<int32_t>( constants.layerCount ) ? litterLayer : -1;
 	const int32_t mossLayer = m_pipeline->roleLayer( TerrainLayerRole::forestMoss );

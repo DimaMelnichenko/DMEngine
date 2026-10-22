@@ -15,6 +15,7 @@
 #include "bindless.sh"
 #include "terrain_layer_constants.h"
 #include "canopy.sh"
+#include "hex_tiling.sh"
 
 #ifndef TERRAIN_LAYERS_IN_CBUFFER
 DM_SRV( StructuredBuffer<TerrainLayerConstants>, g_terrainLayerConstants, SLOT_TERRAIN_LAYER_CONSTANTS );
@@ -371,6 +372,30 @@ float layerScale( uint layer )
 	return terrainLayers().layerScale[layer / 4][layer % 4];
 }
 
+// Доля случайного поворота ячеек hex-tiling у слоя («Layer rotation»)
+float layerHexRotation( uint layer )
+{
+	return terrainLayers().layerHexRotation[layer / 4][layer % 4];
+}
+
+// Высота слоя в проекции (uv — повторы текстуры) на мипе lod: stochastic и «Hex cell» — по ячейкам hex-tiling с теми же
+// весами, что у пикселя (addProjection в terrain_material.sh: только верхняя проекция)
+float layerProjectionHeight( uint layer, float2 uv, float lod, bool stochastic )
+{
+	const TerrainLayerConstants layers = terrainLayers();
+	[branch] if( !stochastic || layers.hexCell <= 0.0f )
+		return g_albedoHeight.SampleLevel( g_SamplerLinearWrap, float3( uv, layer ), lod ).a;
+	const HexCells cells = hexCells( uv, layers.hexCell, layerHexRotation( layer ), layer,
+									 hexSkipWeight( layers.hexHeightWeight, layers.hexGain ) );
+	float3 heights = 0.0f;
+	[unroll] for( uint k = 0; k < 3; ++k )
+	{
+		[branch] if( cells.weight[k] > 0.0f )
+			heights[k] = g_albedoHeight.SampleLevel( g_SamplerLinearWrap, float3( cells.uv[k], layer ), lod ).a;
+	}
+	return dot( hexWeights( cells, heights, layers.hexHeightWeight, layers.hexGain ), heights );
+}
+
 // Высота слоя в точке по проекциям triplanar (как addProjections в terrain.ps), мип — шагом spacing, м: без производных
 // (вершинный и compute-шейдеры), мип по шагу сетки — мельче её высота дала бы шум
 float layerHeight( uint layer, float3 position, float3 projection, float spacing )
@@ -381,11 +406,11 @@ float layerHeight( uint layer, float3 position, float3 projection, float spacing
 	const float lod = max( log2( spacing * scale * width ), 0.0f );
 	float result = 0.0f;
 	[branch] if( projection.y > 0.0f )
-		result += projection.y * g_albedoHeight.SampleLevel( g_SamplerLinearWrap, float3( position.xz * scale, layer ), lod ).a;
+		result += projection.y * layerProjectionHeight( layer, position.xz * scale, lod, true );
 	[branch] if( projection.x > 0.0f )
-		result += projection.x * g_albedoHeight.SampleLevel( g_SamplerLinearWrap, float3( float2( position.z, -position.y ) * scale, layer ), lod ).a;
+		result += projection.x * layerProjectionHeight( layer, float2( position.z, -position.y ) * scale, lod, false );
 	[branch] if( projection.z > 0.0f )
-		result += projection.z * g_albedoHeight.SampleLevel( g_SamplerLinearWrap, float3( float2( position.x, -position.y ) * scale, layer ), lod ).a;
+		result += projection.z * layerProjectionHeight( layer, float2( position.x, -position.y ) * scale, lod, false );
 	return result;
 }
 

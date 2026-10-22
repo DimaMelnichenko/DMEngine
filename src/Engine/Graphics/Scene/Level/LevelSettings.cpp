@@ -452,6 +452,17 @@ const SettingsSchema<TerrainSettings>& terrainSchema()
 		// цена второго масштаба растёт с её шириной
 		{ "far_blend_start,far_blend_end", "Far blend", DM_SETTING( farBlend ), 0.0f, 1000.0f, "m",
 		  "Distance band where the far texture scale replaces the near one: both scales are sampled along it", settingRangeControl },
+		// Стохастический повтор (hex-tiling, Mikkelsen 2022): у шестиугольной ячейки свой сдвиг и поворот UV, у стыков три ячейки
+		// смешиваются — повтор текстуры не складывается в сетку ни вблизи, ни издали; цена — до трёх выборок на текстуру вместо одной
+		{ "hex_cell", "Hex cell", DM_SETTING( hexCell ), 0.0f, 1.0f, "",
+		  "Stochastic tiling (hex-tiling): distance between the hexagonal cells, in texture repeats; each cell shifts and turns "
+		  "the texture at random (Layer rotation), so its repeat does not fold into a grid. 0 - off (one sample per texture "
+		  "instead of up to three)", settingClamp },
+		{ "hex_contrast", "Hex contrast", DM_SETTING( hexContrast ), 0.5f, 0.95f, "",
+		  "Seams between the hex cells: 0.5 - smooth blend (washed out), higher - narrower seams", settingClamp },
+		{ "hex_height_weight", "Hex height weight", DM_SETTING( hexHeightWeight ), 0.0f, 0.95f, "",
+		  "At a seam the higher texture wins (a stone over sand) by this share; 0 - by the distance to the cell centres only",
+		  settingClamp },
 		// Микротени прямого света по AO слоёв (lighting.sh): в щели между камнями солнце светит только под крутым углом
 		{ "micro_shadows", "Micro shadows", DM_SETTING( microShadows ), 0.0f, 1.0f, "",
 		  "Direct light in the crevices of the layer AO: it reaches their bottom only from steep angles (micro shadowing of "

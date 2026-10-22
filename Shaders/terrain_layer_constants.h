@@ -55,9 +55,15 @@ DM_STRUCT( TerrainLayerConstants )
 	DM_MEMBER( float, wetBankHeight );			// мокрая полоса над водой, м (bankWetness; «Wet bank height»)
 	DM_MEMBER( float, wetBankEdge );			// и её край — от мокрого к сухому на столько, м («Wet bank edge»)
 	DM_MEMBER( float, wetRoughness );			// шероховатость мокрой земли («Wet roughness»)
-	DM_MEMBER( float3, wetPadding );
+	// Стохастический повтор текстур слоёв (hex_tiling.sh): расстояние между центрами ячеек, повторов текстуры (0 — выключен,
+	// «Hex cell»), показатель кривой контраста стыков (из «Hex contrast») и доля высоты выборки в весах ячеек («Hex height weight»)
+	DM_MEMBER( float, hexCell );
+	DM_MEMBER( float, hexGain );
+	DM_MEMBER( float, hexHeightWeight );
 	// сила AO по слоям, по четыре, 0…1 (TerrainLayers.occlusion, «Layer occlusion»)
 	DM_MEMBER_ARRAY( float4, layerOcclusion, TERRAIN_SPLAT_SLICES );
+	// доля случайного поворота ячеек hex-tiling по слоям, по четыре, 0…1 (TerrainLayers.hex_rotation, «Layer rotation»)
+	DM_MEMBER_ARRAY( float4, layerHexRotation, TERRAIN_SPLAT_SLICES );
 };
 DM_STRUCT_END
 

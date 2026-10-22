@@ -202,6 +202,11 @@ struct TerrainSettings
 	float heightBlend = 0.2f;			// глубина смешения слоёв по высоте
 	float farTextureScale = 8.0f;		// второй масштаб текстур вдали (distance resampling)
 	SettingRange farBlend{ 40.0f, 120.0f };		// полоса перехода ко второму масштабу, м
+	// Стохастический повтор текстур слоёв (hex-tiling, hex_tiling.sh): расстояние между центрами ячеек, повторов текстуры (0 —
+	// выключен), контраст стыков ячеек (0,5 — плавно, больше — уже) и доля высоты выборки в весах ячеек
+	float hexCell = 0.3f;
+	float hexContrast = 0.75f;
+	float hexHeightWeight = 0.6f;
 	SettingRange displacement{ 12.0f, 24.0f };	// дисплейсмент: полный ближе from, м, к to — нет (to 0 — выключен)
 	float microShadows = 1.0f;			// микротени прямого света по AO слоёв, 0…1
 	// Мокрая земля темнее: альбедо × это при полной мокрости (вода в порах — свет уходит вглубь и поглощается, Lekner, Dorf
@@ -219,6 +224,7 @@ struct TerrainSettings
 	std::vector<DirectX::XMFLOAT3> layerTint;	// множитель альбедо по номеру слоя (TerrainLayers.albedo_tint)
 	std::vector<float> layerDisplacement;		// размах дисплейсмента по номеру слоя, м (TerrainLayers.displacement)
 	std::vector<float> layerOcclusion;			// сила AO по номеру слоя, 0…1 (TerrainLayers.occlusion)
+	std::vector<float> layerHexRotation;		// доля случайного поворота ячеек hex-tiling по номеру слоя, 0…1 (TerrainLayers.hex_rotation)
 	std::optional<TerrainErosionSettings> erosion;	// строка TerrainErosion — правки подокна «Erosion»
 	TerrainLayerRules layerRules;					// строка TerrainLayerRules — правки подокна «Layer rules»
 	std::vector<TerrainPaintTile> paint;			// мазки кисти — строки TerrainPaint террейна
@@ -229,7 +235,7 @@ struct TerrainSettings
 const SettingsSchema<TerrainSettings>& terrainSchema();
 
 // Слой материала террейна — строка TerrainLayers (номер слоя — место в TerrainDescription::layers): файлы альбедо с высотой и
-// нормали, метров на повтор, множитель альбедо, размах дисплейсмента, м, сила AO и роль в правилах слоёв (TerrainLayers.role,
+// нормали, метров на повтор, множитель альбедо, размах дисплейсмента, м, сила AO, доля поворота ячеек hex-tiling и роль в правилах слоёв (TerrainLayers.role,
 // TerrainLayerRole; пусто — никакой). Пустые файлы — слой не описан, вместо текстур заглушки
 struct TerrainLayerDescription
 {
@@ -240,6 +246,7 @@ struct TerrainLayerDescription
 	DirectX::XMFLOAT3 tint = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );
 	float displacement = 0.0f;
 	float occlusion = 1.0f;
+	float hexRotation = 1.0f;
 	std::string role;
 };
 

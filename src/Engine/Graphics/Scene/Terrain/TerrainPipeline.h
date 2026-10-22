@@ -53,7 +53,7 @@ public:
 	bool initialize( const TerrainDescription& terrain, const std::vector<TerrainEdit>& edits = {},
 					 const WaterSimulationSettings* water = nullptr, const TerrainErosionSettings* erosion = nullptr,
 					 const TerrainLayerRules& layerRules = {} );
-	// Части окна террейна: слои материала («Layer tiling», «Layer tint», «Layer displacement», «Layer occlusion»), «Erosion»,
+	// Части окна террейна: слои материала («Layer tiling», «Layer tint», «Layer displacement», «Layer occlusion», «Layer rotation»), «Erosion»,
 	// «Layer rules» — подокна window; мазки кисти — данные уровня: отмечают window изменённым до «Save level»
 	void attachWindow( PropertyContainer& window );
 	// Множитель высоты из окна террейна (Terrain.height_multiplier) — вживую: запросы высоты, ресурсы и отрисовка; ступени
@@ -321,6 +321,7 @@ private:
 	PropertyContainer m_layerTintProperties;	// «Layer tint»: множитель альбедо по слоям (TerrainLayers.albedo_tint)
 	PropertyContainer m_layerDisplacementProperties;	// «Layer displacement»: размах смещения по слоям (TerrainLayers.displacement)
 	PropertyContainer m_layerOcclusionProperties;		// «Layer occlusion»: сила AO по слоям (TerrainLayers.occlusion)
+	PropertyContainer m_layerRotationProperties;		// «Layer rotation»: поворот ячеек hex-tiling по слоям (TerrainLayers.hex_rotation)
 	Texture m_heightMapTexture;	// копия t_heightmap в R32_FLOAT с правками рельефа и полной цепочкой мипов
 	ShaderView m_heightMap;
 	uint32_t m_heightRevision = 0;	// TerrainHeight::revision: растёт с каждой новой итоговой картой

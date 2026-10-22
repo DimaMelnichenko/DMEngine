@@ -138,6 +138,7 @@ void TerrainPipeline::attachWindow( PropertyContainer& window )
 	window.addSubContainer( &m_layerTintProperties );
 	window.addSubContainer( &m_layerDisplacementProperties );
 	window.addSubContainer( &m_layerOcclusionProperties );
+	window.addSubContainer( &m_layerRotationProperties );
 	if( m_erosion )
 		window.addSubContainer( &m_erosionProperties );
 	window.addSubContainer( &m_layerRulesProperties );
@@ -195,6 +196,20 @@ void TerrainPipeline::addLayerProperties()
 		prop->setTooltip( "Ambient occlusion of the layer texture: 1 - as baked, 0 - none. Darkens the sky light in the crevices "
 						  "and, with Micro shadows, the sun" );
 	}
+	// Поворот ячеек стохастического повтора (TerrainLayers.hex_rotation): у слоистой скалы слои не должны вставать наискось
+	m_layerRotationProperties.setName( "Layer rotation" );
+	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
+	{
+		if( m_material.layerName( layer ).empty() )
+			continue;
+		prop = m_layerRotationProperties.insert( std::to_string( layer ) + ": " + m_material.layerName( layer ),
+												 m_material.hexRotation( layer ) );
+		prop->setLow( 0.0f );
+		prop->setHigh( 1.0f );
+		prop->setControlType( GUIControlType::SLIDER );
+		prop->setTooltip( "Random turn of the texture in the hex cells (Hex cell of the terrain window): 1 - any angle (grass, snow, "
+						  "pebbles), 0 - shift only (layered rock keeps its strata level)" );
+	}
 }
 
 TerrainHeight TerrainPipeline::terrainHeight() const
@@ -240,6 +255,8 @@ void TerrainPipeline::update( const FrameContext& frame )
 			m_material.setDisplacement( layer, m_layerDisplacementProperties[name].data<float>() );
 		if( m_layerOcclusionProperties.exists( name ) )
 			m_material.setOcclusion( layer, m_layerOcclusionProperties[name].data<float>() );
+		if( m_layerRotationProperties.exists( name ) )
+			m_material.setHexRotation( layer, m_layerRotationProperties[name].data<float>() );
 	}
 	// Мазок тонкой сетки — плитки детального слоя весов раз в кадр, splat-карта — не чаще 10 раз в секунду
 	flushPaint( false );
@@ -325,6 +342,7 @@ void TerrainPipeline::settings( TerrainSettings& settings ) const
 	settings.layerTint.assign( m_material.layerCount(), XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
 	settings.layerDisplacement.assign( m_material.layerCount(), 0.0f );
 	settings.layerOcclusion.assign( m_material.layerCount(), 1.0f );
+	settings.layerHexRotation.assign( m_material.layerCount(), 1.0f );
 	for( uint32_t layer = 0; layer < m_material.layerCount(); ++layer )
 		if( !m_material.layerName( layer ).empty() )
 		{
@@ -332,6 +350,7 @@ void TerrainPipeline::settings( TerrainSettings& settings ) const
 			settings.layerTint[layer] = m_material.tint( layer );
 			settings.layerDisplacement[layer] = m_material.displacement( layer );
 			settings.layerOcclusion[layer] = m_material.occlusion( layer );
+			settings.layerHexRotation[layer] = m_material.hexRotation( layer );
 		}
 	if( m_erosion )
 		readSettingProperties( m_erosionProperties, terrainErosionSchema(), settings.erosion.emplace( *m_erosion ) );

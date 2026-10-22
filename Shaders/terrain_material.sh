@@ -26,13 +26,49 @@ struct LayerSample
 };
 
 // tangent и bitangent — направления роста u и v проекции в мире. Отклонение нормали добавляется к нормали рельефа
-// в плоскости проекции (UDN): для плоского участка это обычный normal mapping
-void addProjection( inout LayerSample result, float weight, float layer, float2 uv, float2 uvDX, float2 uvDY,
-					float3 tangent, float3 bitangent )
+// в плоскости проекции (UDN): для плоского участка это обычный normal mapping. stochastic и «Hex cell» — стохастический
+// повтор (hex_tiling.sh): обе текстуры у трёх ячеек, производные UV — поворотом ячейки, отклонение нормали — обратно в UV,
+// веса ячеек — по высотам их выборок (те же, что у дисплейсмента, layerProjectionHeight)
+void addProjection( inout LayerSample result, float weight, uint layer, float2 uv, float2 uvDX, float2 uvDY,
+					float3 tangent, float3 bitangent, bool stochastic )
 {
-	float4 albedoHeight = g_albedoHeight.SampleGrad( g_SamplerAnisotropicWrap, float3( uv, layer ), uvDX, uvDY );
-	float4 normalRoughness = g_normalRoughness.SampleGrad( g_SamplerAnisotropicWrap, float3( uv, layer ), uvDX, uvDY );
-	float2 slope = normalRoughness.xy * 2.0f - 1.0f;
+	const TerrainLayerConstants layers = terrainLayers();
+	float4 albedoHeight = 0.0f;
+	float4 normalRoughness = 0.0f;
+	float2 slope = 0.0f;
+	[branch] if( !stochastic || layers.hexCell <= 0.0f )
+	{
+		albedoHeight = g_albedoHeight.SampleGrad( g_SamplerAnisotropicWrap, float3( uv, layer ), uvDX, uvDY );
+		normalRoughness = g_normalRoughness.SampleGrad( g_SamplerAnisotropicWrap, float3( uv, layer ), uvDX, uvDY );
+		slope = normalRoughness.xy * 2.0f - 1.0f;
+	}
+	else
+	{
+		const HexCells cells = hexCells( uv, layers.hexCell, layerHexRotation( layer ), layer,
+										 hexSkipWeight( layers.hexHeightWeight, layers.hexGain ) );
+		float4 cellAlbedo[3];
+		float4 cellNormal[3];
+		[unroll] for( uint k = 0; k < 3; ++k )
+		{
+			cellAlbedo[k] = 0.0f;
+			cellNormal[k] = 0.5f;
+			[branch] if( cells.weight[k] > 0.0f )
+			{
+				const float2 dx = hexRotate( uvDX, cells.rotation[k] );
+				const float2 dy = hexRotate( uvDY, cells.rotation[k] );
+				cellAlbedo[k] = g_albedoHeight.SampleGrad( g_SamplerAnisotropicWrap, float3( cells.uv[k], layer ), dx, dy );
+				cellNormal[k] = g_normalRoughness.SampleGrad( g_SamplerAnisotropicWrap, float3( cells.uv[k], layer ), dx, dy );
+			}
+		}
+		const float3 w = hexWeights( cells, float3( cellAlbedo[0].a, cellAlbedo[1].a, cellAlbedo[2].a ), layers.hexHeightWeight,
+									 layers.hexGain );
+		[unroll] for( uint n = 0; n < 3; ++n )
+		{
+			albedoHeight += cellAlbedo[n] * w[n];
+			normalRoughness += cellNormal[n] * w[n];
+			slope += hexToUV( cellNormal[n].xy * 2.0f - 1.0f, cells.rotation[n] ) * w[n];
+		}
+	}
 
 	result.albedo += albedoHeight.rgb * weight;
 	result.height += albedoHeight.a * weight;
@@ -42,7 +78,9 @@ void addProjection( inout LayerSample result, float weight, float layer, float2 
 }
 
 // Проекции слоя с повтором scale (повторов на метр), вклад — с весом weight.
-// Производные позиции считаются до ветвлений: внутри них неявные производные не определены, поэтому SampleGrad
+// Производные позиции считаются до ветвлений: внутри них неявные производные не определены, поэтому SampleGrad.
+// Стохастический повтор — только у верхней проекции: ею покрыты луга и склоны до ~40°, где повтор и складывается в сетку;
+// у боковых (обрывы) он удвоил бы цену (склон во весь кадр: +0,48 мс вместо +0,2), а на глаз почти не меняет
 void addProjections( inout LayerSample result, float weight, uint layer, float scale, float3 position, float3 positionDX,
 					 float3 positionDY, float3 projection )
 {
@@ -50,21 +88,21 @@ void addProjections( inout LayerSample result, float weight, uint layer, float s
 	[branch] if( projection.y > 0.0f )
 	{
 		addProjection( result, projection.y * weight, layer, position.xz * scale, positionDX.xz * scale, positionDY.xz * scale,
-					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, 0.0f, 1.0f ) );
+					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, 0.0f, 1.0f ), true );
 	}
 	// Вдоль X: u вдоль Z, v вниз по Y, чтобы верх текстуры смотрел вверх
 	[branch] if( projection.x > 0.0f )
 	{
 		addProjection( result, projection.x * weight, layer, float2( position.z, -position.y ) * scale,
 					   float2( positionDX.z, -positionDX.y ) * scale, float2( positionDY.z, -positionDY.y ) * scale,
-					   float3( 0.0f, 0.0f, 1.0f ), float3( 0.0f, -1.0f, 0.0f ) );
+					   float3( 0.0f, 0.0f, 1.0f ), float3( 0.0f, -1.0f, 0.0f ), false );
 	}
 	// Вдоль Z: u вдоль X, v вниз по Y
 	[branch] if( projection.z > 0.0f )
 	{
 		addProjection( result, projection.z * weight, layer, float2( position.x, -position.y ) * scale,
 					   float2( positionDX.x, -positionDX.y ) * scale, float2( positionDY.x, -positionDY.y ) * scale,
-					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, -1.0f, 0.0f ) );
+					   float3( 1.0f, 0.0f, 0.0f ), float3( 0.0f, -1.0f, 0.0f ), false );
 	}
 }
 

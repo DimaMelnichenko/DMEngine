@@ -357,6 +357,15 @@ void TerrainMaterial::setOcclusion( uint32_t layer, float occlusion )
 	slice[layer % 4] = m_occlusion[layer];
 }
 
+void TerrainMaterial::setHexRotation( uint32_t layer, float rotation )
+{
+	if( layer >= m_layerCount )
+		return;
+	m_hexRotation[layer] = std::clamp( rotation, 0.0f, 1.0f );
+	float* slice = &m_layerHexRotation[layer / 4].x;
+	slice[layer % 4] = m_hexRotation[layer];
+}
+
 float TerrainMaterial::maxDisplacement() const
 {
 	float result = 0.0f;
@@ -379,6 +388,8 @@ bool TerrainMaterial::initialize( const std::vector<TerrainLayerDescription>& la
 	m_layerDisplacement.fill( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
 	m_occlusion.assign( m_layerCount, 1.0f );
 	m_layerOcclusion.fill( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
+	m_hexRotation.assign( m_layerCount, 1.0f );
+	m_layerHexRotation.fill( XMFLOAT4( 0.0f, 0.0f, 0.0f, 0.0f ) );
 	for( uint32_t i = 0; i < m_layerCount; ++i )
 	{
 		albedoFiles.push_back( layers[i].albedo );
@@ -388,6 +399,7 @@ bool TerrainMaterial::initialize( const std::vector<TerrainLayerDescription>& la
 		setTint( i, layers[i].tint );
 		setDisplacement( i, layers[i].displacement );
 		setOcclusion( i, layers[i].occlusion );
+		setHexRotation( i, layers[i].hexRotation );
 	}
 
 	// Шаги прогресса загрузки — splat-карта и два массива слоёв (по файлу на шаг — buildArray)
