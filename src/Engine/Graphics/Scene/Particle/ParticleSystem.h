@@ -74,7 +74,7 @@ private:
 	};
 
 	// Байт буфера состояния (Shaders/particles.sh): 24 — команда, 4 — число команд, 4 — вершина стека мёртвых
-	static constexpr uint32_t stateBytes = 32;
+	static constexpr uint32_t stateBytes = 36;
 	static constexpr uint32_t particleBytes = 48;
 
 	bool createEmitter( Emitter& emitter, uint32_t index );
@@ -91,6 +91,7 @@ private:
 	ComputeShader m_resetShader;
 	ComputeShader m_emitShader;
 	ComputeShader m_updateShader;
+	ComputeShader m_finishShader;	// drawPool: команда — пул с наименьшего живого индекса
 	ShaderProgram m_program;
 	int m_phase = -1;
 	GridMesh m_quad;

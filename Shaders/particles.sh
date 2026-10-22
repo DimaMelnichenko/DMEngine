@@ -34,10 +34,12 @@ static const float particleSurfaced = 0.5f;
 
 // Байты буфера состояния эмиттера (ParticleSystem::stateBytes): команда ExecuteIndirect {root-константа b9,
 // IndexCountPerInstance, InstanceCount — живых, StartIndexLocation, BaseVertexLocation, StartInstanceLocation}, число
-// команд и число мёртвых
+// команд, число мёртвых и наименьший индекс живой частицы в пуле (drawPool: рисуется пул с него до конца — места берутся
+// с вершины стека мёртвых, то есть с конца пула; root-константа b9 — этот индекс)
 static const uint particleStateInstances = 8;
 static const uint particleStateCommandCount = 24;
 static const uint particleStateDead = 28;
+static const uint particleStateFirstAlive = 32;
 
 #include "particle_emitter_constants.h"
 
@@ -59,6 +61,16 @@ float particleRandom( inout uint state )
 }
 
 // Видимость частицы по жизни: появление и угасание долями жизни
+// Размер частицы, м: с рождения — от birthSize до sizeStart за growTime (появление бурления — рост клочка, Dimok:
+// «увеличение с 1 см до 20 см за 300 мс»), дальше до конца жизни — к sizeEnd; × случайная доля частицы
+float particleSize( Particle particle )
+{
+	const float grow = min( g_growTime, particle.lifetime * 0.9f );
+	const float size = particle.age < grow ? lerp( g_birthSize, g_sizeStart, particle.age / max( grow, 1e-4f ) ) :
+											 lerp( g_sizeStart, g_sizeEnd, saturate( ( particle.age - grow ) / max( particle.lifetime - grow, 1e-4f ) ) );
+	return size * particle.size;
+}
+
 float particleFade( Particle particle )
 {
 	const float t = saturate( particle.age / max( particle.lifetime, 1e-4f ) );

@@ -1042,7 +1042,7 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 		{ "rate", "Rate", DM_SETTING( rate ), 0.0f, 10.0f, "1/s", "", settingClampLow | settingWideHigh },
 		{ "radius", "Radius", DM_SETTING( radius ), 0.0f, 10.0f, "m", "", settingClampLow | settingWideHigh },
 		{ "height_min", "Height min", DM_SETTING( heightMin ), -10.0f, 50.0f, "m",
-		  "Above the terrain (camera), the water surface (water) or the plunge pool bottom (fall)" },
+		  "Above the terrain (camera) or the water surface (water, fall; below zero for fall - born under water and rises)" },
 		{ "height_max", "Height max", DM_SETTING( heightMax ), -10.0f, 50.0f, "m" },
 		// Маска, спрайт и ёмкость пула задают ресурсы эмиттера — только в базе
 		{ "mask", nullptr, DM_SETTING( mask ) },
@@ -1052,6 +1052,9 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 		{ "lifetime_max", "Lifetime max", DM_SETTING( lifetimeMax ), 0.0f, 10.0f, "s", "", settingClampLow | settingWideHigh },
 		{ "size_start", "Size start", DM_SETTING( sizeStart ), 0.001f, 0.1f, "m", "", settingWideHigh },
 		{ "size_end", "Size end", DM_SETTING( sizeEnd ), 0.001f, 0.1f, "m", "", settingWideHigh },
+		{ "grow_time", "Grow time", DM_SETTING( growTime ), 0.0f, 2.0f, "s",
+		  "From birth the size grows from Birth size to Size start in this time (0 - Size start at once), then to Size end" },
+		{ "birth_size", "Birth size", DM_SETTING( birthSize ), 0.0f, 0.1f, "m", "", settingWideHigh },
 		{ "color", "Color", DM_SETTING( color ), 0.0f, 0.0f, "", "", settingColor },
 		{ "alpha", "Alpha", DM_SETTING( alpha ), 0.0f, 1.0f },
 		{ "fade_in", "Fade in", DM_SETTING( fadeIn ), 0.0f, 1.0f, "", "Share of the life" },
@@ -1066,14 +1069,16 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 		{ "water_flow", "Water flow", DM_SETTING( waterFlow ), 0.0f, 2.0f, "", "Share of the water velocity under the particle" },
 		{ "water_speed", "Water speed", DM_SETTING( waterSpeed ), 0.0f, 5.0f, "m/s", "Spawn on water faster than this" },
 		{ "spray_height_min", "Spray height min", DM_SETTING( sprayHeightMin ), 0.0f, 0.5f, "m",
-		  "Churn (spawn fall): born at the plunge pool bottom (Height min..max above it), it rises (Velocity y) up to this height "
-		  "over the water at least and drifts there with the flow" },
+		  "Churn (spawn fall): it floats this height over its float level at least (born under water - rises there with Velocity y) "
+		  "and drifts there with the flow" },
 		{ "spray_height_max", "Spray height max", DM_SETTING( sprayHeightMax ), 0.0f, 0.5f, "m", "And at most" },
 		{ "self_shadow", "Self shadow", DM_SETTING( selfShadow ), 0.0f, 10.0f, "",
 		  "Froth with a sprite: density of its mass for the sun - the side away from the sun is shaded (0 - none)" },
 		{ "sink", "Sink", DM_SETTING( sink ), 0.0f, 1.5f, "",
 		  "Churn (spawn fall): a surfaced clump keeps its centre this share of its half size below the water (the clump faces the "
 		  "camera: 0 - centre on the water, 1 - top on the water), at most half the water depth down" },
+		{ "hold", "Hold", DM_SETTING( hold ), 0.0f, 3.0f, "s",
+		  "Churn (spawn fall): for this long after birth the flow does not carry the clump - it stays at the foot of the fall" },
 		{ "flatten", "Flatten", DM_SETTING( flatten ), 0.05f, 1.0f, "",
 		  "Froth: the clump is squashed vertically to this share (a churning mass is wide and low; 1 - the camera-facing quad as is)",
 		  settingClamp },

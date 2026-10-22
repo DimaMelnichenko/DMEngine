@@ -39,6 +39,7 @@ bool ParticleSystem::initialize( const std::vector<Settings>& emitters, const Te
 		!m_resetShader.initialize( "Shaders\\particles.cs", "mainReset" ) ||
 		!m_emitShader.initialize( "Shaders\\particles.cs", "mainEmit" ) ||
 		!m_updateShader.initialize( "Shaders\\particles.cs", "mainUpdate" ) ||
+		!m_finishShader.initialize( "Shaders\\particles.cs", "mainFinish" ) ||
 		!d3d.createShaderConstantBuffer( sizeof( TerrainHeightBuffer ), m_terrainBuffer ) )
 		return false;
 
@@ -237,6 +238,9 @@ void ParticleSystem::setParameters( Emitter& emitter, uint32_t index, uint32_t s
 	params.sink = std::max( settings.sink, 0.0f );
 	params.drawPool = settings.shape == Settings::Shape::froth ? 1 : 0;
 	params.flatten = std::clamp( settings.flatten, 0.05f, 1.0f );
+	params.hold = std::max( settings.hold, 0.0f );
+	params.growTime = std::max( settings.growTime, 0.0f );
+	params.birthSize = std::max( settings.birthSize, 0.0f );
 	Device::updateResourceData( emitter.constants, params );
 	DMD3D::instance().setConstantBuffer( 4, emitter.constants );
 }
@@ -315,6 +319,11 @@ void ParticleSystem::compute( const FrameContext& frame )
 		}
 		bind();
 		m_updateShader.dispatchGroups( groups( emitter.capacity ), 1, 1 );
+		if( emitter.settings.shape == Settings::Shape::froth )
+		{
+			bind();
+			m_finishShader.dispatchGroups( 1, 1, 1 );
+		}
 		// Дальше частицы, список живых и команда только читаются (проход transparent): барьеры — в очередь, группой в
 		// начале следующего прохода (DMD3D::prepareShaderRead)
 		d3d.prepareShaderRead( emitter.particlesView );
@@ -357,11 +366,9 @@ void ParticleSystem::renderCustom( const RenderContext& context )
 		d3d.setSRV( SLOT_INSTANCE_DATA, emitter.aliveView );
 		if( emitter.sprite )
 			d3d.setSRV( 1, *emitter.sprite );
-		// Клочки взбитой воды — весь пул по порядку (стабильный порядок смешивания, particles.vs), остальные — живые кадра
-		if( emitter.settings.shape == Settings::Shape::froth )
-			d3d.drawIndexedInstanced( m_quad.indexCount(), emitter.capacity, 0, 0 );
-		else
-			d3d.drawIndexedInstancedIndirectCount( emitter.state, 0, 1, emitter.state, 24 );
+		// Клочки взбитой воды — пул по порядку с наименьшего живого индекса (стабильный порядок смешивания, команду пишет
+		// mainFinish), остальные — живые кадра
+		d3d.drawIndexedInstancedIndirectCount( emitter.state, 0, 1, emitter.state, 24 );
 	}
 }
 

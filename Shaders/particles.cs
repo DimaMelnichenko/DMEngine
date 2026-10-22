@@ -8,7 +8,8 @@
 //                индекс со стека мёртвых;
 //   mainUpdate — все частицы пула: тяжесть, сопротивление к скорости воздуха (ветер уровня, вихри curl noise) и воды,
 //                столкновение с рельефом и водой; умершая — на стек мёртвых, живая — в список живых и в число экземпляров
-//                косвенного вызова
+//                косвенного вызова (drawPool — наименьший индекс живой);
+//   mainFinish — drawPool: команда — пул с наименьшего живого индекса до конца (по порядку пула)
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
@@ -43,6 +44,15 @@ void mainReset()
 	g_state.Store4( 4, uint4( 6, 0, 0, 0 ) );
 	g_state.Store( 20, 0 );
 	g_state.Store( particleStateCommandCount, 1 );
+	g_state.Store( particleStateFirstAlive, g_capacity );
+}
+
+[numthreads( 1, 1, 1 )]
+void mainFinish()
+{
+	const uint first = g_state.Load( particleStateFirstAlive );
+	g_state.Store( 0, first );
+	g_state.Store( particleStateInstances, g_capacity - min( first, g_capacity ) );
 }
 
 static const float minSprayDepth = 0.01f;	// м: мельче — брызгам не из чего родиться
@@ -72,6 +82,8 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 	// Место рождения — до того, как брать индекс: отвергнутая попытка пул не трогает
 	float3 position = g_origin;
 	float3 velocity = g_velocity;
+	bool spawnSurfaced = false;	// бурление, рождённое на поверхности: сразу всплывшее
+	float spawnDepth = 0.0f;		// и глубина воды под ним, м
 	if( g_spawn == particleSpawnSphere )
 		position += randomDirection( state ) * g_radius * pow( particleRandom( state ), 1.0f / 3.0f );
 	else if( g_spawn == particleSpawnCamera || g_spawn == particleSpawnWater )
@@ -106,8 +118,9 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 	else if( g_spawn == particleSpawnFall )
 	{
 		// Бурление (Dimok, 2026-10-22): в окне у камеры, где бурление падения — у подошвы ступени и в котле под ней (чаще,
-		// где его больше); рождается у дна котла (height_min…height_max над ним), всплывает (скорость — velocity.y) до
-		// sprayHeightMin…sprayHeightMax над водой и тянется там с течением (mainUpdate)
+		// где его больше); рождается на поверхности (height_min…height_max — над ней; ниже нуля — под водой, и тогда
+		// всплывает со скоростью velocity.y) и тянется с течением (mainUpdate). Сначала рождалось у дна котла и всплывало —
+		// Dimok: «пусть всё же квады рождаются на поверхности»
 		if( g_hasTerrain == 0 || cb_waterNear.w <= 0.0f )
 			return;
 		const float side = cb_waterNear.z * cb_waterNear.w;
@@ -124,7 +137,9 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 		const float ground = terrainSurfacePoint( xz ).y;
 		if( ground > surface - 0.01f )
 			return;
-		position = float3( xz.x, min( ground + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), surface - 0.01f ), xz.y );
+		position = float3( xz.x, max( surface + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), ground + 0.01f ), xz.y );
+		spawnSurfaced = g_heightMin >= 0.0f;
+		spawnDepth = max( surface - terrainHeight( xz ), 0.0f );
 	}
 	velocity += randomDirection( state ) * g_velocitySpread * particleRandom( state );
 
@@ -145,8 +160,11 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 	particle.lifetime = lerp( g_lifetimeMin, g_lifetimeMax, particleRandom( state ) );
 	particle.size = lerp( 0.7f, 1.0f, particleRandom( state ) );
 	particle.seed = state;
-	particle.landed = 0.0f;
-	particle.surface = position.y;
+	particle.landed = spawnSurfaced ? particleSurfaced : 0.0f;
+	// Рождённое на поверхности — сразу на своём уровне всплытия (ниже воды на sink, как в mainUpdate), без скачка вниз
+	if( spawnSurfaced )
+		particle.position.y -= min( g_sink * 0.5f * particleSize( particle ), 0.5f * spawnDepth );
+	particle.surface = particle.position.y;
 	g_particles[index] = particle;
 }
 
@@ -204,7 +222,7 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 		// всплывают»), но не глубже половины глубины: котёл — 10–15 см, и ниже клочок уходил в дно и гас по мягкому краю
 		if( g_spawn == particleSpawnFall && waterDepth > 0.0f )
 		{
-			const float size = lerp( g_sizeStart, g_sizeEnd, saturate( particle.age / max( particle.lifetime, 1e-4f ) ) ) * particle.size;
+			const float size = particleSize( particle );
 			const float lift = nearWaterWeight( particle.position.xz ) > 0.0f ? sampleNearWater( particle.position.xz ).x : 0.0f;
 			particle.surface = terrainHeight( particle.position.xz ) + waterDepth + lift -
 							   min( g_sink * 0.5f * size, 0.5f * max( waterDepth + lift, 0.0f ) );
@@ -229,13 +247,14 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 		{
 			uint state = particle.seed ^ 0x51ed270bu;
 			top = particle.surface + lerp( g_sprayHeightMin, g_sprayHeightMax, particleRandom( state ) );
-			// Ветер на бурление не действует (оно — вода): всплывшее несёт только течение
+			// Ветер на бурление не действует (оно — вода): всплывшее несёт только течение, и не раньше «Hold» с рождения —
+			// клочок сперва стоит на месте у подошвы (Dimok, 2026-10-22: «задержка полсекунды»)
 			if( particle.landed < particleSurfaced && particle.position.y < top - 0.002f )
 				target = float3( 0.0f, g_velocity.y, 0.0f );
 			else
 			{
 				particle.landed = particleSurfaced;
-				target = float3( waterVelocity.x, 0.0f, waterVelocity.y ) * g_waterFlow;
+				target = particle.age < g_hold ? 0.0f : float3( waterVelocity.x, 0.0f, waterVelocity.y ) * g_waterFlow;
 			}
 		}
 		particle.velocity += ( target - particle.velocity ) * ( 1.0f - exp( -g_drag * dt ) );
@@ -284,6 +303,11 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 		return;
 	}
 	g_particles[id.x] = particle;
+	if( g_drawPool != 0 )
+	{
+		g_state.InterlockedMin( particleStateFirstAlive, id.x );
+		return;
+	}
 	uint slot;
 	g_state.InterlockedAdd( particleStateInstances, 1u, slot );
 	g_alive[slot] = id.x;

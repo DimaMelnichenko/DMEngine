@@ -12,6 +12,12 @@
 DM_SRV( StructuredBuffer<Particle>, g_particles, 0 );
 DM_SRV( StructuredBuffer<uint>, g_alive, SLOT_INSTANCE_DATA );
 
+// Root-константы вызова из команды (mainFinish): x — наименьший индекс живой частицы в пуле (drawPool)
+cbuffer DrawConstants : register( SLOT_CB_DRAW )
+{
+	uint4 g_drawConstants;
+};
+
 struct VertexInputType
 {
 	float3 position : POSITION;		// (0 | 1, 0, 0 | 1)
@@ -47,14 +53,13 @@ static const float needleWidth = 0.15f;	// ширина хвоинки — до�
 
 ParticlePixelInput main( VertexInputType input )
 {
-	// Клочки взбитой воды (froth) — весь пул по порядку: место частицы в пуле не меняется всю её жизнь, и порядок
-	// смешивания перекрывающихся полупрозрачных клочков тот же от кадра к кадру. Список живых собирает атомарный счётчик —
-	// его порядок каждый кадр свой, и масса бурления «перетасовывалась»: клочки дёргались и пропадали (Dimok, 2026-10-22;
-	// соседние кадры различались на 20 из 255 против 3,7 без бурления)
-	const Particle particle = g_particles[g_drawPool != 0 ? input.instanceId : g_alive[input.instanceId]];
+	// Клочки взбитой воды (froth) — пул по порядку (с наименьшего живого индекса до конца): место частицы в пуле не
+	// меняется всю её жизнь, и порядок смешивания перекрывающихся полупрозрачных клочков тот же от кадра к кадру. Список
+	// живых собирает атомарный счётчик — его порядок каждый кадр свой, и масса бурления «перетасовывалась»: клочки
+	// дёргались и пропадали (Dimok, 2026-10-22; соседние кадры различались на 20 из 255 против 3,7 без бурления)
+	const Particle particle = g_particles[g_drawPool != 0 ? g_drawConstants.x + input.instanceId : g_alive[input.instanceId]];
 	const float2 corner = input.position.xz * 2.0f - 1.0f;
-	const float t = saturate( particle.age / max( particle.lifetime, 1e-4f ) );
-	const float size = lerp( g_sizeStart, g_sizeEnd, t ) * particle.size;
+	const float size = particleSize( particle );
 	const float3 toCamera = cb_cameraPosition - particle.position;
 	const float distance = max( length( toCamera ), 1e-3f );
 	const float3 view = toCamera / distance;
@@ -134,7 +139,7 @@ ParticlePixelInput main( VertexInputType input )
 	ParticlePixelInput output = (ParticlePixelInput)0;
 	if( particle.age >= particle.lifetime )
 	{
-		// Мёртвая (весь пул): вырожденный треугольник за кадром
+		// Мёртвая (пул по порядку): вырожденный треугольник за кадром
 		output.position = float4( 2.0f, 2.0f, 2.0f, 1.0f );
 		return output;
 	}

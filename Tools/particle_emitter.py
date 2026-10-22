@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS ParticleEmitters (
     core_occlusion REAL,
     sink REAL,
     flatten REAL,
+    hold REAL,
+    grow_time REAL,
+    birth_size REAL,
     collide INTEGER NOT NULL DEFAULT 0,
     transmission REAL NOT NULL DEFAULT 0,
     emissive REAL NOT NULL DEFAULT 0
@@ -88,10 +91,10 @@ PRESETS = {
                   lifetime_min=0.5, lifetime_max=1.0, size_start=0.03, size_end=0.12, color='0.9,0.95,1', alpha=0.45,
                   fade_in=0.05, fade_out=0.5, velocity='0,1.5,0', velocity_spread=0.8, gravity=9.8, drag=0.5, wind=0.1,
                   water_flow=1, water_speed=0.9, collide=1, transmission=0.5),
-    'churn': dict(spawn='fall', shape='froth', sprite='water_splash', radius=0, height_min=0.02, height_max=0.08,
-                  rate=400000, max_particles=65536, lifetime_min=0.6, lifetime_max=1.0, size_start=0.4, size_end=0.2,
-                  color='0.95,0.97,1', alpha=0.7, fade_in=0.3, fade_out=0.5, velocity='0,0.5,0', velocity_spread=0.05,
-                  gravity=0, drag=4, wind=0, water_flow=0.8, spray_height_min=0, spray_height_max=0.01, self_shadow=1.2, core_occlusion=0.3, sink=0.7, flatten=0.45, collide=0,
+    'churn': dict(spawn='fall', shape='froth', sprite='water_splash', radius=0, height_min=0, height_max=0,
+                  rate=1000000, max_particles=131072, lifetime_min=0.9, lifetime_max=1.4, size_start=0.2, size_end=0.1,
+                  color='0.95,0.97,1', alpha=0.7, fade_in=0.02, fade_out=0.5, grow_time=0.3, birth_size=0.01, velocity='0,0.5,0', velocity_spread=0.05,
+                  gravity=0, drag=4, wind=0, water_flow=0.8, spray_height_min=0, spray_height_max=0.01, self_shadow=1.2, core_occlusion=0.3, sink=0.7, flatten=1, hold=0.5, collide=0,
                   transmission=0.5),
 }
 
@@ -102,7 +105,8 @@ def migrate(db):
     db.executescript(SCHEMA)
     present = [row[1] for row in db.execute('PRAGMA table_info(ParticleEmitters)')]
     for column, kind in (('spray_height_min', 'REAL'), ('spray_height_max', 'REAL'), ('sprite', 'TEXT'), ('self_shadow', 'REAL'),
-                         ('core_occlusion', 'REAL'), ('sink', 'REAL'), ('flatten', 'REAL')):
+                         ('core_occlusion', 'REAL'), ('sink', 'REAL'), ('flatten', 'REAL'), ('hold', 'REAL'), ('grow_time', 'REAL'),
+                         ('birth_size', 'REAL')):
         if column not in present:
             db.execute('ALTER TABLE ParticleEmitters ADD COLUMN %s %s' % (column, kind))
             print('migrated: column ParticleEmitters.%s added' % column)

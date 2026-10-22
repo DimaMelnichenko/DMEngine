@@ -849,7 +849,7 @@ struct ParticleEmitterSettings
 	Shape shape = Shape::dot;
 	DirectX::XMFLOAT3 position = DirectX::XMFLOAT3( 0.0f, 0.0f, 0.0f );	// экземпляр, м мира (point, sphere)
 	float radius = 1.0f;			// шар (sphere), поле вокруг камеры (camera, water), м; дальше от камеры — гибнут
-	float heightMin = 0.0f;			// над рельефом (camera), над поверхностью воды (water), над дном (fall), м
+	float heightMin = 0.0f;			// над рельефом (camera), над поверхностью воды (water, fall), м
 	float heightMax = 0.0f;
 	std::string mask;				// текстура плотности в координатах карты высот (camera); пусто — всюду
 	// Спрайт клочка (froth): покрытие, рельеф и плотность из текстуры (Tools/pack_particle_sprite.py), пусто — узор пены
@@ -860,6 +860,9 @@ struct ParticleEmitterSettings
 	float lifetimeMax = 2.0f;
 	float sizeStart = 0.05f;		// м
 	float sizeEnd = 0.05f;
+	// С рождения размер растёт от birthSize до sizeStart за growTime, с (0 — сразу sizeStart), дальше — к sizeEnd
+	float growTime = 0.0f;
+	float birthSize = 0.01f;
 	DirectX::XMFLOAT3 color = DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f );	// альбедо, линейное
 	float alpha = 1.0f;
 	float fadeIn = 0.1f;			// доли жизни: появление и угасание
@@ -873,8 +876,8 @@ struct ParticleEmitterSettings
 	float curlScale = 4.0f;			// размер вихрей, м
 	float waterFlow = 0.0f;			// доля скорости воды симуляции под частицей
 	float waterSpeed = 1.0f;		// water: порог скорости воды, м/с
-	// fall (бурление): рождается у дна котла на heightMin…heightMax над ним, всплывает со скоростью velocity.y до высоты
-	// sprayHeightMin…sprayHeightMax над водой и тянется там с течением
+	// fall (бурление): рождается на поверхности (heightMin…heightMax над ней; ниже нуля — под водой, и тогда всплывает со
+	// скоростью velocity.y) на высоте sprayHeightMin…sprayHeightMax над уровнем всплытия и тянется там с течением
 	float sprayHeightMin = 0.0f;
 	float sprayHeightMax = 0.01f;
 	// froth со спрайтом: самозатенение массы — плотность для солнца (тень внутри массы) и доля света неба, которой нет в ядре
@@ -884,7 +887,8 @@ struct ParticleEmitterSettings
 	// на воде, 1 — верх на воде), но не глубже половины глубины воды
 	float sink = 0.7f;
 	// froth: клочок сплющен по вертикали до этой доли размаха (масса бурления широкая и низкая); 1 — квад к камере как есть
-	float flatten = 0.45f;
+	float flatten = 1.0f;
+	float hold = 0.5f;				// fall: с рождения столько секунд течение клочок не несёт (стоит у подошвы), с
 	bool collide = false;			// с рельефом: needle ложится, dot гибнет
 	float transmission = 0.0f;		// просвет на солнце (пыльца, пух светятся против солнца)
 	float emissive = 0.0f;			// свечение, кд/м² (светлячки)
