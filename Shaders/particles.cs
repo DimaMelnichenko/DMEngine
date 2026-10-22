@@ -199,10 +199,16 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 		const WaterSample water = sampleWater( uv );
 		waterDepth = water.depth;
 		waterVelocity = water.velocity;
-		// Бурление: уровень воды под частицей (поверхность окна у камеры) — всплывает к нему
+		// Бурление: уровень всплытия под частицей — поверхность окна у камеры и ниже неё на долю sink полуразмера клочка
+		// (клочок рисуется лицом к камере: центром на воде он торчал бы над ней на полразмера — Dimok: «слишком высоко
+		// всплывают»), но не глубже половины глубины: котёл — 10–15 см, и ниже клочок уходил в дно и гас по мягкому краю
 		if( g_spawn == particleSpawnFall && waterDepth > 0.0f )
-			particle.surface = terrainHeight( particle.position.xz ) + waterDepth +
-							   ( nearWaterWeight( particle.position.xz ) > 0.0f ? sampleNearWater( particle.position.xz ).x : 0.0f );
+		{
+			const float size = lerp( g_sizeStart, g_sizeEnd, saturate( particle.age / max( particle.lifetime, 1e-4f ) ) ) * particle.size;
+			const float lift = nearWaterWeight( particle.position.xz ) > 0.0f ? sampleNearWater( particle.position.xz ).x : 0.0f;
+			particle.surface = terrainHeight( particle.position.xz ) + waterDepth + lift -
+							   min( g_sink * 0.5f * size, 0.5f * max( waterDepth + lift, 0.0f ) );
+		}
 	}
 
 	if( alive && particle.landed < 1.0f )
@@ -235,10 +241,12 @@ void mainUpdate( uint3 id : SV_DispatchThreadID )
 		particle.velocity += ( target - particle.velocity ) * ( 1.0f - exp( -g_drag * dt ) );
 		particle.velocity.y -= g_gravity * dt;
 		particle.position += particle.velocity * dt;
-		if( particle.position.y > top )
+		// Всплывшее бурление держится на поверхности: где она ниже по течению поднимается (котёл, прыжок), клочок не уходит
+		// под воду и не гаснет там раньше срока
+		if( particle.position.y > top || particle.landed == particleSurfaced )
 		{
 			particle.position.y = top;
-			particle.velocity.y = min( particle.velocity.y, 0.0f );
+			particle.velocity.y = 0.0f;
 		}
 
 		// Земля и вода: хвоинка ложится на землю и тонет в воде, тяжёлые капли (брызги) гибнут, лёгкие пушинки

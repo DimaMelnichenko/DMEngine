@@ -50,7 +50,10 @@ DM_CONSTANTS( ParticleEmitterBuffer, b4 )
 	DM_FIELD( uint, hasSprite );			// у клочка (froth) — спрайт (particles.ps, SRV 1), иначе узор пены
 	DM_FIELD( float, selfShadow );		// клочок со спрайтом: плотность его массы для солнца (тень внутри массы)
 	DM_FIELD( float, coreOcclusion );	// и доля света неба, которую не получает его ядро (0 — получает весь)
-	DM_FIELD( float, shadowPadding );
+	DM_FIELD( float, sink );				// fall: всплывший клочок — центром ниже воды на эту долю своего полуразмера
+	DM_FIELD( uint, drawPool );			// рисовать весь пул по порядку (froth), а не список живых кадра
+	DM_FIELD( float, flatten );			// froth: доля вертикального размаха клочка (1 — квад к камере как есть)
+	DM_FIELD( float2, poolPadding );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

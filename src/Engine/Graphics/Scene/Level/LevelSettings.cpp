@@ -1071,6 +1071,12 @@ const SettingsSchema<ParticleEmitterSettings>& particleEmitterSchema()
 		{ "spray_height_max", "Spray height max", DM_SETTING( sprayHeightMax ), 0.0f, 0.5f, "m", "And at most" },
 		{ "self_shadow", "Self shadow", DM_SETTING( selfShadow ), 0.0f, 10.0f, "",
 		  "Froth with a sprite: density of its mass for the sun - the side away from the sun is shaded (0 - none)" },
+		{ "sink", "Sink", DM_SETTING( sink ), 0.0f, 1.5f, "",
+		  "Churn (spawn fall): a surfaced clump keeps its centre this share of its half size below the water (the clump faces the "
+		  "camera: 0 - centre on the water, 1 - top on the water), at most half the water depth down" },
+		{ "flatten", "Flatten", DM_SETTING( flatten ), 0.05f, 1.0f, "",
+		  "Froth: the clump is squashed vertically to this share (a churning mass is wide and low; 1 - the camera-facing quad as is)",
+		  settingClamp },
 		{ "core_occlusion", "Core occlusion", DM_SETTING( coreOcclusion ), 0.0f, 1.0f, "",
 		  "Froth with a sprite: share of the sky light its dense core does not get (0 - lit everywhere)", settingClamp },
 		{ "collide", "Collide", DM_SETTING( collide ), 0.0f, 0.0f, "", "With the terrain: needles lie down, dots die" },

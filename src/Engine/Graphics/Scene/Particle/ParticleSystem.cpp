@@ -234,6 +234,9 @@ void ParticleSystem::setParameters( Emitter& emitter, uint32_t index, uint32_t s
 	params.hasSprite = emitter.sprite ? 1 : 0;
 	params.selfShadow = std::max( settings.selfShadow, 0.0f );
 	params.coreOcclusion = std::clamp( settings.coreOcclusion, 0.0f, 1.0f );
+	params.sink = std::max( settings.sink, 0.0f );
+	params.drawPool = settings.shape == Settings::Shape::froth ? 1 : 0;
+	params.flatten = std::clamp( settings.flatten, 0.05f, 1.0f );
 	Device::updateResourceData( emitter.constants, params );
 	DMD3D::instance().setConstantBuffer( 4, emitter.constants );
 }
@@ -354,7 +357,11 @@ void ParticleSystem::renderCustom( const RenderContext& context )
 		d3d.setSRV( SLOT_INSTANCE_DATA, emitter.aliveView );
 		if( emitter.sprite )
 			d3d.setSRV( 1, *emitter.sprite );
-		d3d.drawIndexedInstancedIndirectCount( emitter.state, 0, 1, emitter.state, 24 );
+		// Клочки взбитой воды — весь пул по порядку (стабильный порядок смешивания, particles.vs), остальные — живые кадра
+		if( emitter.settings.shape == Settings::Shape::froth )
+			d3d.drawIndexedInstanced( m_quad.indexCount(), emitter.capacity, 0, 0 );
+		else
+			d3d.drawIndexedInstancedIndirectCount( emitter.state, 0, 1, emitter.state, 24 );
 	}
 }
 

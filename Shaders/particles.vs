@@ -31,25 +31,27 @@ struct ParticlePixelInput
 	float3 shade : COLOR2;
 	nointerpolation float3 glint : COLOR3;
 	nointerpolation float3 toSun : TEXCOORD3;
-	// Оси квада в мире (corner.x — вдоль axisRight, w — его растяжение вдоль течения; corner.y — вдоль axisUp): нормаль и
-	// тень внутри клочка — в его осях
-	nointerpolation float4 axisRight : TEXCOORD4;
-	nointerpolation float3 axisUp : TEXCOORD5;
 };
 
 static const float minimumPixels = 1.5f;
 // Клочок взбитой воды вытянут вдоль движения: 1 + скорость × frothStretch, не больше 1 + frothMaxStretch
 static const float frothStretch = 0.6f;
 static const float frothMaxStretch = 1.2f;
-// Клочок сдвинут вниз по течению на такую долю своей полудлины: точка рождения — у его верхнего по течению края
+// Клочок сдвинут вниз по течению на такую долю своей полудлины (полностью — с frothShiftSpeed, м/с; медленнее — меньше):
+// точка рождения — у его верхнего по течению края
 static const float frothDownstream = 0.8f;
+static const float frothShiftSpeed = 0.3f;
 // Бурление под водой: видимость падает в e раз на такую глубину, м
 static const float frothUnderwaterFade = 0.08f;
 static const float needleWidth = 0.15f;	// ширина хвоинки — доля её длины	// тоньше пары пикселей частица мерцает — шире, но прозрачнее
 
 ParticlePixelInput main( VertexInputType input )
 {
-	const Particle particle = g_particles[g_alive[input.instanceId]];
+	// Клочки взбитой воды (froth) — весь пул по порядку: место частицы в пуле не меняется всю её жизнь, и порядок
+	// смешивания перекрывающихся полупрозрачных клочков тот же от кадра к кадру. Список живых собирает атомарный счётчик —
+	// его порядок каждый кадр свой, и масса бурления «перетасовывалась»: клочки дёргались и пропадали (Dimok, 2026-10-22;
+	// соседние кадры различались на 20 из 255 против 3,7 без бурления)
+	const Particle particle = g_particles[g_drawPool != 0 ? input.instanceId : g_alive[input.instanceId]];
 	const float2 corner = input.position.xz * 2.0f - 1.0f;
 	const float t = saturate( particle.age / max( particle.lifetime, 1e-4f ) );
 	const float size = lerp( g_sizeStart, g_sizeEnd, t ) * particle.size;
@@ -68,8 +70,6 @@ ParticlePixelInput main( VertexInputType input )
 	}
 
 	float3 offset;
-	float4 axisRight = float4( cb_viewInverseMatrix[0].xyz, 1.0f );
-	float3 axisUp = cb_viewInverseMatrix[1].xyz;
 	if( g_shape == particleShapeNeedle )
 	{
 		// Ось — по скорости; у лежащей и медленной — направление из зерна, лёжа на земле
@@ -84,28 +84,32 @@ ParticlePixelInput main( VertexInputType input )
 	}
 	else
 	{
-		float3 right = cb_viewInverseMatrix[0].xyz;
+		const float3 right = cb_viewInverseMatrix[0].xyz;
 		float3 up = cb_viewInverseMatrix[1].xyz;
+		// Клочок взбитой воды сплющен по вертикали: масса бурления широкая и низкая, а квад 12–40 см лицом к камере торчал
+		// над водой на полразмера
+		if( g_shape == particleShapeFroth )
+			up.y *= g_flatten;
+		offset = ( right * corner.x + up * corner.y ) * width * 0.5f;
 		// Клочок взбитой воды вытянут вдоль течения (его горизонтальной скорости по плоскости экрана; всплытие не тянет) и
-		// сдвинут вниз по течению: тянется от точки рождения у подошвы, а не лежит половиной на стенке и кромке выше
-		float stretch = 1.0f;
-		float3 shift = 0.0f;
+		// сдвинут вниз по течению: тянется от точки рождения у подошвы, а не лежит половиной на стенке и кромке выше. Всё —
+		// непрерывно от скорости: квад не поворачивается (растяжение — вдоль направления течения на экране), сдвиг растёт
+		// от нуля. Прежде с 5 см/с квад разом поворачивался по течению и прыгал на 5–12 см — всплывший клочок дёргался
 		if( g_shape == particleShapeFroth )
 		{
 			const float3 flow = float3( particle.velocity.x, 0.0f, particle.velocity.z );
+			const float flowSpeed = length( flow );
 			const float3 along = flow - dot( flow, view ) * view;
 			const float speed = length( along );
-			if( speed > 0.05f )
+			const float stretch = 1.0f + min( speed * frothStretch, frothMaxStretch );
+			if( speed > 1e-4f )
 			{
-				right = along / speed;
-				up = normalize( cross( view, right ) );
-				stretch = 1.0f + min( speed * frothStretch, frothMaxStretch );
-				shift = flow / max( length( flow ), 1e-4f ) * width * stretch * 0.5f * frothDownstream;
+				const float3 direction = along / speed;
+				offset += direction * dot( offset, direction ) * ( stretch - 1.0f );
 			}
+			if( flowSpeed > 1e-4f )
+				offset += flow / flowSpeed * width * stretch * 0.5f * frothDownstream * saturate( flowSpeed / frothShiftSpeed );
 		}
-		offset = ( right * corner.x * stretch + up * corner.y ) * width * 0.5f + shift;
-		axisRight = float4( right, stretch );
-		axisUp = up;
 	}
 	const float3 position = particle.position + offset;
 
@@ -127,14 +131,20 @@ ParticlePixelInput main( VertexInputType input )
 	}
 	const float3 color = applyFogging( g_color * light + g_emissive, particle.position ) * preExposure();
 
-	ParticlePixelInput output;
+	ParticlePixelInput output = (ParticlePixelInput)0;
+	if( particle.age >= particle.lifetime )
+	{
+		// Мёртвая (весь пул): вырожденный треугольник за кадром
+		output.position = float4( 2.0f, 2.0f, 2.0f, 1.0f );
+		return output;
+	}
 	output.position = mul( float4( position, 1.0f ), cb_viewProjectionMatrix );
 	output.color = color;
 	// Поле вокруг камеры: к его краю частицы гаснут — рождения и гибель за краем не видны
 	float edge = 1.0f;
 	if( g_spawn == particleSpawnCamera || g_spawn == particleSpawnWater )
 		edge = 1.0f - smoothstep( g_radius * 0.75f, g_radius, length( particle.position.xz - cb_cameraPosition.xz ) );
-	// Бурление под водой видно слабо: проявляется, всплывая к поверхности
+	// Бурление под водой (ниже своего уровня всплытия) видно слабо: проявляется, всплывая
 	float underwater = 1.0f;
 	if( g_spawn == particleSpawnFall )
 		underwater = exp( -max( particle.surface - particle.position.y, 0.0f ) / frothUnderwaterFade );
@@ -146,7 +156,5 @@ ParticlePixelInput main( VertexInputType input )
 	output.shade = g_shape == particleShapeFroth ? applyFogging( g_color * ambient + g_emissive, particle.position ) * preExposure() : color;
 	output.glint = ( applyFogging( sunLight, particle.position ) - applyFogging( 0.0f, particle.position ) ) * preExposure();
 	output.toSun = toSun;
-	output.axisRight = axisRight;
-	output.axisUp = axisUp;
 	return output;
 }

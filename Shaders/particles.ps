@@ -22,8 +22,6 @@ struct ParticlePixelInput
 	float3 shade : COLOR2;
 	nointerpolation float3 glint : COLOR3;
 	nointerpolation float3 toSun : TEXCOORD3;
-	nointerpolation float4 axisRight : TEXCOORD4;
-	nointerpolation float3 axisUp : TEXCOORD5;
 };
 
 static const float softDistance = 0.3f;		// м: на этой толщине до сцены частица гаснет
@@ -107,8 +105,9 @@ float4 frothColor( ParticlePixelInput input )
 	const float2 bump = foam.gb * 2.0f - 1.0f;
 	const float2 bumpCorner = float2( c * bump.x + s * bump.y, -s * bump.x + c * bump.y );
 	const float3 local = normalize( float3( corner * 0.9f + bumpCorner * 0.7f, sqrt( saturate( 1.0f - dot( corner, corner ) ) ) + 0.2f ) );
-	const float3 right = input.axisRight.xyz;
-	const float3 up = input.axisUp;
+	// Оси квада — экранные (растяжение вдоль течения — сдвигом вершин, particles.vs)
+	const float3 right = cb_viewInverseMatrix[0].xyz;
+	const float3 up = cb_viewInverseMatrix[1].xyz;
 	const float3 toCamera = -cb_viewInverseMatrix[2].xyz;
 	const float3 normal = normalize( right * local.x + up * local.y + toCamera * local.z );
 
@@ -120,8 +119,8 @@ float4 frothColor( ParticlePixelInput input )
 	float skyVisibility = saturate( 0.75f + 0.25f * normal.y );
 	[branch] if( g_hasSprite != 0 )
 	{
-		// Солнце в осях угла квада (x растянут вдоль течения) и в осях спрайта (поворот частицы, отражение)
-		const float2 sunCorner = float2( dot( input.toSun, right ) / max( input.axisRight.w, 1.0f ), dot( input.toSun, up ) );
+		// Солнце в осях угла квада и в осях спрайта (поворот частицы, отражение)
+		const float2 sunCorner = float2( dot( input.toSun, right ), dot( input.toSun, up ) );
 		const float2 sunP = float2( c * sunCorner.x - s * sunCorner.y, s * sunCorner.x + c * sunCorner.y );
 		const float2 toSunUV = float2( spriteFrame.z * sunP.x, sunP.y ) * 0.5f * shadowReach / shadowSteps;
 		float2 at = saturate( float2( spriteFrame.z * p.x, p.y ) * 0.5f + 0.5f );
