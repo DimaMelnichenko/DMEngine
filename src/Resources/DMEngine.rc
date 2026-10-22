@@ -1,0 +1,6 @@
+// Ресурсы exe: иконка «Долины ручьёв» (DMEngine.ico — из icon_source.png, размеры 16…256)
+#pragma code_page(65001)
+#include "resource.h"
+
+// Первая иконка exe — её показывает Проводник у файла
+IDI_DMENGINE ICON "DMEngine.ico"

@@ -198,6 +198,7 @@ add_library(DMCore STATIC
 target_link_libraries(DMCore PUBLIC DMEngineSettings EnTT::EnTT Jolt)
 
 add_executable(DMEngine WIN32
+    src/Resources/DMEngine.rc
     src/Common/DBConnector.cpp
     src/Engine/Console/ConsoleCommands.cpp
     src/Engine/Console/PropertyCommands.cpp

@@ -23,6 +23,10 @@
   на Jolt и скелетная анимация; как модуль Core в UE); `DMEngine` — exe движка поверх
   неё; `DMEngineTests` — тесты логики на CPU (doctest) против ядра; общие include-пути, defines и флаги трёх целей —
   `DMEngineSettings`. Файлы ядра лежат на своих местах в `src/` — ядро задаётся списком `DMCore` в `CMakeLists.txt`.
+- **Иконка приложения** — ресурс exe `src/Resources/DMEngine.rc` (`IDI_DMENGINE`, `resource.h`): `DMEngine.ico` с
+  размерами 16…256 из `src/Resources/icon_source.png` (выбор Dimok 2026-10-23); её показывают Проводник у файла,
+  заголовок окна и панель задач (`DMSystem::InitializeWindows`: класс окна — большая и малая своими размерами). Новая
+  картинка — заново `.ico` (Pillow: `Image.save( 'DMEngine.ico', sizes=[(16, 16), …, (256, 256)] )`) и пересборка.
 - **Из терминала собирать только скриптом**, а не вызывать cmake вручную:
   ```
   Tools\build.cmd debug        (или release; из Git Bash: cmd //c "Tools\build.cmd debug")

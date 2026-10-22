@@ -3,6 +3,7 @@
 #include "Engine\Input\Input.h"
 #include "Common\DBConnector.h"
 #include "Logger\Logger.h"
+#include "Resources\resource.h"
 
 
 DMSystem::DMSystem(  )
@@ -174,8 +175,12 @@ void DMSystem::InitializeWindows( int16_t& screenWidth, int16_t& screenHeight )
 	wc.cbClsExtra = 0;
 	wc.cbWndExtra = 0;
 	wc.hInstance = m_hinstance;
-	wc.hIcon = LoadIcon( nullptr, IDI_WINLOGO );
-	wc.hIconSm = wc.hIcon;
+	// Иконка приложения (src/Resources/DMEngine.rc): большая — Alt+Tab и панель задач, малая — заголовок окна, своим
+	// размером из .ico, а не уменьшением большой
+	wc.hIcon = static_cast<HICON>( LoadImage( m_hinstance, MAKEINTRESOURCE( IDI_DMENGINE ), IMAGE_ICON, GetSystemMetrics( SM_CXICON ),
+											  GetSystemMetrics( SM_CYICON ), LR_DEFAULTCOLOR ) );
+	wc.hIconSm = static_cast<HICON>( LoadImage( m_hinstance, MAKEINTRESOURCE( IDI_DMENGINE ), IMAGE_ICON, GetSystemMetrics( SM_CXSMICON ),
+												GetSystemMetrics( SM_CYSMICON ), LR_DEFAULTCOLOR ) );
 	wc.hCursor = LoadCursor( nullptr, IDC_ARROW );
 	wc.hbrBackground = (HBRUSH)GetStockObject( BLACK_BRUSH );
 	wc.lpszMenuName = nullptr;
