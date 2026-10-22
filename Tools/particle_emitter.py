@@ -10,7 +10,7 @@
   python Tools/particle_emitter.py set ИМЯ --param поле=значение [...]
   python Tools/particle_emitter.py delete ИМЯ / enable ИМЯ / disable ИМЯ [--level Test]
 
-Поля — колонки ParticleEmitters (spawn, shape, radius, rate, size_start, color, gravity, drag, wind, curl, ...; цвет и
+Поля — колонки ParticleEmitters (spawn, shape — dot, needle, froth, radius, rate, size_start, color, gravity, drag, wind, curl, ...; цвет и
 скорость — "r,g,b"). Первый запуск переносит базу со старой заготовки: таблица Particles и Levels.particles удаляются,
 материал Particle — тоже, а небо (SkySphere), чей экземпляр 5 был на нём, получает свой экземпляр материала Texture с
 Albedo = sky3. Сообщения — ASCII (Windows PowerShell 5.1, cmd).
@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS LevelParticleEmitters (
 """
 
 # Готовые наборы: пыльца и пух в солнце над лугом, сухая хвоя под ельником, брызги на перекатах, брызги бурления у
-# подошвы ступеней и в котлах (spawn fall: попытки в секунду по окну у камеры, подлёт — spray_height_min…max)
+# подошвы ступеней и в котлах — клочки взбитой воды у самой поверхности (spawn fall: попытки в секунду по окну у камеры,
+# подлёт — spray_height_min…max; гаснут, будто тонут)
 PRESETS = {
     'pollen': dict(spawn='camera', shape='dot', radius=20, height_min=0.3, height_max=4, mask='mask_grass', rate=15,
                    max_particles=8192, lifetime_min=8, lifetime_max=14, size_start=0.03, size_end=0.03,
@@ -82,10 +83,10 @@ PRESETS = {
                   lifetime_min=0.5, lifetime_max=1.0, size_start=0.03, size_end=0.12, color='0.9,0.95,1', alpha=0.45,
                   fade_in=0.05, fade_out=0.5, velocity='0,1.5,0', velocity_spread=0.8, gravity=9.8, drag=0.5, wind=0.1,
                   water_flow=1, water_speed=0.9, collide=1, transmission=0.5),
-    'churn': dict(spawn='fall', shape='dot', radius=0, height_min=0, height_max=0.03, rate=150000, max_particles=16384,
-                  lifetime_min=0.4, lifetime_max=0.8, size_start=0.012, size_end=0.02, color='0.95,0.97,1', alpha=0.8,
-                  fade_in=0.05, fade_out=0.2, velocity_spread=0.4, gravity=9.8, drag=0.5, wind=0.1, water_flow=1,
-                  spray_height_min=0.1, spray_height_max=0.4, collide=1, transmission=0.5),
+    'churn': dict(spawn='fall', shape='froth', radius=0, height_min=0, height_max=0.03, rate=400000, max_particles=65536,
+                  lifetime_min=0.5, lifetime_max=1.0, size_start=0.06, size_end=0.16, color='0.95,0.97,1', alpha=0.4,
+                  fade_in=0.1, fade_out=0.6, velocity_spread=0.15, gravity=1.5, drag=4, wind=0.1, water_flow=0.7,
+                  spray_height_min=0.01, spray_height_max=0.05, collide=0, transmission=0.5),
 }
 
 

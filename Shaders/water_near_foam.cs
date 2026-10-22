@@ -26,7 +26,7 @@ DM_SRV( Texture2D<float2>, g_nearPhasePrevious, 4 );	// фаза слоёв уз
 DM_UAV( RWTexture2D<float>, g_nearFoam, 0 );
 DM_UAV( RWTexture2D<float4>, g_nearPattern, 1 );
 DM_UAV( RWTexture2D<float2>, g_nearPhase, 2 );
-DM_UAV( RWTexture2D<float>, g_nearFall, 3 );		// пена падения ячейки (SLOT_WATER_NEAR_FALL): по ней — брызги бурления
+DM_UAV( RWTexture2D<float>, g_nearFall, 3 );		// бурление падения ячейки (SLOT_WATER_NEAR_FALL): по нему — брызги бурления
 
 // Скачок скорости для сдвига — через две ячейки в каждую сторону (25 см), делится на столько, м: как у сетки 1 м и
 // детальной (там скачок через 0,5 м — на 2 м), — тот же порог foam_shear ловит струю у камня, а не профиль поперёк ручья
@@ -158,8 +158,8 @@ float carriedPhase( float2 world )
 	return dot( phase, phase ) > 1e-6f ? frac( atan2( phase.y, phase.x ) / 6.2831853f ) : outside;
 }
 
-// Пена ячейки за кадр (here — итог окна в ячейке, вода есть); fall — её пена падения
-float stepFoam( int2 cell, float2 world, float4 here, out float fall );
+// Пена ячейки за кадр (here — итог окна в ячейке, вода есть); churn — бурление падения у подошвы и в котле (fallChurn)
+float stepFoam( int2 cell, float2 world, float4 here, out float churn );
 
 [numthreads( 8, 8, 1 )]
 void mainNearFoam( uint3 id : SV_DispatchThreadID )
@@ -181,9 +181,9 @@ void mainNearFoam( uint3 id : SV_DispatchThreadID )
 		g_nearFall[address] = 0.0f;
 		return;
 	}
-	float fall;
-	g_nearFoam[address] = stepFoam( cell, world, here, fall );
-	g_nearFall[address] = fall;
+	float churn;
+	g_nearFoam[address] = stepFoam( cell, world, here, churn );
+	g_nearFall[address] = churn;
 
 	// Смещения узора и фаза: назад по течению, смещение — на сдвиг за кадр, фаза — на долю периода; слой, чья фаза перешла
 	// через целое, — заново: смещение — случайный сдвиг цикла (номер цикла — фаза частицы без дробной части: время / период
@@ -202,7 +202,7 @@ void mainNearFoam( uint3 id : SV_DispatchThreadID )
 	g_nearPhase[address] = float2( cos( 6.2831853f * phase ), sin( 6.2831853f * phase ) );
 }
 
-float stepFoam( int2 cell, float2 world, float4 here, out float fall )
+float stepFoam( int2 cell, float2 world, float4 here, out float churn )
 {
 	const float2 velocity = here.yz;
 	const float speed = length( velocity );
@@ -247,13 +247,15 @@ float stepFoam( int2 cell, float2 world, float4 here, out float fall )
 	// Падение со ступени — по поверхности окна (в мелкой воде — её ступени, плёсы и прыжки): ближе foamFallStart к кромке
 	// источников нет (и у быстрой воды, и у камней) — верх чистый; ниже, у подошвы и в котле — пена падения, сразу белая
 	// вода (воздух в поток несёт сама струя), а не пена, которая растёт к источнику за время
-	fall = 0.0f;
+	float fall = 0.0f;
+	churn = 0.0f;
 	const float level = fallLevelAt( world, -1e30f );
 	if( speed > 1e-3f && level > -1e29f )
 	{
 		const Fall trace = traceFall( world, velocity / speed, level, fallStepCells * g_nearStep, fallSteps );
 		source *= fallFoamShare( trace );
 		fall = fallFoam( trace );
+		churn = fallChurn( trace );
 	}
 
 	// Назад по течению (смещение за кадр — доли ячейки: скорость в середине шага та же)

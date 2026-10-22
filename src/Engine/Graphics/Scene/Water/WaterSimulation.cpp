@@ -255,6 +255,8 @@ void WaterSimulation::compute( const FrameContext& frame )
 	DMD3D::instance().setSRV( SLOT_WATER_SOURCES, m_pipes.sourcesView() );
 	// Уровень поверхности — глубине в точке (урез внутри клетки): мокрая земля, галька дна, трава в воде
 	DMD3D::instance().setSRV( SLOT_WATER_LEVEL, m_surface.levelView() );
+	// Узор пены — клочкам взбитой воды у падений (частицы бурления)
+	DMD3D::instance().setSRV( SLOT_WATER_FOAM_PATTERN, m_surface.foamPatternView() );
 	// Детальная вода у русел — тем же потребителям (water.sh: по индексу плиток детальной земли)
 	if( m_staticWater.detailTileCount() > 0 )
 	{

@@ -505,17 +505,18 @@ bool NearWaterFlow::exportState( const std::string& prefix, std::string& reason 
 		reason = "no near flow window (no detail water around the camera or Near flow is off)";
 		return false;
 	}
-	std::vector<DMD3D::SubresourceCopy> copies, foamCopies, depthCopies;
-	std::vector<uint8_t> bytes, foamBytes, depthBytes;
+	std::vector<DMD3D::SubresourceCopy> copies, foamCopies, fallCopies, depthCopies;
+	std::vector<uint8_t> bytes, foamBytes, fallBytes, depthBytes;
 	if( !DMD3D::instance().captureTexture( m_result, copies, bytes ) || copies.empty() ||
 		!DMD3D::instance().captureTexture( m_foam[m_foamCurrent], foamCopies, foamBytes ) || foamCopies.empty() ||
+		!DMD3D::instance().captureTexture( m_fall, fallCopies, fallBytes ) || fallCopies.empty() ||
 		( m_shallowMode && ( !DMD3D::instance().captureTexture( m_shallow.depth, depthCopies, depthBytes ) || depthCopies.empty() ) ) )
 	{
 		reason = "near flow readback failed";
 		return false;
 	}
 	const uint32_t size = m_size;
-	std::vector<float> channels[6];
+	std::vector<float> channels[7];
 	for( auto& channel : channels )
 		channel.resize( static_cast<size_t>( size ) * size );
 	for( uint32_t j = 0; j < size; ++j )
@@ -525,16 +526,20 @@ bool NearWaterFlow::exportState( const std::string& prefix, std::string& reason 
 			const XMUINT2 texel = NearWindow::address( XMINT2( m_origin.x + static_cast<int32_t>( i ), m_origin.y + static_cast<int32_t>( j ) ), size );
 			const auto* source = reinterpret_cast<const PackedVector::HALF*>( bytes.data() + copies[0].offset + texel.y * copies[0].rowPitch ) + texel.x * 4;
 			const auto* foam = reinterpret_cast<const PackedVector::HALF*>( foamBytes.data() + foamCopies[0].offset + texel.y * foamCopies[0].rowPitch ) + texel.x;
+			const auto* fall = reinterpret_cast<const PackedVector::HALF*>( fallBytes.data() + fallCopies[0].offset + texel.y * fallCopies[0].rowPitch ) + texel.x;
 			const size_t row = static_cast<size_t>( size - 1 - j ) * size + i;
 			for( int c = 0; c < 4; ++c )
 				channels[c][row] = PackedVector::XMConvertHalfToFloat( source[c] );
 			channels[4][row] = PackedVector::XMConvertHalfToFloat( *foam );
+			channels[6][row] = PackedVector::XMConvertHalfToFloat( *fall );
 			if( m_shallowMode )
 				channels[5][row] = *( reinterpret_cast<const float*>( depthBytes.data() + depthCopies[0].offset + texel.y * depthCopies[0].rowPitch ) + texel.x );
 		}
-	const char* names[6] = { "_near_surface.dds", "_near_vx.dds", "_near_vz.dds", "_near_passage.dds", "_near_foam.dds", "_near_depth.dds" };
-	for( int c = 0; c < ( m_shallowMode ? 6 : 5 ); ++c )
+	const char* names[7] = { "_near_surface.dds", "_near_vx.dds", "_near_vz.dds", "_near_passage.dds", "_near_foam.dds", "_near_depth.dds", "_near_fall.dds" };
+	for( int c = 0; c < 7; ++c )
 	{
+		if( c == 5 && !m_shallowMode )
+			continue;
 		const std::string file = prefix + names[c];
 		if( !GpuImages::saveFloatDDS( std::wstring( file.begin(), file.end() ), size, size, channels[c].data() ) )
 		{

@@ -28,6 +28,7 @@ static const uint particleSpawnWater = 3;
 static const uint particleSpawnFall = 4;
 static const uint particleShapeDot = 0;
 static const uint particleShapeNeedle = 1;
+static const uint particleShapeFroth = 2;
 
 // Байты буфера состояния эмиттера (ParticleSystem::stateBytes): команда ExecuteIndirect {root-константа b9,
 // IndexCountPerInstance, InstanceCount — живых, StartIndexLocation, BaseVertexLocation, StartInstanceLocation}, число

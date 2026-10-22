@@ -140,8 +140,11 @@
 // Пена падения окна у камеры (NearWaterFlow, water_near_foam.cs): R16F, та же сетка — у подошвы ступени и в котле под ней;
 // по ней рождаются брызги бурления (частицы, spawn fall)
 #define SLOT_WATER_NEAR_FALL	146
+// Узор пены (WaterFoamLace: массив из двух карт — кружево и густая пена; R — маска, G, B — нормаль, A — растворение): у
+// поверхности воды — свой слот материала, ресурс сцены — для клочков взбитой воды (частицы, shape froth)
+#define SLOT_WATER_FOAM_PATTERN	147
 #define SLOT_SCENE_FIRST	100
-#define SLOT_SCENE_COUNT	47
+#define SLOT_SCENE_COUNT	48
 
 // Таблица привязок вызова — root-константы b8, DM_BINDING_COUNT DWORD: индекс дескриптора по слоту. Ресурсы сцены —
 // не в ней, а в константном буфере b10 (DM_SCENE_BINDING_COUNT DWORD): их число root signature не ограничивает; с CBV,

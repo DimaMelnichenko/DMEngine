@@ -1,9 +1,11 @@
 ////////////////////////////////////////////////////////////////////////////////
-// Частица (ParticleSystem): форма — мягкое пятно или узкая полоса хвоинки; мягкий край по глубине сцены (soft
-// particles: у земли и травы частица гаснет, а не обрезается линией)
+// Частица (ParticleSystem): форма — мягкое пятно, узкая полоса хвоинки или клочок взбитой воды (пятно с рваным краем
+// и пузырями внутри); мягкий край по глубине сцены (soft particles: у земли и травы частица гаснет, а не обрезается
+// линией)
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "common.vs"
+#include "samplers.sh"
 #include "particles.sh"
 #include "bindless.sh"
 
@@ -16,15 +18,43 @@ struct ParticlePixelInput
 	float  alpha : COLOR1;
 	float2 corner : TEXCOORD0;
 	float  viewDepth : TEXCOORD1;
+	nointerpolation float3 random : TEXCOORD2;
 };
 
 static const float softDistance = 0.3f;		// м: на этой толщине до сцены частица гаснет
+// У клочков взбитой воды — тоньше: они у самой воды, а дно мелкого ручья в 5–15 см под ней (с 0,3 м клочки там были почти
+// прозрачны)
+static const float frothSoftDistance = 0.05f;
+// Узор пены воды (WaterFoamLace): срез 1 — густая пена, маска 0,35…1 — у клочков взбитой воды
+DM_SRV( Texture2DArray<float4>, g_foamPattern, SLOT_WATER_FOAM_PATTERN );
+// Клочок взбитой воды: доля узора на поперечник пятна (узор пены у воды — 0,5 м на повтор, клочок — 6–16 см)
+static const float frothPattern = 0.25f;
+
+// Клочок взбитой воды (брызги бурления, Dimok, 2026-10-22: «бурлящая вода в месте падения»): мягкое пятно с рваным краем
+// и пузырями густой пены внутри — узор тот же, что у пены на воде; поворот, сдвиг узора и край — свои у каждой частицы.
+// Где узор реже, край пятна прозрачнее: клочок рваный, а не круг
+float frothShape( float2 corner, float3 random )
+{
+	const float angle = random.x * 6.2831853f;
+	const float c = cos( angle );
+	const float s = sin( angle );
+	const float2 p = float2( c * corner.x - s * corner.y, s * corner.x + c * corner.y );
+	const float around = atan2( p.y, p.x );
+	const float ragged = 0.8f + 0.12f * sin( 3.0f * around + 6.2831853f * random.y ) + 0.08f * sin( 5.0f * around + 6.2831853f * random.z );
+	const float r = length( p ) / ragged;
+	float body = saturate( 1.0f - r * r );
+	body *= body;
+	const float mask = g_foamPattern.Sample( g_SamplerLinearWrap, float3( p * frothPattern + random.yz, 1.0f ) ).r;
+	return saturate( 1.5f * body - 0.8f * ( 1.0f - mask ) );
+}
 
 float4 main( ParticlePixelInput input ) : SV_TARGET
 {
 	float shape;
 	if( g_shape == particleShapeNeedle )
 		shape = ( 1.0f - smoothstep( 0.3f, 1.0f, abs( input.corner.x ) ) ) * ( 1.0f - smoothstep( 0.8f, 1.0f, abs( input.corner.y ) ) );
+	else if( g_shape == particleShapeFroth )
+		shape = frothShape( input.corner, input.random );
 	else
 	{
 		const float r = length( input.corner );
@@ -35,7 +65,7 @@ float4 main( ParticlePixelInput input ) : SV_TARGET
 	// Глубина сцены обратная: z вида = P₃₂ / (глубина − P₂₂); над небом (0) — далеко
 	const float sceneDepth = g_sceneDepth[uint2( input.position.xy )];
 	const float sceneViewZ = sceneDepth > 0.0f ? cb_projectionMatrix[3][2] / ( sceneDepth - cb_projectionMatrix[2][2] ) : 1e9f;
-	const float soft = saturate( ( sceneViewZ - input.viewDepth ) / softDistance );
+	const float soft = saturate( ( sceneViewZ - input.viewDepth ) / ( g_shape == particleShapeFroth ? frothSoftDistance : softDistance ) );
 
 	const float alpha = saturate( input.alpha * shape * soft );
 	clip( alpha - 1.0f / 255.0f );

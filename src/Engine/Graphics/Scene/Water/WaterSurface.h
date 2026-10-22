@@ -40,6 +40,8 @@ public:
 	void warmPipelines( const PassStates& states );
 	// Уровень поверхности, м (−1e30 — сухо): ресурс сцены SLOT_WATER_LEVEL — глубина в точке, урез внутри клетки
 	const ShaderView& levelView() const { return m_levelView; }
+	// Узор пены (WaterFoamLace): ресурс сцены SLOT_WATER_FOAM_PATTERN — клочкам взбитой воды (частицы, shape froth)
+	const ShaderView& foamPatternView() const { return m_foamLaceView; }
 
 private:
 	// Константы поверхности (WaterSurfaceBuffer) — у обоих проходов одни
@@ -84,7 +86,7 @@ private:
 	Buffer m_surfaceBuffer;			// SurfaceParameters
 	Texture m_ripple;				// карта ряби (WaterRipples)
 	ShaderView m_rippleView;
-	Texture m_foamLace;				// узор пены — кружево (WaterFoamLace)
+	Texture m_foamLace;				// узор пены — кружево (WaterFoamLace); ресурс сцены SLOT_WATER_FOAM_PATTERN — у WaterSimulation
 	ShaderView m_foamLaceView;
 };
 

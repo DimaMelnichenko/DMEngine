@@ -99,15 +99,29 @@ float fallFoamShare( Fall fall )
 	return height >= minFallHeight ? smoothstep( g_foamFallStart, max( height, g_foamFallStart + 0.02f ), fall.above ) : 1.0f;
 }
 
-// Пена падения: с foamFallStart ниже кромки растёт к подошве, у подошвы и в котле — foamFall (падение ниже
+// Сила падения в точке 0…1: с foamFallStart ниже кромки растёт к подошве, у подошвы и в котле — 1 (падение ниже
 // foamFallHeight — меньше), в котле гаснет к foamPlungeLength от подошвы; не падение — 0
-float fallFoam( Fall fall )
+float fallStrength( Fall fall )
 {
 	const float height = fall.above + fall.below;
 	if( height < minFallHeight )
 		return 0.0f;
-	return g_foamFall * fallFoamShare( fall ) * saturate( height / g_foamFallHeight ) *
-		   ( 1.0f - smoothstep( 0.0f, g_foamPlungeLength, fall.plunge ) );
+	return fallFoamShare( fall ) * saturate( height / g_foamFallHeight ) * ( 1.0f - smoothstep( 0.0f, g_foamPlungeLength, fall.plunge ) );
+}
+
+// Пена падения на поверхности: сила падения × foamFall
+float fallFoam( Fall fall )
+{
+	return g_foamFall * fallStrength( fall );
+}
+
+// Бурление падения 0…1 (брызги бурления, частицы spawn fall): сила падения у его подошвы и в котле — где струя входит в
+// воду; выше по стенке (до подошвы больше footReach) — нет. От пены на поверхности (foamFall) не зависит: основную белизну
+// у падения дают частицы, на поверхности после них — тонкая пена
+static const float footReach = 0.05f;	// м
+float fallChurn( Fall fall )
+{
+	return fallStrength( fall ) * ( 1.0f - smoothstep( 0.0f, footReach, fall.below ) );
 }
 
 // Пена за шаг: принесённая течением тает (в медленной воде — дольше) и сжимается, у источника растёт к нему

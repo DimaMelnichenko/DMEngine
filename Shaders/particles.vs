@@ -25,6 +25,7 @@ struct ParticlePixelInput
 	float  alpha : COLOR1;
 	float2 corner : TEXCOORD0;		// −1…1 по квадрату
 	float  viewDepth : TEXCOORD1;	// z вида — мягкий край по глубине сцены
+	nointerpolation float3 random : TEXCOORD2;	// случайные числа частицы 0…1: у клочка пены — поворот и узор
 };
 
 static const float minimumPixels = 1.5f;
@@ -93,5 +94,7 @@ ParticlePixelInput main( VertexInputType input )
 	output.alpha = g_alpha * particleFade( particle ) * coverage * edge;
 	output.corner = corner;
 	output.viewDepth = mul( float4( position, 1.0f ), cb_viewMatrix ).z;
+	uint state = particle.seed ^ 0x9e3779b9u;
+	output.random = float3( particleRandom( state ), particleRandom( state ), particleRandom( state ) );
 	return output;
 }

@@ -422,8 +422,9 @@ void LibraryLoader::loadParticleEmitters( LevelDescription& level )
 						spawn == "camera" ? GS::ParticleEmitterSettings::Spawn::camera :
 						spawn == "water" ? GS::ParticleEmitterSettings::Spawn::water :
 						spawn == "fall"	 ? GS::ParticleEmitterSettings::Spawn::fall : GS::ParticleEmitterSettings::Spawn::point;
-		emitter.shape = query.getColumn( "shape" ).getString() == "needle" ? GS::ParticleEmitterSettings::Shape::needle :
-																			  GS::ParticleEmitterSettings::Shape::dot;
+		const std::string shape = query.getColumn( "shape" ).getString();
+		emitter.shape = shape == "needle" ? GS::ParticleEmitterSettings::Shape::needle :
+						shape == "froth"  ? GS::ParticleEmitterSettings::Shape::froth : GS::ParticleEmitterSettings::Shape::dot;
 		const std::string position = query.getColumn( "instance_position" ).getString();
 		if( !position.empty() && !strToVec3( position, emitter.position ) )
 			LOG( "Particle emitter " + emitter.name + ": wrong instance position '" + position + "'" );

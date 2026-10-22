@@ -118,9 +118,10 @@ void mainEmit( uint3 id : SV_DispatchThreadID )
 		const float chance = water.depth > minSprayDepth ? saturate( sampleNearFall( xz ) ) : 0.0f;
 		if( particleRandom( state ) >= chance )
 			return;
-		// Поверхность окна, но не ниже той, о которую капля гибнет (земля со смещением дисплейсмента и глубина, mainUpdate):
-		// иначе над поднятым камнем она гибла бы в первом же шаге
-		const float surface = max( terrainHeight( xz ) + water.depth + sampleNearWater( xz ).x, terrainSurfacePoint( xz ).y + water.depth );
+		// На поверхности окна; камень (поднятый дисплейсментом) выше воды — не здесь: клочки висели бы над камнями
+		const float surface = terrainHeight( xz ) + water.depth + sampleNearWater( xz ).x;
+		if( terrainSurfacePoint( xz ).y > surface - 0.01f )
+			return;
 		position = float3( xz.x, surface + lerp( g_heightMin, g_heightMax, particleRandom( state ) ), xz.y );
 		const float height = max( lerp( g_sprayHeightMin, g_sprayHeightMax, particleRandom( state ) ), 0.0f );
 		velocity += float3( water.velocity.x * g_waterFlow, sqrt( 2.0f * max( g_gravity, 0.0f ) * height ), water.velocity.y * g_waterFlow );

@@ -48,7 +48,8 @@ public:
 	// рисует ли её и где — по константам кадра (cb_waterNear)
 	uint32_t windowCells() const { return m_size; }
 	// Окно — растром (строка 0 — дальний край по z, как у остальных выгрузок): <prefix>_near_surface.dds (подъём поверхности
-	// над детальной водой, м), _near_vx, _near_vz, _near_passage, _near_foam; у мелкой воды — и _near_depth (глубина, м). Ждёт GPU
+	// над детальной водой, м), _near_vx, _near_vz, _near_passage, _near_foam, _near_fall (бурление падения); у мелкой воды — и
+	// _near_depth (глубина, м). Ждёт GPU
 	bool exportState( const std::string& prefix, std::string& reason );
 
 private:
