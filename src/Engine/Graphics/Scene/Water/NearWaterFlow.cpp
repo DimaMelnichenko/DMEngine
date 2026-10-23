@@ -89,7 +89,7 @@ void NearWaterFlow::setStoneTops( std::vector<StoneTop>&& tops )
 		}
 	}
 	m_stoneTopsPending = true;
-	LOG( "Water near flow: " + std::to_string( tops.size() ) + " stream stones with model tops" );
+	LOG( "Water near flow: " + std::to_string( tops.size() ) + " stones with model tops (stream stones and level boulders)" );
 }
 
 bool NearWaterFlow::createTextures( uint32_t size )

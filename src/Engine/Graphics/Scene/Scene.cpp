@@ -440,7 +440,8 @@ void Scene::update( const FrameContext& frame, FrameStats& stats )
 	// заново, когда сменились кроны или экземпляры моделей
 	if( m_level.terrain )
 	{
-		uint64_t key = m_models.properties() ? m_models.properties()->revision() << 32 : 0;
+		// Окно моделей (Models.canopy) и окно экземпляров: место, поворот, масштаб, добавленные и убранные
+		uint64_t key = ( std::max( m_models.properties() ? m_models.properties()->revision() : 0, m_models.instanceProperties()->revision() ) ) << 32;
 		for( const auto& scatterer : m_scatterers )
 			key += scatterer->canopyRevision();
 		if( key != m_canopyKey )
@@ -453,16 +454,26 @@ void Scene::update( const FrameContext& frame, FrameStats& stats )
 			m_terrainPipeline.setCanopy( stamps );
 		}
 
-		// Камни русел расстановки — воде: в окне подробного течения у камеры она обтекает их по форме модели
-		uint32_t stoneKey = 0;
+		// Камни русел расстановки и камни-модели уровня (валуны, их ставят руками) — воде: в окне подробного течения у камеры
+		// она обтекает их по форме модели. Правка экземпляров (гизмо, окно) — когда устоялась на четверть секунды: верх всех
+		// камней заново и их загрузка на GPU (~5 МБ) — не на каждом кадре перетаскивания
+		uint64_t stoneKey = m_models.instanceProperties()->revision() << 32;
 		for( const auto& scatterer : m_scatterers )
 			stoneKey += scatterer->streamStoneRevision();
+		const auto now = std::chrono::steady_clock::now();
 		if( stoneKey != m_streamStoneKey )
 		{
 			m_streamStoneKey = stoneKey;
+			m_streamStoneChanged = now;
+			m_streamStonePending = true;
+		}
+		if( m_streamStonePending && now - m_streamStoneChanged >= std::chrono::milliseconds( 250 ) )
+		{
+			m_streamStonePending = false;
 			std::vector<StoneTop> tops;
 			for( const auto& scatterer : m_scatterers )
 				scatterer->appendStreamStoneTops( tops );
+			m_models.appendWaterObstacles( tops );
 			m_water.setStoneTops( std::move( tops ) );
 		}
 	}

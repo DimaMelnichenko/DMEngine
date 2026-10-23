@@ -2,11 +2,13 @@
 #include "ModelReseat.h"
 #include "ModelDraw.h"
 #include "ModelCollision.h"
+#include "ModelGeometry.h"
 #include "Engine\Animation\AnimationLibrary.h"
 #include "Engine\Animation\AnimationPose.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include "Assets.h"
 #include "Terrain\TerrainHeightSource.h"
@@ -327,6 +329,26 @@ void ModelInstances::appendCanopy( std::vector<CanopyStamp>& stamps ) const
 		lod->bounds.Transform( bounds, instance.transform.worldMatrix() );
 		stamps.push_back( { bounds.Center.x, bounds.Center.z, std::max( bounds.Extents.x, bounds.Extents.z ) * instance.model->canopy(),
 							instance.model->broadleaf() } );
+	}
+}
+
+void ModelInstances::appendWaterObstacles( std::vector<StoneTop>& tops ) const
+{
+	// Треугольники — раз на модель, LOD1, как у камней русел (Scatterer::buildStoneTops)
+	std::unordered_map<const DMModel*, std::pair<std::vector<XMFLOAT3>, std::vector<uint32_t>>> geometry;
+	for( const Instance& instance : m_instances )
+	{
+		const DMModel& model = *instance.model;
+		if( model.collision() != DMModel::Collision::hull || model.skeleton() != 0 )
+			continue;
+		auto [entry, added] = geometry.try_emplace( &model );
+		if( added && !modelLodGeometry( model, model.lodCount() > 1 ? 1 : 0, entry->second.first, entry->second.second ) )
+			entry->second.first.clear();
+		if( entry->second.first.empty() )
+			continue;
+		StoneTop top = rasterizeStoneTop( entry->second.first, entry->second.second, instance.transform.worldMatrix() );
+		if( top.side > 0.0f )
+			tops.push_back( std::move( top ) );
 	}
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include "FrameStats.h"
 
 #include <vector>
@@ -164,7 +165,11 @@ private:
 	std::vector<std::unique_ptr<Scatterer>> m_scatterers;
 	// Карта полога собрана по этим кронам: сумма номеров крон наборов (Scatterer::canopyRevision) и правок моделей уровня
 	uint64_t m_canopyKey = ~0ull;
-	uint32_t m_streamStoneKey = 0;	// сумма номеров камней русел расстановки, отданных воде
+	// Препятствия воде — камни русел расстановки и камни-модели уровня: номера правки, по которым они отданы воде, и когда
+	// номер сменился в последний раз (правку экземпляров отдаём, когда она устоялась)
+	uint64_t m_streamStoneKey = 0;
+	std::chrono::steady_clock::time_point m_streamStoneChanged;
+	bool m_streamStonePending = false;
 	ParticleSystem m_particles;	// частицы уровня (LevelParticleEmitters); -noparticles — нет
 	FoliageInteraction m_foliageInteraction;	// трава расступается у камеры (только с террейном)
 	ReflectionCaptures m_reflectionCaptures;	// карты отражений места (LevelReflectionCaptures)

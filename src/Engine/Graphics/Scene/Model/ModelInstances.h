@@ -12,6 +12,7 @@
 #include "Level\LevelDescription.h"
 #include "Engine\Animation\AnimationSystem.h"
 #include "Terrain\TerrainCanopy.h"
+#include "Water\StoneTop.h"
 
 namespace GS
 {
@@ -84,6 +85,11 @@ public:
 	std::vector<DirectX::BoundingBox> tallBounds( float minHeight ) const;
 	// Кроны экземпляров деревьев (модели с Models.canopy > 0) — в карту полога (TerrainCanopy)
 	void appendCanopy( std::vector<CanopyStamp>& stamps ) const;
+	// Камни-модели уровня (валуны у ручьёв, Dimok ставит их руками) — препятствия воде, как камни русел расстановки: верх
+	// экземпляра по форме модели (StoneTop, LOD1) — окну подробного течения у камеры. Только модели с простой коллизией
+	// «оболочка» (камни, шары): у деревьев (капсула) верх кроны — не препятствие, у коробок (плита над водой) — тоже; со
+	// скелетом — мимо
+	void appendWaterObstacles( std::vector<StoneTop>& tops ) const;
 
 	// Добавление и удаление в редакторе. У экземпляра — ключ, постоянный в сеансе (по нему его находят выбор вьюпорта и
 	// отмена: номер после добавления и удаления сдвигается). Новый — в конец списка, без поворота, масштаб 1; убранный
