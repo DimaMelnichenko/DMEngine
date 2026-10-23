@@ -55,6 +55,13 @@ DM_CONSTANTS( PBRMaterialBuffer, SLOT_CB_MATERIAL )
 	DM_FIELD( float, waterWetness );
 	DM_FIELD( float, wetAlbedo );
 	DM_FIELD( float, wetRoughness );
+	// Мох сверху (PBRLit.ps, addMoss): сила (0 — нет), множитель цвета слоя мха рельефа, как далеко вниз по бокам (0 — только
+	// верх, 1 — до отвесных граней), ширина края (по косинусу наклона; край рвут высоты текстуры мха), повтор текстуры мха ×
+	DM_FIELD( float, mossAmount );
+	DM_FIELD( float3, mossTint );
+	DM_FIELD( float, mossCoverage );
+	DM_FIELD( float, mossEdge );
+	DM_FIELD( float, mossScale );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

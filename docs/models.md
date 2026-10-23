@@ -323,6 +323,22 @@ python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-r
 `Tools/blender_grass_tall.py`) удалена 2026-10-14 (решение Dimok: на лугу почти не отличалась от `GrassClump`; траву
 получше добавим отдельно) — строки базы, файлы и сценарий подмены есть в истории git.
 
+Камни Poly Haven в формате glTF (архив `<ассет>_4k.gltf.zip` с сайта: сканы без LOD, 12–109 тыс. треугольников, карты 4K)
+— через `Tools/make_lods.py` (ниже): LOD0 около 3000 треугольников, LOD1 — 800, LOD2 — 200 (доли подобраны под каждый скан),
+карты — 2048. Галька `rock_09` — в слой камней русел (`ScatterLayerModels` слоя `stream_stones`), валуны
+`namaqualand_boulder_03/04/06` (2,4–3 м, 2,5 м, 1,2 м) — модели уровня: их Dimok ставит у ручьёв руками (окно «Model
+instances» → «Add», [gui.md](gui.md)); у всех — мокрость от воды и мох сверху ([materials.md](materials.md)):
+
+```
+blender -b --factory-startup --python Tools/make_lods.py -- --inputs <распаковано>/rock_09_4k.gltf --name rock_09 --out Meshes/source/rock_09.glb --lods 0.24,0.064,0.016 --single-sided
+python Tools/import_gltf.py Meshes/source/rock_09.glb --scatter --lod-ranges 8,20
+blender -b --factory-startup --python Tools/make_lods.py -- --inputs <распаковано>/namaqualand_boulder_03_4k.gltf --name namaqualand_boulder_03 --out Meshes/source/namaqualand_boulder_03.glb --lods 0.046,0.012,0.003 --single-sided
+python Tools/import_gltf.py Meshes/source/namaqualand_boulder_03.glb --level ValleyOfStreams --position 480.5,0,306 --snap-to-terrain --lod-ranges 25,60
+```
+
+(`namaqualand_boulder_04` — доли `0.05,0.0135,0.0034`, `namaqualand_boulder_06` — `0.0275,0.0073,0.0018`.) Мокрость и мох
+импортёр не ставит — параметры экземпляра материала в окне или в базе (`WaterWetness`, `MossAmount`, `MossCoverage`).
+
 ## Модели Megascans (Fab)
 
 Растения Quixel Megascans из библиотеки Fab скачиваются архивом `.zip` в формате FBX в `DownloadResources\` (не в git;

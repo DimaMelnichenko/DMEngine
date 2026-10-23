@@ -12,6 +12,7 @@
 #include "bindless.sh"
 #include "water.sh"
 #include "terrain_layers.sh"
+#include "terrain_material.sh"
 #ifdef TERRAIN_BLEND
 #include "terrain_blend.sh"
 #endif
@@ -58,6 +59,29 @@ float3 surfaceNormal( PixelInputType input )
 	return normalize( mul( n, tbn ) );
 }
 
+// Мох сверху (MossAmount: камни русел, валуны) — как слой поверх материала в UE (World Aligned Blend по нормали): слой мха
+// рельефа (роль forest_moss, terrain_material.sh — та же текстура и тот же тон, что у мха на земле вокруг) проекцией сверху
+// на гранях, смотрящих вверх: MossCoverage — как далеко вниз по бокам, MossEdge — ширина края, край рвут высоты текстуры мха
+// (мох сначала в углублениях). underwater — доля под водой: там мха нет. Только у уровня с террейном и слоем мха
+void addMoss( inout Surface surface, float3 positionDX, float3 positionDY, float underwater )
+{
+	const int layer = terrainLayers().forestMossLayer;
+	const float up = surface.geometricNormal.y;
+	const float start = 1.0f - 1.2f * g_mossCoverage;
+	[branch] if( layer < 0 || up < start - g_mossEdge || underwater >= 1.0f )
+		return;
+	const LayerSample moss = sampleLayer( layer, farTextureShare( surface.position ), 1.0f / g_mossScale, surface.position,
+										  positionDX, positionDY, float3( 0.0f, 1.0f, 0.0f ) );
+	const float mask = saturate( ( up - start ) / g_mossEdge + ( moss.height - 0.5f ) * 2.0f ) * g_mossAmount * ( 1.0f - underwater );
+	[branch] if( mask <= 0.0f )
+		return;
+	surface.baseColor = lerp( surface.baseColor, moss.albedo * terrainLayers().layerTint[layer].xyz * g_mossTint, mask );
+	surface.normal = normalize( lerp( surface.normal, normalize( surface.geometricNormal + moss.detail ), mask ) );
+	surface.metallic = lerp( surface.metallic, 0.0f, mask );
+	surface.roughness = lerp( surface.roughness, moss.roughness, mask );
+	surface.occlusion = lerp( surface.occlusion, moss.occlusion, mask );
+}
+
 float4 main( PixelInputType input ) : SV_TARGET
 {
 #ifdef LOD_DITHER
@@ -97,25 +121,31 @@ float4 main( PixelInputType input ) : SV_TARGET
 	surface.transmissionForward = g_transmissionForward;
 	surface.transmissionForwardRoughness = g_transmissionForwardRoughness;
 
+	// Уровень видимой воды у пикселя (wetWaterDepth: > 0 — под водой) — мокрости и мху. Производные позиции — до ветвлений
+	const float3 positionDX = ddx( input.worldPosition );
+	const float3 positionDY = ddy( input.worldPosition );
+	float band = -1.0f;
+	float depth = -1e30f;
+	[branch] if( ( g_waterWetness > 0.0f || g_mossAmount > 0.0f ) && cb_terrain.x > 0.0f )
+	{
+		band = wetBandAt( input.worldPosition.xz );
+		depth = band >= 0.0f ? wetWaterDepth( input.worldPosition.xz, input.worldPosition.y ) : -1e30f;
+	}
+	[branch] if( g_mossAmount > 0.0f && cb_terrain.x > 0.0f )
+		addMoss( surface, positionDX, positionDY, smoothstep( 0.0f, 0.03f, depth ) );
+
 	// Мокрость от воды (WaterWetness: камни русел, валуны у воды): по высоте пикселя против уровня видимой воды — как у
 	// рельефа (wetWaterDepth, bankWetness: та же полоса над водой и резкий край), каждый камень мокнет на своей высоте; у
-	// остальных материалов (0) — мимо. Только у уровня с террейном
-	[branch] if( g_waterWetness > 0.0f && cb_terrain.x > 0.0f )
+	// остальных материалов (0) — мимо. Мох мокнет вместе с камнем. Только у уровня с террейном
+	[branch] if( g_waterWetness > 0.0f && depth > -1e29f )
 	{
-		const float band = wetBandAt( input.worldPosition.xz );
-		const float depth = band >= 0.0f ? wetWaterDepth( input.worldPosition.xz, input.worldPosition.y ) : -1e30f;
-		[branch] if( depth > -1e29f )
-		{
-			const float wet = g_waterWetness * bankWetness( -depth, band );
-			surface.baseColor *= lerp( 1.0f, g_wetAlbedo, wet );
-			surface.roughness = lerp( surface.roughness, g_wetRoughness, wet );
-		}
+		const float wet = g_waterWetness * bankWetness( -depth, band );
+		surface.baseColor *= lerp( 1.0f, g_wetAlbedo, wet );
+		surface.roughness = lerp( surface.roughness, g_wetRoughness, wet );
 	}
 
 #ifdef TERRAIN_BLEND
 	// У земли — в материал террейна (TerrainBlendHeight; только у уровня с террейном)
-	const float3 positionDX = ddx( input.worldPosition );
-	const float3 positionDY = ddy( input.worldPosition );
 	[branch] if( cb_terrain.x > 0.0f )
 		blendWithTerrain( surface, positionDX, positionDY, g_terrainBlendHeight, g_terrainBlendContrast );
 #endif

@@ -263,6 +263,11 @@ void PBRMaterial::setParams( const PropertyContainer& params )
 	param.waterWetness = std::clamp( materialValue( params, "WaterWetness", 0.0f ), 0.0f, 1.0f );
 	param.wetAlbedo = std::clamp( materialValue( params, "WetAlbedo", 0.5f ), 0.0f, 1.0f );
 	param.wetRoughness = std::clamp( materialValue( params, "WetRoughness", 0.15f ), 0.0f, 1.0f );
+	param.mossAmount = std::clamp( materialValue( params, "MossAmount", 0.0f ), 0.0f, 1.0f );
+	param.mossTint = materialValue( params, "MossTint", XMFLOAT3( 1.0f, 1.0f, 1.0f ) );
+	param.mossCoverage = std::clamp( materialValue( params, "MossCoverage", 0.5f ), 0.0f, 1.0f );
+	param.mossEdge = std::max( materialValue( params, "MossEdge", 0.2f ), 0.01f );
+	param.mossScale = std::max( materialValue( params, "MossScale", 1.0f ), 0.05f );
 
 	Device::updateResourceData<PBRMaterialBuffer>( m_psCB, param );
 	// b2 читают и пиксельный, и вершинный шейдер (отклик на ветер)
