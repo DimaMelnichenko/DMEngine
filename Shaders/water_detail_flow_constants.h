@@ -19,7 +19,10 @@ DM_CONSTANTS( WaterDetailFlowBuffer, b6 )
 	// Валун уровня выше воды — пористое препятствие, как камень окна у камеры: глубина сквозь него — эта доля глубины без него
 	// («Obstacle passage» подокна «Near flow»)
 	DM_FIELD( float, detailPassage );
-	DM_FIELD( float3, detailPadding );
+	// Подпор у валунов (mainDetailBackwater): сила (0 — нет), радиус вокруг валуна, м, наибольший подъём и просадка, м
+	DM_FIELD( float, detailBackwater );
+	DM_FIELD( float, detailBackwaterReach );
+	DM_FIELD( float, detailBackwaterMax );
 };
 DM_CONSTANTS_END
 #undef DM_FIELD_PREFIX

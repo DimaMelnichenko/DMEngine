@@ -63,7 +63,7 @@ struct FlowCacheHeader
 	uint32_t detailSlices = 0;
 	uint32_t coarseSummary = 0;		// длина строки сводки, байт
 	uint32_t detailSummary = 0;
-	uint32_t padding = 0;
+	uint32_t liftSlices = 0;		// подпор у валунов: срезов (R32 на тексель детальной воды); 0 — нет (валунов в воде не было)
 };
 
 }
@@ -628,6 +628,8 @@ bool StaticWater::createFlowResources()
 		!m_detailFlowProjectShader.initialize( file, "mainFlowProject", same, detail ) ||
 		!m_detailFlowOutputShader.initialize( file, "mainFlowOutput", same, detail ) ||
 		!m_detailFlowRestoreShader.initialize( file, "mainFlowRestore", same, detail ) ||
+		!m_detailBackwaterShader.initialize( file, "mainDetailBackwater", same, detail ) ||
+		!m_detailLiftShader.initialize( file, "mainDetailLift", same, detail ) ||
 		!d3d.createShaderConstantBuffer( sizeof( WaterDetailFlowBuffer ), m_detailFlowBuffer ) )
 		return false;
 	for( auto [texture, uav, format, name] :
@@ -891,6 +893,8 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 		   std::tuple{ &divergence, &divergenceUAV, DXGI_FORMAT_R32_FLOAT, "Water detail flow divergence" } } )
 	{
 		desc.format = format;
+		// Расхождение после шагов — подпор у валунов: его читает mainDetailLift
+		desc.usage = texture == &divergence ? TextureUsage::unorderedAccess | TextureUsage::shaderResource : TextureUsage::unorderedAccess;
 		if( !d3d.createTexture( desc, nullptr, *texture ) || !d3d.createStorageView( *texture, arrayView, *uav ) )
 		{
 			LOG( std::string( "Failed to create water detail flow texture " ) + name );
@@ -900,7 +904,11 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 	}
 
 	const WaterFlowBuffer params = flowParameters( flow, flow.viscosity, timeStep, step, blocks );
-	const WaterDetailFlowBuffer detailParams = detailFlowParameters();
+	WaterDetailFlowBuffer detailParams = detailFlowParameters();
+	detailParams.detailBackwater = std::max( flow.backwater, 0.0f );
+	detailParams.detailBackwaterReach = std::max( flow.backwaterReach, 0.1f );
+	detailParams.detailBackwaterMax = std::max( flow.backwaterMax, 0.0f );
+	m_detailLift.clear();
 
 	// Блоки прошлого расчёта и ячейки вне блоков — сухие
 	for( StorageView* uav : { &infoUAV, &info2UAV, &velocityUAV, &advectedUAV, &pressureUAV, &divergenceUAV } )
@@ -968,6 +976,40 @@ std::string StaticWater::solveDetailFlow( const Flow& flow )
 		dispatch( m_detailFlowProjectShader );
 	}
 	dispatch( m_detailFlowOutputShader );
+	// Подпор у валунов: в расхождение (mainDetailBackwater), затем к уровню детальной воды (mainDetailLift) и копией — в кэш
+	const bool backwater = !m_obstacles.empty() && detailParams.detailBackwater > 0.0f && steps > 0;
+	ShaderView liftView;
+	if( backwater && d3d.createShaderView( divergence, arrayView, liftView ) )
+	{
+		dispatch( m_detailBackwaterShader );
+		PassDesc liftPass;
+		liftPass.name = "Water detail backwater";
+		liftPass.reads = { { &liftView, "detail backwater" } };
+		liftPass.writes = { { &m_detailWaterUAV, "detail water" } };
+		d3d.beginPass( liftPass );
+		d3d.setSRV( 12, liftView );
+		d3d.setUAV( 5, m_detailWaterUAV );
+		const uint32_t liftGroups = ( side + 7 ) / 8;
+		m_detailLiftShader.dispatchGroups( liftGroups, liftGroups, m_detailTileCount );
+		std::vector<DMD3D::SubresourceCopy> liftCopies;
+		std::vector<uint8_t> liftBytes;
+		if( d3d.captureTexture( divergence, liftCopies, liftBytes ) && liftCopies.size() >= m_detailTileCount )
+		{
+			m_detailLift.resize( static_cast<size_t>( side ) * side * m_detailTileCount );
+			for( uint32_t t = 0; t < m_detailTileCount; ++t )
+				for( uint32_t j = 0; j < side; ++j )
+					std::memcpy( m_detailLift.data() + ( static_cast<size_t>( t ) * side + j ) * side,
+								 liftBytes.data() + liftCopies[t].offset + j * liftCopies[t].rowPitch, side * sizeof( float ) );
+			float highest = 0.0f, lowest = 0.0f;
+			for( float lift : m_detailLift )
+			{
+				highest = std::max( highest, lift );
+				lowest = std::min( lowest, lift );
+			}
+			LOG( "Water detail flow: backwater at " + std::to_string( m_obstacles.size() ) + " boulders, rise " +
+				 std::to_string( highest ) + " m, dip " + std::to_string( lowest ) + " m" );
+		}
+	}
 	d3d.waitForGpu();
 	const double solveMs = std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count();
 
@@ -1088,9 +1130,13 @@ bool StaticWater::loadFlowCache( const std::string& path, const std::function<vo
 	std::vector<uint16_t> coarse( static_cast<size_t>( m_field->size ) * m_field->size * 2 );
 	std::vector<float> detail( static_cast<size_t>( header.detailSide ) * header.detailSide * header.detailSlices * 2 );
 	std::string coarseSummary( header.coarseSummary, ' ' ), detailSummary( header.detailSummary, ' ' );
+	if( header.liftSlices != 0 && header.liftSlices != header.detailSlices )
+		return false;
+	std::vector<float> lift( static_cast<size_t>( header.detailSide ) * header.detailSide * header.liftSlices );
 	if( !in.read( reinterpret_cast<char*>( coarse.data() ), coarse.size() * sizeof( uint16_t ) ) ||
 		!in.read( reinterpret_cast<char*>( detail.data() ), detail.size() * sizeof( float ) ) ||
-		!in.read( coarseSummary.data(), coarseSummary.size() ) || !in.read( detailSummary.data(), detailSummary.size() ) )
+		!in.read( coarseSummary.data(), coarseSummary.size() ) || !in.read( detailSummary.data(), detailSummary.size() ) ||
+		!in.read( reinterpret_cast<char*>( lift.data() ), lift.size() * sizeof( float ) ) )
 		return false;
 
 	DMD3D& d3d = DMD3D::instance();
@@ -1126,6 +1172,26 @@ bool StaticWater::loadFlowCache( const std::string& path, const std::function<vo
 		if( !d3d.createTexture( detailDesc, slices.data(), detailTexture ) || !d3d.createShaderView( detailTexture, arrayView, detailView ) )
 			return false;
 	}
+	Texture liftTexture;
+	ShaderView liftView;
+	if( header.liftSlices != 0 )
+	{
+		std::vector<TextureData> slices( header.liftSlices );
+		const size_t sliceFloats = static_cast<size_t>( header.detailSide ) * header.detailSide;
+		for( uint32_t t = 0; t < header.liftSlices; ++t )
+		{
+			slices[t].data = lift.data() + t * sliceFloats;
+			slices[t].rowPitch = header.detailSide * static_cast<uint32_t>( sizeof( float ) );
+			slices[t].slicePitch = slices[t].rowPitch * header.detailSide;
+		}
+		TextureDesc liftDesc;
+		liftDesc.width = header.detailSide;
+		liftDesc.height = header.detailSide;
+		liftDesc.arraySize = header.liftSlices;
+		liftDesc.format = DXGI_FORMAT_R32_FLOAT;
+		if( !d3d.createTexture( liftDesc, slices.data(), liftTexture ) || !d3d.createShaderView( liftTexture, arrayView, liftView ) )
+			return false;
+	}
 
 	// Сетка 1 м — поверх mainStatic, затем поверхность (детальная берёт течение 1 м) и детальная вода поверх неё
 	PassDesc pass;
@@ -1150,6 +1216,18 @@ bool StaticWater::loadFlowCache( const std::string& path, const std::function<vo
 		d3d.setUAV( 5, m_detailWaterUAV );
 		const uint32_t detailGroups = ( header.detailSide + 7 ) / 8;
 		m_detailFlowRestoreShader.dispatchGroups( detailGroups, detailGroups, header.detailSlices );
+		// Подпор у валунов — к уровню
+		if( header.liftSlices != 0 )
+		{
+			PassDesc liftPass;
+			liftPass.name = "Water detail backwater from cache";
+			liftPass.reads = { { &liftView, "cached detail backwater" } };
+			liftPass.writes = { { &m_detailWaterUAV, "detail water" } };
+			d3d.beginPass( liftPass );
+			d3d.setSRV( 12, liftView );
+			d3d.setUAV( 5, m_detailWaterUAV );
+			m_detailLiftShader.dispatchGroups( detailGroups, detailGroups, header.liftSlices );
+		}
 	}
 	// Временные текстуры освобождаются при выходе: GPU должен закончить с ними
 	d3d.waitForGpu();
@@ -1203,6 +1281,9 @@ void StaticWater::saveFlowCache( const std::string& path, const std::string& coa
 				}
 			}
 	}
+	// Подпор у валунов — после сводок (без валунов файл прежний)
+	const bool lift = header.detailSlices != 0 && m_detailLift.size() == static_cast<size_t>( m_detailSide ) * m_detailSide * m_detailTileCount;
+	header.liftSlices = lift ? m_detailTileCount : 0;
 	std::error_code error;
 	std::filesystem::create_directories( flowCacheDirectory, error );
 	{
@@ -1212,6 +1293,8 @@ void StaticWater::saveFlowCache( const std::string& path, const std::string& coa
 		out.write( reinterpret_cast<const char*>( detail.data() ), detail.size() * sizeof( float ) );
 		out.write( coarseSummary.data(), coarseSummary.size() );
 		out.write( detailSummary.data(), detailSummary.size() );
+		if( lift )
+			out.write( reinterpret_cast<const char*>( m_detailLift.data() ), m_detailLift.size() * sizeof( float ) );
 		if( !out )
 		{
 			LOG( "Water flow: can`t write cache " + path );

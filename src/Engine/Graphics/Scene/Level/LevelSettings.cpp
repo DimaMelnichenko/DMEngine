@@ -915,6 +915,14 @@ const SettingsSchema<WaterSimulationSettings::Flow>& waterFlowSchema()
 		{ "flow_detail_settle_time", "Detail settle time", DM_SETTING( detailSettleTime ), 0.0f, 600.0f, "s",
 		  "Flow on the detail grid of the streams (0.25 m) is computed this long from the 1 m flow: around the stones, faster at the "
 		  "axis than at the banks; 0 - the 1 m flow" + recomputed },
+		{ "flow_backwater", "Backwater", DM_SETTING( backwater ), 0.0f, 4.0f, "",
+		  "Water surface around the level boulders in the streams (detail grid): it heaps up in front of a boulder and sinks at its "
+		  "sides and behind it, from the flow pressure; times this, 0 - flat" + recomputed, settingClampLow },
+		{ "flow_backwater_reach", "Backwater reach", DM_SETTING( backwaterReach ), 0.5f, 4.0f, "m",
+		  "How far from a boulder the surface heaps up and sinks; larger than the boulder (the pressure is taken against its mean "
+		  "over this circle)" + recomputed, settingClamp },
+		{ "flow_backwater_max", "Backwater max", DM_SETTING( backwaterMax ), 0.0f, 0.5f, "m",
+		  "Largest rise and dip of the surface at a boulder (and not more than half the water depth)" + recomputed, settingClampLow },
 	};
 	return schema;
 }

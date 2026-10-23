@@ -98,6 +98,7 @@ DM_UAV( RWTexture2D<float>, g_vorticity, 7 );		// завихрённость в 
 #elif defined( FLOW_DETAIL )
 DM_UAV( RWTexture2DArray<float2>, g_info2, 6 );		// x — R русла (> 0 — ручей), y — глубина без камней (текущий слой)
 DM_SRV( Texture2DArray<float2>, g_cachedFlow, 11 );	// mainFlowRestore: течение X, Z мира
+DM_SRV( Texture2DArray<float>, g_detailLift, 12 );		// mainDetailLift: подпор у валунов, м (mainDetailBackwater или кэш)
 #else
 DM_SRV( Texture2D<float2>, g_cachedFlow, 11 );
 #endif
@@ -992,6 +993,116 @@ void mainFlowOutput( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	g_output[address] = state;
 #endif
 }
+
+#ifdef FLOW_DETAIL
+static const float backwaterGravity = 9.81f;		// м/с²: давление → подъём поверхности
+static const float backwaterDepthShare = 0.5f;		// подпор и просадка — не больше этой доли глубины ячейки
+
+// Давление ячейки для подпора: с водой, не валун выше воды (у него проводимость — доля Obstacle passage, и давление в нём
+// скачет на метры)
+bool backwaterPressure( int2 cell, out float pressure )
+{
+	pressure = 0.0f;
+	CellAddress at;
+	if( !cellAddress( cell, at ) || !solved( g_info[at].z ) || g_info[at].w <= 2.0f * g_detailPassage * g_info2[at].y )
+		return false;
+	pressure = g_pressure[at];
+	return true;
+}
+
+// Подпор у валуна уровня, м: подъём поверхности по давлению, как у окна у камеры (nearSurfaceLift). Под «жёсткой крышкой»
+// уровень неподвижен, давление — подъём, который разгонял бы воду: p = g·dt·η. Крупный масштаб давления держит расход вдоль
+// ручья (его уровень уже даёт конвейер русел), поэтому подъём — давление у ячейки (биномиальное среднее 5 × 5: шахматную
+// рябь Гаусса — Зейделя оно гасит) минус его среднее в круге «Backwater reach»: остаётся то, что размером с валун, —
+// вспучивание перед ним (вода упирается и сужается в обход), просадка у боков и за ним. Только у валунов (к краю круга
+// вокруг ближайшей ячейки валуна — на нет): у камней русла уровень — конвейера; × «Backwater», мягко не больше «Backwater
+// max» и половины глубины ячейки
+float boulderBackwater( int2 cell, CellAddress address, float depth )
+{
+	if( g_detailBackwater <= 0.0f || g_flowTimeStep <= 0.0f || !solved( g_info[address].z ) || depth <= 0.0f )
+		return 0.0f;
+	const int reach = clamp( (int)round( g_detailBackwaterReach / g_detailStep ), 2, 16 );
+	float nearest = 1e9f;
+	[loop] for( int j = -reach; j <= reach; ++j )
+		[loop] for( int i = -reach; i <= reach; ++i )
+		{
+			CellAddress at;
+			if( cellAddress( cell + int2( i, j ), at ) && g_detailStones.Load( int4( at, 0 ) ).y > -1e8f )
+				nearest = min( nearest, length( float2( i, j ) ) );
+		}
+	const float weight = 1.0f - smoothstep( 0.5f * reach, (float)reach, nearest );
+	float local;
+	if( weight <= 0.0f || !backwaterPressure( cell, local ) )
+		return 0.0f;
+	static const float binomial[5] = { 1.0f, 4.0f, 6.0f, 4.0f, 1.0f };
+	float pressure;
+	float sum = 0.0f;
+	float weights = 0.0f;
+	[unroll] for( int k = 0; k < 25; ++k )
+		if( backwaterPressure( cell + int2( k % 5 - 2, k / 5 - 2 ), pressure ) )
+		{
+			const float w = binomial[k % 5] * binomial[k / 5];
+			sum += w * pressure;
+			weights += w;
+		}
+	local = sum / weights;
+	float around = 0.0f;
+	float aroundCount = 0.0f;
+	[loop] for( int y = -reach; y <= reach; ++y )
+		[loop] for( int x = -reach; x <= reach; ++x )
+			if( x * x + y * y <= reach * reach && backwaterPressure( cell + int2( x, y ), pressure ) )
+			{
+				around += pressure;
+				aroundCount += 1.0f;
+			}
+	const float lift = ( local - around / max( aroundCount, 1.0f ) ) / ( backwaterGravity * g_flowTimeStep ) * g_detailBackwater;
+	// Мягкий предел (tanh): у плато резкого предела — изломы
+	const float limit = max( min( backwaterDepthShare * depth, g_detailBackwaterMax ), 1e-4f );
+	return weight * limit * tanh( lift / limit );
+}
+
+// Подпор у валунов (после mainFlowOutput, только если валуны в воде есть): в g_divergence (после шагов он не нужен) — у
+// ячейки и в поле соседних плиток, как течение; прибавляет его к уровню mainDetailLift
+[numthreads( 8, 8, 1 )]
+void mainDetailBackwater( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
+{
+	int2 cell;
+	CellAddress address;
+	if( !flowCell( group, thread, cell, address ) )
+		return;
+	const float4 water = g_output[address];
+	const float lift = water.x > -1e29f ? boulderBackwater( cell, address, water.w ) : 0.0f;
+	const int2 tile = cell / (int)g_detailCells;
+	[unroll] for( int k = 0; k < 9; ++k )
+	{
+		const int2 neighbor = tile + int2( k % 3 - 1, k / 3 - 1 );
+		if( any( neighbor < 0 ) || any( neighbor >= (int)g_detailTilesPerSide ) )
+			continue;
+		const uint slice = g_detailIndex.Load( int3( neighbor, 0 ) );
+		const int2 local = cell - neighbor * (int)g_detailCells;
+		if( slice == 0 || any( local < -1 ) || any( local > (int)g_detailCells ) )
+			continue;
+		g_divergence[uint3( local + 1, slice - 1 )] = lift;
+	}
+}
+
+// Подпор (g_detailLift: расчёт или кэш) — к уровню и глубине детальной воды, у всех текселей
+[numthreads( 8, 8, 1 )]
+void mainDetailLift( uint3 id : SV_DispatchThreadID )
+{
+	uint width, height, slices;
+	g_output.GetDimensions( width, height, slices );
+	if( id.x >= width || id.y >= height || id.z >= slices )
+		return;
+	const float lift = g_detailLift.Load( int4( id, 0 ) );
+	float4 state = g_output[id];
+	if( lift == 0.0f || state.x <= -1e29f )
+		return;
+	state.x += lift;
+	state.w = max( state.w + lift, 0.0f );
+	g_output[id] = state;
+}
+#endif
 
 // Скорость для шейдеров (y, z) — из кэша, у всех текселей: сетка 1 м — после mainStatic, детальная — после
 // mainDetailSurface (тексели без расчёта держат там то же, что дал бы расчёт)

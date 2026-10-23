@@ -203,7 +203,12 @@ private:
 	ComputeShader m_detailFlowProjectShader;
 	ComputeShader m_detailFlowOutputShader;
 	ComputeShader m_detailFlowRestoreShader;
+	ComputeShader m_detailBackwaterShader;
+	ComputeShader m_detailLiftShader;
 	Buffer m_detailFlowBuffer;		// DetailFlowParameters
+	// Подпор у валунов последнего расчёта детальной сетки (mainDetailBackwater), тексели — как у детальной воды; пусто —
+	// валунов в воде нет — в кэш течения
+	std::vector<float> m_detailLift;
 };
 
 }
