@@ -189,14 +189,7 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 		if( !library.saveGeneratedStreams( *m_level.waterSimulationId, m_level.waterSimulation->streamsKey, m_level.waterSimulation->streams ) )
 			LOG( "Stream curves are not saved to the database" );
 	}
-	task.enterProgressFrame( 0.6f, "Water" );
-	if( hasWater && ( !m_terrainPipeline.hydrology() ||
-					  !m_water.initialize( *m_level.waterSimulation, m_terrainPipeline, *m_terrainPipeline.hydrology() ) ) )
-		return false;
-	task.enterProgressFrame( 0.1f, "Models, scatter and particles" );
-
-	if( m_level.sky )
-		m_sky.setModel( *m_level.sky );
+	// Экземпляры моделей — до воды: валуны в ручьях — препятствия её течению при загрузке (одним расчётом, а не вторым после)
 	m_models.initialize( m_level.modelInstances, &m_world.animations() );
 	// Эрозия посчитана заново — экземпляры моделей на новую землю (правка окна «Model instances», в базу — «Save level»)
 	if( m_terrainPipeline.erosionChanged() )
@@ -205,6 +198,20 @@ bool Scene::initialize( LibraryLoader& library, bool particles, AudioMixer* audi
 		LOG( "Model instances moved to the new eroded terrain: " + std::to_string( moved ) + " (File > Save level keeps it)" );
 		m_terrainPipeline.releaseErosionChange();
 	}
+	task.enterProgressFrame( 0.6f, "Water" );
+	if( hasWater )
+	{
+		std::vector<StoneTop> boulders;
+		m_models.appendWaterObstacles( boulders );
+		m_water.setLevelObstacles( std::move( boulders ) );
+	}
+	if( hasWater && ( !m_terrainPipeline.hydrology() ||
+					  !m_water.initialize( *m_level.waterSimulation, m_terrainPipeline, *m_terrainPipeline.hydrology() ) ) )
+		return false;
+	task.enterProgressFrame( 0.1f, "Models, scatter and particles" );
+
+	if( m_level.sky )
+		m_sky.setModel( *m_level.sky );
 	// Поле ветра по рельефу — после масок леса и моделей уровня: ели рощи и постройки (выше 3 м) — препятствия
 	if( m_level.terrain && m_level.wind && !m_terrainPipeline.buildWindField( windObstacles() ) )
 		LOG( "Wind field is not built, the wind of the level is even" );
@@ -455,8 +462,9 @@ void Scene::update( const FrameContext& frame, FrameStats& stats )
 		}
 
 		// Камни русел расстановки и камни-модели уровня (валуны, их ставят руками) — воде: в окне подробного течения у камеры
-		// она обтекает их по форме модели. Правка экземпляров (гизмо, окно) — когда устоялась на четверть секунды: верх всех
-		// камней заново и их загрузка на GPU (~5 МБ) — не на каждом кадре перетаскивания
+		// она обтекает их по форме модели, валуны в воде — и всё течение при загрузке (сетки 1 м и 0,25 м, поле пены: расчёт
+		// заново или из кэша). Правка экземпляров (гизмо, окно) — когда устоялась на четверть секунды: верх всех камней
+		// заново и их загрузка на GPU (~5 МБ) — не на каждом кадре перетаскивания
 		uint64_t stoneKey = m_models.instanceProperties()->revision() << 32;
 		for( const auto& scatterer : m_scatterers )
 			stoneKey += scatterer->streamStoneRevision();
@@ -473,8 +481,11 @@ void Scene::update( const FrameContext& frame, FrameStats& stats )
 			std::vector<StoneTop> tops;
 			for( const auto& scatterer : m_scatterers )
 				scatterer->appendStreamStoneTops( tops );
-			m_models.appendWaterObstacles( tops );
+			std::vector<StoneTop> boulders;
+			m_models.appendWaterObstacles( boulders );
+			tops.insert( tops.end(), boulders.begin(), boulders.end() );
 			m_water.setStoneTops( std::move( tops ) );
+			m_water.setLevelObstacles( std::move( boulders ) );
 		}
 	}
 

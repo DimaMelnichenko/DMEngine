@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "WaterField.h"
+#include "StoneTop.h"
 #include "ComputeShader.h"
 #include "Shaders\water_flow_constants.h"
 #include "Shaders\water_detail_flow_constants.h"
@@ -28,6 +29,15 @@ public:
 	// Данные конвейера — при загрузке и перестройке русел: растр статичной воды, сопротивление камней, тайлы счёта течения, у
 	// статичной (enabled) — детальная вода у русел; отпечаток входа течения — ключ кэша
 	bool createTextures( const TerrainHydrology::Result& hydrology, bool enabled );
+	// Камни-модели уровня (валуны, их ставят руками; StoneTop — верх по модели): те, что стоят в воде, — как камни русел во всём
+	// течении при загрузке — сопротивление сетки 1 м и верх над ячейками детальной сетки (обтекание, пена у камня), в ключе
+	// кэша течения. До createTextures — запоминает (при загрузке). true — набор валунов в воде сменился: текстуры заново, нужно
+	// течение заново (WaterSimulation::setLevelObstacles)
+	bool setObstacles( std::vector<StoneTop>&& tops );
+	uint32_t obstacleCount() const { return static_cast<uint32_t>( m_obstacles.size() ); }
+	// Валун выше воды в течении детальной сетки — пористое препятствие: глубина сквозь него — эта доля («Obstacle passage»
+	// подокна «Near flow», как у камней окна у камеры); в ключе кэша, если валуны в воде есть
+	void setObstaclePassage( float passage );
 	// Озёра и ручьи — в поле (mainStatic): глубина и состояние; у озёр течения нет — его даёт solve
 	bool build( const WaterSimulationSettings& settings );
 	// Шейдеры и текстуры расчёта течения — один раз при загрузке
@@ -56,7 +66,8 @@ public:
 	const ShaderView& detailBlocksView() const { return m_detailBlocksView; }
 	uint32_t flowTileCount() const { return static_cast<uint32_t>( m_flowTileList.size() ); }
 	const ShaderView& flowTilesView() const { return m_flowTilesView; }
-	// Верх камня русла над ячейкой детальной плитки, м (−1e9 — камня нет): R32_FLOAT массив, тексели — как у детальной воды
+	// Верх над ячейкой детальной плитки, м (−1e9 — нет): R32G32_FLOAT массив — камня русла и валуна уровня, тексели — как у
+	// детальной воды
 	const ShaderView& detailStonesView() const { return m_detailStonesView; }
 	const ShaderView& detailBoundsView() const { return m_detailBoundsView; }
 	// Сопротивление камней русла: площадь поперёк потока на м² дна — своя и средняя вокруг (R32G32_FLOAT)
@@ -81,8 +92,14 @@ private:
 
 	// Массивы детальной воды по плиткам конвейера: статичная вода плиток и детальная вода; блоки счёта течения
 	bool createDetailTextures( const TerrainHydrology::Result& hydrology );
-	// Верх камней русла над ячейками детальных плиток (m_detailStones → m_detailStoneTops)
+	// Верх камней русла и валунов над ячейками детальных плиток (m_detailStones, m_obstacles → m_detailStoneTops)
 	bool createDetailStones();
+	// Сопротивление камней сетки 1 м: камни русла (m_stoneArea) и валуны в воде, среднее по клеткам ручья вокруг
+	bool createStoneDrag();
+	// Валуны из m_candidates, стоящие в воде (их квадрат задевает клетку 1 м с водой выше их низа), и отпечаток набора
+	void selectObstacles();
+	// Ключ кэша течения: отпечаток входа конвейера (m_flowInputBase) и валунов
+	void updateFlowKey();
 	// Течение сетки 1 м (water_flow.cs) поверх mainStatic — порциями с ожиданием GPU; сводка (она же — в лог), пусто — расчёта не было
 	std::string solveFlow( const Flow& flow );
 	// Течение на детальной сетке у русел (water_flow.cs с FLOW_DETAIL) — после solveFlow и поверхности: решение 1 м — начало
@@ -101,6 +118,13 @@ private:
 	ShaderView m_staticWaterView;
 	Texture m_stoneDrag;			// R32G32_FLOAT: площадь камней поперёк потока на м² дна — своя и средняя вокруг (water_flow.cs)
 	ShaderView m_stoneDragView;
+	std::vector<float> m_stoneArea;		// площадь камней русла поперёк потока на м² дна по клеткам 1 м (без валунов)
+	std::vector<float> m_cellLevel;		// уровень воды клетки 1 м (ручей или озеро), м; −1e9 — сухо
+	std::vector<uint8_t> m_streamCell;	// 1 — клетка ручья (сопротивление камней — только у них)
+	std::vector<StoneTop> m_candidates;	// камни-модели уровня (setObstacles)
+	std::vector<StoneTop> m_obstacles;	// из них — в воде
+	uint64_t m_obstacleKey = 0;			// отпечаток m_obstacles
+	float m_obstaclePassage = 0.05f;	// setObstaclePassage
 
 	// Течение сетки 1 м: только в рамке озёр и ручьёв с полем
 	ComputeShader m_flowInitShader;
@@ -132,6 +156,7 @@ private:
 	// Отпечаток входа течения (createTextures): итоговый рельеф, растр статичной воды, камни, плитки детальной земли и воды;
 	// 0 — кэша нет (нет карты высот на CPU)
 	uint64_t m_flowInputKey = 0;
+	uint64_t m_flowInputBase = 0;	// то же без валунов
 	float m_streamManning = 0.0f;	// n Маннинга русел (TerrainHydrology::Result) — трение ручьёв в течении
 
 	// Детальная вода у русел (Shaders/water_detail.cs): плитки — те же, что у детальной земли (TerrainHydrology::DetailTile,
@@ -165,7 +190,7 @@ private:
 	std::vector<uint8_t> m_detailWetBlocks;
 	uint32_t m_detailBlocksPerSide = 0;
 	std::vector<TerrainHydrology::Stone> m_detailStones;
-	Texture m_detailStoneTops;		// R32_FLOAT массив: верх камня над ячейкой (createDetailStones)
+	Texture m_detailStoneTops;		// R32G32_FLOAT массив: верх камня русла и валуна над ячейкой (createDetailStones)
 	ShaderView m_detailStonesView;
 	ComputeShader m_detailFlowInitShader;
 	ComputeShader m_detailFlowFacesShader;

@@ -113,6 +113,7 @@ void WaterSimulation::buildSurface()
 
 void WaterSimulation::solveFlow( const Settings& settings )
 {
+	m_staticWater.setObstaclePassage( settings.nearFlow.passage );
 	m_staticWater.solve( settings.flow, [this] { buildSurface(); } );
 	m_foam.build( m_staticWater, settings );
 }
@@ -215,6 +216,18 @@ WaterSimulation::Settings WaterSimulation::settings() const
 	readSettingProperties( m_nearProperties, waterNearFlowSchema(), settings.nearFlow );
 	settings.channels = m_streams.channels();
 	return settings;
+}
+
+void WaterSimulation::setLevelObstacles( std::vector<StoneTop>&& tops )
+{
+	if( !m_staticWater.setObstacles( std::move( tops ) ) || !m_initialized || !m_staticMode )
+		return;
+	const auto start = std::chrono::high_resolution_clock::now();
+	const Settings current = settings();
+	if( m_staticWater.build( current ) )
+		solveFlow( current );
+	LOG( "Water rebuilt for " + std::to_string( m_staticWater.obstacleCount() ) + " level boulders in the water, ms: " +
+		 std::to_string( std::chrono::duration<double, std::milli>( std::chrono::high_resolution_clock::now() - start ).count() ) );
 }
 
 bool WaterSimulation::rebuild( const TerrainHydrology::Result& hydrology )

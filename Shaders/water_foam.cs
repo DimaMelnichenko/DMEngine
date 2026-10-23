@@ -21,7 +21,7 @@ DM_SRV( Texture2DArray<float>, g_detailFoam, 5 );			// пена детально
 DM_SRV( Texture2D<float>, g_coarseFoam, 6 );				// пена сетки 1 м: прошлый шаг
 DM_SRV( Texture2DArray<float>, g_detailSource, 7 );
 DM_SRV( Texture2D<float>, g_coarseSource, 8 );
-DM_SRV( Texture2DArray<float>, g_detailStones, 9 );		// верх камня русла над ячейкой детальной сетки, м (−1e9 — нет)
+DM_SRV( Texture2DArray<float2>, g_detailStones, 9 );	// верх над ячейкой детальной сетки, м (−1e9 — нет): x — камня русла, y — валуна
 DM_SRV( Texture2D<float2>, g_stoneArea, 10 );				// камни русла сетки 1 м: площадь поперёк потока на м² дна
 
 DM_UAV( RWTexture2DArray<float>, g_detailOutput, 0 );
@@ -88,7 +88,8 @@ void mainDetailSource( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID
 			source = source * fallFoamShare( fall ) + fallFoam( fall );
 		}
 		// Камень у поверхности: уровень воды против верха камня (уровень поля не знает о камнях — над камнем вода тоньше)
-		const float stoneTop = g_detailStones.Load( int4( texel, 0 ) );
+		const float2 stones = g_detailStones.Load( int4( texel, 0 ) );
+		const float stoneTop = max( stones.x, stones.y );
 		if( stoneTop > -1e8f )
 			source += saturate( 1.0f - ( water.x - stoneTop ) / stoneFoamDepth ) * saturate( length( water.yz ) / stoneFoamSpeed );
 	}

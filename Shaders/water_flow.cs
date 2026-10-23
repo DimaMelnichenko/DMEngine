@@ -76,7 +76,8 @@ DM_SRV( Texture2DArray<float4>, g_detailStatic, 3 );		// уровень воды
 DM_SRV( Texture2DArray<float2>, g_terrainDetailTiles, 6 );	// детальная земля: нормированная высота, врез
 DM_SRV( Texture2D<uint>, g_detailIndex, 7 );				// плитка (x, z) мира → срез + 1, 0 — плитки нет
 DM_SRV( StructuredBuffer<uint2>, g_detailTileCoords, 8 );	// срез → плитка (x, z) мира
-DM_SRV( Texture2DArray<float>, g_detailStones, 9 );			// верх камня русла над ячейкой, м (−1e9 — камня нет)
+// Верх над ячейкой, м (−1e9 — нет): x — камня русла, y — валуна уровня (StaticWater::createDetailStones)
+DM_SRV( Texture2DArray<float2>, g_detailStones, 9 );
 DM_SRV( Texture2D<float4>, g_coarseWater, 10 );				// вода сетки 1 м (SLOT_WATER): глубина, течение X, Z мира
 #define FLOW_TEXTURE( type ) RWTexture2DArray<type>
 #else
@@ -291,11 +292,17 @@ bool flowCell( uint3 group, uint3 thread, out int2 cell, out CellAddress address
 #endif
 }
 
-#ifdef FLOW_NEAR
+#if defined( FLOW_NEAR )
 // Пропускная доля ячейки: у камня выше воды (глубина упёрлась в долю g_nearPassage глубины без камня) — g_nearPassage, иначе 1
 float obstacleShare( float4 info, float2 extra )
 {
 	return extra.y > 0.0f && info.w <= g_nearPassage * extra.y * 1.01f + 1e-5f ? g_nearPassage : 1.0f;
+}
+#elif defined( FLOW_DETAIL )
+// То же у валуна уровня выше воды (камни русла глубину так не уменьшают — им не больше stoneDepthShare): g_detailPassage
+float obstacleShare( float4 info, float2 extra )
+{
+	return extra.y > 0.0f && info.w <= g_detailPassage * extra.y * 1.01f + 1e-5f ? g_detailPassage : 1.0f;
 }
 #endif
 
@@ -354,7 +361,7 @@ Face face( int2 a, uint axis )
 	result.baseDepth = result.depth;
 #endif
 	result.stream = streamA || streamB;
-#ifdef FLOW_NEAR
+#if defined( FLOW_NEAR ) || defined( FLOW_DETAIL )
 	result.open = min( obstacleShare( infoA, extraA ), obstacleShare( infoB, extraB ) );
 #endif
 	result.base = streamA && streamB ? 0.5f * ( infoA.xy + infoB.xy ) : streamA ? infoA.xy : streamB ? infoB.xy : 0.0f;
@@ -437,14 +444,20 @@ void mainFlowInit( uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID )
 	g_info2[address] = float2( kind == kindStream ? water.w : 0.0f, kind != kindDry ? min( baseDepth, g_flowLayer ) : 0.0f );
 	return;
 #elif defined( FLOW_DETAIL )
-	// Дно — детальная земля, над ним камень русла (отнимает не больше stoneDepthShare глубины); ручей — где у воды есть R
+	// Дно — детальная земля, над ним камень русла (отнимает не больше stoneDepthShare глубины); ручей — где у воды есть R.
+	// Валун уровня выше воды — пористое препятствие, как камень окна у камеры: глубина сквозь него — g_detailPassage глубины
+	// без него (не глубже слоя течения — так её узнаёт obstacleShare), на его гранях — та же доля проводимости и скорости;
+	// под водой он — как камень русла
 	const float4 water = g_detailStatic.Load( int4( address, 0 ) );
 	const float bed = g_terrainDetailTiles.Load( int4( address, 0 ) ).x * g_heightMultiplier + g_heightOffset;
-	const float top = max( bed, g_detailStones.Load( int4( address, 0 ) ) );
+	const float2 stones = g_detailStones.Load( int4( address, 0 ) );
+	const float top = max( bed, max( stones.x, stones.y ) );
 	const bool wet = water.x > -1e8f;
 	const bool stream = water.w > 0.0f;
 	const float baseDepth = wet ? max( water.x - bed, 0.0f ) : 0.0f;
-	const float depth = baseDepth > 0.0f ? max( water.x - top, ( 1.0f - stoneDepthShare ) * baseDepth ) : 0.0f;
+	float depth = baseDepth > 0.0f ? max( water.x - top, ( 1.0f - stoneDepthShare ) * baseDepth ) : 0.0f;
+	if( baseDepth > 0.0f && stones.y > water.x )
+		depth = g_detailPassage * min( baseDepth, g_flowLayer );
 	float kind = kindDry;
 	if( stream && depth > 0.0f )
 		kind = kindStream;

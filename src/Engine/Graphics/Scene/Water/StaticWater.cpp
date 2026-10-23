@@ -147,8 +147,17 @@ bool StaticWater::createTextures( const TerrainHydrology::Result& hydrology, boo
 		return true;
 	};
 	// Камни русел тормозят течение (water_flow.cs, mainFlowAdvect): у клетки — площадь камней поперёк потока на квадратный
-	// метр дна, только погружённая часть — до уровня воды, — и её среднее по клеткам ручья вокруг (stoneSpread)
-	std::vector<float> stoneArea( static_cast<size_t>( m_field->size ) * m_field->size, 0.0f );
+	// метр дна, только погружённая часть — до уровня воды, — и её среднее по клеткам ручья вокруг (stoneSpread; createStoneDrag)
+	const size_t cellCount = static_cast<size_t>( m_field->size ) * m_field->size;
+	m_stoneArea.assign( cellCount, 0.0f );
+	m_cellLevel.assign( cellCount, -1e9f );
+	m_streamCell.assign( cellCount, 0 );
+	for( size_t index = 0; index < cellCount; ++index )
+	{
+		const DirectX::XMFLOAT4& water = hydrology.staticWater[index];
+		m_cellLevel[index] = std::max( water.x, water.w ) > -1e8f ? std::max( water.x, water.w ) : -1e9f;
+		m_streamCell[index] = water.x > -1e8f ? 1 : 0;
+	}
 	const float worldSize = m_field->cellSize * m_field->size;
 	for( const TerrainHydrology::Stone& stone : hydrology.stones )
 	{
@@ -159,32 +168,10 @@ bool StaticWater::createTextures( const TerrainHydrology::Result& hydrology, boo
 		const size_t index = static_cast<size_t>( row ) * m_field->size + col;
 		const float level = std::max( hydrology.staticWater[index].x, hydrology.staticWater[index].w );
 		const float submerged = std::clamp( level - stone.position.y, 0.0f, stoneHeight * stone.size );
-		stoneArea[index] += stone.size * submerged / ( m_field->cellSize * m_field->cellSize );
+		m_stoneArea[index] += stone.size * submerged / ( m_field->cellSize * m_field->cellSize );
 	}
-	std::vector<DirectX::XMFLOAT2> stoneDrag( stoneArea.size(), DirectX::XMFLOAT2( 0.0f, 0.0f ) );
-	for( int row = 0; row < static_cast<int>( m_field->size ); ++row )
-		for( int col = 0; col < static_cast<int>( m_field->size ); ++col )
-		{
-			const size_t index = static_cast<size_t>( row ) * m_field->size + col;
-			if( hydrology.staticWater[index].x <= -1e8f )
-				continue;
-			float sum = 0.0f;
-			int cells = 0;
-			for( int dr = -stoneSpread; dr <= stoneSpread; ++dr )
-				for( int dc = -stoneSpread; dc <= stoneSpread; ++dc )
-				{
-					const int r = row + dr;
-					const int c = col + dc;
-					if( r < 0 || c < 0 || r >= static_cast<int>( m_field->size ) || c >= static_cast<int>( m_field->size ) )
-						continue;
-					const size_t around = static_cast<size_t>( r ) * m_field->size + c;
-					if( hydrology.staticWater[around].x <= -1e8f )
-						continue;
-					sum += stoneArea[around];
-					++cells;
-				}
-			stoneDrag[index] = DirectX::XMFLOAT2( stoneArea[index], cells > 0 ? sum / cells : 0.0f );
-		}
+	// Валуны в воде — по новому растру (после перестройки русел вода могла прийти к валуну или уйти от него)
+	selectObstacles();
 	if( !createDetailTextures( hydrology ) )
 		return false;
 
@@ -214,26 +201,204 @@ bool StaticWater::createTextures( const TerrainHydrology::Result& hydrology, boo
 			key.addWords( tile.heights.data(), tile.heights.size() * sizeof( float ) );
 			key.addWords( tile.water.data(), tile.water.size() * sizeof( DirectX::XMFLOAT4 ) );
 		}
-		m_flowInputKey = std::max<uint64_t>( key.value, 1 );
+		m_flowInputBase = key.value;
 	}
+	else
+		m_flowInputBase = 0;
+	updateFlowKey();
 	return create( DXGI_FORMAT_R32G32B32A32_FLOAT, hydrology.staticWater.data(), sizeof( DirectX::XMFLOAT4 ), "Water static streams",
 				   m_staticWaterTexture, m_staticWaterView ) &&
-		   create( DXGI_FORMAT_R32G32_FLOAT, stoneDrag.data(), sizeof( DirectX::XMFLOAT2 ), "Water stone drag", m_stoneDrag, m_stoneDragView );
+		   createStoneDrag();
+}
+
+bool StaticWater::setObstacles( std::vector<StoneTop>&& tops )
+{
+	m_candidates = std::move( tops );
+	if( m_cellLevel.empty() )
+		return false;
+	const uint64_t previous = m_obstacleKey;
+	selectObstacles();
+	if( m_obstacleKey == previous )
+		return false;
+	updateFlowKey();
+	return createStoneDrag() && ( m_detailTileCount == 0 || createDetailStones() );
+}
+
+void StaticWater::selectObstacles()
+{
+	m_obstacles.clear();
+	const int size = static_cast<int>( m_field->size );
+	const float cell = m_field->cellSize;
+	const float worldSize = cell * m_field->size;
+	for( const StoneTop& top : m_candidates )
+	{
+		// Клетки 1 м под квадратом верха: строка 0 — дальний край по z
+		const int c0 = std::max( static_cast<int>( std::floor( top.origin.x / cell ) ), 0 );
+		const int c1 = std::min( static_cast<int>( std::floor( ( top.origin.x + top.side ) / cell ) ), size - 1 );
+		const int r0 = std::max( static_cast<int>( std::floor( ( worldSize - top.origin.y - top.side ) / cell ) ), 0 );
+		const int r1 = std::min( static_cast<int>( std::floor( ( worldSize - top.origin.y ) / cell ) ), size - 1 );
+		bool wet = false;
+		for( int row = r0; row <= r1 && !wet; ++row )
+			for( int col = c0; col <= c1 && !wet; ++col )
+				wet = m_cellLevel[static_cast<size_t>( row ) * size + col] > top.base;
+		if( wet )
+			m_obstacles.push_back( top );
+	}
+	Fingerprint key;
+	key.add( m_obstacles.size() );
+	for( const StoneTop& top : m_obstacles )
+	{
+		key.add( top.origin );
+		key.add( top.side );
+		key.add( top.base );
+		key.addWords( top.heights.data(), top.heights.size() * sizeof( float ) );
+	}
+	m_obstacleKey = m_obstacles.empty() ? 0 : key.value;
+}
+
+void StaticWater::setObstaclePassage( float passage )
+{
+	passage = std::clamp( passage, 0.0f, 1.0f );
+	if( passage == m_obstaclePassage )
+		return;
+	m_obstaclePassage = passage;
+	updateFlowKey();
+}
+
+void StaticWater::updateFlowKey()
+{
+	if( m_flowInputBase == 0 )
+	{
+		m_flowInputKey = 0;
+		return;
+	}
+	Fingerprint key( m_flowInputBase );
+	key.add( m_obstacleKey );
+	key.add( m_obstaclePassage );
+	m_flowInputKey = std::max<uint64_t>( m_obstacles.empty() ? m_flowInputBase : key.value, 1 );
+}
+
+bool StaticWater::createStoneDrag()
+{
+	// Валуны — площадь поперёк потока: погружённый объём по текселям верха (до уровня воды клетки) на поперечник квадрата
+	const int size = static_cast<int>( m_field->size );
+	const float cell = m_field->cellSize;
+	const float worldSize = cell * m_field->size;
+	std::vector<float> area = m_stoneArea;
+	for( const StoneTop& top : m_obstacles )
+	{
+		const float texel = top.side / StoneTop::cells;
+		for( uint32_t j = 0; j < StoneTop::cells; ++j )
+			for( uint32_t i = 0; i < StoneTop::cells; ++i )
+			{
+				const float height = top.heights[static_cast<size_t>( j ) * StoneTop::cells + i];
+				if( height <= StoneTop::noTop )
+					continue;
+				const int col = static_cast<int>( ( top.origin.x + ( i + 0.5f ) * texel ) / cell );
+				const int row = static_cast<int>( ( worldSize - top.origin.y - ( j + 0.5f ) * texel ) / cell );
+				if( col < 0 || row < 0 || col >= size || row >= size )
+					continue;
+				const size_t index = static_cast<size_t>( row ) * size + col;
+				const float submerged = std::clamp( m_cellLevel[index] - top.base, 0.0f, height );
+				area[index] += texel * texel * submerged / std::max( top.side, 1e-3f ) / ( cell * cell );
+			}
+	}
+	std::vector<DirectX::XMFLOAT2> stoneDrag( area.size(), DirectX::XMFLOAT2( 0.0f, 0.0f ) );
+	for( int row = 0; row < size; ++row )
+		for( int col = 0; col < size; ++col )
+		{
+			const size_t index = static_cast<size_t>( row ) * size + col;
+			if( !m_streamCell[index] )
+				continue;
+			float sum = 0.0f;
+			int cells = 0;
+			for( int dr = -stoneSpread; dr <= stoneSpread; ++dr )
+				for( int dc = -stoneSpread; dc <= stoneSpread; ++dc )
+				{
+					const int r = row + dr;
+					const int c = col + dc;
+					if( r < 0 || c < 0 || r >= size || c >= size )
+						continue;
+					const size_t around = static_cast<size_t>( r ) * size + c;
+					if( !m_streamCell[around] )
+						continue;
+					sum += area[around];
+					++cells;
+				}
+			stoneDrag[index] = DirectX::XMFLOAT2( area[index], cells > 0 ? sum / cells : 0.0f );
+		}
+	DMD3D& d3d = DMD3D::instance();
+	TextureDesc desc;
+	desc.width = m_field->size;
+	desc.height = m_field->size;
+	desc.format = DXGI_FORMAT_R32G32_FLOAT;
+	TextureData initial;
+	initial.data = stoneDrag.data();
+	initial.rowPitch = m_field->size * static_cast<uint32_t>( sizeof( DirectX::XMFLOAT2 ) );
+	initial.slicePitch = initial.rowPitch * m_field->size;
+	if( !d3d.createTexture( desc, &initial, m_stoneDrag ) || !d3d.createShaderView( m_stoneDrag, {}, m_stoneDragView ) )
+	{
+		LOG( "Failed to create water texture Water stone drag" );
+		return false;
+	}
+	d3d.setName( m_stoneDrag, "Water stone drag" );
+	return true;
 }
 
 bool StaticWater::createDetailStones()
 {
-	// Камни русла — верх над ячейками плиток (и полем соседних): течение поднимает до него дно (water_flow.cs: не больше чем
-	// на половину глубины), поле пены по нему ставит пену там, где вода над камнем тонкая (water_foam.cs).
-	// Камень — полуэллипсоид: поперечник size, высота над дном stoneHeight · size (как у сопротивления сетки 1 м)
+	// Камни русла и валуны уровня — верх над ячейками плиток (и полем соседних): течение поднимает до него дно (water_flow.cs:
+	// не больше чем на половину глубины), поле пены по нему ставит пену там, где вода над камнем тонкая (water_foam.cs).
+	// Камень русла — полуэллипсоид: поперечник size, высота над дном stoneHeight · size (как у сопротивления сетки 1 м);
+	// валун — по верху модели
 	DMD3D& d3d = DMD3D::instance();
 	const uint32_t side = m_detailSide;
 	const uint32_t cells = side - 2;
 	const float step = m_detailTileSize / cells;
 	const size_t texels = static_cast<size_t>( side ) * side;
-	std::vector<float> stones( texels * m_detailTileCount, -1e9f );
+	std::vector<DirectX::XMFLOAT2> stones( texels * m_detailTileCount, DirectX::XMFLOAT2( -1e9f, -1e9f ) );
 	const int tilesPerSide = static_cast<int>( m_detailTilesPerSide );
 	const int tileCells = static_cast<int>( cells );
+	// Верх в ячейке мира (x, z) — в свою плитку и поле соседних: камня русла (x) или валуна (y)
+	auto writeTop = [&]( int x, int z, float top, bool boulder )
+	{
+		const int tx = x / tileCells;
+		const int tz = z / tileCells;
+		for( int k = 0; k < 9; ++k )
+		{
+			const int nx = tx + k % 3 - 1;
+			const int nz = tz + k / 3 - 1;
+			if( nx < 0 || nz < 0 || nx >= tilesPerSide || nz >= tilesPerSide )
+				continue;
+			const int slice = m_detailSliceOf[static_cast<size_t>( nz ) * tilesPerSide + nx];
+			const int lx = x - nx * tileCells;
+			const int lz = z - nz * tileCells;
+			if( slice < 0 || lx < -1 || lz < -1 || lx > tileCells || lz > tileCells )
+				continue;
+			DirectX::XMFLOAT2& texel = stones[static_cast<size_t>( slice ) * texels + static_cast<size_t>( lz + 1 ) * side + lx + 1];
+			float& value = boulder ? texel.y : texel.x;
+			value = std::max( value, top );
+		}
+	};
+	// Валуны уровня — верх по модели (StoneTop): тексель верха под центром ячейки
+	for( const StoneTop& obstacle : m_obstacles )
+	{
+		const int x0 = std::max( static_cast<int>( std::floor( obstacle.origin.x / step ) ), 0 );
+		const int x1 = static_cast<int>( std::floor( ( obstacle.origin.x + obstacle.side ) / step ) );
+		const int z0 = std::max( static_cast<int>( std::floor( obstacle.origin.y / step ) ), 0 );
+		const int z1 = static_cast<int>( std::floor( ( obstacle.origin.y + obstacle.side ) / step ) );
+		for( int z = z0; z <= z1; ++z )
+			for( int x = x0; x <= x1; ++x )
+			{
+				const int i = static_cast<int>( ( ( x + 0.5f ) * step - obstacle.origin.x ) / obstacle.side * StoneTop::cells );
+				const int j = static_cast<int>( ( ( z + 0.5f ) * step - obstacle.origin.y ) / obstacle.side * StoneTop::cells );
+				if( i < 0 || j < 0 || i >= static_cast<int>( StoneTop::cells ) || j >= static_cast<int>( StoneTop::cells ) )
+					continue;
+				const float height = obstacle.heights[static_cast<size_t>( j ) * StoneTop::cells + i];
+				if( height > StoneTop::noTop )
+					writeTop( x, z, obstacle.base + height, true );
+			}
+	}
 	for( const TerrainHydrology::Stone& stone : m_detailStones )
 	{
 		const float radius = 0.5f * stone.size;
@@ -252,24 +417,7 @@ bool StaticWater::createDetailStones()
 				const float share = ( dx * dx + dz * dz ) / ( radius * radius );
 				if( share >= 1.0f )
 					continue;
-				const float top = stone.position.y + rise * std::sqrt( 1.0f - share );
-				// Своя плитка и поле соседних
-				const int tx = x / tileCells;
-				const int tz = z / tileCells;
-				for( int k = 0; k < 9; ++k )
-				{
-					const int nx = tx + k % 3 - 1;
-					const int nz = tz + k / 3 - 1;
-					if( nx < 0 || nz < 0 || nx >= tilesPerSide || nz >= tilesPerSide )
-						continue;
-					const int slice = m_detailSliceOf[static_cast<size_t>( nz ) * tilesPerSide + nx];
-					const int lx = x - nx * tileCells;
-					const int lz = z - nz * tileCells;
-					if( slice < 0 || lx < -1 || lz < -1 || lx > tileCells || lz > tileCells )
-						continue;
-					float& texel = stones[static_cast<size_t>( slice ) * texels + static_cast<size_t>( lz + 1 ) * side + lx + 1];
-					texel = std::max( texel, top );
-				}
+				writeTop( x, z, stone.position.y + rise * std::sqrt( 1.0f - share ), false );
 			}
 	}
 
@@ -277,14 +425,14 @@ bool StaticWater::createDetailStones()
 	desc.width = side;
 	desc.height = side;
 	desc.arraySize = m_detailTileCount;
-	desc.format = DXGI_FORMAT_R32_FLOAT;
+	desc.format = DXGI_FORMAT_R32G32_FLOAT;
 	TextureViewDesc arrayView;
 	arrayView.kind = TextureViewDesc::Kind::texture2DArray;
 	std::vector<TextureData> slices( m_detailTileCount );
 	for( uint32_t t = 0; t < m_detailTileCount; ++t )
 	{
 		slices[t].data = stones.data() + t * texels;
-		slices[t].rowPitch = side * static_cast<uint32_t>( sizeof( float ) );
+		slices[t].rowPitch = side * static_cast<uint32_t>( sizeof( DirectX::XMFLOAT2 ) );
 		slices[t].slicePitch = slices[t].rowPitch * side;
 	}
 	if( !d3d.createTexture( desc, slices.data(), m_detailStoneTops ) || !d3d.createShaderView( m_detailStoneTops, arrayView, m_detailStonesView ) )
@@ -695,6 +843,7 @@ WaterDetailFlowBuffer StaticWater::detailFlowParameters() const
 	params.detailTilesPerSide = m_detailTilesPerSide;
 	params.detailStep = params.detailCells > 0 ? m_detailTileSize / params.detailCells : 0.0f;
 	params.detailWetDepth = flowMinDepth;
+	params.detailPassage = m_obstaclePassage;
 	return params;
 }
 

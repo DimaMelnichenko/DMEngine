@@ -70,6 +70,9 @@ public:
 	bool exportState( const std::string& prefix, std::string& reason );
 	// Камни русел расстановки с верхом по модели (Scatterer): препятствия окна подробного течения у камеры
 	void setStoneTops( std::vector<StoneTop>&& tops ) { m_near.setStoneTops( std::move( tops ) ); }
+	// Камни-модели уровня (валуны) — и всему течению при загрузке (StaticWater::setObstacles): до initialize — запоминаются,
+	// после — сменился набор валунов в воде — течение заново (из кэша, если такой набор уже считали)
+	void setLevelObstacles( std::vector<StoneTop>&& tops );
 
 private:
 	// Настройки из окна для кадра (compute, отрисовка): заново — только когда окно правили (PropertyContainer::revision)
