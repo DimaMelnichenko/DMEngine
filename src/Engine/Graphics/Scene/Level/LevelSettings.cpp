@@ -80,8 +80,15 @@ const SettingsSchema<ScatterLayerSettings>& scatterLayerSchema()
 		{ "water", "Water", DM_SETTING( water ), 0.0f, 0.0f, "",
 		  "Where the layer grows at the water: up to the waterline; only above the overflow of the lakes (not in the shore strip "
 		  "from the waterline to the overflow, Lake freeboard of Channels - the water floods it); shallows - the shore strip of the "
-		  "lakes and the water up to Lake shallows depth (Layer rules, Water beds), as cattail", 0, "ground", { 0, 1, 2 },
-		  { "Up to the waterline", "Above the lake overflow", "Shallows" } },
+		  "lakes and the water up to Lake shallows depth (Layer rules, Water beds), as cattail; bank - dry ground right at the water "
+		  "of streams and lakes (Bank width, Bank height), as sedge tussocks", 0, "ground", { 0, 1, 2, 3 },
+		  { "Up to the waterline", "Above the lake overflow", "Shallows", "Bank" } },
+		{ "bank_width", "Bank width", DM_SETTING( bankWidth ), 0.2f, 4.0f, "m",
+		  "Water Bank: the layer grows on dry ground with water this far (full density up to half of it, 0.6 farther)",
+		  settingClamp, "ground" },
+		{ "bank_height", "Bank height", DM_SETTING( bankHeight ), 0.1f, 2.0f, "m",
+		  "Water Bank: the ground is at most this high above that water (thinner from half of it): not on the brow of a deep cut",
+		  settingClamp, "ground" },
 		{ "stand_size", "Stand size", DM_SETTING( standSize ), 0.0f, 50.0f, "m",
 		  "Dense stands: the layer grows only in patches of world noise this big (cattail - thick clumps, not a strip); "
 		  "0 - no stands, the mask decides", settingClamp, "ground" },

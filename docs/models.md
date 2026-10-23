@@ -316,7 +316,7 @@ python Tools/import_gltf.py Meshes/source/rock_moss_set_01.glb --scatter --lod-r
 
 Параметры движка, которых нет в glTF, — в командах (`--material-param`), у своих моделей — в сценариях:
 `blender_grass.py` (ветер, пропускание, смена LOD и тон травы множителем базового цвета), `blender_cattail.py` (рогоз:
-ветер, след ног, пропускание, смена LOD), `blender_camomile.py`
+ветер, след ног, пропускание, смена LOD), `blender_sedge.py` (осока: то же), `blender_camomile.py`
 (ветер, пропускание), `blender_test_model.py` (смена LOD у камня). Повторный импорт их не теряет.
 
 Трава Poly Haven `grass_medium_01` (пучки в 15–20 см, высокие — `--scale 1.7`, и подмена без архива

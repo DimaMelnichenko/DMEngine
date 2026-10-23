@@ -321,11 +321,13 @@ void selectLod( float distanceToLodOrigin, float4 lodEnd, uint lodCount, bool di
 // waterDepthAt): урез внутри клетки, узкий ручей и мелкий слив из озера не выкашивают метровую полосу и не зарастают
 // Вода по правилу слоя (g_waterRule, ScatterLayerSettings::water): 0 — до уреза; 1 — ещё и без полосы берега озёр до
 // перелива (lakeShoreBand: её заливает в паводок); 2 — мелководье (рогоз): только полоса берега озёр и вода до «Lake
-// shallows depth», глубина в точке его не убирает
+// shallows depth», глубина в точке его не убирает; 3 — берег: убирает только вода в точке (врез русла — нет), полосу у
+// воды выбирает waterBankDensity
 float foliageClear( float2 worldXZ )
 {
 	const float2 uv = terrainUV( worldXZ );
-	const float channelClear = terrainChannelClear( worldXZ );
+	// Берегу врез не помеха: ручей врезан, и бровка у воды — его часть; в воде убирает глубина
+	const float channelClear = g_waterRule == 3 ? 0.0f : terrainChannelClear( worldXZ );
 	const float ground = terrainHeight( worldXZ );
 	float waterClear;
 	if( g_waterRule == 2 )
@@ -348,6 +350,41 @@ float foliageClear( float2 worldXZ )
 			waterClear = max( waterClear, coverage * ( ground < shoreLevel ? 1.0f : lakeShoreBand( ground - shoreLevel ) ) );
 	}
 	return 1.0f - ( 1.0f - terrainFoliageClear( uv ) ) * ( 1.0f - max( channelClear, 0.0f ) ) * ( 1.0f - waterClear );
+}
+
+// Берег (g_waterRule 3): полоса суши у самой воды ручьёв и озёр — кочки осоки. Доля 0…1: вода (глубже bankWaterDepth) в
+// шести направлениях на половине «Bank width» — 1, в шести между ними на всей ширине — 0,6; земля над уровнем той
+// воды не выше «Bank height» (с его половины — реже): на бровке глубокого вреза над ручьём — нет. Сама точка в воде — её
+// убирает foliageClear, как у правила 0
+static const float bankWaterDepth = 0.03f;
+static const float2 bankDirections[6] =
+{
+	float2( 1.0f, 0.0f ), float2( 0.5f, 0.866f ), float2( -0.5f, 0.866f ),
+	float2( -1.0f, 0.0f ), float2( -0.5f, -0.866f ), float2( 0.5f, -0.866f )
+};
+float waterBankDensity( float2 worldXZ, float ground )
+{
+	float bank = 0.0f;
+	[unroll] for( uint ring = 0; ring < 2; ++ring )
+	{
+		const float radius = g_bankWidth * ( ring == 0 ? 0.5f : 1.0f );
+		const float weight = ring == 0 ? 1.0f : 0.6f;
+		[loop] for( uint k = 0; k < 6 && bank < weight; ++k )
+		{
+			// Внешнее кольцо повёрнуто на 30°: направления между направлениями внутреннего
+			const float2 d = bankDirections[k];
+			const float2 direction = ring == 0 ? d : float2( 0.866f * d.x - 0.5f * d.y, 0.5f * d.x + 0.866f * d.y );
+			const float2 p = worldXZ + direction * radius;
+			const float height = terrainHeight( p );
+			const float depth = waterDepthAt( terrainUV( p ), height );
+			[branch] if( depth > bankWaterDepth )
+			{
+				const float above = ground - ( height + depth );
+				bank = max( bank, weight * ( 1.0f - smoothstep( 0.5f * g_bankHeight, g_bankHeight, above ) ) );
+			}
+		}
+	}
+	return bank;
 }
 
 // Фильтр по слоям земли (как Landscape Grass Type в UE): множитель плотности по доле слоёв g_groundLayers в весах земли
@@ -409,6 +446,10 @@ bool placeInCell( int2 cell, uint seed, bool displaced, out ScatterItem item, ou
 	const float chance = random( cell, seed + 2 );
 	if( chance >= density )
 		return false;
+	// Берег — дюжина выборок воды вокруг, только у ячеек, которые остальное не отсеяло; доля берега — лишь вероятность: у
+	// края полосы кочки реже, но не мельче
+	[branch] if( g_waterRule == 3 && chance >= density * waterBankDensity( worldXZ, terrainHeight( worldXZ ) ) )
+		return false;
 
 	// Вариант — по накопленным долям весов; отдельное случайное число ячейки (прежние 0…6 от вариантов не зависят). С
 	// куртинами и предпочтением слоёв земли — по весам в точке (pickWeightedVariant)
@@ -423,11 +464,13 @@ bool placeInCell( int2 cell, uint seed, bool displaced, out ScatterItem item, ou
 	float3 angles = ( float3( random( cell, seed + 4 ), random( cell, seed + 5 ), random( cell, seed + 6 ) ) - 0.5f ) * g_rotationRange;
 
 	// Широкая модель (куртина травы) — ещё и по следу основания: корень на бровке, а пучки куртины над врезом русла висели
-	// бы в воздухе (как проверка границ точки в PCG UE). Размер — наибольший при этой ячейке, след поворачивается с моделью
+	// бы в воздухе (как проверка границ точки в PCG UE). Размер — наибольший при этой ячейке, след поворачивается с моделью.
+	// У берега (правило 3) — нет: кочка у кромки и должна свешивать листья над водой
+	const float footprintCheck = g_waterRule == 3 ? 0.0f : 1.0f;
 	const float4 footprint = g_footprints[variant];
 	const float sizeVariation = placement.z >= 0.0f ? placement.z : g_sizeVariation;
 	const float sizeBound = g_sizeMultiplier * placement.y * lerp( 1.0f - sizeVariation, 1.0f, random( cell, seed + 3 ) );
-	const float footprintRadius = footprint.z * sizeBound;
+	const float footprintRadius = footprintCheck * footprint.z * sizeBound;
 	if( footprintRadius > footprintCheckRadius )
 	{
 		float sinYaw, cosYaw;
